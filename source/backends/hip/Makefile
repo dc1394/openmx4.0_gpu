@@ -1589,3 +1589,7 @@ Set_Density_Grid.o Set_Density_Grid_GPU.o: openmx_density_cache_hooks.h
 
 DFT.o TRAN_DFT.o Band_DFT_Col.o: openmx_band_col_state.h
 DFT.o TRAN_DFT_NC.o Band_DFT_NonCol.o: openmx_band_noncol_state.h
+
+DFT.o Divide_Conquer.o: openmx_dc_state.h
+DFT.o Divide_Conquer_LNO.o: openmx_dclno_state.h
+DFT.o Krylov.o: openmx_krylov_state.h

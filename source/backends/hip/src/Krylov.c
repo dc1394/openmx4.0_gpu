@@ -21,7 +21,6 @@
 #include "openmx_env.h"
 #include "openmx_solver_workspace.h"
 #include "openmx_native_resources.h"
-OPENMX_NATIVE_RESOURCE_GROUP(Krylov,Krylov_Release_GPU_Caches)
 #include "lapack_prototypes.h"
 #include "set_hip_default_device_from_local_rank.h"
 #include <omp.h>
@@ -29,16 +28,76 @@ OPENMX_NATIVE_RESOURCE_GROUP(Krylov,Krylov_Release_GPU_Caches)
 /* Stage timing of the Krylov solver (the time1..time16 blocks below, printed
    per rank at the end of each call): set OPENMX_KRYLOV_MEASURE_TIME=1.
    Diagnostic; replaces the old compile-time "#define measure_time 0". */
-static int Krylov_measure_time_env = -1;
-static int Krylov_MeasureTime(void)
+
+/* Persistent metadata belongs to the explicit calculation owner. */
+typedef struct {
+  int active;
+  hipblasHandle_t hipblas;
+  hipStream_t stream;
+  double *d_A;
+  double *d_B;
+  double *d_C;
+  double *h_A;
+  size_t d_A_count;
+  size_t d_B_count;
+  size_t d_C_count;
+  size_t h_A_count;
+} Krylov_GPU_Workspace;
+
+typedef struct {
+  int state;
+  int matomnum;
+  int nspin;
+  int *dim_n;
+  int *dim_m;
+  int *valid;
+  size_t *off;
+  double *d_arena;
+  size_t arena_elems;
+} Krylov_KUCache;
+
+struct OpenMXKrylovState {
+  OpenMXNativeResources *resources; /* borrowed from this calculation */
+  int initialized;
+  Krylov_KUCache kucache;
+  int gpu_ws_pool_size;
+  Krylov_GPU_Workspace *gpu_ws_pool;
+  unsigned long long gpu_need_total;
+  int gpu_device_ranks;
+  int gpu_alloc_failure_reported;
+  int gpu_fits;
+  int gpu_gemmul8;
+  int gpu_fused;
+  int gpu_eigen_min;
+  double gpu_dgemm_min_flops;
+  int measure_time_env;
+  double Col_trd_owned_TZ;
+  int Col_trd_owned_firsttime;
+  int Col_trd_owned_recalc_firsttime;
+  int Col_trd_owned_recalc_flag;
+  double Col_owned_TZ;
+  int Col_owned_firsttime;
+  int Col_owned_recalc_firsttime;
+  int Col_owned_recalc_flag;
+  int ProjectedSolve_GPU_profile;
+  int GPU_Preflight_env_checked;
+  size_t GPU_Preflight_reserve_bytes;
+  int GPU_Preflight_hip_device;
+  MPI_Comm GPU_Preflight_device_comm;
+  int GPU_InitOnce_initialized;
+  int GPU_Enabled_requested;
+};
+typedef OpenMXKrylovState KrylovState;
+
+static int Krylov_MeasureTime(KrylovState *state)
 {
-  if (Krylov_measure_time_env < 0){
+  if (state->measure_time_env < 0){
     const char *v = openmx_env_get("OPENMX_KRYLOV_MEASURE_TIME");
-    Krylov_measure_time_env = (v != NULL && atoi(v) != 0);
+    state->measure_time_env = (v != NULL && atoi(v) != 0);
   }
-  return Krylov_measure_time_env;
+  return state->measure_time_env;
 }
-#define  measure_time   (Krylov_MeasureTime())
+#define  measure_time   (Krylov_MeasureTime(state))
 #define  error_check    0
 #define  cutoff_value   Threshold_OLP_Eigen
 #define  KRYLOV_ENABLE_GPU  1
@@ -47,14 +106,14 @@ static int Krylov_MeasureTime(void)
 #define  KRYLOV_GPU_EIGEN_MIN  300
 #define  KRYLOV_GPU_DGEMM_MIN_FLOPS  50000000.0
 
-static double Krylov_gpu_dgemm_min_flops = KRYLOV_GPU_DGEMM_MIN_FLOPS;
-static int Krylov_gpu_eigen_min = KRYLOV_GPU_EIGEN_MIN;
-static int Krylov_gpu_fused = 1;
+
+
+
 /* The device GEMMs use the common bridge, whose architecture, input and
    environment policy selects Ozaki-II emulation or native FP64 and may
    fall back to native FP64 when workspace is unavailable. Setting
    OPENMX_KRYLOV_GEMMUL8=0 bypasses the bridge for native hipBLAS FP64. */
-static int Krylov_gpu_gemmul8 = 1;
+
 
 #include "tran_prototypes.h"
 
@@ -69,7 +128,7 @@ static int Krylov_gpu_gemmul8 = 1;
 #define _mm_storeu_pd _mm_store_pd
 #endif
 
-static void Generate_pMatrix( int myid, int spin, int Mc_AN, double *****Hks, double ****OLP0, double **invS,
+static void Generate_pMatrix(KrylovState *state,  int myid, int spin, int Mc_AN, double *****Hks, double ****OLP0, double **invS,
                               double ***Krylov_U, double ***Krylov_U_OLP, double **inv_RS, int *MP,
                               int *Msize, int *Msize2, int *Msize3, int *Msize4, int Msize2_max, 
                               double **tmpvec0, double **tmpvec1, double **tmpvec2 ); 
@@ -83,7 +142,7 @@ static void Krylov_IOLP( int Mc_AN, double ****OLP0, double ***Krylov_U_OLP, dou
 static void S_orthonormalize_vec( int Mc_AN, int ct_on, double **vec,
                                   double **workvec, double ****OLP0,
                                   double **tmpmat0, double *ko, double *iko, int *MP, int *Msize2 );
-static void Embedding_Matrix(int spin, int Mc_AN, double *****Hks,
+static void Embedding_Matrix(KrylovState *state, int spin, int Mc_AN, double *****Hks,
                              double ***Krylov_U, double ****EC_matrix, 
 			     int *MP, int *Msize, int *Msize2, int *Msize3, 
                              double **tmpvec1);
@@ -92,7 +151,7 @@ static void Inverse_S_by_Cholesky(int Mc_AN, double ****OLP0, double **invS, int
 
 static void Save_DOS_Col(OpenMXSolverResidueView Residues, double ****OLP0, OpenMXSolverRealFieldView EVal, OpenMXSolverIntTensor LO_TC, OpenMXSolverIntTensor HO_TC);
 
-static double Krylov_Col(char *mode,
+static double Krylov_Col(KrylovState *state, char *mode,
 			 int SCF_iter,
 			 double *****Hks,
 			 double ****OLP0,
@@ -107,7 +166,7 @@ static double Krylov_Col(char *mode,
   Matomnum==1 && openmp_threads_num>1
 *******************************************************/
 
-static double Krylov_Col_trd(char *mode,
+static double Krylov_Col_trd(KrylovState *state, char *mode,
 			 int SCF_iter,
 			 double *****Hks,
 			 double ****OLP0,
@@ -116,7 +175,7 @@ static double Krylov_Col_trd(char *mode,
 			 double Eele0[2],
 			 double Eele1[2]);
 
-static void Generate_pMatrix_trd( int myid, int spin, int Mc_AN, double *****Hks, double ****OLP0, double **invS,
+static void Generate_pMatrix_trd(KrylovState *state,  int myid, int spin, int Mc_AN, double *****Hks, double ****OLP0, double **invS,
                               double ***Krylov_U, double ***Krylov_U_OLP, double **inv_RS, int *MP,
                               int *Msize, int *Msize2, int *Msize3, int *Msize4, int Msize2_max, 
                               double **tmpvec0, double **tmpvec1, double **tmpvec2 ); 
@@ -142,7 +201,7 @@ static int Eigen_lapack_r(double **a, double *ko, int n, int EVmax);
 extern int openmx_magma_dsyevdx_gpu(int n, int maxn, double *d_A, double *w, int *mout);
 extern int openmx_gemmul8DgemmEnabled(void);
 
-static int Krylov_GPU_Enabled(void)
+static int Krylov_GPU_Enabled(KrylovState *state)
 {
   /*
     Keep Krylov's local dense GPU path behind one switch so it is easy to
@@ -159,15 +218,15 @@ static int Krylov_GPU_Enabled(void)
     167.9 s -> 22.4 s by keeping it on the CPU.  OPENMX_KRYLOV_GPU=1
     forces the offload back on, =0 forces it off everywhere.
   */
-  static int requested = -1;
 
-  if (requested < 0) {
+
+  if (state->GPU_Enabled_requested < 0) {
     const char *v = openmx_env_get("OPENMX_KRYLOV_GPU");
-    if (v != NULL && v[0] != '\0') requested = (atoi(v) != 0);
-    else requested = !openmx_band_gpu_dense_oversubscribed();
+    if (v != NULL && v[0] != '\0') state->GPU_Enabled_requested = (atoi(v) != 0);
+    else state->GPU_Enabled_requested = !openmx_band_gpu_dense_oversubscribed();
   }
 
-  return KRYLOV_ENABLE_GPU && scf_eigen_lib_flag == GPUSOLVER && requested;
+  return KRYLOV_ENABLE_GPU && scf_eigen_lib_flag == GPUSOLVER && state->GPU_Enabled_requested;
 }
 
 /*
@@ -179,117 +238,105 @@ static int Krylov_GPU_Enabled(void)
   process when an allocation inside a GEMM fails, it does not return an
   error the caller could recover from.
 */
-static int Krylov_gpu_fits = 1;
-static int Krylov_gpu_alloc_failure_reported = 0;
+
+
 /* set by the preflight; the KU cache of the same call is sized from them */
-static int Krylov_gpu_device_ranks = 1;
-static unsigned long long Krylov_gpu_need_total = 0;
 
-typedef struct {
-  int active;
-  hipblasHandle_t hipblas;
-  hipStream_t stream;
-  double *d_A;
-  double *d_B;
-  double *d_C;
-  double *h_A;
-  size_t d_A_count;
-  size_t d_B_count;
-  size_t d_C_count;
-  size_t h_A_count;
-} Krylov_GPU_Workspace;
 
-static void Krylov_GPU_InitOnce(void);
-static void Krylov_GPU_Workspace_Init(Krylov_GPU_Workspace *ws);
-static void Krylov_GPU_Workspace_Free(Krylov_GPU_Workspace *ws);
-static int  Krylov_GPU_EnsureHipblas(Krylov_GPU_Workspace *ws);
-static int  Krylov_GPU_EnsureDouble(double **ptr, size_t *capacity, size_t count);
-static int  Krylov_GPU_Usable(const Krylov_GPU_Workspace *ws);
-static void Krylov_GPU_Preflight(int matomnum, const int *Msize, const int *Msize3);
-static void Krylov_GPU_PreparePool(int nthrds);
-static Krylov_GPU_Workspace *Krylov_GPU_GetWorkspace(int thread_id);
-static void Krylov_Dgemm(Krylov_GPU_Workspace *ws,
+
+
+
+static void Krylov_GPU_InitOnce(KrylovState *state);
+static void Krylov_GPU_Workspace_Init(KrylovState *state, Krylov_GPU_Workspace *ws);
+static void Krylov_GPU_Workspace_Free(KrylovState *state, Krylov_GPU_Workspace *ws);
+static int  Krylov_GPU_EnsureHipblas(KrylovState *state, Krylov_GPU_Workspace *ws);
+static int  Krylov_GPU_EnsureDouble(KrylovState *state, double **ptr, size_t *capacity, size_t count);
+static int  Krylov_GPU_Usable(KrylovState *state, const Krylov_GPU_Workspace *ws);
+static void Krylov_GPU_Preflight(KrylovState *state, int matomnum, const int *Msize, const int *Msize3);
+static void Krylov_GPU_PreparePool(KrylovState *state, int nthrds);
+static Krylov_GPU_Workspace *Krylov_GPU_GetWorkspace(KrylovState *state, int thread_id);
+static void Krylov_Dgemm(KrylovState *state, Krylov_GPU_Workspace *ws,
                          hipblasOperation_t transa, hipblasOperation_t transb,
                          int m, int n, int k,
                          const double *A, int lda,
                          const double *B, int ldb,
                          double *C, int ldc);
-static void Krylov_Eigen2(Krylov_GPU_Workspace *ws, double *a, int csize, double *ko, int n, int EVmax);
+static void Krylov_Eigen2(KrylovState *state, Krylov_GPU_Workspace *ws, double *a, int csize, double *ko, int n, int EVmax);
 
 
-static void Krylov_GPU_InitOnce(void)
+static void Krylov_GPU_InitOnce(KrylovState *state)
 {
-  static int initialized = 0;
 
-  if (initialized) return;
-  initialized = 1;
+
+  if (state->GPU_InitOnce_initialized) return;
+  state->GPU_InitOnce_initialized = 1;
 
   {
     const char *env = openmx_env_get("OPENMX_KRYLOV_GPU_DGEMM_MIN_FLOPS");
     if (env != NULL && env[0] != '\0') {
       double value = atof(env);
-      if (0.0 <= value) Krylov_gpu_dgemm_min_flops = value;
+      if (0.0 <= value) state->gpu_dgemm_min_flops = value;
     }
     env = openmx_env_get("OPENMX_KRYLOV_GPU_EIGEN_MIN");
     if (env != NULL && env[0] != '\0') {
       int value = atoi(env);
-      if (0 < value) Krylov_gpu_eigen_min = value;
+      if (0 < value) state->gpu_eigen_min = value;
     }
     env = openmx_env_get("OPENMX_KRYLOV_GPU_FUSED");
-    if (env != NULL && env[0] != '\0') Krylov_gpu_fused = (atoi(env) != 0);
+    if (env != NULL && env[0] != '\0') state->gpu_fused = (atoi(env) != 0);
     /* scf.gemmul8.enable off and OPENMX_GEMMUL8_DISABLE_D make
        openmx_gemmul8Dgemm native as well */
     env = openmx_env_get("OPENMX_KRYLOV_GEMMUL8");
-    if (env != NULL && env[0] != '\0') Krylov_gpu_gemmul8 = (atoi(env) != 0);
+    if (env != NULL && env[0] != '\0') state->gpu_gemmul8 = (atoi(env) != 0);
   }
 
-  if (Krylov_GPU_Enabled()){
-    wait_hipfunc(OpenMX_Resource_GpuFree(Krylov_resources,0));
+  if (Krylov_GPU_Enabled(state)){
+    wait_hipfunc(OpenMX_Resource_GpuFree(state->resources,0));
   }
 }
 
-static Krylov_GPU_Workspace *Krylov_gpu_ws_pool = NULL;
-static int Krylov_gpu_ws_pool_size = 0;
 
-static void Krylov_GPU_PreparePool(int nthrds)
+
+
+static void Krylov_GPU_PreparePool(KrylovState *state, int nthrds)
 {
   int i;
 
-  if (!Krylov_GPU_Enabled() || nthrds <= Krylov_gpu_ws_pool_size) return;
+  if (!Krylov_GPU_Enabled(state) || nthrds <= state->gpu_ws_pool_size) return;
 
   Krylov_GPU_Workspace *new_pool =
-    (Krylov_GPU_Workspace*)openmx_core_native_realloc(Krylov_resources,Krylov_gpu_ws_pool,sizeof(Krylov_GPU_Workspace)*(size_t)nthrds);
+    (Krylov_GPU_Workspace*)openmx_core_native_realloc(state->resources,state->gpu_ws_pool,sizeof(Krylov_GPU_Workspace)*(size_t)nthrds);
   if (new_pool == NULL){
     fprintf(stderr,"Krylov: could not allocate GPU workspace pool.\n");
     MPI_Abort(MPI_COMM_WORLD,1);
   }
 
-  Krylov_gpu_ws_pool = new_pool;
-  for (i=Krylov_gpu_ws_pool_size; i<nthrds; i++){
-    memset(&Krylov_gpu_ws_pool[i],0,sizeof(Krylov_GPU_Workspace));
+  state->gpu_ws_pool = new_pool;
+  for (i=state->gpu_ws_pool_size; i<nthrds; i++){
+    memset(&state->gpu_ws_pool[i],0,sizeof(Krylov_GPU_Workspace));
   }
-  Krylov_gpu_ws_pool_size = nthrds;
+  state->gpu_ws_pool_size = nthrds;
 }
 
-static Krylov_GPU_Workspace *Krylov_GPU_GetWorkspace(int thread_id)
+static Krylov_GPU_Workspace *Krylov_GPU_GetWorkspace(KrylovState *state, int thread_id)
 {
   Krylov_GPU_Workspace *ws;
 
-  if (!Krylov_GPU_Enabled() ||
-      thread_id < 0 || Krylov_gpu_ws_pool_size <= thread_id) return NULL;
+  if (!Krylov_GPU_Enabled(state) ||
+      thread_id < 0 || state->gpu_ws_pool_size <= thread_id) return NULL;
 
-  ws = &Krylov_gpu_ws_pool[thread_id];
+  ws = &state->gpu_ws_pool[thread_id];
   if (!ws->active && ws->stream == NULL){
-    Krylov_GPU_Workspace_Init(ws);
+    Krylov_GPU_Workspace_Init(state, ws);
   }
 
   return ws;
 }
 
-static void Krylov_GPU_ReportAllocFailure(const char *what, size_t bytes, const char *reason)
+static void Krylov_GPU_ReportAllocFailure(KrylovState *state, const char *what, size_t bytes, const char *reason)
 {
-  if (Krylov_gpu_alloc_failure_reported) return;
-  Krylov_gpu_alloc_failure_reported = 1;
+  if (state->gpu_alloc_failure_reported) return;
+  state->gpu_alloc_failure_reported = 1;
   if (bytes != 0)
     fprintf(stderr,
             "Krylov: %s of %.3f MiB on the GPU failed (%s); "
@@ -305,20 +352,20 @@ static void Krylov_GPU_ReportAllocFailure(const char *what, size_t bytes, const 
 
 /* Grows a device buffer; returns 0 (and demotes the rest of the call to
    the CPU) when the device is out of memory instead of aborting. */
-static int Krylov_GPU_EnsureDouble(double **ptr, size_t *capacity, size_t count)
+static int Krylov_GPU_EnsureDouble(KrylovState *state, double **ptr, size_t *capacity, size_t count)
 {
   if (*capacity < count){
     hipError_t err;
 
-    if (*ptr != NULL) wait_hipfunc(OpenMX_Resource_GpuFree(Krylov_resources,*ptr));
+    if (*ptr != NULL) wait_hipfunc(OpenMX_Resource_GpuFree(state->resources,*ptr));
     *ptr = NULL;
     *capacity = 0;
-    err = OpenMX_Resource_GpuMalloc(Krylov_resources,(void**)ptr,sizeof(double)*count);
+    err = OpenMX_Resource_GpuMalloc(state->resources,(void**)ptr,sizeof(double)*count);
     if (err != hipSuccess){
       (void)hipGetLastError();
       *ptr = NULL;
-      Krylov_gpu_fits = 0;
-      Krylov_GPU_ReportAllocFailure("hipMalloc", sizeof(double)*count, hipGetErrorString(err));
+      state->gpu_fits = 0;
+      Krylov_GPU_ReportAllocFailure(state, "hipMalloc", sizeof(double)*count, hipGetErrorString(err));
       return 0;
     }
     *capacity = count;
@@ -326,15 +373,15 @@ static int Krylov_GPU_EnsureDouble(double **ptr, size_t *capacity, size_t count)
   return 1;
 }
 
-static int Krylov_GPU_Usable(const Krylov_GPU_Workspace *ws)
+static int Krylov_GPU_Usable(KrylovState *state, const Krylov_GPU_Workspace *ws)
 {
-  return ws != NULL && ws->active && Krylov_gpu_fits;
+  return ws != NULL && ws->active && state->gpu_fits;
 }
 
-static void Krylov_GPU_EnsureHostMatrix(Krylov_GPU_Workspace *ws, size_t count)
+static void Krylov_GPU_EnsureHostMatrix(KrylovState *state, Krylov_GPU_Workspace *ws, size_t count)
 {
   if (ws->h_A_count < count){
-    double *p = (double*)openmx_core_native_realloc(Krylov_resources,ws->h_A,sizeof(double)*count);
+    double *p = (double*)openmx_core_native_realloc(state->resources,ws->h_A,sizeof(double)*count);
     if (p == NULL){
       fprintf(stderr,"Krylov: could not allocate host staging matrix.\n");
       MPI_Abort(MPI_COMM_WORLD,1);
@@ -344,40 +391,40 @@ static void Krylov_GPU_EnsureHostMatrix(Krylov_GPU_Workspace *ws, size_t count)
   }
 }
 
-static void Krylov_GPU_Workspace_Init(Krylov_GPU_Workspace *ws)
+static void Krylov_GPU_Workspace_Init(KrylovState *state, Krylov_GPU_Workspace *ws)
 {
   memset(ws,0,sizeof(Krylov_GPU_Workspace));
 
-  if (!Krylov_GPU_Enabled()) return;
+  if (!Krylov_GPU_Enabled(state)) return;
 
   ws->active = 1;
-  wait_hipfunc(OpenMX_Resource_StreamCreate(Krylov_resources,&ws->stream,hipStreamNonBlocking));
+  wait_hipfunc(OpenMX_Resource_StreamCreate(state->resources,&ws->stream,hipStreamNonBlocking));
 }
 
-static void Krylov_GPU_Workspace_Free(Krylov_GPU_Workspace *ws)
+static void Krylov_GPU_Workspace_Free(KrylovState *state, Krylov_GPU_Workspace *ws)
 {
   if (ws->stream != NULL) wait_hipfunc(hipStreamSynchronize(ws->stream));
-  if (ws->d_A    != NULL) wait_hipfunc(OpenMX_Resource_GpuFree(Krylov_resources,ws->d_A));
-  if (ws->d_B    != NULL) wait_hipfunc(OpenMX_Resource_GpuFree(Krylov_resources,ws->d_B));
-  if (ws->d_C    != NULL) wait_hipfunc(OpenMX_Resource_GpuFree(Krylov_resources,ws->d_C));
-  if (ws->h_A    != NULL) openmx_core_native_free(Krylov_resources,ws->h_A);
-  if (ws->hipblas   != NULL) OpenMXBlasWait(OpenMX_Resource_BlasDestroy(Krylov_resources,ws->hipblas));
-  if (ws->stream   != NULL) wait_hipfunc(OpenMX_Resource_StreamDestroy(Krylov_resources,ws->stream));
+  if (ws->d_A    != NULL) wait_hipfunc(OpenMX_Resource_GpuFree(state->resources,ws->d_A));
+  if (ws->d_B    != NULL) wait_hipfunc(OpenMX_Resource_GpuFree(state->resources,ws->d_B));
+  if (ws->d_C    != NULL) wait_hipfunc(OpenMX_Resource_GpuFree(state->resources,ws->d_C));
+  if (ws->h_A    != NULL) openmx_core_native_free(state->resources,ws->h_A);
+  if (ws->hipblas   != NULL) OpenMXBlasWait(OpenMX_Resource_BlasDestroy(state->resources,ws->hipblas));
+  if (ws->stream   != NULL) wait_hipfunc(OpenMX_Resource_StreamDestroy(state->resources,ws->stream));
   memset(ws,0,sizeof(Krylov_GPU_Workspace));
 }
 
-static int Krylov_GPU_EnsureHipblas(Krylov_GPU_Workspace *ws)
+static int Krylov_GPU_EnsureHipblas(KrylovState *state, Krylov_GPU_Workspace *ws)
 {
   if (ws->hipblas == NULL){
     hipblasHandle_t handle = NULL;
-    hipblasStatus_t status = OpenMX_Resource_BlasCreate(Krylov_resources,&handle);
+    hipblasStatus_t status = OpenMX_Resource_BlasCreate(state->resources,&handle);
 
     /* the handle owns the BLAS workspace pool, so this is where a full
        device shows up first */
     if (status != HIPBLAS_STATUS_SUCCESS){
       (void)hipGetLastError();
-      Krylov_gpu_fits = 0;
-      Krylov_GPU_ReportAllocFailure("hipblasCreate", 0, "hipBLAS handle creation failed");
+      state->gpu_fits = 0;
+      Krylov_GPU_ReportAllocFailure(state, "hipblasCreate", 0, "hipBLAS handle creation failed");
       return 0;
     }
     OpenMXBlasWait(hipblasSetStream(handle, ws->stream));
@@ -388,7 +435,7 @@ static int Krylov_GPU_EnsureHipblas(Krylov_GPU_Workspace *ws)
 
 /* C = op(A) op(B) on the device, all operands resident, on the stream of
    ws: openmx_gemmul8Dgemm unless OPENMX_KRYLOV_GEMMUL8=0 */
-static hipblasStatus_t Krylov_GPU_DeviceDgemm(Krylov_GPU_Workspace *ws,
+static hipblasStatus_t Krylov_GPU_DeviceDgemm(KrylovState *state, Krylov_GPU_Workspace *ws,
                                               hipblasOperation_t transa, hipblasOperation_t transb,
                                               int m, int n, int k,
                                               const double *dA, int lda,
@@ -398,7 +445,7 @@ static hipblasStatus_t Krylov_GPU_DeviceDgemm(Krylov_GPU_Workspace *ws,
   const double alpha = 1.0;
   const double beta  = 0.0;
 
-  if (Krylov_gpu_gemmul8)
+  if (state->gpu_gemmul8)
     return openmx_gemmul8Dgemm(ws->hipblas, transa, transb, m, n, k,
                                &alpha, dA, lda, dB, ldb, &beta, dC, ldc);
   return hipblasDgemm(ws->hipblas, transa, transb, m, n, k,
@@ -410,20 +457,20 @@ static hipblasStatus_t Krylov_GPU_DeviceDgemm(Krylov_GPU_Workspace *ws,
    there (like a failed allocation).  The stream is drained first, so that
    no copy of this call is still in flight when the host buffers are
    reused. */
-static void Krylov_GPU_GemmFailed(Krylov_GPU_Workspace *ws, hipblasStatus_t status,
+static void Krylov_GPU_GemmFailed(KrylovState *state, Krylov_GPU_Workspace *ws, hipblasStatus_t status,
                                   int m, int n, int k)
 {
   char reason[96];
 
   (void)hipStreamSynchronize(ws->stream);
   (void)hipGetLastError();
-  Krylov_gpu_fits = 0;
+  state->gpu_fits = 0;
   snprintf(reason, sizeof(reason), "%s status %d, m=%d n=%d k=%d",
-           Krylov_gpu_gemmul8 ? "GPU GEMM bridge" : "native hipBLAS FP64", (int)status, m, n, k);
-  Krylov_GPU_ReportAllocFailure("DGEMM", 0, reason);
+           state->gpu_gemmul8 ? "GPU GEMM bridge" : "native hipBLAS FP64", (int)status, m, n, k);
+  Krylov_GPU_ReportAllocFailure(state, "DGEMM", 0, reason);
 }
 
-static void Krylov_Dgemm(Krylov_GPU_Workspace *ws,
+static void Krylov_Dgemm(KrylovState *state, Krylov_GPU_Workspace *ws,
                          hipblasOperation_t transa, hipblasOperation_t transb,
                          int m, int n, int k,
                          const double *A, int lda,
@@ -438,14 +485,14 @@ static void Krylov_Dgemm(Krylov_GPU_Workspace *ws,
   size_t count_B = (size_t)ldb*cols_B;
   size_t count_C = (size_t)ldc*(size_t)n;
   hipblasStatus_t status;
-  int on_gpu = Krylov_GPU_Usable(ws) &&
-               !((double)m*(double)n*(double)k < Krylov_gpu_dgemm_min_flops);
+  int on_gpu = Krylov_GPU_Usable(state, ws) &&
+               !((double)m*(double)n*(double)k < state->gpu_dgemm_min_flops);
 
   if (on_gpu){
-    on_gpu = Krylov_GPU_EnsureHipblas(ws) &&
-             Krylov_GPU_EnsureDouble(&ws->d_A, &ws->d_A_count, count_A) &&
-             Krylov_GPU_EnsureDouble(&ws->d_B, &ws->d_B_count, count_B) &&
-             Krylov_GPU_EnsureDouble(&ws->d_C, &ws->d_C_count, count_C);
+    on_gpu = Krylov_GPU_EnsureHipblas(state, ws) &&
+             Krylov_GPU_EnsureDouble(state, &ws->d_A, &ws->d_A_count, count_A) &&
+             Krylov_GPU_EnsureDouble(state, &ws->d_B, &ws->d_B_count, count_B) &&
+             Krylov_GPU_EnsureDouble(state, &ws->d_C, &ws->d_C_count, count_C);
   }
 
   if (on_gpu){
@@ -454,7 +501,7 @@ static void Krylov_Dgemm(Krylov_GPU_Workspace *ws,
     wait_hipfunc(hipMemcpyAsync(ws->d_B, B, sizeof(double)*count_B,
                                   hipMemcpyHostToDevice, ws->stream));
 
-    status = Krylov_GPU_DeviceDgemm(ws, transa, transb, m, n, k,
+    status = Krylov_GPU_DeviceDgemm(state, ws, transa, transb, m, n, k,
                                     ws->d_A, lda, ws->d_B, ldb, ws->d_C, ldc);
     if (status == HIPBLAS_STATUS_SUCCESS){
       wait_hipfunc(hipMemcpyAsync(C, ws->d_C, sizeof(double)*count_C,
@@ -462,7 +509,7 @@ static void Krylov_Dgemm(Krylov_GPU_Workspace *ws,
       wait_hipfunc(hipStreamSynchronize(ws->stream));
       return;
     }
-    Krylov_GPU_GemmFailed(ws, status, m, n, k);
+    Krylov_GPU_GemmFailed(state, ws, status, m, n, k);
   }
 
   {
@@ -473,18 +520,18 @@ static void Krylov_Dgemm(Krylov_GPU_Workspace *ws,
   }
 }
 
-static void Krylov_Eigen2(Krylov_GPU_Workspace *ws, double *a, int csize, double *ko, int n, int EVmax)
+static void Krylov_Eigen2(KrylovState *state, Krylov_GPU_Workspace *ws, double *a, int csize, double *ko, int n, int EVmax)
 {
   int i,j;
   int info, mout;
 
-  if (!Krylov_GPU_Usable(ws) || n < Krylov_gpu_eigen_min){
+  if (!Krylov_GPU_Usable(state, ws) || n < state->gpu_eigen_min){
     Eigen_lapack2(a,csize,ko,n,EVmax);
     return;
   }
 
-  Krylov_GPU_EnsureHostMatrix(ws,(size_t)n*(size_t)n);
-  if (!Krylov_GPU_EnsureDouble(&ws->d_A, &ws->d_A_count, (size_t)n*(size_t)n)){
+  Krylov_GPU_EnsureHostMatrix(state, ws,(size_t)n*(size_t)n);
+  if (!Krylov_GPU_EnsureDouble(state, &ws->d_A, &ws->d_A_count, (size_t)n*(size_t)n)){
     Eigen_lapack2(a,csize,ko,n,EVmax);
     return;
   }
@@ -528,53 +575,49 @@ static void Krylov_Eigen2(Krylov_GPU_Workspace *ws, double *a, int csize, double
   }
 }
 
-typedef struct {
-  int state;
-  int matomnum;
-  int nspin;
-  int *dim_n;
-  int *dim_m;
-  int *valid;
-  size_t *off;
-  double *d_arena;
-  size_t arena_elems;
-} Krylov_KUCache;
 
-static Krylov_KUCache Krylov_kucache = {0};
 
-void Krylov_Release_GPU_KUCache(void)
+
+
+void Krylov_Release_GPU_KUCache(KrylovState *state)
 {
-  if (Krylov_kucache.d_arena != NULL) wait_hipfunc(OpenMX_Resource_GpuFree(Krylov_resources,Krylov_kucache.d_arena));
-  openmx_core_native_free(Krylov_resources,Krylov_kucache.dim_n);
-  openmx_core_native_free(Krylov_resources,Krylov_kucache.dim_m);
-  openmx_core_native_free(Krylov_resources,Krylov_kucache.valid);
-  openmx_core_native_free(Krylov_resources,Krylov_kucache.off);
-  memset(&Krylov_kucache,0,sizeof(Krylov_kucache));
+  if (state->kucache.d_arena != NULL) wait_hipfunc(OpenMX_Resource_GpuFree(state->resources,state->kucache.d_arena));
+  openmx_core_native_free(state->resources,state->kucache.dim_n);
+  openmx_core_native_free(state->resources,state->kucache.dim_m);
+  openmx_core_native_free(state->resources,state->kucache.valid);
+  openmx_core_native_free(state->resources,state->kucache.off);
+  memset(&state->kucache,0,sizeof(state->kucache));
 }
 
 /* Run-boundary reset (between -runtest/-runtestL inputs): also return the
    per-thread GPU workspaces, whose sizes derive from the previous system.
    Idempotent; called from serial code, never inside the OpenMP regions
    that use the pool. */
-void Krylov_Release_GPU_Caches(void)
+static void Krylov_Release_GPU_Caches(KrylovState *state)
 {
   int i;
 
-  for (i=0; i<Krylov_gpu_ws_pool_size; i++){
-    Krylov_GPU_Workspace_Free(&Krylov_gpu_ws_pool[i]);
+  for (i=0; i<state->gpu_ws_pool_size; i++){
+    Krylov_GPU_Workspace_Free(state, &state->gpu_ws_pool[i]);
   }
-  openmx_core_native_free(Krylov_resources,Krylov_gpu_ws_pool);
-  Krylov_gpu_ws_pool = NULL;
-  Krylov_gpu_ws_pool_size = 0;
+  openmx_core_native_free(state->resources,state->gpu_ws_pool);
+  state->gpu_ws_pool = NULL;
+  state->gpu_ws_pool_size = 0;
 
-  Krylov_Release_GPU_KUCache();
+  Krylov_Release_GPU_KUCache(state);
+
+  /* Preflight creates this group collectively; calculation teardown is
+     collective on the same ranks and runs before MPI finalization. */
+  if (state->GPU_Preflight_device_comm != MPI_COMM_NULL) {
+    MPI_Comm_free(&state->GPU_Preflight_device_comm);
+  }
 }
 
 /* keep_free: device memory the preflight of this call has already claimed
    for the solves themselves, summed over the device_ranks ranks sharing
    the GPU.  The cache is sized from what is left beyond that and the
    reserve; otherwise it would starve the very solves it accelerates. */
-static void Krylov_KUCache_Prepare(int matomnum, int nspin, const int *Msize,
+static void Krylov_KUCache_Prepare(KrylovState *state, int matomnum, int nspin, const int *Msize,
                                    const int *Msize3, int scf_iter,
                                    int device_ranks, unsigned long long keep_free)
 {
@@ -590,28 +633,28 @@ static void Krylov_KUCache_Prepare(int matomnum, int nspin, const int *Msize,
     long mib=atol(reserve_env);
     if (0<=mib) reserve=(size_t)mib*1024U*1024U;
   }
-  if (Krylov_kucache.state==1 && Krylov_kucache.matomnum==matomnum &&
-      Krylov_kucache.nspin==nspin){
+  if (state->kucache.state==1 && state->kucache.matomnum==matomnum &&
+      state->kucache.nspin==nspin){
     int same=1;
     for (int spin=0;spin<nspin;spin++) for (int a=1;a<=matomnum;a++){
       size_t s=(size_t)spin*(size_t)(matomnum+1)+(size_t)a;
-      if (Krylov_kucache.dim_n[s]!=0 &&
-          (Krylov_kucache.dim_n[s]!=Msize[a] || Krylov_kucache.dim_m[s]!=Msize3[a])) same=0;
+      if (state->kucache.dim_n[s]!=0 &&
+          (state->kucache.dim_n[s]!=Msize[a] || state->kucache.dim_m[s]!=Msize3[a])) same=0;
     }
     if (same){
-      if (scf_iter<=1) memset(Krylov_kucache.valid,0,sizeof(int)*nslot);
+      if (scf_iter<=1) memset(state->kucache.valid,0,sizeof(int)*nslot);
       return;
     }
-    Krylov_Release_GPU_KUCache();
+    Krylov_Release_GPU_KUCache(state);
   }
-  if (Krylov_kucache.state==-1) return;
+  if (state->kucache.state==-1) return;
 
-  Krylov_kucache.dim_n=(int*)openmx_core_native_malloc(Krylov_resources,nslot,sizeof(int),1);
-  Krylov_kucache.dim_m=(int*)openmx_core_native_malloc(Krylov_resources,nslot,sizeof(int),1);
-  Krylov_kucache.valid=(int*)openmx_core_native_malloc(Krylov_resources,nslot,sizeof(int),1);
-  Krylov_kucache.off=(size_t*)openmx_core_native_malloc(Krylov_resources,nslot,sizeof(size_t),1);
-  if (Krylov_kucache.dim_n==NULL || Krylov_kucache.dim_m==NULL ||
-      Krylov_kucache.valid==NULL || Krylov_kucache.off==NULL){
+  state->kucache.dim_n=(int*)openmx_core_native_malloc(state->resources,nslot,sizeof(int),1);
+  state->kucache.dim_m=(int*)openmx_core_native_malloc(state->resources,nslot,sizeof(int),1);
+  state->kucache.valid=(int*)openmx_core_native_malloc(state->resources,nslot,sizeof(int),1);
+  state->kucache.off=(size_t*)openmx_core_native_malloc(state->resources,nslot,sizeof(size_t),1);
+  if (state->kucache.dim_n==NULL || state->kucache.dim_m==NULL ||
+      state->kucache.valid==NULL || state->kucache.off==NULL){
     fprintf(stderr,"Krylov: could not allocate KU-cache tables.\n");
     MPI_Abort(MPI_COMM_WORLD,1);
   }
@@ -619,8 +662,8 @@ static void Krylov_KUCache_Prepare(int matomnum, int nspin, const int *Msize,
   if (device_ranks<1) device_ranks=1;
   if (OpenMX_GpuMemGetInfo(&free_bytes,&total_bytes)!=hipSuccess){
     (void)hipGetLastError();
-    Krylov_Release_GPU_KUCache();
-    Krylov_kucache.state=-1;
+    Krylov_Release_GPU_KUCache(state);
+    state->kucache.state=-1;
     return;
   }
   reserve += (size_t)keep_free;
@@ -630,22 +673,22 @@ static void Krylov_KUCache_Prepare(int matomnum, int nspin, const int *Msize,
     size_t elems=(size_t)Msize[a]*(size_t)Msize3[a];
     size_t bytes=elems*sizeof(double);
     if (bytes>budget || used*sizeof(double)>budget-bytes) continue;
-    Krylov_kucache.dim_n[slot]=Msize[a];
-    Krylov_kucache.dim_m[slot]=Msize3[a];
-    Krylov_kucache.off[slot]=used;
+    state->kucache.dim_n[slot]=Msize[a];
+    state->kucache.dim_m[slot]=Msize3[a];
+    state->kucache.off[slot]=used;
     used+=elems;
     admitted++;
   }
-  if (used!=0 && OpenMX_Resource_GpuMalloc(Krylov_resources,(void**)&Krylov_kucache.d_arena,used*sizeof(double))!=hipSuccess){
+  if (used!=0 && OpenMX_Resource_GpuMalloc(state->resources,(void**)&state->kucache.d_arena,used*sizeof(double))!=hipSuccess){
     (void)hipGetLastError();
-    Krylov_Release_GPU_KUCache();
-    Krylov_kucache.state=-1;
+    Krylov_Release_GPU_KUCache(state);
+    state->kucache.state=-1;
     return;
   }
-  Krylov_kucache.state=1;
-  Krylov_kucache.matomnum=matomnum;
-  Krylov_kucache.nspin=nspin;
-  Krylov_kucache.arena_elems=used;
+  state->kucache.state=1;
+  state->kucache.matomnum=matomnum;
+  state->kucache.nspin=nspin;
+  state->kucache.arena_elems=used;
 
   if (2<=level_stdout && 0<admitted){
     int myid=-1;
@@ -674,12 +717,12 @@ static void Krylov_KUCache_Prepare(int matomnum, int nspin, const int *Msize,
   deliberately generous: the failure it guards against is not a returned
   error but the process exiting inside hipBLASLt.
 */
-static void Krylov_GPU_Preflight(int matomnum, const int *Msize, const int *Msize3)
+static void Krylov_GPU_Preflight(KrylovState *state, int matomnum, const int *Msize, const int *Msize3)
 {
-  static MPI_Comm device_comm = MPI_COMM_NULL;
-  static int hip_device = 0;
-  static size_t reserve_bytes = (size_t)512*1024*1024;
-  static int env_checked = 0;
+
+
+
+
   const double MiB = 1024.0*1024.0;
   size_t free_bytes = 0, total_bytes = 0;
   size_t nn_max = 0, nm_max = 0, mm_max = 0, m3_max = 0, n_max = 0;
@@ -687,26 +730,26 @@ static void Krylov_GPU_Preflight(int matomnum, const int *Msize, const int *Msiz
   unsigned long long need_local, need_total, free_local, free_min;
   int myid, Mc_AN, t;
 
-  Krylov_gpu_fits = 1;
-  Krylov_gpu_need_total = 0;
-  if (!Krylov_GPU_Enabled()) return;
+  state->gpu_fits = 1;
+  state->gpu_need_total = 0;
+  if (!Krylov_GPU_Enabled(state)) return;
 
-  if (!env_checked){
+  if (!state->GPU_Preflight_env_checked){
     const char *env = openmx_env_get("OPENMX_KRYLOV_GPU_RESERVE_MB");
-    env_checked = 1;
+    state->GPU_Preflight_env_checked = 1;
     if (env != NULL && env[0] != '\0'){
       long mib = atol(env);
-      if (0 <= mib) reserve_bytes = (size_t)mib*1024U*1024U;
+      if (0 <= mib) state->GPU_Preflight_reserve_bytes = (size_t)mib*1024U*1024U;
     }
   }
 
-  if (device_comm == MPI_COMM_NULL){
+  if (state->GPU_Preflight_device_comm == MPI_COMM_NULL){
     MPI_Comm node_comm;
     MPI_Comm_split_type(mpi_comm_level1, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, &node_comm);
-    if (hipGetDevice(&hip_device) != hipSuccess) hip_device = 0;
-    MPI_Comm_split(node_comm, hip_device, 0, &device_comm);
+    if (hipGetDevice(&state->GPU_Preflight_hip_device) != hipSuccess) state->GPU_Preflight_hip_device = 0;
+    MPI_Comm_split(node_comm, state->GPU_Preflight_hip_device, 0, &state->GPU_Preflight_device_comm);
     MPI_Comm_free(&node_comm);
-    MPI_Comm_size(device_comm, &Krylov_gpu_device_ranks);
+    MPI_Comm_size(state->GPU_Preflight_device_comm, &state->gpu_device_ranks);
   }
 
   for (Mc_AN=1; Mc_AN<=matomnum; Mc_AN++){
@@ -719,8 +762,8 @@ static void Krylov_GPU_Preflight(int matomnum, const int *Msize, const int *Msiz
   }
 
   /* buffers already grown in an earlier call are not needed again */
-  for (t=0; t<Krylov_gpu_ws_pool_size; t++){
-    const Krylov_GPU_Workspace *ws = &Krylov_gpu_ws_pool[t];
+  for (t=0; t<state->gpu_ws_pool_size; t++){
+    const Krylov_GPU_Workspace *ws = &state->gpu_ws_pool[t];
     size_t a = nn_max > mm_max ? nn_max : mm_max;
     if (ws->d_A_count < a)      growth += a - ws->d_A_count;
     if (ws->d_B_count < nm_max) growth += nm_max - ws->d_B_count;
@@ -745,7 +788,7 @@ static void Krylov_GPU_Preflight(int matomnum, const int *Msize, const int *Msiz
      process if the memory ran out.  0 when the products are native
      (bridge architecture policy, OPENMX_KRYLOV_GEMMUL8=0,
      scf.gemmul8.enable off, GEMMUL8_DISABLE*). */
-  if (Krylov_gpu_gemmul8){
+  if (state->gpu_gemmul8){
     size_t per_thread = 0;
 
     for (Mc_AN=1; Mc_AN<=matomnum; Mc_AN++){
@@ -755,21 +798,21 @@ static void Krylov_GPU_Preflight(int matomnum, const int *Msize, const int *Msiz
 
       for (s=0; s<3; s++){
         size_t bytes;
-        if ((double)shape[s][0]*(double)shape[s][1]*(double)shape[s][2] < Krylov_gpu_dgemm_min_flops)
+        if ((double)shape[s][0]*(double)shape[s][1]*(double)shape[s][2] < state->gpu_dgemm_min_flops)
           continue;
         bytes = openmx_gemmul8DWorkspaceSize(shape[s][0], shape[s][1], shape[s][2]);
         if (per_thread < bytes) per_thread = bytes;
       }
     }
-    gemmul8_bytes = per_thread*(size_t)Krylov_gpu_ws_pool_size;
+    gemmul8_bytes = per_thread*(size_t)state->gpu_ws_pool_size;
   }
-  need_rank = growth + magma_bytes + lib_bytes + gemmul8_bytes + reserve_bytes;
+  need_rank = growth + magma_bytes + lib_bytes + gemmul8_bytes + state->GPU_Preflight_reserve_bytes;
 
   /* the workspaces still held from an earlier call (of any GEMMul8 user of
      this rank) are returned first and counted in full above; the barrier
      makes every rank of the device measure after all of them did so */
   if (gemmul8_bytes != 0) openmx_gemmul8ReleaseWorkspaces();
-  MPI_Barrier(device_comm);
+  MPI_Barrier(state->GPU_Preflight_device_comm);
 
   if (OpenMX_GpuMemGetInfo(&free_bytes, &total_bytes) != hipSuccess){
     (void)hipGetLastError();
@@ -778,16 +821,16 @@ static void Krylov_GPU_Preflight(int matomnum, const int *Msize, const int *Msiz
 
   need_local = (unsigned long long)need_rank;
   free_local = (unsigned long long)free_bytes;
-  MPI_Allreduce(&need_local, &need_total, 1, MPI_UNSIGNED_LONG_LONG, MPI_SUM, device_comm);
-  MPI_Allreduce(&free_local, &free_min,   1, MPI_UNSIGNED_LONG_LONG, MPI_MIN, device_comm);
+  MPI_Allreduce(&need_local, &need_total, 1, MPI_UNSIGNED_LONG_LONG, MPI_SUM, state->GPU_Preflight_device_comm);
+  MPI_Allreduce(&free_local, &free_min,   1, MPI_UNSIGNED_LONG_LONG, MPI_MIN, state->GPU_Preflight_device_comm);
 
-  Krylov_gpu_fits = (need_total <= free_min);
-  Krylov_gpu_need_total = need_total;
+  state->gpu_fits = (need_total <= free_min);
+  state->gpu_need_total = need_total;
 
-  if (!Krylov_gpu_fits){
+  if (!state->gpu_fits){
     /* a cache kept from an earlier call would only pin memory the other
        stages need now; a later call that fits rebuilds it from scratch */
-    Krylov_Release_GPU_KUCache();
+    Krylov_Release_GPU_KUCache(state);
     MPI_Comm_rank(mpi_comm_level1, &myid);
     if (myid == Host_ID && 2 <= level_stdout){
       fprintf(stderr,
@@ -795,36 +838,36 @@ static void Krylov_GPU_Preflight(int matomnum, const int *Msize, const int *Msiz
               "(%.3f MiB total on rank %d), but %.3f MiB is required for the GPU projected "
               "solves (largest local cluster n=%d, m=%d; %.3f MiB reserve and %.3f MiB "
               "GEMMul8 workspace on rank %d); switching to CPU path.\n",
-              hip_device, Krylov_gpu_device_ranks, (double)free_min/MiB, (double)total_bytes/MiB,
-              myid, (double)need_total/MiB, (int)n_max, (int)m3_max, (double)reserve_bytes/MiB,
+              state->GPU_Preflight_hip_device, state->gpu_device_ranks, (double)free_min/MiB, (double)total_bytes/MiB,
+              myid, (double)need_total/MiB, (int)n_max, (int)m3_max, (double)state->GPU_Preflight_reserve_bytes/MiB,
               (double)gemmul8_bytes/MiB, myid);
       fflush(stderr);
     }
   }
 }
 
-static const double *Krylov_KUCache_Get(Krylov_GPU_Workspace *ws,int spin,int Mc_AN,
+static const double *Krylov_KUCache_Get(KrylovState *state, Krylov_GPU_Workspace *ws,int spin,int Mc_AN,
                                         int n,int m3,int msize2,double ***Krylov_U,double *KU)
 {
   size_t slot;
   double *dst;
-  if (Krylov_kucache.state!=1 || Mc_AN<1 || Krylov_kucache.matomnum<Mc_AN ||
-      spin<0 || Krylov_kucache.nspin<=spin) return NULL;
-  slot=(size_t)spin*(size_t)(Krylov_kucache.matomnum+1)+(size_t)Mc_AN;
-  if (Krylov_kucache.dim_n[slot]!=n || Krylov_kucache.dim_m[slot]!=m3) return NULL;
-  dst=Krylov_kucache.d_arena+Krylov_kucache.off[slot];
-  if (!Krylov_kucache.valid[slot]){
+  if (state->kucache.state!=1 || Mc_AN<1 || state->kucache.matomnum<Mc_AN ||
+      spin<0 || state->kucache.nspin<=spin) return NULL;
+  slot=(size_t)spin*(size_t)(state->kucache.matomnum+1)+(size_t)Mc_AN;
+  if (state->kucache.dim_n[slot]!=n || state->kucache.dim_m[slot]!=m3) return NULL;
+  dst=state->kucache.d_arena+state->kucache.off[slot];
+  if (!state->kucache.valid[slot]){
     for (int i=0;i<n;i++) for (int j=0;j<m3;j++)
       KU[(size_t)j*(size_t)n+(size_t)i]=Krylov_U[spin][Mc_AN][j*msize2+i+1];
     wait_hipfunc(hipMemcpyAsync(dst,KU,sizeof(double)*(size_t)n*(size_t)m3,
                                 hipMemcpyHostToDevice,ws->stream));
     wait_hipfunc(hipStreamSynchronize(ws->stream));
-    Krylov_kucache.valid[slot]=1;
+    state->kucache.valid[slot]=1;
   }
   return dst;
 }
 
-static int Krylov_ProjectedSolve_GPU(Krylov_GPU_Workspace *ws,int spin,int Mc_AN,
+static int Krylov_ProjectedSolve_GPU(KrylovState *state, Krylov_GPU_Workspace *ws,int spin,int Mc_AN,
                                      const int *Msize,const int *Msize2,const int *Msize3,
                                      double ***Krylov_U,double ****EC_matrix,
                                      double *H_DC,double *KU,double *C,double *ko)
@@ -839,61 +882,61 @@ static int Krylov_ProjectedSolve_GPU(Krylov_GPU_Workspace *ws,int spin,int Mc_AN
      KRYFUSE line, plus pack, the compact panel the GPU eigensolver reads);
      with the profile on every stage ends with a stream
      synchronization so that the GPU time lands in its own stage */
-  static int profile=-1;
+
   double t0=0.0,t1=0.0,t2=0.0,t3=0.0,t4=0.0,t5=0.0,t6=0.0,t7=0.0,t8=0.0;
 
-  if (!Krylov_GPU_Usable(ws) || !Krylov_gpu_fused) return 0;
-  if ((double)n*(double)m3*(double)n<Krylov_gpu_dgemm_min_flops ||
-      (double)m3*(double)m3*(double)n<Krylov_gpu_dgemm_min_flops ||
-      (double)m3*(double)n*(double)m3<Krylov_gpu_dgemm_min_flops) return 0;
+  if (!Krylov_GPU_Usable(state, ws) || !state->gpu_fused) return 0;
+  if ((double)n*(double)m3*(double)n<state->gpu_dgemm_min_flops ||
+      (double)m3*(double)m3*(double)n<state->gpu_dgemm_min_flops ||
+      (double)m3*(double)n*(double)m3<state->gpu_dgemm_min_flops) return 0;
 
-  if (profile<0){
+  if (state->ProjectedSolve_GPU_profile<0){
     const char *env=openmx_env_get("OPENMX_KRYLOV_GPU_PROFILE");
-    profile=(env!=NULL && env[0]!='\0' && atoi(env)!=0);
+    state->ProjectedSolve_GPU_profile=(env!=NULL && env[0]!='\0' && atoi(env)!=0);
   }
-  if (profile) dtime(&t0);
+  if (state->ProjectedSolve_GPU_profile) dtime(&t0);
 
   /* a failed allocation or product hands the whole atom to the CPU path
      (return 0); nothing computed so far is reused there */
-  if (!Krylov_GPU_EnsureHipblas(ws) ||
-      !Krylov_GPU_EnsureDouble(&ws->d_A,&ws->d_A_count,nn>mm?nn:mm) ||
-      !Krylov_GPU_EnsureDouble(&ws->d_C,&ws->d_C_count,nm)) return 0;
-  d_KU=Krylov_KUCache_Get(ws,spin,Mc_AN,n,m3,Msize2[Mc_AN],Krylov_U,KU);
+  if (!Krylov_GPU_EnsureHipblas(state, ws) ||
+      !Krylov_GPU_EnsureDouble(state, &ws->d_A,&ws->d_A_count,nn>mm?nn:mm) ||
+      !Krylov_GPU_EnsureDouble(state, &ws->d_C,&ws->d_C_count,nm)) return 0;
+  d_KU=Krylov_KUCache_Get(state, ws,spin,Mc_AN,n,m3,Msize2[Mc_AN],Krylov_U,KU);
   if (d_KU==NULL){
     for (int i=0;i<n;i++) for (int j=0;j<m3;j++)
       KU[(size_t)j*(size_t)n+(size_t)i]=Krylov_U[spin][Mc_AN][j*Msize2[Mc_AN]+i+1];
-    if (!Krylov_GPU_EnsureDouble(&ws->d_B,&ws->d_B_count,nm)) return 0;
+    if (!Krylov_GPU_EnsureDouble(state, &ws->d_B,&ws->d_B_count,nm)) return 0;
     wait_hipfunc(hipMemcpyAsync(ws->d_B,KU,sizeof(double)*nm,hipMemcpyHostToDevice,ws->stream));
     d_KU=ws->d_B;
   }
-  if (profile){ wait_hipfunc(hipStreamSynchronize(ws->stream)); dtime(&t1); }
+  if (state->ProjectedSolve_GPU_profile){ wait_hipfunc(hipStreamSynchronize(ws->stream)); dtime(&t1); }
   wait_hipfunc(hipMemcpyAsync(ws->d_A,H_DC,sizeof(double)*nn,hipMemcpyHostToDevice,ws->stream));
-  if (profile){ wait_hipfunc(hipStreamSynchronize(ws->stream)); dtime(&t2); }
+  if (state->ProjectedSolve_GPU_profile){ wait_hipfunc(hipStreamSynchronize(ws->stream)); dtime(&t2); }
   /* C = H_DC * u1 */
-  status=Krylov_GPU_DeviceDgemm(ws,HIPBLAS_OP_N,HIPBLAS_OP_N,n,m3,n,ws->d_A,n,d_KU,n,ws->d_C,n);
-  if (status!=HIPBLAS_STATUS_SUCCESS){ Krylov_GPU_GemmFailed(ws,status,n,m3,n); return 0; }
-  if (profile){ wait_hipfunc(hipStreamSynchronize(ws->stream)); dtime(&t3); }
+  status=Krylov_GPU_DeviceDgemm(state, ws,HIPBLAS_OP_N,HIPBLAS_OP_N,n,m3,n,ws->d_A,n,d_KU,n,ws->d_C,n);
+  if (status!=HIPBLAS_STATUS_SUCCESS){ Krylov_GPU_GemmFailed(state, ws,status,n,m3,n); return 0; }
+  if (state->ProjectedSolve_GPU_profile){ wait_hipfunc(hipStreamSynchronize(ws->stream)); dtime(&t3); }
   /* u1^+ * H_DC * u1 (the projected Hamiltonian replaces H_DC on the host) */
-  status=Krylov_GPU_DeviceDgemm(ws,HIPBLAS_OP_T,HIPBLAS_OP_N,m3,m3,n,d_KU,n,ws->d_C,n,ws->d_A,m3);
-  if (status!=HIPBLAS_STATUS_SUCCESS){ Krylov_GPU_GemmFailed(ws,status,m3,m3,n); return 0; }
-  if (profile){ wait_hipfunc(hipStreamSynchronize(ws->stream)); dtime(&t4); }
+  status=Krylov_GPU_DeviceDgemm(state, ws,HIPBLAS_OP_T,HIPBLAS_OP_N,m3,m3,n,d_KU,n,ws->d_C,n,ws->d_A,m3);
+  if (status!=HIPBLAS_STATUS_SUCCESS){ Krylov_GPU_GemmFailed(state, ws,status,m3,m3,n); return 0; }
+  if (state->ProjectedSolve_GPU_profile){ wait_hipfunc(hipStreamSynchronize(ws->stream)); dtime(&t4); }
   wait_hipfunc(hipMemcpyAsync(H_DC,ws->d_A,sizeof(double)*mm,hipMemcpyDeviceToHost,ws->stream));
   wait_hipfunc(hipStreamSynchronize(ws->stream));
 
   for (int i=0;i<(int)Krylov_U[spin][Mc_AN][0];i++) H_DC[i*m3+i]=1.0e3;
   for (int i=m3-1;0<=i;i--) for (int j=0;j<m3;j++)
     H_DC[(i+1)*(m3+1)+(j+1)]=H_DC[i*m3+j]+EC_matrix[spin][Mc_AN][i+1][j+1];
-  if (profile) dtime(&t5);
+  if (state->ProjectedSolve_GPU_profile) dtime(&t5);
 
   /* diagonalize; the eigenvector panel ends up in ws->d_A either way.
      Below Krylov_gpu_eigen_min LAPACK solves it, as in Krylov_Eigen2 (the
      dispatch of the NVIDIA version). */
-  if (Krylov_gpu_eigen_min<=m3){
+  if (state->gpu_eigen_min<=m3){
     /* The common GPU eigensolver consumes a compact column-major panel. */
     for (int i=0;i<m3;i++) for (int j=0;j<m3;j++) KU[(size_t)i*(size_t)m3+(size_t)j]=H_DC[(i+1)*(m3+1)+(j+1)];
     wait_hipfunc(hipMemcpyAsync(ws->d_A,KU,sizeof(double)*mm,hipMemcpyHostToDevice,ws->stream));
     wait_hipfunc(hipStreamSynchronize(ws->stream));
-    if (profile) dtime(&t6);
+    if (state->ProjectedSolve_GPU_profile) dtime(&t6);
     info=openmx_magma_dsyevdx_gpu(m3,m3,ws->d_A,ko+1,&mout);
     eig_on_device=(info==0 && mout==m3);
     if (2<=level_stdout) {
@@ -909,9 +952,9 @@ static int Krylov_ProjectedSolve_GPU(Krylov_GPU_Workspace *ws,int spin,int Mc_AN
     Eigen_lapack2(H_DC,m3+1,ko,m3,m3);
     wait_hipfunc(hipMemcpyAsync(ws->d_A,H_DC,sizeof(double)*mm,hipMemcpyHostToDevice,ws->stream));
   }
-  if (profile){ wait_hipfunc(hipStreamSynchronize(ws->stream)); dtime(&t7); }
+  if (state->ProjectedSolve_GPU_profile){ wait_hipfunc(hipStreamSynchronize(ws->stream)); dtime(&t7); }
   /* back transformation of eigenvectors: c = u1 * b */
-  status=Krylov_GPU_DeviceDgemm(ws,HIPBLAS_OP_T,HIPBLAS_OP_T,m3,n,m3,ws->d_A,m3,d_KU,n,ws->d_C,m3);
+  status=Krylov_GPU_DeviceDgemm(state, ws,HIPBLAS_OP_T,HIPBLAS_OP_T,m3,n,m3,ws->d_A,m3,d_KU,n,ws->d_C,m3);
   if (status!=HIPBLAS_STATUS_SUCCESS){
     /* H_DC no longer holds the input: this atom is finished on the CPU
        from the eigenvector panel (on the device after MAGMA) and the
@@ -919,7 +962,7 @@ static int Krylov_ProjectedSolve_GPU(Krylov_GPU_Workspace *ws,int spin,int Mc_AN
     const double alpha=1.0,beta=0.0;
     int lda=m3,ldb=n,ldc=m3;
 
-    Krylov_GPU_GemmFailed(ws,status,m3,n,m3);
+    Krylov_GPU_GemmFailed(state, ws,status,m3,n,m3);
     if (eig_on_device){
       wait_hipfunc(hipMemcpyAsync(H_DC,ws->d_A,sizeof(double)*mm,hipMemcpyDeviceToHost,ws->stream));
       wait_hipfunc(hipStreamSynchronize(ws->stream));
@@ -931,7 +974,7 @@ static int Krylov_ProjectedSolve_GPU(Krylov_GPU_Workspace *ws,int spin,int Mc_AN
   }
   wait_hipfunc(hipMemcpyAsync(C,ws->d_C,sizeof(double)*nm,hipMemcpyDeviceToHost,ws->stream));
   wait_hipfunc(hipStreamSynchronize(ws->stream));
-  if (profile){
+  if (state->ProjectedSolve_GPU_profile){
     dtime(&t8);
     if (Mc_AN==1 && spin==0){
       /* This describes the GEMM policy, not a workspace fallback of an
@@ -940,7 +983,7 @@ static int Krylov_ProjectedSolve_GPU(Krylov_GPU_Workspace *ws,int spin,int Mc_AN
       printf("KRYFUSE n=%d m3=%d ku=%.4f hup=%.4f g1=%.4f g2=%.4f h33=%.4f pack=%.4f eig=%.4f g3=%.4f tot=%.4f"
              " gemm_policy=%s eigensolver=%s\n",
              n,m3,t1-t0,t2-t1,t3-t2,t4-t3,t5-t4,t6-t5,t7-t6,t8-t7,t8-t0,
-             (Krylov_gpu_gemmul8 && openmx_gemmul8DgemmEnabled()) ? "gemmul8" : "native-fp64",
+             (state->gpu_gemmul8 && openmx_gemmul8DgemmEnabled()) ? "gemmul8" : "native-fp64",
              eig_on_device ? "gpu-dispatch" : "lapack");
       fflush(stdout);
     }
@@ -951,7 +994,7 @@ static int Krylov_ProjectedSolve_GPU(Krylov_GPU_Workspace *ws,int spin,int Mc_AN
 
 
 
-double Krylov(char *mode,
+double Krylov(KrylovState *state, char *mode,
               int SCF_iter,
               double *****Hks,
               double *****ImNL,
@@ -969,9 +1012,9 @@ double Krylov(char *mode,
   if ( (SpinP_switch==0 || SpinP_switch==1) && SO_switch==0 ){
 
     if(atomnum<=NUMPROCS_MPI_COMM_WORLD && 1<openmp_threads_num) 
-      time0 = Krylov_Col_trd(mode, SCF_iter, Hks, OLP0, CDM, EDM, Eele0, Eele1);
+      time0 = Krylov_Col_trd(state, mode, SCF_iter, Hks, OLP0, CDM, EDM, Eele0, Eele1);
     else
-      time0 = Krylov_Col(mode, SCF_iter, Hks, OLP0, CDM, EDM, Eele0, Eele1);
+      time0 = Krylov_Col(state, mode, SCF_iter, Hks, OLP0, CDM, EDM, Eele0, Eele1);
   }
 
   /****************************************************
@@ -1004,6 +1047,7 @@ double Krylov(char *mode,
 
 
 typedef struct {
+  KrylovState *state;
   char *mode;
   int SCF_iter;
   double *****Hks;
@@ -1013,7 +1057,7 @@ typedef struct {
   double *Eele0;
   double *Eele1;
 } Krylov_Col_arguments;
-static double Krylov_Col_owned(char *mode,
+static double Krylov_Col_owned(KrylovState *state, char *mode,
 			 int SCF_iter,
 			 double *****Hks,
 			 double ****OLP0,
@@ -1024,10 +1068,10 @@ static double Krylov_Col_owned(char *mode,
 static int Krylov_Col_operation(OpenMXSolverInvocation *owner,void *arguments,double *result)
 {
   Krylov_Col_arguments *a=(Krylov_Col_arguments*)arguments;
-  *result=Krylov_Col_owned(a->mode,a->SCF_iter,a->Hks,a->OLP0,a->CDM,a->EDM,a->Eele0,a->Eele1,owner);
+  *result=Krylov_Col_owned(a->state, a->mode,a->SCF_iter,a->Hks,a->OLP0,a->CDM,a->EDM,a->Eele0,a->Eele1,owner);
   return 1;
 }
-static double Krylov_Col(char *mode,
+static double Krylov_Col(KrylovState *state, char *mode,
 			 int SCF_iter,
 			 double *****Hks,
 			 double ****OLP0,
@@ -1036,11 +1080,11 @@ static double Krylov_Col(char *mode,
 			 double Eele0[2],
 			 double Eele1[2])
 {
-  Krylov_Col_arguments arguments={mode,SCF_iter,Hks,OLP0,CDM,EDM,Eele0,Eele1};
+  Krylov_Col_arguments arguments={state,mode,SCF_iter,Hks,OLP0,CDM,EDM,Eele0,Eele1};
   return OpenMX_Solver_Run(Krylov_Col_operation,&arguments);
 }
 
-static double Krylov_Col_owned(char *mode,
+static double Krylov_Col_owned(KrylovState *state, char *mode,
 			 int SCF_iter,
 			 double *****Hks,
 			 double ****OLP0,
@@ -1050,7 +1094,7 @@ static double Krylov_Col_owned(char *mode,
 			 double Eele1[2], OpenMXSolverInvocation *solver_owner)
 {
 
-  static int firsttime=1,recalc_firsttime=1,recalc_flag;
+
   int Mc_AN,Gc_AN,i,is,js,Gi,wan,wanA,wanB,Anum;
   int num,NUM0,NUM,NUM1,n2,Cwan,Hwan,Rn2;
   int size1,size2,max_size1,max_size2;
@@ -1060,7 +1104,7 @@ static double Krylov_Col_owned(char *mode,
   int po,po1,loopN,tno1,tno2,h_AN,Gh_AN,rl1,rl2,rl;
   int MA_AN,GA_AN,tnoA,GB_AN,tnoB,ct_on;
   int Msize2_max;
-  static double TZ;
+
   double My_TZ,sum,FermiF,time0,srt;
   double sum00,sum10,sum20,sum30;
   double sum01,sum11,sum21,sum31;
@@ -1116,8 +1160,8 @@ static double Krylov_Col_owned(char *mode,
   MPI_Comm_size(mpi_comm_level1,&numprocs);
   MPI_Comm_rank(mpi_comm_level1,&myid);
 
-  Krylov_GPU_InitOnce();
-  Krylov_GPU_PreparePool(omp_get_max_threads());
+  Krylov_GPU_InitOnce(state);
+  Krylov_GPU_PreparePool(state, omp_get_max_threads());
 
   dtime(&TStime);
 
@@ -1206,11 +1250,11 @@ static double Krylov_Col_owned(char *mode,
     Msize4[Mc_AN] = rlmax_EC2[Mc_AN]*EKC_core_size[Mc_AN];
   }
 
-  if (Krylov_GPU_Enabled()){
-    Krylov_GPU_Preflight(Matomnum,Msize,Msize3);
-    if (Krylov_gpu_fits)
-      Krylov_KUCache_Prepare(Matomnum,SpinP_switch+1,Msize,Msize3,SCF_iter,
-                             Krylov_gpu_device_ranks,Krylov_gpu_need_total);
+  if (Krylov_GPU_Enabled(state)){
+    Krylov_GPU_Preflight(state, Matomnum,Msize,Msize3);
+    if (state->gpu_fits)
+      Krylov_KUCache_Prepare(state, Matomnum,SpinP_switch+1,Msize,Msize3,SCF_iter,
+                             state->gpu_device_ranks,state->gpu_need_total);
   }
 
   m_size = 0;
@@ -1225,7 +1269,7 @@ static double Krylov_Col_owned(char *mode,
     }
   }
 
-  if (firsttime){
+  if (state->Col_owned_firsttime){
   PrintMemory("Krylov: EVal",  sizeof(double)*m_size,NULL);
   }
 
@@ -1254,7 +1298,7 @@ static double Krylov_Col_owned(char *mode,
     }
   }
 
-  if (firsttime){
+  if (state->Col_owned_firsttime){
   PrintMemory("Krylov: PDOS_DC",sizeof(double)*m_size,NULL);
   }
 
@@ -1587,23 +1631,23 @@ static double Krylov_Col_owned(char *mode,
     for regeneration of the buffer matrix
   ***********************************************/
 
-  if (sqrt(fabs(NormRD[0]))<(0.2+0.10*(double)atomnum) && recalc_firsttime){
-    recalc_flag = 1;
-    recalc_firsttime = 0;
+  if (sqrt(fabs(NormRD[0]))<(0.2+0.10*(double)atomnum) && state->Col_owned_recalc_firsttime){
+    state->Col_owned_recalc_flag = 1;
+    state->Col_owned_recalc_firsttime = 0;
   }
   else{
-    recalc_flag = 0;
+    state->Col_owned_recalc_flag = 0;
   }
 
-  if (SCF_iter==1) recalc_firsttime = 1;
+  if (SCF_iter==1) state->Col_owned_recalc_firsttime = 1;
 
   if (error_check==1){
-    printf("SCF_iter=%2d recalc_firsttime=%2d\n",SCF_iter,recalc_firsttime);
+    printf("SCF_iter=%2d recalc_firsttime=%2d\n",SCF_iter,state->Col_owned_recalc_firsttime);
   }
 
   if (measure_time==1) dtime(&Stime2);
 
-#pragma omp parallel shared(EKC_invS_flag,List_YOUSO,Residues,EDM,CDM,HO_TC,LO_TC,ChemP,EVal,RMI1,S_G2M,EC_matrix,recalc_flag,recalc_EM,Krylov_U,SpinP_switch,EKC_core_size,EKC_core_size_max,rlmax_EC,rlmax_EC2,time11,time10,time9,time8,time7,time6,time5,time4,time3,time2,Hks,OLP0,EKC_Exact_invS_flag,SCF_iter,Msize4,Msize3,Msize2,Msize,Msize2_max,natn,FNAN,SNAN,Spe_Total_CNO,WhatSpecies,M2G,Matomnum,myid,time_per_atom,firsttime) 
+#pragma omp parallel shared(EKC_invS_flag,List_YOUSO,Residues,EDM,CDM,HO_TC,LO_TC,ChemP,EVal,RMI1,S_G2M,EC_matrix,state,recalc_EM,Krylov_U,SpinP_switch,EKC_core_size,EKC_core_size_max,rlmax_EC,rlmax_EC2,time11,time10,time9,time8,time7,time6,time5,time4,time3,time2,Hks,OLP0,EKC_Exact_invS_flag,SCF_iter,Msize4,Msize3,Msize2,Msize,Msize2_max,natn,FNAN,SNAN,Spe_Total_CNO,WhatSpecies,M2G,Matomnum,myid,time_per_atom)
   {
     int OMPID,Nthrds,Nprocs;
     int Mc_AN,Gc_AN,wan,spin;
@@ -1634,7 +1678,7 @@ static double Krylov_Col_owned(char *mode,
     OMPID = omp_get_thread_num();
     Nthrds = omp_get_num_threads();
     Nprocs = omp_get_num_procs();
-    gpu_ws = Krylov_GPU_GetWorkspace(OMPID);
+    gpu_ws = Krylov_GPU_GetWorkspace(state, OMPID);
 
     /* allocation of arrays */
 
@@ -1649,7 +1693,7 @@ static double Krylov_Col_owned(char *mode,
     tmpvec2=OpenMX_Solver_RealView(solver_owner,"tmpvec2",((size_t)1)*EKC_core_size_max,((size_t)1)*Msize2_max);
 
 
-    if (firsttime && OMPID==0){
+    if (state->Col_owned_firsttime && OMPID==0){
       PrintMemory("Krylov: tmpvec0",sizeof(double)*EKC_core_size_max*Msize2_max,NULL);
       PrintMemory("Krylov: tmpvec1",sizeof(double)*EKC_core_size_max*Msize2_max,NULL);
       PrintMemory("Krylov: tmpvec2",sizeof(double)*EKC_core_size_max*Msize2_max,NULL);
@@ -1747,7 +1791,7 @@ static double Krylov_Col_owned(char *mode,
 
 	if (SCF_iter==1 && Msize3[Mc_AN]<Msize2[Mc_AN]){
 
-	  Generate_pMatrix( myid, spin, Mc_AN, Hks, OLP0, OpenMX_Solver_RealMatrix(solver_owner,"invS",invS.extent[0],invS.extent[1]), Krylov_U, Krylov_U_OLP, OpenMX_Solver_RealMatrix(solver_owner,"inv_RS",inv_RS.extent[0],inv_RS.extent[1]), MP,
+	  Generate_pMatrix(state,  myid, spin, Mc_AN, Hks, OLP0, OpenMX_Solver_RealMatrix(solver_owner,"invS",invS.extent[0],invS.extent[1]), Krylov_U, Krylov_U_OLP, OpenMX_Solver_RealMatrix(solver_owner,"inv_RS",inv_RS.extent[0],inv_RS.extent[1]), MP,
                             Msize, Msize2, Msize3, Msize4, Msize2_max, OpenMX_Solver_RealMatrix(solver_owner,"tmpvec0",tmpvec0.extent[0],tmpvec0.extent[1]), OpenMX_Solver_RealMatrix(solver_owner,"tmpvec1",tmpvec1.extent[0],tmpvec1.extent[1]), OpenMX_Solver_RealMatrix(solver_owner,"tmpvec2",tmpvec2.extent[0],tmpvec2.extent[1]) );
 
 	}
@@ -1762,9 +1806,9 @@ static double Krylov_Col_owned(char *mode,
 
 	if (measure_time==1) dtime(&Stime1);
 
-	if (recalc_EM==1 || SCF_iter==1 || recalc_flag==1){
+	if (recalc_EM==1 || SCF_iter==1 || state->Col_owned_recalc_flag==1){
 
-	  Embedding_Matrix( spin, Mc_AN, Hks, Krylov_U, EC_matrix, MP, Msize, Msize2, Msize3, OpenMX_Solver_RealMatrix(solver_owner,"tmpvec1",tmpvec1.extent[0],tmpvec1.extent[1]));
+	  Embedding_Matrix(state,  spin, Mc_AN, Hks, Krylov_U, EC_matrix, MP, Msize, Msize2, Msize3, OpenMX_Solver_RealMatrix(solver_owner,"tmpvec1",tmpvec1.extent[0],tmpvec1.extent[1]));
 	}
 
 	if (measure_time==1 && OMPID==0){ 
@@ -1841,7 +1885,7 @@ static double Krylov_Col_owned(char *mode,
 
 	/* BLAS3 version */
 
-	if (Krylov_ProjectedSolve_GPU(gpu_ws,spin,Mc_AN,Msize,Msize2,Msize3,
+	if (Krylov_ProjectedSolve_GPU(state, gpu_ws,spin,Mc_AN,Msize,Msize2,Msize3,
 	                              Krylov_U,EC_matrix,H_DC,KU,C,ko)==0){
 
 	for (i=0; i<Msize[Mc_AN]; i++){
@@ -1854,7 +1898,7 @@ static double Krylov_Col_owned(char *mode,
 	M = Msize[Mc_AN]; N = Msize3[Mc_AN]; K = Msize[Mc_AN];
 	lda = M; ldb = K; ldc = Msize[Mc_AN]; 
 	
-	Krylov_Dgemm(gpu_ws, HIPBLAS_OP_N, HIPBLAS_OP_N, M, N, K,
+	Krylov_Dgemm(state, gpu_ws, HIPBLAS_OP_N, HIPBLAS_OP_N, M, N, K,
                      H_DC, lda, KU, ldb, C, ldc);
 
 	if (measure_time==1 && OMPID==0){ 
@@ -1893,7 +1937,7 @@ static double Krylov_Col_owned(char *mode,
 	M = Msize3[Mc_AN]; N = Msize3[Mc_AN]; K = Msize[Mc_AN];
 	lda = K; ldb = K; ldc = Msize3[Mc_AN]; 
 
-	Krylov_Dgemm(gpu_ws, HIPBLAS_OP_T, HIPBLAS_OP_N, M, N, K,
+	Krylov_Dgemm(state, gpu_ws, HIPBLAS_OP_T, HIPBLAS_OP_N, M, N, K,
                      KU, lda, C, ldb, H_DC, ldc);
 
 	if (measure_time==1 && OMPID==0){ 
@@ -1931,7 +1975,7 @@ static double Krylov_Col_owned(char *mode,
 
 	if (measure_time==1) dtime(&Stime1);
 
-	Krylov_Eigen2(gpu_ws,H_DC,Msize3[Mc_AN]+1,ko,Msize3[Mc_AN],Msize3[Mc_AN]);
+	Krylov_Eigen2(state, gpu_ws,H_DC,Msize3[Mc_AN]+1,ko,Msize3[Mc_AN],Msize3[Mc_AN]);
 
 	if (measure_time==1 && OMPID==0){ 
 	  dtime(&Etime1);
@@ -1969,7 +2013,7 @@ static double Krylov_Col_owned(char *mode,
         M = Msize3[Mc_AN]; N = Msize[Mc_AN]; K = Msize3[Mc_AN];
         lda = K; ldb = N; ldc = Msize3[Mc_AN]; 
 
-	Krylov_Dgemm(gpu_ws, HIPBLAS_OP_T, HIPBLAS_OP_T, M, N, K,
+	Krylov_Dgemm(state, gpu_ws, HIPBLAS_OP_T, HIPBLAS_OP_T, M, N, K,
                      H_DC, lda, KU, ldb, C, ldc);
 
 	} /* fallback of fused GPU projected solve */
@@ -2094,7 +2138,7 @@ static double Krylov_Col_owned(char *mode,
     time16 = Etime2 - Stime2;      
   }
 
-  if (firsttime){
+  if (state->Col_owned_firsttime){
 
     Residues_size = 1;
 
@@ -2204,7 +2248,7 @@ static double Krylov_Col_owned(char *mode,
   /* MPI, My_TZ */
 
   MPI_Barrier(mpi_comm_level1);
-  MPI_Allreduce(&My_TZ, &TZ, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
+  MPI_Allreduce(&My_TZ, &state->Col_owned_TZ, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
 
   /****************************************************
                 find the chemical potential
@@ -2255,14 +2299,14 @@ static double Krylov_Col_owned(char *mode,
     MPI_Barrier(mpi_comm_level1);
     MPI_Allreduce(&My_Num_State, &Num_State, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
 
-    Dnum = (TZ - Num_State) - system_charge;
+    Dnum = (state->Col_owned_TZ - Num_State) - system_charge;
     if (0.0<=Dnum) ChemP_MIN = ChemP;
     else           ChemP_MAX = ChemP;
     if (fabs(Dnum)<1.0e-11) po = 1;
 
 
     if (myid==Host_ID && 3<=level_stdout){
-      printf("  ChemP=%15.12f TZ=%15.12f Num_state=%15.12f\n",ChemP,TZ,Num_State); 
+      printf("  ChemP=%15.12f TZ=%15.12f Num_state=%15.12f\n",ChemP,state->Col_owned_TZ,Num_State);
     }
 
     loopN++;
@@ -2449,7 +2493,7 @@ static double Krylov_Col_owned(char *mode,
   }
 
   /* for PrintMemory */
-  firsttime=0;
+  state->Col_owned_firsttime=0;
 
   return time0;
 }
@@ -2463,6 +2507,7 @@ static double Krylov_Col_owned(char *mode,
 
 
 typedef struct {
+  KrylovState *state;
   int myid;
   int spin;
   int Mc_AN;
@@ -2482,7 +2527,7 @@ typedef struct {
   double **tmpvec1;
   double **tmpvec2;
 } Generate_pMatrix_scratch_arguments;
-static void Generate_pMatrix_raii( int myid, int spin, int Mc_AN, double *****Hks,
+static void Generate_pMatrix_raii(KrylovState *state,  int myid, int spin, int Mc_AN, double *****Hks,
                        double ****OLP0, double **invS,
                        double ***Krylov_U, double ***Krylov_U_OLP, double **inv_RS, int *MP,
                        int *Msize, int *Msize2, int *Msize3, int *Msize4, int Msize2_max,
@@ -2490,21 +2535,21 @@ static void Generate_pMatrix_raii( int myid, int spin, int Mc_AN, double *****Hk
 static int Generate_pMatrix_scratch_operation(OpenMXSolverInvocation *owner,void *arguments,double *result)
 {
   Generate_pMatrix_scratch_arguments *a=(Generate_pMatrix_scratch_arguments*)arguments;
-  Generate_pMatrix_raii(a->myid,a->spin,a->Mc_AN,a->Hks,a->OLP0,a->invS,a->Krylov_U,a->Krylov_U_OLP,a->inv_RS,a->MP,a->Msize,a->Msize2,a->Msize3,a->Msize4,a->Msize2_max,a->tmpvec0,a->tmpvec1,a->tmpvec2,owner);
+  Generate_pMatrix_raii(a->state, a->myid,a->spin,a->Mc_AN,a->Hks,a->OLP0,a->invS,a->Krylov_U,a->Krylov_U_OLP,a->inv_RS,a->MP,a->Msize,a->Msize2,a->Msize3,a->Msize4,a->Msize2_max,a->tmpvec0,a->tmpvec1,a->tmpvec2,owner);
   *result=0;
   return 1;
 }
-void Generate_pMatrix( int myid, int spin, int Mc_AN, double *****Hks, 
+void Generate_pMatrix(KrylovState *state,  int myid, int spin, int Mc_AN, double *****Hks,
                        double ****OLP0, double **invS,
                        double ***Krylov_U, double ***Krylov_U_OLP, double **inv_RS, int *MP, 
                        int *Msize, int *Msize2, int *Msize3, int *Msize4, int Msize2_max, 
                        double **tmpvec0, double **tmpvec1, double **tmpvec2 )
 {
-  Generate_pMatrix_scratch_arguments arguments={myid,spin,Mc_AN,Hks,OLP0,invS,Krylov_U,Krylov_U_OLP,inv_RS,MP,Msize,Msize2,Msize3,Msize4,Msize2_max,tmpvec0,tmpvec1,tmpvec2};
+  Generate_pMatrix_scratch_arguments arguments={state,myid,spin,Mc_AN,Hks,OLP0,invS,Krylov_U,Krylov_U_OLP,inv_RS,MP,Msize,Msize2,Msize3,Msize4,Msize2_max,tmpvec0,tmpvec1,tmpvec2};
   OpenMX_Solver_Run(Generate_pMatrix_scratch_operation,&arguments);
 }
 
-static void Generate_pMatrix_raii( int myid, int spin, int Mc_AN, double *****Hks,
+static void Generate_pMatrix_raii(KrylovState *state,  int myid, int spin, int Mc_AN, double *****Hks,
                        double ****OLP0, double **invS,
                        double ***Krylov_U, double ***Krylov_U_OLP, double **inv_RS, int *MP,
                        int *Msize, int *Msize2, int *Msize3, int *Msize4, int Msize2_max,
@@ -4602,7 +4647,7 @@ static void Generate_pMatrix2_raii( int myid, int spin, int Mc_AN, double *****H
 
 
 
-void Embedding_Matrix(int spin, int Mc_AN, double *****Hks,
+void Embedding_Matrix(KrylovState *state, int spin, int Mc_AN, double *****Hks,
                       double ***Krylov_U, double ****EC_matrix, 
                       int *MP, int *Msize, int *Msize2, int *Msize3, 
                       double **tmpvec1 )
@@ -6182,6 +6227,7 @@ void Save_DOS_Col(OpenMXSolverResidueView Residues, double ****OLP0, OpenMXSolve
 
 
 typedef struct {
+  KrylovState *state;
   char *mode;
   int SCF_iter;
   double *****Hks;
@@ -6191,7 +6237,7 @@ typedef struct {
   double *Eele0;
   double *Eele1;
 } Krylov_Col_trd_arguments;
-static double Krylov_Col_trd_owned(char *mode,
+static double Krylov_Col_trd_owned(KrylovState *state, char *mode,
 			 int SCF_iter,
 			 double *****Hks,
 			 double ****OLP0,
@@ -6202,10 +6248,10 @@ static double Krylov_Col_trd_owned(char *mode,
 static int Krylov_Col_trd_operation(OpenMXSolverInvocation *owner,void *arguments,double *result)
 {
   Krylov_Col_trd_arguments *a=(Krylov_Col_trd_arguments*)arguments;
-  *result=Krylov_Col_trd_owned(a->mode,a->SCF_iter,a->Hks,a->OLP0,a->CDM,a->EDM,a->Eele0,a->Eele1,owner);
+  *result=Krylov_Col_trd_owned(a->state, a->mode,a->SCF_iter,a->Hks,a->OLP0,a->CDM,a->EDM,a->Eele0,a->Eele1,owner);
   return 1;
 }
-static double Krylov_Col_trd(char *mode,
+static double Krylov_Col_trd(KrylovState *state, char *mode,
 			 int SCF_iter,
 			 double *****Hks,
 			 double ****OLP0,
@@ -6214,11 +6260,11 @@ static double Krylov_Col_trd(char *mode,
 			 double Eele0[2],
 			 double Eele1[2])
 {
-  Krylov_Col_trd_arguments arguments={mode,SCF_iter,Hks,OLP0,CDM,EDM,Eele0,Eele1};
+  Krylov_Col_trd_arguments arguments={state,mode,SCF_iter,Hks,OLP0,CDM,EDM,Eele0,Eele1};
   return OpenMX_Solver_Run(Krylov_Col_trd_operation,&arguments);
 }
 
-static double Krylov_Col_trd_owned(char *mode,
+static double Krylov_Col_trd_owned(KrylovState *state, char *mode,
 			 int SCF_iter,
 			 double *****Hks,
 			 double ****OLP0,
@@ -6234,7 +6280,7 @@ static double Krylov_Col_trd_owned(char *mode,
 **********************************************************************************/
 
 
-  static int firsttime=1,recalc_firsttime=1,recalc_flag;
+
   int Mc_AN,Gc_AN,i,is,js,Gi,wan,wanA,wanB,Anum;
   int num,NUM0,NUM,NUM1,n2,Cwan,Hwan,Rn2;
   int size1,size2,max_size1,max_size2;
@@ -6244,7 +6290,7 @@ static double Krylov_Col_trd_owned(char *mode,
   int po,po1,loopN,tno1,tno2,h_AN,Gh_AN,rl1,rl2,rl;
   int MA_AN,GA_AN,tnoA,GB_AN,tnoB,ct_on;
   int Msize2_max;
-  static double TZ;
+
   double My_TZ,sum,FermiF,time0,srt;
   double sum00,sum10,sum20,sum30;
   double sum01,sum11,sum21,sum31;
@@ -6299,8 +6345,8 @@ static double Krylov_Col_trd_owned(char *mode,
   MPI_Comm_size(mpi_comm_level1,&numprocs);
   MPI_Comm_rank(mpi_comm_level1,&myid);
 
-  Krylov_GPU_InitOnce();
-  Krylov_GPU_PreparePool(omp_get_max_threads());
+  Krylov_GPU_InitOnce(state);
+  Krylov_GPU_PreparePool(state, omp_get_max_threads());
 
   printf("ABC1 myid=%2d\n",myid);
 
@@ -6391,11 +6437,11 @@ static double Krylov_Col_trd_owned(char *mode,
     Msize4[Mc_AN] = rlmax_EC2[Mc_AN]*EKC_core_size[Mc_AN];
   }
 
-  if (Krylov_GPU_Enabled()){
-    Krylov_GPU_Preflight(Matomnum,Msize,Msize3);
-    if (Krylov_gpu_fits)
-      Krylov_KUCache_Prepare(Matomnum,SpinP_switch+1,Msize,Msize3,SCF_iter,
-                             Krylov_gpu_device_ranks,Krylov_gpu_need_total);
+  if (Krylov_GPU_Enabled(state)){
+    Krylov_GPU_Preflight(state, Matomnum,Msize,Msize3);
+    if (state->gpu_fits)
+      Krylov_KUCache_Prepare(state, Matomnum,SpinP_switch+1,Msize,Msize3,SCF_iter,
+                             state->gpu_device_ranks,state->gpu_need_total);
   }
 
   m_size = 0;
@@ -6410,7 +6456,7 @@ static double Krylov_Col_trd_owned(char *mode,
     }
   }
 
-  if (firsttime){
+  if (state->Col_trd_owned_firsttime){
   PrintMemory("Krylov: EVal",  sizeof(double)*m_size,NULL);
   }
 
@@ -6439,7 +6485,7 @@ static double Krylov_Col_trd_owned(char *mode,
     }
   }
 
-  if (firsttime){
+  if (state->Col_trd_owned_firsttime){
   PrintMemory("Krylov: PDOS_DC",sizeof(double)*m_size,NULL);
   }
 
@@ -6772,18 +6818,18 @@ static double Krylov_Col_trd_owned(char *mode,
     for regeneration of the buffer matrix
   ***********************************************/
 
-  if (sqrt(fabs(NormRD[0]))<(0.2+0.10*(double)atomnum) && recalc_firsttime){
-    recalc_flag = 1;
-    recalc_firsttime = 0;
+  if (sqrt(fabs(NormRD[0]))<(0.2+0.10*(double)atomnum) && state->Col_trd_owned_recalc_firsttime){
+    state->Col_trd_owned_recalc_flag = 1;
+    state->Col_trd_owned_recalc_firsttime = 0;
   }
   else{
-    recalc_flag = 0;
+    state->Col_trd_owned_recalc_flag = 0;
   }
 
-  if (SCF_iter==1) recalc_firsttime = 1;
+  if (SCF_iter==1) state->Col_trd_owned_recalc_firsttime = 1;
 
   if (error_check==1){
-    printf("SCF_iter=%2d recalc_firsttime=%2d\n",SCF_iter,recalc_firsttime);
+    printf("SCF_iter=%2d recalc_firsttime=%2d\n",SCF_iter,state->Col_trd_owned_recalc_firsttime);
   }
 
   if (measure_time==1) dtime(&Stime2);
@@ -6825,7 +6871,7 @@ static double Krylov_Col_trd_owned(char *mode,
     /* get info. on OpenMP */ 
 
     OMPID = omp_get_thread_num();
-    gpu_ws = Krylov_GPU_GetWorkspace(OMPID);
+    gpu_ws = Krylov_GPU_GetWorkspace(state, OMPID);
 
     /*
     Nthrds = omp_get_num_threads();
@@ -6845,7 +6891,7 @@ static double Krylov_Col_trd_owned(char *mode,
     tmpvec2=OpenMX_Solver_RealView(solver_owner,"tmpvec2",((size_t)1)*EKC_core_size_max,((size_t)1)*Msize2_max);
 
 
-    if (firsttime && OMPID==0){
+    if (state->Col_trd_owned_firsttime && OMPID==0){
       PrintMemory("Krylov: tmpvec0",sizeof(double)*EKC_core_size_max*Msize2_max,NULL);
       PrintMemory("Krylov: tmpvec1",sizeof(double)*EKC_core_size_max*Msize2_max,NULL);
       PrintMemory("Krylov: tmpvec2",sizeof(double)*EKC_core_size_max*Msize2_max,NULL);
@@ -6943,7 +6989,7 @@ static double Krylov_Col_trd_owned(char *mode,
 
 	if (SCF_iter==1 && Msize3[Mc_AN]<Msize2[Mc_AN]){
 
-	  Generate_pMatrix_trd( myid, spin, Mc_AN, Hks, OLP0, OpenMX_Solver_RealMatrix(solver_owner,"invS",invS.extent[0],invS.extent[1]), Krylov_U, Krylov_U_OLP, OpenMX_Solver_RealMatrix(solver_owner,"inv_RS",inv_RS.extent[0],inv_RS.extent[1]), MP,
+	  Generate_pMatrix_trd(state,  myid, spin, Mc_AN, Hks, OLP0, OpenMX_Solver_RealMatrix(solver_owner,"invS",invS.extent[0],invS.extent[1]), Krylov_U, Krylov_U_OLP, OpenMX_Solver_RealMatrix(solver_owner,"inv_RS",inv_RS.extent[0],inv_RS.extent[1]), MP,
                             Msize, Msize2, Msize3, Msize4, Msize2_max, OpenMX_Solver_RealMatrix(solver_owner,"tmpvec0",tmpvec0.extent[0],tmpvec0.extent[1]), OpenMX_Solver_RealMatrix(solver_owner,"tmpvec1",tmpvec1.extent[0],tmpvec1.extent[1]), OpenMX_Solver_RealMatrix(solver_owner,"tmpvec2",tmpvec2.extent[0],tmpvec2.extent[1]) );
 	}
 	else if (SCF_iter==1){
@@ -6958,7 +7004,7 @@ static double Krylov_Col_trd_owned(char *mode,
 
 	if (measure_time==1) dtime(&Stime1);
 
-	if (recalc_EM==1 || SCF_iter<=3 || recalc_flag==1){
+	if (recalc_EM==1 || SCF_iter<=3 || state->Col_trd_owned_recalc_flag==1){
 
 	  Embedding_Matrix_trd( spin, Mc_AN, Hks, Krylov_U, EC_matrix, MP, Msize, Msize2, Msize3, OpenMX_Solver_RealMatrix(solver_owner,"tmpvec1",tmpvec1.extent[0],tmpvec1.extent[1]), EKC_core_size_max, Msize2_max);
 	}
@@ -7037,7 +7083,7 @@ static double Krylov_Col_trd_owned(char *mode,
 
 	/* BLAS3 version */
 
-	if (Krylov_ProjectedSolve_GPU(gpu_ws,spin,Mc_AN,Msize,Msize2,Msize3,
+	if (Krylov_ProjectedSolve_GPU(state, gpu_ws,spin,Mc_AN,Msize,Msize2,Msize3,
 	                              Krylov_U,EC_matrix,H_DC,KU,C,ko)==0){
 
 	for (i=0; i<Msize[Mc_AN]; i++){
@@ -7050,7 +7096,7 @@ static double Krylov_Col_trd_owned(char *mode,
 	M = Msize[Mc_AN]; N = Msize3[Mc_AN]; K = Msize[Mc_AN];
 	lda = M; ldb = K; ldc = Msize[Mc_AN]; 
 	
-	Krylov_Dgemm(gpu_ws, HIPBLAS_OP_N, HIPBLAS_OP_N, M, N, K,
+	Krylov_Dgemm(state, gpu_ws, HIPBLAS_OP_N, HIPBLAS_OP_N, M, N, K,
                      H_DC, lda, KU, ldb, C, ldc);
 
 	if (measure_time==1){ 
@@ -7089,7 +7135,7 @@ static double Krylov_Col_trd_owned(char *mode,
 	M = Msize3[Mc_AN]; N = Msize3[Mc_AN]; K = Msize[Mc_AN];
 	lda = K; ldb = K; ldc = Msize3[Mc_AN]; 
 
-	Krylov_Dgemm(gpu_ws, HIPBLAS_OP_T, HIPBLAS_OP_N, M, N, K,
+	Krylov_Dgemm(state, gpu_ws, HIPBLAS_OP_T, HIPBLAS_OP_N, M, N, K,
                      KU, lda, C, ldb, H_DC, ldc);
 
 	if (measure_time==1){ 
@@ -7127,7 +7173,7 @@ static double Krylov_Col_trd_owned(char *mode,
 
 	if (measure_time==1) dtime(&Stime1);
 
-	Krylov_Eigen2(gpu_ws,H_DC,Msize3[Mc_AN]+1,ko,Msize3[Mc_AN],Msize3[Mc_AN]);
+	Krylov_Eigen2(state, gpu_ws,H_DC,Msize3[Mc_AN]+1,ko,Msize3[Mc_AN],Msize3[Mc_AN]);
 
 	if (measure_time==1){ 
 	  dtime(&Etime1);
@@ -7165,7 +7211,7 @@ static double Krylov_Col_trd_owned(char *mode,
         M = Msize3[Mc_AN]; N = Msize[Mc_AN]; K = Msize3[Mc_AN];
         lda = K; ldb = N; ldc = Msize3[Mc_AN]; 
 
-	Krylov_Dgemm(gpu_ws, HIPBLAS_OP_T, HIPBLAS_OP_T, M, N, K,
+	Krylov_Dgemm(state, gpu_ws, HIPBLAS_OP_T, HIPBLAS_OP_T, M, N, K,
                      H_DC, lda, KU, ldb, C, ldc);
 
 	} /* fallback of fused GPU projected solve */
@@ -7288,7 +7334,7 @@ static double Krylov_Col_trd_owned(char *mode,
     time16 = Etime2 - Stime2;      
   }
 
-  if (firsttime){
+  if (state->Col_trd_owned_firsttime){
 
     Residues_size = 1;
 
@@ -7404,7 +7450,7 @@ static double Krylov_Col_trd_owned(char *mode,
   /* MPI, My_TZ */
 
   MPI_Barrier(mpi_comm_level1);
-  MPI_Allreduce(&My_TZ, &TZ, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
+  MPI_Allreduce(&My_TZ, &state->Col_trd_owned_TZ, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
 
   /****************************************************
                 find the chemical potential
@@ -7455,14 +7501,14 @@ static double Krylov_Col_trd_owned(char *mode,
     MPI_Barrier(mpi_comm_level1);
     MPI_Allreduce(&My_Num_State, &Num_State, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
 
-    Dnum = (TZ - Num_State) - system_charge;
+    Dnum = (state->Col_trd_owned_TZ - Num_State) - system_charge;
     if (0.0<=Dnum) ChemP_MIN = ChemP;
     else           ChemP_MAX = ChemP;
     if (fabs(Dnum)<1.0e-11) po = 1;
 
 
     if (myid==Host_ID && 3<=level_stdout){
-      printf("  ChemP=%15.12f TZ=%15.12f Num_state=%15.12f\n",ChemP,TZ,Num_State); 
+      printf("  ChemP=%15.12f TZ=%15.12f Num_state=%15.12f\n",ChemP,state->Col_trd_owned_TZ,Num_State);
     }
 
     loopN++;
@@ -7654,7 +7700,7 @@ static double Krylov_Col_trd_owned(char *mode,
   }
 
   /* for PrintMemory */
-  firsttime=0;
+  state->Col_trd_owned_firsttime=0;
 
   return time0;
 }
@@ -7668,6 +7714,7 @@ static double Krylov_Col_trd_owned(char *mode,
 
 
 typedef struct {
+  KrylovState *state;
   int myid;
   int spin;
   int Mc_AN;
@@ -7687,7 +7734,7 @@ typedef struct {
   double **tmpvec1;
   double **tmpvec2;
 } Generate_pMatrix_trd_scratch_arguments;
-static void Generate_pMatrix_trd_raii( int myid, int spin, int Mc_AN, double *****Hks,
+static void Generate_pMatrix_trd_raii(KrylovState *state,  int myid, int spin, int Mc_AN, double *****Hks,
                        double ****OLP0, double **invS,
                        double ***Krylov_U, double ***Krylov_U_OLP, double **inv_RS, int *MP,
                        int *Msize, int *Msize2, int *Msize3, int *Msize4, int Msize2_max,
@@ -7695,21 +7742,21 @@ static void Generate_pMatrix_trd_raii( int myid, int spin, int Mc_AN, double ***
 static int Generate_pMatrix_trd_scratch_operation(OpenMXSolverInvocation *owner,void *arguments,double *result)
 {
   Generate_pMatrix_trd_scratch_arguments *a=(Generate_pMatrix_trd_scratch_arguments*)arguments;
-  Generate_pMatrix_trd_raii(a->myid,a->spin,a->Mc_AN,a->Hks,a->OLP0,a->invS,a->Krylov_U,a->Krylov_U_OLP,a->inv_RS,a->MP,a->Msize,a->Msize2,a->Msize3,a->Msize4,a->Msize2_max,a->tmpvec0,a->tmpvec1,a->tmpvec2,owner);
+  Generate_pMatrix_trd_raii(a->state, a->myid,a->spin,a->Mc_AN,a->Hks,a->OLP0,a->invS,a->Krylov_U,a->Krylov_U_OLP,a->inv_RS,a->MP,a->Msize,a->Msize2,a->Msize3,a->Msize4,a->Msize2_max,a->tmpvec0,a->tmpvec1,a->tmpvec2,owner);
   *result=0;
   return 1;
 }
-void Generate_pMatrix_trd( int myid, int spin, int Mc_AN, double *****Hks, 
+void Generate_pMatrix_trd(KrylovState *state,  int myid, int spin, int Mc_AN, double *****Hks,
                        double ****OLP0, double **invS,
                        double ***Krylov_U, double ***Krylov_U_OLP, double **inv_RS, int *MP, 
                        int *Msize, int *Msize2, int *Msize3, int *Msize4, int Msize2_max, 
                        double **tmpvec0, double **tmpvec1, double **tmpvec2 )
 {
-  Generate_pMatrix_trd_scratch_arguments arguments={myid,spin,Mc_AN,Hks,OLP0,invS,Krylov_U,Krylov_U_OLP,inv_RS,MP,Msize,Msize2,Msize3,Msize4,Msize2_max,tmpvec0,tmpvec1,tmpvec2};
+  Generate_pMatrix_trd_scratch_arguments arguments={state,myid,spin,Mc_AN,Hks,OLP0,invS,Krylov_U,Krylov_U_OLP,inv_RS,MP,Msize,Msize2,Msize3,Msize4,Msize2_max,tmpvec0,tmpvec1,tmpvec2};
   OpenMX_Solver_Run(Generate_pMatrix_trd_scratch_operation,&arguments);
 }
 
-static void Generate_pMatrix_trd_raii( int myid, int spin, int Mc_AN, double *****Hks,
+static void Generate_pMatrix_trd_raii(KrylovState *state,  int myid, int spin, int Mc_AN, double *****Hks,
                        double ****OLP0, double **invS,
                        double ***Krylov_U, double ***Krylov_U_OLP, double **inv_RS, int *MP,
                        int *Msize, int *Msize2, int *Msize3, int *Msize4, int Msize2_max,
@@ -11362,7 +11409,7 @@ static int Eigen_lapack_d_raii(double **a, double *ko, int n0, int EVmax,OpenMXS
     output: ko[n];    eigenvalues 
   */
     
-  static char *name="Eigen_lapack";
+  const char *name="Eigen_lapack";
 
   char  *JOBZ="V";
   char  *UPLO="L";
@@ -11470,7 +11517,7 @@ static int Eigen_lapack_r_raii(double **a, double *ko, int n0, int EVmax,OpenMXS
     output: ko[n];    eigenvalues 
   */
     
-  static char *name="Eigen_lapack";
+  const char *name="Eigen_lapack";
 
   char  *JOBZ="V";
   char  *RANGE="I";
@@ -11553,4 +11600,44 @@ static int Eigen_lapack_r_raii(double **a, double *ko, int n0, int EVmax,OpenMXS
   ; ; ; ; ;
 
   return INFO;
+}
+
+static void Krylov_Reset(OpenMXNativeResources *owner, void *metadata)
+{
+  KrylovState *state = (KrylovState *)metadata;
+  (void)owner;
+  if (state->initialized) Krylov_Release_GPU_Caches(state);
+}
+
+OpenMXKrylovState *Krylov_Bind_Resources(OpenMXCoreContext *core)
+{
+  OpenMXNativeResources *owner = NULL;
+  void *metadata = NULL;
+  char error[256];
+  if (!openmx_core_native_resources_state(core, "Krylov", sizeof(KrylovState),
+      Krylov_Reset, &owner, &metadata, error, sizeof(error))) {
+    fprintf(stderr, "OpenMX Krylov state: %s\n", error);
+    abort();
+  }
+  KrylovState *state = (KrylovState *)metadata;
+  if (!state->initialized) {
+    state->resources = owner;
+    state->gpu_device_ranks = 1;
+    state->gpu_fits = 1;
+    state->gpu_gemmul8 = 1;
+    state->gpu_fused = 1;
+    state->gpu_eigen_min = KRYLOV_GPU_EIGEN_MIN;
+    state->gpu_dgemm_min_flops = KRYLOV_GPU_DGEMM_MIN_FLOPS;
+    state->measure_time_env = -1;
+    state->Col_trd_owned_firsttime = 1;
+    state->Col_trd_owned_recalc_firsttime = 1;
+    state->Col_owned_firsttime = 1;
+    state->Col_owned_recalc_firsttime = 1;
+    state->ProjectedSolve_GPU_profile = -1;
+    state->GPU_Preflight_reserve_bytes = (size_t)512*1024*1024;
+    state->GPU_Preflight_device_comm = MPI_COMM_NULL;
+    state->GPU_Enabled_requested = -1;
+    state->initialized = 1;
+  }
+  return state;
 }

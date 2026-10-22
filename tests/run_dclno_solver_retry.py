@@ -15,7 +15,8 @@ import re
 import shlex
 import subprocess
 import tempfile
-from native_resource_test_bridge import isolate_native_resources
+from run_cluster_col_state_cpu import bounded_stack
+from native_resource_test_bridge import isolate_native_resources, calculation_state_declaration, explicit_state_fixture_calls
 
 
 def function(source, name):
@@ -303,18 +304,17 @@ int main(void)
 
 
 def make_harness(source):
-    context_end = source.index("} DCLNO_GpuSolverCtx;") + len("} DCLNO_GpuSolverCtx;")
-    context_start = source.rfind("typedef struct {", 0, context_end)
     names = ["DCLNO_CheckedArrayBytes", "DCLNO_CheckedMulCount", "DCLNO_MallocArray",
              "DCLNO_CopyPackedEigvecsToC", "DCLNO_Eigen_lapack_d_reuse"]
-    parts = [PREFIX, *(function(source, name) for name in names),
-             source[context_start:context_end],
-             "static DCLNO_GpuSolverCtx DCLNO_gpusolver_ctx = {0};"]
+    state = "typedef void OpenMXNativeResources; typedef int MPI_Comm; typedef struct {double r,i;} dcomplex;\n"
+    state += "typedef struct OpenMXDCLNOState OpenMXDCLNOState;\n" + calculation_state_declaration(source, "DCLNOState")
+    state += "\nstatic DCLNOState instance; static DCLNOState *state=&instance;\n"
+    parts = [PREFIX, state, *(function(source, name) for name in names)]
     names = ["DCLNO_GpuSolver_Destroy", "DCLNO_GpuSolver_Init",
              "DCLNO_GpuSolver_EnsureMatrixCapacity", "DCLNO_GpuSolver_EnsureWorkspace",
              "DCLNO_GpuSolver_Eigen", "DCLNO_Solve_Col_GpuSolver", "DCLNO_Solve_Col_Local"]
     parts += [function(source, name) for name in names]
-    return "\n\n".join(parts + [HARNESS])
+    return "\n\n".join(parts + [explicit_state_fixture_calls(HARNESS, source, "DCLNOState")])
 
 
 def main():
@@ -337,7 +337,7 @@ def main():
                         *shlex.split(args.libs), "-lm", "-o", str(binary)], check=True)
         env = os.environ.copy()
         env.update(OPENBLAS_NUM_THREADS="1", OMP_NUM_THREADS="1", BLIS_NUM_THREADS="1")
-        subprocess.run([str(binary)], env=env, check=True)
+        subprocess.run([str(binary)], env=env, check=True, preexec_fn=bounded_stack)
 
 
 if __name__ == "__main__":

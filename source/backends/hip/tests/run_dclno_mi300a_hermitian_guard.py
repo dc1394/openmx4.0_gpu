@@ -12,6 +12,12 @@ from pathlib import Path
 import re
 import subprocess
 import tempfile
+try:
+    from native_resource_test_bridge import explicit_state_fixture_calls
+except ModuleNotFoundError:
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parents[4] / 'tests'))
+    from native_resource_test_bridge import explicit_state_fixture_calls
 
 
 def function(source, name):
@@ -35,6 +41,7 @@ PREFIX = r'''
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include "openmx_env.h"
 #include <string.h>
 typedef struct { double r, i; } dcomplex;
 static int checks;
@@ -52,6 +59,7 @@ static int NUM=4, NUMH=2, LNO_recalc_flag=1, HO_TC[1]={1};
 static int gpu_calls, cpu_calls, fault, fatal_calls;
 static dcomplex overlap[4], hamiltonian[16], saved_s[4], saved_h[16];
 static dcomplex *BLAS_OLP=overlap, *BLAS_H=hamiltonian;
+static struct {dcomplex *BLAS_OLP; int *HO_TC;} history_instance={overlap,HO_TC}, *history=&history_instance;
 static double ko[5];
 static jmp_buf fatal_jump;
 static int DCLNO_NonColGpuEigenThreshold(void) { return threshold; }
@@ -229,17 +237,21 @@ def main():
     parser.add_argument('--cc',default=os.environ.get('CC','cc'))
     args=parser.parse_args()
     source=args.source.read_text()
+    environment_source=args.source.parent/'openmx_env.c'
+    if not environment_source.is_file():
+        environment_source=Path(__file__).resolve().parents[4]/'source/openmx_env.c'
     typedef=re.search(r'typedef struct\s*\{\s*double max_abs, max_anti;\s*\}\s*DCLNO_NCGuardStats;',source).group(0)
     helper=typedef+'\n'+function(source,'DCLNO_NCGuardMatrixSlow')+'\n'+function(source,'DCLNO_NCGuardMatrix')+'\n'+function(source,'DCLNO_NCGuardProblem')
     start=source.index('    use_gpu_task_nc = (use_gpu_accel_nc')
     cpu_entry='    if (!use_gpu_task_nc || 0 < gpu_retry_info_nc){'
     end=source.index(cpu_entry,start)+len(cpu_entry)
     dispatch=source[start:end]+'\n      cpu_local_solve();\n    }\n}\n'
-    test=PREFIX+helper+DISPATCH_STUBS+dispatch+TESTS
+    state='typedef struct {int unused;} DCLNOState; static DCLNOState instance; static DCLNOState *state=&instance;\n'
+    test=PREFIX+state+helper+explicit_state_fixture_calls(DISPATCH_STUBS,source,'DCLNOState')+dispatch+explicit_state_fixture_calls(TESTS,source,'DCLNOState')
     with tempfile.TemporaryDirectory(prefix='dclno_mi_guard_') as tmp:
         c=Path(tmp)/'test.c'; exe=Path(tmp)/'test'; c.write_text(test)
         flags=['-O1','-g','-fsanitize=address,undefined','-fno-omit-frame-pointer'] if args.sanitize else ['-O2']
-        subprocess.run([args.cc,*flags,'-std=c11','-Wall','-Wextra',str(c),'-lm','-o',str(exe)],check=True)
+        subprocess.run([args.cc,*flags,'-std=c11','-Wall','-Wextra','-I'+str(environment_source.parent),str(c),str(environment_source),'-lm','-o',str(exe)],check=True)
         env=dict(os.environ); env.pop('OPENMX_GPU_VERBOSE',None)
         result=subprocess.run([str(exe)],env=env,text=True,capture_output=True,check=True)
         assert result.stderr.count('DCLNO_NC_GUARD ')==2, result.stderr

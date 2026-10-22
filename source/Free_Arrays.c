@@ -48,10 +48,7 @@ void Free_Arrays_with_context(int wherefrom, OpenMXCoreContext *core)
     extern int openmx_hipsolver_release_workspace(void);
 
 #endif
-    Divide_Conquer_Release_GPU_Caches();
-    Divide_Conquer_LNO_Release_GPU_Caches();
-    Krylov_Release_GPU_Caches();
-    /* Cluster and band solvers drain their calculation state here. */
+    /* All native solver states drain here, before host arrays and MPI end. */
     openmx_core_native_resources_clear(core);
 #if !OPENMX_GPU_HIP
     openmx_gpusolver_cache_release();

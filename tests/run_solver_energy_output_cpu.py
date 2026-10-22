@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Check real DC/DC-LNO invocation bridges with poisoned unused energy slots.
 
-The numerical kernel is modeled as a spinor solver producing channel zero.
+The numerical kernel is modeled as a spinor solver producing channel zero;
+its narrow state sentinel checks forwarding, while lifecycle tests use the POD.
 Production C entries, argument packets, callbacks and the C++ invocation owner
 run unchanged, including DOS mode and mixed-case SCF requests. No MPI/GPU runs.
 """
@@ -32,6 +33,7 @@ static int solving,invocations;
 KERNEL = r'''
 {
     CHECK(solver_owner != NULL && SCF_iter == 1);
+    CHECK(state == &expected_state && state->id == 4815);
     CHECK(Hks == NULL && ImNL == NULL && OLP0 == NULL && CDM == NULL && EDM == NULL);
     CHECK(electronic == NULL && local_basis == NULL);
     if (solving) {
@@ -89,9 +91,11 @@ def main():
                 hit = re.search(r'^static double DC_NonCol_owned\([^;]+?\)\s*\{', text, re.M)
                 assert hit is not None
                 signature = text[hit.start():hit.end()-1].rstrip()
-                call = 'DC_NonCol(mode,' + ('1,1,0,' if variant.endswith('LNO') else '1,')
+                typ = 'DCLNOState' if variant.endswith('LNO') else 'DCState'
+                state = 'typedef struct { int id; } '+typ+'; static '+typ+' expected_state={4815};\n'
+                call = 'DC_NonCol(&expected_state,mode,' + ('1,1,0,' if variant.endswith('LNO') else '1,')
                 call += 'NULL,NULL,NULL,NULL,NULL,Eele0,Eele1,NULL,NULL)'
-                fixture = PREFIX + invocation + packet + signature + ';\n' + callback + '\n' + entry + '\n' + signature + KERNEL + DRIVER.replace('CALL', call)
+                fixture = PREFIX + state + invocation + packet + signature + ';\n' + callback + '\n' + entry + '\n' + signature + KERNEL + DRIVER.replace('CALL', call)
                 source, exe = folder / 'check.c', folder / 'check'
                 source.write_text(fixture)
                 command = shlex.split(os.environ.get('CC', 'cc')) + ['-std=c11', '-O1', '-g',

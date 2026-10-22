@@ -19,7 +19,6 @@
 #include "openmx_env.h"
 #include "openmx_solver_workspace.h"
 #include "openmx_native_resources.h"
-OPENMX_NATIVE_RESOURCE_GROUP(Divide_Conquer_LNO,Divide_Conquer_LNO_Release_GPU_Caches)
 #include "lapack_prototypes.h"
 #include "set_cuda_default_device_from_local_rank.h"
 #include <math.h>
@@ -37,6 +36,64 @@ OPENMX_NATIVE_RESOURCE_GROUP(Divide_Conquer_LNO,Divide_Conquer_LNO_Release_GPU_C
 
 /* Optional SCF-level accounting. Keep all ranks in the same reporting
    collectives even when their launch environments differ. */
+/* Persistent metadata belongs to the explicit calculation owner. */
+typedef struct {
+    int                initialized;
+    int                max_num;
+    size_t             d_work_bytes;
+    size_t             h_work_bytes;
+    cudaStream_t       stream;
+    cublasHandle_t     cublas;
+    cusolverDnHandle_t gpusolver;
+    double *           d_S;
+    double *           d_H;
+    double *           d_tmp;
+    double *           d_W;
+    int32_t *          d_info;
+    void *             d_work;
+    void *             h_work;
+} DCLNO_GpuSolverCtx;
+
+typedef struct {
+    int                initialized;
+    int                max_num;
+    size_t             d_work_bytes;
+    size_t             h_work_bytes;
+    cudaStream_t       stream;
+    cublasHandle_t     cublas;
+    cusolverDnHandle_t gpusolver;
+    dcomplex *         d_S;
+    dcomplex *         d_H;
+    dcomplex *         d_tmp;
+    dcomplex *         d_scale;
+    dcomplex *         h_scale;
+    double *           d_W;
+    int32_t *          d_info;
+    void *             d_work;
+    void *             h_work;
+} DCLNO_GpuSolverZCtx;
+
+struct OpenMXDCLNOState {
+  OpenMXNativeResources *resources; /* borrowed from this calculation */
+  int initialized;
+  DCLNO_GpuSolverZCtx gpusolverz_ctx;
+  DCLNO_GpuSolverCtx gpusolver_ctx;
+  int is_gpu_owner;
+  int gpu_id;
+  int ngpu;
+  int gpu_group_size;
+  int gpu_group_rank;
+  int node_size;
+  int node_rank;
+  MPI_Comm gpu_group_comm;
+  MPI_Comm node_comm;
+  int gpu_proxy_initialized;
+  int DC_NonCol_owned_firsttime;
+  int DC_Col_owned_firsttime;
+  int GpuGroupMemoryFits_warned;
+};
+typedef OpenMXDCLNOState DCLNOState;
+
 static int DCLNO_ProfileEnabled(void)
 {
     return openmx_env_flag_at(OPENMX_ENV_DCLNO_PROFILE, 0);
@@ -125,11 +182,11 @@ static int DCLNO_NonColGpuEigenThreshold(void)
 /* forward declarations                                               */
 /* ------------------------------------------------------------------ */
 
-static double DC_Col(char * mode, int MD_iter, int SCF_iter, int SucceedReadingDMfile,
+static double DC_Col(DCLNOState *state, char * mode, int MD_iter, int SCF_iter, int SucceedReadingDMfile,
                      double ***** Hks, double **** OLP0, double ***** CDM, double ***** EDM,
                      double Eele0[2], double Eele1[2], const OpenMXLocalBasisViews *local_basis);
 
-static double DC_NonCol(char * mode, int MD_iter, int SCF_iter, int SucceedReadingDMfile,
+static double DC_NonCol(DCLNOState *state, char * mode, int MD_iter, int SCF_iter, int SucceedReadingDMfile,
                         double ***** Hks, double ***** ImNL, double **** OLP0,
                         double ***** CDM, double ***** EDM, double Eele0[2], double Eele1[2], const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
 
@@ -143,16 +200,16 @@ static void Save_DOS_NonCol(OpenMXSolverResidueView Residues, double **** OLP0, 
 /* node-local GPU proxy context                                       */
 /* ------------------------------------------------------------------ */
 
-static int      DCLNO_gpu_proxy_initialized = 0;
-static MPI_Comm DCLNO_node_comm      = MPI_COMM_NULL;
-static MPI_Comm DCLNO_gpu_group_comm = MPI_COMM_NULL;
-static int      DCLNO_node_rank      = 0;
-static int      DCLNO_node_size      = 1;
-static int      DCLNO_gpu_group_rank = 0;
-static int      DCLNO_gpu_group_size = 1;
-static int      DCLNO_ngpu           = 0;
-static int      DCLNO_gpu_id         = 0;
-static int      DCLNO_is_gpu_owner   = 0;
+
+
+
+
+
+
+
+
+
+
 
 /*
  * On nodes where many MPI ranks share one GPU, forwarding every DC-LNO
@@ -201,10 +258,10 @@ static size_t DCLNO_CheckedMulCount(size_t a, size_t b, const char *label)
     return a * b;
 }
 
-static void *DCLNO_MallocArray(size_t count, size_t elem_size, const char *label)
+static void *DCLNO_MallocArray(DCLNOState *state, size_t count, size_t elem_size, const char *label)
 {
     size_t bytes = DCLNO_CheckedArrayBytes(count, elem_size, label);
-    void * ptr = openmx_core_native_malloc(Divide_Conquer_LNO_resources,1,(bytes == 0) ? 1 : bytes,0);
+    void * ptr = openmx_core_native_malloc(state->resources,1,(bytes == 0) ? 1 : bytes,0);
 
     if (ptr == NULL) {
         char msg[512];
@@ -215,12 +272,12 @@ static void *DCLNO_MallocArray(size_t count, size_t elem_size, const char *label
     return ptr;
 }
 
-static void *DCLNO_CallocArray(size_t count, size_t elem_size, const char *label)
+static void *DCLNO_CallocArray(DCLNOState *state, size_t count, size_t elem_size, const char *label)
 {
     void * ptr;
 
     (void)DCLNO_CheckedArrayBytes(count, elem_size, label);
-    ptr = openmx_core_native_malloc(Divide_Conquer_LNO_resources,(count == 0) ? 1 : count,(elem_size == 0) ? 1 : elem_size,1);
+    ptr = openmx_core_native_malloc(state->resources,(count == 0) ? 1 : count,(elem_size == 0) ? 1 : elem_size,1);
 
     if (ptr == NULL) {
         char msg[512];
@@ -238,67 +295,67 @@ static void *DCLNO_CallocArray(size_t count, size_t elem_size, const char *label
    SCF step. The self pair [0][0][0] owns the block used by the caller. */
 
 
-static void DCLNO_GPUProxy_Init(void)
+static void DCLNO_GPUProxy_Init(DCLNOState *state)
 {
     MPI_Comm base_comm;
     int color;
     cudaError_t cuda_err;
 
-    if (DCLNO_gpu_proxy_initialized) return;
+    if (state->gpu_proxy_initialized) return;
 
     base_comm = DCLNO_GPUProxy_BaseComm();
 
     MPI_Comm_split_type(base_comm, MPI_COMM_TYPE_SHARED, 0,
-                        MPI_INFO_NULL, &DCLNO_node_comm);
-    MPI_Comm_rank(DCLNO_node_comm, &DCLNO_node_rank);
-    MPI_Comm_size(DCLNO_node_comm, &DCLNO_node_size);
+                        MPI_INFO_NULL, &state->node_comm);
+    MPI_Comm_rank(state->node_comm, &state->node_rank);
+    MPI_Comm_size(state->node_comm, &state->node_size);
 
-    cuda_err = cudaGetDeviceCount(&DCLNO_ngpu);
-    if (cuda_err != cudaSuccess || DCLNO_ngpu <= 0) {
+    cuda_err = cudaGetDeviceCount(&state->ngpu);
+    if (cuda_err != cudaSuccess || state->ngpu <= 0) {
         fprintf(stderr, "DC-LNO GPU proxy: failed to detect CUDA devices (err=%d, count=%d).\n",
-                (int)cuda_err, DCLNO_ngpu);
+                (int)cuda_err, state->ngpu);
         fflush(stderr);
         MPI_Abort(base_comm, 1);
     }
 
-    if (0 < SCF_Gpu_Num && SCF_Gpu_Num < DCLNO_ngpu) {
-        DCLNO_ngpu = SCF_Gpu_Num;
+    if (0 < SCF_Gpu_Num && SCF_Gpu_Num < state->ngpu) {
+        state->ngpu = SCF_Gpu_Num;
     }
 
-    DCLNO_gpu_id = DCLNO_node_rank % DCLNO_ngpu;
-    color = DCLNO_gpu_id;
+    state->gpu_id = state->node_rank % state->ngpu;
+    color = state->gpu_id;
 
-    MPI_Comm_split(DCLNO_node_comm, color, DCLNO_node_rank, &DCLNO_gpu_group_comm);
-    MPI_Comm_rank(DCLNO_gpu_group_comm, &DCLNO_gpu_group_rank);
-    MPI_Comm_size(DCLNO_gpu_group_comm, &DCLNO_gpu_group_size);
+    MPI_Comm_split(state->node_comm, color, state->node_rank, &state->gpu_group_comm);
+    MPI_Comm_rank(state->gpu_group_comm, &state->gpu_group_rank);
+    MPI_Comm_size(state->gpu_group_comm, &state->gpu_group_size);
 
-    DCLNO_is_gpu_owner = (DCLNO_gpu_group_rank == 0);
+    state->is_gpu_owner = (state->gpu_group_rank == 0);
 
-    wait_cudafunc(cudaSetDevice(DCLNO_gpu_id));
+    wait_cudafunc(cudaSetDevice(state->gpu_id));
 
-    DCLNO_gpu_proxy_initialized = 1;
+    state->gpu_proxy_initialized = 1;
 }
 
 /* ------------------------------------------------------------------ */
 /* utilities                                                          */
 /* ------------------------------------------------------------------ */
 
-static double **DCLNO_AllocRealMatrix1B(int n)
+static double **DCLNO_AllocRealMatrix1B(DCLNOState *state, int n)
 {
     int i;
-    double **a = (double**)DCLNO_MallocArray((size_t)(n + 1), sizeof(double*), "real matrix row pointers");
+    double **a = (double**)DCLNO_MallocArray(state, (size_t)(n + 1), sizeof(double*), "real matrix row pointers");
     for (i=0; i<=n; i++) {
-        a[i] = (double*)DCLNO_MallocArray((size_t)(n + 1), sizeof(double), "real matrix row");
+        a[i] = (double*)DCLNO_MallocArray(state, (size_t)(n + 1), sizeof(double), "real matrix row");
     }
     return a;
 }
 
-static void DCLNO_FreeRealMatrix1B(double **a, int n)
+static void DCLNO_FreeRealMatrix1B(DCLNOState *state, double **a, int n)
 {
     int i;
     if (a==NULL) return;
-    for (i=0; i<=n; i++) openmx_core_native_free(Divide_Conquer_LNO_resources,a[i]);
-    openmx_core_native_free(Divide_Conquer_LNO_resources,a);
+    for (i=0; i<=n; i++) openmx_core_native_free(state->resources,a[i]);
+    openmx_core_native_free(state->resources,a);
 }
 
 static void DCLNO_PackRealC(double **C, int num, double *buf)
@@ -374,123 +431,108 @@ static void DCLNO_Eigen_lapack_d_reuse(const double *a,
     }
 }
 
-typedef struct {
-    int                initialized;
-    int                max_num;
-    size_t             d_work_bytes;
-    size_t             h_work_bytes;
-    cudaStream_t       stream;
-    cublasHandle_t     cublas;
-    cusolverDnHandle_t gpusolver;
-    double *           d_S;
-    double *           d_H;
-    double *           d_tmp;
-    double *           d_W;
-    int32_t *          d_info;
-    void *             d_work;
-    void *             h_work;
-} DCLNO_GpuSolverCtx;
 
-static DCLNO_GpuSolverCtx DCLNO_gpusolver_ctx = {0};
 
-static void DCLNO_GpuSolver_Destroy(void)
+
+
+static void DCLNO_GpuSolver_Destroy(DCLNOState *state)
 {
-    DCLNO_GpuSolverCtx *ctx = &DCLNO_gpusolver_ctx;
+    DCLNO_GpuSolverCtx *ctx = &state->gpusolver_ctx;
 
     if (ctx->stream != NULL) wait_cudafunc(cudaStreamSynchronize(ctx->stream));
-    if (ctx->d_S    != NULL) wait_cudafunc(OpenMX_Resource_GpuFree(Divide_Conquer_LNO_resources,ctx->d_S));
-    if (ctx->d_H    != NULL) wait_cudafunc(OpenMX_Resource_GpuFree(Divide_Conquer_LNO_resources,ctx->d_H));
-    if (ctx->d_tmp  != NULL) wait_cudafunc(OpenMX_Resource_GpuFree(Divide_Conquer_LNO_resources,ctx->d_tmp));
-    if (ctx->d_W    != NULL) wait_cudafunc(OpenMX_Resource_GpuFree(Divide_Conquer_LNO_resources,ctx->d_W));
-    if (ctx->d_info != NULL) wait_cudafunc(OpenMX_Resource_GpuFree(Divide_Conquer_LNO_resources,ctx->d_info));
-    if (ctx->d_work != NULL) wait_cudafunc(OpenMX_Resource_GpuFree(Divide_Conquer_LNO_resources,ctx->d_work));
-    if (ctx->h_work != NULL) openmx_core_native_free(Divide_Conquer_LNO_resources,ctx->h_work);
-    if (ctx->gpusolver != NULL) OpenMXSolverWait(OpenMX_Resource_SolverDestroy(Divide_Conquer_LNO_resources,ctx->gpusolver));
-    if (ctx->cublas   != NULL) OpenMXBlasWait(OpenMX_Resource_BlasDestroy(Divide_Conquer_LNO_resources,ctx->cublas));
-    if (ctx->stream   != NULL) wait_cudafunc(OpenMX_Resource_StreamDestroy(Divide_Conquer_LNO_resources,ctx->stream));
+    if (ctx->d_S    != NULL) wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_S));
+    if (ctx->d_H    != NULL) wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_H));
+    if (ctx->d_tmp  != NULL) wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_tmp));
+    if (ctx->d_W    != NULL) wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_W));
+    if (ctx->d_info != NULL) wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_info));
+    if (ctx->d_work != NULL) wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_work));
+    if (ctx->h_work != NULL) openmx_core_native_free(state->resources,ctx->h_work);
+    if (ctx->gpusolver != NULL) OpenMXSolverWait(OpenMX_Resource_SolverDestroy(state->resources,ctx->gpusolver));
+    if (ctx->cublas   != NULL) OpenMXBlasWait(OpenMX_Resource_BlasDestroy(state->resources,ctx->cublas));
+    if (ctx->stream   != NULL) wait_cudafunc(OpenMX_Resource_StreamDestroy(state->resources,ctx->stream));
 
     memset(ctx, 0, sizeof(*ctx));
 }
 
-static void DCLNO_GpuSolverZ_Destroy(void);
+static void DCLNO_GpuSolverZ_Destroy(DCLNOState *state);
 
-static void DCLNO_GPUProxy_Finalize(void)
+static void DCLNO_GPUProxy_Finalize(DCLNOState *state)
 {
-    if (!DCLNO_gpu_proxy_initialized) return;
+    if (!state->gpu_proxy_initialized) return;
 
-    DCLNO_GpuSolver_Destroy();
-    DCLNO_GpuSolverZ_Destroy();
+    DCLNO_GpuSolver_Destroy(state);
+    DCLNO_GpuSolverZ_Destroy(state);
 
-    if (DCLNO_gpu_group_comm != MPI_COMM_NULL) {
-        MPI_Comm_free(&DCLNO_gpu_group_comm);
+    if (state->gpu_group_comm != MPI_COMM_NULL) {
+        MPI_Comm_free(&state->gpu_group_comm);
     }
-    if (DCLNO_node_comm != MPI_COMM_NULL) {
-        MPI_Comm_free(&DCLNO_node_comm);
+    if (state->node_comm != MPI_COMM_NULL) {
+        MPI_Comm_free(&state->node_comm);
     }
 
-    DCLNO_gpu_proxy_initialized = 0;
-    DCLNO_node_comm             = MPI_COMM_NULL;
-    DCLNO_gpu_group_comm        = MPI_COMM_NULL;
-    DCLNO_node_rank             = 0;
-    DCLNO_node_size             = 1;
-    DCLNO_gpu_group_rank        = 0;
-    DCLNO_gpu_group_size        = 1;
-    DCLNO_ngpu                  = 0;
-    DCLNO_gpu_id                = 0;
-    DCLNO_is_gpu_owner          = 0;
+    state->gpu_proxy_initialized = 0;
+    state->node_comm             = MPI_COMM_NULL;
+    state->gpu_group_comm        = MPI_COMM_NULL;
+    state->node_rank             = 0;
+    state->node_size             = 1;
+    state->gpu_group_rank        = 0;
+    state->gpu_group_size        = 1;
+    state->ngpu                  = 0;
+    state->gpu_id                = 0;
+    state->is_gpu_owner          = 0;
 }
 
-static void DCLNO_GpuSolver_Init(void)
+static void DCLNO_GpuSolver_Init(DCLNOState *state)
 {
-    DCLNO_GpuSolverCtx *ctx = &DCLNO_gpusolver_ctx;
+    DCLNO_GpuSolverCtx *ctx = &state->gpusolver_ctx;
 
     if (ctx->initialized) return;
 
-    wait_cudafunc(OpenMX_Resource_StreamCreate(Divide_Conquer_LNO_resources,&ctx->stream,cudaStreamNonBlocking));
-    OpenMXBlasWait(OpenMX_Resource_BlasCreate(Divide_Conquer_LNO_resources,&ctx->cublas));
-    OpenMXSolverWait(OpenMX_Resource_SolverCreate(Divide_Conquer_LNO_resources,&ctx->gpusolver));
+    wait_cudafunc(OpenMX_Resource_StreamCreate(state->resources,&ctx->stream,cudaStreamNonBlocking));
+    OpenMXBlasWait(OpenMX_Resource_BlasCreate(state->resources,&ctx->cublas));
+    OpenMXSolverWait(OpenMX_Resource_SolverCreate(state->resources,&ctx->gpusolver));
     OpenMXBlasWait(cublasSetStream(ctx->cublas, ctx->stream));
     OpenMXSolverWait(cusolverDnSetStream(ctx->gpusolver, ctx->stream));
 
     ctx->initialized = 1;
 }
 
-static void DCLNO_GpuSolver_EnsureMatrixCapacity(int num)
+static void DCLNO_GpuSolver_EnsureMatrixCapacity(DCLNOState *state, int num)
 {
-    DCLNO_GpuSolverCtx *ctx = &DCLNO_gpusolver_ctx;
+    DCLNO_GpuSolverCtx *ctx = &state->gpusolver_ctx;
     size_t             matrix_bytes;
 
     if (num <= 0) {
         DCLNO_AbortWithMessage("Invalid matrix size in DCLNO_GpuSolver_EnsureMatrixCapacity.");
     }
 
-    DCLNO_GpuSolver_Init();
+    DCLNO_GpuSolver_Init(state);
 
     if (num <= ctx->max_num) return;
 
-    if (ctx->d_S    != NULL) wait_cudafunc(OpenMX_Resource_GpuFree(Divide_Conquer_LNO_resources,ctx->d_S));
-    if (ctx->d_H    != NULL) wait_cudafunc(OpenMX_Resource_GpuFree(Divide_Conquer_LNO_resources,ctx->d_H));
-    if (ctx->d_tmp  != NULL) wait_cudafunc(OpenMX_Resource_GpuFree(Divide_Conquer_LNO_resources,ctx->d_tmp));
-    if (ctx->d_W    != NULL) wait_cudafunc(OpenMX_Resource_GpuFree(Divide_Conquer_LNO_resources,ctx->d_W));
-    if (ctx->d_info != NULL) wait_cudafunc(OpenMX_Resource_GpuFree(Divide_Conquer_LNO_resources,ctx->d_info));
+    if (ctx->d_S    != NULL) wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_S));
+    if (ctx->d_H    != NULL) wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_H));
+    if (ctx->d_tmp  != NULL) wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_tmp));
+    if (ctx->d_W    != NULL) wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_W));
+    if (ctx->d_info != NULL) wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_info));
 
     matrix_bytes = DCLNO_CheckedArrayBytes(DCLNO_CheckedMulCount((size_t)num, (size_t)num,
                                                                  "GPUSOLVER dense matrix dimensions"),
                                            sizeof(double),
                                            "GPUSOLVER dense matrix buffer");
 
-    wait_cudafunc(OpenMX_Resource_GpuMalloc(Divide_Conquer_LNO_resources,(void**)&ctx->d_S,matrix_bytes));
-    wait_cudafunc(OpenMX_Resource_GpuMalloc(Divide_Conquer_LNO_resources,(void**)&ctx->d_H,matrix_bytes));
-    wait_cudafunc(OpenMX_Resource_GpuMalloc(Divide_Conquer_LNO_resources,(void**)&ctx->d_tmp,matrix_bytes));
-    wait_cudafunc(OpenMX_Resource_GpuMalloc(Divide_Conquer_LNO_resources,(void**)&ctx->d_W,DCLNO_CheckedArrayBytes((size_t)num, sizeof(double), "GPUSOLVER eigenvalue buffer")));
-    wait_cudafunc(OpenMX_Resource_GpuMalloc(Divide_Conquer_LNO_resources,(void**)&ctx->d_info,sizeof(int32_t)));
+    wait_cudafunc(OpenMX_Resource_GpuMalloc(state->resources,(void**)&ctx->d_S,matrix_bytes));
+    wait_cudafunc(OpenMX_Resource_GpuMalloc(state->resources,(void**)&ctx->d_H,matrix_bytes));
+    wait_cudafunc(OpenMX_Resource_GpuMalloc(state->resources,(void**)&ctx->d_tmp,matrix_bytes));
+    wait_cudafunc(OpenMX_Resource_GpuMalloc(state->resources,(void**)&ctx->d_W,DCLNO_CheckedArrayBytes((size_t)num, sizeof(double), "GPUSOLVER eigenvalue buffer")));
+    wait_cudafunc(OpenMX_Resource_GpuMalloc(state->resources,(void**)&ctx->d_info,sizeof(int32_t)));
 
     ctx->max_num = num;
 }
 
-static void DCLNO_GpuSolver_EnsureWorkspace(int m, int maxn)
+static void DCLNO_GpuSolver_EnsureWorkspace(DCLNOState *state, int m, int maxn)
 {
-    DCLNO_GpuSolverCtx *ctx = &DCLNO_gpusolver_ctx;
+    DCLNO_GpuSolverCtx *ctx = &state->gpusolver_ctx;
     cusolverEigMode_t  jobz = CUSOLVER_EIG_MODE_VECTOR;
     cublasFillMode_t   uplo = CUBLAS_FILL_MODE_LOWER;
     cusolverEigRange_t range;
@@ -505,7 +547,7 @@ static void DCLNO_GpuSolver_EnsureWorkspace(int m, int maxn)
         DCLNO_AbortWithMessage("Invalid eigensolver dimensions in DCLNO_GpuSolver_EnsureWorkspace.");
     }
 
-    DCLNO_GpuSolver_EnsureMatrixCapacity(m);
+    DCLNO_GpuSolver_EnsureMatrixCapacity(state, m);
 
     range = (m == maxn) ? CUSOLVER_EIG_RANGE_ALL : CUSOLVER_EIG_RANGE_I;
 
@@ -522,31 +564,31 @@ static void DCLNO_GpuSolver_EnsureWorkspace(int m, int maxn)
     }
 
     if (d_bytes > ctx->d_work_bytes) {
-        if (ctx->d_work != NULL) wait_cudafunc(OpenMX_Resource_GpuFree(Divide_Conquer_LNO_resources,ctx->d_work));
+        if (ctx->d_work != NULL) wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_work));
         ctx->d_work = NULL;
         if (d_bytes > 0) {
-            wait_cudafunc(OpenMX_Resource_GpuMalloc(Divide_Conquer_LNO_resources,(void**)&ctx->d_work,d_bytes));
+            wait_cudafunc(OpenMX_Resource_GpuMalloc(state->resources,(void**)&ctx->d_work,d_bytes));
         }
         ctx->d_work_bytes = d_bytes;
     }
 
     if (h_bytes == 0) {
-        if (ctx->h_work != NULL) openmx_core_native_free(Divide_Conquer_LNO_resources,ctx->h_work);
+        if (ctx->h_work != NULL) openmx_core_native_free(state->resources,ctx->h_work);
         ctx->h_work = NULL;
         ctx->h_work_bytes = 0;
     }
     else if (h_bytes > ctx->h_work_bytes) {
-        if (ctx->h_work != NULL) openmx_core_native_free(Divide_Conquer_LNO_resources,ctx->h_work);
-        ctx->h_work = DCLNO_MallocArray(h_bytes, 1, "GPUSOLVER host workspace");
+        if (ctx->h_work != NULL) openmx_core_native_free(state->resources,ctx->h_work);
+        ctx->h_work = DCLNO_MallocArray(state, h_bytes, 1, "GPUSOLVER host workspace");
         ctx->h_work_bytes = h_bytes;
     }
 }
 
 /* Return positive INFO only for numerical nonconvergence. API failures,
    invalid arguments and incomplete successful results are fatal. */
-static int DCLNO_GpuSolver_Eigen(double *d_A, int m, int maxn, double *W)
+static int DCLNO_GpuSolver_Eigen(DCLNOState *state, double *d_A, int m, int maxn, double *W)
 {
-    DCLNO_GpuSolverCtx *ctx = &DCLNO_gpusolver_ctx;
+    DCLNO_GpuSolverCtx *ctx = &state->gpusolver_ctx;
     cusolverEigMode_t  jobz = CUSOLVER_EIG_MODE_VECTOR;
     cublasFillMode_t   uplo = CUBLAS_FILL_MODE_LOWER;
     cusolverEigRange_t range;
@@ -556,7 +598,7 @@ static int DCLNO_GpuSolver_Eigen(double *d_A, int m, int maxn, double *W)
     int32_t            info = 0;
     cusolverStatus_t   status;
 
-    DCLNO_GpuSolver_EnsureWorkspace(m, maxn);
+    DCLNO_GpuSolver_EnsureWorkspace(state, m, maxn);
 
     range = (m == maxn) ? CUSOLVER_EIG_RANGE_ALL : CUSOLVER_EIG_RANGE_I;
 
@@ -600,9 +642,9 @@ static int DCLNO_GpuSolver_Eigen(double *d_A, int m, int maxn, double *W)
 /* On positive return Smat/Hmat still contain the original host matrices;
    the caller must retry the complete generalized solve on its CPU scratch.
    ko is scratch until success and may contain unconverged device values. */
-static int DCLNO_Solve_Col_GpuSolver(int NUM, int NUM2, double *Smat, double *Hmat, double *ko)
+static int DCLNO_Solve_Col_GpuSolver(DCLNOState *state, int NUM, int NUM2, double *Smat, double *Hmat, double *ko)
 {
-    DCLNO_GpuSolverCtx *ctx = &DCLNO_gpusolver_ctx;
+    DCLNO_GpuSolverCtx *ctx = &state->gpusolver_ctx;
     double             alpha = 1.0;
     double             beta = 0.0;
     size_t             full_bytes;
@@ -622,12 +664,12 @@ static int DCLNO_Solve_Col_GpuSolver(int NUM, int NUM2, double *Smat, double *Hm
                                             sizeof(double),
                                             "GPUSOLVER partial eigenvector copy");
 
-    DCLNO_GpuSolver_EnsureMatrixCapacity(NUM);
+    DCLNO_GpuSolver_EnsureMatrixCapacity(state, NUM);
 
     wait_cudafunc(cudaMemcpyAsync(ctx->d_S, Smat, full_bytes, cudaMemcpyHostToDevice, ctx->stream));
     wait_cudafunc(cudaMemcpyAsync(ctx->d_H, Hmat, full_bytes, cudaMemcpyHostToDevice, ctx->stream));
 
-    info = DCLNO_GpuSolver_Eigen(ctx->d_S, NUM, NUM, ko + 1);
+    info = DCLNO_GpuSolver_Eigen(state, ctx->d_S, NUM, NUM, ko + 1);
     if (info > 0) {
         if (2 <= level_stdout) {
             fprintf(stderr, "<DC-LNO> GPU overlap eigensolve did not converge: "
@@ -654,7 +696,7 @@ static int DCLNO_Solve_Col_GpuSolver(int NUM, int NUM2, double *Smat, double *Hm
     OpenMXBlasWait(openmx_gemmul8Dgemm(ctx->cublas, CUBLAS_OP_C, CUBLAS_OP_N, NUM, NUM, NUM, &alpha, ctx->d_tmp, NUM,
                                      ctx->d_S, NUM, &beta, ctx->d_H, NUM));
 
-    info = DCLNO_GpuSolver_Eigen(ctx->d_H, NUM, NUM2, ko + 1);
+    info = DCLNO_GpuSolver_Eigen(state, ctx->d_H, NUM, NUM2, ko + 1);
     if (info > 0) {
         if (2 <= level_stdout) {
             fprintf(stderr, "<DC-LNO> GPU Hamiltonian eigensolve did not converge: "
@@ -676,7 +718,7 @@ static int DCLNO_Solve_Col_GpuSolver(int NUM, int NUM2, double *Smat, double *Hm
 /* local dense solve kernel (collinear)                               */
 /* ------------------------------------------------------------------ */
 
-static void DCLNO_Solve_Col_Local(int NUM,
+static void DCLNO_Solve_Col_Local(DCLNOState *state, int NUM,
                                   int NUM2,
                                   double *Smat,
                                   double *Hmat,
@@ -693,7 +735,7 @@ static void DCLNO_Solve_Col_Local(int NUM,
     int BM, BN, BK;
 
     if (Tmp == NULL) {
-        Tmp = (double*)DCLNO_MallocArray(DCLNO_CheckedMulCount((size_t)NUM, (size_t)NUM,
+        Tmp = (double*)DCLNO_MallocArray(state, DCLNO_CheckedMulCount((size_t)NUM, (size_t)NUM,
                                                                "local DGEMM scratch dimensions"),
                                          sizeof(double), "local DGEMM scratch");
         owns_tmp = 1;
@@ -740,116 +782,99 @@ static void DCLNO_Solve_Col_Local(int NUM,
         memcpy(C[j1] + 1, Tmp + (size_t)(j1-1)*NUM, sizeof(double)*(size_t)NUM);
     }
 
-    if (owns_tmp) openmx_core_native_free(Divide_Conquer_LNO_resources,Tmp);
+    if (owns_tmp) openmx_core_native_free(state->resources,Tmp);
 }
 
 /* ------------------------------------------------------------------ */
 /* GPU dense solve kernel (noncollinear)                              */
 /* ------------------------------------------------------------------ */
 
-typedef struct {
-    int                initialized;
-    int                max_num;
-    size_t             d_work_bytes;
-    size_t             h_work_bytes;
-    cudaStream_t       stream;
-    cublasHandle_t     cublas;
-    cusolverDnHandle_t gpusolver;
-    dcomplex *         d_S;
-    dcomplex *         d_H;
-    dcomplex *         d_tmp;
-    dcomplex *         d_scale;
-    dcomplex *         h_scale;
-    double *           d_W;
-    int32_t *          d_info;
-    void *             d_work;
-    void *             h_work;
-} DCLNO_GpuSolverZCtx;
 
-static DCLNO_GpuSolverZCtx DCLNO_gpusolverz_ctx = {0};
 
-static void DCLNO_GpuSolverZ_Destroy(void)
+
+
+static void DCLNO_GpuSolverZ_Destroy(DCLNOState *state)
 {
-    DCLNO_GpuSolverZCtx *ctx = &DCLNO_gpusolverz_ctx;
+    DCLNO_GpuSolverZCtx *ctx = &state->gpusolverz_ctx;
 
     if (!ctx->initialized) return;
 
     if (ctx->stream != NULL) wait_cudafunc(cudaStreamSynchronize(ctx->stream));
 
-    if (ctx->d_S != NULL)     wait_cudafunc(OpenMX_Resource_GpuFree(Divide_Conquer_LNO_resources,ctx->d_S));
-    if (ctx->d_H != NULL)     wait_cudafunc(OpenMX_Resource_GpuFree(Divide_Conquer_LNO_resources,ctx->d_H));
-    if (ctx->d_tmp != NULL)   wait_cudafunc(OpenMX_Resource_GpuFree(Divide_Conquer_LNO_resources,ctx->d_tmp));
-    if (ctx->d_scale != NULL) wait_cudafunc(OpenMX_Resource_GpuFree(Divide_Conquer_LNO_resources,ctx->d_scale));
-    if (ctx->d_W != NULL)     wait_cudafunc(OpenMX_Resource_GpuFree(Divide_Conquer_LNO_resources,ctx->d_W));
-    if (ctx->d_info != NULL)  wait_cudafunc(OpenMX_Resource_GpuFree(Divide_Conquer_LNO_resources,ctx->d_info));
-    if (ctx->d_work != NULL)  wait_cudafunc(OpenMX_Resource_GpuFree(Divide_Conquer_LNO_resources,ctx->d_work));
-    openmx_core_native_free(Divide_Conquer_LNO_resources,ctx->h_work);
-    openmx_core_native_free(Divide_Conquer_LNO_resources,ctx->h_scale);
-    if (ctx->gpusolver != NULL) OpenMXSolverWait(OpenMX_Resource_SolverDestroy(Divide_Conquer_LNO_resources,ctx->gpusolver));
-    if (ctx->cublas != NULL)    OpenMXBlasWait(OpenMX_Resource_BlasDestroy(Divide_Conquer_LNO_resources,ctx->cublas));
-    if (ctx->stream != NULL)    wait_cudafunc(OpenMX_Resource_StreamDestroy(Divide_Conquer_LNO_resources,ctx->stream));
+    if (ctx->d_S != NULL)     wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_S));
+    if (ctx->d_H != NULL)     wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_H));
+    if (ctx->d_tmp != NULL)   wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_tmp));
+    if (ctx->d_scale != NULL) wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_scale));
+    if (ctx->d_W != NULL)     wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_W));
+    if (ctx->d_info != NULL)  wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_info));
+    if (ctx->d_work != NULL)  wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_work));
+    openmx_core_native_free(state->resources,ctx->h_work);
+    openmx_core_native_free(state->resources,ctx->h_scale);
+    if (ctx->gpusolver != NULL) OpenMXSolverWait(OpenMX_Resource_SolverDestroy(state->resources,ctx->gpusolver));
+    if (ctx->cublas != NULL)    OpenMXBlasWait(OpenMX_Resource_BlasDestroy(state->resources,ctx->cublas));
+    if (ctx->stream != NULL)    wait_cudafunc(OpenMX_Resource_StreamDestroy(state->resources,ctx->stream));
 
     memset(ctx, 0, sizeof(*ctx));
 }
 
-static void DCLNO_GpuSolverZ_Init(void)
+static void DCLNO_GpuSolverZ_Init(DCLNOState *state)
 {
-    DCLNO_GpuSolverZCtx *ctx = &DCLNO_gpusolverz_ctx;
+    DCLNO_GpuSolverZCtx *ctx = &state->gpusolverz_ctx;
 
     if (ctx->initialized) return;
 
-    wait_cudafunc(OpenMX_Resource_StreamCreate(Divide_Conquer_LNO_resources,&ctx->stream,cudaStreamNonBlocking));
-    OpenMXBlasWait(OpenMX_Resource_BlasCreate(Divide_Conquer_LNO_resources,&ctx->cublas));
-    OpenMXSolverWait(OpenMX_Resource_SolverCreate(Divide_Conquer_LNO_resources,&ctx->gpusolver));
+    wait_cudafunc(OpenMX_Resource_StreamCreate(state->resources,&ctx->stream,cudaStreamNonBlocking));
+    OpenMXBlasWait(OpenMX_Resource_BlasCreate(state->resources,&ctx->cublas));
+    OpenMXSolverWait(OpenMX_Resource_SolverCreate(state->resources,&ctx->gpusolver));
     OpenMXBlasWait(cublasSetStream(ctx->cublas, ctx->stream));
     OpenMXSolverWait(cusolverDnSetStream(ctx->gpusolver, ctx->stream));
 
     ctx->initialized = 1;
 }
 
-static void DCLNO_GpuSolverZ_EnsureMatrixCapacity(int num)
+static void DCLNO_GpuSolverZ_EnsureMatrixCapacity(DCLNOState *state, int num)
 {
-    DCLNO_GpuSolverZCtx *ctx = &DCLNO_gpusolverz_ctx;
+    DCLNO_GpuSolverZCtx *ctx = &state->gpusolverz_ctx;
     size_t matrix_bytes;
 
     if (num <= 0) {
         DCLNO_AbortWithMessage("Invalid matrix size in DCLNO_GpuSolverZ_EnsureMatrixCapacity.");
     }
 
-    DCLNO_GpuSolverZ_Init();
+    DCLNO_GpuSolverZ_Init(state);
 
     if (num <= ctx->max_num) return;
 
-    if (ctx->d_S != NULL)     wait_cudafunc(OpenMX_Resource_GpuFree(Divide_Conquer_LNO_resources,ctx->d_S));
-    if (ctx->d_H != NULL)     wait_cudafunc(OpenMX_Resource_GpuFree(Divide_Conquer_LNO_resources,ctx->d_H));
-    if (ctx->d_tmp != NULL)   wait_cudafunc(OpenMX_Resource_GpuFree(Divide_Conquer_LNO_resources,ctx->d_tmp));
-    if (ctx->d_scale != NULL) wait_cudafunc(OpenMX_Resource_GpuFree(Divide_Conquer_LNO_resources,ctx->d_scale));
-    if (ctx->d_W != NULL)     wait_cudafunc(OpenMX_Resource_GpuFree(Divide_Conquer_LNO_resources,ctx->d_W));
-    if (ctx->d_info != NULL)  wait_cudafunc(OpenMX_Resource_GpuFree(Divide_Conquer_LNO_resources,ctx->d_info));
-    openmx_core_native_free(Divide_Conquer_LNO_resources,ctx->h_scale);
+    if (ctx->d_S != NULL)     wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_S));
+    if (ctx->d_H != NULL)     wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_H));
+    if (ctx->d_tmp != NULL)   wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_tmp));
+    if (ctx->d_scale != NULL) wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_scale));
+    if (ctx->d_W != NULL)     wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_W));
+    if (ctx->d_info != NULL)  wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_info));
+    openmx_core_native_free(state->resources,ctx->h_scale);
 
     matrix_bytes = DCLNO_CheckedArrayBytes(DCLNO_CheckedMulCount((size_t)num, (size_t)num,
                                                                  "GPUSOLVER NC dense matrix dimensions"),
                                            sizeof(dcomplex),
                                            "GPUSOLVER NC dense matrix buffer");
 
-    wait_cudafunc(OpenMX_Resource_GpuMalloc(Divide_Conquer_LNO_resources,(void**)&ctx->d_S,matrix_bytes));
-    wait_cudafunc(OpenMX_Resource_GpuMalloc(Divide_Conquer_LNO_resources,(void**)&ctx->d_H,matrix_bytes));
-    wait_cudafunc(OpenMX_Resource_GpuMalloc(Divide_Conquer_LNO_resources,(void**)&ctx->d_tmp,matrix_bytes));
-    wait_cudafunc(OpenMX_Resource_GpuMalloc(Divide_Conquer_LNO_resources,(void**)&ctx->d_scale,DCLNO_CheckedArrayBytes((size_t)num, sizeof(dcomplex),
+    wait_cudafunc(OpenMX_Resource_GpuMalloc(state->resources,(void**)&ctx->d_S,matrix_bytes));
+    wait_cudafunc(OpenMX_Resource_GpuMalloc(state->resources,(void**)&ctx->d_H,matrix_bytes));
+    wait_cudafunc(OpenMX_Resource_GpuMalloc(state->resources,(void**)&ctx->d_tmp,matrix_bytes));
+    wait_cudafunc(OpenMX_Resource_GpuMalloc(state->resources,(void**)&ctx->d_scale,DCLNO_CheckedArrayBytes((size_t)num, sizeof(dcomplex),
                                                      "GPUSOLVER NC scale buffer")));
-    wait_cudafunc(OpenMX_Resource_GpuMalloc(Divide_Conquer_LNO_resources,(void**)&ctx->d_W,DCLNO_CheckedArrayBytes((size_t)num, sizeof(double),
+    wait_cudafunc(OpenMX_Resource_GpuMalloc(state->resources,(void**)&ctx->d_W,DCLNO_CheckedArrayBytes((size_t)num, sizeof(double),
                                                      "GPUSOLVER NC eigenvalue buffer")));
-    wait_cudafunc(OpenMX_Resource_GpuMalloc(Divide_Conquer_LNO_resources,(void**)&ctx->d_info,sizeof(int32_t)));
-    ctx->h_scale = (dcomplex*)DCLNO_MallocArray((size_t)num, sizeof(dcomplex),
+    wait_cudafunc(OpenMX_Resource_GpuMalloc(state->resources,(void**)&ctx->d_info,sizeof(int32_t)));
+    ctx->h_scale = (dcomplex*)DCLNO_MallocArray(state, (size_t)num, sizeof(dcomplex),
                                                 "GPUSOLVER NC host scale buffer");
 
     ctx->max_num = num;
 }
 
-static void DCLNO_GpuSolverZ_EnsureWorkspace(int m, int maxn)
+static void DCLNO_GpuSolverZ_EnsureWorkspace(DCLNOState *state, int m, int maxn)
 {
-    DCLNO_GpuSolverZCtx *ctx = &DCLNO_gpusolverz_ctx;
+    DCLNO_GpuSolverZCtx *ctx = &state->gpusolverz_ctx;
     cusolverEigMode_t  jobz = CUSOLVER_EIG_MODE_VECTOR;
     cublasFillMode_t   uplo = CUBLAS_FILL_MODE_LOWER;
     cusolverEigRange_t range;
@@ -868,29 +893,29 @@ static void DCLNO_GpuSolverZ_EnsureWorkspace(int m, int maxn)
                                                CUDA_R_64F, ctx->d_W, CUDA_C_64F, &d_bytes, &h_bytes));
 
     if (ctx->d_work_bytes < d_bytes) {
-        if (ctx->d_work != NULL) wait_cudafunc(OpenMX_Resource_GpuFree(Divide_Conquer_LNO_resources,ctx->d_work));
+        if (ctx->d_work != NULL) wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_work));
         ctx->d_work = NULL;
         if (0 < d_bytes) {
-            wait_cudafunc(OpenMX_Resource_GpuMalloc(Divide_Conquer_LNO_resources,(void**)&ctx->d_work,d_bytes));
+            wait_cudafunc(OpenMX_Resource_GpuMalloc(state->resources,(void**)&ctx->d_work,d_bytes));
         }
         ctx->d_work_bytes = d_bytes;
     }
 
     if (h_bytes == 0) {
-        openmx_core_native_free(Divide_Conquer_LNO_resources,ctx->h_work);
+        openmx_core_native_free(state->resources,ctx->h_work);
         ctx->h_work = NULL;
         ctx->h_work_bytes = 0;
     }
     else if (ctx->h_work_bytes < h_bytes) {
-        openmx_core_native_free(Divide_Conquer_LNO_resources,ctx->h_work);
-        ctx->h_work = DCLNO_MallocArray(h_bytes, 1, "GPUSOLVER NC host workspace");
+        openmx_core_native_free(state->resources,ctx->h_work);
+        ctx->h_work = DCLNO_MallocArray(state, h_bytes, 1, "GPUSOLVER NC host workspace");
         ctx->h_work_bytes = h_bytes;
     }
 }
 
-static void DCLNO_GpuSolverZ_Eigen(dcomplex *d_A, int m, int maxn, double *W)
+static void DCLNO_GpuSolverZ_Eigen(DCLNOState *state, dcomplex *d_A, int m, int maxn, double *W)
 {
-    DCLNO_GpuSolverZCtx *ctx = &DCLNO_gpusolverz_ctx;
+    DCLNO_GpuSolverZCtx *ctx = &state->gpusolverz_ctx;
     cusolverEigMode_t  jobz = CUSOLVER_EIG_MODE_VECTOR;
     cublasFillMode_t   uplo = CUBLAS_FILL_MODE_LOWER;
     cusolverEigRange_t range;
@@ -898,7 +923,7 @@ static void DCLNO_GpuSolverZ_Eigen(dcomplex *d_A, int m, int maxn, double *W)
     int64_t h_meig = 0;
     int32_t info = 0;
 
-    DCLNO_GpuSolverZ_EnsureWorkspace(m, maxn);
+    DCLNO_GpuSolverZ_EnsureWorkspace(state, m, maxn);
 
     range = (m == maxn) ? CUSOLVER_EIG_RANGE_ALL : CUSOLVER_EIG_RANGE_I;
 
@@ -926,10 +951,10 @@ static void DCLNO_GpuSolverZ_Eigen(dcomplex *d_A, int m, int maxn, double *W)
    Hamiltonian and stores the back-transformed eigenvectors transposed
    (state-major rows with leading dimension NUM) into Hmat.
 */
-static void DCLNO_Solve_NonCol_GpuSolver(int NUM, int NUMH, int NUM2, int rebuild_s,
+static void DCLNO_Solve_NonCol_GpuSolver(DCLNOState *state, int NUM, int NUMH, int NUM2, int rebuild_s,
                                          const dcomplex *Smat, dcomplex *Hmat, double *ko)
 {
-    DCLNO_GpuSolverZCtx *ctx = &DCLNO_gpusolverz_ctx;
+    DCLNO_GpuSolverZCtx *ctx = &state->gpusolverz_ctx;
     cuDoubleComplex zone  = make_cuDoubleComplex(1.0, 0.0);
     cuDoubleComplex zzero = make_cuDoubleComplex(0.0, 0.0);
     size_t full_bytes;
@@ -947,7 +972,7 @@ static void DCLNO_Solve_NonCol_GpuSolver(int NUM, int NUMH, int NUM2, int rebuil
                                          sizeof(dcomplex),
                                          "GPUSOLVER NC full matrix copy");
 
-    DCLNO_GpuSolverZ_EnsureMatrixCapacity(NUM);
+    DCLNO_GpuSolverZ_EnsureMatrixCapacity(state, NUM);
 
     wait_cudafunc(cudaMemcpyAsync(ctx->d_H, Hmat, full_bytes, cudaMemcpyHostToDevice, ctx->stream));
 
@@ -961,7 +986,7 @@ static void DCLNO_Solve_NonCol_GpuSolver(int NUM, int NUMH, int NUM2, int rebuil
                                                           "GPUSOLVER NC overlap copy"),
                                   cudaMemcpyHostToDevice, ctx->stream));
 
-    DCLNO_GpuSolverZ_Eigen(ctx->d_tmp, NUMH, NUMH, ko + 1);
+    DCLNO_GpuSolverZ_Eigen(state, ctx->d_tmp, NUMH, NUMH, ko + 1);
 
     for (l = 1; l <= NUMH; l++) {
         ko[l] = 1.0 / sqrt(fabs(ko[l]));
@@ -1009,7 +1034,7 @@ static void DCLNO_Solve_NonCol_GpuSolver(int NUM, int NUMH, int NUM2, int rebuil
                               &zzero, (cuDoubleComplex*)ctx->d_H, NUM,
                               (cuDoubleComplex*)ctx->d_tmp, NUM));
 
-    DCLNO_GpuSolverZ_Eigen(ctx->d_tmp, NUM, NUM2, ko + 1);
+    DCLNO_GpuSolverZ_Eigen(state, ctx->d_tmp, NUM, NUM2, ko + 1);
 
     /* Hmat(state, basis) = (T * V)^T = V^T * T^T, stored with ld NUM */
     OpenMXBlasWait(openmx_gemmul8Zgemm(ctx->cublas, CUBLAS_OP_T, CUBLAS_OP_T, NUM2, NUM, NUM, &zone,
@@ -1034,20 +1059,20 @@ static int DCLNO_GpuTurnRelease(void)
     return openmx_env_flag_at(OPENMX_ENV_DCLNO_GPU_TURN_RELEASE, openmx_env_flag_at(OPENMX_ENV_BAND_GEMMUL8_TURN_RELEASE, 1));
 }
 
-static void DCLNO_GpuSolver_ReleaseDeviceMemory(void)
+static void DCLNO_GpuSolver_ReleaseDeviceMemory(DCLNOState *state)
 {
-    DCLNO_GpuSolverCtx *ctx = &DCLNO_gpusolver_ctx;
+    DCLNO_GpuSolverCtx *ctx = &state->gpusolver_ctx;
 
     if (!ctx->initialized) return;
 
     if (ctx->stream != NULL) wait_cudafunc(cudaStreamSynchronize(ctx->stream));
 
-    if (ctx->d_S != NULL)    wait_cudafunc(OpenMX_Resource_GpuFree(Divide_Conquer_LNO_resources,ctx->d_S));
-    if (ctx->d_H != NULL)    wait_cudafunc(OpenMX_Resource_GpuFree(Divide_Conquer_LNO_resources,ctx->d_H));
-    if (ctx->d_tmp != NULL)  wait_cudafunc(OpenMX_Resource_GpuFree(Divide_Conquer_LNO_resources,ctx->d_tmp));
-    if (ctx->d_W != NULL)    wait_cudafunc(OpenMX_Resource_GpuFree(Divide_Conquer_LNO_resources,ctx->d_W));
-    if (ctx->d_info != NULL) wait_cudafunc(OpenMX_Resource_GpuFree(Divide_Conquer_LNO_resources,ctx->d_info));
-    if (ctx->d_work != NULL) wait_cudafunc(OpenMX_Resource_GpuFree(Divide_Conquer_LNO_resources,ctx->d_work));
+    if (ctx->d_S != NULL)    wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_S));
+    if (ctx->d_H != NULL)    wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_H));
+    if (ctx->d_tmp != NULL)  wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_tmp));
+    if (ctx->d_W != NULL)    wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_W));
+    if (ctx->d_info != NULL) wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_info));
+    if (ctx->d_work != NULL) wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_work));
 
     ctx->d_S = NULL;
     ctx->d_H = NULL;
@@ -1059,22 +1084,22 @@ static void DCLNO_GpuSolver_ReleaseDeviceMemory(void)
     ctx->max_num = 0;
 }
 
-static void DCLNO_GpuSolverZ_ReleaseDeviceMemory(void)
+static void DCLNO_GpuSolverZ_ReleaseDeviceMemory(DCLNOState *state)
 {
-    DCLNO_GpuSolverZCtx *ctx = &DCLNO_gpusolverz_ctx;
+    DCLNO_GpuSolverZCtx *ctx = &state->gpusolverz_ctx;
 
     if (!ctx->initialized) return;
 
     if (ctx->stream != NULL) wait_cudafunc(cudaStreamSynchronize(ctx->stream));
 
-    if (ctx->d_S != NULL)     wait_cudafunc(OpenMX_Resource_GpuFree(Divide_Conquer_LNO_resources,ctx->d_S));
-    if (ctx->d_H != NULL)     wait_cudafunc(OpenMX_Resource_GpuFree(Divide_Conquer_LNO_resources,ctx->d_H));
-    if (ctx->d_tmp != NULL)   wait_cudafunc(OpenMX_Resource_GpuFree(Divide_Conquer_LNO_resources,ctx->d_tmp));
-    if (ctx->d_scale != NULL) wait_cudafunc(OpenMX_Resource_GpuFree(Divide_Conquer_LNO_resources,ctx->d_scale));
-    if (ctx->d_W != NULL)     wait_cudafunc(OpenMX_Resource_GpuFree(Divide_Conquer_LNO_resources,ctx->d_W));
-    if (ctx->d_info != NULL)  wait_cudafunc(OpenMX_Resource_GpuFree(Divide_Conquer_LNO_resources,ctx->d_info));
-    if (ctx->d_work != NULL)  wait_cudafunc(OpenMX_Resource_GpuFree(Divide_Conquer_LNO_resources,ctx->d_work));
-    openmx_core_native_free(Divide_Conquer_LNO_resources,ctx->h_scale);
+    if (ctx->d_S != NULL)     wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_S));
+    if (ctx->d_H != NULL)     wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_H));
+    if (ctx->d_tmp != NULL)   wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_tmp));
+    if (ctx->d_scale != NULL) wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_scale));
+    if (ctx->d_W != NULL)     wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_W));
+    if (ctx->d_info != NULL)  wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_info));
+    if (ctx->d_work != NULL)  wait_cudafunc(OpenMX_Resource_GpuFree(state->resources,ctx->d_work));
+    openmx_core_native_free(state->resources,ctx->h_scale);
 
     ctx->d_S = NULL;
     ctx->d_H = NULL;
@@ -1095,7 +1120,7 @@ static void DCLNO_GpuSolverZ_ReleaseDeviceMemory(void)
    the GPU path ends up slower than the CPU eigensolver.  Collective over
    DCLNO_gpu_group_comm.
 */
-static int DCLNO_GpuGroupMemoryFits(int max_msize, int is_complex)
+static int DCLNO_GpuGroupMemoryFits(DCLNOState *state, int max_msize, int is_complex)
 {
     const size_t elem = is_complex ? sizeof(dcomplex) : sizeof(double);
     const size_t reserve = 1536ULL*1024ULL*1024ULL;
@@ -1104,7 +1129,7 @@ static int DCLNO_GpuGroupMemoryFits(int max_msize, int is_complex)
     size_t free_bytes = 0, total_bytes = 0;
     unsigned long long my_need, group_need = 0ULL;
     unsigned long long my_free, group_free = 0ULL;
-    static int warned = 0;
+
 
     if (max_msize <= 0) max_msize = 1;
 
@@ -1122,20 +1147,20 @@ static int DCLNO_GpuGroupMemoryFits(int max_msize, int is_complex)
 
     my_need = (unsigned long long)need;
     my_free = (unsigned long long)free_bytes;
-    MPI_Allreduce(&my_need, &group_need, 1, MPI_UNSIGNED_LONG_LONG, MPI_SUM, DCLNO_gpu_group_comm);
-    MPI_Allreduce(&my_free, &group_free, 1, MPI_UNSIGNED_LONG_LONG, MPI_MIN, DCLNO_gpu_group_comm);
+    MPI_Allreduce(&my_need, &group_need, 1, MPI_UNSIGNED_LONG_LONG, MPI_SUM, state->gpu_group_comm);
+    MPI_Allreduce(&my_free, &group_free, 1, MPI_UNSIGNED_LONG_LONG, MPI_MIN, state->gpu_group_comm);
 
     if (group_free < (unsigned long long)reserve ||
         group_need > group_free - (unsigned long long)reserve) {
-        if (!warned && DCLNO_gpu_group_rank == 0) {
+        if (!state->GpuGroupMemoryFits_warned && state->gpu_group_rank == 0) {
             printf("<DC-LNO> GPU device %d: %d rank(s) would need %.3f GiB "
                    "(free %.3f GiB, reserve %.3f GiB); using the CPU eigensolver instead.\n",
-                   DCLNO_gpu_id, DCLNO_gpu_group_size,
+                   state->gpu_id, state->gpu_group_size,
                    (double)group_need/(1024.0*1024.0*1024.0),
                    (double)group_free/(1024.0*1024.0*1024.0),
                    (double)reserve/(1024.0*1024.0*1024.0));
             fflush(stdout);
-            warned = 1;
+            state->GpuGroupMemoryFits_warned = 1;
         }
         return 0;
     }
@@ -1149,7 +1174,7 @@ static int DCLNO_GpuGroupMemoryFits(int max_msize, int is_complex)
 
 /* Return this rank's retry status. A remote task retries at its origin,
    whose CPU scratch is sized for that task rather than for the GPU owner. */
-static int DCLNO_GPUProxy_Col_Service(int active,
+static int DCLNO_GPUProxy_Col_Service(DCLNOState *state, int active,
                                        int NUM,
                                        int NUM2,
                                        double *Smat,
@@ -1166,18 +1191,18 @@ static int DCLNO_GPUProxy_Col_Service(int active,
     MPI_Request *recv_Sreq = NULL;
     MPI_Request *recv_Hreq = NULL;
 
-    if (DCLNO_gpu_group_comm == MPI_COMM_NULL) return 0;
+    if (state->gpu_group_comm == MPI_COMM_NULL) return 0;
 
-    MPI_Comm_rank(DCLNO_gpu_group_comm, &rank);
-    MPI_Comm_size(DCLNO_gpu_group_comm, &size);
+    MPI_Comm_rank(state->gpu_group_comm, &rank);
+    MPI_Comm_size(state->gpu_group_comm, &size);
 
     myinfo[0] = active;
     myinfo[1] = NUM;
     myinfo[2] = NUM2;
 
-    allinfo = (int*)DCLNO_MallocArray(DCLNO_CheckedMulCount(3u, (size_t)size, "GPU proxy allgather metadata count"),
+    allinfo = (int*)DCLNO_MallocArray(state, DCLNO_CheckedMulCount(3u, (size_t)size, "GPU proxy allgather metadata count"),
                                       sizeof(int), "GPU proxy allgather metadata");
-    MPI_Allgather(myinfo, 3, MPI_INT, allinfo, 3, MPI_INT, DCLNO_gpu_group_comm);
+    MPI_Allgather(myinfo, 3, MPI_INT, allinfo, 3, MPI_INT, state->gpu_group_comm);
 
     for (src=0; src<size; src++) {
         if (allinfo[3*src + 0]) {
@@ -1187,16 +1212,16 @@ static int DCLNO_GPUProxy_Col_Service(int active,
     }
 
     if (!any_active) {
-        openmx_core_native_free(Divide_Conquer_LNO_resources,allinfo);
+        openmx_core_native_free(state->resources,allinfo);
         return 0;
     }
 
     if (rank == 0) {
 
-        recv_Sbuf = (double**)DCLNO_CallocArray((size_t)size, sizeof(double*), "GPU proxy S receive buffers");
-        recv_Hbuf = (double**)DCLNO_CallocArray((size_t)size, sizeof(double*), "GPU proxy H receive buffers");
-        recv_Sreq = (MPI_Request*)DCLNO_MallocArray((size_t)size, sizeof(MPI_Request), "GPU proxy S requests");
-        recv_Hreq = (MPI_Request*)DCLNO_MallocArray((size_t)size, sizeof(MPI_Request), "GPU proxy H requests");
+        recv_Sbuf = (double**)DCLNO_CallocArray(state, (size_t)size, sizeof(double*), "GPU proxy S receive buffers");
+        recv_Hbuf = (double**)DCLNO_CallocArray(state, (size_t)size, sizeof(double*), "GPU proxy H receive buffers");
+        recv_Sreq = (MPI_Request*)DCLNO_MallocArray(state, (size_t)size, sizeof(MPI_Request), "GPU proxy S requests");
+        recv_Hreq = (MPI_Request*)DCLNO_MallocArray(state, (size_t)size, sizeof(MPI_Request), "GPU proxy H requests");
 
         for (src = 0; src < size; src++) {
             recv_Sreq[src] = MPI_REQUEST_NULL;
@@ -1213,24 +1238,24 @@ static int DCLNO_GPUProxy_Col_Service(int active,
                 DCLNO_AbortWithMessage("Invalid GPU proxy task metadata in DCLNO_GPUProxy_Col_Service.");
             }
 
-            recv_Sbuf[src] = (double*)DCLNO_MallocArray(DCLNO_CheckedMulCount((size_t)s_num, (size_t)s_num,
+            recv_Sbuf[src] = (double*)DCLNO_MallocArray(state, DCLNO_CheckedMulCount((size_t)s_num, (size_t)s_num,
                                                                               "GPU proxy received overlap matrix dimensions"),
                                                         sizeof(double),
                                                         "GPU proxy received overlap matrix");
-            recv_Hbuf[src] = (double*)DCLNO_MallocArray(DCLNO_CheckedMulCount((size_t)s_num, (size_t)s_num,
+            recv_Hbuf[src] = (double*)DCLNO_MallocArray(state, DCLNO_CheckedMulCount((size_t)s_num, (size_t)s_num,
                                                                               "GPU proxy received Hamiltonian matrix dimensions"),
                                                         sizeof(double),
                                                         "GPU proxy received Hamiltonian matrix");
 
             MPI_Irecv(recv_Sbuf[src], s_num*s_num, MPI_DOUBLE, src,
-                      DCLNO_PROXY_TAG_COL_S, DCLNO_gpu_group_comm, &recv_Sreq[src]);
+                      DCLNO_PROXY_TAG_COL_S, state->gpu_group_comm, &recv_Sreq[src]);
             MPI_Irecv(recv_Hbuf[src], s_num*s_num, MPI_DOUBLE, src,
-                      DCLNO_PROXY_TAG_COL_H, DCLNO_gpu_group_comm, &recv_Hreq[src]);
+                      DCLNO_PROXY_TAG_COL_H, state->gpu_group_comm, &recv_Hreq[src]);
         }
 
         /* owner handles its own task first */
         if (active) {
-            retry_info = DCLNO_Solve_Col_GpuSolver(NUM, NUM2, Smat, Hmat, ko);
+            retry_info = DCLNO_Solve_Col_GpuSolver(state, NUM, NUM2, Smat, Hmat, ko);
             if (retry_info == 0) DCLNO_CopyPackedEigvecsToC(Hmat, NUM, NUM2, C);
         }
 
@@ -1252,57 +1277,57 @@ static int DCLNO_GPUProxy_Col_Service(int active,
 
                 Sbuf = recv_Sbuf[src];
                 Hbuf = recv_Hbuf[src];
-                kbuf = (double*)DCLNO_MallocArray((size_t)(s_num + 2), sizeof(double),
+                kbuf = (double*)DCLNO_MallocArray(state, (size_t)(s_num + 2), sizeof(double),
                                                  "GPU proxy eigenvalue buffer");
 
-                solve_info = DCLNO_Solve_Col_GpuSolver(s_num, s_num2, Sbuf, Hbuf, kbuf);
+                solve_info = DCLNO_Solve_Col_GpuSolver(state, s_num, s_num2, Sbuf, Hbuf, kbuf);
 
                 MPI_Send(&solve_info, 1, MPI_INT, src,
-                         DCLNO_PROXY_TAG_COL_STATUS, DCLNO_gpu_group_comm);
+                         DCLNO_PROXY_TAG_COL_STATUS, state->gpu_group_comm);
                 if (solve_info == 0) {
                     MPI_Send(&kbuf[1], s_num2, MPI_DOUBLE, src,
-                             DCLNO_PROXY_TAG_COL_EVAL, DCLNO_gpu_group_comm);
+                             DCLNO_PROXY_TAG_COL_EVAL, state->gpu_group_comm);
                     MPI_Send(Hbuf, s_num*s_num2, MPI_DOUBLE, src,
-                             DCLNO_PROXY_TAG_COL_CVEC, DCLNO_gpu_group_comm);
+                             DCLNO_PROXY_TAG_COL_CVEC, state->gpu_group_comm);
                 }
 
-                openmx_core_native_free(Divide_Conquer_LNO_resources,Sbuf);
-                openmx_core_native_free(Divide_Conquer_LNO_resources,Hbuf);
-                openmx_core_native_free(Divide_Conquer_LNO_resources,kbuf);
+                openmx_core_native_free(state->resources,Sbuf);
+                openmx_core_native_free(state->resources,Hbuf);
+                openmx_core_native_free(state->resources,kbuf);
             }
         }
 
-        openmx_core_native_free(Divide_Conquer_LNO_resources,recv_Sbuf);
-        openmx_core_native_free(Divide_Conquer_LNO_resources,recv_Hbuf);
-        openmx_core_native_free(Divide_Conquer_LNO_resources,recv_Sreq);
-        openmx_core_native_free(Divide_Conquer_LNO_resources,recv_Hreq);
+        openmx_core_native_free(state->resources,recv_Sbuf);
+        openmx_core_native_free(state->resources,recv_Hbuf);
+        openmx_core_native_free(state->resources,recv_Sreq);
+        openmx_core_native_free(state->resources,recv_Hreq);
     }
     else if (active) {
-        double *Cbuf = (double*)DCLNO_MallocArray(DCLNO_CheckedMulCount((size_t)NUM, (size_t)NUM2,
+        double *Cbuf = (double*)DCLNO_MallocArray(state, DCLNO_CheckedMulCount((size_t)NUM, (size_t)NUM2,
                                                                         "GPU proxy packed eigenvector dimensions"),
                                                   sizeof(double),
                                                   "GPU proxy packed eigenvectors");
 
         MPI_Send(Smat, NUM*NUM, MPI_DOUBLE, 0,
-                 DCLNO_PROXY_TAG_COL_S, DCLNO_gpu_group_comm);
+                 DCLNO_PROXY_TAG_COL_S, state->gpu_group_comm);
         MPI_Send(Hmat, NUM*NUM, MPI_DOUBLE, 0,
-                 DCLNO_PROXY_TAG_COL_H, DCLNO_gpu_group_comm);
+                 DCLNO_PROXY_TAG_COL_H, state->gpu_group_comm);
 
         MPI_Recv(&retry_info, 1, MPI_INT, 0,
-                 DCLNO_PROXY_TAG_COL_STATUS, DCLNO_gpu_group_comm, MPI_STATUS_IGNORE);
+                 DCLNO_PROXY_TAG_COL_STATUS, state->gpu_group_comm, MPI_STATUS_IGNORE);
         if (retry_info == 0) {
             MPI_Recv(&ko[1], NUM2, MPI_DOUBLE, 0,
-                     DCLNO_PROXY_TAG_COL_EVAL, DCLNO_gpu_group_comm, MPI_STATUS_IGNORE);
+                     DCLNO_PROXY_TAG_COL_EVAL, state->gpu_group_comm, MPI_STATUS_IGNORE);
             MPI_Recv(Cbuf, NUM*NUM2, MPI_DOUBLE, 0,
-                     DCLNO_PROXY_TAG_COL_CVEC, DCLNO_gpu_group_comm, MPI_STATUS_IGNORE);
+                     DCLNO_PROXY_TAG_COL_CVEC, state->gpu_group_comm, MPI_STATUS_IGNORE);
 
             DCLNO_CopyPackedEigvecsToC(Cbuf, NUM, NUM2, C);
         }
 
-        openmx_core_native_free(Divide_Conquer_LNO_resources,Cbuf);
+        openmx_core_native_free(state->resources,Cbuf);
     }
 
-    openmx_core_native_free(Divide_Conquer_LNO_resources,allinfo);
+    openmx_core_native_free(state->resources,allinfo);
     return retry_info;
 }
 
@@ -1310,18 +1335,18 @@ static int DCLNO_GPUProxy_Col_Service(int active,
 /* public wrapper                                                     */
 /* ------------------------------------------------------------------ */
 
-double Divide_Conquer_LNO(char * mode, int MD_iter, int SCF_iter, int SucceedReadingDMfile,
+double Divide_Conquer_LNO(DCLNOState *state, char * mode, int MD_iter, int SCF_iter, int SucceedReadingDMfile,
                           double ***** Hks, double ***** ImNL, double **** OLP0,
                           double ***** CDM, double ***** EDM, double Eele0[2], double Eele1[2], const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 {
     double time0;
 
     if (SpinP_switch == 0 || SpinP_switch == 1) {
-        time0 = DC_Col(mode, MD_iter, SCF_iter, SucceedReadingDMfile,
+        time0 = DC_Col(state, mode, MD_iter, SCF_iter, SucceedReadingDMfile,
                        Hks, OLP0, CDM, EDM, Eele0, Eele1, local_basis);
     }
     else if (SpinP_switch == 3) {
-        time0 = DC_NonCol(mode, MD_iter, SCF_iter, SucceedReadingDMfile,
+        time0 = DC_NonCol(state, mode, MD_iter, SCF_iter, SucceedReadingDMfile,
                           Hks, ImNL, OLP0, CDM, EDM, Eele0, Eele1, electronic, local_basis);
     }
     else {
@@ -1336,6 +1361,7 @@ double Divide_Conquer_LNO(char * mode, int MD_iter, int SCF_iter, int SucceedRea
 /* ------------------------------------------------------------------ */
 
 typedef struct {
+  DCLNOState *state;
   char * mode;
   int MD_iter;
   int SCF_iter;
@@ -1348,33 +1374,33 @@ typedef struct {
   double *Eele1;
   const OpenMXLocalBasisViews *local_basis;
 } DC_Col_arguments;
-static double DC_Col_owned(char * mode, int MD_iter, int SCF_iter, int SucceedReadingDMfile,
+static double DC_Col_owned(DCLNOState *state, char * mode, int MD_iter, int SCF_iter, int SucceedReadingDMfile,
                      double ***** Hks, double **** OLP0, double ***** CDM, double ***** EDM,
                      double Eele0[2], double Eele1[2], const OpenMXLocalBasisViews *local_basis, OpenMXSolverInvocation *solver_owner);
 static int DC_Col_operation(OpenMXSolverInvocation *owner,void *arguments,double *result)
 {
   DC_Col_arguments *a=(DC_Col_arguments*)arguments;
-  *result=DC_Col_owned(a->mode,a->MD_iter,a->SCF_iter,a->SucceedReadingDMfile,a->Hks,a->OLP0,a->CDM,a->EDM,a->Eele0,a->Eele1,a->local_basis,owner);
+  *result=DC_Col_owned(a->state, a->mode,a->MD_iter,a->SCF_iter,a->SucceedReadingDMfile,a->Hks,a->OLP0,a->CDM,a->EDM,a->Eele0,a->Eele1,a->local_basis,owner);
   return 1;
 }
-static double DC_Col(char * mode, int MD_iter, int SCF_iter, int SucceedReadingDMfile,
+static double DC_Col(DCLNOState *state, char * mode, int MD_iter, int SCF_iter, int SucceedReadingDMfile,
                      double ***** Hks, double **** OLP0, double ***** CDM, double ***** EDM,
                      double Eele0[2], double Eele1[2], const OpenMXLocalBasisViews *local_basis)
 {
-  DC_Col_arguments arguments={mode,MD_iter,SCF_iter,SucceedReadingDMfile,Hks,OLP0,CDM,EDM,Eele0,Eele1,local_basis};
+  DC_Col_arguments arguments={state,mode,MD_iter,SCF_iter,SucceedReadingDMfile,Hks,OLP0,CDM,EDM,Eele0,Eele1,local_basis};
   return OpenMX_Solver_Run(DC_Col_operation,&arguments);
 }
 
-static double DC_Col_owned(char * mode, int MD_iter, int SCF_iter, int SucceedReadingDMfile,
+static double DC_Col_owned(DCLNOState *state, char * mode, int MD_iter, int SCF_iter, int SucceedReadingDMfile,
                      double ***** Hks, double **** OLP0, double ***** CDM, double ***** EDM,
                      double Eele0[2], double Eele1[2], const OpenMXLocalBasisViews *local_basis, OpenMXSolverInvocation *solver_owner)
 {
   struct History { double *BLAS_OLP; int **LO_TC,**HO_TC; int BLAS_allocate_flag,LO_HO_allocate_flag; };
-  struct History *history=(struct History*)OpenMX_Resource_State(Divide_Conquer_LNO_resources,"DC_Col_owned",sizeof(struct History));
+  struct History *history=(struct History*)OpenMX_Resource_State(state->resources,"DC_Col_owned",sizeof(struct History));
 
 
 
-    static int      firsttime = 1;
+
 
     int             Mc_AN, Gc_AN, i, Gi, wan, wanA, wanB, Anum;
     int             size1, size2, num, NUM, NUM2, n2, Cwan, Hwan;
@@ -1429,26 +1455,26 @@ static double DC_Col_owned(char * mode, int MD_iter, int SCF_iter, int SucceedRe
     if (strcasecmp(mode, "free") == 0) {
         if (history->LO_HO_allocate_flag == 1) {
             if (history->LO_TC != NULL) {
-                for (spin = 0; spin < 2; spin++) openmx_core_native_free(Divide_Conquer_LNO_resources,history->LO_TC[spin]);
-                openmx_core_native_free(Divide_Conquer_LNO_resources,history->LO_TC);
+                for (spin = 0; spin < 2; spin++) openmx_core_native_free(state->resources,history->LO_TC[spin]);
+                openmx_core_native_free(state->resources,history->LO_TC);
                 history->LO_TC = NULL;
             }
 
             if (history->HO_TC != NULL) {
-                for (spin = 0; spin < 2; spin++) openmx_core_native_free(Divide_Conquer_LNO_resources,history->HO_TC[spin]);
-                openmx_core_native_free(Divide_Conquer_LNO_resources,history->HO_TC);
+                for (spin = 0; spin < 2; spin++) openmx_core_native_free(state->resources,history->HO_TC[spin]);
+                openmx_core_native_free(state->resources,history->HO_TC);
                 history->HO_TC = NULL;
             }
 
             history->LO_HO_allocate_flag = 0;
         }
 
-        openmx_core_native_free(Divide_Conquer_LNO_resources,history->BLAS_OLP);
+        openmx_core_native_free(state->resources,history->BLAS_OLP);
         history->BLAS_OLP = NULL;
         history->BLAS_allocate_flag = 0;
-        firsttime = 1;
+        state->DC_Col_owned_firsttime = 1;
 
-        DCLNO_GPUProxy_Finalize();
+        DCLNO_GPUProxy_Finalize(state);
         openmx_gemmul8ReleaseWorkspaces();
 
         return 0.0;
@@ -1468,14 +1494,14 @@ static double DC_Col_owned(char * mode, int MD_iter, int SCF_iter, int SucceedRe
 
     use_gpu_accel = (scf_eigen_lib_flag == GPUSOLVER);
     if (use_gpu_accel) {
-        DCLNO_GPUProxy_Init();
+        DCLNO_GPUProxy_Init(state);
     }
     use_gpu_proxy = (use_gpu_accel && DCLNO_ENABLE_SHARED_GPU_PROXY &&
-                     DCLNO_gpu_group_size > 1);
+                     state->gpu_group_size > 1);
 
-    if (firsttime && myid0 == Host_ID && use_gpu_accel && 2 <= level_stdout) {
+    if (state->DC_Col_owned_firsttime && myid0 == Host_ID && use_gpu_accel && 2 <= level_stdout) {
         printf("<DC-LNO> GPUSOLVER direct per-rank dispatch is enabled for local matrices with dimension >= %d on %d CUDA device(s).\n",
-               DCLNO_GpuEigenThreshold(), DCLNO_ngpu);
+               DCLNO_GpuEigenThreshold(), state->ngpu);
         fflush(stdout);
     }
 
@@ -1509,20 +1535,20 @@ static double DC_Col_owned(char * mode, int MD_iter, int SCF_iter, int SucceedRe
     ****************************************************/
 
     if (history->LO_HO_allocate_flag == 1 && SCF_iter == 1) {
-        for (spin = 0; spin < 2; spin++) openmx_core_native_free(Divide_Conquer_LNO_resources,history->LO_TC[spin]);
-        openmx_core_native_free(Divide_Conquer_LNO_resources,history->LO_TC);
-        for (spin = 0; spin < 2; spin++) openmx_core_native_free(Divide_Conquer_LNO_resources,history->HO_TC[spin]);
-        openmx_core_native_free(Divide_Conquer_LNO_resources,history->HO_TC);
+        for (spin = 0; spin < 2; spin++) openmx_core_native_free(state->resources,history->LO_TC[spin]);
+        openmx_core_native_free(state->resources,history->LO_TC);
+        for (spin = 0; spin < 2; spin++) openmx_core_native_free(state->resources,history->HO_TC[spin]);
+        openmx_core_native_free(state->resources,history->HO_TC);
         history->LO_HO_allocate_flag = 0;
     }
 
     if (history->LO_HO_allocate_flag == 0) {
-        history->LO_TC = (int**)DCLNO_MallocArray(2, sizeof(int*), "LO tracker pointers");
-        history->HO_TC = (int**)DCLNO_MallocArray(2, sizeof(int*), "HO tracker pointers");
+        history->LO_TC = (int**)DCLNO_MallocArray(state, 2, sizeof(int*), "LO tracker pointers");
+        history->HO_TC = (int**)DCLNO_MallocArray(state, 2, sizeof(int*), "HO tracker pointers");
 
         for (spin = 0; spin < 2; spin++) {
-            history->LO_TC[spin] = (int*)DCLNO_MallocArray((size_t)(Matomnum + 1), sizeof(int), "LO tracker");
-            history->HO_TC[spin] = (int*)DCLNO_MallocArray((size_t)(Matomnum + 1), sizeof(int), "HO tracker");
+            history->LO_TC[spin] = (int*)DCLNO_MallocArray(state, (size_t)(Matomnum + 1), sizeof(int), "LO tracker");
+            history->HO_TC[spin] = (int*)DCLNO_MallocArray(state, (size_t)(Matomnum + 1), sizeof(int), "HO tracker");
             for (i = 0; i <= Matomnum; i++) {
                 history->LO_TC[spin][i] = 1;
                 history->HO_TC[spin][i] = 1;
@@ -1580,12 +1606,12 @@ static double DC_Col_owned(char * mode, int MD_iter, int SCF_iter, int SucceedRe
     ****************************************************/
 
     if (history->BLAS_allocate_flag == 1 && LNO_recalc_flag == 1) {
-        openmx_core_native_free(Divide_Conquer_LNO_resources,history->BLAS_OLP);
+        openmx_core_native_free(state->resources,history->BLAS_OLP);
         history->BLAS_allocate_flag = 0;
     }
 
     if (history->BLAS_allocate_flag == 0) {
-        history->BLAS_OLP = (double*)DCLNO_MallocArray(
+        history->BLAS_OLP = (double*)DCLNO_MallocArray(state,
             DCLNO_CheckedMulCount(DCLNO_CheckedMulCount((size_t)Max_Msize, (size_t)Max_Msize,
                                                         "overlap work buffer matrix dimensions"),
                                   (size_t)(SpinP_switch + 1),
@@ -1629,21 +1655,21 @@ static double DC_Col_owned(char * mode, int MD_iter, int SCF_iter, int SucceedRe
     MP=OpenMX_Solver_Int(solver_owner,"MP",(size_t)List_YOUSO[2]);
 
     if (use_gpu_accel && !use_gpu_proxy &&
-        !DCLNO_GpuGroupMemoryFits(Max_Msize >= DCLNO_GpuEigenThreshold() ? Max_Msize : 0, 0)) {
+        !DCLNO_GpuGroupMemoryFits(state, Max_Msize >= DCLNO_GpuEigenThreshold() ? Max_Msize : 0, 0)) {
         use_gpu_accel = 0;
     }
 
     gpu_group_max_msize = Max_Msize;
     if (use_gpu_proxy) {
-        MPI_Allreduce(MPI_IN_PLACE, &gpu_group_max_msize, 1, MPI_INT, MPI_MAX, DCLNO_gpu_group_comm);
-        if (DCLNO_is_gpu_owner && gpu_group_max_msize >= DCLNO_GpuEigenThreshold()) {
-            DCLNO_GpuSolver_EnsureMatrixCapacity(gpu_group_max_msize);
-            DCLNO_GpuSolver_EnsureWorkspace(gpu_group_max_msize, gpu_group_max_msize);
+        MPI_Allreduce(MPI_IN_PLACE, &gpu_group_max_msize, 1, MPI_INT, MPI_MAX, state->gpu_group_comm);
+        if (state->is_gpu_owner && gpu_group_max_msize >= DCLNO_GpuEigenThreshold()) {
+            DCLNO_GpuSolver_EnsureMatrixCapacity(state, gpu_group_max_msize);
+            DCLNO_GpuSolver_EnsureWorkspace(state, gpu_group_max_msize, gpu_group_max_msize);
         }
     }
     else if (use_gpu_accel && Max_Msize >= DCLNO_GpuEigenThreshold()) {
-        DCLNO_GpuSolver_EnsureMatrixCapacity(Max_Msize);
-        DCLNO_GpuSolver_EnsureWorkspace(Max_Msize, Max_Msize);
+        DCLNO_GpuSolver_EnsureMatrixCapacity(state, Max_Msize);
+        DCLNO_GpuSolver_EnsureWorkspace(state, Max_Msize, Max_Msize);
     }
 
     /****************************************************
@@ -1663,7 +1689,7 @@ static double DC_Col_owned(char * mode, int MD_iter, int SCF_iter, int SucceedRe
         }
     }
 
-    if (firsttime) {
+    if (state->DC_Col_owned_firsttime) {
         PrintMemory("Divide_Conquer_LNO(col): EVal", sizeof(double) * m_size, NULL);
         PrintMemory("Divide_Conquer_LNO(col): BLAS_OLP",
                     sizeof(double) * Max_Msize * Max_Msize * (SpinP_switch + 1), NULL);
@@ -1931,7 +1957,7 @@ static double DC_Col_owned(char * mode, int MD_iter, int SCF_iter, int SucceedRe
 
     group_max_atoms = Matomnum;
     if (use_gpu_proxy) {
-        MPI_Allreduce(MPI_IN_PLACE, &group_max_atoms, 1, MPI_INT, MPI_MAX, DCLNO_gpu_group_comm);
+        MPI_Allreduce(MPI_IN_PLACE, &group_max_atoms, 1, MPI_INT, MPI_MAX, state->gpu_group_comm);
     }
 
     /****************************************************
@@ -2215,7 +2241,7 @@ static double DC_Col_owned(char * mode, int MD_iter, int SCF_iter, int SucceedRe
                 if (timed) dtime(&stime);
 
                 if (use_gpu_task && !use_gpu_proxy) {
-                    gpu_retry_info = DCLNO_Solve_Col_GpuSolver(NUM, NUM2,
+                    gpu_retry_info = DCLNO_Solve_Col_GpuSolver(state, NUM, NUM2,
                                              &history->BLAS_OLP[spin * NUM * NUM],
                                              &BLAS_H[spin * NUM * NUM],
                                              ko);
@@ -2223,7 +2249,7 @@ static double DC_Col_owned(char * mode, int MD_iter, int SCF_iter, int SucceedRe
                         DCLNO_CopyPackedEigvecsToC(&BLAS_H[spin * NUM * NUM], NUM, NUM2, C);
                 }
                 else if (!use_gpu_task) {
-                    DCLNO_Solve_Col_Local(NUM, NUM2,
+                    DCLNO_Solve_Col_Local(state, NUM, NUM2,
                                           &history->BLAS_OLP[spin * NUM * NUM],
                                           &BLAS_H[spin * NUM * NUM],
                                           C, ko, BLAS_Tmp,
@@ -2236,8 +2262,8 @@ static double DC_Col_owned(char * mode, int MD_iter, int SCF_iter, int SucceedRe
                 use_gpu_task = 0;
             }
 
-            if (use_gpu_proxy && DCLNO_gpu_group_size > 1) {
-                gpu_retry_info = DCLNO_GPUProxy_Col_Service(use_gpu_task,
+            if (use_gpu_proxy && state->gpu_group_size > 1) {
+                gpu_retry_info = DCLNO_GPUProxy_Col_Service(state, use_gpu_task,
                                            NUM,
                                            NUM2,
                                            (have_local_atom ? &history->BLAS_OLP[spin * NUM * NUM] : NULL),
@@ -2250,7 +2276,7 @@ static double DC_Col_owned(char * mode, int MD_iter, int SCF_iter, int SucceedRe
             if (gpu_retry_info > 0) {
                 /* Both direct and proxy failures retain these host inputs.
                    Retry here so remote tasks use their origin's scratch. */
-                DCLNO_Solve_Col_Local(NUM, NUM2,
+                DCLNO_Solve_Col_Local(state, NUM, NUM2,
                                       &history->BLAS_OLP[spin * NUM * NUM],
                                       &BLAS_H[spin * NUM * NUM],
                                       C, ko, BLAS_Tmp,
@@ -2668,18 +2694,18 @@ static double DC_Col_owned(char * mode, int MD_iter, int SCF_iter, int SucceedRe
         fflush(stdout);
     }
 
-    if (firsttime) {
+    if (state->DC_Col_owned_firsttime) {
         PrintMemory("Divide_Conquer_LNO(col): Residues", sizeof(double) * size_Residues, NULL);
     }
 
     /* Host workspaces are released by the C++ invocation. */
 
-    if (SCF_iter == 2) firsttime = 0;
+    if (SCF_iter == 2) state->DC_Col_owned_firsttime = 0;
 
     /* free the GEMMul8 workspace and solver buffers so the grid/force phases
        of this SCF step see the memory; handles stay alive. */
     if (use_gpu_accel && DCLNO_GpuTurnRelease()) {
-        DCLNO_GpuSolver_ReleaseDeviceMemory();
+        DCLNO_GpuSolver_ReleaseDeviceMemory(state);
         openmx_gemmul8ReleaseWorkspaces();
     }
 
@@ -2688,6 +2714,7 @@ static double DC_Col_owned(char * mode, int MD_iter, int SCF_iter, int SucceedRe
 }
 
 typedef struct {
+  DCLNOState *state;
   char *mode;
   int MD_iter;
   int SCF_iter;
@@ -2702,7 +2729,7 @@ typedef struct {
   const OpenMXElectronicViews *electronic;
   const OpenMXLocalBasisViews *local_basis;
 } DC_NonCol_arguments;
-static double DC_NonCol_owned(char *mode,
+static double DC_NonCol_owned(DCLNOState *state, char *mode,
 			int MD_iter,
 			int SCF_iter,
 			int SucceedReadingDMfile,
@@ -2715,10 +2742,10 @@ static double DC_NonCol_owned(char *mode,
 static int DC_NonCol_operation(OpenMXSolverInvocation *owner,void *arguments,double *result)
 {
   DC_NonCol_arguments *a=(DC_NonCol_arguments*)arguments;
-  *result=DC_NonCol_owned(a->mode,a->MD_iter,a->SCF_iter,a->SucceedReadingDMfile,a->Hks,a->ImNL,a->OLP0,a->CDM,a->EDM,a->Eele0,a->Eele1,a->electronic,a->local_basis,owner);
+  *result=DC_NonCol_owned(a->state, a->mode,a->MD_iter,a->SCF_iter,a->SucceedReadingDMfile,a->Hks,a->ImNL,a->OLP0,a->CDM,a->EDM,a->Eele0,a->Eele1,a->electronic,a->local_basis,owner);
   return 1;
 }
-static double DC_NonCol(char *mode,
+static double DC_NonCol(DCLNOState *state, char *mode,
 			int MD_iter,
 			int SCF_iter,
 			int SucceedReadingDMfile,
@@ -2737,11 +2764,11 @@ static double DC_NonCol(char *mode,
     Eele1[1] = 0.0;
   }
 
-  DC_NonCol_arguments arguments={mode,MD_iter,SCF_iter,SucceedReadingDMfile,Hks,ImNL,OLP0,CDM,EDM,Eele0,Eele1,electronic,local_basis};
+  DC_NonCol_arguments arguments={state,mode,MD_iter,SCF_iter,SucceedReadingDMfile,Hks,ImNL,OLP0,CDM,EDM,Eele0,Eele1,electronic,local_basis};
   return OpenMX_Solver_Run(DC_NonCol_operation,&arguments);
 }
 
-static double DC_NonCol_owned(char *mode,
+static double DC_NonCol_owned(DCLNOState *state, char *mode,
 			int MD_iter,
 			int SCF_iter,
 			int SucceedReadingDMfile,
@@ -2753,13 +2780,13 @@ static double DC_NonCol_owned(char *mode,
 			double Eele0[2], double Eele1[2], const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis, OpenMXSolverInvocation *solver_owner)
 {
   struct History { dcomplex *BLAS_OLP; int *LO_TC,*HO_TC; int BLAS_allocate_flag,LO_HO_allocate_flag; };
-  struct History *history=(struct History*)OpenMX_Resource_State(Divide_Conquer_LNO_resources,"DC_NonCol_owned",sizeof(struct History));
+  struct History *history=(struct History*)OpenMX_Resource_State(state->resources,"DC_NonCol_owned",sizeof(struct History));
 
 
 
   double ******iDM=electronic->iDM;
 
-  static int firsttime=1;
+
   int Mc_AN,Gc_AN,i,Gi,wan,wanA,wanB,Anum;
   int size1,size2,num,NUM,NUMH,NUM2,n2,Cwan,Hwan;
   dcomplex *BLAS_H,*BLAS_C;
@@ -2844,10 +2871,10 @@ static double DC_NonCol_owned(char *mode,
 
   if ( strcasecmp(mode,"free")==0 ){
 
-    openmx_core_native_free(Divide_Conquer_LNO_resources,history->LO_TC);
-    openmx_core_native_free(Divide_Conquer_LNO_resources,history->HO_TC);
+    openmx_core_native_free(state->resources,history->LO_TC);
+    openmx_core_native_free(state->resources,history->HO_TC);
     history->LO_HO_allocate_flag = 0;
-    openmx_core_native_free(Divide_Conquer_LNO_resources,history->BLAS_OLP);
+    openmx_core_native_free(state->resources,history->BLAS_OLP);
     history->BLAS_allocate_flag = 0;
     return 0.0;
   }  
@@ -2899,12 +2926,12 @@ static double DC_NonCol_owned(char *mode,
 
   use_gpu_accel_nc = (scf_eigen_lib_flag == GPUSOLVER);
   if (use_gpu_accel_nc) {
-    DCLNO_GPUProxy_Init();
+    DCLNO_GPUProxy_Init(state);
   }
 
-  if (firsttime && myid0 == Host_ID && use_gpu_accel_nc && 2 <= level_stdout) {
+  if (state->DC_NonCol_owned_firsttime && myid0 == Host_ID && use_gpu_accel_nc && 2 <= level_stdout) {
     printf("<DC-LNO> GPUSOLVER direct per-rank dispatch (noncollinear) is enabled for local matrices with dimension >= %d on %d CUDA device(s).\n",
-           DCLNO_NonColGpuEigenThreshold(), DCLNO_ngpu);
+           DCLNO_NonColGpuEigenThreshold(), state->ngpu);
     fflush(stdout);
   }
 
@@ -2936,14 +2963,14 @@ static double DC_NonCol_owned(char *mode,
   }
 
   if (history->LO_HO_allocate_flag==1 && SCF_iter==1){
-    openmx_core_native_free(Divide_Conquer_LNO_resources,history->LO_TC);
-    openmx_core_native_free(Divide_Conquer_LNO_resources,history->HO_TC);
+    openmx_core_native_free(state->resources,history->LO_TC);
+    openmx_core_native_free(state->resources,history->HO_TC);
     history->LO_HO_allocate_flag = 0;
   }
 
   if (history->LO_HO_allocate_flag==0){
-    history->LO_TC = (int*)openmx_core_native_malloc(Divide_Conquer_LNO_resources,1,sizeof(int)*(Matomnum+1),0);
-    history->HO_TC = (int*)openmx_core_native_malloc(Divide_Conquer_LNO_resources,1,sizeof(int)*(Matomnum+1),0);
+    history->LO_TC = (int*)openmx_core_native_malloc(state->resources,1,sizeof(int)*(Matomnum+1),0);
+    history->HO_TC = (int*)openmx_core_native_malloc(state->resources,1,sizeof(int)*(Matomnum+1),0);
     history->LO_HO_allocate_flag = 1;
   }
 
@@ -3026,17 +3053,17 @@ static double DC_NonCol_owned(char *mode,
   }
 
   if (use_gpu_accel_nc &&
-      !DCLNO_GpuGroupMemoryFits((Eigen_MPI_flag==0 && Max_Msize >= DCLNO_NonColGpuEigenThreshold()) ? Max_Msize : 0, 1)) {
+      !DCLNO_GpuGroupMemoryFits(state, (Eigen_MPI_flag==0 && Max_Msize >= DCLNO_NonColGpuEigenThreshold()) ? Max_Msize : 0, 1)) {
     use_gpu_accel_nc = 0;
   }
 
   if (history->BLAS_allocate_flag==1 && LNO_recalc_flag==1){
-    openmx_core_native_free(Divide_Conquer_LNO_resources,history->BLAS_OLP);
+    openmx_core_native_free(state->resources,history->BLAS_OLP);
     history->BLAS_allocate_flag = 0;
   }
 
   if (history->BLAS_allocate_flag==0){
-    history->BLAS_OLP = (dcomplex*)openmx_core_native_malloc(Divide_Conquer_LNO_resources,1,sizeof(dcomplex)*Max_Msize*Max_Msize,0);
+    history->BLAS_OLP = (dcomplex*)openmx_core_native_malloc(state->resources,1,sizeof(dcomplex)*Max_Msize*Max_Msize,0);
     history->BLAS_allocate_flag = 1;
   }
 
@@ -3049,7 +3076,7 @@ static double DC_NonCol_owned(char *mode,
   for (i=0; i<(Max_Msize+2); i++){
   }
 
-  if (firsttime){
+  if (state->DC_NonCol_owned_firsttime){
   PrintMemory("Divide_Conquer_LNO: EVal",sizeof(double)*m_size,NULL);
   PrintMemory("Divide_Conquer_LNO: ko",  sizeof(double)*(Max_Msize+2),NULL);
   PrintMemory("Divide_Conquer_LNO: C",   sizeof(double)*(Max_Msize+2)*(Max_Msize+2),NULL);
@@ -3098,7 +3125,7 @@ static double DC_NonCol_owned(char *mode,
     OpenMX_Solver_FieldResize(PDOS_DC,0,Mc_AN,((size_t)1)*n2);
   }
 
-  if (firsttime){
+  if (state->DC_NonCol_owned_firsttime){
   PrintMemory("Divide_Conquer_LNO: PDOS_DC",sizeof(double)*m_size,NULL);
   }
 
@@ -3189,7 +3216,7 @@ static double DC_NonCol_owned(char *mode,
 
         tmp_array=OpenMX_Solver_Real(solver_owner,"tmp_array",((size_t)1)*size1);
 
-	if (firsttime){
+	if (state->DC_NonCol_owned_firsttime){
 	  PrintMemory("Divide_Conquer_LNO: tmp_array",sizeof(double)*size1,NULL);
 	}
 
@@ -3231,7 +3258,7 @@ static double DC_NonCol_owned(char *mode,
         /* allocation of array */
         tmp_array2=OpenMX_Solver_Real(solver_owner,"tmp_array2",((size_t)1)*size2);
         
-	if (firsttime){
+	if (state->DC_NonCol_owned_firsttime){
 	  PrintMemory("Divide_Conquer_LNO: tmp_array2",sizeof(double)*size2,NULL);
 	}
 
@@ -4258,7 +4285,7 @@ static double DC_NonCol_owned(char *mode,
         if (NUM<NUM2) NUM2 = NUM;
       }
 
-      DCLNO_Solve_NonCol_GpuSolver(NUM, NUMH, NUM2, LNO_recalc_flag,
+      DCLNO_Solve_NonCol_GpuSolver(state, NUM, NUMH, NUM2, LNO_recalc_flag,
                                    history->BLAS_OLP, BLAS_H, ko);
 
       if (measure_time){
@@ -5236,7 +5263,7 @@ static double DC_NonCol_owned(char *mode,
     freeing of arrays:
   ****************************************************/
 
-  if (firsttime){
+  if (state->DC_NonCol_owned_firsttime){
     PrintMemory("Divide_Conquer_LNO: Residues",sizeof(double)*size_Residues,NULL);
   }
 
@@ -5247,13 +5274,13 @@ static double DC_NonCol_owned(char *mode,
   if (Eigen_MPI_flag==1 && myid1!=0) Matomnum = 0;
 
   /* for PrintMemory */
-  if (SCF_iter==2) firsttime=0;
+  if (SCF_iter==2) state->DC_NonCol_owned_firsttime=0;
 
   /* for time */
   /* free the GEMMul8 workspace and solver buffers so the grid/force phases
      of this SCF step see the memory; handles stay alive. */
   if (use_gpu_accel_nc && DCLNO_GpuTurnRelease()) {
-    DCLNO_GpuSolverZ_ReleaseDeviceMemory();
+    DCLNO_GpuSolverZ_ReleaseDeviceMemory(state);
     openmx_gemmul8ReleaseWorkspaces();
   }
 
@@ -5580,8 +5607,39 @@ void Save_DOS_NonCol(OpenMXSolverResidueView Residues, double ****OLP0, OpenMXSo
 /* Run-boundary reset: geometry and device state must not survive into the
    next -runtest input, whose host allocations can reuse the same addresses.
    Called on every rank before Free_Arrays(0) frees the current system. */
-void Divide_Conquer_LNO_Release_GPU_Caches(void)
+static void Divide_Conquer_LNO_Release_GPU_Caches(DCLNOState *state)
 {
     /* The communicator frees are collective on the participating ranks. */
-    DCLNO_GPUProxy_Finalize();
+    DCLNO_GPUProxy_Finalize(state);
+}
+
+static void DCLNO_Reset(OpenMXNativeResources *owner, void *metadata)
+{
+  DCLNOState *state = (DCLNOState *)metadata;
+  (void)owner;
+  if (state->initialized) Divide_Conquer_LNO_Release_GPU_Caches(state);
+}
+
+OpenMXDCLNOState *Divide_Conquer_LNO_Bind_Resources(OpenMXCoreContext *core)
+{
+  OpenMXNativeResources *owner = NULL;
+  void *metadata = NULL;
+  char error[256];
+  if (!openmx_core_native_resources_state(core, "Divide_Conquer_LNO", sizeof(DCLNOState),
+      DCLNO_Reset, &owner, &metadata, error, sizeof(error))) {
+    fprintf(stderr, "OpenMX Divide_Conquer_LNO state: %s\n", error);
+    abort();
+  }
+  DCLNOState *state = (DCLNOState *)metadata;
+  if (!state->initialized) {
+    state->resources = owner;
+    state->gpu_group_size = 1;
+    state->node_size = 1;
+    state->gpu_group_comm = MPI_COMM_NULL;
+    state->node_comm = MPI_COMM_NULL;
+    state->DC_NonCol_owned_firsttime = 1;
+    state->DC_Col_owned_firsttime = 1;
+    state->initialized = 1;
+  }
+  return state;
 }

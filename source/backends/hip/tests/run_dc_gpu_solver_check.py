@@ -33,6 +33,12 @@ import re
 import shlex
 import subprocess
 import tempfile
+try:
+    from native_resource_test_bridge import isolate_native_resources, calculation_state_declaration, explicit_state_fixture_calls, fixture_state_members
+except ModuleNotFoundError:
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parents[4] / 'tests'))
+    from native_resource_test_bridge import isolate_native_resources, calculation_state_declaration, explicit_state_fixture_calls, fixture_state_members
 
 
 def function(source, name):
@@ -49,7 +55,7 @@ def function(source, name):
 
 
 def public(source, name):
-    match = re.search(r"^void " + re.escape(name) + r"\(void\)\s*\{", source, re.MULTILINE)
+    match = re.search(r"^(?:static )?void " + re.escape(name) + r"\([^;]*?\)\s*\{", source, re.MULTILINE)
     if match is None:
         raise ValueError(f"Cannot find production function {name}")
     brace = source.index("{", match.start())
@@ -73,18 +79,13 @@ def typedef(source, name):
     return source[start:end]
 
 
-def prototype(source, name):
-    match = re.search(r"^hipblasStatus_t " + re.escape(name) + r"\([^;]*\);", source, re.MULTILINE)
-    if match is None:
-        raise ValueError(f"Cannot find production prototype {name}")
-    return match.group(0)
-
 
 COMMON = r'''
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include "openmx_env.h"
 #include <string.h>
 
 #define CHECK(condition) do { if (!(condition)) { \
@@ -274,7 +275,6 @@ GPU_DEVICE = r'''
 #include "hip_runtime_compat.h"
 #include "hipblas_compat.h"
 typedef struct { double r, i; } dcomplex;
-%(prototypes)s
 static hipError_t device_to_host(void *dst, const void *src, size_t bytes)
 {
     return hipMemcpy(dst, src, bytes, hipMemcpyDeviceToHost);
@@ -837,26 +837,18 @@ int main(void)
 
 
 def make_harness(source, gpu):
-    prototypes = "\n".join(prototype(source, name) for name in ["hipblasDgeam", "hipblasZgeam"])
-    parts = [COMMON, (GPU_DEVICE % {"prototypes": prototypes}) if gpu else CPU_DEVICE, STUBS]
+    state = "typedef void OpenMXNativeResources; typedef struct OpenMXDCState OpenMXDCState;\n"
+    state += calculation_state_declaration(source, "DCState")
+    state += "\nstatic DCState instance={.gpusolver_gemmul8_disabled=1}; static DCState *state=&instance;\n"
+    parts = [COMMON, GPU_DEVICE if gpu else CPU_DEVICE, state, STUBS]
     parts += [define(source, name) for name in
               ["DC_MAGMA_ERR_HOST_ALLOC", "DC_MAGMA_ERR_DEVICE_ALLOC", "DC_SCACHE_SLOT_ALIGN"]]
     parts += [function(source, name) for name in
               ["DC_CheckedMulCount", "DC_CheckedArrayBytes", "DC_EnvU32"]]
-    parts += [typedef(source, "DCGpuSolverCtx"),
-              "static DCGpuSolverCtx DC_gpusolver_ctx = {0};",
-              "static int DC_gpusolver_gemm_disabled = 0;",
-              "static int DC_gpusolver_gemmul8_disabled = DC_GPUSOLVER_GEMMUL8_DISABLED_DEFAULT;",
-              "static int DC_gpusolver_eigen_disabled = 0;",
-              "static int DC_gpusolver_native_approved = 0;",
-              "static int DC_gpusolver_approved_gemm_n = 0;",
-              "static int DC_gpusolver_approved_gemm_num1 = 0;",
-              typedef(source, "DCColSCacheCtx"),
-              "static DCColSCacheCtx DC_scache = {0};",
-              public(source, "Divide_Conquer_Release_GPU_SCache"),
-              "static void DC_GpuSolver_Destroy(void);",
-              "static void DCNonCol_GpuRelease(int keep_stage);",
-              "static void DC_GpuSolver_DisableGemmPathHip(const char *where, hipError_t status);"]
+    parts += [public(source, "Divide_Conquer_Release_GPU_SCache"),
+              "static void DC_GpuSolver_Destroy(DCState *state);",
+              "static void DCNonCol_GpuRelease(DCState *state, int keep_stage);",
+              "static void DC_GpuSolver_DisableGemmPathHip(DCState *state, const char *where, hipError_t status);"]
     parts += [function(source, name) for name in
               ["DCCol_SCache_Ptr", "DCCol_SCache_ValidPtr", "DC_GpuSolver_HipblasStatusName",
                "DC_GpuSolver_GemmDisabled", "DC_GpuSolver_EigenDisabled", "DC_GpuSolver_HipblasReserveBytes",
@@ -869,12 +861,13 @@ def make_harness(source, gpu):
                "DCCol_GpuSolver_PackRows", "DCCol_GpuSolver_UnpackRows", "DC_GpuSolver_DeviceTranspose",
                "DCCol_GpuSolver_UploadMatrix", "DCCol_GpuSolver_LoadTransformedOverlap", "DCCol_SCache_Store",
                "DCCol_GpuSolver_DiagonalizeOverlap", "DCCol_GpuSolver_SolveHamiltonian"]]
-    parts += [typedef(source, "DCNonColGpuCtx"), "static DCNonColGpuCtx DC_noncol_gpu = {0};"]
     parts += [function(source, name) for name in
               ["DCNonCol_GpuRelease", "DCNonCol_StageOffset", "DCNonCol_ComplexBytes", "DCNonCol_GpuEnsure",
                "DCNonCol_GpuReport", "DCNonCol_GpuTranspose", "DCNonCol_GpuTimesT", "DCNonCol_GpuSolve"]]
     parts += [public(source, "Divide_Conquer_Release_GPU_Caches")]
-    return "\n\n".join(parts + [HARNESS])
+    members = {"DC_"+name:name for name in ["gpusolver_ctx","gpusolver_gemm_disabled","gpusolver_gemmul8_disabled","gpusolver_eigen_disabled","gpusolver_native_approved","gpusolver_approved_gemm_n","gpusolver_approved_gemm_num1","scache","noncol_gpu"]}
+    driver = explicit_state_fixture_calls(fixture_state_members(HARNESS, members), source, "DCState")
+    return "\n\n".join(parts + [driver])
 
 
 def main():
@@ -889,7 +882,7 @@ def main():
                         help="LP64 CPU LAPACK/BLAS libraries (default: -llapack -lblas)")
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
-    source = (root / "source/Divide_Conquer.c").read_text()
+    source = isolate_native_resources((root / "source/Divide_Conquer.c").read_text(), "HIP")
     flags = shlex.split(os.environ.get("CFLAGS", "-O2"))
     with tempfile.TemporaryDirectory(prefix="openmx-dc-gpu-check-") as directory:
         directory = Path(directory)
@@ -899,11 +892,11 @@ def main():
         if args.gpu:
             cc = str(Path(args.rocm) / "llvm/bin/clang")
             command = [cc, *flags, "-std=c11", "-D__HIP_PLATFORM_AMD__", f"-I{root / 'source'}",
-                       str(harness), "-o", str(executable), f"-L{Path(args.rocm) / 'lib'}",
+                       str(harness), str(root / "source/openmx_env.c"), "-o", str(executable), f"-L{Path(args.rocm) / 'lib'}",
                        f"-Wl,-rpath,{Path(args.rocm) / 'lib'}", "-lhipblas", "-lamdhip64",
                        *shlex.split(args.libs), "-lm"]
         else:
-            command = [args.cc, *flags, "-std=c11", "-D__HIP_PLATFORM_AMD__", str(harness), "-o",
+            command = [args.cc, *flags, "-std=c11", "-D__HIP_PLATFORM_AMD__", "-I"+str(root / "source"), str(harness), "-o",
                        str(executable), *shlex.split(args.libs), "-lm"]
             if args.sanitize:
                 command[1:1] = ["-g", "-fsanitize=address,undefined", "-fno-omit-frame-pointer"]

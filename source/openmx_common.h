@@ -8,6 +8,9 @@
 #include "openmx_cluster_noncol_state.h"
 #include "openmx_band_col_state.h"
 #include "openmx_band_noncol_state.h"
+#include "openmx_dc_state.h"
+#include "openmx_dclno_state.h"
+#include "openmx_krylov_state.h"
 #include "openmx_core_grid.h"
 #include "openmx_core_electronic.h"
 #include "openmx_core_local_basis.h"
@@ -2849,7 +2852,7 @@ double EC(char *mode,
 	  double *****EDM,
 	  double Eele0[2], double Eele1[2]);
 
-double Divide_Conquer(char *mode,
+double Divide_Conquer(OpenMXDCState *state,char *mode,
                       int SCF_iter,
                       double *****Hks,
                       double *****ImNL,
@@ -2858,7 +2861,7 @@ double Divide_Conquer(char *mode,
                       double *****EDM,
                       double Eele0[2], double Eele1[2], const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
 
-double Divide_Conquer_LNO(char *mode,
+double Divide_Conquer_LNO(OpenMXDCLNOState *state,char *mode,
                           int MD_iter,
                           int SCF_iter,
                           int SucceedReadingDMfile,
@@ -2869,7 +2872,7 @@ double Divide_Conquer_LNO(char *mode,
                           double *****EDM,
                           double Eele0[2], double Eele1[2], const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
 
-double Krylov(char *mode,
+double Krylov(OpenMXKrylovState *state,char *mode,
               int SCF_iter,
               double *****Hks,
               double *****ImNL,
@@ -2974,12 +2977,7 @@ int Set_Hamiltonian_OpenACC_Work_Rank_Is_Selected(void);
 void Set_Hamiltonian_Invalidate_OpenACC_MatrixElements_Cache(void);
 void Set_Hamiltonian_Release_OpenACC_DeviceCache(void);
 #endif
-void Divide_Conquer_Release_GPU_SCache(void);
-void Krylov_Release_GPU_KUCache(void);
 /* Release geometry-dependent GPU caches between inputs in a test suite. */
-void Divide_Conquer_Release_GPU_Caches(void);
-void Divide_Conquer_LNO_Release_GPU_Caches(void);
-void Krylov_Release_GPU_Caches(void);
 #if !OPENMX_GPU_HIP
 void OpenMX_GpuPhaseNeed_Register(const char *phase, size_t group_bytes);
 size_t OpenMX_GpuPhaseNeed_Max(void);

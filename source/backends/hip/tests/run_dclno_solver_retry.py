@@ -27,6 +27,12 @@ import re
 import shlex
 import subprocess
 import tempfile
+try:
+    from native_resource_test_bridge import isolate_native_resources, calculation_state_declaration, explicit_state_fixture_calls, fixture_state_members
+except ModuleNotFoundError:
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parents[4] / 'tests'))
+    from native_resource_test_bridge import isolate_native_resources, calculation_state_declaration, explicit_state_fixture_calls, fixture_state_members
 
 
 def function(source, name):
@@ -57,6 +63,7 @@ PREFIX = r'''
 #include <stdio.h>
 static int level_stdout=3;
 #include <stdlib.h>
+#include "openmx_env.h"
 #include <string.h>
 
 #define CHECK(condition) do { if (!(condition)) { \
@@ -310,22 +317,23 @@ int main(void)
 
 
 def make_harness(source):
-    context_end = source.index("} DCLNO_GpuSolverCtx;") + len("} DCLNO_GpuSolverCtx;")
-    context_start = source.rfind("typedef struct {", 0, context_end)
     macros = ["DCLNO_MAGMA_ERR_HOST_ALLOC", "DCLNO_MAGMA_ERR_DEVICE_ALLOC", "DCLNO_RETRY_NO_MEMORY",
               "DCLNO_RETRY_GPU_ERROR", "DCLNO_MAGMA_ERR", "DCLNO_MAGMA_ERR_ILLEGAL_VALUE"]
     names = ["DCLNO_CheckedArrayBytes", "DCLNO_CheckedMulCount", "DCLNO_MallocArray",
              "DCLNO_CopyPackedEigvecsToC", "DCLNO_Eigen_lapack_d_reuse"]
-    parts = [PREFIX, *(define(source, name) for name in macros),
-             *(function(source, name) for name in names),
-             source[context_start:context_end],
-             "static DCLNO_GpuSolverCtx DCLNO_gpusolver_ctx = {0};"]
+    state = "typedef struct {double r,i;} dcomplex; typedef void OpenMXNativeResources; typedef int MPI_Comm; typedef struct OpenMXDCLNOState OpenMXDCLNOState;\n"
+    state += calculation_state_declaration(source, "DCLNOState")
+    state += "\nstatic DCLNOState instance={.RetryTest_enabled=-1}; static DCLNOState *state=&instance;\n"
+    parts = [PREFIX, state, *(define(source, name) for name in macros),
+             *(function(source, name) for name in names)]
     names = ["DCLNO_GpuSolver_Destroy", "DCLNO_GpuSolver_Init",
              "DCLNO_GpuSolver_EnsureMatrixCapacity", "DCLNO_GpuSolver_Eigen",
              "DCLNO_RetryTest", "DCLNO_ReportGpuRetry",
              "DCLNO_Solve_Col_GpuSolver", "DCLNO_Solve_Col_Local"]
     parts += [function(source, name) for name in names]
-    return "\n\n".join(parts + [HARNESS])
+    driver = fixture_state_members(HARNESS, {"DCLNO_gpusolver_ctx":"gpusolver_ctx", "DCLNO_gpusolverz_ctx":"gpusolverz_ctx"})
+    driver = explicit_state_fixture_calls(driver, source, "DCLNOState")
+    return "\n\n".join(parts + [driver])
 
 
 def main():
@@ -336,7 +344,7 @@ def main():
                         help="LP64 CPU LAPACK/BLAS libraries (default: -llapack -lblas)")
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
-    source = (root / "source/Divide_Conquer_LNO.c").read_text()
+    source = isolate_native_resources((root / "source/Divide_Conquer_LNO.c").read_text(), "HIP")
     flags = shlex.split(os.environ.get("CFLAGS", "-O2"))
     if args.sanitize:
         flags += ["-g", "-fsanitize=address,undefined", "-fno-omit-frame-pointer"]
@@ -344,7 +352,7 @@ def main():
         harness = Path(directory) / "retry.c"
         binary = Path(directory) / "retry"
         harness.write_text(make_harness(source))
-        subprocess.run([*shlex.split(args.cc), *flags, "-std=c11", str(harness),
+        subprocess.run([*shlex.split(args.cc), *flags, "-std=c11", "-I"+str(root / "source"), str(harness), str(root / "source/openmx_env.c"),
                         *shlex.split(args.libs), "-lm", "-o", str(binary)], check=True)
         env = os.environ.copy()
         env.pop("OPENMX_DCLNO_RETRY_TEST", None)

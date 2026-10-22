@@ -1162,7 +1162,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 	break;
 
       case 5:    
-	time5 += Divide_Conquer("scf",LSCF_iter,H,iHNL,OLP[0],DM[0],EDM,Eele0,Eele1, electronic, local_basis);
+	time5 += Divide_Conquer(solver_states.dc, "scf",LSCF_iter,H,iHNL,OLP[0],DM[0],EDM,Eele0,Eele1, electronic, local_basis);
 
 	break;
 
@@ -1174,7 +1174,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 	break;       
 
       case 8:
-	time5 += Krylov("scf",LSCF_iter,H,iHNL,OLP[0],DM[0],EDM,Eele0,Eele1);
+	time5 += Krylov(solver_states.krylov, "scf",LSCF_iter,H,iHNL,OLP[0],DM[0],EDM,Eele0,Eele1);
 	break;       
 
       case 9:
@@ -1187,7 +1187,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 	break;       
 
       case 11:    
-	time5 += Divide_Conquer_LNO("scf",MD_iter,LSCF_iter,SucceedReadingDMfile,H,iHNL,OLP[0],DM[0],EDM,Eele0,Eele1, electronic, local_basis);
+	time5 += Divide_Conquer_LNO(solver_states.dclno, "scf",MD_iter,LSCF_iter,SucceedReadingDMfile,H,iHNL,OLP[0],DM[0],EDM,Eele0,Eele1, electronic, local_basis);
 	break;
 
       case 12:
@@ -1333,7 +1333,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 	break;
 
       case 5:    
-	time5 += Divide_Conquer("scf",LSCF_iter,CntH,iCntHNL,CntOLP[0],DM[0],EDM,Eele0,Eele1, electronic, local_basis);
+	time5 += Divide_Conquer(solver_states.dc, "scf",LSCF_iter,CntH,iCntHNL,CntOLP[0],DM[0],EDM,Eele0,Eele1, electronic, local_basis);
 	break;
 
       case 6: 
@@ -1344,7 +1344,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 	break;       
 
       case 8:
-	time5 += Krylov("scf",LSCF_iter,CntH,iCntHNL,CntOLP[0],DM[0],EDM,Eele0,Eele1);
+	time5 += Krylov(solver_states.krylov, "scf",LSCF_iter,CntH,iCntHNL,CntOLP[0],DM[0],EDM,Eele0,Eele1);
 	break;       
 
       case 9:
@@ -1357,7 +1357,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 	break;       
 
       case 11:    
-	time5 += Divide_Conquer_LNO("scf",MD_iter,LSCF_iter,SucceedReadingDMfile,CntH,iCntHNL,CntOLP[0],DM[0],EDM,Eele0,Eele1, electronic, local_basis);
+	time5 += Divide_Conquer_LNO(solver_states.dclno, "scf",MD_iter,LSCF_iter,SucceedReadingDMfile,CntH,iCntHNL,CntOLP[0],DM[0],EDM,Eele0,Eele1, electronic, local_basis);
 	break;
 
       }
@@ -2657,28 +2657,28 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
     else if ( Solver==5 ){  /* divide-conquer */
       if (Cnt_switch==0){
-        time5 += Divide_Conquer("dos",LSCF_iter,H,iHNL,OLP[0],DM[0],EDM,Eele0,Eele1, electronic, local_basis);
+        time5 += Divide_Conquer(solver_states.dc, "dos",LSCF_iter,H,iHNL,OLP[0],DM[0],EDM,Eele0,Eele1, electronic, local_basis);
       }
       else {
-        time5 += Divide_Conquer("dos",LSCF_iter,CntH,iCntHNL,CntOLP[0],DM[0],EDM,Eele0,Eele1, electronic, local_basis);
+        time5 += Divide_Conquer(solver_states.dc, "dos",LSCF_iter,CntH,iCntHNL,CntOLP[0],DM[0],EDM,Eele0,Eele1, electronic, local_basis);
       }
     }
 
     else if ( Solver==8 ){  /* Krylov subspace method */
       if (Cnt_switch==0){
-        time5 += Krylov("dos",LSCF_iter,H,iHNL,OLP[0],DM[0],EDM,Eele0,Eele1);
+        time5 += Krylov(solver_states.krylov, "dos",LSCF_iter,H,iHNL,OLP[0],DM[0],EDM,Eele0,Eele1);
       }
       else {
-        time5 += Krylov("dos",LSCF_iter,CntH,iCntHNL,CntOLP[0],DM[0],EDM,Eele0,Eele1);
+        time5 += Krylov(solver_states.krylov, "dos",LSCF_iter,CntH,iCntHNL,CntOLP[0],DM[0],EDM,Eele0,Eele1);
       }
     }
 
     else if ( Solver==11 ){  /* DC-LNO */
       if (Cnt_switch==0){
-	time5 += Divide_Conquer_LNO("dos",MD_iter,LSCF_iter,SucceedReadingDMfile,H,iHNL,OLP[0],DM[0],EDM,Eele0,Eele1, electronic, local_basis);
+	time5 += Divide_Conquer_LNO(solver_states.dclno, "dos",MD_iter,LSCF_iter,SucceedReadingDMfile,H,iHNL,OLP[0],DM[0],EDM,Eele0,Eele1, electronic, local_basis);
       }
       else {
-	time5 += Divide_Conquer_LNO("dos",MD_iter,LSCF_iter,SucceedReadingDMfile,CntH,iCntHNL,CntOLP[0],DM[0],EDM,Eele0,Eele1, electronic, local_basis);
+	time5 += Divide_Conquer_LNO(solver_states.dclno, "dos",MD_iter,LSCF_iter,SucceedReadingDMfile,CntH,iCntHNL,CntOLP[0],DM[0],EDM,Eele0,Eele1, electronic, local_basis);
       }
     }
   }
@@ -2792,8 +2792,8 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   Mixing_H_Release_GPU();
   Cluster_DFT_Col_Release_GPU_Solver(solver_states.cluster_col);
   Cluster_DFT_NonCol_Release_GPU_Solver(solver_states.cluster_noncol);
-  Divide_Conquer_Release_GPU_SCache();
-  Krylov_Release_GPU_KUCache();
+  Divide_Conquer_Release_GPU_SCache(solver_states.dc);
+  Krylov_Release_GPU_KUCache(solver_states.krylov);
   /* the end of the SCF cycle for the grid integrals (the NVIDIA version
      calls these right after the SCF loop): the on-the-fly state (sphere
      indices, PAO tables, batch plans) and the density's local-mode device
@@ -3300,7 +3300,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   else if (Solver==3 && SpinP_switch==3)  Allocate_Free_Band_NonCol(2, electronic);
   else if (Solver==4 && SpinP_switch==3)  Allocate_Free_NEGF_NonCol(2);
   else if (Solver==11){
-    Divide_Conquer_LNO( "free",MD_iter,LSCF_iter,SucceedReadingDMfile,
+    Divide_Conquer_LNO(solver_states.dclno,  "free",MD_iter,LSCF_iter,SucceedReadingDMfile,
 		         H,iHNL,OLP[0],DM[0],EDM,Eele0,Eele1 , electronic, local_basis);
   }
   else if (Solver==12 && SpinP_switch<=1) Allocate_Free_Cluster_Col(2, electronic);

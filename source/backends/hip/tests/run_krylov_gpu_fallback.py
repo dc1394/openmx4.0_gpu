@@ -42,11 +42,11 @@ import tempfile
 # The SDK/ownership boundary is mocked here; the real ownership adapters are
 # exercised independently by the core-native-resource/adapter tests.
 try:
-    from native_resource_test_bridge import isolate_native_resources
+    from native_resource_test_bridge import isolate_native_resources, calculation_state_declaration, explicit_state_fixture_calls, fixture_state_members
 except ModuleNotFoundError:
     import sys
     sys.path.insert(0, str(Path(__file__).resolve().parents[4] / 'tests'))
-    from native_resource_test_bridge import isolate_native_resources
+    from native_resource_test_bridge import isolate_native_resources, calculation_state_declaration, explicit_state_fixture_calls, fixture_state_members
 
 
 def function(source, name, static=True):
@@ -91,6 +91,7 @@ PREFIX = r'''
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include "openmx_env.h"
 #include <string.h>
 
 #define CHECK(condition) do { if (!(condition)) { \
@@ -451,30 +452,27 @@ int main(void)
 
 def make_harness(source):
     macros = ["KRYLOV_ENABLE_GPU", "KRYLOV_GPU_EIGEN_MIN", "KRYLOV_GPU_DGEMM_MIN_FLOPS"]
-    variables = ["Krylov_gpu_dgemm_min_flops", "Krylov_gpu_eigen_min", "Krylov_gpu_fused",
-                 "Krylov_gpu_gemmul8", "Krylov_gpu_fits", "Krylov_gpu_alloc_failure_reported",
-                 "Krylov_gpu_device_ranks", "Krylov_gpu_need_total"]
-    parts = [PREFIX, *(define(source, name) for name in macros),
-             *(variable(source, name) for name in variables),
-             function(source, "Krylov_GPU_Enabled"),
-             typedef(source, "Krylov_GPU_Workspace"),
-             between(source, "static void Krylov_GPU_InitOnce(void);",
-                     "static void Krylov_Eigen2(Krylov_GPU_Workspace *ws, double *a, int csize, "
-                     "double *ko, int n, int EVmax);"),
-             variable(source, "Krylov_gpu_ws_pool"), variable(source, "Krylov_gpu_ws_pool_size")]
+    state = "typedef void OpenMXNativeResources; typedef struct OpenMXKrylovState OpenMXKrylovState;\n"
+    state += calculation_state_declaration(source, "KrylovState")
+    state += "\nstatic KrylovState instance={.gpu_fits=1,.gpu_device_ranks=1,.gpu_fused=1,.gpu_gemmul8=1,.gpu_eigen_min=300,.gpu_dgemm_min_flops=50000000.0,.GPU_Enabled_requested=-1,.GPU_Preflight_device_comm=MPI_COMM_NULL,.GPU_Preflight_reserve_bytes=(size_t)512*1024*1024,.ProjectedSolve_GPU_profile=-1}; static KrylovState *state=&instance;\n"
+    parts = [PREFIX, *(define(source, name) for name in macros), state,
+             function(source, "Krylov_GPU_Enabled")]
     names = ["Krylov_GPU_InitOnce", "Krylov_GPU_PreparePool", "Krylov_GPU_GetWorkspace",
              "Krylov_GPU_ReportAllocFailure", "Krylov_GPU_EnsureDouble", "Krylov_GPU_Usable",
              "Krylov_GPU_EnsureHostMatrix", "Krylov_GPU_Workspace_Init", "Krylov_GPU_Workspace_Free",
              "Krylov_GPU_EnsureHipblas", "Krylov_GPU_DeviceDgemm", "Krylov_GPU_GemmFailed",
              "Krylov_Dgemm", "Krylov_Eigen2"]
     parts += [function(source, name) for name in names]
-    parts += [typedef(source, "Krylov_KUCache"), variable(source, "Krylov_kucache"),
-              function(source, "Krylov_Release_GPU_KUCache", static=False),
-              function(source, "Krylov_Release_GPU_Caches", static=False)]
+    parts += [function(source, "Krylov_Release_GPU_KUCache", static=False),
+              function(source, "Krylov_Release_GPU_Caches")]
     names = ["Krylov_KUCache_Prepare", "Krylov_GPU_Preflight", "Krylov_KUCache_Get",
              "Krylov_ProjectedSolve_GPU"]
     parts += [function(source, name) for name in names]
-    return "\n\n".join(parts + [HARNESS])
+    members = {"Krylov_"+name:name for name in ["gpu_dgemm_min_flops","gpu_eigen_min","gpu_fused","gpu_gemmul8","gpu_fits","gpu_alloc_failure_reported","gpu_device_ranks","gpu_need_total","gpu_ws_pool","gpu_ws_pool_size","kucache"]}
+    driver = fixture_state_members(HARNESS, members)
+    driver = explicit_state_fixture_calls(driver, source, "KrylovState")
+    prototypes = "\n".join(part[:part.index("{")].rstrip()+";" for part in parts if part.startswith(("static ","void ")))
+    return "\n\n".join(parts[:len(macros)+2] + [prototypes] + parts[len(macros)+2:] + [driver])
 
 
 def main():
@@ -494,7 +492,7 @@ def main():
         harness = Path(directory) / "krylov_gpu.c"
         binary = Path(directory) / "krylov_gpu"
         harness.write_text(make_harness(source))
-        subprocess.run([*shlex.split(args.cc), *flags, "-std=c11", str(harness),
+        subprocess.run([*shlex.split(args.cc), *flags, "-std=c11", "-I"+str(root / "source"), str(harness), str(root / "source/openmx_env.c"),
                         *shlex.split(args.libs), "-lm", "-o", str(binary)], check=True)
         env = os.environ.copy()
         for name in ("OPENMX_KRYLOV_GPU", "OPENMX_KRYLOV_GEMMUL8", "OPENMX_KRYLOV_GPU_FUSED",

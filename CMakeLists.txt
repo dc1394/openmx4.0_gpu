@@ -128,6 +128,13 @@ install(CODE "${_openmx_install_program}")
 install(TARGETS openmx_core LIBRARY DESTINATION lib)
 
 if(BUILD_TESTING)
+  foreach(_local_solver dc dclno krylov)
+    add_test(NAME ${_local_solver}-calculation-state-lifecycle
+      COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_local_solver_state_cpu.py"
+        --kind "${_local_solver}" --core-library "$<TARGET_FILE:openmx_core>")
+    set_tests_properties(${_local_solver}-calculation-state-lifecycle
+      PROPERTIES LABELS "unit;gpu;core" TIMEOUT 180)
+  endforeach()
   add_test(NAME solver-noncollinear-energy-output
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_solver_energy_output_cpu.py"
       --core-library "$<TARGET_FILE:openmx_core>" --negative-control)
@@ -297,6 +304,15 @@ if(BUILD_TESTING)
     find_program(OPENMX_TEST_MPICXX NAMES mpicxx mpic++)
     find_program(OPENMX_TEST_MPIEXEC NAMES mpirun mpiexec)
     if(OPENMX_TEST_MPICXX AND OPENMX_TEST_MPIEXEC)
+      foreach(_local_mpi_solver dclno krylov)
+        add_test(NAME ${_local_mpi_solver}-calculation-state-mpi
+          COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_local_solver_state_cpu.py"
+            --kind "${_local_mpi_solver}" --core-library "$<TARGET_FILE:openmx_core>"
+            --mpi-cxx "${OPENMX_TEST_MPICXX}" --mpiexec "${OPENMX_TEST_MPIEXEC}")
+        set_tests_properties(${_local_mpi_solver}-calculation-state-mpi PROPERTIES
+          ENVIRONMENT "OMPI_CXX=${CMAKE_CXX_COMPILER};MPICH_CXX=${CMAKE_CXX_COMPILER};I_MPI_CXX=${CMAKE_CXX_COMPILER}"
+          LABELS "unit;gpu;mpi;core" TIMEOUT 180 PROCESSORS 4)
+      endforeach()
       add_test(NAME gpu-vector-packet-mpi COMMAND "${Python3_EXECUTABLE}"
         "${CMAKE_SOURCE_DIR}/tests/run_gpu_vector_packet_mpi.py")
       set_tests_properties(gpu-vector-packet-mpi PROPERTIES

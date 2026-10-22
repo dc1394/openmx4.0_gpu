@@ -8,6 +8,24 @@ core-native-resource-* and core-native-adapter-* tests.
 import re
 
 
+def fixture_state_members(fixture, members, state="state"):
+    """Update only model/driver references to removed production globals.
+
+    The production functions already use their explicit state. This helper
+    does not rewrite those functions or provide an active/default context.
+    """
+    def blank(match):
+        return "".join("\n" if c == "\n" else " " for c in match[0])
+
+    clean = re.sub(r'/\*.*?\*/|//[^\n]*|"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'',
+                   blank, fixture, flags=re.S)
+    edits = [(hit.start(), hit.end(), state + "->" + members[hit[0]])
+             for hit in re.finditer(r'\b(?:' + '|'.join(map(re.escape, members)) + r')\b', clean)]
+    for start, end, replacement in reversed(edits):
+        fixture = fixture[:start] + replacement + fixture[end:]
+    return fixture
+
+
 def explicit_state_fixture_calls(fixture, production, state_type, state="state"):
     """Pass a narrow fixture's explicit state through its SDK stubs/calls.
 
@@ -42,7 +60,7 @@ def explicit_state_fixture_calls(fixture, production, state_type, state="state")
             remaining = fixture[opening + 1:end - 1] if args and args != 'void' else ''
             edits.append((opening + 1, end - 1, parameter + (', ' + remaining if remaining else '')))
         else:
-            edits.append((opening + 1, opening + 1, state + (', ' if args else '')))
+            edits.append((opening + 1, opening + 1, state + (', ' if fixture[opening + 1:end - 1].strip() else '')))
     for start, end, replacement in reversed(edits):
         fixture = fixture[:start] + replacement + fixture[end:]
     return fixture

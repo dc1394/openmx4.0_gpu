@@ -1,6 +1,6 @@
 {
 "scope": "global-state usage of the C translation units of the NVIDIA build",
-"revision": "3a4799a5",
+"revision": "b7bc4a8f",
 "summary": {
 "translation units analysed": 289,
 "translation units not analysed": 0,
@@ -10,8 +10,8 @@
 "common-header objects written by some function (direct or through)": 785,
 "function-object edges (common header)": 12912,
 "objects with external linkage defined outside openmx_globals.c": 357,
-"file-scope statics": 352,
-"function-local statics": 343,
+"file-scope statics": 322,
+"function-local statics": 325,
 "environment variables (names read, every unit)": 251,
 "functions calling getenv directly (outside openmx_env.c)": 0,
 "environment names missing from the registry": 0
@@ -4743,13 +4743,13 @@
 "Embedding_Matrix@source/Krylov.c->WhatSpecies",
 "Embedding_Matrix@source/Krylov.c->natn",
 "Embedding_Matrix@source/Krylov.c->rlmax_EC",
-"Embedding_Matrix_trd_raii.omp_outlined.83@source/Krylov.c->EKC_core_size",
-"Embedding_Matrix_trd_raii.omp_outlined.83@source/Krylov.c->RMI1",
-"Embedding_Matrix_trd_raii.omp_outlined.83@source/Krylov.c->S_G2M",
-"Embedding_Matrix_trd_raii.omp_outlined.83@source/Krylov.c->Spe_Total_CNO",
-"Embedding_Matrix_trd_raii.omp_outlined.83@source/Krylov.c->WhatSpecies",
-"Embedding_Matrix_trd_raii.omp_outlined.83@source/Krylov.c->natn",
-"Embedding_Matrix_trd_raii.omp_outlined.83@source/Krylov.c->rlmax_EC",
+"Embedding_Matrix_trd_raii.omp_outlined.80@source/Krylov.c->EKC_core_size",
+"Embedding_Matrix_trd_raii.omp_outlined.80@source/Krylov.c->RMI1",
+"Embedding_Matrix_trd_raii.omp_outlined.80@source/Krylov.c->S_G2M",
+"Embedding_Matrix_trd_raii.omp_outlined.80@source/Krylov.c->Spe_Total_CNO",
+"Embedding_Matrix_trd_raii.omp_outlined.80@source/Krylov.c->WhatSpecies",
+"Embedding_Matrix_trd_raii.omp_outlined.80@source/Krylov.c->natn",
+"Embedding_Matrix_trd_raii.omp_outlined.80@source/Krylov.c->rlmax_EC",
 "Embedding_Matrix_trd_raii.omp_outlined@source/Krylov.c->EKC_core_size",
 "Embedding_Matrix_trd_raii.omp_outlined@source/Krylov.c->RMI1",
 "Embedding_Matrix_trd_raii.omp_outlined@source/Krylov.c->S_G2M",
@@ -5996,8 +5996,8 @@
 "Generate_pMatrix_raii@source/Krylov.c->rlmax_EC",
 "Generate_pMatrix_raii@source/Krylov.c->rlmax_EC2",
 "Generate_pMatrix_raii@source/Krylov.c->scale_rc_EKC",
-"Generate_pMatrix_trd_raii.omp_outlined.77@source/Krylov.c->EKC_core_size",
-"Generate_pMatrix_trd_raii.omp_outlined.77@source/Krylov.c->rlmax_EC",
+"Generate_pMatrix_trd_raii.omp_outlined.74@source/Krylov.c->EKC_core_size",
+"Generate_pMatrix_trd_raii.omp_outlined.74@source/Krylov.c->rlmax_EC",
 "Generate_pMatrix_trd_raii.omp_outlined@source/Krylov.c->EKC_core_size",
 "Generate_pMatrix_trd_raii.omp_outlined@source/Krylov.c->EKC_core_size_max",
 "Generate_pMatrix_trd_raii.omp_outlined@source/Krylov.c->RMI1",
@@ -7054,24 +7054,24 @@
 "Krylov_Col_NAO@source/NBO_Krylov.c->ncn",
 "Krylov_Col_NAO@source/NBO_Krylov.c->rlmax_EC",
 "Krylov_Col_NAO@source/NBO_Krylov.c->rlmax_EC2",
-"Krylov_Col_owned.omp_outlined.151@source/Krylov.c->FNAN",
-"Krylov_Col_owned.omp_outlined.151@source/Krylov.c->M2G",
-"Krylov_Col_owned.omp_outlined.151@source/Krylov.c->Matomnum",
-"Krylov_Col_owned.omp_outlined.151@source/Krylov.c->Spe_Total_CNO",
-"Krylov_Col_owned.omp_outlined.151@source/Krylov.c->SpinP_switch",
-"Krylov_Col_owned.omp_outlined.151@source/Krylov.c->WhatSpecies",
-"Krylov_Col_owned.omp_outlined.151@source/Krylov.c->natn",
-"Krylov_Col_owned.omp_outlined.151@source/Krylov.c->time_per_atom",
-"Krylov_Col_owned.omp_outlined.152@source/Krylov.c->Beta",
-"Krylov_Col_owned.omp_outlined.152@source/Krylov.c->ChemP",
-"Krylov_Col_owned.omp_outlined.152@source/Krylov.c->FNAN",
-"Krylov_Col_owned.omp_outlined.152@source/Krylov.c->M2G",
-"Krylov_Col_owned.omp_outlined.152@source/Krylov.c->Matomnum",
-"Krylov_Col_owned.omp_outlined.152@source/Krylov.c->Spe_Total_CNO",
-"Krylov_Col_owned.omp_outlined.152@source/Krylov.c->SpinP_switch",
-"Krylov_Col_owned.omp_outlined.152@source/Krylov.c->WhatSpecies",
-"Krylov_Col_owned.omp_outlined.152@source/Krylov.c->natn",
-"Krylov_Col_owned.omp_outlined.152@source/Krylov.c->time_per_atom",
+"Krylov_Col_owned.omp_outlined.148@source/Krylov.c->FNAN",
+"Krylov_Col_owned.omp_outlined.148@source/Krylov.c->M2G",
+"Krylov_Col_owned.omp_outlined.148@source/Krylov.c->Matomnum",
+"Krylov_Col_owned.omp_outlined.148@source/Krylov.c->Spe_Total_CNO",
+"Krylov_Col_owned.omp_outlined.148@source/Krylov.c->SpinP_switch",
+"Krylov_Col_owned.omp_outlined.148@source/Krylov.c->WhatSpecies",
+"Krylov_Col_owned.omp_outlined.148@source/Krylov.c->natn",
+"Krylov_Col_owned.omp_outlined.148@source/Krylov.c->time_per_atom",
+"Krylov_Col_owned.omp_outlined.149@source/Krylov.c->Beta",
+"Krylov_Col_owned.omp_outlined.149@source/Krylov.c->ChemP",
+"Krylov_Col_owned.omp_outlined.149@source/Krylov.c->FNAN",
+"Krylov_Col_owned.omp_outlined.149@source/Krylov.c->M2G",
+"Krylov_Col_owned.omp_outlined.149@source/Krylov.c->Matomnum",
+"Krylov_Col_owned.omp_outlined.149@source/Krylov.c->Spe_Total_CNO",
+"Krylov_Col_owned.omp_outlined.149@source/Krylov.c->SpinP_switch",
+"Krylov_Col_owned.omp_outlined.149@source/Krylov.c->WhatSpecies",
+"Krylov_Col_owned.omp_outlined.149@source/Krylov.c->natn",
+"Krylov_Col_owned.omp_outlined.149@source/Krylov.c->time_per_atom",
 "Krylov_Col_owned.omp_outlined@source/Krylov.c->ChemP",
 "Krylov_Col_owned.omp_outlined@source/Krylov.c->EC_matrix",
 "Krylov_Col_owned.omp_outlined@source/Krylov.c->EKC_Exact_invS_flag",
@@ -13068,138 +13068,6 @@
 "const": false
 },
 {
-"unit": "source/Divide_Conquer.c",
-"name": "DC_gpusolver_approved_gemm_n",
-"type": "i32 0",
-"const": false
-},
-{
-"unit": "source/Divide_Conquer.c",
-"name": "DC_gpusolver_approved_gemm_num1",
-"type": "i32 0",
-"const": false
-},
-{
-"unit": "source/Divide_Conquer.c",
-"name": "DC_gpusolver_ctx",
-"type": "%struct.DCGpuSolverCtx zeroinitializer",
-"const": false
-},
-{
-"unit": "source/Divide_Conquer.c",
-"name": "DC_gpusolver_eigen_disabled",
-"type": "i32 0",
-"const": false
-},
-{
-"unit": "source/Divide_Conquer.c",
-"name": "DC_gpusolver_gemm_disabled",
-"type": "i32 0",
-"const": false
-},
-{
-"unit": "source/Divide_Conquer.c",
-"name": "DC_gpusolver_gemmul8_disabled",
-"type": "i32 0",
-"const": false
-},
-{
-"unit": "source/Divide_Conquer.c",
-"name": "DC_gpusolver_native_approved",
-"type": "i32 0",
-"const": false
-},
-{
-"unit": "source/Divide_Conquer.c",
-"name": "DC_scache",
-"type": "%struct.DCColSCacheCtx zeroinitializer",
-"const": false
-},
-{
-"unit": "source/Divide_Conquer.c",
-"name": "Divide_Conquer_resources",
-"type": "ptr null",
-"const": false
-},
-{
-"unit": "source/Divide_Conquer_LNO.c",
-"name": "DCLNO_gpu_group_comm",
-"type": "ptr @ompi_mpi_comm_null",
-"const": false
-},
-{
-"unit": "source/Divide_Conquer_LNO.c",
-"name": "DCLNO_gpu_group_rank",
-"type": "i32 0",
-"const": false
-},
-{
-"unit": "source/Divide_Conquer_LNO.c",
-"name": "DCLNO_gpu_group_size",
-"type": "i32 1",
-"const": false
-},
-{
-"unit": "source/Divide_Conquer_LNO.c",
-"name": "DCLNO_gpu_id",
-"type": "i32 0",
-"const": false
-},
-{
-"unit": "source/Divide_Conquer_LNO.c",
-"name": "DCLNO_gpu_proxy_initialized",
-"type": "i32 0",
-"const": false
-},
-{
-"unit": "source/Divide_Conquer_LNO.c",
-"name": "DCLNO_gpusolver_ctx",
-"type": "%struct.DCLNO_GpuSolverCtx zeroinitializer",
-"const": false
-},
-{
-"unit": "source/Divide_Conquer_LNO.c",
-"name": "DCLNO_gpusolverz_ctx",
-"type": "%struct.DCLNO_GpuSolverZCtx zeroinitializer",
-"const": false
-},
-{
-"unit": "source/Divide_Conquer_LNO.c",
-"name": "DCLNO_is_gpu_owner",
-"type": "i32 0",
-"const": false
-},
-{
-"unit": "source/Divide_Conquer_LNO.c",
-"name": "DCLNO_ngpu",
-"type": "i32 0",
-"const": false
-},
-{
-"unit": "source/Divide_Conquer_LNO.c",
-"name": "DCLNO_node_comm",
-"type": "ptr @ompi_mpi_comm_null",
-"const": false
-},
-{
-"unit": "source/Divide_Conquer_LNO.c",
-"name": "DCLNO_node_rank",
-"type": "i32 0",
-"const": false
-},
-{
-"unit": "source/Divide_Conquer_LNO.c",
-"name": "DCLNO_node_size",
-"type": "i32 1",
-"const": false
-},
-{
-"unit": "source/Divide_Conquer_LNO.c",
-"name": "Divide_Conquer_LNO_resources",
-"type": "ptr null",
-"const": false
-},
-{
 "unit": "source/Force_test.c",
 "name": "mbit",
 "type": "[9 x [7 x i32]] [[7 x i32] [i32 1",
@@ -13233,54 +13101,6 @@
 "unit": "source/Inputtools.c",
 "name": "printlevel",
 "type": "i32 0",
-"const": false
-},
-{
-"unit": "source/Krylov.c",
-"name": "Krylov_gpu_device",
-"type": "i32 -1",
-"const": false
-},
-{
-"unit": "source/Krylov.c",
-"name": "Krylov_gpu_dgemm_min_flops",
-"type": "double 5.000000e+07",
-"const": false
-},
-{
-"unit": "source/Krylov.c",
-"name": "Krylov_gpu_eigen_min",
-"type": "i32 300",
-"const": false
-},
-{
-"unit": "source/Krylov.c",
-"name": "Krylov_gpu_fused",
-"type": "i32 1",
-"const": false
-},
-{
-"unit": "source/Krylov.c",
-"name": "Krylov_gpu_ws_pool",
-"type": "ptr null",
-"const": false
-},
-{
-"unit": "source/Krylov.c",
-"name": "Krylov_gpu_ws_pool_size",
-"type": "i32 0",
-"const": false
-},
-{
-"unit": "source/Krylov.c",
-"name": "Krylov_kucache",
-"type": "{ i32",
-"const": false
-},
-{
-"unit": "source/Krylov.c",
-"name": "Krylov_resources",
-"type": "ptr null",
 "const": false
 },
 {
@@ -15611,27 +15431,6 @@
 "const": false
 },
 {
-"unit": "source/Divide_Conquer.c",
-"function": "DC_Col_owned",
-"variable": "firsttime",
-"type": "i32 1",
-"const": false
-},
-{
-"unit": "source/Divide_Conquer.c",
-"function": "DC_NodeRanks",
-"variable": "ranks",
-"type": "i32 0",
-"const": false
-},
-{
-"unit": "source/Divide_Conquer.c",
-"function": "DC_NonCol_owned",
-"variable": "firsttime",
-"type": "i32 1",
-"const": false
-},
-{
 "unit": "source/Divide_Conquer_Dosout.c",
 "function": "DC_Dosout_Col",
 "variable": "firsttime",
@@ -15641,27 +15440,6 @@
 {
 "unit": "source/Divide_Conquer_Dosout.c",
 "function": "DC_Dosout_NonCol",
-"variable": "firsttime",
-"type": "i32 1",
-"const": false
-},
-{
-"unit": "source/Divide_Conquer_LNO.c",
-"function": "DCLNO_GpuGroupMemoryFits",
-"variable": "warned",
-"type": "i32 0",
-"const": false
-},
-{
-"unit": "source/Divide_Conquer_LNO.c",
-"function": "DC_Col_owned",
-"variable": "firsttime",
-"type": "i32 1",
-"const": false
-},
-{
-"unit": "source/Divide_Conquer_LNO.c",
-"function": "DC_NonCol_owned",
 "variable": "firsttime",
 "type": "i32 1",
 "const": false
@@ -15853,90 +15631,6 @@
 "function": "Kerker_Mixing_Rhok_Normal",
 "variable": "firsttime",
 "type": "i32 1",
-"const": false
-},
-{
-"unit": "source/Krylov.c",
-"function": "Eigen_lapack_d_raii",
-"variable": "name",
-"type": "ptr @.str.55",
-"const": false
-},
-{
-"unit": "source/Krylov.c",
-"function": "Eigen_lapack_r_raii",
-"variable": "name",
-"type": "ptr @.str.55",
-"const": false
-},
-{
-"unit": "source/Krylov.c",
-"function": "Krylov_Col_owned",
-"variable": "TZ",
-"type": "double 0.000000e+00",
-"const": false
-},
-{
-"unit": "source/Krylov.c",
-"function": "Krylov_Col_owned",
-"variable": "firsttime",
-"type": "i32 1",
-"const": false
-},
-{
-"unit": "source/Krylov.c",
-"function": "Krylov_Col_owned",
-"variable": "recalc_firsttime",
-"type": "i32 1",
-"const": false
-},
-{
-"unit": "source/Krylov.c",
-"function": "Krylov_Col_owned",
-"variable": "recalc_flag",
-"type": "i32 0",
-"const": false
-},
-{
-"unit": "source/Krylov.c",
-"function": "Krylov_Col_trd_owned",
-"variable": "TZ",
-"type": "double 0.000000e+00",
-"const": false
-},
-{
-"unit": "source/Krylov.c",
-"function": "Krylov_Col_trd_owned",
-"variable": "firsttime",
-"type": "i32 1",
-"const": false
-},
-{
-"unit": "source/Krylov.c",
-"function": "Krylov_Col_trd_owned",
-"variable": "recalc_firsttime",
-"type": "i32 1",
-"const": false
-},
-{
-"unit": "source/Krylov.c",
-"function": "Krylov_Col_trd_owned",
-"variable": "recalc_flag",
-"type": "i32 0",
-"const": false
-},
-{
-"unit": "source/Krylov.c",
-"function": "Krylov_GPU_InitOnce",
-"variable": "initialized",
-"type": "i32 0",
-"const": false
-},
-{
-"unit": "source/Krylov.c",
-"function": "Krylov_NodeRanks",
-"variable": "ranks",
-"type": "i32 0",
 "const": false
 },
 {
