@@ -65,7 +65,7 @@ HIP の置換リストは 105 件から 49 件になり、共通化した元フ�
 | 共通部分 | 主なソース |
 | --- | --- |
 | GPU API とデバイス割り当ての呼び出し | `openmx_gpu_backend.h`、`openmx_gpu_runtime.h`、`openmx_gpu_blas.h`、`openmx_gpu_solver.h`、`openmx_gpu_complex.h`、`openmx_gpu_device.h` |
-| メモリ容量判定・作業分割・失敗時の復旧 | `openmx_gpu_workers.c`、`openmx_gpu_views.cpp`、`openmx_gpu_task.c` / `openmx_gpu_task_worker.cpp` / `openmx_gpu_task_cpu.cpp`、`openmx_gpu_vector.c` / `openmx_gpu_vector_worker.cpp`、`openmx_gpu_bilinear.c`、collective 系 |
+| メモリ容量判定・作業分割・失敗時の復旧 | `openmx_gpu_workers.c`、`openmx_gpu_views.cpp`、`openmx_gpu_task.c` / `openmx_gpu_task_worker.cpp` / `openmx_gpu_task_cpu.cpp` / `openmx_gpu_task_packet.cpp`、`openmx_gpu_vector.c` / `openmx_gpu_vector_worker.cpp`、`openmx_gpu_bilinear.c`、collective 系 |
 | 密度行列・密行列変換の GPU カーネル | `openmx_gpu_dm.cu`、`openmx_gpu_transform.cu` |
 | 複数 GPU の実行制御・行列積・MAGMA 接続 | `openmx_mgpu_runtime.cu`、`openmx_mgpu_gemm.cu`、`openmx_magma_mgpu.cpp` |
 | 数値計算・入力と後処理 | CWF/DMmu 派生ソルバー、ELPA/COSMA 接続、分極、混合、重なり積分、全エネルギーの呼び出し部分、`truncation.c`、`openmx_common.c/h`、`Input_std.c`、`Free_Arrays.c` など |
@@ -99,7 +99,7 @@ GEMMul8の常駐作業領域もCUDA/HIP共通の `DeviceBuffer` が所有し、C
 GeForce/A100向けの演算選択は維持します。キャッシュ表と設定の大域実体は残っています。
 [第37段階の検証](CPP_CORE_MIGRATION.md#第37段階-gemmul8の常駐gpuキャッシュの所有化) を参照してください。
 
-範囲タスクはCの制御・通信と、C++17のGPUワーカー・CPU回復に分けています。
+範囲タスクはCの制御・MPI通信と、C++17のGPUワーカー・CPU回復・パケット処理に分けています。
 GPU領域、一時結果とCSR添字はワーカー呼び出し内の所有者が管理し、通常の解放処理を通らない
 終了でも回収します。レイアウトの計算と結果の公開は共通の内部ヘッダーを使用し、CPUの演算順序・
 64 MiBの作業分割と通信形式は維持しています。C/C++間はC ABIで接続します。
@@ -109,6 +109,11 @@ CPU回復の作業領域もチャンク内の所有者が管理します。CPU�
 64 MiBの分割と確保失敗時の範囲縮小を保ちます。GPU SDKに依存しないC++17のホストモジュールで、
 CUDA/HIP固有の状態を持ちません。検証範囲は
 [第40段階](CPP_CORE_MIGRATION.md#第40段階-cpuタスクの作業領域をスコープ内の所有へ移行) を参照してください。
+
+パケットの生成とremote側の解釈もSDK不要のC++17へ移しました。C/C++共通の内部wireヘッダーを使い、
+16-byteの配置・CSR検証・コピーを保ちます。生成中のパケットとワーカー実行中の結果は所有者が保持し、
+通常の失敗で返した結果も含め、Cの通信側がfreeする契約を維持します。
+[第41段階](CPP_CORE_MIGRATION.md#第41段階-範囲タスクの通信パケットを所有するモジュールへ移行) に検証範囲を記載します。
 
 ホスト側の履歴を使う重み付きGram積・線形結合も、Cの制御・通信・CPU回復とC++17のGPUワーカーに
 分けています。GPU arenaと未公開の部分結果を所有し、添字表はarena内の位置からその都度求めます。

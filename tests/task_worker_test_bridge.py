@@ -1,8 +1,8 @@
 """Link real C++ GPU workers to the C extraction harnesses' SDK stubs.
 
-The C controller, numerical callbacks, packets and failure controls remain
-in their original language. Only the SDK calls cross this model boundary;
-the production worker and its owners are compiled unchanged as C++17.
+The controller, numerical callbacks and failure controls remain C. Workers,
+CPU recovery and packets use the actual C++17 modules. Only the SDK calls
+cross the model boundary; host memory paths compile without a GPU shim.
 """
 from pathlib import Path
 import os
@@ -20,12 +20,16 @@ def compile_vector_test(command, **kwargs):
 
 def compile_task_cpu_object(folder, flags=(), **kwargs):
     """Build SDK-free production CPU recovery; callers supply MPI headers."""
+    return _compile_task_host_object(folder,'cpu',flags,**kwargs)
+
+
+def _compile_task_host_object(folder, module, flags=(), **kwargs):
     folder=Path(folder)
     root=Path(__file__).resolve().parents[1]
-    output=folder/'task_cpu_test.o'
+    output=folder/('task_'+module+'_test.o')
     subprocess.run(shlex.split(os.environ.get('CXX','c++'))+[
         '-std=c++17','-O1','-g',*flags,'-I'+str(folder),'-I'+str(root/'source'),
-        '-c',str(root/'source/openmx_gpu_task_cpu.cpp'),'-o',str(output)],**kwargs)
+        '-c',str(root/'source'/('openmx_gpu_task_'+module+'.cpp')),'-o',str(output)],**kwargs)
     return output
 
 
@@ -79,4 +83,5 @@ inline int OpenMXGpuMemcpy(void *out,const void *in,size_t n,int kind){return op
     link+=[str(worker_object),str(env_archive)]
     if worker=='openmx_gpu_task_worker':
         link.append(str(compile_task_cpu_object(folder,sanitizer,**kwargs)))
+        link.append(str(_compile_task_host_object(folder,'packet',sanitizer,**kwargs)))
     subprocess.run(link,**kwargs)

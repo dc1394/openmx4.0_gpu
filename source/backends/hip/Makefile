@@ -396,7 +396,7 @@ MGPU_C_OBJECTS = openmx_cluster_capacity.o openmx_dense_cpu.o \
 MGPU_HIP_OBJECTS = openmx_gpu_dm.o openmx_gpu_transform.o \
  openmx_mgpu_gemm.o openmx_mgpu_runtime.o
 OBJS += $(MGPU_C_OBJECTS) $(MGPU_HIP_OBJECTS) openmx_gpu_views.o \
- openmx_gpu_task_worker.o openmx_gpu_task_cpu.o openmx_gpu_vector_worker.o openmx_gpu_bilinear_pack.o openmx_magma_mgpu.o elpa_cosma_memory.o openmx_globals.o
+ openmx_gpu_task_worker.o openmx_gpu_task_cpu.o openmx_gpu_task_packet.o openmx_gpu_vector_worker.o openmx_gpu_bilinear_pack.o openmx_magma_mgpu.o elpa_cosma_memory.o openmx_globals.o
 
 openmx_globals.o: openmx_globals.c openmx_common.h
 	$(CC_NOACC) -fno-common -c openmx_globals.c -o $@
@@ -443,8 +443,10 @@ openmx_gpu_views.o: openmx_gpu_views.cpp openmx_gpu_views.h openmx_gpu_memory.hp
 	$(HIPCC) $(HIPCC_GEMMUL8_FLAGS) -std=c++17 -fopenmp -x hip -c $< -o $@
 openmx_gpu_task_worker.o: openmx_gpu_task_worker.cpp openmx_gpu_task.h openmx_gpu_task_layout.h openmx_gpu_memory.hpp openmx_host_buffer.hpp openmx_gpu_workers.h
 	$(HIPCC) $(HIPCC_GEMMUL8_FLAGS) $(MPI_CFLAGS) -std=c++17 -x hip -c $< -o $@
-openmx_gpu_task.o: openmx_gpu_task_layout.h openmx_gpu_task_cpu.h
+openmx_gpu_task.o: openmx_gpu_task_layout.h openmx_gpu_task_cpu.h openmx_gpu_task_packet.h
 openmx_gpu_task_cpu.o: openmx_gpu_task_cpu.cpp openmx_gpu_task_cpu.h openmx_gpu_task.h openmx_gpu_task_layout.h openmx_host_buffer.hpp
+	$(CPPLANG) -O3 -std=c++17 $(MPI_CFLAGS) -c $< -o $@
+openmx_gpu_task_packet.o: openmx_gpu_task_packet.cpp openmx_gpu_task_packet.h openmx_gpu_task.h openmx_gpu_task_layout.h openmx_host_buffer.hpp
 	$(CPPLANG) -O3 -std=c++17 $(MPI_CFLAGS) -c $< -o $@
 openmx_gpu_vector_worker.o: openmx_gpu_vector_worker.cpp openmx_gpu_vector_worker.h openmx_gpu_vector.h openmx_gpu_workers.h openmx_gpu_memory.hpp openmx_host_buffer.hpp
 	$(CPPLANG) -O3 $(MPI_CFLAGS) $(filter-out -std=gnu11 -Werror=implicit-function-declaration,$(CFLAGS_COMMON)) -std=c++17 $(OMP_OFFLOAD) -c $< -o $@

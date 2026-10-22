@@ -128,6 +128,9 @@ install(CODE "${_openmx_install_program}")
 install(TARGETS openmx_core LIBRARY DESTINATION lib)
 
 if(BUILD_TESTING)
+  add_test(NAME gpu-task-packet-resource-lifecycle
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_gpu_task_packet_memory.py")
+  set_tests_properties(gpu-task-packet-resource-lifecycle PROPERTIES LABELS "unit;gpu" TIMEOUT 180)
   add_test(NAME gpu-task-cpu-resource-lifecycle
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_gpu_task_cpu_memory.py")
   set_tests_properties(gpu-task-cpu-resource-lifecycle PROPERTIES LABELS "unit;gpu" TIMEOUT 180)
@@ -259,6 +262,15 @@ if(BUILD_TESTING)
     ENVIRONMENT "OPENMX_CORE_LIBRARY=$<TARGET_FILE:openmx_core>;OPENMX_VNA_SOURCE=${_native}/Set_ProExpn_VNA.c" TIMEOUT 180)
   find_program(OPENMX_TEST_MPICC NAMES mpicc)
   if(OPENMX_TEST_MPICC)
+    find_program(OPENMX_TEST_MPICXX NAMES mpicxx mpic++)
+    find_program(OPENMX_TEST_MPIEXEC NAMES mpirun mpiexec)
+    if(OPENMX_TEST_MPICXX AND OPENMX_TEST_MPIEXEC)
+      add_test(NAME gpu-task-packet-mpi COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_SOURCE_DIR}/tests/run_gpu_task_packet_mpi.py")
+      set_tests_properties(gpu-task-packet-mpi PROPERTIES
+        ENVIRONMENT "MPICC=${OPENMX_TEST_MPICC};MPICXX=${OPENMX_TEST_MPICXX};MPIEXEC=${OPENMX_TEST_MPIEXEC}"
+        LABELS "unit;gpu;mpi" TIMEOUT 150 PROCESSORS 6)
+    endif()
     add_test(NAME projector-exchange-mpi COMMAND "${Python3_EXECUTABLE}"
       "${CMAKE_SOURCE_DIR}/tests/run_projector_exchange_mpi.py")
     set_tests_properties(projector-exchange-mpi PROPERTIES

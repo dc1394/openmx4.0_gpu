@@ -68,9 +68,9 @@ int main(void){
   assert(fx[atoms+1]==111 && fy[atoms+1]==111 && fz[atoms+1]==111);cases++;
  }
  assert(task_add(SIZE_MAX-4,8)==SIZE_MAX);
- TaskPacket bad={0};bad.count=UINT64_MAX;bad.inputs=1;bad.outputs=1;bad.view[0].item_bytes=16;
+ OpenMXGpuTaskPacket bad={0};bad.count=UINT64_MAX;bad.inputs=1;bad.outputs=1;bad.view[0].item_bytes=16;
  OpenMXGpuTask t={0};t.kernel=kernel;void *result=NULL;size_t bytes=0;
- assert(!task_remote(&t,&bad,sizeof(bad),&result,&bytes));
+ assert(!openmx_gpu_task_remote(&t,&bad,sizeof(bad),&result,&bytes));
  OpenMXGpuTask retry={0};retry.first=5;retry.count=N;retry.parameters=&params;retry.parameter_bytes=sizeof(params);
  retry.inputs=3;retry.outputs=2;retry.scratch=1;retry.kernel=kernel;
  retry.view[0]=(OpenMXGpuTaskView){a,0,sizeof(double)};
