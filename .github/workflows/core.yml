@@ -7,6 +7,7 @@ jobs:
   host:
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: ubuntu-24.04
@@ -41,6 +42,9 @@ jobs:
           -DOPENMX_CORE_SANITIZERS=${{ matrix.sanitize }}
           -DCMAKE_BUILD_TYPE=Debug
       - run: cmake --build build/core --parallel 2
+      - name: Inspect Darwin allocation imports
+        if: runner.os == 'macOS'
+        run: nm -u build/core/core/libopenmx_core.dylib | c++filt | grep -E 'operator new|operator delete'
       - name: Require native solver tests in the host-only build
         run: python3 tests/check_native_state_ctest.py --build build/core
       - name: Require real MPI lifetime coverage
@@ -52,8 +56,10 @@ jobs:
           OMP_PROC_BIND: "false"
         run: |
           ulimit -s 8192
-          ctest --test-dir build/core -L '^native-state$' --no-tests=error --output-on-failure
-          ctest --test-dir build/core -LE '^native-state(-mpi)?$' --no-tests=error --output-on-failure
+          test_status=0
+          ctest --test-dir build/core -L '^native-state$' --no-tests=error --output-on-failure || test_status=$?
+          ctest --test-dir build/core -LE '^native-state(-mpi)?$' --no-tests=error --output-on-failure || test_status=$?
+          exit "$test_status"
       - name: Real MPI solver state cleanup
         if: matrix.mpi == true
         env:

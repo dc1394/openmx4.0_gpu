@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
-from native_state_test_support import bounded_stack, compiler_command, allocation_fault_source
+from native_state_test_support import bounded_stack, compiler_command, allocation_fault_source, allocation_fault_environment
 from run_cluster_col_state_cpu import function, pod
 from native_resource_test_bridge import calculation_state_declaration
 
@@ -68,6 +68,7 @@ def main():
                 '-Wl,-rpath,' + str(library.parent), '-o', str(exe)]
             subprocess.run(command, check=True)
             environment = {k: v for k, v in os.environ.items() if not k.startswith(('OPENMX_', 'GEMMUL8_'))}
+            environment.update(allocation_fault_environment(folder))
             print('Backend:', backend, flush=True)
             subprocess.run([str(exe)], env=environment, check=True, timeout=120, preexec_fn=bounded_stack)
 

@@ -45,3 +45,13 @@ def allocation_fault_source(folder):
         subprocess.run(compiler_command('c++') + ['-dynamiclib', '-fPIC', str(source),
                        '-Wl,-install_name,' + str(library), '-o', str(library)], check=True)
     return str(library)
+
+
+def allocation_fault_environment(folder):
+    if sys.platform != 'darwin':
+        return {}
+    library = folder / 'libopenmx_test_allocation_faults.dylib'
+    if not library.is_file():
+        raise FileNotFoundError(library)
+    previous = os.environ.get('DYLD_INSERT_LIBRARIES', '')
+    return {'DYLD_INSERT_LIBRARIES': str(library) + (':' + previous if previous else '')}

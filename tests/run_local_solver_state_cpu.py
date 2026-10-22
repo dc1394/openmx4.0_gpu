@@ -12,7 +12,7 @@ from pathlib import Path
 import re
 import subprocess
 import tempfile
-from native_state_test_support import bounded_stack, compiler_command, allocation_fault_source
+from native_state_test_support import bounded_stack, compiler_command, allocation_fault_source, allocation_fault_environment
 from native_resource_test_bridge import calculation_state_declaration
 from run_cluster_col_state_cpu import function
 
@@ -80,6 +80,7 @@ def main():
                 '-Wl,-rpath,' + str(library.parent), '-o', str(executable)]
             subprocess.run(command, check=True)
             environment = {k: v for k, v in os.environ.items() if not k.startswith(('OPENMX_', 'GEMMUL8_'))}
+            environment.update(allocation_fault_environment(folder))
             if args.mpi_cxx:
                 environment['ASAN_OPTIONS'] = 'detect_leaks=0'  # MPI retains process runtime allocations.
             print('Local solver state:', args.kind, backend, 'production cleanup functions:', len(bodies), flush=True)
