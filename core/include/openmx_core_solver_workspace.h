@@ -45,6 +45,10 @@ int openmx_core_solver_real_overwrite(OpenMXSolverInvocation*, int worker, const
     const size_t shape[4], OpenMXSolverRealTensor*, char*, size_t);
 int openmx_core_solver_complex(OpenMXSolverInvocation*, int worker, const char *name,
     const size_t shape[4], OpenMXSolverComplexTensor*, char*, size_t);
+/* Complex counterpart of solver_real_overwrite; initialized complex storage
+   has a separate namespace even when a worker/name is reused. */
+int openmx_core_solver_complex_overwrite(OpenMXSolverInvocation*, int worker, const char *name,
+    const size_t shape[4], OpenMXSolverComplexTensor*, char*, size_t);
 int openmx_core_solver_int(OpenMXSolverInvocation*, int worker, const char *name,
     size_t count, int **values, char*, size_t);
 int openmx_core_solver_int_tensor(OpenMXSolverInvocation*, int worker, const char *name,

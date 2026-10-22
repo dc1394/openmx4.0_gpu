@@ -66,6 +66,7 @@ struct Worker {
   Slots<double> real;
   Slots<double,OverwriteTensor> real_overwrite;
   Slots<dcomplex> complex_values;
+  Slots<dcomplex,OverwriteTensor> complex_overwrite;
   Slots<int> integers;
   Slots<std::max_align_t> bytes;
   Aliases<double> real_aliases;
@@ -233,6 +234,12 @@ extern "C" int openmx_core_solver_complex(OpenMXSolverInvocation* scope,int work
     const size_t* dimensions,OpenMXSolverComplexTensor* out,char* error,size_t capacity) {
   return checked(error,capacity,[&]{require(scope && out,"missing solver scope or output");
     const auto shape=shape4(dimensions);auto& b=buffer(scope->worker(worker).complex_values,name,shape);
+    *out={{shape[0],shape[1],shape[2],shape[3]},b.view().data_handle()};});
+}
+extern "C" int openmx_core_solver_complex_overwrite(OpenMXSolverInvocation* scope,int worker,const char* name,
+    const size_t* dimensions,OpenMXSolverComplexTensor* out,char* error,size_t capacity) {
+  return checked(error,capacity,[&]{require(scope && out,"missing solver scope or output");
+    const auto shape=shape4(dimensions);auto& b=buffer(scope->worker(worker).complex_overwrite,name,shape);
     *out={{shape[0],shape[1],shape[2],shape[3]},b.view().data_handle()};});
 }
 extern "C" int openmx_core_solver_int(OpenMXSolverInvocation* scope,int worker,const char* name,

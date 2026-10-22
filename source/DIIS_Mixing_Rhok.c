@@ -17,7 +17,7 @@
 #include "mpi.h"
 #include "openmx_common.h"
 #include "openmx_env.h"
-#include "openmx_mixing_rhok_internal.h"
+#include "openmx_mixing_rhok_workspace.h"
 #include "tran_prototypes.h"
 #include "tran_variables.h"
 #include "lapack_prototypes.h"
@@ -33,8 +33,8 @@
 #define MIN(a,b) ((a)<(b))?  (a):(b)
 
 
-static void Inverse(int n, double **a, double **ia);
-static void Complex_Inverse(int n, double **a, double **ia, double **b, double **ib);
+static void Inverse(OpenMXSolverInvocation *scratch, int n, const OpenMXSolverRealTensor *a, const OpenMXSolverRealTensor *ia);
+static void Complex_Inverse(OpenMXSolverInvocation *scratch, int n, const OpenMXSolverRealTensor *a, const OpenMXSolverRealTensor *ia, const OpenMXSolverRealTensor *b, const OpenMXSolverRealTensor *ib);
 
 void F77_NAME(dgemv,DGEMV)(const char *trans, const int *m, const int *n,
                            const double *alpha, const double *a, const int *lda,
@@ -96,7 +96,7 @@ static void MixRhok_RotateSlots(double ***arr, int nslot)
 }
 
 
-static void DIIS_Mixing_Rhok_Normal(MixingRhokState *state, int SCF_iter,
+static void DIIS_Mixing_Rhok_Normal(OpenMXSolverInvocation *scratch, MixingRhokState *state, int SCF_iter,
 			      double Mix_wgt,
 			      double ***ReRhok,
 			      double ***ImRhok,
@@ -108,7 +108,7 @@ static void DIIS_Mixing_Rhok_Normal(MixingRhokState *state, int SCF_iter,
 			      double *ImRhoAtomk);
 
 
-static void DIIS_Mixing_Rhok_NEGF(MixingRhokState *state, int SCF_iter,
+static void DIIS_Mixing_Rhok_NEGF(OpenMXSolverInvocation *scratch, MixingRhokState *state, int SCF_iter,
 				  double Mix_wgt,
 				  double ***ReRhok,
 				  double ***ImRhok,
@@ -133,7 +133,7 @@ void DIIS_Mixing_Rhok(MixingRhokState *state, int SCF_iter,
 
   if (Solver!=4 || TRAN_Poisson_flag==2){
 
-    DIIS_Mixing_Rhok_Normal(state,
+    MixRhok_WithScratch(DIIS_Mixing_Rhok_Normal,state,
 			    SCF_iter,
 			    Mix_wgt,
 			    ReRhok,
@@ -148,7 +148,7 @@ void DIIS_Mixing_Rhok(MixingRhokState *state, int SCF_iter,
 
   else if (Solver==4){
 
-    DIIS_Mixing_Rhok_NEGF(state,
+    MixRhok_WithScratch(DIIS_Mixing_Rhok_NEGF,state,
 			  SCF_iter,
 			  Mix_wgt,
 			  ReRhok,
@@ -166,7 +166,7 @@ void DIIS_Mixing_Rhok(MixingRhokState *state, int SCF_iter,
 
 
 
-void DIIS_Mixing_Rhok_Normal(MixingRhokState *state, int SCF_iter,
+void DIIS_Mixing_Rhok_Normal(OpenMXSolverInvocation *scratch, MixingRhokState *state, int SCF_iter,
 			     double Mix_wgt,
 			     double ***ReRhok,
 			     double ***ImRhok,
@@ -186,7 +186,7 @@ void DIIS_Mixing_Rhok_Normal(MixingRhokState *state, int SCF_iter,
   double time1,time2,time3,time4,time5; 
   double Stime1,Etime1,scale,be;
   double *alden,*alden0,*gradF;
-  double **A,**IA;
+  OpenMXSolverRealTensor A,IA;
   double *My_NMat,*NMat;
   double alpha,beta;
   double tmp0,itmp0,tmp1;
@@ -198,8 +198,8 @@ void DIIS_Mixing_Rhok_Normal(MixingRhokState *state, int SCF_iter,
   double Max_Weight;
   double G0,G02,G02p,weight,wgt0,wgt1;
   double sk1,sk2,sk3;
-  double **Re_OptRhok;
-  double **Im_OptRhok;
+  OpenMXSolverRealTensor Re_OptRhok;
+  OpenMXSolverRealTensor Im_OptRhok;
   double *Kerker_weight;
   int numprocs,myid;
   char nanchar[300];
@@ -232,39 +232,29 @@ void DIIS_Mixing_Rhok_Normal(MixingRhokState *state, int SCF_iter,
     allocation of arrays:
   ****************************************************/
   
-  alden = (double*)malloc(sizeof(double)*List_YOUSO[38]);
-  alden0 = (double*)malloc(sizeof(double)*List_YOUSO[38]);
-  gradF = (double*)malloc(sizeof(double)*List_YOUSO[38]);
+  alden = OpenMX_Solver_OverwriteReal(scratch,"rhok-DIIS_Mixing_Rhok_Normal-alden",List_YOUSO[38]);
+  alden0 = OpenMX_Solver_OverwriteReal(scratch,"rhok-DIIS_Mixing_Rhok_Normal-alden0",List_YOUSO[38]);
+  gradF = OpenMX_Solver_OverwriteReal(scratch,"rhok-DIIS_Mixing_Rhok_Normal-gradF",List_YOUSO[38]);
   
-  My_NMat = (double*)malloc(sizeof(double)*List_YOUSO[38]*List_YOUSO[38]);
-  NMat = (double*)malloc(sizeof(double)*List_YOUSO[38]*List_YOUSO[38]);
+  My_NMat = OpenMX_Solver_OverwriteReal(scratch,"rhok-DIIS_Mixing_Rhok_Normal-My_NMat",(size_t)List_YOUSO[38]*(size_t)List_YOUSO[38]);
+  NMat = OpenMX_Solver_OverwriteReal(scratch,"rhok-DIIS_Mixing_Rhok_Normal-NMat",(size_t)List_YOUSO[38]*(size_t)List_YOUSO[38]);
 
-  A = (double**)malloc(sizeof(double*)*List_YOUSO[38]);
-  for (i=0; i<List_YOUSO[38]; i++){
-    A[i] = (double*)malloc(sizeof(double)*List_YOUSO[38]);
-  }
+  A = OpenMX_Solver_OverwriteView(scratch,"rhok-DIIS_Mixing_Rhok_Normal-A",List_YOUSO[38],List_YOUSO[38]);
   
-  IA = (double**)malloc(sizeof(double*)*List_YOUSO[38]);
-  for (i=0; i<List_YOUSO[38]; i++){
-    IA[i] = (double*)malloc(sizeof(double)*List_YOUSO[38]);
-  }
+  IA = OpenMX_Solver_OverwriteView(scratch,"rhok-DIIS_Mixing_Rhok_Normal-IA",List_YOUSO[38],List_YOUSO[38]);
 
   /* Re_OptRhok and Im_OptRhok */
 
   size_Re_OptRhok = spinmax*My_NumGridB_CB;
 
-  Re_OptRhok = (double**)malloc(sizeof(double*)*spinmax); 
-  for (spin=0; spin<spinmax; spin++){
-    Re_OptRhok[spin] = (double*)malloc(sizeof(double)*My_NumGridB_CB); 
-  }
+  Re_OptRhok = OpenMX_Solver_OverwriteView(scratch,"rhok-DIIS_Mixing_Rhok_Normal-Re_OptRhok",spinmax,My_NumGridB_CB);
 
-  Im_OptRhok = (double**)malloc(sizeof(double*)*spinmax); 
-  for (spin=0; spin<spinmax; spin++){
-    Im_OptRhok[spin] = (double*)malloc(sizeof(double)*My_NumGridB_CB); 
-  }
+
+  Im_OptRhok = OpenMX_Solver_OverwriteView(scratch,"rhok-DIIS_Mixing_Rhok_Normal-Im_OptRhok",spinmax,My_NumGridB_CB);
+
 
   size_Kerker_weight = My_NumGridB_CB;
-  Kerker_weight = (double*)malloc(sizeof(double)*My_NumGridB_CB); 
+  Kerker_weight = OpenMX_Solver_OverwriteReal(scratch,"rhok-DIIS_Mixing_Rhok_Normal-Kerker_weight",My_NumGridB_CB);
 
   /***********************************
             set Kerker_weight 
@@ -464,7 +454,7 @@ void DIIS_Mixing_Rhok_Normal(MixingRhokState *state, int SCF_iter,
 
         for (i=0; i<NumMix; i++){
           for (j=0; j<NumMix; j++){
-            A[i][j] = C[i*l38+j];
+            openmx_solver_real_matrix_row(&A,i)[j] = C[i*l38+j];
           }
         }
       }
@@ -503,7 +493,7 @@ void DIIS_Mixing_Rhok_Normal(MixingRhokState *state, int SCF_iter,
 
         for (i=0; i<NumMix; i++){
           for (j=0; j<NumMix; j++){
-            A[i][j] = NMat[(i+1)*(NumMix+1)+(j+1)];
+            openmx_solver_real_matrix_row(&A,i)[j] = NMat[(i+1)*(NumMix+1)+(j+1)];
           }
         }
 
@@ -511,7 +501,7 @@ void DIIS_Mixing_Rhok_Normal(MixingRhokState *state, int SCF_iter,
           int l38 = state->fast.l38;
           for (i=0; i<NumMix; i++){
             for (j=0; j<NumMix; j++){
-              state->fast.A[i*l38+j] = A[i][j];
+              state->fast.A[i*l38+j] = openmx_solver_real_matrix_row(&A,i)[j];
             }
           }
         }
@@ -538,23 +528,23 @@ void DIIS_Mixing_Rhok_Normal(MixingRhokState *state, int SCF_iter,
       NormRD[i] = NormRD[i-1];
       History_Uele[i] = History_Uele[i-1];
     }
-    NormRD[0] = A[0][0]/(double)Ngrid1/(double)Ngrid2/(double)Ngrid3/(double)spinmax;
+    NormRD[0] = openmx_solver_real_matrix_row(&A,0)[0]/(double)Ngrid1/(double)Ngrid2/(double)Ngrid3/(double)spinmax;
     History_Uele[0] = Uele;
 
     /* set matrix elements on lammda */
 
     for (SCFi=1; SCFi<=NumMix; SCFi++){
-       A[SCFi-1][NumMix] = -1.0;
-       A[NumMix][SCFi-1] = -1.0;
+       openmx_solver_real_matrix_row(&A,SCFi-1)[NumMix] = -1.0;
+       openmx_solver_real_matrix_row(&A,NumMix)[SCFi-1] = -1.0;
     }
-    A[NumMix][NumMix] = 0.0;
+    openmx_solver_real_matrix_row(&A,NumMix)[NumMix] = 0.0;
 
     /* solve the linear equation */
 
-    Inverse(NumMix,A,IA);
+    Inverse(scratch, NumMix,&A,&IA);
 
     for (SCFi=1; SCFi<=NumMix; SCFi++){
-      alden[SCFi] = -IA[SCFi-1][NumMix];
+      alden[SCFi] = -openmx_solver_real_matrix_row(&IA,SCFi-1)[NumMix];
     }
 
     /*************************************
@@ -588,8 +578,8 @@ void DIIS_Mixing_Rhok_Normal(MixingRhokState *state, int SCF_iter,
 
     for (spin=0; spin<spinmax; spin++){
       for (k=0; k<My_NumGridB_CB; k++){
-        Re_OptRhok[spin][k] = 0.0;
-        Im_OptRhok[spin][k] = 0.0;
+        openmx_solver_real_matrix_row(&Re_OptRhok,spin)[k] = 0.0;
+        openmx_solver_real_matrix_row(&Im_OptRhok,spin)[k] = 0.0;
       }
     }   
 
@@ -610,28 +600,28 @@ void DIIS_Mixing_Rhok_Normal(MixingRhokState *state, int SCF_iter,
 
 	if (spinmax==1){
 	  for (k=My_NumGridB_CB*OMPID/Nthrds; k<My_NumGridB_CB*(OMPID+1)/Nthrds; k++){
-	    Re_OptRhok[0][k] += tmp0*Residual_ReRhok[0][p0+k];
-	    Im_OptRhok[0][k] += tmp0*Residual_ImRhok[0][p0+k];
+            openmx_solver_real_matrix_row(&Re_OptRhok,0)[k] += tmp0*Residual_ReRhok[0][p0+k];
+            openmx_solver_real_matrix_row(&Im_OptRhok,0)[k] += tmp0*Residual_ImRhok[0][p0+k];
 	  } /* k */
 	}
 
 	else if (spinmax==2){
 	  for (k=My_NumGridB_CB*OMPID/Nthrds; k<My_NumGridB_CB*(OMPID+1)/Nthrds; k++){
-	    Re_OptRhok[0][k] += tmp0*Residual_ReRhok[0][p0+k];
-	    Im_OptRhok[0][k] += tmp0*Residual_ImRhok[0][p0+k];
-	    Re_OptRhok[1][k] += tmp0*Residual_ReRhok[1][p0+k];
-	    Im_OptRhok[1][k] += tmp0*Residual_ImRhok[1][p0+k];
+            openmx_solver_real_matrix_row(&Re_OptRhok,0)[k] += tmp0*Residual_ReRhok[0][p0+k];
+            openmx_solver_real_matrix_row(&Im_OptRhok,0)[k] += tmp0*Residual_ImRhok[0][p0+k];
+            openmx_solver_real_matrix_row(&Re_OptRhok,1)[k] += tmp0*Residual_ReRhok[1][p0+k];
+            openmx_solver_real_matrix_row(&Im_OptRhok,1)[k] += tmp0*Residual_ImRhok[1][p0+k];
 	  } /* k */
 	}
 
 	else if (spinmax==3){
 	  for (k=My_NumGridB_CB*OMPID/Nthrds; k<My_NumGridB_CB*(OMPID+1)/Nthrds; k++){
-	    Re_OptRhok[0][k] += tmp0*Residual_ReRhok[0][p0+k];
-	    Im_OptRhok[0][k] += tmp0*Residual_ImRhok[0][p0+k];
-	    Re_OptRhok[1][k] += tmp0*Residual_ReRhok[1][p0+k];
-	    Im_OptRhok[1][k] += tmp0*Residual_ImRhok[1][p0+k];
-	    Re_OptRhok[2][k] += tmp0*Residual_ReRhok[2][p0+k];
-	    Im_OptRhok[2][k] += tmp0*Residual_ImRhok[2][p0+k];
+            openmx_solver_real_matrix_row(&Re_OptRhok,0)[k] += tmp0*Residual_ReRhok[0][p0+k];
+            openmx_solver_real_matrix_row(&Im_OptRhok,0)[k] += tmp0*Residual_ImRhok[0][p0+k];
+            openmx_solver_real_matrix_row(&Re_OptRhok,1)[k] += tmp0*Residual_ReRhok[1][p0+k];
+            openmx_solver_real_matrix_row(&Im_OptRhok,1)[k] += tmp0*Residual_ImRhok[1][p0+k];
+            openmx_solver_real_matrix_row(&Re_OptRhok,2)[k] += tmp0*Residual_ReRhok[2][p0+k];
+            openmx_solver_real_matrix_row(&Im_OptRhok,2)[k] += tmp0*Residual_ImRhok[2][p0+k];
 	  } /* k */
 	}
 
@@ -726,8 +716,8 @@ void DIIS_Mixing_Rhok_Normal(MixingRhokState *state, int SCF_iter,
           else 
             weight = 1.0/Kerker_weight[k];
 
-	  ReRhok[0][spin][k] += coef_OptRho*Re_OptRhok[spin][k]*weight;
-	  ImRhok[0][spin][k] += coef_OptRho*Im_OptRhok[spin][k]*weight;
+          ReRhok[0][spin][k] += coef_OptRho*openmx_solver_real_matrix_row(&Re_OptRhok,spin)[k]*weight;
+          ImRhok[0][spin][k] += coef_OptRho*openmx_solver_real_matrix_row(&Im_OptRhok,spin)[k]*weight;
 
 	  /* correction to large changing components */
 
@@ -987,39 +977,27 @@ void DIIS_Mixing_Rhok_Normal(MixingRhokState *state, int SCF_iter,
     freeing of arrays:
   ****************************************************/
 
-  free(Kerker_weight);
 
-  for (spin=0; spin<spinmax; spin++){
-    free(Im_OptRhok[spin]);
-  }
-  free(Im_OptRhok);
 
-  for (spin=0; spin<spinmax; spin++){
-    free(Re_OptRhok[spin]);
-  }
-  free(Re_OptRhok);
 
-  for (i=0; i<List_YOUSO[38]; i++){
-    free(IA[i]);
-  }
-  free(IA);
 
-  for (i=0; i<List_YOUSO[38]; i++){
-    free(A[i]);
-  }
-  free(A);
 
-  free(NMat);
-  free(My_NMat);
-  free(gradF);
-  free(alden0);
-  free(alden);
+
+
+
+
+
+
+
+
+
+
 
 }
 
 
 
-void DIIS_Mixing_Rhok_NEGF(MixingRhokState *state, int SCF_iter,
+void DIIS_Mixing_Rhok_NEGF(OpenMXSolverInvocation *scratch, MixingRhokState *state, int SCF_iter,
 			   double Mix_wgt,
 			   double ***ReRhok,
 			   double ***ImRhok,
@@ -1039,7 +1017,8 @@ void DIIS_Mixing_Rhok_NEGF(MixingRhokState *state, int SCF_iter,
   double time1,time2,time3,time4,time5; 
   double Stime1,Etime1;
   double *alden,alpha,beta;
-  double **A,**My_A,**IA,*My_A_thrds;
+  OpenMXSolverRealTensor A,IA,My_A;
+  double *My_A_thrds;
   double *My_NMat,*NMat;
   double tmp0,itmp0,tmp1,im1,im2,re1,re2;
   double OptRNorm,My_OptRNorm,x,wt;
@@ -1049,8 +1028,8 @@ void DIIS_Mixing_Rhok_NEGF(MixingRhokState *state, int SCF_iter,
   double Max_Weight;
   double G0,G02,G02p,weight,wgt0,wgt1;
   double sk1,sk2,sk3;
-  double **Re_OptRhok;
-  double **Im_OptRhok;
+  OpenMXSolverRealTensor Re_OptRhok;
+  OpenMXSolverRealTensor Im_OptRhok;
   double *Kerker_weight;
   int numprocs,myid;
   char nanchar[300];
@@ -1081,44 +1060,33 @@ void DIIS_Mixing_Rhok_NEGF(MixingRhokState *state, int SCF_iter,
     allocation of arrays:
   ****************************************************/
   
-  alden = (double*)malloc(sizeof(double)*List_YOUSO[38]);
+  alden = OpenMX_Solver_OverwriteReal(scratch,"rhok-DIIS_Mixing_Rhok_NEGF-alden",List_YOUSO[38]);
 
-  My_NMat = (double*)malloc(sizeof(double)*List_YOUSO[38]*List_YOUSO[38]);
-  NMat = (double*)malloc(sizeof(double)*List_YOUSO[38]*List_YOUSO[38]);
+  My_NMat = OpenMX_Solver_OverwriteReal(scratch,"rhok-DIIS_Mixing_Rhok_NEGF-My_NMat",(size_t)List_YOUSO[38]*(size_t)List_YOUSO[38]);
+  NMat = OpenMX_Solver_OverwriteReal(scratch,"rhok-DIIS_Mixing_Rhok_NEGF-NMat",(size_t)List_YOUSO[38]*(size_t)List_YOUSO[38]);
 
-  A = (double**)malloc(sizeof(double*)*List_YOUSO[38]);
-  for (i=0; i<List_YOUSO[38]; i++){
-    A[i] = (double*)malloc(sizeof(double)*List_YOUSO[38]);
-  }
+  A = OpenMX_Solver_OverwriteView(scratch,"rhok-DIIS_Mixing_Rhok_NEGF-A",List_YOUSO[38],List_YOUSO[38]);
 
-  My_A = (double**)malloc(sizeof(double*)*List_YOUSO[38]);
-  for (i=0; i<List_YOUSO[38]; i++){
-    My_A[i] = (double*)malloc(sizeof(double)*List_YOUSO[38]);
-  }
+  My_A = OpenMX_Solver_OverwriteView(scratch,"rhok-DIIS_Mixing_Rhok_NEGF-My_A",List_YOUSO[38],List_YOUSO[38]);
 
-  IA = (double**)malloc(sizeof(double*)*List_YOUSO[38]);
-  for (i=0; i<List_YOUSO[38]; i++){
-    IA[i] = (double*)malloc(sizeof(double)*List_YOUSO[38]);
-  }
+  IA = OpenMX_Solver_OverwriteView(scratch,"rhok-DIIS_Mixing_Rhok_NEGF-IA",List_YOUSO[38],List_YOUSO[38]);
 
   /* Re_OptRhok and Im_OptRhok */
 
   size_Re_OptRhok = spinmax*My_NumGridB_CB;
 
-  Re_OptRhok = (double**)malloc(sizeof(double*)*spinmax); 
+  Re_OptRhok = OpenMX_Solver_OverwriteView(scratch,"rhok-DIIS_Mixing_Rhok_NEGF-Re_OptRhok",spinmax,My_NumGridB_CB);
   for (spin=0; spin<spinmax; spin++){
-    Re_OptRhok[spin] = (double*)malloc(sizeof(double)*My_NumGridB_CB); 
-    for (k=0; k<My_NumGridB_CB; k++) Re_OptRhok[spin][k] = 0.0;
+    for (k=0; k<My_NumGridB_CB; k++) openmx_solver_real_matrix_row(&Re_OptRhok,spin)[k] = 0.0;
   }
 
-  Im_OptRhok = (double**)malloc(sizeof(double*)*spinmax); 
+  Im_OptRhok = OpenMX_Solver_OverwriteView(scratch,"rhok-DIIS_Mixing_Rhok_NEGF-Im_OptRhok",spinmax,My_NumGridB_CB);
   for (spin=0; spin<spinmax; spin++){
-    Im_OptRhok[spin] = (double*)malloc(sizeof(double)*My_NumGridB_CB); 
-    for (k=0; k<My_NumGridB_CB; k++) Im_OptRhok[spin][k] = 0.0;
+    for (k=0; k<My_NumGridB_CB; k++) openmx_solver_real_matrix_row(&Im_OptRhok,spin)[k] = 0.0;
   }
 
   size_Kerker_weight = My_NumGridB_CB;
-  Kerker_weight = (double*)malloc(sizeof(double)*My_NumGridB_CB); 
+  Kerker_weight = OpenMX_Solver_OverwriteReal(scratch,"rhok-DIIS_Mixing_Rhok_NEGF-Kerker_weight",My_NumGridB_CB);
 
   /***********************************
             set Kerker_weight 
@@ -1317,7 +1285,7 @@ void DIIS_Mixing_Rhok_NEGF(MixingRhokState *state, int SCF_iter,
 
     for (i=0; i<NumMix; i++){
       for (j=0; j<NumMix; j++){
-        A[i][j] = NMat[(i+1)*(NumMix+1)+(j+1)];
+        openmx_solver_real_matrix_row(&A,i)[j] = NMat[(i+1)*(NumMix+1)+(j+1)];
       }
     }
 
@@ -1368,21 +1336,21 @@ void DIIS_Mixing_Rhok_NEGF(MixingRhokState *state, int SCF_iter,
       NormRD[i] = NormRD[i-1];
       History_Uele[i] = History_Uele[i-1];
     }
-    NormRD[0] = A[0][0];
+    NormRD[0] = openmx_solver_real_matrix_row(&A,0)[0];
     History_Uele[0] = Uele;
 
     /* solve the linear equation */
 
     for (SCFi=1; SCFi<=NumMix; SCFi++){
-       A[SCFi-1][NumMix] = -1.0;
-       A[NumMix][SCFi-1] = -1.0;
+       openmx_solver_real_matrix_row(&A,SCFi-1)[NumMix] = -1.0;
+       openmx_solver_real_matrix_row(&A,NumMix)[SCFi-1] = -1.0;
     }
-    A[NumMix][NumMix] = 0.0;
+    openmx_solver_real_matrix_row(&A,NumMix)[NumMix] = 0.0;
 
-    Inverse(NumMix,A,IA);
+    Inverse(scratch, NumMix,&A,&IA);
 
     for (SCFi=1; SCFi<=NumMix; SCFi++){
-      alden[SCFi] = -IA[SCFi-1][NumMix];
+      alden[SCFi] = -openmx_solver_real_matrix_row(&IA,SCFi-1)[NumMix];
     }
 
     /*************************************
@@ -1424,8 +1392,8 @@ void DIIS_Mixing_Rhok_NEGF(MixingRhokState *state, int SCF_iter,
 
 	  /* Pulay mixing */
 
-	  Re_OptRhok[spin][k] += tmp0*Residual_ReRhok[spin][p0+k];
-	  Im_OptRhok[spin][k] += tmp0*Residual_ImRhok[spin][p0+k];
+          openmx_solver_real_matrix_row(&Re_OptRhok,spin)[k] += tmp0*Residual_ReRhok[spin][p0+k];
+          openmx_solver_real_matrix_row(&Im_OptRhok,spin)[k] += tmp0*Residual_ImRhok[spin][p0+k];
 
 	} /* k */
       } /* spin */
@@ -1486,8 +1454,8 @@ void DIIS_Mixing_Rhok_NEGF(MixingRhokState *state, int SCF_iter,
  
 	  weight = 1.0/(Kerker_weight[k]*Kerker_weight[k]);
 
-	  ReRhok[0][spin][k] += coef_OptRho*Re_OptRhok[spin][k]*weight;
-	  ImRhok[0][spin][k] += coef_OptRho*Im_OptRhok[spin][k]*weight;
+          ReRhok[0][spin][k] += coef_OptRho*openmx_solver_real_matrix_row(&Re_OptRhok,spin)[k]*weight;
+          ImRhok[0][spin][k] += coef_OptRho*openmx_solver_real_matrix_row(&Im_OptRhok,spin)[k]*weight;
 
 	  /* correction to large changing components */
 
@@ -1688,37 +1656,22 @@ void DIIS_Mixing_Rhok_NEGF(MixingRhokState *state, int SCF_iter,
     freeing of arrays:
   ****************************************************/
   
-  free(alden);
 
-  for (i=0; i<List_YOUSO[38]; i++){
-    free(A[i]);
-  }
-  free(A);
 
-  for (i=0; i<List_YOUSO[38]; i++){
-    free(My_A[i]);
-  }
-  free(My_A);
 
-  for (i=0; i<List_YOUSO[38]; i++){
-    free(IA[i]);
-  }
-  free(IA);
 
-  free(My_NMat);
-  free(NMat);
 
-  for (spin=0; spin<spinmax; spin++){
-    free(Re_OptRhok[spin]);
-  }
-  free(Re_OptRhok);
 
-  for (spin=0; spin<spinmax; spin++){
-    free(Im_OptRhok[spin]);
-  }
-  free(Im_OptRhok);
 
-  free(Kerker_weight);
+
+
+
+
+
+
+
+
+
 }
 
 
@@ -1734,7 +1687,7 @@ void DIIS_Mixing_Rhok_NEGF(MixingRhokState *state, int SCF_iter,
 
 
 
-void Inverse(int n, double **a, double **ia)
+void Inverse(OpenMXSolverInvocation *scratch, int n, const OpenMXSolverRealTensor *a, const OpenMXSolverRealTensor *ia)
 {
   int method_flag=1;
 
@@ -1750,7 +1703,7 @@ void Inverse(int n, double **a, double **ia)
     int i,j,k;
     double w;
     double *x,*y;
-    double **da;
+    OpenMXSolverRealTensor da;
 
     /***************************************************
      allocation of arrays: 
@@ -1760,18 +1713,17 @@ void Inverse(int n, double **a, double **ia)
      da[List_YOUSO[38]][List_YOUSO[38]]
     ***************************************************/
 
-    x = (double*)malloc(sizeof(double)*List_YOUSO[38]);
-    y = (double*)malloc(sizeof(double)*List_YOUSO[38]);
+    x = OpenMX_Solver_OverwriteReal(scratch,"rhok-Inverse-x",List_YOUSO[38]);
+    y = OpenMX_Solver_OverwriteReal(scratch,"rhok-Inverse-y",List_YOUSO[38]);
     for (i=0; i<List_YOUSO[38]; i++){
       x[i] = 0.0;
       y[i] = 0.0;
     }
 
-    da = (double**)malloc(sizeof(double*)*List_YOUSO[38]);
+    da = OpenMX_Solver_OverwriteView(scratch,"rhok-Inverse-da",List_YOUSO[38],List_YOUSO[38]);
     for (i=0; i<List_YOUSO[38]; i++){
-      da[i] = (double*)malloc(sizeof(double)*List_YOUSO[38]);
-      for (j=0; j<List_YOUSO[38]; j++){
-	da[i][j] = 0.0;
+        for (j=0; j<List_YOUSO[38]; j++){
+        openmx_solver_real_matrix_row(&da,i)[j] = 0.0;
       }
     }
 
@@ -1780,14 +1732,14 @@ void Inverse(int n, double **a, double **ia)
     if (n==-1){
       for (i=0; i<List_YOUSO[38]; i++){
 	for (j=0; j<List_YOUSO[38]; j++){
-	  a[i][j] = 0.0;
+          openmx_solver_real_matrix_row(a,i)[j] = 0.0;
 	}
       }
     }
     else{
       for (i=0; i<=n; i++){
 	for (j=0; j<=n; j++){
-	  da[i][j] = a[i][j];
+          openmx_solver_real_matrix_row(&da,i)[j] = openmx_solver_real_matrix_row(a,i)[j];
 	}
       }
 
@@ -1796,11 +1748,11 @@ void Inverse(int n, double **a, double **ia)
       ****************************************************/
 
       for (k=0; k<=n-1; k++){
-	w = 1.0/a[k][k];
+        w = 1.0/openmx_solver_real_matrix_row(a,k)[k];
 	for (i=k+1; i<=n; i++){
-	  a[i][k] = w*a[i][k];
+          openmx_solver_real_matrix_row(a,i)[k] = w*openmx_solver_real_matrix_row(a,i)[k];
 	  for (j=k+1; j<=n; j++){
-	    a[i][j] = a[i][j] - a[i][k]*a[k][j];
+            openmx_solver_real_matrix_row(a,i)[j] = openmx_solver_real_matrix_row(a,i)[j] - openmx_solver_real_matrix_row(a,i)[k]*openmx_solver_real_matrix_row(a,k)[j];
 	  }
 	}
       }
@@ -1817,7 +1769,7 @@ void Inverse(int n, double **a, double **ia)
 	  else
 	    y[i] = 0.0;
 	  for (j=0; j<=i-1; j++){
-	    y[i] = y[i] - a[i][j]*y[j];
+            y[i] = y[i] - openmx_solver_real_matrix_row(a,i)[j]*y[j];
 	  }
 	}
 
@@ -1828,16 +1780,16 @@ void Inverse(int n, double **a, double **ia)
 	for (i=n; 0<=i; i--){
 	  x[i] = y[i];
 	  for (j=n; (i+1)<=j; j--){
-	    x[i] = x[i] - a[i][j]*x[j];
+            x[i] = x[i] - openmx_solver_real_matrix_row(a,i)[j]*x[j];
 	  }
-	  x[i] = x[i]/a[i][i];
-	  ia[i][k] = x[i];
+          x[i] = x[i]/openmx_solver_real_matrix_row(a,i)[i];
+          openmx_solver_real_matrix_row(ia,i)[k] = x[i];
 	}
       }
 
       for (i=0; i<=n; i++){
 	for (j=0; j<=n; j++){
-	  a[i][j] = da[i][j];
+          openmx_solver_real_matrix_row(a,i)[j] = openmx_solver_real_matrix_row(&da,i)[j];
 	}
       }
     }
@@ -1850,13 +1802,10 @@ void Inverse(int n, double **a, double **ia)
      da[List_YOUSO[38]][List_YOUSO[38]]
     ***************************************************/
 
-    for (i=0; i<List_YOUSO[38]; i++){
-      free(da[i]);
-    }
-    free(da);
 
-    free(y);
-    free(x);
+
+
+
   }
   
   else if (method_flag==1){
@@ -1865,13 +1814,13 @@ void Inverse(int n, double **a, double **ia)
     int *IPIV,LWORK;
     double *A,*WORK;
 
-    A = (double*)malloc(sizeof(double)*(n+2)*(n+2));
-    WORK = (double*)malloc(sizeof(double)*(n+2));
-    IPIV = (int*)malloc(sizeof(int)*(n+2));
+    A = OpenMX_Solver_OverwriteReal(scratch,"rhok-Inverse-lu-A",(size_t)(n+2)*(size_t)(n+2));
+    WORK = OpenMX_Solver_OverwriteReal(scratch,"rhok-Inverse-lu-WORK",(n+2));
+    IPIV = OpenMX_Solver_Int(scratch,"rhok-Inverse-lu-IPIV",(n+2));
 
     for (i=0; i<=n; i++){
       for (j=0; j<=n; j++){
-        A[i*(n+1)+j] = a[i][j];
+        A[i*(n+1)+j] = openmx_solver_real_matrix_row(a,i)[j];
       }
     }
 
@@ -1885,13 +1834,13 @@ void Inverse(int n, double **a, double **ia)
 
     for (i=0; i<=n; i++){
       for (j=0; j<=n; j++){
-        ia[i][j] = A[i*(n+1)+j];
+        openmx_solver_real_matrix_row(ia,i)[j] = A[i*(n+1)+j];
       }
     }
 
-    free(IPIV);
-    free(WORK);
-    free(A);
+
+
+
   }
 
   else if (method_flag==2){
@@ -1902,9 +1851,9 @@ void Inverse(int n, double **a, double **ia)
 
     N = n + 1;
 
-    A = (double*)malloc(sizeof(double)*(N+2)*(N+2));
-    B = (double*)malloc(sizeof(double)*(N+2)*(N+2));
-    ko = (double*)malloc(sizeof(double)*(N+2));
+    A = OpenMX_Solver_OverwriteReal(scratch,"rhok-Inverse-eigen-A",(size_t)(N+2)*(size_t)(N+2));
+    B = OpenMX_Solver_OverwriteReal(scratch,"rhok-Inverse-eigen-B",(size_t)(N+2)*(size_t)(N+2));
+    ko = OpenMX_Solver_OverwriteReal(scratch,"rhok-Inverse-eigen-ko",(N+2));
 
     /*
     printf("N=%2d\n",N);
@@ -1918,7 +1867,7 @@ void Inverse(int n, double **a, double **ia)
 
     for (i=0; i<N; i++){
       for (j=0; j<N; j++){
-        A[j*N+i] = a[i][j];
+        A[j*N+i] = openmx_solver_real_matrix_row(a,i)[j];
       }
     }
 
@@ -1965,7 +1914,7 @@ void Inverse(int n, double **a, double **ia)
 
     for (i=0; i<N; i++){
       for (j=0; j<N; j++){
-        ia[i][j] = 0.0;
+        openmx_solver_real_matrix_row(ia,i)[j] = 0.0;
       }
     }
 
@@ -1975,7 +1924,7 @@ void Inverse(int n, double **a, double **ia)
 	for (k=0; k<N; k++){
 	  sum += A[k*N+i]*B[k*N+j];
 	}
-        ia[i][j] = sum;
+        openmx_solver_real_matrix_row(ia,i)[j] = sum;
       }
     }
 
@@ -1992,14 +1941,14 @@ void Inverse(int n, double **a, double **ia)
     exit(0);
     */
 
-    free(ko);
-    free(B);
-    free(A);
+
+
+
   }
 }
 
 
-void Inverse2(int n, double **a, double **ia)
+void Inverse2(OpenMXSolverInvocation *scratch, int n, const OpenMXSolverRealTensor *a, const OpenMXSolverRealTensor *ia)
 {
   int N,i,j,k;
   double *A,*B,*ko;
@@ -2007,9 +1956,9 @@ void Inverse2(int n, double **a, double **ia)
 
   N = n + 1;
 
-  A = (double*)malloc(sizeof(double)*(N+2)*(N+2));
-  B = (double*)malloc(sizeof(double)*(N+2)*(N+2));
-  ko = (double*)malloc(sizeof(double)*(N+2));
+  A = OpenMX_Solver_OverwriteReal(scratch,"rhok-Inverse2-eigen-A",(size_t)(N+2)*(size_t)(N+2));
+  B = OpenMX_Solver_OverwriteReal(scratch,"rhok-Inverse2-eigen-B",(size_t)(N+2)*(size_t)(N+2));
+  ko = OpenMX_Solver_OverwriteReal(scratch,"rhok-Inverse2-eigen-ko",(N+2));
 
   /*
     printf("N=%2d\n",N);
@@ -2023,7 +1972,7 @@ void Inverse2(int n, double **a, double **ia)
 
   for (i=0; i<N; i++){
     for (j=0; j<N; j++){
-      A[j*N+i] = a[i][j];
+      A[j*N+i] = openmx_solver_real_matrix_row(a,i)[j];
     }
   }
 
@@ -2069,7 +2018,7 @@ void Inverse2(int n, double **a, double **ia)
 
   for (i=0; i<N; i++){
     for (j=0; j<N; j++){
-      ia[i][j] = 0.0;
+      openmx_solver_real_matrix_row(ia,i)[j] = 0.0;
     }
   }
 
@@ -2079,7 +2028,7 @@ void Inverse2(int n, double **a, double **ia)
       for (k=0; k<N; k++){
 	sum += A[k*N+i]*B[k*N+j];
       }
-      ia[i][j] = sum;
+      openmx_solver_real_matrix_row(ia,i)[j] = sum;
     }
   }
 
@@ -2096,9 +2045,9 @@ void Inverse2(int n, double **a, double **ia)
     exit(0);
   */
 
-  free(A);
-  free(B);
-  free(ko);
+
+
+
 
 }
 
@@ -2106,7 +2055,7 @@ void Inverse2(int n, double **a, double **ia)
 
 
 
-void Complex_Inverse(int n, double **a, double **ia, double **b, double **ib)
+void Complex_Inverse(OpenMXSolverInvocation *scratch, int n, const OpenMXSolverRealTensor *a, const OpenMXSolverRealTensor *ia, const OpenMXSolverRealTensor *b, const OpenMXSolverRealTensor *ib)
 {
   /****************************************************
                   LU decomposition
@@ -2119,7 +2068,7 @@ void Complex_Inverse(int n, double **a, double **ia, double **b, double **ib)
   double w2,re,im;
   dcomplex w;
   dcomplex *x,*y;
-  dcomplex **da;
+  OpenMXSolverComplexTensor da;
 
   /***************************************************
     allocation of arrays: 
@@ -2129,21 +2078,19 @@ void Complex_Inverse(int n, double **a, double **ia, double **b, double **ib)
      da[List_YOUSO[38]][List_YOUSO[38]]
   ***************************************************/
 
-  x = (dcomplex*)malloc(sizeof(dcomplex)*List_YOUSO[38]);
-  y = (dcomplex*)malloc(sizeof(dcomplex)*List_YOUSO[38]);
+  x = OpenMX_Solver_OverwriteComplex(scratch,"rhok-Complex_Inverse-x",List_YOUSO[38]);
+  y = OpenMX_Solver_OverwriteComplex(scratch,"rhok-Complex_Inverse-y",List_YOUSO[38]);
 
-  da = (dcomplex**)malloc(sizeof(dcomplex*)*List_YOUSO[38]);
-  for (i=0; i<List_YOUSO[38]; i++){
-    da[i] = (dcomplex*)malloc(sizeof(dcomplex)*List_YOUSO[38]);
-  }
+  da = OpenMX_Solver_OverwriteComplexView(scratch,"rhok-Complex_Inverse-da",List_YOUSO[38],List_YOUSO[38]);
+
 
   /* start calc. */
 
   if (n==-1){
     for (i=0; i<List_YOUSO[38]; i++){
       for (j=0; j<List_YOUSO[38]; j++){
- 	 a[i][j] = 0.0;
-	ia[i][j] = 0.0;
+         openmx_solver_real_matrix_row(a,i)[j] = 0.0;
+        openmx_solver_real_matrix_row(ia,i)[j] = 0.0;
       }
     }
   }
@@ -2152,8 +2099,8 @@ void Complex_Inverse(int n, double **a, double **ia, double **b, double **ib)
 
     for (i=0; i<=n; i++){
       for (j=0; j<=n; j++){
-	da[i][j].r =  a[i][j];
-	da[i][j].i = ia[i][j];
+        openmx_solver_complex_matrix_row(&da,i)[j].r =  openmx_solver_real_matrix_row(a,i)[j];
+        openmx_solver_complex_matrix_row(&da,i)[j].i = openmx_solver_real_matrix_row(ia,i)[j];
       }
     }
 
@@ -2163,22 +2110,22 @@ void Complex_Inverse(int n, double **a, double **ia, double **b, double **ib)
 
     for (k=0; k<=n-1; k++){
 
-      w.r =  a[k][k];
-      w.i = ia[k][k];
+      w.r =  openmx_solver_real_matrix_row(a,k)[k];
+      w.i = openmx_solver_real_matrix_row(ia,k)[k];
       w2 = 1.0/(w.r*w.r + w.i*w.i); 
 
       for (i=k+1; i<=n; i++){
 
-	re = w2*(w.r* a[i][k] + w.i*ia[i][k]);
-        im = w2*(w.r*ia[i][k] - w.i* a[i][k]);
-	a[i][k] = re;
-       ia[i][k] = im;
+        re = w2*(w.r* openmx_solver_real_matrix_row(a,i)[k] + w.i*openmx_solver_real_matrix_row(ia,i)[k]);
+        im = w2*(w.r*openmx_solver_real_matrix_row(ia,i)[k] - w.i* openmx_solver_real_matrix_row(a,i)[k]);
+        openmx_solver_real_matrix_row(a,i)[k] = re;
+       openmx_solver_real_matrix_row(ia,i)[k] = im;
 
 	for (j=k+1; j<=n; j++){
- 	   re =  a[i][j] - (a[i][k]* a[k][j] - ia[i][k]*ia[k][j]);
-	   im = ia[i][j] - (a[i][k]*ia[k][j] + ia[i][k]* a[k][j]);
- 	   a[i][j] = re;
-	  ia[i][j] = im;
+           re =  openmx_solver_real_matrix_row(a,i)[j] - (openmx_solver_real_matrix_row(a,i)[k]* openmx_solver_real_matrix_row(a,k)[j] - openmx_solver_real_matrix_row(ia,i)[k]*openmx_solver_real_matrix_row(ia,k)[j]);
+           im = openmx_solver_real_matrix_row(ia,i)[j] - (openmx_solver_real_matrix_row(a,i)[k]*openmx_solver_real_matrix_row(ia,k)[j] + openmx_solver_real_matrix_row(ia,i)[k]* openmx_solver_real_matrix_row(a,k)[j]);
+           openmx_solver_real_matrix_row(a,i)[j] = re;
+          openmx_solver_real_matrix_row(ia,i)[j] = im;
 	}
       }
     }
@@ -2200,8 +2147,8 @@ void Complex_Inverse(int n, double **a, double **ia, double **b, double **ib)
 	}
 
 	for (j=0; j<=i-1; j++){
-   	  y[i].r = y[i].r - (a[i][j]*y[j].r - ia[i][j]*y[j].i);
-	  y[i].i = y[i].i - (a[i][j]*y[j].i + ia[i][j]*y[j].r);
+          y[i].r = y[i].r - (openmx_solver_real_matrix_row(a,i)[j]*y[j].r - openmx_solver_real_matrix_row(ia,i)[j]*y[j].i);
+          y[i].i = y[i].i - (openmx_solver_real_matrix_row(a,i)[j]*y[j].i + openmx_solver_real_matrix_row(ia,i)[j]*y[j].r);
 	}
       }
 
@@ -2212,12 +2159,12 @@ void Complex_Inverse(int n, double **a, double **ia, double **b, double **ib)
       for (i=n; 0<=i; i--){
 	x[i] = y[i];
 	for (j=n; (i+1)<=j; j--){
-	  x[i].r = x[i].r - (a[i][j]*x[j].r - ia[i][j]*x[j].i);
-	  x[i].i = x[i].i - (a[i][j]*x[j].i + ia[i][j]*x[j].r);
+          x[i].r = x[i].r - (openmx_solver_real_matrix_row(a,i)[j]*x[j].r - openmx_solver_real_matrix_row(ia,i)[j]*x[j].i);
+          x[i].i = x[i].i - (openmx_solver_real_matrix_row(a,i)[j]*x[j].i + openmx_solver_real_matrix_row(ia,i)[j]*x[j].r);
 	}
 
-        w.r =  a[i][i];
-        w.i = ia[i][i];
+        w.r =  openmx_solver_real_matrix_row(a,i)[i];
+        w.i = openmx_solver_real_matrix_row(ia,i)[i];
         w2 = 1.0/(w.r*w.r + w.i*w.i); 
 
 	re = w2*(w.r*x[i].r + w.i*x[i].i);
@@ -2225,15 +2172,15 @@ void Complex_Inverse(int n, double **a, double **ia, double **b, double **ib)
 	x[i].r = re;
 	x[i].i = im;
 
-         b[i][k] = x[i].r;
-        ib[i][k] = x[i].i;
+         openmx_solver_real_matrix_row(b,i)[k] = x[i].r;
+        openmx_solver_real_matrix_row(ib,i)[k] = x[i].i;
       }
     }
 
     for (i=0; i<=n; i++){
       for (j=0; j<=n; j++){
-	 a[i][j] = da[i][j].r;
-	ia[i][j] = da[i][j].i;
+         openmx_solver_real_matrix_row(a,i)[j] = openmx_solver_complex_matrix_row(&da,i)[j].r;
+        openmx_solver_real_matrix_row(ia,i)[j] = openmx_solver_complex_matrix_row(&da,i)[j].i;
       }
     }
   }
@@ -2246,13 +2193,10 @@ void Complex_Inverse(int n, double **a, double **ia, double **b, double **ib)
      da[List_YOUSO[38]][List_YOUSO[38]]
   ***************************************************/
 
-  free(x);
-  free(y);
 
-  for (i=0; i<List_YOUSO[38]; i++){
-    free(da[i]);
-  }
-  free(da);
+
+
+
 }
 
 static void MixRhok_Reset(OpenMXNativeResources *owner, void *metadata)

@@ -61,6 +61,19 @@ static inline dcomplex *OpenMX_Solver_Complex(OpenMXSolverInvocation *owner,cons
   if(!openmx_core_solver_complex(owner,omp_get_thread_num(),name,shape,&view,error,sizeof(error)))OpenMX_Solver_Failure(error);
   return view.values;
 }
+static inline dcomplex *OpenMX_Solver_OverwriteComplex(OpenMXSolverInvocation *owner,const char *name,size_t count)
+{
+  const size_t shape[4]={count,1,1,1};OpenMXSolverComplexTensor view;char error[256];
+  if(!openmx_core_solver_complex_overwrite(owner,omp_get_thread_num(),name,shape,&view,error,sizeof(error)))OpenMX_Solver_Failure(error);
+  return view.values;
+}
+static inline OpenMXSolverComplexTensor OpenMX_Solver_OverwriteComplexView(OpenMXSolverInvocation *owner,
+    const char *name,size_t rows,size_t columns)
+{
+  const size_t shape[4]={rows,columns,1,1};OpenMXSolverComplexTensor view;char error[256];
+  if(!openmx_core_solver_complex_overwrite(owner,omp_get_thread_num(),name,shape,&view,error,sizeof(error)))OpenMX_Solver_Failure(error);
+  return view;
+}
 static inline int *OpenMX_Solver_Int(OpenMXSolverInvocation *owner,const char *name,size_t count)
 {
   int *view;char error[256];

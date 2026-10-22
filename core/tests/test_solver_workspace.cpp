@@ -106,6 +106,58 @@ int overwrite(OpenMXSolverInvocation* owner,void*,double* result) {
   require(!view.values && view.extent[0]==3 && !view.extent[1],"empty overwrite tensor has storage");
   *result=17;return 1;
 }
+int complex_overwrite(OpenMXSolverInvocation* owner,void*,double* result) {
+  struct Fill {
+    Fill(){openmx::test::fill_allocations_with(0xa5);}
+    ~Fill(){openmx::test::fill_allocations_with(-1);}
+  } fill;
+  char error[256];const size_t shape[4]={3,4,1,1};
+  OpenMXSolverComplexTensor view{},zeroed{},worker{};
+  require(openmx_core_solver_complex_overwrite(owner,0,"complex-overwrite",shape,&view,error,sizeof(error)),error);
+  const auto* bytes=reinterpret_cast<const unsigned char*>(view.values);
+  for(size_t i=0;i<12*sizeof(dcomplex);++i)require(bytes[i]==0xa5,"complex overwrite storage was initialized");
+  require(openmx_core_solver_complex(owner,0,"complex-overwrite",shape,&zeroed,error,sizeof(error)),error);
+  require(zeroed.values!=view.values,"initialized and overwrite complex buffers alias");
+  for(int i=0;i<12;i++){equal(zeroed.values[i].r,0);equal(zeroed.values[i].i,0);view.values[i]={100+i*.25,-i*.5};}
+  const auto saved=view;
+  openmx::test::fail_allocation_after(0);
+  const int reused=openmx_core_solver_complex_overwrite(owner,0,"complex-overwrite",shape,&view,error,sizeof(error));
+  openmx::test::fail_allocation_after(-1);
+  require(reused && view.values==saved.values,"complex overwrite reuse allocated/moved storage");
+  equal(openmx_solver_complex_matrix_row(&view,2)[3].r,102.75);
+  equal(openmx_solver_complex_matrix_row(&view,2)[3].i,-5.5);
+  const size_t smaller[4]={2,2,1,1};
+  openmx::test::fail_allocation_after(0);
+  const int shrunk=openmx_core_solver_complex_overwrite(owner,0,"complex-overwrite",smaller,&view,error,sizeof(error));
+  openmx::test::fail_allocation_after(-1);
+  require(shrunk && view.values==saved.values && view.extent[1]==2,"complex overwrite shrink lost capacity/shape");
+  equal(openmx_solver_complex_matrix_row(&view,1)[1].r,100.75);
+  const auto current=view;const size_t larger[4]={4,7,1,1};
+  for(long failure=0;failure<2;++failure){
+    openmx::test::fail_allocation_after(failure);
+    const int ok=openmx_core_solver_complex_overwrite(owner,0,"complex-overwrite",larger,&view,error,sizeof(error));
+    openmx::test::fail_allocation_after(-1);
+    require(!ok && error[0] && !std::memcmp(&view,&current,sizeof(view)),"failed complex overwrite growth changed output");
+    equal(saved.values[11].i,-5.5);
+  }
+  require(openmx_core_solver_complex_overwrite(owner,1,"complex-overwrite",shape,&worker,error,sizeof(error)),error);
+  require(worker.values!=saved.values,"workers alias complex overwrite storage");
+  require(openmx_core_solver_complex_overwrite(owner,0,"complex-overwrite",larger,&view,error,sizeof(error)),error);
+  bytes=reinterpret_cast<const unsigned char*>(view.values);
+  for(size_t i=0;i<28*sizeof(dcomplex);++i)require(bytes[i]==0xa5,"grown complex overwrite storage was initialized");
+  const auto grown=view;const size_t overflow[4]={SIZE_MAX,2,1,1};
+  require(!openmx_core_solver_complex_overwrite(owner,0,"complex-overwrite",overflow,&view,error,sizeof(error)),"complex overwrite overflow accepted");
+  require(!std::memcmp(&view,&grown,sizeof(view)),"invalid complex overwrite shape changed output");
+  require(!openmx_core_solver_complex_overwrite(owner,-1,"complex-overwrite",shape,&view,error,sizeof(error)),"invalid complex worker accepted");
+  require(!openmx_core_solver_complex_overwrite(owner,0,"",shape,&view,error,sizeof(error)),"empty complex buffer name accepted");
+  require(!openmx_core_solver_complex_overwrite(nullptr,0,"complex-overwrite",shape,&view,error,sizeof(error)),"missing complex owner accepted");
+  require(!openmx_core_solver_complex_overwrite(owner,0,"complex-overwrite",nullptr,&view,error,sizeof(error)),"missing complex shape accepted");
+  require(!openmx_core_solver_complex_overwrite(owner,0,"complex-overwrite",shape,nullptr,error,sizeof(error)),"missing complex output accepted");
+  const size_t empty[4]={3,0,1,1};
+  require(openmx_core_solver_complex_overwrite(owner,0,"empty",empty,&view,error,sizeof(error)),error);
+  require(!view.values && view.extent[0]==3 && !view.extent[1],"empty complex overwrite tensor has storage");
+  *result=17;return 1;
+}
 int rows(OpenMXSolverInvocation* owner,void*,double* result) {
   char error[256];double** matrix;dcomplex** complex;
   const size_t dimensions[4]={4,3,1,1};OpenMXSolverRealTensor original;
@@ -279,6 +331,7 @@ int invalid(OpenMXSolverInvocation* owner,void*,double* result) {
 }
 int lifetime_callback(OpenMXSolverInvocation* owner,void* mode,double* result) {
   double ignored;buffers(owner,nullptr,&ignored);overwrite(owner,nullptr,&ignored);rows(owner,nullptr,&ignored);orbitals(owner,nullptr,&ignored);
+  complex_overwrite(owner,nullptr,&ignored);
   fields(owner,nullptr,&ignored);residues(owner,nullptr,&ignored);
   const auto behavior=*static_cast<int*>(mode);
   if(behavior==1)return 0;
@@ -297,6 +350,8 @@ int allocating(OpenMXSolverInvocation* owner,void*,double* result) {
   char error[256];const size_t shape[4]={3,4,2,1};OpenMXSolverRealTensor view;
   if(!openmx_core_solver_real(owner,0,"a",shape,&view,error,sizeof(error)))return 0;
   if(!openmx_core_solver_real_overwrite(owner,0,"a",shape,&view,error,sizeof(error)))return 0;
+  OpenMXSolverComplexTensor complex;
+  if(!openmx_core_solver_complex_overwrite(owner,0,"a",shape,&complex,error,sizeof(error)))return 0;
   double** rows;if(!openmx_core_solver_real_rows(owner,0,"b",5,8,&rows,error,sizeof(error)))return 0;
   double*** aliases;const OpenMXSolverRealTensor borrowed={{3,4,2,1},view.values};
   if(!openmx_core_solver_real_alias(owner,0,"alias",&borrowed,&aliases,error,sizeof(error)))return 0;
@@ -336,6 +391,10 @@ int concurrent(OpenMXSolverInvocation* owner,void*,double* result) {
       for(int i=0;i<9;i++)view.values[i]=worker*100+n*10+i;
       require(openmx_core_solver_real_overwrite(owner,worker,"worker",shape,&view,nullptr,0),"concurrent overwrite request");
       for(int i=0;i<9;i++)view.values[i]=worker*100+n*10+i;
+      OpenMXSolverComplexTensor z;
+      require(openmx_core_solver_complex_overwrite(owner,worker,"worker",shape,&z,nullptr,0),"concurrent complex overwrite request");
+      for(int i=0;i<9;i++)z.values[i]={double(worker*100+n*10+i),double(-worker)};
+      equal(z.values[8].r,worker*100+n*10+8);equal(z.values[8].i,-worker);
       require(openmx_core_solver_orbitals(owner,worker,"sampler",&orbital_shape,&sampler,nullptr,0),"concurrent orbital request");
       for(int i=0;i<8;i++)sampler.dRF[i]=worker*100+n*10+i;
       require(openmx_core_solver_field_resize(fields.owner,0,worker,n+1,nullptr,0),"concurrent field resize");
@@ -350,6 +409,7 @@ int main(int argc,char** argv) {
   try {
     const std::string name=argc==2?argv[1]:"";
     if(name=="buffers")run(buffers);else if(name=="overwrite")run(overwrite);else if(name=="rows")run(rows);else if(name=="fields")run(fields);
+    else if(name=="complex-overwrite")run(complex_overwrite);
     else if(name=="orbitals")run(orbitals);
     else if(name=="residues")run(residues);else if(name=="invalid")run(invalid);else if(name=="lifetime")lifetime_test();
     else if(name=="allocation")allocation_test();else if(name=="concurrent")run(concurrent);else throw std::runtime_error("unknown solver workspace test");

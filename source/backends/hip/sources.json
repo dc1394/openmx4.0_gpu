@@ -1078,7 +1078,8 @@
     "DIIS_Mixing_Rhok.c",
     "Kerker_Mixing_Rhok.c",
     "openmx_mixing_rhok_state.h",
-    "openmx_mixing_rhok_internal.h"
+    "openmx_mixing_rhok_internal.h",
+    "openmx_mixing_rhok_workspace.h"
   ],
   "integrated_overrides": {
     "gemmul8_bridge.cu": "src/gemmul8_bridge.cu",
