@@ -14,6 +14,7 @@
  */
 #define OPENMX_CUSOLVER_IMPLEMENTATION
 #include "openmx_cusolver_compat.h"
+#include "openmx_env.h"
 #include "openmx_stdout_level.h"
 #include "openmx_mgpu_runtime.h"
 #include <cuda_runtime.h>
@@ -38,7 +39,7 @@ static _Thread_local OpenMXCuSolverPolicy policy;
 
 static int openmx_solver_verbose(void)
 {
-    const char *s = getenv("OPENMX_CUSOLVER_VERBOSE");
+    const char *s = openmx_env_get("OPENMX_CUSOLVER_VERBOSE");
     return s && atoi(s) != 0;
 }
 
@@ -47,7 +48,7 @@ static cusolverStatus_t openmx_solver_policy_init(void)
     if (policy.initialized) return CUSOLVER_STATUS_SUCCESS;
     policy.algorithm = -1;
     {
-        const char *s = getenv("OPENMX_CUSOLVER_TWO_STAGE_MIN_N");
+        const char *s = openmx_env_get("OPENMX_CUSOLVER_TWO_STAGE_MIN_N");
         if (s && *s) {
             char *end;
             long long value;
@@ -63,7 +64,7 @@ static cusolverStatus_t openmx_solver_policy_init(void)
 #if CUSOLVER_VERSION >= 12304
     {
         int major = 0, minor = 0, patch = 0;
-        const char *s = getenv("OPENMX_CUSOLVER_ALGORITHM");
+        const char *s = openmx_env_get("OPENMX_CUSOLVER_ALGORITHM");
         cusolverStatus_t st;
         st = cusolverGetProperty(MAJOR_VERSION, &major);
         if (st != CUSOLVER_STATUS_SUCCESS) return st;
@@ -157,7 +158,7 @@ cusolverStatus_t openmx_cusolverDnCreate(cusolverDnHandle_t *handle)
     if (st != CUSOLVER_STATUS_SUCCESS) return st;
 #if CUSOLVER_VERSION >= 12200
     {
-        const char *s = getenv("OPENMX_CUSOLVER_EMULATION");
+        const char *s = openmx_env_get("OPENMX_CUSOLVER_EMULATION");
         int emulate = s && *s ? atoi(s) != 0 : openmx_solver_emulation_default();
         if (emulate) {
             st = cusolverDnSetMathMode(*handle, CUSOLVER_FP64_EMULATED_FIXEDPOINT_MATH);
@@ -237,7 +238,7 @@ static int openmx_solver_retry_test(void)
 {
     static int state = -1;
     if (state < 0) {
-        const char *v = getenv("OPENMX_CUSOLVER_RETRY_TEST");
+        const char *v = openmx_env_get("OPENMX_CUSOLVER_RETRY_TEST");
         state = (v != NULL && v[0] != '\0' && atoi(v) != 0) ? 1 : 0;
     }
     return state;

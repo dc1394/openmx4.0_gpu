@@ -18,6 +18,7 @@
 #include <time.h>
 #include "mpi.h"
 #include "openmx_common.h"
+#include "openmx_env.h"
 #include "openmx_solver_workspace.h"
 #include "openmx_native_resources.h"
 OPENMX_NATIVE_RESOURCE_GROUP(Krylov,Krylov_Release_GPU_Caches)
@@ -176,19 +177,19 @@ static void Krylov_GPU_InitThresholds(void)
 {
   const char *env;
 
-  env = getenv("OPENMX_KRYLOV_GPU_DGEMM_MIN_FLOPS");
+  env = openmx_env_get("OPENMX_KRYLOV_GPU_DGEMM_MIN_FLOPS");
   if (env != NULL && env[0] != '\0'){
     double p = atof(env);
     if (0.0 <= p) Krylov_gpu_dgemm_min_flops = p;
   }
 
-  env = getenv("OPENMX_KRYLOV_GPU_EIGEN_MIN");
+  env = openmx_env_get("OPENMX_KRYLOV_GPU_EIGEN_MIN");
   if (env != NULL && env[0] != '\0'){
     int p = atoi(env);
     if (0 < p) Krylov_gpu_eigen_min = p;
   }
 
-  env = getenv("OPENMX_KRYLOV_GPU_FUSED");
+  env = openmx_env_get("OPENMX_KRYLOV_GPU_FUSED");
   if (env != NULL && env[0] != '\0'){
     Krylov_gpu_fused = (atoi(env) != 0);
   }
@@ -540,14 +541,14 @@ static Krylov_KUCache Krylov_kucache = {0};
 
 static int Krylov_KUCache_Enabled(void)
 {
-  const char *env = getenv("OPENMX_KRYLOV_GPU_KU_CACHE");
+  const char *env = openmx_env_get("OPENMX_KRYLOV_GPU_KU_CACHE");
   if (env == NULL || env[0] == '\0') return 1;
   return (atoi(env) != 0);
 }
 
 static size_t Krylov_KUCache_ReserveBytes(void)
 {
-  const char *env = getenv("OPENMX_KRYLOV_GPU_KU_RESERVE_MB");
+  const char *env = openmx_env_get("OPENMX_KRYLOV_GPU_KU_RESERVE_MB");
   unsigned long mib = 4096ul;
   if (env != NULL && env[0] != '\0'){
     char *end = NULL;
@@ -837,7 +838,7 @@ static int Krylov_ProjectedSolve_GPU(Krylov_GPU_Workspace *ws, int spin, int Mc_
   if ((double)m3*(double)n*(double)m3 < Krylov_gpu_dgemm_min_flops) return 0;
 
   if (profile < 0){
-    const char *env = getenv("OPENMX_KRYLOV_GPU_PROFILE");
+    const char *env = openmx_env_get("OPENMX_KRYLOV_GPU_PROFILE");
     profile = (env != NULL && env[0] != '\0' && atoi(env) != 0);
   }
   if (profile) dtime(&t0);

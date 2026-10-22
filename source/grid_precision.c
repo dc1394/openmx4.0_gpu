@@ -2,6 +2,7 @@
   grid_precision.c  (see grid_precision.h)
 ***********************************************************************/
 #include <stdio.h>
+#include "openmx_env.h"
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
@@ -39,9 +40,9 @@ static void configure(void)
     configured = 1;
     /* the lossy FP32 stage is an experiment (it stalls the SCF near its
        own error level, 1e-5 of NormRD on sidia333): off unless asked */
-    value = getenv("OPENMX_GRID_FP32");
+    value = openmx_env_get("OPENMX_GRID_FP32");
     enabled = (value != NULL && value[0] != '\0') ? (atoi(value) != 0) : 0;
-    value = getenv("OPENMX_GRID_PRECISION");
+    value = openmx_env_get("OPENMX_GRID_PRECISION");
     if (value != NULL && value[0] != '\0') {
         df_mode = (strcmp(value, "df") == 0 || strcmp(value, "DF") == 0 || strcmp(value, "2") == 0);
     }
@@ -53,12 +54,12 @@ static void configure(void)
                        cudaSuccess &&
                    8 <= perf_ratio);
     }
-    value = getenv("OPENMX_GRID_FP32_UNTIL");
+    value = openmx_env_get("OPENMX_GRID_FP32_UNTIL");
     if (value != NULL && value[0] != '\0') {
         double parsed = atof(value);
         if (isfinite(parsed)) until = fmax(0.0, parsed);
     }
-    value = getenv("OPENMX_GRID_FP32_RESTART");
+    value = openmx_env_get("OPENMX_GRID_FP32_RESTART");
     if (value != NULL && value[0] != '\0') restart = atoi(value) != 0;
 }
 

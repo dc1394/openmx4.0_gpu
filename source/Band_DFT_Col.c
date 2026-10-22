@@ -13,6 +13,7 @@
 #include "mpi.h"
 #include "lapack_prototypes.h"
 #include "openmx_common.h"
+#include "openmx_env.h"
 #include "openmx_solver_workspace.h"
 #include "openmx_native_resources.h"
 OPENMX_NATIVE_RESOURCE_GROUP(Band_DFT_Col,Band_DFT_Col_Release_GPU_Caches)
@@ -77,7 +78,7 @@ static int BandCol_ProfileEnabled(void)
     static int enabled = -1;
 
     if (enabled < 0) {
-        const char *value = getenv("OPENMX_BAND_PROFILE");
+        const char *value = openmx_env_get("OPENMX_BAND_PROFILE");
         enabled = (value != NULL && atoi(value) != 0);
     }
     return enabled;
@@ -434,7 +435,7 @@ static void BandCol_KOverlapReset(void)
    the full MPI world size, which is conservative. Zero disables a cache. */
 static size_t BandCol_HostCacheLimit(const char *name, double default_mib)
 {
-    const char *env = getenv(name);
+    const char *env = openmx_env_get(name);
     double cap = env == NULL ? default_mib : atof(env);
     unsigned long long available_kib = 0;
     int ranks = openmx_gpu_local_size_noncollective();
@@ -459,7 +460,7 @@ static size_t BandCol_HostCacheLimit(const char *name, double default_mib)
 
 static int BandCol_CacheTraceEnabled(void)
 {
-    const char *value = getenv("OPENMX_BAND_CACHE_TRACE");
+    const char *value = openmx_env_get("OPENMX_BAND_CACHE_TRACE");
     return value != NULL && atoi(value) != 0;
 }
 
@@ -622,7 +623,7 @@ static int BandCol_SerializeGpuSolverGpuTurns(void)
     /* Serialized GPU turns measured ~27% faster than concurrent submission for
        8 owner ranks sharing one device; opt out with
        OPENMX_GPUSOLVER_SERIAL_GPU_TURNS=0. */
-    const char *value = getenv("OPENMX_GPUSOLVER_SERIAL_GPU_TURNS");
+    const char *value = openmx_env_get("OPENMX_GPUSOLVER_SERIAL_GPU_TURNS");
 
     if (value == NULL) {
         return 1;
@@ -637,7 +638,7 @@ static int BandCol_GpuPersistentEnabled(void)
        standing allocations push the GEMMul8 workspace into its FP64 fallback,
        which costs far more than the ~0.2 s/iteration the persistence saves.
        Off by default; opt in with OPENMX_BAND_GPU_PERSISTENT=1. */
-    const char *value = getenv("OPENMX_BAND_GPU_PERSISTENT");
+    const char *value = openmx_env_get("OPENMX_BAND_GPU_PERSISTENT");
 
     if (value == NULL) {
         return 0;
@@ -659,7 +660,7 @@ static int BandCol_GpuPersistentDecide(void)
         } else {
             size_t      free_bytes = 0, total_bytes = 0;
             size_t      min_free = 2048ULL * 1024ULL * 1024ULL;
-            const char *value = getenv("OPENMX_BAND_GPU_PERSISTENT_MIN_FREE_MB");
+            const char *value = openmx_env_get("OPENMX_BAND_GPU_PERSISTENT_MIN_FREE_MB");
 
             if (value != NULL) {
                 long mb = atol(value);
@@ -691,7 +692,7 @@ static int BandCol_GemmWorkspaceTurnRelease(void)
        turns in a concurrency group keeps the shared device from filling up
        (8 owner ranks x 1 GiB standing otherwise starves later ranks into the
        FP64 cuBLAS fallback); opt out with OPENMX_BAND_GEMMUL8_TURN_RELEASE=0. */
-    const char *value = getenv("OPENMX_BAND_GEMMUL8_TURN_RELEASE");
+    const char *value = openmx_env_get("OPENMX_BAND_GEMMUL8_TURN_RELEASE");
 
     if (value == NULL) {
         return 1;
@@ -705,7 +706,7 @@ static int BandCol_EigenvaluesOnlyNoVectors(void)
        the chemical potential; jobz=CUSOLVER_EIG_MODE_NOVECTOR skips the
        eigenvector build inside cusolverDnXsyevdx and returns identical
        eigenvalues.  Opt out with OPENMX_BAND_SYEVDX_NOVECTOR=0. */
-    const char *value = getenv("OPENMX_BAND_SYEVDX_NOVECTOR");
+    const char *value = openmx_env_get("OPENMX_BAND_SYEVDX_NOVECTOR");
 
     if (value == NULL) {
         return 1;
@@ -814,7 +815,7 @@ static size_t BandCol_QueryGpuSolverWorkBytes(int n, int maxn)
 
 static size_t BandCol_GpuRankOverheadBytes(void)
 {
-    const char *value = getenv("OPENMX_BAND_GPU_RANK_OVERHEAD_MB");
+    const char *value = openmx_env_get("OPENMX_BAND_GPU_RANK_OVERHEAD_MB");
     unsigned long long mib = 256ULL;
 
     if (value != NULL && value[0] != '\0') {
@@ -880,7 +881,7 @@ static size_t BandCol_GpuReserveBytes(size_t total_bytes)
 {
     size_t reserve = total_bytes / 10U;
     const size_t minimum = 1536ULL * 1024ULL * 1024ULL;
-    const char *value = getenv("OPENMX_BAND_GPU_RESERVE_MB");
+    const char *value = openmx_env_get("OPENMX_BAND_GPU_RESERVE_MB");
 
     if (reserve < minimum) {
         reserve = minimum;
@@ -905,14 +906,14 @@ static int BandCol_GpuRequestedMaxTurns(void)
        k-point in the first wave (the plan clamps to the device-group size
        and to the total turn count); the variables only impose an explicit
        upper cap on the concurrency. */
-    const char *value = getenv("OPENMX_BAND_GPU_MAX_CONCURRENT_K");
+    const char *value = openmx_env_get("OPENMX_BAND_GPU_MAX_CONCURRENT_K");
     long requested = (long)INT_MAX;
 
     if (value == NULL) {
-        value = getenv("OPENMX_BAND_GPU_TURN_GROUP");
+        value = openmx_env_get("OPENMX_BAND_GPU_TURN_GROUP");
     }
     if (value == NULL) {
-        value = getenv("OPENMX_BAND_GPU_MAX_RANKS_PER_DEVICE");
+        value = openmx_env_get("OPENMX_BAND_GPU_MAX_RANKS_PER_DEVICE");
     }
     if (value != NULL && value[0] != '\0') {
         char *end = NULL;
@@ -958,7 +959,7 @@ int Band_DFT_Col_GpuSwitchNum(void)
     static int cached = -1;
 
     if (cached < 0) {
-        const char *value = getenv("OPENMX_BAND_GPU_SWITCH_NUM");
+        const char *value = openmx_env_get("OPENMX_BAND_GPU_SWITCH_NUM");
         int parsed;
 
         cached = BAND_GPU_CPU_SWITCH_NUM;
@@ -985,7 +986,7 @@ static int BandCol_GpuDenseFits(int SCF_iter, int n, int maxn, int size_H1, int 
 {
     static int verdict = -1;
     static int verdict_n = 0;
-    const char *force = getenv("OPENMX_BAND_GPU_DIAG");
+    const char *force = openmx_env_get("OPENMX_BAND_GPU_DIAG");
     unsigned long long my_required = 0ULL, req_max = 0ULL;
     unsigned long long my_free = ULLONG_MAX, free_min = 0ULL;
     int my_fit = 1;
@@ -1881,7 +1882,7 @@ static void BandCol_AccumulateDenseTransposedDM_OpenACC(int n,int nk,int spin,in
    with OPENMX_BAND_GPU_DM=0. */
 static int BandCol_UseGpuFallbackDM(int n)
 {
-    const char *value = getenv("OPENMX_BAND_GPU_DM");
+    const char *value = openmx_env_get("OPENMX_BAND_GPU_DM");
 
     if (value != NULL && atoi(value) == 0) return 0;
     return (scf_eigen_lib_flag == GPUSOLVER && (openmx_mgpu_host_required() || Band_DFT_Col_GpuSwitchNum() <= n));

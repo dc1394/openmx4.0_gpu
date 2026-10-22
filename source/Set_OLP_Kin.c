@@ -19,6 +19,7 @@
 #include <string.h>
 #include <time.h>
 #include "openmx_common.h"
+#include "openmx_env.h"
 #include "openmx_gpu_task.h"
 #include "openmx_core_overlap.h"
 #include "openmx_two_center.h"
@@ -134,7 +135,7 @@ static int SetOLPKinRadialGpuEnabled(void)
   /* The per-pair OpenACC offload of the radial integration is dominated by
      data-region setup and transfers (~1.2 s vs ~0.3 s on the CPU for the
      sidia333 benchmark), so it is opt-in via OPENMX_OLPKIN_RADIAL_GPU=1. */
-  const char *value = getenv("OPENMX_OLPKIN_RADIAL_GPU");
+  const char *value = openmx_env_get("OPENMX_OLPKIN_RADIAL_GPU");
 
   return (value != NULL && atoi(value) != 0);
 }
@@ -164,7 +165,7 @@ static int SetOLPKinRadialGpuEnabled(void)
 
 static int OLPKin_Bessel_CacheMax(void)
 {
-  const char *value = getenv("OPENMX_OLPKIN_BESSEL_CACHE_MAX");
+  const char *value = openmx_env_get("OPENMX_OLPKIN_BESSEL_CACHE_MAX");
   int limit = (value != NULL && value[0] != '\0') ? atoi(value) : OLPKIN_BESSEL_CACHE_DEFAULT;
 
   return (limit < 0) ? 0 : limit;
@@ -182,7 +183,7 @@ typedef struct
 
 static int SetOLP_ProfileEnabled(void)
 {
-  const char *value = getenv("OPENMX_BAND_PROFILE");
+  const char *value = openmx_env_get("OPENMX_BAND_PROFILE");
 
   return (value != NULL && atoi(value) != 0);
 }

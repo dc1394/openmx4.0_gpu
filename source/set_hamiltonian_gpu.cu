@@ -1,4 +1,5 @@
 #include <cuda_runtime.h>
+#include "openmx_env.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -683,7 +684,7 @@ extern "C" int Set_Hamiltonian_Cuda_Density_FP64_Range(
 {
     if (output_first > output_last || output_last > output_count) return 1;
     if (pair_count <= 0 || spin_count <= 0 || max_no <= 0 || max_nolg <= 0 || output_first == output_last) return 0;
-    const char *enabled = std::getenv("OPENMX_SETDEN_FP64_CUDA");
+    const char *enabled = openmx_env_get("OPENMX_SETDEN_FP64_CUDA");
     if (enabled != nullptr && enabled[0] != '\0' && std::atoi(enabled) == 0) return 1;
     if (max_no > 48 || spin_count > 4) return 1;
     (void)cudaGetLastError();
@@ -693,7 +694,7 @@ extern "C" int Set_Hamiltonian_Cuda_Density_FP64_Range(
        72 KiB of shared memory.  Keep the smaller tiers unsplit: extra
        orbital reads outweighed this benefit for 26 orbitals / 2 spins.
        Explicit 0/1 overrides retain both paths for other workloads. */
-    const char *split = std::getenv("OPENMX_SETDEN_FP64_SPLIT_SPIN");
+    const char *split = openmx_env_get("OPENMX_SETDEN_FP64_SPLIT_SPIN");
     const bool split_spin = spin_count > 1 &&
         ((split != nullptr && split[0] != '\0') ? std::atoi(split) != 0 : max_no > 32);
     const std::size_t shared_bytes = static_cast<std::size_t>(split_spin ? 1 : spin_count) * max_no * max_no * sizeof(double);
@@ -797,7 +798,7 @@ static int Set_Hamiltonian_Cuda_MatrixElements_Single(
     int sms = 0;
     if (mode == 0) {
         int major = 0, minor = 0;
-        const char *control = std::getenv("OPENMX_SETHAM_FP64_TILED");
+        const char *control = openmx_env_get("OPENMX_SETHAM_FP64_TILED");
         if (cudaDeviceGetAttribute(&sms, cudaDevAttrMultiProcessorCount, device) != cudaSuccess) return -1;
         if (control && *control) fp64_tiled = std::atoi(control) != 0;
         else if (cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, device) == cudaSuccess &&
@@ -824,7 +825,7 @@ static int Set_Hamiltonian_Cuda_MatrixElements_Single(
         const std::size_t blocks = static_cast<std::size_t>(pair_count) * spin_count * blocks_y;
         int split = static_cast<int>(std::max(std::size_t(1), std::min(std::size_t(32),
             (static_cast<std::size_t>(sms) * 4 + blocks - 1) / blocks)));
-        const char *control = std::getenv("OPENMX_SETHAM_FP64_SPLIT");
+        const char *control = openmx_env_get("OPENMX_SETHAM_FP64_SPLIT");
         if (control && std::atoi(control) > 0) split = std::min(64, std::atoi(control));
         if (blocks_y > 65535 || static_cast<std::size_t>(split) * spin_count > 65535) return 1;
         const dim3 tiled_grid(pair_count, static_cast<unsigned>(blocks_y), split * spin_count);
@@ -845,7 +846,7 @@ static int Set_Hamiltonian_Cuda_MatrixElements_Single(
         /* OPENMX_SETHAM_MATEL_SPLIT (default 4): blocks per pair along the grid points */
         static thread_local int split = 0;
         if (split == 0) {
-            const char *v = getenv("OPENMX_SETHAM_MATEL_SPLIT");
+            const char *v = openmx_env_get("OPENMX_SETHAM_MATEL_SPLIT");
             split = (v != NULL && v[0] != '\0' && atoi(v) > 0) ? atoi(v) : 4;
             if (split > 64) split = 64;
         }

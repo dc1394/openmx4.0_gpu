@@ -1,4 +1,5 @@
 #include "openmx_gpu_backend.h"
+#include "openmx_env.h"
 /* Optional MAGMA multi-GPU host adapter. MAGMA 2.10.0 is BSD licensed;
    see third_party/build_magma.sh for the pinned upstream dependency.
    No MAGMA implementation is copied into this file. */
@@ -136,7 +137,7 @@ template<> HostWorkspace<Complex> &cached_workspace<Complex>() { return complex_
 
 size_t host_cache_limit()
 {
-    const char *s=std::getenv("OPENMX_MAGMA_HOST_CACHE_MB");
+    const char *s=openmx_env_get("OPENMX_MAGMA_HOST_CACHE_MB");
     const size_t fallback=size_t(64)<<20;
     if (!s || !*s || *s=='-') return fallback;
     char *end=nullptr;
@@ -298,7 +299,7 @@ bool validate(const void *original, int lda, bool lower, int n, int count,
        scan, so a CPU oracle does not dominate a large GPU solve. The optional
        full-row check and independent analytic tests provide deeper coverage. */
     const int samples = std::min(count, 4);
-    const char *full = std::getenv("OPENMX_MAGMA_VALIDATE_FULL");
+    const char *full = openmx_env_get("OPENMX_MAGMA_VALIDATE_FULL");
     const int rows = full && std::strcmp(full,"1") == 0 ? n : std::min(n,32);
     int column[4];
     for (int s = 0; s < samples; ++s)
@@ -453,7 +454,7 @@ int solve(int ngpu, const int *devices, int vectors, int lower, int n, int first
            n, eigenpair count, lower, vectors), then contiguous column-major
            input, returned vectors and eigenvalues. The failed solve never
            publishes either vectors or eigenvalues to its caller. */
-        const char *dump=std::getenv("OPENMX_MAGMA_FAILURE_DUMP");
+        const char *dump=openmx_env_get("OPENMX_MAGMA_FAILURE_DUMP");
         if (dump && *dump) {
             FILE *fp=std::fopen(dump,"wb");
             bool ok=fp!=nullptr;
@@ -511,8 +512,8 @@ extern "C" int openmx_magma_mgpu_solve_host_devices(int ngpu, const int *devices
     try {
         std::lock_guard<std::mutex> lock(magma_mutex);
 #if !OPENMX_GPU_HIP
-        const char *fp32=std::getenv("OPENMX_MAGMA_FP32");
-        const char *complex_limit=std::getenv("OPENMX_MAGMA_FP32_COMPLEX_MAX_N");
+        const char *fp32=openmx_env_get("OPENMX_MAGMA_FP32");
+        const char *complex_limit=openmx_env_get("OPENMX_MAGMA_FP32_COMPLEX_MAX_N");
         const int max_complex=complex_limit?std::max(0,std::atoi(complex_limit)):0;
         const bool fp32_requested=want_vectors && fp32 && std::strcmp(fp32,"1")==0 &&
             (!openmx_fp32_enabled || openmx_fp32_enabled()) &&

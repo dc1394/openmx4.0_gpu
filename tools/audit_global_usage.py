@@ -40,6 +40,7 @@ SOURCE = ROOT / "source"
 GLOBALS_TU = "openmx_globals.c"
 NVHPC_HEADERS = ("omp.h", "openacc.h", "nvhpc_acc_device_type.h", "accel.h")
 ENV_PREFIXES = ("OPENMX_", "GEMMUL8_", "CUDA_MPS_", "NVCOMPILER_", "ACC_")
+RE_ENV_NAME = re.compile(r"^(?:OPENMX|GEMMUL8|CUDA_MPS|NVCOMPILER|ACC)_[A-Z0-9][A-Z0-9_]*$")
 
 NAME = r'@("[^"]+"|[\w.$]+)'
 RE_GLOBAL_DEF = re.compile(r"^" + NAME + r" = (.*?)\b(global|constant)\b\s+(.*)$")
@@ -162,7 +163,7 @@ class Unit:
         def note_direct(globs, target):
             for g in globs:
                 if g in self.strings:
-                    if self.strings[g].startswith(ENV_PREFIXES):
+                    if RE_ENV_NAME.match(self.strings[g]):
                         env.add(self.strings[g])
                 elif g.startswith(("llvm.", ".")):
                     continue
@@ -236,6 +237,7 @@ class Unit:
                 note_direct([g for g in globs if g not in self.strings], reads)
         self.functions.append({
             "name": name, "static": "internal" in attrs.split(),
+            "direct_getenv": sum(1 for line in body if "@getenv(" in line or "@std::getenv(" in line),
             "reads": sorted(reads), "writes": sorted(writes), "writes_through": sorted(writes_through),
             "escapes": sorted(escapes), "address_taken": sorted(address_taken), "env": sorted(env),
             "address_calls": {g: sorted(c) for g, c in sorted(self.current_address_calls.items())}})
@@ -249,7 +251,7 @@ class Unit:
             if g == callee:
                 continue
             if g in self.strings:
-                if self.strings[g].startswith(ENV_PREFIXES):
+                if RE_ENV_NAME.match(self.strings[g]):
                     env.add(self.strings[g])
             else:
                 address_taken.add(g)
@@ -440,7 +442,11 @@ def markdown(report):
     lines += ["", "## Function-local statics", "", "| unit | function | variable | type |", "|---|---|---|---|"]
     for st in report["function_statics"]:
         lines.append(f"| `{st['unit']}` | `{st['function']}` | `{st['variable']}` | `{st['type']}`{' (const)' if st['const'] else ''} |")
-    lines += ["", "## Environment variables read (by name literal)", "", "| variable | units |", "|---|---|"]
+    lines += ["", "## Environment variables read (by name literal)", "",
+              "Every reader goes through the registry of `source/openmx_env.c` (`openmx_env_get`); functions that still call "
+              "`getenv` directly: " + (", ".join(f"`{f}`" for f in report["direct_getenv"]) or "(none)") + ". "
+              "Names read by the C units that the registry does not list: " + (", ".join(f"`{n}`" for n in report["unregistered_env"]) or "(none)") + ".",
+              "", "| variable | units |", "|---|---|"]
     for name, units in report["env"].items():
         lines.append(f"| `{name}` | {', '.join(f'`{u}`' for u in units)} |")
     lines.append("")
@@ -517,6 +523,12 @@ def build_report(units, common, globals_index, revision):
     other_defined = [{"name": n, "defined_in": r.get("defined_in"), "type": r.get("type"), "units": len(r["units"])}
                      for n, r in sorted(globals_index.items()) if r["kind"] != "common_header" and r.get("defined_in")]
     analysed = [u for u in units if not u.error]
+    # direct getenv() calls outside the registry module, and names the registry lacks
+    direct_getenv = sorted({f"{u.source}:{f['name']}" for u in analysed for f in u.functions
+                            if f.get("direct_getenv") and Path(u.source).name != "openmx_env.c"})
+    registry_names = set(re.findall(r'^    \{"([A-Z0-9_]+)"', (SOURCE / "openmx_env.c").read_text(), re.M)) \
+        if (SOURCE / "openmx_env.c").is_file() else set()
+    unregistered_env = sorted(n for n in env if registry_names and n not in registry_names)
     summary = {
         "translation units analysed": len(analysed),
         "translation units not analysed": len(units) - len(analysed),
@@ -529,6 +541,8 @@ def build_report(units, common, globals_index, revision):
         "file-scope statics": len(file_statics),
         "function-local statics": len(function_statics),
         "environment variables (name literals)": len(env),
+        "functions calling getenv directly (outside openmx_env.c)": len(direct_getenv),
+        "environment names missing from the registry": len(unregistered_env),
     }
     return {
         "scope": "global-state usage of the C translation units of the NVIDIA build",
@@ -546,6 +560,8 @@ def build_report(units, common, globals_index, revision):
         "file_statics": file_statics,
         "function_statics": function_statics,
         "env": {k: sorted(v) for k, v in sorted(env.items())},
+        "direct_getenv": direct_getenv,
+        "unregistered_env": unregistered_env,
         "edges": sorted({f"{f['name']}@{u.source}->{g}" for u in analysed for f in u.functions
                          for key in ("reads", "writes", "writes_through", "escapes", "address_taken") for g in f[key] if g in common}),
         "per_function": [{"unit": u.source, **f} for u in analysed for f in u.functions],
@@ -563,6 +579,8 @@ def gate(report, baseline):
     added["function_statics"] = sorted({fkey(s) for s in report["function_statics"]} - {fkey(s) for s in baseline.get("function_statics", [])})
     added["env"] = sorted(set(report["env"]) - set(baseline.get("env", {})))
     added["other_defined"] = sorted({g["name"] for g in report["other_defined"]} - {g["name"] for g in baseline.get("other_defined", [])})
+    added["direct_getenv"] = sorted(set(report["direct_getenv"]) - set(baseline.get("direct_getenv", [])))
+    added["unregistered_env"] = sorted(set(report["unregistered_env"]) - set(baseline.get("unregistered_env", [])))
     return added
 
 
@@ -618,7 +636,7 @@ def main():
     args.output.write_text(json.dumps(report, indent=1, sort_keys=False) + "\n")
     if args.baseline_output:
         lean = {k: report[k] for k in ("scope", "revision", "summary", "classes", "edges", "file_statics",
-                                       "function_statics", "env", "other_defined")}
+                                       "function_statics", "env", "other_defined", "direct_getenv", "unregistered_env")}
         args.baseline_output.parent.mkdir(parents=True, exist_ok=True)
         args.baseline_output.write_text(json.dumps(lean, indent=0, sort_keys=False) + "\n")
     if args.markdown:

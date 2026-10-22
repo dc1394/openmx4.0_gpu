@@ -6,6 +6,7 @@
   Coded by M. Toyoda, 16 Dec. 2009 
 ----------------------------------------------------------------------*/
 #include <stdio.h>
+#include "openmx_env.h"
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -34,7 +35,7 @@ static void my_gethostname(char *name, size_t length)
 #endif
 
   /* check env list */
-  env = getenv("HOSTNAME");
+  env = openmx_env_get("HOSTNAME");
   if (env && strlen(env)) {
     strncpy(name, env, length);
     return;

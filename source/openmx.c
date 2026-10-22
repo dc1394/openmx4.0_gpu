@@ -76,6 +76,7 @@
 #endif
 /*  end stat section */
 #include "openmx_common.h"
+#include "openmx_env.h"
 #include "openmx_local_basis.h"
 #include "openmx_electronic.h"
 #include "openmx_atomic.h"
@@ -121,8 +122,8 @@ static int run_openmx(int argc, char *argv[], OpenMXCoreContext *core)
 
   /* MPI initialize */
 #if OPENMX_GPU_HIP
-  if (getenv("LIBOMPTARGET_HEAP_SIZE") == NULL) {
-    const char *reexec = getenv("OPENMX_GPU_HEAP_REEXEC");
+  if (openmx_env_get("LIBOMPTARGET_HEAP_SIZE") == NULL) {
+    const char *reexec = openmx_env_get("OPENMX_GPU_HEAP_REEXEC");
 
     /* Not when the dynamic loader was started directly (ld.so ./openmx
        ...): /proc/self/exe is then the loader, and AT_BASE is 0 exactly
@@ -161,11 +162,16 @@ static int run_openmx(int argc, char *argv[], OpenMXCoreContext *core)
   NUMPROCS_MPI_COMM_WORLD = numprocs;
   MYID_MPI_COMM_WORLD = myid;
   Num_Procs = numprocs;
+
+  /* the environment settings of this run, read once (openmx_env.h); a
+     misspelt OPENMX_* name is reported by rank 0 instead of being ignored */
+  openmx_env_init();
+  if (myid==0) openmx_env_report(stderr,1);
 #if OPENMX_GPU_HIP
 
   {
     extern void openmx_gpu_zheevd_selftest(const char *label);
-    const char *selftest_env = getenv("OPENMX_ZHEEVD_SELFTEST");
+    const char *selftest_env = openmx_env_get("OPENMX_ZHEEVD_SELFTEST");
     if (selftest_env != NULL && atoi(selftest_env) != 0 && myid == 0) {
       openmx_gpu_zheevd_selftest("startup");
     }
@@ -649,6 +655,7 @@ static int run_openmx(int argc, char *argv[], OpenMXCoreContext *core)
   init_alloc_first();
 
   CompTime[myid][1] = readfile(argv,core);
+  if (myid==Host_ID && 2<=level_stdout) openmx_env_report(stdout,0);
   const OpenMXAtomicViews atomic_views=OpenMX_AtomicTables(core);
   const OpenMXAtomicViews *atomic=&atomic_views;
   MPI_Barrier(MPI_COMM_WORLD1);
@@ -790,7 +797,7 @@ static int run_openmx(int argc, char *argv[], OpenMXCoreContext *core)
 #if OPENMX_GPU_HIP
       {
         extern void openmx_gpu_zheevd_selftest(const char *label);
-        const char *selftest_env = getenv("OPENMX_ZHEEVD_SELFTEST");
+        const char *selftest_env = openmx_env_get("OPENMX_ZHEEVD_SELFTEST");
         if (selftest_env != NULL && atoi(selftest_env) != 0 && myid == 0 && MD_iter == 1) {
           openmx_gpu_zheevd_selftest("pre_DFT");
         }

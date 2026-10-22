@@ -16,6 +16,7 @@
 ***********************************************************************/
 
 #include "openmx_common.h"
+#include "openmx_env.h"
 #include "openmx_solver_workspace.h"
 #include "openmx_native_resources.h"
 OPENMX_NATIVE_RESOURCE_GROUP(Divide_Conquer_LNO,Divide_Conquer_LNO_Release_GPU_Caches)
@@ -43,7 +44,7 @@ static int DCLNO_ProfileEnabled(void)
         int rank;
         MPI_Comm_rank(mpi_comm_level1, &rank);
         if (rank == Host_ID) {
-            const char *value = getenv("OPENMX_DCLNO_PROFILE");
+            const char *value = openmx_env_get("OPENMX_DCLNO_PROFILE");
             enabled = value != NULL && atoi(value) != 0;
         }
         MPI_Bcast(&enabled, 1, MPI_INT, Host_ID, mpi_comm_level1);
@@ -108,7 +109,7 @@ static int DCLNO_GpuEigenThreshold(void)
     static int threshold = -1;
 
     if (threshold < 0) {
-        const char *value = getenv("OPENMX_DCLNO_GPU_THRESHOLD");
+        const char *value = openmx_env_get("OPENMX_DCLNO_GPU_THRESHOLD");
 
         threshold = DCLNO_GPU_PROXY_EIGEN_THRESHOLD_COL;
         if (value != NULL && value[0] != '\0') {
@@ -130,7 +131,7 @@ static int DCLNO_NonColGpuEigenThreshold(void)
     static int threshold = -1;
 
     if (threshold < 0) {
-        const char *value = getenv("OPENMX_DCLNO_NONCOL_GPU_THRESHOLD");
+        const char *value = openmx_env_get("OPENMX_DCLNO_NONCOL_GPU_THRESHOLD");
 
         threshold = DCLNO_NONCOL_GPU_CPU_SWITCH_NUM;
         if (value != NULL && value[0] != '\0') {
@@ -1058,10 +1059,10 @@ static int DCLNO_GpuTurnRelease(void)
        phase is done keeps them from occupying the shared device through the
        grid/force phases of the SCF step; opt out with
        OPENMX_DCLNO_GPU_TURN_RELEASE=0 (falls back to the band-path knob). */
-    const char *value = getenv("OPENMX_DCLNO_GPU_TURN_RELEASE");
+    const char *value = openmx_env_get("OPENMX_DCLNO_GPU_TURN_RELEASE");
 
     if (value == NULL) {
-        value = getenv("OPENMX_BAND_GEMMUL8_TURN_RELEASE");
+        value = openmx_env_get("OPENMX_BAND_GEMMUL8_TURN_RELEASE");
     }
     if (value == NULL) {
         return 1;

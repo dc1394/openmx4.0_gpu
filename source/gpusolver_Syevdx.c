@@ -48,6 +48,7 @@
  */
 
 #include "openmx_common.h"
+#include "openmx_env.h"
 #include <cuda_runtime.h>
 #include <cusolverDn.h>
 #include <openacc.h>
@@ -147,7 +148,7 @@ static void solver_trim(void)
 {
     GpusolverContext *c = &solver_ctx;
     size_t limit = 64u * 1024u * 1024u;
-    const char *s = getenv("OPENMX_CUSOLVER_CACHE_MB");
+    const char *s = openmx_env_get("OPENMX_CUSOLVER_CACHE_MB");
 #ifdef _OPENMP
     /* Wannier calls the wrappers from worker threads. A serial test-suite
        boundary cannot release those thread-local contexts. */

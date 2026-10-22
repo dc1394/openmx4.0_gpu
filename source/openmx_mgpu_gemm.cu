@@ -1,4 +1,5 @@
 #include "openmx_gpu_backend.h"
+#include "openmx_env.h"
 #include "openmx_mgpu_gemm.h"
 #include "openmx_gpu_runtime.h"
 #include <algorithm>
@@ -33,7 +34,7 @@ thread_local openmx_mgpu_gemm_report report = {};
 
 size_t budget(const char *name, size_t fallback_mib)
 {
-    const char *value = std::getenv(name);
+    const char *value = openmx_env_get(name);
     if (!value || !*value) return fallback_mib*MiB;
     char *end = nullptr;
     const unsigned long long parsed = std::strtoull(value,&end,10);
@@ -41,7 +42,7 @@ size_t budget(const char *name, size_t fallback_mib)
         return fallback_mib*MiB;
     return size_t(parsed)*MiB;
 }
-bool option(const char *name) { const char *v=std::getenv(name);return v && *v=='1'; }
+bool option(const char *name) { const char *v=openmx_env_get(name);return v && *v=='1'; }
 bool product(size_t a,size_t b,size_t *out)
 {
     if (b && a>std::numeric_limits<size_t>::max()/b) return false;
@@ -237,7 +238,7 @@ template<class T> bool zero(T v) {
 template<class T> OpenMXBlasStatus local_gemm(OpenMXBlasHandle h,OpenMXBlasOperation ta,OpenMXBlasOperation tb,
     int m,int n,int k,const T *alpha,const T *a,int lda,const T *b,int ldb,const T *beta,T *c,int ldc)
 {
-    const char *backend=std::getenv("OPENMX_MGPU_GEMM_BACKEND");
+    const char *backend=openmx_env_get("OPENMX_MGPU_GEMM_BACKEND");
     const bool bridge=!(backend && std::strcmp(backend,"native")==0);
     struct Guard { Guard(){in_worker=true;} ~Guard(){in_worker=false;} } guard;
     if constexpr(std::is_same_v<T,double>) {
@@ -317,7 +318,7 @@ template<class T> int gemm(OpenMXBlasHandle handle,int ngpu,const int *devices,O
     op.host_matrices=host_matrices;
 #if !OPENMX_GPU_HIP
     op.pageable=host_matrices && option("OPENMX_MGPU_GEMM_PAGEABLE");
-    const char *gather_control=std::getenv("OPENMX_MGPU_GEMM_ASYNC_GATHER");
+    const char *gather_control=openmx_env_get("OPENMX_MGPU_GEMM_ASYNC_GATHER");
     op.async_gather=!(gather_control && std::strcmp(gather_control,"0")==0);
 #endif
     if(OpenMXGpuGetDevice(&op.origin)!=OPENMX_GPU_SUCCESS) {report.reason="current device unavailable";return 0;}
@@ -442,7 +443,7 @@ template<class T> int gemm(OpenMXBlasHandle handle,int ngpu,const int *devices,O
             (g%tile_cols==0?std::min(tile_rows,g/tile_cols):tile_rows);
         const size_t col_cost=size_t(n)*std::min(tile_rows,g)+size_t(m)*
             (g%tile_rows==0?std::min(tile_cols,g/tile_rows):tile_cols);
-        const char *order=std::getenv("OPENMX_MGPU_GEMM_TRAVERSAL");
+        const char *order=openmx_env_get("OPENMX_MGPU_GEMM_TRAVERSAL");
         column_tiles=order && std::strcmp(order,"column")==0 ? true :
             order && std::strcmp(order,"row")==0 ? false : col_cost<row_cost;
     }

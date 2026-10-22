@@ -11,6 +11,7 @@
 
 #include "mpi.h"
 #include "openmx_common.h"
+#include "openmx_env.h"
 #include "openmx_solver_workspace.h"
 #include "openmx_native_resources.h"
 OPENMX_NATIVE_RESOURCE_GROUP(Cluster_DFT_Col,Cluster_DFT_Col_Release_GPU_Caches)
@@ -834,7 +835,7 @@ static int ClusterCol_DMProfileEnabled(void)
     static int cached = -1;
 
     if (cached<0){
-        const char *value = getenv("OPENMX_BAND_PROFILE");
+        const char *value = openmx_env_get("OPENMX_BAND_PROFILE");
         cached = (value!=NULL && atoi(value)!=0);
     }
     return cached;
@@ -845,7 +846,7 @@ static int ClusterCol_ProfileEnabled(void)
     static int cached = -1;
 
     if (cached<0){
-        const char *value = getenv("OPENMX_CLUSTER_PROFILE");
+        const char *value = openmx_env_get("OPENMX_CLUSTER_PROFILE");
         cached = (value!=NULL && atoi(value)!=0);
     }
     return cached;
@@ -1092,7 +1093,7 @@ static void ClusterCol_InvalidateDeviceEvecStash(void)
 static void ClusterCol_TrimScratch(void)
 {
     ClusterColGpuSolverCtx *ctx = &ClusterCol_gpusolver_ctx;
-    const char *retain = getenv("OPENMX_CLUSTER_GPU_RETAIN_SCRATCH");
+    const char *retain = openmx_env_get("OPENMX_CLUSTER_GPU_RETAIN_SCRATCH");
     const int release_always = retain!=NULL && atoi(retain)==0;
     size_t free_bytes, total_bytes, bytes;
     int device;
@@ -1135,7 +1136,7 @@ static void ClusterCol_TrimScratch(void)
     }
     ctx->scratch_released = 1;
     {
-        const char *verbose = getenv("OPENMX_CUSOLVER_VERBOSE");
+        const char *verbose = openmx_env_get("OPENMX_CUSOLVER_VERBOSE");
         if (verbose!=NULL && atoi(verbose)!=0)
             fprintf(stderr,"<Cluster_DFT_Col> Released %.3f GiB of SCF scratch; retained transformed overlap (n=%d).\n",
                     (double)bytes/1073741824.0,ctx->matrix_dim);
@@ -1215,10 +1216,10 @@ static int ClusterCol_GemmWorkspaceTurnRelease(void)
        keeps it from occupying the shared device through the grid/force phases
        of the SCF step; opt out with OPENMX_CLUSTER_GEMMUL8_TURN_RELEASE=0
        (falls back to the band-path knob for a single switch). */
-    const char *value = getenv("OPENMX_CLUSTER_GEMMUL8_TURN_RELEASE");
+    const char *value = openmx_env_get("OPENMX_CLUSTER_GEMMUL8_TURN_RELEASE");
 
     if (value==NULL){
-        value = getenv("OPENMX_BAND_GEMMUL8_TURN_RELEASE");
+        value = openmx_env_get("OPENMX_BAND_GEMMUL8_TURN_RELEASE");
     }
     if (value==NULL){
         return 1;
@@ -1242,7 +1243,7 @@ int Cluster_DFT_Col_GpuSwitchNum(void)
     static int cached = -1;
 
     if (cached < 0) {
-        const char *value = getenv("OPENMX_CLUSTER_GPU_SWITCH_NUM");
+        const char *value = openmx_env_get("OPENMX_CLUSTER_GPU_SWITCH_NUM");
         int parsed;
 
         cached = CLUSTER_GPU_CPU_SWITCH_NUM;
@@ -1270,8 +1271,8 @@ static int ClusterCol_UseGpuDM(int n)
        leaves those ranks on one core each: C1000 at 6 ranks spent 37 s of
        3 SCF steps there on one thread (RTX 5080).  OPENMX_CLUSTER_GPU_DM_ALL=0
        keeps the device accumulation to the owner rank. */
-    const char *value = getenv("OPENMX_CLUSTER_GPU_DM");
-    const char *all = getenv("OPENMX_CLUSTER_GPU_DM_ALL");
+    const char *value = openmx_env_get("OPENMX_CLUSTER_GPU_DM");
+    const char *all = openmx_env_get("OPENMX_CLUSTER_GPU_DM_ALL");
 
     if (value!=NULL && atoi(value)==0){
         return 0;
@@ -1452,7 +1453,7 @@ static void ClusterCol_GpuSolver_CheckInfo(const char *where, int info)
 
 static size_t ClusterCol_GpuDiagReserveBytes(void)
 {
-    const char *value = getenv("OPENMX_CLUSTER_GPU_DIAG_RESERVE_MB");
+    const char *value = openmx_env_get("OPENMX_CLUSTER_GPU_DIAG_RESERVE_MB");
     long mib = 1024;
 
     if (value!=NULL){
@@ -1554,8 +1555,8 @@ static int ClusterCol_GpuDiagFits(int SCF_iter, int n, int myworld1, int myid1, 
 {
     static int verdict = -1;
     static int verdict_n = 0;
-    const char *force = getenv("OPENMX_CLUSTER_GPU_DIAG");
-    const char *serial_env = getenv("OPENMX_CLUSTER_GPU_DIAG_SERIAL");
+    const char *force = openmx_env_get("OPENMX_CLUSTER_GPU_DIAG");
+    const char *serial_env = openmx_env_get("OPENMX_CLUSTER_GPU_DIAG_SERIAL");
     int serial_knob = (serial_env!=NULL) ? atoi(serial_env) : 1;
     int announce = (myworld1==0 && myid1==0);
     int owner = (myid1==0);
@@ -2022,7 +2023,7 @@ static void ClusterCol_SampleDeviceMatrix(const double *d_A, int n, const char *
     char path[4096];
     FILE *fp;
 
-    snprintf(path,sizeof(path),"%s/%s",getenv("OPENMX_GEMM_SAMPLE_DIR"),name);
+    snprintf(path,sizeof(path),"%s/%s",openmx_env_get("OPENMX_GEMM_SAMPLE_DIR"),name);
     wait_cudafunc(cudaMemcpyAsync(A,d_A,count*sizeof(double),cudaMemcpyDeviceToHost,ctx->stream));
     wait_cudafunc(cudaStreamSynchronize(ctx->stream));
 
@@ -2038,7 +2039,7 @@ static void ClusterCol_SampleDeviceMatrix(const double *d_A, int n, const char *
 
 static void ClusterCol_SampleTransformedS(int n, int myworld1)
 {
-    const char *dir = getenv("OPENMX_GEMM_SAMPLE_DIR");
+    const char *dir = openmx_env_get("OPENMX_GEMM_SAMPLE_DIR");
     char name[64];
 
     ClusterCol_sample_geometry++;
@@ -2051,8 +2052,8 @@ static void ClusterCol_SampleTransformedS(int n, int myworld1)
 
 static void ClusterCol_SampleHamiltonian(int SCF_iter, int spin, int n)
 {
-    const char *dir = getenv("OPENMX_GEMM_SAMPLE_DIR");
-    const char *list = getenv("OPENMX_GEMM_SAMPLE_ITERS");
+    const char *dir = openmx_env_get("OPENMX_GEMM_SAMPLE_DIR");
+    const char *list = openmx_env_get("OPENMX_GEMM_SAMPLE_ITERS");
     char name[64];
     int wanted = 0;
 

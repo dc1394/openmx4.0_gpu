@@ -15,6 +15,7 @@
 #include <math.h>
 #include <string.h>
 #include "openmx_common.h"
+#include "openmx_env.h"
 #include "mpi.h"
 #include <omp.h>
 
@@ -39,7 +40,7 @@ static void Inverse(int n, double **a, double **ia);
 
 static int MixDM_Fast_Enabled(void)
 {
-  const char *env = getenv("OPENMX_MIX_FAST");
+  const char *env = openmx_env_get("OPENMX_MIX_FAST");
   if (scf_eigen_lib_flag != GPUSOLVER) return 0;
   return (env == NULL) ? 1 : (atoi(env) != 0);
 }

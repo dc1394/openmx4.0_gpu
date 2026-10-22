@@ -1,18 +1,20 @@
 {
 "scope": "global-state usage of the C translation units of the NVIDIA build",
-"revision": "1f6ede07",
+"revision": "08cbfa4a",
 "summary": {
-"translation units analysed": 289,
+"translation units analysed": 290,
 "translation units not analysed": 0,
-"functions": 2967,
+"functions": 2988,
 "common-header objects (defined in openmx_globals.c)": 1051,
 "common-header objects referenced by some function": 1045,
 "common-header objects written by some function (direct or through)": 785,
-"function-object edges (common header)": 12913,
+"function-object edges (common header)": 12914,
 "objects with external linkage defined outside openmx_globals.c": 358,
-"file-scope statics": 449,
+"file-scope statics": 451,
 "function-local statics": 416,
-"environment variables (name literals)": 156
+"environment variables (name literals)": 156,
+"functions calling getenv directly (outside openmx_env.c)": 0,
+"environment names missing from the registry": 0
 },
 "classes": {
 "shared-mutable": 225,
@@ -12834,6 +12836,7 @@
 "run_openmx@source/openmx.c->filepath",
 "run_openmx@source/openmx.c->force_flag",
 "run_openmx@source/openmx.c->gtv",
+"run_openmx@source/openmx.c->level_stdout",
 "run_openmx@source/openmx.c->mpi_comm_level1",
 "run_openmx@source/openmx.c->openmp_threads_num",
 "run_openmx@source/openmx.c->orbitalOpt_per_MDIter",
@@ -15650,6 +15653,18 @@
 "unit": "source/openmx_cusolver_compat.c",
 "name": "policy",
 "type": "%struct.OpenMXCuSolverPolicy zeroinitializer",
+"const": false
+},
+{
+"unit": "source/openmx_env.c",
+"name": "registry",
+"type": "[241 x %struct.OpenMXEnvEntry] [%struct.OpenMXEnvEntry { ptr @.str",
+"const": true
+},
+{
+"unit": "source/openmx_env.c",
+"name": "state",
+"type": "%struct.anon zeroinitializer",
 "const": false
 },
 {
@@ -21284,5 +21299,7 @@
 "type": "[20 x i8] zeroinitializer",
 "units": 1
 }
-]
+],
+"direct_getenv": [],
+"unregistered_env": []
 }

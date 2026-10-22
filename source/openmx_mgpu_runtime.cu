@@ -1,4 +1,5 @@
 #include "openmx_gpu_backend.h"
+#include "openmx_env.h"
 #include "openmx_gpu_architecture.h"
 #define OPENMX_MGPU_RUNTIME_IMPLEMENTATION
 /* Single-node multi-GPU admission and measured dispatch for cluster/Band.
@@ -76,7 +77,7 @@ std::map<std::vector<int>,bool> fast_link_choices;
 
 int positive_env(const char *name, int fallback)
 {
-    const char *s = std::getenv(name);
+    const char *s = openmx_env_get(name);
     if (!s || !*s) return fallback;
     char *end = nullptr;
     errno = 0;
@@ -110,9 +111,9 @@ int pool_gpu_count(bool node_local, bool auxiliary = false)
 {
     if ((!topology_single_node && !node_local) ||
         (auxiliary ? input_aux_enabled : input_enabled) == 0) return 0;
-    const char *gpu = std::getenv("OPENMX_GPU");
+    const char *gpu = openmx_env_get("OPENMX_GPU");
     if (gpu && *gpu && std::atoi(gpu) == 0) return 0;
-    const char *v = std::getenv("OPENMX_MGPU");
+    const char *v = openmx_env_get("OPENMX_MGPU");
     if (v && *v && std::strcmp(v,"0") == 0) return 0;
     int count = 0;
     if (OpenMXGpuGetDeviceCount(&count) != OPENMX_GPU_SUCCESS) return 0;
@@ -137,7 +138,7 @@ int band_groups(int total,int pool)
 #endif
 bool allowed_gpu_range(int first,int count)
 {
-    const char *v=std::getenv("OPENMX_MGPU");
+    const char *v=openmx_env_get("OPENMX_MGPU");
     const bool forced = input_enabled > 0 || (v && std::strcmp(v,"1") == 0);
     for (int i = first; i < first+count; ++i) {
 #if OPENMX_GPU_HIP
@@ -285,7 +286,7 @@ bool direct_link_query(const std::vector<int> &devices)
 
 bool fast_gemm_topology(const int *devices,int count)
 {
-    const char *mode=std::getenv("OPENMX_MGPU_GEMM");
+    const char *mode=openmx_env_get("OPENMX_MGPU_GEMM");
     /* Only the explicitly requested legacy auto policy limits cooperation
        to NVLink. PCIe workers retain the bounded host staging path. */
     if (!mode || std::strcmp(mode,"auto")!=0) return true;
@@ -319,7 +320,7 @@ public:
             std::fprintf(stderr, "<OpenMX_MGPU> admission timed out waiting for the process lock.\n");
             return;
         }
-        const char *directory = std::getenv("OPENMX_GPU_LOCK_DIR");
+        const char *directory = openmx_env_get("OPENMX_GPU_LOCK_DIR");
         if (!directory || !*directory) directory = "/tmp";
         if (directory[0] != '/') {
             std::fprintf(stderr, "<OpenMX_MGPU> OPENMX_GPU_LOCK_DIR must be an absolute shared node-local directory: %s\n", directory);
@@ -504,7 +505,7 @@ int solve_typed(OpenMXSolverHandle handle,OpenMXBlasFillMode uplo,int n,void *A,
                 bool complex,openmx_mgpu_native_solve native_solve,void *native_context,
                 OpenMXSolverStatus *status)
 {
-    const char *choice=std::getenv("OPENMX_MGPU_SOLVER");
+    const char *choice=openmx_env_get("OPENMX_MGPU_SOLVER");
     if (!choice || !*choice) choice="single";
     const bool automatic=std::strcmp(choice,"auto")==0;
     const bool force_magma=std::strcmp(choice,"magma")==0;
@@ -689,7 +690,7 @@ int solve_typed(OpenMXSolverHandle handle,OpenMXBlasFillMode uplo,int n,void *A,
 bool gemm_eligible(int m,int n,int k)
 {
     if (openmx_mgpuGemmInWorker() || m<=0 || n<=0 || k<=0) return false;
-    const char *mode=std::getenv("OPENMX_MGPU_GEMM");
+    const char *mode=openmx_env_get("OPENMX_MGPU_GEMM");
     if (!mode) return false;
     if (std::strcmp(mode,"1")==0 || std::strcmp(mode,"on")==0) return true;
     if (std::strcmp(mode,"auto")!=0) return false;
@@ -830,7 +831,7 @@ extern "C" int openmx_mgpu_solve_device_try(OpenMXSolverHandle handle,
         jobz!=OPENMX_SOLVER_EIG_VECTOR || n<=0 || n>INT_MAX || lda<n || lda>INT_MAX ||
         nev<1 || nev>n || (uplo!=OPENMX_BLAS_FILL_LOWER && uplo!=OPENMX_BLAS_FILL_UPPER) ||
         (type!=OPENMX_GPU_REAL64 && type!=OPENMX_GPU_COMPLEX64)) return 0;
-    const char *mode=std::getenv("OPENMX_MGPU_SOLVER");
+    const char *mode=openmx_env_get("OPENMX_MGPU_SOLVER");
     if (mode && (std::strcmp(mode,"off")==0 || std::strcmp(mode,"single")==0)) return 0;
     const bool forced=mode && std::strcmp(mode,"magma")==0;
     if (!forced && n<positive_env("OPENMX_MGPU_SOLVER_MIN_N",4096)) return 0;
@@ -851,7 +852,7 @@ extern "C" int openmx_mgpu_solve_device_try(OpenMXSolverHandle handle,
 extern "C" int openmx_mgpu_solve_host_result_try(int complex_matrix,int n,int nev,void *a,
     double *w,int *mout,int (*native_solve)(void *,double *),void *native_context,int *result)
 {
-    const char *mode=std::getenv("OPENMX_MGPU_SOLVER");
+    const char *mode=openmx_env_get("OPENMX_MGPU_SOLVER");
     if (!mode || (std::strcmp(mode,"auto") && std::strcmp(mode,"magma")) ||
         !a || !w || !native_solve || !result || n<=0 || nev<1 || nev>n) return 0;
     if (std::strcmp(mode,"magma") && n<positive_env("OPENMX_MGPU_SOLVER_MIN_N",4096)) return 0;
@@ -939,7 +940,7 @@ extern "C" int openmx_mgpu_dispatch_zgemm(OpenMXBlasHandle handle,
 extern "C" void openmx_mgpu_force_magma(int force) { input_force_magma=force!=0; }
 extern "C" int openmx_mgpu_host_required(void)
 {
-    const char *mode=std::getenv("OPENMX_MGPU_MEMORY");
+    const char *mode=openmx_env_get("OPENMX_MGPU_MEMORY");
     return input_force_magma || (mode && std::strcmp(mode,"host")==0);
 }
 extern "C" const char *openmx_mgpu_host_error(void) { return host_error; }

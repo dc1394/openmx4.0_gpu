@@ -19,6 +19,7 @@
 #include <math.h>
 #include <time.h>
 #include "openmx_common.h"
+#include "openmx_env.h"
 #include "mpi.h"
 #include <omp.h>
 
@@ -72,7 +73,7 @@ void Set_Vpot(const OpenMXAtomicViews *atomic, int MD_iter,
      Mixing_switch==7 FFT+Mixing_V, b2c = the B->C redistribution) */
   double vp_t0, vp_t1, vp_xc = 0.0, vp_d2b = 0.0, vp_vna = 0.0, vp_asm = 0.0, vp_mix = 0.0, vp_b2c = 0.0;
   static int vp_prof = -1;
-  if (vp_prof < 0) { const char *e = getenv("OPENMX_BAND_PROFILE"); vp_prof = (e != NULL && atoi(e) != 0) ? 1 : 0; }
+  if (vp_prof < 0) { const char *e = openmx_env_get("OPENMX_BAND_PROFILE"); vp_prof = (e != NULL && atoi(e) != 0) ? 1 : 0; }
 #if OPENMX_GPU_HIP
 
   /* The precision of the grid integrals that follow (the matrix elements

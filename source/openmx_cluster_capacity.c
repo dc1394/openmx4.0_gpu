@@ -1,4 +1,5 @@
 #include "openmx_gpu_backend.h"
+#include "openmx_env.h"
 #include "openmx_gpu_runtime.h"
 /**********************************************************************
   openmx_cluster_capacity.c
@@ -29,7 +30,7 @@ static char capacity_reason[768];
 
 static int fallback_mode(void)
 {
-    const char *v = getenv("OPENMX_CLUSTER_GS2_FALLBACK");
+    const char *v = openmx_env_get("OPENMX_CLUSTER_GS2_FALLBACK");
 
     if (v == NULL || v[0] == '\0' || strcasecmp(v, "auto") == 0) return FALLBACK_AUTO;
     if (strcmp(v, "0") == 0 || strcasecmp(v, "off") == 0) return FALLBACK_OFF;
@@ -44,7 +45,7 @@ static int fallback_mode(void)
    unknown); OPENMX_CLUSTER_HOST_MEM_AVAILABLE_MB overrides the measurement */
 static unsigned long long magma_host_available(void)
 {
-    const char *override = getenv("OPENMX_CLUSTER_HOST_MEM_AVAILABLE_MB");
+    const char *override = openmx_env_get("OPENMX_CLUSTER_HOST_MEM_AVAILABLE_MB");
 
     if (override != NULL && override[0] != '\0') {
         return strtoull(override, NULL, 10) * 1048576ULL;

@@ -12,6 +12,7 @@
 
 #include "mpi.h"
 #include "openmx_common.h"
+#include "openmx_env.h"
 #include "openmx_solver_workspace.h"
 #include "openmx_native_resources.h"
 OPENMX_NATIVE_RESOURCE_GROUP(Band_DFT_NonCol,Band_DFT_NonCol_Release_GPU_Caches)
@@ -447,15 +448,15 @@ static void BandNonCol_GpuSolver_ReleaseDeviceWorkspace(void)
 
 static void BandNonCol_SetDenseGemmul8Defaults(void)
 {
-    if (getenv("OPENMX_GEMMUL8_MAX_WORKSPACE_PERCENT")==NULL &&
-        getenv("GEMMUL8_MAX_WORKSPACE_PERCENT")==NULL){
-        setenv("OPENMX_GEMMUL8_MAX_WORKSPACE_PERCENT","50",0);
+    if (openmx_env_get("OPENMX_GEMMUL8_MAX_WORKSPACE_PERCENT")==NULL &&
+        openmx_env_get("GEMMUL8_MAX_WORKSPACE_PERCENT")==NULL){
+        openmx_env_set_if_unset("OPENMX_GEMMUL8_MAX_WORKSPACE_PERCENT","50");
     }
 }
 
 static int BandNonCol_GemmWorkspaceTurnRelease(void)
 {
-    const char *value = getenv("OPENMX_BAND_GEMMUL8_TURN_RELEASE");
+    const char *value = openmx_env_get("OPENMX_BAND_GEMMUL8_TURN_RELEASE");
 
     if (value==NULL){
         return 1;
@@ -469,7 +470,7 @@ static int BandNonCol_EigenvaluesOnlyNoVectors(void)
        the chemical potential; jobz=CUSOLVER_EIG_MODE_NOVECTOR skips the
        eigenvector build inside cusolverDnXsyevdx and returns identical
        eigenvalues.  Opt out with OPENMX_BAND_SYEVDX_NOVECTOR=0. */
-    const char *value = getenv("OPENMX_BAND_SYEVDX_NOVECTOR");
+    const char *value = openmx_env_get("OPENMX_BAND_SYEVDX_NOVECTOR");
 
     if (value==NULL){
         return 1;
@@ -483,7 +484,7 @@ static int BandNonCol_EigenvaluesOnlyNoVectors(void)
 static size_t BandNonCol_HostCacheLimit(const char *name, double default_mib,
                                        unsigned fraction)
 {
-    const char *env = getenv(name);
+    const char *env = openmx_env_get(name);
     double cap = env == NULL ? default_mib : atof(env);
     unsigned long long available_kib = 0;
     int ranks = openmx_gpu_local_size_noncollective();
@@ -624,7 +625,7 @@ static void BandNonCol_ClearOpenAccFreelists(void)
 
 static int BandNonCol_SerializeGpuSolverGpuTurns(void)
 {
-    const char *value = getenv("OPENMX_GPUSOLVER_SERIAL_GPU_TURNS");
+    const char *value = openmx_env_get("OPENMX_GPUSOLVER_SERIAL_GPU_TURNS");
 
     if (value==NULL){
         return 1;
@@ -642,14 +643,14 @@ static int BandNonCol_GpuRequestedMaxTurns(void)
        k-point in the first wave (the plan clamps to the device-group size
        and to the total turn count); the variables only impose an explicit
        upper cap on the concurrency.  Matches the collinear path. */
-    const char *value = getenv("OPENMX_BAND_GPU_MAX_CONCURRENT_K");
+    const char *value = openmx_env_get("OPENMX_BAND_GPU_MAX_CONCURRENT_K");
     long requested = (long)INT_MAX;
 
     if (value==NULL){
-        value = getenv("OPENMX_BAND_GPU_TURN_GROUP");
+        value = openmx_env_get("OPENMX_BAND_GPU_TURN_GROUP");
     }
     if (value==NULL){
-        value = getenv("OPENMX_BAND_GPU_MAX_RANKS_PER_DEVICE");
+        value = openmx_env_get("OPENMX_BAND_GPU_MAX_RANKS_PER_DEVICE");
     }
     if (value!=NULL && value[0]!='\0'){
         char *end = NULL;
@@ -865,7 +866,7 @@ int Band_DFT_NonCol_GpuSwitchNum(void)
     static int cached = -1;
 
     if (cached < 0) {
-        const char *value = getenv("OPENMX_BAND_NONCOL_GPU_SWITCH_NUM");
+        const char *value = openmx_env_get("OPENMX_BAND_NONCOL_GPU_SWITCH_NUM");
         int parsed;
 
         cached = BAND_NONCOL_GPU_CPU_SWITCH_NUM;
@@ -1261,7 +1262,7 @@ static size_t BandNonCol_GpuRankOverheadBytes(void)
     /* CUDA context, cublas/cusolver handles, and OpenACC pool slack that sit
        outside the explicitly estimated buffers; matches the collinear path
        (OPENMX_BAND_GPU_RANK_OVERHEAD_MB, default 256 MiB per owner rank). */
-    const char *value = getenv("OPENMX_BAND_GPU_RANK_OVERHEAD_MB");
+    const char *value = openmx_env_get("OPENMX_BAND_GPU_RANK_OVERHEAD_MB");
     unsigned long long mib = 256ULL;
 
     if (value!=NULL && value[0]!='\0'){
@@ -1379,7 +1380,7 @@ static size_t BandNonCol_RootDenseReserveBytes(size_t total_bytes)
        (max(total/10, 1536 MiB), raisable via OPENMX_BAND_GPU_RESERVE_MB). */
     size_t reserve = total_bytes/10U;
     const size_t minimum = 1536ULL*1024ULL*1024ULL;
-    const char *value = getenv("OPENMX_BAND_GPU_RESERVE_MB");
+    const char *value = openmx_env_get("OPENMX_BAND_GPU_RESERVE_MB");
 
     if (reserve<minimum) reserve = minimum;
     if (value!=NULL && value[0]!='\0'){
@@ -1435,7 +1436,7 @@ static int BandNonCol_GpuDiagFits(int SCF_iter, int n, int n2, int MaxN, int siz
 {
     static int verdict = -1;
     static int verdict_n2 = 0;
-    const char *force = getenv("OPENMX_BAND_GPU_DIAG");
+    const char *force = openmx_env_get("OPENMX_BAND_GPU_DIAG");
     unsigned long long my_required = 0ULL, req_max = 0ULL;
     unsigned long long my_free = ULLONG_MAX, free_min = 0ULL;
     int my_fit = 1;
@@ -2286,7 +2287,7 @@ static void BandNonCol_AccumulateDMKPoint_OpenACC(int myid2, int *is2, int *ie2,
    Opt out with OPENMX_BAND_NONCOL_GPU_DM=0. */
 static int BandNonCol_UseGpuFallbackDM(int n2,size_t evec_bytes)
 {
-    const char *v=getenv("OPENMX_BAND_NONCOL_GPU_DM");(void)evec_bytes;
+    const char *v=openmx_env_get("OPENMX_BAND_NONCOL_GPU_DM");(void)evec_bytes;
     return (!v || atoi(v)!=0) && scf_eigen_lib_flag==GPUSOLVER &&
         (openmx_mgpu_host_required() || Band_DFT_NonCol_GpuSwitchNum()<=n2);
 }
@@ -4120,7 +4121,7 @@ static double Band_DFT_NonCol_owned(char *mode,
 	      dense_k_owner[k] = dense_owner;
 	    }
 	    if (myid0 == Host_ID){
-	      const char *value = getenv("OPENMX_BAND_NONCOL_INTERLEAVE_K");
+	      const char *value = openmx_env_get("OPENMX_BAND_NONCOL_INTERLEAVE_K");
 	      if (value != NULL) interleave_k = atoi(value) != 0;
 	    }
 	    MPI_Bcast(&interleave_k,1,MPI_INT,Host_ID,mpi_comm_level1);
@@ -6274,7 +6275,7 @@ static double Band_DFT_NonCol_owned(char *mode,
     openmx_core_native_free(Band_DFT_NonCol_resources,k_evec_cache);
   }
   if (use_k_dense_gpusolver){
-    const char *trace = getenv("OPENMX_BAND_NONCOL_CACHE_TRACE");
+    const char *trace = openmx_env_get("OPENMX_BAND_NONCOL_CACHE_TRACE");
     if (trace != NULL && atoi(trace) != 0)
       printf("BAND_NONCOL_CACHE rank=%d SCF=%d evec_hits=%d overlap_hits=%d evec=%.1f MiB overlap=%.1f MiB packed=%.1f MiB\n",
              myid0,SCF_iter,k_cache_hits,k_overlap_hits,k_cache_used/1048576.0,

@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <math.h>
 #include "openmx_common.h"
+#include "openmx_env.h"
 
 
 #include <string.h>
@@ -25,7 +26,7 @@ typedef struct {
 
 static int TotalEnergy_GPU_Enabled(void)
 {
-  const char *v=getenv("OPENMX_TOTALENERGY_GPU");
+  const char *v=openmx_env_get("OPENMX_TOTALENERGY_GPU");
   return !v || !*v || atoi(v)!=0;
 }
 

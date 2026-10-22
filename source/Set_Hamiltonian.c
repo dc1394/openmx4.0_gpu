@@ -15,6 +15,7 @@
 #include "grid_precision.h"
 #include "orbs_grid_gpu.h"
 #include "openmx_common.h"
+#include "openmx_env.h"
 #include "openmx_grid_assembly.h"
 #include "openmx_core_vna_matrix.h"
 #include "openmx_gpu_workers.h"
@@ -55,7 +56,7 @@ static int SetH_ProfileEnabled(void)
     static int enabled = -1;
 
     if (enabled < 0) {
-        const char *value = getenv("OPENMX_BAND_PROFILE");
+        const char *value = openmx_env_get("OPENMX_BAND_PROFILE");
         enabled = (value != NULL && atoi(value) != 0);
     }
     return enabled;
@@ -300,7 +301,7 @@ static int Set_Hamiltonian_OpenACC_Enabled(void)
 
 static int Set_Hamiltonian_MatrixElements_OpenACC_Enabled(void)
 {
-    const char *value = getenv("OPENMX_SETHAM_MATRIX_GPU");
+    const char *value = openmx_env_get("OPENMX_SETHAM_MATRIX_GPU");
 
     /* This is the expensive part of Set_Hamiltonian.  It is enabled for
        GPUSOLVER by default and can be disabled for comparison/debugging. */
@@ -309,7 +310,7 @@ static int Set_Hamiltonian_MatrixElements_OpenACC_Enabled(void)
 
 static int Set_Hamiltonian_MatrixElements_CudaKernel_Enabled(void)
 {
-    const char *value = getenv("OPENMX_SETHAM_CUDA_KERNEL");
+    const char *value = openmx_env_get("OPENMX_SETHAM_CUDA_KERNEL");
     return (value == NULL) ? 1 : (atoi(value) != 0);
 }
 
@@ -355,7 +356,7 @@ static size_t Set_Hamiltonian_GpuReserveBytes(size_t total_bytes)
 {
     size_t reserve = total_bytes / 10U;
     const size_t gemmul8_reserve = 1536ULL * 1024ULL * 1024ULL;
-    const char *value = getenv("OPENMX_SETHAM_GPU_RESERVE_MB");
+    const char *value = openmx_env_get("OPENMX_SETHAM_GPU_RESERVE_MB");
 
     if (reserve < gemmul8_reserve) reserve = gemmul8_reserve;
     if (value != NULL && value[0] != '\0') {
@@ -374,7 +375,7 @@ static int Set_Hamiltonian_GpuRequestedMaxRanks(void)
     /* By default every MPI rank that shares the device may join the first
        wave (the plan clamps to the actual device-group size); the variable
        only imposes an explicit upper cap. */
-    const char *value = getenv("OPENMX_SETHAM_GPU_MAX_RANKS_PER_DEVICE");
+    const char *value = openmx_env_get("OPENMX_SETHAM_GPU_MAX_RANKS_PER_DEVICE");
     long requested = (long)INT_MAX;
 
     if (value != NULL && value[0] != '\0') {
@@ -389,7 +390,7 @@ static int Set_Hamiltonian_GpuRequestedMaxRanks(void)
 
 static int Set_Hamiltonian_GpuSerialWaves(void)
 {
-    const char *value = getenv("OPENMX_SETHAM_GPU_SERIAL_WAVES");
+    const char *value = openmx_env_get("OPENMX_SETHAM_GPU_SERIAL_WAVES");
 
     /* Prefer the hybrid policy on smaller GPUs: the first fitting wave uses
        the GPU while the remaining ranks compute on the CPU concurrently.  A
@@ -405,7 +406,7 @@ static int Set_Hamiltonian_GpuResidentEnabled(void)
        only when every rank sharing the GPU runs in the single wave and the
        resident total leaves the configured floor free for the eigensolver
        and the grid routines.  Set to zero to force per-iteration staging. */
-    const char *value = getenv("OPENMX_SETHAM_GPU_RESIDENT");
+    const char *value = openmx_env_get("OPENMX_SETHAM_GPU_RESIDENT");
     return (value == NULL) ? 1 : (atoi(value) != 0);
 }
 
@@ -419,7 +420,7 @@ static size_t Set_Hamiltonian_GpuResidentFloorBytes(int have_registered_need)
        variable overrides both defaults. */
     size_t floor_bytes = have_registered_need ? 4096ULL * 1024ULL * 1024ULL
                                               : 16384ULL * 1024ULL * 1024ULL;
-    const char *value = getenv("OPENMX_SETHAM_GPU_RESIDENT_FLOOR_MB");
+    const char *value = openmx_env_get("OPENMX_SETHAM_GPU_RESIDENT_FLOOR_MB");
 
     if (value != NULL && value[0] != '\0') {
         char *endp = NULL;
@@ -438,8 +439,8 @@ static size_t Set_Hamiltonian_GpuTestNeedBytes(int call_index)
     /* Testing hook: pretend a GPU phase registered this need (MiB) from the
        given matrix-elements call on (1-based, default 1), so the defer,
        partial-residency and backoff paths can be exercised on any GPU. */
-    const char *mb = getenv("OPENMX_SETHAM_GPU_TEST_NEED_MB");
-    const char *from = getenv("OPENMX_SETHAM_GPU_TEST_NEED_FROM_CALL");
+    const char *mb = openmx_env_get("OPENMX_SETHAM_GPU_TEST_NEED_MB");
+    const char *from = openmx_env_get("OPENMX_SETHAM_GPU_TEST_NEED_FROM_CALL");
     unsigned long long mib = 0ULL;
     long from_call = 1L;
 
@@ -796,7 +797,7 @@ static int Set_Hamiltonian_Base_OpenACC_Enabled(void)
        trivial CPU loop (measured 10 ms vs 2 ms per iteration), so the GPU
        path remains opt-in.  The quadrature below is the performance-critical
        GPU path and is enabled independently. */
-    const char *value = getenv("OPENMX_SETHAM_BASE_GPU");
+    const char *value = openmx_env_get("OPENMX_SETHAM_BASE_GPU");
     if (Zeeman_NCS_switch == 1 || Zeeman_NCO_switch == 1 || xmcd_calc == 1) return 0;
     return (value != NULL && atoi(value) != 0);
 }
@@ -1967,7 +1968,7 @@ void Calc_MatrixElements_dVH_Vxc_VNA(OpenMXGridWorkspace *grid, const OpenMXAtom
     }
 
     if (plan.device_comm != MPI_COMM_NULL && plan.device_ranks > 1) {
-        const char *stream_env = getenv("OPENMX_SETHAM_STREAMING");
+        const char *stream_env = openmx_env_get("OPENMX_SETHAM_STREAMING");
         /* OPENMX_SETHAM_STREAMING=2: stream whenever the device cannot hold
            every rank's whole allocation (the hybrid policy would leave the
            remaining ranks on the CPU), not only when it holds a single one */
@@ -2299,7 +2300,7 @@ static size_t Set_Hamiltonian_MatrixElements_OpenACC_DeviceBytes(int Cnt_kind, i
        represented by the explicit arrays above.  The default headroom is
        deliberately charged per concurrently active rank; it can be tuned for
        a particular compiler/runtime without weakening the per-device reserve. */
-    rank_overhead_env = getenv("OPENMX_SETHAM_GPU_RANK_OVERHEAD_MB");
+    rank_overhead_env = openmx_env_get("OPENMX_SETHAM_GPU_RANK_OVERHEAD_MB");
     if (rank_overhead_env != NULL) {
         char *end = NULL;
         unsigned long long parsed = strtoull(rank_overhead_env, &end, 10);
@@ -3389,7 +3390,7 @@ void Set_Hamiltonian_OnTheFly_SetDensityRanks(int otf_ranks)
    (default 128 MiB, at least 32) */
 static size_t Set_Hamiltonian_OTF_LimitBytes(void)
 {
-    const char *limit_env = getenv("OPENMX_SETHAM_ONTHEFLY_MB");
+    const char *limit_env = openmx_env_get("OPENMX_SETHAM_ONTHEFLY_MB");
     size_t limit = 128ULL * 1024ULL * 1024ULL;
 
     if (limit_env && limit_env[0]) {
@@ -3406,7 +3407,7 @@ static size_t Set_Hamiltonian_OTF_LimitBytes(void)
    before the solvers run) */
 static size_t Set_Hamiltonian_OTF_MarginBytes(void)
 {
-    const char *margin_env = getenv("OPENMX_SETHAM_ONTHEFLY_MARGIN_MB");
+    const char *margin_env = openmx_env_get("OPENMX_SETHAM_ONTHEFLY_MARGIN_MB");
     size_t margin = 0;
 
     if (margin_env && margin_env[0]) {
@@ -3424,7 +3425,7 @@ static size_t Set_Hamiltonian_OTF_MarginBytes(void)
    its wave for ranks that would compute on the CPU anyway */
 static size_t Set_Hamiltonian_OTF_ShareTarget(int Cnt_kind, int myid)
 {
-    const char *enabled = getenv("OPENMX_SETHAM_ONTHEFLY");
+    const char *enabled = openmx_env_get("OPENMX_SETHAM_ONTHEFLY");
     const int spin_count = SpinP_switch == 3 ? 4 : SpinP_switch + 1;
     const size_t runtime_slack = 32ULL * 1024ULL * 1024ULL;
     const size_t alignment_slack = 16 * 512;
@@ -3515,7 +3516,7 @@ static double *SETH_OTF_StagePotential(int spin_count, size_t vpot_len)
 
 static int SETH_OTF_PlanCacheEnabled(void)
 {
-    const char *v = getenv("OPENMX_SETHAM_ONTHEFLY_PLAN_CACHE");
+    const char *v = openmx_env_get("OPENMX_SETHAM_ONTHEFLY_PLAN_CACHE");
     return !(v != NULL && v[0] != '\0' && atoi(v) == 0);
 }
 
@@ -3912,7 +3913,7 @@ static int Set_Hamiltonian_OnTheFly_MatrixElements(const OpenMXAtomicViews *atom
 {
   double *****H=electronic->H;
 
-    const char *enabled = getenv("OPENMX_SETHAM_ONTHEFLY");
+    const char *enabled = openmx_env_get("OPENMX_SETHAM_ONTHEFLY");
     const int spin_count = SpinP_switch == 3 ? 4 : SpinP_switch + 1;
     const size_t vpot_len = (size_t)My_NumGridC;
     const size_t vpot_count = Set_Hamiltonian_checked_mul((size_t)spin_count, vpot_len, "on-the-fly potential", myid);
@@ -4187,7 +4188,7 @@ void Set_Hamiltonian_OnTheFly_EndCycle(void)
 
 int Set_Hamiltonian_OnTheFly_DensityPossible(const OpenMXAtomicViews *atomic, int Cnt_kind, int myid)
 {
-    const char *enabled = getenv("OPENMX_SETHAM_ONTHEFLY");
+    const char *enabled = openmx_env_get("OPENMX_SETHAM_ONTHEFLY");
 
     if ((enabled && atoi(enabled) == 0) || Cnt_kind != 0 || Matomnum <= 0) return 0;
     return Set_Hamiltonian_OTF_Ensure(atomic, Cnt_kind, myid);
@@ -4237,7 +4238,7 @@ static SetHOTFDensityPlan Set_Hamiltonian_OTF_DenPlan = {0};
    (default 128 MiB, at least 32); *explicit_limit when it was given */
 static size_t SETH_OTF_DensityLimitBytes(int *explicit_limit)
 {
-    const char *limit_env = getenv("OPENMX_SETDEN_ONTHEFLY_MB");
+    const char *limit_env = openmx_env_get("OPENMX_SETDEN_ONTHEFLY_MB");
     size_t limit = 128ULL * 1024ULL * 1024ULL;
 
     *explicit_limit = 0;
@@ -4992,8 +4993,8 @@ static int Set_Hamiltonian_Stream_MatrixElements(const SetHamiltonianGpuTurnPlan
   double *****CntH=electronic->CntH;
   double *****H=electronic->H;
 
-    const char *enabled = getenv("OPENMX_SETHAM_STREAMING");
-    const char *limit_env = getenv("OPENMX_SETHAM_STREAM_MB");
+    const char *enabled = openmx_env_get("OPENMX_SETHAM_STREAMING");
+    const char *limit_env = openmx_env_get("OPENMX_SETHAM_STREAM_MB");
     const int spin_count = SpinP_switch == 3 ? 4 : SpinP_switch + 1;
     const size_t vpot_len = (size_t)My_NumGridC;
     const size_t vpot_count = Set_Hamiltonian_checked_mul((size_t)spin_count, vpot_len, "stream potential", myid);

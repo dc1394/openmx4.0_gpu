@@ -11,6 +11,7 @@
 ***********************************************************************/
 
 #include "openmx_common.h"
+#include "openmx_env.h"
 #include "openmx_solver_workspace.h"
 #include "openmx_native_resources.h"
 OPENMX_NATIVE_RESOURCE_GROUP(Divide_Conquer,Divide_Conquer_Release_GPU_Caches)
@@ -51,7 +52,7 @@ static int DC_GPU_Threshold(void)
     static int threshold   = DC_GPU_CPU_SWITCH_NUM;
 
     if (!initialized) {
-        char *env = getenv("OPENMX_DC_GPU_THRESHOLD");
+        char *env = openmx_env_get("OPENMX_DC_GPU_THRESHOLD");
         if (env != NULL && env[0] != '\0') {
             int env_threshold = atoi(env);
             if (0 < env_threshold) {
@@ -70,7 +71,7 @@ static int DC_NonCol_GPU_Threshold(void)
     static int threshold   = DC_NONCOL_GPU_CPU_SWITCH_NUM;
 
     if (!initialized) {
-        char *env = getenv("OPENMX_DC_NONCOL_GPU_THRESHOLD");
+        char *env = openmx_env_get("OPENMX_DC_NONCOL_GPU_THRESHOLD");
         if (env != NULL && env[0] != '\0') {
             int env_threshold = atoi(env);
             if (0 < env_threshold) {
@@ -293,7 +294,7 @@ static DCColSCacheCtx DC_scache = {0};
 
 static unsigned DC_EnvU32(const char *name, unsigned fallback)
 {
-    const char *value = getenv(name);
+    const char *value = openmx_env_get(name);
     char       *end   = NULL;
     unsigned long parsed;
 

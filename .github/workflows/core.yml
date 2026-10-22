@@ -50,6 +50,7 @@ jobs:
       - name: Error, admission, scope and memory planning tests
         run: |
           ulimit -s 8192
+          python3 tests/run_env_registry_cpu.py
           python3 tests/run_gpu_error_cpu.py
           python3 tests/run_gpu_workers_cpu.py
           python3 tests/run_mgpu_runtime_cpu.py

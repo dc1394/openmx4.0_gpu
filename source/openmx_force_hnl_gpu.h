@@ -3,6 +3,7 @@
 /* Invocation-owned nonlocal Force archives shared by CUDA/HIP. Native
    kernels and admission policies remain in their backend translation units. */
 #include "openmx_native_resources.h"
+#include "openmx_env.h"
 #if OPENMX_GPU_HIP
 #define OPENMX_HNL_WAIT() openmx_target_wait()
 #define OPENMX_HNL_CLEAR() openmx_target_clear_freelists()

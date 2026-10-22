@@ -1,4 +1,5 @@
 #include "openmx_gpu_backend.h"
+#include "openmx_env.h"
 #include "openmx_gpu_device.h"
 #include "openmx_gpu_runtime.h"
 /* Noncollective, bounded per-device workers for existing GPU operations. */
@@ -40,16 +41,16 @@ void openmx_gpu_workers_configure(int local_rank, int local_size, int mapped_dev
    Capacity callers use openmx_gpu_workers_capacity with auto as default. */
 static int workers_enabled(void)
 {
-    const char *control=getenv("OPENMX_GPU_WORKERS");
+    const char *control=openmx_env_get("OPENMX_GPU_WORKERS");
     return control && (strcmp(control,"1")==0 || strcmp(control,"on")==0 ||
                        strcmp(control,"ON")==0);
 }
 
 int openmx_gpu_workers_capacity_enabled(void)
 {
-    const char *gpu=getenv("OPENMX_GPU");
+    const char *gpu=openmx_env_get("OPENMX_GPU");
     if(gpu && *gpu && atoi(gpu)==0)return 0;
-    const char *v=getenv("OPENMX_GPU_WORKERS");
+    const char *v=openmx_env_get("OPENMX_GPU_WORKERS");
     if(v && (strcmp(v,"0")==0 || strcmp(v,"off")==0 || strcmp(v,"OFF")==0))return 0;
     int devices[OPENMX_GPU_WORKERS_MAX];
     return openmx_mgpu_pool_devices(devices,OPENMX_GPU_WORKERS_MAX)>0;
@@ -318,7 +319,7 @@ int openmx_gpu_device_weak_fp64(int device)
 
 int openmx_gpu_worker_can_overlap(int device)
 {
-    const char *control=getenv("OPENMX_GPU_WORKER_OVERLAP");
+    const char *control=openmx_env_get("OPENMX_GPU_WORKER_OVERLAP");
     if(control && *control && strcmp(control,"auto")!=0)return atoi(control)!=0;
     /* Only the CUDA implementation currently has a calibrated overlap
        default. Avoid a device query on every HIP task just to return false. */
@@ -377,7 +378,7 @@ static int run_workers(const OpenMXGpuWorkers *pool,
         }
     }
     if(admission)openmx_mgpu_release_devices(admission);
-    const char *verbose=getenv("OPENMX_MGPU_VERBOSE");
+    const char *verbose=openmx_env_get("OPENMX_MGPU_VERBOSE");
     if (verbose && atoi(verbose) && (pool->count>1 || openmx_gpu_capacity_test_recovery())) {
         fprintf(stderr,"<OpenMX_MGPU> work name=%s workers=%d items=%zu completed=%d devices=",
             label?label:"unnamed",pool->count,pool->items,ok);

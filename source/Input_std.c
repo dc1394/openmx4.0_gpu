@@ -10,6 +10,7 @@
 #endif
 #include <ctype.h>
 #include "openmx_common.h"
+#include "openmx_env.h"
 #include "openmx_electronic.h"
 #include "openmx_precision.h"
 #include "openmx_mgpu_runtime.h"
@@ -5164,7 +5165,7 @@ void Input_std(char *file, OpenMXCoreContext *core)
   {
     int visible=0;
 #if OPENMX_GPU_HIP
-    const char *gpu_control=getenv("OPENMX_GPU");
+    const char *gpu_control=openmx_env_get("OPENMX_GPU");
     if (scf_eigen_lib_flag==GPUSOLVER &&
         !(gpu_control && *gpu_control && atoi(gpu_control)==0) &&
         OpenMXGpuGetDeviceCount(&visible)!=OPENMX_GPU_SUCCESS) {

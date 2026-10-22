@@ -15,6 +15,7 @@
 #include <math.h>
 #include <string.h>
 #include "openmx_common.h"
+#include "openmx_env.h"
 #include "tran_prototypes.h"
 #include "tran_variables.h"
 #include "mpi.h"
@@ -33,7 +34,7 @@
 
 static int MixKK_Fast_Enabled(void)
 {
-  const char *env = getenv("OPENMX_MIX_FAST");
+  const char *env = openmx_env_get("OPENMX_MIX_FAST");
   if (scf_eigen_lib_flag != GPUSOLVER) return 0;
   return (env == NULL) ? 1 : (atoi(env) != 0);
 }

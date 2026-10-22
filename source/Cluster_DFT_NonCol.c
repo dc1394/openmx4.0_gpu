@@ -12,6 +12,7 @@
 
 #include "mpi.h"
 #include "openmx_common.h"
+#include "openmx_env.h"
 #include "openmx_solver_workspace.h"
 #include "openmx_native_resources.h"
 OPENMX_NATIVE_RESOURCE_GROUP(Cluster_DFT_NonCol,Cluster_DFT_NonCol_Release_GPU_Caches)
@@ -450,7 +451,7 @@ static int ClusterNonCol_DmByGemm(void)
     static int cached = -1;
 
     if (cached < 0) {
-        const char *value = getenv("OPENMX_CLUSTER_GPU_DM_GEMM");
+        const char *value = openmx_env_get("OPENMX_CLUSTER_GPU_DM_GEMM");
 
         cached = (value == NULL || value[0] == '\0' || atoi(value) != 0);
     }
@@ -953,10 +954,10 @@ static int ClusterNonCol_GemmWorkspaceTurnRelease(void)
        it from occupying the shared device through the grid/force phases of
        the SCF step; opt out with OPENMX_CLUSTER_GEMMUL8_TURN_RELEASE=0
        (falls back to the band-path knob for a single switch). */
-    const char *value = getenv("OPENMX_CLUSTER_GEMMUL8_TURN_RELEASE");
+    const char *value = openmx_env_get("OPENMX_CLUSTER_GEMMUL8_TURN_RELEASE");
 
     if (value == NULL) {
-        value = getenv("OPENMX_BAND_GEMMUL8_TURN_RELEASE");
+        value = openmx_env_get("OPENMX_BAND_GEMMUL8_TURN_RELEASE");
     }
     if (value == NULL) {
         return 1;
@@ -1400,7 +1401,7 @@ static int ClusterNonCol_ProfileEnabled(void)
     static int cached = -1;
 
     if (cached < 0) {
-        const char *value = getenv("OPENMX_CLUSTER_PROFILE");
+        const char *value = openmx_env_get("OPENMX_CLUSTER_PROFILE");
         cached = (value != NULL && atoi(value) != 0);
     }
     return cached;
@@ -1440,8 +1441,8 @@ static void ClusterNonCol_ProfileReport(int myid, int n2, int MaxN, double dm_se
    tests/eigen_precision_probe.cu.  Returns 1 when it wrote a file. */
 static int ClusterNonCol_SampleHamiltonian(int SCF_iter, dcomplex *Hs2, int n2, int MaxN)
 {
-    const char *dir = getenv("OPENMX_GEMM_SAMPLE_DIR");
-    const char *list = getenv("OPENMX_GEMM_SAMPLE_ITERS");
+    const char *dir = openmx_env_get("OPENMX_GEMM_SAMPLE_DIR");
+    const char *list = openmx_env_get("OPENMX_GEMM_SAMPLE_ITERS");
     size_t count = (size_t)n2 * (size_t)n2;
     char path[4096];
     int wanted = 0;
@@ -2121,7 +2122,7 @@ static void Patch2Device_Cluster_NonCol_Owner(double ****RH, double *H, int *MP,
 
 static size_t ClusterNonCol_GpuDiagReserveBytes(void)
 {
-    const char *value = getenv("OPENMX_CLUSTER_GPU_DIAG_RESERVE_MB");
+    const char *value = openmx_env_get("OPENMX_CLUSTER_GPU_DIAG_RESERVE_MB");
     long mib = 1024;
 
     if (value != NULL) {
@@ -2212,7 +2213,7 @@ int Cluster_DFT_NonCol_GpuSwitchNum(void)
     static int cached = -1;
 
     if (cached < 0) {
-        const char *value = getenv("OPENMX_CLUSTER_NONCOL_GPU_SWITCH_NUM");
+        const char *value = openmx_env_get("OPENMX_CLUSTER_NONCOL_GPU_SWITCH_NUM");
         int parsed;
 
         cached = CLUSTER_NONCOL_GPU_CPU_SWITCH_NUM;
@@ -2240,7 +2241,7 @@ static int ClusterNonCol_GpuDiagFits(int SCF_iter, int n, int n2, int myid)
 {
     static int verdict = -1;
     static int verdict_n2 = 0;
-    const char *force = getenv("OPENMX_CLUSTER_GPU_DIAG");
+    const char *force = openmx_env_get("OPENMX_CLUSTER_GPU_DIAG");
     ClusterNonColDenseArena *arena = &ClusterNonCol_dense_arena;
     long long my_nzeros = 0;
     long long total_nzeros = 0;

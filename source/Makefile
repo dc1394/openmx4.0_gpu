@@ -370,6 +370,7 @@ OBJS += openmx_gpu_workers.o openmx_gpu_error.o openmx_gpu_views.o openmx_global
 OBJS += openmx_gpu_transform.o
 OBJS += openmx_gpu_dm.o openmx_gpu_dm_collective.o
 OBJS += openmx_cluster_capacity.o openmx_host_memory.o elpa_cosma_memory.o
+OBJS += openmx_env.o
 OBJS += openmx_dense_cpu.o
 OBJS += openmx_gpu_collective.o
 OBJS += openmx_gpu_vector.o
@@ -1050,6 +1051,10 @@ elpa_cosma_memory.o: elpa_cosma_memory.cpp $(GPUSOLVER2_STAMP)
 	$(GPUSOLVER2_HOST_CXX) -std=c++17 -O2 -g -I$(GPUSOLVER2_PREFIX)/include $(GPUSOLVER2_MPI_INCLUDES) -c elpa_cosma_memory.cpp -o elpa_cosma_memory.o
 openmx_host_memory.o: openmx_host_memory.c openmx_host_memory.h
 	$(CC_NOACC_O3) -c openmx_host_memory.c
+# The environment settings of the run (every reader includes openmx_env.h).
+openmx_env.o: openmx_env.c openmx_env.h
+	$(CC_NOACC_O3) -c openmx_env.c
+$(OBJS): openmx_env.h
 openmx_cluster_capacity.o: openmx_cluster_capacity.c openmx_cluster_capacity.h openmx_mgpu_runtime.h elpa_cosma_bridge.h openmx_stdout_level.h openmx_host_memory.h
 	$(CC_NOACC_O3) -c openmx_cluster_capacity.c
 openmx_dense_cpu.o: openmx_dense_cpu.c openmx_dense_cpu.h

@@ -1,4 +1,5 @@
 #include "openmx_common.h"
+#include "openmx_env.h"
 #include "openmx_gpu_workers.h"
 #include <omp.h>
 #include "set_cuda_default_device_from_local_rank.h"
@@ -18,7 +19,7 @@
 static int get_positive_env_int(const char *env_names[])
 {
     for (int i = 0; env_names[i] != NULL; i++) {
-        const char *value = getenv(env_names[i]);
+        const char *value = openmx_env_get(env_names[i]);
         if (value != NULL && value[0] != '\0') {
             int parsed = atoi(value);
             if (0 <= parsed) {
@@ -78,7 +79,7 @@ static int get_local_rank_noncollective(void)
    and why every device-binding site must go through it. */
 int openmx_gpu_map_rank_to_device(int local_rank, int local_size, int device_count)
 {
-    const char *mode = getenv("OPENMX_GPU_RANK_MAP");
+    const char *mode = openmx_env_get("OPENMX_GPU_RANK_MAP");
     int ranks_per_device, dev;
 
     if (device_count <= 0) return -1;
@@ -104,7 +105,7 @@ int openmx_gpu_map_rank_to_device(int local_rank, int local_size, int device_cou
 
 static size_t gpu_probe_reserve_bytes(void)
 {
-    const char *value = getenv("OPENMX_GPU_PROBE_RESERVE_MB");
+    const char *value = openmx_env_get("OPENMX_GPU_PROBE_RESERVE_MB");
 
     if (value != NULL && value[0] != '\0') {
         long mb = atol(value);
@@ -133,7 +134,7 @@ static int gpu_meminfo_nvml_enabled(void)
     static int enabled = -1;
 
     if (enabled < 0) {
-        const char *value = getenv("OPENMX_GPU_MEMINFO_NVML");
+        const char *value = openmx_env_get("OPENMX_GPU_MEMINFO_NVML");
         enabled = (value != NULL && value[0] != '\0' && atoi(value) == 0) ? 0 : 1;
     }
     return enabled;
@@ -265,7 +266,7 @@ cudaError_t OpenMX_GpuMemGetInfo(size_t *free_bytes, size_t *total_bytes)
 void OpenMX_GpuPresizeKernelStack(void)
 {
     static _Thread_local int announced = 0;
-    const char *env = getenv("OPENMX_GPU_STACK_BYTES");
+    const char *env = openmx_env_get("OPENMX_GPU_STACK_BYTES");
     long wanted = OPENMX_GPU_KERNEL_STACK_BYTES;
     size_t current = 0, free_before = 0, free_after = 0, total = 0;
     int initialized = 0, myid = 0;
@@ -319,7 +320,7 @@ int gpu_rank_device_usable(void)
     int lock_fd = -1, devices_seen = 0;
     size_t free_bytes = 0, total_bytes = 0;
     char lock_path[64];
-    const char *env = getenv("OPENMX_GPU");
+    const char *env = openmx_env_get("OPENMX_GPU");
 
     if (checked) return usable;
     checked = 1;

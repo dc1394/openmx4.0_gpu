@@ -391,7 +391,8 @@ $(FFTW3_USERS): | $(FFTW3_LIB)
 # OpenMP target; the explicit device kernels and runtime use HIP.
 MGPU_C_OBJECTS = openmx_cluster_capacity.o openmx_dense_cpu.o \
  openmx_gpu_bilinear.o openmx_gpu_collective.o openmx_gpu_dm_collective.o \
- openmx_gpu_task.o openmx_gpu_vector.o openmx_gpu_workers.o openmx_gpu_error.o openmx_host_memory.o
+ openmx_gpu_task.o openmx_gpu_vector.o openmx_gpu_workers.o openmx_gpu_error.o openmx_host_memory.o \
+ openmx_env.o
 MGPU_HIP_OBJECTS = openmx_gpu_dm.o openmx_gpu_transform.o \
  openmx_mgpu_gemm.o openmx_mgpu_runtime.o
 OBJS += $(MGPU_C_OBJECTS) $(MGPU_HIP_OBJECTS) openmx_gpu_views.o \
@@ -409,7 +410,7 @@ OPENMX_GPU_INTERFACE_HEADERS = openmx_gpu_backend.h openmx_gpu_runtime.h \
 $(OBJS): $(OPENMX_GPU_INTERFACE_HEADERS)
 MGPU_HEADERS = $(wildcard openmx_gpu_*.h openmx_mgpu_*.h) \
  openmx_magma_mgpu.h openmx_magma_lock.h openmx_target.h openmx_host_memory.h \
- openmx_cluster_capacity.h openmx_dense_cpu.h
+ openmx_cluster_capacity.h openmx_dense_cpu.h openmx_env.h
 
 # Keep incremental builds valid when compilers, ROCm, GPU targets, MPI, or
 # mathematical libraries change.  An unchanged configuration keeps its mtime.

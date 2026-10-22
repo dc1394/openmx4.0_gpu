@@ -22,6 +22,7 @@
 #include <math.h>
 #include <time.h>
 #include "openmx_common.h"
+#include "openmx_env.h"
 #include "openmx_electronic.h"
 #include "openmx_vna_matrix.h"
 #include <limits.h>
@@ -44,7 +45,7 @@ static int Trunc_ProfileEnabled(void)
   static int cached = -1;
 
   if (cached < 0){
-    const char *value = getenv("OPENMX_BAND_PROFILE");
+    const char *value = openmx_env_get("OPENMX_BAND_PROFILE");
     cached = (value != NULL && atoi(value) != 0);
   }
   return cached;
@@ -2217,7 +2218,7 @@ typedef struct {
 
 static int OLG_env_flag(const char *name, int fallback)
 {
-  const char *value = getenv(name);
+  const char *value = openmx_env_get(name);
   if (value == NULL || value[0] == '\0') return fallback;
   return atoi(value);
 }

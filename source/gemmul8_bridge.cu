@@ -1,4 +1,5 @@
 #include <cublas_v2.h>
+#include "openmx_env.h"
 #include <cuda_runtime.h>
 
 /* cudaMemGetInfo capped at the physically free device memory (NVML); see
@@ -106,7 +107,7 @@ struct WorkspaceReport {
 
 unsigned env_u32(const char *name, unsigned fallback)
 {
-    const char *value = std::getenv(name);
+    const char *value = openmx_env_get(name);
     char       *end   = nullptr;
 
     if (value == nullptr || *value == '\0') {
@@ -123,7 +124,7 @@ unsigned env_u32(const char *name, unsigned fallback)
 
 bool env_bool(const char *name, bool fallback)
 {
-    const char *value = std::getenv(name);
+    const char *value = openmx_env_get(name);
 
     if (value == nullptr || *value == '\0') {
         return fallback;
@@ -195,7 +196,7 @@ bool gemmul8_environment_override(const char *openmx_env, const char *gemmul8_en
     /* Highest-priority override first.  In particular, an explicit zero
        opts back into GEMMul8 even on native-FP64 devices. */
     for (const char *name : {openmx_env, gemmul8_env, "OPENMX_GEMMUL8_DISABLE", "GEMMUL8_DISABLE"}) {
-        const char *value = std::getenv(name);
+        const char *value = openmx_env_get(name);
         if (value != nullptr && *value != '\0') {
             *disabled = value[0] == '1';
             return true;
@@ -837,7 +838,7 @@ ForwardStage forward_stage()
     std::lock_guard<std::mutex> lock(g_workspace_mutex);
 
     if (!g_forward_stage_set) {
-        const char *mode = std::getenv("OPENMX_GEMMUL8_FORWARD");
+        const char *mode = openmx_env_get("OPENMX_GEMMUL8_FORWARD");
         ForwardStage stage;
 
         if (mode != nullptr && std::strcmp(mode, "fp64") == 0) stage.mode = kForwardFp64;
@@ -1304,8 +1305,8 @@ extern "C" void openmx_gemmul8ReleasePrepared(void)
     const GeneralCounters &g = g_general_counters;
     if (g.calls[0][0] + g.calls[0][1] + g.calls[1][0] + g.calls[1][1] > 0 &&
         env_bool("OPENMX_GEMMUL8_TIMING", false)) {
-        const char *rank = std::getenv("OMPI_COMM_WORLD_RANK");
-        if (rank == nullptr) rank = std::getenv("PMI_RANK");
+        const char *rank = openmx_env_get("OMPI_COMM_WORLD_RANK");
+        if (rank == nullptr) rank = openmx_env_get("PMI_RANK");
         std::printf("<openmx_gemmul8> general GEMMs, rank %s: real %lld + %lld calls, %.6f + %.6f s, %.3f + %.3f GFlop; "
                     "complex %lld + %lld calls, %.6f + %.6f s, %.3f + %.3f GFlop (GEMMul8 + cuBLAS); "
                     "moduli %u / %u, scaling %s / %s (real / complex)\n",

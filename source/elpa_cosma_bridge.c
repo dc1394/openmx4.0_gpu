@@ -1,4 +1,5 @@
 #include "openmx_gpu_backend.h"
+#include "openmx_env.h"
 #include "openmx_gpu_device.h"
 #include "openmx_gpu_runtime.h"
 /**********************************************************************
@@ -54,7 +55,7 @@ static gs2_handle_slot gs2_slots[GS2_MAX_HANDLES];
 
 static long gs2_env_long(const char *name, long defval)
 {
-    const char *env = getenv(name);
+    const char *env = openmx_env_get(name);
     if (env != NULL && env[0] != '\0') {
         long v = atol(env);
         if (v >= 0) return v;
@@ -111,7 +112,7 @@ typedef struct {
 /* -1 = no forced mode, 0 = forced CPU, 1 = forced GPU */
 static int gs2_forced_mode(const char *envname)
 {
-    const char *env = getenv(envname);
+    const char *env = openmx_env_get(envname);
     if (env == NULL || env[0] == '\0') return -1;
     return (atoi(env) != 0);
 }
@@ -508,7 +509,7 @@ static gs2_handle_slot *gs2_get_handle(int ictxt, int n, int nev, int is_complex
 
     {
         int solver = ELPA_SOLVER_2STAGE;
-        const char *env = getenv("OPENMX_GS2_ELPA_SOLVER");
+        const char *env = openmx_env_get("OPENMX_GS2_ELPA_SOLVER");
         if (env != NULL && atoi(env) == 1) solver = ELPA_SOLVER_1STAGE;
         elpa_set_integer(h, "solver", solver, &err);
         err = gs2_collective_error(err, comm);
@@ -747,7 +748,7 @@ static void gs2_report_gemm(MPI_Comm comm, int m, int n, int k, int is_complex,
 static int gs2_ranks_on_node(MPI_Comm comm)
 {
     int nl = 1, ls;
-    const char *env = getenv("OMPI_COMM_WORLD_LOCAL_SIZE");
+    const char *env = openmx_env_get("OMPI_COMM_WORLD_LOCAL_SIZE");
     MPI_Comm shm;
 
     if (MPI_Comm_split_type(comm, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, &shm)
@@ -796,7 +797,7 @@ static int gs2_host_verdict(const char *transa, const char *transb, int m, int n
     reserve = total / 4;
     if (reserve < (4ULL << 30)) reserve = 4ULL << 30;
     {
-        const char *v = getenv("OPENMX_GS2_HOST_RESERVE_MB");
+        const char *v = openmx_env_get("OPENMX_GS2_HOST_RESERVE_MB");
         if (v != NULL && v[0] != '\0') reserve = strtoull(v, NULL, 10) << 20;
     }
     add = est - gs2_gemm_host_retained[t];

@@ -7,6 +7,7 @@
 
 #include <stddef.h>
 #include <stdlib.h>
+#include "openmx_env.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -75,7 +76,7 @@ int openmx_gpu_workers_capacity_enabled(void);
 #if OPENMX_GPU_HIP
 static inline int openmx_gpu_workers_requested(void)
 {
-    const char *v=getenv("OPENMX_GPU_WORKERS");
+    const char *v=openmx_env_get("OPENMX_GPU_WORKERS");
     return v && ((v[0]=='1' && v[1]=='\0') || (((v[0]=='o' && v[1]=='n') || (v[0]=='O' && v[1]=='N')) && v[2]=='\0'));
 }
 
@@ -84,7 +85,7 @@ static inline int openmx_gpu_workers_requested(void)
 #endif
 static inline int openmx_gpu_capacity_test_recovery(void)
 {
-    const char *value = getenv("OPENMX_GPU_CAPACITY_TEST_RECOVERY");
+    const char *value = openmx_env_get("OPENMX_GPU_CAPACITY_TEST_RECOVERY");
     return value && value[0]=='1' && value[1]=='\0';
 }
 

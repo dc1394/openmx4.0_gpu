@@ -18,6 +18,7 @@
 #include <math.h>
 #include <time.h>
 #include "openmx_common.h"
+#include "openmx_env.h"
 #include "openmx_core_vna_matrix.h"
 #include "mpi.h"
 #include <omp.h>
@@ -29,7 +30,7 @@ static int TotalEnergy_ProfileEnabled(void)
   static int cached = -1;
 
   if (cached < 0){
-    const char *value = getenv("OPENMX_BAND_PROFILE");
+    const char *value = openmx_env_get("OPENMX_BAND_PROFILE");
     cached = (value != NULL && atoi(value) != 0);
   }
   return cached;
@@ -106,7 +107,7 @@ static int TotalEnergyUseOpenACC(void)
   static int env_flag = -1;
 
   if (env_flag < 0) {
-    const char *env = getenv("OPENMX_TOTALENERGY_GPU");
+    const char *env = openmx_env_get("OPENMX_TOTALENERGY_GPU");
     env_flag = (env == NULL || env[0] == '\0') ? 1 : (atoi(env) != 0);
   }
 

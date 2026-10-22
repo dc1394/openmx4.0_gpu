@@ -45,6 +45,7 @@
    bias of 2e-10 Ha across warm starts; OPENMX_EIGEN_REFINE_COMPLEMENT).
 */
 #include "eigen_refine_gpu.h"
+#include "openmx_env.h"
 #include "openmx_native_resources.h"
 #include "openmx_precision.h"
 #include "openmx_stdout_level.h"
@@ -84,7 +85,7 @@ void zhegv_(int *itype, char *jobz, char *uplo, int *n, double *a, int *lda, dou
 
 static int env_flag(const char *name, int fallback)
 {
-    const char *value = getenv(name);
+    const char *value = openmx_env_get(name);
 
     if (value == NULL || value[0] == '\0') return fallback;
     return atoi(value) != 0;
@@ -112,7 +113,7 @@ static void refine_check_blas(cublasStatus_t status, const char *what)
 
 int openmx_eigen_refine_configure(int cplx, int verbose, int *ratio)
 {
-    const char *value = getenv("OPENMX_EIGEN_REFINE");
+    const char *value = openmx_env_get("OPENMX_EIGEN_REFINE");
     int iterations = 0;
 
     *ratio = 0;
@@ -158,7 +159,7 @@ int openmx_eigen_refine_configure(int cplx, int verbose, int *ratio)
 
 double openmx_eigen_refine_until(void)
 {
-    const char *value = getenv("OPENMX_EIGEN_REFINE_UNTIL");
+    const char *value = openmx_env_get("OPENMX_EIGEN_REFINE_UNTIL");
 
     return (value != NULL && 0.0 < atof(value)) ? atof(value) : 0.0;
 }
@@ -175,7 +176,7 @@ int openmx_eigen_refine_warm_band_enabled(void)
 
 int openmx_eigen_refine_warm_band_period(void)
 {
-    const char *value = getenv("OPENMX_EIGEN_REFINE_WARM_PERIOD");
+    const char *value = openmx_env_get("OPENMX_EIGEN_REFINE_WARM_PERIOD");
 
     if (value == NULL || value[0] == '\0') return 0;
     return (0 < atoi(value)) ? atoi(value) : 0;

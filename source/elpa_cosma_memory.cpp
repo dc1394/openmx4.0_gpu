@@ -15,6 +15,7 @@
 ***********************************************************************/
 
 #include <cosma/cosma_pxgemm.hpp>
+#include "openmx_env.h"
 #include <cosma/environment_variables.hpp>
 #include <cosma/scalapack.hpp>
 #include <cosma/strategy.hpp>
@@ -43,7 +44,7 @@ double cosma_host_bytes(char transa, char transb, int m, int n, int k,
 
     /* the limit as cosma::get_cpu_max_memory<T>() reads it */
     long long limit = std::numeric_limits<long long>::max();
-    if (const char *v = std::getenv("COSMA_CPU_MAX_MEMORY")) {
+    if (const char *v = openmx_env_get("COSMA_CPU_MAX_MEMORY")) {
         limit = std::atoll(v) * 1024LL * 1024LL / (long long)sizeof(T);
     }
 

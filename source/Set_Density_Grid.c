@@ -16,6 +16,7 @@
 #include <time.h>
 #include <math.h>
 #include "openmx_common.h"
+#include "openmx_env.h"
 #include "openmx_grid_assembly.h"
 #include "mpi.h"
 #include <omp.h>
@@ -80,7 +81,7 @@ double Set_Density_Grid(OpenMXGridWorkspace *grid, const OpenMXAtomicViews *atom
      into the B partition, b2d = the B-to-D copy and the rest) */
   double sd_t0, sd_t1, sd_pre = 0.0, sd_quad = 0.0, sd_a2b = 0.0, sd_sup = 0.0, sd_b2d = 0.0;
   static int sd_prof = -1;
-  if (sd_prof < 0) { const char *e = getenv("OPENMX_BAND_PROFILE"); sd_prof = (e != NULL && atoi(e) != 0) ? 1 : 0; }
+  if (sd_prof < 0) { const char *e = openmx_env_get("OPENMX_BAND_PROFILE"); sd_prof = (e != NULL && atoi(e) != 0) ? 1 : 0; }
   sd_t0 = TStime;
 
   /* Preferred GPU mode: every rank evaluates its own atoms' density on the

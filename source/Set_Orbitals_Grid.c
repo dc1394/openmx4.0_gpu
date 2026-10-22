@@ -16,6 +16,7 @@
 #include <math.h>
 #include <string.h>
 #include "openmx_common.h"
+#include "openmx_env.h"
 #include "openmx_orbitals.h"
 #include "openmx_gpu_workers.h"
 #include "openmx_gpu_views.h"
@@ -49,7 +50,7 @@
 
 static int SOG_env_flag(const char *name, int default_value)
 {
-  const char *value = getenv(name);
+  const char *value = openmx_env_get(name);
 
   if (value == NULL || value[0] == '\0') return default_value;
   return atoi(value) != 0;
@@ -1209,7 +1210,7 @@ static int SOG_eval_double_float(void)
   const char *value;
 
   if (!openmx_fp32_enabled()) return 0;
-  value = getenv("OPENMX_ORBS_EVAL_PRECISION");
+  value = openmx_env_get("OPENMX_ORBS_EVAL_PRECISION");
   if (value != NULL && value[0] != '\0') {
     if (strcmp(value, "fp64") == 0 || strcmp(value, "FP64") == 0 || strcmp(value, "64") == 0 ||
         strcmp(value, "double") == 0) return 0;

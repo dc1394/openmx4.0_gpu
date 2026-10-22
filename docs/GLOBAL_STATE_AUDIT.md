@@ -40,7 +40,8 @@ python3 tools/audit_global_usage.py --output build/globals-usage.json \
     --markdown docs/GLOBAL_STATE_INVENTORY.md --baseline-output docs/global-usage-baseline.json
 
 # ゲート: ベースラインに無い (関数, オブジェクト) の組、static、環境変数、
-# 共通ヘッダー外の大域定義が増えていれば失敗する
+# 共通ヘッダー外の大域定義、getenv の直接呼び出し、レジストリに無い環境変数名が
+# 増えていれば失敗する
 python3 tools/audit_global_usage.py --output build/globals-usage.json \
     --baseline docs/global-usage-baseline.json --check-no-new
 ```
@@ -48,7 +49,7 @@ python3 tools/audit_global_usage.py --output build/globals-usage.json \
 ゲートは「減る方向」だけを許します。所有権を移した段階でベースラインを更新してください。
 CI の GitHub Actions には CUDA・MPI・NVHPC のヘッダーが無いので、ゲートはこの計算機で手動で実行します。
 
-## 現状（2026-10-22、`refactor/cpp-kokkos-core` 1f6ede07 ＋ 本変更）
+## 現状（2026-10-22、`refactor/cpp-kokkos-core` 08cbfa4a ＋ 環境変数レジストリ）
 
 | 項目 | 値 |
 | --- | ---: |
@@ -56,11 +57,13 @@ CI の GitHub Actions には CUDA・MPI・NVHPC のヘッダーが無いので�
 | 共通ヘッダーのオブジェクト（`openmx_globals.c` の定義） | 1,051（本変更前 1,112） |
 | うち、どこかの関数が参照するもの | 1,045 |
 | うち、どこかの関数が書くもの（直接または中身） | 785 |
-| (関数, オブジェクト) の組 | 12,913 |
+| (関数, オブジェクト) の組 | 12,914 |
 | 共通ヘッダー外で外部リンケージを持つ定義 | 358（`openmx.c` 132、`DFT.c` 79、`Cluster_DFT_ON2.c` 28 …） |
-| ファイルスコープ `static` | 449（`TRAN_Main_Analysis*.c` 173、`Band_DFT_*.c` 60 …） |
+| ファイルスコープ `static` | 451（`TRAN_Main_Analysis*.c` 173、`Band_DFT_*.c` 60 …、`openmx_env.c` 2） |
 | 関数内 `static` | 416（`MD_pac.c` 58、`zero_cfrac.c` 54 …） |
 | 環境変数名（文字列定数） | 156 |
+| `getenv` を直接呼ぶ関数（`openmx_env.c` 以外） | 0（本変更前 9、ヘッダーのインライン関数） |
+| レジストリに無い環境変数名 | 0 |
 
 最も多くの関数が触るのは `mpi_comm_level1`（604 関数、154 翻訳単位）、`WhatSpecies`（514）、
 `natn`（372）、`FNAN`（359）、`M2G`（357）、`Matomnum`（353）、`atomnum`（332）、
@@ -101,11 +104,39 @@ CI の GitHub Actions には CUDA・MPI・NVHPC のヘッダーが無いので�
 ScaLAPACK 文脈の 12 個（`bhandle2_2`、`ictxt2_2`、`bhandle2_CWF1`〜`CWF5`、`ictxt2_CWF1`〜`CWF5`）です。
 数値計算には影響しません。NVIDIA ビルドのリンクと標準スイートで確認しました。
 
+## 環境変数の設定レジストリ（`source/openmx_env.c`）
+
+`getenv` を呼ぶ 215 か所（46 翻訳単位と 2 つのヘッダー、CUDA/C++ の単位を含む）は、すべて
+`openmx_env_get()` を呼ぶようになりました。`openmx_env.c` のレジストリは、ソースが
+文字列定数として読む 232 個の名前（`OPENMX_*`、`GEMMUL8_*`、`CUDA_MPS_*`）と、
+ビルドやツールが使う 9 個の名前を、種類の目安・読み手の翻訳単位・1 行の説明
+（実装文書 §10.2 に項目があるもの）とともに並べています。
+
+- `openmx_env_init()` は `MPI_Init` の直後に一度だけ、登録名と環境にある全 `OPENMX_*` の
+  値を写し取ります。以後の読み取りは写しを見るので、実行中に環境が変わっても
+  読み手の間で値がずれません。登録されていない名前と初期化前の読み取りは
+  従来どおり `getenv` です。
+- 登録に無い `OPENMX_*` が環境にあると、rank 0 が起動時に 1 行の警告を出します。
+  ジョブスクリプトの綴り違いが黙って無視されることはなくなります。
+- `level.of.stdout 2` 以上では、入力読み込みの後に有効な設定を一覧出力します。
+- `openmx_env_set()` / `openmx_env_set_if_unset()` は写しとプロセス環境の両方を更新します。
+  `Band_DFT_NonCol.c` が `setenv` で既定値を公開していた箇所はこれに置き換えました。
+  COSMA と OpenMP ランタイム向けの `setenv`（それらのライブラリ自身が読む）は残しています。
+- レジストリ自身の状態は `openmx_env.c` の 2 つの `static`（定数の表と、写しを持つ 1 つの構造体）です。
+- 既存の読み手の解釈（何を「有効」とみなすか）は変えていません。新しいコードには
+  `openmx_env_flag` / `openmx_env_long` / `openmx_env_double` / `openmx_env_mib` を使います。
+- 検査は `tests/run_env_registry_cpu.py`（CTest `environment-registry`、ホスト CI）。
+  監査ツールは `openmx_env.c` 以外で `getenv` を直接呼ぶ関数と、レジストリに無い名前を
+  数え、ゲートの対象にします。
+- `source/backends/hip/src/` の HIP 版の複製 22 ファイルは `getenv` のままです
+  （sha で固定された取り込み元の更新時に合わせます）。読み手ごとの関数内 `static` の
+  キャッシュもまだ残っています。
+
 ## 次の作業単位（この監査の側）
 
-1. 環境変数の一元化: 156 個の `OPENMX_*` 等を起動時に一度だけ読む設定レジストリへ移し、
-   `getenv` を呼ぶ 211 か所と、その結果を関数内 `static` に貯める実装を置き換える。
-   名前・既定値・説明を一つの表で管理し、テストから注入できるようにする。
+1. 環境変数レジストリの第 2 段階: 読み手ごとの関数内 `static` キャッシュと各所の
+   独自パーサー（`Force_env_flag`、`env_mib` など 20 種）を共通の型付き読み取りへ寄せ、
+   既定値をレジストリへ移す。HIP 版の複製にも反映する。
 2. `filename` / `filepath` / `command` の作業バッファ: 各呼び出し側の局所バッファへ置き換える。
 3. 共通ヘッダー外の 358 定義: `openmx.c` が定義する輸送（TRAN）の 132 変数を
    `tran_variables.h` ごと輸送の状態オブジェクトへ移す。`DFT.c` の 79 変数は

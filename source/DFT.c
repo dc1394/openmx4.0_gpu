@@ -17,6 +17,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include "openmx_common.h"
+#include "openmx_env.h"
 #include "openmx_grid_assembly.h"
 #include "openmx_native_resources.h"
 #include "openmx_local_basis.h"
@@ -73,7 +74,7 @@ static int DFT_SetProExpnVNAUseGPU(void)
     /* mirrors the cheap gates of the Set_ProExpn_VNA device batches; the
        memory quota may still fall back per node, which prints its own
        notice */
-    const char *value = getenv("OPENMX_SETPRO_GPU");
+    const char *value = openmx_env_get("OPENMX_SETPRO_GPU");
 
     if (scf_eigen_lib_flag != GPUSOLVER) return 0;
     return (value == NULL) ? 1 : (atoi(value) != 0);
@@ -332,7 +333,7 @@ static int DFT_SetHamiltonianOpenACCWorkSelectedRank(int myid0)
     /* Set_Hamiltonian is atom-distributed rather than k-distributed.  On a
        large-memory GPU, allowing every rank with a local H segment to enter
        the per-device memory scheduler removes the CPU critical path. */
-    kowner_only = getenv("OPENMX_SETHAM_GPU_KOWNER_ONLY");
+    kowner_only = openmx_env_get("OPENMX_SETHAM_GPU_KOWNER_ONLY");
     if (kowner_only == NULL || atoi(kowner_only) == 0) {
         return 1;
     }
@@ -1396,7 +1397,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
       double bound, normrd = sqrt(fabs(NormRD[0]));
 
       if (guard_factor<0.0){
-        const char *value = getenv("OPENMX_EIGEN_REFINE_STOP_GUARD");
+        const char *value = openmx_env_get("OPENMX_EIGEN_REFINE_STOP_GUARD");
         guard_factor = (value!=NULL && value[0]!='\0') ? atof(value) : 100.0;
         if (!isfinite(guard_factor)) guard_factor = 100.0;
         if (guard_factor<0.0) guard_factor = 0.0;

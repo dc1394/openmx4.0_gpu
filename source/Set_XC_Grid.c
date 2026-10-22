@@ -3,6 +3,7 @@
 #include <math.h>
 #include <time.h>
 #include "openmx_common.h"
+#include "openmx_env.h"
 #include "openmx_gpu_workers.h"
 #include "openmx_gpu_collective.h"
 #include <stdint.h>
@@ -257,7 +258,7 @@ static void SXG_XC_PBE(double *dens, double GDENS[3][2], double *Exc, double *DE
 
 static int SXG_gpu_enabled(void)
 {
-  const char *env=getenv("OPENMX_XC_GRID_GPU");
+  const char *env=openmx_env_get("OPENMX_XC_GRID_GPU");
   return !env || !*env || atoi(env)!=0;
 }
 
