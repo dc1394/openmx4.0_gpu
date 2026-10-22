@@ -74,10 +74,8 @@ static int DFT_SetProExpnVNAUseGPU(void)
     /* mirrors the cheap gates of the Set_ProExpn_VNA device batches; the
        memory quota may still fall back per node, which prints its own
        notice */
-    const char *value = openmx_env_get("OPENMX_SETPRO_GPU");
-
     if (scf_eigen_lib_flag != GPUSOLVER) return 0;
-    return (value == NULL) ? 1 : (atoi(value) != 0);
+    return openmx_env_flag_at(OPENMX_ENV_SETPRO_GPU, 1);
 }
 
 /* GPU device initialization helper for SCF (added by H.Kawai, ported from 3.9.9 GPU)
@@ -320,7 +318,6 @@ static int DFT_SetHamiltonianOpenACCSelectedRank(int myid0)
 
 static int DFT_SetHamiltonianOpenACCWorkSelectedRank(int myid0)
 {
-    const char *kowner_only;
 
     if (scf_eigen_lib_flag != GPUSOLVER) {
         return 0;
@@ -333,8 +330,7 @@ static int DFT_SetHamiltonianOpenACCWorkSelectedRank(int myid0)
     /* Set_Hamiltonian is atom-distributed rather than k-distributed.  On a
        large-memory GPU, allowing every rank with a local H segment to enter
        the per-device memory scheduler removes the CPU critical path. */
-    kowner_only = openmx_env_get("OPENMX_SETHAM_GPU_KOWNER_ONLY");
-    if (kowner_only == NULL || atoi(kowner_only) == 0) {
+    if (!openmx_env_flag_at(OPENMX_ENV_SETHAM_GPU_KOWNER_ONLY, 0)) {
         return 1;
     }
 
@@ -1393,15 +1389,10 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
          (Solver==3 && SpinP_switch<=1 && Band_DFT_Col_RefineLastRefined()) ||
          (Solver==3 && SpinP_switch==3 && GB_switch==0 && Band_DFT_NonCol_RefineLastRefined()) ||
          (Solver==2 && SpinP_switch==3 && Cluster_DFT_NonCol_RefineLastRefined()))){
-      static double guard_factor = -1.0;
+      double guard_factor = openmx_env_double_at(OPENMX_ENV_EIGEN_REFINE_STOP_GUARD, 100.0);
       double bound, normrd = sqrt(fabs(NormRD[0]));
 
-      if (guard_factor<0.0){
-        const char *value = openmx_env_get("OPENMX_EIGEN_REFINE_STOP_GUARD");
-        guard_factor = (value!=NULL && value[0]!='\0') ? atof(value) : 100.0;
-        if (!isfinite(guard_factor)) guard_factor = 100.0;
-        if (guard_factor<0.0) guard_factor = 0.0;
-      }
+      if (guard_factor<0.0) guard_factor = 0.0;
       bound = guard_factor*SCF_Criterion;
       if (0.0<bound && bound<normrd){
         if (myid0==Host_ID && 2<=level_stdout){

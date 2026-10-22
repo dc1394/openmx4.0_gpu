@@ -119,11 +119,12 @@ static int run_openmx(int argc, char *argv[], OpenMXCoreContext *core)
   char fileMemory[YOUSO10];
   double TStime,TEtime;
   MPI_Comm mpi_comm_parent;
+  int env_synchronized = 0;
 
   /* MPI initialize */
 #if OPENMX_GPU_HIP
-  if (openmx_env_get("LIBOMPTARGET_HEAP_SIZE") == NULL) {
-    const char *reexec = openmx_env_get("OPENMX_GPU_HEAP_REEXEC");
+  if (openmx_env_at(OPENMX_ENV_EXT_LIBOMPTARGET_HEAP_SIZE) == NULL) {
+    const char *reexec = openmx_env_at(OPENMX_ENV_GPU_HEAP_REEXEC);
 
     /* Not when the dynamic loader was started directly (ld.so ./openmx
        ...): /proc/self/exe is then the loader, and AT_BASE is 0 exactly
@@ -166,13 +167,32 @@ static int run_openmx(int argc, char *argv[], OpenMXCoreContext *core)
   /* the environment settings of this run, read once (openmx_env.h); a
      misspelt OPENMX_* name is reported by rank 0 instead of being ignored */
   openmx_env_init();
+  /* rank 0's values of the global-scope settings reach every rank, so a
+     variable the launcher passed to some ranks only (mpirun without -x, a
+     per-node job script) cannot make the ranks disagree */
+  {
+    char *packed = NULL;
+    long packed_length = 0;
+
+    if (myid==0) packed_length = (long)openmx_env_pack(&packed);
+    MPI_Bcast(&packed_length,1,MPI_LONG,0,MPI_COMM_WORLD1);
+    if (0<packed_length){
+      if (myid!=0) packed = (char*)malloc((size_t)packed_length);
+      if (packed==NULL){
+        fprintf(stderr,"<OpenMX> rank %d: could not allocate %ld bytes for the environment settings\n",myid,packed_length);
+        MPI_Abort(MPI_COMM_WORLD1,1);
+      }
+      MPI_Bcast(packed,(int)packed_length,MPI_CHAR,0,MPI_COMM_WORLD1);
+      if (myid!=0) env_synchronized = openmx_env_unpack(packed,(size_t)packed_length);
+    }
+    free(packed);
+  }
   if (myid==0) openmx_env_report(stderr,1);
 #if OPENMX_GPU_HIP
 
   {
     extern void openmx_gpu_zheevd_selftest(const char *label);
-    const char *selftest_env = openmx_env_get("OPENMX_ZHEEVD_SELFTEST");
-    if (selftest_env != NULL && atoi(selftest_env) != 0 && myid == 0) {
+    if (openmx_env_flag_at(OPENMX_ENV_ZHEEVD_SELFTEST, 0) && myid == 0) {
       openmx_gpu_zheevd_selftest("startup");
     }
   }
@@ -656,6 +676,10 @@ static int run_openmx(int argc, char *argv[], OpenMXCoreContext *core)
 
   CompTime[myid][1] = readfile(argv,core);
   if (myid==Host_ID && 2<=level_stdout) openmx_env_report(stdout,0);
+  if (3<=level_stdout && 0<env_synchronized){
+    printf("<OpenMX> rank %d: %d environment setting(s) taken from rank 0\n",myid,env_synchronized);
+    fflush(stdout);
+  }
   const OpenMXAtomicViews atomic_views=OpenMX_AtomicTables(core);
   const OpenMXAtomicViews *atomic=&atomic_views;
   MPI_Barrier(MPI_COMM_WORLD1);
@@ -797,8 +821,7 @@ static int run_openmx(int argc, char *argv[], OpenMXCoreContext *core)
 #if OPENMX_GPU_HIP
       {
         extern void openmx_gpu_zheevd_selftest(const char *label);
-        const char *selftest_env = openmx_env_get("OPENMX_ZHEEVD_SELFTEST");
-        if (selftest_env != NULL && atoi(selftest_env) != 0 && myid == 0 && MD_iter == 1) {
+        if (openmx_env_flag_at(OPENMX_ENV_ZHEEVD_SELFTEST, 0) && myid == 0 && MD_iter == 1) {
           openmx_gpu_zheevd_selftest("pre_DFT");
         }
       }

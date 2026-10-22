@@ -11,6 +11,7 @@
 ***********************************************************************/
 
 #include "openmx_common.h"
+#include "openmx_env.h"
 #include "openmx_solver_workspace.h"
 #include "openmx_native_resources.h"
 OPENMX_NATIVE_RESOURCE_GROUP(Divide_Conquer,Divide_Conquer_Release_GPU_Caches)
@@ -64,7 +65,7 @@ static int DC_GPU_Threshold(void)
     static int threshold   = DC_GPU_CPU_SWITCH_NUM;
 
     if (!initialized) {
-        char *env = getenv("OPENMX_DC_GPU_THRESHOLD");
+        char *env = openmx_env_get("OPENMX_DC_GPU_THRESHOLD");
         if (env != NULL && env[0] != '\0') {
             int env_threshold = atoi(env);
             if (0 < env_threshold) {
@@ -83,7 +84,7 @@ static int DC_NonCol_GPU_Threshold(void)
     static int threshold   = DC_NONCOL_GPU_CPU_SWITCH_NUM;
 
     if (!initialized) {
-        char *env = getenv("OPENMX_DC_NONCOL_GPU_THRESHOLD");
+        char *env = openmx_env_get("OPENMX_DC_NONCOL_GPU_THRESHOLD");
         if (env != NULL && env[0] != '\0') {
             int env_threshold = atoi(env);
             if (0 < env_threshold) {
@@ -335,8 +336,8 @@ static int DC_NodeRanks(void)
 
 static void DCCol_SCache_Prepare(int matomnum, const int *Msize, int scf_iter)
 {
-    const char *enabled_env = getenv("OPENMX_DC_GPU_S_CACHE");
-    const char *reserve_env = getenv("OPENMX_DC_GPU_S_CACHE_RESERVE_MB");
+    const char *enabled_env = openmx_env_get("OPENMX_DC_GPU_S_CACHE");
+    const char *reserve_env = openmx_env_get("OPENMX_DC_GPU_S_CACHE_RESERVE_MB");
     size_t free_bytes = 0, total_bytes = 0, reserve = (size_t)4096 * 1024 * 1024;
     size_t used = 0, budget;
     int threshold = DC_GPU_Threshold();
@@ -431,7 +432,7 @@ static const double *DCCol_SCache_ValidPtr(int Mc_AN, int n)
 
 static unsigned DC_EnvU32(const char *name, unsigned fallback)
 {
-    const char *value = getenv(name);
+    const char *value = openmx_env_get(name);
     char       *end   = NULL;
     unsigned long parsed;
 
@@ -454,11 +455,11 @@ static int DC_EnvI32Any(const char *name1, const char *name2, const char *name3,
     long        parsed;
 
     if (name1 != NULL)
-        value = getenv(name1);
+        value = openmx_env_get(name1);
     if ((value == NULL || value[0] == '\0') && name2 != NULL)
-        value = getenv(name2);
+        value = openmx_env_get(name2);
     if ((value == NULL || value[0] == '\0') && name3 != NULL)
-        value = getenv(name3);
+        value = openmx_env_get(name3);
     if (value == NULL || value[0] == '\0') {
         return fallback;
     }

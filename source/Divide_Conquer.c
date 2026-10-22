@@ -48,40 +48,16 @@ static void Save_DOS_NonCol(OpenMXSolverResidueView Residues, double **** OLP0, 
 
 static int DC_GPU_Threshold(void)
 {
-    static int initialized = 0;
-    static int threshold   = DC_GPU_CPU_SWITCH_NUM;
+    long parsed = openmx_env_long_at(OPENMX_ENV_DC_GPU_THRESHOLD, 0);
 
-    if (!initialized) {
-        char *env = openmx_env_get("OPENMX_DC_GPU_THRESHOLD");
-        if (env != NULL && env[0] != '\0') {
-            int env_threshold = atoi(env);
-            if (0 < env_threshold) {
-                threshold = env_threshold;
-            }
-        }
-        initialized = 1;
-    }
-
-    return threshold;
+    return 0 < parsed && parsed <= INT_MAX ? (int)parsed : DC_GPU_CPU_SWITCH_NUM;
 }
 
 static int DC_NonCol_GPU_Threshold(void)
 {
-    static int initialized = 0;
-    static int threshold   = DC_NONCOL_GPU_CPU_SWITCH_NUM;
+    long parsed = openmx_env_long_at(OPENMX_ENV_DC_NONCOL_GPU_THRESHOLD, 0);
 
-    if (!initialized) {
-        char *env = openmx_env_get("OPENMX_DC_NONCOL_GPU_THRESHOLD");
-        if (env != NULL && env[0] != '\0') {
-            int env_threshold = atoi(env);
-            if (0 < env_threshold) {
-                threshold = env_threshold;
-            }
-        }
-        initialized = 1;
-    }
-
-    return threshold;
+    return 0 < parsed && parsed <= INT_MAX ? (int)parsed : DC_NONCOL_GPU_CPU_SWITCH_NUM;
 }
 
 static inline double DC_FermiWeight(double eval, double chemP, double beta, double max_x)
@@ -292,22 +268,11 @@ typedef struct {
 
 static DCColSCacheCtx DC_scache = {0};
 
-static unsigned DC_EnvU32(const char *name, unsigned fallback)
+static unsigned DC_EnvU32(int id, unsigned fallback)
 {
-    const char *value = openmx_env_get(name);
-    char       *end   = NULL;
-    unsigned long parsed;
+    unsigned long long parsed = openmx_env_ulong_at(id, fallback);
 
-    if (value == NULL || value[0] == '\0') {
-        return fallback;
-    }
-
-    parsed = strtoul(value, &end, 10);
-    if (end == value || *end != '\0') {
-        return fallback;
-    }
-
-    return (unsigned)parsed;
+    return parsed <= UINT_MAX ? (unsigned)parsed : fallback;
 }
 
 static const char *DC_GpuSolver_CublasStatusName(cublasStatus_t status)
@@ -382,8 +347,8 @@ static size_t DC_GpuSolver_Gemmul8ReserveBytes(void)
 {
     unsigned reserve_mib;
 
-    reserve_mib = DC_EnvU32("GEMMUL8_MIN_FREE_AFTER_MB", 1536u);
-    reserve_mib = DC_EnvU32("OPENMX_GEMMUL8_MIN_FREE_AFTER_MB", reserve_mib);
+    reserve_mib = DC_EnvU32(OPENMX_ENV_EXT_GEMMUL8_MIN_FREE_AFTER_MB, 1536u);
+    reserve_mib = DC_EnvU32(OPENMX_ENV_GEMMUL8_MIN_FREE_AFTER_MB, reserve_mib);
 
     return (size_t)reserve_mib * (size_t)1024 * (size_t)1024;
 }
@@ -392,8 +357,8 @@ static size_t DC_GpuSolver_CublasReserveBytes(void)
 {
     unsigned reserve_mib;
 
-    reserve_mib = DC_EnvU32("CUBLAS_MIN_FREE_AFTER_MB", 3072u);
-    reserve_mib = DC_EnvU32("OPENMX_CUBLAS_MIN_FREE_AFTER_MB", reserve_mib);
+    reserve_mib = DC_EnvU32(OPENMX_ENV_EXT_CUBLAS_MIN_FREE_AFTER_MB, 3072u);
+    reserve_mib = DC_EnvU32(OPENMX_ENV_CUBLAS_MIN_FREE_AFTER_MB, reserve_mib);
 
     return (size_t)reserve_mib * (size_t)1024 * (size_t)1024;
 }
@@ -402,8 +367,8 @@ static size_t DC_GpuSolver_EigenReserveBytes(void)
 {
     unsigned reserve_mib;
 
-    reserve_mib = DC_EnvU32("GPUSOLVER_MIN_FREE_AFTER_MB", 1536u);
-    reserve_mib = DC_EnvU32("OPENMX_GPUSOLVER_MIN_FREE_AFTER_MB", reserve_mib);
+    reserve_mib = DC_EnvU32(OPENMX_ENV_EXT_GPUSOLVER_MIN_FREE_AFTER_MB, 1536u);
+    reserve_mib = DC_EnvU32(OPENMX_ENV_GPUSOLVER_MIN_FREE_AFTER_MB, reserve_mib);
 
     return (size_t)reserve_mib * (size_t)1024 * (size_t)1024;
 }
@@ -692,12 +657,12 @@ static int DC_GpuSolver_TryGpuDgemm(cublasHandle_t handle, cublasOperation_t tra
 
 static int DCCol_SCache_Enabled(void)
 {
-    return (int)DC_EnvU32("OPENMX_DC_GPU_S_CACHE", 1u);
+    return (int)DC_EnvU32(OPENMX_ENV_DC_GPU_S_CACHE, 1u);
 }
 
 static size_t DCCol_SCache_ReserveBytes(void)
 {
-    return (size_t)DC_EnvU32("OPENMX_DC_GPU_S_CACHE_RESERVE_MB", 4096u) * (size_t)1024 * (size_t)1024;
+    return (size_t)DC_EnvU32(OPENMX_ENV_DC_GPU_S_CACHE_RESERVE_MB, 4096u) * (size_t)1024 * (size_t)1024;
 }
 
 /* Ranks sharing this node's device(s); conservative on multi-GPU nodes.

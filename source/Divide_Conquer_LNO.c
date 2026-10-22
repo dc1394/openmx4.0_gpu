@@ -39,17 +39,7 @@ OPENMX_NATIVE_RESOURCE_GROUP(Divide_Conquer_LNO,Divide_Conquer_LNO_Release_GPU_C
    collectives even when their launch environments differ. */
 static int DCLNO_ProfileEnabled(void)
 {
-    static int enabled = -1;
-    if (enabled < 0) {
-        int rank;
-        MPI_Comm_rank(mpi_comm_level1, &rank);
-        if (rank == Host_ID) {
-            const char *value = openmx_env_get("OPENMX_DCLNO_PROFILE");
-            enabled = value != NULL && atoi(value) != 0;
-        }
-        MPI_Bcast(&enabled, 1, MPI_INT, Host_ID, mpi_comm_level1);
-    }
-    return enabled;
+    return openmx_env_flag_at(OPENMX_ENV_DCLNO_PROFILE, 0);
 }
 
 #define DCLNO_PROFILE_BINS 8
@@ -106,18 +96,9 @@ static void DCLNO_ProfileReport(int md, int scf, int rank, int ranks,
 /* runtime-tunable copy of the threshold (OPENMX_DCLNO_GPU_THRESHOLD) */
 static int DCLNO_GpuEigenThreshold(void)
 {
-    static int threshold = -1;
+    long parsed = openmx_env_long_at(OPENMX_ENV_DCLNO_GPU_THRESHOLD, 0);
 
-    if (threshold < 0) {
-        const char *value = openmx_env_get("OPENMX_DCLNO_GPU_THRESHOLD");
-
-        threshold = DCLNO_GPU_PROXY_EIGEN_THRESHOLD_COL;
-        if (value != NULL && value[0] != '\0') {
-            int parsed = atoi(value);
-            if (0 < parsed) threshold = parsed;
-        }
-    }
-    return threshold;
+    return 0 < parsed && parsed <= INT_MAX ? (int)parsed : DCLNO_GPU_PROXY_EIGEN_THRESHOLD_COL;
 }
 
 /* noncollinear threshold, compared against the spinor dimension 2*(Anum-1);
@@ -128,18 +109,9 @@ static int DCLNO_GpuEigenThreshold(void)
 /* runtime-tunable copy (OPENMX_DCLNO_NONCOL_GPU_THRESHOLD) */
 static int DCLNO_NonColGpuEigenThreshold(void)
 {
-    static int threshold = -1;
+    long parsed = openmx_env_long_at(OPENMX_ENV_DCLNO_NONCOL_GPU_THRESHOLD, 0);
 
-    if (threshold < 0) {
-        const char *value = openmx_env_get("OPENMX_DCLNO_NONCOL_GPU_THRESHOLD");
-
-        threshold = DCLNO_NONCOL_GPU_CPU_SWITCH_NUM;
-        if (value != NULL && value[0] != '\0') {
-            int parsed = atoi(value);
-            if (0 < parsed) threshold = parsed;
-        }
-    }
-    return threshold;
+    return 0 < parsed && parsed <= INT_MAX ? (int)parsed : DCLNO_NONCOL_GPU_CPU_SWITCH_NUM;
 }
 
 /* MPI tags for node-local proxy traffic */
@@ -1059,15 +1031,7 @@ static int DCLNO_GpuTurnRelease(void)
        phase is done keeps them from occupying the shared device through the
        grid/force phases of the SCF step; opt out with
        OPENMX_DCLNO_GPU_TURN_RELEASE=0 (falls back to the band-path knob). */
-    const char *value = openmx_env_get("OPENMX_DCLNO_GPU_TURN_RELEASE");
-
-    if (value == NULL) {
-        value = openmx_env_get("OPENMX_BAND_GEMMUL8_TURN_RELEASE");
-    }
-    if (value == NULL) {
-        return 1;
-    }
-    return (atoi(value) != 0);
+    return openmx_env_flag_at(OPENMX_ENV_DCLNO_GPU_TURN_RELEASE, openmx_env_flag_at(OPENMX_ENV_BAND_GEMMUL8_TURN_RELEASE, 1));
 }
 
 static void DCLNO_GpuSolver_ReleaseDeviceMemory(void)

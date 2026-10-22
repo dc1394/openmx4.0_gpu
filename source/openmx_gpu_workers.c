@@ -41,17 +41,13 @@ void openmx_gpu_workers_configure(int local_rank, int local_size, int mapped_dev
    Capacity callers use openmx_gpu_workers_capacity with auto as default. */
 static int workers_enabled(void)
 {
-    const char *control=openmx_env_get("OPENMX_GPU_WORKERS");
-    return control && (strcmp(control,"1")==0 || strcmp(control,"on")==0 ||
-                       strcmp(control,"ON")==0);
+    return openmx_env_flag_at(OPENMX_ENV_GPU_WORKERS, 0)==1;
 }
 
 int openmx_gpu_workers_capacity_enabled(void)
 {
-    const char *gpu=openmx_env_get("OPENMX_GPU");
-    if(gpu && *gpu && atoi(gpu)==0)return 0;
-    const char *v=openmx_env_get("OPENMX_GPU_WORKERS");
-    if(v && (strcmp(v,"0")==0 || strcmp(v,"off")==0 || strcmp(v,"OFF")==0))return 0;
+    if(!openmx_env_flag_at(OPENMX_ENV_GPU, 1))return 0;
+    if(openmx_env_flag_at(OPENMX_ENV_GPU_WORKERS, -1)==0)return 0;
     int devices[OPENMX_GPU_WORKERS_MAX];
     return openmx_mgpu_pool_devices(devices,OPENMX_GPU_WORKERS_MAX)>0;
 }
@@ -319,8 +315,10 @@ int openmx_gpu_device_weak_fp64(int device)
 
 int openmx_gpu_worker_can_overlap(int device)
 {
-    const char *control=openmx_env_get("OPENMX_GPU_WORKER_OVERLAP");
-    if(control && *control && strcmp(control,"auto")!=0)return atoi(control)!=0;
+    {
+        const int control=openmx_env_flag_at(OPENMX_ENV_GPU_WORKER_OVERLAP, -1);
+        if(0<=control)return control;
+    }
     /* Only the CUDA implementation currently has a calibrated overlap
        default. Avoid a device query on every HIP task just to return false. */
     if(OPENMX_GPU_BACKEND!=OPENMX_BACKEND_CUDA)return 0;
@@ -378,8 +376,7 @@ static int run_workers(const OpenMXGpuWorkers *pool,
         }
     }
     if(admission)openmx_mgpu_release_devices(admission);
-    const char *verbose=openmx_env_get("OPENMX_MGPU_VERBOSE");
-    if (verbose && atoi(verbose) && (pool->count>1 || openmx_gpu_capacity_test_recovery())) {
+    if (openmx_env_flag_at(OPENMX_ENV_MGPU_VERBOSE, 0) && (pool->count>1 || openmx_gpu_capacity_test_recovery())) {
         fprintf(stderr,"<OpenMX_MGPU> work name=%s workers=%d items=%zu completed=%d devices=",
             label?label:"unnamed",pool->count,pool->items,ok);
         for (int i=0;i<pool->count;i++) fprintf(stderr,"%s%d",i?",":"",pool->devices[i]);

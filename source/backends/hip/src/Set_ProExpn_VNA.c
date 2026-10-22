@@ -26,6 +26,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include "openmx_common.h"
+#include "openmx_env.h"
 #include "openmx_vna_status.h"
 #include "openmx_gpu_workers.h"
 #include "openmx_gpu_views.h"
@@ -100,7 +101,7 @@ static int SetPro_collective_env_flag(const char *name, int default_value)
 
   MPI_Comm_rank(mpi_comm_level1,&myid);
   if (myid==0){
-    env = getenv(name);
+    env = openmx_env_get(name);
     if (env!=NULL && env[0]!='\0') value = (atoi(env)!=0);
   }
   MPI_Bcast(&value,1,MPI_INT,0,mpi_comm_level1);
@@ -132,7 +133,7 @@ static int SetPro_gpu_stage_enabled(const char *stage_name)
    with the device memory free at that moment, on stderr.  Rank-local. */
 static int SetPro_verbose(void)
 {
-  const char *env = getenv("OPENMX_SETPRO_VERBOSE");
+  const char *env = openmx_env_get("OPENMX_SETPRO_VERBOSE");
   return env!=NULL && env[0]!='\0' && atoi(env)!=0;
 
 }
@@ -768,7 +769,7 @@ static int SetProCapacity_collective_env_flag(const char *name, int default_valu
 
   MPI_Comm_rank(mpi_comm_level1,&myid);
   if (myid==0){
-    env = getenv(name);
+    env = openmx_env_get(name);
     if (env!=NULL && env[0]!='\0') value = (atoi(env)!=0);
   }
   MPI_Bcast(&value,1,MPI_INT,0,mpi_comm_level1);
@@ -784,7 +785,7 @@ static int SetProCapacity_verbose(void)
   static int verbose = -1;
 
   if (verbose<0){
-    const char *env = getenv("OPENMX_SETPRO_VERBOSE");
+    const char *env = openmx_env_get("OPENMX_SETPRO_VERBOSE");
     verbose = (env!=NULL && env[0]!='\0' && atoi(env)!=0) ? 1 : 0;
   }
   return verbose;

@@ -1,5 +1,5 @@
 /* Included inside the MAGMA adapter's private namespace (the includer
-   provides openmx_env.h for the ::openmx_env_get settings reads). Host-backed
+   provides openmx_env.h for the ::openmx_env_long_at settings reads). Host-backed
    Ogita-Aishima correction: MAGMA FP32 supplies a complete basis; bounded
    multi-GPU GEMMs form the FP64 corrections. An optional bounded resident
    workspace retains the basis and partitions output columns across GPUs.
@@ -105,8 +105,7 @@ int refine_cluster(int ngpu,const int *devices,int n,int begin,int size,int stri
     int type=1,info=0,lwork=-1;
     T query{};
     std::vector<double> rwork(3*size),values(size);
-    const char *threshold=::openmx_env_get("OPENMX_MAGMA_RR_GPU_MIN");
-    const int gpu_min=threshold?std::max(2,std::atoi(threshold)):1024;
+    const int gpu_min=static_cast<int>(std::max(2L,std::min(long(INT_MAX),::openmx_env_long_at(OPENMX_ENV_MAGMA_RR_GPU_MIN,1024))));
     if(size>=gpu_min) {
         /* A dense spectrum can connect thousands of neighboring states.
            Resolve that subspace on the same admitted GPU group instead of
@@ -238,8 +237,7 @@ int refined_solve(int ngpu,const int *devices,int lower,int n,int first,int last
     double delta=0,orth=0,off=0;
     std::vector<int> cluster(n,0);
     const double radius=std::max(std::abs(w.front()),std::abs(w.back()));
-    const char *steps=::openmx_env_get("OPENMX_MAGMA_REFINE_STEPS");
-    const int iterations=steps?std::max(2,std::min(5,std::atoi(steps))):2;
+    const int iterations=static_cast<int>(std::max(2L,std::min(5L,::openmx_env_long_at(OPENMX_ENV_MAGMA_REFINE_STEPS,2))));
     for (int it=0;it<iterations;++it) {
         if ((rc=project(n))) return rc;
         for (int j=0;j<n;++j) {

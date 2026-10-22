@@ -94,7 +94,7 @@ static int Force_HNL_GpuBegin(const OpenMXAtomicViews *atomic, double****** DS_N
     int requested=scf_eigen_lib_flag==GPUSOLVER;
     MPI_Allreduce(MPI_IN_PLACE,&requested,1,MPI_INT,MPI_MIN,mpi_comm_level1);
     if (!requested) return 0;
-    if (!Force_collective_env_flag("OPENMX_FORCEHNL_GPU", Force_gpu_stage_default(), mpi_comm_level1)) return 0;
+    if (!openmx_env_flag_at(OPENMX_ENV_FORCEHNL_GPU, Force_gpu_stage_default())) return 0;
     if (F_NL_flag != 1) return 0;
 
     /* only the real scalar-relativistic trace branches are batched */

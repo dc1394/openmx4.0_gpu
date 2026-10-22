@@ -80,8 +80,7 @@ double Set_Density_Grid(OpenMXGridWorkspace *grid, const OpenMXAtomicViews *atom
      quadrature, a2b = the atom-to-B communication, sup = the superposition
      into the B partition, b2d = the B-to-D copy and the rest) */
   double sd_t0, sd_t1, sd_pre = 0.0, sd_quad = 0.0, sd_a2b = 0.0, sd_sup = 0.0, sd_b2d = 0.0;
-  static int sd_prof = -1;
-  if (sd_prof < 0) { const char *e = openmx_env_get("OPENMX_BAND_PROFILE"); sd_prof = (e != NULL && atoi(e) != 0) ? 1 : 0; }
+  const int sd_prof = openmx_env_flag_at(OPENMX_ENV_BAND_PROFILE, 0);
   sd_t0 = TStime;
 
   /* Preferred GPU mode: every rank evaluates its own atoms' density on the

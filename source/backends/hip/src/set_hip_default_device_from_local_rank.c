@@ -1,4 +1,5 @@
 #include "openmx_common.h"
+#include "openmx_env.h"
 #include "set_hip_default_device_from_local_rank.h"
 #include "openmx_gpu_workers.h"
 #include "hip_runtime_compat.h"
@@ -21,7 +22,7 @@ static int get_nonnegative_env_int(const char *env_names[])
     int i;
 
     for (i = 0; env_names[i] != NULL; i++) {
-        const char *value = getenv(env_names[i]);
+        const char *value = openmx_env_get(env_names[i]);
         if (value != NULL && value[0] != '\0') {
             int parsed = atoi(value);
             if (0 <= parsed) return parsed;
@@ -72,7 +73,7 @@ int openmx_gpu_local_size_noncollective(void)
 
 int openmx_gpu_map_rank_to_device(int local_rank, int local_size, int device_count)
 {
-    const char *mode = getenv("OPENMX_GPU_RANK_MAP");
+    const char *mode = openmx_env_get("OPENMX_GPU_RANK_MAP");
     int ranks_per_device, dev;
 
     if (device_count <= 0) return -1;
@@ -121,7 +122,7 @@ int openmx_band_gpu_dense_oversubscribed(void)
     static int cached = -1;
 
     if (cached < 0) {
-        const char *value = getenv("OPENMX_BAND_GPU_MAX_DEVICE_RANKS");
+        const char *value = openmx_env_get("OPENMX_BAND_GPU_MAX_DEVICE_RANKS");
         int limit = BAND_GPU_DEFAULT_MAX_DEVICE_RANKS;
 
         if (value != NULL && value[0] != '\0') {
@@ -137,7 +138,7 @@ int openmx_band_gpu_dense_oversubscribed(void)
 
 static size_t gpu_probe_reserve_bytes(void)
 {
-    const char *value = getenv("OPENMX_GPU_PROBE_RESERVE_MB");
+    const char *value = openmx_env_get("OPENMX_GPU_PROBE_RESERVE_MB");
 
     if (value != NULL && value[0] != '\0') {
         long mb = atol(value);
@@ -158,7 +159,7 @@ int gpu_rank_device_usable(void)
     int lock_fd = -1, devices_seen = 0;
     size_t free_bytes = 0, total_bytes = 0;
     char lock_path[64];
-    const char *env = getenv("OPENMX_GPU");
+    const char *env = openmx_env_get("OPENMX_GPU");
 
     if (checked) return usable;
     checked = 1;

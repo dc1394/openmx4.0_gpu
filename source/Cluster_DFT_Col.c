@@ -832,24 +832,12 @@ static void ClusterCol_GEMMul8Dgemm_Device(cublasOperation_t transa, cublasOpera
    time of the density-matrix accumulation (device, or the host threads) */
 static int ClusterCol_DMProfileEnabled(void)
 {
-    static int cached = -1;
-
-    if (cached<0){
-        const char *value = openmx_env_get("OPENMX_BAND_PROFILE");
-        cached = (value!=NULL && atoi(value)!=0);
-    }
-    return cached;
+    return openmx_env_flag_at(OPENMX_ENV_BAND_PROFILE, 0);
 }
 
 static int ClusterCol_ProfileEnabled(void)
 {
-    static int cached = -1;
-
-    if (cached<0){
-        const char *value = openmx_env_get("OPENMX_CLUSTER_PROFILE");
-        cached = (value!=NULL && atoi(value)!=0);
-    }
-    return cached;
+    return openmx_env_flag_at(OPENMX_ENV_CLUSTER_PROFILE, 0);
 }
 
 static double ClusterCol_ProfileLap(double *t0)
@@ -1093,13 +1081,13 @@ static void ClusterCol_InvalidateDeviceEvecStash(void)
 static void ClusterCol_TrimScratch(void)
 {
     ClusterColGpuSolverCtx *ctx = &ClusterCol_gpusolver_ctx;
-    const char *retain = openmx_env_get("OPENMX_CLUSTER_GPU_RETAIN_SCRATCH");
-    const int release_always = retain!=NULL && atoi(retain)==0;
+    const int retain = openmx_env_flag_at(OPENMX_ENV_CLUSTER_GPU_RETAIN_SCRATCH, -1);
+    const int release_always = retain==0;
     size_t free_bytes, total_bytes, bytes;
     int device;
 
     if (!ctx->initialized || ctx->matrix_dim<=0 || ctx->scratch_released ||
-        (retain!=NULL && atoi(retain)!=0)) return;
+        retain==1) return;
     if (cudaGetDevice(&device)!=cudaSuccess || device!=ctx->device_id) return;
     bytes = sizeof(double)*(size_t)ctx->matrix_dim*(size_t)ctx->matrix_dim;
     bytes = (ctx->d_H!=NULL ? bytes : 0) + (ctx->d_tmp!=NULL ? bytes : 0)
@@ -1136,8 +1124,7 @@ static void ClusterCol_TrimScratch(void)
     }
     ctx->scratch_released = 1;
     {
-        const char *verbose = openmx_env_get("OPENMX_CUSOLVER_VERBOSE");
-        if (verbose!=NULL && atoi(verbose)!=0)
+        if (openmx_env_flag_at(OPENMX_ENV_CUSOLVER_VERBOSE, 0))
             fprintf(stderr,"<Cluster_DFT_Col> Released %.3f GiB of SCF scratch; retained transformed overlap (n=%d).\n",
                     (double)bytes/1073741824.0,ctx->matrix_dim);
     }
@@ -1216,15 +1203,7 @@ static int ClusterCol_GemmWorkspaceTurnRelease(void)
        keeps it from occupying the shared device through the grid/force phases
        of the SCF step; opt out with OPENMX_CLUSTER_GEMMUL8_TURN_RELEASE=0
        (falls back to the band-path knob for a single switch). */
-    const char *value = openmx_env_get("OPENMX_CLUSTER_GEMMUL8_TURN_RELEASE");
-
-    if (value==NULL){
-        value = openmx_env_get("OPENMX_BAND_GEMMUL8_TURN_RELEASE");
-    }
-    if (value==NULL){
-        return 1;
-    }
-    return (atoi(value)!=0);
+    return openmx_env_flag_at(OPENMX_ENV_CLUSTER_GEMMUL8_TURN_RELEASE, openmx_env_flag_at(OPENMX_ENV_BAND_GEMMUL8_TURN_RELEASE, 1));
 }
 
 /* GPU/CPU crossover of the collinear cluster dense eigensolver path.  The
@@ -1240,18 +1219,9 @@ static int ClusterCol_GemmWorkspaceTurnRelease(void)
 
 int Cluster_DFT_Col_GpuSwitchNum(void)
 {
-    static int cached = -1;
+    long parsed = openmx_env_long_at(OPENMX_ENV_CLUSTER_GPU_SWITCH_NUM, 0);
 
-    if (cached < 0) {
-        const char *value = openmx_env_get("OPENMX_CLUSTER_GPU_SWITCH_NUM");
-        int parsed;
-
-        cached = CLUSTER_GPU_CPU_SWITCH_NUM;
-        if (value != NULL && 0 < (parsed = atoi(value))) {
-            cached = parsed;
-        }
-    }
-    return cached;
+    return 0 < parsed && parsed <= INT_MAX ? (int)parsed : CLUSTER_GPU_CPU_SWITCH_NUM;
 }
 
 static int ClusterCol_UseGpuAccel(int n)
@@ -1271,14 +1241,11 @@ static int ClusterCol_UseGpuDM(int n)
        leaves those ranks on one core each: C1000 at 6 ranks spent 37 s of
        3 SCF steps there on one thread (RTX 5080).  OPENMX_CLUSTER_GPU_DM_ALL=0
        keeps the device accumulation to the owner rank. */
-    const char *value = openmx_env_get("OPENMX_CLUSTER_GPU_DM");
-    const char *all = openmx_env_get("OPENMX_CLUSTER_GPU_DM_ALL");
-
-    if (value!=NULL && atoi(value)==0){
+    if (!openmx_env_flag_at(OPENMX_ENV_CLUSTER_GPU_DM, 1)){
         return 0;
     }
     if (ClusterCol_UseGpuAccel(n)) return 1;
-    if (all!=NULL && atoi(all)==0) return 0;
+    if (!openmx_env_flag_at(OPENMX_ENV_CLUSTER_GPU_DM_ALL, 1)) return 0;
     return (scf_eigen_lib_flag==GPUSOLVER && Cluster_DFT_Col_GpuSwitchNum()<=n);
 }
 
@@ -1453,14 +1420,7 @@ static void ClusterCol_GpuSolver_CheckInfo(const char *where, int info)
 
 static size_t ClusterCol_GpuDiagReserveBytes(void)
 {
-    const char *value = openmx_env_get("OPENMX_CLUSTER_GPU_DIAG_RESERVE_MB");
-    long mib = 1024;
-
-    if (value!=NULL){
-        long parsed = atol(value);
-        if (0<=parsed) mib = parsed;
-    }
-    return (size_t)mib*1024ULL*1024ULL;
+    return openmx_env_mib_bytes_at(OPENMX_ENV_CLUSTER_GPU_DIAG_RESERVE_MB, 1024);
 }
 
 /* Collectively decide whether the root-dense GPU diagonalization fits on
@@ -1555,9 +1515,7 @@ static int ClusterCol_GpuDiagFits(int SCF_iter, int n, int myworld1, int myid1, 
 {
     static int verdict = -1;
     static int verdict_n = 0;
-    const char *force = openmx_env_get("OPENMX_CLUSTER_GPU_DIAG");
-    const char *serial_env = openmx_env_get("OPENMX_CLUSTER_GPU_DIAG_SERIAL");
-    int serial_knob = (serial_env!=NULL) ? atoi(serial_env) : 1;
+    int serial_knob = (int)openmx_env_long_at(OPENMX_ENV_CLUSTER_GPU_DIAG_SERIAL, 1);
     int announce = (myworld1==0 && myid1==0);
     int owner = (myid1==0);
     int solver_owner = (myworld1==0 && myid1==0);
@@ -1572,7 +1530,7 @@ static int ClusterCol_GpuDiagFits(int SCF_iter, int n, int myworld1, int myid1, 
       ClusterCol_mgpu_host_dense=0;
       ClusterCol_ResetGs2Fallback();
     }
-    if (force && atoi(force)==0 && !openmx_mgpu_host_required()) return 0;
+    if (openmx_env_flag_at(OPENMX_ENV_CLUSTER_GPU_DIAG, -1)==0 && !openmx_mgpu_host_required()) return 0;
     if (openmx_mgpu_host_required()) goto host_capacity;
 
     if (verdict!=-1 && verdict_n==n && 1<SCF_iter){
@@ -2023,7 +1981,7 @@ static void ClusterCol_SampleDeviceMatrix(const double *d_A, int n, const char *
     char path[4096];
     FILE *fp;
 
-    snprintf(path,sizeof(path),"%s/%s",openmx_env_get("OPENMX_GEMM_SAMPLE_DIR"),name);
+    snprintf(path,sizeof(path),"%s/%s",openmx_env_at(OPENMX_ENV_GEMM_SAMPLE_DIR),name);
     wait_cudafunc(cudaMemcpyAsync(A,d_A,count*sizeof(double),cudaMemcpyDeviceToHost,ctx->stream));
     wait_cudafunc(cudaStreamSynchronize(ctx->stream));
 
@@ -2039,7 +1997,7 @@ static void ClusterCol_SampleDeviceMatrix(const double *d_A, int n, const char *
 
 static void ClusterCol_SampleTransformedS(int n, int myworld1)
 {
-    const char *dir = openmx_env_get("OPENMX_GEMM_SAMPLE_DIR");
+    const char *dir = openmx_env_at(OPENMX_ENV_GEMM_SAMPLE_DIR);
     char name[64];
 
     ClusterCol_sample_geometry++;
@@ -2052,8 +2010,8 @@ static void ClusterCol_SampleTransformedS(int n, int myworld1)
 
 static void ClusterCol_SampleHamiltonian(int SCF_iter, int spin, int n)
 {
-    const char *dir = openmx_env_get("OPENMX_GEMM_SAMPLE_DIR");
-    const char *list = openmx_env_get("OPENMX_GEMM_SAMPLE_ITERS");
+    const char *dir = openmx_env_at(OPENMX_ENV_GEMM_SAMPLE_DIR);
+    const char *list = openmx_env_at(OPENMX_ENV_GEMM_SAMPLE_ITERS);
     char name[64];
     int wanted = 0;
 

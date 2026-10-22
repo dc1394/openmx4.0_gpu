@@ -83,14 +83,6 @@ void dsygv_(int *itype, char *jobz, char *uplo, int *n, double *a, int *lda, dou
 void zhegv_(int *itype, char *jobz, char *uplo, int *n, double *a, int *lda, double *b, int *ldb, double *w,
             double *work, int *lwork, double *rwork, int *info);
 
-static int env_flag(const char *name, int fallback)
-{
-    const char *value = openmx_env_get(name);
-
-    if (value == NULL || value[0] == '\0') return fallback;
-    return atoi(value) != 0;
-}
-
 static void refine_check(cudaError_t status, const char *what)
 {
     if (status != cudaSuccess) {
@@ -113,13 +105,15 @@ static void refine_check_blas(cublasStatus_t status, const char *what)
 
 int openmx_eigen_refine_configure(int cplx, int verbose, int *ratio)
 {
-    const char *value = openmx_env_get("OPENMX_EIGEN_REFINE");
+    const char *value = openmx_env_at(OPENMX_ENV_EIGEN_REFINE);
     int iterations = 0;
 
     *ratio = 0;
     if (!openmx_fp32_enabled()) return 0;
     if (value != NULL && value[0] != '\0') {
-        iterations = (0 < atoi(value)) ? atoi(value) : 0;
+        const long requested = openmx_env_long_at(OPENMX_ENV_EIGEN_REFINE, 0);
+
+        iterations = (0 < requested && requested <= INT_MAX) ? (int)requested : 0;
         if (verbose) {
             printf("<eigen_refine_gpu> OPENMX_EIGEN_REFINE=%s: refined FP32 eigensolver %s\n", value,
                    iterations ? "on" : "off");
@@ -159,27 +153,26 @@ int openmx_eigen_refine_configure(int cplx, int verbose, int *ratio)
 
 double openmx_eigen_refine_until(void)
 {
-    const char *value = openmx_env_get("OPENMX_EIGEN_REFINE_UNTIL");
+    const double until = openmx_env_double_at(OPENMX_ENV_EIGEN_REFINE_UNTIL, 0.0);
 
-    return (value != NULL && 0.0 < atof(value)) ? atof(value) : 0.0;
+    return 0.0 < until ? until : 0.0;
 }
 
 int openmx_eigen_refine_warm_enabled(void)
 {
-    return env_flag("OPENMX_EIGEN_REFINE_WARM", 1);
+    return openmx_env_flag_at(OPENMX_ENV_EIGEN_REFINE_WARM, 1);
 }
 
 int openmx_eigen_refine_warm_band_enabled(void)
 {
-    return openmx_eigen_refine_warm_enabled() && env_flag("OPENMX_EIGEN_REFINE_WARM_BAND", 1);
+    return openmx_eigen_refine_warm_enabled() && openmx_env_flag_at(OPENMX_ENV_EIGEN_REFINE_WARM_BAND, 1);
 }
 
 int openmx_eigen_refine_warm_band_period(void)
 {
-    const char *value = openmx_env_get("OPENMX_EIGEN_REFINE_WARM_PERIOD");
+    const long period = openmx_env_long_at(OPENMX_ENV_EIGEN_REFINE_WARM_PERIOD, 0);
 
-    if (value == NULL || value[0] == '\0') return 0;
-    return (0 < atoi(value)) ? atoi(value) : 0;
+    return (0 < period && period <= INT_MAX) ? (int)period : 0;
 }
 
 int openmx_eigen_refine_warm_band_step(int scf_iter)
@@ -202,8 +195,8 @@ static void refine_blocks_release(EigenRefineState *st)
 static int refine_blocks_ensure(EigenRefineState *st, EigenRefineDevice *dev, const EigenRefineProblem *pb,
                                 EigenRefineReport *report)
 {
-    int const    kc = env_flag("OPENMX_EIGEN_REFINE_ALL", 0) ? pb->n : pb->maxn;
-    int const    blocks = (kc < pb->n && env_flag("OPENMX_EIGEN_REFINE_COMPLEMENT", 1)) ? 3 : 2;
+    int const    kc = openmx_env_flag_at(OPENMX_ENV_EIGEN_REFINE_ALL, 0) ? pb->n : pb->maxn;
+    int const    blocks = (kc < pb->n && openmx_env_flag_at(OPENMX_ENV_EIGEN_REFINE_COMPLEMENT, 1)) ? 3 : 2;
     size_t const nk = (size_t)pb->n * (size_t)kc;
     size_t const block_bytes = (nk * (pb->cplx ? 2 : 1) * sizeof(double) + 511u) / 512u * 512u;
 
@@ -261,9 +254,8 @@ static cublasStatus_t refine_gemm(const EigenRefineDevice *dev, int cplx, cublas
                                   cublasOperation_t transb, int m, int n, int k, const void *A, int lda, const void *B,
                                   int ldb, double beta, void *C, int ldc)
 {
-    static int unblocked = -1;
+    const int unblocked = openmx_env_flag_at(OPENMX_ENV_EIGEN_REFINE_UNBLOCKED, 1);
 
-    if (unblocked < 0) unblocked = env_flag("OPENMX_EIGEN_REFINE_UNBLOCKED", 1);
     if (cplx) {
         cuDoubleComplex const one = make_cuDoubleComplex(1.0, 0.0), b = make_cuDoubleComplex(beta, 0.0);
 
@@ -414,8 +406,7 @@ static int refine_fp32_solve(EigenRefineDevice *dev, int cplx, int n, const void
     int32_t info = 0;
 #if CUSOLVER_VERSION >= 12304
     {
-        static int wanted = -1;
-        if (wanted < 0) wanted = env_flag("OPENMX_EIGEN_FP32_TWO_STAGE", 1);
+        const int wanted = openmx_env_flag_at(OPENMX_ENV_EIGEN_FP32_TWO_STAGE, 1);
         if (wanted && !dev->params32_tried) {
             dev->params32_tried = 1;
             if (cusolverDnCreateParams(&dev->params32) == CUSOLVER_STATUS_SUCCESS &&
@@ -594,7 +585,7 @@ int openmx_eigen_refine_prepare(EigenRefineState *st, EigenRefineDevice *dev, co
            residual of the old vectors on the new matrix: above 2e-5 (an
            FP32 solve leaves 4e-6) that solve follows after all, else finish
            starts from these products */
-        int const kc = env_flag("OPENMX_EIGEN_REFINE_ALL", 0) ? n : pb->maxn;   /* diagnostic: refine every column */
+        int const kc = openmx_env_flag_at(OPENMX_ENV_EIGEN_REFINE_ALL, 0) ? n : pb->maxn;   /* diagnostic: refine every column */
         long long const native0 = openmx_gemmul8NativeCalls(cplx);
         double max_s = 0.0, max_r = 0.0;
         double *b1, *b2, *yb;
@@ -781,7 +772,7 @@ int openmx_eigen_refine_finish(EigenRefineState *st, EigenRefineDevice *dev, con
                                const double *f0, EigenRefineReport *report)
 {
     int const    cplx = pb->cplx, n = pb->n, maxn = pb->maxn, width = cplx ? 2 : 1;
-    int const    kc = env_flag("OPENMX_EIGEN_REFINE_ALL", 0) ? n : pb->maxn;   /* diagnostic: refine every column */
+    int const    kc = openmx_env_flag_at(OPENMX_ENV_EIGEN_REFINE_ALL, 0) ? n : pb->maxn;   /* diagnostic: refine every column */
     size_t const nk = (size_t)n * (size_t)kc;
     double      *a = (double *)pb->a;
     double      *x = (double *)pb->x;
@@ -850,7 +841,7 @@ int openmx_eigen_refine_finish(EigenRefineState *st, EigenRefineDevice *dev, con
                treated as after a cold start (OPENMX_EIGEN_REFINE_WARM_DELTA_FLOOR=0
                drops the floor) */
             if (pb->warm) {
-                if (env_flag("OPENMX_EIGEN_REFINE_WARM_DELTA_FLOOR", 1) && delta < st->delta_cold) delta = st->delta_cold;
+                if (openmx_env_flag_at(OPENMX_ENV_EIGEN_REFINE_WARM_DELTA_FLOOR, 1) && delta < st->delta_cold) delta = st->delta_cold;
             }
             else {
                 st->delta_cold = delta;
@@ -1001,7 +992,7 @@ int openmx_eigen_refine_finish(EigenRefineState *st, EigenRefineDevice *dev, con
             }
         }
         if (rr_ok) refine_check(cudaMemcpy(lam, lh, (size_t)kc * sizeof(double), cudaMemcpyHostToDevice), "upload lam");
-        if (rr_ok && env_flag("OPENMX_EIGEN_REFINE_CHECK", 0)) {
+        if (rr_ok && openmx_env_flag_at(OPENMX_ENV_EIGEN_REFINE_CHECK, 0)) {
             /* diagnostic: the residuals |A x_j - lam_j x_j| / |x_j| and the
                orthogonality max_i |x_i^H x_j - delta_ij| of the refined
                columns by occupation class, with plain cuBLAS FP64 products

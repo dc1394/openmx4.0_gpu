@@ -49,6 +49,7 @@
    and every loop is a kernel on the stream of the caller's hipBLAS handle.
 */
 #include "eigen_refine_gpu.h"
+#include "openmx_env.h"
 #include "openmx_native_resources.h"
 #include "openmx_precision.h"
 #include "openmx_stdout_level.h"
@@ -109,7 +110,7 @@ constexpr int kThreads = 256;
 
 int env_flag(const char *name, int fallback)
 {
-    const char *value = getenv(name);
+    const char *value = openmx_env_get(name);
 
     if (value == NULL || value[0] == '\0') return fallback;
     return atoi(value) != 0;
@@ -426,7 +427,7 @@ int fp32_backend_magma()
     static int magma = -1;
 
     if (magma < 0) {
-        const char *value = getenv("OPENMX_EIGEN_FP32_SOLVER");
+        const char *value = openmx_env_get("OPENMX_EIGEN_FP32_SOLVER");
         magma = (value != NULL && strcasecmp(value, "magma") == 0) ? 1 : 0;
     }
     return magma;
@@ -934,7 +935,7 @@ extern "C" int openmx_gpu_fp32_fp64_ratio(void)
     static int ratio = -1;
 
     if (ratio < 0) {
-        const char *value = getenv("OPENMX_GPU_FP32_FP64_RATIO");
+        const char *value = openmx_env_get("OPENMX_GPU_FP32_FP64_RATIO");
         hipDeviceProp_t prop;
         int device = 0;
 
@@ -966,7 +967,7 @@ extern "C" int openmx_gpu_fp32_fp64_ratio(void)
 
 extern "C" int openmx_eigen_refine_configure(int cplx, int verbose, int *ratio)
 {
-    const char *value = getenv("OPENMX_EIGEN_REFINE");
+    const char *value = openmx_env_get("OPENMX_EIGEN_REFINE");
     int         iterations = 0;
 
     *ratio = 0;
@@ -1005,7 +1006,7 @@ extern "C" int openmx_eigen_refine_configure(int cplx, int verbose, int *ratio)
 
 extern "C" double openmx_eigen_refine_until(void)
 {
-    const char *value = getenv("OPENMX_EIGEN_REFINE_UNTIL");
+    const char *value = openmx_env_get("OPENMX_EIGEN_REFINE_UNTIL");
 
     return (value != NULL && 0.0 < atof(value)) ? atof(value) : 0.0;
 }
@@ -1022,7 +1023,7 @@ extern "C" int openmx_eigen_refine_warm_band_enabled(void)
 
 extern "C" int openmx_eigen_refine_warm_band_period(void)
 {
-    const char *value = getenv("OPENMX_EIGEN_REFINE_WARM_PERIOD");
+    const char *value = openmx_env_get("OPENMX_EIGEN_REFINE_WARM_PERIOD");
 
     if (value == NULL || value[0] == '\0') return 0;
     return (0 < atoi(value)) ? atoi(value) : 0;
@@ -1040,7 +1041,7 @@ extern "C" int openmx_eigen_refine_size_ok(int n)
     static long min_n = -1;
 
     if (min_n < 0) {
-        const char *value = getenv("OPENMX_EIGEN_REFINE_MIN_N");
+        const char *value = openmx_env_get("OPENMX_EIGEN_REFINE_MIN_N");
 
         min_n = 1000;
         if (value != NULL && value[0] != '\0') {

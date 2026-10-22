@@ -1,4 +1,5 @@
 #include "openmx_stdout_level.h"
+#include "openmx_env.h"
 #include <magma_v2.h>
 #include "hip_runtime_compat.h"
 #include "openmx_gpu_arch_policy.h"
@@ -75,7 +76,7 @@ int use_magma_ozaki2()
     static int use = -1;
 
     if (use < 0) {
-        const char *env = std::getenv("OPENMX_MAGMA_OZAKI2");
+        const char *env = openmx_env_get("OPENMX_MAGMA_OZAKI2");
         use = (env == nullptr || env[0] == '\0') ? 1 : (std::atoi(env) != 0);
         if (use) {
             setenv("MAGMA_OZAKI2_ALGO", "1stage", 0);
@@ -93,7 +94,7 @@ int use_magma_ozaki2()
 
 int env_flag(const char *name, int dflt)
 {
-    const char *v = std::getenv(name);
+    const char *v = openmx_env_get(name);
 
     if (v == nullptr || v[0] == '\0') return dflt;
     return std::atoi(v) != 0;
@@ -102,7 +103,7 @@ int env_flag(const char *name, int dflt)
 /* a nonnegative int from the environment; unset or malformed: dflt */
 int env_count(const char *name, int dflt)
 {
-    const char *v = std::getenv(name);
+    const char *v = openmx_env_get(name);
     char       *end = nullptr;
     long        value;
 
@@ -140,7 +141,7 @@ int eigen_retry_policy()
 int eigensolver_env_choice()
 {
     static const int choice = []() {
-        const char *env = std::getenv("OPENMX_GPU_EIGENSOLVER");
+        const char *env = openmx_env_get("OPENMX_GPU_EIGENSOLVER");
 
         if (env != nullptr) {
             if (strcasecmp(env, "hipsolver") == 0) return 1;
@@ -175,10 +176,10 @@ int magma_entry_reroute(int n)
 size_t gpusolver_cache_limit_bytes()
 {
     static const size_t limit = []() {
-        const char *s = std::getenv("OPENMX_GPUSOLVER_CACHE_MB");
+        const char *s = openmx_env_get("OPENMX_GPUSOLVER_CACHE_MB");
         size_t      bytes = static_cast<size_t>(64) << 20;
 
-        if (s == nullptr || s[0] == '\0') s = std::getenv("OPENMX_CUSOLVER_CACHE_MB");
+        if (s == nullptr || s[0] == '\0') s = openmx_env_get("OPENMX_CUSOLVER_CACHE_MB");
         if (s != nullptr && s[0] != '\0' && s[0] != '-') {
             char              *end = nullptr;
             unsigned long long mb;
@@ -459,7 +460,7 @@ extern "C" int openmx_gpu_is_apu(void)
         return cached;
     }
 
-    const char *env = std::getenv("OPENMX_GPU_ASSUME_APU");
+    const char *env = openmx_env_get("OPENMX_GPU_ASSUME_APU");
     if (env != nullptr && *env != '\0') {
         cached = (std::atoi(env) != 0) ? 1 : 0;
         return cached;
@@ -473,7 +474,7 @@ extern "C" int openmx_gpu_is_apu(void)
     }
     cached = (prop.integrated != 0) ? 1 : 0;
 
-    if (std::getenv("OPENMX_GPU_VERBOSE") != nullptr && MYID_MPI_COMM_WORLD == 0) {
+    if (openmx_env_get("OPENMX_GPU_VERBOSE") != nullptr && MYID_MPI_COMM_WORLD == 0) {
         std::fprintf(stderr, "openmx: GPU '%s' integrated(APU)=%d\n", prop.gcnArchName, cached);
         std::fflush(stderr);
     }

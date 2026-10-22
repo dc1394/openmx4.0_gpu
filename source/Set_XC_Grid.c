@@ -258,8 +258,7 @@ static void SXG_XC_PBE(double *dens, double GDENS[3][2], double *Exc, double *DE
 
 static int SXG_gpu_enabled(void)
 {
-  const char *env=openmx_env_get("OPENMX_XC_GRID_GPU");
-  return !env || !*env || atoi(env)!=0;
+  return openmx_env_flag_at(OPENMX_ENV_XC_GRID_GPU, 1);
 }
 
 static size_t SXG_arena_off(size_t *pos, size_t bytes)

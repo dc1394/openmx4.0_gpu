@@ -1052,9 +1052,9 @@ elpa_cosma_memory.o: elpa_cosma_memory.cpp $(GPUSOLVER2_STAMP)
 openmx_host_memory.o: openmx_host_memory.c openmx_host_memory.h
 	$(CC_NOACC_O3) -c openmx_host_memory.c
 # The environment settings of the run (every reader includes openmx_env.h).
-openmx_env.o: openmx_env.c openmx_env.h
+openmx_env.o: openmx_env.c openmx_env.h openmx_env_registry.h
 	$(CC_NOACC_O3) -c openmx_env.c
-$(OBJS): openmx_env.h
+$(OBJS): openmx_env.h openmx_env_registry.h
 openmx_cluster_capacity.o: openmx_cluster_capacity.c openmx_cluster_capacity.h openmx_mgpu_runtime.h elpa_cosma_bridge.h openmx_stdout_level.h openmx_host_memory.h
 	$(CC_NOACC_O3) -c openmx_cluster_capacity.c
 openmx_dense_cpu.o: openmx_dense_cpu.c openmx_dense_cpu.h

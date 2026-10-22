@@ -15,6 +15,7 @@
 
 #include "mpi.h"
 #include "openmx_common.h"
+#include "openmx_env.h"
 #include "openmx_solver_workspace.h"
 #include "openmx_native_resources.h"
 OPENMX_NATIVE_RESOURCE_GROUP(Band_DFT_NonCol,Band_DFT_NonCol_Release_GPU_Caches)
@@ -63,7 +64,7 @@ static int BandNonCol_SolveTimingEnabled(void)
 {
     static int enabled = -1;
     if (enabled < 0) {
-        const char *value = getenv("OPENMX_SOLVE_TIMING");
+        const char *value = openmx_env_get("OPENMX_SOLVE_TIMING");
         enabled = (value != NULL && atoi(value) != 0);
     }
     return enabled;
@@ -248,7 +249,7 @@ static void BandNonCol_DenseGpu_Destroy(void)
 static int BandNonCol_DeviceEigenvectorDMRequested(void)
 {
     if (BandNonCol_mgpu_host_dense) return 0;
-    const char *value = getenv("OPENMX_NC_DEVICE_EIGENVECTOR_DM");
+    const char *value = openmx_env_get("OPENMX_NC_DEVICE_EIGENVECTOR_DM");
 
     return (value!=NULL && atoi(value)!=0);
 }
@@ -256,14 +257,14 @@ static int BandNonCol_DeviceEigenvectorDMRequested(void)
 static int BandNonCol_BacktransformBarrierRequested(void)
 {
     if (BandNonCol_mgpu_host_dense) return 0;
-    const char *value = getenv("OPENMX_NC_BACKTRANSFORM_BARRIER");
+    const char *value = openmx_env_get("OPENMX_NC_BACKTRANSFORM_BARRIER");
 
     return (value!=NULL && atoi(value)!=0);
 }
 
 static int BandNonCol_DenseBufferCacheEnabled(void)
 {
-    const char *value = getenv("OPENMX_NC_DENSE_BUFFER_CACHE");
+    const char *value = openmx_env_get("OPENMX_NC_DENSE_BUFFER_CACHE");
 
     /* The direct DM path consumes d_C2 after the global chemical-potential
        phase, so its opt-in necessarily extends the dense workspace lifetime. */
@@ -598,15 +599,15 @@ static void BandNonCol_GpuSolver_ReleaseDeviceWorkspace(void)
 
 static void BandNonCol_SetDenseGemmul8Defaults(void)
 {
-    if (getenv("OPENMX_GEMMUL8_MAX_WORKSPACE_PERCENT")==NULL &&
-        getenv("GEMMUL8_MAX_WORKSPACE_PERCENT")==NULL){
+    if (openmx_env_get("OPENMX_GEMMUL8_MAX_WORKSPACE_PERCENT")==NULL &&
+        openmx_env_get("GEMMUL8_MAX_WORKSPACE_PERCENT")==NULL){
         setenv("OPENMX_GEMMUL8_MAX_WORKSPACE_PERCENT","50",0);
     }
 }
 
 static int BandNonCol_GemmWorkspaceTurnRelease(void)
 {
-    const char *value = getenv("OPENMX_BAND_GEMMUL8_TURN_RELEASE");
+    const char *value = openmx_env_get("OPENMX_BAND_GEMMUL8_TURN_RELEASE");
 
     if (value==NULL){
         return 1;
@@ -616,7 +617,7 @@ static int BandNonCol_GemmWorkspaceTurnRelease(void)
 
 static int BandNonCol_HipSolverWorkspaceTurnRelease(void)
 {
-    const char *value = getenv("OPENMX_NC_HIPSOLVER_TURN_RELEASE");
+    const char *value = openmx_env_get("OPENMX_NC_HIPSOLVER_TURN_RELEASE");
 
     if (value==NULL){
         /* On a unified-memory APU, retaining one large workspace in every
@@ -629,7 +630,7 @@ static int BandNonCol_HipSolverWorkspaceTurnRelease(void)
 
 static int BandNonCol_MagmaWorkspaceTurnRelease(void)
 {
-    const char *value = getenv("OPENMX_NC_MAGMA_TURN_RELEASE");
+    const char *value = openmx_env_get("OPENMX_NC_MAGMA_TURN_RELEASE");
 
     if (value==NULL) return openmx_gpu_is_apu();
     return (atoi(value)!=0);
@@ -685,13 +686,13 @@ int BandNonCol_HamiltonianUseHipSolver(void)
     const char *value;
 
     if (!openmx_gpu_eigensolver_use_hipsolver()) return 0;
-    value = getenv("OPENMX_NC_HAMILTONIAN_EIGENSOLVER");
+    value = openmx_env_get("OPENMX_NC_HAMILTONIAN_EIGENSOLVER");
     return (value!=NULL && strcasecmp(value,"hipsolver")==0);
 }
 
 static int BandNonCol_SerializeGpuSolverGpuTurns(void)
 {
-    const char *value = getenv("OPENMX_GPUSOLVER_SERIAL_GPU_TURNS");
+    const char *value = openmx_env_get("OPENMX_GPUSOLVER_SERIAL_GPU_TURNS");
 
     if (value==NULL){
         return 1;
@@ -705,11 +706,11 @@ static int BandNonCol_AutoGpuTurnLimit(int requested, int n, int n2, int MaxN, i
 static int BandNonCol_GpuTurnGroup(int n, int n2, int MaxN, int size_H1,
                                    int owns_dense_rank, int myid0)
 {
-    const char *value = getenv("OPENMX_BAND_GPU_TURN_GROUP");
+    const char *value = openmx_env_get("OPENMX_BAND_GPU_TURN_GROUP");
     long group;
 
     if (value==NULL){
-        value = getenv("OPENMX_BAND_GPU_MAX_RANKS_PER_DEVICE");
+        value = openmx_env_get("OPENMX_BAND_GPU_MAX_RANKS_PER_DEVICE");
         if (value==NULL){
             return BandNonCol_AutoGpuTurnLimit(4,n,n2,MaxN,size_H1,
                                                owns_dense_rank,myid0);
@@ -735,7 +736,7 @@ static int BandNonCol_MaxConcurrentKGpuTurns(int n, int n2, int MaxN, int size_H
                                              int owns_dense_rank, int myid0)
 {
     const int   max_requested = 4;
-    const char *value = getenv("OPENMX_BAND_GPU_MAX_CONCURRENT_K");
+    const char *value = openmx_env_get("OPENMX_BAND_GPU_MAX_CONCURRENT_K");
     long limit;
     int requested = max_requested;
 
@@ -755,7 +756,7 @@ static int BandNonCol_MaxConcurrentKGpuTurns(int n, int n2, int MaxN, int size_H
                                            owns_dense_rank,myid0);
     }
 
-    value = getenv("OPENMX_BAND_GPU_MAX_RANKS_PER_DEVICE");
+    value = openmx_env_get("OPENMX_BAND_GPU_MAX_RANKS_PER_DEVICE");
     if (value!=NULL){
         limit = strtol(value,NULL,10);
         if (limit<1L){
@@ -1037,7 +1038,7 @@ int Band_DFT_NonCol_GpuSwitchNum(void)
     static int cached = -1;
 
     if (cached < 0) {
-        const char *value = getenv("OPENMX_BAND_NONCOL_GPU_SWITCH_NUM");
+        const char *value = openmx_env_get("OPENMX_BAND_NONCOL_GPU_SWITCH_NUM");
         int parsed;
 
         cached = BAND_NONCOL_GPU_CPU_SWITCH_NUM;
@@ -1357,7 +1358,7 @@ static void BandNonCol_AbortWithMessage(const char *msg)
 
 static int BandNonCol_GpuVerbose(void)
 {
-    const char *value = getenv("OPENMX_GPU_VERBOSE");
+    const char *value = openmx_env_get("OPENMX_GPU_VERBOSE");
 
     return (value != NULL && value[0] == '1');
 }
@@ -1496,7 +1497,7 @@ static size_t BandNonCol_GpuLibraryReserveBytes(void)
     static int checked = 0;
 
     if (!checked){
-        const char *env = getenv("OPENMX_BAND_GPU_RESERVE_MB");
+        const char *env = openmx_env_get("OPENMX_BAND_GPU_RESERVE_MB");
         long mib = 512L;
         if (env!=NULL && env[0]!='\0'){
             long value = atol(env);
@@ -1864,7 +1865,7 @@ static int BandNonCol_RootDenseParallelKWorldsFit(int n, int n2, int MaxN, int s
 
 static int BandNonCol_NativeGpuDiagFits(int n,int n2,int MaxN,int size_H1,int owns_dense)
 {
-    const char *env=getenv("OPENMX_BAND_GPU_DIAG");
+    const char *env=openmx_env_get("OPENMX_BAND_GPU_DIAG");
     size_t required=BandNonCol_RootDenseDeviceBytes(n,n2,MaxN,size_H1);
     size_t free_bytes=0,total_bytes=0,reserve=0,fixed_all=0;
     int local_fit=1,fit=1,device_ranks;
@@ -1908,7 +1909,7 @@ static int BandNonCol_NativeGpuDiagFits(int n,int n2,int MaxN,int size_H1,int ow
 
 static int BandNonCol_GpuDiagFits(int n,int n2,int MaxN,int size_H1,int owns_dense)
 {
-    const char *enabled=getenv("OPENMX_BAND_GPU_DIAG");
+    const char *enabled=openmx_env_get("OPENMX_BAND_GPU_DIAG");
     BandNonCol_mgpu_host_dense=0;
     if (enabled && atoi(enabled)==0 && !openmx_mgpu_host_required()) {
         BandNonCol_gpu_dense_refused=1;
@@ -2530,7 +2531,7 @@ static int BandNonCol_BuildOccupationWeightsDense(int kmin, int kmax, const doub
    Opt out with OPENMX_BAND_NONCOL_GPU_DM=0. */
 static int BandNonCol_UseGpuFallbackDM(int n2, size_t evec_bytes)
 {
-    const char *value = getenv("OPENMX_BAND_NONCOL_GPU_DM");
+    const char *value = openmx_env_get("OPENMX_BAND_NONCOL_GPU_DM");
     size_t free_bytes = 0, total_bytes = 0;
 
     if (value != NULL && atoi(value) == 0) return 0;
@@ -3448,7 +3449,7 @@ static size_t BandNonCol_RefineBasisLimit(void)
     static int    checked = 0;
 
     if (!checked) {
-        const char        *env = getenv("OPENMX_BAND_REFINE_BASIS_MB");
+        const char        *env = openmx_env_get("OPENMX_BAND_REFINE_BASIS_MB");
         double             cap = (env == NULL) ? 1024.0 : atof(env);
         unsigned long long available_kib = 0;
         int                ranks = openmx_gpu_local_size_noncollective();
@@ -3992,7 +3993,7 @@ static void BandNonCol_RootDenseRefinedSecondHalf(int n, int n2, int MaxN, int k
    Agree collectively before skipping any of the fallback collectives. */
 static int BandNonCol_PackedKCacheReady(int owns_dense, int size_H1)
 {
-    const char *env = getenv("OPENMX_BAND_NONCOL_PACKED_CACHE");
+    const char *env = openmx_env_get("OPENMX_BAND_NONCOL_PACKED_CACHE");
     int ready = (env == NULL || atoi(env) != 0) &&
         Set_Hamiltonian_GpuSolver_Packed_CacheReady() &&
         Set_Hamiltonian_GpuSolver_Packed_OrderMode() == 1 &&
@@ -4019,7 +4020,7 @@ static int BandNonCol_PackedKCacheReady(int owns_dense, int size_H1)
    at 1024 MiB per rank (OPENMX_BAND_NONCOL_KCACHE_MB=0 disables it). */
 static size_t BandNonCol_KCacheLimit(void)
 {
-    const char *env = getenv("OPENMX_BAND_NONCOL_KCACHE_MB");
+    const char *env = openmx_env_get("OPENMX_BAND_NONCOL_KCACHE_MB");
     double cap = env == NULL ? 1024.0 : atof(env);
     FILE *file;
     char line[256];
@@ -4045,7 +4046,7 @@ static size_t BandNonCol_KCacheLimit(void)
    its ranks; 0 when /proc/meminfo cannot be read. */
 static size_t BandNonCol_HostCacheLimit(const char *name, double default_mib, unsigned fraction)
 {
-    const char *env = getenv(name);
+    const char *env = openmx_env_get(name);
     double cap = (env == NULL) ? default_mib : atof(env);
     unsigned long long available_kib = 0;
     int ranks = openmx_gpu_local_size_noncollective();
@@ -5253,7 +5254,7 @@ static double Band_DFT_NonCol_owned(char *mode,
        makes the turn groups of both passes, so the root's
        OPENMX_BAND_NONCOL_INTERLEAVE_K (default 1) holds for every rank. */
     if (myid0 == Host_ID) {
-      const char *interleave = getenv("OPENMX_BAND_NONCOL_INTERLEAVE_K");
+      const char *interleave = openmx_env_get("OPENMX_BAND_NONCOL_INTERLEAVE_K");
       if (interleave != NULL) interleave_k = (atoi(interleave) != 0);
     }
     MPI_Bcast(&interleave_k, 1, MPI_INT, Host_ID, mpi_comm_level1);
@@ -6663,7 +6664,7 @@ static double Band_DFT_NonCol_owned(char *mode,
   /* Debug hook: exit cleanly right after the first eigen phase so that
      profilers (rocprofv3) flush their traces.  OPENMX_ABORT_AFTER_EIGEN=1. */
   {
-    const char *abort_after_eigen = getenv("OPENMX_ABORT_AFTER_EIGEN");
+    const char *abort_after_eigen = openmx_env_get("OPENMX_ABORT_AFTER_EIGEN");
     if (abort_after_eigen != NULL && atoi(abort_after_eigen) != 0){
       fflush(stdout);
       fflush(stderr);
@@ -7464,7 +7465,7 @@ static double Band_DFT_NonCol_owned(char *mode,
        and call (the packed matrices are Set_Hamiltonian's shared copy, or
        gathered per turn group of the density-matrix pass unless every
        owner of the group kept its eigenvectors) */
-    const char *trace = getenv("OPENMX_BAND_NONCOL_CACHE_TRACE");
+    const char *trace = openmx_env_get("OPENMX_BAND_NONCOL_CACHE_TRACE");
 
     if (trace != NULL && atoi(trace) != 0) {
       printf("BAND_NONCOL_CACHE rank=%d SCF=%d evec_hits=%d overlap_hits=%d evec=%.1f MiB overlap=%.1f MiB "

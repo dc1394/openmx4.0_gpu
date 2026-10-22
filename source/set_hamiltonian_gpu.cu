@@ -684,8 +684,7 @@ extern "C" int Set_Hamiltonian_Cuda_Density_FP64_Range(
 {
     if (output_first > output_last || output_last > output_count) return 1;
     if (pair_count <= 0 || spin_count <= 0 || max_no <= 0 || max_nolg <= 0 || output_first == output_last) return 0;
-    const char *enabled = openmx_env_get("OPENMX_SETDEN_FP64_CUDA");
-    if (enabled != nullptr && enabled[0] != '\0' && std::atoi(enabled) == 0) return 1;
+    if (!openmx_env_flag_at(OPENMX_ENV_SETDEN_FP64_CUDA, 1)) return 1;
     if (max_no > 48 || spin_count > 4) return 1;
     (void)cudaGetLastError();
     /* A100 measurements favor splitting the 48-orbital kernel tier:
@@ -694,9 +693,8 @@ extern "C" int Set_Hamiltonian_Cuda_Density_FP64_Range(
        72 KiB of shared memory.  Keep the smaller tiers unsplit: extra
        orbital reads outweighed this benefit for 26 orbitals / 2 spins.
        Explicit 0/1 overrides retain both paths for other workloads. */
-    const char *split = openmx_env_get("OPENMX_SETDEN_FP64_SPLIT_SPIN");
-    const bool split_spin = spin_count > 1 &&
-        ((split != nullptr && split[0] != '\0') ? std::atoi(split) != 0 : max_no > 32);
+    const int split_control = openmx_env_flag_at(OPENMX_ENV_SETDEN_FP64_SPLIT_SPIN, -1);
+    const bool split_spin = spin_count > 1 && (0 <= split_control ? split_control != 0 : max_no > 32);
     const std::size_t shared_bytes = static_cast<std::size_t>(split_spin ? 1 : spin_count) * max_no * max_no * sizeof(double);
     int device = 0, max_shared = 0;
     if (cudaGetDevice(&device) != cudaSuccess) return 1;
@@ -798,9 +796,9 @@ static int Set_Hamiltonian_Cuda_MatrixElements_Single(
     int sms = 0;
     if (mode == 0) {
         int major = 0, minor = 0;
-        const char *control = openmx_env_get("OPENMX_SETHAM_FP64_TILED");
+        const int control = openmx_env_flag_at(OPENMX_ENV_SETHAM_FP64_TILED, -1);
         if (cudaDeviceGetAttribute(&sms, cudaDevAttrMultiProcessorCount, device) != cudaSuccess) return -1;
-        if (control && *control) fp64_tiled = std::atoi(control) != 0;
+        if (0 <= control) fp64_tiled = control != 0;
         else if (cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, device) == cudaSuccess &&
                  cudaDeviceGetAttribute(&minor, cudaDevAttrComputeCapabilityMinor, device) == cudaSuccess)
             fp64_tiled = major == 8 && minor == 0;
@@ -825,8 +823,8 @@ static int Set_Hamiltonian_Cuda_MatrixElements_Single(
         const std::size_t blocks = static_cast<std::size_t>(pair_count) * spin_count * blocks_y;
         int split = static_cast<int>(std::max(std::size_t(1), std::min(std::size_t(32),
             (static_cast<std::size_t>(sms) * 4 + blocks - 1) / blocks)));
-        const char *control = openmx_env_get("OPENMX_SETHAM_FP64_SPLIT");
-        if (control && std::atoi(control) > 0) split = std::min(64, std::atoi(control));
+        const long requested_split = openmx_env_long_at(OPENMX_ENV_SETHAM_FP64_SPLIT, 0);
+        if (requested_split > 0) split = static_cast<int>(std::min(64L, requested_split));
         if (blocks_y > 65535 || static_cast<std::size_t>(split) * spin_count > 65535) return 1;
         const dim3 tiled_grid(pair_count, static_cast<unsigned>(blocks_y), split * spin_count);
         matrix_elements_kernel_fp64_tiled<<<tiled_grid, threads, shared_size(grid_tile)>>>(
@@ -844,12 +842,8 @@ static int Set_Hamiltonian_Cuda_MatrixElements_Single(
         const int half = (max_no + 1) / 2;
         const int max_tiles = spin_count * half * half;
         /* OPENMX_SETHAM_MATEL_SPLIT (default 4): blocks per pair along the grid points */
-        static thread_local int split = 0;
-        if (split == 0) {
-            const char *v = openmx_env_get("OPENMX_SETHAM_MATEL_SPLIT");
-            split = (v != NULL && v[0] != '\0' && atoi(v) > 0) ? atoi(v) : 4;
-            if (split > 64) split = 64;
-        }
+        const long requested_split = openmx_env_long_at(OPENMX_ENV_SETHAM_MATEL_SPLIT, 4);
+        const int split = static_cast<int>(requested_split > 0 ? std::min(64L, requested_split) : 4);
         const dim3 grid2(static_cast<unsigned>(pair_count),
                          static_cast<unsigned>((max_tiles + kThreads - 1) / kThreads), static_cast<unsigned>(split));
         matrix_elements_kernel_df2<<<grid2, block, shared_size(grid_tile)>>>(

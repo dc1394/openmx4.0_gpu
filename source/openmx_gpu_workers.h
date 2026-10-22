@@ -76,8 +76,7 @@ int openmx_gpu_workers_capacity_enabled(void);
 #if OPENMX_GPU_HIP
 static inline int openmx_gpu_workers_requested(void)
 {
-    const char *v=openmx_env_get("OPENMX_GPU_WORKERS");
-    return v && ((v[0]=='1' && v[1]=='\0') || (((v[0]=='o' && v[1]=='n') || (v[0]=='O' && v[1]=='N')) && v[2]=='\0'));
+    return openmx_env_flag_at(OPENMX_ENV_GPU_WORKERS, 0)==1;
 }
 
 /* Fault injection for regression tests: skip only the legacy resident fast
@@ -85,8 +84,7 @@ static inline int openmx_gpu_workers_requested(void)
 #endif
 static inline int openmx_gpu_capacity_test_recovery(void)
 {
-    const char *value = openmx_env_get("OPENMX_GPU_CAPACITY_TEST_RECOVERY");
-    return value && value[0]=='1' && value[1]=='\0';
+    return openmx_env_flag_at(OPENMX_ENV_GPU_CAPACITY_TEST_RECOVERY, 0);
 }
 
 /* Balanced integer cuts without overflowing items * index. */

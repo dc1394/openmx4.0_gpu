@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <math.h>
 #include "openmx_common.h"
+#include "openmx_env.h"
 
 
 #include <string.h>
@@ -548,7 +549,7 @@ void AMD_TotalEnergy_EH0_TwoCenter_Batch_OpenMP(const OpenMXAtomicViews *atomic,
   MPI_Comm node,group;
   int node_rank,node_size,rank,size,device,color,max_pairs,concurrency;
   char bus[32] = {0}, *buses;
-  const char *env = getenv("OPENMX_EH0_GPU_CONCURRENCY");
+  const char *env = openmx_env_get("OPENMX_EH0_GPU_CONCURRENCY");
 
   if (env != NULL && atoi(env)==0) {
     AMD_TotalEnergy_EH0_TwoCenter_Batch_Run(atomic, pair_count,pair_ban,pair_wan2,pair_has_deriv,
@@ -574,7 +575,7 @@ void AMD_TotalEnergy_EH0_TwoCenter_Batch_OpenMP(const OpenMXAtomicViews *atomic,
   concurrency = max_pairs>=8192 ? 1 : size;
   if (env != NULL && atoi(env)>0) concurrency = atoi(env);
   if (concurrency>size) concurrency = size;
-  if (rank==0 && concurrency<size && getenv("OPENMX_GPU_VERBOSE")!=NULL) {
+  if (rank==0 && concurrency<size && openmx_env_get("OPENMX_GPU_VERBOSE")!=NULL) {
     printf("EH0 GPU %s: %d ranks, %d active per turn, maximum %d pairs per rank.\n",
            bus,size,concurrency,max_pairs);
     fflush(stdout);
@@ -1140,8 +1141,8 @@ void AMD_TotalEnergy_Exc0_Batch_OpenMP(const OpenMXAtomicViews *atomic, int Num_
 
 static int TotalEnergy_NativeAdmit(size_t required)
 {
-    const char *gpu=getenv("OPENMX_GPU"),*control=getenv("OPENMX_TOTALENERGY_GPU");
-    const char *workers=getenv("OPENMX_GPU_WORKERS");
+    const char *gpu=openmx_env_get("OPENMX_GPU"),*control=openmx_env_get("OPENMX_TOTALENERGY_GPU");
+    const char *workers=openmx_env_get("OPENMX_GPU_WORKERS");
     int ok=scf_eigen_lib_flag==GPUSOLVER && !(gpu && atoi(gpu)==0) &&
         !(control && atoi(control)==0) && !openmx_gpu_capacity_test_recovery() &&
         !(workers && atoi(workers)==1);
@@ -1164,7 +1165,7 @@ typedef struct {
 
 static int TotalEnergy_GPU_Enabled(void)
 {
-  const char *v=getenv("OPENMX_TOTALENERGY_GPU");
+  const char *v=openmx_env_get("OPENMX_TOTALENERGY_GPU");
   return !v || !*v || atoi(v)!=0;
 }
 

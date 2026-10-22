@@ -67,37 +67,13 @@ static void* Force_checked_malloc(size_t size, const char* file, int line)
     abort();
 }
 
-static int Force_env_flag(const char* name, int default_value)
-{
-    const char* value = openmx_env_get(name);
-
-    if (value == NULL || value[0] == '\0') {
-        return default_value;
-    }
-
-    return atoi(value) != 0;
-}
 
 /* Per-stage overrides inherit the umbrella, as on the HIP backend. */
 static int Force_gpu_stage_default(void)
 {
-    return Force_env_flag("OPENMX_FORCE_GPU", 1);
+    return openmx_env_flag_at(OPENMX_ENV_FORCE_GPU, 1);
 }
 
-static int Force_collective_env_flag(const char* name, int default_value,
-    MPI_Comm comm)
-{
-    int myid;
-    int value = default_value;
-
-    MPI_Comm_rank(comm, &myid);
-    if (myid == 0) {
-        value = Force_env_flag(name, default_value);
-    }
-    MPI_Bcast(&value, 1, MPI_INT, 0, comm);
-
-    return value;
-}
 
 static void Force_profile_report(const char* label, double local_elapsed,
     MPI_Comm comm, int myid, int numprocs)
@@ -652,7 +628,7 @@ static size_t Force3_GpuChunkBudget(void)
 
     int requested=scf_eigen_lib_flag==GPUSOLVER;
     MPI_Allreduce(MPI_IN_PLACE,&requested,1,MPI_INT,MPI_MIN,mpi_comm_level1);
-    if (!requested || !Force_collective_env_flag("OPENMX_FORCE3_GPU", Force_gpu_stage_default(), mpi_comm_level1)) return 0;
+    if (!requested || !openmx_env_flag_at(OPENMX_ENV_FORCE3_GPU, Force_gpu_stage_default())) return 0;
 
     if (openmx_gpu_capacity_test_recovery()) return 0;
     MPI_Comm_split_type(mpi_comm_level1, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, &node_comm);
@@ -696,7 +672,7 @@ static int Force3_GpuDorbMode(void)
     int w, L0;
 
     if (Cnt_switch != 0) return 0;
-    if (!Force_env_flag("OPENMX_FORCE3_GPU_DORB", 1)) return 0;
+    if (!openmx_env_flag_at(OPENMX_ENV_FORCE3_GPU_DORB, 1)) return 0;
 
     for (w = 0; w < SpeciesNum; w++) {
         if (F3_DORB_L0MAX < Spe_MaxL_Basis[w]) return 0;
@@ -2082,13 +2058,7 @@ static void Force_HNL_GpuCase1Run(ForceHNLGpuContext *g,double***** CDM0, const 
    stderr (no collective, unlike Force_profile_report) */
 static int Force_PhaseProfileEnabled(void)
 {
-    static int cached = -1;
-
-    if (cached < 0) {
-        const char* value = openmx_env_get("OPENMX_BAND_PROFILE");
-        cached = (value != NULL && atoi(value) != 0);
-    }
-    return cached;
+    return openmx_env_flag_at(OPENMX_ENV_BAND_PROFILE, 0);
 }
 static void Force_HNL_GpuCase2Run(ForceHNLGpuContext *g,double***** CDM0, const OpenMXElectronicViews *electronic);
 static void Force_CoreHole(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iDM0, const OpenMXElectronicViews *electronic, OpenMXSolverInvocation *scratch);
@@ -2192,11 +2162,9 @@ static double Force_Impl(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixV
     double***** Force5_source = NULL;
     size_t* gpu_atom_terms = NULL;
     size_t gpu_total_terms;
-    const int force_profile = Force_collective_env_flag(
-        "OPENMX_FORCE_PROFILE", 0, mpi_comm_level1);
+    const int force_profile = openmx_env_flag_at(OPENMX_ENV_FORCE_PROFILE, 0);
     const int use_force_openacc = (scf_eigen_lib_flag == GPUSOLVER
-        && Force_collective_env_flag("OPENMX_FORCE_GPU", 1,
-            mpi_comm_level1));
+        && openmx_env_flag_at(OPENMX_ENV_FORCE_GPU, 1));
     const int use_force4_openacc = (use_force_openacc
         && F_VNA_flag == 1
         && (ProExpn_VNA == 0 || ProExpn_VNA == 1));
@@ -3294,7 +3262,7 @@ static double Force_Impl(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixV
 
     if (myid == Host_ID && 0 < level_stdout) {
         printf("  Force calculation #3%s\n",
-            (scf_eigen_lib_flag == GPUSOLVER && Force_env_flag("OPENMX_FORCE3_GPU", Force_gpu_stage_default()))
+            (scf_eigen_lib_flag == GPUSOLVER && openmx_env_flag_at(OPENMX_ENV_FORCE3_GPU, Force_gpu_stage_default()))
                 ? " (GPU-accelerated)" : "");
         fflush(stdout);
     }
@@ -3317,8 +3285,7 @@ static double Force_Impl(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixV
        borrow those tables.  The packed H/S and host eigenvectors survive
        for later output; other solvers retain their existing admission. */
     if (scf_eigen_lib_flag == GPUSOLVER && Solver == 3 &&
-        Force_collective_env_flag("OPENMX_FORCE_RELEASE_SCF_CACHES", 1,
-                                  mpi_comm_level1)) {
+        openmx_env_flag_at(OPENMX_ENV_FORCE_RELEASE_SCF_CACHES, 1)) {
         dtime(&stime);
         Set_Density_Grid_GPU_Invalidate();
         Set_Hamiltonian_Release_OpenACC_DeviceCache();
@@ -3343,7 +3310,7 @@ static double Force_Impl(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixV
         printf("  Force calculation #4%s\n",
             (ProExpn_VNA == 0 && use_force4_openacc) ? " (GPU reduction)"
             : (ProExpn_VNA == 1 && F_VNA_flag == 1 && scf_eigen_lib_flag == GPUSOLVER &&
-               Force_env_flag("OPENMX_FORCE4B_GPU", Force_gpu_stage_default())) ? " (GPU-accelerated)" : "");
+               openmx_env_flag_at(OPENMX_ENV_FORCE4B_GPU, Force_gpu_stage_default())) ? " (GPU-accelerated)" : "");
         fflush(stdout);
     }
 
@@ -4063,7 +4030,7 @@ void Force3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electr
 
     int capacity_enabled=scf_eigen_lib_flag==GPUSOLVER;
     MPI_Allreduce(MPI_IN_PLACE,&capacity_enabled,1,MPI_INT,MPI_MIN,mpi_comm_level1);
-    capacity_enabled=capacity_enabled && Force_collective_env_flag("OPENMX_FORCE3_GPU",Force_gpu_stage_default(),mpi_comm_level1);
+    capacity_enabled=capacity_enabled && openmx_env_flag_at(OPENMX_ENV_FORCE3_GPU, Force_gpu_stage_default());
     int recover=capacity_enabled && !use_gpu_trace,steps=Matomnum,recovered=0;
     MPI_Allreduce(MPI_IN_PLACE,&recover,1,MPI_INT,MPI_MAX,mpi_comm_level1);
     if(recover)MPI_Allreduce(MPI_IN_PLACE,&steps,1,MPI_INT,MPI_MAX,mpi_comm_level1);
@@ -6505,7 +6472,7 @@ static int Force4B_ArchiveBegin(Force4BGpuContext *g, int kind, Force4BArchiveLe
     lease->kind = kind;
     if (kind == 1) { g->flat_dev = lease->first; g->halo_dev = lease->second; }
     else g->c2_dev = lease->first;
-    if (Force_env_flag("OPENMX_FORCE_PROFILE", 0)) {
+    if (openmx_env_flag_at(OPENMX_ENV_FORCE_PROFILE, 0)) {
         fprintf(stderr, "<Force4B> rank %d case=%d archived GPU batch: %.1f MiB uploaded once\n",
                 MYID_MPI_COMM_WORLD, kind, (double)(first_bytes+second_bytes)/1048576.0);
     }
@@ -6519,8 +6486,10 @@ static int Force4B_ArchiveGpuPreferred(int resident)
 {
     int device;
     if(resident || openmx_gpu_capacity_test_recovery())return 1;
-    const char *control=openmx_env_get("OPENMX_FORCE4B_ARCHIVE_GPU");
-    if(control && *control && strcmp(control,"auto")!=0)return atoi(control)!=0;
+    {
+        const int control=openmx_env_flag_at(OPENMX_ENV_FORCE4B_ARCHIVE_GPU,-1);
+        if(0<=control)return control;
+    }
     if(!gpu_rank_device_usable())return 1;
     if(cudaGetDevice(&device)!=cudaSuccess)return 1;
     return !openmx_gpu_device_weak_fp64(device);
@@ -6540,7 +6509,7 @@ static int Force4B_GpuBegin(Type_DS_VNA***** DS_VNA, int stream_case1, int strea
     int requested=scf_eigen_lib_flag==GPUSOLVER;
     MPI_Allreduce(MPI_IN_PLACE,&requested,1,MPI_INT,MPI_MIN,mpi_comm_level1);
     if (!requested) return 0;
-    if (!Force_collective_env_flag("OPENMX_FORCE4B_GPU", Force_gpu_stage_default(), mpi_comm_level1)) return 0;
+    if (!openmx_env_flag_at(OPENMX_ENV_FORCE4B_GPU, Force_gpu_stage_default())) return 0;
     if (stream_case1 && stream_case2) return 0;
 
     MPI_Comm_split_type(mpi_comm_level1, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, &node_comm);
@@ -7083,16 +7052,8 @@ static Force4BCase1Stream F4B_stream1 = { 0 };
 
 static int Force4B_GpuCase1StreamMode(void)
 {
-    int rank, mode = -1;
-
-    MPI_Comm_rank(mpi_comm_level1, &rank);
-    if (rank == 0) {
-        const char* value = openmx_env_get("OPENMX_FORCE4B_CASE1_STREAM");
-        if (value != NULL && value[0] != '\0' && strcmp(value, "auto") != 0)
-            mode = atoi(value) != 0;
-    }
-    MPI_Bcast(&mode, 1, MPI_INT, 0, mpi_comm_level1);
-    return mode;
+    /* -1: auto */
+    return openmx_env_flag_at(OPENMX_ENV_FORCE4B_CASE1_STREAM, -1);
 }
 
 static void Force4B_GpuCase1StreamEnd(void)
@@ -7219,19 +7180,11 @@ static int Force4B_GpuCase1StreamBegin(int full_batch, int mode)
 
     Force4B_GpuCase1StreamEnd();
     if (scf_eigen_lib_flag != GPUSOLVER) return 0;
-    if (!Force_collective_env_flag("OPENMX_FORCE4B_GPU", Force_gpu_stage_default(), mpi_comm_level1)) return 0;
+    if (!openmx_env_flag_at(OPENMX_ENV_FORCE4B_GPU, Force_gpu_stage_default())) return 0;
     if (mode == 0) return 0;
 
     MPI_Comm_rank(mpi_comm_level1, &rank);
-    if (rank == 0) {
-        const char* value = openmx_env_get("OPENMX_FORCE4B_CASE1_STREAM_MB");
-        if (value != NULL && value[0] != '\0' && value[0] != '-') {
-            char* end;
-            unsigned long long parsed = strtoull(value, &end, 10);
-            if (end != value && *end == '\0') cap_mb = parsed;
-        }
-    }
-    MPI_Bcast(&cap_mb, 1, MPI_UNSIGNED_LONG_LONG, 0, mpi_comm_level1);
+    cap_mb = openmx_env_ulong_at(OPENMX_ENV_FORCE4B_CASE1_STREAM_MB, cap_mb);
     MPI_Comm_split_type(mpi_comm_level1, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, &node_comm);
     MPI_Comm_rank(node_comm, &node_rank);
     MPI_Comm_size(node_comm, &node_ranks);
@@ -7479,15 +7432,8 @@ static Force4BCase1Turns F4B_turns1 = { .device_comm = MPI_COMM_NULL };
 
 static int Force4B_GpuCase1TurnsMode(void)
 {
-    int rank, mode = -1;
-    MPI_Comm_rank(mpi_comm_level1, &rank);
-    if (rank == 0) {
-        const char* value = openmx_env_get("OPENMX_FORCE4B_CASE1_TURNS");
-        if (value != NULL && value[0] != '\0' && strcmp(value, "auto") != 0)
-            mode = atoi(value) != 0;
-    }
-    MPI_Bcast(&mode, 1, MPI_INT, 0, mpi_comm_level1);
-    return mode;
+    /* -1: auto */
+    return openmx_env_flag_at(OPENMX_ENV_FORCE4B_CASE1_TURNS, -1);
 }
 
 static void Force4B_GpuCase1TurnsEnd(void)
@@ -7665,7 +7611,7 @@ static int Force4B_GpuCase1TurnsBegin(int full_batch, int stream_mode, int mode,
 
     Force4B_GpuCase1TurnsEnd();
     if (scf_eigen_lib_flag != GPUSOLVER) return 0;
-    if (!Force_collective_env_flag("OPENMX_FORCE4B_GPU", Force_gpu_stage_default(), mpi_comm_level1)) return 0;
+    if (!openmx_env_flag_at(OPENMX_ENV_FORCE4B_GPU, Force_gpu_stage_default())) return 0;
     if (stream_mode == 1 || mode == 0) return 0;
     MPI_Comm_split_type(mpi_comm_level1, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, &node_comm);
     MPI_Comm_rank(node_comm, &rank);
@@ -7852,7 +7798,6 @@ static void Force4B_GpuCase1TurnsRun(const OpenMXVnaMatrixViews *vna, double****
     int on_device = 0, concurrency, local_concurrency, requested = 0;
     size_t free_bytes = 0, total_bytes = 0;
     unsigned long long local_free, min_free, local_arena, max_arena;
-    const char* limit = openmx_env_get("OPENMX_FORCE4B_CASE1_TURN_MAX_RANKS");
     if (g->device_comm == MPI_COMM_NULL) return;
     if (g->enabled) {
         for (int mc = 1; mc <= Matomnum; mc++)
@@ -7870,10 +7815,9 @@ static void Force4B_GpuCase1TurnsRun(const OpenMXVnaMatrixViews *vna, double****
     local_arena = g->enabled ? (unsigned long long)g->plan.bytes : 0;
     MPI_Allreduce(&local_free, &min_free, 1, MPI_UNSIGNED_LONG_LONG, MPI_MIN, g->device_comm);
     MPI_Allreduce(&local_arena, &max_arena, 1, MPI_UNSIGNED_LONG_LONG, MPI_MAX, g->device_comm);
-    if (limit != NULL && *limit != '\0') {
-        char* end;
-        long value = strtol(limit, &end, 10);
-        if (*end == '\0' && value > 0 && value <= INT_MAX) requested = (int)value;
+    {
+        long value = openmx_env_long_at(OPENMX_ENV_FORCE4B_CASE1_TURN_MAX_RANKS, 0);
+        if (value > 0 && value <= INT_MAX) requested = (int)value;
     }
     local_concurrency = Force4B_GpuCase1TurnsConcurrency((size_t)min_free,
         (size_t)max_arena, g->device_ranks, requested);
@@ -8234,16 +8178,8 @@ static Force4BCase2Stream F4B_stream = { 0 };
    OPENMX_FORCE4B_GPU switch always takes precedence. */
 static int Force4B_GpuCase2StreamMode(void)
 {
-    int rank, mode = -1;
-
-    MPI_Comm_rank(mpi_comm_level1, &rank);
-    if (rank == 0) {
-        const char* value = openmx_env_get("OPENMX_FORCE4B_CASE2_STREAM");
-        if (value != NULL && value[0] != '\0' && strcmp(value, "auto") != 0)
-            mode = atoi(value) != 0;
-    }
-    MPI_Bcast(&mode, 1, MPI_INT, 0, mpi_comm_level1);
-    return mode;
+    /* -1: auto */
+    return openmx_env_flag_at(OPENMX_ENV_FORCE4B_CASE2_STREAM, -1);
 }
 
 static void Force4B_GpuCase2Plan(int mc, Force4BCase2Plan* plan, size_t* row_off)
@@ -8307,7 +8243,7 @@ static int Force4B_GpuCase2StreamBegin(int full_batch, int mode)
 
     Force4B_GpuCase2StreamEnd();
     if (scf_eigen_lib_flag != GPUSOLVER) return 0;
-    if (!Force_collective_env_flag("OPENMX_FORCE4B_GPU", Force_gpu_stage_default(), mpi_comm_level1)) return 0;
+    if (!openmx_env_flag_at(OPENMX_ENV_FORCE4B_GPU, Force_gpu_stage_default())) return 0;
     if (mode == 0) return 0;
 
     MPI_Comm_split_type(mpi_comm_level1, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, &node_comm);
@@ -9456,8 +9392,7 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
     MPI_Request request;
 
     static int counter = 0;
-    const int force_profile = Force_collective_env_flag(
-        "OPENMX_FORCE_PROFILE", 0, mpi_comm_level1);
+    const int force_profile = openmx_env_flag_at(OPENMX_ENV_FORCE_PROFILE, 0);
 
     counter++;
 
@@ -9540,8 +9475,7 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
      * device memory.  Keep Force4B on the CPU trace path, which avoids those
      * device buffers and matches the original contraction.
      */
-    const int use_force4b_fused = Force_collective_env_flag(
-        "OPENMX_FORCE4B_FUSED", 1, mpi_comm_level1);
+    const int use_force4b_fused = openmx_env_flag_at(OPENMX_ENV_FORCE4B_FUSED, 1);
     int f4b_gpu = 0;
     int f4b_gpu_case1 = 0;
     int f4b_stream_case1 = 0;

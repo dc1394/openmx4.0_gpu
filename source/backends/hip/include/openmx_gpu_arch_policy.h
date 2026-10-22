@@ -5,6 +5,7 @@
    and from the consumer APUs and Radeon GPUs.  The suffix contains target
    features, for example gfx942:sramecc+:xnack+. */
 #include <string.h>
+#include "openmx_env.h"
 
 static inline int openmx_gpu_is_mi300a_arch(const char *arch, int integrated)
 {
@@ -27,7 +28,7 @@ static inline int openmx_gpu_is_mi300a_arch(const char *arch, int integrated)
 static inline int openmx_gpu_device_is_mi300a(void)
 {
     static std::atomic<int> cached{-1};
-    const char *enabled = std::getenv("OPENMX_GPU");
+    const char *enabled = openmx_env_get("OPENMX_GPU");
     int choice;
 
     if (enabled != NULL && enabled[0] != '\0' && std::atoi(enabled) == 0) return 0;

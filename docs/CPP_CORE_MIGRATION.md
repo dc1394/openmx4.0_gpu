@@ -386,8 +386,9 @@ HIP では対象ビルドの互換ヘッダー・定義も渡してください�
 結果と、書き手に基づく所有権の分類、ゲートの使い方は
 [大域状態の利用監査](GLOBAL_STATE_AUDIT.md) と、生成物の
 [利用一覧](GLOBAL_STATE_INVENTORY.md) にあります。
-環境変数は `source/openmx_env.c` の設定レジストリ（`openmx_env_get()`、起動時に一度だけ写し取る）
-経由で読み、`getenv` の直接呼び出しとレジストリに無い名前は同じゲートで増加を止めます。
+環境変数は `source/openmx_env_registry.h` のレジストリ（名前ごとの id と種類、`openmx_env_flag_at()` などの
+型付き O(1) 読み取り、MPI_Init 直後の写し取りと rank 0 からの配布）経由で読み、`getenv` の直接呼び出しと
+レジストリに無い名前は同じゲートで増加を止めます（`tools/update_env_registry.py` が表を保守します）。
 
 ## テスト
 

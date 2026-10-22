@@ -13,6 +13,7 @@
 #include "mpi.h"
 #include "lapack_prototypes.h"
 #include "openmx_common.h"
+#include "openmx_env.h"
 #include "openmx_solver_workspace.h"
 #include "openmx_native_resources.h"
 OPENMX_NATIVE_RESOURCE_GROUP(Band_DFT_Col,Band_DFT_Col_Release_GPU_Caches)
@@ -141,7 +142,7 @@ static void BandCol_KOverlapReset(void)
    original GPU recomputation path available. */
 static size_t BandCol_HostCacheLimit(const char *name, double default_mib)
 {
-    const char *env = getenv(name);
+    const char *env = openmx_env_get(name);
     double cap = env == NULL ? default_mib : atof(env);
     unsigned long long available_kib = 0;
     int ranks = openmx_gpu_local_size_noncollective();
@@ -341,7 +342,7 @@ int Band_DFT_Col_GpuSwitchNum(void)
     static int cached = -1;
 
     if (cached < 0) {
-        const char *value = getenv("OPENMX_BAND_GPU_SWITCH_NUM");
+        const char *value = openmx_env_get("OPENMX_BAND_GPU_SWITCH_NUM");
         int parsed;
 
         cached = BAND_GPU_CPU_SWITCH_NUM;
@@ -373,7 +374,7 @@ static int BandCol_DefaultGpuTurnGroup(void)
 
 static int BandCol_SerializeGpuSolverGpuTurns(void)
 {
-    const char *value = getenv("OPENMX_GPUSOLVER_SERIAL_GPU_TURNS");
+    const char *value = openmx_env_get("OPENMX_GPUSOLVER_SERIAL_GPU_TURNS");
 
     if (value == NULL) {
         return 1;
@@ -383,7 +384,7 @@ static int BandCol_SerializeGpuSolverGpuTurns(void)
 
 static int BandCol_GpuPersistentEnabled(void)
 {
-    const char *value = getenv("OPENMX_BAND_GPU_PERSISTENT");
+    const char *value = openmx_env_get("OPENMX_BAND_GPU_PERSISTENT");
 
     if (value == NULL) {
         /* On an APU (MI300A) the save/load staging between SCF iterations is a
@@ -404,7 +405,7 @@ static int BandCol_GpuPersistentDecide(void)
         } else {
             size_t      free_bytes = 0, total_bytes = 0;
             size_t      min_free = 2048ULL * 1024ULL * 1024ULL;
-            const char *value = getenv("OPENMX_BAND_GPU_PERSISTENT_MIN_FREE_MB");
+            const char *value = openmx_env_get("OPENMX_BAND_GPU_PERSISTENT_MIN_FREE_MB");
 
             if (value != NULL) {
                 long mb = atol(value);
@@ -432,7 +433,7 @@ static int BandCol_GpuPersistentDecide(void)
 
 static int BandCol_GemmWorkspaceTurnRelease(void)
 {
-    const char *value = getenv("OPENMX_BAND_GEMMUL8_TURN_RELEASE");
+    const char *value = openmx_env_get("OPENMX_BAND_GEMMUL8_TURN_RELEASE");
 
     if (value == NULL) {
         /* Keep the GEMMul8 workspace across turns on the memory-rich APU;
@@ -448,18 +449,18 @@ static int BandCol_GemmWorkspaceTurnRelease(void)
    rank into the next SCF is too broad a default for other inputs. */
 static int BandCol_GemmWorkspaceScfRelease(void)
 {
-    const char *value = getenv("OPENMX_BAND_GEMMUL8_TURN_RELEASE");
+    const char *value = openmx_env_get("OPENMX_BAND_GEMMUL8_TURN_RELEASE");
 
     return (value == NULL) ? 1 : (atoi(value) != 0);
 }
 
 static int BandCol_GpuTurnGroup(void)
 {
-    const char *value = getenv("OPENMX_BAND_GPU_TURN_GROUP");
+    const char *value = openmx_env_get("OPENMX_BAND_GPU_TURN_GROUP");
     long        group;
 
     if (value == NULL) {
-        value = getenv("OPENMX_BAND_GPU_MAX_RANKS_PER_DEVICE");
+        value = openmx_env_get("OPENMX_BAND_GPU_MAX_RANKS_PER_DEVICE");
         if (value == NULL) {
             group = BandCol_DefaultGpuTurnGroup();
         } else {
@@ -493,7 +494,7 @@ static int BandCol_GpuTurnGroupForScf(int SCF_iter)
         return BandCol_GpuTurnGroup();
     }
 
-    value = getenv("OPENMX_BAND_GPU_CACHED_TURN_GROUP");
+    value = openmx_env_get("OPENMX_BAND_GPU_CACHED_TURN_GROUP");
     if (value == NULL || *value == '\0') {
         return BandCol_GpuTurnGroup();
     }
@@ -513,7 +514,7 @@ static int BandCol_CacheTraceEnabled(void)
     static int enabled = -1;
 
     if (enabled < 0) {
-        const char *value = getenv("OPENMX_BAND_CACHE_TRACE");
+        const char *value = openmx_env_get("OPENMX_BAND_CACHE_TRACE");
         enabled = (value != NULL && atoi(value) != 0);
     }
     return enabled;
@@ -521,7 +522,7 @@ static int BandCol_CacheTraceEnabled(void)
 
 static int BandCol_AbortAfterEigenScf(void)
 {
-    const char *value = getenv("OPENMX_ABORT_AFTER_EIGEN_SCF");
+    const char *value = openmx_env_get("OPENMX_ABORT_AFTER_EIGEN_SCF");
 
     if (value != NULL && *value != '\0') {
         long scf = strtol(value, NULL, 10);
@@ -530,13 +531,13 @@ static int BandCol_AbortAfterEigenScf(void)
         }
     }
 
-    value = getenv("OPENMX_ABORT_AFTER_EIGEN");
+    value = openmx_env_get("OPENMX_ABORT_AFTER_EIGEN");
     return (value != NULL && atoi(value) != 0) ? 1 : 0;
 }
 
 static int BandCol_MaxConcurrentKGpuTurns(int n)
 {
-    const char *value = getenv("OPENMX_BAND_GPU_MAX_CONCURRENT_K");
+    const char *value = openmx_env_get("OPENMX_BAND_GPU_MAX_CONCURRENT_K");
     long limit;
 
     if (value != NULL) {
@@ -551,7 +552,7 @@ static int BandCol_MaxConcurrentKGpuTurns(int n)
         return (int)limit;
     }
 
-    value = getenv("OPENMX_BAND_GPU_MAX_RANKS_PER_DEVICE");
+    value = openmx_env_get("OPENMX_BAND_GPU_MAX_RANKS_PER_DEVICE");
     if (value != NULL) {
         limit = strtol(value, NULL, 10);
         if (limit < 1L) {
@@ -579,7 +580,7 @@ static size_t BandCol_GpuLibraryReserveBytes(void)
     static int checked = 0;
 
     if (!checked){
-        const char *env = getenv("OPENMX_BAND_GPU_RESERVE_MB");
+        const char *env = openmx_env_get("OPENMX_BAND_GPU_RESERVE_MB");
         long mib = 512L;
         if (env!=NULL && env[0]!='\0'){
             long value = atol(env);
@@ -622,8 +623,8 @@ static int BandCol_DeviceRanksCached(void)
 
 static int BandCol_NativeGpuDenseFits(int n, int owns_dense)
 {
-    const char *env = getenv("OPENMX_BAND_GPU_DIAG");
-    const char *reserve_env = getenv("OPENMX_BAND_GPU_DIAG_RESERVE_MB");
+    const char *env = openmx_env_get("OPENMX_BAND_GPU_DIAG");
+    const char *reserve_env = openmx_env_get("OPENMX_BAND_GPU_DIAG_RESERVE_MB");
     size_t free_bytes=0,total_bytes=0,reserve=(size_t)1024*1024*1024;
     size_t per_rank,required=0,fixed_all;
     int device_ranks;
@@ -694,7 +695,7 @@ static int BandCol_NativeGpuDenseFits(int n, int owns_dense)
 
 static int BandCol_GpuDenseFits(int n,int owns_dense)
 {
-    const char *enabled=getenv("OPENMX_BAND_GPU_DIAG");
+    const char *enabled=openmx_env_get("OPENMX_BAND_GPU_DIAG");
     BandCol_mgpu_host_dense=0;
     if (enabled && atoi(enabled)==0 && !openmx_mgpu_host_required()) return 0;
     int fit=openmx_mgpu_host_required()?0:BandCol_NativeGpuDenseFits(n,owns_dense);
@@ -1325,7 +1326,7 @@ static int BandCol_AccumulateDenseTransposedDM_Device(int n, int nk, int spin, i
    with OPENMX_BAND_GPU_DM=0. */
 static int BandCol_UseGpuFallbackDM(int n)
 {
-    const char *value = getenv("OPENMX_BAND_GPU_DM");
+    const char *value = openmx_env_get("OPENMX_BAND_GPU_DM");
 
     if (value != NULL && atoi(value) == 0) return 0;
     return (scf_eigen_lib_flag == GPUSOLVER && Band_DFT_Col_GpuSwitchNum() <= n);
@@ -1958,7 +1959,7 @@ static int BandCol_SolveTimingEnabled(void)
 {
     static int enabled = -1;
     if (enabled < 0) {
-        const char *value = getenv("OPENMX_SOLVE_TIMING");
+        const char *value = openmx_env_get("OPENMX_SOLVE_TIMING");
         enabled = (value != NULL && atoi(value) != 0);
     }
     return enabled;
@@ -2346,7 +2347,7 @@ static int BandCol_GemmulBackTransformEnabled(void)
     static int enabled = -1;
 
     if (enabled < 0) {
-        const char *value = getenv("OPENMX_BAND_GEMMUL8_BACKTRANSFORM");
+        const char *value = openmx_env_get("OPENMX_BAND_GEMMUL8_BACKTRANSFORM");
         enabled = (value == NULL || atoi(value) != 0);
     }
     return enabled;
@@ -2439,7 +2440,7 @@ static size_t BandCol_RefineBasisLimit(void)
     static int    checked = 0;
 
     if (!checked) {
-        const char        *env = getenv("OPENMX_BAND_REFINE_BASIS_MB");
+        const char        *env = openmx_env_get("OPENMX_BAND_REFINE_BASIS_MB");
         double             cap = (env == NULL) ? 1024.0 : atof(env);
         unsigned long long available_kib = 0;
         int                ranks = openmx_gpu_local_size_noncollective();
@@ -3172,7 +3173,7 @@ static double Band_DFT_Col_owned(int SCF_iter, int knum_i, int knum_j, int knum_
 
     if (SCF_iter == 1 && myid0 == 0) {
         extern void openmx_gpu_zheevd_selftest(const char *label);
-        const char *selftest_env = getenv("OPENMX_ZHEEVD_SELFTEST");
+        const char *selftest_env = openmx_env_get("OPENMX_ZHEEVD_SELFTEST");
         if (selftest_env != NULL && atoi(selftest_env) != 0) {
             openmx_gpu_zheevd_selftest("band_top");
         }
@@ -3615,7 +3616,7 @@ static double Band_DFT_Col_owned(int SCF_iter, int knum_i, int knum_j, int knum_
         /* the order makes the turn groups of both passes: the root's
            OPENMX_BAND_COL_INTERLEAVE_K (default 1) holds for every rank */
         if (myid0 == Host_ID) {
-            const char *interleave = getenv("OPENMX_BAND_COL_INTERLEAVE_K");
+            const char *interleave = openmx_env_get("OPENMX_BAND_COL_INTERLEAVE_K");
             if (interleave != NULL) interleave_k = (atoi(interleave) != 0);
         }
         MPI_Bcast(&interleave_k, 1, MPI_INT, Host_ID, mpi_comm_level1);
@@ -4005,7 +4006,7 @@ diagonalize1:
 
     if (SCF_iter == 1 && myid0 == 0 && use_gpusolver_dense) {
         extern void openmx_gpu_zheevd_selftest(const char *label);
-        const char *selftest_env = getenv("OPENMX_ZHEEVD_SELFTEST");
+        const char *selftest_env = openmx_env_get("OPENMX_ZHEEVD_SELFTEST");
         if (selftest_env != NULL && atoi(selftest_env) != 0) {
             openmx_gpu_zheevd_selftest("band_entry");
         }

@@ -14,6 +14,7 @@
 #include "mpi.h"
 #include "openmx_projector_exchange.h"
 #include "openmx_common.h"
+#include "openmx_env.h"
 #include "openmx_force_workspace.h"
 #include "openmx_orbitals.h"
 #include "openmx_core_vna_matrix.h"
@@ -100,7 +101,7 @@ static void* Force_checked_malloc(size_t size, const char* file, int line)
 
 static int Force_env_flag(const char* name, int default_value)
 {
-    const char* value = getenv(name);
+    const char* value = openmx_env_get(name);
 
     if (value == NULL || value[0] == '\0') {
         return default_value;
@@ -2187,7 +2188,7 @@ static int Force_PhaseProfileEnabled(void)
     static int cached = -1;
 
     if (cached < 0) {
-        const char* value = getenv("OPENMX_BAND_PROFILE");
+        const char* value = openmx_env_get("OPENMX_BAND_PROFILE");
         cached = (value != NULL && atoi(value) != 0);
     }
     return cached;
@@ -7224,7 +7225,7 @@ static int Force4B_GpuCase1StreamMode(void)
 
     MPI_Comm_rank(mpi_comm_level1, &rank);
     if (rank == 0) {
-        const char* value = getenv("OPENMX_FORCE4B_CASE1_STREAM");
+        const char* value = openmx_env_get("OPENMX_FORCE4B_CASE1_STREAM");
         if (value != NULL && value[0] != '\0' && strcmp(value, "auto") != 0)
             mode = atoi(value) != 0;
     }
@@ -7364,7 +7365,7 @@ static int Force4B_GpuCase1StreamBegin(int full_batch, int mode)
 
     MPI_Comm_rank(mpi_comm_level1, &rank);
     if (rank == 0) {
-        const char* value = getenv("OPENMX_FORCE4B_CASE1_STREAM_MB");
+        const char* value = openmx_env_get("OPENMX_FORCE4B_CASE1_STREAM_MB");
         if (value != NULL && value[0] != '\0' && value[0] != '-') {
             char* end;
             unsigned long long parsed = strtoull(value, &end, 10);
@@ -7636,7 +7637,7 @@ static int Force4B_GpuCase1TurnsMode(void)
     int rank, mode = -1;
     MPI_Comm_rank(mpi_comm_level1, &rank);
     if (rank == 0) {
-        const char* value = getenv("OPENMX_FORCE4B_CASE1_TURNS");
+        const char* value = openmx_env_get("OPENMX_FORCE4B_CASE1_TURNS");
         if (value != NULL && value[0] != '\0' && strcmp(value, "auto") != 0)
             mode = atoi(value) != 0;
     }
@@ -8030,7 +8031,7 @@ static void Force4B_GpuCase1TurnsRun(const OpenMXVnaMatrixViews *vna, double****
     int on_device = 0, concurrency, local_concurrency, requested = 0;
     size_t free_bytes = 0, total_bytes = 0;
     unsigned long long local_free, min_free, local_arena, max_arena;
-    const char* limit = getenv("OPENMX_FORCE4B_CASE1_TURN_MAX_RANKS");
+    const char* limit = openmx_env_get("OPENMX_FORCE4B_CASE1_TURN_MAX_RANKS");
     if (g->device_comm == MPI_COMM_NULL) return;
     if (g->enabled) {
         for (int mc = 1; mc <= Matomnum; mc++)
@@ -8414,7 +8415,7 @@ static int Force4B_GpuCase2StreamMode(void)
 
     MPI_Comm_rank(mpi_comm_level1, &rank);
     if (rank == 0) {
-        const char* value = getenv("OPENMX_FORCE4B_CASE2_STREAM");
+        const char* value = openmx_env_get("OPENMX_FORCE4B_CASE2_STREAM");
         if (value != NULL && value[0] != '\0' && strcmp(value, "auto") != 0)
             mode = atoi(value) != 0;
     }

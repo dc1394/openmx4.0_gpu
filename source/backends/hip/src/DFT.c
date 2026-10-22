@@ -17,6 +17,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include "openmx_common.h"
+#include "openmx_env.h"
 #include "openmx_grid_assembly.h"
 #include "openmx_native_resources.h"
 #include "openmx_local_basis.h"
@@ -560,7 +561,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
     }
     {
       extern void openmx_gpu_zheevd_selftest(const char *label);
-      const char *selftest_env = getenv("OPENMX_ZHEEVD_SELFTEST");
+      const char *selftest_env = openmx_env_get("OPENMX_ZHEEVD_SELFTEST");
       if (selftest_env != NULL && atoi(selftest_env) != 0 && MYID_MPI_COMM_WORLD == 0 && MD_iter == 1) {
         openmx_gpu_zheevd_selftest("post_HVNA");
       }
@@ -610,7 +611,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
     {
       extern void openmx_gpu_zheevd_selftest(const char *label);
-      const char *selftest_env = getenv("OPENMX_ZHEEVD_SELFTEST");
+      const char *selftest_env = openmx_env_get("OPENMX_ZHEEVD_SELFTEST");
       if (selftest_env != NULL && atoi(selftest_env) != 0 && MYID_MPI_COMM_WORLD == 0 && MD_iter == 1 &&
           SCF_iter == 1) {
         openmx_gpu_zheevd_selftest("scf1_top");
@@ -690,7 +691,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
       {
         extern void openmx_gpu_zheevd_selftest(const char *label);
-        const char *selftest_env = getenv("OPENMX_ZHEEVD_SELFTEST");
+        const char *selftest_env = openmx_env_get("OPENMX_ZHEEVD_SELFTEST");
         if (selftest_env != NULL && atoi(selftest_env) != 0 && MYID_MPI_COMM_WORLD == 0 && MD_iter == 1) {
           openmx_gpu_zheevd_selftest("post_grids");
         }
@@ -854,7 +855,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
 	{
 	  extern void openmx_gpu_zheevd_selftest(const char *label);
-	  const char *selftest_env = getenv("OPENMX_ZHEEVD_SELFTEST");
+	  const char *selftest_env = openmx_env_get("OPENMX_ZHEEVD_SELFTEST");
 	  if (selftest_env != NULL && atoi(selftest_env) != 0 && MYID_MPI_COMM_WORLD == 0 && MD_iter == 1 &&
 	      SCF_iter == 1) {
 	    openmx_gpu_zheevd_selftest("post_poisson1");
@@ -870,7 +871,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
 	{
 	  extern void openmx_gpu_zheevd_selftest(const char *label);
-	  const char *selftest_env = getenv("OPENMX_ZHEEVD_SELFTEST");
+	  const char *selftest_env = openmx_env_get("OPENMX_ZHEEVD_SELFTEST");
 	  if (selftest_env != NULL && atoi(selftest_env) != 0 && MYID_MPI_COMM_WORLD == 0 && MD_iter == 1 &&
 	      SCF_iter == 1) {
 	    openmx_gpu_zheevd_selftest("post_setham1");
@@ -1019,7 +1020,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
        the density-grid code has an independent service/fallback path, so
        release both the host tables and any device associations. */
     if (DFT_GPU_EigensolverActive() && Solver == 3 && SpinP_switch == 3) {
-      const char *demote_env = getenv("OPENMX_NC_EIGEN_DEMOTE_SETHAM");
+      const char *demote_env = openmx_env_get("OPENMX_NC_EIGEN_DEMOTE_SETHAM");
       if (demote_env == NULL || atoi(demote_env) != 0) {
         Set_Hamiltonian_Invalidate_OpenMP_MatrixElements_Cache();
       }
@@ -1027,7 +1028,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
     {
       extern void openmx_gpu_zheevd_selftest(const char *label);
-      const char *selftest_env = getenv("OPENMX_ZHEEVD_SELFTEST");
+      const char *selftest_env = openmx_env_get("OPENMX_ZHEEVD_SELFTEST");
       if (selftest_env != NULL && atoi(selftest_env) != 0 && MYID_MPI_COMM_WORLD == 0 && MD_iter == 1 &&
           SCF_iter == 1) {
         openmx_gpu_zheevd_selftest("post_pack");
@@ -1424,7 +1425,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
       double bound, normrd;
 
       if (guard_factor<0.0){
-        const char *value = getenv("OPENMX_EIGEN_REFINE_STOP_GUARD");
+        const char *value = openmx_env_get("OPENMX_EIGEN_REFINE_STOP_GUARD");
         guard_factor = 100.0;
         if (value!=NULL && value[0]!='\0'){
           guard_factor = atof(value);

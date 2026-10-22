@@ -5165,9 +5165,7 @@ void Input_std(char *file, OpenMXCoreContext *core)
   {
     int visible=0;
 #if OPENMX_GPU_HIP
-    const char *gpu_control=openmx_env_get("OPENMX_GPU");
-    if (scf_eigen_lib_flag==GPUSOLVER &&
-        !(gpu_control && *gpu_control && atoi(gpu_control)==0) &&
+    if (scf_eigen_lib_flag==GPUSOLVER && openmx_env_flag_at(OPENMX_ENV_GPU, 1) &&
         OpenMXGpuGetDeviceCount(&visible)!=OPENMX_GPU_SUCCESS) {
 #else
     if (scf_eigen_lib_flag==GPUSOLVER && OpenMXGpuGetDeviceCount(&visible)!=OPENMX_GPU_SUCCESS) {

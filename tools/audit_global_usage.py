@@ -41,6 +41,18 @@ GLOBALS_TU = "openmx_globals.c"
 NVHPC_HEADERS = ("omp.h", "openacc.h", "nvhpc_acc_device_type.h", "accel.h")
 ENV_PREFIXES = ("OPENMX_", "GEMMUL8_", "CUDA_MPS_", "NVCOMPILER_", "ACC_")
 RE_ENV_NAME = re.compile(r"^(?:OPENMX|GEMMUL8|CUDA_MPS|NVCOMPILER|ACC)_[A-Z0-9][A-Z0-9_]*$")
+RE_ENV_ROW = re.compile(r'^\s*X\(\w+, "([^"]+)",')
+
+
+def registry_names():
+    """The names of source/openmx_env_registry.h in id order (empty when the file is absent)."""
+    header = SOURCE / "openmx_env_registry.h"
+    if not header.is_file():
+        return []
+    return [m.group(1) for m in (RE_ENV_ROW.match(line) for line in header.read_text().splitlines()) if m]
+
+
+ENV_IDS = registry_names()
 
 NAME = r'@("[^"]+"|[\w.$]+)'
 RE_GLOBAL_DEF = re.compile(r"^" + NAME + r" = (.*?)\b(global|constant)\b\s+(.*)$")
@@ -247,6 +259,11 @@ class Unit:
         m = re.search(r"\)\s*" + NAME + r"\(", rest) or re.search(NAME + r"\(", rest)
         if m:
             callee = unquote(m.group(1))
+        if callee and callee.startswith("openmx_env_") and callee.endswith("_at"):
+            # a registered name read by id: openmx_env_flag_at(i32 <id>, ...)
+            am = re.search(r"\(i32(?: noundef)? (\d+)", rest)
+            if am and int(am.group(1)) < len(ENV_IDS):
+                env.add(ENV_IDS[int(am.group(1))])
         for g in globs:
             if g == callee:
                 continue
@@ -442,8 +459,8 @@ def markdown(report):
     lines += ["", "## Function-local statics", "", "| unit | function | variable | type |", "|---|---|---|---|"]
     for st in report["function_statics"]:
         lines.append(f"| `{st['unit']}` | `{st['function']}` | `{st['variable']}` | `{st['type']}`{' (const)' if st['const'] else ''} |")
-    lines += ["", "## Environment variables read (by name literal)", "",
-              "Every reader goes through the registry of `source/openmx_env.c` (`openmx_env_get`); functions that still call "
+    lines += ["", "## Environment variables read", "",
+              "Every reader goes through the registry of `source/openmx_env_registry.h` (`openmx_env_*_at` by id, or by name); functions that still call "
               "`getenv` directly: " + (", ".join(f"`{f}`" for f in report["direct_getenv"]) or "(none)") + ". "
               "Names read by the C units that the registry does not list: " + (", ".join(f"`{n}`" for n in report["unregistered_env"]) or "(none)") + ".",
               "", "| variable | units |", "|---|---|"]
@@ -518,6 +535,16 @@ def build_report(units, common, globals_index, revision):
         unit_rows.append({"source": u.source, "functions": len(u.functions), "objects": len(touched), "written": len(written),
                           "file_statics": len(u.file_statics), "function_statics": len(u.function_statics),
                           "env": len({e for f in u.functions for e in f["env"]})})
+    # names read through the local id-taking wrappers (gs2_env_long(OPENMX_ENV_X, ...)) and in the
+    # CUDA/C++ units are invisible to the IR scan: take them from the registry tool's text scan
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from update_env_registry import scan_sources
+        for name, use in scan_sources(SOURCE).items():
+            for file in use["files"]:
+                env[name].add(f"source/{file}")
+    except ImportError:
+        pass
     functions.sort(key=lambda f: (-f["objects"], f["unit"], f["name"]))
     unit_rows.sort(key=lambda r: (-(r.get("objects", -1)), r["source"]))
     other_defined = [{"name": n, "defined_in": r.get("defined_in"), "type": r.get("type"), "units": len(r["units"])}
@@ -526,9 +553,8 @@ def build_report(units, common, globals_index, revision):
     # direct getenv() calls outside the registry module, and names the registry lacks
     direct_getenv = sorted({f"{u.source}:{f['name']}" for u in analysed for f in u.functions
                             if f.get("direct_getenv") and Path(u.source).name != "openmx_env.c"})
-    registry_names = set(re.findall(r'^    \{"([A-Z0-9_]+)"', (SOURCE / "openmx_env.c").read_text(), re.M)) \
-        if (SOURCE / "openmx_env.c").is_file() else set()
-    unregistered_env = sorted(n for n in env if registry_names and n not in registry_names)
+    registered = set(ENV_IDS)
+    unregistered_env = sorted(n for n in env if registered and n not in registered)
     summary = {
         "translation units analysed": len(analysed),
         "translation units not analysed": len(units) - len(analysed),
@@ -540,7 +566,7 @@ def build_report(units, common, globals_index, revision):
         "objects with external linkage defined outside openmx_globals.c": len(other_defined),
         "file-scope statics": len(file_statics),
         "function-local statics": len(function_statics),
-        "environment variables (name literals)": len(env),
+        "environment variables (names read, every unit)": len(env),
         "functions calling getenv directly (outside openmx_env.c)": len(direct_getenv),
         "environment names missing from the registry": len(unregistered_env),
     }

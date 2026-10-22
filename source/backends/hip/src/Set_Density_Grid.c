@@ -18,6 +18,7 @@
 #include <time.h>
 #include <math.h>
 #include "openmx_common.h"
+#include "openmx_env.h"
 #include "openmx_grid_assembly.h"
 #include "openmx_gpu_workers.h"
 #include "mpi.h"
@@ -129,7 +130,7 @@ double Set_Density_Grid(OpenMXGridWorkspace *grid, const OpenMXAtomicViews *atom
      the CPU loop).  The single-owner service returns before it. */
   sd_t0 = TStime;
   if (sd_prof < 0){
-    const char *e = getenv("OPENMX_BAND_PROFILE");
+    const char *e = openmx_env_get("OPENMX_BAND_PROFILE");
     sd_prof = (e != NULL && atoi(e) != 0) ? 1 : 0;
   }
 

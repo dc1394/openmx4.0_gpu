@@ -1,18 +1,18 @@
 {
 "scope": "global-state usage of the C translation units of the NVIDIA build",
-"revision": "08cbfa4a",
+"revision": "84ab948c",
 "summary": {
 "translation units analysed": 290,
 "translation units not analysed": 0,
-"functions": 2988,
+"functions": 3007,
 "common-header objects (defined in openmx_globals.c)": 1051,
 "common-header objects referenced by some function": 1045,
 "common-header objects written by some function (direct or through)": 785,
-"function-object edges (common header)": 12914,
+"function-object edges (common header)": 12912,
 "objects with external linkage defined outside openmx_globals.c": 358,
 "file-scope statics": 451,
-"function-local statics": 416,
-"environment variables (name literals)": 156,
+"function-local statics": 386,
+"environment variables (names read, every unit)": 251,
 "functions calling getenv directly (outside openmx_env.c)": 0,
 "environment names missing from the registry": 0
 },
@@ -1957,11 +1957,11 @@
 "Calc_DMmu_Cluster_non_collinear_ScaLAPACK@source/Cluster_DFT_NonCol_DMmu.c->mpi_comm_level1",
 "Calc_DMmu_Cluster_non_collinear_ScaLAPACK@source/Cluster_DFT_NonCol_DMmu.c->natn",
 "Calc_DMmu_Cluster_non_collinear_ScaLAPACK@source/Cluster_DFT_NonCol_DMmu.c->xanes_calc",
-"Calc_ECH.omp_outlined.29@source/Total_Energy.c->M2G",
-"Calc_ECH.omp_outlined.29@source/Total_Energy.c->Spe_Total_CNO",
-"Calc_ECH.omp_outlined.29@source/Total_Energy.c->WhatSpecies",
-"Calc_ECH.omp_outlined.29@source/Total_Energy.c->natn",
-"Calc_ECH.omp_outlined.29@source/Total_Energy.c->time_per_atom",
+"Calc_ECH.omp_outlined.27@source/Total_Energy.c->M2G",
+"Calc_ECH.omp_outlined.27@source/Total_Energy.c->Spe_Total_CNO",
+"Calc_ECH.omp_outlined.27@source/Total_Energy.c->WhatSpecies",
+"Calc_ECH.omp_outlined.27@source/Total_Energy.c->natn",
+"Calc_ECH.omp_outlined.27@source/Total_Energy.c->time_per_atom",
 "Calc_ECH.omp_outlined@source/Total_Energy.c->M2G",
 "Calc_ECH.omp_outlined@source/Total_Energy.c->Spe_Total_CNO",
 "Calc_ECH.omp_outlined@source/Total_Energy.c->SpinP_switch",
@@ -1970,16 +1970,16 @@
 "Calc_ECH.omp_outlined@source/Total_Energy.c->time_per_atom",
 "Calc_ECH@source/Total_Energy.c->SpinP_switch",
 "Calc_ECH@source/Total_Energy.c->mpi_comm_level1",
-"Calc_EH0.omp_outlined.22@source/Total_Energy.c->DecEscc",
-"Calc_EH0.omp_outlined.22@source/Total_Energy.c->EH0_scaling",
-"Calc_EH0.omp_outlined.22@source/Total_Energy.c->Energy_Decomposition_flag",
-"Calc_EH0.omp_outlined.22@source/Total_Energy.c->FNAN",
-"Calc_EH0.omp_outlined.22@source/Total_Energy.c->M2G",
-"Calc_EH0.omp_outlined.22@source/Total_Energy.c->Matomnum",
-"Calc_EH0.omp_outlined.22@source/Total_Energy.c->RMI1",
-"Calc_EH0.omp_outlined.22@source/Total_Energy.c->WhatSpecies",
-"Calc_EH0.omp_outlined.22@source/Total_Energy.c->natn",
-"Calc_EH0.omp_outlined.22@source/Total_Energy.c->time_per_atom",
+"Calc_EH0.omp_outlined.20@source/Total_Energy.c->DecEscc",
+"Calc_EH0.omp_outlined.20@source/Total_Energy.c->EH0_scaling",
+"Calc_EH0.omp_outlined.20@source/Total_Energy.c->Energy_Decomposition_flag",
+"Calc_EH0.omp_outlined.20@source/Total_Energy.c->FNAN",
+"Calc_EH0.omp_outlined.20@source/Total_Energy.c->M2G",
+"Calc_EH0.omp_outlined.20@source/Total_Energy.c->Matomnum",
+"Calc_EH0.omp_outlined.20@source/Total_Energy.c->RMI1",
+"Calc_EH0.omp_outlined.20@source/Total_Energy.c->WhatSpecies",
+"Calc_EH0.omp_outlined.20@source/Total_Energy.c->natn",
+"Calc_EH0.omp_outlined.20@source/Total_Energy.c->time_per_atom",
 "Calc_EH0.omp_outlined@source/Total_Energy.c->Arho_EH0",
 "Calc_EH0.omp_outlined@source/Total_Energy.c->GridX_EH0",
 "Calc_EH0.omp_outlined@source/Total_Energy.c->GridY_EH0",
@@ -2175,11 +2175,11 @@
 "Calc_Ehub@source/Total_Energy.c->WhatSpecies",
 "Calc_Ehub@source/Total_Energy.c->dc_Type",
 "Calc_Ehub@source/Total_Energy.c->mpi_comm_level1",
-"Calc_Ekin.omp_outlined.26@source/Total_Energy.c->M2G",
-"Calc_Ekin.omp_outlined.26@source/Total_Energy.c->Spe_Total_CNO",
-"Calc_Ekin.omp_outlined.26@source/Total_Energy.c->WhatSpecies",
-"Calc_Ekin.omp_outlined.26@source/Total_Energy.c->natn",
-"Calc_Ekin.omp_outlined.26@source/Total_Energy.c->time_per_atom",
+"Calc_Ekin.omp_outlined.24@source/Total_Energy.c->M2G",
+"Calc_Ekin.omp_outlined.24@source/Total_Energy.c->Spe_Total_CNO",
+"Calc_Ekin.omp_outlined.24@source/Total_Energy.c->WhatSpecies",
+"Calc_Ekin.omp_outlined.24@source/Total_Energy.c->natn",
+"Calc_Ekin.omp_outlined.24@source/Total_Energy.c->time_per_atom",
 "Calc_Ekin.omp_outlined@source/Total_Energy.c->Cnt_switch",
 "Calc_Ekin.omp_outlined@source/Total_Energy.c->M2G",
 "Calc_Ekin.omp_outlined@source/Total_Energy.c->Spe_Total_CNO",
@@ -2189,11 +2189,11 @@
 "Calc_Ekin.omp_outlined@source/Total_Energy.c->time_per_atom",
 "Calc_Ekin@source/Total_Energy.c->SpinP_switch",
 "Calc_Ekin@source/Total_Energy.c->mpi_comm_level1",
-"Calc_Ena.omp_outlined.27@source/Total_Energy.c->M2G",
-"Calc_Ena.omp_outlined.27@source/Total_Energy.c->Spe_Total_CNO",
-"Calc_Ena.omp_outlined.27@source/Total_Energy.c->WhatSpecies",
-"Calc_Ena.omp_outlined.27@source/Total_Energy.c->natn",
-"Calc_Ena.omp_outlined.27@source/Total_Energy.c->time_per_atom",
+"Calc_Ena.omp_outlined.25@source/Total_Energy.c->M2G",
+"Calc_Ena.omp_outlined.25@source/Total_Energy.c->Spe_Total_CNO",
+"Calc_Ena.omp_outlined.25@source/Total_Energy.c->WhatSpecies",
+"Calc_Ena.omp_outlined.25@source/Total_Energy.c->natn",
+"Calc_Ena.omp_outlined.25@source/Total_Energy.c->time_per_atom",
 "Calc_Ena.omp_outlined@source/Total_Energy.c->Cnt_switch",
 "Calc_Ena.omp_outlined@source/Total_Energy.c->M2G",
 "Calc_Ena.omp_outlined@source/Total_Energy.c->Spe_Total_CNO",
@@ -2204,11 +2204,11 @@
 "Calc_Ena@source/Total_Energy.c->Cnt_switch",
 "Calc_Ena@source/Total_Energy.c->SpinP_switch",
 "Calc_Ena@source/Total_Energy.c->mpi_comm_level1",
-"Calc_Enl.omp_outlined.28@source/Total_Energy.c->M2G",
-"Calc_Enl.omp_outlined.28@source/Total_Energy.c->Spe_Total_CNO",
-"Calc_Enl.omp_outlined.28@source/Total_Energy.c->WhatSpecies",
-"Calc_Enl.omp_outlined.28@source/Total_Energy.c->natn",
-"Calc_Enl.omp_outlined.28@source/Total_Energy.c->time_per_atom",
+"Calc_Enl.omp_outlined.26@source/Total_Energy.c->M2G",
+"Calc_Enl.omp_outlined.26@source/Total_Energy.c->Spe_Total_CNO",
+"Calc_Enl.omp_outlined.26@source/Total_Energy.c->WhatSpecies",
+"Calc_Enl.omp_outlined.26@source/Total_Energy.c->natn",
+"Calc_Enl.omp_outlined.26@source/Total_Energy.c->time_per_atom",
 "Calc_Enl.omp_outlined@source/Total_Energy.c->Cnt_switch",
 "Calc_Enl.omp_outlined@source/Total_Energy.c->M2G",
 "Calc_Enl.omp_outlined@source/Total_Energy.c->Spe_Total_CNO",
@@ -3886,7 +3886,6 @@
 "DCCol_SCache_Prepare@source/Divide_Conquer.c->mpi_comm_level1",
 "DCLNO_GPUProxy_BaseComm@source/Divide_Conquer_LNO.c->mpi_comm_level1",
 "DCLNO_GPUProxy_Init@source/Divide_Conquer_LNO.c->SCF_Gpu_Num",
-"DCLNO_ProfileEnabled@source/Divide_Conquer_LNO.c->mpi_comm_level1",
 "DCLNO_ProfileReport@source/Divide_Conquer_LNO.c->mpi_comm_level1",
 "DCLNO_Solve_Col_GpuSolver@source/Divide_Conquer_LNO.c->level_stdout",
 "DC_AbortWithMessage@source/Divide_Conquer.c->mpi_comm_level1",
@@ -4409,9 +4408,9 @@
 "DIIS_Mixing_Rhok_Normal@source/DIIS_Mixing_Rhok.c->Uele",
 "DIIS_Mixing_Rhok_Normal@source/DIIS_Mixing_Rhok.c->mpi_comm_level1",
 "DIIS_Mixing_Rhok_Normal@source/DIIS_Mixing_Rhok.c->rtv",
-"DIIS_Mixing_VKSk.omp_outlined.13@source/Mixing_V.c->ImVKSk",
-"DIIS_Mixing_VKSk.omp_outlined.13@source/Mixing_V.c->My_NumGridB_CB",
-"DIIS_Mixing_VKSk.omp_outlined.13@source/Mixing_V.c->ReVKSk",
+"DIIS_Mixing_VKSk.omp_outlined.12@source/Mixing_V.c->ImVKSk",
+"DIIS_Mixing_VKSk.omp_outlined.12@source/Mixing_V.c->My_NumGridB_CB",
+"DIIS_Mixing_VKSk.omp_outlined.12@source/Mixing_V.c->ReVKSk",
 "DIIS_Mixing_VKSk.omp_outlined@source/Mixing_V.c->My_NumGridB_CB",
 "DIIS_Mixing_VKSk.omp_outlined@source/Mixing_V.c->Residual_ImVKSk",
 "DIIS_Mixing_VKSk.omp_outlined@source/Mixing_V.c->Residual_ReVKSk",
@@ -4744,13 +4743,13 @@
 "Embedding_Matrix@source/Krylov.c->WhatSpecies",
 "Embedding_Matrix@source/Krylov.c->natn",
 "Embedding_Matrix@source/Krylov.c->rlmax_EC",
-"Embedding_Matrix_trd_raii.omp_outlined.88@source/Krylov.c->EKC_core_size",
-"Embedding_Matrix_trd_raii.omp_outlined.88@source/Krylov.c->RMI1",
-"Embedding_Matrix_trd_raii.omp_outlined.88@source/Krylov.c->S_G2M",
-"Embedding_Matrix_trd_raii.omp_outlined.88@source/Krylov.c->Spe_Total_CNO",
-"Embedding_Matrix_trd_raii.omp_outlined.88@source/Krylov.c->WhatSpecies",
-"Embedding_Matrix_trd_raii.omp_outlined.88@source/Krylov.c->natn",
-"Embedding_Matrix_trd_raii.omp_outlined.88@source/Krylov.c->rlmax_EC",
+"Embedding_Matrix_trd_raii.omp_outlined.83@source/Krylov.c->EKC_core_size",
+"Embedding_Matrix_trd_raii.omp_outlined.83@source/Krylov.c->RMI1",
+"Embedding_Matrix_trd_raii.omp_outlined.83@source/Krylov.c->S_G2M",
+"Embedding_Matrix_trd_raii.omp_outlined.83@source/Krylov.c->Spe_Total_CNO",
+"Embedding_Matrix_trd_raii.omp_outlined.83@source/Krylov.c->WhatSpecies",
+"Embedding_Matrix_trd_raii.omp_outlined.83@source/Krylov.c->natn",
+"Embedding_Matrix_trd_raii.omp_outlined.83@source/Krylov.c->rlmax_EC",
 "Embedding_Matrix_trd_raii.omp_outlined@source/Krylov.c->EKC_core_size",
 "Embedding_Matrix_trd_raii.omp_outlined@source/Krylov.c->RMI1",
 "Embedding_Matrix_trd_raii.omp_outlined@source/Krylov.c->S_G2M",
@@ -5062,8 +5061,8 @@
 "Force2_Kinetic_OpenACC@source/Force.c->SpinP_switch",
 "Force2_Kinetic_OpenACC@source/Force.c->WhatSpecies",
 "Force2_Kinetic_OpenACC@source/Force.c->natn",
-"Force3.omp_outlined.78@source/Force.c->List_YOUSO",
-"Force3.omp_outlined.78@source/Force.c->WhatSpecies",
+"Force3.omp_outlined.73@source/Force.c->List_YOUSO",
+"Force3.omp_outlined.73@source/Force.c->WhatSpecies",
 "Force3.omp_outlined@source/Force.c->CellListAtom",
 "Force3.omp_outlined@source/Force.c->Cnt_switch",
 "Force3.omp_outlined@source/Force.c->E_Field_switch",
@@ -5122,9 +5121,9 @@
 "Force3_GpuTrace@source/Force.c->Cnt_switch",
 "Force3_GpuTrace@source/Force.c->Matomnum",
 "Force3_GpuTrace@source/Force.c->mpi_comm_level1",
-"Force3_GpuTrace_Part.omp_outlined.84@source/Force.c->GListTAtoms1",
-"Force3_GpuTrace_Part.omp_outlined.84@source/Force.c->GListTAtoms2",
-"Force3_GpuTrace_Part.omp_outlined.84@source/Force.c->Orbs_Grid_FNAN",
+"Force3_GpuTrace_Part.omp_outlined.77@source/Force.c->GListTAtoms1",
+"Force3_GpuTrace_Part.omp_outlined.77@source/Force.c->GListTAtoms2",
+"Force3_GpuTrace_Part.omp_outlined.77@source/Force.c->Orbs_Grid_FNAN",
 "Force3_GpuTrace_Part.omp_outlined@source/Force.c->GridN_Atom",
 "Force3_GpuTrace_Part.omp_outlined@source/Force.c->Orbs_Grid",
 "Force3_GpuTrace_Part@source/Force.c->FNAN",
@@ -5191,31 +5190,31 @@
 "Force4@source/Force.c->Matomnum",
 "Force4@source/Force.c->WhatSpecies",
 "Force4@source/Force.c->atv",
-"Force4B.omp_outlined.102@source/Force.c->FNAN",
-"Force4B.omp_outlined.102@source/Force.c->F_G2M",
-"Force4B.omp_outlined.102@source/Force.c->Gxyz",
-"Force4B.omp_outlined.102@source/Force.c->List_YOUSO",
-"Force4B.omp_outlined.102@source/Force.c->M2G",
-"Force4B.omp_outlined.102@source/Force.c->Matomnum",
-"Force4B.omp_outlined.102@source/Force.c->RMI1",
-"Force4B.omp_outlined.102@source/Force.c->Spe_Total_CNO",
-"Force4B.omp_outlined.102@source/Force.c->SpinP_switch",
-"Force4B.omp_outlined.102@source/Force.c->WhatSpecies",
-"Force4B.omp_outlined.102@source/Force.c->natn",
-"Force4B.omp_outlined.102@source/Force.c->time_per_atom",
-"Force4B.omp_outlined.96@source/Force.c->FNAN",
-"Force4B.omp_outlined.96@source/Force.c->F_G2M",
-"Force4B.omp_outlined.96@source/Force.c->Gxyz",
-"Force4B.omp_outlined.96@source/Force.c->List_YOUSO",
-"Force4B.omp_outlined.96@source/Force.c->M2G",
-"Force4B.omp_outlined.96@source/Force.c->Matomnum",
-"Force4B.omp_outlined.96@source/Force.c->RMI1",
-"Force4B.omp_outlined.96@source/Force.c->Rcv_GAN",
-"Force4B.omp_outlined.96@source/Force.c->Spe_Total_CNO",
-"Force4B.omp_outlined.96@source/Force.c->SpinP_switch",
-"Force4B.omp_outlined.96@source/Force.c->WhatSpecies",
-"Force4B.omp_outlined.96@source/Force.c->natn",
-"Force4B.omp_outlined.96@source/Force.c->time_per_atom",
+"Force4B.omp_outlined.88@source/Force.c->FNAN",
+"Force4B.omp_outlined.88@source/Force.c->F_G2M",
+"Force4B.omp_outlined.88@source/Force.c->Gxyz",
+"Force4B.omp_outlined.88@source/Force.c->List_YOUSO",
+"Force4B.omp_outlined.88@source/Force.c->M2G",
+"Force4B.omp_outlined.88@source/Force.c->Matomnum",
+"Force4B.omp_outlined.88@source/Force.c->RMI1",
+"Force4B.omp_outlined.88@source/Force.c->Rcv_GAN",
+"Force4B.omp_outlined.88@source/Force.c->Spe_Total_CNO",
+"Force4B.omp_outlined.88@source/Force.c->SpinP_switch",
+"Force4B.omp_outlined.88@source/Force.c->WhatSpecies",
+"Force4B.omp_outlined.88@source/Force.c->natn",
+"Force4B.omp_outlined.88@source/Force.c->time_per_atom",
+"Force4B.omp_outlined.94@source/Force.c->FNAN",
+"Force4B.omp_outlined.94@source/Force.c->F_G2M",
+"Force4B.omp_outlined.94@source/Force.c->Gxyz",
+"Force4B.omp_outlined.94@source/Force.c->List_YOUSO",
+"Force4B.omp_outlined.94@source/Force.c->M2G",
+"Force4B.omp_outlined.94@source/Force.c->Matomnum",
+"Force4B.omp_outlined.94@source/Force.c->RMI1",
+"Force4B.omp_outlined.94@source/Force.c->Spe_Total_CNO",
+"Force4B.omp_outlined.94@source/Force.c->SpinP_switch",
+"Force4B.omp_outlined.94@source/Force.c->WhatSpecies",
+"Force4B.omp_outlined.94@source/Force.c->natn",
+"Force4B.omp_outlined.94@source/Force.c->time_per_atom",
 "Force4B.omp_outlined@source/Force.c->Cnt_switch",
 "Force4B.omp_outlined@source/Force.c->FNAN",
 "Force4B.omp_outlined@source/Force.c->F_M2G",
@@ -5429,20 +5428,20 @@
 "Force@source/Force.c->Zeeman_NCS_switch",
 "Force@source/Force.c->atomnum",
 "Force@source/Force.c->natn",
-"Force_CoreHole.omp_outlined.187@source/Force.c->Constraint_NCS_switch",
-"Force_CoreHole.omp_outlined.187@source/Force.c->F_G2M",
-"Force_CoreHole.omp_outlined.187@source/Force.c->F_U_flag",
-"Force_CoreHole.omp_outlined.187@source/Force.c->Hub_U_switch",
-"Force_CoreHole.omp_outlined.187@source/Force.c->List_YOUSO",
-"Force_CoreHole.omp_outlined.187@source/Force.c->RMI1",
-"Force_CoreHole.omp_outlined.187@source/Force.c->SO_switch",
-"Force_CoreHole.omp_outlined.187@source/Force.c->Solver",
-"Force_CoreHole.omp_outlined.187@source/Force.c->Spe_Total_CNO",
-"Force_CoreHole.omp_outlined.187@source/Force.c->SpinP_switch",
-"Force_CoreHole.omp_outlined.187@source/Force.c->WhatSpecies",
-"Force_CoreHole.omp_outlined.187@source/Force.c->Zeeman_NCO_switch",
-"Force_CoreHole.omp_outlined.187@source/Force.c->Zeeman_NCS_switch",
-"Force_CoreHole.omp_outlined.187@source/Force.c->natn",
+"Force_CoreHole.omp_outlined.175@source/Force.c->Constraint_NCS_switch",
+"Force_CoreHole.omp_outlined.175@source/Force.c->F_G2M",
+"Force_CoreHole.omp_outlined.175@source/Force.c->F_U_flag",
+"Force_CoreHole.omp_outlined.175@source/Force.c->Hub_U_switch",
+"Force_CoreHole.omp_outlined.175@source/Force.c->List_YOUSO",
+"Force_CoreHole.omp_outlined.175@source/Force.c->RMI1",
+"Force_CoreHole.omp_outlined.175@source/Force.c->SO_switch",
+"Force_CoreHole.omp_outlined.175@source/Force.c->Solver",
+"Force_CoreHole.omp_outlined.175@source/Force.c->Spe_Total_CNO",
+"Force_CoreHole.omp_outlined.175@source/Force.c->SpinP_switch",
+"Force_CoreHole.omp_outlined.175@source/Force.c->WhatSpecies",
+"Force_CoreHole.omp_outlined.175@source/Force.c->Zeeman_NCO_switch",
+"Force_CoreHole.omp_outlined.175@source/Force.c->Zeeman_NCS_switch",
+"Force_CoreHole.omp_outlined.175@source/Force.c->natn",
 "Force_CoreHole.omp_outlined@source/Force.c->Constraint_NCS_switch",
 "Force_CoreHole.omp_outlined@source/Force.c->FNAN",
 "Force_CoreHole.omp_outlined@source/Force.c->F_G2M",
@@ -5622,27 +5621,27 @@
 "Force_HNL_GpuCase2Run_Part@source/Force.c->natn",
 "Force_HNL_GpuCase2Run_Part@source/Force.c->ncn",
 "Force_HNL_capacity@source/Force.c->mpi_comm_level1",
-"Force_Impl.omp_outlined.25@source/Force.c->Cnt_switch",
-"Force_Impl.omp_outlined.25@source/Force.c->Constraint_NCS_switch",
-"Force_Impl.omp_outlined.25@source/Force.c->FNAN",
-"Force_Impl.omp_outlined.25@source/Force.c->F_G2M",
-"Force_Impl.omp_outlined.25@source/Force.c->F_Kin_flag",
-"Force_Impl.omp_outlined.25@source/Force.c->F_U_flag",
-"Force_Impl.omp_outlined.25@source/Force.c->Gxyz",
-"Force_Impl.omp_outlined.25@source/Force.c->Hub_U_occupation",
-"Force_Impl.omp_outlined.25@source/Force.c->Hub_U_switch",
-"Force_Impl.omp_outlined.25@source/Force.c->List_YOUSO",
-"Force_Impl.omp_outlined.25@source/Force.c->M2G",
-"Force_Impl.omp_outlined.25@source/Force.c->Matomnum",
-"Force_Impl.omp_outlined.25@source/Force.c->RMI1",
-"Force_Impl.omp_outlined.25@source/Force.c->SO_switch",
-"Force_Impl.omp_outlined.25@source/Force.c->SpinP_switch",
-"Force_Impl.omp_outlined.25@source/Force.c->WhatSpecies",
-"Force_Impl.omp_outlined.25@source/Force.c->Zeeman_NCO_switch",
-"Force_Impl.omp_outlined.25@source/Force.c->Zeeman_NCS_switch",
-"Force_Impl.omp_outlined.25@source/Force.c->level_stdout",
-"Force_Impl.omp_outlined.25@source/Force.c->natn",
-"Force_Impl.omp_outlined.25@source/Force.c->time_per_atom",
+"Force_Impl.omp_outlined.23@source/Force.c->Cnt_switch",
+"Force_Impl.omp_outlined.23@source/Force.c->Constraint_NCS_switch",
+"Force_Impl.omp_outlined.23@source/Force.c->FNAN",
+"Force_Impl.omp_outlined.23@source/Force.c->F_G2M",
+"Force_Impl.omp_outlined.23@source/Force.c->F_Kin_flag",
+"Force_Impl.omp_outlined.23@source/Force.c->F_U_flag",
+"Force_Impl.omp_outlined.23@source/Force.c->Gxyz",
+"Force_Impl.omp_outlined.23@source/Force.c->Hub_U_occupation",
+"Force_Impl.omp_outlined.23@source/Force.c->Hub_U_switch",
+"Force_Impl.omp_outlined.23@source/Force.c->List_YOUSO",
+"Force_Impl.omp_outlined.23@source/Force.c->M2G",
+"Force_Impl.omp_outlined.23@source/Force.c->Matomnum",
+"Force_Impl.omp_outlined.23@source/Force.c->RMI1",
+"Force_Impl.omp_outlined.23@source/Force.c->SO_switch",
+"Force_Impl.omp_outlined.23@source/Force.c->SpinP_switch",
+"Force_Impl.omp_outlined.23@source/Force.c->WhatSpecies",
+"Force_Impl.omp_outlined.23@source/Force.c->Zeeman_NCO_switch",
+"Force_Impl.omp_outlined.23@source/Force.c->Zeeman_NCS_switch",
+"Force_Impl.omp_outlined.23@source/Force.c->level_stdout",
+"Force_Impl.omp_outlined.23@source/Force.c->natn",
+"Force_Impl.omp_outlined.23@source/Force.c->time_per_atom",
 "Force_Impl.omp_outlined@source/Force.c->CellListAtom",
 "Force_Impl.omp_outlined@source/Force.c->F_Vxc_flag",
 "Force_Impl.omp_outlined@source/Force.c->F_dVHart_flag",
@@ -5997,8 +5996,8 @@
 "Generate_pMatrix_raii@source/Krylov.c->rlmax_EC",
 "Generate_pMatrix_raii@source/Krylov.c->rlmax_EC2",
 "Generate_pMatrix_raii@source/Krylov.c->scale_rc_EKC",
-"Generate_pMatrix_trd_raii.omp_outlined.82@source/Krylov.c->EKC_core_size",
-"Generate_pMatrix_trd_raii.omp_outlined.82@source/Krylov.c->rlmax_EC",
+"Generate_pMatrix_trd_raii.omp_outlined.77@source/Krylov.c->EKC_core_size",
+"Generate_pMatrix_trd_raii.omp_outlined.77@source/Krylov.c->rlmax_EC",
 "Generate_pMatrix_trd_raii.omp_outlined@source/Krylov.c->EKC_core_size",
 "Generate_pMatrix_trd_raii.omp_outlined@source/Krylov.c->EKC_core_size_max",
 "Generate_pMatrix_trd_raii.omp_outlined@source/Krylov.c->RMI1",
@@ -7055,24 +7054,24 @@
 "Krylov_Col_NAO@source/NBO_Krylov.c->ncn",
 "Krylov_Col_NAO@source/NBO_Krylov.c->rlmax_EC",
 "Krylov_Col_NAO@source/NBO_Krylov.c->rlmax_EC2",
-"Krylov_Col_owned.omp_outlined.157@source/Krylov.c->FNAN",
-"Krylov_Col_owned.omp_outlined.157@source/Krylov.c->M2G",
-"Krylov_Col_owned.omp_outlined.157@source/Krylov.c->Matomnum",
-"Krylov_Col_owned.omp_outlined.157@source/Krylov.c->Spe_Total_CNO",
-"Krylov_Col_owned.omp_outlined.157@source/Krylov.c->SpinP_switch",
-"Krylov_Col_owned.omp_outlined.157@source/Krylov.c->WhatSpecies",
-"Krylov_Col_owned.omp_outlined.157@source/Krylov.c->natn",
-"Krylov_Col_owned.omp_outlined.157@source/Krylov.c->time_per_atom",
-"Krylov_Col_owned.omp_outlined.158@source/Krylov.c->Beta",
-"Krylov_Col_owned.omp_outlined.158@source/Krylov.c->ChemP",
-"Krylov_Col_owned.omp_outlined.158@source/Krylov.c->FNAN",
-"Krylov_Col_owned.omp_outlined.158@source/Krylov.c->M2G",
-"Krylov_Col_owned.omp_outlined.158@source/Krylov.c->Matomnum",
-"Krylov_Col_owned.omp_outlined.158@source/Krylov.c->Spe_Total_CNO",
-"Krylov_Col_owned.omp_outlined.158@source/Krylov.c->SpinP_switch",
-"Krylov_Col_owned.omp_outlined.158@source/Krylov.c->WhatSpecies",
-"Krylov_Col_owned.omp_outlined.158@source/Krylov.c->natn",
-"Krylov_Col_owned.omp_outlined.158@source/Krylov.c->time_per_atom",
+"Krylov_Col_owned.omp_outlined.151@source/Krylov.c->FNAN",
+"Krylov_Col_owned.omp_outlined.151@source/Krylov.c->M2G",
+"Krylov_Col_owned.omp_outlined.151@source/Krylov.c->Matomnum",
+"Krylov_Col_owned.omp_outlined.151@source/Krylov.c->Spe_Total_CNO",
+"Krylov_Col_owned.omp_outlined.151@source/Krylov.c->SpinP_switch",
+"Krylov_Col_owned.omp_outlined.151@source/Krylov.c->WhatSpecies",
+"Krylov_Col_owned.omp_outlined.151@source/Krylov.c->natn",
+"Krylov_Col_owned.omp_outlined.151@source/Krylov.c->time_per_atom",
+"Krylov_Col_owned.omp_outlined.152@source/Krylov.c->Beta",
+"Krylov_Col_owned.omp_outlined.152@source/Krylov.c->ChemP",
+"Krylov_Col_owned.omp_outlined.152@source/Krylov.c->FNAN",
+"Krylov_Col_owned.omp_outlined.152@source/Krylov.c->M2G",
+"Krylov_Col_owned.omp_outlined.152@source/Krylov.c->Matomnum",
+"Krylov_Col_owned.omp_outlined.152@source/Krylov.c->Spe_Total_CNO",
+"Krylov_Col_owned.omp_outlined.152@source/Krylov.c->SpinP_switch",
+"Krylov_Col_owned.omp_outlined.152@source/Krylov.c->WhatSpecies",
+"Krylov_Col_owned.omp_outlined.152@source/Krylov.c->natn",
+"Krylov_Col_owned.omp_outlined.152@source/Krylov.c->time_per_atom",
 "Krylov_Col_owned.omp_outlined@source/Krylov.c->ChemP",
 "Krylov_Col_owned.omp_outlined@source/Krylov.c->EC_matrix",
 "Krylov_Col_owned.omp_outlined@source/Krylov.c->EKC_Exact_invS_flag",
@@ -7482,12 +7481,12 @@
 "MixH_IncComputeRow.omp_outlined@source/Mixing_H.c->SpinP_switch",
 "MixH_IncComputeRow.omp_outlined@source/Mixing_H.c->WhatSpecies",
 "MixH_IncComputeRow.omp_outlined@source/Mixing_H.c->natn",
-"MixH_IncMixSweep.omp_outlined.34@source/Mixing_H.c->FNAN",
-"MixH_IncMixSweep.omp_outlined.34@source/Mixing_H.c->M2G",
-"MixH_IncMixSweep.omp_outlined.34@source/Mixing_H.c->Matomnum",
-"MixH_IncMixSweep.omp_outlined.34@source/Mixing_H.c->Spe_Total_NO",
-"MixH_IncMixSweep.omp_outlined.34@source/Mixing_H.c->WhatSpecies",
-"MixH_IncMixSweep.omp_outlined.34@source/Mixing_H.c->natn",
+"MixH_IncMixSweep.omp_outlined.31@source/Mixing_H.c->FNAN",
+"MixH_IncMixSweep.omp_outlined.31@source/Mixing_H.c->M2G",
+"MixH_IncMixSweep.omp_outlined.31@source/Mixing_H.c->Matomnum",
+"MixH_IncMixSweep.omp_outlined.31@source/Mixing_H.c->Spe_Total_NO",
+"MixH_IncMixSweep.omp_outlined.31@source/Mixing_H.c->WhatSpecies",
+"MixH_IncMixSweep.omp_outlined.31@source/Mixing_H.c->natn",
 "MixH_IncMixSweep.omp_outlined@source/Mixing_H.c->FNAN",
 "MixH_IncMixSweep.omp_outlined@source/Mixing_H.c->M2G",
 "MixH_IncMixSweep.omp_outlined@source/Mixing_H.c->Matomnum",
@@ -7495,12 +7494,12 @@
 "MixH_IncMixSweep.omp_outlined@source/Mixing_H.c->WhatSpecies",
 "MixH_IncMixSweep.omp_outlined@source/Mixing_H.c->natn",
 "MixH_IncMixSweep@source/Mixing_H.c->SpinP_switch",
-"MixH_MixFromHistory.omp_outlined.32@source/Mixing_H.c->FNAN",
-"MixH_MixFromHistory.omp_outlined.32@source/Mixing_H.c->M2G",
-"MixH_MixFromHistory.omp_outlined.32@source/Mixing_H.c->Matomnum",
-"MixH_MixFromHistory.omp_outlined.32@source/Mixing_H.c->Spe_Total_NO",
-"MixH_MixFromHistory.omp_outlined.32@source/Mixing_H.c->WhatSpecies",
-"MixH_MixFromHistory.omp_outlined.32@source/Mixing_H.c->natn",
+"MixH_MixFromHistory.omp_outlined.29@source/Mixing_H.c->FNAN",
+"MixH_MixFromHistory.omp_outlined.29@source/Mixing_H.c->M2G",
+"MixH_MixFromHistory.omp_outlined.29@source/Mixing_H.c->Matomnum",
+"MixH_MixFromHistory.omp_outlined.29@source/Mixing_H.c->Spe_Total_NO",
+"MixH_MixFromHistory.omp_outlined.29@source/Mixing_H.c->WhatSpecies",
+"MixH_MixFromHistory.omp_outlined.29@source/Mixing_H.c->natn",
 "MixH_MixFromHistory.omp_outlined@source/Mixing_H.c->FNAN",
 "MixH_MixFromHistory.omp_outlined@source/Mixing_H.c->M2G",
 "MixH_MixFromHistory.omp_outlined@source/Mixing_H.c->Matomnum",
@@ -7516,12 +7515,12 @@
 "MixH_PackMetricW.omp_outlined@source/Mixing_H.c->WhatSpecies",
 "MixH_PackMetricW.omp_outlined@source/Mixing_H.c->natn",
 "MixH_PackMetricW@source/Mixing_H.c->SpinP_switch",
-"MixH_PackResidualSlot.omp_outlined.24@source/Mixing_H.c->FNAN",
-"MixH_PackResidualSlot.omp_outlined.24@source/Mixing_H.c->M2G",
-"MixH_PackResidualSlot.omp_outlined.24@source/Mixing_H.c->Matomnum",
-"MixH_PackResidualSlot.omp_outlined.24@source/Mixing_H.c->Spe_Total_NO",
-"MixH_PackResidualSlot.omp_outlined.24@source/Mixing_H.c->WhatSpecies",
-"MixH_PackResidualSlot.omp_outlined.24@source/Mixing_H.c->natn",
+"MixH_PackResidualSlot.omp_outlined.21@source/Mixing_H.c->FNAN",
+"MixH_PackResidualSlot.omp_outlined.21@source/Mixing_H.c->M2G",
+"MixH_PackResidualSlot.omp_outlined.21@source/Mixing_H.c->Matomnum",
+"MixH_PackResidualSlot.omp_outlined.21@source/Mixing_H.c->Spe_Total_NO",
+"MixH_PackResidualSlot.omp_outlined.21@source/Mixing_H.c->WhatSpecies",
+"MixH_PackResidualSlot.omp_outlined.21@source/Mixing_H.c->natn",
 "MixH_PackResidualSlot.omp_outlined@source/Mixing_H.c->FNAN",
 "MixH_PackResidualSlot.omp_outlined@source/Mixing_H.c->M2G",
 "MixH_PackResidualSlot.omp_outlined@source/Mixing_H.c->Matomnum",
@@ -7529,12 +7528,12 @@
 "MixH_PackResidualSlot.omp_outlined@source/Mixing_H.c->WhatSpecies",
 "MixH_PackResidualSlot.omp_outlined@source/Mixing_H.c->natn",
 "MixH_PackResidualSlot@source/Mixing_H.c->SpinP_switch",
-"MixH_Residual0Fused.omp_outlined.21@source/Mixing_H.c->FNAN",
-"MixH_Residual0Fused.omp_outlined.21@source/Mixing_H.c->M2G",
-"MixH_Residual0Fused.omp_outlined.21@source/Mixing_H.c->Matomnum",
-"MixH_Residual0Fused.omp_outlined.21@source/Mixing_H.c->Spe_Total_NO",
-"MixH_Residual0Fused.omp_outlined.21@source/Mixing_H.c->WhatSpecies",
-"MixH_Residual0Fused.omp_outlined.21@source/Mixing_H.c->natn",
+"MixH_Residual0Fused.omp_outlined.18@source/Mixing_H.c->FNAN",
+"MixH_Residual0Fused.omp_outlined.18@source/Mixing_H.c->M2G",
+"MixH_Residual0Fused.omp_outlined.18@source/Mixing_H.c->Matomnum",
+"MixH_Residual0Fused.omp_outlined.18@source/Mixing_H.c->Spe_Total_NO",
+"MixH_Residual0Fused.omp_outlined.18@source/Mixing_H.c->WhatSpecies",
+"MixH_Residual0Fused.omp_outlined.18@source/Mixing_H.c->natn",
 "MixH_Residual0Fused.omp_outlined@source/Mixing_H.c->FNAN",
 "MixH_Residual0Fused.omp_outlined@source/Mixing_H.c->M2G",
 "MixH_Residual0Fused.omp_outlined@source/Mixing_H.c->Matomnum",
@@ -7542,12 +7541,12 @@
 "MixH_Residual0Fused.omp_outlined@source/Mixing_H.c->WhatSpecies",
 "MixH_Residual0Fused.omp_outlined@source/Mixing_H.c->natn",
 "MixH_Residual0Fused@source/Mixing_H.c->SpinP_switch",
-"MixH_SaveHistory0.omp_outlined.33@source/Mixing_H.c->FNAN",
-"MixH_SaveHistory0.omp_outlined.33@source/Mixing_H.c->M2G",
-"MixH_SaveHistory0.omp_outlined.33@source/Mixing_H.c->Matomnum",
-"MixH_SaveHistory0.omp_outlined.33@source/Mixing_H.c->Spe_Total_NO",
-"MixH_SaveHistory0.omp_outlined.33@source/Mixing_H.c->WhatSpecies",
-"MixH_SaveHistory0.omp_outlined.33@source/Mixing_H.c->natn",
+"MixH_SaveHistory0.omp_outlined.30@source/Mixing_H.c->FNAN",
+"MixH_SaveHistory0.omp_outlined.30@source/Mixing_H.c->M2G",
+"MixH_SaveHistory0.omp_outlined.30@source/Mixing_H.c->Matomnum",
+"MixH_SaveHistory0.omp_outlined.30@source/Mixing_H.c->Spe_Total_NO",
+"MixH_SaveHistory0.omp_outlined.30@source/Mixing_H.c->WhatSpecies",
+"MixH_SaveHistory0.omp_outlined.30@source/Mixing_H.c->natn",
 "MixH_SaveHistory0.omp_outlined@source/Mixing_H.c->FNAN",
 "MixH_SaveHistory0.omp_outlined@source/Mixing_H.c->M2G",
 "MixH_SaveHistory0.omp_outlined@source/Mixing_H.c->Matomnum",
@@ -7844,18 +7843,18 @@
 "NoMD@source/MD_pac.c->filename",
 "NoMD@source/MD_pac.c->filepath",
 "NoMD@source/MD_pac.c->mpi_comm_level1",
-"Nonlocal0.omp_outlined.32@source/Set_Nonlocal.c->Dis",
-"Nonlocal0.omp_outlined.32@source/Set_Nonlocal.c->FNAN",
-"Nonlocal0.omp_outlined.32@source/Set_Nonlocal.c->F_G2M",
-"Nonlocal0.omp_outlined.32@source/Set_Nonlocal.c->F_NL_flag",
-"Nonlocal0.omp_outlined.32@source/Set_Nonlocal.c->List_YOUSO",
-"Nonlocal0.omp_outlined.32@source/Set_Nonlocal.c->M2G",
-"Nonlocal0.omp_outlined.32@source/Set_Nonlocal.c->Matomnum",
-"Nonlocal0.omp_outlined.32@source/Set_Nonlocal.c->RMI1",
-"Nonlocal0.omp_outlined.32@source/Set_Nonlocal.c->SO_switch",
-"Nonlocal0.omp_outlined.32@source/Set_Nonlocal.c->WhatSpecies",
-"Nonlocal0.omp_outlined.32@source/Set_Nonlocal.c->natn",
-"Nonlocal0.omp_outlined.32@source/Set_Nonlocal.c->time_per_atom",
+"Nonlocal0.omp_outlined.31@source/Set_Nonlocal.c->Dis",
+"Nonlocal0.omp_outlined.31@source/Set_Nonlocal.c->FNAN",
+"Nonlocal0.omp_outlined.31@source/Set_Nonlocal.c->F_G2M",
+"Nonlocal0.omp_outlined.31@source/Set_Nonlocal.c->F_NL_flag",
+"Nonlocal0.omp_outlined.31@source/Set_Nonlocal.c->List_YOUSO",
+"Nonlocal0.omp_outlined.31@source/Set_Nonlocal.c->M2G",
+"Nonlocal0.omp_outlined.31@source/Set_Nonlocal.c->Matomnum",
+"Nonlocal0.omp_outlined.31@source/Set_Nonlocal.c->RMI1",
+"Nonlocal0.omp_outlined.31@source/Set_Nonlocal.c->SO_switch",
+"Nonlocal0.omp_outlined.31@source/Set_Nonlocal.c->WhatSpecies",
+"Nonlocal0.omp_outlined.31@source/Set_Nonlocal.c->natn",
+"Nonlocal0.omp_outlined.31@source/Set_Nonlocal.c->time_per_atom",
 "Nonlocal0.omp_outlined@source/Set_Nonlocal.c->Dis",
 "Nonlocal0.omp_outlined@source/Set_Nonlocal.c->FNAN",
 "Nonlocal0.omp_outlined@source/Set_Nonlocal.c->F_G2M",
@@ -9137,15 +9136,15 @@
 "SetNonlocal_CalcDSNL_CPU.omp_outlined@source/Set_Nonlocal.c->natn",
 "SetNonlocal_CalcDSNL_CPU.omp_outlined@source/Set_Nonlocal.c->ncn",
 "SetNonlocal_CalcDSNL_CPU.omp_outlined@source/Set_Nonlocal.c->time_per_atom",
-"SetNonlocal_CalcDSNL_Part.omp_outlined.108@source/Set_Nonlocal.c->Comp2Real",
-"SetNonlocal_CalcDSNL_Part.omp_outlined.108@source/Set_Nonlocal.c->Gxyz",
-"SetNonlocal_CalcDSNL_Part.omp_outlined.108@source/Set_Nonlocal.c->List_YOUSO",
-"SetNonlocal_CalcDSNL_Part.omp_outlined.108@source/Set_Nonlocal.c->M2G",
-"SetNonlocal_CalcDSNL_Part.omp_outlined.108@source/Set_Nonlocal.c->WhatSpecies",
-"SetNonlocal_CalcDSNL_Part.omp_outlined.108@source/Set_Nonlocal.c->atv",
-"SetNonlocal_CalcDSNL_Part.omp_outlined.108@source/Set_Nonlocal.c->natn",
-"SetNonlocal_CalcDSNL_Part.omp_outlined.108@source/Set_Nonlocal.c->ncn",
-"SetNonlocal_CalcDSNL_Part.omp_outlined.108@source/Set_Nonlocal.c->time_per_atom",
+"SetNonlocal_CalcDSNL_Part.omp_outlined.105@source/Set_Nonlocal.c->Comp2Real",
+"SetNonlocal_CalcDSNL_Part.omp_outlined.105@source/Set_Nonlocal.c->Gxyz",
+"SetNonlocal_CalcDSNL_Part.omp_outlined.105@source/Set_Nonlocal.c->List_YOUSO",
+"SetNonlocal_CalcDSNL_Part.omp_outlined.105@source/Set_Nonlocal.c->M2G",
+"SetNonlocal_CalcDSNL_Part.omp_outlined.105@source/Set_Nonlocal.c->WhatSpecies",
+"SetNonlocal_CalcDSNL_Part.omp_outlined.105@source/Set_Nonlocal.c->atv",
+"SetNonlocal_CalcDSNL_Part.omp_outlined.105@source/Set_Nonlocal.c->natn",
+"SetNonlocal_CalcDSNL_Part.omp_outlined.105@source/Set_Nonlocal.c->ncn",
+"SetNonlocal_CalcDSNL_Part.omp_outlined.105@source/Set_Nonlocal.c->time_per_atom",
 "SetNonlocal_CalcDSNL_Part.omp_outlined@source/Set_Nonlocal.c->List_YOUSO",
 "SetNonlocal_CalcDSNL_Part@source/Set_Nonlocal.c->Gxyz",
 "SetNonlocal_CalcDSNL_Part@source/Set_Nonlocal.c->List_YOUSO",
@@ -9307,7 +9306,6 @@
 "SetPro_VNA23_GpuRun_Part@source/Set_ProExpn_VNA.c->PAO_Nkmax",
 "SetPro_VNA23_GpuRun_Part@source/Set_ProExpn_VNA.c->SpeciesNum",
 "SetPro_VNA23_GpuRun_Part@source/Set_ProExpn_VNA.c->mpi_comm_level1",
-"SetPro_collective_env_flag@source/Set_ProExpn_VNA.c->mpi_comm_level1",
 "SetPro_free_mib@source/Set_ProExpn_VNA.c->scf_eigen_lib_flag",
 "SetPro_gpu_abort@source/Set_ProExpn_VNA.c->mpi_comm_level1",
 "SetPro_note@source/Set_ProExpn_VNA.c->mpi_comm_level1",
@@ -9777,14 +9775,14 @@
 "Set_OLP_Projector_Basis@source/Generate_Wannier.c->WhatSpecies",
 "Set_OLP_Projector_Basis@source/Generate_Wannier.c->atv",
 "Set_OLP_Projector_Basis@source/Generate_Wannier.c->mpi_comm_level1",
-"Set_Orbitals_Grid.omp_outlined.12@source/Set_Orbitals_Grid.c->CellListAtom",
-"Set_Orbitals_Grid.omp_outlined.12@source/Set_Orbitals_Grid.c->GListTAtoms1",
-"Set_Orbitals_Grid.omp_outlined.12@source/Set_Orbitals_Grid.c->GridListAtom",
-"Set_Orbitals_Grid.omp_outlined.12@source/Set_Orbitals_Grid.c->Gxyz",
-"Set_Orbitals_Grid.omp_outlined.12@source/Set_Orbitals_Grid.c->List_YOUSO",
-"Set_Orbitals_Grid.omp_outlined.12@source/Set_Orbitals_Grid.c->NumOLG",
-"Set_Orbitals_Grid.omp_outlined.12@source/Set_Orbitals_Grid.c->Orbs_Grid_FNAN",
-"Set_Orbitals_Grid.omp_outlined.12@source/Set_Orbitals_Grid.c->atv",
+"Set_Orbitals_Grid.omp_outlined.10@source/Set_Orbitals_Grid.c->CellListAtom",
+"Set_Orbitals_Grid.omp_outlined.10@source/Set_Orbitals_Grid.c->GListTAtoms1",
+"Set_Orbitals_Grid.omp_outlined.10@source/Set_Orbitals_Grid.c->GridListAtom",
+"Set_Orbitals_Grid.omp_outlined.10@source/Set_Orbitals_Grid.c->Gxyz",
+"Set_Orbitals_Grid.omp_outlined.10@source/Set_Orbitals_Grid.c->List_YOUSO",
+"Set_Orbitals_Grid.omp_outlined.10@source/Set_Orbitals_Grid.c->NumOLG",
+"Set_Orbitals_Grid.omp_outlined.10@source/Set_Orbitals_Grid.c->Orbs_Grid_FNAN",
+"Set_Orbitals_Grid.omp_outlined.10@source/Set_Orbitals_Grid.c->atv",
 "Set_Orbitals_Grid.omp_outlined@source/Set_Orbitals_Grid.c->CellListAtom",
 "Set_Orbitals_Grid.omp_outlined@source/Set_Orbitals_Grid.c->GridListAtom",
 "Set_Orbitals_Grid.omp_outlined@source/Set_Orbitals_Grid.c->GridN_Atom",
@@ -10923,8 +10921,8 @@
 "UCellBox_OLG_GPU@source/truncation.c->natn",
 "UCellBox_OLG_GPU@source/truncation.c->ncn",
 "UCellBox_OLG_GPU@source/truncation.c->scf_eigen_lib_flag",
-"UCellBox_OLG_GPU_Part.omp_outlined.184@source/truncation.c->GListTAtoms1",
-"UCellBox_OLG_GPU_Part.omp_outlined.184@source/truncation.c->GListTAtoms2",
+"UCellBox_OLG_GPU_Part.omp_outlined.180@source/truncation.c->GListTAtoms1",
+"UCellBox_OLG_GPU_Part.omp_outlined.180@source/truncation.c->GListTAtoms2",
 "UCellBox_OLG_GPU_Part.omp_outlined@source/truncation.c->NumOLG",
 "UCellBox_OLG_GPU_Part@source/truncation.c->FNAN",
 "UCellBox_OLG_GPU_Part@source/truncation.c->F_G2M",
@@ -10943,26 +10941,26 @@
 "UCellBox_OLG_GPU_Part@source/truncation.c->natn",
 "UCellBox_OLG_GPU_Part@source/truncation.c->ncn",
 "UCellBox_OLG_GPU_Part@source/truncation.c->time_per_atom",
-"UCell_Box.omp_outlined.167@source/truncation.c->FNAN",
-"UCell_Box.omp_outlined.167@source/truncation.c->F_G2M",
-"UCell_Box.omp_outlined.167@source/truncation.c->GListTAtoms1",
-"UCell_Box.omp_outlined.167@source/truncation.c->GListTAtoms2",
-"UCell_Box.omp_outlined.167@source/truncation.c->GridN_Atom",
-"UCell_Box.omp_outlined.167@source/truncation.c->List_YOUSO",
-"UCell_Box.omp_outlined.167@source/truncation.c->Max_NumOLG",
-"UCell_Box.omp_outlined.167@source/truncation.c->NumOLG",
-"UCell_Box.omp_outlined.167@source/truncation.c->ScaleSize",
-"UCell_Box.omp_outlined.167@source/truncation.c->atv_ijk",
-"UCell_Box.omp_outlined.167@source/truncation.c->level_stdout",
-"UCell_Box.omp_outlined.167@source/truncation.c->natn",
-"UCell_Box.omp_outlined.167@source/truncation.c->ncn",
-"UCell_Box.omp_outlined.175@source/truncation.c->GridN_Atom",
-"UCell_Box.omp_outlined.175@source/truncation.c->MGridListAtom",
-"UCell_Box.omp_outlined.175@source/truncation.c->Min_Grid_Index",
-"UCell_Box.omp_outlined.175@source/truncation.c->Ngrid1",
-"UCell_Box.omp_outlined.175@source/truncation.c->Ngrid2",
-"UCell_Box.omp_outlined.175@source/truncation.c->Ngrid3",
-"UCell_Box.omp_outlined.175@source/truncation.c->atv_ijk",
+"UCell_Box.omp_outlined.166@source/truncation.c->FNAN",
+"UCell_Box.omp_outlined.166@source/truncation.c->F_G2M",
+"UCell_Box.omp_outlined.166@source/truncation.c->GListTAtoms1",
+"UCell_Box.omp_outlined.166@source/truncation.c->GListTAtoms2",
+"UCell_Box.omp_outlined.166@source/truncation.c->GridN_Atom",
+"UCell_Box.omp_outlined.166@source/truncation.c->List_YOUSO",
+"UCell_Box.omp_outlined.166@source/truncation.c->Max_NumOLG",
+"UCell_Box.omp_outlined.166@source/truncation.c->NumOLG",
+"UCell_Box.omp_outlined.166@source/truncation.c->ScaleSize",
+"UCell_Box.omp_outlined.166@source/truncation.c->atv_ijk",
+"UCell_Box.omp_outlined.166@source/truncation.c->level_stdout",
+"UCell_Box.omp_outlined.166@source/truncation.c->natn",
+"UCell_Box.omp_outlined.166@source/truncation.c->ncn",
+"UCell_Box.omp_outlined.174@source/truncation.c->GridN_Atom",
+"UCell_Box.omp_outlined.174@source/truncation.c->MGridListAtom",
+"UCell_Box.omp_outlined.174@source/truncation.c->Min_Grid_Index",
+"UCell_Box.omp_outlined.174@source/truncation.c->Ngrid1",
+"UCell_Box.omp_outlined.174@source/truncation.c->Ngrid2",
+"UCell_Box.omp_outlined.174@source/truncation.c->Ngrid3",
+"UCell_Box.omp_outlined.174@source/truncation.c->atv_ijk",
 "UCell_Box.omp_outlined@source/truncation.c->Cell_Gxyz",
 "UCell_Box.omp_outlined@source/truncation.c->Grid_Origin",
 "UCell_Box.omp_outlined@source/truncation.c->Gxyz",
@@ -11780,8 +11778,8 @@
 "defaultMassBarostat@source/MD_pac.c->Matomnum",
 "defaultMassBarostat@source/MD_pac.c->mpi_comm_level1",
 "determine_kpts@source/Unfolding_Bands.c->unfold_nkpts",
-"diagonalize_nc_density.omp_outlined.16@source/Set_Density_Grid.c->Density_Grid_D",
-"diagonalize_nc_density.omp_outlined.16@source/Set_Density_Grid.c->My_NumGridD",
+"diagonalize_nc_density.omp_outlined.15@source/Set_Density_Grid.c->Density_Grid_D",
+"diagonalize_nc_density.omp_outlined.15@source/Set_Density_Grid.c->My_NumGridD",
 "diagonalize_nc_density.omp_outlined@source/Set_Density_Grid.c->My_NumGridB_AB",
 "free_Hcol_all_matrix_elements@source/SCF2File.c->FNAN",
 "free_Hcol_all_matrix_elements@source/SCF2File.c->H_all",
@@ -15658,7 +15656,7 @@
 {
 "unit": "source/openmx_env.c",
 "name": "registry",
-"type": "[241 x %struct.OpenMXEnvEntry] [%struct.OpenMXEnvEntry { ptr @.str",
+"type": "[260 x %struct.OpenMXEnvEntry] [%struct.OpenMXEnvEntry { ptr @.str",
 "const": true
 },
 {
@@ -15767,13 +15765,6 @@
 },
 {
 "unit": "source/Band_DFT_Col.c",
-"function": "BandCol_ProfileEnabled",
-"variable": "enabled",
-"type": "i32 -1",
-"const": false
-},
-{
-"unit": "source/Band_DFT_Col.c",
 "function": "BandCol_QueryGpuSolverWorkBytes",
 "variable": "cached_bytes",
 "type": "[2 x i64] zeroinitializer",
@@ -15798,13 +15789,6 @@
 "function": "BandCol_QueryGpuSolverWorkBytes",
 "variable": "cached_next",
 "type": "i32 0",
-"const": false
-},
-{
-"unit": "source/Band_DFT_Col.c",
-"function": "Band_DFT_Col_GpuSwitchNum",
-"variable": "cached",
-"type": "i32 -1",
 "const": false
 },
 {
@@ -15993,14 +15977,14 @@
 "unit": "source/Band_DFT_NonCol.c",
 "function": "BandNonCol_AutoGpuTurnLimit",
 "variable": "mode_label",
-"type": "[3 x ptr] [ptr @.str.186",
+"type": "[3 x ptr] [ptr @.str.176",
 "const": false
 },
 {
 "unit": "source/Band_DFT_NonCol.c",
 "function": "BandNonCol_AutoGpuTurnLimit",
 "variable": "need_name",
-"type": "[3 x ptr] [ptr @.str.182",
+"type": "[3 x ptr] [ptr @.str.172",
 "const": false
 },
 {
@@ -16043,13 +16027,6 @@
 "function": "BandNonCol_QueryGpuSolverWorkBytes",
 "variable": "cached_next",
 "type": "i32 0",
-"const": false
-},
-{
-"unit": "source/Band_DFT_NonCol.c",
-"function": "Band_DFT_NonCol_GpuSwitchNum",
-"variable": "cached",
-"type": "i32 -1",
 "const": false
 },
 {
@@ -16215,13 +16192,6 @@
 },
 {
 "unit": "source/Cluster_DFT_Col.c",
-"function": "ClusterCol_DMProfileEnabled",
-"variable": "cached",
-"type": "i32 -1",
-"const": false
-},
-{
-"unit": "source/Cluster_DFT_Col.c",
 "function": "ClusterCol_GpuDiagFits",
 "variable": "verdict",
 "type": "i32 -1",
@@ -16250,20 +16220,6 @@
 },
 {
 "unit": "source/Cluster_DFT_Col.c",
-"function": "ClusterCol_ProfileEnabled",
-"variable": "cached",
-"type": "i32 -1",
-"const": false
-},
-{
-"unit": "source/Cluster_DFT_Col.c",
-"function": "Cluster_DFT_Col_GpuSwitchNum",
-"variable": "cached",
-"type": "i32 -1",
-"const": false
-},
-{
-"unit": "source/Cluster_DFT_Col.c",
 "function": "Cluster_DFT_Col_owned",
 "variable": "firsttime",
 "type": "i32 1",
@@ -16273,7 +16229,7 @@
 "unit": "source/Cluster_DFT_Col.c",
 "function": "Lapack_LU_Dinverse",
 "variable": "thisprogram",
-"type": "ptr @.str.288",
+"type": "ptr @.str.276",
 "const": false
 },
 {
@@ -16313,13 +16269,6 @@
 },
 {
 "unit": "source/Cluster_DFT_NonCol.c",
-"function": "ClusterNonCol_DmByGemm",
-"variable": "cached",
-"type": "i32 -1",
-"const": false
-},
-{
-"unit": "source/Cluster_DFT_NonCol.c",
 "function": "ClusterNonCol_GpuDiagFits",
 "variable": "verdict",
 "type": "i32 -1",
@@ -16334,20 +16283,6 @@
 },
 {
 "unit": "source/Cluster_DFT_NonCol.c",
-"function": "ClusterNonCol_ProfileEnabled",
-"variable": "cached",
-"type": "i32 -1",
-"const": false
-},
-{
-"unit": "source/Cluster_DFT_NonCol.c",
-"function": "Cluster_DFT_NonCol_GpuSwitchNum",
-"variable": "cached",
-"type": "i32 -1",
-"const": false
-},
-{
-"unit": "source/Cluster_DFT_NonCol.c",
 "function": "Cluster_DFT_NonCol_owned",
 "variable": "firsttime",
 "type": "i32 1",
@@ -16357,7 +16292,7 @@
 "unit": "source/Cluster_DFT_NonCol.c",
 "function": "Lapack_LU_Zinverse",
 "variable": "thisprogram",
-"type": "ptr @.str.296",
+"type": "ptr @.str.286",
 "const": false
 },
 {
@@ -16550,13 +16485,6 @@
 "const": false
 },
 {
-"unit": "source/DFT.c",
-"function": "DFT",
-"variable": "guard_factor",
-"type": "double -1.000000e+00",
-"const": false
-},
-{
 "unit": "source/DIIS_Mixing_DM.c",
 "function": "DIIS_Mixing_DM",
 "variable": "firsttime",
@@ -16586,37 +16514,9 @@
 },
 {
 "unit": "source/Divide_Conquer.c",
-"function": "DC_GPU_Threshold",
-"variable": "initialized",
-"type": "i32 0",
-"const": false
-},
-{
-"unit": "source/Divide_Conquer.c",
-"function": "DC_GPU_Threshold",
-"variable": "threshold",
-"type": "i32 400",
-"const": false
-},
-{
-"unit": "source/Divide_Conquer.c",
 "function": "DC_NodeRanks",
 "variable": "ranks",
 "type": "i32 0",
-"const": false
-},
-{
-"unit": "source/Divide_Conquer.c",
-"function": "DC_NonCol_GPU_Threshold",
-"variable": "initialized",
-"type": "i32 0",
-"const": false
-},
-{
-"unit": "source/Divide_Conquer.c",
-"function": "DC_NonCol_GPU_Threshold",
-"variable": "threshold",
-"type": "i32 300",
 "const": false
 },
 {
@@ -16642,30 +16542,9 @@
 },
 {
 "unit": "source/Divide_Conquer_LNO.c",
-"function": "DCLNO_GpuEigenThreshold",
-"variable": "threshold",
-"type": "i32 -1",
-"const": false
-},
-{
-"unit": "source/Divide_Conquer_LNO.c",
 "function": "DCLNO_GpuGroupMemoryFits",
 "variable": "warned",
 "type": "i32 0",
-"const": false
-},
-{
-"unit": "source/Divide_Conquer_LNO.c",
-"function": "DCLNO_NonColGpuEigenThreshold",
-"variable": "threshold",
-"type": "i32 -1",
-"const": false
-},
-{
-"unit": "source/Divide_Conquer_LNO.c",
-"function": "DCLNO_ProfileEnabled",
-"variable": "enabled",
-"type": "i32 -1",
 "const": false
 },
 {
@@ -16795,13 +16674,6 @@
 "const": false
 },
 {
-"unit": "source/Force.c",
-"function": "Force_PhaseProfileEnabled",
-"variable": "cached",
-"type": "i32 -1",
-"const": false
-},
-{
 "unit": "source/Force_test.c",
 "function": "Check_Force",
 "variable": "myid",
@@ -16882,14 +16754,14 @@
 "unit": "source/Krylov.c",
 "function": "Eigen_lapack_d_raii",
 "variable": "name",
-"type": "ptr @.str.60",
+"type": "ptr @.str.55",
 "const": false
 },
 {
 "unit": "source/Krylov.c",
 "function": "Eigen_lapack_r_raii",
 "variable": "name",
-"type": "ptr @.str.60",
+"type": "ptr @.str.55",
 "const": false
 },
 {
@@ -16960,13 +16832,6 @@
 "function": "Krylov_NodeRanks",
 "variable": "ranks",
 "type": "i32 0",
-"const": false
-},
-{
-"unit": "source/Krylov.c",
-"function": "Krylov_ProjectedSolve_GPU",
-"variable": "profile",
-"type": "i32 -1",
 "const": false
 },
 {
@@ -17698,13 +17563,6 @@
 "const": false
 },
 {
-"unit": "source/Set_Density_Grid.c",
-"function": "Set_Density_Grid",
-"variable": "sd_prof",
-"type": "i32 -1",
-"const": false
-},
-{
 "unit": "source/Set_Density_Grid_GPU.c",
 "function": "Set_Density_Grid_GPU_Local_Report",
 "variable": "last_cpu",
@@ -17797,13 +17655,6 @@
 },
 {
 "unit": "source/Set_Hamiltonian.c",
-"function": "SetH_ProfileEnabled",
-"variable": "enabled",
-"type": "i32 -1",
-"const": false
-},
-{
-"unit": "source/Set_Hamiltonian.c",
 "function": "Set_Hamiltonian_CreateGpuTurnPlan",
 "variable": "last_concurrent",
 "type": "i32 -1",
@@ -17834,7 +17685,7 @@
 "unit": "source/Set_Hamiltonian.c",
 "function": "Set_Hamiltonian_ResidentMaskLabel",
 "variable": "names",
-"type": "[4 x ptr] [ptr @.str.171",
+"type": "[4 x ptr] [ptr @.str.152",
 "const": false
 },
 {
@@ -17891,13 +17742,6 @@
 "function": "Make_VNA_Grid",
 "variable": "firsttime",
 "type": "i32 1",
-"const": false
-},
-{
-"unit": "source/Set_Vpot.c",
-"function": "Set_Vpot",
-"variable": "vp_prof",
-"type": "i32 -1",
 "const": false
 },
 {
@@ -18062,38 +17906,10 @@
 "const": false
 },
 {
-"unit": "source/Total_Energy.c",
-"function": "TotalEnergyUseOpenACC",
-"variable": "env_flag",
-"type": "i32 -1",
-"const": false
-},
-{
-"unit": "source/Total_Energy.c",
-"function": "TotalEnergy_ProfileEnabled",
-"variable": "cached",
-"type": "i32 -1",
-"const": false
-},
-{
 "unit": "source/eigen_refine_gpu.c",
 "function": "refine_fp32_solve",
 "variable": "announced",
 "type": "i32 0",
-"const": false
-},
-{
-"unit": "source/eigen_refine_gpu.c",
-"function": "refine_fp32_solve",
-"variable": "wanted",
-"type": "i32 -1",
-"const": false
-},
-{
-"unit": "source/eigen_refine_gpu.c",
-"function": "refine_gemm",
-"variable": "unblocked",
-"type": "i32 -1",
 "const": false
 },
 {
@@ -18115,13 +17931,6 @@
 "function": "inverse_LU",
 "variable": "thisprogram",
 "type": "ptr @.str.6",
-"const": false
-},
-{
-"unit": "source/openmx_cusolver_compat.c",
-"function": "openmx_solver_retry_test",
-"variable": "state",
-"type": "i32 -1",
 "const": false
 },
 {
@@ -18182,13 +17991,6 @@
 },
 {
 "unit": "source/set_cuda_default_device_from_local_rank.c",
-"function": "gpu_meminfo_nvml_enabled",
-"variable": "enabled",
-"type": "i32 -1",
-"const": false
-},
-{
-"unit": "source/set_cuda_default_device_from_local_rank.c",
 "function": "gpu_rank_device_usable",
 "variable": "checked",
 "type": "i32 0",
@@ -18210,23 +18012,9 @@
 },
 {
 "unit": "source/truncation.c",
-"function": "OLG_gpu_ready",
-"variable": "state",
-"type": "i32 -1",
-"const": false
-},
-{
-"unit": "source/truncation.c",
 "function": "Set_RMI",
 "variable": "firsttime",
 "type": "i32 1",
-"const": false
-},
-{
-"unit": "source/truncation.c",
-"function": "Trunc_ProfileEnabled",
-"variable": "cached",
-"type": "i32 -1",
 "const": false
 },
 {
@@ -18637,11 +18425,84 @@
 }
 ],
 "env": {
+"COSMA_CPU_MAX_MEMORY": [
+"source/elpa_cosma_memory.cpp"
+],
+"COSMA_GPU_MAX_TILE_K": [
+"source/elpa_cosma_bridge.c"
+],
+"COSMA_GPU_MAX_TILE_M": [
+"source/elpa_cosma_bridge.c"
+],
+"COSMA_GPU_MAX_TILE_N": [
+"source/elpa_cosma_bridge.c"
+],
+"COSMA_GPU_STREAMS": [
+"source/elpa_cosma_bridge.c"
+],
+"CUBLAS_MIN_FREE_AFTER_MB": [
+"source/Divide_Conquer.c"
+],
+"GEMMUL8_DISABLE": [
+"source/gemmul8_bridge.cu"
+],
+"GEMMUL8_DISABLE_D": [
+"source/gemmul8_bridge.cu"
+],
+"GEMMUL8_DISABLE_Z": [
+"source/gemmul8_bridge.cu"
+],
+"GEMMUL8_FASTMODE_D": [
+"source/gemmul8_bridge.cu"
+],
+"GEMMUL8_FASTMODE_Z": [
+"source/gemmul8_bridge.cu"
+],
+"GEMMUL8_MAX_WORKSPACE_MB": [
+"source/gemmul8_bridge.cu"
+],
 "GEMMUL8_MAX_WORKSPACE_PERCENT": [
-"source/Band_DFT_NonCol.c"
+"source/Band_DFT_NonCol.c",
+"source/gemmul8_bridge.cu"
 ],
 "GEMMUL8_MIN_FREE_AFTER_MB": [
+"source/Divide_Conquer.c",
+"source/gemmul8_bridge.cu"
+],
+"GEMMUL8_NUM_MOD_D": [
+"source/gemmul8_bridge.cu"
+],
+"GEMMUL8_NUM_MOD_Z": [
+"source/gemmul8_bridge.cu"
+],
+"GEMMUL8_VERBOSE": [
+"source/gemmul8_bridge.cu"
+],
+"GPUSOLVER_MIN_FREE_AFTER_MB": [
 "source/Divide_Conquer.c"
+],
+"HOSTNAME": [
+"source/exx_log.c"
+],
+"LIBOMPTARGET_HEAP_SIZE": [
+"source/openmx.c"
+],
+"MV2_COMM_WORLD_LOCAL_RANK": [
+"source/set_cuda_default_device_from_local_rank.c"
+],
+"MV2_COMM_WORLD_LOCAL_SIZE": [
+"source/set_cuda_default_device_from_local_rank.c"
+],
+"OMPI_COMM_WORLD_LOCAL_RANK": [
+"source/set_cuda_default_device_from_local_rank.c"
+],
+"OMPI_COMM_WORLD_LOCAL_SIZE": [
+"source/elpa_cosma_bridge.c",
+"source/gemmul8_bridge.cu",
+"source/set_cuda_default_device_from_local_rank.c"
+],
+"OMPI_COMM_WORLD_RANK": [
+"source/gemmul8_bridge.cu"
 ],
 "OPENMX_BAND_CACHE_TRACE": [
 "source/Band_DFT_Col.c"
@@ -18825,6 +18686,12 @@
 "OPENMX_DC_NONCOL_GPU_THRESHOLD": [
 "source/Divide_Conquer.c"
 ],
+"OPENMX_DENSITY_GRID_COL_SIMD": [
+"source/openmx_grid_assembly.c"
+],
+"OPENMX_DENSITY_GRID_COL_SIMD_TRACE": [
+"source/openmx_grid_assembly.c"
+],
 "OPENMX_DENSITY_GRID_GPU": [
 "source/Set_Density_Grid_GPU.c"
 ],
@@ -18842,6 +18709,12 @@
 ],
 "OPENMX_DENSITY_GRID_GPU_RESERVE_MB": [
 "source/Set_Density_Grid_GPU.c"
+],
+"OPENMX_DENSITY_GRID_NC_SIMD": [
+"source/openmx_grid_assembly.c"
+],
+"OPENMX_DENSITY_GRID_NC_SIMD_TRACE": [
+"source/openmx_grid_assembly.c"
 ],
 "OPENMX_EIGEN_FP32_TWO_STAGE": [
 "source/eigen_refine_gpu.c"
@@ -18888,6 +18761,21 @@
 "OPENMX_FORCE4B_ARCHIVE_GPU": [
 "source/Force.c"
 ],
+"OPENMX_FORCE4B_CASE1_STREAM": [
+"source/Force.c"
+],
+"OPENMX_FORCE4B_CASE1_STREAM_MB": [
+"source/Force.c"
+],
+"OPENMX_FORCE4B_CASE1_TURNS": [
+"source/Force.c"
+],
+"OPENMX_FORCE4B_CASE1_TURN_MAX_RANKS": [
+"source/Force.c"
+],
+"OPENMX_FORCE4B_CASE2_STREAM": [
+"source/Force.c"
+],
 "OPENMX_FORCE4B_FUSED": [
 "source/Force.c"
 ],
@@ -18895,7 +18783,8 @@
 "source/Force.c"
 ],
 "OPENMX_FORCEHNL_GPU": [
-"source/Force.c"
+"source/Force.c",
+"source/openmx_force_hnl_gpu.h"
 ],
 "OPENMX_FORCE_GPU": [
 "source/Force.c"
@@ -18906,11 +18795,67 @@
 "OPENMX_FORCE_RELEASE_SCF_CACHES": [
 "source/Force.c"
 ],
+"OPENMX_GEMMUL8_A100_FORWARD_MIN_N": [
+"source/gemmul8_bridge.cu"
+],
+"OPENMX_GEMMUL8_DISABLE": [
+"source/gemmul8_bridge.cu"
+],
+"OPENMX_GEMMUL8_DISABLE_D": [
+"source/gemmul8_bridge.cu"
+],
+"OPENMX_GEMMUL8_DISABLE_Z": [
+"source/gemmul8_bridge.cu"
+],
+"OPENMX_GEMMUL8_FASTMODE_D": [
+"source/gemmul8_bridge.cu"
+],
+"OPENMX_GEMMUL8_FASTMODE_Z": [
+"source/gemmul8_bridge.cu"
+],
+"OPENMX_GEMMUL8_FORWARD": [
+"source/gemmul8_bridge.cu"
+],
+"OPENMX_GEMMUL8_FORWARD_FASTMODE": [
+"source/gemmul8_bridge.cu"
+],
+"OPENMX_GEMMUL8_FORWARD_NUM_MOD": [
+"source/gemmul8_bridge.cu"
+],
+"OPENMX_GEMMUL8_FORWARD_REUSE": [
+"source/gemmul8_bridge.cu"
+],
+"OPENMX_GEMMUL8_FORWARD_TIMING": [
+"source/gemmul8_bridge.cu"
+],
+"OPENMX_GEMMUL8_FORWARD_UNBLOCKED": [
+"source/gemmul8_bridge.cu"
+],
+"OPENMX_GEMMUL8_LOCAL_RANKS": [
+"source/gemmul8_bridge.cu"
+],
+"OPENMX_GEMMUL8_MAX_WORKSPACE_MB": [
+"source/gemmul8_bridge.cu"
+],
 "OPENMX_GEMMUL8_MAX_WORKSPACE_PERCENT": [
-"source/Band_DFT_NonCol.c"
+"source/Band_DFT_NonCol.c",
+"source/gemmul8_bridge.cu"
 ],
 "OPENMX_GEMMUL8_MIN_FREE_AFTER_MB": [
-"source/Divide_Conquer.c"
+"source/Divide_Conquer.c",
+"source/gemmul8_bridge.cu"
+],
+"OPENMX_GEMMUL8_NUM_MOD_D": [
+"source/gemmul8_bridge.cu"
+],
+"OPENMX_GEMMUL8_NUM_MOD_Z": [
+"source/gemmul8_bridge.cu"
+],
+"OPENMX_GEMMUL8_TIMING": [
+"source/gemmul8_bridge.cu"
+],
+"OPENMX_GEMMUL8_VERBOSE": [
+"source/gemmul8_bridge.cu"
 ],
 "OPENMX_GEMM_SAMPLE_DIR": [
 "source/Cluster_DFT_Col.c",
@@ -18920,8 +18865,13 @@
 "source/Cluster_DFT_Col.c",
 "source/Cluster_DFT_NonCol.c"
 ],
+"OPENMX_GEMM_VERBOSE": [
+"source/gemmul8_bridge.cu"
+],
 "OPENMX_GPU": [
+"source/Input_std.c",
 "source/openmx_gpu_workers.c",
+"source/openmx_mgpu_runtime.cu",
 "source/set_cuda_default_device_from_local_rank.c"
 ],
 "OPENMX_GPUSOLVER_MIN_FREE_AFTER_MB": [
@@ -18940,7 +18890,17 @@
 "source/Set_ProExpn_VNA.c",
 "source/openmx_gpu_dm_collective.c",
 "source/openmx_gpu_workers.c",
+"source/openmx_gpu_workers.h",
 "source/truncation.c"
+],
+"OPENMX_GPU_HEAP_REEXEC": [
+"source/openmx.c"
+],
+"OPENMX_GPU_LOCK_DIR": [
+"source/openmx_mgpu_runtime.cu"
+],
+"OPENMX_GPU_LOCK_TIMEOUT_MS": [
+"source/openmx_mgpu_runtime.cu"
 ],
 "OPENMX_GPU_MEMINFO_NVML": [
 "source/set_cuda_default_device_from_local_rank.c"
@@ -18954,8 +18914,12 @@
 "OPENMX_GPU_STACK_BYTES": [
 "source/set_cuda_default_device_from_local_rank.c"
 ],
+"OPENMX_GPU_VERBOSE": [
+"source/gemmul8_bridge.cu"
+],
 "OPENMX_GPU_WORKERS": [
-"source/openmx_gpu_workers.c"
+"source/openmx_gpu_workers.c",
+"source/openmx_gpu_workers.h"
 ],
 "OPENMX_GPU_WORKER_COPY": [
 "source/openmx_gpu_views.c"
@@ -19023,8 +18987,96 @@
 "OPENMX_KRYLOV_GPU_PROFILE": [
 "source/Krylov.c"
 ],
+"OPENMX_MAGMA_FAILURE_DUMP": [
+"source/openmx_magma_mgpu.cpp"
+],
+"OPENMX_MAGMA_FP32": [
+"source/openmx_magma_mgpu.cpp"
+],
+"OPENMX_MAGMA_FP32_COMPLEX_MAX_N": [
+"source/openmx_magma_mgpu.cpp"
+],
+"OPENMX_MAGMA_HOST_CACHE_MB": [
+"source/openmx_magma_mgpu.cpp"
+],
+"OPENMX_MAGMA_REFINE_RESERVE_MB": [
+"source/openmx_mgpu_gemm.cu"
+],
+"OPENMX_MAGMA_REFINE_RESIDENT_MB": [
+"source/openmx_mgpu_gemm.cu"
+],
+"OPENMX_MAGMA_REFINE_STEPS": [
+"source/openmx_magma_refine.h"
+],
+"OPENMX_MAGMA_RR_GPU_MIN": [
+"source/openmx_magma_refine.h"
+],
+"OPENMX_MAGMA_VALIDATE_FULL": [
+"source/openmx_magma_mgpu.cpp"
+],
+"OPENMX_MGPU": [
+"source/openmx_mgpu_runtime.cu"
+],
+"OPENMX_MGPU_BAND_SHARED": [
+"source/openmx_mgpu_runtime.cu"
+],
+"OPENMX_MGPU_GEMM": [
+"source/openmx_mgpu_runtime.cu"
+],
+"OPENMX_MGPU_GEMM_ASYNC_GATHER": [
+"source/openmx_mgpu_gemm.cu"
+],
+"OPENMX_MGPU_GEMM_BACKEND": [
+"source/openmx_mgpu_gemm.cu"
+],
+"OPENMX_MGPU_GEMM_FORCE_HOST": [
+"source/openmx_mgpu_gemm.cu"
+],
+"OPENMX_MGPU_GEMM_HOST_MB": [
+"source/openmx_mgpu_gemm.cu"
+],
+"OPENMX_MGPU_GEMM_HOST_RESULT_MB": [
+"source/openmx_mgpu_gemm.cu"
+],
+"OPENMX_MGPU_GEMM_MIN_N": [
+"source/openmx_mgpu_runtime.cu"
+],
+"OPENMX_MGPU_GEMM_PAGEABLE": [
+"source/openmx_mgpu_gemm.cu"
+],
+"OPENMX_MGPU_GEMM_RESERVE_MB": [
+"source/openmx_mgpu_gemm.cu"
+],
+"OPENMX_MGPU_GEMM_RESULT_HOST": [
+"source/openmx_mgpu_gemm.cu"
+],
+"OPENMX_MGPU_GEMM_RESULT_MB": [
+"source/openmx_mgpu_gemm.cu"
+],
+"OPENMX_MGPU_GEMM_TRAVERSAL": [
+"source/openmx_mgpu_gemm.cu"
+],
+"OPENMX_MGPU_GEMM_WORKSPACE_MB": [
+"source/openmx_mgpu_gemm.cu"
+],
+"OPENMX_MGPU_MEMORY": [
+"source/openmx_mgpu_runtime.cu"
+],
+"OPENMX_MGPU_NUM_GPUS": [
+"source/openmx_mgpu_runtime.cu"
+],
+"OPENMX_MGPU_SOLVER": [
+"source/openmx_mgpu_runtime.cu"
+],
+"OPENMX_MGPU_SOLVER_MIN_N": [
+"source/openmx_mgpu_runtime.cu"
+],
+"OPENMX_MGPU_TUNE_TRIALS": [
+"source/openmx_mgpu_runtime.cu"
+],
 "OPENMX_MGPU_VERBOSE": [
-"source/openmx_gpu_workers.c"
+"source/openmx_gpu_workers.c",
+"source/openmx_mgpu_runtime.cu"
 ],
 "OPENMX_MIXH_GPU": [
 "source/Mixing_H.c"
@@ -19060,6 +19112,12 @@
 "OPENMX_SETDENSITY_GPU": [
 "source/Set_Density_Grid_GPU.c"
 ],
+"OPENMX_SETDEN_FP64_CUDA": [
+"source/set_hamiltonian_gpu.cu"
+],
+"OPENMX_SETDEN_FP64_SPLIT_SPIN": [
+"source/set_hamiltonian_gpu.cu"
+],
 "OPENMX_SETDEN_ONTHEFLY_MB": [
 "source/Set_Hamiltonian.c"
 ],
@@ -19068,6 +19126,12 @@
 ],
 "OPENMX_SETHAM_CUDA_KERNEL": [
 "source/Set_Hamiltonian.c"
+],
+"OPENMX_SETHAM_FP64_SPLIT": [
+"source/set_hamiltonian_gpu.cu"
+],
+"OPENMX_SETHAM_FP64_TILED": [
+"source/set_hamiltonian_gpu.cu"
 ],
 "OPENMX_SETHAM_GPU_KOWNER_ONLY": [
 "source/DFT.c"
@@ -19095,6 +19159,9 @@
 ],
 "OPENMX_SETHAM_GPU_TEST_NEED_MB": [
 "source/Set_Hamiltonian.c"
+],
+"OPENMX_SETHAM_MATEL_SPLIT": [
+"source/set_hamiltonian_gpu.cu"
 ],
 "OPENMX_SETHAM_MATRIX_GPU": [
 "source/Set_Hamiltonian.c"
@@ -19148,6 +19215,25 @@
 ],
 "OPENMX_XC_GRID_GPU": [
 "source/Set_XC_Grid.c"
+],
+"OPENMX_ZHEEVD_SELFTEST": [
+"source/openmx.c"
+],
+"PMI_LOCAL_RANK": [
+"source/set_cuda_default_device_from_local_rank.c"
+],
+"PMI_LOCAL_SIZE": [
+"source/set_cuda_default_device_from_local_rank.c"
+],
+"PMI_RANK": [
+"source/gemmul8_bridge.cu"
+],
+"SLURM_LOCALID": [
+"source/set_cuda_default_device_from_local_rank.c"
+],
+"SLURM_NTASKS_PER_NODE": [
+"source/gemmul8_bridge.cu",
+"source/set_cuda_default_device_from_local_rank.c"
 ]
 },
 "other_defined": [

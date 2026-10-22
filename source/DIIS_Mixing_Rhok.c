@@ -71,9 +71,8 @@ static MixRhokFastState MixRhok_fast = { 0, -1, 0, 0, 0, NULL };
 
 static int Mix_Fast_Enabled(void)
 {
-  const char *env = openmx_env_get("OPENMX_MIX_FAST");
   if (scf_eigen_lib_flag != GPUSOLVER) return 0;
-  return (env == NULL) ? 1 : (atoi(env) != 0);
+  return openmx_env_flag_at(OPENMX_ENV_MIX_FAST, 1);
 }
 
 static void MixRhok_Fast_Invalidate(void)

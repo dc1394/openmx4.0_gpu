@@ -42,13 +42,7 @@ extern void acc_clear_freelists(void);
    compile-time switch) */
 static int Trunc_ProfileEnabled(void)
 {
-  static int cached = -1;
-
-  if (cached < 0){
-    const char *value = openmx_env_get("OPENMX_BAND_PROFILE");
-    cached = (value != NULL && atoi(value) != 0);
-  }
-  return cached;
+  return openmx_env_flag_at(OPENMX_ENV_BAND_PROFILE, 0);
 }
 #define measure_time (Trunc_ProfileEnabled())
 
@@ -2216,24 +2210,11 @@ typedef struct {
   int    l1, l2, l3; /* atv_ijk[Rh][1..3]                                */
 } OLG_GpuPair;
 
-static int OLG_env_flag(const char *name, int fallback)
-{
-  const char *value = openmx_env_get(name);
-  if (value == NULL || value[0] == '\0') return fallback;
-  return atoi(value);
-}
-
 static int OLG_gpu_ready(void)
 {
-  static int state = -1;
-
-  if (state < 0) {
-    /* the probe, not a bare device count: a rank whose context or module
-       load cannot complete would abort inside acc_malloc otherwise */
-    state = (OLG_env_flag("OPENMX_UCELL_OLG_GPU", 1) != 0 &&
-             gpu_rank_device_usable());
-  }
-  return state;
+  /* the probe, not a bare device count: a rank whose context or module
+     load cannot complete would abort inside acc_malloc otherwise */
+  return openmx_env_flag_at(OPENMX_ENV_UCELL_OLG_GPU, 1) && gpu_rank_device_usable();
 }
 
 static size_t OLG_arena_off(size_t *pos, size_t bytes)
@@ -2479,7 +2460,7 @@ static int UCellBox_OLG_GPU_Part(int first,int last,int myid,int estimate_switch
   acc_memcpy_to_device(d_ratv, ratv_flat, sizeof(int)*(size_t)rdim*(size_t)rdim*(size_t)rdim);
 #endif
 
-  if (OLG_env_flag("OPENMX_UCELL_OLG_GPU_VERBOSE", 0)) {
+  if (openmx_env_flag_at(OPENMX_ENV_UCELL_OLG_GPU_VERBOSE, 0)) {
     static _Thread_local int active_done = 0;
     if (!active_done && myid == Host_ID) {
       active_done = 1;
@@ -2627,7 +2608,7 @@ static void OLG_capacity_kernel(size_t first,size_t count,const void *parameters
 
 static int UCellBox_OLG_GPU(int estimate_switch,int CpyCell,int **grid,int **cell,int *size_GListTAtoms1)
 {
-  int requested=scf_eigen_lib_flag==GPUSOLVER && OLG_env_flag("OPENMX_UCELL_OLG_GPU",1)!=0;
+  int requested=scf_eigen_lib_flag==GPUSOLVER && openmx_env_flag_at(OPENMX_ENV_UCELL_OLG_GPU,1);
   MPI_Allreduce(MPI_IN_PLACE,&requested,1,MPI_INT,MPI_MIN,mpi_comm_level1);
   if(!requested)return 0;
   int myid;MPI_Comm_rank(mpi_comm_level1,&myid);

@@ -13,6 +13,7 @@
 
 #include "mpi.h"
 #include "openmx_common.h"
+#include "openmx_env.h"
 #include "openmx_grid_assembly.h"
 extern int openmx_gpu_is_apu(void);
 #include "openmx_core_vna_matrix.h"
@@ -57,7 +58,7 @@ static int SetH_ProfileEnabled(void)
     static int enabled = -1;
 
     if (enabled < 0) {
-        const char *value = getenv("OPENMX_BAND_PROFILE");
+        const char *value = openmx_env_get("OPENMX_BAND_PROFILE");
         enabled = (value != NULL && atoi(value) != 0);
     }
     return enabled;
@@ -333,7 +334,7 @@ static int Set_Hamiltonian_ME_KeepDeviceResident(void)
 {
     if (Set_Hamiltonian_ME_residency_demoted) return 0;
     if (Set_Hamiltonian_NonColGpuEigensolverActive()) {
-        const char *demote = getenv("OPENMX_NC_EIGEN_DEMOTE_SETHAM");
+        const char *demote = openmx_env_get("OPENMX_NC_EIGEN_DEMOTE_SETHAM");
         if (demote == NULL || atoi(demote) != 0) return 0;
     }
     return 1;
@@ -348,7 +349,7 @@ size_t Set_Hamiltonian_DemoteResidency(void)
     size_t released;
 
     if (!checked) {
-        const char *value = getenv("OPENMX_SETHAM_DEMOTE_ON_PRESSURE");
+        const char *value = openmx_env_get("OPENMX_SETHAM_DEMOTE_ON_PRESSURE");
         enabled = (value == NULL || value[0] == '\0' || atoi(value) != 0);
         checked = 1;
     }
@@ -476,7 +477,7 @@ static void Set_Hamiltonian_add_array_bytes(size_t *total, size_t count, size_t 
 
 static int Set_Hamiltonian_OpenMP_Enabled(void)
 {
-    const char *gpu=getenv("OPENMX_GPU"),*value=getenv("OPENMX_SETHAM_BASE_GPU");
+    const char *gpu=openmx_env_get("OPENMX_GPU"),*value=openmx_env_get("OPENMX_SETHAM_BASE_GPU");
     return scf_eigen_lib_flag==GPUSOLVER && !(gpu && atoi(gpu)==0) &&
            (value ? atoi(value)!=0 : !openmx_gpu_is_apu());
 }
@@ -489,7 +490,7 @@ static int Set_Hamiltonian_MatrixElements_OpenMP_Enabled(void)
      * so it is enabled by default on every GPU; the device-memory preflight
      * still sends it to the host path when the tables do not fit.
     */
-    const char *value = getenv("OPENMX_SETHAM_GPU");
+    const char *value = openmx_env_get("OPENMX_SETHAM_GPU");
     /* On by default, APUs included (OPENMX_SETHAM_GPU=0 opts out) -- except
        when the GPU is shared by more ranks than the dense band eigensolvers
        accept (openmx_band_gpu_dense_oversubscribed): the many small
@@ -1057,7 +1058,7 @@ void Set_Hamiltonian_Build_GpuSolver_HS_Cache(int use_contracted, int refresh_st
     cache->ready = 1;
 
     {
-        const char *trace = getenv("OPENMX_BAND_CACHE_TRACE");
+        const char *trace = openmx_env_get("OPENMX_BAND_CACHE_TRACE");
         if (myid == Host_ID && trace != NULL && atoi(trace) != 0) {
             printf("<DFT> packed HS cache: overlap/order %s, Hamiltonian refreshed\n",
                    rebuild_static ? "rebuilt" : "reused");
@@ -1158,7 +1159,7 @@ double Set_Hamiltonian(OpenMXGridWorkspace *grid, const OpenMXAtomicViews *atomi
     MPI_Comm_rank(mpi_comm_level1, &myid);
     MPI_Barrier(mpi_comm_level1);
     dtime(&TStime);
-    trace_env = getenv("OPENMX_SETHAM_TIMING");
+    trace_env = openmx_env_get("OPENMX_SETHAM_TIMING");
     trace_timing = (trace_env != NULL && atoi(trace_env) != 0);
 
     if (Cnt_kind != 0 && Cnt_kind != 1) {
@@ -1459,7 +1460,7 @@ static int Set_Hamiltonian_OTF_Rank_Selected(void)
     static int kowner_only = -1;
 
     if (kowner_only < 0) {
-        const char *value = getenv("OPENMX_SETHAM_GPU_KOWNER_ONLY");
+        const char *value = openmx_env_get("OPENMX_SETHAM_GPU_KOWNER_ONLY");
         kowner_only = (value != NULL && value[0] != '\0' && atoi(value) != 0) ? 1 : 0;
     }
     return kowner_only ? Set_Hamiltonian_OpenMP_Rank_Selected : 1;
@@ -1470,7 +1471,7 @@ static int Set_Hamiltonian_OTF_Enabled(void)
     static int enabled = -1;
 
     if (enabled < 0) {
-        const char *value = getenv("OPENMX_SETHAM_ONTHEFLY");
+        const char *value = openmx_env_get("OPENMX_SETHAM_ONTHEFLY");
         enabled = (value == NULL || value[0] == '\0' || atoi(value) != 0) ? 1 : 0;
     }
     return enabled;
@@ -1484,8 +1485,8 @@ static size_t Set_Hamiltonian_OTF_Budget(int kind)
     static size_t budget[2] = {0, 0};
 
     if (budget[0] == 0) {
-        const char *value = getenv("OPENMX_SETHAM_ONTHEFLY_MB");
-        const char *den = getenv("OPENMX_SETDEN_ONTHEFLY_MB");
+        const char *value = openmx_env_get("OPENMX_SETHAM_ONTHEFLY_MB");
+        const char *den = openmx_env_get("OPENMX_SETDEN_ONTHEFLY_MB");
         long mib = (value != NULL && value[0] != '\0') ? atol(value) : 256;
         long den_mib;
 
@@ -1692,7 +1693,7 @@ static int SetH_OTF_PlanCacheEnabled(void)
     static int enabled = -1;
 
     if (enabled < 0) {
-        const char *value = getenv("OPENMX_SETHAM_ONTHEFLY_PLAN_CACHE");
+        const char *value = openmx_env_get("OPENMX_SETHAM_ONTHEFLY_PLAN_CACHE");
         enabled = (value == NULL || value[0] == '\0' || atoi(value) != 0) ? 1 : 0;
     }
     return enabled;
@@ -1706,7 +1707,7 @@ static void *SetH_OTF_HostAlloc(size_t bytes, int *pinned)
     void *p = NULL;
 
     if (cap_mib < 0) {
-        const char *value = getenv("OPENMX_SETHAM_ONTHEFLY_PINNED_MB");
+        const char *value = openmx_env_get("OPENMX_SETHAM_ONTHEFLY_PINNED_MB");
         cap_mib = (value != NULL && value[0] != '\0') ? atol(value) : 1024;
         if (cap_mib < 0) cap_mib = 0;
     }
@@ -2072,7 +2073,7 @@ static int Calc_MatrixElements_dVH_Vxc_VNA_OnTheFly(const OpenMXAtomicViews *ato
        the device at every stage so that its time lands in its own stage
        (plan: the plan lookup and the packing of the H blocks; alloc: the
        arena under the node's lock, including the wait for it) */
-    const char *timing_env = getenv("OPENMX_SETHAM_TIMING");
+    const char *timing_env = openmx_env_get("OPENMX_SETHAM_TIMING");
     const int stdout_timing = (timing_env != NULL && atoi(timing_env) != 0);
     const int timing = stdout_timing || SetH_ProfileEnabled();
     double t_plan = 0.0, t_alloc = 0.0, t_pack = 0.0, t_eval = 0.0, t_kernel = 0.0, t_unpack = 0.0;
@@ -2224,7 +2225,7 @@ int Set_Hamiltonian_Hip_OTF_Density(int pair_count, int max_nolg, int spin_count
    caller agrees on it across the ranks before the single-owner service) */
 int Set_Density_Grid_OTF_Possible(const OpenMXAtomicViews *atomic, int Cnt_kind)
 {
-    const char *enabled = getenv("OPENMX_DENSITY_GRID_ONTHEFLY");
+    const char *enabled = openmx_env_get("OPENMX_DENSITY_GRID_ONTHEFLY");
 
     /* without contraction (Cnt_switch 0) the contracted orbitals are the
        primitive ones, so Cnt_kind 1 (the call before the forces) is the
@@ -2265,12 +2266,12 @@ int Set_Density_Grid_OTF_Run(const OpenMXAtomicViews *atomic, int Cnt_kind, doub
 {
     const int spin_count = SpinP_switch + 1;
     SetHamOTFState *st = &Set_Hamiltonian_OTF_State;
-    const char *enabled = getenv("OPENMX_DENSITY_GRID_ONTHEFLY");
+    const char *enabled = openmx_env_get("OPENMX_DENSITY_GRID_ONTHEFLY");
     SetHOTFPlan *pl = NULL;
     int batch_count = 0, Mc_AN, b = 0, written = 0, myid, ok = 0;
     size_t free_bytes = 0;
     unsigned char *arena = NULL;
-    const char *timing_env = getenv("OPENMX_SETHAM_TIMING");
+    const char *timing_env = openmx_env_get("OPENMX_SETHAM_TIMING");
     const int stdout_timing = (timing_env != NULL && atoi(timing_env) != 0);
     const int timing = stdout_timing || SetH_ProfileEnabled();
     double t_plan = 0.0, t_alloc = 0.0, t_pack = 0.0, t_eval = 0.0, t_kernel = 0.0, t_unpack = 0.0;
@@ -2283,7 +2284,7 @@ int Set_Density_Grid_OTF_Run(const OpenMXAtomicViews *atomic, int Cnt_kind, doub
         Cnt_switch != 0 || !Set_Hamiltonian_OTF_Enabled() || !Set_Hamiltonian_MatrixElements_OpenMP_Enabled() ||
         !Set_Hamiltonian_OTF_Rank_Selected()) {
         static int noted = 0;
-        if (!noted && myid == Host_ID && getenv("OPENMX_GPU_VERBOSE") != NULL) {
+        if (!noted && myid == Host_ID && openmx_env_get("OPENMX_GPU_VERBOSE") != NULL) {
             printf("<Set_Density_Grid> on-the-fly density not enabled here (Cnt_kind %d, Cnt_switch %d, selected %d)\n",
                    Cnt_kind, Cnt_switch, Set_Hamiltonian_OTF_Rank_Selected());
             fflush(stdout);
@@ -2479,7 +2480,7 @@ static int SetH_capacity_recover(int cnt_kind,int local_done,int rank, const Ope
   double *****CntH=electronic->CntH;
   double *****H=electronic->H;
 
-    const char *gpu=getenv("OPENMX_GPU");
+    const char *gpu=openmx_env_get("OPENMX_GPU");
     int enabled=scf_eigen_lib_flag==GPUSOLVER && !(gpu && atoi(gpu)==0) && Set_Hamiltonian_MatrixElements_OpenMP_Enabled();
     int pending=enabled && !local_done,any=0;
     MPI_Allreduce(&pending,&any,1,MPI_INT,MPI_MAX,mpi_comm_level1);
@@ -3224,7 +3225,7 @@ static void Calc_MatrixElements_dVH_Vxc_VNA_OpenMP(OpenMXGridWorkspace *grid, co
     }
 
     {
-        const char *check = getenv("OPENMX_OTF_CHECK");
+        const char *check = openmx_env_get("OPENMX_OTF_CHECK");
         if (check != NULL && atoi(check) != 0 && Cnt_kind == 0) {
             Set_Hamiltonian_OTF_Check(atomic, pair_count, pair_Mc_AN, pair_h_AN, pair_NO0, pair_NO1, pair_NOLG,
                                       pair_nolg_offset, pair_orbs1_offset, nolg_Nc, total_nolg_all,
@@ -3334,7 +3335,7 @@ static void Calc_MatrixElements_dVH_Vxc_VNA_OpenMP(OpenMXGridWorkspace *grid, co
             c->t.orbs0_resident=c->t.orbs1_resident=0;
         }
         if (!keep_device_resident && myid == Host_ID) {
-            const char *trace = getenv("OPENMX_BAND_CACHE_TRACE");
+            const char *trace = openmx_env_get("OPENMX_BAND_CACHE_TRACE");
             if (trace != NULL && atoi(trace) != 0) {
                 printf("<DFT> Set_Hamiltonian orbital-table residency skipped for NC eigensolver\n");
                 fflush(stdout);

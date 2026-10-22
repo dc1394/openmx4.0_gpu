@@ -44,8 +44,8 @@ double cosma_host_bytes(char transa, char transb, int m, int n, int k,
 
     /* the limit as cosma::get_cpu_max_memory<T>() reads it */
     long long limit = std::numeric_limits<long long>::max();
-    if (const char *v = openmx_env_get("COSMA_CPU_MAX_MEMORY")) {
-        limit = std::atoll(v) * 1024LL * 1024LL / (long long)sizeof(T);
+    if (openmx_env_at(OPENMX_ENV_EXT_COSMA_CPU_MAX_MEMORY) != nullptr) {
+        limit = (long long)(openmx_env_mib_bytes_at(OPENMX_ENV_EXT_COSMA_CPU_MAX_MEMORY, 0) / sizeof(T));
     }
 
     /* the prefix that pxgemm adds when it adapts its strategy to the grid */

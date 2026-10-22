@@ -9,6 +9,7 @@
 
 #include "mpi.h"
 #include "openmx_common.h"
+#include "openmx_env.h"
 #include "openmx_gpu_bilinear.h"
 #include "openmx_gpu_workers.h"
 #include "set_hip_default_device_from_local_rank.h"
@@ -160,9 +161,9 @@ int Set_Density_Grid_GPU_Capacity(int cnt_kind,int local_done,double *****dm,dou
 {
   SDGRecovery c={0};c.cnt_kind=cnt_kind;c.spins=SpinP_switch+1;c.dm=dm;c.density=density;
   MPI_Comm_rank(mpi_comm_level1,&c.rank);
-  const char *control=getenv("OPENMX_DENSITY_GRID_GPU");
-  if (!control) control=getenv("OPENMX_SETDENSITY_GPU");
-  const char *gpu=getenv("OPENMX_GPU");
+  const char *control=openmx_env_get("OPENMX_DENSITY_GRID_GPU");
+  if (!control) control=openmx_env_get("OPENMX_SETDENSITY_GPU");
+  const char *gpu=openmx_env_get("OPENMX_GPU");
   int enabled=(!gpu || atoi(gpu)!=0) && scf_eigen_lib_flag==GPUSOLVER && (!control || !*control || atoi(control)!=0);
   int pending=enabled && !local_done,any=0;
   MPI_Allreduce(&pending,&any,1,MPI_INT,MPI_MAX,mpi_comm_level1);
@@ -213,14 +214,14 @@ int Set_Density_Grid_GPU_Capacity(int cnt_kind,int local_done,double *****dm,dou
 
 static int SDG_env_bool(const char *name, int fallback)
 {
-  const char *value = getenv(name);
+  const char *value = openmx_env_get(name);
   if (value == NULL || value[0] == '\0') return fallback;
   return atoi(value) != 0;
 }
 
 static size_t SDG_env_mib(const char *name, size_t fallback_mib)
 {
-  const char *value = getenv(name);
+  const char *value = openmx_env_get(name);
   char *endp = NULL;
   unsigned long long mib;
 
@@ -1445,7 +1446,7 @@ static int SDG_local_prepare(const OpenMXAtomicViews *atomic, int Cnt_kind, int 
      the group falls back (to the all-rank on-the-fly mode, the
      single-owner service or the CPU loop of Set_Density_Grid.c). */
   {
-    const char *value = getenv("OPENMX_DENSITY_GRID_GPU_LOCAL");
+    const char *value = openmx_env_get("OPENMX_DENSITY_GRID_GPU_LOCAL");
     if (value != NULL && value[0] != '\0') mode = atoi(value);
   }
 

@@ -32,17 +32,6 @@ thread_local unsigned staging_depth = 0;
 #endif
 thread_local openmx_mgpu_gemm_report report = {};
 
-size_t budget(const char *name, size_t fallback_mib)
-{
-    const char *value = openmx_env_get(name);
-    if (!value || !*value) return fallback_mib*MiB;
-    char *end = nullptr;
-    const unsigned long long parsed = std::strtoull(value,&end,10);
-    if (*value=='-' || end==value || *end || parsed>std::numeric_limits<size_t>::max()/MiB)
-        return fallback_mib*MiB;
-    return size_t(parsed)*MiB;
-}
-bool option(const char *name) { const char *v=openmx_env_get(name);return v && *v=='1'; }
 bool product(size_t a,size_t b,size_t *out)
 {
     if (b && a>std::numeric_limits<size_t>::max()/b) return false;
@@ -238,7 +227,7 @@ template<class T> bool zero(T v) {
 template<class T> OpenMXBlasStatus local_gemm(OpenMXBlasHandle h,OpenMXBlasOperation ta,OpenMXBlasOperation tb,
     int m,int n,int k,const T *alpha,const T *a,int lda,const T *b,int ldb,const T *beta,T *c,int ldc)
 {
-    const char *backend=openmx_env_get("OPENMX_MGPU_GEMM_BACKEND");
+    const char *backend=openmx_env_at(OPENMX_ENV_MGPU_GEMM_BACKEND);
     const bool bridge=!(backend && std::strcmp(backend,"native")==0);
     struct Guard { Guard(){in_worker=true;} ~Guard(){in_worker=false;} } guard;
     if constexpr(std::is_same_v<T,double>) {
@@ -317,9 +306,8 @@ template<class T> int gemm(OpenMXBlasHandle handle,int ngpu,const int *devices,O
     Operation op;
     op.host_matrices=host_matrices;
 #if !OPENMX_GPU_HIP
-    op.pageable=host_matrices && option("OPENMX_MGPU_GEMM_PAGEABLE");
-    const char *gather_control=openmx_env_get("OPENMX_MGPU_GEMM_ASYNC_GATHER");
-    op.async_gather=!(gather_control && std::strcmp(gather_control,"0")==0);
+    op.pageable=host_matrices && openmx_env_flag_at(OPENMX_ENV_MGPU_GEMM_PAGEABLE, 0);
+    op.async_gather=openmx_env_flag_at(OPENMX_ENV_MGPU_GEMM_ASYNC_GATHER, 1)!=0;
 #endif
     if(OpenMXGpuGetDevice(&op.origin)!=OPENMX_GPU_SUCCESS) {report.reason="current device unavailable";return 0;}
     auto finish=[&](int handled,const char *reason) {
@@ -360,19 +348,19 @@ template<class T> int gemm(OpenMXBlasHandle handle,int ngpu,const int *devices,O
     size_t elements=0,result_bytes=0;
     if(!product(size_t(m),size_t(n),&elements) || !product(elements,sizeof(T),&result_bytes))
         return finish(0,"transaction size overflow");
-    const size_t reserve=budget("OPENMX_MGPU_GEMM_RESERVE_MB",512);
-    size_t tile_budget=budget("OPENMX_MGPU_GEMM_WORKSPACE_MB",1024);
-    const size_t host_budget=budget("OPENMX_MGPU_GEMM_HOST_MB",256);
+    const size_t reserve=openmx_env_mib_bytes_at(OPENMX_ENV_MGPU_GEMM_RESERVE_MB,512);
+    size_t tile_budget=openmx_env_mib_bytes_at(OPENMX_ENV_MGPU_GEMM_WORKSPACE_MB,1024);
+    const size_t host_budget=openmx_env_mib_bytes_at(OPENMX_ENV_MGPU_GEMM_HOST_MB,256);
     if(!tile_budget) return finish(0,"worker budget is zero");
     /* A full private result must not require a second full matrix on the
        owner GPU. Keep the transaction in host memory when that would
        exceed the device budget, reserving room for the owner's tile. */
-    op.host_result=host_matrices || option("OPENMX_MGPU_GEMM_RESULT_HOST") ||
-        result_bytes>budget("OPENMX_MGPU_GEMM_RESULT_MB",2048) ||
+    op.host_result=host_matrices || openmx_env_flag_at(OPENMX_ENV_MGPU_GEMM_RESULT_HOST, 0) ||
+        result_bytes>openmx_env_mib_bytes_at(OPENMX_ENV_MGPU_GEMM_RESULT_MB,2048) ||
         result_bytes>std::numeric_limits<size_t>::max()-tile_budget ||
         !available(result_bytes+tile_budget,reserve);
     if(op.host_result) {
-        if(result_bytes>budget("OPENMX_MGPU_GEMM_HOST_RESULT_MB",65536))
+        if(result_bytes>openmx_env_mib_bytes_at(OPENMX_ENV_MGPU_GEMM_HOST_RESULT_MB,65536))
             return finish(0,"host transaction budget exceeded");
         op.result=std::malloc(result_bytes);
         tile_budget=std::min(tile_budget,host_budget);
@@ -384,7 +372,7 @@ template<class T> int gemm(OpenMXBlasHandle handle,int ngpu,const int *devices,O
         }
         if(OpenMXGpuPeekAtLastError()==OPENMX_GPU_OUT_OF_MEMORY) (void)OpenMXGpuGetLastError();
         op.host_result=true;
-        if(result_bytes>budget("OPENMX_MGPU_GEMM_HOST_RESULT_MB",65536))
+        if(result_bytes>openmx_env_mib_bytes_at(OPENMX_ENV_MGPU_GEMM_HOST_RESULT_MB,65536))
             return finish(0,"host transaction budget exceeded");
         op.result=std::malloc(result_bytes);
         tile_budget=std::min(tile_budget,host_budget);
@@ -402,7 +390,7 @@ template<class T> int gemm(OpenMXBlasHandle handle,int ngpu,const int *devices,O
         int can=devices[i]==op.origin,reverse=can;
         if(!host_matrices && !can && (OpenMXGpuDeviceCanAccessPeer(&can,devices[i],op.origin)!=OPENMX_GPU_SUCCESS ||
                     OpenMXGpuDeviceCanAccessPeer(&reverse,op.origin,devices[i])!=OPENMX_GPU_SUCCESS)) return finish(0,"peer query failed");
-        w.peer=!host_matrices && (devices[i]==op.origin || (can && reverse && !option("OPENMX_MGPU_GEMM_FORCE_HOST") &&
+        w.peer=!host_matrices && (devices[i]==op.origin || (can && reverse && !openmx_env_flag_at(OPENMX_ENV_MGPU_GEMM_FORCE_HOST, 0) &&
                                        enable_peer_pair(devices[i],op.origin)));
         if(OpenMXGpuPeekAtLastError()!=OPENMX_GPU_SUCCESS)
             return finish(0,"peer setup failed");
@@ -443,7 +431,7 @@ template<class T> int gemm(OpenMXBlasHandle handle,int ngpu,const int *devices,O
             (g%tile_cols==0?std::min(tile_rows,g/tile_cols):tile_rows);
         const size_t col_cost=size_t(n)*std::min(tile_rows,g)+size_t(m)*
             (g%tile_rows==0?std::min(tile_cols,g/tile_rows):tile_cols);
-        const char *order=openmx_env_get("OPENMX_MGPU_GEMM_TRAVERSAL");
+        const char *order=openmx_env_at(OPENMX_ENV_MGPU_GEMM_TRAVERSAL);
         column_tiles=order && std::strcmp(order,"column")==0 ? true :
             order && std::strcmp(order,"row")==0 ? false : col_cost<row_cost;
     }
@@ -651,14 +639,14 @@ template<class T> struct ResidentRefine:RefineWorkspace {
         size_t bytes;
         if(columns*size_t(n)>INT_MAX || nn>SIZE_MAX/3 ||
            !product(2*nn+columns*n,sizeof(T),&bytes) ||
-           bytes>budget("OPENMX_MAGMA_REFINE_RESIDENT_MB",0)) return false;
+           bytes>openmx_env_mib_bytes_at(OPENMX_ENV_MAGMA_REFINE_RESIDENT_MB,0)) return false;
         std::vector<std::string> buses;
         for(int j=0;j<ngpu;++j) {
             char bus[64];
             if(OpenMXGpuSetDevice(devices[j])!=OPENMX_GPU_SUCCESS ||
                OpenMXGpuDeviceGetPCIBusId(bus,sizeof(bus),devices[j])!=OPENMX_GPU_SUCCESS ||
                std::find(buses.begin(),buses.end(),bus)!=buses.end() ||
-               !available(bytes,budget("OPENMX_MAGMA_REFINE_RESERVE_MB",4096))) return false;
+               !available(bytes,openmx_env_mib_bytes_at(OPENMX_ENV_MAGMA_REFINE_RESERVE_MB,4096))) return false;
             buses.emplace_back(bus);
             Worker w;w.ctx=context(devices[j]);
             if(!w.ctx) return false;

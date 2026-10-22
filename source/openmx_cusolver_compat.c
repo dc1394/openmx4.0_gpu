@@ -39,8 +39,7 @@ static _Thread_local OpenMXCuSolverPolicy policy;
 
 static int openmx_solver_verbose(void)
 {
-    const char *s = openmx_env_get("OPENMX_CUSOLVER_VERBOSE");
-    return s && atoi(s) != 0;
+    return openmx_env_flag_at(OPENMX_ENV_CUSOLVER_VERBOSE, 0);
 }
 
 static cusolverStatus_t openmx_solver_policy_init(void)
@@ -48,13 +47,10 @@ static cusolverStatus_t openmx_solver_policy_init(void)
     if (policy.initialized) return CUSOLVER_STATUS_SUCCESS;
     policy.algorithm = -1;
     {
-        const char *s = openmx_env_get("OPENMX_CUSOLVER_TWO_STAGE_MIN_N");
+        const char *s = openmx_env_at(OPENMX_ENV_CUSOLVER_TWO_STAGE_MIN_N);
         if (s && *s) {
-            char *end;
-            long long value;
-            errno = 0;
-            value = strtoll(s, &end, 10);
-            if (!errno && !*end && value >= 0) {
+            const long value = openmx_env_long_at(OPENMX_ENV_CUSOLVER_TWO_STAGE_MIN_N, -1);
+            if (value >= 0) {
                 policy.two_stage_min_n = value;
                 policy.minimum_set = 1;
             }
@@ -64,7 +60,7 @@ static cusolverStatus_t openmx_solver_policy_init(void)
 #if CUSOLVER_VERSION >= 12304
     {
         int major = 0, minor = 0, patch = 0;
-        const char *s = openmx_env_get("OPENMX_CUSOLVER_ALGORITHM");
+        const char *s = openmx_env_at(OPENMX_ENV_CUSOLVER_ALGORITHM);
         cusolverStatus_t st;
         st = cusolverGetProperty(MAJOR_VERSION, &major);
         if (st != CUSOLVER_STATUS_SUCCESS) return st;
@@ -158,8 +154,8 @@ cusolverStatus_t openmx_cusolverDnCreate(cusolverDnHandle_t *handle)
     if (st != CUSOLVER_STATUS_SUCCESS) return st;
 #if CUSOLVER_VERSION >= 12200
     {
-        const char *s = openmx_env_get("OPENMX_CUSOLVER_EMULATION");
-        int emulate = s && *s ? atoi(s) != 0 : openmx_solver_emulation_default();
+        const int requested = openmx_env_flag_at(OPENMX_ENV_CUSOLVER_EMULATION, -1);
+        int emulate = 0 <= requested ? requested : openmx_solver_emulation_default();
         if (emulate) {
             st = cusolverDnSetMathMode(*handle, CUSOLVER_FP64_EMULATED_FIXEDPOINT_MATH);
             if (st == CUSOLVER_STATUS_SUCCESS)
@@ -180,7 +176,7 @@ cusolverStatus_t openmx_cusolverDnCreate(cusolverDnHandle_t *handle)
         }
         else if (openmx_solver_verbose())
             fprintf(stderr, "OpenMX: cuSOLVER native FP64 (%s); no emulation retry backup.\n",
-                    s && *s ? "OPENMX_CUSOLVER_EMULATION override" : "fast native FP64 device");
+                    0 <= requested ? "OPENMX_CUSOLVER_EMULATION override" : "fast native FP64 device");
     }
 #endif
     return CUSOLVER_STATUS_SUCCESS;
@@ -236,12 +232,7 @@ static int openmx_solver_emulated(cusolverDnHandle_t handle, cudaDataType type)
 /* OPENMX_CUSOLVER_RETRY_TEST=1 exercises the retry on every emulated solve */
 static int openmx_solver_retry_test(void)
 {
-    static int state = -1;
-    if (state < 0) {
-        const char *v = openmx_env_get("OPENMX_CUSOLVER_RETRY_TEST");
-        state = (v != NULL && v[0] != '\0' && atoi(v) != 0) ? 1 : 0;
-    }
-    return state;
+    return openmx_env_flag_at(OPENMX_ENV_CUSOLVER_RETRY_TEST, 0);
 }
 
 /* when even the native solve fails: what did the input look like? */

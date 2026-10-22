@@ -29,9 +29,8 @@
 
 static int MixGR_Fast_Enabled(void)
 {
-  const char *env = openmx_env_get("OPENMX_MIX_FAST");
   if (scf_eigen_lib_flag != GPUSOLVER) return 0;
-  return (env == NULL) ? 1 : (atoi(env) != 0);
+  return openmx_env_flag_at(OPENMX_ENV_MIX_FAST, 1);
 }
 
 /* rotate the slot pointers 1..nslot-1; slot 0 is left untouched */

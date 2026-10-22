@@ -448,14 +448,7 @@ static cublasHandle_t ClusterNonCol_CublasHandle(void);
    GEMMul8, and the gather take a few tens of ms).  0 keeps the sums. */
 static int ClusterNonCol_DmByGemm(void)
 {
-    static int cached = -1;
-
-    if (cached < 0) {
-        const char *value = openmx_env_get("OPENMX_CLUSTER_GPU_DM_GEMM");
-
-        cached = (value == NULL || value[0] == '\0' || atoi(value) != 0);
-    }
-    return cached;
+    return openmx_env_flag_at(OPENMX_ENV_CLUSTER_GPU_DM_GEMM, 1);
 }
 
 static double ClusterNonCol_CalcDMRootDense_OpenACC(int myid, int size_H1, int *MP, int n, int n2, int max_state,
@@ -954,15 +947,7 @@ static int ClusterNonCol_GemmWorkspaceTurnRelease(void)
        it from occupying the shared device through the grid/force phases of
        the SCF step; opt out with OPENMX_CLUSTER_GEMMUL8_TURN_RELEASE=0
        (falls back to the band-path knob for a single switch). */
-    const char *value = openmx_env_get("OPENMX_CLUSTER_GEMMUL8_TURN_RELEASE");
-
-    if (value == NULL) {
-        value = openmx_env_get("OPENMX_BAND_GEMMUL8_TURN_RELEASE");
-    }
-    if (value == NULL) {
-        return 1;
-    }
-    return (atoi(value) != 0);
+    return openmx_env_flag_at(OPENMX_ENV_CLUSTER_GEMMUL8_TURN_RELEASE, openmx_env_flag_at(OPENMX_ENV_BAND_GEMMUL8_TURN_RELEASE, 1));
 }
 
 /* Persistent cuSOLVER state for the root dense zheevx.  The shared
@@ -1398,13 +1383,7 @@ static long ClusterNonCol_prof_solves = 0;
 
 static int ClusterNonCol_ProfileEnabled(void)
 {
-    static int cached = -1;
-
-    if (cached < 0) {
-        const char *value = openmx_env_get("OPENMX_CLUSTER_PROFILE");
-        cached = (value != NULL && atoi(value) != 0);
-    }
-    return cached;
+    return openmx_env_flag_at(OPENMX_ENV_CLUSTER_PROFILE, 0);
 }
 
 /* charges the time since *t0 to phase (none if negative) after synchronizing
@@ -1441,8 +1420,8 @@ static void ClusterNonCol_ProfileReport(int myid, int n2, int MaxN, double dm_se
    tests/eigen_precision_probe.cu.  Returns 1 when it wrote a file. */
 static int ClusterNonCol_SampleHamiltonian(int SCF_iter, dcomplex *Hs2, int n2, int MaxN)
 {
-    const char *dir = openmx_env_get("OPENMX_GEMM_SAMPLE_DIR");
-    const char *list = openmx_env_get("OPENMX_GEMM_SAMPLE_ITERS");
+    const char *dir = openmx_env_at(OPENMX_ENV_GEMM_SAMPLE_DIR);
+    const char *list = openmx_env_at(OPENMX_ENV_GEMM_SAMPLE_ITERS);
     size_t count = (size_t)n2 * (size_t)n2;
     char path[4096];
     int wanted = 0;
@@ -2122,14 +2101,7 @@ static void Patch2Device_Cluster_NonCol_Owner(double ****RH, double *H, int *MP,
 
 static size_t ClusterNonCol_GpuDiagReserveBytes(void)
 {
-    const char *value = openmx_env_get("OPENMX_CLUSTER_GPU_DIAG_RESERVE_MB");
-    long mib = 1024;
-
-    if (value != NULL) {
-        long parsed = atol(value);
-        if (0 <= parsed) mib = parsed;
-    }
-    return (size_t)mib * 1024ULL * 1024ULL;
+    return openmx_env_mib_bytes_at(OPENMX_ENV_CLUSTER_GPU_DIAG_RESERVE_MB, 1024);
 }
 
 /* Lay out and reserve the dense arena for an (n, n2) solve whose gathered
@@ -2210,18 +2182,9 @@ static void ClusterNonCol_DenseArena_Release(void)
 
 int Cluster_DFT_NonCol_GpuSwitchNum(void)
 {
-    static int cached = -1;
+    long parsed = openmx_env_long_at(OPENMX_ENV_CLUSTER_NONCOL_GPU_SWITCH_NUM, 0);
 
-    if (cached < 0) {
-        const char *value = openmx_env_get("OPENMX_CLUSTER_NONCOL_GPU_SWITCH_NUM");
-        int parsed;
-
-        cached = CLUSTER_NONCOL_GPU_CPU_SWITCH_NUM;
-        if (value != NULL && 0 < (parsed = atoi(value))) {
-            cached = parsed;
-        }
-    }
-    return cached;
+    return 0 < parsed && parsed <= INT_MAX ? (int)parsed : CLUSTER_NONCOL_GPU_CPU_SWITCH_NUM;
 }
 
 /* Collectively decide whether the root dense GPU diagonalization fits on the
@@ -2241,7 +2204,6 @@ static int ClusterNonCol_GpuDiagFits(int SCF_iter, int n, int n2, int myid)
 {
     static int verdict = -1;
     static int verdict_n2 = 0;
-    const char *force = openmx_env_get("OPENMX_CLUSTER_GPU_DIAG");
     ClusterNonColDenseArena *arena = &ClusterNonCol_dense_arena;
     long long my_nzeros = 0;
     long long total_nzeros = 0;
@@ -2252,7 +2214,7 @@ static int ClusterNonCol_GpuDiagFits(int SCF_iter, int n, int n2, int myid)
         ClusterNonCol_mgpu_host_dense=0;
         ClusterNonCol_ResetGs2Fallback();
     }
-    if (force && atoi(force)==0 && !openmx_mgpu_host_required()) {
+    if (openmx_env_flag_at(OPENMX_ENV_CLUSTER_GPU_DIAG, -1)==0 && !openmx_mgpu_host_required()) {
         ClusterNonCol_cpu_fallback_n2=n2;
         return 0;
     }

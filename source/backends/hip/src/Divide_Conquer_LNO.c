@@ -18,6 +18,7 @@
 ***********************************************************************/
 
 #include "openmx_common.h"
+#include "openmx_env.h"
 #include "openmx_solver_workspace.h"
 #include "openmx_native_resources.h"
 OPENMX_NATIVE_RESOURCE_GROUP(Divide_Conquer_LNO,Divide_Conquer_LNO_Release_GPU_Caches)
@@ -136,7 +137,7 @@ static int DCLNO_ProfileEnabled(void)
         int rank;
         MPI_Comm_rank(mpi_comm_level1, &rank);
         if (rank == Host_ID) {
-            const char *value = getenv("OPENMX_DCLNO_PROFILE");
+            const char *value = openmx_env_get("OPENMX_DCLNO_PROFILE");
             enabled = value != NULL && atoi(value) != 0;
         }
         MPI_Bcast(&enabled, 1, MPI_INT, Host_ID, mpi_comm_level1);
@@ -200,7 +201,7 @@ static int DCLNO_GpuEigenThreshold(void)
 {
     static int threshold = -1;
     if (threshold < 0) {
-        const char *value = getenv("OPENMX_DCLNO_GPU_THRESHOLD");
+        const char *value = openmx_env_get("OPENMX_DCLNO_GPU_THRESHOLD");
         threshold = DCLNO_GPU_PROXY_EIGEN_THRESHOLD_COL;
         if (value != NULL && value[0] != '\0') {
             int parsed = atoi(value);
@@ -217,7 +218,7 @@ static int DCLNO_GpuOwnerThreshold(void)
 {
     static int threshold = -1;
     if (threshold < 0) {
-        const char *value = getenv("OPENMX_DCLNO_GPU_OWNER_THRESHOLD");
+        const char *value = openmx_env_get("OPENMX_DCLNO_GPU_OWNER_THRESHOLD");
         threshold = 2048;
         if (value != NULL && value[0] != '\0' && atoi(value) >= 0)
             threshold = atoi(value);
@@ -236,7 +237,7 @@ static int DCLNO_NonColGpuEigenThreshold(void)
     static int threshold = -1;
 
     if (threshold < 0) {
-        const char *value = getenv("OPENMX_DCLNO_NONCOL_GPU_THRESHOLD");
+        const char *value = openmx_env_get("OPENMX_DCLNO_NONCOL_GPU_THRESHOLD");
 
         threshold = DCLNO_NONCOL_GPU_CPU_SWITCH_NUM;
         if (value != NULL && value[0] != '\0') {
@@ -700,7 +701,7 @@ static int DCLNO_RetryTest(void)
 {
     static int enabled = -1;
     if (enabled < 0) {
-        const char *value = getenv("OPENMX_DCLNO_RETRY_TEST");
+        const char *value = openmx_env_get("OPENMX_DCLNO_RETRY_TEST");
         enabled = (value != NULL && value[0] != '\0' && atoi(value) != 0) ? 1 : 0;
     }
     return enabled;
@@ -1218,10 +1219,10 @@ static int DCLNO_GpuTurnRelease(void)
        phase is done keeps them from occupying the shared device through the
        grid/force phases of the SCF step; opt out with
        OPENMX_DCLNO_GPU_TURN_RELEASE=0 (falls back to the band-path knob). */
-    const char *value = getenv("OPENMX_DCLNO_GPU_TURN_RELEASE");
+    const char *value = openmx_env_get("OPENMX_DCLNO_GPU_TURN_RELEASE");
 
     if (value == NULL) {
-        value = getenv("OPENMX_BAND_GEMMUL8_TURN_RELEASE");
+        value = openmx_env_get("OPENMX_BAND_GEMMUL8_TURN_RELEASE");
     }
     if (value == NULL) {
         return 1;
@@ -1642,7 +1643,7 @@ static double DC_Col_owned(char * mode, int MD_iter, int SCF_iter, int SucceedRe
 
     use_gpu_accel = (scf_eigen_lib_flag == GPUSOLVER);
     if (use_gpu_accel) {
-        const char *profile = getenv("OPENMX_DCLNO_GPU_PROFILE");
+        const char *profile = openmx_env_get("OPENMX_DCLNO_GPU_PROFILE");
         gpu_profile = profile != NULL && atoi(profile) != 0;
         DCLNO_GPUProxy_Init();
     }
@@ -4446,7 +4447,7 @@ static double DC_NonCol_owned(char *mode,
            overlap basis and ELPA1 full-matrix handling.  Never symmetrize or
            otherwise modify the original physical matrices in this guard. */
         use_gpu_task_nc = 0;
-        const char *guard_verbose = getenv("OPENMX_GPU_VERBOSE");
+        const char *guard_verbose = openmx_env_get("OPENMX_GPU_VERBOSE");
         if (!nc_guard_reported && (2 <= level_stdout ||
                                    (guard_verbose != NULL && atoi(guard_verbose) != 0))) {
           fprintf(stderr, "DCLNO_NC_GUARD rank=%d scf=%d atom=%d n=%d route=cpu reason=non-Hermitian S_herm=%.17g S_scale=%.17g H_herm=%.17g H_scale=%.17g relative_tolerance=1e-8\n",

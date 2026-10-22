@@ -11,6 +11,7 @@
 
 #include "mpi.h"
 #include "openmx_common.h"
+#include "openmx_env.h"
 #include "openmx_solver_workspace.h"
 #include "openmx_native_resources.h"
 OPENMX_NATIVE_RESOURCE_GROUP(Cluster_DFT_Col,Cluster_DFT_Col_Release_GPU_Caches)
@@ -297,7 +298,7 @@ static void ClusterCol_AbortWithMessage(const char *message)
 
 static int ClusterCol_GpuVerbose(void)
 {
-    const char *value = getenv("OPENMX_GPU_VERBOSE");
+    const char *value = openmx_env_get("OPENMX_GPU_VERBOSE");
 
     return (value != NULL && value[0] == '1');
 }
@@ -318,7 +319,7 @@ int Cluster_DFT_Col_GpuSwitchNum(void)
     static int cached = -1;
 
     if (cached < 0) {
-        const char *value = getenv("OPENMX_CLUSTER_GPU_SWITCH_NUM");
+        const char *value = openmx_env_get("OPENMX_CLUSTER_GPU_SWITCH_NUM");
         int parsed;
 
         cached = CLUSTER_GPU_CPU_SWITCH_NUM;
@@ -361,8 +362,8 @@ static void ClusterCol_DetailTimer_Begin(int myid1, int SCF_iter, int n, int Max
     }
 
     memset(&ClusterCol_detail_timers, 0, sizeof(ClusterCol_detail_timers));
-    const char *profile = getenv("OPENMX_CLUSTER_PROFILE");
-    const char *measure = getenv("OPENMX_CLUSTER_MEASURE_TIME");
+    const char *profile = openmx_env_get("OPENMX_CLUSTER_PROFILE");
+    const char *measure = openmx_env_get("OPENMX_CLUSTER_MEASURE_TIME");
     ClusterCol_detail_timers.active = (profile != NULL && atoi(profile) != 0)
                                    || (measure != NULL && atoi(measure) != 0);
     ClusterCol_detail_timers.scf_iter = SCF_iter;
@@ -401,7 +402,7 @@ static void ClusterCol_DetailTimer_Report(int myid0, int myid1)
         static int enabled = -1;
 
         if (enabled < 0) {
-            const char *v = getenv("OPENMX_CLUSTER_MEASURE_TIME");
+            const char *v = openmx_env_get("OPENMX_CLUSTER_MEASURE_TIME");
             enabled = (v != NULL && atoi(v) != 0);
         }
         if (enabled) {
@@ -758,9 +759,9 @@ static int ClusterCol_owners_on_device = 1;
 
 static int ClusterCol_GpuDiagFitsOnce(int n, int maxn, int myworld1, int myid1, int *retryable, int *allocated)
 {
-    const char *env = getenv("OPENMX_CLUSTER_GPU_DIAG");
-    const char *reserve_env = getenv("OPENMX_CLUSTER_GPU_DIAG_RESERVE_MB");
-    const char *serial_env = getenv("OPENMX_CLUSTER_GPU_SERIAL");
+    const char *env = openmx_env_get("OPENMX_CLUSTER_GPU_DIAG");
+    const char *reserve_env = openmx_env_get("OPENMX_CLUSTER_GPU_DIAG_RESERVE_MB");
+    const char *serial_env = openmx_env_get("OPENMX_CLUSTER_GPU_SERIAL");
     const double mib = 1024.0 * 1024.0;
     double reserve = 256.0 * mib;
     int local_fit = 1, fit = 1;
@@ -768,7 +769,7 @@ static int ClusterCol_GpuDiagFitsOnce(int n, int maxn, int myworld1, int myid1, 
     int local_retryable = 1;
     MPI_Comm node_comm, roots_comm;
 
-    if (serial_env == NULL) serial_env = getenv("OPENMX_CLUSTER_GPU_DIAG_SERIAL");
+    if (serial_env == NULL) serial_env = openmx_env_get("OPENMX_CLUSTER_GPU_DIAG_SERIAL");
     if (env != NULL && atoi(env) == 0)
         local_fit = local_serial_fit = local_retryable = 0;
     if (serial_env != NULL && atoi(serial_env) == 0) local_serial_fit = 0;
@@ -797,8 +798,8 @@ static int ClusterCol_GpuDiagFitsOnce(int n, int maxn, int myworld1, int myid1, 
             local_fit = local_serial_fit = local_retryable = 0;
         if (local_fit) {
             int capacity = n;
-            const char *ozaki = getenv("OPENMX_MAGMA_OZAKI2");
-            const char *gemm = getenv("OPENMX_CLUSTER_GPU_GEMM");
+            const char *ozaki = openmx_env_get("OPENMX_MAGMA_OZAKI2");
+            const char *gemm = openmx_env_get("OPENMX_CLUSTER_GPU_GEMM");
             if (ctx->initialized && ctx->device_id == device) {
                 double panel = (double)ctx->matrix_dim * ctx->matrix_dim * sizeof(double);
                 if (ctx->matrix_dim > capacity) capacity = ctx->matrix_dim;
@@ -816,16 +817,16 @@ static int ClusterCol_GpuDiagFitsOnce(int n, int maxn, int myworld1, int myid1, 
                 info[0] += (double)openmx_gemmul8DWorkspaceSize(n, n, n);
             if (ozaki == NULL || ozaki[0] == '\0' || atoi(ozaki) != 0) {
                 /* Defaults match magma_openmx.cu; honor user caps too. */
-                const char *cap_env = getenv("MAGMA_OZAKI2_MAX_WS_MB");
-                const char *pct_env = getenv("MAGMA_OZAKI2_MAX_WS_PERCENT");
-                const char *ranks_env = getenv("MAGMA_OZAKI2_LOCAL_RANKS");
+                const char *cap_env = openmx_env_get("MAGMA_OZAKI2_MAX_WS_MB");
+                const char *pct_env = openmx_env_get("MAGMA_OZAKI2_MAX_WS_PERCENT");
+                const char *ranks_env = openmx_env_get("MAGMA_OZAKI2_LOCAL_RANKS");
                 double cap = cap_env == NULL ? 512.0 * mib : atof(cap_env) * mib;
                 double pct = pct_env == NULL ? -1.0 : atof(pct_env);
                 int local_ranks = ranks_env == NULL ? 4 : atoi(ranks_env);
                 double percent_cap;
                 if (local_ranks < 1) {
-                    const char *mpi_ranks = getenv("OMPI_COMM_WORLD_LOCAL_SIZE");
-                    const char *slurm_ranks = getenv("SLURM_NTASKS_PER_NODE");
+                    const char *mpi_ranks = openmx_env_get("OMPI_COMM_WORLD_LOCAL_SIZE");
+                    const char *slurm_ranks = openmx_env_get("SLURM_NTASKS_PER_NODE");
                     local_ranks = mpi_ranks == NULL ? 0 : atoi(mpi_ranks);
                     if (local_ranks < 1 && slurm_ranks != NULL) local_ranks = atoi(slurm_ranks);
                     if (local_ranks < 1) local_ranks = 1;
@@ -953,7 +954,7 @@ static int ClusterCol_GpuDiagFits(int n, int maxn, int myworld1, int myid1)
     MPI_Comm_rank(mpi_comm_level1,&myid0);
     ClusterCol_mgpu_host_dense=0;
     ClusterCol_ResetGs2Fallback();
-    const char *enabled=getenv("OPENMX_CLUSTER_GPU_DIAG");
+    const char *enabled=openmx_env_get("OPENMX_CLUSTER_GPU_DIAG");
     if (enabled && atoi(enabled)==0 && !openmx_mgpu_host_required()) return 0;
     fit=openmx_mgpu_host_required()?0:ClusterCol_NativeGpuDiagFits(n,maxn,myworld1,myid1);
     if (!fit) {
@@ -1320,7 +1321,7 @@ static void ClusterCol_RefineConfigure(void)
     if (0 <= st->iterations) return;
     MPI_Comm_rank(mpi_comm_level1, &myid);
     if (myid == Host_ID) {
-        const char *all = getenv("OPENMX_EIGEN_REFINE_FIRST_ALL");
+        const char *all = openmx_env_get("OPENMX_EIGEN_REFINE_FIRST_ALL");
 
         config[0] = openmx_eigen_refine_configure(0, 2 <= level_stdout, &config[1]);
         /* the states of the first SCF step: the same MaxN on every rank */
@@ -1631,7 +1632,7 @@ static int ClusterCol_ForwardUnblocked(void)
     static int cached = -1;
 
     if (cached < 0) {
-        const char *value = getenv("OPENMX_GEMMUL8_FORWARD_UNBLOCKED");
+        const char *value = openmx_env_get("OPENMX_GEMMUL8_FORWARD_UNBLOCKED");
 
         cached = (value == NULL || value[0] == '\0' || value[0] == '1') ? 1 : 0;
     }
@@ -1646,9 +1647,9 @@ static int ClusterCol_ForwardUnblocked(void)
    blocked path (0), keeping the capped workspace for the next solve. */
 static int ClusterCol_GemmWorkspaceTurnRelease(void)
 {
-    const char *value = getenv("OPENMX_CLUSTER_GEMMUL8_TURN_RELEASE");
+    const char *value = openmx_env_get("OPENMX_CLUSTER_GEMMUL8_TURN_RELEASE");
 
-    if (value == NULL) value = getenv("OPENMX_BAND_GEMMUL8_TURN_RELEASE");
+    if (value == NULL) value = openmx_env_get("OPENMX_BAND_GEMMUL8_TURN_RELEASE");
     if (value == NULL) return openmx_gpu_is_apu() ? 0 : 1;
     return (atoi(value) != 0);
 }
@@ -1685,7 +1686,7 @@ static void ClusterCol_GemmWorkspaceTurnEnd(void)
 static void ClusterCol_TrimScratch(void)
 {
     ClusterColGpuSolverCtx *ctx = &ClusterCol_gpusolver_ctx;
-    const char *retain = getenv("OPENMX_CLUSTER_GPU_RETAIN_SCRATCH");
+    const char *retain = openmx_env_get("OPENMX_CLUSTER_GPU_RETAIN_SCRATCH");
     const int automatic = (retain != NULL && strcasecmp(retain, "auto") == 0);
     size_t panel, bytes, free_bytes = 0, total_bytes = 0;
     int device = -1;
@@ -1743,7 +1744,7 @@ static void ClusterCol_GpuSolver_SolveHamiltonianDevice(int n, int maxn, double 
     double alpha = 1.0;
     double beta = 0.0;
     double stime = 0.0;
-    const char *gemm_env = getenv("OPENMX_CLUSTER_GPU_GEMM");
+    const char *gemm_env = openmx_env_get("OPENMX_CLUSTER_GPU_GEMM");
     /* Small products do not amortize the INT8 conversion/launch overhead.
        The bridge retains scf.gemmul8.enable and its memory-safe fallback. */
     int use_gemm = n >= 2048 && (gemm_env == NULL || atoi(gemm_env) != 0);
@@ -2225,7 +2226,7 @@ static void ClusterCol_SampleDeviceMatrix(const double *d_A, int n, const char *
     char path[4096];
     FILE *fp;
 
-    snprintf(path,sizeof(path),"%s/%s",getenv("OPENMX_GEMM_SAMPLE_DIR"),name);
+    snprintf(path,sizeof(path),"%s/%s",openmx_env_get("OPENMX_GEMM_SAMPLE_DIR"),name);
     wait_hipfunc(hipMemcpyAsync(A,d_A,count*sizeof(double),hipMemcpyDeviceToHost,ctx->stream));
     wait_hipfunc(hipStreamSynchronize(ctx->stream));
 
@@ -2242,7 +2243,7 @@ static void ClusterCol_SampleDeviceMatrix(const double *d_A, int n, const char *
 
 static void ClusterCol_SampleTransformedS(int n, int myworld1)
 {
-    const char *dir = getenv("OPENMX_GEMM_SAMPLE_DIR");
+    const char *dir = openmx_env_get("OPENMX_GEMM_SAMPLE_DIR");
     char name[64];
 
     ClusterCol_sample_geometry++;
@@ -2255,8 +2256,8 @@ static void ClusterCol_SampleTransformedS(int n, int myworld1)
 
 static void ClusterCol_SampleHamiltonian(int SCF_iter, int spin, int n)
 {
-    const char *dir = getenv("OPENMX_GEMM_SAMPLE_DIR");
-    const char *list = getenv("OPENMX_GEMM_SAMPLE_ITERS");
+    const char *dir = openmx_env_get("OPENMX_GEMM_SAMPLE_DIR");
+    const char *list = openmx_env_get("OPENMX_GEMM_SAMPLE_ITERS");
     char name[64];
     int wanted = 0;
 
@@ -2824,7 +2825,7 @@ static void ClusterCol_GpuSolverRootDensePath(int SCF_iter, int SpinP_switch, do
 
 static void ClusterCol_SerialOverlapSave(int n)
 {
-    const char *env = getenv("OPENMX_CLUSTER_GPU_OVERLAP_CACHE_MB");
+    const char *env = openmx_env_get("OPENMX_CLUSTER_GPU_OVERLAP_CACHE_MB");
     double cap_mib = env == NULL ? 2048.0 : atof(env);
     size_t bytes = ClusterCol_CheckedMulCount((size_t)n, (size_t)n,
                                                "serial overlap elements");
@@ -4938,7 +4939,7 @@ double Calc_DM_Cluster_collinear(
   /* All spin worlds rendezvous; empty state partitions lend their GPUs.
      Keep the optimized root HIP/DGEMM path above, and recover distributed
      host panels without requiring another full device eigenvector copy. */
-  const char *dm_env=getenv("OPENMX_CLUSTER_GPU_DM");
+  const char *dm_env=openmx_env_get("OPENMX_CLUSTER_GPU_DM");
   int dm_requested=scf_eigen_lib_flag==GPUSOLVER &&
       (Cluster_DFT_Col_GpuSwitchNum()<=n || openmx_mgpu_host_required()) &&
       !(dm_env && atoi(dm_env)==0);

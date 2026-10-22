@@ -16,6 +16,7 @@
 #include <time.h>
 #include <math.h>
 #include "openmx_common.h"
+#include "openmx_env.h"
 #include "openmx_orbitals.h"
 #include "openmx_gpu_workers.h"
 #include "openmx_gpu_task.h"
@@ -50,7 +51,7 @@ int Set_Orbitals_Grid_OTF_Prepare(const OpenMXAtomicViews *atomic);
 
 static int SOG_env_flag(const char *name, int default_value)
 {
-  const char *value = getenv(name);
+  const char *value = openmx_env_get(name);
 
   if (value == NULL || value[0] == '\0') return default_value;
   return atoi(value) != 0;
@@ -59,7 +60,7 @@ static int SOG_env_flag(const char *name, int default_value)
 static int SOG_gpu_requested(int Cnt_kind)
 {
   int w, L0;
-  const char *gpu=getenv("OPENMX_GPU");
+  const char *gpu=openmx_env_get("OPENMX_GPU");
   if (scf_eigen_lib_flag!=GPUSOLVER || (gpu && atoi(gpu)==0)) return 0;
 
   if (Cnt_kind != 0) return 0;
@@ -409,7 +410,7 @@ static int SOG_otf_double_float(void)
   const char *value;
 
   if (!openmx_fp32_enabled()) return 0;
-  value = getenv("OPENMX_ORBS_EVAL_PRECISION");
+  value = openmx_env_get("OPENMX_ORBS_EVAL_PRECISION");
 
   if (value != NULL && value[0] != '\0') {
     if (strcmp(value, "fp64") == 0 || strcmp(value, "FP64") == 0 || strcmp(value, "64") == 0 ||

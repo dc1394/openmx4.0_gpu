@@ -71,10 +71,9 @@ static OpenMXGridPair grid_pair(int a,int h,int rows,int columns,int rank,int co
   return p;
 }
 
-static void grid_trace(const char *key,const char *label,int mode,int rank)
+static void grid_trace(int id,const char *label,int mode,int rank)
 {
-  const char *value=openmx_env_get(key);
-  if (rank==0 && value && atoi(value)!=0){
+  if (rank==0 && openmx_env_flag_at(id, 0)){
     printf("%s SIMD backend = %s\n",label,openmx_core_grid_simd_name(mode));
     fflush(stdout);
   }
@@ -88,8 +87,7 @@ void OpenMX_Grid_Density_CPU(OpenMXGridWorkspace *grid,const OpenMXAtomicViews *
   char error[256];
   OpenMXGridAtom *atoms;
   OpenMXGridPair *pairs;
-  const int mode=openmx_core_grid_simd(openmx_env_get(SpinP_switch==3?
-      "OPENMX_DENSITY_GRID_NC_SIMD":"OPENMX_DENSITY_GRID_COL_SIMD"));
+  const int mode=openmx_core_grid_simd(openmx_env_at(SpinP_switch==3?OPENMX_ENV_DENSITY_GRID_NC_SIMD:OPENMX_ENV_DENSITY_GRID_COL_SIMD));
   MPI_Comm_rank(mpi_comm_level1,&rank);
   for (a=1;a<=Matomnum;a++){
     int g=M2G[a];
@@ -111,7 +109,7 @@ void OpenMX_Grid_Density_CPU(OpenMXGridWorkspace *grid,const OpenMXAtomicViews *
       for (s=0;s<=SpinP_switch;s++)pairs[k].matrix[s]=density_matrix[s][a][h];
     }
   }
-  grid_trace(SpinP_switch==3?"OPENMX_DENSITY_GRID_NC_SIMD_TRACE":"OPENMX_DENSITY_GRID_COL_SIMD_TRACE",
+  grid_trace(SpinP_switch==3?OPENMX_ENV_DENSITY_GRID_NC_SIMD_TRACE:OPENMX_ENV_DENSITY_GRID_COL_SIMD_TRACE,
       SpinP_switch==3?"Set_Density_Grid: NC":"Set_Density_Grid: collinear",mode,rank);
   /* Use the caller's OpenMP runtime, including dynamic and nested teams. The
      core receives the actual team and never creates a second runtime team. */
@@ -132,7 +130,7 @@ void OpenMX_Grid_Hamiltonian_CPU(OpenMXGridWorkspace *grid,int Cnt_kind,const Op
   OpenMXGridPair *pairs;
   double *****matrix;
   const int *orbitals=Cnt_kind==0?Spe_Total_NO:Spe_Total_CNO;
-  const int mode=openmx_core_grid_simd(openmx_env_get("OPENMX_SETHAM_SIMD"));
+  const int mode=openmx_core_grid_simd(openmx_env_at(OPENMX_ENV_SETHAM_SIMD));
   grid_check(Cnt_kind==0 || Cnt_kind==1,"Hamiltonian Cnt_kind must be 0 or 1");
   grid_check(electronic!=NULL,"missing electronic matrix views");
   matrix=Cnt_kind==0?electronic->H:electronic->CntH;
@@ -156,7 +154,7 @@ void OpenMX_Grid_Hamiltonian_CPU(OpenMXGridWorkspace *grid,int Cnt_kind,const Op
       }
     }
   }
-  grid_trace("OPENMX_SETHAM_SIMD_TRACE","Set_Hamiltonian",mode,rank);
+  grid_trace(OPENMX_ENV_SETHAM_SIMD_TRACE,"Set_Hamiltonian",mode,rank);
 #pragma omp parallel if (omp_get_max_threads()>1)
   {
     char worker_error[256];

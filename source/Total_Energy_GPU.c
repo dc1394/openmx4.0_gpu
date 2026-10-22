@@ -26,8 +26,7 @@ typedef struct {
 
 static int TotalEnergy_GPU_Enabled(void)
 {
-  const char *v=openmx_env_get("OPENMX_TOTALENERGY_GPU");
-  return !v || !*v || atoi(v)!=0;
+  return openmx_env_flag_at(OPENMX_ENV_TOTALENERGY_GPU, 1);
 }
 
 static void TotalEnergy_Grid_Kernel(size_t first,size_t count,const void *parameters,

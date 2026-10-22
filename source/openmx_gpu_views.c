@@ -12,8 +12,7 @@ static int gpu_peer_access(int target,int source)
 {
     int ok=0;
     if (target==source) return 1;
-    const char *copy=openmx_env_get("OPENMX_GPU_WORKER_COPY");
-    if (copy && atoi(copy)) return 0;
+    if (openmx_env_flag_at(OPENMX_ENV_GPU_WORKER_COPY, 0)) return 0;
 #pragma omp critical(openmx_worker_peer_enable)
     {
         int possible=0;

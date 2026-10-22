@@ -148,7 +148,6 @@ static void solver_trim(void)
 {
     GpusolverContext *c = &solver_ctx;
     size_t limit = 64u * 1024u * 1024u;
-    const char *s = openmx_env_get("OPENMX_CUSOLVER_CACHE_MB");
 #ifdef _OPENMP
     /* Wannier calls the wrappers from worker threads. A serial test-suite
        boundary cannot release those thread-local contexts. */
@@ -157,14 +156,7 @@ static void solver_trim(void)
         return;
     }
 #endif
-    if (s && *s && *s != '-') {
-        char *end;
-        unsigned long long mb;
-        errno = 0;
-        mb = strtoull(s, &end, 10);
-        if (!errno && !*end && mb <= SIZE_MAX / (1024u * 1024u))
-            limit = (size_t)mb * 1024u * 1024u;
-    }
+    limit = openmx_env_mib_bytes_at(OPENMX_ENV_CUSOLVER_CACHE_MB, limit >> 20);
     /* Large host solves must not retain another dense matrix next to the
        Band/Cluster resident arenas or force-stage buffers. Keep small solves'
        allocation savings within a bounded per-rank footprint. */

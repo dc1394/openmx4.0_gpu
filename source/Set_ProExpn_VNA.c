@@ -93,28 +93,12 @@ static void *SetPro_checked_malloc(size_t size)
   return ptr;
 }
 
-static int SetPro_collective_env_flag(const char *name, int default_value)
-{
-  int myid,value = default_value;
-  const char *env;
-
-  MPI_Comm_rank(mpi_comm_level1,&myid);
-  if (myid==0){
-    env = openmx_env_get(name);
-    if (env!=NULL && env[0]!='\0') value = (atoi(env)!=0);
-  }
-  MPI_Bcast(&value,1,MPI_INT,0,mpi_comm_level1);
-
-  return value;
-}
-
 /* OPENMX_SETPRO_VERBOSE=1: every rank reports each device stage of this
    file (the admission figures, the batch sizes, the elapsed time) together
    with the device memory free at that moment, on stderr */
 static int SetPro_verbose(void)
 {
-  const char *env = openmx_env_get("OPENMX_SETPRO_VERBOSE");
-  return env!=NULL && env[0]!='\0' && atoi(env)!=0;
+  return openmx_env_flag_at(OPENMX_ENV_SETPRO_VERBOSE, 0);
 
 }
 
@@ -202,7 +186,7 @@ static int SetPro_HVNA_GpuBegin(const OpenMXReciprocalViews *reciprocal, SetProG
   g->num_rvna = Num_RVNA;
 
   MPI_Allreduce(MPI_IN_PLACE,&requested,1,MPI_INT,MPI_MIN,mpi_comm_level1);
-  if (!requested || !SetPro_collective_env_flag("OPENMX_SETPRO_GPU",1)) return 0;
+  if (!requested || !openmx_env_flag_at(OPENMX_ENV_SETPRO_GPU,1)) return 0;
 
   MPI_Comm_split_type(mpi_comm_level1,MPI_COMM_TYPE_SHARED,0,MPI_INFO_NULL,&node_comm);
   MPI_Comm_size(node_comm,&node_ranks);
@@ -975,7 +959,7 @@ static int SetPro_DSVNA_GpuBegin(const OpenMXReciprocalViews *reciprocal, SetPro
   int requested=scf_eigen_lib_flag==GPUSOLVER;
   MPI_Allreduce(MPI_IN_PLACE,&requested,1,MPI_INT,MPI_MIN,mpi_comm_level1);
   if (!requested) return 0;
-  if (!SetPro_collective_env_flag("OPENMX_SETPRO_GPU",1)) return 0;
+  if (!openmx_env_flag_at(OPENMX_ENV_SETPRO_GPU,1)) return 0;
 
   MPI_Comm_split_type(mpi_comm_level1,MPI_COMM_TYPE_SHARED,0,MPI_INFO_NULL,&node_comm);
   MPI_Comm_size(node_comm,&node_ranks);
@@ -1738,7 +1722,7 @@ static int SetPro_VNA23_GpuBegin(const OpenMXReciprocalViews *reciprocal, SetPro
   int requested=scf_eigen_lib_flag==GPUSOLVER;
   MPI_Allreduce(MPI_IN_PLACE,&requested,1,MPI_INT,MPI_MIN,mpi_comm_level1);
   if (!requested) return 0;
-  if (!SetPro_collective_env_flag("OPENMX_SETPRO_GPU",1)) return 0;
+  if (!openmx_env_flag_at(OPENMX_ENV_SETPRO_GPU,1)) return 0;
 
   MPI_Comm_split_type(mpi_comm_level1,MPI_COMM_TYPE_SHARED,0,MPI_INFO_NULL,&node_comm);
   MPI_Comm_size(node_comm,&node_ranks);

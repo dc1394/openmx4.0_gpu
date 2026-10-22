@@ -135,9 +135,7 @@ static int SetOLPKinRadialGpuEnabled(void)
   /* The per-pair OpenACC offload of the radial integration is dominated by
      data-region setup and transfers (~1.2 s vs ~0.3 s on the CPU for the
      sidia333 benchmark), so it is opt-in via OPENMX_OLPKIN_RADIAL_GPU=1. */
-  const char *value = openmx_env_get("OPENMX_OLPKIN_RADIAL_GPU");
-
-  return (value != NULL && atoi(value) != 0);
+  return openmx_env_flag_at(OPENMX_ENV_OLPKIN_RADIAL_GPU, 0);
 }
 
 /* Spherical-Bessel table cache keyed on the exact pair distance r. In
@@ -165,10 +163,9 @@ static int SetOLPKinRadialGpuEnabled(void)
 
 static int OLPKin_Bessel_CacheMax(void)
 {
-  const char *value = openmx_env_get("OPENMX_OLPKIN_BESSEL_CACHE_MAX");
-  int limit = (value != NULL && value[0] != '\0') ? atoi(value) : OLPKIN_BESSEL_CACHE_DEFAULT;
+  long limit = openmx_env_long_at(OPENMX_ENV_OLPKIN_BESSEL_CACHE_MAX, OLPKIN_BESSEL_CACHE_DEFAULT);
 
-  return (limit < 0) ? 0 : limit;
+  return (limit < 0) ? 0 : (limit > INT_MAX ? INT_MAX : (int)limit);
 }
 
 /* Runtime phase profiling gated by OPENMX_BAND_PROFILE=1 (one OLPKPROF line
@@ -183,9 +180,7 @@ typedef struct
 
 static int SetOLP_ProfileEnabled(void)
 {
-  const char *value = openmx_env_get("OPENMX_BAND_PROFILE");
-
-  return (value != NULL && atoi(value) != 0);
+  return openmx_env_flag_at(OPENMX_ENV_BAND_PROFILE, 0);
 }
 
 

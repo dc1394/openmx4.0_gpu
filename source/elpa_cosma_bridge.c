@@ -53,14 +53,11 @@ typedef struct {
 } gs2_handle_slot;
 static gs2_handle_slot gs2_slots[GS2_MAX_HANDLES];
 
-static long gs2_env_long(const char *name, long defval)
+static long gs2_env_long(int id, long defval)
 {
-    const char *env = openmx_env_get(name);
-    if (env != NULL && env[0] != '\0') {
-        long v = atol(env);
-        if (v >= 0) return v;
-    }
-    return defval;
+    const long v = openmx_env_long_at(id, defval);
+
+    return v >= 0 ? v : defval;
 }
 
 /* Optional timing of the complete host-array call, including admission and
@@ -68,13 +65,13 @@ static long gs2_env_long(const char *name, long defval)
    additional MPI collective is needed. Report the grid root's wall time. */
 static double gs2_profile_start(void)
 {
-    return gs2_env_long("OPENMX_GS2_PROFILE", 0) ? MPI_Wtime() : 0.0;
+    return gs2_env_long(OPENMX_ENV_GS2_PROFILE, 0) ? MPI_Wtime() : 0.0;
 }
 
 static void gs2_profile_report(MPI_Comm comm, const char *operation, int complex_matrix,
                               int m, int n, int k, int gpu, double start)
 {
-    if (gs2_env_long("OPENMX_GS2_PROFILE", 0)) {
+    if (gs2_env_long(OPENMX_ENV_GS2_PROFILE, 0)) {
         const double elapsed = MPI_Wtime() - start;
         int rank;
         MPI_Comm_rank(comm, &rank);
@@ -109,34 +106,13 @@ typedef struct {
     int host_ranks, host_limited;
 } gs2_mem_details;
 
-/* -1 = no forced mode, 0 = forced CPU, 1 = forced GPU */
-static int gs2_forced_mode(const char *envname)
+/* -1 = no forced mode, 0 = forced CPU, 1 = forced GPU (the registry holds
+   rank 0's value on every rank, so the setting cannot differ across the grid) */
+static int gs2_forced_mode(int id)
 {
-    const char *env = openmx_env_get(envname);
-    if (env == NULL || env[0] == '\0') return -1;
-    return (atoi(env) != 0);
+    return openmx_env_flag_at(id, -1);
 }
 
-/* A local override must not let one rank skip the admission collectives
-   while its peers enter them, or select different ELPA/COSMA kernels. */
-static int gs2_forced_mode_collective(const char *envname, MPI_Comm comm)
-{
-    const int mode = gs2_forced_mode(envname);
-    int bounds[2] = {mode, -mode};
-
-    MPI_Allreduce(MPI_IN_PLACE, bounds, 2, MPI_INT, MPI_MIN, comm);
-    if (bounds[0] != -bounds[1]) {
-        int rank;
-        MPI_Comm_rank(comm, &rank);
-        if (rank == 0) {
-            fprintf(stderr, "openmx gpusolver2: inconsistent %s across ranks of the grid;"
-                            " set the same kernel mode on every rank.\n", envname);
-            fflush(stderr);
-        }
-        MPI_Abort(comm, 1);
-    }
-    return mode;
-}
 
 /* Local handle allocation/parameter errors must reach every peer before
    anybody enters ELPA's collective setup or eigenvector routines. Preserve
@@ -182,8 +158,8 @@ static size_t gs2_need_bytes(int na_rows, int na_cols, int is_complex)
 {
     size_t elem   = is_complex ? 16 : 8;
     size_t local  = gs2_bytes_mul(gs2_bytes_mul((size_t)na_rows, (size_t)na_cols), elem);
-    size_t factor = (size_t)gs2_env_long("OPENMX_GS2_GPU_FACTOR", 3);
-    size_t fixed  = gs2_bytes_mul((size_t)gs2_env_long("OPENMX_GS2_GPU_FIXED_MB", 128), 1048576);
+    size_t factor = (size_t)gs2_env_long(OPENMX_ENV_GS2_GPU_FACTOR, 3);
+    size_t fixed  = gs2_bytes_mul((size_t)gs2_env_long(OPENMX_ENV_GS2_GPU_FIXED_MB, 128), 1048576);
     return gs2_bytes_add(gs2_bytes_mul(factor, local), fixed);
 }
 
@@ -272,7 +248,7 @@ static int gs2_gpu_verdict(size_t need, int ranks_on_dev, MPI_Comm comm,
     det->forced     = 0;
     det->host_limited = 0;
 
-    reserve = gs2_bytes_mul((size_t)gs2_env_long("OPENMX_GS2_GPU_RESERVE_MB", 512), 1048576);
+    reserve = gs2_bytes_mul((size_t)gs2_env_long(OPENMX_ENV_GS2_GPU_RESERVE_MB, 512), 1048576);
     det->reserve_mb = (unsigned long long)(reserve >> 20);
 
     want_free = gs2_bytes_add(gs2_bytes_mul(need, (size_t)ranks_on_dev), reserve);
@@ -378,7 +354,7 @@ static gs2_handle_slot *gs2_get_handle(int ictxt, int n, int nev, int is_complex
     *perr = 0;
     Cblacs_get(ictxt, 10, &sysctxt);
     comm = Cblacs2sys_handle(sysctxt);
-    forced = gs2_forced_mode_collective("OPENMX_GS2_ELPA_GPU", comm);
+    forced = gs2_forced_mode(OPENMX_ENV_GS2_ELPA_GPU);
 
     for (i = 0; i < GS2_MAX_HANDLES; i++) {
         if (gs2_slots[i].used && gs2_slots[i].ictxt == ictxt && gs2_slots[i].n == n &&
@@ -467,7 +443,7 @@ static gs2_handle_slot *gs2_get_handle(int ictxt, int n, int nev, int is_complex
         else {
             want_gpu = gs2_gpu_verdict(need, ranks_on_dev, comm, -1, 0, &det);
         }
-        if (!want_gpu || gs2_env_long("OPENMX_GS2_GPU_VERBOSE", 0) != 0) {
+        if (!want_gpu || gs2_env_long(OPENMX_ENV_GS2_GPU_VERBOSE, 0) != 0) {
             gs2_report_mode(comm, n, nev, want_gpu, &det, "using");
         }
     }
@@ -509,8 +485,7 @@ static gs2_handle_slot *gs2_get_handle(int ictxt, int n, int nev, int is_complex
 
     {
         int solver = ELPA_SOLVER_2STAGE;
-        const char *env = openmx_env_get("OPENMX_GS2_ELPA_SOLVER");
-        if (env != NULL && atoi(env) == 1) solver = ELPA_SOLVER_1STAGE;
+        if (openmx_env_long_at(OPENMX_ENV_GS2_ELPA_SOLVER, 2) == 1) solver = ELPA_SOLVER_1STAGE;
         elpa_set_integer(h, "solver", solver, &err);
         err = gs2_collective_error(err, comm);
         if (err != ELPA_OK) goto setup_failed;
@@ -666,7 +641,7 @@ static void gs2_gemm_init_once(void)
     if (done) return;
     done = 1;
 
-    cap = gs2_env_long("OPENMX_GS2_GPU_TILE", 1024);
+    cap = gs2_env_long(OPENMX_ENV_GS2_GPU_TILE, 1024);
     if (cap > 0) {
         snprintf(buf, sizeof(buf), "%ld", cap);
         setenv("COSMA_GPU_MAX_TILE_M", buf, 0);
@@ -675,14 +650,14 @@ static void gs2_gemm_init_once(void)
     }
 
     /* the caps actually in effect (a user-set environment wins above) */
-    gs2_tile_cap = gs2_env_long("COSMA_GPU_MAX_TILE_M", 5000);
+    gs2_tile_cap = gs2_env_long(OPENMX_ENV_EXT_COSMA_GPU_MAX_TILE_M, 5000);
     {
-        long capn = gs2_env_long("COSMA_GPU_MAX_TILE_N", 5000);
-        long capk = gs2_env_long("COSMA_GPU_MAX_TILE_K", 5000);
+        long capn = gs2_env_long(OPENMX_ENV_EXT_COSMA_GPU_MAX_TILE_N, 5000);
+        long capk = gs2_env_long(OPENMX_ENV_EXT_COSMA_GPU_MAX_TILE_K, 5000);
         if (capn > gs2_tile_cap) gs2_tile_cap = capn;
         if (capk > gs2_tile_cap) gs2_tile_cap = capk;
     }
-    gs2_gemm_streams = gs2_env_long("COSMA_GPU_STREAMS", 2);
+    gs2_gemm_streams = gs2_env_long(OPENMX_ENV_EXT_COSMA_GPU_STREAMS, 2);
     if (gs2_gemm_streams < 1) gs2_gemm_streams = 1;
 }
 
@@ -748,7 +723,6 @@ static void gs2_report_gemm(MPI_Comm comm, int m, int n, int k, int is_complex,
 static int gs2_ranks_on_node(MPI_Comm comm)
 {
     int nl = 1, ls;
-    const char *env = openmx_env_get("OMPI_COMM_WORLD_LOCAL_SIZE");
     MPI_Comm shm;
 
     if (MPI_Comm_split_type(comm, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, &shm)
@@ -756,7 +730,7 @@ static int gs2_ranks_on_node(MPI_Comm comm)
         MPI_Comm_size(shm, &nl);
         MPI_Comm_free(&shm);
     }
-    if (env != NULL && (ls = atoi(env)) > nl) nl = ls;
+    if ((ls = (int)openmx_env_long_at(OPENMX_ENV_EXT_OMPI_COMM_WORLD_LOCAL_SIZE, 0)) > nl) nl = ls;
     return nl;
 }
 
@@ -797,8 +771,8 @@ static int gs2_host_verdict(const char *transa, const char *transb, int m, int n
     reserve = total / 4;
     if (reserve < (4ULL << 30)) reserve = 4ULL << 30;
     {
-        const char *v = openmx_env_get("OPENMX_GS2_HOST_RESERVE_MB");
-        if (v != NULL && v[0] != '\0') reserve = strtoull(v, NULL, 10) << 20;
+        if (openmx_env_at(OPENMX_ENV_GS2_HOST_RESERVE_MB) != NULL)
+            reserve = openmx_env_mib_bytes_at(OPENMX_ENV_GS2_HOST_RESERVE_MB, 0);
     }
     add = est - gs2_gemm_host_retained[t];
     need = (add > 0.0) ? (unsigned long long)(add * (double)nloc) : 0ULL;
@@ -836,7 +810,7 @@ static int gs2_gemm_use_gpu(const char *transa, const char *transb, int m, int n
     gs2_gemm_init_once();
     comm = gs2_ictxt_comm(desca[1]);
 
-    forced = gs2_forced_mode_collective("OPENMX_GS2_GEMM_GPU", comm);
+    forced = gs2_forced_mode(OPENMX_ENV_GS2_GEMM_GPU);
     if (forced >= 0) {
         want = forced;
         gs2_det_set_forced(&det);
@@ -862,7 +836,7 @@ static int gs2_gemm_use_gpu(const char *transa, const char *transb, int m, int n
        an initial GPU verdict is the normal case and stays silent */
     if (want != gs2_gemm_mode[t] &&
         (want == 0 || gs2_gemm_mode[t] == 0 ||
-         gs2_env_long("OPENMX_GS2_GPU_VERBOSE", 0) != 0)) {
+         gs2_env_long(OPENMX_ENV_GS2_GPU_VERBOSE, 0) != 0)) {
         gs2_report_gemm(comm, m, n, k, is_complex, want, &det);
     }
     gs2_gemm_mode[t] = want;
@@ -888,7 +862,7 @@ void openmx_gs2_pdgemm_(const char *transa, const char *transb, const int *m, co
         pdgemm_(transa, transb, m, n, k, alpha, a, ia, ja, desca,
                 b, ib, jb, descb, beta, c, ic, jc, descc);
     }
-    if (gs2_env_long("OPENMX_GS2_PROFILE", 0))
+    if (gs2_env_long(OPENMX_ENV_GS2_PROFILE, 0))
         gs2_profile_report(gs2_ictxt_comm(descc[1]), "gemm", 0, *m, *n, *k, gpu, started);
 }
 
@@ -911,7 +885,7 @@ void openmx_gs2_pzgemm_(const char *transa, const char *transb, const int *m, co
         pzgemm_(transa, transb, m, n, k, alpha, a, ia, ja, desca,
                 b, ib, jb, descb, beta, c, ic, jc, descc);
     }
-    if (gs2_env_long("OPENMX_GS2_PROFILE", 0))
+    if (gs2_env_long(OPENMX_ENV_GS2_PROFILE, 0))
         gs2_profile_report(gs2_ictxt_comm(descc[1]), "gemm", 1, *m, *n, *k, gpu, started);
 }
 
@@ -941,7 +915,7 @@ int openmx_gs2_gpu_fits(int ictxt, int n, int nblk, int is_complex,
     Cblacs_gridinfo(ictxt, &nprow, &npcol, &myrow, &mycol);
     comm = gs2_ictxt_comm(ictxt);
 
-    forced_any = (gs2_forced_mode_collective("OPENMX_GS2_ELPA_GPU", comm) >= 0);
+    forced_any = (gs2_forced_mode(OPENMX_ENV_GS2_ELPA_GPU) >= 0);
     if (forced_any) return -1;
 
     na_rows = numroc_(&n, &nblk, &myrow, &ZERO, &nprow);
@@ -952,7 +926,7 @@ int openmx_gs2_gpu_fits(int ictxt, int n, int nblk, int is_complex,
     need = gs2_need_bytes(na_rows, na_cols, is_complex);
     /* COSMA's Tiled-MM buffers exist only when the transforms may run on
        COSMA (OPENMX_GS2_GEMM_GPU=0 keeps them on ScaLAPACK) */
-    if (gs2_forced_mode("OPENMX_GS2_GEMM_GPU") != 0)
+    if (gs2_forced_mode(OPENMX_ENV_GS2_GEMM_GPU) != 0)
         need = gs2_bytes_add(need, gs2_gemm_bound(n, n, n, is_complex));
     /* on a re-admission (next MD step, orbital-optimization restart, post
        call) the device memory this bridge already holds is reused: COSMA's

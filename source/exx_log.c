@@ -35,7 +35,7 @@ static void my_gethostname(char *name, size_t length)
 #endif
 
   /* check env list */
-  env = openmx_env_get("HOSTNAME");
+  env = openmx_env_at(OPENMX_ENV_EXT_HOSTNAME);
   if (env && strlen(env)) {
     strncpy(name, env, length);
     return;

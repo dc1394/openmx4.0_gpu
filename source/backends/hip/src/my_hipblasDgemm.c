@@ -1,4 +1,5 @@
 #include "openmx_common.h"
+#include "openmx_env.h"
 #include "hip_runtime_compat.h"
 #include <omp.h>
 #include <stdlib.h>
@@ -49,10 +50,10 @@ static int OpenMX_DgemmRank(void)
 
 static int OpenMX_DgemmVerbose(void)
 {
-    const char *value = getenv("OPENMX_GPU_VERBOSE");
+    const char *value = openmx_env_get("OPENMX_GPU_VERBOSE");
 
     if (value == NULL || value[0] == '\0') {
-        value = getenv("OPENMX_GEMM_VERBOSE");
+        value = openmx_env_get("OPENMX_GEMM_VERBOSE");
     }
 
     return (value != NULL && value[0] == '1');

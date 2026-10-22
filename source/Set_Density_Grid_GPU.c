@@ -131,9 +131,8 @@ int Set_Density_Grid_GPU_Capacity(int cnt_kind,int local_done,double *****dm,dou
 {
   SDGRecovery c={0};c.cnt_kind=cnt_kind;c.spins=SpinP_switch+1;c.dm=dm;c.density=density;
   MPI_Comm_rank(mpi_comm_level1,&c.rank);
-  const char *control=openmx_env_get("OPENMX_DENSITY_GRID_GPU");
-  if (!control) control=openmx_env_get("OPENMX_SETDENSITY_GPU");
-  int enabled=scf_eigen_lib_flag==GPUSOLVER && (!control || !*control || atoi(control)!=0);
+  int enabled=scf_eigen_lib_flag==GPUSOLVER &&
+    openmx_env_flag_at(OPENMX_ENV_DENSITY_GRID_GPU, openmx_env_flag_at(OPENMX_ENV_SETDENSITY_GPU, 1));
   int pending=enabled && !local_done,any=0;
   MPI_Allreduce(&pending,&any,1,MPI_INT,MPI_MAX,mpi_comm_level1);
   if (!any) return local_done;
@@ -179,26 +178,6 @@ int Set_Density_Grid_GPU_Capacity(int cnt_kind,int local_done,double *****dm,dou
       local_done?1:!enabled || !ready?-1:0,enabled,"density-capacity");
   free(c.atom_offset);free(c.ptr);free(c.terms);
   return local_done || (pending && ready && done);
-}
-
-static int SDG_env_bool(const char *name, int fallback)
-{
-  const char *value = openmx_env_get(name);
-  if (value == NULL || value[0] == '\0') return fallback;
-  return atoi(value) != 0;
-}
-
-static size_t SDG_env_mib(const char *name, size_t fallback_mib)
-{
-  const char *value = openmx_env_get(name);
-  char *endp = NULL;
-  unsigned long long mib;
-
-  if (value == NULL || value[0] == '\0') return fallback_mib * 1024ULL * 1024ULL;
-  mib = strtoull(value, &endp, 10);
-  if (endp == value || *endp != '\0') return fallback_mib * 1024ULL * 1024ULL;
-  if (mib > (unsigned long long)SIZE_MAX / (1024ULL * 1024ULL)) return SIZE_MAX;
-  return (size_t)mib * 1024ULL * 1024ULL;
 }
 
 static int SDG_bits_for(unsigned int max_value)
@@ -1184,8 +1163,8 @@ int Set_Density_Grid_GPU_Service(int Cnt_kind, int Calc_CntOrbital_ON, double **
   MPI_Comm_rank(mpi_comm_level1, &myid);
 
   if (myid == owner) {
-    int requested = SDG_env_bool("OPENMX_DENSITY_GRID_GPU",
-                                SDG_env_bool("OPENMX_SETDENSITY_GPU", 1));
+    int requested = openmx_env_flag_at(OPENMX_ENV_DENSITY_GRID_GPU,
+                                openmx_env_flag_at(OPENMX_ENV_SETDENSITY_GPU, 1));
     enabled = requested && scf_eigen_lib_flag == GPUSOLVER && SDG_solver_supported(0) &&
               Cnt_switch == 0 && (Cnt_kind == 0 || Cnt_kind == 1) &&
               (SpinP_switch == 0 || SpinP_switch == 1 || SpinP_switch == 3);
@@ -1206,7 +1185,7 @@ int Set_Density_Grid_GPU_Service(int Cnt_kind, int Calc_CntOrbital_ON, double **
     if (!SDG_build_cache(spin_count, owner, myid, numprocs)) return 0;
   }
 
-  reserve_bytes = SDG_env_mib("OPENMX_DENSITY_GRID_GPU_RESERVE_MB", 256);
+  reserve_bytes = openmx_env_mib_bytes_at(OPENMX_ENV_DENSITY_GRID_GPU_RESERVE_MB, 256);
   if (myid == owner && !cache->device_resident) {
     cudaGetDevice(&device);
     acc_set_device_num(device, acc_device_nvidia);
@@ -1293,8 +1272,8 @@ int Set_Density_Grid_GPU_Service(int Cnt_kind, int Calc_CntOrbital_ON, double **
 
   /* Reuse small geometry tables across SCF steps. Large epochs still yield
      their storage to the dense eigensolver after each density contraction. */
-  persistent = SDG_env_bool("OPENMX_DENSITY_GRID_GPU_PERSISTENT",
-      cache->device_bytes <= SDG_env_mib("OPENMX_DENSITY_GRID_GPU_CACHE_MB", 64));
+  persistent = openmx_env_flag_at(OPENMX_ENV_DENSITY_GRID_GPU_PERSISTENT,
+      cache->device_bytes <= openmx_env_mib_bytes_at(OPENMX_ENV_DENSITY_GRID_GPU_CACHE_MB, 64));
   if (myid == owner && !persistent) SDG_delete_device(cache);
 
   for (int spin = 0; spin < spin_count; spin++) {
@@ -1589,13 +1568,10 @@ static int SDG_local_prepare(const OpenMXAtomicViews *atomic, int Cnt_kind, int 
   /* 0 = off, 1 = auto (only when the shared Set_Hamiltonian tables are
      device-resident, so each call stages just the CSR/DM/density buffers),
      2 = always (stage the shared tables per call too) */
-  {
-    const char *value = openmx_env_get("OPENMX_DENSITY_GRID_GPU_LOCAL");
-    if (value != NULL && value[0] != '\0') mode = atoi(value);
-  }
+  mode = (int)openmx_env_long_at(OPENMX_ENV_DENSITY_GRID_GPU_LOCAL, mode);
 
   enabled = (mode != 0) &&
-            SDG_env_bool("OPENMX_DENSITY_GRID_GPU", SDG_env_bool("OPENMX_SETDENSITY_GPU", 1)) &&
+            openmx_env_flag_at(OPENMX_ENV_DENSITY_GRID_GPU, openmx_env_flag_at(OPENMX_ENV_SETDENSITY_GPU, 1)) &&
             scf_eigen_lib_flag == GPUSOLVER && SDG_solver_supported(1) &&
             Cnt_switch == 0 && (Cnt_kind == 0 || Cnt_kind == 1) &&
             (SpinP_switch == 0 || SpinP_switch == 1 || SpinP_switch == 3) &&
@@ -1687,7 +1663,7 @@ static int SDG_local_prepare(const OpenMXAtomicViews *atomic, int Cnt_kind, int 
   }
 
   c->node_ranks = node_ranks > 0 ? node_ranks : 1;
-  reserve_bytes = SDG_env_mib("OPENMX_DENSITY_GRID_GPU_RESERVE_MB", 256);
+  reserve_bytes = openmx_env_mib_bytes_at(OPENMX_ENV_DENSITY_GRID_GPU_RESERVE_MB, 256);
   if (c->device_resident && acc_get_device_num(acc_device_nvidia) != c->device_id)
     SDG_local_delete_device(c);
   if (OpenMX_GpuMemGetInfo(&free_bytes, &total_bytes) != cudaSuccess) return 0;
@@ -2270,7 +2246,7 @@ int Set_Density_Grid_GPU_Local_Run(const OpenMXAtomicViews *atomic, double *****
      Bound all ranks' retained storage to a small fraction of free VRAM, so
      a crowded device still leaves room for the next dense solve. */
   {
-    size_t cap = SDG_env_mib("OPENMX_DENSITY_GRID_GPU_LOCAL_CACHE_MB", 32);
+    size_t cap = openmx_env_mib_bytes_at(OPENMX_ENV_DENSITY_GRID_GPU_LOCAL_CACHE_MB, 32);
     size_t free_bytes = 0, total_bytes = 0;
     int keep_resident = cap != 0 && c->extra_bytes <= cap;
 

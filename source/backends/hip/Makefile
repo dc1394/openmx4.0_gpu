@@ -410,7 +410,7 @@ OPENMX_GPU_INTERFACE_HEADERS = openmx_gpu_backend.h openmx_gpu_runtime.h \
 $(OBJS): $(OPENMX_GPU_INTERFACE_HEADERS)
 MGPU_HEADERS = $(wildcard openmx_gpu_*.h openmx_mgpu_*.h) \
  openmx_magma_mgpu.h openmx_magma_lock.h openmx_target.h openmx_host_memory.h \
- openmx_cluster_capacity.h openmx_dense_cpu.h openmx_env.h
+ openmx_cluster_capacity.h openmx_dense_cpu.h openmx_env.h openmx_env_registry.h
 
 # Keep incremental builds valid when compilers, ROCm, GPU targets, MPI, or
 # mathematical libraries change.  An unchanged configuration keeps its mtime.

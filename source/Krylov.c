@@ -175,24 +175,12 @@ static int    Krylov_gpu_fused           = 1;
 
 static void Krylov_GPU_InitThresholds(void)
 {
-  const char *env;
+  double flops = openmx_env_double_at(OPENMX_ENV_KRYLOV_GPU_DGEMM_MIN_FLOPS, -1.0);
+  long eigen_min = openmx_env_long_at(OPENMX_ENV_KRYLOV_GPU_EIGEN_MIN, 0);
 
-  env = openmx_env_get("OPENMX_KRYLOV_GPU_DGEMM_MIN_FLOPS");
-  if (env != NULL && env[0] != '\0'){
-    double p = atof(env);
-    if (0.0 <= p) Krylov_gpu_dgemm_min_flops = p;
-  }
-
-  env = openmx_env_get("OPENMX_KRYLOV_GPU_EIGEN_MIN");
-  if (env != NULL && env[0] != '\0'){
-    int p = atoi(env);
-    if (0 < p) Krylov_gpu_eigen_min = p;
-  }
-
-  env = openmx_env_get("OPENMX_KRYLOV_GPU_FUSED");
-  if (env != NULL && env[0] != '\0'){
-    Krylov_gpu_fused = (atoi(env) != 0);
-  }
+  if (0.0 <= flops) Krylov_gpu_dgemm_min_flops = flops;
+  if (0 < eigen_min && eigen_min <= INT_MAX) Krylov_gpu_eigen_min = (int)eigen_min;
+  Krylov_gpu_fused = openmx_env_flag_at(OPENMX_ENV_KRYLOV_GPU_FUSED, Krylov_gpu_fused);
 }
 
 static void Krylov_GPU_InitOnce(void)
@@ -541,21 +529,12 @@ static Krylov_KUCache Krylov_kucache = {0};
 
 static int Krylov_KUCache_Enabled(void)
 {
-  const char *env = openmx_env_get("OPENMX_KRYLOV_GPU_KU_CACHE");
-  if (env == NULL || env[0] == '\0') return 1;
-  return (atoi(env) != 0);
+  return openmx_env_flag_at(OPENMX_ENV_KRYLOV_GPU_KU_CACHE, 1);
 }
 
 static size_t Krylov_KUCache_ReserveBytes(void)
 {
-  const char *env = openmx_env_get("OPENMX_KRYLOV_GPU_KU_RESERVE_MB");
-  unsigned long mib = 4096ul;
-  if (env != NULL && env[0] != '\0'){
-    char *end = NULL;
-    unsigned long parsed = strtoul(env,&end,10);
-    if (end != env && *end == '\0') mib = parsed;
-  }
-  return (size_t)mib*(size_t)1024*(size_t)1024;
+  return openmx_env_mib_bytes_at(OPENMX_ENV_KRYLOV_GPU_KU_RESERVE_MB, 4096);
 }
 
 /* Ranks sharing this node's device(s); conservative on multi-GPU nodes.
@@ -827,7 +806,7 @@ static int Krylov_ProjectedSolve_GPU(Krylov_GPU_Workspace *ws, int spin, int Mc_
   size_t big_count;
   int i,j,m;
 
-  static int profile = -1;
+  const int profile = openmx_env_flag_at(OPENMX_ENV_KRYLOV_GPU_PROFILE, 0);
   double t0=0.0,t1=0.0,t2=0.0,t3=0.0,t4=0.0,t5=0.0,t6=0.0,t7=0.0;
 
   if (ws == NULL || !ws->active || !Krylov_gpu_fused) return 0;
@@ -837,10 +816,6 @@ static int Krylov_ProjectedSolve_GPU(Krylov_GPU_Workspace *ws, int spin, int Mc_
   if ((double)m3*(double)m3*(double)n < Krylov_gpu_dgemm_min_flops) return 0;
   if ((double)m3*(double)n*(double)m3 < Krylov_gpu_dgemm_min_flops) return 0;
 
-  if (profile < 0){
-    const char *env = openmx_env_get("OPENMX_KRYLOV_GPU_PROFILE");
-    profile = (env != NULL && env[0] != '\0' && atoi(env) != 0);
-  }
   if (profile) dtime(&t0);
 
   Krylov_GPU_EnsureCublas(ws);

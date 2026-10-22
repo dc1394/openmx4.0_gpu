@@ -2513,10 +2513,10 @@ static void MixH_OptResidualDevice(int dim,const int *pslot,const double *cshift
 
 static int MixH_GpuPreflight(int MD_iter, int myid)
 {
-  const char *force_env = openmx_env_get("OPENMX_MIXH_GPU");
-  int forced_on = (force_env != NULL && atoi(force_env) == 1);
-  int forced_off = (force_env != NULL && atoi(force_env) == 0);
-  int forced_inc = (force_env != NULL && atoi(force_env) == 2);
+  const long force_mode = openmx_env_long_at(OPENMX_ENV_MIXH_GPU, -1);   /* 0 off, 1 on, 2 incremental CPU */
+  int forced_on = (force_mode == 1);
+  int forced_off = (force_mode == 0);
+  int forced_inc = (force_mode == 2);
   int nslot = Num_Mixing_pDM;
   int fit, my_fit;
   size_t free_b = 0U, total_b = 0U;
@@ -2545,7 +2545,7 @@ static int MixH_GpuPreflight(int MD_iter, int myid)
 
   if (forced_inc){
     MixH_IncBuild(nslot);
-    if (openmx_env_get("OPENMX_MIXH_GPU_VERBOSE") != NULL && myid == Host_ID){
+    if (openmx_env_flag_at(OPENMX_ENV_MIXH_GPU_VERBOSE, 0) && myid == Host_ID){
       printf("<Mixing_H> incremental CPU RMM-DIISH mixing forced by OPENMX_MIXH_GPU=2.\n");
       fflush(stdout);
     }
@@ -2579,8 +2579,7 @@ static int MixH_GpuPreflight(int MD_iter, int myid)
   OpenMX_GpuMemGetInfo(&free_b, &total_b);
   size_t reserve=total_b/10;
   if (reserve<(size_t)1536*1024*1024) reserve=(size_t)1536*1024*1024;
-  const char *reserve_env=openmx_env_get("OPENMX_MIXH_GPU_RESERVE_MB");
-  if (reserve_env && atoi(reserve_env)>0) reserve=(size_t)atoi(reserve_env)*1024*1024;
+  if (0<openmx_env_ulong_at(OPENMX_ENV_MIXH_GPU_RESERVE_MB,0)) reserve=openmx_env_mib_bytes_at(OPENMX_ENV_MIXH_GPU_RESERVE_MB,0);
   /* The common planner already reserves 256 MiB. */
   MixH_capacity_reserve=reserve>(size_t)256*1024*1024?reserve-(size_t)256*1024*1024:0;
 
@@ -2595,7 +2594,7 @@ static int MixH_GpuPreflight(int MD_iter, int myid)
     MPI_Allreduce(&my_fit,&fit,1,MPI_INT,MPI_MIN,mpi_comm_level1);
   }
   if (fit){
-    if (openmx_env_get("OPENMX_MIXH_GPU_VERBOSE") != NULL && myid == Host_ID){
+    if (openmx_env_flag_at(OPENMX_ENV_MIXH_GPU_VERBOSE, 0) && myid == Host_ID){
       printf("<Mixing_H> GPU RMM-DIISH mixing engaged (%d slots x %.1f MiB per rank).\n",
              nslot, (double)MixH_gpu.L*sizeof(double)/(1024.0*1024.0));
       fflush(stdout);

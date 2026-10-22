@@ -16,15 +16,12 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-static int get_positive_env_int(const char *env_names[])
+static int get_positive_env_int(const int env_ids[])
 {
-    for (int i = 0; env_names[i] != NULL; i++) {
-        const char *value = openmx_env_get(env_names[i]);
-        if (value != NULL && value[0] != '\0') {
-            int parsed = atoi(value);
-            if (0 <= parsed) {
-                return parsed;
-            }
+    for (int i = 0; 0 <= env_ids[i]; i++) {
+        const long parsed = openmx_env_long_at(env_ids[i], -1);
+        if (0 <= parsed && parsed <= INT_MAX) {
+            return (int)parsed;
         }
     }
     return -1;
@@ -32,14 +29,14 @@ static int get_positive_env_int(const char *env_names[])
 
 int openmx_gpu_local_rank_noncollective(void)
 {
-    const char *env_names[] = {
-        "OMPI_COMM_WORLD_LOCAL_RANK",
-        "MV2_COMM_WORLD_LOCAL_RANK",
-        "SLURM_LOCALID",
-        "PMI_LOCAL_RANK",
-        NULL
+    const int env_ids[] = {
+        OPENMX_ENV_EXT_OMPI_COMM_WORLD_LOCAL_RANK,
+        OPENMX_ENV_EXT_MV2_COMM_WORLD_LOCAL_RANK,
+        OPENMX_ENV_EXT_SLURM_LOCALID,
+        OPENMX_ENV_EXT_PMI_LOCAL_RANK,
+        -1
     };
-    int local_rank = get_positive_env_int(env_names);
+    int local_rank = get_positive_env_int(env_ids);
 
     if (0 <= local_rank) return local_rank;
 
@@ -52,14 +49,14 @@ int openmx_gpu_local_rank_noncollective(void)
 
 int openmx_gpu_local_size_noncollective(void)
 {
-    const char *env_names[] = {
-        "OMPI_COMM_WORLD_LOCAL_SIZE",
-        "MV2_COMM_WORLD_LOCAL_SIZE",
-        "SLURM_NTASKS_PER_NODE",
-        "PMI_LOCAL_SIZE",
-        NULL
+    const int env_ids[] = {
+        OPENMX_ENV_EXT_OMPI_COMM_WORLD_LOCAL_SIZE,
+        OPENMX_ENV_EXT_MV2_COMM_WORLD_LOCAL_SIZE,
+        OPENMX_ENV_EXT_SLURM_NTASKS_PER_NODE,
+        OPENMX_ENV_EXT_PMI_LOCAL_SIZE,
+        -1
     };
-    int local_size = get_positive_env_int(env_names);
+    int local_size = get_positive_env_int(env_ids);
 
     if (0 < local_size) return local_size;
 
@@ -79,7 +76,7 @@ static int get_local_rank_noncollective(void)
    and why every device-binding site must go through it. */
 int openmx_gpu_map_rank_to_device(int local_rank, int local_size, int device_count)
 {
-    const char *mode = openmx_env_get("OPENMX_GPU_RANK_MAP");
+    const char *mode = openmx_env_at(OPENMX_ENV_GPU_RANK_MAP);
     int ranks_per_device, dev;
 
     if (device_count <= 0) return -1;
@@ -105,14 +102,7 @@ int openmx_gpu_map_rank_to_device(int local_rank, int local_size, int device_cou
 
 static size_t gpu_probe_reserve_bytes(void)
 {
-    const char *value = openmx_env_get("OPENMX_GPU_PROBE_RESERVE_MB");
-
-    if (value != NULL && value[0] != '\0') {
-        long mb = atol(value);
-
-        if (0 <= mb) return (size_t)mb * 1024U * 1024U;
-    }
-    return (size_t)GPU_PROBE_DEFAULT_RESERVE_MB * 1024U * 1024U;
+    return openmx_env_mib_bytes_at(OPENMX_ENV_GPU_PROBE_RESERVE_MB, GPU_PROBE_DEFAULT_RESERVE_MB);
 }
 
 /* The physical free-memory cap of OpenMX_GpuMemGetInfo (see the header).
@@ -131,13 +121,7 @@ static nvmlReturn_t (*gpu_meminfo_nvmlDeviceGetMemoryInfo)(nvmlDevice_t, nvmlMem
 
 static int gpu_meminfo_nvml_enabled(void)
 {
-    static int enabled = -1;
-
-    if (enabled < 0) {
-        const char *value = openmx_env_get("OPENMX_GPU_MEMINFO_NVML");
-        enabled = (value != NULL && value[0] != '\0' && atoi(value) == 0) ? 0 : 1;
-    }
-    return enabled;
+    return openmx_env_flag_at(OPENMX_ENV_GPU_MEMINFO_NVML, 1);
 }
 
 static int gpu_meminfo_nvml_load(void)
@@ -266,12 +250,10 @@ cudaError_t OpenMX_GpuMemGetInfo(size_t *free_bytes, size_t *total_bytes)
 void OpenMX_GpuPresizeKernelStack(void)
 {
     static _Thread_local int announced = 0;
-    const char *env = openmx_env_get("OPENMX_GPU_STACK_BYTES");
-    long wanted = OPENMX_GPU_KERNEL_STACK_BYTES;
+    long wanted = openmx_env_long_at(OPENMX_ENV_GPU_STACK_BYTES, OPENMX_GPU_KERNEL_STACK_BYTES);
     size_t current = 0, free_before = 0, free_after = 0, total = 0;
     int initialized = 0, myid = 0;
 
-    if (env != NULL && env[0] != '\0') wanted = atol(env);
     if (wanted <= 0) return;
     if (cudaDeviceGetLimit(&current, cudaLimitStackSize) != cudaSuccess) {
         (void)cudaGetLastError();
@@ -320,12 +302,10 @@ int gpu_rank_device_usable(void)
     int lock_fd = -1, devices_seen = 0;
     size_t free_bytes = 0, total_bytes = 0;
     char lock_path[64];
-    const char *env = openmx_env_get("OPENMX_GPU");
-
     if (checked) return usable;
     checked = 1;
 
-    if (env != NULL && env[0] != '\0' && atoi(env) == 0) {
+    if (!openmx_env_flag_at(OPENMX_ENV_GPU, 1)) {
         acc_set_device_type(acc_device_host);
         return usable;
     }

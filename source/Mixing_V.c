@@ -46,9 +46,8 @@ static MixVKSkFastState MixVKSk_fast = { 0, -1, 0, 0, 0, NULL };
 
 static int MixV_Fast_Enabled(void)
 {
-  const char *env = openmx_env_get("OPENMX_MIX_FAST");
   if (scf_eigen_lib_flag != GPUSOLVER) return 0;
-  return (env == NULL) ? 1 : (atoi(env) != 0);
+  return openmx_env_flag_at(OPENMX_ENV_MIX_FAST, 1);
 }
 
 static void MixVKSk_Fast_Invalidate(void)

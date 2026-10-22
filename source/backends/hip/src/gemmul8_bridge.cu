@@ -1,4 +1,5 @@
 #include "hipblas_compat.h"
+#include "openmx_env.h"
 #include "hip_runtime_compat.h"
 #include "hip_complex_compat.h"
 
@@ -91,7 +92,7 @@ struct WorkspaceReport {
 
 unsigned env_u32(const char *name, unsigned fallback)
 {
-    const char *value = std::getenv(name);
+    const char *value = openmx_env_get(name);
     char       *end   = nullptr;
 
     if (value == nullptr || *value == '\0') {
@@ -108,7 +109,7 @@ unsigned env_u32(const char *name, unsigned fallback)
 
 bool env_bool(const char *name, bool fallback)
 {
-    const char *value = std::getenv(name);
+    const char *value = openmx_env_get(name);
 
     if (value == nullptr || *value == '\0') {
         return fallback;
@@ -157,7 +158,7 @@ bool gemmul8_disabled(const char *openmx_env, const char *gemmul8_env)
        also overrides the MI300A automatic policy; an input-file off still
        wins over every environment variable at the entry points. */
     for (const char *name : names) {
-        const char *value = std::getenv(name);
+        const char *value = openmx_env_get(name);
         if (value != nullptr && value[0] != '\0') {
             disabled = env_bool(name, false);
             overridden = true;
@@ -883,9 +884,9 @@ extern "C" void openmx_gemmul8ReportTiming(void)
     const GeneralCounters      &g = g_general_counters;
 
     if (general_timing() && 0 < g.calls[0][0] + g.calls[0][1] + g.calls[1][0] + g.calls[1][1]) {
-        const char *rank = std::getenv("OMPI_COMM_WORLD_RANK");
+        const char *rank = openmx_env_get("OMPI_COMM_WORLD_RANK");
 
-        if (rank == nullptr) rank = std::getenv("PMI_RANK");
+        if (rank == nullptr) rank = openmx_env_get("PMI_RANK");
         std::printf("<openmx_gemmul8> general GEMMs, rank %s: real %lld + %lld calls, %.6f + %.6f s, %.3f + %.3f GFlop; "
                     "complex %lld + %lld calls, %.6f + %.6f s, %.3f + %.3f GFlop (GEMMul8 + hipBLAS); "
                     "moduli %u / %u, scaling %s / %s (real / complex)\n",

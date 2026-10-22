@@ -27,13 +27,7 @@
    compile-time switch) */
 static int TotalEnergy_ProfileEnabled(void)
 {
-  static int cached = -1;
-
-  if (cached < 0){
-    const char *value = openmx_env_get("OPENMX_BAND_PROFILE");
-    cached = (value != NULL && atoi(value) != 0);
-  }
-  return cached;
+  return openmx_env_flag_at(OPENMX_ENV_BAND_PROFILE, 0);
 }
 #define measure_time (TotalEnergy_ProfileEnabled())
 
@@ -104,14 +98,7 @@ static int TotalEnergyUseOpenACC(void)
      reductions use the same spinmax<=1 expressions as the host loops
      for every SpinP_switch, so the non-collinear case runs on the
      device as well. */
-  static int env_flag = -1;
-
-  if (env_flag < 0) {
-    const char *env = openmx_env_get("OPENMX_TOTALENERGY_GPU");
-    env_flag = (env == NULL || env[0] == '\0') ? 1 : (atoi(env) != 0);
-  }
-
-  return env_flag && (scf_eigen_lib_flag == GPUSOLVER) && gpu_rank_device_usable();
+  return openmx_env_flag_at(OPENMX_ENV_TOTALENERGY_GPU, 1) && (scf_eigen_lib_flag == GPUSOLVER) && gpu_rank_device_usable();
 }
 
 
