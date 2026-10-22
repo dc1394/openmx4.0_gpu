@@ -1046,6 +1046,7 @@
     "openmx_dc_state.h",
     "openmx_dclno_state.h",
     "openmx_krylov_state.h",
+    "openmx_mixing_h_state.h",
     "openmx_core_grid.h",
     "openmx_grid_assembly.h",
     "openmx_grid_assembly.c",

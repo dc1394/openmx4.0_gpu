@@ -428,6 +428,8 @@ C++コアを接続します。MPIのある構成にはDC-LNO/Krylovの実4 rank�
 Hamiltonian混合の履歴も計算ごとの状態として所有し、9件目の寿命試験を追加しています。
 GPU常駐・host履歴・増分CPUの切替とworker方針は維持します。
 所有・数値比較の範囲は [第48段階](CPP_CORE_MIGRATION.md#第48段階-hamiltonian混合のgpucpu履歴を計算所有へ移行) を参照してください。
+新しい共通ヘッダーもHIPの `sources.json` の `integrated_shared` に登録します。
+ネイティブのCIは元の `source/` 自体をinclude探索先に加えず、隔離したソースの `Mixing_H.c` を含む12単位を構築します。
 以下の CTest は、コアを含むビルドの完了後に実行します。コアの GPU テストは実機を使います。
 
 ```sh
