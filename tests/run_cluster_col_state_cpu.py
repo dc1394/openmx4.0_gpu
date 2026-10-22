@@ -11,7 +11,7 @@ from pathlib import Path
 import re
 import subprocess
 import tempfile
-from native_state_test_support import bounded_stack, compiler_command
+from native_state_test_support import bounded_stack, compiler_command, allocation_fault_source
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -82,7 +82,7 @@ def main():
                 '-Wno-unknown-pragmas', '-DOPENMX_GPU_HIP=' + str(int(backend == 'hip')),
                 '-I' + str(folder), '-I' + str(ROOT / 'source'), '-I' + str(ROOT / 'core/include'),
                 '-I' + str(ROOT / 'core/tests/fixtures/native_resources'), '-I' + str(ROOT / 'core/tests'),
-                str(ROOT / 'tests/cluster_col_state_harness.cpp'), str(ROOT / 'core/tests/allocation_faults.cpp'),
+                str(ROOT / 'tests/cluster_col_state_harness.cpp'), allocation_fault_source(folder),
                 str(ROOT / 'source/openmx_env.c'), str(ROOT / 'source/openmx_precision.c'), str(library),
                 '-Wl,-rpath,' + str(library.parent), '-o', str(exe)]
             subprocess.run(command, check=True)

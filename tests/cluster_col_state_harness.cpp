@@ -110,7 +110,9 @@ void callbacks(ClusterColState* a,ClusterColState* b){
     openmx_core_native_free(a->resources,host);
     fail_status=2;pointer=reinterpret_cast<void*>(17);check(openmx_eigen_refine_malloc(&device,&pointer,32)==2 && !pointer,"SDK callback failure lost status/output");fail_status=0;
     openmx::test::fail_allocation_after(0);
-    int status=openmx_eigen_refine_malloc(&device,&pointer,32);openmx::test::fail_allocation_after(-1);
+    int status=openmx_eigen_refine_malloc(&device,&pointer,32);
+    const auto pending=openmx::test::remaining_allocations();openmx::test::fail_allocation_after(-1);
+    if (status!=2 && OPENMX_GPU_HIP) std::cerr<<"registration fault diagnostic: status="<<status<<" pointer="<<pointer<<" pending="<<pending<<" live="<<live<<" resources="<<openmx_core_native_resource_count(a->resources)<<"\n";
 #if OPENMX_GPU_HIP
     check(status==2 && !pointer,"HIP callback registration failure changed bounded allocation");
 #else

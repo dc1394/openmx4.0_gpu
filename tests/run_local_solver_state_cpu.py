@@ -12,7 +12,7 @@ from pathlib import Path
 import re
 import subprocess
 import tempfile
-from native_state_test_support import bounded_stack, compiler_command
+from native_state_test_support import bounded_stack, compiler_command, allocation_fault_source
 from native_resource_test_bridge import calculation_state_declaration
 from run_cluster_col_state_cpu import function
 
@@ -76,7 +76,7 @@ def main():
                 '-I' + str(ROOT / 'core/tests/fixtures/native_resources'),
                 '-I' + str(ROOT / 'core/tests'),
                 str(ROOT / 'tests/local_solver_state_harness.cpp'),
-                str(ROOT / 'core/tests/allocation_faults.cpp'), str(library),
+                allocation_fault_source(folder), str(library),
                 '-Wl,-rpath,' + str(library.parent), '-o', str(executable)]
             subprocess.run(command, check=True)
             environment = {k: v for k, v in os.environ.items() if not k.startswith(('OPENMX_', 'GEMMUL8_'))}

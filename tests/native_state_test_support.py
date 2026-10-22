@@ -2,6 +2,8 @@
 import os
 import resource
 import shlex
+from pathlib import Path
+import subprocess
 import sys
 
 
@@ -31,3 +33,15 @@ def compiler_command(language, compiler=None):
     if sys.platform.startswith('linux'):
         command += ['-fno-pie', '-no-pie']
     return command
+
+
+def allocation_fault_source(folder):
+    """Link Darwin's dyld interposers from a dylib, not the main executable."""
+    source = Path(__file__).resolve().parents[1] / 'core/tests/allocation_faults.cpp'
+    if sys.platform != 'darwin':
+        return str(source)
+    library = folder / 'libopenmx_test_allocation_faults.dylib'
+    if not library.exists():
+        subprocess.run(compiler_command('c++') + ['-dynamiclib', '-fPIC', str(source),
+                       '-Wl,-install_name,' + str(library), '-o', str(library)], check=True)
+    return str(library)
