@@ -835,7 +835,7 @@ static int BandNonCol_gpu_dense_verdict = 1;
 
 int Band_DFT_NonCol_GpuSwitchNum(void)
 {
-    long parsed = openmx_env_long_at(OPENMX_ENV_BAND_NONCOL_GPU_SWITCH_NUM, 0);
+    long parsed = openmx_env_long_at(OPENMX_ENV_BAND_NONCOL_GPU_SWITCH_NUM, BAND_NONCOL_GPU_CPU_SWITCH_NUM);
 
     return 0 < parsed && parsed <= INT_MAX ? (int)parsed : BAND_NONCOL_GPU_CPU_SWITCH_NUM;
 }

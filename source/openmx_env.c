@@ -17,7 +17,7 @@
 extern char **environ;
 
 /* --- the registry table, in id order (sorted by name) ------------------- */
-#define OPENMX_ENV_ENTRY_(id, name, kind, scope, module, doc) {name, kind, scope, module, doc},
+#define OPENMX_ENV_ENTRY_(id, name, kind, scope, dflt, module, doc) {name, kind, scope, dflt, module, doc},
 static const OpenMXEnvEntry registry[] = { OPENMX_ENV_LIST(OPENMX_ENV_ENTRY_) };
 #undef OPENMX_ENV_ENTRY_
 #define REGISTRY_COUNT ((int)(sizeof registry / sizeof registry[0]))
@@ -611,7 +611,10 @@ void openmx_env_report(FILE *out, int unknown_only)
             fprintf(out, "<OpenMX> environment settings in effect:\n");
             printed = 1;
         }
-        fprintf(out, "  %s=%s\n", registry[id].name, value);
+        if (registry[id].dflt[0] != '\0')
+            fprintf(out, "  %s=%s (default %s)\n", registry[id].name, value, registry[id].dflt);
+        else
+            fprintf(out, "  %s=%s\n", registry[id].name, value);
     }
     if (printed) fflush(out);
 }

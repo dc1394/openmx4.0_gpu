@@ -46,7 +46,7 @@ int main(void) {
     /* registry: sorted, unique, ids in order, every column present */
     CHECK(count == OPENMX_ENV_COUNT && count > 200);
     for (i = 0; i < count; i++) {
-        CHECK(entries[i].name && entries[i].kind && entries[i].scope && entries[i].module && entries[i].doc);
+        CHECK(entries[i].name && entries[i].kind && entries[i].scope && entries[i].dflt && entries[i].module && entries[i].doc);
         if (i) CHECK(strcmp(entries[i-1].name, entries[i].name) < 0);
         CHECK(openmx_env_lookup(entries[i].name) == &entries[i]);
         CHECK(openmx_env_id(entries[i].name) == (int)i);
@@ -58,6 +58,12 @@ int main(void) {
     CHECK(same(openmx_env_name(OPENMX_ENV_EXT_OMPI_COMM_WORLD_LOCAL_RANK), "OMPI_COMM_WORLD_LOCAL_RANK"));
     CHECK(same(entries[OPENMX_ENV_EXT_OMPI_COMM_WORLD_LOCAL_RANK].scope, "local"));
     CHECK(same(entries[OPENMX_ENV_BAND_PROFILE].kind, "flag") && same(entries[OPENMX_ENV_SETHAM_STREAM_MB].kind, "mib"));
+    /* the default column: a literal fallback, a resolved macro, the reader of another name, a documented text */
+    CHECK(same(entries[OPENMX_ENV_BAND_PROFILE].dflt, "0"));
+    CHECK(same(entries[OPENMX_ENV_BAND_GPU_SWITCH_NUM].dflt, "800"));
+    CHECK(same(entries[OPENMX_ENV_CLUSTER_GEMMUL8_TURN_RELEASE].dflt, "1"));
+    CHECK(same(entries[OPENMX_ENV_FORCE4B_CASE1_STREAM].dflt, "auto"));
+    CHECK(same(entries[OPENMX_ENV_BAND_GPU_RESERVE_MB].dflt, "max(total/10, 1536)"));
     CHECK(same(openmx_env_name(-1), "") && same(openmx_env_name(OPENMX_ENV_COUNT), ""));
     CHECK(openmx_env_id("OPENMX_NO_SUCH_SETTING") == -1 && openmx_env_id(NULL) == -1);
     /* before the snapshot: live, by name and by id */
@@ -155,7 +161,7 @@ int main(void) {
         CHECK(strstr(text, "OPENMX_EIGEN_REFINE_UNTIL=abc is not a valid ") != NULL);
         CHECK(strstr(text, "OPENMX_FORCE_PROFILE") == NULL);                                  /* auto is fine */
         text = report(0);
-        CHECK(strstr(text, "OPENMX_BAND_PROFILE=1") != NULL && strstr(text, "OPENMX_GPU=0") != NULL);
+        CHECK(strstr(text, "OPENMX_BAND_PROFILE=1 (default 0)") != NULL && strstr(text, "OPENMX_GPU=0 (default 1)") != NULL);
         CHECK(strstr(text, "OPENMX_CLUSTER_PROFILE") == NULL && strstr(text, "SOME_OTHER_VARIABLE") == NULL);
     }
     /* rank 0 -> every rank: pack here, apply on a differently configured snapshot */
@@ -225,6 +231,14 @@ def main():
         print("FAIL: source/openmx_env_registry.h is out of step with the readers; run tools/update_env_registry.py", file=sys.stderr)
         return 1
     print("PASS: environment registry header in step with the readers")
+    # the documentation tables must be what the registry and doc/environment_variables.json imply
+    check = subprocess.run([sys.executable, str(ROOT / "tools" / "env_registry_doc.py"), "--check"],
+                           text=True, capture_output=True)
+    if check.returncode != 0:
+        sys.stderr.write(check.stdout + check.stderr)
+        print("FAIL: the environment-variable tables are out of date; run tools/env_registry_doc.py", file=sys.stderr)
+        return 1
+    print("PASS: environment-variable tables in step with the registry")
     return 0
 
 

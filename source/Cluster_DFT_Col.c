@@ -1219,7 +1219,7 @@ static int ClusterCol_GemmWorkspaceTurnRelease(void)
 
 int Cluster_DFT_Col_GpuSwitchNum(void)
 {
-    long parsed = openmx_env_long_at(OPENMX_ENV_CLUSTER_GPU_SWITCH_NUM, 0);
+    long parsed = openmx_env_long_at(OPENMX_ENV_CLUSTER_GPU_SWITCH_NUM, CLUSTER_GPU_CPU_SWITCH_NUM);
 
     return 0 < parsed && parsed <= INT_MAX ? (int)parsed : CLUSTER_GPU_CPU_SWITCH_NUM;
 }

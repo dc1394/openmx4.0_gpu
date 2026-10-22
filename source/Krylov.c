@@ -175,8 +175,8 @@ static int    Krylov_gpu_fused           = 1;
 
 static void Krylov_GPU_InitThresholds(void)
 {
-  double flops = openmx_env_double_at(OPENMX_ENV_KRYLOV_GPU_DGEMM_MIN_FLOPS, -1.0);
-  long eigen_min = openmx_env_long_at(OPENMX_ENV_KRYLOV_GPU_EIGEN_MIN, 0);
+  double flops = openmx_env_double_at(OPENMX_ENV_KRYLOV_GPU_DGEMM_MIN_FLOPS, KRYLOV_GPU_DGEMM_MIN_FLOPS);
+  long eigen_min = openmx_env_long_at(OPENMX_ENV_KRYLOV_GPU_EIGEN_MIN, KRYLOV_GPU_EIGEN_MIN);
 
   if (0.0 <= flops) Krylov_gpu_dgemm_min_flops = flops;
   if (0 < eigen_min && eigen_min <= INT_MAX) Krylov_gpu_eigen_min = (int)eigen_min;

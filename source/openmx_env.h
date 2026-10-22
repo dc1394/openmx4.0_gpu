@@ -4,8 +4,9 @@
   The environment settings of this build, read once.
 
   Every environment name the code reads is listed in openmx_env_registry.h
-  with an id, its kind (what the readers parse), its scope, the units
-  that read it and a one-line description.  openmx_env_init() takes one
+  with an id, its kind (what the readers parse), its scope, its default
+  where the readers agree on one literal, the units that read it and a
+  one-line description.  openmx_env_init() takes one
   snapshot of those names, and of every OPENMX_* name present in the
   environment, right after MPI_Init; openmx.c then copies rank 0's values
   of the global-scope names to every rank (openmx_env_pack/unpack), so a
@@ -53,13 +54,14 @@ typedef struct {
     const char *name;    /* environment variable */
     const char *kind;    /* "flag", "int", "uint", "mib", "double", "string" or "tool" */
     const char *scope;   /* "global" (rank 0's value for every rank), "local" or "tool" */
+    const char *dflt;    /* the readers' fallback when it is one literal ("auto", "unlimited"), else "" */
     const char *module;  /* units that read it, comma separated */
     const char *doc;     /* one line, or "" */
 } OpenMXEnvEntry;
 
 /* OPENMX_ENV_<id>: index of each registered name, in registry order. */
 enum {
-#define OPENMX_ENV_ID_(id, name, kind, scope, module, doc) OPENMX_ENV_##id,
+#define OPENMX_ENV_ID_(id, name, kind, scope, dflt, module, doc) OPENMX_ENV_##id,
     OPENMX_ENV_LIST(OPENMX_ENV_ID_)
 #undef OPENMX_ENV_ID_
     OPENMX_ENV_COUNT

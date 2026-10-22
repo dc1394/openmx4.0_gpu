@@ -96,7 +96,7 @@ static void DCLNO_ProfileReport(int md, int scf, int rank, int ranks,
 /* runtime-tunable copy of the threshold (OPENMX_DCLNO_GPU_THRESHOLD) */
 static int DCLNO_GpuEigenThreshold(void)
 {
-    long parsed = openmx_env_long_at(OPENMX_ENV_DCLNO_GPU_THRESHOLD, 0);
+    long parsed = openmx_env_long_at(OPENMX_ENV_DCLNO_GPU_THRESHOLD, DCLNO_GPU_PROXY_EIGEN_THRESHOLD_COL);
 
     return 0 < parsed && parsed <= INT_MAX ? (int)parsed : DCLNO_GPU_PROXY_EIGEN_THRESHOLD_COL;
 }
@@ -109,7 +109,7 @@ static int DCLNO_GpuEigenThreshold(void)
 /* runtime-tunable copy (OPENMX_DCLNO_NONCOL_GPU_THRESHOLD) */
 static int DCLNO_NonColGpuEigenThreshold(void)
 {
-    long parsed = openmx_env_long_at(OPENMX_ENV_DCLNO_NONCOL_GPU_THRESHOLD, 0);
+    long parsed = openmx_env_long_at(OPENMX_ENV_DCLNO_NONCOL_GPU_THRESHOLD, DCLNO_NONCOL_GPU_CPU_SWITCH_NUM);
 
     return 0 < parsed && parsed <= INT_MAX ? (int)parsed : DCLNO_NONCOL_GPU_CPU_SWITCH_NUM;
 }

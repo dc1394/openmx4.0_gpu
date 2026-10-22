@@ -1,0 +1,2004 @@
+{
+ "_comment": "Section 10.2 of doc/OpenMX40_GPU_implementation_{en,ja}.html and docs/ENVIRONMENT_VARIABLES.md are generated from this file and source/openmx_env_registry.h by tools/env_registry_doc.py. Each registered name (kind != tool) appears in exactly one row; 'defaults' gives documented defaults per name (they also fill the registry's default column), 'default_cell' replaces the whole default cell of a row; 'en'/'ja' are HTML.",
+ "groups": [
+  {
+   "id": "memory",
+   "en": "Device binding and device-memory accounting (set_cuda_default_device_from_local_rank.c)",
+   "ja": "デバイス割り当てとデバイスメモリの会計（set_cuda_default_device_from_local_rank.c）"
+  },
+  {
+   "id": "gemmul8",
+   "en": "GEMMul8 (gemmul8_bridge.cu)",
+   "ja": "GEMMul8(gemmul8_bridge.cu)"
+  },
+  {
+   "id": "band",
+   "en": "Band calculations (Band_DFT_Col.c / Band_DFT_NonCol.c)",
+   "ja": "バンド計算(Band_DFT_Col.c / Band_DFT_NonCol.c)"
+  },
+  {
+   "id": "cluster",
+   "en": "Cluster calculations (Cluster_DFT_Col.c / Cluster_DFT_NonCol.c)",
+   "ja": "クラスタ計算(Cluster_DFT_Col.c / Cluster_DFT_NonCol.c)"
+  },
+  {
+   "id": "refine",
+   "en": "Refined FP32 eigensolver (eigen_refine_gpu.c)",
+   "ja": "精密化 FP32 固有値ソルバー（eigen_refine_gpu.c）"
+  },
+  {
+   "id": "cusolver",
+   "en": "cuSOLVER policy (openmx_cusolver_compat.c, gpusolver_Syevdx.c)",
+   "ja": "cuSOLVER の方針（openmx_cusolver_compat.c、gpusolver_Syevdx.c）"
+  },
+  {
+   "id": "dc",
+   "en": "DC method (Divide_Conquer.c)",
+   "ja": "DC 法(Divide_Conquer.c)"
+  },
+  {
+   "id": "dclno",
+   "en": "DC-LNO method (Divide_Conquer_LNO.c)",
+   "ja": "DC-LNO 法(Divide_Conquer_LNO.c)"
+  },
+  {
+   "id": "krylov",
+   "en": "Krylov method (Krylov.c)",
+   "ja": "Krylov 法(Krylov.c)"
+  },
+  {
+   "id": "setham",
+   "en": "Set_Hamiltonian (Set_Hamiltonian.c / set_hamiltonian_gpu.cu)",
+   "ja": "Set_Hamiltonian(Set_Hamiltonian.c / set_hamiltonian_gpu.cu)"
+  },
+  {
+   "id": "grid",
+   "en": "Host grid kernels of the C++ core (openmx_grid_assembly.c)",
+   "ja": "C++ コアのホスト格子カーネル（openmx_grid_assembly.c）"
+  },
+  {
+   "id": "other",
+   "en": "Other matrix-element construction",
+   "ja": "その他の行列要素構築"
+  },
+  {
+   "id": "density",
+   "en": "Density grid (Set_Density_Grid_GPU.c)",
+   "ja": "密度グリッド(Set_Density_Grid_GPU.c)"
+  },
+  {
+   "id": "force",
+   "en": "Total energy and forces (Total_Energy.c / Force.c)",
+   "ja": "全エネルギー・力(Total_Energy.c / Force.c)"
+  },
+  {
+   "id": "mixing",
+   "en": "Charge/DM mixing (Mixing_H.c etc.)",
+   "ja": "電荷/DM 混合(Mixing_H.c ほか)"
+  },
+  {
+   "id": "gs2",
+   "en": "gpusolver2 (ELPA-GPU / COSMA)",
+   "ja": "gpusolver2(ELPA-GPU / COSMA)"
+  },
+  {
+   "id": "mgpu",
+   "en": "Multi-GPU runtime, workers and cooperative products (openmx_mgpu_runtime.cu, openmx_gpu_workers.c, openmx_mgpu_gemm.cu)",
+   "ja": "マルチ GPU ランタイム・ワーカー・協調積（openmx_mgpu_runtime.cu、openmx_gpu_workers.c、openmx_mgpu_gemm.cu）"
+  },
+  {
+   "id": "magma",
+   "en": "MAGMA host-backed solver (openmx_magma_mgpu.cpp)",
+   "ja": "MAGMA ホスト常駐ソルバー（openmx_magma_mgpu.cpp）"
+  },
+  {
+   "id": "process",
+   "en": "Process start and self-tests (openmx.c)",
+   "ja": "プロセス起動と自己テスト（openmx.c）"
+  },
+  {
+   "id": "local",
+   "en": "Read from the launcher, per process (never synchronized)",
+   "ja": "ランチャーから読む値（プロセスごと。配布しない）"
+  }
+ ],
+ "rows": [
+  {
+   "group": "memory",
+   "names": [
+    "OPENMX_GPU_STACK_BYTES"
+   ],
+   "defaults": {
+    "OPENMX_GPU_STACK_BYTES": {
+     "en": "the largest stack frame of OpenMX's own kernels (cuobjdump on the linked binary at link time; 1000 bytes in the current build)",
+     "ja": "OpenMX 自身のカーネルの最大スタックフレーム(リンク時にリンク済みバイナリを cuobjdump で測る。現在のビルドでは 1000 バイト)"
+    }
+   },
+   "en": "Per-thread kernel stack limit set at device initialization (<code>cudaLimitStackSize</code>, <code>OpenMX_GpuPresizeKernelStack</code>) when it exceeds the driver's default 1 KiB, so the driver sizes the context's local-memory pool while the device is empty instead of at the first launch of a kernel with a large frame. That launch-time growth (about 26 MiB per context for a 1224-byte frame on an RTX 5080: (frame − 1024) × every resident thread of the device) raced with the force-phase arenas, which fill the device down to their reserve, and lost at 18 ranks on 16 GB (<code>cuLaunchKernel</code>: out of memory in <code>Force3_GpuTrace</code>, C1000, whose dOrbitals kernel had that frame; its spherical-harmonic tables are now flat, 936 bytes, so the step is idle at present). The Makefile reads the figure from the linked binary (the kernels of the objects; the linked libraries' kernels, such as ELPA's 1328-byte one, are not counted) and relinks once with it. 0 disables the step; a raised limit costs (limit − 1024) × resident threads of device memory per rank.",
+   "ja": "デバイス初期化時に設定するスレッドあたりのカーネルスタック上限(<code>cudaLimitStackSize</code>、<code>OpenMX_GpuPresizeKernelStack</code>)。ドライバ既定の 1 KiB を超えるときだけ設定し、ドライバはその時点、つまりデバイスが空のうちにコンテキストのローカルメモリプールを確保するので、フレームの大きいカーネルの初回起動時に確保が走らなくなる。その起動時の増分(RTX 5080 で 1224 バイトのフレームにつきコンテキストあたり約 26 MiB。(フレーム − 1024)×デバイスの全常駐スレッド数)は、デバイスを予備領域まで埋める Force 段階のアリーナと競合し、16 GB で 18 ランクのとき負けていた(<code>Force3_GpuTrace</code> の <code>cuLaunchKernel</code> が out of memory、C1000。この dOrbitals カーネルがそのフレームを持っていた。球面調和関数の表を平坦化して 936 バイトにしたので、現在この処理は何もしない)。Makefile はリンク後のバイナリからこの値を読み(オブジェクトのカーネルのみ。ELPA の 1328 バイトのものなど、リンクしたライブラリのカーネルは数えない)、一度だけ再リンクする。0 で無効。上限を上げた場合のコストはランクあたり(上限 − 1024)×常駐スレッド数のデバイスメモリ。"
+  },
+  {
+   "group": "memory",
+   "names": [
+    "OPENMX_GPU_MEMINFO_NVML"
+   ],
+   "en": "Every device-memory budget of the GPU paths starts from <code>OpenMX_GpuMemGetInfo()</code>: <code>cudaMemGetInfo()</code> with the free figure capped at the memory that is physically free according to NVML. On WDDM platforms (WSL2) the CUDA runtime reports a per-process view in which the other ranks' contexts and arrays are invisible, and an allocation past the physical memory is paged through system memory at a fraction of the speed instead of failing: 12 ranks on a 12 GB RTX 4070 Ti each saw 10.8 GiB \"free\", took 836 MiB each for the DS_VNA batch and stalled Set_ProExpn_VNA for minutes (0.6 GiB was left after the contexts). On Linux the two figures agree. A one-time stdout notice (level.of.stdout 2 and above) reports both figures when they differ by more than 256 MiB. 0 = plain <code>cudaMemGetInfo()</code>",
+   "ja": "GPU 経路のデバイスメモリ予算はすべて <code>OpenMX_GpuMemGetInfo()</code> から始まる。これは <code>cudaMemGetInfo()</code> の空き容量を、NVML が報告する物理的な空き容量で頭打ちにしたもの。WDDM 系プラットフォーム(WSL2)では CUDA ランタイムがプロセスごとの見え方を返し、他ランクのコンテキストや配列が空き容量に反映されず、物理メモリを超える確保も失敗せずにシステムメモリへ退避して数十分の一の速度になる: 12 GB の RTX 4070 Ti で 12 ランクが各自「空き 10.8 GiB」(実際はコンテキストの後に 0.6 GiB)と見て DS_VNA バッチに 836 MiB ずつ確保し、Set_ProExpn_VNA が数分間止まった。Linux では両者は一致する。両者が 256 MiB 以上違うとき標準出力に 1 回だけ通知する(level.of.stdout 2 以上)。0 で素の <code>cudaMemGetInfo()</code>"
+  },
+  {
+   "group": "gemmul8",
+   "names": [
+    "OPENMX_GEMMUL8_DISABLE",
+    "GEMMUL8_DISABLE",
+    "OPENMX_GEMMUL8_DISABLE_D",
+    "GEMMUL8_DISABLE_D",
+    "OPENMX_GEMMUL8_DISABLE_Z",
+    "GEMMUL8_DISABLE_Z"
+   ],
+   "label": "<code>(OPENMX_)GEMMUL8_DISABLE</code> / <code>_D</code> / <code>_Z</code>",
+   "default_cell": {
+    "en": "off",
+    "ja": "off"
+   },
+   "en": "Disable GEMMul8, pin to cuBLAS FP64 (all / real only / complex only)",
+   "ja": "GEMMul8 を無効化し cuBLAS FP64 に固定(全体 / 実数のみ / 複素のみ)"
+  },
+  {
+   "group": "gemmul8",
+   "names": [
+    "OPENMX_GEMMUL8_NUM_MOD_D",
+    "GEMMUL8_NUM_MOD_D",
+    "OPENMX_GEMMUL8_NUM_MOD_Z",
+    "GEMMUL8_NUM_MOD_Z"
+   ],
+   "label": "<code>(OPENMX_)GEMMUL8_NUM_MOD_D</code> / <code>_Z</code>",
+   "default_cell": {
+    "en": "15",
+    "ja": "15"
+   },
+   "en": "Number of moduli (precision); range 2–20, out-of-range resets to 15",
+   "ja": "法の個数(精度)。範囲 2〜20、範囲外は 15 に戻る"
+  },
+  {
+   "group": "gemmul8",
+   "names": [
+    "OPENMX_GEMMUL8_FASTMODE_D",
+    "GEMMUL8_FASTMODE_D",
+    "OPENMX_GEMMUL8_FASTMODE_Z",
+    "GEMMUL8_FASTMODE_Z"
+   ],
+   "label": "<code>(OPENMX_)GEMMUL8_FASTMODE_D</code> / <code>_Z</code>",
+   "default_cell": {
+    "en": "0",
+    "ja": "0"
+   },
+   "en": "Fast scaling mode (lower accuracy)",
+   "ja": "高速スケーリングモード(精度低下)"
+  },
+  {
+   "group": "gemmul8",
+   "names": [
+    "OPENMX_GEMMUL8_MAX_WORKSPACE_PERCENT",
+    "GEMMUL8_MAX_WORKSPACE_PERCENT"
+   ],
+   "label": "<code>(OPENMX_)GEMMUL8_MAX_WORKSPACE_PERCENT</code>",
+   "default_cell": {
+    "en": "30",
+    "ja": "30"
+   },
+   "en": "Workspace cap as a fraction of total VRAM (Band_DFT_NonCol setenvs 50 when unset)",
+   "ja": "ワークスペースの総 VRAM 比上限(Band_DFT_NonCol は未設定時 50 を setenv)"
+  },
+  {
+   "group": "gemmul8",
+   "names": [
+    "OPENMX_GEMMUL8_MIN_FREE_AFTER_MB",
+    "GEMMUL8_MIN_FREE_AFTER_MB"
+   ],
+   "label": "<code>(OPENMX_)GEMMUL8_MIN_FREE_AFTER_MB</code>",
+   "default_cell": {
+    "en": "1536",
+    "ja": "1536"
+   },
+   "en": "Minimum free VRAM required after workspace allocation",
+   "ja": "ワークスペース確保後に残すべき最低空き VRAM"
+  },
+  {
+   "group": "band",
+   "names": [
+    "OPENMX_BAND_GPU_DIAG"
+   ],
+   "en": "<b>1</b> = force the dense GPU path ignoring the fits verdict; <b>0</b> = always ELPA/ScaLAPACK (§5.6)",
+   "ja": "<b>1</b>=見積り判定を無視して GPU 密行列経路を強制、<b>0</b>=常に ELPA/ScaLAPACK(§5.6)"
+  },
+  {
+   "group": "band",
+   "names": [
+    "OPENMX_BAND_GPU_SWITCH_NUM"
+   ],
+   "defaults": {
+    "OPENMX_BAND_GPU_SWITCH_NUM": {
+     "en": "800",
+     "ja": "800"
+    }
+   },
+   "en": "GPU/CPU crossover dimension of the collinear band dense path (paths without their own knob keep <code>GPU_CPU_SWITCH_NUM</code>=1000). Measured crossover on one RTX 5080 shared by 8 ranks: n ≈ 300–400",
+   "ja": "コリニアバンド密行列経路の GPU/CPU 切替次元(専用ノブのない経路は <code>GPU_CPU_SWITCH_NUM</code>=1000 のまま)。RTX 5080 を 8 ランク共有した実測クロスオーバーは n ≈ 300〜400"
+  },
+  {
+   "group": "band",
+   "names": [
+    "OPENMX_BAND_NONCOL_GPU_SWITCH_NUM"
+   ],
+   "defaults": {
+    "OPENMX_BAND_NONCOL_GPU_SWITCH_NUM": {
+     "en": "800",
+     "ja": "800"
+    }
+   },
+   "en": "Same for the noncollinear band dense path, compared against 2n (measured crossover 2n ≈ 250–400)",
+   "ja": "ノンコリニアバンド密行列経路の同ノブ。2n と比較(実測クロスオーバーは 2n ≈ 250〜400)"
+  },
+  {
+   "group": "band",
+   "names": [
+    "OPENMX_BAND_GPU_DM"
+   ],
+   "en": "<b>0</b> = CPU loop for the DM accumulation of the collinear band ScaLAPACK/ELPA fallback. By default the fallback keeps the DM on the GPU: the eigenvector panel fits even when the full dense solve does not",
+   "ja": "<b>0</b>=コリニアバンドの ScaLAPACK/ELPA フォールバック時の DM 蓄積を CPU ループに戻す。既定ではフォールバックでも DM は GPU 上で行う(フルソルブが載らなくても固有ベクトルパネルは載るため)"
+  },
+  {
+   "group": "band",
+   "names": [
+    "OPENMX_BAND_NONCOL_GPU_DM"
+   ],
+   "en": "<b>0</b> = CPU loop for the per-k DM accumulation of the noncollinear ScaLAPACK/ELPA-fallback multi-k loop (the k-dense GPU flow keeps its own device DM regardless)",
+   "ja": "<b>0</b>=ノンコリニアの ScaLAPACK/ELPA フォールバック multi-k ループの k 点ごと DM 蓄積を CPU ループに戻す(k-dense GPU フローは元々デバイス上で DM を蓄積する)"
+  },
+  {
+   "group": "band",
+   "names": [
+    "OPENMX_BAND_GPU_RESERVE_MB"
+   ],
+   "defaults": {
+    "OPENMX_BAND_GPU_RESERVE_MB": {
+     "en": "max(total/10, 1536)",
+     "ja": "max(総VRAM/10, 1536)"
+    }
+   },
+   "en": "Raises the reserve used by the concurrency planner and the fits verdicts",
+   "ja": "並列度決定・fits 判定で空けておく予約量の引き上げ"
+  },
+  {
+   "group": "band",
+   "names": [
+    "OPENMX_BAND_GPU_RANK_OVERHEAD_MB"
+   ],
+   "en": "Runtime overhead added to the per-rank requirement model",
+   "ja": "per-rank 所要量見積りに加算するランタイムオーバーヘッド"
+  },
+  {
+   "group": "band",
+   "names": [
+    "OPENMX_BAND_SYEVDX_NOVECTOR"
+   ],
+   "en": "Solve the eigenvalues-only first pass with NOVECTOR (0 restores the old behavior)",
+   "ja": "固有値のみ必要な第 1 パスを NOVECTOR で解く(0 で旧動作)"
+  },
+  {
+   "group": "band",
+   "names": [
+    "OPENMX_BAND_GPU_MAX_CONCURRENT_K",
+    "OPENMX_BAND_GPU_TURN_GROUP",
+    "OPENMX_BAND_GPU_MAX_RANKS_PER_DEVICE"
+   ],
+   "label": "<code>OPENMX_BAND_GPU_MAX_CONCURRENT_K</code> / <code>OPENMX_BAND_GPU_TURN_GROUP</code> / <code>OPENMX_BAND_GPU_MAX_RANKS_PER_DEVICE</code>",
+   "default_cell": {
+    "en": "uncapped",
+    "ja": "制限なし"
+   },
+   "en": "<b>Explicit caps</b> on the concurrent rank count (first found in this order). The old \"initial value\" meaning is gone; actual concurrency always comes from the adaptive scan",
+   "ja": "同時実行ランク数の<b>明示上限</b>(この優先順で最初に見つかったもの)。旧版の「初期値」の意味は廃止され、実際の並列度は常に適応スキャンで決まる"
+  },
+  {
+   "group": "band",
+   "names": [
+    "OPENMX_GPUSOLVER_SERIAL_GPU_TURNS"
+   ],
+   "en": "GPU-turn serialization of the all_knum==1 path (0 = concurrent submission)",
+   "ja": "all_knum==1 経路の GPU ターン直列化(0 で並行投入)"
+  },
+  {
+   "group": "band",
+   "names": [
+    "OPENMX_BAND_GPU_PERSISTENT",
+    "OPENMX_BAND_GPU_PERSISTENT_MIN_FREE_MB"
+   ],
+   "label": "<code>OPENMX_BAND_GPU_PERSISTENT</code> / <code>_MIN_FREE_MB</code>",
+   "en": "Device-buffer persistence across SCF iterations (not recommended on shared GPUs)",
+   "ja": "SCF 反復間のデバイスバッファ常駐(共有 GPU では非推奨)"
+  },
+  {
+   "group": "band",
+   "names": [
+    "OPENMX_BAND_GEMMUL8_TURN_RELEASE"
+   ],
+   "en": "Per-turn GEMMul8 workspace release (0 keeps them)",
+   "ja": "ターン毎の GEMMul8 ワークスペース解放(0 で保持)"
+  },
+  {
+   "group": "band",
+   "names": [
+    "OPENMX_BAND_PROFILE"
+   ],
+   "en": "Performance counters; also gates the per-rank stage lines SETHPROF (Set_Hamiltonian), SETHOTFPROF / SETHOTFDENPROF (the on-the-fly batches: pack, evaluation, kernel), SETNLPROF (Set_Nonlocal: DS_NL, the received-atom products, the local products), CLUSTERDMPROF (the density-matrix accumulation of the cluster solver), CLUSTERDISTPROF (the eigenvector distribution; on the ranks that do not own the dense solve it includes the wait for it), FORCEHNL2PROF (the second-case Force_HNL batch: build, device, post-processing), the section timers of truncation and Total_Energy, SETVPOTPROF (Set_Vpot: xc, the Vxc D-to-B copy, VNA, assembly, mixing FFT, the B-to-C redistribution) and SETDENPROF (Set_Density_Grid: decision, quadrature, A-to-B, superposition, B-to-D)",
+   "ja": "性能計測カウンタの表示。ランクごとの段階行 SETHPROF(Set_Hamiltonian)、SETHOTFPROF / SETHOTFDENPROF(その場計算のバッチ: 詰め替え・評価・カーネル)、SETNLPROF(Set_Nonlocal: DS_NL・受信原子の積・局所の積)、CLUSTERDMPROF(クラスターソルバの密度行列の集計)、CLUSTERDISTPROF(固有ベクトルの配布。密な求解を持たないランクでは求解待ちを含む)、FORCEHNL2PROF(Force_HNL 第 2 ケースのバッチ: 構築・デバイス・後処理)、truncation と Total_Energy の区間タイマー、SETVPOTPROF(Set_Vpot: xc、Vxc の D→B コピー、VNA、組み立て、混合 FFT、B→C 再分配)、SETDENPROF(Set_Density_Grid: 判定・求積・A→B・重ね合わせ・B→D)も共用"
+  },
+  {
+   "group": "cluster",
+   "names": [
+    "OPENMX_CLUSTER_GPU_DIAG"
+   ],
+   "en": "<b>1</b> = force the GPU even if the reservation fails (then aborts with a diagnostic); <b>0</b> = always ELPA (§5.6)",
+   "ja": "<b>1</b>=実予約失敗でも GPU 強制(失敗時は診断つき abort)、<b>0</b>=常に ELPA(§5.6)"
+  },
+  {
+   "group": "cluster",
+   "names": [
+    "OPENMX_CLUSTER_GPU_SWITCH_NUM"
+   ],
+   "defaults": {
+    "OPENMX_CLUSTER_GPU_SWITCH_NUM": {
+     "en": "400",
+     "ja": "400"
+    }
+   },
+   "en": "GPU/CPU crossover dimension of the collinear cluster dense path (the GPU won at every measured size down to n=240)",
+   "ja": "コリニアクラスタ密行列経路の GPU/CPU 切替次元(実測では n=240 まで全サイズで GPU が勝利)"
+  },
+  {
+   "group": "cluster",
+   "names": [
+    "OPENMX_CLUSTER_NONCOL_GPU_SWITCH_NUM"
+   ],
+   "defaults": {
+    "OPENMX_CLUSTER_NONCOL_GPU_SWITCH_NUM": {
+     "en": "400",
+     "ja": "400"
+    }
+   },
+   "en": "Same for the noncollinear cluster dense path, compared against 2n (the GPU won down to 2n=480)",
+   "ja": "ノンコリニアクラスタ密行列経路の同ノブ。2n と比較(実測では 2n=480 まで GPU が勝利)"
+  },
+  {
+   "group": "cluster",
+   "names": [
+    "OPENMX_CLUSTER_GPU_DIAG_RESERVE_MB"
+   ],
+   "en": "Free VRAM required to remain after the reservation probe",
+   "ja": "予約プローブ後に残すべき空き VRAM"
+  },
+  {
+   "group": "cluster",
+   "names": [
+    "OPENMX_CLUSTER_GPU_DIAG_SERIAL"
+   ],
+   "en": "Serialized mode when both spin owners cannot fit (0 = disable, 2 = force serial)",
+   "ja": "2 スピンが同居できないときの直列化モード(0=無効、2=直列強制)"
+  },
+  {
+   "group": "cluster",
+   "names": [
+    "OPENMX_CLUSTER_GPU_DM"
+   ],
+   "en": "GPU accumulation of DM/EDM (0 = CPU loop)",
+   "ja": "DM/EDM の GPU 蓄積(0 で CPU ループ)"
+  },
+  {
+   "group": "cluster",
+   "names": [
+    "OPENMX_CLUSTER_GPU_DM_ALL"
+   ],
+   "en": "Device accumulation of the cluster density matrix on every rank (its slice of states, staged with a halving retry); 0 = only the rank that owns the dense solve, the others on the CPU loop (threaded over the atoms)",
+   "ja": "クラスターの密度行列を全ランクがデバイスで蓄積する(自分の状態スライスを半減リトライでステージ)。0 で密な求解を持つランクだけ、他は CPU ループ(原子でスレッド分割)"
+  },
+  {
+   "group": "cluster",
+   "names": [
+    "OPENMX_CLUSTER_GEMMUL8_TURN_RELEASE"
+   ],
+   "en": "Per-solve GEMMul8 workspace release (inherits the BAND setting when unset)",
+   "ja": "ソルブ毎の GEMMul8 ワークスペース解放(未設定時は BAND 設定を継承)"
+  },
+  {
+   "group": "refine",
+   "names": [
+    "OPENMX_EIGEN_REFINE"
+   ],
+   "defaults": {
+    "OPENMX_EIGEN_REFINE": {
+     "en": "2 on GPUs whose FP32:FP64 throughput ratio is at least 8 (GeForce, RTX PRO 6000 Blackwell, ...) when the GEMMul8 products of the solver's kind (real for collinear, complex for noncollinear) are on; else 0",
+     "ja": "FP32:FP64 の性能比が 8 以上の GPU(GeForce、RTX PRO 6000 Blackwell など)で、そのソルバーの種類の GEMMul8(共線は実数、非共線は複素)が有効なら 2、それ以外は 0"
+    }
+   },
+   "en": "Cluster dense paths (collinear, per spin; noncollinear) and the band solvers (one k-point per rank: the estimates of all k-points are gathered before the refinement; several k-points per rank: the first pass refines with the previous step's chemical potential and keeps the basis on the host, bounded by <code>OPENMX_BAND_REFINE_BASIS_MB</code> per rank (default 1024), and the second pass refines from it with the step's chemical potential): K &gt; 0 solves all n (2n) pairs in FP32 and refines the MaxN wanted ones by K Ogita&ndash;Aishima steps (products through GEMMul8, module <code>eigen_refine_gpu.c</code>) plus a Rayleigh&ndash;Ritz step in partially occupied clusters; from the second SCF step on the refinement starts from the previous step's vectors when they are within 2e-5 of the new Hamiltonian (<code>OPENMX_EIGEN_REFINE_WARM</code>). The step that ends the SCF is solved once more in FP64, the last step <code>scf.maxIter</code> allows is FP64. With spin polarization the two spin worlds' owners exchange their eigenvalue estimates for the chemical potential (the band solvers gather the estimates of all k-points before the refinement); a single rank solving both spins, the serialized spin mode, XANES and emptied orbitals or states keep FP64. <b>0</b> = off. On an RTX 5080 (18 ranks) noncollinear sidia333 (2n = 5616) takes 197.9 s instead of 261.3 s with the same SCF steps The band solvers refine the maxn wanted columns and rotate the other n &minus; maxn columns against them every step (<code>OPENMX_EIGEN_REFINE_COMPLEMENT</code>, default 1): left alone, their FP32-level components along the occupied subspace tilt the refined columns' fixed point out of it by about 1e-8, which cost 2 to 5 extra SCF steps and biased warm starts. When the k-owners do not fit in one GPU turn group, the one-k-point-per-rank solves are staged like the multi-k-point ones (pass 1 with the previous step's chemical potential and the basis on the host, pass 2 from it), so a 16 GB card refines them too. Diagnostics: <code>OPENMX_EIGEN_REFINE_CHECK=1</code> prints the residuals and orthogonality of the refined columns by occupation class with plain FP64 products, <code>OPENMX_EIGEN_REFINE_ALL=1</code> refines every column",
+   "ja": "クラスタの密な固有値計算(共線はスピンごと、非共線)とバンド法(1 ランク 1 k 点: 全 k 点の推定値を集めてから補正。1 ランクに複数 k 点: 1 回目のパスは前ステップの化学ポテンシャルで補正して基底をホストに保持(ランクあたり <code>OPENMX_BAND_REFINE_BASIS_MB</code> MB、既定 1024)、2 回目のパスはその基底からこのステップの化学ポテンシャルで補正): K &gt; 0 で n 個(非共線は 2n 個)の固有対を FP32 で解き、必要な MaxN 個を荻田・相島法で K 回補正(積は GEMMul8、モジュール <code>eigen_refine_gpu.c</code>)、部分占有のクラスタはレイリー・リッツで回転。SCF の 2 ステップ目以降は、前のステップの固有ベクトルが新しいハミルトニアンに対して残差 2e-5 以内ならそこから補正を始める(<code>OPENMX_EIGEN_REFINE_WARM</code>)。SCF を終えるステップは FP64 でもう一度解き、<code>scf.maxIter</code> の最後のステップは FP64。スピン分極では 2 つのスピンワールドのオーナーが固有値の推定値を交換して化学ポテンシャルを求める(バンド法では全 k 点の推定値を集めてから補正する)(1 ランクで両スピンを解く場合、直列スピンモード、XANES、空軌道・空状態の指定時は FP64 のまま)。<b>0</b> でオフ。RTX 5080(18 ランク)の非共線 sidia333(2n = 5616)で SCF ステップ数は同じまま 261.3 秒が 197.9 秒。バンド法は必要な maxn 列を補正し、残りの n &minus; maxn 列を毎ステップ補正済みの列に対して回転させる(<code>OPENMX_EIGEN_REFINE_COMPLEMENT</code>、既定 1): 放置すると、その列が持つ FP32 程度の占有部分空間成分のせいで補正列の不動点が占有部分空間から 1e-8 ほどずれ、SCF 反復が 2〜5 回増え、ウォームスタートに偏りが出ていた。k 点オーナーが GPU の 1 ターン群に入りきらないときは、1 ランク 1 k 点の解も複数 k 点経路と同じ 2 パス(前ステップの化学ポテンシャルで補正して基底をホストへ、そこから 2 パス目)に分けるので、16 GB のカードでも補正される。診断: <code>OPENMX_EIGEN_REFINE_CHECK=1</code> で補正列の残差と直交性を占有クラスごとに FP64 の積で表示、<code>OPENMX_EIGEN_REFINE_ALL=1</code> で全列を補正"
+  },
+  {
+   "group": "refine",
+   "names": [
+    "OPENMX_EIGEN_REFINE_UNTIL"
+   ],
+   "defaults": {
+    "OPENMX_EIGEN_REFINE_UNTIL": {
+     "en": "0 (off)",
+     "ja": "0(オフ)"
+    }
+   },
+   "en": "Printed NormRD below which the refined eigensolver hands the rest of the SCF cycle to the FP64 eigensolver. Off by default: an SCF that ends on a refined step has that step's Hamiltonian solved once more in FP64 (one eigensolve, no density matrix) for the vectors the post-SCF energy density matrix and the forces are built from Invalid (NaN/Inf) refinement products, eigenvalues or final vectors now reject the refinement before it overwrites the preserved FP64 matrix. This safety check does not change the successful arithmetic or tolerances. ",
+   "ja": "この値を表示上の NormRD が下回ると、その SCF サイクルの残りを FP64 の固有値計算に戻す。既定ではオフで、補正ステップで SCF が終わった場合はそのステップのハミルトニアンを FP64 でもう一度解き(固有値計算 1 回、密度行列なし)、SCF 後のエネルギー密度行列と力はその固有ベクトルから作る 反復補正の積・固有値・最終固有ベクトルが NaN/Inf の場合、保存した FP64 行列を上書きする前に補正を棄却し、FP64 経路へ復帰する。正常時の演算と精度基準は変更しない。"
+  },
+  {
+   "group": "refine",
+   "names": [
+    "OPENMX_EIGEN_REFINE_WARM"
+   ],
+   "en": "Warm start of the refined eigensolver: the vectors of the previous step's refined solve are refined against the new Hamiltonian instead of solving in FP32 first, as long as their residual on it is at most 2e-5 (sidia333 on an A100: the eigensolver phase 706 -> 140 ms per step, 20 of 22 steps); <b>0</b> = an FP32 solve every step The band solvers warm-start too (<code>OPENMX_EIGEN_REFINE_WARM_BAND</code>, default 1); <code>OPENMX_EIGEN_REFINE_WARM_PERIOD</code>=N makes them solve in FP32 again every N SCF steps (default 0 = never: since the unrefined columns are rotated against the refined ones, a chain of warm starts agrees with FP64 to 2e-12 Ha on sidia333)",
+   "ja": "補正つき固有値計算のウォームスタート。新しいハミルトニアンに対する残差が 2e-5 以下なら、FP32 で解き直さずに前のステップの固有ベクトルから補正を始める(A100 の sidia333 で固有値計算の段階が 1 ステップ 706 → 140 ms、22 ステップ中 20)。<b>0</b> で毎ステップ FP32 で解く。バンド法でもウォームスタートする(<code>OPENMX_EIGEN_REFINE_WARM_BAND</code>、既定 1)。<code>OPENMX_EIGEN_REFINE_WARM_PERIOD</code>=N で N ステップごとに FP32 で解き直す(既定 0 = 解き直さない: 補正しない列を補正済みの列に対して回転させるようにしてから、ウォームスタートを続けても sidia333 で FP64 と 2e-12 Ha で一致する)"
+  },
+  {
+   "group": "refine",
+   "names": [
+    "OPENMX_EIGEN_REFINE_STOP_GUARD"
+   ],
+   "en": "An SCF stop on a refined FP32 step also needs the printed NormRD below this factor times <code>scf.criterion</code>; OpenMX's test on dUele alone fired on a coincidence (RTX 5080, sidia333_col_cluster: dUele 7e-12 at step 15 with NormRD 4.3e-8, five steps early and 2e-9 Ha off). 0 = off. The band solvers also drop their warm-start bases when the SCF cycle ends, so the forces start with the device memory free (the resident bases of the NC band left Force3 without room on a 16 GB card)",
+   "ja": "補正 FP32 ステップで SCF の停止判定が通ったとき、表示される NormRD がこの倍率 × <code>scf.criterion</code> 以下であることも要求する。OpenMX の dUele だけの判定は偶然で通ることがある(RTX 5080 の sidia333_col_cluster: 15 ステップ目で dUele 7e-12、NormRD 4.3e-8 のまま 5 回早く停止し 2e-9 Ha ずれた)。0 でオフ。また、バンド法は SCF サイクルの終わりにウォームスタート用の基底を解放する(非共線バンドの基底が残ったままだと 16 GB のカードで Force3 のメモリが足りなかった)"
+  },
+  {
+   "group": "refine",
+   "names": [
+    "OPENMX_EIGEN_REFINE_UNBLOCKED"
+   ],
+   "en": "The refinement products with the full GEMMul8 workspace when the device has room for it (about 1.7x faster than the blocked products at the 256 MiB cap); <b>0</b> = the blocked products",
+   "ja": "補正の積を、GPU に余裕があれば分割なしの GEMMul8 作業領域で計算する(256 MiB 上限の分割計算より約 1.7 倍速い)。<b>0</b> で分割計算"
+  },
+  {
+   "group": "refine",
+   "names": [
+    "OPENMX_EIGEN_FP32_TWO_STAGE"
+   ],
+   "en": "The full FP32 solve of the refined eigensolver uses the two-stage cusolverDnXsyevd (CUSOLVER_ALG_2; cuSOLVER 12.3.4 and later; RTX 5080, n = 5616: 323 ms instead of 638), <b>0</b> = the one-stage cusolverDnXsyevdx. Since 2026-10-09 a two-stage solve that fails to converge (info &gt; 0: sporadic on the RTX 5080, e.g. info=297 on a 2808 x 2808 band problem) is retried once with the one-stage algorithm from a fresh conversion of the FP64 matrix before the solver falls to FP64; before, one such failure left the rest of the SCF cycle in FP64 (sidia333 band_on D: Diagonalization 68 s to 95 s)",
+   "ja": "補正つき固有値計算の FP32 全解法に 2 段アルゴリズムの cusolverDnXsyevd(CUSOLVER_ALG_2。cuSOLVER 12.3.4 以降。RTX 5080 の n = 5616 で 638 ms→323 ms)を使う。<b>0</b> = 1 段の cusolverDnXsyevdx。2026-10-09 以降、2 段解法が収束しなかったとき(info &gt; 0。RTX 5080 で散発的、例: 2808 次元のバンド問題で info=297)は、FP64 行列から変換し直して 1 段アルゴリズムで一度だけやり直し、それでも失敗したときに FP64 へ落ちる。以前は 1 回の失敗で SCF サイクルの残りが FP64 になっていた(sidia333 band_on の D で Diagonalization 68 秒→95 秒)"
+  },
+  {
+   "group": "cluster",
+   "names": [
+    "OPENMX_CLUSTER_GPU_DM_GEMM"
+   ],
+   "en": "Noncollinear cluster dense path: the density matrix as one product W<sup>H</sup>W over the occupied states (GEMMul8) plus a gather of the sparse entries, and a broadcast of the root's buffer instead of an all-reduce; <b>0</b> = the per-entry sums over the states (sidia333 on an RTX 5080: 432 ms per step)",
+   "ja": "非共線クラスタの密な経路の密度行列を、占有状態の積 W<sup>H</sup>W(GEMMul8)1 回と疎な成分の取り出しで作り、全ランクの総和の代わりにルートのバッファを配る。<b>0</b> で従来の成分ごとの状態和(RTX 5080 の sidia333 で 1 ステップ 432 ms)"
+  },
+  {
+   "group": "dc",
+   "names": [
+    "OPENMX_DC_GPU_THRESHOLD"
+   ],
+   "defaults": {
+    "OPENMX_DC_GPU_THRESHOLD": {
+     "en": "400",
+     "ja": "400"
+    }
+   },
+   "en": "Minimum local cluster dimension NUM for the GPU (collinear)",
+   "ja": "GPU 化する局所クラスタ次元 NUM の下限(コリニア)"
+  },
+  {
+   "group": "dc",
+   "names": [
+    "OPENMX_DC_NONCOL_GPU_THRESHOLD"
+   ],
+   "defaults": {
+    "OPENMX_DC_NONCOL_GPU_THRESHOLD": {
+     "en": "300",
+     "ja": "300"
+    }
+   },
+   "en": "Minimum spinor dimension 2·NUM for the GPU (noncollinear)",
+   "ja": "GPU 化するスピノル次元 2·NUM の下限(非コリニア)"
+  },
+  {
+   "group": "dc",
+   "names": [
+    "OPENMX_DC_GPU_S_CACHE",
+    "OPENMX_DC_GPU_S_CACHE_RESERVE_MB"
+   ],
+   "label": "<code>OPENMX_DC_GPU_S_CACHE</code> / <code>_RESERVE_MB</code>",
+   "en": "Device-resident S12 cache and its budget reserve",
+   "ja": "S12 パネルのデバイス常駐キャッシュとその予算予約"
+  },
+  {
+   "group": "dc",
+   "names": [
+    "OPENMX_GPUSOLVER_MIN_FREE_AFTER_MB",
+    "GPUSOLVER_MIN_FREE_AFTER_MB"
+   ],
+   "label": "<code>(OPENMX_)GPUSOLVER_MIN_FREE_AFTER_MB</code>",
+   "default_cell": {
+    "en": "1536",
+    "ja": "1536"
+   },
+   "en": "Minimum free VRAM after eigensolver allocations (preflight)",
+   "ja": "固有値ソルバ用確保後の最低空き VRAM(preflight)"
+  },
+  {
+   "group": "dc",
+   "names": [
+    "OPENMX_CUBLAS_MIN_FREE_AFTER_MB",
+    "CUBLAS_MIN_FREE_AFTER_MB"
+   ],
+   "label": "<code>(OPENMX_)CUBLAS_MIN_FREE_AFTER_MB</code>",
+   "default_cell": {
+    "en": "3072",
+    "ja": "3072"
+   },
+   "en": "Same for cuBLAS",
+   "ja": "cuBLAS 用の同上"
+  },
+  {
+   "group": "dclno",
+   "names": [
+    "OPENMX_DCLNO_GPU_THRESHOLD"
+   ],
+   "defaults": {
+    "OPENMX_DCLNO_GPU_THRESHOLD": {
+     "en": "800",
+     "ja": "800"
+    }
+   },
+   "en": "Minimum local dimension for the GPU (collinear)",
+   "ja": "GPU 化する局所次元の下限(コリニア)"
+  },
+  {
+   "group": "dclno",
+   "names": [
+    "OPENMX_DCLNO_NONCOL_GPU_THRESHOLD"
+   ],
+   "defaults": {
+    "OPENMX_DCLNO_NONCOL_GPU_THRESHOLD": {
+     "en": "400",
+     "ja": "400"
+    }
+   },
+   "en": "Minimum spinor dimension for the GPU (noncollinear)",
+   "ja": "GPU 化するスピノル次元の下限(非コリニア)"
+  },
+  {
+   "group": "dclno",
+   "names": [
+    "OPENMX_DCLNO_GPU_TURN_RELEASE"
+   ],
+   "en": "End-of-phase release of solver buffers + GEMMul8 (inherits the BAND setting when unset)",
+   "ja": "フェーズ末尾のソルババッファ+GEMMul8 解放(未設定時は BAND 設定を継承)"
+  },
+  {
+   "group": "krylov",
+   "names": [
+    "OPENMX_KRYLOV_GPU_FUSED"
+   ],
+   "defaults": {
+    "OPENMX_KRYLOV_GPU_FUSED": {
+     "en": "1",
+     "ja": "1"
+    }
+   },
+   "en": "Fused per-atom pipeline (0 = per-call sequence)",
+   "ja": "原子別パイプラインの融合パス(0 で per-call シーケンス)"
+  },
+  {
+   "group": "krylov",
+   "names": [
+    "OPENMX_KRYLOV_GPU_KU_CACHE",
+    "OPENMX_KRYLOV_GPU_KU_RESERVE_MB"
+   ],
+   "label": "<code>OPENMX_KRYLOV_GPU_KU_CACHE</code> / <code>_KU_RESERVE_MB</code>",
+   "en": "Device-resident Krylov basis cache and its budget reserve",
+   "ja": "Krylov 基底のデバイス常駐キャッシュとその予算予約"
+  },
+  {
+   "group": "krylov",
+   "names": [
+    "OPENMX_KRYLOV_GPU_DGEMM_MIN_FLOPS"
+   ],
+   "defaults": {
+    "OPENMX_KRYLOV_GPU_DGEMM_MIN_FLOPS": {
+     "en": "5×10⁷",
+     "ja": "5×10⁷"
+    }
+   },
+   "en": "Minimum m·n·k for dispatching a GEMM to the GPU",
+   "ja": "GEMM を GPU に投げる下限(m·n·k)"
+  },
+  {
+   "group": "krylov",
+   "names": [
+    "OPENMX_KRYLOV_GPU_EIGEN_MIN"
+   ],
+   "defaults": {
+    "OPENMX_KRYLOV_GPU_EIGEN_MIN": {
+     "en": "300",
+     "ja": "300"
+    }
+   },
+   "en": "Minimum projected dimension Msize3 for the device eigensolve (§7.6)",
+   "ja": "部分空間対角化をデバイスで解く射影次元 Msize3 の下限(§7.6)"
+  },
+  {
+   "group": "krylov",
+   "names": [
+    "OPENMX_KRYLOV_GPU_PROFILE"
+   ],
+   "en": "Fused-path breakdown (KRYFUSE lines)",
+   "ja": "融合パスの内訳(KRYFUSE 行)出力"
+  },
+  {
+   "group": "setham",
+   "names": [
+    "OPENMX_SETHAM_MATRIX_GPU"
+   ],
+   "en": "GPU execution of the dVH+Vxc+VNA grid integrals (0 = CPU)",
+   "ja": "dVH+Vxc+VNA 格子積分の GPU 実行(0 で CPU)"
+  },
+  {
+   "group": "setham",
+   "names": [
+    "OPENMX_SETHAM_CUDA_KERNEL"
+   ],
+   "en": "The dedicated CUDA kernel (0 = OpenACC kernel only; numerically identical)",
+   "ja": "専用 CUDA カーネル(0 で OpenACC カーネルのみ。数値同一)"
+  },
+  {
+   "group": "setham",
+   "names": [
+    "OPENMX_SETHAM_GPU_RESIDENT",
+    "OPENMX_SETHAM_GPU_RESIDENT_FLOOR_MB"
+   ],
+   "label": "<code>OPENMX_SETHAM_GPU_RESIDENT</code> / <code>_FLOOR_MB</code>",
+   "defaults": {
+    "OPENMX_SETHAM_GPU_RESIDENT_FLOOR_MB": {
+     "en": "4096 or 16384",
+     "ja": "4096 or 16384"
+    }
+   },
+   "en": "Device residency of the SCF-invariant tables and the floor left free afterwards (default depends on whether a diagonalization need has been published; §7.7)",
+   "ja": "SCF 不変表のデバイス常駐と、常駐後に空けておくフロア(対角化需要の公開有無で既定が変わる。§7.7)"
+  },
+  {
+   "group": "setham",
+   "names": [
+    "OPENMX_SETHAM_GPU_MAX_RANKS_PER_DEVICE"
+   ],
+   "defaults": {
+    "OPENMX_SETHAM_GPU_MAX_RANKS_PER_DEVICE": {
+     "en": "uncapped",
+     "ja": "制限なし"
+    }
+   },
+   "en": "Explicit cap on ranks per wave",
+   "ja": "波の同時ランク数の明示上限"
+  },
+  {
+   "group": "setham",
+   "names": [
+    "OPENMX_SETHAM_GPU_SERIAL_WAVES"
+   ],
+   "en": "1 = run all waves on the GPU serially (default: wave 1 on GPU with remaining ranks on CPU concurrently) Under memory pressure on the A100 (whole-rank allocations for 2-3 of 8 ranks) the serial waves took 37.6 s against 165 s of the hybrid default for 12 SCF steps of sidia333, and the 11-14 CPU-fallback ranks of an RTX 5080 run are the same situation",
+   "ja": "1 で全波を GPU 直列実行(既定は第 1 波 GPU+残余ランク CPU 並行のハイブリッド)。A100 でメモリ不足を模擬すると(8 ランク中 2〜3 ランクだけが丸ごと GPU に入る)、sidia333 の 12 反復で既定のハイブリッド 165 秒に対し直列ウェーブは 37.6 秒だった。RTX 5080 で 11〜14 ランクが CPU に退避している状況はこれと同じ"
+  },
+  {
+   "group": "setham",
+   "names": [
+    "OPENMX_SETHAM_STREAMING"
+   ],
+   "defaults": {
+    "OPENMX_SETHAM_STREAMING": {
+     "en": "1",
+     "ja": "1"
+    }
+   },
+   "en": "Streamed pair batches (256 MiB workspace per rank, <code>OPENMX_SETHAM_STREAM_MB</code>) when the device holds a single whole-rank allocation; <b>2</b> streams whenever it cannot hold every rank's (A100 emulation: 52 s against 165 s of the hybrid default and 37.6 s of the serial waves); <b>0</b> = off",
+   "ja": "GPU に丸ごと入るランクが 1 つだけのとき、対の束をストリーミングして計算する(ランクあたり 256 MiB、<code>OPENMX_SETHAM_STREAM_MB</code>)。<b>2</b> で、全ランクが入りきらないとき全般にストリーミングする(A100 の模擬: ハイブリッド 165 秒、直列ウェーブ 37.6 秒に対し 52 秒)。<b>0</b> でオフ"
+  },
+  {
+   "group": "setham",
+   "names": [
+    "OPENMX_SETHAM_ONTHEFLY"
+   ],
+   "en": "A rank whose orbital tables do not fit on the device evaluates the orbitals of every batch of atom pairs on the device (the device code of Set_Orbitals_Grid, orbs_grid_gpu.h) instead of computing on the CPU or streaming the tables: only its atoms' sphere indices stay resident (a few MiB) beside a batch workspace of <code>OPENMX_SETHAM_ONTHEFLY_MB</code> (default 128) MiB. The density of Set_Density_Grid takes the same tiles on such ranks. 0 = off (the CPU or the streamed path as before) The workspace of a rank is the smaller of that bound and its share of the plan's free device memory left after the staged wave's peak and a margin of <code>OPENMX_SETHAM_ONTHEFLY_MARGIN_MB</code> (default 0) MiB, without exceeding either the explicit workspace cap or the physical free-memory share (the budget comes from the plan, not from a reading taken while the staged ranks allocate, so every rank sees the same value). Oversized atom pairs use bounded overlap-point chunks; allocation failures retain the CPU fallback. When the device cannot hold every rank's tables, the plan shrinks the staged wave until each rank outside it gets its bound: the on-the-fly ranks, not the staged ones, set the time of the phase (RTX 5080: 1.4 s against 0.65 s per step). The on-the-fly state is released when the SCF cycle ends. The evaluation takes cos/sin of the angles straight from the coordinates and the radial mesh index from the logarithmic mesh (no bisection), which agrees with the host's Get_Orbitals to the last bits of the double value",
+   "ja": "軌道テーブルがデバイスに入りきらないランクは、CPU で計算したりテーブルをストリーミングしたりする代わりに、原子対のバッチごとに軌道の値をデバイス上で計算する(Set_Orbitals_Grid のデバイスコード、orbs_grid_gpu.h)。常駐するのは自分の原子の球内格子点の索引(数 MiB)と <code>OPENMX_SETHAM_ONTHEFLY_MB</code>(既定 128)MiB のバッチ作業領域だけ。Set_Density_Grid の密度もそのランクでは同じタイルから計算する。0 でオフ(従来どおり CPU かストリーミング)。各ランクの作業領域はこの上限と「計画時の空きからステージング組のピークと余裕 <code>OPENMX_SETHAM_ONTHEFLY_MARGIN_MB</code>(既定 0)MiB を除いた分け前」の小さいほうで、明示した上限と実際の空きメモリの取り分を超えない(予算はステージング組が確保中に測った値ではなく計画値から決めるので全ランクで同じになる)。大きい原子対は重なり格子点を分割し、確保の失敗時は CPU にフォールバックする。全ランクのテーブルが載らない GPU では、波の外のランクが上限分の作業領域を得られるまでステージング組を縮める(相の時間を決めるのはステージング組ではなくその場計算のランク: RTX 5080 で 1 ステップ 0.65 s 対 1.4 s)。その場計算の状態は SCF サイクルの終わりに解放する。評価は角度の cos/sin を座標から直接作り、動径メッシュの索引は対数メッシュから直接求める(二分探索なし)。ホストの Get_Orbitals と double の最下位ビットまで一致する"
+  },
+  {
+   "group": "setham",
+   "names": [
+    "OPENMX_SETDEN_ONTHEFLY_MB"
+   ],
+   "defaults": {
+    "OPENMX_SETDEN_ONTHEFLY_MB": {
+     "en": "128",
+     "ja": "128"
+    }
+   },
+   "en": "Batch workspace bound (MiB) for on-the-fly density. The physical budget subtracts a 512 MiB node reserve, divides among on-the-fly ranks, then subtracts each rank's fixed density/output storage and 64 MiB runtime reserve. Explicit caps must be at least 32 MiB; smaller values retain the default. If a full pair exceeds the default bound, automatic growth uses spare memory, up to all pairs in one batch. Explicit caps suppress growth. Pairs that still exceed the workspace are divided into overlap-point chunks; neither a large atom nor an explicit cap alone causes a rank to decline (§7.9)",
+   "ja": "その場計算の密度のバッチ作業領域上限(MiB)。実際の予算は空きからノード共通の 512 MiB を除いてその場計算のランクで等分し、各ランクの固定密度行列・出力領域と実行時の余裕 64 MiB を引く。明示する上限は 32 MiB 以上で、それ未満は既定値を保つ。対全体が既定の上限を超える場合は、空きメモリを利用して全対が 1 バッチに収まる大きさまで自動拡張する。明示した上限は拡張しない。なお収まらない対は重なり格子点を分割するため、大きい原子や明示した上限だけを理由にランクが辞退することはない(§7.9)"
+  },
+  {
+   "group": "setham",
+   "names": [
+    "OPENMX_SETHAM_ONTHEFLY_PLAN_CACHE"
+   ],
+   "en": "The on-the-fly paths keep a plan per rank: the batches (which pairs, their offsets), the pair descriptors and the per-point index lists (Nc, and the potential's grid index MN for the matrix elements) in one pinned host image per batch laid out like the device arena, uploaded in one copy per batch; per step only the H blocks (pinned buffer), the potential rows (through a pinned staging buffer of the code's own; registering the OpenMX-owned rows with cudaHostRegister made a later unrelated copy fail sporadically with CUDA_ERROR_INVALID_VALUE) and the tiles move, the density accumulator is zeroed on the device and its host buffers are pinned and persistent. The plans live until the end of the SCF cycle or until the workspace, the spin count or the atom partition or orbital-grid geometry change (about 8 bytes of host memory per overlap point of the rank's pairs). Before, each batch was rebuilt every step and uploaded in ~90 small synchronous copies (one per pair for the Nc lists), ~0.3 ms each under MPS with 18 ranks: on the RTX 5080 (sidia333 non-collinear cluster) the matrix elements' pack went 0.25 s to 0.10 s and the density's 0.20 s to 0.02 s per rank and step, an on-the-fly rank's matrix elements 0.68 s to 0.48 s, its density 0.41 s to 0.26 s, Set_Density_Grid 18.1 s to 14.8 s, D 107.7 s to 103.2 s (band_nc D 144.4 s to 133.8 s), Utot within 1e-12 Ha. <b>0</b> = rebuild the plan on every call",
+   "ja": "その場計算の経路はランクごとに「計画」を保持する: バッチ(どの対か、各オフセット)、対の記述子、点ごとの索引(Nc、行列要素ではポテンシャルの格子添字 MN も)を、デバイスのアリーナと同じ配置のピン留めホスト画像としてバッチごとに 1 つ持ち、バッチごとに 1 回の転送で送る。毎ステップ動くのは H ブロック(ピン留めバッファ)、ポテンシャル行(コード自身のピン留めステージングバッファ経由。OpenMX が持つ行を cudaHostRegister で登録する方式は、後の無関係な転送が CUDA_ERROR_INVALID_VALUE で散発的に失敗した)、タイルだけで、密度の累積配列はデバイス側でゼロ化し、そのホストバッファはピン留めして持ち越す。計画は SCF サイクルの終わりまで、または作業領域・スピン数・原子分割・軌道格子の形状が変わるまで生きる(ランクの対の重なり点あたりホストメモリ約 8 バイト)。以前は毎ステップ各バッチを組み直し、約 90 回の小さな同期転送(Nc リストは対ごと)で送っており、18 ランクの MPS 下では 1 回約 0.3 ms かかっていた: RTX 5080(sidia333 非共線クラスター)で行列要素の詰め替えがランク・ステップあたり 0.25 秒→0.10 秒、密度の詰め替えが 0.20 秒→0.02 秒、その場計算ランクの行列要素 0.68 秒→0.48 秒、密度 0.41 秒→0.26 秒、Set_Density_Grid 18.1 秒→14.8 秒、D 107.7 秒→103.2 秒(band_nc の D は 144.4 秒→133.8 秒)、Utot は 1e-12 Ha 以内。<b>0</b> = 呼び出しごとに計画を作り直す"
+  },
+  {
+   "group": "setham",
+   "names": [
+    "OPENMX_SETHAM_MATEL_SPLIT"
+   ],
+   "en": "Blocks per atom pair along the grid points in the df matrix-element kernel (each block integrates whole 32-point tiles of its share and adds its partial sums atomically onto the H blocks); 1 = one block per pair, up to 64",
+   "ja": "df 行列要素カーネルで、対の格子点を何ブロックに分けるか(各ブロックは自分の分の 32 点タイルを積分し、部分和を H ブロックへ原子的に加える)。1 = 対あたり 1 ブロック、上限 64"
+  },
+  {
+   "group": "setham",
+   "names": [
+    "OPENMX_ORBS_EVAL_PRECISION"
+   ],
+   "defaults": {
+    "OPENMX_ORBS_EVAL_PRECISION": {
+     "en": "df / fp64",
+     "ja": "df / fp64"
+    }
+   },
+   "en": "The arithmetic of the on-the-fly orbital evaluation (the device code of Set_Orbitals_Grid that the Hamiltonian and density tiles use when a rank has no resident tables): <b>df</b> = double-float, the default. After the FP64 grid coordinates every quantity is a pair of floats (hi + lo, about 2^-48 relative): the PAO radial tables and the per-mesh spline constants are held as such pairs, the mesh index comes from an FP32 logarithm and the index search makes it exact, and the float written for an orbital is the hi part of its product, i.e. the float nearest the FP64 value unless that value lies within ~1e-14 of a rounding boundary (about one value in 10^6 differs by one ulp from the FP64 routine; points inside the first mesh point take the FP64 routine). <b>fp64</b> = the FP64 transcription of the host's Get_Orbitals (bitwise the tables' values). A GeForce runs FP64 at 1/64 of its FP32 rate and the FP64 evaluation is bound by that pipe: sidia333 non-collinear cluster on the RTX 5080 (18 ranks + MPS, 23 steps), evaluation per rank and step 0.77 s to 0.41 s (Hamiltonian tiles) and 0.42 s to 0.07 s (density tiles), Set_Hamiltonian 43.5 s to 35.8 s, Set_Density_Grid 32.6 s to 24.1 s, D 141.4 s to 129.5 s with Utot identical to 1e-12 Ha; band_nc D 167.5 s to 156.8 s. The tables themselves (Orbs_Grid of the resident ranks) are always built in FP64",
+   "ja": "その場計算の軌道値評価(常駐テーブルのないランクがハミルトニアンと密度のタイルに使う Set_Orbitals_Grid のデバイスコード)の演算。<b>df</b> = double-float(既定)。FP64 で求めた格子座標の後はすべて float の対(hi + lo、相対 2^-48 程度)で計算する: PAO の動径テーブルとメッシュ点ごとのスプライン定数を対で保持し、メッシュ添字は FP32 の対数で見積もって添字探索で確定し、軌道値として書く float は積の hi 部、すなわち FP64 値に最も近い float(FP64 値が丸め境界の ~1e-14 以内にあるときだけ 1 ulp 異なる。約 10^6 個に 1 個。最初のメッシュ点より内側の点は FP64 ルーチンで計算)。<b>fp64</b> = ホストの Get_Orbitals のFP64 転記(テーブルの値とビット一致)。GeForce は FP64 が FP32 の 1/64 で、FP64 評価はそのパイプで律速される: RTX 5080 の sidia333 非共線クラスター(18 ランク + MPS、23 ステップ)で、ランク・ステップあたりの評価が 0.77 秒→0.41 秒(ハミルトニアンのタイル)、0.42 秒→0.07 秒(密度のタイル)、Set_Hamiltonian 43.5 秒→35.8 秒、Set_Density_Grid 32.6 秒→24.1 秒、D 141.4 秒→129.5 秒で Utot は 1e-12 Ha まで同一。band_nc の D は 167.5 秒→156.8 秒。テーブル自体(常駐ランクの Orbs_Grid)は常に FP64 で作る"
+  },
+  {
+   "group": "setham",
+   "names": [
+    "OPENMX_XC_GRID_GPU"
+   ],
+   "en": "The GGA-PBE exchange-correlation potential on the grid (Set_XC_Grid, called by Set_Vpot every SCF step and by Total_Energy / Force) is evaluated on the device: the 27-point gradient stencil, the per-point functional (device transcriptions of XC_PBE, XC_PW92C and XC_EX), the divergence stencil and the non-collinear rotation as four OpenACC kernels over the rank's D grid, in FP64 as on the host, from one transient acc_malloc arena (about 22 doubles per grid point). Falls back to the host loops for LDA, for the LDA+U cFLL rotation (dc_Type 3/4), for XC_P_switch 3 and when the arena cannot be allocated. The host loops are single-threaded per rank and cost 0.36 s per step on every rank of the RTX 5080 (18 ranks, sidia333 non-collinear cluster), the device a few milliseconds: Set_Vpot per step 0.35 s to 0.18 s (the rest is the grid redistribution), Set_Hamiltonian 24.9 s to 20.2 s, D 117.1 s to 111.1 s; 1 rank, the whole grid: 2.38 s to 0.21 s per step. Utot agrees with the host evaluation to 1e-12 Ha (the device library's pow / exp / log differ from glibc in the last bits). <b>0</b> = host loops",
+   "ja": "格子上の GGA-PBE 交換相関ポテンシャル(Set_XC_Grid。毎 SCF ステップ Set_Vpot から、また Total_Energy / Force から呼ばれる)をデバイスで計算する: 27 点の勾配ステンシル、点ごとの汎関数(XC_PBE・XC_PW92C・XC_EX のデバイス転記)、発散のステンシル、非共線の回転をランクの D 格子上の 4 つの OpenACC カーネルとして、ホストと同じ FP64 で、一時的な acc_malloc アリーナ(格子点あたり double 約 22 個)から実行する。LDA、LDA+U の cFLL 回転(dc_Type 3/4)、XC_P_switch 3、アリーナを確保できないときはホストのループに戻る。ホストのループはランクごとに単一スレッドで、RTX 5080(18 ランク、sidia333 非共線クラスター)では全ランクで 1 ステップ 0.36 秒かかっていたが、デバイスでは数ミリ秒: Set_Vpot が 1 ステップ 0.35 秒→0.18 秒(残りは格子の再分配)、Set_Hamiltonian 24.9 秒→20.2 秒、D 117.1 秒→111.1 秒。1 ランクで全格子なら 1 ステップ 2.38 秒→0.21 秒。Utot はホスト計算と 1e-12 Ha で一致(デバイスライブラリの pow / exp / log が glibc と最後の桁で異なる)。<b>0</b> = ホストのループ"
+  },
+  {
+   "group": "cusolver",
+   "names": [
+    "OPENMX_CUSOLVER_EMULATION"
+   ],
+   "defaults": {
+    "OPENMX_CUSOLVER_EMULATION": {
+     "en": "1",
+     "ja": "1"
+    }
+   },
+   "en": "Every cuSOLVER handle the code creates runs its FP64 eigensolves in the fixed-point FP64 emulation of cuSOLVER 12.2+ (CUSOLVER_FP64_EMULATED_FIXEDPOINT_MATH, performant strategy, dynamic mantissa control), which is what makes the FP64 reference R0 affordable on a GeForce; <b>0</b> = native FP64. The emulated solver fails to converge now and then (info &gt; 0: RTX 5080, sidia333, band Col info=395 and band NonCol info=126, twice in roughly 700 solves on 2026-10-08), and the solvers abort on info &ne; 0. Since 2026-10-08 the compat wrapper of cusolverDnXsyevd / cusolverDnXsyevdx therefore keeps a copy of the matrix of every FP64 solve made in an emulated handle (on the device, in host memory when the device is short), answers info &gt; 0 by restoring the matrix and solving once more in native FP64 (message \"solving again in native FP64\"), and puts the handle back into emulation; the workspace queries return the larger of the two modes' requirements so the retry fits",
+   "ja": "コードが作るすべての cuSOLVER ハンドルで FP64 の固有値解法を cuSOLVER 12.2+ の固定小数点 FP64 エミュレーション(CUSOLVER_FP64_EMULATED_FIXEDPOINT_MATH、performant 戦略、動的仮数制御)で実行する。GeForce で FP64 参照 R0 が現実的な時間で済むのはこのため。<b>0</b> = ネイティブ FP64。エミュレーションの解法はまれに収束しない(info &gt; 0: RTX 5080 の sidia333 で、バンド Col info=395、バンド NonCol info=126。2026-10-08 に約 700 回の解法中 2 回)が、ソルバーは info &ne; 0 で中止する。そこで 2026-10-08 以降、cusolverDnXsyevd / cusolverDnXsyevdx の互換ラッパーは、エミュレーションハンドルでの FP64 解法ごとに行列の写し(デバイス上、足りなければホストメモリ)を取り、info &gt; 0 なら行列を戻してネイティブ FP64 でもう一度解き(メッセージ \"solving again in native FP64\")、ハンドルをエミュレーションに戻す。作業領域の問い合わせは両モードの大きい方を返すので再試行は収まる"
+  },
+  {
+   "group": "setham",
+   "names": [
+    "OPENMX_GRID_PRECISION"
+   ],
+   "defaults": {
+    "OPENMX_GRID_PRECISION": {
+     "en": "df / fp64",
+     "ja": "df / fp64"
+    }
+   },
+   "en": "The arithmetic of the grid-integral kernels (the dVH+Vxc+VNA matrix elements and the density): <b>df</b> = double-float, FP32 arithmetic with error-free transformations (hi/lo splits, products through FMA, compensated sums per tile, FP64 across tiles; FP64-grade results at about 12 FP32 operations per term), the default on GPUs whose FP32:FP64 throughput ratio is 8 or more (GeForce); <b>fp64</b> = the FP64 kernels (the default on data-center GPUs) Since 2026-10-08 the df kernels do no FP64 arithmetic per term: the matrix-element kernel splits grid_vol*vpot once per tile into (hi, lo) and forms the weights with FMAs, the density kernel accumulates its rows as float pairs (TwoSum) and uses FP64 only in the atomic adds, and the lo parts are summed plainly (10 FP32 operations per term); on the RTX 5080 (18 ranks, sidia333 non-collinear cluster) an on-the-fly rank's matrix elements went from 1.42 s to 0.61 s per step, Set_Hamiltonian 35.8 s to 24.9 s, D 129.5 s to 116.3 s, Utot within 1e-12 Ha of the FP64 kernels Since 2026-10-09 the on-the-fly density of mode df runs as a CUDA kernel (set_hamiltonian_gpu.cu density_kernel): the pair's density matrix staged once per block in shared memory as (hi, lo) float pairs, the point's orbital rows in registers (tiers of 16 / 32 / 48 orbitals), the same arithmetic; 0.37 s to 0.098 s per rank and step on the RTX 5080 (1 rank: 3.55 s to 0.23 s), Set_Density_Grid 21.9 s to 17.8 s, Utot within 1e-12 Ha; the OpenACC kernel remains the fallback Since 2026-10-09 the df matrix-element kernel is register-tiled: a thread owns a 2x2 block of elements (spin, i0..i0+1, j0..j0+1) and loads two weighted phi0 pairs and two phi1 values per grid point for its four products (half the shared-memory reads), and the grid points of a pair are split over OPENMX_SETHAM_MATEL_SPLIT blocks (default 4) whose partial sums are added atomically onto the H blocks, which keeps enough blocks in flight to hide the staging gathers (one block per pair alone was slower); RTX 5080, sidia333 non-collinear cluster: the kernel 0.24 s to 0.11 s per on-the-fly rank and step at 18 ranks (1 rank: 2.88 s to 1.09 s), the matrix elements 0.48 s to 0.35 s, Utot identical",
+   "ja": "格子積分カーネル(dVH+Vxc+VNA の行列要素と密度)の演算: <b>df</b> = double-float(FP32 演算に誤差なし変換を組み合わせる: hi/lo 分割、FMA による積、タイルごとの補償付き和、タイル間は FP64。1 項あたり FP32 命令約 12 で FP64 相当の結果)。FP32:FP64 の性能比が 8 以上の GPU(GeForce)での既定。<b>fp64</b> = FP64 カーネル(データセンター GPU の既定) 2026-10-08 以降、df カーネルは項あたりの FP64 演算を持たない: 行列要素カーネルはタイルごとに grid_vol*vpot を一度だけ (hi, lo) に分けて重みを FMA で作り、密度カーネルは行の和を float の対(TwoSum)で累積して原子的加算だけ FP64、lo 側は単純加算(項あたり FP32 命令 10)。RTX 5080(18 ランク、sidia333 非共線クラスター)でその場計算ランクの行列要素がステップあたり 1.42 秒→0.61 秒、Set_Hamiltonian 35.8 秒→24.9 秒、D 129.5 秒→116.3 秒、Utot は FP64 カーネルと 1e-12 Ha 以内 2026-10-09 以降、df モードのその場計算の密度は CUDA カーネル(set_hamiltonian_gpu.cu の density_kernel)で積分する: 対の密度行列をブロックごとに一度だけ共有メモリに (hi, lo) の float 対で置き、点の軌道行はレジスタ(16 / 32 / 48 軌道の段階)、演算は同一。RTX 5080 でランク・ステップあたり 0.37 秒→0.098 秒(1 ランクでは 3.55 秒→0.23 秒)、Set_Density_Grid 21.9 秒→17.8 秒、Utot は 1e-12 Ha 以内。OpenACC カーネルはフォールバックとして残る 2026-10-09 以降、df の行列要素カーネルはレジスタタイリングする: 1 スレッドが要素の 2x2 ブロック(spin, i0..i0+1, j0..j0+1)を持ち、格子点ごとに重み付き phi0 の対 2 つと phi1 の値 2 つを読んで 4 つの積を作る(共有メモリ読み出しが半分)。対の格子点は OPENMX_SETHAM_MATEL_SPLIT 個のブロック(既定 4)に分け、各ブロックの部分和を H ブロックに原子的に加える(対あたり 1 ブロックではステージングの gather を隠せず遅かった)。RTX 5080 の sidia333 非共線クラスターで、カーネルは 18 ランク時にその場計算ランク・ステップあたり 0.24 秒→0.11 秒(1 ランクでは 2.88 秒→1.09 秒)、行列要素は 0.48 秒→0.35 秒、Utot は同一"
+  },
+  {
+   "group": "setham",
+   "names": [
+    "OPENMX_GRID_FP32"
+   ],
+   "en": "Experimental: plain FP32 kernels while the previous step's NormRD is above <code>OPENMX_GRID_FP32_UNTIL</code> (1e-5), FP64 afterwards (<code>OPENMX_GRID_FP32_RESTART</code>=1 restarts the mixing history at the switch). The FP32 steps stall the SCF near the kernels' error level (sidia333: 27-40 SCF steps instead of 23), so it is off. The configured last SCF step always uses the non-lossy grid kernels, including when <code>scf.maxIter=1</code>. Non-finite residuals also end the FP32 phase. A live reduction of maxIter through <code>_SCF_keywords</code> after a completed FP32 step cannot retroactively recompute that step",
+   "ja": "実験用: 前ステップの NormRD が <code>OPENMX_GRID_FP32_UNTIL</code>(1e-5)より大きい間は素の FP32 カーネル、以後 FP64(<code>OPENMX_GRID_FP32_RESTART</code>=1 で切替時に混合履歴を再開)。FP32 のステップはカーネルの誤差の水準で SCF が停滞する(sidia333 で 23 回が 27〜40 回)ためオフ。設定された SCF 最終ステップは <code>scf.maxIter=1</code> の場合も非損失の格子カーネルを使う。残差が NaN/Inf の場合も FP32 を終了する。FP32 ステップ完了後に <code>_SCF_keywords</code> で maxIter を引き下げた場合、そのステップを遡って再計算することはしない"
+  },
+  {
+   "group": "setham",
+   "names": [
+    "OPENMX_SETHAM_GPU_RESERVE_MB",
+    "OPENMX_SETHAM_GPU_RANK_OVERHEAD_MB"
+   ],
+   "label": "<code>OPENMX_SETHAM_GPU_RESERVE_MB</code> / <code>_RANK_OVERHEAD_MB</code>",
+   "defaults": {
+    "OPENMX_SETHAM_GPU_RESERVE_MB": {
+     "en": "max(total/10,1536)",
+     "ja": "max(総/10,1536)"
+    },
+    "OPENMX_SETHAM_GPU_RANK_OVERHEAD_MB": {
+     "en": "512",
+     "ja": "512"
+    }
+   },
+   "en": "Reserve and per-rank overhead estimate",
+   "ja": "予約量とランクあたりオーバーヘッド見積り"
+  },
+  {
+   "group": "setham",
+   "names": [
+    "OPENMX_SETHAM_GPU_KOWNER_ONLY"
+   ],
+   "en": "1 restores the old k-owner-only GPU execution",
+   "ja": "1 で旧来の k オーナー限定 GPU 実行に戻す"
+  },
+  {
+   "group": "setham",
+   "names": [
+    "OPENMX_SETHAM_BASE_GPU"
+   ],
+   "en": "GPU execution of the base combination of H (CPU is faster in practice)",
+   "ja": "H の base 結合を GPU 実行(実測では CPU が速い)"
+  },
+  {
+   "group": "setham",
+   "names": [
+    "OPENMX_SETHAM_GPU_TEST_NEED_MB",
+    "OPENMX_SETHAM_GPU_TEST_NEED_FROM_CALL"
+   ],
+   "label": "<code>OPENMX_SETHAM_GPU_TEST_NEED_MB</code> / <code>_FROM_CALL</code>",
+   "default_cell": {
+    "en": "—",
+    "ja": "—"
+   },
+   "en": "Test hook injecting a fake phase need",
+   "ja": "偽のフェーズ需要を注入するテスト用フック"
+  },
+  {
+   "group": "other",
+   "names": [
+    "OPENMX_SETNL_OPENACC"
+   ],
+   "en": "The Set_Nonlocal GPU batch (0 = CPU path)",
+   "ja": "Set_Nonlocal の GPU バッチ(0 で CPU パス)"
+  },
+  {
+   "group": "other",
+   "names": [
+    "OPENMX_SETPRO_GPU"
+   ],
+   "en": "The three Set_ProExpn_VNA batches (0 = CPU)",
+   "ja": "Set_ProExpn_VNA の 3 バッチ(0 で CPU)"
+  },
+  {
+   "group": "other",
+   "names": [
+    "OPENMX_SETPRO_VERBOSE"
+   ],
+   "en": "One stderr line per rank and device stage of Set_ProExpn_VNA: the admission figures (need, budget, free memory, pair batch, rank turns), the batch sizes, the elapsed time and the device memory free at that point",
+   "ja": "Set_ProExpn_VNA のデバイス段ごとにランク 1 行を stderr へ: 採用判定の数値(必要量、予算、空き、ペアバッチ、ランクターン)、バッチの大きさ、所要時間、その時点のデバイス空き容量"
+  },
+  {
+   "group": "other",
+   "names": [
+    "OPENMX_OLPKIN_RADIAL_GPU"
+   ],
+   "en": "GPU radial integrals in Set_OLP_Kin (single thread required; usually slower — transfer-bound)",
+   "ja": "Set_OLP_Kin の動径積分を GPU 実行(スレッド数 1 必須。転送律速で通常は CPU が速い)"
+  },
+  {
+   "group": "density",
+   "names": [
+    "OPENMX_DENSITY_GRID_GPU",
+    "OPENMX_SETDENSITY_GPU"
+   ],
+   "label": {
+    "en": "<code>OPENMX_DENSITY_GRID_GPU</code> (alias <code>OPENMX_SETDENSITY_GPU</code>)",
+    "ja": "<code>OPENMX_DENSITY_GRID_GPU</code>(別名 <code>OPENMX_SETDENSITY_GPU</code>)"
+   },
+   "default_cell": {
+    "en": "1",
+    "ja": "1"
+   },
+   "en": "Master gate for the density-grid GPU code",
+   "ja": "密度グリッド GPU 全体のゲート"
+  },
+  {
+   "group": "density",
+   "names": [
+    "OPENMX_DENSITY_GRID_GPU_LOCAL"
+   ],
+   "defaults": {
+    "OPENMX_DENSITY_GRID_GPU_LOCAL": {
+     "en": "1",
+     "ja": "1"
+    }
+   },
+   "en": "Distributed quadrature mode: 0=off, 1=only when the shared tables are resident, 2=always",
+   "ja": "分散求積モード: 0=無効、1=共有テーブル常駐時のみ、2=常に"
+  },
+  {
+   "group": "density",
+   "names": [
+    "OPENMX_DENSITY_GRID_GPU_RESERVE_MB",
+    "OPENMX_DENSITY_GRID_GPU_PERSISTENT"
+   ],
+   "label": "<code>OPENMX_DENSITY_GRID_GPU_RESERVE_MB</code> / <code>_PERSISTENT</code>",
+   "defaults": {
+    "OPENMX_DENSITY_GRID_GPU_PERSISTENT": {
+     "en": "0",
+     "ja": "0"
+    }
+   },
+   "en": "Owner-service reserve and post-computation device persistence",
+   "ja": "オーナーサービスの予約量と計算後のデバイス常駐"
+  },
+  {
+   "group": "force",
+   "names": [
+    "OPENMX_TOTALENERGY_GPU"
+   ],
+   "en": "Master gate for the total-energy device kernels (including NC)",
+   "ja": "全エネルギー系デバイスカーネルの一括ゲート(NC 含む)"
+  },
+  {
+   "group": "force",
+   "names": [
+    "OPENMX_FORCE_GPU"
+   ],
+   "en": "Parent gate for all force GPU paths (collective)",
+   "ja": "力計算の全 GPU 経路の親ゲート(集団判定)"
+  },
+  {
+   "group": "force",
+   "names": [
+    "OPENMX_FORCE3_GPU",
+    "OPENMX_FORCE3_GPU_DORB"
+   ],
+   "label": "<code>OPENMX_FORCE3_GPU</code> / <code>OPENMX_FORCE3_GPU_DORB</code>",
+   "defaults": {
+    "OPENMX_FORCE3_GPU": {
+     "en": "1",
+     "ja": "1"
+    }
+   },
+   "en": "Force3 GPU trace / on-device dOrbitals recomputation",
+   "ja": "Force3 トレースの GPU 化 / dOrbitals のオンデバイス再計算"
+  },
+  {
+   "group": "force",
+   "names": [
+    "OPENMX_FORCE4B_GPU",
+    "OPENMX_FORCE4B_FUSED"
+   ],
+   "label": "<code>OPENMX_FORCE4B_GPU</code> / <code>OPENMX_FORCE4B_FUSED</code>",
+   "defaults": {
+    "OPENMX_FORCE4B_GPU": {
+     "en": "1",
+     "ja": "1"
+    }
+   },
+   "en": "Force4B GPU batch / the fused CPU trace (also a prerequisite of the GPU batch)",
+   "ja": "Force4B の GPU バッチ / CPU 側融合トレース(GPU バッチの前提でもある)"
+  },
+  {
+   "group": "force",
+   "names": [
+    "OPENMX_FORCEHNL_GPU"
+   ],
+   "defaults": {
+    "OPENMX_FORCEHNL_GPU": {
+     "en": "1",
+     "ja": "1"
+    }
+   },
+   "en": "Force_HNL GPU batch",
+   "ja": "Force_HNL の GPU バッチ"
+  },
+  {
+   "group": "force",
+   "names": [
+    "OPENMX_FORCE_PROFILE"
+   ],
+   "en": "[Force profile] lines (per-stage max/avg seconds)",
+   "ja": "[Force profile] 行(ステージ別 max/avg 秒)の出力"
+  },
+  {
+   "group": "mixing",
+   "names": [
+    "OPENMX_MIX_FAST"
+   ],
+   "en": "CPU fast paths of RMM-DIIS/DIISK/DIISV/GR-Pulay/Kerker (0 = legacy)",
+   "ja": "RMM-DIIS/DIISK/DIISV/GR-Pulay/Kerker の CPU 高速パス(0 でレガシー)"
+  },
+  {
+   "group": "mixing",
+   "names": [
+    "OPENMX_MIXH_GPU"
+   ],
+   "en": "RMM-DIISH tier selection: unset=auto, 0=legacy, 1=force GPU tier, 2=force incremental CPU tier",
+   "ja": "RMM-DIISH の層選択: 未設定=自動、0=レガシー、1=GPU 層強制、2=増分 CPU 層強制"
+  },
+  {
+   "group": "mixing",
+   "names": [
+    "OPENMX_MIXH_GPU_RESERVE_MB",
+    "OPENMX_MIXH_GPU_VERBOSE"
+   ],
+   "label": "<code>OPENMX_MIXH_GPU_RESERVE_MB</code> / <code>_VERBOSE</code>",
+   "defaults": {
+    "OPENMX_MIXH_GPU_RESERVE_MB": {
+     "en": "max(total/10,1536)",
+     "ja": "max(総/10,1536)"
+    }
+   },
+   "en": "GPU-tier reserve / print the tier decision",
+   "ja": "GPU 層の予約量 / 選択結果の表示"
+  },
+  {
+   "group": "gs2",
+   "names": [
+    "OPENMX_GS2_ELPA_SOLVER"
+   ],
+   "en": "ELPA solver used by gpusolver2: 1 = 1stage, anything else = 2stage (default)",
+   "ja": "gpusolver2 の ELPA ソルバ選択。1 で 1stage、それ以外は 2stage(既定)"
+  },
+  {
+   "group": "gs2",
+   "names": [
+    "OPENMX_CLUSTER_GS2_FALLBACK"
+   ],
+   "defaults": {
+    "OPENMX_CLUSTER_GS2_FALLBACK": {
+     "en": "auto",
+     "ja": "auto"
+    }
+   },
+   "en": "Capacity fallback of <code>gpusolver</code> in the cluster solvers when the dense solve does not fit on one GPU: MAGMA on the GPUs of rank 0's node first, then (multi-node runs) the distributed gpusolver2 path on every rank of the run (a spin-polarized collinear run solves its spins in turn on a grid over all ranks; ELPA/COSMA use the GPU of each rank), with a collective GPU admission. <code>OPENMX_CLUSTER_HOST_MEM_AVAILABLE_MB</code> overrides the host memory of the MAGMA test. <code>off</code> = never the distributed step, <code>on</code> = also on one node, <code>force</code> = skip MAGMA. Forced MAGMA (gpusolver3, <code>OPENMX_MGPU_MEMORY=host</code>) never takes the distributed step",
+   "ja": "クラスター法の <code>gpusolver</code> で密な固有値計算が GPU 1 枚に入らないときの代替: まず rank 0 のノードの GPU で MAGMA、それが使えなければ(マルチノード実行で)ジョブの全ランクによる分散 gpusolver2(ELPA GPU カーネル + COSMA。各ランクの GPU を使う。スピン分極の共線は全ランクのグリッドで両スピンを順に解く)に集団的な GPU メモリ判定のうえで切り替える。<code>off</code> = 分散段に進まない、<code>on</code> = 単一ノードでも進む、<code>force</code> = MAGMA を飛ばす。強制 MAGMA(gpusolver3、<code>OPENMX_MGPU_MEMORY=host</code>)は分散段に進まない。<code>OPENMX_CLUSTER_HOST_MEM_AVAILABLE_MB</code> で MAGMA のホストメモリ判定の値を上書きできる"
+  },
+  {
+   "group": "gs2",
+   "names": [
+    "OPENMX_GS2_HOST_RESERVE_MB"
+   ],
+   "defaults": {
+    "OPENMX_GS2_HOST_RESERVE_MB": {
+     "en": "a quarter of the node memory (at least 4096)",
+     "ja": "ノードメモリの 1/4(最小 4096)"
+    }
+   },
+   "en": "gpusolver2 bridge (explicit or as the capacity fallback): host memory that must stay free on every node after COSMA allocates the buffers it keeps for the rest of the run (memory pool and COSTA send/receive buffers, estimated from COSMA's own strategy); otherwise the transform runs on ScaLAPACK",
+   "ja": "gpusolver2 ブリッジ(明示指定時と容量フォールバック時): COSMA が実行終了まで保持するホストバッファ(メモリプールと COSTA の送受信バッファ。COSMA 自身の分割戦略から見積もる)を確保した後も各ノードに残すべき空きメモリ。足りなければその変換は ScaLAPACK で行う"
+  },
+  {
+   "group": "memory",
+   "names": [
+    "OPENMX_GPU"
+   ],
+   "en": "Master switch of the GPU paths: <b>0</b> keeps every rank on the host code even with <code>scf.eigen.lib=gpusolver</code> (the device probe, the multi-GPU pool and the capacity workers all read it).",
+   "ja": "GPU 経路の親スイッチ。<b>0</b> にすると <code>scf.eigen.lib=gpusolver</code> でも全ランクがホストコードで動く（デバイス探索、マルチ GPU プール、容量ワーカーがすべて参照する）。"
+  },
+  {
+   "group": "memory",
+   "names": [
+    "OPENMX_GPU_PROBE_RESERVE_MB"
+   ],
+   "en": "Free device memory a rank must still see right after creating its own context before it may claim the GPU: headroom for the device-module load (which aborts, not fails, when it cannot allocate) and for the runtime's transients.",
+   "ja": "各ランクが自分のコンテキストを作った直後、GPU を使うと判定するために残っていなければならない空きデバイスメモリ。デバイスモジュールのロード（確保できないと失敗ではなく異常終了する）とランタイムの一時領域の余裕。"
+  },
+  {
+   "group": "memory",
+   "names": [
+    "OPENMX_GPU_RANK_MAP"
+   ],
+   "defaults": {
+    "OPENMX_GPU_RANK_MAP": {
+     "en": "block",
+     "ja": "block"
+    }
+   },
+   "en": "Rank-to-device map of a node: by default consecutive node-local ranks share a device in blocks (ranks per device = ceil(local ranks / devices)); a value starting with <code>m</code> (modulo) assigns <code>local_rank % devices</code> instead.",
+   "ja": "ノード内のランクとデバイスの対応。既定ではノード内の連続したランクがブロック単位で 1 台を共有する（1 台あたり ceil(ノード内ランク数 / デバイス数)）。<code>m</code> で始まる値（modulo）にすると <code>local_rank % デバイス数</code> で割り当てる。"
+  },
+  {
+   "group": "gemmul8",
+   "names": [
+    "OPENMX_GEMMUL8_MAX_WORKSPACE_MB",
+    "GEMMUL8_MAX_WORKSPACE_MB"
+   ],
+   "label": "<code>(OPENMX_)GEMMUL8_MAX_WORKSPACE_MB</code>",
+   "default_cell": {
+    "en": "256",
+    "ja": "256"
+   },
+   "en": "Per-rank cap of the GEMMul8 workspace (MiB) under which GEMMul8 blocks large products instead of falling back to cuBLAS FP64 (ported from the AMD bridge); 0 restores the uncapped policy, smaller nonzero caps are raised to a viable block size.",
+   "ja": "GEMMul8 作業領域のランクあたり上限（MiB）。これより大きな積は cuBLAS FP64 へ退避せずにブロック分割して GEMMul8 で計算する（AMD 版から移植）。0 で上限なし、小さすぎる値は実行可能なブロックサイズまで引き上げる。"
+  },
+  {
+   "group": "gemmul8",
+   "names": [
+    "OPENMX_GEMMUL8_LOCAL_RANKS"
+   ],
+   "defaults": {
+    "OPENMX_GEMMUL8_LOCAL_RANKS": {
+     "en": "from the launcher",
+     "ja": "ランチャーの値"
+    }
+   },
+   "en": "Number of ranks sharing one GPU for the aggregate workspace budget; by default taken from the launcher (<code>OMPI_COMM_WORLD_LOCAL_SIZE</code>, <code>SLURM_NTASKS_PER_NODE</code>), rounded up for uneven rank placement.",
+   "ja": "作業領域の合計予算を見積もるときの、1 台の GPU を共有するランク数。既定ではランチャーの値（<code>OMPI_COMM_WORLD_LOCAL_SIZE</code>、<code>SLURM_NTASKS_PER_NODE</code>）を使い、ランク配置が不均一なら切り上げる。"
+  },
+  {
+   "group": "gemmul8",
+   "names": [
+    "OPENMX_GEMMUL8_A100_FORWARD_MIN_N"
+   ],
+   "en": "On a full A100 (sm_80) real square products of this dimension and above use full-workspace Ozaki arithmetic even on a native-FP64 device, smaller ones native FP64 (measured crossover; 0 disables the rule; not extrapolated to MIG, A30, GeForce or complex products).",
+   "ja": "フル A100（sm_80）では、この次元以上の実数正方積はネイティブ FP64 デバイスでも全作業領域の Ozaki 演算を使い、それ未満はネイティブ FP64 を使う（実測の交点。0 で規則を無効化。MIG・A30・GeForce・複素積には外挿しない）。"
+  },
+  {
+   "group": "gemmul8",
+   "names": [
+    "OPENMX_GEMMUL8_FORWARD",
+    "OPENMX_GEMMUL8_FORWARD_NUM_MOD",
+    "OPENMX_GEMMUL8_FORWARD_FASTMODE",
+    "OPENMX_GEMMUL8_FORWARD_REUSE",
+    "OPENMX_GEMMUL8_FORWARD_UNBLOCKED"
+   ],
+   "label": "<code>OPENMX_GEMMUL8_FORWARD</code> / <code>_NUM_MOD</code> / <code>_FASTMODE</code> / <code>_REUSE</code> / <code>_UNBLOCKED</code>",
+   "defaults": {
+    "OPENMX_GEMMUL8_FORWARD": {
+     "en": "as the real products",
+     "ja": "実数積と同じ"
+    },
+    "OPENMX_GEMMUL8_FORWARD_NUM_MOD": {
+     "en": "15",
+     "ja": "15"
+    }
+   },
+   "en": "Arithmetic of the forward products (the cuBLAS-shaped calls that go through the bridge's forward stage): unset = the settings of the real products, <code>fp64</code> = cuBLAS FP64, <code>gemmul8</code> = GEMMul8 with its own moduli count (<code>_NUM_MOD</code>), fast scaling (<code>_FASTMODE</code>), reuse of a prepared operand across calls (<code>_REUSE</code>, implies unblocked) and unblocked products (<code>_UNBLOCKED</code>).",
+   "ja": "前向き積（ブリッジの forward 段を通る cuBLAS 形式の呼び出し）の演算。未設定 = 実数積と同じ設定、<code>fp64</code> = cuBLAS FP64、<code>gemmul8</code> = 専用の法の数（<code>_NUM_MOD</code>）、高速スケーリング（<code>_FASTMODE</code>）、準備済みオペランドの呼び出し間再利用（<code>_REUSE</code>、unblocked を含意）、非ブロック積（<code>_UNBLOCKED</code>）を持つ GEMMul8。"
+  },
+  {
+   "group": "gemmul8",
+   "names": [
+    "OPENMX_GEMMUL8_TIMING",
+    "OPENMX_GEMMUL8_FORWARD_TIMING"
+   ],
+   "label": "<code>OPENMX_GEMMUL8_TIMING</code> / <code>_FORWARD_TIMING</code>",
+   "en": "Per-process statistics of the general and forward GEMMs (calls, seconds, GFlop, GEMMul8 vs cuBLAS, moduli, scaling) printed at the end of the run (the rank label comes from <code>OMPI_COMM_WORLD_RANK</code> or <code>PMI_RANK</code>).",
+   "ja": "一般の GEMM と前向き GEMM のプロセスごとの統計（呼び出し数、秒、GFlop、GEMMul8 と cuBLAS の内訳、法の数、スケーリング）を実行終了時に出力する（ランク表示は <code>OMPI_COMM_WORLD_RANK</code> か <code>PMI_RANK</code>）。"
+  },
+  {
+   "group": "gemmul8",
+   "names": [
+    "OPENMX_GPU_VERBOSE",
+    "OPENMX_GEMM_VERBOSE",
+    "OPENMX_GEMMUL8_VERBOSE",
+    "GEMMUL8_VERBOSE"
+   ],
+   "label": "<code>OPENMX_GPU_VERBOSE</code> / <code>OPENMX_GEMM_VERBOSE</code> / <code>(OPENMX_)GEMMUL8_VERBOSE</code>",
+   "default_cell": {
+    "en": "0",
+    "ja": "0"
+   },
+   "en": "Verbose logging of the GEMMul8 bridge (workspace decisions, fallbacks, the forward-stage summary); the four names are read in this order, each overriding the previous one.",
+   "ja": "GEMMul8 ブリッジの詳細ログ（作業領域の判断、退避、forward 段の要約）。4 つの名前をこの順に読み、後のものが前のものを上書きする。"
+  },
+  {
+   "group": "band",
+   "names": [
+    "OPENMX_BAND_COL_KCACHE_MB",
+    "OPENMX_BAND_NONCOL_KCACHE_MB"
+   ],
+   "en": "Host cache of the dense k-point eigenvector panels of the GPU band path (MiB per rank, also bounded by the host memory available per rank from <code>/proc/meminfo</code>); 0 disables the cache.",
+   "ja": "GPU バンド経路の k 点ごとの稠密固有ベクトルパネルのホストキャッシュ（ランクあたり MiB。<code>/proc/meminfo</code> のランクあたり利用可能メモリでも制限）。0 でキャッシュ無効。"
+  },
+  {
+   "group": "band",
+   "names": [
+    "OPENMX_BAND_COL_OVERLAP_CACHE_MB",
+    "OPENMX_BAND_NONCOL_OVERLAP_CACHE_MB"
+   ],
+   "en": "Host cache of the k-point overlap transforms (and their eigenvalues) reused across SCF steps (MiB per rank; 0 disables).",
+   "ja": "SCF ステップ間で再利用する k 点の重なり変換（とその固有値）のホストキャッシュ（ランクあたり MiB。0 で無効）。"
+  },
+  {
+   "group": "band",
+   "names": [
+    "OPENMX_BAND_NONCOL_PACK_CACHE_MB"
+   ],
+   "en": "Noncollinear band: bounded host copy of the packed real-space matrices kept on every dense-k owner across the k groups of an SCF step when all owners fit (MiB per rank).",
+   "ja": "非共線バンド: 1 SCF ステップ内の k グループ間で、各稠密 k 所有ランクが保持するパック済み実空間行列のホスト複製の上限（ランクあたり MiB。全所有ランクが収まるときだけ保持）。"
+  },
+  {
+   "group": "band",
+   "names": [
+    "OPENMX_BAND_REFINE_BASIS_MB"
+   ],
+   "en": "Host budget (MiB per rank) of the refined eigensolver's warm-start basis kept per k-point slot (collinear and noncollinear band); 0 disables the warm-start cache.",
+   "ja": "精密化固有値ソルバーのウォームスタート基底を k 点スロットごとに保持するホスト予算（ランクあたり MiB。共線・非共線バンド）。0 でウォームスタートのキャッシュ無効。"
+  },
+  {
+   "group": "band",
+   "names": [
+    "OPENMX_BAND_CACHE_TRACE",
+    "OPENMX_BAND_NONCOL_CACHE_TRACE"
+   ],
+   "en": "One line per rank and SCF step with the hit counts and sizes of the k-point caches (<code>BAND_NONCOL_CACHE</code> lines on the noncollinear path).",
+   "ja": "k 点キャッシュのヒット数と大きさをランクと SCF ステップごとに 1 行出力する（非共線では <code>BAND_NONCOL_CACHE</code> 行）。"
+  },
+  {
+   "group": "band",
+   "names": [
+    "OPENMX_BAND_NONCOL_INTERLEAVE_K"
+   ],
+   "defaults": {
+    "OPENMX_BAND_NONCOL_INTERLEAVE_K": {
+     "en": "auto",
+     "ja": "auto"
+    }
+   },
+   "en": "Noncollinear band: interleave the order in which the dense k-points are solved across the owner ranks; 0 keeps the natural k order.",
+   "ja": "非共線バンド: 稠密 k 点を解く順序を所有ランク間で交互に並べる。0 で k の自然順。"
+  },
+  {
+   "group": "cluster",
+   "names": [
+    "OPENMX_CLUSTER_PROFILE"
+   ],
+   "en": "Phase profile of the cluster dense GPU solvers (overlap, gather, forward/back transforms, eigensolve, release, DM) per rank; the device is synchronized around each phase, so the times are not those of an unprofiled run.",
+   "ja": "クラスター稠密 GPU ソルバーの段階別プロファイル（重なり、収集、前後の変換、固有値分解、解放、密度行列）をランクごとに出力する。各段階の前後でデバイスを同期するため、プロファイルなしの実行時間とは異なる。"
+  },
+  {
+   "group": "cluster",
+   "names": [
+    "OPENMX_CLUSTER_GPU_RETAIN_SCRATCH"
+   ],
+   "en": "Collinear cluster: whether the dense scratch (eigenvector stash, temporaries) stays on the device after the density matrix is done: unset = released when less than half of the device remains free, <b>1</b> = always retain, <b>0</b> = always release (the transformed overlap is kept in every case).",
+   "ja": "共線クラスター: 密度行列の完成後に稠密作業領域（固有ベクトルの退避、一時配列）をデバイスに残すか。未設定 = デバイスの空きが半分未満なら解放、<b>1</b> = 常に保持、<b>0</b> = 常に解放（変換済み重なり行列は常に保持）。"
+  },
+  {
+   "group": "cluster",
+   "names": [
+    "OPENMX_GEMM_SAMPLE_DIR",
+    "OPENMX_GEMM_SAMPLE_ITERS"
+   ],
+   "label": "<code>OPENMX_GEMM_SAMPLE_DIR</code> / <code>_ITERS</code>",
+   "defaults": {
+    "OPENMX_GEMM_SAMPLE_DIR": {
+     "en": "unset (off)",
+     "ja": "未設定（オフ）"
+    },
+    "OPENMX_GEMM_SAMPLE_ITERS": {
+     "en": "1",
+     "ja": "1"
+    }
+   },
+   "en": "Diagnostics: write the transformed overlap X (collinear) and the transformed Hamiltonian the eigensolver receives (<code>X_g&lt;geometry&gt;.bin</code>, <code>Hs2_scf&lt;step&gt;.bin</code>, column-major binary) into an existing directory for the SCF steps listed in <code>_ITERS</code> (comma separated); they feed <code>tests/eigen_precision_probe.cu</code>.",
+   "ja": "診断用: 変換済み重なり X（共線）と固有値ソルバーが受け取る変換済みハミルトニアン（<code>X_g&lt;geometry&gt;.bin</code>、<code>Hs2_scf&lt;step&gt;.bin</code>、列優先バイナリ）を、<code>_ITERS</code> に列挙した SCF ステップ（カンマ区切り）について既存のディレクトリへ書き出す。<code>tests/eigen_precision_probe.cu</code> の入力になる。"
+  },
+  {
+   "group": "refine",
+   "names": [
+    "OPENMX_EIGEN_REFINE_WARM_BAND"
+   ],
+   "en": "Warm start of the refined eigensolver also in the band solvers (per k-point slot); 0 limits the warm start to the cluster solvers.",
+   "ja": "精密化固有値ソルバーのウォームスタートをバンドソルバー（k 点スロットごと）でも使う。0 でクラスターソルバーのみ。"
+  },
+  {
+   "group": "refine",
+   "names": [
+    "OPENMX_EIGEN_REFINE_WARM_PERIOD"
+   ],
+   "en": "Band warm start: every this many SCF steps a cold FP32 solve replaces the warm start (0 = never).",
+   "ja": "バンドのウォームスタート: この SCF ステップ数ごとにウォームスタートの代わりにコールドな FP32 分解をやり直す（0 = しない）。"
+  },
+  {
+   "group": "refine",
+   "names": [
+    "OPENMX_EIGEN_REFINE_WARM_DELTA_FLOOR"
+   ],
+   "en": "Keep the cold FP32 solve's cluster threshold delta as a floor for warm starts (their residual is far smaller, which would shrink the cluster chain to nothing); 0 drops the floor.",
+   "ja": "ウォームスタート時もコールドな FP32 分解のクラスター閾値 delta を下限として使う（ウォームスタートの残差ははるかに小さく、クラスター連鎖が消えてしまうため）。0 で下限なし。"
+  },
+  {
+   "group": "refine",
+   "names": [
+    "OPENMX_EIGEN_REFINE_ALL",
+    "OPENMX_EIGEN_REFINE_COMPLEMENT"
+   ],
+   "label": "<code>OPENMX_EIGEN_REFINE_ALL</code> / <code>_COMPLEMENT</code>",
+   "en": "Diagnostics of the refinement blocks: <code>_ALL=1</code> refines every eigenvector column instead of the occupied block, <code>_COMPLEMENT=0</code> drops the third product block that covers the complement of the refined columns.",
+   "ja": "精密化ブロックの診断用: <code>_ALL=1</code> で占有ブロックではなくすべての固有ベクトル列を精密化し、<code>_COMPLEMENT=0</code> で精密化する列の補空間を受け持つ第 3 の積ブロックを使わない。"
+  },
+  {
+   "group": "refine",
+   "names": [
+    "OPENMX_EIGEN_REFINE_CHECK"
+   ],
+   "en": "Diagnostic: after the Rayleigh-Ritz step compute and print the residuals |A x − λ x| / |x| and the orthogonality of the refined vectors.",
+   "ja": "診断用: Rayleigh-Ritz 段の後で精密化したベクトルの残差 |A x − λ x| / |x| と直交性を計算して出力する。"
+  },
+  {
+   "group": "cusolver",
+   "names": [
+    "OPENMX_CUSOLVER_ALGORITHM"
+   ],
+   "defaults": {
+    "OPENMX_CUSOLVER_ALGORITHM": {
+     "en": "auto",
+     "ja": "auto"
+    }
+   },
+   "en": "cuSOLVER 12.3.4 and later: the syevd algorithm: <code>legacy</code>/<code>0</code> = no params object (the old interface), <code>auto</code> = cuSOLVER chooses the one-/two-stage crossover (the default when <code>_TWO_STAGE_MIN_N</code> is unset), <code>one-stage</code>/<code>1</code>, <code>two-stage</code>/<code>2</code>.",
+   "ja": "cuSOLVER 12.3.4 以降の syevd アルゴリズム: <code>legacy</code>/<code>0</code> = params オブジェクトなし（旧インターフェース）、<code>auto</code> = 1 段/2 段の切り替えを cuSOLVER に任せる（<code>_TWO_STAGE_MIN_N</code> 未設定時の既定）、<code>one-stage</code>/<code>1</code>、<code>two-stage</code>/<code>2</code>。"
+  },
+  {
+   "group": "cusolver",
+   "names": [
+    "OPENMX_CUSOLVER_TWO_STAGE_MIN_N"
+   ],
+   "defaults": {
+    "OPENMX_CUSOLVER_TWO_STAGE_MIN_N": {
+     "en": "unset (cuSOLVER's choice)",
+     "ja": "未設定（cuSOLVER の判断）"
+    }
+   },
+   "en": "Manual crossover: matrices of at least this dimension use the two-stage syevd, smaller ones one stage (an invalid value is ignored with a message).",
+   "ja": "手動の切り替え点: この次元以上の行列は 2 段 syevd、それ未満は 1 段を使う（不正な値はメッセージを出して無視）。"
+  },
+  {
+   "group": "cusolver",
+   "names": [
+    "OPENMX_CUSOLVER_CACHE_MB"
+   ],
+   "defaults": {
+    "OPENMX_CUSOLVER_CACHE_MB": {
+     "en": "64",
+     "ja": "64"
+    }
+   },
+   "en": "Per-rank cap of the cuSOLVER workspace retained between host-array solves; larger solves release it so the Band/Cluster arenas and the force buffers keep their room.",
+   "ja": "ホスト配列ソルバー呼び出し間で保持する cuSOLVER 作業領域のランクあたり上限（MiB）。それより大きな分解は解放し、バンド・クラスターのアリーナや力のバッファの余地を残す。"
+  },
+  {
+   "group": "cusolver",
+   "names": [
+    "OPENMX_CUSOLVER_VERBOSE"
+   ],
+   "en": "Messages of the cuSOLVER policy (emulation availability, algorithm choice) and of the cluster scratch release.",
+   "ja": "cuSOLVER の方針（エミュレーションの可否、アルゴリズムの選択）とクラスター作業領域解放のメッセージ。"
+  },
+  {
+   "group": "cusolver",
+   "names": [
+    "OPENMX_CUSOLVER_RETRY_TEST"
+   ],
+   "en": "Test hook: exercise the native-FP64 retry after every emulated solve.",
+   "ja": "テスト用: エミュレーション分解のたびにネイティブ FP64 への再試行を実行する。"
+  },
+  {
+   "group": "dclno",
+   "names": [
+    "OPENMX_DCLNO_PROFILE"
+   ],
+   "en": "SCF-level accounting lines of the DC-LNO GPU path (every rank joins the same reporting collectives).",
+   "ja": "DC-LNO GPU 経路の SCF 単位の集計行（全ランクが同じ報告用集団通信に参加する）。"
+  },
+  {
+   "group": "setham",
+   "names": [
+    "OPENMX_SETHAM_STREAM_MB"
+   ],
+   "defaults": {
+    "OPENMX_SETHAM_STREAM_MB": {
+     "en": "256",
+     "ja": "256"
+    }
+   },
+   "en": "Workspace of the streamed pair batches per rank (MiB, at least 8).",
+   "ja": "ストリーミングする対バッチのランクあたり作業領域（MiB、最小 8）。"
+  },
+  {
+   "group": "setham",
+   "names": [
+    "OPENMX_SETHAM_ONTHEFLY_MB",
+    "OPENMX_SETHAM_ONTHEFLY_MARGIN_MB"
+   ],
+   "label": "<code>OPENMX_SETHAM_ONTHEFLY_MB</code> / <code>_MARGIN_MB</code>",
+   "defaults": {
+    "OPENMX_SETHAM_ONTHEFLY_MB": {
+     "en": "128",
+     "ja": "128"
+    }
+   },
+   "en": "On-the-fly matrix elements: the upper bound of a rank's batch workspace (MiB, at least 32) and device memory kept out of the on-the-fly budget (0: the workspaces are transient and go before the solvers run).",
+   "ja": "その場計算の行列要素: ランクのバッチ作業領域の上限（MiB、最小 32）と、その場計算の予算から除外しておくデバイスメモリ（0: 作業領域は一時的でソルバー実行前に解放される）。"
+  },
+  {
+   "group": "setham",
+   "names": [
+    "OPENMX_SETHAM_FP64_TILED",
+    "OPENMX_SETHAM_FP64_SPLIT"
+   ],
+   "label": "<code>OPENMX_SETHAM_FP64_TILED</code> / <code>_SPLIT</code>",
+   "defaults": {
+    "OPENMX_SETHAM_FP64_SPLIT": {
+     "en": "auto",
+     "ja": "auto"
+    }
+   },
+   "en": "FP64 matrix-element kernel: the tiled variant (auto = only on A100, sm_80) and its number of blocks per pair along the grid points (auto = from the SM count, at most 64).",
+   "ja": "FP64 行列要素カーネル: タイル版を使うか（auto = A100（sm_80）のみ）と、対ごとの格子点方向のブロック数（auto = SM 数から決定、最大 64）。"
+  },
+  {
+   "group": "setham",
+   "names": [
+    "OPENMX_SETDEN_FP64_CUDA",
+    "OPENMX_SETDEN_FP64_SPLIT_SPIN"
+   ],
+   "label": "<code>OPENMX_SETDEN_FP64_CUDA</code> / <code>_SPLIT_SPIN</code>",
+   "en": "On-the-fly density: the dedicated FP64 CUDA kernel (0 = the generic path) and its spin split (auto = split when an atom has more than 32 orbitals; measured on A100).",
+   "ja": "その場計算の密度: 専用 FP64 CUDA カーネル（0 で汎用経路）と、そのスピン分割（auto = 原子あたり 32 軌道超で分割。A100 で実測）。"
+  },
+  {
+   "group": "setham",
+   "names": [
+    "OPENMX_GRID_FP32_UNTIL",
+    "OPENMX_GRID_FP32_RESTART"
+   ],
+   "label": "<code>OPENMX_GRID_FP32_UNTIL</code> / <code>_RESTART</code>",
+   "defaults": {
+    "OPENMX_GRID_FP32_UNTIL": {
+     "en": "1e-5",
+     "ja": "1e-5"
+    },
+    "OPENMX_GRID_FP32_RESTART": {
+     "en": "1",
+     "ja": "1"
+    }
+   },
+   "en": "The experimental FP32 grid stage (<code>OPENMX_GRID_FP32=1</code>): NormRD above which the plain FP32 kernels are used, and whether the mixing history restarts at the switch to FP64.",
+   "ja": "実験的な FP32 格子段（<code>OPENMX_GRID_FP32=1</code>）: この NormRD より大きい間は素の FP32 カーネルを使う。<code>_RESTART</code> は FP64 への切り替え時に混合履歴をやり直すか。"
+  },
+  {
+   "group": "grid",
+   "names": [
+    "OPENMX_SETHAM_SIMD",
+    "OPENMX_DENSITY_GRID_COL_SIMD",
+    "OPENMX_DENSITY_GRID_NC_SIMD"
+   ],
+   "label": "<code>OPENMX_SETHAM_SIMD</code> / <code>OPENMX_DENSITY_GRID_COL_SIMD</code> / <code>_NC_SIMD</code>",
+   "default_cell": {
+    "en": "auto",
+    "ja": "auto"
+   },
+   "en": "SIMD backend of the host grid kernels of the C++ core (the Hamiltonian matrix elements, the collinear and the noncollinear density): <code>scalar</code>, <code>avx2</code> or unset = the widest the CPU supports (AVX-512, AVX2, scalar).",
+   "ja": "C++ コアのホスト格子カーネル（ハミルトニアン行列要素、共線・非共線の密度）の SIMD バックエンド: <code>scalar</code>、<code>avx2</code>、未設定 = CPU が対応する最も広いもの（AVX-512、AVX2、scalar）。"
+  },
+  {
+   "group": "grid",
+   "names": [
+    "OPENMX_SETHAM_SIMD_TRACE",
+    "OPENMX_DENSITY_GRID_COL_SIMD_TRACE",
+    "OPENMX_DENSITY_GRID_NC_SIMD_TRACE"
+   ],
+   "label": "<code>OPENMX_SETHAM_SIMD_TRACE</code> / <code>OPENMX_DENSITY_GRID_COL_SIMD_TRACE</code> / <code>_NC_SIMD_TRACE</code>",
+   "default_cell": {
+    "en": "0",
+    "ja": "0"
+   },
+   "en": "Print the chosen SIMD backend once on rank 0 for the respective kernel.",
+   "ja": "それぞれのカーネルで選ばれた SIMD バックエンドを rank 0 が一度出力する。"
+  },
+  {
+   "group": "other",
+   "names": [
+    "OPENMX_SETNL_BESSEL_CACHE_MAX",
+    "OPENMX_OLPKIN_BESSEL_CACHE_MAX"
+   ],
+   "en": "Entries per thread of the spherical-Bessel table caches keyed on the pair distance (Set_Nonlocal, Set_OLP_Kin); 0 disables a cache.",
+   "ja": "対の距離をキーとする球ベッセル表キャッシュのスレッドあたりエントリ数（Set_Nonlocal、Set_OLP_Kin）。0 でキャッシュ無効。"
+  },
+  {
+   "group": "other",
+   "names": [
+    "OPENMX_ORBS_GRID_GPU",
+    "OPENMX_ORBS_GRID_GPU_VERBOSE"
+   ],
+   "label": "<code>OPENMX_ORBS_GRID_GPU</code> / <code>_VERBOSE</code>",
+   "en": "Set_Orbitals_Grid on the GPU (the unified pair kernel with a transient arena; orbitals with L0 ≤ 3 and Mul ≤ 8; 0 = CPU) and a one-time notice when the path is active or failed.",
+   "ja": "Set_Orbitals_Grid の GPU 実行（統合対カーネルと一時アリーナ。L0 ≤ 3、Mul ≤ 8 の軌道。0 で CPU）と、経路が有効・失敗したときの一度だけの通知。"
+  },
+  {
+   "group": "other",
+   "names": [
+    "OPENMX_UCELL_OLG_GPU",
+    "OPENMX_UCELL_OLG_GPU_VERBOSE"
+   ],
+   "label": "<code>OPENMX_UCELL_OLG_GPU</code> / <code>_VERBOSE</code>",
+   "en": "truncation.c: the overlap-grid intersection of UCell_Box on the GPU (bitwise identical to the CPU result; 0 = CPU) and its one-time notice.",
+   "ja": "truncation.c: UCell_Box の重なり格子の交差計算を GPU で行う（CPU 結果とビット単位で一致。0 で CPU）と、その一度だけの通知。"
+  },
+  {
+   "group": "density",
+   "names": [
+    "OPENMX_DENSITY_GRID_GPU_CACHE_MB"
+   ],
+   "en": "Owner-service density cache: geometry tables up to this size (MiB) stay on the device across SCF steps when <code>_PERSISTENT</code> is unset; larger epochs yield their storage to the dense eigensolver after each contraction.",
+   "ja": "所有者サービス方式の密度キャッシュ: <code>_PERSISTENT</code> 未設定時、この大きさ（MiB）までの幾何テーブルを SCF ステップ間でデバイスに残す。それより大きいエポックは縮約のたびに稠密固有値ソルバーへ領域を譲る。"
+  },
+  {
+   "group": "density",
+   "names": [
+    "OPENMX_DENSITY_GRID_GPU_LOCAL_CACHE_MB"
+   ],
+   "en": "Distributed (local) density mode: per-rank cap of the retained CSR and buffers (MiB), bounded further to a small fraction of the free VRAM; 0 releases them after each call.",
+   "ja": "分散（ローカル）密度モード: ランクごとに保持する CSR とバッファの上限（MiB。空き VRAM の小さな割合でさらに制限）。0 で呼び出しごとに解放。"
+  },
+  {
+   "group": "force",
+   "names": [
+    "OPENMX_FORCE_RELEASE_SCF_CACHES"
+   ],
+   "en": "Band runs: after Force3, the last user of the shared orbital tables, return their device memory (and invalidate the density cache) before the VNA batches are admitted; 0 keeps them.",
+   "ja": "バンド計算: 共有軌道テーブルの最後の利用者である Force3 の後、VNA バッチを受け入れる前にそのデバイスメモリを返す（密度キャッシュも無効化）。0 で保持。"
+  },
+  {
+   "group": "force",
+   "names": [
+    "OPENMX_FORCE4B_ARCHIVE_GPU"
+   ],
+   "en": "Force4B: keep the archived projector products on the device (auto = yes unless the device's FP64 is weak, e.g. GeForce; 0/1 force).",
+   "ja": "Force4B: アーカイブした射影子積をデバイスに置く（auto = デバイスの FP64 が弱い GeForce などを除いて置く。0/1 で強制）。"
+  },
+  {
+   "group": "force",
+   "names": [
+    "OPENMX_FORCE4B_CASE1_STREAM",
+    "OPENMX_FORCE4B_CASE1_STREAM_MB"
+   ],
+   "label": "<code>OPENMX_FORCE4B_CASE1_STREAM</code> / <code>_STREAM_MB</code>",
+   "defaults": {
+    "OPENMX_FORCE4B_CASE1_STREAM_MB": {
+     "en": "1024",
+     "ja": "1024"
+    }
+   },
+   "en": "Force4B case 1 (resident pairs): stream the halo sources through a bounded device arena when the full batch does not fit (auto; 0 = never, 1 = always), with the arena cap in MiB.",
+   "ja": "Force4B ケース 1（常駐対）: バッチ全体が入らないとき、ハローのソースを上限付きデバイスアリーナ経由でストリーミングする（auto。0 = しない、1 = 常に）。<code>_STREAM_MB</code> はアリーナの上限（MiB）。"
+  },
+  {
+   "group": "force",
+   "names": [
+    "OPENMX_FORCE4B_CASE1_TURNS",
+    "OPENMX_FORCE4B_CASE1_TURN_MAX_RANKS"
+   ],
+   "label": "<code>OPENMX_FORCE4B_CASE1_TURNS</code> / <code>_TURN_MAX_RANKS</code>",
+   "defaults": {
+    "OPENMX_FORCE4B_CASE1_TURN_MAX_RANKS": {
+     "en": "uncapped",
+     "ja": "制限なし"
+    }
+   },
+   "en": "Force4B case 1: rank turns on the shared device (auto = when the resident arenas of all ranks do not fit together; 0/1 force) and an explicit cap on the ranks per turn.",
+   "ja": "Force4B ケース 1: 共有デバイス上のランク交代（auto = 全ランクの常駐アリーナが同時に入らないとき。0/1 で強制）と、1 回の交代で動くランク数の上限。"
+  },
+  {
+   "group": "force",
+   "names": [
+    "OPENMX_FORCE4B_CASE2_STREAM"
+   ],
+   "en": "Force4B case 2: streaming when the full batch does not fit (auto; 0 = never, 1 = always; the parent <code>OPENMX_FORCE4B_GPU</code> wins).",
+   "ja": "Force4B ケース 2: バッチ全体が入らないときのストリーミング（auto。0 = しない、1 = 常に。親の <code>OPENMX_FORCE4B_GPU</code> が優先）。"
+  },
+  {
+   "group": "gs2",
+   "names": [
+    "OPENMX_GS2_ELPA_GPU",
+    "OPENMX_GS2_GEMM_GPU"
+   ],
+   "label": "<code>OPENMX_GS2_ELPA_GPU</code> / <code>OPENMX_GS2_GEMM_GPU</code>",
+   "default_cell": {
+    "en": "auto",
+    "ja": "auto"
+   },
+   "en": "Force the ELPA eigensolver / the COSMA matrix products of gpusolver2 onto the GPU (<b>1</b>) or onto the CPU kernels / ScaLAPACK (<b>0</b>); unset = the memory verdict decides. The setting reaches every rank from rank 0, so the grid cannot disagree.",
+   "ja": "gpusolver2 の ELPA 固有値ソルバー / COSMA 行列積を GPU に強制（<b>1</b>）、CPU カーネル / ScaLAPACK に強制（<b>0</b>）。未設定ならメモリ判定で決める。設定は rank 0 から全ランクへ配布されるのでグリッド内で食い違わない。"
+  },
+  {
+   "group": "gs2",
+   "names": [
+    "OPENMX_GS2_GPU_FACTOR",
+    "OPENMX_GS2_GPU_FIXED_MB"
+   ],
+   "label": "<code>OPENMX_GS2_GPU_FACTOR</code> / <code>_FIXED_MB</code>",
+   "en": "Device-memory model of the ELPA GPU solver: FACTOR copies of the local block-cyclic matrix plus a fixed head in MiB (calibrated to about 2 × local + 110 MB per rank).",
+   "ja": "ELPA GPU ソルバーのデバイスメモリモデル: ローカルのブロック巡回行列の FACTOR 倍と固定分（MiB）。実測の約 2 × local + 約 110 MB/ランクに校正。"
+  },
+  {
+   "group": "gs2",
+   "names": [
+    "OPENMX_GS2_GPU_RESERVE_MB"
+   ],
+   "en": "Free device memory that must remain after the ELPA/COSMA allocations for a GPU verdict.",
+   "ja": "GPU 判定で ELPA/COSMA の確保後に残っていなければならない空きデバイスメモリ。"
+  },
+  {
+   "group": "gs2",
+   "names": [
+    "OPENMX_GS2_GPU_TILE",
+    "COSMA_GPU_MAX_TILE_M",
+    "COSMA_GPU_MAX_TILE_N",
+    "COSMA_GPU_MAX_TILE_K",
+    "COSMA_GPU_STREAMS"
+   ],
+   "label": "<code>OPENMX_GS2_GPU_TILE</code> / <code>COSMA_GPU_MAX_TILE_M</code> / <code>_N</code> / <code>_K</code> / <code>COSMA_GPU_STREAMS</code>",
+   "default_cell": {
+    "en": "1024 / 5000 / 5000 / 5000 / 2",
+    "ja": "1024 / 5000 / 5000 / 5000 / 2"
+   },
+   "en": "Tiled-MM tile cap published to COSMA (<code>COSMA_GPU_MAX_TILE_M/N/K</code> are set to it when unset; a user-set value wins) and COSMA's stream count; both size the GPU GEMM workspace estimate.",
+   "ja": "COSMA へ渡す Tiled-MM のタイル上限（<code>COSMA_GPU_MAX_TILE_M/N/K</code> が未設定ならこの値を設定する。利用者の設定が優先）と COSMA のストリーム数。どちらも GPU GEMM 作業領域の見積もりに使う。"
+  },
+  {
+   "group": "gs2",
+   "names": [
+    "OPENMX_GS2_GPU_VERBOSE",
+    "OPENMX_GS2_PROFILE"
+   ],
+   "label": "<code>OPENMX_GS2_GPU_VERBOSE</code> / <code>OPENMX_GS2_PROFILE</code>",
+   "en": "Report every GPU/CPU verdict of gpusolver2 (not only the transitions) / time every host-array call including admission and setup (the grid root's wall time).",
+   "ja": "gpusolver2 の GPU/CPU 判定をすべて報告する（遷移時だけでなく） / 受け入れと準備を含むホスト配列呼び出しごとの時間を計測する（グリッドのルートの壁時計）。"
+  },
+  {
+   "group": "gs2",
+   "names": [
+    "COSMA_CPU_MAX_MEMORY"
+   ],
+   "defaults": {
+    "COSMA_CPU_MAX_MEMORY": {
+     "en": "unset (COSMA's default)",
+     "ja": "未設定（COSMA の既定）"
+    }
+   },
+   "en": "COSMA's own host memory cap (MiB); the bridge reads it to size the CPU fallback planner.",
+   "ja": "COSMA 自身のホストメモリ上限（MiB）。ブリッジは CPU 退避の計画に使う。"
+  },
+  {
+   "group": "gs2",
+   "names": [
+    "OPENMX_CLUSTER_HOST_MEM_AVAILABLE_MB"
+   ],
+   "defaults": {
+    "OPENMX_CLUSTER_HOST_MEM_AVAILABLE_MB": {
+     "en": "measured",
+     "ja": "計測値"
+    }
+   },
+   "en": "Test hook: pretend this much host memory is available on rank 0's node for the MAGMA capacity test instead of measuring it.",
+   "ja": "テスト用: MAGMA の容量判定で rank 0 のノードの利用可能ホストメモリを計測せず、この値（MiB）とみなす。"
+  },
+  {
+   "group": "mgpu",
+   "names": [
+    "OPENMX_MGPU"
+   ],
+   "en": "Multi-GPU cooperation within a node (the device pool the workers and the cooperative solves borrow from): <b>0</b> vetoes it, <b>1</b> forces the pool even for devices the probe would reject; unset = the input keywords decide (<code>scf.Gpu.Num</code> and the GPU input switches).",
+   "ja": "ノード内の複数 GPU 協調（ワーカーと協調ソルバーが借りるデバイスプール）。<b>0</b> で禁止、<b>1</b> で探索が却下するデバイスも含めて強制。未設定なら入力キーワード（<code>scf.Gpu.Num</code> と GPU 入力スイッチ）で決まる。"
+  },
+  {
+   "group": "mgpu",
+   "names": [
+    "OPENMX_MGPU_NUM_GPUS"
+   ],
+   "defaults": {
+    "OPENMX_MGPU_NUM_GPUS": {
+     "en": "all visible",
+     "ja": "可視な全デバイス"
+    }
+   },
+   "en": "Upper bound on the devices of the pool (together with <code>CUDA_VISIBLE_DEVICES</code> and <code>scf.Gpu.Num</code>).",
+   "ja": "プールのデバイス数の上限（<code>CUDA_VISIBLE_DEVICES</code>、<code>scf.Gpu.Num</code> と併用）。"
+  },
+  {
+   "group": "mgpu",
+   "names": [
+    "OPENMX_MGPU_BAND_SHARED"
+   ],
+   "en": "Band: time-share min(K, floor(G/2)) locked GPU groups among the K k-point groups on a small GPU pool instead of serializing them (the UUID locks keep overlapping owners apart).",
+   "ja": "バンド: 小さな GPU プールで K 個の k 点グループに min(K, floor(G/2)) 個のロック付き GPU グループを時分割で共有させる（UUID ロックが重複する所有者を直列化する）。"
+  },
+  {
+   "group": "mgpu",
+   "names": [
+    "OPENMX_MGPU_SOLVER",
+    "OPENMX_MGPU_SOLVER_MIN_N",
+    "OPENMX_MGPU_TUNE_TRIALS"
+   ],
+   "label": "<code>OPENMX_MGPU_SOLVER</code> / <code>_MIN_N</code> / <code>OPENMX_MGPU_TUNE_TRIALS</code>",
+   "defaults": {
+    "OPENMX_MGPU_SOLVER": {
+     "en": "single",
+     "ja": "single"
+    }
+   },
+   "en": "Cooperative eigensolver of a cluster owner on the GPUs of its node: <code>single</code>/<code>off</code> = the owner's native solver (default), <code>magma</code> = the multi-GPU MAGMA solver, <code>auto</code> = time cuSOLVER and MAGMA once per matrix shape (<code>_TUNE_TRIALS</code> trials, at most 3) and keep the winner; matrices below <code>_MIN_N</code> stay native unless forced.",
+   "ja": "クラスター所有ランクの固有値分解をノードの GPU 群で協調して解く: <code>single</code>/<code>off</code> = 所有ランクのネイティブソルバー（既定）、<code>magma</code> = マルチ GPU の MAGMA ソルバー、<code>auto</code> = 行列形状ごとに cuSOLVER と MAGMA を一度計時して（<code>_TUNE_TRIALS</code> 回、最大 3）速い方を採用。<code>_MIN_N</code> 未満の行列は強制しない限りネイティブ。"
+  },
+  {
+   "group": "mgpu",
+   "names": [
+    "OPENMX_MGPU_MEMORY"
+   ],
+   "defaults": {
+    "OPENMX_MGPU_MEMORY": {
+     "en": "device",
+     "ja": "device"
+    }
+   },
+   "en": "<code>host</code> = run the cluster dense solve host-backed through MAGMA (the gpusolver3 capacity rung) even when the owner's device would hold it.",
+   "ja": "<code>host</code> = 所有ランクのデバイスに入る場合でも、クラスター稠密分解を MAGMA 経由のホスト常駐方式（gpusolver3 の容量段）で実行する。"
+  },
+  {
+   "group": "mgpu",
+   "names": [
+    "OPENMX_MGPU_GEMM",
+    "OPENMX_MGPU_GEMM_MIN_N"
+   ],
+   "label": "<code>OPENMX_MGPU_GEMM</code> / <code>_MIN_N</code>",
+   "defaults": {
+    "OPENMX_MGPU_GEMM": {
+     "en": "off",
+     "ja": "off"
+    }
+   },
+   "en": "Spread device-resident matrix products over the permitted GPUs (experimental): <code>on</code>/<code>1</code> = every size, <code>auto</code> = the shape/NVLink heuristic (max(M,N) ≥ <code>_MIN_N</code>, min(M,N) ≥ half of it, K ≥ <code>_MIN_N</code>, direct bidirectional P2P), <b>0</b> = never. Host-backed MAGMA products and the gpusolver2 transforms cooperate regardless.",
+   "ja": "デバイス常駐の行列積を許可された GPU 群へ分散する（実験的）: <code>on</code>/<code>1</code> = すべてのサイズ、<code>auto</code> = 形状と NVLink の経験則（max(M,N) ≥ <code>_MIN_N</code>、min(M,N) ≥ その半分、K ≥ <code>_MIN_N</code>、双方向 P2P）、<b>0</b> = しない。ホスト常駐の MAGMA 積と gpusolver2 の変換はこの設定に関係なく協調する。"
+  },
+  {
+   "group": "mgpu",
+   "names": [
+    "OPENMX_MGPU_GEMM_BACKEND"
+   ],
+   "defaults": {
+    "OPENMX_MGPU_GEMM_BACKEND": {
+     "en": "bridge",
+     "ja": "bridge"
+    }
+   },
+   "en": "Arithmetic of the workers' local products: <code>bridge</code> (GEMMul8 through the bridge, default) or <code>native</code> (local cuBLAS).",
+   "ja": "ワーカーのローカル積の演算: <code>bridge</code>（ブリッジ経由の GEMMul8、既定）または <code>native</code>（ローカル cuBLAS）。"
+  },
+  {
+   "group": "mgpu",
+   "names": [
+    "OPENMX_MGPU_GEMM_WORKSPACE_MB",
+    "OPENMX_MGPU_GEMM_RESULT_MB",
+    "OPENMX_MGPU_GEMM_HOST_RESULT_MB",
+    "OPENMX_MGPU_GEMM_RESULT_HOST",
+    "OPENMX_MGPU_GEMM_HOST_MB",
+    "OPENMX_MGPU_GEMM_RESERVE_MB"
+   ],
+   "label": "<code>OPENMX_MGPU_GEMM_WORKSPACE_MB</code> / <code>_RESULT_MB</code> / <code>_HOST_RESULT_MB</code> / <code>_RESULT_HOST</code> / <code>_HOST_MB</code> / <code>_RESERVE_MB</code>",
+   "en": "Budgets of a cooperative product: the A+B+C tile buffers per GPU, the cap of a full result on the source GPU (above it, or with <code>_RESULT_HOST=1</code>, the result lives in host memory up to <code>_HOST_RESULT_MB</code>), the pinned staging per worker and the free device-memory reserve.",
+   "ja": "協調積の予算: GPU あたりの A+B+C タイルバッファ、ソース GPU 上の完全な結果の上限（超えるか <code>_RESULT_HOST=1</code> なら結果は <code>_HOST_RESULT_MB</code> までホストメモリに置く）、ワーカーあたりの固定（pinned）ステージング、空きデバイスメモリの予約。"
+  },
+  {
+   "group": "mgpu",
+   "names": [
+    "OPENMX_MGPU_GEMM_FORCE_HOST",
+    "OPENMX_MGPU_GEMM_ASYNC_GATHER",
+    "OPENMX_MGPU_GEMM_TRAVERSAL",
+    "OPENMX_MGPU_GEMM_PAGEABLE"
+   ],
+   "label": "<code>OPENMX_MGPU_GEMM_FORCE_HOST</code> / <code>_ASYNC_GATHER</code> / <code>_TRAVERSAL</code> / <code>_PAGEABLE</code>",
+   "defaults": {
+    "OPENMX_MGPU_GEMM_TRAVERSAL": {
+     "en": "auto",
+     "ja": "auto"
+    }
+   },
+   "en": "Transport details: stage the operands through host memory even where peer access exists (<code>_FORCE_HOST=1</code>, for testing), queue the CUDA host-result downloads together (<code>_ASYNC_GATHER</code>), the host tile traversal (<code>auto</code>, <code>row</code> or <code>column</code>) and pageable instead of pinned host matrices (<code>_PAGEABLE</code>).",
+   "ja": "転送の詳細: ピアアクセスがあってもオペランドをホスト経由にする（<code>_FORCE_HOST=1</code>、テスト用）、CUDA のホスト結果ダウンロードをまとめてキューに入れる（<code>_ASYNC_GATHER</code>）、ホストタイルの走査順（<code>auto</code>、<code>row</code>、<code>column</code>）、固定ではなくページング可能なホスト行列（<code>_PAGEABLE</code>）。"
+  },
+  {
+   "group": "mgpu",
+   "names": [
+    "OPENMX_GPU_WORKERS"
+   ],
+   "defaults": {
+    "OPENMX_GPU_WORKERS": {
+     "en": "auto",
+     "ja": "auto"
+    }
+   },
+   "en": "GPU workers for the atom/grid local work: unset = borrow other devices of the pool only when one GPU lacks the room (capacity), <b>1</b> = distribute for performance even when one GPU has enough room, <b>0</b> = never borrow.",
+   "ja": "原子・格子のローカル作業の GPU ワーカー: 未設定 = 1 台に入りきらないときだけプールの他のデバイスを借りる（容量）、<b>1</b> = 1 台で足りる場合も性能のために分散、<b>0</b> = 借りない。"
+  },
+  {
+   "group": "mgpu",
+   "names": [
+    "OPENMX_GPU_WORKER_OVERLAP"
+   ],
+   "en": "Overlap a worker's prepare phase with the previous work on devices whose hardware policy allows it (auto = CUDA devices with native FP64 and a calibrated overlap; 0/1 override).",
+   "ja": "ハードウェア方針が許すデバイスでワーカーの準備段階を前の作業と重ねる（auto = ネイティブ FP64 で較正済みの CUDA デバイス。0/1 で上書き）。"
+  },
+  {
+   "group": "mgpu",
+   "names": [
+    "OPENMX_GPU_WORKER_COPY"
+   ],
+   "en": "<b>1</b> disables peer views between workers (every transfer becomes a copy; for testing).",
+   "ja": "<b>1</b> でワーカー間のピアビューを無効化する（すべてコピーで転送。テスト用）。"
+  },
+  {
+   "group": "mgpu",
+   "names": [
+    "OPENMX_GPU_LOCK_DIR",
+    "OPENMX_GPU_LOCK_TIMEOUT_MS"
+   ],
+   "label": "<code>OPENMX_GPU_LOCK_DIR</code> / <code>_TIMEOUT_MS</code>",
+   "defaults": {
+    "OPENMX_GPU_LOCK_DIR": {
+     "en": "/tmp",
+     "ja": "/tmp"
+    }
+   },
+   "en": "Directory of the node-local lock files that serialize device admission between processes (an absolute path shared by the node's ranks) and the time a process waits for the lock before giving up the admission.",
+   "ja": "プロセス間でデバイスの受け入れを直列化するノードローカルなロックファイルのディレクトリ（ノード内のランクが共有する絶対パス）と、受け入れを諦めるまでロックを待つ時間（ms）。"
+  },
+  {
+   "group": "mgpu",
+   "names": [
+    "OPENMX_MGPU_VERBOSE"
+   ],
+   "en": "Reports of the multi-GPU runtime and of every worker run (name, workers, items, devices); <code>level.of.stdout 2</code> implies the runtime part.",
+   "ja": "マルチ GPU ランタイムと各ワーカー実行の報告（名前、ワーカー数、項目数、デバイス）。<code>level.of.stdout 2</code> でランタイム部分は有効になる。"
+  },
+  {
+   "group": "mgpu",
+   "names": [
+    "OPENMX_GPU_CAPACITY_TEST_RECOVERY"
+   ],
+   "en": "Fault injection for the regression tests: skip the legacy resident fast paths so the ordinary capacity planner runs with real GPU memory.",
+   "ja": "回帰テスト用の故障注入: 従来の常駐高速経路を飛ばし、通常の容量プランナーを実際の GPU メモリで動かす。"
+  },
+  {
+   "group": "magma",
+   "names": [
+    "OPENMX_MAGMA_FP32",
+    "OPENMX_MAGMA_FP32_COMPLEX_MAX_N"
+   ],
+   "label": "<code>OPENMX_MAGMA_FP32</code> / <code>_COMPLEX_MAX_N</code>",
+   "en": "Host-backed MAGMA solve in corrected FP32 through GEMMul8 (hardware-gated; needs the FP32 refinement products); complex matrices above <code>_COMPLEX_MAX_N</code> stay native FP64 (0 = no limit).",
+   "ja": "ホスト常駐の MAGMA 分解を GEMMul8 で補正した FP32 で行う（ハードウェア条件あり。FP32 精密化積が必要）。<code>_COMPLEX_MAX_N</code> を超える複素行列はネイティブ FP64 のまま（0 で上限なし）。"
+  },
+  {
+   "group": "magma",
+   "names": [
+    "OPENMX_MAGMA_REFINE_STEPS",
+    "OPENMX_MAGMA_RR_GPU_MIN"
+   ],
+   "label": "<code>OPENMX_MAGMA_REFINE_STEPS</code> / <code>OPENMX_MAGMA_RR_GPU_MIN</code>",
+   "en": "Correction steps of the FP32 MAGMA path (2–5) and the cluster size from which its Rayleigh-Ritz step runs on the admitted GPU group instead of CPU LAPACK.",
+   "ja": "FP32 MAGMA 経路の補正回数（2〜5）と、Rayleigh-Ritz 段を CPU LAPACK ではなく受け入れ済み GPU 群で解くクラスターの大きさの下限。"
+  },
+  {
+   "group": "magma",
+   "names": [
+    "OPENMX_MAGMA_REFINE_RESIDENT_MB",
+    "OPENMX_MAGMA_REFINE_RESERVE_MB"
+   ],
+   "label": "<code>OPENMX_MAGMA_REFINE_RESIDENT_MB</code> / <code>_RESERVE_MB</code>",
+   "en": "Device-resident refinement workspace: products up to <code>_RESIDENT_MB</code> stay resident on each worker (0 = always staged) while <code>_RESERVE_MB</code> stays free per device.",
+   "ja": "デバイス常駐の精密化作業領域: <code>_RESIDENT_MB</code> までの積を各ワーカーに常駐させ（0 = 常にステージング）、デバイスごとに <code>_RESERVE_MB</code> を空けておく。"
+  },
+  {
+   "group": "magma",
+   "names": [
+    "OPENMX_MAGMA_HOST_CACHE_MB"
+   ],
+   "en": "Total cap of the pinned host workspaces MAGMA keeps per process between solves.",
+   "ja": "MAGMA がプロセスごとに分解間で保持する固定（pinned）ホスト作業領域の合計上限。"
+  },
+  {
+   "group": "magma",
+   "names": [
+    "OPENMX_MAGMA_VALIDATE_FULL",
+    "OPENMX_MAGMA_FAILURE_DUMP"
+   ],
+   "label": "<code>OPENMX_MAGMA_VALIDATE_FULL</code> / <code>_FAILURE_DUMP</code>",
+   "defaults": {
+    "OPENMX_MAGMA_FAILURE_DUMP": {
+     "en": "unset",
+     "ja": "未設定"
+    }
+   },
+   "en": "Validation of a MAGMA result: <b>1</b> checks every row of the four sampled eigenvectors instead of 32 rows; a failed validation writes the input, vectors and eigenvalues to the file named by <code>_FAILURE_DUMP</code> (absolute path).",
+   "ja": "MAGMA の結果検証: <b>1</b> で 4 本の標本固有ベクトルの 32 行ではなく全行を検査する。検証に失敗したら入力・ベクトル・固有値を <code>_FAILURE_DUMP</code> のファイル（絶対パス）へ書き出す。"
+  },
+  {
+   "group": "process",
+   "names": [
+    "OPENMX_ZHEEVD_SELFTEST"
+   ],
+   "en": "HIP build: run the zheevd self-test at startup and before the first DFT call (rank 0).",
+   "ja": "HIP 版: 起動時と最初の DFT 呼び出し前に zheevd の自己テストを実行する（rank 0）。"
+  },
+  {
+   "group": "process",
+   "names": [
+    "OPENMX_GPU_HEAP_REEXEC",
+    "LIBOMPTARGET_HEAP_SIZE"
+   ],
+   "label": "<code>OPENMX_GPU_HEAP_REEXEC</code> / <code>LIBOMPTARGET_HEAP_SIZE</code>",
+   "default_cell": {
+    "en": "1 / unset",
+    "ja": "1 / 未設定"
+   },
+   "en": "HIP build: when <code>LIBOMPTARGET_HEAP_SIZE</code> is unset, openmx re-executes itself with a 64 MiB offload heap; <code>OPENMX_GPU_HEAP_REEXEC=0</code> skips the re-exec.",
+   "ja": "HIP 版: <code>LIBOMPTARGET_HEAP_SIZE</code> が未設定なら openmx は 64 MiB のオフロードヒープを設定して自分自身を再実行する。<code>OPENMX_GPU_HEAP_REEXEC=0</code> で再実行しない。"
+  },
+  {
+   "group": "local",
+   "names": [
+    "OMPI_COMM_WORLD_LOCAL_RANK",
+    "MV2_COMM_WORLD_LOCAL_RANK",
+    "SLURM_LOCALID",
+    "PMI_LOCAL_RANK"
+   ],
+   "label": "<code>OMPI_COMM_WORLD_LOCAL_RANK</code> / <code>MV2_COMM_WORLD_LOCAL_RANK</code> / <code>SLURM_LOCALID</code> / <code>PMI_LOCAL_RANK</code>",
+   "default_cell": {
+    "en": "—",
+    "ja": "—"
+   },
+   "en": "Node-local rank, in this order of preference, for binding a rank to a device without MPI.",
+   "ja": "ノード内ランク番号（この優先順）。MPI を使わずにランクをデバイスへ割り当てるために読む。"
+  },
+  {
+   "group": "local",
+   "names": [
+    "OMPI_COMM_WORLD_LOCAL_SIZE",
+    "MV2_COMM_WORLD_LOCAL_SIZE",
+    "SLURM_NTASKS_PER_NODE",
+    "PMI_LOCAL_SIZE"
+   ],
+   "label": "<code>OMPI_COMM_WORLD_LOCAL_SIZE</code> / <code>MV2_COMM_WORLD_LOCAL_SIZE</code> / <code>SLURM_NTASKS_PER_NODE</code> / <code>PMI_LOCAL_SIZE</code>",
+   "default_cell": {
+    "en": "—",
+    "ja": "—"
+   },
+   "en": "Ranks on the node, same order of preference, for the per-device budgets.",
+   "ja": "ノード内のランク数（同じ優先順）。デバイスごとの予算に使う。"
+  },
+  {
+   "group": "local",
+   "names": [
+    "OMPI_COMM_WORLD_RANK",
+    "PMI_RANK"
+   ],
+   "label": "<code>OMPI_COMM_WORLD_RANK</code> / <code>PMI_RANK</code>",
+   "default_cell": {
+    "en": "—",
+    "ja": "—"
+   },
+   "en": "World rank, only as the label of the GEMMul8 statistics.",
+   "ja": "ワールドランク。GEMMul8 統計の表示にのみ使う。"
+  },
+  {
+   "group": "local",
+   "names": [
+    "HOSTNAME"
+   ],
+   "default_cell": {
+    "en": "—",
+    "ja": "—"
+   },
+   "en": "Host name for the EXX log when <code>gethostname</code> is unavailable.",
+   "ja": "<code>gethostname</code> が使えないときの EXX ログ用ホスト名。"
+  }
+ ]
+}

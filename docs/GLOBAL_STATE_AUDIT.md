@@ -141,15 +141,21 @@ ScaLAPACK 文脈の 12 個（`bhandle2_2`、`ictxt2_2`、`bhandle2_CWF1`〜`CWF5
 - **HIP 版の複製**（`source/backends/hip/src`、固定 6 ファイルと統合 19 ファイル）は `getenv` を
   `openmx_env_get` に機械的に置き換えただけで、型付き読み取りへの移行はしていません。
   この計算機では HIP をビルドできないため未検証です。
-- 検査: `tests/run_env_registry_cpu.py`（1,738 チェック＋表の同期確認、CTest
+- **第 3 段階（文書の生成）**: `doc/environment_variables.json`（165 行、251 名の英日の説明と文書化された
+  既定値）と `tools/env_registry_doc.py` が、実装文書 §10.2 の表（`doc/OpenMX40_GPU_implementation_{en,ja}.html`
+  のマーカー間）と `docs/ENVIRONMENT_VARIABLES.md` を生成します。表は 86 行 108 名から 165 行 251 名になり、
+  ビルド・ツール用の 9 名を除くすべての登録名を 1 行ずつ載せます。レジストリには既定値の列を加え、
+  `tools/update_env_registry.py` が読み手の fallback 引数（リテラル、解決できるマクロ、別名の読み手、−1 は auto、
+  INT_MAX は uncapped）から導出し、文書の既定値（`defaults`）があればそれで上書きします（文の長さの既定値は
+  文書のみ）。番兵の 0 を fallback にしていた読み手 10 か所は実際の既定値を渡すようにしました。
+  `level.of.stdout 2` の一覧は `(default …)` を併記します。PDF は headless Chrome で再生成しました。
+- 検査: `tests/run_env_registry_cpu.py`（1,743 チェック＋表の同期確認＋文書の同期確認、CTest
   `environment-registry`、ホスト CI）、`-runtest` 14/14、sidia333 の 2 SCF ステップで rank 0 だけに
   フラグを与えた MPMD 起動（17 ランクが 5 設定を受け取り、全ランクでプロファイル出力）。
 
 ## 次の作業単位（この監査の側）
 
-1. 環境変数レジストリの第 3 段階: 実装文書 §10.2 の表をレジストリから生成する（既定値は
-   呼び出し側の型付き定数のままなので、表には説明と種類を載せる）。HIP 版の複製の読み手を
-   型付き読み取りへ移す（HIP をビルドできる計算機で）。
+1. 環境変数レジストリ: HIP 版の複製の読み手を型付き読み取りへ移す（HIP をビルドできる計算機で）。
 2. `filename` / `filepath` / `command` の作業バッファ: 各呼び出し側の局所バッファへ置き換える。
 3. 共通ヘッダー外の 358 定義: `openmx.c` が定義する輸送（TRAN）の 132 変数を
    `tran_variables.h` ごと輸送の状態オブジェクトへ移す。`DFT.c` の 79 変数は

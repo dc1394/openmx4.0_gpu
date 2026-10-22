@@ -48,14 +48,14 @@ static void Save_DOS_NonCol(OpenMXSolverResidueView Residues, double **** OLP0, 
 
 static int DC_GPU_Threshold(void)
 {
-    long parsed = openmx_env_long_at(OPENMX_ENV_DC_GPU_THRESHOLD, 0);
+    long parsed = openmx_env_long_at(OPENMX_ENV_DC_GPU_THRESHOLD, DC_GPU_CPU_SWITCH_NUM);
 
     return 0 < parsed && parsed <= INT_MAX ? (int)parsed : DC_GPU_CPU_SWITCH_NUM;
 }
 
 static int DC_NonCol_GPU_Threshold(void)
 {
-    long parsed = openmx_env_long_at(OPENMX_ENV_DC_NONCOL_GPU_THRESHOLD, 0);
+    long parsed = openmx_env_long_at(OPENMX_ENV_DC_NONCOL_GPU_THRESHOLD, DC_NONCOL_GPU_CPU_SWITCH_NUM);
 
     return 0 < parsed && parsed <= INT_MAX ? (int)parsed : DC_NONCOL_GPU_CPU_SWITCH_NUM;
 }
