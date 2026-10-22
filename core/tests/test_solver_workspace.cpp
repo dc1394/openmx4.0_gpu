@@ -1,6 +1,7 @@
 #include "openmx_core_solver_workspace.h"
 #include "allocation_faults.hpp"
 #include <openmx/core/matrix_scratch.hpp>
+#include <openmx/core/unpivoted_inverse.hpp>
 #include <array>
 #include <cmath>
 #include <cstddef>
@@ -224,6 +225,96 @@ int matrix_scratch(OpenMXSolverInvocation* owner,void*,double* result) {
   require(!out.elements && out.values && openmx_electronic_row(&out,0,0,0,0)==out.values,"empty matrix lacks a safe zero-offset view");
   *result=17;return 1;
 }
+int unpivoted_inverse(OpenMXSolverInvocation* owner,void*,double* result) {
+  struct Fill {
+    Fill(){openmx::test::fill_allocations_with(0xff);}
+    ~Fill(){openmx::test::fill_allocations_with(-1);}
+  } fill;
+  std::array<double,80> a,b;char error[256];
+  const OpenMXSolverRealTensor input={{8,10,1,1},a.data()},output={{10,8,1,1},b.data()};
+  const auto seed=[&](int n){
+    a.fill(-71);b.fill(-91);
+    for(int i=0;i<n;++i)for(int j=0;j<n;++j)a[i*10+j]=i==j?4+i:.125*(1+i+2*j);
+  };
+  const auto identity=[&](int n,const std::array<double,80>& original){
+    require(a==original,"unpivoted inverse did not restore full input");
+    for(int i=0;i<n;++i)for(int j=0;j<n;++j){long double sum=0;
+      for(int k=0;k<n;++k)sum+=static_cast<long double>(original[i*10+k])*b[k*8+j];
+      require(std::isfinite(sum) && std::abs(sum-(i==j?1.L:0.L))<1e-11L,"unpivoted inverse identity differs");}
+    for(int i=0;i<10;++i)for(int j=0;j<8;++j)if(i>=n || j>=n)equal(b[i*8+j],-91);
+  };
+  for(int n:{1,3,2,4,3}){
+    seed(n);const auto original=a;
+    require(openmx_core_solver_inverse_unpivoted(owner,0,n-1,&input,&output,error,sizeof(error)),error);identity(n,original);
+  }
+  seed(3);auto original=a;openmx::test::fail_allocation_after(0);
+  const int reused=openmx_core_solver_inverse_unpivoted(owner,0,2,&input,&output,error,sizeof(error));openmx::test::fail_allocation_after(-1);
+  require(reused,"unpivoted inverse reuse allocated");identity(3,original);
+  // A replacement owns its complete scratch before publication. Failure at
+  // each of object/x/y/backup preserves both arrays and the previous capacity.
+  for(long failure=0;failure<4;++failure){
+    seed(6);const auto source=a,untouched=b;const auto live=openmx::test::live_allocations();
+    openmx::test::fail_allocation_after(failure);
+    const int ok=openmx_core_solver_inverse_unpivoted(owner,0,5,&input,&output,error,sizeof(error));openmx::test::fail_allocation_after(-1);
+    require(!ok && error[0] && a==source && b==untouched && openmx::test::live_allocations()==live,"failed inverse growth changed arrays/leaked");
+    seed(4);original=a;openmx::test::fail_allocation_after(0);
+    const int retained=openmx_core_solver_inverse_unpivoted(owner,0,3,&input,&output,error,sizeof(error));openmx::test::fail_allocation_after(-1);
+    require(retained,"failed inverse growth discarded old capacity");identity(4,original);
+  }
+  seed(6);original=a;require(openmx_core_solver_inverse_unpivoted(owner,0,5,&input,&output,error,sizeof(error)),error);identity(6,original);
+  seed(2);const auto source=a,untouched=b;openmx::test::fail_allocation_after(0);
+  const int other=openmx_core_solver_inverse_unpivoted(owner,1,1,&input,&output,error,sizeof(error));openmx::test::fail_allocation_after(-1);
+  require(!other && a==source && b==untouched,"another worker reused private inverse scratch");
+  require(openmx_core_solver_inverse_unpivoted(owner,1,1,&input,&output,error,sizeof(error)),error);identity(2,source);
+  for(int bad=0;bad<9;++bad){
+    seed(2);const auto saved_a=a,saved_b=b;auto invalid_input=input,invalid_output=output;int n=1;
+    if(bad==0)n=-2;if(bad==1)n=8;
+    if(bad==2)invalid_input.extent[2]=2;
+    if(bad==3)invalid_input.extent[0]=SIZE_MAX;
+    if(bad==4)invalid_input.values=nullptr;
+    if(bad==5)invalid_output.values=nullptr;
+    if(bad==6)invalid_output.extent[1]=1;
+    if(bad==7)invalid_output.values=a.data();
+    if(bad==8){invalid_output.values=a.data()+3;invalid_output.extent[0]=7;}
+    require(!openmx_core_solver_inverse_unpivoted(owner,0,n,&invalid_input,&invalid_output,error,sizeof(error)) && error[0],"invalid inverse request accepted");
+    require(a==saved_a && b==saved_b,"invalid inverse request changed input/output");
+  }
+  require(!openmx_core_solver_inverse_unpivoted(nullptr,0,1,&input,&output,error,sizeof(error)),"missing inverse scope accepted");
+  require(!openmx_core_solver_inverse_unpivoted(owner,-1,1,&input,&output,error,sizeof(error)),"invalid inverse worker accepted");
+  require(!openmx_core_solver_inverse_unpivoted(owner,0,1,nullptr,&output,error,sizeof(error)),"missing inverse input accepted");
+  require(!openmx_core_solver_inverse_unpivoted(owner,0,1,&input,nullptr,error,sizeof(error)),"missing inverse output accepted");
+  for(int singular=0;singular<3;++singular){
+    seed(2);int n=singular?2:1;
+    if(!singular)a[0]=0;
+    else if(singular==1){a[0]=0;a[1]=1;a[10]=1;a[11]=2;}
+    else {a[0]=1;a[1]=2;a[10]=2;a[11]=4;}
+    const auto saved=a;
+    require(openmx_core_solver_inverse_unpivoted(owner,0,n-1,&input,&output,error,sizeof(error)),"legacy singular arithmetic was replaced by a failure");
+    bool nonfinite=false;for(int i=0;i<n;++i)for(int j=0;j<n;++j)nonfinite|=!std::isfinite(b[i*8+j]);
+    require(nonfinite && a==saved,"zero-pivot/singular fallback contract or input restoration changed");
+  }
+  a.fill(7);b.fill(-91);openmx::test::fail_allocation_after(0);
+  const int clear=openmx_core_solver_inverse_unpivoted(owner,0,-1,&input,&output,error,sizeof(error));openmx::test::fail_allocation_after(-1);
+  require(clear,"inverse sentinel allocated");for(auto value:a)equal(value,0);for(auto value:b)equal(value,-91);
+  const OpenMXSolverRealTensor empty={{0,0,1,1},nullptr};
+  require(openmx_core_solver_inverse_unpivoted(owner,0,-1,&empty,&output,error,sizeof(error)),error);
+  // Ill-conditioned Gram/constraint input captured from independently
+  // compiled native C references (NVHPC and ROCm Clang agree bit for bit).
+  // Separate multiply/subtract changes this inverse and its SCF trajectory.
+  const double legacy_input[]={0x1.bc6b979a6a6d2p-5,0x1.bc6b8e1c0045bp-5,-0x1.0000000000000p+0,0x1.bc6b8e1c0045bp-5,0x1.bc6b849d98536p-5,-0x1.0000000000000p+0,-0x1.0000000000000p+0,-0x1.0000000000000p+0,0x0.0p+0};
+  const double legacy_inverse[]={0x1.cfd3a046ee85dp+43,-0x1.cfd3a046ee85dp+43,0x1.13377208dc849p+18,-0x1.cfd3a046ee85dp+43,0x1.cfd3a046ee85dp+43,-0x1.1337b208dc849p+18,0x1.13377208232dap+18,-0x1.1337b208232d9p+18,-0x1.9398246cb62a2p-5};
+  seed(3);for(int i=0;i<3;++i)for(int j=0;j<3;++j)a[i*10+j]=legacy_input[i*3+j];
+  original=a;
+  require(openmx_core_solver_inverse_unpivoted(owner,0,2,&input,&output,error,sizeof(error)),error);
+  require(a==original,"native-rounding regression changed input");
+  for(int i=0;i<3;++i)for(int j=0;j<3;++j)
+    require(!std::memcmp(&b[i*8+j],&legacy_inverse[i*3+j],sizeof(double)),"unpivoted inverse changed the native FMA rounding contract");
+  // The C++ module uses the same independent identity with unequal strides.
+  seed(3);original=a;openmx::core::UnpivotedInverse cpp(3);
+  cpp.apply(openmx::core::UnpivotedInverse::matrix_view{a.data(),8,10},
+      openmx::core::UnpivotedInverse::matrix_view{b.data(),10,8},3);identity(3,original);
+  *result=17;return 1;
+}
 int rows(OpenMXSolverInvocation* owner,void*,double* result) {
   char error[256];double** matrix;dcomplex** complex;
   const size_t dimensions[4]={4,3,1,1};OpenMXSolverRealTensor original;
@@ -399,6 +490,7 @@ int lifetime_callback(OpenMXSolverInvocation* owner,void* mode,double* result) {
   double ignored;buffers(owner,nullptr,&ignored);overwrite(owner,nullptr,&ignored);rows(owner,nullptr,&ignored);orbitals(owner,nullptr,&ignored);
   complex_overwrite(owner,nullptr,&ignored);
   matrix_scratch(owner,nullptr,&ignored);
+  unpivoted_inverse(owner,nullptr,&ignored);
   fields(owner,nullptr,&ignored);residues(owner,nullptr,&ignored);
   const auto behavior=*static_cast<int*>(mode);
   if(behavior==1)return 0;
@@ -423,6 +515,13 @@ int allocating(OpenMXSolverInvocation* owner,void*,double* result) {
   const auto unchanged_matrix=matrix;
   if(!openmx_core_solver_matrix_scratch(owner,&matrix_source,1,&matrix,error,sizeof(error))){
     require(!std::memcmp(&matrix,&unchanged_matrix,sizeof(matrix)),"failed matrix construction changed output");return 0;
+  }
+  double inverse_input[]={4,1,2,3},inverse_output[4]={};
+  const OpenMXSolverRealTensor inverse_a={{2,2,1,1},inverse_input},inverse_b={{2,2,1,1},inverse_output};
+  if(!openmx_core_solver_inverse_unpivoted(owner,0,1,&inverse_a,&inverse_b,error,sizeof(error))){
+    require(inverse_input[0]==4 && inverse_input[1]==1 && inverse_input[2]==2 && inverse_input[3]==3 &&
+        inverse_output[0]==0 && inverse_output[1]==0 && inverse_output[2]==0 && inverse_output[3]==0,
+        "partial inverse construction changed arrays");return 0;
   }
   double** rows;if(!openmx_core_solver_real_rows(owner,0,"b",5,8,&rows,error,sizeof(error)))return 0;
   double*** aliases;const OpenMXSolverRealTensor borrowed={{3,4,2,1},view.values};
@@ -467,6 +566,11 @@ int concurrent(OpenMXSolverInvocation* owner,void*,double* result) {
       require(openmx_core_solver_complex_overwrite(owner,worker,"worker",shape,&z,nullptr,0),"concurrent complex overwrite request");
       for(int i=0;i<9;i++)z.values[i]={double(worker*100+n*10+i),double(-worker)};
       equal(z.values[8].r,worker*100+n*10+8);equal(z.values[8].i,-worker);
+      double inverse_input[]={4.+worker,1,2,3},inverse_output[4];
+      const OpenMXSolverRealTensor inverse_a={{2,2,1,1},inverse_input},inverse_b={{2,2,1,1},inverse_output};
+      require(openmx_core_solver_inverse_unpivoted(owner,worker,1,&inverse_a,&inverse_b,nullptr,0),"concurrent inverse request");
+      equal((4.+worker)*inverse_output[0]+inverse_output[2],1);
+      equal(inverse_input[0],4.+worker);equal(inverse_input[3],3);
       require(openmx_core_solver_orbitals(owner,worker,"sampler",&orbital_shape,&sampler,nullptr,0),"concurrent orbital request");
       for(int i=0;i<8;i++)sampler.dRF[i]=worker*100+n*10+i;
       require(openmx_core_solver_field_resize(fields.owner,0,worker,n+1,nullptr,0),"concurrent field resize");
@@ -483,6 +587,7 @@ int main(int argc,char** argv) {
     if(name=="buffers")run(buffers);else if(name=="overwrite")run(overwrite);else if(name=="rows")run(rows);else if(name=="fields")run(fields);
     else if(name=="complex-overwrite")run(complex_overwrite);
     else if(name=="matrix-scratch")run(matrix_scratch);
+    else if(name=="unpivoted-inverse")run(unpivoted_inverse);
     else if(name=="orbitals")run(orbitals);
     else if(name=="residues")run(residues);else if(name=="invalid")run(invalid);else if(name=="lifetime")lifetime_test();
     else if(name=="allocation")allocation_test();else if(name=="concurrent")run(concurrent);else throw std::runtime_error("unknown solver workspace test");

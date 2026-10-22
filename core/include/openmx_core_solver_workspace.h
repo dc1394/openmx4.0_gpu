@@ -46,6 +46,14 @@ int openmx_core_solver_matrix_scratch(OpenMXSolverInvocation*,
 typedef struct { size_t extent[4]; double *values; } OpenMXSolverRealTensor;
 typedef struct { size_t extent[4]; dcomplex *values; } OpenMXSolverComplexTensor;
 typedef struct { size_t extent[4]; int *values; } OpenMXSolverIntTensor;
+/* Density mixing's legacy non-pivoted LU, with private reusable worker scratch.
+   last_index>=0 selects [0,last_index]^2; last_index=-1 zeros the whole input
+   and leaves the output untouched. The input is restored after inversion.
+   Invalid arguments/allocation failure preserve both arrays. Singular or zero
+   pivots deliberately propagate nonfinite values for the caller's fallback.
+   Other inverse algorithms (pivoted LAPACK/regularized eigen) remain separate. */
+int openmx_core_solver_inverse_unpivoted(OpenMXSolverInvocation*,int worker,int last_index,
+    const OpenMXSolverRealTensor *input,const OpenMXSolverRealTensor *inverse,char*,size_t);
 int openmx_core_solver_real(OpenMXSolverInvocation*, int worker, const char *name,
     const size_t shape[4], OpenMXSolverRealTensor*, char*, size_t);
 /* Distinct named storage for producers which overwrite before reading. No

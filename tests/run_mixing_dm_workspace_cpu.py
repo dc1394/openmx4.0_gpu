@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Check real-space mixing ownership and production inverses with the actual core.
 
-Compile unchanged state constructors, memory-log blocks and native inverses.
-The large numerical callbacks and MPI abort are modeled; no GPU/BLAS SDK is used.
+Compile production state constructors, memory-log blocks and entry/inverse
+adapters. The actual shared C++ core performs the inverse arithmetic. Large
+numerical callbacks and MPI abort are modeled; no GPU/BLAS SDK is used.
 """
 import argparse
 import os
