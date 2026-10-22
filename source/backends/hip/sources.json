@@ -331,7 +331,6 @@
     "cuda_fp8.h": "include/cuda_fp8.h",
     "cusolverDn.h": "include/cusolverDn.h",
     "eigen_refine_hooks.h": "include/eigen_refine_hooks.h",
-    "gemmul8_bridge.cu": "src/gemmul8_bridge.cu",
     "gemmul8_openmx.cu": "src/gemmul8_openmx.cu",
     "gpusolver_Syevd.c": "src/gpusolver_Syevd.c",
     "gpusolver_Syevdx.c": "src/gpusolver_Syevdx.c",
@@ -712,7 +711,6 @@
     "find_Emin_withS.c": "1e002e391b43dae9023b12ef7637ca83869db9000f931f7aff6f91470e6467b0",
     "frac2xyz.c": "c93afa07e9645b36b38ed2ba9db9c9eae5d195d55db5fc0d85a5170d8e19bbf9",
     "gcube2oned.c": "03e2789ac4b61b6b20c8c6523b1e9a6d43b409879037aa58a2a820fcfca8f434",
-    "gemmul8_bridge.cu": "88309a60c5c633c84a0f6720a277bf32b0e3a977aac4f18df8302828827a5721",
     "gemmul8_openmx.cu": "b254d7e088ea660486f2395d727430955dcafb9aab87afaa2be4f3f75a23ae8f",
     "gen_defile.c": "787f4904ec9e8922627057ac7f1f1690888c03f662053833417404530e7f6a1f",
     "gpusolver_Syevd.c": "14b5bdaff7497f13e3a0f39add61c7e2b76ec59a6c2f52e9da637e1a288b287c",
@@ -1067,6 +1065,7 @@
     "openmx_core_projector_force.h"
   ],
   "integrated_overrides": {
+    "gemmul8_bridge.cu": "src/gemmul8_bridge.cu",
     "Cluster_DFT_Col.c": "src/Cluster_DFT_Col.c",
     "Cluster_DFT_NonCol.c": "src/Cluster_DFT_NonCol.c",
     "DFT.c": "src/DFT.c",

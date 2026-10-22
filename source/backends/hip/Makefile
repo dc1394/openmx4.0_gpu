@@ -845,7 +845,7 @@ my_hipblasDgemm.o: my_hipblasDgemm.c openmx_common.h
 	$(CC) -c my_hipblasDgemm.c
 my_hipblasZgemm.o: my_hipblasZgemm.c openmx_common.h
 	$(CC) -c my_hipblasZgemm.c
-gemmul8_bridge.o: gemmul8_bridge.cu openmx_common.h $(GEMMUL8_DIR)/include/gemmul8.hpp $(GEMMUL8_LIB) openmx_stdout_level.h openmx_gpu_arch_policy.h
+gemmul8_bridge.o: gemmul8_bridge.cu openmx_gpu_memory.hpp openmx_common.h $(GEMMUL8_DIR)/include/gemmul8.hpp $(GEMMUL8_LIB) openmx_stdout_level.h openmx_gpu_arch_policy.h
 	$(HIPCC) $(HIPCC_GEMMUL8_FLAGS) -c gemmul8_bridge.cu -o gemmul8_bridge.o
 openmx_precision.o: openmx_precision.c openmx_precision.h
 	$(CC_NOACC) -c openmx_precision.c

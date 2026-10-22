@@ -954,7 +954,7 @@ grid_precision.o: grid_precision.c grid_precision.h openmx_precision.h
 openmx_precision.o: openmx_precision.c openmx_precision.h
 	$(CC) -c openmx_precision.c
 
-gemmul8_bridge.o: gemmul8_bridge.cu openmx_common.h openmx_stdout_level.h openmx_mgpu_runtime.h $(GEMMUL8_DIR)/include/gemmul8.hpp $(GEMMUL8_LIB)
+gemmul8_bridge.o: gemmul8_bridge.cu openmx_gpu_memory.hpp openmx_common.h openmx_stdout_level.h openmx_mgpu_runtime.h $(GEMMUL8_DIR)/include/gemmul8.hpp $(GEMMUL8_LIB)
 	$(NVCC_GEMMUL8_ENV) $(NVCC) $(NVCC_GEMMUL8_FLAGS) -c gemmul8_bridge.cu -o gemmul8_bridge.o
 
 Input_std.o Cluster_DFT_Col.o Cluster_DFT_NonCol.o Band_DFT_Col.o Band_DFT_NonCol.o: openmx_mgpu_runtime.h

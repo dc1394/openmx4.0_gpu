@@ -1,5 +1,6 @@
 #include "hipblas_compat.h"
 #include "openmx_env.h"
+#include "openmx_gpu_memory.hpp"
 #include "hip_runtime_compat.h"
 #include "hip_complex_compat.h"
 
@@ -9,6 +10,7 @@
 #include <cstring>
 #include <atomic>
 #include <chrono>
+#include <new>
 #include <mutex>
 #include <unordered_map>
 
@@ -42,10 +44,7 @@ struct WorkspaceKeyHash {
     }
 };
 
-struct Workspace {
-    void *ptr   = nullptr;
-    size_t size = 0;
-};
+using Workspace=openmx::gpu::DeviceBuffer<unsigned char>;
 
 std::mutex g_workspace_mutex;
 std::unordered_map<WorkspaceKey, Workspace, WorkspaceKeyHash> g_workspaces;
@@ -253,18 +252,7 @@ unsigned ranks_sharing_gpu()
 
 hipError_t release_workspace(Workspace &workspace)
 {
-    if (workspace.ptr == nullptr) {
-        workspace.size = 0;
-        return hipSuccess;
-    }
-
-    hipError_t status = hipFree(workspace.ptr);
-    if (status == hipSuccess) {
-        workspace.ptr  = nullptr;
-        workspace.size = 0;
-    }
-
-    return status;
+    return workspace.try_reset();
 }
 
 bool workspace_exceeds_fraction(size_t required, size_t total, unsigned max_percent, unsigned ranks_per_gpu)
@@ -310,7 +298,7 @@ size_t solve_reserve()
 template <bool is_complex>
 hipblasStatus_t ensure_workspace(hipblasHandle_t handle, size_t m, size_t n, size_t k, unsigned num_moduli, void **work,
                                 WorkspaceReport *report, size_t reserve)
-{
+try {
     hipStream_t stream = nullptr;
     int          device = -1;
 
@@ -367,7 +355,7 @@ hipblasStatus_t ensure_workspace(hipblasHandle_t handle, size_t m, size_t n, siz
         return HIPBLAS_STATUS_ALLOC_FAILED;
     }
 
-    if (workspace.size < required) {
+    if (workspace.size() < required) {
         hip_status = release_workspace(workspace);
         if (hip_status != hipSuccess) {
             return HIPBLAS_STATUS_INTERNAL_ERROR;
@@ -380,7 +368,7 @@ hipblasStatus_t ensure_workspace(hipblasHandle_t handle, size_t m, size_t n, siz
         }
     }
 
-    if (hip_status == hipSuccess && free_after_workspace_is_too_low(free_bytes, workspace.size, required, reserve)) {
+    if (hip_status == hipSuccess && free_after_workspace_is_too_low(free_bytes, workspace.size(), required, reserve)) {
         if (report != nullptr) {
             report->reason = "free memory reserve policy";
         }
@@ -390,19 +378,20 @@ hipblasStatus_t ensure_workspace(hipblasHandle_t handle, size_t m, size_t n, siz
         return HIPBLAS_STATUS_ALLOC_FAILED;
     }
 
-    if (workspace.size < required) {
-        hip_status = hipMalloc(&workspace.ptr, required);
+    if (workspace.size() < required) {
+        hip_status = workspace.allocate_status(required);
         if (hip_status != hipSuccess) {
             if (report != nullptr) {
                 report->reason = "hipMalloc failure";
             }
             return HIPBLAS_STATUS_ALLOC_FAILED;
         }
-        workspace.size = required;
     }
 
-    *work = workspace.ptr;
+    *work = workspace.get();
     return HIPBLAS_STATUS_SUCCESS;
+} catch (const std::bad_alloc &) {
+    return HIPBLAS_STATUS_ALLOC_FAILED;
 }
 
 template <bool is_complex>
@@ -444,7 +433,7 @@ void log_workspace_fallback_once(const WorkspaceReport &report, const char *targ
    workspace, whereas only the rank that owns a dense solve reaches these
    products. */
 hipblasStatus_t ensure_scratch(hipblasHandle_t handle, size_t required, void **work, size_t reserve)
-{
+try {
     hipStream_t stream = nullptr;
     int         device = -1;
 
@@ -455,21 +444,21 @@ hipblasStatus_t ensure_scratch(hipblasHandle_t handle, size_t required, void **w
     std::lock_guard<std::mutex> lock(g_workspace_mutex);
     Workspace &workspace = g_workspaces[WorkspaceKey{device, stream}];
 
-    if (workspace.size < required) {
+    if (workspace.size() < required) {
         size_t free_bytes = 0, total_bytes = 0;
 
         if (release_workspace(workspace) != hipSuccess) return HIPBLAS_STATUS_INTERNAL_ERROR;
         if (hipMemGetInfo(&free_bytes, &total_bytes) == hipSuccess && free_bytes < required + reserve)
             return HIPBLAS_STATUS_ALLOC_FAILED;
-        if (hipMalloc(&workspace.ptr, required) != hipSuccess) {
-            workspace.ptr = nullptr;
+        if (workspace.allocate_status(required) != hipSuccess) {
             (void)hipGetLastError();
             return HIPBLAS_STATUS_ALLOC_FAILED;
         }
-        workspace.size = required;
     }
-    *work = workspace.ptr;
+    *work = workspace.get();
     return HIPBLAS_STATUS_SUCCESS;
+} catch (const std::bad_alloc &) {
+    return HIPBLAS_STATUS_ALLOC_FAILED;
 }
 
 /* OPENMX_GEMMUL8_TIMING, read once */
@@ -746,7 +735,7 @@ extern "C" void openmx_gemmul8TrimWorkspaces(void)
 
     if (cap == 0) return;
     for (auto &item : g_workspaces) {
-        if (cap < item.second.size && release_workspace(item.second) != hipSuccess) {
+        if (cap < item.second.size() && release_workspace(item.second) != hipSuccess) {
             std::fprintf(stderr, "openmx_gemmul8TrimWorkspaces: hipFree failed\n");
             std::fflush(stderr);
         }
@@ -909,6 +898,6 @@ extern "C" size_t openmx_gemmul8WorkspaceBytes(void)
     std::lock_guard<std::mutex> lock(g_workspace_mutex);
     size_t                      bytes = 0;
 
-    for (const auto &item : g_workspaces) bytes += item.second.size;
+    for (const auto &item : g_workspaces) bytes += item.second.size();
     return bytes;
 }

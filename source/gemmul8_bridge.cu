@@ -1,5 +1,6 @@
 #include <cublas_v2.h>
 #include "openmx_env.h"
+#include "openmx_gpu_memory.hpp"
 #include <cuda_runtime.h>
 
 /* cudaMemGetInfo capped at the physically free device memory (NVML); see
@@ -16,6 +17,8 @@ static inline cudaError_t device_mem_get_info(size_t *free_bytes, size_t *total_
 
 #include <atomic>
 #include <chrono>
+#include <climits>
+#include <new>
 #include <cstdlib>
 #include <cstdint>
 #include <cstdio>
@@ -65,10 +68,7 @@ struct WorkspaceKeyHash {
     }
 };
 
-struct Workspace {
-    void *ptr   = nullptr;
-    size_t size = 0;
-};
+using Workspace=openmx::gpu::DeviceBuffer<unsigned char>;
 
 std::mutex g_workspace_mutex;
 std::unordered_map<WorkspaceKey, Workspace, WorkspaceKeyHash> g_workspaces;
@@ -285,18 +285,7 @@ unsigned gemmul8_num_moduli(int openmx_env, int gemmul8_env)
 
 cudaError_t release_workspace(Workspace &workspace)
 {
-    if (workspace.ptr == nullptr) {
-        workspace.size = 0;
-        return cudaSuccess;
-    }
-
-    cudaError_t status = cudaFree(workspace.ptr);
-    if (status == cudaSuccess) {
-        workspace.ptr  = nullptr;
-        workspace.size = 0;
-    }
-
-    return status;
+    return workspace.try_reset();
 }
 
 bool workspace_exceeds_fraction(size_t required, size_t total, unsigned max_percent, unsigned ranks_per_gpu)
@@ -318,7 +307,7 @@ bool free_after_workspace_is_too_low(size_t free_bytes, size_t workspace_size, s
 template <bool is_complex>
 cublasStatus_t ensure_workspace(cublasHandle_t handle, size_t m, size_t n, size_t k, unsigned num_moduli,
                                 bool fastmode, void **work, WorkspaceReport *report)
-{
+try {
     cudaStream_t stream = nullptr;
     int          device = -1;
 
@@ -370,7 +359,7 @@ cublasStatus_t ensure_workspace(cublasHandle_t handle, size_t m, size_t n, size_
         return CUBLAS_STATUS_ALLOC_FAILED;
     }
 
-    if (workspace.size < required) {
+    if (workspace.size() < required) {
         cuda_status = release_workspace(workspace);
         if (cuda_status != cudaSuccess) {
             return CUBLAS_STATUS_INTERNAL_ERROR;
@@ -384,7 +373,7 @@ cublasStatus_t ensure_workspace(cublasHandle_t handle, size_t m, size_t n, size_
     }
 
     if (cuda_status == cudaSuccess &&
-        free_after_workspace_is_too_low(free_bytes, workspace.size, required,
+        free_after_workspace_is_too_low(free_bytes, workspace.size(), required,
                                         report != nullptr ? report->reserve_bytes : 0u)) {
         if (report != nullptr) {
             report->reason = "free memory reserve policy";
@@ -395,19 +384,20 @@ cublasStatus_t ensure_workspace(cublasHandle_t handle, size_t m, size_t n, size_
         return CUBLAS_STATUS_ALLOC_FAILED;
     }
 
-    if (workspace.size < required) {
-        cuda_status = cudaMalloc(&workspace.ptr, required);
+    if (workspace.size() < required) {
+        cuda_status = workspace.allocate_status(required);
         if (cuda_status != cudaSuccess) {
             if (report != nullptr) {
                 report->reason = "cudaMalloc failure";
             }
             return CUBLAS_STATUS_ALLOC_FAILED;
         }
-        workspace.size = required;
     }
 
-    *work = workspace.ptr;
+    *work = workspace.get();
     return CUBLAS_STATUS_SUCCESS;
+} catch (const std::bad_alloc &) {
+    return CUBLAS_STATUS_ALLOC_FAILED;
 }
 
 template <bool is_complex>
@@ -582,7 +572,7 @@ extern "C" void openmx_gemmul8TrimWorkspaces(void)
 
     if (cap == 0) return;
     for (auto &item : g_workspaces) {
-        if (cap < item.second.size && release_workspace(item.second) != cudaSuccess) {
+        if (cap < item.second.size() && release_workspace(item.second) != cudaSuccess) {
             std::fprintf(stderr, "openmx_gemmul8TrimWorkspaces: cudaFree failed\n");
             std::fflush(stderr);
         }
@@ -790,8 +780,7 @@ struct PreparedKeyHash {
 };
 
 struct Prepared {
-    void              *ptr   = nullptr;
-    size_t             size  = 0;
+    openmx::gpu::DeviceBuffer<unsigned char> buffer;
     bool               valid = false;
     unsigned long long version = 0;
     int                m = 0, n = 0, k = 0, op = 0;
@@ -837,7 +826,7 @@ ForwardStage forward_stage()
    rank-share policy of ensure_workspace() assumes every rank holds such a
    workspace, whereas only the dense-owning rank reaches these products. */
 cublasStatus_t ensure_scratch(cublasHandle_t handle, size_t required, void **work, bool automatic_forward = false)
-{
+try {
     cudaStream_t stream = nullptr;
     int          device = -1;
 
@@ -860,13 +849,13 @@ cublasStatus_t ensure_scratch(cublasHandle_t handle, size_t required, void **wor
            honor an explicit percentage cap with its existing rank share. */
         if (device_mem_get_info(&free_bytes, &total_bytes) != cudaSuccess || total_bytes == 0 ||
             (percent != 0 && workspace_exceeds_fraction(required, total_bytes, percent, ranks_sharing_gpu())) ||
-            free_after_workspace_is_too_low(free_bytes, workspace.size, required, reserve)) {
+            free_after_workspace_is_too_low(free_bytes, workspace.size(), required, reserve)) {
             if (release_workspace(workspace) != cudaSuccess) return CUBLAS_STATUS_INTERNAL_ERROR;
             return CUBLAS_STATUS_ALLOC_FAILED;
         }
     }
 
-    if (workspace.size < required) {
+    if (workspace.size() < required) {
         size_t free_bytes = 0, total_bytes = 0;
 
         if (release_workspace(workspace) != cudaSuccess) return CUBLAS_STATUS_INTERNAL_ERROR;
@@ -874,40 +863,40 @@ cublasStatus_t ensure_scratch(cublasHandle_t handle, size_t required, void **wor
         if ((automatic_forward && memory_status != cudaSuccess) ||
             (memory_status == cudaSuccess && free_bytes < required + reserve))
             return CUBLAS_STATUS_ALLOC_FAILED;
-        if (cudaMalloc(&workspace.ptr, required) != cudaSuccess) {
-            workspace.ptr = nullptr;
+        if (workspace.allocate_status(required) != cudaSuccess) {
             (void)cudaGetLastError();
             return CUBLAS_STATUS_ALLOC_FAILED;
         }
-        workspace.size = required;
     }
-    *work = workspace.ptr;
+    *work = workspace.get();
     return CUBLAS_STATUS_SUCCESS;
+} catch (const std::bad_alloc &) {
+    return CUBLAS_STATUS_ALLOC_FAILED;
 }
 
 /* The retained form of one X, at least `bytes` large; nullptr when the
    device cannot hold it.  Growing it discards the old contents. */
 Prepared *ensure_prepared(const PreparedKey &key, size_t bytes)
-{
+try {
     const size_t reserve =
         env_mib(OPENMX_ENV_GEMMUL8_MIN_FREE_AFTER_MB, OPENMX_ENV_EXT_GEMMUL8_MIN_FREE_AFTER_MB, kDefaultMinFreeAfterMiB);
     std::lock_guard<std::mutex> lock(g_workspace_mutex);
     Prepared &entry = g_prepared[key];
 
-    if (entry.size < bytes) {
+    if (entry.buffer.size() < bytes) {
         size_t free_bytes = 0, total_bytes = 0;
 
-        if (entry.ptr != nullptr) (void)cudaFree(entry.ptr);
+        if (entry.buffer.try_reset() != cudaSuccess) {entry.valid=false;return nullptr;}
         entry = Prepared{};
         if (device_mem_get_info(&free_bytes, &total_bytes) == cudaSuccess && free_bytes < bytes + reserve) return nullptr;
-        if (cudaMalloc(&entry.ptr, bytes) != cudaSuccess) {
-            entry.ptr = nullptr;
+        if (entry.buffer.allocate_status(bytes) != cudaSuccess) {
             (void)cudaGetLastError();
             return nullptr;
         }
-        entry.size = bytes;
     }
     return &entry;
+} catch (const std::bad_alloc &) {
+    return nullptr;
 }
 
 template <typename T> T forward_scalar(double value)
@@ -1045,8 +1034,8 @@ cublasStatus_t forward_gemm(cublasHandle_t handle, bool x_is_left, cublasOperati
                 (void)gemmul8::gemm<T, gemmul8::Backend::INT8>(
                     handle, gemmul8_transa, gemmul8_transb, sm, sn, sk, &one, A, static_cast<size_t>(lda), B,
                     static_cast<size_t>(ldb), &zero, C, static_cast<size_t>(ldc), static_cast<int>(num_moduli),
-                    fastmode, work, (reuse && x_is_left) ? entry->ptr : nullptr,
-                    (reuse && !x_is_left) ? entry->ptr : nullptr, reuse && x_is_left, reuse && !x_is_left,
+                    fastmode, work, (reuse && x_is_left) ? entry->buffer.get() : nullptr,
+                    (reuse && !x_is_left) ? entry->buffer.get() : nullptr, reuse && x_is_left, reuse && !x_is_left,
                     skip && x_is_left, skip && !x_is_left);
 
                 std::lock_guard<std::mutex> lock(g_workspace_mutex);
@@ -1242,7 +1231,7 @@ extern "C" size_t openmx_gemmul8ForwardCounters(long long counters[5], double se
     counters[4] = g_forward_counters.capacity_fallbacks;
     seconds[0]  = g_forward_counters.seconds[0];
     seconds[1]  = g_forward_counters.seconds[1];
-    for (const auto &item : g_prepared) bytes += item.second.size;
+    for (const auto &item : g_prepared) bytes += item.second.buffer.size();
     return bytes;
 }
 
@@ -1256,8 +1245,8 @@ extern "C" void openmx_gemmul8ReleasePrepared(void)
     size_t                      bytes = 0;
 
     for (auto &item : g_prepared) {
-        bytes += item.second.size;
-        if (item.second.ptr != nullptr) (void)cudaFree(item.second.ptr);
+        bytes += item.second.buffer.size();
+        item.second.buffer.reset();
     }
     g_prepared.clear();
 

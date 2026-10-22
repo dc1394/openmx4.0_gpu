@@ -15,24 +15,30 @@ namespace openmx::gpu {
    changed by this transport layer. */
 class DeviceBinding {
  public:
-    explicit DeviceBinding(int device) noexcept {
-        if(OpenMXGpuGetDevice(&saved_)!=OPENMX_GPU_SUCCESS)return;
+    explicit DeviceBinding(int device,OpenMXGpuError *error=nullptr) noexcept {
+        const auto status=OpenMXGpuGetDevice(&saved_);
+        if(error)*error=status;
+        if(status!=OPENMX_GPU_SUCCESS)return;
         current_=saved_;
-        valid_=select(device);
+        valid_=select(device,error);
     }
     ~DeviceBinding() noexcept { if(changed_)(void)OpenMXGpuSetDevice(saved_); }
     DeviceBinding(const DeviceBinding&)=delete;
     DeviceBinding& operator=(const DeviceBinding&)=delete;
     explicit operator bool() const noexcept { return valid_; }
-    bool select(int device) noexcept {
-        if(current_==device)return true;
+    bool select(int device,OpenMXGpuError *error=nullptr) noexcept {
+        if(current_==device){if(error)*error=OPENMX_GPU_SUCCESS;return true;}
         changed_=true;
-        if(OpenMXGpuSetDevice(device)!=OPENMX_GPU_SUCCESS)return false;
+        const auto status=OpenMXGpuSetDevice(device);
+        if(error)*error=status;
+        if(status!=OPENMX_GPU_SUCCESS)return false;
         current_=device;changed_=current_!=saved_;return true;
     }
-    bool restore() noexcept {
+    bool restore(OpenMXGpuError *error=nullptr) noexcept {
         if(changed_){
-            if(OpenMXGpuSetDevice(saved_)!=OPENMX_GPU_SUCCESS)return false;
+            const auto status=OpenMXGpuSetDevice(saved_);
+            if(error)*error=status;
+            if(status!=OPENMX_GPU_SUCCESS)return false;
             changed_=false;current_=saved_;
         }
         return valid_;
@@ -72,18 +78,37 @@ template<class T> class DeviceBuffer {
         return *this;
     }
     bool allocate(std::size_t count) noexcept {
-        if(memory_ || count>std::numeric_limits<std::size_t>::max()/sizeof(T))return false;
-        if(!count)return true;
+        return allocate_status(count)==OPENMX_GPU_SUCCESS;
+    }
+    OpenMXGpuError allocate_status(std::size_t count) noexcept {
+        if(memory_ || count>std::numeric_limits<std::size_t>::max()/sizeof(T))return OPENMX_GPU_INVALID_VALUE;
+        if(!count)return OPENMX_GPU_SUCCESS;
         int device=-1;
-        if(OpenMXGpuGetDevice(&device)!=OPENMX_GPU_SUCCESS)return false;
+        const auto queried=OpenMXGpuGetDevice(&device);
+        if(queried!=OPENMX_GPU_SUCCESS)return queried;
         void *pointer=nullptr;
         const auto status=OpenMXGpuMalloc(&pointer,count*sizeof(T));
         DeviceOwner pending(pointer,DeviceFree{device});
-        if(status!=OPENMX_GPU_SUCCESS || !pointer)return false;
+        if(status!=OPENMX_GPU_SUCCESS)return status;
+        if(!pointer)return OPENMX_GPU_OUT_OF_MEMORY;
         memory_.get_deleter().device=device;
         memory_.reset(static_cast<T*>(pending.release()));
         count_=count;
-        return true;
+        return OPENMX_GPU_SUCCESS;
+    }
+    /* A retained cache can retry a failed explicit release. Successful SDK
+       free consumes ownership even when restoring the caller fails; a
+       subsequent retry must never free the same pointer twice. */
+    OpenMXGpuError try_reset() noexcept {
+        if(!memory_)return OPENMX_GPU_SUCCESS;
+        OpenMXGpuError status=OPENMX_GPU_SUCCESS;
+        DeviceBinding binding(device(),&status);
+        if(!binding)return status;
+        status=OpenMXGpuFree(memory_.get());
+        if(status==OPENMX_GPU_SUCCESS){(void)memory_.release();count_=0;}
+        OpenMXGpuError restored=OPENMX_GPU_SUCCESS;
+        if(!binding.restore(&restored) && status==OPENMX_GPU_SUCCESS)status=restored;
+        return status;
     }
     void reset() noexcept { memory_.reset();count_=0; }
     T *get() const noexcept { return memory_.get(); }
