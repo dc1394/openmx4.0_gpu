@@ -133,7 +133,7 @@ with tempfile.TemporaryDirectory(prefix='openmx-dense-index-') as directory:
     assert marker in fixture_text
     fixture_text=fixture_text.replace(marker,remote+marker)
     fixture=tmp/'fixture.cpp';fixture.write_text(fixture_text)
-    sources.extend((root/'source/openmx_gpu_views.c',tmp/'workers.cpp',fixture))
+    sources.extend((root/'source/openmx_gpu_views.cpp',tmp/'workers.cpp',fixture))
     command=shlex.split(os.environ.get('CXX','c++'))+['-std=c++17','-O1','-g','-fsanitize=address,undefined',
         '-fno-omit-frame-pointer','-I'+str(tmp),'-I'+str(root/'source'),'-x','c++']
     subprocess.run(command+list(map(str,sources))+[str(root/'source/openmx_env.c'),'-o',str(tmp/'check')],check=True)

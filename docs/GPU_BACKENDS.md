@@ -65,7 +65,7 @@ HIP の置換リストは 105 件から 49 件になり、共通化した元フ�
 | 共通部分 | 主なソース |
 | --- | --- |
 | GPU API とデバイス割り当ての呼び出し | `openmx_gpu_backend.h`、`openmx_gpu_runtime.h`、`openmx_gpu_blas.h`、`openmx_gpu_solver.h`、`openmx_gpu_complex.h`、`openmx_gpu_device.h` |
-| メモリ容量判定・作業分割・失敗時の復旧 | `openmx_gpu_workers.c`、`openmx_gpu_views.c`、`openmx_gpu_task.c`、`openmx_gpu_vector.c`、`openmx_gpu_bilinear.c`、collective 系 |
+| メモリ容量判定・作業分割・失敗時の復旧 | `openmx_gpu_workers.c`、`openmx_gpu_views.cpp`、`openmx_gpu_task.c`、`openmx_gpu_vector.c`、`openmx_gpu_bilinear.c`、collective 系 |
 | 密度行列・密行列変換の GPU カーネル | `openmx_gpu_dm.cu`、`openmx_gpu_transform.cu` |
 | 複数 GPU の実行制御・行列積・MAGMA 接続 | `openmx_mgpu_runtime.cu`、`openmx_mgpu_gemm.cu`、`openmx_magma_mgpu.cpp` |
 | 数値計算・入力と後処理 | CWF/DMmu 派生ソルバー、ELPA/COSMA 接続、分極、混合、重なり積分、全エネルギーの呼び出し部分、`truncation.c`、`openmx_common.c/h`、`Input_std.c`、`Free_Arrays.c` など |
@@ -78,6 +78,12 @@ HIP の置換リストは 105 件から 49 件になり、共通化した元フ�
 CUDA 専用アダプターへ渡すとコンパイルを停止します。
 コアの `openmx_accelerator.h` は SDK から独立して、バックエンド、FP64 能力、
 メモリモデルを記述します。実行方針は能力とバックエンド別の検証結果に基づきます。
+
+`openmx_gpu_views.cpp` は C++17 の共通転送アダプターです。読み取りビューは同じGPU・peerでは
+借用し、それ以外ではデバイス領域を所有します。C++ではmoveとスコープ終了による解放に対応し、
+Cでは明示的に解放します。所有領域は確保元のデバイスで解放し、呼び出し元のデバイスを復元します。
+peerが使えない転送の一時領域は16 MiBを上限とします。
+詳細と検証範囲は [C++移行の第35段階](CPP_CORE_MIGRATION.md#第35段階-共通gpu読み取りビューとデバイス間転送のraii化) を参照してください。
 
 OpenACC と OpenMP target の指示、物理メモリ・UUID・GPU 間接続の取得、
 ELPA の GPU オプションと HIP 小行列対策はバックエンドごとの分岐に保持しています。

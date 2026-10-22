@@ -15,16 +15,18 @@ if [[ -n ${MPI_INCLUDE:-} ]]; then
 else
   for directory in $(mpicc --showme:incdirs); do includes+=(-I"$directory"); done
 fi
-for name in openmx_gpu_workers openmx_gpu_views; do
+for name in openmx_gpu_workers; do
   "$nvc" -O2 -std=c11 -acc -mp "-gpu=cc$arch" "${includes[@]}" -c "$repo/source/$name.c" -o "$build/$name.o"
 done
+"$hostcxx" -O2 -std=c++17 -fopenmp "${includes[@]}" -c "$repo/source/openmx_gpu_views.cpp" -o "$build/openmx_gpu_views.o"
 "$nvc" -O2 -std=c11 -acc -mp "-gpu=cc$arch" "${includes[@]}" -c "$repo/tests/gpu_workers_test_hooks.c" -o "$build/hooks.o"
+"$nvc" -O2 -std=c11 "${includes[@]}" -c "$repo/source/openmx_env.c" -o "$build/env.o"
 for name in openmx_gpu_transform openmx_gpu_dm; do
   "$cuda/bin/nvcc" -O3 -std=c++17 "-arch=sm_$arch" -ccbin "$hostcxx" "${includes[@]}" -c "$repo/source/$name.cu" -o "$build/$name.o"
 done
 # The fixture is host C++ with CUDA API calls and a long-double CPU oracle.
 "$nvcxx" -O2 -std=c++17 -acc -mp "-gpu=cc$arch" "${includes[@]}" -x c++ -c "$repo/tests/gpu_dense_workers_smoke.cu" -o "$build/fixture.o"
-"$nvcxx" -acc -mp "-gpu=cc$arch" "$build/fixture.o" "$build/hooks.o" \
+"$nvcxx" -acc -mp "-gpu=cc$arch" "$build/fixture.o" "$build/hooks.o" "$build/env.o" \
   "$build/openmx_gpu_workers.o" "$build/openmx_gpu_views.o" "$build/openmx_gpu_transform.o" "$build/openmx_gpu_dm.o" \
   -L"$cuda/lib64" "-Wl,-rpath,$cuda/lib64" -lcudart -lpthread -o "$build/gpu_dense_workers_smoke"
 if [[ ${OPENMX_GPU_TEST_COMPILE_ONLY:-0} != 1 ]]; then

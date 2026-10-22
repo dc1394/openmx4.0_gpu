@@ -23,14 +23,16 @@ if [[ -n ${MPI_INCLUDE:-} ]]; then
 else
   for directory in $(mpicc --showme:incdirs); do includes+=(-I"$directory"); done
 fi
-for name in openmx_gpu_workers openmx_gpu_views; do
+for name in openmx_gpu_workers; do
   "$nvc" -O2 -std=c11 -acc -mp "-gpu=cc$arch" "${includes[@]}" -c "$repo/source/$name.c" -o "$build/$name.o"
 done
+"$hostcxx" -O2 -std=c++17 -fopenmp "${includes[@]}" -c "$repo/source/openmx_gpu_views.cpp" -o "$build/openmx_gpu_views.o"
 "$nvc" -O2 -std=c11 -acc -mp "-gpu=cc$arch" "${includes[@]}" -c "$repo/tests/gpu_workers_test_hooks.c" -o "$build/hooks.o"
+"$nvc" -O2 -std=c11 "${includes[@]}" -c "$repo/source/openmx_env.c" -o "$build/env.o"
 "${NVCC:-$cuda/bin/nvcc}" -O3 -lineinfo -std=c++17 "-arch=sm_$arch" -ccbin "$hostcxx" \
   "${includes[@]}" -c "$repo/source/set_hamiltonian_gpu.cu" -o "$build/kernels.o"
 "$nvcxx" -O2 -std=c++17 -acc -mp "-gpu=cc$arch" "${includes[@]}" -x c++ -c "$repo/tests/$fixture.cu" -o "$build/fixture.o"
-"$nvcxx" -acc -mp "-gpu=cc$arch" "$build/fixture.o" "$build/hooks.o" \
+"$nvcxx" -acc -mp "-gpu=cc$arch" "$build/fixture.o" "$build/hooks.o" "$build/env.o" \
   "$build/openmx_gpu_workers.o" "$build/openmx_gpu_views.o" "$build/kernels.o" \
   "${linkdirs[@]}" -lcudart -lpthread -o "$build/$fixture"
 if [[ ${OPENMX_GPU_TEST_COMPILE_ONLY:-0} != 1 ]]; then

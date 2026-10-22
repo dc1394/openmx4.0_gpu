@@ -383,7 +383,7 @@ include openmx_core.mk
 # Rebuild consumers when a native API mapping or backend selection changes.
 OPENMX_GPU_INTERFACE_HEADERS = openmx_gpu_backend.h openmx_gpu_runtime.h \
  openmx_gpu_blas.h openmx_gpu_solver.h openmx_gpu_complex.h \
- openmx_gpu_device.h openmx_gpu_error.h
+ openmx_gpu_device.h openmx_gpu_error.h openmx_gpu_views.h
 $(OBJS): $(OPENMX_GPU_INTERFACE_HEADERS)
 
 # PROG    = openmx.exe
@@ -967,8 +967,8 @@ openmx_gpu_workers.o: openmx_gpu_workers.c openmx_gpu_workers.h openmx_mgpu_runt
 
 openmx_globals.o: openmx_globals.c openmx_common.h
 	$(CC_NOACC) -c openmx_globals.c -o $@
-openmx_gpu_views.o: openmx_gpu_views.c openmx_gpu_views.h
-	$(CC) -c $< -o $@
+openmx_gpu_views.o: openmx_gpu_views.cpp openmx_gpu_views.h openmx_gpu_runtime.h openmx_env.h
+	$(GPUSOLVER2_HOST_CXX) -O2 -std=c++17 -fopenmp -I$(NVHPC_CUDA_HOME)/include -c $< -o $@
 Cluster_DFT_Col.o Cluster_DFT_NonCol.o Band_DFT_Col.o Band_DFT_NonCol.o: openmx_gpu_transform.h
 Cluster_DFT_Col.o Cluster_DFT_NonCol.o Band_DFT_Col.o Band_DFT_NonCol.o: openmx_gpu_dm.h
 openmx_gpu_transform.o: openmx_gpu_transform.cu openmx_gpu_transform.h openmx_gpu_workers.h openmx_gpu_views.h

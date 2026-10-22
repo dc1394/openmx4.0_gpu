@@ -184,7 +184,7 @@
     X(GPU_STACK_BYTES, "OPENMX_GPU_STACK_BYTES", "int", "global", "", "set_cuda_default_device_from_local_rank.c", "Per-thread kernel stack limit set at device initialization (cudaLimitStackSize, OpenMX_GpuPresizeKernelStack) when it exceeds the driver's default...") \
     X(GPU_VERBOSE, "OPENMX_GPU_VERBOSE", "flag", "global", "0", "gemmul8_bridge.cu", "") \
     X(GPU_WORKERS, "OPENMX_GPU_WORKERS", "flag", "global", "auto", "openmx_gpu_workers.c,openmx_gpu_workers.h", "") \
-    X(GPU_WORKER_COPY, "OPENMX_GPU_WORKER_COPY", "flag", "global", "0", "openmx_gpu_views.c", "") \
+    X(GPU_WORKER_COPY, "OPENMX_GPU_WORKER_COPY", "flag", "global", "0", "openmx_gpu_views.cpp", "") \
     X(GPU_WORKER_OVERLAP, "OPENMX_GPU_WORKER_OVERLAP", "flag", "global", "auto", "openmx_gpu_workers.c", "") \
     X(GRID_FP32, "OPENMX_GRID_FP32", "flag", "global", "0", "grid_precision.c", "default 0: Experimental: plain FP32 kernels while the previous step's NormRD is above OPENMX_GRID_FP32_UNTIL (1e-5), FP64 afterwards (OPENMX_GRID_FP32_RESTART...") \
     X(GRID_FP32_RESTART, "OPENMX_GRID_FP32_RESTART", "flag", "global", "1", "grid_precision.c", "") \

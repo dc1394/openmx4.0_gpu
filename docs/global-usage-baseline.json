@@ -1,10 +1,10 @@
 {
 "scope": "global-state usage of the C translation units of the NVIDIA build",
-"revision": "ea8d1fad",
+"revision": "baf33d56",
 "summary": {
-"translation units analysed": 290,
+"translation units analysed": 289,
 "translation units not analysed": 0,
-"functions": 3032,
+"functions": 3027,
 "common-header objects (defined in openmx_globals.c)": 1051,
 "common-header objects referenced by some function": 1045,
 "common-header objects written by some function (direct or through)": 785,
@@ -18899,7 +18899,7 @@
 "source/openmx_gpu_workers.h"
 ],
 "OPENMX_GPU_WORKER_COPY": [
-"source/openmx_gpu_views.c"
+"source/openmx_gpu_views.cpp"
 ],
 "OPENMX_GPU_WORKER_OVERLAP": [
 "source/openmx_gpu_workers.c"
