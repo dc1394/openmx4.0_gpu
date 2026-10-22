@@ -4,6 +4,7 @@
 #include "openmx_gpu_dm_entry.h"
 #include "openmx_gpu_workers.h"
 #include "openmx_gpu_views.h"
+#include "openmx_gpu_memory.hpp"
 
 
 #include <algorithm>
@@ -16,6 +17,7 @@
 #include <memory>
 namespace {
 using Z=OpenMXGpuComplex;
+using openmx::gpu::DeviceBuffer;
 struct Work {
     OpenMXGpuWorkers workers{};
     int kind,n,states,stride,entries,phases,host,accumulate,origin,output_channels;
@@ -26,9 +28,9 @@ struct Work {
     double *target[10]{};
     struct Device {
         OpenMXGpuReadView vectors{};
-        void *owned_vectors=nullptr;
-        int *indices=nullptr;
-        double *weights=nullptr,*phase=nullptr,*output=nullptr;
+        DeviceBuffer<unsigned char> owned_vectors;
+        DeviceBuffer<int> indices;
+        DeviceBuffer<double> weights,phase,output;
         std::unique_ptr<double[]> result;
         std::vector<int> basis;
         int n=0,stride=0;
@@ -98,10 +100,10 @@ int worker(void *opaque,int worker,int phase)
             d.basis=basis_rows(w,first,last);d.n=int(d.basis.size());d.stride=w.states;
             const size_t width=w.kind==OPENMX_GPU_DM_REAL?sizeof(double):sizeof(Z);
             size_t bytes=d.basis.size()*(w.kind==OPENMX_GPU_DM_NC?2:1)*size_t(w.states)*width;
-            if(OpenMXGpuMalloc(&d.owned_vectors,bytes)!=OPENMX_GPU_SUCCESS)return 0;
-            d.vectors.pointer=d.owned_vectors;
+            if(!d.owned_vectors.allocate(bytes))return 0;
+            d.vectors.pointer=d.owned_vectors.get();
             for(int spin=0;spin<(w.kind==OPENMX_GPU_DM_NC?2:1);spin++)for(size_t i=0;i<d.basis.size();i++){
-                void *dst=static_cast<char*>(d.owned_vectors)+(i+spin*d.basis.size())*w.states*width;
+                void *dst=d.owned_vectors.get()+(i+spin*d.basis.size())*w.states*width;
                 const void *src=static_cast<const char*>(w.vectors)+(size_t(d.basis[i]+spin*w.n)*w.stride)*width;
                 if(w.host){if(OpenMXGpuMemcpy(dst,src,size_t(w.states)*width,OPENMX_GPU_COPY_HOST_TO_DEVICE)!=OPENMX_GPU_SUCCESS)return 0;}
                 else if(!openmx_gpu_copy_device(dst,src,size_t(w.states)*width))return 0;
@@ -115,23 +117,22 @@ int worker(void *opaque,int worker,int phase)
             std::copy(w.basis0+first,w.basis0+last,indices.begin());std::copy(w.basis1+first,w.basis1+last,indices.begin()+count);
         }
         const int channels=w.kind>=OPENMX_GPU_DM_GATHER?w.output_channels:10;
-        if(OpenMXGpuMalloc(reinterpret_cast<void**>(&d.indices),2*count*sizeof(int))!=OPENMX_GPU_SUCCESS ||
-           OpenMXGpuMalloc(reinterpret_cast<void**>(&d.output),size_t(channels)*count*sizeof(double))!=OPENMX_GPU_SUCCESS)return 0;
-        if(OpenMXGpuMemcpy(d.indices,indices.data(),2*count*sizeof(int),OPENMX_GPU_COPY_HOST_TO_DEVICE)!=OPENMX_GPU_SUCCESS)return 0;
+        if(!d.indices.allocate(2*count) || !d.output.allocate(size_t(channels)*count))return 0;
+        if(OpenMXGpuMemcpy(d.indices.get(),indices.data(),2*count*sizeof(int),OPENMX_GPU_COPY_HOST_TO_DEVICE)!=OPENMX_GPU_SUCCESS)return 0;
         if(w.kind<OPENMX_GPU_DM_GATHER)
             d.result.reset(new double[size_t(w.output_channels)*count]);
         if((w.kind<OPENMX_GPU_DM_GATHER || w.accumulate) &&
-           OpenMXGpuMemset(d.output,0,size_t(channels)*count*sizeof(double))!=OPENMX_GPU_SUCCESS)return 0;
+           OpenMXGpuMemset(d.output.get(),0,size_t(channels)*count*sizeof(double))!=OPENMX_GPU_SUCCESS)return 0;
         for(int channel=0;channel<w.output_channels;channel++)if(w.accumulate && w.target[channel])
-            if(OpenMXGpuMemcpy(d.output+size_t(channel)*count,w.target[channel]+first,count*sizeof(double),
+            if(OpenMXGpuMemcpy(d.output.get()+size_t(channel)*count,w.target[channel]+first,count*sizeof(double),
                 OPENMX_GPU_COPY_HOST_TO_DEVICE)!=OPENMX_GPU_SUCCESS)return 0;
         if(w.kind<=OPENMX_GPU_DM_NC) {
             std::vector<double> weights(3*size_t(w.states),0);
             std::copy(w.occ,w.occ+w.states,weights.begin());
             if(w.energy)std::copy(w.energy,w.energy+w.states,weights.begin()+w.states);
             if(w.partial)std::copy(w.partial,w.partial+w.states,weights.begin()+2*w.states);
-            if(OpenMXGpuMalloc(reinterpret_cast<void**>(&d.weights),weights.size()*sizeof(double))!=OPENMX_GPU_SUCCESS ||
-               OpenMXGpuMemcpy(d.weights,weights.data(),weights.size()*sizeof(double),OPENMX_GPU_COPY_HOST_TO_DEVICE)!=OPENMX_GPU_SUCCESS)return 0;
+            if(!d.weights.allocate(weights.size()) ||
+               OpenMXGpuMemcpy(d.weights.get(),weights.data(),weights.size()*sizeof(double),OPENMX_GPU_COPY_HOST_TO_DEVICE)!=OPENMX_GPU_SUCCESS)return 0;
         }
         if(w.phase) {
             std::vector<double> phases(2*count);
@@ -139,19 +140,19 @@ int worker(void *opaque,int worker,int phase)
                 const int p=w.phase[i];if(p<0 || p>=w.phases)return 0;
                 phases[i-first]=w.real[p];phases[count+i-first]=w.imag[p];
             }
-            if(OpenMXGpuMalloc(reinterpret_cast<void**>(&d.phase),phases.size()*sizeof(double))!=OPENMX_GPU_SUCCESS ||
-               OpenMXGpuMemcpy(d.phase,phases.data(),phases.size()*sizeof(double),OPENMX_GPU_COPY_HOST_TO_DEVICE)!=OPENMX_GPU_SUCCESS)return 0;
+            if(!d.phase.allocate(phases.size()) ||
+               OpenMXGpuMemcpy(d.phase.get(),phases.data(),phases.size()*sizeof(double),OPENMX_GPU_COPY_HOST_TO_DEVICE)!=OPENMX_GPU_SUCCESS)return 0;
         }
     } else if(phase==OPENMX_GPU_WORKER_EXECUTE) {
         const unsigned blocks=unsigned(std::min(size_t(65535),(count+127)/128));
         if(w.kind>=OPENMX_GPU_DM_GATHER)
             gather_kernel<<<blocks,128>>>(w.kind,d.n,int(count),static_cast<const Z*>(d.vectors.pointer),
-                d.indices,d.output,w.output_channels,w.accumulate);
+                d.indices.get(),d.output.get(),w.output_channels,w.accumulate);
         else
-            kernel<<<blocks,128>>>(w.kind,d.n,w.states,d.stride,int(count),d.vectors.pointer,d.indices,
-                d.weights,d.phase,d.output,w.phase!=nullptr,w.energy!=nullptr,w.partial!=nullptr);
+            kernel<<<blocks,128>>>(w.kind,d.n,w.states,d.stride,int(count),d.vectors.pointer,d.indices.get(),
+                d.weights.get(),d.phase.get(),d.output.get(),w.phase!=nullptr,w.energy!=nullptr,w.partial!=nullptr);
         if(OpenMXGpuPeekAtLastError()!=OPENMX_GPU_SUCCESS)return 0;
-        if(w.kind<OPENMX_GPU_DM_GATHER && OpenMXGpuMemcpy(d.result.get(),d.output,
+        if(w.kind<OPENMX_GPU_DM_GATHER && OpenMXGpuMemcpy(d.result.get(),d.output.get(),
             size_t(w.output_channels)*count*sizeof(double),OPENMX_GPU_COPY_DEVICE_TO_HOST)!=OPENMX_GPU_SUCCESS)return 0;
     } else if(phase==OPENMX_GPU_WORKER_COMMIT) {
         /* The completed private GPU array is sufficient staging for a gather.
@@ -160,13 +161,13 @@ int worker(void *opaque,int worker,int phase)
            second large host allocation, page registration and host-to-host copy. */
         for(int channel=0;channel<w.output_channels;channel++)if(w.target[channel]){
             if(w.kind>=OPENMX_GPU_DM_GATHER){
-                if(OpenMXGpuMemcpy(w.target[channel]+first,d.output+size_t(channel)*count,
+                if(OpenMXGpuMemcpy(w.target[channel]+first,d.output.get()+size_t(channel)*count,
                     count*sizeof(double),OPENMX_GPU_COPY_DEVICE_TO_HOST)!=OPENMX_GPU_SUCCESS)return 0;
             }else std::copy_n(d.result.get()+size_t(channel)*count,count,w.target[channel]+first);
         }
     } else if(phase==OPENMX_GPU_WORKER_RELEASE) {
-        if(d.owned_vectors)OpenMXGpuFree(d.owned_vectors);else openmx_gpu_read_view_release(&d.vectors);
-        if(d.indices)OpenMXGpuFree(d.indices);if(d.weights)OpenMXGpuFree(d.weights);if(d.phase)OpenMXGpuFree(d.phase);if(d.output)OpenMXGpuFree(d.output);
+        openmx_gpu_read_view_release(&d.vectors);d.owned_vectors.reset();
+        d.indices.reset();d.weights.reset();d.phase.reset();d.output.reset();
     }
     return 1;
 }

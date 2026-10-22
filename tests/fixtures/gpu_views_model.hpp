@@ -11,14 +11,15 @@
 
 using OpenMXGpuError=int;
 enum { OPENMX_GPU_SUCCESS=0,OPENMX_GPU_DEVICE_MEMORY=1,
+       OPENMX_GPU_OUT_OF_MEMORY=2,
        OPENMX_GPU_PEER_ALREADY_ENABLED=3,MODEL_ERROR=7,
        OPENMX_GPU_COPY_DEVICE_TO_DEVICE=0,OPENMX_GPU_COPY_DEVICE_TO_HOST=1,
        OPENMX_GPU_COPY_HOST_TO_DEVICE=2 };
 struct OpenMXGpuPointerAttributes { int device,type; };
 namespace gpu_views_model {
-enum Call { get_device,set_device,attributes,allocate,release,copy,peer_possible,peer_enable,peer_copy,calls };
+enum Call { get_device,set_device,attributes,allocate,release,copy,peer_possible,peer_enable,peer_copy,fill,peek,calls };
 struct Trace {
-    int current=0,pending=0,fail_kind=-1,fail_at=0,wrong_device_frees=0;
+    int current=0,pending=0,fail_kind=-1,fail_at=0,fail_status=MODEL_ERROR,wrong_device_frees=0;
     std::array<int,calls> count{};
     size_t download_max=0,upload_max=0;
 };
@@ -30,7 +31,7 @@ inline bool possible=false,enabled[4][4]{};
 inline int live=0;
 inline bool fail(Call kind) {
     const int at=++trace.count[kind];
-    if(trace.fail_kind==kind && trace.fail_at==at){trace.pending=MODEL_ERROR;return true;}
+    if(trace.fail_kind==kind && trace.fail_at==at){trace.pending=trace.fail_status;return true;}
     return false;
 }
 inline Allocation* find(const void *pointer,size_t bytes=0) {

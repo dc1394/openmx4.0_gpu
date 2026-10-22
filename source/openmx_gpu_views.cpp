@@ -2,52 +2,16 @@
 #include "openmx_env.h"
 #include "openmx_gpu_runtime.h"
 #include "openmx_gpu_views.h"
+#include "openmx_gpu_memory.hpp"
 
 #include <cstddef>
 #include <limits>
 #include <memory>
 
 namespace {
-/* SDK bindings are thread state. Every temporary switch is paired on all
-   exits, including host allocation failure. OpenACC/OpenMP bindings are not
-   changed by this transport layer. */
-class DeviceBinding {
- public:
-    explicit DeviceBinding(int device) noexcept {
-        if(OpenMXGpuGetDevice(&saved_)!=OPENMX_GPU_SUCCESS)return;
-        current_=saved_;
-        valid_=select(device);
-    }
-    ~DeviceBinding() noexcept { if(changed_)(void)OpenMXGpuSetDevice(saved_); }
-    DeviceBinding(const DeviceBinding&)=delete;
-    DeviceBinding& operator=(const DeviceBinding&)=delete;
-    explicit operator bool() const noexcept { return valid_; }
-    bool select(int device) noexcept {
-        if(current_==device)return true;
-        changed_=true;
-        if(OpenMXGpuSetDevice(device)!=OPENMX_GPU_SUCCESS)return false;
-        current_=device;changed_=current_!=saved_;return true;
-    }
-    bool restore() noexcept {
-        if(changed_){
-            if(OpenMXGpuSetDevice(saved_)!=OPENMX_GPU_SUCCESS)return false;
-            changed_=false;current_=saved_;
-        }
-        return valid_;
-    }
- private:
-    int saved_=-1,current_=-1;
-    bool changed_=false,valid_=false;
-};
-struct DeviceFree {
-    int device;
-    void operator()(void *pointer) const noexcept {
-        if(!pointer)return;
-        DeviceBinding binding(device);
-        if(binding)(void)OpenMXGpuFree(pointer);
-    }
-};
-using DeviceOwner=std::unique_ptr<void,DeviceFree>;
+using openmx::gpu::DeviceBinding;
+using openmx::gpu::DeviceFree;
+using openmx::gpu::DeviceOwner;
 void clear_view(OpenMXGpuReadView *view) noexcept
 { view->pointer=nullptr;view->allocated=0;view->device=-1; }
 

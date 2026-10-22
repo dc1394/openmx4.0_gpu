@@ -21,7 +21,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 PREPARE = ROOT / "tools" / "prepare_build.py"
 HIP = ROOT / "source" / "backends" / "hip"
-COMPILE_SUFFIXES = {".c", ".h", ".cu", ".cuh", ".cpp", ".f", ".f90", ".F90"}
+COMPILE_SUFFIXES = {".c", ".h", ".hpp", ".cu", ".cuh", ".cpp", ".f", ".f90", ".F90"}
 
 
 def digest(path):

@@ -408,7 +408,7 @@ OPENMX_GPU_INTERFACE_HEADERS = openmx_gpu_backend.h openmx_gpu_runtime.h \
  openmx_gpu_blas.h openmx_gpu_solver.h openmx_gpu_complex.h \
  openmx_gpu_device.h openmx_gpu_error.h openmx_gpu_views.h
 $(OBJS): $(OPENMX_GPU_INTERFACE_HEADERS)
-MGPU_HEADERS = $(wildcard openmx_gpu_*.h openmx_mgpu_*.h) \
+MGPU_HEADERS = $(wildcard openmx_gpu_*.h openmx_gpu_*.hpp openmx_mgpu_*.h) \
  openmx_magma_mgpu.h openmx_magma_lock.h openmx_target.h openmx_host_memory.h \
  openmx_cluster_capacity.h openmx_dense_cpu.h openmx_env.h openmx_env_registry.h
 
@@ -439,7 +439,7 @@ $(MGPU_C_OBJECTS): %.o: %.c $(MGPU_HEADERS)
 	$(CC) -c $< -o $@
 $(MGPU_HIP_OBJECTS): %.o: %.cu $(MGPU_HEADERS)
 	$(HIPCC) $(HIPCC_GEMMUL8_FLAGS) $(MPI_CFLAGS) -c $< -o $@
-openmx_gpu_views.o: openmx_gpu_views.cpp openmx_gpu_views.h hip_runtime_compat.h
+openmx_gpu_views.o: openmx_gpu_views.cpp openmx_gpu_views.h openmx_gpu_memory.hpp hip_runtime_compat.h
 	$(HIPCC) $(HIPCC_GEMMUL8_FLAGS) -std=c++17 -fopenmp -x hip -c $< -o $@
 openmx_gpu_bilinear_pack.o: openmx_gpu_bilinear_pack.cpp openmx_gpu_bilinear.h
 	$(CPPLANG) -O3 -std=c++17 $(MPI_CFLAGS) -c $< -o $@

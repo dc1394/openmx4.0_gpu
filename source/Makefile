@@ -967,13 +967,13 @@ openmx_gpu_workers.o: openmx_gpu_workers.c openmx_gpu_workers.h openmx_mgpu_runt
 
 openmx_globals.o: openmx_globals.c openmx_common.h
 	$(CC_NOACC) -c openmx_globals.c -o $@
-openmx_gpu_views.o: openmx_gpu_views.cpp openmx_gpu_views.h openmx_gpu_runtime.h openmx_env.h
+openmx_gpu_views.o: openmx_gpu_views.cpp openmx_gpu_views.h openmx_gpu_memory.hpp openmx_gpu_runtime.h openmx_env.h
 	$(GPUSOLVER2_HOST_CXX) -O2 -std=c++17 -fopenmp -I$(NVHPC_CUDA_HOME)/include -c $< -o $@
 Cluster_DFT_Col.o Cluster_DFT_NonCol.o Band_DFT_Col.o Band_DFT_NonCol.o: openmx_gpu_transform.h
 Cluster_DFT_Col.o Cluster_DFT_NonCol.o Band_DFT_Col.o Band_DFT_NonCol.o: openmx_gpu_dm.h
-openmx_gpu_transform.o: openmx_gpu_transform.cu openmx_gpu_transform.h openmx_gpu_workers.h openmx_gpu_views.h
+openmx_gpu_transform.o: openmx_gpu_transform.cu openmx_gpu_transform.h openmx_gpu_workers.h openmx_gpu_views.h openmx_gpu_memory.hpp
 	$(NVCC_GEMMUL8_ENV) $(NVCC) $(NVCC_GEMMUL8_FLAGS) -c $< -o $@
-openmx_gpu_dm.o: openmx_gpu_dm.cu openmx_gpu_dm_entry.h openmx_gpu_dm.h openmx_gpu_workers.h openmx_gpu_views.h
+openmx_gpu_dm.o: openmx_gpu_dm.cu openmx_gpu_dm_entry.h openmx_gpu_dm.h openmx_gpu_workers.h openmx_gpu_views.h openmx_gpu_memory.hpp
 	$(NVCC_GEMMUL8_ENV) $(NVCC) $(NVCC_GEMMUL8_FLAGS) -c $< -o $@
 Input_std.o Band_DFT_Col.o: openmx_mgpu_band_plan.h
 Cluster_DFT_NonCol.o Band_DFT_NonCol.o: openmx_mgpu_density.h

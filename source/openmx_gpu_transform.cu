@@ -7,6 +7,7 @@
 #include "openmx_gpu_transform.h"
 #include "openmx_gpu_workers.h"
 #include "openmx_gpu_views.h"
+#include "openmx_gpu_memory.hpp"
 
 
 #include <cmath>
@@ -22,8 +23,9 @@ struct Transform {
     double floor=0;
     const void *source[6]{};
     size_t bytes[6]{};
-    void *target=nullptr,*output[OPENMX_GPU_WORKERS_MAX]{};
+    void *target=nullptr;
     OpenMXGpuReadView input[OPENMX_GPU_WORKERS_MAX][6]{};
+    openmx::gpu::DeviceBuffer<unsigned char> output[OPENMX_GPU_WORKERS_MAX];
 };
 __device__ double product(double a,double b) {return a*b;}
 __device__ Z product(Z a,Z b) {return OpenMXGpuMakeComplex(a.x*b.x-a.y*b.y,a.x*b.y+a.y*b.x);}
@@ -110,34 +112,34 @@ int worker(void *opaque,int device,int phase)
     const size_t width=w.complex?sizeof(Z):sizeof(double),count=size_t(w.rows)*size_t(last-first);
     if(phase==OPENMX_GPU_WORKER_PREPARE) {
         for(int i=0;i<6;i++)if(!openmx_gpu_read_view(&w.input[device][i],w.source[i],w.bytes[i]))return 0;
-        if(OpenMXGpuMalloc(&w.output[device],count*width)!=OPENMX_GPU_SUCCESS)return 0;
+        if(count>std::numeric_limits<size_t>::max()/width || !w.output[device].allocate(count*width))return 0;
     } else if(phase==OPENMX_GPU_WORKER_EXECUTE) {
         const auto *v=w.input[device];
         const unsigned blocks=unsigned(count/256+1>65535?65535:count/256+1);
         if(w.scatter) {
-            if(OpenMXGpuMemset(w.output[device],0,count*width)!=OPENMX_GPU_SUCCESS)return 0;
+            if(OpenMXGpuMemset(w.output[device].get(),0,count*width)!=OPENMX_GPU_SUCCESS)return 0;
             scatter_kernel<<<blocks,256>>>(w.entries,w.format,w.imaginary,size_t(first)*w.rows,size_t(last)*w.rows,
                 static_cast<const int*>(v[0].pointer),static_cast<const double*>(v[1].pointer),
-                static_cast<const double*>(v[2].pointer),static_cast<const double*>(v[3].pointer),w.output[device]);
+                static_cast<const double*>(v[2].pointer),static_cast<const double*>(v[3].pointer),w.output[device].get());
         } else if(w.spinor) {
             spinor_kernel<<<blocks,256>>>(w.rows/2,first,last,w.real_parts,v[0].pointer,v[1].pointer,v[2].pointer,
                 static_cast<const double*>(v[3].pointer),static_cast<const double*>(v[4].pointer),
-                static_cast<const double*>(v[5].pointer),static_cast<Z*>(w.output[device]));
+                static_cast<const double*>(v[5].pointer),reinterpret_cast<Z*>(w.output[device].get()));
         } else if(w.complex) {
             transform_kernel<<<blocks,256>>>(w.op,w.rows,w.cols,w.lda,w.ldb,first,last,
-                static_cast<const Z*>(v[0].pointer),v[1].pointer,static_cast<Z*>(w.output[device]),w.complex_weights,w.floor);
+                static_cast<const Z*>(v[0].pointer),v[1].pointer,reinterpret_cast<Z*>(w.output[device].get()),w.complex_weights,w.floor);
         } else {
             transform_kernel<<<blocks,256>>>(w.op,w.rows,w.cols,w.lda,w.ldb,first,last,
-                static_cast<const double*>(v[0].pointer),v[1].pointer,static_cast<double*>(w.output[device]),w.complex_weights,w.floor);
+                static_cast<const double*>(v[0].pointer),v[1].pointer,reinterpret_cast<double*>(w.output[device].get()),w.complex_weights,w.floor);
         }
         return OpenMXGpuGetLastError()==OPENMX_GPU_SUCCESS;
     } else if(phase==OPENMX_GPU_WORKER_COMMIT) {
-        if(w.ldout==w.rows) return openmx_gpu_copy_device(static_cast<char*>(w.target)+size_t(first)*w.ldout*width,w.output[device],count*width);
+        if(w.ldout==w.rows) return openmx_gpu_copy_device(static_cast<char*>(w.target)+size_t(first)*w.ldout*width,w.output[device].get(),count*width);
         for(int col=first;col<last;col++)
             if(!openmx_gpu_copy_device(static_cast<char*>(w.target)+size_t(col)*w.ldout*width,
-                static_cast<const char*>(w.output[device])+size_t(col-first)*w.rows*width,size_t(w.rows)*width))return 0;
+                w.output[device].get()+size_t(col-first)*w.rows*width,size_t(w.rows)*width))return 0;
     } else if(phase==OPENMX_GPU_WORKER_RELEASE) {
-        if(w.output[device])OpenMXGpuFree(w.output[device]);
+        w.output[device].reset();
         for(auto &v:w.input[device])openmx_gpu_read_view_release(&v);
     }
     return 1;

@@ -128,6 +128,9 @@ install(CODE "${_openmx_install_program}")
 install(TARGETS openmx_core LIBRARY DESTINATION lib)
 
 if(BUILD_TESTING)
+  add_test(NAME gpu-worker-resource-lifecycle
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_gpu_worker_memory_cpu.py")
+  set_tests_properties(gpu-worker-resource-lifecycle PROPERTIES LABELS "unit;gpu" TIMEOUT 180)
   add_test(NAME gpu-view-resource-lifecycle
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_gpu_views_cpu.py")
   set_tests_properties(gpu-view-resource-lifecycle PROPERTIES LABELS "unit;gpu" TIMEOUT 180)

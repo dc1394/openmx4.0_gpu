@@ -11,7 +11,7 @@ from pathlib import Path
 import shutil
 
 
-SOURCE_SUFFIXES = {'.c', '.h', '.cu', '.cuh', '.cpp', '.f', '.f90', '.F90', '.mk'}
+SOURCE_SUFFIXES = {'.c', '.h', '.hpp', '.cu', '.cuh', '.cpp', '.f', '.f90', '.F90', '.mk'}
 COPY_IGNORE = shutil.ignore_patterns(
     '.git', '.libs', '.deps', '__pycache__', '*.o', '*.a', '*.lo', '*.la', '*.so', '*.so.*',
     '*.mod', '*.d', '*.pyc', 'config.log', 'config.status', 'config.cache',

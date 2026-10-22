@@ -1008,6 +1008,7 @@
     "openmx_gpu_vector.c",
     "openmx_gpu_views.cpp",
     "openmx_gpu_views.h",
+    "openmx_gpu_memory.hpp",
     "openmx_gpu_workers.c",
     "openmx_gpu_workers.h",
     "openmx_host_memory.c",
