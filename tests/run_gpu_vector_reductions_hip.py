@@ -34,6 +34,7 @@ FIXTURE = r'''
 #include <omp.h>
 #include "openmx_target.h"
 #include "openmx_gpu_vector.c"
+#include "gpu_vector_native_probe.h"
 
 typedef struct {
   unsigned char *base;
@@ -83,13 +84,13 @@ int main(void) {
       for(size_t i=0;i<n;i++) expected[p]+=(long double)weight[i]*data[(size_t)left[p]*ld+i]*data[(size_t)right[p]*ld+i];
       ++p;
     }
-    VectorWork w={0};w.workers.count=1;w.workers.items=n;
-    w.job=(OpenMXGpuVector){.n=n,.ld=ld,.mode=0,.columns=c,.pairs=pairs,.data=data,.weight=weight,.left=left,.right=right,.output=output};
-    assert(vector_worker(&w,0,OPENMX_GPU_WORKER_PREPARE));
-    assert(vector_worker(&w,0,OPENMX_GPU_WORKER_EXECUTE));
-    assert(vector_worker(&w,0,OPENMX_GPU_WORKER_COMMIT));
-    verify("host-backed",w.partial[0],expected,pairs);
-    MixH_GpuShard shard={.base=(unsigned char*)w.arena[0],.L=n,.o_ring=0,.o_w=(size_t)c*n*sizeof(double),.o_pair=((size_t)c+1)*n*sizeof(double)};
+    OpenMXGpuVector job=(OpenMXGpuVector){.n=n,.ld=ld,.mode=0,.columns=c,.pairs=pairs,.data=data,.weight=weight,.left=left,.right=right,.output=output};
+    void *work=openmx_test_vector_create(&job);assert(work);
+    assert(openmx_test_vector_phase(work,OPENMX_GPU_WORKER_PREPARE));
+    assert(openmx_test_vector_phase(work,OPENMX_GPU_WORKER_EXECUTE));
+    assert(openmx_test_vector_phase(work,OPENMX_GPU_WORKER_COMMIT));
+    verify("host-backed",openmx_test_vector_result(work),expected,pairs);
+    MixH_GpuShard shard={.base=(unsigned char*)openmx_test_vector_arena(work),.L=n,.o_ring=0,.o_w=(size_t)c*n*sizeof(double),.o_pair=((size_t)c+1)*n*sizeof(double)};
     MixH_GramPart(&shard,c,pairs,pm,pn,slot,output);
     verify("resident",output,expected,pairs);
     if(n==65539 && c==8) {
@@ -98,14 +99,14 @@ int main(void) {
         for(int r=0;r<11;r++) {
           double start=omp_get_wtime();
           if(kind)MixH_GramPart(&shard,c,pairs,pm,pn,slot,output);
-          else { assert(vector_worker(&w,0,OPENMX_GPU_WORKER_EXECUTE));openmx_target_wait(); }
+          else { assert(openmx_test_vector_phase(work,OPENMX_GPU_WORKER_EXECUTE));openmx_target_wait(); }
           timings[r]=1000*(omp_get_wtime()-start);
         }
         qsort(timings,11,sizeof(double),order_double);
         printf("BENCH %s n=%zu pairs=%d median_ms=%.6f\n",kind?"resident":"host-backed-kernel",n,pairs,timings[5]);
       }
     }
-    assert(vector_worker(&w,0,OPENMX_GPU_WORKER_RELEASE));free(w.partial[0]);
+    assert(openmx_test_vector_phase(work,OPENMX_GPU_WORKER_RELEASE));openmx_test_vector_destroy(work);
     free(expected);free(output);free(weight);free(data);
   }
   puts("PASS: actual HIP reductions, empty/tail/padded/permuted cases and long-double oracle");
@@ -133,12 +134,18 @@ def main():
         source = folder / "check.c"
         source.write_text(FIXTURE.replace("@MIXH_GRAM@", function(
             (ROOT / "source/Mixing_H.c").read_text(), "MixH_GramPart")))
+        probe=folder/"vector_probe.o"
+        subprocess.run([str(args.rocm/"llvm/bin/clang++"),"-std=c++17","-O3","-ffp-contract=off",
+            "-fopenmp","--offload-arch="+args.arch,"-D__HIP_PLATFORM_AMD__",
+            "-ffunction-sections","-fdata-sections","-I"+str(ROOT/"source"),
+            "-I"+str(ROOT/"source/backends/hip/include"),"-I"+str(args.rocm/"include"),*mpi_flags,
+            "-c",str(ROOT/"tests/gpu_vector_native_probe.cpp"),"-o",str(probe)],env=env,check=True,timeout=120)
         command = compiler + ["-x", "c", "-O3", "-std=c11", "-ffp-contract=off", "-fopenmp",
             "--offload-arch=" + args.arch, "-D__HIP_PLATFORM_AMD__",
-            "-ffunction-sections", "-fdata-sections", "-I" + str(ROOT / "source"),
+            "-ffunction-sections", "-fdata-sections", "-I" + str(ROOT / "source"), "-I"+str(ROOT/"tests"),
             "-I" + str(ROOT / "source/backends/hip/include"),
             "-I" + str(args.rocm / "include"), *mpi_flags, str(source),
-            "-L" + str(args.rocm / "lib"), "-lamdhip64", "-lm",
+            "-L" + str(args.rocm / "lib"), "-x","none",str(probe),"-lstdc++","-lamdhip64", "-lm",
             "-Wl,--gc-sections,-z,nostart-stop-gc", "-o", str(folder / "check")]
         subprocess.run(command, env=env, check=True, timeout=120)
         subprocess.run([str(folder / "check")], env=env, check=True, timeout=120)

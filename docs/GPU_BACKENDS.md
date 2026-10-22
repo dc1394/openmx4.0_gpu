@@ -65,7 +65,7 @@ HIP の置換リストは 105 件から 49 件になり、共通化した元フ�
 | 共通部分 | 主なソース |
 | --- | --- |
 | GPU API とデバイス割り当ての呼び出し | `openmx_gpu_backend.h`、`openmx_gpu_runtime.h`、`openmx_gpu_blas.h`、`openmx_gpu_solver.h`、`openmx_gpu_complex.h`、`openmx_gpu_device.h` |
-| メモリ容量判定・作業分割・失敗時の復旧 | `openmx_gpu_workers.c`、`openmx_gpu_views.cpp`、`openmx_gpu_task.c` / `openmx_gpu_task_worker.cpp`、`openmx_gpu_vector.c`、`openmx_gpu_bilinear.c`、collective 系 |
+| メモリ容量判定・作業分割・失敗時の復旧 | `openmx_gpu_workers.c`、`openmx_gpu_views.cpp`、`openmx_gpu_task.c` / `openmx_gpu_task_worker.cpp`、`openmx_gpu_vector.c` / `openmx_gpu_vector_worker.cpp`、`openmx_gpu_bilinear.c`、collective 系 |
 | 密度行列・密行列変換の GPU カーネル | `openmx_gpu_dm.cu`、`openmx_gpu_transform.cu` |
 | 複数 GPU の実行制御・行列積・MAGMA 接続 | `openmx_mgpu_runtime.cu`、`openmx_mgpu_gemm.cu`、`openmx_magma_mgpu.cpp` |
 | 数値計算・入力と後処理 | CWF/DMmu 派生ソルバー、ELPA/COSMA 接続、分極、混合、重なり積分、全エネルギーの呼び出し部分、`truncation.c`、`openmx_common.c/h`、`Input_std.c`、`Free_Arrays.c` など |
@@ -104,6 +104,12 @@ GPU領域、一時結果とCSR添字はワーカー呼び出し内の所有者�
 終了でも回収します。レイアウトの計算と結果の公開は共通の内部ヘッダーを使用し、CPUの演算順序・
 64 MiBの作業分割と通信形式は維持しています。C/C++間はC ABIで接続します。
 詳細は [第38段階](CPP_CORE_MIGRATION.md#第38段階-範囲タスクのgpuワーカーと所有権の分離) を参照してください。
+
+ホスト側の履歴を使う重み付きGram積・線形結合も、Cの制御・通信・CPU回復とC++17のGPUワーカーに
+分けています。GPU arenaと未公開の部分結果を所有し、添字表はarena内の位置からその都度求めます。
+CUDAではNVHPC C++のOpenACC、HIPではClang C++のOpenMP targetを使い、両者のループと指示は
+移行前のままです。CPUの算術・通信形式・デバイス別の方針も保ちます。
+[第39段階](CPP_CORE_MIGRATION.md#第39段階-ベクトル縮約のgpuワーカーと型付き所有) に検証範囲を記載します。
 
 OpenACC と OpenMP target の指示、物理メモリ・UUID・GPU 間接続の取得、
 ELPA の GPU オプションと HIP 小行列対策はバックエンドごとの分岐に保持しています。

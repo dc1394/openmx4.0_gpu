@@ -13,5 +13,11 @@ typedef struct {
     const int *left,*right;
     double *output;
 } OpenMXGpuVector;
+#ifdef __cplusplus
+extern "C" {
+#endif
 int openmx_gpu_vector_execute(MPI_Comm comm,OpenMXGpuVector *job,int enabled,const char *label);
+#ifdef __cplusplus
+}
+#endif
 #endif

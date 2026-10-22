@@ -1,4 +1,4 @@
-"""Link the real C++ task worker to the C extraction harnesses' SDK stubs.
+"""Link real C++ GPU workers to the C extraction harnesses' SDK stubs.
 
 The C controller, numerical callbacks, packets and failure controls remain
 in their original language. Only the SDK calls cross this model boundary;
@@ -11,6 +11,14 @@ import subprocess
 
 
 def compile_task_test(command, **kwargs):
+    return _compile_worker_test(command, 'openmx_gpu_task_worker', **kwargs)
+
+
+def compile_vector_test(command, **kwargs):
+    return _compile_worker_test(command, 'openmx_gpu_vector_worker', **kwargs)
+
+
+def _compile_worker_test(command, worker, **kwargs):
     source=next(Path(arg) for arg in command if str(arg).endswith('.c'))
     folder=source.parent
     root=Path(__file__).resolve().parents[1]
@@ -46,7 +54,7 @@ inline int OpenMXGpuMemcpy(void *out,const void *in,size_t n,int kind){return op
     cxx=shlex.split(os.environ.get('CXX','c++'))
     sanitizer=[arg for arg in command if str(arg).startswith(('-fsanitize=','-fno-sanitize','-fno-pie','-no-pie'))]
     subprocess.run(cxx+['-std=c++17','-O1','-g',*sanitizer,'-I'+str(folder),'-I'+str(root/'source'),
-        '-include',str(shim),'-c',str(root/'source/openmx_gpu_task_worker.cpp'),'-o',str(worker_object)],**kwargs)
+        '-Wno-unknown-pragmas','-include',str(shim),'-c',str(root/'source'/(worker+'.cpp')),'-o',str(worker_object)],**kwargs)
     cc=shlex.split(os.environ.get('CC','cc'))
     env_object=folder/'task_env.o'
     env_archive=folder/'libtask_env.a'

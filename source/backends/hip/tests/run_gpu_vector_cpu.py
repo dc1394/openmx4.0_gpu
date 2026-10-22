@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Check production host-backed contractions and wire packets under sanitizers."""
 import os
+import resource
 from pathlib import Path
+from task_worker_test_bridge import compile_vector_test
 import shlex
 import subprocess
 import tempfile
@@ -105,6 +107,10 @@ int main(void){
  printf("PASS: %d contraction cases (local, remote, CPU, allocation failure, padding and empty work)\n",cases);
 }
 '''
+def bounded_stack():
+    _,hard=resource.getrlimit(resource.RLIMIT_STACK)
+    resource.setrlimit(resource.RLIMIT_STACK,(8*1024*1024,hard))
+
 with tempfile.TemporaryDirectory(prefix="openmx-vector-") as folder:
     p = Path(folder)
     stage(root, p)
@@ -113,8 +119,8 @@ with tempfile.TemporaryDirectory(prefix="openmx-vector-") as folder:
     body = "\n".join(line for line in code.splitlines()
                      if line not in ('#include "openmx_gpu_device.h"', '#include "hip_runtime_compat.h"', '#include <omp.h>', '#include "set_hip_default_device_from_local_rank.h"'))
     (p / "check.c").write_text(prefix + body + main)
-    subprocess.run(shlex.split(os.environ.get("CC", "cc")) + [
+    compile_vector_test(shlex.split(os.environ.get("CC", "cc")) + [
         "-std=c11", "-O1", "-g", "-Wall", "-Wextra", "-Wno-unknown-pragmas",
         "-fsanitize=address,undefined", "-fno-sanitize-recover=all", "-I"+str(p),
         "-I"+str(root/"source"), str(p/"check.c"), "-lm", "-o", str(p/"check")], check=True)
-    subprocess.run([str(p/"check")], check=True, timeout=45)
+    subprocess.run([str(p/"check")], check=True, timeout=45, preexec_fn=bounded_stack)
