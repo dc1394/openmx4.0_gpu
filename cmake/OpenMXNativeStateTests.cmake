@@ -11,6 +11,9 @@ function(openmx_add_native_state_tests)
   # The energy runner forces C11 only for its .c input, even with a C++ driver.
   set(_environment "CXX=${_compiler}" "CC=${_compiler}"
     "CXXFLAGS=${CMAKE_CXX_FLAGS}" "CFLAGS=${CMAKE_CXX_FLAGS}")
+  if(APPLE)
+    list(APPEND _environment "OPENMX_TEST_SANITIZERS=${OPENMX_CORE_SANITIZERS}")
+  endif()
 
   foreach(_solver dc dclno krylov)
     add_test(NAME ${_solver}-calculation-state-lifecycle

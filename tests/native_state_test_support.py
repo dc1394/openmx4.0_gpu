@@ -26,8 +26,16 @@ def compiler_command(language, compiler=None):
     variable, default, standard = ('CXX', 'c++', 'c++17') if language == 'c++' else ('CC', 'cc', 'c11')
     command = shlex.split(compiler or os.environ.get(variable, default))
     command += shlex.split(os.environ.get('CXXFLAGS' if language == 'c++' else 'CFLAGS', ''))
-    command += ['-std=' + standard, '-O1', '-g', '-fsanitize=address,undefined',
-                '-fno-sanitize-recover=all']
+    command += ['-std=' + standard, '-O1', '-g']
+    # Apple's ASan replaces allocation operators across dylibs and takes
+    # precedence over the test's throwing-allocation interposers. Match the
+    # Darwin core configuration; Linux continues to sanitize every fixture.
+    sanitizers = os.environ.get('OPENMX_TEST_SANITIZERS',
+                                'OFF' if sys.platform == 'darwin' else 'ON')
+    if sanitizers not in ('ON', 'OFF'):
+        raise ValueError('OPENMX_TEST_SANITIZERS must be ON or OFF')
+    if sanitizers == 'ON':
+        command += ['-fsanitize=address,undefined', '-fno-sanitize-recover=all']
     # Fixed-address ELF executables avoid occasional Linux ASan shadow-map
     # collisions. Darwin uses its normal PIE executables and sanitizer layout.
     if sys.platform.startswith('linux'):
