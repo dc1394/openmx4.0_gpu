@@ -440,6 +440,7 @@ void Allocate_Free_GridData(int todo_flag);
 double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 {
   const OpenMXNativeSolverStates solver_states=OpenMX_Native_Resources_Bind(core);
+  OpenMXMixingHState *mixing_h=Mixing_H_Bind_Resources(core);
   const OpenMXDensityCacheHooks density_cache_hooks=OpenMX_ClusterNonCol_DensityHooks(solver_states.cluster_noncol);
 
   const OpenMXLocalBasisViews local_basis_storage=OpenMX_LocalBasis(core,mpi_comm_level1);
@@ -970,7 +971,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
        && (LSCF_iter-SCF_iter_shift)<=(Pulay_SCF/2))
        && Solver!=4 ){
 
-      time6  += Mixing_H(MD_iter, LSCF_iter-SCF_iter_shift, SCF_iter-SCF_iter_shift, electronic);
+      time6  += Mixing_H(mixing_h, MD_iter, LSCF_iter-SCF_iter_shift, SCF_iter-SCF_iter_shift, electronic);
     }
 
     /****************************************************
@@ -2694,7 +2695,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   Cluster_DFT_Col_Release_GPU_Solver(solver_states.cluster_col);
   Cluster_DFT_NonCol_Release_GPU_Solver(solver_states.cluster_noncol);
   openmx_gpusolver_cache_release();
-  Mixing_H_Release_GPU();
+  Mixing_H_Release_GPU(mixing_h);
   /* Only scratch storage is released; later dense work recreates it on
      demand and the host eigenvectors/packed matrices remain intact.  The
      retained forms of the transformed overlap belong to this geometry. */

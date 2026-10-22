@@ -11,6 +11,7 @@
 #include "openmx_dc_state.h"
 #include "openmx_dclno_state.h"
 #include "openmx_krylov_state.h"
+#include "openmx_mixing_h_state.h"
 #include "openmx_core_grid.h"
 #include "openmx_core_electronic.h"
 #include "openmx_core_local_basis.h"
@@ -2743,7 +2744,7 @@ double Mixing_DM(int MD_iter,
                  double *ReRhoAtomk,
                  double *ImRhoAtomk, const OpenMXElectronicViews *electronic);
 
-double Mixing_H( int MD_iter,
+double Mixing_H( OpenMXMixingHState *state, int MD_iter,
                  int SCF_iter,
                  int SCF_iter0 , const OpenMXElectronicViews *electronic);
 
@@ -2953,7 +2954,6 @@ int Set_Hamiltonian_OpenMP_Rank_Is_Selected(void);
 void Set_Hamiltonian_Invalidate_GpuSolver_HS_Cache(void);
 void Set_Hamiltonian_Build_GpuSolver_HS_Cache(int use_contracted, int refresh_static, const OpenMXElectronicViews *electronic);
 void Set_Hamiltonian_GpuSolver_SetMP(int *MP);
-void Mixing_H_Release_GPU(void);
 void OpenMX_GpuPhaseNeed_Register(const char *phase, size_t group_bytes);
 size_t OpenMX_GpuPhaseNeed_Max(void);
 size_t OpenMX_GpuPhaseNeed_MaxPrefixed(const char *prefix);
@@ -3026,7 +3026,6 @@ size_t Set_Hamiltonian_MatrixElements_TotalH(int Cnt_kind, int myid);
 int Set_Hamiltonian_OnTheFly_Density(const OpenMXAtomicViews *atomic, int Cnt_kind, int spin_count, const double *dm, size_t dm_count,
                                      double *tmpden, size_t output_count, const unsigned int *atom_out_base,
                                      int myid);
-void Mixing_H_Release_GPU(void);
 int Set_Density_Grid_GPU_Local_Prepare(const OpenMXAtomicViews *atomic, int Cnt_kind, int Calc_CntOrbital_ON);
 int Set_Density_Grid_GPU_Local_KeepDistributed(void);
 int Set_Density_Grid_GPU_Local_Run(const OpenMXAtomicViews *atomic, double *****CDM, double ***Tmp_Den_Grid);

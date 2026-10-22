@@ -53,7 +53,6 @@ void Free_Arrays_with_context(int wherefrom, OpenMXCoreContext *core)
 #if !OPENMX_GPU_HIP
     openmx_gpusolver_cache_release();
 #endif
-    Mixing_H_Release_GPU();
     Set_Hamiltonian_Invalidate_GpuSolver_HS_Cache();
 #if OPENMX_GPU_HIP
     (void)openmx_magma_release_z_workspace();
