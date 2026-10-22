@@ -9,17 +9,11 @@ import argparse
 import os
 from pathlib import Path
 import re
-import resource
-import shlex
 import subprocess
 import tempfile
+from native_state_test_support import bounded_stack, compiler_command
 
 ROOT = Path(__file__).resolve().parents[1]
-
-
-def bounded_stack():
-    _, hard = resource.getrlimit(resource.RLIMIT_STACK)
-    resource.setrlimit(resource.RLIMIT_STACK, (8 * 1024 * 1024, hard))
 
 
 def function(source, name):
@@ -84,9 +78,8 @@ def main():
             generated = fields + '\nstatic void openmx_eigen_refine_device_release(EigenRefineDevice *dev) { (void)dev; refine_device_drains++; }\n' + allocation + '\n' + text[start:end] + '\n' + prototypes + '\n' + release + '\n' + '\n'.join(bodies)
             (folder / 'cluster_col_state.inc').write_text(generated)
             exe = folder / backend
-            command = shlex.split(os.environ.get('CXX', 'c++')) + [
-                '-std=c++17', '-O1', '-g', '-fsanitize=address,undefined', '-fno-sanitize-recover=all',
-                '-fno-pie', '-no-pie', '-Wno-unknown-pragmas', '-DOPENMX_GPU_HIP=' + str(int(backend == 'hip')),
+            command = compiler_command('c++') + [
+                '-Wno-unknown-pragmas', '-DOPENMX_GPU_HIP=' + str(int(backend == 'hip')),
                 '-I' + str(folder), '-I' + str(ROOT / 'source'), '-I' + str(ROOT / 'core/include'),
                 '-I' + str(ROOT / 'core/tests/fixtures/native_resources'), '-I' + str(ROOT / 'core/tests'),
                 str(ROOT / 'tests/cluster_col_state_harness.cpp'), str(ROOT / 'core/tests/allocation_faults.cpp'),

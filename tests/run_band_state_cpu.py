@@ -9,10 +9,10 @@ import argparse
 import os
 from pathlib import Path
 import re
-import shlex
 import subprocess
 import tempfile
-from run_cluster_col_state_cpu import function, pod, bounded_stack
+from native_state_test_support import bounded_stack, compiler_command
+from run_cluster_col_state_cpu import function, pod
 from native_resource_test_bridge import calculation_state_declaration
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -92,9 +92,8 @@ def main():
                 generated += '#define ' + target + ' ' + name + '\n'
             (folder / 'band_state.inc').write_text(generated)
             executable = folder / backend
-            command = shlex.split(os.environ.get('CXX', 'c++')) + [
-                '-std=c++17', '-O1', '-g', '-fsanitize=address,undefined', '-fno-sanitize-recover=all',
-                '-fno-pie', '-no-pie', '-Wno-unknown-pragmas',
+            command = compiler_command('c++') + [
+                '-Wno-unknown-pragmas',
                 '-DOPENMX_GPU_HIP=' + str(int(backend == 'hip')),
                 '-DBAND_NONCOL=' + str(int(kind == 'NonCol')),
                 '-I' + str(folder), '-I' + str(ROOT / 'source'), '-I' + str(ROOT / 'core/include'),

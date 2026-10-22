@@ -10,11 +10,11 @@ import argparse
 import os
 from pathlib import Path
 import re
-import shlex
 import subprocess
 import tempfile
+from native_state_test_support import bounded_stack, compiler_command
 from native_resource_test_bridge import calculation_state_declaration
-from run_cluster_col_state_cpu import bounded_stack, function
+from run_cluster_col_state_cpu import function
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULES = {'dc': ('Divide_Conquer', 'DC'), 'dclno': ('Divide_Conquer_LNO', 'DCLNO'),
@@ -68,9 +68,8 @@ def main():
             generated += '#define local_release ' + module + '_Release_GPU_Caches\n'
             (folder / 'local_solver_state.inc').write_text(generated)
             executable = folder / backend
-            command = shlex.split(args.mpi_cxx or os.environ.get('CXX', 'c++')) + [
-                '-std=c++17', '-O1', '-g', '-fsanitize=address,undefined', '-fno-sanitize-recover=all',
-                '-fno-pie', '-no-pie', '-Wno-unknown-pragmas',
+            command = compiler_command('c++', args.mpi_cxx) + [
+                '-Wno-unknown-pragmas',
                 '-DOPENMX_GPU_HIP=' + str(int(backend == 'hip')), '-DLOCAL_' + args.kind.upper() + '=1',
                 '-DLOCAL_MPI_REAL=' + str(int(bool(args.mpi_cxx))),
                 '-I' + str(folder), '-I' + str(ROOT / 'source'), '-I' + str(ROOT / 'core/include'),

@@ -235,3 +235,6 @@ if(OPENMX_CORE_BACKEND MATCHES "^(CUDA|HIP)$")
     core-table-execution core-table-c-api core-vps-execution core-product-execution core-neutral-execution core-reciprocal-finalized-runtime
     PROPERTIES LABELS "unit;core;gpu" RESOURCE_LOCK openmx_core_gpu)
 endif()
+
+include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/OpenMXNativeStateTests.cmake")
+openmx_add_native_state_tests()

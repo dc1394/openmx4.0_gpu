@@ -13,6 +13,7 @@ jobs:
             backend: SERIAL
             standard: 20
             sanitize: "OFF"
+            mpi: true
           - os: ubuntu-24.04
             backend: OPENMP
             standard: 20
@@ -27,6 +28,11 @@ jobs:
             sanitize: "OFF"
     steps:
       - uses: actions/checkout@v4
+      - name: Install MPI for native solver lifetime tests
+        if: matrix.mpi == true
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends openmpi-bin libopenmpi-dev
       - name: Configure the independently buildable core
         run: >-
           cmake -S . -B build/core -DOPENMX_BUILD_APPLICATION=OFF
@@ -35,13 +41,29 @@ jobs:
           -DOPENMX_CORE_SANITIZERS=${{ matrix.sanitize }}
           -DCMAKE_BUILD_TYPE=Debug
       - run: cmake --build build/core --parallel 2
+      - name: Require native solver tests in the host-only build
+        run: python3 tests/check_native_state_ctest.py --build build/core
+      - name: Require real MPI lifetime coverage
+        if: matrix.mpi == true
+        run: python3 tests/check_native_state_ctest.py --build build/core --require-mpi
       - name: Unit tests
         env:
           OMP_NUM_THREADS: 2
           OMP_PROC_BIND: "false"
         run: |
           ulimit -s 8192
-          ctest --test-dir build/core --output-on-failure
+          ctest --test-dir build/core -L '^native-state$' --no-tests=error --output-on-failure
+          ctest --test-dir build/core -LE '^native-state(-mpi)?$' --no-tests=error --output-on-failure
+      - name: Real MPI solver state cleanup
+        if: matrix.mpi == true
+        env:
+          OMP_NUM_THREADS: 2
+          OMP_PROC_BIND: "false"
+          OMPI_MCA_rmaps_base_oversubscribe: "1"
+          PRTE_MCA_rmaps_default_mapping_policy: ":oversubscribe"
+        run: |
+          ulimit -s 8192
+          ctest --test-dir build/core -L '^native-state-mpi$' --no-tests=error --output-on-failure
 
   gpu-contracts:
     runs-on: ubuntu-24.04

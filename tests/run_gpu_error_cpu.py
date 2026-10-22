@@ -74,7 +74,7 @@ with tempfile.TemporaryDirectory(prefix="openmx-gpu-error-") as directory:
     (tmp / "test.c").write_text(test)
     compiler = shlex.split(os.environ.get("CC", "cc"))
     for backend, blas_alloc, solver_alloc in (("CUDA", 3, 2), ("HIP", 2, 2)):
-        subprocess.run(compiler + ["-std=c11", "-Wall", "-Wextra", "-Werror",
+        subprocess.run(compiler + ["-std=c11", "-Wall", "-Wextra", "-Werror", "-I" + str(tmp),
             "-DBLAS_ALLOC=" + str(blas_alloc), "-DSOLVER_ALLOC=" + str(solver_alloc),
             "-Dnanosleep=test_nanosleep", str(tmp / "openmx_gpu_error.c"), str(tmp / "test.c"),
             "-o", str(tmp / "check")], check=True)

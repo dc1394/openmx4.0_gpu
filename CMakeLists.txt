@@ -128,36 +128,9 @@ install(CODE "${_openmx_install_program}")
 install(TARGETS openmx_core LIBRARY DESTINATION lib)
 
 if(BUILD_TESTING)
-  foreach(_local_solver dc dclno krylov)
-    add_test(NAME ${_local_solver}-calculation-state-lifecycle
-      COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_local_solver_state_cpu.py"
-        --kind "${_local_solver}" --core-library "$<TARGET_FILE:openmx_core>")
-    set_tests_properties(${_local_solver}-calculation-state-lifecycle
-      PROPERTIES LABELS "unit;gpu;core" TIMEOUT 180)
-  endforeach()
-  add_test(NAME solver-noncollinear-energy-output
-    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_solver_energy_output_cpu.py"
-      --core-library "$<TARGET_FILE:openmx_core>" --negative-control)
-  set_tests_properties(solver-noncollinear-energy-output
-    PROPERTIES LABELS "unit;solver;core" TIMEOUT 180)
-  foreach(_band_kind col noncol)
-    add_test(NAME band-${_band_kind}-calculation-state-lifecycle
-      COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_band_state_cpu.py"
-        --kind "${_band_kind}" --core-library "$<TARGET_FILE:openmx_core>")
-    set_tests_properties(band-${_band_kind}-calculation-state-lifecycle
-      PROPERTIES LABELS "unit;gpu;core" TIMEOUT 180)
-  endforeach()
-  add_test(NAME cluster-noncol-calculation-state-lifecycle
-    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_cluster_noncol_state_cpu.py"
-      --core-library "$<TARGET_FILE:openmx_core>")
-  set_tests_properties(cluster-noncol-calculation-state-lifecycle PROPERTIES LABELS "unit;gpu;core" TIMEOUT 180)
   add_test(NAME cluster-noncol-dense-index
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_cluster_noncol_dense_index_cpu.py")
   set_tests_properties(cluster-noncol-dense-index PROPERTIES LABELS "unit;gpu" TIMEOUT 120)
-  add_test(NAME cluster-col-calculation-state-lifecycle
-    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_cluster_col_state_cpu.py"
-      --core-library "$<TARGET_FILE:openmx_core>")
-  set_tests_properties(cluster-col-calculation-state-lifecycle PROPERTIES LABELS "unit;gpu;core" TIMEOUT 180)
   add_test(NAME cluster-col-cpu-density
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_cluster_dm_cpu.py")
   set_tests_properties(cluster-col-cpu-density PROPERTIES LABELS "unit;gpu" TIMEOUT 120)
@@ -304,15 +277,6 @@ if(BUILD_TESTING)
     find_program(OPENMX_TEST_MPICXX NAMES mpicxx mpic++)
     find_program(OPENMX_TEST_MPIEXEC NAMES mpirun mpiexec)
     if(OPENMX_TEST_MPICXX AND OPENMX_TEST_MPIEXEC)
-      foreach(_local_mpi_solver dclno krylov)
-        add_test(NAME ${_local_mpi_solver}-calculation-state-mpi
-          COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_local_solver_state_cpu.py"
-            --kind "${_local_mpi_solver}" --core-library "$<TARGET_FILE:openmx_core>"
-            --mpi-cxx "${OPENMX_TEST_MPICXX}" --mpiexec "${OPENMX_TEST_MPIEXEC}")
-        set_tests_properties(${_local_mpi_solver}-calculation-state-mpi PROPERTIES
-          ENVIRONMENT "OMPI_CXX=${CMAKE_CXX_COMPILER};MPICH_CXX=${CMAKE_CXX_COMPILER};I_MPI_CXX=${CMAKE_CXX_COMPILER}"
-          LABELS "unit;gpu;mpi;core" TIMEOUT 180 PROCESSORS 4)
-      endforeach()
       add_test(NAME gpu-vector-packet-mpi COMMAND "${Python3_EXECUTABLE}"
         "${CMAKE_SOURCE_DIR}/tests/run_gpu_vector_packet_mpi.py")
       set_tests_properties(gpu-vector-packet-mpi PROPERTIES

@@ -393,7 +393,7 @@ HIP では対象ビルドの互換ヘッダー・定義も渡してください�
 
 ## テスト
 
-CTest に 62 件の独立コアテストを登録しています。所有権と例外時の整合性、周期セルの番号順序・
+独立コアの CTest は、所有権と例外時の整合性、周期セルの番号順序・
 整数境界、FFT 格子、球 Bessel 関数の値・導関数、動径積分の独立参照との比較、
 32 点バッチ境界、異なる形状の連続実行、C ABI の失敗時の出力保護、
 Kokkos ランタイムの所有・借用・破棄、GPU 構成での CPU 指定を検証します。
@@ -432,6 +432,19 @@ ctest --test-dir build/core-sanitize --output-on-failure
 ```
 
 `.github/workflows/core.yml` は、ホスト Serial / OpenMP / ASan+UBSan の CI を定義します。
+アプリケーションを無効にしても、7ソルバーの実際の状態・初期化・解放とC++所有者を接続する
+8件の `native-state` 試験を登録します。MPIを検出した場合は、実4 rankの部分コミュニケータを使う
+DC-LNO/Krylovの2件も登録します。SDK呼び出しは模擬し、共有コアはそのビルドの実物を使います。
+登録漏れ・重複・別ビルドのライブラリの使用は、次の検査で拒否します。
+
+```sh
+python3 tests/check_native_state_ctest.py --build build/core-sanitize
+ctest --test-dir build/core-sanitize -L '^native-state$' --no-tests=error --output-on-failure
+# MPIを検出した構成
+python3 tests/check_native_state_ctest.py --build build/core-sanitize --require-mpi
+ctest --test-dir build/core-sanitize -L '^native-state-mpi$' --no-tests=error --output-on-failure
+```
+
 GPU の CTest は実機が必要で、ホスト CI の合格は HIP/CUDA 実行の代わりになりません。
 既存の `run_integral_threading_cpu.py` は現在、実物の C アダプターと構築済みコアを使います。
 `OPENMX_CORE_LIBRARY=/absolute/path/to/libopenmx_core.so` で共有ライブラリを指定できます。
@@ -4284,6 +4297,36 @@ read/write/write-through/escape/addressの集合が一致します。この証�
 最終バイナリで全主要経路とSを再実行しています。実OpenMX全体の再入可能性、GEMMul8/MAGMA等の
 共有キャッシュ表、共通大域状態の除去は未完了です。AMD・A100/H100・Intel/Apple GPU実機、
 電極付きNEGF、全L/L2/L3、多GPU・物理多ノードは再検証していません。
+
+## 第47段階: ソルバー状態の寿命試験をGPU SDK不要のCIへ移行
+
+`a66314df` の状態所有を継続的に検査できるよう、ルートのアプリケーション用登録から
+共通の `cmake/OpenMXNativeStateTests.cmake` へ8件の状態・出力試験と2件の実MPI試験を移しました。
+`OPENMX_BUILD_APPLICATION=OFF` と `cmake -S core` の両方で登録され、アプリ付き構成の
+299件の名前・件数は維持します。`BUILD_TESTING=OFF` の構成にはPythonを要求しません。
+共有コアのコンパイラとフラグをfixtureに渡し、GCCとClangのsanitizer runtimeの混在を防ぎます。
+出力契約のfixtureはC++ドライバを使う場合も実入口をC11として構築します。
+固定アドレス実行形式の指定はLinuxに限定し、Darwinでは通常のPIEを使います。
+
+CIは全ホスト構成で8件の存在・重複・実fixture・ビルド内の実ライブラリを検査し、
+Ubuntu Serialの1構成ではOpen MPIを導入して4 rankのDC-LNO/Krylov試験も必須にします。
+CIのCPU数が4未満でも起動できるよう、そのジョブだけOpen MPIのoversubscribeを許可します。
+Open MPI 4系と[5系の環境変数](https://docs.open-mpi.org/en/v5.0.x/mca.html#converting-mapping-parameters)を設定します。
+Open MPI 5で2スロットに制限した4 rank試験も両ソルバー・両バックエンドが通りました。
+登録の6種類の不備を作った対照は、それぞれ意図した理由で失敗しました。
+既存のGPUエラー境界試験には、生成したMPIスタブをincludeする指定を追加しました。
+環境のIntel MPIヘッダーで偶然構築できていた依存を除き、GPU SDK・MPIヘッダーのない環境でも通します。
+
+ローカルのLinuxでは、GCC C++20 Serial 241件（実MPI2件を含む）、GCC C++20 OpenMP 239件、
+GCC C++23 ASan/UBSan 239件、独立コアのClang C++23 ASan/UBSan 239件が通りました。
+GPU検出・SDKコンパイラのコマンドを失敗するスタブに置き換え、include/libraryの環境変数も除いて検証しています。
+各ライブラリの依存物にもCUDA/HIP runtimeはありません。GCC/Clangの直接実行16組と、
+既存のGPU契約6スクリプトも通過しました。macOS実機での結果はこのローカル検証に含めません。
+アプリ付き構成も、MPIスタブのinclude修正後に299件すべて通過しました。
+
+アプリケーション・数値コアの実装、監査ベースライン、既存の本体・コアのバイナリは変更していません。
+大域状態の削減数は第46段階のままです。この変更のために科学計算・性能測定は再実行していません。
+試験・登録一覧・失敗対照・バイナリ照合は `build/native-state-host-ci-20261023/` に保存します。
 
 ## 次の移行単位と完了条件
 

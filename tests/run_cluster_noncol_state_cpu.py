@@ -8,10 +8,10 @@ OpenACC data transfers are not executed; physical tests cover numerical data.
 import argparse
 import os
 from pathlib import Path
-import shlex
 import subprocess
 import tempfile
-from run_cluster_col_state_cpu import function, pod, bounded_stack
+from native_state_test_support import bounded_stack, compiler_command
+from run_cluster_col_state_cpu import function, pod
 from native_resource_test_bridge import calculation_state_declaration
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -59,9 +59,8 @@ def main():
             generated += calculation_state_declaration(text, 'ClusterNonColState') + '\n' + declarations + '\n' + state_release + '\n' + '\n'.join(bodies)
             (folder / 'cluster_noncol_state.inc').write_text(generated)
             exe = folder / backend
-            command = shlex.split(os.environ.get('CXX', 'c++')) + [
-                '-std=c++17', '-O1', '-g', '-fsanitize=address,undefined', '-fno-sanitize-recover=all',
-                '-fno-pie', '-no-pie', '-Wno-unknown-pragmas', '-DOPENMX_GPU_HIP=' + str(int(backend == 'hip')),
+            command = compiler_command('c++') + [
+                '-Wno-unknown-pragmas', '-DOPENMX_GPU_HIP=' + str(int(backend == 'hip')),
                 '-I' + str(folder), '-I' + str(ROOT / 'source'), '-I' + str(ROOT / 'core/include'),
                 '-I' + str(ROOT / 'core/tests/fixtures/native_resources'), '-I' + str(ROOT / 'core/tests'),
                 str(ROOT / 'tests/cluster_noncol_state_harness.cpp'), str(ROOT / 'core/tests/allocation_faults.cpp'),

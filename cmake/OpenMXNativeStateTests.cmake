@@ -1,0 +1,55 @@
+# Exercise production C metadata/control/cleanup with the actual C++ owner.
+# SDK calls are modeled; MPI tests use real four-rank subcommunicators.
+function(openmx_add_native_state_tests)
+  find_package(Python3 3.8 REQUIRED COMPONENTS Interpreter)
+  get_filename_component(_repo "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/.." ABSOLUTE)
+  set(_compiler "\"${CMAKE_CXX_COMPILER}\"")
+  if(CMAKE_CXX_COMPILER_ARG1)
+    string(APPEND _compiler " ${CMAKE_CXX_COMPILER_ARG1}")
+  endif()
+  # Match the core's toolchain (including its sanitizer runtime/stdlib).
+  # The energy runner forces C11 only for its .c input, even with a C++ driver.
+  set(_environment "CXX=${_compiler}" "CC=${_compiler}"
+    "CXXFLAGS=${CMAKE_CXX_FLAGS}" "CFLAGS=${CMAKE_CXX_FLAGS}")
+
+  foreach(_solver dc dclno krylov)
+    add_test(NAME ${_solver}-calculation-state-lifecycle
+      COMMAND "${Python3_EXECUTABLE}" "${_repo}/tests/run_local_solver_state_cpu.py"
+        --kind "${_solver}" --core-library "$<TARGET_FILE:openmx_core>")
+  endforeach()
+  foreach(_band_kind col noncol)
+    add_test(NAME band-${_band_kind}-calculation-state-lifecycle
+      COMMAND "${Python3_EXECUTABLE}" "${_repo}/tests/run_band_state_cpu.py"
+        --kind "${_band_kind}" --core-library "$<TARGET_FILE:openmx_core>")
+  endforeach()
+  foreach(_cluster_kind col noncol)
+    add_test(NAME cluster-${_cluster_kind}-calculation-state-lifecycle
+      COMMAND "${Python3_EXECUTABLE}" "${_repo}/tests/run_cluster_${_cluster_kind}_state_cpu.py"
+        --core-library "$<TARGET_FILE:openmx_core>")
+  endforeach()
+  set_tests_properties(dc-calculation-state-lifecycle dclno-calculation-state-lifecycle
+    krylov-calculation-state-lifecycle band-col-calculation-state-lifecycle
+    band-noncol-calculation-state-lifecycle cluster-col-calculation-state-lifecycle
+    cluster-noncol-calculation-state-lifecycle PROPERTIES
+      ENVIRONMENT "${_environment}" LABELS "unit;gpu;core;native-state" TIMEOUT 180)
+
+  add_test(NAME solver-noncollinear-energy-output
+    COMMAND "${Python3_EXECUTABLE}" "${_repo}/tests/run_solver_energy_output_cpu.py"
+      --core-library "$<TARGET_FILE:openmx_core>" --negative-control)
+  set_tests_properties(solver-noncollinear-energy-output PROPERTIES
+    ENVIRONMENT "${_environment}" LABELS "unit;solver;core;native-state" TIMEOUT 180)
+
+  find_program(OPENMX_TEST_MPICXX NAMES mpicxx mpic++)
+  find_program(OPENMX_TEST_MPIEXEC NAMES mpirun mpiexec)
+  if(OPENMX_TEST_MPICXX AND OPENMX_TEST_MPIEXEC)
+    foreach(_solver dclno krylov)
+      add_test(NAME ${_solver}-calculation-state-mpi
+        COMMAND "${Python3_EXECUTABLE}" "${_repo}/tests/run_local_solver_state_cpu.py"
+          --kind "${_solver}" --core-library "$<TARGET_FILE:openmx_core>"
+          --mpi-cxx "${OPENMX_TEST_MPICXX}" --mpiexec "${OPENMX_TEST_MPIEXEC}")
+      set_tests_properties(${_solver}-calculation-state-mpi PROPERTIES
+        ENVIRONMENT "${_environment};OMPI_CXX=${CMAKE_CXX_COMPILER};MPICH_CXX=${CMAKE_CXX_COMPILER};I_MPI_CXX=${CMAKE_CXX_COMPILER}"
+        LABELS "unit;gpu;mpi;core;native-state-mpi" TIMEOUT 180 PROCESSORS 4)
+    endforeach()
+  endif()
+endfunction()

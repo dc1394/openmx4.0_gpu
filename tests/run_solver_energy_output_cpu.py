@@ -7,13 +7,12 @@ Production C entries, argument packets, callbacks and the C++ invocation owner
 run unchanged, including DOS mode and mixed-case SCF requests. No MPI/GPU runs.
 """
 import argparse
-import os
 from pathlib import Path
 import re
-import shlex
 import subprocess
 import tempfile
-from run_cluster_col_state_cpu import function, bounded_stack
+from run_cluster_col_state_cpu import function
+from native_state_test_support import bounded_stack, compiler_command
 
 ROOT = Path(__file__).resolve().parents[1]
 PREFIX = r'''
@@ -98,9 +97,8 @@ def main():
                 fixture = PREFIX + state + invocation + packet + signature + ';\n' + callback + '\n' + entry + '\n' + signature + KERNEL + DRIVER.replace('CALL', call)
                 source, exe = folder / 'check.c', folder / 'check'
                 source.write_text(fixture)
-                command = shlex.split(os.environ.get('CC', 'cc')) + ['-std=c11', '-O1', '-g',
-                    '-fsanitize=address,undefined', '-fno-sanitize-recover=all', '-fno-pie', '-no-pie',
-                    '-I' + str(ROOT / 'core/include'), str(source), str(library),
+                command = compiler_command('c') + [
+                    '-I' + str(ROOT / 'core/include'), '-x', 'c', str(source), '-x', 'none', str(library),
                     '-Wl,-rpath,' + str(library.parent), '-lm', '-o', str(exe)]
                 subprocess.run(command, check=True)
                 subprocess.run([str(exe)], check=True, preexec_fn=bounded_stack)
