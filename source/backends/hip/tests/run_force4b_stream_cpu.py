@@ -458,7 +458,7 @@ def make_harness(source: str) -> str:
     return "\n".join(parts)
 
 
-def build_and_run(harness: str, name: str, argv=None, link_core=False) -> int:
+def build_and_run(harness: str, name: str, argv=None, link_core=False, link_task_cpu=False) -> int:
     """Compile one harness with the requested compiler and run it."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--cc", default=os.environ.get("CC", "cc"))
@@ -476,9 +476,15 @@ def build_and_run(harness: str, name: str, argv=None, link_core=False) -> int:
         source = Path(directory) / f"{name}.c"
         binary = Path(directory) / name
         source.write_text(force_gpu_fixture.explicit_fixture_contexts(harness))
+        task_objects=[]
+        if link_task_cpu:
+            from task_worker_test_bridge import compile_task_cpu_object
+            (Path(directory)/"mpi.h").write_text('typedef int MPI_Comm;\n#define MPI_COMM_NULL (-1)\n')
+            sanitizer=[flag for flag in flags if flag.startswith(('-fsanitize=','-fno-sanitize','-fno-pie','-no-pie'))]
+            task_objects=[str(compile_task_cpu_object(directory,sanitizer,check=True)),"-lstdc++"]
         subprocess.run(
             [*compiler, *flags, "-std=c11", "-Wall", "-Wno-unknown-pragmas", "-Wno-unused-function", "-Wno-unused-variable",
-             "-I", str(ROOT / "source"), str(source),
+             "-I", str(ROOT / "source"), "-I", directory, str(source), *task_objects,
              str(ROOT / "source/openmx_precision.c"), str(ROOT / "source/openmx_env.c"), *(force_gpu_fixture.core_library_flags() if link_core else []), "-lm", "-o", str(binary)],
             check=True,
         )

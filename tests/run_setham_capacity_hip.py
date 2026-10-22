@@ -91,7 +91,7 @@ int main(void) {
       printf("BENCH capacity-Hamiltonian pairs=%d points=%d spins=%d median_ms=%.6f\n",N,lengths[shape],spins,times[5]);
     }
     assert(openmx_test_task_phase(work,OPENMX_GPU_WORKER_RELEASE));openmx_test_task_destroy(work);
-    task_cpu(&task);verify(output,expected,count);
+    openmx_gpu_task_cpu(&task);verify(output,expected,count);
     free(expected);free(output);free(weights);free(b);free(a);
   }
   puts("PASS: actual HIP capacity Hamiltonian and CPU fallback, ragged/empty/padded/spin cases with a long-double oracle");
@@ -125,12 +125,17 @@ def main():
             "-I"+str(args.rocm / "include"),*mpi_flags,
             "-c",str(ROOT / "tests/gpu_task_native_probe.cpp"),"-o",str(probe)],
             env=env,check=True,timeout=120)
+        cpu=folder / "task_cpu.o"
+        subprocess.run([str(args.rocm / "llvm/bin/clang++"),"-std=c++17","-O3",
+            "-I"+str(ROOT / "source"),*mpi_flags,
+            "-c",str(ROOT / "source/openmx_gpu_task_cpu.cpp"),"-o",str(cpu)],
+            env=env,check=True,timeout=120)
         command = compiler + ["-x", "c", "-O3", "-std=c11", "-ffp-contract=off", "-fopenmp",
             "--offload-arch=" + args.arch, "-D__HIP_PLATFORM_AMD__",
             "-ffunction-sections", "-fdata-sections", "-I" + str(ROOT / "source"), "-I" + str(ROOT / "tests"),
             "-I" + str(ROOT / "source/backends/hip/include"),
             "-I" + str(args.rocm / "include"), *mpi_flags, str(source),
-            "-L" + str(args.rocm / "lib"), "-x", "none", str(probe), "-lstdc++", "-lamdhip64", "-lm",
+            "-L" + str(args.rocm / "lib"), "-x", "none", str(probe), str(cpu), "-lstdc++", "-lamdhip64", "-lm",
             "-Wl,--gc-sections,-z,nostart-stop-gc", "-o", str(folder / "check")]
         subprocess.run(command, env=env, check=True, timeout=120)
         subprocess.run([str(folder / "check")], env=env, check=True, timeout=120)

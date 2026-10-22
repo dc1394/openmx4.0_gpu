@@ -81,6 +81,7 @@ int main(void){
 '''
 with tempfile.TemporaryDirectory(prefix='openmx-dm-capacity-') as folder:
  p=Path(folder);(p/'mpi.h').write_text('''#pragma once
+#include <stdlib.h>
 typedef int MPI_Comm;
 #define MPI_COMM_NULL (-1)
 #define MPI_IN_PLACE ((void*)1)

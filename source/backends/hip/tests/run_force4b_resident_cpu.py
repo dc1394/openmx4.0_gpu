@@ -307,11 +307,8 @@ def make_harness(source: str) -> str:
                           "static size_t free_override, last_wait_bytes;")
     stubs = stubs.replace("static void* Force_gpu_arena_try(size_t n)\n{",
                           "static void* Force_gpu_arena_try(size_t n)\n{\n    last_wait_bytes = n;")
-    task_source = (common.ROOT / "source/openmx_gpu_task_layout.h").read_text() + "\n" + (common.ROOT / "source/openmx_gpu_task.c").read_text()
-    task_api = (common.ROOT / "source/openmx_gpu_task.h").read_text().replace("#include <mpi.h>", "")
-    cpu_task = task_api + "\n".join(common.extract_function(task_source,name) for name in
-        ("task_add","task_view_bytes","task_bytes","task_copy_view","task_cpu_bytes","task_cpu"))
-    cpu_task += "\nint openmx_gpu_task_execute(MPI_Comm c,OpenMXGpuTask *t,int e,const char *l) {(void)c;(void)e;(void)l;task_cpu(t);return 0;}\n"
+    cpu_task = '#include "openmx_gpu_task_cpu.h"\n'
+    cpu_task += "\nint openmx_gpu_task_execute(MPI_Comm c,OpenMXGpuTask *t,int e,const char *l) {(void)c;(void)e;(void)l;openmx_gpu_task_cpu(t);return 0;}\n"
     parts = [stubs, cpu_task, case1.GLOBALS, RESIDENT_STUBS,
              common.extract_struct(source, "Force4BGpuItem"),
              common.extract_struct(source, "Force4BGpuContext"),
@@ -367,7 +364,7 @@ def make_harness(source: str) -> str:
 def main() -> int:
     try:
         harness = make_harness((common.ROOT / "source" / "Force.c").read_text())
-        return common.build_and_run(harness, "force4b-resident-cpu", link_core=True)
+        return common.build_and_run(harness, "force4b-resident-cpu", link_core=True, link_task_cpu=True)
     except (OSError, ValueError, subprocess.CalledProcessError) as error:
         print(f"Force4B resident CPU test failed: {error}", file=sys.stderr)
         return 1

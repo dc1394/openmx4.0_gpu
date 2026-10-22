@@ -18,6 +18,17 @@ def compile_vector_test(command, **kwargs):
     return _compile_worker_test(command, 'openmx_gpu_vector_worker', **kwargs)
 
 
+def compile_task_cpu_object(folder, flags=(), **kwargs):
+    """Build SDK-free production CPU recovery; callers supply MPI headers."""
+    folder=Path(folder)
+    root=Path(__file__).resolve().parents[1]
+    output=folder/'task_cpu_test.o'
+    subprocess.run(shlex.split(os.environ.get('CXX','c++'))+[
+        '-std=c++17','-O1','-g',*flags,'-I'+str(folder),'-I'+str(root/'source'),
+        '-c',str(root/'source/openmx_gpu_task_cpu.cpp'),'-o',str(output)],**kwargs)
+    return output
+
+
 def _compile_worker_test(command, worker, **kwargs):
     source=next(Path(arg) for arg in command if str(arg).endswith('.c'))
     folder=source.parent
@@ -66,4 +77,6 @@ inline int OpenMXGpuMemcpy(void *out,const void *in,size_t n,int kind){return op
     link=cxx+[str(arg) for arg in command[len(cc):] if not str(arg).startswith('-std=')]
     link[link.index(str(source))]=str(c_object)
     link+=[str(worker_object),str(env_archive)]
+    if worker=='openmx_gpu_task_worker':
+        link.append(str(compile_task_cpu_object(folder,sanitizer,**kwargs)))
     subprocess.run(link,**kwargs)

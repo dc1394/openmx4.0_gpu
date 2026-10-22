@@ -1065,7 +1065,9 @@
     "openmx_host_buffer.hpp",
     "openmx_gpu_vector.h",
     "openmx_gpu_vector_worker.h",
-    "openmx_gpu_vector_worker.cpp"
+    "openmx_gpu_vector_worker.cpp",
+    "openmx_gpu_task_cpu.h",
+    "openmx_gpu_task_cpu.cpp"
   ],
   "integrated_overrides": {
     "gemmul8_bridge.cu": "src/gemmul8_bridge.cu",

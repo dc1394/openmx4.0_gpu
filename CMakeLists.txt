@@ -128,6 +128,9 @@ install(CODE "${_openmx_install_program}")
 install(TARGETS openmx_core LIBRARY DESTINATION lib)
 
 if(BUILD_TESTING)
+  add_test(NAME gpu-task-cpu-resource-lifecycle
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_gpu_task_cpu_memory.py")
+  set_tests_properties(gpu-task-cpu-resource-lifecycle PROPERTIES LABELS "unit;gpu" TIMEOUT 180)
   add_test(NAME gpu-vector-capacity-recovery
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_gpu_vector_cpu.py")
   set_tests_properties(gpu-vector-capacity-recovery PROPERTIES LABELS "unit;gpu" TIMEOUT 120)

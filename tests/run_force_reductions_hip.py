@@ -90,7 +90,7 @@ int main(void) {
       }
       assert(openmx_test_task_phase(work,OPENMX_GPU_WORKER_RELEASE));openmx_test_task_destroy(work);
       for(int threads=1;threads<=4;threads*=2) {
-        omp_set_num_threads(threads);task_cpu(&task);
+        omp_set_num_threads(threads);openmx_gpu_task_cpu(&task);
         for(int c=0;c<3;c++) {
           verify(output[c],expected[c],atoms);
           for(size_t a=0;a<atoms;a++)assert(output[c][a]==ordered[c][a]);
@@ -98,7 +98,7 @@ int main(void) {
       }
       if(atoms==17 && lengths[shape]==65539) {
         double times[11];
-        for(int r=0;r<11;r++){double start=omp_get_wtime();task_cpu(&task);times[r]=1000*(omp_get_wtime()-start);}
+        for(int r=0;r<11;r++){double start=omp_get_wtime();openmx_gpu_task_cpu(&task);times[r]=1000*(omp_get_wtime()-start);}
         qsort(times,11,sizeof(double),compare_double);
         printf("BENCH atom-force-cpu threads=4 atoms=%zu terms=%zu median_ms=%.6f\n",atoms,total,times[5]);
       }
@@ -139,11 +139,16 @@ def main():
             "-I"+str(args.rocm / "include"),*mpi_flags,
             "-c",str(ROOT / "tests/gpu_task_native_probe.cpp"),"-o",str(probe)],
             env=env,check=True,timeout=120)
+        cpu=folder / "task_cpu.o"
+        subprocess.run([str(args.rocm / "llvm/bin/clang++"),"-std=c++17","-O3",
+            "-I"+str(ROOT / "source"),*mpi_flags,
+            "-c",str(ROOT / "source/openmx_gpu_task_cpu.cpp"),"-o",str(cpu)],
+            env=env,check=True,timeout=120)
         command = compiler + ["-x", "c", "-O3", "-std=c11", "-ffp-contract=off", "-fopenmp",
             "--offload-arch=" + args.arch, "-D__HIP_PLATFORM_AMD__", "-ffunction-sections", "-fdata-sections",
             "-I" + str(ROOT / "source"), "-I" + str(ROOT / "tests"), "-I" + str(ROOT / "source/backends/hip/include"),
             "-I" + str(args.rocm / "include"), *mpi_flags, str(source), "-L" + str(args.rocm / "lib"),
-            "-x", "none", str(probe), "-lstdc++", "-lamdhip64", "-lm", "-Wl,--gc-sections,-z,nostart-stop-gc", "-o", str(folder / "check")]
+            "-x", "none", str(probe), str(cpu), "-lstdc++", "-lamdhip64", "-lm", "-Wl,--gc-sections,-z,nostart-stop-gc", "-o", str(folder / "check")]
         subprocess.run(command, env=env, check=True, timeout=120)
         subprocess.run([str(folder / "check")], env=env, check=True, timeout=120)
 
