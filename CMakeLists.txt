@@ -154,6 +154,9 @@ if(BUILD_TESTING)
   add_test(NAME force-hnl-gpu-archives COMMAND "${Python3_EXECUTABLE}"
     "${CMAKE_SOURCE_DIR}/tests/run_force_hnl_gpu_cpu.py" "$<TARGET_FILE:openmx_core>")
   set_tests_properties(force-hnl-gpu-archives PROPERTIES LABELS "unit;force" TIMEOUT 180)
+  add_test(NAME force-hnl-gpu-batches COMMAND "${Python3_EXECUTABLE}"
+    "${CMAKE_SOURCE_DIR}/tests/run_force_hnl_batch_cpu.py" "$<TARGET_FILE:openmx_core>")
+  set_tests_properties(force-hnl-gpu-batches PROPERTIES LABELS "unit;force" TIMEOUT 180)
   add_test(NAME force-vna-gpu-resources COMMAND "${Python3_EXECUTABLE}"
     "${CMAKE_SOURCE_DIR}/tests/run_force_vna_gpu_cpu.py" "$<TARGET_FILE:openmx_core>")
   set_tests_properties(force-vna-gpu-resources PROPERTIES LABELS "unit;force" TIMEOUT 180)

@@ -34,13 +34,8 @@ typedef struct {
     OpenMXNativeResources *resources;
 } Force4BGpuContext;
 
-typedef struct {
-    size_t cdm_off;
-    int k_off;
-    int k_n;
-    int ian;
-    int jan;
-} Force4BGpuItem;
+#include "openmx_core_force_hnl_batch.h"
+typedef OpenMXForcePairItem Force4BGpuItem;
 
 typedef struct {
     int nitems;

@@ -36,3 +36,9 @@ void operator delete(void* pointer) noexcept
   std::free(pointer);
 }
 void operator delete(void* pointer, std::size_t) noexcept { ::operator delete(pointer); }
+// Array allocation has its own interceptor under ASan. Route it explicitly
+// through the same counter so overwrite buffers receive the same fault/leak
+// coverage as vector storage in every compiler/sanitizer configuration.
+void* operator new[](std::size_t bytes) { return ::operator new(bytes); }
+void operator delete[](void* pointer) noexcept { ::operator delete(pointer); }
+void operator delete[](void* pointer, std::size_t) noexcept { ::operator delete(pointer); }

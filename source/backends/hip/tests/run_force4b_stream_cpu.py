@@ -59,6 +59,8 @@ def extract_function(source: str, name: str) -> str:
 
 
 def extract_struct(source: str, name: str) -> str:
+    if name == "Force4BGpuItem":
+        return '#include "openmx_core_force_hnl_batch.h"\ntypedef OpenMXForcePairItem Force4BGpuItem;\n'
     match = re.search(r"typedef struct\s*\{[^{}]*\}\s*" + re.escape(name) + r";", source)
     if match is None and name.startswith("Force4B"):
         shared=(ROOT / "source/openmx_force_gpu_resources.h").read_text()

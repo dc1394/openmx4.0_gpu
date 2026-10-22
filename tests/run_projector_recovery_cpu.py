@@ -20,6 +20,7 @@ def function(s,name):
  while depth:depth+=(s[b]=='{')-(s[b]=='}');b+=1
  return s[a:b]
 def typedef(s,name):
+ if name=='Force4BGpuItem':return extract_struct(s,name)
  if name=='ForceHNLGpuContext':
   header=(root/'source/openmx_force_hnl_gpu.h').read_text()
   a=header.index('struct ForceHNLGpuContext {');b=header.index('};',a)+2

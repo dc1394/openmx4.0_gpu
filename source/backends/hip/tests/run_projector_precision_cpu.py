@@ -30,7 +30,7 @@ from run_force4b_stream_cpu import extract_function
 
 force = (ROOT / "source/Force.c").read_text()
 vna = (ROOT / "source/Set_ProExpn_VNA.c").read_text()
-item = re.search(r"typedef struct \{[^{}]+\} Force4BGpuItem;", force).group()
+item = '#include "openmx_core_force_hnl_batch.h"\ntypedef OpenMXForcePairItem Force4BGpuItem;'
 functions = "\n".join(
     extract_function(force,name+"_Single").replace(name+"_Single",name)
     for name in ("Force4B_GpuCase1Kernel", "Force4B_GpuCase2Kernel")
