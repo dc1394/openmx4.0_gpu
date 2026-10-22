@@ -1429,20 +1429,6 @@ extern double **CWF_Energy;
 
 /*** added by Ohwaki ***/
 
-/*******************************************************
-   double *****OLP_p;
-    overlap matrix elements of basis orbitals
-    size: OLP_p[4]
-               [Matomnum+MatomnumF+MatomnumS+1]
-               [FNAN[Gc_AN]+1]
-               [Spe_Total_NO[Cwan]]
-               [Spe_Total_NO[Hwan]]
-   allocation: allocate in truncation.c
-   free:       in truncation.c
-               and call as Free_Arrays(0) in openmx.c
-*******************************************************/
-extern double *****OLP_p;
-
 /*** added by Ohwaki (end) ***/
 
 /*******************************************************
@@ -2155,19 +2141,6 @@ extern int *VPS_j_dependency;
 *******************************************************/
 extern double ***Krylov_U;
 
-/*******************************************************
- double ***First_Moment_EC
- double ***Second_Moment_EC
-  First moments of projected density of states used 
-  in the embedding cluster method
-  size: First_Moment_EC[SpinP_switch+1]
-                       [atomnum+1]
-                       [List_YOUSO[7]]
-  allocation: call as Allocate_Arrays(1) in Input_std.c
-  free:       call as Free_Arrays(0) in openmx.c
-*******************************************************/
-extern double ***First_Moment_EC;
-extern double ***Second_Moment_EC;
 
 /*******************************************************
  double ****EC_matrix
@@ -2351,10 +2324,8 @@ extern double CoarseGL_Abscissae[CoarseGL_Mesh+2],CoarseGL_Weight[CoarseGL_Mesh+
 extern char Atom_Symbol[YOUSO14][4];
 extern double Atom_Weight[YOUSO14];
 extern double tv[4][4],rtv[4][4],tv_velocity[4][4];
-extern double init_tv[4][4];
 extern double Left_tv[4][4],Right_tv[4][4];
 extern double gtv[4][4],rgtv[4][4],length_gtv[4];
-extern double gtv_FE[4][4],rgtv_FE[4][4];
 extern double Stress_Tensor[9];
 extern double MD_applied_pressure,UpV;
 extern int MD_applied_pressure_flag[3];
@@ -2365,24 +2336,24 @@ extern double Grid_Origin[4];
 extern double dipole_moment[4][4];
 extern double TempPara[30][3],PrePara[30][3];
 extern double MD_TimeStep,ChemP,Beta;
-extern double CN_Error,E_Temp,Original_E_Temp,FCR,BCR,LNO_Occ_Cutoff,orderN_LNO_Buffer;
-extern double GP,GT,T,Weight,Cell_Volume,Uele,Uele0,Uele1,Ukc,Uvdw,Uch,UH_dc,Uxc0_dc,Uxc1_dc;
+extern double CN_Error,E_Temp,Original_E_Temp,BCR,LNO_Occ_Cutoff,orderN_LNO_Buffer;
+extern double GP,GT,T,Weight,Cell_Volume,Uele,Ukc,Uch,UH_dc,Uxc0_dc,Uxc1_dc;
 extern double Uele_OS0,Uele_OS1,Uele_IS0,Uele_IS1,Uxc0,Uxc1;
 extern double UH0,UH1,UH2,Ucore,Uhub,Ucs,Uef,Ukin,Unl,Una,Uzs,Uzo,UvdW;
-extern double Ucc,Ucoh,Uatom,Udc,Utot,Uxc,Given_Total_Charge,Calc_Total_Charge;
+extern double Ucoh,Uatom,Udc,Utot,Uxc,Given_Total_Charge;
 extern double Min_Mixing_weight,Max_Mixing_weight,Max_Mixing_weight2,Mixing_weight;
 extern double Kerker_factor,Criterion_MP_Special_Kpt;
-extern double Gdiis_Mixing,system_charge,VNA_reduce_ratio,Total_Num_Electrons;
+extern double system_charge,Total_Num_Electrons;
 extern double Total_SpinS,Total_SpinSx,Total_SpinSy,Total_SpinSz;
 extern double Total_OrbitalMoment,Total_OrbitalMomentx;
 extern double Total_OrbitalMomenty,Total_OrbitalMomentz;
 extern double Total_SpinAngle0,Total_SpinAngle1;
 extern double Total_OrbitalMomentAngle0,Total_OrbitalMomentAngle1;
-extern double ScaleSize,Pin[4][4],Ptot[4][4];
+extern double ScaleSize;
 extern double LastBoxCenterX,LastBoxCenterY,LastBoxCenterZ;
-extern double Vol,Vol1,Vol2,Vol3,W;
-extern double SCF_Criterion,NormRD[5],BestNormRD,History_Uele[5];
-extern double PAO_Nkmax,Grid_Ecut,Finite_Elements_Ecut,rcut_FEB;
+extern double W;
+extern double SCF_Criterion,NormRD[5],History_Uele[5];
+extern double PAO_Nkmax,Grid_Ecut;
 extern double orbitalOpt_criterion,MD_Opt_criterion,orbitalOpt_SD_step;
 extern double MD_EvsLattice_Step;
 extern double Restart_Spin_Angle_Theta,Restart_Spin_Angle_Phi;
@@ -2407,7 +2378,7 @@ extern int num_AtGr,*AtomGr,*atnum_AtGr;
 extern double *Temp_AtGr;
 
 /* for Langevin heat-bath (added by T.Ohwaki) */
-extern double FricFac,RandomF;
+extern double FricFac;
 
 
 /* for generalized Bloch Theorem (added by T. B. Prayitno and supervised by Prof. F. Ishii) */
@@ -2430,15 +2401,14 @@ extern int CntOrb_fileout,Num_CntOrb_Atoms;
 extern int num_non_eq_kpt,way_of_kpoint;
 extern int pop_anal_aow_flag,scf_dclno_threading;
 extern int remake_headfile,OneD_Grid,Ngrid1,Ngrid2,Ngrid3;
-extern int Ngrid1_FE,Ngrid2_FE,Ngrid3_FE;
 extern int TNumGrid,Kspace_grid1,Kspace_grid2,Kspace_grid3;
 extern int DFTSCF_loop,Ngrid_NormK,SCF_RENZOKU;
 extern int Mixing_switch,MD_IterNumber,MD_Current_Iter,Av_num,T_switch,IS_switch;
 extern int MD_Init_Velocity,Correct_Position_flag;
 extern int rlmax_IS,XC_switch,PCC_switch,SpinP_switch,SpinP_switch_RestartFiles,SpeciesNum,real_SpeciesNum;
-extern int Hub_U_switch,Hub_U_occupation,Hub_U_Enhance_OrbPol;  /* --- added by MJ */
+extern int Hub_U_switch,Hub_U_occupation;  /* --- added by MJ */
 extern int SO_switch,MPI_tunedgrid_flag,Voronoi_Charge_flag,Voronoi_OrbM_flag;
-extern int Constraint_NCS_switch,openmp_threads_eq_procs,openmp_threads_num;
+extern int Constraint_NCS_switch,openmp_threads_num;
 extern int Zeeman_NCS_switch,Zeeman_NCO_switch,Polarization_ABC_flag,Calc_ABC_flag,global_T_knum;
 extern int atomnum;
 //int Catomnum,Latomnum,Ratomnum;
@@ -2485,7 +2455,7 @@ extern int orbitalOpt_Force_Skip,Initial_Hessian_flag;
 extern int NOHS_L,NOHS_C,ProExpn_VNA,BufferL_ProVNA;
 extern int M_GDIIS_HISTORY,OptStartDIIS,OptEveryDIIS;
 extern int Extrapolated_Charge_History;
-extern int orderN_Kgrid,FT_files_save,FT_files_read;
+extern int FT_files_save,FT_files_read;
 extern int NEB_Num_Images,neb_type_switch;
 extern double NEB_Spring_Const;
 extern int Min_Grid_Index[4],Max_Grid_Index[4];
@@ -2499,11 +2469,10 @@ extern int empty_states_orbitals_sidx,empty_states_orbitals_num;
 extern double **CompTime;
 
 extern char filename[YOUSO10],filepath[YOUSO10],command[YOUSO10];
-extern char ref_diff_charge_filename[YOUSO10];
 extern char restart_filename[YOUSO10];
 extern char DFT_DATA_PATH[YOUSO10];
-extern double bias_weight,Past_Utot[10],Past_Norm[10];
-extern double Max_Force,GridVol,W_OrthoNorm;
+extern double Past_Utot[10],Past_Norm[10];
+extern double Max_Force,GridVol;
 extern double SD_scaling,SD_scaling_user;
 extern double Constraint_NCS_V;
 extern double Mag_Field_Orbital,Mag_Field_Spin;
@@ -2659,7 +2628,6 @@ extern double CWF_disentangling_smearing_bound;
 
 /* For interface with Wannier90 */
 extern int Wannier90_fileout;
-extern int Wannier90_CWF_fileout;
 
 /*-------------------------------------------------------------Wannier*/
 
@@ -3161,7 +3129,7 @@ extern int NHO_fileout,NBO_fileout;
 extern int NBO_SmallCell_Switch;
 extern double NAO_Occ_or_Ryd;
 extern double **NBO_CDMn_tmp, **NBO_OLPn_tmp, **NBO_Fock_tmp, ***NAO_vec_tmp;
-extern double **NAO_partial_pop, **NAO_ene_level, ***NAO_coefficient;
+extern double **NAO_partial_pop,**NAO_ene_level;
 extern double ****NHOs_Coef,****NBOs_Coef_b,****NBOs_Coef_a;
 extern double NBO_SmallCellFrac[4][3];
 
@@ -3170,11 +3138,8 @@ extern double **NAO_kpoint;
 
 extern int *rlmax_EC_NAO, *rlmax_EC2_NAO, *EKC_core_size_NAO;
 extern int *F_Snd_Num_NAO, *S_Snd_Num_NAO, *F_Rcv_Num_NAO, *S_Rcv_Num_NAO;
-extern int **Snd_MAN_NAO, **Snd_GAN_NAO, **Rcv_GAN_NAO;
 extern int *F_TopMAN_NAO, *S_TopMAN_NAO;
 extern int *F_G2M_NAO, *S_G2M_NAO;
-extern int *F_M2G_NAO, *S_M2G_NAO;
-extern int MatomnumF_NAO, MatomnumS_NAO;
 extern int *Snd_HFS_Size_NAO, *Rcv_HFS_Size_NAO;
 
 void Calc_NAO_Cluster(double *****CDM, const OpenMXElectronicViews *electronic);
@@ -4727,10 +4692,7 @@ extern int *orderN_FNAN,*orderN_SNAN;
 
 extern int Matomnum,MatomnumF,MatomnumS,Max_Matomnum;
 extern int MSpeciesNum,Num_Procs,Num_Procs2;
-extern int Num_Cells0,My_NumGrid1,FNAN2_Grid;
-extern int Max_Num_Rcv_FNAN2_Grid;
-extern int Max_Num_Snd_FNAN2_Grid;
-extern int My_NGrid1_Poisson,My_NGrid2_Poisson;
+extern int Num_Cells0;
 extern int My_NumGridB_AB,My_NumGridB_CB,My_NumGridB_CA;
 extern int My_Max_NumGridB,My_NumGridC,My_NumGridD;
 extern int Max_Num_Snd_Grid_B2C,Max_Num_Rcv_Grid_B2C;
@@ -4764,7 +4726,6 @@ extern double Arti_Grad;
 /* vdW  DFT-D added by okuno*/
 extern int dftD_switch;     /* okuno */
 extern int unit_dftD;       /* unit Au or Ang */
-extern int maxn_dftD;       /* the maximum number of vectors dist2, disR */
 extern double rcut_dftD;    /* cut-off parameter for DFT-D */
 extern double beta_dftD;    /* damping factor for DFT-D */
 extern double scal6_dftD;   /* global scaling  factor  */
@@ -4823,37 +4784,37 @@ extern int descS[9],descH[9],descC[9];
 /* for 2*n */
 extern int nblk2,np_rows2,np_cols2,na_rows2,na_cols2,na_rows_max2,na_cols_max2;
 extern int my_prow2,my_pcol2;
-extern int bhandle1_2,bhandle2_2,ictxt1_2,ictxt2_2;
+extern int bhandle1_2,ictxt1_2;
 extern int descS2[9],descH2[9],descC2[9];
 
 /* CWF1: TNum_CWFs x TNum_CWFs used in Cluster_DFT_Col_CWF.c and Band_DFT_Col_CWF.c */
 extern int nblk_CWF1,np_rows_CWF1,np_cols_CWF1,na_rows_CWF1,na_cols_CWF1,na_rows_max_CWF1,na_cols_max_CWF1;
 extern int my_prow_CWF1,my_pcol_CWF1;
-extern int bhandle1_CWF1,bhandle2_CWF1,ictxt1_CWF1,ictxt2_CWF1;
+extern int bhandle1_CWF1,ictxt1_CWF1;
 extern int desc_CWF1[9];
 
 /* CWF2: n x TNum_CWFs used in Cluster_DFT_Col_CWF.c and Band_DFT_Col_CWF.c */
 extern int nblk_CWF2,np_rows_CWF2,np_cols_CWF2,na_rows_CWF2,na_cols_CWF2,na_rows_max_CWF2,na_cols_max_CWF2;
 extern int my_prow_CWF2,my_pcol_CWF2;
-extern int bhandle1_CWF2,bhandle2_CWF2,ictxt1_CWF2,ictxt2_CWF2;
+extern int bhandle1_CWF2,ictxt1_CWF2;
 extern int desc_CWF2[9];
 
 /* CWF3: MaxN x TNum_CWFs used in Cluster_DFT_Col_CWF.c and Band_DFT_Col_CWF.c */
 extern int nblk_CWF3,np_rows_CWF3,np_cols_CWF3,na_rows_CWF3,na_cols_CWF3,na_rows_max_CWF3,na_cols_max_CWF3;
 extern int my_prow_CWF3,my_pcol_CWF3;
-extern int bhandle1_CWF3,bhandle2_CWF3,ictxt1_CWF3,ictxt2_CWF3;
+extern int bhandle1_CWF3,ictxt1_CWF3;
 extern int desc_CWF3[9];
 
 /* CWF4: n x MaxN used in Cluster_DFT_Col_CWF.c and Band_DFT_Col_CWF.c */
 extern int nblk_CWF4,np_rows_CWF4,np_cols_CWF4,na_rows_CWF4,na_cols_CWF4,na_rows_max_CWF4,na_cols_max_CWF4;
 extern int my_prow_CWF4,my_pcol_CWF4;
-extern int bhandle1_CWF4,bhandle2_CWF4,ictxt1_CWF4,ictxt2_CWF4;
+extern int bhandle1_CWF4,ictxt1_CWF4;
 extern int desc_CWF4[9];
 
 /* CWF5: TNum_CWFs x TNum_CWFs used for the calculation of band dispersion in Band_DFT_Col_CWF.c */
 extern int nblk_CWF5,np_rows_CWF5,np_cols_CWF5,na_rows_CWF5,na_cols_CWF5,na_rows_max_CWF5,na_cols_max_CWF5;
 extern int my_prow_CWF5,my_pcol_CWF5;
-extern int bhandle1_CWF5,bhandle2_CWF5,ictxt1_CWF5,ictxt2_CWF5;
+extern int bhandle1_CWF5,ictxt1_CWF5;
 extern int desc_CWF5[9];
 
 /* scf_convergence_flag */
