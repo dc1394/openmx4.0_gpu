@@ -72,8 +72,11 @@ static size_t ClusterNonCol_CheckedMulCount(size_t a, size_t b, const char *labe
     return a * b;
 }
 
-static void *ClusterNonCol_MallocArray(size_t count, size_t elem, const char *label)
+typedef struct { void *resources; } ClusterNonColState;
+static void openmx_core_native_free(void *owner, void *pointer) { (void)owner; free(pointer); }
+static void *ClusterNonCol_MallocArray(ClusterNonColState *state, size_t count, size_t elem, const char *label)
 {
+    (void)state;
     void *ptr = malloc(ClusterNonCol_CheckedMulCount(count, elem, label) + 1);
     CHECK(ptr != NULL);
     return ptr;
@@ -119,7 +122,7 @@ static double run(int n, int maxn, int ld, int rc)
 
     device_rc = rc;
     device_calls = 0;
-    ClusterNonCol_BackTransformHostStaged(n, n2, maxn, V, S, out, ld, NULL);
+    ClusterNonCol_BackTransformHostStaged(&(ClusterNonColState){0}, n, n2, maxn, V, S, out, ld, NULL);
     CHECK(device_calls == 1);
 
     for (int i = 0; i < n2; i++) {

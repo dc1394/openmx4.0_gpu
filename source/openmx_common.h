@@ -5,6 +5,7 @@
 #include "openmx_gpu_error.h"
 #include "openmx_core.h"
 #include "openmx_cluster_col_state.h"
+#include "openmx_cluster_noncol_state.h"
 #include "openmx_core_grid.h"
 #include "openmx_core_electronic.h"
 #include "openmx_core_local_basis.h"
@@ -2685,9 +2686,9 @@ double Set_dOrbitals_Grid_xyz(const OpenMXAtomicViews *atomic, int Cnt_kind,int 
 
 double Set_Orbitals_Grid(const OpenMXAtomicViews *atomic, int Cnt_kind, const OpenMXLocalBasisViews *local_basis);
 double Set_Aden_Grid(const OpenMXAtomicViews *atomic);
-double Set_Density_Grid(OpenMXGridWorkspace *grid, const OpenMXAtomicViews *atomic, int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, double **Density_Grid_B0, const OpenMXLocalBasisViews *local_basis);
+double Set_Density_Grid(OpenMXGridWorkspace *grid, const OpenMXDensityCacheHooks *cache_hooks, const OpenMXAtomicViews *atomic, int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, double **Density_Grid_B0, const OpenMXLocalBasisViews *local_basis);
 #if !OPENMX_GPU_HIP
-int Set_Density_Grid_GPU_Service(int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM,
+int Set_Density_Grid_GPU_Service(const OpenMXDensityCacheHooks *cache_hooks, int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM,
                                  double **Density_Grid_B0, double *elapsed);
 void Set_Density_Grid_GPU_Invalidate(void);
 #endif
@@ -2960,11 +2961,9 @@ void Set_Hamiltonian_OTF_Release(void);
 void Set_Orbitals_Grid_OTF_Release(void);
 void Set_Hamiltonian_OnTheFly_EndCycle(void);
 void Set_Density_Grid_GPU_EndCycle(void);
-int Set_Density_Grid_GPU_Service(int Cnt_kind, int Calc_CntOrbital_ON,
+int Set_Density_Grid_GPU_Service(const OpenMXDensityCacheHooks *cache_hooks, int Cnt_kind, int Calc_CntOrbital_ON,
                                  double *****CDM, double **Density_Grid_B0,
                                  double *elapsed);
-void Cluster_DFT_NonCol_DemoteGpuSolverCachedEVec(void);
-void Cluster_DFT_NonCol_Release_GPU_Solver(void);
 #else
 void Set_Hamiltonian_Set_OpenACC_Rank_Selected(int selected);
 int Set_Hamiltonian_OpenACC_Rank_Is_Selected(void);
@@ -2978,7 +2977,6 @@ void Krylov_Release_GPU_KUCache(void);
 /* Release geometry-dependent GPU caches between inputs in a test suite. */
 void Band_DFT_Col_Release_GPU_Caches(void);
 void Band_DFT_NonCol_Release_GPU_Caches(void);
-void Cluster_DFT_NonCol_Release_GPU_Caches(void);
 void Divide_Conquer_Release_GPU_Caches(void);
 void Divide_Conquer_LNO_Release_GPU_Caches(void);
 void Krylov_Release_GPU_Caches(void);
@@ -3030,7 +3028,6 @@ size_t Set_Hamiltonian_MatrixElements_TotalH(int Cnt_kind, int myid);
 int Set_Hamiltonian_OnTheFly_Density(const OpenMXAtomicViews *atomic, int Cnt_kind, int spin_count, const double *dm, size_t dm_count,
                                      double *tmpden, size_t output_count, const unsigned int *atom_out_base,
                                      int myid);
-void Cluster_DFT_NonCol_Release_GPU_Solver(void);
 void Mixing_H_Release_GPU(void);
 int Set_Density_Grid_GPU_Local_Prepare(const OpenMXAtomicViews *atomic, int Cnt_kind, int Calc_CntOrbital_ON);
 int Set_Density_Grid_GPU_Local_KeepDistributed(void);
@@ -3224,7 +3221,7 @@ double Cluster_DFT_Col_LNO(
                    double *Work1, const OpenMXLocalBasisViews *local_basis);
 
 
-double Cluster_DFT_NonCol(const OpenMXAtomicViews *atomic,
+double Cluster_DFT_NonCol(OpenMXClusterNonColState *state, const OpenMXAtomicViews *atomic,
                    char *mode,
                    int SCF_iter,
                    int SpinP_switch,
@@ -3255,8 +3252,6 @@ double Cluster_DFT_NonCol(const OpenMXAtomicViews *atomic,
                    double *Work1, const OpenMXElectronicViews *electronic);
 #if !OPENMX_GPU_HIP
 
-void Cluster_DFT_NonCol_DemoteGpuSolverCachedEVec(void);
-int Cluster_DFT_NonCol_RefineLastRefined(void);
 int Band_DFT_Col_RefineLastRefined(void);
 void Band_DFT_Col_RefineForceFP64(int on);
 void Band_DFT_Col_RefineAfterMixing(double normrd);
@@ -3265,12 +3260,6 @@ void Band_DFT_NonCol_RefineForceFP64(int on);
 void Band_DFT_NonCol_RefineAfterMixing(double normrd);
 void Band_DFT_Col_RefineEndCycle(void);
 void Band_DFT_NonCol_RefineEndCycle(void);
-void Cluster_DFT_NonCol_RefineAfterMixing(double normrd);
-double Cluster_DFT_NonCol_ScatterGpuSolverCachedEVec(
-                   int n2,
-                   int *is2,
-                   int *ie2,
-                   dcomplex *EVec1);
 #endif
 
 

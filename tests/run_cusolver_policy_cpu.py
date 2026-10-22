@@ -84,7 +84,7 @@ typedef TestRefineState ClusterNonColRefineState;
 typedef TestRefineState BandColRefineState;
 typedef TestRefineState BandNonColRefineState;
 typedef struct { ClusterColRefineState refine; } ClusterColState;
-static TestRefineState ClusterNonCol_refine = {-1, 0, 0.0};
+typedef struct { ClusterNonColRefineState refine; } ClusterNonColState;
 static TestRefineState BandCol_refine = {-1, 0, 0.0};
 static TestRefineState BandNonCol_refine = {-1, 0, 0.0};
 static int mpi_calls;
@@ -130,6 +130,22 @@ static void collinear_cache_case(void) {
     CHECK(first.refine.iterations == 3 && ClusterCol_RefineIterations(&first) == 0 && mpi_calls == 4);
     openmx_set_fp32_enabled(1); ClusterCol_RefineConfigure(&first);
     CHECK(ClusterCol_RefineIterations(&first) == 3 && mpi_calls == 4); checks += 6;
+}
+
+static void noncollinear_cache_case(void) {
+    ClusterNonColState first = {{-1, 0, 0.0}}, second = {{-1, 0, 0.0}};
+    openmx_set_fp32_enabled(0); setenv("OPENMX_EIGEN_REFINE", "3", 1); mpi_calls = 0;
+    ClusterNonCol_RefineConfigure(&first);
+    CHECK(first.refine.iterations == -1 && ClusterNonCol_RefineIterations(&first) == 0 && mpi_calls == 0);
+    openmx_set_fp32_enabled(1); ClusterNonCol_RefineConfigure(&first);
+    CHECK(first.refine.iterations == 3 && ClusterNonCol_RefineIterations(&first) == 3 && mpi_calls == 2);
+    CHECK(first.refine.defaulted == 0 && first.refine.until == 1e-5 && second.refine.iterations == -1);
+    setenv("OPENMX_EIGEN_REFINE", "1", 1); ClusterNonCol_RefineConfigure(&second);
+    CHECK(second.refine.iterations == 1 && first.refine.iterations == 3 && mpi_calls == 4);
+    openmx_set_fp32_enabled(0); ClusterNonCol_RefineConfigure(&first);
+    CHECK(first.refine.iterations == 3 && ClusterNonCol_RefineIterations(&first) == 0 && mpi_calls == 4);
+    openmx_set_fp32_enabled(1); ClusterNonCol_RefineConfigure(&first);
+    CHECK(ClusterNonCol_RefineIterations(&first) == 3 && mpi_calls == 4); checks += 6;
 }
 
 static void solver_case(int device_ratio, const char *override, int expected) {
@@ -190,7 +206,7 @@ int main(void) {
         checks += 4;
     }
     collinear_cache_case();
-    cache_case(&ClusterNonCol_refine, ClusterNonCol_RefineConfigure, ClusterNonCol_RefineIterations);
+    noncollinear_cache_case();
     cache_case(&BandCol_refine, BandCol_RefineConfigure, BandCol_RefineIterations);
     cache_case(&BandNonCol_refine, BandNonCol_RefineConfigure, BandNonCol_RefineIterations);
     unsetenv("OPENMX_CUSOLVER_EMULATION"); ratio = 64;

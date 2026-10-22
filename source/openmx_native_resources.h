@@ -192,18 +192,23 @@ static inline void *OpenMX_Resource_State(OpenMXNativeResources *owner,const cha
   }
 
 #include "openmx_cluster_col_state.h"
-void Cluster_DFT_NonCol_Bind_Resources(OpenMXCoreContext*);
+#include "openmx_cluster_noncol_state.h"
 void Band_DFT_Col_Bind_Resources(OpenMXCoreContext*);
 void Band_DFT_NonCol_Bind_Resources(OpenMXCoreContext*);
 void Divide_Conquer_Bind_Resources(OpenMXCoreContext*);
 void Divide_Conquer_LNO_Bind_Resources(OpenMXCoreContext*);
 void Krylov_Bind_Resources(OpenMXCoreContext*);
-static inline OpenMXClusterColState *OpenMX_Native_Resources_Bind(OpenMXCoreContext *core)
+typedef struct {
+  OpenMXClusterColState *cluster_col;
+  OpenMXClusterNonColState *cluster_noncol;
+} OpenMXNativeSolverStates;
+static inline OpenMXNativeSolverStates OpenMX_Native_Resources_Bind(OpenMXCoreContext *core)
 {
-  OpenMXClusterColState *col=Cluster_DFT_Col_Bind_Resources(core);
-  Cluster_DFT_NonCol_Bind_Resources(core);
+  OpenMXNativeSolverStates states;
+  states.cluster_col=Cluster_DFT_Col_Bind_Resources(core);
+  states.cluster_noncol=Cluster_DFT_NonCol_Bind_Resources(core);
   Band_DFT_Col_Bind_Resources(core);Band_DFT_NonCol_Bind_Resources(core);
   Divide_Conquer_Bind_Resources(core);Divide_Conquer_LNO_Bind_Resources(core);Krylov_Bind_Resources(core);
-  return col;
+  return states;
 }
 #endif

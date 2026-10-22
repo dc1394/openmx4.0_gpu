@@ -26,7 +26,7 @@
 int Set_Density_Grid_GPU_Capacity(int,int,double *****,double ***);
 
 
-double Set_Density_Grid(OpenMXGridWorkspace *grid, const OpenMXAtomicViews *atomic, int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, double **Density_Grid_B0, const OpenMXLocalBasisViews *local_basis)
+double Set_Density_Grid(OpenMXGridWorkspace *grid, const OpenMXDensityCacheHooks *cache_hooks, const OpenMXAtomicViews *atomic, int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, double **Density_Grid_B0, const OpenMXLocalBasisViews *local_basis)
 {
 
   static int firsttime=1;
@@ -114,7 +114,7 @@ double Set_Density_Grid(OpenMXGridWorkspace *grid, const OpenMXAtomicViews *atom
      zero keeps the original CPU/OpenMP implementation as the fallback. */
   if (!use_local_gpu){
     if (!Set_Density_Grid_GPU_Local_KeepDistributed() &&
-        Set_Density_Grid_GPU_Service(Cnt_kind,Calc_CntOrbital_ON,CDM,Density_Grid_B0,&time0)){
+        Set_Density_Grid_GPU_Service(cache_hooks, Cnt_kind,Calc_CntOrbital_ON,CDM,Density_Grid_B0,&time0)){
       Set_Density_Grid_GPU_Local_Report(1,0);
       return time0;
     }

@@ -1746,3 +1746,7 @@ openmx_grid_assembly.o: openmx_grid_assembly.c openmx_grid_assembly.h openmx_cor
 DFT.o Set_Hamiltonian.o Set_Density_Grid.o Free_Arrays.o: openmx_grid_assembly.h openmx_core_grid.h
 
 DFT.o Cluster_DFT_Col.o: openmx_cluster_col_state.h
+
+DFT.o Cluster_DFT_NonCol.o: openmx_cluster_noncol_state.h
+
+Set_Density_Grid.o Set_Density_Grid_GPU.o: openmx_density_cache_hooks.h

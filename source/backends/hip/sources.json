@@ -1040,6 +1040,7 @@
     "openmx_core_native_resources.h",
     "openmx_native_resources.h",
     "openmx_cluster_col_state.h",
+    "openmx_cluster_noncol_state.h",
     "openmx_core_grid.h",
     "openmx_grid_assembly.h",
     "openmx_grid_assembly.c",
@@ -1070,7 +1071,8 @@
     "openmx_gpu_task_packet.h",
     "openmx_gpu_task_packet.cpp",
     "openmx_gpu_vector_packet.h",
-    "openmx_gpu_vector_packet.cpp"
+    "openmx_gpu_vector_packet.cpp",
+    "openmx_density_cache_hooks.h"
   ],
   "integrated_overrides": {
     "gemmul8_bridge.cu": "src/gemmul8_bridge.cu",

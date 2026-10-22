@@ -1142,7 +1142,7 @@ static int SDG_solver_supported(int local_mode)
   return local_mode && (Solver == 5 || Solver == 8 || Solver == 11);
 }
 
-int Set_Density_Grid_GPU_Service(int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM,
+int Set_Density_Grid_GPU_Service(const OpenMXDensityCacheHooks *cache_hooks, int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM,
                                  double **Density_Grid_B0, double *elapsed)
 {
   SetDensityGpuCache *cache = &SDG_cache;
@@ -1217,7 +1217,8 @@ int Set_Density_Grid_GPU_Service(int Cnt_kind, int Calc_CntOrbital_ON, double **
     /* The non-collinear Cluster path keeps its final dense eigenvectors for a
        later scatter.  Preserve them on the host, then return only their device
        copy and its OpenACC freelist allocation. */
-    Cluster_DFT_NonCol_DemoteGpuSolverCachedEVec();
+    if (cache_hooks && cache_hooks->demote_eigenvectors)
+      cache_hooks->demote_eigenvectors(cache_hooks->context);
     acc_wait_all();
     acc_clear_freelists();
     MPI_Barrier(mpi_comm_level1);

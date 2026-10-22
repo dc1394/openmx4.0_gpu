@@ -1,4 +1,5 @@
 #include "openmx_cluster_col_state.h"
+#include "openmx_cluster_noncol_state.h"
 /* Stage hooks of the refined FP32 eigensolver (eigen_refine_gpu.h) that
    DFT.c calls around the SCF stop test and the mixing; every rank calls
    them in the same order and they return the same value on every rank. */
@@ -9,10 +10,8 @@
    SCF that ends on such a solve has its Hamiltonian solved once more in
    FP64 so that the post-SCF energy density matrix and forces come from FP64
    vectors */
-int  Cluster_DFT_NonCol_RefineLastRefined(void);
 /* after the mixing of an SCF step that goes on, with the printed NormRD
    (OPENMX_EIGEN_REFINE_UNTIL) */
-void Cluster_DFT_NonCol_RefineAfterMixing(double normrd);
 
 /* Collinear cluster hooks borrow the calculation state declared above. */
 

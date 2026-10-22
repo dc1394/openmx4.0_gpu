@@ -75,8 +75,12 @@ static size_t ClusterNonCol_CheckedMulCount(size_t a, size_t b, const char *mess
     return a * b;
 }
 
-static void *ClusterNonCol_MallocArray(size_t count, size_t size, const char *message)
+typedef struct { void *resources; } ClusterNonColState;
+static ClusterNonColState fixture_state = {NULL};
+static void openmx_core_native_free(void *owner, void *pointer) { (void)owner; free(pointer); }
+static void *ClusterNonCol_MallocArray(ClusterNonColState *state, size_t count, size_t size, const char *message)
 {
+    (void)state;
     void *p = malloc(ClusterNonCol_CheckedMulCount(count, size, message));
     if (p == NULL) ClusterNonCol_AbortWithMessage(message);
     return p;
@@ -128,7 +132,7 @@ int main(void)
         int index[9];
         /* Poison outputs to detect omissions instead of relying on stack data. */
         for (int k = 0; k < 9; k++) { host[k] = -999; index[k] = -1; }
-        ClusterNonCol_BuildDenseFromGathered(cases[c].gathered, order, mp, host, 3, 9);
+        ClusterNonCol_BuildDenseFromGathered(&fixture_state, cases[c].gathered, order, mp, host, 3, 9);
         ClusterNonCol_BuildDenseIndexFromGathered(order, mp, 3, 9, index);
         for (int k = 0; k < 9; k++) {
             CHECK(0 <= index[k] && index[k] < 9);

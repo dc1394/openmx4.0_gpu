@@ -45,12 +45,10 @@ int TRAN_SCF_Iter_Band;
 static int DFT_GPU_BasisCount(void);
 static int DFT_GPU_DenseSwitchNum(void);
 int Set_Nonlocal_Used_GPU(void);
-double Cluster_DFT_NonCol_ScatterGpuSolverCachedEVec(int n2, int *is2, int *ie2, dcomplex *EVec1);
 extern int BandNonCol_HamiltonianUseHipSolver(void);
 extern int openmx_gpu_is_mi300a(void);
 extern int openmx_magma_release_z_workspace(void);
 extern int openmx_hipsolver_release_workspace(void);
-int Cluster_DFT_NonCol_MgpuCachedEDM(int n, int size_H1, int *MP, double *ko, double *****EDM, double *elapsed);
 int Band_DFT_Col_GpuSwitchNum(void);
 int Band_DFT_NonCol_GpuSwitchNum(void);
 int Cluster_DFT_Col_GpuSwitchNum(void);
@@ -395,7 +393,8 @@ void Allocate_Free_GridData(int todo_flag);
 
 double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 {
-  OpenMXClusterColState *cluster_col=OpenMX_Native_Resources_Bind(core);
+  const OpenMXNativeSolverStates solver_states=OpenMX_Native_Resources_Bind(core);
+  const OpenMXDensityCacheHooks density_cache_hooks=OpenMX_ClusterNonCol_DensityHooks(solver_states.cluster_noncol);
 
   const OpenMXLocalBasisViews local_basis_storage=OpenMX_LocalBasis(core,mpi_comm_level1);
   const OpenMXLocalBasisViews *local_basis=&local_basis_storage;
@@ -1047,7 +1046,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
 	if (SpinP_switch<=1){
 
-	  time5 += Cluster_DFT_Col(cluster_col, atomic, "scf",LSCF_iter,SpinP_switch,
+	  time5 += Cluster_DFT_Col(solver_states.cluster_col, atomic, "scf",LSCF_iter,SpinP_switch,
 				   ko_col,H,OLP[0],DM[0],EDM,
 				   Eele0,Eele1,
 				   myworld1,NPROCS_ID1,Comm_World1,NPROCS_WD1,
@@ -1059,7 +1058,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
 	else if (SpinP_switch==3){
 
-	  time5 += Cluster_DFT_NonCol(atomic, "scf",LSCF_iter,SpinP_switch,
+	  time5 += Cluster_DFT_NonCol(solver_states.cluster_noncol, atomic, "scf",LSCF_iter,SpinP_switch,
 				      ko_noncol,H,iHNL,OLP[0],DM[0],EDM,
 				      Eele0,Eele1,
 				      MP,is2,ie2,
@@ -1226,7 +1225,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
 	if (SpinP_switch<=1){
 
-	  time5 += Cluster_DFT_Col(cluster_col, atomic, "scf",LSCF_iter,SpinP_switch,
+	  time5 += Cluster_DFT_Col(solver_states.cluster_col, atomic, "scf",LSCF_iter,SpinP_switch,
 				   ko_col,CntH,CntOLP[0],DM[0],EDM,
 				   Eele0,Eele1,
 				   myworld1,NPROCS_ID1,Comm_World1,NPROCS_WD1,
@@ -1416,8 +1415,8 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
     *****************************************************/
 
     if (po==1 && Cnt_switch==0 && SCF_iter<SCF_MAX &&
-        ((Solver==2 && SpinP_switch==3 && Cluster_DFT_NonCol_RefineLastRefined()) ||
-         (Solver==2 && SpinP_switch<=1 && Cluster_DFT_Col_RefineLastRefined(cluster_col)) ||
+        ((Solver==2 && SpinP_switch==3 && Cluster_DFT_NonCol_RefineLastRefined(solver_states.cluster_noncol)) ||
+         (Solver==2 && SpinP_switch<=1 && Cluster_DFT_Col_RefineLastRefined(solver_states.cluster_col)) ||
          (Solver==3 && SpinP_switch<=1 && Band_DFT_Col_RefineLastRefined()) ||
          (Solver==3 && SpinP_switch==3 && GB_switch==0 && Band_DFT_NonCol_RefineLastRefined()))){
 
@@ -1448,20 +1447,20 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
       }
     }
 
-    if (po==1 && Cnt_switch==0 && Solver==2 && SpinP_switch<=1 && Cluster_DFT_Col_RefineLastRefined(cluster_col)){
+    if (po==1 && Cnt_switch==0 && Solver==2 && SpinP_switch<=1 && Cluster_DFT_Col_RefineLastRefined(solver_states.cluster_col)){
       if (myid0==Host_ID && 2 <= level_stdout){
         printf("<DFT>  eigensolver: the SCF stops on a refined FP32 step; the Hamiltonian is solved once more in FP64\n");
         fflush(stdout);
       }
-      Cluster_DFT_Col_RefineForceFP64(cluster_col, 1);
-      time5 += Cluster_DFT_Col(cluster_col, atomic, "scf",LSCF_iter,SpinP_switch,
+      Cluster_DFT_Col_RefineForceFP64(solver_states.cluster_col, 1);
+      time5 += Cluster_DFT_Col(solver_states.cluster_col, atomic, "scf",LSCF_iter,SpinP_switch,
                                ko_col,H,OLP[0],DM[0],EDM,
                                Eele0,Eele1,
                                myworld1,NPROCS_ID1,Comm_World1,NPROCS_WD1,
                                Comm_World_StartID1,MPI_CommWD1,MP,is2,ie2,
                                Ss_Re,Cs_Re,Hs_Re,
                                CDM1,EDM1,PDM1,size_H1,SP_NZeros,SP_Atoms,EVec1_Re,Work1, electronic);
-      Cluster_DFT_Col_RefineForceFP64(cluster_col, 0);
+      Cluster_DFT_Col_RefineForceFP64(solver_states.cluster_col, 0);
       Uele_OS0 = Eele0[0];
       Uele_OS1 = Eele0[1];
       Uele_IS0 = Eele1[0];
@@ -1469,12 +1468,12 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
       Uele = Uele_IS0 + Uele_IS1;
     }
 
-    if (po==1 && Cnt_switch==0 && Solver==2 && SpinP_switch==3 && Cluster_DFT_NonCol_RefineLastRefined()){
+    if (po==1 && Cnt_switch==0 && Solver==2 && SpinP_switch==3 && Cluster_DFT_NonCol_RefineLastRefined(solver_states.cluster_noncol)){
       if (myid0==Host_ID && 2 <= level_stdout){
         printf("<DFT>  eigensolver: the SCF stops on a refined FP32 step; its Hamiltonian is solved once more in FP64\n");
         fflush(stdout);
       }
-          time5 += Cluster_DFT_NonCol(atomic, "fp64",LSCF_iter,SpinP_switch,
+          time5 += Cluster_DFT_NonCol(solver_states.cluster_noncol, atomic, "fp64",LSCF_iter,SpinP_switch,
                                       ko_noncol,H,iHNL,OLP[0],DM[0],EDM,
                                       Eele0,Eele1,
                                       MP,is2,ie2,
@@ -1576,7 +1575,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
       /*
 	time10 += Set_Orbitals_Grid(1);
-	time11 += Set_Density_Grid(OpenMX_Grid_Workspace(core), atomic, 1, 0, DM[0], Density_Grid_B, local_basis);
+	time11 += Set_Density_Grid(OpenMX_Grid_Workspace(core), &density_cache_hooks, atomic, 1, 0, DM[0], Density_Grid_B, local_basis);
 	time7 += Force(vna,reciprocal, H0,DS_NL,OLP,DM[0],EDM);
 	time8 += Total_Energy(vna, MD_iter,ECE);
 	time10 += Set_Orbitals_Grid(0);
@@ -1677,7 +1676,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 			  Residual_ReRhok,Residual_ImRhok,
 			  ReVk,ImVk,ReRhoAtomk,ImRhoAtomk, electronic);
 
-      time11 += Set_Density_Grid(OpenMX_Grid_Workspace(core), atomic, Cnt_kind,Calc_CntOrbital_ON,DM[0],Density_Grid_B, local_basis);
+      time11 += Set_Density_Grid(OpenMX_Grid_Workspace(core), &density_cache_hooks, atomic, Cnt_kind,Calc_CntOrbital_ON,DM[0],Density_Grid_B, local_basis);
 
       if (Solver==4) {
 	TRAN_Add_Density_Lead(mpi_comm_level1,
@@ -1696,7 +1695,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
     
     else if (Mixing_switch==3 || Mixing_switch==4) {
 
-      time11 += Set_Density_Grid(OpenMX_Grid_Workspace(core), atomic, Cnt_kind,Calc_CntOrbital_ON,DM[0],Density_Grid_B, local_basis);
+      time11 += Set_Density_Grid(OpenMX_Grid_Workspace(core), &density_cache_hooks, atomic, Cnt_kind,Calc_CntOrbital_ON,DM[0],Density_Grid_B, local_basis);
 
       if (Solver==4) {
 	TRAN_Add_Density_Lead(mpi_comm_level1,
@@ -1762,7 +1761,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
     else if (Mixing_switch==5 || Mixing_switch==7){
 
-      time11 += Set_Density_Grid(OpenMX_Grid_Workspace(core), atomic,  Cnt_kind,Calc_CntOrbital_ON,DM[0],Density_Grid_B , local_basis);
+      time11 += Set_Density_Grid(OpenMX_Grid_Workspace(core), &density_cache_hooks, atomic,  Cnt_kind,Calc_CntOrbital_ON,DM[0],Density_Grid_B , local_basis);
 
       if (Solver==4) {
 	TRAN_Add_Density_Lead(mpi_comm_level1,
@@ -1876,10 +1875,10 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
     outputfile1(1,MD_iter,orbitalOpt_iter,Cnt_Now,SCF_iter,file_DFTSCF,ChemP_e0,orbital_norm);
 
     if (po==0 && Cnt_switch==0 && Solver==2 && SpinP_switch==3){
-      Cluster_DFT_NonCol_RefineAfterMixing(sqrt(fabs(NormRD[0])));
+      Cluster_DFT_NonCol_RefineAfterMixing(solver_states.cluster_noncol, sqrt(fabs(NormRD[0])));
     }
     if (po==0 && Cnt_switch==0 && Solver==2 && SpinP_switch<=1){
-      Cluster_DFT_Col_RefineAfterMixing(cluster_col, sqrt(fabs(NormRD[0])));
+      Cluster_DFT_Col_RefineAfterMixing(solver_states.cluster_col, sqrt(fabs(NormRD[0])));
     }
     if (po==0 && Cnt_switch==0 && Solver==3 && SpinP_switch<=1){
       Band_DFT_Col_RefineAfterMixing(sqrt(fabs(NormRD[0])));
@@ -1923,20 +1922,20 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
      _SCF_keywords file below the step the solvers keep in FP64): the
      step's Hamiltonian once more in FP64, as after a stop */
 
-  if (Cnt_switch==0 && Solver==2 && SpinP_switch<=1 && Cluster_DFT_Col_RefineLastRefined(cluster_col)){
+  if (Cnt_switch==0 && Solver==2 && SpinP_switch<=1 && Cluster_DFT_Col_RefineLastRefined(solver_states.cluster_col)){
     if (myid0==Host_ID && 2<=level_stdout){
       printf("<DFT>  eigensolver: the SCF ended on a refined FP32 step; the Hamiltonian is solved once more in FP64\n");
       fflush(stdout);
     }
-    Cluster_DFT_Col_RefineForceFP64(cluster_col, 1);
-    time5 += Cluster_DFT_Col(cluster_col, atomic, "scf",LSCF_iter,SpinP_switch,
+    Cluster_DFT_Col_RefineForceFP64(solver_states.cluster_col, 1);
+    time5 += Cluster_DFT_Col(solver_states.cluster_col, atomic, "scf",LSCF_iter,SpinP_switch,
                              ko_col,H,OLP[0],DM[0],EDM,
                              Eele0,Eele1,
                              myworld1,NPROCS_ID1,Comm_World1,NPROCS_WD1,
                              Comm_World_StartID1,MPI_CommWD1,MP,is2,ie2,
                              Ss_Re,Cs_Re,Hs_Re,
                              CDM1,EDM1,PDM1,size_H1,SP_NZeros,SP_Atoms,EVec1_Re,Work1, electronic);
-    Cluster_DFT_Col_RefineForceFP64(cluster_col, 0);
+    Cluster_DFT_Col_RefineForceFP64(solver_states.cluster_col, 0);
     Uele_OS0 = Eele0[0];
     Uele_OS1 = Eele0[1];
     Uele_IS0 = Eele1[0];
@@ -1944,12 +1943,12 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
     Uele = Uele_IS0 + Uele_IS1;
   }
 
-  if (Cnt_switch==0 && Solver==2 && SpinP_switch==3 && Cluster_DFT_NonCol_RefineLastRefined()){
+  if (Cnt_switch==0 && Solver==2 && SpinP_switch==3 && Cluster_DFT_NonCol_RefineLastRefined(solver_states.cluster_noncol)){
     if (myid0==Host_ID && 2 <= level_stdout){
       printf("<DFT>  eigensolver: the SCF ended on a refined FP32 step; its Hamiltonian is solved once more in FP64\n");
       fflush(stdout);
     }
-    time5 += Cluster_DFT_NonCol(atomic, "fp64",LSCF_iter,SpinP_switch,
+    time5 += Cluster_DFT_NonCol(solver_states.cluster_noncol, atomic, "fp64",LSCF_iter,SpinP_switch,
                                       ko_noncol,H,iHNL,OLP[0],DM[0],EDM,
                                       Eele0,Eele1,
                                       MP,is2,ie2,
@@ -2053,7 +2052,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
       Allocate_Free_Cluster_Col_LNO(2, electronic);
       Allocate_Free_Cluster_Col(1, electronic);
       
-      time5 += Cluster_DFT_Col(cluster_col, atomic, "scf",1,SpinP_switch,
+      time5 += Cluster_DFT_Col(solver_states.cluster_col, atomic, "scf",1,SpinP_switch,
 			       ko_col,H,OLP[0],DM[0],EDM,
 			       Eele0,Eele1,
 			       myworld1,NPROCS_ID1,Comm_World1,NPROCS_WD1,
@@ -2080,9 +2079,9 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   if (Solver==2 && SpinP_switch==3){
 
     double mgpu_edm_time=0.0;
-    int mgpu_edm=Cluster_DFT_NonCol_MgpuCachedEDM(n,size_H1,MP,ko_noncol,EDM,&mgpu_edm_time);
+    int mgpu_edm=Cluster_DFT_NonCol_MgpuCachedEDM(solver_states.cluster_noncol, n,size_H1,MP,ko_noncol,EDM,&mgpu_edm_time);
     time5 += mgpu_edm_time;
-    time5 += Cluster_DFT_NonCol_ScatterGpuSolverCachedEVec(n*2,is2,ie2,EVec1_NonCol);
+    time5 += Cluster_DFT_NonCol_ScatterGpuSolverCachedEVec(solver_states.cluster_noncol, n*2,is2,ie2,EVec1_NonCol);
 
     /* EDM */
 
@@ -2223,7 +2222,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
           printf("\n<DFT>  Calculation of MO-type guiding functions for CWFs\n");fflush(stdout);
 	}
 
-	time5 += Cluster_DFT_Col(cluster_col, atomic, "ParDM",2,SpinP_switch,
+	time5 += Cluster_DFT_Col(solver_states.cluster_col, atomic, "ParDM",2,SpinP_switch,
 				 ko_col,H,OLP[0],DM[0],EDM,
 				 Eele0,Eele1,
 				 myworld1,NPROCS_ID1,Comm_World1,NPROCS_WD1,
@@ -2325,7 +2324,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   	  printf("\n<DFT>  Calculation of MO-type guiding functions for CWFs\n");fflush(stdout);
 	}
 
-	time5 += Cluster_DFT_NonCol(atomic, "ParDM",LSCF_iter,SpinP_switch,
+	time5 += Cluster_DFT_NonCol(solver_states.cluster_noncol, atomic, "ParDM",LSCF_iter,SpinP_switch,
 				    ko_noncol,H,iHNL,OLP[0],DM[0],EDM,
 				    Eele0,Eele1,
 				    MP,is2,ie2,
@@ -2593,7 +2592,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
 	if (SpinP_switch<=1){
 
-	  time5 += Cluster_DFT_Col(cluster_col, atomic, "dos",LSCF_iter,SpinP_switch,
+	  time5 += Cluster_DFT_Col(solver_states.cluster_col, atomic, "dos",LSCF_iter,SpinP_switch,
 				   ko_col,H,OLP[0],DM[0],EDM,
 				   Eele0,Eele1,
 				   myworld1,NPROCS_ID1,Comm_World1,NPROCS_WD1,
@@ -2603,7 +2602,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 	}
 	else if (SpinP_switch==3){
 
-	  time5 += Cluster_DFT_NonCol(atomic, "dos",LSCF_iter,SpinP_switch,
+	  time5 += Cluster_DFT_NonCol(solver_states.cluster_noncol, atomic, "dos",LSCF_iter,SpinP_switch,
 				      ko_noncol,H,iHNL,OLP[0],DM[0],EDM,
 				      Eele0,Eele1,
 				      MP,is2,ie2,
@@ -2617,7 +2616,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
 	if (SpinP_switch<=1){
 
-	  time5 += Cluster_DFT_Col(cluster_col, atomic, "dos",LSCF_iter,SpinP_switch,
+	  time5 += Cluster_DFT_Col(solver_states.cluster_col, atomic, "dos",LSCF_iter,SpinP_switch,
 				   ko_col,CntH,CntOLP[0],DM[0],EDM,
 				   Eele0,Eele1,
 				   myworld1,NPROCS_ID1,Comm_World1,NPROCS_WD1,
@@ -2705,7 +2704,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   }
 
   if (Cnt_switch==1 && Cnt_Now==1) time10 += Set_Orbitals_Grid(atomic, 1, local_basis);
-  if (Solver!=12) time11 += Set_Density_Grid(OpenMX_Grid_Workspace(core), atomic, 1, 0, DM[0], Density_Grid_B, local_basis);
+  if (Solver!=12) time11 += Set_Density_Grid(OpenMX_Grid_Workspace(core), &density_cache_hooks, atomic, 1, 0, DM[0], Density_Grid_B, local_basis);
 
   if (Solver==4) {
     TRAN_Add_Density_Lead(mpi_comm_level1,
@@ -2791,8 +2790,8 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   ****************************************************/
 
   Mixing_H_Release_GPU();
-  Cluster_DFT_Col_Release_GPU_Solver(cluster_col);
-  Cluster_DFT_NonCol_Release_GPU_Solver();
+  Cluster_DFT_Col_Release_GPU_Solver(solver_states.cluster_col);
+  Cluster_DFT_NonCol_Release_GPU_Solver(solver_states.cluster_noncol);
   Divide_Conquer_Release_GPU_SCache();
   Krylov_Release_GPU_KUCache();
   /* the end of the SCF cycle for the grid integrals (the NVIDIA version
@@ -3324,7 +3323,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
     /* call Cluster_DFT_Col */
 
-    time5 += Cluster_DFT_Col(cluster_col, atomic, command,1,SpinP_switch,
+    time5 += Cluster_DFT_Col(solver_states.cluster_col, atomic, command,1,SpinP_switch,
 			     ko_col,H,OLP[0],DM[0],EDM,
 			     Eele0,Eele1,
 			     myworld1,NPROCS_ID1,Comm_World1,NPROCS_WD1,
@@ -3350,7 +3349,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
     /* call Cluster_DFT_NonCol */
 
-    time5 += Cluster_DFT_NonCol(atomic, command,1,SpinP_switch,
+    time5 += Cluster_DFT_NonCol(solver_states.cluster_noncol, atomic, command,1,SpinP_switch,
 				ko_noncol,H,iHNL,OLP[0],DM[0],EDM,
 				Eele0,Eele1,
 				MP,is2,ie2,

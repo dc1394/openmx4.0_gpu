@@ -1,17 +1,17 @@
 {
 "scope": "global-state usage of the C translation units of the NVIDIA build",
-"revision": "2f697a70",
+"revision": "15fc760f",
 "summary": {
 "translation units analysed": 289,
 "translation units not analysed": 0,
-"functions": 3011,
+"functions": 3015,
 "common-header objects (defined in openmx_globals.c)": 1051,
 "common-header objects referenced by some function": 1045,
 "common-header objects written by some function (direct or through)": 785,
 "function-object edges (common header)": 12912,
 "objects with external linkage defined outside openmx_globals.c": 357,
-"file-scope statics": 432,
-"function-local statics": 380,
+"file-scope statics": 412,
+"function-local statics": 376,
 "environment variables (names read, every unit)": 251,
 "functions calling getenv directly (outside openmx_env.c)": 0,
 "environment names missing from the registry": 0
@@ -13404,126 +13404,6 @@
 "const": false
 },
 {
-"unit": "source/Cluster_DFT_NonCol.c",
-"name": "ClusterNonCol_CachedGpuSolverDenseEVec",
-"type": "ptr null",
-"const": false
-},
-{
-"unit": "source/Cluster_DFT_NonCol.c",
-"name": "ClusterNonCol_CachedGpuSolverDenseN2",
-"type": "i32 0",
-"const": false
-},
-{
-"unit": "source/Cluster_DFT_NonCol.c",
-"name": "ClusterNonCol_CachedGpuSolverDenseOnDevice",
-"type": "i32 0",
-"const": false
-},
-{
-"unit": "source/Cluster_DFT_NonCol.c",
-"name": "ClusterNonCol_cpu_fallback_n2",
-"type": "i32 0",
-"const": false
-},
-{
-"unit": "source/Cluster_DFT_NonCol.c",
-"name": "ClusterNonCol_cpu_overlap_n2",
-"type": "i32 0",
-"const": false
-},
-{
-"unit": "source/Cluster_DFT_NonCol.c",
-"name": "ClusterNonCol_dense_arena",
-"type": "{ i32",
-"const": false
-},
-{
-"unit": "source/Cluster_DFT_NonCol.c",
-"name": "ClusterNonCol_dense_index_cache",
-"type": "%struct.ClusterNonColDenseIndexCache zeroinitializer",
-"const": false
-},
-{
-"unit": "source/Cluster_DFT_NonCol.c",
-"name": "ClusterNonCol_dense_scache",
-"type": "%struct.ClusterNonColDenseSCache zeroinitializer",
-"const": false
-},
-{
-"unit": "source/Cluster_DFT_NonCol.c",
-"name": "ClusterNonCol_dm_entry_cache",
-"type": "{ i32",
-"const": false
-},
-{
-"unit": "source/Cluster_DFT_NonCol.c",
-"name": "ClusterNonCol_gpu_eigen_ctx",
-"type": "%struct.ClusterNonColGpuEigenCtx zeroinitializer",
-"const": false
-},
-{
-"unit": "source/Cluster_DFT_NonCol.c",
-"name": "ClusterNonCol_gs2_fallback_n2",
-"type": "i32 0",
-"const": false
-},
-{
-"unit": "source/Cluster_DFT_NonCol.c",
-"name": "ClusterNonCol_mgpu_host_dense",
-"type": "i32 0",
-"const": false
-},
-{
-"unit": "source/Cluster_DFT_NonCol.c",
-"name": "ClusterNonCol_prof",
-"type": "[7 x double] zeroinitializer",
-"const": false
-},
-{
-"unit": "source/Cluster_DFT_NonCol.c",
-"name": "ClusterNonCol_prof_solves",
-"type": "i64 0",
-"const": false
-},
-{
-"unit": "source/Cluster_DFT_NonCol.c",
-"name": "ClusterNonCol_refine",
-"type": "{ i32",
-"const": false
-},
-{
-"unit": "source/Cluster_DFT_NonCol.c",
-"name": "ClusterNonCol_refine_dev",
-"type": "{ ptr",
-"const": false
-},
-{
-"unit": "source/Cluster_DFT_NonCol.c",
-"name": "ClusterNonCol_refine_state",
-"type": "{ i32",
-"const": false
-},
-{
-"unit": "source/Cluster_DFT_NonCol.c",
-"name": "ClusterNonCol_root_dm_workspace",
-"type": "{ i32",
-"const": false
-},
-{
-"unit": "source/Cluster_DFT_NonCol.c",
-"name": "ClusterNonCol_root_solve_workspace",
-"type": "%struct.ClusterNonColRootSolveWorkspace zeroinitializer",
-"const": false
-},
-{
-"unit": "source/Cluster_DFT_NonCol.c",
-"name": "Cluster_DFT_NonCol_resources",
-"type": "ptr null",
-"const": false
-},
-{
 "unit": "source/Cluster_DFT_NonCol_CWF.c",
 "name": "NBLK",
 "type": "i32 128",
@@ -16109,34 +15989,6 @@
 "function": "Cluster_DFT_Dosout",
 "variable": "time0",
 "type": "double 0.000000e+00",
-"const": false
-},
-{
-"unit": "source/Cluster_DFT_NonCol.c",
-"function": "ClusterNonCol_GpuDiagFits",
-"variable": "verdict",
-"type": "i32 -1",
-"const": false
-},
-{
-"unit": "source/Cluster_DFT_NonCol.c",
-"function": "ClusterNonCol_GpuDiagFits",
-"variable": "verdict_n2",
-"type": "i32 0",
-"const": false
-},
-{
-"unit": "source/Cluster_DFT_NonCol.c",
-"function": "Cluster_DFT_NonCol_owned",
-"variable": "firsttime",
-"type": "i32 1",
-"const": false
-},
-{
-"unit": "source/Cluster_DFT_NonCol.c",
-"function": "Lapack_LU_Zinverse",
-"variable": "thisprogram",
-"type": "ptr @.str.286",
 "const": false
 },
 {

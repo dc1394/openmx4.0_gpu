@@ -38,6 +38,7 @@ PREFIX = r'''
 #include <stdlib.h>
 #include <string.h>
 #include "openmx_precision.h"
+#include "openmx_env.h"
 #define CHECK(c, message) do { if (!(c)) { fprintf(stderr, "FAIL: %s\n", message); return 2; } } while (0)
 enum { MPI_INT, MPI_DOUBLE };
 static int mpi_comm_level1, Host_ID, level_stdout=2;
@@ -80,6 +81,7 @@ static int check_policy(void)
 '''
 
 BAND_STUBS = r'''
+static int BandCol_mgpu_host_dense;
 static int Cnt_switch, DFTSCF_loop=5, xanes_calc, empty_occupation_flag, empty_states_flag;
 static struct { int basis_valid; } BandCol_refine_state;
 static struct { int refined; } *BandCol_kref;
@@ -145,7 +147,15 @@ def main():
             state = prefix + "_refine"
             policy = POLICY.replace("STATE", state).replace("CONFIGURE", prefix + "_RefineConfigure")
             policy = policy.replace("ITERATIONS", prefix + "_RefineIterations")
-            text = PREFIX + typedef(source, typename) + f"\nstatic {typename} {state};\n"
+            text = PREFIX + typedef(source, typename)
+            if prefix in ("ClusterCol", "ClusterNonCol"):
+                text += f"\ntypedef struct {{ {typename} refine; }} {prefix}State;\n"
+                text += f"static {prefix}State fixture;\n"
+                policy = policy.replace(state, "fixture.refine")
+                policy = policy.replace(prefix+"_RefineConfigure()", prefix+"_RefineConfigure(&fixture)")
+                policy = policy.replace(prefix+"_RefineIterations()", prefix+"_RefineIterations(&fixture)")
+            else:
+                text += f"\nstatic {typename} {state};\n"
             text += function(source, prefix + "_RefineConfigure") + "\n"
             text += function(source, prefix + "_RefineIterations") + "\n" + policy
             begin = ""
@@ -157,7 +167,7 @@ def main():
             src, exe = Path(tmp) / f"{prefix}.c", Path(tmp) / prefix
             src.write_text(text)
             command = compiler + flags + ["-I", str(ROOT / "source"), str(src),
-                                          str(ROOT / "source/openmx_precision.c"), "-o", str(exe)]
+                                          str(ROOT / "source/openmx_precision.c"), str(ROOT / "source/openmx_env.c"), "-o", str(exe)]
             subprocess.run(command, check=True)
             subprocess.run([str(exe)], check=True)
             print(f"PASS: {prefix} production input policy" + (" and band cycle resets" if begin else ""))

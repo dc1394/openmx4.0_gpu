@@ -8,6 +8,18 @@ core-native-resource-* and core-native-adapter-* tests.
 import re
 
 
+def calculation_state_declaration(source, alias):
+    """Keep the actual POD types/layout in narrow SDK policy fixtures.
+
+    Callers supply SDK typedefs. This copies declarations, not initialization
+    or ownership behavior; real-core lifecycle tests cover those separately.
+    """
+    start = source.index("/* Persistent metadata")
+    start = source.index("*/", start) + 2
+    end = source.index(" " + alias + ";", start) + len(" " + alias + ";")
+    return source[start:end]
+
+
 def isolate_native_resources(source, backend="CUDA"):
     def mask(match):
         return "".join("\n" if char == "\n" else " " for char in match[0])

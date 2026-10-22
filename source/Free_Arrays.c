@@ -50,11 +50,10 @@ void Free_Arrays_with_context(int wherefrom, OpenMXCoreContext *core)
 #endif
     Band_DFT_Col_Release_GPU_Caches();
     Band_DFT_NonCol_Release_GPU_Caches();
-    Cluster_DFT_NonCol_Release_GPU_Caches();
     Divide_Conquer_Release_GPU_Caches();
     Divide_Conquer_LNO_Release_GPU_Caches();
     Krylov_Release_GPU_Caches();
-    /* The collinear cluster drains its own calculation state here. */
+    /* Both cluster solvers drain their calculation state here. */
     openmx_core_native_resources_clear(core);
 #if !OPENMX_GPU_HIP
     openmx_gpusolver_cache_release();
