@@ -17,8 +17,12 @@ def function(s,name):
  while depth:depth+=(s[b]=='{')-(s[b]=='}');b+=1
  return s[a:b]
 def typedef(s,name):
+ if name=='ForceHNLGpuContext':
+  header=(root/'source/openmx_force_hnl_gpu.h').read_text()
+  a=header.index('struct ForceHNLGpuContext {');b=header.index('};',a)+2
+  return 'typedef struct ForceHNLGpuContext ForceHNLGpuContext;\n'+header[a:b]
  b=s.index('} '+name+';')+len('} '+name+';');a=s.rfind('typedef struct {',0,b);return s[a:b]
-functions='\nstatic int mpi_comm_level1=0,fp32=0;\n#define MPI_INT 0\n#define MPI_MAX 0\nstatic void MPI_Allreduce(const void *s,void *d,int n,int t,int op,int comm){memcpy(d,s,n*sizeof(int));}\nstatic int openmx_fp32_enabled(void){return fp32;}\nstatic void Force4B_gpu_abort(const char *msg){fprintf(stderr,"%s",msg);abort();}\n'
+functions='\ntypedef struct OpenMXNativeResources OpenMXNativeResources;\nstatic int mpi_comm_level1=0,fp32=0;\n#define MPI_INT 0\n#define MPI_MAX 0\nstatic void MPI_Allreduce(const void *s,void *d,int n,int t,int op,int comm){memcpy(d,s,n*sizeof(int));}\nstatic int openmx_fp32_enabled(void){return fp32;}\nstatic void Force4B_gpu_abort(const char *msg){fprintf(stderr,"%s",msg);abort();}\n'
 for name in ('Force4BGpuItem','Force4BGpuContext','ForceHNLGpuContext'):functions+=typedef(s,name)+'\n'
 a=s.index('typedef struct {int kind,ian,jan,kn,h0,nlp;}');b=s.index('/* the unified first-case batch:',a);functions+=s[a:b]
 a=s.index('typedef struct {int kind,num_proj,fp32;}');b=s.index('static void Force4B_GpuCase1Run(',a);functions+=s[a:b]

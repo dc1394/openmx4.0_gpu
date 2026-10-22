@@ -58,7 +58,10 @@ def extract_function(source: str, name: str) -> str:
 def extract_struct(source: str, name: str) -> str:
     match = re.search(r"typedef struct\s*\{[^{}]*\}\s*" + re.escape(name) + r";", source)
     if match is None:
-        raise ValueError(f"missing production structure: {name}")
+        match = re.search(r"struct\s+" + re.escape(name) + r"\s*\{[^{}]*\};", source)
+        if match is None:
+            raise ValueError(f"missing production structure: {name}")
+        return f"typedef struct {name} {name};\n" + match.group() + "\n"
     return match.group() + "\n"
 
 

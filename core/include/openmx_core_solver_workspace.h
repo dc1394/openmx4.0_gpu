@@ -3,6 +3,7 @@
 #include "openmx_core.h"
 #include "openmx_complex.h"
 #include "openmx_core_orbital_workspace.h"
+#include "openmx_core_native_resources.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -18,6 +19,15 @@ typedef struct OpenMXSolverResidues OpenMXSolverResidues;
 typedef int (*OpenMXSolverOperation)(OpenMXSolverInvocation*, void*, double*);
 int openmx_core_solver_run(int workers, OpenMXSolverOperation operation,
     void *arguments, double *result, char *error, size_t capacity);
+
+/* Invocation-owned native buffers/handles and zero-initialized POD state.
+   Bind a group before entering worker regions; resource registration within
+   a group is thread-safe. Equal names reuse the group only in this invocation.
+   Drain callbacks run before fallback release, before ordinary solver scratch
+   is destroyed. The core invokes caller-supplied SDK adapters but initializes
+   no device or MPI runtime itself. Failure leaves output unchanged. */
+int openmx_core_solver_resources(OpenMXSolverInvocation*,const char *name,
+    OpenMXNativeResources **out,char *error,size_t capacity);
 
 /* A worker owns named, reusable tensors. Dimensions are in elements and use
    layout_right. Requesting the same shape preserves values and addresses;

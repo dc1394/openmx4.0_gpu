@@ -9,6 +9,8 @@ from run_force4b_stream_cpu import extract_function, extract_struct
 
 root = Path(__file__).resolve().parents[1]
 source = (root/"source/Force.c").read_text()
+source = source.replace('#include "openmx_force_hnl_gpu.h"',
+                        (root/"source/openmx_force_hnl_gpu.h").read_text())
 prefix = r'''
 #define _POSIX_C_SOURCE 200809L
 #include <assert.h>
@@ -16,6 +18,7 @@ prefix = r'''
 #include <stdlib.h>
 #include <string.h>
 #include "openmx_gpu_task.h"
+#include "openmx_core_native_resources.h"
 static int mpi_comm_level1,allocations,fail_at;
 static void *packet_malloc(size_t n) { return ++allocations==fail_at?NULL:malloc(n); }
 static void Force4B_gpu_abort(const char *s) { fprintf(stderr,"%s\n",s);exit(42); }

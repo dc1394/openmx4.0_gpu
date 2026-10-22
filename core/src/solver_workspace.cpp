@@ -3,6 +3,7 @@
 #include <openmx/core/orbital_workspace.hpp>
 #include <openmx/core/core_hole.hpp>
 #include <openmx/core/projector_force.hpp>
+#include "native_resources.hpp"
 #include <array>
 #include <climits>
 #include <cstdio>
@@ -157,6 +158,7 @@ struct OpenMXSolverInvocation {
   std::vector<std::unique_ptr<OpenMXSolverResidues>> residues;
   std::vector<std::unique_ptr<openmx::core::CoreHole>> core_holes;
   std::vector<std::unique_ptr<openmx::core::ProjectorForce>> projector_forces;
+  NativeResourceGroups native_resources;
   explicit OpenMXSolverInvocation(int n):workers(n) {}
   Worker& worker(int n) {require(n>=0 && size_t(n)<workers.size(),"invalid solver worker ID");return workers[n];}
 };
@@ -175,6 +177,13 @@ extern "C" int openmx_core_solver_real(OpenMXSolverInvocation* scope,int worker,
   return checked(error,capacity,[&]{require(scope && out,"missing solver scope or output");
     const auto shape=shape4(dimensions);auto& b=buffer(scope->worker(worker).real,name,shape);
     *out={{shape[0],shape[1],shape[2],shape[3]},b.view().data_handle()};});
+}
+extern "C" int openmx_core_solver_resources(OpenMXSolverInvocation* scope,const char* name,
+    OpenMXNativeResources** out,char* error,size_t capacity) {
+  return checked(error,capacity,[&] {
+    require(scope && out,"missing solver resource scope or output");
+    *out=scope->native_resources.get(name,nullptr);
+  });
 }
 extern "C" int openmx_core_core_hole_prepare(OpenMXSolverInvocation* scope,const OpenMXCoreHoleInput* input,
     OpenMXCoreHoleView* out,char* error,size_t capacity) {

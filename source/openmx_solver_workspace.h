@@ -20,6 +20,12 @@ static inline double OpenMX_Solver_Run(OpenMXSolverOperation operation,void *arg
     OpenMX_Solver_Failure(error);
   return result;
 }
+static inline OpenMXNativeResources *OpenMX_Solver_Resources(OpenMXSolverInvocation *owner,const char *name)
+{
+  OpenMXNativeResources *view;char error[256];
+  if(!openmx_core_solver_resources(owner,name,&view,error,sizeof(error)))OpenMX_Solver_Failure(error);
+  return view;
+}
 static inline double *OpenMX_Solver_Real(OpenMXSolverInvocation *owner,const char *name,size_t count)
 {
   const size_t shape[4]={count,1,1,1};OpenMXSolverRealTensor view;char error[256];

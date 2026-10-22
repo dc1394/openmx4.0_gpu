@@ -8,4 +8,5 @@ struct NativeResourceGroups {
   struct Delete { void operator()(OpenMXNativeResources*) const noexcept; };
   using Group = std::unique_ptr<OpenMXNativeResources, Delete>;
   std::map<std::string,Group,std::less<>> groups;
+  OpenMXNativeResources* get(const char*,OpenMXNativeResourceReset);
 };

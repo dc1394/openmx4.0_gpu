@@ -96,6 +96,12 @@ foreach(_case lifecycle host domains ordering state invalid allocation concurren
   set_tests_properties("core-native-resource-${_case}" PROPERTIES LABELS "unit;core" TIMEOUT 120)
 endforeach()
 add_executable(openmx_solver_workspace_tests test_solver_workspace.cpp allocation_faults.cpp)
+add_executable(openmx_solver_resource_tests test_solver_resources.cpp allocation_faults.cpp)
+target_link_libraries(openmx_solver_resource_tests PRIVATE OpenMX::core)
+foreach(_case lifetime reuse invalid partial allocation concurrent)
+  add_test(NAME "core-solver-resource-${_case}" COMMAND openmx_solver_resource_tests "${_case}")
+  set_tests_properties("core-solver-resource-${_case}" PROPERTIES LABELS "unit;core" TIMEOUT 120)
+endforeach()
 target_link_libraries(openmx_solver_workspace_tests PRIVATE OpenMX::core)
 foreach(_case buffers rows orbitals fields residues invalid lifetime allocation concurrent)
   add_test(NAME "core-solver-workspace-${_case}" COMMAND openmx_solver_workspace_tests "${_case}")
@@ -114,7 +120,7 @@ foreach(_case layout modes mdspan ownership lifecycle invalid allocation concurr
   set_tests_properties("core-electronic-matrix-${_case}" PROPERTIES LABELS "unit;core" TIMEOUT 120)
 endforeach()
 if(OPENMX_CORE_BACKEND MATCHES "^(CUDA|HIP)$")
-  set_source_files_properties(test_grid_assembly.cpp test_native_resource_adapters.cpp test_native_resources.cpp test_solver_workspace.cpp test_orbital_optimization.cpp test_local_basis_state.cpp test_electronic_matrices.cpp test_projector_pipeline.cpp test_vna_matrix_storage.cpp test_reciprocal_views.cpp
+  set_source_files_properties(test_grid_assembly.cpp test_native_resource_adapters.cpp test_native_resources.cpp test_solver_workspace.cpp test_solver_resources.cpp test_orbital_optimization.cpp test_local_basis_state.cpp test_electronic_matrices.cpp test_projector_pipeline.cpp test_vna_matrix_storage.cpp test_reciprocal_views.cpp
     test_reciprocal_archive.cpp test_species_storage.cpp test_atomic_views.cpp test_orbital_workspace.cpp PROPERTIES LANGUAGE ${OPENMX_CORE_BACKEND})
 endif()
 if(OPENMX_CORE_BACKEND MATCHES "^(CUDA|HIP)$")

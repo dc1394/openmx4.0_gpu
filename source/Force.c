@@ -2071,11 +2071,12 @@ static size_t Force4_OpenACC(const OpenMXAtomicViews *atomic, double* Fx, double
 static void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double***** CDM0, const OpenMXLocalBasisViews *local_basis, OpenMXSolverInvocation *scratch);
 
 static void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iDM0, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis, OpenMXSolverInvocation *scratch);
-static int Force_HNL_GpuBegin(const OpenMXAtomicViews *atomic, double****** DS_NL);
-static void Force_HNL_GpuEnd(void);
-static void Force_HNL_GpuArchiveHalo(double****** DS_NL, int Original_Mc_AN, int Gc_AN);
-static void Force_HNL_GpuArchiveCase2(double****** DS_NL, int Mc_AN, int Gc_AN);
-static void Force_HNL_GpuCase1Run(double***** CDM0, const OpenMXElectronicViews *electronic);
+typedef struct ForceHNLGpuContext ForceHNLGpuContext;
+static int Force_HNL_GpuBegin(const OpenMXAtomicViews *atomic, double****** DS_NL, OpenMXSolverInvocation *scratch,ForceHNLGpuContext **output);
+static void Force_HNL_GpuEnd(ForceHNLGpuContext *g);
+static void Force_HNL_GpuArchiveHalo(ForceHNLGpuContext *g,double****** DS_NL, int Original_Mc_AN, int Gc_AN);
+static void Force_HNL_GpuArchiveCase2(ForceHNLGpuContext *g,double****** DS_NL, int Mc_AN, int Gc_AN);
+static void Force_HNL_GpuCase1Run(ForceHNLGpuContext *g,double***** CDM0, const OpenMXElectronicViews *electronic);
 /* OPENMX_BAND_PROFILE=1: per-rank section lines of the force batches on
    stderr (no collective, unlike Force_profile_report) */
 static int Force_PhaseProfileEnabled(void)
@@ -2088,7 +2089,7 @@ static int Force_PhaseProfileEnabled(void)
     }
     return cached;
 }
-static void Force_HNL_GpuCase2Run(double***** CDM0, const OpenMXElectronicViews *electronic);
+static void Force_HNL_GpuCase2Run(ForceHNLGpuContext *g,double***** CDM0, const OpenMXElectronicViews *electronic);
 static void Force_CoreHole(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iDM0, const OpenMXElectronicViews *electronic, OpenMXSolverInvocation *scratch);
 #include "openmx_force_stages.h"
 
@@ -5263,6 +5264,7 @@ void Force4(const OpenMXAtomicViews *atomic)
 
 void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iDM0, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis, OpenMXSolverInvocation *scratch)
 {
+    ForceHNLGpuContext *fhnl_context=NULL;
     OpenMXProjectorForceView projectors;
     OpenMX_ForcePrepareProjectors(scratch,atomic,SpinP_switch,SO_switch,&projectors);
 
@@ -5357,7 +5359,7 @@ void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iD
 
     /* batched device path for the scalar-relativistic traces */
 
-    fhnl_gpu = Force_HNL_GpuBegin(atomic, DS_NL);
+    fhnl_gpu = Force_HNL_GpuBegin(atomic, DS_NL,scratch,&fhnl_context);
 
     /*****************************************}**********************
         THE FIRST CASE:
@@ -5530,7 +5532,7 @@ void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iD
                 /* free tmp_array2 */
 
                 if (fhnl_gpu) {
-                    Force_HNL_GpuArchiveHalo(DS_NL, Original_Mc_AN, Gc_AN);
+                    Force_HNL_GpuArchiveHalo(fhnl_context,DS_NL, Original_Mc_AN, Gc_AN);
                 }
 
                 /*****************************************************************
@@ -5848,7 +5850,7 @@ void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iD
     } /* #pragma omp parallel */
 
     if (fhnl_gpu) {
-        Force_HNL_GpuCase1Run(CDM0, electronic);
+        Force_HNL_GpuCase1Run(fhnl_context,CDM0, electronic);
     }
 
     dtime(&etime);
@@ -6105,7 +6107,7 @@ void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iD
         if (Mc_AN <= Matomnum) {
 
             if (fhnl_gpu) {
-                Force_HNL_GpuArchiveCase2(DS_NL, Mc_AN, Gc_AN);
+                Force_HNL_GpuArchiveCase2(fhnl_context,DS_NL, Mc_AN, Gc_AN);
             }
 
             if (!fhnl_gpu) {
@@ -6289,8 +6291,8 @@ void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iD
     } /* Mc_AN */
 
     if (fhnl_gpu) {
-        Force_HNL_GpuCase2Run(CDM0, electronic);
-        Force_HNL_GpuEnd();
+        Force_HNL_GpuCase2Run(fhnl_context,CDM0, electronic);
+        Force_HNL_GpuEnd(fhnl_context);
         fhnl_gpu = 0;
     }
 
@@ -8645,303 +8647,7 @@ f4b_capacity:
    are archived, and one batched kernel per case runs after the loops. */
 /* ------------------------------------------------------------------ */
 
-typedef struct {
-    int enabled;
-
-    /* local DS_NL rows (so=0), direction-major: flat[dir*stride+block];
-       the (Mc,k) block holds CNO(Gc) rows of nlp(species of natn) each */
-    double* flat;
-    double* flat_dev;
-    size_t flat_stride;
-    size_t* mck_off;
-    int* mck_base;
-
-    /* first-case halo archive: direction-0 rows of every received atom */
-    double* halo;
-    size_t halo_count;
-    size_t* halo_off;
-    int* halo_base;
-
-    /* second-case per-centre archive: 4 directions of the staged slot;
-       the (Mc,k) block holds CNO(natn[Gc][k]) rows of nlp(centre) each */
-    double* c2;
-    size_t c2_stride;
-    size_t* c2_off;
-
-    /* per-species expanded projector energies (one entry per l)        */
-    double* ene;
-    size_t* ene_off;
-    int* sp_nlp;
-} ForceHNLGpuContext;
-
-static ForceHNLGpuContext FHNL_gpu = { 0 };
-
-static int Force_HNL_GpuBegin(const OpenMXAtomicViews *atomic, double****** DS_NL)
-{
-    ForceHNLGpuContext* g = &FHNL_gpu;
-    int Mc_AN, k, w, node_ranks = 1, node_rank = 0;
-    size_t pos = 0, slots = 0, halo_slots = 0, ene_pos = 0;
-    size_t free_bytes = 0, total_bytes = 0;
-    MPI_Comm node_comm = MPI_COMM_NULL;
-
-    memset(g, 0, sizeof(*g));
-
-    int requested=scf_eigen_lib_flag==GPUSOLVER;
-    MPI_Allreduce(MPI_IN_PLACE,&requested,1,MPI_INT,MPI_MIN,mpi_comm_level1);
-    if (!requested) return 0;
-    if (!Force_collective_env_flag("OPENMX_FORCEHNL_GPU", Force_gpu_stage_default(), mpi_comm_level1)) return 0;
-    if (F_NL_flag != 1) return 0;
-
-    /* only the real scalar-relativistic trace branches are batched */
-    if (!(SpinP_switch == 0 || SpinP_switch == 1 ||
-          (SpinP_switch == 3 && SO_switch == 0 && Hub_U_switch == 0 &&
-           Constraint_NCS_switch == 0 && Zeeman_NCS_switch == 0 && Zeeman_NCO_switch == 0))) {
-        return 0;
-    }
-    for (w = 0; w < SpeciesNum; w++) {
-        if (atomic->species.relativistic[w] != 0) return 0;
-    }
-
-    MPI_Comm_split_type(mpi_comm_level1, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, &node_comm);
-    MPI_Comm_size(node_comm, &node_ranks);
-    MPI_Comm_rank(node_comm, &node_rank);
-    if (node_ranks < 1) node_ranks = 1;
-    if (gpu_rank_device_usable()) acc_wait_all();
-    if (gpu_rank_device_usable() && cudaDeviceSynchronize() == cudaSuccess) {
-        acc_clear_freelists();
-    }
-    MPI_Barrier(node_comm);
-    MPI_Comm_free(&node_comm);
-
-    /* expanded projector energies per species */
-
-    g->ene_off = (size_t*)Force_checked_malloc(sizeof(size_t) * (size_t)(SpeciesNum + 1), __FILE__, __LINE__);
-    g->sp_nlp = (int*)Force_checked_malloc(sizeof(int) * (size_t)SpeciesNum, __FILE__, __LINE__);
-    for (w = 0; w < SpeciesNum; w++) {
-        int l1, nlp = 0;
-
-        g->ene_off[w] = ene_pos;
-        for (l1 = 1; l1 <= atomic->species.radial_projectors[w]; l1++) {
-            nlp += 2 * openmx_atomic_projector_angular(atomic,w)[l1] + 1;
-        }
-        g->sp_nlp[w] = nlp;
-        ene_pos += (size_t)nlp;
-    }
-    g->ene_off[SpeciesNum] = ene_pos;
-    g->ene = (double*)Force_checked_malloc(sizeof(double) * (ene_pos == 0 ? 1 : ene_pos), __FILE__, __LINE__);
-    for (w = 0; w < SpeciesNum; w++) {
-        int l1, l3, l = 0;
-
-        for (l1 = 1; l1 <= atomic->species.radial_projectors[w]; l1++) {
-            const double ene = openmx_radial_row3(&atomic->projector_energies,0,w)[l1 - 1];
-            const int l2 = 2 * openmx_atomic_projector_angular(atomic,w)[l1];
-
-            for (l3 = 0; l3 <= l2; l3++) {
-                g->ene[g->ene_off[w] + (size_t)l] = ene;
-                l++;
-            }
-        }
-    }
-
-    /* sizes of the flat local table, halo archive and staged archive */
-
-    for (Mc_AN = 1; Mc_AN <= Matomnum; Mc_AN++) {
-        int Gc_AN = M2G[Mc_AN];
-        int no0 = atomic->species.contracted_orbitals[WhatSpecies[Gc_AN]];
-
-        slots += (size_t)(FNAN[Gc_AN] + 1);
-        for (k = 0; k <= FNAN[Gc_AN]; k++) {
-            pos += (size_t)no0 * (size_t)g->sp_nlp[WhatSpecies[natn[Gc_AN][k]]];
-        }
-    }
-    g->flat_stride = pos;
-
-    for (Mc_AN = Matomnum + 1; Mc_AN <= Matomnum + MatomnumF; Mc_AN++) {
-        int Gc_AN = F_M2G[Mc_AN];
-        int no0 = atomic->species.contracted_orbitals[WhatSpecies[Gc_AN]];
-
-        halo_slots += (size_t)(FNAN[Gc_AN] + 1);
-        for (k = 0; k <= FNAN[Gc_AN]; k++) {
-            g->halo_count += (size_t)no0 * (size_t)g->sp_nlp[WhatSpecies[natn[Gc_AN][k]]];
-        }
-    }
-
-    int resident=!openmx_gpu_capacity_test_recovery() && gpu_rank_device_usable() && OpenMX_GpuMemGetInfo(&free_bytes,&total_bytes)==cudaSuccess;
-
-    g->mck_base = (int*)Force_checked_malloc(sizeof(int) * (size_t)(Matomnum + 2), __FILE__, __LINE__);
-    g->mck_off = (size_t*)Force_checked_malloc(sizeof(size_t) * (slots == 0 ? 1 : slots), __FILE__, __LINE__);
-    g->c2_off = (size_t*)Force_checked_malloc(sizeof(size_t) * (slots == 0 ? 1 : slots), __FILE__, __LINE__);
-
-    pos = 0;
-    slots = 0;
-    {
-        size_t c2pos = 0;
-
-        for (Mc_AN = 1; Mc_AN <= Matomnum; Mc_AN++) {
-            int Gc_AN = M2G[Mc_AN];
-            int no0 = atomic->species.contracted_orbitals[WhatSpecies[Gc_AN]];
-            int nlpc = g->sp_nlp[WhatSpecies[Gc_AN]];
-
-            g->mck_base[Mc_AN] = (int)slots;
-            for (k = 0; k <= FNAN[Gc_AN]; k++) {
-                int nok = atomic->species.contracted_orbitals[WhatSpecies[natn[Gc_AN][k]]];
-
-                g->mck_off[slots] = pos;
-                g->c2_off[slots] = c2pos;
-                pos += (size_t)no0 * (size_t)g->sp_nlp[WhatSpecies[natn[Gc_AN][k]]];
-                c2pos += (size_t)nok * (size_t)nlpc;
-                slots++;
-            }
-        }
-        g->c2_stride = c2pos;
-    }
-
-    /* Host archives are required for remote and CPU recovery. Device
-       residency is only an optimization, not admission to the phase. */
-    {
-        size_t need=(4U*g->flat_stride+g->halo_count+4U*g->c2_stride)*sizeof(double);
-        unsigned long long room=openmx_host_mem_available();
-        int fit=!room || need<=room/(2ULL*node_ranks),all_fit;
-        MPI_Allreduce(&fit,&all_fit,1,MPI_INT,MPI_MIN,mpi_comm_level1);
-        if(!all_fit){
-            free(g->c2_off);free(g->mck_off);free(g->mck_base);
-            free(g->ene);free(g->sp_nlp);free(g->ene_off);memset(g,0,sizeof(*g));return 0;
-        }
-        size_t reserve=Force_gpu_node_reserve(node_ranks);
-        resident=resident && free_bytes>reserve && (free_bytes-reserve)/(size_t)node_ranks>need+134217728;
-    }
-
-    g->flat = (double*)Force_checked_malloc(sizeof(double) * (g->flat_stride == 0 ? 4 : 4U * g->flat_stride),
-        __FILE__, __LINE__);
-    g->c2 = (double*)Force_checked_malloc(sizeof(double) * (g->c2_stride == 0 ? 4 : 4U * g->c2_stride),
-        __FILE__, __LINE__);
-    g->halo_base = (int*)Force_checked_malloc(sizeof(int) * (size_t)(MatomnumF + 2), __FILE__, __LINE__);
-    g->halo_off = (size_t*)Force_checked_malloc(sizeof(size_t) * (halo_slots == 0 ? 1 : halo_slots),
-        __FILE__, __LINE__);
-    g->halo = (double*)Force_checked_malloc(sizeof(double) * (g->halo_count == 0 ? 1 : g->halo_count),
-        __FILE__, __LINE__);
-
-    halo_slots = 0;
-    pos = 0;
-    for (Mc_AN = Matomnum + 1; Mc_AN <= Matomnum + MatomnumF; Mc_AN++) {
-        int Gc_AN = F_M2G[Mc_AN];
-        int no0 = atomic->species.contracted_orbitals[WhatSpecies[Gc_AN]];
-
-        g->halo_base[Mc_AN - Matomnum] = (int)halo_slots;
-        for (k = 0; k <= FNAN[Gc_AN]; k++) {
-            g->halo_off[halo_slots] = pos;
-            pos += (size_t)no0 * (size_t)g->sp_nlp[WhatSpecies[natn[Gc_AN][k]]];
-            halo_slots++;
-        }
-    }
-
-    /* flatten the local so=0 rows of all four directions */
-
-#pragma omp parallel for schedule(dynamic)
-    for (Mc_AN = 1; Mc_AN <= Matomnum; Mc_AN++) {
-        int Gc_AN = M2G[Mc_AN];
-        int no0 = atomic->species.contracted_orbitals[WhatSpecies[Gc_AN]];
-        int kk, k2;
-
-        for (kk = 0; kk <= 3; kk++) {
-            for (k2 = 0; k2 <= FNAN[Gc_AN]; k2++) {
-                int nlp = FHNL_gpu.sp_nlp[WhatSpecies[natn[Gc_AN][k2]]];
-                size_t base = (size_t)kk * FHNL_gpu.flat_stride
-                    + FHNL_gpu.mck_off[FHNL_gpu.mck_base[Mc_AN] + k2];
-                int i;
-
-                for (i = 0; i < no0; i++) {
-                    memcpy(FHNL_gpu.flat + base + (size_t)i * (size_t)nlp,
-                        DS_NL[0][kk][Mc_AN][k2][i], sizeof(double) * (size_t)nlp);
-                }
-            }
-        }
-    }
-
-    if(resident){
-        size_t flat_len=g->flat_stride?4U*g->flat_stride:4;
-        g->flat_dev=Force_gpu_arena_try(flat_len*sizeof(double));
-        if(g->flat_dev)acc_memcpy_to_device(g->flat_dev,g->flat,flat_len*sizeof(double));
-    }
-
-    g->enabled = 1;
-    return 1;
-}
-
-static void Force_HNL_GpuEnd(void)
-{
-    ForceHNLGpuContext* g = &FHNL_gpu;
-
-    if (!g->enabled) return;
-
-    if (g->flat_dev != NULL) {
-        acc_free(g->flat_dev);
-        g->flat_dev = NULL;
-    }
-    acc_clear_freelists();
-
-    free(g->halo);
-    free(g->halo_off);
-    free(g->halo_base);
-    free(g->c2);
-    free(g->flat);
-    free(g->c2_off);
-    free(g->mck_off);
-    free(g->mck_base);
-    free(g->ene);
-    free(g->sp_nlp);
-    free(g->ene_off);
-    memset(g, 0, sizeof(*g));
-}
-
-/* archive the direction-0 block of the halo atom just received into the
-   Matomnum+1 slot of the first-case communication loop */
-static void Force_HNL_GpuArchiveHalo(double****** DS_NL, int Original_Mc_AN, int Gc_AN)
-{
-    ForceHNLGpuContext* g = &FHNL_gpu;
-    int no0 = Spe_Total_CNO[WhatSpecies[Gc_AN]];
-    int halo_idx = Original_Mc_AN - Matomnum;
-    int k;
-
-    if (halo_idx < 1 || MatomnumF < halo_idx) {
-        Force4B_gpu_abort("Force_HNL GPU: halo index out of range.");
-    }
-
-#pragma omp parallel for schedule(dynamic)
-    for (k = 0; k <= FNAN[Gc_AN]; k++) {
-        int nlp = g->sp_nlp[WhatSpecies[natn[Gc_AN][k]]];
-        size_t base = g->halo_off[g->halo_base[halo_idx] + k];
-        int i;
-
-        for (i = 0; i < no0; i++) {
-            memcpy(g->halo + base + (size_t)i * (size_t)nlp,
-                DS_NL[0][0][Matomnum + 1][k][i], sizeof(double) * (size_t)nlp);
-        }
-    }
-}
-
-/* archive the staged 4-direction slot of the second-case centre Mc_AN */
-static void Force_HNL_GpuArchiveCase2(double****** DS_NL, int Mc_AN, int Gc_AN)
-{
-    ForceHNLGpuContext* g = &FHNL_gpu;
-    int nlpc = g->sp_nlp[WhatSpecies[Gc_AN]];
-    int k;
-
-#pragma omp parallel for schedule(dynamic)
-    for (k = 0; k <= FNAN[Gc_AN]; k++) {
-        int nok = Spe_Total_CNO[WhatSpecies[natn[Gc_AN][k]]];
-        int kk, i;
-
-        for (kk = 0; kk <= 3; kk++) {
-            size_t base = (size_t)kk * g->c2_stride + g->c2_off[g->mck_base[Mc_AN] + k];
-
-            for (i = 0; i < nok; i++) {
-                memcpy(g->c2 + base + (size_t)i * (size_t)nlpc,
-                    DS_NL[0][kk][Matomnum + 1][k][i], sizeof(double) * (size_t)nlpc);
-            }
-        }
-    }
-}
+#include "openmx_force_hnl_gpu.h"
 
 typedef struct {int kind,ian,jan,kn,h0,nlp;} ForceHNLCapacityItem;
 static void Force_HNL_capacity_kernel(size_t first,size_t count,const void *parameters,void *const v[],int gpu)
@@ -9690,15 +9396,15 @@ hnl_capacity:
     free(items);
 }
 
-static void Force_HNL_GpuCase1Run(double *****CDM0, const OpenMXElectronicViews *electronic)
+static void Force_HNL_GpuCase1Run(ForceHNLGpuContext *g,double *****CDM0, const OpenMXElectronicViews *electronic)
 {
     int rank;MPI_Comm_rank(mpi_comm_level1,&rank);
-    Force_HNL_GpuCase1Run_Part(1,Matomnum+1,&FHNL_gpu,NULL,rank,CDM0, electronic);
+    Force_HNL_GpuCase1Run_Part(1,Matomnum+1,g,NULL,rank,CDM0, electronic);
 }
-static void Force_HNL_GpuCase2Run(double *****CDM0, const OpenMXElectronicViews *electronic)
+static void Force_HNL_GpuCase2Run(ForceHNLGpuContext *g,double *****CDM0, const OpenMXElectronicViews *electronic)
 {
     int rank;MPI_Comm_rank(mpi_comm_level1,&rank);
-    Force_HNL_GpuCase2Run_Part(1,Matomnum+1,&FHNL_gpu,NULL,rank,CDM0, electronic);
+    Force_HNL_GpuCase2Run_Part(1,Matomnum+1,g,NULL,rank,CDM0, electronic);
 }
 
 void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double***** CDM0, const OpenMXLocalBasisViews *local_basis, OpenMXSolverInvocation *scratch)

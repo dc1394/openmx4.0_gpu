@@ -63,19 +63,23 @@ struct OpenMXNativeResources {
 
 void NativeResourceGroups::Delete::operator()(OpenMXNativeResources* p) const noexcept { delete p; }
 
+OpenMXNativeResources* NativeResourceGroups::get(const char* name,OpenMXNativeResourceReset reset) {
+  require(name && *name,"missing native resource group name");
+  auto found=groups.find(name);
+  if(found!=groups.end()) {
+    require(found->second->reset==reset,"native resource group has a different reset callback");
+    return found->second.get();
+  }
+  Group owner(new OpenMXNativeResources(nullptr));auto* view=owner.get();
+  // Publish the callback only after insertion succeeds.
+  groups.emplace(name,std::move(owner));view->reset=reset;return view;
+}
+
 extern "C" int openmx_core_native_resources(OpenMXCoreContext* context,const char* name,
     OpenMXNativeResourceReset reset,OpenMXNativeResources** out,char* error,size_t capacity) {
   return checked(error,capacity,[&] {
     require(context && name && *name && out,"missing native resource calculation/name/output");
-    auto& groups=context->native_resources.groups;auto found=groups.find(name);
-    if(found!=groups.end()) {
-      require(found->second->reset==reset,"native resource group has a different reset callback");
-      *out=found->second.get();return;
-    }
-    NativeResourceGroups::Group owner(new OpenMXNativeResources(nullptr));auto* view=owner.get();
-    // Failed insertion never invokes reset on native state not yet bound.
-    groups.emplace(name,std::move(owner));view->reset=reset;
-    *out=view;
+    *out=context->native_resources.get(name,reset);
   });
 }
 extern "C" void openmx_core_native_resources_clear(OpenMXCoreContext* context) {
