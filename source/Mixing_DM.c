@@ -7,7 +7,7 @@
 
 
 
-double Mixing_DM(OpenMXMixingRhokState *state, int MD_iter,
+double Mixing_DM(OpenMXMixingDMState *dm_state, OpenMXMixingRhokState *state, int MD_iter,
                  int SCF_iter,
                  int SCF_iter0,
                  int SucceedReadingDMfile,
@@ -79,7 +79,7 @@ double Mixing_DM(OpenMXMixingRhokState *state, int MD_iter,
   else if (Mixing_switch==1){
 
     if (SCF_iter==1){
-      DIIS_Mixing_DM(1,ResidualDM,iResidualDM, electronic);
+      DIIS_Mixing_DM(dm_state, 1,ResidualDM,iResidualDM, electronic);
     }
     else if (SCF_iter<=(Pulay_SCF-1)){
 
@@ -87,9 +87,9 @@ double Mixing_DM(OpenMXMixingRhokState *state, int MD_iter,
 		       iDM[0],iDM[1],iDM[2],ResidualDM[2],iResidualDM[2]);
     }
     else if (SCF_iter==Pulay_SCF)
-      DIIS_Mixing_DM(2,ResidualDM,iResidualDM, electronic);
+      DIIS_Mixing_DM(dm_state, 2,ResidualDM,iResidualDM, electronic);
     else 
-      DIIS_Mixing_DM(SCF_iter-(Pulay_SCF-2),ResidualDM,iResidualDM, electronic);
+      DIIS_Mixing_DM(dm_state, SCF_iter-(Pulay_SCF-2),ResidualDM,iResidualDM, electronic);
   }
 
   /*********************************************************
@@ -98,15 +98,15 @@ double Mixing_DM(OpenMXMixingRhokState *state, int MD_iter,
 
   else if (Mixing_switch==2){
     if (SCF_iter==1){
-      GR_Pulay_DM(1,ResidualDM, electronic);
+      GR_Pulay_DM(dm_state, 1,ResidualDM, electronic);
     }
     else if (SCF_iter<=(Pulay_SCF-1))
       Simple_Mixing_DM(1,Mixing_weight,DM[0],DM[1],DM[2],
 		       iDM[0],iDM[1],iDM[2],ResidualDM[2],iResidualDM[2]);
     else if (SCF_iter==Pulay_SCF)
-      GR_Pulay_DM(2,ResidualDM, electronic);
+      GR_Pulay_DM(dm_state, 2,ResidualDM, electronic);
     else 
-      GR_Pulay_DM(SCF_iter-(Pulay_SCF-2),ResidualDM, electronic);
+      GR_Pulay_DM(dm_state, SCF_iter-(Pulay_SCF-2),ResidualDM, electronic);
   }
   
   /*********************************************************

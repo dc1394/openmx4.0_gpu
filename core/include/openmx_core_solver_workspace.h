@@ -4,6 +4,7 @@
 #include "openmx_complex.h"
 #include "openmx_core_orbital_workspace.h"
 #include "openmx_core_native_resources.h"
+#include "openmx_core_electronic.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -28,6 +29,15 @@ int openmx_core_solver_run(int workers, OpenMXSolverOperation operation,
    no device or MPI runtime itself. Failure leaves output unchanged. */
 int openmx_core_solver_resources(OpenMXSolverInvocation*,const char *name,
     OpenMXNativeResources **out,char *error,size_t capacity);
+
+/* Copy one history group's complete CSR shape into invocation-owned scratch.
+   Input values are ignored. Numeric elements are uninitialized; write before
+   reading. The source metadata may die immediately after this call. Construct
+   before entering worker regions, as for field/residue creation. All returned
+   pointers are borrowed until invocation exit. Failure leaves output unchanged. */
+int openmx_core_solver_matrix_scratch(OpenMXSolverInvocation*,
+    const OpenMXElectronicMatrixView *source,size_t group,
+    OpenMXElectronicMatrixView *out,char *error,size_t capacity);
 
 /* A worker owns named, reusable tensors. Dimensions are in elements and use
    layout_right. Requesting the same shape preserves values and addresses;

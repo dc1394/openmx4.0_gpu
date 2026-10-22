@@ -1,5 +1,6 @@
 #include "openmx_core_solver_workspace.h"
 #include "allocation_faults.hpp"
+#include <openmx/core/matrix_scratch.hpp>
 #include <array>
 #include <cmath>
 #include <cstddef>
@@ -156,6 +157,71 @@ int complex_overwrite(OpenMXSolverInvocation* owner,void*,double* result) {
   const size_t empty[4]={3,0,1,1};
   require(openmx_core_solver_complex_overwrite(owner,0,"empty",empty,&view,error,sizeof(error)),error);
   require(!view.values && view.extent[0]==3 && !view.extent[1],"empty complex overwrite tensor has storage");
+  *result=17;return 1;
+}
+struct MatrixInput {
+  std::array<size_t,5> components{0,2,3,5,6};
+  std::array<size_t,7> atoms{0,2,3,4,5,7,8};
+  std::array<size_t,9> offsets{0,1,7,13,15,16,22,25,25};
+  std::array<int,16> shapes{1,1,2,3,3,2,2,1,1,1,2,3,3,1,0,4};
+  std::array<double,25> values{};
+  OpenMXElectronicMatrixView view(){return {2,2,4,6,8,25,components.data(),atoms.data(),offsets.data(),shapes.data(),values.data()};}
+};
+int matrix_scratch(OpenMXSolverInvocation* owner,void*,double* result) {
+  char error[256];OpenMXElectronicMatrixView out;
+  {
+    MatrixInput input;std::fill(input.values.begin(),input.values.end(),-73);
+    auto source=input.view();
+    struct Fill {
+      Fill(){openmx::test::fill_allocations_with(0xa5);}
+      ~Fill(){openmx::test::fill_allocations_with(-1);}
+    } fill;
+    require(openmx_core_solver_matrix_scratch(owner,&source,1,&out,error,sizeof(error)),error);
+    const auto* bytes=reinterpret_cast<const unsigned char*>(out.values);
+    for(size_t i=0;i<10*sizeof(double);++i)require(bytes[i]==0xa5,"matrix scratch initialized/copied numeric data");
+    require(out.groups==1 && out.channels==2 && out.components==2 && out.atoms==3 && out.blocks==4 && out.elements==10,"selected group has wrong shape");
+    require(out.component_offsets!=source.component_offsets && out.atom_offsets!=source.atom_offsets &&
+        out.shapes!=source.shapes && out.values!=source.values,"scratch borrows source metadata/storage");
+    for(auto v:input.values)equal(v,-73);
+    for(size_t i=0;i<10;++i)out.values[i]=double(i)+.25;
+    equal(openmx_electronic_row(&out,0,1,0,1)[2],6.25);
+    equal(openmx_electronic_row(&out,0,1,1,2)[0],9.25);
+    require(openmx_electronic_row(&out,1,0,0,0)==out.values+10,"zero-sized block has wrong offset");
+    openmx::core::MatrixScratch cpp(source,1);
+    auto block=cpp.block(0,1,0);openmx::core::element(block,1,2)=41;
+    const auto cpp_view=cpp.view();equal(openmx_electronic_row(&cpp_view,0,1,0,1)[2],41);
+    for(auto index:{size_t(2),SIZE_MAX}){
+      bool rejected=false;try{(void)cpp.block(index,0,0);}catch(const std::out_of_range&){rejected=true;}
+      require(rejected,"invalid C++ matrix component accepted");
+    }
+    const auto saved=out;
+    for(int bad=0;bad<9;++bad){
+      auto invalid=source;
+      if(bad==0)invalid.groups=SIZE_MAX;
+      if(bad==1)invalid.components=3;
+      if(bad==2)invalid.atoms=SIZE_MAX;
+      if(bad==3)invalid.blocks=SIZE_MAX;
+      if(bad==4)invalid.component_offsets=nullptr;
+      if(bad==5)invalid.atom_offsets=nullptr;
+      if(bad==6)invalid.shapes=nullptr;
+      if(bad==7)input.components[2]=1;
+      if(bad==8)input.shapes[9]=-1;
+      require(!openmx_core_solver_matrix_scratch(owner,&invalid,1,&out,error,sizeof(error)) && error[0],"invalid matrix shape accepted");
+      require(!std::memcmp(&out,&saved,sizeof(out)),"failed matrix acquisition changed output");
+      input.components[2]=3;input.shapes[9]=1;
+    }
+    require(!openmx_core_solver_matrix_scratch(owner,&source,2,&out,error,sizeof(error)),"invalid matrix group accepted");
+    require(!openmx_core_solver_matrix_scratch(nullptr,&source,0,&out,error,sizeof(error)),"missing matrix invocation accepted");
+    require(!openmx_core_solver_matrix_scratch(owner,nullptr,0,&out,error,sizeof(error)),"missing matrix shape accepted");
+    require(!openmx_core_solver_matrix_scratch(owner,&source,0,nullptr,error,sizeof(error)),"missing matrix output accepted");
+    // All source descriptors and values die here, including both source groups.
+  }
+  require(out.component_offsets[2]==3 && out.atom_offsets[3]==4 && out.shapes[3]==3,"scratch shape expired with source metadata");
+  equal(openmx_electronic_row(&out,0,1,0,1)[2],6.25);
+  const size_t components[]={0,1},atoms[]={0,1};const int shapes[]={0,3};
+  const OpenMXElectronicMatrixView empty={1,1,1,1,1,0,components,atoms,nullptr,shapes,nullptr};
+  require(openmx_core_solver_matrix_scratch(owner,&empty,0,&out,error,sizeof(error)),error);
+  require(!out.elements && out.values && openmx_electronic_row(&out,0,0,0,0)==out.values,"empty matrix lacks a safe zero-offset view");
   *result=17;return 1;
 }
 int rows(OpenMXSolverInvocation* owner,void*,double* result) {
@@ -332,6 +398,7 @@ int invalid(OpenMXSolverInvocation* owner,void*,double* result) {
 int lifetime_callback(OpenMXSolverInvocation* owner,void* mode,double* result) {
   double ignored;buffers(owner,nullptr,&ignored);overwrite(owner,nullptr,&ignored);rows(owner,nullptr,&ignored);orbitals(owner,nullptr,&ignored);
   complex_overwrite(owner,nullptr,&ignored);
+  matrix_scratch(owner,nullptr,&ignored);
   fields(owner,nullptr,&ignored);residues(owner,nullptr,&ignored);
   const auto behavior=*static_cast<int*>(mode);
   if(behavior==1)return 0;
@@ -352,6 +419,11 @@ int allocating(OpenMXSolverInvocation* owner,void*,double* result) {
   if(!openmx_core_solver_real_overwrite(owner,0,"a",shape,&view,error,sizeof(error)))return 0;
   OpenMXSolverComplexTensor complex;
   if(!openmx_core_solver_complex_overwrite(owner,0,"a",shape,&complex,error,sizeof(error)))return 0;
+  MatrixInput matrix_input;auto matrix_source=matrix_input.view();OpenMXElectronicMatrixView matrix{};
+  const auto unchanged_matrix=matrix;
+  if(!openmx_core_solver_matrix_scratch(owner,&matrix_source,1,&matrix,error,sizeof(error))){
+    require(!std::memcmp(&matrix,&unchanged_matrix,sizeof(matrix)),"failed matrix construction changed output");return 0;
+  }
   double** rows;if(!openmx_core_solver_real_rows(owner,0,"b",5,8,&rows,error,sizeof(error)))return 0;
   double*** aliases;const OpenMXSolverRealTensor borrowed={{3,4,2,1},view.values};
   if(!openmx_core_solver_real_alias(owner,0,"alias",&borrowed,&aliases,error,sizeof(error)))return 0;
@@ -410,6 +482,7 @@ int main(int argc,char** argv) {
     const std::string name=argc==2?argv[1]:"";
     if(name=="buffers")run(buffers);else if(name=="overwrite")run(overwrite);else if(name=="rows")run(rows);else if(name=="fields")run(fields);
     else if(name=="complex-overwrite")run(complex_overwrite);
+    else if(name=="matrix-scratch")run(matrix_scratch);
     else if(name=="orbitals")run(orbitals);
     else if(name=="residues")run(residues);else if(name=="invalid")run(invalid);else if(name=="lifetime")lifetime_test();
     else if(name=="allocation")allocation_test();else if(name=="concurrent")run(concurrent);else throw std::runtime_error("unknown solver workspace test");

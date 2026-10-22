@@ -16,34 +16,40 @@
 #include <math.h>
 #include <string.h>
 #include "openmx_common.h"
+#include "openmx_mixing_dm_workspace.h"
 #include "mpi.h"
 
 
-static void Inverse(int n, double **a, double **ia);
+static void Inverse(OpenMXSolverInvocation *scratch, int n, const OpenMXSolverRealTensor *a, const OpenMXSolverRealTensor *ia);
 
 
 
 
-void ADIIS_Mixing_DM(int SCF_iter, double ******ResidualDM, double ******iResidualDM, const OpenMXElectronicViews *electronic)
+static void ADIIS_Mixing_DM_Compute(OpenMXSolverInvocation *scratch,const MixDM_ScratchArguments *arguments)
 {
+  int SCF_iter=arguments->iteration;
+  double ******ResidualDM=arguments->residual;
+  const OpenMXElectronicViews *electronic=arguments->electronic;
+  double ******iResidualDM=arguments->imaginary_residual;
   double ******DM=electronic->DM;
   double *****H=electronic->H;
   double ******HisH1=electronic->HisH1;
   double ******iDM=electronic->iDM;
 
-  static int firsttime=1;
   int spin,Mc_AN,Gc_AN,wan1,TNO1,h_AN,Gh_AN;
   int wan2,TNO2,i,j,k,NumMix,NumSlide;
   int SCFi,SCFj,SCFk,tno1,tno0,Cwan,Hwan; 
   int pSCF_iter,size_OptRDM,size_iOptRDM;
   int SpinP_num,flag_nan,n,po;
   double My_sum,My_A,tt2,F;
-  double *alden,*alR,*DiDn_Hn,**DiDn_HjHn;
-  double **A,**IA,*c,*t,**ct,*dF;
+  double *alden,*alR,*DiDn_Hn;
+  OpenMXSolverRealTensor DiDn_HjHn;
+  OpenMXSolverRealTensor A,IA,ct;
+  double *c,*t,*dF;
   double OptNorm_RDM,My_OptNorm_RDM;
   double dum1,dum2,bunsi,bunbo,sum,coef_OptRDM;
-  double *****OptRDM;
-  double *****iOptRDM;
+  OpenMXElectronicMatrixView OptRDM;
+  OpenMXElectronicMatrixView iOptRDM;
   int numprocs,myid;
   char nanchar[300];
 
@@ -57,121 +63,26 @@ void ADIIS_Mixing_DM(int SCF_iter, double ******ResidualDM, double ******iResidu
     allocation of arrays:
   ****************************************************/
 
-  alden = (double*)malloc(sizeof(double)*List_YOUSO[16]);
-  alR = (double*)malloc(sizeof(double)*List_YOUSO[16]);
-  t = (double*)malloc(sizeof(double)*List_YOUSO[16]);
-  c = (double*)malloc(sizeof(double)*List_YOUSO[16]);
-  dF = (double*)malloc(sizeof(double)*List_YOUSO[16]);
-
-  ct = (double**)malloc(sizeof(double*)*List_YOUSO[16]);
-  for (i=0; i<List_YOUSO[16]; i++){
-    ct[i] = (double*)malloc(sizeof(double)*List_YOUSO[16]);
-  }
-
-  A = (double**)malloc(sizeof(double*)*List_YOUSO[16]);
-  for (i=0; i<List_YOUSO[16]; i++){
-    A[i] = (double*)malloc(sizeof(double)*List_YOUSO[16]);
-  }
-
-  IA = (double**)malloc(sizeof(double*)*List_YOUSO[16]);
-  for (i=0; i<List_YOUSO[16]; i++){
-    IA[i] = (double*)malloc(sizeof(double)*List_YOUSO[16]);
-  }
-
-  DiDn_Hn = (double*)malloc(sizeof(double)*List_YOUSO[16]);
-
-  DiDn_HjHn = (double**)malloc(sizeof(double*)*List_YOUSO[16]);
-  for (i=0; i<List_YOUSO[16]; i++){
-    DiDn_HjHn[i] = (double*)malloc(sizeof(double)*List_YOUSO[16]);
-  }
-
-  /* OptRDM */
-
-  size_OptRDM = 0;
-  OptRDM = (double*****)malloc(sizeof(double****)*(SpinP_num+1));
-  for (k=0; k<=SpinP_num; k++){
-    OptRDM[k] = (double****)malloc(sizeof(double***)*(atomnum+1)); 
-    FNAN[0] = 0;
-
-    for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-      if (Mc_AN==0){
-        Gc_AN = 0;
-        tno0 = 1;
-      }
-      else{
-        Gc_AN = M2G[Mc_AN];
-        Cwan = WhatSpecies[Gc_AN];
-        tno0 = Spe_Total_NO[Cwan];  
-      }    
-
-      OptRDM[k][Mc_AN] = (double***)malloc(sizeof(double**)*(FNAN[Gc_AN]+1)); 
-      for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-        if (Mc_AN==0){
-          tno1 = 1;  
-        }
-        else{
-          Gh_AN = natn[Gc_AN][h_AN];
-          Hwan = WhatSpecies[Gh_AN];
-          tno1 = Spe_Total_NO[Hwan];
-        } 
-
-        OptRDM[k][Mc_AN][h_AN] = (double**)malloc(sizeof(double*)*tno0); 
-        for (i=0; i<tno0; i++){
-          OptRDM[k][Mc_AN][h_AN][i] = (double*)malloc(sizeof(double)*tno1); 
-        }
-        size_OptRDM += tno0*tno1;
-      }
-    }
-  }
-
-  /* iOptRDM */
-
+  alden = OpenMX_Solver_OverwriteReal(scratch,"ADIIS_Mixing_DM-alden",List_YOUSO[16]);
+  alR = OpenMX_Solver_OverwriteReal(scratch,"ADIIS_Mixing_DM-alR",List_YOUSO[16]);
+  t = OpenMX_Solver_OverwriteReal(scratch,"ADIIS_Mixing_DM-t",List_YOUSO[16]);
+  c = OpenMX_Solver_OverwriteReal(scratch,"ADIIS_Mixing_DM-c",List_YOUSO[16]);
+  dF = OpenMX_Solver_OverwriteReal(scratch,"ADIIS_Mixing_DM-dF",List_YOUSO[16]);
+  DiDn_Hn = OpenMX_Solver_OverwriteReal(scratch,"ADIIS_Mixing_DM-DiDn_Hn",List_YOUSO[16]);
+  A = OpenMX_Solver_OverwriteView(scratch,"ADIIS_Mixing_DM-A",List_YOUSO[16],List_YOUSO[16]);
+  IA = OpenMX_Solver_OverwriteView(scratch,"ADIIS_Mixing_DM-IA",List_YOUSO[16],List_YOUSO[16]);
+  ct = OpenMX_Solver_OverwriteView(scratch,"ADIIS_Mixing_DM-ct",List_YOUSO[16],List_YOUSO[16]);
+  DiDn_HjHn = OpenMX_Solver_OverwriteView(scratch,"ADIIS_Mixing_DM-DiDn_HjHn",List_YOUSO[16],List_YOUSO[16]);
+  FNAN[0] = 0;
+  OptRDM = OpenMX_Solver_MatrixScratch(scratch,&electronic->fields[OPENMX_ELECTRONIC_DENSITY],0);
+  size_OptRDM = (int)OptRDM.elements;
   if (SpinP_switch==3 && ( SO_switch==1
                         || Hub_U_switch==1
                         || 1<=Constraint_NCS_switch
                         || Zeeman_NCS_switch==1
-                        || Zeeman_NCO_switch==1 )){ 
-
-    size_iOptRDM = 0;
-    iOptRDM = (double*****)malloc(sizeof(double****)*2);
-    for (k=0; k<2; k++){
-      iOptRDM[k] = (double****)malloc(sizeof(double***)*(atomnum+1)); 
-      FNAN[0] = 0;
-
-      for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	if (Mc_AN==0){
-	  Gc_AN = 0;
-	  tno0 = 1;
-	}
-	else{
-	  Gc_AN = M2G[Mc_AN];
-	  Cwan = WhatSpecies[Gc_AN];
-	  tno0 = Spe_Total_NO[Cwan];  
-	}    
-
-	iOptRDM[k][Mc_AN] = (double***)malloc(sizeof(double**)*(FNAN[Gc_AN]+1)); 
-	for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	  if (Mc_AN==0){
-	    tno1 = 1;  
-	  }
-	  else{
-	    Gh_AN = natn[Gc_AN][h_AN];
-	    Hwan = WhatSpecies[Gh_AN];
-	    tno1 = Spe_Total_NO[Hwan];
-	  } 
-
-	  iOptRDM[k][Mc_AN][h_AN] = (double**)malloc(sizeof(double*)*tno0); 
-	  for (i=0; i<tno0; i++){
-	    iOptRDM[k][Mc_AN][h_AN][i] = (double*)malloc(sizeof(double)*tno1); 
-	  }
-	  size_iOptRDM += tno0*tno1;
-	}
-      }
-    }
+                        || Zeeman_NCO_switch==1 )){
+    iOptRDM = OpenMX_Solver_MatrixScratch(scratch,&electronic->fields[OPENMX_ELECTRONIC_IMAGINARY_DENSITY],0);
+    size_iOptRDM = (int)iOptRDM.elements;
   }
 
   /****************************************************
@@ -309,8 +220,8 @@ void ADIIS_Mixing_DM(int SCF_iter, double ******ResidualDM, double ******iResidu
       }
 
       /* MPI My_sum */
-      MPI_Allreduce(&My_sum, &DiDn_HjHn[SCFi][SCFj], 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
-      DiDn_HjHn[SCFi][SCFj] = DiDn_HjHn[SCFi][SCFj];
+      MPI_Allreduce(&My_sum, &openmx_solver_real_matrix_row(&DiDn_HjHn,SCFi)[SCFj], 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
+      openmx_solver_real_matrix_row(&DiDn_HjHn,SCFi)[SCFj] = openmx_solver_real_matrix_row(&DiDn_HjHn,SCFi)[SCFj];
 
     }
   }
@@ -345,9 +256,9 @@ void ADIIS_Mixing_DM(int SCF_iter, double ******ResidualDM, double ******iResidu
       for (SCFj=1; SCFj<=NumMix; SCFj++){
 
         if (SCFi==SCFj)
-          ct[SCFi][SCFj] = 2.0*(t[SCFi]*tt2-t[SCFi]*t[SCFi]*t[SCFj])/(tt2*tt2); 
+          openmx_solver_real_matrix_row(&ct,SCFi)[SCFj] = 2.0*(t[SCFi]*tt2-t[SCFi]*t[SCFi]*t[SCFj])/(tt2*tt2);
         else
-          ct[SCFi][SCFj] = -2.0*t[SCFi]*t[SCFi]*t[SCFj]/(tt2*tt2); 
+          openmx_solver_real_matrix_row(&ct,SCFi)[SCFj] = -2.0*t[SCFi]*t[SCFi]*t[SCFj]/(tt2*tt2);
       }
     }    
 
@@ -358,12 +269,12 @@ void ADIIS_Mixing_DM(int SCF_iter, double ******ResidualDM, double ******iResidu
       dF[SCFk] = 0.0;
 
       for (SCFi=1; SCFi<=NumMix; SCFi++){
-	dF[SCFk] += ct[SCFi][SCFk]*DiDn_Hn[SCFi];
+        dF[SCFk] += openmx_solver_real_matrix_row(&ct,SCFi)[SCFk]*DiDn_Hn[SCFi];
       }
 
       for (SCFi=1; SCFi<=NumMix; SCFi++){
 	for (SCFj=1; SCFj<=NumMix; SCFj++){
-	  dF[SCFk] += 0.5*(ct[SCFi][SCFk]*c[SCFj] +c[SCFi]*ct[SCFj][SCFk])*DiDn_HjHn[SCFi][SCFj]; 
+          dF[SCFk] += 0.5*(openmx_solver_real_matrix_row(&ct,SCFi)[SCFk]*c[SCFj] +c[SCFi]*openmx_solver_real_matrix_row(&ct,SCFj)[SCFk])*openmx_solver_real_matrix_row(&DiDn_HjHn,SCFi)[SCFj];
 	}
       }
     }
@@ -393,7 +304,7 @@ void ADIIS_Mixing_DM(int SCF_iter, double ******ResidualDM, double ******iResidu
 
     for (SCFi=1; SCFi<=NumMix; SCFi++){
       for (SCFj=1; SCFj<=NumMix; SCFj++){
-	F += 0.5*c[SCFi]*c[SCFj]*DiDn_HjHn[SCFi][SCFj];
+        F += 0.5*c[SCFi]*c[SCFj]*openmx_solver_real_matrix_row(&DiDn_HjHn,SCFi)[SCFj];
       }
     }
 
@@ -492,27 +403,27 @@ void ADIIS_Mixing_DM(int SCF_iter, double ******ResidualDM, double ******iResidu
       }
 
       /* MPI My_A */
-      MPI_Allreduce(&My_A, &A[SCFi-1][SCFj-1], 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
+      MPI_Allreduce(&My_A, &openmx_solver_real_matrix_row(&A,SCFi-1)[SCFj-1], 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
 
-      if (SCFi==1 && SCFj==1) NormRD[0] = A[0][0];
+      if (SCFi==1 && SCFj==1) NormRD[0] = openmx_solver_real_matrix_row(&A,0)[0];
 
-      A[SCFi-1][SCFj-1] = A[SCFi-1][SCFj-1];
+      openmx_solver_real_matrix_row(&A,SCFi-1)[SCFj-1] = openmx_solver_real_matrix_row(&A,SCFi-1)[SCFj-1];
 
     } /* SCFj */
   } /* SCFi */
 
   for (SCFi=1; SCFi<=NumMix; SCFi++){
-    A[SCFi-1][NumMix] = 1.0;
-    A[NumMix][SCFi-1] = 1.0;
+    openmx_solver_real_matrix_row(&A,SCFi-1)[NumMix] = 1.0;
+    openmx_solver_real_matrix_row(&A,NumMix)[SCFi-1] = 1.0;
   }
-  A[NumMix][NumMix] = 0.0;
+  openmx_solver_real_matrix_row(&A,NumMix)[NumMix] = 0.0;
 
-  Inverse(NumMix,A,IA);
+  Inverse(scratch,NumMix,&A,&IA);
 
   /* IA*(-<Di-Dn|H(Dn)>) */
 
   for (SCFi=1; SCFi<=NumMix; SCFi++){
-    alR[SCFi] = IA[SCFi-1][NumMix];
+    alR[SCFi] = openmx_solver_real_matrix_row(&IA,SCFi-1)[NumMix];
   }
 
   /*************************************
@@ -564,7 +475,7 @@ void ADIIS_Mixing_DM(int SCF_iter, double ******ResidualDM, double ******iResidu
 	      sum += alR[pSCF_iter]*ResidualDM[pSCF_iter][spin][Mc_AN][h_AN][i][j];
 	    }
 
-	    OptRDM[spin][Mc_AN][h_AN][i][j] = sum;
+            openmx_electronic_row(&OptRDM,spin,Mc_AN,h_AN,i)[j] = sum;
 	    My_OptNorm_RDM += sum*sum;
 
 	  }
@@ -586,7 +497,7 @@ void ADIIS_Mixing_DM(int SCF_iter, double ******ResidualDM, double ******iResidu
 		sum += alR[pSCF_iter]*iResidualDM[pSCF_iter][spin][Mc_AN][h_AN][i][j];
 	      }
 
-	      iOptRDM[spin][Mc_AN][h_AN][i][j] = sum;
+              openmx_electronic_row(&iOptRDM,spin,Mc_AN,h_AN,i)[j] = sum;
 	      My_OptNorm_RDM += sum*sum;
 
 	    }
@@ -641,7 +552,7 @@ void ADIIS_Mixing_DM(int SCF_iter, double ******ResidualDM, double ******iResidu
 
 	    /* Correction by optimized RDM */
 
-            DM[0][spin][Mc_AN][h_AN][i][j] = sum + coef_OptRDM*OptRDM[spin][Mc_AN][h_AN][i][j];
+            DM[0][spin][Mc_AN][h_AN][i][j] = sum + coef_OptRDM*openmx_electronic_row(&OptRDM,spin,Mc_AN,h_AN,i)[j];
 
 	  }
 	}
@@ -663,7 +574,7 @@ void ADIIS_Mixing_DM(int SCF_iter, double ******ResidualDM, double ******iResidu
 
 	      /* Correction by optimized RDM */
 
-	      iDM[0][spin][Mc_AN][h_AN][i][j] = sum + coef_OptRDM*iOptRDM[spin][Mc_AN][h_AN][i][j]; 
+              iDM[0][spin][Mc_AN][h_AN][i][j] = sum + coef_OptRDM*openmx_electronic_row(&iOptRDM,spin,Mc_AN,h_AN,i)[j];
 	    }
 	  }
 	}
@@ -754,125 +665,15 @@ void ADIIS_Mixing_DM(int SCF_iter, double ******ResidualDM, double ******iResidu
     }
   }
 
-  /****************************************************
-    freeing of arrays:
-  ****************************************************/
-
-  free(alden);
-  free(alR);
-  free(t);
-  free(c);
-  free(dF);
-
-  for (i=0; i<List_YOUSO[16]; i++){
-    free(ct[i]);
-  }
-  free(ct);
-
-  for (i=0; i<List_YOUSO[16]; i++){
-    free(A[i]);
-  }
-  free(A);
-
-  for (i=0; i<List_YOUSO[16]; i++){
-    free(IA[i]);
-  }
-  free(IA);
-
-  free(DiDn_Hn);
-
-  for (i=0; i<List_YOUSO[16]; i++){
-    free(DiDn_HjHn[i]);
-  }
-  free(DiDn_HjHn);
-
-  /* OptRDM */
-
-  for (k=0; k<=SpinP_num; k++){
-    FNAN[0] = 0;
-
-    for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-      if (Mc_AN==0){
-        Gc_AN = 0;
-        tno0 = 1;
-      }
-      else{
-        Gc_AN = M2G[Mc_AN];
-        Cwan = WhatSpecies[Gc_AN];
-        tno0 = Spe_Total_NO[Cwan];  
-      }    
-
-      for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-        if (Mc_AN==0){
-          tno1 = 1;  
-        }
-        else{
-          Gh_AN = natn[Gc_AN][h_AN];
-          Hwan = WhatSpecies[Gh_AN];
-          tno1 = Spe_Total_NO[Hwan];
-        } 
-
-        for (i=0; i<tno0; i++){
-          free(OptRDM[k][Mc_AN][h_AN][i]);
-        }
-        free(OptRDM[k][Mc_AN][h_AN]);
-      }
-      free(OptRDM[k][Mc_AN]);
-    }
-    free(OptRDM[k]);
-  }
-  free(OptRDM);
-
-  /* iOptRDM */
-
-  if (SpinP_switch==3 && ( SO_switch==1 || Hub_U_switch==1 || 1<=Constraint_NCS_switch
-      || Zeeman_NCS_switch==1 || Zeeman_NCO_switch==1)){ 
-
-    for (k=0; k<2; k++){
-      FNAN[0] = 0;
-      for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){
-
-	if (Mc_AN==0){
-	  Gc_AN = 0;
-	  tno0 = 1;
-	}
-	else{
-	  Gc_AN = M2G[Mc_AN];
-	  Cwan = WhatSpecies[Gc_AN];
-	  tno0 = Spe_Total_NO[Cwan];  
-	}    
-
-	for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	  if (Mc_AN==0){
-	    tno1 = 1;  
-	  }
-	  else{
-	    Gh_AN = natn[Gc_AN][h_AN];
-	    Hwan = WhatSpecies[Gh_AN];
-	    tno1 = Spe_Total_NO[Hwan];
-	  } 
-
-	  for (i=0; i<tno0; i++){
-	    free(iOptRDM[k][Mc_AN][h_AN][i]);
-	  }
-          free(iOptRDM[k][Mc_AN][h_AN]);
-	}
-        free(iOptRDM[k][Mc_AN]);
-      }
-      free(iOptRDM[k]);
-    }
-    free(iOptRDM);
-  }
-
+  /* Invocation exit releases scratch without reading atom topology. */
+  FNAN[0] = 0;
 }
 
 
 
 
-void Inverse(int n, double **a, double **ia)
+
+void Inverse(OpenMXSolverInvocation *scratch, int n, const OpenMXSolverRealTensor *a, const OpenMXSolverRealTensor *ia)
 {
   /****************************************************
                   LU decomposition
@@ -884,7 +685,7 @@ void Inverse(int n, double **a, double **ia)
   int i,j,k;
   double w;
   double *x,*y;
-  double **da;
+  OpenMXSolverRealTensor da;
 
   /***************************************************
     allocation of arrays: 
@@ -894,27 +695,24 @@ void Inverse(int n, double **a, double **ia)
      da[List_YOUSO[16]][List_YOUSO[16]]
   ***************************************************/
 
-  x = (double*)malloc(sizeof(double)*List_YOUSO[16]);
-  y = (double*)malloc(sizeof(double)*List_YOUSO[16]);
+  x = OpenMX_Solver_OverwriteReal(scratch,"ADIIS_Mixing_DM-inverse-x",List_YOUSO[16]);
+  y = OpenMX_Solver_OverwriteReal(scratch,"ADIIS_Mixing_DM-inverse-y",List_YOUSO[16]);
 
-  da = (double**)malloc(sizeof(double*)*List_YOUSO[16]);
-  for (i=0; i<List_YOUSO[16]; i++){
-    da[i] = (double*)malloc(sizeof(double)*List_YOUSO[16]);
-  }
+  da = OpenMX_Solver_OverwriteView(scratch,"ADIIS_Mixing_DM-inverse-da",List_YOUSO[16],List_YOUSO[16]);
 
   /* start calc. */
 
   if (n==-1){
     for (i=0; i<List_YOUSO[16]; i++){
       for (j=0; j<List_YOUSO[16]; j++){
-	a[i][j] = 0.0;
+        openmx_solver_real_matrix_row(a,i)[j] = 0.0;
       }
     }
   }
   else{
     for (i=0; i<=n; i++){
       for (j=0; j<=n; j++){
-	da[i][j] = a[i][j];
+        openmx_solver_real_matrix_row(&da,i)[j] = openmx_solver_real_matrix_row(a,i)[j];
       }
     }
 
@@ -923,11 +721,11 @@ void Inverse(int n, double **a, double **ia)
     ****************************************************/
 
     for (k=0; k<=n-1; k++){
-      w = 1.0/a[k][k];
+      w = 1.0/openmx_solver_real_matrix_row(a,k)[k];
       for (i=k+1; i<=n; i++){
-	a[i][k] = w*a[i][k];
+        openmx_solver_real_matrix_row(a,i)[k] = w*openmx_solver_real_matrix_row(a,i)[k];
 	for (j=k+1; j<=n; j++){
-	  a[i][j] = a[i][j] - a[i][k]*a[k][j];
+          openmx_solver_real_matrix_row(a,i)[j] = openmx_solver_real_matrix_row(a,i)[j] - openmx_solver_real_matrix_row(a,i)[k]*openmx_solver_real_matrix_row(a,k)[j];
 	}
       }
     }
@@ -943,7 +741,7 @@ void Inverse(int n, double **a, double **ia)
 	else
 	  y[i] = 0.0;
 	for (j=0; j<=i-1; j++){
-	  y[i] = y[i] - a[i][j]*y[j];
+          y[i] = y[i] - openmx_solver_real_matrix_row(a,i)[j]*y[j];
 	}
       }
 
@@ -954,34 +752,25 @@ void Inverse(int n, double **a, double **ia)
       for (i=n; 0<=i; i--){
 	x[i] = y[i];
 	for (j=n; (i+1)<=j; j--){
-	  x[i] = x[i] - a[i][j]*x[j];
+          x[i] = x[i] - openmx_solver_real_matrix_row(a,i)[j]*x[j];
 	}
-	x[i] = x[i]/a[i][i];
-	ia[i][k] = x[i];
+        x[i] = x[i]/openmx_solver_real_matrix_row(a,i)[i];
+        openmx_solver_real_matrix_row(ia,i)[k] = x[i];
       }
     }
 
     for (i=0; i<=n; i++){
       for (j=0; j<=n; j++){
-	a[i][j] = da[i][j];
+        openmx_solver_real_matrix_row(a,i)[j] = openmx_solver_real_matrix_row(&da,i)[j];
       }
     }
   }
 
-  /***************************************************
-    freeing of arrays: 
+  /* The invocation owns x, y and the typed backup matrix. */
+}
 
-     x[List_YOUSO[16]]
-     y[List_YOUSO[16]]
-     da[List_YOUSO[16]][List_YOUSO[16]]
-  ***************************************************/
 
-  free(x);
-  free(y);
-
-  for (i=0; i<List_YOUSO[16]; i++){
-    free(da[i]);
-  }
-  free(da);
-
+void ADIIS_Mixing_DM(int SCF_iter, double ******ResidualDM, double ******iResidualDM, const OpenMXElectronicViews *electronic)
+{
+  MixDM_WithScratch(ADIIS_Mixing_DM_Compute,NULL,SCF_iter,ResidualDM,iResidualDM,electronic);
 }

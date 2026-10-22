@@ -33,7 +33,7 @@ PREFIX = r'''
 #include <stdlib.h>
 typedef struct Atomic OpenMXAtomicViews;
 typedef struct Reciprocal OpenMXReciprocalViews;
-typedef struct Electronic OpenMXElectronicViews;
+/* The workspace header supplies the actual electronic-view type. */
 static int requested_gpu,SetNonlocal_gpu_used;
 static void dtime(double *out){static double tick;*out=tick++;}
 static double OpenMX_Solver_Run(OpenMXSolverOperation op,void *args){

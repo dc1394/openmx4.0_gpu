@@ -1,6 +1,7 @@
 #include "openmx_core_solver_workspace.h"
 #include <openmx/core/tensor.hpp>
 #include <openmx/core/overwrite_tensor.hpp>
+#include <openmx/core/matrix_scratch.hpp>
 #include <openmx/core/orbital_workspace.hpp>
 #include <openmx/core/core_hole.hpp>
 #include <openmx/core/projector_force.hpp>
@@ -161,6 +162,7 @@ struct OpenMXSolverInvocation {
   std::vector<Worker> workers;
   std::vector<std::unique_ptr<OpenMXSolverRealField>> fields;
   std::vector<std::unique_ptr<OpenMXSolverResidues>> residues;
+  std::vector<std::unique_ptr<openmx::core::MatrixScratch>> matrices;
   std::vector<std::unique_ptr<openmx::core::CoreHole>> core_holes;
   std::vector<std::unique_ptr<openmx::core::ProjectorForce>> projector_forces;
   NativeResourceGroups native_resources;
@@ -175,6 +177,15 @@ extern "C" int openmx_core_solver_run(int workers,OpenMXSolverOperation operatio
     OpenMXSolverInvocation invocation(workers);double output;
     require(operation(&invocation,arguments,&output)==1,"solver callback failed");
     *result=output;
+  });
+}
+extern "C" int openmx_core_solver_matrix_scratch(OpenMXSolverInvocation* scope,
+    const OpenMXElectronicMatrixView* source,size_t group,OpenMXElectronicMatrixView* out,
+    char* error,size_t capacity) {
+  return checked(error,capacity,[&] {
+    require(scope && source && out,"missing scratch matrix scope, shape or output");
+    auto owner=std::make_unique<openmx::core::MatrixScratch>(*source,group);
+    const auto view=owner->view();scope->matrices.push_back(std::move(owner));*out=view;
   });
 }
 extern "C" int openmx_core_solver_real(OpenMXSolverInvocation* scope,int worker,const char* name,

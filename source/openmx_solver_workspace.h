@@ -32,6 +32,13 @@ static inline double *OpenMX_Solver_Real(OpenMXSolverInvocation *owner,const cha
   if(!openmx_core_solver_real(owner,omp_get_thread_num(),name,shape,&view,error,sizeof(error)))OpenMX_Solver_Failure(error);
   return view.values;
 }
+static inline OpenMXElectronicMatrixView OpenMX_Solver_MatrixScratch(OpenMXSolverInvocation *owner,
+    const OpenMXElectronicMatrixView *source,size_t group)
+{
+  OpenMXElectronicMatrixView view;char error[256];
+  if(!openmx_core_solver_matrix_scratch(owner,source,group,&view,error,sizeof(error)))OpenMX_Solver_Failure(error);
+  return view;
+}
 static inline OpenMXSolverRealTensor OpenMX_Solver_OverwriteView(OpenMXSolverInvocation *owner,
     const char *name,size_t rows,size_t columns)
 {
