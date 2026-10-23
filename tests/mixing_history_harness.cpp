@@ -1,4 +1,5 @@
 #include "openmx_core_energy.h"
+#include "openmx_core_dynamics.h"
 #include "openmx_core_mixing.h"
 #include "openmx_core_native_resources.h"
 #include <algorithm>
@@ -27,7 +28,7 @@ int B_spe[30]={},B_l[30]={},B_mul[30]={};char* SpeName[1]={};
 double lambda[30]={},U[30]={},J[30]={},Slater_F0[30]={},Slater_F2[30]={},Slater_F4[30]={},Slater_F6[30]={};
 double parser_value=0;bool parser_default=false;
 int MD_switch=0,atomnum=1;
-double Udc=0,Ucoh=0,GivenTemp=0,Temp=0,NH_czeta=0,NH_nzeta=0,NH_Ham=0;
+double Udc=0,Ucoh=0;
 double Weight=0,Cell_Volume=1,GP=0,GT=0,Max_Force=0,Total_SpinS=0,BohrR=.529177;
 double tv[4][4]={},coordinates[2][32]={};double* Gxyz[]={coordinates[0],coordinates[1]};
 char filepath[YOUSO10]="./",filename[YOUSO10]="fixture";
@@ -36,9 +37,14 @@ int fixed_axes[2][4]={};int* atom_Fixed_XYZ[]={fixed_axes[0],fixed_axes[1]};
 double unified_atomic_mass_unit=2,electron_mass=1,kB=.5,MD_TimeStep=.25,TempPara[30][3]={};
 double rnd(double width){return width*(std::rand()/(double)RAND_MAX-.5);}
 
+std::map<std::string,double> nose_input;
 void input_double(const char* key,double* out,double fallback){
-  if(std::strcmp(key,"scf.Init.Mixing.Weight"))throw std::runtime_error("input binding used the wrong keyword");
-  *out=parser_default?fallback:parser_value;
+  if(!std::strcmp(key,"scf.Init.Mixing.Weight")){
+    *out=parser_default?fallback:parser_value;return;
+  }
+  if(std::strcmp(key,"NH.R") && std::strcmp(key,"NH.nzeta") && std::strcmp(key,"NH.czeta"))
+    throw std::runtime_error("input binding used the wrong keyword");
+  const auto it=nose_input.find(key);*out=it==nose_input.end()?fallback:it->second;
 }
 void MPI_Abort(int,int){throw std::runtime_error("unexpected fatal input binding");}
 constexpr int MPI_DOUBLE=0,MPI_SUM=0;
@@ -64,6 +70,10 @@ OpenMXBandEnergies* energies(OpenMXCoreContext* c){
 OpenMXThermodynamicEnergies* totals(OpenMXCoreContext* c){
   char error[256];OpenMXThermodynamicEnergies* e=nullptr;
   require(openmx_core_thermodynamic_energies(c,&e,error,sizeof(error)),error);return e;
+}
+OpenMXDynamicsState* dynamics(OpenMXCoreContext* c){
+  char error[256];OpenMXDynamicsState* out=nullptr;
+  require(openmx_core_dynamics(c,&out,error,sizeof(error)),error);return out;
 }
 OpenMXEnergyComponents* components(OpenMXCoreContext* c){
   char error[256];OpenMXEnergyComponents* e=nullptr;
@@ -186,9 +196,11 @@ void md_output(char* path){
   seed_components(ac,100);seed_components(bc,-200);
   auto* ta=totals(first.get());auto* tb=totals(second.get());
   *ta={44.25,2.5,1.25};*tb={-77.5,1.5,-2};
-  std::remove(path);iterout_md(ta,a,ac,1,.25,path);iterout_md(tb,b,bc,2,.5,path);
+  auto* da=dynamics(first.get());auto* db=dynamics(second.get());
+  *da={25.5,30.25,9.5,.125,-.25,110.25};*db={225.5,230.25,-9.5,-.125,.25,-110.25};
+  std::remove(path);iterout_md(da,ta,a,ac,1,.25,path);iterout_md(db,tb,b,bc,2,.5,path);
   openmx_core_native_resources_clear(first.get());a=energies(first.get());
-  ac=components(first.get());ta=totals(first.get());iterout_md(ta,a,ac,3,.75,path);
+  ac=components(first.get());ta=totals(first.get());da=dynamics(first.get());iterout_md(da,ta,a,ac,3,.75,path);
   FILE* file=std::fopen(path,"r");require(file,"missing production MD energy output");
   const double expected[3][6]={{1,.25,1.25,2.5,3.75,7.25},{2,.5,-11.5,-12.5,-13.25,-17.5},{3,.75,0,0,0,0}};
   for(int row=0;row<3;++row)for(int column=0;column<34;++column){
@@ -198,6 +210,8 @@ void md_output(char* path){
     if(column>=6 && column<11)equal(value,expected_components[row][column-6]);
     const double expected_totals[3][3]={{2.5,44.25,46.75},{1.5,-77.5,-76},{0,0,0}};
     if(column>=13 && column<16)equal(value,expected_totals[row][column-13]);
+    const double expected_dynamics[3][5]={{30.25,25.5,-.25,.125,110.25},{230.25,225.5,.25,-.125,-110.25},{0,0,0,0,0}};
+    if(column>=17 && column<22)equal(value,expected_dynamics[row][column-17]);
   }
   double extra=0;require(std::fscanf(file,"%lf",&extra)==EOF,"MD output added unexpected columns");std::fclose(file);
   equal(b->band,-17.5);equal(b->os[0],-11.5);equal(b->os[1],-13.25);equal(b->is[0],-12.5);equal(b->is[1],-14.5);
@@ -243,25 +257,39 @@ void component_output(char* path){
   std::remove(path);
 }
 
+void thermostat_input(){
+  auto a=calculation(),b=calculation();auto* x=dynamics(a.get());auto* y=dynamics(b.get());
+  nose_input={{"NH.R",1.25},{"NH.nzeta",-.125},{"NH.czeta",.75}};parse_nose(a.get());
+  equal(x->nose_coordinate,1.25);equal(x->nose_next_friction,-.125);equal(x->nose_friction,.75);
+  nose_input.clear();parse_nose(b.get());equal(y->nose_coordinate,0);equal(y->nose_next_friction,0);equal(y->nose_friction,0);
+  y->nose_coordinate=-3.5;y->nose_energy=12.25;
+  openmx_core_finish(a.get());x=dynamics(a.get());nose_input={{"NH.nzeta",.375}};parse_nose(a.get());
+  equal(x->nose_coordinate,0);equal(x->nose_next_friction,.375);equal(x->nose_friction,0);
+  equal(x->temperature,0);equal(x->target_temperature,0);equal(x->nose_energy,0);
+  equal(y->nose_coordinate,-3.5);equal(y->nose_energy,12.25);nose_input.clear();
+}
 void kinetic_updates(){
   auto first=calculation(),second=calculation();auto* a=totals(first.get());auto* b=totals(second.get());
   *a={12.25,-1,2.5};*b={-17.25,-2,-3.5};
   auto* components_a=components(first.get());components_a->kinetic=99;
+  auto* da=dynamics(first.get());auto* db=dynamics(second.get());
   MD_switch=1;MD_Init_Velocity=1;fixed_axes[1][2]=1;coordinates[1][20]=2;
   TempNum=1;TempPara[0][1]=0;TempPara[1][1]=10;TempPara[0][2]=300;TempPara[1][2]=400;
   coordinates[1][24]=.2;coordinates[1][25]=.3;coordinates[1][26]=.4;
-  InitV(a);equal(a->ionic_kinetic,.4);equal(Temp,.4/(1.5*.5)*eV2Hartree);
+  InitV(da,a);equal(a->ionic_kinetic,.4);equal(da->temperature,.4/(1.5*.5)*eV2Hartree);
   equal(b->ionic_kinetic,-2);equal(a->total,12.25);equal(a->pressure_volume,2.5);
-  Calc_Temp_Atoms(a,5);equal(a->ionic_kinetic,.4);equal(Temp,.4/.5*eV2Hartree);equal(GivenTemp,350);
+  Calc_Temp_Atoms(da,a,5);equal(a->ionic_kinetic,.4);equal(da->temperature,.4/.5*eV2Hartree);equal(da->target_temperature,350);
   coordinates[1][24]=.4;coordinates[1][25]=.6;coordinates[1][26]=.8;
-  InitV(b);Calc_Temp_Atoms(b,10);equal(b->ionic_kinetic,1.6);equal(Temp,1.6/.5*eV2Hartree);equal(GivenTemp,400);
+  InitV(db,b);Calc_Temp_Atoms(db,b,10);equal(b->ionic_kinetic,1.6);equal(db->temperature,1.6/.5*eV2Hartree);equal(db->target_temperature,400);
+  equal(da->target_temperature,350);equal(da->temperature,.4/.5*eV2Hartree);
   equal(a->ionic_kinetic,.4);equal(b->total,-17.25);equal(b->pressure_volume,-3.5);
   equal(components_a->kinetic,99);
-  openmx_core_finish(first.get());a=totals(first.get());MD_switch=0;MD_Init_Velocity=0;
-  InitV(a);equal(a->ionic_kinetic,0);equal(a->total,0);equal(a->pressure_volume,0);equal(b->ionic_kinetic,1.6);
+  openmx_core_finish(first.get());a=totals(first.get());da=dynamics(first.get());MD_switch=0;MD_Init_Velocity=0;
+  InitV(da,a);equal(a->ionic_kinetic,0);equal(a->total,0);equal(a->pressure_volume,0);equal(b->ionic_kinetic,1.6);
+  equal(da->temperature,0);equal(da->target_temperature,0);equal(db->target_temperature,400);
   fixed_axes[1][2]=0;
 }
 
 }
-int main(int argc,char** argv){try{require(argc==2,"expected an output path");golden();imaginary();interleaved();input_and_output(argv[1]);md_output(argv[1]);component_output(argv[1]);kinetic_updates();std::cout<<"PASS: actual simple mixing, input binding, independent SCF/MD thermodynamic and component output, actual velocity/temperature reductions, 12 golden trajectories, 6 imaginary-spin modes, 100 interleaved calculations\n";}
+int main(int argc,char** argv){try{require(argc==2,"expected an output path");golden();imaginary();interleaved();input_and_output(argv[1]);md_output(argv[1]);component_output(argv[1]);thermostat_input();kinetic_updates();std::cout<<"PASS: actual simple mixing, input binding, independent SCF/MD thermodynamic and component output, owned thermostat input and output, actual velocity/temperature reductions, 12 golden trajectories, 6 imaginary-spin modes, 100 interleaved calculations\n";}
 catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}

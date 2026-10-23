@@ -694,6 +694,15 @@ static int run_openmx(int argc, char *argv[], OpenMXCoreContext *core)
 
   init(core);
 
+  OpenMXDynamicsState *dynamics=NULL;
+  char dynamics_error[256];
+  if(!openmx_core_dynamics(core,&dynamics,dynamics_error,sizeof(dynamics_error))) {
+    fprintf(stderr,"OpenMX dynamics state: %s\n",dynamics_error);
+    MPI_Abort(mpi_comm_level1,1);
+    abort();
+  }
+
+
   OpenMXThermodynamicEnergies *thermo=NULL;
   char thermodynamic_error[256];
   if(!openmx_core_thermodynamic_energies(core,&thermo,thermodynamic_error,sizeof(thermodynamic_error))) {
@@ -837,7 +846,7 @@ static int run_openmx(int argc, char *argv[], OpenMXCoreContext *core)
 
 #endif
       CompTime[myid][3] += DFT(MD_iter,(MD_iter-1)%orbitalOpt_per_MDIter+1,core);
-      iterout(thermo, MD_iter+MD_Current_Iter,MD_TimeStep*(MD_iter+MD_Current_Iter-1),filepath,filename);
+      iterout(dynamics, thermo, MD_iter+MD_Current_Iter,MD_TimeStep*(MD_iter+MD_Current_Iter-1),filepath,filename);
 
       /* MD or geometry optimization */
 

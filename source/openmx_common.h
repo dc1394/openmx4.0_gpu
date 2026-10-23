@@ -6,6 +6,7 @@
 #include "openmx_core.h"
 #include "openmx_core_mixing.h"
 #include "openmx_core_energy.h"
+#include "openmx_core_dynamics.h"
 #include "openmx_cluster_col_state.h"
 #include "openmx_cluster_noncol_state.h"
 #include "openmx_band_col_state.h"
@@ -2375,11 +2376,11 @@ extern int MD_OutABC;
 extern double X_Center_Coordinate,Y_Center_Coordinate,Z_Center_Coordinate;
 extern dcomplex Comp2Real[YOUSO36+1][2*(YOUSO36+1)+1][2*(YOUSO36+1)+1];
 /* added by mari (May 2004) */
-extern double TempScale[30],RatScale[30],Temp;
+extern double TempScale[30],RatScale[30];
 extern int IntScale[30],NumScale[30];
 /* added by mari (May 2004) */
 /* for Nose-Hoover algorithm */
-extern double NH_R,NH_nzeta,NH_czeta,TempQ,GivenTemp,NH_Ham;
+extern double TempQ;
 /* added by MIZUHO for NPT-MD */
 extern double PresW;
 extern double TempTol;
@@ -3733,14 +3734,14 @@ void Unfolding_Bands(
 		     double ****CntOLP);
 
 double MD_pac(OpenMXCoreContext *core, int iter, char *fname_input);
-void Calc_Temp_Atoms(OpenMXThermodynamicEnergies *thermo, int iter);
+void Calc_Temp_Atoms(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, int iter);
 int Species2int(char Species[YOUSO10]);
 int R_atv(int CpyCell, int i, int j, int k);
 int SEQ(char str1[YOUSO10], char str2[YOUSO10]);
 void Generation_ATV(int CpyCell);
 char *string_tolower(char *buf, char *buf1);
-void iterout(OpenMXThermodynamicEnergies *thermo, int iter,double drctime,char fileE[YOUSO10],char fileDRC[YOUSO10]);
-void iterout_md(const OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter,double drctime,char fileSE[YOUSO10]);
+void iterout(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, int iter,double drctime,char fileE[YOUSO10],char fileDRC[YOUSO10]);
+void iterout_md(const OpenMXDynamicsState *dynamics, const OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter,double drctime,char fileSE[YOUSO10]);
 void outputfile1(const OpenMXThermodynamicEnergies *thermo, const OpenMXMixingHistory *history, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int f_switch, int MD_iter, int orbitalOpt_iter,
                  int Cnt_Now, int SCF_iter, char fname[YOUSO10],
                  double ChemP_e0[2], double orbital_norm);
@@ -3755,7 +3756,7 @@ void Output_CompTime();
 void Output_Energy_Decomposition();
 void Make_FracCoord(char *file);
 void Merge_LogFile(char *file);
-void Make_InputFile_with_FinalCoord(char *file, int MD_iter);
+void Make_InputFile_with_FinalCoord(const OpenMXDynamicsState *dynamics, char *file, int MD_iter);
 void Eigen_lapack(double **a, double *ko, int n, int EVmax);
 void Eigen_lapack2(double *a, int csize, double *ko, int n, int EVmax);
 void Eigen_lapack3(double *a, double *ko, int n, int EVmax);

@@ -55,6 +55,14 @@ void Get_Euler_Rotation_Angle(
 
 void Input_std(char *file, OpenMXCoreContext *core)
 {
+  OpenMXDynamicsState *dynamics=NULL;
+  char dynamics_error[256];
+  if(!openmx_core_dynamics(core,&dynamics,dynamics_error,sizeof(dynamics_error))) {
+    fprintf(stderr,"OpenMX dynamics state: %s\n",dynamics_error);
+    MPI_Abort(mpi_comm_level1,1);
+    abort();
+  }
+
   OpenMXMixingHistory *mixing_history=NULL;
   char mixing_history_error[256];
   if(!openmx_core_mixing_history(core,&mixing_history,mixing_history_error,sizeof(mixing_history_error))) {
@@ -2932,9 +2940,9 @@ void Input_std(char *file, OpenMXCoreContext *core)
 
   /* parameters for the Nose-Hoover thermostat */
 
-  input_double("NH.R",    &NH_R,(double)0.0);
-  input_double("NH.nzeta",&NH_nzeta,(double)0.0);
-  input_double("NH.czeta",&NH_czeta,(double)0.0);
+  input_double("NH.R",    &dynamics->nose_coordinate,(double)0.0);
+  input_double("NH.nzeta",&dynamics->nose_next_friction,(double)0.0);
+  input_double("NH.czeta",&dynamics->nose_friction,(double)0.0);
 
   /*************************************************************
    set atom groups for multi heat-bath thermostat for MD (VS4):

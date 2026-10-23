@@ -13,7 +13,7 @@
 #include <stdio.h>
 #include "openmx_common.h"
 
-void iterout_md(const OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, double drctime, char fileSE[YOUSO10])
+void iterout_md(const OpenMXDynamicsState *dynamics, const OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, double drctime, char fileSE[YOUSO10])
 {
   int i,j,k;
   double dt,itermax,aa,dx,dy,dz,xido,yido,zido;
@@ -42,11 +42,11 @@ void iterout_md(const OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnerg
     /* 15 */      fprintf(fp,"%10.7f ",thermo->total);
     /* 16 */      fprintf(fp,"%10.7f ",thermo->total+thermo->ionic_kinetic);
     /* 17 */      fprintf(fp,"%10.7f ",ChemP);
-    /* 18 */      fprintf(fp,"%10.7f ",GivenTemp);
-    /* 19 */      fprintf(fp,"%10.7f ",Temp);
-    /* 20 */      fprintf(fp,"%10.7f ",NH_czeta);
-    /* 21 */      fprintf(fp,"%10.7f ",NH_nzeta);
-    /* 22 */      fprintf(fp,"%10.7f ",NH_Ham);
+    /* 18 */      fprintf(fp,"%10.7f ",dynamics->target_temperature);
+    /* 19 */      fprintf(fp,"%10.7f ",dynamics->temperature);
+    /* 20 */      fprintf(fp,"%10.7f ",dynamics->nose_friction);
+    /* 21 */      fprintf(fp,"%10.7f ",dynamics->nose_next_friction);
+    /* 22 */      fprintf(fp,"%10.7f ",dynamics->nose_energy);
     /* 23 */      fprintf(fp,"%10.7f ",tv[1][1]*BohrR);
     /* 24 */      fprintf(fp,"%10.7f ",tv[1][2]*BohrR); 
     /* 25 */      fprintf(fp,"%10.7f ",tv[1][3]*BohrR);

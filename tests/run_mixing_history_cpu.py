@@ -37,6 +37,16 @@ def main():
                             function((ROOT / 'source/iterout_md.c').read_text(), 'iterout_md')])
     generated += '\nstatic void parse_weight(OpenMXCoreContext *core) {\n'
     generated += input_source[binding_start:binding_end] + weight_line + '\n}\n'
+    dynamics_start = input_source.index('  OpenMXDynamicsState *dynamics=',
+                                       input_source.index('void Input_std('))
+    dynamics_end = input_source.index('  OpenMXMixingHistory *mixing_history=', dynamics_start)
+    nose_lines = [line for line in input_source.splitlines()
+                  if any('input_double("' + key + '"' in line
+                         for key in ['NH.R', 'NH.nzeta', 'NH.czeta'])]
+    assert len(nose_lines) == 3
+    generated += '\nstatic void parse_nose(OpenMXCoreContext *core) {\n'
+    generated += input_source[dynamics_start:dynamics_end] + '\n'.join(nose_lines) + '\n}\n'
+
     with tempfile.TemporaryDirectory(prefix='openmx-mixing-history-') as directory:
         folder = Path(directory)
         (folder / 'mixing_history.inc').write_text(generated)

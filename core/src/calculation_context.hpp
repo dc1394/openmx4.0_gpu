@@ -10,6 +10,7 @@
 #include "native_resources.hpp"
 #include <openmx_core_mixing.h>
 #include <openmx_core_energy.h>
+#include <openmx_core_dynamics.h>
 #include "grid_assembly.hpp"
 #include <openmx/core/orbital_optimization.hpp>
 #include <openmx/core/radial.hpp>
@@ -39,5 +40,6 @@ struct OpenMXCoreContext {
   OpenMXBandEnergies band_energies{};
   OpenMXEnergyComponents energy_components{};
   OpenMXThermodynamicEnergies thermodynamic_energies{};
+  OpenMXDynamicsState dynamics{};
   NativeResourceGroups native_resources;
 };

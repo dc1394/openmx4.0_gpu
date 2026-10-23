@@ -18,7 +18,7 @@
 #include "mpi.h"
 
 
-static void InitV(OpenMXThermodynamicEnergies *thermo);
+static void InitV(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo);
 static void HGF();
 static void Matsubara();
 static void MM();
@@ -27,6 +27,14 @@ static void Set_Poles_Residues_EGAC();
 
 void init(OpenMXCoreContext *core)
 {
+  OpenMXDynamicsState *dynamics=NULL;
+  char dynamics_error[256];
+  if(!openmx_core_dynamics(core,&dynamics,dynamics_error,sizeof(dynamics_error))) {
+    fprintf(stderr,"OpenMX dynamics state: %s\n",dynamics_error);
+    MPI_Abort(mpi_comm_level1,1);
+    abort();
+  }
+
   OpenMXThermodynamicEnergies *thermo=NULL;
   char thermodynamic_error[256];
   if(!openmx_core_thermodynamic_energies(core,&thermo,thermodynamic_error,sizeof(thermodynamic_error))) {
@@ -93,7 +101,7 @@ void init(OpenMXCoreContext *core)
     }
   }
 
-  InitV(thermo);
+  InitV(dynamics, thermo);
 
   /* set Beta */
 
@@ -627,7 +635,7 @@ dcomplex G(dcomplex z)
 
 
 
-void InitV(OpenMXThermodynamicEnergies *thermo)
+void InitV(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo)
 {
   /******************************************************* 
    1 a.u.=2.4189*10^-2 fs, 1fs=41.341105 a.u. 
@@ -741,8 +749,8 @@ void InitV(OpenMXThermodynamicEnergies *thermo)
   }
 
   /* calculation of temperature (K) and rescale v */
-  Temp = thermo->ionic_kinetic/(1.5*kB*(double)atomnum)*eV2Hartree;
-  scale = sqrt(TempPara[1][2]/(Temp+1.0e-13));
+  dynamics->temperature = thermo->ionic_kinetic/(1.5*kB*(double)atomnum)*eV2Hartree;
+  scale = sqrt(TempPara[1][2]/(dynamics->temperature+1.0e-13));
 
   if (MD_Init_Velocity==0){
 

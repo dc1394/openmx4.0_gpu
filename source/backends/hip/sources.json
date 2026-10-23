@@ -940,6 +940,7 @@
     "openmx_core_atomic.h",
     "openmx_core_core_hole.h",
     "openmx_core_dsvna.h",
+    "openmx_core_dynamics.h",
     "openmx_core_electronic.h",
     "openmx_core_energy.h",
     "openmx_core_force.h",

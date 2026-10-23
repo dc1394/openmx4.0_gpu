@@ -15,7 +15,7 @@
 #include <stdio.h>
 #include "openmx_common.h"
 
-void iterout(OpenMXThermodynamicEnergies *thermo, int iter,double drctime,char filepath[YOUSO10],char filename[YOUSO10])
+void iterout(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, int iter,double drctime,char filepath[YOUSO10],char filename[YOUSO10])
 {
   int i,j,k,kk,myid;
   double dt,itermax,aa,dx,dy,dz,xido,yido,zido;
@@ -28,7 +28,7 @@ void iterout(OpenMXThermodynamicEnergies *thermo, int iter,double drctime,char f
   fnjoint(filepath,filename,fileSDRC);
 
   if(MD_switch==1 || MD_switch==2 || MD_switch==9 || MD_switch==11 || MD_switch==15){
-    Calc_Temp_Atoms(thermo, iter);
+    Calc_Temp_Atoms(dynamics, thermo, iter);
   }
 
   MPI_Comm_rank(mpi_comm_level1,&myid);
@@ -58,7 +58,7 @@ void iterout(OpenMXThermodynamicEnergies *thermo, int iter,double drctime,char f
            || MD_switch==30 // NPT_NH_WV
           ) {
 
-        fprintf(fp,"time= %8.3f (fs) Energy= %8.5f (Hartree) Temperature= %8.3f (Given Temp.= %8.3f) ",drctime,thermo->total,Temp,GivenTemp);
+        fprintf(fp,"time= %8.3f (fs) Energy= %8.5f (Hartree) Temperature= %8.3f (Given Temp.= %8.3f) ",drctime,thermo->total,dynamics->temperature,dynamics->target_temperature);
 
         fprintf(fp,"Cell_Vectors= ");
         for (i=1; i<=3; i++){
@@ -184,7 +184,7 @@ void iterout(OpenMXThermodynamicEnergies *thermo, int iter,double drctime,char f
     fprintf(fp,"%i \n",atomnum);
 
     if (MD_switch==2 || MD_switch==11 || MD_switch==14 || MD_switch==15) {
-      fprintf(fp,"time= %8.3f (fs) Energy= %8.5f (Hartree) Temperature= %8.3f\n",drctime,thermo->total,Temp);
+      fprintf(fp,"time= %8.3f (fs) Energy= %8.5f (Hartree) Temperature= %8.3f\n",drctime,thermo->total,dynamics->temperature);
     }
     else {
       fprintf(fp,"   time= %8.3f (fs)  Energy= %8.5f (Hartree)\n",drctime,thermo->total);

@@ -31,7 +31,7 @@
 #include "mpi.h"
 
 
-void Make_InputFile_with_FinalCoord_Normal(char *file, int MD_iter);
+void Make_InputFile_with_FinalCoord_Normal(const OpenMXDynamicsState *dynamics, char *file, int MD_iter);
 void Make_InputFile_with_FinalCoord_NEGF(char *file, int MD_iter);
 #if OPENMX_GPU_HIP
 
@@ -88,11 +88,11 @@ static int Open_FinalCoord_Files(const char *file, char *output_path,
 
 
 
-void Make_InputFile_with_FinalCoord(char *file, int MD_iter)
+void Make_InputFile_with_FinalCoord(const OpenMXDynamicsState *dynamics, char *file, int MD_iter)
 {
 
   if (Solver!=4)
-    Make_InputFile_with_FinalCoord_Normal(file, MD_iter);
+    Make_InputFile_with_FinalCoord_Normal(dynamics, file, MD_iter);
   else 
     Make_InputFile_with_FinalCoord_NEGF(file, MD_iter);
 
@@ -101,7 +101,7 @@ void Make_InputFile_with_FinalCoord(char *file, int MD_iter)
 
 
 
-void Make_InputFile_with_FinalCoord_Normal(char *file, int MD_iter)
+void Make_InputFile_with_FinalCoord_Normal(const OpenMXDynamicsState *dynamics, char *file, int MD_iter)
 {
   int i,j,Gc_AN,c,n1,k;
   int restart_flag,fixed_flag;
@@ -360,9 +360,9 @@ void Make_InputFile_with_FinalCoord_Normal(char *file, int MD_iter)
                MD_switch==30    // NPT_NH_WV
              ){
 
-            fprintf(fp1,"\nNH.R      %20.15f\n",NH_R);
-            fprintf(fp1,"NH.nzeta  %20.15f\n",NH_nzeta);
-            fprintf(fp1,"NH.czeta  %20.15f\n",NH_czeta);
+            fprintf(fp1,"\nNH.R      %20.15f\n",dynamics->nose_coordinate);
+            fprintf(fp1,"NH.nzeta  %20.15f\n",dynamics->nose_next_friction);
+            fprintf(fp1,"NH.czeta  %20.15f\n",dynamics->nose_friction);
 	  }
 
           /* velocity_flag */
@@ -563,9 +563,9 @@ void Make_InputFile_with_FinalCoord_Normal(char *file, int MD_iter)
       if ( MD_switch==9 || MD_switch==29 || MD_switch==30 ){
 
 	fprintf(fp1,"\n");
-	fprintf(fp1,"NH.R      %20.15f\n",NH_R);
-	fprintf(fp1,"NH.nzeta  %20.15f\n",NH_nzeta);
-	fprintf(fp1,"NH.czeta  %20.15f\n",NH_czeta);
+	fprintf(fp1,"NH.R      %20.15f\n",dynamics->nose_coordinate);
+	fprintf(fp1,"NH.nzeta  %20.15f\n",dynamics->nose_next_friction);
+	fprintf(fp1,"NH.czeta  %20.15f\n",dynamics->nose_friction);
       }
     }
 
