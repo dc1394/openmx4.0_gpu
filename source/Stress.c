@@ -27,7 +27,7 @@
 
 /*** subroutine */
 static void MPI_OLP(double *****OLP1);
-static void Stress3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
+static void Stress3(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
 static void Stress4(const OpenMXAtomicViews *atomic);
 static void Stress4B(OpenMXSolverInvocation *scratch,const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double *****CDM0, const OpenMXLocalBasisViews *local_basis);
 static void Stress_core(OpenMXSolverInvocation *scratch);
@@ -1865,7 +1865,7 @@ static double Stress_owned(OpenMXSolverInvocation *scratch,OpenMXThermodynamicEn
     printf("  Stress calculation #3\n");fflush(stdout);
   }
 
-  Stress3(atomic, electronic, local_basis);
+  Stress3(scratch,atomic, electronic, local_basis);
 
   dtime(&etime);
   if(myid==0 && measure_time){
@@ -2198,7 +2198,7 @@ static double Stress_owned(OpenMXSolverInvocation *scratch,OpenMXThermodynamicEn
 }
 
 
-void Stress3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
+static void Stress3(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 {
   double ******DM=electronic->DM;
 
@@ -2239,44 +2239,8 @@ void Stress3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *elect
 
   /* shared memory for force */
 
-  double** Vpot_grid = (double**)malloc(sizeof(double*)*(SpinP_switch + 1));
-  {
-    double* p2 = (double*)malloc(sizeof(double)*(SpinP_switch + 1)*Max_GridN_Atom);
-
-    int spin;
-    for (spin = 0; spin<(SpinP_switch + 1); spin++) {
-      Vpot_grid[spin] = p2;
-      p2 += Max_GridN_Atom;
-    }
-  }
-
-  double*** dChi0 = (double***)malloc(sizeof(double**)*Max_GridN_Atom);
-  {
-    double** p2 = (double**)malloc(sizeof(double*)*Max_GridN_Atom*List_YOUSO[7]);
-    double* p = (double*)malloc(sizeof(double)*Max_GridN_Atom*List_YOUSO[7] * 3);
-    int Nc;
-    for (Nc = 0; Nc<Max_GridN_Atom; Nc++) {
-      dChi0[Nc] = p2;
-      p2 += List_YOUSO[7];
-      int i;
-      for (i = 0; i<List_YOUSO[7]; i++) {
-	dChi0[Nc][i] = p;
-	p += 3;
-      }
-    }
-  }
-
-  /* begin(yshiihara) */
-  double** dxyz = (double**)malloc(sizeof(double*)*Max_GridN_Atom);
-  {
-    double* p = (double*)malloc(sizeof(double)*Max_GridN_Atom * 3);
-    int Nc;
-    for (Nc = 0; Nc<Max_GridN_Atom; Nc++) {
-      dxyz[Nc] = p;
-      p += 3;
-    }
-  }
-  /* end(yshiihara)   */
+  OpenMXStressGridScratch grid;
+  OpenMX_Stress_GridPrepare(scratch,SpinP_switch,Max_GridN_Atom,List_YOUSO[7],&grid);
 
   double sumx = 0.0; /* this must be defined out of parallel pragma */
   double sumy = 0.0;
@@ -2294,20 +2258,16 @@ void Stress3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *elect
 #pragma omp parallel
   {
 
-    /* allocation of arrays */
+    /* Borrow worker-owned producer rows and orbital sampler. */
 
-    double** dorbs0 = (double**)malloc(sizeof(double*) * 4);
-    {
-      int i;
-      for (i = 0; i<4; i++) {
-	dorbs0[i] = (double*)malloc(sizeof(double)*List_YOUSO[7]);
-      }
-    }
-    double* orbs1 = (double*)malloc(sizeof(double)*List_YOUSO[7]);
-		
+    OpenMXSolverRealTensor orbital_rows;
+    OpenMX_Stress_OrbitalPrepare(scratch,List_YOUSO[7],&orbital_rows);
+    double *dorbs0[4];
+    for(size_t row=0;row<4;row++)dorbs0[row]=openmx_solver_real_matrix_row(&orbital_rows,row);
+    double *orbs1=OpenMX_Solver_OverwriteReal(scratch,"stress:grid:neighbor-orbitals",(size_t)List_YOUSO[7]);
     OpenMXOrbitalBuffers work_dObs;
-        OpenMXOrbitalWorkspace *orbital_workspace=OpenMX_OrbitalWorkspace(
-            (int)atomic->orbitals.extent[1]-1,(int)atomic->orbitals.extent[2],1,&work_dObs);
+    OpenMX_Solver_Orbitals(scratch,"stress:grid:orbital-sampler",
+        (int)atomic->orbitals.extent[1]-1,(int)atomic->orbitals.extent[2],1,&work_dObs);
 
     double time1 = 0.0;
     double time2 = 0.0;
@@ -2346,9 +2306,9 @@ void Stress3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *elect
 	double dz = z - Gxyz[Gc_AN][3];
 
 	/* begin(yshiihara) */
-	dxyz[Nc][0] = dx;
-	dxyz[Nc][1] = dy;
-	dxyz[Nc][2] = dz;
+	openmx_solver_real_matrix_row(&grid.displacements,Nc)[0] = dx;
+	openmx_solver_real_matrix_row(&grid.displacements,Nc)[1] = dy;
+	openmx_solver_real_matrix_row(&grid.displacements,Nc)[2] = dz;
 	/* end(yshiihara) */
 
 	if (Cnt_switch == 0) {
@@ -2362,7 +2322,7 @@ void Stress3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *elect
 	for (k = 0; k<3; k++) {
 	  int i;
 	  for (i = 0; i<NO0; i++) {
-	    dChi0[Nc][i][k] = dorbs0[k + 1][i];
+	    OpenMX_Stress_DerivativeRow(&grid.derivatives,Nc,i)[k] = dorbs0[k + 1][i];
 	  }
 	}
 
@@ -2410,14 +2370,12 @@ void Stress3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *elect
 	    }
 
 	    if (SpinP_switch == 0) {
-	      Vpot_grid[0][Nc] = 4.0 * Vpt;
+	      openmx_solver_real_matrix_row(&grid.potential,0)[Nc] = 4.0 * Vpt;
 	    } else if (SpinP_switch == 1) {
-	      Vpot_grid[spin][Nc] = 2.0 * Vpt;
+	      openmx_solver_real_matrix_row(&grid.potential,spin)[Nc] = 2.0 * Vpt;
 	    }
 
 	  }
-
-
 
 	} else if (SpinP_switch == 3) {
 
@@ -2492,10 +2450,10 @@ void Stress3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *elect
 	    ImVpt21 = 0.0;
 	  }
 
-	  Vpot_grid[0][Nc] = 2.0 * ReVpt11;
-	  Vpot_grid[1][Nc] = 2.0 * ReVpt22;
-	  Vpot_grid[2][Nc] = 4.0 * ReVpt21;
-	  Vpot_grid[3][Nc] = 4.0 * ImVpt21;
+	  openmx_solver_real_matrix_row(&grid.potential,0)[Nc] = 2.0 * ReVpt11;
+	  openmx_solver_real_matrix_row(&grid.potential,1)[Nc] = 2.0 * ReVpt22;
+	  openmx_solver_real_matrix_row(&grid.potential,2)[Nc] = 4.0 * ReVpt21;
+	  openmx_solver_real_matrix_row(&grid.potential,3)[Nc] = 4.0 * ImVpt21;
 
 					
 	}
@@ -2526,7 +2484,7 @@ void Stress3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *elect
 	  int Nc = GListTAtoms1[Mc_AN][h_AN][Nog];
 	  int Nh = GListTAtoms2[Mc_AN][h_AN][Nog];
 					
-	  double** const ai_dorbs0 = dChi0[Nc];
+	  double* const ai_dorbs0 = OpenMX_Stress_DerivativeRow(&grid.derivatives,Nc,0);
 
 	  /* set orbs1 */
 
@@ -2557,29 +2515,29 @@ void Stress3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *elect
 		tmp0 += orbs1[j] * DM[0][spin][Mc_AN][h_AN][i][j];
 	      }
 
-	      tmpx += ai_dorbs0[i][0] * tmp0;
-	      tmpy += ai_dorbs0[i][1] * tmp0;
-	      tmpz += ai_dorbs0[i][2] * tmp0;
+	      tmpx += ai_dorbs0[3*i+0] * tmp0;
+	      tmpy += ai_dorbs0[3*i+1] * tmp0;
+	      tmpz += ai_dorbs0[3*i+2] * tmp0;
 	    }
 
 	    /* due to difference in the definition between density matrix and density */
 						
-	    double Vpt = Vpot_grid[spin][Nc];
+	    double Vpt = openmx_solver_real_matrix_row(&grid.potential,spin)[Nc];
 	    sumx += tmpx * Vpt;
 	    sumy += tmpy * Vpt;
 	    sumz += tmpz * Vpt;
 
 	    /* begin(yshiihara) */
 	    /* The minus sign is for switching the sign of dDen_Grid*/
-	    sumt0 -= dxyz[Nc][0] * tmpx * Vpt;
-	    sumt1 -= dxyz[Nc][1] * tmpx * Vpt;
-	    sumt2 -= dxyz[Nc][2] * tmpx * Vpt;
-	    sumt3 -= dxyz[Nc][0] * tmpy * Vpt;
-	    sumt4 -= dxyz[Nc][1] * tmpy * Vpt;
-	    sumt5 -= dxyz[Nc][2] * tmpy * Vpt;
-	    sumt6 -= dxyz[Nc][0] * tmpz * Vpt;
-	    sumt7 -= dxyz[Nc][1] * tmpz * Vpt;
-	    sumt8 -= dxyz[Nc][2] * tmpz * Vpt;
+	    sumt0 -= openmx_solver_real_matrix_row(&grid.displacements,Nc)[0] * tmpx * Vpt;
+	    sumt1 -= openmx_solver_real_matrix_row(&grid.displacements,Nc)[1] * tmpx * Vpt;
+	    sumt2 -= openmx_solver_real_matrix_row(&grid.displacements,Nc)[2] * tmpx * Vpt;
+	    sumt3 -= openmx_solver_real_matrix_row(&grid.displacements,Nc)[0] * tmpy * Vpt;
+	    sumt4 -= openmx_solver_real_matrix_row(&grid.displacements,Nc)[1] * tmpy * Vpt;
+	    sumt5 -= openmx_solver_real_matrix_row(&grid.displacements,Nc)[2] * tmpy * Vpt;
+	    sumt6 -= openmx_solver_real_matrix_row(&grid.displacements,Nc)[0] * tmpz * Vpt;
+	    sumt7 -= openmx_solver_real_matrix_row(&grid.displacements,Nc)[1] * tmpz * Vpt;
+	    sumt8 -= openmx_solver_real_matrix_row(&grid.displacements,Nc)[2] * tmpz * Vpt;
 	    /* end(yshiihara) */
 
 	  }/* spin */
@@ -2628,18 +2586,6 @@ void Stress3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *elect
     printf("<Stress>  stress(3) myid=%2d  time1, 2 = %lf [s], %lf [s]\n", myid, time1, time2);
 #endif
 
-    /* freeing of arrays */
-
-    free(orbs1);
-
-    int i;
-    for (i = 0; i<4; i++) {
-      free(dorbs0[i]);
-    }
-    free(dorbs0);
-
-    openmx_core_orbital_destroy(orbital_workspace);
-
   } /* #pragma omp parallel */
 
   MPI_Allreduce(&My_Stress[0], &Stress[0], 9, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
@@ -2668,22 +2614,6 @@ void Stress3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *elect
 
   /* end(yshiihara)   */
 
-  /* free */
-
-  free(dChi0[0][0]);
-  free(dChi0[0]);
-  free(dChi0);
-	
-
-  /* begin(yshiihara) */
-
-  free(dxyz[0]);
-  free(dxyz);
-
-  /* AITUNE */
-  free(Vpot_grid[0]);
-  free(Vpot_grid);
-
   /**********************************************************
      In case of GGA, a stress term coming from
      dfxc/d|\nabra n| *|d|\nabra n|/d\nabra n * \nabra n
@@ -2695,43 +2625,15 @@ void Stress3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *elect
 
     int i, j, k, n, spinmax;
     double My_Stress2[2][9], Stress2[2][9];
-    double ***Axc_D;
-    double ***Axc_B;
-    double ***dDen_D;
-    double ***dDen_B;
-
-    /* allocation of arrays */
-
-    Axc_D = (double***)malloc(sizeof(double**) * 2);
-    for (spin = 0; spin <= 1; spin++) {
-      Axc_D[spin] = (double**)malloc(sizeof(double*) * 3);
-      for (i = 0; i<3; i++) {
-	Axc_D[spin][i] = (double*)malloc(sizeof(double)*My_NumGridD);
-      }
-    }
-
-    Axc_B = (double***)malloc(sizeof(double**) * 2);
-    for (spin = 0; spin <= 1; spin++) {
-      Axc_B[spin] = (double**)malloc(sizeof(double*) * 3);
-      for (i = 0; i<3; i++) {
-	Axc_B[spin][i] = (double*)malloc(sizeof(double)*My_NumGridB_AB);
-      }
-    }
-
-    dDen_D = (double***)malloc(sizeof(double**) * 2);
-    for (spin = 0; spin <= 1; spin++) {
-      dDen_D[spin] = (double**)malloc(sizeof(double*) * 3);
-      for (i = 0; i<3; i++) {
-	dDen_D[spin][i] = (double*)malloc(sizeof(double)*My_NumGridD);
-      }
-    }
-
-    dDen_B = (double***)malloc(sizeof(double**) * 2);
-    for (spin = 0; spin <= 1; spin++) {
-      dDen_B[spin] = (double**)malloc(sizeof(double*) * 3);
-      for (i = 0; i<3; i++) {
-	dDen_B[spin][i] = (double*)malloc(sizeof(double)*My_NumGridB_AB);
-      }
+    OpenMXSolverRealTensor gga_d,gga_b;
+    OpenMX_Stress_GradientPrepare(scratch,"stress:grid:gga-d",My_NumGridD,&gga_d);
+    OpenMX_Stress_GradientPrepare(scratch,"stress:grid:gga-b",My_NumGridB_AB,&gga_b);
+    double *axc_d_rows[2][3],*density_d_rows[2][3];
+    double **Axc_D[2]={axc_d_rows[0],axc_d_rows[1]};
+    double **dDen_D[2]={density_d_rows[0],density_d_rows[1]};
+    for(spin=0;spin<2;spin++)for(int axis=0;axis<3;axis++){
+      axc_d_rows[spin][axis]=OpenMX_Stress_GradientRow(&gga_d,0,spin,axis);
+      density_d_rows[spin][axis]=OpenMX_Stress_GradientRow(&gga_d,1,spin,axis);
     }
 
     XC_P_switch_stress = 3;
@@ -2759,13 +2661,13 @@ void Stress3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *elect
 
 	if (!(i <= 1 || (Ng1 - 2) <= i || j <= 1 || (Ng2 - 2) <= j || k <= 1 || (Ng3 - 2) <= k)) {
 
-	  Axc_B[spin][0][BN] = Axc_D[spin][0][DN];
-	  Axc_B[spin][1][BN] = Axc_D[spin][1][DN];
-	  Axc_B[spin][2][BN] = Axc_D[spin][2][DN];
+	  OpenMX_Stress_GradientRow(&gga_b,0,spin,0)[BN] = OpenMX_Stress_GradientRow(&gga_d,0,spin,0)[DN];
+	  OpenMX_Stress_GradientRow(&gga_b,0,spin,1)[BN] = OpenMX_Stress_GradientRow(&gga_d,0,spin,1)[DN];
+	  OpenMX_Stress_GradientRow(&gga_b,0,spin,2)[BN] = OpenMX_Stress_GradientRow(&gga_d,0,spin,2)[DN];
 
-	  dDen_B[spin][0][BN] = dDen_D[spin][0][DN];
-	  dDen_B[spin][1][BN] = dDen_D[spin][1][DN];
-	  dDen_B[spin][2][BN] = dDen_D[spin][2][DN];
+	  OpenMX_Stress_GradientRow(&gga_b,1,spin,0)[BN] = OpenMX_Stress_GradientRow(&gga_d,1,spin,0)[DN];
+	  OpenMX_Stress_GradientRow(&gga_b,1,spin,1)[BN] = OpenMX_Stress_GradientRow(&gga_d,1,spin,1)[DN];
+	  OpenMX_Stress_GradientRow(&gga_b,1,spin,2)[BN] = OpenMX_Stress_GradientRow(&gga_d,1,spin,2)[DN];
 	}
       }
     }
@@ -2781,15 +2683,15 @@ void Stress3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *elect
       for (i = 0; i<9; i++) My_Stress2[spin][i] = 0.0;
 
       for (BN = 0; BN<My_NumGridB_AB; BN++) {
-	My_Stress2[spin][0] -= dDen_B[spin][0][BN] * Axc_B[spin][0][BN];
-	My_Stress2[spin][1] -= dDen_B[spin][0][BN] * Axc_B[spin][1][BN];
-	My_Stress2[spin][2] -= dDen_B[spin][0][BN] * Axc_B[spin][2][BN];
-	My_Stress2[spin][3] -= dDen_B[spin][1][BN] * Axc_B[spin][0][BN];
-	My_Stress2[spin][4] -= dDen_B[spin][1][BN] * Axc_B[spin][1][BN];
-	My_Stress2[spin][5] -= dDen_B[spin][1][BN] * Axc_B[spin][2][BN];
-	My_Stress2[spin][6] -= dDen_B[spin][2][BN] * Axc_B[spin][0][BN];
-	My_Stress2[spin][7] -= dDen_B[spin][2][BN] * Axc_B[spin][1][BN];
-	My_Stress2[spin][8] -= dDen_B[spin][2][BN] * Axc_B[spin][2][BN];
+	My_Stress2[spin][0] -= OpenMX_Stress_GradientRow(&gga_b,1,spin,0)[BN] * OpenMX_Stress_GradientRow(&gga_b,0,spin,0)[BN];
+	My_Stress2[spin][1] -= OpenMX_Stress_GradientRow(&gga_b,1,spin,0)[BN] * OpenMX_Stress_GradientRow(&gga_b,0,spin,1)[BN];
+	My_Stress2[spin][2] -= OpenMX_Stress_GradientRow(&gga_b,1,spin,0)[BN] * OpenMX_Stress_GradientRow(&gga_b,0,spin,2)[BN];
+	My_Stress2[spin][3] -= OpenMX_Stress_GradientRow(&gga_b,1,spin,1)[BN] * OpenMX_Stress_GradientRow(&gga_b,0,spin,0)[BN];
+	My_Stress2[spin][4] -= OpenMX_Stress_GradientRow(&gga_b,1,spin,1)[BN] * OpenMX_Stress_GradientRow(&gga_b,0,spin,1)[BN];
+	My_Stress2[spin][5] -= OpenMX_Stress_GradientRow(&gga_b,1,spin,1)[BN] * OpenMX_Stress_GradientRow(&gga_b,0,spin,2)[BN];
+	My_Stress2[spin][6] -= OpenMX_Stress_GradientRow(&gga_b,1,spin,2)[BN] * OpenMX_Stress_GradientRow(&gga_b,0,spin,0)[BN];
+	My_Stress2[spin][7] -= OpenMX_Stress_GradientRow(&gga_b,1,spin,2)[BN] * OpenMX_Stress_GradientRow(&gga_b,0,spin,1)[BN];
+	My_Stress2[spin][8] -= OpenMX_Stress_GradientRow(&gga_b,1,spin,2)[BN] * OpenMX_Stress_GradientRow(&gga_b,0,spin,2)[BN];
       }
 
       MPI_Allreduce(&My_Stress2[spin][0], &Stress2[spin][0], 9, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
@@ -2822,40 +2724,6 @@ void Stress3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *elect
 	printf("\n"); fflush(stdout);
       }
     }
-
-    /* freeing of arrays */
-
-    for (spin = 0; spin <= 1; spin++) {
-      for (i = 0; i<3; i++) {
-	free(Axc_D[spin][i]);
-      }
-      free(Axc_D[spin]);
-    }
-    free(Axc_D);
-
-    for (spin = 0; spin <= 1; spin++) {
-      for (i = 0; i<3; i++) {
-	free(Axc_B[spin][i]);
-      }
-      free(Axc_B[spin]);
-    }
-    free(Axc_B);
-
-    for (spin = 0; spin <= 1; spin++) {
-      for (i = 0; i<3; i++) {
-	free(dDen_D[spin][i]);
-      }
-      free(dDen_D[spin]);
-    }
-    free(dDen_D);
-
-    for (spin = 0; spin <= 1; spin++) {
-      for (i = 0; i<3; i++) {
-	free(dDen_B[spin][i]);
-      }
-      free(dDen_B[spin]);
-    }
-    free(dDen_B);
 
   } /* if (XC_switch==4) */
 
