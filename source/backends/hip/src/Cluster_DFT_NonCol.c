@@ -121,6 +121,7 @@ typedef struct
 } ClusterNonColHostStage;
 
 struct OpenMXClusterNonColState {
+  OpenMXThermodynamicEnergies *thermo; /* borrowed from this calculation */
   OpenMXNativeResources *resources; /* borrowed from this calculation */
   int initialized;
   int mgpu_host_dense;
@@ -185,6 +186,10 @@ OpenMXClusterNonColState *Cluster_DFT_NonCol_Bind_Resources(OpenMXCoreContext *c
     state->DeviceSolveEnabled_enabled = -1;
     state->ProfileEnabled_cached = -1;
     state->DmByGemm_cached = -1;
+    if(!openmx_core_thermodynamic_energies(core,&state->thermo,error,sizeof(error))) {
+      fprintf(stderr,"OpenMX thermodynamic energies: %s\n",error);
+      abort();
+    }
     state->initialized = 1;
   }
   return state;
@@ -5592,7 +5597,7 @@ void Save_LCAO_NonCol(ClusterNonColState *state, int n, int n2, int MaxN, int *M
     fwrite(&MaxN, sizeof(int), 1, fp1);
     fwrite(HOMO, sizeof(int), 2, fp1);
     fwrite(&SpinP_switch, sizeof(int), 1, fp1);
-    fwrite(&Utot, sizeof(double), 1, fp1);
+    fwrite(&state->thermo->total, sizeof(double), 1, fp1);
     fwrite(&Total_SpinSx, sizeof(double),1,fp1); // S. An
     fwrite(&Total_SpinSy, sizeof(double),1,fp1); // S. An
     fwrite(&Total_SpinSz, sizeof(double),1,fp1); // S. An
@@ -6035,7 +6040,7 @@ void Calc_XANES_NonCol(ClusterNonColState *state, const OpenMXAtomicViews *atomi
 
   p = HOMO_XANES[0];
   Num_Excited_States = UMOmax - p;
-  Utot2 = Utot;
+  Utot2 = state->thermo->total;
 
   /* loop for k */
 

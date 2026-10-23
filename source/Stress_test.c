@@ -243,6 +243,14 @@ void Stress_test(int argc, char *argv[])
 
 void Check_Stress(char *argv[], OpenMXCoreContext *core)
 {
+  OpenMXThermodynamicEnergies *thermo=NULL;
+  char thermodynamic_error[256];
+  if(!openmx_core_thermodynamic_energies(core,&thermo,thermodynamic_error,sizeof(thermodynamic_error))) {
+    fprintf(stderr,"OpenMX thermodynamic energies: %s\n",thermodynamic_error);
+    MPI_Abort(mpi_comm_level1,1);
+    abort();
+  }
+
   int i,j,k,pq,Gc_AN;
   int time1,time2,MD_iter;
   double step,sum;
@@ -365,7 +373,7 @@ void Check_Stress(char *argv[], OpenMXCoreContext *core)
     MD_iter = 2;
     time1 = truncation(MD_iter,1,core);
     time2 = DFT(MD_iter,0,core);
-    Utot2 = Utot;
+    Utot2 = thermo->total;
 
     /**********************
        In  case of +step
@@ -423,7 +431,7 @@ void Check_Stress(char *argv[], OpenMXCoreContext *core)
     MD_iter = 3;
     time1 = truncation(MD_iter,1,core);
     time2 = DFT(MD_iter,0,core);
-    Utot3 = Utot;
+    Utot3 = thermo->total;
 
     /**********************
        numerical stress

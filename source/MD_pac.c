@@ -30,37 +30,37 @@
 #define Criterion_Max_Step            0.50
 
  
-static void NoMD(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
-static void VerletXYZ(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
-static void NVT_VS(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);  /* added by mari */
-static void NVT_VS2(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter); /* added by Ohwaki */
-static void NVT_VS4(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter); /* added by Ohwaki */
-static void NVT_NH(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
-static void NVT_Langevin(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter); /* added by Ohwaki */
-static void Steepest_Descent(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int SD_scaling_flag);
-static void GDIIS(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0);
-static void GDIIS_BFGS(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0);
-static void GDIIS_EF(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0);
-static void Geometry_Opt_DIIS(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
-static void Geometry_Opt_DIIS_BFGS(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
-static void Geometry_Opt_DIIS_EF(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
+static void NoMD(OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
+static void VerletXYZ(OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
+static void NVT_VS(OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);  /* added by mari */
+static void NVT_VS2(OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter); /* added by Ohwaki */
+static void NVT_VS4(OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter); /* added by Ohwaki */
+static void NVT_NH(OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
+static void NVT_Langevin(OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter); /* added by Ohwaki */
+static void Steepest_Descent(OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int SD_scaling_flag);
+static void GDIIS(OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0);
+static void GDIIS_BFGS(OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0);
+static void GDIIS_EF(OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0);
+static void Geometry_Opt_DIIS(OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
+static void Geometry_Opt_DIIS_BFGS(OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
+static void Geometry_Opt_DIIS_EF(OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
 static void Correct_Position_In_First_Cell();
-static void Geometry_Opt_RF(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
+static void Geometry_Opt_RF(OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
 static void Estimate_Initial_Hessian(int diis_iter, int CellOpt_flag, double itv[4][4]);
-static void RF(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0);
-static void RFC5(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0, double dE_da[4][4], double itv[4][4]);
-static void EvsLC(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
-static void Delta_Factor(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
+static void RF(OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0);
+static void RFC5(OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0, double dE_da[4][4], double itv[4][4]);
+static void EvsLC(OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
+static void Delta_Factor(OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
 static void Correct_Force();
 static void Correct_Velocity();
 static int RestartFiles4GeoOpt(char *mode);
-static void Output_abc_file(int iter);
-static void Cell_Opt_SD(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int SD_scaling_flag);
-static void Cell_Opt_RF(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
-static void NPT_VS_PR(int iter); /* added by MIZUHO for NPT-MD */
-static void NPT_VS_WV(int iter); /* added by MIZUHO for NPT-MD */
-static void NPT_NH_PR(int iter); /* added by MIZUHO for NPT-MD */
-static void NPT_NH_WV(int iter); /* added by MIZUHO for NPT-MD */
+static void Output_abc_file(OpenMXThermodynamicEnergies *thermo, int iter);
+static void Cell_Opt_SD(OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int SD_scaling_flag);
+static void Cell_Opt_RF(OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
+static void NPT_VS_PR(OpenMXThermodynamicEnergies *thermo, int iter); /* added by MIZUHO for NPT-MD */
+static void NPT_VS_WV(OpenMXThermodynamicEnergies *thermo, int iter); /* added by MIZUHO for NPT-MD */
+static void NPT_NH_PR(OpenMXThermodynamicEnergies *thermo, int iter); /* added by MIZUHO for NPT-MD */
+static void NPT_NH_WV(OpenMXThermodynamicEnergies *thermo, int iter); /* added by MIZUHO for NPT-MD */
 
 int SuccessReadingfiles;
 
@@ -86,6 +86,13 @@ double MD_pac(OpenMXCoreContext *core, int iter, char *fname_input)
     abort();
   }
 
+  OpenMXThermodynamicEnergies *thermo=NULL;
+  char thermodynamic_error[256];
+  if(!openmx_core_thermodynamic_energies(core,&thermo,thermodynamic_error,sizeof(thermodynamic_error))) {
+    fprintf(stderr,"OpenMX thermodynamic energies: %s\n",thermodynamic_error);
+    abort();
+  }
+
  
   /* MPI */
   MPI_Comm_size(mpi_comm_level1,&numprocs);
@@ -97,7 +104,7 @@ double MD_pac(OpenMXCoreContext *core, int iter, char *fname_input)
     printf("*******************************************************\n\n"); 
   }
 
-  if (myid==Host_ID && MD_OutABC==1) Output_abc_file(iter);
+  if (myid==Host_ID && MD_OutABC==1) Output_abc_file(thermo, iter);
 
   /*********************************************** 
     read restart files for geometry optimization
@@ -130,29 +137,29 @@ double MD_pac(OpenMXCoreContext *core, int iter, char *fname_input)
   /* Call a subroutine based on MD_switch */
 
   switch (MD_switch) {
-    case  0: NoMD(energies, components, iter+MD_Current_Iter);                    break;
-    case  1: VerletXYZ(energies, components, iter+MD_Current_Iter);               break;
-    case  2: NVT_VS(energies, components, iter+MD_Current_Iter);                  break;  /* added by mari */
-    case  3: Steepest_Descent(energies, components, iter+MD_Current_Iter,1);      break;
-    case  4: Geometry_Opt_DIIS_EF(energies, components, iter+MD_Current_Iter);    break;
-    case  5: Geometry_Opt_DIIS_BFGS(energies, components, iter+MD_Current_Iter);  break;
-    case  6: Geometry_Opt_RF(energies, components, iter+MD_Current_Iter);         break;  /* added by hmweng */
-    case  7: Geometry_Opt_DIIS(energies, components, iter+MD_Current_Iter);       break;
+    case  0: NoMD(thermo, energies, components, iter+MD_Current_Iter);                    break;
+    case  1: VerletXYZ(thermo, energies, components, iter+MD_Current_Iter);               break;
+    case  2: NVT_VS(thermo, energies, components, iter+MD_Current_Iter);                  break;  /* added by mari */
+    case  3: Steepest_Descent(thermo, energies, components, iter+MD_Current_Iter,1);      break;
+    case  4: Geometry_Opt_DIIS_EF(thermo, energies, components, iter+MD_Current_Iter);    break;
+    case  5: Geometry_Opt_DIIS_BFGS(thermo, energies, components, iter+MD_Current_Iter);  break;
+    case  6: Geometry_Opt_RF(thermo, energies, components, iter+MD_Current_Iter);         break;  /* added by hmweng */
+    case  7: Geometry_Opt_DIIS(thermo, energies, components, iter+MD_Current_Iter);       break;
     case  8:                                                break;  /* not used */
-    case  9: NVT_NH(energies, components, iter+MD_Current_Iter);                  break;
+    case  9: NVT_NH(thermo, energies, components, iter+MD_Current_Iter);                  break;
     case 10:                                                break;  /* not used */
-    case 11: NVT_VS2(energies, components, iter+MD_Current_Iter);                 break;  /* added by Ohwaki */
-    case 12: EvsLC(energies, components, iter);                                   break;
-    case 14: NVT_VS4(energies, components, iter+MD_Current_Iter);                 break;  /* added by Ohwaki */
-    case 15: NVT_Langevin(energies, components, iter+MD_Current_Iter);            break;  /* added by Ohwaki */
-    case 16: Delta_Factor(energies, components, iter);                            break;  /* delta-factor */
-    case 17: Cell_Opt_SD(energies, components, iter+MD_Current_Iter,1);           break;
-    case 18: Cell_Opt_RF(energies, components, iter+MD_Current_Iter);             break;
+    case 11: NVT_VS2(thermo, energies, components, iter+MD_Current_Iter);                 break;  /* added by Ohwaki */
+    case 12: EvsLC(thermo, energies, components, iter);                                   break;
+    case 14: NVT_VS4(thermo, energies, components, iter+MD_Current_Iter);                 break;  /* added by Ohwaki */
+    case 15: NVT_Langevin(thermo, energies, components, iter+MD_Current_Iter);            break;  /* added by Ohwaki */
+    case 16: Delta_Factor(thermo, energies, components, iter);                            break;  /* delta-factor */
+    case 17: Cell_Opt_SD(thermo, energies, components, iter+MD_Current_Iter,1);           break;
+    case 18: Cell_Opt_RF(thermo, energies, components, iter+MD_Current_Iter);             break;
     /* added by MIZUHO for NPT-MD */
-    case 27: NPT_VS_PR(iter+MD_Current_Iter);               break;
-    case 28: NPT_VS_WV(iter+MD_Current_Iter);               break;
-    case 29: NPT_NH_PR(iter+MD_Current_Iter);               break;
-    case 30: NPT_NH_WV(iter+MD_Current_Iter);               break;
+    case 27: NPT_VS_PR(thermo, iter+MD_Current_Iter);               break;
+    case 28: NPT_VS_WV(thermo, iter+MD_Current_Iter);               break;
+    case 29: NPT_NH_PR(thermo, iter+MD_Current_Iter);               break;
+    case 30: NPT_NH_WV(thermo, iter+MD_Current_Iter);               break;
   }
 
   /***************************************************************
@@ -204,7 +211,7 @@ double MD_pac(OpenMXCoreContext *core, int iter, char *fname_input)
 }
 
 
-void NoMD(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
+void NoMD(OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
 {
   char fileCoord[YOUSO10];
   FILE *fp_crd,*fp_SD;
@@ -261,7 +268,7 @@ void NoMD(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *comp
 
   if (myid==Host_ID){  
     sprintf(fileE,"%s%s.ene",filepath,filename);
-    iterout_md(energies, components, iter,MD_TimeStep*(iter-1),fileE);
+    iterout_md(thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
   }
 
 }
@@ -502,7 +509,7 @@ void Correct_Position_In_First_Cell()
 }
 
 
-void VerletXYZ(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
+void VerletXYZ(OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
 {
   /***********************************************************
    NVE molecular dynamics with velocity-Verlet integrator
@@ -585,10 +592,10 @@ void VerletXYZ(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents 
      MPI, Ukc
     ****************************************************/
 
-    MPI_Allreduce(&My_Ukc, &Ukc, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
+    MPI_Allreduce(&My_Ukc, &thermo->ionic_kinetic, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
 
     /* calculation of temperature (K) */
-    Temp = Ukc/(1.5*kB*(double)atomnum)*eV2Hartree;
+    Temp = thermo->ionic_kinetic/(1.5*kB*(double)atomnum)*eV2Hartree;
 
     /****************************************************
      write informatins to *.ene
@@ -596,7 +603,7 @@ void VerletXYZ(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents 
 
     if (myid==Host_ID){  
       sprintf(fileE,"%s%s.ene",filepath,filename);
-      iterout_md(energies, components, iter,MD_TimeStep*(iter-1),fileE);
+      iterout_md(thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
     }
 
     /****************************************************
@@ -662,10 +669,10 @@ void VerletXYZ(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents 
      MPI, Ukc
     ****************************************************/
 
-    MPI_Allreduce(&My_Ukc, &Ukc, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
+    MPI_Allreduce(&My_Ukc, &thermo->ionic_kinetic, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
 
     /* calculation of temperature (K) */
-    Temp = Ukc/(1.5*kB*(double)atomnum)*eV2Hartree;
+    Temp = thermo->ionic_kinetic/(1.5*kB*(double)atomnum)*eV2Hartree;
 
     /****************************************************
      write informatins to *.ene
@@ -674,7 +681,7 @@ void VerletXYZ(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents 
     if (myid==Host_ID){  
 
       sprintf(fileE,"%s%s.ene",filepath,filename);
-      iterout_md(energies, components, iter,MD_TimeStep*(iter-1),fileE);
+      iterout_md(thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
     } 
 
     /****************************************************
@@ -715,7 +722,7 @@ void VerletXYZ(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents 
 
 
 
-void Steepest_Descent(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int SD_scaling_flag)
+void Steepest_Descent(OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int SD_scaling_flag)
 {
   /* 1au=2.4189*10^-2 fs, 1fs=41.341105 au */
   int i,j,k,l,Mc_AN,Gc_AN;
@@ -819,10 +826,10 @@ void Steepest_Descent(const OpenMXBandEnergies *energies, const OpenMXEnergyComp
 
   else{
 
-    if (Past_Utot[1]<Utot){ 
+    if (Past_Utot[1]<thermo->total){
       SD_scaling = SD_scaling/2.0;
     }
-    else if (Past_Utot[1]<Past_Utot[2] && Utot<Past_Utot[1] && iter%4==1){
+    else if (Past_Utot[1]<Past_Utot[2] && thermo->total<Past_Utot[1] && iter%4==1){
       SD_scaling = SD_scaling*2.5;
     }
 
@@ -833,7 +840,7 @@ void Steepest_Descent(const OpenMXBandEnergies *energies, const OpenMXEnergyComp
     Past_Utot[4] = Past_Utot[3];
     Past_Utot[3] = Past_Utot[2];
     Past_Utot[2] = Past_Utot[1];
-    Past_Utot[1] = Utot;
+    Past_Utot[1] = thermo->total;
   }
   
   if (myid==Host_ID && 0<level_stdout) printf("<Steepest_Descent>  SD_scaling=%15.12f\n",SD_scaling);
@@ -845,7 +852,7 @@ void Steepest_Descent(const OpenMXBandEnergies *energies, const OpenMXEnergyComp
   if (myid==Host_ID){  
 
     sprintf(fileE,"%s%s.ene",filepath,filename);
-    iterout_md(energies, components, iter,MD_TimeStep*(iter-1),fileE);
+    iterout_md(thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
   }
 
   /****************************************************
@@ -935,7 +942,7 @@ void Steepest_Descent(const OpenMXBandEnergies *energies, const OpenMXEnergyComp
       }
 
       fprintf(fp_SD,"  %3d  %15.8f  %15.8f  %15.8f  %15.8f\n",
-              iter,SD_scaling,Max_Force,MaxStep*BohrR, Utot);
+              iter,SD_scaling,Max_Force,MaxStep*BohrR, thermo->total);
 
       fclose(fp_SD);
     }
@@ -1002,7 +1009,7 @@ void Steepest_Descent(const OpenMXBandEnergies *energies, const OpenMXEnergyComp
 
 
 
-void Cell_Opt_SD(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int SD_scaling_flag)
+void Cell_Opt_SD(OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int SD_scaling_flag)
 {
   /* 1au=2.4189*10^-2 fs, 1fs=41.341105 au */
 
@@ -1239,10 +1246,10 @@ void Cell_Opt_SD(const OpenMXBandEnergies *energies, const OpenMXEnergyComponent
   }
 
   else{
-    if (Past_Utot[1]<(Utot+UpV) && iter%3==1){ 
+    if (Past_Utot[1]<(thermo->total+thermo->pressure_volume) && iter%3==1){
       SD_scaling = SD_scaling/5.0;
     }
-    else if (Past_Utot[1]<Past_Utot[2] && (Utot+UpV)<Past_Utot[1] && iter%4==1){
+    else if (Past_Utot[1]<Past_Utot[2] && (thermo->total+thermo->pressure_volume)<Past_Utot[1] && iter%4==1){
       SD_scaling = SD_scaling*2.5;
     }
 
@@ -1253,7 +1260,7 @@ void Cell_Opt_SD(const OpenMXBandEnergies *energies, const OpenMXEnergyComponent
     Past_Utot[4] = Past_Utot[3];
     Past_Utot[3] = Past_Utot[2];
     Past_Utot[2] = Past_Utot[1];
-    Past_Utot[1] = Utot + UpV;
+    Past_Utot[1] = thermo->total + thermo->pressure_volume;
   }
   
   if (myid==Host_ID && 0<level_stdout) printf("<Steepest_Descent>  SD_scaling=%15.12f\n",SD_scaling);
@@ -1265,7 +1272,7 @@ void Cell_Opt_SD(const OpenMXBandEnergies *energies, const OpenMXEnergyComponent
   if (myid==Host_ID){  
 
     sprintf(fileE,"%s%s.ene",filepath,filename);
-    iterout_md(energies, components, iter,MD_TimeStep*(iter-1),fileE);
+    iterout_md(thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
   }
 
   /****************************************************
@@ -1557,7 +1564,7 @@ void Cell_Opt_SD(const OpenMXBandEnergies *energies, const OpenMXEnergyComponent
         fprintf(fp_SD,"                           (Hartree/Bohr)        (Ang)         (Hartree)        (Hartree)        (Ang^3)\n\n");
       }
       fprintf(fp_SD,"  %3d  %15.8f  %15.8f  %15.8f  %15.8f  %15.8f  %15.8f\n",
-              iter,SD_scaling,Max_Gradient,MaxStep*BohrR, Utot, Utot+UpV,Cell_Volume*0.14818474347690476628);
+              iter,SD_scaling,Max_Gradient,MaxStep*BohrR, thermo->total, thermo->total+thermo->pressure_volume,Cell_Volume*0.14818474347690476628);
       fclose(fp_SD);
     }
     else
@@ -1637,7 +1644,7 @@ void Cell_Opt_SD(const OpenMXBandEnergies *energies, const OpenMXEnergyComponent
 }
 
 
-void Cell_Opt_RF(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
+void Cell_Opt_RF(OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
 {
   int i,j,iatom,icell,k,diis_iter;
   double dE_da[4][4],detA,itv[4][4],sum;
@@ -1759,9 +1766,9 @@ void Cell_Opt_RF(const OpenMXBandEnergies *energies, const OpenMXEnergyComponent
   if (flag==0){
 
     if (SD_iter==1)
-      Cell_Opt_SD(energies, components, iter,0);
+      Cell_Opt_SD(thermo, energies, components, iter,0);
     else 
-      Cell_Opt_SD(energies, components, iter,1);
+      Cell_Opt_SD(thermo, energies, components, iter,1);
 
     /* shift one */
 
@@ -1837,7 +1844,7 @@ void Cell_Opt_RF(const OpenMXBandEnergies *energies, const OpenMXEnergyComponent
         || cellopt_switch==6 
         || cellopt_switch==7 ){
 
-       RFC5(energies, components, local_iter,iter,dE_da,itv);
+       RFC5(thermo, energies, components, local_iter,iter,dE_da,itv);
 
     }
     else {
@@ -1903,7 +1910,7 @@ void Cell_Opt_RF(const OpenMXBandEnergies *energies, const OpenMXEnergyComponent
 
 
 /*BEGIN hmweng*/
-void Geometry_Opt_RF(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
+void Geometry_Opt_RF(OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
 {
   int i,iatom,k,diis_iter;
   double sMD_TimeStep;
@@ -1983,9 +1990,9 @@ void Geometry_Opt_RF(const OpenMXBandEnergies *energies, const OpenMXEnergyCompo
   if (flag==0){
 
     if (SD_iter==1)
-      Steepest_Descent(energies, components, iter,0);
+      Steepest_Descent(thermo, energies, components, iter,0);
     else 
-      Steepest_Descent(energies, components, iter,1);
+      Steepest_Descent(thermo, energies, components, iter,1);
 
     /* shift one */
 
@@ -2023,7 +2030,7 @@ void Geometry_Opt_RF(const OpenMXBandEnergies *energies, const OpenMXEnergyCompo
 
   else {
 
-    RF(energies, components, local_iter,iter);
+    RF(thermo, energies, components, local_iter,iter);
     local_iter++;
   }
 
@@ -2075,7 +2082,7 @@ void Geometry_Opt_RF(const OpenMXBandEnergies *energies, const OpenMXEnergyCompo
 /*END hmweng */
 
 
-void Geometry_Opt_DIIS(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
+void Geometry_Opt_DIIS(OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
 {
   int i,iatom,k,diis_iter;
   double sMD_TimeStep;
@@ -2155,9 +2162,9 @@ void Geometry_Opt_DIIS(const OpenMXBandEnergies *energies, const OpenMXEnergyCom
   if (flag==0){
 
     if (SD_iter==1)
-      Steepest_Descent(energies, components, iter,0);
+      Steepest_Descent(thermo, energies, components, iter,0);
     else 
-      Steepest_Descent(energies, components, iter,1);
+      Steepest_Descent(thermo, energies, components, iter,1);
 
     /* shift one */
 
@@ -2195,7 +2202,7 @@ void Geometry_Opt_DIIS(const OpenMXBandEnergies *energies, const OpenMXEnergyCom
 
   else {
 
-    GDIIS(energies, components, local_iter,iter);
+    GDIIS(thermo, energies, components, local_iter,iter);
     local_iter++;
   }
 
@@ -2248,7 +2255,7 @@ void Geometry_Opt_DIIS(const OpenMXBandEnergies *energies, const OpenMXEnergyCom
 
 
 
-void Geometry_Opt_DIIS_BFGS(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
+void Geometry_Opt_DIIS_BFGS(OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
 {
   int i,iatom,k,diis_iter;
   double sMD_TimeStep;
@@ -2328,9 +2335,9 @@ void Geometry_Opt_DIIS_BFGS(const OpenMXBandEnergies *energies, const OpenMXEner
   if (flag==0){
 
     if (SD_iter==1)
-      Steepest_Descent(energies, components, iter,0);
+      Steepest_Descent(thermo, energies, components, iter,0);
     else 
-      Steepest_Descent(energies, components, iter,1);
+      Steepest_Descent(thermo, energies, components, iter,1);
 
     /* shift one */
 
@@ -2367,7 +2374,7 @@ void Geometry_Opt_DIIS_BFGS(const OpenMXBandEnergies *energies, const OpenMXEner
   /* GDIIS */
 
   else {
-    GDIIS_BFGS(energies, components, local_iter,iter);
+    GDIIS_BFGS(thermo, energies, components, local_iter,iter);
     local_iter++;
   }
 
@@ -2417,7 +2424,7 @@ void Geometry_Opt_DIIS_BFGS(const OpenMXBandEnergies *energies, const OpenMXEner
 }
 
 
-void Geometry_Opt_DIIS_EF(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
+void Geometry_Opt_DIIS_EF(OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
 {
   int i,iatom,k,diis_iter;
   double sMD_TimeStep;
@@ -2497,9 +2504,9 @@ void Geometry_Opt_DIIS_EF(const OpenMXBandEnergies *energies, const OpenMXEnergy
   if (flag==0){
 
     if (SD_iter==1)
-      Steepest_Descent(energies, components, iter,0);
+      Steepest_Descent(thermo, energies, components, iter,0);
     else 
-      Steepest_Descent(energies, components, iter,1);
+      Steepest_Descent(thermo, energies, components, iter,1);
 
     /* shift one */
 
@@ -2537,7 +2544,7 @@ void Geometry_Opt_DIIS_EF(const OpenMXBandEnergies *energies, const OpenMXEnergy
 
   else {
 
-    GDIIS_EF(energies, components, local_iter,iter);
+    GDIIS_EF(thermo, energies, components, local_iter,iter);
     local_iter++;
   }
 
@@ -2589,7 +2596,7 @@ void Geometry_Opt_DIIS_EF(const OpenMXBandEnergies *energies, const OpenMXEnergy
 
 
 
-void GDIIS(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0)
+void GDIIS(OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0)
 {
   /* 1au=2.4189*10^-2 fs, 1fs=41.341105 au */
 
@@ -2797,7 +2804,7 @@ void GDIIS(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *com
   if (myid==Host_ID){  
 
     sprintf(fileE,"%s%s.ene",filepath,filename);
-    iterout_md(energies, components, iter,MD_TimeStep*(iter-1),fileE);
+    iterout_md(thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
   }
 
   if (MD_Opt_OK!=1 && iter!=MD_IterNumber){
@@ -2898,7 +2905,7 @@ void GDIIS(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *com
 
     if (2<=level_stdout){
 
-      printf("<%s> diff_x= %f , dE= %f\n",func_name, Max_Step, fabs(Utot-Past_Utot[1]) );
+      printf("<%s> diff_x= %f , dE= %f\n",func_name, Max_Step, fabs(thermo->total-Past_Utot[1]) );
 
       /* print atomic positions */
       printf("<%s> atomnum= %d\n",func_name,atomnum);
@@ -2913,7 +2920,7 @@ void GDIIS(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *com
 
   } /* if (MD_Opt_OK!=1 && iter!=MD_IterNumber) */
 
-  Past_Utot[1]=Utot;
+  Past_Utot[1]=thermo->total;
 
   Max_Force = force_Max;
   SD_scaling_user = SD_scaling*Max_Force*0.2;
@@ -2985,7 +2992,7 @@ void GDIIS(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *com
       }
 
       fprintf(fp_SD,"  %3d  %15.8f  %15.8f  %15.8f  %15.8f\n",
-              iter0,SD_scaling,Max_Force,Max_Step*BohrR,Utot);
+              iter0,SD_scaling,Max_Force,Max_Step*BohrR,thermo->total);
       fclose(fp_SD);
     }
     else{
@@ -3032,7 +3039,7 @@ void GDIIS(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *com
 
 
 /*hmweng start RF method*/
-void RF(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0)
+void RF(OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0)
 {
   /* 1au=2.4189*10^-2 fs, 1fs=41.341105 au */
 
@@ -3259,7 +3266,7 @@ void RF(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *compon
   if (myid==Host_ID){  
 
     sprintf(fileE,"%s%s.ene",filepath,filename);
-    iterout_md(energies, components, iter,MD_TimeStep*(iter-1),fileE);
+    iterout_md(thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
   }
 
   if (MD_Opt_OK!=1 && iter!=MD_IterNumber){
@@ -3495,7 +3502,7 @@ void RF(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *compon
 
     if (2<=level_stdout){
 
-      printf("<%s> diff_x= %f , dE= %f\n",func_name, Max_Step, fabs(Utot-Past_Utot[1]) );
+      printf("<%s> diff_x= %f , dE= %f\n",func_name, Max_Step, fabs(thermo->total-Past_Utot[1]) );
 
       /* print atomic positions */
       printf("<%s> atomnum= %d\n",func_name,atomnum);
@@ -3508,7 +3515,7 @@ void RF(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *compon
       }   
     }
 
-    Past_Utot[1]=Utot;
+    Past_Utot[1]=thermo->total;
 
     Max_Force = force_Max;
     SD_scaling_user = SD_scaling*Max_Force*0.2;
@@ -3588,7 +3595,7 @@ void RF(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *compon
       }
 
       fprintf(fp_SD,"  %3d  %15.8f  %15.8f  %15.8f  %15.8f\n",
-              iter0,SD_scaling,Max_Force,Max_Step*BohrR,Utot);
+              iter0,SD_scaling,Max_Force,Max_Step*BohrR,thermo->total);
       fclose(fp_SD);
     }
     else{
@@ -3633,7 +3640,7 @@ void RF(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *compon
 
 
 
-void RFC5(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0, double dE_da[4][4], double itv[4][4])
+void RFC5(OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0, double dE_da[4][4], double itv[4][4])
 {
   /* 1au=2.4189*10^-2 fs, 1fs=41.341105 au */
 
@@ -3911,7 +3918,7 @@ void RFC5(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *comp
   if (myid==Host_ID){  
 
     sprintf(fileE,"%s%s.ene",filepath,filename);
-    iterout_md(energies, components, iter,MD_TimeStep*(iter-1),fileE);
+    iterout_md(thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
   }
 
   if (MD_Opt_OK!=1 && iter!=MD_IterNumber){
@@ -4282,7 +4289,7 @@ void RFC5(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *comp
 
     if (2<=level_stdout){
 
-      printf("<%s> diff_x= %f , dE= %f\n",func_name, Max_Step, fabs(Utot-Past_Utot[1]) );
+      printf("<%s> diff_x= %f , dE= %f\n",func_name, Max_Step, fabs(thermo->total-Past_Utot[1]) );
 
       /* print atomic positions */
       printf("<%s> atomnum= %d\n",func_name,atomnum);
@@ -4295,7 +4302,7 @@ void RFC5(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *comp
       }   
     }
 
-    Past_Utot[1]=Utot;
+    Past_Utot[1]=thermo->total;
 
     Max_Force = Max_Gradient;
     SD_scaling_user = SD_scaling*Max_Force*0.2;
@@ -4397,7 +4404,7 @@ void RFC5(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *comp
       }
 
       fprintf(fp_SD,"  %3d  %15.8f  %15.8f  %15.8f  %15.8f  %15.8f  %15.8f\n",
-              iter0, SD_scaling, Max_Force, Max_Step*BohrR, Utot, Utot+UpV,Cell_Volume*0.14818474347690476628);
+              iter0, SD_scaling, Max_Force, Max_Step*BohrR, thermo->total, thermo->total+thermo->pressure_volume,Cell_Volume*0.14818474347690476628);
       fclose(fp_SD);
     }
     else{
@@ -4464,7 +4471,7 @@ void RFC5(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *comp
 
 
 
-void GDIIS_BFGS(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0)
+void GDIIS_BFGS(OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0)
 {
   /* 1au=2.4189*10^-2 fs, 1fs=41.341105 au */
 
@@ -4675,7 +4682,7 @@ void GDIIS_BFGS(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents
   if (myid==Host_ID){  
 
     sprintf(fileE,"%s%s.ene",filepath,filename);
-    iterout_md(energies, components, iter,MD_TimeStep*(iter-1),fileE);
+    iterout_md(thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
   }
 
   if (MD_Opt_OK!=1 && iter!=MD_IterNumber){
@@ -4889,7 +4896,7 @@ void GDIIS_BFGS(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents
 
     if (2<=level_stdout){
 
-      printf("<%s> diff_x= %f , dE= %f\n",func_name, Max_Step, fabs(Utot-Past_Utot[1]) );
+      printf("<%s> diff_x= %f , dE= %f\n",func_name, Max_Step, fabs(thermo->total-Past_Utot[1]) );
 
       /* print atomic positions */
       printf("<%s> atomnum= %d\n",func_name,atomnum);
@@ -4904,7 +4911,7 @@ void GDIIS_BFGS(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents
 
   } /* if (MD_Opt_OK!=1 && iter!=MD_IterNumber) */
 
-  Past_Utot[1]=Utot;
+  Past_Utot[1]=thermo->total;
 
   Max_Force = force_Max;
   SD_scaling_user = SD_scaling*Max_Force*0.2;
@@ -4976,7 +4983,7 @@ void GDIIS_BFGS(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents
       }
 
       fprintf(fp_SD,"  %3d  %15.8f  %15.8f  %15.8f  %15.8f\n",
-              iter0,SD_scaling,Max_Force,Max_Step*BohrR,Utot);
+              iter0,SD_scaling,Max_Force,Max_Step*BohrR,thermo->total);
       fclose(fp_SD);
     }
     else{
@@ -5027,7 +5034,7 @@ void GDIIS_BFGS(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents
 
 
 
-void GDIIS_EF(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0)
+void GDIIS_EF(OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0)
 {
   /* 1au=2.4189*10^-2 fs, 1fs=41.341105 au */
 
@@ -5289,7 +5296,7 @@ void GDIIS_EF(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *
   if (myid==Host_ID){  
     
     sprintf(fileE,"%s%s.ene",filepath,filename);
-    iterout_md(energies, components, iter,MD_TimeStep*(iter-1),fileE);
+    iterout_md(thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
   } 
 
   if (MD_Opt_OK!=1 && iter!=MD_IterNumber){
@@ -5495,7 +5502,7 @@ void GDIIS_EF(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *
 
     /* update scaling_factor */
 
-    if (Utot0<Utot && iter!=1) scaling_factor = 0.95*scaling_factor;
+    if (Utot0<thermo->total && iter!=1) scaling_factor = 0.95*scaling_factor;
 
     /* initialize */
 
@@ -5564,7 +5571,7 @@ void GDIIS_EF(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *
 
     if (2<=level_stdout){
 
-      printf("<%s> diff_x= %f , dE= %f\n",func_name, Max_Step, fabs(Utot-Past_Utot[1]) );
+      printf("<%s> diff_x= %f , dE= %f\n",func_name, Max_Step, fabs(thermo->total-Past_Utot[1]) );
 
       /* print atomic positions */
       printf("<%s> atomnum= %d\n",func_name,atomnum);
@@ -5579,14 +5586,14 @@ void GDIIS_EF(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *
 
   } /* if (MD_Opt_OK!=1 && iter!=MD_IterNumber) */
 
-  Past_Utot[1]=Utot;
+  Past_Utot[1]=thermo->total;
 
   Max_Force = force_Max;
   SD_scaling_user = SD_scaling*Max_Force*0.2;
 
   /* save Utot */
 
-  Utot0 = Utot;
+  Utot0 = thermo->total;
 
   /* free arrays */
 
@@ -5662,7 +5669,7 @@ void GDIIS_EF(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *
       }
 
       fprintf(fp_SD,"  %3d  %15.8f  %15.8f  %15.8f  %15.8f\n",
-              iter0,SD_scaling,Max_Force,Max_Step*BohrR,Utot);
+              iter0,SD_scaling,Max_Force,Max_Step*BohrR,thermo->total);
       fclose(fp_SD);
     }
     else{
@@ -5744,7 +5751,7 @@ void GDIIS_EF(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *
 
 
 
-void NVT_VS(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
+void NVT_VS(OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
 {
   /* added by mari */
   /********************************************************
@@ -5849,7 +5856,7 @@ void NVT_VS(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *co
                      Kinetic Energy 
   ****************************************************/
 
-  Ukc=0.0;
+  thermo->ionic_kinetic=0.0;
   My_Ukc = 0.0;
 
   for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
@@ -5866,10 +5873,10 @@ void NVT_VS(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *co
    MPI: Ukc 
   ****************************************************/
   
-  MPI_Allreduce(&My_Ukc, &Ukc, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
+  MPI_Allreduce(&My_Ukc, &thermo->ionic_kinetic, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
   
   /* calculation of temperature (K) */
-  Temp = Ukc/(1.5*kB*(double)atomnum)*eV2Hartree;
+  Temp = thermo->ionic_kinetic/(1.5*kB*(double)atomnum)*eV2Hartree;
   
   /* calculation of a given temperature (K) */
   for (i=1; i<=TempNum; i++) {
@@ -5888,7 +5895,7 @@ void NVT_VS(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *co
     sprintf(fileE,"%s%s.ene",filepath,filename);
 
     /* corrected on 2016/1/19 by ADO */
-    iterout_md(energies, components, iter,MD_TimeStep*(iter-1),fileE);
+    iterout_md(thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
   }
   
   /****************************************************
@@ -5914,7 +5921,7 @@ void NVT_VS(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *co
                ((double)iter-(double)TempPara[i-1][1])/((double)TempPara[i][1]-(double)TempPara[i-1][1]);
  
           x = GivenTemp + (Temp-GivenTemp)*RatScale[i];
-          x = sqrt(1.5*kB*x/(Ukc*eV2Hartree)*(double)atomnum);
+          x = sqrt(1.5*kB*x/(thermo->ionic_kinetic*eV2Hartree)*(double)atomnum);
         }
       }
     }
@@ -5956,7 +5963,7 @@ void NVT_VS(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *co
 
 
 
-void NVT_Langevin(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
+void NVT_Langevin(OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
 {
   /* added by T.Ohwaki */
   /********************************************************
@@ -6290,10 +6297,10 @@ void NVT_Langevin(const OpenMXBandEnergies *energies, const OpenMXEnergyComponen
      MPI, Ukc
   ****************************************************/
 
-  MPI_Allreduce(&My_Ukc, &Ukc, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
+  MPI_Allreduce(&My_Ukc, &thermo->ionic_kinetic, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
 
   /* calculation of temperature (K) */
-  Temp = Ukc/(1.5*kB*(double)atomnum)*eV2Hartree;
+  Temp = thermo->ionic_kinetic/(1.5*kB*(double)atomnum)*eV2Hartree;
 
   /****************************************************
      write informatins to *.ene
@@ -6302,14 +6309,14 @@ void NVT_Langevin(const OpenMXBandEnergies *energies, const OpenMXEnergyComponen
   if (myid==Host_ID){  
 
     sprintf(fileE,"%s%s.ene",filepath,filename);
-    iterout_md(energies, components, iter,MD_TimeStep*(iter-1),fileE);
+    iterout_md(thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
   }
 }
 
 
 
 
-void NVT_VS2(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
+void NVT_VS2(OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
 {
   /* added by T.Ohwaki */
   /********************************************************
@@ -6429,7 +6436,7 @@ void NVT_VS2(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *c
             Kinetic Energy (for whole system) 
   ****************************************************/
 
-  Ukc=0.0;
+  thermo->ionic_kinetic=0.0;
   My_Ukc = 0.0;
 
   for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
@@ -6446,10 +6453,10 @@ void NVT_VS2(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *c
    MPI: Ukc 
   ****************************************************/
 
-  MPI_Allreduce(&My_Ukc, &Ukc, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
+  MPI_Allreduce(&My_Ukc, &thermo->ionic_kinetic, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
 
   /* calculation of temperature (K) */
-  Temp = Ukc/(1.5*kB*(double)atomnum)*eV2Hartree;
+  Temp = thermo->ionic_kinetic/(1.5*kB*(double)atomnum)*eV2Hartree;
 
   /****************************************************
    write informatins to *.ene
@@ -6458,7 +6465,7 @@ void NVT_VS2(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *c
   if (myid==Host_ID){  
 
     sprintf(fileE,"%s%s.ene",filepath,filename);
-    iterout_md(energies, components, iter,MD_TimeStep*(iter-1),fileE);
+    iterout_md(thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
   }
 
   /****************************************************
@@ -6539,7 +6546,7 @@ void NVT_VS2(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *c
 }
 
 
-void NVT_VS4(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
+void NVT_VS4(OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
 {
   /* added by T. Ohwaki */
   /********************************************************
@@ -6665,7 +6672,7 @@ void NVT_VS4(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *c
             Kinetic Energy (for whole system)
   ****************************************************/
 
-  Ukc=0.0;
+  thermo->ionic_kinetic=0.0;
   My_Ukc = 0.0;
 
   for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
@@ -6682,10 +6689,10 @@ void NVT_VS4(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *c
    MPI: Ukc
   ****************************************************/
 
-  MPI_Allreduce(&My_Ukc, &Ukc, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
+  MPI_Allreduce(&My_Ukc, &thermo->ionic_kinetic, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
 
   /* calculation of temperature (K) */
-  Temp = Ukc/(1.5*kB*(double)atomnum)*eV2Hartree;
+  Temp = thermo->ionic_kinetic/(1.5*kB*(double)atomnum)*eV2Hartree;
 
   /****************************************************
    MPI: Ukc_AtGr
@@ -6704,7 +6711,7 @@ void NVT_VS4(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *c
 
   if (myid==Host_ID){
     sprintf(fileE,"%s%s.ene",filepath,filename);
-    iterout_md(energies, components, iter,MD_TimeStep*(iter-1),fileE);
+    iterout_md(thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
   }
 
   /****************************************************
@@ -6783,7 +6790,7 @@ void NVT_VS4(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *c
 
 
 
-void NVT_NH(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
+void NVT_NH(OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
 {
   /***********************************************************
    a constant temperature molecular dynamics by a Nose-Hoover
@@ -6888,16 +6895,16 @@ void NVT_NH(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *co
      MPI, Ukc
     ****************************************************/
 
-    MPI_Allreduce(&My_Ukc, &Ukc, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
+    MPI_Allreduce(&My_Ukc, &thermo->ionic_kinetic, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
 
     /* calculation of temperature (K) */
-    Temp = Ukc/(1.5*kB*(double)atomnum)*eV2Hartree;
+    Temp = thermo->ionic_kinetic/(1.5*kB*(double)atomnum)*eV2Hartree;
 
     /****************************************************
      Nose-Hoover Hamiltonian which is a conserved quantity
     ****************************************************/
 
-    NH_Ham = Utot + Ukc + 0.5*NH_czeta*NH_czeta*TempQ*Wscale
+    NH_Ham = thermo->total + thermo->ionic_kinetic + 0.5*NH_czeta*NH_czeta*TempQ*Wscale
                         + 3.0*kB*(double)atomnum*GivenTemp*NH_R/eV2Hartree; 
 
     /****************************************************
@@ -6907,7 +6914,7 @@ void NVT_NH(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *co
     if (myid==Host_ID){  
 
       sprintf(fileE,"%s%s.ene",filepath,filename);
-      iterout_md(energies, components, iter,MD_TimeStep*(iter-1),fileE);
+      iterout_md(thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
     }
 
     /****************************************************
@@ -6939,7 +6946,7 @@ void NVT_NH(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *co
 
     /* zeta( t+0.5*dt ) */
 
-    NH_nzeta = NH_czeta + (Ukc - 1.5*kB*(double)atomnum*GivenTemp/eV2Hartree)*dt/(TempQ*Wscale);
+    NH_nzeta = NH_czeta + (thermo->ionic_kinetic - 1.5*kB*(double)atomnum*GivenTemp/eV2Hartree)*dt/(TempQ*Wscale);
     NH_czeta = NH_nzeta;
 
     /* R( r+dt ) */
@@ -6962,7 +6969,7 @@ void NVT_NH(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *co
 
       /* Ukc */
 
-      Ukc = 0.0;
+      thermo->ionic_kinetic = 0.0;
       My_Ukc = 0.0;
 
       for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
@@ -6979,12 +6986,12 @@ void NVT_NH(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *co
 
       /* MPI: Ukc */
 
-      MPI_Allreduce(&My_Ukc, &Ukc, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
+      MPI_Allreduce(&My_Ukc, &thermo->ionic_kinetic, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
 
       /* calculation of h */ 
 
       h_zeta = NH_nzeta
-              + (Ukc - 1.5*kB*(double)atomnum*GivenTemp/eV2Hartree)*dt/(TempQ*Wscale) - NH_czeta;
+              + (thermo->ionic_kinetic - 1.5*kB*(double)atomnum*GivenTemp/eV2Hartree)*dt/(TempQ*Wscale) - NH_czeta;
 
       for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
         Gc_AN = M2G[Mc_AN];
@@ -7082,7 +7089,7 @@ void NVT_NH(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *co
                        Kinetic Energy 
     ****************************************************/
 
-    Ukc = 0.0;
+    thermo->ionic_kinetic = 0.0;
     My_Ukc = 0.0;
 
     for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
@@ -7101,17 +7108,17 @@ void NVT_NH(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *co
      MPI: Ukc 
     ****************************************************/
 
-    MPI_Allreduce(&My_Ukc, &Ukc, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
+    MPI_Allreduce(&My_Ukc, &thermo->ionic_kinetic, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
 
     /* calculation of temperature (K) */
 
-    Temp = Ukc/(1.5*kB*(double)atomnum)*eV2Hartree;
+    Temp = thermo->ionic_kinetic/(1.5*kB*(double)atomnum)*eV2Hartree;
 
     /****************************************************
      Nose-Hoover Hamiltonian which is a conserved quantity
     ****************************************************/
 
-    NH_Ham = Utot + Ukc + 0.5*NH_czeta*NH_czeta*TempQ*Wscale
+    NH_Ham = thermo->total + thermo->ionic_kinetic + 0.5*NH_czeta*NH_czeta*TempQ*Wscale
                         + 3.0*kB*(double)atomnum*GivenTemp*NH_R/eV2Hartree; 
 
     /****************************************************
@@ -7121,7 +7128,7 @@ void NVT_NH(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *co
     if (myid==Host_ID){  
 
       sprintf(fileE,"%s%s.ene",filepath,filename);
-      iterout_md(energies, components, iter,MD_TimeStep*(iter-1),fileE);
+      iterout_md(thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
     }
 
     /*****************************************************
@@ -7156,7 +7163,7 @@ void NVT_NH(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *co
 
       /* zeta( t+0.5*dt ) */
 
-      NH_nzeta = NH_czeta + (Ukc - 1.5*kB*(double)atomnum*GivenTemp/eV2Hartree)*dt/(TempQ*Wscale);
+      NH_nzeta = NH_czeta + (thermo->ionic_kinetic - 1.5*kB*(double)atomnum*GivenTemp/eV2Hartree)*dt/(TempQ*Wscale);
       NH_czeta = NH_nzeta;
 
       /* R( r+dt ) */
@@ -7211,16 +7218,16 @@ void NVT_NH(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *co
      MPI: Ukc 
     ****************************************************/
 
-    MPI_Allreduce(&My_Ukc, &Ukc, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
+    MPI_Allreduce(&My_Ukc, &thermo->ionic_kinetic, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
 
     /* calculation of temperature (K) */
-    Temp = Ukc/(1.5*kB*(double)atomnum)*eV2Hartree;
+    Temp = thermo->ionic_kinetic/(1.5*kB*(double)atomnum)*eV2Hartree;
 
     /****************************************************
      Nose-Hoover Hamiltonian which is a conserved quantity
     ****************************************************/
 
-    NH_Ham = Utot + Ukc + 0.5*NH_czeta*NH_czeta*TempQ*Wscale
+    NH_Ham = thermo->total + thermo->ionic_kinetic + 0.5*NH_czeta*NH_czeta*TempQ*Wscale
                         + 3.0*kB*(double)atomnum*GivenTemp*NH_R/eV2Hartree; 
 
     /****************************************************
@@ -7230,7 +7237,7 @@ void NVT_NH(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *co
     if (myid==Host_ID){  
 
       sprintf(fileE,"%s%s.ene",filepath,filename);
-      iterout_md(energies, components, iter,MD_TimeStep*(iter-1),fileE);
+      iterout_md(thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
     }
 
     /****************************************************
@@ -7262,7 +7269,7 @@ void NVT_NH(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *co
      Nose-Hoover Hamiltonian which is a conserved quantity
     ******************************************************/
 
-    NH_Ham = Utot + Ukc + 0.5*NH_czeta*NH_czeta*TempQ*Wscale
+    NH_Ham = thermo->total + thermo->ionic_kinetic + 0.5*NH_czeta*NH_czeta*TempQ*Wscale
                         + 3.0*kB*(double)atomnum*GivenTemp*NH_R/eV2Hartree; 
 
   }
@@ -7425,7 +7432,7 @@ static void Correct_Velocity()
 
 
 
-static void Delta_Factor(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
+static void Delta_Factor(OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
 {
   int i,j,Gc_AN,myid;
   char fileE[YOUSO10];
@@ -7459,7 +7466,7 @@ static void Delta_Factor(const OpenMXBandEnergies *energies, const OpenMXEnergyC
 
   if (myid==Host_ID){  
     sprintf(fileE,"%s%s.ene",filepath,filename);
-    iterout_md(energies, components, iter,MD_TimeStep*(iter-1),fileE);
+    iterout_md(thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
   }
 
   /****************************************************
@@ -7506,7 +7513,7 @@ static void Delta_Factor(const OpenMXBandEnergies *energies, const OpenMXEnergyC
 
 
 
-static void EvsLC(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
+static void EvsLC(OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
 {
   int i,j,Gc_AN,myid;
   char fileE[YOUSO10];
@@ -7536,7 +7543,7 @@ static void EvsLC(const OpenMXBandEnergies *energies, const OpenMXEnergyComponen
 
   if (myid==Host_ID){  
     sprintf(fileE,"%s%s.ene",filepath,filename);
-    iterout_md(energies, components, iter,MD_TimeStep*(iter-1),fileE);
+    iterout_md(thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
   }
 
   /****************************************************
@@ -7578,7 +7585,7 @@ static void EvsLC(const OpenMXBandEnergies *energies, const OpenMXEnergyComponen
 
 
 
-void Calc_Temp_Atoms(int iter)
+void Calc_Temp_Atoms(OpenMXThermodynamicEnergies *thermo, int iter)
 {
   int i,Mc_AN,Gc_AN,j,My_Nr,Nr;
   double My_Ukc,sum,Wscale,dt,v;
@@ -7587,7 +7594,7 @@ void Calc_Temp_Atoms(int iter)
 
   dt = 41.3411*MD_TimeStep;
   Wscale = unified_atomic_mass_unit/electron_mass;
-  Ukc = 0.0;
+  thermo->ionic_kinetic = 0.0;
   My_Ukc = 0.0;
   My_Nr = 0;
   Nr = 0;
@@ -7604,10 +7611,10 @@ void Calc_Temp_Atoms(int iter)
     My_Ukc += 0.5*Gxyz[Gc_AN][20]*Wscale*sum;
   }
 
-  MPI_Allreduce(&My_Ukc, &Ukc, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
+  MPI_Allreduce(&My_Ukc, &thermo->ionic_kinetic, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
   MPI_Allreduce(&My_Nr, &Nr, 1, MPI_INT, MPI_SUM, mpi_comm_level1);
 
-  Temp = Ukc/(0.5*kB*(double)Nr)*eV2Hartree;
+  Temp = thermo->ionic_kinetic/(0.5*kB*(double)Nr)*eV2Hartree;
 
   /* for old version */
   /*
@@ -7778,7 +7785,7 @@ int RestartFiles4GeoOpt(char *mode)
 }
 
 
-void Output_abc_file(int iter)
+void Output_abc_file(OpenMXThermodynamicEnergies *thermo, int iter)
 {
   int i,j,k;
   FILE *fp_abc;
@@ -7796,7 +7803,7 @@ void Output_abc_file(int iter)
     setvbuf(fp_abc,buf,_IOFBF,fp_bsize);  /* setvbuf */
 
     fprintf(fp_abc,"# Total Energy (Hartree), abc-coordinates and Lattice Parameters (Ang) #\n");
-    fprintf(fp_abc,"TotalEnergy   %18.15f\n",Utot);
+    fprintf(fp_abc,"TotalEnergy   %18.15f\n",thermo->total);
     fprintf(fp_abc,"Atoms.Number  %i\n",atomnum);
     fprintf(fp_abc,"<Atoms.SpeciesAndCoordinates\n");
 
@@ -9081,7 +9088,7 @@ double defaultMassBarostat( void )
 
 
 // Velocity-Scaling and Parrinello-Rahman method
-void NPT_VS_PR(int iter)
+void NPT_VS_PR(OpenMXThermodynamicEnergies *thermo, int iter)
 {
   // relative internal coordinates for atoms
   double   coords[atomnum+1][4]; // position
@@ -9227,7 +9234,7 @@ void NPT_VS_PR(int iter)
   //---- VS PR Step 6. calc kinetic energy, temperature, and scaling factor
 
   // calc kinetic energy of atomic motion
-  Ukc = 0.0;
+  thermo->ionic_kinetic = 0.0;
   for( ai=1; ai<=Matomnum; ai++ ){
     a = M2G[ai];
 
@@ -9238,12 +9245,12 @@ void NPT_VS_PR(int iter)
 	velocity[al] += dcoords[a][i]*L[i][al];
       }
     }
-    Ukc += 0.5*ATOMIC_MASS(Gxyz[a])*Dot_Product( velocity, velocity );
+    thermo->ionic_kinetic += 0.5*ATOMIC_MASS(Gxyz[a])*Dot_Product( velocity, velocity );
   }
-  MPI_Allreduce( MPI_IN_PLACE, &Ukc, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
+  MPI_Allreduce( MPI_IN_PLACE, &thermo->ionic_kinetic, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
 
   // calc kinetic temperature
-  Temp = 2.0/(3.0*atomnum*(kB/eV2Hartree)) * Ukc;
+  Temp = 2.0/(3.0*atomnum*(kB/eV2Hartree)) * thermo->ionic_kinetic;
 
   // calc given temperature and scaling factor
   double scale = 1.0;
@@ -9434,7 +9441,7 @@ void NPT_VS_PR(int iter)
   }
   double Ubaro = 0.5*PresW*TrdLdL;
   double Wbaro = GivenPres*Omega;
-  double Ham = Utot + Ukc + Ubaro + Wbaro;
+  double Ham = thermo->total + thermo->ionic_kinetic + Ubaro + Wbaro;
 
   if ( myid == 0 ){
 
@@ -9463,7 +9470,7 @@ void NPT_VS_PR(int iter)
     fprintf( fptr, "%4d %f %f %f %f %f %f %f %f %f\n", iter, MD_TimeStep*(double)iter,
 	     fabs(Omega), Temp, 
              (getStress(1,1,Omega)+getStress(2,2,Omega)+getStress(3,3,Omega))*29.42*1000/3.0, /* 1/(0.3398827*0.0001) */
-	     Utot, Ukc, Ubaro, Wbaro, Ham );
+	     thermo->total, thermo->ionic_kinetic, Ubaro, Wbaro, Ham );
 
     fflush(fptr);
     fclose(fptr);
@@ -9476,7 +9483,7 @@ void NPT_VS_PR(int iter)
 
 
 // Velocity-Scaling and Wentzcovitch method
-void NPT_VS_WV(int iter)
+void NPT_VS_WV(OpenMXThermodynamicEnergies *thermo, int iter)
 {
   // relative internal coordinates for atoms
   double   coords[atomnum+1][4]; // position
@@ -9719,7 +9726,7 @@ void NPT_VS_WV(int iter)
   //---- VS WV Step 6. calc kinetic energy, temperature, and scaling factor
 
   // calc kinetic energy of atomic motion
-  Ukc = 0.0;
+  thermo->ionic_kinetic = 0.0;
   for( ai=1; ai<=Matomnum; ai++ ){
     a = M2G[ai];
 
@@ -9730,12 +9737,12 @@ void NPT_VS_WV(int iter)
 	velocity[al] += dcoords[a][i]*L[i][al];
       }
     }
-    Ukc += 0.5*ATOMIC_MASS(Gxyz[a])*Dot_Product( velocity, velocity );
+    thermo->ionic_kinetic += 0.5*ATOMIC_MASS(Gxyz[a])*Dot_Product( velocity, velocity );
   }
-  MPI_Allreduce( MPI_IN_PLACE, &Ukc, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
+  MPI_Allreduce( MPI_IN_PLACE, &thermo->ionic_kinetic, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
 
   // calc kinetic temperature
-  Temp = 2.0/(3.0*atomnum*(kB/eV2Hartree)) * Ukc;
+  Temp = 2.0/(3.0*atomnum*(kB/eV2Hartree)) * thermo->ionic_kinetic;
 
   // calc given temperature and scaling factor
   double scale = 1.0;
@@ -9941,7 +9948,7 @@ void NPT_VS_WV(int iter)
 
   double Ubaro = 0.5*PresW*TrdLF0dL;
   double Wbaro = GivenPres*Omega;
-  double Ham = Utot + Ukc + Ubaro + Wbaro;
+  double Ham = thermo->total + thermo->ionic_kinetic + Ubaro + Wbaro;
 
   if ( myid == 0 ){
 
@@ -9970,7 +9977,7 @@ void NPT_VS_WV(int iter)
     fprintf( fptr, "%4d %f %f %f %f %f %f %f %f %f\n", iter, MD_TimeStep*(double)iter,
 	     fabs(Omega), Temp, 
              (getStress(1,1,Omega)+getStress(2,2,Omega)+getStress(3,3,Omega))*29.42*1000/3.0, /* 1/(0.3398827*0.0001) */
-	     Utot, Ukc, Ubaro, Wbaro, Ham );
+	     thermo->total, thermo->ionic_kinetic, Ubaro, Wbaro, Ham );
 
     fflush(fptr);
     fclose(fptr);
@@ -9981,7 +9988,7 @@ void NPT_VS_WV(int iter)
 
 
 // Nose-Hoover and Parrinello-Rahman method
-void NPT_NH_PR( int iter )
+void NPT_NH_PR(OpenMXThermodynamicEnergies *thermo,  int iter )
 {
   // relative internal coordinates for atoms
   double   coords[atomnum+1][4]; // position
@@ -10142,7 +10149,7 @@ void NPT_NH_PR( int iter )
   //---- NH PR Step 6. calc kinetic energy, temperature, and scaling factor
 
   // calc kinetic energy of atomic motion
-  Ukc = 0.0;
+  thermo->ionic_kinetic = 0.0;
   for( ai=1; ai<=Matomnum; ai++ ){
     a = M2G[ai];
 
@@ -10153,12 +10160,12 @@ void NPT_NH_PR( int iter )
 	velocity[al] += dcoords[a][i]*L[i][al];
       }
     }
-    Ukc += 0.5*ATOMIC_MASS(Gxyz[a])*Dot_Product( velocity, velocity );
+    thermo->ionic_kinetic += 0.5*ATOMIC_MASS(Gxyz[a])*Dot_Product( velocity, velocity );
   }
-  MPI_Allreduce( MPI_IN_PLACE, &Ukc, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
+  MPI_Allreduce( MPI_IN_PLACE, &thermo->ionic_kinetic, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
 
   // calc kinetic temperature
-  Temp = 2.0/(3.0*atomnum*(kB/eV2Hartree)) * Ukc;
+  Temp = 2.0/(3.0*atomnum*(kB/eV2Hartree)) * thermo->ionic_kinetic;
 
   // calc given temperature
   for( i=1; i<=TempNum; i++ ){
@@ -10344,7 +10351,7 @@ void NPT_NH_PR( int iter )
 
   double Ubaro = 0.5*PresW*TrdLdL;
   double Wbaro = GivenPres*Omega;
-  double Ham = Utot + Ukc + Uthermo + Ubaro + Wbaro;
+  double Ham = thermo->total + thermo->ionic_kinetic + Uthermo + Ubaro + Wbaro;
 
   if ( myid == 0 ){
 
@@ -10371,7 +10378,7 @@ void NPT_NH_PR( int iter )
 
     fprintf( fptr, "%4d %f %f %+f %+f %f %f %f %+f\n", iter,
 	     fabs(Omega), Temp, (getStress(1,1,Omega)+getStress(2,2,Omega)+getStress(3,3,Omega))*29.42*1000/3.0,
-	     Utot, Ukc, Ubaro, Wbaro, Ham );
+	     thermo->total, thermo->ionic_kinetic, Ubaro, Wbaro, Ham );
 
     fflush(fptr);
     fclose(fptr);
@@ -10383,7 +10390,7 @@ void NPT_NH_PR( int iter )
 
 
 // Nose-Hoover and Wentzcovitch method
-void NPT_NH_WV( int iter )
+void NPT_NH_WV(OpenMXThermodynamicEnergies *thermo,  int iter )
 {
   // relative internal coordinates for atoms
   double   coords[atomnum+1][4]; // position
@@ -10638,7 +10645,7 @@ void NPT_NH_WV( int iter )
   //---- NH WV Step 6. calc kinetic energy, temperature
 
   // calc kinetic energy of atomic motion
-  Ukc = 0.0;
+  thermo->ionic_kinetic = 0.0;
   for( ai=1; ai<=Matomnum; ai++ ){
     a = M2G[ai];
 
@@ -10649,12 +10656,12 @@ void NPT_NH_WV( int iter )
 	velocity[al] += dcoords[a][i]*L[i][al];
       }
     }
-    Ukc += 0.5*ATOMIC_MASS(Gxyz[a])*Dot_Product( velocity, velocity );
+    thermo->ionic_kinetic += 0.5*ATOMIC_MASS(Gxyz[a])*Dot_Product( velocity, velocity );
   }
-  MPI_Allreduce( MPI_IN_PLACE, &Ukc, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
+  MPI_Allreduce( MPI_IN_PLACE, &thermo->ionic_kinetic, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
 
   // calc kinetic temperature
-  Temp = 2.0/(3.0*atomnum*(kB/eV2Hartree)) * Ukc;
+  Temp = 2.0/(3.0*atomnum*(kB/eV2Hartree)) * thermo->ionic_kinetic;
 
   // calc given temperature
   for( i=1; i<=TempNum; i++ ){
@@ -10852,7 +10859,7 @@ void NPT_NH_WV( int iter )
     + 3.0*atomnum*(kB/eV2Hartree)*GivenTemp*NH_R; 
   double Ubaro = 0.5*PresW*TrdLF0dL;
   double Wbaro = GivenPres*Omega;
-  double Ham = Utot + Ukc + Ubaro + Wbaro;
+  double Ham = thermo->total + thermo->ionic_kinetic + Ubaro + Wbaro;
 
   if ( myid == 0 ){
 
@@ -10879,7 +10886,7 @@ void NPT_NH_WV( int iter )
 
     fprintf( fptr, "%4d %f %f %+f %+f %f %f %f %+f\n", iter,
 	     fabs(Omega), Temp, (getStress(1,1,Omega)+getStress(2,2,Omega)+getStress(3,3,Omega))*29.42*1000/3.0,
-	     Utot, Ukc, Ubaro, Wbaro, Ham );
+	     thermo->total, thermo->ionic_kinetic, Ubaro, Wbaro, Ham );
 
     fflush(fptr);
     fclose(fptr);

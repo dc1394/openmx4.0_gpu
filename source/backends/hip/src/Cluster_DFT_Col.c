@@ -130,6 +130,7 @@ typedef struct
 } ClusterColRefineStage;
 
 struct OpenMXClusterColState {
+  OpenMXThermodynamicEnergies *thermo; /* borrowed from this calculation */
   OpenMXNativeResources *resources; /* borrowed from this calculation */
   int initialized;
   int mgpu_host_dense;
@@ -195,6 +196,10 @@ OpenMXClusterColState *Cluster_DFT_Col_Bind_Resources(OpenMXCoreContext *core)
     state->firsttime = 1;
     state->forward_unblocked = -1;
     state->measure_time_enabled = -1;
+    if(!openmx_core_thermodynamic_energies(core,&state->thermo,error,sizeof(error))) {
+      fprintf(stderr,"OpenMX thermodynamic energies: %s\n",error);
+      abort();
+    }
     state->initialized = 1;
   }
   return state;
@@ -5958,7 +5963,7 @@ void Save_LCAO_Col(ClusterColState *state,  int n, int MaxN, int myid1, int *is2
     if (SpinP_switch==0) HOMO[1] = HOMO[0];
     fwrite(HOMO, sizeof(int), 2, fp1);
     fwrite(&SpinP_switch, sizeof(int), 1, fp1);
-    fwrite(&Utot, sizeof(double), 1, fp1);
+    fwrite(&state->thermo->total, sizeof(double), 1, fp1);
   }
 
   /* Save array0 */
@@ -6490,7 +6495,7 @@ void Calc_XANES_Col(ClusterColState *state, const OpenMXAtomicViews *atomic,  in
 
     p = HOMO_XANES[spin0]; 
     Num_Excited_States = UMOmax - p;
-    Utot2 = Utot;
+    Utot2 = state->thermo->total;
 
     /* loop for k */
 

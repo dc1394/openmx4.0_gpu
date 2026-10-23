@@ -378,7 +378,7 @@ static double Calc_optical_conductivities_dielectric_functions(const OpenMXAtomi
   dcomplex *Hs_Cx, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
 
 
-static void Output_Energies_Forces(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, FILE *fp);
+static void Output_Energies_Forces(const OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, FILE *fp);
 static double dUele;
 static void Read_SCF_keywords();
 
@@ -393,6 +393,14 @@ void Allocate_Free_GridData(int todo_flag);
 
 double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 {
+  OpenMXThermodynamicEnergies *thermo=NULL;
+  char thermodynamic_error[256];
+  if(!openmx_core_thermodynamic_energies(core,&thermo,thermodynamic_error,sizeof(thermodynamic_error))) {
+    fprintf(stderr,"OpenMX thermodynamic energies: %s\n",thermodynamic_error);
+    MPI_Abort(mpi_comm_level1,1);
+    abort();
+  }
+
   OpenMXBandEnergies *energies=NULL;
   char band_energy_error[256];
   if(!openmx_core_band_energies(core,&energies,band_energy_error,sizeof(band_energy_error))) {
@@ -1624,7 +1632,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
       }
 
       /* save the information at iteration */
-      outputfile1(mixing_history, energies, components,4,MD_iter,orbitalOpt_iter,0,SCF_iter,file_OrbOpt,ChemP_e0,orbital_norm);
+      outputfile1(thermo, mixing_history, energies, components,4,MD_iter,orbitalOpt_iter,0,SCF_iter,file_OrbOpt,ChemP_e0,orbital_norm);
 
       orbitalOpt_iter++;
       LSCF_iter = 0;
@@ -1899,7 +1907,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
       } 
     }
 
-    outputfile1(mixing_history, energies, components,1,MD_iter,orbitalOpt_iter,Cnt_Now,SCF_iter,file_DFTSCF,ChemP_e0,orbital_norm);
+    outputfile1(thermo, mixing_history, energies, components,1,MD_iter,orbitalOpt_iter,Cnt_Now,SCF_iter,file_DFTSCF,ChemP_e0,orbital_norm);
 
     if (po==0 && Cnt_switch==0 && Solver==2 && SpinP_switch==3){
       Cluster_DFT_NonCol_RefineAfterMixing(solver_states.cluster_noncol, sqrt(fabs(mixing_history->norm[0])));
@@ -2845,7 +2853,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   if (!orbitalOpt_Force_Skip) time7 += Force(atomic, vna,reciprocal, H0,DS_NL,OLP,DM[0],EDM, electronic, local_basis);
   
   if (scf_stress_flag){
-    Stress(atomic, vna,reciprocal, H0,DS_NL,OLP,DM[0],EDM, electronic, local_basis);
+    Stress(thermo, atomic, vna,reciprocal, H0,DS_NL,OLP,DM[0],EDM, electronic, local_basis);
   }
 
   /* the matrix-element tables that a non-band run (or a band run with
@@ -2910,12 +2918,12 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   components->xc_double_counting[1]= ECE[17];
 
   if ( Solver!=12 ){
-    Utot = components->core + components->hartree[0] + components->kinetic + components->neutral_atom + components->nonlocal + components->hartree[1] + components->xc[0] + components->xc[1] + components->hubbard + components->spin_constraint + components->zeeman_spin + components->zeeman_orbital + components->electric_field + components->vdw + components->core_hole;
-    outputfile1(mixing_history, energies, components,2,MD_iter,0,0,SCF_iter,file_DFTSCF,ChemP_e0,orbital_norm);
+    thermo->total = components->core + components->hartree[0] + components->kinetic + components->neutral_atom + components->nonlocal + components->hartree[1] + components->xc[0] + components->xc[1] + components->hubbard + components->spin_constraint + components->zeeman_spin + components->zeeman_orbital + components->electric_field + components->vdw + components->core_hole;
+    outputfile1(thermo, mixing_history, energies, components,2,MD_iter,0,0,SCF_iter,file_DFTSCF,ChemP_e0,orbital_norm);
   }
   else if ( Solver==12 ){
-    Utot = energies->band + components->hartree[1] + components->hartree_double_counting + components->xc[0] + components->xc[1] + components->xc_double_counting[0] + components->xc_double_counting[1] + components->core + components->hartree[0];
-    outputfile1(mixing_history, energies, components,3,MD_iter,0,0,SCF_iter,file_DFTSCF,ChemP_e0,orbital_norm);
+    thermo->total = energies->band + components->hartree[1] + components->hartree_double_counting + components->xc[0] + components->xc[1] + components->xc_double_counting[0] + components->xc_double_counting[1] + components->core + components->hartree[0];
+    outputfile1(thermo, mixing_history, energies, components,3,MD_iter,0,0,SCF_iter,file_DFTSCF,ChemP_e0,orbital_norm);
   }
   
   /* elapsed time */
@@ -2944,9 +2952,9 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
     printf("  Uef   = %20.12f\n",components->electric_field);
     printf("  UvdW  = %20.12f\n",components->vdw);
     printf("  Uch   = %20.12f\n",components->core_hole);
-    printf("  Utot  = %20.12f\n\n",Utot);
-    printf("  UpV   = %20.12f\n",UpV);
-    printf("  Enpy  = %20.12f\n",Utot+UpV);
+    printf("  Utot  = %20.12f\n\n",thermo->total);
+    printf("  UpV   = %20.12f\n",thermo->pressure_volume);
+    printf("  Enpy  = %20.12f\n",thermo->total+thermo->pressure_volume);
 
     printf("  Note:\n\n");
     printf("  Uele:   band energy\n");
@@ -2987,9 +2995,9 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
     printf("  Uxc1_dc = %20.12f\n",components->xc_double_counting[1]);
     printf("  Ucore   = %20.12f\n",components->core);
     printf("  UvdW    = %20.12f\n",components->vdw);
-    printf("  Utot    = %20.12f\n\n",Utot);
-    printf("  UpV     = %20.12f\n",UpV);
-    printf("  Enpy    = %20.12f\n",Utot+UpV);
+    printf("  Utot    = %20.12f\n\n",thermo->total);
+    printf("  UpV     = %20.12f\n",thermo->pressure_volume);
+    printf("  Enpy    = %20.12f\n",thermo->total+thermo->pressure_volume);
 
     printf("  Note:\n\n");
     printf("  Uele:    band energy\n");
@@ -3413,7 +3421,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
   /* check Utot */
 
-  sprintf(nanchar,"%8.4f",Utot);
+  sprintf(nanchar,"%8.4f",thermo->total);
 
   if (strstr(nanchar,"nan")!=NULL || strstr(nanchar,"NaN")!=NULL 
    || strstr(nanchar,"inf")!=NULL || strstr(nanchar,"Inf")!=NULL){
@@ -3543,7 +3551,7 @@ void Read_SCF_keywords()
 
 
 
-void Output_Energies_Forces(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, FILE *fp)
+void Output_Energies_Forces(const OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, FILE *fp)
 { 
   int ct_AN;
   double sumx,sumy,sumz;
@@ -3567,7 +3575,7 @@ void Output_Energies_Forces(const OpenMXBandEnergies *energies, const OpenMXEner
   fprintf(fp,"    UH2                           = %20.14f\n",UH2);
   fprintf(fp,"    Ucore                         = %20.14f\n",components->core);
   fprintf(fp,"    Udc  (Uxc+UH0+UH1+UH2+Ucore)  = %20.14f\n",Udc);
-  fprintf(fp,"    Utot (Uele+Udc)               = %20.14f\n",Utot);
+  fprintf(fp,"    Utot (Uele+Udc)               = %20.14f\n",thermo->total);
   fprintf(fp,"    Ucoh (Utot-Uatom)             = %20.14f\n",Ucoh);
 
   fprintf(fp,"\n");
@@ -3588,7 +3596,7 @@ void Output_Energies_Forces(const OpenMXBandEnergies *energies, const OpenMXEner
   fprintf(fp,"    UH2                           = %20.14f\n",UH2/atomnum);
   fprintf(fp,"    Ucore                         = %20.14f\n",components->core/atomnum);
   fprintf(fp,"    Udc  (Uxc+UH0+UH1+UH2+Ucore)  = %20.14f\n",Udc/atomnum);
-  fprintf(fp,"    Utot (Uele+Udc)               = %20.14f\n",Utot/atomnum);
+  fprintf(fp,"    Utot (Uele+Udc)               = %20.14f\n",thermo->total/atomnum);
   fprintf(fp,"    Ucoh (Utot-Uatom)             = %20.14f\n",Ucoh/atomnum);
 
   fprintf(fp,"\n");

@@ -52,7 +52,8 @@ def main():
         "Kerker_Mixing_Rhok.c", "DIIS_Mixing_DM.c", "ADIIS_Mixing_DM.c",
         "GR_Pulay_DM.c", "Mixing_DM.c", "Simple_Mixing_DM.c", "Mixing_V.c", "Set_Vpot.c",
         "Set_Hamiltonian.c", "DFT.c", "Force.c", "Krylov.c", "Input_std.c", "outputfile1.c",
-        "Total_Energy.c", "MD_pac.c", "iterout_md.c", "openmx.c", "Runtest.c", "openmx_api.c")]
+        "Total_Energy.c", "MD_pac.c", "iterout_md.c", "openmx.c", "Runtest.c", "openmx_api.c", "init.c", "iterout.c", "Stress.c",
+        "Force_test.c", "Stress_test.c", "neb_run.c")]
     jobs += [(cxx, n) for n in (
         "openmx_gpu_dm.cu", "openmx_gpu_transform.cu", "openmx_mgpu_gemm.cu",
         "openmx_mgpu_runtime.cu")]

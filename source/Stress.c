@@ -84,7 +84,7 @@ static void dHNL_SO(
 
 
 
-double Stress(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double *****H0,
+double Stress(OpenMXThermodynamicEnergies *thermo, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double *****H0,
 	      double ******DS_NL,
 	      double *****OLP,
 	      double *****CDM,
@@ -2066,7 +2066,7 @@ double Stress(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, 
     Stress_Tensor[4] += MD_applied_pressure*coe*Cell_Volume*(double)MD_applied_pressure_flag[1];
     Stress_Tensor[8] += MD_applied_pressure*coe*Cell_Volume*(double)MD_applied_pressure_flag[2];
 
-    UpV = MD_applied_pressure*coe*Cell_Volume;
+    thermo->pressure_volume = MD_applied_pressure*coe*Cell_Volume;
   }
 
   /* Shutting down this subroutine */

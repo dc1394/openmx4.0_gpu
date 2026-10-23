@@ -2,7 +2,7 @@
 """Run the actual simple-mixing algorithm with calculation-owned history.
 
 MPI reduction and scalar input parsing are modeled. Production mixing,
-sign/maximum helpers, input binding, SCF/MD and standard/Harris energy output use the actual C++ owners.
+sign/maximum helpers, input binding, SCF/MD output and velocity/temperature helpers use the actual C++ owners.
 """
 import argparse
 import os
@@ -31,6 +31,8 @@ def main():
     generated = '\n'.join([function(helpers, 'sgn'), function(helpers, 'largest'),
                             '#include "openmx_mixing_policy.h"',
                             function(mixing, 'Simple_Mixing_DM'),
+                            function((ROOT / 'source/init.c').read_text(), 'InitV'),
+                            function((ROOT / 'source/MD_pac.c').read_text(), 'Calc_Temp_Atoms'),
                             function((ROOT / 'source/outputfile1.c').read_text(), 'outputfile1'),
                             function((ROOT / 'source/iterout_md.c').read_text(), 'iterout_md')])
     generated += '\nstatic void parse_weight(OpenMXCoreContext *core) {\n'

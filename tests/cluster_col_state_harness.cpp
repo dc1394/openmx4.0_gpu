@@ -1,5 +1,6 @@
 #include "fixtures/native_resources/sdk_model.hpp"
 #include "openmx_cluster_col_state.h"
+#include "openmx_core_energy.h"
 #include "openmx_env.h"
 #include "openmx_precision.h"
 #include <cstdint>

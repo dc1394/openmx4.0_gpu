@@ -2340,7 +2340,7 @@ extern double tv[4][4],rtv[4][4],tv_velocity[4][4];
 extern double Left_tv[4][4],Right_tv[4][4];
 extern double gtv[4][4],rgtv[4][4],length_gtv[4];
 extern double Stress_Tensor[9];
-extern double MD_applied_pressure,UpV;
+extern double MD_applied_pressure;
 extern int MD_applied_pressure_flag[3];
 extern int Number_of_Electrons_Species_flag;
 extern double *Number_of_Electrons_Species;
@@ -2350,10 +2350,10 @@ extern double dipole_moment[4][4];
 extern double TempPara[30][3],PrePara[30][3];
 extern double MD_TimeStep,ChemP,Beta;
 extern double CN_Error,E_Temp,Original_E_Temp,BCR,LNO_Occ_Cutoff,orderN_LNO_Buffer;
-extern double GP,GT,T,Weight,Cell_Volume,Ukc;
+extern double GP,GT,T,Weight,Cell_Volume;
 
 extern double UH2;
-extern double Ucoh,Udc,Utot,Uxc,Given_Total_Charge;
+extern double Ucoh,Udc,Uxc,Given_Total_Charge;
 extern double Min_Mixing_weight,Max_Mixing_weight;
 extern double Kerker_factor,Criterion_MP_Special_Kpt;
 extern double system_charge,Total_Num_Electrons;
@@ -3055,7 +3055,7 @@ double Force(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna,co
 	     double *****OLP,
 	     double *****CDM, 
 	     double *****EDM, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
-double Stress(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna,const OpenMXReciprocalViews *reciprocal, double *****H0,
+double Stress(OpenMXThermodynamicEnergies *thermo, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna,const OpenMXReciprocalViews *reciprocal, double *****H0,
 	      double ******DS_NL,
 	      double *****OLP,
 	      double *****CDM,
@@ -3733,18 +3733,18 @@ void Unfolding_Bands(
 		     double ****CntOLP);
 
 double MD_pac(OpenMXCoreContext *core, int iter, char *fname_input);
-void Calc_Temp_Atoms(int iter);
+void Calc_Temp_Atoms(OpenMXThermodynamicEnergies *thermo, int iter);
 int Species2int(char Species[YOUSO10]);
 int R_atv(int CpyCell, int i, int j, int k);
 int SEQ(char str1[YOUSO10], char str2[YOUSO10]);
 void Generation_ATV(int CpyCell);
 char *string_tolower(char *buf, char *buf1);
-void iterout(int iter,double drctime,char fileE[YOUSO10],char fileDRC[YOUSO10]);
-void iterout_md(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter,double drctime,char fileSE[YOUSO10]);
-void outputfile1(const OpenMXMixingHistory *history, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int f_switch, int MD_iter, int orbitalOpt_iter,
+void iterout(OpenMXThermodynamicEnergies *thermo, int iter,double drctime,char fileE[YOUSO10],char fileDRC[YOUSO10]);
+void iterout_md(const OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter,double drctime,char fileSE[YOUSO10]);
+void outputfile1(const OpenMXThermodynamicEnergies *thermo, const OpenMXMixingHistory *history, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int f_switch, int MD_iter, int orbitalOpt_iter,
                  int Cnt_Now, int SCF_iter, char fname[YOUSO10],
                  double ChemP_e0[2], double orbital_norm);
-void init();
+void init(OpenMXCoreContext *core);
 void Find_CGrids(int Real_Position, int n1, int n2, int n3,
                  double Cxyz[4], int NOC[4]);
 void Diamond_structure(double aa);

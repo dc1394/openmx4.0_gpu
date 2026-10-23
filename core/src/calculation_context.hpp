@@ -38,5 +38,6 @@ struct OpenMXCoreContext {
   OpenMXMixingHistory mixing_history{};
   OpenMXBandEnergies band_energies{};
   OpenMXEnergyComponents energy_components{};
+  OpenMXThermodynamicEnergies thermodynamic_energies{};
   NativeResourceGroups native_resources;
 };

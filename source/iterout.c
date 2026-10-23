@@ -15,7 +15,7 @@
 #include <stdio.h>
 #include "openmx_common.h"
 
-void iterout(int iter,double drctime,char filepath[YOUSO10],char filename[YOUSO10])
+void iterout(OpenMXThermodynamicEnergies *thermo, int iter,double drctime,char filepath[YOUSO10],char filename[YOUSO10])
 {
   int i,j,k,kk,myid;
   double dt,itermax,aa,dx,dy,dz,xido,yido,zido;
@@ -28,7 +28,7 @@ void iterout(int iter,double drctime,char filepath[YOUSO10],char filename[YOUSO1
   fnjoint(filepath,filename,fileSDRC);
 
   if(MD_switch==1 || MD_switch==2 || MD_switch==9 || MD_switch==11 || MD_switch==15){
-    Calc_Temp_Atoms(iter);
+    Calc_Temp_Atoms(thermo, iter);
   }
 
   MPI_Comm_rank(mpi_comm_level1,&myid);
@@ -58,7 +58,7 @@ void iterout(int iter,double drctime,char filepath[YOUSO10],char filename[YOUSO1
            || MD_switch==30 // NPT_NH_WV
           ) {
 
-        fprintf(fp,"time= %8.3f (fs) Energy= %8.5f (Hartree) Temperature= %8.3f (Given Temp.= %8.3f) ",drctime,Utot,Temp,GivenTemp);
+        fprintf(fp,"time= %8.3f (fs) Energy= %8.5f (Hartree) Temperature= %8.3f (Given Temp.= %8.3f) ",drctime,thermo->total,Temp,GivenTemp);
 
         fprintf(fp,"Cell_Vectors= ");
         for (i=1; i<=3; i++){
@@ -74,7 +74,7 @@ void iterout(int iter,double drctime,char filepath[YOUSO10],char filename[YOUSO1
 
       else if (MD_switch==14) {
 
-	fprintf(fp,"time= %8.3f (fs) Energy= %8.5f (Hartree) ",drctime,Utot);
+	fprintf(fp,"time= %8.3f (fs) Energy= %8.5f (Hartree) ",drctime,thermo->total);
         for (kk=1; kk<=num_AtGr; kk++){
           fprintf(fp,"Temperature[%d]= %8.3f ",kk,Temp_AtGr[kk]);
         }
@@ -92,7 +92,7 @@ void iterout(int iter,double drctime,char filepath[YOUSO10],char filename[YOUSO1
       /* header: Geometry optimization and others */
 
       else {
-        fprintf(fp,"   time= %8.3f (fs)  Energy= %8.5f (Hartree) ",drctime,Utot);
+        fprintf(fp,"   time= %8.3f (fs)  Energy= %8.5f (Hartree) ",drctime,thermo->total);
 
         fprintf(fp,"Cell_Vectors= ");
         for (i=1; i<=3; i++){
@@ -184,10 +184,10 @@ void iterout(int iter,double drctime,char filepath[YOUSO10],char filename[YOUSO1
     fprintf(fp,"%i \n",atomnum);
 
     if (MD_switch==2 || MD_switch==11 || MD_switch==14 || MD_switch==15) {
-      fprintf(fp,"time= %8.3f (fs) Energy= %8.5f (Hartree) Temperature= %8.3f\n",drctime,Utot,Temp);
+      fprintf(fp,"time= %8.3f (fs) Energy= %8.5f (Hartree) Temperature= %8.3f\n",drctime,thermo->total,Temp);
     }
     else {
-      fprintf(fp,"   time= %8.3f (fs)  Energy= %8.5f (Hartree)\n",drctime,Utot);
+      fprintf(fp,"   time= %8.3f (fs)  Energy= %8.5f (Hartree)\n",drctime,thermo->total);
     } 
 
     for (k=1; k<=atomnum; k++){

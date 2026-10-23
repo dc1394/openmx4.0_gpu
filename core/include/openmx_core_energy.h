@@ -53,6 +53,22 @@ typedef struct {
 int openmx_core_energy_components(OpenMXCoreContext*, OpenMXEnergyComponents **out,
     char *error, size_t error_capacity);
 
+/* Current physical total energy, ionic kinetic energy and pressure-volume
+   contribution. DFT, MD and stress calculations update the same calculation
+   value; the caller retains its native arithmetic and reduction order. */
+typedef struct {
+  double total;
+  double ionic_kinetic;
+  double pressure_volume;
+} OpenMXThermodynamicEnergies;
+
+/* Allocation-free access, initially all zero. Invalid arguments leave *out
+   unchanged. Bind/clear/finish require quiescent users; borrowed native states
+   drain before the values reset. Rebind after clear/finish and never retain a
+   pointer past destruction. No default calculation is used. */
+int openmx_core_thermodynamic_energies(OpenMXCoreContext*, OpenMXThermodynamicEnergies **out,
+    char *error, size_t error_capacity);
+
 #ifdef __cplusplus
 }
 #endif

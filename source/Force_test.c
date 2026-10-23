@@ -241,6 +241,14 @@ void Force_test(int argc, char *argv[])
 
 void Check_Force(char *argv[], OpenMXCoreContext *core)
 {
+  OpenMXThermodynamicEnergies *thermo=NULL;
+  char thermodynamic_error[256];
+  if(!openmx_core_thermodynamic_energies(core,&thermo,thermodynamic_error,sizeof(thermodynamic_error))) {
+    fprintf(stderr,"OpenMX thermodynamic energies: %s\n",thermodynamic_error);
+    MPI_Abort(mpi_comm_level1,1);
+    abort();
+  }
+
   int ixyz;
   int time1,time2,MD_iter;
   double step;
@@ -295,7 +303,7 @@ void Check_Force(char *argv[], OpenMXCoreContext *core)
     MD_iter = 1;
     time1 = truncation(MD_iter,1,core);
     time2 = DFT(MD_iter,(MD_iter-1)%orbitalOpt_per_MDIter+1,core);
-    Utot1 = Utot;
+    Utot1 = thermo->total;
 
     /* analytic force */
 
@@ -312,7 +320,7 @@ void Check_Force(char *argv[], OpenMXCoreContext *core)
     Gxyz[1][ixyz] -= step; 
     time1 = truncation(MD_iter,1,core);
     time2 = DFT(MD_iter,(MD_iter-1)%orbitalOpt_per_MDIter+1,core);
-    Utot2 = Utot;
+    Utot2 = thermo->total;
 
     /*  do not use the restart files for later calculations */
     Scf_RestartFromFile = 0;
@@ -321,7 +329,7 @@ void Check_Force(char *argv[], OpenMXCoreContext *core)
     Gxyz[1][ixyz] += 2.0*step; 
     time1 = truncation(MD_iter,1,core);
     time2 = DFT(MD_iter,(MD_iter-1)%orbitalOpt_per_MDIter+1,core);
-    Utot3 = Utot;
+    Utot3 = thermo->total;
 
     /* numerical force */
 

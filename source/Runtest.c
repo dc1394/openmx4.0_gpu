@@ -696,7 +696,16 @@ static int run_main_with_context(int argc, char *argv[], int numprocs0, int myid
  
   /* initialize */
   
-  init();
+  init(core);
+
+  OpenMXThermodynamicEnergies *thermo=NULL;
+  char thermodynamic_error[256];
+  if(!openmx_core_thermodynamic_energies(core,&thermo,thermodynamic_error,sizeof(thermodynamic_error))) {
+    fprintf(stderr,"OpenMX thermodynamic energies: %s\n",thermodynamic_error);
+    MPI_Abort(mpi_comm_level1,1);
+    abort();
+  }
+
   fnjoint(filepath,filename,fileE);
   fnjoint(filepath,filename,fileDRC);
 
@@ -721,7 +730,7 @@ static int run_main_with_context(int argc, char *argv[], int numprocs0, int myid
     }
 
     CompTime[myid0][3] += DFT(MD_iter,(MD_iter-1)%orbitalOpt_per_MDIter+1,core);
-    if (myid0==Host_ID) iterout(MD_iter,MD_TimeStep*MD_iter,filepath,filename);
+    if (myid0==Host_ID) iterout(thermo, MD_iter,MD_TimeStep*MD_iter,filepath,filename);
 
     if (ML_flag==0) CompTime[myid0][4] += MD_pac(core, MD_iter,argv[1]);
 

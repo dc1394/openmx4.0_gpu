@@ -22,16 +22,20 @@ int SO_switch=0,Hub_U_switch=0,Constraint_NCS_switch=0,Zeeman_NCS_switch=0,Zeema
 double Min_Mixing_weight=.1,Max_Mixing_weight=.4,incoming_energy=2;
 constexpr int YOUSO10=1024,fp_bsize=65536;
 int Host_ID=0,Cnt_switch=0,Solver=2,Hub_Type=0,dc_Type=0,Yukawa_on=0,Nmul=0;
-double Utot=0,UpV=0;
 double ChemP=0,orbitalOpt_criterion=0,eV2Hartree=27.2114;
 int B_spe[30]={},B_l[30]={},B_mul[30]={};char* SpeName[1]={};
 double lambda[30]={},U[30]={},J[30]={},Slater_F0[30]={},Slater_F2[30]={},Slater_F4[30]={},Slater_F6[30]={};
 double parser_value=0;bool parser_default=false;
 int MD_switch=0,atomnum=1;
-double Udc=0,Ucoh=0,Ukc=0,GivenTemp=0,Temp=0,NH_czeta=0,NH_nzeta=0,NH_Ham=0;
+double Udc=0,Ucoh=0,GivenTemp=0,Temp=0,NH_czeta=0,NH_nzeta=0,NH_Ham=0;
 double Weight=0,Cell_Volume=1,GP=0,GT=0,Max_Force=0,Total_SpinS=0,BohrR=.529177;
-double tv[4][4]={},coordinates[2][20]={};double* Gxyz[]={coordinates[0],coordinates[1]};
+double tv[4][4]={},coordinates[2][32]={};double* Gxyz[]={coordinates[0],coordinates[1]};
 char filepath[YOUSO10]="./",filename[YOUSO10]="fixture";
+int MD_Init_Velocity=1,TempNum=1;
+int fixed_axes[2][4]={};int* atom_Fixed_XYZ[]={fixed_axes[0],fixed_axes[1]};
+double unified_atomic_mass_unit=2,electron_mass=1,kB=.5,MD_TimeStep=.25,TempPara[30][3]={};
+double rnd(double width){return width*(std::rand()/(double)RAND_MAX-.5);}
+
 void input_double(const char* key,double* out,double fallback){
   if(std::strcmp(key,"scf.Init.Mixing.Weight"))throw std::runtime_error("input binding used the wrong keyword");
   *out=parser_default?fallback:parser_value;
@@ -41,6 +45,9 @@ constexpr int MPI_DOUBLE=0,MPI_SUM=0;
 void MPI_Comm_rank(int,int* rank){*rank=0;}
 void MPI_Comm_size(int,int* size){*size=1;}
 void MPI_Allreduce(const double* from,double* to,int count,int,int,int){std::copy_n(from,count,to);}
+void MPI_Allreduce(const int* from,int* to,int count,int,int,int){std::copy_n(from,count,to);}
+void MPI_Bcast(double*,int,int,int,int){}
+constexpr int MPI_INT=1;
 #include "mixing_history.inc"
 
 namespace {
@@ -53,6 +60,10 @@ OpenMXMixingHistory* history(OpenMXCoreContext* c){
 }
 OpenMXBandEnergies* energies(OpenMXCoreContext* c){
   char error[256];OpenMXBandEnergies* e=nullptr;require(openmx_core_band_energies(c,&e,error,sizeof(error)),error);return e;
+}
+OpenMXThermodynamicEnergies* totals(OpenMXCoreContext* c){
+  char error[256];OpenMXThermodynamicEnergies* e=nullptr;
+  require(openmx_core_thermodynamic_energies(c,&e,error,sizeof(error)),error);return e;
 }
 OpenMXEnergyComponents* components(OpenMXCoreContext* c){
   char error[256];OpenMXEnergyComponents* e=nullptr;
@@ -156,8 +167,8 @@ void input_and_output(char* path){
   parser_default=true;parse_weight(second.get());equal(a->weight,.125);equal(b->weight,.3);
   a->norm[0]=4;b->norm[0]=-9;incoming_energy=7.25;double chem[2]={};std::remove(path);
   auto* ea=energies(first.get());auto* eb=energies(second.get());ea->band=7.25;eb->band=-17.5;
-  Cnt_switch=0;outputfile1(a,ea,components(first.get()),1,1,0,0,2,path,chem,0);
-  Cnt_switch=1;outputfile1(b,eb,components(second.get()),1,2,3,1,4,path,chem,0);
+  Cnt_switch=0;outputfile1(totals(first.get()),a,ea,components(first.get()),1,1,0,0,2,path,chem,0);
+  Cnt_switch=1;outputfile1(totals(second.get()),b,eb,components(second.get()),1,2,3,1,4,path,chem,0);
   FILE* file=std::fopen(path,"r");require(file,"missing production SCF output");
   char buffer[4096];const auto size=std::fread(buffer,1,sizeof(buffer),file);std::fclose(file);
   const std::string text(buffer,size);
@@ -173,9 +184,11 @@ void md_output(char* path){
   *a={7.25,{1.25,3.75},{2.5,4.5}};*b={-17.5,{-11.5,-13.25},{-12.5,-14.5}};
   auto* ac=components(first.get());auto* bc=components(second.get());
   seed_components(ac,100);seed_components(bc,-200);
-  std::remove(path);iterout_md(a,ac,1,.25,path);iterout_md(b,bc,2,.5,path);
+  auto* ta=totals(first.get());auto* tb=totals(second.get());
+  *ta={44.25,2.5,1.25};*tb={-77.5,1.5,-2};
+  std::remove(path);iterout_md(ta,a,ac,1,.25,path);iterout_md(tb,b,bc,2,.5,path);
   openmx_core_native_resources_clear(first.get());a=energies(first.get());
-  ac=components(first.get());iterout_md(a,ac,3,.75,path);
+  ac=components(first.get());ta=totals(first.get());iterout_md(ta,a,ac,3,.75,path);
   FILE* file=std::fopen(path,"r");require(file,"missing production MD energy output");
   const double expected[3][6]={{1,.25,1.25,2.5,3.75,7.25},{2,.5,-11.5,-12.5,-13.25,-17.5},{3,.75,0,0,0,0}};
   for(int row=0;row<3;++row)for(int column=0;column<34;++column){
@@ -183,6 +196,8 @@ void md_output(char* path){
     if(column<6)equal(value,expected[row][column]);
     const double expected_components[3][5]={{106,107,102,103,108},{-194,-193,-198,-197,-192},{0,0,0,0,0}};
     if(column>=6 && column<11)equal(value,expected_components[row][column-6]);
+    const double expected_totals[3][3]={{2.5,44.25,46.75},{1.5,-77.5,-76},{0,0,0}};
+    if(column>=13 && column<16)equal(value,expected_totals[row][column-13]);
   }
   double extra=0;require(std::fscanf(file,"%lf",&extra)==EOF,"MD output added unexpected columns");std::fclose(file);
   equal(b->band,-17.5);equal(b->os[0],-11.5);equal(b->os[1],-13.25);equal(b->is[0],-12.5);equal(b->is[1],-14.5);
@@ -193,19 +208,19 @@ void component_output(char* path){
   auto first=calculation(),second=calculation();double chem[2]={};
   auto* a=components(first.get());auto* b=components(second.get());
   seed_components(a,100);seed_components(b,-200);
-  Utot=42.5;UpV=3.25;
+  *totals(first.get())={42.5,.125,3.25};*totals(second.get())={-42.5,.25,-3.25};
   for(int mode:{2,3})for(int owner=0;owner<3;++owner){
     const auto c=owner==1?second.get():first.get();
     if(owner==2)openmx_core_native_resources_clear(c);
     auto* values=components(c);auto* band=energies(c);band->band=owner==1?-7.5:9.25;
-    std::remove(path);outputfile1(history(c),band,values,mode,owner+1,0,0,1,path,chem,0);
+    std::remove(path);outputfile1(totals(c),history(c),band,values,mode,owner+1,0,0,1,path,chem,0);
     std::ifstream file(path);require(bool(file),"missing component energy report");
     std::map<std::string,double> actual;std::string line;
     while(std::getline(file,line)){
       std::istringstream in(line);std::string label,separator;double value;
       if(!(in>>label))continue;
-      if(mode==2 && !label.empty() && label.back()=='.'){
-        label.pop_back();if(in>>value)actual[label]=value;
+      if(mode==2 && ((!label.empty() && label.back()=='.') || label=="Enpy")){
+        if(label.back()=='.')label.pop_back();if(in>>value)actual[label]=value;
       }else if(mode==3 && (in>>separator) && separator=="=" && (in>>value))actual[label]=value;
     }
     const double base=owner==1?-200:100;
@@ -219,13 +234,34 @@ void component_output(char* path){
       equal(actual.at(term.first),owner==2?0:base+term.second);
     }};
     if(mode==2)check(standard);else check(harris);
-    equal(actual.at("Utot"),42.5);equal(actual.at("UpV"),3.25);equal(actual.at("Uele"),band->band);
+    equal(actual.at("Utot"),owner==2?0:owner==1?-42.5:42.5);
+    equal(actual.at("UpV"),owner==2?0:owner==1?-3.25:3.25);
+    equal(actual.at("Enpy"),owner==2?0:owner==1?-45.75:45.75);equal(actual.at("Uele"),band->band);
     equal(b->kinetic,-199);equal(b->xc_double_counting[1],-182);
-    if(owner==2)seed_components(a,100);
+    if(owner==2){a=components(first.get());seed_components(a,100);*totals(first.get())={42.5,.125,3.25};}
   }
-  Utot=0;UpV=0;std::remove(path);
+  std::remove(path);
+}
+
+void kinetic_updates(){
+  auto first=calculation(),second=calculation();auto* a=totals(first.get());auto* b=totals(second.get());
+  *a={12.25,-1,2.5};*b={-17.25,-2,-3.5};
+  auto* components_a=components(first.get());components_a->kinetic=99;
+  MD_switch=1;MD_Init_Velocity=1;fixed_axes[1][2]=1;coordinates[1][20]=2;
+  TempNum=1;TempPara[0][1]=0;TempPara[1][1]=10;TempPara[0][2]=300;TempPara[1][2]=400;
+  coordinates[1][24]=.2;coordinates[1][25]=.3;coordinates[1][26]=.4;
+  InitV(a);equal(a->ionic_kinetic,.4);equal(Temp,.4/(1.5*.5)*eV2Hartree);
+  equal(b->ionic_kinetic,-2);equal(a->total,12.25);equal(a->pressure_volume,2.5);
+  Calc_Temp_Atoms(a,5);equal(a->ionic_kinetic,.4);equal(Temp,.4/.5*eV2Hartree);equal(GivenTemp,350);
+  coordinates[1][24]=.4;coordinates[1][25]=.6;coordinates[1][26]=.8;
+  InitV(b);Calc_Temp_Atoms(b,10);equal(b->ionic_kinetic,1.6);equal(Temp,1.6/.5*eV2Hartree);equal(GivenTemp,400);
+  equal(a->ionic_kinetic,.4);equal(b->total,-17.25);equal(b->pressure_volume,-3.5);
+  equal(components_a->kinetic,99);
+  openmx_core_finish(first.get());a=totals(first.get());MD_switch=0;MD_Init_Velocity=0;
+  InitV(a);equal(a->ionic_kinetic,0);equal(a->total,0);equal(a->pressure_volume,0);equal(b->ionic_kinetic,1.6);
+  fixed_axes[1][2]=0;
 }
 
 }
-int main(int argc,char** argv){try{require(argc==2,"expected an output path");golden();imaginary();interleaved();input_and_output(argv[1]);md_output(argv[1]);component_output(argv[1]);std::cout<<"PASS: actual simple mixing, input binding, independent SCF/MD energy and standard/Harris component output, 12 golden trajectories, 6 imaginary-spin modes, 100 interleaved calculations\n";}
+int main(int argc,char** argv){try{require(argc==2,"expected an output path");golden();imaginary();interleaved();input_and_output(argv[1]);md_output(argv[1]);component_output(argv[1]);kinetic_updates();std::cout<<"PASS: actual simple mixing, input binding, independent SCF/MD thermodynamic and component output, actual velocity/temperature reductions, 12 golden trajectories, 6 imaginary-spin modes, 100 interleaved calculations\n";}
 catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}

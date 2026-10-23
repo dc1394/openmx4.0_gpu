@@ -13,7 +13,7 @@
 #include <stdio.h>
 #include "openmx_common.h"
 
-void iterout_md(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, double drctime, char fileSE[YOUSO10])
+void iterout_md(const OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, double drctime, char fileSE[YOUSO10])
 {
   int i,j,k;
   double dt,itermax,aa,dx,dy,dz,xido,yido,zido;
@@ -38,9 +38,9 @@ void iterout_md(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents
     /* 11 */      fprintf(fp,"%10.7f ",components->core);
     /* 12 */      fprintf(fp,"%10.7f ",Udc);
     /* 13 */      fprintf(fp,"%10.7f ",Ucoh);
-    /* 14 */      fprintf(fp,"%10.7f ",Ukc);
-    /* 15 */      fprintf(fp,"%10.7f ",Utot);
-    /* 16 */      fprintf(fp,"%10.7f ",Utot+Ukc);
+    /* 14 */      fprintf(fp,"%10.7f ",thermo->ionic_kinetic);
+    /* 15 */      fprintf(fp,"%10.7f ",thermo->total);
+    /* 16 */      fprintf(fp,"%10.7f ",thermo->total+thermo->ionic_kinetic);
     /* 17 */      fprintf(fp,"%10.7f ",ChemP);
     /* 18 */      fprintf(fp,"%10.7f ",GivenTemp);
     /* 19 */      fprintf(fp,"%10.7f ",Temp);
@@ -81,7 +81,7 @@ void iterout_md(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents
       fprintf(fp,"%15.10f ",tv[3][1]*BohrR);
       fprintf(fp,"%15.10f ",tv[3][2]*BohrR); 
       fprintf(fp,"%15.10f ",tv[3][3]*BohrR);
-      fprintf(fp,"%15.10f\n",Utot);
+      fprintf(fp,"%15.10f\n",thermo->total);
 
       fclose(fp);
     }
@@ -99,7 +99,7 @@ void iterout_md(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents
     if ((fp = fopen(fileEvsLC,"a")) != NULL){
 
       fprintf(fp,"%18.12f ",Cell_Volume*BohrR*BohrR*BohrR/(double)atomnum);
-      fprintf(fp,"%18.12f\n",Utot*eV2Hartree/(double)atomnum);
+      fprintf(fp,"%18.12f\n",thermo->total*eV2Hartree/(double)atomnum);
 
       fclose(fp);
     }

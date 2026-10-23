@@ -5,7 +5,7 @@
 #include "openmx_common.h"
 #include "mpi.h"
 
-void outputfile1(const OpenMXMixingHistory *history, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int f_switch, int MD_iter, int orbitalOpt_iter,
+void outputfile1(const OpenMXThermodynamicEnergies *thermo, const OpenMXMixingHistory *history, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int f_switch, int MD_iter, int orbitalOpt_iter,
                  int Cnt_Now, int SCF_iter, char fname[YOUSO10], 
                  double ChemP_e0[2], double orbital_norm)
 {
@@ -83,9 +83,9 @@ void outputfile1(const OpenMXMixingHistory *history, const OpenMXBandEnergies *e
 	  fprintf(fp,"  Uef.     %20.12f\n",components->electric_field);
 	  fprintf(fp,"  UvdW.    %20.12f\n",components->vdw);
 	  fprintf(fp,"  Uch.     %20.12f\n",components->core_hole);
-	  fprintf(fp,"  Utot.    %20.12f\n\n",Utot);
-	  fprintf(fp,"  UpV.     %20.12f\n",UpV);
-	  fprintf(fp,"  Enpy.    %20.12f\n",Utot+UpV);
+	  fprintf(fp,"  Utot.    %20.12f\n\n",thermo->total);
+	  fprintf(fp,"  UpV.     %20.12f\n",thermo->pressure_volume);
+	  fprintf(fp,"  Enpy.    %20.12f\n",thermo->total+thermo->pressure_volume);
 
 	  fprintf(fp,"  Note:\n\n");
 	  fprintf(fp,"  Utot = Ukin+UH0+UH1+Una+Unl+Uxc0+Uxc1+Ucore+Uhub+Ucs+Uzs+Uzo+Uef+UvdW+Uch\n\n");
@@ -122,9 +122,9 @@ void outputfile1(const OpenMXMixingHistory *history, const OpenMXBandEnergies *e
 	  fprintf(fp,"  Uxc1_dc = %20.12f\n",components->xc_double_counting[1]);
 	  fprintf(fp,"  Ucore   = %20.12f\n",components->core);
 	  fprintf(fp,"  UvdW    = %20.12f\n",components->vdw);
-	  fprintf(fp,"  Utot    = %20.12f\n\n",Utot);
-	  fprintf(fp,"  UpV     = %20.12f\n",UpV);
-	  fprintf(fp,"  Enpy    = %20.12f\n",Utot+UpV);
+	  fprintf(fp,"  Utot    = %20.12f\n\n",thermo->total);
+	  fprintf(fp,"  UpV     = %20.12f\n",thermo->pressure_volume);
+	  fprintf(fp,"  Enpy    = %20.12f\n",thermo->total+thermo->pressure_volume);
 
 	  fprintf(fp,"  Note:\n\n");
 	  fprintf(fp,"  Uele:    band energy\n");

@@ -18,15 +18,23 @@
 #include "mpi.h"
 
 
-static void InitV();
+static void InitV(OpenMXThermodynamicEnergies *thermo);
 static void HGF();
 static void Matsubara();
 static void MM();
 static dcomplex G(dcomplex z);
 static void Set_Poles_Residues_EGAC();
 
-void init()
+void init(OpenMXCoreContext *core)
 {
+  OpenMXThermodynamicEnergies *thermo=NULL;
+  char thermodynamic_error[256];
+  if(!openmx_core_thermodynamic_energies(core,&thermo,thermodynamic_error,sizeof(thermodynamic_error))) {
+    fprintf(stderr,"OpenMX thermodynamic energies: %s\n",thermodynamic_error);
+    MPI_Abort(mpi_comm_level1,1);
+    abort();
+  }
+
   int i,p,wsp,wan;
   double kappa,R,R1,R2;
   int myid,numprocs;
@@ -67,7 +75,7 @@ void init()
      Initialization of the pV term in the enthalpy
   ****************************************************/
 
-  UpV = 0.0;
+  thermo->pressure_volume = 0.0;
 
   /****************************************************
                 Setting of atomic weight
@@ -85,7 +93,7 @@ void init()
     }
   }
 
-  InitV();
+  InitV(thermo);
 
   /* set Beta */
 
@@ -619,7 +627,7 @@ dcomplex G(dcomplex z)
 
 
 
-void InitV()
+void InitV(OpenMXThermodynamicEnergies *thermo)
 {
   /******************************************************* 
    1 a.u.=2.4189*10^-2 fs, 1fs=41.341105 a.u. 
@@ -721,7 +729,7 @@ void InitV()
    1 a.u.=2.4189*10^-2 fs, 1fs=41.341105 a.u. 
   ***********************************************************/
 
-  Ukc = 0.0;
+  thermo->ionic_kinetic = 0.0;
   for (Gc_AN=1; Gc_AN<=atomnum; Gc_AN++){
     sum = 0.0;
     for (j=1; j<=3; j++){
@@ -729,11 +737,11 @@ void InitV()
 	sum += Gxyz[Gc_AN][j+23]*Gxyz[Gc_AN][j+23];
       }
     }
-    Ukc += 0.5*Gxyz[Gc_AN][20]*Wscale*sum;
+    thermo->ionic_kinetic += 0.5*Gxyz[Gc_AN][20]*Wscale*sum;
   }
 
   /* calculation of temperature (K) and rescale v */
-  Temp = Ukc/(1.5*kB*(double)atomnum)*eV2Hartree;
+  Temp = thermo->ionic_kinetic/(1.5*kB*(double)atomnum)*eV2Hartree;
   scale = sqrt(TempPara[1][2]/(Temp+1.0e-13));
 
   if (MD_Init_Velocity==0){
@@ -746,7 +754,7 @@ void InitV()
   }
 
   /* recalculate Ukc */
-  Ukc = 0.0;
+  thermo->ionic_kinetic = 0.0;
   for (Gc_AN=1; Gc_AN<=atomnum; Gc_AN++){
     sum = 0.0;
     for (j=1; j<=3; j++){
@@ -754,7 +762,7 @@ void InitV()
 	sum += Gxyz[Gc_AN][j+23]*Gxyz[Gc_AN][j+23];
       }
     }
-    Ukc += 0.5*Gxyz[Gc_AN][20]*Wscale*sum;
+    thermo->ionic_kinetic += 0.5*Gxyz[Gc_AN][20]*Wscale*sum;
   }
 
 }

@@ -99,7 +99,16 @@ void neb_run(OpenMXCoreContext *core, char *argv[], MPI_Comm mpi_commWD, int ind
 
   /* initialize */
 
-  init();
+  init(core);
+
+  OpenMXThermodynamicEnergies *thermo=NULL;
+  char thermodynamic_error[256];
+  if(!openmx_core_thermodynamic_energies(core,&thermo,thermodynamic_error,sizeof(thermodynamic_error))) {
+    fprintf(stderr,"OpenMX thermodynamic energies: %s\n",thermodynamic_error);
+    MPI_Abort(mpi_comm_level1,1);
+    abort();
+  }
+
 
   /* for DFTD-vdW by okuno */
   /* for version_dftD by Ellner*/
@@ -119,7 +128,7 @@ void neb_run(OpenMXCoreContext *core, char *argv[], MPI_Comm mpi_commWD, int ind
   ****************************************************/
 
   /* total energy */
-  neb_atom_coordinates[index_images][0][0] = Utot;     
+  neb_atom_coordinates[index_images][0][0] = thermo->total;
 
   /* atomic coordinates */
 
