@@ -48,7 +48,7 @@ static double Calc_Ekin(const OpenMXEnergyWorkspace *workspace, const OpenMXElec
 static double Calc_Ena(const OpenMXEnergyWorkspace *workspace, const OpenMXVnaMatrixViews *vna, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
 static double Calc_Enl(const OpenMXEnergyWorkspace *workspace, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
 static double Calc_ECH(const OpenMXEnergyWorkspace *workspace, const OpenMXElectronicViews *electronic);
-static void Calc_EXC_EH1(const OpenMXAtomicViews *atomic, double ECE[]);
+static void Calc_EXC_EH1(OpenMXSolverInvocation *scratch, const OpenMXAtomicViews *atomic, double ECE[]);
 static void Calc_Edc(double ECE[]);
 static double Calc_Ehub(const OpenMXLocalBasisViews *local_basis);   /* --- added by MJ  */
 static double Calc_EdftD();  /* added by okuno */
@@ -257,7 +257,7 @@ static void Total_Energy_owned(OpenMXSolverInvocation *scratch, const OpenMXBand
 
   dtime(&stime);
 
-  Calc_EXC_EH1(atomic, ECE);
+  Calc_EXC_EH1(scratch, atomic, ECE);
   if (Solver==12) Calc_Edc(ECE);
 
   dtime(&etime);
@@ -1723,7 +1723,6 @@ void Calc_Edc(double ECE[])
 
   ************************************************************/
 
-  static int firsttime=1;
   int i,spin,spinmax,XC_P_switch;
   int numS,numR,My_GNum,BN_AB;
   int n,n1,n2,n3,Ng1,Ng2,Ng3,j,k;
@@ -1843,14 +1842,13 @@ void Calc_Edc(double ECE[])
 
 
 #pragma optimization_level 1
-void Calc_EXC_EH1(const OpenMXAtomicViews *atomic, double ECE[])
+void Calc_EXC_EH1(OpenMXSolverInvocation *scratch, const OpenMXAtomicViews *atomic, double ECE[])
 {
   /************************************************************
      EXC = \sum_{\sigma} (n_{\sigma}(r)+n_pcc(r)\epsilon_{xc}
      EH1 = 1/2\int {n(r)-n_a(r)} \delta V_H dr
   ************************************************************/
 
-  static int firsttime=1;
   int i,spin,spinmax,XC_P_switch;
   int numS,numR,My_GNum,BN_AB;
   int n,n1,n2,n3,Ng1,Ng2,Ng3,j,k;
@@ -1889,7 +1887,6 @@ void Calc_EXC_EH1(const OpenMXAtomicViews *atomic, double ECE[])
   double sumry,sumty;
   double sumrz,sumtz;
   double gden0,vxc0;
-  double *My_sumr,*My_sumrx,*My_sumry,*My_sumrz;
   int ir,ia,Cwan,Rn,Hwan,Gh_AN,h_AN;
   char file_DPM[YOUSO10] = ".dpm";
   FILE *fp_DPM;
@@ -2090,12 +2087,9 @@ void Calc_EXC_EH1(const OpenMXAtomicViews *atomic, double ECE[])
   dtime(&time0);
   if (Exc0_correction_flag==1){
 
+    OpenMXSolverRealTensor lebedev;
     double **Leb_Grid_XYZW;
-
-    Leb_Grid_XYZW = (double**)malloc(sizeof(double*)*Num_Leb_Grid); 
-    for (i=0; i<Num_Leb_Grid; i++){
-      Leb_Grid_XYZW[i] = (double*)malloc(sizeof(double)*4);
-    }
+    OpenMX_Energy_LebedevPrepare(scratch,Num_Leb_Grid,&lebedev,&Leb_Grid_XYZW);
 
     Set_Lebedev_Grid(Num_Leb_Grid,Leb_Grid_XYZW);
 
@@ -2125,6 +2119,16 @@ void Calc_EXC_EH1(const OpenMXAtomicViews *atomic, double ECE[])
     }
     else{
 
+    size_t max_neighbors=0;
+    for(int local_atom=1;local_atom<=Matomnum;local_atom++){
+      const size_t count=(size_t)FNAN[M2G[local_atom]]+1;
+      if(max_neighbors<count)max_neighbors=count;
+    }
+    max_neighbors=OpenMX_Solver_SimdColumns(max_neighbors);
+    OpenMXSolverRealTensor xc_partials;
+    OpenMX_Energy_XCPartialsPrepare(scratch,(size_t)Nthrds0,max_neighbors,&xc_partials);
+    double *My_sumr=OpenMX_Solver_OverwriteReal(scratch,"total-energy:thread-sums",(size_t)Nthrds0);
+
     for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
 
       Gc_AN = M2G[Mc_AN];
@@ -2135,54 +2139,50 @@ void Calc_EXC_EH1(const OpenMXAtomicViews *atomic, double ECE[])
 
       /* allocation of arrays */
 
-      double *My_sumr,**My_sumrx,**My_sumry,**My_sumrz;
-
-      My_sumr = (double*)malloc(sizeof(double)*Nthrds0);
       for (i=0; i<Nthrds0; i++) My_sumr[i]  = 0.0;
 
-      My_sumrx = (double**)malloc(sizeof(double*)*Nthrds0);
       for (i=0; i<Nthrds0; i++){
-	My_sumrx[i] = (double*)malloc(sizeof(double)*(FNAN[Gc_AN]+1));
 	for (j=0; j<(FNAN[Gc_AN]+1); j++){
-	  My_sumrx[i][j] = 0.0;
+	  OpenMX_Energy_XCForceRow(&xc_partials,0,i)[j] = 0.0;
 	}
       }
 
-      My_sumry = (double**)malloc(sizeof(double*)*Nthrds0);
       for (i=0; i<Nthrds0; i++){
-	My_sumry[i] = (double*)malloc(sizeof(double)*(FNAN[Gc_AN]+1));
 	for (j=0; j<(FNAN[Gc_AN]+1); j++){
-	  My_sumry[i][j] = 0.0;
+	  OpenMX_Energy_XCForceRow(&xc_partials,1,i)[j] = 0.0;
 	}
       }
 
-      My_sumrz = (double**)malloc(sizeof(double*)*Nthrds0);
       for (i=0; i<Nthrds0; i++){
-	My_sumrz[i] = (double*)malloc(sizeof(double)*(FNAN[Gc_AN]+1));
 	for (j=0; j<(FNAN[Gc_AN]+1); j++){
-	  My_sumrz[i][j] = 0.0;
+	  OpenMX_Energy_XCForceRow(&xc_partials,2,i)[j] = 0.0;
 	}
       }
 
-#pragma omp parallel shared(atomic,Leb_Grid_XYZW,Num_Leb_Grid,My_sumr,My_sumrx,My_sumry,My_sumrz,Dr,Sr,CoarseGL_Abscissae,CoarseGL_Weight,Gxyz,Gc_AN,FNAN,natn,ncn,WhatSpecies,atv,F_Vxc_flag,Cwan,PCC_switch) private(OMPID,Nthrds,Nprocs,ir,ia,r,w,sumt,sumtx,sumty,sumtz,x,x0,y0,z0,h_AN,Gh_AN,Rn,Hwan,x1,y1,z1,dx,dy,dz,r1,den,den0,gden0,dx1,dy1,dz1,exc0,vxc0,i)
+#pragma omp parallel shared(scratch,max_neighbors,xc_partials,atomic,lebedev,Num_Leb_Grid,My_sumr,Dr,Sr,CoarseGL_Abscissae,CoarseGL_Weight,Gxyz,Gc_AN,FNAN,natn,ncn,WhatSpecies,atv,F_Vxc_flag,Cwan,PCC_switch) private(OMPID,Nthrds,Nprocs,ir,ia,r,w,sumt,sumtx,sumty,sumtz,x,x0,y0,z0,h_AN,Gh_AN,Rn,Hwan,x1,y1,z1,dx,dy,dz,r1,den,den0,gden0,dx1,dy1,dz1,exc0,vxc0,i)
       {
 
 	double *gx,*gy,*gz,dexc0;
 	double *sum_gx,*sum_gy,*sum_gz;
 	double r2,rcutH2;
+        OpenMXSolverRealTensor derivatives;
+        OpenMX_Energy_XCWorkerPrepare(scratch,max_neighbors,&derivatives);
+        gx=openmx_solver_real_matrix_row(&derivatives,0);
+        gy=openmx_solver_real_matrix_row(&derivatives,1);
+        gz=openmx_solver_real_matrix_row(&derivatives,2);
+        sum_gx=openmx_solver_real_matrix_row(&derivatives,3);
+        sum_gy=openmx_solver_real_matrix_row(&derivatives,4);
+        sum_gz=openmx_solver_real_matrix_row(&derivatives,5);
 
-	gx = (double*)malloc(sizeof(double)*(FNAN[Gc_AN]+1));
-	gy = (double*)malloc(sizeof(double)*(FNAN[Gc_AN]+1));
-	gz = (double*)malloc(sizeof(double)*(FNAN[Gc_AN]+1));
-	sum_gx = (double*)malloc(sizeof(double)*(FNAN[Gc_AN]+1));
-	sum_gy = (double*)malloc(sizeof(double)*(FNAN[Gc_AN]+1));
-	sum_gz = (double*)malloc(sizeof(double)*(FNAN[Gc_AN]+1));
 
 	/* get info. on OpenMP */ 
 
 	OMPID = omp_get_thread_num();
 	Nthrds = omp_get_num_threads();
 	Nprocs = omp_get_num_procs();
+        double *partial_x=OpenMX_Energy_XCForceRow(&xc_partials,0,OMPID);
+        double *partial_y=OpenMX_Energy_XCForceRow(&xc_partials,1,OMPID);
+        double *partial_z=OpenMX_Energy_XCForceRow(&xc_partials,2,OMPID);
 
 	for (ir=(OMPID*CoarseGL_Mesh/Nthrds); ir<((OMPID+1)*CoarseGL_Mesh/Nthrds); ir++){
 
@@ -2197,9 +2197,9 @@ void Calc_EXC_EH1(const OpenMXAtomicViews *atomic, double ECE[])
 
 	  for (ia=0; ia<Num_Leb_Grid; ia++){
 
-	    x0 = r*Leb_Grid_XYZW[ia][0] + Gxyz[Gc_AN][1];
-	    y0 = r*Leb_Grid_XYZW[ia][1] + Gxyz[Gc_AN][2];
-	    z0 = r*Leb_Grid_XYZW[ia][2] + Gxyz[Gc_AN][3];
+	    x0 = r*openmx_solver_real_matrix_row(&lebedev,ia)[0] + Gxyz[Gc_AN][1];
+	    y0 = r*openmx_solver_real_matrix_row(&lebedev,ia)[1] + Gxyz[Gc_AN][2];
+	    z0 = r*openmx_solver_real_matrix_row(&lebedev,ia)[2] + Gxyz[Gc_AN][3];
 
 	    /* calculate rho_atom + rho_pcc */ 
 
@@ -2262,7 +2262,7 @@ void Calc_EXC_EH1(const OpenMXAtomicViews *atomic, double ECE[])
 
 	    /* Lebedev quadrature */
 
-	    w = Leb_Grid_XYZW[ia][3];
+	    w = openmx_solver_real_matrix_row(&lebedev,ia)[3];
 	    sumt += w*den0*exc0;
 
 	    for (h_AN=1; h_AN<=FNAN[Gc_AN]; h_AN++){
@@ -2279,19 +2279,13 @@ void Calc_EXC_EH1(const OpenMXAtomicViews *atomic, double ECE[])
 	  My_sumr[OMPID]  += w*sumt;
 
 	  for (h_AN=1; h_AN<=FNAN[Gc_AN]; h_AN++){
-	    My_sumrx[OMPID][h_AN] += w*sum_gx[h_AN];
-	    My_sumry[OMPID][h_AN] += w*sum_gy[h_AN];
-	    My_sumrz[OMPID][h_AN] += w*sum_gz[h_AN];
+	    partial_x[h_AN] += w*sum_gx[h_AN];
+	    partial_y[h_AN] += w*sum_gy[h_AN];
+	    partial_z[h_AN] += w*sum_gz[h_AN];
 	  }
 
 	} /* ir */
 
-	free(gx);
-	free(gy);
-	free(gz);
-	free(sum_gx);
-	free(sum_gy);
-	free(sum_gz);
 
       } /* #pragma omp */
 
@@ -2309,9 +2303,9 @@ void Calc_EXC_EH1(const OpenMXAtomicViews *atomic, double ECE[])
 	sumry = 0.0;
 	sumrz = 0.0;
 	for (Nloop=0; Nloop<Nthrds0; Nloop++){
-	  sumrx += My_sumrx[Nloop][h_AN];
-	  sumry += My_sumry[Nloop][h_AN];
-	  sumrz += My_sumrz[Nloop][h_AN];
+	  sumrx += OpenMX_Energy_XCForceRow(&xc_partials,0,Nloop)[h_AN];
+	  sumry += OpenMX_Energy_XCForceRow(&xc_partials,1,Nloop)[h_AN];
+	  sumrz += OpenMX_Energy_XCForceRow(&xc_partials,2,Nloop)[h_AN];
 	}
 
 	Gh_AN = natn[Gc_AN][h_AN];
@@ -2327,22 +2321,8 @@ void Calc_EXC_EH1(const OpenMXAtomicViews *atomic, double ECE[])
 
       /* freeing of arrays */
 
-      free(My_sumr);
+      /* The invocation retains the partials for the next atom. */
 
-      for (i=0; i<Nthrds0; i++){
-	free(My_sumrx[i]);
-      }
-      free(My_sumrx);
-
-      for (i=0; i<Nthrds0; i++){
-	free(My_sumry[i]);
-      }
-      free(My_sumry);
-
-      for (i=0; i<Nthrds0; i++){
-	free(My_sumrz[i]);
-      }
-      free(My_sumrz);
 
     } /* Mc_AN */
 
@@ -2353,10 +2333,7 @@ void Calc_EXC_EH1(const OpenMXAtomicViews *atomic, double ECE[])
     My_EXC[0] += 0.5*sum;
     My_EXC[1] += 0.5*sum;
 
-    for (i=0; i<Num_Leb_Grid; i++){
-      free(Leb_Grid_XYZW[i]);
-    }
-    free(Leb_Grid_XYZW);
+    /* Angular data and ABI rows expire with the invocation. */
 
     /* MPI: Gxyz[][41,42,43] */
 
@@ -4269,7 +4246,6 @@ void Energy_Decomposition(const OpenMXBandEnergies *energies, double ECE[], cons
   double ******iDM=electronic->iDM;
   double *****iHNL=electronic->iHNL;
 
-  static int firsttime=1;
   int i,spin,spinmax,XC_P_switch;
   int numS,numR,My_GNum,BN_AB,max_ene;
   int n,n1,n2,n3,Ng1,Ng2,Ng3,j,k;

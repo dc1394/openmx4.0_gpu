@@ -1,17 +1,17 @@
 {
 "scope": "global-state usage of the C translation units of the NVIDIA build",
-"revision": "97737766",
+"revision": "2b419f09",
 "summary": {
 "translation units analysed": 289,
 "translation units not analysed": 0,
-"functions": 3201,
+"functions": 3207,
 "common-header objects (defined in openmx_globals.c)": 949,
 "common-header objects referenced by some function": 943,
 "common-header objects written by some function (direct or through)": 703,
 "function-object edges (common header)": 12222,
 "objects with external linkage defined outside openmx_globals.c": 353,
 "file-scope statics": 313,
-"function-local statics": 300,
+"function-local statics": 297,
 "environment variables (names read, every unit)": 251,
 "functions calling getenv directly (outside openmx_env.c)": 0,
 "environment names missing from the registry": 0
@@ -15760,27 +15760,6 @@
 "function": "TRAN_adjust_Ngrid",
 "variable": "numprocs",
 "type": "i32 0",
-"const": false
-},
-{
-"unit": "source/Total_Energy.c",
-"function": "Calc_EXC_EH1",
-"variable": "firsttime",
-"type": "i32 1",
-"const": false
-},
-{
-"unit": "source/Total_Energy.c",
-"function": "Calc_Edc",
-"variable": "firsttime",
-"type": "i32 1",
-"const": false
-},
-{
-"unit": "source/Total_Energy.c",
-"function": "Energy_Decomposition",
-"variable": "firsttime",
-"type": "i32 1",
 "const": false
 },
 {

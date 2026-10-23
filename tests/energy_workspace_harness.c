@@ -61,6 +61,7 @@ static int layout(OpenMXSolverInvocation *owner,void *argument,double *result){
   const char *mode=argument;
   if(!strcmp(mode,"bad-count"))OpenMX_Energy_PairsPrepare(owner,(size_t)INT_MAX+1,NULL);
   if(!strcmp(mode,"bad-eh0-count"))OpenMX_Energy_EH0BatchPrepare(owner,(size_t)INT_MAX+1,NULL);
+  if(!strcmp(mode,"bad-lebedev"))OpenMX_Energy_LebedevPrepare(owner,591,NULL,NULL);
   if(!strcmp(mode,"bad-cwf")){
     OpenMXSolverRealTensor a,b;OpenMX_Energy_CWFScratch(owner,0,&a,&b);
   }
@@ -94,6 +95,25 @@ static int layout(OpenMXSolverInvocation *owner,void *argument,double *result){
     for(size_t row=0;row<8;row++)for(size_t i=0;i<capacity;i++)
       CHECK(openmx_solver_real_matrix_row(&b.values,row)[i]==100*row+i+.5);
   }
+  OpenMXSolverRealTensor partials,worker,again;
+  OpenMX_Energy_XCPartialsPrepare(owner,4,6,&partials);
+  CHECK(partials.extent[0]==3 && partials.extent[1]==4 && partials.extent[2]==6);
+  for(size_t c=0;c<3;c++)for(size_t t=0;t<4;t++)for(size_t n=0;n<6;n++)
+    OpenMX_Energy_XCForceRow(&partials,c,t)[n]=100*c+10*t+n+.5;
+  OpenMX_Energy_XCPartialsPrepare(owner,4,6,&again);CHECK(again.values==partials.values);
+  for(size_t c=0;c<3;c++)for(size_t t=0;t<4;t++)for(size_t n=0;n<6;n++)
+    CHECK(OpenMX_Energy_XCForceRow(&again,c,t)[n]==100*c+10*t+n+.5);
+  OpenMX_Energy_XCPartialsPrepare(owner,4,0,&partials);
+  CHECK(partials.extent[2]==0 && OpenMX_Energy_XCForceRow(&partials,2,3)==partials.values);
+  OpenMX_Energy_XCWorkerPrepare(owner,3,&worker);CHECK(worker.extent[0]==6 && worker.extent[1]==3);
+  for(int i=0;i<18;i++)worker.values[i]=i+.25;
+  OpenMX_Energy_XCWorkerPrepare(owner,3,&again);CHECK(again.values==worker.values);
+  for(int i=0;i<18;i++)CHECK(again.values[i]==i+.25);
+  OpenMXSolverRealTensor angular;double **rows;
+  OpenMX_Energy_LebedevPrepare(owner,590,&angular,&rows);
+  for(int i=0;i<590;i++)CHECK(rows[i]==angular.values+4*i);
+  OpenMX_Energy_LebedevPrepare(owner,1202,&angular,&rows);
+  for(int i=0;i<1202;i++)CHECK(rows[i]==angular.values+4*i);
   OpenMXSolverRealTensor a,b;OpenMX_Energy_CWFScratch(owner,3,&a,&b);
   CHECK(a.extent[0]==2 && a.extent[1]==3 && a.values!=b.values);
   for(int i=0;i<6;i++){a.values[i]=i+.5;b.values[i]=-i-.5;}

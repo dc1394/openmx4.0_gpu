@@ -62,4 +62,43 @@ static inline void OpenMX_Energy_CWFScratch(OpenMXSolverInvocation *owner,
         "total-energy:cwf-atomic",shape,atomic,error,sizeof(error)))
     OpenMX_Solver_Failure(error);
 }
+
+/* The legacy angular-grid producer and GPU entry points borrow a row table;
+   its metadata and the flat [point,xyz/weight] data share this invocation. */
+static inline void OpenMX_Energy_LebedevPrepare(OpenMXSolverInvocation *owner,
+    int points,OpenMXSolverRealTensor *out,double ***legacy_rows)
+{
+  char error[256];
+  const size_t shape[4]={(size_t)points,4,1,1};
+  if(points!=590 && points!=1202 && points!=2030)
+    OpenMX_Solver_Failure("unsupported Lebedev grid: use 590, 1202 or 2030 points");
+  if(!openmx_core_solver_real_overwrite(owner,omp_get_thread_num(),"total-energy:lebedev",
+        shape,out,error,sizeof(error)))OpenMX_Solver_Failure(error);
+  *legacy_rows=OpenMX_Solver_RealAlias(owner,"total-energy:lebedev-rows",out->values,(size_t)points,4);
+}
+
+/* Flat [component,worker,neighbor] partials, shared only during one atom's
+   joined worker region. Capacity is constant across atoms in this evaluation. */
+static inline void OpenMX_Energy_XCPartialsPrepare(OpenMXSolverInvocation *owner,
+    size_t workers,size_t neighbors,OpenMXSolverRealTensor *out)
+{
+  char error[256];const size_t shape[4]={3,workers,neighbors,1};
+  if(!openmx_core_solver_real_overwrite(owner,omp_get_thread_num(),"total-energy:xc-partials",
+        shape,out,error,sizeof(error)))OpenMX_Solver_Failure(error);
+}
+static inline double *OpenMX_Energy_XCForceRow(const OpenMXSolverRealTensor *view,
+    size_t component,size_t worker)
+{
+  return view->extent[2] ? view->values+(component*view->extent[1]+worker)*view->extent[2] : view->values;
+}
+
+/* Each worker reuses six derivative/sum rows. Keep an output parameter in
+   native OpenMP regions; no large aggregate is returned from this helper. */
+static inline void OpenMX_Energy_XCWorkerPrepare(OpenMXSolverInvocation *owner,
+    size_t neighbors,OpenMXSolverRealTensor *out)
+{
+  char error[256];const size_t shape[4]={6,neighbors,1,1};
+  if(!openmx_core_solver_real_overwrite(owner,omp_get_thread_num(),"total-energy:xc-derivatives",
+        shape,out,error,sizeof(error)))OpenMX_Solver_Failure(error);
+}
 #endif
