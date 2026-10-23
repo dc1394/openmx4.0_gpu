@@ -181,7 +181,7 @@ double *Number_of_Electrons_Species = {0};
 double Grid_Origin[4] = {0};
 double dipole_moment[4][4] = {0};
 double TempPara[30][3] = {0},PrePara[30][3] = {0};
-double MD_TimeStep = {0},ChemP = {0},Beta = {0};
+double MD_TimeStep = {0},Beta = {0};
 double CN_Error = {0},E_Temp = {0},Original_E_Temp = {0},BCR = {0},LNO_Occ_Cutoff = {0},orderN_LNO_Buffer = {0};
 double GP = {0},GT = {0},T = {0},Weight = {0},Cell_Volume = {0};
 
@@ -318,7 +318,7 @@ char xanes_gs_file[YOUSO10] = {0};
 int xanes_gs_fileout = {0};
 int xanes_calc = {0};
 int HOMO_XANES[2] = {0};
-double ChemP_XANES[2] = {0};
+
 double xanes_energy_range = {0};
 int xmcd_calc = {0};
 int cal_partial_charge = {0};

@@ -110,7 +110,7 @@ void elpa_solve_evp_complex_2stage_double_impl_( int *n2, int *MaxN, dcomplex *H
                                                  int *mpi_comm_rows_int, int *mpi_comm_cols_int, int *mpiworld );
 
 double Calc_Hybrid_AO_NonCol( double ****OLP0, double *****Hks, double *****CDM , const OpenMXElectronicViews *electronic);
-double Calc_MO_in_Bulk_NonCol( double *****CDM, double *****iCDM , const OpenMXElectronicViews *electronic);
+double Calc_MO_in_Bulk_NonCol(const OpenMXChemicalPotentials *chemical,  double *****CDM, double *****iCDM , const OpenMXElectronicViews *electronic);
 
 void lapack_zheev(int n0, dcomplex *A, double *W);
 void AllocateArrays_NonCol_QAO2();
@@ -138,7 +138,7 @@ void Save_EVec_CWF2W90( char *mode, char *fname,
 void Save_EIGENVAL_CWF2W90( char *fname, double *EIGEN, int MinN, int MaxN, int myid2);
 
 
-static double Calc_CWF_Cluster_NonCol(
+static double Calc_CWF_Cluster_NonCol(const OpenMXChemicalPotentials *chemical,
 				      int myid,
 				      int numprocs,
 				      int size_H1,
@@ -170,7 +170,7 @@ static void Allocate_Free_Cluster_NonCol_CWF( int todo_flag,
 
 
 
-double Cluster_DFT_NonCol_CWF(
+double Cluster_DFT_NonCol_CWF(const OpenMXChemicalPotentials *chemical,
                    int SCF_iter,
                    int SpinP_switch,
                    double *ko,
@@ -279,7 +279,7 @@ double Cluster_DFT_NonCol_CWF(
   }
 
   else if (CWF_Guiding_Orbital==3){
-    time1 = Calc_MO_in_Bulk_NonCol(ParDM,iParDM, electronic);
+    time1 = Calc_MO_in_Bulk_NonCol(chemical, ParDM,iParDM, electronic);
   }
 
   /****************************************************
@@ -336,7 +336,7 @@ double Cluster_DFT_NonCol_CWF(
 
     /* find MaxN */
     for (i=n2; 1<=i; i--){
-      e = ko[i] - ChemP;
+      e = ko[i] - chemical->chemical_potential;
       out1 = CWF_disentangling_Erange[3];
       if (e<out1) break;
     }
@@ -344,7 +344,7 @@ double Cluster_DFT_NonCol_CWF(
 
     /* find MinN */
     for (i=1; i<=n2; i++){
-      e = ko[i] - ChemP;
+      e = ko[i] - chemical->chemical_potential;
       out0 = CWF_disentangling_Erange[0];
       if (out0<e) break;
     }
@@ -883,7 +883,7 @@ double Cluster_DFT_NonCol_CWF(
               calculation of CWFs
   ***********************************************/
 
-  time6 += Calc_CWF_Cluster_NonCol( myid,numprocs,size_H1,is2,ie2,MP,
+  time6 += Calc_CWF_Cluster_NonCol(chemical,  myid,numprocs,size_H1,is2,ie2,MP,
                                     n2,MinN,MaxN,CntOLP,ko,EVec1,Full_EVec );
 
   if (measure_time){
@@ -923,7 +923,7 @@ double Cluster_DFT_NonCol_CWF(
 
 
 
-double Calc_CWF_Cluster_NonCol(
+double Calc_CWF_Cluster_NonCol(const OpenMXChemicalPotentials *chemical,
     int myid,
     int numprocs,
     int size_H1,
@@ -1365,8 +1365,8 @@ double Calc_CWF_Cluster_NonCol(
   out1 = CWF_disentangling_Erange[3];
   b0 = 1.0/CWF_disentangling_smearing_kBT0;
   b1 = 1.0/CWF_disentangling_smearing_kBT1;
-  e0 = CWF_disentangling_Erange[0] + ChemP; 
-  e1 = CWF_disentangling_Erange[1] + ChemP; 
+  e0 = CWF_disentangling_Erange[0] + chemical->chemical_potential;
+  e1 = CWF_disentangling_Erange[1] + chemical->chemical_potential;
 
   for (i=0; i<na_rows_CWF3; i++){
 
@@ -1376,7 +1376,7 @@ double Calc_CWF_Cluster_NonCol(
     e = ko[m1];
 
     if (CWF_WindowF_switch==0){ // Poly
-      weight = weight_CWF2(e,ChemP,in0,in1,out0,out1); 
+      weight = weight_CWF2(e,chemical->chemical_potential,in0,in1,out0,out1);
     }
     else if (CWF_WindowF_switch==1){ // Fermi
       weight = (1.0/(exp(b0*(e0-e))+1.0))*(1.0/(exp(b1*(e-e1))+1.0)) + CWF_disentangling_smearing_bound;
@@ -1604,7 +1604,7 @@ double Calc_CWF_Cluster_NonCol(
       jg = np_cols_CWF3*nblk_CWF3*((j)/nblk_CWF3) + (j)%nblk_CWF3 
 	+ ((np_cols_CWF3+my_pcol_CWF3)%np_cols_CWF3)*nblk_CWF3;
 
-      x = (ko[ig] - ChemP)*Beta;
+      x = (ko[ig] - chemical->chemical_potential)*Beta;
       if (x<=-max_x) x = -max_x;
       if (max_x<=x)  x = max_x;
       FermiF = 1.0/(1.0 + exp(x));
@@ -2423,7 +2423,7 @@ double Calc_Hybrid_AO_NonCol( double ****OLP0, double *****Hks, double *****CDM 
 
 
 
-double Calc_MO_in_Bulk_NonCol( double *****CDM, double *****iCDM , const OpenMXElectronicViews *electronic)
+double Calc_MO_in_Bulk_NonCol(const OpenMXChemicalPotentials *chemical,  double *****CDM, double *****iCDM , const OpenMXElectronicViews *electronic)
 {
   double *****H=electronic->H;
   double *****OLP=electronic->OLP;
@@ -2926,7 +2926,7 @@ double Calc_MO_in_Bulk_NonCol( double *****CDM, double *****iCDM , const OpenMXE
       fprintf(fp_MO_info,"# 3rd column: population\n");
 
       for (p=0; p<dim2; p++){
-        fprintf(fp_MO_info,"%2d %18.12f %18.12f\n",p+1,(WI[p]-ChemP)*eV2Hartree,EVal[p]);
+        fprintf(fp_MO_info,"%2d %18.12f %18.12f\n",p+1,(WI[p]-chemical->chemical_potential)*eV2Hartree,EVal[p]);
       }
     }    
 

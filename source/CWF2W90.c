@@ -63,8 +63,8 @@ static void Generate_win(int ***k_op, int ***k2k,
 			 double *T_KGrids2, 
 			 double *T_KGrids3);
 
-static void Generate_eig_Col(int ***k_op, int ***k2k);
-static void Generate_eig_NC(int ***k_op, int ***k2k);
+static void Generate_eig_Col(const OpenMXChemicalPotentials *chemical, int ***k_op, int ***k2k);
+static void Generate_eig_NC(const OpenMXChemicalPotentials *chemical, int ***k_op, int ***k2k);
 
 static void Generate_amn_Col(int ***k_op, int ***k2k);
 static void Generate_amn_NC(int ***k_op, int ***k2k);
@@ -92,7 +92,7 @@ double r_latt[3][3];
 
 		    
 
-void CWF2W90(int ***k_op, int *T_k_op, int **T_k_ID, 
+void CWF2W90(const OpenMXChemicalPotentials *chemical, int ***k_op, int *T_k_op, int **T_k_ID,
              double *T_KGrids1, double *T_KGrids2, 
              double *T_KGrids3, int *MP, int *order_GA)
 {
@@ -256,10 +256,10 @@ void CWF2W90(int ***k_op, int *T_k_op, int **T_k_ID,
 
   if (myid==Host_ID){
     if (SpinP_switch<=1){
-      Generate_eig_Col(k_op,k2k);
+      Generate_eig_Col(chemical, k_op,k2k);
     }
     else if (SpinP_switch==3){
-      Generate_eig_NC(k_op,k2k);
+      Generate_eig_NC(chemical, k_op,k2k);
     }  
   }  
 
@@ -626,7 +626,7 @@ void Generate_win(int ***k_op, int ***k2k,
 }
 
 
-void Generate_eig_Col(int ***k_op, int ***k2k)
+void Generate_eig_Col(const OpenMXChemicalPotentials *chemical, int ***k_op, int ***k2k)
 {
   int spin,m,ik,i,j,k,ii,jj,kk,ik_file;
   char fname[500],fn_eval[500];
@@ -665,7 +665,7 @@ void Generate_eig_Col(int ***k_op, int ***k2k)
 	      /* save the .eig file */
 
 	      for (m=0; m<Num_KS_states_CWF; m++){
-		fprintf(fp,"%5d %5d %22.14f\n",m+1,ik+1,(eval[m]-ChemP)*eV2Hartree);
+		fprintf(fp,"%5d %5d %22.14f\n",m+1,ik+1,(eval[m]-chemical->chemical_potential)*eV2Hartree);
 	      } // m
 
 	      /* fclose(fp_eval) */
@@ -699,7 +699,7 @@ void Generate_eig_Col(int ***k_op, int ***k2k)
 
 
 
-void Generate_eig_NC(int ***k_op, int ***k2k)
+void Generate_eig_NC(const OpenMXChemicalPotentials *chemical, int ***k_op, int ***k2k)
 {
   int m,ik,i,j,k,ii,jj,kk,ik_file;
   char fname[500],fn_eval[500];
@@ -734,7 +734,7 @@ void Generate_eig_NC(int ***k_op, int ***k2k)
 
 	    /* save the .eig file */
 	    for (m=0; m<Num_KS_states_CWF; m++){
-	      fprintf(fp,"%5d %5d %22.14f\n",m+1,ik+1,(eval[m]-ChemP)*eV2Hartree);
+	      fprintf(fp,"%5d %5d %22.14f\n",m+1,ik+1,(eval[m]-chemical->chemical_potential)*eV2Hartree);
 	    } // m
 
 	      /* fclose(fp_eval) */

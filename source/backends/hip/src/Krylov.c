@@ -58,6 +58,7 @@ typedef struct {
 } Krylov_KUCache;
 
 struct OpenMXKrylovState {
+  OpenMXChemicalPotentials *chemical; /* borrowed from this calculation */
   OpenMXMixingHistory *history; /* borrowed from this calculation */
   OpenMXNativeResources *resources; /* borrowed from this calculation */
   int initialized;
@@ -148,7 +149,7 @@ static void Embedding_Matrix(KrylovState *state, int spin, int Mc_AN, double ***
 
 static void Inverse_S_by_Cholesky(int Mc_AN, double ****OLP0, double **invS, int *MP, int NUM, double *LoS);
 
-static void Save_DOS_Col(OpenMXSolverResidueView Residues, double ****OLP0, OpenMXSolverRealFieldView EVal, OpenMXSolverIntTensor LO_TC, OpenMXSolverIntTensor HO_TC);
+static void Save_DOS_Col(const OpenMXChemicalPotentials *chemical, OpenMXSolverResidueView Residues, double ****OLP0, OpenMXSolverRealFieldView EVal, OpenMXSolverIntTensor LO_TC, OpenMXSolverIntTensor HO_TC);
 
 static double Krylov_Col(KrylovState *state, char *mode,
 			 int SCF_iter,
@@ -1598,7 +1599,7 @@ static double Krylov_Col_owned(KrylovState *state, char *mode,
 
   if (measure_time==1) dtime(&Stime2);
 
-#pragma omp parallel shared(EKC_invS_flag,List_YOUSO,Residues,EDM,CDM,HO_TC,LO_TC,ChemP,EVal,RMI1,S_G2M,EC_matrix,state,recalc_EM,Krylov_U,SpinP_switch,EKC_core_size,EKC_core_size_max,rlmax_EC,rlmax_EC2,time11,time10,time9,time8,time7,time6,time5,time4,time3,time2,Hks,OLP0,EKC_Exact_invS_flag,SCF_iter,Msize4,Msize3,Msize2,Msize,Msize2_max,natn,FNAN,SNAN,Spe_Total_CNO,WhatSpecies,M2G,Matomnum,myid,time_per_atom)
+#pragma omp parallel shared(EKC_invS_flag,List_YOUSO,Residues,EDM,CDM,HO_TC,LO_TC,EVal,RMI1,S_G2M,EC_matrix,state,recalc_EM,Krylov_U,SpinP_switch,EKC_core_size,EKC_core_size_max,rlmax_EC,rlmax_EC2,time11,time10,time9,time8,time7,time6,time5,time4,time3,time2,Hks,OLP0,EKC_Exact_invS_flag,SCF_iter,Msize4,Msize3,Msize2,Msize,Msize2_max,natn,FNAN,SNAN,Spe_Total_CNO,WhatSpecies,M2G,Matomnum,myid,time_per_atom)
   {
     int OMPID,Nthrds,Nprocs;
     int Mc_AN,Gc_AN,wan,spin;
@@ -2003,7 +2004,7 @@ static double Krylov_Col_owned(KrylovState *state, char *mode,
 	ip = 0;
 	po1 = 0;
 	do{
-	  if ( (ChemP-Erange)<openmx_solver_field_row(&EVal,spin,Mc_AN)[i]){
+	  if ( (state->chemical->chemical_potential-Erange)<openmx_solver_field_row(&EVal,spin,Mc_AN)[i]){
 	    ip = i;
 	    po1 = 1; 
 	  }
@@ -2017,7 +2018,7 @@ static double Krylov_Col_owned(KrylovState *state, char *mode,
 	ip = Msize3[Mc_AN]-1;
 	po1 = 0;
 	do{
-	  if ( (ChemP+Erange)<openmx_solver_field_row(&EVal,spin,Mc_AN)[i]){
+	  if ( (state->chemical->chemical_potential+Erange)<openmx_solver_field_row(&EVal,spin,Mc_AN)[i]){
 	    ip = i;
 	    po1 = 1; 
 	  }
@@ -2214,7 +2215,7 @@ static double Krylov_Col_owned(KrylovState *state, char *mode,
   else if (SpinP_switch==1) spin_degeneracy = 1.0;
 
   do {
-    ChemP = 0.50*(ChemP_MAX + ChemP_MIN);
+    state->chemical->chemical_potential = 0.50*(ChemP_MAX + ChemP_MIN);
 
     My_Num_State = 0.0;
 
@@ -2232,7 +2233,7 @@ static double Krylov_Col_owned(KrylovState *state, char *mode,
           double *pdos_dc_row_29=openmx_solver_field_row(&PDOS_DC,spin,Mc_AN);
           for (i=0; i<(openmx_solver_int_matrix_row(&HO_TC,spin)[Mc_AN]-openmx_solver_int_matrix_row(&LO_TC,spin)[Mc_AN]+1); i++){
 
-          x = (eval_row_28[i+openmx_solver_int_matrix_row(&LO_TC,spin)[Mc_AN]] - ChemP)*Beta;
+          x = (eval_row_28[i+openmx_solver_int_matrix_row(&LO_TC,spin)[Mc_AN]] - state->chemical->chemical_potential)*Beta;
           if (x<=-max_x) x = -max_x;
           if (max_x<=x)  x = max_x;
           FermiF = 1.0/(1.0 + exp(x));
@@ -2251,13 +2252,13 @@ static double Krylov_Col_owned(KrylovState *state, char *mode,
     MPI_Allreduce(&My_Num_State, &Num_State, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
 
     Dnum = (state->Col_owned_TZ - Num_State) - system_charge;
-    if (0.0<=Dnum) ChemP_MIN = ChemP;
-    else           ChemP_MAX = ChemP;
+    if (0.0<=Dnum) ChemP_MIN = state->chemical->chemical_potential;
+    else           ChemP_MAX = state->chemical->chemical_potential;
     if (fabs(Dnum)<1.0e-11) po = 1;
 
 
     if (myid==Host_ID && 3<=level_stdout){
-      printf("  ChemP=%15.12f TZ=%15.12f Num_state=%15.12f\n",ChemP,state->Col_owned_TZ,Num_State);
+      printf("  ChemP=%15.12f TZ=%15.12f Num_state=%15.12f\n",state->chemical->chemical_potential,state->Col_owned_TZ,Num_State);
     }
 
     loopN++;
@@ -2290,7 +2291,7 @@ static double Krylov_Col_owned(KrylovState *state, char *mode,
         double *pdos_dc_row_27=openmx_solver_field_row(&PDOS_DC,spin,Mc_AN);
         for (i=0; i<(openmx_solver_int_matrix_row(&HO_TC,spin)[Mc_AN]-openmx_solver_int_matrix_row(&LO_TC,spin)[Mc_AN]+1); i++){
 
-        x = (eval_row_26[i+openmx_solver_int_matrix_row(&LO_TC,spin)[Mc_AN]] - ChemP)*Beta;
+        x = (eval_row_26[i+openmx_solver_int_matrix_row(&LO_TC,spin)[Mc_AN]] - state->chemical->chemical_potential)*Beta;
 
         if (x<=-max_x) x = -max_x;
         if (max_x<=x)  x = max_x;
@@ -2321,7 +2322,7 @@ static double Krylov_Col_owned(KrylovState *state, char *mode,
 
   if (measure_time==1) dtime(&Stime1);
 
-#pragma omp parallel shared(FNAN,time_per_atom,EDM,CDM,Residues,natn,max_x,Beta,ChemP,EVal,LO_TC,HO_TC,Spe_Total_CNO,WhatSpecies,M2G,SpinP_switch,Matomnum) private(OMPID,Nthrds,Nprocs,Mc_AN,spin,Stime_atom,Gc_AN,wanA,tno1,i1,x,FermiF,h_AN,Gh_AN,wanB,tno2,i,j,tmp1,Etime_atom)
+#pragma omp parallel shared(FNAN,time_per_atom,EDM,CDM,Residues,natn,max_x,Beta,state,EVal,LO_TC,HO_TC,Spe_Total_CNO,WhatSpecies,M2G,SpinP_switch,Matomnum) private(OMPID,Nthrds,Nprocs,Mc_AN,spin,Stime_atom,Gc_AN,wanA,tno1,i1,x,FermiF,h_AN,Gh_AN,wanB,tno2,i,j,tmp1,Etime_atom)
   {
 
     /* get info. on OpenMP */ 
@@ -2343,7 +2344,7 @@ static double Krylov_Col_owned(KrylovState *state, char *mode,
 	  double *eval_row_25=openmx_solver_field_row(&EVal,spin,Mc_AN);
 	  for (i1=0; i1<(openmx_solver_int_matrix_row(&HO_TC,spin)[Mc_AN]-openmx_solver_int_matrix_row(&LO_TC,spin)[Mc_AN]+1); i1++){
 
-	  x = (eval_row_25[i1+openmx_solver_int_matrix_row(&LO_TC,spin)[Mc_AN]] - ChemP)*Beta;
+	  x = (eval_row_25[i1+openmx_solver_int_matrix_row(&LO_TC,spin)[Mc_AN]] - state->chemical->chemical_potential)*Beta;
 	  if (x<=-max_x) x = -max_x;
 	  if (max_x<=x)  x = max_x;
 	  FermiF = 1.0/(1.0 + exp(x));
@@ -2419,7 +2420,7 @@ static double Krylov_Col_owned(KrylovState *state, char *mode,
   }
 
   if ( strcasecmp(mode,"dos")==0 ){
-    Save_DOS_Col(Residues,OLP0,EVal,LO_TC,HO_TC);
+    Save_DOS_Col(state->chemical, Residues,OLP0,EVal,LO_TC,HO_TC);
   }
 
   if (measure_time==1){ 
@@ -6041,7 +6042,7 @@ void Inverse_S_by_Cholesky(int Mc_AN, double ****OLP0, double **invS, int *MP, i
 }
 
 
-void Save_DOS_Col(OpenMXSolverResidueView Residues, double ****OLP0, OpenMXSolverRealFieldView EVal, OpenMXSolverIntTensor LO_TC, OpenMXSolverIntTensor HO_TC)
+void Save_DOS_Col(const OpenMXChemicalPotentials *chemical, OpenMXSolverResidueView Residues, double ****OLP0, OpenMXSolverRealFieldView EVal, OpenMXSolverIntTensor LO_TC, OpenMXSolverIntTensor HO_TC)
 {
   int spin,Mc_AN,wanA,Gc_AN,tno1;
   int i1,i,j,MaxL,l,h_AN,Gh_AN,wanB,tno2;
@@ -6163,7 +6164,7 @@ void Save_DOS_Col(OpenMXSolverResidueView Residues, double ****OLP0, OpenMXSolve
       fprintf(fp_eig,"\n");
     }
     fprintf(fp_eig,"Spe_Num_CBasis>\n");
-    fprintf(fp_eig,"ChemP       %lf\n",ChemP);
+    fprintf(fp_eig,"ChemP       %lf\n",chemical->chemical_potential);
 
   }
 
@@ -7201,7 +7202,7 @@ static double Krylov_Col_trd_owned(KrylovState *state, char *mode,
 	ip = 0;
 	po1 = 0;
 	do{
-	  if ( (ChemP-Erange)<openmx_solver_field_row(&EVal,spin,Mc_AN)[i]){
+	  if ( (state->chemical->chemical_potential-Erange)<openmx_solver_field_row(&EVal,spin,Mc_AN)[i]){
 	    ip = i;
 	    po1 = 1; 
 	  }
@@ -7215,7 +7216,7 @@ static double Krylov_Col_trd_owned(KrylovState *state, char *mode,
 	ip = Msize3[Mc_AN]-1;
 	po1 = 0;
 	do{
-	  if ( (ChemP+Erange)<openmx_solver_field_row(&EVal,spin,Mc_AN)[i]){
+	  if ( (state->chemical->chemical_potential+Erange)<openmx_solver_field_row(&EVal,spin,Mc_AN)[i]){
 	    ip = i;
 	    po1 = 1; 
 	  }
@@ -7416,7 +7417,7 @@ static double Krylov_Col_trd_owned(KrylovState *state, char *mode,
   else if (SpinP_switch==1) spin_degeneracy = 1.0;
 
   do {
-    ChemP = 0.50*(ChemP_MAX + ChemP_MIN);
+    state->chemical->chemical_potential = 0.50*(ChemP_MAX + ChemP_MIN);
 
     My_Num_State = 0.0;
 
@@ -7434,7 +7435,7 @@ static double Krylov_Col_trd_owned(KrylovState *state, char *mode,
           double *pdos_dc_row_8=openmx_solver_field_row(&PDOS_DC,spin,Mc_AN);
           for (i=0; i<(openmx_solver_int_matrix_row(&HO_TC,spin)[Mc_AN]-openmx_solver_int_matrix_row(&LO_TC,spin)[Mc_AN]+1); i++){
 
-          x = (eval_row_7[i+openmx_solver_int_matrix_row(&LO_TC,spin)[Mc_AN]] - ChemP)*Beta;
+          x = (eval_row_7[i+openmx_solver_int_matrix_row(&LO_TC,spin)[Mc_AN]] - state->chemical->chemical_potential)*Beta;
           if (x<=-max_x) x = -max_x;
           if (max_x<=x)  x = max_x;
           FermiF = 1.0/(1.0 + exp(x));
@@ -7453,13 +7454,13 @@ static double Krylov_Col_trd_owned(KrylovState *state, char *mode,
     MPI_Allreduce(&My_Num_State, &Num_State, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
 
     Dnum = (state->Col_trd_owned_TZ - Num_State) - system_charge;
-    if (0.0<=Dnum) ChemP_MIN = ChemP;
-    else           ChemP_MAX = ChemP;
+    if (0.0<=Dnum) ChemP_MIN = state->chemical->chemical_potential;
+    else           ChemP_MAX = state->chemical->chemical_potential;
     if (fabs(Dnum)<1.0e-11) po = 1;
 
 
     if (myid==Host_ID && 3<=level_stdout){
-      printf("  ChemP=%15.12f TZ=%15.12f Num_state=%15.12f\n",ChemP,state->Col_trd_owned_TZ,Num_State);
+      printf("  ChemP=%15.12f TZ=%15.12f Num_state=%15.12f\n",state->chemical->chemical_potential,state->Col_trd_owned_TZ,Num_State);
     }
 
     loopN++;
@@ -7492,7 +7493,7 @@ static double Krylov_Col_trd_owned(KrylovState *state, char *mode,
         double *pdos_dc_row_6=openmx_solver_field_row(&PDOS_DC,spin,Mc_AN);
         for (i=0; i<(openmx_solver_int_matrix_row(&HO_TC,spin)[Mc_AN]-openmx_solver_int_matrix_row(&LO_TC,spin)[Mc_AN]+1); i++){
 
-        x = (eval_row_5[i+openmx_solver_int_matrix_row(&LO_TC,spin)[Mc_AN]] - ChemP)*Beta;
+        x = (eval_row_5[i+openmx_solver_int_matrix_row(&LO_TC,spin)[Mc_AN]] - state->chemical->chemical_potential)*Beta;
 
         if (x<=-max_x) x = -max_x;
         if (max_x<=x)  x = max_x;
@@ -7550,7 +7551,7 @@ static double Krylov_Col_trd_owned(KrylovState *state, char *mode,
 	  double *eval_row_4=openmx_solver_field_row(&EVal,spin,Mc_AN);
 	  for (i1=0; i1<(openmx_solver_int_matrix_row(&HO_TC,spin)[Mc_AN]-openmx_solver_int_matrix_row(&LO_TC,spin)[Mc_AN]+1); i1++){
 
-	  x = (eval_row_4[i1+openmx_solver_int_matrix_row(&LO_TC,spin)[Mc_AN]] - ChemP)*Beta;
+	  x = (eval_row_4[i1+openmx_solver_int_matrix_row(&LO_TC,spin)[Mc_AN]] - state->chemical->chemical_potential)*Beta;
 	  if (x<=-max_x) x = -max_x;
 	  if (max_x<=x)  x = max_x;
 	  FermiF = 1.0/(1.0 + exp(x));
@@ -7626,7 +7627,7 @@ static double Krylov_Col_trd_owned(KrylovState *state, char *mode,
   }
 
   if ( strcasecmp(mode,"dos")==0 ){
-    Save_DOS_Col(Residues,OLP0,EVal,LO_TC,HO_TC);
+    Save_DOS_Col(state->chemical, Residues,OLP0,EVal,LO_TC,HO_TC);
   }
 
   if (measure_time==1){ 
@@ -11592,6 +11593,10 @@ OpenMXKrylovState *Krylov_Bind_Resources(OpenMXCoreContext *core)
     state->GPU_Preflight_reserve_bytes = (size_t)512*1024*1024;
     state->GPU_Preflight_device_comm = MPI_COMM_NULL;
     state->GPU_Enabled_requested = -1;
+    if(!openmx_core_chemical_potentials(core,&state->chemical,error,sizeof(error))) {
+      fprintf(stderr,"OpenMX chemical potentials: %s\n",error);
+      abort();
+    }
     state->initialized = 1;
   }
   return state;

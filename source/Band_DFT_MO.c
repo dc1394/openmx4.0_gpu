@@ -20,13 +20,13 @@
 #include <omp.h>
 
 
-static void Band_DFT_MO_Col(
+static void Band_DFT_MO_Col(const OpenMXChemicalPotentials *chemical,
                       int nkpoint, double **kpoint,
                       int SpinP_switch, 
                       double *****nh,
                       double ****CntOLP);
 
-static void Band_DFT_MO_NonCol(
+static void Band_DFT_MO_NonCol(const OpenMXChemicalPotentials *chemical,
                       int nkpoint, double **kpoint,
                       int SpinP_switch, 
                       double *****nh,
@@ -34,23 +34,23 @@ static void Band_DFT_MO_NonCol(
                       double ****CntOLP);
 
 
-void Band_DFT_MO( int nkpoint, double **kpoint,
+void Band_DFT_MO(const OpenMXChemicalPotentials *chemical,  int nkpoint, double **kpoint,
                   int SpinP_switch, 
                   double *****nh,
                   double *****ImNL,
                   double ****CntOLP)
 {
   if (SpinP_switch==0 || SpinP_switch==1){
-    Band_DFT_MO_Col( nkpoint, kpoint, SpinP_switch, nh, CntOLP);
+    Band_DFT_MO_Col(chemical,  nkpoint, kpoint, SpinP_switch, nh, CntOLP);
   }
   else if (SpinP_switch==3){
-    Band_DFT_MO_NonCol( nkpoint, kpoint, SpinP_switch, nh, ImNL, CntOLP);
+    Band_DFT_MO_NonCol(chemical,  nkpoint, kpoint, SpinP_switch, nh, ImNL, CntOLP);
   }
 }
 
 
 
-static void Band_DFT_MO_Col(
+static void Band_DFT_MO_Col(const OpenMXChemicalPotentials *chemical,
                       int nkpoint, double **kpoint,
                       int SpinP_switch, 
                       double *****nh,
@@ -543,7 +543,7 @@ static void Band_DFT_MO_Col(
       Bulk_HOMO[kloop][spin] = 0; 
 
       for (i1=1; i1<=n; i1++){
-	x = (ko[spin][i1] - ChemP)*Beta;
+	x = (ko[spin][i1] - chemical->chemical_potential)*Beta;
 	if (x<=-x_cut) x = -x_cut;
 	if (x_cut<=x)  x = x_cut;
 	FermiF = 1.0/(1.0 + exp(x));
@@ -663,7 +663,7 @@ static void Band_DFT_MO_Col(
 	fprintf(fp_EV,"\n\n");
 	fprintf(fp_EV,"   # of k-point = %i\n",kloop+1);
 	fprintf(fp_EV,"   k1=%10.5f k2=%10.5f k3=%10.5f\n\n",k1,k2,k3);
-	fprintf(fp_EV,"   Chemical Potential (Hartree) = %18.14f\n",ChemP);
+	fprintf(fp_EV,"   Chemical Potential (Hartree) = %18.14f\n",chemical->chemical_potential);
 
 	if (SpinP_switch==0){
 	  fprintf(fp_EV,"   HOMO = %i\n\n",Bulk_HOMO[kloop][0]);
@@ -878,7 +878,7 @@ static void Band_DFT_MO_Col(
 
 
 
-static void Band_DFT_MO_NonCol(
+static void Band_DFT_MO_NonCol(const OpenMXChemicalPotentials *chemical,
                       int nkpoint, double **kpoint,
                       int SpinP_switch, 
                       double *****nh,
@@ -1495,7 +1495,7 @@ static void Band_DFT_MO_NonCol(
     Bulk_HOMO[kloop][0] = 0;
 
     for (i1=1; i1<=MaxN; i1++){
-      x = (ko[i1] - ChemP)*Beta;
+      x = (ko[i1] - chemical->chemical_potential)*Beta;
       if (x<=-x_cut) x = -x_cut;
       if (x_cut<=x)  x = x_cut;
       FermiF = 1.0/(1.0 + exp(x));
@@ -1602,7 +1602,7 @@ static void Band_DFT_MO_NonCol(
 	fprintf(fp_EV,"\n\n");
 	fprintf(fp_EV,"   # of k-point = %i\n",kloop+1);
 	fprintf(fp_EV,"   k1=%10.5f k2=%10.5f k3=%10.5f\n\n",k1,k2,k3);
-	fprintf(fp_EV,"   Chemical Potential (Hartree) = %18.14f\n",ChemP);
+	fprintf(fp_EV,"   Chemical Potential (Hartree) = %18.14f\n",chemical->chemical_potential);
 	fprintf(fp_EV,"   HOMO = %i\n\n",Bulk_HOMO[kloop][0]);
 
 	fprintf(fp_EV,"   Real (Re) and imaginary (Im) parts of LCAO coefficients\n\n");

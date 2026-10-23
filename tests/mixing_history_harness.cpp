@@ -1,3 +1,4 @@
+#include "openmx_core_chemical.h"
 #include "openmx_core_energy.h"
 #include "openmx_core_dynamics.h"
 #include "openmx_core_mixing.h"
@@ -23,7 +24,7 @@ int SO_switch=0,Hub_U_switch=0,Constraint_NCS_switch=0,Zeeman_NCS_switch=0,Zeema
 double Min_Mixing_weight=.1,Max_Mixing_weight=.4,incoming_energy=2;
 constexpr int YOUSO10=1024,fp_bsize=65536;
 int Host_ID=0,Cnt_switch=0,Solver=2,Hub_Type=0,dc_Type=0,Yukawa_on=0,Nmul=0;
-double ChemP=0,orbitalOpt_criterion=0,eV2Hartree=27.2114;
+double orbitalOpt_criterion=0,eV2Hartree=27.2114;
 int B_spe[30]={},B_l[30]={},B_mul[30]={};char* SpeName[1]={};
 double lambda[30]={},U[30]={},J[30]={},Slater_F0[30]={},Slater_F2[30]={},Slater_F4[30]={},Slater_F6[30]={};
 double parser_value=0;bool parser_default=false;
@@ -41,6 +42,9 @@ std::map<std::string,double> nose_input;
 void input_double(const char* key,double* out,double fallback){
   if(!std::strcmp(key,"scf.Init.Mixing.Weight")){
     *out=parser_default?fallback:parser_value;return;
+  }
+  if(!std::strcmp(key,"orderN.InitChemPot")){
+    const auto it=nose_input.find(key);*out=it==nose_input.end()?fallback:it->second;return;
   }
   if(std::strcmp(key,"NH.R") && std::strcmp(key,"NH.nzeta") && std::strcmp(key,"NH.czeta"))
     throw std::runtime_error("input binding used the wrong keyword");
@@ -61,6 +65,10 @@ void require(bool value,const char* message){if(!value)throw std::runtime_error(
 void equal(double a,double b){require(std::isfinite(a) && std::abs(a-b)<1e-12*(1+std::abs(b)),"simple mixing differs from independent expected value");}
 using Context=std::unique_ptr<OpenMXCoreContext,decltype(&openmx_core_destroy)>;
 Context calculation(){char error[256];Context c(openmx_core_create_host(error,sizeof(error)),openmx_core_destroy);require(bool(c),error);return c;}
+OpenMXChemicalPotentials* chemicals(OpenMXCoreContext* c){
+  char error[256];OpenMXChemicalPotentials* v=nullptr;
+  require(openmx_core_chemical_potentials(c,&v,error,sizeof(error)),error);return v;
+}
 OpenMXMixingHistory* history(OpenMXCoreContext* c){
   char error[256];OpenMXMixingHistory* h=nullptr;require(openmx_core_mixing_history(c,&h,error,sizeof(error)),error);return h;
 }
@@ -177,8 +185,8 @@ void input_and_output(char* path){
   parser_default=true;parse_weight(second.get());equal(a->weight,.125);equal(b->weight,.3);
   a->norm[0]=4;b->norm[0]=-9;incoming_energy=7.25;double chem[2]={};std::remove(path);
   auto* ea=energies(first.get());auto* eb=energies(second.get());ea->band=7.25;eb->band=-17.5;
-  Cnt_switch=0;outputfile1(totals(first.get()),a,ea,components(first.get()),1,1,0,0,2,path,chem,0);
-  Cnt_switch=1;outputfile1(totals(second.get()),b,eb,components(second.get()),1,2,3,1,4,path,chem,0);
+  Cnt_switch=0;outputfile1(chemicals(first.get()),totals(first.get()),a,ea,components(first.get()),1,1,0,0,2,path,chem,0);
+  Cnt_switch=1;outputfile1(chemicals(second.get()),totals(second.get()),b,eb,components(second.get()),1,2,3,1,4,path,chem,0);
   FILE* file=std::fopen(path,"r");require(file,"missing production SCF output");
   char buffer[4096];const auto size=std::fread(buffer,1,sizeof(buffer),file);std::fclose(file);
   const std::string text(buffer,size);
@@ -189,6 +197,17 @@ void input_and_output(char* path){
   equal(b->weight,.3);equal(b->norm[0],-9);parser_default=false;parser_value=.0625;parse_weight(first.get());equal(a->weight,.0625);
   std::remove(path);
 }
+void chemical_input(){
+  auto a=calculation(),b=calculation();auto* x=chemicals(a.get());auto* y=chemicals(b.get());
+  x->xanes[0]=.75;y->xanes[1]=-.875;
+  nose_input={{"orderN.InitChemPot",1.25}};parse_chemical(a.get());
+  nose_input={{"orderN.InitChemPot",-2.5}};parse_chemical(b.get());
+  equal(x->chemical_potential,1.25/eV2Hartree);equal(y->chemical_potential,-2.5/eV2Hartree);
+  equal(x->xanes[0],.75);equal(y->xanes[1],-.875);
+  openmx_core_finish(a.get());x=chemicals(a.get());nose_input.clear();parse_chemical(a.get());
+  equal(x->chemical_potential,-3.0/eV2Hartree);equal(x->xanes[0],0);equal(x->xanes[1],0);
+  equal(y->chemical_potential,-2.5/eV2Hartree);equal(y->xanes[1],-.875);
+}
 void md_output(char* path){
   auto first=calculation(),second=calculation();auto* a=energies(first.get());auto* b=energies(second.get());
   *a={7.25,{1.25,3.75},{2.5,4.5}};*b={-17.5,{-11.5,-13.25},{-12.5,-14.5}};
@@ -198,9 +217,10 @@ void md_output(char* path){
   *ta={44.25,2.5,1.25};*tb={-77.5,1.5,-2};
   auto* da=dynamics(first.get());auto* db=dynamics(second.get());
   *da={25.5,30.25,9.5,.125,-.25,110.25};*db={225.5,230.25,-9.5,-.125,.25,-110.25};
-  std::remove(path);iterout_md(da,ta,a,ac,1,.25,path);iterout_md(db,tb,b,bc,2,.5,path);
+  chemicals(first.get())->chemical_potential=1.75;chemicals(second.get())->chemical_potential=-2.5;
+  std::remove(path);iterout_md(chemicals(first.get()),da,ta,a,ac,1,.25,path);iterout_md(chemicals(second.get()),db,tb,b,bc,2,.5,path);
   openmx_core_native_resources_clear(first.get());a=energies(first.get());
-  ac=components(first.get());ta=totals(first.get());da=dynamics(first.get());iterout_md(da,ta,a,ac,3,.75,path);
+  ac=components(first.get());ta=totals(first.get());da=dynamics(first.get());iterout_md(chemicals(first.get()),da,ta,a,ac,3,.75,path);
   FILE* file=std::fopen(path,"r");require(file,"missing production MD energy output");
   const double expected[3][6]={{1,.25,1.25,2.5,3.75,7.25},{2,.5,-11.5,-12.5,-13.25,-17.5},{3,.75,0,0,0,0}};
   for(int row=0;row<3;++row)for(int column=0;column<34;++column){
@@ -210,6 +230,7 @@ void md_output(char* path){
     if(column>=6 && column<11)equal(value,expected_components[row][column-6]);
     const double expected_totals[3][3]={{2.5,44.25,46.75},{1.5,-77.5,-76},{0,0,0}};
     if(column>=13 && column<16)equal(value,expected_totals[row][column-13]);
+    const double expected_chemical[3]={1.75,-2.5,0};if(column==16)equal(value,expected_chemical[row]);
     const double expected_dynamics[3][5]={{30.25,25.5,-.25,.125,110.25},{230.25,225.5,.25,-.125,-110.25},{0,0,0,0,0}};
     if(column>=17 && column<22)equal(value,expected_dynamics[row][column-17]);
   }
@@ -227,7 +248,7 @@ void component_output(char* path){
     const auto c=owner==1?second.get():first.get();
     if(owner==2)openmx_core_native_resources_clear(c);
     auto* values=components(c);auto* band=energies(c);band->band=owner==1?-7.5:9.25;
-    std::remove(path);outputfile1(totals(c),history(c),band,values,mode,owner+1,0,0,1,path,chem,0);
+    std::remove(path);outputfile1(chemicals(c),totals(c),history(c),band,values,mode,owner+1,0,0,1,path,chem,0);
     std::ifstream file(path);require(bool(file),"missing component energy report");
     std::map<std::string,double> actual;std::string line;
     while(std::getline(file,line)){
@@ -291,5 +312,5 @@ void kinetic_updates(){
 }
 
 }
-int main(int argc,char** argv){try{require(argc==2,"expected an output path");golden();imaginary();interleaved();input_and_output(argv[1]);md_output(argv[1]);component_output(argv[1]);thermostat_input();kinetic_updates();std::cout<<"PASS: actual simple mixing, input binding, independent SCF/MD thermodynamic and component output, owned thermostat input and output, actual velocity/temperature reductions, 12 golden trajectories, 6 imaginary-spin modes, 100 interleaved calculations\n";}
+int main(int argc,char** argv){try{require(argc==2,"expected an output path");golden();imaginary();interleaved();input_and_output(argv[1]);chemical_input();md_output(argv[1]);component_output(argv[1]);thermostat_input();kinetic_updates();std::cout<<"PASS: actual simple mixing, input binding, independent SCF/MD thermodynamic and component output, owned thermostat input and output, actual velocity/temperature reductions, 12 golden trajectories, 6 imaginary-spin modes, 100 interleaved calculations\n";}
 catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}

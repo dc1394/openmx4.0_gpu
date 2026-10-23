@@ -27,28 +27,28 @@
 
 
 
-static double Band_DFT_Dosout_Col(
+static double Band_DFT_Dosout_Col(OpenMXChemicalPotentials *chemical,
                            int knum_i, int knum_j, int knum_k,
                            int SpinP_switch,
                            double *****nh,
                            double *****ImNL,
                            double ****CntOLP, const OpenMXElectronicViews *electronic);
 
-static double Band_DFT_DosoutGauss_Col(
+static double Band_DFT_DosoutGauss_Col(const OpenMXChemicalPotentials *chemical,
                            int knum_i, int knum_j, int knum_k,
                            int SpinP_switch,
                            double *****nh,
                            double *****ImNL,
                            double ****CntOLP, const OpenMXElectronicViews *electronic);
 
-static double Band_DFT_Dosout_NonCol(
+static double Band_DFT_Dosout_NonCol(const OpenMXChemicalPotentials *chemical,
                            int knum_i, int knum_j, int knum_k,
                            int SpinP_switch,
                            double *****nh,
                            double *****ImNL,
                            double ****CntOLP, const OpenMXElectronicViews *electronic);
 
-static double Band_DFT_DosoutGauss_NonCol(
+static double Band_DFT_DosoutGauss_NonCol(const OpenMXChemicalPotentials *chemical,
                            int knum_i, int knum_j, int knum_k,
                            int SpinP_switch,
                            double *****nh,
@@ -57,7 +57,7 @@ static double Band_DFT_DosoutGauss_NonCol(
 
 
 
-double Band_DFT_Dosout( int knum_i, int knum_j, int knum_k,
+double Band_DFT_Dosout(OpenMXChemicalPotentials *chemical,  int knum_i, int knum_j, int knum_k,
                         int SpinP_switch,
                         double *****nh,
                         double *****ImNL,
@@ -67,22 +67,22 @@ double Band_DFT_Dosout( int knum_i, int knum_j, int knum_k,
 
   if ( (SpinP_switch==0 || SpinP_switch==1) && Dos_fileout){
 
-    time0 = Band_DFT_Dosout_Col( knum_i, knum_j, knum_k, SpinP_switch, nh, ImNL, CntOLP, electronic);
+    time0 = Band_DFT_Dosout_Col(chemical,  knum_i, knum_j, knum_k, SpinP_switch, nh, ImNL, CntOLP, electronic);
   }
 
   else if ( (SpinP_switch==0 || SpinP_switch==1) && DosGauss_fileout){
 
-    time0 = Band_DFT_DosoutGauss_Col( knum_i, knum_j, knum_k, SpinP_switch, nh, ImNL, CntOLP, electronic);
+    time0 = Band_DFT_DosoutGauss_Col(chemical,  knum_i, knum_j, knum_k, SpinP_switch, nh, ImNL, CntOLP, electronic);
   }
 
   else if (SpinP_switch==3 && Dos_fileout){
 
-    time0 = Band_DFT_Dosout_NonCol( knum_i, knum_j, knum_k, SpinP_switch, nh, ImNL, CntOLP, electronic);
+    time0 = Band_DFT_Dosout_NonCol(chemical,  knum_i, knum_j, knum_k, SpinP_switch, nh, ImNL, CntOLP, electronic);
   }
 
   else if (SpinP_switch==3 && DosGauss_fileout){
 
-    time0 = Band_DFT_DosoutGauss_NonCol( knum_i, knum_j, knum_k, SpinP_switch, nh, ImNL, CntOLP, electronic);
+    time0 = Band_DFT_DosoutGauss_NonCol(chemical,  knum_i, knum_j, knum_k, SpinP_switch, nh, ImNL, CntOLP, electronic);
   }
 
   return time0;
@@ -95,7 +95,7 @@ double Band_DFT_Dosout( int knum_i, int knum_j, int knum_k,
 
 
 
-static double Band_DFT_DosoutGauss_Col(
+static double Band_DFT_DosoutGauss_Col(const OpenMXChemicalPotentials *chemical,
                            int knum_i, int knum_j, int knum_k,
                            int SpinP_switch,
                            double *****nh,
@@ -326,8 +326,8 @@ static double Band_DFT_DosoutGauss_Col(
 
   /* set up energies where DOS is calculated */
 
-  Dos_Erange_Tmp[0] = Dos_Erange[0] + ChemP;
-  Dos_Erange_Tmp[1] = Dos_Erange[1] + ChemP;
+  Dos_Erange_Tmp[0] = Dos_Erange[0] + chemical->chemical_potential;
+  Dos_Erange_Tmp[1] = Dos_Erange[1] + chemical->chemical_potential;
 
   de = (Dos_Erange_Tmp[1]-Dos_Erange_Tmp[0])/(double)DosGauss_Num_Mesh;
   for (i=0; i<DosGauss_Num_Mesh; i++) {
@@ -926,12 +926,12 @@ static double Band_DFT_DosoutGauss_Col(
 
 	for (l=1; l<=n; l++){
 
-	  x1 = (ko[spin][l] - ChemP)*Beta;
+	  x1 = (ko[spin][l] - chemical->chemical_potential)*Beta;
 	  if (x1<=-x_cut) x1 = -x_cut;
 	  if (x_cut<=x1)  x1 =  x_cut;
 	  FermiF1 = FermiFunc(x1,spin,l,&l,&x1);
 
-	  x2 = (ko[spin][l] - (ChemP+ene_win_partial_charge))*Beta;
+	  x2 = (ko[spin][l] - (chemical->chemical_potential+ene_win_partial_charge))*Beta;
 	  if (x2<=-x_cut) x2 = -x_cut;
 	  if (x_cut<=x2)  x2 =  x_cut;
 	  FermiF2 = FermiFunc(x2,spin,l,&l,&x1);
@@ -1106,7 +1106,7 @@ static double Band_DFT_DosoutGauss_Col(
         fprintf(fp_eig,"\n");
       }
       fprintf(fp_eig,"Spe_Num_CBasis>\n");
-      fprintf(fp_eig,"ChemP       %lf\n",ChemP);
+      fprintf(fp_eig,"ChemP       %lf\n",chemical->chemical_potential);
 
       fprintf(fp_eig,"irange      %d %d\n",0,DosGauss_Num_Mesh-1);
       fprintf(fp_eig,"<Eigenvalues\n");
@@ -1215,7 +1215,7 @@ static double Band_DFT_DosoutGauss_Col(
       if ((fp=fopen(file_fermi,"w")) != NULL){
 
 	fprintf(fp,"BEGIN_INFO\n");
-	fprintf(fp,"Fermi Energy: %15.12f\n",ChemP*eV2Hartree);
+	fprintf(fp,"Fermi Energy: %15.12f\n",chemical->chemical_potential*eV2Hartree);
 	fprintf(fp,"END_INFO\n\n");
 
 	fprintf(fp,"BEGIN_BLOCK_BANDGRID_3D\n");
@@ -1441,7 +1441,7 @@ static double Band_DFT_DosoutGauss_Col(
 
 
 
-static double Band_DFT_DosoutGauss_NonCol(
+static double Band_DFT_DosoutGauss_NonCol(const OpenMXChemicalPotentials *chemical,
                            int knum_i, int knum_j, int knum_k,
                            int SpinP_switch,
                            double *****nh,
@@ -1582,8 +1582,8 @@ static double Band_DFT_DosoutGauss_NonCol(
 
   /* set up energies where DOS is calculated */
 
-  Dos_Erange_Tmp[0] = Dos_Erange[0] + ChemP;
-  Dos_Erange_Tmp[1] = Dos_Erange[1] + ChemP;
+  Dos_Erange_Tmp[0] = Dos_Erange[0] + chemical->chemical_potential;
+  Dos_Erange_Tmp[1] = Dos_Erange[1] + chemical->chemical_potential;
 
   de = (Dos_Erange_Tmp[1]-Dos_Erange_Tmp[0])/(double)DosGauss_Num_Mesh;
   for (i=0; i<DosGauss_Num_Mesh; i++) {
@@ -2298,12 +2298,12 @@ static double Band_DFT_DosoutGauss_NonCol(
 
       for (l=1; l<=2*n; l++){
 
-	x1 = (ko[l] - ChemP)*Beta;
+	x1 = (ko[l] - chemical->chemical_potential)*Beta;
 	if (x1<=-x_cut) x1 = -x_cut;
 	if (x_cut<=x1)  x1 =  x_cut;
 	FermiF1 = FermiFunc_NC(x1,l);
 
-	x2 = (ko[l] - (ChemP+ene_win_partial_charge))*Beta;
+	x2 = (ko[l] - (chemical->chemical_potential+ene_win_partial_charge))*Beta;
 	if (x2<=-x_cut) x2 = -x_cut;
 	if (x_cut<=x2)  x2 =  x_cut;
 	FermiF2 = FermiFunc_NC(x2,l);
@@ -2483,7 +2483,7 @@ static double Band_DFT_DosoutGauss_NonCol(
         fprintf(fp_eig,"\n");
       }
       fprintf(fp_eig,"Spe_Num_CBasis>\n");
-      fprintf(fp_eig,"ChemP       %lf\n",ChemP);
+      fprintf(fp_eig,"ChemP       %lf\n",chemical->chemical_potential);
 
       fprintf(fp_eig,"<SpinAngle\n");
       for (i=1; i<=atomnum; i++) {
@@ -2577,7 +2577,7 @@ static double Band_DFT_DosoutGauss_NonCol(
     if ((fp=fopen(file_fermi,"w")) != NULL){
 
       fprintf(fp,"BEGIN_INFO\n");
-      fprintf(fp,"Fermi Energy: %15.12f\n",ChemP*eV2Hartree);
+      fprintf(fp,"Fermi Energy: %15.12f\n",chemical->chemical_potential*eV2Hartree);
       fprintf(fp,"END_INFO\n\n");
 
       fprintf(fp,"BEGIN_BLOCK_BANDGRID_3D\n");
@@ -2790,7 +2790,7 @@ static double Band_DFT_DosoutGauss_NonCol(
 
 
 
-static double Band_DFT_Dosout_Col(
+static double Band_DFT_Dosout_Col(OpenMXChemicalPotentials *chemical,
                            int knum_i, int knum_j, int knum_k,
                            int SpinP_switch,
                            double *****nh,
@@ -3310,7 +3310,7 @@ static double Band_DFT_Dosout_Col(
 
       iemin0=1;
       for (i1=1;i1<=n1;i1++) {
-	if (ko[spin][i1]>(ChemP+Dos_Erange[0]) ) {
+	if (ko[spin][i1]>(chemical->chemical_potential+Dos_Erange[0]) ) {
 	  iemin0=i1-1;
 	  break;
 	}
@@ -3319,7 +3319,7 @@ static double Band_DFT_Dosout_Col(
 
       iemax0=n1;
       for (i1=iemin0;i1<=n1;i1++) {
-	if (ko[spin][i1]>(ChemP+Dos_Erange[1]) ) {
+	if (ko[spin][i1]>(chemical->chemical_potential+Dos_Erange[1]) ) {
 	  iemax0=i1;
 	  break;
 	}
@@ -3430,7 +3430,7 @@ static double Band_DFT_Dosout_Col(
       }
       fprintf(fp_eig,"Spe_Num_CBasis>\n");
 
-      fprintf(fp_eig,"ChemP       %lf\n",ChemP);
+      fprintf(fp_eig,"ChemP       %lf\n",chemical->chemical_potential);
 
       fprintf(fp_eig,"<Eigenvalues\n");
 
@@ -3456,7 +3456,7 @@ static double Band_DFT_Dosout_Col(
     i = iemax - iemin + 1;
     fwrite(&i,sizeof(int),1,fp_cohp);
     fwrite(&COHP_num_pairs,sizeof(int),1,fp_cohp);
-    fwrite(&ChemP,sizeof(double),1,fp_cohp);
+    fwrite(&chemical->chemical_potential,sizeof(double),1,fp_cohp);
   }
 
   /* for kloop */
@@ -3973,12 +3973,12 @@ static double Band_DFT_Dosout_Col(
 
 	for (l=iemin; l<=iemax; l++){
 
-	  x1 = (ko[spin][l] - ChemP)*Beta;
+	  x1 = (ko[spin][l] - chemical->chemical_potential)*Beta;
 	  if (x1<=-x_cut) x1 = -x_cut;
 	  if (x_cut<=x1)  x1 =  x_cut;
 	  FermiF1 = FermiFunc(x1,spin,l,&l,&x1);
 
-	  x2 = (ko[spin][l] - (ChemP+ene_win_partial_charge))*Beta;
+	  x2 = (ko[spin][l] - (chemical->chemical_potential+ene_win_partial_charge))*Beta;
 	  if (x2<=-x_cut) x2 = -x_cut;
 	  if (x_cut<=x2)  x2 =  x_cut;
 	  FermiF2 = FermiFunc(x2,spin,l,&l,&x1);
@@ -4139,7 +4139,7 @@ Finishing:
     iemin_fs[spin] = 0;
     for (i1 = 0; i1 <= n; i1++) {
       for (kloop = 0; kloop < T_knum; kloop++)
-        if (EIGEN[spin][kloop][i1] >= ChemP) {
+        if (EIGEN[spin][kloop][i1] >= chemical->chemical_potential) {
           iemin_fs[spin] = i1;
           break;
         }
@@ -4148,7 +4148,7 @@ Finishing:
     iemax_fs[spin] = 0;
     for (i1 = n; i1 >= 0; i1--) {
       for (kloop = 0; kloop < T_knum; kloop++)
-        if (EIGEN[spin][kloop][i1] <= ChemP) {
+        if (EIGEN[spin][kloop][i1] <= chemical->chemical_potential) {
           iemax_fs[spin] = i1;
           break;
         }
@@ -4388,7 +4388,7 @@ Finishing:
       if ((fp=fopen(file_fermi,"w")) != NULL){
 
 	fprintf(fp,"BEGIN_INFO\n");
-	fprintf(fp,"Fermi Energy: %15.12f\n",ChemP*eV2Hartree);
+	fprintf(fp,"Fermi Energy: %15.12f\n",chemical->chemical_potential*eV2Hartree);
 	fprintf(fp,"END_INFO\n\n");
 
 	fprintf(fp,"BEGIN_BLOCK_BANDGRID_3D\n");
@@ -4450,7 +4450,7 @@ Finishing:
 
             for (i1 = iemin_fs[spin]; i1 <= iemax_fs[spin]; i1++) {
               for (kloop = 0; kloop < T_knum; kloop++){
-                fprintf(fp, "%e\n", EIGEN[spin][kloop][i1] - ChemP);
+                fprintf(fp, "%e\n", EIGEN[spin][kloop][i1] - chemical->chemical_potential);
 	      }
             } 
 
@@ -4696,7 +4696,7 @@ Finishing:
 
 
 
-static double Band_DFT_Dosout_NonCol(
+static double Band_DFT_Dosout_NonCol(const OpenMXChemicalPotentials *chemical,
                            int knum_i, int knum_j, int knum_k,
                            int SpinP_switch,
                            double *****nh,
@@ -5204,7 +5204,7 @@ static double Band_DFT_Dosout_NonCol(
 
     iemin0=1;
     for (i1=1;i1<=n1;i1++) {
-      if (ko[i1]> (ChemP+Dos_Erange[0])) {
+      if (ko[i1]> (chemical->chemical_potential+Dos_Erange[0])) {
 	iemin0=i1-1;
 	break;
       }
@@ -5213,7 +5213,7 @@ static double Band_DFT_Dosout_NonCol(
 
     iemax0=n1;
     for (i1=iemin0;i1<=n1;i1++) {
-      if (ko[i1]> (ChemP+Dos_Erange[1])) {
+      if (ko[i1]> (chemical->chemical_potential+Dos_Erange[1])) {
 	iemax0=i1;
 	break;
       }
@@ -5312,7 +5312,7 @@ static double Band_DFT_Dosout_NonCol(
       }
       fprintf(fp_eig,"Spe_Num_CBasis>\n");
 
-      fprintf(fp_eig,"ChemP       %lf\n",ChemP);
+      fprintf(fp_eig,"ChemP       %lf\n",chemical->chemical_potential);
 
       fprintf(fp_eig,"<SpinAngle\n");
       for (i=1; i<=atomnum; i++) {
@@ -5811,12 +5811,12 @@ static double Band_DFT_Dosout_NonCol(
 
       for (l=iemin; l<=iemax; l++){
 
-	x1 = (ko[l] - ChemP)*Beta;
+	x1 = (ko[l] - chemical->chemical_potential)*Beta;
 	if (x1<=-x_cut) x1 = -x_cut;
 	if (x_cut<=x1)  x1 =  x_cut;
 	FermiF1 = FermiFunc_NC(x1,l);
 
-	x2 = (ko[l] - (ChemP+ene_win_partial_charge))*Beta;
+	x2 = (ko[l] - (chemical->chemical_potential+ene_win_partial_charge))*Beta;
 	if (x2<=-x_cut) x2 = -x_cut;
 	if (x_cut<=x2)  x2 =  x_cut;
 	FermiF2 = FermiFunc_NC(x2,l);
@@ -5989,7 +5989,7 @@ Finishing:
   iemin_fs = 0;
   for (i1 = 0; i1 <= 2 * n; i1++) {
     for (kloop = 0; kloop < T_knum; kloop++)
-      if (EIGEN[kloop][i1] >= ChemP) {
+      if (EIGEN[kloop][i1] >= chemical->chemical_potential) {
         iemin_fs = i1;
         break;
       }
@@ -5998,7 +5998,7 @@ Finishing:
   iemax_fs = 0;
   for (i1 = 2 * n; i1 >= 0; i1--) {
     for (kloop = 0; kloop < T_knum; kloop++)
-      if (EIGEN[kloop][i1] <= ChemP) {
+      if (EIGEN[kloop][i1] <= chemical->chemical_potential) {
         iemax_fs = i1;
         break;
       }
@@ -6141,7 +6141,7 @@ Finishing:
     if ((fp=fopen(file_fermi,"w")) != NULL){
 
       fprintf(fp,"BEGIN_INFO\n");
-      fprintf(fp,"Fermi Energy: %15.12f\n",ChemP*eV2Hartree);
+      fprintf(fp,"Fermi Energy: %15.12f\n",chemical->chemical_potential*eV2Hartree);
       fprintf(fp,"END_INFO\n\n");
 
       fprintf(fp,"BEGIN_BLOCK_BANDGRID_3D\n");
@@ -6204,7 +6204,7 @@ Finishing:
 
           for (i1 = iemin_fs; i1 <= iemax_fs; i1++) {
             for (kloop = 0; kloop < T_knum; kloop++)
-              fprintf(fp, "%e\n", EIGEN[kloop][i1] - ChemP);
+              fprintf(fp, "%e\n", EIGEN[kloop][i1] - chemical->chemical_potential);
           }/*for (i1 = iemin_fs; i1 <= iemax_fs; i1++)*/
           for (i1 = iemin_fs; i1 <= iemax_fs; i1++) {
             for (kloop = 0; kloop < T_knum; kloop++)

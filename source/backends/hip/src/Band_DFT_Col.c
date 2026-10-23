@@ -182,6 +182,7 @@ typedef struct
 } BandColOccupationCtx;
 
 struct OpenMXBandColState {
+  OpenMXChemicalPotentials *chemical; /* borrowed from this calculation */
   OpenMXBandEnergies *energies; /* borrowed from this calculation */
   OpenMXNativeResources *resources; /* borrowed from this calculation */
   int initialized;
@@ -269,6 +270,10 @@ OpenMXBandColState *Band_DFT_Col_Bind_Resources(OpenMXCoreContext *core)
     state->GpuPersistentDecide_decided = -1;
     if(!openmx_core_band_energies(core,&state->energies,error,sizeof(error))) {
       fprintf(stderr,"OpenMX band energies: %s\n",error);
+      abort();
+    }
+    if(!openmx_core_chemical_potentials(core,&state->chemical,error,sizeof(error))) {
+      fprintf(stderr,"OpenMX chemical potentials: %s\n",error);
       abort();
     }
     state->initialized = 1;
@@ -2531,7 +2536,7 @@ static int BandCol_KDenseRefinedPass1(BandColState *state, int n, int maxn, cons
     if (!BandCol_RefineEnsureDeviceBasis(state, n)) return 0;
     BandCol_GpuSolver_ForwardTransformDevice(state, n, H_in);
     slot->refined = BandCol_KDenseRefinedSolve(state, n, maxn, ko, slot,
-                                               openmx_eigen_refine_warm_band_step(state->refine.scf_iter), ChemP, 1);
+                                               openmx_eigen_refine_warm_band_step(state->refine.scf_iter), state->chemical->chemical_potential, 1);
     if (!slot->refined) {
         BandCol_GpuSolver_Eigen(state, ctx->d_H, n, maxn, ko + 1);
     }
@@ -4696,14 +4701,14 @@ diagonalize1:
 
                 loop_num++;
 
-                ChemP     = 0.50 * (ChemP_MAX + ChemP_MIN);
+                state->chemical->chemical_potential     = 0.50 * (ChemP_MAX + ChemP_MIN);
                 Num_State = 0.0;
 
                 for (kloop = 0; kloop < T_knum; kloop++) {
 
                     for (l = 1; l <= MaxN; l++) {
 
-                        x = (EIGEN[spin][kloop][l] - ChemP) * Beta;
+                        x = (EIGEN[spin][kloop][l] - state->chemical->chemical_potential) * Beta;
 
                         if (x <= -x_cut)
                             x = -x_cut;
@@ -4721,15 +4726,15 @@ diagonalize1:
                 Dnum = HOMO_XANES[spin] - Num_State;
 
                 if (0.0 <= Dnum)
-                    ChemP_MIN = ChemP;
+                    ChemP_MIN = state->chemical->chemical_potential;
                 else
-                    ChemP_MAX = ChemP;
+                    ChemP_MAX = state->chemical->chemical_potential;
                 if (fabs(Dnum) < 1.0e-12)
                     po = 1;
 
             } while (po == 0 && loop_num < 1000);
 
-            ChemP_XANES[spin]  = ChemP;
+            state->chemical->xanes[spin]  = state->chemical->chemical_potential;
             Cluster_HOMO[spin] = HOMO_XANES[spin];
 
         } /* spin loop */
@@ -4737,9 +4742,9 @@ diagonalize1:
         /* set ChemP */
 
         if (SpinP_switch == 0) {
-            ChemP = ChemP_XANES[0];
+            state->chemical->chemical_potential = state->chemical->xanes[0];
         } else {
-            ChemP = 0.5 * (ChemP_XANES[0] + ChemP_XANES[1]);
+            state->chemical->chemical_potential = 0.5 * (state->chemical->xanes[0] + state->chemical->xanes[1]);
         }
 
     } /* end of if (xanes_calc==1) */
@@ -4766,14 +4771,14 @@ diagonalize1:
 
             loop_num++;
 
-            ChemP     = 0.50 * (ChemP_MAX + ChemP_MIN);
+            state->chemical->chemical_potential     = 0.50 * (ChemP_MAX + ChemP_MIN);
             Num_State = 0.0;
 
             for (kloop = 0; kloop < T_knum; kloop++) {
                 for (spin = 0; spin <= SpinP_switch; spin++) {
                     for (l = 1; l <= MaxN; l++) {
 
-                        x = (EIGEN[spin][kloop][l] - ChemP) * Beta_trial1;
+                        x = (EIGEN[spin][kloop][l] - state->chemical->chemical_potential) * Beta_trial1;
 
                         if (x <= -x_cut)
                             x = -x_cut;
@@ -4794,9 +4799,9 @@ diagonalize1:
             Dnum = TZ - Num_State - system_charge;
 
             if (0.0 <= Dnum)
-                ChemP_MIN = ChemP;
+                ChemP_MIN = state->chemical->chemical_potential;
             else
-                ChemP_MAX = ChemP;
+                ChemP_MAX = state->chemical->chemical_potential;
             if (fabs(Dnum) < 1.0e-12)
                 po = 1;
 
@@ -4814,7 +4819,7 @@ diagonalize1:
             loop_num++;
 
             if (loop_num != 1) {
-                ChemP = 0.50 * (ChemP_MAX + ChemP_MIN);
+                state->chemical->chemical_potential = 0.50 * (ChemP_MAX + ChemP_MIN);
             }
 
             Num_State = 0.0;
@@ -4823,7 +4828,7 @@ diagonalize1:
                 for (spin = 0; spin <= SpinP_switch; spin++) {
                     for (l = 1; l <= MaxN; l++) {
 
-                        x = (EIGEN[spin][kloop][l] - ChemP) * Beta;
+                        x = (EIGEN[spin][kloop][l] - state->chemical->chemical_potential) * Beta;
 
                         if (x <= -x_cut)
                             x = -x_cut;
@@ -4844,9 +4849,9 @@ diagonalize1:
             Dnum = TZ - Num_State - system_charge;
 
             if (0.0 <= Dnum)
-                ChemP_MIN = ChemP;
+                ChemP_MIN = state->chemical->chemical_potential;
             else
-                ChemP_MAX = ChemP;
+                ChemP_MAX = state->chemical->chemical_potential;
             if (fabs(Dnum) < 1.0e-12)
                 po = 1;
         } while (po == 0 && loop_num < 1000);
@@ -4855,7 +4860,7 @@ diagonalize1:
 
     /* for the NEGF calculation */
     if (Solver == 4 && TRAN_ChemP_Band == 0)
-        ChemP = 0.5 * (ChemP_e[0] + ChemP_e[1]);
+        state->chemical->chemical_potential = 0.5 * (ChemP_e[0] + ChemP_e[1]);
 
     /****************************************************
              band energy in a finite temperature
@@ -4869,9 +4874,9 @@ diagonalize1:
             for (l = 1; l <= MaxN; l++) {
 
                 if (xanes_calc == 1)
-                    x = (EIGEN[spin][kloop][l] - ChemP_XANES[spin]) * Beta;
+                    x = (EIGEN[spin][kloop][l] - state->chemical->xanes[spin]) * Beta;
                 else
-                    x = (EIGEN[spin][kloop][l] - ChemP) * Beta;
+                    x = (EIGEN[spin][kloop][l] - state->chemical->chemical_potential) * Beta;
 
                 if (x <= -x_cut)
                     x = -x_cut;
@@ -4895,7 +4900,7 @@ diagonalize1:
     state->energies->band = Eele0[0] + Eele0[1];
 
     if (2 <= level_stdout) {
-        printf("myid0=%2d ChemP=%lf, Eele0[0]=%lf, Eele0[1]=%lf\n", myid0, ChemP, Eele0[0], Eele0[1]);
+        printf("myid0=%2d ChemP=%lf, Eele0[0]=%lf, Eele0[1]=%lf\n", myid0, state->chemical->chemical_potential, Eele0[0], Eele0[1]);
     }
 
     if (measure_time) {
@@ -4957,9 +4962,9 @@ diagonalize1:
                         eig = EIGEN[spin][kloop][k];
 
                         if (xanes_calc == 1)
-                            x = (eig - ChemP_XANES[spin]) * Beta;
+                            x = (eig - state->chemical->xanes[spin]) * Beta;
                         else
-                            x = (eig - ChemP) * Beta;
+                            x = (eig - state->chemical->chemical_potential) * Beta;
 
                         if (x <= -x_cut)
                             x = -x_cut;
@@ -5040,9 +5045,9 @@ diagonalize1:
                 eig = EIGEN[spin][kloop][k];
 
                 if (xanes_calc == 1)
-                    x = (eig - ChemP_XANES[spin]) * Beta;
+                    x = (eig - state->chemical->xanes[spin]) * Beta;
                 else
-                    x = (eig - ChemP) * Beta;
+                    x = (eig - state->chemical->chemical_potential) * Beta;
 
                 if (x <= -x_cut)
                     x = -x_cut;
@@ -5551,7 +5556,7 @@ diagonalize1:
                                density matrix weights stay those of EIGEN, the
                                eigenvalues of pass 1) */
                             evec_device = BandCol_KDenseRefinedPass2(state, n, MaxN, construct_on_device ? NULL : Hs, ko,
-                                                                     (int)cache_slot, ChemP);
+                                                                     (int)cache_slot, state->chemical->chemical_potential);
                         } else if (construct_on_device) {
                             evec_device = BandCol_GpuSolver_SolveHamiltonianDeviceInput(state, n, MaxN, ko);
                         } else {
@@ -5599,9 +5604,9 @@ diagonalize1:
                         double x;
 
                         if (xanes_calc == 1)
-                            x = (eig - ChemP_XANES[spin]) * Beta;
+                            x = (eig - state->chemical->xanes[spin]) * Beta;
                         else
-                            x = (eig - ChemP) * Beta;
+                            x = (eig - state->chemical->chemical_potential) * Beta;
 
                         if (x <= -x_cut)
                             x = -x_cut;
@@ -5831,9 +5836,9 @@ diagonalize1:
                     eig = EIGEN[spin][kloop][k];
 
                     if (xanes_calc == 1)
-                        x = (eig - ChemP_XANES[spin]) * Beta;
+                        x = (eig - state->chemical->xanes[spin]) * Beta;
                     else
-                        x = (eig - ChemP) * Beta;
+                        x = (eig - state->chemical->chemical_potential) * Beta;
 
                     if (x <= -x_cut)
                         x = -x_cut;
@@ -6119,7 +6124,7 @@ diagonalize1:
             fprintf(fp_EV, "           Eigenvalues (Hartree) of SCF KS-eq.           \n");
             fprintf(fp_EV, "***********************************************************\n");
             fprintf(fp_EV, "***********************************************************\n\n");
-            fprintf(fp_EV, "   Chemical Potential (Hartree) = %18.14f\n", ChemP);
+            fprintf(fp_EV, "   Chemical Potential (Hartree) = %18.14f\n", state->chemical->chemical_potential);
             fprintf(fp_EV, "   Number of States             = %18.14f\n", Num_State);
             fprintf(fp_EV, "   Eigenvalues\n");
             fprintf(fp_EV, "              Up-spin           Down-spin\n");

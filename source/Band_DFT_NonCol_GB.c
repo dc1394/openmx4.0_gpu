@@ -25,7 +25,7 @@
 
 
 
-double Band_DFT_NonCol_GB(OpenMXBandEnergies *energies, int SCF_iter,
+double Band_DFT_NonCol_GB(OpenMXChemicalPotentials *chemical, OpenMXBandEnergies *energies, int SCF_iter,
                        double *koSU,
                        double *koSL,
 		       dcomplex **SU,
@@ -1443,14 +1443,14 @@ double Band_DFT_NonCol_GB(OpenMXBandEnergies *energies, int SCF_iter,
   do {
     loop_num++;
 
-    ChemP = 0.50*(ChemP_MAX + ChemP_MIN);
+    chemical->chemical_potential = 0.50*(ChemP_MAX + ChemP_MIN);
     Num_State = 0.0;
 
     for (kloop=0; kloop<T_knum; kloop++){
 
       for (l=1; l<=2*n; l++){
 
-	x = (EIGEN[kloop][l] - ChemP)*Beta;
+	x = (EIGEN[kloop][l] - chemical->chemical_potential)*Beta;
 
 	if      (x<=-x_cut)  FermiF = 1.0;
 	else if (x>=x_cut)   FermiF = 0.0;
@@ -1464,8 +1464,8 @@ double Band_DFT_NonCol_GB(OpenMXBandEnergies *energies, int SCF_iter,
     Num_State = Num_State/sum_weights;
 
     Dnum = TZ - Num_State - system_charge;
-    if (0.0<=Dnum) ChemP_MIN = ChemP;
-    else           ChemP_MAX = ChemP;
+    if (0.0<=Dnum) ChemP_MIN = chemical->chemical_potential;
+    else           ChemP_MAX = chemical->chemical_potential;
     if (fabs(Dnum)<10e-14) po = 1;
   }
   while (po==0 && loop_num<2000);
@@ -1475,7 +1475,7 @@ double Band_DFT_NonCol_GB(OpenMXBandEnergies *energies, int SCF_iter,
 
   for (kloop=0; kloop<T_knum; kloop++){
     for (l=1; l<=2*n; l++){
-      x = (EIGEN[kloop][l] - ChemP)*Beta;
+      x = (EIGEN[kloop][l] - chemical->chemical_potential)*Beta;
       if      (x<=-x_cut)  FermiF = 1.0;
       else if (x_cut<=x)   FermiF = 0.0;
       else                 FermiF = 1.0/(1.0 + exp(x));
@@ -1487,7 +1487,7 @@ double Band_DFT_NonCol_GB(OpenMXBandEnergies *energies, int SCF_iter,
   energies->band = Eele0[0];
 
   if (2<=level_stdout){
-    printf("ChemP=%18.15f, Eele0[0]=%18.15f\n",ChemP,Eele0[0]);fflush(stdout);
+    printf("ChemP=%18.15f, Eele0[0]=%18.15f\n",chemical->chemical_potential,Eele0[0]);fflush(stdout);
   }
 
   dtime(&Etime);
@@ -1535,7 +1535,7 @@ double Band_DFT_NonCol_GB(OpenMXBandEnergies *energies, int SCF_iter,
     do{
 
       eig = EIGEN[kloop][l];
-      x = (eig - ChemP)*Beta;
+      x = (eig - chemical->chemical_potential)*Beta;
 
       if      (x<-x_cut)  FermiF = 1.0;
       else if (x>x_cut)   FermiF = 0.0;
@@ -2359,7 +2359,7 @@ double Band_DFT_NonCol_GB(OpenMXBandEnergies *energies, int SCF_iter,
       do{
 
 	eig = EIGEN[kloop][l];
-	x = (eig - ChemP)*Beta;
+	x = (eig - chemical->chemical_potential)*Beta;
 
 	if      (x<-x_cut)  FermiF = 1.0;
 	else if (x>x_cut)   FermiF = 0.0;
@@ -2805,7 +2805,7 @@ double Band_DFT_NonCol_GB(OpenMXBandEnergies *energies, int SCF_iter,
       fprintf(fp_EV,"           Eigenvalues (Hartree) of SCF KS-eq.           \n");
       fprintf(fp_EV,"***********************************************************\n");
       fprintf(fp_EV,"***********************************************************\n\n");
-      fprintf(fp_EV,"   Chemical Potential (Hartree) = %18.14f\n",ChemP);
+      fprintf(fp_EV,"   Chemical Potential (Hartree) = %18.14f\n",chemical->chemical_potential);
       fprintf(fp_EV,"   Number of States             = %18.14f\n",Num_State);
       fprintf(fp_EV,"   Eigenvalues\n\n");
 

@@ -93,7 +93,7 @@ double ******DM_r;
 
 /***************************************************************************/
 
-int TRAN_Output_HKS(char *fileHKS, const OpenMXElectronicViews *electronic)
+int TRAN_Output_HKS(const OpenMXChemicalPotentials *chemical, char *fileHKS, const OpenMXElectronicViews *electronic)
 {
   double ******DM=electronic->DM;
   double *****H=electronic->H;
@@ -175,7 +175,7 @@ int TRAN_Output_HKS(char *fileHKS, const OpenMXElectronicViews *electronic)
       }
     }
 
-    d_vec[id++] = ChemP; 
+    d_vec[id++] = chemical->chemical_potential;
 
     fwrite(d_vec,sizeof(double),id,fp);
 

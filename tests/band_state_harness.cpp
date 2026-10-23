@@ -1,3 +1,4 @@
+#include "openmx_core_chemical.h"
 #include "openmx_core_energy.h"
 #include "fixtures/native_resources/sdk_model.hpp"
 #include "openmx_complex.h"
@@ -125,10 +126,18 @@ void callbacks(BandState* a,BandState* b){
     check(!live && !openmx_core_native_resource_count(a->resources),"callback leaked");
 }
 }
+OpenMXChemicalPotentials* owned_chemical(OpenMXCoreContext* c) {
+  OpenMXChemicalPotentials* out=nullptr;char error[256];
+  check(openmx_core_chemical_potentials(c,&out,error,sizeof(error)),error);return out;
+}
 int main(){try{
     for(int cycle=0;cycle<100;cycle++){
         event_count=0;queries=0;auto first=calculation();auto second=calculation();
         auto* a=band_bind(first.get());auto* b=band_bind(second.get());
+    check(a->chemical==owned_chemical(first.get()) && b->chemical==owned_chemical(second.get()) && a->chemical!=b->chemical,
+          "native solver borrowed another calculation's chemical potentials");
+    a->chemical->chemical_potential=.125;a->chemical->xanes[0]=1.5;
+    b->chemical->chemical_potential=-.25;b->chemical->xanes[1]=2.5;
         check(a!=b && a->resources!=b->resources && !queries && !live,"binding shared state or touched SDK");
         check(a->refine.iterations==-1 && b->refine.iterations==-1,"constructor sentinel lost");
 #if !OPENMX_GPU_HIP
@@ -144,7 +153,10 @@ int main(){try{
         check(openmx_core_native_resource_count(b->resources)==count_b && b->kref && b->refine_state.basis_valid,"cycle end invalidated another calculation");
         band_release(a);band_release(a);
         check(!openmx_core_native_resource_count(a->resources) && a->refine.iterations==-1,"run-boundary drain leaked or lost policy reset");
-        event_count=0;openmx::test::fail_allocation_after(0);openmx_core_native_resources_clear(first.get());openmx::test::fail_allocation_after(-1);
+        event_count=0;openmx::test::fail_allocation_after(0);openmx_core_native_resources_clear(first.get());
+    check(owned_chemical(first.get())->chemical_potential==0 && owned_chemical(first.get())->xanes[0]==0 &&
+          b->chemical->chemical_potential==-.25 && b->chemical->xanes[1]==2.5,
+          "clearing a calculation retained chemical potentials or reset another calculation");openmx::test::fail_allocation_after(-1);
         check(openmx_core_native_resource_count(b->resources)==count_b && b->kref,"clear affected another calculation");
         openmx_core_native_resources_clear(first.get());first.reset();
         event_count=0;openmx::test::fail_allocation_after(0);openmx_core_finish(second.get());openmx::test::fail_allocation_after(-1);

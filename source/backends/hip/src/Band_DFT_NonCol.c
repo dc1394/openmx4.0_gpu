@@ -218,6 +218,7 @@ typedef struct {
 } BandNonColKOverlap;
 
 struct OpenMXBandNonColState {
+  OpenMXChemicalPotentials *chemical; /* borrowed from this calculation */
   OpenMXBandEnergies *energies; /* borrowed from this calculation */
   OpenMXNativeResources *resources; /* borrowed from this calculation */
   int initialized;
@@ -297,6 +298,10 @@ OpenMXBandNonColState *Band_DFT_NonCol_Bind_Resources(OpenMXCoreContext *core)
     state->SolveTimingEnabled_enabled = -1;
     if(!openmx_core_band_energies(core,&state->energies,error,sizeof(error))) {
       fprintf(stderr,"OpenMX band energies: %s\n",error);
+      abort();
+    }
+    if(!openmx_core_chemical_potentials(core,&state->chemical,error,sizeof(error))) {
+      fprintf(stderr,"OpenMX chemical potentials: %s\n",error);
       abort();
     }
     state->initialized = 1;
@@ -2467,7 +2472,7 @@ static void BandNonCol_DMOccWorkspace_Ensure(BandNonColState *state, int nk)
     ws->max_occ_nk = nk;
 }
 
-static int BandNonCol_BuildOccupationWeightsDense(int kmin, int kmax, const double *eigen, double *occ, double *eig_occ)
+static int BandNonCol_BuildOccupationWeightsDense(const OpenMXChemicalPotentials *chemical, int kmin, int kmax, const double *eigen, double *occ, double *eig_occ)
 {
     const double max_x = 60.0;
     const double FermiEps = 1.0e-13;
@@ -2476,7 +2481,7 @@ static int BandNonCol_BuildOccupationWeightsDense(int kmin, int kmax, const doub
     if (kmax<kmin) return 0;
 
     for (int k=kmin; k<=kmax; k++){
-        double x = (eigen[k] - ChemP)*Beta;
+        double x = (eigen[k] - chemical->chemical_potential)*Beta;
         double FermiF;
         int local_k = k - kmin;
 
@@ -2533,7 +2538,7 @@ static void BandNonCol_AccumulateDMKPoint_OpenMP(BandNonColState *state, int myi
     int stride=active?ie2[myid2]-is2[myid2]+1:0,nk=0;
     if(stride>0){
         BandNonCol_DMOccWorkspace_Ensure(state, stride);
-        nk=BandNonCol_BuildOccupationWeightsDense(is2[myid2],ie2[myid2],ko,ws->occ,ws->eig_occ);
+        nk=BandNonCol_BuildOccupationWeightsDense(state->chemical, is2[myid2],ie2[myid2],ko,ws->occ,ws->eig_occ);
         BandNonCol_DMEntryCache_Ensure(state, MP,n);BandNonCol_UpdateDMEntryPhases(state, k1,k2,k3);
         if(cache->entry_count!=size_H1)BandNonCol_AbortWithMessage("DM entry count mismatch");
     }
@@ -2569,7 +2574,7 @@ static void BandNonCol_AccumulateDMRootDense_OpenMP(BandNonColState *state, int 
     if (max_state<=0 || dense_evec==NULL) return;
 
     BandNonCol_DMOccWorkspace_Ensure(state, max_state);
-    nk = BandNonCol_BuildOccupationWeightsDense(1,max_state,ko,ws->occ,ws->eig_occ);
+    nk = BandNonCol_BuildOccupationWeightsDense(state->chemical, 1,max_state,ko,ws->occ,ws->eig_occ);
 
     if (nk<=0) return;
 
@@ -2700,7 +2705,7 @@ static void BandNonCol_AccumulateDMRootDenseK_HIP(BandNonColState *state, int si
     if(dense_evec || d_dense_evec){
         if(d_dense_evec && dense_evec_ld<=0)BandNonCol_AbortWithMessage("Invalid NC eigenvector stride");
         BandNonCol_DMOccWorkspace_Ensure(state, MaxN);
-        nk=BandNonCol_BuildOccupationWeightsDense(1,MaxN,ko,ws->occ,ws->eig_occ);
+        nk=BandNonCol_BuildOccupationWeightsDense(state->chemical, 1,MaxN,ko,ws->occ,ws->eig_occ);
         BandNonCol_DMEntryCache_Ensure(state, MP,n);BandNonCol_UpdateDMEntryPhases(state, k1,k2,k3);
         if(cache->entry_count!=size_H1)BandNonCol_AbortWithMessage("NC DM entry count mismatch");
     }
@@ -4259,7 +4264,7 @@ static void BandNonCol_ConstructDenseMsFromPacked(BandNonColState *state,  int c
                                                    int *order_GA, int *MP, double k1, double k2, double k3,
                                                    int n, int owns_dense );
 
-static double Calc_DM_Band_non_collinear(
+static double Calc_DM_Band_non_collinear(const OpenMXChemicalPotentials *chemical,
     int calc_flag,
     int store_flag,
     int myid0,
@@ -5428,7 +5433,7 @@ static double Band_DFT_NonCol_owned(BandNonColState *state, char *mode,
                                                 m_i11,m_i22,m_i12,
                                                 packed_k_order,MP,ko,EIGEN,0,0,0,rdw,NULL,
                                                 &state->kref[kloop],
-                                                openmx_eigen_refine_warm_band_step(SCF_iter),ChemP,1);
+                                                openmx_eigen_refine_warm_band_step(SCF_iter),state->chemical->chemical_potential,1);
           }
           else {
             dcomplex *panel = NULL;
@@ -5516,7 +5521,7 @@ static double Band_DFT_NonCol_owned(BandNonColState *state, char *mode,
 	       pass 1 from that basis with the chemical potential of pass 0's
 	       eigenvalues, with the vectors */
 	    for (int root_pass=(state->refine.staged ? 0 : 1); root_pass<2; root_pass++){
-	    double root_refine_mu = ChemP;
+	    double root_refine_mu = state->chemical->chemical_potential;
 
 	    if (root_pass==1 && state->refine.staged){
 	      for (int kb=0; kb<T_knum; kb++){
@@ -5622,7 +5627,7 @@ static double Band_DFT_NonCol_owned(BandNonColState *state, char *mode,
 	                                                m_i11,m_i22,m_i12,
 	                                                packed_order_GA,MP,ko,EIGEN,0,0,0,rdw,NULL,
 	                                                &state->kref[kloop],
-	                                                openmx_eigen_refine_warm_band_step(SCF_iter),ChemP,1);
+	                                                openmx_eigen_refine_warm_band_step(SCF_iter),state->chemical->chemical_potential,1);
 	            rdw->s_valid = 1;
 	          }
 	          else if (owns_root_dense && refine_resident){
@@ -6221,13 +6226,13 @@ static double Band_DFT_NonCol_owned(BandNonColState *state, char *mode,
 
     loop_num++;
 
-    ChemP = 0.50*(ChemP_MAX + ChemP_MIN);
+    state->chemical->chemical_potential = 0.50*(ChemP_MAX + ChemP_MIN);
     Num_State = 0.0;
 
     for (kloop=0; kloop<T_knum; kloop++){
       for (l=1; l<=MaxN; l++){
 
-	x = (EIGEN[0][kloop][l] - ChemP)*Beta_trial1;
+	x = (EIGEN[0][kloop][l] - state->chemical->chemical_potential)*Beta_trial1;
 
 	if (x<=-x_cut) x = -x_cut;
 	if (x_cut<=x)  x =  x_cut;
@@ -6239,8 +6244,8 @@ static double Band_DFT_NonCol_owned(BandNonColState *state, char *mode,
     Num_State = Num_State/sum_weights;
     Dnum = TZ - Num_State - system_charge;
 
-    if (0.0<=Dnum) ChemP_MIN = ChemP;
-    else           ChemP_MAX = ChemP;
+    if (0.0<=Dnum) ChemP_MIN = state->chemical->chemical_potential;
+    else           ChemP_MAX = state->chemical->chemical_potential;
     if (fabs(Dnum)<1.0e-12) po = 1;
 
   }
@@ -6258,7 +6263,7 @@ static double Band_DFT_NonCol_owned(BandNonColState *state, char *mode,
     loop_num++;
 
     if (loop_num!=1){
-      ChemP = 0.50*(ChemP_MAX + ChemP_MIN);
+      state->chemical->chemical_potential = 0.50*(ChemP_MAX + ChemP_MIN);
     }
 
     Num_State = 0.0;
@@ -6266,7 +6271,7 @@ static double Band_DFT_NonCol_owned(BandNonColState *state, char *mode,
     for (kloop=0; kloop<T_knum; kloop++){
       for (l=1; l<=MaxN; l++){
 
-	x = (EIGEN[0][kloop][l] - ChemP)*Beta;
+	x = (EIGEN[0][kloop][l] - state->chemical->chemical_potential)*Beta;
 
 	if (x<=-x_cut) x = -x_cut;
 	if (x_cut<=x)  x =  x_cut;
@@ -6280,14 +6285,14 @@ static double Band_DFT_NonCol_owned(BandNonColState *state, char *mode,
     Num_State = Num_State/sum_weights;
     Dnum = TZ - Num_State - system_charge;
 
-    if (0.0<=Dnum) ChemP_MIN = ChemP;
-    else           ChemP_MAX = ChemP;
+    if (0.0<=Dnum) ChemP_MIN = state->chemical->chemical_potential;
+    else           ChemP_MAX = state->chemical->chemical_potential;
     if (fabs(Dnum)<1.0e-12) po = 1;
   }
   while (po==0 && loop_num<1000);
 
   /* for the NEGF calculation */
-  if (Solver==4 && TRAN_ChemP_Band==0) ChemP = 0.5*(ChemP_e[0]+ChemP_e[1]);
+  if (Solver==4 && TRAN_ChemP_Band==0) state->chemical->chemical_potential = 0.5*(ChemP_e[0]+ChemP_e[1]);
 
   /****************************************************
            band energy in a finite temperature
@@ -6299,7 +6304,7 @@ static double Band_DFT_NonCol_owned(BandNonColState *state, char *mode,
   for (kloop=0; kloop<T_knum; kloop++){
     for (l=1; l<=MaxN; l++){
 
-      x = (EIGEN[0][kloop][l] - ChemP)*Beta;
+      x = (EIGEN[0][kloop][l] - state->chemical->chemical_potential)*Beta;
 
       if (x<=-x_cut) x = -x_cut;
       if (x_cut<=x)  x = x_cut;
@@ -6313,7 +6318,7 @@ static double Band_DFT_NonCol_owned(BandNonColState *state, char *mode,
   state->energies->band = Eele0[0];
 
   if (2<=level_stdout){
-    printf("myid0=%2d ChemP=%lf, Eele0[0]=%lf, Eele0[1]=%lf\n",myid0,ChemP,Eele0[0],Eele0[1]);
+    printf("myid0=%2d ChemP=%lf, Eele0[0]=%lf, Eele0[1]=%lf\n",myid0,state->chemical->chemical_potential,Eele0[0],Eele0[1]);
   }
 
   if (measure_time){
@@ -6499,7 +6504,7 @@ static double Band_DFT_NonCol_owned(BandNonColState *state, char *mode,
 	        k1 = T_KGrids1[0];
 	        k2 = T_KGrids2[0];
 	        k3 = T_KGrids3[0];
-	        Calc_DM_Band_non_collinear( 0,1,
+	        Calc_DM_Band_non_collinear(state->chemical,  0,1,
 					    myid0,myid2,size_H1,
 					    is2,ie2,MP,n,n2,MaxN,k1,k2,k3,
 					    CDM,iDM[0],EDM,EIGEN[0][0],
@@ -6516,7 +6521,7 @@ static double Band_DFT_NonCol_owned(BandNonColState *state, char *mode,
 					rEDM11,rEDM22 );
       }
       else {
-        Calc_DM_Band_non_collinear( 1,1,
+        Calc_DM_Band_non_collinear(state->chemical,  1,1,
 				    myid0,myid2,size_H1,
 					    is2,ie2,MP,n,n2,MaxN,k1,k2,k3,
 				    CDM,iDM[0],EDM,EIGEN[0][kloop],
@@ -6734,7 +6739,7 @@ static double Band_DFT_NonCol_owned(BandNonColState *state, char *mode,
                                                   m_olp,m_h11,m_h22,m_h12,m_h12i,
                                                   m_i11,m_i22,m_i12,
                                                   packed_k_order,MP,ko,EIGEN,1,1,0,rdw,NULL,
-                                                  refine_slot,1,ChemP,
+                                                  refine_slot,1,state->chemical->chemical_potential,
                                                   openmx_eigen_refine_warm_band_enabled());
                 if (!reuse_overlap) BandNonCol_KOverlapSave(state, kloop,k1,k2,k3,rdw->s_all);
               }
@@ -6774,7 +6779,7 @@ static double Band_DFT_NonCol_owned(BandNonColState *state, char *mode,
 	      k1 = T_KGrids1[0];
 	      k2 = T_KGrids2[0];
 	      k3 = T_KGrids3[0];
-	      Calc_DM_Band_non_collinear( 0,1,
+	      Calc_DM_Band_non_collinear(state->chemical,  0,1,
 					  myid0,myid2,size_H1,
 					  is2,ie2,MP,n,n2,MaxN,k1,k2,k3,
 					  CDM,iDM[0],EDM,EIGEN[0][0],
@@ -7118,7 +7123,7 @@ static double Band_DFT_NonCol_owned(BandNonColState *state, char *mode,
                                                rEDM11,rEDM22,kloop0<num_kloop0,mpi_comm_level1);
         }
         else{
-	Calc_DM_Band_non_collinear( (kloop0<num_kloop0),0,
+	Calc_DM_Band_non_collinear(state->chemical,  (kloop0<num_kloop0),0,
 				    myid0,myid2,size_H1,
 				    is2,ie2,MP,n,n2,MaxN,k1,k2,k3,
 				    CDM,iDM[0],EDM,EIGEN[0][kloop],
@@ -7149,7 +7154,7 @@ static double Band_DFT_NonCol_owned(BandNonColState *state, char *mode,
 
     if ( strcasecmp(mode,"scf")==0 ){ 
 
-      Calc_DM_Band_non_collinear( 0,1,
+      Calc_DM_Band_non_collinear(state->chemical,  0,1,
 				  myid0,myid2,size_H1,
 				  is2,ie2,MP,n,n2,MaxN,k1,k2,k3, 
 				  CDM,iDM[0],EDM,EIGEN[0][kloop],
@@ -7310,7 +7315,7 @@ static double Band_DFT_NonCol_owned(BandNonColState *state, char *mode,
 	fprintf(fp_EV,"           Eigenvalues (Hartree) of SCF KS-eq.           \n");
 	fprintf(fp_EV,"***********************************************************\n");
 	fprintf(fp_EV,"***********************************************************\n\n");
-	fprintf(fp_EV,"   Chemical Potential (Hartree) = %18.14f\n",ChemP);
+	fprintf(fp_EV,"   Chemical Potential (Hartree) = %18.14f\n",state->chemical->chemical_potential);
 	fprintf(fp_EV,"   Number of States             = %18.14f\n",Num_State);
 	fprintf(fp_EV,"   Eigenvalues\n\n");
 
@@ -7985,7 +7990,7 @@ void Construct_Band_Ms(BandNonColState *state,  int cpx_flag, double ****Mat, do
   }
 }
 
-double Calc_DM_Band_non_collinear(
+double Calc_DM_Band_non_collinear(const OpenMXChemicalPotentials *chemical,
     int calc_flag,
     int store_flag,
     int myid0,
@@ -8044,7 +8049,7 @@ double Calc_DM_Band_non_collinear(
  
     for (k=is2[myid2]; k<=ie2[myid2]; k++){
 
-      x = (ko[k] - ChemP)*Beta;
+      x = (ko[k] - chemical->chemical_potential)*Beta;
       if (x<=-max_x) x = -max_x;
       if (max_x<=x)  x = max_x;
       FermiF = FermiFunc_NC(x,k); 
@@ -8381,7 +8386,7 @@ double Calc_ParDM_Band_non_collinear(BandNonColState *state,
         in1 = CWF_disentangling_Erange[2];
         out1 = CWF_disentangling_Erange[3];
         e = ko[k];
-        windowF[k] = weight_CWF2(e,ChemP,in0,in1,out0,out1); 
+        windowF[k] = weight_CWF2(e,state->chemical->chemical_potential,in0,in1,out0,out1);
       }
 
       /* Fermi */
@@ -8390,8 +8395,8 @@ double Calc_ParDM_Band_non_collinear(BandNonColState *state,
         e = ko[k];
         b0 = 1.0/CWF_disentangling_smearing_kBT0;
         b1 = 1.0/CWF_disentangling_smearing_kBT1;
-        e0 = CWF_disentangling_Erange[0] + ChemP; 
-        e1 = CWF_disentangling_Erange[1] + ChemP; 
+        e0 = CWF_disentangling_Erange[0] + state->chemical->chemical_potential;
+        e1 = CWF_disentangling_Erange[1] + state->chemical->chemical_potential;
 
         windowF[k] = (1.0/(exp(b0*(e0-e))+1.0))*(1.0/(exp(b1*(e-e1))+1.0)) + CWF_disentangling_smearing_bound;
 

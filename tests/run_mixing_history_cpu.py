@@ -47,6 +47,16 @@ def main():
     generated += '\nstatic void parse_nose(OpenMXCoreContext *core) {\n'
     generated += input_source[dynamics_start:dynamics_end] + '\n'.join(nose_lines) + '\n}\n'
 
+    chemical_start = input_source.index('  OpenMXChemicalPotentials *chemical=',
+                                       input_source.index('void Input_std('))
+    chemical_end = input_source.index('  OpenMXDynamicsState *dynamics=', chemical_start)
+    chemical_lines = [line for line in input_source.splitlines()
+                      if 'input_double("orderN.InitChemPot"' in line or
+                         'chemical->chemical_potential = chemical->chemical_potential/eV2Hartree;' in line]
+    assert len(chemical_lines) == 2
+    generated += '\nstatic void parse_chemical(OpenMXCoreContext *core) {\n'
+    generated += input_source[chemical_start:chemical_end] + '\n'.join(chemical_lines) + '\n}\n'
+
     with tempfile.TemporaryDirectory(prefix='openmx-mixing-history-') as directory:
         folder = Path(directory)
         (folder / 'mixing_history.inc').write_text(generated)

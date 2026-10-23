@@ -117,6 +117,7 @@ typedef struct {
 } ClusterColDenseIndexCache;
 
 struct OpenMXClusterColState {
+  OpenMXChemicalPotentials *chemical; /* borrowed from this calculation */
   OpenMXThermodynamicEnergies *thermo; /* borrowed from this calculation */
   OpenMXNativeResources *resources; /* borrowed from this calculation */
   int initialized;
@@ -172,6 +173,10 @@ OpenMXClusterColState *Cluster_DFT_Col_Bind_Resources(OpenMXCoreContext *core)
     state->diag_verdict = -1;
     if(!openmx_core_thermodynamic_energies(core,&state->thermo,error,sizeof(error))) {
       fprintf(stderr,"OpenMX thermodynamic energies: %s\n",error);
+      abort();
+    }
+    if(!openmx_core_chemical_potentials(core,&state->chemical,error,sizeof(error))) {
+      fprintf(stderr,"OpenMX chemical potentials: %s\n",error);
       abort();
     }
     state->initialized = 1;
@@ -3302,11 +3307,11 @@ static double Cluster_DFT_Col_owned(ClusterColState *state, const OpenMXAtomicVi
 
 	do {
 
-	  ChemP = 0.50*(ChemP_MAX + ChemP_MIN);
+	  state->chemical->chemical_potential = 0.50*(ChemP_MAX + ChemP_MIN);
 	  Num_State = 0.0;
 
 	  for (i1=1; i1<=MaxN; i1++){
-	    x = (ko[spin][i1] - ChemP)*Beta;
+	    x = (ko[spin][i1] - state->chemical->chemical_potential)*Beta;
 	    if (x<=-max_x) x = -max_x;
 	    if (max_x<=x)  x = max_x;
 	    FermiF = 1.0/(1.0 + exp(x));
@@ -3314,27 +3319,27 @@ static double Cluster_DFT_Col_owned(ClusterColState *state, const OpenMXAtomicVi
 	  }
 
 	  Dnum = HOMO_XANES[spin] - Num_State;
-	  if (0.0<=Dnum) ChemP_MIN = ChemP;
-	  else           ChemP_MAX = ChemP;
+	  if (0.0<=Dnum) ChemP_MIN = state->chemical->chemical_potential;
+	  else           ChemP_MAX = state->chemical->chemical_potential;
 	  if (fabs(Dnum)<1.0e-12) po = 1;
 
 	  if (myid1==Host_ID && 2<=level_stdout){
 	    printf("spin=%2d ChemP=%15.12f HOMO_XANES=%2d Num_state=%15.12f\n",
-                    spin,ChemP,HOMO_XANES[spin],Num_State); 
+                    spin,state->chemical->chemical_potential,HOMO_XANES[spin],Num_State);
 	  }
 
 	  loopN++;
 
 	} while (po==0 && loopN<1000); 
 
-        ChemP_XANES[spin] = ChemP;
+        state->chemical->xanes[spin] = state->chemical->chemical_potential;
         Cluster_HOMO[spin] = HOMO_XANES[spin];
 
       } /* spin */
 
       /* set ChemP */
 
-      ChemP = 0.5*(ChemP_XANES[0] + ChemP_XANES[1]); 
+      state->chemical->chemical_potential = 0.5*(state->chemical->xanes[0] + state->chemical->xanes[1]);
 
     } /* end of if (xanes_calc==1) */
 
@@ -3360,12 +3365,12 @@ static double Cluster_DFT_Col_owned(ClusterColState *state, const OpenMXAtomicVi
   
       do {
 
-	ChemP = 0.50*(ChemP_MAX + ChemP_MIN);
+	state->chemical->chemical_potential = 0.50*(ChemP_MAX + ChemP_MIN);
 	Num_State = 0.0;
 
 	for (spin=0; spin<=SpinP_switch; spin++){
 	  for (i1=1; i1<=MaxN; i1++){
-	    x = (ko[spin][i1] - ChemP)*Beta_trial1;
+	    x = (ko[spin][i1] - state->chemical->chemical_potential)*Beta_trial1;
 	    if (x<=-max_x) x = -max_x;
 	    if (max_x<=x)  x = max_x;
 	    FermiF = 1.0/(1.0 + exp(x));
@@ -3375,12 +3380,12 @@ static double Cluster_DFT_Col_owned(ClusterColState *state, const OpenMXAtomicVi
 	}
 
 	Dnum = (TZ - Num_State) - system_charge;
-	if (0.0<=Dnum) ChemP_MIN = ChemP;
-	else           ChemP_MAX = ChemP;
+	if (0.0<=Dnum) ChemP_MIN = state->chemical->chemical_potential;
+	else           ChemP_MAX = state->chemical->chemical_potential;
 	if (fabs(Dnum)<1.0e-12) po = 1;
 
 	if (myid1==Host_ID && 2<=level_stdout){
-	  printf("ChemP=%15.12f TZ=%15.12f Num_state=%15.12f\n",ChemP,TZ,Num_State); 
+	  printf("ChemP=%15.12f TZ=%15.12f Num_state=%15.12f\n",state->chemical->chemical_potential,TZ,Num_State);
 	}
 
 	loopN++;
@@ -3398,14 +3403,14 @@ static double Cluster_DFT_Col_owned(ClusterColState *state, const OpenMXAtomicVi
       do {
 
 	if (loopN!=0){
-	  ChemP = 0.50*(ChemP_MAX + ChemP_MIN);
+	  state->chemical->chemical_potential = 0.50*(ChemP_MAX + ChemP_MIN);
 	}
 
 	Num_State = 0.0;
 
 	for (spin=0; spin<=SpinP_switch; spin++){
 	  for (i1=1; i1<=MaxN; i1++){
-	    x = (ko[spin][i1] - ChemP)*Beta;
+	    x = (ko[spin][i1] - state->chemical->chemical_potential)*Beta;
 	    if (x<=-max_x) x = -max_x;
 	    if (max_x<=x)  x = max_x;
 	    FermiF = 1.0/(1.0 + exp(x));
@@ -3416,12 +3421,12 @@ static double Cluster_DFT_Col_owned(ClusterColState *state, const OpenMXAtomicVi
 	}
 
 	Dnum = (TZ - Num_State) - system_charge;
-	if (0.0<=Dnum) ChemP_MIN = ChemP;
-	else           ChemP_MAX = ChemP;
+	if (0.0<=Dnum) ChemP_MIN = state->chemical->chemical_potential;
+	else           ChemP_MAX = state->chemical->chemical_potential;
 	if (fabs(Dnum)<1.0e-12) po = 1;
 
 	if (myid1==Host_ID && 2<=level_stdout){
-	  printf("ChemP=%15.12f TZ=%15.12f Num_state=%15.12f\n",ChemP,TZ,Num_State); 
+	  printf("ChemP=%15.12f TZ=%15.12f Num_state=%15.12f\n",state->chemical->chemical_potential,TZ,Num_State);
 	}
 
 	loopN++;
@@ -3430,7 +3435,7 @@ static double Cluster_DFT_Col_owned(ClusterColState *state, const OpenMXAtomicVi
       while (po==0 && loopN<1000); 
 
       if (2<=level_stdout){
-	printf("  ChemP=%15.12f\n",ChemP);
+	printf("  ChemP=%15.12f\n",state->chemical->chemical_potential);
       }
 
       if (measure_time){
@@ -3451,9 +3456,9 @@ static double Cluster_DFT_Col_owned(ClusterColState *state, const OpenMXAtomicVi
       for (i1=1; i1<=MaxN; i1++){
 
 	if (xanes_calc==1) 
-          x = (ko[spin][i1] - ChemP_XANES[spin])*Beta;
+          x = (ko[spin][i1] - state->chemical->xanes[spin])*Beta;
         else 
-          x = (ko[spin][i1] - ChemP)*Beta;
+          x = (ko[spin][i1] - state->chemical->chemical_potential)*Beta;
 
 	if (x<=-max_x) x = -max_x;
 	if (max_x<=x)  x = max_x;
@@ -3780,7 +3785,7 @@ static double Cluster_DFT_Col_owned(ClusterColState *state, const OpenMXAtomicVi
 	fprintf(fp_EV,"***********************************************************\n");
 	fprintf(fp_EV,"***********************************************************\n\n");
 
-	fprintf(fp_EV,"   Chemical Potential (Hartree) = %18.14f\n",ChemP);
+	fprintf(fp_EV,"   Chemical Potential (Hartree) = %18.14f\n",state->chemical->chemical_potential);
 	fprintf(fp_EV,"   Number of States             = %18.14f\n",Num_State);
 	if (SpinP_switch==0){
 	  fprintf(fp_EV,"   HOMO = %2d\n",Cluster_HOMO[0]);
@@ -3828,7 +3833,7 @@ static double Cluster_DFT_Col_owned(ClusterColState *state, const OpenMXAtomicVi
 	fprintf(fp_EV,"***********************************************************\n");
 
 	fprintf(fp_EV,"\n\n");
-	fprintf(fp_EV,"   Chemical Potential (Hartree) = %18.14f\n",ChemP);
+	fprintf(fp_EV,"   Chemical Potential (Hartree) = %18.14f\n",state->chemical->chemical_potential);
 	if (SpinP_switch==0){
 	  fprintf(fp_EV,"   HOMO = %2d\n",Cluster_HOMO[0]);
 	}
@@ -4231,9 +4236,9 @@ double Calc_DM_Cluster_collinear(ClusterColState *state,
   for (k=is2[myid1]; k<=ie2[myid1]; k++){
 
     if (xanes_calc==1) 
-      x = (ko[spin][k] - ChemP_XANES[spin])*Beta;
+      x = (ko[spin][k] - state->chemical->xanes[spin])*Beta;
     else 
-      x = (ko[spin][k] - ChemP)*Beta;
+      x = (ko[spin][k] - state->chemical->chemical_potential)*Beta;
 
     if (x<=-max_x) x = -max_x;
     if (max_x<=x)  x = max_x;
@@ -4244,9 +4249,9 @@ double Calc_DM_Cluster_collinear(ClusterColState *state,
     if (cal_partial_charge){
 
       if (xanes_calc==1) 
-        x2 = (ko[spin][k] - (ChemP_XANES[spin]+ene_win_partial_charge))*Beta;
+        x2 = (ko[spin][k] - (state->chemical->xanes[spin]+ene_win_partial_charge))*Beta;
       else 
-        x2 = (ko[spin][k] - (ChemP+ene_win_partial_charge))*Beta;
+        x2 = (ko[spin][k] - (state->chemical->chemical_potential+ene_win_partial_charge))*Beta;
 
       if (x2<=-max_x) x2 = -max_x;
       if (max_x<=x2)  x2 = max_x;
@@ -4554,7 +4559,7 @@ double Calc_ParDM_Cluster_collinear(ClusterColState *state,
       out1 = CWF_disentangling_Erange[3];
 
       e = ko[spin][k];
-      windowF[k] = weight_CWF2(e,ChemP,in0,in1,out0,out1); 
+      windowF[k] = weight_CWF2(e,state->chemical->chemical_potential,in0,in1,out0,out1);
     }
 
     else if (CWF_WindowF_switch==1){ // Fermi
@@ -4562,8 +4567,8 @@ double Calc_ParDM_Cluster_collinear(ClusterColState *state,
       e = ko[spin][k];
       b0 = 1.0/CWF_disentangling_smearing_kBT0;
       b1 = 1.0/CWF_disentangling_smearing_kBT1;
-      e0 = CWF_disentangling_Erange[0] + ChemP; 
-      e1 = CWF_disentangling_Erange[1] + ChemP; 
+      e0 = CWF_disentangling_Erange[0] + state->chemical->chemical_potential;
+      e1 = CWF_disentangling_Erange[1] + state->chemical->chemical_potential;
       windowF[k] = (1.0/(exp(b0*(e0-e))+1.0))*(1.0/(exp(b1*(e-e1))+1.0)) + CWF_disentangling_smearing_bound;
     }
 
@@ -4846,7 +4851,7 @@ void Save_DOS_Col(ClusterColState *state,  int n, int MaxN, int myid1, int *is2,
   iemin = n;
   for (spin=0; spin<=SpinP_switch; spin++){
     for (i=1; i<n; i++) {
-      if ( ((ChemP+Dos_Erange[0])<ko[spin][i]) && (i-1)<iemin ) {
+      if ( ((state->chemical->chemical_potential+Dos_Erange[0])<ko[spin][i]) && (i-1)<iemin ) {
         iemin = i - 1;
         break;
       }
@@ -4859,7 +4864,7 @@ void Save_DOS_Col(ClusterColState *state,  int n, int MaxN, int myid1, int *is2,
   iemax = 1;
   for (spin=0; spin<=SpinP_switch; spin++){
     for (i=1; i<=n; i++) {
-      if ( ((ChemP+Dos_Erange[1])<ko[spin][i])) {
+      if ( ((state->chemical->chemical_potential+Dos_Erange[1])<ko[spin][i])) {
         if (iemax<i) iemax = i;
         break;
       }
@@ -4880,7 +4885,7 @@ void Save_DOS_Col(ClusterColState *state,  int n, int MaxN, int myid1, int *is2,
     i = iemax - iemin + 1;
     fwrite(&i,sizeof(int),1,fp_cohp);
     fwrite(&COHP_num_pairs,sizeof(int),1,fp_cohp);
-    fwrite(&ChemP,sizeof(double),1,fp_cohp);
+    fwrite(&state->chemical->chemical_potential,sizeof(double),1,fp_cohp);
   }
 
   /****************************************************
@@ -5115,7 +5120,7 @@ void Save_DOS_Col(ClusterColState *state,  int n, int MaxN, int myid1, int *is2,
       fprintf(fp_eig,"\n");
     }
     fprintf(fp_eig,"Spe_Num_CBasis>\n");
-    fprintf(fp_eig,"ChemP       %lf\n",ChemP);
+    fprintf(fp_eig,"ChemP       %lf\n",state->chemical->chemical_potential);
 
     fprintf(fp_eig,"irange      %d %d\n",iemin,iemax);
     fprintf(fp_eig,"<Eigenvalues\n");
@@ -5225,7 +5230,7 @@ void Save_LCAO_Col(ClusterColState *state,  int n, int MaxN, int myid1, int *is2
 
   for (spin=0; spin<=SpinP_switch; spin++){
     for (i=1; i<=MaxN; i++){
-      x = (ko[spin][i] - ChemP)*Beta;
+      x = (ko[spin][i] - state->chemical->chemical_potential)*Beta;
       if (x<=-max_x) x = -max_x;
       if (max_x<=x)  x = max_x;
       FermiF = 1.0/(1.0 + exp(x));

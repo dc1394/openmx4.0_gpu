@@ -43,7 +43,7 @@ int Lapack_LU_Zinverse(int , dcomplex *);
 static void Nested_Dissection( int free_flag, int Nmat, int *MP, 
                                int *Depth_Level, int *Number_Division);
 
-static double Cluster_collinear_ON2_Force(
+static double Cluster_collinear_ON2_Force(const OpenMXChemicalPotentials *chemical,
 				    int SCF_iter,
 				    int SpinP_switch,
 				    double *****nh, double ****CntOLP,
@@ -51,7 +51,7 @@ static double Cluster_collinear_ON2_Force(
 				    double *****EDM,
 				    double Eele0[2], double Eele1[2]);
 
-static double Cluster_collinear_ON2_Iter(
+static double Cluster_collinear_ON2_Iter(OpenMXChemicalPotentials *chemical,
 				    int SCF_iter,
 				    int SpinP_switch,
 				    double *****nh, double ****CntOLP,
@@ -125,7 +125,7 @@ double complex **Q0,**Q1;
 double *VvecTmp,*ISTmp;
 
 
-double Cluster_DFT_ON2(char *mode,
+double Cluster_DFT_ON2(OpenMXChemicalPotentials *chemical, char *mode,
 		       int SCF_iter,
 		       int SpinP_switch,
 		       double *****nh,
@@ -145,14 +145,14 @@ double Cluster_DFT_ON2(char *mode,
 
     if (strcasecmp(mode,"scf")==0){
 
-      time0 = Cluster_collinear_ON2_Iter( SCF_iter,SpinP_switch,
+      time0 = Cluster_collinear_ON2_Iter(chemical,  SCF_iter,SpinP_switch,
                                           nh,CntOLP,CDM,EDM,Eele0,Eele1 );
 
     }
    
     else if (strcasecmp(mode,"force")==0){
 
-      time0 = Cluster_collinear_ON2_Force( SCF_iter,SpinP_switch,
+      time0 = Cluster_collinear_ON2_Force(chemical,  SCF_iter,SpinP_switch,
                                            nh,CntOLP,CDM,EDM,Eele0,Eele1 );
 
     }
@@ -3104,7 +3104,7 @@ static int clists_cmp(const clists *x, const clists *y)
 
 
 
-static double Cluster_collinear_ON2_Force(
+static double Cluster_collinear_ON2_Force(const OpenMXChemicalPotentials *chemical,
 				    int SCF_iter,
 				    int SpinP_switch,
 				    double *****nh, double ****CntOLP,
@@ -3510,7 +3510,7 @@ static double Cluster_collinear_ON2_Force(
 	       Nmat,NZE,PZE,
 	       Depth_Level,
 	       Number_Division,
-	       ChemP, 
+	       chemical->chemical_potential,
 	       Hall,Sall,EDMall,
 	       WRG,
 	       conv_index_row, 
@@ -3538,7 +3538,7 @@ static double Cluster_collinear_ON2_Force(
 		 Nmat,NZE,PZE,
 		 Depth_Level,
 		 Number_Division, 
-		 ChemP, 
+		 chemical->chemical_potential,
 		 Hall,Sall,EDMall,
 		 WRG,
 		 conv_index_row, 
@@ -3661,7 +3661,7 @@ static double Cluster_collinear_ON2_Force(
 
 
 
-static double Cluster_collinear_ON2_Iter(
+static double Cluster_collinear_ON2_Iter(OpenMXChemicalPotentials *chemical,
 				    int SCF_iter,
 				    int SpinP_switch,
 				    double *****nh, double ****CntOLP,
@@ -4051,7 +4051,7 @@ static double Cluster_collinear_ON2_Iter(
 
   end_flag = 0;
   num_loop = 1;  
-  Trial_ChemP = ChemP;
+  Trial_ChemP = chemical->chemical_potential;
 
   do {
 
@@ -4387,7 +4387,7 @@ static double Cluster_collinear_ON2_Iter(
 
   /* update the new ChemP */
 
-  ChemP = Trial_ChemP;
+  chemical->chemical_potential = Trial_ChemP;
 
   /* show num_loop */
 

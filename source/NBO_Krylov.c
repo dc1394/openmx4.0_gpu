@@ -27,7 +27,7 @@
 
 #define  measure_time   0
 
-static double Krylov_Col_NAO(double *****Hks, double ****OLP0, double *****CDM);
+static double Krylov_Col_NAO(const OpenMXChemicalPotentials *chemical, double *****Hks, double ****OLP0, double *****CDM);
 
 static void Calc_NAO(int FS_atm, int Nc_AN, double **D_full, double **S_full, double **H_full,
                       int FS_atomnum, int SizeMat, double *NP_total, double *NP_partial);
@@ -36,7 +36,7 @@ static void Calc_NBO(int spin0, int Num_FSCenter, int Num_FCenter, int LVsize,
                      int *FSCenter, int *LMindx2LMposi,
                      double **P_full, double **H_full, double **T_full);
 
-void Calc_NAO_Krylov(double *****Hks, double ****OLP0, double *****CDM)
+void Calc_NAO_Krylov(const OpenMXChemicalPotentials *chemical, double *****Hks, double ****OLP0, double *****CDM)
 {
 
   /****************************************************
@@ -45,7 +45,7 @@ void Calc_NAO_Krylov(double *****Hks, double ****OLP0, double *****CDM)
 
   if ( (SpinP_switch==0 || SpinP_switch==1) && SO_switch==0 ){
 
-    Krylov_Col_NAO( Hks, OLP0, CDM );
+    Krylov_Col_NAO(chemical,  Hks, OLP0, CDM );
 
   }
 
@@ -73,7 +73,7 @@ void Calc_NAO_Krylov(double *****Hks, double ****OLP0, double *****CDM)
 
 
 
-static double Krylov_Col_NAO(double *****Hks, double ****OLP0, double *****CDM)
+static double Krylov_Col_NAO(const OpenMXChemicalPotentials *chemical, double *****Hks, double ****OLP0, double *****CDM)
 {
 
   int Mc_AN,Gc_AN,i,is,js,Gi,wan,wanA,wanB,Anum;
@@ -446,7 +446,7 @@ static double Krylov_Col_NAO(double *****Hks, double ****OLP0, double *****CDM)
     for regeneration of the buffer matrix
   ***********************************************/
 
-#pragma omp parallel shared(List_YOUSO,ChemP,RMI1,S_G2M,EC_matrix,Krylov_U,SpinP_switch,EKC_core_size,rlmax_EC,rlmax_EC2,Hks,OLP0,Msize3,Msize2,Msize,natn,FNAN,SNAN,Spe_Total_CNO,WhatSpecies,M2G,Matomnum,myid)
+#pragma omp parallel shared(List_YOUSO,chemical,RMI1,S_G2M,EC_matrix,Krylov_U,SpinP_switch,EKC_core_size,rlmax_EC,rlmax_EC2,Hks,OLP0,Msize3,Msize2,Msize,natn,FNAN,SNAN,Spe_Total_CNO,WhatSpecies,M2G,Matomnum,myid)
   {
 
     int OMPID,Nthrds,Nprocs;
@@ -902,7 +902,7 @@ static double Krylov_Col_NAO(double *****Hks, double ****OLP0, double *****CDM)
             Bnum = MP[h_AN];
             for (j=0; j<tno2; j++){
 	      for (i1=1; i1<=Msize3[Mc_AN]; i1++){
-		x = (ko[i1] - ChemP)*Beta_NAO;
+		x = (ko[i1] - chemical->chemical_potential)*Beta_NAO;
 		if (x <= -max_x) x = -max_x;
 		if (x >=  max_x) x =  max_x;
 		if (SpinP_switch==0) FermiF = 2.0/(1.0 + exp(x));

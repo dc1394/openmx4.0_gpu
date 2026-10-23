@@ -5,7 +5,7 @@
 #include "openmx_common.h"
 #include "mpi.h"
 
-void outputfile1(const OpenMXThermodynamicEnergies *thermo, const OpenMXMixingHistory *history, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int f_switch, int MD_iter, int orbitalOpt_iter,
+void outputfile1(const OpenMXChemicalPotentials *chemical, const OpenMXThermodynamicEnergies *thermo, const OpenMXMixingHistory *history, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int f_switch, int MD_iter, int orbitalOpt_iter,
                  int Cnt_Now, int SCF_iter, char fname[YOUSO10], 
                  double ChemP_e0[2], double orbital_norm)
 {
@@ -148,7 +148,7 @@ void outputfile1(const OpenMXThermodynamicEnergies *thermo, const OpenMXMixingHi
           fprintf(fp,"  Chemical potential of right lead (Hartree) %20.12f\n",ChemP_e0[1]);
 	}
         else{ 
-          fprintf(fp,"  Chemical potential (Hartree) %20.12f\n",ChemP);
+          fprintf(fp,"  Chemical potential (Hartree) %20.12f\n",chemical->chemical_potential);
 	}
 
         /***** start *****/ /* by S.Ryee */

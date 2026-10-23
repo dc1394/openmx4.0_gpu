@@ -76,35 +76,35 @@ static int  set_tabr4RN(int*** tabr4RN, double* auto_origin, double* mergin);
 static void free_atv_for_conceptual_cell();
 static void generate_gnuplot_example(int SpinP_switch);
 
-static void Unfolding_Bands_Col(
+static void Unfolding_Bands_Col(const OpenMXChemicalPotentials *chemical,
                                 int SpinP_switch, 
                                 double *****nh,
                                 double ****CntOLP);
 
-static void Unfolding_Bands_NonCol(
+static void Unfolding_Bands_NonCol(const OpenMXChemicalPotentials *chemical,
                                    int SpinP_switch, 
                                    double *****nh,
                                    double *****ImNL,
                                    double ****CntOLP);
 
 
-void Unfolding_Bands( 
+void Unfolding_Bands(const OpenMXChemicalPotentials *chemical,
                       int SpinP_switch, 
                       double *****nh,
                       double *****ImNL,
                       double ****CntOLP)
 {
   if (SpinP_switch==0 || SpinP_switch==1){
-    Unfolding_Bands_Col( SpinP_switch, nh, CntOLP);
+    Unfolding_Bands_Col(chemical,  SpinP_switch, nh, CntOLP);
   }
   else if (SpinP_switch==3){
-    Unfolding_Bands_NonCol( SpinP_switch, nh, ImNL, CntOLP);
+    Unfolding_Bands_NonCol(chemical,  SpinP_switch, nh, ImNL, CntOLP);
   }
 }
 
 
 
-static void Unfolding_Bands_Col(
+static void Unfolding_Bands_Col(const OpenMXChemicalPotentials *chemical,
                                 int SpinP_switch, 
                                 double *****nh,
                                 double ****CntOLP)
@@ -933,7 +933,7 @@ static void Unfolding_Bands_Col(
         iloop = 0;
         for (spin=0; spin<=SpinP_switch; spin++){
           for (i=1; i<=n; i++){
-            if (((EIGEN[spin][i]-ChemP)<=unfold_ubound)&&((EIGEN[spin][i]-ChemP)>=unfold_lbound)) {
+            if (((EIGEN[spin][i]-chemical->chemical_potential)<=unfold_ubound)&&((EIGEN[spin][i]-chemical->chemical_potential)>=unfold_lbound)) {
               iloop++;
             }
           }
@@ -946,7 +946,7 @@ static void Unfolding_Bands_Col(
         iloop = 0;
         for (spin=0; spin<=SpinP_switch; spin++){
           for (i=1; i<=n; i++){
-            if (((EIGEN[spin][i]-ChemP)<=unfold_ubound)&&((EIGEN[spin][i]-ChemP)>=unfold_lbound)) {
+            if (((EIGEN[spin][i]-chemical->chemical_potential)<=unfold_ubound)&&((EIGEN[spin][i]-chemical->chemical_potential)>=unfold_lbound)) {
               array_spin[iloop] = spin;
               array_i[iloop] = i;
               //printf("iloop, spin, i = %d %d %d\n",iloop, spin, i);
@@ -983,7 +983,7 @@ static void Unfolding_Bands_Col(
           spin = array_spin[iloop];
           i = array_i[iloop];
           //printf("myid, iloop, spin, i = %d, %d, %d, %d\n",myid, iloop, spin, i);fflush(stdout);
-          kj_e=(EIGEN[spin][i]-ChemP);
+          kj_e=(EIGEN[spin][i]-chemical->chemical_potential);
 
           i1 = 1; 
           int iorb;
@@ -1299,7 +1299,7 @@ static void Unfolding_Bands_Col(
 
 
 
-static void Unfolding_Bands_NonCol(
+static void Unfolding_Bands_NonCol(const OpenMXChemicalPotentials *chemical,
                                    int SpinP_switch, 
                                    double *****nh,
                                    double *****ImNL,
@@ -2221,7 +2221,7 @@ static void Unfolding_Bands_NonCol(
 
         iloop = 0;
         for (i=1; i<=2*n; i++){
-          if (((EIGEN[i]-ChemP)<=unfold_ubound)&&((EIGEN[i]-ChemP)>=unfold_lbound)) {
+          if (((EIGEN[i]-chemical->chemical_potential)<=unfold_ubound)&&((EIGEN[i]-chemical->chemical_potential)>=unfold_lbound)) {
             iloop++;
           }
         }
@@ -2231,7 +2231,7 @@ static void Unfolding_Bands_NonCol(
 
         iloop = 0;
         for (i=1; i<=2*n; i++){
-          if (((EIGEN[i]-ChemP)<=unfold_ubound)&&((EIGEN[i]-ChemP)>=unfold_lbound)) {
+          if (((EIGEN[i]-chemical->chemical_potential)<=unfold_ubound)&&((EIGEN[i]-chemical->chemical_potential)>=unfold_lbound)) {
             array_i[iloop] = i;
             iloop++;
           }
@@ -2263,7 +2263,7 @@ static void Unfolding_Bands_NonCol(
 
         for (iloop=iloop_start; iloop<=iloop_end; iloop++){
           i = array_i[iloop];
-          kj_e=(EIGEN[i]-ChemP);
+          kj_e=(EIGEN[i]-chemical->chemical_potential);
 
           i1 = 1; 
           int iorb;

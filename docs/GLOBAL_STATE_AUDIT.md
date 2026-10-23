@@ -49,15 +49,15 @@ python3 tools/audit_global_usage.py --output build/globals-usage.json \
 ゲートは「減る方向」だけを許します。所有権を移した段階でベースラインを更新してください。
 CI の GitHub Actions には CUDA・MPI・NVHPC のヘッダーが無いので、ゲートはこの計算機で手動で実行します。
 
-## 現状（2026-10-23、`93c1080b` を基準とする温度・熱浴状態の所有移行後）
+## 現状（2026-10-23、`7e58b209` を基準とする化学ポテンシャルの所有移行後）
 
 | 項目 | 値 |
 | --- | ---: |
 | 解析した翻訳単位 / 関数 | 289 / 3,131 |
-| 共通ヘッダーのオブジェクト（`openmx_globals.c` の定義） | 1,013（本変更前 1,112） |
-| うち、どこかの関数が参照するもの | 1,007 |
-| うち、どこかの関数が書くもの（直接または中身） | 747 |
-| (関数, オブジェクト) の組 | 12,701 |
+| 共通ヘッダーのオブジェクト（`openmx_globals.c` の定義） | 1,011（本変更前 1,112） |
+| うち、どこかの関数が参照するもの | 1,005 |
+| うち、どこかの関数が書くもの（直接または中身） | 745 |
+| (関数, オブジェクト) の組 | 12,605 |
 | 共通ヘッダー外で外部リンケージを持つ定義 | 357（`openmx.c` 132、`DFT.c` 79、`Cluster_DFT_ON2.c` 28 …） |
 | ファイルスコープ `static` | 313（第54段階前314; `TRAN_Main_Analysis*.c` 173、`TRAN_RestartFile.c` 31 …、`openmx_env.c` 2） |
 | 関数内 `static` | 316（第54段階前318; `MD_pac.c` 58、`zero_cfrac.c` 54 …） |
@@ -290,11 +290,20 @@ OpenMP補助関数1個の番号変更とMDの失敗診断用stderr参照を明�
 一覧とベースラインを更新しました。非零NH状態を読み戻すCPU/GPUのMD3・4も確認し、元の6定義が
 本体シンボル表から除去されたことを検証しています。証拠は`build/dynamics-state-refactor-20261023/`です。
 
+第63段階では`ChemP`と`ChemP_XANES`を計算コンテキストの直接所有へ移しました。
+共通大域1,011、参照組12,605、shared-mutable210です。5個のコンパイラ生成関数名と所有取得失敗時の
+stderr参照1関数を列挙し、それ以外の全オブジェクト/各関数のアクセスを照合しました。
+同名のファイル内static ChemP 2個は保持しています。生のゲートで減る98項のうち2項は名前の衝突によるもので、
+実際の共通参照の削減96組には含めません。設定298個・構造表278個と他の集計値は不変です。
+360 CTest・4ホスト構成・CUDA/HIP各74単位、119基本比較組と追加対照・出力検査を記録後、一覧とベースラインを更新しました。
+DIIS初回11→12と追加対照11→13の厳密比較失敗、CWF hoppingの不一致と基準版に残る共役転置の不具合も
+保持し、全数値比較が合格したとは報告していません。証拠は`build/chemical-potential-refactor-20261023/`です。
+
 最も多くの関数が触るのは `mpi_comm_level1`（609 関数、154 翻訳単位）、`WhatSpecies`（514）、
 `natn`（372）、`FNAN`（359）、`M2G`（357）、`Matomnum`（353）、`atomnum`（329）、
 `Spe_Total_CNO`（310）、`SpinP_switch`（274）、`List_YOUSO`（214）です。
-関数側では `Input_std`（422 オブジェクト）、`Free_Arrays` の `array0`（414）、
-`Allocate_Arrays_with_context`（219）、`DFT`（111）、`truncation`（108）が突出しています。
+関数側では `Input_std`（421 オブジェクト）、`Free_Arrays` の `array0`（414）、
+`Allocate_Arrays_with_context`（219）、`DFT`（110）、`truncation`（108）が突出しています。
 
 ## 書き手による分類
 
@@ -303,7 +312,7 @@ OpenMP補助関数1個の番号変更とMDの失敗診断用stderr参照を明�
 | input-configuration | 298 | 入力解析（`Input_std.c` / `Inputtools.c`）だけが書く。読み取り専用の設定オブジェクトにできる |
 | allocated-array/contents-fixed | 278 | 確保側（`Allocate_Arrays.c`、`truncation.c` など）だけが書き、中身も確保側と入力解析しか書かない。構造表（原子・近接・分配）の不変オブジェクト |
 | allocated-array/contents-mutable | 95 | 確保は確保側だが、中身を他のモジュールが書く（`Gxyz`、`FNAN`、`time_per_atom` など）。計算状態オブジェクト |
-| shared-mutable | 212 | 複数の翻訳単位が書く。個別に判断が要る。`filename` / `filepath`（60 翻訳単位から `sprintf` される作業バッファ）、`ChemP`（25 関数が書く）、`List_YOUSO`、`Matomnum` など |
+| shared-mutable | 210 | 複数の翻訳単位が書く。個別に判断が要る。`filename` / `filepath`（60 翻訳単位から `sprintf` される作業バッファ）、`List_YOUSO`、`Matomnum` など |
 | single-writer:*.c | 1 翻訳単位だけが書く。その翻訳単位の所有物にできる（`DFTD3vdW_init.c` 16、`DFT.c` 5 …） |
 | read-only | 15 | 解析対象の C からは書かれない。C++/CUDA 側か定数 |
 | unused | 6 | C の関数から参照されない。`T` / `W`（1 文字名で検索できず保留）、HIP 版 `DFT.c` だけが使う `UH2` / `Uxc` / `command`、`exx` 用の `g_exx` |

@@ -1,3 +1,4 @@
+#include "openmx_core_chemical.h"
 /*** global parameters ***/
 
 double *****DMmu;
@@ -22,7 +23,7 @@ void Allocate_DM_for_LPQ();
 void Free_Arrays_DM_for_LPQ();
 
 
-double Band_DFT_Col_DMmu(
+double Band_DFT_Col_DMmu(OpenMXChemicalPotentials *chemical,
                     int SCF_iter,
                     int knum_i, int knum_j, int knum_k,
                     int SpinP_switch,
@@ -61,7 +62,7 @@ double Band_DFT_Col_DMmu(
                     int *Comm_World_StartID2,
                     MPI_Comm *MPI_CommWD2);
 
-double Band_DFT_NonCol_DMmu(
+double Band_DFT_NonCol_DMmu(OpenMXChemicalPotentials *chemical,
                     int SCF_iter,
                     int knum_i, int knum_j, int knum_k,
                     int SpinP_switch,
@@ -105,7 +106,7 @@ double Band_DFT_NonCol_DMmu(
                     int *Comm_World_StartID2,
                     MPI_Comm *MPI_CommWD2);
 
-double Cluster_DFT_Col_DMmu(
+double Cluster_DFT_Col_DMmu(OpenMXChemicalPotentials *chemical,
                    char *mode,
                    int SCF_iter,
                    int SpinP_switch,
@@ -132,7 +133,7 @@ double Cluster_DFT_Col_DMmu(
                    double **EVec1,
                    double *Work1);
 
-double Cluster_DFT_NonCol_DMmu(
+double Cluster_DFT_NonCol_DMmu(OpenMXChemicalPotentials *chemical,
                    char *mode,
                    int SCF_iter,
                    int SpinP_switch,
@@ -161,7 +162,7 @@ double Cluster_DFT_NonCol_DMmu(
                    dcomplex *EVec1,
                    double *Work1);
 
-double Calc_DMmu_Cluster_non_collinear_ScaLAPACK(
+double Calc_DMmu_Cluster_non_collinear_ScaLAPACK(const OpenMXChemicalPotentials *chemical,
     int calc_flag,
     int myid,
     int numprocs,

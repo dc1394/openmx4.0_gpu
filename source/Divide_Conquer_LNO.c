@@ -74,6 +74,7 @@ typedef struct {
 } DCLNO_GpuSolverZCtx;
 
 struct OpenMXDCLNOState {
+  OpenMXChemicalPotentials *chemical; /* borrowed from this calculation */
   OpenMXNativeResources *resources; /* borrowed from this calculation */
   int initialized;
   DCLNO_GpuSolverZCtx gpusolverz_ctx;
@@ -190,10 +191,10 @@ static double DC_NonCol(DCLNOState *state, char * mode, int MD_iter, int SCF_ite
                         double ***** Hks, double ***** ImNL, double **** OLP0,
                         double ***** CDM, double ***** EDM, double Eele0[2], double Eele1[2], const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
 
-static void Save_DOS_Col(OpenMXSolverResidueView Residues, double **** OLP0, OpenMXSolverRealFieldView EVal,
+static void Save_DOS_Col(const OpenMXChemicalPotentials *chemical, OpenMXSolverResidueView Residues, double **** OLP0, OpenMXSolverRealFieldView EVal,
                          int ** LO_TC, int ** HO_TC);
 
-static void Save_DOS_NonCol(OpenMXSolverResidueView Residues, double **** OLP0, OpenMXSolverRealFieldView EVal,
+static void Save_DOS_NonCol(const OpenMXChemicalPotentials *chemical, OpenMXSolverResidueView Residues, double **** OLP0, OpenMXSolverRealFieldView EVal,
                             int * LO_TC, int * HO_TC);
 
 /* ------------------------------------------------------------------ */
@@ -2326,7 +2327,7 @@ static double DC_Col_owned(DCLNOState *state, char * mode, int MD_iter, int SCF_
             ip  = 1;
             po1 = 0;
             do {
-                if ((ChemP - Erange) < openmx_solver_field_row(&EVal,spin,Mc_AN)[i]) {
+                if ((state->chemical->chemical_potential - Erange) < openmx_solver_field_row(&EVal,spin,Mc_AN)[i]) {
                     ip  = i;
                     po1 = 1;
                 }
@@ -2342,7 +2343,7 @@ static double DC_Col_owned(DCLNOState *state, char * mode, int MD_iter, int SCF_
             ip  = NUM2;
             po1 = 0;
             do {
-                if ((ChemP + Erange) < openmx_solver_field_row(&EVal,spin,Mc_AN)[i]) {
+                if ((state->chemical->chemical_potential + Erange) < openmx_solver_field_row(&EVal,spin,Mc_AN)[i]) {
                     ip  = i;
                     po1 = 1;
                 }
@@ -2487,8 +2488,8 @@ static double DC_Col_owned(DCLNOState *state, char * mode, int MD_iter, int SCF_
             ChemP_MAX =  10.0;
         }
         else {
-            ChemP_MIN = ChemP - 5.0;
-            ChemP_MAX = ChemP + 5.0;
+            ChemP_MIN = state->chemical->chemical_potential - 5.0;
+            ChemP_MAX = state->chemical->chemical_potential + 5.0;
         }
 
         if      (SpinP_switch == 0) spin_degeneracy = 2.0;
@@ -2496,7 +2497,7 @@ static double DC_Col_owned(DCLNOState *state, char * mode, int MD_iter, int SCF_
         else                        spin_degeneracy = 1.0;
 
         do {
-            ChemP = 0.50 * (ChemP_MAX + ChemP_MIN);
+            state->chemical->chemical_potential = 0.50 * (ChemP_MAX + ChemP_MIN);
             My_Num_State = 0.0;
 
             for (spin = 0; spin <= SpinP_switch; spin++) {
@@ -2508,7 +2509,7 @@ static double DC_Col_owned(DCLNOState *state, char * mode, int MD_iter, int SCF_
                       double *pdos_dc_row_43=openmx_solver_field_row(&PDOS_DC,spin,Mc_AN - 1);
                       for (i = history->LO_TC[spin][Mc_AN]; i <= history->HO_TC[spin][Mc_AN]; i++) {
                         i1 = i - history->LO_TC[spin][Mc_AN] + 2;
-                        x  = (eval_row_42[i] - ChemP) * Beta;
+                        x  = (eval_row_42[i] - state->chemical->chemical_potential) * Beta;
                         if (x <= -max_x) x = -max_x;
                         if ( max_x <= x) x =  max_x;
 
@@ -2526,8 +2527,8 @@ static double DC_Col_owned(DCLNOState *state, char * mode, int MD_iter, int SCF_
 
             Dnum = (TZ - Num_State) - system_charge;
 
-            if (0.0 <= Dnum) ChemP_MIN = ChemP;
-            else             ChemP_MAX = ChemP;
+            if (0.0 <= Dnum) ChemP_MIN = state->chemical->chemical_potential;
+            else             ChemP_MAX = state->chemical->chemical_potential;
 
             if (fabs(Dnum) < 1.0e-12) po = 1;
 
@@ -2557,7 +2558,7 @@ static double DC_Col_owned(DCLNOState *state, char * mode, int MD_iter, int SCF_
                   double *pdos_dc_row_41=openmx_solver_field_row(&PDOS_DC,spin,Mc_AN - 1);
                   for (i = history->LO_TC[spin][Mc_AN]; i <= history->HO_TC[spin][Mc_AN]; i++) {
                     i1 = i - history->LO_TC[spin][Mc_AN] + 2;
-                    x  = (eval_row_40[i] - ChemP) * Beta;
+                    x  = (eval_row_40[i] - state->chemical->chemical_potential) * Beta;
                     if (x <= -max_x) x = -max_x;
                     if ( max_x <= x) x =  max_x;
                     FermiF = 1.0 / (1.0 + exp(x));
@@ -2597,7 +2598,7 @@ static double DC_Col_owned(DCLNOState *state, char * mode, int MD_iter, int SCF_
                 {
                   double *eval_row_39=openmx_solver_field_row(&EVal,spin,Mc_AN);
                   for (i1 = history->LO_TC[spin][Mc_AN]; i1 <= history->HO_TC[spin][Mc_AN]; i1++) {
-                    x = (eval_row_39[i1] - ChemP) * Beta;
+                    x = (eval_row_39[i1] - state->chemical->chemical_potential) * Beta;
                     if (x <= -max_x) x = -max_x;
                     if ( max_x <= x) x =  max_x;
                     BLAS_C[i1] = 1.0 / (1.0 + exp(x));
@@ -2678,7 +2679,7 @@ static double DC_Col_owned(DCLNOState *state, char * mode, int MD_iter, int SCF_
     }
 
     else if (strcasecmp(mode, "dos") == 0) {
-        Save_DOS_Col(Residues, OLP0, EVal, history->LO_TC, history->HO_TC);
+        Save_DOS_Col(state->chemical, Residues, OLP0, EVal, history->LO_TC, history->HO_TC);
     }
 
     if (profile_enabled) {
@@ -4661,7 +4662,7 @@ static double DC_NonCol_owned(DCLNOState *state, char *mode,
       ip = 1;
       po1 = 0;
       do{
-	if ( (ChemP-Erange)<openmx_solver_field_row(&EVal,0,Mc_AN)[i]){
+	if ( (state->chemical->chemical_potential-Erange)<openmx_solver_field_row(&EVal,0,Mc_AN)[i]){
 	  ip = i;
 	  po1 = 1; 
 	}
@@ -4675,7 +4676,7 @@ static double DC_NonCol_owned(DCLNOState *state, char *mode,
       ip = NUM2;
       po1 = 0;
       do{
-	if ( (ChemP+Erange)<openmx_solver_field_row(&EVal,0,Mc_AN)[i]){
+	if ( (state->chemical->chemical_potential+Erange)<openmx_solver_field_row(&EVal,0,Mc_AN)[i]){
 	  ip = i;
 	  po1 = 1; 
 	}
@@ -4900,13 +4901,13 @@ static double DC_NonCol_owned(DCLNOState *state, char *mode,
       ChemP_MAX = 10.0;
     }
     else{
-      ChemP_MIN = ChemP - 5.0;
-      ChemP_MAX = ChemP + 5.0;
+      ChemP_MIN = state->chemical->chemical_potential - 5.0;
+      ChemP_MAX = state->chemical->chemical_potential + 5.0;
     }
 
     do {
 
-      ChemP = 0.50*(ChemP_MAX + ChemP_MIN);
+      state->chemical->chemical_potential = 0.50*(ChemP_MAX + ChemP_MIN);
       My_Num_State = 0.0;
 
       for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
@@ -4922,7 +4923,7 @@ static double DC_NonCol_owned(DCLNOState *state, char *mode,
           for (i=history->LO_TC[Mc_AN]; i<=history->HO_TC[Mc_AN]; i++){
 
           i1 = i - history->LO_TC[Mc_AN] + 2;
-	  x = (eval_row_13[i] - ChemP)*Beta;
+	  x = (eval_row_13[i] - state->chemical->chemical_potential)*Beta;
 	  if (x<=-max_x) x = -max_x;
 	  if (max_x<=x)  x = max_x;
 
@@ -4944,13 +4945,13 @@ static double DC_NonCol_owned(DCLNOState *state, char *mode,
 
       Dnum = (TZ - Num_State) - system_charge;
 
-      if (0.0<=Dnum) ChemP_MIN = ChemP;
-      else           ChemP_MAX = ChemP;
+      if (0.0<=Dnum) ChemP_MIN = state->chemical->chemical_potential;
+      else           ChemP_MAX = state->chemical->chemical_potential;
 
       if (fabs(Dnum)<1.0e-12) po = 1;
 
       if (myid0==Host_ID && 2<=level_stdout){
-	printf("loopN=%2d ChemP=%15.12f TZ=%15.12f Num_state=%15.12f\n",loopN,ChemP,TZ,Num_State); 
+	printf("loopN=%2d ChemP=%15.12f TZ=%15.12f Num_state=%15.12f\n",loopN,state->chemical->chemical_potential,TZ,Num_State);
       }
 
       loopN++;
@@ -4984,7 +4985,7 @@ static double DC_NonCol_owned(DCLNOState *state, char *mode,
         for (i=history->LO_TC[Mc_AN]; i<=history->HO_TC[Mc_AN]; i++){
 
         i1 = i - history->LO_TC[Mc_AN] + 2;
-	x = (eval_row_11[i] - ChemP)*Beta;
+	x = (eval_row_11[i] - state->chemical->chemical_potential)*Beta;
 	if (x<=-max_x) x = -max_x;
 	if (max_x<=x)  x = max_x;
 	FermiF = 1.0/(1.0 + exp(x));
@@ -5069,7 +5070,7 @@ static double DC_NonCol_owned(DCLNOState *state, char *mode,
       {
         double *eval_row_10=openmx_solver_field_row(&EVal,0,Mc_AN);
         for (i1=history->LO_TC[Mc_AN]; i1<=history->HO_TC[Mc_AN]; i1++){
-	x   = (eval_row_10[i1] - ChemP)*Beta;
+	x   = (eval_row_10[i1] - state->chemical->chemical_potential)*Beta;
 	if (x<=-max_x) x = -max_x;
 	if (max_x<=x)  x = max_x;
 	ko[i1] = 1.0/(1.0 + exp(x));  /* temporal use of ko */
@@ -5250,7 +5251,7 @@ static double DC_NonCol_owned(DCLNOState *state, char *mode,
   else if ( strcasecmp(mode,"dos")==0 ){
 
     if ( Eigen_MPI_flag==0 || (Eigen_MPI_flag==1 && myid2==0) ){ 
-      Save_DOS_NonCol(Residues,OLP0,EVal,history->LO_TC,history->HO_TC);
+      Save_DOS_NonCol(state->chemical, Residues,OLP0,EVal,history->LO_TC,history->HO_TC);
     }
   }
 
@@ -5295,7 +5296,7 @@ static double DC_NonCol_owned(DCLNOState *state, char *mode,
 
 
 
-void Save_DOS_Col(OpenMXSolverResidueView Residues, double ****OLP0, OpenMXSolverRealFieldView EVal, int **LO_TC, int **HO_TC)
+void Save_DOS_Col(const OpenMXChemicalPotentials *chemical, OpenMXSolverResidueView Residues, double ****OLP0, OpenMXSolverRealFieldView EVal, int **LO_TC, int **HO_TC)
 {
   int spin,Mc_AN,wanA,Gc_AN,tno1;
   int i1,i,j,MaxL,l,h_AN,Gh_AN,wanB,tno2;
@@ -5418,7 +5419,7 @@ void Save_DOS_Col(OpenMXSolverResidueView Residues, double ****OLP0, OpenMXSolve
       fprintf(fp_eig,"\n");
     }
     fprintf(fp_eig,"Spe_Num_CBasis>\n");
-    fprintf(fp_eig,"ChemP       %lf\n",ChemP);
+    fprintf(fp_eig,"ChemP       %lf\n",chemical->chemical_potential);
 
   }
 
@@ -5433,7 +5434,7 @@ void Save_DOS_Col(OpenMXSolverResidueView Residues, double ****OLP0, OpenMXSolve
 
 
 
-void Save_DOS_NonCol(OpenMXSolverResidueView Residues, double ****OLP0, OpenMXSolverRealFieldView EVal, int *LO_TC, int *HO_TC)
+void Save_DOS_NonCol(const OpenMXChemicalPotentials *chemical, OpenMXSolverResidueView Residues, double ****OLP0, OpenMXSolverRealFieldView EVal, int *LO_TC, int *HO_TC)
 {
   int spin,Mc_AN,wanA,Gc_AN,tno1;
   int i1,i2,i,j,MaxL,l,h_AN,Gh_AN,wanB,tno2;
@@ -5585,7 +5586,7 @@ void Save_DOS_NonCol(OpenMXSolverResidueView Residues, double ****OLP0, OpenMXSo
       fprintf(fp_eig,"\n");
     }
     fprintf(fp_eig,"Spe_Num_CBasis>\n");
-    fprintf(fp_eig,"ChemP       %lf\n",ChemP);
+    fprintf(fp_eig,"ChemP       %lf\n",chemical->chemical_potential);
 
     fprintf(fp_eig,"<SpinAngle\n");
     for (i=1; i<=atomnum; i++) {
@@ -5639,6 +5640,10 @@ OpenMXDCLNOState *Divide_Conquer_LNO_Bind_Resources(OpenMXCoreContext *core)
     state->node_comm = MPI_COMM_NULL;
     state->DC_NonCol_owned_firsttime = 1;
     state->DC_Col_owned_firsttime = 1;
+    if(!openmx_core_chemical_potentials(core,&state->chemical,error,sizeof(error))) {
+      fprintf(stderr,"OpenMX chemical potentials: %s\n",error);
+      abort();
+    }
     state->initialized = 1;
   }
   return state;

@@ -93,7 +93,7 @@ void solve_evp_real_( int *n1, int *n2, double *Cs, int *na_rows1, double *a, do
 void elpa_solve_evp_real_2stage_double_impl_( int *n1, int *n2, double *Cs, int *na_rows1, double *a, double *Ss, int *na_rows2, 
                                               int *nblk, int *na_cols1, int *mpi_comm_rows_int, int *mpi_comm_cols_int, int *mpiworld);
 
-static double Calc_DMmu_Cluster_collinear(int myid0,
+static double Calc_DMmu_Cluster_collinear(const OpenMXChemicalPotentials *chemical, int myid0,
                                         int numprocs0,
                                         int myid1,
                                         int numprocs1,
@@ -114,7 +114,7 @@ static double Calc_DMmu_Cluster_collinear(int myid0,
                                         int *SP_Atoms );
 
 
-double Cluster_DFT_Col_DMmu(
+double Cluster_DFT_Col_DMmu(OpenMXChemicalPotentials *chemical,
                    char *mode,
                    int SCF_iter,
                    int SpinP_switch,
@@ -727,11 +727,11 @@ double Cluster_DFT_Col_DMmu(
 
       do {
 
-        ChemP = 0.50*(ChemP_MAX + ChemP_MIN);
+        chemical->chemical_potential = 0.50*(ChemP_MAX + ChemP_MIN);
         Num_State = 0.0;
 
         for (i1=1; i1<=MaxN; i1++){
-          x = (ko[spin][i1] - ChemP)*Beta;
+          x = (ko[spin][i1] - chemical->chemical_potential)*Beta;
           if (x<=-max_x) x = -max_x;
           if (max_x<=x)  x = max_x;
           FermiF = 1.0/(1.0 + exp(x));
@@ -739,26 +739,26 @@ double Cluster_DFT_Col_DMmu(
         }
 
         Dnum = HOMO_XANES[spin] - Num_State;
-        if (0.0<=Dnum) ChemP_MIN = ChemP;
-        else           ChemP_MAX = ChemP;
+        if (0.0<=Dnum) ChemP_MIN = chemical->chemical_potential;
+        else           ChemP_MAX = chemical->chemical_potential;
         if (fabs(Dnum)<1.0e-14) po = 1;
 
         if (myid1==Host_ID && 2<=level_stdout){
-          printf("spin=%2d ChemP=%15.12f HOMO_XANES=%2d Num_state=%15.12f\n",spin,ChemP,HOMO_XANES[spin],Num_State); 
+          printf("spin=%2d ChemP=%15.12f HOMO_XANES=%2d Num_state=%15.12f\n",spin,chemical->chemical_potential,HOMO_XANES[spin],Num_State);
         }
 
         loopN++;
 
       } while (po==0 && loopN<1000); 
 
-      ChemP_XANES[spin] = ChemP;
+      chemical->xanes[spin] = chemical->chemical_potential;
       Cluster_HOMO[spin] = HOMO_XANES[spin];
 
     } /* spin */
 
     /* set ChemP */
 
-    ChemP = 0.5*(ChemP_XANES[0] + ChemP_XANES[1]); 
+    chemical->chemical_potential = 0.5*(chemical->xanes[0] + chemical->xanes[1]);
 
   } /* end of if (xanes_calc==1) */
 
@@ -780,12 +780,12 @@ double Cluster_DFT_Col_DMmu(
   
     do {
 
-      ChemP = 0.50*(ChemP_MAX + ChemP_MIN);
+      chemical->chemical_potential = 0.50*(ChemP_MAX + ChemP_MIN);
       Num_State = 0.0;
 
       for (spin=0; spin<=SpinP_switch; spin++){
         for (i1=1; i1<=MaxN; i1++){
-          x = (ko[spin][i1] - ChemP)*Beta*0.2;
+          x = (ko[spin][i1] - chemical->chemical_potential)*Beta*0.2;
           if (x<=-max_x) x = -max_x;
           if (max_x<=x)  x = max_x;
           FermiF = 1.0/(1.0 + exp(x));
@@ -796,12 +796,12 @@ double Cluster_DFT_Col_DMmu(
       }
 
       Dnum = (TZ - Num_State) - system_charge;
-      if (0.0<=Dnum) ChemP_MIN = ChemP;
-      else           ChemP_MAX = ChemP;
+      if (0.0<=Dnum) ChemP_MIN = chemical->chemical_potential;
+      else           ChemP_MAX = chemical->chemical_potential;
       if (fabs(Dnum)<1.0e-14) po = 1;
 
       if (myid1==Host_ID && 2<=level_stdout){
-        printf("ChemP=%15.12f TZ=%15.12f Num_state=%15.12f\n",ChemP,TZ,Num_State); 
+        printf("ChemP=%15.12f TZ=%15.12f Num_state=%15.12f\n",chemical->chemical_potential,TZ,Num_State);
       }
 
       loopN++;
@@ -819,14 +819,14 @@ double Cluster_DFT_Col_DMmu(
     do {
 
       if (loopN!=0){
-        ChemP = 0.50*(ChemP_MAX + ChemP_MIN);
+        chemical->chemical_potential = 0.50*(ChemP_MAX + ChemP_MIN);
       }
 
       Num_State = 0.0;
 
       for (spin=0; spin<=SpinP_switch; spin++){
         for (i1=1; i1<=MaxN; i1++){
-          x = (ko[spin][i1] - ChemP)*Beta;
+          x = (ko[spin][i1] - chemical->chemical_potential)*Beta;
           if (x<=-max_x) x = -max_x;
           if (max_x<=x)  x = max_x;
           FermiF = 1.0/(1.0 + exp(x));
@@ -837,12 +837,12 @@ double Cluster_DFT_Col_DMmu(
       }
 
       Dnum = (TZ - Num_State) - system_charge;
-      if (0.0<=Dnum) ChemP_MIN = ChemP;
-      else           ChemP_MAX = ChemP;
+      if (0.0<=Dnum) ChemP_MIN = chemical->chemical_potential;
+      else           ChemP_MAX = chemical->chemical_potential;
       if (fabs(Dnum)<1.0e-14) po = 1;
 
       if (myid1==Host_ID && 2<=level_stdout){
-        printf("ChemP=%15.12f TZ=%15.12f Num_state=%15.12f\n",ChemP,TZ,Num_State); 
+        printf("ChemP=%15.12f TZ=%15.12f Num_state=%15.12f\n",chemical->chemical_potential,TZ,Num_State);
       }
 
       loopN++;
@@ -851,7 +851,7 @@ double Cluster_DFT_Col_DMmu(
     while (po==0 && loopN<1000); 
 
     if (2<=level_stdout){
-      printf("  ChemP=%15.12f\n",ChemP);
+      printf("  ChemP=%15.12f\n",chemical->chemical_potential);
     }
 
     if (measure_time){
@@ -868,7 +868,7 @@ double Cluster_DFT_Col_DMmu(
                   for up and down spins
     ****************************************************/
 
-    time6 += Calc_DMmu_Cluster_collinear( myid0,numprocs0,myid1,numprocs1,myworld1,
+    time6 += Calc_DMmu_Cluster_collinear(chemical,  myid0,numprocs0,myid1,numprocs1,myworld1,
                                         size_H1,is2,ie2,MP,n,MPI_CommWD1,Comm_World_StartID1,
                                         CDM,ko,CDM1,Work1,EVec1,SP_NZeros,SP_Atoms);
 
@@ -908,7 +908,7 @@ double Cluster_DFT_Col_DMmu(
 
 
 
-double Calc_DMmu_Cluster_collinear(
+double Calc_DMmu_Cluster_collinear(const OpenMXChemicalPotentials *chemical,
     int myid0,
     int numprocs0,
     int myid1,
@@ -968,9 +968,9 @@ double Calc_DMmu_Cluster_collinear(
 
     if (flag_export_DM<2){
       if (xanes_calc==1) 
-        x = (ko[spin][k] - ChemP_XANES[spin])*Beta;
+        x = (ko[spin][k] - chemical->xanes[spin])*Beta;
       else 
-        x = (ko[spin][k] - ChemP)*Beta;
+        x = (ko[spin][k] - chemical->chemical_potential)*Beta;
 
       if (x<=-max_x) x = -max_x;
       if (max_x<=x)  x = max_x;
@@ -983,24 +983,24 @@ double Calc_DMmu_Cluster_collinear(
     /* Cutoff in the specified energy range */
     if ((flag_export_DM==1) && (flag_energy_range_DM==1) ){
       if (xanes_calc==1){ 
-        if ( ((ko[spin][k] - ChemP_XANES[spin]) < DM_energy_range[0]) || (DM_energy_range[1] < (ko[spin][k] - ChemP_XANES[spin])) ){
+        if ( ((ko[spin][k] - chemical->xanes[spin]) < DM_energy_range[0]) || (DM_energy_range[1] < (ko[spin][k] - chemical->xanes[spin])) ){
           FF[k] = 0;
         }
       }
       else{
-        if ( (DM_energy_range[0] < (ko[spin][k] - ChemP)) && ((ko[spin][k] - ChemP) < DM_energy_range[1]) ){
+        if ( (DM_energy_range[0] < (ko[spin][k] - chemical->chemical_potential)) && ((ko[spin][k] - chemical->chemical_potential) < DM_energy_range[1]) ){
           FF[k] = 0;
         }
       }
     }
     else if (flag_export_DM==2){ /* T-method */
       if (xanes_calc==1) {
-        x_lower = (ko[spin][k] - (ChemP_XANES[spin] + DM_energy_range[0]))*DM_tilde_Beta_lower;
-        x_upper = (ko[spin][k] - (ChemP_XANES[spin] + DM_energy_range[1]))*DM_tilde_Beta_upper;
+        x_lower = (ko[spin][k] - (chemical->xanes[spin] + DM_energy_range[0]))*DM_tilde_Beta_lower;
+        x_upper = (ko[spin][k] - (chemical->xanes[spin] + DM_energy_range[1]))*DM_tilde_Beta_upper;
       }
       else {
-        x_lower = (ko[spin][k] - (ChemP + DM_energy_range[0]))*DM_tilde_Beta_lower;
-        x_upper = (ko[spin][k] - (ChemP + DM_energy_range[1]))*DM_tilde_Beta_upper;
+        x_lower = (ko[spin][k] - (chemical->chemical_potential + DM_energy_range[0]))*DM_tilde_Beta_lower;
+        x_upper = (ko[spin][k] - (chemical->chemical_potential + DM_energy_range[1]))*DM_tilde_Beta_upper;
       }
 
       if (x_lower<=-max_x) x_lower = -max_x;

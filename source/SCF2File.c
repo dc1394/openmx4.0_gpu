@@ -26,7 +26,7 @@
 #define SCFOUT_VERSION 3
 /* ***/
 
-static void Output( FILE *fp, char *inputfile, double ******OLPpo, double *****OLPmo , const OpenMXElectronicViews *electronic);
+static void Output(const OpenMXChemicalPotentials *chemical,  FILE *fp, char *inputfile, double ******OLPpo, double *****OLPmo , const OpenMXElectronicViews *electronic);
 static void Calc_OLPpo( double ******OLPpo );
 void Calc_OLPmo(const OpenMXAtomicViews *atomic,  double *****OLPmo );
 
@@ -43,7 +43,7 @@ static void free_Position_all_matrix_elements();
 int order_max=1;
 /* ***/
 
-void SCF2File(const OpenMXAtomicViews *atomic, char *mode, char *inputfile, const OpenMXElectronicViews *electronic)
+void SCF2File(const OpenMXChemicalPotentials *chemical, const OpenMXAtomicViews *atomic, char *mode, char *inputfile, const OpenMXElectronicViews *electronic)
 {
   int Mc_AN,Gc_AN,tno0,tno1;
   int Cwan,h_AN,Gh_AN,Hwan;
@@ -179,7 +179,7 @@ void SCF2File(const OpenMXAtomicViews *atomic, char *mode, char *inputfile, cons
       /* matrix elements for momentum operator */
       Calc_OLPmo(atomic, OLPmo);
 
-      Output( fp, inputfile, OLPpo, OLPmo , electronic);
+      Output(chemical,  fp, inputfile, OLPpo, OLPmo , electronic);
 
       if (myid==Host_ID) fclose(fp);
     } 
@@ -273,7 +273,7 @@ void SCF2File(const OpenMXAtomicViews *atomic, char *mode, char *inputfile, cons
 
 
 
-void Output( FILE *fp, char *inputfile, double ******OLPpo, double *****OLPmo , const OpenMXElectronicViews *electronic)
+void Output(const OpenMXChemicalPotentials *chemical,  FILE *fp, char *inputfile, double ******OLPpo, double *****OLPmo , const OpenMXElectronicViews *electronic)
 {
   double *****CntH=electronic->CntH;
   double *****CntOLP=electronic->CntOLP;
@@ -817,7 +817,7 @@ void Output( FILE *fp, char *inputfile, double ******OLPpo, double *****OLPmo , 
         dipole moment (x, y, z) from back ground charge
     ****************************************************/
 
-    d_vec[0] = ChemP;
+    d_vec[0] = chemical->chemical_potential;
     d_vec[1] = E_Temp*eV2Hartree;
     d_vec[2] = dipole_moment[1][1]; 
     d_vec[3] = dipole_moment[1][2];

@@ -54,6 +54,10 @@ def main():
         "Set_Hamiltonian.c", "DFT.c", "Force.c", "Krylov.c", "Input_std.c", "outputfile1.c",
         "Total_Energy.c", "MD_pac.c", "iterout_md.c", "openmx.c", "Runtest.c", "openmx_api.c", "init.c", "iterout.c", "Stress.c",
         "Force_test.c", "Stress_test.c", "neb_run.c", "Make_InputFile_with_FinalCoord.c")]
+    # Chemical-potential ownership reaches output, CWF and analysis units.
+    for name in ('Band_DFT_Col.c', 'Band_DFT_Col_CWF.c', 'Band_DFT_Col_DMmu.c', 'Band_DFT_Col_Optical_ScaLAPACK.c', 'Band_DFT_Dosout.c', 'Band_DFT_MO.c', 'Band_DFT_NonCol.c', 'Band_DFT_NonCol_CWF.c', 'Band_DFT_NonCol_DMmu.c', 'Band_DFT_NonCol_GB.c', 'Band_DFT_NonCol_Optical.c', 'Band_DFT_kpath.c', 'Band_DFT_kpath_LNO.c', 'CWF2W90.c', 'Cluster_DFT_Col.c', 'Cluster_DFT_Col_CWF.c', 'Cluster_DFT_Col_DMmu.c', 'Cluster_DFT_Col_LNO.c', 'Cluster_DFT_Dosout.c', 'Cluster_DFT_NonCol.c', 'Cluster_DFT_NonCol_CWF.c', 'Cluster_DFT_NonCol_DMmu.c', 'Cluster_DFT_ON2.c', 'Cluster_DFT_Optical.c', 'Cluster_DFT_Optical_ScaLAPACK.c', 'DFT.c', 'Divide_Conquer.c', 'Divide_Conquer_Dosout.c', 'Divide_Conquer_LNO.c', 'EGAC_DFT.c', 'Generate_Wannier.c', 'Input_std.c', 'Krylov.c', 'MD_pac.c', 'Mixing_H.c', 'NBO_Krylov.c', 'OutData.c', 'OutData_Binary.c', 'Runtest.c', 'SCF2File.c', 'TRAN_Input_std.c', 'TRAN_Output_HKS.c', 'TRAN_RestartFile.c', 'Unfolding_Bands.c', 'iterout_md.c', 'openmx.c', 'openmx_api.c', 'openmx_globals.c', 'outputfile1.c'):
+        if not any(n == name for _, n in jobs):
+            jobs.append((cc, name))
     jobs += [(cxx, n) for n in (
         "openmx_gpu_dm.cu", "openmx_gpu_transform.cu", "openmx_mgpu_gemm.cu",
         "openmx_mgpu_runtime.cu")]

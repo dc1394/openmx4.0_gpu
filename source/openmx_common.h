@@ -6,6 +6,7 @@
 #include "openmx_core.h"
 #include "openmx_core_mixing.h"
 #include "openmx_core_energy.h"
+#include "openmx_core_chemical.h"
 #include "openmx_core_dynamics.h"
 #include "openmx_cluster_col_state.h"
 #include "openmx_cluster_noncol_state.h"
@@ -2349,7 +2350,7 @@ extern double *Number_of_Electrons_Species;
 extern double Grid_Origin[4];
 extern double dipole_moment[4][4];
 extern double TempPara[30][3],PrePara[30][3];
-extern double MD_TimeStep,ChemP,Beta;
+extern double MD_TimeStep,Beta;
 extern double CN_Error,E_Temp,Original_E_Temp,BCR,LNO_Occ_Cutoff,orderN_LNO_Buffer;
 extern double GP,GT,T,Weight,Cell_Volume;
 
@@ -2527,7 +2528,7 @@ extern char xanes_gs_file[YOUSO10];
 extern int xanes_gs_fileout;
 extern int xanes_calc;
 extern int HOMO_XANES[2];
-extern double ChemP_XANES[2];
+
 extern double xanes_energy_range;
 extern int xmcd_calc; // S. An
 
@@ -2887,10 +2888,10 @@ double Krylov(OpenMXKrylovState *state,char *mode,
               double *****CDM,
               double *****EDM,
               double Eele0[2], double Eele1[2]);
-double Divide_Conquer_Dosout(double *****Hks,
+double Divide_Conquer_Dosout(const OpenMXChemicalPotentials *chemical, double *****Hks,
                              double *****ImNL,
                              double ****OLP0);
-double EGAC_DFT( char *mode,
+double EGAC_DFT(OpenMXChemicalPotentials *chemical,  char *mode,
                  int SCF_iter,
                  int SpinP_switch,
                  double *****Hks,
@@ -2916,7 +2917,7 @@ void FT_VNA(OpenMXCoreContext *core, int device);
 void FT_ProductPAO(OpenMXCoreContext *core, int device);
 
 void Calc_OLPmo(const OpenMXAtomicViews *atomic, double *****OLPmo );
-void CWF2W90(int ***k_op, int *T_k_op, int **T_k_ID, 
+void CWF2W90(const OpenMXChemicalPotentials *chemical, int ***k_op, int *T_k_op, int **T_k_ID,
              double *T_KGrids1, double *T_KGrids2, 
              double *T_KGrids3, int *MP, int *order_GA);
 
@@ -3147,7 +3148,7 @@ void Calc_NAO_Band(
 		   double *****nh,
 		   double ****OLP);
 
-void Calc_NAO_Krylov(double *****Hks, double ****OLP0, double *****CDM);
+void Calc_NAO_Krylov(const OpenMXChemicalPotentials *chemical, double *****Hks, double ****OLP0, double *****CDM);
 /** NBO end **/
 
 
@@ -3190,7 +3191,7 @@ double Cluster_DFT_Col(OpenMXClusterColState *state, const OpenMXAtomicViews *at
                    double **EVec1,
                    double *Work1, const OpenMXElectronicViews *electronic);
 
-double Cluster_DFT_Col_LNO(
+double Cluster_DFT_Col_LNO(OpenMXChemicalPotentials *chemical,
                    char *mode,
                    int SCF_iter,
                    int SpinP_switch,
@@ -3258,7 +3259,7 @@ double Cluster_DFT_NonCol(OpenMXClusterNonColState *state, const OpenMXAtomicVie
 #endif
 
 
-double Calc_DM_Cluster_non_collinear_ScaLAPACK(
+double Calc_DM_Cluster_non_collinear_ScaLAPACK(const OpenMXChemicalPotentials *chemical,
     int calc_flag,
     int myid,
     int numprocs,
@@ -3292,12 +3293,12 @@ double Cluster_DFT_LNO(char *mode,
 		       double *Uexx,
 		       double Eele0[2], double Eele1[2]);
 
-double Cluster_DFT_Dosout( int SpinP_switch,
+double Cluster_DFT_Dosout(const OpenMXChemicalPotentials *chemical,  int SpinP_switch,
                            double *****nh,
                            double *****ImNL,
                            double ****CntOLP);
 
-double Cluster_DFT_ON2(char *mode,
+double Cluster_DFT_ON2(OpenMXChemicalPotentials *chemical, char *mode,
 		       int SCF_iter,
 		       int SpinP_switch,
 		       double *****nh,
@@ -3398,7 +3399,7 @@ double Band_DFT_NonCol(OpenMXBandNonColState *state,
 		    int *Comm_World_StartID2,
 		    MPI_Comm *MPI_CommWD2, const OpenMXElectronicViews *electronic);
 
-double Band_DFT_NonCol_CWF(
+double Band_DFT_NonCol_CWF(const OpenMXChemicalPotentials *chemical,
                     int SCF_iter,
                     int knum_i, int knum_j, int knum_k,
 		    int SpinP_switch,
@@ -3445,7 +3446,7 @@ double Band_DFT_NonCol_CWF(
                     int nkpath, int *n_perk, 
                     double ***kpath, char ***kname, const OpenMXElectronicViews *electronic);
 
-double Band_DFT_Col_CWF(
+double Band_DFT_Col_CWF(const OpenMXChemicalPotentials *chemical,
                     int SCF_iter,
                     int knum_i, int knum_j, int knum_k,
 		    int SpinP_switch,
@@ -3490,7 +3491,7 @@ double Band_DFT_Col_CWF(
                     double ***kpath, char ***kname, const OpenMXElectronicViews *electronic);
 
 
-double Cluster_DFT_Col_CWF(
+double Cluster_DFT_Col_CWF(const OpenMXChemicalPotentials *chemical,
                    int SCF_iter,
                    int SpinP_switch,
                    double **ko,
@@ -3521,7 +3522,7 @@ double Cluster_DFT_Col_CWF(
                    double *Work1, const OpenMXElectronicViews *electronic);
 
 
-double Cluster_DFT_NonCol_CWF(
+double Cluster_DFT_NonCol_CWF(const OpenMXChemicalPotentials *chemical,
                    int SCF_iter,
                    int SpinP_switch,
                    double *ko,
@@ -3684,7 +3685,7 @@ double ABC_BandCol(
   For generalized Bloch Theorem 
   (added by T. B. Prayitno and supervised by Prof. F. Ishii)
 */
-double Band_DFT_NonCol_GB(OpenMXBandEnergies *energies, int SCF_iter,
+double Band_DFT_NonCol_GB(OpenMXChemicalPotentials *chemical, OpenMXBandEnergies *energies, int SCF_iter,
 			  double *koSU,
 			  double *koSL,
 			  dcomplex **SU,
@@ -3702,32 +3703,32 @@ double Band_DFT_NonCol_GB(OpenMXBandEnergies *energies, int SCF_iter,
 void k_inversion(int i,  int j,  int k, 
                  int mi, int mj, int mk, 
                  int *ii, int *ij, int *ik ); 
-void Band_DFT_kpath( int nkpath, int *n_perk,
+void Band_DFT_kpath(const OpenMXChemicalPotentials *chemical,  int nkpath, int *n_perk,
                      double ***kpath, char ***kname,
                      int SpinP_switch,
                      double *****nh,
                      double *****ImNL,
                      double ****CntOLP);
 
-void Band_DFT_kpath_LNO( int nkpath, int *n_perk,
+void Band_DFT_kpath_LNO(const OpenMXChemicalPotentials *chemical,  int nkpath, int *n_perk,
                          double ***kpath, char ***kname, 
                          int  SpinP_switch, 
                          double *****nh,
                          double *****ImNL,
                          double ****CntOLP, const OpenMXLocalBasisViews *local_basis);
 
-void Band_DFT_MO( int nkpoint, double **kpoint,
+void Band_DFT_MO(const OpenMXChemicalPotentials *chemical,  int nkpoint, double **kpoint,
                   int SpinP_switch, 
                   double *****nh,
                   double *****ImNL,
                   double ****CntOLP);
-double Band_DFT_Dosout( int knum_i, int knum_j, int knum_k,
+double Band_DFT_Dosout(OpenMXChemicalPotentials *chemical,  int knum_i, int knum_j, int knum_k,
                         int SpinP_switch,
                         double *****nh,
                         double *****ImNL,
                         double ****CntOLP , const OpenMXElectronicViews *electronic);
 
-void Unfolding_Bands(
+void Unfolding_Bands(const OpenMXChemicalPotentials *chemical,
 		     int SpinP_switch, 
 		     double *****nh,
 		     double *****ImNL,
@@ -3741,8 +3742,8 @@ int SEQ(char str1[YOUSO10], char str2[YOUSO10]);
 void Generation_ATV(int CpyCell);
 char *string_tolower(char *buf, char *buf1);
 void iterout(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, int iter,double drctime,char fileE[YOUSO10],char fileDRC[YOUSO10]);
-void iterout_md(const OpenMXDynamicsState *dynamics, const OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter,double drctime,char fileSE[YOUSO10]);
-void outputfile1(const OpenMXThermodynamicEnergies *thermo, const OpenMXMixingHistory *history, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int f_switch, int MD_iter, int orbitalOpt_iter,
+void iterout_md(const OpenMXChemicalPotentials *chemical, const OpenMXDynamicsState *dynamics, const OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter,double drctime,char fileSE[YOUSO10]);
+void outputfile1(const OpenMXChemicalPotentials *chemical, const OpenMXThermodynamicEnergies *thermo, const OpenMXMixingHistory *history, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int f_switch, int MD_iter, int orbitalOpt_iter,
                  int Cnt_Now, int SCF_iter, char fname[YOUSO10],
                  double ChemP_e0[2], double orbital_norm);
 void init(OpenMXCoreContext *core);
@@ -3957,10 +3958,10 @@ void Allocate_Arrays(int wherefrom);
 void Allocate_Arrays_with_context(int wherefrom, OpenMXCoreContext *core);
 void Free_Arrays(int dokokara);
 void Free_Arrays_with_context(int wherefrom, OpenMXCoreContext *core);
-double OutData(const OpenMXAtomicViews *atomic, char *inputfile, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
+double OutData(const OpenMXChemicalPotentials *chemical, const OpenMXAtomicViews *atomic, char *inputfile, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
 void init_alloc_first();
 int File_CntCoes(char *mode, const OpenMXLocalBasisViews *local_basis);
-void SCF2File(const OpenMXAtomicViews *atomic, char *mode, char *inputfile, const OpenMXElectronicViews *electronic);
+void SCF2File(const OpenMXChemicalPotentials *chemical, const OpenMXAtomicViews *atomic, char *mode, char *inputfile, const OpenMXElectronicViews *electronic);
 void Determine_Cell_from_ECutoff(double tv[4][4], double ECut);
 
 /*
@@ -4861,7 +4862,7 @@ void Calc_optical_col_2(int n,double sum_weights);
 void Calc_optical_noncol_2(int n,double sum_weights); 
 
 
-double Band_DFT_Col_Optical_ScaLAPACK(const OpenMXAtomicViews *atomic, int SCF_iter,
+double Band_DFT_Col_Optical_ScaLAPACK(OpenMXChemicalPotentials *chemical, const OpenMXAtomicViews *atomic, int SCF_iter,
 				      int knum_i, int knum_j, int knum_k,
 				      int SpinP_switch,
 				      double *****nh,
@@ -4880,7 +4881,7 @@ double Band_DFT_Col_Optical_ScaLAPACK(const OpenMXAtomicViews *atomic, int SCF_i
 				      double *EDM1,
 				      dcomplex **H, const OpenMXLocalBasisViews *local_basis);
 
-double Band_DFT_NonCol_Optical(const OpenMXAtomicViews *atomic, int SCF_iter,
+double Band_DFT_NonCol_Optical(OpenMXChemicalPotentials *chemical, const OpenMXAtomicViews *atomic, int SCF_iter,
 			       double *koS,
 			       dcomplex **S,
 			       int knum_i, int knum_j, int knum_k,
@@ -4892,7 +4893,7 @@ double Band_DFT_NonCol_Optical(const OpenMXAtomicViews *atomic, int SCF_iter,
 			       double *****EDM,
 			       double Eele0[2], double Eele1[2], const OpenMXLocalBasisViews *local_basis);
 
-double Cluster_DFT_Optical(const OpenMXAtomicViews *atomic, char *mode,
+double Cluster_DFT_Optical(OpenMXChemicalPotentials *chemical, const OpenMXAtomicViews *atomic, char *mode,
 			   int SCF_iter,
 			   int SpinP_switch,
 			   double ***Cluster_ReCoes,
@@ -4907,7 +4908,7 @@ double Cluster_DFT_Optical(const OpenMXAtomicViews *atomic, char *mode,
 			   double *Uexx,
 			   double Eele0[2], double Eele1[2], const OpenMXLocalBasisViews *local_basis);
 
-double Cluster_DFT_Optical_ScaLAPACK(const OpenMXAtomicViews *atomic, char *mode,
+double Cluster_DFT_Optical_ScaLAPACK(OpenMXChemicalPotentials *chemical, const OpenMXAtomicViews *atomic, char *mode,
                    int SCF_iter,
                    int SpinP_switch,
                    double **Cluster_ko,

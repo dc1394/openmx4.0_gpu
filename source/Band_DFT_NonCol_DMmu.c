@@ -103,7 +103,7 @@ static void Construct_Band_Ms( int cpx_flag, double ****Mat, double *M1, dcomple
                                int *MP, double k1, double k2, double k3);
 
 
-static double Calc_DMmu_Band_non_collinear(
+static double Calc_DMmu_Band_non_collinear(const OpenMXChemicalPotentials *chemical,
     int calc_flag,
     int store_flag,
     int myid0,
@@ -131,7 +131,7 @@ static double Calc_DMmu_Band_non_collinear(
 
 
 #pragma GCC optimize("O2")
-double Band_DFT_NonCol_DMmu(
+double Band_DFT_NonCol_DMmu(OpenMXChemicalPotentials *chemical,
                     int SCF_iter,
                     int knum_i, int knum_j, int knum_k,
                     int SpinP_switch,
@@ -1131,13 +1131,13 @@ double Band_DFT_NonCol_DMmu(
 
     loop_num++;
 
-    ChemP = 0.50*(ChemP_MAX + ChemP_MIN);
+    chemical->chemical_potential = 0.50*(ChemP_MAX + ChemP_MIN);
     Num_State = 0.0;
 
     for (kloop=0; kloop<T_knum; kloop++){
       for (l=1; l<=MaxN; l++){
 
-        x = (EIGEN[0][kloop][l] - ChemP)*Beta*0.2;
+        x = (EIGEN[0][kloop][l] - chemical->chemical_potential)*Beta*0.2;
 
         if (x<=-x_cut) x = -x_cut;
         if (x_cut<=x)  x =  x_cut;
@@ -1149,8 +1149,8 @@ double Band_DFT_NonCol_DMmu(
     Num_State = Num_State/sum_weights;
     Dnum = TZ - Num_State - system_charge;
 
-    if (0.0<=Dnum) ChemP_MIN = ChemP;
-    else           ChemP_MAX = ChemP;
+    if (0.0<=Dnum) ChemP_MIN = chemical->chemical_potential;
+    else           ChemP_MAX = chemical->chemical_potential;
     if (fabs(Dnum)<10e-14) po = 1;
 
   }
@@ -1168,7 +1168,7 @@ double Band_DFT_NonCol_DMmu(
     loop_num++;
 
     if (loop_num!=1){
-      ChemP = 0.50*(ChemP_MAX + ChemP_MIN);
+      chemical->chemical_potential = 0.50*(ChemP_MAX + ChemP_MIN);
     }
 
     Num_State = 0.0;
@@ -1176,7 +1176,7 @@ double Band_DFT_NonCol_DMmu(
     for (kloop=0; kloop<T_knum; kloop++){
       for (l=1; l<=MaxN; l++){
 
-        x = (EIGEN[0][kloop][l] - ChemP)*Beta;
+        x = (EIGEN[0][kloop][l] - chemical->chemical_potential)*Beta;
 
         if (x<=-x_cut) x = -x_cut;
         if (x_cut<=x)  x =  x_cut;
@@ -1190,14 +1190,14 @@ double Band_DFT_NonCol_DMmu(
     Num_State = Num_State/sum_weights;
     Dnum = TZ - Num_State - system_charge;
 
-    if (0.0<=Dnum) ChemP_MIN = ChemP;
-    else           ChemP_MAX = ChemP;
+    if (0.0<=Dnum) ChemP_MIN = chemical->chemical_potential;
+    else           ChemP_MAX = chemical->chemical_potential;
     if (fabs(Dnum)<10e-14) po = 1;
   }
   while (po==0 && loop_num<2000);
 
   /* for the NEGF calculation */
-  if (Solver==4 && TRAN_ChemP_Band==0) ChemP = 0.5*(ChemP_e[0]+ChemP_e[1]);
+  if (Solver==4 && TRAN_ChemP_Band==0) chemical->chemical_potential = 0.5*(ChemP_e[0]+ChemP_e[1]);
 
   if (measure_time){
     dtime(&Etime);
@@ -1255,7 +1255,7 @@ double Band_DFT_NonCol_DMmu(
     k3 = T_KGrids3[kloop];
 
     /* calculate DM, iDM  */
-    Calc_DMmu_Band_non_collinear( 1,1,
+    Calc_DMmu_Band_non_collinear(chemical,  1,1,
                                 myid0,myid2,size_H1,
                                 is2,ie2,MP,n,n2,MaxN,k1,k2,k3, 
                                 CDM,iCDM,EIGEN[0][kloop],
@@ -1633,7 +1633,7 @@ double Band_DFT_NonCol_DMmu(
 
       /* calculate DM and iDM */
 
-      Calc_DMmu_Band_non_collinear( (kloop0<num_kloop0),0,
+      Calc_DMmu_Band_non_collinear(chemical,  (kloop0<num_kloop0),0,
                                   myid0,myid2,size_H1,
                                   is2,ie2,MP,n,n2,MaxN,k1,k2,k3, 
                                   CDM,iCDM,EIGEN[0][kloop],
@@ -1649,7 +1649,7 @@ double Band_DFT_NonCol_DMmu(
 
     /* store DM and iDM */
 
-    Calc_DMmu_Band_non_collinear( 0,1,
+    Calc_DMmu_Band_non_collinear(chemical,  0,1,
                                 myid0,myid2,size_H1,
                                 is2,ie2,MP,n,n2,MaxN,k1,k2,k3, 
                                 CDM,iCDM,EIGEN[0][kloop],
@@ -2011,7 +2011,7 @@ void Construct_Band_Ms( int cpx_flag, double ****Mat, double *M1, dcomplex *Ms,
 
 
 
-double Calc_DMmu_Band_non_collinear(
+double Calc_DMmu_Band_non_collinear(const OpenMXChemicalPotentials *chemical,
     int calc_flag,
     int store_flag,
     int myid0,
@@ -2070,7 +2070,7 @@ double Calc_DMmu_Band_non_collinear(
     for (k=is2[myid2]; k<=ie2[myid2]; k++){
 
       if (flag_export_DM<2){
-        x = (ko[k] - ChemP)*Beta;
+        x = (ko[k] - chemical->chemical_potential)*Beta;
         if (x<=-max_x) x = -max_x;
         if (max_x<=x)  x = max_x;
         FermiF = FermiFunc_NC(x,k); 
@@ -2081,13 +2081,13 @@ double Calc_DMmu_Band_non_collinear(
       eig = ko[k];
 
       if ((flag_export_DM==1) && (flag_energy_range_DM==1) ){
-        if((eig - ChemP < DM_energy_range[0])||(DM_energy_range[1] < eig - ChemP)){
+        if((eig - chemical->chemical_potential < DM_energy_range[0])||(DM_energy_range[1] < eig - chemical->chemical_potential)){
             tmp1 = 0.0;
         }
       }
       else if (flag_export_DM==2){ /* T-method */
-        x_lower = (eig - (ChemP + DM_energy_range[0]))*DM_tilde_Beta_lower;
-        x_upper = (eig - (ChemP + DM_energy_range[1]))*DM_tilde_Beta_upper;
+        x_lower = (eig - (chemical->chemical_potential + DM_energy_range[0]))*DM_tilde_Beta_lower;
+        x_upper = (eig - (chemical->chemical_potential + DM_energy_range[1]))*DM_tilde_Beta_upper;
 
         if (x_lower<=-max_x) x_lower = -max_x;
         if (x_upper<=-max_x) x_upper = -max_x;

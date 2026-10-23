@@ -1,3 +1,4 @@
+#include "openmx_core_chemical.h"
 #include "fixtures/native_resources/sdk_model.hpp"
 #include "openmx_cluster_noncol_state.h"
 #include "openmx_core_energy.h"
@@ -89,10 +90,18 @@ void populate(ClusterNonColState* s){
 #endif
 }
 }
+OpenMXChemicalPotentials* owned_chemical(OpenMXCoreContext* c) {
+  OpenMXChemicalPotentials* out=nullptr;char error[256];
+  check(openmx_core_chemical_potentials(c,&out,error,sizeof(error)),error);return out;
+}
 int main(){try{
  for(int cycle=0;cycle<100;cycle++){
   event_count=0;queries=0;auto first=calculation();auto second=calculation();
   auto* a=Cluster_DFT_NonCol_Bind_Resources(first.get());auto* b=Cluster_DFT_NonCol_Bind_Resources(second.get());
+    check(a->chemical==owned_chemical(first.get()) && b->chemical==owned_chemical(second.get()) && a->chemical!=b->chemical,
+          "native solver borrowed another calculation's chemical potentials");
+    a->chemical->chemical_potential=.125;a->chemical->xanes[0]=1.5;
+    b->chemical->chemical_potential=-.25;b->chemical->xanes[1]=2.5;
   check(a!=b && a->resources!=b->resources && !queries && !live,"binding shared metadata/touched SDK");
   check(a->firsttime==1 && a->refine.iterations==-1 && b->refine.iterations==-1,"initial sentinels changed");
   policy_iterations=2;openmx_set_fp32_enabled(1);ClusterNonCol_RefineConfigure(a);policy_iterations=1;ClusterNonCol_RefineConfigure(b);
@@ -109,7 +118,10 @@ int main(){try{
 #endif
   Cluster_DFT_NonCol_Release_GPU_Solver(a);ClusterNonCol_ReleaseCaches(a);ClusterNonCol_ReleaseCaches(a);
   check(!openmx_core_native_resource_count(a->resources) && a->refine.iterations==-1,"explicit cleanup left resources/policy");
-  openmx::test::fail_allocation_after(0);openmx_core_native_resources_clear(first.get());openmx::test::fail_allocation_after(-1);
+  openmx::test::fail_allocation_after(0);openmx_core_native_resources_clear(first.get());
+    check(owned_chemical(first.get())->chemical_potential==0 && owned_chemical(first.get())->xanes[0]==0 &&
+          b->chemical->chemical_potential==-.25 && b->chemical->xanes[1]==2.5,
+          "clearing a calculation retained chemical potentials or reset another calculation");openmx::test::fail_allocation_after(-1);
   check(openmx_core_native_resource_count(b->resources)==other && b->refine.iterations==1,"clearing first touched second state");
   event_count=0;openmx::test::fail_allocation_after(0);openmx_core_finish(second.get());openmx::test::fail_allocation_after(-1);check(!live,"native teardown leaked");
   openmx_core_finish(second.get());auto* fresh=Cluster_DFT_NonCol_Bind_Resources(second.get());check(fresh->refine.iterations==-1 && fresh->firsttime==1,"new input inherited metadata");

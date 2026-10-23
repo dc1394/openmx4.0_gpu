@@ -694,6 +694,14 @@ static int run_openmx(int argc, char *argv[], OpenMXCoreContext *core)
 
   init(core);
 
+
+  OpenMXChemicalPotentials *chemical=NULL;
+  char chemical_error[256];
+  if(!openmx_core_chemical_potentials(core,&chemical,chemical_error,sizeof(chemical_error))) {
+    fprintf(stderr,"OpenMX chemical potentials: %s\n",chemical_error);
+    MPI_Abort(mpi_comm_level1,1);
+    abort();
+  }
   OpenMXDynamicsState *dynamics=NULL;
   char dynamics_error[256];
   if(!openmx_core_dynamics(core,&dynamics,dynamics_error,sizeof(dynamics_error))) {
@@ -758,7 +766,7 @@ static int run_openmx(int argc, char *argv[], OpenMXCoreContext *core)
   if (ForceConsistency_flag==1){
 
     Check_Force(argv,core);
-    CompTime[myid][20] = OutData(atomic, argv[1], OpenMX_ElectronicMatricesAt(core,mpi_comm_level1,&electronic_storage), OpenMX_LocalBasisAt(core,mpi_comm_level1,&local_basis_storage));
+    CompTime[myid][20] = OutData(chemical, atomic, argv[1], OpenMX_ElectronicMatricesAt(core,mpi_comm_level1,&electronic_storage), OpenMX_LocalBasisAt(core,mpi_comm_level1,&local_basis_storage));
     Merge_LogFile(argv[1]);
     Free_Arrays_with_context(0,core);
     openmx_core_finish(core);
@@ -796,7 +804,7 @@ static int run_openmx(int argc, char *argv[], OpenMXCoreContext *core)
 
   if (StressConsistency_flag==1){
     Check_Stress(argv,core);
-    CompTime[myid][20] = OutData(atomic, argv[1], OpenMX_ElectronicMatricesAt(core,mpi_comm_level1,&electronic_storage), OpenMX_LocalBasisAt(core,mpi_comm_level1,&local_basis_storage));
+    CompTime[myid][20] = OutData(chemical, atomic, argv[1], OpenMX_ElectronicMatricesAt(core,mpi_comm_level1,&electronic_storage), OpenMX_LocalBasisAt(core,mpi_comm_level1,&local_basis_storage));
     Merge_LogFile(argv[1]);
     Free_Arrays_with_context(0,core);
     openmx_core_finish(core);
@@ -862,7 +870,7 @@ static int run_openmx(int argc, char *argv[], OpenMXCoreContext *core)
 
   if ( TRAN_output_hks ) {
      /* left is dummy */
-     TRAN_RestartFile(mpi_comm_level1, "write","left",filepath,TRAN_hksoutfilename, OpenMX_ElectronicMatricesAt(core,mpi_comm_level1,&electronic_storage));
+     TRAN_RestartFile(chemical, mpi_comm_level1, "write","left",filepath,TRAN_hksoutfilename, OpenMX_ElectronicMatricesAt(core,mpi_comm_level1,&electronic_storage));
   }
 
   /****************************************************
@@ -938,14 +946,14 @@ static int run_openmx(int argc, char *argv[], OpenMXCoreContext *core)
                   Making of output files
   ****************************************************/
 
-  CompTime[myid][20] = OutData(atomic, argv[1], OpenMX_ElectronicMatricesAt(core,mpi_comm_level1,&electronic_storage), OpenMX_LocalBasisAt(core,mpi_comm_level1,&local_basis_storage));
+  CompTime[myid][20] = OutData(chemical, atomic, argv[1], OpenMX_ElectronicMatricesAt(core,mpi_comm_level1,&electronic_storage), OpenMX_LocalBasisAt(core,mpi_comm_level1,&local_basis_storage));
 
   /****************************************************
     write connectivity, Hamiltonian, overlap, density
     matrices, and etc. to a file, filename.scfout 
   ****************************************************/
 
-  if (HS_fileout==1) SCF2File(atomic, "write",argv[1], OpenMX_ElectronicMatricesAt(core,mpi_comm_level1,&electronic_storage));
+  if (HS_fileout==1) SCF2File(chemical, atomic, "write",argv[1], OpenMX_ElectronicMatricesAt(core,mpi_comm_level1,&electronic_storage));
 
   /* elapsed time */
 

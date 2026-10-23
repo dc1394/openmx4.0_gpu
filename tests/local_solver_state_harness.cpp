@@ -1,3 +1,4 @@
+#include "openmx_core_chemical.h"
 #include "fixtures/native_resources/sdk_model.hpp"
 #include "openmx_complex.h"
 #include "openmx_core_mixing.h"
@@ -140,6 +141,10 @@ void populate(LocalState* s,int device){
 #endif
 }
 }
+OpenMXChemicalPotentials* owned_chemical(OpenMXCoreContext* c) {
+  OpenMXChemicalPotentials* out=nullptr;char error[256];
+  check(openmx_core_chemical_potentials(c,&out,error,sizeof(error)),error);return out;
+}
 int main(int argc,char** argv){
 #if LOCAL_MPI_REAL
     MPI_Init(&argc,&argv);
@@ -148,6 +153,10 @@ try{
     for(int cycle=0;cycle<100;cycle++){
         event_count=0;queries=0;auto first=calculation();auto second=calculation();
         auto* a=local_bind(first.get());auto* b=local_bind(second.get());
+    check(a->chemical==owned_chemical(first.get()) && b->chemical==owned_chemical(second.get()) && a->chemical!=b->chemical,
+          "native solver borrowed another calculation's chemical potentials");
+    a->chemical->chemical_potential=.125;a->chemical->xanes[0]=1.5;
+    b->chemical->chemical_potential=-.25;b->chemical->xanes[1]=2.5;
         check(a!=b && a->resources!=b->resources && !queries && !live,"bind shared state or touched SDK");sentinel(a);sentinel(b);
         populate(a,1);populate(b,2);auto count_b=openmx_core_native_resource_count(b->resources);auto comms=live_comms.size();
         a->initialized=71;openmx::test::fail_allocation_after(0);auto* same=local_bind(first.get());openmx::test::fail_allocation_after(-1);
@@ -156,7 +165,10 @@ try{
         check(!openmx_core_native_resource_count(a->resources),"direct cleanup retained resources");
         check(openmx_core_native_resource_count(b->resources)==count_b && current_device==7,"cleanup affected another owner/device");
         check(live_comms.size()==comms/2,"cleanup retained/freed another owner's communicator");
-        event_count=0;openmx::test::fail_allocation_after(0);openmx_core_native_resources_clear(first.get());openmx::test::fail_allocation_after(-1);
+        event_count=0;openmx::test::fail_allocation_after(0);openmx_core_native_resources_clear(first.get());
+    check(owned_chemical(first.get())->chemical_potential==0 && owned_chemical(first.get())->xanes[0]==0 &&
+          b->chemical->chemical_potential==-.25 && b->chemical->xanes[1]==2.5,
+          "clearing a calculation retained chemical potentials or reset another calculation");openmx::test::fail_allocation_after(-1);
         check(openmx_core_native_resource_count(b->resources)==count_b,"clear drained another owner");openmx_core_native_resources_clear(first.get());
         auto* fresh=local_bind(first.get());sentinel(fresh);check(openmx_core_native_resource_count(fresh->resources)==0,"next input inherited resources");
         // A partially initialized object still falls back to exact-owner drain.

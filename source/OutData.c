@@ -35,29 +35,29 @@ char write_mode[20];
 char read_mode[20];
 char append_mode[20];
 
-static void out_density();
-static void out_Veff();
-static void out_Vhart();
-static void out_Vna();
-static void out_Vxc();
+static void out_density(const OpenMXChemicalPotentials *chemical);
+static void out_Veff(const OpenMXChemicalPotentials *chemical);
+static void out_Vhart(const OpenMXChemicalPotentials *chemical);
+static void out_Vna(const OpenMXChemicalPotentials *chemical);
+static void out_Vxc(const OpenMXChemicalPotentials *chemical);
 static void out_grid();
 static void out_atomxyz();
 static void out_atomxsf();
 static void out_coordinates_bulk();
-static void out_Cluster_MO();
-static void out_CWF_Col();
-static void out_CWF_NonCol();
-static void out_Cluster_NC_MO();
-static void out_Bulk_MO();
-static void out_LNAO();
+static void out_Cluster_MO(const OpenMXChemicalPotentials *chemical);
+static void out_CWF_Col(const OpenMXChemicalPotentials *chemical);
+static void out_CWF_NonCol(const OpenMXChemicalPotentials *chemical);
+static void out_Cluster_NC_MO(const OpenMXChemicalPotentials *chemical);
+static void out_Bulk_MO(const OpenMXChemicalPotentials *chemical);
+static void out_LNAO(const OpenMXChemicalPotentials *chemical);
 static void out_LNBO();
-static void out_Cluster_NBO(); /* added by T.Ohwaki */
+static void out_Cluster_NBO(const OpenMXChemicalPotentials *chemical); /* added by T.Ohwaki */
 static void out_OrbOpt(const OpenMXAtomicViews *atomic, char *inputfile, const OpenMXLocalBasisViews *local_basis);
-static void out_Partial_Charge_Density(const OpenMXElectronicViews *electronic);
+static void out_Partial_Charge_Density(const OpenMXChemicalPotentials *chemical, const OpenMXElectronicViews *electronic);
 static void Set_Partial_Density_Grid(double *****CDM);
-static void Print_CubeTitle(FILE *fp, int EigenValue_flag, double EigenValue, double EigenValue2);
+static void Print_CubeTitle(const OpenMXChemicalPotentials *chemical, FILE *fp, int EigenValue_flag, double EigenValue, double EigenValue2);
 static void Print_CubeTitle2(FILE *fp,int N1,int N2,int N3,double *sc_org,int atomnum_sc,int *a_sc);
-static void Print_CubeTitle_CWF(FILE *fp, int EigenValue_flag, double EigenValue, double EigenValue2);
+static void Print_CubeTitle_CWF(const OpenMXChemicalPotentials *chemical, FILE *fp, int EigenValue_flag, double EigenValue, double EigenValue2);
 static void Print_CubeData(FILE *fp, char fext[], double *data, double *data1,char *op);
 static void Print_CubeCData_MO(FILE *fp,dcomplex *data,char *op);
 static void Print_CubeData_MO(FILE *fp, double *data, double *data1,char *op);
@@ -70,7 +70,7 @@ static void Print_VectorData_bin(FILE *fp, char fext[],
                                  double *data0, double *data1,
                                  double *data2, double *data3);
 
-double OutData(const OpenMXAtomicViews *atomic, char *inputfile, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
+double OutData(const OpenMXChemicalPotentials *chemical, const OpenMXAtomicViews *atomic, char *inputfile, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 {
   char operate[YOUSO10];
   int i,c,fd;
@@ -108,21 +108,21 @@ double OutData(const OpenMXAtomicViews *atomic, char *inputfile, const OpenMXEle
   out_atomxyz();
 
   if (1<=level_fileout){
-    out_density(); 
-    out_Veff();
-    out_Vhart(); 
+    out_density(chemical);
+    out_Veff(chemical);
+    out_Vhart(chemical);
   }
 
   if (2<=level_fileout){
     out_grid();
-    if (ProExpn_VNA==0) out_Vna();
-    out_Vxc();
+    if (ProExpn_VNA==0) out_Vna(chemical);
+    out_Vxc(chemical);
   }
 
   if (specified_system!=0) out_coordinates_bulk();
 
   if (LNAO_calc_flag==1){
-    out_LNAO();
+    out_LNAO(chemical);
   }
 
   if (LNBO_calc_flag==1){
@@ -132,11 +132,11 @@ double OutData(const OpenMXAtomicViews *atomic, char *inputfile, const OpenMXEle
   if (CWF_fileout_flag==1){
 
     if ( SpinP_switch==0 || SpinP_switch==1 ){
-      out_CWF_Col();
+      out_CWF_Col(chemical);
     }
 
     else if ( SpinP_switch==3 ){
-      out_CWF_NonCol();
+      out_CWF_NonCol(chemical);
     }
   }
 
@@ -144,13 +144,13 @@ double OutData(const OpenMXAtomicViews *atomic, char *inputfile, const OpenMXEle
 
     /* spin non-collinear */
     if (SpinP_switch==3)
-      out_Cluster_NC_MO();
+      out_Cluster_NC_MO(chemical);
     /* spin collinear */
     else
-      out_Cluster_MO();
+      out_Cluster_MO(chemical);
   }
   else if (MO_fileout==1 && specified_system!=0){
-    out_Bulk_MO();
+    out_Bulk_MO(chemical);
   }
 
   if (Cnt_switch==1){
@@ -159,7 +159,7 @@ double OutData(const OpenMXAtomicViews *atomic, char *inputfile, const OpenMXEle
 
   /* NBO (addoed by T.Ohwaki) */
 
-  if (NHO_fileout==1 || NBO_fileout==1) out_Cluster_NBO();
+  if (NHO_fileout==1 || NBO_fileout==1) out_Cluster_NBO(chemical);
 
   /*************************************************
      partial charge density for STM simulations 
@@ -170,7 +170,7 @@ double OutData(const OpenMXAtomicViews *atomic, char *inputfile, const OpenMXEle
   *************************************************/
 
   if ( cal_partial_charge ){
-    out_Partial_Charge_Density(electronic);
+    out_Partial_Charge_Density(chemical, electronic);
   }
 
   /* divide-conquer, gdc, or Krylov */
@@ -219,7 +219,7 @@ double OutData(const OpenMXAtomicViews *atomic, char *inputfile, const OpenMXEle
 }
 
 
-void out_density()
+void out_density(const OpenMXChemicalPotentials *chemical)
 {
   int ct_AN,spe,i1,i2,i3,GN,i,j,k;
   int MN,fd;
@@ -262,7 +262,7 @@ void out_density()
 
     setvbuf(fp,buf,_IOFBF,fp_bsize);  /* setvbuf */
 
-    if (myid==Host_ID) Print_CubeTitle(fp,0,0.0,0.0);
+    if (myid==Host_ID) Print_CubeTitle(chemical, fp,0,0.0,0.0);
 
     for (MN=0; MN<My_NumGridB_AB; MN++){
       ADensity_Grid_B[MN] = Density_Grid_B[0][MN] 
@@ -287,7 +287,7 @@ void out_density()
 
     setvbuf(fp,buf,_IOFBF,fp_bsize);  /* setvbuf */
 
-    if (myid==Host_ID) Print_CubeTitle(fp,0,0.0,0.0);
+    if (myid==Host_ID) Print_CubeTitle(chemical, fp,0,0.0,0.0);
 
     if (SpinP_switch==0) {
       for (MN=0; MN<My_NumGridB_AB; MN++){
@@ -317,7 +317,7 @@ void out_density()
 
     if ((fp = fopen(fname,write_mode)) != NULL){
 
-      if (myid==Host_ID) Print_CubeTitle(fp,0,0.0,0.0);
+      if (myid==Host_ID) Print_CubeTitle(chemical, fp,0,0.0,0.0);
       Print_CubeData(fp,file2,Density_Grid_B[0],NULL,NULL);
     }
     else{
@@ -333,7 +333,7 @@ void out_density()
 
     if ((fp = fopen(fname,write_mode)) != NULL){
 
-      if (myid==Host_ID) Print_CubeTitle(fp,0,0.0,0.0);
+      if (myid==Host_ID) Print_CubeTitle(chemical, fp,0,0.0,0.0);
       Print_CubeData(fp,file3,Density_Grid_B[1],NULL,NULL);
     }
     else{
@@ -349,7 +349,7 @@ void out_density()
 
     if ((fp = fopen(fname,write_mode)) != NULL){
 
-      if (myid==Host_ID) Print_CubeTitle(fp,0,0.0,0.0);
+      if (myid==Host_ID) Print_CubeTitle(chemical, fp,0,0.0,0.0);
       Print_CubeData(fp,file4,Density_Grid_B[0],Density_Grid_B[1],"diff");
     }
     else{
@@ -484,7 +484,7 @@ void out_density()
 
 
 
-static void out_Vhart()
+static void out_Vhart(const OpenMXChemicalPotentials *chemical)
 {
   int ct_AN,spe,i1,i2,i3,GN,i,j,k;
   char fname[YOUSO10];
@@ -506,7 +506,7 @@ static void out_Vhart()
   sprintf(fname,"%s%s%s_%0*i",filepath,filename,file1,digit,myid);
   if ((fp = fopen(fname,write_mode)) != NULL){
 
-    if (myid==Host_ID) Print_CubeTitle(fp,0,0.0,0.0);
+    if (myid==Host_ID) Print_CubeTitle(chemical, fp,0,0.0,0.0);
     Print_CubeData(fp,file1,dVHart_Grid_B,NULL,NULL);
   }
   else{
@@ -518,7 +518,7 @@ static void out_Vhart()
 
 
 
-static void out_Vna()
+static void out_Vna(const OpenMXChemicalPotentials *chemical)
 {
   int ct_AN,spe,i1,i2,i3,GN,i,j,k;
   char fname[YOUSO10];
@@ -541,7 +541,7 @@ static void out_Vna()
 
   if ((fp = fopen(fname,write_mode)) != NULL){
 
-    if (myid==Host_ID) Print_CubeTitle(fp,0,0.0,0.0);
+    if (myid==Host_ID) Print_CubeTitle(chemical, fp,0,0.0,0.0);
     Print_CubeData(fp,file1,VNA_Grid_B,NULL,NULL);
   }
   else{
@@ -553,7 +553,7 @@ static void out_Vna()
 
 
 
-static void out_Vxc()
+static void out_Vxc(const OpenMXChemicalPotentials *chemical)
 {
   int ct_AN,spe,i1,i2,i3,GN,i,j,k;
   int n,Ng1,Ng2,Ng3,spin,DN,BN;
@@ -614,7 +614,7 @@ static void out_Vxc()
   sprintf(fname,"%s%s%s_%0*i",filepath,filename,file1,digit,myid);
 
   if ((fp = fopen(fname,write_mode)) != NULL){
-    if (myid==Host_ID) Print_CubeTitle(fp,0,0.0,0.0);
+    if (myid==Host_ID) Print_CubeTitle(chemical, fp,0,0.0,0.0);
     Print_CubeData(fp,file1,Vxc_Grid_B[0],NULL,NULL);
   }
   else{
@@ -631,7 +631,7 @@ static void out_Vxc()
 
     if ((fp = fopen(fname,write_mode)) != NULL){
 
-      if (myid==Host_ID) Print_CubeTitle(fp,0,0.0,0.0);
+      if (myid==Host_ID) Print_CubeTitle(chemical, fp,0,0.0,0.0);
       Print_CubeData(fp,file2,Vxc_Grid_B[1],NULL,NULL);
     }
     else{
@@ -645,7 +645,7 @@ static void out_Vxc()
 
 
 
-static void out_Veff()
+static void out_Veff(const OpenMXChemicalPotentials *chemical)
 {
   char fname[YOUSO10];
   char file1[YOUSO10] = ".v0";
@@ -668,7 +668,7 @@ static void out_Veff()
   sprintf(fname,"%s%s%s_%0*i",filepath,filename,file1,digit,myid);
   if ((fp = fopen(fname,write_mode)) != NULL){
 
-    if (myid==Host_ID) Print_CubeTitle(fp,0,0.0,0.0);
+    if (myid==Host_ID) Print_CubeTitle(chemical, fp,0,0.0,0.0);
     Print_CubeData(fp,file1,Vpot_Grid_B[0],NULL,NULL);
   }
   else{
@@ -684,7 +684,7 @@ static void out_Veff()
     sprintf(fname,"%s%s%s_%0*i",filepath,filename,file2,digit,myid);
     if ((fp = fopen(fname,write_mode)) != NULL){
 
-      if (myid==Host_ID) Print_CubeTitle(fp,0,0.0,0.0);
+      if (myid==Host_ID) Print_CubeTitle(chemical, fp,0,0.0,0.0);
       Print_CubeData(fp,file2,Vpot_Grid_B[1],NULL,NULL);
     }
     else{
@@ -956,7 +956,7 @@ void out_coordinates_bulk()
 
 
 
-void out_Cluster_MO()
+void out_Cluster_MO(const OpenMXChemicalPotentials *chemical)
 { 
   int Mc_AN,Gc_AN,Cwan,NO0,spin,Nc;
   int orbit,GN,spe,i,i1,i2,i3,so,fd;
@@ -1033,7 +1033,7 @@ void out_Cluster_MO()
 
 	  if ((fp = fopen(file1,write_mode)) != NULL){
 
-	    Print_CubeTitle(fp,1,HOMOs_Coef[0][spin][orbit][0][0].r,0.0);
+	    Print_CubeTitle(chemical, fp,1,HOMOs_Coef[0][spin][orbit][0][0].r,0.0);
 
 	    if      (OutData_bin_flag==0) Print_CubeData_MO(fp,MO_Grid,NULL,NULL);
             else if (OutData_bin_flag==1) fwrite(MO_Grid, sizeof(double), Ngrid1*Ngrid2*Ngrid3, fp);
@@ -1108,7 +1108,7 @@ void out_Cluster_MO()
 
             setvbuf(fp,buf,_IOFBF,fp_bsize);  /* setvbuf */
 
-	    Print_CubeTitle(fp,1,LUMOs_Coef[0][spin][orbit][0][0].r,0.0);
+	    Print_CubeTitle(chemical, fp,1,LUMOs_Coef[0][spin][orbit][0][0].r,0.0);
 
 	    if      (OutData_bin_flag==0) Print_CubeData_MO(fp,MO_Grid,NULL,NULL);
             else if (OutData_bin_flag==1) fwrite(MO_Grid, sizeof(double), Ngrid1*Ngrid2*Ngrid3, fp);
@@ -1139,7 +1139,7 @@ void out_Cluster_MO()
 
 
 
-void out_CWF_Col()
+void out_CWF_Col(const OpenMXChemicalPotentials *chemical)
 { 
   int Anum,wanA,tnoA,Mc_AN,GA_AN,Gc_AN,Cwan,NO0,spin,Nc;
   int orbit,GN,GN1,GR,spe,k,p,wan1,i,i1,i2,i3,so,fd,CWF_TNumGrid;
@@ -1253,7 +1253,7 @@ void out_CWF_Col()
 
 	  if ((fp = fopen(file1,write_mode)) != NULL){
 
-	    Print_CubeTitle_CWF( fp, 0, 0.0, 0.0 );
+	    Print_CubeTitle_CWF(chemical,  fp, 0, 0.0, 0.0 );
 
 	    if      (OutData_bin_flag==0) Print_CubeData_CWF(fp,WF_Grid);
             else if (OutData_bin_flag==1) fwrite(WF_Grid, sizeof(double), Ngrid1*Ngrid2*Ngrid3*CWF_TNumGrid, fp);
@@ -1285,7 +1285,7 @@ void out_CWF_Col()
 
 
 
-void out_CWF_NonCol()
+void out_CWF_NonCol(const OpenMXChemicalPotentials *chemical)
 { 
   /******************************************************************
    format of the nccube file:
@@ -1360,7 +1360,7 @@ void out_CWF_NonCol()
 
       if ( fp_okay==1 ){
 
-        if (myid==Host_ID) Print_CubeTitle_CWF( fp, 0, 0.0, 0.0 );
+        if (myid==Host_ID) Print_CubeTitle_CWF(chemical,  fp, 0, 0.0, 0.0 );
 
 	for (spin=0; spin<=1; spin++){
 
@@ -1470,7 +1470,7 @@ void out_CWF_NonCol()
 
 
 
-void out_Cluster_NBO() /* added by T.Ohwaki */
+void out_Cluster_NBO(const OpenMXChemicalPotentials *chemical) /* added by T.Ohwaki */
 {
   int Mc_AN,Gc_AN,Cwan,NO0,spin,Nc,num,tnum;
   int orbit,GN,GNs,spe,i,i1,i2,i3,so,j,k;
@@ -1687,7 +1687,7 @@ printf("   $$$ Atom in SCell[%d] = %d\n",i,SCell_Atom[i]);
 
             if (NBO_SmallCell_Switch == 0){
 
-              Print_CubeTitle(fp,0,0.0,0.0);
+              Print_CubeTitle(chemical, fp,0,0.0,0.0);
               Print_CubeData_MO(fp,MO_Grid,NULL,NULL);
 
               fclose(fp);
@@ -1764,7 +1764,7 @@ printf("   $$$ Atom in SCell[%d] = %d\n",i,SCell_Atom[i]);
             setvbuf(fp,buf,_IOFBF,fp_bsize);  /* setvbuf */
 
             if (NBO_SmallCell_Switch == 0){
-              Print_CubeTitle(fp,0,0.0,0.0);
+              Print_CubeTitle(chemical, fp,0,0.0,0.0);
               Print_CubeData_MO(fp,MO_Grid,NULL,NULL);
               fclose(fp);
             }
@@ -1835,7 +1835,7 @@ printf("   $$$ Atom in SCell[%d] = %d\n",i,SCell_Atom[i]);
             setvbuf(fp,buf,_IOFBF,fp_bsize);  /* setvbuf */
 
             if (NBO_SmallCell_Switch == 0){
-              Print_CubeTitle(fp,0,0.0,0.0);
+              Print_CubeTitle(chemical, fp,0,0.0,0.0);
               Print_CubeData_MO(fp,MO_Grid,NULL,NULL);
               fclose(fp);
             }
@@ -1881,7 +1881,7 @@ printf("   $$$ Atom in SCell[%d] = %d\n",i,SCell_Atom[i]);
 
 
 
-void out_Cluster_NC_MO()
+void out_Cluster_NC_MO(const OpenMXChemicalPotentials *chemical)
 { 
   int Mc_AN,Gc_AN,Cwan,NO0,spin,Nc;
   int orbit,GN,spe,i,i1,i2,i3,fd;
@@ -1962,7 +1962,7 @@ void out_Cluster_NC_MO()
 
 	if ((fp = fopen(file1,write_mode)) != NULL){
 
-	  Print_CubeTitle(fp,1,HOMOs_Coef[0][spin][orbit][0][0].r,0.0);
+	  Print_CubeTitle(chemical, fp,1,HOMOs_Coef[0][spin][orbit][0][0].r,0.0);
 
 	  if      (OutData_bin_flag==0) Print_CubeCData_MO(fp,MO_Grid,"r");
           else if (OutData_bin_flag==1) fwrite(RMO_Grid, sizeof(double), Ngrid1*Ngrid2*Ngrid3, fp);
@@ -1984,7 +1984,7 @@ void out_Cluster_NC_MO()
 
           setvbuf(fp,buf,_IOFBF,fp_bsize);  /* setvbuf */
 
-	  Print_CubeTitle(fp,1,HOMOs_Coef[0][spin][orbit][0][0].r,0.0);
+	  Print_CubeTitle(chemical, fp,1,HOMOs_Coef[0][spin][orbit][0][0].r,0.0);
 
           if      (OutData_bin_flag==0) Print_CubeCData_MO(fp,MO_Grid,"i");
           else if (OutData_bin_flag==1) fwrite(IMO_Grid, sizeof(double), Ngrid1*Ngrid2*Ngrid3, fp);
@@ -2049,7 +2049,7 @@ void out_Cluster_NC_MO()
 
 	if ((fp = fopen(file1,write_mode)) != NULL){
 
-          Print_CubeTitle(fp,1,LUMOs_Coef[0][spin][orbit][0][0].r,0.0); 
+          Print_CubeTitle(chemical, fp,1,LUMOs_Coef[0][spin][orbit][0][0].r,0.0);
 
 	  if      (OutData_bin_flag==0) Print_CubeCData_MO(fp,MO_Grid,"r");
 	  else if (OutData_bin_flag==1) fwrite(RMO_Grid, sizeof(double), Ngrid1*Ngrid2*Ngrid3, fp);
@@ -2069,7 +2069,7 @@ void out_Cluster_NC_MO()
 
 	if ((fp = fopen(file1,write_mode)) != NULL){
  
-          Print_CubeTitle(fp,1,LUMOs_Coef[0][spin][orbit][0][0].r,0.0);
+          Print_CubeTitle(chemical, fp,1,LUMOs_Coef[0][spin][orbit][0][0].r,0.0);
 
 	  if      (OutData_bin_flag==0) Print_CubeCData_MO(fp,MO_Grid,"i");
 	  else if (OutData_bin_flag==1) fwrite(IMO_Grid, sizeof(double), Ngrid1*Ngrid2*Ngrid3, fp);
@@ -2106,7 +2106,7 @@ void out_Cluster_NC_MO()
 
 
 
-void out_Bulk_MO()
+void out_Bulk_MO(const OpenMXChemicalPotentials *chemical)
 { 
   int Mc_AN,Gc_AN,Cwan,NO0,spin,Nc,fd;
   int kloop,Mh_AN,h_AN,Gh_AN,Rnh,Hwan;
@@ -2215,7 +2215,7 @@ void out_Bulk_MO()
   
   	  if ((fp = fopen(file1,write_mode)) != NULL){
 
-            Print_CubeTitle(fp,1,HOMOs_Coef[kloop][spin][orbit][0][0].r,0.0);
+            Print_CubeTitle(chemical, fp,1,HOMOs_Coef[kloop][spin][orbit][0][0].r,0.0);
             if      (OutData_bin_flag==0) Print_CubeCData_MO(fp,MO_Grid,"r");
             else if (OutData_bin_flag==1) fwrite(RMO_Grid, sizeof(double), Ngrid1*Ngrid2*Ngrid3, fp);
 
@@ -2234,7 +2234,7 @@ void out_Bulk_MO()
 
 	  if ((fp = fopen(file1,write_mode)) != NULL){
 
-            Print_CubeTitle(fp,1,HOMOs_Coef[kloop][spin][orbit][0][0].r,0.0);
+            Print_CubeTitle(chemical, fp,1,HOMOs_Coef[kloop][spin][orbit][0][0].r,0.0);
             if      (OutData_bin_flag==0) Print_CubeCData_MO(fp,MO_Grid,"i");
             else if (OutData_bin_flag==1) fwrite(IMO_Grid, sizeof(double), Ngrid1*Ngrid2*Ngrid3, fp);
 
@@ -2323,7 +2323,7 @@ void out_Bulk_MO()
 
   	  if ((fp = fopen(file1,write_mode)) != NULL){
 
-            Print_CubeTitle(fp,1,LUMOs_Coef[kloop][spin][orbit][0][0].r,0.0);
+            Print_CubeTitle(chemical, fp,1,LUMOs_Coef[kloop][spin][orbit][0][0].r,0.0);
             if      (OutData_bin_flag==0) Print_CubeCData_MO(fp,MO_Grid,"r");
             else if (OutData_bin_flag==1) fwrite(RMO_Grid, sizeof(double), Ngrid1*Ngrid2*Ngrid3, fp);
 
@@ -2343,7 +2343,7 @@ void out_Bulk_MO()
 
   	  if ((fp = fopen(file1,write_mode)) != NULL){
 
-            Print_CubeTitle(fp,1,LUMOs_Coef[kloop][spin][orbit][0][0].r,0.0);
+            Print_CubeTitle(chemical, fp,1,LUMOs_Coef[kloop][spin][orbit][0][0].r,0.0);
             if      (OutData_bin_flag==0) Print_CubeCData_MO(fp,MO_Grid,"i");
             else if (OutData_bin_flag==1) fwrite(IMO_Grid, sizeof(double), Ngrid1*Ngrid2*Ngrid3, fp);
 
@@ -2385,7 +2385,7 @@ void out_Bulk_MO()
 
 
 
-void out_LNAO()
+void out_LNAO(const OpenMXChemicalPotentials *chemical)
 { 
   int Mc_AN,Gc_AN,Cwan,NO0,spin,Nc,fd;
   int kloop,Mh_AN,h_AN,Gh_AN,Rnh,Hwan;
@@ -2452,7 +2452,7 @@ void out_LNAO()
 
 	    if ((fp = fopen(file1,write_mode)) != NULL){
 
-	      Print_CubeTitle(fp,2,LNAO_pops[p][spin][j],LNAO_H[p][spin][j]);
+	      Print_CubeTitle(chemical, fp,2,LNAO_pops[p][spin][j],LNAO_H[p][spin][j]);
 	      Print_CubeData_MO(fp,RMO_Grid,RMO_Grid,NULL);
 
 	      fd = fileno(fp); 
@@ -2723,7 +2723,7 @@ void out_LNBO()
 
 
 
-static void Print_CubeTitle(FILE *fp, int EigenValue_flag, double EigenValue, double EigenValue2)
+static void Print_CubeTitle(const OpenMXChemicalPotentials *chemical, FILE *fp, int EigenValue_flag, double EigenValue, double EigenValue2)
 {
   int ct_AN,n,spe; 
   char clist[300];
@@ -2736,8 +2736,8 @@ static void Print_CubeTitle(FILE *fp, int EigenValue_flag, double EigenValue, do
     }
     else if (EigenValue_flag==1) {
       fprintf(fp," Absolute eigenvalue=%10.7f (Hartree)  Relative eigenvalue=%10.7f (Hartree)\n",
-	      EigenValue,EigenValue-ChemP);
-      fprintf(fp," Chemical Potential=%10.7f (Hartree)\n",ChemP);
+	      EigenValue,EigenValue-chemical->chemical_potential);
+      fprintf(fp," Chemical Potential=%10.7f (Hartree)\n",chemical->chemical_potential);
     }
     else if (EigenValue_flag==2) {
       fprintf(fp," Population=%10.7f   <LNAO|H|LNAO>=%10.7f\n",EigenValue,EigenValue2);
@@ -2772,10 +2772,10 @@ static void Print_CubeTitle(FILE *fp, int EigenValue_flag, double EigenValue, do
     }
     else if (EigenValue_flag==1) {
       sprintf(clist," Absolute eigenvalue=%10.7f (Hartree)  Relative eigenvalue=%10.7f (Hartree)\n",
-	      EigenValue,EigenValue-ChemP);
+	      EigenValue,EigenValue-chemical->chemical_potential);
       fwrite(clist, sizeof(char), 200, fp);
 
-      sprintf(clist, " Chemical Potential=%10.7f (Hartree)\n",ChemP);
+      sprintf(clist, " Chemical Potential=%10.7f (Hartree)\n",chemical->chemical_potential);
       fwrite(clist, sizeof(char), 200, fp);
     }
     else if (EigenValue_flag==2) {
@@ -2844,7 +2844,7 @@ static void Print_CubeTitle2(FILE *fp, int N1, int N2, int N3,
 
 
 
-static void Print_CubeTitle_CWF(FILE *fp, int EigenValue_flag, double EigenValue, double EigenValue2)
+static void Print_CubeTitle_CWF(const OpenMXChemicalPotentials *chemical, FILE *fp, int EigenValue_flag, double EigenValue, double EigenValue2)
 {
   int ct_AN,n,spe,Ncell,itmp,l1,l2,l3; 
   char clist[300];
@@ -2859,8 +2859,8 @@ static void Print_CubeTitle_CWF(FILE *fp, int EigenValue_flag, double EigenValue
     }
     else if (EigenValue_flag==1) {
       fprintf(fp," Absolute eigenvalue=%10.7f (Hartree)  Relative eigenvalue=%10.7f (Hartree)\n",
-	      EigenValue,EigenValue-ChemP);
-      fprintf(fp," Chemical Potential=%10.7f (Hartree)\n",ChemP);
+	      EigenValue,EigenValue-chemical->chemical_potential);
+      fprintf(fp," Chemical Potential=%10.7f (Hartree)\n",chemical->chemical_potential);
     }
     else if (EigenValue_flag==2) {
       fprintf(fp," Population=%10.7f   <LNAO|H|LNAO>=%10.7f\n",EigenValue,EigenValue2);
@@ -2904,10 +2904,10 @@ static void Print_CubeTitle_CWF(FILE *fp, int EigenValue_flag, double EigenValue
     }
     else if (EigenValue_flag==1) {
       sprintf(clist," Absolute eigenvalue=%10.7f (Hartree)  Relative eigenvalue=%10.7f (Hartree)\n",
-	      EigenValue,EigenValue-ChemP);
+	      EigenValue,EigenValue-chemical->chemical_potential);
       fwrite(clist, sizeof(char), 200, fp);
 
-      sprintf(clist, " Chemical Potential=%10.7f (Hartree)\n",ChemP);
+      sprintf(clist, " Chemical Potential=%10.7f (Hartree)\n",chemical->chemical_potential);
       fwrite(clist, sizeof(char), 200, fp);
     }
     else if (EigenValue_flag==2) {
@@ -4200,7 +4200,7 @@ static void Print_CubeCData_MO(FILE *fp, dcomplex *data,char *op)
 
 
 
-void out_Partial_Charge_Density(const OpenMXElectronicViews *electronic)
+void out_Partial_Charge_Density(const OpenMXChemicalPotentials *chemical, const OpenMXElectronicViews *electronic)
 {
   double *****Partial_DM=electronic->Partial_DM;
 
@@ -4240,7 +4240,7 @@ void out_Partial_Charge_Density(const OpenMXElectronicViews *electronic)
 
   if ((fp = fopen(fname,write_mode)) != NULL){
 
-    if (myid==Host_ID) Print_CubeTitle(fp,0,0.0,0.0);
+    if (myid==Host_ID) Print_CubeTitle(chemical, fp,0,0.0,0.0);
 
     if (SpinP_switch==0) {
       for (MN=0; MN<My_NumGridB_AB; MN++){
@@ -4269,7 +4269,7 @@ void out_Partial_Charge_Density(const OpenMXElectronicViews *electronic)
 
     if ((fp = fopen(fname,write_mode)) != NULL){
 
-      if (myid==Host_ID) Print_CubeTitle(fp,0,0.0,0.0);
+      if (myid==Host_ID) Print_CubeTitle(chemical, fp,0,0.0,0.0);
       Print_CubeData(fp,file2,Density_Grid_B[0],NULL,NULL);
     }
     else{
@@ -4284,7 +4284,7 @@ void out_Partial_Charge_Density(const OpenMXElectronicViews *electronic)
 
     if ((fp = fopen(fname,write_mode)) != NULL){
 
-      if (myid==Host_ID) Print_CubeTitle(fp,0,0.0,0.0);
+      if (myid==Host_ID) Print_CubeTitle(chemical, fp,0,0.0,0.0);
       Print_CubeData(fp,file3,Density_Grid_B[1],NULL,NULL);
     }
     else{

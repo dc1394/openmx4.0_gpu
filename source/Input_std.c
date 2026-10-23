@@ -55,6 +55,14 @@ void Get_Euler_Rotation_Angle(
 
 void Input_std(char *file, OpenMXCoreContext *core)
 {
+  OpenMXChemicalPotentials *chemical=NULL;
+  char chemical_error[256];
+  if(!openmx_core_chemical_potentials(core,&chemical,chemical_error,sizeof(chemical_error))) {
+    fprintf(stderr,"OpenMX chemical potentials: %s\n",chemical_error);
+    MPI_Abort(mpi_comm_level1,1);
+    abort();
+  }
+
   OpenMXDynamicsState *dynamics=NULL;
   char dynamics_error[256];
   if(!openmx_core_dynamics(core,&dynamics,dynamics_error,sizeof(dynamics_error))) {
@@ -1355,7 +1363,7 @@ void Input_std(char *file, OpenMXCoreContext *core)
   r_vec[0]=1.0e+9; r_vec[1]=1.0e+9; r_vec[2]=1.0e+9;
   input_doublev("scf.fixed.grid",3,scf_fixed_origin,r_vec);
 
-  TRAN_Input_std(mpi_comm_level1, Solver, SpinP_switch, filepath, kB, 
+  TRAN_Input_std(chemical, mpi_comm_level1, Solver, SpinP_switch, filepath, kB,
                  eV2Hartree, E_Temp, &output_hks, OpenMX_ElectronicMatricesAt(core,mpi_comm_level1,&electronic_storage));
 
   /* YTL-start */
@@ -3604,8 +3612,8 @@ void Input_std(char *file, OpenMXCoreContext *core)
   List_YOUSO[9] = rlmax_IS + 3;
 
   input_double("orderN.ChargeDeviation",&CN_Error,(double)1.0e-7);
-  input_double("orderN.InitChemPot",&ChemP,(double)-3.0); /* in eV */
-  ChemP = ChemP/eV2Hartree;
+  input_double("orderN.InitChemPot",&chemical->chemical_potential,(double)-3.0); /* in eV */
+  chemical->chemical_potential = chemical->chemical_potential/eV2Hartree;
 
   input_int("orderN.AvNumTerminater",&Av_num,1);
   input_int("orderN.NumPoles",&POLES,10);

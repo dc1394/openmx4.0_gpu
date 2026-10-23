@@ -185,6 +185,14 @@ void Wannier(int Solver,
 #pragma optimization_level 1
 void Generate_Wannier(char *inputfile, OpenMXCoreContext *core)
 {
+  OpenMXChemicalPotentials *chemical=NULL;
+  char chemical_error[256];
+  if(!openmx_core_chemical_potentials(core,&chemical,chemical_error,sizeof(chemical_error))) {
+    fprintf(stderr,"OpenMX chemical potentials: %s\n",chemical_error);
+    MPI_Abort(mpi_comm_level1,1);
+    abort();
+  }
+
   const OpenMXElectronicViews electronic_storage=OpenMX_ElectronicMatrices(core,mpi_comm_level1);
   const OpenMXElectronicViews *electronic=&electronic_storage;
   double *****H=electronic->H;
@@ -306,7 +314,7 @@ void Generate_Wannier(char *inputfile, OpenMXCoreContext *core)
 
   Wannier(Solver,
           atomnum,
-          ChemP,
+          chemical->chemical_potential,
           E_Temp, 
 	  Total_Num_Electrons,
 	  Total_SpinS, 

@@ -13,7 +13,7 @@
 #include <stdio.h>
 #include "openmx_common.h"
 
-void iterout_md(const OpenMXDynamicsState *dynamics, const OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, double drctime, char fileSE[YOUSO10])
+void iterout_md(const OpenMXChemicalPotentials *chemical, const OpenMXDynamicsState *dynamics, const OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, double drctime, char fileSE[YOUSO10])
 {
   int i,j,k;
   double dt,itermax,aa,dx,dy,dz,xido,yido,zido;
@@ -41,7 +41,7 @@ void iterout_md(const OpenMXDynamicsState *dynamics, const OpenMXThermodynamicEn
     /* 14 */      fprintf(fp,"%10.7f ",thermo->ionic_kinetic);
     /* 15 */      fprintf(fp,"%10.7f ",thermo->total);
     /* 16 */      fprintf(fp,"%10.7f ",thermo->total+thermo->ionic_kinetic);
-    /* 17 */      fprintf(fp,"%10.7f ",ChemP);
+    /* 17 */      fprintf(fp,"%10.7f ",chemical->chemical_potential);
     /* 18 */      fprintf(fp,"%10.7f ",dynamics->target_temperature);
     /* 19 */      fprintf(fp,"%10.7f ",dynamics->temperature);
     /* 20 */      fprintf(fp,"%10.7f ",dynamics->nose_friction);
@@ -56,7 +56,7 @@ void iterout_md(const OpenMXDynamicsState *dynamics, const OpenMXThermodynamicEn
     /* 29 */      fprintf(fp,"%10.7f ",GT);
     /* 30 */      fprintf(fp,"%17.15f ",Max_Force);
     /* 31 */      fprintf(fp,"%10.7f ",Total_SpinS*2.0);
-    /* 32 */      fprintf(fp,"%10.7f ",ChemP);
+    /* 32 */      fprintf(fp,"%10.7f ",chemical->chemical_potential);
     /* 33 */      fprintf(fp,"%10.7f ", Gxyz[1][17]);
     /* 34 */      fprintf(fp,"%10.7f\n",Gxyz[1][17]);
     fclose(fp);

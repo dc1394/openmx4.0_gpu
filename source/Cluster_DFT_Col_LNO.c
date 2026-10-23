@@ -97,7 +97,7 @@ void elpa_solve_evp_real_2stage_double_impl_( int *n1, int *n2, double *Cs, int 
 static double Lapack_LU_Dinverse(int n, double *A);
 
 
-static double Calc_DM_Cluster_collinear_LNO(int myid0,
+static double Calc_DM_Cluster_collinear_LNO(const OpenMXChemicalPotentials *chemical, int myid0,
 					    int numprocs0,
 					    int myid1,
 					    int numprocs1,
@@ -122,7 +122,7 @@ static double Calc_DM_Cluster_collinear_LNO(int myid0,
 					    int *SP_Atoms , const OpenMXLocalBasisViews *local_basis);
 
 
-double Cluster_DFT_Col_LNO(
+double Cluster_DFT_Col_LNO(OpenMXChemicalPotentials *chemical,
                    char *mode,
                    int SCF_iter,
                    int SpinP_switch,
@@ -763,12 +763,12 @@ double Cluster_DFT_Col_LNO(
   
     do {
 
-      ChemP = 0.50*(ChemP_MAX + ChemP_MIN);
+      chemical->chemical_potential = 0.50*(ChemP_MAX + ChemP_MIN);
       Num_State = 0.0;
 
       for (spin=0; spin<=SpinP_switch; spin++){
 	for (i1=1; i1<=MaxN; i1++){
-	  x = (ko[spin][i1] - ChemP)*Beta_trial1;
+	  x = (ko[spin][i1] - chemical->chemical_potential)*Beta_trial1;
 	  if (x<=-max_x) x = -max_x;
 	  if (max_x<=x)  x = max_x;
 	  FermiF = 1.0/(1.0 + exp(x));
@@ -778,12 +778,12 @@ double Cluster_DFT_Col_LNO(
       }
 
       Dnum = (TZ - Num_State) - system_charge;
-      if (0.0<=Dnum) ChemP_MIN = ChemP;
-      else           ChemP_MAX = ChemP;
+      if (0.0<=Dnum) ChemP_MIN = chemical->chemical_potential;
+      else           ChemP_MAX = chemical->chemical_potential;
       if (fabs(Dnum)<1.0e-12) po = 1;
 
       if (myid1==Host_ID && 2<=level_stdout){
-	printf("ChemP=%15.12f TZ=%15.12f Num_state=%15.12f\n",ChemP,TZ,Num_State); 
+	printf("ChemP=%15.12f TZ=%15.12f Num_state=%15.12f\n",chemical->chemical_potential,TZ,Num_State);
       }
 
       loopN++;
@@ -801,14 +801,14 @@ double Cluster_DFT_Col_LNO(
     do {
 
       if (loopN!=0){
-	ChemP = 0.50*(ChemP_MAX + ChemP_MIN);
+	chemical->chemical_potential = 0.50*(ChemP_MAX + ChemP_MIN);
       }
 
       Num_State = 0.0;
 
       for (spin=0; spin<=SpinP_switch; spin++){
 	for (i1=1; i1<=MaxN; i1++){
-	  x = (ko[spin][i1] - ChemP)*Beta;
+	  x = (ko[spin][i1] - chemical->chemical_potential)*Beta;
 	  if (x<=-max_x) x = -max_x;
 	  if (max_x<=x)  x = max_x;
 	  FermiF = 1.0/(1.0 + exp(x));
@@ -819,12 +819,12 @@ double Cluster_DFT_Col_LNO(
       }
 
       Dnum = (TZ - Num_State) - system_charge;
-      if (0.0<=Dnum) ChemP_MIN = ChemP;
-      else           ChemP_MAX = ChemP;
+      if (0.0<=Dnum) ChemP_MIN = chemical->chemical_potential;
+      else           ChemP_MAX = chemical->chemical_potential;
       if (fabs(Dnum)<1.0e-12) po = 1;
 
       if (myid1==Host_ID && 2<=level_stdout){
-	printf("ChemP=%15.12f TZ=%15.12f Num_state=%15.12f\n",ChemP,TZ,Num_State); 
+	printf("ChemP=%15.12f TZ=%15.12f Num_state=%15.12f\n",chemical->chemical_potential,TZ,Num_State);
       }
 
       loopN++;
@@ -833,7 +833,7 @@ double Cluster_DFT_Col_LNO(
     while (po==0 && loopN<1000); 
 
     if (2<=level_stdout){
-      printf("  ChemP=%15.12f\n",ChemP);
+      printf("  ChemP=%15.12f\n",chemical->chemical_potential);
     }
 
     if (measure_time){
@@ -852,9 +852,9 @@ double Cluster_DFT_Col_LNO(
       for (i1=1; i1<=MaxN; i1++){
 
 	if (xanes_calc==1) 
-          x = (ko[spin][i1] - ChemP_XANES[spin])*Beta;
+          x = (ko[spin][i1] - chemical->xanes[spin])*Beta;
         else 
-          x = (ko[spin][i1] - ChemP)*Beta;
+          x = (ko[spin][i1] - chemical->chemical_potential)*Beta;
 
 	if (x<=-max_x) x = -max_x;
 	if (max_x<=x)  x = max_x;
@@ -874,7 +874,7 @@ double Cluster_DFT_Col_LNO(
                   for up and down spins
     ****************************************************/
 
-    time6 += Calc_DM_Cluster_collinear_LNO( myid0,numprocs0,myid1,numprocs1,myworld1,
+    time6 += Calc_DM_Cluster_collinear_LNO(chemical,  myid0,numprocs0,myid1,numprocs1,myworld1,
 					    size_H1,is2,ie2,MP,n,TNum_LNOs,MPI_CommWD1,Comm_World_StartID1,
 					    CDM,EDM,ko,CDM1,EDM1,PDM1,Work1,EVec1,SP_NZeros,SP_Atoms, local_basis);
 
@@ -963,7 +963,7 @@ double Cluster_DFT_Col_LNO(
 
 
 
-double Calc_DM_Cluster_collinear_LNO(
+double Calc_DM_Cluster_collinear_LNO(const OpenMXChemicalPotentials *chemical,
     int myid0,
     int numprocs0,
     int myid1,
@@ -1045,7 +1045,7 @@ double Calc_DM_Cluster_collinear_LNO(
 
   for (k=is2[myid1]; k<=ie2[myid1]; k++){
 
-    x = (ko[spin][k] - ChemP)*Beta;
+    x = (ko[spin][k] - chemical->chemical_potential)*Beta;
 
     if (x<=-max_x) x = -max_x;
     if (max_x<=x)  x = max_x;

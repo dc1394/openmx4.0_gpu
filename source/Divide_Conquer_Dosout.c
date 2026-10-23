@@ -18,14 +18,14 @@
 #include "mpi.h"
 
 
-static double DC_Dosout_Col(double *****Hks, double ****OLP0);
-static double DC_Dosout_NonCol(double *****Hks,
+static double DC_Dosout_Col(const OpenMXChemicalPotentials *chemical, double *****Hks, double ****OLP0);
+static double DC_Dosout_NonCol(const OpenMXChemicalPotentials *chemical, double *****Hks,
                                double *****ImNL,
                                double ****OLP0);
 
 
 
-double Divide_Conquer_Dosout(double *****Hks,
+double Divide_Conquer_Dosout(const OpenMXChemicalPotentials *chemical, double *****Hks,
                              double *****ImNL,
                              double ****OLP0)
 {
@@ -36,7 +36,7 @@ double Divide_Conquer_Dosout(double *****Hks,
   ****************************************************/
 
   if ( (SpinP_switch==0 || SpinP_switch==1) && SO_switch==0 ){
-    time0 = DC_Dosout_Col(Hks,OLP0);
+    time0 = DC_Dosout_Col(chemical, Hks,OLP0);
   }
 
   /****************************************************
@@ -54,7 +54,7 @@ double Divide_Conquer_Dosout(double *****Hks,
   ****************************************************/
 
   else if (SpinP_switch==3){
-    time0 = DC_Dosout_NonCol(Hks,ImNL,OLP0);
+    time0 = DC_Dosout_NonCol(chemical, Hks,ImNL,OLP0);
   }
 
   return time0;
@@ -63,7 +63,7 @@ double Divide_Conquer_Dosout(double *****Hks,
 
 
 
-static double DC_Dosout_Col(double *****Hks, double ****OLP0)
+static double DC_Dosout_Col(const OpenMXChemicalPotentials *chemical, double *****Hks, double ****OLP0)
 {
   static int firsttime=1;
   int Mc_AN,Gc_AN,i,Gi,wan,wanA,wanB,Anum;
@@ -874,7 +874,7 @@ static double DC_Dosout_Col(double *****Hks, double ****OLP0)
         fprintf(fp_eig,"\n");
       }
       fprintf(fp_eig,"Spe_Num_CBasis>\n");
-      fprintf(fp_eig,"ChemP       %lf\n",ChemP);
+      fprintf(fp_eig,"ChemP       %lf\n",chemical->chemical_potential);
 
       fclose(fp_eig);
     }
@@ -1022,7 +1022,7 @@ static double DC_Dosout_Col(double *****Hks, double ****OLP0)
 
 
 
-static double DC_Dosout_NonCol(double *****Hks,
+static double DC_Dosout_NonCol(const OpenMXChemicalPotentials *chemical, double *****Hks,
                                double *****ImNL,
                                double ****OLP0)
 {
@@ -1898,7 +1898,7 @@ static double DC_Dosout_NonCol(double *****Hks,
         fprintf(fp_eig,"\n");
       }
       fprintf(fp_eig,"Spe_Num_CBasis>\n");
-      fprintf(fp_eig,"ChemP       %lf\n",ChemP);
+      fprintf(fp_eig,"ChemP       %lf\n",chemical->chemical_potential);
 
       fprintf(fp_eig,"<SpinAngle\n");
       for (i=1; i<=atomnum; i++) {

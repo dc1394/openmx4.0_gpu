@@ -23,7 +23,7 @@
 
 
 
-void TRAN_Input_std(
+void TRAN_Input_std(const OpenMXChemicalPotentials *chemical,
   MPI_Comm comm1, 
   int Solver,          /* input */
   int SpinP_switch,  
@@ -71,8 +71,8 @@ void TRAN_Input_std(
 
   /* read data of leads */
 
-  TRAN_RestartFile(comm1, "read","left", filepath,TRAN_hksfilename[0], electronic);
-  TRAN_RestartFile(comm1, "read","right",filepath,TRAN_hksfilename[1], electronic);
+  TRAN_RestartFile(chemical, comm1, "read","left", filepath,TRAN_hksfilename[0], electronic);
+  TRAN_RestartFile(chemical, comm1, "read","right",filepath,TRAN_hksfilename[1], electronic);
 
   /* check b-, and c-axes of the unit cell of leads. */
 

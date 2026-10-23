@@ -104,7 +104,7 @@ void elpa_solve_evp_complex_2stage_double_impl_( int *n2, int *MaxN, dcomplex *H
                                                  int *na_rows2_2, int *nblk2, int *na_cols2, 
                                                  int *mpi_comm_rows_int, int *mpi_comm_cols_int, int *mpiworld );
 
-double Cluster_DFT_NonCol_DMmu(
+double Cluster_DFT_NonCol_DMmu(OpenMXChemicalPotentials *chemical,
                    char *mode,
                    int SCF_iter,
                    int SpinP_switch,
@@ -739,11 +739,11 @@ double Cluster_DFT_NonCol_DMmu(
   ChemP_MIN =-15.0;
 
   do {
-    ChemP = 0.50*(ChemP_MAX + ChemP_MIN);
+    chemical->chemical_potential = 0.50*(ChemP_MAX + ChemP_MIN);
     Num_State = 0.0;
 
     for (i1=1; i1<=MaxN; i1++){
-      x = (ko[i1] - ChemP)*Beta*0.2;
+      x = (ko[i1] - chemical->chemical_potential)*Beta*0.2;
       if (x<=-max_x) x = -max_x;
       if (max_x<=x)  x = max_x;
       FermiF = FermiFunc_NC(x,i1);
@@ -752,8 +752,8 @@ double Cluster_DFT_NonCol_DMmu(
     }
 
     Dnum = (TZ - Num_State) - system_charge;
-    if (0.0<=Dnum) ChemP_MIN = ChemP;
-    else           ChemP_MAX = ChemP;
+    if (0.0<=Dnum) ChemP_MIN = chemical->chemical_potential;
+    else           ChemP_MAX = chemical->chemical_potential;
     if (fabs(Dnum)<1.0e-14) po = 1;
     loopN++;
   } 
@@ -770,13 +770,13 @@ double Cluster_DFT_NonCol_DMmu(
   do {
 
     if (loopN!=0){
-      ChemP = 0.50*(ChemP_MAX + ChemP_MIN);
+      chemical->chemical_potential = 0.50*(ChemP_MAX + ChemP_MIN);
     }
 
     Num_State = 0.0;
 
     for (i1=1; i1<=MaxN; i1++){
-      x = (ko[i1] - ChemP)*Beta;
+      x = (ko[i1] - chemical->chemical_potential)*Beta;
       if (x<=-max_x) x = -max_x;
       if (max_x<=x)  x = max_x;
       FermiF = FermiFunc_NC(x,i1);
@@ -785,15 +785,15 @@ double Cluster_DFT_NonCol_DMmu(
     }
 
     Dnum = (TZ - Num_State) - system_charge;
-    if (0.0<=Dnum) ChemP_MIN = ChemP;
-    else           ChemP_MAX = ChemP;
+    if (0.0<=Dnum) ChemP_MIN = chemical->chemical_potential;
+    else           ChemP_MAX = chemical->chemical_potential;
     if (fabs(Dnum)<1.0e-14) po = 1;
     loopN++;
   } 
   while (po==0 && loopN<1000); 
 
   if (2<=level_stdout){
-    printf("  ChemP=%15.12f\n",ChemP);
+    printf("  ChemP=%15.12f\n",chemical->chemical_potential);
   }
 
   if (measure_time){
@@ -817,22 +817,22 @@ double Cluster_DFT_NonCol_DMmu(
 
     /* DM */
 
-    time6 += Calc_DMmu_Cluster_non_collinear_ScaLAPACK( 1, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
+    time6 += Calc_DMmu_Cluster_non_collinear_ScaLAPACK(chemical,  1, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
                                                       CDM, iCDM, ko, DM1, Work1, EVec1);
 
-    time6 += Calc_DMmu_Cluster_non_collinear_ScaLAPACK( 2, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
+    time6 += Calc_DMmu_Cluster_non_collinear_ScaLAPACK(chemical,  2, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
                                                       CDM, iCDM, ko, DM1, Work1, EVec1);
 
-    time6 += Calc_DMmu_Cluster_non_collinear_ScaLAPACK( 3, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
+    time6 += Calc_DMmu_Cluster_non_collinear_ScaLAPACK(chemical,  3, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
                                                       CDM, iCDM, ko, DM1, Work1, EVec1);
 
-    time6 += Calc_DMmu_Cluster_non_collinear_ScaLAPACK( 4, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
+    time6 += Calc_DMmu_Cluster_non_collinear_ScaLAPACK(chemical,  4, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
                                                       CDM, iCDM, ko, DM1, Work1, EVec1);
 
-    time6 += Calc_DMmu_Cluster_non_collinear_ScaLAPACK( 5, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
+    time6 += Calc_DMmu_Cluster_non_collinear_ScaLAPACK(chemical,  5, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
                                                       CDM, iCDM, ko, DM1, Work1, EVec1);
 
-    time6 += Calc_DMmu_Cluster_non_collinear_ScaLAPACK( 6, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
+    time6 += Calc_DMmu_Cluster_non_collinear_ScaLAPACK(chemical,  6, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
                                                       CDM, iCDM, ko, DM1, Work1, EVec1);
 
     if (measure_time){
@@ -870,7 +870,7 @@ double Cluster_DFT_NonCol_DMmu(
 
 
 
-double Calc_DMmu_Cluster_non_collinear_ScaLAPACK(
+double Calc_DMmu_Cluster_non_collinear_ScaLAPACK(const OpenMXChemicalPotentials *chemical,
     int calc_flag,
     int myid,
     int numprocs,
@@ -918,7 +918,7 @@ double Calc_DMmu_Cluster_non_collinear_ScaLAPACK(
   for (k=is2[myid]; k<=ie2[myid]; k++){
 
     if (flag_export_DM<2){
-      x = (ko[k] - ChemP)*Beta;
+      x = (ko[k] - chemical->chemical_potential)*Beta;
       if (x<=-max_x) x = -max_x;
       if (max_x<=x)  x = max_x;
       FermiF = FermiFunc_NC(x,k);
@@ -932,7 +932,7 @@ double Calc_DMmu_Cluster_non_collinear_ScaLAPACK(
         //}
       }
       else{
-        if ( (DM_energy_range[0] < (ko[k] - ChemP)) && ((ko[k] - ChemP) < DM_energy_range[1]) ){
+        if ( (DM_energy_range[0] < (ko[k] - chemical->chemical_potential)) && ((ko[k] - chemical->chemical_potential) < DM_energy_range[1]) ){
           FermiF = 0;
         }
       }
@@ -943,8 +943,8 @@ double Calc_DMmu_Cluster_non_collinear_ScaLAPACK(
         //x_upper = (ko[k] - (ChemP_XANES[spin] + DM_energy_range[1]))*DM_tilde_Beta_upper;
       }
       else {
-        x_lower = (ko[k] - (ChemP + DM_energy_range[0]))*DM_tilde_Beta_lower;
-        x_upper = (ko[k] - (ChemP + DM_energy_range[1]))*DM_tilde_Beta_upper;
+        x_lower = (ko[k] - (chemical->chemical_potential + DM_energy_range[0]))*DM_tilde_Beta_lower;
+        x_upper = (ko[k] - (chemical->chemical_potential + DM_energy_range[1]))*DM_tilde_Beta_upper;
       }
 
       if (x_lower<=-max_x) x_lower = -max_x;

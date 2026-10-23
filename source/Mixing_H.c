@@ -65,6 +65,7 @@ typedef struct {
 } MixH_IncState;
 
 struct OpenMXMixingHState {
+  OpenMXChemicalPotentials *chemical; /* borrowed from this calculation */
   OpenMXNativeResources *resources; /* borrowed from this calculation */
   OpenMXMixingHistory *history; /* shared by this calculation's mixing methods */
   OpenMXBandEnergies *energies; /* borrowed from this calculation */
@@ -2922,7 +2923,7 @@ static void Pulay_Mixing_H_Inc(OpenMXSolverInvocation *scratch, MixingHState *st
     Gc_AN = M2G[Mc_AN];
     Cwan = WhatSpecies[Gc_AN];
     for (i=0; i<Spe_Total_NO[Cwan]; i++){
-      d = fabs(HisH1[0][0][Mc_AN][0][i][i]-ChemP);
+      d = fabs(HisH1[0][0][Mc_AN][0][i][i]-state->chemical->chemical_potential);
       metric.blocks[Mc_AN].values[i] = 5.0/(d*d+5.0);
       state->inc.wblk[state->inc.blk_base[Mc_AN]+i] = metric.blocks[Mc_AN].values[i];
     }
@@ -3101,7 +3102,7 @@ static void Pulay_Mixing_H_GPU(OpenMXSolverInvocation *scratch, MixingHState *st
     Gc_AN = M2G[Mc_AN];
     Cwan = WhatSpecies[Gc_AN];
     for (i=0; i<Spe_Total_NO[Cwan]; i++){
-      d = fabs(HisH1[0][0][Mc_AN][0][i][i]-ChemP);
+      d = fabs(HisH1[0][0][Mc_AN][0][i][i]-state->chemical->chemical_potential);
       metric.blocks[Mc_AN].values[i] = 5.0/(d*d+5.0);
     }
   }
@@ -3328,7 +3329,7 @@ void Pulay_Mixing_H(OpenMXSolverInvocation *scratch, MixingHState *state, int MD
     Gc_AN = M2G[Mc_AN];    
     Cwan = WhatSpecies[Gc_AN];
     for (i=0; i<Spe_Total_NO[Cwan]; i++){
-      d = fabs(HisH1[0][0][Mc_AN][0][i][i]-ChemP);
+      d = fabs(HisH1[0][0][Mc_AN][0][i][i]-state->chemical->chemical_potential);
       metric.blocks[Mc_AN].values[i] = 5.0/(d*d+5.0);
     }
   }
@@ -4565,6 +4566,10 @@ OpenMXMixingHState *Mixing_H_Bind_Resources(OpenMXCoreContext *core)
     state->inc.last_scf_iter=-1;
     if(!openmx_core_band_energies(core,&state->energies,error,sizeof(error))) {
       fprintf(stderr,"OpenMX band energies: %s\n",error);
+      abort();
+    }
+    if(!openmx_core_chemical_potentials(core,&state->chemical,error,sizeof(error))) {
+      fprintf(stderr,"OpenMX chemical potentials: %s\n",error);
       abort();
     }
     state->initialized=1;

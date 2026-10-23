@@ -121,6 +121,7 @@ typedef struct
 } ClusterNonColHostStage;
 
 struct OpenMXClusterNonColState {
+  OpenMXChemicalPotentials *chemical; /* borrowed from this calculation */
   OpenMXThermodynamicEnergies *thermo; /* borrowed from this calculation */
   OpenMXNativeResources *resources; /* borrowed from this calculation */
   int initialized;
@@ -188,6 +189,10 @@ OpenMXClusterNonColState *Cluster_DFT_NonCol_Bind_Resources(OpenMXCoreContext *c
     state->DmByGemm_cached = -1;
     if(!openmx_core_thermodynamic_energies(core,&state->thermo,error,sizeof(error))) {
       fprintf(stderr,"OpenMX thermodynamic energies: %s\n",error);
+      abort();
+    }
+    if(!openmx_core_chemical_potentials(core,&state->chemical,error,sizeof(error))) {
+      fprintf(stderr,"OpenMX chemical potentials: %s\n",error);
       abort();
     }
     state->initialized = 1;
@@ -772,13 +777,13 @@ static void ClusterNonCol_RootDMWorkspace_Ensure(ClusterNonColState *state, int 
     ws->dm_buffer_elems    = dm_buffer_elems;
 }
 
-static int ClusterNonCol_PrecomputeOccupations(int kmin, int kmax, const double *ko, double *occ, double *occ_e)
+static int ClusterNonCol_PrecomputeOccupations(const OpenMXChemicalPotentials *chemical, int kmin, int kmax, const double *ko, double *occ, double *occ_e)
 {
     int nk = 0;
     double max_x = 60.0;
 
     for (int local_k = 0, global_k = kmin; global_k <= kmax; local_k++, global_k++) {
-        double x = (ko[global_k] - ChemP) * Beta;
+        double x = (ko[global_k] - chemical->chemical_potential) * Beta;
         double weight;
 
         if (x <= -max_x) x = -max_x;
@@ -924,7 +929,7 @@ static double ClusterNonCol_CalcDMRootDense_OpenMP(ClusterNonColState *state, in
             ClusterNonCol_AbortWithMessage("DM entry cache size mismatch in Cluster_DFT_NonCol.c.");
         }
 
-        nk_occ = ClusterNonCol_PrecomputeOccupations(1, max_state, ko, ws->occ, ws->occ_e);
+        nk_occ = ClusterNonCol_PrecomputeOccupations(state->chemical, 1, max_state, ko, ws->occ, ws->occ_e);
 
         recover = nk_occ>0 && (state->mgpu_host_dense || openmx_gpu_capacity_test_recovery());
         if (0 < nk_occ && !recover) {
@@ -3059,7 +3064,7 @@ int Cluster_DFT_NonCol_MgpuCachedEDM(ClusterNonColState *state, int n,int size_H
         memset(ws->dm_buffer,0,count*sizeof(double));
         ClusterNonCol_DMEntryCache_Ensure(state, MP,n);
         if (cache->entry_count!=size_H1) ClusterNonCol_AbortWithMessage("Post-SCF EDM entry count mismatch");
-        occupied=ClusterNonCol_PrecomputeOccupations(1,state->CachedGpuSolverDenseLd,ko,ws->occ,ws->occ_e);
+        occupied=ClusterNonCol_PrecomputeOccupations(state->chemical, 1,state->CachedGpuSolverDenseLd,ko,ws->occ,ws->occ_e);
         for (int c=0;c<4;c++) outputs[6+c]=ws->dm_buffer+(size_t)c*size_H1;
     }
     openmx_gpu_dm_collective(mpi_comm_level1,OPENMX_GPU_DM_NC,n,occupied,state->CachedGpuSolverDenseLd,
@@ -3098,7 +3103,7 @@ static double Calc_Oscillator_Strength(ClusterNonColState *state,  int n, int n2
 static void Calc_XANES_NonCol(ClusterNonColState *state, const OpenMXAtomicViews *atomic,  int n, int n2, int MaxN, int *MP,
 			       int *is2, int *ie2, dcomplex *EVec1, double *ko, const OpenMXElectronicViews *electronic);
 
-double Calc_DM_Cluster_non_collinear_ScaLAPACK(
+double Calc_DM_Cluster_non_collinear_ScaLAPACK(const OpenMXChemicalPotentials *chemical,
     int calc_flag,
     int myid,
     int numprocs,
@@ -3116,7 +3121,7 @@ double Calc_DM_Cluster_non_collinear_ScaLAPACK(
     double *Work1,
     dcomplex *EVec1 , const OpenMXElectronicViews *electronic);
 
-double Calc_ParDM_Cluster_non_collinear_ScaLAPACK(
+double Calc_ParDM_Cluster_non_collinear_ScaLAPACK(const OpenMXChemicalPotentials *chemical,
     int calc_flag,
     int myid,
     int numprocs,
@@ -3970,11 +3975,11 @@ static double Cluster_DFT_NonCol_owned(ClusterNonColState *state, const OpenMXAt
     ChemP_MIN =-15.0;
 
     do {
-      ChemP = 0.50*(ChemP_MAX + ChemP_MIN);
+      state->chemical->chemical_potential = 0.50*(ChemP_MAX + ChemP_MIN);
       Num_State = 0.0;
 
       for (i1=1; i1<=MaxN; i1++){
-	x = (ko[i1] - ChemP)*Beta_trial1;
+	x = (ko[i1] - state->chemical->chemical_potential)*Beta_trial1;
 	if (x<=-max_x) x = -max_x;
 	if (max_x<=x)  x = max_x;
 	FermiF = FermiFunc_NC(x,i1);
@@ -3983,8 +3988,8 @@ static double Cluster_DFT_NonCol_owned(ClusterNonColState *state, const OpenMXAt
       }
 
       Dnum = (TZ - Num_State) - system_charge;
-      if (0.0<=Dnum) ChemP_MIN = ChemP;
-      else           ChemP_MAX = ChemP;
+      if (0.0<=Dnum) ChemP_MIN = state->chemical->chemical_potential;
+      else           ChemP_MAX = state->chemical->chemical_potential;
       if (fabs(Dnum)<1.0e-12) po = 1;
       loopN++;
     }
@@ -4001,13 +4006,13 @@ static double Cluster_DFT_NonCol_owned(ClusterNonColState *state, const OpenMXAt
     do {
 
       if (loopN!=0){
-	ChemP = 0.50*(ChemP_MAX + ChemP_MIN);
+	state->chemical->chemical_potential = 0.50*(ChemP_MAX + ChemP_MIN);
       }
 
       Num_State = 0.0;
 
       for (i1=1; i1<=MaxN; i1++){
-	x = (ko[i1] - ChemP)*Beta;
+	x = (ko[i1] - state->chemical->chemical_potential)*Beta;
 	if (x<=-max_x) x = -max_x;
 	if (max_x<=x)  x = max_x;
 	FermiF = FermiFunc_NC(x,i1);
@@ -4016,15 +4021,15 @@ static double Cluster_DFT_NonCol_owned(ClusterNonColState *state, const OpenMXAt
       }
 
       Dnum = (TZ - Num_State) - system_charge;
-      if (0.0<=Dnum) ChemP_MIN = ChemP;
-      else           ChemP_MAX = ChemP;
+      if (0.0<=Dnum) ChemP_MIN = state->chemical->chemical_potential;
+      else           ChemP_MAX = state->chemical->chemical_potential;
       if (fabs(Dnum)<1.0e-12) po = 1;
       loopN++;
     }
     while (po==0 && loopN<1000);
 
     if (2<=level_stdout){
-      printf("  ChemP=%15.12f\n",ChemP);
+      printf("  ChemP=%15.12f\n",state->chemical->chemical_potential);
     }
 
     if (measure_time){
@@ -4041,7 +4046,7 @@ static double Cluster_DFT_NonCol_owned(ClusterNonColState *state, const OpenMXAt
 
     for (i1=1; i1<=MaxN; i1++){
 
-      x = (ko[i1] - ChemP)*Beta;
+      x = (ko[i1] - state->chemical->chemical_potential)*Beta;
       if (x<=-max_x) x = -max_x;
       if (max_x<=x)  x = max_x;
       FermiF = FermiFunc_NC(x,i1);
@@ -4251,38 +4256,38 @@ static double Cluster_DFT_NonCol_owned(ClusterNonColState *state, const OpenMXAt
     else {
       /* DM */
 
-      time6 += Calc_DM_Cluster_non_collinear_ScaLAPACK( 1, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
+      time6 += Calc_DM_Cluster_non_collinear_ScaLAPACK(state->chemical,  1, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
                                                         CDM, iDM[0], EDM, ko, DM1, Work1, EVec1, electronic);
 
-      time6 += Calc_DM_Cluster_non_collinear_ScaLAPACK( 2, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
+      time6 += Calc_DM_Cluster_non_collinear_ScaLAPACK(state->chemical,  2, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
                                                         CDM, iDM[0], EDM, ko, DM1, Work1, EVec1, electronic);
 
-      time6 += Calc_DM_Cluster_non_collinear_ScaLAPACK( 3, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
+      time6 += Calc_DM_Cluster_non_collinear_ScaLAPACK(state->chemical,  3, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
                                                         CDM, iDM[0], EDM, ko, DM1, Work1, EVec1, electronic);
 
-      time6 += Calc_DM_Cluster_non_collinear_ScaLAPACK( 4, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
+      time6 += Calc_DM_Cluster_non_collinear_ScaLAPACK(state->chemical,  4, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
                                                         CDM, iDM[0], EDM, ko, DM1, Work1, EVec1, electronic);
 
-      time6 += Calc_DM_Cluster_non_collinear_ScaLAPACK( 5, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
+      time6 += Calc_DM_Cluster_non_collinear_ScaLAPACK(state->chemical,  5, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
                                                         CDM, iDM[0], EDM, ko, DM1, Work1, EVec1, electronic);
 
-      time6 += Calc_DM_Cluster_non_collinear_ScaLAPACK( 6, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
+      time6 += Calc_DM_Cluster_non_collinear_ScaLAPACK(state->chemical,  6, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
                                                         CDM, iDM[0], EDM, ko, DM1, Work1, EVec1, electronic);
 
       /* EDM */
 
       if (Cnt_switch==1){
 
-        time6 += Calc_DM_Cluster_non_collinear_ScaLAPACK( 7, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
+        time6 += Calc_DM_Cluster_non_collinear_ScaLAPACK(state->chemical,  7, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
                                                           CDM, iDM[0], EDM, ko, DM1, Work1, EVec1, electronic);
 
-        time6 += Calc_DM_Cluster_non_collinear_ScaLAPACK( 8, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
+        time6 += Calc_DM_Cluster_non_collinear_ScaLAPACK(state->chemical,  8, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
                                                           CDM, iDM[0], EDM, ko, DM1, Work1, EVec1, electronic);
 
-        time6 += Calc_DM_Cluster_non_collinear_ScaLAPACK( 9, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
+        time6 += Calc_DM_Cluster_non_collinear_ScaLAPACK(state->chemical,  9, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
                                                           CDM, iDM[0], EDM, ko, DM1, Work1, EVec1, electronic);
 
-        time6 += Calc_DM_Cluster_non_collinear_ScaLAPACK( 10, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
+        time6 += Calc_DM_Cluster_non_collinear_ScaLAPACK(state->chemical,  10, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
                                                           CDM, iDM[0], EDM, ko, DM1, Work1, EVec1, electronic);
       }
 
@@ -4290,7 +4295,7 @@ static double Cluster_DFT_NonCol_owned(ClusterNonColState *state, const OpenMXAt
 
       if ( strcasecmp(mode,"ParDM")==0 ){
         for (i=1; i<=6; i++){
-          time6 += Calc_ParDM_Cluster_non_collinear_ScaLAPACK( i, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
+          time6 += Calc_ParDM_Cluster_non_collinear_ScaLAPACK(state->chemical,  i, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
                                                                ko, DM1, Work1, EVec1, electronic);
         }
       }
@@ -4378,7 +4383,7 @@ static double Cluster_DFT_NonCol_owned(ClusterNonColState *state, const OpenMXAt
 	fprintf(fp_EV,"***********************************************************\n");
 	fprintf(fp_EV,"***********************************************************\n\n");
 
-	fprintf(fp_EV,"   Chemical Potential (Hartree) = %18.14f\n",ChemP);
+	fprintf(fp_EV,"   Chemical Potential (Hartree) = %18.14f\n",state->chemical->chemical_potential);
 	fprintf(fp_EV,"   Number of States             = %18.14f\n",Num_State);
 	fprintf(fp_EV,"   HOMO = %2d\n",Cluster_HOMO[0]);
 
@@ -4417,7 +4422,7 @@ static double Cluster_DFT_NonCol_owned(ClusterNonColState *state, const OpenMXAt
 	fprintf(fp_EV,"***********************************************************\n");
 
 	fprintf(fp_EV,"\n\n");
-	fprintf(fp_EV,"   Chemical Potential (Hartree) = %18.14f\n",ChemP);
+	fprintf(fp_EV,"   Chemical Potential (Hartree) = %18.14f\n",state->chemical->chemical_potential);
 	fprintf(fp_EV,"   HOMO = %2d\n",Cluster_HOMO[0]);
 
 	fprintf(fp_EV,"\n");
@@ -4682,7 +4687,7 @@ static double Cluster_DFT_NonCol_owned(ClusterNonColState *state, const OpenMXAt
   return time0;
 }
 
-double Calc_DM_Cluster_non_collinear_ScaLAPACK(
+double Calc_DM_Cluster_non_collinear_ScaLAPACK(const OpenMXChemicalPotentials *chemical,
     int calc_flag,
     int myid,
     int numprocs,
@@ -4723,13 +4728,13 @@ double Calc_DM_Cluster_non_collinear_ScaLAPACK(
 
   for (k=is2[myid]; k<=ie2[myid]; k++){
 
-    x = (ko[k] - ChemP)*Beta;
+    x = (ko[k] - chemical->chemical_potential)*Beta;
     if (x<=-max_x) x = -max_x;
     if (max_x<=x)  x = max_x;
     FermiF = FermiFunc_NC(x,k);
 
     if (11<=calc_flag && cal_partial_charge){
-      x2 = (ko[k] - (ChemP+ene_win_partial_charge))*Beta;
+      x2 = (ko[k] - (chemical->chemical_potential+ene_win_partial_charge))*Beta;
       if (x2<=-max_x) x2 = -max_x;
       if (max_x<=x2)  x2 = max_x;
       FermiF2 = FermiFunc_NC(x2,k);
@@ -4940,7 +4945,7 @@ double Calc_DM_Cluster_non_collinear_ScaLAPACK(
   return (etime-stime);
 }
 
-double Calc_ParDM_Cluster_non_collinear_ScaLAPACK(
+double Calc_ParDM_Cluster_non_collinear_ScaLAPACK(const OpenMXChemicalPotentials *chemical,
     int calc_flag,
     int myid,
     int numprocs,
@@ -4986,15 +4991,15 @@ double Calc_ParDM_Cluster_non_collinear_ScaLAPACK(
       in1 = CWF_disentangling_Erange[2];
       out1 = CWF_disentangling_Erange[3];
       e = ko[k];
-      windowF = weight_CWF2(e,ChemP,in0,in1,out0,out1);
+      windowF = weight_CWF2(e,chemical->chemical_potential,in0,in1,out0,out1);
     }
 
     else if (CWF_WindowF_switch==1){ // Fermi
       e = ko[k];
       b0 = 1.0/CWF_disentangling_smearing_kBT0;
       b1 = 1.0/CWF_disentangling_smearing_kBT1;
-      e0 = CWF_disentangling_Erange[0] + ChemP;
-      e1 = CWF_disentangling_Erange[1] + ChemP;
+      e0 = CWF_disentangling_Erange[0] + chemical->chemical_potential;
+      e1 = CWF_disentangling_Erange[1] + chemical->chemical_potential;
       windowF = (1.0/(exp(b0*(e0-e))+1.0))*(1.0/(exp(b1*(e-e1))+1.0)) + CWF_disentangling_smearing_bound;
     }
 
@@ -5199,7 +5204,7 @@ void Save_DOS_NonCol(ClusterNonColState *state, int n, int n2, int MaxN, int *MP
   iemin = n2;
 
   for (i=1; i<n2; i++) {
-    if ( ((ChemP+Dos_Erange[0])<ko[i]) && (i-1)<iemin ) {
+    if ( ((state->chemical->chemical_potential+Dos_Erange[0])<ko[i]) && (i-1)<iemin ) {
       iemin = i - 1;
       break;
     }
@@ -5210,7 +5215,7 @@ void Save_DOS_NonCol(ClusterNonColState *state, int n, int n2, int MaxN, int *MP
 
   iemax = 1;
   for (i=1; i<=2*n; i++) {
-    if ( ((ChemP+Dos_Erange[1])<ko[i])) {
+    if ( ((state->chemical->chemical_potential+Dos_Erange[1])<ko[i])) {
       if (iemax<i) iemax = i;
       break;
     }
@@ -5435,7 +5440,7 @@ void Save_DOS_NonCol(ClusterNonColState *state, int n, int n2, int MaxN, int *MP
       fprintf(fp_eig,"\n");
     }
     fprintf(fp_eig,"Spe_Num_CBasis>\n");
-    fprintf(fp_eig,"ChemP       %lf\n",ChemP);
+    fprintf(fp_eig,"ChemP       %lf\n",state->chemical->chemical_potential);
 
     fprintf(fp_eig,"<SpinAngle\n");
     for (i=1; i<=atomnum; i++) {
@@ -5525,7 +5530,7 @@ void Save_LCAO_NonCol(ClusterNonColState *state, int n, int n2, int MaxN, int *M
   iemin = n2;
 
   for (i=1; i<n2; i++) {
-    if ( ((ChemP+Dos_Erange[0])<ko[i]) && (i-1)<iemin ) {
+    if ( ((state->chemical->chemical_potential+Dos_Erange[0])<ko[i]) && (i-1)<iemin ) {
       iemin = i - 1;
       break;
     }
@@ -5542,7 +5547,7 @@ void Save_LCAO_NonCol(ClusterNonColState *state, int n, int n2, int MaxN, int *M
   ****************************************************/
 
   for (i=1; i<=MaxN; i++){
-    x = (ko[i] - ChemP)*Beta;
+    x = (ko[i] - state->chemical->chemical_potential)*Beta;
     if (x<=-max_x) x = -max_x;
     if (max_x<=x)  x = max_x;
     FermiF = 1.0/(1.0 + exp(x));

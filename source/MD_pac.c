@@ -30,33 +30,33 @@
 #define Criterion_Max_Step            0.50
 
  
-static void NoMD(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
-static void VerletXYZ(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
-static void NVT_VS(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);  /* added by mari */
-static void NVT_VS2(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter); /* added by Ohwaki */
-static void NVT_VS4(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter); /* added by Ohwaki */
-static void NVT_NH(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
-static void NVT_Langevin(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter); /* added by Ohwaki */
-static void Steepest_Descent(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int SD_scaling_flag);
-static void GDIIS(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0);
-static void GDIIS_BFGS(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0);
-static void GDIIS_EF(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0);
-static void Geometry_Opt_DIIS(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
-static void Geometry_Opt_DIIS_BFGS(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
-static void Geometry_Opt_DIIS_EF(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
+static void NoMD(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
+static void VerletXYZ(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
+static void NVT_VS(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);  /* added by mari */
+static void NVT_VS2(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter); /* added by Ohwaki */
+static void NVT_VS4(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter); /* added by Ohwaki */
+static void NVT_NH(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
+static void NVT_Langevin(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter); /* added by Ohwaki */
+static void Steepest_Descent(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int SD_scaling_flag);
+static void GDIIS(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0);
+static void GDIIS_BFGS(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0);
+static void GDIIS_EF(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0);
+static void Geometry_Opt_DIIS(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
+static void Geometry_Opt_DIIS_BFGS(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
+static void Geometry_Opt_DIIS_EF(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
 static void Correct_Position_In_First_Cell();
-static void Geometry_Opt_RF(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
+static void Geometry_Opt_RF(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
 static void Estimate_Initial_Hessian(int diis_iter, int CellOpt_flag, double itv[4][4]);
-static void RF(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0);
-static void RFC5(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0, double dE_da[4][4], double itv[4][4]);
-static void EvsLC(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
-static void Delta_Factor(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
+static void RF(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0);
+static void RFC5(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0, double dE_da[4][4], double itv[4][4]);
+static void EvsLC(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
+static void Delta_Factor(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
 static void Correct_Force();
 static void Correct_Velocity();
 static int RestartFiles4GeoOpt(char *mode);
 static void Output_abc_file(OpenMXThermodynamicEnergies *thermo, int iter);
-static void Cell_Opt_SD(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int SD_scaling_flag);
-static void Cell_Opt_RF(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
+static void Cell_Opt_SD(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int SD_scaling_flag);
+static void Cell_Opt_RF(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
 static void NPT_VS_PR(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, int iter); /* added by MIZUHO for NPT-MD */
 static void NPT_VS_WV(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, int iter); /* added by MIZUHO for NPT-MD */
 static void NPT_NH_PR(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, int iter); /* added by MIZUHO for NPT-MD */
@@ -66,6 +66,14 @@ int SuccessReadingfiles;
 
 double MD_pac(OpenMXCoreContext *core, int iter, char *fname_input)
 {
+  OpenMXChemicalPotentials *chemical=NULL;
+  char chemical_error[256];
+  if(!openmx_core_chemical_potentials(core,&chemical,chemical_error,sizeof(chemical_error))) {
+    fprintf(stderr,"OpenMX chemical potentials: %s\n",chemical_error);
+    MPI_Abort(mpi_comm_level1,1);
+    abort();
+  }
+
   double time0;
   double TStime,TEtime;
   int numprocs,myid;
@@ -144,24 +152,24 @@ double MD_pac(OpenMXCoreContext *core, int iter, char *fname_input)
   /* Call a subroutine based on MD_switch */
 
   switch (MD_switch) {
-    case  0: NoMD(dynamics, thermo, energies, components, iter+MD_Current_Iter);                    break;
-    case  1: VerletXYZ(dynamics, thermo, energies, components, iter+MD_Current_Iter);               break;
-    case  2: NVT_VS(dynamics, thermo, energies, components, iter+MD_Current_Iter);                  break;  /* added by mari */
-    case  3: Steepest_Descent(dynamics, thermo, energies, components, iter+MD_Current_Iter,1);      break;
-    case  4: Geometry_Opt_DIIS_EF(dynamics, thermo, energies, components, iter+MD_Current_Iter);    break;
-    case  5: Geometry_Opt_DIIS_BFGS(dynamics, thermo, energies, components, iter+MD_Current_Iter);  break;
-    case  6: Geometry_Opt_RF(dynamics, thermo, energies, components, iter+MD_Current_Iter);         break;  /* added by hmweng */
-    case  7: Geometry_Opt_DIIS(dynamics, thermo, energies, components, iter+MD_Current_Iter);       break;
+    case  0: NoMD(chemical, dynamics, thermo, energies, components, iter+MD_Current_Iter);                    break;
+    case  1: VerletXYZ(chemical, dynamics, thermo, energies, components, iter+MD_Current_Iter);               break;
+    case  2: NVT_VS(chemical, dynamics, thermo, energies, components, iter+MD_Current_Iter);                  break;  /* added by mari */
+    case  3: Steepest_Descent(chemical, dynamics, thermo, energies, components, iter+MD_Current_Iter,1);      break;
+    case  4: Geometry_Opt_DIIS_EF(chemical, dynamics, thermo, energies, components, iter+MD_Current_Iter);    break;
+    case  5: Geometry_Opt_DIIS_BFGS(chemical, dynamics, thermo, energies, components, iter+MD_Current_Iter);  break;
+    case  6: Geometry_Opt_RF(chemical, dynamics, thermo, energies, components, iter+MD_Current_Iter);         break;  /* added by hmweng */
+    case  7: Geometry_Opt_DIIS(chemical, dynamics, thermo, energies, components, iter+MD_Current_Iter);       break;
     case  8:                                                break;  /* not used */
-    case  9: NVT_NH(dynamics, thermo, energies, components, iter+MD_Current_Iter);                  break;
+    case  9: NVT_NH(chemical, dynamics, thermo, energies, components, iter+MD_Current_Iter);                  break;
     case 10:                                                break;  /* not used */
-    case 11: NVT_VS2(dynamics, thermo, energies, components, iter+MD_Current_Iter);                 break;  /* added by Ohwaki */
-    case 12: EvsLC(dynamics, thermo, energies, components, iter);                                   break;
-    case 14: NVT_VS4(dynamics, thermo, energies, components, iter+MD_Current_Iter);                 break;  /* added by Ohwaki */
-    case 15: NVT_Langevin(dynamics, thermo, energies, components, iter+MD_Current_Iter);            break;  /* added by Ohwaki */
-    case 16: Delta_Factor(dynamics, thermo, energies, components, iter);                            break;  /* delta-factor */
-    case 17: Cell_Opt_SD(dynamics, thermo, energies, components, iter+MD_Current_Iter,1);           break;
-    case 18: Cell_Opt_RF(dynamics, thermo, energies, components, iter+MD_Current_Iter);             break;
+    case 11: NVT_VS2(chemical, dynamics, thermo, energies, components, iter+MD_Current_Iter);                 break;  /* added by Ohwaki */
+    case 12: EvsLC(chemical, dynamics, thermo, energies, components, iter);                                   break;
+    case 14: NVT_VS4(chemical, dynamics, thermo, energies, components, iter+MD_Current_Iter);                 break;  /* added by Ohwaki */
+    case 15: NVT_Langevin(chemical, dynamics, thermo, energies, components, iter+MD_Current_Iter);            break;  /* added by Ohwaki */
+    case 16: Delta_Factor(chemical, dynamics, thermo, energies, components, iter);                            break;  /* delta-factor */
+    case 17: Cell_Opt_SD(chemical, dynamics, thermo, energies, components, iter+MD_Current_Iter,1);           break;
+    case 18: Cell_Opt_RF(chemical, dynamics, thermo, energies, components, iter+MD_Current_Iter);             break;
     /* added by MIZUHO for NPT-MD */
     case 27: NPT_VS_PR(dynamics, thermo, iter+MD_Current_Iter);               break;
     case 28: NPT_VS_WV(dynamics, thermo, iter+MD_Current_Iter);               break;
@@ -218,7 +226,7 @@ double MD_pac(OpenMXCoreContext *core, int iter, char *fname_input)
 }
 
 
-void NoMD(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
+void NoMD(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
 {
   char fileCoord[YOUSO10];
   FILE *fp_crd,*fp_SD;
@@ -275,7 +283,7 @@ void NoMD(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, co
 
   if (myid==Host_ID){  
     sprintf(fileE,"%s%s.ene",filepath,filename);
-    iterout_md(dynamics, thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
+    iterout_md(chemical, dynamics, thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
   }
 
 }
@@ -516,7 +524,7 @@ void Correct_Position_In_First_Cell()
 }
 
 
-void VerletXYZ(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
+void VerletXYZ(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
 {
   /***********************************************************
    NVE molecular dynamics with velocity-Verlet integrator
@@ -610,7 +618,7 @@ void VerletXYZ(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *therm
 
     if (myid==Host_ID){  
       sprintf(fileE,"%s%s.ene",filepath,filename);
-      iterout_md(dynamics, thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
+      iterout_md(chemical, dynamics, thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
     }
 
     /****************************************************
@@ -688,7 +696,7 @@ void VerletXYZ(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *therm
     if (myid==Host_ID){  
 
       sprintf(fileE,"%s%s.ene",filepath,filename);
-      iterout_md(dynamics, thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
+      iterout_md(chemical, dynamics, thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
     } 
 
     /****************************************************
@@ -729,7 +737,7 @@ void VerletXYZ(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *therm
 
 
 
-void Steepest_Descent(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int SD_scaling_flag)
+void Steepest_Descent(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int SD_scaling_flag)
 {
   /* 1au=2.4189*10^-2 fs, 1fs=41.341105 au */
   int i,j,k,l,Mc_AN,Gc_AN;
@@ -859,7 +867,7 @@ void Steepest_Descent(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies
   if (myid==Host_ID){  
 
     sprintf(fileE,"%s%s.ene",filepath,filename);
-    iterout_md(dynamics, thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
+    iterout_md(chemical, dynamics, thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
   }
 
   /****************************************************
@@ -1016,7 +1024,7 @@ void Steepest_Descent(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies
 
 
 
-void Cell_Opt_SD(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int SD_scaling_flag)
+void Cell_Opt_SD(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int SD_scaling_flag)
 {
   /* 1au=2.4189*10^-2 fs, 1fs=41.341105 au */
 
@@ -1279,7 +1287,7 @@ void Cell_Opt_SD(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *the
   if (myid==Host_ID){  
 
     sprintf(fileE,"%s%s.ene",filepath,filename);
-    iterout_md(dynamics, thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
+    iterout_md(chemical, dynamics, thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
   }
 
   /****************************************************
@@ -1651,7 +1659,7 @@ void Cell_Opt_SD(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *the
 }
 
 
-void Cell_Opt_RF(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
+void Cell_Opt_RF(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
 {
   int i,j,iatom,icell,k,diis_iter;
   double dE_da[4][4],detA,itv[4][4],sum;
@@ -1773,9 +1781,9 @@ void Cell_Opt_RF(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *the
   if (flag==0){
 
     if (SD_iter==1)
-      Cell_Opt_SD(dynamics, thermo, energies, components, iter,0);
+      Cell_Opt_SD(chemical, dynamics, thermo, energies, components, iter,0);
     else 
-      Cell_Opt_SD(dynamics, thermo, energies, components, iter,1);
+      Cell_Opt_SD(chemical, dynamics, thermo, energies, components, iter,1);
 
     /* shift one */
 
@@ -1851,7 +1859,7 @@ void Cell_Opt_RF(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *the
         || cellopt_switch==6 
         || cellopt_switch==7 ){
 
-       RFC5(dynamics, thermo, energies, components, local_iter,iter,dE_da,itv);
+       RFC5(chemical, dynamics, thermo, energies, components, local_iter,iter,dE_da,itv);
 
     }
     else {
@@ -1917,7 +1925,7 @@ void Cell_Opt_RF(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *the
 
 
 /*BEGIN hmweng*/
-void Geometry_Opt_RF(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
+void Geometry_Opt_RF(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
 {
   int i,iatom,k,diis_iter;
   double sMD_TimeStep;
@@ -1997,9 +2005,9 @@ void Geometry_Opt_RF(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies 
   if (flag==0){
 
     if (SD_iter==1)
-      Steepest_Descent(dynamics, thermo, energies, components, iter,0);
+      Steepest_Descent(chemical, dynamics, thermo, energies, components, iter,0);
     else 
-      Steepest_Descent(dynamics, thermo, energies, components, iter,1);
+      Steepest_Descent(chemical, dynamics, thermo, energies, components, iter,1);
 
     /* shift one */
 
@@ -2037,7 +2045,7 @@ void Geometry_Opt_RF(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies 
 
   else {
 
-    RF(dynamics, thermo, energies, components, local_iter,iter);
+    RF(chemical, dynamics, thermo, energies, components, local_iter,iter);
     local_iter++;
   }
 
@@ -2089,7 +2097,7 @@ void Geometry_Opt_RF(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies 
 /*END hmweng */
 
 
-void Geometry_Opt_DIIS(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
+void Geometry_Opt_DIIS(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
 {
   int i,iatom,k,diis_iter;
   double sMD_TimeStep;
@@ -2169,9 +2177,9 @@ void Geometry_Opt_DIIS(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergie
   if (flag==0){
 
     if (SD_iter==1)
-      Steepest_Descent(dynamics, thermo, energies, components, iter,0);
+      Steepest_Descent(chemical, dynamics, thermo, energies, components, iter,0);
     else 
-      Steepest_Descent(dynamics, thermo, energies, components, iter,1);
+      Steepest_Descent(chemical, dynamics, thermo, energies, components, iter,1);
 
     /* shift one */
 
@@ -2209,7 +2217,7 @@ void Geometry_Opt_DIIS(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergie
 
   else {
 
-    GDIIS(dynamics, thermo, energies, components, local_iter,iter);
+    GDIIS(chemical, dynamics, thermo, energies, components, local_iter,iter);
     local_iter++;
   }
 
@@ -2262,7 +2270,7 @@ void Geometry_Opt_DIIS(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergie
 
 
 
-void Geometry_Opt_DIIS_BFGS(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
+void Geometry_Opt_DIIS_BFGS(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
 {
   int i,iatom,k,diis_iter;
   double sMD_TimeStep;
@@ -2342,9 +2350,9 @@ void Geometry_Opt_DIIS_BFGS(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEn
   if (flag==0){
 
     if (SD_iter==1)
-      Steepest_Descent(dynamics, thermo, energies, components, iter,0);
+      Steepest_Descent(chemical, dynamics, thermo, energies, components, iter,0);
     else 
-      Steepest_Descent(dynamics, thermo, energies, components, iter,1);
+      Steepest_Descent(chemical, dynamics, thermo, energies, components, iter,1);
 
     /* shift one */
 
@@ -2381,7 +2389,7 @@ void Geometry_Opt_DIIS_BFGS(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEn
   /* GDIIS */
 
   else {
-    GDIIS_BFGS(dynamics, thermo, energies, components, local_iter,iter);
+    GDIIS_BFGS(chemical, dynamics, thermo, energies, components, local_iter,iter);
     local_iter++;
   }
 
@@ -2431,7 +2439,7 @@ void Geometry_Opt_DIIS_BFGS(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEn
 }
 
 
-void Geometry_Opt_DIIS_EF(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
+void Geometry_Opt_DIIS_EF(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
 {
   int i,iatom,k,diis_iter;
   double sMD_TimeStep;
@@ -2511,9 +2519,9 @@ void Geometry_Opt_DIIS_EF(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEner
   if (flag==0){
 
     if (SD_iter==1)
-      Steepest_Descent(dynamics, thermo, energies, components, iter,0);
+      Steepest_Descent(chemical, dynamics, thermo, energies, components, iter,0);
     else 
-      Steepest_Descent(dynamics, thermo, energies, components, iter,1);
+      Steepest_Descent(chemical, dynamics, thermo, energies, components, iter,1);
 
     /* shift one */
 
@@ -2551,7 +2559,7 @@ void Geometry_Opt_DIIS_EF(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEner
 
   else {
 
-    GDIIS_EF(dynamics, thermo, energies, components, local_iter,iter);
+    GDIIS_EF(chemical, dynamics, thermo, energies, components, local_iter,iter);
     local_iter++;
   }
 
@@ -2603,7 +2611,7 @@ void Geometry_Opt_DIIS_EF(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEner
 
 
 
-void GDIIS(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0)
+void GDIIS(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0)
 {
   /* 1au=2.4189*10^-2 fs, 1fs=41.341105 au */
 
@@ -2811,7 +2819,7 @@ void GDIIS(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, c
   if (myid==Host_ID){  
 
     sprintf(fileE,"%s%s.ene",filepath,filename);
-    iterout_md(dynamics, thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
+    iterout_md(chemical, dynamics, thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
   }
 
   if (MD_Opt_OK!=1 && iter!=MD_IterNumber){
@@ -3046,7 +3054,7 @@ void GDIIS(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, c
 
 
 /*hmweng start RF method*/
-void RF(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0)
+void RF(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0)
 {
   /* 1au=2.4189*10^-2 fs, 1fs=41.341105 au */
 
@@ -3273,7 +3281,7 @@ void RF(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, cons
   if (myid==Host_ID){  
 
     sprintf(fileE,"%s%s.ene",filepath,filename);
-    iterout_md(dynamics, thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
+    iterout_md(chemical, dynamics, thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
   }
 
   if (MD_Opt_OK!=1 && iter!=MD_IterNumber){
@@ -3647,7 +3655,7 @@ void RF(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, cons
 
 
 
-void RFC5(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0, double dE_da[4][4], double itv[4][4])
+void RFC5(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0, double dE_da[4][4], double itv[4][4])
 {
   /* 1au=2.4189*10^-2 fs, 1fs=41.341105 au */
 
@@ -3925,7 +3933,7 @@ void RFC5(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, co
   if (myid==Host_ID){  
 
     sprintf(fileE,"%s%s.ene",filepath,filename);
-    iterout_md(dynamics, thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
+    iterout_md(chemical, dynamics, thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
   }
 
   if (MD_Opt_OK!=1 && iter!=MD_IterNumber){
@@ -4478,7 +4486,7 @@ void RFC5(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, co
 
 
 
-void GDIIS_BFGS(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0)
+void GDIIS_BFGS(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0)
 {
   /* 1au=2.4189*10^-2 fs, 1fs=41.341105 au */
 
@@ -4689,7 +4697,7 @@ void GDIIS_BFGS(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *ther
   if (myid==Host_ID){  
 
     sprintf(fileE,"%s%s.ene",filepath,filename);
-    iterout_md(dynamics, thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
+    iterout_md(chemical, dynamics, thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
   }
 
   if (MD_Opt_OK!=1 && iter!=MD_IterNumber){
@@ -5041,7 +5049,7 @@ void GDIIS_BFGS(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *ther
 
 
 
-void GDIIS_EF(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0)
+void GDIIS_EF(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0)
 {
   /* 1au=2.4189*10^-2 fs, 1fs=41.341105 au */
 
@@ -5303,7 +5311,7 @@ void GDIIS_EF(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo
   if (myid==Host_ID){  
     
     sprintf(fileE,"%s%s.ene",filepath,filename);
-    iterout_md(dynamics, thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
+    iterout_md(chemical, dynamics, thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
   } 
 
   if (MD_Opt_OK!=1 && iter!=MD_IterNumber){
@@ -5758,7 +5766,7 @@ void GDIIS_EF(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo
 
 
 
-void NVT_VS(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
+void NVT_VS(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
 {
   /* added by mari */
   /********************************************************
@@ -5902,7 +5910,7 @@ void NVT_VS(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, 
     sprintf(fileE,"%s%s.ene",filepath,filename);
 
     /* corrected on 2016/1/19 by ADO */
-    iterout_md(dynamics, thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
+    iterout_md(chemical, dynamics, thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
   }
   
   /****************************************************
@@ -5970,7 +5978,7 @@ void NVT_VS(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, 
 
 
 
-void NVT_Langevin(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
+void NVT_Langevin(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
 {
   /* added by T.Ohwaki */
   /********************************************************
@@ -6316,14 +6324,14 @@ void NVT_Langevin(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *th
   if (myid==Host_ID){  
 
     sprintf(fileE,"%s%s.ene",filepath,filename);
-    iterout_md(dynamics, thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
+    iterout_md(chemical, dynamics, thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
   }
 }
 
 
 
 
-void NVT_VS2(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
+void NVT_VS2(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
 {
   /* added by T.Ohwaki */
   /********************************************************
@@ -6472,7 +6480,7 @@ void NVT_VS2(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo,
   if (myid==Host_ID){  
 
     sprintf(fileE,"%s%s.ene",filepath,filename);
-    iterout_md(dynamics, thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
+    iterout_md(chemical, dynamics, thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
   }
 
   /****************************************************
@@ -6553,7 +6561,7 @@ void NVT_VS2(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo,
 }
 
 
-void NVT_VS4(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
+void NVT_VS4(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
 {
   /* added by T. Ohwaki */
   /********************************************************
@@ -6718,7 +6726,7 @@ void NVT_VS4(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo,
 
   if (myid==Host_ID){
     sprintf(fileE,"%s%s.ene",filepath,filename);
-    iterout_md(dynamics, thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
+    iterout_md(chemical, dynamics, thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
   }
 
   /****************************************************
@@ -6797,7 +6805,7 @@ void NVT_VS4(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo,
 
 
 
-void NVT_NH(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
+void NVT_NH(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
 {
   /***********************************************************
    a constant temperature molecular dynamics by a Nose-Hoover
@@ -6921,7 +6929,7 @@ void NVT_NH(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, 
     if (myid==Host_ID){  
 
       sprintf(fileE,"%s%s.ene",filepath,filename);
-      iterout_md(dynamics, thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
+      iterout_md(chemical, dynamics, thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
     }
 
     /****************************************************
@@ -7135,7 +7143,7 @@ void NVT_NH(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, 
     if (myid==Host_ID){  
 
       sprintf(fileE,"%s%s.ene",filepath,filename);
-      iterout_md(dynamics, thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
+      iterout_md(chemical, dynamics, thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
     }
 
     /*****************************************************
@@ -7244,7 +7252,7 @@ void NVT_NH(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, 
     if (myid==Host_ID){  
 
       sprintf(fileE,"%s%s.ene",filepath,filename);
-      iterout_md(dynamics, thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
+      iterout_md(chemical, dynamics, thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
     }
 
     /****************************************************
@@ -7439,7 +7447,7 @@ static void Correct_Velocity()
 
 
 
-static void Delta_Factor(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
+static void Delta_Factor(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
 {
   int i,j,Gc_AN,myid;
   char fileE[YOUSO10];
@@ -7473,7 +7481,7 @@ static void Delta_Factor(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnerg
 
   if (myid==Host_ID){  
     sprintf(fileE,"%s%s.ene",filepath,filename);
-    iterout_md(dynamics, thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
+    iterout_md(chemical, dynamics, thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
   }
 
   /****************************************************
@@ -7520,7 +7528,7 @@ static void Delta_Factor(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnerg
 
 
 
-static void EvsLC(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
+static void EvsLC(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
 {
   int i,j,Gc_AN,myid;
   char fileE[YOUSO10];
@@ -7550,7 +7558,7 @@ static void EvsLC(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *th
 
   if (myid==Host_ID){  
     sprintf(fileE,"%s%s.ene",filepath,filename);
-    iterout_md(dynamics, thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
+    iterout_md(chemical, dynamics, thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
   }
 
   /****************************************************

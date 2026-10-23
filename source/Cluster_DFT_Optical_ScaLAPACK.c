@@ -31,7 +31,7 @@ void elpa_solve_evp_real_2stage_double_impl_( int *n1, int *n2, double *Cs, int 
 
 
 
-static double Cluster_collinear_Optical(const OpenMXAtomicViews *atomic,
+static double Cluster_collinear_Optical(OpenMXChemicalPotentials *chemical, const OpenMXAtomicViews *atomic,
 				char *mode,
 				int SCF_iter,
 				int SpinP_switch,
@@ -63,7 +63,7 @@ static double Cluster_collinear_Optical(const OpenMXAtomicViews *atomic,
 
 
 
-static double Cluster_non_collinear_Optical(const OpenMXAtomicViews *atomic,
+static double Cluster_non_collinear_Optical(OpenMXChemicalPotentials *chemical, const OpenMXAtomicViews *atomic,
                    char *mode,
                    int SCF_iter,
                    int SpinP_switch,
@@ -76,7 +76,7 @@ static double Cluster_non_collinear_Optical(const OpenMXAtomicViews *atomic,
 
 
 
-double Cluster_DFT_Optical_ScaLAPACK(const OpenMXAtomicViews *atomic,
+double Cluster_DFT_Optical_ScaLAPACK(OpenMXChemicalPotentials *chemical, const OpenMXAtomicViews *atomic,
                    char *mode,
                    int SCF_iter,
                    int SpinP_switch,
@@ -116,7 +116,7 @@ double Cluster_DFT_Optical_ScaLAPACK(const OpenMXAtomicViews *atomic,
 
   if ( (SpinP_switch==0 || SpinP_switch==1) && SO_switch==0 ){
 
-    time0 = Cluster_collinear_Optical(atomic,  mode,SCF_iter,SpinP_switch,Cluster_ko,
+    time0 = Cluster_collinear_Optical(chemical, atomic,  mode,SCF_iter,SpinP_switch,Cluster_ko,
 				       nh,  OLP0,CDM,EDM,exx,exx_CDM,Uexx,Eele0,Eele1,
 				       myworld1,NPROCS_ID1,Comm_World1,NPROCS_WD1,
 				       Comm_World_StartID1,MPI_CommWD1,is2,ie2,
@@ -138,7 +138,7 @@ double Cluster_DFT_Optical_ScaLAPACK(const OpenMXAtomicViews *atomic,
   ****************************************************/
 
   else if (SpinP_switch==3){
-    time0 = Cluster_non_collinear_Optical(atomic, mode,SCF_iter,SpinP_switch,nh,ImNL,OLP0,CDM,EDM,Eele0,Eele1, local_basis);
+    time0 = Cluster_non_collinear_Optical(chemical, atomic, mode,SCF_iter,SpinP_switch,nh,ImNL,OLP0,CDM,EDM,Eele0,Eele1, local_basis);
   }
 
   return time0;
@@ -147,7 +147,7 @@ double Cluster_DFT_Optical_ScaLAPACK(const OpenMXAtomicViews *atomic,
 
 
 
-static double Cluster_collinear_Optical(const OpenMXAtomicViews *atomic,
+static double Cluster_collinear_Optical(OpenMXChemicalPotentials *chemical, const OpenMXAtomicViews *atomic,
 				char *mode,
 				int SCF_iter,
 				int SpinP_switch,
@@ -697,12 +697,12 @@ static double Cluster_collinear_Optical(const OpenMXAtomicViews *atomic,
   
     do {
 
-      ChemP = 0.50*(ChemP_MAX + ChemP_MIN);
+      chemical->chemical_potential = 0.50*(ChemP_MAX + ChemP_MIN);
       Num_State = 0.0;
 
       for (spin=0; spin<=SpinP_switch; spin++){
 	for (i1=1; i1<=MaxN; i1++){
-	  x = (ko[spin][i1] - ChemP)*Beta;
+	  x = (ko[spin][i1] - chemical->chemical_potential)*Beta;
 	  if (x<=-max_x) x = -max_x;
 	  if (max_x<=x)  x = max_x;
 	  FermiF = 1.0/(1.0 + exp(x));
@@ -712,12 +712,12 @@ static double Cluster_collinear_Optical(const OpenMXAtomicViews *atomic,
       }
 
       Dnum = (TZ - Num_State) - system_charge;
-      if (0.0<=Dnum) ChemP_MIN = ChemP;
-      else           ChemP_MAX = ChemP;
+      if (0.0<=Dnum) ChemP_MIN = chemical->chemical_potential;
+      else           ChemP_MAX = chemical->chemical_potential;
       if (fabs(Dnum)<1.0e-14) po = 1;
 
       if (myid1==Host_ID && 2<=level_stdout){
-	printf("ChemP=%15.12f TZ=%15.12f Num_state=%15.12f\n",ChemP,TZ,Num_State); 
+	printf("ChemP=%15.12f TZ=%15.12f Num_state=%15.12f\n",chemical->chemical_potential,TZ,Num_State);
       }
 
       loopN++;
@@ -726,7 +726,7 @@ static double Cluster_collinear_Optical(const OpenMXAtomicViews *atomic,
     while (po==0 && loopN<1000); 
 
     if (2<=level_stdout){
-      printf("  ChemP=%15.12f\n",ChemP);
+      printf("  ChemP=%15.12f\n",chemical->chemical_potential);
     }
 
     if (measure_time){
@@ -749,10 +749,10 @@ static double Cluster_collinear_Optical(const OpenMXAtomicViews *atomic,
 
     /* YTL-New-start */
     /* Shifted Chemical Potential */
-    double ChemP_ori=ChemP;
-    ChemP=ChemP_ori+CDDF_Shift_ChemP;
+    double ChemP_ori=chemical->chemical_potential;
+    chemical->chemical_potential=ChemP_ori+CDDF_Shift_ChemP;
     if (myid1==Host_ID){ printf(" Chemical Potential + Shifted Chemical Potential = %8.5lf + %8.5lf = %8.5lf (eV)\n",ChemP_ori*eV2Hartree,CDDF_Shift_ChemP*\
-				eV2Hartree,ChemP*eV2Hartree); fflush(stdout); }
+				eV2Hartree,chemical->chemical_potential*eV2Hartree); fflush(stdout); }
     /* YTL-New-end */
 
     j = 0;
@@ -760,7 +760,7 @@ static double Cluster_collinear_Optical(const OpenMXAtomicViews *atomic,
       for (i=0;i<MaxN;i++){ /* occupied state */
 
         eig = ko[spin][i+1];
-        x = (eig - ChemP)*Beta;
+        x = (eig - chemical->chemical_potential)*Beta;
 	if      (x<-x_cut)  FDFi = 1.0;
 	else if (x>x_cut)   FDFi = 0.0;
 	else                FDFi = 1.0/(1.0 + exp(x));
@@ -768,7 +768,7 @@ static double Cluster_collinear_Optical(const OpenMXAtomicViews *atomic,
 	for (l=i+1;l<MaxN;l++){ /* unoccupied state */
 
 	  eig = ko[spin][l+1];
-	  x = (eig - ChemP)*Beta;
+	  x = (eig - chemical->chemical_potential)*Beta;
 	  if      (x<-x_cut)  FDFl = 1.0;
 	  else if (x>x_cut)   FDFl = 0.0;
 	  else                FDFl = 1.0/(1.0 + exp(x));
@@ -804,7 +804,7 @@ static double Cluster_collinear_Optical(const OpenMXAtomicViews *atomic,
     for (spin=0; spin<=SpinP_switch; spin++){
       for (i1=1; i1<=MaxN; i1++){
 
-	x = (ko[spin][i1] - ChemP)*Beta;
+	x = (ko[spin][i1] - chemical->chemical_potential)*Beta;
 	if (x<=-max_x) x = -max_x;
 	if (max_x<=x)  x = max_x;
 	FermiF = 1.0/(1.0 + exp(x));
@@ -897,7 +897,7 @@ static double Cluster_collinear_Optical(const OpenMXAtomicViews *atomic,
       }
       */
 
-      Calc_band_optical_col_1(0.0,0.0,0.0,spin,n,ko[spin],LCAO,fd_dist,ChemP);
+      Calc_band_optical_col_1(0.0,0.0,0.0,spin,n,ko[spin],LCAO,fd_dist,chemical->chemical_potential);
 
       free(is3);
       free(ie3);
@@ -969,7 +969,7 @@ static double Cluster_collinear_Optical(const OpenMXAtomicViews *atomic,
 
 
 
-static double Cluster_non_collinear_Optical(const OpenMXAtomicViews *atomic,
+static double Cluster_non_collinear_Optical(OpenMXChemicalPotentials *chemical, const OpenMXAtomicViews *atomic,
 				    char *mode,
 				    int SCF_iter,
 				    int SpinP_switch,
@@ -1587,11 +1587,11 @@ static double Cluster_non_collinear_Optical(const OpenMXAtomicViews *atomic,
     ChemP_MIN =-5.0;
 
     do {
-      ChemP = 0.50*(ChemP_MAX + ChemP_MIN);
+      chemical->chemical_potential = 0.50*(ChemP_MAX + ChemP_MIN);
       Num_State = 0.0;
 
       for (i1=1; i1<=MaxN; i1++){
-	x = (ko[i1] - ChemP)*Beta;
+	x = (ko[i1] - chemical->chemical_potential)*Beta;
 	if (x<=-max_x) x = -max_x;
 	if (max_x<=x)  x = max_x;
 	FermiF = 1.0/(1.0 + exp(x));
@@ -1600,8 +1600,8 @@ static double Cluster_non_collinear_Optical(const OpenMXAtomicViews *atomic,
       }
 
       Dnum = (TZ - Num_State) - system_charge;
-      if (0.0<=Dnum) ChemP_MIN = ChemP;
-      else           ChemP_MAX = ChemP;
+      if (0.0<=Dnum) ChemP_MIN = chemical->chemical_potential;
+      else           ChemP_MAX = chemical->chemical_potential;
       if (fabs(Dnum)<1.0e-14) po = 1;
       loopN++;
     } 
@@ -1627,17 +1627,17 @@ static double Cluster_non_collinear_Optical(const OpenMXAtomicViews *atomic,
 
     /* YTL-New-start */
     /* Shifted Chemical Potential */
-    double ChemP_ori=ChemP;
-    ChemP=ChemP_ori+CDDF_Shift_ChemP;
+    double ChemP_ori=chemical->chemical_potential;
+    chemical->chemical_potential=ChemP_ori+CDDF_Shift_ChemP;
     if (myid==Host_ID){ printf(" Chemical Potential + Shifted Chemical Potential = %8.5lf + %8.5lf = %8.5lf (eV)\n",
-                                 ChemP_ori*eV2Hartree,CDDF_Shift_ChemP*eV2Hartree,ChemP*eV2Hartree); fflush(stdout); }
+                                 ChemP_ori*eV2Hartree,CDDF_Shift_ChemP*eV2Hartree,chemical->chemical_potential*eV2Hartree); fflush(stdout); }
     /* YTL-New-end */
 
     j=0;
       for (i=0;i<MaxN;i++){ /* occupied state */
 
         eig = ko[i+1];
-        x = (eig - ChemP)*Beta;
+        x = (eig - chemical->chemical_potential)*Beta;
   if      (x<-x_cut)  FDFi = 1.0;
   else if (x>x_cut)   FDFi = 0.0;
   else                FDFi = 1.0/(1.0 + exp(x));
@@ -1645,7 +1645,7 @@ static double Cluster_non_collinear_Optical(const OpenMXAtomicViews *atomic,
   for (l=i+1;l<MaxN;l++){ /* unoccupied state */
 
     eig = ko[l+1];
-    x = (eig - ChemP)*Beta;
+    x = (eig - chemical->chemical_potential)*Beta;
     if      (x<-x_cut)  FDFl = 1.0;
     else if (x>x_cut)   FDFl = 0.0;
     else                FDFl = 1.0/(1.0 + exp(x));
@@ -1671,7 +1671,7 @@ static double Cluster_non_collinear_Optical(const OpenMXAtomicViews *atomic,
 
     for (i1=1; i1<=MaxN; i1++){
 
-      x = (ko[i1] - ChemP)*Beta;
+      x = (ko[i1] - chemical->chemical_potential)*Beta;
       if (x<=-max_x) x = -max_x;
       if (max_x<=x)  x = max_x;
       FermiF = 1.0/(1.0 + exp(x));
@@ -1687,7 +1687,7 @@ static double Cluster_non_collinear_Optical(const OpenMXAtomicViews *atomic,
       for (j1=0;j1<2*n;j1++)
         LCAO[i1][j1] = Complex(C[i1+1][j1+1].r,C[i1+1][j1+1].i);
 
-    Calc_band_optical_noncol_1(0.0,0.0,0.0,2*n,ko,LCAO,fd_dist,ChemP);
+    Calc_band_optical_noncol_1(0.0,0.0,0.0,2*n,ko,LCAO,fd_dist,chemical->chemical_potential);
     /* YTL-end */
 
     if (measure_time){

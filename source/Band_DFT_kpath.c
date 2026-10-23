@@ -24,7 +24,7 @@
 #include "mpi.h"
 #include <omp.h>
 
-static void Band_DFT_kpath_Col(
+static void Band_DFT_kpath_Col(const OpenMXChemicalPotentials *chemical,
                       int nkpath, int *n_perk,
                       double ***kpath, char ***kname, 
                       int  SpinP_switch, 
@@ -32,7 +32,7 @@ static void Band_DFT_kpath_Col(
                       double *****ImNL,
                       double ****CntOLP);
 
-static void Band_DFT_kpath_NonCol(
+static void Band_DFT_kpath_NonCol(const OpenMXChemicalPotentials *chemical,
                       int nkpath, int *n_perk,
                       double ***kpath, char ***kname, 
                       int  SpinP_switch, 
@@ -40,7 +40,7 @@ static void Band_DFT_kpath_NonCol(
                       double *****ImNL,
                       double ****CntOLP);
 
-void Band_DFT_kpath( int nkpath, int *n_perk,
+void Band_DFT_kpath(const OpenMXChemicalPotentials *chemical,  int nkpath, int *n_perk,
                      double ***kpath, char ***kname, 
                      int  SpinP_switch, 
                      double *****nh,
@@ -49,10 +49,10 @@ void Band_DFT_kpath( int nkpath, int *n_perk,
 {
 
   if (SpinP_switch==0 || SpinP_switch==1){
-    Band_DFT_kpath_Col(nkpath, n_perk, kpath, kname, SpinP_switch, nh, ImNL, CntOLP);
+    Band_DFT_kpath_Col(chemical, nkpath, n_perk, kpath, kname, SpinP_switch, nh, ImNL, CntOLP);
   }
   else if (SpinP_switch==3){
-    Band_DFT_kpath_NonCol(nkpath, n_perk, kpath, kname, SpinP_switch, nh, ImNL, CntOLP);
+    Band_DFT_kpath_NonCol(chemical, nkpath, n_perk, kpath, kname, SpinP_switch, nh, ImNL, CntOLP);
   }
 
 }
@@ -61,7 +61,7 @@ void Band_DFT_kpath( int nkpath, int *n_perk,
 
 
 
-void Band_DFT_kpath_Col( int nkpath, int *n_perk,
+void Band_DFT_kpath_Col(const OpenMXChemicalPotentials *chemical,  int nkpath, int *n_perk,
                          double ***kpath, char ***kname, 
                          int  SpinP_switch, 
                          double *****nh,
@@ -582,7 +582,7 @@ void Band_DFT_kpath_Col( int nkpath, int *n_perk,
       return;
     }
 
-    fprintf(fp_Band," %d  %d  %18.15f\n",n,SpinP_switch,ChemP);
+    fprintf(fp_Band," %d  %d  %18.15f\n",n,SpinP_switch,chemical->chemical_potential);
     for (i=1;i<=3;i++) 
       for (j=1;j<=3;j++) {
 	fprintf(fp_Band,"%18.15f ", rtv[i][j]);
@@ -681,7 +681,7 @@ void Band_DFT_kpath_Col( int nkpath, int *n_perk,
 
 
 
-void Band_DFT_kpath_NonCol( int nkpath, int *n_perk,
+void Band_DFT_kpath_NonCol(const OpenMXChemicalPotentials *chemical,  int nkpath, int *n_perk,
                             double ***kpath, char ***kname, 
                             int  SpinP_switch, 
                             double *****nh,
@@ -1175,7 +1175,7 @@ void Band_DFT_kpath_NonCol( int nkpath, int *n_perk,
       return;
     }
 
-    fprintf(fp_Band," %d  %d  %18.15f\n",2*n,0,ChemP);  /* set SpinP_switch==0 */
+    fprintf(fp_Band," %d  %d  %18.15f\n",2*n,0,chemical->chemical_potential);  /* set SpinP_switch==0 */
     for (i=1;i<=3;i++) 
       for (j=1;j<=3;j++) {
 	fprintf(fp_Band,"%18.15f ", rtv[i][j]);

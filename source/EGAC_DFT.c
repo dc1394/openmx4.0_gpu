@@ -26,7 +26,7 @@
 
 int Lapack_LU_Zinverse(int , dcomplex *);
 
-static void EGAC_Col(char *mode,
+static void EGAC_Col(OpenMXChemicalPotentials *chemical, char *mode,
 		     int SCF_iter,
 		     double *****Hks, double ****OLP0,
 		     double *****CDM,
@@ -59,7 +59,7 @@ static dcomplex Tfunc_deri(int k, dcomplex z0);
 
 
 
-double EGAC_DFT( char *mode,
+double EGAC_DFT(OpenMXChemicalPotentials *chemical,  char *mode,
                  int SCF_iter,
                  int SpinP_switch,
                  double *****Hks,
@@ -79,7 +79,7 @@ double EGAC_DFT( char *mode,
 
   if ( SpinP_switch==0 || SpinP_switch==1 ){
 
-    EGAC_Col(mode,SCF_iter, Hks, OLP0, CDM, EDM, Eele0, Eele1);
+    EGAC_Col(chemical, mode,SCF_iter, Hks, OLP0, CDM, EDM, Eele0, Eele1);
   }
 
   /****************************************************
@@ -99,7 +99,7 @@ double EGAC_DFT( char *mode,
 
 
 
-static void EGAC_Col(char *mode,
+static void EGAC_Col(OpenMXChemicalPotentials *chemical, char *mode,
 		     int SCF_iter,
 		     double *****Hks, double ****OLP0,
 		     double *****CDM,
@@ -400,7 +400,7 @@ static void EGAC_Col(char *mode,
 
   /* loop for adjusting chemical potential */
 
-  Trial_ChemP = ChemP;
+  Trial_ChemP = chemical->chemical_potential;
   iter_ChemP = 1;
   end_outer_flag = 0;
 
@@ -579,7 +579,7 @@ static void EGAC_Col(char *mode,
 
   /* update the new ChemP */
 
-  ChemP = Trial_ChemP;
+  chemical->chemical_potential = Trial_ChemP;
 
   /************************************************************************
       MPI communication of DM_Snd_EGAC             

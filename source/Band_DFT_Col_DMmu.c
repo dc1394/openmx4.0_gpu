@@ -100,7 +100,7 @@ void elpa_solve_evp_complex_2stage_double_impl_
         int *na_rows2, int *nblk, int *na_cols1,
         int *mpi_comm_rows_int, int *mpi_comm_cols_int, int *mpiworld );
 
-double Band_DFT_Col_DMmu(
+double Band_DFT_Col_DMmu(OpenMXChemicalPotentials *chemical,
                     int SCF_iter,
                     int knum_i, int knum_j, int knum_k,
                     int SpinP_switch,
@@ -1150,14 +1150,14 @@ diagonalize1:
 
         loop_num++;
 
-        ChemP = 0.50*(ChemP_MAX + ChemP_MIN);
+        chemical->chemical_potential = 0.50*(ChemP_MAX + ChemP_MIN);
         Num_State = 0.0;
 
         for (kloop=0; kloop<T_knum; kloop++){
 
           for (l=1; l<=MaxN; l++){
 
-            x = (EIGEN[spin][kloop][l] - ChemP)*Beta;
+            x = (EIGEN[spin][kloop][l] - chemical->chemical_potential)*Beta;
 
             if (x<=-x_cut) x = -x_cut;
             if (x_cut<=x)  x =  x_cut;
@@ -1170,20 +1170,20 @@ diagonalize1:
         else                  Num_State = Num_State/sum_weights;
         Dnum = HOMO_XANES[spin] - Num_State;
 
-        if (0.0<=Dnum) ChemP_MIN = ChemP;
-        else           ChemP_MAX = ChemP;
+        if (0.0<=Dnum) ChemP_MIN = chemical->chemical_potential;
+        else           ChemP_MAX = chemical->chemical_potential;
         if (fabs(Dnum)<10e-14) po = 1;
       }
       while (po==0 && loop_num<2000);
 
-      ChemP_XANES[spin] = ChemP;
+      chemical->xanes[spin] = chemical->chemical_potential;
       Cluster_HOMO[spin] = HOMO_XANES[spin];
 
     } /* spin loop */
 
     /* set ChemP */
 
-    ChemP = 0.5*(ChemP_XANES[0] + ChemP_XANES[1]); 
+    chemical->chemical_potential = 0.5*(chemical->xanes[0] + chemical->xanes[1]);
 
   } /* end of if (xanes_calc==1) */
 
@@ -1204,14 +1204,14 @@ diagonalize1:
 
       loop_num++;
 
-      ChemP = 0.50*(ChemP_MAX + ChemP_MIN);
+      chemical->chemical_potential = 0.50*(ChemP_MAX + ChemP_MIN);
       Num_State = 0.0;
 
       for (kloop=0; kloop<T_knum; kloop++){
         for (spin=0; spin<=SpinP_switch; spin++){
           for (l=1; l<=MaxN; l++){
 
-            x = (EIGEN[spin][kloop][l] - ChemP)*Beta*0.2;
+            x = (EIGEN[spin][kloop][l] - chemical->chemical_potential)*Beta*0.2;
 
             if (x<=-x_cut) x = -x_cut;
             if (x_cut<=x)  x =  x_cut;
@@ -1230,8 +1230,8 @@ diagonalize1:
  
       Dnum = TZ - Num_State - system_charge;
 
-      if (0.0<=Dnum) ChemP_MIN = ChemP;
-      else           ChemP_MAX = ChemP;
+      if (0.0<=Dnum) ChemP_MIN = chemical->chemical_potential;
+      else           ChemP_MAX = chemical->chemical_potential;
       if (fabs(Dnum)<10e-14) po = 1;
     }
     while (po==0 && loop_num<2000);
@@ -1248,7 +1248,7 @@ diagonalize1:
       loop_num++;
 
       if (loop_num!=1){
-        ChemP = 0.50*(ChemP_MAX + ChemP_MIN);
+        chemical->chemical_potential = 0.50*(ChemP_MAX + ChemP_MIN);
       }
 
       Num_State = 0.0;
@@ -1257,7 +1257,7 @@ diagonalize1:
         for (spin=0; spin<=SpinP_switch; spin++){
           for (l=1; l<=MaxN; l++){
 
-            x = (EIGEN[spin][kloop][l] - ChemP)*Beta;
+            x = (EIGEN[spin][kloop][l] - chemical->chemical_potential)*Beta;
 
             if (x<=-x_cut) x = -x_cut;
             if (x_cut<=x)  x =  x_cut;
@@ -1276,8 +1276,8 @@ diagonalize1:
  
       Dnum = TZ - Num_State - system_charge;
 
-      if (0.0<=Dnum) ChemP_MIN = ChemP;
-      else           ChemP_MAX = ChemP;
+      if (0.0<=Dnum) ChemP_MIN = chemical->chemical_potential;
+      else           ChemP_MAX = chemical->chemical_potential;
       if (fabs(Dnum)<10e-14) po = 1;
     }
     while (po==0 && loop_num<2000);
@@ -1285,7 +1285,7 @@ diagonalize1:
   } /* end of else for if (xanes_calc==1) */
 
   /* for the NEGF calculation */
-  if (Solver==4 && TRAN_ChemP_Band==0) ChemP = 0.5*(ChemP_e[0]+ChemP_e[1]);
+  if (Solver==4 && TRAN_ChemP_Band==0) chemical->chemical_potential = 0.5*(ChemP_e[0]+ChemP_e[1]);
 
  // /****************************************************
  //          band energy in a finite temperature
@@ -1373,9 +1373,9 @@ diagonalize1:
       eig = EIGEN[spin][kloop][k];
 
       if (xanes_calc==1) 
-        x = (eig - ChemP_XANES[spin])*Beta;
+        x = (eig - chemical->xanes[spin])*Beta;
       else 
-        x = (eig - ChemP)*Beta;
+        x = (eig - chemical->chemical_potential)*Beta;
 
       if (x<=-x_cut) x = -x_cut;
       if (x_cut<=x)  x = x_cut;
@@ -1982,9 +1982,9 @@ diagonalize1:
 
         if (flag_export_DM<2){
           if (xanes_calc==1) 
-              x = (eig - ChemP_XANES[spin])*Beta;
+              x = (eig - chemical->xanes[spin])*Beta;
           else 
-              x = (eig - ChemP)*Beta;
+              x = (eig - chemical->chemical_potential)*Beta;
 
           if (x<=-x_cut) x = -x_cut;
           if (x_cut<=x)  x = x_cut;
@@ -1996,24 +1996,24 @@ diagonalize1:
         /* Cutoff in the specified energy range */
         if ((flag_export_DM==1) && (flag_energy_range_DM==1)){
           if (xanes_calc==1){ 
-            if ( ((eig - ChemP_XANES[spin]) < DM_energy_range[0]) || (DM_energy_range[1] < (eig - ChemP_XANES[spin])) ){
+            if ( ((eig - chemical->xanes[spin]) < DM_energy_range[0]) || (DM_energy_range[1] < (eig - chemical->xanes[spin])) ){
               tmp1 = 0;
             }
           }
           else{
-            if ( (DM_energy_range[0] < (eig - ChemP)) && ((eig - ChemP) < DM_energy_range[1]) ){
+            if ( (DM_energy_range[0] < (eig - chemical->chemical_potential)) && ((eig - chemical->chemical_potential) < DM_energy_range[1]) ){
               tmp1 = 0;
             }
           }
         }
         else if (flag_export_DM==2){ /* T-method */
           if (xanes_calc==1) {
-              x_lower = (eig - (ChemP_XANES[spin] + DM_energy_range[0]))*DM_tilde_Beta_lower;
-              x_upper = (eig - (ChemP_XANES[spin] + DM_energy_range[1]))*DM_tilde_Beta_upper;
+              x_lower = (eig - (chemical->xanes[spin] + DM_energy_range[0]))*DM_tilde_Beta_lower;
+              x_upper = (eig - (chemical->xanes[spin] + DM_energy_range[1]))*DM_tilde_Beta_upper;
           }
           else {
-              x_lower = (eig - (ChemP + DM_energy_range[0]))*DM_tilde_Beta_lower;
-              x_upper = (eig - (ChemP + DM_energy_range[1]))*DM_tilde_Beta_upper;
+              x_lower = (eig - (chemical->chemical_potential + DM_energy_range[0]))*DM_tilde_Beta_lower;
+              x_upper = (eig - (chemical->chemical_potential + DM_energy_range[1]))*DM_tilde_Beta_upper;
           }
 
           if (x_lower<=-x_cut) x_lower = -x_cut;

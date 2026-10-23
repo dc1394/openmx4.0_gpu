@@ -27,7 +27,7 @@ void solve_evp_complex_( int *n2, int *MaxN, dcomplex *Hs2, int *na_rows2_1, dou
 
 #define  measure_time  0
 
-double Band_DFT_Col_Optical_ScaLAPACK(const OpenMXAtomicViews *atomic,
+double Band_DFT_Col_Optical_ScaLAPACK(OpenMXChemicalPotentials *chemical, const OpenMXAtomicViews *atomic,
                     int SCF_iter,
                     int knum_i, int knum_j, int knum_k,
 		    int SpinP_switch,
@@ -1230,14 +1230,14 @@ double Band_DFT_Col_Optical_ScaLAPACK(const OpenMXAtomicViews *atomic,
 
     loop_num++;
 
-    ChemP = 0.50*(ChemP_MAX + ChemP_MIN);
+    chemical->chemical_potential = 0.50*(ChemP_MAX + ChemP_MIN);
     Num_State = 0.0;
 
     for (kloop=0; kloop<T_knum; kloop++){
       for (spin=0; spin<=SpinP_switch; spin++){
 	for (l=1; l<=MaxN; l++){
 
-	  x = (EIGEN[spin][kloop][l] - ChemP)*Beta;
+	  x = (EIGEN[spin][kloop][l] - chemical->chemical_potential)*Beta;
 
 	  if (x<=-x_cut)      FermiF = 1.0;
 	  else if (x>=x_cut)  FermiF = 0.0;
@@ -1256,8 +1256,8 @@ double Band_DFT_Col_Optical_ScaLAPACK(const OpenMXAtomicViews *atomic,
  
     Dnum = TZ - Num_State - system_charge;
 
-    if (0.0<=Dnum) ChemP_MIN = ChemP;
-    else           ChemP_MAX = ChemP;
+    if (0.0<=Dnum) ChemP_MIN = chemical->chemical_potential;
+    else           ChemP_MAX = chemical->chemical_potential;
     if (fabs(Dnum)<10e-14) po = 1;
   }
   while (po==0 && loop_num<2000);
@@ -1278,10 +1278,10 @@ double Band_DFT_Col_Optical_ScaLAPACK(const OpenMXAtomicViews *atomic,
 
   /* YTL-New-start */
   /* Shifted Chemical Potential */
-  double ChemP_ori=ChemP;
-  ChemP=ChemP_ori+CDDF_Shift_ChemP;
+  double ChemP_ori=chemical->chemical_potential;
+  chemical->chemical_potential=ChemP_ori+CDDF_Shift_ChemP;
   if (myid0==Host_ID){ printf(" Chemical Potential + Shifted Chemical Potential = %8.5lf + %8.5lf = %8.5lf (eV)\n",
-			      ChemP_ori*eV2Hartree,CDDF_Shift_ChemP*eV2Hartree,ChemP*eV2Hartree); fflush(stdout); }
+			      ChemP_ori*eV2Hartree,CDDF_Shift_ChemP*eV2Hartree,chemical->chemical_potential*eV2Hartree); fflush(stdout); }
   /* YTL-New-end */
 
   j = 0;
@@ -1293,7 +1293,7 @@ double Band_DFT_Col_Optical_ScaLAPACK(const OpenMXAtomicViews *atomic,
 	for (i=0; i<MaxN; i++){ /* occupied state */
 
           eig = EIGEN[spin][kloop][i+1];
-          x = (eig - ChemP)*Beta;
+          x = (eig - chemical->chemical_potential)*Beta;
 	  if      (x<-x_cut)  FDFi = 1.0;
 	  else if (x>x_cut)   FDFi = 0.0;
 	  else                FDFi = 1.0/(1.0 + exp(x));
@@ -1301,7 +1301,7 @@ double Band_DFT_Col_Optical_ScaLAPACK(const OpenMXAtomicViews *atomic,
 	  for (l=i+1; l<MaxN; l++){ /* unoccupied state */
 
 	    eig = EIGEN[spin][kloop][l+1];
-	    x = (eig - ChemP)*Beta;
+	    x = (eig - chemical->chemical_potential)*Beta;
 	    if      (x<-x_cut)  FDFl = 1.0;
 	    else if (x>x_cut)   FDFl = 0.0;
 	    else                FDFl = 1.0/(1.0 + exp(x));
@@ -1356,7 +1356,7 @@ double Band_DFT_Col_Optical_ScaLAPACK(const OpenMXAtomicViews *atomic,
     do{
 
       eig = EIGEN[spin][kloop][l];
-      x = (eig - ChemP)*Beta;
+      x = (eig - chemical->chemical_potential)*Beta;
 
       if      (x<-x_cut)  FermiF = 1.0;
       else if (x>x_cut)   FermiF = 0.0;
@@ -1383,7 +1383,7 @@ double Band_DFT_Col_Optical_ScaLAPACK(const OpenMXAtomicViews *atomic,
 
     /* YTL-start */
     Calc_band_optical_col_1( T_KGrids1[kloop],T_KGrids2[kloop],T_KGrids3[kloop],
-                             spin,n,EIGEN[spin][kloop],H,fd_dist,ChemP );
+                             spin,n,EIGEN[spin][kloop],H,fd_dist,chemical->chemical_potential );
     /* YTL-end */
 
     dtime(&Etime0);
@@ -1868,7 +1868,7 @@ double Band_DFT_Col_Optical_ScaLAPACK(const OpenMXAtomicViews *atomic,
       do{
 
       	eig = EIGEN[spin][kloop][l];
-      	x = (eig - ChemP)*Beta;
+        x = (eig - chemical->chemical_potential)*Beta;
 
       	if      (x<-x_cut)  FermiF = 1.0;
       	else if (x>x_cut)   FermiF = 0.0;
@@ -1895,7 +1895,7 @@ double Band_DFT_Col_Optical_ScaLAPACK(const OpenMXAtomicViews *atomic,
 
       /* YTL-start */
       Calc_band_optical_col_1( T_KGrids1[kloop],T_KGrids2[kloop],T_KGrids3[kloop],
-                               spin,n,EIGEN[spin][kloop],H,fd_dist,ChemP );
+                               spin,n,EIGEN[spin][kloop],H,fd_dist,chemical->chemical_potential );
       /* YTL-end */
 
       dtime(&Etime);

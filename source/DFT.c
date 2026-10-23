@@ -381,7 +381,7 @@ dcomplex **SU_Band,**SL_Band;
 
 /* for DC_LNO */
 
-static double Calc_optical_conductivities_dielectric_functions(const OpenMXAtomicViews *atomic,
+static double Calc_optical_conductivities_dielectric_functions(OpenMXChemicalPotentials *chemical, const OpenMXAtomicViews *atomic,
   int myid0,
   double **ko_col,
   double Eele0[2],
@@ -439,6 +439,14 @@ void Allocate_Free_GridData(int todo_flag);
 
 double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 {
+  OpenMXChemicalPotentials *chemical=NULL;
+  char chemical_error[256];
+  if(!openmx_core_chemical_potentials(core,&chemical,chemical_error,sizeof(chemical_error))) {
+    fprintf(stderr,"OpenMX chemical potentials: %s\n",chemical_error);
+    MPI_Abort(mpi_comm_level1,1);
+    abort();
+  }
+
   OpenMXThermodynamicEnergies *thermo=NULL;
   char thermodynamic_error[256];
   if(!openmx_core_thermodynamic_energies(core,&thermo,thermodynamic_error,sizeof(thermodynamic_error))) {
@@ -1132,7 +1140,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 	  }
           else if (GB_switch==1){
             /* added by T. B. Prayitno and supervised by Prof. F. Ishii*/
-	    time5 += Band_DFT_NonCol_GB(energies, LSCF_iter,
+	    time5 += Band_DFT_NonCol_GB(chemical, energies, LSCF_iter,
 					koSU,koSL, SU_Band,SL_Band,
 					Kspace_grid1,Kspace_grid2,Kspace_grid3,
 					SpinP_switch,H,iHNL,OLP[0],DM[0],EDM,Eele0,Eele1, electronic);
@@ -1178,12 +1186,12 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 	break;       
 
       case 9:
-	time5 += Cluster_DFT_ON2("scf",LSCF_iter,SpinP_switch,
+	time5 += Cluster_DFT_ON2(chemical, "scf",LSCF_iter,SpinP_switch,
 				 H,iHNL,OLP[0],DM[0],EDM,Eele0,Eele1);
 	break;       
 
       case 10:
-	time5 += EGAC_DFT("scf",LSCF_iter,SpinP_switch,H,iHNL,OLP[0],DM[0],EDM,Eele0,Eele1);
+	time5 += EGAC_DFT(chemical, "scf",LSCF_iter,SpinP_switch,H,iHNL,OLP[0],DM[0],EDM,Eele0,Eele1);
 	break;       
 
       case 11:    
@@ -1193,7 +1201,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
       case 12:
 	if (SpinP_switch<=1){
 
-	  time5 += Cluster_DFT_Col_LNO( "scf",LSCF_iter,SpinP_switch,
+	  time5 += Cluster_DFT_Col_LNO(chemical,  "scf",LSCF_iter,SpinP_switch,
 					n, TNum_LNOs,
 					ko_col,H,OLP[0],DM[0],EDM,
 					Eele0,Eele1,
@@ -1303,7 +1311,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 	  }
           else if (GB_switch==1){
             /* added by T. B. Prayitno and supervised by Prof. F. Ishii*/
-	    time5 += Band_DFT_NonCol_GB(energies, LSCF_iter,
+	    time5 += Band_DFT_NonCol_GB(chemical, energies, LSCF_iter,
 					koSU,koSL, SU_Band,SL_Band,
 					Kspace_grid1,Kspace_grid2,Kspace_grid3,
 					SpinP_switch,CntH,iCntHNL,CntOLP[0],DM[0],EDM,Eele0,Eele1, electronic);
@@ -1348,7 +1356,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 	break;       
 
       case 9:
-	time5 += Cluster_DFT_ON2("scf",LSCF_iter,SpinP_switch,
+	time5 += Cluster_DFT_ON2(chemical, "scf",LSCF_iter,SpinP_switch,
 				 CntH,iCntHNL,CntOLP[0],DM[0],EDM,Eele0,Eele1);
 	break;       
 
@@ -1558,7 +1566,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
       }
 
       /* save the information at iteration */
-      outputfile1(thermo, mixing_history, energies, components,4,MD_iter,orbitalOpt_iter,0,SCF_iter,file_OrbOpt,ChemP_e0,orbital_norm);
+      outputfile1(chemical, thermo, mixing_history, energies, components,4,MD_iter,orbitalOpt_iter,0,SCF_iter,file_OrbOpt,ChemP_e0,orbital_norm);
 
       orbitalOpt_iter++;
       LSCF_iter = 0;
@@ -1833,7 +1841,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
       } 
     }
 
-    outputfile1(thermo, mixing_history, energies, components,1,MD_iter,orbitalOpt_iter,Cnt_Now,SCF_iter,file_DFTSCF,ChemP_e0,orbital_norm);
+    outputfile1(chemical, thermo, mixing_history, energies, components,1,MD_iter,orbitalOpt_iter,Cnt_Now,SCF_iter,file_DFTSCF,ChemP_e0,orbital_norm);
 
     if (po==0 && Cnt_switch==0 && Solver==2 && SpinP_switch==3){
       Cluster_DFT_NonCol_RefineAfterMixing(solver_states.cluster_noncol, sqrt(fabs(mixing_history->norm[0])));
@@ -2010,16 +2018,16 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
     /* EDM */
 
     if (!mgpu_edm) {
-    time5 += Calc_DM_Cluster_non_collinear_ScaLAPACK( 7, myid0, numprocs0, size_H1, is2, ie2, MP, n, n*2,
+    time5 += Calc_DM_Cluster_non_collinear_ScaLAPACK(chemical,  7, myid0, numprocs0, size_H1, is2, ie2, MP, n, n*2,
 						      DM[0], iDM[0], EDM, ko_noncol, CDM1, Work1, EVec1_NonCol, electronic);
   
-    time5 += Calc_DM_Cluster_non_collinear_ScaLAPACK( 8, myid0, numprocs0, size_H1, is2, ie2, MP, n, n*2,
+    time5 += Calc_DM_Cluster_non_collinear_ScaLAPACK(chemical,  8, myid0, numprocs0, size_H1, is2, ie2, MP, n, n*2,
 						      DM[0], iDM[0], EDM, ko_noncol, CDM1, Work1, EVec1_NonCol, electronic);
 
-    time5 += Calc_DM_Cluster_non_collinear_ScaLAPACK( 9, myid0, numprocs0, size_H1, is2, ie2, MP, n, n*2,
+    time5 += Calc_DM_Cluster_non_collinear_ScaLAPACK(chemical,  9, myid0, numprocs0, size_H1, is2, ie2, MP, n, n*2,
 						      DM[0], iDM[0], EDM, ko_noncol, CDM1, Work1, EVec1_NonCol, electronic);
 
-    time5 += Calc_DM_Cluster_non_collinear_ScaLAPACK( 10, myid0, numprocs0, size_H1, is2, ie2, MP, n, n*2,
+    time5 += Calc_DM_Cluster_non_collinear_ScaLAPACK(chemical,  10, myid0, numprocs0, size_H1, is2, ie2, MP, n, n*2,
 						      DM[0], iDM[0], EDM, ko_noncol, CDM1, Work1, EVec1_NonCol, electronic);
     }
 
@@ -2027,10 +2035,10 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
     if (cal_partial_charge){
 
-      time5 += Calc_DM_Cluster_non_collinear_ScaLAPACK( 11, myid0, numprocs0, size_H1, is2, ie2, MP, n, n*2,
+      time5 += Calc_DM_Cluster_non_collinear_ScaLAPACK(chemical,  11, myid0, numprocs0, size_H1, is2, ie2, MP, n, n*2,
 							DM[0], iDM[0], EDM, ko_noncol, CDM1, Work1, EVec1_NonCol, electronic);
 
-      time5 += Calc_DM_Cluster_non_collinear_ScaLAPACK( 12, myid0, numprocs0, size_H1, is2, ie2, MP, n, n*2,
+      time5 += Calc_DM_Cluster_non_collinear_ScaLAPACK(chemical,  12, myid0, numprocs0, size_H1, is2, ie2, MP, n, n*2,
 							DM[0], iDM[0], EDM, ko_noncol, CDM1, Work1, EVec1_NonCol, electronic);
     }
   }
@@ -2104,7 +2112,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
   if (CDDF_on==1){
 
-    time5 += Calc_optical_conductivities_dielectric_functions(atomic,
+    time5 += Calc_optical_conductivities_dielectric_functions(chemical, atomic,
 	     myid0,
              ko_col,Eele0,Eele1,
 	     MP,order_GA,ko,koS,EIGEN_Band,S1,H1,
@@ -2157,7 +2165,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
       /* calculation of CWFs */
 
-      time5 += Cluster_DFT_Col_CWF( LSCF_iter,SpinP_switch,
+      time5 += Cluster_DFT_Col_CWF(chemical,  LSCF_iter,SpinP_switch,
 				    ko_col,H,OLP[0],DM[0],EDM,
 				    Eele0,Eele1,
 				    myworld1,NPROCS_ID1,Comm_World1,NPROCS_WD1,
@@ -2208,7 +2216,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
       /* calculation of CWFs */
 
-      time5 += Band_DFT_Col_CWF( LSCF_iter,
+      time5 += Band_DFT_Col_CWF(chemical,  LSCF_iter,
   				 CWF_Kgrid1,CWF_Kgrid2,CWF_Kgrid3,
 				 SpinP_switch,H,iHNL,OLP[0],DM[0],EDM,Eele0,Eele1, 
 				 MP,order_GA,ko,koS,EIGEN_Band,
@@ -2260,7 +2268,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
       /* calculation of CWFs */
 
-      time5 += Cluster_DFT_NonCol_CWF( LSCF_iter,SpinP_switch,
+      time5 += Cluster_DFT_NonCol_CWF(chemical,  LSCF_iter,SpinP_switch,
 				       ko_noncol,H,iHNL,OLP[0],DM[0],EDM,
 				       Eele0,Eele1,
 				       MP,is2,ie2,
@@ -2311,7 +2319,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
       /* calculation of CWFs */
 
-      time5 += Band_DFT_NonCol_CWF( LSCF_iter,
+      time5 += Band_DFT_NonCol_CWF(chemical,  LSCF_iter,
 				    Kspace_grid1,Kspace_grid2,Kspace_grid3,
 				    SpinP_switch,H,iHNL,OLP[0],DM[0],EDM,Eele0,Eele1, 
 				    MP,order_GA,ko_noncol,koS,EIGEN_Band,
@@ -2343,7 +2351,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
        such as mmn, ammn, eig, win */
 
     if (cwf2w90_output_flag){
-      CWF2W90(k_op,T_k_op,T_k_ID,T_KGrids1,T_KGrids2,T_KGrids3,MP,order_GA);
+      CWF2W90(chemical, k_op,T_k_op,T_k_ID,T_KGrids1,T_KGrids2,T_KGrids3,MP,order_GA);
     }
 
   } /* end of if (CWF_Calc==1) */
@@ -2364,7 +2372,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   *******************************************************************/
 
   /* revised by Y. Xiao for Noncollinear NEGF calculations */ /* iHNL is outputed */
-  TRAN_Output_Trans_HS( mpi_comm_level1, Solver, SpinP_switch, ChemP, H, iHNL, OLP, H0,
+  TRAN_Output_Trans_HS( mpi_comm_level1, Solver, SpinP_switch, chemical->chemical_potential, H, iHNL, OLP, H0,
                         atomnum, SpeciesNum, WhatSpecies, 
                         atomic->species.contracted_orbitals, FNAN, natn, ncn, G2ID, atv_ijk,
                         Max_FSNAN, ScaleSize, F_G2M, TCpyCell, List_YOUSO, 
@@ -2424,7 +2432,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
   if (NBO_switch == 2){
     if (Solver == 8){
-      Calc_NAO_Krylov(H,OLP[0],DM[0]);
+      Calc_NAO_Krylov(chemical, H,OLP[0],DM[0]);
     }
     else{
       if (MYID_MPI_COMM_WORLD == Host_ID){
@@ -2481,7 +2489,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   if ( Band_disp_switch==1 && Band_Nkpath>0 && LNO_flag==1 ){
 
       LNO("scf",SCF_iter,OLP[0],H,DM[0], local_basis);
-      Band_DFT_kpath_LNO( Band_Nkpath, Band_N_perpath,
+      Band_DFT_kpath_LNO(chemical,  Band_Nkpath, Band_N_perpath,
                           Band_kpath, Band_kname, 
                           SpinP_switch,H,iHNL,OLP[0], local_basis);
   }
@@ -2491,13 +2499,13 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   if ( Band_disp_switch==1 && Band_Nkpath>0 ){
     if (Cnt_switch==0){
 
-      Band_DFT_kpath( Band_Nkpath, Band_N_perpath,
+      Band_DFT_kpath(chemical,  Band_Nkpath, Band_N_perpath,
                       Band_kpath, Band_kname, 
                       SpinP_switch,H,iHNL,OLP[0]);
     }
     else {
 
-      Band_DFT_kpath( Band_Nkpath, Band_N_perpath,
+      Band_DFT_kpath(chemical,  Band_Nkpath, Band_N_perpath,
                       Band_kpath, Band_kname,
                       SpinP_switch,CntH,iCntHNL,CntOLP[0]);
     }
@@ -2560,11 +2568,11 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
       if (Cnt_switch==0){
 
-	Band_DFT_Dosout( Dos_Kgrid[0], Dos_Kgrid[1], Dos_Kgrid[2],
+	Band_DFT_Dosout(chemical,  Dos_Kgrid[0], Dos_Kgrid[1], Dos_Kgrid[2],
 			 SpinP_switch, H, iHNL, OLP[0] , electronic);
       }
       else {
-	Band_DFT_Dosout( Dos_Kgrid[0], Dos_Kgrid[1], Dos_Kgrid[2],
+	Band_DFT_Dosout(chemical,  Dos_Kgrid[0], Dos_Kgrid[1], Dos_Kgrid[2],
 			 SpinP_switch, CntH, iCntHNL, CntOLP[0] , electronic);
       }
     }
@@ -2705,12 +2713,12 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   if (Solver==9){
 
     if (Cnt_switch==0){
-      time5 += Cluster_DFT_ON2("force",LSCF_iter,SpinP_switch,
+      time5 += Cluster_DFT_ON2(chemical, "force",LSCF_iter,SpinP_switch,
 			       H,iHNL,OLP[0],DM[0],EDM,Eele0,Eele1);
     }
     else{
 
-      time5 += Cluster_DFT_ON2("force",LSCF_iter,SpinP_switch,
+      time5 += Cluster_DFT_ON2(chemical, "force",LSCF_iter,SpinP_switch,
 			       CntH,iCntHNL,CntOLP[0],DM[0],EDM,Eele0,Eele1);
     }
   }
@@ -2801,11 +2809,11 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
   if ( Solver!=12 ){
     thermo->total = components->core + components->hartree[0] + components->kinetic + components->neutral_atom + components->nonlocal + components->hartree[1] + components->xc[0] + components->xc[1] + components->hubbard + components->spin_constraint + components->zeeman_spin + components->zeeman_orbital + components->electric_field + components->vdw + components->core_hole;
-    outputfile1(thermo, mixing_history, energies, components,2,MD_iter,0,0,SCF_iter,file_DFTSCF,ChemP_e0,orbital_norm);
+    outputfile1(chemical, thermo, mixing_history, energies, components,2,MD_iter,0,0,SCF_iter,file_DFTSCF,ChemP_e0,orbital_norm);
   }
   else if ( Solver==12 ){
     thermo->total = energies->band + components->hartree[1] + components->hartree_double_counting + components->xc[0] + components->xc[1] + components->xc_double_counting[0] + components->xc_double_counting[1] + components->core + components->hartree[0];
-    outputfile1(thermo, mixing_history, energies, components,3,MD_iter,0,0,SCF_iter,file_DFTSCF,ChemP_e0,orbital_norm);
+    outputfile1(chemical, thermo, mixing_history, energies, components,3,MD_iter,0,0,SCF_iter,file_DFTSCF,ChemP_e0,orbital_norm);
   }
   
   /* elapsed time */
@@ -2955,7 +2963,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
             if (SpinP_switch<=1){
 
-              Cluster_DFT_Col_DMmu("scf",LSCF_iter,SpinP_switch,
+              Cluster_DFT_Col_DMmu(chemical, "scf",LSCF_iter,SpinP_switch,
                            ko_col,H,OLP[0],DMmu,
                            myworld1,NPROCS_ID1,Comm_World1,NPROCS_WD1,
                            Comm_World_StartID1,MPI_CommWD1,MP,is2,ie2,
@@ -2966,7 +2974,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
             else if (SpinP_switch==3){
 
-              Cluster_DFT_NonCol_DMmu("scf",LSCF_iter,SpinP_switch,
+              Cluster_DFT_NonCol_DMmu(chemical, "scf",LSCF_iter,SpinP_switch,
                               ko_noncol,H,iHNL,OLP[0],DMmu,iDMmu,
                               MP,is2,ie2,
                               Ss_Re,Cs_Re,
@@ -2983,7 +2991,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
               //Band_DFT_Col_DM( Dos_Kgrid[0], Dos_Kgrid[1], Dos_Kgrid[2],
               //         SpinP_switch, H, iHNL, OLP[0] );
               //
-              Band_DFT_Col_DMmu(LSCF_iter,
+              Band_DFT_Col_DMmu(chemical, LSCF_iter,
 				Kspace_grid1,Kspace_grid2,Kspace_grid3,
 				SpinP_switch,H,iHNL,OLP[0],DMmu,
 				MP,order_GA,ko,koS,EIGEN_Band,
@@ -3009,7 +3017,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 				MPI_CommWD2);
             }
             else{ 
-	      Band_DFT_NonCol_DMmu(LSCF_iter,
+	      Band_DFT_NonCol_DMmu(chemical, LSCF_iter,
 				   Kspace_grid1,Kspace_grid2,Kspace_grid3,
 				   SpinP_switch,H,iHNL,OLP[0],DMmu,iDMmu, 
 				   MP,order_GA,ko_noncol,koS,EIGEN_Band,
@@ -3058,7 +3066,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
           case 2:
             if (SpinP_switch<=1){
-              Cluster_DFT_Col_DMmu("scf",LSCF_iter,SpinP_switch,
+              Cluster_DFT_Col_DMmu(chemical, "scf",LSCF_iter,SpinP_switch,
                            ko_col,CntH,CntOLP[0],DMmu,
                            myworld1,NPROCS_ID1,Comm_World1,NPROCS_WD1,
                            Comm_World_StartID1,MPI_CommWD1,MP,is2,ie2,
@@ -3072,7 +3080,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
           case 3:
             if (SpinP_switch<=1){
-              Band_DFT_Col_DMmu(LSCF_iter,
+              Band_DFT_Col_DMmu(chemical, LSCF_iter,
                               Kspace_grid1,Kspace_grid2,Kspace_grid3,
                               SpinP_switch,CntH,iCntHNL,CntOLP[0],DMmu, 
                               MP,order_GA,ko,koS,EIGEN_Band,
@@ -3098,7 +3106,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
                               MPI_CommWD2);
             }
             else{ 
-	      Band_DFT_NonCol_DMmu(LSCF_iter,
+	      Band_DFT_NonCol_DMmu(chemical, LSCF_iter,
 				   Kspace_grid1,Kspace_grid2,Kspace_grid3,
 				   SpinP_switch,CntH,iCntHNL,CntOLP[0],DMmu,iDMmu, 
 				   MP,order_GA,ko_noncol,koS,EIGEN_Band,
@@ -3159,10 +3167,10 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
   if ( MO_fileout==1 && MO_Nkpoint>0 && (Solver==3 || PeriodicGamma_flag==1) ) {
     if (Cnt_switch==0){
-      Band_DFT_MO(MO_Nkpoint, MO_kpoint, SpinP_switch, H, iHNL, OLP[0]);
+      Band_DFT_MO(chemical, MO_Nkpoint, MO_kpoint, SpinP_switch, H, iHNL, OLP[0]);
     }
     else {
-      Band_DFT_MO(MO_Nkpoint, MO_kpoint, SpinP_switch, CntH, iCntHNL, CntOLP[0]);
+      Band_DFT_MO(chemical, MO_Nkpoint, MO_kpoint, SpinP_switch, CntH, iCntHNL, CntOLP[0]);
     }
   }
 
@@ -3197,10 +3205,10 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
   if (unfold_electronic_band==1 && ((UnfoldBand_Nkpath>0) || (unfold_Nkpoint>0)) && (Solver==2 || Solver==3) ){ 
     if (Cnt_switch==0){
-      Unfolding_Bands(SpinP_switch, H, iHNL, OLP[0]);
+      Unfolding_Bands(chemical, SpinP_switch, H, iHNL, OLP[0]);
     }
     else {
-      Unfolding_Bands(SpinP_switch, CntH, iCntHNL, CntOLP[0]);
+      Unfolding_Bands(chemical, SpinP_switch, CntH, iCntHNL, CntOLP[0]);
     }
   }
   /* end for unfolding */
@@ -3550,7 +3558,7 @@ void Output_Energies_Forces(const OpenMXThermodynamicEnergies *thermo, const Ope
 
 
 
-double Calc_optical_conductivities_dielectric_functions(const OpenMXAtomicViews *atomic,
+double Calc_optical_conductivities_dielectric_functions(OpenMXChemicalPotentials *chemical, const OpenMXAtomicViews *atomic,
   int myid0,
   double **ko_col,
   double Eele0[2],
@@ -3617,7 +3625,7 @@ double Calc_optical_conductivities_dielectric_functions(const OpenMXAtomicViews 
 
   case 2:
 
-    time5 = Cluster_DFT_Optical_ScaLAPACK(atomic,  "scf",1,SpinP_switch,
+    time5 = Cluster_DFT_Optical_ScaLAPACK(chemical, atomic,  "scf",1,SpinP_switch,
 					   ko_col,H,iHNL,OLP[0],DM[0],EDM,
 					   NULL,NULL,NULL,Eele0,Eele1,
 					   myworld1,NPROCS_ID1,Comm_World1,NPROCS_WD1,
@@ -3630,7 +3638,7 @@ double Calc_optical_conductivities_dielectric_functions(const OpenMXAtomicViews 
 
     if (SpinP_switch<=1){
 
-    time5 = Band_DFT_Col_Optical_ScaLAPACK(atomic,  1,
+    time5 = Band_DFT_Col_Optical_ScaLAPACK(chemical, atomic,  1,
 					    CDDF_Kspace_grid1,CDDF_Kspace_grid2,CDDF_Kspace_grid3,
 					    SpinP_switch,H,iHNL,OLP[0],DM[0],EDM,Eele0,Eele1, 
 					    MP,order_GA,ko,koS,
@@ -3641,7 +3649,7 @@ double Calc_optical_conductivities_dielectric_functions(const OpenMXAtomicViews 
     }
     else{ 
 
-      time5 = Band_DFT_NonCol_Optical(atomic,  1,
+      time5 = Band_DFT_NonCol_Optical(chemical, atomic,  1,
 				       koS,S_Band, 
 				       CDDF_Kspace_grid1,CDDF_Kspace_grid2,CDDF_Kspace_grid3,
 				       SpinP_switch,H,iHNL,OLP[0],DM[0],EDM,Eele0,Eele1, local_basis);

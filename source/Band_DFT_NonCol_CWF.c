@@ -135,13 +135,13 @@ static void Construct_Band_Ms( int cpx_flag, double ****Mat, double *M1, dcomple
 void AllocateArrays_NonCol_QAO2();
 void FreeArrays_NonCol_QAO2();
 double Calc_Hybrid_AO_NonCol( double ****OLP0, double *****Hks, double *****CDM , const OpenMXElectronicViews *electronic);
-double Calc_MO_in_Bulk_NonCol( double *****CDM, double *****iCDM , const OpenMXElectronicViews *electronic);
+double Calc_MO_in_Bulk_NonCol(const OpenMXChemicalPotentials *chemical,  double *****CDM, double *****iCDM , const OpenMXElectronicViews *electronic);
 
-static void Band_Dispersion_NonCol_CWF( int nkpath, int *n_perk, double ***kpath, char ***kname, 
+static void Band_Dispersion_NonCol_CWF(const OpenMXChemicalPotentials *chemical,  int nkpath, int *n_perk, double ***kpath, char ***kname,
 					int TNum_CWFs, double complex ****TB_Hopping, 
 					int knum_i, int knum_j, int knum_k, MPI_Comm mpi_comm_level5 );
 
-static double Calc_CWF_Band_NonCol(
+static double Calc_CWF_Band_NonCol(const OpenMXChemicalPotentials *chemical,
 				   char *mode,
 				   int own_calc_flag,
 				   int kloop,
@@ -196,7 +196,7 @@ static void Allocate_Free_Band_NonCol_CWF( int todo_flag,
 
 
 #pragma GCC optimize("O2")
-double Band_DFT_NonCol_CWF(
+double Band_DFT_NonCol_CWF(const OpenMXChemicalPotentials *chemical,
                     int SCF_iter,
                     int knum_i, int knum_j, int knum_k,
 		    int SpinP_switch,
@@ -386,7 +386,7 @@ double Band_DFT_NonCol_CWF(
   }
 
   else if (CWF_Guiding_Orbital==3){
-    time1 = Calc_MO_in_Bulk_NonCol(ParDM,iParDM, electronic);
+    time1 = Calc_MO_in_Bulk_NonCol(chemical, ParDM,iParDM, electronic);
   }
 
   /****************************************************
@@ -424,7 +424,7 @@ double Band_DFT_NonCol_CWF(
 
     /* find MaxN */
     for (i=n2; 1<=i; i--){
-      e = EIGEN[0][0][i] - ChemP;
+      e = EIGEN[0][0][i] - chemical->chemical_potential;
       out1 = CWF_disentangling_Erange[3];
       if (e<out1) break;
     }
@@ -432,7 +432,7 @@ double Band_DFT_NonCol_CWF(
 
     /* find MinN */
     for (i=1; i<=n2; i++){
-      e = EIGEN[0][0][i] - ChemP;
+      e = EIGEN[0][0][i] - chemical->chemical_potential;
       out0 = CWF_disentangling_Erange[0];
       if (out0<e) break;
     }
@@ -846,7 +846,7 @@ double Band_DFT_NonCol_CWF(
      allocation of arrays for Calc_CWF_Band_NonCol
   ****************************************************/
 
-  Calc_CWF_Band_NonCol( "allocate", 0, kloop,knum_i,knum_j,knum_k,
+  Calc_CWF_Band_NonCol(chemical,  "allocate", 0, kloop,knum_i,knum_j,knum_k,
 			T_KGrids1,T_KGrids2,T_KGrids3,sum_weights,0.0,
 			myid0,numprocs0,myid1,numprocs1,myid2,numprocs2,myworld1,myworld2,
 			is2,ie2,MP,n2,MinN,MaxN,TNum_CWFs,MPI_CommWD1,
@@ -1214,7 +1214,7 @@ double Band_DFT_NonCol_CWF(
 
     if (measure_time) dtime(&Stime);
 
-    Calc_CWF_Band_NonCol( "calc",(kloop0<num_kloop0),kloop,knum_i,knum_j,knum_k,
+    Calc_CWF_Band_NonCol(chemical,  "calc",(kloop0<num_kloop0),kloop,knum_i,knum_j,knum_k,
 			  T_KGrids1,T_KGrids2,T_KGrids3,sum_weights,(double)T_k_op[kloop],
 			  myid0,numprocs0,myid1,numprocs1,myid2,numprocs2,myworld1,myworld2,
 			  is2,ie2,MP,n2,MinN,MaxN,TNum_CWFs,MPI_CommWD1,
@@ -1245,7 +1245,7 @@ double Band_DFT_NonCol_CWF(
       freeing of arrays for Calc_CWF_Band_NonCol
   ****************************************************/
 
-  Calc_CWF_Band_NonCol( "free", 0, kloop,knum_i,knum_j,knum_k,
+  Calc_CWF_Band_NonCol(chemical,  "free", 0, kloop,knum_i,knum_j,knum_k,
 			T_KGrids1,T_KGrids2,T_KGrids3,sum_weights,0.0,
 			myid0,numprocs0,myid1,numprocs1,myid2,numprocs2,myworld1,myworld2,
 			is2,ie2,MP,n2,MinN,MaxN,TNum_CWFs,MPI_CommWD1,
@@ -1314,7 +1314,7 @@ double Band_DFT_NonCol_CWF(
   return time0;
 }
 
-static double Calc_CWF_Band_NonCol(
+static double Calc_CWF_Band_NonCol(const OpenMXChemicalPotentials *chemical,
     char *mode,
     int own_calc_flag,
     int kloop,
@@ -2012,7 +2012,7 @@ static double Calc_CWF_Band_NonCol(
     **************************************************************/
 
     if ( Band_disp_switch==1 && Band_Nkpath>0 && myid0<numprocs5 ){
-      Band_Dispersion_NonCol_CWF( nkpath, n_perk, kpath, kname, TNum_CWFs, 
+      Band_Dispersion_NonCol_CWF(chemical,  nkpath, n_perk, kpath, kname, TNum_CWFs,
                                   TB_Hopping, knum_i, knum_j, knum_k, mpi_comm_level5 );    
     } 
 
@@ -2436,8 +2436,8 @@ static double Calc_CWF_Band_NonCol(
     out1 = CWF_disentangling_Erange[3];
     b0 = 1.0/CWF_disentangling_smearing_kBT0;
     b1 = 1.0/CWF_disentangling_smearing_kBT1;
-    e0 = CWF_disentangling_Erange[0] + ChemP; 
-    e1 = CWF_disentangling_Erange[1] + ChemP; 
+    e0 = CWF_disentangling_Erange[0] + chemical->chemical_potential;
+    e1 = CWF_disentangling_Erange[1] + chemical->chemical_potential;
 
     for (i=0; i<na_rows_CWF3; i++){
 
@@ -2447,7 +2447,7 @@ static double Calc_CWF_Band_NonCol(
       e = EIGEN[0][kloop][m1];  
 
       if (CWF_WindowF_switch==0){ // Poly
-        weight = weight_CWF2(e,ChemP,in0,in1,out0,out1); 
+        weight = weight_CWF2(e,chemical->chemical_potential,in0,in1,out0,out1);
       }
       else if (CWF_WindowF_switch==1){ // Fermi
         weight = (1.0/(exp(b0*(e0-e))+1.0))*(1.0/(exp(b1*(e-e1))+1.0)) + CWF_disentangling_smearing_bound;
@@ -2682,7 +2682,7 @@ static double Calc_CWF_Band_NonCol(
 	jg = np_cols_CWF3*nblk_CWF3*((j)/nblk_CWF3) + (j)%nblk_CWF3 
 	  + ((np_cols_CWF3+my_pcol_CWF3)%np_cols_CWF3)*nblk_CWF3;
 
-	x = (EIGEN[0][kloop][ig] - ChemP)*Beta;
+	x = (EIGEN[0][kloop][ig] - chemical->chemical_potential)*Beta;
 	if (x<=-max_x) x = -max_x;
 	if (max_x<=x)  x = max_x;
 	FermiF = 1.0/(1.0 + exp(x));
@@ -3323,7 +3323,7 @@ void Construct_Band_Ms( int cpx_flag, double ****Mat, double *M1, dcomplex *Ms,
   }
 }
 
-void Band_Dispersion_NonCol_CWF( int nkpath, int *n_perk, double ***kpath, char ***kname, 
+void Band_Dispersion_NonCol_CWF(const OpenMXChemicalPotentials *chemical,  int nkpath, int *n_perk, double ***kpath, char ***kname,
 				 int TNum_CWFs, double complex ****TB_Hopping, 
 				 int knum_i, int knum_j, int knum_k, MPI_Comm mpi_comm_level5 ) 
 {
@@ -3502,7 +3502,7 @@ void Band_Dispersion_NonCol_CWF( int nkpath, int *n_perk, double ***kpath, char 
       return;
     }
 
-    fprintf(fp_Band," %d  %d  %18.15f\n",TNum_CWFs,0,ChemP);  /* set SpinP_switch==0 */
+    fprintf(fp_Band," %d  %d  %18.15f\n",TNum_CWFs,0,chemical->chemical_potential);  /* set SpinP_switch==0 */
     for (i=1;i<=3;i++) 
       for (j=1;j<=3;j++) {
 	fprintf(fp_Band,"%18.15f ", rtv[i][j]);

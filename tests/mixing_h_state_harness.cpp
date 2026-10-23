@@ -1,3 +1,4 @@
+#include "openmx_core_chemical.h"
 #include "openmx_core_energy.h"
 #include "fixtures/native_resources/sdk_model.hpp"
 #include "openmx_mixing_h_state.h"
@@ -290,12 +291,20 @@ void failures(){
   fail_status=0;clean(a);clean(b);
 }
 }
+OpenMXChemicalPotentials* owned_chemical(OpenMXCoreContext* c) {
+  OpenMXChemicalPotentials* out=nullptr;char error[256];
+  check(openmx_core_chemical_potentials(c,&out,error,sizeof(error)),error);return out;
+}
 int main(){try{
   for(int repeat=0;repeat<100;repeat++){
     event_count=0;capacity_ok=true;host_available=1ULL<<40;
     Matomnum=repeat%7?2:0;SpinP_switch=repeat%3==2?3:repeat%3;
     auto first=calculation(),second=calculation();
     auto* a=Mixing_H_Bind_Resources(first.get());auto* b=Mixing_H_Bind_Resources(second.get());
+    check(a->chemical==owned_chemical(first.get()) && b->chemical==owned_chemical(second.get()) && a->chemical!=b->chemical,
+          "native solver borrowed another calculation's chemical potentials");
+    a->chemical->chemical_potential=.125;a->chemical->xanes[0]=1.5;
+    b->chemical->chemical_potential=-.25;b->chemical->xanes[1]=2.5;
     check(a!=b && a->resources!=b->resources,"mixing metadata/resources shared across contexts");
     OpenMXMixingHistory* owned=nullptr;char history_error[256];check(openmx_core_mixing_history(first.get(),&owned,history_error,sizeof(history_error)) && a->history==owned && b->history!=owned,"Hamiltonian mixing borrowed the wrong shared history");
     check(a->gpu.verdict==-1 && a->inc.last_scf_iter==-1,"mixing constructor lost sentinels");
@@ -315,7 +324,10 @@ int main(){try{
     check(current_device==7 && acc_device==7,"worker cleanup changed caller's device binding");
     check(openmx_core_native_resource_count(b->resources)==second_count,"pre-Force release touched another context");
     event_count=0;openmx::test::fail_allocation_after(0);
-    openmx_core_native_resources_clear(first.get());openmx_core_finish(second.get());
+    openmx_core_native_resources_clear(first.get());
+    check(owned_chemical(first.get())->chemical_potential==0 && owned_chemical(first.get())->xanes[0]==0 &&
+          b->chemical->chemical_potential==-.25 && b->chemical->xanes[1]==2.5,
+          "clearing a calculation retained chemical potentials or reset another calculation");openmx_core_finish(second.get());
     openmx::test::fail_allocation_after(-1);
     check(!live && !live_comms && current_device==7,"RAII teardown left GPU/MPI resources or changed binding");
     auto* fresh=Mixing_H_Bind_Resources(second.get());

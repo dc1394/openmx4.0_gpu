@@ -3,6 +3,7 @@
 #include "openmx_gpu_backend.h"
 #include "openmx_core_atomic.h"
 #include "openmx_core_electronic.h"
+#include "openmx_core_chemical.h"
 #include "openmx_gpu_runtime.h"
 #include "f77func.h"
 #ifdef blaswrap
@@ -393,7 +394,7 @@ void TRAN_Distribute_Node_Idx(
 
 
 /* TRAN_Input_std.c  */
-void TRAN_Input_std(
+void TRAN_Input_std(const OpenMXChemicalPotentials *chemical,
   MPI_Comm comm1, 
   int Solver,           
   int SpinP_switch,  
@@ -410,7 +411,7 @@ void TRAN_Input_std_Atoms(  MPI_Comm comm1, int Solver );
 
 
 /* TRAN_Output_HKS.c  */
-int TRAN_Output_HKS(char *fileHKS, const OpenMXElectronicViews *electronic);
+int TRAN_Output_HKS(const OpenMXChemicalPotentials *chemical, char *fileHKS, const OpenMXElectronicViews *electronic);
 
 /* TRAN_Output_HKS_Write_Grid.c  */
 void TRAN_Output_HKS_Write_Grid(
@@ -608,7 +609,7 @@ void TRAN_FRead2_binary_double(FILE *fp, int n1, int n2, double *gc);
 int TRAN_Input_HKS( MPI_Comm comm1, char *fileHKS);
 
 /* TRAN_RestartFile.c  */
-int TRAN_RestartFile(MPI_Comm comm1, char *mode, char *position,char *filepath, char *filename, const OpenMXElectronicViews *electronic);
+int TRAN_RestartFile(const OpenMXChemicalPotentials *chemical, MPI_Comm comm1, char *mode, char *position,char *filepath, char *filename, const OpenMXElectronicViews *electronic);
 
 /* TRAN_Set_CentOverlap.c  */
 void TRAN_Set_CentOverlap( 

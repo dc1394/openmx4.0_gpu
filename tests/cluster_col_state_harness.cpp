@@ -1,3 +1,4 @@
+#include "openmx_core_chemical.h"
 #include "fixtures/native_resources/sdk_model.hpp"
 #include "openmx_cluster_col_state.h"
 #include "openmx_core_energy.h"
@@ -125,6 +126,10 @@ void callbacks(ClusterColState* a,ClusterColState* b){
     check(openmx_core_native_resource_count(a->resources)==before && !live,"registration OOM leaked callback storage");
 }
 }
+OpenMXChemicalPotentials* owned_chemical(OpenMXCoreContext* c) {
+  OpenMXChemicalPotentials* out=nullptr;char error[256];
+  check(openmx_core_chemical_potentials(c,&out,error,sizeof(error)),error);return out;
+}
 int main(){try{
     for(const auto* value: {"", "0", "-1", "27", "invalid", "400"}) {
         setenv("OPENMX_CLUSTER_GPU_SWITCH_NUM",value,1);
@@ -134,6 +139,10 @@ int main(){try{
     for(int cycle=0;cycle<100;cycle++){
         event_count=0;queries=0;auto first=calculation();auto second=calculation();
         auto* a=Cluster_DFT_Col_Bind_Resources(first.get());auto* b=Cluster_DFT_Col_Bind_Resources(second.get());
+    check(a->chemical==owned_chemical(first.get()) && b->chemical==owned_chemical(second.get()) && a->chemical!=b->chemical,
+          "native solver borrowed another calculation's chemical potentials");
+    a->chemical->chemical_potential=.125;a->chemical->xanes[0]=1.5;
+    b->chemical->chemical_potential=-.25;b->chemical->xanes[1]=2.5;
         check(a!=b && a->resources!=b->resources && !queries && !live,"binding touched SDK/shared a state");
         check(a->firsttime==1 && b->firsttime==1,"first-call sentinel lost");
 #if OPENMX_GPU_HIP
@@ -151,7 +160,10 @@ int main(){try{
         check(openmx_core_native_resource_count(b->resources)==second_count && b->gpusolver_ctx.initialized && b->refine_state[0].basis_valid,"pre-Force release invalidated another calculation");
         ClusterCol_ReleaseCaches(a);ClusterCol_ReleaseCaches(a);
         check(!openmx_core_native_resource_count(a->resources) && a->refine.iterations==-1 && a->refine.peer==-1,"run-boundary cleanup leaked/did not restore policy");
-        event_count=0;openmx::test::fail_allocation_after(0);openmx_core_native_resources_clear(first.get());openmx::test::fail_allocation_after(-1);
+        event_count=0;openmx::test::fail_allocation_after(0);openmx_core_native_resources_clear(first.get());
+    check(owned_chemical(first.get())->chemical_potential==0 && owned_chemical(first.get())->xanes[0]==0 &&
+          b->chemical->chemical_potential==-.25 && b->chemical->xanes[1]==2.5,
+          "clearing a calculation retained chemical potentials or reset another calculation");openmx::test::fail_allocation_after(-1);
         check(openmx_core_native_resource_count(b->resources)==second_count && b->refine_state[0].basis_valid,"first context destruction touched second");
         openmx_core_native_resources_clear(first.get());first.reset();
         event_count=0;openmx::test::fail_allocation_after(0);openmx_core_finish(second.get());openmx::test::fail_allocation_after(-1);

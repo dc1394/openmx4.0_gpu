@@ -20,10 +20,10 @@
 
 
 
-static double Cluster_Col_Dosout( int SpinP_switch, 
+static double Cluster_Col_Dosout(const OpenMXChemicalPotentials *chemical,  int SpinP_switch,
                                   double *****nh, double ****CntOLP);
 
-static double Cluster_NonCol_Dosout(
+static double Cluster_NonCol_Dosout(const OpenMXChemicalPotentials *chemical,
                               int SpinP_switch, 
                               double *****nh,
                               double *****ImNL,
@@ -37,7 +37,7 @@ static void CurrentOpt_Cluster(
                           double **Sinv, 
                           double ***J );
 
-double Cluster_DFT_Dosout( int SpinP_switch,
+double Cluster_DFT_Dosout(const OpenMXChemicalPotentials *chemical,  int SpinP_switch,
                            double *****nh,
                            double *****ImNL,
                            double ****CntOLP)
@@ -49,7 +49,7 @@ double Cluster_DFT_Dosout( int SpinP_switch,
   ****************************************************/
 
   if ( (SpinP_switch==0 || SpinP_switch==1) && SO_switch==0 ){
-    time0 = Cluster_Col_Dosout(SpinP_switch, nh, CntOLP);
+    time0 = Cluster_Col_Dosout(chemical, SpinP_switch, nh, CntOLP);
   }
 
   /****************************************************
@@ -67,14 +67,14 @@ double Cluster_DFT_Dosout( int SpinP_switch,
   ****************************************************/
 
   else if (SpinP_switch==3){
-    time0 = Cluster_NonCol_Dosout(SpinP_switch, nh, ImNL, CntOLP);
+    time0 = Cluster_NonCol_Dosout(chemical, SpinP_switch, nh, ImNL, CntOLP);
   }
 
   return time0;
 }
 
 
-double Cluster_Col_Dosout( int SpinP_switch,  double *****nh, double ****CntOLP)
+double Cluster_Col_Dosout(const OpenMXChemicalPotentials *chemical,  int SpinP_switch,  double *****nh, double ****CntOLP)
 {
   int n,i,j,l,wanA,n2;
   int *MP;
@@ -244,7 +244,7 @@ double Cluster_Col_Dosout( int SpinP_switch,  double *****nh, double ****CntOLP)
       fprintf(fp_eig,"\n");
     }
     fprintf(fp_eig,"Spe_Num_CBasis>\n");
-    fprintf(fp_eig,"ChemP       %lf\n",ChemP);
+    fprintf(fp_eig,"ChemP       %lf\n",chemical->chemical_potential);
 
     /* optical conductivity */
     if (fp_opt) {
@@ -427,7 +427,7 @@ double Cluster_Col_Dosout( int SpinP_switch,  double *****nh, double ****CntOLP)
 
       iemin0=1;
       for (i1=1;i1<n1;i1++) {
-        if (ko[spin][i1]>ChemP+Dos_Erange[0]) {
+        if (ko[spin][i1]>chemical->chemical_potential+Dos_Erange[0]) {
   	  iemin0=i1-1;
   	  break;
         }
@@ -436,7 +436,7 @@ double Cluster_Col_Dosout( int SpinP_switch,  double *****nh, double ****CntOLP)
       
       iemax0=n1;
       for (i1=iemin0;i1<n1;i1++) {
-        if (ko[spin][i1]>ChemP+Dos_Erange[1]) {
+        if (ko[spin][i1]>chemical->chemical_potential+Dos_Erange[1]) {
 	  iemax0=i1;
   	  break;
         }
@@ -760,7 +760,7 @@ double Cluster_Col_Dosout( int SpinP_switch,  double *****nh, double ****CntOLP)
 
 
 
-double Cluster_NonCol_Dosout( int SpinP_switch, 
+double Cluster_NonCol_Dosout(const OpenMXChemicalPotentials *chemical,  int SpinP_switch,
                               double *****nh,
                               double *****ImNL,
                               double ****CntOLP)
@@ -928,7 +928,7 @@ double Cluster_NonCol_Dosout( int SpinP_switch,
       fprintf(fp_eig,"\n");
     }
     fprintf(fp_eig,"Spe_Num_CBasis>\n");
-    fprintf(fp_eig,"ChemP       %lf\n",ChemP);
+    fprintf(fp_eig,"ChemP       %lf\n",chemical->chemical_potential);
 
     fprintf(fp_eig,"<SpinAngle\n");
     for (i=1; i<=atomnum; i++) {
@@ -1104,7 +1104,7 @@ double Cluster_NonCol_Dosout( int SpinP_switch,
  
     iemin = 1;
     for (i1=1;i1<=n1;i1++) {
-      if (ko[i1]>ChemP+Dos_Erange[0]){
+      if (ko[i1]>chemical->chemical_potential+Dos_Erange[0]){
         iemin=i1-1;
         break;
       }
@@ -1113,7 +1113,7 @@ double Cluster_NonCol_Dosout( int SpinP_switch,
 
     iemax = n1;
     for (i1=iemin; i1<=n1; i1++) {
-      if (ko[i1]>ChemP+Dos_Erange[1]) {
+      if (ko[i1]>chemical->chemical_potential+Dos_Erange[1]) {
         iemax=i1;
         break;
       }

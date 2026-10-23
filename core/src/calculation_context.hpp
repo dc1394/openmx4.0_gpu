@@ -11,6 +11,7 @@
 #include <openmx_core_mixing.h>
 #include <openmx_core_energy.h>
 #include <openmx_core_dynamics.h>
+#include <openmx_core_chemical.h>
 #include "grid_assembly.hpp"
 #include <openmx/core/orbital_optimization.hpp>
 #include <openmx/core/radial.hpp>
@@ -41,5 +42,6 @@ struct OpenMXCoreContext {
   OpenMXEnergyComponents energy_components{};
   OpenMXThermodynamicEnergies thermodynamic_energies{};
   OpenMXDynamicsState dynamics{};
+  OpenMXChemicalPotentials chemical{};
   NativeResourceGroups native_resources;
 };
