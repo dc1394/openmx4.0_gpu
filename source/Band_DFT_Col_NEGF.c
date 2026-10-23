@@ -29,7 +29,7 @@
 
 
 
-double Band_DFT_Col_NEGF(int SCF_iter,
+double Band_DFT_Col_NEGF(OpenMXBandEnergies *energies, int SCF_iter,
                     int knum_i, int knum_j, int knum_k,
 		    int SpinP_switch,
 		    double *****nh,
@@ -1399,7 +1399,7 @@ diagonalize1:
     Eele0[1] = Eele0[1]/sum_weights;
   }
 
-  Uele = Eele0[0] + Eele0[1];
+  energies->band = Eele0[0] + Eele0[1];
 
   if (2<=level_stdout){
     printf("myid0=%2d ChemP=%lf, Eele0[0]=%lf, Eele0[1]=%lf\n",myid0,ChemP,Eele0[0],Eele0[1]);

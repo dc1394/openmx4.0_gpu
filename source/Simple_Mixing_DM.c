@@ -18,7 +18,7 @@
 #include "mpi.h"
 
 
-void Simple_Mixing_DM(OpenMXMixingHistory *history, int Change_switch,
+void Simple_Mixing_DM(OpenMXMixingHistory *history, const OpenMXBandEnergies *energies, int Change_switch,
                       double Mix_wgt,
                       double *****CDM,
                       double *****PDM,
@@ -100,7 +100,7 @@ void Simple_Mixing_DM(OpenMXMixingHistory *history, int Change_switch,
 
   OpenMX_Mixing_Shift(history);
   history->norm[0] = Norm;
-  history->energy[0] = Uele;
+  history->energy[0] = energies->band;
 
 
 

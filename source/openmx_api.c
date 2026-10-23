@@ -14,6 +14,8 @@
 #include <string.h>
 #include "openmx_common.h"
 #include "openmx_atomic.h"
+#include "openmx_electronic.h"
+#include "openmx_local_basis.h"
 #include "mpi.h"
 #include <omp.h>
 #include "tran_prototypes.h"
@@ -25,6 +27,8 @@ int openmx_api(MPI_Comm mpi_commWD, const char *omp_input_file, int OMP_threadN)
   int i,j,k,MD_iter,argc;
   int numprocs,myid;
   char *argv[2];
+  OpenMXElectronicViews electronic_storage;
+  OpenMXLocalBasisViews local_basis_storage;
   double TStime,TEtime;
   char fileMemory[YOUSO10];
   char input_file_buf[YOUSO10];
@@ -154,7 +158,7 @@ int openmx_api(MPI_Comm mpi_commWD, const char *omp_input_file, int OMP_threadN)
 
       /* MD or geometry optimization */
 
-      if (ML_flag==0) CompTime[myid][4] += MD_pac(MD_iter,argv[1]);
+      if (ML_flag==0) CompTime[myid][4] += MD_pac(core, MD_iter,argv[1]);
     }
     else{
       MD_Opt_OK = 1;
@@ -166,7 +170,7 @@ int openmx_api(MPI_Comm mpi_commWD, const char *omp_input_file, int OMP_threadN)
 
   if ( TRAN_output_hks ) {
      /* left is dummy */
-     TRAN_RestartFile(mpi_comm_level1, "write","left",filepath,TRAN_hksoutfilename);
+     TRAN_RestartFile(mpi_comm_level1, "write","left",filepath,TRAN_hksoutfilename, OpenMX_ElectronicMatricesAt(core,mpi_comm_level1,&electronic_storage));
   }
 
   /****************************************************
@@ -179,7 +183,7 @@ int openmx_api(MPI_Comm mpi_commWD, const char *omp_input_file, int OMP_threadN)
         calculate Voronoi orbital magnetic moment
   ****************************************************/
  
-  if (Voronoi_OrbM_flag==1) Voronoi_Orbital_Moment(atomic);
+  if (Voronoi_OrbM_flag==1) Voronoi_Orbital_Moment(atomic, OpenMX_ElectronicMatricesAt(core,mpi_comm_level1,&electronic_storage));
 
   /****************************************************
         output analysis of decomposed energies
@@ -212,7 +216,7 @@ int openmx_api(MPI_Comm mpi_commWD, const char *omp_input_file, int OMP_threadN)
   if(pop_anal_aow_flag){
     if (myid==Host_ID) printf("Population analysis based on atomic orbitals resembling Wannier functions\n");fflush(0);
 
-    Population_Analysis_Wannier2(argv);
+    Population_Analysis_Wannier2(argv, OpenMX_ElectronicMatricesAt(core,mpi_comm_level1,&electronic_storage));
   }
 
   /*********************************************************
@@ -224,7 +228,7 @@ int openmx_api(MPI_Comm mpi_commWD, const char *omp_input_file, int OMP_threadN)
   if (Solver==4 && TRAN_analysis==1) {
 
     /* if SCF is skipped, calculate values of basis functions on each grid */ 
-    if (1<=TRAN_SCF_skip) i = Set_Orbitals_Grid(atomic, 0);
+    if (1<=TRAN_SCF_skip) i = Set_Orbitals_Grid(atomic, 0, OpenMX_LocalBasisAt(core,mpi_comm_level1,&local_basis_storage));
 
     if (SpinP_switch==3) {
       TRAN_Main_Analysis_NC(atomic,  mpi_comm_level1, argc, argv, Matomnum, M2G,
@@ -242,14 +246,14 @@ int openmx_api(MPI_Comm mpi_commWD, const char *omp_input_file, int OMP_threadN)
                   Making of output files
   ****************************************************/
 
-  CompTime[myid][20] = OutData(atomic, argv[1]);
+  CompTime[myid][20] = OutData(atomic, argv[1], OpenMX_ElectronicMatricesAt(core,mpi_comm_level1,&electronic_storage), OpenMX_LocalBasisAt(core,mpi_comm_level1,&local_basis_storage));
 
   /****************************************************
     write connectivity, Hamiltonian, overlap, density
     matrices, and etc. to a file, filename.scfout 
   ****************************************************/
 
-  if (HS_fileout==1) SCF2File(atomic, "write",argv[1]);
+  if (HS_fileout==1) SCF2File(atomic, "write",argv[1], OpenMX_ElectronicMatricesAt(core,mpi_comm_level1,&electronic_storage));
 
   /* elapsed time */
 

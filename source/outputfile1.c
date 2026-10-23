@@ -5,7 +5,7 @@
 #include "openmx_common.h"
 #include "mpi.h"
 
-void outputfile1(const OpenMXMixingHistory *history, int f_switch, int MD_iter, int orbitalOpt_iter,
+void outputfile1(const OpenMXMixingHistory *history, const OpenMXBandEnergies *energies, int f_switch, int MD_iter, int orbitalOpt_iter,
                  int Cnt_Now, int SCF_iter, char fname[YOUSO10], 
                  double ChemP_e0[2], double orbital_norm)
 {
@@ -38,11 +38,11 @@ void outputfile1(const OpenMXMixingHistory *history, int f_switch, int MD_iter, 
 
         if ( Cnt_switch==0 || Cnt_Now!=1 ){
           fprintf(fp,"   SCF= %3d  NormRD= %15.12f  Uele= %15.12f\n",
-                  SCF_iter,sqrt(fabs(history->norm[0])),Uele);
+                  SCF_iter,sqrt(fabs(history->norm[0])),energies->band);
 	}
         else if ( Cnt_switch==1 && Cnt_Now==1 ){
           fprintf(fp,"  OrbOpt=%3d  SCF= %3d  NormRD= %15.12f  Uele= %15.12f\n",
-                  orbitalOpt_iter,SCF_iter,sqrt(fabs(history->norm[0])),Uele);
+                  orbitalOpt_iter,SCF_iter,sqrt(fabs(history->norm[0])),energies->band);
 	}
 
         fclose(fp); 
@@ -67,7 +67,7 @@ void outputfile1(const OpenMXMixingHistory *history, int f_switch, int MD_iter, 
 
         if (f_switch==2){
 	
-	  fprintf(fp,"  Uele.    %20.12f\n\n",Uele);
+	  fprintf(fp,"  Uele.    %20.12f\n\n",energies->band);
 	  fprintf(fp,"  Ukin.    %20.12f\n",Ukin);
 	  fprintf(fp,"  UH0.     %20.12f\n",UH0);
 	  fprintf(fp,"  UH1.     %20.12f\n",UH1);
@@ -112,7 +112,7 @@ void outputfile1(const OpenMXMixingHistory *history, int f_switch, int MD_iter, 
 
         else if (f_switch==3){
 
-	  fprintf(fp,"  Uele    = %20.12f\n\n",Uele);
+	  fprintf(fp,"  Uele    = %20.12f\n\n",energies->band);
 	  fprintf(fp,"  UH0     = %20.12f\n",UH0);
 	  fprintf(fp,"  UH1     = %20.12f\n",UH1);
 	  fprintf(fp,"  Uxc0    = %20.12f\n",Uxc0);
@@ -239,7 +239,7 @@ void outputfile1(const OpenMXMixingHistory *history, int f_switch, int MD_iter, 
         }
 
         fprintf(fp,"   iter= %3d  Gradient Norm= %15.12f  Uele= %15.12f\n",
-                orbitalOpt_iter,orbital_norm,Uele);
+                orbitalOpt_iter,orbital_norm,energies->band);
         fclose(fp); 
       } 
     }

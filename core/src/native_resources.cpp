@@ -105,6 +105,7 @@ extern "C" void openmx_core_native_resources_clear(OpenMXCoreContext* context) {
   if(context) {
     context->native_resources.groups.clear();
     context->mixing_history={};
+    context->band_energies={};
   }
 }
 extern "C" int openmx_core_native_resources_state(OpenMXCoreContext* context,const char* name,

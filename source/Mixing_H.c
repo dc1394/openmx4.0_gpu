@@ -67,6 +67,7 @@ typedef struct {
 struct OpenMXMixingHState {
   OpenMXNativeResources *resources; /* borrowed from this calculation */
   OpenMXMixingHistory *history; /* shared by this calculation's mixing methods */
+  OpenMXBandEnergies *energies; /* borrowed from this calculation */
   int initialized;
   MixH_GpuState gpu;
   MixH_GpuShard shard[OPENMX_GPU_WORKERS_MAX];
@@ -77,7 +78,7 @@ struct OpenMXMixingHState {
 };
 typedef OpenMXMixingHState MixingHState;
 
-static void Simple_Mixing_H(OpenMXMixingHistory *history, int MD_iter, int SCF_iter, int SCF_iter0 , const OpenMXElectronicViews *electronic);
+static void Simple_Mixing_H(OpenMXMixingHistory *history, const OpenMXBandEnergies *energies, int MD_iter, int SCF_iter, int SCF_iter0 , const OpenMXElectronicViews *electronic);
 static void Pulay_Mixing_H(OpenMXSolverInvocation *scratch, MixingHState *state, int MD_iter, int SCF_iter, int SCF_iter0 , const OpenMXElectronicViews *electronic);
 static void Pulay_Mixing_H_MultiSecant(OpenMXSolverInvocation *scratch, OpenMXMixingHistory *history, int MD_iter, int SCF_iter, int SCF_iter0 , const OpenMXElectronicViews *electronic);
 static void Pulay_Mixing_H_with_One_Shot_Hessian(OpenMXSolverInvocation *scratch, OpenMXMixingHistory *history, int MD_iter, int SCF_iter, int SCF_iter0 , const OpenMXElectronicViews *electronic);
@@ -116,7 +117,7 @@ double Mixing_H(MixingHState *state,  int MD_iter, int SCF_iter, int SCF_iter0 ,
   *******************************************************/
 
   if ( SCF_iter<=(Pulay_SCF-1) ){
-    Simple_Mixing_H(state->history, MD_iter, SCF_iter, SCF_iter0 , electronic);
+    Simple_Mixing_H(state->history, state->energies, MD_iter, SCF_iter, SCF_iter0 , electronic);
   }
 
   /*******************************************************
@@ -3832,7 +3833,7 @@ void Pulay_Mixing_H(OpenMXSolverInvocation *scratch, MixingHState *state, int MD
 
 
 
-void Simple_Mixing_H(OpenMXMixingHistory *history, int MD_iter, int SCF_iter, int SCF_iter0 , const OpenMXElectronicViews *electronic)
+void Simple_Mixing_H(OpenMXMixingHistory *history, const OpenMXBandEnergies *energies, int MD_iter, int SCF_iter, int SCF_iter0 , const OpenMXElectronicViews *electronic)
 {
   double ******DM=electronic->DM;
   double *****H=electronic->H;
@@ -4039,7 +4040,7 @@ void Simple_Mixing_H(OpenMXMixingHistory *history, int MD_iter, int SCF_iter, in
 
   OpenMX_Mixing_Shift(history);
   history->norm[0] = Norm/(double)atomnum;;
-  history->energy[0] = Uele;
+  history->energy[0] = energies->band;
 
   if (1<SCF_iter){
 
@@ -4562,6 +4563,10 @@ OpenMXMixingHState *Mixing_H_Bind_Resources(OpenMXCoreContext *core)
 };
     state->gpu=initial;
     state->inc.last_scf_iter=-1;
+    if(!openmx_core_band_energies(core,&state->energies,error,sizeof(error))) {
+      fprintf(stderr,"OpenMX band energies: %s\n",error);
+      abort();
+    }
     state->initialized=1;
   }
   return state;

@@ -182,6 +182,7 @@ typedef struct
 } BandColOccupationCtx;
 
 struct OpenMXBandColState {
+  OpenMXBandEnergies *energies; /* borrowed from this calculation */
   OpenMXNativeResources *resources; /* borrowed from this calculation */
   int initialized;
   int refine_e0_n;
@@ -266,6 +267,10 @@ OpenMXBandColState *Band_DFT_Col_Bind_Resources(OpenMXCoreContext *core)
     state->SolveTimingEnabled_enabled = -1;
     state->CacheTraceEnabled_enabled = -1;
     state->GpuPersistentDecide_decided = -1;
+    if(!openmx_core_band_energies(core,&state->energies,error,sizeof(error))) {
+      fprintf(stderr,"OpenMX band energies: %s\n",error);
+      abort();
+    }
     state->initialized = 1;
   }
   return state;
@@ -5031,7 +5036,7 @@ diagonalize1:
         Eele0[1] = Eele0[1] / sum_weights;
     }
 
-    Uele = Eele0[0] + Eele0[1];
+    state->energies->band = Eele0[0] + Eele0[1];
 
     if (2 <= level_stdout) {
         printf("myid0=%2d ChemP=%lf, Eele0[0]=%lf, Eele0[1]=%lf\n", myid0, ChemP, Eele0[0], Eele0[1]);

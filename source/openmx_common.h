@@ -5,6 +5,7 @@
 #include "openmx_gpu_error.h"
 #include "openmx_core.h"
 #include "openmx_core_mixing.h"
+#include "openmx_core_energy.h"
 #include "openmx_cluster_col_state.h"
 #include "openmx_cluster_noncol_state.h"
 #include "openmx_band_col_state.h"
@@ -2349,8 +2350,8 @@ extern double dipole_moment[4][4];
 extern double TempPara[30][3],PrePara[30][3];
 extern double MD_TimeStep,ChemP,Beta;
 extern double CN_Error,E_Temp,Original_E_Temp,BCR,LNO_Occ_Cutoff,orderN_LNO_Buffer;
-extern double GP,GT,T,Weight,Cell_Volume,Uele,Ukc,Uch,UH_dc,Uxc0_dc,Uxc1_dc;
-extern double Uele_OS0,Uele_OS1,Uele_IS0,Uele_IS1,Uxc0,Uxc1;
+extern double GP,GT,T,Weight,Cell_Volume,Ukc,Uch,UH_dc,Uxc0_dc,Uxc1_dc;
+extern double Uxc0,Uxc1;
 extern double UH0,UH1,UH2,Ucore,Uhub,Ucs,Uef,Ukin,Unl,Una,Uzs,Uzo,UvdW;
 extern double Ucoh,Uatom,Udc,Utot,Uxc,Given_Total_Charge;
 extern double Min_Mixing_weight,Max_Mixing_weight;
@@ -2735,7 +2736,7 @@ extern int B_spe[30],B_l[30],B_mul[30];
 extern double B_cut[30],lambda[30];
 /*******************/
 
-double Mixing_DM(OpenMXMixingHistory *history, OpenMXMixingDMState *dm_state, OpenMXMixingRhokState *state, int MD_iter,
+double Mixing_DM(OpenMXMixingHistory *history, const OpenMXBandEnergies *energies, OpenMXMixingDMState *dm_state, OpenMXMixingRhokState *state, int MD_iter,
                  int SCF_iter,
                  int SCF_iter0,
                  int SucceedReadingDMfile,
@@ -2756,7 +2757,7 @@ double Mixing_V(OpenMXMixingVState *state, int MD_iter,
 		 int SCF_iter,
 		 int SCF_iter0 );
 
-void Simple_Mixing_DM(OpenMXMixingHistory *history, int Change_switch,
+void Simple_Mixing_DM(OpenMXMixingHistory *history, const OpenMXBandEnergies *energies, int Change_switch,
                       double Mix_wgt,
                       double *****CDM,
                       double *****PDM,
@@ -3048,7 +3049,7 @@ double *Set_Hamiltonian_GpuSolver_Packed_H(int spin);
 double *Set_Hamiltonian_GpuSolver_Packed_ImNL(int comp);
 
 
-double Total_Energy(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, int MD_iter, double ECE[], const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
+double Total_Energy(const OpenMXBandEnergies *energies, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, int MD_iter, double ECE[], const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
 double Force(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna,const OpenMXReciprocalViews *reciprocal, double *****H0,
 	     double ******DS_NL, 
 	     double *****OLP,
@@ -3682,7 +3683,7 @@ double ABC_BandCol(
   For generalized Bloch Theorem 
   (added by T. B. Prayitno and supervised by Prof. F. Ishii)
 */
-double Band_DFT_NonCol_GB(int SCF_iter,
+double Band_DFT_NonCol_GB(OpenMXBandEnergies *energies, int SCF_iter,
 			  double *koSU,
 			  double *koSL,
 			  dcomplex **SU,
@@ -3731,7 +3732,7 @@ void Unfolding_Bands(
 		     double *****ImNL,
 		     double ****CntOLP);
 
-double MD_pac(int iter, char *fname_input);
+double MD_pac(OpenMXCoreContext *core, int iter, char *fname_input);
 void Calc_Temp_Atoms(int iter);
 int Species2int(char Species[YOUSO10]);
 int R_atv(int CpyCell, int i, int j, int k);
@@ -3739,8 +3740,8 @@ int SEQ(char str1[YOUSO10], char str2[YOUSO10]);
 void Generation_ATV(int CpyCell);
 char *string_tolower(char *buf, char *buf1);
 void iterout(int iter,double drctime,char fileE[YOUSO10],char fileDRC[YOUSO10]);
-void iterout_md(int iter,double drctime,char fileSE[YOUSO10]);
-void outputfile1(const OpenMXMixingHistory *history, int f_switch, int MD_iter, int orbitalOpt_iter,
+void iterout_md(const OpenMXBandEnergies *energies, int iter,double drctime,char fileSE[YOUSO10]);
+void outputfile1(const OpenMXMixingHistory *history, const OpenMXBandEnergies *energies, int f_switch, int MD_iter, int orbitalOpt_iter,
                  int Cnt_Now, int SCF_iter, char fname[YOUSO10],
                  double ChemP_e0[2], double orbital_norm);
 void init();

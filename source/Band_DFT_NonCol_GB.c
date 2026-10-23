@@ -25,7 +25,7 @@
 
 
 
-double Band_DFT_NonCol_GB(int SCF_iter, 
+double Band_DFT_NonCol_GB(OpenMXBandEnergies *energies, int SCF_iter,
                        double *koSU,
                        double *koSL,
 		       dcomplex **SU,
@@ -1484,7 +1484,7 @@ double Band_DFT_NonCol_GB(int SCF_iter,
   } /* kloop */
 
   Eele0[0] = Eele0[0]/sum_weights;
-  Uele = Eele0[0];
+  energies->band = Eele0[0];
 
   if (2<=level_stdout){
     printf("ChemP=%18.15f, Eele0[0]=%18.15f\n",ChemP,Eele0[0]);fflush(stdout);

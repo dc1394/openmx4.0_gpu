@@ -13,7 +13,7 @@
 #include <stdio.h>
 #include "openmx_common.h"
 
-void iterout_md(int iter, double drctime, char fileSE[YOUSO10])
+void iterout_md(const OpenMXBandEnergies *energies, int iter, double drctime, char fileSE[YOUSO10])
 {
   int i,j,k;
   double dt,itermax,aa,dx,dy,dz,xido,yido,zido;
@@ -27,10 +27,10 @@ void iterout_md(int iter, double drctime, char fileSE[YOUSO10])
 
     /*  1 */      fprintf(fp,"%5d ",iter);
     /*  2 */      fprintf(fp,"%10.7f ",drctime);
-    /*  3 */      fprintf(fp,"%10.7f ",Uele_OS0);
-    /*  4 */      fprintf(fp,"%10.7f ",Uele_IS0);
-    /*  5 */      fprintf(fp,"%10.7f ",Uele_OS1);
-    /*  6 */      fprintf(fp,"%10.7f ",Uele);
+    /*  3 */      fprintf(fp,"%10.7f ",energies->os[0]);
+    /*  4 */      fprintf(fp,"%10.7f ",energies->is[0]);
+    /*  5 */      fprintf(fp,"%10.7f ",energies->os[1]);
+    /*  6 */      fprintf(fp,"%10.7f ",energies->band);
     /*  7 */      fprintf(fp,"%10.7f ",Uxc0);
     /*  8 */      fprintf(fp,"%10.7f ",Uxc1);
     /*  9 */      fprintf(fp,"%10.7f ",UH0);

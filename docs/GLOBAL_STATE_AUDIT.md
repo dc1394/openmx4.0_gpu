@@ -49,15 +49,15 @@ python3 tools/audit_global_usage.py --output build/globals-usage.json \
 ゲートは「減る方向」だけを許します。所有権を移した段階でベースラインを更新してください。
 CI の GitHub Actions には CUDA・MPI・NVHPC のヘッダーが無いので、ゲートはこの計算機で手動で実行します。
 
-## 現状（2026-10-23、`cf3ba7c6` を基準とする適応混合の共通化後）
+## 現状（2026-10-23、`62dad936` を基準とする電子エネルギーの所有移行後）
 
 | 項目 | 値 |
 | --- | ---: |
 | 解析した翻訳単位 / 関数 | 289 / 3,131 |
-| 共通ヘッダーのオブジェクト（`openmx_globals.c` の定義） | 1,046（本変更前 1,112） |
-| うち、どこかの関数が参照するもの | 1,040 |
-| うち、どこかの関数が書くもの（直接または中身） | 780 |
-| (関数, オブジェクト) の組 | 12,853 |
+| 共通ヘッダーのオブジェクト（`openmx_globals.c` の定義） | 1,041（本変更前 1,112） |
+| うち、どこかの関数が参照するもの | 1,035 |
+| うち、どこかの関数が書くもの（直接または中身） | 775 |
+| (関数, オブジェクト) の組 | 12,831 |
 | 共通ヘッダー外で外部リンケージを持つ定義 | 357（`openmx.c` 132、`DFT.c` 79、`Cluster_DFT_ON2.c` 28 …） |
 | ファイルスコープ `static` | 313（第54段階前314; `TRAN_Main_Analysis*.c` 173、`TRAN_RestartFile.c` 31 …、`openmx_env.c` 2） |
 | 関数内 `static` | 316（第54段階前318; `MD_pac.c` 58、`zero_cfrac.c` 54 …） |
@@ -261,6 +261,13 @@ OpenMP補助関数6個の番号変更を個別対応付けすると、既存の�
 元のブロックとの両コンパイラのビット一致、330試験・4ホスト構成・実計算105組の確認後に
 一覧とベースラインを更新し、更新後のゲートを通過しました。証拠は`build/mixing-policy-refactor-20261023/`です。
 
+第59段階では電子bandエネルギーとOS/ISの2スピン成分、計5大域値をC++計算コンテキストの直接所有へ移しました。
+22参照組が減り、共通大域1,041・12,831参照組・shared-mutable219です。DFT単独writerも28→24となります。
+289 C単位・3,131関数、static313/316、外部名357、環境名251と設定298個・構造表278個は不変です。
+OpenMP補助関数1個の番号変更とMDの失敗診断用stderr参照を明示すると、他の全オブジェクト/関数のアクセスは一致します。
+無確保の取得、借用者解放後の初期化、独立したSCF/MD出力と、111実計算比較組を確認してから
+一覧とベースラインを更新し、更新後のゲートも通過しました。証拠は`build/band-energy-owner-refactor-20261023/`です。
+
 最も多くの関数が触るのは `mpi_comm_level1`（609 関数、154 翻訳単位）、`WhatSpecies`（514）、
 `natn`（372）、`FNAN`（359）、`M2G`（357）、`Matomnum`（353）、`atomnum`（329）、
 `Spe_Total_CNO`（310）、`SpinP_switch`（274）、`List_YOUSO`（214）です。
@@ -274,8 +281,8 @@ OpenMP補助関数6個の番号変更を個別対応付けすると、既存の�
 | input-configuration | 298 | 入力解析（`Input_std.c` / `Inputtools.c`）だけが書く。読み取り専用の設定オブジェクトにできる |
 | allocated-array/contents-fixed | 278 | 確保側（`Allocate_Arrays.c`、`truncation.c` など）だけが書き、中身も確保側と入力解析しか書かない。構造表（原子・近接・分配）の不変オブジェクト |
 | allocated-array/contents-mutable | 95 | 確保は確保側だが、中身を他のモジュールが書く（`Gxyz`、`FNAN`、`time_per_atom` など）。計算状態オブジェクト |
-| shared-mutable | 220 | 複数の翻訳単位が書く。個別に判断が要る。`filename` / `filepath`（60 翻訳単位から `sprintf` される作業バッファ）、`ChemP`（25 関数が書く）、`List_YOUSO`、`Matomnum` など |
-| single-writer:*.c | 1 翻訳単位だけが書く。その翻訳単位の所有物にできる（`DFT.c` 28、`DFTD3vdW_init.c` 16 …） |
+| shared-mutable | 219 | 複数の翻訳単位が書く。個別に判断が要る。`filename` / `filepath`（60 翻訳単位から `sprintf` される作業バッファ）、`ChemP`（25 関数が書く）、`List_YOUSO`、`Matomnum` など |
+| single-writer:*.c | 1 翻訳単位だけが書く。その翻訳単位の所有物にできる（`DFT.c` 24、`DFTD3vdW_init.c` 16 …） |
 | read-only | 15 | 解析対象の C からは書かれない。C++/CUDA 側か定数 |
 | unused | 6 | C の関数から参照されない。`T` / `W`（1 文字名で検索できず保留）、HIP 版 `DFT.c` だけが使う `UH2` / `Uxc` / `command`、`exx` 用の `g_exx` |
 

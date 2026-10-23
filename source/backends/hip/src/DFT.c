@@ -378,7 +378,7 @@ static double Calc_optical_conductivities_dielectric_functions(const OpenMXAtomi
   dcomplex *Hs_Cx, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
 
 
-static void Output_Energies_Forces(FILE *fp);
+static void Output_Energies_Forces(const OpenMXBandEnergies *energies, FILE *fp);
 static double dUele;
 static void Read_SCF_keywords();
 
@@ -393,6 +393,14 @@ void Allocate_Free_GridData(int todo_flag);
 
 double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 {
+  OpenMXBandEnergies *energies=NULL;
+  char band_energy_error[256];
+  if(!openmx_core_band_energies(core,&energies,band_energy_error,sizeof(band_energy_error))) {
+    fprintf(stderr,"OpenMX band energies: %s\n",band_energy_error);
+    MPI_Abort(mpi_comm_level1,1);
+    abort();
+  }
+
   const OpenMXNativeSolverStates solver_states=OpenMX_Native_Resources_Bind(core);
   OpenMXMixingHState *mixing_h=Mixing_H_Bind_Resources(core);
   OpenMXMixingRhokState *mixing_rhok=Mixing_Rhok_Bind_Resources(core);
@@ -721,7 +729,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
       SucceedReadingDMfile = 0;
       if (Scf_RestartFromFile==1 && ((Cnt_switch==1 && Cnt_Now!=1) || Cnt_switch==0 ) ) {
 
-	My_SucceedReadingDMfile = RestartFileDFT("read",MD_iter,&Uele,H,CntH,&etime, electronic);
+	My_SucceedReadingDMfile = RestartFileDFT("read",MD_iter,&energies->band,H,CntH,&etime, electronic);
 
         /* Calling RestartFileDFT overwrites HNL.
         Thus, we call Set_Nonlocal again, since HNL depends on basis functions. */
@@ -1143,7 +1151,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 	  }
           else if (GB_switch==1){
             /* added by T. B. Prayitno and supervised by Prof. F. Ishii*/
-	    time5 += Band_DFT_NonCol_GB(LSCF_iter,
+	    time5 += Band_DFT_NonCol_GB(energies, LSCF_iter,
 					koSU,koSL, SU_Band,SL_Band,
 					Kspace_grid1,Kspace_grid2,Kspace_grid3,
 					SpinP_switch,H,iHNL,OLP[0],DM[0],EDM,Eele0,Eele1, electronic);
@@ -1314,7 +1322,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 	  }
           else if (GB_switch==1){
             /* added by T. B. Prayitno and supervised by Prof. F. Ishii*/
-	    time5 += Band_DFT_NonCol_GB(LSCF_iter,
+	    time5 += Band_DFT_NonCol_GB(energies, LSCF_iter,
 					koSU,koSL, SU_Band,SL_Band,
 					Kspace_grid1,Kspace_grid2,Kspace_grid3,
 					SpinP_switch,CntH,iCntHNL,CntOLP[0],DM[0],EDM,Eele0,Eele1, electronic);
@@ -1374,11 +1382,11 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
       }
     }
 
-    Uele_OS0 = Eele0[0];
-    Uele_OS1 = Eele0[1];
-    Uele_IS0 = Eele1[0];
-    Uele_IS1 = Eele1[1];
-    Uele = Uele_IS0 + Uele_IS1;
+    energies->os[0] = Eele0[0];
+    energies->os[1] = Eele0[1];
+    energies->is[0] = Eele1[0];
+    energies->is[1] = Eele1[1];
+    energies->band = energies->is[0] + energies->is[1];
 
     /*****************************************************
                    Orbital magnetic moment 
@@ -1404,7 +1412,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
       if (SCF_iter==1)
         dUele = 1.0;
       else  
-        dUele = fabs(Uele - pUele);
+        dUele = fabs(energies->band - pUele);
     }
 
     if (
@@ -1472,11 +1480,11 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
                                Ss_Re,Cs_Re,Hs_Re,
                                CDM1,EDM1,PDM1,size_H1,SP_NZeros,SP_Atoms,EVec1_Re,Work1, electronic);
       Cluster_DFT_Col_RefineForceFP64(solver_states.cluster_col, 0);
-      Uele_OS0 = Eele0[0];
-      Uele_OS1 = Eele0[1];
-      Uele_IS0 = Eele1[0];
-      Uele_IS1 = Eele1[1];
-      Uele = Uele_IS0 + Uele_IS1;
+      energies->os[0] = Eele0[0];
+      energies->os[1] = Eele0[1];
+      energies->is[0] = Eele1[0];
+      energies->is[1] = Eele1[1];
+      energies->band = energies->is[0] + energies->is[1];
     }
 
     if (po==1 && Cnt_switch==0 && Solver==2 && SpinP_switch==3 && Cluster_DFT_NonCol_RefineLastRefined(solver_states.cluster_noncol)){
@@ -1526,11 +1534,11 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
                             Comm_World_StartID2,
                             MPI_CommWD2, electronic);
       Band_DFT_Col_RefineForceFP64(solver_states.band_col, 0);
-      Uele_OS0 = Eele0[0];
-      Uele_OS1 = Eele0[1];
-      Uele_IS0 = Eele1[0];
-      Uele_IS1 = Eele1[1];
-      Uele = Uele_IS0 + Uele_IS1;
+      energies->os[0] = Eele0[0];
+      energies->os[1] = Eele0[1];
+      energies->is[0] = Eele1[0];
+      energies->is[1] = Eele1[1];
+      energies->band = energies->is[0] + energies->is[1];
     }
 
     if (po==1 && Cnt_switch==0 && Solver==3 && SpinP_switch==3 && GB_switch==0 &&
@@ -1565,11 +1573,11 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
                                Comm_World_StartID2,
                                MPI_CommWD2, electronic);
       Band_DFT_NonCol_RefineForceFP64(solver_states.band_noncol, 0);
-      Uele_OS0 = Eele0[0];
-      Uele_OS1 = Eele0[1];
-      Uele_IS0 = Eele1[0];
-      Uele_IS1 = Eele1[1];
-      Uele = Uele_IS0 + Uele_IS1;
+      energies->os[0] = Eele0[0];
+      energies->os[1] = Eele0[1];
+      energies->is[0] = Eele1[0];
+      energies->is[1] = Eele1[1];
+      energies->band = energies->is[0] + energies->is[1];
     }
 
     /*****************************************************
@@ -1608,7 +1616,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
       }
 
       /* save the information at iteration */
-      outputfile1(mixing_history,4,MD_iter,orbitalOpt_iter,0,SCF_iter,file_OrbOpt,ChemP_e0,orbital_norm);
+      outputfile1(mixing_history, energies,4,MD_iter,orbitalOpt_iter,0,SCF_iter,file_OrbOpt,ChemP_e0,orbital_norm);
 
       orbitalOpt_iter++;
       LSCF_iter = 0;
@@ -1679,7 +1687,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 	 || Mixing_switch==2
          || Mixing_switch==6 ){
 
-      time6  += Mixing_DM(mixing_history, mixing_dm, mixing_rhok, MD_iter,
+      time6  += Mixing_DM(mixing_history, energies, mixing_dm, mixing_rhok, MD_iter,
 			  LSCF_iter-SCF_iter_shift,
 			  SCF_iter-SCF_iter_shift,
 			  SucceedReadingDMfile,
@@ -1751,7 +1759,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 	else                                     time15 += FFT2D_Density(3,ReRhoAtomk,ImRhoAtomk);  
       }
 
-      time6 += Mixing_DM(mixing_history, mixing_dm, mixing_rhok, MD_iter,
+      time6 += Mixing_DM(mixing_history, energies, mixing_dm, mixing_rhok, MD_iter,
 			 LSCF_iter-SCF_iter_shift,
 			 SCF_iter-SCF_iter_shift,
 			 SucceedReadingDMfile,
@@ -1860,7 +1868,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
       }
 
       if (0<level_stdout){
-        printf("<DFT>  Uele   =%18.12f  dUele     =%17.12f\n",Uele,dUele);fflush(stdout);
+        printf("<DFT>  Uele   =%18.12f  dUele     =%17.12f\n",energies->band,dUele);fflush(stdout);
         printf("<DFT>  NormRD =%18.12f  Criterion =%17.12f\n",
                sqrt(fabs(mixing_history->norm[0])),SCF_Criterion);fflush(stdout);
       }
@@ -1883,7 +1891,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
       } 
     }
 
-    outputfile1(mixing_history,1,MD_iter,orbitalOpt_iter,Cnt_Now,SCF_iter,file_DFTSCF,ChemP_e0,orbital_norm);
+    outputfile1(mixing_history, energies,1,MD_iter,orbitalOpt_iter,Cnt_Now,SCF_iter,file_DFTSCF,ChemP_e0,orbital_norm);
 
     if (po==0 && Cnt_switch==0 && Solver==2 && SpinP_switch==3){
       Cluster_DFT_NonCol_RefineAfterMixing(solver_states.cluster_noncol, sqrt(fabs(mixing_history->norm[0])));
@@ -1902,7 +1910,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
                          Uele -> pUele
     *****************************************************/
 
-    pUele = Uele;
+    pUele = energies->band;
 
     /*****************************************************
             on-the-fly adjustment of Pulay_SCF
@@ -1947,11 +1955,11 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
                              Ss_Re,Cs_Re,Hs_Re,
                              CDM1,EDM1,PDM1,size_H1,SP_NZeros,SP_Atoms,EVec1_Re,Work1, electronic);
     Cluster_DFT_Col_RefineForceFP64(solver_states.cluster_col, 0);
-    Uele_OS0 = Eele0[0];
-    Uele_OS1 = Eele0[1];
-    Uele_IS0 = Eele1[0];
-    Uele_IS1 = Eele1[1];
-    Uele = Uele_IS0 + Uele_IS1;
+    energies->os[0] = Eele0[0];
+    energies->os[1] = Eele0[1];
+    energies->is[0] = Eele1[0];
+    energies->is[1] = Eele1[1];
+    energies->band = energies->is[0] + energies->is[1];
   }
 
   if (Cnt_switch==0 && Solver==2 && SpinP_switch==3 && Cluster_DFT_NonCol_RefineLastRefined(solver_states.cluster_noncol)){
@@ -2001,11 +2009,11 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
                             Comm_World_StartID2,
                             MPI_CommWD2, electronic);
     Band_DFT_Col_RefineForceFP64(solver_states.band_col, 0);
-    Uele_OS0 = Eele0[0];
-    Uele_OS1 = Eele0[1];
-    Uele_IS0 = Eele1[0];
-    Uele_IS1 = Eele1[1];
-    Uele = Uele_IS0 + Uele_IS1;
+    energies->os[0] = Eele0[0];
+    energies->os[1] = Eele0[1];
+    energies->is[0] = Eele1[0];
+    energies->is[1] = Eele1[1];
+    energies->band = energies->is[0] + energies->is[1];
   }
 
   if (Cnt_switch==0 && Solver==3 && SpinP_switch==3 && GB_switch==0 && Band_DFT_NonCol_RefineLastRefined(solver_states.band_noncol)){
@@ -2039,11 +2047,11 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
                                Comm_World_StartID2,
                                MPI_CommWD2, electronic);
     Band_DFT_NonCol_RefineForceFP64(solver_states.band_noncol, 0);
-    Uele_OS0 = Eele0[0];
-    Uele_OS1 = Eele0[1];
-    Uele_IS0 = Eele1[0];
-    Uele_IS1 = Eele1[1];
-    Uele = Uele_IS0 + Uele_IS1;
+    energies->os[0] = Eele0[0];
+    energies->os[1] = Eele0[1];
+    energies->is[0] = Eele1[0];
+    energies->is[1] = Eele1[1];
+    energies->band = energies->is[0] + energies->is[1];
   }
 
   /* the end of the SCF cycle: the band solvers' warm-start bases go, so the
@@ -2071,11 +2079,11 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 			       Ss_Re,Cs_Re,Hs_Re,
 			       CDM1,EDM1,PDM1,size_H1,SP_NZeros,SP_Atoms,EVec1_Re,Work1, electronic);
       
-      Uele_OS0 = Eele0[0];
-      Uele_OS1 = Eele0[1];
-      Uele_IS0 = Eele1[0];
-      Uele_IS1 = Eele1[1];
-      Uele = Uele_IS0 + Uele_IS1;
+      energies->os[0] = Eele0[0];
+      energies->os[1] = Eele0[1];
+      energies->is[0] = Eele1[0];
+      energies->is[1] = Eele1[1];
+      energies->band = energies->is[0] + energies->is[1];
       
     }  
     else if (SpinP_switch==3){
@@ -2699,7 +2707,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   *****************************************************/
 
   if (Scf_RestartToFile && SpinP_switch!=3){
-    RestartFileDFT("write",MD_iter,&Uele,H,CntH,&etime, electronic);
+    RestartFileDFT("write",MD_iter,&energies->band,H,CntH,&etime, electronic);
     time13 += etime;
     MPI_Barrier(mpi_comm_level1);
   }
@@ -2759,7 +2767,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
       }
     }
 
-    time6 += Mixing_DM(mixing_history, mixing_dm, mixing_rhok, 1,
+    time6 += Mixing_DM(mixing_history, energies, mixing_dm, mixing_rhok, 1,
                        LSCF_iter-SCF_iter_shift,
                        SCF_iter-SCF_iter_shift,
                        SucceedReadingDMfile,
@@ -2772,7 +2780,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
      charge density before calling diagonalize_nc_density */
 
   if (Scf_RestartToFile && SpinP_switch==3){
-    RestartFileDFT("write",MD_iter,&Uele,H,CntH,&etime, electronic);
+    RestartFileDFT("write",MD_iter,&energies->band,H,CntH,&etime, electronic);
     time13 += etime;
     MPI_Barrier(mpi_comm_level1);
   }
@@ -2871,7 +2879,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
     printf("<MD=%2d>  Total Energy\n",MD_iter);fflush(stdout);
   }
 
-  if (!orbitalOpt_Force_Skip) time8 += Total_Energy(atomic, vna, MD_iter,ECE, electronic, local_basis);
+  if (!orbitalOpt_Force_Skip) time8 += Total_Energy(energies, atomic, vna, MD_iter,ECE, electronic, local_basis);
 
   Uatom  = 0.0;
   Ucore  = ECE[0];
@@ -2895,11 +2903,11 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
   if ( Solver!=12 ){
     Utot = Ucore + UH0 + Ukin + Una + Unl + UH1 + Uxc0 + Uxc1 + Uhub + Ucs + Uzs + Uzo + Uef + UvdW + Uch;
-    outputfile1(mixing_history,2,MD_iter,0,0,SCF_iter,file_DFTSCF,ChemP_e0,orbital_norm);
+    outputfile1(mixing_history, energies,2,MD_iter,0,0,SCF_iter,file_DFTSCF,ChemP_e0,orbital_norm);
   }
   else if ( Solver==12 ){
-    Utot = Uele + UH1 + UH_dc + Uxc0 + Uxc1 + Uxc0_dc + Uxc1_dc + Ucore + UH0;
-    outputfile1(mixing_history,3,MD_iter,0,0,SCF_iter,file_DFTSCF,ChemP_e0,orbital_norm);
+    Utot = energies->band + UH1 + UH_dc + Uxc0 + Uxc1 + Uxc0_dc + Uxc1_dc + Ucore + UH0;
+    outputfile1(mixing_history, energies,3,MD_iter,0,0,SCF_iter,file_DFTSCF,ChemP_e0,orbital_norm);
   }
   
   /* elapsed time */
@@ -2912,7 +2920,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
     printf("             Total Energy (Hartree) at MD =%2d           \n",MD_iter);
     printf("*******************************************************\n\n"); 
 
-    printf("  Uele  = %20.12f\n\n",Uele);
+    printf("  Uele  = %20.12f\n\n",energies->band);
     printf("  Ukin  = %20.12f\n",Ukin);
     printf("  UH0   = %20.12f\n",UH0);
     printf("  UH1   = %20.12f\n",UH1);
@@ -2961,7 +2969,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
     printf("             Total Energy (Hartree) at MD =%2d           \n",MD_iter);
     printf("*******************************************************\n\n"); 
 
-    printf("  Uele    = %20.12f\n\n",Uele);
+    printf("  Uele    = %20.12f\n\n",energies->band);
     printf("  UH0     = %20.12f\n",UH0);
     printf("  UH1     = %20.12f\n",UH1);
     printf("  Uxc0    = %20.12f\n",Uxc0);
@@ -3527,7 +3535,7 @@ void Read_SCF_keywords()
 
 
 
-void Output_Energies_Forces(FILE *fp)
+void Output_Energies_Forces(const OpenMXBandEnergies *energies, FILE *fp)
 { 
   int ct_AN;
   double sumx,sumy,sumz;
@@ -3540,10 +3548,10 @@ void Output_Energies_Forces(FILE *fp)
   fprintf(fp,"***********************************************************\n");
   fprintf(fp,"***********************************************************\n");
   fprintf(fp,"    Uatom                         = %20.14f\n",Uatom);
-  fprintf(fp,"    Uele for   up-spin (OS)       = %20.14f\n",Uele_OS0);
-  fprintf(fp,"    Uele for   up-spin (IS)       = %20.14f\n",Uele_IS0);
-  fprintf(fp,"    Uele for down-spin (OS)       = %20.14f\n",Uele_OS1);
-  fprintf(fp,"    Uele for down-spin (IS)       = %20.14f\n",Uele_IS1);
+  fprintf(fp,"    Uele for   up-spin (OS)       = %20.14f\n",energies->os[0]);
+  fprintf(fp,"    Uele for   up-spin (IS)       = %20.14f\n",energies->is[0]);
+  fprintf(fp,"    Uele for down-spin (OS)       = %20.14f\n",energies->os[1]);
+  fprintf(fp,"    Uele for down-spin (IS)       = %20.14f\n",energies->is[1]);
   fprintf(fp,"    Uxc for up-spin               = %20.14f\n",Uxc0);
   fprintf(fp,"    Uxc for down-spin             = %20.14f\n",Uxc1);
   fprintf(fp,"    UH0                           = %20.14f\n",UH0);
@@ -3561,10 +3569,10 @@ void Output_Energies_Forces(FILE *fp)
   fprintf(fp,"***********************************************************\n");
   fprintf(fp,"***********************************************************\n");
   fprintf(fp,"    Uatom                         = %20.14f\n",Uatom/atomnum);
-  fprintf(fp,"    Uele for   up-spin (OS)       = %20.14f\n",Uele_OS0/atomnum);
-  fprintf(fp,"    Uele for   up-spin (IS)       = %20.14f\n",Uele_IS0/atomnum);
-  fprintf(fp,"    Uele for down-spin (OS)       = %20.14f\n",Uele_OS1/atomnum);
-  fprintf(fp,"    Uele for down-spin (IS)       = %20.14f\n",Uele_IS1/atomnum);
+  fprintf(fp,"    Uele for   up-spin (OS)       = %20.14f\n",energies->os[0]/atomnum);
+  fprintf(fp,"    Uele for   up-spin (IS)       = %20.14f\n",energies->is[0]/atomnum);
+  fprintf(fp,"    Uele for down-spin (OS)       = %20.14f\n",energies->os[1]/atomnum);
+  fprintf(fp,"    Uele for down-spin (IS)       = %20.14f\n",energies->is[1]/atomnum);
   fprintf(fp,"    Uxc for up-spin               = %20.14f\n",Uxc0/atomnum);
   fprintf(fp,"    Uxc for down-spin             = %20.14f\n",Uxc1/atomnum);
   fprintf(fp,"    UH0                           = %20.14f\n",UH0/atomnum);

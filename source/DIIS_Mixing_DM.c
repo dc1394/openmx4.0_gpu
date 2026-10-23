@@ -136,7 +136,7 @@ static void DIIS_Mixing_DM_Compute(OpenMXSolverInvocation *scratch,const MixDM_S
       state->diis_first=0;
     }
 
-    Simple_Mixing_DM(state->history,0,1.00,DM[0],DM[1],DM[2],iDM[0],iDM[1],iDM[2],ResidualDM[2],iResidualDM[2]);
+    Simple_Mixing_DM(state->history, state->energies,0,1.00,DM[0],DM[1],DM[2],iDM[0],iDM[1],iDM[2],ResidualDM[2],iResidualDM[2]);
   } 
 
   else if (SCF_iter==2){
@@ -207,7 +207,7 @@ static void DIIS_Mixing_DM_Compute(OpenMXSolverInvocation *scratch,const MixDM_S
       }
     }
 
-    Simple_Mixing_DM(state->history,0,state->history->weight,DM[0],DM[1],DM[2],
+    Simple_Mixing_DM(state->history, state->energies,0,state->history->weight,DM[0],DM[1],DM[2],
 		     iDM[0],iDM[1],iDM[2],ResidualDM[2],iResidualDM[2]);
 
   } 
@@ -847,6 +847,10 @@ OpenMXMixingDMState *Mixing_DM_Bind_Resources(OpenMXCoreContext *core)
       abort();
     }
     state->diis_first=state->gr_first=1;
+    if(!openmx_core_band_energies(core,&state->energies,error,sizeof(error))) {
+      fprintf(stderr,"OpenMX band energies: %s\n",error);
+      abort();
+    }
     state->initialized=1;
   }
   return state;

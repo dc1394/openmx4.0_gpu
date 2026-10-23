@@ -9,6 +9,7 @@
 #include "local_basis_compat.hpp"
 #include "native_resources.hpp"
 #include <openmx_core_mixing.h>
+#include <openmx_core_energy.h>
 #include "grid_assembly.hpp"
 #include <openmx/core/orbital_optimization.hpp>
 #include <openmx/core/radial.hpp>
@@ -35,5 +36,6 @@ struct OpenMXCoreContext {
   // Fixed-size domain state needs no separate heap/group construction. Keep
   // it alive until all native states borrowing it have drained.
   OpenMXMixingHistory mixing_history{};
+  OpenMXBandEnergies band_energies{};
   NativeResourceGroups native_resources;
 };

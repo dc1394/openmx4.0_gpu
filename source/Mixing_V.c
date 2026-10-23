@@ -482,7 +482,7 @@ void DIIS_Mixing_VKSk(OpenMXSolverInvocation *scratch, MixingVState *state, int 
 
     OpenMX_Mixing_Shift(state->history);
     state->history->norm[0] = openmx_solver_real_matrix_row(&A,0)[0]/(double)(1.0e+5*Ngrid1*Ngrid2*Ngrid3*spinmax);
-    state->history->energy[0] = Uele;
+    state->history->energy[0] = state->energies->band;
 
     /* set matrix elements on lammda */
 
@@ -978,7 +978,7 @@ void Kerker_Mixing_VKSk(OpenMXSolverInvocation *scratch, MixingVState *state,  i
 
   OpenMX_Mixing_Shift(state->history);
   state->history->norm[0] = Norm/(double)(1.0e+5*Ngrid1*Ngrid2*Ngrid3*spinmax);
-  state->history->energy[0] = Uele;
+  state->history->energy[0] = state->energies->band;
 
   if (Change_switch==1){
 
@@ -1472,6 +1472,10 @@ OpenMXMixingVState *Mixing_V_Bind_Resources(OpenMXCoreContext *core)
     }
     state->diis_first=state->kerker_first=1;
     state->fast.last_scf_iter=-1;
+    if(!openmx_core_band_energies(core,&state->energies,error,sizeof(error))) {
+      fprintf(stderr,"OpenMX band energies: %s\n",error);
+      abort();
+    }
     state->initialized=1;
   }
   return state;

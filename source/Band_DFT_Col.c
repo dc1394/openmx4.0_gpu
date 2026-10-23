@@ -211,6 +211,7 @@ typedef struct
 } BandColGpuUuidRecord;
 
 struct OpenMXBandColState {
+  OpenMXBandEnergies *energies; /* borrowed from this calculation */
   OpenMXNativeResources *resources; /* borrowed from this calculation */
   int initialized;
   int gpu_dense_verdict;
@@ -300,6 +301,10 @@ OpenMXBandColState *Band_DFT_Col_Bind_Resources(OpenMXCoreContext *core)
     const int initial_QueryGpuSolverWorkBytes_cached_n[2] = {-1, -1};
     memcpy(state->QueryGpuSolverWorkBytes_cached_n, initial_QueryGpuSolverWorkBytes_cached_n, sizeof(state->QueryGpuSolverWorkBytes_cached_n));
     state->GpuPersistentDecide_decided = -1;
+    if(!openmx_core_band_energies(core,&state->energies,error,sizeof(error))) {
+      fprintf(stderr,"OpenMX band energies: %s\n",error);
+      abort();
+    }
     state->initialized = 1;
   }
   return state;
@@ -5100,7 +5105,7 @@ diagonalize1:
         Eele0[1] = Eele0[1] / sum_weights;
     }
 
-    Uele = Eele0[0] + Eele0[1];
+    state->energies->band = Eele0[0] + Eele0[1];
 
     if (2 <= level_stdout) {
         printf("myid0=%2d ChemP=%lf, Eele0[0]=%lf, Eele0[1]=%lf\n", myid0, ChemP, Eele0[0], Eele0[1]);

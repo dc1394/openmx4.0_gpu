@@ -218,6 +218,7 @@ typedef struct {
 } BandNonColKOverlap;
 
 struct OpenMXBandNonColState {
+  OpenMXBandEnergies *energies; /* borrowed from this calculation */
   OpenMXNativeResources *resources; /* borrowed from this calculation */
   int initialized;
   size_t k_overlap_bytes;
@@ -294,6 +295,10 @@ OpenMXBandNonColState *Band_DFT_NonCol_Bind_Resources(OpenMXCoreContext *core)
     state->Construct_Band_DenseMs_firsttime = 1;
     state->Band_DFT_NonCol_owned_firsttime = 1;
     state->SolveTimingEnabled_enabled = -1;
+    if(!openmx_core_band_energies(core,&state->energies,error,sizeof(error))) {
+      fprintf(stderr,"OpenMX band energies: %s\n",error);
+      abort();
+    }
     state->initialized = 1;
   }
   return state;
@@ -6430,7 +6435,7 @@ static double Band_DFT_NonCol_owned(BandNonColState *state, char *mode,
   } 
 
   Eele0[0] = Eele0[0]/sum_weights;
-  Uele = Eele0[0];
+  state->energies->band = Eele0[0];
 
   if (2<=level_stdout){
     printf("myid0=%2d ChemP=%lf, Eele0[0]=%lf, Eele0[1]=%lf\n",myid0,ChemP,Eele0[0],Eele0[1]);

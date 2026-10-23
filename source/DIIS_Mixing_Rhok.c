@@ -528,7 +528,7 @@ void DIIS_Mixing_Rhok_Normal(OpenMXSolverInvocation *scratch, MixingRhokState *s
 
     OpenMX_Mixing_Shift(state->history);
     state->history->norm[0] = openmx_solver_real_matrix_row(&A,0)[0]/(double)Ngrid1/(double)Ngrid2/(double)Ngrid3/(double)spinmax;
-    state->history->energy[0] = Uele;
+    state->history->energy[0] = state->energies->band;
 
     /* set matrix elements on lammda */
 
@@ -1253,7 +1253,7 @@ void DIIS_Mixing_Rhok_NEGF(OpenMXSolverInvocation *scratch, MixingRhokState *sta
 
     OpenMX_Mixing_Shift(state->history);
     state->history->norm[0] = openmx_solver_real_matrix_row(&A,0)[0];
-    state->history->energy[0] = Uele;
+    state->history->energy[0] = state->energies->band;
 
     /* solve the linear equation */
 
@@ -2036,6 +2036,10 @@ OpenMXMixingRhokState *Mixing_Rhok_Bind_Resources(OpenMXCoreContext *core)
     state->fast.last_scf_iter=-1;
     state->diis_first_normal=state->diis_first_negf=1;
     state->kerker_first_normal=state->kerker_first_negf=1;
+    if(!openmx_core_band_energies(core,&state->energies,error,sizeof(error))) {
+      fprintf(stderr,"OpenMX band energies: %s\n",error);
+      abort();
+    }
     state->initialized=1;
   }
   return state;

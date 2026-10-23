@@ -832,7 +832,7 @@ static int run_openmx(int argc, char *argv[], OpenMXCoreContext *core)
 
       /* MD or geometry optimization */
 
-      if (ML_flag==0) CompTime[myid][4] += MD_pac(MD_iter,argv[1]);
+      if (ML_flag==0) CompTime[myid][4] += MD_pac(core, MD_iter,argv[1]);
     }
     else{
       MD_Opt_OK = 1;

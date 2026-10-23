@@ -1,3 +1,4 @@
+#include "openmx_core_energy.h"
 #include "fixtures/native_resources/sdk_model.hpp"
 #include "openmx_complex.h"
 #include "openmx_band_col_state.h"

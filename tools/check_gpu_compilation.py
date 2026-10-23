@@ -47,10 +47,12 @@ def main():
         cxx += ["-arch=sm_"+args.arch]
     jobs = [(cc, n) for n in (
         "openmx_gpu_error.c", "openmx_gpu_workers.c", "openmx_globals.c", "Band_DFT_Col.c",
+        "Band_DFT_NonCol.c", "Band_DFT_NonCol_GB.c",
         "Divide_Conquer.c", "Divide_Conquer_LNO.c", "Mixing_H.c", "DIIS_Mixing_Rhok.c",
         "Kerker_Mixing_Rhok.c", "DIIS_Mixing_DM.c", "ADIIS_Mixing_DM.c",
         "GR_Pulay_DM.c", "Mixing_DM.c", "Simple_Mixing_DM.c", "Mixing_V.c", "Set_Vpot.c",
-        "Set_Hamiltonian.c", "DFT.c", "Force.c", "Krylov.c", "Input_std.c", "outputfile1.c")]
+        "Set_Hamiltonian.c", "DFT.c", "Force.c", "Krylov.c", "Input_std.c", "outputfile1.c",
+        "Total_Energy.c", "MD_pac.c", "iterout_md.c", "openmx.c", "Runtest.c", "openmx_api.c")]
     jobs += [(cxx, n) for n in (
         "openmx_gpu_dm.cu", "openmx_gpu_transform.cu", "openmx_mgpu_gemm.cu",
         "openmx_mgpu_runtime.cu")]

@@ -264,7 +264,7 @@ void Kerker_Mixing_Rhok_Normal(OpenMXSolverInvocation *scratch, MixingRhokState 
 
   OpenMX_Mixing_Shift(state->history);
   state->history->norm[0] = Norm;
-  state->history->energy[0] = Uele;
+  state->history->energy[0] = state->energies->band;
 
   if (Change_switch==1){
 
@@ -598,7 +598,7 @@ void Kerker_Mixing_Rhok_NEGF(OpenMXSolverInvocation *scratch, MixingRhokState *s
 
   OpenMX_Mixing_Shift(state->history);
   state->history->norm[0] = Norm;
-  state->history->energy[0] = Uele;
+  state->history->energy[0] = state->energies->band;
 
   if (Change_switch==1){
 

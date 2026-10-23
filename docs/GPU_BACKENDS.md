@@ -468,6 +468,9 @@ ADIISの状態引数と両backendのKrylovを含め、隔離SDK構築はCUDA/HIP
 残差比とKerkerポテンシャルの固定倍率を区別し、nativeの符号・最大値・clampを呼び出しごとに受け取ります。
 CUDA/HIP各26単位、新モジュールのsm_80/gfx942コンパイル、両nativeコンパイラと固定コアのビット比較を確認しています。
 詳細は[第58段階](CPP_CORE_MIGRATION.md#第58段階-適応混合の更新処理をcmdspanへ共通化)に記録します。
+電子エネルギーの5大域値も計算所有へ移し、両backendのDFT/バンドと各混合・SCF/MD出力を明示して接続しました。
+隔離SDK検査はRuntest/API・MD・エネルギー分解を含む各34単位です。所有・MD/restartと未検証範囲は
+[第59段階](CPP_CORE_MIGRATION.md#第59段階-電子エネルギーの5大域値を計算所有へ移行)に記録します。
 以下の CTest は、コアを含むビルドの完了後に実行します。コアの GPU テストは実機を使います。
 
 ```sh

@@ -30,33 +30,33 @@
 #define Criterion_Max_Step            0.50
 
  
-static void NoMD(int iter);
-static void VerletXYZ(int iter);
-static void NVT_VS(int iter);  /* added by mari */
-static void NVT_VS2(int iter); /* added by Ohwaki */
-static void NVT_VS4(int iter); /* added by Ohwaki */
-static void NVT_NH(int iter); 
-static void NVT_Langevin(int iter); /* added by Ohwaki */
-static void Steepest_Descent(int iter, int SD_scaling_flag);
-static void GDIIS(int iter, int iter0);
-static void GDIIS_BFGS(int iter, int iter0);
-static void GDIIS_EF(int iter, int iter0);
-static void Geometry_Opt_DIIS(int iter);
-static void Geometry_Opt_DIIS_BFGS(int iter);
-static void Geometry_Opt_DIIS_EF(int iter);
+static void NoMD(const OpenMXBandEnergies *energies, int iter);
+static void VerletXYZ(const OpenMXBandEnergies *energies, int iter);
+static void NVT_VS(const OpenMXBandEnergies *energies, int iter);  /* added by mari */
+static void NVT_VS2(const OpenMXBandEnergies *energies, int iter); /* added by Ohwaki */
+static void NVT_VS4(const OpenMXBandEnergies *energies, int iter); /* added by Ohwaki */
+static void NVT_NH(const OpenMXBandEnergies *energies, int iter);
+static void NVT_Langevin(const OpenMXBandEnergies *energies, int iter); /* added by Ohwaki */
+static void Steepest_Descent(const OpenMXBandEnergies *energies, int iter, int SD_scaling_flag);
+static void GDIIS(const OpenMXBandEnergies *energies, int iter, int iter0);
+static void GDIIS_BFGS(const OpenMXBandEnergies *energies, int iter, int iter0);
+static void GDIIS_EF(const OpenMXBandEnergies *energies, int iter, int iter0);
+static void Geometry_Opt_DIIS(const OpenMXBandEnergies *energies, int iter);
+static void Geometry_Opt_DIIS_BFGS(const OpenMXBandEnergies *energies, int iter);
+static void Geometry_Opt_DIIS_EF(const OpenMXBandEnergies *energies, int iter);
 static void Correct_Position_In_First_Cell();
-static void Geometry_Opt_RF(int iter);
+static void Geometry_Opt_RF(const OpenMXBandEnergies *energies, int iter);
 static void Estimate_Initial_Hessian(int diis_iter, int CellOpt_flag, double itv[4][4]);
-static void RF(int iter, int iter0);
-static void RFC5(int iter, int iter0, double dE_da[4][4], double itv[4][4]);
-static void EvsLC(int iter);
-static void Delta_Factor(int iter);
+static void RF(const OpenMXBandEnergies *energies, int iter, int iter0);
+static void RFC5(const OpenMXBandEnergies *energies, int iter, int iter0, double dE_da[4][4], double itv[4][4]);
+static void EvsLC(const OpenMXBandEnergies *energies, int iter);
+static void Delta_Factor(const OpenMXBandEnergies *energies, int iter);
 static void Correct_Force();
 static void Correct_Velocity();
 static int RestartFiles4GeoOpt(char *mode);
 static void Output_abc_file(int iter);
-static void Cell_Opt_SD(int iter, int SD_scaling_flag);
-static void Cell_Opt_RF(int iter);
+static void Cell_Opt_SD(const OpenMXBandEnergies *energies, int iter, int SD_scaling_flag);
+static void Cell_Opt_RF(const OpenMXBandEnergies *energies, int iter);
 static void NPT_VS_PR(int iter); /* added by MIZUHO for NPT-MD */
 static void NPT_VS_WV(int iter); /* added by MIZUHO for NPT-MD */
 static void NPT_NH_PR(int iter); /* added by MIZUHO for NPT-MD */
@@ -64,7 +64,7 @@ static void NPT_NH_WV(int iter); /* added by MIZUHO for NPT-MD */
 
 int SuccessReadingfiles;
 
-double MD_pac(int iter, char *fname_input)
+double MD_pac(OpenMXCoreContext *core, int iter, char *fname_input)
 {
   double time0;
   double TStime,TEtime;
@@ -72,6 +72,13 @@ double MD_pac(int iter, char *fname_input)
   int i,j,k;
 
   dtime(&TStime);
+  OpenMXBandEnergies *energies=NULL;
+  char band_energy_error[256];
+  if(!openmx_core_band_energies(core,&energies,band_energy_error,sizeof(band_energy_error))) {
+    fprintf(stderr,"OpenMX band energies: %s\n",band_energy_error);
+    abort();
+  }
+
  
   /* MPI */
   MPI_Comm_size(mpi_comm_level1,&numprocs);
@@ -116,24 +123,24 @@ double MD_pac(int iter, char *fname_input)
   /* Call a subroutine based on MD_switch */
 
   switch (MD_switch) {
-    case  0: NoMD(iter+MD_Current_Iter);                    break;
-    case  1: VerletXYZ(iter+MD_Current_Iter);               break;
-    case  2: NVT_VS(iter+MD_Current_Iter);                  break;  /* added by mari */
-    case  3: Steepest_Descent(iter+MD_Current_Iter,1);      break;
-    case  4: Geometry_Opt_DIIS_EF(iter+MD_Current_Iter);    break;
-    case  5: Geometry_Opt_DIIS_BFGS(iter+MD_Current_Iter);  break;
-    case  6: Geometry_Opt_RF(iter+MD_Current_Iter);         break;  /* added by hmweng */
-    case  7: Geometry_Opt_DIIS(iter+MD_Current_Iter);       break;
+    case  0: NoMD(energies, iter+MD_Current_Iter);                    break;
+    case  1: VerletXYZ(energies, iter+MD_Current_Iter);               break;
+    case  2: NVT_VS(energies, iter+MD_Current_Iter);                  break;  /* added by mari */
+    case  3: Steepest_Descent(energies, iter+MD_Current_Iter,1);      break;
+    case  4: Geometry_Opt_DIIS_EF(energies, iter+MD_Current_Iter);    break;
+    case  5: Geometry_Opt_DIIS_BFGS(energies, iter+MD_Current_Iter);  break;
+    case  6: Geometry_Opt_RF(energies, iter+MD_Current_Iter);         break;  /* added by hmweng */
+    case  7: Geometry_Opt_DIIS(energies, iter+MD_Current_Iter);       break;
     case  8:                                                break;  /* not used */
-    case  9: NVT_NH(iter+MD_Current_Iter);                  break;
+    case  9: NVT_NH(energies, iter+MD_Current_Iter);                  break;
     case 10:                                                break;  /* not used */
-    case 11: NVT_VS2(iter+MD_Current_Iter);                 break;  /* added by Ohwaki */
-    case 12: EvsLC(iter);                                   break;
-    case 14: NVT_VS4(iter+MD_Current_Iter);                 break;  /* added by Ohwaki */
-    case 15: NVT_Langevin(iter+MD_Current_Iter);            break;  /* added by Ohwaki */
-    case 16: Delta_Factor(iter);                            break;  /* delta-factor */
-    case 17: Cell_Opt_SD(iter+MD_Current_Iter,1);           break;
-    case 18: Cell_Opt_RF(iter+MD_Current_Iter);             break;
+    case 11: NVT_VS2(energies, iter+MD_Current_Iter);                 break;  /* added by Ohwaki */
+    case 12: EvsLC(energies, iter);                                   break;
+    case 14: NVT_VS4(energies, iter+MD_Current_Iter);                 break;  /* added by Ohwaki */
+    case 15: NVT_Langevin(energies, iter+MD_Current_Iter);            break;  /* added by Ohwaki */
+    case 16: Delta_Factor(energies, iter);                            break;  /* delta-factor */
+    case 17: Cell_Opt_SD(energies, iter+MD_Current_Iter,1);           break;
+    case 18: Cell_Opt_RF(energies, iter+MD_Current_Iter);             break;
     /* added by MIZUHO for NPT-MD */
     case 27: NPT_VS_PR(iter+MD_Current_Iter);               break;
     case 28: NPT_VS_WV(iter+MD_Current_Iter);               break;
@@ -190,7 +197,7 @@ double MD_pac(int iter, char *fname_input)
 }
 
 
-void NoMD(int iter)
+void NoMD(const OpenMXBandEnergies *energies, int iter)
 {
   char fileCoord[YOUSO10];
   FILE *fp_crd,*fp_SD;
@@ -247,7 +254,7 @@ void NoMD(int iter)
 
   if (myid==Host_ID){  
     sprintf(fileE,"%s%s.ene",filepath,filename);
-    iterout_md(iter,MD_TimeStep*(iter-1),fileE);
+    iterout_md(energies, iter,MD_TimeStep*(iter-1),fileE);
   }
 
 }
@@ -488,7 +495,7 @@ void Correct_Position_In_First_Cell()
 }
 
 
-void VerletXYZ(int iter)
+void VerletXYZ(const OpenMXBandEnergies *energies, int iter)
 {
   /***********************************************************
    NVE molecular dynamics with velocity-Verlet integrator
@@ -582,7 +589,7 @@ void VerletXYZ(int iter)
 
     if (myid==Host_ID){  
       sprintf(fileE,"%s%s.ene",filepath,filename);
-      iterout_md(iter,MD_TimeStep*(iter-1),fileE);
+      iterout_md(energies, iter,MD_TimeStep*(iter-1),fileE);
     }
 
     /****************************************************
@@ -660,7 +667,7 @@ void VerletXYZ(int iter)
     if (myid==Host_ID){  
 
       sprintf(fileE,"%s%s.ene",filepath,filename);
-      iterout_md(iter,MD_TimeStep*(iter-1),fileE);
+      iterout_md(energies, iter,MD_TimeStep*(iter-1),fileE);
     } 
 
     /****************************************************
@@ -701,7 +708,7 @@ void VerletXYZ(int iter)
 
 
 
-void Steepest_Descent(int iter, int SD_scaling_flag)
+void Steepest_Descent(const OpenMXBandEnergies *energies, int iter, int SD_scaling_flag)
 {
   /* 1au=2.4189*10^-2 fs, 1fs=41.341105 au */
   int i,j,k,l,Mc_AN,Gc_AN;
@@ -831,7 +838,7 @@ void Steepest_Descent(int iter, int SD_scaling_flag)
   if (myid==Host_ID){  
 
     sprintf(fileE,"%s%s.ene",filepath,filename);
-    iterout_md(iter,MD_TimeStep*(iter-1),fileE);
+    iterout_md(energies, iter,MD_TimeStep*(iter-1),fileE);
   }
 
   /****************************************************
@@ -988,7 +995,7 @@ void Steepest_Descent(int iter, int SD_scaling_flag)
 
 
 
-void Cell_Opt_SD(int iter, int SD_scaling_flag)
+void Cell_Opt_SD(const OpenMXBandEnergies *energies, int iter, int SD_scaling_flag)
 {
   /* 1au=2.4189*10^-2 fs, 1fs=41.341105 au */
 
@@ -1251,7 +1258,7 @@ void Cell_Opt_SD(int iter, int SD_scaling_flag)
   if (myid==Host_ID){  
 
     sprintf(fileE,"%s%s.ene",filepath,filename);
-    iterout_md(iter,MD_TimeStep*(iter-1),fileE);
+    iterout_md(energies, iter,MD_TimeStep*(iter-1),fileE);
   }
 
   /****************************************************
@@ -1623,7 +1630,7 @@ void Cell_Opt_SD(int iter, int SD_scaling_flag)
 }
 
 
-void Cell_Opt_RF(int iter)
+void Cell_Opt_RF(const OpenMXBandEnergies *energies, int iter)
 {
   int i,j,iatom,icell,k,diis_iter;
   double dE_da[4][4],detA,itv[4][4],sum;
@@ -1745,9 +1752,9 @@ void Cell_Opt_RF(int iter)
   if (flag==0){
 
     if (SD_iter==1)
-      Cell_Opt_SD(iter,0);
+      Cell_Opt_SD(energies, iter,0);
     else 
-      Cell_Opt_SD(iter,1);
+      Cell_Opt_SD(energies, iter,1);
 
     /* shift one */
 
@@ -1823,7 +1830,7 @@ void Cell_Opt_RF(int iter)
         || cellopt_switch==6 
         || cellopt_switch==7 ){
 
-       RFC5(local_iter,iter,dE_da,itv);
+       RFC5(energies, local_iter,iter,dE_da,itv);
 
     }
     else {
@@ -1889,7 +1896,7 @@ void Cell_Opt_RF(int iter)
 
 
 /*BEGIN hmweng*/
-void Geometry_Opt_RF(int iter)
+void Geometry_Opt_RF(const OpenMXBandEnergies *energies, int iter)
 {
   int i,iatom,k,diis_iter;
   double sMD_TimeStep;
@@ -1969,9 +1976,9 @@ void Geometry_Opt_RF(int iter)
   if (flag==0){
 
     if (SD_iter==1)
-      Steepest_Descent(iter,0);
+      Steepest_Descent(energies, iter,0);
     else 
-      Steepest_Descent(iter,1);
+      Steepest_Descent(energies, iter,1);
 
     /* shift one */
 
@@ -2009,7 +2016,7 @@ void Geometry_Opt_RF(int iter)
 
   else {
 
-    RF(local_iter,iter);
+    RF(energies, local_iter,iter);
     local_iter++;
   }
 
@@ -2061,7 +2068,7 @@ void Geometry_Opt_RF(int iter)
 /*END hmweng */
 
 
-void Geometry_Opt_DIIS(int iter)
+void Geometry_Opt_DIIS(const OpenMXBandEnergies *energies, int iter)
 {
   int i,iatom,k,diis_iter;
   double sMD_TimeStep;
@@ -2141,9 +2148,9 @@ void Geometry_Opt_DIIS(int iter)
   if (flag==0){
 
     if (SD_iter==1)
-      Steepest_Descent(iter,0);
+      Steepest_Descent(energies, iter,0);
     else 
-      Steepest_Descent(iter,1);
+      Steepest_Descent(energies, iter,1);
 
     /* shift one */
 
@@ -2181,7 +2188,7 @@ void Geometry_Opt_DIIS(int iter)
 
   else {
 
-    GDIIS(local_iter,iter);
+    GDIIS(energies, local_iter,iter);
     local_iter++;
   }
 
@@ -2234,7 +2241,7 @@ void Geometry_Opt_DIIS(int iter)
 
 
 
-void Geometry_Opt_DIIS_BFGS(int iter)
+void Geometry_Opt_DIIS_BFGS(const OpenMXBandEnergies *energies, int iter)
 {
   int i,iatom,k,diis_iter;
   double sMD_TimeStep;
@@ -2314,9 +2321,9 @@ void Geometry_Opt_DIIS_BFGS(int iter)
   if (flag==0){
 
     if (SD_iter==1)
-      Steepest_Descent(iter,0);
+      Steepest_Descent(energies, iter,0);
     else 
-      Steepest_Descent(iter,1);
+      Steepest_Descent(energies, iter,1);
 
     /* shift one */
 
@@ -2353,7 +2360,7 @@ void Geometry_Opt_DIIS_BFGS(int iter)
   /* GDIIS */
 
   else {
-    GDIIS_BFGS(local_iter,iter);
+    GDIIS_BFGS(energies, local_iter,iter);
     local_iter++;
   }
 
@@ -2403,7 +2410,7 @@ void Geometry_Opt_DIIS_BFGS(int iter)
 }
 
 
-void Geometry_Opt_DIIS_EF(int iter)
+void Geometry_Opt_DIIS_EF(const OpenMXBandEnergies *energies, int iter)
 {
   int i,iatom,k,diis_iter;
   double sMD_TimeStep;
@@ -2483,9 +2490,9 @@ void Geometry_Opt_DIIS_EF(int iter)
   if (flag==0){
 
     if (SD_iter==1)
-      Steepest_Descent(iter,0);
+      Steepest_Descent(energies, iter,0);
     else 
-      Steepest_Descent(iter,1);
+      Steepest_Descent(energies, iter,1);
 
     /* shift one */
 
@@ -2523,7 +2530,7 @@ void Geometry_Opt_DIIS_EF(int iter)
 
   else {
 
-    GDIIS_EF(local_iter,iter);
+    GDIIS_EF(energies, local_iter,iter);
     local_iter++;
   }
 
@@ -2575,7 +2582,7 @@ void Geometry_Opt_DIIS_EF(int iter)
 
 
 
-void GDIIS(int iter, int iter0)
+void GDIIS(const OpenMXBandEnergies *energies, int iter, int iter0)
 {
   /* 1au=2.4189*10^-2 fs, 1fs=41.341105 au */
 
@@ -2783,7 +2790,7 @@ void GDIIS(int iter, int iter0)
   if (myid==Host_ID){  
 
     sprintf(fileE,"%s%s.ene",filepath,filename);
-    iterout_md(iter,MD_TimeStep*(iter-1),fileE);
+    iterout_md(energies, iter,MD_TimeStep*(iter-1),fileE);
   }
 
   if (MD_Opt_OK!=1 && iter!=MD_IterNumber){
@@ -3018,7 +3025,7 @@ void GDIIS(int iter, int iter0)
 
 
 /*hmweng start RF method*/
-void RF(int iter, int iter0)
+void RF(const OpenMXBandEnergies *energies, int iter, int iter0)
 {
   /* 1au=2.4189*10^-2 fs, 1fs=41.341105 au */
 
@@ -3245,7 +3252,7 @@ void RF(int iter, int iter0)
   if (myid==Host_ID){  
 
     sprintf(fileE,"%s%s.ene",filepath,filename);
-    iterout_md(iter,MD_TimeStep*(iter-1),fileE);
+    iterout_md(energies, iter,MD_TimeStep*(iter-1),fileE);
   }
 
   if (MD_Opt_OK!=1 && iter!=MD_IterNumber){
@@ -3619,7 +3626,7 @@ void RF(int iter, int iter0)
 
 
 
-void RFC5(int iter, int iter0, double dE_da[4][4], double itv[4][4])
+void RFC5(const OpenMXBandEnergies *energies, int iter, int iter0, double dE_da[4][4], double itv[4][4])
 {
   /* 1au=2.4189*10^-2 fs, 1fs=41.341105 au */
 
@@ -3897,7 +3904,7 @@ void RFC5(int iter, int iter0, double dE_da[4][4], double itv[4][4])
   if (myid==Host_ID){  
 
     sprintf(fileE,"%s%s.ene",filepath,filename);
-    iterout_md(iter,MD_TimeStep*(iter-1),fileE);
+    iterout_md(energies, iter,MD_TimeStep*(iter-1),fileE);
   }
 
   if (MD_Opt_OK!=1 && iter!=MD_IterNumber){
@@ -4450,7 +4457,7 @@ void RFC5(int iter, int iter0, double dE_da[4][4], double itv[4][4])
 
 
 
-void GDIIS_BFGS(int iter, int iter0)
+void GDIIS_BFGS(const OpenMXBandEnergies *energies, int iter, int iter0)
 {
   /* 1au=2.4189*10^-2 fs, 1fs=41.341105 au */
 
@@ -4661,7 +4668,7 @@ void GDIIS_BFGS(int iter, int iter0)
   if (myid==Host_ID){  
 
     sprintf(fileE,"%s%s.ene",filepath,filename);
-    iterout_md(iter,MD_TimeStep*(iter-1),fileE);
+    iterout_md(energies, iter,MD_TimeStep*(iter-1),fileE);
   }
 
   if (MD_Opt_OK!=1 && iter!=MD_IterNumber){
@@ -5013,7 +5020,7 @@ void GDIIS_BFGS(int iter, int iter0)
 
 
 
-void GDIIS_EF(int iter, int iter0)
+void GDIIS_EF(const OpenMXBandEnergies *energies, int iter, int iter0)
 {
   /* 1au=2.4189*10^-2 fs, 1fs=41.341105 au */
 
@@ -5275,7 +5282,7 @@ void GDIIS_EF(int iter, int iter0)
   if (myid==Host_ID){  
     
     sprintf(fileE,"%s%s.ene",filepath,filename);
-    iterout_md(iter,MD_TimeStep*(iter-1),fileE);
+    iterout_md(energies, iter,MD_TimeStep*(iter-1),fileE);
   } 
 
   if (MD_Opt_OK!=1 && iter!=MD_IterNumber){
@@ -5730,7 +5737,7 @@ void GDIIS_EF(int iter, int iter0)
 
 
 
-void NVT_VS(int iter)
+void NVT_VS(const OpenMXBandEnergies *energies, int iter)
 {
   /* added by mari */
   /********************************************************
@@ -5874,7 +5881,7 @@ void NVT_VS(int iter)
     sprintf(fileE,"%s%s.ene",filepath,filename);
 
     /* corrected on 2016/1/19 by ADO */
-    iterout_md(iter,MD_TimeStep*(iter-1),fileE);
+    iterout_md(energies, iter,MD_TimeStep*(iter-1),fileE);
   }
   
   /****************************************************
@@ -5942,7 +5949,7 @@ void NVT_VS(int iter)
 
 
 
-void NVT_Langevin(int iter)
+void NVT_Langevin(const OpenMXBandEnergies *energies, int iter)
 {
   /* added by T.Ohwaki */
   /********************************************************
@@ -6288,14 +6295,14 @@ void NVT_Langevin(int iter)
   if (myid==Host_ID){  
 
     sprintf(fileE,"%s%s.ene",filepath,filename);
-    iterout_md(iter,MD_TimeStep*(iter-1),fileE);
+    iterout_md(energies, iter,MD_TimeStep*(iter-1),fileE);
   }
 }
 
 
 
 
-void NVT_VS2(int iter)
+void NVT_VS2(const OpenMXBandEnergies *energies, int iter)
 {
   /* added by T.Ohwaki */
   /********************************************************
@@ -6444,7 +6451,7 @@ void NVT_VS2(int iter)
   if (myid==Host_ID){  
 
     sprintf(fileE,"%s%s.ene",filepath,filename);
-    iterout_md(iter,MD_TimeStep*(iter-1),fileE);
+    iterout_md(energies, iter,MD_TimeStep*(iter-1),fileE);
   }
 
   /****************************************************
@@ -6525,7 +6532,7 @@ void NVT_VS2(int iter)
 }
 
 
-void NVT_VS4(int iter)
+void NVT_VS4(const OpenMXBandEnergies *energies, int iter)
 {
   /* added by T. Ohwaki */
   /********************************************************
@@ -6690,7 +6697,7 @@ void NVT_VS4(int iter)
 
   if (myid==Host_ID){
     sprintf(fileE,"%s%s.ene",filepath,filename);
-    iterout_md(iter,MD_TimeStep*(iter-1),fileE);
+    iterout_md(energies, iter,MD_TimeStep*(iter-1),fileE);
   }
 
   /****************************************************
@@ -6769,7 +6776,7 @@ void NVT_VS4(int iter)
 
 
 
-void NVT_NH(int iter)
+void NVT_NH(const OpenMXBandEnergies *energies, int iter)
 {
   /***********************************************************
    a constant temperature molecular dynamics by a Nose-Hoover
@@ -6893,7 +6900,7 @@ void NVT_NH(int iter)
     if (myid==Host_ID){  
 
       sprintf(fileE,"%s%s.ene",filepath,filename);
-      iterout_md(iter,MD_TimeStep*(iter-1),fileE);
+      iterout_md(energies, iter,MD_TimeStep*(iter-1),fileE);
     }
 
     /****************************************************
@@ -7107,7 +7114,7 @@ void NVT_NH(int iter)
     if (myid==Host_ID){  
 
       sprintf(fileE,"%s%s.ene",filepath,filename);
-      iterout_md(iter,MD_TimeStep*(iter-1),fileE);
+      iterout_md(energies, iter,MD_TimeStep*(iter-1),fileE);
     }
 
     /*****************************************************
@@ -7216,7 +7223,7 @@ void NVT_NH(int iter)
     if (myid==Host_ID){  
 
       sprintf(fileE,"%s%s.ene",filepath,filename);
-      iterout_md(iter,MD_TimeStep*(iter-1),fileE);
+      iterout_md(energies, iter,MD_TimeStep*(iter-1),fileE);
     }
 
     /****************************************************
@@ -7411,7 +7418,7 @@ static void Correct_Velocity()
 
 
 
-static void Delta_Factor(int iter)
+static void Delta_Factor(const OpenMXBandEnergies *energies, int iter)
 {
   int i,j,Gc_AN,myid;
   char fileE[YOUSO10];
@@ -7445,7 +7452,7 @@ static void Delta_Factor(int iter)
 
   if (myid==Host_ID){  
     sprintf(fileE,"%s%s.ene",filepath,filename);
-    iterout_md(iter,MD_TimeStep*(iter-1),fileE);
+    iterout_md(energies, iter,MD_TimeStep*(iter-1),fileE);
   }
 
   /****************************************************
@@ -7492,7 +7499,7 @@ static void Delta_Factor(int iter)
 
 
 
-static void EvsLC(int iter)
+static void EvsLC(const OpenMXBandEnergies *energies, int iter)
 {
   int i,j,Gc_AN,myid;
   char fileE[YOUSO10];
@@ -7522,7 +7529,7 @@ static void EvsLC(int iter)
 
   if (myid==Host_ID){  
     sprintf(fileE,"%s%s.ene",filepath,filename);
-    iterout_md(iter,MD_TimeStep*(iter-1),fileE);
+    iterout_md(energies, iter,MD_TimeStep*(iter-1),fileE);
   }
 
   /****************************************************

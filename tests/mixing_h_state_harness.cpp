@@ -1,3 +1,4 @@
+#include "openmx_core_energy.h"
 #include "fixtures/native_resources/sdk_model.hpp"
 #include "openmx_mixing_h_state.h"
 #include "openmx_gpu_workers.h"

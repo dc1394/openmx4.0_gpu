@@ -54,7 +54,7 @@ static double Calc_EdftD();  /* added by okuno */
 static double Calc_EdftD3(); /* added by Ellner */
 static void EH0_TwoCenter(const OpenMXAtomicViews *atomic, int Gc_AN, int h_AN, double VH0ij[4]);
 static void EH0_TwoCenter_at_Cutoff(const OpenMXAtomicViews *atomic, int wan1, int wan2, double VH0ij[4]);
-static void Energy_Decomposition(double ECE[], const OpenMXElectronicViews *electronic);
+static void Energy_Decomposition(const OpenMXBandEnergies *energies, double ECE[], const OpenMXElectronicViews *electronic);
 static void Energy_Decomposition_CWF(double ECE[]);
 #if OPENMX_GPU_HIP
 static int TotalEnergyUseOpenMP(void);
@@ -104,7 +104,7 @@ static int TotalEnergyUseOpenACC(void)
 
 
 
-double Total_Energy(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, int MD_iter, double ECE[], const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
+double Total_Energy(const OpenMXBandEnergies *energies, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, int MD_iter, double ECE[], const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 { 
   double time0;
   double TStime,TEtime;
@@ -330,7 +330,7 @@ double Total_Energy(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews 
 
   if (Energy_Decomposition_flag==1){
 
-    Energy_Decomposition(ECE, electronic);
+    Energy_Decomposition(energies, ECE, electronic);
   }
 
   /*********************************************************
@@ -4270,7 +4270,7 @@ double Calc_EdftD3()
 /* Ellner */
 
 
-void Energy_Decomposition(double ECE[], const OpenMXElectronicViews *electronic)
+void Energy_Decomposition(const OpenMXBandEnergies *energies, double ECE[], const OpenMXElectronicViews *electronic)
 {
   double ******DM=electronic->DM;
   double *****H=electronic->H;
@@ -4318,15 +4318,15 @@ void Energy_Decomposition(double ECE[], const OpenMXElectronicViews *electronic)
   }
   
   if      (SpinP_switch==0){
-    c[0] = 0.5*(Etot - Uele)/(Total_Mul_up+1.0e-15);
+    c[0] = 0.5*(Etot - energies->band)/(Total_Mul_up+1.0e-15);
   }
   else if (SpinP_switch==1) {
-    c[0] = (Etot - Uele)/(Total_Mul_up+Total_Mul_dn+1.0e-15);        
+    c[0] = (Etot - energies->band)/(Total_Mul_up+Total_Mul_dn+1.0e-15);
     c[1] = c[0];
 
   }
   else if (SpinP_switch==3) {
-    c[0] = (Etot - Uele)/(Total_Mul_up+Total_Mul_dn+1.0e-15);        
+    c[0] = (Etot - energies->band)/(Total_Mul_up+Total_Mul_dn+1.0e-15);
     c[1] = c[0];
   }
 

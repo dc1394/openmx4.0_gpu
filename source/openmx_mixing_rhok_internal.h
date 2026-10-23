@@ -3,6 +3,7 @@
 #include "openmx_mixing_rhok_state.h"
 #include "openmx_core_native_resources.h"
 #include "openmx_core_mixing.h"
+#include "openmx_core_energy.h"
 
 /* Only the two native density-mixing implementations share this layout.
    The C++ calculation resource group owns this POD and the Gram storage. */
@@ -17,6 +18,7 @@ typedef struct {
 
 struct OpenMXMixingRhokState {
   OpenMXMixingHistory *history; /* borrowed from this calculation */
+  OpenMXBandEnergies *energies; /* borrowed from this calculation */
   OpenMXNativeResources *resources;
   int initialized;
   int diis_first_normal,diis_first_negf;
