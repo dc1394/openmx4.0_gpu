@@ -1,6 +1,7 @@
 #ifndef OPENMX_STRESS_WORKSPACE_H
 #define OPENMX_STRESS_WORKSPACE_H
 #include "openmx_solver_workspace.h"
+#include "openmx_xc_workspace.h"
 
 /* Nine active components per worker. A 256-byte row separates their writes
    even for 128-byte cache lines; unused padding is never read or zeroed.

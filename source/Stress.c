@@ -1083,10 +1083,8 @@ static double Stress_owned(OpenMXSolverInvocation *scratch,OpenMXThermodynamicEn
 
     double **Leb_Grid_XYZW;
 
-    Leb_Grid_XYZW = (double**)malloc(sizeof(double*)*Num_Leb_Grid); 
-    for (i=0; i<Num_Leb_Grid; i++){
-      Leb_Grid_XYZW[i] = (double*)malloc(sizeof(double)*4);
-    }
+    OpenMXSolverRealTensor lebedev;
+    OpenMX_XC_LebedevPrepare(scratch,Num_Leb_Grid,&lebedev,&Leb_Grid_XYZW);
 
     Set_Lebedev_Grid(Num_Leb_Grid,Leb_Grid_XYZW);
 
@@ -1108,6 +1106,15 @@ static double Stress_owned(OpenMXSolverInvocation *scratch,OpenMXThermodynamicEn
       double exc0,vxc0,rs,sum,sumr,sumt,re,Sr,Dr,sumtx,sumty,sumtz,den,den0,gden0,w;
       double x0,y0,z0,x1,y1,z1,dx1,dy1,dz1,r1;
       double *My_sumr;
+      OpenMXSolverRealTensor xc_partials;
+      size_t max_neighbors=0;
+      for(int atom=1;atom<=Matomnum;atom++){
+        size_t count=(size_t)FNAN[M2G[atom]]+1;
+        if(count>max_neighbors)max_neighbors=count;
+      }
+      max_neighbors=OpenMX_Solver_SimdColumns(max_neighbors);
+      OpenMX_XC_PartialsPrepare(scratch,"stress:xc-partials",Nthrds0,max_neighbors,&xc_partials);
+      My_sumr=OpenMX_Solver_Real(scratch,"stress:xc-sums",(size_t)Nthrds0);
       int Nloop,Rn,ir,ia;
 
       /* start calc. */
@@ -1130,32 +1137,32 @@ static double Stress_owned(OpenMXSolverInvocation *scratch,OpenMXThermodynamicEn
 
 	/* allocation of arrays */
 
-	double *My_sumr,**My_sumrx,**My_sumry,**My_sumrz;
 
-	My_sumr = (double*)malloc(sizeof(double)*Nthrds0);
+
+
 	for (i=0; i<Nthrds0; i++) My_sumr[i]  = 0.0;
 
-	My_sumrx = (double**)malloc(sizeof(double*)*Nthrds0);
+
 	for (i=0; i<Nthrds0; i++){
-	  My_sumrx[i] = (double*)malloc(sizeof(double)*(FNAN[Gc_AN]+1));
+
 	  for (j=0; j<(FNAN[Gc_AN]+1); j++){
-	    My_sumrx[i][j] = 0.0;
+	    OpenMX_XC_ForceRow(&xc_partials,0,i)[j] = 0.0;
 	  }
 	}
 
-	My_sumry = (double**)malloc(sizeof(double*)*Nthrds0);
+
 	for (i=0; i<Nthrds0; i++){
-	  My_sumry[i] = (double*)malloc(sizeof(double)*(FNAN[Gc_AN]+1));
+
 	  for (j=0; j<(FNAN[Gc_AN]+1); j++){
-	    My_sumry[i][j] = 0.0;
+	    OpenMX_XC_ForceRow(&xc_partials,1,i)[j] = 0.0;
 	  }
 	}
 
-	My_sumrz = (double**)malloc(sizeof(double*)*Nthrds0);
+
 	for (i=0; i<Nthrds0; i++){
-	  My_sumrz[i] = (double*)malloc(sizeof(double)*(FNAN[Gc_AN]+1));
+
 	  for (j=0; j<(FNAN[Gc_AN]+1); j++){
-	    My_sumrz[i][j] = 0.0;
+	    OpenMX_XC_ForceRow(&xc_partials,2,i)[j] = 0.0;
 	  }
 	}
 
@@ -1167,23 +1174,35 @@ static double Stress_owned(OpenMXSolverInvocation *scratch,OpenMXThermodynamicEn
 	  }
 	}
 	
-#pragma omp parallel shared(atomic,Leb_Grid_XYZW,Num_Leb_Grid,My_sumr,My_sumrx,My_sumry,My_sumrz,My_Stress,stress_threads,Dr,Sr,CoarseGL_Abscissae,CoarseGL_Weight,Gxyz,Gc_AN,FNAN,natn,ncn,WhatSpecies,atv,F_Vxc_flag,Cwan,PCC_switch) private(OMPID,Nthrds,Nprocs,ir,ia,r,w,sumt,sumtx,sumty,sumtz,x,x0,y0,z0,h_AN,Gh_AN,Rn,Hwan,x1,y1,z1,dx,dy,dz,r1,den,den0,gden0,dx1,dy1,dz1,exc0,vxc0,sumt1,i)
+#pragma omp parallel shared(scratch,max_neighbors,xc_partials,atomic,lebedev,Num_Leb_Grid,My_sumr,My_Stress,stress_threads,Dr,Sr,CoarseGL_Abscissae,CoarseGL_Weight,Gxyz,Gc_AN,FNAN,natn,ncn,WhatSpecies,atv,F_Vxc_flag,Cwan,PCC_switch) private(OMPID,Nthrds,Nprocs,ir,ia,r,w,sumt,sumtx,sumty,sumtz,x,x0,y0,z0,h_AN,Gh_AN,Rn,Hwan,x1,y1,z1,dx,dy,dz,r1,den,den0,gden0,dx1,dy1,dz1,exc0,vxc0,sumt1,i)
 	{
 
 	  double dx2,dy2,dz2;
 	  double *gx,*gy,*gz,dexc0;
 	  double *sum_gx,*sum_gy,*sum_gz;
 
-	  gx = (double*)malloc(sizeof(double)*(FNAN[Gc_AN]+1));
-	  gy = (double*)malloc(sizeof(double)*(FNAN[Gc_AN]+1));
-	  gz = (double*)malloc(sizeof(double)*(FNAN[Gc_AN]+1));
-	  sum_gx = (double*)malloc(sizeof(double)*(FNAN[Gc_AN]+1));
-	  sum_gy = (double*)malloc(sizeof(double)*(FNAN[Gc_AN]+1));
-	  sum_gz = (double*)malloc(sizeof(double)*(FNAN[Gc_AN]+1));
+
+
+
+
+
+
 
 	  /* get info. on OpenMP */ 
 
 	  OMPID = omp_get_thread_num();
+          OpenMXSolverRealTensor derivatives;
+          OpenMX_XC_WorkerPrepare(scratch,"stress:xc-derivatives",max_neighbors,&derivatives);
+          gx=openmx_solver_real_matrix_row(&derivatives,0);
+          gy=openmx_solver_real_matrix_row(&derivatives,1);
+          gz=openmx_solver_real_matrix_row(&derivatives,2);
+          sum_gx=openmx_solver_real_matrix_row(&derivatives,3);
+          sum_gy=openmx_solver_real_matrix_row(&derivatives,4);
+          sum_gz=openmx_solver_real_matrix_row(&derivatives,5);
+          double *partial_x=OpenMX_XC_ForceRow(&xc_partials,0,OMPID);
+          double *partial_y=OpenMX_XC_ForceRow(&xc_partials,1,OMPID);
+          double *partial_z=OpenMX_XC_ForceRow(&xc_partials,2,OMPID);
+
 	  Nthrds = omp_get_num_threads();
 	  Nprocs = omp_get_num_procs();
 
@@ -1202,9 +1221,9 @@ static double Stress_owned(OpenMXSolverInvocation *scratch,OpenMXThermodynamicEn
 
 	    for (ia=0; ia<Num_Leb_Grid; ia++){
 
-	      x0 = r*Leb_Grid_XYZW[ia][0] + Gxyz[Gc_AN][1];
-	      y0 = r*Leb_Grid_XYZW[ia][1] + Gxyz[Gc_AN][2];
-	      z0 = r*Leb_Grid_XYZW[ia][2] + Gxyz[Gc_AN][3];
+	      x0 = r*openmx_solver_real_matrix_row(&lebedev,ia)[0] + Gxyz[Gc_AN][1];
+	      y0 = r*openmx_solver_real_matrix_row(&lebedev,ia)[1] + Gxyz[Gc_AN][2];
+	      z0 = r*openmx_solver_real_matrix_row(&lebedev,ia)[2] + Gxyz[Gc_AN][3];
 
 	      /* calculate rho_atom + rho_pcc */ 
 
@@ -1255,7 +1274,7 @@ static double Stress_owned(OpenMXSolverInvocation *scratch,OpenMXThermodynamicEn
 
 	      /* Lebedev quadrature */
 
-	      w = Leb_Grid_XYZW[ia][3];
+	      w = openmx_solver_real_matrix_row(&lebedev,ia)[3];
 	      sumt += w*den0*exc0;
 
 	      for (h_AN=1; h_AN<=FNAN[Gc_AN]; h_AN++){
@@ -1295,9 +1314,9 @@ static double Stress_owned(OpenMXSolverInvocation *scratch,OpenMXThermodynamicEn
 	    My_sumr[OMPID]  += w*sumt;
 
 	    for (h_AN=1; h_AN<=FNAN[Gc_AN]; h_AN++){
-	      My_sumrx[OMPID][h_AN] += w*sum_gx[h_AN];
-	      My_sumry[OMPID][h_AN] += w*sum_gy[h_AN];
-	      My_sumrz[OMPID][h_AN] += w*sum_gz[h_AN];
+	      partial_x[h_AN] += w*sum_gx[h_AN];
+	      partial_y[h_AN] += w*sum_gy[h_AN];
+	      partial_z[h_AN] += w*sum_gz[h_AN];
 	    }
 
 	    for(i=0; i<9; i++){
@@ -1306,12 +1325,12 @@ static double Stress_owned(OpenMXSolverInvocation *scratch,OpenMXThermodynamicEn
 
 	  } /* ir */
 
-	  free(gx);
-	  free(gy);
-	  free(gz);
-	  free(sum_gx);
-	  free(sum_gy);
-	  free(sum_gz);
+
+
+
+
+
+
 
 	} /* #pragma omp */
 
@@ -1331,9 +1350,9 @@ static double Stress_owned(OpenMXSolverInvocation *scratch,OpenMXThermodynamicEn
 	  sumry = 0.0;
 	  sumrz = 0.0;
 	  for (Nloop=0; Nloop<Nthrds0; Nloop++){
-	    sumrx += My_sumrx[Nloop][h_AN];
-	    sumry += My_sumry[Nloop][h_AN];
-	    sumrz += My_sumrz[Nloop][h_AN];
+	    sumrx += OpenMX_XC_ForceRow(&xc_partials,0,Nloop)[h_AN];
+	    sumry += OpenMX_XC_ForceRow(&xc_partials,1,Nloop)[h_AN];
+	    sumrz += OpenMX_XC_ForceRow(&xc_partials,2,Nloop)[h_AN];
 	  }
 
 	  Gh_AN = natn[Gc_AN][h_AN];
@@ -1357,22 +1376,13 @@ static double Stress_owned(OpenMXSolverInvocation *scratch,OpenMXThermodynamicEn
 
 	/* freeing of arrays */
 
-	free(My_sumr);
 
-	for (i=0; i<Nthrds0; i++){
-	  free(My_sumrx[i]);
-	}
-	free(My_sumrx);
 
-	for (i=0; i<Nthrds0; i++){
-	  free(My_sumry[i]);
-	}
-	free(My_sumry);
 
-	for (i=0; i<Nthrds0; i++){
-	  free(My_sumrz[i]);
-	}
-	free(My_sumrz);
+
+
+
+
 
 
 	
@@ -1405,10 +1415,7 @@ static double Stress_owned(OpenMXSolverInvocation *scratch,OpenMXThermodynamicEn
     }
     /* end(yshiihara) */
 
-    for (i=0; i<Num_Leb_Grid; i++){
-      free(Leb_Grid_XYZW[i]);
-    }
-    free(Leb_Grid_XYZW);
+
 
   } /* end of if (Exc0_correction_flag==1) */
 

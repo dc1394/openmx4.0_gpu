@@ -8,6 +8,7 @@
 #include <openmx/core/core_hole.hpp>
 #include <openmx/core/projector_force.hpp>
 #include <openmx/core/dispersion_workspace.hpp>
+#include <openmx/core/angular_grid.hpp>
 #include "native_resources.hpp"
 #include <array>
 #include <climits>
@@ -179,6 +180,7 @@ struct OpenMXSolverInvocation {
   std::vector<std::unique_ptr<openmx::core::CoreHole>> core_holes;
   std::vector<std::unique_ptr<openmx::core::ProjectorForce>> projector_forces;
   std::unique_ptr<openmx::core::DispersionWorkspace> dispersion;
+  std::unique_ptr<openmx::core::AngularGrid> angular_grid;
   NativeResourceGroups native_resources;
   explicit OpenMXSolverInvocation(int n):workers(n) {}
   Worker& worker(int n) {require(n>=0 && size_t(n)<workers.size(),"invalid solver worker ID");return workers[n];}
@@ -204,6 +206,18 @@ extern "C" int openmx_core_dispersion_prepare(OpenMXSolverInvocation* scope,
       scope->dispersion=std::move(replacement);
     }
     *out=scope->dispersion->view();
+  });
+}
+extern "C" int openmx_core_solver_angular_grid(OpenMXSolverInvocation* scope,int points,
+    OpenMXSolverRealTensor* out,double*** rows,char* error,size_t capacity) {
+  return checked(error,capacity,[&] {
+    require(scope && out && rows,"missing angular grid scope or output");
+    const auto count=openmx::core::AngularGrid::validate(points);
+    if(!scope->angular_grid || count>scope->angular_grid->capacity()) {
+      auto replacement=std::make_unique<openmx::core::AngularGrid>(points);
+      scope->angular_grid=std::move(replacement);
+    }else scope->angular_grid->rebind(points);
+    *out=scope->angular_grid->view();*rows=scope->angular_grid->legacy_rows();
   });
 }
 extern "C" int openmx_core_solver_matrix_scratch(OpenMXSolverInvocation* scope,

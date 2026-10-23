@@ -1,6 +1,7 @@
 #ifndef OPENMX_ENERGY_WORKSPACE_H
 #define OPENMX_ENERGY_WORKSPACE_H
 #include "openmx_solver_workspace.h"
+#include "openmx_xc_workspace.h"
 #include "openmx_core_dispersion.h"
 #include <limits.h>
 
@@ -69,13 +70,7 @@ static inline void OpenMX_Energy_CWFScratch(OpenMXSolverInvocation *owner,
 static inline void OpenMX_Energy_LebedevPrepare(OpenMXSolverInvocation *owner,
     int points,OpenMXSolverRealTensor *out,double ***legacy_rows)
 {
-  char error[256];
-  const size_t shape[4]={(size_t)points,4,1,1};
-  if(points!=590 && points!=1202 && points!=2030)
-    OpenMX_Solver_Failure("unsupported Lebedev grid: use 590, 1202 or 2030 points");
-  if(!openmx_core_solver_real_overwrite(owner,omp_get_thread_num(),"total-energy:lebedev",
-        shape,out,error,sizeof(error)))OpenMX_Solver_Failure(error);
-  *legacy_rows=OpenMX_Solver_RealAlias(owner,"total-energy:lebedev-rows",out->values,(size_t)points,4);
+  OpenMX_XC_LebedevPrepare(owner,points,out,legacy_rows);
 }
 
 /* Flat [component,worker,neighbor] partials, shared only during one atom's
@@ -83,14 +78,12 @@ static inline void OpenMX_Energy_LebedevPrepare(OpenMXSolverInvocation *owner,
 static inline void OpenMX_Energy_XCPartialsPrepare(OpenMXSolverInvocation *owner,
     size_t workers,size_t neighbors,OpenMXSolverRealTensor *out)
 {
-  char error[256];const size_t shape[4]={3,workers,neighbors,1};
-  if(!openmx_core_solver_real_overwrite(owner,omp_get_thread_num(),"total-energy:xc-partials",
-        shape,out,error,sizeof(error)))OpenMX_Solver_Failure(error);
+  OpenMX_XC_PartialsPrepare(owner,"total-energy:xc-partials",workers,neighbors,out);
 }
 static inline double *OpenMX_Energy_XCForceRow(const OpenMXSolverRealTensor *view,
     size_t component,size_t worker)
 {
-  return view->extent[2] ? view->values+(component*view->extent[1]+worker)*view->extent[2] : view->values;
+  return OpenMX_XC_ForceRow(view,component,worker);
 }
 
 /* Each worker reuses six derivative/sum rows. Keep an output parameter in
@@ -98,9 +91,7 @@ static inline double *OpenMX_Energy_XCForceRow(const OpenMXSolverRealTensor *vie
 static inline void OpenMX_Energy_XCWorkerPrepare(OpenMXSolverInvocation *owner,
     size_t neighbors,OpenMXSolverRealTensor *out)
 {
-  char error[256];const size_t shape[4]={6,neighbors,1,1};
-  if(!openmx_core_solver_real_overwrite(owner,omp_get_thread_num(),"total-energy:xc-derivatives",
-        shape,out,error,sizeof(error)))OpenMX_Solver_Failure(error);
+  OpenMX_XC_WorkerPrepare(owner,"total-energy:xc-derivatives",neighbors,out);
 }
 
 static inline void OpenMX_Energy_DispersionPrepare(OpenMXSolverInvocation *owner,
