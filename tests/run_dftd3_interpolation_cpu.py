@@ -17,15 +17,17 @@ end = source.index("/*  CALCULATE ENERGY AND TWO FIRST PART OF GRADIENTS*/", sta
 interpolation = source[start:end]
 wrapper = r'''
 #include <math.h>
+#include "openmx_core_dispersion.h"
 void interpolate(int na,int nb,double ca,double cb,double k,const double *ref,double *out) {
  int maxcn_dftD[2]={na,nb},wanA=0,wanB=1,Gc_AN=1,Gc_BN=2,i,j;
  double C6ab_dftD[2][2][8][8][3]={0},CN[3]={0,ca,cb},k3_dftD=k;
- double r2r4ab_dftD[2][2]={{0,2.3},{2.3,0}},dC6ij[3][3]={0};
+ double r2r4ab_dftD[2][2]={{0,2.3},{2.3,0}},c6_derivatives[9]={0};
+ OpenMXDispersionView dispersion={.atoms=3,.c6_derivative=c6_derivatives};
  double Z,W,dZi,dZj,dWi,dWj,dAi,dBj,exparg,Lij,C6_ref,C6,C8,C8C6;
  for(i=0;i<na;i++)for(j=0;j<nb;j++)for(int v=0;v<3;v++)
   C6ab_dftD[0][1][i][j][v]=ref[3*(i*nb+j)+v];
 ''' + interpolation + r'''
- out[0]=C6;out[1]=C8;out[2]=dC6ij[1][2];
+ out[0]=C6;out[1]=C8;out[2]=*openmx_dispersion_c6(&dispersion,1,2);
 }
 '''
 
@@ -55,7 +57,7 @@ with tempfile.TemporaryDirectory(prefix="openmx-d3-") as directory:
     p = Path(directory)
     (p / "check.c").write_text(wrapper)
     subprocess.run(shlex.split(os.environ.get("CC", "cc")) + [
-        "-std=c11", "-O2", "-fPIC", "-shared", str(p / "check.c"),
+        "-I"+str(ROOT/"core/include"), "-std=c11", "-O2", "-fPIC", "-shared", str(p / "check.c"),
         "-lm", "-o", str(p / "check.so")], check=True)
     library = ctypes.CDLL(str(p / "check.so"))
     function = library.interpolate

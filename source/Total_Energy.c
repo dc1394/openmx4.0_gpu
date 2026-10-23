@@ -52,7 +52,7 @@ static void Calc_EXC_EH1(OpenMXSolverInvocation *scratch, const OpenMXAtomicView
 static void Calc_Edc(double ECE[]);
 static double Calc_Ehub(const OpenMXLocalBasisViews *local_basis);   /* --- added by MJ  */
 static double Calc_EdftD();  /* added by okuno */
-static double Calc_EdftD3(); /* added by Ellner */
+static double Calc_EdftD3(OpenMXSolverInvocation *scratch); /* added by Ellner */
 static void EH0_TwoCenter(const OpenMXAtomicViews *atomic, int Gc_AN, int h_AN, double VH0ij[4]);
 static void EH0_TwoCenter_at_Cutoff(OpenMXSolverInvocation *scratch, const OpenMXAtomicViews *atomic, int wan1, int wan2, double VH0ij[4]);
 static void Energy_Decomposition(const OpenMXBandEnergies *energies, double ECE[], const OpenMXElectronicViews *electronic);
@@ -281,7 +281,7 @@ static void Total_Energy_owned(OpenMXSolverInvocation *scratch, const OpenMXBand
   if (F_dftD_flag==1){
     if(dftD_switch==1){
       if(version_dftD==2) ECE[13] = Calc_EdftD(); 
-      if(version_dftD==3) ECE[13] = Calc_EdftD3(); 
+      if(version_dftD==3) ECE[13] = Calc_EdftD3(scratch);
     }
     else ECE[13] = 0.0;
   }
@@ -3643,7 +3643,7 @@ double Calc_EdftD()
 
 
 /* Ellner */
-double Calc_EdftD3()
+double Calc_EdftD3(OpenMXSolverInvocation *scratch)
 {
   /***********************************************************************
    The subroutine calculates the semiemprical DFTD3 vdW correction
@@ -3658,7 +3658,7 @@ double Calc_EdftD3()
   /* VARIABLES DECLARATOIN */
   double My_EdftD,EdftD; /* energy */
   double E; /* atomic energy */
-  double rij[4],fdamp,fdamp6,fdamp8,t6,t62,t8,t82,dE6,dE8,dEC,**dEC0; /* interaction */
+  double rij[4],fdamp,fdamp6,fdamp8,t6,t62,t8,t82,dE6,dE8,dEC; /* interaction */
   double rij0[4]; /* positions */
   double dist,dist2,dist5,dist6,dist7,dist8; /**/
   double rcut2, cncut2; /* cutoff values */
@@ -3668,15 +3668,13 @@ double Calc_EdftD3()
   int n1,n2,n3,n1_max,n2_max,n3_max; /* PBC */
   double per_flagA, per_flagB, dblcnt_factor; /* double counting */
   double dEx,dEy,dEz; /* gradients*/
-  double xn, *CN, *****dCN; /* Coordination number */
+  OpenMXDispersionView dispersion;
+  double xn, *CN; /* Coordination number */
   double exparg,expval, powarg, powval; /**/
-  double Z, W, C6_ref, dAi, dBj, Lij, C6, C8, **dC6ij, dZi, dZj, dWi, dWj; /* Gaussian distance C6, C8 parameter */
+  double Z, W, C6_ref, dAi, dBj, Lij, C6, C8, dZi, dZj, dWi, dWj; /* Gaussian distance C6, C8 parameter */
   double C8C6;
   double my_st[9],st[9];
 
-  /* START: for printing gradients ERASE 
-     double *xgrad,*ygrad,*zgrad;  
-     END: for printing gradients ERASE */
 
   /* MPI AND INITIALIZATION */
   MPI_Comm_size(mpi_comm_level1,&numprocs);
@@ -3691,39 +3689,9 @@ double Calc_EdftD3()
 
   for (i=0; i<9; i++) my_st[i] = 0.0;
 
-  CN = (double*)malloc(sizeof(double)*(atomnum+1));
-  dC6ij = (double**)malloc(sizeof(double*)*(atomnum+1));
-  dEC0 = (double**)malloc(sizeof(double*)*(atomnum+1));  
-  dCN  = (double*****)malloc(sizeof(double****)*(atomnum+1));
-  for(Gc_AN=0; Gc_AN<atomnum+1; Gc_AN++){
-    dC6ij[Gc_AN]=(double*)malloc(sizeof(double)*(atomnum+1));            
-    dEC0[Gc_AN]=(double*)malloc(sizeof(double*)*(atomnum+1));
+  OpenMX_Energy_DispersionPrepare(scratch,atomnum,n1_CN_DFT_D,n2_CN_DFT_D,n3_CN_DFT_D,&dispersion);
+  CN=dispersion.coordination;
 
-    for (i=0; i<(atomnum+1); i++){
-      dC6ij[Gc_AN][i] = 0.0;
-      dEC0[Gc_AN][i]  = 0.0;
-    }
-      
-    dCN[Gc_AN] =(double****)malloc(sizeof(double***)*(atomnum+1));      
-    for(Gc_BN=0; Gc_BN<atomnum+1; Gc_BN++){    
-      dCN[Gc_AN][Gc_BN] =(double***)malloc(sizeof(double**)*(2*n1_max+1));      
-      for (n1=0; n1<=2*n1_max; n1++){  
-	dCN[Gc_AN][Gc_BN][n1] =(double**)malloc(sizeof(double*)*(2*n2_max+1));      
-	for (n2=0; n2<=2*n2_max; n2++){
-	  dCN[Gc_AN][Gc_BN][n1][n2] =(double*)malloc(sizeof(double)*(2*n3_max+1));
-          for (i=0; i<(2*n3_max+1); i++) dCN[Gc_AN][Gc_BN][n1][n2][i] = 0.0;
-
-	} /* n2 */
-      } /* n1 */
-    } /* Gc_BN */
-  } /* Gc_AN */
-
-  /* START: for printing gradients ERASE 
-     xgrad = (double*)malloc(sizeof(double)*(atomnum+1));
-     ygrad = (double*)malloc(sizeof(double)*(atomnum+1));
-     zgrad = (double*)malloc(sizeof(double)*(atomnum+1));
-     END: for printing gradients ERASE */
-  
   /* Compute coordination numbers CN_A and derivative dCN_AB/dr_AB by adding an inverse damping function */
   for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
     Gc_AN = M2G[Mc_AN];
@@ -3735,7 +3703,7 @@ double Calc_EdftD3()
 	wanB = WhatSpecies[Gc_BN];
 	iZ = Spe_WhatAtom[wanB];
 	if ( iZ>0 ) {
-	  per_flagB = (int)Gxyz[Gc_BN][60]; 
+	  per_flagB = (int)Gxyz[Gc_BN][60];
 	  rij0[1] = Gxyz[Gc_AN][1] - Gxyz[Gc_BN][1];
 	  rij0[2] = Gxyz[Gc_AN][2] - Gxyz[Gc_BN][2];
 	  rij0[3] = Gxyz[Gc_AN][3] - Gxyz[Gc_BN][3];
@@ -3753,27 +3721,27 @@ double Calc_EdftD3()
 	    for (n2=-n2_max; n2<=n2_max; n2++){
 	      for (n3=-n3_max; n3<=n3_max; n3++){
 		rij[1] = rij0[1] - ( (double)n1*tv[1][1]
-				     + (double)n2*tv[2][1] 
-				     + (double)n3*tv[3][1] ); 
+				     + (double)n2*tv[2][1]
+				     + (double)n3*tv[3][1] );
 		rij[2] = rij0[2] - ( (double)n1*tv[1][2]
-				     + (double)n2*tv[2][2] 
-				     + (double)n3*tv[3][2] ); 
+				     + (double)n2*tv[2][2]
+				     + (double)n3*tv[3][2] );
 		rij[3] = rij0[3] - ( (double)n1*tv[1][3]
-				     + (double)n2*tv[2][3] 
-				     + (double)n3*tv[3][3] ); 
+				     + (double)n2*tv[2][3]
+				     + (double)n3*tv[3][3] );
 
 		dist2 = rij[1]*rij[1] + rij[2]*rij[2] + rij[3]*rij[3];
 
 		if (dist2<cncut2 && dist2>0.1){
-		  dist  = sqrt(dist2);           
+		  dist  = sqrt(dist2);
 		  exparg = -k1_dftD*((rcovab_dftD[wanA][wanB]/dist)-1.0); /* Rsum is scaled by k2 */
 		  expval = exp(exparg);
 		  fdamp = 1.0/(1.0+expval);
 		  xn+=fdamp;
-		  dCN[Gc_AN][Gc_BN][n1+n1_CN_DFT_D][n2+n2_CN_DFT_D][n3+n3_CN_DFT_D]=-fdamp*fdamp*expval*k1_dftD*rcovab_dftD[wanA][wanB]/dist2;
+		  (*openmx_dispersion_coordination(&dispersion,Gc_AN,Gc_BN,n1+n1_CN_DFT_D,n2+n2_CN_DFT_D,n3+n3_CN_DFT_D))=-fdamp*fdamp*expval*k1_dftD*rcovab_dftD[wanA][wanB]/dist2;
 		}
 		else{
-		  dCN[Gc_AN][Gc_BN][n1+n1_CN_DFT_D][n2+n2_CN_DFT_D][n3+n3_CN_DFT_D]=0.0;
+		  (*openmx_dispersion_coordination(&dispersion,Gc_AN,Gc_BN,n1+n1_CN_DFT_D,n2+n2_CN_DFT_D,n3+n3_CN_DFT_D))=0.0;
 		}
 	      } /* n3 */
 	    } /* n2 */
@@ -3785,7 +3753,7 @@ double Calc_EdftD3()
   } /* Mc_AN */
 
   /*MPI BROADCAST CN NUMBERS - MPI_Barrier(mpi_comm_level1); */
-  MPI_Barrier(mpi_comm_level1);  /* NOT SURE IF NEEDED! */ 
+  MPI_Barrier(mpi_comm_level1);  /* NOT SURE IF NEEDED! */
   for (Gc_AN=1; Gc_AN<=atomnum; Gc_AN++){
     wanA = WhatSpecies[Gc_AN];
     iZ = Spe_WhatAtom[wanA];
@@ -3796,7 +3764,7 @@ double Calc_EdftD3()
 	wanB = WhatSpecies[Gc_BN];
 	iZ = Spe_WhatAtom[wanB];
 	if ( iZ>0 ) {
-	  per_flagB = (int)Gxyz[Gc_BN][60]; 
+	  per_flagB = (int)Gxyz[Gc_BN][60];
 	  if (per_flagB==0){
 	    n1_max = 0;
 	    n2_max = 0;
@@ -3810,7 +3778,7 @@ double Calc_EdftD3()
 	  for (n1=-n1_max; n1<=n1_max; n1++){
 	    for (n2=-n2_max; n2<=n2_max; n2++){
 	      for (n3=-n3_max; n3<=n3_max; n3++){
-		MPI_Bcast(&dCN[Gc_AN][Gc_BN][n1+n1_CN_DFT_D][n2+n2_CN_DFT_D][n3+n3_CN_DFT_D], 1, MPI_DOUBLE, ID, mpi_comm_level1); 
+		MPI_Bcast(&(*openmx_dispersion_coordination(&dispersion,Gc_AN,Gc_BN,n1+n1_CN_DFT_D,n2+n2_CN_DFT_D,n3+n3_CN_DFT_D)), 1, MPI_DOUBLE, ID, mpi_comm_level1);
 	      } /* n3 */
 	    } /* n2 */
 	  } /* n1 */
@@ -3819,7 +3787,7 @@ double Calc_EdftD3()
     }
   } /* Gc_AN */
 
-  /* Calculate energy and collect gradients of two body terms C_ij*d(f_ij/r_ij)/dr_ij, 
+  /* Calculate energy and collect gradients of two body terms C_ij*d(f_ij/r_ij)/dr_ij,
      also dCi_ij dCj_ij dEC0_ij needed in gradients of 3 body terms */
 
   for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
@@ -3833,15 +3801,15 @@ double Calc_EdftD3()
       dEx = 0.0;
       dEy = 0.0;
       dEz = 0.0;
-      E = 0.0;        
+      E = 0.0;
 
-      per_flagA = (int)Gxyz[Gc_AN][60]; 
+      per_flagA = (int)Gxyz[Gc_AN][60];
       for(Gc_BN=1; Gc_BN<=atomnum; Gc_BN++){
 	wanB = WhatSpecies[Gc_BN];
 	iZ = Spe_WhatAtom[wanB];
 	if ( iZ>0 ) {
-	  dEC0[Gc_AN][Gc_BN]=0.0;
-	  per_flagB = (int)Gxyz[Gc_BN][60]; 
+	  (*openmx_dispersion_energy(&dispersion,Gc_AN,Gc_BN))=0.0;
+	  per_flagB = (int)Gxyz[Gc_BN][60];
 	  rij0[1] = Gxyz[Gc_AN][1] - Gxyz[Gc_BN][1];
 	  rij0[2] = Gxyz[Gc_AN][2] - Gxyz[Gc_BN][2];
 	  rij0[3] = Gxyz[Gc_AN][3] - Gxyz[Gc_BN][3];
@@ -3879,7 +3847,7 @@ double Calc_EdftD3()
 		dZi+=C6_ref*Lij*2.0*k3_dftD*dAi;
 		dZj+=C6_ref*Lij*2.0*k3_dftD*dBj;
 		dWi+=Lij*2.0*k3_dftD*dAi;
-		dWj+=Lij*2.0*k3_dftD*dBj;                    
+		dWj+=Lij*2.0*k3_dftD*dBj;
 	      }
 	    } /* CN_j */
 	  } /* CN_i */
@@ -3889,14 +3857,14 @@ double Calc_EdftD3()
 	    C6 = Z/W;
 	    C8 = 3.0*C6*r2r4ab_dftD[wanA][wanB];
             C8C6 = 3.0*r2r4ab_dftD[wanA][wanB];
-	    dC6ij[Gc_AN][Gc_BN]=((dZi*W)-(dWi*Z))/(W*W);
+	    (*openmx_dispersion_c6(&dispersion,Gc_AN,Gc_BN))=((dZi*W)-(dWi*Z))/(W*W);
 	  }
 	  else{
 	    C6 = 0.0;
 	    C8 = 0.0;
             C8C6 = 3.0*r2r4ab_dftD[wanA][wanB];
-	    dC6ij[Gc_AN][Gc_BN]=0.0;
-	  } 
+	    (*openmx_dispersion_c6(&dispersion,Gc_AN,Gc_BN))=0.0;
+	  }
 	  /*  CALCULATE ENERGY AND TWO FIRST PART OF GRADIENTS*/
 	  if (per_flagB==0){
 	    n1_max = 0;
@@ -3922,20 +3890,20 @@ double Calc_EdftD3()
 		}
 
 		rij[1] = rij0[1] - ( (double)n1*tv[1][1]
-				   + (double)n2*tv[2][1] 
-				   + (double)n3*tv[3][1] ); 
+				   + (double)n2*tv[2][1]
+				   + (double)n3*tv[3][1] );
 		rij[2] = rij0[2] - ( (double)n1*tv[1][2]
-				   + (double)n2*tv[2][2] 
-				   + (double)n3*tv[3][2] ); 
+				   + (double)n2*tv[2][2]
+				   + (double)n3*tv[3][2] );
 		rij[3] = rij0[3] - ( (double)n1*tv[1][3]
-				   + (double)n2*tv[2][3] 
-				   + (double)n3*tv[3][3] ); 
+				   + (double)n2*tv[2][3]
+				   + (double)n3*tv[3][3] );
 
 		dist2 = rij[1]*rij[1] + rij[2]*rij[2] + rij[3]*rij[3];
 
 		if (0.1<dist2 && dist2<rcut2){
 
-		  dist  = sqrt(dist2); 
+		  dist  = sqrt(dist2);
 		  dist5 = dist2*dist2*dist;
 		  dist6 = dist2*dist2*dist2;
 		  dist7 = dist6*dist;
@@ -3950,13 +3918,13 @@ double Calc_EdftD3()
 		    E -= dblcnt_factor*s6_dftD*C6*fdamp6/dist6;
 		    dE6=(s6_dftD*C6*fdamp6/dist6)*(6.0/dist)*(-1.0+alp6_dftD*powval*fdamp6);
 
-		    /* calculate the vdW energy of E8 and grad of f8/r8 term*/                
+		    /* calculate the vdW energy of E8 and grad of f8/r8 term*/
 		    powarg = dist/(sr8_dftD*r0ab_dftD[wanB][wanA]);
 		    powval = pow(powarg,-alp8_dftD);
 		    fdamp8 = 1.0/(1.0+6.0*powval);
 		    E -= dblcnt_factor*s8_dftD*C8*fdamp8/dist8;
 		    dE8=(s8_dftD*C8*fdamp8/dist8)*(2.0/dist)*(-4.0+3.0*alp8_dftD*powval*fdamp8);
-		    dEC0[Gc_AN][Gc_BN]+=s6_dftD*fdamp6/dist6+s8_dftD*3.0*r2r4ab_dftD[wanA][wanB]*fdamp8/dist8;
+		    (*openmx_dispersion_energy(&dispersion,Gc_AN,Gc_BN))+=s6_dftD*fdamp6/dist6+s8_dftD*3.0*r2r4ab_dftD[wanA][wanB]*fdamp8/dist8;
 
 		  } /* END IF ZERO DAMPING */
 
@@ -3969,14 +3937,14 @@ double Calc_EdftD3()
 		    t62=t6*t6;
 		    t8=dist8 + fdamp8;
 		    t82=t8*t8;
-		    E -= dblcnt_factor*s6_dftD*C6/t6;                
+		    E -= dblcnt_factor*s6_dftD*C6/t6;
 		    dE6=-s6_dftD*C6*6.0*dist5/t62;
 		    E -= dblcnt_factor*s8_dftD*C8/t8;
 		    dE8=-s8_dftD*C8*8.0*dist7/t82;
-		    dEC0[Gc_AN][Gc_BN]+=s6_dftD/t6+s8_dftD*3.0*r2r4ab_dftD[wanA][wanB]/t8;
+		    (*openmx_dispersion_energy(&dispersion,Gc_AN,Gc_BN))+=s6_dftD/t6+s8_dftD*3.0*r2r4ab_dftD[wanA][wanB]/t8;
 		  } /* IF BJ DAMPING */
 
-		  dEx -= (dE6+dE8)*rij[1]/dist;          
+		  dEx -= (dE6+dE8)*rij[1]/dist;
 		  dEy -= (dE6+dE8)*rij[2]/dist;
 		  dEz -= (dE6+dE8)*rij[3]/dist;
 
@@ -3997,10 +3965,10 @@ double Calc_EdftD3()
 	}
       } /* Gc_BN */
 
-      My_EdftD += E; 
+      My_EdftD += E;
 
       /* energy decomposition */
- 
+
       if (Energy_Decomposition_flag==1){
 
         DecEvdw[0][Mc_AN][0] = E;
@@ -4013,14 +3981,11 @@ double Calc_EdftD3()
       Gxyz[Gc_AN][18] += dEy;
       Gxyz[Gc_AN][19] += dEz;
 
-      /* START: for printing gradients ERASE 
-	 xgrad[Gc_AN]=dEx;ygrad[Gc_AN]=dEy;zgrad[Gc_AN]=dEz;
-	 END: for printing gradients ERASE */
-    }
+        }
 
   } /* Mc_AN */
 
-  /*MPI BROADCAST GRADIENTS AND REDUCE ENERGIES - MPI_Barrier(mpi_comm_level1); */    
+  /*MPI BROADCAST GRADIENTS AND REDUCE ENERGIES - MPI_Barrier(mpi_comm_level1); */
 
   MPI_Allreduce(&My_EdftD, &EdftD, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
 
@@ -4034,8 +3999,8 @@ double Calc_EdftD3()
 	wanB = WhatSpecies[Gc_BN];
 	iZ = Spe_WhatAtom[wanB];
 	if ( iZ>0 ) {
-	  MPI_Bcast(&dC6ij[Gc_AN][Gc_BN], 1, MPI_DOUBLE, ID, mpi_comm_level1);
-	  MPI_Bcast(&dEC0[Gc_AN][Gc_BN], 1, MPI_DOUBLE, ID, mpi_comm_level1);
+	  MPI_Bcast(&(*openmx_dispersion_c6(&dispersion,Gc_AN,Gc_BN)), 1, MPI_DOUBLE, ID, mpi_comm_level1);
+	  MPI_Bcast(&(*openmx_dispersion_energy(&dispersion,Gc_AN,Gc_BN)), 1, MPI_DOUBLE, ID, mpi_comm_level1);
 	}
       } /* Gc_BN */
     }
@@ -4086,14 +4051,14 @@ double Calc_EdftD3()
 
 		dEC=0.0;
 		rij[1] = rij0[1] - ( (double)n1*tv[1][1]
-				   + (double)n2*tv[2][1] 
-				   + (double)n3*tv[3][1] ); 
+				   + (double)n2*tv[2][1]
+				   + (double)n3*tv[3][1] );
 		rij[2] = rij0[2] - ( (double)n1*tv[1][2]
-				   + (double)n2*tv[2][2] 
-				   + (double)n3*tv[3][2] ); 
+				   + (double)n2*tv[2][2]
+				   + (double)n3*tv[3][2] );
 		rij[3] = rij0[3] - ( (double)n1*tv[1][3]
-				   + (double)n2*tv[2][3] 
-				   + (double)n3*tv[3][3] ); 
+				   + (double)n2*tv[2][3]
+				   + (double)n3*tv[3][3] );
 
 		dist2 = rij[1]*rij[1] + rij[2]*rij[2] + rij[3]*rij[3];
 
@@ -4105,8 +4070,8 @@ double Calc_EdftD3()
 
 		  for(Gc_CN=1; Gc_CN<=atomnum; Gc_CN++){
 
-		    dEC += dEC0[Gc_AN][Gc_CN]*dC6ij[Gc_AN][Gc_CN]*dCN[Gc_AN][Gc_BN][n1+n1_CN_DFT_D][n2+n2_CN_DFT_D][n3+n3_CN_DFT_D];
-		    dEC += dEC0[Gc_BN][Gc_CN]*dC6ij[Gc_BN][Gc_CN]*dCN[Gc_AN][Gc_BN][n1+n1_CN_DFT_D][n2+n2_CN_DFT_D][n3+n3_CN_DFT_D];
+		    dEC += (*openmx_dispersion_energy(&dispersion,Gc_AN,Gc_CN))*(*openmx_dispersion_c6(&dispersion,Gc_AN,Gc_CN))*(*openmx_dispersion_coordination(&dispersion,Gc_AN,Gc_BN,n1+n1_CN_DFT_D,n2+n2_CN_DFT_D,n3+n3_CN_DFT_D));
+		    dEC += (*openmx_dispersion_energy(&dispersion,Gc_BN,Gc_CN))*(*openmx_dispersion_c6(&dispersion,Gc_BN,Gc_CN))*(*openmx_dispersion_coordination(&dispersion,Gc_AN,Gc_BN,n1+n1_CN_DFT_D,n2+n2_CN_DFT_D,n3+n3_CN_DFT_D));
 
 		  } /* Gc_CN */
 
@@ -4131,16 +4096,13 @@ double Calc_EdftD3()
 	  } /* n1 */
 	} /* if ( iZ>0 ) */
       } /* Gc_BN */
- 
+
       Gxyz[Gc_AN][17] += dEx;
       Gxyz[Gc_AN][18] += dEy;
       Gxyz[Gc_AN][19] += dEz;
 
-      /* START: for printing gradients ERASE
-	 xgrad[Gc_AN]+=dEx;ygrad[Gc_AN]+=dEy;zgrad[Gc_AN]+=dEz;
-	 END: for printing gradients ERASE */
 
-    } /* if ( iZ>0 ) */ 
+    } /* if ( iZ>0 ) */
   } /* Mc_AN */
 
   /* MPI_Allreduce */
@@ -4168,19 +4130,19 @@ double Calc_EdftD3()
     detA = tv[1][1]*tv[2][2]*tv[3][3]+tv[2][1]*tv[3][2]*tv[1][3]+tv[3][1]*tv[1][2]*tv[2][3]
           -tv[1][1]*tv[3][2]*tv[2][3]-tv[3][1]*tv[2][2]*tv[1][3]-tv[2][1]*tv[1][2]*tv[3][3];
 
-    itv[1][1] = (tv[2][2]*tv[3][3] - tv[2][3]*tv[3][2])/detA; 
+    itv[1][1] = (tv[2][2]*tv[3][3] - tv[2][3]*tv[3][2])/detA;
     itv[1][2] = (tv[1][3]*tv[3][2] - tv[1][2]*tv[3][3])/detA;
     itv[1][3] = (tv[1][2]*tv[2][3] - tv[1][3]*tv[2][2])/detA;
 
-    itv[2][1] = (tv[2][3]*tv[3][1] - tv[2][1]*tv[3][3])/detA; 
+    itv[2][1] = (tv[2][3]*tv[3][1] - tv[2][1]*tv[3][3])/detA;
     itv[2][2] = (tv[1][1]*tv[3][3] - tv[1][3]*tv[3][1])/detA;
     itv[2][3] = (tv[1][3]*tv[2][1] - tv[1][1]*tv[2][3])/detA;
 
-    itv[3][1] = (tv[2][1]*tv[3][2] - tv[2][2]*tv[3][1])/detA; 
+    itv[3][1] = (tv[2][1]*tv[3][2] - tv[2][2]*tv[3][1])/detA;
     itv[3][2] = (tv[1][2]*tv[3][1] - tv[1][1]*tv[3][2])/detA;
     itv[3][3] = (tv[1][1]*tv[2][2] - tv[1][2]*tv[2][1])/detA;
 
-    printf("ABC stress\n"); 
+    printf("ABC stress\n");
     for (i=1; i<=3; i++){
       for (j=1; j<=3; j++){
 
@@ -4191,47 +4153,12 @@ double Calc_EdftD3()
 
 	printf("%15.12f ",sum);
       }
-      printf("\n"); 
+      printf("\n");
     }
   }
   */
 
-  /* START: for printing gradients ERASE 
-     MPI_Barrier(mpi_comm_level1);
-     for (Gc_AN=1; Gc_AN<=atomnum; Gc_AN++){
-     ID = G2ID[Gc_AN];
-     MPI_Bcast(&xgrad[Gc_AN], 1, MPI_DOUBLE, ID, mpi_comm_level1);
-     MPI_Bcast(&ygrad[Gc_AN], 1, MPI_DOUBLE, ID, mpi_comm_level1);
-     MPI_Bcast(&zgrad[Gc_AN], 1, MPI_DOUBLE, ID, mpi_comm_level1);
-     }
-     if(myid==0){
-     printf("DFTD3: ATOM NUMBER, COORDINATION NUMBER, GRADIENTS (X, Y, Z)\n");
-     for(Gc_AN=1; Gc_AN<=atomnum; Gc_AN++){
-     printf("%4d %10.6e %+12.8e %+12.8e %+12.8e \n",Gc_AN, CN[Gc_AN],xgrad[Gc_AN],ygrad[Gc_AN],zgrad[Gc_AN]);fflush(stdout);
-     }
-     }
-     free(xgrad);free(ygrad);free(zgrad);
-     END: for printing gradients ERASE */
-  
-  /* free arrays */  
-  for(Gc_AN=0; Gc_AN<atomnum+1; Gc_AN++){
-    for(Gc_BN=0; Gc_BN<atomnum+1; Gc_BN++){
-      for (n1=0; n1<=2*n1_CN_DFT_D; n1++){
-        for (n2=0; n2<=2*n2_CN_DFT_D; n2++){
-          free(dCN[Gc_AN][Gc_BN][n1][n2]);
-        } /* n2 */
-        free(dCN[Gc_AN][Gc_BN][n1]);
-      } /* n1 */
-      free(dCN[Gc_AN][Gc_BN]);
-    } /* Gc_BN */
-    free(dC6ij[Gc_AN]);
-    free(dEC0[Gc_AN]);
-    free(dCN[Gc_AN]);
-  } /* Gc_AN */
-  free(dC6ij);
-  free(dEC0);
-  free(dCN);
-  free(CN);
+
   return EdftD;
 }
 /* Ellner */

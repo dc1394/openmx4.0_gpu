@@ -7,6 +7,7 @@
 #include <openmx/core/orbital_workspace.hpp>
 #include <openmx/core/core_hole.hpp>
 #include <openmx/core/projector_force.hpp>
+#include <openmx/core/dispersion_workspace.hpp>
 #include "native_resources.hpp"
 #include <array>
 #include <climits>
@@ -177,6 +178,7 @@ struct OpenMXSolverInvocation {
   std::vector<std::unique_ptr<openmx::core::MatrixScratch>> matrices;
   std::vector<std::unique_ptr<openmx::core::CoreHole>> core_holes;
   std::vector<std::unique_ptr<openmx::core::ProjectorForce>> projector_forces;
+  std::unique_ptr<openmx::core::DispersionWorkspace> dispersion;
   NativeResourceGroups native_resources;
   explicit OpenMXSolverInvocation(int n):workers(n) {}
   Worker& worker(int n) {require(n>=0 && size_t(n)<workers.size(),"invalid solver worker ID");return workers[n];}
@@ -189,6 +191,19 @@ extern "C" int openmx_core_solver_run(int workers,OpenMXSolverOperation operatio
     OpenMXSolverInvocation invocation(workers);double output;
     require(operation(&invocation,arguments,&output)==1,"solver callback failed");
     *result=output;
+  });
+}
+extern "C" int openmx_core_dispersion_prepare(OpenMXSolverInvocation* scope,
+    const OpenMXDispersionShape* input,OpenMXDispersionView* out,char* error,size_t capacity) {
+  return checked(error,capacity,[&] {
+    require(scope && input && out,"missing dispersion scope, shape or output");
+    const auto shape=openmx::core::DispersionWorkspace::dimensions(*input);
+    if(scope->dispersion && scope->dispersion->shape()==shape)scope->dispersion->clear();
+    else {
+      auto replacement=std::make_unique<openmx::core::DispersionWorkspace>(*input);
+      scope->dispersion=std::move(replacement);
+    }
+    *out=scope->dispersion->view();
   });
 }
 extern "C" int openmx_core_solver_matrix_scratch(OpenMXSolverInvocation* scope,

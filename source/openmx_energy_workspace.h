@@ -1,6 +1,7 @@
 #ifndef OPENMX_ENERGY_WORKSPACE_H
 #define OPENMX_ENERGY_WORKSPACE_H
 #include "openmx_solver_workspace.h"
+#include "openmx_core_dispersion.h"
 #include <limits.h>
 
 /* Borrowed for one Total_Energy invocation. The C++ owner holds a flat
@@ -100,5 +101,12 @@ static inline void OpenMX_Energy_XCWorkerPrepare(OpenMXSolverInvocation *owner,
   char error[256];const size_t shape[4]={6,neighbors,1,1};
   if(!openmx_core_solver_real_overwrite(owner,omp_get_thread_num(),"total-energy:xc-derivatives",
         shape,out,error,sizeof(error)))OpenMX_Solver_Failure(error);
+}
+
+static inline void OpenMX_Energy_DispersionPrepare(OpenMXSolverInvocation *owner,
+    int atoms,int n1,int n2,int n3,OpenMXDispersionView *out)
+{
+  char error[256];const OpenMXDispersionShape shape={atoms,{n1,n2,n3}};
+  if(!openmx_core_dispersion_prepare(owner,&shape,out,error,sizeof(error)))OpenMX_Solver_Failure(error);
 }
 #endif

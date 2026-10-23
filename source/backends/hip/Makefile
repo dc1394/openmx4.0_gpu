@@ -1599,3 +1599,5 @@ DFT.o TRAN_DFT_NC.o Band_DFT_NonCol.o: openmx_band_noncol_state.h
 DFT.o Divide_Conquer.o: openmx_dc_state.h
 DFT.o Divide_Conquer_LNO.o: openmx_dclno_state.h
 DFT.o Krylov.o: openmx_krylov_state.h
+
+Total_Energy.o: openmx_core_dispersion.h ../core/include/openmx_core_dispersion.h
