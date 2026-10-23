@@ -72,6 +72,11 @@ function(openmx_add_native_state_tests)
   set_tests_properties(cwf-band-helpers PROPERTIES
     ENVIRONMENT "${_environment}" LABELS "unit;solver;core;native-state" TIMEOUT 180)
 
+  add_test(NAME linear-algebra-link-boundary
+    COMMAND "${Python3_EXECUTABLE}" "${_repo}/tests/run_linear_algebra_link_cpu.py")
+  set_tests_properties(linear-algebra-link-boundary PROPERTIES
+    ENVIRONMENT "${_environment}" LABELS "unit;solver;core;native-state" TIMEOUT 180)
+
   find_program(OPENMX_TEST_MPICXX NAMES mpicxx mpic++)
   find_program(OPENMX_TEST_MPIEXEC NAMES mpirun mpiexec)
   if(OPENMX_TEST_MPICXX AND OPENMX_TEST_MPIEXEC)

@@ -280,11 +280,14 @@ GPUSOLVER2_ELPA_VER  ?= 2026.02.002
 GPUSOLVER2_ELPA_INCLUDE ?= $(GPUSOLVER2_PREFIX)/include/elpa-$(GPUSOLVER2_ELPA_VER)
 GPUSOLVER2_STAMP     = $(GPUSOLVER2_BUILD)/stamp/02_cosma.done
 
+# Keep vendor ScaLAPACK symbols intact. COSTA's unprefixed compatibility
+# archive also replaces internal SVD transpose/redistribution calls and
+# corrupts distributed singular vectors. Use only the explicit costa_ and
+# cosma_ interfaces for accelerated operations.
 GPUSOLVER2_LIBS = $(GPUSOLVER2_PREFIX)/lib/libelpa.a \
  -Wl,--start-group \
  $(GPUSOLVER2_PREFIX)/lib/libcosma_prefixed_pxgemm.a \
  $(GPUSOLVER2_PREFIX)/lib/libcosma.a \
- $(GPUSOLVER2_PREFIX)/lib/libcosta_scalapack.a \
  $(GPUSOLVER2_PREFIX)/lib/libcosta_prefixed_scalapack.a \
  $(GPUSOLVER2_PREFIX)/lib/libcosta.a \
  $(GPUSOLVER2_PREFIX)/lib/libTiled-MM.a \
