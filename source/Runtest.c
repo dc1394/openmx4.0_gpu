@@ -735,6 +735,11 @@ static int run_main_with_context(int argc, char *argv[], int numprocs0, int myid
 
   do {
 
+    /* Match normal main: prepare coefficients and periodic-image extents
+       before truncation/DFT, including every system in the test suite. */
+    if (dftD_switch==1 && version_dftD==2) DFTDvdW_init(MD_iter);
+    if (dftD_switch==1 && version_dftD==3) DFTD3vdW_init(MD_iter);
+
     CompTime[myid0][2] += truncation(MD_iter,1,core);
 
     if (ML_flag==1 && myid0==Host_ID) Get_VSZ(MD_iter);  

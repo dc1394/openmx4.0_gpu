@@ -1,6 +1,6 @@
 {
 "scope": "global-state usage of the C translation units of the NVIDIA build",
-"revision": "f08fed43",
+"revision": "3ddb337a",
 "summary": {
 "translation units analysed": 289,
 "translation units not analysed": 0,
@@ -8,7 +8,7 @@
 "common-header objects (defined in openmx_globals.c)": 949,
 "common-header objects referenced by some function": 943,
 "common-header objects written by some function (direct or through)": 703,
-"function-object edges (common header)": 12222,
+"function-object edges (common header)": 12224,
 "objects with external linkage defined outside openmx_globals.c": 353,
 "file-scope statics": 313,
 "function-local statics": 297,
@@ -12092,6 +12092,7 @@
 "run_main_with_context@source/Runtest.c->Wannier_Func_Calc",
 "run_main_with_context@source/Runtest.c->WhatSpecies",
 "run_main_with_context@source/Runtest.c->atomnum",
+"run_main_with_context@source/Runtest.c->dftD_switch",
 "run_main_with_context@source/Runtest.c->filename",
 "run_main_with_context@source/Runtest.c->filepath",
 "run_main_with_context@source/Runtest.c->gtv",
@@ -12100,6 +12101,7 @@
 "run_main_with_context@source/Runtest.c->remake_headfile",
 "run_main_with_context@source/Runtest.c->rgtv",
 "run_main_with_context@source/Runtest.c->tv",
+"run_main_with_context@source/Runtest.c->version_dftD",
 "run_openmx@source/openmx.c->CellListAtom",
 "run_openmx@source/openmx.c->CompTime",
 "run_openmx@source/openmx.c->Energy_Decomposition_flag",

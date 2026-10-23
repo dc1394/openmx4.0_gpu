@@ -3001,3 +3001,12 @@ C60はDIISK 27 SCF/DIISV 26 SCF・84³で収束しました。
 64組のSCF反復数、D3成分20組・全応力4組も照合しました。
 以前のHO/MO出力やDIISの観測は継続対象です。今回のAMD/A100/H100実機性能は未確認です。
 証拠は`build/energy-dispersion-refactor-20261024/`です。
+
+
+## Stage 75: dispersion initialization in the regression driver
+
+Only the test driver's MD loop changes: initialize D2/D3 before truncation and DFT, as normal main already does.
+Normal main, shared core and all energy kernels are unchanged (source/core hashes checked).
+No new performance measurement is claimed; Stage 74 retains the isolated 18-rank/MPS and CPU/Intel comparison.
+The new checks compare 80 converged calculations from custom CPU/GPU `-runtest`/`-runtestL` batches against 20 fresh standalone references.
+These batches test correctness and repeated initialization, rather than isolated timing or the complete distributed input suites.
