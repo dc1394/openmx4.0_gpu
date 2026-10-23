@@ -1083,7 +1083,8 @@
     "openmx_energy_workspace.h",
     "openmx_stress_workspace.h",
     "openmx_xc_workspace.h",
-    "openmx_core_angular_grid.h"
+    "openmx_core_angular_grid.h",
+    "openmx_mechanical_workspace.h"
   ],
   "integrated_overrides": {
     "gemmul8_bridge.cu": "src/gemmul8_bridge.cu",

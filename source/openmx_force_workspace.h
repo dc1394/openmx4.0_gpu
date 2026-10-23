@@ -4,7 +4,7 @@
 #include "openmx_core_local_basis.h"
 #include "openmx_core_core_hole.h"
 #include "openmx_core_projector_force.h"
-#include "openmx_solver_workspace.h"
+#include "openmx_mechanical_workspace.h"
 #include <string.h>
 
 static inline void OpenMX_ForcePrepareProjectors(OpenMXSolverInvocation *owner,const OpenMXAtomicViews *atomic,
@@ -27,10 +27,7 @@ static inline void OpenMX_ForcePrepareCoreHole(OpenMXSolverInvocation *owner,con
 
 static inline double OpenMX_ForceRun(const OpenMXForceInput *input,OpenMXForceOperation operation,void *args)
 {
-  double result;char error[256];
-  if(!openmx_core_force_run(input,omp_get_max_threads(),operation,args,&result,error,sizeof(error)))
-    OpenMX_Solver_Failure(error);
-  return result;
+  return OpenMX_Mechanical_Run(input,operation,args);
 }
 static inline dcomplex ***OpenMX_ForceComplexVolume(OpenMXSolverInvocation *owner,
     const char *name,size_t components,size_t rows,size_t columns)

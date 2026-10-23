@@ -1,6 +1,6 @@
 #ifndef OPENMX_STRESS_WORKSPACE_H
 #define OPENMX_STRESS_WORKSPACE_H
-#include "openmx_solver_workspace.h"
+#include "openmx_mechanical_workspace.h"
 #include "openmx_xc_workspace.h"
 
 /* Nine active components per worker. A 256-byte row separates their writes
@@ -83,5 +83,24 @@ static inline double *OpenMX_Stress_GradientRow(const OpenMXSolverRealTensor *vi
     size_t field,size_t spin,size_t axis)
 {
   return view->values+((field*view->extent[1]+spin)*view->extent[2]+axis)*view->extent[3];
+}
+
+/* Populate explicit outputs inside native OpenMP; no large aggregate return.
+   Each pair retains the complete old zero loop before kinetic assembly. */
+static inline void OpenMX_Stress_KineticPrepare(OpenMXSolverInvocation *owner,
+    const char *name,int orbitals,OpenMXSolverComplexTensor *out)
+{
+  if(orbitals<1)OpenMX_Solver_Failure("invalid stress kinetic orbital count");
+  const size_t shape[4]={3,(size_t)orbitals,(size_t)orbitals,1};char error[256];
+  if(!openmx_core_solver_complex_overwrite(owner,omp_get_thread_num(),name,
+        shape,out,error,sizeof(error)))OpenMX_Solver_Failure(error);
+}
+/* MPI retains a nonnull pointer on empty messages. Rebind only after the
+   corresponding send has completed; receive storage uses a separate key. */
+static inline double *OpenMX_Stress_HaloBuffer(OpenMXSolverInvocation *owner,
+    const char *name,int count)
+{
+  if(count<0)OpenMX_Solver_Failure("invalid stress halo message count");
+  return OpenMX_Solver_OverwriteReal(owner,name,count>0?(size_t)count:1);
 }
 #endif

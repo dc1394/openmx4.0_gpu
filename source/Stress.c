@@ -94,15 +94,15 @@ typedef struct {
   const OpenMXElectronicViews *electronic;
   const OpenMXLocalBasisViews *local_basis;
 } OpenMXStressArguments;
-static double Stress_owned(OpenMXSolverInvocation *scratch,OpenMXThermodynamicEnergies *thermo, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double *****H0,
+static double Stress_owned(const OpenMXForceWorkspace *halo,OpenMXThermodynamicEnergies *thermo, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double *****H0,
 	      double ******DS_NL,
 	      double *****OLP,
 	      double *****CDM,
 	      double *****EDM, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
-static int Stress_Operation(OpenMXSolverInvocation *scratch,void *opaque,double *result)
+static int Stress_Operation(const OpenMXForceWorkspace *halo,void *opaque,double *result)
 {
   const OpenMXStressArguments *a=opaque;
-  *result=Stress_owned(scratch,a->thermo,a->atomic,a->vna,a->reciprocal,a->H0,a->DS_NL,
+  *result=Stress_owned(halo,a->thermo,a->atomic,a->vna,a->reciprocal,a->H0,a->DS_NL,
       a->OLP,a->CDM,a->EDM,a->electronic,a->local_basis);
   return 1;
 }
@@ -115,17 +115,22 @@ double Stress(OpenMXThermodynamicEnergies *thermo, const OpenMXAtomicViews *atom
   OpenMXStressArguments args={thermo,atomic,vna,reciprocal,H0,DS_NL,OLP,CDM,EDM,electronic,local_basis};
   double begin,end;
   dtime(&begin);
-  (void)OpenMX_Solver_Run(Stress_Operation,&args);
+  const int imaginary=SO_switch==1 || (Hub_U_switch==1 && SpinP_switch==3) || Constraint_NCS_switch==1
+      || Zeeman_NCS_switch==1 || Zeeman_NCO_switch==1;
+  const OpenMXForceInput input={atomnum,Matomnum,MatomnumF,SpeciesNum,SpinP_switch,imaginary,
+      F_M2G,WhatSpecies,atomic->species.contracted_orbitals,FNAN,natn};
+  (void)OpenMX_Mechanical_Run(&input,Stress_Operation,&args);
   dtime(&end);
   return end-begin;
 }
 
-static double Stress_owned(OpenMXSolverInvocation *scratch,OpenMXThermodynamicEnergies *thermo, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double *****H0,
+static double Stress_owned(const OpenMXForceWorkspace *halo,OpenMXThermodynamicEnergies *thermo, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double *****H0,
 	      double ******DS_NL,
 	      double *****OLP,
 	      double *****CDM,
 	      double *****EDM, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 {
+  OpenMXSolverInvocation *scratch=halo->scratch;
 
   double *****CntH0=electronic->CntH0;
   double *****CntOLP=electronic->CntOLP;
@@ -140,7 +145,7 @@ static double Stress_owned(OpenMXSolverInvocation *scratch,OpenMXThermodynamicEn
   double sumx,sumy,sumz,r,dege,pref;
   int i,j,k,l,Hwan,Qwan,so,p0,q,q0;
   int h_AN,Gh_AN,q_AN,Gq_AN;
-  int ian,jan,kl,spin,spinmax,al,be,p,size_CDM0,size_iDM0;
+  int ian,jan,kl,spin,spinmax,al,be,p;
   int tno0,tno1,tno2,Mh_AN,Mq_AN,n,num,size1,size2;
   int wanA,wanB,Gc_BN;
   int XC_P_switch;
@@ -149,9 +154,9 @@ static double Stress_owned(OpenMXSolverInvocation *scratch,OpenMXThermodynamicEn
   double dEx,dEy,dEz;
   double Cxyz[4];
   double *Fx,*Fy,*Fz;
-  dcomplex ***Hx;
-  dcomplex ***Hy;
-  dcomplex ***Hz;
+  OpenMXSolverComplexTensor Hx;
+  OpenMXSolverComplexTensor Hy;
+  OpenMXSolverComplexTensor Hz;
   double ***HUx;
   double ***HUy;
   double ***HUz;
@@ -199,91 +204,12 @@ static double Stress_owned(OpenMXSolverInvocation *scratch,OpenMXThermodynamicEn
   
   /*allocation of array*/
   
-  /* CDM0 */
-  size_CDM0 = 0;
-  CDM0 = (double*****)malloc(sizeof(double****)*(SpinP_switch+1)); 
-  for (k=0; k<=SpinP_switch; k++){
-    CDM0[k] = (double****)malloc(sizeof(double***)*(Matomnum+MatomnumF+1)); 
-    FNAN[0] = 0;
-    for (Mc_AN=0; Mc_AN<=(Matomnum+MatomnumF); Mc_AN++){
-      
-      if (Mc_AN==0){
-        Gc_AN = 0;
-        tno0 = 1;
-      }
-      else{
-        Gc_AN = F_M2G[Mc_AN];
-        Cwan = WhatSpecies[Gc_AN];
-        tno0 = atomic->species.contracted_orbitals[Cwan];
-      }    
-
-      CDM0[k][Mc_AN] = (double***)malloc(sizeof(double**)*(FNAN[Gc_AN]+1)); 
-      for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-        if (Mc_AN==0){
-          tno1 = 1;  
-        }
-        else{
-          Gh_AN = natn[Gc_AN][h_AN];
-          Hwan = WhatSpecies[Gh_AN];
-          tno1 = atomic->species.contracted_orbitals[Hwan];
-        } 
-
-        CDM0[k][Mc_AN][h_AN] = (double**)malloc(sizeof(double*)*tno0); 
-        for (i=0; i<tno0; i++){
-          CDM0[k][Mc_AN][h_AN][i] = (double*)malloc(sizeof(double)*tno1); 
-          size_CDM0 += tno1;  
-        }
-      }
-    }
-  }
-
-  Snd_CDM0_Size = (int*)malloc(sizeof(int)*numprocs);
-  Rcv_CDM0_Size = (int*)malloc(sizeof(int)*numprocs);
-
-  if ( SO_switch==1 || (Hub_U_switch==1 && SpinP_switch==3) || Constraint_NCS_switch==1 
-       || Zeeman_NCS_switch==1 || Zeeman_NCO_switch==1 ){
-
-    size_iDM0 = 0;
-    iDM0 = (double*****)malloc(sizeof(double****)*2); 
-    for (k=0; k<2; k++){
-      iDM0[k] = (double****)malloc(sizeof(double***)*(Matomnum+MatomnumF+1)); 
-      FNAN[0] = 0;
-      for (Mc_AN=0; Mc_AN<=(Matomnum+MatomnumF); Mc_AN++){
-
-	if (Mc_AN==0){
-	  Gc_AN = 0;
-	  tno0 = 1;
-	}
-	else{
-	  Gc_AN = F_M2G[Mc_AN];
-	  Cwan = WhatSpecies[Gc_AN];
-	  tno0 = atomic->species.contracted_orbitals[Cwan];
-	}    
-
-	iDM0[k][Mc_AN] = (double***)malloc(sizeof(double**)*(FNAN[Gc_AN]+1)); 
-	for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	  if (Mc_AN==0){
-	    tno1 = 1;  
-	  }
-	  else{
-	    Gh_AN = natn[Gc_AN][h_AN];
-	    Hwan = WhatSpecies[Gh_AN];
-	    tno1 = atomic->species.contracted_orbitals[Hwan];
-	  } 
-
-	  iDM0[k][Mc_AN][h_AN] = (double**)malloc(sizeof(double*)*tno0); 
-	  for (i=0; i<tno0; i++){
-	    iDM0[k][Mc_AN][h_AN][i] = (double*)malloc(sizeof(double)*tno1); 
-	    size_iDM0 += tno1;  
-	  }
-	}
-      }
-    }
-
-    Snd_iDM0_Size = (int*)malloc(sizeof(int)*numprocs);
-    Rcv_iDM0_Size = (int*)malloc(sizeof(int)*numprocs);
+  CDM0=halo->density_rows;iDM0=halo->imaginary_rows;
+  Snd_CDM0_Size=OpenMX_Solver_Int(scratch,"stress:halo:send-counts",(size_t)numprocs);
+  Rcv_CDM0_Size=OpenMX_Solver_Int(scratch,"stress:halo:receive-counts",(size_t)numprocs);
+  if(halo->imaginary_rows){
+    Snd_iDM0_Size=OpenMX_Solver_Int(scratch,"stress:halo:send-imaginary-counts",(size_t)numprocs);
+    Rcv_iDM0_Size=OpenMX_Solver_Int(scratch,"stress:halo:receive-imaginary-counts",(size_t)numprocs);
   }
 
   /****************************************************
@@ -436,7 +362,7 @@ static double Stress_owned(OpenMXSolverInvocation *scratch,OpenMXThermodynamicEn
 
         /* allocation of array */
 
-        tmp_array = (double*)malloc(sizeof(double)*size1);
+        tmp_array=OpenMX_Stress_HaloBuffer(scratch,"stress:halo:send",size1);
 
         /* multidimentional array to vector array */
 
@@ -474,7 +400,7 @@ static double Stress_owned(OpenMXSolverInvocation *scratch,OpenMXThermodynamicEn
         size2 = Rcv_CDM0_Size[IDR];
         
         /* allocation of array */
-        tmp_array2 = (double*)malloc(sizeof(double)*size2);
+        tmp_array2=OpenMX_Stress_HaloBuffer(scratch,"stress:halo:receive",size2);
         
         MPI_Recv(&tmp_array2[0], size2, MPI_DOUBLE, IDR, tag, mpi_comm_level1, &stat);
 
@@ -502,12 +428,12 @@ static double Stress_owned(OpenMXSolverInvocation *scratch,OpenMXThermodynamicEn
 	}
 
         /* freeing of array */
-        free(tmp_array2);
+
       }
 
       if (F_Snd_Num[IDS]!=0){
         MPI_Wait(&request,&stat);
-        free(tmp_array); /* freeing of array */
+         /* freeing of array */
       }
 
     }
@@ -607,7 +533,7 @@ static double Stress_owned(OpenMXSolverInvocation *scratch,OpenMXThermodynamicEn
 
 	  /* allocation of array */
 
-	  tmp_array = (double*)malloc(sizeof(double)*size1);
+	  tmp_array=OpenMX_Stress_HaloBuffer(scratch,"stress:halo:send",size1);
 
 	  /* multidimentional array to vector array */
 
@@ -645,7 +571,7 @@ static double Stress_owned(OpenMXSolverInvocation *scratch,OpenMXThermodynamicEn
 	  size2 = Rcv_iDM0_Size[IDR];
         
 	  /* allocation of array */
-	  tmp_array2 = (double*)malloc(sizeof(double)*size2);
+	  tmp_array2=OpenMX_Stress_HaloBuffer(scratch,"stress:halo:receive",size2);
         
 	  MPI_Recv(&tmp_array2[0], size2, MPI_DOUBLE, IDR, tag, mpi_comm_level1, &stat);
 
@@ -673,12 +599,12 @@ static double Stress_owned(OpenMXSolverInvocation *scratch,OpenMXThermodynamicEn
 	  }
 
 	  /* freeing of array */
-	  free(tmp_array2);
+
 	}
 
 	if (F_Snd_Num[IDS]!=0){
 	  MPI_Wait(&request,&stat);
-	  free(tmp_array); /* freeing of array */
+	   /* freeing of array */
 	}
 
       }
@@ -1137,9 +1063,6 @@ static double Stress_owned(OpenMXSolverInvocation *scratch,OpenMXThermodynamicEn
 
 	/* allocation of arrays */
 
-
-
-
 	for (i=0; i<Nthrds0; i++) My_sumr[i]  = 0.0;
 
 
@@ -1180,13 +1103,6 @@ static double Stress_owned(OpenMXSolverInvocation *scratch,OpenMXThermodynamicEn
 	  double dx2,dy2,dz2;
 	  double *gx,*gy,*gz,dexc0;
 	  double *sum_gx,*sum_gy,*sum_gz;
-
-
-
-
-
-
-
 
 	  /* get info. on OpenMP */ 
 
@@ -1325,13 +1241,6 @@ static double Stress_owned(OpenMXSolverInvocation *scratch,OpenMXThermodynamicEn
 
 	  } /* ir */
 
-
-
-
-
-
-
-
 	} /* #pragma omp */
 
 	sumr = 0.0;
@@ -1376,16 +1285,6 @@ static double Stress_owned(OpenMXSolverInvocation *scratch,OpenMXThermodynamicEn
 
 	/* freeing of arrays */
 
-
-
-
-
-
-
-
-
-
-	
       } /* Mc_AN */
 
       /****************************************************
@@ -1415,8 +1314,6 @@ static double Stress_owned(OpenMXSolverInvocation *scratch,OpenMXThermodynamicEn
     }
     /* end(yshiihara) */
 
-
-
   } /* end of if (Exc0_correction_flag==1) */
 
   /****************************************************
@@ -1442,32 +1339,14 @@ static double Stress_owned(OpenMXSolverInvocation *scratch,OpenMXThermodynamicEn
   }
   /* end(yshiihara) */
   
-#pragma omp parallel shared(atomic,time_per_atom,Gxyz,myid,level_stdout,iDM0,CDM0,CntH0,H0,F_Kin_flag,local_basis,OLP,Hub_U_occupation,Cnt_switch,F_NL_flag,List_YOUSO,RMI1,Zeeman_NCO_switch,Zeeman_NCS_switch,Constraint_NCS_switch,F_U_flag,Hub_U_switch,SO_switch,SpinP_switch,F_G2M,natn,ncn,FNAN,WhatSpecies,M2G,Matomnum,stress_threads) private(OMPID,Nthrds,Nprocs,Mc_AN,Stime_atom,Etime_atom,Gc_AN,Cwan,dEx,dEy,dEz,h_AN,Gh_AN,Mh_AN,Hwan,ian,start_q_AN,q_AN,Gq_AN,Mq_AN,Qwan,jan,kl,so,i,j,k,l,Hx,Hy,Hz,HUx,HUy,HUz,NC_HUx,NC_HUy,NC_HUz,s1,s2,pref,spinmax,spin,lx1,ly1,lz1,lx2,ly2,lz2,lx,ly,lz,Rn1,Rn2)
+#pragma omp parallel shared(scratch,atomic,time_per_atom,Gxyz,myid,level_stdout,iDM0,CDM0,CntH0,H0,F_Kin_flag,local_basis,OLP,Hub_U_occupation,Cnt_switch,F_NL_flag,List_YOUSO,RMI1,Zeeman_NCO_switch,Zeeman_NCS_switch,Constraint_NCS_switch,F_U_flag,Hub_U_switch,SO_switch,SpinP_switch,F_G2M,natn,ncn,FNAN,WhatSpecies,M2G,Matomnum,stress_threads) private(OMPID,Nthrds,Nprocs,Mc_AN,Stime_atom,Etime_atom,Gc_AN,Cwan,dEx,dEy,dEz,h_AN,Gh_AN,Mh_AN,Hwan,ian,start_q_AN,q_AN,Gq_AN,Mq_AN,Qwan,jan,kl,so,i,j,k,l,Hx,Hy,Hz,HUx,HUy,HUz,NC_HUx,NC_HUy,NC_HUz,s1,s2,pref,spinmax,spin,lx1,ly1,lz1,lx2,ly2,lz2,lx,ly,lz,Rn1,Rn2)
   {
 
-    Hx = (dcomplex***)malloc(sizeof(dcomplex**)*3);
-    for (i=0; i<3; i++){
-      Hx[i] = (dcomplex**)malloc(sizeof(dcomplex*)*List_YOUSO[7]);
-      for (j=0; j<List_YOUSO[7]; j++){
-	Hx[i][j] = (dcomplex*)malloc(sizeof(dcomplex)*List_YOUSO[7]);
-      }
-    }
+    OpenMX_Stress_KineticPrepare(scratch,"stress:kinetic:x",List_YOUSO[7],&Hx);
 
-    Hy = (dcomplex***)malloc(sizeof(dcomplex**)*3);
-    for (i=0; i<3; i++){
-      Hy[i] = (dcomplex**)malloc(sizeof(dcomplex*)*List_YOUSO[7]);
-      for (j=0; j<List_YOUSO[7]; j++){
-	Hy[i][j] = (dcomplex*)malloc(sizeof(dcomplex)*List_YOUSO[7]);
-      }
-    }
+    OpenMX_Stress_KineticPrepare(scratch,"stress:kinetic:y",List_YOUSO[7],&Hy);
 
-    Hz = (dcomplex***)malloc(sizeof(dcomplex**)*3);
-    for (i=0; i<3; i++){
-      Hz[i] = (dcomplex**)malloc(sizeof(dcomplex*)*List_YOUSO[7]);
-      for (j=0; j<List_YOUSO[7]; j++){
-	Hz[i][j] = (dcomplex*)malloc(sizeof(dcomplex)*List_YOUSO[7]);
-      }
-    }
+    OpenMX_Stress_KineticPrepare(scratch,"stress:kinetic:z",List_YOUSO[7],&Hz);
     
     /* get info. on OpenMP */ 
 
@@ -1527,9 +1406,9 @@ static double Stress_owned(OpenMXSolverInvocation *scratch,OpenMXThermodynamicEn
 	    for (so=0; so<3; so++){
 	      for (i=0; i<List_YOUSO[7]; i++){
 		for (j=0; j<List_YOUSO[7]; j++){
-		  Hx[so][i][j] = Complex(0.0,0.0);
-		  Hy[so][i][j] = Complex(0.0,0.0);
-		  Hz[so][i][j] = Complex(0.0,0.0);
+		  openmx_solver_complex_plane_row(&Hx,so,i)[j] = Complex(0.0,0.0);
+		  openmx_solver_complex_plane_row(&Hy,so,i)[j] = Complex(0.0,0.0);
+		  openmx_solver_complex_plane_row(&Hz,so,i)[j] = Complex(0.0,0.0);
 		}
 	      }
 	    }
@@ -1550,13 +1429,13 @@ static double Stress_owned(OpenMXSolverInvocation *scratch,OpenMXThermodynamicEn
 		if (h_AN==0){
 		  for (i=0; i<ian; i++){
 		    for (j=0; j<jan; j++){
-		      Hx[0][i][j].r += H0[1][Mc_AN][q_AN][i][j];
-		      Hy[0][i][j].r += H0[2][Mc_AN][q_AN][i][j];
-		      Hz[0][i][j].r += H0[3][Mc_AN][q_AN][i][j];
+		      openmx_solver_complex_plane_row(&Hx,0,i)[j].r += H0[1][Mc_AN][q_AN][i][j];
+		      openmx_solver_complex_plane_row(&Hy,0,i)[j].r += H0[2][Mc_AN][q_AN][i][j];
+		      openmx_solver_complex_plane_row(&Hz,0,i)[j].r += H0[3][Mc_AN][q_AN][i][j];
 		      
-		      Hx[1][i][j].r += H0[1][Mc_AN][q_AN][i][j];
-		      Hy[1][i][j].r += H0[2][Mc_AN][q_AN][i][j];
-		      Hz[1][i][j].r += H0[3][Mc_AN][q_AN][i][j];
+		      openmx_solver_complex_plane_row(&Hx,1,i)[j].r += H0[1][Mc_AN][q_AN][i][j];
+		      openmx_solver_complex_plane_row(&Hy,1,i)[j].r += H0[2][Mc_AN][q_AN][i][j];
+		      openmx_solver_complex_plane_row(&Hz,1,i)[j].r += H0[3][Mc_AN][q_AN][i][j];
 		    }
 		  }
 		  lx = lx2;
@@ -1567,13 +1446,13 @@ static double Stress_owned(OpenMXSolverInvocation *scratch,OpenMXThermodynamicEn
 		else if (h_AN!=0 && q_AN==0){
 		  for (i=0; i<ian; i++){
 		    for (j=0; j<jan; j++){
-		      Hx[0][i][j].r += H0[1][Mc_AN][h_AN][j][i];
-		      Hy[0][i][j].r += H0[2][Mc_AN][h_AN][j][i];
-		      Hz[0][i][j].r += H0[3][Mc_AN][h_AN][j][i];
+		      openmx_solver_complex_plane_row(&Hx,0,i)[j].r += H0[1][Mc_AN][h_AN][j][i];
+		      openmx_solver_complex_plane_row(&Hy,0,i)[j].r += H0[2][Mc_AN][h_AN][j][i];
+		      openmx_solver_complex_plane_row(&Hz,0,i)[j].r += H0[3][Mc_AN][h_AN][j][i];
 
-		      Hx[1][i][j].r += H0[1][Mc_AN][h_AN][j][i];
-		      Hy[1][i][j].r += H0[2][Mc_AN][h_AN][j][i];
-		      Hz[1][i][j].r += H0[3][Mc_AN][h_AN][j][i];
+		      openmx_solver_complex_plane_row(&Hx,1,i)[j].r += H0[1][Mc_AN][h_AN][j][i];
+		      openmx_solver_complex_plane_row(&Hy,1,i)[j].r += H0[2][Mc_AN][h_AN][j][i];
+		      openmx_solver_complex_plane_row(&Hz,1,i)[j].r += H0[3][Mc_AN][h_AN][j][i];
 		    }
 		  }
 		  lx = lx1;
@@ -1590,13 +1469,13 @@ static double Stress_owned(OpenMXSolverInvocation *scratch,OpenMXThermodynamicEn
 		  for (i=0; i<ian; i++){
 		    for (j=0; j<jan; j++){
 
-		      Hx[0][i][j].r += CntH0[1][Mc_AN][q_AN][i][j];
-		      Hy[0][i][j].r += CntH0[2][Mc_AN][q_AN][i][j];
-		      Hz[0][i][j].r += CntH0[3][Mc_AN][q_AN][i][j];
+		      openmx_solver_complex_plane_row(&Hx,0,i)[j].r += CntH0[1][Mc_AN][q_AN][i][j];
+		      openmx_solver_complex_plane_row(&Hy,0,i)[j].r += CntH0[2][Mc_AN][q_AN][i][j];
+		      openmx_solver_complex_plane_row(&Hz,0,i)[j].r += CntH0[3][Mc_AN][q_AN][i][j];
 
-		      Hx[1][i][j].r += CntH0[1][Mc_AN][q_AN][i][j];
-		      Hy[1][i][j].r += CntH0[2][Mc_AN][q_AN][i][j];
-		      Hz[1][i][j].r += CntH0[3][Mc_AN][q_AN][i][j];
+		      openmx_solver_complex_plane_row(&Hx,1,i)[j].r += CntH0[1][Mc_AN][q_AN][i][j];
+		      openmx_solver_complex_plane_row(&Hy,1,i)[j].r += CntH0[2][Mc_AN][q_AN][i][j];
+		      openmx_solver_complex_plane_row(&Hz,1,i)[j].r += CntH0[3][Mc_AN][q_AN][i][j];
 
 		    }
 		  }
@@ -1609,13 +1488,13 @@ static double Stress_owned(OpenMXSolverInvocation *scratch,OpenMXThermodynamicEn
 		  for (i=0; i<ian; i++){
 		    for (j=0; j<jan; j++){
 
-		      Hx[0][i][j].r += CntH0[1][Mc_AN][h_AN][j][i];
-		      Hy[0][i][j].r += CntH0[2][Mc_AN][h_AN][j][i];
-		      Hz[0][i][j].r += CntH0[3][Mc_AN][h_AN][j][i];
+		      openmx_solver_complex_plane_row(&Hx,0,i)[j].r += CntH0[1][Mc_AN][h_AN][j][i];
+		      openmx_solver_complex_plane_row(&Hy,0,i)[j].r += CntH0[2][Mc_AN][h_AN][j][i];
+		      openmx_solver_complex_plane_row(&Hz,0,i)[j].r += CntH0[3][Mc_AN][h_AN][j][i];
 
-		      Hx[1][i][j].r += CntH0[1][Mc_AN][h_AN][j][i];
-		      Hy[1][i][j].r += CntH0[2][Mc_AN][h_AN][j][i];
-		      Hz[1][i][j].r += CntH0[3][Mc_AN][h_AN][j][i];
+		      openmx_solver_complex_plane_row(&Hx,1,i)[j].r += CntH0[1][Mc_AN][h_AN][j][i];
+		      openmx_solver_complex_plane_row(&Hy,1,i)[j].r += CntH0[2][Mc_AN][h_AN][j][i];
+		      openmx_solver_complex_plane_row(&Hz,1,i)[j].r += CntH0[3][Mc_AN][h_AN][j][i];
 
 		    }
 		  }
@@ -1645,9 +1524,9 @@ static double Stress_owned(OpenMXSolverInvocation *scratch,OpenMXThermodynamicEn
 	      
 	      for (i=0; i<atomic->species.contracted_orbitals[Hwan]; i++){
 		for (j=0; j<atomic->species.contracted_orbitals[Qwan]; j++){
-		  dEx += pref*CDM0[0][Mh_AN][kl][i][j]*Hx[0][i][j].r;
-		  dEy += pref*CDM0[0][Mh_AN][kl][i][j]*Hy[0][i][j].r;
-		  dEz += pref*CDM0[0][Mh_AN][kl][i][j]*Hz[0][i][j].r;
+		  dEx += pref*CDM0[0][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hx,0,i)[j].r;
+		  dEy += pref*CDM0[0][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hy,0,i)[j].r;
+		  dEz += pref*CDM0[0][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hz,0,i)[j].r;
 		}
 	      }
 
@@ -1718,12 +1597,12 @@ static double Stress_owned(OpenMXSolverInvocation *scratch,OpenMXThermodynamicEn
 	      for (i=0; i<atomic->species.contracted_orbitals[Hwan]; i++){
 		for (j=0; j<atomic->species.contracted_orbitals[Qwan]; j++){
 
-		  dEx += pref*(  CDM0[0][Mh_AN][kl][i][j]*Hx[0][i][j].r
-	                       + CDM0[1][Mh_AN][kl][i][j]*Hx[1][i][j].r);
-		  dEy += pref*(  CDM0[0][Mh_AN][kl][i][j]*Hy[0][i][j].r
-	                       + CDM0[1][Mh_AN][kl][i][j]*Hy[1][i][j].r);
-		  dEz += pref*(  CDM0[0][Mh_AN][kl][i][j]*Hz[0][i][j].r
-		               + CDM0[1][Mh_AN][kl][i][j]*Hz[1][i][j].r);
+		  dEx += pref*(  CDM0[0][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hx,0,i)[j].r
+	                       + CDM0[1][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hx,1,i)[j].r);
+		  dEy += pref*(  CDM0[0][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hy,0,i)[j].r
+	                       + CDM0[1][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hy,1,i)[j].r);
+		  dEz += pref*(  CDM0[0][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hz,0,i)[j].r
+		               + CDM0[1][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hz,1,i)[j].r);
 		}
 	      }
 
@@ -1779,30 +1658,6 @@ static double Stress_owned(OpenMXSolverInvocation *scratch,OpenMXThermodynamicEn
     } /* for MC_AN */
 
     /* freeing of arrays */
-    
-    for (i=0; i<3; i++){
-      for (j=0; j<List_YOUSO[7]; j++){
-	free(Hx[i][j]);
-      }
-      free(Hx[i]);
-    }
-    free(Hx);
-    
-    for (i=0; i<3; i++){
-      for (j=0; j<List_YOUSO[7]; j++){
-	free(Hy[i][j]);
-      }
-      free(Hy[i]);
-    }
-    free(Hy);
-    
-    for (i=0; i<3; i++){
-      for (j=0; j<List_YOUSO[7]; j++){
-	free(Hz[i][j]);
-      }
-      free(Hz[i]);
-    }
-    free(Hz);
 
   } /* pragma */
 
@@ -2098,94 +1953,6 @@ static double Stress_owned(OpenMXSolverInvocation *scratch,OpenMXThermodynamicEn
     Stress_Tensor[8] += MD_applied_pressure*coe*Cell_Volume*(double)MD_applied_pressure_flag[2];
 
     thermo->pressure_volume = MD_applied_pressure*coe*Cell_Volume;
-  }
-
-  /* Shutting down this subroutine */
-  
-  /* freeing of array */
-  /* CDM0 */  
-  for (k=0; k<=SpinP_switch; k++){
-    FNAN[0] = 0;
-    for (Mc_AN=0; Mc_AN<=(Matomnum+MatomnumF); Mc_AN++){
-      
-      if (Mc_AN==0){
-	Gc_AN = 0;
-	tno0 = 1;
-      }
-      else{
-	Gc_AN = F_M2G[Mc_AN];
-	Cwan = WhatSpecies[Gc_AN];
-	tno0 = atomic->species.contracted_orbitals[Cwan];
-      }    
-
-      for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	if (Mc_AN==0){
-	  tno1 = 1;  
-	}
-	else{
-	  Gh_AN = natn[Gc_AN][h_AN];
-	  Hwan = WhatSpecies[Gh_AN];
-	  tno1 = atomic->species.contracted_orbitals[Hwan];
-	} 
-
-	for (i=0; i<tno0; i++){
-	  free(CDM0[k][Mc_AN][h_AN][i]);
-	}
-	free(CDM0[k][Mc_AN][h_AN]);
-      }
-      free(CDM0[k][Mc_AN]);
-    }
-    free(CDM0[k]);
-  }
-  free(CDM0);
-
-  free(Snd_CDM0_Size);
-  free(Rcv_CDM0_Size);
-  
-  /* iDM0 */  
-  if ( SO_switch==1 || (Hub_U_switch==1 && SpinP_switch==3) || Constraint_NCS_switch==1 
-       || Zeeman_NCS_switch==1 || Zeeman_NCO_switch==1 ){
-
-    for (k=0; k<2; k++){
-
-      FNAN[0] = 0;
-      for (Mc_AN=0; Mc_AN<=(Matomnum+MatomnumF); Mc_AN++){
-
-	if (Mc_AN==0){
-	  Gc_AN = 0;
-	  tno0 = 1;
-	}
-	else{
-	  Gc_AN = F_M2G[Mc_AN];
-	  Cwan = WhatSpecies[Gc_AN];
-	  tno0 = atomic->species.contracted_orbitals[Cwan];
-	}    
-
-	for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	  if (Mc_AN==0){
-	    tno1 = 1;  
-	  }
-	  else{
-	    Gh_AN = natn[Gc_AN][h_AN];
-	    Hwan = WhatSpecies[Gh_AN];
-	    tno1 = atomic->species.contracted_orbitals[Hwan];
-	  } 
-
-	  for (i=0; i<tno0; i++){
-	    free(iDM0[k][Mc_AN][h_AN][i]);
-	  }
-          free(iDM0[k][Mc_AN][h_AN]);
-	}
-        free(iDM0[k][Mc_AN]);
-      }
-      free(iDM0[k]);
-    }
-    free(iDM0);
-
-    free(Snd_iDM0_Size);
-    free(Rcv_iDM0_Size);
   }
 
   /* for time */
