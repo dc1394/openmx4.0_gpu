@@ -136,7 +136,7 @@ static void DIIS_Mixing_DM_Compute(OpenMXSolverInvocation *scratch,const MixDM_S
       state->diis_first=0;
     }
 
-    Simple_Mixing_DM(0,1.00,DM[0],DM[1],DM[2],iDM[0],iDM[1],iDM[2],ResidualDM[2],iResidualDM[2]);
+    Simple_Mixing_DM(state->history,0,1.00,DM[0],DM[1],DM[2],iDM[0],iDM[1],iDM[2],ResidualDM[2],iResidualDM[2]);
   } 
 
   else if (SCF_iter==2){
@@ -207,7 +207,7 @@ static void DIIS_Mixing_DM_Compute(OpenMXSolverInvocation *scratch,const MixDM_S
       }
     }
 
-    Simple_Mixing_DM(0,Mixing_weight,DM[0],DM[1],DM[2],
+    Simple_Mixing_DM(state->history,0,Mixing_weight,DM[0],DM[1],DM[2],
 		     iDM[0],iDM[1],iDM[2],ResidualDM[2],iResidualDM[2]);
 
   } 
@@ -842,6 +842,10 @@ OpenMXMixingDMState *Mixing_DM_Bind_Resources(OpenMXCoreContext *core)
   }
   OpenMXMixingDMState *state=(OpenMXMixingDMState*)metadata;
   if(!state->initialized) {
+    if(!openmx_core_mixing_history(core,&state->history,error,sizeof(error))) {
+      fprintf(stderr,"OpenMX mixing history: %s\n",error);
+      abort();
+    }
     state->diis_first=state->gr_first=1;
     state->initialized=1;
   }

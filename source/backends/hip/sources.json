@@ -102,7 +102,6 @@
     "Set_OLP_p.c",
     "Show_DFT_DATA.c",
     "SigmaEK.c",
-    "Simple_Mixing_DM.c",
     "Smoothing_Func.c",
     "TRAN_Add_ADensity_Lead.c",
     "TRAN_Add_Density_Lead.c",
@@ -575,7 +574,6 @@
     "Set_XC_Grid.c": "ba2944243135f298f8aa85240b5ac98a2e817d17a9c3d965f5726a522c8f6a07",
     "Show_DFT_DATA.c": "13f65e50099ad375433eaf7a7cc44a7cb3e292e01fe5f3c167dc7ebbf0535e83",
     "SigmaEK.c": "e50f90c26471ba8ef9b962ccfc025b1c60e0fb72fdc7d5f4ea8a764e290388d4",
-    "Simple_Mixing_DM.c": "83a01842ea89b33e04d79cb2c9deb505cfb8cc6c3ff7b052d2485d8fdfa87bea",
     "Smoothing_Func.c": "4a61466e4a22e54c38d1703b867fb4dff6a1e0ea53e13401d56d03e6715e1cd5",
     "TRAN_Add_ADensity_Lead.c": "f5992a2de0cda8a6a89a6f47a76507d6470a553216234b2ee3ccecdef49c523c",
     "TRAN_Add_Density_Lead.c": "97e94d17af495b74cbeedb66163c79314d9ba101461348aa8ff8c7af81391b3d",
@@ -1086,7 +1084,9 @@
     "openmx_mixing_v_workspace.h",
     "Mixing_V.c",
     "openmx_mixing_lapack.h",
-    "openmx_core_lu_ops.h"
+    "openmx_core_lu_ops.h",
+    "openmx_core_mixing.h",
+    "Simple_Mixing_DM.c"
   ],
   "integrated_overrides": {
     "gemmul8_bridge.cu": "src/gemmul8_bridge.cu",

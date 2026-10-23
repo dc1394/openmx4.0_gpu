@@ -1,6 +1,7 @@
 #ifndef OPENMX_MIXING_H_STATE_H
 #define OPENMX_MIXING_H_STATE_H
 #include "openmx_core.h"
+#include "openmx_core_mixing.h"
 #ifdef __cplusplus
 extern "C" {
 #endif

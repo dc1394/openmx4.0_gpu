@@ -4,6 +4,7 @@
 #include "openmx_gpu_backend.h"
 #include "openmx_gpu_error.h"
 #include "openmx_core.h"
+#include "openmx_core_mixing.h"
 #include "openmx_cluster_col_state.h"
 #include "openmx_cluster_noncol_state.h"
 #include "openmx_band_col_state.h"
@@ -2352,7 +2353,7 @@ extern double GP,GT,T,Weight,Cell_Volume,Uele,Ukc,Uch,UH_dc,Uxc0_dc,Uxc1_dc;
 extern double Uele_OS0,Uele_OS1,Uele_IS0,Uele_IS1,Uxc0,Uxc1;
 extern double UH0,UH1,UH2,Ucore,Uhub,Ucs,Uef,Ukin,Unl,Una,Uzs,Uzo,UvdW;
 extern double Ucoh,Uatom,Udc,Utot,Uxc,Given_Total_Charge;
-extern double Min_Mixing_weight,Max_Mixing_weight,Max_Mixing_weight2,Mixing_weight;
+extern double Min_Mixing_weight,Max_Mixing_weight,Mixing_weight;
 extern double Kerker_factor,Criterion_MP_Special_Kpt;
 extern double system_charge,Total_Num_Electrons;
 extern double Total_SpinS,Total_SpinSx,Total_SpinSy,Total_SpinSz;
@@ -2363,7 +2364,7 @@ extern double Total_OrbitalMomentAngle0,Total_OrbitalMomentAngle1;
 extern double ScaleSize;
 extern double LastBoxCenterX,LastBoxCenterY,LastBoxCenterZ;
 extern double W;
-extern double SCF_Criterion,NormRD[5],History_Uele[5];
+extern double SCF_Criterion,NormRD[5];
 extern double PAO_Nkmax,Grid_Ecut;
 extern double orbitalOpt_criterion,MD_Opt_criterion,orbitalOpt_SD_step;
 extern double MD_EvsLattice_Step;
@@ -2413,7 +2414,7 @@ extern int num_non_eq_kpt,way_of_kpoint;
 extern int pop_anal_aow_flag,scf_dclno_threading;
 extern int remake_headfile,OneD_Grid,Ngrid1,Ngrid2,Ngrid3;
 extern int TNumGrid,Kspace_grid1,Kspace_grid2,Kspace_grid3;
-extern int DFTSCF_loop,Ngrid_NormK,SCF_RENZOKU;
+extern int DFTSCF_loop,Ngrid_NormK;
 extern int Mixing_switch,MD_IterNumber,MD_Current_Iter,Av_num,T_switch,IS_switch;
 extern int MD_Init_Velocity,Correct_Position_flag;
 extern int rlmax_IS,XC_switch,PCC_switch,SpinP_switch,SpinP_switch_RestartFiles,SpeciesNum,real_SpeciesNum;
@@ -2734,7 +2735,7 @@ extern int B_spe[30],B_l[30],B_mul[30];
 extern double B_cut[30],lambda[30];
 /*******************/
 
-double Mixing_DM(OpenMXMixingDMState *dm_state, OpenMXMixingRhokState *state, int MD_iter,
+double Mixing_DM(OpenMXMixingHistory *history, OpenMXMixingDMState *dm_state, OpenMXMixingRhokState *state, int MD_iter,
                  int SCF_iter,
                  int SCF_iter0,
                  int SucceedReadingDMfile,
@@ -2755,7 +2756,7 @@ double Mixing_V(OpenMXMixingVState *state, int MD_iter,
 		 int SCF_iter,
 		 int SCF_iter0 );
 
-void Simple_Mixing_DM(int Change_switch, 
+void Simple_Mixing_DM(OpenMXMixingHistory *history, int Change_switch,
                       double Mix_wgt,
                       double *****CDM,
                       double *****PDM,

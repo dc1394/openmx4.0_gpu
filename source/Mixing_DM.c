@@ -7,7 +7,7 @@
 
 
 
-double Mixing_DM(OpenMXMixingDMState *dm_state, OpenMXMixingRhokState *state, int MD_iter,
+double Mixing_DM(OpenMXMixingHistory *history, OpenMXMixingDMState *dm_state, OpenMXMixingRhokState *state, int MD_iter,
                  int SCF_iter,
                  int SCF_iter0,
                  int SucceedReadingDMfile,
@@ -59,12 +59,12 @@ double Mixing_DM(OpenMXMixingDMState *dm_state, OpenMXMixingRhokState *state, in
 
     if (MD_iter==1 && SCF_iter==1){
 
-      Simple_Mixing_DM(0,1.0,DM[0],DM[1],DM[2], 
+      Simple_Mixing_DM(history,0,1.0,DM[0],DM[1],DM[2],
 		       iDM[0],iDM[1],iDM[2],ResidualDM[2],iResidualDM[2]);
     }
     else{
 
-      Simple_Mixing_DM(1,Mixing_weight,DM[0],DM[1],DM[2],
+      Simple_Mixing_DM(history,1,Mixing_weight,DM[0],DM[1],DM[2],
 		       iDM[0],iDM[1],iDM[2],ResidualDM[2],iResidualDM[2]);
     }
   }
@@ -83,7 +83,7 @@ double Mixing_DM(OpenMXMixingDMState *dm_state, OpenMXMixingRhokState *state, in
     }
     else if (SCF_iter<=(Pulay_SCF-1)){
 
-      Simple_Mixing_DM(1,Mixing_weight,DM[0],DM[1],DM[2],
+      Simple_Mixing_DM(history,1,Mixing_weight,DM[0],DM[1],DM[2],
 		       iDM[0],iDM[1],iDM[2],ResidualDM[2],iResidualDM[2]);
     }
     else if (SCF_iter==Pulay_SCF)
@@ -101,7 +101,7 @@ double Mixing_DM(OpenMXMixingDMState *dm_state, OpenMXMixingRhokState *state, in
       GR_Pulay_DM(dm_state, 1,ResidualDM, electronic);
     }
     else if (SCF_iter<=(Pulay_SCF-1))
-      Simple_Mixing_DM(1,Mixing_weight,DM[0],DM[1],DM[2],
+      Simple_Mixing_DM(history,1,Mixing_weight,DM[0],DM[1],DM[2],
 		       iDM[0],iDM[1],iDM[2],ResidualDM[2],iResidualDM[2]);
     else if (SCF_iter==Pulay_SCF)
       GR_Pulay_DM(dm_state, 2,ResidualDM, electronic);
@@ -194,7 +194,7 @@ double Mixing_DM(OpenMXMixingDMState *dm_state, OpenMXMixingRhokState *state, in
   else if (Mixing_switch==6){
 
     if (SCF_iter<=(Pulay_SCF-1)){
-      Simple_Mixing_DM(1,Mixing_weight,DM[0],DM[1],DM[2],
+      Simple_Mixing_DM(history,1,Mixing_weight,DM[0],DM[1],DM[2],
 		       iDM[0],iDM[1],iDM[2],ResidualDM[2],iResidualDM[2]);
 
     }

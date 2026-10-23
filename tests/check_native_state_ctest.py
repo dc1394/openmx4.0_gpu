@@ -19,6 +19,7 @@ def check_inventory(inventory, build, require_mpi=False):
     expected['mixing-rhok-workspace-lifecycle'] = 'native-state'
     expected['mixing-dm-workspace-lifecycle'] = 'native-state'
     expected['mixing-v-workspace-lifecycle'] = 'native-state'
+    expected['mixing-history-native'] = 'native-state'
     if require_mpi:
         expected.update({name + '-calculation-state-mpi': 'native-state-mpi'
                          for name in ['dclno', 'krylov']})
@@ -53,7 +54,8 @@ def check_inventory(inventory, build, require_mpi=False):
             'mixing-rhok': 'run_mixing_rhok_state_cpu.py',
             'mixing-rhok-workspace-lifecycle': 'run_mixing_rhok_workspace_cpu.py',
             'mixing-dm-workspace-lifecycle': 'run_mixing_dm_workspace_cpu.py',
-            'mixing-v-workspace-lifecycle': 'run_mixing_v_workspace_cpu.py'}
+            'mixing-v-workspace-lifecycle': 'run_mixing_v_workspace_cpu.py',
+            'mixing-history-native': 'run_mixing_history_cpu.py'}
         prefix = name.split('-calculation-state-')[0]
         expected_script = (expected_scripts[prefix] if prefix in expected_scripts else
                            'run_solver_energy_output_cpu.py')

@@ -90,7 +90,7 @@ set(_core_sources src/radial.cpp src/radial_table.cpp src/pao_storage.cpp src/vp
   src/dsvna_workspace.cpp src/hvna_layout.cpp src/hvna_workspace.cpp src/atom_pairs.cpp
   src/projector_exchange.cpp src/vna_invocation.cpp src/block_matrix.cpp src/vna_matrix_storage.cpp
   src/reciprocal_views.cpp src/reciprocal_archive.cpp src/species_storage.cpp src/species_api.cpp
-  src/atomic_views.cpp src/orbital_workspace.cpp src/ragged_matrix.cpp src/matrix_scratch.cpp src/unpivoted_inverse.cpp src/pivoted_inverse.cpp
+  src/atomic_views.cpp src/orbital_workspace.cpp src/ragged_matrix.cpp src/matrix_scratch.cpp src/unpivoted_inverse.cpp src/pivoted_inverse.cpp src/mixing_history.cpp
   src/electronic_matrices.cpp src/electronic_matrix_api.cpp
   src/local_basis_state.cpp src/local_basis_api.cpp
   src/orbital_optimization.cpp src/orbital_optimization_api.cpp src/solver_workspace.cpp src/native_resources.cpp src/grid_assembly.cpp src/c_api.cpp)

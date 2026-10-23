@@ -65,6 +65,7 @@ typedef struct {
 
 struct OpenMXMixingHState {
   OpenMXNativeResources *resources; /* borrowed from this calculation */
+  OpenMXMixingHistory *history; /* shared by this calculation's mixing methods */
   int initialized;
   MixH_GpuState gpu;
   MixH_GpuShard shard[OPENMX_GPU_WORKERS_MAX];
@@ -75,7 +76,7 @@ struct OpenMXMixingHState {
 };
 typedef OpenMXMixingHState MixingHState;
 
-static void Simple_Mixing_H(int MD_iter, int SCF_iter, int SCF_iter0 , const OpenMXElectronicViews *electronic);
+static void Simple_Mixing_H(OpenMXMixingHistory *history, int MD_iter, int SCF_iter, int SCF_iter0 , const OpenMXElectronicViews *electronic);
 static void Pulay_Mixing_H(OpenMXSolverInvocation *scratch, MixingHState *state, int MD_iter, int SCF_iter, int SCF_iter0 , const OpenMXElectronicViews *electronic);
 static void Pulay_Mixing_H_MultiSecant(OpenMXSolverInvocation *scratch, int MD_iter, int SCF_iter, int SCF_iter0 , const OpenMXElectronicViews *electronic);
 static void Pulay_Mixing_H_with_One_Shot_Hessian(OpenMXSolverInvocation *scratch, int MD_iter, int SCF_iter, int SCF_iter0 , const OpenMXElectronicViews *electronic);
@@ -114,7 +115,7 @@ double Mixing_H(MixingHState *state,  int MD_iter, int SCF_iter, int SCF_iter0 ,
   *******************************************************/
 
   if ( SCF_iter<=(Pulay_SCF-1) ){
-    Simple_Mixing_H( MD_iter, SCF_iter, SCF_iter0 , electronic);
+    Simple_Mixing_H(state->history, MD_iter, SCF_iter, SCF_iter0 , electronic);
   }
 
   /*******************************************************
@@ -3830,7 +3831,7 @@ void Pulay_Mixing_H(OpenMXSolverInvocation *scratch, MixingHState *state, int MD
 
 
 
-void Simple_Mixing_H(int MD_iter, int SCF_iter, int SCF_iter0 , const OpenMXElectronicViews *electronic)
+void Simple_Mixing_H(OpenMXMixingHistory *history, int MD_iter, int SCF_iter, int SCF_iter0 , const OpenMXElectronicViews *electronic)
 {
   double ******DM=electronic->DM;
   double *****H=electronic->H;
@@ -3857,18 +3858,18 @@ void Simple_Mixing_H(int MD_iter, int SCF_iter, int SCF_iter0 , const OpenMXElec
   /* start... */
 
   Min_Weight = Min_Mixing_weight;
-  if (SCF_RENZOKU==-1){
+  if (history->consecutive==-1){
     Max_Weight = Max_Mixing_weight;
-    Max_Mixing_weight2 = Max_Mixing_weight;
+    history->adaptive_max_weight = Max_Mixing_weight;
   }
-  else if (SCF_RENZOKU==1000){  /* past 3 */
-    Max_Mixing_weight2 = 2.0*Max_Mixing_weight2;
-    if (0.7<Max_Mixing_weight2) Max_Mixing_weight2 = 0.7;
-    Max_Weight = Max_Mixing_weight2;
-    SCF_RENZOKU = 0;
+  else if (history->consecutive==1000){  /* past 3 */
+    history->adaptive_max_weight = 2.0*history->adaptive_max_weight;
+    if (0.7<history->adaptive_max_weight) history->adaptive_max_weight = 0.7;
+    Max_Weight = history->adaptive_max_weight;
+    history->consecutive = 0;
   }
   else{
-    Max_Weight = Max_Mixing_weight2;
+    Max_Weight = history->adaptive_max_weight;
   }
 
   /* determination of dim */
@@ -4049,15 +4050,15 @@ void Simple_Mixing_H(int MD_iter, int SCF_iter, int SCF_iter0 , const OpenMXElec
 
   for (i=4; 1<=i; i--){
     NormRD[i] = NormRD[i-1];
-    History_Uele[i] = History_Uele[i-1];
+    history->energy[i] = history->energy[i-1];
   }
   NormRD[0] = Norm/(double)atomnum;;
-  History_Uele[0] = Uele;
+  history->energy[0] = Uele;
 
   if (1<SCF_iter){
 
-    if ( (int)sgn(History_Uele[0]-History_Uele[1])
-	 ==(int)sgn(History_Uele[1]-History_Uele[2])
+    if ( (int)sgn(history->energy[0]-history->energy[1])
+	 ==(int)sgn(history->energy[1]-history->energy[2])
 	 && NormRD[0]<NormRD[1]){
 
       /* tmp0 = 1.6*Mixing_weight; */
@@ -4074,12 +4075,12 @@ void Simple_Mixing_H(int MD_iter, int SCF_iter, int SCF_iter0 , const OpenMXElec
       }
       else{ 
 	Mixing_weight = Max_Weight;
-	SCF_RENZOKU++;  
+	history->consecutive++;
       }
     }
    
-    else if ( (int)sgn(History_Uele[0]-History_Uele[1])
-	      ==(int)sgn(History_Uele[1]-History_Uele[2])
+    else if ( (int)sgn(history->energy[0]-history->energy[1])
+	      ==(int)sgn(history->energy[1]-history->energy[2])
 	      && NormRD[1]<NormRD[0]){
 
       tmp0 = NormRD[1]/(largest(NormRD[1]+NormRD[0],10e-10))*Mixing_weight;
@@ -4096,11 +4097,11 @@ void Simple_Mixing_H(int MD_iter, int SCF_iter, int SCF_iter0 , const OpenMXElec
 	Mixing_weight = Max_Weight;
       }
 
-      SCF_RENZOKU = -1;  
+      history->consecutive = -1;
     }
 
-    else if ( (int)sgn(History_Uele[0]-History_Uele[1])
-	      !=(int)sgn(History_Uele[1]-History_Uele[2])
+    else if ( (int)sgn(history->energy[0]-history->energy[1])
+	      !=(int)sgn(history->energy[1]-history->energy[2])
 	      && NormRD[0]<NormRD[1]){
 
       /* tmp0 = Mixing_weight*1.2; */
@@ -4115,12 +4116,12 @@ void Simple_Mixing_H(int MD_iter, int SCF_iter, int SCF_iter0 , const OpenMXElec
       }
       else{ 
 	Mixing_weight = Max_Weight;
-	SCF_RENZOKU++;
+	history->consecutive++;
       }
     }
 
-    else if ( (int)sgn(History_Uele[0]-History_Uele[1])
-	      !=(int)sgn(History_Uele[1]-History_Uele[2])
+    else if ( (int)sgn(history->energy[0]-history->energy[1])
+	      !=(int)sgn(history->energy[1]-history->energy[2])
 	      && NormRD[1]<NormRD[0]){
 
       /* tmp0 = Mixing_weight/2.0; */
@@ -4136,7 +4137,7 @@ void Simple_Mixing_H(int MD_iter, int SCF_iter, int SCF_iter0 , const OpenMXElec
       else 
 	Mixing_weight = Max_Weight;
 
-      SCF_RENZOKU = -1;
+      history->consecutive = -1;
     }
   }
 
@@ -4646,6 +4647,10 @@ OpenMXMixingHState *Mixing_H_Bind_Resources(OpenMXCoreContext *core)
   MixingHState *state=(MixingHState*)metadata;
   if (!state->initialized) {
     state->resources=owner;
+    if(!openmx_core_mixing_history(core,&state->history,error,sizeof(error))) {
+      fprintf(stderr,"OpenMX mixing history: %s\n",error);
+      abort();
+    }
     const MixH_GpuState initial={
   -1, 0, 0, -1, -1, -1, -1, 0U, -1, 0, 0U, 0U,
   NULL, 0U, 0U, 0U, 0U, 0U, NULL, NULL, NULL, NULL

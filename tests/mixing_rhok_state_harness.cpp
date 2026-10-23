@@ -61,7 +61,8 @@ int main(){try{
   rotation();
   for(int repeat=0;repeat<100;repeat++){
     auto first=calculation(),second=calculation();auto* a=Mixing_Rhok_Bind_Resources(first.get());auto* b=Mixing_Rhok_Bind_Resources(second.get());
-    check(a!=b && a->resources!=b->resources,"density-mixing contexts share state");flags(a);flags(b);
+    check(a!=b && a->resources!=b->resources,"density-mixing contexts share state");
+    OpenMXMixingHistory* owned=nullptr;char error[256];check(openmx_core_mixing_history(first.get(),&owned,error,sizeof(error)) && a->history==owned && b->history!=owned,"density mixing borrowed the wrong shared history");flags(a);flags(b);
     check(!a->fast.valid && a->fast.last_scf_iter==-1 && !a->fast.A,"new Gram cache lost its initial sentinels");
     std::fill(std::begin(prints),std::end(prints),0);
     for(int n=0;n<3;n++)logs(a);

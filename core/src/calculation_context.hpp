@@ -8,6 +8,7 @@
 #include "electronic_matrix_compat.hpp"
 #include "local_basis_compat.hpp"
 #include "native_resources.hpp"
+#include <openmx_core_mixing.h>
 #include "grid_assembly.hpp"
 #include <openmx/core/orbital_optimization.hpp>
 #include <openmx/core/radial.hpp>
@@ -17,6 +18,10 @@
 // been destroyed, including when an API entry unwinds after a failure.
 struct OpenMXCoreContext {
   explicit OpenMXCoreContext(bool host_only = false) : implementation(host_only) {}
+  OpenMXCoreContext(const OpenMXCoreContext&)=delete;
+  OpenMXCoreContext& operator=(const OpenMXCoreContext&)=delete;
+  OpenMXCoreContext(OpenMXCoreContext&&)=delete;
+  OpenMXCoreContext& operator=(OpenMXCoreContext&&)=delete;
   openmx::core::Context implementation;
   std::unique_ptr<openmx::core::compat::SpeciesOwner> species;
   std::unique_ptr<openmx::core::compat::PaoOwner> pao;
@@ -27,5 +32,8 @@ struct OpenMXCoreContext {
   std::unique_ptr<openmx::core::compat::LocalBasisOwner> local_basis;
   std::unique_ptr<openmx::core::OrbitalOptimization> orbital_optimization;
   std::unique_ptr<OpenMXGridWorkspace,GridWorkspaceDelete> grid;
+  // Fixed-size domain state needs no separate heap/group construction. Keep
+  // it alive until all native states borrowing it have drained.
+  OpenMXMixingHistory mixing_history{};
   NativeResourceGroups native_resources;
 };

@@ -51,7 +51,8 @@ void logs(OpenMXMixingDMState* s){log_kind=0;log_diis(s);log_kind=1;log_gr(s);}
 void state_lifecycle(){
   for(int repeat=0;repeat<100;++repeat){
     auto first=calculation(),second=calculation();auto* a=Mixing_DM_Bind_Resources(first.get());auto* b=Mixing_DM_Bind_Resources(second.get());
-    check(a!=b,"calculations share real-space mixing state");flags(a);flags(b);prints[0]=prints[1]=0;
+    check(a!=b,"calculations share real-space mixing state");
+    OpenMXMixingHistory* owned=nullptr;char error[256];check(openmx_core_mixing_history(first.get(),&owned,error,sizeof(error)) && a->history==owned && b->history!=owned,"real-space mixing borrowed the wrong shared history");flags(a);flags(b);prints[0]=prints[1]=0;
     for(int j=0;j<3;++j)logs(a);
     check(prints[0]==2 && prints[1]==1 && !a->diis_first && !a->gr_first,"production logging did not run once per calculation");flags(b);
     logs(b);check(prints[0]==4 && prints[1]==2,"logging state leaked between calculations");

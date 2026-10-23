@@ -481,10 +481,10 @@ void DIIS_Mixing_VKSk(OpenMXSolverInvocation *scratch, MixingVState *state, int 
 
     for (i=4; 1<=i; i--){
       NormRD[i] = NormRD[i-1];
-      History_Uele[i] = History_Uele[i-1];
+      state->history->energy[i] = state->history->energy[i-1];
     }
     NormRD[0] = openmx_solver_real_matrix_row(&A,0)[0]/(double)(1.0e+5*Ngrid1*Ngrid2*Ngrid3*spinmax);
-    History_Uele[0] = Uele;
+    state->history->energy[0] = Uele;
 
     /* set matrix elements on lammda */
 
@@ -705,8 +705,8 @@ void DIIS_Mixing_VKSk(OpenMXSolverInvocation *scratch, MixingVState *state, int 
       Min_Weight = Min_Mixing_weight;
       Max_Weight = Max_Mixing_weight;
 
-      if ((int)sgn(History_Uele[0]-History_Uele[1])
-	  ==(int)sgn(History_Uele[1]-History_Uele[2])
+      if ((int)sgn(state->history->energy[0]-state->history->energy[1])
+	  ==(int)sgn(state->history->energy[1]-state->history->energy[2])
 	  && NormRD[0]<NormRD[1]){
 
 	/* tmp0 = 1.6*Mixing_weight; */
@@ -723,12 +723,12 @@ void DIIS_Mixing_VKSk(OpenMXSolverInvocation *scratch, MixingVState *state, int 
 	}
 	else{ 
 	  Mixing_weight = Max_Weight;
-	  SCF_RENZOKU++;  
+	  state->history->consecutive++;
 	}
       }
    
-      else if ((int)sgn(History_Uele[0]-History_Uele[1])
-	       ==(int)sgn(History_Uele[1]-History_Uele[2])
+      else if ((int)sgn(state->history->energy[0]-state->history->energy[1])
+	       ==(int)sgn(state->history->energy[1]-state->history->energy[2])
 	       && NormRD[1]<NormRD[0]){
 
 	tmp0 = NormRD[1]/(largest(NormRD[1]+NormRD[0],10e-10))*Mixing_weight;
@@ -744,11 +744,11 @@ void DIIS_Mixing_VKSk(OpenMXSolverInvocation *scratch, MixingVState *state, int 
 	else 
 	  Mixing_weight = Max_Weight;
 
-	SCF_RENZOKU = -1;  
+	state->history->consecutive = -1;
       }
 
-      else if ((int)sgn(History_Uele[0]-History_Uele[1])
-	       !=(int)sgn(History_Uele[1]-History_Uele[2])
+      else if ((int)sgn(state->history->energy[0]-state->history->energy[1])
+	       !=(int)sgn(state->history->energy[1]-state->history->energy[2])
 	       && NormRD[0]<NormRD[1]){
 
 	/* tmp0 = Mixing_weight*1.2; */
@@ -763,12 +763,12 @@ void DIIS_Mixing_VKSk(OpenMXSolverInvocation *scratch, MixingVState *state, int 
 	}
 	else{ 
 	  Mixing_weight = Max_Weight;
-	  SCF_RENZOKU++;
+	  state->history->consecutive++;
 	}
       }
 
-      else if ((int)sgn(History_Uele[0]-History_Uele[1])
-	       !=(int)sgn(History_Uele[1]-History_Uele[2])
+      else if ((int)sgn(state->history->energy[0]-state->history->energy[1])
+	       !=(int)sgn(state->history->energy[1]-state->history->energy[2])
 	       && NormRD[1]<NormRD[0]){
 
 	/* tmp0 = Mixing_weight/2.0; */
@@ -784,7 +784,7 @@ void DIIS_Mixing_VKSk(OpenMXSolverInvocation *scratch, MixingVState *state, int 
 	else 
 	  Mixing_weight = Max_Weight;
 
-	SCF_RENZOKU = -1;
+	state->history->consecutive = -1;
       }
 
       Mix_wgt = Mixing_weight;
@@ -1023,18 +1023,18 @@ void Kerker_Mixing_VKSk(OpenMXSolverInvocation *scratch, MixingVState *state,  i
   /* start... */
 
   Min_Weight = Min_Mixing_weight;
-  if (SCF_RENZOKU==-1){
+  if (state->history->consecutive==-1){
     Max_Weight = Max_Mixing_weight;
-    Max_Mixing_weight2 = Max_Mixing_weight;
+    state->history->adaptive_max_weight = Max_Mixing_weight;
   }
-  else if (SCF_RENZOKU==1000){  /* past 3 */
-    Max_Mixing_weight2 = 2.0*Max_Mixing_weight2;
-    if (0.7<Max_Mixing_weight2) Max_Mixing_weight2 = 0.7;
-    Max_Weight = Max_Mixing_weight2;
-    SCF_RENZOKU = 0;
+  else if (state->history->consecutive==1000){  /* past 3 */
+    state->history->adaptive_max_weight = 2.0*state->history->adaptive_max_weight;
+    if (0.7<state->history->adaptive_max_weight) state->history->adaptive_max_weight = 0.7;
+    Max_Weight = state->history->adaptive_max_weight;
+    state->history->consecutive = 0;
   }
   else{
-    Max_Weight = Max_Mixing_weight2;
+    Max_Weight = state->history->adaptive_max_weight;
   }
 
   /****************************************************
@@ -1072,15 +1072,15 @@ void Kerker_Mixing_VKSk(OpenMXSolverInvocation *scratch, MixingVState *state,  i
 
   for (i=4; 1<=i; i--){
     NormRD[i] = NormRD[i-1];
-    History_Uele[i] = History_Uele[i-1];
+    state->history->energy[i] = state->history->energy[i-1];
   }
   NormRD[0] = Norm/(double)(1.0e+5*Ngrid1*Ngrid2*Ngrid3*spinmax);
-  History_Uele[0] = Uele;
+  state->history->energy[0] = Uele;
 
   if (Change_switch==1){
 
-    if ((int)sgn(History_Uele[0]-History_Uele[1])
-	  ==(int)sgn(History_Uele[1]-History_Uele[2])
+    if ((int)sgn(state->history->energy[0]-state->history->energy[1])
+	  ==(int)sgn(state->history->energy[1]-state->history->energy[2])
        && NormRD[0]<NormRD[1]){
 
       /* tmp0 = 1.6*Mixing_weight; */
@@ -1097,12 +1097,12 @@ void Kerker_Mixing_VKSk(OpenMXSolverInvocation *scratch, MixingVState *state,  i
       }
       else{ 
         Mixing_weight = Max_Weight;
-        SCF_RENZOKU++;  
+        state->history->consecutive++;
       }
     }
    
-    else if ((int)sgn(History_Uele[0]-History_Uele[1])
-             ==(int)sgn(History_Uele[1]-History_Uele[2])
+    else if ((int)sgn(state->history->energy[0]-state->history->energy[1])
+             ==(int)sgn(state->history->energy[1]-state->history->energy[2])
              && NormRD[1]<NormRD[0]){
 
       /* tmp0 = Mixing_weight/1.6; */
@@ -1118,11 +1118,11 @@ void Kerker_Mixing_VKSk(OpenMXSolverInvocation *scratch, MixingVState *state,  i
       else 
         Mixing_weight = Max_Weight;
 
-      SCF_RENZOKU = -1;  
+      state->history->consecutive = -1;
     }
 
-    else if ((int)sgn(History_Uele[0]-History_Uele[1])
-	     !=(int)sgn(History_Uele[1]-History_Uele[2])
+    else if ((int)sgn(state->history->energy[0]-state->history->energy[1])
+	     !=(int)sgn(state->history->energy[1]-state->history->energy[2])
              && NormRD[0]<NormRD[1]){
 
       /* tmp0 = Mixing_weight*1.2; */
@@ -1137,12 +1137,12 @@ void Kerker_Mixing_VKSk(OpenMXSolverInvocation *scratch, MixingVState *state,  i
       }
       else{ 
         Mixing_weight = Max_Weight;
-        SCF_RENZOKU++;
+        state->history->consecutive++;
       }
     }
 
-    else if ((int)sgn(History_Uele[0]-History_Uele[1])
-	     !=(int)sgn(History_Uele[1]-History_Uele[2])
+    else if ((int)sgn(state->history->energy[0]-state->history->energy[1])
+	     !=(int)sgn(state->history->energy[1]-state->history->energy[2])
              && NormRD[1]<NormRD[0]){
 
       /* tmp0 = Mixing_weight/2.0; */
@@ -1158,7 +1158,7 @@ void Kerker_Mixing_VKSk(OpenMXSolverInvocation *scratch, MixingVState *state,  i
       else 
         Mixing_weight = Max_Weight;
 
-      SCF_RENZOKU = -1;
+      state->history->consecutive = -1;
     }
 
     Mix_wgt = Mixing_weight;
@@ -1643,6 +1643,10 @@ OpenMXMixingVState *Mixing_V_Bind_Resources(OpenMXCoreContext *core)
   MixingVState *state=(MixingVState*)metadata;
   if (!state->initialized) {
     state->resources=owner;
+    if(!openmx_core_mixing_history(core,&state->history,error,sizeof(error))) {
+      fprintf(stderr,"OpenMX mixing history: %s\n",error);
+      abort();
+    }
     state->diis_first=state->kerker_first=1;
     state->fast.last_scf_iter=-1;
     state->initialized=1;

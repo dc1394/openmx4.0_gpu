@@ -106,7 +106,7 @@ static void GR_Pulay_DM_Compute(OpenMXSolverInvocation *scratch,const MixDM_Scra
       state->gr_first=0;
     }
 
-    Simple_Mixing_DM(0,1.00,DM[0],DM[1],DM[2],
+    Simple_Mixing_DM(state->history,0,1.00,DM[0],DM[1],DM[2],
 		     iDM[0],iDM[1],iDM[2],ResidualDM[2],iResidualDM[2]);
 
   } 
@@ -151,7 +151,7 @@ static void GR_Pulay_DM_Compute(OpenMXSolverInvocation *scratch,const MixDM_Scra
       }
     }
 
-    Simple_Mixing_DM(0,Mixing_weight,DM[0],DM[1],DM[2],
+    Simple_Mixing_DM(state->history,0,Mixing_weight,DM[0],DM[1],DM[2],
 		     iDM[0],iDM[1],iDM[2],ResidualDM[2],iResidualDM[2]);
 
   } 

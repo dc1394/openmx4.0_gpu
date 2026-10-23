@@ -398,6 +398,13 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   OpenMXMixingRhokState *mixing_rhok=Mixing_Rhok_Bind_Resources(core);
   OpenMXMixingDMState *mixing_dm=Mixing_DM_Bind_Resources(core);
   OpenMXMixingVState *mixing_v=Mixing_V_Bind_Resources(core);
+  OpenMXMixingHistory *mixing_history=NULL;
+  char mixing_history_error[256];
+  if(!openmx_core_mixing_history(core,&mixing_history,mixing_history_error,sizeof(mixing_history_error))) {
+    fprintf(stderr,"OpenMX mixing history: %s\n",mixing_history_error);
+    MPI_Abort(mpi_comm_level1,1);
+    abort();
+  }
   const OpenMXDensityCacheHooks density_cache_hooks=OpenMX_ClusterNonCol_DensityHooks(solver_states.cluster_noncol);
 
   const OpenMXLocalBasisViews local_basis_storage=OpenMX_LocalBasis(core,mpi_comm_level1);
@@ -589,7 +596,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   SCF_iter_shift = 0;
   NormRD[0] = 100.0;
 
-  SCF_RENZOKU = -1;
+  mixing_history->consecutive = -1;
   po = 0;
   pUele  = 100.0;
   Norm1 = 100.0;
@@ -1672,7 +1679,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 	 || Mixing_switch==2
          || Mixing_switch==6 ){
 
-      time6  += Mixing_DM(mixing_dm, mixing_rhok, MD_iter,
+      time6  += Mixing_DM(mixing_history, mixing_dm, mixing_rhok, MD_iter,
 			  LSCF_iter-SCF_iter_shift,
 			  SCF_iter-SCF_iter_shift,
 			  SucceedReadingDMfile,
@@ -1744,7 +1751,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 	else                                     time15 += FFT2D_Density(3,ReRhoAtomk,ImRhoAtomk);  
       }
 
-      time6 += Mixing_DM(mixing_dm, mixing_rhok, MD_iter,
+      time6 += Mixing_DM(mixing_history, mixing_dm, mixing_rhok, MD_iter,
 			 LSCF_iter-SCF_iter_shift,
 			 SCF_iter-SCF_iter_shift,
 			 SucceedReadingDMfile,
@@ -1844,7 +1851,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
       if (Mixing_switch==0 && 0<level_stdout){
         printf("<DFT>  Mixing_weight=%15.12f SCF_RENZOKU=%2d\n",
-	       Mixing_weight,SCF_RENZOKU);fflush(stdout);
+	       Mixing_weight,mixing_history->consecutive);fflush(stdout);
       }
       else{
         if (0<level_stdout){
@@ -2752,7 +2759,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
       }
     }
 
-    time6 += Mixing_DM(mixing_dm, mixing_rhok, 1,
+    time6 += Mixing_DM(mixing_history, mixing_dm, mixing_rhok, 1,
                        LSCF_iter-SCF_iter_shift,
                        SCF_iter-SCF_iter_shift,
                        SucceedReadingDMfile,

@@ -296,6 +296,7 @@ int main(){try{
     auto first=calculation(),second=calculation();
     auto* a=Mixing_H_Bind_Resources(first.get());auto* b=Mixing_H_Bind_Resources(second.get());
     check(a!=b && a->resources!=b->resources,"mixing metadata/resources shared across contexts");
+    OpenMXMixingHistory* owned=nullptr;char history_error[256];check(openmx_core_mixing_history(first.get(),&owned,history_error,sizeof(history_error)) && a->history==owned && b->history!=owned,"Hamiltonian mixing borrowed the wrong shared history");
     check(a->gpu.verdict==-1 && a->inc.last_scf_iter==-1,"mixing constructor lost sentinels");
     mode("1");check(MixH_GpuPreflight(a,1,0)==1 && !a->host_ring,"resident tier missing");
     const size_t expected=Matomnum?(SpinP_switch==3?175:25*(SpinP_switch+1)):0;
