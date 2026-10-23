@@ -35,7 +35,32 @@ typedef struct { OpenMXCWFGrid matrix[OPENMX_CWF_GRID_COUNT]; } OpenMXCWFGrids;
 int openmx_core_cwf_grids(OpenMXCoreContext*, OpenMXCWFGrids **out,
     char *error, size_t error_capacity);
 
+/* Per-calculation CWF output. Row capacity is the allocated length, which
+   may exceed the active CWF count when guiding orbitals are selected later.
+   Charge/energy are contiguous [spin_channel,row_capacity] host matrices. */
+typedef struct {
+  size_t spin_channels, row_capacity;
+  double *charge, *energy;
+  double distance;
+} OpenMXCWFObservables;
+
+/* Lookup never allocates or resets live results, including the first call.
+   Prepare accepts one or two channels and zeros the requested output. Equal
+   shapes reuse storage without allocating. A failed preparation preserves
+   all live results and *out. Borrowed rows expire on a successful shape
+   change, clear/finish or destruction. Prepare/clear require quiescent users;
+   native borrowers drain before calculation clear/finish resets this state.
+   No MPI/device setup or default/process/thread-local owner is installed. */
+int openmx_core_cwf_observables(OpenMXCoreContext*, OpenMXCWFObservables **out,
+    char *error, size_t error_capacity);
+int openmx_core_cwf_observables_prepare(OpenMXCoreContext*, size_t spin_channels,
+    size_t row_capacity, OpenMXCWFObservables **out, char *error, size_t error_capacity);
+
 #ifdef __cplusplus
 }
 #endif
+static inline double *openmx_cwf_charge_row(const OpenMXCWFObservables *view,size_t spin)
+{ return view->row_capacity ? view->charge+spin*view->row_capacity : view->charge; }
+static inline double *openmx_cwf_energy_row(const OpenMXCWFObservables *view,size_t spin)
+{ return view->row_capacity ? view->energy+spin*view->row_capacity : view->energy; }
 #endif

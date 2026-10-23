@@ -900,20 +900,6 @@ static void array0(OpenMXCoreContext *core)
 
   if (CWF_Calc==1){
 
-    int spinsize;
-
-    if (SpinP_switch==3) spinsize = 1; else spinsize = 2;
-
-    for (spin=0; spin<spinsize; spin++){
-      free(CWF_Charge[spin]);
-    }
-    free(CWF_Charge);
-
-    for (spin=0; spin<spinsize; spin++){
-      free(CWF_Energy[spin]);
-    }
-    free(CWF_Energy);
-
     for (i=0; i<SpeciesNum; i++){
       for (l=0; l<(Spe_MaxL_Basis[i]+1); l++){
 	free(CWF_Guiding_AO[i][l]);

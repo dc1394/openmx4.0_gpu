@@ -2434,7 +2434,7 @@ void Input_std(char *file, OpenMXCoreContext *core)
 
   if ( CWF_Calc==1 ){
 
-    int spinsize,wan,spin;
+    int spinsize,wan;
 
     if (SpinP_switch==0 || SpinP_switch==1){
 
@@ -2495,17 +2495,15 @@ void Input_std(char *file, OpenMXCoreContext *core)
       }
     }
 
-    CWF_Charge = (double**)malloc(sizeof(double*)*spinsize);
-    for (spin=0; spin<spinsize; spin++){
-      CWF_Charge[spin] = (double*)malloc(sizeof(double)*TNum_CWFs);
-      for (i=0; i<TNum_CWFs; i++) CWF_Charge[spin][i] = 0.0;
+    OpenMXCWFObservables *cwf_values=NULL;
+    char cwf_error[256];
+    if(!openmx_core_cwf_observables_prepare(core,spinsize,(size_t)TNum_CWFs,
+          &cwf_values,cwf_error,sizeof(cwf_error))) {
+      fprintf(stderr,"OpenMX CWF observables: %s\n",cwf_error);
+      MPI_Abort(mpi_comm_level1,1);
+      abort();
     }
 
-    CWF_Energy = (double**)malloc(sizeof(double*)*spinsize);
-    for (spin=0; spin<spinsize; spin++){
-      CWF_Energy[spin] = (double*)malloc(sizeof(double)*TNum_CWFs);
-      for (i=0; i<TNum_CWFs; i++) CWF_Energy[spin][i] = 0.0;
-    }
   } 
 
   /**************************************************

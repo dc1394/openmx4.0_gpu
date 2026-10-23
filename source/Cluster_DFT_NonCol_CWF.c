@@ -41,7 +41,6 @@
 
 #define  measure_time   0
 
-double DM_func;
 
 
 double complex ***CWF_Guiding_MOs_NC;
@@ -89,7 +88,7 @@ void Save_EVec_CWF2W90( char *mode, char *fname,
 void Save_EIGENVAL_CWF2W90( char *fname, double *EIGEN, int MinN, int MaxN, int myid2);
 
 
-static double Calc_CWF_Cluster_NonCol(OpenMXCWFGrids *grids, const OpenMXChemicalPotentials *chemical,
+static double Calc_CWF_Cluster_NonCol(OpenMXCWFGrids *grids, OpenMXCWFObservables *cwf_values, const OpenMXChemicalPotentials *chemical,
 				      int myid,
 				      int numprocs,
 				      int size_H1,
@@ -121,7 +120,7 @@ static void Allocate_Free_Cluster_NonCol_CWF(OpenMXCWFGrids *grids, OpenMXSolver
 
 
 
-double Cluster_DFT_NonCol_CWF(OpenMXCWFGrids *grids, const OpenMXChemicalPotentials *chemical,
+double Cluster_DFT_NonCol_CWF(OpenMXCWFGrids *grids, OpenMXCWFObservables *cwf_values, const OpenMXChemicalPotentials *chemical,
                    int SCF_iter,
                    int SpinP_switch,
                    double *ko,
@@ -198,12 +197,12 @@ double Cluster_DFT_NonCol_CWF(OpenMXCWFGrids *grids, const OpenMXChemicalPotenti
 
   /* initialize DM_func, CWF_Charge, and CWF_Energy */
  
-  DM_func = 0.0;
+  cwf_values->distance = 0.0;
 
   for (spin=0; spin<1; spin++){
     for (i=0; i<TNum_CWFs; i++){
-      CWF_Charge[spin][i] = 0.0;
-      CWF_Energy[spin][i] = 0.0;
+      openmx_cwf_charge_row(cwf_values,spin)[i] = 0.0;
+      openmx_cwf_energy_row(cwf_values,spin)[i] = 0.0;
     }
   }
 
@@ -834,7 +833,7 @@ double Cluster_DFT_NonCol_CWF(OpenMXCWFGrids *grids, const OpenMXChemicalPotenti
               calculation of CWFs
   ***********************************************/
 
-  time6 += Calc_CWF_Cluster_NonCol(grids, chemical,  myid,numprocs,size_H1,is2,ie2,MP,
+  time6 += Calc_CWF_Cluster_NonCol(grids, cwf_values, chemical,  myid,numprocs,size_H1,is2,ie2,MP,
                                     n2,MinN,MaxN,CntOLP,ko,EVec1,Full_EVec );
 
   if (measure_time){
@@ -876,6 +875,7 @@ double Cluster_DFT_NonCol_CWF(OpenMXCWFGrids *grids, const OpenMXChemicalPotenti
 
 typedef struct {
   OpenMXCWFGrids *grids;
+  OpenMXCWFObservables *cwf_values;
   const OpenMXChemicalPotentials *chemical;
   int myid, numprocs, size_H1;
   int *is2, *ie2, *MP;
@@ -884,7 +884,7 @@ typedef struct {
   dcomplex *EVec1, *Full_EVec;
 } ClusterNonColCWFArguments;
 
-static double Calc_CWF_Cluster_NonCol_owned(OpenMXCWFGrids *grids, OpenMXSolverInvocation *scratch, const OpenMXChemicalPotentials *chemical,
+static double Calc_CWF_Cluster_NonCol_owned(OpenMXCWFGrids *grids, OpenMXCWFObservables *cwf_values, OpenMXSolverInvocation *scratch, const OpenMXChemicalPotentials *chemical,
     int myid,
     int numprocs,
     int size_H1,
@@ -902,11 +902,11 @@ static double Calc_CWF_Cluster_NonCol_owned(OpenMXCWFGrids *grids, OpenMXSolverI
 static int ClusterNonColCWFOperation(OpenMXSolverInvocation *scratch, void *opaque, double *result)
 {
   const ClusterNonColCWFArguments *a=(const ClusterNonColCWFArguments*)opaque;
-  *result=Calc_CWF_Cluster_NonCol_owned(a->grids, scratch, a->chemical, a->myid, a->numprocs, a->size_H1, a->is2, a->ie2, a->MP, a->n2, a->MinN, a->MaxN, a->OLP0, a->ko, a->EVec1, a->Full_EVec);
+  *result=Calc_CWF_Cluster_NonCol_owned(a->grids, a->cwf_values, scratch, a->chemical, a->myid, a->numprocs, a->size_H1, a->is2, a->ie2, a->MP, a->n2, a->MinN, a->MaxN, a->OLP0, a->ko, a->EVec1, a->Full_EVec);
   return 1;
 }
 
-double Calc_CWF_Cluster_NonCol(OpenMXCWFGrids *grids, const OpenMXChemicalPotentials *chemical,
+double Calc_CWF_Cluster_NonCol(OpenMXCWFGrids *grids, OpenMXCWFObservables *cwf_values, const OpenMXChemicalPotentials *chemical,
     int myid,
     int numprocs,
     int size_H1,
@@ -921,11 +921,11 @@ double Calc_CWF_Cluster_NonCol(OpenMXCWFGrids *grids, const OpenMXChemicalPotent
     dcomplex *EVec1,
     dcomplex *Full_EVec)
 {
-  ClusterNonColCWFArguments arguments={grids, chemical, myid, numprocs, size_H1, is2, ie2, MP, n2, MinN, MaxN, OLP0, ko, EVec1, Full_EVec};
+  ClusterNonColCWFArguments arguments={grids, cwf_values, chemical, myid, numprocs, size_H1, is2, ie2, MP, n2, MinN, MaxN, OLP0, ko, EVec1, Full_EVec};
   return OpenMX_Solver_Run(ClusterNonColCWFOperation,&arguments);
 }
 
-static double Calc_CWF_Cluster_NonCol_owned(OpenMXCWFGrids *grids, OpenMXSolverInvocation *scratch, const OpenMXChemicalPotentials *chemical,
+static double Calc_CWF_Cluster_NonCol_owned(OpenMXCWFGrids *grids, OpenMXCWFObservables *cwf_values, OpenMXSolverInvocation *scratch, const OpenMXChemicalPotentials *chemical,
     int myid,
     int numprocs,
     int size_H1,
@@ -1450,7 +1450,7 @@ static double Calc_CWF_Cluster_NonCol_owned(OpenMXCWFGrids *grids, OpenMXSolverI
 
   for (i=0; i<TNum_CWFs; i++){
     dif = sv[i] - 1.0;
-    DM_func += dif*dif;
+    cwf_values->distance += dif*dif;
   }
 
   /*******************************************
@@ -1620,20 +1620,20 @@ static double Calc_CWF_Cluster_NonCol_owned(OpenMXCWFGrids *grids, OpenMXSolverI
       tmp = FermiF*( Hs[j*cwf_projection->local_rows+i].r*Hs[j*cwf_projection->local_rows+i].r
                    + Hs[j*cwf_projection->local_rows+i].i*Hs[j*cwf_projection->local_rows+i].i );
 
-      CWF_Charge[0][jg] += tmp;
-      CWF_Energy[0][jg] += tmp*ko[ig];
+      openmx_cwf_charge_row(cwf_values,0)[jg] += tmp;
+      openmx_cwf_energy_row(cwf_values,0)[jg] += tmp*ko[ig];
     }
   }
 
-  MPI_Allreduce( MPI_IN_PLACE, &CWF_Charge[0][0], TNum_CWFs, MPI_DOUBLE, MPI_SUM, mpi_comm_level1 );
-  MPI_Allreduce( MPI_IN_PLACE, &CWF_Energy[0][0], TNum_CWFs, MPI_DOUBLE, MPI_SUM, mpi_comm_level1 );
+  MPI_Allreduce( MPI_IN_PLACE, &openmx_cwf_charge_row(cwf_values,0)[0], TNum_CWFs, MPI_DOUBLE, MPI_SUM, mpi_comm_level1 );
+  MPI_Allreduce( MPI_IN_PLACE, &openmx_cwf_energy_row(cwf_values,0)[0], TNum_CWFs, MPI_DOUBLE, MPI_SUM, mpi_comm_level1 );
 
   Sum_Charges = 0.0;
   Sum_Energies = 0.0;;
 
   for (i=0; i<TNum_CWFs; i++){
-    Sum_Charges  += CWF_Charge[0][i];
-    Sum_Energies += CWF_Energy[0][i];
+    Sum_Charges  += openmx_cwf_charge_row(cwf_values,0)[i];
+    Sum_Energies += openmx_cwf_energy_row(cwf_values,0)[i];
 
     //if (myid==Host_ID) printf("BBB1 i=%2d %15.12f %15.12f\n",i,CWF_Charge[0][i],CWF_Energy[0][i]);
   }
@@ -1642,7 +1642,7 @@ static double Calc_CWF_Cluster_NonCol_owned(OpenMXCWFGrids *grids, OpenMXSolverI
 
   /* show DM_func */ 
 
-  if (myid==0) printf("DM_func=%15.12f  %15.12f per CWF\n",DM_func,DM_func/(double)TNum_CWFs);
+  if (myid==0) printf("DM_func=%15.12f  %15.12f per CWF\n",cwf_values->distance,cwf_values->distance/(double)TNum_CWFs);
 
   /**********************************************************
     save the effective charges and local energies to a file
@@ -1680,7 +1680,7 @@ static double Calc_CWF_Cluster_NonCol_owned(OpenMXCWFGrids *grids, OpenMXSolverI
 	fprintf(fp_CWF_Charge,"***********************************************************\n\n");
 
         fprintf(fp_CWF_Charge,"  DM_func. %15.12f  %15.12f per CWF\n\n",
-                                 DM_func,DM_func/(double)TNum_CWFs);
+                                 cwf_values->distance,cwf_values->distance/(double)TNum_CWFs);
 
 	for (Gc_AN=1; Gc_AN<=atomnum; Gc_AN++){
 
@@ -1689,7 +1689,7 @@ static double Calc_CWF_Cluster_NonCol_owned(OpenMXCWFGrids *grids, OpenMXSolverI
 	  sumP = 0.0; 
 
 	  for (i=0; i<2*CWF_Num_predefined[wan1]; i++){
-	    sumP += CWF_Charge[0][i0+i];
+	    sumP += openmx_cwf_charge_row(cwf_values,0)[i0+i];
 	  }
        
 	  fprintf(fp_CWF_Charge,"   %4d %4s     %12.9f\n",Gc_AN, SpeName[wan1], sumP);
@@ -1715,7 +1715,7 @@ static double Calc_CWF_Cluster_NonCol_owned(OpenMXCWFGrids *grids, OpenMXSolverI
 	  sumP = 0.0; 
 
 	  for (i=0; i<2*CWF_Num_predefined[wan1]; i++){
-	    fprintf(fp_CWF_Charge,"      %2d         %12.9f\n", i,CWF_Charge[0][i0+i]);
+	    fprintf(fp_CWF_Charge,"      %2d         %12.9f\n", i,openmx_cwf_charge_row(cwf_values,0)[i0+i]);
 	  } 
 
 	} // Gc_AN
@@ -1766,7 +1766,7 @@ static double Calc_CWF_Cluster_NonCol_owned(OpenMXCWFGrids *grids, OpenMXSolverI
 	fprintf(fp_CWF_Charge,"***********************************************************\n\n");
 
         fprintf(fp_CWF_Charge,"  DM_func. %15.12f  %15.12f per CWF\n\n",
-                                 DM_func,DM_func/(double)TNum_CWFs);
+                                 cwf_values->distance,cwf_values->distance/(double)TNum_CWFs);
 
 	fprintf(fp_CWF_Charge,"   Group\n");
 
@@ -1776,7 +1776,7 @@ static double Calc_CWF_Cluster_NonCol_owned(OpenMXCWFGrids *grids, OpenMXSolverI
 	  sumP = 0.0; 
 
 	  for (Lidx=0; Lidx<Num_CWF_MOs_Group[gidx]; Lidx++){
-	    sumP += CWF_Charge[0][i0+Lidx];
+	    sumP += openmx_cwf_charge_row(cwf_values,0)[i0+Lidx];
 	  }
 
 	  fprintf(fp_CWF_Charge,"   %4d          %12.9f\n", gidx+1, sumP);
@@ -1802,7 +1802,7 @@ static double Calc_CWF_Cluster_NonCol_owned(OpenMXCWFGrids *grids, OpenMXSolverI
 	  sumP = 0.0; 
 
 	  for (i=0; i<Num_CWF_MOs_Group[gidx]; i++){
-	    fprintf(fp_CWF_Charge,"      %2d         %12.9f\n", i+1,CWF_Charge[0][i0+i]);
+	    fprintf(fp_CWF_Charge,"      %2d         %12.9f\n", i+1,openmx_cwf_charge_row(cwf_values,0)[i0+i]);
 	  }
 
 	} // gidx

@@ -111,6 +111,7 @@ extern "C" void openmx_core_native_resources_clear(OpenMXCoreContext* context) {
     context->dynamics={};
     context->chemical={};
     context->cwf_grids={};
+    context->cwf_observables.clear();
   }
 }
 extern "C" int openmx_core_native_resources_state(OpenMXCoreContext* context,const char* name,

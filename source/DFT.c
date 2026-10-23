@@ -439,6 +439,7 @@ void Allocate_Free_GridData(int todo_flag);
 
 double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 {
+  OpenMXCWFObservables *cwf_values=NULL;
   OpenMXChemicalPotentials *chemical=NULL;
   char chemical_error[256];
   if(!openmx_core_chemical_potentials(core,&chemical,chemical_error,sizeof(chemical_error))) {
@@ -2148,6 +2149,14 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
       MPI_Abort(mpi_comm_level1,1);
       abort();
     }
+    if(!openmx_core_cwf_observables(core,&cwf_values,cwf_error,sizeof(cwf_error)) ||
+        cwf_values->spin_channels!=(SpinP_switch==3 ? 1U:2U) ||
+        cwf_values->row_capacity<(size_t)TNum_CWFs) {
+      fprintf(stderr,"OpenMX CWF observables are unavailable or too small: %s\n",cwf_error);
+      MPI_Abort(mpi_comm_level1,1);
+      abort();
+    }
+
 
 
     /* cluster and collinear calculation */    
@@ -2173,7 +2182,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
       /* calculation of CWFs */
 
-      time5 += Cluster_DFT_Col_CWF(grids, chemical,  LSCF_iter,SpinP_switch,
+      time5 += Cluster_DFT_Col_CWF(grids, cwf_values, chemical,  LSCF_iter,SpinP_switch,
 				    ko_col,H,OLP[0],DM[0],EDM,
 				    Eele0,Eele1,
 				    myworld1,NPROCS_ID1,Comm_World1,NPROCS_WD1,
@@ -2224,7 +2233,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
       /* calculation of CWFs */
 
-      time5 += Band_DFT_Col_CWF(grids, chemical,  LSCF_iter,
+      time5 += Band_DFT_Col_CWF(grids, cwf_values, chemical,  LSCF_iter,
   				 CWF_Kgrid1,CWF_Kgrid2,CWF_Kgrid3,
 				 SpinP_switch,H,iHNL,OLP[0],DM[0],EDM,Eele0,Eele1, 
 				 MP,order_GA,ko,koS,EIGEN_Band,
@@ -2276,7 +2285,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
       /* calculation of CWFs */
 
-      time5 += Cluster_DFT_NonCol_CWF(grids, chemical,  LSCF_iter,SpinP_switch,
+      time5 += Cluster_DFT_NonCol_CWF(grids, cwf_values, chemical,  LSCF_iter,SpinP_switch,
 				       ko_noncol,H,iHNL,OLP[0],DM[0],EDM,
 				       Eele0,Eele1,
 				       MP,is2,ie2,
@@ -2327,7 +2336,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
       /* calculation of CWFs */
 
-      time5 += Band_DFT_NonCol_CWF(grids, chemical,  LSCF_iter,
+      time5 += Band_DFT_NonCol_CWF(grids, cwf_values, chemical,  LSCF_iter,
 				    Kspace_grid1,Kspace_grid2,Kspace_grid3,
 				    SpinP_switch,H,iHNL,OLP[0],DM[0],EDM,Eele0,Eele1, 
 				    MP,order_GA,ko_noncol,koS,EIGEN_Band,
@@ -2793,7 +2802,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
     printf("<MD=%2d>  Total Energy\n",MD_iter);fflush(stdout);
   }
 
-  if (!orbitalOpt_Force_Skip) time8 += Total_Energy(energies, atomic, vna, MD_iter,ECE, electronic, local_basis);
+  if (!orbitalOpt_Force_Skip) time8 += Total_Energy(energies, cwf_values, atomic, vna, MD_iter,ECE, electronic, local_basis);
 
   components->atomic_reference  = 0.0;
   components->core  = ECE[0];

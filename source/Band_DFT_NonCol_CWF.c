@@ -46,7 +46,6 @@
 
 double complex ***CWF_Guiding_MOs_NC;
 double complex ******CWF_Coef_NC;
-double DM_func;
 
 void Save_Projection_Matrix(char *mode,
 			    char *fn,
@@ -98,7 +97,7 @@ static void Band_Dispersion_NonCol_CWF(OpenMXCWFGrids *grids, OpenMXSolverInvoca
 					int TNum_CWFs, const OpenMXCWFBlocks *TB_Hopping,
 					int knum_i, int knum_j, int knum_k, MPI_Comm mpi_comm_level5 );
 
-static double Calc_CWF_Band_NonCol(OpenMXCWFGrids *grids, OpenMXSolverInvocation *scratch, OpenMXBandNonColCWFWorkspace *workspace, const OpenMXChemicalPotentials *chemical,
+static double Calc_CWF_Band_NonCol(OpenMXCWFGrids *grids, OpenMXCWFObservables *cwf_values, OpenMXSolverInvocation *scratch, OpenMXBandNonColCWFWorkspace *workspace, const OpenMXChemicalPotentials *chemical,
 				   char *mode,
 				   int own_calc_flag,
 				   int kloop,
@@ -148,6 +147,7 @@ static void Allocate_Free_Band_NonCol_CWF(OpenMXCWFGrids *grids, OpenMXSolverInv
 #pragma GCC optimize("O2")
 typedef struct {
   OpenMXCWFGrids *grids;
+  OpenMXCWFObservables *cwf_values;
   const OpenMXChemicalPotentials *chemical;
   int SCF_iter;
   int knum_i;
@@ -202,7 +202,7 @@ typedef struct {
   const OpenMXElectronicViews *electronic;
 } BandNonColCWFArguments;
 
-static double Band_DFT_NonCol_CWF_owned(OpenMXCWFGrids *grids, OpenMXSolverInvocation *scratch, const OpenMXChemicalPotentials *chemical,
+static double Band_DFT_NonCol_CWF_owned(OpenMXCWFGrids *grids, OpenMXCWFObservables *cwf_values, OpenMXSolverInvocation *scratch, const OpenMXChemicalPotentials *chemical,
                     int SCF_iter,
                     int knum_i, int knum_j, int knum_k,
 		    int SpinP_switch,
@@ -252,11 +252,11 @@ static double Band_DFT_NonCol_CWF_owned(OpenMXCWFGrids *grids, OpenMXSolverInvoc
 static int BandNonColCWFOperation(OpenMXSolverInvocation *scratch,void *opaque,double *result)
 {
   const BandNonColCWFArguments *a=(const BandNonColCWFArguments*)opaque;
-  *result=Band_DFT_NonCol_CWF_owned(a->grids, scratch, a->chemical, a->SCF_iter, a->knum_i, a->knum_j, a->knum_k, a->SpinP_switch, a->nh, a->ImNL, a->CntOLP, a->CDM, a->EDM, a->Eele0, a->Eele1, a->MP, a->order_GA, a->ko, a->koS, a->EIGEN, a->H1, a->Hs11, a->Hs22, a->Hs12, a->EVec1, a->Ss, a->Cs, a->Hs, a->Ss2, a->Cs2, a->Hs2, a->k_op, a->T_k_op, a->T_k_ID, a->T_KGrids1, a->T_KGrids2, a->T_KGrids3, a->myworld1, a->NPROCS_ID1, a->Comm_World1, a->NPROCS_WD1, a->Comm_World_StartID1, a->MPI_CommWD1, a->myworld2, a->NPROCS_ID2, a->NPROCS_WD2, a->Comm_World2, a->Comm_World_StartID2, a->MPI_CommWD2, a->nkpath, a->n_perk, a->kpath, a->kname, a->electronic);
+  *result=Band_DFT_NonCol_CWF_owned(a->grids, a->cwf_values, scratch, a->chemical, a->SCF_iter, a->knum_i, a->knum_j, a->knum_k, a->SpinP_switch, a->nh, a->ImNL, a->CntOLP, a->CDM, a->EDM, a->Eele0, a->Eele1, a->MP, a->order_GA, a->ko, a->koS, a->EIGEN, a->H1, a->Hs11, a->Hs22, a->Hs12, a->EVec1, a->Ss, a->Cs, a->Hs, a->Ss2, a->Cs2, a->Hs2, a->k_op, a->T_k_op, a->T_k_ID, a->T_KGrids1, a->T_KGrids2, a->T_KGrids3, a->myworld1, a->NPROCS_ID1, a->Comm_World1, a->NPROCS_WD1, a->Comm_World_StartID1, a->MPI_CommWD1, a->myworld2, a->NPROCS_ID2, a->NPROCS_WD2, a->Comm_World2, a->Comm_World_StartID2, a->MPI_CommWD2, a->nkpath, a->n_perk, a->kpath, a->kname, a->electronic);
   return 1;
 }
 
-double Band_DFT_NonCol_CWF(OpenMXCWFGrids *grids, const OpenMXChemicalPotentials *chemical,
+double Band_DFT_NonCol_CWF(OpenMXCWFGrids *grids, OpenMXCWFObservables *cwf_values, const OpenMXChemicalPotentials *chemical,
                     int SCF_iter,
                     int knum_i, int knum_j, int knum_k,
 		    int SpinP_switch,
@@ -303,11 +303,11 @@ double Band_DFT_NonCol_CWF(OpenMXCWFGrids *grids, const OpenMXChemicalPotentials
                     int nkpath, int *n_perk, 
                     double ***kpath, char ***kname, const OpenMXElectronicViews *electronic)
 {
-  BandNonColCWFArguments arguments={grids, chemical, SCF_iter, knum_i, knum_j, knum_k, SpinP_switch, nh, ImNL, CntOLP, CDM, EDM, Eele0, Eele1, MP, order_GA, ko, koS, EIGEN, H1, Hs11, Hs22, Hs12, EVec1, Ss, Cs, Hs, Ss2, Cs2, Hs2, k_op, T_k_op, T_k_ID, T_KGrids1, T_KGrids2, T_KGrids3, myworld1, NPROCS_ID1, Comm_World1, NPROCS_WD1, Comm_World_StartID1, MPI_CommWD1, myworld2, NPROCS_ID2, NPROCS_WD2, Comm_World2, Comm_World_StartID2, MPI_CommWD2, nkpath, n_perk, kpath, kname, electronic};
+  BandNonColCWFArguments arguments={grids, cwf_values, chemical, SCF_iter, knum_i, knum_j, knum_k, SpinP_switch, nh, ImNL, CntOLP, CDM, EDM, Eele0, Eele1, MP, order_GA, ko, koS, EIGEN, H1, Hs11, Hs22, Hs12, EVec1, Ss, Cs, Hs, Ss2, Cs2, Hs2, k_op, T_k_op, T_k_ID, T_KGrids1, T_KGrids2, T_KGrids3, myworld1, NPROCS_ID1, Comm_World1, NPROCS_WD1, Comm_World_StartID1, MPI_CommWD1, myworld2, NPROCS_ID2, NPROCS_WD2, Comm_World2, Comm_World_StartID2, MPI_CommWD2, nkpath, n_perk, kpath, kname, electronic};
   return OpenMX_Solver_Run(BandNonColCWFOperation,&arguments);
 }
 
-static double Band_DFT_NonCol_CWF_owned(OpenMXCWFGrids *grids, OpenMXSolverInvocation *scratch, const OpenMXChemicalPotentials *chemical,
+static double Band_DFT_NonCol_CWF_owned(OpenMXCWFGrids *grids, OpenMXCWFObservables *cwf_values, OpenMXSolverInvocation *scratch, const OpenMXChemicalPotentials *chemical,
                     int SCF_iter,
                     int knum_i, int knum_j, int knum_k,
 		    int SpinP_switch,
@@ -442,12 +442,12 @@ static double Band_DFT_NonCol_CWF_owned(OpenMXCWFGrids *grids, OpenMXSolverInvoc
 
   /* initialize DM_func, CWF_Charge, and CWF_Energy */
  
-  DM_func = 0.0;
+  cwf_values->distance = 0.0;
 
   for (spin=0; spin<1; spin++){
     for (i=0; i<TNum_CWFs; i++){
-      CWF_Charge[spin][i] = 0.0;
-      CWF_Energy[spin][i] = 0.0;
+      openmx_cwf_charge_row(cwf_values,spin)[i] = 0.0;
+      openmx_cwf_energy_row(cwf_values,spin)[i] = 0.0;
     }
   }
 
@@ -958,7 +958,7 @@ static double Band_DFT_NonCol_CWF_owned(OpenMXCWFGrids *grids, OpenMXSolverInvoc
      allocation of arrays for Calc_CWF_Band_NonCol
   ****************************************************/
 
-  Calc_CWF_Band_NonCol(grids, scratch, &workspace, chemical,  "allocate", 0, kloop,knum_i,knum_j,knum_k,
+  Calc_CWF_Band_NonCol(grids, cwf_values, scratch, &workspace, chemical,  "allocate", 0, kloop,knum_i,knum_j,knum_k,
 			T_KGrids1,T_KGrids2,T_KGrids3,sum_weights,0.0,
 			myid0,numprocs0,myid1,numprocs1,myid2,numprocs2,myworld1,myworld2,
 			is2,ie2,MP,n2,MinN,MaxN,TNum_CWFs,MPI_CommWD1,
@@ -1326,7 +1326,7 @@ static double Band_DFT_NonCol_CWF_owned(OpenMXCWFGrids *grids, OpenMXSolverInvoc
 
     if (measure_time) dtime(&Stime);
 
-    Calc_CWF_Band_NonCol(grids, scratch, &workspace, chemical,  "calc",(kloop0<num_kloop0),kloop,knum_i,knum_j,knum_k,
+    Calc_CWF_Band_NonCol(grids, cwf_values, scratch, &workspace, chemical,  "calc",(kloop0<num_kloop0),kloop,knum_i,knum_j,knum_k,
 			  T_KGrids1,T_KGrids2,T_KGrids3,sum_weights,(double)T_k_op[kloop],
 			  myid0,numprocs0,myid1,numprocs1,myid2,numprocs2,myworld1,myworld2,
 			  is2,ie2,MP,n2,MinN,MaxN,TNum_CWFs,MPI_CommWD1,
@@ -1357,7 +1357,7 @@ static double Band_DFT_NonCol_CWF_owned(OpenMXCWFGrids *grids, OpenMXSolverInvoc
       freeing of arrays for Calc_CWF_Band_NonCol
   ****************************************************/
 
-  Calc_CWF_Band_NonCol(grids, scratch, &workspace, chemical,  "free", 0, kloop,knum_i,knum_j,knum_k,
+  Calc_CWF_Band_NonCol(grids, cwf_values, scratch, &workspace, chemical,  "free", 0, kloop,knum_i,knum_j,knum_k,
 			T_KGrids1,T_KGrids2,T_KGrids3,sum_weights,0.0,
 			myid0,numprocs0,myid1,numprocs1,myid2,numprocs2,myworld1,myworld2,
 			is2,ie2,MP,n2,MinN,MaxN,TNum_CWFs,MPI_CommWD1,
@@ -1405,7 +1405,7 @@ static double Band_DFT_NonCol_CWF_owned(OpenMXCWFGrids *grids, OpenMXSolverInvoc
   return time0;
 }
 
-static double Calc_CWF_Band_NonCol(OpenMXCWFGrids *grids, OpenMXSolverInvocation *scratch, OpenMXBandNonColCWFWorkspace *workspace, const OpenMXChemicalPotentials *chemical,
+static double Calc_CWF_Band_NonCol(OpenMXCWFGrids *grids, OpenMXCWFObservables *cwf_values, OpenMXSolverInvocation *scratch, OpenMXBandNonColCWFWorkspace *workspace, const OpenMXChemicalPotentials *chemical,
     char *mode,
     int own_calc_flag,
     int kloop,
@@ -1511,28 +1511,28 @@ static double Calc_CWF_Band_NonCol(OpenMXCWFGrids *grids, OpenMXSolverInvocation
 
     /* DM_func */
 
-    MPI_Allreduce( MPI_IN_PLACE, &DM_func, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
-    DM_func = DM_func/sum_weights; 
+    MPI_Allreduce( MPI_IN_PLACE, &cwf_values->distance, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
+    cwf_values->distance = cwf_values->distance/sum_weights;
 
-    if (myid0==0) printf("DM_func=%15.12f  %15.12f per CWF\n",DM_func,DM_func/(double)TNum_CWFs);
+    if (myid0==0) printf("DM_func=%15.12f  %15.12f per CWF\n",cwf_values->distance,cwf_values->distance/(double)TNum_CWFs);
 
     /* MPI_Allreduce of CWF_Charge and CWF_Energy */
 
-    MPI_Allreduce( MPI_IN_PLACE, &CWF_Charge[0][0], TNum_CWFs, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
-    MPI_Allreduce( MPI_IN_PLACE, &CWF_Energy[0][0], TNum_CWFs, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
+    MPI_Allreduce( MPI_IN_PLACE, &openmx_cwf_charge_row(cwf_values,0)[0], TNum_CWFs, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
+    MPI_Allreduce( MPI_IN_PLACE, &openmx_cwf_energy_row(cwf_values,0)[0], TNum_CWFs, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
 
     tmp = 1.0/sum_weights; 
 
     for (i=0; i<TNum_CWFs; i++){
-      CWF_Charge[0][i] *= tmp; 
-      CWF_Energy[0][i] *= tmp; 
+      openmx_cwf_charge_row(cwf_values,0)[i] *= tmp;
+      openmx_cwf_energy_row(cwf_values,0)[i] *= tmp;
     }
    
     Sum_Charges = 0.0;
     Sum_Energies = 0.0;;
     for (i=0; i<TNum_CWFs; i++){
-      Sum_Charges  += CWF_Charge[0][i];
-      Sum_Energies += CWF_Energy[0][i];
+      Sum_Charges  += openmx_cwf_charge_row(cwf_values,0)[i];
+      Sum_Energies += openmx_cwf_energy_row(cwf_values,0)[i];
     }
 
     //printf("ABC5 TNum_CWFs=%2d myworld1=%2d myworld2=%2d %15.12f %15.12f\n",TNum_CWFs,myworld1,myworld2,Sum_Charges,Sum_Energies);
@@ -1578,7 +1578,7 @@ static double Calc_CWF_Band_NonCol(OpenMXCWFGrids *grids, OpenMXSolverInvocation
 	  fprintf(fp_CWF_Charge,"***********************************************************\n\n");
 
           fprintf(fp_CWF_Charge,"  DM_func. %15.12f  %15.12f per CWF\n\n",
-                                   DM_func,DM_func/(double)TNum_CWFs);
+                                   cwf_values->distance,cwf_values->distance/(double)TNum_CWFs);
 
 	  for (Gc_AN=1; Gc_AN<=atomnum; Gc_AN++){
 
@@ -1587,7 +1587,7 @@ static double Calc_CWF_Band_NonCol(OpenMXCWFGrids *grids, OpenMXSolverInvocation
 	    sumP = 0.0; 
 
 	    for (i=0; i<2*CWF_Num_predefined[wan1]; i++){
-	      sumP += CWF_Charge[0][i0+i];
+	      sumP += openmx_cwf_charge_row(cwf_values,0)[i0+i];
 	    }
        
 	    fprintf(fp_CWF_Charge,"   %4d %4s     %12.9f\n",Gc_AN, SpeName[wan1], sumP);
@@ -1613,7 +1613,7 @@ static double Calc_CWF_Band_NonCol(OpenMXCWFGrids *grids, OpenMXSolverInvocation
 	    sumP = 0.0; 
 
 	    for (i=0; i<2*CWF_Num_predefined[wan1]; i++){
-	      fprintf(fp_CWF_Charge,"      %2d         %12.9f\n", i,CWF_Charge[0][i0+i]);
+	      fprintf(fp_CWF_Charge,"      %2d         %12.9f\n", i,openmx_cwf_charge_row(cwf_values,0)[i0+i]);
 	    } 
 
 	  } // Gc_AN
@@ -1672,7 +1672,7 @@ static double Calc_CWF_Band_NonCol(OpenMXCWFGrids *grids, OpenMXSolverInvocation
 	  fprintf(fp_CWF_Charge,"***********************************************************\n\n");
 
           fprintf(fp_CWF_Charge,"  DM_func. %15.12f  %15.12f per CWF\n\n",
-                                   DM_func,DM_func/(double)TNum_CWFs);
+                                   cwf_values->distance,cwf_values->distance/(double)TNum_CWFs);
 
 	  fprintf(fp_CWF_Charge,"   Group\n");
 
@@ -1682,7 +1682,7 @@ static double Calc_CWF_Band_NonCol(OpenMXCWFGrids *grids, OpenMXSolverInvocation
 	    sumP = 0.0; 
 
 	    for (Lidx=0; Lidx<Num_CWF_MOs_Group[gidx]; Lidx++){
-	      sumP += CWF_Charge[0][i0+Lidx];
+	      sumP += openmx_cwf_charge_row(cwf_values,0)[i0+Lidx];
 	    }
 
 	    fprintf(fp_CWF_Charge,"   %4d          %12.9f\n", gidx+1, sumP);
@@ -1708,7 +1708,7 @@ static double Calc_CWF_Band_NonCol(OpenMXCWFGrids *grids, OpenMXSolverInvocation
 	    sumP = 0.0; 
 
 	    for (i=0; i<Num_CWF_MOs_Group[gidx]; i++){
-	      fprintf(fp_CWF_Charge,"      %2d         %12.9f\n", i+1,CWF_Charge[0][i0+i]);
+	      fprintf(fp_CWF_Charge,"      %2d         %12.9f\n", i+1,openmx_cwf_charge_row(cwf_values,0)[i0+i]);
 	    }
 
 	  } // gidx
@@ -2591,7 +2591,7 @@ static double Calc_CWF_Band_NonCol(OpenMXCWFGrids *grids, OpenMXSolverInvocation
     if (myid2==0){
       for (i=0; i<TNum_CWFs; i++){
         dif = sv[i] - 1.0;
-        DM_func += weight_kpoint*dif*dif;
+        cwf_values->distance += weight_kpoint*dif*dif;
       }
     }
 
@@ -2764,8 +2764,8 @@ static double Calc_CWF_Band_NonCol(OpenMXCWFGrids *grids, OpenMXSolverInvocation
 	itmp = Hs[j*cwf_projection->local_rows+i].i;
 	tmp = weight_kpoint*FermiF*(rtmp*rtmp+itmp*itmp);
 
-	CWF_Charge[0][jg] += tmp;
-	CWF_Energy[0][jg] += tmp*EIGEN[0][kloop][ig];
+	openmx_cwf_charge_row(cwf_values,0)[jg] += tmp;
+	openmx_cwf_energy_row(cwf_values,0)[jg] += tmp*EIGEN[0][kloop][ig];
       }
     }
 

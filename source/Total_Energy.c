@@ -55,7 +55,7 @@ static double Calc_EdftD3(); /* added by Ellner */
 static void EH0_TwoCenter(const OpenMXAtomicViews *atomic, int Gc_AN, int h_AN, double VH0ij[4]);
 static void EH0_TwoCenter_at_Cutoff(const OpenMXAtomicViews *atomic, int wan1, int wan2, double VH0ij[4]);
 static void Energy_Decomposition(const OpenMXBandEnergies *energies, double ECE[], const OpenMXElectronicViews *electronic);
-static void Energy_Decomposition_CWF(double ECE[]);
+static void Energy_Decomposition_CWF(const OpenMXCWFObservables *cwf_values, double ECE[]);
 #if OPENMX_GPU_HIP
 static int TotalEnergyUseOpenMP(void);
 void TotalEnergy_EXC_EH1_Grid_OpenMP(int spinmax, double *My_Ena, double *My_Eef,
@@ -104,7 +104,7 @@ static int TotalEnergyUseOpenACC(void)
 
 
 
-double Total_Energy(const OpenMXBandEnergies *energies, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, int MD_iter, double ECE[], const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
+double Total_Energy(const OpenMXBandEnergies *energies, const OpenMXCWFObservables *cwf_values, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, int MD_iter, double ECE[], const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 { 
   double time0;
   double TStime,TEtime;
@@ -339,7 +339,7 @@ double Total_Energy(const OpenMXBandEnergies *energies, const OpenMXAtomicViews 
 
   if (CWF_Calc==1 && CWF_Energy_Decomposition==1){
 
-    Energy_Decomposition_CWF(ECE);
+    Energy_Decomposition_CWF(cwf_values, ECE);
   }
 
   /****************************************************
@@ -4419,7 +4419,7 @@ void Energy_Decomposition(const OpenMXBandEnergies *energies, double ECE[], cons
 
 
 
-void Energy_Decomposition_CWF(double ECE[])
+void Energy_Decomposition_CWF(const OpenMXCWFObservables *cwf_values, double ECE[])
 {
   int i,i0,spin,spinmax,spinmax1,XC_P_switch;
   int numS,numR,My_GNum,BN_AB,Gc_AN;
@@ -4580,7 +4580,7 @@ void Energy_Decomposition_CWF(double ECE[])
 
   for (spin=0; spin<=spinmax1; spin++){
     for (i=0; i<TNum_CWFs; i++){
-      CWF_Energy2[spin][i] = c[spin]*CWF_Charge[spin][i];
+      CWF_Energy2[spin][i] = c[spin]*openmx_cwf_charge_row(cwf_values,spin)[i];
     }
   }
 
@@ -4605,7 +4605,7 @@ void Energy_Decomposition_CWF(double ECE[])
       LNe = 0.0;
       for (spin=0; spin<=spinmax1; spin++){
         for (i=0; i<Ncwf; i++){
-          LNe += CWF_Charge[spin][i0+i];
+          LNe += openmx_cwf_charge_row(cwf_values,spin)[i0+i];
         }
       }
 
@@ -4613,7 +4613,7 @@ void Energy_Decomposition_CWF(double ECE[])
 
       for (spin=0; spin<=spinmax1; spin++){
         for (i=0; i<Ncwf; i++){
-          w = CWF_Charge[spin][i0+i]/(LNe+1.0e-15); 
+          w = openmx_cwf_charge_row(cwf_values,spin)[i0+i]/(LNe+1.0e-15);
           CWF_Energy3[spin][i0+i] = sum*w;
         } 
       }
@@ -4648,18 +4648,18 @@ void Energy_Decomposition_CWF(double ECE[])
       sp2 = 0.0;
       Csp = 0.0; 
       for (i=0; i<=4; i++){
-	sp1 += 2.0*CWF_Energy[0][i]; 
+	sp1 += 2.0*openmx_cwf_energy_row(cwf_values,0)[i];
 	sp2 += 2.0*(CWF_Energy2[0][i]+CWF_Energy3[0][i]); 
-        Csp += 2.0*CWF_Charge[0][i];
+        Csp += 2.0*openmx_cwf_charge_row(cwf_values,0)[i];
       }
 
       d1 = 0.0;
       d2 = 0.0;
       Cd = 0.0;
       for (i=5; i<10; i++){
-	d1 += 2.0*CWF_Energy[0][i]; 
+	d1 += 2.0*openmx_cwf_energy_row(cwf_values,0)[i];
 	d2 += 2.0*(CWF_Energy2[0][i]+CWF_Energy3[0][i]); 
-        Cd += 2.0*CWF_Charge[0][i];
+        Cd += 2.0*openmx_cwf_charge_row(cwf_values,0)[i];
       }
     }
 
@@ -4693,7 +4693,7 @@ void Energy_Decomposition_CWF(double ECE[])
 
 	  for (spin=0; spin<=SpinP_switch; spin++){
 	    for (i=0; i<CWF_Num_predefined[wan1]; i++){
-	      sumE[spin]  += CWF_Energy[spin][i0+i];
+	      sumE[spin]  += openmx_cwf_energy_row(cwf_values,spin)[i0+i];
 	      sumE2[spin] += CWF_Energy2[spin][i0+i] + CWF_Energy3[spin][i0+i];
 	    }
 	  }
@@ -4747,14 +4747,14 @@ void Energy_Decomposition_CWF(double ECE[])
 	    for (i=0; i<CWF_Num_predefined[wan1]; i++){
 	      fprintf(fp_CWF,"   %2d    %10.6f %10.6f %10.6f %10.6f %10.6f %10.6f %10.6f %10.6f %10.6f %10.6f\n",
 		      i,
-		      CWF_Energy[0][i0+i],CWF_Energy[0][i0+i],
-		      CWF_Energy[0][i0+i]+CWF_Energy[0][i0+i],
-		      CWF_Energy[0][i0+i]-CWF_Energy[0][i0+i],
+		      openmx_cwf_energy_row(cwf_values,0)[i0+i],openmx_cwf_energy_row(cwf_values,0)[i0+i],
+		      openmx_cwf_energy_row(cwf_values,0)[i0+i]+openmx_cwf_energy_row(cwf_values,0)[i0+i],
+		      openmx_cwf_energy_row(cwf_values,0)[i0+i]-openmx_cwf_energy_row(cwf_values,0)[i0+i],
 		      CWF_Energy2[0][i0+i]+CWF_Energy3[0][i0+i],CWF_Energy2[0][i0+i]+CWF_Energy3[0][i0+i],
 		      CWF_Energy2[0][i0+i]+CWF_Energy3[0][i0+i]+CWF_Energy2[0][i0+i]+CWF_Energy3[0][i0+i],
 		      CWF_Energy2[0][i0+i]+CWF_Energy3[0][i0+i]-CWF_Energy2[0][i0+i]-CWF_Energy3[0][i0+i],
-		      CWF_Energy[0][i0+i]+CWF_Energy2[0][i0+i]+CWF_Energy3[0][i0+i]+CWF_Energy[0][i0+i]+CWF_Energy2[0][i0+i]+CWF_Energy3[0][i0+i],
-		      CWF_Energy[0][i0+i]+CWF_Energy2[0][i0+i]+CWF_Energy3[0][i0+i]-CWF_Energy[0][i0+i]-CWF_Energy2[0][i0+i]-CWF_Energy3[0][i0+i]);
+		      openmx_cwf_energy_row(cwf_values,0)[i0+i]+CWF_Energy2[0][i0+i]+CWF_Energy3[0][i0+i]+openmx_cwf_energy_row(cwf_values,0)[i0+i]+CWF_Energy2[0][i0+i]+CWF_Energy3[0][i0+i],
+		      openmx_cwf_energy_row(cwf_values,0)[i0+i]+CWF_Energy2[0][i0+i]+CWF_Energy3[0][i0+i]-openmx_cwf_energy_row(cwf_values,0)[i0+i]-CWF_Energy2[0][i0+i]-CWF_Energy3[0][i0+i]);
 
 	    }
 	  }
@@ -4762,14 +4762,14 @@ void Energy_Decomposition_CWF(double ECE[])
 	    for (i=0; i<CWF_Num_predefined[wan1]; i++){
 	      fprintf(fp_CWF,"   %2d    %10.6f %10.6f %10.6f %10.6f %10.6f %10.6f %10.6f %10.6f %10.6f %10.6f\n",
 		      i,
-		      CWF_Energy[0][i0+i],CWF_Energy[1][i0+i],
-		      CWF_Energy[0][i0+i]+CWF_Energy[1][i0+i],
-		      CWF_Energy[0][i0+i]-CWF_Energy[1][i0+i],
+		      openmx_cwf_energy_row(cwf_values,0)[i0+i],openmx_cwf_energy_row(cwf_values,1)[i0+i],
+		      openmx_cwf_energy_row(cwf_values,0)[i0+i]+openmx_cwf_energy_row(cwf_values,1)[i0+i],
+		      openmx_cwf_energy_row(cwf_values,0)[i0+i]-openmx_cwf_energy_row(cwf_values,1)[i0+i],
 		      CWF_Energy2[0][i0+i]+CWF_Energy3[0][i0+i],CWF_Energy2[1][i0+i]+CWF_Energy3[1][i0+i],
 		      CWF_Energy2[0][i0+i]+CWF_Energy3[0][i0+i]+CWF_Energy2[1][i0+i]+CWF_Energy3[1][i0+i],
 		      CWF_Energy2[0][i0+i]+CWF_Energy3[0][i0+i]-CWF_Energy2[1][i0+i]-CWF_Energy3[1][i0+i],
-		      CWF_Energy[0][i0+i]+CWF_Energy2[0][i0+i]+CWF_Energy3[0][i0+i]+CWF_Energy[1][i0+i]+CWF_Energy2[1][i0+i]+CWF_Energy3[1][i0+i],
-		      CWF_Energy[0][i0+i]+CWF_Energy2[0][i0+i]+CWF_Energy3[0][i0+i]-CWF_Energy[1][i0+i]-CWF_Energy2[1][i0+i]-CWF_Energy3[1][i0+i]);
+		      openmx_cwf_energy_row(cwf_values,0)[i0+i]+CWF_Energy2[0][i0+i]+CWF_Energy3[0][i0+i]+openmx_cwf_energy_row(cwf_values,1)[i0+i]+CWF_Energy2[1][i0+i]+CWF_Energy3[1][i0+i],
+		      openmx_cwf_energy_row(cwf_values,0)[i0+i]+CWF_Energy2[0][i0+i]+CWF_Energy3[0][i0+i]-openmx_cwf_energy_row(cwf_values,1)[i0+i]-CWF_Energy2[1][i0+i]-CWF_Energy3[1][i0+i]);
 	    }
 	  } 
 
@@ -4794,7 +4794,7 @@ void Energy_Decomposition_CWF(double ECE[])
 	  sumE2[0] = 0.0; 
 
 	  for (i=0; i<2*CWF_Num_predefined[wan1]; i++){
-	    sumE[0]  += CWF_Energy[0][i0+i];
+	    sumE[0]  += openmx_cwf_energy_row(cwf_values,0)[i0+i];
 	    sumE2[0] += CWF_Energy2[0][i0+i] + CWF_Energy3[0][i0+i];
 	  }
        
@@ -4830,9 +4830,9 @@ void Energy_Decomposition_CWF(double ECE[])
 	  for (i=0; i<2*CWF_Num_predefined[wan1]; i++){
 	    fprintf(fp_CWF,"   %2d         %10.6f %10.6f %10.6f\n",
 		    i,
-		    CWF_Energy[0][i0+i],
+		    openmx_cwf_energy_row(cwf_values,0)[i0+i],
 		    CWF_Energy2[0][i0+i]+CWF_Energy3[0][i0+i],
-		    CWF_Energy[0][i0+i]+CWF_Energy2[0][i0+i]+CWF_Energy3[0][i0+i]);
+		    openmx_cwf_energy_row(cwf_values,0)[i0+i]+CWF_Energy2[0][i0+i]+CWF_Energy3[0][i0+i]);
 	  }
 
 	  i0 += 2*CWF_Num_predefined[wan1];

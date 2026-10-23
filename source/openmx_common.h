@@ -1302,26 +1302,6 @@ extern int *Num_CWF_MOs_Group;
 *******************************************************/
 extern double ***CWF_Guiding_MOs;
 
-/*******************************************************
- double **CWF_Charge;
-  Charges calculated by closest Wannier functions (CWFs) 
-  size: CWF_Charge[spinsize]
-                  [TNum_CWFs]
-  allocation: Input_std.c
-  free:       Free_Arrays(0) in openmx.c
-*******************************************************/
-extern double **CWF_Charge;
-
-/*******************************************************
- double **CWF_Energy;
-  Decomposed band energies calculated by closest Wannier 
-  functions (CWFs) 
-  size: CWF_Energy[spinsize]
-                  [TNum_CWFs]
-  allocation: Input_std.c
-  free:       Free_Arrays(0) in openmx.c
-*******************************************************/
-extern double **CWF_Energy;
 
 /*******************************************************
  double *****H0;
@@ -3052,7 +3032,7 @@ double *Set_Hamiltonian_GpuSolver_Packed_H(int spin);
 double *Set_Hamiltonian_GpuSolver_Packed_ImNL(int comp);
 
 
-double Total_Energy(const OpenMXBandEnergies *energies, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, int MD_iter, double ECE[], const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
+double Total_Energy(const OpenMXBandEnergies *energies, const OpenMXCWFObservables *cwf_values, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, int MD_iter, double ECE[], const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
 double Force(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna,const OpenMXReciprocalViews *reciprocal, double *****H0,
 	     double ******DS_NL, 
 	     double *****OLP,
@@ -3400,7 +3380,7 @@ double Band_DFT_NonCol(OpenMXBandNonColState *state,
 		    int *Comm_World_StartID2,
 		    MPI_Comm *MPI_CommWD2, const OpenMXElectronicViews *electronic);
 
-double Band_DFT_NonCol_CWF(OpenMXCWFGrids *grids, const OpenMXChemicalPotentials *chemical,
+double Band_DFT_NonCol_CWF(OpenMXCWFGrids *grids, OpenMXCWFObservables *cwf_values, const OpenMXChemicalPotentials *chemical,
                     int SCF_iter,
                     int knum_i, int knum_j, int knum_k,
 		    int SpinP_switch,
@@ -3447,7 +3427,7 @@ double Band_DFT_NonCol_CWF(OpenMXCWFGrids *grids, const OpenMXChemicalPotentials
                     int nkpath, int *n_perk, 
                     double ***kpath, char ***kname, const OpenMXElectronicViews *electronic);
 
-double Band_DFT_Col_CWF(OpenMXCWFGrids *grids, const OpenMXChemicalPotentials *chemical,
+double Band_DFT_Col_CWF(OpenMXCWFGrids *grids, OpenMXCWFObservables *cwf_values, const OpenMXChemicalPotentials *chemical,
                     int SCF_iter,
                     int knum_i, int knum_j, int knum_k,
 		    int SpinP_switch,
@@ -3492,7 +3472,7 @@ double Band_DFT_Col_CWF(OpenMXCWFGrids *grids, const OpenMXChemicalPotentials *c
                     double ***kpath, char ***kname, const OpenMXElectronicViews *electronic);
 
 
-double Cluster_DFT_Col_CWF(OpenMXCWFGrids *grids, const OpenMXChemicalPotentials *chemical,
+double Cluster_DFT_Col_CWF(OpenMXCWFGrids *grids, OpenMXCWFObservables *cwf_values, const OpenMXChemicalPotentials *chemical,
                    int SCF_iter,
                    int SpinP_switch,
                    double **ko,
@@ -3523,7 +3503,7 @@ double Cluster_DFT_Col_CWF(OpenMXCWFGrids *grids, const OpenMXChemicalPotentials
                    double *Work1, const OpenMXElectronicViews *electronic);
 
 
-double Cluster_DFT_NonCol_CWF(OpenMXCWFGrids *grids, const OpenMXChemicalPotentials *chemical,
+double Cluster_DFT_NonCol_CWF(OpenMXCWFGrids *grids, OpenMXCWFObservables *cwf_values, const OpenMXChemicalPotentials *chemical,
                    int SCF_iter,
                    int SpinP_switch,
                    double *ko,

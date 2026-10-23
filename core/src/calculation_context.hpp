@@ -13,6 +13,7 @@
 #include <openmx_core_dynamics.h>
 #include <openmx_core_chemical.h>
 #include <openmx_core_cwf.h>
+#include "cwf_observables.hpp"
 #include "grid_assembly.hpp"
 #include <openmx/core/orbital_optimization.hpp>
 #include <openmx/core/radial.hpp>
@@ -45,5 +46,6 @@ struct OpenMXCoreContext {
   OpenMXDynamicsState dynamics{};
   OpenMXChemicalPotentials chemical{};
   OpenMXCWFGrids cwf_grids{};
+  openmx::core::CwfObservables cwf_observables;
   NativeResourceGroups native_resources;
 };
