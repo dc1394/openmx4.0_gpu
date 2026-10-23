@@ -78,8 +78,8 @@ typedef OpenMXMixingHState MixingHState;
 
 static void Simple_Mixing_H(OpenMXMixingHistory *history, int MD_iter, int SCF_iter, int SCF_iter0 , const OpenMXElectronicViews *electronic);
 static void Pulay_Mixing_H(OpenMXSolverInvocation *scratch, MixingHState *state, int MD_iter, int SCF_iter, int SCF_iter0 , const OpenMXElectronicViews *electronic);
-static void Pulay_Mixing_H_MultiSecant(OpenMXSolverInvocation *scratch, int MD_iter, int SCF_iter, int SCF_iter0 , const OpenMXElectronicViews *electronic);
-static void Pulay_Mixing_H_with_One_Shot_Hessian(OpenMXSolverInvocation *scratch, int MD_iter, int SCF_iter, int SCF_iter0 , const OpenMXElectronicViews *electronic);
+static void Pulay_Mixing_H_MultiSecant(OpenMXSolverInvocation *scratch, OpenMXMixingHistory *history, int MD_iter, int SCF_iter, int SCF_iter0 , const OpenMXElectronicViews *electronic);
+static void Pulay_Mixing_H_with_One_Shot_Hessian(OpenMXSolverInvocation *scratch, OpenMXMixingHistory *history, int MD_iter, int SCF_iter, int SCF_iter0 , const OpenMXElectronicViews *electronic);
 static void Inverse(OpenMXSolverInvocation *scratch, int n, const OpenMXSolverRealTensor *a, const OpenMXSolverRealTensor *ia);
 
 
@@ -139,7 +139,7 @@ double Mixing_H(MixingHState *state,  int MD_iter, int SCF_iter, int SCF_iter0 ,
   }
 
   /* if SCF_iter0==1, then NormRD[0]=1 */
-  if (SCF_iter0==1) NormRD[0] = 1.0;
+  if (SCF_iter0==1) state->history->norm[0] = 1.0;
 
   MPI_Barrier(mpi_comm_level1);
   dtime(&TEtime);
@@ -151,7 +151,7 @@ double Mixing_H(MixingHState *state,  int MD_iter, int SCF_iter, int SCF_iter0 ,
 
 
 
-void Pulay_Mixing_H_MultiSecant(OpenMXSolverInvocation *scratch, int MD_iter, int SCF_iter, int SCF_iter0 , const OpenMXElectronicViews *electronic)
+void Pulay_Mixing_H_MultiSecant(OpenMXSolverInvocation *scratch, OpenMXMixingHistory *history, int MD_iter, int SCF_iter, int SCF_iter0 , const OpenMXElectronicViews *electronic)
 {
   double *****H=electronic->H;
   double ******HisH1=electronic->HisH1;
@@ -371,7 +371,7 @@ void Pulay_Mixing_H_MultiSecant(OpenMXSolverInvocation *scratch, int MD_iter, in
     } /* n */
   } /* m */
 
-  NormRD[0] = openmx_solver_real_matrix_row(&A,0)[0]/(double)atomnum;
+  history->norm[0] = openmx_solver_real_matrix_row(&A,0)[0]/(double)atomnum;
 
   for (m=1; m<=dim; m++){
     openmx_solver_real_matrix_row(&A,m-1)[dim] = -1.0;
@@ -813,13 +813,13 @@ void Pulay_Mixing_H_MultiSecant(OpenMXSolverInvocation *scratch, int MD_iter, in
                  mixing of Hamiltonian
   ****************************************************/
 
-  if (1.0e-1<=NormRD[0])
+  if (1.0e-1<=history->norm[0])
     alpha = 0.5;
-  else if (1.0e-2<=NormRD[0] && NormRD[0]<1.0e-1)
+  else if (1.0e-2<=history->norm[0] && history->norm[0]<1.0e-1)
     alpha = 0.6;
-  else if (1.0e-3<=NormRD[0] && NormRD[0]<1.0e-2)
+  else if (1.0e-3<=history->norm[0] && history->norm[0]<1.0e-2)
     alpha = 0.7;
-  else if (1.0e-4<=NormRD[0] && NormRD[0]<1.0e-3)
+  else if (1.0e-4<=history->norm[0] && history->norm[0]<1.0e-3)
     alpha = 0.8;
   else
     alpha = 1.0;
@@ -1052,7 +1052,7 @@ void Pulay_Mixing_H_MultiSecant(OpenMXSolverInvocation *scratch, int MD_iter, in
 
 
 
-void Pulay_Mixing_H_with_One_Shot_Hessian(OpenMXSolverInvocation *scratch, int MD_iter, int SCF_iter, int SCF_iter0 , const OpenMXElectronicViews *electronic)
+void Pulay_Mixing_H_with_One_Shot_Hessian(OpenMXSolverInvocation *scratch, OpenMXMixingHistory *history, int MD_iter, int SCF_iter, int SCF_iter0 , const OpenMXElectronicViews *electronic)
 {
   double *****H=electronic->H;
   double ******HisH1=electronic->HisH1;
@@ -1270,7 +1270,7 @@ void Pulay_Mixing_H_with_One_Shot_Hessian(OpenMXSolverInvocation *scratch, int M
     } /* n */
   } /* m */
 
-  NormRD[0] = openmx_solver_real_matrix_row(&A,0)[0]/(double)atomnum;
+  history->norm[0] = openmx_solver_real_matrix_row(&A,0)[0]/(double)atomnum;
 
   for (m=1; m<=dim; m++){
     openmx_solver_real_matrix_row(&A,m-1)[dim] = -1.0;
@@ -1571,13 +1571,13 @@ void Pulay_Mixing_H_with_One_Shot_Hessian(OpenMXSolverInvocation *scratch, int M
                  mixing of Hamiltonian
   ****************************************************/
 
-  if (1.0e-1<=NormRD[0])
+  if (1.0e-1<=history->norm[0])
     alpha = 0.5;
-  else if (1.0e-2<=NormRD[0] && NormRD[0]<1.0e-1)
+  else if (1.0e-2<=history->norm[0] && history->norm[0]<1.0e-1)
     alpha = 0.6;
-  else if (1.0e-3<=NormRD[0] && NormRD[0]<1.0e-2)
+  else if (1.0e-3<=history->norm[0] && history->norm[0]<1.0e-2)
     alpha = 0.7;
-  else if (1.0e-4<=NormRD[0] && NormRD[0]<1.0e-3)
+  else if (1.0e-4<=history->norm[0] && history->norm[0]<1.0e-3)
     alpha = 0.8;
   else
     alpha = 1.0;
@@ -2994,7 +2994,7 @@ static void Pulay_Mixing_H_Inc(OpenMXSolverInvocation *scratch, MixingHState *st
 
   }
 
-  NormRD[0] = openmx_solver_real_matrix_row(&A,0)[0]/(double)atomnum;
+  state->history->norm[0] = openmx_solver_real_matrix_row(&A,0)[0]/(double)atomnum;
 
   for (m=1; m<=dim; m++){
     openmx_solver_real_matrix_row(&A,m-1)[dim] = -1.0;
@@ -3029,13 +3029,13 @@ static void Pulay_Mixing_H_Inc(OpenMXSolverInvocation *scratch, MixingHState *st
     coes[2] = 0.95;
   }
 
-  if (1.0e-1<=NormRD[0])
+  if (1.0e-1<=state->history->norm[0])
     alpha = 0.5;
-  else if (1.0e-2<=NormRD[0] && NormRD[0]<1.0e-1)
+  else if (1.0e-2<=state->history->norm[0] && state->history->norm[0]<1.0e-1)
     alpha = 0.6;
-  else if (1.0e-3<=NormRD[0] && NormRD[0]<1.0e-2)
+  else if (1.0e-3<=state->history->norm[0] && state->history->norm[0]<1.0e-2)
     alpha = 0.7;
-  else if (1.0e-4<=NormRD[0] && NormRD[0]<1.0e-3)
+  else if (1.0e-4<=state->history->norm[0] && state->history->norm[0]<1.0e-3)
     alpha = 0.8;
   else
     alpha = 1.0;
@@ -3178,7 +3178,7 @@ static void Pulay_Mixing_H_GPU(OpenMXSolverInvocation *scratch, MixingHState *st
 
   }
 
-  NormRD[0] = openmx_solver_real_matrix_row(&A,0)[0]/(double)atomnum;
+  state->history->norm[0] = openmx_solver_real_matrix_row(&A,0)[0]/(double)atomnum;
 
   for (m=1; m<=dim; m++){
     openmx_solver_real_matrix_row(&A,m-1)[dim] = -1.0;
@@ -3225,13 +3225,13 @@ static void Pulay_Mixing_H_GPU(OpenMXSolverInvocation *scratch, MixingHState *st
 
   }
 
-  if (1.0e-1<=NormRD[0])
+  if (1.0e-1<=state->history->norm[0])
     alpha = 0.5;
-  else if (1.0e-2<=NormRD[0] && NormRD[0]<1.0e-1)
+  else if (1.0e-2<=state->history->norm[0] && state->history->norm[0]<1.0e-1)
     alpha = 0.6;
-  else if (1.0e-3<=NormRD[0] && NormRD[0]<1.0e-2)
+  else if (1.0e-3<=state->history->norm[0] && state->history->norm[0]<1.0e-2)
     alpha = 0.7;
-  else if (1.0e-4<=NormRD[0] && NormRD[0]<1.0e-3)
+  else if (1.0e-4<=state->history->norm[0] && state->history->norm[0]<1.0e-3)
     alpha = 0.8;
   else
     alpha = 1.0;
@@ -3513,7 +3513,7 @@ void Pulay_Mixing_H(OpenMXSolverInvocation *scratch, MixingHState *state, int MD
     } /* n */
   } /* m */
 
-  NormRD[0] = openmx_solver_real_matrix_row(&A,0)[0]/(double)atomnum;
+  state->history->norm[0] = openmx_solver_real_matrix_row(&A,0)[0]/(double)atomnum;
 
   for (m=1; m<=dim; m++){
     openmx_solver_real_matrix_row(&A,m-1)[dim] = -1.0;
@@ -3636,13 +3636,13 @@ void Pulay_Mixing_H(OpenMXSolverInvocation *scratch, MixingHState *state, int MD
                    mixing of Hamiltonian
   ****************************************************/
 
-  if (1.0e-1<=NormRD[0])
+  if (1.0e-1<=state->history->norm[0])
     alpha = 0.5;
-  else if (1.0e-2<=NormRD[0] && NormRD[0]<1.0e-1)
+  else if (1.0e-2<=state->history->norm[0] && state->history->norm[0]<1.0e-1)
     alpha = 0.6;
-  else if (1.0e-3<=NormRD[0] && NormRD[0]<1.0e-2)
+  else if (1.0e-3<=state->history->norm[0] && state->history->norm[0]<1.0e-2)
     alpha = 0.7;
-  else if (1.0e-4<=NormRD[0] && NormRD[0]<1.0e-3)
+  else if (1.0e-4<=state->history->norm[0] && state->history->norm[0]<1.0e-3)
     alpha = 0.8;
   else
     alpha = 1.0;
@@ -4049,52 +4049,52 @@ void Simple_Mixing_H(OpenMXMixingHistory *history, int MD_iter, int SCF_iter, in
   ****************************************************/
 
   for (i=4; 1<=i; i--){
-    NormRD[i] = NormRD[i-1];
+    history->norm[i] = history->norm[i-1];
     history->energy[i] = history->energy[i-1];
   }
-  NormRD[0] = Norm/(double)atomnum;;
+  history->norm[0] = Norm/(double)atomnum;;
   history->energy[0] = Uele;
 
   if (1<SCF_iter){
 
     if ( (int)sgn(history->energy[0]-history->energy[1])
 	 ==(int)sgn(history->energy[1]-history->energy[2])
-	 && NormRD[0]<NormRD[1]){
+	 && history->norm[0]<history->norm[1]){
 
       /* tmp0 = 1.6*Mixing_weight; */
 
-      tmp0 = NormRD[1]/(largest(NormRD[1]-NormRD[0],10e-10))*Mixing_weight;
+      tmp0 = history->norm[1]/(largest(history->norm[1]-history->norm[0],10e-10))*history->weight;
 
       if (tmp0<Max_Weight){
 	if (Min_Weight<tmp0){
-	  Mixing_weight = tmp0;
+	  history->weight = tmp0;
 	}
 	else{ 
-	  Mixing_weight = Min_Weight;
+	  history->weight = Min_Weight;
 	}
       }
       else{ 
-	Mixing_weight = Max_Weight;
+	history->weight = Max_Weight;
 	history->consecutive++;
       }
     }
    
     else if ( (int)sgn(history->energy[0]-history->energy[1])
 	      ==(int)sgn(history->energy[1]-history->energy[2])
-	      && NormRD[1]<NormRD[0]){
+	      && history->norm[1]<history->norm[0]){
 
-      tmp0 = NormRD[1]/(largest(NormRD[1]+NormRD[0],10e-10))*Mixing_weight;
+      tmp0 = history->norm[1]/(largest(history->norm[1]+history->norm[0],10e-10))*history->weight;
 
       /* tmp0 = Mixing_weight/1.6; */
 
       if (tmp0<Max_Weight){
 	if (Min_Weight<tmp0)
-	  Mixing_weight = tmp0;
+	  history->weight = tmp0;
 	else 
-	  Mixing_weight = Min_Weight;
+	  history->weight = Min_Weight;
       }
       else{
-	Mixing_weight = Max_Weight;
+	history->weight = Max_Weight;
       }
 
       history->consecutive = -1;
@@ -4102,46 +4102,46 @@ void Simple_Mixing_H(OpenMXMixingHistory *history, int MD_iter, int SCF_iter, in
 
     else if ( (int)sgn(history->energy[0]-history->energy[1])
 	      !=(int)sgn(history->energy[1]-history->energy[2])
-	      && NormRD[0]<NormRD[1]){
+	      && history->norm[0]<history->norm[1]){
 
       /* tmp0 = Mixing_weight*1.2; */
 
-      tmp0 = NormRD[1]/(largest(NormRD[1]-NormRD[0],10e-10))*Mixing_weight;
+      tmp0 = history->norm[1]/(largest(history->norm[1]-history->norm[0],10e-10))*history->weight;
 
       if (tmp0<Max_Weight){
 	if (Min_Weight<tmp0)
-	  Mixing_weight = tmp0;
+	  history->weight = tmp0;
 	else 
-	  Mixing_weight = Min_Weight;
+	  history->weight = Min_Weight;
       }
       else{ 
-	Mixing_weight = Max_Weight;
+	history->weight = Max_Weight;
 	history->consecutive++;
       }
     }
 
     else if ( (int)sgn(history->energy[0]-history->energy[1])
 	      !=(int)sgn(history->energy[1]-history->energy[2])
-	      && NormRD[1]<NormRD[0]){
+	      && history->norm[1]<history->norm[0]){
 
       /* tmp0 = Mixing_weight/2.0; */
 
-      tmp0 = NormRD[1]/(largest(NormRD[1]+NormRD[0],10e-10))*Mixing_weight;
+      tmp0 = history->norm[1]/(largest(history->norm[1]+history->norm[0],10e-10))*history->weight;
 
       if (tmp0<Max_Weight){
 	if (Min_Weight<tmp0)
-	  Mixing_weight = tmp0;
+	  history->weight = tmp0;
 	else 
-	  Mixing_weight = Min_Weight;
+	  history->weight = Min_Weight;
       }
       else 
-	Mixing_weight = Max_Weight;
+	history->weight = Max_Weight;
 
       history->consecutive = -1;
     }
   }
 
-  Mix_wgt = Mixing_weight;
+  Mix_wgt = history->weight;
 
   /****************************************************
             finding a proper mixing weight

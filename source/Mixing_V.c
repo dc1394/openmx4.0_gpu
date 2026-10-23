@@ -115,26 +115,26 @@ static double Mixing_V_Compute(OpenMXSolverInvocation *scratch, MixingVState *st
   *********************************************************/
 
   if (SCF_iter==1){
-    Kerker_Mixing_VKSk(scratch, state, 0,Mixing_weight);
+    Kerker_Mixing_VKSk(scratch, state, 0,state->history->weight);
   }
 
   else if (SCF_iter<Pulay_SCF){
-    Kerker_Mixing_VKSk(scratch, state, 1,Mixing_weight);
+    Kerker_Mixing_VKSk(scratch, state, 1,state->history->weight);
   }
 
   else{
 
     if (6<SCF_iter){
-      DIIS_Mixing_VKSk(scratch, state, SCF_iter-(Pulay_SCF-3),Mixing_weight);
+      DIIS_Mixing_VKSk(scratch, state, SCF_iter-(Pulay_SCF-3),state->history->weight);
     }
     else{
-      DIIS_Mixing_VKSk(scratch, state, SCF_iter,Mixing_weight);
+      DIIS_Mixing_VKSk(scratch, state, SCF_iter,state->history->weight);
     }
   }
 
   /* if SCF_iter0==1, then NormRD[0]=1 */
 
-  if (SCF_iter0==1) NormRD[0] = 1.0;
+  if (SCF_iter0==1) state->history->norm[0] = 1.0;
 
   return 0.0;
 } 
@@ -310,7 +310,7 @@ void DIIS_Mixing_VKSk(OpenMXSolverInvocation *scratch, MixingVState *state, int 
       }
     }
 
-    Kerker_Mixing_VKSk(scratch, state, 0,Mixing_weight);
+    Kerker_Mixing_VKSk(scratch, state, 0,state->history->weight);
   } 
 
   else {
@@ -480,10 +480,10 @@ void DIIS_Mixing_VKSk(OpenMXSolverInvocation *scratch, MixingVState *state, int 
     /* store NormRD */
 
     for (i=4; 1<=i; i--){
-      NormRD[i] = NormRD[i-1];
+      state->history->norm[i] = state->history->norm[i-1];
       state->history->energy[i] = state->history->energy[i-1];
     }
-    NormRD[0] = openmx_solver_real_matrix_row(&A,0)[0]/(double)(1.0e+5*Ngrid1*Ngrid2*Ngrid3*spinmax);
+    state->history->norm[0] = openmx_solver_real_matrix_row(&A,0)[0]/(double)(1.0e+5*Ngrid1*Ngrid2*Ngrid3*spinmax);
     state->history->energy[0] = Uele;
 
     /* set matrix elements on lammda */
@@ -584,11 +584,11 @@ void DIIS_Mixing_VKSk(OpenMXSolverInvocation *scratch, MixingVState *state, int 
 
     } /* pSCF_iter */
 
-    if      (1.0e-2<=NormRD[0])                        coef_OptVKS = 0.5;
-    else if (1.0e-4<=NormRD[0]  && NormRD[0]<1.0e-2)   coef_OptVKS = 0.6;
-    else if (1.0e-6<=NormRD[0]  && NormRD[0]<1.0e-4)   coef_OptVKS = 0.7;
-    else if (1.0e-8<=NormRD[0]  && NormRD[0]<1.0e-6)   coef_OptVKS = 0.8;
-    else if (1.0e-10<=NormRD[0] && NormRD[0]<1.0e-8)   coef_OptVKS = 0.9;
+    if      (1.0e-2<=state->history->norm[0])                        coef_OptVKS = 0.5;
+    else if (1.0e-4<=state->history->norm[0]  && state->history->norm[0]<1.0e-2)   coef_OptVKS = 0.6;
+    else if (1.0e-6<=state->history->norm[0]  && state->history->norm[0]<1.0e-4)   coef_OptVKS = 0.7;
+    else if (1.0e-8<=state->history->norm[0]  && state->history->norm[0]<1.0e-6)   coef_OptVKS = 0.8;
+    else if (1.0e-10<=state->history->norm[0] && state->history->norm[0]<1.0e-8)   coef_OptVKS = 0.9;
     else                                               coef_OptVKS = 1.0;
 
     /****************************************************
@@ -603,8 +603,8 @@ void DIIS_Mixing_VKSk(OpenMXSolverInvocation *scratch, MixingVState *state, int 
 
       /* reduce Mixing_weight so that charge sloshing can be avoided at the next SCF */
 
-      Mixing_weight = 0.1*Max_Mixing_weight;
-      if (Mixing_weight<Min_Mixing_weight) Mixing_weight = Min_Mixing_weight;
+      state->history->weight = 0.1*Max_Mixing_weight;
+      if (state->history->weight<Min_Mixing_weight) state->history->weight = Min_Mixing_weight;
       
       /* initial ReVKSk and ImVKSk */
       
@@ -666,7 +666,7 @@ void DIIS_Mixing_VKSk(OpenMXSolverInvocation *scratch, MixingVState *state, int 
 
         for (k=0; k<My_NumGridB_CB; k++){
 
- 	  if (1.0<NormRD[0])
+          if (1.0<state->history->norm[0])
   	    weight = 1.0/(Kerker_weight[k]*Kerker_weight[k]);
           else 
             weight = 1.0/Kerker_weight[k];
@@ -707,87 +707,87 @@ void DIIS_Mixing_VKSk(OpenMXSolverInvocation *scratch, MixingVState *state, int 
 
       if ((int)sgn(state->history->energy[0]-state->history->energy[1])
 	  ==(int)sgn(state->history->energy[1]-state->history->energy[2])
-	  && NormRD[0]<NormRD[1]){
+	  && state->history->norm[0]<state->history->norm[1]){
 
 	/* tmp0 = 1.6*Mixing_weight; */
 
-	tmp0 = NormRD[1]/(largest(NormRD[1]-NormRD[0],10e-10))*Mixing_weight;
+	tmp0 = state->history->norm[1]/(largest(state->history->norm[1]-state->history->norm[0],10e-10))*state->history->weight;
 
 	if (tmp0<Max_Weight){
 	  if (Min_Weight<tmp0){
-	    Mixing_weight = tmp0;
+	    state->history->weight = tmp0;
 	  }
 	  else{ 
-	    Mixing_weight = Min_Weight;
+	    state->history->weight = Min_Weight;
 	  }
 	}
 	else{ 
-	  Mixing_weight = Max_Weight;
+	  state->history->weight = Max_Weight;
 	  state->history->consecutive++;
 	}
       }
    
       else if ((int)sgn(state->history->energy[0]-state->history->energy[1])
 	       ==(int)sgn(state->history->energy[1]-state->history->energy[2])
-	       && NormRD[1]<NormRD[0]){
+	       && state->history->norm[1]<state->history->norm[0]){
 
-	tmp0 = NormRD[1]/(largest(NormRD[1]+NormRD[0],10e-10))*Mixing_weight;
+	tmp0 = state->history->norm[1]/(largest(state->history->norm[1]+state->history->norm[0],10e-10))*state->history->weight;
 
 	/* tmp0 = Mixing_weight/1.6; */
 
 	if (tmp0<Max_Weight){
 	  if (Min_Weight<tmp0)
-	    Mixing_weight = tmp0;
+	    state->history->weight = tmp0;
 	  else 
-	    Mixing_weight = Min_Weight;
+	    state->history->weight = Min_Weight;
 	}
 	else 
-	  Mixing_weight = Max_Weight;
+	  state->history->weight = Max_Weight;
 
 	state->history->consecutive = -1;
       }
 
       else if ((int)sgn(state->history->energy[0]-state->history->energy[1])
 	       !=(int)sgn(state->history->energy[1]-state->history->energy[2])
-	       && NormRD[0]<NormRD[1]){
+	       && state->history->norm[0]<state->history->norm[1]){
 
 	/* tmp0 = Mixing_weight*1.2; */
 
-	tmp0 = NormRD[1]/(largest(NormRD[1]-NormRD[0],10e-10))*Mixing_weight;
+	tmp0 = state->history->norm[1]/(largest(state->history->norm[1]-state->history->norm[0],10e-10))*state->history->weight;
 
 	if (tmp0<Max_Weight){
 	  if (Min_Weight<tmp0)
-	    Mixing_weight = tmp0;
+	    state->history->weight = tmp0;
 	  else 
-	    Mixing_weight = Min_Weight;
+	    state->history->weight = Min_Weight;
 	}
 	else{ 
-	  Mixing_weight = Max_Weight;
+	  state->history->weight = Max_Weight;
 	  state->history->consecutive++;
 	}
       }
 
       else if ((int)sgn(state->history->energy[0]-state->history->energy[1])
 	       !=(int)sgn(state->history->energy[1]-state->history->energy[2])
-	       && NormRD[1]<NormRD[0]){
+	       && state->history->norm[1]<state->history->norm[0]){
 
 	/* tmp0 = Mixing_weight/2.0; */
 
-	tmp0 = NormRD[1]/(largest(NormRD[1]+NormRD[0],10e-10))*Mixing_weight;
+	tmp0 = state->history->norm[1]/(largest(state->history->norm[1]+state->history->norm[0],10e-10))*state->history->weight;
 
 	if (tmp0<Max_Weight){
 	  if (Min_Weight<tmp0)
-	    Mixing_weight = tmp0;
+	    state->history->weight = tmp0;
 	  else 
-	    Mixing_weight = Min_Weight;
+	    state->history->weight = Min_Weight;
 	}
 	else 
-	  Mixing_weight = Max_Weight;
+	  state->history->weight = Max_Weight;
 
 	state->history->consecutive = -1;
       }
 
-      Mix_wgt = Mixing_weight;
+      Mix_wgt = state->history->weight;
 
       for (spin=0; spin<spinmax; spin++){
         for (k=0; k<My_NumGridB_CB; k++){
@@ -1071,97 +1071,97 @@ void Kerker_Mixing_VKSk(OpenMXSolverInvocation *scratch, MixingVState *state,  i
   ****************************************************/
 
   for (i=4; 1<=i; i--){
-    NormRD[i] = NormRD[i-1];
+    state->history->norm[i] = state->history->norm[i-1];
     state->history->energy[i] = state->history->energy[i-1];
   }
-  NormRD[0] = Norm/(double)(1.0e+5*Ngrid1*Ngrid2*Ngrid3*spinmax);
+  state->history->norm[0] = Norm/(double)(1.0e+5*Ngrid1*Ngrid2*Ngrid3*spinmax);
   state->history->energy[0] = Uele;
 
   if (Change_switch==1){
 
     if ((int)sgn(state->history->energy[0]-state->history->energy[1])
 	  ==(int)sgn(state->history->energy[1]-state->history->energy[2])
-       && NormRD[0]<NormRD[1]){
+       && state->history->norm[0]<state->history->norm[1]){
 
       /* tmp0 = 1.6*Mixing_weight; */
 
-      tmp0 = 1.6*Mixing_weight;
+      tmp0 = 1.6*state->history->weight;
 
       if (tmp0<Max_Weight){
         if (Min_Weight<tmp0){
-          Mixing_weight = tmp0;
+          state->history->weight = tmp0;
 	}
         else{ 
-          Mixing_weight = Min_Weight;
+          state->history->weight = Min_Weight;
 	}
       }
       else{ 
-        Mixing_weight = Max_Weight;
+        state->history->weight = Max_Weight;
         state->history->consecutive++;
       }
     }
    
     else if ((int)sgn(state->history->energy[0]-state->history->energy[1])
              ==(int)sgn(state->history->energy[1]-state->history->energy[2])
-             && NormRD[1]<NormRD[0]){
+             && state->history->norm[1]<state->history->norm[0]){
 
       /* tmp0 = Mixing_weight/1.6; */
  
-      tmp0 = Mixing_weight/1.6;
+      tmp0 = state->history->weight/1.6;
 
       if (tmp0<Max_Weight){
         if (Min_Weight<tmp0)
-          Mixing_weight = tmp0;
+          state->history->weight = tmp0;
         else 
-          Mixing_weight = Min_Weight;
+          state->history->weight = Min_Weight;
       }
       else 
-        Mixing_weight = Max_Weight;
+        state->history->weight = Max_Weight;
 
       state->history->consecutive = -1;
     }
 
     else if ((int)sgn(state->history->energy[0]-state->history->energy[1])
 	     !=(int)sgn(state->history->energy[1]-state->history->energy[2])
-             && NormRD[0]<NormRD[1]){
+             && state->history->norm[0]<state->history->norm[1]){
 
       /* tmp0 = Mixing_weight*1.2; */
 
-      tmp0 = 1.2*Mixing_weight;
+      tmp0 = 1.2*state->history->weight;
 
       if (tmp0<Max_Weight){
         if (Min_Weight<tmp0)
-          Mixing_weight = tmp0;
+          state->history->weight = tmp0;
         else 
-          Mixing_weight = Min_Weight;
+          state->history->weight = Min_Weight;
       }
       else{ 
-        Mixing_weight = Max_Weight;
+        state->history->weight = Max_Weight;
         state->history->consecutive++;
       }
     }
 
     else if ((int)sgn(state->history->energy[0]-state->history->energy[1])
 	     !=(int)sgn(state->history->energy[1]-state->history->energy[2])
-             && NormRD[1]<NormRD[0]){
+             && state->history->norm[1]<state->history->norm[0]){
 
       /* tmp0 = Mixing_weight/2.0; */
 
-      tmp0 = Mixing_weight/2.0;
+      tmp0 = state->history->weight/2.0;
 
       if (tmp0<Max_Weight){
         if (Min_Weight<tmp0)
-          Mixing_weight = tmp0;
+          state->history->weight = tmp0;
         else 
-          Mixing_weight = Min_Weight;
+          state->history->weight = Min_Weight;
       }
       else 
-        Mixing_weight = Max_Weight;
+        state->history->weight = Max_Weight;
 
       state->history->consecutive = -1;
     }
 
-    Mix_wgt = Mixing_weight;
+    Mix_wgt = state->history->weight;
   }
 
   /****************************************************

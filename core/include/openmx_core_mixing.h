@@ -5,14 +5,17 @@
 extern "C" {
 #endif
 
-/* Adaptive history shared by the mixing methods of one calculation. The
+/* Mixing values and histories shared by the methods of one calculation. The
    C++ calculation context owns this fixed-size POD by value; callers borrow it.
-   A fresh calculation/clear starts at zero, as the former static storage did.
-   DFT still starts each SCF cycle by setting consecutive to -1. */
+   Fresh values match the original process-start zero initialization; clear
+   starts a new calculation. Input sets weight, and DFT starts each SCF cycle
+   with norm[0]=100 and consecutive=-1. */
 typedef struct {
   double adaptive_max_weight;
   double energy[5];
   int consecutive;
+  double weight;
+  double norm[5];
 } OpenMXMixingHistory;
 
 /* Binding never allocates; failure preserves *out. Repeated binding keeps

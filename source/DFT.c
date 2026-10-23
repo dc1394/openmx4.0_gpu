@@ -630,7 +630,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   LSCF_iter = 0;
   ETemp_controller = 0;
   SCF_iter_shift = 0;
-  NormRD[0] = 100.0;
+  mixing_history->norm[0] = 100.0;
 
   mixing_history->consecutive = -1;
   po = 0;
@@ -657,7 +657,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
     /* the precision stage of the grid integrals of this step
        (grid_precision.h): FP32 while the previous step's residual is large */
-    Grid_Precision_BeginStep(SCF_iter, SCF_MAX, sqrt(fabs(NormRD[0])), myid0, level_stdout);
+    Grid_Precision_BeginStep(SCF_iter, SCF_MAX, sqrt(fabs(mixing_history->norm[0])), myid0, level_stdout);
     if (Grid_Precision_TakeHistoryReset()){
       int shift = LSCF_iter - Pulay_SCF + 2;
       if (0<=shift && shift<LSCF_iter) SCF_iter_shift = shift;
@@ -689,7 +689,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
     if (SCF_iter==1){
 
-      if (MD_iter!=1) Mixing_weight = Max_Mixing_weight;
+      if (MD_iter!=1) mixing_history->weight = Max_Mixing_weight;
 
       if (Cnt_switch==0 || (Cnt_switch==1 && Cnt_Now==1)) Cnt_kind = 0;
       else if (Cnt_switch==1)                             Cnt_kind = 1;
@@ -1374,7 +1374,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
     if (
 	2<=SCF_iter &&        
-	((dUele<SCF_Criterion && NormRD[0]<(10*SCF_Criterion) && Cnt_switch==0)   ||
+	((dUele<SCF_Criterion && mixing_history->norm[0]<(10*SCF_Criterion) && Cnt_switch==0)   ||
 	 (dUele<SCF_Criterion && Cnt_switch==1 && Cnt_Now!=1)                     ||
 	 (dUele<SCF_Criterion && Cnt_switch==1 && Cnt_Now==1 && OrbOpt_end==1))
 	) po = 1;
@@ -1400,7 +1400,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
          (Solver==3 && SpinP_switch==3 && GB_switch==0 && Band_DFT_NonCol_RefineLastRefined(solver_states.band_noncol)) ||
          (Solver==2 && SpinP_switch==3 && Cluster_DFT_NonCol_RefineLastRefined(solver_states.cluster_noncol)))){
       double guard_factor = openmx_env_double_at(OPENMX_ENV_EIGEN_REFINE_STOP_GUARD, 100.0);
-      double bound, normrd = sqrt(fabs(NormRD[0]));
+      double bound, normrd = sqrt(fabs(mixing_history->norm[0]));
 
       if (guard_factor<0.0) guard_factor = 0.0;
       bound = guard_factor*SCF_Criterion;
@@ -1504,7 +1504,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
     if ( Cnt_switch==1 && Cnt_Now==1 && OrbOpt_end!=1 && 
 	 ( LSCF_iter%orbitalOpt_SCF==0 ||
-	   ( dUele<SCF_Criterion && NormRD[0]<1.0e-7 )
+	   ( dUele<SCF_Criterion && mixing_history->norm[0]<1.0e-7 )
 	   )
 	 ){
 
@@ -1534,7 +1534,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
       }
 
       /* save the information at iteration */
-      outputfile1(4,MD_iter,orbitalOpt_iter,0,SCF_iter,file_OrbOpt,ChemP_e0,orbital_norm);
+      outputfile1(mixing_history,4,MD_iter,orbitalOpt_iter,0,SCF_iter,file_OrbOpt,ChemP_e0,orbital_norm);
 
       orbitalOpt_iter++;
       LSCF_iter = 0;
@@ -1566,9 +1566,9 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
       Norm4 = Norm3;
       Norm3 = Norm2;
       Norm2 = Norm1;
-      Norm1 = NormRD[0];
+      Norm1 = mixing_history->norm[0];
       tmp = (Norm1+Norm2+Norm3+Norm4+Norm5)/5.0;
-      tmp0 = sqrt(fabs(NormRD[0]));
+      tmp0 = sqrt(fabs(mixing_history->norm[0]));
 
       if      (0.01<tmp0 && tmp<Norm1 && 6<LSCF_iter && ETemp_controller==0){
         E_Temp = 10.0*Original_E_Temp;
@@ -1777,22 +1777,22 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
       if (Mixing_switch==0 && 0<level_stdout){
         printf("<DFT>  Mixing_weight=%15.12f SCF_RENZOKU=%2d\n",
-	       Mixing_weight,mixing_history->consecutive);fflush(stdout);
+	       mixing_history->weight,mixing_history->consecutive);fflush(stdout);
       }
       else{
         if (0<level_stdout){
-          printf("<DFT>  Mixing_weight=%15.12f\n",Mixing_weight);fflush(stdout);
+          printf("<DFT>  Mixing_weight=%15.12f\n",mixing_history->weight);fflush(stdout);
 	}
       }
 
       if (0<level_stdout){
         printf("<DFT>  Uele   =%18.12f  dUele     =%17.12f\n",Uele,dUele);fflush(stdout);
         printf("<DFT>  NormRD =%18.12f  Criterion =%17.12f\n",
-               sqrt(fabs(NormRD[0])),SCF_Criterion);fflush(stdout);
+               sqrt(fabs(mixing_history->norm[0])),SCF_Criterion);fflush(stdout);
       }
       else if (0==level_stdout){
         printf("<DFT> MD=%4d SCF=%4d   NormRD =%18.12f  Criterion =%17.12f\n",
-               MD_iter,SCF_iter,sqrt(fabs(NormRD[0])),SCF_Criterion);fflush(stdout);
+               MD_iter,SCF_iter,sqrt(fabs(mixing_history->norm[0])),SCF_Criterion);fflush(stdout);
       }
 
     }
@@ -1801,7 +1801,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
       /* check whether the SCF converges or not */
 
-      if ( sqrt(fabs(NormRD[0]))< SCF_Criterion ) {
+      if ( sqrt(fabs(mixing_history->norm[0]))< SCF_Criterion ) {
 
 	po = 1;
 
@@ -1809,19 +1809,19 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
       } 
     }
 
-    outputfile1(1,MD_iter,orbitalOpt_iter,Cnt_Now,SCF_iter,file_DFTSCF,ChemP_e0,orbital_norm);
+    outputfile1(mixing_history,1,MD_iter,orbitalOpt_iter,Cnt_Now,SCF_iter,file_DFTSCF,ChemP_e0,orbital_norm);
 
     if (po==0 && Cnt_switch==0 && Solver==2 && SpinP_switch==3){
-      Cluster_DFT_NonCol_RefineAfterMixing(solver_states.cluster_noncol, sqrt(fabs(NormRD[0])));
+      Cluster_DFT_NonCol_RefineAfterMixing(solver_states.cluster_noncol, sqrt(fabs(mixing_history->norm[0])));
     }
     if (po==0 && Cnt_switch==0 && Solver==2 && SpinP_switch<=1){
-      Cluster_DFT_Col_RefineAfterMixing(solver_states.cluster_col, sqrt(fabs(NormRD[0])));
+      Cluster_DFT_Col_RefineAfterMixing(solver_states.cluster_col, sqrt(fabs(mixing_history->norm[0])));
     }
     if (po==0 && Cnt_switch==0 && Solver==3 && SpinP_switch<=1){
-      Band_DFT_Col_RefineAfterMixing(solver_states.band_col, sqrt(fabs(NormRD[0])));
+      Band_DFT_Col_RefineAfterMixing(solver_states.band_col, sqrt(fabs(mixing_history->norm[0])));
     }
     if (po==0 && Cnt_switch==0 && Solver==3 && SpinP_switch==3 && GB_switch==0){
-      Band_DFT_NonCol_RefineAfterMixing(solver_states.band_noncol, sqrt(fabs(NormRD[0])));
+      Band_DFT_NonCol_RefineAfterMixing(solver_states.band_noncol, sqrt(fabs(mixing_history->norm[0])));
     }
 
     /*****************************************************
@@ -1835,7 +1835,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
     *****************************************************/
 
     if ( 1<MD_iter && SucceedReadingDMfile==1 && Scf_RestartFromFile!=-1 
-         && Pulay_SCF==Pulay_SCF_original && SCF_iter<Pulay_SCF_original && NormRD[0]<0.01 
+         && Pulay_SCF==Pulay_SCF_original && SCF_iter<Pulay_SCF_original && mixing_history->norm[0]<0.01
          && Pulay_SCF_original<SCF_MAX ){
 
       Pulay_SCF = SCF_iter + 1;
@@ -2741,7 +2741,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
      set Scf_RestartFromFile = 0,
   ****************************************************/
 
-  if (po==0 && Scf_RestartFromFile==1 && 0.3<NormRD[0]){
+  if (po==0 && Scf_RestartFromFile==1 && 0.3<mixing_history->norm[0]){
     Scf_RestartFromFile = 0;
   }
 
@@ -2777,11 +2777,11 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
   if ( Solver!=12 ){
     Utot = Ucore + UH0 + Ukin + Una + Unl + UH1 + Uxc0 + Uxc1 + Uhub + Ucs + Uzs + Uzo + Uef + UvdW + Uch;
-    outputfile1(2,MD_iter,0,0,SCF_iter,file_DFTSCF,ChemP_e0,orbital_norm);
+    outputfile1(mixing_history,2,MD_iter,0,0,SCF_iter,file_DFTSCF,ChemP_e0,orbital_norm);
   }
   else if ( Solver==12 ){
     Utot = Uele + UH1 + UH_dc + Uxc0 + Uxc1 + Uxc0_dc + Uxc1_dc + Ucore + UH0;
-    outputfile1(3,MD_iter,0,0,SCF_iter,file_DFTSCF,ChemP_e0,orbital_norm);
+    outputfile1(mixing_history,3,MD_iter,0,0,SCF_iter,file_DFTSCF,ChemP_e0,orbital_norm);
   }
   
   /* elapsed time */
@@ -3264,7 +3264,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
   /* check NormRD */
 
-  sprintf(nanchar,"%8.4f",NormRD[0]);
+  sprintf(nanchar,"%8.4f",mixing_history->norm[0]);
 
   if (strstr(nanchar,"nan")!=NULL || strstr(nanchar,"NaN")!=NULL 
    || strstr(nanchar,"inf")!=NULL || strstr(nanchar,"Inf")!=NULL){

@@ -207,7 +207,7 @@ static void DIIS_Mixing_DM_Compute(OpenMXSolverInvocation *scratch,const MixDM_S
       }
     }
 
-    Simple_Mixing_DM(state->history,0,Mixing_weight,DM[0],DM[1],DM[2],
+    Simple_Mixing_DM(state->history,0,state->history->weight,DM[0],DM[1],DM[2],
 		     iDM[0],iDM[1],iDM[2],ResidualDM[2],iResidualDM[2]);
 
   } 
@@ -422,7 +422,7 @@ static void DIIS_Mixing_DM_Compute(OpenMXSolverInvocation *scratch,const MixDM_S
     } /* else (legacy Gram) */
 
     Av_dia = openmx_solver_real_matrix_row(&A,0)[0];
-    NormRD[0] = openmx_solver_real_matrix_row(&A,0)[0];
+    state->history->norm[0] = openmx_solver_real_matrix_row(&A,0)[0];
 
     for (SCFi=1; SCFi<=NumMix; SCFi++){
       openmx_solver_real_matrix_row(&A,SCFi-1)[NumMix] = -1.0;
@@ -490,13 +490,13 @@ static void DIIS_Mixing_DM_Compute(OpenMXSolverInvocation *scratch,const MixDM_S
         MPI_Abort(mpi_comm_level1,1);
       }
 
-      if (1.0e-1<=NormRD[0])
+      if (1.0e-1<=state->history->norm[0])
         coef_OptRDM = 0.5;
-      else if (1.0e-2<=NormRD[0] && NormRD[0]<1.0e-1)
+      else if (1.0e-2<=state->history->norm[0] && state->history->norm[0]<1.0e-1)
         coef_OptRDM = 0.6;
-      else if (1.0e-3<=NormRD[0] && NormRD[0]<1.0e-2)
+      else if (1.0e-3<=state->history->norm[0] && state->history->norm[0]<1.0e-2)
         coef_OptRDM = 0.7;
-      else if (1.0e-4<=NormRD[0] && NormRD[0]<1.0e-3)
+      else if (1.0e-4<=state->history->norm[0] && state->history->norm[0]<1.0e-3)
         coef_OptRDM = 0.8;
       else
         coef_OptRDM = 1.0;
@@ -640,13 +640,13 @@ static void DIIS_Mixing_DM_Compute(OpenMXSolverInvocation *scratch,const MixDM_S
     printf("OptNorm_RDM=%18.12f\n",OptNorm_RDM);
     */
 
-    if (1.0e-1<=NormRD[0])
+    if (1.0e-1<=state->history->norm[0])
       coef_OptRDM = 0.5;
-    else if (1.0e-2<=NormRD[0] && NormRD[0]<1.0e-1)
+    else if (1.0e-2<=state->history->norm[0] && state->history->norm[0]<1.0e-1)
       coef_OptRDM = 0.6;
-    else if (1.0e-3<=NormRD[0] && NormRD[0]<1.0e-2)
+    else if (1.0e-3<=state->history->norm[0] && state->history->norm[0]<1.0e-2)
       coef_OptRDM = 0.7;
-    else if (1.0e-4<=NormRD[0] && NormRD[0]<1.0e-3)
+    else if (1.0e-4<=state->history->norm[0] && state->history->norm[0]<1.0e-3)
       coef_OptRDM = 0.8;
     else
       coef_OptRDM = 1.0;

@@ -57,6 +57,7 @@ typedef struct {
 } Krylov_KUCache;
 
 struct OpenMXKrylovState {
+  OpenMXMixingHistory *history; /* borrowed from this calculation */
   OpenMXNativeResources *resources; /* borrowed from this calculation */
   int initialized;
   Krylov_KUCache kucache;
@@ -1631,7 +1632,7 @@ static double Krylov_Col_owned(KrylovState *state, char *mode,
     for regeneration of the buffer matrix
   ***********************************************/
 
-  if (sqrt(fabs(NormRD[0]))<(0.2+0.10*(double)atomnum) && state->Col_owned_recalc_firsttime){
+  if (sqrt(fabs(state->history->norm[0]))<(0.2+0.10*(double)atomnum) && state->Col_owned_recalc_firsttime){
     state->Col_owned_recalc_flag = 1;
     state->Col_owned_recalc_firsttime = 0;
   }
@@ -6818,7 +6819,7 @@ static double Krylov_Col_trd_owned(KrylovState *state, char *mode,
     for regeneration of the buffer matrix
   ***********************************************/
 
-  if (sqrt(fabs(NormRD[0]))<(0.2+0.10*(double)atomnum) && state->Col_trd_owned_recalc_firsttime){
+  if (sqrt(fabs(state->history->norm[0]))<(0.2+0.10*(double)atomnum) && state->Col_trd_owned_recalc_firsttime){
     state->Col_trd_owned_recalc_flag = 1;
     state->Col_trd_owned_recalc_firsttime = 0;
   }
@@ -11622,6 +11623,10 @@ OpenMXKrylovState *Krylov_Bind_Resources(OpenMXCoreContext *core)
   KrylovState *state = (KrylovState *)metadata;
   if (!state->initialized) {
     state->resources = owner;
+    if(!openmx_core_mixing_history(core,&state->history,error,sizeof(error))) {
+      fprintf(stderr,"OpenMX Krylov mixing state: %s\n",error);
+      abort();
+    }
     state->gpu_device_ranks = 1;
     state->gpu_fits = 1;
     state->gpu_gemmul8 = 1;

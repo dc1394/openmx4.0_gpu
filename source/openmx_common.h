@@ -2353,7 +2353,7 @@ extern double GP,GT,T,Weight,Cell_Volume,Uele,Ukc,Uch,UH_dc,Uxc0_dc,Uxc1_dc;
 extern double Uele_OS0,Uele_OS1,Uele_IS0,Uele_IS1,Uxc0,Uxc1;
 extern double UH0,UH1,UH2,Ucore,Uhub,Ucs,Uef,Ukin,Unl,Una,Uzs,Uzo,UvdW;
 extern double Ucoh,Uatom,Udc,Utot,Uxc,Given_Total_Charge;
-extern double Min_Mixing_weight,Max_Mixing_weight,Mixing_weight;
+extern double Min_Mixing_weight,Max_Mixing_weight;
 extern double Kerker_factor,Criterion_MP_Special_Kpt;
 extern double system_charge,Total_Num_Electrons;
 extern double Total_SpinS,Total_SpinSx,Total_SpinSy,Total_SpinSz;
@@ -2364,7 +2364,7 @@ extern double Total_OrbitalMomentAngle0,Total_OrbitalMomentAngle1;
 extern double ScaleSize;
 extern double LastBoxCenterX,LastBoxCenterY,LastBoxCenterZ;
 extern double W;
-extern double SCF_Criterion,NormRD[5];
+extern double SCF_Criterion;
 extern double PAO_Nkmax,Grid_Ecut;
 extern double orbitalOpt_criterion,MD_Opt_criterion,orbitalOpt_SD_step;
 extern double MD_EvsLattice_Step;
@@ -2768,7 +2768,7 @@ void Simple_Mixing_DM(OpenMXMixingHistory *history, int Change_switch,
                       double *****iRDM);
 
 void DIIS_Mixing_DM(OpenMXMixingDMState *state, int SCF_iter, double ******ResidualDM, double ******iResidualDM, const OpenMXElectronicViews *electronic);
-void ADIIS_Mixing_DM(int SCF_iter, double ******ResidualDM, double ******iResidualDM, const OpenMXElectronicViews *electronic);
+void ADIIS_Mixing_DM(OpenMXMixingDMState *state, int SCF_iter, double ******ResidualDM, double ******iResidualDM, const OpenMXElectronicViews *electronic);
 void GR_Pulay_DM(OpenMXMixingDMState *state, int SCF_iter, double ******ResidualDM, const OpenMXElectronicViews *electronic);
 
 
@@ -3740,7 +3740,7 @@ void Generation_ATV(int CpyCell);
 char *string_tolower(char *buf, char *buf1);
 void iterout(int iter,double drctime,char fileE[YOUSO10],char fileDRC[YOUSO10]);
 void iterout_md(int iter,double drctime,char fileSE[YOUSO10]);
-void outputfile1(int f_switch, int MD_iter, int orbitalOpt_iter,
+void outputfile1(const OpenMXMixingHistory *history, int f_switch, int MD_iter, int orbitalOpt_iter,
                  int Cnt_Now, int SCF_iter, char fname[YOUSO10],
                  double ChemP_e0[2], double orbital_norm);
 void init();

@@ -55,6 +55,13 @@ void Get_Euler_Rotation_Angle(
 
 void Input_std(char *file, OpenMXCoreContext *core)
 {
+  OpenMXMixingHistory *mixing_history=NULL;
+  char mixing_history_error[256];
+  if(!openmx_core_mixing_history(core,&mixing_history,mixing_history_error,sizeof(mixing_history_error))) {
+    fprintf(stderr,"OpenMX mixing history: %s\n",mixing_history_error);
+    MPI_Abort(mpi_comm_level1,1);
+    abort();
+  }
   OpenMXElectronicViews electronic_storage;
 
   FILE *fp,*fp_check,*fp1;
@@ -1278,7 +1285,7 @@ void Input_std(char *file, OpenMXCoreContext *core)
     exit(0);
   }
 
-  input_double("scf.Init.Mixing.Weight",&Mixing_weight,(double)0.3);
+  input_double("scf.Init.Mixing.Weight",&mixing_history->weight,(double)0.3);
   input_double("scf.Min.Mixing.Weight",&Min_Mixing_weight,(double)0.001);
   input_double("scf.Max.Mixing.Weight",&Max_Mixing_weight,(double)0.4);
   /* if Kerker_factor is not set here, later Kerker factor is automatically determined. */

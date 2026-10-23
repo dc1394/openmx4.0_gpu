@@ -27,6 +27,7 @@ static void Inverse(OpenMXSolverInvocation *scratch, int n, const OpenMXSolverRe
 
 static void ADIIS_Mixing_DM_Compute(OpenMXSolverInvocation *scratch,const MixDM_ScratchArguments *arguments)
 {
+  OpenMXMixingDMState *state=arguments->state;
   int SCF_iter=arguments->iteration;
   double ******ResidualDM=arguments->residual;
   const OpenMXElectronicViews *electronic=arguments->electronic;
@@ -405,7 +406,7 @@ static void ADIIS_Mixing_DM_Compute(OpenMXSolverInvocation *scratch,const MixDM_
       /* MPI My_A */
       MPI_Allreduce(&My_A, &openmx_solver_real_matrix_row(&A,SCFi-1)[SCFj-1], 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
 
-      if (SCFi==1 && SCFj==1) NormRD[0] = openmx_solver_real_matrix_row(&A,0)[0];
+      if (SCFi==1 && SCFj==1) state->history->norm[0] = openmx_solver_real_matrix_row(&A,0)[0];
 
       openmx_solver_real_matrix_row(&A,SCFi-1)[SCFj-1] = openmx_solver_real_matrix_row(&A,SCFi-1)[SCFj-1];
 
@@ -515,13 +516,13 @@ static void ADIIS_Mixing_DM_Compute(OpenMXSolverInvocation *scratch,const MixDM_
     printf("OptNorm_RDM=%18.12f\n",OptNorm_RDM);
   */
 
-  if (1.0e-1<=NormRD[0])
+  if (1.0e-1<=state->history->norm[0])
     coef_OptRDM = 0.5;
-  else if (1.0e-2<=NormRD[0] && NormRD[0]<1.0e-1)
+  else if (1.0e-2<=state->history->norm[0] && state->history->norm[0]<1.0e-1)
     coef_OptRDM = 0.6;
-  else if (1.0e-3<=NormRD[0] && NormRD[0]<1.0e-2)
+  else if (1.0e-3<=state->history->norm[0] && state->history->norm[0]<1.0e-2)
     coef_OptRDM = 0.7;
-  else if (1.0e-4<=NormRD[0] && NormRD[0]<1.0e-3)
+  else if (1.0e-4<=state->history->norm[0] && state->history->norm[0]<1.0e-3)
     coef_OptRDM = 0.8;
   else
     coef_OptRDM = 1.0;
@@ -679,7 +680,7 @@ void Inverse(OpenMXSolverInvocation *scratch, int n, const OpenMXSolverRealTenso
 }
 
 
-void ADIIS_Mixing_DM(int SCF_iter, double ******ResidualDM, double ******iResidualDM, const OpenMXElectronicViews *electronic)
+void ADIIS_Mixing_DM(OpenMXMixingDMState *state, int SCF_iter, double ******ResidualDM, double ******iResidualDM, const OpenMXElectronicViews *electronic)
 {
-  MixDM_WithScratch(ADIIS_Mixing_DM_Compute,NULL,SCF_iter,ResidualDM,iResidualDM,electronic);
+  MixDM_WithScratch(ADIIS_Mixing_DM_Compute,state,SCF_iter,ResidualDM,iResidualDM,electronic);
 }

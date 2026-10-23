@@ -187,7 +187,7 @@ double GP = {0},GT = {0},T = {0},Weight = {0},Cell_Volume = {0},Uele = {0},Ukc =
 double Uele_OS0 = {0},Uele_OS1 = {0},Uele_IS0 = {0},Uele_IS1 = {0},Uxc0 = {0},Uxc1 = {0};
 double UH0 = {0},UH1 = {0},UH2 = {0},Ucore = {0},Uhub = {0},Ucs = {0},Uef = {0},Ukin = {0},Unl = {0},Una = {0},Uzs = {0},Uzo = {0},UvdW = {0};
 double Ucoh = {0},Uatom = {0},Udc = {0},Utot = {0},Uxc = {0},Given_Total_Charge = {0};
-double Min_Mixing_weight = {0},Max_Mixing_weight = {0},Mixing_weight = {0};
+double Min_Mixing_weight = {0},Max_Mixing_weight = {0};
 double Kerker_factor = {0},Criterion_MP_Special_Kpt = {0};
 double system_charge = {0},Total_Num_Electrons = {0};
 double Total_SpinS = {0},Total_SpinSx = {0},Total_SpinSy = {0},Total_SpinSz = {0};
@@ -198,7 +198,7 @@ double Total_OrbitalMomentAngle0 = {0},Total_OrbitalMomentAngle1 = {0};
 double ScaleSize = {0};
 double LastBoxCenterX = {0},LastBoxCenterY = {0},LastBoxCenterZ = {0};
 double W = {0};
-double SCF_Criterion = {0},NormRD[5] = {0};
+double SCF_Criterion = {0};
 double PAO_Nkmax = {0},Grid_Ecut = {0};
 double orbitalOpt_criterion = {0},MD_Opt_criterion = {0},orbitalOpt_SD_step = {0};
 double MD_EvsLattice_Step = {0};

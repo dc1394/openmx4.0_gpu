@@ -74,7 +74,7 @@ void state_lifecycle(){
 void invoke(int tag){
   const auto& a=expected;
   if(tag==0)DIIS_Mixing_DM(a.state,a.iteration,a.residual,a.imaginary_residual,a.electronic);
-  else if(tag==1)ADIIS_Mixing_DM(a.iteration,a.residual,a.imaginary_residual,a.electronic);
+  else if(tag==1)ADIIS_Mixing_DM(a.state,a.iteration,a.residual,a.imaginary_residual,a.electronic);
   else GR_Pulay_DM(a.state,a.iteration,a.residual,a.electronic);
 }
 void dispatch(){
@@ -83,7 +83,7 @@ void dispatch(){
   electronic.fields[OPENMX_ELECTRONIC_DENSITY]={1,2,2,4,6,26,components,atoms,nullptr,shapes,nullptr};
   double***** borrowed[2]={};expected={nullptr,&state,17,borrowed,borrowed+1,&electronic};
   for(int tag=0;tag<3;++tag){
-    expected.state=tag==1?nullptr:&state;expected.imaginary_residual=tag==2?nullptr:borrowed+1;
+    expected.state=&state;expected.imaginary_residual=tag==2?nullptr:borrowed+1;
     for(behavior=0;behavior<3;++behavior){
       selected=-1;const auto before=openmx::test::live_allocations();bool failed=false;
       try{invoke(tag);}catch(const AllocationAbort&){failed=true;}

@@ -1,5 +1,6 @@
 #include "fixtures/native_resources/sdk_model.hpp"
 #include "openmx_complex.h"
+#include "openmx_core_mixing.h"
 #include <cstdint>
 #include <cstring>
 #include <memory>

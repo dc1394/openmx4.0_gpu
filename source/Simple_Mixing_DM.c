@@ -110,10 +110,10 @@ void Simple_Mixing_DM(OpenMXMixingHistory *history, int Change_switch,
   ****************************************************/
 
   for (i=4; 1<=i; i--){
-    NormRD[i] = NormRD[i-1];
+    history->norm[i] = history->norm[i-1];
     history->energy[i] = history->energy[i-1];
   }
-  NormRD[0] = Norm;
+  history->norm[0] = Norm;
   history->energy[0] = Uele;
 
 
@@ -123,87 +123,87 @@ void Simple_Mixing_DM(OpenMXMixingHistory *history, int Change_switch,
 
     if ( (int)sgn(history->energy[0]-history->energy[1])
 	  ==(int)sgn(history->energy[1]-history->energy[2])
-       && NormRD[0]<NormRD[1]){
+       && history->norm[0]<history->norm[1]){
 
       /* tmp0 = 1.6*Mixing_weight; */
 
-      tmp0 = NormRD[1]/(largest(NormRD[1]-NormRD[0],10e-10))*Mixing_weight;
+      tmp0 = history->norm[1]/(largest(history->norm[1]-history->norm[0],10e-10))*history->weight;
 
       if (tmp0<Max_Weight){
         if (Min_Weight<tmp0){
-          Mixing_weight = tmp0;
+          history->weight = tmp0;
 	}
         else{ 
-          Mixing_weight = Min_Weight;
+          history->weight = Min_Weight;
 	}
       }
       else{ 
-        Mixing_weight = Max_Weight;
+        history->weight = Max_Weight;
         history->consecutive++;
       }
     }
    
     else if ( (int)sgn(history->energy[0]-history->energy[1])
             ==(int)sgn(history->energy[1]-history->energy[2])
-             && NormRD[1]<NormRD[0]){
+             && history->norm[1]<history->norm[0]){
 
-      tmp0 = NormRD[1]/(largest(NormRD[1]+NormRD[0],10e-10))*Mixing_weight;
+      tmp0 = history->norm[1]/(largest(history->norm[1]+history->norm[0],10e-10))*history->weight;
 
       /* tmp0 = Mixing_weight/1.6; */
 
       if (tmp0<Max_Weight){
         if (Min_Weight<tmp0)
-          Mixing_weight = tmp0;
+          history->weight = tmp0;
         else 
-          Mixing_weight = Min_Weight;
+          history->weight = Min_Weight;
       }
       else 
-        Mixing_weight = Max_Weight;
+        history->weight = Max_Weight;
 
       history->consecutive = -1;
     }
 
     else if ( (int)sgn(history->energy[0]-history->energy[1])
 	       !=(int)sgn(history->energy[1]-history->energy[2])
-             && NormRD[0]<NormRD[1]){
+             && history->norm[0]<history->norm[1]){
 
       /* tmp0 = Mixing_weight*1.2; */
 
-      tmp0 = NormRD[1]/(largest(NormRD[1]-NormRD[0],10e-10))*Mixing_weight;
+      tmp0 = history->norm[1]/(largest(history->norm[1]-history->norm[0],10e-10))*history->weight;
 
       if (tmp0<Max_Weight){
         if (Min_Weight<tmp0)
-          Mixing_weight = tmp0;
+          history->weight = tmp0;
         else 
-          Mixing_weight = Min_Weight;
+          history->weight = Min_Weight;
       }
       else{ 
-        Mixing_weight = Max_Weight;
+        history->weight = Max_Weight;
         history->consecutive++;
       }
     }
 
     else if ( (int)sgn(history->energy[0]-history->energy[1])
 	       !=(int)sgn(history->energy[1]-history->energy[2])
-             && NormRD[1]<NormRD[0]){
+             && history->norm[1]<history->norm[0]){
 
       /* tmp0 = Mixing_weight/2.0; */
 
-      tmp0 = NormRD[1]/(largest(NormRD[1]+NormRD[0],10e-10))*Mixing_weight;
+      tmp0 = history->norm[1]/(largest(history->norm[1]+history->norm[0],10e-10))*history->weight;
 
       if (tmp0<Max_Weight){
         if (Min_Weight<tmp0)
-          Mixing_weight = tmp0;
+          history->weight = tmp0;
         else 
-          Mixing_weight = Min_Weight;
+          history->weight = Min_Weight;
       }
       else 
-        Mixing_weight = Max_Weight;
+        history->weight = Max_Weight;
 
       history->consecutive = -1;
     }
 
-    Mix_wgt = Mixing_weight;
+    Mix_wgt = history->weight;
   }
 
   /****************************************************

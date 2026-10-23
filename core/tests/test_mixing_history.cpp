@@ -21,16 +21,20 @@ OpenMXMixingHistory* history(OpenMXCoreContext* c) {
   require(openmx_core_mixing_history(c,&result,error,sizeof(error)),error);return result;
 }
 void zero(const OpenMXMixingHistory* h) {
-  require(h && h->adaptive_max_weight==0 && h->consecutive==0,"fresh adaptive controller is not zero");
+  require(h && h->adaptive_max_weight==0 && h->consecutive==0 && h->weight==0,"fresh adaptive controller is not zero");
   for(double energy:h->energy)require(energy==0,"fresh calculation inherited energy history");
+  for(double norm:h->norm)require(norm==0,"fresh calculation inherited residual history");
 }
 void seed(OpenMXMixingHistory* h,int value) {
   h->adaptive_max_weight=.125*value;h->consecutive=value;
-  for(int i=0;i<5;++i)h->energy[i]=100*value+i*.25;
+  h->weight=-.25*value;
+  for(int i=0;i<5;++i){h->energy[i]=100*value+i*.25;h->norm[i]=200*value-i*.5;}
 }
 void check(const OpenMXMixingHistory* h,int value) {
   require(h->adaptive_max_weight==.125*value && h->consecutive==value,"adaptive controller crossed calculations");
+  require(h->weight==-.25*value,"mixing weight crossed calculations");
   for(int i=0;i<5;++i)require(h->energy[i]==100*value+i*.25,"energy history crossed calculations");
+  for(int i=0;i<5;++i)require(h->norm[i]==200*value-i*.5,"residual history crossed calculations");
 }
 void ownership() {
   auto a=calculation(),b=calculation();auto* x=history(a.get());auto* y=history(b.get());

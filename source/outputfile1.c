@@ -5,7 +5,7 @@
 #include "openmx_common.h"
 #include "mpi.h"
 
-void outputfile1(int f_switch, int MD_iter, int orbitalOpt_iter,
+void outputfile1(const OpenMXMixingHistory *history, int f_switch, int MD_iter, int orbitalOpt_iter,
                  int Cnt_Now, int SCF_iter, char fname[YOUSO10], 
                  double ChemP_e0[2], double orbital_norm)
 {
@@ -38,11 +38,11 @@ void outputfile1(int f_switch, int MD_iter, int orbitalOpt_iter,
 
         if ( Cnt_switch==0 || Cnt_Now!=1 ){
           fprintf(fp,"   SCF= %3d  NormRD= %15.12f  Uele= %15.12f\n",
-                  SCF_iter,sqrt(fabs(NormRD[0])),Uele);
+                  SCF_iter,sqrt(fabs(history->norm[0])),Uele);
 	}
         else if ( Cnt_switch==1 && Cnt_Now==1 ){
           fprintf(fp,"  OrbOpt=%3d  SCF= %3d  NormRD= %15.12f  Uele= %15.12f\n",
-                  orbitalOpt_iter,SCF_iter,sqrt(fabs(NormRD[0])),Uele);
+                  orbitalOpt_iter,SCF_iter,sqrt(fabs(history->norm[0])),Uele);
 	}
 
         fclose(fp); 

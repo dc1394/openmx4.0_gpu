@@ -64,7 +64,7 @@ double Mixing_DM(OpenMXMixingHistory *history, OpenMXMixingDMState *dm_state, Op
     }
     else{
 
-      Simple_Mixing_DM(history,1,Mixing_weight,DM[0],DM[1],DM[2],
+      Simple_Mixing_DM(history,1,history->weight,DM[0],DM[1],DM[2],
 		       iDM[0],iDM[1],iDM[2],ResidualDM[2],iResidualDM[2]);
     }
   }
@@ -83,7 +83,7 @@ double Mixing_DM(OpenMXMixingHistory *history, OpenMXMixingDMState *dm_state, Op
     }
     else if (SCF_iter<=(Pulay_SCF-1)){
 
-      Simple_Mixing_DM(history,1,Mixing_weight,DM[0],DM[1],DM[2],
+      Simple_Mixing_DM(history,1,history->weight,DM[0],DM[1],DM[2],
 		       iDM[0],iDM[1],iDM[2],ResidualDM[2],iResidualDM[2]);
     }
     else if (SCF_iter==Pulay_SCF)
@@ -101,7 +101,7 @@ double Mixing_DM(OpenMXMixingHistory *history, OpenMXMixingDMState *dm_state, Op
       GR_Pulay_DM(dm_state, 1,ResidualDM, electronic);
     }
     else if (SCF_iter<=(Pulay_SCF-1))
-      Simple_Mixing_DM(history,1,Mixing_weight,DM[0],DM[1],DM[2],
+      Simple_Mixing_DM(history,1,history->weight,DM[0],DM[1],DM[2],
 		       iDM[0],iDM[1],iDM[2],ResidualDM[2],iResidualDM[2]);
     else if (SCF_iter==Pulay_SCF)
       GR_Pulay_DM(dm_state, 2,ResidualDM, electronic);
@@ -116,14 +116,14 @@ double Mixing_DM(OpenMXMixingHistory *history, OpenMXMixingDMState *dm_state, Op
   else if (Mixing_switch==3){
 
     if (MD_iter==1 && SCF_iter0==1 && SucceedReadingDMfile==0){
-      Kerker_Mixing_Rhok(state, 0, Mixing_weight,
+      Kerker_Mixing_Rhok(state, 0, history->weight,
                          ReRhok,ImRhok,
                          Residual_ReRhok,Residual_ImRhok,
                          ReVk,ImVk,ReRhoAtomk,ImRhoAtomk);
     }
 
     else if (MD_iter==1 && SCF_iter==1){
-      Kerker_Mixing_Rhok(state, 0, Mixing_weight,
+      Kerker_Mixing_Rhok(state, 0, history->weight,
                          ReRhok,ImRhok,
                          Residual_ReRhok,Residual_ImRhok,
                          ReVk,ImVk,ReRhoAtomk,ImRhoAtomk);
@@ -137,7 +137,7 @@ double Mixing_DM(OpenMXMixingHistory *history, OpenMXMixingDMState *dm_state, Op
     }
 
     else{
-      Kerker_Mixing_Rhok(state, 1,Mixing_weight,
+      Kerker_Mixing_Rhok(state, 1,history->weight,
                          ReRhok,ImRhok,
                          Residual_ReRhok,Residual_ImRhok,
                          ReVk,ImVk,ReRhoAtomk,ImRhoAtomk);
@@ -151,14 +151,14 @@ double Mixing_DM(OpenMXMixingHistory *history, OpenMXMixingDMState *dm_state, Op
   else if (Mixing_switch==4){
  
     if (MD_iter==1 && SCF_iter==1){
-      Kerker_Mixing_Rhok(state, 0,Mixing_weight,
+      Kerker_Mixing_Rhok(state, 0,history->weight,
                          ReRhok,ImRhok,
                          Residual_ReRhok,Residual_ImRhok,
                          ReVk,ImVk,ReRhoAtomk,ImRhoAtomk);
     }
 
     else if (SCF_iter<Pulay_SCF){
-      Kerker_Mixing_Rhok(state, 1,Mixing_weight,
+      Kerker_Mixing_Rhok(state, 1,history->weight,
                          ReRhok,ImRhok,
                          Residual_ReRhok,Residual_ImRhok,
                          ReVk,ImVk,ReRhoAtomk,ImRhoAtomk);
@@ -168,14 +168,14 @@ double Mixing_DM(OpenMXMixingHistory *history, OpenMXMixingDMState *dm_state, Op
 
       if (6<SCF_iter){
 	DIIS_Mixing_Rhok(state, SCF_iter-(Pulay_SCF-3),
-			 Mixing_weight,
+			 history->weight,
 			 ReRhok,ImRhok,
 			 Residual_ReRhok,Residual_ImRhok,
 			 ReVk,ImVk,ReRhoAtomk,ImRhoAtomk);
       }
       else{
 	DIIS_Mixing_Rhok(state, SCF_iter,
-			 Mixing_weight,
+			 history->weight,
 			 ReRhok,ImRhok,
 			 Residual_ReRhok,Residual_ImRhok,
 			 ReVk,ImVk,ReRhoAtomk,ImRhoAtomk);
@@ -194,12 +194,12 @@ double Mixing_DM(OpenMXMixingHistory *history, OpenMXMixingDMState *dm_state, Op
   else if (Mixing_switch==6){
 
     if (SCF_iter<=(Pulay_SCF-1)){
-      Simple_Mixing_DM(history,1,Mixing_weight,DM[0],DM[1],DM[2],
+      Simple_Mixing_DM(history,1,history->weight,DM[0],DM[1],DM[2],
 		       iDM[0],iDM[1],iDM[2],ResidualDM[2],iResidualDM[2]);
 
     }
     else 
-      ADIIS_Mixing_DM(SCF_iter-Pulay_SCF+2,ResidualDM,iResidualDM, electronic);
+      ADIIS_Mixing_DM(dm_state, SCF_iter-Pulay_SCF+2,ResidualDM,iResidualDM, electronic);
   }
 
   /*******************************************************
@@ -214,7 +214,7 @@ double Mixing_DM(OpenMXMixingHistory *history, OpenMXMixingDMState *dm_state, Op
 
   /* if SCF_iter0==1, then NormRD[0]=1 */
 
-  if (SCF_iter0==1) NormRD[0] = 1.0;
+  if (SCF_iter0==1) history->norm[0] = 1.0;
 
   MPI_Barrier(mpi_comm_level1);
   dtime(&TEtime);
