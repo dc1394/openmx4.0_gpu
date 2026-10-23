@@ -2,8 +2,8 @@
 """Exercise production energy/stress loops with changing OpenMP teams.
 
 GNU OpenMP's parallel launcher is wrapped to make the first team smaller than
-later teams deterministically. MPI is stubbed for one rank; real OpenMP threads
-check the energy and concurrent per-atom timing updates. Requires GCC/libgomp.
+later teams deterministically. MPI and scratch storage are modeled; real
+OpenMP threads check the production loops and atom timing. Requires GCC/libgomp.
 --sanitize enables ASan/UBSan. This does not exercise CUDA or MPI execution.
 """
 
@@ -11,6 +11,7 @@ import argparse
 import os
 from pathlib import Path
 import shlex
+import re
 import subprocess
 import tempfile
 
@@ -18,10 +19,12 @@ import tempfile
 PREFIX = r'''
 #include <math.h>
 #include "openmx_core_electronic.h"
+#include "openmx_core_solver_workspace.h"
 #include <omp.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+ENERGY_WORKSPACE_VIEW
 
 #define PAIRS 32768
 #define MPI_DOUBLE 0
@@ -49,7 +52,13 @@ void __wrap_GOMP_parallel(void (*fn)(void *), void *data, unsigned n, unsigned f
 static int SpinP_switch, Cnt_switch, Spe_Total_CNO[1] = {1};
 static int WhatSpecies[2], M2G[2] = {0, 1}, neighbor[PAIRS];
 static int *natn[2] = {NULL, neighbor};
-static int OneD_Nloop = PAIRS, OneD2Mc_AN[PAIRS], OneD2h_AN[PAIRS];
+static int energy_pair_map[2][PAIRS+1];
+static double energy_partials[4];
+static double *OpenMX_Solver_OverwriteReal(OpenMXSolverInvocation *owner,
+    const char *name,size_t count) {
+    if (owner || strcmp(name,"total-energy:thread-sums") || count>4) abort();
+    return energy_partials;
+}
 static double time_per_atom[2];
 static double hvalue[PAIRS], dmvalue[2][PAIRS];
 static double *hrow[PAIRS][1], **hpair[PAIRS], ***hatom[2], ****hdir[1];
@@ -69,6 +78,8 @@ int main(void)
 {
     double hsum = 0.0;
     const OpenMXElectronicViews electronic={.H0=H0,.CntH0=CntH0,.DM=DM};
+    const OpenMXEnergyWorkspace workspace={.owner=NULL,.pair_count=PAIRS,
+        .pair_indices={.extent={2,PAIRS+1,1,1},.values=&energy_pair_map[0][0]}};
     omp_set_dynamic(0);
     omp_set_num_threads(4);
     hdir[0] = hatom;
@@ -79,8 +90,8 @@ int main(void)
         datom[s][1] = dpair[s];
     }
     for (int i = 0; i < PAIRS; i++) {
-        OneD2Mc_AN[i] = neighbor[i] = 1;
-        OneD2h_AN[i] = i;
+        energy_pair_map[0][i] = neighbor[i] = 1;
+        energy_pair_map[1][i] = i;
         distances[i] = 1.0;
         hvalue[i] = 1.0 + (i % 3);
         hsum += hvalue[i];
@@ -99,7 +110,7 @@ int main(void)
                     SpinP_switch = spin == 2 ? 3 : spin;
                     calls = 0;
                     time_per_atom[1] = 0.0;
-                    double value = Calc_Ekin(&electronic);
+                    double value = Calc_Ekin(&workspace,&electronic);
                     double energy = (spin == 0 ? 2.0 : 3.0) * hsum;
                     double timing = (spin == 1 ? 2.0 : 1.0) * PAIRS;
                     if (value != energy || time_per_atom[1] != timing) {
@@ -137,6 +148,8 @@ def main():
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
     source = (root / "source/Total_Energy.c").read_text()
+    header = (root / "source/openmx_energy_workspace.h").read_text()
+    view = re.search(r'typedef struct\s*\{[^}]*\}\s*OpenMXEnergyWorkspace;', header)[0]
     start = source.index("\ndouble Calc_Ekin(")
     end = source.index("\ndouble Calc_Ena(", start)
     stress = (root / "source/Stress.c").read_text()
@@ -145,7 +158,8 @@ def main():
     with tempfile.TemporaryDirectory(prefix="openmx_energy_omp_") as directory:
         cfile = Path(directory) / "check.c"
         binary = Path(directory) / "check"
-        cfile.write_text(PREFIX + source[start:end] + stress[stress_start:stress_end] + MAIN)
+        cfile.write_text(PREFIX.replace('ENERGY_WORKSPACE_VIEW',view) +
+                         source[start:end] + stress[stress_start:stress_end] + MAIN)
         flags = ["-std=c11", "-O1", "-g", "-fopenmp"]
         if args.sanitize:
             flags += ["-fsanitize=address,undefined", "-fno-omit-frame-pointer"]

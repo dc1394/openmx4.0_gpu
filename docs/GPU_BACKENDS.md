@@ -512,6 +512,12 @@ COSTAの非prefix互換アーカイブによるScaLAPACK関数の暗黙の置換
 [第70段階](CPP_CORE_MIGRATION.md#第70段階-分散線形代数のリンク境界)のprovider選択テストと実MPIの実数/複素数SVD検査が境界を検証します。
 数値検査は`tests/run_cwf_svd_mpi.py --help`に従い、使用するMPI/LP64ライブラリ/コンパイラを指定して実行できます。GPUデバイスは不要です。
 
+
+`Total_Energy`の原子対索引・スレッド集計・CWF分解用行列は、CPU/CUDA/HIP共通のC++ invocationが所有します。
+平坦な借用ビューを補助関数へ渡し、評価終了時にまとめて破棄します。
+[第71段階](CPP_CORE_MIGRATION.md#第71段階-total_energyの索引と補助領域の所有)で3大域変数を除去し、両SDK各74単位・384 CTest・4ホスト構成と128組の実計算比較を確認しました。
+小さなCWFでも範囲内だけを読み、非磁性CWFの末尾合計を原子別表と一致させています。
+
 以下の CTest は、コアを含むビルドの完了後に実行します。コアの GPU テストは実機を使います。
 
 ```sh

@@ -20,6 +20,7 @@
 #include "openmx_common.h"
 #include "openmx_env.h"
 #include "openmx_core_vna_matrix.h"
+#include "openmx_energy_workspace.h"
 #include "mpi.h"
 #include <omp.h>
 
@@ -43,10 +44,10 @@ static int TotalEnergy_ProfileEnabled(void)
 
 static double Calc_Ecore();
 static double Calc_EH0(const OpenMXAtomicViews *atomic, int MD_iter);
-static double Calc_Ekin(const OpenMXElectronicViews *electronic);
-static double Calc_Ena(const OpenMXVnaMatrixViews *vna, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
-static double Calc_Enl(const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
-static double Calc_ECH(const OpenMXElectronicViews *electronic);
+static double Calc_Ekin(const OpenMXEnergyWorkspace *workspace, const OpenMXElectronicViews *electronic);
+static double Calc_Ena(const OpenMXEnergyWorkspace *workspace, const OpenMXVnaMatrixViews *vna, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
+static double Calc_Enl(const OpenMXEnergyWorkspace *workspace, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
+static double Calc_ECH(const OpenMXEnergyWorkspace *workspace, const OpenMXElectronicViews *electronic);
 static void Calc_EXC_EH1(const OpenMXAtomicViews *atomic, double ECE[]);
 static void Calc_Edc(double ECE[]);
 static double Calc_Ehub(const OpenMXLocalBasisViews *local_basis);   /* --- added by MJ  */
@@ -55,7 +56,7 @@ static double Calc_EdftD3(); /* added by Ellner */
 static void EH0_TwoCenter(const OpenMXAtomicViews *atomic, int Gc_AN, int h_AN, double VH0ij[4]);
 static void EH0_TwoCenter_at_Cutoff(const OpenMXAtomicViews *atomic, int wan1, int wan2, double VH0ij[4]);
 static void Energy_Decomposition(const OpenMXBandEnergies *energies, double ECE[], const OpenMXElectronicViews *electronic);
-static void Energy_Decomposition_CWF(const OpenMXCWFObservables *cwf_values, double ECE[]);
+static void Energy_Decomposition_CWF(OpenMXSolverInvocation *scratch, const OpenMXCWFObservables *cwf_values, double ECE[]);
 #if OPENMX_GPU_HIP
 static int TotalEnergyUseOpenMP(void);
 void TotalEnergy_EXC_EH1_Grid_OpenMP(int spinmax, double *My_Ena, double *My_Eef,
@@ -84,8 +85,7 @@ void TotalEnergy_EH0_TwoCenter_Batch_OpenACC(const OpenMXAtomicViews *atomic, in
                                              double *pair_dirx, double *pair_diry, double *pair_dirz,
                                              double *out0, double *out1, double *out2, double *out3);
 
-/* for OpenMP */
-int OneD_Nloop,*OneD2Mc_AN,*OneD2h_AN;
+/* Atom-pair indices belong to the current energy invocation. */
 
 
 #if OPENMX_GPU_HIP
@@ -104,10 +104,38 @@ static int TotalEnergyUseOpenACC(void)
 
 
 
+typedef struct {
+  const OpenMXBandEnergies *energies;
+  const OpenMXCWFObservables *cwf_values;
+  const OpenMXAtomicViews *atomic;
+  const OpenMXVnaMatrixViews *vna;
+  int MD_iter;
+  double *ECE;
+  const OpenMXElectronicViews *electronic;
+  const OpenMXLocalBasisViews *local_basis;
+} TotalEnergyArguments;
+
+static void Total_Energy_owned(OpenMXSolverInvocation *scratch, const OpenMXBandEnergies *energies, const OpenMXCWFObservables *cwf_values, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, int MD_iter, double ECE[], const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
+static int TotalEnergyOperation(OpenMXSolverInvocation *scratch,void *opaque,double *result)
+{
+  const TotalEnergyArguments *a=(const TotalEnergyArguments*)opaque;
+  Total_Energy_owned(scratch,a->energies,a->cwf_values,a->atomic,a->vna,a->MD_iter,a->ECE,a->electronic,a->local_basis);
+  *result=0.0;
+  return 1;
+}
+
 double Total_Energy(const OpenMXBandEnergies *energies, const OpenMXCWFObservables *cwf_values, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, int MD_iter, double ECE[], const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
+{
+  TotalEnergyArguments arguments={energies,cwf_values,atomic,vna,MD_iter,ECE,electronic,local_basis};
+  double start,end;
+  dtime(&start);
+  (void)OpenMX_Solver_Run(TotalEnergyOperation,&arguments);
+  dtime(&end);
+  return end-start;
+}
+
+static void Total_Energy_owned(OpenMXSolverInvocation *scratch, const OpenMXBandEnergies *energies, const OpenMXCWFObservables *cwf_values, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, int MD_iter, double ECE[], const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 { 
-  double time0;
-  double TStime,TEtime;
   int numprocs,myid;
   int Mc_AN,Gc_AN,h_AN;
   double stime,etime;
@@ -116,30 +144,27 @@ double Total_Energy(const OpenMXBandEnergies *energies, const OpenMXCWFObservabl
   MPI_Comm_size(mpi_comm_level1,&numprocs);
   MPI_Comm_rank(mpi_comm_level1,&myid);
 
-  dtime(&TStime);
 
   /****************************************************
    For OpenMP:
    making of arrays of the one-dimensionalized loop
   ****************************************************/
 
-  OneD_Nloop = 0;
+  size_t pair_count=0;
   for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-    Gc_AN = M2G[Mc_AN];    
-    for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-      OneD_Nloop++;
-    }
-  }  
-
-  OneD2Mc_AN = (int*)malloc(sizeof(int)*(OneD_Nloop+1));
-  OneD2h_AN = (int*)malloc(sizeof(int)*(OneD_Nloop+1));
-
-  OneD_Nloop = 0;
+    Gc_AN = M2G[Mc_AN];
+    for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++) pair_count++;
+  }
+  OpenMXEnergyWorkspace workspace;
+  OpenMX_Energy_PairsPrepare(scratch,pair_count,&workspace);
+  int *OneD2Mc_AN=openmx_solver_int_matrix_row(&workspace.pair_indices,0);
+  int *OneD2h_AN=openmx_solver_int_matrix_row(&workspace.pair_indices,1);
+  int OneD_Nloop=0;
   for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-    Gc_AN = M2G[Mc_AN];    
+    Gc_AN = M2G[Mc_AN];
     for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
-      OneD2Mc_AN[OneD_Nloop] = Mc_AN; 
-      OneD2h_AN[OneD_Nloop] = h_AN; 
+      OneD2Mc_AN[OneD_Nloop] = Mc_AN;
+      OneD2h_AN[OneD_Nloop] = h_AN;
       OneD_Nloop++;
     }
   }
@@ -176,7 +201,7 @@ double Total_Energy(const OpenMXBandEnergies *energies, const OpenMXCWFObservabl
 
   dtime(&stime);
 
-  if (F_Kin_flag==1)  ECE[2] = Calc_Ekin(electronic);
+  if (F_Kin_flag==1)  ECE[2] = Calc_Ekin(&workspace, electronic);
 
   dtime(&etime);
   if(myid==0 && measure_time){
@@ -189,7 +214,7 @@ double Total_Energy(const OpenMXBandEnergies *energies, const OpenMXCWFObservabl
 
   dtime(&stime);
 
-  if (F_VNA_flag==1 && ProExpn_VNA==1)  ECE[3] = Calc_Ena(vna, electronic, local_basis);
+  if (F_VNA_flag==1 && ProExpn_VNA==1)  ECE[3] = Calc_Ena(&workspace, vna, electronic, local_basis);
 
   dtime(&etime);
   if(myid==0 && measure_time){
@@ -202,7 +227,7 @@ double Total_Energy(const OpenMXBandEnergies *energies, const OpenMXCWFObservabl
 
   dtime(&stime);
 
-  if (F_NL_flag==1)  ECE[4] = Calc_Enl(electronic, local_basis);
+  if (F_NL_flag==1)  ECE[4] = Calc_Enl(&workspace, electronic, local_basis);
 
   dtime(&etime);
   if(myid==0 && measure_time){
@@ -216,7 +241,7 @@ double Total_Energy(const OpenMXBandEnergies *energies, const OpenMXCWFObservabl
   dtime(&stime);
 
   if (core_hole_state_flag==1 && F_CH_flag==1){
-    ECE[14] = Calc_ECH(electronic);
+    ECE[14] = Calc_ECH(&workspace, electronic);
   }
 
   dtime(&etime);
@@ -339,21 +364,10 @@ double Total_Energy(const OpenMXBandEnergies *energies, const OpenMXCWFObservabl
 
   if (CWF_Calc==1 && CWF_Energy_Decomposition==1){
 
-    Energy_Decomposition_CWF(cwf_values, ECE);
+    Energy_Decomposition_CWF(scratch, cwf_values, ECE);
   }
 
-  /****************************************************
-   freeing of arrays
-  ****************************************************/
-
-  free(OneD2Mc_AN);
-  free(OneD2h_AN);
-
-  /* computational time */
-
-  dtime(&TEtime);
-  time0 = TEtime - TStime;
-  return time0;
+  /* The invocation owns the pair map and all helper scratch. */
 }
 
 
@@ -363,8 +377,12 @@ double Total_Energy(const OpenMXBandEnergies *energies, const OpenMXCWFObservabl
 
 
 
-double Calc_Ekin(const OpenMXElectronicViews *electronic)
+double Calc_Ekin(const OpenMXEnergyWorkspace *workspace, const OpenMXElectronicViews *electronic)
 {
+  const int OneD_Nloop=workspace->pair_count;
+  const int *OneD2Mc_AN=openmx_solver_int_matrix_row(&workspace->pair_indices,0);
+  const int *OneD2h_AN=openmx_solver_int_matrix_row(&workspace->pair_indices,1);
+
   double *****CntH0=electronic->CntH0;
   double ******DM=electronic->DM;
   double *****H0=electronic->H0;
@@ -395,7 +413,7 @@ double Calc_Ekin(const OpenMXElectronicViews *electronic)
   Nthrds0 = omp_get_max_threads();
 
   /* allocation of array */
-  My_Ekin_threads = (double*)malloc(sizeof(double)*Nthrds0);
+  My_Ekin_threads = OpenMX_Solver_OverwriteReal(workspace->owner,"total-energy:thread-sums",(size_t)Nthrds0);
   for (Nloop=0; Nloop<Nthrds0; Nloop++) My_Ekin_threads[Nloop] = 0.0;
 
   if (SpinP_switch==0 || SpinP_switch==1){
@@ -515,8 +533,7 @@ double Calc_Ekin(const OpenMXElectronicViews *electronic)
   /* sum of My_Ekin */
   MPI_Allreduce(&My_Ekin, &Ekin, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
 
-  /* freeing of array */
-  free(My_Ekin_threads);
+  /* The enclosing invocation owns the partial sums. */
 
   /****************************************************
                       return Ekin
@@ -529,8 +546,12 @@ double Calc_Ekin(const OpenMXElectronicViews *electronic)
 
 
 
-double Calc_Ena(const OpenMXVnaMatrixViews *vna, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
+double Calc_Ena(const OpenMXEnergyWorkspace *workspace, const OpenMXVnaMatrixViews *vna, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 {
+  const int OneD_Nloop=workspace->pair_count;
+  const int *OneD2Mc_AN=openmx_solver_int_matrix_row(&workspace->pair_indices,0);
+  const int *OneD2h_AN=openmx_solver_int_matrix_row(&workspace->pair_indices,1);
+
   double *****CntH0=electronic->CntH0;
   double ******DM=electronic->DM;
 
@@ -560,7 +581,7 @@ double Calc_Ena(const OpenMXVnaMatrixViews *vna, const OpenMXElectronicViews *el
   Nthrds0 = omp_get_max_threads();
 
   /* allocation of array */
-  My_Ena_threads = (double*)malloc(sizeof(double)*Nthrds0);
+  My_Ena_threads = OpenMX_Solver_OverwriteReal(workspace->owner,"total-energy:thread-sums",(size_t)Nthrds0);
   for (Nloop=0; Nloop<Nthrds0; Nloop++) My_Ena_threads[Nloop] = 0.0;
 
   if (SpinP_switch==0 || SpinP_switch==1){
@@ -686,8 +707,7 @@ double Calc_Ena(const OpenMXVnaMatrixViews *vna, const OpenMXElectronicViews *el
   /* sum of My_Ena */
   MPI_Allreduce(&My_Ena, &Ena, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
 
-  /* freeing of array */
-  free(My_Ena_threads);
+  /* The enclosing invocation owns the partial sums. */
 
   /****************************************************
                       return Ena
@@ -700,8 +720,12 @@ double Calc_Ena(const OpenMXVnaMatrixViews *vna, const OpenMXElectronicViews *el
 
 
 
-double Calc_Enl(const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
+double Calc_Enl(const OpenMXEnergyWorkspace *workspace, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 {
+  const int OneD_Nloop=workspace->pair_count;
+  const int *OneD2Mc_AN=openmx_solver_int_matrix_row(&workspace->pair_indices,0);
+  const int *OneD2h_AN=openmx_solver_int_matrix_row(&workspace->pair_indices,1);
+
   double *****CntH0=electronic->CntH0;
   double ******DM=electronic->DM;
   double *****HNL=electronic->HNL;
@@ -734,7 +758,7 @@ double Calc_Enl(const OpenMXElectronicViews *electronic, const OpenMXLocalBasisV
   Nthrds0 = omp_get_max_threads();
 
   /* allocation of array */
-  My_Enl_threads = (double*)malloc(sizeof(double)*Nthrds0);
+  My_Enl_threads = OpenMX_Solver_OverwriteReal(workspace->owner,"total-energy:thread-sums",(size_t)Nthrds0);
   for (Nloop=0; Nloop<Nthrds0; Nloop++) My_Enl_threads[Nloop] = 0.0;
 
   if (SpinP_switch==0 || SpinP_switch==1){
@@ -867,8 +891,7 @@ double Calc_Enl(const OpenMXElectronicViews *electronic, const OpenMXLocalBasisV
   /* sum of My_Enl */
   MPI_Allreduce(&My_Enl, &Enl, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
 
-  /* freeing of array */
-  free(My_Enl_threads);
+  /* The enclosing invocation owns the partial sums. */
 
   /****************************************************
                       return Enl
@@ -878,8 +901,12 @@ double Calc_Enl(const OpenMXElectronicViews *electronic, const OpenMXLocalBasisV
 }
 
 
-double Calc_ECH(const OpenMXElectronicViews *electronic)
+double Calc_ECH(const OpenMXEnergyWorkspace *workspace, const OpenMXElectronicViews *electronic)
 {
+  const int OneD_Nloop=workspace->pair_count;
+  const int *OneD2Mc_AN=openmx_solver_int_matrix_row(&workspace->pair_indices,0);
+  const int *OneD2h_AN=openmx_solver_int_matrix_row(&workspace->pair_indices,1);
+
   double ******DM=electronic->DM;
   double *****HCH=electronic->HCH;
   double ******iDM=electronic->iDM;
@@ -911,7 +938,7 @@ double Calc_ECH(const OpenMXElectronicViews *electronic)
   Nthrds0 = omp_get_max_threads();
 
   /* allocation of array */
-  My_ECH_threads = (double*)malloc(sizeof(double)*Nthrds0);
+  My_ECH_threads = OpenMX_Solver_OverwriteReal(workspace->owner,"total-energy:thread-sums",(size_t)Nthrds0);
   for (Nloop=0; Nloop<Nthrds0; Nloop++) My_ECH_threads[Nloop] = 0.0;
 
   if (SpinP_switch==0 || SpinP_switch==1){
@@ -1029,8 +1056,7 @@ double Calc_ECH(const OpenMXElectronicViews *electronic)
   /* sum of My_ECH */
   MPI_Allreduce(&My_ECH, &ECH, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
 
-  /* freeing of array */
-  free(My_ECH_threads);
+  /* The enclosing invocation owns the partial sums. */
 
   /****************************************************
                       return ECH
@@ -4419,7 +4445,7 @@ void Energy_Decomposition(const OpenMXBandEnergies *energies, double ECE[], cons
 
 
 
-void Energy_Decomposition_CWF(const OpenMXCWFObservables *cwf_values, double ECE[])
+void Energy_Decomposition_CWF(OpenMXSolverInvocation *scratch, const OpenMXCWFObservables *cwf_values, double ECE[])
 {
   int i,i0,spin,spinmax,spinmax1,XC_P_switch;
   int numS,numR,My_GNum,BN_AB,Gc_AN;
@@ -4429,7 +4455,7 @@ void Energy_Decomposition_CWF(const OpenMXCWFObservables *cwf_values, double ECE
   double My_dcEXC[2],My_dcEH1[2];
   double dcEXC[2],dcEH1[2],Edc[2];
   double Ne[2],c[2],LNe;
-  double **CWF_Energy2,**CWF_Energy3;
+  OpenMXSolverRealTensor CWF_Energy2,CWF_Energy3;
   double sden[2],aden,w,sum,sum2,r,Zc,Zh;
   int numprocs,myid;
 
@@ -4445,18 +4471,14 @@ void Energy_Decomposition_CWF(const OpenMXCWFObservables *cwf_values, double ECE
                 allocation of arrays
   ****************************************************/
 
-  CWF_Energy2 = (double**)malloc(sizeof(double*)*2);
+  OpenMX_Energy_CWFScratch(scratch,TNum_CWFs,&CWF_Energy2,&CWF_Energy3);
   for (spin=0; spin<2; spin++){
-    CWF_Energy2[spin] = (double*)malloc(sizeof(double)*TNum_CWFs);
-    for (i=0; i<TNum_CWFs; i++) CWF_Energy2[spin][i] = 0.0;
+    for (i=0; i<TNum_CWFs; i++) openmx_solver_real_matrix_row(&CWF_Energy2,spin)[i] = 0.0;
+  }
+  for (spin=0; spin<2; spin++){
+    for (i=0; i<TNum_CWFs; i++) openmx_solver_real_matrix_row(&CWF_Energy3,spin)[i] = 0.0;
   }
 
-  CWF_Energy3 = (double**)malloc(sizeof(double*)*2);
-  for (spin=0; spin<2; spin++){
-    CWF_Energy3[spin] = (double*)malloc(sizeof(double)*TNum_CWFs);
-    for (i=0; i<TNum_CWFs; i++) CWF_Energy3[spin][i] = 0.0;
-  }
-  
   /****************************************************
    set Vxc_Grid
   ****************************************************/
@@ -4580,7 +4602,7 @@ void Energy_Decomposition_CWF(const OpenMXCWFObservables *cwf_values, double ECE
 
   for (spin=0; spin<=spinmax1; spin++){
     for (i=0; i<TNum_CWFs; i++){
-      CWF_Energy2[spin][i] = c[spin]*openmx_cwf_charge_row(cwf_values,spin)[i];
+      openmx_solver_real_matrix_row(&CWF_Energy2,spin)[i] = c[spin]*openmx_cwf_charge_row(cwf_values,spin)[i];
     }
   }
 
@@ -4614,7 +4636,7 @@ void Energy_Decomposition_CWF(const OpenMXCWFObservables *cwf_values, double ECE
       for (spin=0; spin<=spinmax1; spin++){
         for (i=0; i<Ncwf; i++){
           w = openmx_cwf_charge_row(cwf_values,spin)[i0+i]/(LNe+1.0e-15);
-          CWF_Energy3[spin][i0+i] = sum*w;
+          openmx_solver_real_matrix_row(&CWF_Energy3,spin)[i0+i] = sum*w;
         } 
       }
 
@@ -4625,7 +4647,7 @@ void Energy_Decomposition_CWF(const OpenMXCWFObservables *cwf_values, double ECE
   } /* Gc_AN */
 
   for (spin=0; spin<=spinmax1; spin++){
-    MPI_Allreduce( MPI_IN_PLACE, &CWF_Energy3[spin][0], TNum_CWFs, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
+    MPI_Allreduce( MPI_IN_PLACE, &openmx_solver_real_matrix_row(&CWF_Energy3,spin)[0], TNum_CWFs, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
   }
 
   /****************************************************
@@ -4641,27 +4663,7 @@ void Energy_Decomposition_CWF(const OpenMXCWFObservables *cwf_values, double ECE
     double sumE[2],sumE2[2];
     double TsumE[2],TsumE2[2];
 
-    {
-      double sp1,sp2,d1,d2,Csp,Cd;
 
-      sp1 = 0.0;
-      sp2 = 0.0;
-      Csp = 0.0; 
-      for (i=0; i<=4; i++){
-	sp1 += 2.0*openmx_cwf_energy_row(cwf_values,0)[i];
-	sp2 += 2.0*(CWF_Energy2[0][i]+CWF_Energy3[0][i]); 
-        Csp += 2.0*openmx_cwf_charge_row(cwf_values,0)[i];
-      }
-
-      d1 = 0.0;
-      d2 = 0.0;
-      Cd = 0.0;
-      for (i=5; i<10; i++){
-	d1 += 2.0*openmx_cwf_energy_row(cwf_values,0)[i];
-	d2 += 2.0*(CWF_Energy2[0][i]+CWF_Energy3[0][i]); 
-        Cd += 2.0*openmx_cwf_charge_row(cwf_values,0)[i];
-      }
-    }
 
     sprintf(file_CWF,"%s%s.CWF_Energy",filepath,filename);
 
@@ -4694,7 +4696,7 @@ void Energy_Decomposition_CWF(const OpenMXCWFObservables *cwf_values, double ECE
 	  for (spin=0; spin<=SpinP_switch; spin++){
 	    for (i=0; i<CWF_Num_predefined[wan1]; i++){
 	      sumE[spin]  += openmx_cwf_energy_row(cwf_values,spin)[i0+i];
-	      sumE2[spin] += CWF_Energy2[spin][i0+i] + CWF_Energy3[spin][i0+i];
+	      sumE2[spin] += openmx_solver_real_matrix_row(&CWF_Energy2,spin)[i0+i] + openmx_solver_real_matrix_row(&CWF_Energy3,spin)[i0+i];
 	    }
 	  }
        
@@ -4712,7 +4714,7 @@ void Energy_Decomposition_CWF(const OpenMXCWFObservables *cwf_values, double ECE
 
 	  i0 += CWF_Num_predefined[wan1];
 
-	  for (spin=0; spin<=SpinP_switch; spin++){
+	  for (spin=0; spin<2; spin++){
             TsumE[spin] += sumE[spin]; 
             TsumE2[spin] += sumE2[spin]; 
 	  }
@@ -4750,11 +4752,11 @@ void Energy_Decomposition_CWF(const OpenMXCWFObservables *cwf_values, double ECE
 		      openmx_cwf_energy_row(cwf_values,0)[i0+i],openmx_cwf_energy_row(cwf_values,0)[i0+i],
 		      openmx_cwf_energy_row(cwf_values,0)[i0+i]+openmx_cwf_energy_row(cwf_values,0)[i0+i],
 		      openmx_cwf_energy_row(cwf_values,0)[i0+i]-openmx_cwf_energy_row(cwf_values,0)[i0+i],
-		      CWF_Energy2[0][i0+i]+CWF_Energy3[0][i0+i],CWF_Energy2[0][i0+i]+CWF_Energy3[0][i0+i],
-		      CWF_Energy2[0][i0+i]+CWF_Energy3[0][i0+i]+CWF_Energy2[0][i0+i]+CWF_Energy3[0][i0+i],
-		      CWF_Energy2[0][i0+i]+CWF_Energy3[0][i0+i]-CWF_Energy2[0][i0+i]-CWF_Energy3[0][i0+i],
-		      openmx_cwf_energy_row(cwf_values,0)[i0+i]+CWF_Energy2[0][i0+i]+CWF_Energy3[0][i0+i]+openmx_cwf_energy_row(cwf_values,0)[i0+i]+CWF_Energy2[0][i0+i]+CWF_Energy3[0][i0+i],
-		      openmx_cwf_energy_row(cwf_values,0)[i0+i]+CWF_Energy2[0][i0+i]+CWF_Energy3[0][i0+i]-openmx_cwf_energy_row(cwf_values,0)[i0+i]-CWF_Energy2[0][i0+i]-CWF_Energy3[0][i0+i]);
+		      openmx_solver_real_matrix_row(&CWF_Energy2,0)[i0+i]+openmx_solver_real_matrix_row(&CWF_Energy3,0)[i0+i],openmx_solver_real_matrix_row(&CWF_Energy2,0)[i0+i]+openmx_solver_real_matrix_row(&CWF_Energy3,0)[i0+i],
+		      openmx_solver_real_matrix_row(&CWF_Energy2,0)[i0+i]+openmx_solver_real_matrix_row(&CWF_Energy3,0)[i0+i]+openmx_solver_real_matrix_row(&CWF_Energy2,0)[i0+i]+openmx_solver_real_matrix_row(&CWF_Energy3,0)[i0+i],
+		      openmx_solver_real_matrix_row(&CWF_Energy2,0)[i0+i]+openmx_solver_real_matrix_row(&CWF_Energy3,0)[i0+i]-openmx_solver_real_matrix_row(&CWF_Energy2,0)[i0+i]-openmx_solver_real_matrix_row(&CWF_Energy3,0)[i0+i],
+		      openmx_cwf_energy_row(cwf_values,0)[i0+i]+openmx_solver_real_matrix_row(&CWF_Energy2,0)[i0+i]+openmx_solver_real_matrix_row(&CWF_Energy3,0)[i0+i]+openmx_cwf_energy_row(cwf_values,0)[i0+i]+openmx_solver_real_matrix_row(&CWF_Energy2,0)[i0+i]+openmx_solver_real_matrix_row(&CWF_Energy3,0)[i0+i],
+		      openmx_cwf_energy_row(cwf_values,0)[i0+i]+openmx_solver_real_matrix_row(&CWF_Energy2,0)[i0+i]+openmx_solver_real_matrix_row(&CWF_Energy3,0)[i0+i]-openmx_cwf_energy_row(cwf_values,0)[i0+i]-openmx_solver_real_matrix_row(&CWF_Energy2,0)[i0+i]-openmx_solver_real_matrix_row(&CWF_Energy3,0)[i0+i]);
 
 	    }
 	  }
@@ -4765,11 +4767,11 @@ void Energy_Decomposition_CWF(const OpenMXCWFObservables *cwf_values, double ECE
 		      openmx_cwf_energy_row(cwf_values,0)[i0+i],openmx_cwf_energy_row(cwf_values,1)[i0+i],
 		      openmx_cwf_energy_row(cwf_values,0)[i0+i]+openmx_cwf_energy_row(cwf_values,1)[i0+i],
 		      openmx_cwf_energy_row(cwf_values,0)[i0+i]-openmx_cwf_energy_row(cwf_values,1)[i0+i],
-		      CWF_Energy2[0][i0+i]+CWF_Energy3[0][i0+i],CWF_Energy2[1][i0+i]+CWF_Energy3[1][i0+i],
-		      CWF_Energy2[0][i0+i]+CWF_Energy3[0][i0+i]+CWF_Energy2[1][i0+i]+CWF_Energy3[1][i0+i],
-		      CWF_Energy2[0][i0+i]+CWF_Energy3[0][i0+i]-CWF_Energy2[1][i0+i]-CWF_Energy3[1][i0+i],
-		      openmx_cwf_energy_row(cwf_values,0)[i0+i]+CWF_Energy2[0][i0+i]+CWF_Energy3[0][i0+i]+openmx_cwf_energy_row(cwf_values,1)[i0+i]+CWF_Energy2[1][i0+i]+CWF_Energy3[1][i0+i],
-		      openmx_cwf_energy_row(cwf_values,0)[i0+i]+CWF_Energy2[0][i0+i]+CWF_Energy3[0][i0+i]-openmx_cwf_energy_row(cwf_values,1)[i0+i]-CWF_Energy2[1][i0+i]-CWF_Energy3[1][i0+i]);
+		      openmx_solver_real_matrix_row(&CWF_Energy2,0)[i0+i]+openmx_solver_real_matrix_row(&CWF_Energy3,0)[i0+i],openmx_solver_real_matrix_row(&CWF_Energy2,1)[i0+i]+openmx_solver_real_matrix_row(&CWF_Energy3,1)[i0+i],
+		      openmx_solver_real_matrix_row(&CWF_Energy2,0)[i0+i]+openmx_solver_real_matrix_row(&CWF_Energy3,0)[i0+i]+openmx_solver_real_matrix_row(&CWF_Energy2,1)[i0+i]+openmx_solver_real_matrix_row(&CWF_Energy3,1)[i0+i],
+		      openmx_solver_real_matrix_row(&CWF_Energy2,0)[i0+i]+openmx_solver_real_matrix_row(&CWF_Energy3,0)[i0+i]-openmx_solver_real_matrix_row(&CWF_Energy2,1)[i0+i]-openmx_solver_real_matrix_row(&CWF_Energy3,1)[i0+i],
+		      openmx_cwf_energy_row(cwf_values,0)[i0+i]+openmx_solver_real_matrix_row(&CWF_Energy2,0)[i0+i]+openmx_solver_real_matrix_row(&CWF_Energy3,0)[i0+i]+openmx_cwf_energy_row(cwf_values,1)[i0+i]+openmx_solver_real_matrix_row(&CWF_Energy2,1)[i0+i]+openmx_solver_real_matrix_row(&CWF_Energy3,1)[i0+i],
+		      openmx_cwf_energy_row(cwf_values,0)[i0+i]+openmx_solver_real_matrix_row(&CWF_Energy2,0)[i0+i]+openmx_solver_real_matrix_row(&CWF_Energy3,0)[i0+i]-openmx_cwf_energy_row(cwf_values,1)[i0+i]-openmx_solver_real_matrix_row(&CWF_Energy2,1)[i0+i]-openmx_solver_real_matrix_row(&CWF_Energy3,1)[i0+i]);
 	    }
 	  } 
 
@@ -4795,7 +4797,7 @@ void Energy_Decomposition_CWF(const OpenMXCWFObservables *cwf_values, double ECE
 
 	  for (i=0; i<2*CWF_Num_predefined[wan1]; i++){
 	    sumE[0]  += openmx_cwf_energy_row(cwf_values,0)[i0+i];
-	    sumE2[0] += CWF_Energy2[0][i0+i] + CWF_Energy3[0][i0+i];
+	    sumE2[0] += openmx_solver_real_matrix_row(&CWF_Energy2,0)[i0+i] + openmx_solver_real_matrix_row(&CWF_Energy3,0)[i0+i];
 	  }
        
 	  fprintf(fp_CWF," %4d %4s     %10.6f %10.6f %10.6f\n",
@@ -4831,8 +4833,8 @@ void Energy_Decomposition_CWF(const OpenMXCWFObservables *cwf_values, double ECE
 	    fprintf(fp_CWF,"   %2d         %10.6f %10.6f %10.6f\n",
 		    i,
 		    openmx_cwf_energy_row(cwf_values,0)[i0+i],
-		    CWF_Energy2[0][i0+i]+CWF_Energy3[0][i0+i],
-		    openmx_cwf_energy_row(cwf_values,0)[i0+i]+CWF_Energy2[0][i0+i]+CWF_Energy3[0][i0+i]);
+		    openmx_solver_real_matrix_row(&CWF_Energy2,0)[i0+i]+openmx_solver_real_matrix_row(&CWF_Energy3,0)[i0+i],
+		    openmx_cwf_energy_row(cwf_values,0)[i0+i]+openmx_solver_real_matrix_row(&CWF_Energy2,0)[i0+i]+openmx_solver_real_matrix_row(&CWF_Energy3,0)[i0+i]);
 	  }
 
 	  i0 += 2*CWF_Num_predefined[wan1];
@@ -4853,16 +4855,5 @@ void Energy_Decomposition_CWF(const OpenMXCWFObservables *cwf_values, double ECE
 
   } // if ( myid==Host_ID )
 
-  /****************************************************
-                   freeing of arrays
-  ****************************************************/
-  for (spin=0; spin<2; spin++){
-    free(CWF_Energy2[spin]);
-  }
-  free(CWF_Energy2);
-
-  for (spin=0; spin<2; spin++){
-    free(CWF_Energy3[spin]);
-  }
-  free(CWF_Energy3);
+  /* Scratch matrices are released with the enclosing invocation. */
 }

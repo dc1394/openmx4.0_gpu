@@ -716,7 +716,7 @@ Kerker_Mixing_Rhok.o: Kerker_Mixing_Rhok.c openmx_common.h openmx_mixing_policy.
 DIIS_Mixing_Rhok.o: DIIS_Mixing_Rhok.c openmx_common.h openmx_mixing_policy.h openmx_core_mixing.h
 	$(CC) -c DIIS_Mixing_Rhok.c
 # Same LDA+U Type2/cFLL workaround as above.
-Total_Energy.o: Total_Energy.c openmx_common.h set_hip_default_device_from_local_rank.h
+Total_Energy.o: Total_Energy.c openmx_common.h openmx_energy_workspace.h openmx_solver_workspace.h openmx_core_solver_workspace.h ../core/include/openmx_core_solver_workspace.h set_hip_default_device_from_local_rank.h
 	$(CC_NOACC) -c Total_Energy.c
 Total_Energy_GPU.o: Total_Energy_GPU.c openmx_common.h
 	$(CC) -c Total_Energy_GPU.c
