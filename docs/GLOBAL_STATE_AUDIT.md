@@ -49,18 +49,18 @@ python3 tools/audit_global_usage.py --output build/globals-usage.json \
 ゲートは「減る方向」だけを許します。所有権を移した段階でベースラインを更新してください。
 CI の GitHub Actions には CUDA・MPI・NVHPC のヘッダーが無いので、ゲートはこの計算機で手動で実行します。
 
-## 現状（2026-10-23、`7d4c23a9` を基準とするCWFグリッドの所有移行後）
+## 現状（2026-10-24、`de9ed64e`を基準とするバンドCWF作業領域の所有移行後）
 
 | 項目 | 値 |
 | --- | ---: |
-| 解析した翻訳単位 / 関数 | 289 / 3,146 |
-| 共通ヘッダーのオブジェクト（`openmx_globals.c` の定義） | 951（本変更前 1,112） |
+| 解析した翻訳単位 / 関数 | 289 / 3,169 |
+| 共通ヘッダーのオブジェクト（`openmx_globals.c` の定義） | 951 |
 | うち、どこかの関数が参照するもの | 945 |
 | うち、どこかの関数が書くもの（直接または中身） | 705 |
-| (関数, オブジェクト) の組 | 12,241 |
+| (関数, オブジェクト) の組 | 12,242 |
 | 共通ヘッダー外で外部リンケージを持つ定義 | 357（`openmx.c` 132、`DFT.c` 79、`Cluster_DFT_ON2.c` 28 …） |
 | ファイルスコープ `static` | 313（第54段階前314; `TRAN_Main_Analysis*.c` 173、`TRAN_RestartFile.c` 31 …、`openmx_env.c` 2） |
-| 関数内 `static` | 316（第54段階前318; `MD_pac.c` 58、`zero_cfrac.c` 54 …） |
+| 関数内 `static` | 302（第54段階前318; `MD_pac.c` 58、`zero_cfrac.c` 54 …） |
 | 環境変数名（全翻訳単位、id 経由の読み取りを含む） | 251 |
 | `getenv` を直接呼ぶ関数（`openmx_env.c` 以外） | 0 |
 | レジストリに無い環境変数名 | 0 |
@@ -318,9 +318,17 @@ shared-mutable57個とread-only3個が対象で、他の全オブジェクト/�
 hopping要素の14/28組の不一致を保持し、独立に補間したCWFバンドとの整合性は確認しています。
 新APIはSDKを含まず、初回取得にも確保がありません。BLACSリソースの解放自体は引き続きnative側で行います。
 
-最も多くの関数が触るのは `mpi_comm_level1`（611 関数、154 翻訳単位）、`WhatSpecies`（514）、
+第67段階では、共線/非共線バンドCWFのCs/Hs/Vs/Ws/EVs_PAO/WFs/Hop、計14個の関数内staticポインタを除去しました。
+C++ invocationが計73種類の数値領域を所有し、Hop/TB_Hoppingと共線WFsを連続ビューへ移しました。
+関数内staticは316→302、ファイルstatic313・共通大域951と設定298個・構造表278個は不変です。
+解析関数は3,169、共通参照組は12,242です。未使用配列のList_YOUSO参照1組を除き、失敗処理のMPI通信子参照2組を加えています。
+所有ヘルパーへの2関数の移動と14ポインタ除去を明示し、他の全オブジェクト/各関数のアクセスを照合しました。
+374 CTest・ホスト4構成・各74 SDK単位、68組の収束SCF比較と40バンド出力の内部整合性、18 MPIの性能確認後に一覧とベースラインを更新しています。
+hopping要素20/44組の不一致と既存のDIIS反復数差は継続して記録しています。
+
+最も多くの関数が触るのは `mpi_comm_level1`（613 関数、154 翻訳単位）、`WhatSpecies`（514）、
 `natn`（372）、`FNAN`（359）、`M2G`（357）、`Matomnum`（353）、`atomnum`（329）、
-`Spe_Total_CNO`（310）、`SpinP_switch`（274）、`List_YOUSO`（214）です。
+`Spe_Total_CNO`（310）、`SpinP_switch`（274）、`List_YOUSO`（213）です。
 関数側では `Input_std`（421 オブジェクト）、`Free_Arrays` の `array0`（414）、
 `Allocate_Arrays_with_context`（219）、`DFT`（110）、`truncation`（108）が突出しています。
 
