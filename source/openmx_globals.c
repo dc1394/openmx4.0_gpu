@@ -576,26 +576,26 @@ int nblk2 = {0},np_rows2 = {0},np_cols2 = {0},na_rows2 = {0},na_cols2 = {0},na_r
 int my_prow2 = {0},my_pcol2 = {0};
 int bhandle1_2 = {0},ictxt1_2 = {0};
 int descS2[9] = {0},descH2[9] = {0},descC2[9] = {0};
-int nblk_CWF1 = {0},np_rows_CWF1 = {0},np_cols_CWF1 = {0},na_rows_CWF1 = {0},na_cols_CWF1 = {0},na_rows_max_CWF1 = {0},na_cols_max_CWF1 = {0};
-int my_prow_CWF1 = {0},my_pcol_CWF1 = {0};
-int bhandle1_CWF1 = {0},ictxt1_CWF1 = {0};
-int desc_CWF1[9] = {0};
-int nblk_CWF2 = {0},np_rows_CWF2 = {0},np_cols_CWF2 = {0},na_rows_CWF2 = {0},na_cols_CWF2 = {0},na_rows_max_CWF2 = {0},na_cols_max_CWF2 = {0};
-int my_prow_CWF2 = {0},my_pcol_CWF2 = {0};
-int bhandle1_CWF2 = {0},ictxt1_CWF2 = {0};
-int desc_CWF2[9] = {0};
-int nblk_CWF3 = {0},np_rows_CWF3 = {0},np_cols_CWF3 = {0},na_rows_CWF3 = {0},na_cols_CWF3 = {0},na_rows_max_CWF3 = {0},na_cols_max_CWF3 = {0};
-int my_prow_CWF3 = {0},my_pcol_CWF3 = {0};
-int bhandle1_CWF3 = {0},ictxt1_CWF3 = {0};
-int desc_CWF3[9] = {0};
-int nblk_CWF4 = {0},np_rows_CWF4 = {0},np_cols_CWF4 = {0},na_rows_CWF4 = {0},na_cols_CWF4 = {0},na_rows_max_CWF4 = {0},na_cols_max_CWF4 = {0};
-int my_prow_CWF4 = {0},my_pcol_CWF4 = {0};
-int bhandle1_CWF4 = {0},ictxt1_CWF4 = {0};
-int desc_CWF4[9] = {0};
-int nblk_CWF5 = {0},np_rows_CWF5 = {0},np_cols_CWF5 = {0},na_rows_CWF5 = {0},na_cols_CWF5 = {0},na_rows_max_CWF5 = {0},na_cols_max_CWF5 = {0};
-int my_prow_CWF5 = {0},my_pcol_CWF5 = {0};
-int bhandle1_CWF5 = {0},ictxt1_CWF5 = {0};
-int desc_CWF5[9] = {0};
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 int scf_convergence_flag = {0};
 int Global_Cnt_kind = {0};
 int CDDF_on = {0};

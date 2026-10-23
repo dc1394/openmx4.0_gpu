@@ -72,7 +72,7 @@ void Save_Projection_Matrix(char *mode,
 
 static void lapack_dsyevx(int n0, int EVmax, double *A, double *Z, double *EVal);
 
-static void Allocate_Free_Cluster_Col_CWF(OpenMXSolverInvocation *scratch, int todo_flag,
+static void Allocate_Free_Cluster_Col_CWF(OpenMXCWFGrids *grids, OpenMXSolverInvocation *scratch, int todo_flag,
 					   int myworld1, 
 					   MPI_Comm *MPI_CommWD1,
 					   int n,
@@ -85,7 +85,7 @@ static void Allocate_Free_Cluster_Col_CWF(OpenMXSolverInvocation *scratch, int t
 					   double **EVs_PAO,
 					   double ***WFs );
 
-static double Calc_CWF_Cluster_Col(const OpenMXChemicalPotentials *chemical,
+static double Calc_CWF_Cluster_Col(OpenMXCWFGrids *grids, const OpenMXChemicalPotentials *chemical,
     int myid0,
     int numprocs0,
     int myid1,
@@ -114,7 +114,7 @@ void elpa_solve_evp_real_2stage_double_impl_( int *n1, int *n2, double *Cs, int 
 
 
 
-double Cluster_DFT_Col_CWF(const OpenMXChemicalPotentials *chemical,
+double Cluster_DFT_Col_CWF(OpenMXCWFGrids *grids, const OpenMXChemicalPotentials *chemical,
                    int SCF_iter,
                    int SpinP_switch,
                    double **ko,
@@ -812,7 +812,7 @@ double Cluster_DFT_Col_CWF(const OpenMXChemicalPotentials *chemical,
               calculation of CWFs
   ***********************************************/
 
-  time6 += Calc_CWF_Cluster_Col(chemical,  myid0,numprocs0,myid1,numprocs1,myworld1,
+  time6 += Calc_CWF_Cluster_Col(grids, chemical,  myid0,numprocs0,myid1,numprocs1,myworld1,
 			         size_H1,is2,ie2,MP,n,MinN,MaxN,MPI_CommWD1,Comm_World_StartID1,
 			         CntOLP,ko,EVec1,Full_EVec );
 
@@ -856,6 +856,7 @@ double Cluster_DFT_Col_CWF(const OpenMXChemicalPotentials *chemical,
   
 
 typedef struct {
+  OpenMXCWFGrids *grids;
   const OpenMXChemicalPotentials *chemical;
   int myid0, numprocs0, myid1, numprocs1, myworld1, size_H1;
   int *is2, *ie2, *MP;
@@ -866,7 +867,7 @@ typedef struct {
   dcomplex *Full_EVec;
 } ClusterColCWFArguments;
 
-static double Calc_CWF_Cluster_Col_owned(OpenMXSolverInvocation *scratch, const OpenMXChemicalPotentials *chemical,
+static double Calc_CWF_Cluster_Col_owned(OpenMXCWFGrids *grids, OpenMXSolverInvocation *scratch, const OpenMXChemicalPotentials *chemical,
     int myid0,
     int numprocs0,
     int myid1,
@@ -889,11 +890,11 @@ static double Calc_CWF_Cluster_Col_owned(OpenMXSolverInvocation *scratch, const 
 static int ClusterColCWFOperation(OpenMXSolverInvocation *scratch, void *opaque, double *result)
 {
   const ClusterColCWFArguments *a=(const ClusterColCWFArguments*)opaque;
-  *result=Calc_CWF_Cluster_Col_owned(scratch, a->chemical, a->myid0, a->numprocs0, a->myid1, a->numprocs1, a->myworld1, a->size_H1, a->is2, a->ie2, a->MP, a->n, a->MinN, a->MaxN, a->MPI_CommWD1, a->Comm_World_StartID1, a->OLP0, a->ko, a->EVec1, a->Full_EVec);
+  *result=Calc_CWF_Cluster_Col_owned(a->grids, scratch, a->chemical, a->myid0, a->numprocs0, a->myid1, a->numprocs1, a->myworld1, a->size_H1, a->is2, a->ie2, a->MP, a->n, a->MinN, a->MaxN, a->MPI_CommWD1, a->Comm_World_StartID1, a->OLP0, a->ko, a->EVec1, a->Full_EVec);
   return 1;
 }
 
-double Calc_CWF_Cluster_Col(const OpenMXChemicalPotentials *chemical,
+double Calc_CWF_Cluster_Col(OpenMXCWFGrids *grids, const OpenMXChemicalPotentials *chemical,
     int myid0,
     int numprocs0,
     int myid1,
@@ -913,11 +914,11 @@ double Calc_CWF_Cluster_Col(const OpenMXChemicalPotentials *chemical,
     double **EVec1,
     dcomplex *Full_EVec )
 {
-  ClusterColCWFArguments arguments={chemical, myid0, numprocs0, myid1, numprocs1, myworld1, size_H1, is2, ie2, MP, n, MinN, MaxN, MPI_CommWD1, Comm_World_StartID1, OLP0, ko, EVec1, Full_EVec};
+  ClusterColCWFArguments arguments={grids, chemical, myid0, numprocs0, myid1, numprocs1, myworld1, size_H1, is2, ie2, MP, n, MinN, MaxN, MPI_CommWD1, Comm_World_StartID1, OLP0, ko, EVec1, Full_EVec};
   return OpenMX_Solver_Run(ClusterColCWFOperation,&arguments);
 }
 
-static double Calc_CWF_Cluster_Col_owned(OpenMXSolverInvocation *scratch, const OpenMXChemicalPotentials *chemical,
+static double Calc_CWF_Cluster_Col_owned(OpenMXCWFGrids *grids, OpenMXSolverInvocation *scratch, const OpenMXChemicalPotentials *chemical,
     int myid0,
     int numprocs0,
     int myid1,
@@ -937,6 +938,11 @@ static double Calc_CWF_Cluster_Col_owned(OpenMXSolverInvocation *scratch, const 
     double **EVec1,
     dcomplex *Full_EVec )
 {
+  OpenMXCWFGrid *cwf_hopping=&grids->matrix[OPENMX_CWF_HOPPING_GRID];
+  OpenMXCWFGrid *cwf_orbitals=&grids->matrix[OPENMX_CWF_ORBITALS_GRID];
+  OpenMXCWFGrid *cwf_projection=&grids->matrix[OPENMX_CWF_PROJECTION_GRID];
+  OpenMXCWFGrid *cwf_eigenvectors=&grids->matrix[OPENMX_CWF_EIGENVECTORS_GRID];
+
   int Gc_AN,GB_AN,Mc_AN,h_AN,Gh_AN,wanB,wan1,tno1,wan2,tno2,TNum_CWFs;
   int i,i1,j,l,k,k1,ig,jg,m1,NumCWFs,spin,num,p,q,ID,ID1,mmin,mmax,m;
   int EVec1_size,Max_EVec1_size,sp,*int_data;
@@ -986,7 +992,7 @@ static double Calc_CWF_Cluster_Col_owned(OpenMXSolverInvocation *scratch, const 
 
   /* setting of arrays for SCALAPCK */
 
-  Allocate_Free_Cluster_Col_CWF(scratch, 1, myworld1, MPI_CommWD1, n, MaxN, TNum_CWFs, &Cs, &Hs, &Vs, &Ws, &EVs_PAO, &WFs );
+  Allocate_Free_Cluster_Col_CWF(grids, scratch, 1, myworld1, MPI_CommWD1, n, MaxN, TNum_CWFs, &Cs, &Hs, &Vs, &Ws, &EVs_PAO, &WFs );
 
   /* find the maximum size of EVec1 */
 
@@ -1015,10 +1021,10 @@ static double Calc_CWF_Cluster_Col_owned(OpenMXSolverInvocation *scratch, const 
   lwork = -1;
   F77_NAME(pdgesvd,PDGESVD)( "V", "V",
 			     &MaxN, &TNum_CWFs,
-			     Cs, &ONE, &ONE, desc_CWF3,
+			     Cs, &ONE, &ONE, cwf_projection->descriptor,
 			     sv,
-			     Ws, &ONE, &ONE, desc_CWF3,
-			     Vs, &ONE, &ONE, desc_CWF1,
+			     Ws, &ONE, &ONE, cwf_projection->descriptor,
+			     Vs, &ONE, &ONE, cwf_hopping->descriptor,
 			     &tmp, 
 			     &lwork,
 			     &info);
@@ -1041,7 +1047,7 @@ static double Calc_CWF_Cluster_Col_owned(OpenMXSolverInvocation *scratch, const 
 
   /* initialize Cs and Hs */
 
-  for (i=0; i<na_rows_CWF4*na_cols_CWF4; i++){
+  for (i=0; i<cwf_eigenvectors->local_rows*cwf_eigenvectors->local_columns; i++){
     Cs[i] = 0.0;
     Hs[i] = 0.0;
     Ws[i] = 0.0;
@@ -1098,22 +1104,22 @@ static double Calc_CWF_Cluster_Col_owned(OpenMXSolverInvocation *scratch, const 
 
       if ( (myworld1==spin && numprocs0!=1) || numprocs0==1 ){ 
 
-	for (j=0; j<na_cols_CWF4; j++){  // state
+	for (j=0; j<cwf_eigenvectors->local_columns; j++){  // state
 
-	  m1 = np_cols_CWF4*nblk_CWF4*((j)/nblk_CWF4) + (j)%nblk_CWF4 
-	    + ((np_cols_CWF4+my_pcol_CWF4)%np_cols_CWF4)*nblk_CWF4;
+	  m1 = cwf_eigenvectors->process_columns*cwf_eigenvectors->block_size*((j)/cwf_eigenvectors->block_size) + (j)%cwf_eigenvectors->block_size
+	    + ((cwf_eigenvectors->process_columns+cwf_eigenvectors->process_column)%cwf_eigenvectors->process_columns)*cwf_eigenvectors->block_size;
 
 	  if ((mmin-1)<=m1 && m1<=(mmax-1)){ 
 
-	    for (i=0; i<na_rows_CWF4; i++){ // PAO
+	    for (i=0; i<cwf_eigenvectors->local_rows; i++){ // PAO
 
-	      ig = np_rows_CWF4*nblk_CWF4*((i)/nblk_CWF4) + (i)%nblk_CWF4
-		+ ((np_rows_CWF4+my_prow_CWF4)%np_rows_CWF4)*nblk_CWF4;
+	      ig = cwf_eigenvectors->process_rows*cwf_eigenvectors->block_size*((i)/cwf_eigenvectors->block_size) + (i)%cwf_eigenvectors->block_size
+		+ ((cwf_eigenvectors->process_rows+cwf_eigenvectors->process_row)%cwf_eigenvectors->process_rows)*cwf_eigenvectors->block_size;
 
 	      //EVs_PAO[j*na_rows_CWF4+i] = TmpEVec1[ ig*(mmax-mmin+1)+m1-mmin+1 ];
 
               // Transpose
-	      EVs_PAO[j*na_rows_CWF4+i] = TmpEVec1[ (m1-mmin+1)*n+ig ];
+	      EVs_PAO[j*cwf_eigenvectors->local_rows+i] = TmpEVec1[ (m1-mmin+1)*n+ig ];
 
 	    } // i
 
@@ -1269,22 +1275,22 @@ static double Calc_CWF_Cluster_Col_owned(OpenMXSolverInvocation *scratch, const 
 
       if ( (myworld1==spin && numprocs0!=1) || numprocs0==1 ){ 
 
-	for (i=0; i<na_rows_CWF3; i++){
+	for (i=0; i<cwf_projection->local_rows; i++){
 
-	  m1 = np_rows_CWF3*nblk_CWF3*((i)/nblk_CWF3) + (i)%nblk_CWF3
-	    + ((np_rows_CWF3+my_prow_CWF3)%np_rows_CWF3)*nblk_CWF3 + 1;
+	  m1 = cwf_projection->process_rows*cwf_projection->block_size*((i)/cwf_projection->block_size) + (i)%cwf_projection->block_size
+	    + ((cwf_projection->process_rows+cwf_projection->process_row)%cwf_projection->process_rows)*cwf_projection->block_size + 1;
 
 	  if ( mmin<=m1 && m1<=mmax ){ // the base is 1 for mmin and mmax.
 
 	    m = m1 - mmin;  // local index
 
-	    for (j=0; j<na_cols_CWF3; j++){
+	    for (j=0; j<cwf_projection->local_columns; j++){
 
-	      jg = np_cols_CWF3*nblk_CWF3*((j)/nblk_CWF3) + (j)%nblk_CWF3 
-		+ ((np_cols_CWF3+my_pcol_CWF3)%np_cols_CWF3)*nblk_CWF3;
+	      jg = cwf_projection->process_columns*cwf_projection->block_size*((j)/cwf_projection->block_size) + (j)%cwf_projection->block_size
+		+ ((cwf_projection->process_columns+cwf_projection->process_column)%cwf_projection->process_columns)*cwf_projection->block_size;
 
 	      p = m*TNum_CWFs + jg;
-	      Cs[j*na_rows_CWF3+i] = InProd[p];
+	      Cs[j*cwf_projection->local_rows+i] = InProd[p];
 
 	    } // j
 	  } // if ( mmin<=m1 && m1<=mmax ) 
@@ -1326,10 +1332,10 @@ static double Calc_CWF_Cluster_Col_owned(OpenMXSolverInvocation *scratch, const 
   e0 = CWF_disentangling_Erange[0] + chemical->chemical_potential;
   e1 = CWF_disentangling_Erange[1] + chemical->chemical_potential;
 
-  for (i=0; i<na_rows_CWF3; i++){
+  for (i=0; i<cwf_projection->local_rows; i++){
 
-    m1 = np_rows_CWF3*nblk_CWF3*((i)/nblk_CWF3) + (i)%nblk_CWF3
-      + ((np_rows_CWF3+my_prow_CWF3)%np_rows_CWF3)*nblk_CWF3 + 1;
+    m1 = cwf_projection->process_rows*cwf_projection->block_size*((i)/cwf_projection->block_size) + (i)%cwf_projection->block_size
+      + ((cwf_projection->process_rows+cwf_projection->process_row)%cwf_projection->process_rows)*cwf_projection->block_size + 1;
 
     e = ko[sp][m1];
 
@@ -1340,8 +1346,8 @@ static double Calc_CWF_Cluster_Col_owned(OpenMXSolverInvocation *scratch, const 
       weight = (1.0/(exp(b0*(e0-e))+1.0))*(1.0/(exp(b1*(e-e1))+1.0)) + CWF_disentangling_smearing_bound;
     }
 
-    for (j=0; j<na_cols_CWF3; j++){
-      Cs[j*na_rows_CWF3+i] *= weight;
+    for (j=0; j<cwf_projection->local_columns; j++){
+      Cs[j*cwf_projection->local_rows+i] *= weight;
     }
   }
 
@@ -1362,10 +1368,10 @@ static double Calc_CWF_Cluster_Col_owned(OpenMXSolverInvocation *scratch, const 
     Save_Projection_Matrix("real",fname_ProM,
 			   Cs, &ctmp, Full_EVec, 
 			   MinN, MaxN, TNum_CWFs,
-			   nblk_CWF3, 
-			   na_rows_CWF3, na_cols_CWF3,
-			   np_rows_CWF3, np_cols_CWF3,
-			   my_prow_CWF3, my_pcol_CWF3,
+			   cwf_projection->block_size,
+			   cwf_projection->local_rows, cwf_projection->local_columns,
+			   cwf_projection->process_rows, cwf_projection->process_columns,
+			   cwf_projection->process_row, cwf_projection->process_column,
 			   MPI_CommWD1[myworld1]);
   }
 
@@ -1379,10 +1385,10 @@ static double Calc_CWF_Cluster_Col_owned(OpenMXSolverInvocation *scratch, const 
 
   F77_NAME(pdgesvd,PDGESVD)( "V", "V",
 			     &MaxN, &TNum_CWFs,
-			     Cs, &ONE, &ONE, desc_CWF3,   
+			     Cs, &ONE, &ONE, cwf_projection->descriptor,
 			     sv,
-			     Ws, &ONE, &ONE, desc_CWF3,                              
-			     Vs, &ONE, &ONE, desc_CWF1,
+			     Ws, &ONE, &ONE, cwf_projection->descriptor,
+			     Vs, &ONE, &ONE, cwf_hopping->descriptor,
 			     work,
 			     &lwork,
 			     &info);
@@ -1405,14 +1411,14 @@ static double Calc_CWF_Cluster_Col_owned(OpenMXSolverInvocation *scratch, const 
         Polar Decomposition (PD) of Cs
   *******************************************/
 
-  Cblacs_barrier(ictxt1_CWF1,"A");
+  Cblacs_barrier(cwf_hopping->context,"A");
   F77_NAME(pdgemm,PDGEMM)( "N","N",
 			   &MaxN, &TNum_CWFs, &TNum_CWFs, 
                            &alpha,
-			   Ws,&ONE,&ONE,desc_CWF3,
-			   Vs,&ONE,&ONE,desc_CWF1,
+			   Ws,&ONE,&ONE,cwf_projection->descriptor,
+			   Vs,&ONE,&ONE,cwf_hopping->descriptor,
                            &beta,
-			   Hs,&ONE,&ONE,desc_CWF3 );
+			   Hs,&ONE,&ONE,cwf_projection->descriptor );
 
   /**********************************************************
              calculation of <W_{i0}|H|W_{j0}>
@@ -1420,43 +1426,43 @@ static double Calc_CWF_Cluster_Col_owned(OpenMXSolverInvocation *scratch, const 
 
   /* E x Hs -> Cs */
 
-  for (i=0; i<na_rows_CWF3; i++){
+  for (i=0; i<cwf_projection->local_rows; i++){
 
-    ig = np_rows_CWF3*nblk_CWF3*((i)/nblk_CWF3) + (i)%nblk_CWF3
-      + ((np_rows_CWF3+my_prow_CWF3)%np_rows_CWF3)*nblk_CWF3 + 1;
+    ig = cwf_projection->process_rows*cwf_projection->block_size*((i)/cwf_projection->block_size) + (i)%cwf_projection->block_size
+      + ((cwf_projection->process_rows+cwf_projection->process_row)%cwf_projection->process_rows)*cwf_projection->block_size + 1;
 
-    for (j=0; j<na_cols_CWF3; j++){
+    for (j=0; j<cwf_projection->local_columns; j++){
 
       x = ko[sp][ig];
-      Cs[j*na_rows_CWF3+i] = x*Hs[j*na_rows_CWF3+i];
+      Cs[j*cwf_projection->local_rows+i] = x*Hs[j*cwf_projection->local_rows+i];
     }
   }
 
   /* Hs^dag x Cs -> Ws */
 
-  Cblacs_barrier(ictxt1_CWF1,"A");
+  Cblacs_barrier(cwf_hopping->context,"A");
   F77_NAME(pdgemm,PDGEMM)( "T","N",
 			   &TNum_CWFs, &TNum_CWFs, &MaxN,
 			   &alpha,
-			   Hs,&ONE,&ONE,desc_CWF3,
-			   Cs,&ONE,&ONE,desc_CWF3,
+			   Hs,&ONE,&ONE,cwf_projection->descriptor,
+			   Cs,&ONE,&ONE,cwf_projection->descriptor,
 			   &beta,
-			   Ws,&ONE,&ONE,desc_CWF1 );
+			   Ws,&ONE,&ONE,cwf_hopping->descriptor );
 
-  for (i=0; i<na_rows_CWF1; i++){
+  for (i=0; i<cwf_hopping->local_rows; i++){
 
-    ig = np_rows_CWF1*nblk_CWF1*((i)/nblk_CWF1) + (i)%nblk_CWF1
-      + ((np_rows_CWF1+my_prow_CWF1)%np_rows_CWF1)*nblk_CWF1;
+    ig = cwf_hopping->process_rows*cwf_hopping->block_size*((i)/cwf_hopping->block_size) + (i)%cwf_hopping->block_size
+      + ((cwf_hopping->process_rows+cwf_hopping->process_row)%cwf_hopping->process_rows)*cwf_hopping->block_size;
 
     if (ig<TNum_CWFs){
 
-      for (j=0; j<na_cols_CWF1; j++){
+      for (j=0; j<cwf_hopping->local_columns; j++){
 
-	jg = np_cols_CWF1*nblk_CWF1*((j)/nblk_CWF1) + (j)%nblk_CWF1 
-	  + ((np_cols_CWF1+my_pcol_CWF1)%np_cols_CWF1)*nblk_CWF1;
+	jg = cwf_hopping->process_columns*cwf_hopping->block_size*((j)/cwf_hopping->block_size) + (j)%cwf_hopping->block_size
+	  + ((cwf_hopping->process_columns+cwf_hopping->process_column)%cwf_hopping->process_columns)*cwf_hopping->block_size;
 
 	if (jg<TNum_CWFs){
-	  Hop[sp][jg*TNum_CWFs+ig] = Ws[j*na_rows_CWF1+i]; 
+	  Hop[sp][jg*TNum_CWFs+ig] = Ws[j*cwf_hopping->local_rows+i];
 	}
       }
     }
@@ -1469,14 +1475,14 @@ static double Calc_CWF_Cluster_Col_owned(OpenMXSolverInvocation *scratch, const 
              WF4               WF3               WF2
   ***********************************************************/
 
-  Cblacs_barrier(ictxt1_CWF4,"A");
+  Cblacs_barrier(cwf_eigenvectors->context,"A");
   F77_NAME(pdgemm,PDGEMM)( "N","N",
                            &n, &TNum_CWFs, &MaxN, 
                            &alpha,
-                           EVs_PAO,   &ONE, &ONE, desc_CWF4,
-                           Hs,        &ONE, &ONE, desc_CWF3,
+                           EVs_PAO,   &ONE, &ONE, cwf_eigenvectors->descriptor,
+                           Hs,        &ONE, &ONE, cwf_projection->descriptor,
                            &beta,
-                           WFs[sp],   &ONE, &ONE, desc_CWF2 );
+                           WFs[sp],   &ONE, &ONE, cwf_orbitals->descriptor );
 
   /*************************************************************
     CWFs coefficients w.r.t PAOs are stored for calculating 
@@ -1507,19 +1513,19 @@ static double Calc_CWF_Cluster_Col_owned(OpenMXSolverInvocation *scratch, const 
 
 	for (i=0; i<n; i++) CWF_Coef[sp][k][p][0][0][0][i] = 0.0;
 
-	for (j=0; j<na_cols_CWF2; j++){
+	for (j=0; j<cwf_orbitals->local_columns; j++){
 
-	  jg = np_cols_CWF2*nblk_CWF2*((j)/nblk_CWF2) + (j)%nblk_CWF2 
-	    + ((np_cols_CWF2+my_pcol_CWF2)%np_cols_CWF2)*nblk_CWF2;
+	  jg = cwf_orbitals->process_columns*cwf_orbitals->block_size*((j)/cwf_orbitals->block_size) + (j)%cwf_orbitals->block_size
+	    + ((cwf_orbitals->process_columns+cwf_orbitals->process_column)%cwf_orbitals->process_columns)*cwf_orbitals->block_size;
 
 	  if (q==jg){
 
-	    for (i=0; i<na_rows_CWF2; i++){
+	    for (i=0; i<cwf_orbitals->local_rows; i++){
 
-	      ig = np_rows_CWF2*nblk_CWF2*((i)/nblk_CWF2) + (i)%nblk_CWF2
-		+ ((np_rows_CWF2+my_prow_CWF2)%np_rows_CWF2)*nblk_CWF2;
+	      ig = cwf_orbitals->process_rows*cwf_orbitals->block_size*((i)/cwf_orbitals->block_size) + (i)%cwf_orbitals->block_size
+		+ ((cwf_orbitals->process_rows+cwf_orbitals->process_row)%cwf_orbitals->process_rows)*cwf_orbitals->block_size;
 
-	      CWF_Coef[sp][k][p][0][0][0][ig] = WFs[sp][j*na_rows_CWF2+i];
+	      CWF_Coef[sp][k][p][0][0][0][ig] = WFs[sp][j*cwf_orbitals->local_rows+i];
 
 	    } // i
 	  } // if (q==jg)
@@ -1550,21 +1556,21 @@ static double Calc_CWF_Cluster_Col_owned(OpenMXSolverInvocation *scratch, const 
    calculations of effective charges and local band energies
   ***********************************************************/
 
-  for (i=0; i<na_rows_CWF3; i++){
+  for (i=0; i<cwf_projection->local_rows; i++){
 
-    ig = np_rows_CWF3*nblk_CWF3*((i)/nblk_CWF3) + (i)%nblk_CWF3
-      + ((np_rows_CWF3+my_prow_CWF3)%np_rows_CWF3)*nblk_CWF3 + 1;
+    ig = cwf_projection->process_rows*cwf_projection->block_size*((i)/cwf_projection->block_size) + (i)%cwf_projection->block_size
+      + ((cwf_projection->process_rows+cwf_projection->process_row)%cwf_projection->process_rows)*cwf_projection->block_size + 1;
 
-    for (j=0; j<na_cols_CWF3; j++){
+    for (j=0; j<cwf_projection->local_columns; j++){
 
-      jg = np_cols_CWF3*nblk_CWF3*((j)/nblk_CWF3) + (j)%nblk_CWF3 
-	+ ((np_cols_CWF3+my_pcol_CWF3)%np_cols_CWF3)*nblk_CWF3;
+      jg = cwf_projection->process_columns*cwf_projection->block_size*((j)/cwf_projection->block_size) + (j)%cwf_projection->block_size
+	+ ((cwf_projection->process_columns+cwf_projection->process_column)%cwf_projection->process_columns)*cwf_projection->block_size;
 
       x = (ko[sp][ig] - chemical->chemical_potential)*Beta;
       if (x<=-max_x) x = -max_x;
       if (max_x<=x)  x = max_x;
       FermiF = 1.0/(1.0 + exp(x));
-      tmp = FermiF*Hs[j*na_rows_CWF3+i]*Hs[j*na_rows_CWF3+i];
+      tmp = FermiF*Hs[j*cwf_projection->local_rows+i]*Hs[j*cwf_projection->local_rows+i];
 
       CWF_Charge[sp][jg] += tmp;
       CWF_Energy[sp][jg] += tmp*ko[sp][ig];
@@ -2090,7 +2096,7 @@ static double Calc_CWF_Cluster_Col_owned(OpenMXSolverInvocation *scratch, const 
 
   /* freeing of arrays for SCALAPCK */
 
-  Allocate_Free_Cluster_Col_CWF(scratch, 2, myworld1, MPI_CommWD1, n, MaxN, TNum_CWFs, &Cs, &Hs, &Vs, &Ws, &EVs_PAO, &WFs );
+  Allocate_Free_Cluster_Col_CWF(grids, scratch, 2, myworld1, MPI_CommWD1, n, MaxN, TNum_CWFs, &Cs, &Hs, &Vs, &Ws, &EVs_PAO, &WFs );
 
   /* mearuring elapsed time */
 
@@ -2100,7 +2106,7 @@ static double Calc_CWF_Cluster_Col_owned(OpenMXSolverInvocation *scratch, const 
 
 
 
-void Allocate_Free_Cluster_Col_CWF(OpenMXSolverInvocation *scratch, int todo_flag,
+void Allocate_Free_Cluster_Col_CWF(OpenMXCWFGrids *grids, OpenMXSolverInvocation *scratch, int todo_flag,
 				    int myworld1, 
 				    MPI_Comm *MPI_CommWD1,
 				    int n,
@@ -2113,6 +2119,11 @@ void Allocate_Free_Cluster_Col_CWF(OpenMXSolverInvocation *scratch, int todo_fla
 				    double **EVs_PAO,
 				    double ***WFs )
 {
+  OpenMXCWFGrid *cwf_hopping=&grids->matrix[OPENMX_CWF_HOPPING_GRID];
+  OpenMXCWFGrid *cwf_orbitals=&grids->matrix[OPENMX_CWF_ORBITALS_GRID];
+  OpenMXCWFGrid *cwf_projection=&grids->matrix[OPENMX_CWF_PROJECTION_GRID];
+  OpenMXCWFGrid *cwf_eigenvectors=&grids->matrix[OPENMX_CWF_EIGENVECTORS_GRID];
+
   static int firsttime=1;
   int ZERO=0, ONE=1,info,myid0,numprocs0,myid1,numprocs1;
   int i,k,nblk_m,nblk_m2,wanA,spin,size_EVec1;
@@ -2140,12 +2151,12 @@ void Allocate_Free_Cluster_Col_CWF(OpenMXSolverInvocation *scratch, int todo_fla
 
     /* CWF1: setting of BLACS for matrices in size of TNum_CWFs x TNum_CWFs */
 
-    np_cols_CWF1 = (int)(sqrt((float)numprocs1));
+    cwf_hopping->process_columns = (int)(sqrt((float)numprocs1));
     do{
-      if((numprocs1%np_cols_CWF1)==0) break;
-      np_cols_CWF1--;
-    } while (np_cols_CWF1>=2);
-    np_rows_CWF1 = numprocs1/np_cols_CWF1;
+      if((numprocs1%cwf_hopping->process_columns)==0) break;
+      cwf_hopping->process_columns--;
+    } while (cwf_hopping->process_columns>=2);
+    cwf_hopping->process_rows = numprocs1/cwf_hopping->process_columns;
 
     /*
      For pdgesvd, I noticed that the same 'nb' has to be used for Cs, Ws, and Vs.
@@ -2153,153 +2164,153 @@ void Allocate_Free_Cluster_Col_CWF(OpenMXSolverInvocation *scratch, int todo_fla
     */
 
     nblk_m = NBLK;
-    while((nblk_m*np_rows_CWF1>MaxN || nblk_m*np_cols_CWF1>TNum_CWFs) && (nblk_m > 1)){ // the same as for CWF3
+    while((nblk_m*cwf_hopping->process_rows>MaxN || nblk_m*cwf_hopping->process_columns>TNum_CWFs) && (nblk_m > 1)){ // the same as for CWF3
     //while((nblk_m*np_rows_CWF1>TNum_CWFs || nblk_m*np_cols_CWF1>TNum_CWFs) && (nblk_m > 1)){
       nblk_m /= 2;
     }
     if(nblk_m<1) nblk_m = 1;
 
-    MPI_Allreduce(&nblk_m,&nblk_CWF1,1,MPI_INT,MPI_MIN,mpi_comm_level1);
+    MPI_Allreduce(&nblk_m,&cwf_hopping->block_size,1,MPI_INT,MPI_MIN,mpi_comm_level1);
 
-    my_prow_CWF1 = myid1/np_cols_CWF1;
-    my_pcol_CWF1 = myid1%np_cols_CWF1;
+    cwf_hopping->process_row = myid1/cwf_hopping->process_columns;
+    cwf_hopping->process_column = myid1%cwf_hopping->process_columns;
 
-    na_rows_CWF1 = numroc_(&MaxN, &nblk_CWF1, &my_prow_CWF1, &ZERO, &np_rows_CWF1 );  // the same as for CWF3
-    na_cols_CWF1 = numroc_(&TNum_CWFs, &nblk_CWF1, &my_pcol_CWF1, &ZERO, &np_cols_CWF1 );
+    cwf_hopping->local_rows = numroc_(&MaxN, &cwf_hopping->block_size, &cwf_hopping->process_row, &ZERO, &cwf_hopping->process_rows );  // the same as for CWF3
+    cwf_hopping->local_columns = numroc_(&TNum_CWFs, &cwf_hopping->block_size, &cwf_hopping->process_column, &ZERO, &cwf_hopping->process_columns );
 
-    bhandle1_CWF1 = Csys2blacs_handle(MPI_CommWD1[myworld1]);
-    ictxt1_CWF1 = bhandle1_CWF1;
+    cwf_hopping->system_handle = Csys2blacs_handle(MPI_CommWD1[myworld1]);
+    cwf_hopping->context = cwf_hopping->system_handle;
 
-    Cblacs_gridinit(&ictxt1_CWF1, "Row", np_rows_CWF1, np_cols_CWF1);
+    Cblacs_gridinit(&cwf_hopping->context, "Row", cwf_hopping->process_rows, cwf_hopping->process_columns);
 
-    MPI_Allreduce(&na_rows_CWF1,&na_rows_max_CWF1,1,MPI_INT,MPI_MAX,MPI_CommWD1[myworld1]);
-    MPI_Allreduce(&na_cols_CWF1,&na_cols_max_CWF1,1,MPI_INT,MPI_MAX,MPI_CommWD1[myworld1]);
+    MPI_Allreduce(&cwf_hopping->local_rows,&cwf_hopping->maximum_rows,1,MPI_INT,MPI_MAX,MPI_CommWD1[myworld1]);
+    MPI_Allreduce(&cwf_hopping->local_columns,&cwf_hopping->maximum_columns,1,MPI_INT,MPI_MAX,MPI_CommWD1[myworld1]);
 
-    descinit_( desc_CWF1, &TNum_CWFs, &TNum_CWFs, &nblk_CWF1, &nblk_CWF1,  
-               &ZERO, &ZERO, &ictxt1_CWF1, &na_rows_CWF1,  &info); 
+    descinit_( cwf_hopping->descriptor, &TNum_CWFs, &TNum_CWFs, &cwf_hopping->block_size, &cwf_hopping->block_size,
+               &ZERO, &ZERO, &cwf_hopping->context, &cwf_hopping->local_rows,  &info);
 
     /* CWF2: setting of BLACS for matrices in size of n x TNum_CWFs */
 
-    np_cols_CWF2 = (int)(sqrt((float)numprocs1));
+    cwf_orbitals->process_columns = (int)(sqrt((float)numprocs1));
     do{
-      if((numprocs1%np_cols_CWF2)==0) break;
-      np_cols_CWF2--;
-    } while (np_cols_CWF2>=2);
-    np_rows_CWF2 = numprocs1/np_cols_CWF2;
+      if((numprocs1%cwf_orbitals->process_columns)==0) break;
+      cwf_orbitals->process_columns--;
+    } while (cwf_orbitals->process_columns>=2);
+    cwf_orbitals->process_rows = numprocs1/cwf_orbitals->process_columns;
 
     nblk_m = NBLK;
-    while((nblk_m*np_rows_CWF2>n || nblk_m*np_cols_CWF2>TNum_CWFs) && (nblk_m > 1)){
+    while((nblk_m*cwf_orbitals->process_rows>n || nblk_m*cwf_orbitals->process_columns>TNum_CWFs) && (nblk_m > 1)){
       nblk_m /= 2;
     }
     if(nblk_m<1) nblk_m = 1;
 
-    MPI_Allreduce(&nblk_m,&nblk_CWF2,1,MPI_INT,MPI_MIN,mpi_comm_level1);
+    MPI_Allreduce(&nblk_m,&cwf_orbitals->block_size,1,MPI_INT,MPI_MIN,mpi_comm_level1);
 
-    ictxt1_CWF2 = bhandle1_CWF1;
+    cwf_orbitals->context = cwf_hopping->system_handle;
 
-    my_prow_CWF2 = myid1/np_cols_CWF2;
-    my_pcol_CWF2 = myid1%np_cols_CWF2;
+    cwf_orbitals->process_row = myid1/cwf_orbitals->process_columns;
+    cwf_orbitals->process_column = myid1%cwf_orbitals->process_columns;
 
-    Cblacs_gridinit(&ictxt1_CWF2, "Row", np_rows_CWF2, np_cols_CWF2);
+    Cblacs_gridinit(&cwf_orbitals->context, "Row", cwf_orbitals->process_rows, cwf_orbitals->process_columns);
 
-    na_rows_CWF2 = numroc_(&n,         &nblk_CWF2, &my_prow_CWF2, &ZERO, &np_rows_CWF2 );
-    na_cols_CWF2 = numroc_(&TNum_CWFs, &nblk_CWF2, &my_pcol_CWF2, &ZERO, &np_cols_CWF2 );
+    cwf_orbitals->local_rows = numroc_(&n,         &cwf_orbitals->block_size, &cwf_orbitals->process_row, &ZERO, &cwf_orbitals->process_rows );
+    cwf_orbitals->local_columns = numroc_(&TNum_CWFs, &cwf_orbitals->block_size, &cwf_orbitals->process_column, &ZERO, &cwf_orbitals->process_columns );
 
-    MPI_Allreduce(&na_rows_CWF2, &na_rows_max_CWF2,1,MPI_INT,MPI_MAX,MPI_CommWD1[myworld1]);
-    MPI_Allreduce(&na_cols_CWF2, &na_cols_max_CWF2,1,MPI_INT,MPI_MAX,MPI_CommWD1[myworld1]);
+    MPI_Allreduce(&cwf_orbitals->local_rows, &cwf_orbitals->maximum_rows,1,MPI_INT,MPI_MAX,MPI_CommWD1[myworld1]);
+    MPI_Allreduce(&cwf_orbitals->local_columns, &cwf_orbitals->maximum_columns,1,MPI_INT,MPI_MAX,MPI_CommWD1[myworld1]);
 
-    descinit_( desc_CWF2, &n, &TNum_CWFs, &nblk_CWF2, &nblk_CWF2,  
-               &ZERO, &ZERO, &ictxt1_CWF2, &na_rows_CWF2,  &info);
+    descinit_( cwf_orbitals->descriptor, &n, &TNum_CWFs, &cwf_orbitals->block_size, &cwf_orbitals->block_size,
+               &ZERO, &ZERO, &cwf_orbitals->context, &cwf_orbitals->local_rows,  &info);
 
-    desc_CWF2[1] = desc_CWF1[1];
+    cwf_orbitals->descriptor[1] = cwf_hopping->descriptor[1];
 
-    *WFs = OpenMX_Solver_RealMatrix(scratch,"cwf-wavefunctions",(size_t)SpinP_switch+1,(size_t)na_rows_max_CWF2*na_cols_max_CWF2);
+    *WFs = OpenMX_Solver_RealMatrix(scratch,"cwf-wavefunctions",(size_t)SpinP_switch+1,(size_t)cwf_orbitals->maximum_rows*cwf_orbitals->maximum_columns);
 
     /* CWF3: setting of BLACS for matrices in size of MaxN x TNum_CWFs */
 
-    np_cols_CWF3 = (int)(sqrt((float)numprocs1));
+    cwf_projection->process_columns = (int)(sqrt((float)numprocs1));
     do{
-      if((numprocs1%np_cols_CWF3)==0) break;
-      np_cols_CWF3--;
-    } while (np_cols_CWF3>=2);
-    np_rows_CWF3 = numprocs1/np_cols_CWF3;
+      if((numprocs1%cwf_projection->process_columns)==0) break;
+      cwf_projection->process_columns--;
+    } while (cwf_projection->process_columns>=2);
+    cwf_projection->process_rows = numprocs1/cwf_projection->process_columns;
 
     nblk_m = NBLK;
-    while((nblk_m*np_rows_CWF3>MaxN || nblk_m*np_cols_CWF3>TNum_CWFs) && (nblk_m > 1)){
+    while((nblk_m*cwf_projection->process_rows>MaxN || nblk_m*cwf_projection->process_columns>TNum_CWFs) && (nblk_m > 1)){
       nblk_m /= 2;
     }
     if(nblk_m<1) nblk_m = 1;
 
-    MPI_Allreduce(&nblk_m,&nblk_CWF3,1,MPI_INT,MPI_MIN,mpi_comm_level1);
+    MPI_Allreduce(&nblk_m,&cwf_projection->block_size,1,MPI_INT,MPI_MIN,mpi_comm_level1);
 
-    ictxt1_CWF3 = bhandle1_CWF1;
+    cwf_projection->context = cwf_hopping->system_handle;
 
-    my_prow_CWF3 = myid1/np_cols_CWF3;
-    my_pcol_CWF3 = myid1%np_cols_CWF3;
+    cwf_projection->process_row = myid1/cwf_projection->process_columns;
+    cwf_projection->process_column = myid1%cwf_projection->process_columns;
 
-    Cblacs_gridinit(&ictxt1_CWF3, "Row", np_rows_CWF3, np_cols_CWF3);
+    Cblacs_gridinit(&cwf_projection->context, "Row", cwf_projection->process_rows, cwf_projection->process_columns);
 
-    na_rows_CWF3 = numroc_(&MaxN,      &nblk_CWF3, &my_prow_CWF3, &ZERO, &np_rows_CWF3 );
-    na_cols_CWF3 = numroc_(&TNum_CWFs, &nblk_CWF3, &my_pcol_CWF3, &ZERO, &np_cols_CWF3 );
+    cwf_projection->local_rows = numroc_(&MaxN,      &cwf_projection->block_size, &cwf_projection->process_row, &ZERO, &cwf_projection->process_rows );
+    cwf_projection->local_columns = numroc_(&TNum_CWFs, &cwf_projection->block_size, &cwf_projection->process_column, &ZERO, &cwf_projection->process_columns );
 
-    MPI_Allreduce(&na_rows_CWF3, &na_rows_max_CWF3,1,MPI_INT,MPI_MAX,MPI_CommWD1[myworld1]);
-    MPI_Allreduce(&na_cols_CWF3, &na_cols_max_CWF3,1,MPI_INT,MPI_MAX,MPI_CommWD1[myworld1]);
+    MPI_Allreduce(&cwf_projection->local_rows, &cwf_projection->maximum_rows,1,MPI_INT,MPI_MAX,MPI_CommWD1[myworld1]);
+    MPI_Allreduce(&cwf_projection->local_columns, &cwf_projection->maximum_columns,1,MPI_INT,MPI_MAX,MPI_CommWD1[myworld1]);
 
-    descinit_( desc_CWF3, &MaxN, &TNum_CWFs, &nblk_CWF3, &nblk_CWF3,  
-               &ZERO, &ZERO, &ictxt1_CWF3, &na_rows_CWF3,  &info);
+    descinit_( cwf_projection->descriptor, &MaxN, &TNum_CWFs, &cwf_projection->block_size, &cwf_projection->block_size,
+               &ZERO, &ZERO, &cwf_projection->context, &cwf_projection->local_rows,  &info);
 
-    desc_CWF3[1] = desc_CWF1[1];
+    cwf_projection->descriptor[1] = cwf_hopping->descriptor[1];
 
     /* CWF4: setting of BLACS for matrices in size of n x MaxN */
 
-    np_cols_CWF4 = (int)(sqrt((float)numprocs1));
+    cwf_eigenvectors->process_columns = (int)(sqrt((float)numprocs1));
     do{
-      if((numprocs1%np_cols_CWF4)==0) break;
-      np_cols_CWF4--;
-    } while (np_cols_CWF4>=2);
-    np_rows_CWF4 = numprocs1/np_cols_CWF4;
+      if((numprocs1%cwf_eigenvectors->process_columns)==0) break;
+      cwf_eigenvectors->process_columns--;
+    } while (cwf_eigenvectors->process_columns>=2);
+    cwf_eigenvectors->process_rows = numprocs1/cwf_eigenvectors->process_columns;
 
     nblk_m = NBLK;
-    while((nblk_m*np_rows_CWF4>n || nblk_m*np_cols_CWF4>MaxN) && (nblk_m > 1)){
+    while((nblk_m*cwf_eigenvectors->process_rows>n || nblk_m*cwf_eigenvectors->process_columns>MaxN) && (nblk_m > 1)){
       nblk_m /= 2;
     }
     if(nblk_m<1) nblk_m = 1;
 
-    MPI_Allreduce(&nblk_m,&nblk_CWF4,1,MPI_INT,MPI_MIN,mpi_comm_level1);
+    MPI_Allreduce(&nblk_m,&cwf_eigenvectors->block_size,1,MPI_INT,MPI_MIN,mpi_comm_level1);
 
-    ictxt1_CWF4 = bhandle1_CWF1;
+    cwf_eigenvectors->context = cwf_hopping->system_handle;
 
-    my_prow_CWF4 = myid1/np_cols_CWF4;
-    my_pcol_CWF4 = myid1%np_cols_CWF4;
+    cwf_eigenvectors->process_row = myid1/cwf_eigenvectors->process_columns;
+    cwf_eigenvectors->process_column = myid1%cwf_eigenvectors->process_columns;
 
-    Cblacs_gridinit(&ictxt1_CWF4, "Row", np_rows_CWF4, np_cols_CWF4);
+    Cblacs_gridinit(&cwf_eigenvectors->context, "Row", cwf_eigenvectors->process_rows, cwf_eigenvectors->process_columns);
 
-    na_rows_CWF4 = numroc_(&n,    &nblk_CWF4, &my_prow_CWF4, &ZERO, &np_rows_CWF4 );
-    na_cols_CWF4 = numroc_(&MaxN, &nblk_CWF4, &my_pcol_CWF4, &ZERO, &np_cols_CWF4 );
+    cwf_eigenvectors->local_rows = numroc_(&n,    &cwf_eigenvectors->block_size, &cwf_eigenvectors->process_row, &ZERO, &cwf_eigenvectors->process_rows );
+    cwf_eigenvectors->local_columns = numroc_(&MaxN, &cwf_eigenvectors->block_size, &cwf_eigenvectors->process_column, &ZERO, &cwf_eigenvectors->process_columns );
 
-    MPI_Allreduce(&na_rows_CWF4, &na_rows_max_CWF4,1,MPI_INT,MPI_MAX,MPI_CommWD1[myworld1]);
-    MPI_Allreduce(&na_cols_CWF4, &na_cols_max_CWF4,1,MPI_INT,MPI_MAX,MPI_CommWD1[myworld1]);
+    MPI_Allreduce(&cwf_eigenvectors->local_rows, &cwf_eigenvectors->maximum_rows,1,MPI_INT,MPI_MAX,MPI_CommWD1[myworld1]);
+    MPI_Allreduce(&cwf_eigenvectors->local_columns, &cwf_eigenvectors->maximum_columns,1,MPI_INT,MPI_MAX,MPI_CommWD1[myworld1]);
 
-    descinit_( desc_CWF4, &n, &MaxN, &nblk_CWF4, &nblk_CWF4,
-               &ZERO, &ZERO, &ictxt1_CWF4, &na_rows_CWF4, &info);
+    descinit_( cwf_eigenvectors->descriptor, &n, &MaxN, &cwf_eigenvectors->block_size, &cwf_eigenvectors->block_size,
+               &ZERO, &ZERO, &cwf_eigenvectors->context, &cwf_eigenvectors->local_rows, &info);
 
-    desc_CWF4[1] = desc_CWF1[1];
+    cwf_eigenvectors->descriptor[1] = cwf_hopping->descriptor[1];
 
-    *Cs = OpenMX_Solver_OverwriteReal(scratch,"cwf-scalapack-Cs",(size_t)na_rows_max_CWF4*na_cols_max_CWF4);
-    *Hs = OpenMX_Solver_OverwriteReal(scratch,"cwf-scalapack-Hs",(size_t)na_rows_max_CWF4*na_cols_max_CWF4);
-    *Vs = OpenMX_Solver_OverwriteReal(scratch,"cwf-scalapack-Vs",(size_t)na_rows_max_CWF4*na_cols_max_CWF4);
-    *Ws = OpenMX_Solver_OverwriteReal(scratch,"cwf-scalapack-Ws",(size_t)na_rows_max_CWF4*na_cols_max_CWF4);
-    *EVs_PAO = OpenMX_Solver_OverwriteReal(scratch,"cwf-scalapack-EVs_PAO",(size_t)na_rows_max_CWF4*na_cols_max_CWF4);
+    *Cs = OpenMX_Solver_OverwriteReal(scratch,"cwf-scalapack-Cs",(size_t)cwf_eigenvectors->maximum_rows*cwf_eigenvectors->maximum_columns);
+    *Hs = OpenMX_Solver_OverwriteReal(scratch,"cwf-scalapack-Hs",(size_t)cwf_eigenvectors->maximum_rows*cwf_eigenvectors->maximum_columns);
+    *Vs = OpenMX_Solver_OverwriteReal(scratch,"cwf-scalapack-Vs",(size_t)cwf_eigenvectors->maximum_rows*cwf_eigenvectors->maximum_columns);
+    *Ws = OpenMX_Solver_OverwriteReal(scratch,"cwf-scalapack-Ws",(size_t)cwf_eigenvectors->maximum_rows*cwf_eigenvectors->maximum_columns);
+    *EVs_PAO = OpenMX_Solver_OverwriteReal(scratch,"cwf-scalapack-EVs_PAO",(size_t)cwf_eigenvectors->maximum_rows*cwf_eigenvectors->maximum_columns);
 
     /* save information of the memory usage */
 
     if (firsttime && memoryusage_fileout) {
-      PrintMemory("Allocate_Free_Cluster_Col_CWF: Cs  ",sizeof(double)*na_rows_max_CWF4*na_cols_max_CWF4,NULL);
-      PrintMemory("Allocate_Free_Cluster_Col_CWF: Hs  ",sizeof(double)*na_rows_max_CWF4*na_cols_max_CWF4,NULL);
-      PrintMemory("Allocate_Free_Cluster_Col_CWF: Vs  ",sizeof(double)*na_rows_max_CWF4*na_cols_max_CWF4,NULL);
-      PrintMemory("Allocate_Free_Cluster_Col_CWF: Ws  ",sizeof(double)*na_rows_max_CWF3*na_cols_max_CWF3,NULL);
-      PrintMemory("Allocate_Free_Cluster_Col_CWF: WFs ",sizeof(double)*na_rows_max_CWF2*na_cols_max_CWF2,NULL);
-      PrintMemory("Allocate_Free_Cluster_Col_CWF: EVs_PAO",sizeof(double)*na_rows_max_CWF4*na_cols_max_CWF4,NULL);
+      PrintMemory("Allocate_Free_Cluster_Col_CWF: Cs  ",sizeof(double)*cwf_eigenvectors->maximum_rows*cwf_eigenvectors->maximum_columns,NULL);
+      PrintMemory("Allocate_Free_Cluster_Col_CWF: Hs  ",sizeof(double)*cwf_eigenvectors->maximum_rows*cwf_eigenvectors->maximum_columns,NULL);
+      PrintMemory("Allocate_Free_Cluster_Col_CWF: Vs  ",sizeof(double)*cwf_eigenvectors->maximum_rows*cwf_eigenvectors->maximum_columns,NULL);
+      PrintMemory("Allocate_Free_Cluster_Col_CWF: Ws  ",sizeof(double)*cwf_projection->maximum_rows*cwf_projection->maximum_columns,NULL);
+      PrintMemory("Allocate_Free_Cluster_Col_CWF: WFs ",sizeof(double)*cwf_orbitals->maximum_rows*cwf_orbitals->maximum_columns,NULL);
+      PrintMemory("Allocate_Free_Cluster_Col_CWF: EVs_PAO",sizeof(double)*cwf_eigenvectors->maximum_rows*cwf_eigenvectors->maximum_columns,NULL);
     }
 
     firsttime = 0;
@@ -2315,17 +2326,17 @@ void Allocate_Free_Cluster_Col_CWF(OpenMXSolverInvocation *scratch, int todo_fla
 
     /* Numerical storage belongs to the enclosing invocation. */
 
-    Cfree_blacs_system_handle(bhandle1_CWF1);
-    Cblacs_gridexit(ictxt1_CWF1);
+    Cfree_blacs_system_handle(cwf_hopping->system_handle);
+    Cblacs_gridexit(cwf_hopping->context);
 
-    Cfree_blacs_system_handle(bhandle1_CWF2);
-    Cblacs_gridexit(ictxt1_CWF2);
+    Cfree_blacs_system_handle(cwf_orbitals->system_handle);
+    Cblacs_gridexit(cwf_orbitals->context);
 
-    Cfree_blacs_system_handle(bhandle1_CWF3);
-    Cblacs_gridexit(ictxt1_CWF3);
+    Cfree_blacs_system_handle(cwf_projection->system_handle);
+    Cblacs_gridexit(cwf_projection->context);
 
-    Cfree_blacs_system_handle(bhandle1_CWF4);
-    Cblacs_gridexit(ictxt1_CWF4);
+    Cfree_blacs_system_handle(cwf_eigenvectors->system_handle);
+    Cblacs_gridexit(cwf_eigenvectors->context);
   }
 }
 

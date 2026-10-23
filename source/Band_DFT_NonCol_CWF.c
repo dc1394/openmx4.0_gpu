@@ -86,11 +86,11 @@ void FreeArrays_NonCol_QAO2();
 double Calc_Hybrid_AO_NonCol( double ****OLP0, double *****Hks, double *****CDM , const OpenMXElectronicViews *electronic);
 double Calc_MO_in_Bulk_NonCol(const OpenMXChemicalPotentials *chemical,  double *****CDM, double *****iCDM , const OpenMXElectronicViews *electronic);
 
-static void Band_Dispersion_NonCol_CWF(const OpenMXChemicalPotentials *chemical,  int nkpath, int *n_perk, double ***kpath, char ***kname,
+static void Band_Dispersion_NonCol_CWF(OpenMXCWFGrids *grids, const OpenMXChemicalPotentials *chemical,  int nkpath, int *n_perk, double ***kpath, char ***kname,
 					int TNum_CWFs, double complex ****TB_Hopping, 
 					int knum_i, int knum_j, int knum_k, MPI_Comm mpi_comm_level5 );
 
-static double Calc_CWF_Band_NonCol(const OpenMXChemicalPotentials *chemical,
+static double Calc_CWF_Band_NonCol(OpenMXCWFGrids *grids, const OpenMXChemicalPotentials *chemical,
 				   char *mode,
 				   int own_calc_flag,
 				   int kloop,
@@ -128,7 +128,7 @@ static double Calc_CWF_Band_NonCol(const OpenMXChemicalPotentials *chemical,
 				   int *order_GA );
 
 
-static void Allocate_Free_Band_NonCol_CWF( int todo_flag, 
+static void Allocate_Free_Band_NonCol_CWF(OpenMXCWFGrids *grids,  int todo_flag,
 					   int myworld2, 
 					   MPI_Comm *MPI_CommWD2,
 					   int n2,
@@ -145,7 +145,7 @@ static void Allocate_Free_Band_NonCol_CWF( int todo_flag,
 
 
 #pragma GCC optimize("O2")
-double Band_DFT_NonCol_CWF(const OpenMXChemicalPotentials *chemical,
+double Band_DFT_NonCol_CWF(OpenMXCWFGrids *grids, const OpenMXChemicalPotentials *chemical,
                     int SCF_iter,
                     int knum_i, int knum_j, int knum_k,
 		    int SpinP_switch,
@@ -795,7 +795,7 @@ double Band_DFT_NonCol_CWF(const OpenMXChemicalPotentials *chemical,
      allocation of arrays for Calc_CWF_Band_NonCol
   ****************************************************/
 
-  Calc_CWF_Band_NonCol(chemical,  "allocate", 0, kloop,knum_i,knum_j,knum_k,
+  Calc_CWF_Band_NonCol(grids, chemical,  "allocate", 0, kloop,knum_i,knum_j,knum_k,
 			T_KGrids1,T_KGrids2,T_KGrids3,sum_weights,0.0,
 			myid0,numprocs0,myid1,numprocs1,myid2,numprocs2,myworld1,myworld2,
 			is2,ie2,MP,n2,MinN,MaxN,TNum_CWFs,MPI_CommWD1,
@@ -1163,7 +1163,7 @@ double Band_DFT_NonCol_CWF(const OpenMXChemicalPotentials *chemical,
 
     if (measure_time) dtime(&Stime);
 
-    Calc_CWF_Band_NonCol(chemical,  "calc",(kloop0<num_kloop0),kloop,knum_i,knum_j,knum_k,
+    Calc_CWF_Band_NonCol(grids, chemical,  "calc",(kloop0<num_kloop0),kloop,knum_i,knum_j,knum_k,
 			  T_KGrids1,T_KGrids2,T_KGrids3,sum_weights,(double)T_k_op[kloop],
 			  myid0,numprocs0,myid1,numprocs1,myid2,numprocs2,myworld1,myworld2,
 			  is2,ie2,MP,n2,MinN,MaxN,TNum_CWFs,MPI_CommWD1,
@@ -1194,7 +1194,7 @@ double Band_DFT_NonCol_CWF(const OpenMXChemicalPotentials *chemical,
       freeing of arrays for Calc_CWF_Band_NonCol
   ****************************************************/
 
-  Calc_CWF_Band_NonCol(chemical,  "free", 0, kloop,knum_i,knum_j,knum_k,
+  Calc_CWF_Band_NonCol(grids, chemical,  "free", 0, kloop,knum_i,knum_j,knum_k,
 			T_KGrids1,T_KGrids2,T_KGrids3,sum_weights,0.0,
 			myid0,numprocs0,myid1,numprocs1,myid2,numprocs2,myworld1,myworld2,
 			is2,ie2,MP,n2,MinN,MaxN,TNum_CWFs,MPI_CommWD1,
@@ -1263,7 +1263,7 @@ double Band_DFT_NonCol_CWF(const OpenMXChemicalPotentials *chemical,
   return time0;
 }
 
-static double Calc_CWF_Band_NonCol(const OpenMXChemicalPotentials *chemical,
+static double Calc_CWF_Band_NonCol(OpenMXCWFGrids *grids, const OpenMXChemicalPotentials *chemical,
     char *mode,
     int own_calc_flag,
     int kloop,
@@ -1300,6 +1300,12 @@ static double Calc_CWF_Band_NonCol(const OpenMXChemicalPotentials *chemical,
     double *S1,
     int *order_GA )
 {
+  OpenMXCWFGrid *cwf_hopping=&grids->matrix[OPENMX_CWF_HOPPING_GRID];
+  OpenMXCWFGrid *cwf_orbitals=&grids->matrix[OPENMX_CWF_ORBITALS_GRID];
+  OpenMXCWFGrid *cwf_projection=&grids->matrix[OPENMX_CWF_PROJECTION_GRID];
+  OpenMXCWFGrid *cwf_eigenvectors=&grids->matrix[OPENMX_CWF_EIGENVECTORS_GRID];
+  OpenMXCWFGrid *cwf_band=&grids->matrix[OPENMX_CWF_BAND_GRID];
+
   int AN,Gc_AN,GB_AN,Mc_AN,h_AN,Gh_AN,Rnh,wanB,wan1,tno1,wan2,tno2;
   int i,i1,j,l,l1,l2,l3,ll1,ll2,ll3,k,ig,jg,m1,mm,NumCWFs,num,p,q,ID,ID2,mmin,mmax,m;
   int current_myworld1,current_myworld2,current_kloop,loopN,iter,po;
@@ -1345,7 +1351,7 @@ static double Calc_CWF_Band_NonCol(const OpenMXChemicalPotentials *chemical,
 
   if (strcasecmp(mode,"allocate")==0){
 
-    Allocate_Free_Band_NonCol_CWF( 1, myworld2, MPI_CommWD2, n2, MaxN, TNum_CWFs, knum_i, knum_j, knum_k, 
+    Allocate_Free_Band_NonCol_CWF(grids,  1, myworld2, MPI_CommWD2, n2, MaxN, TNum_CWFs, knum_i, knum_j, knum_k,
                                    &Cs, &Hs, &Vs, &Ws, &EVs_PAO, &WFs, &Hop );
 
     return 0.0;
@@ -1656,37 +1662,37 @@ static double Calc_CWF_Band_NonCol(const OpenMXChemicalPotentials *chemical,
 
       /* CWF5: setting of BLACS for matrices in size of TNum_CWFs x TNum_CWFs */
 
-      np_cols_CWF5 = (int)(sqrt((float)numprocs5));
+      cwf_band->process_columns = (int)(sqrt((float)numprocs5));
       do{
-	if((numprocs5%np_cols_CWF5)==0) break;
-	np_cols_CWF5--;
-      } while (np_cols_CWF5>=2);
-      np_rows_CWF5 = numprocs5/np_cols_CWF5;
+	if((numprocs5%cwf_band->process_columns)==0) break;
+	cwf_band->process_columns--;
+      } while (cwf_band->process_columns>=2);
+      cwf_band->process_rows = numprocs5/cwf_band->process_columns;
 
       nblk_m = NBLK;
-      while((nblk_m*np_rows_CWF5>TNum_CWFs || nblk_m*np_cols_CWF5>TNum_CWFs) && (nblk_m > 1)){
+      while((nblk_m*cwf_band->process_rows>TNum_CWFs || nblk_m*cwf_band->process_columns>TNum_CWFs) && (nblk_m > 1)){
 	nblk_m /= 2;
       }
       if(nblk_m<1) nblk_m = 1;
 
-      MPI_Allreduce(&nblk_m,&nblk_CWF5,1,MPI_INT,MPI_MIN,mpi_comm_level5);
+      MPI_Allreduce(&nblk_m,&cwf_band->block_size,1,MPI_INT,MPI_MIN,mpi_comm_level5);
 
-      my_prow_CWF5 = myid5/np_cols_CWF5;
-      my_pcol_CWF5 = myid5%np_cols_CWF5;
+      cwf_band->process_row = myid5/cwf_band->process_columns;
+      cwf_band->process_column = myid5%cwf_band->process_columns;
 
-      na_rows_CWF5 = numroc_(&TNum_CWFs, &nblk_CWF5, &my_prow_CWF5, &ZERO, &np_rows_CWF5 ); 
-      na_cols_CWF5 = numroc_(&TNum_CWFs, &nblk_CWF5, &my_pcol_CWF5, &ZERO, &np_cols_CWF5 );
+      cwf_band->local_rows = numroc_(&TNum_CWFs, &cwf_band->block_size, &cwf_band->process_row, &ZERO, &cwf_band->process_rows );
+      cwf_band->local_columns = numroc_(&TNum_CWFs, &cwf_band->block_size, &cwf_band->process_column, &ZERO, &cwf_band->process_columns );
 
-      bhandle1_CWF5 = Csys2blacs_handle(mpi_comm_level5);
-      ictxt1_CWF5 = bhandle1_CWF5;
+      cwf_band->system_handle = Csys2blacs_handle(mpi_comm_level5);
+      cwf_band->context = cwf_band->system_handle;
 
-      Cblacs_gridinit(&ictxt1_CWF5, "Row", np_rows_CWF5, np_cols_CWF5);
+      Cblacs_gridinit(&cwf_band->context, "Row", cwf_band->process_rows, cwf_band->process_columns);
 
-      MPI_Allreduce(&na_rows_CWF5,&na_rows_max_CWF5,1,MPI_INT,MPI_MAX,mpi_comm_level5);
-      MPI_Allreduce(&na_cols_CWF5,&na_cols_max_CWF5,1,MPI_INT,MPI_MAX,mpi_comm_level5);
+      MPI_Allreduce(&cwf_band->local_rows,&cwf_band->maximum_rows,1,MPI_INT,MPI_MAX,mpi_comm_level5);
+      MPI_Allreduce(&cwf_band->local_columns,&cwf_band->maximum_columns,1,MPI_INT,MPI_MAX,mpi_comm_level5);
 
-      descinit_( desc_CWF5, &TNum_CWFs, &TNum_CWFs, &nblk_CWF5, &nblk_CWF5,  
-		 &ZERO, &ZERO, &ictxt1_CWF5, &na_rows_CWF5,  &info); 
+      descinit_( cwf_band->descriptor, &TNum_CWFs, &TNum_CWFs, &cwf_band->block_size, &cwf_band->block_size,
+		 &ZERO, &ZERO, &cwf_band->context, &cwf_band->local_rows,  &info);
 
       /* allocation of TB_Hopping */   
 
@@ -1697,7 +1703,7 @@ static double Calc_CWF_Band_NonCol(const OpenMXChemicalPotentials *chemical,
 	  for ( ll2=0; ll2<knum_j; ll2++ ){
 	    TB_Hopping[ll1][ll2] = (double complex**)malloc(sizeof(double complex*)*knum_k);
 	    for ( ll3=0; ll3<knum_k; ll3++ ){
-	      TB_Hopping[ll1][ll2][ll3] = (double complex*)malloc(sizeof(double complex)*(na_rows_CWF5*na_cols_CWF5+1));
+	      TB_Hopping[ll1][ll2][ll3] = (double complex*)malloc(sizeof(double complex)*(cwf_band->local_rows*cwf_band->local_columns+1));
 	    }
 	  }
 	}
@@ -1781,20 +1787,20 @@ static double Calc_CWF_Band_NonCol(const OpenMXChemicalPotentials *chemical,
             SumHop[p] = 0.0;
 	  }
 
-	  for (i=0; i<na_rows_CWF1; i++){
+	  for (i=0; i<cwf_hopping->local_rows; i++){
 
-	    ig = np_rows_CWF1*nblk_CWF1*((i)/nblk_CWF1) + (i)%nblk_CWF1
-	      + ((np_rows_CWF1+my_prow_CWF1)%np_rows_CWF1)*nblk_CWF1;
+	    ig = cwf_hopping->process_rows*cwf_hopping->block_size*((i)/cwf_hopping->block_size) + (i)%cwf_hopping->block_size
+	      + ((cwf_hopping->process_rows+cwf_hopping->process_row)%cwf_hopping->process_rows)*cwf_hopping->block_size;
 
 	    if (ig<TNum_CWFs){
 
-	      for (j=0; j<na_cols_CWF1; j++){
+	      for (j=0; j<cwf_hopping->local_columns; j++){
 
-		jg = np_cols_CWF1*nblk_CWF1*((j)/nblk_CWF1) + (j)%nblk_CWF1 
-		  + ((np_cols_CWF1+my_pcol_CWF1)%np_cols_CWF1)*nblk_CWF1;
+		jg = cwf_hopping->process_columns*cwf_hopping->block_size*((j)/cwf_hopping->block_size) + (j)%cwf_hopping->block_size
+		  + ((cwf_hopping->process_columns+cwf_hopping->process_column)%cwf_hopping->process_columns)*cwf_hopping->block_size;
 
 		if (jg<TNum_CWFs){
-		  SumHop[jg*TNum_CWFs+ig] += Hop[ll1][ll2][ll3][j*na_rows_CWF1+i]; 
+		  SumHop[jg*TNum_CWFs+ig] += Hop[ll1][ll2][ll3][j*cwf_hopping->local_rows+i];
 		}
 	      }
 	    }
@@ -1924,17 +1930,17 @@ static double Calc_CWF_Band_NonCol(const OpenMXChemicalPotentials *chemical,
 
 	  if ( Band_disp_switch==1 && Band_Nkpath>0 && myid0<numprocs5 ){
 
-	    for (i=0; i<na_rows_CWF5; i++){
+	    for (i=0; i<cwf_band->local_rows; i++){
 
-	      ig = np_rows_CWF5*nblk_CWF5*((i)/nblk_CWF5) + (i)%nblk_CWF5
-		+ ((np_rows_CWF5+my_prow_CWF5)%np_rows_CWF5)*nblk_CWF5;
+	      ig = cwf_band->process_rows*cwf_band->block_size*((i)/cwf_band->block_size) + (i)%cwf_band->block_size
+		+ ((cwf_band->process_rows+cwf_band->process_row)%cwf_band->process_rows)*cwf_band->block_size;
 
-	      for (j=0; j<na_cols_CWF5; j++){
+	      for (j=0; j<cwf_band->local_columns; j++){
 
-		jg = np_cols_CWF5*nblk_CWF5*((j)/nblk_CWF5) + (j)%nblk_CWF5 
-		  + ((np_cols_CWF5+my_pcol_CWF5)%np_cols_CWF5)*nblk_CWF5;
+		jg = cwf_band->process_columns*cwf_band->block_size*((j)/cwf_band->block_size) + (j)%cwf_band->block_size
+		  + ((cwf_band->process_columns+cwf_band->process_column)%cwf_band->process_columns)*cwf_band->block_size;
 
-		TB_Hopping[ll1][ll2][ll3][j*na_rows_CWF5+i] = SumHop[jg*TNum_CWFs+ig];
+		TB_Hopping[ll1][ll2][ll3][j*cwf_band->local_rows+i] = SumHop[jg*TNum_CWFs+ig];
 	      }
 	    }
 	  }
@@ -1961,7 +1967,7 @@ static double Calc_CWF_Band_NonCol(const OpenMXChemicalPotentials *chemical,
     **************************************************************/
 
     if ( Band_disp_switch==1 && Band_Nkpath>0 && myid0<numprocs5 ){
-      Band_Dispersion_NonCol_CWF(chemical,  nkpath, n_perk, kpath, kname, TNum_CWFs,
+      Band_Dispersion_NonCol_CWF(grids, chemical,  nkpath, n_perk, kpath, kname, TNum_CWFs,
                                   TB_Hopping, knum_i, knum_j, knum_k, mpi_comm_level5 );    
     } 
 
@@ -1970,8 +1976,8 @@ static double Calc_CWF_Band_NonCol(const OpenMXChemicalPotentials *chemical,
     free(SumHop);
 
     if (myid0<numprocs5){ 
-      Cfree_blacs_system_handle(bhandle1_CWF5);
-      Cblacs_gridexit(ictxt1_CWF5);
+      Cfree_blacs_system_handle(cwf_band->system_handle);
+      Cblacs_gridexit(cwf_band->context);
     }
 
     if ( Band_disp_switch==1 && Band_Nkpath>0 && myid0<numprocs5 ){
@@ -1992,7 +1998,7 @@ static double Calc_CWF_Band_NonCol(const OpenMXChemicalPotentials *chemical,
                         free arrays and return
     **************************************************************/
 
-    Allocate_Free_Band_NonCol_CWF( 2, myworld2, MPI_CommWD2, n2, MaxN, TNum_CWFs, knum_i, knum_j, knum_k, 
+    Allocate_Free_Band_NonCol_CWF(grids,  2, myworld2, MPI_CommWD2, n2, MaxN, TNum_CWFs, knum_i, knum_j, knum_k,
                                    &Cs, &Hs, &Vs, &Ws, &EVs_PAO, &WFs, &Hop );
 
     return 0.0;
@@ -2054,10 +2060,10 @@ static double Calc_CWF_Band_NonCol(const OpenMXChemicalPotentials *chemical,
   lwork = -1;
   F77_NAME(pzgesvd,PZGESVD)( "V", "V",
 			     &MaxN, &TNum_CWFs,
-			     Cs, &ONE, &ONE, desc_CWF3,
+			     Cs, &ONE, &ONE, cwf_projection->descriptor,
 			     sv,
-			     Ws, &ONE, &ONE, desc_CWF3,
-			     Vs, &ONE, &ONE, desc_CWF1,
+			     Ws, &ONE, &ONE, cwf_projection->descriptor,
+			     Vs, &ONE, &ONE, cwf_hopping->descriptor,
 			     &ctmp0, 
 			     &lwork,
                              rwork,
@@ -2077,7 +2083,7 @@ static double Calc_CWF_Band_NonCol(const OpenMXChemicalPotentials *chemical,
 
   /* initialize Cs and Hs */
 
-  for (i=0; i<na_rows_CWF4*na_cols_CWF4; i++){
+  for (i=0; i<cwf_eigenvectors->local_rows*cwf_eigenvectors->local_columns; i++){
     Cs[i] = Complex(0.0,0.0);
     Hs[i] = Complex(0.0,0.0);
     Ws[i] = Complex(0.0,0.0);
@@ -2140,20 +2146,20 @@ static double Calc_CWF_Band_NonCol(const OpenMXChemicalPotentials *chemical,
 
       if ( myworld1==current_myworld1 && myworld2==current_myworld2 ){
 
-	for (j=0; j<na_cols_CWF4; j++){
+	for (j=0; j<cwf_eigenvectors->local_columns; j++){
 
-	  m1 = np_cols_CWF4*nblk_CWF4*((j)/nblk_CWF4) + (j)%nblk_CWF4 
-	    + ((np_cols_CWF4+my_pcol_CWF4)%np_cols_CWF4)*nblk_CWF4;
+	  m1 = cwf_eigenvectors->process_columns*cwf_eigenvectors->block_size*((j)/cwf_eigenvectors->block_size) + (j)%cwf_eigenvectors->block_size
+	    + ((cwf_eigenvectors->process_columns+cwf_eigenvectors->process_column)%cwf_eigenvectors->process_columns)*cwf_eigenvectors->block_size;
 
 	  if ((mmin-1)<=m1 && m1<=(mmax-1)){ 
 
-	    for (i=0; i<na_rows_CWF4; i++){
+	    for (i=0; i<cwf_eigenvectors->local_rows; i++){
 
-	      ig = np_rows_CWF4*nblk_CWF4*((i)/nblk_CWF4) + (i)%nblk_CWF4
-		+ ((np_rows_CWF4+my_prow_CWF4)%np_rows_CWF4)*nblk_CWF4;
+	      ig = cwf_eigenvectors->process_rows*cwf_eigenvectors->block_size*((i)/cwf_eigenvectors->block_size) + (i)%cwf_eigenvectors->block_size
+		+ ((cwf_eigenvectors->process_rows+cwf_eigenvectors->process_row)%cwf_eigenvectors->process_rows)*cwf_eigenvectors->block_size;
 
-	      EVs_PAO[j*na_rows_CWF4+i].r =creal(TmpEVec1[ (m1-mmin+1)*n2+ig ]);
-	      EVs_PAO[j*na_rows_CWF4+i].i =cimag(TmpEVec1[ (m1-mmin+1)*n2+ig ]);
+	      EVs_PAO[j*cwf_eigenvectors->local_rows+i].r =creal(TmpEVec1[ (m1-mmin+1)*n2+ig ]);
+	      EVs_PAO[j*cwf_eigenvectors->local_rows+i].i =cimag(TmpEVec1[ (m1-mmin+1)*n2+ig ]);
 
 	    } // i
 
@@ -2336,23 +2342,23 @@ static double Calc_CWF_Band_NonCol(const OpenMXChemicalPotentials *chemical,
 
       if ( myworld1==current_myworld1 && myworld2==current_myworld2 ){
 
-	for (i=0; i<na_rows_CWF3; i++){
+	for (i=0; i<cwf_projection->local_rows; i++){
 
-	  m1 = np_rows_CWF3*nblk_CWF3*((i)/nblk_CWF3) + (i)%nblk_CWF3
-	    + ((np_rows_CWF3+my_prow_CWF3)%np_rows_CWF3)*nblk_CWF3 + 1;
+	  m1 = cwf_projection->process_rows*cwf_projection->block_size*((i)/cwf_projection->block_size) + (i)%cwf_projection->block_size
+	    + ((cwf_projection->process_rows+cwf_projection->process_row)%cwf_projection->process_rows)*cwf_projection->block_size + 1;
 
 	  if ( mmin<=m1 && m1<=mmax ){ // the base is 1 for mmin and mmax.
 
 	    m = m1 - mmin;  // local index
 
-	    for (j=0; j<na_cols_CWF3; j++){
+	    for (j=0; j<cwf_projection->local_columns; j++){
 
-	      jg = np_cols_CWF3*nblk_CWF3*((j)/nblk_CWF3) + (j)%nblk_CWF3 
-		+ ((np_cols_CWF3+my_pcol_CWF3)%np_cols_CWF3)*nblk_CWF3;
+	      jg = cwf_projection->process_columns*cwf_projection->block_size*((j)/cwf_projection->block_size) + (j)%cwf_projection->block_size
+		+ ((cwf_projection->process_columns+cwf_projection->process_column)%cwf_projection->process_columns)*cwf_projection->block_size;
 
 	      p = m*TNum_CWFs + jg;
-	      Cs[j*na_rows_CWF3+i].r = creal(InProd[p]);
-	      Cs[j*na_rows_CWF3+i].i = cimag(InProd[p]);
+	      Cs[j*cwf_projection->local_rows+i].r = creal(InProd[p]);
+	      Cs[j*cwf_projection->local_rows+i].i = cimag(InProd[p]);
 
 	    } // j
 	  } // if ( mmin<=m1 && m1<=mmax ) 
@@ -2388,10 +2394,10 @@ static double Calc_CWF_Band_NonCol(const OpenMXChemicalPotentials *chemical,
     e0 = CWF_disentangling_Erange[0] + chemical->chemical_potential;
     e1 = CWF_disentangling_Erange[1] + chemical->chemical_potential;
 
-    for (i=0; i<na_rows_CWF3; i++){
+    for (i=0; i<cwf_projection->local_rows; i++){
 
-      m1 = np_rows_CWF3*nblk_CWF3*((i)/nblk_CWF3) + (i)%nblk_CWF3
-	+ ((np_rows_CWF3+my_prow_CWF3)%np_rows_CWF3)*nblk_CWF3 + 1;
+      m1 = cwf_projection->process_rows*cwf_projection->block_size*((i)/cwf_projection->block_size) + (i)%cwf_projection->block_size
+	+ ((cwf_projection->process_rows+cwf_projection->process_row)%cwf_projection->process_rows)*cwf_projection->block_size + 1;
 
       e = EIGEN[0][kloop][m1];  
 
@@ -2402,9 +2408,9 @@ static double Calc_CWF_Band_NonCol(const OpenMXChemicalPotentials *chemical,
         weight = (1.0/(exp(b0*(e0-e))+1.0))*(1.0/(exp(b1*(e-e1))+1.0)) + CWF_disentangling_smearing_bound;
       }
 
-      for (j=0; j<na_cols_CWF3; j++){
-	Cs[j*na_rows_CWF3+i].r *= weight;
-	Cs[j*na_rows_CWF3+i].i *= weight;
+      for (j=0; j<cwf_projection->local_columns; j++){
+	Cs[j*cwf_projection->local_rows+i].r *= weight;
+	Cs[j*cwf_projection->local_rows+i].i *= weight;
       }
     }
   }
@@ -2426,10 +2432,10 @@ static double Calc_CWF_Band_NonCol(const OpenMXChemicalPotentials *chemical,
     Save_Projection_Matrix("comp", fname_ProM,
 			   &tmp, Cs, Full_EVec, 
 			   MinN, MaxN, TNum_CWFs,
-			   nblk_CWF3, 
-			   na_rows_CWF3, na_cols_CWF3,
-			   np_rows_CWF3, np_cols_CWF3,
-			   my_prow_CWF3, my_pcol_CWF3,
+			   cwf_projection->block_size,
+			   cwf_projection->local_rows, cwf_projection->local_columns,
+			   cwf_projection->process_rows, cwf_projection->process_columns,
+			   cwf_projection->process_row, cwf_projection->process_column,
 			   MPI_CommWD2[myworld2]);
   }
 
@@ -2447,10 +2453,10 @@ static double Calc_CWF_Band_NonCol(const OpenMXChemicalPotentials *chemical,
 
     F77_NAME(pzgesvd,PZGESVD)( "V", "V",
 			       &MaxN, &TNum_CWFs,
-			       Cs, &ONE, &ONE, desc_CWF3,   
+			       Cs, &ONE, &ONE, cwf_projection->descriptor,
 			       sv,
-			       Ws, &ONE, &ONE, desc_CWF3,                              
-			       Vs, &ONE, &ONE, desc_CWF1,
+			       Ws, &ONE, &ONE, cwf_projection->descriptor,
+			       Vs, &ONE, &ONE, cwf_hopping->descriptor,
 			       work,
 			       &lwork,
 			       rwork,
@@ -2494,14 +2500,14 @@ static double Calc_CWF_Band_NonCol(const OpenMXChemicalPotentials *chemical,
 
     if (measure_time) dtime(&Stime);
 
-    Cblacs_barrier(ictxt1_CWF1,"A");
+    Cblacs_barrier(cwf_hopping->context,"A");
     F77_NAME(pzgemm,PZGEMM)( "N","N",
 			     &MaxN, &TNum_CWFs, &TNum_CWFs, 
 			     &alpha,
-			     Ws,&ONE,&ONE,desc_CWF3,
-			     Vs,&ONE,&ONE,desc_CWF1,
+			     Ws,&ONE,&ONE,cwf_projection->descriptor,
+			     Vs,&ONE,&ONE,cwf_hopping->descriptor,
 			     &beta,
-			     Hs,&ONE,&ONE,desc_CWF3 );
+			     Hs,&ONE,&ONE,cwf_projection->descriptor );
 
     if (measure_time){
       dtime(&Etime);
@@ -2518,14 +2524,14 @@ static double Calc_CWF_Band_NonCol(const OpenMXChemicalPotentials *chemical,
 
     if (measure_time) dtime(&Stime);
 
-    Cblacs_barrier(ictxt1_CWF4,"A");
+    Cblacs_barrier(cwf_eigenvectors->context,"A");
     F77_NAME(pzgemm,PZGEMM)( "N","N",
 			     &n2, &TNum_CWFs, &MaxN, 
 			     &alpha,
-			     EVs_PAO,   &ONE, &ONE, desc_CWF4,
-			     Hs,        &ONE, &ONE, desc_CWF3,
+			     EVs_PAO,   &ONE, &ONE, cwf_eigenvectors->descriptor,
+			     Hs,        &ONE, &ONE, cwf_projection->descriptor,
 			     &beta,
-			     WFs,       &ONE, &ONE, desc_CWF2 );
+			     WFs,       &ONE, &ONE, cwf_orbitals->descriptor );
 
     if (measure_time){
       dtime(&Etime);
@@ -2568,10 +2574,10 @@ static double Calc_CWF_Band_NonCol(const OpenMXChemicalPotentials *chemical,
 
 	  q = MP2[idx] + p;
 
-	  for (j=0; j<na_cols_CWF2; j++){
+	  for (j=0; j<cwf_orbitals->local_columns; j++){
 
-	    jg = np_cols_CWF2*nblk_CWF2*((j)/nblk_CWF2) + (j)%nblk_CWF2 
-	      + ((np_cols_CWF2+my_pcol_CWF2)%np_cols_CWF2)*nblk_CWF2;
+	    jg = cwf_orbitals->process_columns*cwf_orbitals->block_size*((j)/cwf_orbitals->block_size) + (j)%cwf_orbitals->block_size
+	      + ((cwf_orbitals->process_columns+cwf_orbitals->process_column)%cwf_orbitals->process_columns)*cwf_orbitals->block_size;
 
 	    if (q==jg){
 
@@ -2591,13 +2597,13 @@ static double Calc_CWF_Band_NonCol(const OpenMXChemicalPotentials *chemical,
 		    si = sin(2.0*PI*kRn);
 		    co = cos(2.0*PI*kRn);
 
-		    for (i=0; i<na_rows_CWF2; i++){
+		    for (i=0; i<cwf_orbitals->local_rows; i++){
 
-		      ig = np_rows_CWF2*nblk_CWF2*((i)/nblk_CWF2) + (i)%nblk_CWF2
-			+ ((np_rows_CWF2+my_prow_CWF2)%np_rows_CWF2)*nblk_CWF2;
+		      ig = cwf_orbitals->process_rows*cwf_orbitals->block_size*((i)/cwf_orbitals->block_size) + (i)%cwf_orbitals->block_size
+			+ ((cwf_orbitals->process_rows+cwf_orbitals->process_row)%cwf_orbitals->process_rows)*cwf_orbitals->block_size;
 
-		      CWF_Coef_NC[k][p][ll1][ll2][ll3][ig] += tmp*(WFs[j*na_rows_CWF2+i].r*co - WFs[j*na_rows_CWF2+i].i*si)
-                                                          + I*tmp*(WFs[j*na_rows_CWF2+i].r*si + WFs[j*na_rows_CWF2+i].i*co);
+		      CWF_Coef_NC[k][p][ll1][ll2][ll3][ig] += tmp*(WFs[j*cwf_orbitals->local_rows+i].r*co - WFs[j*cwf_orbitals->local_rows+i].i*si)
+                                                          + I*tmp*(WFs[j*cwf_orbitals->local_rows+i].r*si + WFs[j*cwf_orbitals->local_rows+i].i*co);
 
 		    } // i
 		  } // l3
@@ -2621,23 +2627,23 @@ static double Calc_CWF_Band_NonCol(const OpenMXChemicalPotentials *chemical,
 
     if (measure_time) dtime(&Stime);
 
-    for (i=0; i<na_rows_CWF3; i++){
+    for (i=0; i<cwf_projection->local_rows; i++){
 
-      ig = np_rows_CWF3*nblk_CWF3*((i)/nblk_CWF3) + (i)%nblk_CWF3
-	+ ((np_rows_CWF3+my_prow_CWF3)%np_rows_CWF3)*nblk_CWF3 + 1;
+      ig = cwf_projection->process_rows*cwf_projection->block_size*((i)/cwf_projection->block_size) + (i)%cwf_projection->block_size
+	+ ((cwf_projection->process_rows+cwf_projection->process_row)%cwf_projection->process_rows)*cwf_projection->block_size + 1;
 
-      for (j=0; j<na_cols_CWF3; j++){
+      for (j=0; j<cwf_projection->local_columns; j++){
 
-	jg = np_cols_CWF3*nblk_CWF3*((j)/nblk_CWF3) + (j)%nblk_CWF3 
-	  + ((np_cols_CWF3+my_pcol_CWF3)%np_cols_CWF3)*nblk_CWF3;
+	jg = cwf_projection->process_columns*cwf_projection->block_size*((j)/cwf_projection->block_size) + (j)%cwf_projection->block_size
+	  + ((cwf_projection->process_columns+cwf_projection->process_column)%cwf_projection->process_columns)*cwf_projection->block_size;
 
 	x = (EIGEN[0][kloop][ig] - chemical->chemical_potential)*Beta;
 	if (x<=-max_x) x = -max_x;
 	if (max_x<=x)  x = max_x;
 	FermiF = 1.0/(1.0 + exp(x));
 
-	rtmp = Hs[j*na_rows_CWF3+i].r;
-	itmp = Hs[j*na_rows_CWF3+i].i;
+	rtmp = Hs[j*cwf_projection->local_rows+i].r;
+	itmp = Hs[j*cwf_projection->local_rows+i].i;
 	tmp = weight_kpoint*FermiF*(rtmp*rtmp+itmp*itmp);
 
 	CWF_Charge[0][jg] += tmp;
@@ -2651,29 +2657,29 @@ static double Calc_CWF_Band_NonCol(const OpenMXChemicalPotentials *chemical,
 
     /* E x Hs -> Cs */
 
-    for (i=0; i<na_rows_CWF3; i++){
+    for (i=0; i<cwf_projection->local_rows; i++){
 
-      ig = np_rows_CWF3*nblk_CWF3*((i)/nblk_CWF3) + (i)%nblk_CWF3
-	+ ((np_rows_CWF3+my_prow_CWF3)%np_rows_CWF3)*nblk_CWF3 + 1;
+      ig = cwf_projection->process_rows*cwf_projection->block_size*((i)/cwf_projection->block_size) + (i)%cwf_projection->block_size
+	+ ((cwf_projection->process_rows+cwf_projection->process_row)%cwf_projection->process_rows)*cwf_projection->block_size + 1;
 
-      for (j=0; j<na_cols_CWF3; j++){
+      for (j=0; j<cwf_projection->local_columns; j++){
 
 	x = EIGEN[0][kloop][ig];
-        Cs[j*na_rows_CWF3+i].r = x*Hs[j*na_rows_CWF3+i].r;
-        Cs[j*na_rows_CWF3+i].i = x*Hs[j*na_rows_CWF3+i].i;
+        Cs[j*cwf_projection->local_rows+i].r = x*Hs[j*cwf_projection->local_rows+i].r;
+        Cs[j*cwf_projection->local_rows+i].i = x*Hs[j*cwf_projection->local_rows+i].i;
       }
     }
 
     /* Hs^dag x Cs -> Ws */
 
-    Cblacs_barrier(ictxt1_CWF1,"A");
+    Cblacs_barrier(cwf_hopping->context,"A");
     F77_NAME(pzgemm,PZGEMM)( "C","N",
 			     &TNum_CWFs, &TNum_CWFs, &MaxN,
 			     &alpha,
-			     Hs,&ONE,&ONE,desc_CWF3,
-			     Cs,&ONE,&ONE,desc_CWF3,
+			     Hs,&ONE,&ONE,cwf_projection->descriptor,
+			     Cs,&ONE,&ONE,cwf_projection->descriptor,
 			     &beta,
-			     Ws,&ONE,&ONE,desc_CWF1 );
+			     Ws,&ONE,&ONE,cwf_hopping->descriptor );
 
     /*
        Hop += Ws*exp(-ikRn)
@@ -2701,10 +2707,10 @@ static double Calc_CWF_Band_NonCol(const OpenMXChemicalPotentials *chemical,
 	  si = tmp*sin(-2.0*PI*kRn);
 	  co = tmp*cos(-2.0*PI*kRn);
  
-	  for (i=0; i<na_rows_CWF1; i++){
-	    for (j=0; j<na_cols_CWF1; j++){
-	      Hop[ll1][ll2][ll3][j*na_rows_CWF1+i] += (co*Ws[j*na_rows_CWF1+i].r - si*Ws[j*na_rows_CWF1+i].i)
-     		                                  + I*(si*Ws[j*na_rows_CWF1+i].r + co*Ws[j*na_rows_CWF1+i].i);
+	  for (i=0; i<cwf_hopping->local_rows; i++){
+	    for (j=0; j<cwf_hopping->local_columns; j++){
+	      Hop[ll1][ll2][ll3][j*cwf_hopping->local_rows+i] += (co*Ws[j*cwf_hopping->local_rows+i].r - si*Ws[j*cwf_hopping->local_rows+i].i)
+                                                  + I*(si*Ws[j*cwf_hopping->local_rows+i].r + co*Ws[j*cwf_hopping->local_rows+i].i);
 
 	    }
 	  }
@@ -2750,7 +2756,7 @@ static double Calc_CWF_Band_NonCol(const OpenMXChemicalPotentials *chemical,
   return (etime-stime);
 }
 
-void Allocate_Free_Band_NonCol_CWF( int todo_flag, 
+void Allocate_Free_Band_NonCol_CWF(OpenMXCWFGrids *grids,  int todo_flag,
 				    int myworld2, 
 				    MPI_Comm *MPI_CommWD2,
 				    int n2,
@@ -2765,6 +2771,11 @@ void Allocate_Free_Band_NonCol_CWF( int todo_flag,
 				    dcomplex **WFs,
 				    double complex *****Hop )
 {
+  OpenMXCWFGrid *cwf_hopping=&grids->matrix[OPENMX_CWF_HOPPING_GRID];
+  OpenMXCWFGrid *cwf_orbitals=&grids->matrix[OPENMX_CWF_ORBITALS_GRID];
+  OpenMXCWFGrid *cwf_projection=&grids->matrix[OPENMX_CWF_PROJECTION_GRID];
+  OpenMXCWFGrid *cwf_eigenvectors=&grids->matrix[OPENMX_CWF_EIGENVECTORS_GRID];
+
   static int firsttime=1;
   int ZERO=0, ONE=1,info,myid2,numprocs2;
   int i,j,k,p,nblk_m,nblk_m2,wanA,size_EVec1;
@@ -2788,12 +2799,12 @@ void Allocate_Free_Band_NonCol_CWF( int todo_flag,
 
     /* CWF1: setting of BLACS for matrices in size of TNum_CWFs x TNum_CWFs */
 
-    np_cols_CWF1 = (int)(sqrt((float)numprocs2));
+    cwf_hopping->process_columns = (int)(sqrt((float)numprocs2));
     do{
-      if((numprocs2%np_cols_CWF1)==0) break;
-      np_cols_CWF1--;
-    } while (np_cols_CWF1>=2);
-    np_rows_CWF1 = numprocs2/np_cols_CWF1;
+      if((numprocs2%cwf_hopping->process_columns)==0) break;
+      cwf_hopping->process_columns--;
+    } while (cwf_hopping->process_columns>=2);
+    cwf_hopping->process_rows = numprocs2/cwf_hopping->process_columns;
 
     /*
      For pzgesvd, it was noticed that the same 'nb' has to be used for Cs, Ws, and Vs.
@@ -2801,101 +2812,101 @@ void Allocate_Free_Band_NonCol_CWF( int todo_flag,
     */
 
     nblk_m = NBLK;
-    while((nblk_m*np_rows_CWF1>MaxN || nblk_m*np_cols_CWF1>TNum_CWFs) && (nblk_m > 1)){ // the same as for CWF3
+    while((nblk_m*cwf_hopping->process_rows>MaxN || nblk_m*cwf_hopping->process_columns>TNum_CWFs) && (nblk_m > 1)){ // the same as for CWF3
     //while((nblk_m*np_rows_CWF1>TNum_CWFs || nblk_m*np_cols_CWF1>TNum_CWFs) && (nblk_m > 1)){
       nblk_m /= 2;
     }
     if(nblk_m<1) nblk_m = 1;
 
-    MPI_Allreduce(&nblk_m,&nblk_CWF1,1,MPI_INT,MPI_MIN,mpi_comm_level1);
+    MPI_Allreduce(&nblk_m,&cwf_hopping->block_size,1,MPI_INT,MPI_MIN,mpi_comm_level1);
 
-    my_prow_CWF1 = myid2/np_cols_CWF1;
-    my_pcol_CWF1 = myid2%np_cols_CWF1;
+    cwf_hopping->process_row = myid2/cwf_hopping->process_columns;
+    cwf_hopping->process_column = myid2%cwf_hopping->process_columns;
 
     //na_rows_CWF1 = numroc_(&TNum_CWFs, &nblk_CWF1, &my_prow_CWF1, &ZERO, &np_rows_CWF1 ); 
-    na_rows_CWF1 = numroc_(&MaxN, &nblk_CWF1, &my_prow_CWF1, &ZERO, &np_rows_CWF1 );  // the same as for CWF3
-    na_cols_CWF1 = numroc_(&TNum_CWFs, &nblk_CWF1, &my_pcol_CWF1, &ZERO, &np_cols_CWF1 );
+    cwf_hopping->local_rows = numroc_(&MaxN, &cwf_hopping->block_size, &cwf_hopping->process_row, &ZERO, &cwf_hopping->process_rows );  // the same as for CWF3
+    cwf_hopping->local_columns = numroc_(&TNum_CWFs, &cwf_hopping->block_size, &cwf_hopping->process_column, &ZERO, &cwf_hopping->process_columns );
 
-    bhandle1_CWF1 = Csys2blacs_handle(MPI_CommWD2[myworld2]);
-    ictxt1_CWF1 = bhandle1_CWF1;
+    cwf_hopping->system_handle = Csys2blacs_handle(MPI_CommWD2[myworld2]);
+    cwf_hopping->context = cwf_hopping->system_handle;
 
-    Cblacs_gridinit(&ictxt1_CWF1, "Row", np_rows_CWF1, np_cols_CWF1);
+    Cblacs_gridinit(&cwf_hopping->context, "Row", cwf_hopping->process_rows, cwf_hopping->process_columns);
 
-    MPI_Allreduce(&na_rows_CWF1,&na_rows_max_CWF1,1,MPI_INT,MPI_MAX,MPI_CommWD2[myworld2]);
-    MPI_Allreduce(&na_cols_CWF1,&na_cols_max_CWF1,1,MPI_INT,MPI_MAX,MPI_CommWD2[myworld2]);
+    MPI_Allreduce(&cwf_hopping->local_rows,&cwf_hopping->maximum_rows,1,MPI_INT,MPI_MAX,MPI_CommWD2[myworld2]);
+    MPI_Allreduce(&cwf_hopping->local_columns,&cwf_hopping->maximum_columns,1,MPI_INT,MPI_MAX,MPI_CommWD2[myworld2]);
 
-    descinit_( desc_CWF1, &TNum_CWFs, &TNum_CWFs, &nblk_CWF1, &nblk_CWF1,  
-               &ZERO, &ZERO, &ictxt1_CWF1, &na_rows_CWF1,  &info); 
+    descinit_( cwf_hopping->descriptor, &TNum_CWFs, &TNum_CWFs, &cwf_hopping->block_size, &cwf_hopping->block_size,
+               &ZERO, &ZERO, &cwf_hopping->context, &cwf_hopping->local_rows,  &info);
 
     /* CWF2: setting of BLACS for matrices in size of n2 x TNum_CWFs */
 
-    np_cols_CWF2 = (int)(sqrt((float)numprocs2));
+    cwf_orbitals->process_columns = (int)(sqrt((float)numprocs2));
     do{
-      if((numprocs2%np_cols_CWF2)==0) break;
-      np_cols_CWF2--;
-    } while (np_cols_CWF2>=2);
-    np_rows_CWF2 = numprocs2/np_cols_CWF2;
+      if((numprocs2%cwf_orbitals->process_columns)==0) break;
+      cwf_orbitals->process_columns--;
+    } while (cwf_orbitals->process_columns>=2);
+    cwf_orbitals->process_rows = numprocs2/cwf_orbitals->process_columns;
 
     nblk_m = NBLK;
-    while((nblk_m*np_rows_CWF2>n2 || nblk_m*np_cols_CWF2>TNum_CWFs) && (nblk_m > 1)){
+    while((nblk_m*cwf_orbitals->process_rows>n2 || nblk_m*cwf_orbitals->process_columns>TNum_CWFs) && (nblk_m > 1)){
       nblk_m /= 2;
     }
     if(nblk_m<1) nblk_m = 1;
 
-    MPI_Allreduce(&nblk_m,&nblk_CWF2,1,MPI_INT,MPI_MIN,mpi_comm_level1);
+    MPI_Allreduce(&nblk_m,&cwf_orbitals->block_size,1,MPI_INT,MPI_MIN,mpi_comm_level1);
 
-    ictxt1_CWF2 = bhandle1_CWF1;
+    cwf_orbitals->context = cwf_hopping->system_handle;
 
-    my_prow_CWF2 = myid2/np_cols_CWF2;
-    my_pcol_CWF2 = myid2%np_cols_CWF2;
+    cwf_orbitals->process_row = myid2/cwf_orbitals->process_columns;
+    cwf_orbitals->process_column = myid2%cwf_orbitals->process_columns;
 
-    Cblacs_gridinit(&ictxt1_CWF2, "Row", np_rows_CWF2, np_cols_CWF2);
+    Cblacs_gridinit(&cwf_orbitals->context, "Row", cwf_orbitals->process_rows, cwf_orbitals->process_columns);
 
-    na_rows_CWF2 = numroc_(&n2,        &nblk_CWF2, &my_prow_CWF2, &ZERO, &np_rows_CWF2 );
-    na_cols_CWF2 = numroc_(&TNum_CWFs, &nblk_CWF2, &my_pcol_CWF2, &ZERO, &np_cols_CWF2 );
+    cwf_orbitals->local_rows = numroc_(&n2,        &cwf_orbitals->block_size, &cwf_orbitals->process_row, &ZERO, &cwf_orbitals->process_rows );
+    cwf_orbitals->local_columns = numroc_(&TNum_CWFs, &cwf_orbitals->block_size, &cwf_orbitals->process_column, &ZERO, &cwf_orbitals->process_columns );
 
-    MPI_Allreduce(&na_rows_CWF2, &na_rows_max_CWF2,1,MPI_INT,MPI_MAX,MPI_CommWD2[myworld2]);
-    MPI_Allreduce(&na_cols_CWF2, &na_cols_max_CWF2,1,MPI_INT,MPI_MAX,MPI_CommWD2[myworld2]);
+    MPI_Allreduce(&cwf_orbitals->local_rows, &cwf_orbitals->maximum_rows,1,MPI_INT,MPI_MAX,MPI_CommWD2[myworld2]);
+    MPI_Allreduce(&cwf_orbitals->local_columns, &cwf_orbitals->maximum_columns,1,MPI_INT,MPI_MAX,MPI_CommWD2[myworld2]);
 
-    descinit_( desc_CWF2, &n2, &TNum_CWFs, &nblk_CWF2, &nblk_CWF2,  
-               &ZERO, &ZERO, &ictxt1_CWF2, &na_rows_CWF2,  &info);
+    descinit_( cwf_orbitals->descriptor, &n2, &TNum_CWFs, &cwf_orbitals->block_size, &cwf_orbitals->block_size,
+               &ZERO, &ZERO, &cwf_orbitals->context, &cwf_orbitals->local_rows,  &info);
 
-    desc_CWF2[1] = desc_CWF1[1];
+    cwf_orbitals->descriptor[1] = cwf_hopping->descriptor[1];
 
     /* CWF3: setting of BLACS for matrices in size of MaxN x TNum_CWFs */
 
-    np_cols_CWF3 = (int)(sqrt((float)numprocs2));
+    cwf_projection->process_columns = (int)(sqrt((float)numprocs2));
     do{
-      if((numprocs2%np_cols_CWF3)==0) break;
-      np_cols_CWF3--;
-    } while (np_cols_CWF3>=2);
-    np_rows_CWF3 = numprocs2/np_cols_CWF3;
+      if((numprocs2%cwf_projection->process_columns)==0) break;
+      cwf_projection->process_columns--;
+    } while (cwf_projection->process_columns>=2);
+    cwf_projection->process_rows = numprocs2/cwf_projection->process_columns;
 
     nblk_m = NBLK;
-    while((nblk_m*np_rows_CWF3>MaxN || nblk_m*np_cols_CWF3>TNum_CWFs) && (nblk_m > 1)){
+    while((nblk_m*cwf_projection->process_rows>MaxN || nblk_m*cwf_projection->process_columns>TNum_CWFs) && (nblk_m > 1)){
       nblk_m /= 2;
     }
     if(nblk_m<1) nblk_m = 1;
 
-    MPI_Allreduce(&nblk_m,&nblk_CWF3,1,MPI_INT,MPI_MIN,mpi_comm_level1);
+    MPI_Allreduce(&nblk_m,&cwf_projection->block_size,1,MPI_INT,MPI_MIN,mpi_comm_level1);
 
-    ictxt1_CWF3 = bhandle1_CWF1;
+    cwf_projection->context = cwf_hopping->system_handle;
 
-    my_prow_CWF3 = myid2/np_cols_CWF3;
-    my_pcol_CWF3 = myid2%np_cols_CWF3;
+    cwf_projection->process_row = myid2/cwf_projection->process_columns;
+    cwf_projection->process_column = myid2%cwf_projection->process_columns;
 
-    Cblacs_gridinit(&ictxt1_CWF3, "Row", np_rows_CWF3, np_cols_CWF3);
+    Cblacs_gridinit(&cwf_projection->context, "Row", cwf_projection->process_rows, cwf_projection->process_columns);
 
-    na_rows_CWF3 = numroc_(&MaxN,      &nblk_CWF3, &my_prow_CWF3, &ZERO, &np_rows_CWF3 );
-    na_cols_CWF3 = numroc_(&TNum_CWFs, &nblk_CWF3, &my_pcol_CWF3, &ZERO, &np_cols_CWF3 );
+    cwf_projection->local_rows = numroc_(&MaxN,      &cwf_projection->block_size, &cwf_projection->process_row, &ZERO, &cwf_projection->process_rows );
+    cwf_projection->local_columns = numroc_(&TNum_CWFs, &cwf_projection->block_size, &cwf_projection->process_column, &ZERO, &cwf_projection->process_columns );
 
-    MPI_Allreduce(&na_rows_CWF3, &na_rows_max_CWF3,1,MPI_INT,MPI_MAX,MPI_CommWD2[myworld2]);
-    MPI_Allreduce(&na_cols_CWF3, &na_cols_max_CWF3,1,MPI_INT,MPI_MAX,MPI_CommWD2[myworld2]);
+    MPI_Allreduce(&cwf_projection->local_rows, &cwf_projection->maximum_rows,1,MPI_INT,MPI_MAX,MPI_CommWD2[myworld2]);
+    MPI_Allreduce(&cwf_projection->local_columns, &cwf_projection->maximum_columns,1,MPI_INT,MPI_MAX,MPI_CommWD2[myworld2]);
 
-    descinit_( desc_CWF3, &MaxN, &TNum_CWFs, &nblk_CWF3, &nblk_CWF3,  
-               &ZERO, &ZERO, &ictxt1_CWF3, &na_rows_CWF3,  &info);
+    descinit_( cwf_projection->descriptor, &MaxN, &TNum_CWFs, &cwf_projection->block_size, &cwf_projection->block_size,
+               &ZERO, &ZERO, &cwf_projection->context, &cwf_projection->local_rows,  &info);
 
-    desc_CWF3[1] = desc_CWF1[1];
+    cwf_projection->descriptor[1] = cwf_hopping->descriptor[1];
 
     /*
     printf("GGG1 myid2=%2d MaxN=%2d TNum_CWFs=%2d nblk_CWF3=%2d na_rows_CWF3=%2d\n",
@@ -2904,51 +2915,51 @@ void Allocate_Free_Band_NonCol_CWF( int todo_flag,
 
     /* CWF4: setting of BLACS for matrices in size of n2 x MaxN */
 
-    np_cols_CWF4 = (int)(sqrt((float)numprocs2));
+    cwf_eigenvectors->process_columns = (int)(sqrt((float)numprocs2));
     do{
-      if((numprocs2%np_cols_CWF4)==0) break;
-      np_cols_CWF4--;
-    } while (np_cols_CWF4>=2);
-    np_rows_CWF4 = numprocs2/np_cols_CWF4;
+      if((numprocs2%cwf_eigenvectors->process_columns)==0) break;
+      cwf_eigenvectors->process_columns--;
+    } while (cwf_eigenvectors->process_columns>=2);
+    cwf_eigenvectors->process_rows = numprocs2/cwf_eigenvectors->process_columns;
 
     nblk_m = NBLK;
-    while((nblk_m*np_rows_CWF4>n2 || nblk_m*np_cols_CWF4>MaxN) && (nblk_m > 1)){
+    while((nblk_m*cwf_eigenvectors->process_rows>n2 || nblk_m*cwf_eigenvectors->process_columns>MaxN) && (nblk_m > 1)){
       nblk_m /= 2;
     }
     if(nblk_m<1) nblk_m = 1;
 
-    MPI_Allreduce(&nblk_m,&nblk_CWF4,1,MPI_INT,MPI_MIN,mpi_comm_level1);
+    MPI_Allreduce(&nblk_m,&cwf_eigenvectors->block_size,1,MPI_INT,MPI_MIN,mpi_comm_level1);
 
-    ictxt1_CWF4 = bhandle1_CWF1;
+    cwf_eigenvectors->context = cwf_hopping->system_handle;
 
-    my_prow_CWF4 = myid2/np_cols_CWF4;
-    my_pcol_CWF4 = myid2%np_cols_CWF4;
+    cwf_eigenvectors->process_row = myid2/cwf_eigenvectors->process_columns;
+    cwf_eigenvectors->process_column = myid2%cwf_eigenvectors->process_columns;
 
-    Cblacs_gridinit(&ictxt1_CWF4, "Row", np_rows_CWF4, np_cols_CWF4);
+    Cblacs_gridinit(&cwf_eigenvectors->context, "Row", cwf_eigenvectors->process_rows, cwf_eigenvectors->process_columns);
 
-    na_rows_CWF4 = numroc_(&n2,   &nblk_CWF4, &my_prow_CWF4, &ZERO, &np_rows_CWF4 );
-    na_cols_CWF4 = numroc_(&MaxN, &nblk_CWF4, &my_pcol_CWF4, &ZERO, &np_cols_CWF4 );
+    cwf_eigenvectors->local_rows = numroc_(&n2,   &cwf_eigenvectors->block_size, &cwf_eigenvectors->process_row, &ZERO, &cwf_eigenvectors->process_rows );
+    cwf_eigenvectors->local_columns = numroc_(&MaxN, &cwf_eigenvectors->block_size, &cwf_eigenvectors->process_column, &ZERO, &cwf_eigenvectors->process_columns );
 
-    MPI_Allreduce(&na_rows_CWF4, &na_rows_max_CWF4,1,MPI_INT,MPI_MAX,MPI_CommWD2[myworld2]);
-    MPI_Allreduce(&na_cols_CWF4, &na_cols_max_CWF4,1,MPI_INT,MPI_MAX,MPI_CommWD2[myworld2]);
+    MPI_Allreduce(&cwf_eigenvectors->local_rows, &cwf_eigenvectors->maximum_rows,1,MPI_INT,MPI_MAX,MPI_CommWD2[myworld2]);
+    MPI_Allreduce(&cwf_eigenvectors->local_columns, &cwf_eigenvectors->maximum_columns,1,MPI_INT,MPI_MAX,MPI_CommWD2[myworld2]);
 
-    descinit_( desc_CWF4, &n2, &MaxN, &nblk_CWF4, &nblk_CWF4,
-               &ZERO, &ZERO, &ictxt1_CWF4, &na_rows_CWF4, &info);
+    descinit_( cwf_eigenvectors->descriptor, &n2, &MaxN, &cwf_eigenvectors->block_size, &cwf_eigenvectors->block_size,
+               &ZERO, &ZERO, &cwf_eigenvectors->context, &cwf_eigenvectors->local_rows, &info);
 
-    desc_CWF4[1] = desc_CWF1[1];
+    cwf_eigenvectors->descriptor[1] = cwf_hopping->descriptor[1];
 
     /* allocation of arrays */
 
-    *WFs = (dcomplex*)malloc(sizeof(dcomplex)*(na_rows_max_CWF2*na_cols_max_CWF2+1)); 
-    for (i=0; i<(na_rows_max_CWF2*na_cols_max_CWF2+1); i++){
+    *WFs = (dcomplex*)malloc(sizeof(dcomplex)*(cwf_orbitals->maximum_rows*cwf_orbitals->maximum_columns+1));
+    for (i=0; i<(cwf_orbitals->maximum_rows*cwf_orbitals->maximum_columns+1); i++){
       (*WFs)[i] = Complex(0.0,0.0);
     }
 
-    *Cs = (dcomplex*)malloc(sizeof(dcomplex)*(na_rows_max_CWF4*na_cols_max_CWF4+1));
-    *Hs = (dcomplex*)malloc(sizeof(dcomplex)*(na_rows_max_CWF4*na_cols_max_CWF4+1));
-    *Vs = (dcomplex*)malloc(sizeof(dcomplex)*(na_rows_max_CWF4*na_cols_max_CWF4+1));
-    *Ws = (dcomplex*)malloc(sizeof(dcomplex)*(na_rows_max_CWF4*na_cols_max_CWF4+1));
-    *EVs_PAO = (dcomplex*)malloc(sizeof(dcomplex)*(na_rows_max_CWF4*na_cols_max_CWF4+1)); 
+    *Cs = (dcomplex*)malloc(sizeof(dcomplex)*(cwf_eigenvectors->maximum_rows*cwf_eigenvectors->maximum_columns+1));
+    *Hs = (dcomplex*)malloc(sizeof(dcomplex)*(cwf_eigenvectors->maximum_rows*cwf_eigenvectors->maximum_columns+1));
+    *Vs = (dcomplex*)malloc(sizeof(dcomplex)*(cwf_eigenvectors->maximum_rows*cwf_eigenvectors->maximum_columns+1));
+    *Ws = (dcomplex*)malloc(sizeof(dcomplex)*(cwf_eigenvectors->maximum_rows*cwf_eigenvectors->maximum_columns+1));
+    *EVs_PAO = (dcomplex*)malloc(sizeof(dcomplex)*(cwf_eigenvectors->maximum_rows*cwf_eigenvectors->maximum_columns+1));
 
     *Hop = (double complex****)malloc(sizeof(double complex***)*knum_i);
     for (i=0; i<knum_i; i++){
@@ -2956,8 +2967,8 @@ void Allocate_Free_Band_NonCol_CWF( int todo_flag,
       for (j=0; j<knum_j; j++){
 	(*Hop)[i][j] = (double complex**)malloc(sizeof(double complex*)*knum_k);
 	for (k=0; k<knum_k; k++){
-	  (*Hop)[i][j][k] = (double complex*)malloc(sizeof(double complex)*(na_rows_max_CWF1*na_cols_max_CWF1+1));
-	  for (p=0; p<(na_rows_max_CWF1*na_cols_max_CWF1+1); p++){
+	  (*Hop)[i][j][k] = (double complex*)malloc(sizeof(double complex)*(cwf_hopping->maximum_rows*cwf_hopping->maximum_columns+1));
+	  for (p=0; p<(cwf_hopping->maximum_rows*cwf_hopping->maximum_columns+1); p++){
 	    (*Hop)[i][j][k][p] = 0.0 + 0.0*I;
 	  }
 	}
@@ -2967,13 +2978,13 @@ void Allocate_Free_Band_NonCol_CWF( int todo_flag,
     /* save information of the memory usage */
 
     if (firsttime && memoryusage_fileout) {
-      PrintMemory("Allocate_Free_Band_NonCol_CWF: Cs  ",sizeof(dcomplex)*na_rows_max_CWF4*na_cols_max_CWF4,NULL);
-      PrintMemory("Allocate_Free_Band_NonCol_CWF: Hs  ",sizeof(dcomplex)*na_rows_max_CWF4*na_cols_max_CWF4,NULL);
-      PrintMemory("Allocate_Free_Band_NonCol_CWF: Vs  ",sizeof(dcomplex)*na_rows_max_CWF4*na_cols_max_CWF4,NULL);
-      PrintMemory("Allocate_Free_Band_NonCol_CWF: Ws  ",sizeof(dcomplex)*na_rows_max_CWF3*na_cols_max_CWF3,NULL);
-      PrintMemory("Allocate_Free_Band_NonCol_CWF: WFs ",sizeof(dcomplex)*na_rows_max_CWF2*na_cols_max_CWF2,NULL);
-      PrintMemory("Allocate_Free_Band_NonCol_CWF: EVs_PAO",sizeof(dcomplex)*na_rows_max_CWF4*na_cols_max_CWF4,NULL);
-      PrintMemory("Allocate_Free_Band_NonCol_CWF: Hop",sizeof(double)*knum_i*knum_j*knum_k*na_rows_max_CWF1*na_cols_max_CWF1,NULL);
+      PrintMemory("Allocate_Free_Band_NonCol_CWF: Cs  ",sizeof(dcomplex)*cwf_eigenvectors->maximum_rows*cwf_eigenvectors->maximum_columns,NULL);
+      PrintMemory("Allocate_Free_Band_NonCol_CWF: Hs  ",sizeof(dcomplex)*cwf_eigenvectors->maximum_rows*cwf_eigenvectors->maximum_columns,NULL);
+      PrintMemory("Allocate_Free_Band_NonCol_CWF: Vs  ",sizeof(dcomplex)*cwf_eigenvectors->maximum_rows*cwf_eigenvectors->maximum_columns,NULL);
+      PrintMemory("Allocate_Free_Band_NonCol_CWF: Ws  ",sizeof(dcomplex)*cwf_projection->maximum_rows*cwf_projection->maximum_columns,NULL);
+      PrintMemory("Allocate_Free_Band_NonCol_CWF: WFs ",sizeof(dcomplex)*cwf_orbitals->maximum_rows*cwf_orbitals->maximum_columns,NULL);
+      PrintMemory("Allocate_Free_Band_NonCol_CWF: EVs_PAO",sizeof(dcomplex)*cwf_eigenvectors->maximum_rows*cwf_eigenvectors->maximum_columns,NULL);
+      PrintMemory("Allocate_Free_Band_NonCol_CWF: Hop",sizeof(double)*knum_i*knum_j*knum_k*cwf_hopping->maximum_rows*cwf_hopping->maximum_columns,NULL);
     }
 
     firsttime = 0;
@@ -3006,17 +3017,17 @@ void Allocate_Free_Band_NonCol_CWF( int todo_flag,
     }
     free((*Hop));
 
-    Cfree_blacs_system_handle(bhandle1_CWF1);
-    Cblacs_gridexit(ictxt1_CWF1);
+    Cfree_blacs_system_handle(cwf_hopping->system_handle);
+    Cblacs_gridexit(cwf_hopping->context);
 
-    Cfree_blacs_system_handle(bhandle1_CWF2);
-    Cblacs_gridexit(ictxt1_CWF2);
+    Cfree_blacs_system_handle(cwf_orbitals->system_handle);
+    Cblacs_gridexit(cwf_orbitals->context);
 
-    Cfree_blacs_system_handle(bhandle1_CWF3);
-    Cblacs_gridexit(ictxt1_CWF3);
+    Cfree_blacs_system_handle(cwf_projection->system_handle);
+    Cblacs_gridexit(cwf_projection->context);
 
-    Cfree_blacs_system_handle(bhandle1_CWF4);
-    Cblacs_gridexit(ictxt1_CWF4);
+    Cfree_blacs_system_handle(cwf_eigenvectors->system_handle);
+    Cblacs_gridexit(cwf_eigenvectors->context);
   }
 
 }
@@ -3272,10 +3283,12 @@ void Construct_Band_Ms( int cpx_flag, double ****Mat, double *M1, dcomplex *Ms,
   }
 }
 
-void Band_Dispersion_NonCol_CWF(const OpenMXChemicalPotentials *chemical,  int nkpath, int *n_perk, double ***kpath, char ***kname,
+void Band_Dispersion_NonCol_CWF(OpenMXCWFGrids *grids, const OpenMXChemicalPotentials *chemical,  int nkpath, int *n_perk, double ***kpath, char ***kname,
 				 int TNum_CWFs, double complex ****TB_Hopping, 
 				 int knum_i, int knum_j, int knum_k, MPI_Comm mpi_comm_level5 ) 
 {
+  OpenMXCWFGrid *cwf_band=&grids->matrix[OPENMX_CWF_BAND_GRID];
+
   static int firsttime=1;
   int i,j,k,ik,l,l1,l2,l3,ll1,ll2,ll3;
   int i_perk,id;
@@ -3317,8 +3330,8 @@ void Band_Dispersion_NonCol_CWF(const OpenMXChemicalPotentials *chemical,  int n
     }
   }
 
-  Hs = (dcomplex*)malloc(sizeof(dcomplex)*(na_rows_max_CWF5*na_cols_max_CWF5+1));
-  Cs = (dcomplex*)malloc(sizeof(dcomplex)*(na_rows_max_CWF5*na_cols_max_CWF5+1));
+  Hs = (dcomplex*)malloc(sizeof(dcomplex)*(cwf_band->maximum_rows*cwf_band->maximum_columns+1));
+  Cs = (dcomplex*)malloc(sizeof(dcomplex)*(cwf_band->maximum_rows*cwf_band->maximum_columns+1));
 
   /* show the kpaths */
 
@@ -3339,8 +3352,8 @@ void Band_Dispersion_NonCol_CWF(const OpenMXChemicalPotentials *chemical,  int n
 
   /* setting for ELPA */
 
-  MPI_Comm_split(mpi_comm_level5,my_pcol_CWF5,my_prow_CWF5,&mpi_comm_rows);
-  MPI_Comm_split(mpi_comm_level5,my_prow_CWF5,my_pcol_CWF5,&mpi_comm_cols);
+  MPI_Comm_split(mpi_comm_level5,cwf_band->process_column,cwf_band->process_row,&mpi_comm_rows);
+  MPI_Comm_split(mpi_comm_level5,cwf_band->process_row,cwf_band->process_column,&mpi_comm_cols);
         
   mpi_comm_rows_int = MPI_Comm_c2f(mpi_comm_rows);
   mpi_comm_cols_int = MPI_Comm_c2f(mpi_comm_cols);
@@ -3359,7 +3372,7 @@ void Band_Dispersion_NonCol_CWF(const OpenMXChemicalPotentials *chemical,  int n
 
       /* initialize Hs */
 
-      for (i=0; i<na_rows_CWF5*na_cols_CWF5; i++){ Hs[i].r = 0.0; Hs[i].i = 0.0; }
+      for (i=0; i<cwf_band->local_rows*cwf_band->local_columns; i++){ Hs[i].r = 0.0; Hs[i].i = 0.0; }
 
       /* make the Hamiltonian */
 
@@ -3376,13 +3389,13 @@ void Band_Dispersion_NonCol_CWF(const OpenMXChemicalPotentials *chemical,  int n
 	    si = sin(2.0*PI*kRn);
 	    co = cos(2.0*PI*kRn);
 
-	    for (i=0; i<na_rows_CWF5; i++){
-	      for (j=0; j<na_cols_CWF5; j++){
+	    for (i=0; i<cwf_band->local_rows; i++){
+	      for (j=0; j<cwf_band->local_columns; j++){
 
-		ctmp = (co+I*si)*TB_Hopping[ll1][ll2][ll3][j*na_rows_CWF5+i];; 
+		ctmp = (co+I*si)*TB_Hopping[ll1][ll2][ll3][j*cwf_band->local_rows+i];;
 
-		Hs[j*na_rows_CWF5+i].r += creal(ctmp);
-		Hs[j*na_rows_CWF5+i].i += cimag(ctmp);
+		Hs[j*cwf_band->local_rows+i].r += creal(ctmp);
+		Hs[j*cwf_band->local_rows+i].i += cimag(ctmp);
 
 	      } // j
 	    } // i
@@ -3396,12 +3409,12 @@ void Band_Dispersion_NonCol_CWF(const OpenMXChemicalPotentials *chemical,  int n
       if (scf_eigen_lib_flag==1){
   
 	F77_NAME(solve_evp_complex,SOLVE_EVP_COMPLEX)
-          ( &TNum_CWFs, &TNum_CWFs, Hs, &na_rows_CWF5, &EigenVal[ik][i_perk][0], 
-            Cs, &na_rows_CWF5, &nblk_CWF5, &mpi_comm_rows_int, &mpi_comm_cols_int );
+          ( &TNum_CWFs, &TNum_CWFs, Hs, &cwf_band->local_rows, &EigenVal[ik][i_perk][0],
+            Cs, &cwf_band->local_rows, &cwf_band->block_size, &mpi_comm_rows_int, &mpi_comm_cols_int );
       }   
 
       else if (scf_eigen_lib_flag==GPUSOLVER && GPU_CPU_SWITCH_NUM<=TNum_CWFs
-               && na_rows_CWF5==TNum_CWFs && na_cols_CWF5==TNum_CWFs){
+               && cwf_band->local_rows==TNum_CWFs && cwf_band->local_columns==TNum_CWFs){
 	OpenMX_GpuSolver_DenseZheevx_0based(Hs,Cs,&EigenVal[ik][i_perk][0],
 	                                   TNum_CWFs,TNum_CWFs,
 #if OPENMX_GPU_HIP
@@ -3417,8 +3430,8 @@ void Band_Dispersion_NonCol_CWF(const OpenMXChemicalPotentials *chemical,  int n
 	int mpiworld;
 	mpiworld = MPI_Comm_c2f(mpi_comm_level5);
 	F77_NAME(elpa_solve_evp_complex_2stage_double_impl,ELPA_SOLVE_EVP_COMPLEX_2STAGE_DOUBLE_IMPL)
-	  ( &TNum_CWFs, &TNum_CWFs, Hs, &na_rows_CWF5, &EigenVal[ik][i_perk][0], Cs, 
-	    &na_rows_CWF5, &nblk_CWF5, &na_cols_CWF5, 
+	  ( &TNum_CWFs, &TNum_CWFs, Hs, &cwf_band->local_rows, &EigenVal[ik][i_perk][0], Cs,
+	    &cwf_band->local_rows, &cwf_band->block_size, &cwf_band->local_columns,
 	    &mpi_comm_rows_int, &mpi_comm_cols_int, &mpiworld );
 #endif
 

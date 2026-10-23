@@ -2141,6 +2141,14 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   *******************************************************************/
 
   if (CWF_Calc==1){
+    OpenMXCWFGrids *grids=NULL;
+    char cwf_error[256];
+    if(!openmx_core_cwf_grids(core,&grids,cwf_error,sizeof(cwf_error))) {
+      fprintf(stderr,"OpenMX CWF grids: %s\n",cwf_error);
+      MPI_Abort(mpi_comm_level1,1);
+      abort();
+    }
+
 
     /* cluster and collinear calculation */    
 
@@ -2165,7 +2173,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
       /* calculation of CWFs */
 
-      time5 += Cluster_DFT_Col_CWF(chemical,  LSCF_iter,SpinP_switch,
+      time5 += Cluster_DFT_Col_CWF(grids, chemical,  LSCF_iter,SpinP_switch,
 				    ko_col,H,OLP[0],DM[0],EDM,
 				    Eele0,Eele1,
 				    myworld1,NPROCS_ID1,Comm_World1,NPROCS_WD1,
@@ -2216,7 +2224,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
       /* calculation of CWFs */
 
-      time5 += Band_DFT_Col_CWF(chemical,  LSCF_iter,
+      time5 += Band_DFT_Col_CWF(grids, chemical,  LSCF_iter,
   				 CWF_Kgrid1,CWF_Kgrid2,CWF_Kgrid3,
 				 SpinP_switch,H,iHNL,OLP[0],DM[0],EDM,Eele0,Eele1, 
 				 MP,order_GA,ko,koS,EIGEN_Band,
@@ -2268,7 +2276,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
       /* calculation of CWFs */
 
-      time5 += Cluster_DFT_NonCol_CWF(chemical,  LSCF_iter,SpinP_switch,
+      time5 += Cluster_DFT_NonCol_CWF(grids, chemical,  LSCF_iter,SpinP_switch,
 				       ko_noncol,H,iHNL,OLP[0],DM[0],EDM,
 				       Eele0,Eele1,
 				       MP,is2,ie2,
@@ -2319,7 +2327,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
       /* calculation of CWFs */
 
-      time5 += Band_DFT_NonCol_CWF(chemical,  LSCF_iter,
+      time5 += Band_DFT_NonCol_CWF(grids, chemical,  LSCF_iter,
 				    Kspace_grid1,Kspace_grid2,Kspace_grid3,
 				    SpinP_switch,H,iHNL,OLP[0],DM[0],EDM,Eele0,Eele1, 
 				    MP,order_GA,ko_noncol,koS,EIGEN_Band,

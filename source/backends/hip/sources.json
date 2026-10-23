@@ -1075,7 +1075,8 @@
     "outputfile1.c",
     "readfile.c",
     "tran_prototypes.h",
-    "truncation.c"
+    "truncation.c",
+    "openmx_core_cwf.h"
   ],
   "integrated_overrides": {
     "gemmul8_bridge.cu": "src/gemmul8_bridge.cu",

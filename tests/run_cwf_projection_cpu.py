@@ -21,7 +21,7 @@ def blocks(source):
     end = source.index('  } // i', start)
     bra = source[start:end]
     start = source.index('  /* E x Hs -> Cs */')
-    end = source.index('  for (i=0; i<na_rows_CWF1; i++){', start)
+    end = source.index('  for (i=0;', source.index('  /* Hs^dag x Cs -> Ws */', start))
     return bra, source[start:end]
 
 
@@ -31,6 +31,7 @@ PREFIX = r'''
 #include <stdio.h>
 #include <stdlib.h>
 #include "openmx_complex.h"
+#include "openmx_core_cwf.h"
 #define CHECK(c) do { if(!(c)) { fprintf(stderr,"FAIL: line %d: %s\n",__LINE__,#c); exit(2); } } while(0)
 #define F77_NAME(lower,upper) lower
 static void Cblacs_barrier(int context,const char *scope) { (void)context;(void)scope; }
@@ -62,6 +63,15 @@ static void projected(dcomplex *Hs,const double *ko,dcomplex *Ws) {
   int np_rows_CWF3=1,nblk_CWF3=1,my_prow_CWF3=0,ictxt1_CWF1=0;
   int desc_CWF3[9]={0,0,0,0,0,0,0,0,2},desc_CWF1[9]={0,0,0,0,0,0,0,0,2};
   dcomplex Cs[4]={{0}},alpha={1,0},beta={0,0};
+  OpenMXCWFGrids metadata={0};OpenMXCWFGrids *grids=&metadata;
+  OpenMXCWFGrid *projection=&grids->matrix[OPENMX_CWF_PROJECTION_GRID];
+  OpenMXCWFGrid *cwf_projection=projection;
+  OpenMXCWFGrid *cwf_hopping=&grids->matrix[OPENMX_CWF_HOPPING_GRID];
+  projection->local_rows=2;projection->local_columns=2;
+  projection->process_rows=1;projection->block_size=1;
+  projection->descriptor[8]=2;
+  grids->matrix[OPENMX_CWF_HOPPING_GRID].descriptor[8]=2;
+
 '''
 DRIVER = r'''
 }

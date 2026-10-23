@@ -110,6 +110,7 @@ extern "C" void openmx_core_native_resources_clear(OpenMXCoreContext* context) {
     context->thermodynamic_energies={};
     context->dynamics={};
     context->chemical={};
+    context->cwf_grids={};
   }
 }
 extern "C" int openmx_core_native_resources_state(OpenMXCoreContext* context,const char* name,

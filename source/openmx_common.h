@@ -7,6 +7,7 @@
 #include "openmx_core_mixing.h"
 #include "openmx_core_energy.h"
 #include "openmx_core_chemical.h"
+#include "openmx_core_cwf.h"
 #include "openmx_core_dynamics.h"
 #include "openmx_cluster_col_state.h"
 #include "openmx_cluster_noncol_state.h"
@@ -3399,7 +3400,7 @@ double Band_DFT_NonCol(OpenMXBandNonColState *state,
 		    int *Comm_World_StartID2,
 		    MPI_Comm *MPI_CommWD2, const OpenMXElectronicViews *electronic);
 
-double Band_DFT_NonCol_CWF(const OpenMXChemicalPotentials *chemical,
+double Band_DFT_NonCol_CWF(OpenMXCWFGrids *grids, const OpenMXChemicalPotentials *chemical,
                     int SCF_iter,
                     int knum_i, int knum_j, int knum_k,
 		    int SpinP_switch,
@@ -3446,7 +3447,7 @@ double Band_DFT_NonCol_CWF(const OpenMXChemicalPotentials *chemical,
                     int nkpath, int *n_perk, 
                     double ***kpath, char ***kname, const OpenMXElectronicViews *electronic);
 
-double Band_DFT_Col_CWF(const OpenMXChemicalPotentials *chemical,
+double Band_DFT_Col_CWF(OpenMXCWFGrids *grids, const OpenMXChemicalPotentials *chemical,
                     int SCF_iter,
                     int knum_i, int knum_j, int knum_k,
 		    int SpinP_switch,
@@ -3491,7 +3492,7 @@ double Band_DFT_Col_CWF(const OpenMXChemicalPotentials *chemical,
                     double ***kpath, char ***kname, const OpenMXElectronicViews *electronic);
 
 
-double Cluster_DFT_Col_CWF(const OpenMXChemicalPotentials *chemical,
+double Cluster_DFT_Col_CWF(OpenMXCWFGrids *grids, const OpenMXChemicalPotentials *chemical,
                    int SCF_iter,
                    int SpinP_switch,
                    double **ko,
@@ -3522,7 +3523,7 @@ double Cluster_DFT_Col_CWF(const OpenMXChemicalPotentials *chemical,
                    double *Work1, const OpenMXElectronicViews *electronic);
 
 
-double Cluster_DFT_NonCol_CWF(const OpenMXChemicalPotentials *chemical,
+double Cluster_DFT_NonCol_CWF(OpenMXCWFGrids *grids, const OpenMXChemicalPotentials *chemical,
                    int SCF_iter,
                    int SpinP_switch,
                    double *ko,
@@ -4775,34 +4776,34 @@ extern int bhandle1_2,ictxt1_2;
 extern int descS2[9],descH2[9],descC2[9];
 
 /* CWF1: TNum_CWFs x TNum_CWFs used in Cluster_DFT_Col_CWF.c and Band_DFT_Col_CWF.c */
-extern int nblk_CWF1,np_rows_CWF1,np_cols_CWF1,na_rows_CWF1,na_cols_CWF1,na_rows_max_CWF1,na_cols_max_CWF1;
-extern int my_prow_CWF1,my_pcol_CWF1;
-extern int bhandle1_CWF1,ictxt1_CWF1;
-extern int desc_CWF1[9];
+/* Matrix metadata belongs to OpenMXCWFGrids; see openmx_core_cwf.h. */
+
+
+
 
 /* CWF2: n x TNum_CWFs used in Cluster_DFT_Col_CWF.c and Band_DFT_Col_CWF.c */
-extern int nblk_CWF2,np_rows_CWF2,np_cols_CWF2,na_rows_CWF2,na_cols_CWF2,na_rows_max_CWF2,na_cols_max_CWF2;
-extern int my_prow_CWF2,my_pcol_CWF2;
-extern int bhandle1_CWF2,ictxt1_CWF2;
-extern int desc_CWF2[9];
+/* Matrix metadata belongs to OpenMXCWFGrids; see openmx_core_cwf.h. */
+
+
+
 
 /* CWF3: MaxN x TNum_CWFs used in Cluster_DFT_Col_CWF.c and Band_DFT_Col_CWF.c */
-extern int nblk_CWF3,np_rows_CWF3,np_cols_CWF3,na_rows_CWF3,na_cols_CWF3,na_rows_max_CWF3,na_cols_max_CWF3;
-extern int my_prow_CWF3,my_pcol_CWF3;
-extern int bhandle1_CWF3,ictxt1_CWF3;
-extern int desc_CWF3[9];
+/* Matrix metadata belongs to OpenMXCWFGrids; see openmx_core_cwf.h. */
+
+
+
 
 /* CWF4: n x MaxN used in Cluster_DFT_Col_CWF.c and Band_DFT_Col_CWF.c */
-extern int nblk_CWF4,np_rows_CWF4,np_cols_CWF4,na_rows_CWF4,na_cols_CWF4,na_rows_max_CWF4,na_cols_max_CWF4;
-extern int my_prow_CWF4,my_pcol_CWF4;
-extern int bhandle1_CWF4,ictxt1_CWF4;
-extern int desc_CWF4[9];
+/* Matrix metadata belongs to OpenMXCWFGrids; see openmx_core_cwf.h. */
+
+
+
 
 /* CWF5: TNum_CWFs x TNum_CWFs used for the calculation of band dispersion in Band_DFT_Col_CWF.c */
-extern int nblk_CWF5,np_rows_CWF5,np_cols_CWF5,na_rows_CWF5,na_cols_CWF5,na_rows_max_CWF5,na_cols_max_CWF5;
-extern int my_prow_CWF5,my_pcol_CWF5;
-extern int bhandle1_CWF5,ictxt1_CWF5;
-extern int desc_CWF5[9];
+/* Matrix metadata belongs to OpenMXCWFGrids; see openmx_core_cwf.h. */
+
+
+
 
 /* scf_convergence_flag */
 extern int scf_convergence_flag; /* S.Yanase */
