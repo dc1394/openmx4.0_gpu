@@ -41,8 +41,8 @@ static void EH0_TwoCenter_at_Cutoff(const OpenMXAtomicViews *atomic, int wan1, i
 static void dHVNA(const OpenMXVnaMatrixViews *vna, int where_flag, int Mc_AN, int h_AN, int q_AN,
 		  Type_DS_VNA *****DS_VNA1, 
 		  double *****TmpHVNA2, double *****TmpHVNA3, 
-		  double **Hx, double **Hy, double **Hz, 
-		  double ****H_sts);
+		  const OpenMXSolverRealTensor *Hx,const OpenMXSolverRealTensor *Hy,
+           const OpenMXSolverRealTensor *Hz,const OpenMXSolverRealTensor *H_sts);
 
 static void dHNL(const OpenMXAtomicViews *atomic, int where_flag,
 		 int Mc_AN, int h_AN, int q_AN,
@@ -2664,7 +2664,7 @@ void Stress4B(OpenMXSolverInvocation *scratch,const OpenMXVnaMatrixViews *vna, c
   int l1,l2,l3,l,LL,Mul1,Num_RVNA,tno0,ncp;
   int tno1,tno2,size1,size2,kk,num,po,po1,po2;
   int numprocs,myid,tag=999,ID,IDS,IDR;
-  int **S_array,**R_array;
+
   int S_comm_flag,R_comm_flag;
   int SA_num,q,Sc_AN,GSc_AN;
   int Sc_wan,Sh_AN,GSh_AN,Sh_wan;
@@ -2674,13 +2674,13 @@ void Stress4B(OpenMXSolverInvocation *scratch,const OpenMXVnaMatrixViews *vna, c
   double rcutA,rcutB,rcut;
   double dEx,dEy,dEz,ene,pref;
   double Stime_atom, Etime_atom;
-  double **HVNAx,**HVNAy,**HVNAz;
-  double ****HVNA_sts;
+  OpenMXSolverRealTensor HVNAx,HVNAy,HVNAz;
+  OpenMXSolverRealTensor HVNA_sts;
 
   int *VNA_List;
   int *VNA_List2;
   int *Snd_DS_VNA_Size,*Rcv_DS_VNA_Size;  
-  int *Indicator;
+
   Type_DS_VNA *tmp_array;
   Type_DS_VNA *tmp_array2;
 
@@ -2715,23 +2715,10 @@ void Stress4B(OpenMXSolverInvocation *scratch,const OpenMXVnaMatrixViews *vna, c
        allocation of arrays 
   *****************************/
 
-  Indicator = (int*)malloc(sizeof(int)*numprocs);
-
-  S_array = (int**)malloc(sizeof(int*)*numprocs);
-  for (ID=0; ID<numprocs; ID++){
-    S_array[ID] = (int*)malloc(sizeof(int)*3);
-  }
-
-  R_array = (int**)malloc(sizeof(int*)*numprocs);
-  for (ID=0; ID<numprocs; ID++){
-    R_array[ID] = (int*)malloc(sizeof(int)*3);
-  }
-
   Snd_DS_VNA_Size = projector_transfer.buffers.send_sizes;
   Rcv_DS_VNA_Size = projector_transfer.buffers.receive_sizes;
 
-  VNA_List  = (int*)malloc(sizeof(int)*(List_YOUSO[34]*(List_YOUSO[35] + 1)+2) ); 
-  VNA_List2 = (int*)malloc(sizeof(int)*(List_YOUSO[34]*(List_YOUSO[35] + 1)+2) );
+  OpenMX_Stress_VnaListsPrepare(scratch,List_YOUSO[34],List_YOUSO[35],&VNA_List,&VNA_List2);
 
   /* get Nthrds0 */  
   /* Dynamic teams may grow after a separate probe region. */
@@ -2838,7 +2825,7 @@ void Stress4B(OpenMXSolverInvocation *scratch,const OpenMXVnaMatrixViews *vna, c
 
   if (0){
 
-#pragma omp parallel shared(CntDS_VNA,DS_VNA,Cnt_switch,reciprocal,VNA_List2,VNA_List,Num_RVNA,natn,FNAN,Spe_Total_CNO,WhatSpecies,F_M2G,Matomnum) private(kk,OMPID,Nthrds,Nprocs,Gc_AN,Cwan,tno0,Mc_AN,h_AN,Gh_AN,Hwan,i,l,l1,LL,Mul1,ene,l2,l3)
+#pragma omp parallel shared(scratch,CntDS_VNA,DS_VNA,Cnt_switch,reciprocal,VNA_List2,VNA_List,Num_RVNA,natn,FNAN,Spe_Total_CNO,WhatSpecies,F_M2G,Matomnum) private(kk,OMPID,Nthrds,Nprocs,Gc_AN,Cwan,tno0,Mc_AN,h_AN,Gh_AN,Hwan,i,l,l1,LL,Mul1,ene,l2,l3)
   {
 
     /* get info. on OpenMP */ 
@@ -3055,36 +3042,12 @@ void Stress4B(OpenMXSolverInvocation *scratch,const OpenMXVnaMatrixViews *vna, c
                multiplying overlap integrals
 	*****************************************/
 
-#pragma omp parallel shared(List_YOUSO,time_per_atom,Gxyz,CDM0,SpinP_switch,CntHVNA2,HVNA2,DS_VNA,Cnt_switch,RMI1,Original_Mc_AN,IDR,Rcv_GAN,receive_progress,Spe_Total_CNO,F_G2M,natn,FNAN,WhatSpecies,M2G,Matomnum,stress_threads) private(OMPID,Nthrds,Nprocs,Stime_atom,Etime_atom,dEx,dEy,dEz,Gc_AN,Mc_AN,Cwan,fan,h_AN,Gh_AN,Mh_AN,Hwan,ian,jg,j0,jg0,Mj_AN0,po2,q_AN,Gq_AN,Mq_AN,Qwan,jan,kl,HVNAx,HVNAy,HVNAz,HVNA_sts,i,j,k,m,n,pref)
+#pragma omp parallel shared(scratch,List_YOUSO,time_per_atom,Gxyz,CDM0,SpinP_switch,CntHVNA2,HVNA2,DS_VNA,Cnt_switch,RMI1,Original_Mc_AN,IDR,Rcv_GAN,receive_progress,Spe_Total_CNO,F_G2M,natn,FNAN,WhatSpecies,M2G,Matomnum,stress_threads) private(OMPID,Nthrds,Nprocs,Stime_atom,Etime_atom,dEx,dEy,dEz,Gc_AN,Mc_AN,Cwan,fan,h_AN,Gh_AN,Mh_AN,Hwan,ian,jg,j0,jg0,Mj_AN0,po2,q_AN,Gq_AN,Mq_AN,Qwan,jan,kl,HVNAx,HVNAy,HVNAz,HVNA_sts,i,j,k,m,n,pref)
 	{
 
 	  /* allocation of array */
 
-	  HVNAx = (double**)malloc(sizeof(double*)*List_YOUSO[7]);
-	  for (j=0; j<List_YOUSO[7]; j++){
-	    HVNAx[j] = (double*)malloc(sizeof(double)*List_YOUSO[7]);
-	  }
-
-	  HVNAy = (double**)malloc(sizeof(double*)*List_YOUSO[7]);
-	  for (j=0; j<List_YOUSO[7]; j++){
-	    HVNAy[j] = (double*)malloc(sizeof(double)*List_YOUSO[7]);
-	  }
-
-	  HVNAz = (double**)malloc(sizeof(double*)*List_YOUSO[7]);
-	  for (j=0; j<List_YOUSO[7]; j++){
-	    HVNAz[j] = (double*)malloc(sizeof(double)*List_YOUSO[7]);
-	  }
-
-	  HVNA_sts = (double****)malloc(sizeof(double***)*4);
-	  for (j=0; j<4; j++){
-	    HVNA_sts[j] = (double***)malloc(sizeof(double**)*4);
-	    for (k=0; k<4; k++){
-	      HVNA_sts[j][k] = (double**)malloc(sizeof(double*)*List_YOUSO[7]);
-	      for (m=0; m<List_YOUSO[7]; m++){
-		HVNA_sts[j][k][m] = (double*)malloc(sizeof(double)*List_YOUSO[7]);
-	      }
-	    }
-	  }
+	  OpenMX_Stress_VnaPrepare(scratch,List_YOUSO[7],&HVNAx,&HVNAy,&HVNAz,&HVNA_sts);
 
 	  /* get info. on OpenMP */ 
 
@@ -3133,10 +3096,10 @@ void Stress4B(OpenMXSolverInvocation *scratch,const OpenMXVnaMatrixViews *vna, c
 		kl = RMI1[Mc_AN][h_AN][q_AN];
 
 		if (Cnt_switch==0) {
-		  dHVNA(vna, 0,Mc_AN,h_AN,q_AN,DS_VNA,HVNA2,HVNA3,HVNAx,HVNAy,HVNAz,HVNA_sts);
+		  dHVNA(vna, 0,Mc_AN,h_AN,q_AN,DS_VNA,HVNA2,HVNA3,&HVNAx,&HVNAy,&HVNAz,&HVNA_sts);
 		}
 		else { 
-		  dHVNA(vna, 0,Mc_AN,h_AN,q_AN,DS_VNA,CntHVNA2,CntHVNA3,HVNAx,HVNAy,HVNAz,HVNA_sts);
+		  dHVNA(vna, 0,Mc_AN,h_AN,q_AN,DS_VNA,CntHVNA2,CntHVNA3,&HVNAx,&HVNAy,&HVNAz,&HVNA_sts);
 		}
 
 		/* contribution of force = Trace(CDM0*dH) */
@@ -3151,9 +3114,9 @@ void Stress4B(OpenMXSolverInvocation *scratch,const OpenMXVnaMatrixViews *vna, c
 
 		  for (i=0; i<ian; i++){
 		    for (j=0; j<jan; j++){
-		      dEx += pref*CDM0[0][Mh_AN][kl][i][j]*HVNAx[i][j];
-		      dEy += pref*CDM0[0][Mh_AN][kl][i][j]*HVNAy[i][j];
-		      dEz += pref*CDM0[0][Mh_AN][kl][i][j]*HVNAz[i][j];
+		      dEx += pref*CDM0[0][Mh_AN][kl][i][j]*openmx_solver_real_matrix_row(&HVNAx,i)[j];
+		      dEy += pref*CDM0[0][Mh_AN][kl][i][j]*openmx_solver_real_matrix_row(&HVNAy,i)[j];
+		      dEz += pref*CDM0[0][Mh_AN][kl][i][j]*openmx_solver_real_matrix_row(&HVNAz,i)[j];
 		    }
 		  }
 
@@ -3163,7 +3126,7 @@ void Stress4B(OpenMXSolverInvocation *scratch,const OpenMXVnaMatrixViews *vna, c
 		    for (n=1; n<=3; n++){
 		      for (i=0; i<ian; i++){
 			for (j=0; j<jan; j++){
-			  openmx_solver_real_matrix_row(&stress_threads,OMPID)[(m-1)*3+(n-1)] += pref*CDM0[0][Mh_AN][kl][i][j]*HVNA_sts[m][n][i][j];
+			  openmx_solver_real_matrix_row(&stress_threads,OMPID)[(m-1)*3+(n-1)] += pref*CDM0[0][Mh_AN][kl][i][j]*OpenMX_Stress_VnaStrainRow(&HVNA_sts,m,n,i)[j];
 			}
 		      }
 		    }
@@ -3184,11 +3147,11 @@ void Stress4B(OpenMXSolverInvocation *scratch,const OpenMXVnaMatrixViews *vna, c
 		    for (j=0; j<jan; j++){
 
 		      dEx += pref*(  CDM0[0][Mh_AN][kl][i][j]
-			           + CDM0[1][Mh_AN][kl][i][j] )*HVNAx[i][j];
+			           + CDM0[1][Mh_AN][kl][i][j] )*openmx_solver_real_matrix_row(&HVNAx,i)[j];
 		      dEy += pref*(  CDM0[0][Mh_AN][kl][i][j]
-			           + CDM0[1][Mh_AN][kl][i][j] )*HVNAy[i][j];
+			           + CDM0[1][Mh_AN][kl][i][j] )*openmx_solver_real_matrix_row(&HVNAy,i)[j];
 		      dEz += pref*(  CDM0[0][Mh_AN][kl][i][j]
-			           + CDM0[1][Mh_AN][kl][i][j] )*HVNAz[i][j];
+			           + CDM0[1][Mh_AN][kl][i][j] )*openmx_solver_real_matrix_row(&HVNAz,i)[j];
 		    }
 		  }
 
@@ -3198,8 +3161,8 @@ void Stress4B(OpenMXSolverInvocation *scratch,const OpenMXVnaMatrixViews *vna, c
 		    for (n=1; n<=3; n++){
 		      for (i=0; i<ian; i++){
 			for (j=0; j<jan; j++){
-			  openmx_solver_real_matrix_row(&stress_threads,OMPID)[(m-1)*3+(n-1)] += pref*( CDM0[0][Mh_AN][kl][i][j]*HVNA_sts[m][n][i][j]
-			 	                                          + CDM0[1][Mh_AN][kl][i][j]*HVNA_sts[m][n][i][j]);
+			  openmx_solver_real_matrix_row(&stress_threads,OMPID)[(m-1)*3+(n-1)] += pref*( CDM0[0][Mh_AN][kl][i][j]*OpenMX_Stress_VnaStrainRow(&HVNA_sts,m,n,i)[j]
+                                            + CDM0[1][Mh_AN][kl][i][j]*OpenMX_Stress_VnaStrainRow(&HVNA_sts,m,n,i)[j]);
 			}
 		      }
 		    }
@@ -3223,32 +3186,6 @@ void Stress4B(OpenMXSolverInvocation *scratch,const OpenMXVnaMatrixViews *vna, c
 	  } /* Mc_AN */
 
 	  /* freeing of array */
-
-	  for (j=0; j<List_YOUSO[7]; j++){
-	    free(HVNAx[j]);
-	  }
-	  free(HVNAx);
-
-	  for (j=0; j<List_YOUSO[7]; j++){
-	    free(HVNAy[j]);
-	  }
-	  free(HVNAy);
-
-	  for (j=0; j<List_YOUSO[7]; j++){
-	    free(HVNAz[j]);
-	  }
-	  free(HVNAz);
-
-	  for (j=0; j<4; j++){
-	    for (k=0; k<4; k++){
-	      for (m=0; m<List_YOUSO[7]; m++){
-		free(HVNA_sts[j][k][m]);
-	      }
-              free(HVNA_sts[j][k]);
-	    }
-            free(HVNA_sts[j]);
-	  }
-          free(HVNA_sts);
 
 	} /* #pragma omp parallel */
 
@@ -3304,36 +3241,12 @@ void Stress4B(OpenMXSolverInvocation *scratch,const OpenMXVnaMatrixViews *vna, c
 
   dtime(&stime);
 
-#pragma omp parallel shared(time_per_atom,Gxyz,CDM0,SpinP_switch,CntHVNA2,HVNA2,DS_VNA,Cnt_switch,RMI1,FNAN,Spe_Total_CNO,WhatSpecies,F_G2M,natn,M2G,Matomnum,List_YOUSO,stress_threads) private(HVNAx,HVNAy,HVNAz,HVNA_sts,OMPID,Nthrds,Nprocs,Mc_AN,Stime_atom,Etime_atom,dEx,dEy,dEz,Gc_AN,h_AN,Gh_AN,Mh_AN,Hwan,ian,q_AN,Gq_AN,Mq_AN,Qwan,jan,kl,i,j,k,m,n,kk,pref)
+#pragma omp parallel shared(scratch,time_per_atom,Gxyz,CDM0,SpinP_switch,CntHVNA2,HVNA2,DS_VNA,Cnt_switch,RMI1,FNAN,Spe_Total_CNO,WhatSpecies,F_G2M,natn,M2G,Matomnum,List_YOUSO,stress_threads) private(HVNAx,HVNAy,HVNAz,HVNA_sts,OMPID,Nthrds,Nprocs,Mc_AN,Stime_atom,Etime_atom,dEx,dEy,dEz,Gc_AN,h_AN,Gh_AN,Mh_AN,Hwan,ian,q_AN,Gq_AN,Mq_AN,Qwan,jan,kl,i,j,k,m,n,kk,pref)
   {
 
     /* allocation of array */
 
-    HVNAx = (double**)malloc(sizeof(double*)*List_YOUSO[7]);
-    for (j=0; j<List_YOUSO[7]; j++){
-      HVNAx[j] = (double*)malloc(sizeof(double)*List_YOUSO[7]);
-    }
-
-    HVNAy = (double**)malloc(sizeof(double*)*List_YOUSO[7]);
-    for (j=0; j<List_YOUSO[7]; j++){
-      HVNAy[j] = (double*)malloc(sizeof(double)*List_YOUSO[7]);
-    }
-
-    HVNAz = (double**)malloc(sizeof(double*)*List_YOUSO[7]);
-    for (j=0; j<List_YOUSO[7]; j++){
-      HVNAz[j] = (double*)malloc(sizeof(double)*List_YOUSO[7]);
-    }
-
-    HVNA_sts = (double****)malloc(sizeof(double***)*4);
-    for (j=0; j<4; j++){
-      HVNA_sts[j] = (double***)malloc(sizeof(double**)*4);
-      for (k=0; k<4; k++){
-	HVNA_sts[j][k] = (double**)malloc(sizeof(double*)*List_YOUSO[7]);
-	for (m=0; m<List_YOUSO[7]; m++){
-	  HVNA_sts[j][k][m] = (double*)malloc(sizeof(double)*List_YOUSO[7]);
-	}
-      }
-    }
+    OpenMX_Stress_VnaPrepare(scratch,List_YOUSO[7],&HVNAx,&HVNAy,&HVNAz,&HVNA_sts);
 
     /* get info. on OpenMP */ 
 
@@ -3368,10 +3281,10 @@ void Stress4B(OpenMXSolverInvocation *scratch,const OpenMXVnaMatrixViews *vna, c
 	  kl = RMI1[Mc_AN][h_AN][q_AN];
 
 	  if (Cnt_switch==0) {
-	    dHVNA(vna, 0,Mc_AN,h_AN,q_AN,DS_VNA,HVNA2,HVNA3,HVNAx,HVNAy,HVNAz,HVNA_sts);
+	    dHVNA(vna, 0,Mc_AN,h_AN,q_AN,DS_VNA,HVNA2,HVNA3,&HVNAx,&HVNAy,&HVNAz,&HVNA_sts);
 	  }
 	  else { 
-	    dHVNA(vna, 0,Mc_AN,h_AN,q_AN,DS_VNA,CntHVNA2,CntHVNA3,HVNAx,HVNAy,HVNAz,HVNA_sts);
+	    dHVNA(vna, 0,Mc_AN,h_AN,q_AN,DS_VNA,CntHVNA2,CntHVNA3,&HVNAx,&HVNAy,&HVNAz,&HVNA_sts);
 	  }
 
 	  if (SpinP_switch==0){
@@ -3383,9 +3296,9 @@ void Stress4B(OpenMXSolverInvocation *scratch,const OpenMXVnaMatrixViews *vna, c
 
 	    for (i=0; i<ian; i++){
 	      for (j=0; j<jan; j++){
-		dEx += pref*CDM0[0][Mh_AN][kl][i][j]*HVNAx[i][j];
-		dEy += pref*CDM0[0][Mh_AN][kl][i][j]*HVNAy[i][j];
-		dEz += pref*CDM0[0][Mh_AN][kl][i][j]*HVNAz[i][j];
+		dEx += pref*CDM0[0][Mh_AN][kl][i][j]*openmx_solver_real_matrix_row(&HVNAx,i)[j];
+		dEy += pref*CDM0[0][Mh_AN][kl][i][j]*openmx_solver_real_matrix_row(&HVNAy,i)[j];
+		dEz += pref*CDM0[0][Mh_AN][kl][i][j]*openmx_solver_real_matrix_row(&HVNAz,i)[j];
 	      }
 	    }
 
@@ -3395,7 +3308,7 @@ void Stress4B(OpenMXSolverInvocation *scratch,const OpenMXVnaMatrixViews *vna, c
 	      for (n=1; n<=3; n++){
 		for (i=0; i<ian; i++){
 		  for (j=0; j<jan; j++){
-		    openmx_solver_real_matrix_row(&stress_threads,OMPID)[(m-1)*3+(n-1)] += pref*CDM0[0][Mh_AN][kl][i][j]*HVNA_sts[m][n][i][j];
+		    openmx_solver_real_matrix_row(&stress_threads,OMPID)[(m-1)*3+(n-1)] += pref*CDM0[0][Mh_AN][kl][i][j]*OpenMX_Stress_VnaStrainRow(&HVNA_sts,m,n,i)[j];
 		  }
 		}
 	      }
@@ -3416,11 +3329,11 @@ void Stress4B(OpenMXSolverInvocation *scratch,const OpenMXVnaMatrixViews *vna, c
 	      for (j=0; j<jan; j++){
 
 		dEx += pref*(  CDM0[0][Mh_AN][kl][i][j]
-			     + CDM0[1][Mh_AN][kl][i][j] )*HVNAx[i][j];
+			     + CDM0[1][Mh_AN][kl][i][j] )*openmx_solver_real_matrix_row(&HVNAx,i)[j];
 		dEy += pref*(  CDM0[0][Mh_AN][kl][i][j]
-			     + CDM0[1][Mh_AN][kl][i][j] )*HVNAy[i][j];
+			     + CDM0[1][Mh_AN][kl][i][j] )*openmx_solver_real_matrix_row(&HVNAy,i)[j];
 		dEz += pref*(  CDM0[0][Mh_AN][kl][i][j]
-			     + CDM0[1][Mh_AN][kl][i][j] )*HVNAz[i][j];
+			     + CDM0[1][Mh_AN][kl][i][j] )*openmx_solver_real_matrix_row(&HVNAz,i)[j];
 	      }
 	    }
 
@@ -3430,8 +3343,8 @@ void Stress4B(OpenMXSolverInvocation *scratch,const OpenMXVnaMatrixViews *vna, c
 	      for (n=1; n<=3; n++){
 		for (i=0; i<ian; i++){
 		  for (j=0; j<jan; j++){
-		    openmx_solver_real_matrix_row(&stress_threads,OMPID)[(m-1)*3+(n-1)] += pref*( CDM0[0][Mh_AN][kl][i][j]*HVNA_sts[m][n][i][j]
-	 			                                    + CDM0[1][Mh_AN][kl][i][j]*HVNA_sts[m][n][i][j]);
+		    openmx_solver_real_matrix_row(&stress_threads,OMPID)[(m-1)*3+(n-1)] += pref*( CDM0[0][Mh_AN][kl][i][j]*OpenMX_Stress_VnaStrainRow(&HVNA_sts,m,n,i)[j]
+                                            + CDM0[1][Mh_AN][kl][i][j]*OpenMX_Stress_VnaStrainRow(&HVNA_sts,m,n,i)[j]);
 		  }
 		}
 	      }
@@ -3454,32 +3367,6 @@ void Stress4B(OpenMXSolverInvocation *scratch,const OpenMXVnaMatrixViews *vna, c
     } /* Mc_AN */
 
       /* freeing of array */
-
-    for (j=0; j<List_YOUSO[7]; j++){
-      free(HVNAx[j]);
-    }
-    free(HVNAx);
-
-    for (j=0; j<List_YOUSO[7]; j++){
-      free(HVNAy[j]);
-    }
-    free(HVNAy);
-
-    for (j=0; j<List_YOUSO[7]; j++){
-      free(HVNAz[j]);
-    }
-    free(HVNAz);
-
-    for (j=0; j<4; j++){
-      for (k=0; k<4; k++){
-	for (m=0; m<List_YOUSO[7]; m++){
-	  free(HVNA_sts[j][k][m]);
-	}
-	free(HVNA_sts[j][k]);
-      }
-      free(HVNA_sts[j]);
-    }
-    free(HVNA_sts);
 
   } /* #pragma omp parallel */
 
@@ -3525,26 +3412,6 @@ void Stress4B(OpenMXSolverInvocation *scratch,const OpenMXVnaMatrixViews *vna, c
   /***********************************
             freeing of arrays 
   ************************************/
-
-  free(Indicator);
-
-  for (ID=0; ID<numprocs; ID++){
-    free(S_array[ID]);
-  }
-  free(S_array);
-
-  for (ID=0; ID<numprocs; ID++){
-    free(R_array[ID]);
-  }
-  free(R_array);
-
-
-
-
-  free(VNA_List);
-  free(VNA_List2);
-
-
 
   OpenMX_TransferEnd(&projector_transfer);
 }
@@ -5708,8 +5575,8 @@ void Stress_plus_U_dual(OpenMXSolverInvocation *scratch,double *****CDM0, const 
 void dHVNA(const OpenMXVnaMatrixViews *vna, int where_flag, int Mc_AN, int h_AN, int q_AN,
            Type_DS_VNA *****DS_VNA1, 
            double *****TmpHVNA2, double *****TmpHVNA3, 
-           double **Hx, double **Hy, double **Hz, 
-           double ****H_sts)
+           const OpenMXSolverRealTensor *Hx,const OpenMXSolverRealTensor *Hy,
+           const OpenMXSolverRealTensor *Hz,const OpenMXSolverRealTensor *H_sts)
 {
   const int fp32 = openmx_fp32_enabled();
   int i,j,k,m,n,l,kg,kan,so,deri_kind;
@@ -5751,9 +5618,9 @@ void dHVNA(const OpenMXVnaMatrixViews *vna, int where_flag, int Mc_AN, int h_AN,
 
   for (m=0; m<ian; m++){
     for (n=0; n<jan; n++){
-      Hx[m][n] = 0.0;
-      Hy[m][n] = 0.0;
-      Hz[m][n] = 0.0;
+      openmx_solver_real_matrix_row(Hx,m)[n] = 0.0;
+      openmx_solver_real_matrix_row(Hy,m)[n] = 0.0;
+      openmx_solver_real_matrix_row(Hz,m)[n] = 0.0;
     }
   }
 
@@ -5761,7 +5628,7 @@ void dHVNA(const OpenMXVnaMatrixViews *vna, int where_flag, int Mc_AN, int h_AN,
     for (j=0; j<4; j++){
       for (m=0; m<ian; m++){
 	for (n=0; n<jan; n++){
-	  H_sts[i][j][m][n] = 0.0;
+	  OpenMX_Stress_VnaStrainRow(H_sts,i,j,m)[n] = 0.0;
 	}
       }
     }
@@ -5788,9 +5655,9 @@ void dHVNA(const OpenMXVnaMatrixViews *vna, int where_flag, int Mc_AN, int h_AN,
 
       for (m=0; m<ian; m++){
         for (n=0; n<jan; n++){
-	  Hx[m][n] += TmpHVNA2[1][Mc_AN][k][m][n];
-	  Hy[m][n] += TmpHVNA2[2][Mc_AN][k][m][n];
-	  Hz[m][n] += TmpHVNA2[3][Mc_AN][k][m][n];
+	  openmx_solver_real_matrix_row(Hx,m)[n] += TmpHVNA2[1][Mc_AN][k][m][n];
+	  openmx_solver_real_matrix_row(Hy,m)[n] += TmpHVNA2[2][Mc_AN][k][m][n];
+	  openmx_solver_real_matrix_row(Hz,m)[n] += TmpHVNA2[3][Mc_AN][k][m][n];
         }
       }      
 
@@ -5799,17 +5666,17 @@ void dHVNA(const OpenMXVnaMatrixViews *vna, int where_flag, int Mc_AN, int h_AN,
       for (m=0; m<ian; m++){
         for (n=0; n<jan; n++){
 
-	  H_sts[1][1][m][n] += TmpHVNA2[1][Mc_AN][k][m][n]*tx;
-	  H_sts[1][2][m][n] += TmpHVNA2[1][Mc_AN][k][m][n]*ty;
-	  H_sts[1][3][m][n] += TmpHVNA2[1][Mc_AN][k][m][n]*tz;
+	  OpenMX_Stress_VnaStrainRow(H_sts,1,1,m)[n] += TmpHVNA2[1][Mc_AN][k][m][n]*tx;
+	  OpenMX_Stress_VnaStrainRow(H_sts,1,2,m)[n] += TmpHVNA2[1][Mc_AN][k][m][n]*ty;
+	  OpenMX_Stress_VnaStrainRow(H_sts,1,3,m)[n] += TmpHVNA2[1][Mc_AN][k][m][n]*tz;
 
-	  H_sts[2][1][m][n] += TmpHVNA2[2][Mc_AN][k][m][n]*tx;
-	  H_sts[2][2][m][n] += TmpHVNA2[2][Mc_AN][k][m][n]*ty;
-	  H_sts[2][3][m][n] += TmpHVNA2[2][Mc_AN][k][m][n]*tz;
+	  OpenMX_Stress_VnaStrainRow(H_sts,2,1,m)[n] += TmpHVNA2[2][Mc_AN][k][m][n]*tx;
+	  OpenMX_Stress_VnaStrainRow(H_sts,2,2,m)[n] += TmpHVNA2[2][Mc_AN][k][m][n]*ty;
+	  OpenMX_Stress_VnaStrainRow(H_sts,2,3,m)[n] += TmpHVNA2[2][Mc_AN][k][m][n]*tz;
 
-	  H_sts[3][1][m][n] += TmpHVNA2[3][Mc_AN][k][m][n]*tx;
-	  H_sts[3][2][m][n] += TmpHVNA2[3][Mc_AN][k][m][n]*ty;
-	  H_sts[3][3][m][n] += TmpHVNA2[3][Mc_AN][k][m][n]*tz;
+	  OpenMX_Stress_VnaStrainRow(H_sts,3,1,m)[n] += TmpHVNA2[3][Mc_AN][k][m][n]*tx;
+	  OpenMX_Stress_VnaStrainRow(H_sts,3,2,m)[n] += TmpHVNA2[3][Mc_AN][k][m][n]*ty;
+	  OpenMX_Stress_VnaStrainRow(H_sts,3,3,m)[n] += TmpHVNA2[3][Mc_AN][k][m][n]*tz;
         }
       }    
     } /* k */
@@ -5828,9 +5695,9 @@ void dHVNA(const OpenMXVnaMatrixViews *vna, int where_flag, int Mc_AN, int h_AN,
     for (m=0; m<ian; m++){
       for (n=0; n<jan; n++){
 
-	Hx[m][n] = -TmpHVNA3[1][Mc_AN][h_AN][m][n];
-	Hy[m][n] = -TmpHVNA3[2][Mc_AN][h_AN][m][n];
-	Hz[m][n] = -TmpHVNA3[3][Mc_AN][h_AN][m][n];
+	openmx_solver_real_matrix_row(Hx,m)[n] = -TmpHVNA3[1][Mc_AN][h_AN][m][n];
+	openmx_solver_real_matrix_row(Hy,m)[n] = -TmpHVNA3[2][Mc_AN][h_AN][m][n];
+	openmx_solver_real_matrix_row(Hz,m)[n] = -TmpHVNA3[3][Mc_AN][h_AN][m][n];
       }
     } 
   }
@@ -5886,23 +5753,23 @@ void dHVNA(const OpenMXVnaMatrixViews *vna, int where_flag, int Mc_AN, int h_AN,
 
               /* for forces */
 
-	      Hx[m][n] += sumx;
-	      Hy[m][n] += sumy;
-	      Hz[m][n] += sumz;
+	      openmx_solver_real_matrix_row(Hx,m)[n] += sumx;
+	      openmx_solver_real_matrix_row(Hy,m)[n] += sumy;
+	      openmx_solver_real_matrix_row(Hz,m)[n] += sumz;
 
               /* for stress calculation */ 
 
-	      H_sts[1][1][m][n] += sumx*tx;
-	      H_sts[1][2][m][n] += sumx*ty;
-	      H_sts[1][3][m][n] += sumx*tz;
+	      OpenMX_Stress_VnaStrainRow(H_sts,1,1,m)[n] += sumx*tx;
+	      OpenMX_Stress_VnaStrainRow(H_sts,1,2,m)[n] += sumx*ty;
+	      OpenMX_Stress_VnaStrainRow(H_sts,1,3,m)[n] += sumx*tz;
 
-	      H_sts[2][1][m][n] += sumy*tx;
-	      H_sts[2][2][m][n] += sumy*ty;
-	      H_sts[2][3][m][n] += sumy*tz;
+	      OpenMX_Stress_VnaStrainRow(H_sts,2,1,m)[n] += sumy*tx;
+	      OpenMX_Stress_VnaStrainRow(H_sts,2,2,m)[n] += sumy*ty;
+	      OpenMX_Stress_VnaStrainRow(H_sts,2,3,m)[n] += sumy*tz;
 
-	      H_sts[3][1][m][n] += sumz*tx;
-	      H_sts[3][2][m][n] += sumz*ty;
-	      H_sts[3][3][m][n] += sumz*tz;
+	      OpenMX_Stress_VnaStrainRow(H_sts,3,1,m)[n] += sumz*tx;
+	      OpenMX_Stress_VnaStrainRow(H_sts,3,2,m)[n] += sumz*ty;
+	      OpenMX_Stress_VnaStrainRow(H_sts,3,3,m)[n] += sumz*tz;
 
 	    } /* n */
 	  } /* m */
@@ -5924,17 +5791,17 @@ void dHVNA(const OpenMXVnaMatrixViews *vna, int where_flag, int Mc_AN, int h_AN,
 	for (m=0; m<ian; m++){
 	  for (n=m; n<jan; n++){
             
-            tmpx = Hx[m][n] + Hx[n][m];
-	    Hx[m][n] = tmpx;
-	    Hx[n][m] = tmpx;
+            tmpx = openmx_solver_real_matrix_row(Hx,m)[n] + openmx_solver_real_matrix_row(Hx,n)[m];
+	    openmx_solver_real_matrix_row(Hx,m)[n] = tmpx;
+	    openmx_solver_real_matrix_row(Hx,n)[m] = tmpx;
 
-            tmpy = Hy[m][n] + Hy[n][m];
-	    Hy[m][n] = tmpy;
-	    Hy[n][m] = tmpy;
+            tmpy = openmx_solver_real_matrix_row(Hy,m)[n] + openmx_solver_real_matrix_row(Hy,n)[m];
+	    openmx_solver_real_matrix_row(Hy,m)[n] = tmpy;
+	    openmx_solver_real_matrix_row(Hy,n)[m] = tmpy;
 
-            tmpz = Hz[m][n] + Hz[n][m];
-	    Hz[m][n] = tmpz;
-	    Hz[n][m] = tmpz;
+            tmpz = openmx_solver_real_matrix_row(Hz,m)[n] + openmx_solver_real_matrix_row(Hz,n)[m];
+	    openmx_solver_real_matrix_row(Hz,m)[n] = tmpz;
+	    openmx_solver_real_matrix_row(Hz,n)[m] = tmpz;
 	  }
 	}
 
@@ -5945,13 +5812,13 @@ void dHVNA(const OpenMXVnaMatrixViews *vna, int where_flag, int Mc_AN, int h_AN,
 	    for (m=0; m<ian; m++){
 	      for (n=m; n<jan; n++){
 
-		tmp = H_sts[i][j][m][n] + H_sts[i][j][n][m];
-		H_sts[i][j][m][n] = tmp;
-		H_sts[i][j][n][m] = tmp;
+		tmp = OpenMX_Stress_VnaStrainRow(H_sts,i,j,m)[n] + OpenMX_Stress_VnaStrainRow(H_sts,i,j,n)[m];
+		OpenMX_Stress_VnaStrainRow(H_sts,i,j,m)[n] = tmp;
+		OpenMX_Stress_VnaStrainRow(H_sts,i,j,n)[m] = tmp;
 
-		tmp = H_sts[i][j][m][n] + H_sts[i][j][n][m];
-		H_sts[i][j][m][n] = tmp;
-		H_sts[i][j][n][m] = tmp;
+		tmp = OpenMX_Stress_VnaStrainRow(H_sts,i,j,m)[n] + OpenMX_Stress_VnaStrainRow(H_sts,i,j,n)[m];
+		OpenMX_Stress_VnaStrainRow(H_sts,i,j,m)[n] = tmp;
+		OpenMX_Stress_VnaStrainRow(H_sts,i,j,n)[m] = tmp;
 	      }
 	    }
 	  }
@@ -5993,9 +5860,9 @@ void dHVNA(const OpenMXVnaMatrixViews *vna, int where_flag, int Mc_AN, int h_AN,
 	                       : (double)DS_VNA1[0][Mc_AN][0][m][l] * (double)DS_VNA1[3][Mj_AN2][kl][n][l];
 	    }
 
-	    Hx[m][n] += sumx;
-	    Hy[m][n] += sumy;
-	    Hz[m][n] += sumz;
+	    openmx_solver_real_matrix_row(Hx,m)[n] += sumx;
+	    openmx_solver_real_matrix_row(Hy,m)[n] += sumy;
+	    openmx_solver_real_matrix_row(Hz,m)[n] += sumz;
 
 	  }
 	}
@@ -6035,9 +5902,9 @@ void dHVNA(const OpenMXVnaMatrixViews *vna, int where_flag, int Mc_AN, int h_AN,
 	                     : (double)DS_VNA1[3][Matomnum+1][kl1][m][l] * (double)DS_VNA1[0][Matomnum+1][kl2][n][l];
 	  }
 
-	  Hx[m][n] = sumx;
-	  Hy[m][n] = sumy;
-	  Hz[m][n] = sumz;
+	  openmx_solver_real_matrix_row(Hx,m)[n] = sumx;
+	  openmx_solver_real_matrix_row(Hy,m)[n] = sumy;
+	  openmx_solver_real_matrix_row(Hz,m)[n] = sumz;
 	}
       }
 
@@ -6072,9 +5939,9 @@ void dHVNA(const OpenMXVnaMatrixViews *vna, int where_flag, int Mc_AN, int h_AN,
 	                       : (double)DS_VNA1[0][Matomnum+1][kl1][m][l] * (double)DS_VNA1[3][Matomnum+1][kl2][n][l];
 	    }
 
-	    Hx[m][n] += sumx;
-	    Hy[m][n] += sumy;
-	    Hz[m][n] += sumz;
+	    openmx_solver_real_matrix_row(Hx,m)[n] += sumx;
+	    openmx_solver_real_matrix_row(Hy,m)[n] += sumy;
+	    openmx_solver_real_matrix_row(Hz,m)[n] += sumz;
 
 	  }
 	}
@@ -6091,9 +5958,9 @@ void dHVNA(const OpenMXVnaMatrixViews *vna, int where_flag, int Mc_AN, int h_AN,
 
   for (m=0; m<ian; m++){
     for (n=0; n<jan; n++){
-      Hx[m][n] = dmp*Hx[m][n];
-      Hy[m][n] = dmp*Hy[m][n];
-      Hz[m][n] = dmp*Hz[m][n];
+      openmx_solver_real_matrix_row(Hx,m)[n] = dmp*openmx_solver_real_matrix_row(Hx,m)[n];
+      openmx_solver_real_matrix_row(Hy,m)[n] = dmp*openmx_solver_real_matrix_row(Hy,m)[n];
+      openmx_solver_real_matrix_row(Hz,m)[n] = dmp*openmx_solver_real_matrix_row(Hz,m)[n];
     }
   }
 
@@ -6103,8 +5970,8 @@ void dHVNA(const OpenMXVnaMatrixViews *vna, int where_flag, int Mc_AN, int h_AN,
     for (j=1; j<=3; j++){
       for (m=0; m<ian; m++){
 	for (n=0; n<jan; n++){
-	  H_sts[i][j][m][n] = dmp*H_sts[i][j][m][n];
-	  H_sts[i][j][m][n] = dmp*H_sts[i][j][m][n];
+	  OpenMX_Stress_VnaStrainRow(H_sts,i,j,m)[n] = dmp*OpenMX_Stress_VnaStrainRow(H_sts,i,j,m)[n];
+	  OpenMX_Stress_VnaStrainRow(H_sts,i,j,m)[n] = dmp*OpenMX_Stress_VnaStrainRow(H_sts,i,j,m)[n];
 	}
       }
     }
@@ -6162,9 +6029,9 @@ void dHVNA(const OpenMXVnaMatrixViews *vna, int where_flag, int Mc_AN, int h_AN,
 
       for (m=0; m<ian; m++){
         for (n=0; n<jan; n++){
-	  Hx[m][n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,m)[n]*dx;
-	  Hy[m][n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,m)[n]*dy;
-	  Hz[m][n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,m)[n]*dz;
+	  openmx_solver_real_matrix_row(Hx,m)[n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,m)[n]*dx;
+	  openmx_solver_real_matrix_row(Hy,m)[n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,m)[n]*dy;
+	  openmx_solver_real_matrix_row(Hz,m)[n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,m)[n]*dz;
         }
       }
 
@@ -6172,15 +6039,15 @@ void dHVNA(const OpenMXVnaMatrixViews *vna, int where_flag, int Mc_AN, int h_AN,
 
       for (m=0; m<ian; m++){
 	for (n=0; n<jan; n++){
-	  H_sts[1][1][m][n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,m)[n]*dx*tx;
-	  H_sts[1][2][m][n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,m)[n]*dx*ty;
-	  H_sts[1][3][m][n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,m)[n]*dx*tz;
-	  H_sts[2][1][m][n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,m)[n]*dy*tx;
-	  H_sts[2][2][m][n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,m)[n]*dy*ty;
-	  H_sts[2][3][m][n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,m)[n]*dy*tz;
-	  H_sts[3][1][m][n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,m)[n]*dz*tx;
-	  H_sts[3][2][m][n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,m)[n]*dz*ty;
-	  H_sts[3][3][m][n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,m)[n]*dz*tz;
+	  OpenMX_Stress_VnaStrainRow(H_sts,1,1,m)[n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,m)[n]*dx*tx;
+	  OpenMX_Stress_VnaStrainRow(H_sts,1,2,m)[n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,m)[n]*dx*ty;
+	  OpenMX_Stress_VnaStrainRow(H_sts,1,3,m)[n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,m)[n]*dx*tz;
+	  OpenMX_Stress_VnaStrainRow(H_sts,2,1,m)[n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,m)[n]*dy*tx;
+	  OpenMX_Stress_VnaStrainRow(H_sts,2,2,m)[n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,m)[n]*dy*ty;
+	  OpenMX_Stress_VnaStrainRow(H_sts,2,3,m)[n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,m)[n]*dy*tz;
+	  OpenMX_Stress_VnaStrainRow(H_sts,3,1,m)[n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,m)[n]*dz*tx;
+	  OpenMX_Stress_VnaStrainRow(H_sts,3,2,m)[n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,m)[n]*dz*ty;
+	  OpenMX_Stress_VnaStrainRow(H_sts,3,3,m)[n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,m)[n]*dz*tz;
 	}
       }
 
@@ -6192,9 +6059,9 @@ void dHVNA(const OpenMXVnaMatrixViews *vna, int where_flag, int Mc_AN, int h_AN,
 
       for (m=0; m<ian; m++){
         for (n=0; n<jan; n++){
-	  Hx[m][n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,n)[m]*dx;
-	  Hy[m][n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,n)[m]*dy;
-	  Hz[m][n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,n)[m]*dz;
+	  openmx_solver_real_matrix_row(Hx,m)[n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,n)[m]*dx;
+	  openmx_solver_real_matrix_row(Hy,m)[n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,n)[m]*dy;
+	  openmx_solver_real_matrix_row(Hz,m)[n] += openmx_double_block_row(&vna->potential,0,Mc_AN,kl,n)[m]*dz;
         }
       }
 
@@ -6205,7 +6072,7 @@ void dHVNA(const OpenMXVnaMatrixViews *vna, int where_flag, int Mc_AN, int h_AN,
   printf("ABC1 Mc_AN=%2d h_AN=%2d q_AN=%2d\n",Mc_AN,h_AN,q_AN);
   for (m=0; m<ian; m++){
     for (n=0; n<jan; n++){
-      printf("%10.5f ",H_sts[1][1][m][n]);
+      printf("%10.5f ",OpenMX_Stress_VnaStrainRow(H_sts,1,1,m)[n]);
     }
     printf("\n");
   }

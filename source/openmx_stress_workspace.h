@@ -103,4 +103,37 @@ static inline double *OpenMX_Stress_HaloBuffer(OpenMXSolverInvocation *owner,
   if(count<0)OpenMX_Solver_Failure("invalid stress halo message count");
   return OpenMX_Solver_OverwriteReal(owner,name,count>0?(size_t)count:1);
 }
+
+/* Active VNA lists retain their two legacy padding elements. */
+static inline void OpenMX_Stress_VnaListsPrepare(OpenMXSolverInvocation *owner,
+    int radial,int maximum_angular,int **angular_list,int **radial_list)
+{
+  if(radial<0 || maximum_angular<0)OpenMX_Solver_Failure("invalid stress VNA projector bounds");
+  const size_t channels=(size_t)maximum_angular+1;
+  if((size_t)radial>((size_t)-1-2)/channels)
+    OpenMX_Solver_Failure("stress VNA projector list size overflow");
+  const size_t count=(size_t)radial*channels+2;
+  *angular_list=OpenMX_Solver_Int(owner,"stress:vna:angular-list",count);
+  *radial_list=OpenMX_Solver_Int(owner,"stress:vna:radial-list",count);
+}
+
+/* One worker reuses these fields across joined VNA stages. Values are
+   uninitialized until the derivative producer writes its active rectangle. */
+static inline void OpenMX_Stress_VnaPrepare(OpenMXSolverInvocation *owner,int orbitals,
+    OpenMXSolverRealTensor *x,OpenMXSolverRealTensor *y,
+    OpenMXSolverRealTensor *z,OpenMXSolverRealTensor *strain)
+{
+  if(orbitals<1)OpenMX_Solver_Failure("invalid stress VNA orbital count");
+  const size_t shape[4]={(size_t)orbitals,(size_t)orbitals,1,1};
+  const size_t strain_shape[4]={4,4,(size_t)orbitals,(size_t)orbitals};
+  OpenMX_Stress_OverwritePrepare(owner,"stress:vna:x",shape,x);
+  OpenMX_Stress_OverwritePrepare(owner,"stress:vna:y",shape,y);
+  OpenMX_Stress_OverwritePrepare(owner,"stress:vna:z",shape,z);
+  OpenMX_Stress_OverwritePrepare(owner,"stress:vna:strain",strain_shape,strain);
+}
+static inline double *OpenMX_Stress_VnaStrainRow(const OpenMXSolverRealTensor *view,
+    size_t axis,size_t derivative,size_t orbital)
+{
+  return view->values+((axis*view->extent[1]+derivative)*view->extent[2]+orbital)*view->extent[3];
+}
 #endif
