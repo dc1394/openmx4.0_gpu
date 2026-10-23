@@ -24,6 +24,29 @@ static inline void OpenMX_Energy_PairsPrepare(OpenMXSolverInvocation *owner,
   out->pair_count=(int)count;
 }
 
+/* Borrowed EH0 batch. Integer rows are base species, other species and the
+   derivative flag; real rows are distance, direction xyz and four outputs.
+   Empty MPI ranks retain one padding element per row for the native ABI. */
+typedef struct {
+  int count;
+  OpenMXSolverIntTensor indices;
+  OpenMXSolverRealTensor values;
+} OpenMXEnergyEH0Batch;
+
+static inline void OpenMX_Energy_EH0BatchPrepare(OpenMXSolverInvocation *owner,
+    size_t count,OpenMXEnergyEH0Batch *out)
+{
+  char error[256];
+  const size_t capacity=count ? count : 1;
+  const size_t integers[4]={3,capacity,1,1},reals[4]={8,capacity,1,1};
+  if(count>INT_MAX)OpenMX_Solver_Failure("too many EH0 atom pairs");
+  if(!openmx_core_solver_int_tensor(owner,omp_get_thread_num(),"total-energy:eh0-indices",
+        integers,&out->indices,error,sizeof(error)))OpenMX_Solver_Failure(error);
+  if(!openmx_core_solver_real_overwrite(owner,omp_get_thread_num(),"total-energy:eh0-batch",
+        reals,&out->values,error,sizeof(error)))OpenMX_Solver_Failure(error);
+  out->count=(int)count;
+}
+
 /* Explicit output parameters also avoid large-aggregate returns in native
    OpenMP code. Both [spin,CWF] matrices live until the invocation ends. */
 static inline void OpenMX_Energy_CWFScratch(OpenMXSolverInvocation *owner,

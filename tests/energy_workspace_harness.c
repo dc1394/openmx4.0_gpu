@@ -60,6 +60,7 @@ static int nested(OpenMXSolverInvocation *owner,void *outer,double *result){
 static int layout(OpenMXSolverInvocation *owner,void *argument,double *result){
   const char *mode=argument;
   if(!strcmp(mode,"bad-count"))OpenMX_Energy_PairsPrepare(owner,(size_t)INT_MAX+1,NULL);
+  if(!strcmp(mode,"bad-eh0-count"))OpenMX_Energy_EH0BatchPrepare(owner,(size_t)INT_MAX+1,NULL);
   if(!strcmp(mode,"bad-cwf")){
     OpenMXSolverRealTensor a,b;OpenMX_Energy_CWFScratch(owner,0,&a,&b);
   }
@@ -75,6 +76,23 @@ static int layout(OpenMXSolverInvocation *owner,void *argument,double *result){
     for(size_t row=0;row<2;row++)for(size_t i=0;i<=n;i++)
       CHECK(openmx_solver_int_matrix_row(&b.pair_indices,row)[i]==(int)(100*row+i));
     CHECK(OpenMX_Solver_Run(nested,a.pair_indices.values)==1);
+  }
+  for(int k=0;k<3;k++){
+    OpenMXEnergyEH0Batch a,b;const size_t n=counts[k],capacity=n?n:1;
+    OpenMX_Energy_EH0BatchPrepare(owner,n,&a);
+    CHECK(a.count==(int)n && a.indices.extent[0]==3 && a.values.extent[0]==8);
+    CHECK(a.indices.extent[1]==capacity && a.values.extent[1]==capacity);
+    CHECK(a.indices.values && a.values.values);
+    for(size_t row=0;row<3;row++)for(size_t i=0;i<capacity;i++)
+      openmx_solver_int_matrix_row(&a.indices,row)[i]=(int)(100*row+i);
+    for(size_t row=0;row<8;row++)for(size_t i=0;i<capacity;i++)
+      openmx_solver_real_matrix_row(&a.values,row)[i]=100*row+i+.5;
+    OpenMX_Energy_EH0BatchPrepare(owner,n,&b);
+    CHECK(a.indices.values==b.indices.values && a.values.values==b.values.values);
+    for(size_t row=0;row<3;row++)for(size_t i=0;i<capacity;i++)
+      CHECK(openmx_solver_int_matrix_row(&b.indices,row)[i]==(int)(100*row+i));
+    for(size_t row=0;row<8;row++)for(size_t i=0;i<capacity;i++)
+      CHECK(openmx_solver_real_matrix_row(&b.values,row)[i]==100*row+i+.5);
   }
   OpenMXSolverRealTensor a,b;OpenMX_Energy_CWFScratch(owner,3,&a,&b);
   CHECK(a.extent[0]==2 && a.extent[1]==3 && a.values!=b.values);

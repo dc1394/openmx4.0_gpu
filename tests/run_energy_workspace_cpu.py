@@ -99,7 +99,7 @@ def main():
         for backend in [0, 1]:
             executable = build('energy-'+str(backend), backend)
             subprocess.run([str(executable), 'layout'], cwd=folder, check=True, preexec_fn=bounded_stack)
-            for mode in ['bad-count', 'bad-cwf']:
+            for mode in ['bad-count', 'bad-eh0-count', 'bad-cwf']:
                 failed = subprocess.run([str(executable), mode], cwd=folder, capture_output=True,
                                         text=True, preexec_fn=bounded_stack)
                 assert failed.returncode == 77 and 'OpenMX solver workspace:' in failed.stderr

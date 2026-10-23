@@ -42,8 +42,8 @@ static int TotalEnergy_ProfileEnabled(void)
 #endif
 #define MIN(a,b) (((a)<(b))?  (a):(b))
 
-static double Calc_Ecore();
-static double Calc_EH0(const OpenMXAtomicViews *atomic, int MD_iter);
+static double Calc_Ecore(OpenMXSolverInvocation *scratch);
+static double Calc_EH0(const OpenMXEnergyWorkspace *workspace, const OpenMXAtomicViews *atomic, int MD_iter);
 static double Calc_Ekin(const OpenMXEnergyWorkspace *workspace, const OpenMXElectronicViews *electronic);
 static double Calc_Ena(const OpenMXEnergyWorkspace *workspace, const OpenMXVnaMatrixViews *vna, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
 static double Calc_Enl(const OpenMXEnergyWorkspace *workspace, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
@@ -54,7 +54,7 @@ static double Calc_Ehub(const OpenMXLocalBasisViews *local_basis);   /* --- adde
 static double Calc_EdftD();  /* added by okuno */
 static double Calc_EdftD3(); /* added by Ellner */
 static void EH0_TwoCenter(const OpenMXAtomicViews *atomic, int Gc_AN, int h_AN, double VH0ij[4]);
-static void EH0_TwoCenter_at_Cutoff(const OpenMXAtomicViews *atomic, int wan1, int wan2, double VH0ij[4]);
+static void EH0_TwoCenter_at_Cutoff(OpenMXSolverInvocation *scratch, const OpenMXAtomicViews *atomic, int wan1, int wan2, double VH0ij[4]);
 static void Energy_Decomposition(const OpenMXBandEnergies *energies, double ECE[], const OpenMXElectronicViews *electronic);
 static void Energy_Decomposition_CWF(OpenMXSolverInvocation *scratch, const OpenMXCWFObservables *cwf_values, double ECE[]);
 #if OPENMX_GPU_HIP
@@ -175,7 +175,7 @@ static void Total_Energy_owned(OpenMXSolverInvocation *scratch, const OpenMXBand
 
   dtime(&stime);
 
-  ECE[0] = Calc_Ecore();
+  ECE[0] = Calc_Ecore(scratch);
 
   dtime(&etime);
   if(myid==0 && measure_time){
@@ -188,7 +188,7 @@ static void Total_Energy_owned(OpenMXSolverInvocation *scratch, const OpenMXBand
 
   dtime(&stime);
 
-  ECE[1] = Calc_EH0(atomic, MD_iter);
+  ECE[1] = Calc_EH0(&workspace, atomic, MD_iter);
 
   dtime(&etime);
   if(myid==0 && measure_time){
@@ -1069,7 +1069,7 @@ double Calc_ECH(const OpenMXEnergyWorkspace *workspace, const OpenMXElectronicVi
 
 
 
-double Calc_Ecore()
+double Calc_Ecore(OpenMXSolverInvocation *scratch)
 {
   /****************************************************
                          Ecore
@@ -1103,7 +1103,7 @@ double Calc_Ecore()
   Nthrds0 = omp_get_max_threads();
 
   /* allocation of array */
-  My_Ecore_threads = (double*)malloc(sizeof(double)*Nthrds0);
+  My_Ecore_threads = OpenMX_Solver_OverwriteReal(scratch,"total-energy:thread-sums",(size_t)Nthrds0);
   for (Nloop=0; Nloop<Nthrds0; Nloop++) My_Ecore_threads[Nloop] = 0.0;
 
 #pragma omp parallel shared(level_stdout,time_per_atom,atv,Gxyz,Dis,ncn,natn,FNAN,Spe_Core_Charge,WhatSpecies,M2G,Matomnum,My_Ecore_threads,DecEscc,Energy_Decomposition_flag,SpinP_switch,Spe_MaxL_Basis,Spe_Num_Basis) private(OMPID,Nthrds,Nprocs,Mc_AN,Stime_atom,Gc_AN,Cwan,Zc,dEx,dEy,dEz,h_AN,Gh_AN,Rn,Hwan,Zh,r,lx,ly,lz,dum,dum2,Etime_atom,TmpEcore)
@@ -1184,8 +1184,7 @@ double Calc_Ecore()
 
   MPI_Allreduce(&My_Ecore, &Ecore, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
 
-  /* freeing of array */
-  free(My_Ecore_threads);
+  /* The invocation retains the reusable partial sums. */
 
   return Ecore;  
 }
@@ -1197,7 +1196,7 @@ double Calc_Ecore()
 
 
 
-double Calc_EH0(const OpenMXAtomicViews *atomic, int MD_iter)
+double Calc_EH0(const OpenMXEnergyWorkspace *workspace, const OpenMXAtomicViews *atomic, int MD_iter)
 {
   /****************************************************
               EH0 = -1/2\int n^a(r) V^a_H dr
@@ -1231,9 +1230,11 @@ double Calc_EH0(const OpenMXAtomicViews *atomic, int MD_iter)
     doubel Fz[Matomnum+1];
   ****************************************************/
 
-  Fx = (double*)malloc(sizeof(double)*(Matomnum+1));
-  Fy = (double*)malloc(sizeof(double)*(Matomnum+1));
-  Fz = (double*)malloc(sizeof(double)*(Matomnum+1));
+  const OpenMXSolverRealTensor forces=OpenMX_Solver_OverwriteView(workspace->owner,
+      "total-energy:eh0-forces",3,OpenMX_Solver_SimdColumns((size_t)Matomnum+1));
+  Fx=openmx_solver_real_matrix_row(&forces,0);
+  Fy=openmx_solver_real_matrix_row(&forces,1);
+  Fz=openmx_solver_real_matrix_row(&forces,2);
 
   /****************************************************
              Set of atomic density on grids
@@ -1284,14 +1285,14 @@ double Calc_EH0(const OpenMXAtomicViews *atomic, int MD_iter)
 
     /* calculate GridX,Y,Z_EH0 and Wt_EH0 */
 
-#pragma omp parallel shared(atomic,Max_Nd,level_stdout,TGN_EH0,Wt_EH0,Arho_EH0,GridZ_EH0,GridY_EH0,GridX_EH0,Scale_Grid_Ecut,dv_EH0,SpeciesNum,CoarseGL_Abscissae,CoarseGL_Weight) private(OMPID,Nthrds,Nprocs,wan,bc,dx,Nd,gnum,n1,n2,n3,x,y,z,tmp0,r1,rho0,g0,Sx,Dx,xx)
+#pragma omp parallel shared(workspace,atomic,Max_Nd,level_stdout,TGN_EH0,Wt_EH0,Arho_EH0,GridZ_EH0,GridY_EH0,GridX_EH0,Scale_Grid_Ecut,dv_EH0,SpeciesNum,CoarseGL_Abscissae,CoarseGL_Weight) private(OMPID,Nthrds,Nprocs,wan,bc,dx,Nd,gnum,n1,n2,n3,x,y,z,tmp0,r1,rho0,g0,Sx,Dx,xx)
     {
 
       int l,p;
 
       /* allocation of arrays g0 */
 
-      g0 = (double*)malloc(sizeof(double)*Max_Nd);
+      g0 = OpenMX_Solver_OverwriteReal(workspace->owner,"total-energy:eh0-grid",(size_t)Max_Nd);
 
       /* get info. on OpenMP */ 
 
@@ -1354,7 +1355,7 @@ double Calc_EH0(const OpenMXAtomicViews *atomic, int MD_iter)
       } /* wan */
 
       /* free */
-      free(g0);
+      /* g0 belongs to this invocation and OpenMP worker. */
 
     } /* #pragma omp parallel */
 
@@ -1379,7 +1380,7 @@ double Calc_EH0(const OpenMXAtomicViews *atomic, int MD_iter)
       for (wan2=0; wan2<SpeciesNum; wan2++){
 
 	/* EH0_TwoCenter_at_Cutoff is parallelized by OpenMP */      
-	EH0_TwoCenter_at_Cutoff(atomic, wan1, wan2, EH0ij);
+	EH0_TwoCenter_at_Cutoff(workspace->owner, atomic, wan1, wan2, EH0ij);
 
 	r2 = atomic->species.cutoff[wan2];
 	Z2 = atomic->species.core_charge[wan2];
@@ -1418,35 +1419,20 @@ double Calc_EH0(const OpenMXAtomicViews *atomic, int MD_iter)
     double *pair_dis,*pair_dirx,*pair_diry,*pair_dirz;
     double *out0,*out1,*out2,*out3;
 
-    pair_count = 0;
-    for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-      Gc_AN = M2G[Mc_AN];
-      pair_count += 2*(FNAN[Gc_AN] + 1);
-    }
-
-    pair_ban = (int*)malloc(sizeof(int)*pair_count);
-    pair_wan2 = (int*)malloc(sizeof(int)*pair_count);
-    pair_has_deriv = (int*)malloc(sizeof(int)*pair_count);
-    pair_dis = (double*)malloc(sizeof(double)*pair_count);
-    pair_dirx = (double*)malloc(sizeof(double)*pair_count);
-    pair_diry = (double*)malloc(sizeof(double)*pair_count);
-    pair_dirz = (double*)malloc(sizeof(double)*pair_count);
-    out0 = (double*)malloc(sizeof(double)*pair_count);
-    out1 = (double*)malloc(sizeof(double)*pair_count);
-    out2 = (double*)malloc(sizeof(double)*pair_count);
-    out3 = (double*)malloc(sizeof(double)*pair_count);
-
-    if (pair_ban==NULL || pair_wan2==NULL || pair_has_deriv==NULL ||
-        pair_dis==NULL || pair_dirx==NULL || pair_diry==NULL || pair_dirz==NULL ||
-        out0==NULL || out1==NULL || out2==NULL || out3==NULL){
-#if OPENMX_GPU_HIP
-      printf("Calc_EH0: malloc failed for OpenMP EH0 pair batch.\n");
-#else
-      printf("Calc_EH0: malloc failed for OpenACC EH0 pair batch.\n");
-#endif
-      fflush(stdout);
-      exit(1);
-    }
+    OpenMXEnergyEH0Batch batch;
+    OpenMX_Energy_EH0BatchPrepare(workspace->owner,2u*(size_t)workspace->pair_count,&batch);
+    pair_count=batch.count;
+    pair_ban=openmx_solver_int_matrix_row(&batch.indices,0);
+    pair_wan2=openmx_solver_int_matrix_row(&batch.indices,1);
+    pair_has_deriv=openmx_solver_int_matrix_row(&batch.indices,2);
+    pair_dis=openmx_solver_real_matrix_row(&batch.values,0);
+    pair_dirx=openmx_solver_real_matrix_row(&batch.values,1);
+    pair_diry=openmx_solver_real_matrix_row(&batch.values,2);
+    pair_dirz=openmx_solver_real_matrix_row(&batch.values,3);
+    out0=openmx_solver_real_matrix_row(&batch.values,4);
+    out1=openmx_solver_real_matrix_row(&batch.values,5);
+    out2=openmx_solver_real_matrix_row(&batch.values,6);
+    out3=openmx_solver_real_matrix_row(&batch.values,7);
 
     pair_index = 0;
     for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
@@ -1571,17 +1557,7 @@ double Calc_EH0(const OpenMXAtomicViews *atomic, int MD_iter)
       time_per_atom[Gc_AN] += gpu_eh0_time*atom_weight;
     }
 
-    free(pair_ban);
-    free(pair_wan2);
-    free(pair_has_deriv);
-    free(pair_dis);
-    free(pair_dirx);
-    free(pair_diry);
-    free(pair_dirz);
-    free(out0);
-    free(out1);
-    free(out2);
-    free(out3);
+    /* The invocation owns the packed batch. */
   }
   else{
 
@@ -1590,7 +1566,7 @@ double Calc_EH0(const OpenMXAtomicViews *atomic, int MD_iter)
     Nthrds0 = omp_get_max_threads();
 
     /* allocation of array */
-    My_EH0_threads = (double*)malloc(sizeof(double)*Nthrds0);
+    My_EH0_threads = OpenMX_Solver_OverwriteReal(workspace->owner,"total-energy:thread-sums",(size_t)Nthrds0);
     for (Nloop=0; Nloop<Nthrds0; Nloop++) My_EH0_threads[Nloop] = 0.0;
 
 #pragma omp parallel shared(atomic,time_per_atom,RMI1,EH0_scaling,natn,FNAN,WhatSpecies,M2G,Matomnum,My_EH0_threads,DecEscc,Energy_Decomposition_flag,List_YOUSO,SpinP_switch) private(OMPID,Nthrds,Nprocs,Mc_AN,Stime_atom,Gc_AN,wan1,h_AN,Gh_AN,wan2,factor,Etime_atom,TmpEH0)
@@ -1658,8 +1634,7 @@ double Calc_EH0(const OpenMXAtomicViews *atomic, int MD_iter)
       My_EH0 += My_EH0_threads[Nloop];
     }
 
-    /* freeing of array */
-    free(My_EH0_threads);
+    /* The invocation retains the reusable partial sums. */
   }
 
   /* sum of My_EH0 */
@@ -1707,17 +1682,7 @@ double Calc_EH0(const OpenMXAtomicViews *atomic, int MD_iter)
     MPI_Bcast(&Gxyz[Gc_AN][17], 3, MPI_DOUBLE, ID, mpi_comm_level1);
   }
 
-  /****************************************************
-    freeing of arrays:
-
-    double Fx[Matomnum+1];
-    double Fy[Matomnum+1];
-    doubel Fz[Matomnum+1];
-  ****************************************************/
-
-  free(Fx);
-  free(Fy);
-  free(Fz);
+  /* The invocation owns all three force rows. */
 
   /* return */
 
@@ -2733,7 +2698,7 @@ void EH0_TwoCenter(const OpenMXAtomicViews *atomic, int Gc_AN, int h_AN, double 
 
 
 
-void EH0_TwoCenter_at_Cutoff(const OpenMXAtomicViews *atomic, int wan1, int wan2, double VH0ij[4])
+void EH0_TwoCenter_at_Cutoff(OpenMXSolverInvocation *scratch, const OpenMXAtomicViews *atomic, int wan1, int wan2, double VH0ij[4])
 { 
   int n1,ban;
   double dv,x,y,z,r1,r2,va0,rho0,dr_va0,rcut;
@@ -2752,7 +2717,7 @@ void EH0_TwoCenter_at_Cutoff(const OpenMXAtomicViews *atomic, int wan1, int wan2
   Nthrds0 = omp_get_max_threads();
 
   /* allocation of array */
-  my_sum_threads = (double*)malloc(sizeof(double)*Nthrds0);
+  my_sum_threads = OpenMX_Solver_OverwriteReal(scratch,"total-energy:thread-sums",(size_t)Nthrds0);
 
   for (Nloop=0; Nloop<Nthrds0; Nloop++){
     my_sum_threads[Nloop] = 0.0;
@@ -2802,8 +2767,7 @@ void EH0_TwoCenter_at_Cutoff(const OpenMXAtomicViews *atomic, int wan1, int wan2
   VH0ij[2] = sumy;
   VH0ij[3] = sumz;
 
-  /* freeing of array */
-  free(my_sum_threads);
+  /* The invocation retains the reusable partial sums. */
 }
 
 
