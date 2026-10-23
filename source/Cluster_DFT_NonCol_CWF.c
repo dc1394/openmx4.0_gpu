@@ -43,56 +43,6 @@
 
 double DM_func;
 
-/* GPU GpuSolver context for Cluster_DFT_NonCol_CWF (added by H.Kawai, Phase D) */
-typedef struct {
-    int                device_id;
-    OpenMXBlasHandle     blas;
-    OpenMXSolverHandle gpusolver;
-} ClusterNonColCWFGpuSolverCtx;
-
-static ClusterNonColCWFGpuSolverCtx ClusterNonColCWF_gpusolver_ctx = {0};
-
-static void ClusterNonColCWF_GpuSolver_Destroy(void)
-{
-    ClusterNonColCWFGpuSolverCtx *ctx = &ClusterNonColCWF_gpusolver_ctx;
-    if (ctx->gpusolver != NULL) OpenMXSolverWait(OpenMXSolverDestroy(ctx->gpusolver));
-    if (ctx->blas != NULL)   OpenMXBlasWait(OpenMXBlasDestroy(ctx->blas));
-    memset(ctx, 0, sizeof(*ctx));
-    ctx->device_id = -1;
-}
-
-static void ClusterNonColCWF_GpuSolver_Init(void)
-{
-    ClusterNonColCWFGpuSolverCtx *ctx = &ClusterNonColCWF_gpusolver_ctx;
-    int current_device;
-    OpenMXGpuWait(OpenMXGpuGetDevice(&current_device));
-    if (ctx->device_id == current_device && ctx->blas != NULL) return;
-    if (ctx->blas != NULL) ClusterNonColCWF_GpuSolver_Destroy();
-    ctx->device_id = current_device;
-    OpenMXBlasWait(OpenMXBlasCreate(&ctx->blas));
-    OpenMXSolverWait(OpenMXSolverCreate(&ctx->gpusolver));
-}
-
-#if OPENMX_GPU_HIP
-static void ClusterNonColCWF_GEMMul8Zgemm_OpenMP(OpenMXBlasOperation transa, OpenMXBlasOperation transb, int m, int n, int k,
-#else
-static void ClusterNonColCWF_GEMMul8Zgemm_OpenACC(OpenMXBlasOperation transa, OpenMXBlasOperation transb, int m, int n, int k,
-#endif
-                                                  dcomplex const * A, dcomplex const * B, dcomplex * C)
-{
-    ClusterNonColCWF_GpuSolver_Init();
-#if !OPENMX_GPU_HIP
-#pragma acc data      present(A[0 : m * k], B[0 : k * n], C[0 : m * n])
-#pragma acc host_data use_device(A, B, C)
-#endif
-    {
-        OpenMXGpuComplex const alpha = OpenMXGpuMakeComplex(1.0, 0.0);
-        OpenMXGpuComplex const beta  = OpenMXGpuMakeComplex(0.0, 0.0);
-        OpenMXBlasWait(openmx_gemmul8Zgemm(ClusterNonColCWF_gpusolver_ctx.blas, transa, transb, m, n, k, &alpha,
-                                          (OpenMXGpuComplex const *)A, m, (OpenMXGpuComplex const *)B, k, &beta,
-                                          (OpenMXGpuComplex *)C, m));
-    }
-}
 
 double complex ***CWF_Guiding_MOs_NC;
 double complex ******CWF_Coef_NC;

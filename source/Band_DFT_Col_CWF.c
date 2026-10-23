@@ -45,57 +45,7 @@
 
 double DM_func;
 
-/* GPU GpuSolver context for Band_DFT_Col_CWF (added by H.Kawai, Phase D) */
-typedef struct {
-    int                device_id;
-    OpenMXBlasHandle     blas;
-    OpenMXSolverHandle gpusolver;
-} BandColCWFGpuSolverCtx;
 
-static BandColCWFGpuSolverCtx BandColCWF_gpusolver_ctx = {0};
-
-static void BandColCWF_GpuSolver_Destroy(void)
-{
-    BandColCWFGpuSolverCtx *ctx = &BandColCWF_gpusolver_ctx;
-    if (ctx->gpusolver != NULL) OpenMXSolverWait(OpenMXSolverDestroy(ctx->gpusolver));
-    if (ctx->blas != NULL)   OpenMXBlasWait(OpenMXBlasDestroy(ctx->blas));
-    memset(ctx, 0, sizeof(*ctx));
-    ctx->device_id = -1;
-}
-
-static void BandColCWF_GpuSolver_Init(void)
-{
-    BandColCWFGpuSolverCtx *ctx = &BandColCWF_gpusolver_ctx;
-    int current_device;
-    OpenMXGpuWait(OpenMXGpuGetDevice(&current_device));
-    if (ctx->device_id == current_device && ctx->blas != NULL) return;
-    if (ctx->blas != NULL) BandColCWF_GpuSolver_Destroy();
-    ctx->device_id = current_device;
-    OpenMXBlasWait(OpenMXBlasCreate(&ctx->blas));
-    OpenMXSolverWait(OpenMXSolverCreate(&ctx->gpusolver));
-}
-
-#if OPENMX_GPU_HIP
-static void BandColCWF_GEMMul8Zgemm_OpenMP(OpenMXBlasOperation transa, OpenMXBlasOperation transb, int m, int n, int k,
-#else
-static void BandColCWF_GEMMul8Zgemm_OpenACC(OpenMXBlasOperation transa, OpenMXBlasOperation transb, int m, int n, int k,
-#endif
-                                            dcomplex const * A, dcomplex const * B, dcomplex * C)
-{
-    BandColCWF_GpuSolver_Init();
-#if !OPENMX_GPU_HIP
-#pragma acc data      present(A[0 : m * k], B[0 : k * n], C[0 : m * n])
-#pragma acc host_data use_device(A, B, C)
-#endif
-    {
-        OpenMXGpuComplex const alpha = OpenMXGpuMakeComplex(1.0, 0.0);
-        OpenMXGpuComplex const beta  = OpenMXGpuMakeComplex(0.0, 0.0);
-        OpenMXBlasWait(openmx_gemmul8Zgemm(BandColCWF_gpusolver_ctx.blas, transa, transb, m, n, k, &alpha,
-                                          (OpenMXGpuComplex const *)A, m, (OpenMXGpuComplex const *)B, k, &beta,
-                                          (OpenMXGpuComplex *)C, m));
-    }
-}
- 
 void solve_evp_complex_( int *n1, int *n2, dcomplex *Cs, int *na_rows1, double *ko, dcomplex *Ss, 
                          int *na_rows2, int *nblk, int *mpi_comm_rows_int, int *mpi_comm_cols_int );
 
