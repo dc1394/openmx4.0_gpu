@@ -1,3 +1,4 @@
+#include <limits.h>
 #include "openmx_common.h"
 #include "openmx_env.h"
 #include "set_hip_default_device_from_local_rank.h"
@@ -17,30 +18,25 @@
 #define O_CLOEXEC 0
 #endif
 
-static int get_nonnegative_env_int(const char *env_names[])
+static int get_nonnegative_env_int(const int env_ids[])
 {
-    int i;
-
-    for (i = 0; env_names[i] != NULL; i++) {
-        const char *value = openmx_env_get(env_names[i]);
-        if (value != NULL && value[0] != '\0') {
-            int parsed = atoi(value);
-            if (0 <= parsed) return parsed;
-        }
+    for (int i = 0; env_ids[i] >= 0; ++i) {
+        long value = openmx_env_long_at(env_ids[i], -1);
+        if (value >= 0 && value <= INT_MAX) return (int)value;
     }
     return -1;
 }
 
 int openmx_gpu_local_rank_noncollective(void)
 {
-    const char *env_names[] = {
-        "OMPI_COMM_WORLD_LOCAL_RANK",
-        "MV2_COMM_WORLD_LOCAL_RANK",
-        "SLURM_LOCALID",
-        "PMI_LOCAL_RANK",
-        NULL
+    const int env_ids[] = {
+        OPENMX_ENV_EXT_OMPI_COMM_WORLD_LOCAL_RANK,
+        OPENMX_ENV_EXT_MV2_COMM_WORLD_LOCAL_RANK,
+        OPENMX_ENV_EXT_SLURM_LOCALID,
+        OPENMX_ENV_EXT_PMI_LOCAL_RANK,
+        -1
     };
-    int local_rank = get_nonnegative_env_int(env_names);
+    int local_rank = get_nonnegative_env_int(env_ids);
 
     if (0 <= local_rank) return local_rank;
 
@@ -53,14 +49,14 @@ int openmx_gpu_local_rank_noncollective(void)
 
 int openmx_gpu_local_size_noncollective(void)
 {
-    const char *env_names[] = {
-        "OMPI_COMM_WORLD_LOCAL_SIZE",
-        "MV2_COMM_WORLD_LOCAL_SIZE",
-        "SLURM_NTASKS_PER_NODE",
-        "PMI_LOCAL_SIZE",
-        NULL
+    const int env_ids[] = {
+        OPENMX_ENV_EXT_OMPI_COMM_WORLD_LOCAL_SIZE,
+        OPENMX_ENV_EXT_MV2_COMM_WORLD_LOCAL_SIZE,
+        OPENMX_ENV_EXT_SLURM_NTASKS_PER_NODE,
+        OPENMX_ENV_EXT_PMI_LOCAL_SIZE,
+        -1
     };
-    int local_size = get_nonnegative_env_int(env_names);
+    int local_size = get_nonnegative_env_int(env_ids);
 
     if (0 < local_size) return local_size;
 
@@ -73,7 +69,7 @@ int openmx_gpu_local_size_noncollective(void)
 
 int openmx_gpu_map_rank_to_device(int local_rank, int local_size, int device_count)
 {
-    const char *mode = openmx_env_get("OPENMX_GPU_RANK_MAP");
+    const char *mode = openmx_env_at(OPENMX_ENV_GPU_RANK_MAP);
     int ranks_per_device, dev;
 
     if (device_count <= 0) return -1;
@@ -119,32 +115,16 @@ int openmx_gpu_ranks_per_device_noncollective(void)
 
 int openmx_band_gpu_dense_oversubscribed(void)
 {
-    static int cached = -1;
-
-    if (cached < 0) {
-        const char *value = openmx_env_get("OPENMX_BAND_GPU_MAX_DEVICE_RANKS");
-        int limit = BAND_GPU_DEFAULT_MAX_DEVICE_RANKS;
-
-        if (value != NULL && value[0] != '\0') {
-            int parsed = atoi(value);
-            if (0 <= parsed) limit = parsed;
-        }
-        cached = (0 < limit && limit < openmx_gpu_ranks_per_device_noncollective()) ? 1 : 0;
-    }
-    return cached;
+    long limit = openmx_env_long_at(OPENMX_ENV_BAND_GPU_MAX_DEVICE_RANKS, BAND_GPU_DEFAULT_MAX_DEVICE_RANKS);
+    if (limit < 0) limit = BAND_GPU_DEFAULT_MAX_DEVICE_RANKS;
+    return limit > 0 && limit < openmx_gpu_ranks_per_device_noncollective();
 }
 
 #define GPU_PROBE_DEFAULT_RESERVE_MB 256
 
 static size_t gpu_probe_reserve_bytes(void)
 {
-    const char *value = openmx_env_get("OPENMX_GPU_PROBE_RESERVE_MB");
-
-    if (value != NULL && value[0] != '\0') {
-        long mb = atol(value);
-        if (0 <= mb) return (size_t)mb * 1024U * 1024U;
-    }
-    return (size_t)GPU_PROBE_DEFAULT_RESERVE_MB * 1024U * 1024U;
+    return openmx_env_mib_bytes_at(OPENMX_ENV_GPU_PROBE_RESERVE_MB, GPU_PROBE_DEFAULT_RESERVE_MB);
 }
 
 /* Many ranks sharing one device can exhaust it with their HIP contexts
@@ -159,12 +139,12 @@ int gpu_rank_device_usable(void)
     int lock_fd = -1, devices_seen = 0;
     size_t free_bytes = 0, total_bytes = 0;
     char lock_path[64];
-    const char *env = openmx_env_get("OPENMX_GPU");
+
 
     if (checked) return usable;
     checked = 1;
 
-    if (env != NULL && env[0] != '\0' && atoi(env) == 0) {
+    if (!openmx_env_flag_at(OPENMX_ENV_GPU, 1)) {
         omp_set_default_device(omp_get_initial_device());
         return usable;
     }

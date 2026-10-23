@@ -1,3 +1,4 @@
+#include <limits.h>
 #include "hipblas_compat.h"
 #include "openmx_env.h"
 #include "openmx_gpu_memory.hpp"
@@ -89,46 +90,26 @@ struct WorkspaceReport {
     const char *reason = "allocation failure";
 };
 
-unsigned env_u32(const char *name, unsigned fallback)
+unsigned env_u32(int id, unsigned fallback)
 {
-    const char *value = openmx_env_get(name);
-    char       *end   = nullptr;
-
-    if (value == nullptr || *value == '\0') {
-        return fallback;
-    }
-
-    unsigned long parsed = std::strtoul(value, &end, 10);
-    if (end == value || *end != '\0') {
-        return fallback;
-    }
-
-    return static_cast<unsigned>(parsed);
+    const unsigned long long value = openmx_env_ulong_at(id, fallback);
+    return value > UINT_MAX ? UINT_MAX : static_cast<unsigned>(value);
 }
 
-bool env_bool(const char *name, bool fallback)
-{
-    const char *value = openmx_env_get(name);
 
-    if (value == nullptr || *value == '\0') {
-        return fallback;
-    }
-
-    return value[0] == '1';
-}
 
 bool verbose_logging_enabled()
 {
-    bool verbose = env_bool("OPENMX_GPU_VERBOSE", false);
+    bool verbose = openmx_env_flag_at(OPENMX_ENV_GPU_VERBOSE, false);
 
-    verbose = env_bool("OPENMX_GEMM_VERBOSE", verbose);
-    verbose = env_bool("OPENMX_GEMMUL8_VERBOSE", verbose);
-    verbose = env_bool("GEMMUL8_VERBOSE", verbose);
+    verbose = openmx_env_flag_at(OPENMX_ENV_GEMM_VERBOSE, verbose);
+    verbose = openmx_env_flag_at(OPENMX_ENV_GEMMUL8_VERBOSE, verbose);
+    verbose = openmx_env_flag_at(OPENMX_ENV_EXT_GEMMUL8_VERBOSE, verbose);
 
     return verbose;
 }
 
-unsigned env_percent(const char *openmx_env, const char *gemmul8_env, unsigned fallback)
+unsigned env_percent(int openmx_env, int gemmul8_env, unsigned fallback)
 {
     unsigned percent = env_u32(gemmul8_env, fallback);
     percent          = env_u32(openmx_env, percent);
@@ -140,7 +121,7 @@ unsigned env_percent(const char *openmx_env, const char *gemmul8_env, unsigned f
     return percent;
 }
 
-size_t env_mib(const char *openmx_env, const char *gemmul8_env, unsigned fallback)
+size_t env_mib(int openmx_env, int gemmul8_env, unsigned fallback)
 {
     unsigned mib = env_u32(gemmul8_env, fallback);
     mib          = env_u32(openmx_env, mib);
@@ -148,22 +129,16 @@ size_t env_mib(const char *openmx_env, const char *gemmul8_env, unsigned fallbac
     return static_cast<size_t>(mib) * kMiB;
 }
 
-bool gemmul8_disabled(const char *openmx_env, const char *gemmul8_env)
+bool gemmul8_disabled(int openmx_env, int gemmul8_env)
 {
-    const char *names[] = {"GEMMUL8_DISABLE", "OPENMX_GEMMUL8_DISABLE", gemmul8_env, openmx_env};
-    bool disabled = false, overridden = false;
-
-    /* Preserve the existing specificity/alias precedence.  Explicit zero
-       also overrides the MI300A automatic policy; an input-file off still
-       wins over every environment variable at the entry points. */
-    for (const char *name : names) {
-        const char *value = openmx_env_get(name);
-        if (value != nullptr && value[0] != '\0') {
-            disabled = env_bool(name, false);
-            overridden = true;
-        }
+    /* Most specific explicit override wins; auto/invalid/unset retain the
+       architecture policy. Input-file vetoes remain at the entry points. */
+    const int ids[] = {openmx_env, gemmul8_env, OPENMX_ENV_GEMMUL8_DISABLE, OPENMX_ENV_EXT_GEMMUL8_DISABLE};
+    for (int id : ids) {
+        int value = openmx_env_flag_at(id, -1);
+        if (value >= 0) return value != 0;
     }
-    if (overridden) return disabled;
+    /* Explicit controls must not initialize HIP just to query a default. */
     return g_input_enabled < 0 && openmx_gpu_device_is_mi300a();
 }
 
@@ -186,7 +161,7 @@ size_t memory_saving_cap_bytes()
     static size_t         cap = 0;
 
     std::call_once(once, [] {
-        cap = env_mib("OPENMX_GEMMUL8_MAX_WORKSPACE_MB", "GEMMUL8_MAX_WORKSPACE_MB",
+        cap = env_mib(OPENMX_ENV_GEMMUL8_MAX_WORKSPACE_MB, OPENMX_ENV_EXT_GEMMUL8_MAX_WORKSPACE_MB,
                       kDefaultMemorySavingMiB);
         if (cap != 0 && cap < kMinMemorySavingBytes) {
             std::fprintf(stderr,
@@ -211,7 +186,7 @@ void apply_memory_saving(hipblasHandle_t handle)
     }
 }
 
-unsigned gemmul8_num_moduli(const char *openmx_env, const char *gemmul8_env)
+unsigned gemmul8_num_moduli(int openmx_env, int gemmul8_env)
 {
     unsigned num_moduli = env_u32(gemmul8_env, kDefaultNumModuli);
     num_moduli          = env_u32(openmx_env, num_moduli);
@@ -229,13 +204,13 @@ unsigned gemmul8_num_moduli(const char *openmx_env, const char *gemmul8_env)
    hipBLASLt's lazy initialization inside GEMMul8 dies with out-of-memory. */
 unsigned ranks_sharing_gpu()
 {
-    unsigned local_size = env_u32("OPENMX_GEMMUL8_LOCAL_RANKS", 0u);
+    unsigned local_size = env_u32(OPENMX_ENV_GEMMUL8_LOCAL_RANKS, 0u);
 
     if (local_size == 0u) {
-        local_size = env_u32("OMPI_COMM_WORLD_LOCAL_SIZE", 0u);
+        local_size = env_u32(OPENMX_ENV_EXT_OMPI_COMM_WORLD_LOCAL_SIZE, 0u);
     }
     if (local_size == 0u) {
-        local_size = env_u32("SLURM_NTASKS_PER_NODE", 0u);
+        local_size = env_u32(OPENMX_ENV_EXT_SLURM_NTASKS_PER_NODE, 0u);
     }
     if (local_size == 0u) {
         local_size = 1u;
@@ -281,7 +256,7 @@ bool free_after_workspace_is_too_low(size_t free_bytes, size_t workspace_size, s
    rank may run while the others run theirs */
 size_t general_reserve()
 {
-    return env_mib("OPENMX_GEMMUL8_MIN_FREE_AFTER_MB", "GEMMUL8_MIN_FREE_AFTER_MB", kDefaultMinFreeAfterMiB);
+    return env_mib(OPENMX_ENV_GEMMUL8_MIN_FREE_AFTER_MB, OPENMX_ENV_EXT_GEMMUL8_MIN_FREE_AFTER_MB, kDefaultMinFreeAfterMiB);
 }
 
 /* the reserve of the products of a dense eigensolve (the *Unblocked entry
@@ -292,7 +267,7 @@ size_t general_reserve()
    product fell back to plain FP64. */
 size_t solve_reserve()
 {
-    return env_mib("OPENMX_GEMMUL8_SOLVE_MIN_FREE_AFTER_MB", "GEMMUL8_SOLVE_MIN_FREE_AFTER_MB", 256u);
+    return env_mib(OPENMX_ENV_GEMMUL8_SOLVE_MIN_FREE_AFTER_MB, OPENMX_ENV_EXT_GEMMUL8_SOLVE_MIN_FREE_AFTER_MB, 256u);
 }
 
 template <bool is_complex>
@@ -326,8 +301,8 @@ try {
     if (report != nullptr) {
         report->required_bytes = required;
         report->reserve_bytes = reserve;
-        report->max_workspace_percent = env_percent("OPENMX_GEMMUL8_MAX_WORKSPACE_PERCENT",
-                                                     "GEMMUL8_MAX_WORKSPACE_PERCENT",
+        report->max_workspace_percent = env_percent(OPENMX_ENV_GEMMUL8_MAX_WORKSPACE_PERCENT,
+                                                     OPENMX_ENV_EXT_GEMMUL8_MAX_WORKSPACE_PERCENT,
                                                      kDefaultMaxWorkspacePercent);
         report->ranks_per_gpu = ranks_per_gpu;
     }
@@ -464,7 +439,7 @@ try {
 /* OPENMX_GEMMUL8_TIMING, read once */
 bool general_timing()
 {
-    static const bool timing = env_bool("OPENMX_GEMMUL8_TIMING", false);
+    static const bool timing = openmx_env_flag_at(OPENMX_ENV_GEMMUL8_TIMING, false);
 
     return timing;
 }
@@ -515,8 +490,8 @@ hipblasStatus_t dgemm_capped(hipblasHandle_t handle, hipblasOperation_t transa, 
         return HIPBLAS_STATUS_SUCCESS;
     }
 
-    const unsigned num_moduli = gemmul8_num_moduli("OPENMX_GEMMUL8_NUM_MOD_D", "GEMMUL8_NUM_MOD_D");
-    const bool     fastmode   = env_bool("OPENMX_GEMMUL8_FASTMODE_D", env_bool("GEMMUL8_FASTMODE_D", false));
+    const unsigned num_moduli = gemmul8_num_moduli(OPENMX_ENV_GEMMUL8_NUM_MOD_D, OPENMX_ENV_EXT_GEMMUL8_NUM_MOD_D);
+    const bool     fastmode   = openmx_env_flag_at(OPENMX_ENV_GEMMUL8_FASTMODE_D, openmx_env_flag_at(OPENMX_ENV_EXT_GEMMUL8_FASTMODE_D, false));
     const hipblasOperation_t gemmul8_transa = (transa == HIPBLAS_OP_C) ? HIPBLAS_OP_T : transa;
     const hipblasOperation_t gemmul8_transb = (transb == HIPBLAS_OP_C) ? HIPBLAS_OP_T : transb;
     void          *work = nullptr;
@@ -529,7 +504,7 @@ hipblasStatus_t dgemm_capped(hipblasHandle_t handle, hipblasOperation_t transa, 
         return hipblasDgemm(handle, gemmul8_transa, gemmul8_transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
     }
 
-    if (gemmul8_disabled("OPENMX_GEMMUL8_DISABLE_D", "GEMMUL8_DISABLE_D")) {
+    if (gemmul8_disabled(OPENMX_ENV_GEMMUL8_DISABLE_D, OPENMX_ENV_EXT_GEMMUL8_DISABLE_D)) {
         report.reason = "native FP64 policy";
         log_workspace_fallback_once<false>(report, "native hipBLAS");
         *native = true;
@@ -585,8 +560,8 @@ extern "C" void openmx_gemmul8SetEnabled(int enabled)
 extern "C" size_t openmx_gemmul8ZWorkspaceSize(int m, int n, int k)
 {
     if (m<=0 || n<=0 || k<=0 || !g_input_enabled ||
-        gemmul8_disabled("OPENMX_GEMMUL8_DISABLE_Z","GEMMUL8_DISABLE_Z")) return 0;
-    const unsigned num_moduli=gemmul8_num_moduli("OPENMX_GEMMUL8_NUM_MOD_Z","GEMMUL8_NUM_MOD_Z");
+        gemmul8_disabled(OPENMX_ENV_GEMMUL8_DISABLE_Z,OPENMX_ENV_EXT_GEMMUL8_DISABLE_Z)) return 0;
+    const unsigned num_moduli=gemmul8_num_moduli(OPENMX_ENV_GEMMUL8_NUM_MOD_Z,OPENMX_ENV_EXT_GEMMUL8_NUM_MOD_Z);
     size_t size = gemmul8::workSize<true,gemmul8::Backend::INT8>((size_t)m,(size_t)n,(size_t)k,num_moduli);
     const size_t ms_cap = memory_saving_cap_bytes();
     if (ms_cap != 0 && ms_cap < size) size = ms_cap;
@@ -596,8 +571,8 @@ extern "C" size_t openmx_gemmul8ZWorkspaceSize(int m, int n, int k)
 extern "C" size_t openmx_gemmul8DWorkspaceSize(int m, int n, int k)
 {
     if (m<=0 || n<=0 || k<=0 || !g_input_enabled ||
-        gemmul8_disabled("OPENMX_GEMMUL8_DISABLE_D","GEMMUL8_DISABLE_D")) return 0;
-    const unsigned num_moduli=gemmul8_num_moduli("OPENMX_GEMMUL8_NUM_MOD_D","GEMMUL8_NUM_MOD_D");
+        gemmul8_disabled(OPENMX_ENV_GEMMUL8_DISABLE_D,OPENMX_ENV_EXT_GEMMUL8_DISABLE_D)) return 0;
+    const unsigned num_moduli=gemmul8_num_moduli(OPENMX_ENV_GEMMUL8_NUM_MOD_D,OPENMX_ENV_EXT_GEMMUL8_NUM_MOD_D);
     size_t size = gemmul8::workSize<false,gemmul8::Backend::INT8>((size_t)m,(size_t)n,(size_t)k,num_moduli);
     const size_t ms_cap = memory_saving_cap_bytes();
     if (ms_cap != 0 && ms_cap < size) size = ms_cap;
@@ -641,8 +616,8 @@ hipblasStatus_t zgemm_capped(hipblasHandle_t handle, hipblasOperation_t transa, 
         return HIPBLAS_STATUS_SUCCESS;
     }
 
-    const unsigned num_moduli = gemmul8_num_moduli("OPENMX_GEMMUL8_NUM_MOD_Z", "GEMMUL8_NUM_MOD_Z");
-    const bool     fastmode   = env_bool("OPENMX_GEMMUL8_FASTMODE_Z", env_bool("GEMMUL8_FASTMODE_Z", false));
+    const unsigned num_moduli = gemmul8_num_moduli(OPENMX_ENV_GEMMUL8_NUM_MOD_Z, OPENMX_ENV_EXT_GEMMUL8_NUM_MOD_Z);
+    const bool     fastmode   = openmx_env_flag_at(OPENMX_ENV_GEMMUL8_FASTMODE_Z, openmx_env_flag_at(OPENMX_ENV_EXT_GEMMUL8_FASTMODE_Z, false));
     void          *work = nullptr;
     WorkspaceReport report;
 
@@ -653,7 +628,7 @@ hipblasStatus_t zgemm_capped(hipblasHandle_t handle, hipblasOperation_t transa, 
         return hipblasZgemm(handle, transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
     }
 
-    if (gemmul8_disabled("OPENMX_GEMMUL8_DISABLE_Z", "GEMMUL8_DISABLE_Z")) {
+    if (gemmul8_disabled(OPENMX_ENV_GEMMUL8_DISABLE_Z, OPENMX_ENV_EXT_GEMMUL8_DISABLE_Z)) {
         report.reason = "native FP64 policy";
         log_workspace_fallback_once<true>(report, "native hipBLAS");
         *native = true;
@@ -709,13 +684,13 @@ extern "C" hipblasStatus_t openmx_gemmul8Zgemm(hipblasHandle_t handle, hipblasOp
    can still fall back for want of workspace). */
 extern "C" int openmx_gemmul8ZgemmEnabled(void)
 {
-    return g_input_enabled && !gemmul8_disabled("OPENMX_GEMMUL8_DISABLE_Z", "GEMMUL8_DISABLE_Z") ? 1 : 0;
+    return g_input_enabled && !gemmul8_disabled(OPENMX_ENV_GEMMUL8_DISABLE_Z, OPENMX_ENV_EXT_GEMMUL8_DISABLE_Z) ? 1 : 0;
 }
 
 /* the same for openmx_gemmul8Dgemm */
 extern "C" int openmx_gemmul8DgemmEnabled(void)
 {
-    return g_input_enabled && !gemmul8_disabled("OPENMX_GEMMUL8_DISABLE_D", "GEMMUL8_DISABLE_D") ? 1 : 0;
+    return g_input_enabled && !gemmul8_disabled(OPENMX_ENV_GEMMUL8_DISABLE_D, OPENMX_ENV_EXT_GEMMUL8_DISABLE_D) ? 1 : 0;
 }
 
 /* calls of openmx_gemmul8Dgemm (is_complex 0) or openmx_gemmul8Zgemm (1),
@@ -800,12 +775,12 @@ extern "C" hipblasStatus_t openmx_gemmul8ZgemmUnblocked(hipblasHandle_t handle, 
     if (openmx_mgpu_dispatch_zgemm && openmx_mgpu_dispatch_zgemm(handle,
             transa,transb,m,n,k,alpha,A,lda,B,ldb,beta,C,ldc,&mgpu_status))
         return mgpu_status;
-    if (!g_input_enabled || gemmul8_disabled("OPENMX_GEMMUL8_DISABLE_Z", "GEMMUL8_DISABLE_Z"))
+    if (!g_input_enabled || gemmul8_disabled(OPENMX_ENV_GEMMUL8_DISABLE_Z, OPENMX_ENV_EXT_GEMMUL8_DISABLE_Z))
         return openmx_gemmul8Zgemm(handle, transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
 
     return timed_general_gemm(handle, 1, 8.0 * m * n * k, [&](bool *native) -> hipblasStatus_t {
-        const unsigned num_moduli = gemmul8_num_moduli("OPENMX_GEMMUL8_NUM_MOD_Z", "GEMMUL8_NUM_MOD_Z");
-        const bool     fastmode   = env_bool("OPENMX_GEMMUL8_FASTMODE_Z", env_bool("GEMMUL8_FASTMODE_Z", false));
+        const unsigned num_moduli = gemmul8_num_moduli(OPENMX_ENV_GEMMUL8_NUM_MOD_Z, OPENMX_ENV_EXT_GEMMUL8_NUM_MOD_Z);
+        const bool     fastmode   = openmx_env_flag_at(OPENMX_ENV_GEMMUL8_FASTMODE_Z, openmx_env_flag_at(OPENMX_ENV_EXT_GEMMUL8_FASTMODE_Z, false));
         const size_t   sm = static_cast<size_t>(m), sn = static_cast<size_t>(n), sk = static_cast<size_t>(k);
         const size_t   total = gemmul8::workSize<true, gemmul8::Backend::INT8>(sm, sn, sk, num_moduli);
         void          *work = nullptr;
@@ -836,12 +811,12 @@ extern "C" hipblasStatus_t openmx_gemmul8DgemmUnblocked(hipblasHandle_t handle, 
     if (openmx_mgpu_dispatch_dgemm && openmx_mgpu_dispatch_dgemm(handle,
             transa,transb,m,n,k,alpha,A,lda,B,ldb,beta,C,ldc,&mgpu_status))
         return mgpu_status;
-    if (!g_input_enabled || gemmul8_disabled("OPENMX_GEMMUL8_DISABLE_D", "GEMMUL8_DISABLE_D"))
+    if (!g_input_enabled || gemmul8_disabled(OPENMX_ENV_GEMMUL8_DISABLE_D, OPENMX_ENV_EXT_GEMMUL8_DISABLE_D))
         return openmx_gemmul8Dgemm(handle, transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
 
     return timed_general_gemm(handle, 0, 2.0 * m * n * k, [&](bool *native) -> hipblasStatus_t {
-        const unsigned num_moduli = gemmul8_num_moduli("OPENMX_GEMMUL8_NUM_MOD_D", "GEMMUL8_NUM_MOD_D");
-        const bool     fastmode   = env_bool("OPENMX_GEMMUL8_FASTMODE_D", env_bool("GEMMUL8_FASTMODE_D", false));
+        const unsigned num_moduli = gemmul8_num_moduli(OPENMX_ENV_GEMMUL8_NUM_MOD_D, OPENMX_ENV_EXT_GEMMUL8_NUM_MOD_D);
+        const bool     fastmode   = openmx_env_flag_at(OPENMX_ENV_GEMMUL8_FASTMODE_D, openmx_env_flag_at(OPENMX_ENV_EXT_GEMMUL8_FASTMODE_D, false));
         const hipblasOperation_t ta = (transa == HIPBLAS_OP_C) ? HIPBLAS_OP_T : transa;
         const hipblasOperation_t tb = (transb == HIPBLAS_OP_C) ? HIPBLAS_OP_T : transb;
         const size_t   sm = static_cast<size_t>(m), sn = static_cast<size_t>(n), sk = static_cast<size_t>(k);
@@ -873,19 +848,19 @@ extern "C" void openmx_gemmul8ReportTiming(void)
     const GeneralCounters      &g = g_general_counters;
 
     if (general_timing() && 0 < g.calls[0][0] + g.calls[0][1] + g.calls[1][0] + g.calls[1][1]) {
-        const char *rank = openmx_env_get("OMPI_COMM_WORLD_RANK");
+        const char *rank = openmx_env_at(OPENMX_ENV_EXT_OMPI_COMM_WORLD_RANK);
 
-        if (rank == nullptr) rank = openmx_env_get("PMI_RANK");
+        if (rank == nullptr) rank = openmx_env_at(OPENMX_ENV_EXT_PMI_RANK);
         std::printf("<openmx_gemmul8> general GEMMs, rank %s: real %lld + %lld calls, %.6f + %.6f s, %.3f + %.3f GFlop; "
                     "complex %lld + %lld calls, %.6f + %.6f s, %.3f + %.3f GFlop (GEMMul8 + hipBLAS); "
                     "moduli %u / %u, scaling %s / %s (real / complex)\n",
                     rank != nullptr ? rank : "-", g.calls[0][0], g.calls[0][1], g.seconds[0][0], g.seconds[0][1],
                     1e-9 * g.flops[0][0], 1e-9 * g.flops[0][1], g.calls[1][0], g.calls[1][1], g.seconds[1][0],
                     g.seconds[1][1], 1e-9 * g.flops[1][0], 1e-9 * g.flops[1][1],
-                    gemmul8_num_moduli("OPENMX_GEMMUL8_NUM_MOD_D", "GEMMUL8_NUM_MOD_D"),
-                    gemmul8_num_moduli("OPENMX_GEMMUL8_NUM_MOD_Z", "GEMMUL8_NUM_MOD_Z"),
-                    env_bool("OPENMX_GEMMUL8_FASTMODE_D", env_bool("GEMMUL8_FASTMODE_D", false)) ? "fast" : "accurate",
-                    env_bool("OPENMX_GEMMUL8_FASTMODE_Z", env_bool("GEMMUL8_FASTMODE_Z", false)) ? "fast" : "accurate");
+                    gemmul8_num_moduli(OPENMX_ENV_GEMMUL8_NUM_MOD_D, OPENMX_ENV_EXT_GEMMUL8_NUM_MOD_D),
+                    gemmul8_num_moduli(OPENMX_ENV_GEMMUL8_NUM_MOD_Z, OPENMX_ENV_EXT_GEMMUL8_NUM_MOD_Z),
+                    openmx_env_flag_at(OPENMX_ENV_GEMMUL8_FASTMODE_D, openmx_env_flag_at(OPENMX_ENV_EXT_GEMMUL8_FASTMODE_D, false)) ? "fast" : "accurate",
+                    openmx_env_flag_at(OPENMX_ENV_GEMMUL8_FASTMODE_Z, openmx_env_flag_at(OPENMX_ENV_EXT_GEMMUL8_FASTMODE_Z, false)) ? "fast" : "accurate");
         std::fflush(stdout);
     }
     g_general_counters = GeneralCounters{};

@@ -55,6 +55,7 @@ def extract_function(source: str, name: str) -> str:
 PREFIX = r'''
 #include <limits.h>
 #include "openmx_vna_gpu_context.h"
+#include "openmx_env.h"
 #include <math.h>
 #include <stdarg.h>
 #include <stdint.h>
@@ -444,7 +445,7 @@ int main(void)
 def make_harness(source: str, gpu: bool) -> str:
     parts = ['#include "openmx_core_reciprocal.h"', PREFIX, '#include "openmx_precision.h"', HIP_DEVICE if gpu else HOST_DEVICE,
              "static SetProGpuContext context = { 0 };\n"]
-    for name in ("SetPro_gpu_abort", "SetPro_checked_malloc", "SetPro_collective_env_flag",
+    for name in ("SetPro_gpu_abort", "SetPro_checked_malloc",
                  "SetPro_gpu_default_enabled", "SetPro_gpu_stage_enabled", "SetPro_verbose",
                  "SetPro_free_mib", "SetPro_note", "SetPro_arena_off", "SetPro_device_try",
                  "SetPro_HVNA_element", "SetPro_HVNA_GpuBegin", "SetPro_HVNA_GpuEnd",
@@ -483,7 +484,7 @@ def main() -> int:
             src.write_text(harness)
             core = Path(args.core_library).resolve(strict=True)
             subprocess.run([*command, "-std=c11", "-Wno-unused-function", "-I", str(ROOT / "source"),
-                            str(src), str(ROOT / "source/openmx_precision.c"), str(core),
+                            str(src), str(ROOT / "source/openmx_env.c"), str(ROOT / "source/openmx_precision.c"), str(core),
                             "-Wl,-rpath," + str(core.parent), "-lm", "-o", str(exe)],
                            check=True)
             status = 0

@@ -1,3 +1,4 @@
+#include <limits.h>
 /**********************************************************************
   Total_Energy_GPU.c:
 
@@ -549,9 +550,9 @@ void AMD_TotalEnergy_EH0_TwoCenter_Batch_OpenMP(const OpenMXAtomicViews *atomic,
   MPI_Comm node,group;
   int node_rank,node_size,rank,size,device,color,max_pairs,concurrency;
   char bus[32] = {0}, *buses;
-  const char *env = openmx_env_get("OPENMX_EH0_GPU_CONCURRENCY");
+  const long requested = openmx_env_long_at(OPENMX_ENV_EH0_GPU_CONCURRENCY, -1);
 
-  if (env != NULL && atoi(env)==0) {
+  if (requested==0) {
     AMD_TotalEnergy_EH0_TwoCenter_Batch_Run(atomic, pair_count,pair_ban,pair_wan2,pair_has_deriv,
                                      pair_dis,pair_dirx,pair_diry,pair_dirz,out0,out1,out2,out3);
     return;
@@ -573,9 +574,9 @@ void AMD_TotalEnergy_EH0_TwoCenter_Batch_OpenMP(const OpenMXAtomicViews *atomic,
   MPI_Comm_size(group,&size);
   MPI_Allreduce(&pair_count,&max_pairs,1,MPI_INT,MPI_MAX,group);
   concurrency = max_pairs>=8192 ? 1 : size;
-  if (env != NULL && atoi(env)>0) concurrency = atoi(env);
+  if (requested>0) concurrency = requested>INT_MAX ? INT_MAX : (int)requested;
   if (concurrency>size) concurrency = size;
-  if (rank==0 && concurrency<size && openmx_env_get("OPENMX_GPU_VERBOSE")!=NULL) {
+  if (rank==0 && concurrency<size && openmx_env_flag_at(OPENMX_ENV_GPU_VERBOSE, 0)) {
     printf("EH0 GPU %s: %d ranks, %d active per turn, maximum %d pairs per rank.\n",
            bus,size,concurrency,max_pairs);
     fflush(stdout);
@@ -1141,11 +1142,11 @@ void AMD_TotalEnergy_Exc0_Batch_OpenMP(const OpenMXAtomicViews *atomic, int Num_
 
 static int TotalEnergy_NativeAdmit(size_t required)
 {
-    const char *gpu=openmx_env_get("OPENMX_GPU"),*control=openmx_env_get("OPENMX_TOTALENERGY_GPU");
-    const char *workers=openmx_env_get("OPENMX_GPU_WORKERS");
-    int ok=scf_eigen_lib_flag==GPUSOLVER && !(gpu && atoi(gpu)==0) &&
-        !(control && atoi(control)==0) && !openmx_gpu_capacity_test_recovery() &&
-        !(workers && atoi(workers)==1);
+
+
+    int ok=scf_eigen_lib_flag==GPUSOLVER && openmx_env_flag_at(OPENMX_ENV_GPU, 1) &&
+        openmx_env_flag_at(OPENMX_ENV_TOTALENERGY_GPU, 1) && !openmx_gpu_capacity_test_recovery() &&
+        openmx_env_long_at(OPENMX_ENV_GPU_WORKERS, 0)!=1;
     size_t free_bytes=0,total=0;
     if(ok){
         int sharing=openmx_gpu_local_size_noncollective();if(sharing<1)sharing=1;
@@ -1165,8 +1166,7 @@ typedef struct {
 
 static int TotalEnergy_GPU_Enabled(void)
 {
-  const char *v=openmx_env_get("OPENMX_TOTALENERGY_GPU");
-  return !v || !*v || atoi(v)!=0;
+    return openmx_env_flag_at(OPENMX_ENV_TOTALENERGY_GPU, 1);
 }
 
 static void TotalEnergy_Grid_Kernel(size_t first,size_t count,const void *parameters,

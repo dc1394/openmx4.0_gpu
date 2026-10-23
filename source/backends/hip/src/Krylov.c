@@ -1,3 +1,4 @@
+#include <limits.h>
 /**********************************************************************
   Krylov.c:
 
@@ -92,11 +93,8 @@ typedef OpenMXKrylovState KrylovState;
 
 static int Krylov_MeasureTime(KrylovState *state)
 {
-  if (state->measure_time_env < 0){
-    const char *v = openmx_env_get("OPENMX_KRYLOV_MEASURE_TIME");
-    state->measure_time_env = (v != NULL && atoi(v) != 0);
-  }
-  return state->measure_time_env;
+    (void)state;
+    return openmx_env_flag_at(OPENMX_ENV_KRYLOV_MEASURE_TIME, 0);
 }
 #define  measure_time   (Krylov_MeasureTime(state))
 #define  error_check    0
@@ -204,30 +202,9 @@ extern int openmx_gemmul8DgemmEnabled(void);
 
 static int Krylov_GPU_Enabled(KrylovState *state)
 {
-  /*
-    Keep Krylov's local dense GPU path behind one switch so it is easy to
-    fall back to the CPU BLAS/LAPACK path when needed.
-
-    Off by default when the GPU is shared by more ranks than the dense band
-    eigensolvers accept (openmx_band_gpu_dense_oversubscribed): every rank
-    then funnels its many small per-cluster projected eigensolves into the
-    one device and they serialize behind each other's launches, while the
-    CPU path solves them rank-locally in parallel.  Measured on MCCN
-    (564 atoms, Krylov, 24 ranks on one MI300A, 12 SCF steps): the
-    projected eigensolve (Krylov_Eigen2) took 2737 s summed over ranks on
-    the GPU against 264 s on the CPU, i.e. the whole Krylov stage went
-    167.9 s -> 22.4 s by keeping it on the CPU.  OPENMX_KRYLOV_GPU=1
-    forces the offload back on, =0 forces it off everywhere.
-  */
-
-
-  if (state->GPU_Enabled_requested < 0) {
-    const char *v = openmx_env_get("OPENMX_KRYLOV_GPU");
-    if (v != NULL && v[0] != '\0') state->GPU_Enabled_requested = (atoi(v) != 0);
-    else state->GPU_Enabled_requested = !openmx_band_gpu_dense_oversubscribed();
-  }
-
-  return KRYLOV_ENABLE_GPU && scf_eigen_lib_flag == GPUSOLVER && state->GPU_Enabled_requested;
+    (void)state;
+    return KRYLOV_ENABLE_GPU && scf_eigen_lib_flag == GPUSOLVER &&
+           openmx_env_flag_at(OPENMX_ENV_KRYLOV_GPU, !openmx_band_gpu_dense_oversubscribed());
 }
 
 /*
@@ -267,33 +244,15 @@ static void Krylov_Eigen2(KrylovState *state, Krylov_GPU_Workspace *ws, double *
 
 static void Krylov_GPU_InitOnce(KrylovState *state)
 {
-
-
-  if (state->GPU_InitOnce_initialized) return;
-  state->GPU_InitOnce_initialized = 1;
-
-  {
-    const char *env = openmx_env_get("OPENMX_KRYLOV_GPU_DGEMM_MIN_FLOPS");
-    if (env != NULL && env[0] != '\0') {
-      double value = atof(env);
-      if (0.0 <= value) state->gpu_dgemm_min_flops = value;
-    }
-    env = openmx_env_get("OPENMX_KRYLOV_GPU_EIGEN_MIN");
-    if (env != NULL && env[0] != '\0') {
-      int value = atoi(env);
-      if (0 < value) state->gpu_eigen_min = value;
-    }
-    env = openmx_env_get("OPENMX_KRYLOV_GPU_FUSED");
-    if (env != NULL && env[0] != '\0') state->gpu_fused = (atoi(env) != 0);
-    /* scf.gemmul8.enable off and OPENMX_GEMMUL8_DISABLE_D make
-       openmx_gemmul8Dgemm native as well */
-    env = openmx_env_get("OPENMX_KRYLOV_GEMMUL8");
-    if (env != NULL && env[0] != '\0') state->gpu_gemmul8 = (atoi(env) != 0);
-  }
-
-  if (Krylov_GPU_Enabled(state)){
-    wait_hipfunc(OpenMX_Resource_GpuFree(state->resources,0));
-  }
+    if (state->GPU_InitOnce_initialized) return;
+    state->GPU_InitOnce_initialized = 1;
+    double flops = openmx_env_double_at(OPENMX_ENV_KRYLOV_GPU_DGEMM_MIN_FLOPS, state->gpu_dgemm_min_flops);
+    long eigen = openmx_env_long_at(OPENMX_ENV_KRYLOV_GPU_EIGEN_MIN, state->gpu_eigen_min);
+    if (flops >= 0) state->gpu_dgemm_min_flops = flops;
+    if (eigen > 0) state->gpu_eigen_min = eigen > INT_MAX ? INT_MAX : (int)eigen;
+    state->gpu_fused = openmx_env_flag_at(OPENMX_ENV_KRYLOV_GPU_FUSED, state->gpu_fused);
+    state->gpu_gemmul8 = openmx_env_flag_at(OPENMX_ENV_KRYLOV_GEMMUL8, state->gpu_gemmul8);
+    if (Krylov_GPU_Enabled(state)) wait_hipfunc(OpenMX_Resource_GpuFree(state->resources, 0));
 }
 
 
@@ -622,18 +581,15 @@ static void Krylov_KUCache_Prepare(KrylovState *state, int matomnum, int nspin, 
                                    const int *Msize3, int scf_iter,
                                    int device_ranks, unsigned long long keep_free)
 {
-  const char *enable = openmx_env_get("OPENMX_KRYLOV_GPU_KU_CACHE");
-  const char *reserve_env = openmx_env_get("OPENMX_KRYLOV_GPU_KU_RESERVE_MB");
+
+
   size_t nslot = (size_t)nspin*(size_t)(matomnum+1);
   size_t free_bytes=0,total_bytes=0,reserve=(size_t)4096*1024*1024;
   size_t budget,used=0;
   int admitted=0;
 
-  if (enable!=NULL && atoi(enable)==0) return;
-  if (reserve_env!=NULL){
-    long mib=atol(reserve_env);
-    if (0<=mib) reserve=(size_t)mib*1024U*1024U;
-  }
+  if (!openmx_env_flag_at(OPENMX_ENV_KRYLOV_GPU_KU_CACHE, 1)) return;
+  reserve = openmx_env_mib_bytes_at(OPENMX_ENV_KRYLOV_GPU_KU_RESERVE_MB, reserve / (1024ULL * 1024ULL));
   if (state->kucache.state==1 && state->kucache.matomnum==matomnum &&
       state->kucache.nspin==nspin){
     int same=1;
@@ -735,14 +691,8 @@ static void Krylov_GPU_Preflight(KrylovState *state, int matomnum, const int *Ms
   state->gpu_need_total = 0;
   if (!Krylov_GPU_Enabled(state)) return;
 
-  if (!state->GPU_Preflight_env_checked){
-    const char *env = openmx_env_get("OPENMX_KRYLOV_GPU_RESERVE_MB");
-    state->GPU_Preflight_env_checked = 1;
-    if (env != NULL && env[0] != '\0'){
-      long mib = atol(env);
-      if (0 <= mib) state->GPU_Preflight_reserve_bytes = (size_t)mib*1024U*1024U;
-    }
-  }
+  state->GPU_Preflight_reserve_bytes = openmx_env_mib_bytes_at(OPENMX_ENV_KRYLOV_GPU_RESERVE_MB,
+      state->GPU_Preflight_reserve_bytes / (1024ULL * 1024ULL));
 
   if (state->GPU_Preflight_device_comm == MPI_COMM_NULL){
     MPI_Comm node_comm;
@@ -892,8 +842,8 @@ static int Krylov_ProjectedSolve_GPU(KrylovState *state, Krylov_GPU_Workspace *w
       (double)m3*(double)n*(double)m3<state->gpu_dgemm_min_flops) return 0;
 
   if (state->ProjectedSolve_GPU_profile<0){
-    const char *env=openmx_env_get("OPENMX_KRYLOV_GPU_PROFILE");
-    state->ProjectedSolve_GPU_profile=(env!=NULL && env[0]!='\0' && atoi(env)!=0);
+
+    state->ProjectedSolve_GPU_profile=(openmx_env_flag_at(OPENMX_ENV_KRYLOV_GPU_PROFILE, 0));
   }
   if (state->ProjectedSolve_GPU_profile) dtime(&t0);
 

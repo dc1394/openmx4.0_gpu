@@ -76,45 +76,28 @@ int use_magma_ozaki2()
     static int use = -1;
 
     if (use < 0) {
-        const char *env = openmx_env_get("OPENMX_MAGMA_OZAKI2");
-        use = (env == nullptr || env[0] == '\0') ? 1 : (std::atoi(env) != 0);
+        use = openmx_env_flag_at(OPENMX_ENV_MAGMA_OZAKI2, 1);
         if (use) {
-            setenv("MAGMA_OZAKI2_ALGO", "1stage", 0);
-            setenv("MAGMA_OZAKI2_LOCAL_RANKS", "4", 0);
+            openmx_env_set_if_unset("MAGMA_OZAKI2_ALGO", "1stage");
+            openmx_env_set_if_unset("MAGMA_OZAKI2_LOCAL_RANKS", "4");
             /* A modest per-process workspace plus a 1 GiB free guard routes
                3x as many backtransform GEMMs on a 16 GB card shared by 16
                ranks than the adapter's conservative defaults; GEMMul8's
                memory-saving mode blocks any GEMM to fit the cap. */
-            setenv("MAGMA_OZAKI2_MAX_WS_MB", "512", 0);
-            setenv("MAGMA_OZAKI2_MIN_FREE_MB", "1024", 0);
+            openmx_env_set_if_unset("MAGMA_OZAKI2_MAX_WS_MB", "512");
+            openmx_env_set_if_unset("MAGMA_OZAKI2_MIN_FREE_MB", "1024");
         }
     }
     return use;
 }
 
-int env_flag(const char *name, int dflt)
-{
-    const char *v = openmx_env_get(name);
 
-    if (v == nullptr || v[0] == '\0') return dflt;
-    return std::atoi(v) != 0;
-}
 
 /* a nonnegative int from the environment; unset or malformed: dflt */
-int env_count(const char *name, int dflt)
+int env_count(int id, int dflt)
 {
-    const char *v = openmx_env_get(name);
-    char       *end = nullptr;
-    long        value;
-
-    if (v == nullptr || v[0] == '\0') return dflt;
-    errno = 0;
-    value = std::strtol(v, &end, 10);
-    if (errno != 0 || end == v || *end != '\0' || value < 0 || value > 1000000000L) {
-        std::fprintf(stderr, "OpenMX: invalid %s=%s; using %d.\n", name, v, dflt);
-        return dflt;
-    }
-    return (int)value;
+    long value = openmx_env_long_at(id, dflt);
+    return value < 0 || value > 1000000000L ? dflt : (int)value;
 }
 
 /* Retry of a failed dense FP64 eigensolve (the AMD counterpart of the NVIDIA
@@ -131,8 +114,8 @@ int env_count(const char *name, int dflt)
 int eigen_retry_policy()
 {
     static const int policy = []() {
-        if (!env_flag("OPENMX_MAGMA_OZAKI2_RETRY", 1)) return 0;
-        return (env_flag("OPENMX_GPUSOLVER_RETRY_TEST", 0) || env_flag("OPENMX_CUSOLVER_RETRY_TEST", 0)) ? 2 : 1;
+        if (!openmx_env_flag_at(OPENMX_ENV_MAGMA_OZAKI2_RETRY, 1)) return 0;
+        return (openmx_env_flag_at(OPENMX_ENV_GPUSOLVER_RETRY_TEST, 0) || openmx_env_flag_at(OPENMX_ENV_CUSOLVER_RETRY_TEST, 0)) ? 2 : 1;
     }();
     return policy;
 }
@@ -141,7 +124,7 @@ int eigen_retry_policy()
 int eigensolver_env_choice()
 {
     static const int choice = []() {
-        const char *env = openmx_env_get("OPENMX_GPU_EIGENSOLVER");
+        const char *env = openmx_env_at(OPENMX_ENV_GPU_EIGENSOLVER);
 
         if (env != nullptr) {
             if (strcasecmp(env, "hipsolver") == 0) return 1;
@@ -158,7 +141,7 @@ int eigensolver_env_choice()
    for measuring the crossover in situ */
 int eigensolver_magma_min_n()
 {
-    static const int min_n = env_count("OPENMX_GPU_EIGENSOLVER_MAGMA_MIN_N", 0);
+    static const int min_n = env_count(OPENMX_ENV_GPU_EIGENSOLVER_MAGMA_MIN_N, 0);
     return min_n;
 }
 
@@ -175,23 +158,8 @@ int magma_entry_reroute(int n)
    between solves, and the largest retry copy kept here */
 size_t gpusolver_cache_limit_bytes()
 {
-    static const size_t limit = []() {
-        const char *s = openmx_env_get("OPENMX_GPUSOLVER_CACHE_MB");
-        size_t      bytes = static_cast<size_t>(64) << 20;
-
-        if (s == nullptr || s[0] == '\0') s = openmx_env_get("OPENMX_CUSOLVER_CACHE_MB");
-        if (s != nullptr && s[0] != '\0' && s[0] != '-') {
-            char              *end = nullptr;
-            unsigned long long mb;
-
-            errno = 0;
-            mb = std::strtoull(s, &end, 10);
-            if (errno == 0 && end != s && *end == '\0' && mb <= SIZE_MAX / (1024u * 1024u))
-                bytes = static_cast<size_t>(mb) << 20;
-        }
-        return bytes;
-    }();
-    return limit;
+    return openmx_env_mib_bytes_at(OPENMX_ENV_GPUSOLVER_CACHE_MB,
+        openmx_env_ulong_at(OPENMX_ENV_CUSOLVER_CACHE_MB, 64));
 }
 
 int ensure_host_matrix(size_t elems)
@@ -428,7 +396,7 @@ extern "C" int openmx_gpu_eigen_backend(int n, int maxn, int cplx)
    2000 pairs (0.92 against 2.07 s), slower for 40 of 400. */
 extern "C" int openmx_gpusolver_use_evd(int n, int maxn)
 {
-    static const int partial_min_n = env_count("OPENMX_GPUSOLVER_PARTIAL_EVD_MIN_N", 0);
+    static const int partial_min_n = env_count(OPENMX_ENV_GPUSOLVER_PARTIAL_EVD_MIN_N, 0);
 
     if (n == maxn) {
         return 1;
@@ -460,9 +428,9 @@ extern "C" int openmx_gpu_is_apu(void)
         return cached;
     }
 
-    const char *env = openmx_env_get("OPENMX_GPU_ASSUME_APU");
-    if (env != nullptr && *env != '\0') {
-        cached = (std::atoi(env) != 0) ? 1 : 0;
+    int requested = openmx_env_flag_at(OPENMX_ENV_GPU_ASSUME_APU, -1);
+    if (requested >= 0) {
+        cached = requested;
         return cached;
     }
 
@@ -474,7 +442,7 @@ extern "C" int openmx_gpu_is_apu(void)
     }
     cached = (prop.integrated != 0) ? 1 : 0;
 
-    if (openmx_env_get("OPENMX_GPU_VERBOSE") != nullptr && MYID_MPI_COMM_WORLD == 0) {
+    if (openmx_env_flag_at(OPENMX_ENV_GPU_VERBOSE, 0) && MYID_MPI_COMM_WORLD == 0) {
         std::fprintf(stderr, "openmx: GPU '%s' integrated(APU)=%d\n", prop.gcnArchName, cached);
         std::fflush(stderr);
     }
@@ -659,7 +627,7 @@ namespace {
 int rocsolver_evd_locked(int cplx, int n, int maxn, void *d_A, double *w, int *mout_out, int *touched,
                          int preflight)
 {
-    static const int detail = env_flag("OPENMX_GPU_EIGENSOLVER_PROFILE", 0);
+    static const int detail = openmx_env_flag_at(OPENMX_ENV_GPU_EIGENSOLVER_PROFILE, 0);
     const size_t width = cplx ? sizeof(hipDoubleComplex) : sizeof(double);
     const char  *name = cplx ? "zheevd" : "dsyevd";
     hipsolverStatus_t status;
@@ -1175,9 +1143,9 @@ int dense_eigen_locked(int cplx, int first_rocsolver, int preflight, int foreign
                        double *w, int *mout_out)
 {
     static int  test_announced = 0;
-    static const int profile = env_flag("OPENMX_GPU_EIGENSOLVER_PROFILE", 0) ||
-                               env_flag("OPENMX_GPU_VERBOSE", 0);
-    static const int detail = env_flag("OPENMX_GPU_EIGENSOLVER_PROFILE", 0);
+    static const int profile = openmx_env_flag_at(OPENMX_ENV_GPU_EIGENSOLVER_PROFILE, 0) ||
+                               openmx_env_flag_at(OPENMX_ENV_GPU_VERBOSE, 0);
+    static const int detail = openmx_env_flag_at(OPENMX_ENV_GPU_EIGENSOLVER_PROFILE, 0);
     const int   policy = eigen_retry_policy();
     const int   ozaki2 = use_magma_ozaki2();
     const size_t abytes = static_cast<size_t>(n) * static_cast<size_t>(n) *

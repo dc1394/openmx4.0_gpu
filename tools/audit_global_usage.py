@@ -540,7 +540,9 @@ def build_report(units, common, globals_index, revision):
     try:
         sys.path.insert(0, str(Path(__file__).resolve().parent))
         from update_env_registry import scan_sources
-        for name, use in scan_sources(SOURCE).items():
+        # Retain this audit's documented CUDA/C translation-unit scope.
+        # Registry generation and its sync test independently cover HIP.
+        for name, use in scan_sources(SOURCE, include_hip=False).items():
             for file in use["files"]:
                 env[name].add(f"source/{file}")
     except ImportError:

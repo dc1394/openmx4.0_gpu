@@ -408,6 +408,9 @@ OPENMX_GPU_INTERFACE_HEADERS = openmx_gpu_backend.h openmx_gpu_runtime.h \
  openmx_gpu_blas.h openmx_gpu_solver.h openmx_gpu_complex.h \
  openmx_gpu_device.h openmx_gpu_error.h openmx_gpu_views.h
 $(OBJS): $(OPENMX_GPU_INTERFACE_HEADERS)
+# Registry ids are compile-time indices. Recompile every consumer when a
+# row is added/reordered, including shared CPU/mixing and startup objects.
+$(OBJS): openmx_env.h openmx_env_registry.h
 MGPU_HEADERS = $(wildcard openmx_gpu_*.h openmx_gpu_*.hpp openmx_mgpu_*.h) \
  openmx_magma_mgpu.h openmx_magma_lock.h openmx_target.h openmx_host_memory.h \
  openmx_cluster_capacity.h openmx_dense_cpu.h openmx_env.h openmx_env_registry.h

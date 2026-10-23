@@ -130,8 +130,8 @@ double Set_Density_Grid(OpenMXGridWorkspace *grid, const OpenMXDensityCacheHooks
      the CPU loop).  The single-owner service returns before it. */
   sd_t0 = TStime;
   if (sd_prof < 0){
-    const char *e = openmx_env_get("OPENMX_BAND_PROFILE");
-    sd_prof = (e != NULL && atoi(e) != 0) ? 1 : 0;
+
+    sd_prof = (openmx_env_flag_at(OPENMX_ENV_BAND_PROFILE, 0)) ? 1 : 0;
   }
 
   /* Preferred GPU mode: every rank integrates its own atoms on the device

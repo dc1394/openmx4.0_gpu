@@ -49,22 +49,16 @@
 
 int Set_Orbitals_Grid_OTF_Prepare(const OpenMXAtomicViews *atomic);
 
-static int SOG_env_flag(const char *name, int default_value)
-{
-  const char *value = openmx_env_get(name);
 
-  if (value == NULL || value[0] == '\0') return default_value;
-  return atoi(value) != 0;
-}
 
 static int SOG_gpu_requested(int Cnt_kind)
 {
   int w, L0;
-  const char *gpu=openmx_env_get("OPENMX_GPU");
-  if (scf_eigen_lib_flag!=GPUSOLVER || (gpu && atoi(gpu)==0)) return 0;
+
+  if (scf_eigen_lib_flag!=GPUSOLVER || (!openmx_env_flag_at(OPENMX_ENV_GPU, 1))) return 0;
 
   if (Cnt_kind != 0) return 0;
-  if (!SOG_env_flag("OPENMX_ORBS_GRID_GPU", 1)) return 0;
+  if (!openmx_env_flag_at(OPENMX_ENV_ORBS_GRID_GPU, 1)) return 0;
 
   /* the staging buffers and the device stores are float */
   if (sizeof(Type_Orbs_Grid) != sizeof(float)) return 0;
@@ -359,7 +353,7 @@ static int Set_Orbitals_Grid_GPU(const OpenMXAtomicViews *atomic)
 
   if (!active_notice_done) {
     active_notice_done = 1;
-    if (SOG_env_flag("OPENMX_ORBS_GRID_GPU_VERBOSE", 0) && myid == Host_ID) {
+    if (openmx_env_flag_at(OPENMX_ENV_ORBS_GRID_GPU_VERBOSE, 0) && myid == Host_ID) {
       fprintf(stderr, "Set_Orbitals_Grid: GPU path active\n");
       fflush(stderr);
     }
@@ -410,7 +404,7 @@ static int SOG_otf_double_float(void)
   const char *value;
 
   if (!openmx_fp32_enabled()) return 0;
-  value = openmx_env_get("OPENMX_ORBS_EVAL_PRECISION");
+  value = openmx_env_at(OPENMX_ENV_ORBS_EVAL_PRECISION);
 
   if (value != NULL && value[0] != '\0') {
     if (strcmp(value, "fp64") == 0 || strcmp(value, "FP64") == 0 || strcmp(value, "64") == 0 ||

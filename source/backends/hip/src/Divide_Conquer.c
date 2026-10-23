@@ -1,3 +1,4 @@
+#include <limits.h>
 /**********************************************************************
   Divide_Conquer.c:
 
@@ -122,40 +123,16 @@ static void Save_DOS_NonCol(OpenMXSolverResidueView Residues, double **** OLP0, 
 
 static int DC_GPU_Threshold(DCState *state)
 {
-
-
-
-    if (!state->GPU_Threshold_initialized) {
-        char *env = openmx_env_get("OPENMX_DC_GPU_THRESHOLD");
-        if (env != NULL && env[0] != '\0') {
-            int env_threshold = atoi(env);
-            if (0 < env_threshold) {
-                state->GPU_Threshold_threshold = env_threshold;
-            }
-        }
-        state->GPU_Threshold_initialized = 1;
-    }
-
-    return state->GPU_Threshold_threshold;
+    (void)state;
+    long value = openmx_env_long_at(OPENMX_ENV_DC_GPU_THRESHOLD, DC_GPU_CPU_SWITCH_NUM);
+    return value <= 0 ? DC_GPU_CPU_SWITCH_NUM : value > INT_MAX ? INT_MAX : (int)value;
 }
 
 static int DC_NonCol_GPU_Threshold(DCState *state)
 {
-
-
-
-    if (!state->NonCol_GPU_Threshold_initialized) {
-        char *env = openmx_env_get("OPENMX_DC_NONCOL_GPU_THRESHOLD");
-        if (env != NULL && env[0] != '\0') {
-            int env_threshold = atoi(env);
-            if (0 < env_threshold) {
-                state->NonCol_GPU_Threshold_threshold = env_threshold;
-            }
-        }
-        state->NonCol_GPU_Threshold_initialized = 1;
-    }
-
-    return state->NonCol_GPU_Threshold_threshold;
+    (void)state;
+    long value = openmx_env_long_at(OPENMX_ENV_DC_NONCOL_GPU_THRESHOLD, DC_NONCOL_GPU_CPU_SWITCH_NUM);
+    return value <= 0 ? DC_NONCOL_GPU_CPU_SWITCH_NUM : value > INT_MAX ? INT_MAX : (int)value;
 }
 
 static inline double DC_FermiWeight(double eval, double chemP, double beta, double max_x)
@@ -376,8 +353,8 @@ static int DC_NodeRanks(DCState *state)
 
 static void DCCol_SCache_Prepare(DCState *state, int matomnum, const int *Msize, int scf_iter)
 {
-    const char *enabled_env = openmx_env_get("OPENMX_DC_GPU_S_CACHE");
-    const char *reserve_env = openmx_env_get("OPENMX_DC_GPU_S_CACHE_RESERVE_MB");
+
+
     size_t free_bytes = 0, total_bytes = 0, reserve = (size_t)4096 * 1024 * 1024;
     size_t used = 0, budget;
     int threshold = DC_GPU_Threshold(state);
@@ -385,11 +362,8 @@ static void DCCol_SCache_Prepare(DCState *state, int matomnum, const int *Msize,
     int node_ranks = DC_NodeRanks(state);
     int admitted = 0;
 
-    if (enabled_env != NULL && atoi(enabled_env) == 0) return;
-    if (reserve_env != NULL) {
-        long mib = atol(reserve_env);
-        if (0 <= mib) reserve = (size_t)mib * 1024U * 1024U;
-    }
+    if (!openmx_env_flag_at(OPENMX_ENV_DC_GPU_S_CACHE, 1)) return;
+    reserve = openmx_env_mib_bytes_at(OPENMX_ENV_DC_GPU_S_CACHE_RESERVE_MB, reserve / (1024ULL * 1024ULL));
     /* a rank that never runs the GPU solve (rank limit, or the path is off
        for the rest of the run) holds no arena */
     if (!DC_GpuSolver_RankAllowed(state) || DC_GpuSolver_GemmDisabled(state) || DC_GpuSolver_EigenDisabled(state)) {
@@ -470,46 +444,18 @@ static const double *DCCol_SCache_ValidPtr(DCState *state, int Mc_AN, int n)
     return (slot != NULL && state->scache.valid[Mc_AN]) ? slot : NULL;
 }
 
-static unsigned DC_EnvU32(const char *name, unsigned fallback)
+static unsigned DC_EnvU32(int id, unsigned fallback)
 {
-    const char *value = openmx_env_get(name);
-    char       *end   = NULL;
-    unsigned long parsed;
-
-    if (value == NULL || value[0] == '\0') {
-        return fallback;
-    }
-
-    parsed = strtoul(value, &end, 10);
-    if (end == value || *end != '\0') {
-        return fallback;
-    }
-
-    return (unsigned)parsed;
+    const unsigned long long value = openmx_env_ulong_at(id, fallback);
+    return value > UINT_MAX ? UINT_MAX : (unsigned)value;
 }
 
-static int DC_EnvI32Any(const char *name1, const char *name2, const char *name3, int fallback)
+static int DC_EnvI32Any(int id1, int id2, int id3, int fallback)
 {
-    const char *value = NULL;
-    char       *end   = NULL;
-    long        parsed;
-
-    if (name1 != NULL)
-        value = openmx_env_get(name1);
-    if ((value == NULL || value[0] == '\0') && name2 != NULL)
-        value = openmx_env_get(name2);
-    if ((value == NULL || value[0] == '\0') && name3 != NULL)
-        value = openmx_env_get(name3);
-    if (value == NULL || value[0] == '\0') {
-        return fallback;
-    }
-
-    parsed = strtol(value, &end, 10);
-    if (end == value || *end != '\0') {
-        return fallback;
-    }
-
-    return (int)parsed;
+    long value = openmx_env_long_at(id3, fallback);
+    value = openmx_env_long_at(id2, value);
+    value = openmx_env_long_at(id1, value);
+    return value < INT_MIN ? INT_MIN : value > INT_MAX ? INT_MAX : (int)value;
 }
 
 static int DC_GpuSolver_RankAllowed(DCState *state)
@@ -523,13 +469,13 @@ static int DC_GpuSolver_RankAllowed(DCState *state)
         unsigned max_ranks;
 
 #ifdef __HIP_PLATFORM_AMD__
-        max_ranks = DC_EnvU32("DC_GPU_MAX_RANKS_PER_DEVICE", 4u);
+        max_ranks = DC_EnvU32(OPENMX_ENV_EXT_DC_GPU_MAX_RANKS_PER_DEVICE, 4u);
 #else
-        max_ranks = DC_EnvU32("DC_GPU_MAX_RANKS_PER_DEVICE", 1024u);
+        max_ranks = DC_EnvU32(OPENMX_ENV_EXT_DC_GPU_MAX_RANKS_PER_DEVICE, 1024u);
 #endif
-        max_ranks = DC_EnvU32("OPENMX_DC_GPU_MAX_RANKS_PER_DEVICE", max_ranks);
+        max_ranks = DC_EnvU32(OPENMX_ENV_DC_GPU_MAX_RANKS_PER_DEVICE, max_ranks);
 
-        local_rank = DC_EnvI32Any("OMPI_COMM_WORLD_LOCAL_RANK", "MPI_LOCALRANKID", "SLURM_LOCALID", -1);
+        local_rank = DC_EnvI32Any(OPENMX_ENV_EXT_OMPI_COMM_WORLD_LOCAL_RANK, OPENMX_ENV_EXT_MPI_LOCALRANKID, OPENMX_ENV_EXT_SLURM_LOCALID, -1);
         if (local_rank < 0) {
             MPI_Comm_rank(mpi_comm_level1, &local_rank);
         }
@@ -596,11 +542,11 @@ static size_t DC_GpuSolver_Gemmul8ReserveBytes(void)
     unsigned reserve_mib;
 
 #ifdef __HIP_PLATFORM_AMD__
-    reserve_mib = DC_EnvU32("GEMMUL8_MIN_FREE_AFTER_MB", 64u);
+    reserve_mib = DC_EnvU32(OPENMX_ENV_EXT_GEMMUL8_MIN_FREE_AFTER_MB, 64u);
 #else
-    reserve_mib = DC_EnvU32("GEMMUL8_MIN_FREE_AFTER_MB", 1536u);
+    reserve_mib = DC_EnvU32(OPENMX_ENV_EXT_GEMMUL8_MIN_FREE_AFTER_MB, 1536u);
 #endif
-    reserve_mib = DC_EnvU32("OPENMX_GEMMUL8_MIN_FREE_AFTER_MB", reserve_mib);
+    reserve_mib = DC_EnvU32(OPENMX_ENV_GEMMUL8_MIN_FREE_AFTER_MB, reserve_mib);
 
     return (size_t)reserve_mib * (size_t)1024 * (size_t)1024;
 }
@@ -610,11 +556,11 @@ static size_t DC_GpuSolver_HipblasReserveBytes(void)
     unsigned reserve_mib;
 
 #ifdef __HIP_PLATFORM_AMD__
-    reserve_mib = DC_EnvU32("CUBLAS_MIN_FREE_AFTER_MB", 64u);
+    reserve_mib = DC_EnvU32(OPENMX_ENV_EXT_CUBLAS_MIN_FREE_AFTER_MB, 64u);
 #else
-    reserve_mib = DC_EnvU32("CUBLAS_MIN_FREE_AFTER_MB", 3072u);
+    reserve_mib = DC_EnvU32(OPENMX_ENV_EXT_CUBLAS_MIN_FREE_AFTER_MB, 3072u);
 #endif
-    reserve_mib = DC_EnvU32("OPENMX_CUBLAS_MIN_FREE_AFTER_MB", reserve_mib);
+    reserve_mib = DC_EnvU32(OPENMX_ENV_CUBLAS_MIN_FREE_AFTER_MB, reserve_mib);
 
     return (size_t)reserve_mib * (size_t)1024 * (size_t)1024;
 }
@@ -1570,8 +1516,8 @@ static size_t DC_GpuSolver_EigenReserveBytes(void)
 {
     unsigned reserve_mib;
 
-    reserve_mib = DC_EnvU32("GPUSOLVER_MIN_FREE_AFTER_MB", 1536u);
-    reserve_mib = DC_EnvU32("OPENMX_GPUSOLVER_MIN_FREE_AFTER_MB", reserve_mib);
+    reserve_mib = DC_EnvU32(OPENMX_ENV_EXT_GPUSOLVER_MIN_FREE_AFTER_MB, 1536u);
+    reserve_mib = DC_EnvU32(OPENMX_ENV_GPUSOLVER_MIN_FREE_AFTER_MB, reserve_mib);
 
     return (size_t)reserve_mib * (size_t)1024 * (size_t)1024;
 }

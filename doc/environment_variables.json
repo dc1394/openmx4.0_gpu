@@ -100,6 +100,11 @@
    "id": "local",
    "en": "Read from the launcher, per process (never synchronized)",
    "ja": "ランチャーから読む値（プロセスごと。配布しない）"
+  },
+  {
+   "id": "hip",
+   "en": "Additional AMD HIP controls",
+   "ja": "AMD HIP の追加設定"
   }
  ],
  "rows": [
@@ -208,8 +213,8 @@
    "names": [
     "OPENMX_BAND_GPU_DIAG"
    ],
-   "en": "<b>1</b> = force the dense GPU path ignoring the fits verdict; <b>0</b> = always ELPA/ScaLAPACK (§5.6)",
-   "ja": "<b>1</b>=見積り判定を無視して GPU 密行列経路を強制、<b>0</b>=常に ELPA/ScaLAPACK(§5.6)"
+   "en": "<b>1</b> = force the dense GPU path ignoring the fits verdict; <b>0</b> = always ELPA/ScaLAPACK (§5.6) On HIP, 1 enables the guarded dense GPU path and does not bypass its memory-capacity checks; 0 selects CPU dense diagonalization.",
+   "ja": "<b>1</b>=見積り判定を無視して GPU 密行列経路を強制、<b>0</b>=常に ELPA/ScaLAPACK(§5.6) HIP では1は容量ガード付きの密GPU経路を有効にし、メモリ容量チェックは省略しません。0はCPU密対角化です。"
   },
   {
    "group": "band",
@@ -222,8 +227,8 @@
      "ja": "800"
     }
    },
-   "en": "GPU/CPU crossover dimension of the collinear band dense path (paths without their own knob keep <code>GPU_CPU_SWITCH_NUM</code>=1000). Measured crossover on one RTX 5080 shared by 8 ranks: n ≈ 300–400",
-   "ja": "コリニアバンド密行列経路の GPU/CPU 切替次元(専用ノブのない経路は <code>GPU_CPU_SWITCH_NUM</code>=1000 のまま)。RTX 5080 を 8 ランク共有した実測クロスオーバーは n ≈ 300〜400"
+   "en": "GPU/CPU crossover dimension of the collinear band dense path (paths without their own knob keep <code>GPU_CPU_SWITCH_NUM</code>=1000). Measured crossover on one RTX 5080 shared by 8 ranks: n ≈ 300–400 CUDA default: 800; HIP default: 400. The HIP oversubscription guard can select CPU dense diagonalization independently of this threshold.",
+   "ja": "コリニアバンド密行列経路の GPU/CPU 切替次元(専用ノブのない経路は <code>GPU_CPU_SWITCH_NUM</code>=1000 のまま)。RTX 5080 を 8 ランク共有した実測クロスオーバーは n ≈ 300〜400 CUDA の既定値は800、HIP は400。HIP ではGPU共有ランク数のガードにより、この閾値とは別に密対角化をCPUへ切り替える場合があります。"
   },
   {
    "group": "band",
@@ -266,8 +271,8 @@
      "ja": "max(総VRAM/10, 1536)"
     }
    },
-   "en": "Raises the reserve used by the concurrency planner and the fits verdicts",
-   "ja": "並列度決定・fits 判定で空けておく予約量の引き上げ"
+   "en": "Raises the reserve used by the concurrency planner and the fits verdicts The default shown is for CUDA; HIP retains a 512 MiB reserve.",
+   "ja": "並列度決定・fits 判定で空けておく予約量の引き上げ 表の既定値はCUDA向けです。HIP は512 MiBの予約量を維持します。"
   },
   {
    "group": "band",
@@ -297,8 +302,8 @@
     "en": "uncapped",
     "ja": "制限なし"
    },
-   "en": "<b>Explicit caps</b> on the concurrent rank count (first found in this order). The old \"initial value\" meaning is gone; actual concurrency always comes from the adaptive scan",
-   "ja": "同時実行ランク数の<b>明示上限</b>(この優先順で最初に見つかったもの)。旧版の「初期値」の意味は廃止され、実際の並列度は常に適応スキャンで決まる"
+   "en": "<b>Explicit caps</b> on the concurrent rank count (first found in this order). The old \"initial value\" meaning is gone; actual concurrency always comes from the adaptive scan This adaptive-scan policy describes CUDA. HIP retains its existing turn-group policy: the collinear concurrency default is eight for n <= 512, otherwise the turn-group default; explicit caps still apply.",
+   "ja": "同時実行ランク数の<b>明示上限</b>(この優先順で最初に見つかったもの)。旧版の「初期値」の意味は廃止され、実際の並列度は常に適応スキャンで決まる 適応スキャンはCUDAの方針です。HIP は既存のターングループ方針を維持し、共線の同時実行数はn <= 512で8、それ以外は既定のターングループ数です。明示した上限も適用します。"
   },
   {
    "group": "band",
@@ -837,8 +842,8 @@
    "names": [
     "OPENMX_SETHAM_BASE_GPU"
    ],
-   "en": "GPU execution of the base combination of H (CPU is faster in practice)",
-   "ja": "H の base 結合を GPU 実行(実測では CPU が速い)"
+   "en": "GPU execution of the base combination of H (CPU is faster in practice) That CPU default describes CUDA. HIP defaults to GPU on discrete Radeon and CPU on an APU, subject to the GPU-stage guards.",
+   "ja": "H の base 結合を GPU 実行(実測では CPU が速い) CPUを既定とする記述はCUDA向けです。HIP は独立GPUのRadeonでGPU、APUでCPUを既定とし、GPU段階のガードも適用します。"
   },
   {
    "group": "setham",
@@ -1999,6 +2004,558 @@
    },
    "en": "Host name for the EXX log when <code>gethostname</code> is unavailable.",
    "ja": "<code>gethostname</code> が使えないときの EXX ログ用ホスト名。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "DC_GPU_MAX_RANKS_PER_DEVICE"
+   ],
+   "en": "Alias of OPENMX_DC_GPU_MAX_RANKS_PER_DEVICE.",
+   "ja": "OPENMX_DC_GPU_MAX_RANKS_PER_DEVICE の別名。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "GEMMUL8_SOLVE_MIN_FREE_AFTER_MB"
+   ],
+   "en": "Alias of OPENMX_GEMMUL8_SOLVE_MIN_FREE_AFTER_MB.",
+   "ja": "OPENMX_GEMMUL8_SOLVE_MIN_FREE_AFTER_MB の別名。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "MAGMA_OZAKI2_ALGO"
+   ],
+   "en": "MAGMA Ozaki-II algorithm; OpenMX supplies 1stage when unset.",
+   "ja": "MAGMA Ozaki-II の方式。未指定時は OpenMX が 1stage を設定。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "MAGMA_OZAKI2_LOCAL_RANKS"
+   ],
+   "en": "Ranks sharing the MAGMA Ozaki-II workspace budget; default 4.",
+   "ja": "MAGMA Ozaki-II の作業領域予算を共有するランク数。既定値4。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "MAGMA_OZAKI2_MAX_WS_MB"
+   ],
+   "en": "MAGMA Ozaki-II per-process workspace cap in MiB; default 512.",
+   "ja": "MAGMA Ozaki-II のプロセス当たり作業領域上限（MiB）。既定値512。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "MAGMA_OZAKI2_MAX_WS_PERCENT"
+   ],
+   "en": "Additional MAGMA workspace cap as a percentage of device memory; divided by local ranks.",
+   "ja": "MAGMA 作業領域の追加上限をデバイスメモリの割合で指定し、共有ランク数で分割。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "MAGMA_OZAKI2_MIN_FREE_MB"
+   ],
+   "en": "MAGMA Ozaki-II free-memory guard in MiB; OpenMX supplies 1024 when unset.",
+   "ja": "MAGMA Ozaki-II が残す空きメモリ（MiB）。未指定時は OpenMX が1024を設定。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "MPI_LOCALRANKID"
+   ],
+   "en": "Launcher-provided local rank alias; remains local and is never copied from rank 0.",
+   "ja": "ランチャーが設定するノード内ランク番号の別名。rank 0 から複製せず各プロセスの値を使用。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_ABORT_AFTER_EIGEN"
+   ],
+   "en": "Diagnostic: terminate after the first band eigensolve.",
+   "ja": "診断用。最初のバンド固有値計算後に終了。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_ABORT_AFTER_EIGEN_SCF"
+   ],
+   "en": "Diagnostic: SCF iteration at which to stop after the band eigensolve; 0 disables.",
+   "ja": "診断用。バンド固有値計算後に終了するSCF反復番号。0で無効。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_BAND_COL_INTERLEAVE_K"
+   ],
+   "en": "Override collinear k-point interleaving; retains the existing automatic layout by default.",
+   "ja": "共線バンドのk点交互配置を指定。未指定時は既存の自動配置。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_BAND_GEMMUL8_BACKTRANSFORM"
+   ],
+   "en": "Use GEMMul8 for the collinear band eigenvector back-transform.",
+   "ja": "共線バンドの固有ベクトル逆変換にGEMMul8を使用。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_BAND_GPU_CACHED_TURN_GROUP"
+   ],
+   "en": "GPU turn-group size after SCF iteration 1; defaults to the normal turn group, clamped to 1..1024.",
+   "ja": "SCF2回目以降のGPUターングループ数。未指定時は通常のグループ数、範囲1〜1024。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_BAND_GPU_DIAG_RESERVE_MB"
+   ],
+   "en": "Additional band eigensolver memory guard in MiB.",
+   "ja": "バンド固有値ソルバー用の追加メモリ余裕（MiB）。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_BAND_GPU_MAX_DEVICE_RANKS"
+   ],
+   "en": "Above this many ranks per device, prefer CPU dense band/Krylov paths; 0 disables the limit.",
+   "ja": "1デバイスを共有するランク数がこの値を超えると密バンド・KrylovのCPU経路を優先。0で上限無効。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_BAND_NONCOL_PACKED_CACHE"
+   ],
+   "en": "Reuse packed Hamiltonian/overlap data for noncollinear bands when available.",
+   "ja": "非共線バンドで利用可能なパック済みHamiltonian・重なり行列を再利用。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_CLUSTER_GPU_GEMM"
+   ],
+   "en": "Enable cluster GPU GEMM products; the capacity check accounts for their workspace.",
+   "ja": "クラスタのGPU GEMM積を有効化。容量判定には作業領域も含む。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_CLUSTER_GPU_OVERLAP_CACHE_MB"
+   ],
+   "en": "Per-spin host overlap-cache limit in MiB; also limited to 1/32 of available host memory.",
+   "ja": "スピン当たりホスト重なり行列キャッシュ上限（MiB）。利用可能ホストメモリの1/32でも制限。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_CLUSTER_GPU_ROOT_DENSE"
+   ],
+   "en": "Enable the owning-rank dense path for noncollinear clusters.",
+   "ja": "非共線クラスタで担当ランクの密行列経路を有効化。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_CLUSTER_GPU_SERIAL"
+   ],
+   "en": "Cluster capacity tiers: 0 disables serialized solves, 1 allows them, 2 skips the concurrent tier.",
+   "ja": "クラスタの容量段階。0は直列ターン無効、1は許可、2は同時実行段階を省略。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_CLUSTER_MEASURE_TIME"
+   ],
+   "en": "Print HIP cluster dense-solver stage timings.",
+   "ja": "HIPクラスタ密固有値ソルバーの段階別時間を表示。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_CLUSTER_NC_DEVICE_KEEP"
+   ],
+   "en": "Keep the noncollinear cluster solve on the device across SCF steps; automatic default on MI300A.",
+   "ja": "非共線クラスタのデバイス上の解法領域をSCF間で保持。自動時はMI300Aで有効。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_CLUSTER_NC_DEVICE_SOLVE"
+   ],
+   "en": "Enable the noncollinear cluster device-resident dense solve.",
+   "ja": "非共線クラスタのデバイス常駐密固有値計算を有効化。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_CLUSTER_NC_SETHAM_CACHE"
+   ],
+   "en": "Reuse the noncollinear cluster Set_Hamiltonian cache.",
+   "ja": "非共線クラスタのSet_Hamiltonianキャッシュを再利用。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_DCLNO_GPU_OWNER_THRESHOLD"
+   ],
+   "en": "Matrix-order threshold for a DC-LNO owning-rank GPU solve.",
+   "ja": "DC-LNOを担当ランクのGPUで解く行列次数の閾値。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_DCLNO_GPU_PROFILE"
+   ],
+   "en": "Print DC-LNO GPU proxy timings.",
+   "ja": "DC-LNOのGPU代理処理の時間を表示。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_DCLNO_RETRY_TEST"
+   ],
+   "en": "Diagnostic: exercise the DC-LNO retry path.",
+   "ja": "診断用。DC-LNOの再試行経路を実行。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_DC_GPU_MAX_RANKS_PER_DEVICE"
+   ],
+   "en": "Limit DC GPU owners per device; launcher/topology fallback applies when unset.",
+   "ja": "デバイス当たりDC GPU担当ランク数を制限。未指定時は既存のランチャー・構成情報を使用。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_DENSITY_GRID_ONTHEFLY"
+   ],
+   "en": "Enable density-grid evaluation from orbitals computed on demand.",
+   "ja": "必要時に計算する軌道から密度格子を評価。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_EH0_GPU_CONCURRENCY"
+   ],
+   "en": "EH0 GPU ranks per turn; 0 bypasses turn scheduling, automatic selects from batch size.",
+   "ja": "EH0のターン当たりGPUランク数。0はターン制御を省略、自動時はバッチ規模で決定。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_EIGEN_FP32_SOLVER"
+   ],
+   "en": "FP32 refinement eigensolver backend; magma selects MAGMA.",
+   "ja": "FP32精密化用固有値ソルバー。magmaでMAGMAを選択。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_EIGEN_REFINE_FIRST_ALL"
+   ],
+   "en": "Refine every state in the first cluster SCF step.",
+   "ja": "クラスタの最初のSCF段階で全状態を精密化。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_EIGEN_REFINE_MIN_N"
+   ],
+   "en": "Minimum matrix order for refined FP32 eigensolves.",
+   "ja": "FP32精密化を使う最小行列次数。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_FORCE4B_ORDERN_AUTO"
+   ],
+   "en": "Opt in to automatic order-N Force4B policy.",
+   "ja": "Force4BのオーダーN自動方針を有効化。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_FORCE4B_WEAK_FP64_AUTO"
+   ],
+   "en": "Opt in to automatic Force4B policy on GPUs with weak native FP64.",
+   "ja": "ネイティブFP64性能が低いGPU向けForce4B自動方針を有効化。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_GEMMUL8_SOLVE_MIN_FREE_AFTER_MB"
+   ],
+   "en": "Free-memory guard in MiB after solve-specific GEMMul8 workspace allocation.",
+   "ja": "固有値計算用GEMMul8領域の確保後に残す空きメモリ（MiB）。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_GPUSOLVER_CACHE_MB"
+   ],
+   "en": "HIP solver scratch/retry-copy cache cap in MiB; overrides the CUSOLVER_CACHE_MB alias.",
+   "ja": "HIPソルバーの一時領域・再試行コピーの保持上限（MiB）。CUSOLVER_CACHE_MB別名より優先。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_GPUSOLVER_PARTIAL_EVD_MIN_N"
+   ],
+   "en": "Minimum order for partial HIP eigensolves; 0 keeps the default policy.",
+   "ja": "HIP部分固有値計算を選ぶ最小次数。0は既定の方針。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_GPUSOLVER_RETRY_TEST"
+   ],
+   "en": "Diagnostic: force a second dense solve through the retry backend.",
+   "ja": "診断用。再試行バックエンドで密固有値計算をもう一度実行。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_GPU_ASSUME_APU"
+   ],
+   "en": "Override APU detection; auto queries HIP device properties.",
+   "ja": "APU判定を上書き。autoはHIPデバイス情報から判定。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_GPU_EIGENSOLVER"
+   ],
+   "en": "HIP dense solver: hipsolver, magma, or automatic device policy.",
+   "ja": "HIP密固有値ソルバー。hipsolver、magma、またはデバイスに応じた自動選択。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_GPU_EIGENSOLVER_MAGMA_MIN_N"
+   ],
+   "en": "In automatic mode, use rocSOLVER below this matrix order; explicit solver selection wins.",
+   "ja": "自動選択時、この次数未満はrocSOLVERを使用。明示したソルバー指定を優先。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_GPU_EIGENSOLVER_PROFILE"
+   ],
+   "en": "Print dense HIP eigensolver backend/stage timings.",
+   "ja": "密HIP固有値ソルバーのバックエンド・段階別時間を表示。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_GPU_FP32_FP64_RATIO"
+   ],
+   "en": "Override FP32/FP64 throughput ratio; nonpositive or auto keeps hardware detection.",
+   "ja": "FP32/FP64性能比を上書き。非正値またはautoはハードウェア判定。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_KRYLOV_GEMMUL8"
+   ],
+   "en": "Enable Krylov GEMMul8 products, subject to the input-file GEMMul8 veto.",
+   "ja": "KrylovのGEMMul8積を有効化。入力ファイルでのGEMMul8無効指定を優先。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_KRYLOV_GPU"
+   ],
+   "en": "Enable Krylov GPU dense operations; automatic disables them on oversubscribed devices.",
+   "ja": "KrylovのGPU密行列演算を有効化。自動時は過剰共有デバイスで無効。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_KRYLOV_GPU_RESERVE_MB"
+   ],
+   "en": "Free-device-memory reserve in MiB for Krylov dense workspaces.",
+   "ja": "Krylov密行列領域用に確保を控えるデバイス空きメモリ（MiB）。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_KRYLOV_MEASURE_TIME"
+   ],
+   "en": "Print detailed Krylov stage timings.",
+   "ja": "Krylovの段階別詳細時間を表示。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_MAGMA_OZAKI2"
+   ],
+   "en": "Enable MAGMA Ozaki-II GEMMul8 acceleration.",
+   "ja": "MAGMA Ozaki-IIのGEMMul8高速化を有効化。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_MAGMA_OZAKI2_RETRY"
+   ],
+   "en": "Keep an input copy and retry failed Ozaki-II solves with the next backend when capacity permits.",
+   "ja": "容量が許す場合に入力を保存し、Ozaki-II失敗時は次のバックエンドで再試行。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_NC_BACKTRANSFORM_BARRIER"
+   ],
+   "en": "Opt in to a barrier around noncollinear band back-transforms.",
+   "ja": "非共線バンドの逆変換の前後でバリアを使用。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_NC_DENSE_BUFFER_CACHE"
+   ],
+   "en": "Keep noncollinear band dense buffers; implied by device-eigenvector DM.",
+   "ja": "非共線バンド密行列領域を保持。デバイス固有ベクトルからの密度行列生成時にも保持。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_NC_DEVICE_EIGENVECTOR_DM"
+   ],
+   "en": "Opt in to noncollinear band DM generation from device-resident eigenvectors.",
+   "ja": "デバイス常駐固有ベクトルから非共線バンド密度行列を生成。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_NC_EIGEN_DEMOTE_SETHAM"
+   ],
+   "en": "Release orbital-table residency for noncollinear band dense eigensolves.",
+   "ja": "非共線バンド密固有値計算時に軌道表のデバイス常駐を解除。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_NC_HAMILTONIAN_EIGENSOLVER"
+   ],
+   "en": "Set to hipsolver to select the HIP noncollinear Hamiltonian solver explicitly.",
+   "ja": "hipsolverでHIP非共線Hamiltonianソルバーを明示選択。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_NC_HIPSOLVER_TURN_RELEASE"
+   ],
+   "en": "Release hipSOLVER workspaces after a noncollinear band turn; default follows APU detection.",
+   "ja": "非共線バンドのターン後にhipSOLVER領域を解放。未指定時はAPU判定に従う。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_NC_MAGMA_TURN_RELEASE"
+   ],
+   "en": "Release MAGMA workspaces after a noncollinear band turn; default follows APU detection.",
+   "ja": "非共線バンドのターン後にMAGMA領域を解放。未指定時はAPU判定に従う。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_OTF_CHECK"
+   ],
+   "en": "Diagnostic: compare on-demand and packed orbital matrix elements.",
+   "ja": "診断用。必要時計算とパック済み軌道からの行列要素を照合。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_SETHAM_DEMOTE_ON_PRESSURE"
+   ],
+   "en": "Allow resident Set_Hamiltonian tables to be evicted under eigensolver memory pressure.",
+   "ja": "固有値計算でメモリ不足時にSet_Hamiltonian常駐表を退避。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_SETHAM_GPU"
+   ],
+   "en": "Enable HIP Hamiltonian matrix elements; automatic disables offload on oversubscribed devices.",
+   "ja": "HIP Hamiltonian行列要素計算を有効化。自動時は過剰共有デバイスで無効。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_SETHAM_HIP_KERNEL"
+   ],
+   "en": "HIP matrix-elements kernel; scalar selects the reference kernel, otherwise use the tiled kernel.",
+   "ja": "HIP行列要素カーネル。scalarは参照カーネル、それ以外はタイル版。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_SETHAM_ONTHEFLY_PINNED_MB"
+   ],
+   "en": "Pinned host-memory cap in MiB for on-demand Hamiltonian staging.",
+   "ja": "必要時計算Hamiltonian転送用の固定ホストメモリ上限（MiB）。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_SETHAM_TIMING"
+   ],
+   "en": "Print HIP Hamiltonian timings; values above 1 include device-kernel timing.",
+   "ja": "HIP Hamiltonianの時間を表示。1を超えるとデバイスカーネル時間も計測。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_SETNL_OPENMP"
+   ],
+   "en": "Enable the HIP/OpenMP nonlocal matrix path.",
+   "ja": "HIP/OpenMP非局所行列経路を有効化。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_SETPRO_DSVNA_GPU"
+   ],
+   "en": "Override the VNA-projector derivative stage; otherwise inherit SETPRO_GPU and the device policy.",
+   "ja": "VNA射影微分段階のGPU設定を上書き。未指定時はSETPRO_GPUとデバイス方針を継承。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_SETPRO_HVNA_GPU"
+   ],
+   "en": "Override the VNA-projector energy stage; otherwise inherit SETPRO_GPU and the device policy.",
+   "ja": "VNA射影エネルギー段階のGPU設定を上書き。未指定時はSETPRO_GPUとデバイス方針を継承。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_SETPRO_HVNA_TURNS"
+   ],
+   "en": "Use GPU turns for VNA-projector energy contractions.",
+   "ja": "VNA射影エネルギー縮約をGPUターンで実行。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_SETPRO_VNA23_GPU"
+   ],
+   "en": "Override the VNA23 force stage; otherwise inherit SETPRO_GPU and the device policy.",
+   "ja": "VNA23力計算段階のGPU設定を上書き。未指定時はSETPRO_GPUとデバイス方針を継承。"
+  },
+  {
+   "group": "hip",
+   "names": [
+    "OPENMX_SOLVE_TIMING"
+   ],
+   "en": "Print HIP band dense-solve timings.",
+   "ja": "HIPバンド密固有値計算の時間を表示。"
   }
  ]
 }

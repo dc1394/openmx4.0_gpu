@@ -595,8 +595,8 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
     }
     {
       extern void openmx_gpu_zheevd_selftest(const char *label);
-      const char *selftest_env = openmx_env_get("OPENMX_ZHEEVD_SELFTEST");
-      if (selftest_env != NULL && atoi(selftest_env) != 0 && MYID_MPI_COMM_WORLD == 0 && MD_iter == 1) {
+
+      if (openmx_env_flag_at(OPENMX_ENV_ZHEEVD_SELFTEST, 0) && MYID_MPI_COMM_WORLD == 0 && MD_iter == 1) {
         openmx_gpu_zheevd_selftest("post_HVNA");
       }
     }
@@ -645,8 +645,8 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
     {
       extern void openmx_gpu_zheevd_selftest(const char *label);
-      const char *selftest_env = openmx_env_get("OPENMX_ZHEEVD_SELFTEST");
-      if (selftest_env != NULL && atoi(selftest_env) != 0 && MYID_MPI_COMM_WORLD == 0 && MD_iter == 1 &&
+
+      if (openmx_env_flag_at(OPENMX_ENV_ZHEEVD_SELFTEST, 0) && MYID_MPI_COMM_WORLD == 0 && MD_iter == 1 &&
           SCF_iter == 1) {
         openmx_gpu_zheevd_selftest("scf1_top");
       }
@@ -725,8 +725,8 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
       {
         extern void openmx_gpu_zheevd_selftest(const char *label);
-        const char *selftest_env = openmx_env_get("OPENMX_ZHEEVD_SELFTEST");
-        if (selftest_env != NULL && atoi(selftest_env) != 0 && MYID_MPI_COMM_WORLD == 0 && MD_iter == 1) {
+
+        if (openmx_env_flag_at(OPENMX_ENV_ZHEEVD_SELFTEST, 0) && MYID_MPI_COMM_WORLD == 0 && MD_iter == 1) {
           openmx_gpu_zheevd_selftest("post_grids");
         }
       }
@@ -889,8 +889,8 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
 	{
 	  extern void openmx_gpu_zheevd_selftest(const char *label);
-	  const char *selftest_env = openmx_env_get("OPENMX_ZHEEVD_SELFTEST");
-	  if (selftest_env != NULL && atoi(selftest_env) != 0 && MYID_MPI_COMM_WORLD == 0 && MD_iter == 1 &&
+
+	  if (openmx_env_flag_at(OPENMX_ENV_ZHEEVD_SELFTEST, 0) && MYID_MPI_COMM_WORLD == 0 && MD_iter == 1 &&
 	      SCF_iter == 1) {
 	    openmx_gpu_zheevd_selftest("post_poisson1");
 	  }
@@ -905,8 +905,8 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
 	{
 	  extern void openmx_gpu_zheevd_selftest(const char *label);
-	  const char *selftest_env = openmx_env_get("OPENMX_ZHEEVD_SELFTEST");
-	  if (selftest_env != NULL && atoi(selftest_env) != 0 && MYID_MPI_COMM_WORLD == 0 && MD_iter == 1 &&
+
+	  if (openmx_env_flag_at(OPENMX_ENV_ZHEEVD_SELFTEST, 0) && MYID_MPI_COMM_WORLD == 0 && MD_iter == 1 &&
 	      SCF_iter == 1) {
 	    openmx_gpu_zheevd_selftest("post_setham1");
 	  }
@@ -1054,16 +1054,16 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
        the density-grid code has an independent service/fallback path, so
        release both the host tables and any device associations. */
     if (DFT_GPU_EigensolverActive() && Solver == 3 && SpinP_switch == 3) {
-      const char *demote_env = openmx_env_get("OPENMX_NC_EIGEN_DEMOTE_SETHAM");
-      if (demote_env == NULL || atoi(demote_env) != 0) {
+
+      if (openmx_env_flag_at(OPENMX_ENV_NC_EIGEN_DEMOTE_SETHAM, 1)) {
         Set_Hamiltonian_Invalidate_OpenMP_MatrixElements_Cache();
       }
     }
 
     {
       extern void openmx_gpu_zheevd_selftest(const char *label);
-      const char *selftest_env = openmx_env_get("OPENMX_ZHEEVD_SELFTEST");
-      if (selftest_env != NULL && atoi(selftest_env) != 0 && MYID_MPI_COMM_WORLD == 0 && MD_iter == 1 &&
+
+      if (openmx_env_flag_at(OPENMX_ENV_ZHEEVD_SELFTEST, 0) && MYID_MPI_COMM_WORLD == 0 && MD_iter == 1 &&
           SCF_iter == 1) {
         openmx_gpu_zheevd_selftest("post_pack");
       }
@@ -1455,21 +1455,9 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
          (Solver==3 && SpinP_switch<=1 && Band_DFT_Col_RefineLastRefined(solver_states.band_col)) ||
          (Solver==3 && SpinP_switch==3 && GB_switch==0 && Band_DFT_NonCol_RefineLastRefined(solver_states.band_noncol)))){
 
-      static double guard_factor = -1.0;
+      double guard_factor = openmx_env_double_at(OPENMX_ENV_EIGEN_REFINE_STOP_GUARD, 100.0);
       double bound, normrd;
-
-      if (guard_factor<0.0){
-        const char *value = openmx_env_get("OPENMX_EIGEN_REFINE_STOP_GUARD");
-        guard_factor = 100.0;
-        if (value!=NULL && value[0]!='\0'){
-          guard_factor = atof(value);
-          if (!isfinite(guard_factor)) guard_factor = 100.0;
-          if (guard_factor<0.0) guard_factor = 0.0;
-        }
-        /* the host's value, so that no rank can take a different branch
-           into the collective solve below */
-        MPI_Bcast(&guard_factor, 1, MPI_DOUBLE, Host_ID, mpi_comm_level1);
-      }
+      if (guard_factor < 0) guard_factor = 0;
       bound = guard_factor*SCF_Criterion;
       normrd = sqrt(fabs(mixing_history->norm[0]));
       if (0.0<bound && bound<normrd){

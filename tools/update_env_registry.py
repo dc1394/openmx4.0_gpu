@@ -33,7 +33,7 @@ ROW6 = re.compile(r'^\s*X\((\w+), "([^"]+)", "(\w+)", "(\w+)", "([^"]*)", "((?:[
 # what each accessor parses
 ACCESSOR_KIND = {"flag": "flag", "long": "int", "ulong": "uint", "double": "double", "mib_bytes": "mib", "": "string"}
 # the local wrappers that take an id: the kind they parse and the index of their fallback argument
-WRAPPERS = {"gs2_env_long": ("int", 1), "gs2_forced_mode": ("flag", None), "DC_EnvU32": ("uint", 1), "env_u32": ("uint", 1),
+WRAPPERS = {"SetPro_gpu_stage_enabled": ("flag", None), "DC_EnvI32Any": ("int", 3), "env_count": ("int", 1), "gs2_env_long": ("int", 1), "gs2_forced_mode": ("flag", None), "DC_EnvU32": ("uint", 1), "env_u32": ("uint", 1),
             "positive_env": ("int", 1), "BandCol_HostCacheLimit": ("double", 1), "BandNonCol_HostCacheLimit": ("double", 1),
             "env_percent": ("uint", 2), "env_mib": ("mib", 2), "gemmul8_num_moduli": ("uint", None),
             "gemmul8_disabled": ("flag", None), "gemmul8_environment_override": ("flag", None), "grid_trace": ("flag", None)}
@@ -41,7 +41,7 @@ ACCESSORS = {"openmx_env_flag_at": 1, "openmx_env_long_at": 1, "openmx_env_ulong
              "openmx_env_mib_bytes_at": 1}
 # the widest kind wins when a name is read in several ways
 WIDTH = {"string": 6, "double": 5, "int": 4, "mib": 3, "uint": 2, "flag": 1}
-LOCAL_PREFIXES = ("OMPI_", "PMI_", "PMIX_", "SLURM_", "MV2_", "CUDA_MPS_", "LIBOMPTARGET_", "HOSTNAME")
+LOCAL_PREFIXES = ("MPI_", "OMPI_", "PMI_", "PMIX_", "SLURM_", "MV2_", "CUDA_MPS_", "LIBOMPTARGET_", "HOSTNAME")
 
 HEADER = '''/**********************************************************************
   openmx_env_registry.h
@@ -126,15 +126,26 @@ def split_arguments(args):
     return out
 
 
-def source_files(source):
-    return sorted(p for p in source.iterdir() if p.suffix in (".c", ".cu", ".cpp", ".h") and not p.name.startswith("openmx_env"))
+def source_files(source, include_hip=True):
+    # HIP overrides are production readers too: otherwise HIP-only names
+    # bypass both the snapshot distribution and the registry/doc sync gate.
+    directories = (source, source / "backends/hip/src", source / "backends/hip/include") if include_hip else (source,)
+    return sorted(p for directory in directories if directory.is_dir() for p in directory.iterdir()
+                  if p.suffix in (".c", ".cu", ".cpp", ".h") and not p.name.startswith("openmx_env"))
 
 
-def scan_sources(source):
+def scan_sources(source, include_hip=True):
     """name -> {"kinds": set, "files": set, "fallbacks": set of expression texts}"""
     usage = {}
     registry = parse_registry(REGISTRY.read_text()) if REGISTRY.is_file() else {}
     ids = {e["id"]: n for n, e in registry.items()}
+    # An id-based reader may be introduced before its row exists. Discover
+    # those ids as well, so regeneration can add them rather than silently
+    # ignoring a setting that would fail the next build.
+    for path in source_files(source, include_hip):
+        for token in re.findall(r"\bOPENMX_ENV_([A-Z][A-Z0-9_]*)\b", path.read_text(errors="replace")):
+            if token not in ("COUNT", "LIST", "ID_", "ENTRY_"):
+                ids.setdefault(token, token[4:] if token.startswith("EXT_") else "OPENMX_" + token)
 
     def note(name, kind, file, fallback=None, presence=False):
         u = usage.setdefault(name, {"kinds": set(), "files": set(), "fallbacks": set(), "presence": False})
@@ -149,7 +160,7 @@ def scan_sources(source):
     def names_in(argument):
         return [ids[t] for t in re.findall(r'\bOPENMX_ENV_(\w+)', argument) if t in ids]
 
-    for path in source_files(source):
+    for path in source_files(source, include_hip):
         text = path.read_text(errors="replace")
         for m in re.finditer(r'\bopenmx_env_(flag|long|ulong|double|mib_bytes)?_?at\s*\(', text):
             accessor = m.group(1) or ""
@@ -159,13 +170,13 @@ def scan_sources(source):
             presence = accessor == "" and re.match(r'\s*[!=]=\s*(NULL|nullptr)\b', text[m.end() + len(arguments) + 1:])
             fallback = parts[1] if accessor and len(parts) > 1 else None
             for name in names_in(parts[0] if parts else ""):
-                note(name, None if presence else ACCESSOR_KIND[accessor], path.name, fallback, bool(presence))
+                note(name, None if presence else ACCESSOR_KIND[accessor], path.relative_to(source).as_posix(), fallback, bool(presence))
         for m in re.finditer(r'\bopenmx_env_(get|flag|long|ulong|double)\s*\(\s*"([A-Z][A-Z0-9_]+)"\s*(?:\)|,\s*)', text):
             presence = m.group(1) == "get" and re.match(r'\s*[!=]=\s*(NULL|nullptr)\b', text[m.end():])
-            note(m.group(2), None if presence else ACCESSOR_KIND["" if m.group(1) == "get" else m.group(1)], path.name,
+            note(m.group(2), None if presence else ACCESSOR_KIND["" if m.group(1) == "get" else m.group(1)], path.relative_to(source).as_posix(),
                  None, bool(presence))
         for m in re.finditer(r'\bopenmx_env_(?:set|set_if_unset|unset)\s*\(\s*"([A-Z][A-Z0-9_]+)"', text):
-            note(m.group(1), None, path.name)
+            note(m.group(1), None, path.relative_to(source).as_posix())
         for wrapper, (kind, index) in WRAPPERS.items():
             for m in re.finditer(r'\b' + wrapper + r'\s*\(', text):
                 parts = split_arguments(call_arguments(text, m.end()))
@@ -174,10 +185,10 @@ def scan_sources(source):
                     if index is not None and position >= index:
                         break
                     for name in names_in(part):
-                        note(name, kind, path.name, fallback)
+                        note(name, kind, path.relative_to(source).as_posix(), fallback)
         for token in re.findall(r'\bOPENMX_ENV_([A-Z][A-Z0-9_]*)\b', text):
             if token in ids and token not in ("COUNT", "LIST", "ID_", "ENTRY_"):
-                note(ids[token], None, path.name)
+                note(ids[token], None, path.relative_to(source).as_posix())
     return usage
 
 

@@ -232,7 +232,7 @@ with tempfile.TemporaryDirectory(prefix="openmx-integral-threads-") as tmp:
     src.write_text("#define _POSIX_C_SOURCE 200809L\n#define OPENMX_GPU_HIP 1\n"
                    "#include <assert.h>\n#include <math.h>\n#include <pthread.h>\n"
                    "#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n#include <omp.h>\n"
-                   '#include "openmx_core.h"\n'
+                   '#include <limits.h>\n#include "openmx_env.h"\n#include "openmx_core.h"\n'
                    '#include "openmx_core_pair_bessel.h"\n'
                    '#include "openmx_core_overlap.h"\n'
                    '#include "openmx_core_nonlocal.h"\n'
@@ -241,7 +241,7 @@ with tempfile.TemporaryDirectory(prefix="openmx-integral-threads-") as tmp:
     compiler = shlex.split(os.environ.get("CC", "cc"))
     flags = shlex.split(os.environ.get("CFLAGS", "-O2 -g"))
     subprocess.run(compiler + flags + ["-std=c11", "-fopenmp", "-pthread",
-                   "-I" + str(ROOT / "source"), str(src), str(CORE_LIBRARY),
+                   "-I" + str(ROOT / "source"), str(src), str(ROOT / "source/openmx_env.c"), str(CORE_LIBRARY),
                    "-Wl,-rpath," + str(CORE_LIBRARY.parent), "-lm", "-o", str(exe)], check=True)
     runner = (["valgrind", "--tool=helgrind", "--error-exitcode=99", "--quiet"]
               if "--helgrind" in sys.argv[1:] else [])

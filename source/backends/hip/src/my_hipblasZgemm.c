@@ -50,13 +50,7 @@ static int OpenMX_ZgemmRank(void)
 
 static int OpenMX_ZgemmVerbose(void)
 {
-    const char *value = openmx_env_get("OPENMX_GPU_VERBOSE");
-
-    if (value == NULL || value[0] == '\0') {
-        value = openmx_env_get("OPENMX_GEMM_VERBOSE");
-    }
-
-    return (value != NULL && value[0] == '1');
+    return openmx_env_flag_at(OPENMX_ENV_GPU_VERBOSE, openmx_env_flag_at(OPENMX_ENV_GEMM_VERBOSE, 0));
 }
 
 static char OpenMX_ZgemmOpChar(hipblasOperation_t op)

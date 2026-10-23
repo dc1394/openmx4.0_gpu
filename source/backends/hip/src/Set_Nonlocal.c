@@ -257,8 +257,7 @@ static void SetNonlocal_ValidateGlobalState(const OpenMXAtomicViews *atomic, con
    communication, mult = the local products) */
 static int SetNonlocal_ProfileEnabled(void)
 {
-  const char *value = openmx_env_get("OPENMX_BAND_PROFILE");
-  return value != NULL && atoi(value) != 0;
+    return openmx_env_flag_at(OPENMX_ENV_BAND_PROFILE, 0);
 }
 
 static int SetNonlocal_gpu_used = 0;
@@ -270,11 +269,7 @@ int Set_Nonlocal_Used_GPU(void)
 
 static int SetNonlocalUseOpenMP(void)
 {
-  /* opt out with OPENMX_SETNL_OPENMP=0 (falls back to the OpenMP CPU path) */
-  const char *value = openmx_env_get("OPENMX_SETNL_OPENMP");
-
-  if (value != NULL && atoi(value) == 0) return 0;
-  return scf_eigen_lib_flag == GPUSOLVER;
+    return scf_eigen_lib_flag == GPUSOLVER && openmx_env_flag_at(OPENMX_ENV_SETNL_OPENMP, 1);
 }
 
 #include "openmx_nonlocal_cpu.h"
@@ -1323,8 +1318,9 @@ void Nonlocal0(const OpenMXAtomicViews *atomic, const OpenMXReciprocalViews *rec
   /* for OpenMP */
   int OneD_Nloop;
   const int *OneD2Mc_AN,*OneD2h_AN;
-  const char *bessel_cache_option = openmx_env_get("OPENMX_SETNL_BESSEL_CACHE_MAX");
-  const int bessel_cache_entries = bessel_cache_option ? atoi(bessel_cache_option) : 128;
+
+  const long bessel_cache_requested = openmx_env_long_at(OPENMX_ENV_SETNL_BESSEL_CACHE_MAX, 128);
+  const int bessel_cache_entries = bessel_cache_requested < 0 ? 0 : bessel_cache_requested > INT_MAX ? INT_MAX : (int)bessel_cache_requested;
 
   /* MPI */
   MPI_Comm_size(mpi_comm_level1,&numprocs);

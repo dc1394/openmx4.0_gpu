@@ -28,10 +28,9 @@ static inline int openmx_gpu_is_mi300a_arch(const char *arch, int integrated)
 static inline int openmx_gpu_device_is_mi300a(void)
 {
     static std::atomic<int> cached{-1};
-    const char *enabled = openmx_env_get("OPENMX_GPU");
     int choice;
 
-    if (enabled != NULL && enabled[0] != '\0' && std::atoi(enabled) == 0) return 0;
+    if (!openmx_env_flag_at(OPENMX_ENV_GPU, 1)) return 0;
     choice = cached.load(std::memory_order_relaxed);
     if (choice < 0) {
         hipDeviceProp_t prop;

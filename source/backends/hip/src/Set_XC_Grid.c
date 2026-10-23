@@ -37,14 +37,7 @@ int Set_XC_Grid_HIP(int n, int Ng1, int Ng2, int Ng3, int XC_P_switch, int pcc, 
 
 static int SXG_gpu_enabled(void)
 {
-  static int state = -1;
-
-  if (state < 0) {
-    const char *value = openmx_env_get("OPENMX_XC_GRID_GPU");
-    if (value != NULL && value[0] != '\0' && atoi(value) == 0) state = 0;
-    else state = gpu_rank_device_usable() ? 1 : 0;
-  }
-  return state;
+    return openmx_env_flag_at(OPENMX_ENV_XC_GRID_GPU, 1) && gpu_rank_device_usable();
 }
 
 /* 1 when the whole evaluation ran on the device (the outputs are in
@@ -805,8 +798,8 @@ static int Set_XC_Grid_GPU(int XC_P_switch,
 
   if (!(XC_P_switch == 0 || XC_P_switch == 1 || XC_P_switch == 2)) return 0;
   if (dc_Type == 3 || dc_Type == 4) return 0;
-  const char *control=openmx_env_get("OPENMX_XC_GRID_GPU"),*gpu=openmx_env_get("OPENMX_GPU");
-  const int enabled=scf_eigen_lib_flag==GPUSOLVER && (!gpu || atoi(gpu)!=0) && (!control || !*control || atoi(control)!=0);
+
+  const int enabled=scf_eigen_lib_flag==GPUSOLVER && openmx_env_flag_at(OPENMX_ENV_GPU, 1) && openmx_env_flag_at(OPENMX_ENV_XC_GRID_GPU, 1);
   int native_done=enabled && !(openmx_gpu_capacity_test_recovery() || openmx_gpu_workers_requested()) &&
     Set_XC_Grid_GPU_Native(XC_P_switch,Den0,Den1,Den2,Den3,Vxc0,Vxc1,Vxc2,Vxc3,dDen_Grid,dEXC_dGD);
   int pending=enabled && n>0 && !native_done,any_pending;

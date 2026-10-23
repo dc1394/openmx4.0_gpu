@@ -154,16 +154,18 @@ int main(void){
   CHECK(!openmx_gpu_workers_capacity(&p,173,0,cost,&need));
  }
  /* The distribution is experimental and off by default: every pool is the
-    rank's own GPU unless OPENMX_GPU_WORKERS is 1 or on. */
+    rank's own GPU unless OPENMX_GPU_WORKERS is enabled by the registry parser. */
  for(int setting=0;setting<4;setting++){
-  const char *value[4]={NULL,"0","off","2"};
+  const char *value[4]={NULL,"0","off","invalid"};
   if(value[setting]) setenv("OPENMX_GPU_WORKERS",value[setting],1); else unsetenv("OPENMX_GPU_WORKERS");
   permitted=4;device=omp_device=1;openmx_gpu_workers_configure(0,1,4);
   OpenMXGpuWorkers p;openmx_gpu_workers_local(&p,173);CHECK(p.count==1 && p.devices[0]==1);
   openmx_gpu_workers_owner(&p,173);CHECK(p.count==1 && p.devices[0]==1);
  }
- setenv("OPENMX_GPU_WORKERS","ON",1);
- {OpenMXGpuWorkers p;openmx_gpu_workers_owner(&p,173);CHECK(p.count==4);}
+ for(int enabled=0;enabled<3;enabled++){
+  const char *value[]={"ON","2","yes"};setenv("OPENMX_GPU_WORKERS",value[enabled],1);
+  OpenMXGpuWorkers p;openmx_gpu_workers_owner(&p,173);CHECK(p.count==4);
+ }
  setenv("OPENMX_GPU_WORKERS","1",1);
  /* Every mapped owner is retained and every otherwise idle permitted GPU
     has exactly one extra owner, even when the old block map has holes. */
@@ -220,5 +222,5 @@ int main(void){
     (tmp/'check.c').write_text(test)
     (tmp/'openmx_gpu_workers.c').write_text((HERE/'openmx_gpu_workers.c').read_text())
     exe=tmp/'check'
-    subprocess.run(shlex.split(os.environ.get('CC','cc'))+['-std=c11','-O1','-g','-fopenmp','-pthread','-Wall','-Wextra','-I'+str(tmp),'-I'+str(HERE),str(tmp/'openmx_gpu_workers.c'),str(tmp/'check.c'),'-o',str(exe)],check=True)
+    subprocess.run(shlex.split(os.environ.get('CC','cc'))+['-std=c11','-O1','-g','-fopenmp','-pthread','-Wall','-Wextra','-I'+str(tmp),'-I'+str(HERE),str(tmp/'openmx_gpu_workers.c'),str(HERE/'openmx_env.c'),str(tmp/'check.c'),'-o',str(exe)],check=True)
     subprocess.run([str(exe)],env={**os.environ,'OMP_NUM_THREADS':'1','OMP_THREAD_LIMIT':'4'},check=True)

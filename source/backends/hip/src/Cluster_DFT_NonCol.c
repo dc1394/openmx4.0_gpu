@@ -267,9 +267,7 @@ static void ClusterNonCol_AbortWithMessage(const char *message)
 
 static int ClusterNonCol_GpuVerbose(void)
 {
-    const char *value = openmx_env_get("OPENMX_GPU_VERBOSE");
-
-    return (value != NULL && value[0] == '1');
+    return openmx_env_flag_at(OPENMX_ENV_GPU_VERBOSE, 0);
 }
 
 /* GPU/CPU crossover of the noncollinear cluster dense eigensolver path,
@@ -284,17 +282,8 @@ static int ClusterNonCol_GpuVerbose(void)
 
 int Cluster_DFT_NonCol_GpuSwitchNum(void)
 {
-    int cached = CLUSTER_NONCOL_GPU_CPU_SWITCH_NUM;
-
-    {
-        const char *value = openmx_env_get("OPENMX_CLUSTER_NONCOL_GPU_SWITCH_NUM");
-        int parsed;
-
-        if (value != NULL && 0 < (parsed = atoi(value))) {
-            cached = parsed;
-        }
-    }
-    return cached;
+    long value = openmx_env_long_at(OPENMX_ENV_CLUSTER_NONCOL_GPU_SWITCH_NUM, CLUSTER_NONCOL_GPU_CPU_SWITCH_NUM);
+    return value <= 0 ? CLUSTER_NONCOL_GPU_CPU_SWITCH_NUM : value > INT_MAX ? INT_MAX : (int)value;
 }
 
 static size_t ClusterNonCol_CheckedMulCount(size_t a, size_t b, const char *label)
@@ -901,14 +890,9 @@ static void ClusterNonCol_StoreEDMBuffer(int myid, int size_H1, int *MP, double 
    matrix of its own (2 GiB of GEMMul8 workspace at that shape). */
 static int ClusterNonCol_DmByGemm(ClusterNonColState *state)
 {
-       /* 0 or 1 from the environment, 2 the default */
-
-    if (state->DmByGemm_cached < 0) {
-        const char *value = openmx_env_get("OPENMX_CLUSTER_GPU_DM_GEMM");
-
-        state->DmByGemm_cached = (value != NULL && value[0] != '\0') ? (atoi(value) != 0) : 2;
-    }
-    return (state->DmByGemm_cached == 2) ? (openmx_gpu_is_mi300a() || openmx_gemmul8ZgemmEnabled()) : state->DmByGemm_cached;
+    (void)state;
+    return openmx_env_flag_at(OPENMX_ENV_CLUSTER_GPU_DM_GEMM,
+                              openmx_gpu_is_mi300a() || openmx_gemmul8ZgemmEnabled());
 }
 
 /* dense_evec: the vectors of the host-staged solve (state k of basis i at
@@ -1160,8 +1144,8 @@ static void ClusterNonCol_ReleaseCaches(ClusterNonColState *state)
 
 static int ClusterNonCol_NativeGpuDiagFits(ClusterNonColState *state, int n2, int myid)
 {
-    const char *env = openmx_env_get("OPENMX_CLUSTER_GPU_DIAG");
-    const char *reserve_env = openmx_env_get("OPENMX_CLUSTER_GPU_DIAG_RESERVE_MB");
+
+
     size_t free_bytes = 0, total_bytes = 0;
     /* 256 MB headroom by default: the dense buffers are transient (freed
        inside every solve) and the SCF-loop library workspaces are released
@@ -1172,11 +1156,8 @@ static int ClusterNonCol_NativeGpuDiagFits(ClusterNonColState *state, int n2, in
     size_t required = 0;
     int local_fit = 1, fit = 1;
 
-    if (env != NULL && atoi(env) == 0) local_fit = 0;
-    if (reserve_env != NULL) {
-        long mib = atol(reserve_env);
-        if (0 <= mib) reserve = (size_t)mib * 1024U * 1024U;
-    }
+    if (!openmx_env_flag_at(OPENMX_ENV_CLUSTER_GPU_DIAG, 1)) local_fit = 0;
+    reserve = openmx_env_mib_bytes_at(OPENMX_ENV_CLUSTER_GPU_DIAG_RESERVE_MB, reserve / (1024ULL * 1024ULL));
     for (int attempt = 0; attempt < 2; attempt++) {
         int memory_fit = 1, all_memory_fit = 1;
 
@@ -1216,8 +1197,8 @@ static int ClusterNonCol_GpuDiagFits(ClusterNonColState *state, int n2,int myid)
     state->mgpu_host_dense=0;
     ClusterNonCol_ResetGs2Fallback(state);
     state->cpu_fallback_n2=0;
-    const char *enabled=openmx_env_get("OPENMX_CLUSTER_GPU_DIAG");
-    if (enabled && atoi(enabled)==0 && !openmx_mgpu_host_required()) {
+
+    if (!openmx_env_flag_at(OPENMX_ENV_CLUSTER_GPU_DIAG, 1) && !openmx_mgpu_host_required()) {
         state->cpu_fallback_n2=n2;
         return 0;
     }
@@ -2071,13 +2052,13 @@ static void ClusterNonCol_RefineOccupations(const double *e, int n, int maxn, do
    other ranks share.  OPENMX_EIGEN_REFINE_FIRST_ALL=1 refines all n2. */
 static int ClusterNonCol_RefineFirstStepStates(ClusterNonColState *state, int n2, double TZ)
 {
-    const char *all = openmx_env_get("OPENMX_EIGEN_REFINE_FIRST_ALL");
+
     double lumos = 0.2 * (double)n2;
     double states;
 
     ClusterNonCol_RefineConfigure(state);
     if (Solver != 2 || ClusterNonCol_RefineIterations(state) <= 0 || Cnt_switch != 0 || DFTSCF_loop <= 1 ||
-        !openmx_eigen_refine_size_ok(n2) || (all != NULL && atoi(all) != 0)) return n2;
+        !openmx_eigen_refine_size_ok(n2) || (openmx_env_flag_at(OPENMX_ENV_EIGEN_REFINE_FIRST_ALL, 0))) return n2;
     if (lumos < 400.0) lumos = 400.0;
     states = ceil(TZ - system_charge) + lumos;
     return (states < (double)n2) ? (int)states : n2;
@@ -2097,12 +2078,8 @@ static int ClusterNonCol_RefineFirstStepStates(ClusterNonColState *state, int n2
 
 static int ClusterNonCol_ProfileEnabled(ClusterNonColState *state)
 {
-
-    if (state->ProfileEnabled_cached < 0) {
-        const char *value = openmx_env_get("OPENMX_CLUSTER_PROFILE");
-        state->ProfileEnabled_cached = (value != NULL && atoi(value) != 0);
-    }
-    return state->ProfileEnabled_cached;
+    (void)state;
+    return openmx_env_flag_at(OPENMX_ENV_CLUSTER_PROFILE, 0);
 }
 
 /* charges the time since *t0 to phase (none if negative) after synchronizing
@@ -2141,11 +2118,7 @@ static void ClusterNonCol_ProfileReport(ClusterNonColState *state, int myid, int
    whose device memory is the host's (as BandCol_GemmWorkspaceTurnRelease). */
 static int ClusterNonCol_GemmWorkspaceTurnRelease(void)
 {
-    const char *value = openmx_env_get("OPENMX_CLUSTER_GEMMUL8_TURN_RELEASE");
-
-    if (value == NULL) value = openmx_env_get("OPENMX_BAND_GEMMUL8_TURN_RELEASE");
-    if (value == NULL) return openmx_gpu_is_apu() ? 0 : 1;
-    return (atoi(value) != 0);
+    return openmx_env_flag_at(OPENMX_ENV_CLUSTER_GEMMUL8_TURN_RELEASE, openmx_env_flag_at(OPENMX_ENV_BAND_GEMMUL8_TURN_RELEASE, 1));
 }
 
 /* The device side of the root dense solve: the Hamiltonian blocks are
@@ -2250,12 +2223,8 @@ static void *ClusterNonCol_DeviceSolveScratch(ClusterNonColState *state, size_t 
 
 static int ClusterNonCol_DeviceSolveEnabled(ClusterNonColState *state)
 {
-
-    if (state->DeviceSolveEnabled_enabled < 0) {
-        const char *value = openmx_env_get("OPENMX_CLUSTER_NC_DEVICE_SOLVE");
-        state->DeviceSolveEnabled_enabled = (value == NULL || value[0] == '\0' || atoi(value) != 0) ? 1 : 0;
-    }
-    return state->DeviceSolveEnabled_enabled;
+    (void)state;
+    return openmx_env_flag_at(OPENMX_ENV_CLUSTER_NC_DEVICE_SOLVE, 1);
 }
 
 static hipError_t ClusterNonCol_TryDeviceMalloc(ClusterNonColState *state, void **ptr, size_t bytes)
@@ -2323,12 +2292,8 @@ static void ClusterNonCol_DeviceSolveRelease(ClusterNonColState *state)
 
 static int ClusterNonCol_DeviceSolveKeep(ClusterNonColState *state)
 {
-
-    if (state->DeviceSolveKeep_keep < 0) {
-        const char *value = openmx_env_get("OPENMX_CLUSTER_NC_DEVICE_KEEP");
-        state->DeviceSolveKeep_keep = (value != NULL) ? (atoi(value) != 0) : openmx_gpu_is_mi300a();
-    }
-    return state->DeviceSolveKeep_keep;
+    (void)state;
+    return openmx_env_flag_at(OPENMX_ENV_CLUSTER_NC_DEVICE_KEEP, openmx_gpu_is_mi300a());
 }
 
 /* device bytes the root solve holds between its calls (the fit test counts
@@ -2429,9 +2394,9 @@ static int ClusterNonCol_DeviceSolveEnsure(ClusterNonColState *state, int n, int
     size_t const arena_need = ClusterNonCol_ArenaBytes(n, n2, maxn, refine);
     size_t need = 0, free_bytes = 0, total_bytes = 0;
     size_t reserve = (size_t)256 * 1024 * 1024;
-    const char *reserve_env = openmx_env_get("OPENMX_CLUSTER_GPU_DIAG_RESERVE_MB");
 
-    if (reserve_env != NULL && 0 <= atol(reserve_env)) reserve = (size_t)atol(reserve_env) * 1024U * 1024U;
+
+    reserve = openmx_env_mib_bytes_at(OPENMX_ENV_CLUSTER_GPU_DIAG_RESERVE_MB, reserve / (1024ULL * 1024ULL));
     /* a refined solve also needs the GEMMul8 products' blocked workspace (256
        MiB) beside its buffers */
     if (refine) reserve += (size_t)256 * 1024 * 1024;
@@ -2755,9 +2720,9 @@ static void ClusterNonCol_GpuSolverRootDensePath(ClusterNonColState *state, int 
     const int profile = owns_dense && ClusterNonCol_ProfileEnabled(state);
     const int cache_ready = Set_Hamiltonian_GpuSolver_Packed_CacheReady();
     const int cache_order = Set_Hamiltonian_GpuSolver_Packed_OrderMode();
-    const char *setham_cache_env = openmx_env_get("OPENMX_CLUSTER_NC_SETHAM_CACHE");
+
     const int use_setham_packed_cache = (cache_ready && cache_order == 1 &&
-                                         (setham_cache_env==NULL || atoi(setham_cache_env)!=0));
+                                         (openmx_env_flag_at(OPENMX_ENV_CLUSTER_NC_SETHAM_CACHE, 1)));
     int rebuild_s = (SCF_iter == 1 || !hs->S_valid || hs->n != n || state->root_s_stale);
     int device = 0;   /* the root's blocks, Hs2 and vectors stay on the device */
     double *S = NULL;
@@ -3374,8 +3339,7 @@ static double Cluster_DFT_NonCol_owned(ClusterNonColState *state, const OpenMXAt
   use_gpusolver_direct_cluster_dm =
     (scf_eigen_lib_flag == GPUSOLVER && gpusolver2_flag == 0 && (openmx_mgpu_host_required() || Cluster_DFT_NonCol_GpuSwitchNum() <= n2) &&
      ClusterNonCol_GpuDiagFits(state, n2,myid) &&
-     (openmx_env_get("OPENMX_CLUSTER_GPU_ROOT_DENSE")==NULL ||
-      atoi(openmx_env_get("OPENMX_CLUSTER_GPU_ROOT_DENSE"))!=0) &&
+     openmx_env_flag_at(OPENMX_ENV_CLUSTER_GPU_ROOT_DENSE, 1) &&
      (strcasecmp(mode,"scf") == 0 || strcasecmp(mode,"fp64") == 0) &&
      MO_fileout != 1 && xanes_calc != 1 && xanes_gs_fileout != 1 &&
      !cal_partial_charge && !Dos_fileout && !DosGauss_fileout);

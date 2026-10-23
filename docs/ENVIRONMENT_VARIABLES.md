@@ -36,18 +36,18 @@ and `off`/`no`/`false`; `auto`, an empty value and an unset variable select the 
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `OPENMX_BAND_GPU_DIAG` | auto | **1** = force the dense GPU path ignoring the fits verdict; **0** = always ELPA/ScaLAPACK (§5.6) |
-| `OPENMX_BAND_GPU_SWITCH_NUM` | 800 | GPU/CPU crossover dimension of the collinear band dense path (paths without their own knob keep `GPU_CPU_SWITCH_NUM`=1000). Measured crossover on one RTX 5080 shared by 8 ranks: n ≈ 300–400 |
+| `OPENMX_BAND_GPU_DIAG` | — | **1** = force the dense GPU path ignoring the fits verdict; **0** = always ELPA/ScaLAPACK (§5.6) On HIP, 1 enables the guarded dense GPU path and does not bypass its memory-capacity checks; 0 selects CPU dense diagonalization. |
+| `OPENMX_BAND_GPU_SWITCH_NUM` | 800 | GPU/CPU crossover dimension of the collinear band dense path (paths without their own knob keep `GPU_CPU_SWITCH_NUM`=1000). Measured crossover on one RTX 5080 shared by 8 ranks: n ≈ 300–400 CUDA default: 800; HIP default: 400. The HIP oversubscription guard can select CPU dense diagonalization independently of this threshold. |
 | `OPENMX_BAND_NONCOL_GPU_SWITCH_NUM` | 800 | Same for the noncollinear band dense path, compared against 2n (measured crossover 2n ≈ 250–400) |
 | `OPENMX_BAND_GPU_DM` | 1 | **0** = CPU loop for the DM accumulation of the collinear band ScaLAPACK/ELPA fallback. By default the fallback keeps the DM on the GPU: the eigenvector panel fits even when the full dense solve does not |
 | `OPENMX_BAND_NONCOL_GPU_DM` | 1 | **0** = CPU loop for the per-k DM accumulation of the noncollinear ScaLAPACK/ELPA-fallback multi-k loop (the k-dense GPU flow keeps its own device DM regardless) |
-| `OPENMX_BAND_GPU_RESERVE_MB` | max(total/10, 1536) | Raises the reserve used by the concurrency planner and the fits verdicts |
+| `OPENMX_BAND_GPU_RESERVE_MB` | max(total/10, 1536) | Raises the reserve used by the concurrency planner and the fits verdicts The default shown is for CUDA; HIP retains a 512 MiB reserve. |
 | `OPENMX_BAND_GPU_RANK_OVERHEAD_MB` | 256 | Runtime overhead added to the per-rank requirement model |
 | `OPENMX_BAND_SYEVDX_NOVECTOR` | 1 | Solve the eigenvalues-only first pass with NOVECTOR (0 restores the old behavior) |
-| `OPENMX_BAND_GPU_MAX_CONCURRENT_K` / `OPENMX_BAND_GPU_TURN_GROUP` / `OPENMX_BAND_GPU_MAX_RANKS_PER_DEVICE` | uncapped | **Explicit caps** on the concurrent rank count (first found in this order). The old "initial value" meaning is gone; actual concurrency always comes from the adaptive scan |
+| `OPENMX_BAND_GPU_MAX_CONCURRENT_K` / `OPENMX_BAND_GPU_TURN_GROUP` / `OPENMX_BAND_GPU_MAX_RANKS_PER_DEVICE` | uncapped | **Explicit caps** on the concurrent rank count (first found in this order). The old "initial value" meaning is gone; actual concurrency always comes from the adaptive scan This adaptive-scan policy describes CUDA. HIP retains its existing turn-group policy: the collinear concurrency default is eight for n <= 512, otherwise the turn-group default; explicit caps still apply. |
 | `OPENMX_GPUSOLVER_SERIAL_GPU_TURNS` | 1 | GPU-turn serialization of the all_knum==1 path (0 = concurrent submission) |
-| `OPENMX_BAND_GPU_PERSISTENT` / `_MIN_FREE_MB` | 0 / 2048 | Device-buffer persistence across SCF iterations (not recommended on shared GPUs) |
-| `OPENMX_BAND_GEMMUL8_TURN_RELEASE` | 1 | Per-turn GEMMul8 workspace release (0 keeps them) |
+| `OPENMX_BAND_GPU_PERSISTENT` / `_MIN_FREE_MB` | — / 2048 | Device-buffer persistence across SCF iterations (not recommended on shared GPUs) |
+| `OPENMX_BAND_GEMMUL8_TURN_RELEASE` | — | Per-turn GEMMul8 workspace release (0 keeps them) |
 | `OPENMX_BAND_PROFILE` | 0 | Performance counters; also gates the per-rank stage lines SETHPROF (Set_Hamiltonian), SETHOTFPROF / SETHOTFDENPROF (the on-the-fly batches: pack, evaluation, kernel), SETNLPROF (Set_Nonlocal: DS_NL, the received-atom products, the local products), CLUSTERDMPROF (the density-matrix accumulation of the cluster solver), CLUSTERDISTPROF (the eigenvector distribution; on the ranks that do not own the dense solve it includes the wait for it), FORCEHNL2PROF (the second-case Force_HNL batch: build, device, post-processing), the section timers of truncation and Total_Energy, SETVPOTPROF (Set_Vpot: xc, the Vxc D-to-B copy, VNA, assembly, mixing FFT, the B-to-C redistribution) and SETDENPROF (Set_Density_Grid: decision, quadrature, A-to-B, superposition, B-to-D) |
 | `OPENMX_BAND_COL_KCACHE_MB` / `OPENMX_BAND_NONCOL_KCACHE_MB` | 1024 / 1024 | Host cache of the dense k-point eigenvector panels of the GPU band path (MiB per rank, also bounded by the host memory available per rank from `/proc/meminfo`); 0 disables the cache. |
 | `OPENMX_BAND_COL_OVERLAP_CACHE_MB` / `OPENMX_BAND_NONCOL_OVERLAP_CACHE_MB` | 512 / 512 | Host cache of the k-point overlap transforms (and their eigenvalues) reused across SCF steps (MiB per rank; 0 disables). |
@@ -60,17 +60,17 @@ and `off`/`no`/`false`; `auto`, an empty value and an unset variable select the 
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `OPENMX_CLUSTER_GPU_DIAG` | auto | **1** = force the GPU even if the reservation fails (then aborts with a diagnostic); **0** = always ELPA (§5.6) |
+| `OPENMX_CLUSTER_GPU_DIAG` | — | **1** = force the GPU even if the reservation fails (then aborts with a diagnostic); **0** = always ELPA (§5.6) |
 | `OPENMX_CLUSTER_GPU_SWITCH_NUM` | 400 | GPU/CPU crossover dimension of the collinear cluster dense path (the GPU won at every measured size down to n=240) |
 | `OPENMX_CLUSTER_NONCOL_GPU_SWITCH_NUM` | 400 | Same for the noncollinear cluster dense path, compared against 2n (the GPU won down to 2n=480) |
-| `OPENMX_CLUSTER_GPU_DIAG_RESERVE_MB` | 1024 | Free VRAM required to remain after the reservation probe |
+| `OPENMX_CLUSTER_GPU_DIAG_RESERVE_MB` | — | Free VRAM required to remain after the reservation probe |
 | `OPENMX_CLUSTER_GPU_DIAG_SERIAL` | 1 | Serialized mode when both spin owners cannot fit (0 = disable, 2 = force serial) |
 | `OPENMX_CLUSTER_GPU_DM` | 1 | GPU accumulation of DM/EDM (0 = CPU loop) |
 | `OPENMX_CLUSTER_GPU_DM_ALL` | 1 | Device accumulation of the cluster density matrix on every rank (its slice of states, staged with a halving retry); 0 = only the rank that owns the dense solve, the others on the CPU loop (threaded over the atoms) |
 | `OPENMX_CLUSTER_GEMMUL8_TURN_RELEASE` | 1 | Per-solve GEMMul8 workspace release (inherits the BAND setting when unset) |
-| `OPENMX_CLUSTER_GPU_DM_GEMM` | 1 | Noncollinear cluster dense path: the density matrix as one product W^HW over the occupied states (GEMMul8) plus a gather of the sparse entries, and a broadcast of the root's buffer instead of an all-reduce; **0** = the per-entry sums over the states (sidia333 on an RTX 5080: 432 ms per step) |
+| `OPENMX_CLUSTER_GPU_DM_GEMM` | — | Noncollinear cluster dense path: the density matrix as one product W^HW over the occupied states (GEMMul8) plus a gather of the sparse entries, and a broadcast of the root's buffer instead of an all-reduce; **0** = the per-entry sums over the states (sidia333 on an RTX 5080: 432 ms per step) |
 | `OPENMX_CLUSTER_PROFILE` | 0 | Phase profile of the cluster dense GPU solvers (overlap, gather, forward/back transforms, eigensolve, release, DM) per rank; the device is synchronized around each phase, so the times are not those of an unprofiled run. |
-| `OPENMX_CLUSTER_GPU_RETAIN_SCRATCH` | auto | Collinear cluster: whether the dense scratch (eigenvector stash, temporaries) stays on the device after the density matrix is done: unset = released when less than half of the device remains free, **1** = always retain, **0** = always release (the transformed overlap is kept in every case). |
+| `OPENMX_CLUSTER_GPU_RETAIN_SCRATCH` | — | Collinear cluster: whether the dense scratch (eigenvector stash, temporaries) stays on the device after the density matrix is done: unset = released when less than half of the device remains free, **1** = always retain, **0** = always release (the transformed overlap is kept in every case). |
 | `OPENMX_GEMM_SAMPLE_DIR` / `_ITERS` | unset (off) / 1 | Diagnostics: write the transformed overlap X (collinear) and the transformed Hamiltonian the eigensolver receives (`X_g<geometry>.bin`, `Hs2_scf<step>.bin`, column-major binary) into an existing directory for the SCF steps listed in `_ITERS` (comma separated); they feed `tests/eigen_precision_probe.cu`. |
 
 ## Refined FP32 eigensolver (eigen_refine_gpu.c)
@@ -106,7 +106,7 @@ and `off`/`no`/`false`; `auto`, an empty value and an unset variable select the 
 |---|---|---|
 | `OPENMX_DC_GPU_THRESHOLD` | 400 | Minimum local cluster dimension NUM for the GPU (collinear) |
 | `OPENMX_DC_NONCOL_GPU_THRESHOLD` | 300 | Minimum spinor dimension 2·NUM for the GPU (noncollinear) |
-| `OPENMX_DC_GPU_S_CACHE` / `_RESERVE_MB` | 1 / 4096 | Device-resident S12 cache and its budget reserve |
+| `OPENMX_DC_GPU_S_CACHE` / `_RESERVE_MB` | 1 / — | Device-resident S12 cache and its budget reserve |
 | `(OPENMX_)GPUSOLVER_MIN_FREE_AFTER_MB` | 1536 | Minimum free VRAM after eigensolver allocations (preflight) |
 | `(OPENMX_)CUBLAS_MIN_FREE_AFTER_MB` | 3072 | Same for cuBLAS |
 
@@ -124,7 +124,7 @@ and `off`/`no`/`false`; `auto`, an empty value and an unset variable select the 
 | Variable | Default | Meaning |
 |---|---|---|
 | `OPENMX_KRYLOV_GPU_FUSED` | 1 | Fused per-atom pipeline (0 = per-call sequence) |
-| `OPENMX_KRYLOV_GPU_KU_CACHE` / `_KU_RESERVE_MB` | 1 / 4096 | Device-resident Krylov basis cache and its budget reserve |
+| `OPENMX_KRYLOV_GPU_KU_CACHE` / `_KU_RESERVE_MB` | 1 / — | Device-resident Krylov basis cache and its budget reserve |
 | `OPENMX_KRYLOV_GPU_DGEMM_MIN_FLOPS` | 5×10⁷ | Minimum m·n·k for dispatching a GEMM to the GPU |
 | `OPENMX_KRYLOV_GPU_EIGEN_MIN` | 300 | Minimum projected dimension Msize3 for the device eigensolve (§7.6) |
 | `OPENMX_KRYLOV_GPU_PROFILE` | 0 | Fused-path breakdown (KRYFUSE lines) |
@@ -149,7 +149,7 @@ and `off`/`no`/`false`; `auto`, an empty value and an unset variable select the 
 | `OPENMX_GRID_FP32` | 0 | Experimental: plain FP32 kernels while the previous step's NormRD is above `OPENMX_GRID_FP32_UNTIL` (1e-5), FP64 afterwards (`OPENMX_GRID_FP32_RESTART`=1 restarts the mixing history at the switch). The FP32 steps stall the SCF near the kernels' error level (sidia333: 27-40 SCF steps instead of 23), so it is off. The configured last SCF step always uses the non-lossy grid kernels, including when `scf.maxIter=1`. Non-finite residuals also end the FP32 phase. A live reduction of maxIter through `_SCF_keywords` after a completed FP32 step cannot retroactively recompute that step |
 | `OPENMX_SETHAM_GPU_RESERVE_MB` / `_RANK_OVERHEAD_MB` | max(total/10,1536) / 512 | Reserve and per-rank overhead estimate |
 | `OPENMX_SETHAM_GPU_KOWNER_ONLY` | 0 | 1 restores the old k-owner-only GPU execution |
-| `OPENMX_SETHAM_BASE_GPU` | 0 | GPU execution of the base combination of H (CPU is faster in practice) |
+| `OPENMX_SETHAM_BASE_GPU` | — | GPU execution of the base combination of H (CPU is faster in practice) That CPU default describes CUDA. HIP defaults to GPU on discrete Radeon and CPU on an APU, subject to the GPU-stage guards. |
 | `OPENMX_SETHAM_GPU_TEST_NEED_MB` / `_FROM_CALL` | — | Test hook injecting a fake phase need |
 | `OPENMX_SETHAM_STREAM_MB` | 256 | Workspace of the streamed pair batches per rank (MiB, at least 8). |
 | `OPENMX_SETHAM_ONTHEFLY_MB` / `_MARGIN_MB` | 128 / 0 | On-the-fly matrix elements: the upper bound of a rank's batch workspace (MiB, at least 32) and device memory kept out of the on-the-fly budget (0: the workspaces are transient and go before the solvers run). |
@@ -169,7 +169,7 @@ and `off`/`no`/`false`; `auto`, an empty value and an unset variable select the 
 | Variable | Default | Meaning |
 |---|---|---|
 | `OPENMX_SETNL_OPENACC` | 1 | The Set_Nonlocal GPU batch (0 = CPU path) |
-| `OPENMX_SETPRO_GPU` | 1 | The three Set_ProExpn_VNA batches (0 = CPU) |
+| `OPENMX_SETPRO_GPU` | — | The three Set_ProExpn_VNA batches (0 = CPU) |
 | `OPENMX_SETPRO_VERBOSE` | 0 | One stderr line per rank and device stage of Set_ProExpn_VNA: the admission figures (need, budget, free memory, pair batch, rank turns), the batch sizes, the elapsed time and the device memory free at that point |
 | `OPENMX_OLPKIN_RADIAL_GPU` | 0 | GPU radial integrals in Set_OLP_Kin (single thread required; usually slower — transfer-bound) |
 | `OPENMX_SETNL_BESSEL_CACHE_MAX` / `OPENMX_OLPKIN_BESSEL_CACHE_MAX` | 128 / 128 | Entries per thread of the spherical-Bessel table caches keyed on the pair distance (Set_Nonlocal, Set_OLP_Kin); 0 disables a cache. |
@@ -191,7 +191,7 @@ and `off`/`no`/`false`; `auto`, an empty value and an unset variable select the 
 | Variable | Default | Meaning |
 |---|---|---|
 | `OPENMX_TOTALENERGY_GPU` | 1 | Master gate for the total-energy device kernels (including NC) |
-| `OPENMX_FORCE_GPU` | 1 | Parent gate for all force GPU paths (collective) |
+| `OPENMX_FORCE_GPU` | — | Parent gate for all force GPU paths (collective) |
 | `OPENMX_FORCE3_GPU` / `OPENMX_FORCE3_GPU_DORB` | 1 / 1 | Force3 GPU trace / on-device dOrbitals recomputation |
 | `OPENMX_FORCE4B_GPU` / `OPENMX_FORCE4B_FUSED` | 1 / 1 | Force4B GPU batch / the fused CPU trace (also a prerequisite of the GPU batch) |
 | `OPENMX_FORCEHNL_GPU` | 1 | Force_HNL GPU batch |
@@ -270,3 +270,77 @@ and `off`/`no`/`false`; `auto`, an empty value and an unset variable select the 
 | `OMPI_COMM_WORLD_LOCAL_SIZE` / `MV2_COMM_WORLD_LOCAL_SIZE` / `SLURM_NTASKS_PER_NODE` / `PMI_LOCAL_SIZE` | — | Ranks on the node, same order of preference, for the per-device budgets. |
 | `OMPI_COMM_WORLD_RANK` / `PMI_RANK` | — | World rank, only as the label of the GEMMul8 statistics. |
 | `HOSTNAME` | — | Host name for the EXX log when `gethostname` is unavailable. |
+
+## Additional AMD HIP controls
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `DC_GPU_MAX_RANKS_PER_DEVICE` | — | Alias of OPENMX_DC_GPU_MAX_RANKS_PER_DEVICE. |
+| `GEMMUL8_SOLVE_MIN_FREE_AFTER_MB` | 256 | Alias of OPENMX_GEMMUL8_SOLVE_MIN_FREE_AFTER_MB. |
+| `MAGMA_OZAKI2_ALGO` | — | MAGMA Ozaki-II algorithm; OpenMX supplies 1stage when unset. |
+| `MAGMA_OZAKI2_LOCAL_RANKS` | 4 | Ranks sharing the MAGMA Ozaki-II workspace budget; default 4. |
+| `MAGMA_OZAKI2_MAX_WS_MB` | 512 | MAGMA Ozaki-II per-process workspace cap in MiB; default 512. |
+| `MAGMA_OZAKI2_MAX_WS_PERCENT` | auto | Additional MAGMA workspace cap as a percentage of device memory; divided by local ranks. |
+| `MAGMA_OZAKI2_MIN_FREE_MB` | — | MAGMA Ozaki-II free-memory guard in MiB; OpenMX supplies 1024 when unset. |
+| `MPI_LOCALRANKID` | auto | Launcher-provided local rank alias; remains local and is never copied from rank 0. |
+| `OPENMX_ABORT_AFTER_EIGEN` | 0 | Diagnostic: terminate after the first band eigensolve. |
+| `OPENMX_ABORT_AFTER_EIGEN_SCF` | 0 | Diagnostic: SCF iteration at which to stop after the band eigensolve; 0 disables. |
+| `OPENMX_BAND_COL_INTERLEAVE_K` | — | Override collinear k-point interleaving; retains the existing automatic layout by default. |
+| `OPENMX_BAND_GEMMUL8_BACKTRANSFORM` | 1 | Use GEMMul8 for the collinear band eigenvector back-transform. |
+| `OPENMX_BAND_GPU_CACHED_TURN_GROUP` | — | GPU turn-group size after SCF iteration 1; defaults to the normal turn group, clamped to 1..1024. |
+| `OPENMX_BAND_GPU_DIAG_RESERVE_MB` | — | Additional band eigensolver memory guard in MiB. |
+| `OPENMX_BAND_GPU_MAX_DEVICE_RANKS` | 16 | Above this many ranks per device, prefer CPU dense band/Krylov paths; 0 disables the limit. |
+| `OPENMX_BAND_NONCOL_PACKED_CACHE` | 1 | Reuse packed Hamiltonian/overlap data for noncollinear bands when available. |
+| `OPENMX_CLUSTER_GPU_GEMM` | 1 | Enable cluster GPU GEMM products; the capacity check accounts for their workspace. |
+| `OPENMX_CLUSTER_GPU_OVERLAP_CACHE_MB` | 2048 | Per-spin host overlap-cache limit in MiB; also limited to 1/32 of available host memory. |
+| `OPENMX_CLUSTER_GPU_ROOT_DENSE` | 1 | Enable the owning-rank dense path for noncollinear clusters. |
+| `OPENMX_CLUSTER_GPU_SERIAL` | 1 | Cluster capacity tiers: 0 disables serialized solves, 1 allows them, 2 skips the concurrent tier. |
+| `OPENMX_CLUSTER_MEASURE_TIME` | 0 | Print HIP cluster dense-solver stage timings. |
+| `OPENMX_CLUSTER_NC_DEVICE_KEEP` | — | Keep the noncollinear cluster solve on the device across SCF steps; automatic default on MI300A. |
+| `OPENMX_CLUSTER_NC_DEVICE_SOLVE` | 1 | Enable the noncollinear cluster device-resident dense solve. |
+| `OPENMX_CLUSTER_NC_SETHAM_CACHE` | 1 | Reuse the noncollinear cluster Set_Hamiltonian cache. |
+| `OPENMX_DCLNO_GPU_OWNER_THRESHOLD` | 2048 | Matrix-order threshold for a DC-LNO owning-rank GPU solve. |
+| `OPENMX_DCLNO_GPU_PROFILE` | 0 | Print DC-LNO GPU proxy timings. |
+| `OPENMX_DCLNO_RETRY_TEST` | 0 | Diagnostic: exercise the DC-LNO retry path. |
+| `OPENMX_DC_GPU_MAX_RANKS_PER_DEVICE` | — | Limit DC GPU owners per device; launcher/topology fallback applies when unset. |
+| `OPENMX_DENSITY_GRID_ONTHEFLY` | 1 | Enable density-grid evaluation from orbitals computed on demand. |
+| `OPENMX_EH0_GPU_CONCURRENCY` | auto | EH0 GPU ranks per turn; 0 bypasses turn scheduling, automatic selects from batch size. |
+| `OPENMX_EIGEN_FP32_SOLVER` | — | FP32 refinement eigensolver backend; magma selects MAGMA. |
+| `OPENMX_EIGEN_REFINE_FIRST_ALL` | 0 | Refine every state in the first cluster SCF step. |
+| `OPENMX_EIGEN_REFINE_MIN_N` | 1000 | Minimum matrix order for refined FP32 eigensolves. |
+| `OPENMX_FORCE4B_ORDERN_AUTO` | 0 | Opt in to automatic order-N Force4B policy. |
+| `OPENMX_FORCE4B_WEAK_FP64_AUTO` | 0 | Opt in to automatic Force4B policy on GPUs with weak native FP64. |
+| `OPENMX_GEMMUL8_SOLVE_MIN_FREE_AFTER_MB` | 256 | Free-memory guard in MiB after solve-specific GEMMul8 workspace allocation. |
+| `OPENMX_GPUSOLVER_CACHE_MB` | 64 | HIP solver scratch/retry-copy cache cap in MiB; overrides the CUSOLVER_CACHE_MB alias. |
+| `OPENMX_GPUSOLVER_PARTIAL_EVD_MIN_N` | 0 | Minimum order for partial HIP eigensolves; 0 keeps the default policy. |
+| `OPENMX_GPUSOLVER_RETRY_TEST` | 0 | Diagnostic: force a second dense solve through the retry backend. |
+| `OPENMX_GPU_ASSUME_APU` | auto | Override APU detection; auto queries HIP device properties. |
+| `OPENMX_GPU_EIGENSOLVER` | — | HIP dense solver: hipsolver, magma, or automatic device policy. |
+| `OPENMX_GPU_EIGENSOLVER_MAGMA_MIN_N` | 0 | In automatic mode, use rocSOLVER below this matrix order; explicit solver selection wins. |
+| `OPENMX_GPU_EIGENSOLVER_PROFILE` | 0 | Print dense HIP eigensolver backend/stage timings. |
+| `OPENMX_GPU_FP32_FP64_RATIO` | 0 | Override FP32/FP64 throughput ratio; nonpositive or auto keeps hardware detection. |
+| `OPENMX_KRYLOV_GEMMUL8` | — | Enable Krylov GEMMul8 products, subject to the input-file GEMMul8 veto. |
+| `OPENMX_KRYLOV_GPU` | — | Enable Krylov GPU dense operations; automatic disables them on oversubscribed devices. |
+| `OPENMX_KRYLOV_GPU_RESERVE_MB` | — | Free-device-memory reserve in MiB for Krylov dense workspaces. |
+| `OPENMX_KRYLOV_MEASURE_TIME` | 0 | Print detailed Krylov stage timings. |
+| `OPENMX_MAGMA_OZAKI2` | 1 | Enable MAGMA Ozaki-II GEMMul8 acceleration. |
+| `OPENMX_MAGMA_OZAKI2_RETRY` | 1 | Keep an input copy and retry failed Ozaki-II solves with the next backend when capacity permits. |
+| `OPENMX_NC_BACKTRANSFORM_BARRIER` | 0 | Opt in to a barrier around noncollinear band back-transforms. |
+| `OPENMX_NC_DENSE_BUFFER_CACHE` | 0 | Keep noncollinear band dense buffers; implied by device-eigenvector DM. |
+| `OPENMX_NC_DEVICE_EIGENVECTOR_DM` | 0 | Opt in to noncollinear band DM generation from device-resident eigenvectors. |
+| `OPENMX_NC_EIGEN_DEMOTE_SETHAM` | 1 | Release orbital-table residency for noncollinear band dense eigensolves. |
+| `OPENMX_NC_HAMILTONIAN_EIGENSOLVER` | — | Set to hipsolver to select the HIP noncollinear Hamiltonian solver explicitly. |
+| `OPENMX_NC_HIPSOLVER_TURN_RELEASE` | — | Release hipSOLVER workspaces after a noncollinear band turn; default follows APU detection. |
+| `OPENMX_NC_MAGMA_TURN_RELEASE` | — | Release MAGMA workspaces after a noncollinear band turn; default follows APU detection. |
+| `OPENMX_OTF_CHECK` | 0 | Diagnostic: compare on-demand and packed orbital matrix elements. |
+| `OPENMX_SETHAM_DEMOTE_ON_PRESSURE` | 1 | Allow resident Set_Hamiltonian tables to be evicted under eigensolver memory pressure. |
+| `OPENMX_SETHAM_GPU` | — | Enable HIP Hamiltonian matrix elements; automatic disables offload on oversubscribed devices. |
+| `OPENMX_SETHAM_HIP_KERNEL` | — | HIP matrix-elements kernel; scalar selects the reference kernel, otherwise use the tiled kernel. |
+| `OPENMX_SETHAM_ONTHEFLY_PINNED_MB` | 1024 | Pinned host-memory cap in MiB for on-demand Hamiltonian staging. |
+| `OPENMX_SETHAM_TIMING` | 0 | Print HIP Hamiltonian timings; values above 1 include device-kernel timing. |
+| `OPENMX_SETNL_OPENMP` | 1 | Enable the HIP/OpenMP nonlocal matrix path. |
+| `OPENMX_SETPRO_DSVNA_GPU` | — | Override the VNA-projector derivative stage; otherwise inherit SETPRO_GPU and the device policy. |
+| `OPENMX_SETPRO_HVNA_GPU` | — | Override the VNA-projector energy stage; otherwise inherit SETPRO_GPU and the device policy. |
+| `OPENMX_SETPRO_HVNA_TURNS` | 1 | Use GPU turns for VNA-projector energy contractions. |
+| `OPENMX_SETPRO_VNA23_GPU` | — | Override the VNA23 force stage; otherwise inherit SETPRO_GPU and the device policy. |
+| `OPENMX_SOLVE_TIMING` | 0 | Print HIP band dense-solve timings. |

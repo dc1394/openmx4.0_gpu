@@ -283,7 +283,7 @@ int grid_precision_configure()
     /* Keep the cached device/environment preference for subsequent inputs. */
     if (!openmx_fp32_enabled()) return 0;
     if (grid_precision_mode < 0) {
-        const char *value = openmx_env_get("OPENMX_GRID_PRECISION");
+        const char *value = openmx_env_at(OPENMX_ENV_GRID_PRECISION);
         if (value != nullptr && value[0] != '\0') {
             if (std::strcmp(value, "df") == 0 || std::strcmp(value, "DF") == 0 || std::strcmp(value, "2") == 0) {
                 grid_precision_mode = 1;
@@ -327,7 +327,7 @@ int device_shared_limit()
 bool use_tiled_kernel()
 {
     /* Keep the original kernel available for reproducible GPU A/B runs. */
-    const char *value = openmx_env_get("OPENMX_SETHAM_HIP_KERNEL");
+    const char *value = openmx_env_at(OPENMX_ENV_SETHAM_HIP_KERNEL);
     return value == nullptr || std::strcmp(value, "scalar") != 0;
 }
 
@@ -388,8 +388,7 @@ int launch_matrix_elements(int pair_count, int spin_count, int max_output_count,
     const dim3 grid(static_cast<unsigned>(pair_count),
                     static_cast<unsigned>((max_output_count + kThreads - 1) / kThreads));
     const bool tiled = use_tiled_kernel();
-    const char *trace = openmx_env_get("OPENMX_SETHAM_TIMING");
-    const bool profile = trace != nullptr && std::atoi(trace) > 1;
+    const bool profile = openmx_env_long_at(OPENMX_ENV_SETHAM_TIMING, 0) > 1;
     std::chrono::steady_clock::time_point start;
     if (profile) start = std::chrono::steady_clock::now();
     if (tiled && 0 < max_no && grid_precision_df()) {

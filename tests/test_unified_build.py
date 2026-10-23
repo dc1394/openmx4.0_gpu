@@ -344,6 +344,21 @@ class UnifiedBuildTest(unittest.TestCase):
                     self.assertNotIn(" -acc ", recipes)
                 self.assertFalse(list(stage.glob("*.o")), "make -n unexpectedly compiled an object")
 
+    @unittest.skipUnless(shutil.which("make"), "GNU make is required for native dependency inspection")
+    def test_registry_ids_invalidate_shared_hip_objects(self):
+        stage = self.stages["HIP"]
+        objects = ("openmx.o", "DIIS_Mixing_DM.o", "Kerker_Mixing_Rhok.o", "Total_Energy.o")
+        completed = subprocess.run(
+            ["make", "--no-print-directory", "-np", "-C", str(stage), "ARCH=gfx942", *objects],
+            capture_output=True, text=True, check=False, env={**os.environ, "LC_ALL": "C"})
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        for obj in objects:
+            with self.subTest(object=obj):
+                row = next(line for line in completed.stdout.splitlines() if line.startswith(obj + ":"))
+                self.assertIn("openmx_env.h", row.split())
+                self.assertIn("openmx_env_registry.h", row.split())
+        self.assertFalse(list(stage.glob("*.o")), "make -np unexpectedly compiled an object")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -2159,18 +2159,18 @@ input_int("scf.Gpu.Num", &amp;SCF_Gpu_Num, 30);</code></pre>
 <tr><td><code>OPENMX_GEMMUL8_TIMING</code> / <code>_FORWARD_TIMING</code></td><td>0 / 0</td><td>一般の GEMM と前向き GEMM のプロセスごとの統計（呼び出し数、秒、GFlop、GEMMul8 と cuBLAS の内訳、法の数、スケーリング）を実行終了時に出力する（ランク表示は <code>OMPI_COMM_WORLD_RANK</code> か <code>PMI_RANK</code>）。</td></tr>
 <tr><td><code>OPENMX_GPU_VERBOSE</code> / <code>OPENMX_GEMM_VERBOSE</code> / <code>(OPENMX_)GEMMUL8_VERBOSE</code></td><td>0</td><td>GEMMul8 ブリッジの詳細ログ（作業領域の判断、退避、forward 段の要約）。4 つの名前をこの順に読み、後のものが前のものを上書きする。</td></tr>
 <tr><td colspan="3" style="background:#f0f4fa;"><b>バンド計算(Band_DFT_Col.c / Band_DFT_NonCol.c)</b></td></tr>
-<tr><td><code>OPENMX_BAND_GPU_DIAG</code></td><td>auto</td><td><b>1</b>=見積り判定を無視して GPU 密行列経路を強制、<b>0</b>=常に ELPA/ScaLAPACK(§5.6)</td></tr>
-<tr><td><code>OPENMX_BAND_GPU_SWITCH_NUM</code></td><td>800</td><td>コリニアバンド密行列経路の GPU/CPU 切替次元(専用ノブのない経路は <code>GPU_CPU_SWITCH_NUM</code>=1000 のまま)。RTX 5080 を 8 ランク共有した実測クロスオーバーは n ≈ 300〜400</td></tr>
+<tr><td><code>OPENMX_BAND_GPU_DIAG</code></td><td>—</td><td><b>1</b>=見積り判定を無視して GPU 密行列経路を強制、<b>0</b>=常に ELPA/ScaLAPACK(§5.6) HIP では1は容量ガード付きの密GPU経路を有効にし、メモリ容量チェックは省略しません。0はCPU密対角化です。</td></tr>
+<tr><td><code>OPENMX_BAND_GPU_SWITCH_NUM</code></td><td>800</td><td>コリニアバンド密行列経路の GPU/CPU 切替次元(専用ノブのない経路は <code>GPU_CPU_SWITCH_NUM</code>=1000 のまま)。RTX 5080 を 8 ランク共有した実測クロスオーバーは n ≈ 300〜400 CUDA の既定値は800、HIP は400。HIP ではGPU共有ランク数のガードにより、この閾値とは別に密対角化をCPUへ切り替える場合があります。</td></tr>
 <tr><td><code>OPENMX_BAND_NONCOL_GPU_SWITCH_NUM</code></td><td>800</td><td>ノンコリニアバンド密行列経路の同ノブ。2n と比較(実測クロスオーバーは 2n ≈ 250〜400)</td></tr>
 <tr><td><code>OPENMX_BAND_GPU_DM</code></td><td>1</td><td><b>0</b>=コリニアバンドの ScaLAPACK/ELPA フォールバック時の DM 蓄積を CPU ループに戻す。既定ではフォールバックでも DM は GPU 上で行う(フルソルブが載らなくても固有ベクトルパネルは載るため)</td></tr>
 <tr><td><code>OPENMX_BAND_NONCOL_GPU_DM</code></td><td>1</td><td><b>0</b>=ノンコリニアの ScaLAPACK/ELPA フォールバック multi-k ループの k 点ごと DM 蓄積を CPU ループに戻す(k-dense GPU フローは元々デバイス上で DM を蓄積する)</td></tr>
-<tr><td><code>OPENMX_BAND_GPU_RESERVE_MB</code></td><td>max(総VRAM/10, 1536)</td><td>並列度決定・fits 判定で空けておく予約量の引き上げ</td></tr>
+<tr><td><code>OPENMX_BAND_GPU_RESERVE_MB</code></td><td>max(総VRAM/10, 1536)</td><td>並列度決定・fits 判定で空けておく予約量の引き上げ 表の既定値はCUDA向けです。HIP は512 MiBの予約量を維持します。</td></tr>
 <tr><td><code>OPENMX_BAND_GPU_RANK_OVERHEAD_MB</code></td><td>256</td><td>per-rank 所要量見積りに加算するランタイムオーバーヘッド</td></tr>
 <tr><td><code>OPENMX_BAND_SYEVDX_NOVECTOR</code></td><td>1</td><td>固有値のみ必要な第 1 パスを NOVECTOR で解く(0 で旧動作)</td></tr>
-<tr><td><code>OPENMX_BAND_GPU_MAX_CONCURRENT_K</code> / <code>OPENMX_BAND_GPU_TURN_GROUP</code> / <code>OPENMX_BAND_GPU_MAX_RANKS_PER_DEVICE</code></td><td>制限なし</td><td>同時実行ランク数の<b>明示上限</b>(この優先順で最初に見つかったもの)。旧版の「初期値」の意味は廃止され、実際の並列度は常に適応スキャンで決まる</td></tr>
+<tr><td><code>OPENMX_BAND_GPU_MAX_CONCURRENT_K</code> / <code>OPENMX_BAND_GPU_TURN_GROUP</code> / <code>OPENMX_BAND_GPU_MAX_RANKS_PER_DEVICE</code></td><td>制限なし</td><td>同時実行ランク数の<b>明示上限</b>(この優先順で最初に見つかったもの)。旧版の「初期値」の意味は廃止され、実際の並列度は常に適応スキャンで決まる 適応スキャンはCUDAの方針です。HIP は既存のターングループ方針を維持し、共線の同時実行数はn <= 512で8、それ以外は既定のターングループ数です。明示した上限も適用します。</td></tr>
 <tr><td><code>OPENMX_GPUSOLVER_SERIAL_GPU_TURNS</code></td><td>1</td><td>all_knum==1 経路の GPU ターン直列化(0 で並行投入)</td></tr>
-<tr><td><code>OPENMX_BAND_GPU_PERSISTENT</code> / <code>_MIN_FREE_MB</code></td><td>0 / 2048</td><td>SCF 反復間のデバイスバッファ常駐(共有 GPU では非推奨)</td></tr>
-<tr><td><code>OPENMX_BAND_GEMMUL8_TURN_RELEASE</code></td><td>1</td><td>ターン毎の GEMMul8 ワークスペース解放(0 で保持)</td></tr>
+<tr><td><code>OPENMX_BAND_GPU_PERSISTENT</code> / <code>_MIN_FREE_MB</code></td><td>— / 2048</td><td>SCF 反復間のデバイスバッファ常駐(共有 GPU では非推奨)</td></tr>
+<tr><td><code>OPENMX_BAND_GEMMUL8_TURN_RELEASE</code></td><td>—</td><td>ターン毎の GEMMul8 ワークスペース解放(0 で保持)</td></tr>
 <tr><td><code>OPENMX_BAND_PROFILE</code></td><td>0</td><td>性能計測カウンタの表示。ランクごとの段階行 SETHPROF(Set_Hamiltonian)、SETHOTFPROF / SETHOTFDENPROF(その場計算のバッチ: 詰め替え・評価・カーネル)、SETNLPROF(Set_Nonlocal: DS_NL・受信原子の積・局所の積)、CLUSTERDMPROF(クラスターソルバの密度行列の集計)、CLUSTERDISTPROF(固有ベクトルの配布。密な求解を持たないランクでは求解待ちを含む)、FORCEHNL2PROF(Force_HNL 第 2 ケースのバッチ: 構築・デバイス・後処理)、truncation と Total_Energy の区間タイマー、SETVPOTPROF(Set_Vpot: xc、Vxc の D→B コピー、VNA、組み立て、混合 FFT、B→C 再分配)、SETDENPROF(Set_Density_Grid: 判定・求積・A→B・重ね合わせ・B→D)も共用</td></tr>
 <tr><td><code>OPENMX_BAND_COL_KCACHE_MB</code> / <code>OPENMX_BAND_NONCOL_KCACHE_MB</code></td><td>1024 / 1024</td><td>GPU バンド経路の k 点ごとの稠密固有ベクトルパネルのホストキャッシュ（ランクあたり MiB。<code>/proc/meminfo</code> のランクあたり利用可能メモリでも制限）。0 でキャッシュ無効。</td></tr>
 <tr><td><code>OPENMX_BAND_COL_OVERLAP_CACHE_MB</code> / <code>OPENMX_BAND_NONCOL_OVERLAP_CACHE_MB</code></td><td>512 / 512</td><td>SCF ステップ間で再利用する k 点の重なり変換（とその固有値）のホストキャッシュ（ランクあたり MiB。0 で無効）。</td></tr>
@@ -2179,17 +2179,17 @@ input_int("scf.Gpu.Num", &amp;SCF_Gpu_Num, 30);</code></pre>
 <tr><td><code>OPENMX_BAND_CACHE_TRACE</code> / <code>OPENMX_BAND_NONCOL_CACHE_TRACE</code></td><td>0 / 0</td><td>k 点キャッシュのヒット数と大きさをランクと SCF ステップごとに 1 行出力する（非共線では <code>BAND_NONCOL_CACHE</code> 行）。</td></tr>
 <tr><td><code>OPENMX_BAND_NONCOL_INTERLEAVE_K</code></td><td>auto</td><td>非共線バンド: 稠密 k 点を解く順序を所有ランク間で交互に並べる。0 で k の自然順。</td></tr>
 <tr><td colspan="3" style="background:#f0f4fa;"><b>クラスタ計算(Cluster_DFT_Col.c / Cluster_DFT_NonCol.c)</b></td></tr>
-<tr><td><code>OPENMX_CLUSTER_GPU_DIAG</code></td><td>auto</td><td><b>1</b>=実予約失敗でも GPU 強制(失敗時は診断つき abort)、<b>0</b>=常に ELPA(§5.6)</td></tr>
+<tr><td><code>OPENMX_CLUSTER_GPU_DIAG</code></td><td>—</td><td><b>1</b>=実予約失敗でも GPU 強制(失敗時は診断つき abort)、<b>0</b>=常に ELPA(§5.6)</td></tr>
 <tr><td><code>OPENMX_CLUSTER_GPU_SWITCH_NUM</code></td><td>400</td><td>コリニアクラスタ密行列経路の GPU/CPU 切替次元(実測では n=240 まで全サイズで GPU が勝利)</td></tr>
 <tr><td><code>OPENMX_CLUSTER_NONCOL_GPU_SWITCH_NUM</code></td><td>400</td><td>ノンコリニアクラスタ密行列経路の同ノブ。2n と比較(実測では 2n=480 まで GPU が勝利)</td></tr>
-<tr><td><code>OPENMX_CLUSTER_GPU_DIAG_RESERVE_MB</code></td><td>1024</td><td>予約プローブ後に残すべき空き VRAM</td></tr>
+<tr><td><code>OPENMX_CLUSTER_GPU_DIAG_RESERVE_MB</code></td><td>—</td><td>予約プローブ後に残すべき空き VRAM</td></tr>
 <tr><td><code>OPENMX_CLUSTER_GPU_DIAG_SERIAL</code></td><td>1</td><td>2 スピンが同居できないときの直列化モード(0=無効、2=直列強制)</td></tr>
 <tr><td><code>OPENMX_CLUSTER_GPU_DM</code></td><td>1</td><td>DM/EDM の GPU 蓄積(0 で CPU ループ)</td></tr>
 <tr><td><code>OPENMX_CLUSTER_GPU_DM_ALL</code></td><td>1</td><td>クラスターの密度行列を全ランクがデバイスで蓄積する(自分の状態スライスを半減リトライでステージ)。0 で密な求解を持つランクだけ、他は CPU ループ(原子でスレッド分割)</td></tr>
 <tr><td><code>OPENMX_CLUSTER_GEMMUL8_TURN_RELEASE</code></td><td>1</td><td>ソルブ毎の GEMMul8 ワークスペース解放(未設定時は BAND 設定を継承)</td></tr>
-<tr><td><code>OPENMX_CLUSTER_GPU_DM_GEMM</code></td><td>1</td><td>非共線クラスタの密な経路の密度行列を、占有状態の積 W<sup>H</sup>W(GEMMul8)1 回と疎な成分の取り出しで作り、全ランクの総和の代わりにルートのバッファを配る。<b>0</b> で従来の成分ごとの状態和(RTX 5080 の sidia333 で 1 ステップ 432 ms)</td></tr>
+<tr><td><code>OPENMX_CLUSTER_GPU_DM_GEMM</code></td><td>—</td><td>非共線クラスタの密な経路の密度行列を、占有状態の積 W<sup>H</sup>W(GEMMul8)1 回と疎な成分の取り出しで作り、全ランクの総和の代わりにルートのバッファを配る。<b>0</b> で従来の成分ごとの状態和(RTX 5080 の sidia333 で 1 ステップ 432 ms)</td></tr>
 <tr><td><code>OPENMX_CLUSTER_PROFILE</code></td><td>0</td><td>クラスター稠密 GPU ソルバーの段階別プロファイル（重なり、収集、前後の変換、固有値分解、解放、密度行列）をランクごとに出力する。各段階の前後でデバイスを同期するため、プロファイルなしの実行時間とは異なる。</td></tr>
-<tr><td><code>OPENMX_CLUSTER_GPU_RETAIN_SCRATCH</code></td><td>auto</td><td>共線クラスター: 密度行列の完成後に稠密作業領域（固有ベクトルの退避、一時配列）をデバイスに残すか。未設定 = デバイスの空きが半分未満なら解放、<b>1</b> = 常に保持、<b>0</b> = 常に解放（変換済み重なり行列は常に保持）。</td></tr>
+<tr><td><code>OPENMX_CLUSTER_GPU_RETAIN_SCRATCH</code></td><td>—</td><td>共線クラスター: 密度行列の完成後に稠密作業領域（固有ベクトルの退避、一時配列）をデバイスに残すか。未設定 = デバイスの空きが半分未満なら解放、<b>1</b> = 常に保持、<b>0</b> = 常に解放（変換済み重なり行列は常に保持）。</td></tr>
 <tr><td><code>OPENMX_GEMM_SAMPLE_DIR</code> / <code>_ITERS</code></td><td>未設定（オフ） / 1</td><td>診断用: 変換済み重なり X（共線）と固有値ソルバーが受け取る変換済みハミルトニアン（<code>X_g&lt;geometry&gt;.bin</code>、<code>Hs2_scf&lt;step&gt;.bin</code>、列優先バイナリ）を、<code>_ITERS</code> に列挙した SCF ステップ（カンマ区切り）について既存のディレクトリへ書き出す。<code>tests/eigen_precision_probe.cu</code> の入力になる。</td></tr>
 <tr><td colspan="3" style="background:#f0f4fa;"><b>精密化 FP32 固有値ソルバー（eigen_refine_gpu.c）</b></td></tr>
 <tr><td><code>OPENMX_EIGEN_REFINE</code></td><td>FP32:FP64 の性能比が 8 以上の GPU(GeForce、RTX PRO 6000 Blackwell など)で、そのソルバーの種類の GEMMul8(共線は実数、非共線は複素)が有効なら 2、それ以外は 0</td><td>クラスタの密な固有値計算(共線はスピンごと、非共線)とバンド法(1 ランク 1 k 点: 全 k 点の推定値を集めてから補正。1 ランクに複数 k 点: 1 回目のパスは前ステップの化学ポテンシャルで補正して基底をホストに保持(ランクあたり <code>OPENMX_BAND_REFINE_BASIS_MB</code> MB、既定 1024)、2 回目のパスはその基底からこのステップの化学ポテンシャルで補正): K &gt; 0 で n 個(非共線は 2n 個)の固有対を FP32 で解き、必要な MaxN 個を荻田・相島法で K 回補正(積は GEMMul8、モジュール <code>eigen_refine_gpu.c</code>)、部分占有のクラスタはレイリー・リッツで回転。SCF の 2 ステップ目以降は、前のステップの固有ベクトルが新しいハミルトニアンに対して残差 2e-5 以内ならそこから補正を始める(<code>OPENMX_EIGEN_REFINE_WARM</code>)。SCF を終えるステップは FP64 でもう一度解き、<code>scf.maxIter</code> の最後のステップは FP64。スピン分極では 2 つのスピンワールドのオーナーが固有値の推定値を交換して化学ポテンシャルを求める(バンド法では全 k 点の推定値を集めてから補正する)(1 ランクで両スピンを解く場合、直列スピンモード、XANES、空軌道・空状態の指定時は FP64 のまま)。<b>0</b> でオフ。RTX 5080(18 ランク)の非共線 sidia333(2n = 5616)で SCF ステップ数は同じまま 261.3 秒が 197.9 秒。バンド法は必要な maxn 列を補正し、残りの n &minus; maxn 列を毎ステップ補正済みの列に対して回転させる(<code>OPENMX_EIGEN_REFINE_COMPLEMENT</code>、既定 1): 放置すると、その列が持つ FP32 程度の占有部分空間成分のせいで補正列の不動点が占有部分空間から 1e-8 ほどずれ、SCF 反復が 2〜5 回増え、ウォームスタートに偏りが出ていた。k 点オーナーが GPU の 1 ターン群に入りきらないときは、1 ランク 1 k 点の解も複数 k 点経路と同じ 2 パス(前ステップの化学ポテンシャルで補正して基底をホストへ、そこから 2 パス目)に分けるので、16 GB のカードでも補正される。診断: <code>OPENMX_EIGEN_REFINE_CHECK=1</code> で補正列の残差と直交性を占有クラスごとに FP64 の積で表示、<code>OPENMX_EIGEN_REFINE_ALL=1</code> で全列を補正</td></tr>
@@ -2213,7 +2213,7 @@ input_int("scf.Gpu.Num", &amp;SCF_Gpu_Num, 30);</code></pre>
 <tr><td colspan="3" style="background:#f0f4fa;"><b>DC 法(Divide_Conquer.c)</b></td></tr>
 <tr><td><code>OPENMX_DC_GPU_THRESHOLD</code></td><td>400</td><td>GPU 化する局所クラスタ次元 NUM の下限(コリニア)</td></tr>
 <tr><td><code>OPENMX_DC_NONCOL_GPU_THRESHOLD</code></td><td>300</td><td>GPU 化するスピノル次元 2·NUM の下限(非コリニア)</td></tr>
-<tr><td><code>OPENMX_DC_GPU_S_CACHE</code> / <code>_RESERVE_MB</code></td><td>1 / 4096</td><td>S12 パネルのデバイス常駐キャッシュとその予算予約</td></tr>
+<tr><td><code>OPENMX_DC_GPU_S_CACHE</code> / <code>_RESERVE_MB</code></td><td>1 / —</td><td>S12 パネルのデバイス常駐キャッシュとその予算予約</td></tr>
 <tr><td><code>(OPENMX_)GPUSOLVER_MIN_FREE_AFTER_MB</code></td><td>1536</td><td>固有値ソルバ用確保後の最低空き VRAM(preflight)</td></tr>
 <tr><td><code>(OPENMX_)CUBLAS_MIN_FREE_AFTER_MB</code></td><td>3072</td><td>cuBLAS 用の同上</td></tr>
 <tr><td colspan="3" style="background:#f0f4fa;"><b>DC-LNO 法(Divide_Conquer_LNO.c)</b></td></tr>
@@ -2223,7 +2223,7 @@ input_int("scf.Gpu.Num", &amp;SCF_Gpu_Num, 30);</code></pre>
 <tr><td><code>OPENMX_DCLNO_PROFILE</code></td><td>0</td><td>DC-LNO GPU 経路の SCF 単位の集計行（全ランクが同じ報告用集団通信に参加する）。</td></tr>
 <tr><td colspan="3" style="background:#f0f4fa;"><b>Krylov 法(Krylov.c)</b></td></tr>
 <tr><td><code>OPENMX_KRYLOV_GPU_FUSED</code></td><td>1</td><td>原子別パイプラインの融合パス(0 で per-call シーケンス)</td></tr>
-<tr><td><code>OPENMX_KRYLOV_GPU_KU_CACHE</code> / <code>_KU_RESERVE_MB</code></td><td>1 / 4096</td><td>Krylov 基底のデバイス常駐キャッシュとその予算予約</td></tr>
+<tr><td><code>OPENMX_KRYLOV_GPU_KU_CACHE</code> / <code>_KU_RESERVE_MB</code></td><td>1 / —</td><td>Krylov 基底のデバイス常駐キャッシュとその予算予約</td></tr>
 <tr><td><code>OPENMX_KRYLOV_GPU_DGEMM_MIN_FLOPS</code></td><td>5×10⁷</td><td>GEMM を GPU に投げる下限(m·n·k)</td></tr>
 <tr><td><code>OPENMX_KRYLOV_GPU_EIGEN_MIN</code></td><td>300</td><td>部分空間対角化をデバイスで解く射影次元 Msize3 の下限(§7.6)</td></tr>
 <tr><td><code>OPENMX_KRYLOV_GPU_PROFILE</code></td><td>0</td><td>融合パスの内訳(KRYFUSE 行)出力</td></tr>
@@ -2244,7 +2244,7 @@ input_int("scf.Gpu.Num", &amp;SCF_Gpu_Num, 30);</code></pre>
 <tr><td><code>OPENMX_GRID_FP32</code></td><td>0</td><td>実験用: 前ステップの NormRD が <code>OPENMX_GRID_FP32_UNTIL</code>(1e-5)より大きい間は素の FP32 カーネル、以後 FP64(<code>OPENMX_GRID_FP32_RESTART</code>=1 で切替時に混合履歴を再開)。FP32 のステップはカーネルの誤差の水準で SCF が停滞する(sidia333 で 23 回が 27〜40 回)ためオフ。設定された SCF 最終ステップは <code>scf.maxIter=1</code> の場合も非損失の格子カーネルを使う。残差が NaN/Inf の場合も FP32 を終了する。FP32 ステップ完了後に <code>_SCF_keywords</code> で maxIter を引き下げた場合、そのステップを遡って再計算することはしない</td></tr>
 <tr><td><code>OPENMX_SETHAM_GPU_RESERVE_MB</code> / <code>_RANK_OVERHEAD_MB</code></td><td>max(総/10,1536) / 512</td><td>予約量とランクあたりオーバーヘッド見積り</td></tr>
 <tr><td><code>OPENMX_SETHAM_GPU_KOWNER_ONLY</code></td><td>0</td><td>1 で旧来の k オーナー限定 GPU 実行に戻す</td></tr>
-<tr><td><code>OPENMX_SETHAM_BASE_GPU</code></td><td>0</td><td>H の base 結合を GPU 実行(実測では CPU が速い)</td></tr>
+<tr><td><code>OPENMX_SETHAM_BASE_GPU</code></td><td>—</td><td>H の base 結合を GPU 実行(実測では CPU が速い) CPUを既定とする記述はCUDA向けです。HIP は独立GPUのRadeonでGPU、APUでCPUを既定とし、GPU段階のガードも適用します。</td></tr>
 <tr><td><code>OPENMX_SETHAM_GPU_TEST_NEED_MB</code> / <code>_FROM_CALL</code></td><td>—</td><td>偽のフェーズ需要を注入するテスト用フック</td></tr>
 <tr><td><code>OPENMX_SETHAM_STREAM_MB</code></td><td>256</td><td>ストリーミングする対バッチのランクあたり作業領域（MiB、最小 8）。</td></tr>
 <tr><td><code>OPENMX_SETHAM_ONTHEFLY_MB</code> / <code>_MARGIN_MB</code></td><td>128 / 0</td><td>その場計算の行列要素: ランクのバッチ作業領域の上限（MiB、最小 32）と、その場計算の予算から除外しておくデバイスメモリ（0: 作業領域は一時的でソルバー実行前に解放される）。</td></tr>
@@ -2256,7 +2256,7 @@ input_int("scf.Gpu.Num", &amp;SCF_Gpu_Num, 30);</code></pre>
 <tr><td><code>OPENMX_SETHAM_SIMD_TRACE</code> / <code>OPENMX_DENSITY_GRID_COL_SIMD_TRACE</code> / <code>_NC_SIMD_TRACE</code></td><td>0</td><td>それぞれのカーネルで選ばれた SIMD バックエンドを rank 0 が一度出力する。</td></tr>
 <tr><td colspan="3" style="background:#f0f4fa;"><b>その他の行列要素構築</b></td></tr>
 <tr><td><code>OPENMX_SETNL_OPENACC</code></td><td>1</td><td>Set_Nonlocal の GPU バッチ(0 で CPU パス)</td></tr>
-<tr><td><code>OPENMX_SETPRO_GPU</code></td><td>1</td><td>Set_ProExpn_VNA の 3 バッチ(0 で CPU)</td></tr>
+<tr><td><code>OPENMX_SETPRO_GPU</code></td><td>—</td><td>Set_ProExpn_VNA の 3 バッチ(0 で CPU)</td></tr>
 <tr><td><code>OPENMX_SETPRO_VERBOSE</code></td><td>0</td><td>Set_ProExpn_VNA のデバイス段ごとにランク 1 行を stderr へ: 採用判定の数値(必要量、予算、空き、ペアバッチ、ランクターン)、バッチの大きさ、所要時間、その時点のデバイス空き容量</td></tr>
 <tr><td><code>OPENMX_OLPKIN_RADIAL_GPU</code></td><td>0</td><td>Set_OLP_Kin の動径積分を GPU 実行(スレッド数 1 必須。転送律速で通常は CPU が速い)</td></tr>
 <tr><td><code>OPENMX_SETNL_BESSEL_CACHE_MAX</code> / <code>OPENMX_OLPKIN_BESSEL_CACHE_MAX</code></td><td>128 / 128</td><td>対の距離をキーとする球ベッセル表キャッシュのスレッドあたりエントリ数（Set_Nonlocal、Set_OLP_Kin）。0 でキャッシュ無効。</td></tr>
@@ -2270,7 +2270,7 @@ input_int("scf.Gpu.Num", &amp;SCF_Gpu_Num, 30);</code></pre>
 <tr><td><code>OPENMX_DENSITY_GRID_GPU_LOCAL_CACHE_MB</code></td><td>32</td><td>分散（ローカル）密度モード: ランクごとに保持する CSR とバッファの上限（MiB。空き VRAM の小さな割合でさらに制限）。0 で呼び出しごとに解放。</td></tr>
 <tr><td colspan="3" style="background:#f0f4fa;"><b>全エネルギー・力(Total_Energy.c / Force.c)</b></td></tr>
 <tr><td><code>OPENMX_TOTALENERGY_GPU</code></td><td>1</td><td>全エネルギー系デバイスカーネルの一括ゲート(NC 含む)</td></tr>
-<tr><td><code>OPENMX_FORCE_GPU</code></td><td>1</td><td>力計算の全 GPU 経路の親ゲート(集団判定)</td></tr>
+<tr><td><code>OPENMX_FORCE_GPU</code></td><td>—</td><td>力計算の全 GPU 経路の親ゲート(集団判定)</td></tr>
 <tr><td><code>OPENMX_FORCE3_GPU</code> / <code>OPENMX_FORCE3_GPU_DORB</code></td><td>1 / 1</td><td>Force3 トレースの GPU 化 / dOrbitals のオンデバイス再計算</td></tr>
 <tr><td><code>OPENMX_FORCE4B_GPU</code> / <code>OPENMX_FORCE4B_FUSED</code></td><td>1 / 1</td><td>Force4B の GPU バッチ / CPU 側融合トレース(GPU バッチの前提でもある)</td></tr>
 <tr><td><code>OPENMX_FORCEHNL_GPU</code></td><td>1</td><td>Force_HNL の GPU バッチ</td></tr>
@@ -2325,6 +2325,76 @@ input_int("scf.Gpu.Num", &amp;SCF_Gpu_Num, 30);</code></pre>
 <tr><td><code>OMPI_COMM_WORLD_LOCAL_SIZE</code> / <code>MV2_COMM_WORLD_LOCAL_SIZE</code> / <code>SLURM_NTASKS_PER_NODE</code> / <code>PMI_LOCAL_SIZE</code></td><td>—</td><td>ノード内のランク数（同じ優先順）。デバイスごとの予算に使う。</td></tr>
 <tr><td><code>OMPI_COMM_WORLD_RANK</code> / <code>PMI_RANK</code></td><td>—</td><td>ワールドランク。GEMMul8 統計の表示にのみ使う。</td></tr>
 <tr><td><code>HOSTNAME</code></td><td>—</td><td><code>gethostname</code> が使えないときの EXX ログ用ホスト名。</td></tr>
+<tr><td colspan="3" style="background:#f0f4fa;"><b>AMD HIP の追加設定</b></td></tr>
+<tr><td><code>DC_GPU_MAX_RANKS_PER_DEVICE</code></td><td>—</td><td>OPENMX_DC_GPU_MAX_RANKS_PER_DEVICE の別名。</td></tr>
+<tr><td><code>GEMMUL8_SOLVE_MIN_FREE_AFTER_MB</code></td><td>256</td><td>OPENMX_GEMMUL8_SOLVE_MIN_FREE_AFTER_MB の別名。</td></tr>
+<tr><td><code>MAGMA_OZAKI2_ALGO</code></td><td>—</td><td>MAGMA Ozaki-II の方式。未指定時は OpenMX が 1stage を設定。</td></tr>
+<tr><td><code>MAGMA_OZAKI2_LOCAL_RANKS</code></td><td>4</td><td>MAGMA Ozaki-II の作業領域予算を共有するランク数。既定値4。</td></tr>
+<tr><td><code>MAGMA_OZAKI2_MAX_WS_MB</code></td><td>512</td><td>MAGMA Ozaki-II のプロセス当たり作業領域上限（MiB）。既定値512。</td></tr>
+<tr><td><code>MAGMA_OZAKI2_MAX_WS_PERCENT</code></td><td>auto</td><td>MAGMA 作業領域の追加上限をデバイスメモリの割合で指定し、共有ランク数で分割。</td></tr>
+<tr><td><code>MAGMA_OZAKI2_MIN_FREE_MB</code></td><td>—</td><td>MAGMA Ozaki-II が残す空きメモリ（MiB）。未指定時は OpenMX が1024を設定。</td></tr>
+<tr><td><code>MPI_LOCALRANKID</code></td><td>auto</td><td>ランチャーが設定するノード内ランク番号の別名。rank 0 から複製せず各プロセスの値を使用。</td></tr>
+<tr><td><code>OPENMX_ABORT_AFTER_EIGEN</code></td><td>0</td><td>診断用。最初のバンド固有値計算後に終了。</td></tr>
+<tr><td><code>OPENMX_ABORT_AFTER_EIGEN_SCF</code></td><td>0</td><td>診断用。バンド固有値計算後に終了するSCF反復番号。0で無効。</td></tr>
+<tr><td><code>OPENMX_BAND_COL_INTERLEAVE_K</code></td><td>—</td><td>共線バンドのk点交互配置を指定。未指定時は既存の自動配置。</td></tr>
+<tr><td><code>OPENMX_BAND_GEMMUL8_BACKTRANSFORM</code></td><td>1</td><td>共線バンドの固有ベクトル逆変換にGEMMul8を使用。</td></tr>
+<tr><td><code>OPENMX_BAND_GPU_CACHED_TURN_GROUP</code></td><td>—</td><td>SCF2回目以降のGPUターングループ数。未指定時は通常のグループ数、範囲1〜1024。</td></tr>
+<tr><td><code>OPENMX_BAND_GPU_DIAG_RESERVE_MB</code></td><td>—</td><td>バンド固有値ソルバー用の追加メモリ余裕（MiB）。</td></tr>
+<tr><td><code>OPENMX_BAND_GPU_MAX_DEVICE_RANKS</code></td><td>16</td><td>1デバイスを共有するランク数がこの値を超えると密バンド・KrylovのCPU経路を優先。0で上限無効。</td></tr>
+<tr><td><code>OPENMX_BAND_NONCOL_PACKED_CACHE</code></td><td>1</td><td>非共線バンドで利用可能なパック済みHamiltonian・重なり行列を再利用。</td></tr>
+<tr><td><code>OPENMX_CLUSTER_GPU_GEMM</code></td><td>1</td><td>クラスタのGPU GEMM積を有効化。容量判定には作業領域も含む。</td></tr>
+<tr><td><code>OPENMX_CLUSTER_GPU_OVERLAP_CACHE_MB</code></td><td>2048</td><td>スピン当たりホスト重なり行列キャッシュ上限（MiB）。利用可能ホストメモリの1/32でも制限。</td></tr>
+<tr><td><code>OPENMX_CLUSTER_GPU_ROOT_DENSE</code></td><td>1</td><td>非共線クラスタで担当ランクの密行列経路を有効化。</td></tr>
+<tr><td><code>OPENMX_CLUSTER_GPU_SERIAL</code></td><td>1</td><td>クラスタの容量段階。0は直列ターン無効、1は許可、2は同時実行段階を省略。</td></tr>
+<tr><td><code>OPENMX_CLUSTER_MEASURE_TIME</code></td><td>0</td><td>HIPクラスタ密固有値ソルバーの段階別時間を表示。</td></tr>
+<tr><td><code>OPENMX_CLUSTER_NC_DEVICE_KEEP</code></td><td>—</td><td>非共線クラスタのデバイス上の解法領域をSCF間で保持。自動時はMI300Aで有効。</td></tr>
+<tr><td><code>OPENMX_CLUSTER_NC_DEVICE_SOLVE</code></td><td>1</td><td>非共線クラスタのデバイス常駐密固有値計算を有効化。</td></tr>
+<tr><td><code>OPENMX_CLUSTER_NC_SETHAM_CACHE</code></td><td>1</td><td>非共線クラスタのSet_Hamiltonianキャッシュを再利用。</td></tr>
+<tr><td><code>OPENMX_DCLNO_GPU_OWNER_THRESHOLD</code></td><td>2048</td><td>DC-LNOを担当ランクのGPUで解く行列次数の閾値。</td></tr>
+<tr><td><code>OPENMX_DCLNO_GPU_PROFILE</code></td><td>0</td><td>DC-LNOのGPU代理処理の時間を表示。</td></tr>
+<tr><td><code>OPENMX_DCLNO_RETRY_TEST</code></td><td>0</td><td>診断用。DC-LNOの再試行経路を実行。</td></tr>
+<tr><td><code>OPENMX_DC_GPU_MAX_RANKS_PER_DEVICE</code></td><td>—</td><td>デバイス当たりDC GPU担当ランク数を制限。未指定時は既存のランチャー・構成情報を使用。</td></tr>
+<tr><td><code>OPENMX_DENSITY_GRID_ONTHEFLY</code></td><td>1</td><td>必要時に計算する軌道から密度格子を評価。</td></tr>
+<tr><td><code>OPENMX_EH0_GPU_CONCURRENCY</code></td><td>auto</td><td>EH0のターン当たりGPUランク数。0はターン制御を省略、自動時はバッチ規模で決定。</td></tr>
+<tr><td><code>OPENMX_EIGEN_FP32_SOLVER</code></td><td>—</td><td>FP32精密化用固有値ソルバー。magmaでMAGMAを選択。</td></tr>
+<tr><td><code>OPENMX_EIGEN_REFINE_FIRST_ALL</code></td><td>0</td><td>クラスタの最初のSCF段階で全状態を精密化。</td></tr>
+<tr><td><code>OPENMX_EIGEN_REFINE_MIN_N</code></td><td>1000</td><td>FP32精密化を使う最小行列次数。</td></tr>
+<tr><td><code>OPENMX_FORCE4B_ORDERN_AUTO</code></td><td>0</td><td>Force4BのオーダーN自動方針を有効化。</td></tr>
+<tr><td><code>OPENMX_FORCE4B_WEAK_FP64_AUTO</code></td><td>0</td><td>ネイティブFP64性能が低いGPU向けForce4B自動方針を有効化。</td></tr>
+<tr><td><code>OPENMX_GEMMUL8_SOLVE_MIN_FREE_AFTER_MB</code></td><td>256</td><td>固有値計算用GEMMul8領域の確保後に残す空きメモリ（MiB）。</td></tr>
+<tr><td><code>OPENMX_GPUSOLVER_CACHE_MB</code></td><td>64</td><td>HIPソルバーの一時領域・再試行コピーの保持上限（MiB）。CUSOLVER_CACHE_MB別名より優先。</td></tr>
+<tr><td><code>OPENMX_GPUSOLVER_PARTIAL_EVD_MIN_N</code></td><td>0</td><td>HIP部分固有値計算を選ぶ最小次数。0は既定の方針。</td></tr>
+<tr><td><code>OPENMX_GPUSOLVER_RETRY_TEST</code></td><td>0</td><td>診断用。再試行バックエンドで密固有値計算をもう一度実行。</td></tr>
+<tr><td><code>OPENMX_GPU_ASSUME_APU</code></td><td>auto</td><td>APU判定を上書き。autoはHIPデバイス情報から判定。</td></tr>
+<tr><td><code>OPENMX_GPU_EIGENSOLVER</code></td><td>—</td><td>HIP密固有値ソルバー。hipsolver、magma、またはデバイスに応じた自動選択。</td></tr>
+<tr><td><code>OPENMX_GPU_EIGENSOLVER_MAGMA_MIN_N</code></td><td>0</td><td>自動選択時、この次数未満はrocSOLVERを使用。明示したソルバー指定を優先。</td></tr>
+<tr><td><code>OPENMX_GPU_EIGENSOLVER_PROFILE</code></td><td>0</td><td>密HIP固有値ソルバーのバックエンド・段階別時間を表示。</td></tr>
+<tr><td><code>OPENMX_GPU_FP32_FP64_RATIO</code></td><td>0</td><td>FP32/FP64性能比を上書き。非正値またはautoはハードウェア判定。</td></tr>
+<tr><td><code>OPENMX_KRYLOV_GEMMUL8</code></td><td>—</td><td>KrylovのGEMMul8積を有効化。入力ファイルでのGEMMul8無効指定を優先。</td></tr>
+<tr><td><code>OPENMX_KRYLOV_GPU</code></td><td>—</td><td>KrylovのGPU密行列演算を有効化。自動時は過剰共有デバイスで無効。</td></tr>
+<tr><td><code>OPENMX_KRYLOV_GPU_RESERVE_MB</code></td><td>—</td><td>Krylov密行列領域用に確保を控えるデバイス空きメモリ（MiB）。</td></tr>
+<tr><td><code>OPENMX_KRYLOV_MEASURE_TIME</code></td><td>0</td><td>Krylovの段階別詳細時間を表示。</td></tr>
+<tr><td><code>OPENMX_MAGMA_OZAKI2</code></td><td>1</td><td>MAGMA Ozaki-IIのGEMMul8高速化を有効化。</td></tr>
+<tr><td><code>OPENMX_MAGMA_OZAKI2_RETRY</code></td><td>1</td><td>容量が許す場合に入力を保存し、Ozaki-II失敗時は次のバックエンドで再試行。</td></tr>
+<tr><td><code>OPENMX_NC_BACKTRANSFORM_BARRIER</code></td><td>0</td><td>非共線バンドの逆変換の前後でバリアを使用。</td></tr>
+<tr><td><code>OPENMX_NC_DENSE_BUFFER_CACHE</code></td><td>0</td><td>非共線バンド密行列領域を保持。デバイス固有ベクトルからの密度行列生成時にも保持。</td></tr>
+<tr><td><code>OPENMX_NC_DEVICE_EIGENVECTOR_DM</code></td><td>0</td><td>デバイス常駐固有ベクトルから非共線バンド密度行列を生成。</td></tr>
+<tr><td><code>OPENMX_NC_EIGEN_DEMOTE_SETHAM</code></td><td>1</td><td>非共線バンド密固有値計算時に軌道表のデバイス常駐を解除。</td></tr>
+<tr><td><code>OPENMX_NC_HAMILTONIAN_EIGENSOLVER</code></td><td>—</td><td>hipsolverでHIP非共線Hamiltonianソルバーを明示選択。</td></tr>
+<tr><td><code>OPENMX_NC_HIPSOLVER_TURN_RELEASE</code></td><td>—</td><td>非共線バンドのターン後にhipSOLVER領域を解放。未指定時はAPU判定に従う。</td></tr>
+<tr><td><code>OPENMX_NC_MAGMA_TURN_RELEASE</code></td><td>—</td><td>非共線バンドのターン後にMAGMA領域を解放。未指定時はAPU判定に従う。</td></tr>
+<tr><td><code>OPENMX_OTF_CHECK</code></td><td>0</td><td>診断用。必要時計算とパック済み軌道からの行列要素を照合。</td></tr>
+<tr><td><code>OPENMX_SETHAM_DEMOTE_ON_PRESSURE</code></td><td>1</td><td>固有値計算でメモリ不足時にSet_Hamiltonian常駐表を退避。</td></tr>
+<tr><td><code>OPENMX_SETHAM_GPU</code></td><td>—</td><td>HIP Hamiltonian行列要素計算を有効化。自動時は過剰共有デバイスで無効。</td></tr>
+<tr><td><code>OPENMX_SETHAM_HIP_KERNEL</code></td><td>—</td><td>HIP行列要素カーネル。scalarは参照カーネル、それ以外はタイル版。</td></tr>
+<tr><td><code>OPENMX_SETHAM_ONTHEFLY_PINNED_MB</code></td><td>1024</td><td>必要時計算Hamiltonian転送用の固定ホストメモリ上限（MiB）。</td></tr>
+<tr><td><code>OPENMX_SETHAM_TIMING</code></td><td>0</td><td>HIP Hamiltonianの時間を表示。1を超えるとデバイスカーネル時間も計測。</td></tr>
+<tr><td><code>OPENMX_SETNL_OPENMP</code></td><td>1</td><td>HIP/OpenMP非局所行列経路を有効化。</td></tr>
+<tr><td><code>OPENMX_SETPRO_DSVNA_GPU</code></td><td>—</td><td>VNA射影微分段階のGPU設定を上書き。未指定時はSETPRO_GPUとデバイス方針を継承。</td></tr>
+<tr><td><code>OPENMX_SETPRO_HVNA_GPU</code></td><td>—</td><td>VNA射影エネルギー段階のGPU設定を上書き。未指定時はSETPRO_GPUとデバイス方針を継承。</td></tr>
+<tr><td><code>OPENMX_SETPRO_HVNA_TURNS</code></td><td>1</td><td>VNA射影エネルギー縮約をGPUターンで実行。</td></tr>
+<tr><td><code>OPENMX_SETPRO_VNA23_GPU</code></td><td>—</td><td>VNA23力計算段階のGPU設定を上書き。未指定時はSETPRO_GPUとデバイス方針を継承。</td></tr>
+<tr><td><code>OPENMX_SOLVE_TIMING</code></td><td>0</td><td>HIPバンド密固有値計算の時間を表示。</td></tr>
 <!-- env-table:end -->
 </tbody>
 </table>

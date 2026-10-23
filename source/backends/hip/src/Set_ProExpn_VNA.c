@@ -94,20 +94,7 @@ static void *SetPro_checked_malloc(size_t size)
   return ptr;
 }
 
-static int SetPro_collective_env_flag(const char *name, int default_value)
-{
-  int myid,value = default_value;
-  const char *env;
 
-  MPI_Comm_rank(mpi_comm_level1,&myid);
-  if (myid==0){
-    env = openmx_env_get(name);
-    if (env!=NULL && env[0]!='\0') value = (atoi(env)!=0);
-  }
-  MPI_Bcast(&value,1,MPI_INT,0,mpi_comm_level1);
-
-  return value;
-}
 
 /* The OpenMP-target projector batches are tuned for discrete accelerators.
    On a unified-memory APU, several MPI ranks issuing the small batches to one
@@ -121,11 +108,11 @@ static int SetPro_gpu_default_enabled(void)
 /* OPENMX_SETPRO_GPU remains the umbrella for compatibility.  The three
    stages can be selected independently so force derivatives do not have to
    share the policy of the energy-only HVNA contraction. */
-static int SetPro_gpu_stage_enabled(const char *stage_name)
+static int SetPro_gpu_stage_enabled(int stage_id)
 {
-  int enabled = SetPro_collective_env_flag("OPENMX_SETPRO_GPU",
+  int enabled = openmx_env_flag_at(OPENMX_ENV_SETPRO_GPU,
                                             SetPro_gpu_default_enabled());
-  return SetPro_collective_env_flag(stage_name,enabled);
+  return openmx_env_flag_at(stage_id,enabled);
 }
 
 /* OPENMX_SETPRO_VERBOSE=1: every rank reports each device stage of this
@@ -133,9 +120,7 @@ static int SetPro_gpu_stage_enabled(const char *stage_name)
    with the device memory free at that moment, on stderr.  Rank-local. */
 static int SetPro_verbose(void)
 {
-  const char *env = openmx_env_get("OPENMX_SETPRO_VERBOSE");
-  return env!=NULL && env[0]!='\0' && atoi(env)!=0;
-
+    return openmx_env_flag_at(OPENMX_ENV_SETPRO_VERBOSE, 0);
 }
 
 static double SetPro_free_mib(void)
@@ -278,10 +263,10 @@ static int SetPro_HVNA_GpuBegin(const OpenMXReciprocalViews *reciprocal, SetProG
   g->num_rvna = Num_RVNA;
 
   if (scf_eigen_lib_flag!=GPUSOLVER) return 0;
-  if (!SetPro_gpu_stage_enabled("OPENMX_SETPRO_HVNA_GPU")) return 0;
+  if (!SetPro_gpu_stage_enabled(OPENMX_ENV_SETPRO_HVNA_GPU)) return 0;
   /* OPENMX_SETPRO_HVNA_TURNS=0: admit the batch only when every rank of
      the node fits on the device at once (no rank turns) */
-  allow_turns = SetPro_collective_env_flag("OPENMX_SETPRO_HVNA_TURNS",1);
+  allow_turns = openmx_env_flag_at(OPENMX_ENV_SETPRO_HVNA_TURNS,1);
 
   MPI_Comm_split_type(mpi_comm_level1,MPI_COMM_TYPE_SHARED,0,MPI_INFO_NULL,&node_comm);
   MPI_Comm_size(node_comm,&node_ranks);
@@ -762,33 +747,14 @@ static void *SetProCapacity_checked_malloc(size_t size)
   return ptr;
 }
 
-static int SetProCapacity_collective_env_flag(const char *name, int default_value)
-{
-  int myid,value = default_value;
-  const char *env;
 
-  MPI_Comm_rank(mpi_comm_level1,&myid);
-  if (myid==0){
-    env = openmx_env_get(name);
-    if (env!=NULL && env[0]!='\0') value = (atoi(env)!=0);
-  }
-  MPI_Bcast(&value,1,MPI_INT,0,mpi_comm_level1);
-
-  return value;
-}
 
 /* OPENMX_SETPRO_VERBOSE=1: every rank reports each device stage of this
    file (the admission figures, the batch sizes, the elapsed time) together
    with the device memory free at that moment, on stderr */
 static int SetProCapacity_verbose(void)
 {
-  static int verbose = -1;
-
-  if (verbose<0){
-    const char *env = openmx_env_get("OPENMX_SETPRO_VERBOSE");
-    verbose = (env!=NULL && env[0]!='\0' && atoi(env)!=0) ? 1 : 0;
-  }
-  return verbose;
+    return openmx_env_flag_at(OPENMX_ENV_SETPRO_VERBOSE, 0);
 }
 
 static double SetProCapacity_free_mib(void)
@@ -839,7 +805,7 @@ static int SetProCapacity_HVNA_GpuBegin(const OpenMXReciprocalViews *reciprocal,
   g->num_rvna = Num_RVNA;
 
   MPI_Allreduce(MPI_IN_PLACE,&requested,1,MPI_INT,MPI_MIN,mpi_comm_level1);
-  if (!requested || !SetPro_gpu_stage_enabled("OPENMX_SETPRO_HVNA_GPU")) return 0;
+  if (!requested || !SetPro_gpu_stage_enabled(OPENMX_ENV_SETPRO_HVNA_GPU)) return 0;
 
   MPI_Comm_split_type(mpi_comm_level1,MPI_COMM_TYPE_SHARED,0,MPI_INFO_NULL,&node_comm);
   MPI_Comm_size(node_comm,&node_ranks);
@@ -1595,7 +1561,7 @@ static int SetPro_DSVNA_GpuBegin(const OpenMXReciprocalViews *reciprocal, SetPro
   int requested=scf_eigen_lib_flag==GPUSOLVER;
   MPI_Allreduce(MPI_IN_PLACE,&requested,1,MPI_INT,MPI_MIN,mpi_comm_level1);
   if (!requested) return 0;
-  if (!SetPro_gpu_stage_enabled("OPENMX_SETPRO_DSVNA_GPU")) return 0;
+  if (!SetPro_gpu_stage_enabled(OPENMX_ENV_SETPRO_DSVNA_GPU)) return 0;
 
   MPI_Comm_split_type(mpi_comm_level1,MPI_COMM_TYPE_SHARED,0,MPI_INFO_NULL,&node_comm);
   MPI_Comm_size(node_comm,&node_ranks);
@@ -2362,7 +2328,7 @@ static int SetPro_VNA23_GpuBegin(const OpenMXReciprocalViews *reciprocal, SetPro
   int requested=scf_eigen_lib_flag==GPUSOLVER;
   MPI_Allreduce(MPI_IN_PLACE,&requested,1,MPI_INT,MPI_MIN,mpi_comm_level1);
   if (!requested) return 0;
-  if (!SetPro_gpu_stage_enabled("OPENMX_SETPRO_VNA23_GPU")) return 0;
+  if (!SetPro_gpu_stage_enabled(OPENMX_ENV_SETPRO_VNA23_GPU)) return 0;
 
   MPI_Comm_split_type(mpi_comm_level1,MPI_COMM_TYPE_SHARED,0,MPI_INFO_NULL,&node_comm);
   MPI_Comm_size(node_comm,&node_ranks);

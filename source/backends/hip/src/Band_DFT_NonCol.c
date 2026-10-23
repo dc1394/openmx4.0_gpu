@@ -323,12 +323,8 @@ extern int openmx_gpu_is_mi300a(void);
 
 static int BandNonCol_SolveTimingEnabled(BandNonColState *state)
 {
-
-    if (state->SolveTimingEnabled_enabled < 0) {
-        const char *value = openmx_env_get("OPENMX_SOLVE_TIMING");
-        state->SolveTimingEnabled_enabled = (value != NULL && atoi(value) != 0);
-    }
-    return state->SolveTimingEnabled_enabled;
+    (void)state;
+    return openmx_env_flag_at(OPENMX_ENV_SOLVE_TIMING, 0);
 }
 
 /* GPU workspace for band non-collinear DM (added by H.Kawai, ported from 3.9.9 GPU) */
@@ -417,28 +413,18 @@ static void BandNonCol_DenseGpu_Destroy(BandNonColState *state)
 
 static int BandNonCol_DeviceEigenvectorDMRequested(BandNonColState *state)
 {
-    if (state->mgpu_host_dense) return 0;
-    const char *value = openmx_env_get("OPENMX_NC_DEVICE_EIGENVECTOR_DM");
-
-    return (value!=NULL && atoi(value)!=0);
+    return !state->mgpu_host_dense && openmx_env_flag_at(OPENMX_ENV_NC_DEVICE_EIGENVECTOR_DM, 0);
 }
 
 static int BandNonCol_BacktransformBarrierRequested(BandNonColState *state)
 {
-    if (state->mgpu_host_dense) return 0;
-    const char *value = openmx_env_get("OPENMX_NC_BACKTRANSFORM_BARRIER");
-
-    return (value!=NULL && atoi(value)!=0);
+    return !state->mgpu_host_dense && openmx_env_flag_at(OPENMX_ENV_NC_BACKTRANSFORM_BARRIER, 0);
 }
 
 static int BandNonCol_DenseBufferCacheEnabled(BandNonColState *state)
 {
-    const char *value = openmx_env_get("OPENMX_NC_DENSE_BUFFER_CACHE");
-
-    /* The direct DM path consumes d_C2 after the global chemical-potential
-       phase, so its opt-in necessarily extends the dense workspace lifetime. */
     return BandNonCol_DeviceEigenvectorDMRequested(state) ||
-           (value!=NULL && atoi(value)!=0);
+           openmx_env_flag_at(OPENMX_ENV_NC_DENSE_BUFFER_CACHE, 0);
 }
 
 static void BandNonCol_DenseGpu_Ensure(BandNonColState *state, int n, int n2)
@@ -729,41 +715,25 @@ static void BandNonCol_GpuSolver_ReleaseDeviceWorkspace(BandNonColState *state)
 
 static void BandNonCol_SetDenseGemmul8Defaults(void)
 {
-    if (openmx_env_get("OPENMX_GEMMUL8_MAX_WORKSPACE_PERCENT")==NULL &&
-        openmx_env_get("GEMMUL8_MAX_WORKSPACE_PERCENT")==NULL){
-        setenv("OPENMX_GEMMUL8_MAX_WORKSPACE_PERCENT","50",0);
+    if (openmx_env_at(OPENMX_ENV_GEMMUL8_MAX_WORKSPACE_PERCENT)==NULL &&
+        openmx_env_at(OPENMX_ENV_EXT_GEMMUL8_MAX_WORKSPACE_PERCENT)==NULL){
+        openmx_env_set_if_unset("OPENMX_GEMMUL8_MAX_WORKSPACE_PERCENT","50");
     }
 }
 
 static int BandNonCol_GemmWorkspaceTurnRelease(void)
 {
-    const char *value = openmx_env_get("OPENMX_BAND_GEMMUL8_TURN_RELEASE");
-
-    if (value==NULL){
-        return 1;
-    }
-    return (atoi(value)!=0);
+    return openmx_env_flag_at(OPENMX_ENV_BAND_GEMMUL8_TURN_RELEASE, 1);
 }
 
 static int BandNonCol_HipSolverWorkspaceTurnRelease(void)
 {
-    const char *value = openmx_env_get("OPENMX_NC_HIPSOLVER_TURN_RELEASE");
-
-    if (value==NULL){
-        /* On a unified-memory APU, retaining one large workspace in every
-           MPI owner leaves less physical memory for the following owners and
-           for the eigenvector back-transform. */
-        return openmx_gpu_is_apu();
-    }
-    return (atoi(value)!=0);
+    return openmx_env_flag_at(OPENMX_ENV_NC_HIPSOLVER_TURN_RELEASE, openmx_gpu_is_apu());
 }
 
 static int BandNonCol_MagmaWorkspaceTurnRelease(void)
 {
-    const char *value = openmx_env_get("OPENMX_NC_MAGMA_TURN_RELEASE");
-
-    if (value==NULL) return openmx_gpu_is_apu();
-    return (atoi(value)!=0);
+    return openmx_env_flag_at(OPENMX_ENV_NC_MAGMA_TURN_RELEASE, openmx_gpu_is_apu());
 }
 
 /* The policy wrapper may select native FP64 even when the legacy entry
@@ -816,18 +786,13 @@ int BandNonCol_HamiltonianUseHipSolver(void)
     const char *value;
 
     if (!openmx_gpu_eigensolver_use_hipsolver()) return 0;
-    value = openmx_env_get("OPENMX_NC_HAMILTONIAN_EIGENSOLVER");
+    value = openmx_env_at(OPENMX_ENV_NC_HAMILTONIAN_EIGENSOLVER);
     return (value!=NULL && strcasecmp(value,"hipsolver")==0);
 }
 
 static int BandNonCol_SerializeGpuSolverGpuTurns(void)
 {
-    const char *value = openmx_env_get("OPENMX_GPUSOLVER_SERIAL_GPU_TURNS");
-
-    if (value==NULL){
-        return 1;
-    }
-    return (atoi(value)!=0);
+    return openmx_env_flag_at(OPENMX_ENV_GPUSOLVER_SERIAL_GPU_TURNS, 1);
 }
 
 static int BandNonCol_AutoGpuTurnLimit(BandNonColState *state, int requested, int n, int n2, int MaxN, int size_H1,
@@ -836,74 +801,19 @@ static int BandNonCol_AutoGpuTurnLimit(BandNonColState *state, int requested, in
 static int BandNonCol_GpuTurnGroup(BandNonColState *state, int n, int n2, int MaxN, int size_H1,
                                    int owns_dense_rank, int myid0)
 {
-    const char *value = openmx_env_get("OPENMX_BAND_GPU_TURN_GROUP");
-    long group;
-
-    if (value==NULL){
-        value = openmx_env_get("OPENMX_BAND_GPU_MAX_RANKS_PER_DEVICE");
-        if (value==NULL){
-            return BandNonCol_AutoGpuTurnLimit(state, 4,n,n2,MaxN,size_H1,
-                                               owns_dense_rank,myid0);
-        }
-        else {
-            group = strtol(value,NULL,10);
-        }
-    }
-    else {
-        group = strtol(value,NULL,10);
-    }
-
-    if (group<1L){
-        return 1;
-    }
-    if (1024L<group){
-        return 1024;
-    }
-    return (int)group;
+    long group = openmx_env_long_at(OPENMX_ENV_BAND_GPU_TURN_GROUP,
+        openmx_env_long_at(OPENMX_ENV_BAND_GPU_MAX_RANKS_PER_DEVICE, -1));
+    if (group == -1) return BandNonCol_AutoGpuTurnLimit(state, 4,n,n2,MaxN,size_H1,owns_dense_rank,myid0);
+    return group < 1 ? 1 : group > 1024 ? 1024 : (int)group;
 }
 
 static int BandNonCol_MaxConcurrentKGpuTurns(BandNonColState *state, int n, int n2, int MaxN, int size_H1,
                                              int owns_dense_rank, int myid0)
 {
-    const int   max_requested = 4;
-    const char *value = openmx_env_get("OPENMX_BAND_GPU_MAX_CONCURRENT_K");
-    long limit;
-    int requested = max_requested;
-
-    if (value != NULL) {
-        char *endp = NULL;
-        limit = strtol(value, &endp, 10);
-        if (endp == value || limit < 1L) {
-            return 1;
-        }
-        if ((long)max_requested < limit) {
-            requested = max_requested;
-        }
-        else {
-            requested = (int)limit;
-        }
-        return BandNonCol_AutoGpuTurnLimit(state, requested,n,n2,MaxN,size_H1,
-                                           owns_dense_rank,myid0);
-    }
-
-    value = openmx_env_get("OPENMX_BAND_GPU_MAX_RANKS_PER_DEVICE");
-    if (value!=NULL){
-        limit = strtol(value,NULL,10);
-        if (limit<1L){
-            return 1;
-        }
-        if ((long)max_requested<limit){
-            requested = max_requested;
-        }
-        else {
-            requested = (int)limit;
-        }
-        return BandNonCol_AutoGpuTurnLimit(state, requested,n,n2,MaxN,size_H1,
-                                           owns_dense_rank,myid0);
-    }
-
-    return BandNonCol_AutoGpuTurnLimit(state, requested,n,n2,MaxN,size_H1,
-                                       owns_dense_rank,myid0);
+    long limit = openmx_env_long_at(OPENMX_ENV_BAND_GPU_MAX_CONCURRENT_K,
+        openmx_env_long_at(OPENMX_ENV_BAND_GPU_MAX_RANKS_PER_DEVICE, 4));
+    int requested = limit < 1 ? 1 : limit > 4 ? 4 : (int)limit;
+    return BandNonCol_AutoGpuTurnLimit(state, requested,n,n2,MaxN,size_H1,owns_dense_rank,myid0);
 }
 
 static void BandNonCol_GpuSolver_EnsureMatrixCapacity(BandNonColState *state, int n)
@@ -1165,30 +1075,9 @@ static void BandNonCol_HipblasZgemm_OpenMP(BandNonColState *state, hipblasOperat
 
 int Band_DFT_NonCol_GpuSwitchNum(void)
 {
-    int cached = -1;
-
-    if (cached < 0) {
-        const char *value = openmx_env_get("OPENMX_BAND_NONCOL_GPU_SWITCH_NUM");
-        int parsed;
-
-        cached = BAND_NONCOL_GPU_CPU_SWITCH_NUM;
-        if (value != NULL && 0 < (parsed = atoi(value))) {
-            cached = parsed;
-        }
-
-        /* When one GPU is shared by too many ranks the per-rank dense solve
-           serializes on the device and its large packed-matrix gather can
-           trip a UCX shared-memory assertion (observed on GGFF at 24 ranks
-           on one MI300A); the CPU ELPA2 path is both faster and stable
-           there.  Report an unreachable threshold so every n2 takes it.
-           An explicit OPENMX_BAND_NONCOL_GPU_SWITCH_NUM still stands unless
-           it too is above the matrix, i.e. the user can lower it but we do
-           not silently re-enable the GPU path here. */
-        if (openmx_band_gpu_dense_oversubscribed() && cached < INT_MAX) {
-            cached = INT_MAX;
-        }
-    }
-    return cached;
+    long value = openmx_env_long_at(OPENMX_ENV_BAND_NONCOL_GPU_SWITCH_NUM, BAND_NONCOL_GPU_CPU_SWITCH_NUM);
+    if (openmx_band_gpu_dense_oversubscribed()) return INT_MAX;
+    return value <= 0 ? BAND_NONCOL_GPU_CPU_SWITCH_NUM : value > INT_MAX ? INT_MAX : (int)value;
 }
 
 static int BandNonCol_UseDenseGpuMatrix(int n, int n2)
@@ -1461,9 +1350,7 @@ static void BandNonCol_AbortWithMessage(const char *msg)
 
 static int BandNonCol_GpuVerbose(void)
 {
-    const char *value = openmx_env_get("OPENMX_GPU_VERBOSE");
-
-    return (value != NULL && value[0] == '1');
+    return openmx_env_flag_at(OPENMX_ENV_GPU_VERBOSE, 0);
 }
 
 static size_t BandNonCol_CheckedAdd(size_t a, size_t b, const char *label)
@@ -1592,18 +1479,8 @@ static size_t BandNonCol_QueryGpuSolverWorkBytes(BandNonColState *state, int n, 
 */
 static size_t BandNonCol_GpuLibraryReserveBytes(BandNonColState *state)
 {
-
-    if (!state->GpuLibraryReserveBytes_checked){
-        const char *env = openmx_env_get("OPENMX_BAND_GPU_RESERVE_MB");
-        long mib = 512L;
-        if (env!=NULL && env[0]!='\0'){
-            long value = atol(env);
-            if (0L<=value) mib = value;
-        }
-        state->GpuLibraryReserveBytes_reserve = (size_t)mib*1024U*1024U;
-        state->GpuLibraryReserveBytes_checked = 1;
-    }
-    return state->GpuLibraryReserveBytes_reserve;
+    (void)state;
+    return openmx_env_mib_bytes_at(OPENMX_ENV_BAND_GPU_RESERVE_MB, 512);
 }
 
 /* Verdict of the last BandNonCol_GpuDiagFits (uniform over the ranks):
@@ -1960,11 +1837,11 @@ static int BandNonCol_RootDenseParallelKWorldsFit(BandNonColState *state, int n,
 
 static int BandNonCol_NativeGpuDiagFits(BandNonColState *state, int n,int n2,int MaxN,int size_H1,int owns_dense)
 {
-    const char *env=openmx_env_get("OPENMX_BAND_GPU_DIAG");
+
     size_t required=BandNonCol_RootDenseDeviceBytes(state, n,n2,MaxN,size_H1);
     size_t free_bytes=0,total_bytes=0,reserve=0,fixed_all=0;
     int local_fit=1,fit=1,device_ranks;
-    if (env!=NULL && atoi(env)==0) local_fit=0;
+    if (!openmx_env_flag_at(OPENMX_ENV_BAND_GPU_DIAG, 1)) local_fit=0;
     if (required==0 || required==SIZE_MAX) local_fit=0;
     /* Every rank sharing the device keeps its own solver workspace and
        library context alive during the k-point solves, so their fixed
@@ -2004,9 +1881,9 @@ static int BandNonCol_NativeGpuDiagFits(BandNonColState *state, int n,int n2,int
 
 static int BandNonCol_GpuDiagFits(BandNonColState *state, int n,int n2,int MaxN,int size_H1,int owns_dense)
 {
-    const char *enabled=openmx_env_get("OPENMX_BAND_GPU_DIAG");
+
     state->mgpu_host_dense=0;
-    if (enabled && atoi(enabled)==0 && !openmx_mgpu_host_required()) {
+    if (!openmx_env_flag_at(OPENMX_ENV_BAND_GPU_DIAG, 1) && !openmx_mgpu_host_required()) {
         state->gpu_dense_refused=1;
         return 0;
     }
@@ -2625,10 +2502,10 @@ static int BandNonCol_BuildOccupationWeightsDense(int kmin, int kmax, const doub
    Opt out with OPENMX_BAND_NONCOL_GPU_DM=0. */
 static int BandNonCol_UseGpuFallbackDM(BandNonColState *state, int n2, size_t evec_bytes)
 {
-    const char *value = openmx_env_get("OPENMX_BAND_NONCOL_GPU_DM");
+
     size_t free_bytes = 0, total_bytes = 0;
 
-    if (value != NULL && atoi(value) == 0) return 0;
+    if (!openmx_env_flag_at(OPENMX_ENV_BAND_NONCOL_GPU_DM, 1)) return 0;
     if (!(scf_eigen_lib_flag == GPUSOLVER && Band_DFT_NonCol_GpuSwitchNum() <= n2)) return 0;
 
     /* The device upload (an OpenMP target map) aborts instead of failing
@@ -3470,8 +3347,8 @@ static size_t BandNonCol_RefineBasisLimit(BandNonColState *state)
 {
 
     if (!state->RefineBasisLimit_checked) {
-        const char        *env = openmx_env_get("OPENMX_BAND_REFINE_BASIS_MB");
-        double             cap = (env == NULL) ? 1024.0 : atof(env);
+
+        double             cap = openmx_env_double_at(OPENMX_ENV_BAND_REFINE_BASIS_MB, 1024.0);
         unsigned long long available_kib = 0;
         int                ranks = openmx_gpu_local_size_noncollective();
         FILE              *file;
@@ -4021,8 +3898,8 @@ static void BandNonCol_RootDenseRefinedSecondHalf(BandNonColState *state, int n,
    Agree collectively before skipping any of the fallback collectives. */
 static int BandNonCol_PackedKCacheReady(int owns_dense, int size_H1)
 {
-    const char *env = openmx_env_get("OPENMX_BAND_NONCOL_PACKED_CACHE");
-    int ready = (env == NULL || atoi(env) != 0) &&
+
+    int ready = (openmx_env_flag_at(OPENMX_ENV_BAND_NONCOL_PACKED_CACHE, 1)) &&
         Set_Hamiltonian_GpuSolver_Packed_CacheReady() &&
         Set_Hamiltonian_GpuSolver_Packed_OrderMode() == 1 &&
         Set_Hamiltonian_GpuSolver_Packed_Size() == size_H1;
@@ -4048,8 +3925,8 @@ static int BandNonCol_PackedKCacheReady(int owns_dense, int size_H1)
    at 1024 MiB per rank (OPENMX_BAND_NONCOL_KCACHE_MB=0 disables it). */
 static size_t BandNonCol_KCacheLimit(void)
 {
-    const char *env = openmx_env_get("OPENMX_BAND_NONCOL_KCACHE_MB");
-    double cap = env == NULL ? 1024.0 : atof(env);
+
+    double cap = openmx_env_double_at(OPENMX_ENV_BAND_NONCOL_KCACHE_MB, 1024.0);
     FILE *file;
     char line[256];
     unsigned long long available_kib = 0;
@@ -4072,10 +3949,9 @@ static size_t BandNonCol_KCacheLimit(void)
 /* The per-rank budget of a host cache: the variable's MiB (default_mib when
    unset, 0 disables), at most 1/fraction of the node's available memory over
    its ranks; 0 when /proc/meminfo cannot be read. */
-static size_t BandNonCol_HostCacheLimit(const char *name, double default_mib, unsigned fraction)
+static size_t BandNonCol_HostCacheLimit(int id, double default_mib, unsigned fraction)
 {
-    const char *env = openmx_env_get(name);
-    double cap = (env == NULL) ? default_mib : atof(env);
+    double cap = openmx_env_double_at(id, default_mib);
     unsigned long long available_kib = 0;
     int ranks = openmx_gpu_local_size_noncollective();
     FILE *file;
@@ -4118,7 +3994,7 @@ static void BandNonCol_KOverlapReset(BandNonColState *state)
 
 static size_t BandNonCol_KOverlapLimit(void)
 {
-    return BandNonCol_HostCacheLimit("OPENMX_BAND_NONCOL_OVERLAP_CACHE_MB", 512.0, 64);
+    return BandNonCol_HostCacheLimit(OPENMX_ENV_BAND_NONCOL_OVERLAP_CACHE_MB, 512.0, 64);
 }
 
 static void BandNonCol_KOverlapPrepare(BandNonColState *state, int n, int points)
@@ -5267,8 +5143,7 @@ static double Band_DFT_NonCol_owned(BandNonColState *state, char *mode,
        makes the turn groups of both passes, so the root's
        OPENMX_BAND_NONCOL_INTERLEAVE_K (default 1) holds for every rank. */
     if (myid0 == Host_ID) {
-      const char *interleave = openmx_env_get("OPENMX_BAND_NONCOL_INTERLEAVE_K");
-      if (interleave != NULL) interleave_k = (atoi(interleave) != 0);
+      interleave_k = openmx_env_flag_at(OPENMX_ENV_BAND_NONCOL_INTERLEAVE_K, interleave_k);
     }
     MPI_Bcast(&interleave_k, 1, MPI_INT, Host_ID, mpi_comm_level1);
     if (interleave_k)
@@ -6676,8 +6551,8 @@ static double Band_DFT_NonCol_owned(BandNonColState *state, char *mode,
   /* Debug hook: exit cleanly right after the first eigen phase so that
      profilers (rocprofv3) flush their traces.  OPENMX_ABORT_AFTER_EIGEN=1. */
   {
-    const char *abort_after_eigen = openmx_env_get("OPENMX_ABORT_AFTER_EIGEN");
-    if (abort_after_eigen != NULL && atoi(abort_after_eigen) != 0){
+
+    if (openmx_env_flag_at(OPENMX_ENV_ABORT_AFTER_EIGEN, 0)){
       fflush(stdout);
       fflush(stderr);
       MPI_Barrier(mpi_comm_level1);
@@ -7477,9 +7352,9 @@ static double Band_DFT_NonCol_owned(BandNonColState *state, char *mode,
        and call (the packed matrices are Set_Hamiltonian's shared copy, or
        gathered per turn group of the density-matrix pass unless every
        owner of the group kept its eigenvectors) */
-    const char *trace = openmx_env_get("OPENMX_BAND_NONCOL_CACHE_TRACE");
 
-    if (trace != NULL && atoi(trace) != 0) {
+
+    if (openmx_env_flag_at(OPENMX_ENV_BAND_NONCOL_CACHE_TRACE, 0)) {
       printf("BAND_NONCOL_CACHE rank=%d SCF=%d evec_hits=%d overlap_hits=%d evec=%.1f MiB overlap=%.1f MiB "
              "packed=%s dm_gathers=%d dm_gathers_skipped=%d\n",
              myid0, SCF_iter, k_cache_hits, k_overlap_hits, k_cache_used/1048576.0,

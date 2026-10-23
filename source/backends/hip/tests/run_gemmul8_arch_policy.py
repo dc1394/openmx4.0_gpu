@@ -137,6 +137,9 @@ int main(int argc, char **argv)
     parse(0); check(0, 0);
     expect(hip_calls == 0, "explicit on/off queried HIP");
     parse(-1);
+    setenv("OPENMX_GEMMUL8_DISABLE", "on", 1); check(0, 0);
+    expect(hip_calls == 0, "explicit disable initialized HIP for its unused default");
+    unsetenv("OPENMX_GEMMUL8_DISABLE");
     setenv("OPENMX_GPU", "0", 1);
     check(1, 1); /* unused CPU policy, preserving the old non-MI300A default */
     expect(hip_calls == 0, "OPENMX_GPU=0 queried HIP");
@@ -171,6 +174,16 @@ int main(int argc, char **argv)
     /* Empty overrides retain the architecture default. */
     setenv("OPENMX_GEMMUL8_DISABLE", "", 1); check(auto_enabled, auto_enabled);
     expect(property_queries == queries, "input reset repeated a successful HIP query");
+    /* Typed spellings and the initialized snapshot must govern bridge policy. */
+    setenv("OPENMX_GEMMUL8_DISABLE", "on", 1); check(0, 0);
+    setenv("OPENMX_GEMMUL8_DISABLE", "off", 1); check(1, 1);
+    setenv("OPENMX_GEMMUL8_DISABLE", "auto", 1); check(auto_enabled, auto_enabled);
+    setenv("OPENMX_GEMMUL8_DISABLE", "off", 1);
+    openmx_env_init();
+    setenv("OPENMX_GEMMUL8_DISABLE", "on", 1); check(1, 1);
+    expect(openmx_env_set("OPENMX_GEMMUL8_DISABLE", "on") == 0, "snapshot update"); check(0, 0);
+    expect(openmx_env_unset("OPENMX_GEMMUL8_DISABLE") == 0, "snapshot unset"); check(auto_enabled, auto_enabled);
+    openmx_env_reset();
     std::puts("PASS");
 }
 '''
@@ -188,7 +201,7 @@ def main():
     if input_block is None:
         raise RuntimeError("GEMMul8 input block not found")
     functions = "\n".join(function(bridge, name) for name in (
-        "env_bool", "gemmul8_disabled", "openmx_gemmul8SetEnabled",
+        "gemmul8_disabled", "openmx_gemmul8SetEnabled",
         "openmx_gemmul8DgemmEnabled", "openmx_gemmul8ZgemmEnabled"))
     state = re.search(r"^int g_input_enabled = [^;]+;", bridge, re.M).group(0)
     source = ("#include <initializer_list>\n" + STUBS + "\n" + state + "\n" + functions +
@@ -201,7 +214,7 @@ def main():
         src.write_text(source)
         sanitizer = ["-g", "-fsanitize=thread", "-fno-omit-frame-pointer"] if args.sanitize_thread else []
         subprocess.run(shlex.split(args.cxx) + ["-std=c++11", "-Wall", "-Wextra", "-Werror", "-pthread", *sanitizer,
-                       "-I" + str(ROOT / "source"), str(src), "-o", str(exe)], check=True)
+                       "-I" + str(ROOT / "source"), str(src), str(ROOT / "source/openmx_env.c"), "-o", str(exe)], check=True)
         env = {key: value for key, value in os.environ.items()
                if not key.startswith(("OPENMX_", "GEMMUL8_", "TEST_"))}
         for arch, integrated, expected in cases:

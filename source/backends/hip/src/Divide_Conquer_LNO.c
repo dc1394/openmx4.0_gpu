@@ -184,17 +184,8 @@ static int DCLNO_NCGuardProblem(int gpu_task, int ns, const dcomplex *s,
    the launch environments differ. */
 static int DCLNO_ProfileEnabled(DCLNOState *state)
 {
-
-    if (state->ProfileEnabled_enabled < 0) {
-        int rank;
-        MPI_Comm_rank(mpi_comm_level1, &rank);
-        if (rank == Host_ID) {
-            const char *value = openmx_env_get("OPENMX_DCLNO_PROFILE");
-            state->ProfileEnabled_enabled = value != NULL && atoi(value) != 0;
-        }
-        MPI_Bcast(&state->ProfileEnabled_enabled, 1, MPI_INT, Host_ID, mpi_comm_level1);
-    }
-    return state->ProfileEnabled_enabled;
+    (void)state;
+    return openmx_env_flag_at(OPENMX_ENV_DCLNO_PROFILE, 0);
 }
 
 #define DCLNO_PROFILE_BINS 8
@@ -251,16 +242,9 @@ static void DCLNO_ProfileReport(int md, int scf, int rank, int ranks,
 /* runtime-tunable copy of the threshold (OPENMX_DCLNO_GPU_THRESHOLD) */
 static int DCLNO_GpuEigenThreshold(DCLNOState *state)
 {
-
-    if (state->GpuEigenThreshold_threshold < 0) {
-        const char *value = openmx_env_get("OPENMX_DCLNO_GPU_THRESHOLD");
-        state->GpuEigenThreshold_threshold = DCLNO_GPU_PROXY_EIGEN_THRESHOLD_COL;
-        if (value != NULL && value[0] != '\0') {
-            int parsed = atoi(value);
-            if (0 < parsed) state->GpuEigenThreshold_threshold = parsed;
-        }
-    }
-    return state->GpuEigenThreshold_threshold;
+    (void)state;
+    long value = openmx_env_long_at(OPENMX_ENV_DCLNO_GPU_THRESHOLD, DCLNO_GPU_PROXY_EIGEN_THRESHOLD_COL);
+    return value <= 0 ? DCLNO_GPU_PROXY_EIGEN_THRESHOLD_COL : value > INT_MAX ? INT_MAX : (int)value;
 }
 
 /* Small local matrices benefit from concurrent owners. Larger matrices
@@ -268,14 +252,9 @@ static int DCLNO_GpuEigenThreshold(DCLNOState *state)
    policy there. Zero allows all ranks at every size for controlled A/Bs. */
 static int DCLNO_GpuOwnerThreshold(DCLNOState *state)
 {
-
-    if (state->GpuOwnerThreshold_threshold < 0) {
-        const char *value = openmx_env_get("OPENMX_DCLNO_GPU_OWNER_THRESHOLD");
-        state->GpuOwnerThreshold_threshold = 2048;
-        if (value != NULL && value[0] != '\0' && atoi(value) >= 0)
-            state->GpuOwnerThreshold_threshold = atoi(value);
-    }
-    return state->GpuOwnerThreshold_threshold;
+    (void)state;
+    long value = openmx_env_long_at(OPENMX_ENV_DCLNO_GPU_OWNER_THRESHOLD, 2048);
+    return value < 0 ? 2048 : value > INT_MAX ? INT_MAX : (int)value;
 }
 
 /* noncollinear threshold, compared against the spinor dimension 2*(Anum-1);
@@ -286,18 +265,9 @@ static int DCLNO_GpuOwnerThreshold(DCLNOState *state)
 /* runtime-tunable copy (OPENMX_DCLNO_NONCOL_GPU_THRESHOLD) */
 static int DCLNO_NonColGpuEigenThreshold(DCLNOState *state)
 {
-
-
-    if (state->NonColGpuEigenThreshold_threshold < 0) {
-        const char *value = openmx_env_get("OPENMX_DCLNO_NONCOL_GPU_THRESHOLD");
-
-        state->NonColGpuEigenThreshold_threshold = DCLNO_NONCOL_GPU_CPU_SWITCH_NUM;
-        if (value != NULL && value[0] != '\0') {
-            int parsed = atoi(value);
-            if (0 < parsed) state->NonColGpuEigenThreshold_threshold = parsed;
-        }
-    }
-    return state->NonColGpuEigenThreshold_threshold;
+    (void)state;
+    long value = openmx_env_long_at(OPENMX_ENV_DCLNO_NONCOL_GPU_THRESHOLD, DCLNO_NONCOL_GPU_CPU_SWITCH_NUM);
+    return value <= 0 ? DCLNO_NONCOL_GPU_CPU_SWITCH_NUM : value > INT_MAX ? INT_MAX : (int)value;
 }
 
 /* MPI tags for node-local proxy traffic */
@@ -742,12 +712,8 @@ static int DCLNO_GpuSolver_Eigen(DCLNOState *state, double *d_A, int m, int maxn
    OPENMX_CUSOLVER_RETRY_TEST) */
 static int DCLNO_RetryTest(DCLNOState *state)
 {
-
-    if (state->RetryTest_enabled < 0) {
-        const char *value = openmx_env_get("OPENMX_DCLNO_RETRY_TEST");
-        state->RetryTest_enabled = (value != NULL && value[0] != '\0' && atoi(value) != 0) ? 1 : 0;
-    }
-    return state->RetryTest_enabled;
+    (void)state;
+    return openmx_env_flag_at(OPENMX_ENV_DCLNO_RETRY_TEST, 0);
 }
 
 static void DCLNO_ReportGpuRetry(DCLNOState *state, const char *what, int info, int n, int requested)
@@ -1248,19 +1214,7 @@ static int DCLNO_Solve_NonCol_GpuSolver(DCLNOState *state, int NUM, int NUMH, in
 
 static int DCLNO_GpuTurnRelease(void)
 {
-    /* Releasing the GEMMul8 workspace and the solver buffers once the DC-LNO
-       phase is done keeps them from occupying the shared device through the
-       grid/force phases of the SCF step; opt out with
-       OPENMX_DCLNO_GPU_TURN_RELEASE=0 (falls back to the band-path knob). */
-    const char *value = openmx_env_get("OPENMX_DCLNO_GPU_TURN_RELEASE");
-
-    if (value == NULL) {
-        value = openmx_env_get("OPENMX_BAND_GEMMUL8_TURN_RELEASE");
-    }
-    if (value == NULL) {
-        return 1;
-    }
-    return (atoi(value) != 0);
+    return openmx_env_flag_at(OPENMX_ENV_DCLNO_GPU_TURN_RELEASE, openmx_env_flag_at(OPENMX_ENV_BAND_GEMMUL8_TURN_RELEASE, 1));
 }
 
 static void DCLNO_GpuSolver_ReleaseDeviceMemory(DCLNOState *state)
@@ -1677,8 +1631,7 @@ static double DC_Col_owned(DCLNOState *state, char * mode, int MD_iter, int SCF_
 
     use_gpu_accel = (scf_eigen_lib_flag == GPUSOLVER);
     if (use_gpu_accel) {
-        const char *profile = openmx_env_get("OPENMX_DCLNO_GPU_PROFILE");
-        gpu_profile = profile != NULL && atoi(profile) != 0;
+        gpu_profile = openmx_env_flag_at(OPENMX_ENV_DCLNO_GPU_PROFILE, 0);
         DCLNO_GPUProxy_Init(state);
     }
     use_gpu_proxy = (use_gpu_accel && DCLNO_ENABLE_SHARED_GPU_PROXY &&
@@ -4490,9 +4443,9 @@ static double DC_NonCol_owned(DCLNOState *state, char *mode,
            overlap basis and ELPA1 full-matrix handling.  Never symmetrize or
            otherwise modify the original physical matrices in this guard. */
         use_gpu_task_nc = 0;
-        const char *guard_verbose = openmx_env_get("OPENMX_GPU_VERBOSE");
+
         if (!nc_guard_reported && (2 <= level_stdout ||
-                                   (guard_verbose != NULL && atoi(guard_verbose) != 0))) {
+                                   (openmx_env_flag_at(OPENMX_ENV_GPU_VERBOSE, 0)))) {
           fprintf(stderr, "DCLNO_NC_GUARD rank=%d scf=%d atom=%d n=%d route=cpu reason=non-Hermitian S_herm=%.17g S_scale=%.17g H_herm=%.17g H_scale=%.17g relative_tolerance=1e-8\n",
                   myid0, SCF_iter, Gc_AN, NUM, s_stats.max_anti, fmax(1.0,s_stats.max_abs),
                   h_stats.max_anti, fmax(1.0,h_stats.max_abs));

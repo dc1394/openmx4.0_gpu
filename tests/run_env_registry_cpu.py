@@ -191,6 +191,30 @@ int main(void) {
         CHECK(openmx_env_unpack(packed, length) == -1);              /* corrupt tag */
     }
     free(packed);
+    /* HIP-only controls participate in the same snapshot and rank-0 wire
+       format; launcher ranks remain local. These names were previously
+       absent from the generated registry. */
+    CHECK(same(entries[OPENMX_ENV_SETHAM_GPU].kind, "flag"));
+    CHECK(same(entries[OPENMX_ENV_GPU_EIGENSOLVER].kind, "string"));
+    CHECK(same(entries[OPENMX_ENV_SETPRO_HVNA_GPU].kind, "flag"));
+    CHECK(same(entries[OPENMX_ENV_EXT_MPI_LOCALRANKID].scope, "local"));
+    CHECK(openmx_env_set("OPENMX_SETHAM_GPU", "on") == 0);
+    CHECK(openmx_env_set("OPENMX_GPU_EIGENSOLVER", "magma") == 0);
+    CHECK(openmx_env_set("MAGMA_OZAKI2_MAX_WS_MB", "768") == 0);
+    length = openmx_env_pack(&packed);
+    openmx_env_reset();
+    set("OPENMX_SETHAM_GPU", "off");
+    set("OPENMX_GPU_EIGENSOLVER", "hipsolver");
+    set("MAGMA_OZAKI2_MAX_WS_MB", "256");
+    set("MPI_LOCALRANKID", "7");
+    openmx_env_init();
+    CHECK(openmx_env_unpack(packed, length) == 3);
+    CHECK(openmx_env_flag_at(OPENMX_ENV_SETHAM_GPU, 0) == 1);
+    CHECK(same(openmx_env_at(OPENMX_ENV_GPU_EIGENSOLVER), "magma"));
+    CHECK(openmx_env_double_at(OPENMX_ENV_EXT_MAGMA_OZAKI2_MAX_WS_MB, 0) == 768);
+    CHECK(same(getenv("OPENMX_GPU_EIGENSOLVER"), "magma"));
+    CHECK(openmx_env_long_at(OPENMX_ENV_EXT_MPI_LOCALRANKID, -1) == 7);
+    free(packed);
     /* reset: back to live reads */
     openmx_env_reset();
     CHECK(!openmx_env_initialized());

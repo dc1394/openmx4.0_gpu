@@ -1,3 +1,4 @@
+#include <limits.h>
 /* Refined FP32 eigensolver of the dense GPU paths (see eigen_refine_gpu.h).
 
    Algorithm (Ogita and Aishima, RefSyEv, with clusters): A is made symmetric
@@ -108,13 +109,7 @@ namespace {
 
 constexpr int kThreads = 256;
 
-int env_flag(const char *name, int fallback)
-{
-    const char *value = openmx_env_get(name);
 
-    if (value == NULL || value[0] == '\0') return fallback;
-    return atoi(value) != 0;
-}
 
 void refine_check(hipError_t status, const char *what)
 {
@@ -427,7 +422,7 @@ int fp32_backend_magma()
     static int magma = -1;
 
     if (magma < 0) {
-        const char *value = openmx_env_get("OPENMX_EIGEN_FP32_SOLVER");
+        const char *value = openmx_env_at(OPENMX_ENV_EIGEN_FP32_SOLVER);
         magma = (value != NULL && strcasecmp(value, "magma") == 0) ? 1 : 0;
     }
     return magma;
@@ -448,10 +443,10 @@ void refine_blocks_release(EigenRefineState *st)
    ones, two when every column is refined */
 void refine_blocks_layout(int cplx, int n, int maxn, int *blocks, size_t *block_bytes)
 {
-    const int    kc = env_flag("OPENMX_EIGEN_REFINE_ALL", 0) ? n : maxn;
+    const int    kc = openmx_env_flag_at(OPENMX_ENV_EIGEN_REFINE_ALL, 0) ? n : maxn;
     const size_t nk = (size_t)n * (size_t)kc;
 
-    *blocks = (kc < n && env_flag("OPENMX_EIGEN_REFINE_COMPLEMENT", 1)) ? 3 : 2;
+    *blocks = (kc < n && openmx_env_flag_at(OPENMX_ENV_EIGEN_REFINE_COMPLEMENT, 1)) ? 3 : 2;
     *block_bytes = (nk * (cplx ? 2 : 1) * sizeof(double) + 511u) / 512u * 512u;
 }
 
@@ -496,7 +491,7 @@ hipblasStatus_t refine_gemm(const EigenRefineDevice *dev, int cplx, hipblasOpera
 {
     static int unblocked = -1;
 
-    if (unblocked < 0) unblocked = env_flag("OPENMX_EIGEN_REFINE_UNBLOCKED", 1);
+    if (unblocked < 0) unblocked = openmx_env_flag_at(OPENMX_ENV_EIGEN_REFINE_UNBLOCKED, 1);
     if (cplx) {
         const hipDoubleComplex one = make_hipDoubleComplex(1.0, 0.0), b = make_hipDoubleComplex(beta, 0.0);
 
@@ -935,12 +930,13 @@ extern "C" int openmx_gpu_fp32_fp64_ratio(void)
     static int ratio = -1;
 
     if (ratio < 0) {
-        const char *value = openmx_env_get("OPENMX_GPU_FP32_FP64_RATIO");
+
         hipDeviceProp_t prop;
         int device = 0;
 
-        if (value != NULL && value[0] != '\0' && 0 < atoi(value)) {
-            ratio = atoi(value);
+        long requested = openmx_env_long_at(OPENMX_ENV_GPU_FP32_FP64_RATIO, 0);
+        if (requested > 0 && requested <= INT_MAX) {
+            ratio = (int)requested;
         }
         else if (hipGetDevice(&device) != hipSuccess || hipGetDeviceProperties(&prop, device) != hipSuccess) {
             (void)hipGetLastError();
@@ -967,13 +963,14 @@ extern "C" int openmx_gpu_fp32_fp64_ratio(void)
 
 extern "C" int openmx_eigen_refine_configure(int cplx, int verbose, int *ratio)
 {
-    const char *value = openmx_env_get("OPENMX_EIGEN_REFINE");
+    const char *value = openmx_env_at(OPENMX_ENV_EIGEN_REFINE);
     int         iterations = 0;
 
     *ratio = 0;
     if (!openmx_fp32_enabled()) return 0;
-    if (value != NULL && value[0] != '\0') {
-        iterations = (0 < atoi(value)) ? atoi(value) : 0;
+    long requested = openmx_env_long_at(OPENMX_ENV_EIGEN_REFINE, -1);
+    if (requested >= 0) {
+        iterations = requested > INT_MAX ? INT_MAX : (int)requested;
         if (verbose) {
             printf("<eigen_refine_gpu> OPENMX_EIGEN_REFINE=%s: refined FP32 eigensolver %s\n", value,
                    iterations ? "on" : "off");
@@ -1006,27 +1003,24 @@ extern "C" int openmx_eigen_refine_configure(int cplx, int verbose, int *ratio)
 
 extern "C" double openmx_eigen_refine_until(void)
 {
-    const char *value = openmx_env_get("OPENMX_EIGEN_REFINE_UNTIL");
-
-    return (value != NULL && 0.0 < atof(value)) ? atof(value) : 0.0;
+    double value = openmx_env_double_at(OPENMX_ENV_EIGEN_REFINE_UNTIL, 0.0);
+    return value > 0 ? value : 0;
 }
 
 extern "C" int openmx_eigen_refine_warm_enabled(void)
 {
-    return env_flag("OPENMX_EIGEN_REFINE_WARM", 1);
+    return openmx_env_flag_at(OPENMX_ENV_EIGEN_REFINE_WARM, 1);
 }
 
 extern "C" int openmx_eigen_refine_warm_band_enabled(void)
 {
-    return openmx_eigen_refine_warm_enabled() && env_flag("OPENMX_EIGEN_REFINE_WARM_BAND", 1);
+    return openmx_eigen_refine_warm_enabled() && openmx_env_flag_at(OPENMX_ENV_EIGEN_REFINE_WARM_BAND, 1);
 }
 
 extern "C" int openmx_eigen_refine_warm_band_period(void)
 {
-    const char *value = openmx_env_get("OPENMX_EIGEN_REFINE_WARM_PERIOD");
-
-    if (value == NULL || value[0] == '\0') return 0;
-    return (0 < atoi(value)) ? atoi(value) : 0;
+    long value = openmx_env_long_at(OPENMX_ENV_EIGEN_REFINE_WARM_PERIOD, 0);
+    return value <= 0 ? 0 : value > INT_MAX ? INT_MAX : (int)value;
 }
 
 extern "C" int openmx_eigen_refine_warm_band_step(int scf_iter)
@@ -1038,20 +1032,8 @@ extern "C" int openmx_eigen_refine_warm_band_step(int scf_iter)
 
 extern "C" int openmx_eigen_refine_size_ok(int n)
 {
-    static long min_n = -1;
-
-    if (min_n < 0) {
-        const char *value = openmx_env_get("OPENMX_EIGEN_REFINE_MIN_N");
-
-        min_n = 1000;
-        if (value != NULL && value[0] != '\0') {
-            char *end = NULL;
-            long  parsed = strtol(value, &end, 10);
-
-            if (end != value && 0 <= parsed) min_n = parsed;
-        }
-    }
-    return (long)n >= min_n;
+    long minimum = openmx_env_long_at(OPENMX_ENV_EIGEN_REFINE_MIN_N, 1000);
+    return (long)n >= (minimum < 0 ? 1000 : minimum);
 }
 
 extern "C" size_t openmx_eigen_refine_fp32_work_bytes(int cplx, int n)
@@ -1181,7 +1163,7 @@ extern "C" int openmx_eigen_refine_prepare(EigenRefineState *st, EigenRefineDevi
            residual of the old vectors on the new matrix: above 2e-5 (an
            FP32 solve leaves 4e-6) that solve follows after all, else finish
            starts from these products */
-        const int       kc = env_flag("OPENMX_EIGEN_REFINE_ALL", 0) ? n : pb->maxn;
+        const int       kc = openmx_env_flag_at(OPENMX_ENV_EIGEN_REFINE_ALL, 0) ? n : pb->maxn;
         const long long native0 = openmx_gemmul8NativeCalls(cplx);
         double          max_s = 0.0, max_r = 0.0;
         double         *b1, *b2, *yb;
@@ -1253,7 +1235,7 @@ extern "C" int openmx_eigen_refine_finish(EigenRefineState *st, EigenRefineDevic
                                           const double *f0, EigenRefineReport *report)
 {
     const int    cplx = pb->cplx, n = pb->n, maxn = pb->maxn, width = cplx ? 2 : 1;
-    const int    kc = env_flag("OPENMX_EIGEN_REFINE_ALL", 0) ? n : pb->maxn;
+    const int    kc = openmx_env_flag_at(OPENMX_ENV_EIGEN_REFINE_ALL, 0) ? n : pb->maxn;
     const size_t nk = (size_t)n * (size_t)kc;
     double      *a = (double *)pb->a;
     double      *x = (double *)pb->x;
@@ -1321,7 +1303,7 @@ extern "C" int openmx_eigen_refine_finish(EigenRefineState *st, EigenRefineDevic
                treated as after a cold start (OPENMX_EIGEN_REFINE_WARM_DELTA_FLOOR=0
                drops the floor) */
             if (pb->warm) {
-                if (env_flag("OPENMX_EIGEN_REFINE_WARM_DELTA_FLOOR", 1) && delta < st->delta_cold) delta = st->delta_cold;
+                if (openmx_env_flag_at(OPENMX_ENV_EIGEN_REFINE_WARM_DELTA_FLOOR, 1) && delta < st->delta_cold) delta = st->delta_cold;
             }
             else {
                 st->delta_cold = delta;
@@ -1437,7 +1419,7 @@ extern "C" int openmx_eigen_refine_finish(EigenRefineState *st, EigenRefineDevic
         }
         if (rr_ok)
             refine_check(hipMemcpy(lam, lh, (size_t)kc * sizeof(double), hipMemcpyHostToDevice), "upload lam");
-        if (rr_ok && env_flag("OPENMX_EIGEN_REFINE_CHECK", 0)) {
+        if (rr_ok && openmx_env_flag_at(OPENMX_ENV_EIGEN_REFINE_CHECK, 0)) {
             /* diagnostic: the residuals |A x_j - lam_j x_j| / |x_j| and the
                orthogonality max_i |x_i^H x_j - delta_ij| of the refined
                columns by occupation class, with plain hipBLAS FP64 products
