@@ -378,7 +378,7 @@ static double Calc_optical_conductivities_dielectric_functions(const OpenMXAtomi
   dcomplex *Hs_Cx, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
 
 
-static void Output_Energies_Forces(const OpenMXBandEnergies *energies, FILE *fp);
+static void Output_Energies_Forces(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, FILE *fp);
 static double dUele;
 static void Read_SCF_keywords();
 
@@ -397,6 +397,14 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   char band_energy_error[256];
   if(!openmx_core_band_energies(core,&energies,band_energy_error,sizeof(band_energy_error))) {
     fprintf(stderr,"OpenMX band energies: %s\n",band_energy_error);
+    MPI_Abort(mpi_comm_level1,1);
+    abort();
+  }
+
+  OpenMXEnergyComponents *components=NULL;
+  char component_error[256];
+  if(!openmx_core_energy_components(core,&components,component_error,sizeof(component_error))) {
+    fprintf(stderr,"OpenMX energy components: %s\n",component_error);
     MPI_Abort(mpi_comm_level1,1);
     abort();
   }
@@ -1616,7 +1624,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
       }
 
       /* save the information at iteration */
-      outputfile1(mixing_history, energies,4,MD_iter,orbitalOpt_iter,0,SCF_iter,file_OrbOpt,ChemP_e0,orbital_norm);
+      outputfile1(mixing_history, energies, components,4,MD_iter,orbitalOpt_iter,0,SCF_iter,file_OrbOpt,ChemP_e0,orbital_norm);
 
       orbitalOpt_iter++;
       LSCF_iter = 0;
@@ -1891,7 +1899,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
       } 
     }
 
-    outputfile1(mixing_history, energies,1,MD_iter,orbitalOpt_iter,Cnt_Now,SCF_iter,file_DFTSCF,ChemP_e0,orbital_norm);
+    outputfile1(mixing_history, energies, components,1,MD_iter,orbitalOpt_iter,Cnt_Now,SCF_iter,file_DFTSCF,ChemP_e0,orbital_norm);
 
     if (po==0 && Cnt_switch==0 && Solver==2 && SpinP_switch==3){
       Cluster_DFT_NonCol_RefineAfterMixing(solver_states.cluster_noncol, sqrt(fabs(mixing_history->norm[0])));
@@ -2881,33 +2889,33 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
   if (!orbitalOpt_Force_Skip) time8 += Total_Energy(energies, atomic, vna, MD_iter,ECE, electronic, local_basis);
 
-  Uatom  = 0.0;
-  Ucore  = ECE[0];
-  UH0    = ECE[1];
-  Ukin   = ECE[2];
-  Una    = ECE[3];
-  Unl    = ECE[4];
-  UH1    = ECE[5];
-  Uxc0   = ECE[6];
-  Uxc1   = ECE[7];
-  Uhub   = ECE[8];    
-  Ucs    = ECE[9]; 
-  Uzs    = ECE[10];
-  Uzo    = ECE[11];
-  Uef    = ECE[12];
-  UvdW   = ECE[13];
-  Uch    = ECE[14];
-  UH_dc  = ECE[15];
-  Uxc0_dc= ECE[16];
-  Uxc1_dc= ECE[17];
+  components->atomic_reference  = 0.0;
+  components->core  = ECE[0];
+  components->hartree[0]    = ECE[1];
+  components->kinetic   = ECE[2];
+  components->neutral_atom    = ECE[3];
+  components->nonlocal    = ECE[4];
+  components->hartree[1]    = ECE[5];
+  components->xc[0]   = ECE[6];
+  components->xc[1]   = ECE[7];
+  components->hubbard   = ECE[8];
+  components->spin_constraint    = ECE[9];
+  components->zeeman_spin    = ECE[10];
+  components->zeeman_orbital    = ECE[11];
+  components->electric_field    = ECE[12];
+  components->vdw   = ECE[13];
+  components->core_hole    = ECE[14];
+  components->hartree_double_counting  = ECE[15];
+  components->xc_double_counting[0]= ECE[16];
+  components->xc_double_counting[1]= ECE[17];
 
   if ( Solver!=12 ){
-    Utot = Ucore + UH0 + Ukin + Una + Unl + UH1 + Uxc0 + Uxc1 + Uhub + Ucs + Uzs + Uzo + Uef + UvdW + Uch;
-    outputfile1(mixing_history, energies,2,MD_iter,0,0,SCF_iter,file_DFTSCF,ChemP_e0,orbital_norm);
+    Utot = components->core + components->hartree[0] + components->kinetic + components->neutral_atom + components->nonlocal + components->hartree[1] + components->xc[0] + components->xc[1] + components->hubbard + components->spin_constraint + components->zeeman_spin + components->zeeman_orbital + components->electric_field + components->vdw + components->core_hole;
+    outputfile1(mixing_history, energies, components,2,MD_iter,0,0,SCF_iter,file_DFTSCF,ChemP_e0,orbital_norm);
   }
   else if ( Solver==12 ){
-    Utot = energies->band + UH1 + UH_dc + Uxc0 + Uxc1 + Uxc0_dc + Uxc1_dc + Ucore + UH0;
-    outputfile1(mixing_history, energies,3,MD_iter,0,0,SCF_iter,file_DFTSCF,ChemP_e0,orbital_norm);
+    Utot = energies->band + components->hartree[1] + components->hartree_double_counting + components->xc[0] + components->xc[1] + components->xc_double_counting[0] + components->xc_double_counting[1] + components->core + components->hartree[0];
+    outputfile1(mixing_history, energies, components,3,MD_iter,0,0,SCF_iter,file_DFTSCF,ChemP_e0,orbital_norm);
   }
   
   /* elapsed time */
@@ -2921,21 +2929,21 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
     printf("*******************************************************\n\n"); 
 
     printf("  Uele  = %20.12f\n\n",energies->band);
-    printf("  Ukin  = %20.12f\n",Ukin);
-    printf("  UH0   = %20.12f\n",UH0);
-    printf("  UH1   = %20.12f\n",UH1);
-    printf("  Una   = %20.12f\n",Una);
-    printf("  Unl   = %20.12f\n",Unl);
-    printf("  Uxc0  = %20.12f\n",Uxc0);
-    printf("  Uxc1  = %20.12f\n",Uxc1);
-    printf("  Ucore = %20.12f\n",Ucore);
-    printf("  Uhub  = %20.12f\n",Uhub);
-    printf("  Ucs   = %20.12f\n",Ucs);
-    printf("  Uzs   = %20.12f\n",Uzs);
-    printf("  Uzo   = %20.12f\n",Uzo);
-    printf("  Uef   = %20.12f\n",Uef);
-    printf("  UvdW  = %20.12f\n",UvdW);
-    printf("  Uch   = %20.12f\n",Uch);
+    printf("  Ukin  = %20.12f\n",components->kinetic);
+    printf("  UH0   = %20.12f\n",components->hartree[0]);
+    printf("  UH1   = %20.12f\n",components->hartree[1]);
+    printf("  Una   = %20.12f\n",components->neutral_atom);
+    printf("  Unl   = %20.12f\n",components->nonlocal);
+    printf("  Uxc0  = %20.12f\n",components->xc[0]);
+    printf("  Uxc1  = %20.12f\n",components->xc[1]);
+    printf("  Ucore = %20.12f\n",components->core);
+    printf("  Uhub  = %20.12f\n",components->hubbard);
+    printf("  Ucs   = %20.12f\n",components->spin_constraint);
+    printf("  Uzs   = %20.12f\n",components->zeeman_spin);
+    printf("  Uzo   = %20.12f\n",components->zeeman_orbital);
+    printf("  Uef   = %20.12f\n",components->electric_field);
+    printf("  UvdW  = %20.12f\n",components->vdw);
+    printf("  Uch   = %20.12f\n",components->core_hole);
     printf("  Utot  = %20.12f\n\n",Utot);
     printf("  UpV   = %20.12f\n",UpV);
     printf("  Enpy  = %20.12f\n",Utot+UpV);
@@ -2970,15 +2978,15 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
     printf("*******************************************************\n\n"); 
 
     printf("  Uele    = %20.12f\n\n",energies->band);
-    printf("  UH0     = %20.12f\n",UH0);
-    printf("  UH1     = %20.12f\n",UH1);
-    printf("  Uxc0    = %20.12f\n",Uxc0);
-    printf("  Uxc1    = %20.12f\n",Uxc1);
-    printf("  UH_dc   = %20.12f\n",UH_dc);
-    printf("  Uxc0_dc = %20.12f\n",Uxc0_dc);
-    printf("  Uxc1_dc = %20.12f\n",Uxc1_dc);
-    printf("  Ucore   = %20.12f\n",Ucore);
-    printf("  UvdW    = %20.12f\n",UvdW);
+    printf("  UH0     = %20.12f\n",components->hartree[0]);
+    printf("  UH1     = %20.12f\n",components->hartree[1]);
+    printf("  Uxc0    = %20.12f\n",components->xc[0]);
+    printf("  Uxc1    = %20.12f\n",components->xc[1]);
+    printf("  UH_dc   = %20.12f\n",components->hartree_double_counting);
+    printf("  Uxc0_dc = %20.12f\n",components->xc_double_counting[0]);
+    printf("  Uxc1_dc = %20.12f\n",components->xc_double_counting[1]);
+    printf("  Ucore   = %20.12f\n",components->core);
+    printf("  UvdW    = %20.12f\n",components->vdw);
     printf("  Utot    = %20.12f\n\n",Utot);
     printf("  UpV     = %20.12f\n",UpV);
     printf("  Enpy    = %20.12f\n",Utot+UpV);
@@ -3535,7 +3543,7 @@ void Read_SCF_keywords()
 
 
 
-void Output_Energies_Forces(const OpenMXBandEnergies *energies, FILE *fp)
+void Output_Energies_Forces(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, FILE *fp)
 { 
   int ct_AN;
   double sumx,sumy,sumz;
@@ -3547,17 +3555,17 @@ void Output_Energies_Forces(const OpenMXBandEnergies *energies, FILE *fp)
   fprintf(fp,"                     Energies (Hartree)                    \n");
   fprintf(fp,"***********************************************************\n");
   fprintf(fp,"***********************************************************\n");
-  fprintf(fp,"    Uatom                         = %20.14f\n",Uatom);
+  fprintf(fp,"    Uatom                         = %20.14f\n",components->atomic_reference);
   fprintf(fp,"    Uele for   up-spin (OS)       = %20.14f\n",energies->os[0]);
   fprintf(fp,"    Uele for   up-spin (IS)       = %20.14f\n",energies->is[0]);
   fprintf(fp,"    Uele for down-spin (OS)       = %20.14f\n",energies->os[1]);
   fprintf(fp,"    Uele for down-spin (IS)       = %20.14f\n",energies->is[1]);
-  fprintf(fp,"    Uxc for up-spin               = %20.14f\n",Uxc0);
-  fprintf(fp,"    Uxc for down-spin             = %20.14f\n",Uxc1);
-  fprintf(fp,"    UH0                           = %20.14f\n",UH0);
-  fprintf(fp,"    UH1                           = %20.14f\n",UH1);
+  fprintf(fp,"    Uxc for up-spin               = %20.14f\n",components->xc[0]);
+  fprintf(fp,"    Uxc for down-spin             = %20.14f\n",components->xc[1]);
+  fprintf(fp,"    UH0                           = %20.14f\n",components->hartree[0]);
+  fprintf(fp,"    UH1                           = %20.14f\n",components->hartree[1]);
   fprintf(fp,"    UH2                           = %20.14f\n",UH2);
-  fprintf(fp,"    Ucore                         = %20.14f\n",Ucore);
+  fprintf(fp,"    Ucore                         = %20.14f\n",components->core);
   fprintf(fp,"    Udc  (Uxc+UH0+UH1+UH2+Ucore)  = %20.14f\n",Udc);
   fprintf(fp,"    Utot (Uele+Udc)               = %20.14f\n",Utot);
   fprintf(fp,"    Ucoh (Utot-Uatom)             = %20.14f\n",Ucoh);
@@ -3568,17 +3576,17 @@ void Output_Energies_Forces(const OpenMXBandEnergies *energies, FILE *fp)
   fprintf(fp,"                  Energies/atom (Hartree)                  \n");
   fprintf(fp,"***********************************************************\n");
   fprintf(fp,"***********************************************************\n");
-  fprintf(fp,"    Uatom                         = %20.14f\n",Uatom/atomnum);
+  fprintf(fp,"    Uatom                         = %20.14f\n",components->atomic_reference/atomnum);
   fprintf(fp,"    Uele for   up-spin (OS)       = %20.14f\n",energies->os[0]/atomnum);
   fprintf(fp,"    Uele for   up-spin (IS)       = %20.14f\n",energies->is[0]/atomnum);
   fprintf(fp,"    Uele for down-spin (OS)       = %20.14f\n",energies->os[1]/atomnum);
   fprintf(fp,"    Uele for down-spin (IS)       = %20.14f\n",energies->is[1]/atomnum);
-  fprintf(fp,"    Uxc for up-spin               = %20.14f\n",Uxc0/atomnum);
-  fprintf(fp,"    Uxc for down-spin             = %20.14f\n",Uxc1/atomnum);
-  fprintf(fp,"    UH0                           = %20.14f\n",UH0/atomnum);
-  fprintf(fp,"    UH1                           = %20.14f\n",UH1/atomnum);
+  fprintf(fp,"    Uxc for up-spin               = %20.14f\n",components->xc[0]/atomnum);
+  fprintf(fp,"    Uxc for down-spin             = %20.14f\n",components->xc[1]/atomnum);
+  fprintf(fp,"    UH0                           = %20.14f\n",components->hartree[0]/atomnum);
+  fprintf(fp,"    UH1                           = %20.14f\n",components->hartree[1]/atomnum);
   fprintf(fp,"    UH2                           = %20.14f\n",UH2/atomnum);
-  fprintf(fp,"    Ucore                         = %20.14f\n",Ucore/atomnum);
+  fprintf(fp,"    Ucore                         = %20.14f\n",components->core/atomnum);
   fprintf(fp,"    Udc  (Uxc+UH0+UH1+UH2+Ucore)  = %20.14f\n",Udc/atomnum);
   fprintf(fp,"    Utot (Uele+Udc)               = %20.14f\n",Utot/atomnum);
   fprintf(fp,"    Ucoh (Utot-Uatom)             = %20.14f\n",Ucoh/atomnum);

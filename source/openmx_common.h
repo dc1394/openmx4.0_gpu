@@ -2350,10 +2350,10 @@ extern double dipole_moment[4][4];
 extern double TempPara[30][3],PrePara[30][3];
 extern double MD_TimeStep,ChemP,Beta;
 extern double CN_Error,E_Temp,Original_E_Temp,BCR,LNO_Occ_Cutoff,orderN_LNO_Buffer;
-extern double GP,GT,T,Weight,Cell_Volume,Ukc,Uch,UH_dc,Uxc0_dc,Uxc1_dc;
-extern double Uxc0,Uxc1;
-extern double UH0,UH1,UH2,Ucore,Uhub,Ucs,Uef,Ukin,Unl,Una,Uzs,Uzo,UvdW;
-extern double Ucoh,Uatom,Udc,Utot,Uxc,Given_Total_Charge;
+extern double GP,GT,T,Weight,Cell_Volume,Ukc;
+
+extern double UH2;
+extern double Ucoh,Udc,Utot,Uxc,Given_Total_Charge;
 extern double Min_Mixing_weight,Max_Mixing_weight;
 extern double Kerker_factor,Criterion_MP_Special_Kpt;
 extern double system_charge,Total_Num_Electrons;
@@ -3740,8 +3740,8 @@ int SEQ(char str1[YOUSO10], char str2[YOUSO10]);
 void Generation_ATV(int CpyCell);
 char *string_tolower(char *buf, char *buf1);
 void iterout(int iter,double drctime,char fileE[YOUSO10],char fileDRC[YOUSO10]);
-void iterout_md(const OpenMXBandEnergies *energies, int iter,double drctime,char fileSE[YOUSO10]);
-void outputfile1(const OpenMXMixingHistory *history, const OpenMXBandEnergies *energies, int f_switch, int MD_iter, int orbitalOpt_iter,
+void iterout_md(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter,double drctime,char fileSE[YOUSO10]);
+void outputfile1(const OpenMXMixingHistory *history, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int f_switch, int MD_iter, int orbitalOpt_iter,
                  int Cnt_Now, int SCF_iter, char fname[YOUSO10],
                  double ChemP_e0[2], double orbital_norm);
 void init();

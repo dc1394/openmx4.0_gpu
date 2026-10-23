@@ -5,7 +5,7 @@
 #include "openmx_common.h"
 #include "mpi.h"
 
-void outputfile1(const OpenMXMixingHistory *history, const OpenMXBandEnergies *energies, int f_switch, int MD_iter, int orbitalOpt_iter,
+void outputfile1(const OpenMXMixingHistory *history, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int f_switch, int MD_iter, int orbitalOpt_iter,
                  int Cnt_Now, int SCF_iter, char fname[YOUSO10], 
                  double ChemP_e0[2], double orbital_norm)
 {
@@ -68,21 +68,21 @@ void outputfile1(const OpenMXMixingHistory *history, const OpenMXBandEnergies *e
         if (f_switch==2){
 	
 	  fprintf(fp,"  Uele.    %20.12f\n\n",energies->band);
-	  fprintf(fp,"  Ukin.    %20.12f\n",Ukin);
-	  fprintf(fp,"  UH0.     %20.12f\n",UH0);
-	  fprintf(fp,"  UH1.     %20.12f\n",UH1);
-	  fprintf(fp,"  Una.     %20.12f\n",Una);
-	  fprintf(fp,"  Unl.     %20.12f\n",Unl);
-	  fprintf(fp,"  Uxc0.    %20.12f\n",Uxc0);
-	  fprintf(fp,"  Uxc1.    %20.12f\n",Uxc1);
-	  fprintf(fp,"  Ucore.   %20.12f\n",Ucore);
-	  fprintf(fp,"  Uhub.    %20.12f\n",Uhub);
-	  fprintf(fp,"  Ucs.     %20.12f\n",Ucs);
-	  fprintf(fp,"  Uzs.     %20.12f\n",Uzs);
-	  fprintf(fp,"  Uzo.     %20.12f\n",Uzo);
-	  fprintf(fp,"  Uef.     %20.12f\n",Uef);
-	  fprintf(fp,"  UvdW.    %20.12f\n",UvdW);
-	  fprintf(fp,"  Uch.     %20.12f\n",Uch);
+	  fprintf(fp,"  Ukin.    %20.12f\n",components->kinetic);
+	  fprintf(fp,"  UH0.     %20.12f\n",components->hartree[0]);
+	  fprintf(fp,"  UH1.     %20.12f\n",components->hartree[1]);
+	  fprintf(fp,"  Una.     %20.12f\n",components->neutral_atom);
+	  fprintf(fp,"  Unl.     %20.12f\n",components->nonlocal);
+	  fprintf(fp,"  Uxc0.    %20.12f\n",components->xc[0]);
+	  fprintf(fp,"  Uxc1.    %20.12f\n",components->xc[1]);
+	  fprintf(fp,"  Ucore.   %20.12f\n",components->core);
+	  fprintf(fp,"  Uhub.    %20.12f\n",components->hubbard);
+	  fprintf(fp,"  Ucs.     %20.12f\n",components->spin_constraint);
+	  fprintf(fp,"  Uzs.     %20.12f\n",components->zeeman_spin);
+	  fprintf(fp,"  Uzo.     %20.12f\n",components->zeeman_orbital);
+	  fprintf(fp,"  Uef.     %20.12f\n",components->electric_field);
+	  fprintf(fp,"  UvdW.    %20.12f\n",components->vdw);
+	  fprintf(fp,"  Uch.     %20.12f\n",components->core_hole);
 	  fprintf(fp,"  Utot.    %20.12f\n\n",Utot);
 	  fprintf(fp,"  UpV.     %20.12f\n",UpV);
 	  fprintf(fp,"  Enpy.    %20.12f\n",Utot+UpV);
@@ -113,15 +113,15 @@ void outputfile1(const OpenMXMixingHistory *history, const OpenMXBandEnergies *e
         else if (f_switch==3){
 
 	  fprintf(fp,"  Uele    = %20.12f\n\n",energies->band);
-	  fprintf(fp,"  UH0     = %20.12f\n",UH0);
-	  fprintf(fp,"  UH1     = %20.12f\n",UH1);
-	  fprintf(fp,"  Uxc0    = %20.12f\n",Uxc0);
-	  fprintf(fp,"  Uxc1    = %20.12f\n",Uxc1);
-	  fprintf(fp,"  UH_dc   = %20.12f\n",UH_dc);
-	  fprintf(fp,"  Uxc0_dc = %20.12f\n",Uxc0_dc);
-	  fprintf(fp,"  Uxc1_dc = %20.12f\n",Uxc1_dc);
-	  fprintf(fp,"  Ucore   = %20.12f\n",Ucore);
-	  fprintf(fp,"  UvdW    = %20.12f\n",UvdW);
+	  fprintf(fp,"  UH0     = %20.12f\n",components->hartree[0]);
+	  fprintf(fp,"  UH1     = %20.12f\n",components->hartree[1]);
+	  fprintf(fp,"  Uxc0    = %20.12f\n",components->xc[0]);
+	  fprintf(fp,"  Uxc1    = %20.12f\n",components->xc[1]);
+	  fprintf(fp,"  UH_dc   = %20.12f\n",components->hartree_double_counting);
+	  fprintf(fp,"  Uxc0_dc = %20.12f\n",components->xc_double_counting[0]);
+	  fprintf(fp,"  Uxc1_dc = %20.12f\n",components->xc_double_counting[1]);
+	  fprintf(fp,"  Ucore   = %20.12f\n",components->core);
+	  fprintf(fp,"  UvdW    = %20.12f\n",components->vdw);
 	  fprintf(fp,"  Utot    = %20.12f\n\n",Utot);
 	  fprintf(fp,"  UpV     = %20.12f\n",UpV);
 	  fprintf(fp,"  Enpy    = %20.12f\n",Utot+UpV);

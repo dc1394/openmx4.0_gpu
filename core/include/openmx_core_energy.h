@@ -23,6 +23,36 @@ typedef struct {
 int openmx_core_band_energies(OpenMXCoreContext*, OpenMXBandEnergies **out,
     char *error, size_t error_capacity);
 
+/* Contributions computed by Total_Energy and retained by DFT for SCF/MD
+   output. Preserve the native terms separately, including double counting
+   terms used by the Harris functional. No summation or solver policy is
+   imposed here. This value does not contain Utot, ionic kinetic energy or
+   pressure times volume. */
+typedef struct {
+  double kinetic;
+  double hartree[2];
+  double neutral_atom;
+  double nonlocal;
+  double xc[2];
+  double core;
+  double hubbard;
+  double spin_constraint;
+  double zeeman_spin;
+  double zeeman_orbital;
+  double electric_field;
+  double vdw;
+  double core_hole;
+  double hartree_double_counting;
+  double xc_double_counting[2];
+  double atomic_reference;
+} OpenMXEnergyComponents;
+
+/* Borrow the calculation's zero-initialized components without allocating.
+   Failure preserves *out. The same quiescence and lifetime rules as the
+   band-energy accessor apply; native borrowers drain before reset. */
+int openmx_core_energy_components(OpenMXCoreContext*, OpenMXEnergyComponents **out,
+    char *error, size_t error_capacity);
+
 #ifdef __cplusplus
 }
 #endif

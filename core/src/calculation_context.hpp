@@ -37,5 +37,6 @@ struct OpenMXCoreContext {
   // it alive until all native states borrowing it have drained.
   OpenMXMixingHistory mixing_history{};
   OpenMXBandEnergies band_energies{};
+  OpenMXEnergyComponents energy_components{};
   NativeResourceGroups native_resources;
 };

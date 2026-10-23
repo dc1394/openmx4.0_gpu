@@ -2,7 +2,7 @@
 """Run the actual simple-mixing algorithm with calculation-owned history.
 
 MPI reduction and scalar input parsing are modeled. Production mixing,
-sign/maximum helpers, input binding, SCF and MD output use the actual C++ owner.
+sign/maximum helpers, input binding, SCF/MD and standard/Harris energy output use the actual C++ owners.
 """
 import argparse
 import os

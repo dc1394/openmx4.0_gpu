@@ -9,6 +9,9 @@
 #include <cstring>
 #include <iostream>
 #include <memory>
+#include <fstream>
+#include <sstream>
+#include <map>
 #include <stdexcept>
 #include <string>
 
@@ -19,8 +22,8 @@ int SO_switch=0,Hub_U_switch=0,Constraint_NCS_switch=0,Zeeman_NCS_switch=0,Zeema
 double Min_Mixing_weight=.1,Max_Mixing_weight=.4,incoming_energy=2;
 constexpr int YOUSO10=1024,fp_bsize=65536;
 int Host_ID=0,Cnt_switch=0,Solver=2,Hub_Type=0,dc_Type=0,Yukawa_on=0,Nmul=0;
-double Ukin=0,UH0=0,UH1=0,Una=0,Unl=0,Uxc0=0,Uxc1=0,Ucore=0,Uhub=0,Ucs=0,Uzs=0,Uzo=0,Uef=0,UvdW=0,Uch=0,Utot=0,UpV=0;
-double UH_dc=0,Uxc0_dc=0,Uxc1_dc=0,ChemP=0,orbitalOpt_criterion=0,eV2Hartree=27.2114;
+double Utot=0,UpV=0;
+double ChemP=0,orbitalOpt_criterion=0,eV2Hartree=27.2114;
 int B_spe[30]={},B_l[30]={},B_mul[30]={};char* SpeName[1]={};
 double lambda[30]={},U[30]={},J[30]={},Slater_F0[30]={},Slater_F2[30]={},Slater_F4[30]={},Slater_F6[30]={};
 double parser_value=0;bool parser_default=false;
@@ -50,6 +53,18 @@ OpenMXMixingHistory* history(OpenMXCoreContext* c){
 }
 OpenMXBandEnergies* energies(OpenMXCoreContext* c){
   char error[256];OpenMXBandEnergies* e=nullptr;require(openmx_core_band_energies(c,&e,error,sizeof(error)),error);return e;
+}
+OpenMXEnergyComponents* components(OpenMXCoreContext* c){
+  char error[256];OpenMXEnergyComponents* e=nullptr;
+  require(openmx_core_energy_components(c,&e,error,sizeof(error)),error);return e;
+}
+void seed_components(OpenMXEnergyComponents* e,double base){
+  e->kinetic=base+1;e->hartree[0]=base+2;e->hartree[1]=base+3;
+  e->neutral_atom=base+4;e->nonlocal=base+5;e->xc[0]=base+6;e->xc[1]=base+7;
+  e->core=base+8;e->hubbard=base+9;e->spin_constraint=base+10;
+  e->zeeman_spin=base+11;e->zeeman_orbital=base+12;e->electric_field=base+13;
+  e->vdw=base+14;e->core_hole=base+15;e->hartree_double_counting=base+16;
+  e->xc_double_counting[0]=base+17;e->xc_double_counting[1]=base+18;e->atomic_reference=base+19;
 }
 // Fixed test topology: 4 spin slots, 2 atom slots, one neighbor/row and 2
 // columns. Only atom=1/column=0 is active; the other values are canaries.
@@ -141,8 +156,8 @@ void input_and_output(char* path){
   parser_default=true;parse_weight(second.get());equal(a->weight,.125);equal(b->weight,.3);
   a->norm[0]=4;b->norm[0]=-9;incoming_energy=7.25;double chem[2]={};std::remove(path);
   auto* ea=energies(first.get());auto* eb=energies(second.get());ea->band=7.25;eb->band=-17.5;
-  Cnt_switch=0;outputfile1(a,ea,1,1,0,0,2,path,chem,0);
-  Cnt_switch=1;outputfile1(b,eb,1,2,3,1,4,path,chem,0);
+  Cnt_switch=0;outputfile1(a,ea,components(first.get()),1,1,0,0,2,path,chem,0);
+  Cnt_switch=1;outputfile1(b,eb,components(second.get()),1,2,3,1,4,path,chem,0);
   FILE* file=std::fopen(path,"r");require(file,"missing production SCF output");
   char buffer[4096];const auto size=std::fread(buffer,1,sizeof(buffer),file);std::fclose(file);
   const std::string text(buffer,size);
@@ -156,20 +171,61 @@ void input_and_output(char* path){
 void md_output(char* path){
   auto first=calculation(),second=calculation();auto* a=energies(first.get());auto* b=energies(second.get());
   *a={7.25,{1.25,3.75},{2.5,4.5}};*b={-17.5,{-11.5,-13.25},{-12.5,-14.5}};
-  std::remove(path);iterout_md(a,1,.25,path);iterout_md(b,2,.5,path);
+  auto* ac=components(first.get());auto* bc=components(second.get());
+  seed_components(ac,100);seed_components(bc,-200);
+  std::remove(path);iterout_md(a,ac,1,.25,path);iterout_md(b,bc,2,.5,path);
   openmx_core_native_resources_clear(first.get());a=energies(first.get());
-  iterout_md(a,3,.75,path);
+  ac=components(first.get());iterout_md(a,ac,3,.75,path);
   FILE* file=std::fopen(path,"r");require(file,"missing production MD energy output");
   const double expected[3][6]={{1,.25,1.25,2.5,3.75,7.25},{2,.5,-11.5,-12.5,-13.25,-17.5},{3,.75,0,0,0,0}};
   for(int row=0;row<3;++row)for(int column=0;column<34;++column){
     double value=0;require(std::fscanf(file,"%lf",&value)==1,"MD output column layout changed");
     if(column<6)equal(value,expected[row][column]);
+    const double expected_components[3][5]={{106,107,102,103,108},{-194,-193,-198,-197,-192},{0,0,0,0,0}};
+    if(column>=6 && column<11)equal(value,expected_components[row][column-6]);
   }
   double extra=0;require(std::fscanf(file,"%lf",&extra)==EOF,"MD output added unexpected columns");std::fclose(file);
   equal(b->band,-17.5);equal(b->os[0],-11.5);equal(b->os[1],-13.25);equal(b->is[0],-12.5);equal(b->is[1],-14.5);
   equal(a->band,0);equal(a->os[0],0);equal(a->os[1],0);equal(a->is[0],0);equal(a->is[1],0);
   std::remove(path);
 }
+void component_output(char* path){
+  auto first=calculation(),second=calculation();double chem[2]={};
+  auto* a=components(first.get());auto* b=components(second.get());
+  seed_components(a,100);seed_components(b,-200);
+  Utot=42.5;UpV=3.25;
+  for(int mode:{2,3})for(int owner=0;owner<3;++owner){
+    const auto c=owner==1?second.get():first.get();
+    if(owner==2)openmx_core_native_resources_clear(c);
+    auto* values=components(c);auto* band=energies(c);band->band=owner==1?-7.5:9.25;
+    std::remove(path);outputfile1(history(c),band,values,mode,owner+1,0,0,1,path,chem,0);
+    std::ifstream file(path);require(bool(file),"missing component energy report");
+    std::map<std::string,double> actual;std::string line;
+    while(std::getline(file,line)){
+      std::istringstream in(line);std::string label,separator;double value;
+      if(!(in>>label))continue;
+      if(mode==2 && !label.empty() && label.back()=='.'){
+        label.pop_back();if(in>>value)actual[label]=value;
+      }else if(mode==3 && (in>>separator) && separator=="=" && (in>>value))actual[label]=value;
+    }
+    const double base=owner==1?-200:100;
+    const std::pair<const char*,int> standard[]={{"Ukin",1},{"UH0",2},{"UH1",3},{"Una",4},{"Unl",5},
+      {"Uxc0",6},{"Uxc1",7},{"Ucore",8},{"Uhub",9},{"Ucs",10},{"Uzs",11},{"Uzo",12},
+      {"Uef",13},{"UvdW",14},{"Uch",15}};
+    const std::pair<const char*,int> harris[]={{"UH0",2},{"UH1",3},{"Uxc0",6},{"Uxc1",7},
+      {"UH_dc",16},{"Uxc0_dc",17},{"Uxc1_dc",18},{"Ucore",8},{"UvdW",14}};
+    auto check=[&](const auto& expected){for(const auto& term:expected){
+      require(actual.count(term.first),"energy component output label missing");
+      equal(actual.at(term.first),owner==2?0:base+term.second);
+    }};
+    if(mode==2)check(standard);else check(harris);
+    equal(actual.at("Utot"),42.5);equal(actual.at("UpV"),3.25);equal(actual.at("Uele"),band->band);
+    equal(b->kinetic,-199);equal(b->xc_double_counting[1],-182);
+    if(owner==2)seed_components(a,100);
+  }
+  Utot=0;UpV=0;std::remove(path);
 }
-int main(int argc,char** argv){try{require(argc==2,"expected an output path");golden();imaginary();interleaved();input_and_output(argv[1]);md_output(argv[1]);std::cout<<"PASS: actual simple mixing, input binding, independent SCF/MD energy output, 12 golden trajectories, 6 imaginary-spin modes, 100 interleaved calculations\n";}
+
+}
+int main(int argc,char** argv){try{require(argc==2,"expected an output path");golden();imaginary();interleaved();input_and_output(argv[1]);md_output(argv[1]);component_output(argv[1]);std::cout<<"PASS: actual simple mixing, input binding, independent SCF/MD energy and standard/Harris component output, 12 golden trajectories, 6 imaginary-spin modes, 100 interleaved calculations\n";}
 catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}

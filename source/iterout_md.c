@@ -13,7 +13,7 @@
 #include <stdio.h>
 #include "openmx_common.h"
 
-void iterout_md(const OpenMXBandEnergies *energies, int iter, double drctime, char fileSE[YOUSO10])
+void iterout_md(const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, double drctime, char fileSE[YOUSO10])
 {
   int i,j,k;
   double dt,itermax,aa,dx,dy,dz,xido,yido,zido;
@@ -31,11 +31,11 @@ void iterout_md(const OpenMXBandEnergies *energies, int iter, double drctime, ch
     /*  4 */      fprintf(fp,"%10.7f ",energies->is[0]);
     /*  5 */      fprintf(fp,"%10.7f ",energies->os[1]);
     /*  6 */      fprintf(fp,"%10.7f ",energies->band);
-    /*  7 */      fprintf(fp,"%10.7f ",Uxc0);
-    /*  8 */      fprintf(fp,"%10.7f ",Uxc1);
-    /*  9 */      fprintf(fp,"%10.7f ",UH0);
-    /* 10 */      fprintf(fp,"%10.7f ",UH1);
-    /* 11 */      fprintf(fp,"%10.7f ",Ucore);
+    /*  7 */      fprintf(fp,"%10.7f ",components->xc[0]);
+    /*  8 */      fprintf(fp,"%10.7f ",components->xc[1]);
+    /*  9 */      fprintf(fp,"%10.7f ",components->hartree[0]);
+    /* 10 */      fprintf(fp,"%10.7f ",components->hartree[1]);
+    /* 11 */      fprintf(fp,"%10.7f ",components->core);
     /* 12 */      fprintf(fp,"%10.7f ",Udc);
     /* 13 */      fprintf(fp,"%10.7f ",Ucoh);
     /* 14 */      fprintf(fp,"%10.7f ",Ukc);
