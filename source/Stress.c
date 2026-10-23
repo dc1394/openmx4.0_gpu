@@ -14,6 +14,7 @@
 #include <math.h>
 #include <time.h>
 #include "openmx_common.h"
+#include "openmx_stress_workspace.h"
 #include "openmx_orbitals.h"
 #include "openmx_core_vna_matrix.h"
 #include "openmx_precision.h"
@@ -28,12 +29,12 @@
 static void MPI_OLP(double *****OLP1);
 static void Stress3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
 static void Stress4(const OpenMXAtomicViews *atomic);
-static void Stress4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double *****CDM0, const OpenMXLocalBasisViews *local_basis);
-static void Stress_core();
-static void Stress_H0(const OpenMXAtomicViews *atomic);
-static void Stress_H1();
-static void Stress_HNL(const OpenMXAtomicViews *atomic, double *****CDM0, double *****iDM0, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
-static void Stress_plus_U_dual(double *****CDM0, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
+static void Stress4B(OpenMXSolverInvocation *scratch,const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double *****CDM0, const OpenMXLocalBasisViews *local_basis);
+static void Stress_core(OpenMXSolverInvocation *scratch);
+static void Stress_H0(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *atomic);
+static void Stress_H1(OpenMXSolverInvocation *scratch);
+static void Stress_HNL(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *atomic, double *****CDM0, double *****iDM0, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
+static void Stress_plus_U_dual(OpenMXSolverInvocation *scratch,double *****CDM0, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
 static void EH0_TwoCenter(const OpenMXAtomicViews *atomic, int Gc_AN, int h_AN, double VH0ij[4]); /*from Total_Energy.c*/
 static void EH0_TwoCenter_at_Cutoff(const OpenMXAtomicViews *atomic, int wan1, int wan2, double VH0ij[4]); /*from Total_Energy.c*/
 
@@ -84,7 +85,42 @@ static void dHNL_SO(
 
 
 
+typedef struct {
+  OpenMXThermodynamicEnergies *thermo;
+  const OpenMXAtomicViews *atomic;
+  const OpenMXVnaMatrixViews *vna;
+  const OpenMXReciprocalViews *reciprocal;
+  double *****H0,******DS_NL,*****OLP,*****CDM,*****EDM;
+  const OpenMXElectronicViews *electronic;
+  const OpenMXLocalBasisViews *local_basis;
+} OpenMXStressArguments;
+static double Stress_owned(OpenMXSolverInvocation *scratch,OpenMXThermodynamicEnergies *thermo, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double *****H0,
+	      double ******DS_NL,
+	      double *****OLP,
+	      double *****CDM,
+	      double *****EDM, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
+static int Stress_Operation(OpenMXSolverInvocation *scratch,void *opaque,double *result)
+{
+  const OpenMXStressArguments *a=opaque;
+  *result=Stress_owned(scratch,a->thermo,a->atomic,a->vna,a->reciprocal,a->H0,a->DS_NL,
+      a->OLP,a->CDM,a->EDM,a->electronic,a->local_basis);
+  return 1;
+}
 double Stress(OpenMXThermodynamicEnergies *thermo, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double *****H0,
+	      double ******DS_NL,
+	      double *****OLP,
+	      double *****CDM,
+	      double *****EDM, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
+{
+  OpenMXStressArguments args={thermo,atomic,vna,reciprocal,H0,DS_NL,OLP,CDM,EDM,electronic,local_basis};
+  double begin,end;
+  dtime(&begin);
+  (void)OpenMX_Solver_Run(Stress_Operation,&args);
+  dtime(&end);
+  return end-begin;
+}
+
+static double Stress_owned(OpenMXSolverInvocation *scratch,OpenMXThermodynamicEnergies *thermo, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double *****H0,
 	      double ******DS_NL,
 	      double *****OLP,
 	      double *****CDM,
@@ -96,7 +132,7 @@ double Stress(OpenMXThermodynamicEnergies *thermo, const OpenMXAtomicViews *atom
   double ******iDM=electronic->iDM;
 
   /*** variables **/
-  static int firsttime=1;
+
   int Nc,GNc,GRc,Cwan,s1,s2,BN_AB;
   int Mc_AN,Gc_AN,MNc,start_q_AN;
   double x,y,z,dx,dy,dz,tmp0,tmp1,tmp2,tmp3;
@@ -154,7 +190,7 @@ double Stress(OpenMXThermodynamicEnergies *thermo, const OpenMXAtomicViews *atom
   dtime(&TStime);
 
   /* Stress */
-  double **My_Stress_threads;
+  OpenMXSolverRealTensor stress_threads;
   double Stress[9],My_Stress[9];
   double sumv1[4],sumv2[4],sumv3[4];
   double sumt1[9],sumt2[9],sumt3[9],sumt4[9],sumt5[9];
@@ -721,10 +757,10 @@ double Stress(OpenMXThermodynamicEnergies *thermo, const OpenMXAtomicViews *atom
     /* Dynamic teams may grow after a separate probe region. */
     Nthrds0 = omp_get_max_threads();
 
-    My_Stress_threads=(double**)malloc(sizeof(double*)*(Nthrds0));
+    OpenMX_Stress_ThreadsPrepare(scratch,Nthrds0,&stress_threads);
     for (i=0; i<Nthrds0; i++){
-      My_Stress_threads[i] = (double*)malloc(sizeof(double)*9);
-      for (j=0; j<9; j++) My_Stress_threads[i][j] = 0.0;
+
+      for (j=0; j<9; j++) openmx_solver_real_matrix_row(&stress_threads,i)[j] = 0.0;
     }
 
     for (i=0; i<9; i++){
@@ -733,7 +769,7 @@ double Stress(OpenMXThermodynamicEnergies *thermo, const OpenMXAtomicViews *atom
     }
     /* end(yshiihara) */
   
-#pragma omp parallel shared(atomic,myid,time_per_atom,level_stdout,GridVol,Vxc_Grid,RefVxc_Grid,SpinP_switch,F_Vxc_flag,PCC_switch,dVHart_Grid,F_dVHart_flag,Gxyz,atv,MGridListAtom,CellListAtom,GridListAtom,GridN_Atom,WhatSpecies,M2G,Matomnum,Stress,My_Stress,My_Stress_threads) private(OMPID,Nthrds,Nprocs,Mc_AN,Stime_atom,Etime_atom,Gc_AN,Cwan,sumx,sumy,sumz,Nc,GNc,GRc,MNc,Cxyz,x,y,z,dx,dy,dz,r,r2,tmp0,tmp1,tmp2,xx,sumt1,sumt2,sumt3,sumt4,sumt5,i)
+#pragma omp parallel shared(atomic,myid,time_per_atom,level_stdout,GridVol,Vxc_Grid,RefVxc_Grid,SpinP_switch,F_Vxc_flag,PCC_switch,dVHart_Grid,F_dVHart_flag,Gxyz,atv,MGridListAtom,CellListAtom,GridListAtom,GridN_Atom,WhatSpecies,M2G,Matomnum,Stress,My_Stress,stress_threads) private(OMPID,Nthrds,Nprocs,Mc_AN,Stime_atom,Etime_atom,Gc_AN,Cwan,sumx,sumy,sumz,Nc,GNc,GRc,MNc,Cxyz,x,y,z,dx,dy,dz,r,r2,tmp0,tmp1,tmp2,xx,sumt1,sumt2,sumt3,sumt4,sumt5,i)
     {
     
       /* get info. on OpenMP */ 
@@ -936,15 +972,15 @@ double Stress(OpenMXThermodynamicEnergies *thermo, const OpenMXAtomicViews *atom
 	/* end(yshiihara) */
 
 	/* begin(yshiihara) */
-	My_Stress_threads[OMPID][0] -= (sumt1[0]+sumt2[0]+sumt3[0]+sumt4[0])*GridVol;
-	My_Stress_threads[OMPID][1] -= (sumt1[1]+sumt2[1]+sumt3[1]+sumt4[1])*GridVol;
-	My_Stress_threads[OMPID][2] -= (sumt1[2]+sumt2[2]+sumt3[2]+sumt4[2])*GridVol;
-	My_Stress_threads[OMPID][3] -= (sumt1[3]+sumt2[3]+sumt3[3]+sumt4[3])*GridVol;
-	My_Stress_threads[OMPID][4] -= (sumt1[4]+sumt2[4]+sumt3[4]+sumt4[4])*GridVol;
-	My_Stress_threads[OMPID][5] -= (sumt1[5]+sumt2[5]+sumt3[5]+sumt4[5])*GridVol;
-	My_Stress_threads[OMPID][6] -= (sumt1[6]+sumt2[6]+sumt3[6]+sumt4[6])*GridVol;
-	My_Stress_threads[OMPID][7] -= (sumt1[7]+sumt2[7]+sumt3[7]+sumt4[7])*GridVol;
-	My_Stress_threads[OMPID][8] -= (sumt1[8]+sumt2[8]+sumt3[8]+sumt4[8])*GridVol;
+	openmx_solver_real_matrix_row(&stress_threads,OMPID)[0] -= (sumt1[0]+sumt2[0]+sumt3[0]+sumt4[0])*GridVol;
+	openmx_solver_real_matrix_row(&stress_threads,OMPID)[1] -= (sumt1[1]+sumt2[1]+sumt3[1]+sumt4[1])*GridVol;
+	openmx_solver_real_matrix_row(&stress_threads,OMPID)[2] -= (sumt1[2]+sumt2[2]+sumt3[2]+sumt4[2])*GridVol;
+	openmx_solver_real_matrix_row(&stress_threads,OMPID)[3] -= (sumt1[3]+sumt2[3]+sumt3[3]+sumt4[3])*GridVol;
+	openmx_solver_real_matrix_row(&stress_threads,OMPID)[4] -= (sumt1[4]+sumt2[4]+sumt3[4]+sumt4[4])*GridVol;
+	openmx_solver_real_matrix_row(&stress_threads,OMPID)[5] -= (sumt1[5]+sumt2[5]+sumt3[5]+sumt4[5])*GridVol;
+	openmx_solver_real_matrix_row(&stress_threads,OMPID)[6] -= (sumt1[6]+sumt2[6]+sumt3[6]+sumt4[6])*GridVol;
+	openmx_solver_real_matrix_row(&stress_threads,OMPID)[7] -= (sumt1[7]+sumt2[7]+sumt3[7]+sumt4[7])*GridVol;
+	openmx_solver_real_matrix_row(&stress_threads,OMPID)[8] -= (sumt1[8]+sumt2[8]+sumt3[8]+sumt4[8])*GridVol;
 	/* end(yshiihara) */
 
 	dtime(&Etime_atom);
@@ -962,7 +998,7 @@ double Stress(OpenMXThermodynamicEnergies *thermo, const OpenMXAtomicViews *atom
     /* begin(yshiihara) */
     for(i=0; i<Nthrds0; i++){
       for(j=0; j<9; j++){
-	My_Stress[j] += My_Stress_threads[i][j];
+	My_Stress[j] += openmx_solver_real_matrix_row(&stress_threads,i)[j];
       }
     }
 
@@ -996,10 +1032,7 @@ double Stress(OpenMXThermodynamicEnergies *thermo, const OpenMXAtomicViews *atom
     }
 
     /* begin(yshiihara) */ 
-    for (i=0; i<Nthrds0; i++){
-      free(My_Stress_threads[i]);
-    }
-    free(My_Stress_threads);
+
     /* end(yshiihara) */
 
     /* begin(yshiihara) */ 
@@ -1126,15 +1159,15 @@ double Stress(OpenMXThermodynamicEnergies *thermo, const OpenMXAtomicViews *atom
 	  }
 	}
 
-	My_Stress_threads=(double**)malloc(sizeof(double*)*(Nthrds0));
+	OpenMX_Stress_ThreadsPrepare(scratch,Nthrds0,&stress_threads);
 	for (Nloop=0; Nloop<Nthrds0; Nloop++){
-	  My_Stress_threads[Nloop] = (double*)malloc(sizeof(double)*9);
+
 	  for (i=0; i<9; i++){
-	    My_Stress_threads[Nloop][i] = 0.0;
+	    openmx_solver_real_matrix_row(&stress_threads,Nloop)[i] = 0.0;
 	  }
 	}
 	
-#pragma omp parallel shared(atomic,Leb_Grid_XYZW,Num_Leb_Grid,My_sumr,My_sumrx,My_sumry,My_sumrz,My_Stress,My_Stress_threads,Dr,Sr,CoarseGL_Abscissae,CoarseGL_Weight,Gxyz,Gc_AN,FNAN,natn,ncn,WhatSpecies,atv,F_Vxc_flag,Cwan,PCC_switch) private(OMPID,Nthrds,Nprocs,ir,ia,r,w,sumt,sumtx,sumty,sumtz,x,x0,y0,z0,h_AN,Gh_AN,Rn,Hwan,x1,y1,z1,dx,dy,dz,r1,den,den0,gden0,dx1,dy1,dz1,exc0,vxc0,sumt1,i)
+#pragma omp parallel shared(atomic,Leb_Grid_XYZW,Num_Leb_Grid,My_sumr,My_sumrx,My_sumry,My_sumrz,My_Stress,stress_threads,Dr,Sr,CoarseGL_Abscissae,CoarseGL_Weight,Gxyz,Gc_AN,FNAN,natn,ncn,WhatSpecies,atv,F_Vxc_flag,Cwan,PCC_switch) private(OMPID,Nthrds,Nprocs,ir,ia,r,w,sumt,sumtx,sumty,sumtz,x,x0,y0,z0,h_AN,Gh_AN,Rn,Hwan,x1,y1,z1,dx,dy,dz,r1,den,den0,gden0,dx1,dy1,dz1,exc0,vxc0,sumt1,i)
 	{
 
 	  double dx2,dy2,dz2;
@@ -1268,7 +1301,7 @@ double Stress(OpenMXThermodynamicEnergies *thermo, const OpenMXAtomicViews *atom
 	    }
 
 	    for(i=0; i<9; i++){
-	      My_Stress_threads[OMPID][i] += w*sumt1[i];
+	      openmx_solver_real_matrix_row(&stress_threads,OMPID)[i] += w*sumt1[i];
 	    }
 
 	  } /* ir */
@@ -1318,7 +1351,7 @@ double Stress(OpenMXThermodynamicEnergies *thermo, const OpenMXAtomicViews *atom
       
 	for (Nloop=0; Nloop<Nthrds0; Nloop++){
 	  for(i=0; i<9; i++){
-	    My_Stress[i] += 2.0*PI*Dr*My_Stress_threads[Nloop][i];
+	    My_Stress[i] += 2.0*PI*Dr*openmx_solver_real_matrix_row(&stress_threads,Nloop)[i];
 	  }
 	}
 
@@ -1341,10 +1374,7 @@ double Stress(OpenMXThermodynamicEnergies *thermo, const OpenMXAtomicViews *atom
 	}
 	free(My_sumrz);
 
-	for (i=0; i<Nthrds0; i++){
-	  free(My_Stress_threads[i]);
-	}
-	free(My_Stress_threads);
+
 	
       } /* Mc_AN */
 
@@ -1398,14 +1428,14 @@ double Stress(OpenMXThermodynamicEnergies *thermo, const OpenMXAtomicViews *atom
   Nthrds0 = omp_get_max_threads();
 
   /* begin(yshiihara) */ 
-  My_Stress_threads=(double**)malloc(sizeof(double*)*(Nthrds0));
+  OpenMX_Stress_ThreadsPrepare(scratch,Nthrds0,&stress_threads);
   for (i=0; i<Nthrds0; i++){
-    My_Stress_threads[i] = (double*)malloc(sizeof(double)*9);
-    for (j=0; j<9; j++) My_Stress_threads[i][j] = 0.0;
+
+    for (j=0; j<9; j++) openmx_solver_real_matrix_row(&stress_threads,i)[j] = 0.0;
   }
   /* end(yshiihara) */
   
-#pragma omp parallel shared(atomic,time_per_atom,Gxyz,myid,level_stdout,iDM0,CDM0,CntH0,H0,F_Kin_flag,local_basis,OLP,Hub_U_occupation,Cnt_switch,F_NL_flag,List_YOUSO,RMI1,Zeeman_NCO_switch,Zeeman_NCS_switch,Constraint_NCS_switch,F_U_flag,Hub_U_switch,SO_switch,SpinP_switch,F_G2M,natn,ncn,FNAN,WhatSpecies,M2G,Matomnum,My_Stress_threads) private(OMPID,Nthrds,Nprocs,Mc_AN,Stime_atom,Etime_atom,Gc_AN,Cwan,dEx,dEy,dEz,h_AN,Gh_AN,Mh_AN,Hwan,ian,start_q_AN,q_AN,Gq_AN,Mq_AN,Qwan,jan,kl,so,i,j,k,l,Hx,Hy,Hz,HUx,HUy,HUz,NC_HUx,NC_HUy,NC_HUz,s1,s2,pref,spinmax,spin,lx1,ly1,lz1,lx2,ly2,lz2,lx,ly,lz,Rn1,Rn2)
+#pragma omp parallel shared(atomic,time_per_atom,Gxyz,myid,level_stdout,iDM0,CDM0,CntH0,H0,F_Kin_flag,local_basis,OLP,Hub_U_occupation,Cnt_switch,F_NL_flag,List_YOUSO,RMI1,Zeeman_NCO_switch,Zeeman_NCS_switch,Constraint_NCS_switch,F_U_flag,Hub_U_switch,SO_switch,SpinP_switch,F_G2M,natn,ncn,FNAN,WhatSpecies,M2G,Matomnum,stress_threads) private(OMPID,Nthrds,Nprocs,Mc_AN,Stime_atom,Etime_atom,Gc_AN,Cwan,dEx,dEy,dEz,h_AN,Gh_AN,Mh_AN,Hwan,ian,start_q_AN,q_AN,Gq_AN,Mq_AN,Qwan,jan,kl,so,i,j,k,l,Hx,Hy,Hz,HUx,HUy,HUz,NC_HUx,NC_HUy,NC_HUz,s1,s2,pref,spinmax,spin,lx1,ly1,lz1,lx2,ly2,lz2,lx,ly,lz,Rn1,Rn2)
   {
 
     Hx = (dcomplex***)malloc(sizeof(dcomplex**)*3);
@@ -1639,7 +1669,7 @@ double Stress(OpenMXThermodynamicEnergies *thermo, const OpenMXAtomicViews *atom
 
 		printf("lx*dEz: %17.10f, lz*dEx: %17.10f\n",lx*dEz,lz*dEx);fflush(stdout); 
 		printf("exz: %17.10f, ezx: %17.10f\n",
-                        My_Stress_threads[0][2],My_Stress_threads[0][6]);fflush(stdout); 
+                        openmx_solver_real_matrix_row(&stress_threads,0)[2],openmx_solver_real_matrix_row(&stress_threads,0)[6]);fflush(stdout);
 
 
 		printf("lx1: %13.8f, ly1: %13.8f, lz1: %13.8f, lx2: %13.8f, ly2: %13.8f, lz2: %13.8f \n",
@@ -1652,15 +1682,15 @@ double Stress(OpenMXThermodynamicEnergies *thermo, const OpenMXAtomicViews *atom
 	      }
 	      */
 
-	      My_Stress_threads[OMPID][0] += 0.5*dEx*lx;
-	      My_Stress_threads[OMPID][1] += 0.5*dEy*lx;
-	      My_Stress_threads[OMPID][2] += 0.5*dEz*lx;
-	      My_Stress_threads[OMPID][3] += 0.5*dEx*ly;
-	      My_Stress_threads[OMPID][4] += 0.5*dEy*ly;
-	      My_Stress_threads[OMPID][5] += 0.5*dEz*ly;
-	      My_Stress_threads[OMPID][6] += 0.5*dEx*lz;
-	      My_Stress_threads[OMPID][7] += 0.5*dEy*lz;
-	      My_Stress_threads[OMPID][8] += 0.5*dEz*lz;
+	      openmx_solver_real_matrix_row(&stress_threads,OMPID)[0] += 0.5*dEx*lx;
+	      openmx_solver_real_matrix_row(&stress_threads,OMPID)[1] += 0.5*dEy*lx;
+	      openmx_solver_real_matrix_row(&stress_threads,OMPID)[2] += 0.5*dEz*lx;
+	      openmx_solver_real_matrix_row(&stress_threads,OMPID)[3] += 0.5*dEx*ly;
+	      openmx_solver_real_matrix_row(&stress_threads,OMPID)[4] += 0.5*dEy*ly;
+	      openmx_solver_real_matrix_row(&stress_threads,OMPID)[5] += 0.5*dEz*ly;
+	      openmx_solver_real_matrix_row(&stress_threads,OMPID)[6] += 0.5*dEx*lz;
+	      openmx_solver_real_matrix_row(&stress_threads,OMPID)[7] += 0.5*dEy*lz;
+	      openmx_solver_real_matrix_row(&stress_threads,OMPID)[8] += 0.5*dEz*lz;
 
 	    }
 
@@ -1701,15 +1731,15 @@ double Stress(OpenMXThermodynamicEnergies *thermo, const OpenMXAtomicViews *atom
 	      }
 	      */
 
-	      My_Stress_threads[OMPID][0] += 0.5*dEx*lx;
-	      My_Stress_threads[OMPID][1] += 0.5*dEy*lx;
-	      My_Stress_threads[OMPID][2] += 0.5*dEz*lx;
-	      My_Stress_threads[OMPID][3] += 0.5*dEx*ly;
-	      My_Stress_threads[OMPID][4] += 0.5*dEy*ly;
-	      My_Stress_threads[OMPID][5] += 0.5*dEz*ly;
-	      My_Stress_threads[OMPID][6] += 0.5*dEx*lz;
-	      My_Stress_threads[OMPID][7] += 0.5*dEy*lz;
-	      My_Stress_threads[OMPID][8] += 0.5*dEz*lz;
+	      openmx_solver_real_matrix_row(&stress_threads,OMPID)[0] += 0.5*dEx*lx;
+	      openmx_solver_real_matrix_row(&stress_threads,OMPID)[1] += 0.5*dEy*lx;
+	      openmx_solver_real_matrix_row(&stress_threads,OMPID)[2] += 0.5*dEz*lx;
+	      openmx_solver_real_matrix_row(&stress_threads,OMPID)[3] += 0.5*dEx*ly;
+	      openmx_solver_real_matrix_row(&stress_threads,OMPID)[4] += 0.5*dEy*ly;
+	      openmx_solver_real_matrix_row(&stress_threads,OMPID)[5] += 0.5*dEz*ly;
+	      openmx_solver_real_matrix_row(&stress_threads,OMPID)[6] += 0.5*dEx*lz;
+	      openmx_solver_real_matrix_row(&stress_threads,OMPID)[7] += 0.5*dEy*lz;
+	      openmx_solver_real_matrix_row(&stress_threads,OMPID)[8] += 0.5*dEz*lz;
 	    }
 	    
 	    /* spin collinear with spin-orbit coupling */
@@ -1779,7 +1809,7 @@ double Stress(OpenMXThermodynamicEnergies *thermo, const OpenMXAtomicViews *atom
   for(i=0; i<Nthrds0; i++){
     for(j=0; j<9; j++){
       /* printf("myid:%d, i:%d, j:%d \n",myid,i,j);fflush(stdout); */ /*debug*/
-      My_Stress[j] += My_Stress_threads[i][j];
+      My_Stress[j] += openmx_solver_real_matrix_row(&stress_threads,i)[j];
     }
   }
 
@@ -1811,10 +1841,7 @@ double Stress(OpenMXThermodynamicEnergies *thermo, const OpenMXAtomicViews *atom
   }
 
   /* begin(yshiihara) */ 
-  for (i=0; i<Nthrds0; i++){
-    free(My_Stress_threads[i]);
-  }
-  free(My_Stress_threads);
+
   /* end(yshiihara) */
 
  /****************************************************
@@ -1855,7 +1882,7 @@ double Stress(OpenMXThermodynamicEnergies *thermo, const OpenMXAtomicViews *atom
     Stress4(atomic);
   }
   else if (ProExpn_VNA==1 && F_VNA_flag==1){
-    Stress4B(vna, reciprocal, CDM0, local_basis);
+    Stress4B(scratch,vna, reciprocal, CDM0, local_basis);
   }
 
   dtime(&etime);
@@ -1880,14 +1907,14 @@ double Stress(OpenMXThermodynamicEnergies *thermo, const OpenMXAtomicViews *atom
   /* Dynamic teams may grow after a separate probe region. */
   Nthrds0 = omp_get_max_threads();
 
-  My_Stress_threads=(double**)malloc(sizeof(double*)*(Nthrds0));
+  OpenMX_Stress_ThreadsPrepare(scratch,Nthrds0,&stress_threads);
   for (i=0; i<Nthrds0; i++){
-    My_Stress_threads[i] = (double*)malloc(sizeof(double)*9);
-    for (j=0; j<9; j++) My_Stress_threads[i][j] = 0.0;
+
+    for (j=0; j<9; j++) openmx_solver_real_matrix_row(&stress_threads,i)[j] = 0.0;
   }
   /* end(yshiihara) */
 
-#pragma omp parallel shared(atomic,time_per_atom,Fx,Fy,Fz,CntOLP,OLP,Cnt_switch,EDM,SpinP_switch,natn,ncn,FNAN,WhatSpecies,M2G,Gxyz,atv,Matomnum,My_Stress_threads) private(OMPID,Nthrds,Nprocs,Mc_AN,Stime_atom,Etime_atom,Gc_AN,Cwan,h_AN,Gh_AN,Hwan,i,j,dum,dx,dy,dz,lx,ly,lz,Rn1)
+#pragma omp parallel shared(atomic,time_per_atom,Fx,Fy,Fz,CntOLP,OLP,Cnt_switch,EDM,SpinP_switch,natn,ncn,FNAN,WhatSpecies,M2G,Gxyz,atv,Matomnum,stress_threads) private(OMPID,Nthrds,Nprocs,Mc_AN,Stime_atom,Etime_atom,Gc_AN,Cwan,h_AN,Gh_AN,Hwan,i,j,dum,dx,dy,dz,lx,ly,lz,Rn1)
   {
 
     /* get info. on OpenMP */ 
@@ -1934,15 +1961,15 @@ double Stress(OpenMXThermodynamicEnergies *thermo, const OpenMXAtomicViews *atom
 	      dz = dum*CntOLP[3][Mc_AN][h_AN][i][j];
 	    }
 	    
-	    My_Stress_threads[OMPID][0] -= dx*lx;
-	    My_Stress_threads[OMPID][1] -= dy*lx;
-	    My_Stress_threads[OMPID][2] -= dz*lx;
-	    My_Stress_threads[OMPID][3] -= dx*ly;
-	    My_Stress_threads[OMPID][4] -= dy*ly;
-	    My_Stress_threads[OMPID][5] -= dz*ly;
-	    My_Stress_threads[OMPID][6] -= dx*lz;
-	    My_Stress_threads[OMPID][7] -= dy*lz;
-	    My_Stress_threads[OMPID][8] -= dz*lz;
+	    openmx_solver_real_matrix_row(&stress_threads,OMPID)[0] -= dx*lx;
+	    openmx_solver_real_matrix_row(&stress_threads,OMPID)[1] -= dy*lx;
+	    openmx_solver_real_matrix_row(&stress_threads,OMPID)[2] -= dz*lx;
+	    openmx_solver_real_matrix_row(&stress_threads,OMPID)[3] -= dx*ly;
+	    openmx_solver_real_matrix_row(&stress_threads,OMPID)[4] -= dy*ly;
+	    openmx_solver_real_matrix_row(&stress_threads,OMPID)[5] -= dz*ly;
+	    openmx_solver_real_matrix_row(&stress_threads,OMPID)[6] -= dx*lz;
+	    openmx_solver_real_matrix_row(&stress_threads,OMPID)[7] -= dy*lz;
+	    openmx_solver_real_matrix_row(&stress_threads,OMPID)[8] -= dz*lz;
 	    
 	  } /* Hwan */
 	} /*i<Spe_Total_CNO*/
@@ -1965,7 +1992,7 @@ double Stress(OpenMXThermodynamicEnergies *thermo, const OpenMXAtomicViews *atom
   for(i=0; i<Nthrds0; i++){
     for(j=0; j<9; j++){
       /* printf("myid:%d, i:%d, j:%d \n",myid,i,j);fflush(stdout);*/ /*debug*/
-      My_Stress[j] += My_Stress_threads[i][j];
+      My_Stress[j] += openmx_solver_real_matrix_row(&stress_threads,i)[j];
     }
   }
   /* if (myid==Host_ID && 0<level_stdout) printf("debug2 \n");fflush(stdout); */ /*debug*/
@@ -1996,17 +2023,14 @@ double Stress(OpenMXThermodynamicEnergies *thermo, const OpenMXAtomicViews *atom
   } 
 
   /* begin(yshiihara) */ 
-  for (i=0; i<Nthrds0; i++){
-    free(My_Stress_threads[i]);
-  }
-  free(My_Stress_threads);
+
   /* end(yshiihara) */
 
   /****************************************************
             Stress from non-local potentials 
   ****************************************************/
 
-  Stress_HNL(atomic, CDM0, iDM0, electronic, local_basis);
+  Stress_HNL(scratch,atomic, CDM0, iDM0, electronic, local_basis);
 
   /* begin(yshiihara) */
   /****************************************************
@@ -2015,7 +2039,7 @@ double Stress(OpenMXThermodynamicEnergies *thermo, const OpenMXAtomicViews *atom
 
   dtime(&stime);
   
-  Stress_H1();
+  Stress_H1(scratch);
 
   dtime(&etime);
   if(myid==0 && measure_time){
@@ -2030,7 +2054,7 @@ double Stress(OpenMXThermodynamicEnergies *thermo, const OpenMXAtomicViews *atom
   ****************************************************/
   dtime(&stime);
   
-  Stress_core();
+  Stress_core(scratch);
 
   dtime(&etime);
   if(myid==0 && measure_time){
@@ -2038,7 +2062,7 @@ double Stress(OpenMXThermodynamicEnergies *thermo, const OpenMXAtomicViews *atom
   }
   dtime(&stime);
   
-  Stress_H0(atomic);
+  Stress_H0(scratch,atomic);
 
   dtime(&etime);
   if(myid==0 && measure_time){
@@ -2051,7 +2075,7 @@ double Stress(OpenMXThermodynamicEnergies *thermo, const OpenMXAtomicViews *atom
   ****************************************************/
 
   if (Hub_U_switch==1){
-    if (Hub_U_occupation==2) Stress_plus_U_dual(CDM0, electronic, local_basis); /* dual */
+    if (Hub_U_occupation==2) Stress_plus_U_dual(scratch,CDM0, electronic, local_basis); /* dual */
   }
 
   /****************************************************
@@ -2856,7 +2880,7 @@ void Stress4(const OpenMXAtomicViews *atomic)
   /* begin(yshiihara) */
   int numprocs,myid;
   /* Stress */
-  double **My_Stress_threads;
+
   double Stress[9];
   double My_Stress[9];
   double sumt[9];
@@ -2979,7 +3003,7 @@ void Stress4(const OpenMXAtomicViews *atomic)
 
 
 
-void Stress4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double *****CDM0, const OpenMXLocalBasisViews *local_basis)
+void Stress4B(OpenMXSolverInvocation *scratch,const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double *****CDM0, const OpenMXLocalBasisViews *local_basis)
 {
   double *****HVNA2=vna->HVNA2;
   double *****HVNA3=vna->HVNA3;
@@ -3028,7 +3052,7 @@ void Stress4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reci
   double stime1,etime1;
 
   /* Stress */
-  double **My_Stress_threads;
+  OpenMXSolverRealTensor stress_threads;
   double Stress[9],My_Stress[9];
 
   MPI_Status stat;
@@ -3071,10 +3095,10 @@ void Stress4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reci
   /* Dynamic teams may grow after a separate probe region. */
   Nthrds0 = omp_get_max_threads();
 
-  My_Stress_threads=(double**)malloc(sizeof(double*)*(Nthrds0));
+  OpenMX_Stress_ThreadsPrepare(scratch,Nthrds0,&stress_threads);
   for (i=0; i<Nthrds0; i++){
-    My_Stress_threads[i] = (double*)malloc(sizeof(double)*9);
-    for (j=0; j<9; j++) My_Stress_threads[i][j] = 0.0;
+
+    for (j=0; j<9; j++) openmx_solver_real_matrix_row(&stress_threads,i)[j] = 0.0;
   }
 
   /* initialization of Stress and My_Stress */
@@ -3389,7 +3413,7 @@ void Stress4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reci
                multiplying overlap integrals
 	*****************************************/
 
-#pragma omp parallel shared(List_YOUSO,time_per_atom,Gxyz,CDM0,SpinP_switch,CntHVNA2,HVNA2,DS_VNA,Cnt_switch,RMI1,Original_Mc_AN,IDR,Rcv_GAN,receive_progress,Spe_Total_CNO,F_G2M,natn,FNAN,WhatSpecies,M2G,Matomnum,My_Stress_threads) private(OMPID,Nthrds,Nprocs,Stime_atom,Etime_atom,dEx,dEy,dEz,Gc_AN,Mc_AN,Cwan,fan,h_AN,Gh_AN,Mh_AN,Hwan,ian,jg,j0,jg0,Mj_AN0,po2,q_AN,Gq_AN,Mq_AN,Qwan,jan,kl,HVNAx,HVNAy,HVNAz,HVNA_sts,i,j,k,m,n,pref)
+#pragma omp parallel shared(List_YOUSO,time_per_atom,Gxyz,CDM0,SpinP_switch,CntHVNA2,HVNA2,DS_VNA,Cnt_switch,RMI1,Original_Mc_AN,IDR,Rcv_GAN,receive_progress,Spe_Total_CNO,F_G2M,natn,FNAN,WhatSpecies,M2G,Matomnum,stress_threads) private(OMPID,Nthrds,Nprocs,Stime_atom,Etime_atom,dEx,dEy,dEz,Gc_AN,Mc_AN,Cwan,fan,h_AN,Gh_AN,Mh_AN,Hwan,ian,jg,j0,jg0,Mj_AN0,po2,q_AN,Gq_AN,Mq_AN,Qwan,jan,kl,HVNAx,HVNAy,HVNAz,HVNA_sts,i,j,k,m,n,pref)
 	{
 
 	  /* allocation of array */
@@ -3497,7 +3521,7 @@ void Stress4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reci
 		    for (n=1; n<=3; n++){
 		      for (i=0; i<ian; i++){
 			for (j=0; j<jan; j++){
-			  My_Stress_threads[OMPID][(m-1)*3+(n-1)] += pref*CDM0[0][Mh_AN][kl][i][j]*HVNA_sts[m][n][i][j];
+			  openmx_solver_real_matrix_row(&stress_threads,OMPID)[(m-1)*3+(n-1)] += pref*CDM0[0][Mh_AN][kl][i][j]*HVNA_sts[m][n][i][j];
 			}
 		      }
 		    }
@@ -3532,7 +3556,7 @@ void Stress4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reci
 		    for (n=1; n<=3; n++){
 		      for (i=0; i<ian; i++){
 			for (j=0; j<jan; j++){
-			  My_Stress_threads[OMPID][(m-1)*3+(n-1)] += pref*( CDM0[0][Mh_AN][kl][i][j]*HVNA_sts[m][n][i][j]
+			  openmx_solver_real_matrix_row(&stress_threads,OMPID)[(m-1)*3+(n-1)] += pref*( CDM0[0][Mh_AN][kl][i][j]*HVNA_sts[m][n][i][j]
 			 	                                          + CDM0[1][Mh_AN][kl][i][j]*HVNA_sts[m][n][i][j]);
 			}
 		      }
@@ -3638,7 +3662,7 @@ void Stress4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reci
 
   dtime(&stime);
 
-#pragma omp parallel shared(time_per_atom,Gxyz,CDM0,SpinP_switch,CntHVNA2,HVNA2,DS_VNA,Cnt_switch,RMI1,FNAN,Spe_Total_CNO,WhatSpecies,F_G2M,natn,M2G,Matomnum,List_YOUSO,My_Stress_threads) private(HVNAx,HVNAy,HVNAz,HVNA_sts,OMPID,Nthrds,Nprocs,Mc_AN,Stime_atom,Etime_atom,dEx,dEy,dEz,Gc_AN,h_AN,Gh_AN,Mh_AN,Hwan,ian,q_AN,Gq_AN,Mq_AN,Qwan,jan,kl,i,j,k,m,n,kk,pref)
+#pragma omp parallel shared(time_per_atom,Gxyz,CDM0,SpinP_switch,CntHVNA2,HVNA2,DS_VNA,Cnt_switch,RMI1,FNAN,Spe_Total_CNO,WhatSpecies,F_G2M,natn,M2G,Matomnum,List_YOUSO,stress_threads) private(HVNAx,HVNAy,HVNAz,HVNA_sts,OMPID,Nthrds,Nprocs,Mc_AN,Stime_atom,Etime_atom,dEx,dEy,dEz,Gc_AN,h_AN,Gh_AN,Mh_AN,Hwan,ian,q_AN,Gq_AN,Mq_AN,Qwan,jan,kl,i,j,k,m,n,kk,pref)
   {
 
     /* allocation of array */
@@ -3729,7 +3753,7 @@ void Stress4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reci
 	      for (n=1; n<=3; n++){
 		for (i=0; i<ian; i++){
 		  for (j=0; j<jan; j++){
-		    My_Stress_threads[OMPID][(m-1)*3+(n-1)] += pref*CDM0[0][Mh_AN][kl][i][j]*HVNA_sts[m][n][i][j];
+		    openmx_solver_real_matrix_row(&stress_threads,OMPID)[(m-1)*3+(n-1)] += pref*CDM0[0][Mh_AN][kl][i][j]*HVNA_sts[m][n][i][j];
 		  }
 		}
 	      }
@@ -3764,7 +3788,7 @@ void Stress4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reci
 	      for (n=1; n<=3; n++){
 		for (i=0; i<ian; i++){
 		  for (j=0; j<jan; j++){
-		    My_Stress_threads[OMPID][(m-1)*3+(n-1)] += pref*( CDM0[0][Mh_AN][kl][i][j]*HVNA_sts[m][n][i][j]
+		    openmx_solver_real_matrix_row(&stress_threads,OMPID)[(m-1)*3+(n-1)] += pref*( CDM0[0][Mh_AN][kl][i][j]*HVNA_sts[m][n][i][j]
 	 			                                    + CDM0[1][Mh_AN][kl][i][j]*HVNA_sts[m][n][i][j]);
 		  }
 		}
@@ -3821,7 +3845,7 @@ void Stress4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reci
 
   for(i=0; i<Nthrds0; i++){
     for(j=0; j<9; j++){
-      My_Stress[j] += My_Stress_threads[i][j];
+      My_Stress[j] += openmx_solver_real_matrix_row(&stress_threads,i)[j];
     }
   }
 
@@ -3878,17 +3902,14 @@ void Stress4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reci
   free(VNA_List);
   free(VNA_List2);
 
-  for (i=0; i<Nthrds0; i++){
-    free(My_Stress_threads[i]);
-  }
-  free(My_Stress_threads);
+
 
   OpenMX_TransferEnd(&projector_transfer);
 }
 
 
 
-void Stress_core()
+void Stress_core(OpenMXSolverInvocation *scratch)
 {
   /****************************************************
                        Ecore
@@ -3907,7 +3928,7 @@ void Stress_core()
   /* begin(yshiihara) */
   /* Stress */
   int j;
-  double **My_Stress_threads;
+  OpenMXSolverRealTensor stress_threads;
   double    Stress[9];
   double My_Stress[9];
   double      sumt[9];
@@ -3932,15 +3953,15 @@ void Stress_core()
   /* allocation of array */
   /* begin(yshiihara) */ 
 
-  My_Stress_threads=(double**)malloc(sizeof(double*)*(Nthrds0));
+  OpenMX_Stress_ThreadsPrepare(scratch,Nthrds0,&stress_threads);
   for (i=0; i<Nthrds0; i++){
-    My_Stress_threads[i] = (double*)malloc(sizeof(double)*9);
-    for (j=0; j<9; j++) My_Stress_threads[i][j] = 0.0;
+
+    for (j=0; j<9; j++) openmx_solver_real_matrix_row(&stress_threads,i)[j] = 0.0;
   }
   /* end(yshiihara) */
   
   /* begin(yshiihara) */ 
-#pragma omp parallel shared(level_stdout,time_per_atom,atv,Gxyz,Dis,ncn,natn,FNAN,Spe_Core_Charge,WhatSpecies,M2G,Matomnum,My_Ecore_threads,DecEscc,My_Stress_threads) private(OMPID,Nthrds,Nprocs,Mc_AN,Stime_atom,Gc_AN,Cwan,Zc,dEx,dEy,dEz,h_AN,Gh_AN,Rn,Hwan,Zh,r,lx,ly,lz,dum,dum2,Etime_atom,TmpEcore,i,j,sumt)
+#pragma omp parallel shared(level_stdout,time_per_atom,atv,Gxyz,Dis,ncn,natn,FNAN,Spe_Core_Charge,WhatSpecies,M2G,Matomnum,My_Ecore_threads,DecEscc,stress_threads) private(OMPID,Nthrds,Nprocs,Mc_AN,Stime_atom,Gc_AN,Cwan,Zc,dEx,dEy,dEz,h_AN,Gh_AN,Rn,Hwan,Zh,r,lx,ly,lz,dum,dum2,Etime_atom,TmpEcore,i,j,sumt)
   {
     /* end(yshiihara) */
     
@@ -4005,7 +4026,7 @@ void Stress_core()
       ****************************************************/
       /*begin(yshiihara) */ 
       for (i=0; i<9; i++){
-	My_Stress_threads[OMPID][i] += sumt[i];
+	openmx_solver_real_matrix_row(&stress_threads,OMPID)[i] += sumt[i];
       }
       /*end(yshiihara) */
 
@@ -4017,7 +4038,7 @@ void Stress_core()
 
   for (Nloop=0; Nloop<Nthrds0; Nloop++){
     for(i=0; i<9; i++){
-      My_Stress[i] += 0.5*My_Stress_threads[Nloop][i];
+      My_Stress[i] += 0.5*openmx_solver_real_matrix_row(&stress_threads,Nloop)[i];
     }
   }
   
@@ -4047,17 +4068,14 @@ void Stress_core()
   
   /* begin(yshiihara) */
   /* free(My_Ecore_threads); */
-  for (i=0; i<Nthrds0; i++){
-    free(My_Stress_threads[i]);
-  }
-  free(My_Stress_threads);
+
   /* end(yshiihara) */
 }
 
 
 
 
-void Stress_H0(const OpenMXAtomicViews *atomic)
+void Stress_H0(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *atomic)
 {
   /****************************************************
               EH0 = -1/2\int n^a(r) V^a_H dr
@@ -4081,7 +4099,7 @@ void Stress_H0(const OpenMXAtomicViews *atomic)
   /*double *My_EH0_threads;*/
   /* Stress */
   int j;
-  double **My_Stress_threads;
+  OpenMXSolverRealTensor stress_threads;
   double    Stress[9];
   double My_Stress[9];
   double      sumt[9];
@@ -4290,15 +4308,15 @@ void Stress_H0(const OpenMXAtomicViews *atomic)
 
   /* allocation of array */
   /* begin(yshiihara) */
-  My_Stress_threads=(double**)malloc(sizeof(double*)*(Nthrds0));
+  OpenMX_Stress_ThreadsPrepare(scratch,Nthrds0,&stress_threads);
   for (i=0; i<Nthrds0; i++){
-    My_Stress_threads[i] = (double*)malloc(sizeof(double)*9);
-    for (j=0; j<9; j++) My_Stress_threads[i][j] = 0.0;
+
+    for (j=0; j<9; j++) openmx_solver_real_matrix_row(&stress_threads,i)[j] = 0.0;
   }
   /* end(yshiihara) */
 
     /* begin(yshiihara) */
-#pragma omp parallel shared(Gxyz,atv,time_per_atom,RMI1,EH0_scaling,natn,ncn,FNAN,WhatSpecies,M2G,Matomnum,My_Stress_threads) private(OMPID,Nthrds,Nprocs,Mc_AN,Stime_atom,Gc_AN,wan1,h_AN,Gh_AN,wan2,factor,Etime_atom,TmpEH0,lx,ly,lz,Rn)
+#pragma omp parallel shared(Gxyz,atv,time_per_atom,RMI1,EH0_scaling,natn,ncn,FNAN,WhatSpecies,M2G,Matomnum,stress_threads) private(OMPID,Nthrds,Nprocs,Mc_AN,Stime_atom,Gc_AN,wan1,h_AN,Gh_AN,wan2,factor,Etime_atom,TmpEH0,lx,ly,lz,Rn)
   {
     /* end(yshiihara) */
 
@@ -4337,22 +4355,22 @@ void Stress_H0(const OpenMXAtomicViews *atomic)
 
 	/* begin(yshiihara) */
 
-	My_Stress_threads[OMPID][0] -= 0.25*factor*EH0ij[1]*lx;
-	My_Stress_threads[OMPID][1] -= 0.25*factor*EH0ij[2]*lx;
-	My_Stress_threads[OMPID][2] -= 0.25*factor*EH0ij[3]*lx;
-	My_Stress_threads[OMPID][3] -= 0.25*factor*EH0ij[1]*ly;
-	My_Stress_threads[OMPID][4] -= 0.25*factor*EH0ij[2]*ly;
-	My_Stress_threads[OMPID][5] -= 0.25*factor*EH0ij[3]*ly;
-	My_Stress_threads[OMPID][6] -= 0.25*factor*EH0ij[1]*lz;
-	My_Stress_threads[OMPID][7] -= 0.25*factor*EH0ij[2]*lz;
-	My_Stress_threads[OMPID][8] -= 0.25*factor*EH0ij[3]*lz;
+	openmx_solver_real_matrix_row(&stress_threads,OMPID)[0] -= 0.25*factor*EH0ij[1]*lx;
+	openmx_solver_real_matrix_row(&stress_threads,OMPID)[1] -= 0.25*factor*EH0ij[2]*lx;
+	openmx_solver_real_matrix_row(&stress_threads,OMPID)[2] -= 0.25*factor*EH0ij[3]*lx;
+	openmx_solver_real_matrix_row(&stress_threads,OMPID)[3] -= 0.25*factor*EH0ij[1]*ly;
+	openmx_solver_real_matrix_row(&stress_threads,OMPID)[4] -= 0.25*factor*EH0ij[2]*ly;
+	openmx_solver_real_matrix_row(&stress_threads,OMPID)[5] -= 0.25*factor*EH0ij[3]*ly;
+	openmx_solver_real_matrix_row(&stress_threads,OMPID)[6] -= 0.25*factor*EH0ij[1]*lz;
+	openmx_solver_real_matrix_row(&stress_threads,OMPID)[7] -= 0.25*factor*EH0ij[2]*lz;
+	openmx_solver_real_matrix_row(&stress_threads,OMPID)[8] -= 0.25*factor*EH0ij[3]*lz;
 
 	/* debug 
 	   if (myid==Host_ID && 0<level_stdout){
 	   printf(" My_Stress_threads1 : \n");fflush(stdout);
 	   for (i = 0; i<3; i++){
 	   for (j = 0; j<3; j++){
-	   printf("%16.8f ", My_Stress_threads[OMPID][3*i+j]);
+	   printf("%16.8f ", openmx_solver_real_matrix_row(&stress_threads,OMPID)[3*i+j]);
 	   }
 	   printf("\n");fflush(stdout);
 	   }
@@ -4367,22 +4385,22 @@ void Stress_H0(const OpenMXAtomicViews *atomic)
 
 	/* begin(yshiihara) */
 
-	My_Stress_threads[OMPID][0] += 0.25*factor*EH0ij[1]*lx;
-	My_Stress_threads[OMPID][1] += 0.25*factor*EH0ij[2]*lx;
-	My_Stress_threads[OMPID][2] += 0.25*factor*EH0ij[3]*lx;
-	My_Stress_threads[OMPID][3] += 0.25*factor*EH0ij[1]*ly;
-	My_Stress_threads[OMPID][4] += 0.25*factor*EH0ij[2]*ly;
-	My_Stress_threads[OMPID][5] += 0.25*factor*EH0ij[3]*ly;
-	My_Stress_threads[OMPID][6] += 0.25*factor*EH0ij[1]*lz;
-	My_Stress_threads[OMPID][7] += 0.25*factor*EH0ij[2]*lz;
-	My_Stress_threads[OMPID][8] += 0.25*factor*EH0ij[3]*lz;
+	openmx_solver_real_matrix_row(&stress_threads,OMPID)[0] += 0.25*factor*EH0ij[1]*lx;
+	openmx_solver_real_matrix_row(&stress_threads,OMPID)[1] += 0.25*factor*EH0ij[2]*lx;
+	openmx_solver_real_matrix_row(&stress_threads,OMPID)[2] += 0.25*factor*EH0ij[3]*lx;
+	openmx_solver_real_matrix_row(&stress_threads,OMPID)[3] += 0.25*factor*EH0ij[1]*ly;
+	openmx_solver_real_matrix_row(&stress_threads,OMPID)[4] += 0.25*factor*EH0ij[2]*ly;
+	openmx_solver_real_matrix_row(&stress_threads,OMPID)[5] += 0.25*factor*EH0ij[3]*ly;
+	openmx_solver_real_matrix_row(&stress_threads,OMPID)[6] += 0.25*factor*EH0ij[1]*lz;
+	openmx_solver_real_matrix_row(&stress_threads,OMPID)[7] += 0.25*factor*EH0ij[2]*lz;
+	openmx_solver_real_matrix_row(&stress_threads,OMPID)[8] += 0.25*factor*EH0ij[3]*lz;
 
 	/* debug
 	   if (myid==Host_ID && 0<level_stdout){
 	   printf(" My_Stress_threads2 : \n");fflush(stdout);
 	   for (i = 0; i<3; i++){
 	   for (j = 0; j<3; j++){
-	   printf("%16.8f ", My_Stress_threads[OMPID][3*i+j]);
+	   printf("%16.8f ", openmx_solver_real_matrix_row(&stress_threads,OMPID)[3*i+j]);
 	   }
 	   printf("\n");fflush(stdout);
 	   }
@@ -4406,7 +4424,7 @@ void Stress_H0(const OpenMXAtomicViews *atomic)
   for(i=0; i<Nthrds0; i++){
     for(j=0; j<9; j++){
       /* printf("myid:%d, i:%d, j:%d \n",myid,i,j);fflush(stdout); */ /*debug*/
-      My_Stress[j] += My_Stress_threads[i][j];
+      My_Stress[j] += openmx_solver_real_matrix_row(&stress_threads,i)[j];
     }
   }
 
@@ -4448,10 +4466,7 @@ void Stress_H0(const OpenMXAtomicViews *atomic)
   /* freeing of array */
   /* begin(yshiihara) */
 
-  for (i=0; i<Nthrds0; i++){
-    free(My_Stress_threads[i]);
-  }
-  free(My_Stress_threads);
+
 
   /* measuring elapsed time */
 
@@ -4462,7 +4477,7 @@ void Stress_H0(const OpenMXAtomicViews *atomic)
 
 }
 
-void Stress_H1()
+void Stress_H1(OpenMXSolverInvocation *scratch)
 { 
   int k1,k2,k3;
   int N2D,GNs,GN,BN_CB;
@@ -4476,7 +4491,7 @@ void Stress_H1()
   MPI_Request request;
 
   /* Stress */
-  double **My_Stress_threads;
+
   double    Stress[9];
   double My_Stress[9];
   double      sumt[9];
@@ -4487,9 +4502,11 @@ void Stress_H1()
 
   /* allocation of arrays */  
   
-  ReRhok = (double*)malloc(sizeof(double)*My_Max_NumGridB); 
+  OpenMXSolverRealTensor reciprocal;
+  OpenMX_Stress_ReciprocalPrepare(scratch,My_Max_NumGridB,&reciprocal);
+  ReRhok = openmx_solver_real_matrix_row(&reciprocal,0);
   for (i=0; i<My_Max_NumGridB; i++) ReRhok[i] = 0.0;
-  ImRhok = (double*)malloc(sizeof(double)*My_Max_NumGridB); 
+  ImRhok = openmx_solver_real_matrix_row(&reciprocal,1);
   for (i=0; i<My_Max_NumGridB; i++) ImRhok[i] = 0.0;
 
   /* initialization of arrays */  
@@ -4584,8 +4601,8 @@ void Stress_H1()
 
   /* freeing of arrays */  
 
-  free(ReRhok);
-  free(ImRhok);
+
+
   
   /* for time */
   MPI_Barrier(mpi_comm_level1);
@@ -4597,7 +4614,7 @@ void Stress_H1()
 
 
 
-void Stress_HNL(const OpenMXAtomicViews *atomic, double *****CDM0, double *****iDM0, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
+void Stress_HNL(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *atomic, double *****CDM0, double *****iDM0, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 {
   double ******CntDS_NL=electronic->CntDS_NL;
   double ******DS_NL=electronic->DS_NL;
@@ -4640,7 +4657,7 @@ void Stress_HNL(const OpenMXAtomicViews *atomic, double *****CDM0, double *****i
   double stime1,etime1;
 
   /* Stress */
-  double **My_Stress_threads;
+  OpenMXSolverRealTensor stress_threads;
   double Stress[9],My_Stress[9];
 
   MPI_Status stat;
@@ -4680,10 +4697,10 @@ void Stress_HNL(const OpenMXAtomicViews *atomic, double *****CDM0, double *****i
   /* Dynamic teams may grow after a separate probe region. */
   Nthrds0 = omp_get_max_threads();
 
-  My_Stress_threads=(double**)malloc(sizeof(double*)*(Nthrds0));
+  OpenMX_Stress_ThreadsPrepare(scratch,Nthrds0,&stress_threads);
   for (i=0; i<Nthrds0; i++){
-    My_Stress_threads[i] = (double*)malloc(sizeof(double)*9);
-    for (j=0; j<9; j++) My_Stress_threads[i][j] = 0.0;
+
+    for (j=0; j<9; j++) openmx_solver_real_matrix_row(&stress_threads,i)[j] = 0.0;
   }
 
   /* initialization of Stress and My_Stress */
@@ -5366,7 +5383,7 @@ void Stress_HNL(const OpenMXAtomicViews *atomic, double *****CDM0, double *****i
 
   dtime(&stime);
 
-#pragma omp parallel shared(time_per_atom,Gxyz,CDM0,SpinP_switch,SO_switch,Hub_U_switch,F_U_flag,Constraint_NCS_switch,Zeeman_NCS_switch,Zeeman_NCO_switch,DS_NL,RMI1,FNAN,WhatSpecies,F_G2M,natn,M2G,Matomnum,List_YOUSO,F_NL_flag,My_Stress_threads,atomic) private(Hx0,Hy0,Hz0,Hx1,Hy1,Hz1,H_sts,OMPID,Nthrds,Nprocs,Mc_AN,Stime_atom,Etime_atom,dEx,dEy,dEz,Gc_AN,h_AN,Gh_AN,Mh_AN,Hwan,ian,q_AN,Gq_AN,Mq_AN,Qwan,jan,kl,kl1,i,j,k,m,n,kk,pref)
+#pragma omp parallel shared(time_per_atom,Gxyz,CDM0,SpinP_switch,SO_switch,Hub_U_switch,F_U_flag,Constraint_NCS_switch,Zeeman_NCS_switch,Zeeman_NCO_switch,DS_NL,RMI1,FNAN,WhatSpecies,F_G2M,natn,M2G,Matomnum,List_YOUSO,F_NL_flag,stress_threads,atomic) private(Hx0,Hy0,Hz0,Hx1,Hy1,Hz1,H_sts,OMPID,Nthrds,Nprocs,Mc_AN,Stime_atom,Etime_atom,dEx,dEy,dEz,Gc_AN,h_AN,Gh_AN,Mh_AN,Hwan,ian,q_AN,Gq_AN,Mq_AN,Qwan,jan,kl,kl1,i,j,k,m,n,kk,pref)
   {
 
     /* allocation of array */
@@ -5488,7 +5505,7 @@ void Stress_HNL(const OpenMXAtomicViews *atomic, double *****CDM0, double *****i
 	      for (n=1; n<=3; n++){
 		for (i=0; i<ian; i++){
 		  for (j=0; j<jan; j++){
-		    My_Stress_threads[OMPID][(m-1)*3+(n-1)] += pref*CDM0[0][Mh_AN][kl][i][j]*H_sts[0][m][n][i][j].r;
+		    openmx_solver_real_matrix_row(&stress_threads,OMPID)[(m-1)*3+(n-1)] += pref*CDM0[0][Mh_AN][kl][i][j]*H_sts[0][m][n][i][j].r;
 		  }
 		}
 	      }
@@ -5524,7 +5541,7 @@ void Stress_HNL(const OpenMXAtomicViews *atomic, double *****CDM0, double *****i
 	      for (n=1; n<=3; n++){
 		for (i=0; i<ian; i++){
 		  for (j=0; j<jan; j++){
-		    My_Stress_threads[OMPID][(m-1)*3+(n-1)] += pref*( CDM0[0][Mh_AN][kl][i][j]*H_sts[0][m][n][i][j].r
+		    openmx_solver_real_matrix_row(&stress_threads,OMPID)[(m-1)*3+(n-1)] += pref*( CDM0[0][Mh_AN][kl][i][j]*H_sts[0][m][n][i][j].r
 	 			                                    + CDM0[1][Mh_AN][kl][i][j]*H_sts[1][m][n][i][j].r);
 		  }
 		}
@@ -5578,7 +5595,7 @@ void Stress_HNL(const OpenMXAtomicViews *atomic, double *****CDM0, double *****i
 		  for (i=0; i<atomic->species.contracted_orbitals[Hwan]; i++){
 		    for (j=0; j<atomic->species.contracted_orbitals[Qwan]; j++){
 
-		      My_Stress_threads[OMPID][(m-1)*3+(n-1)] +=
+		      openmx_solver_real_matrix_row(&stress_threads,OMPID)[(m-1)*3+(n-1)] +=
 		   	      CDM0[0][Mh_AN][kl][i][j]*H_sts[0][m][n][i][j].r
 			    - iDM0[0][Mh_AN][kl][i][j]*H_sts[0][m][n][i][j].i
 		  	    + CDM0[1][Mh_AN][kl][i][j]*H_sts[1][m][n][i][j].r
@@ -5633,7 +5650,7 @@ void Stress_HNL(const OpenMXAtomicViews *atomic, double *****CDM0, double *****i
 		  for (i=0; i<atomic->species.contracted_orbitals[Hwan]; i++){
 		    for (j=0; j<atomic->species.contracted_orbitals[Qwan]; j++){
 
-		      My_Stress_threads[OMPID][(m-1)*3+(n-1)] +=
+		      openmx_solver_real_matrix_row(&stress_threads,OMPID)[(m-1)*3+(n-1)] +=
 			      CDM0[0][Mh_AN][kl][i][j]*H_sts[0][m][n][i][j].r
 		  	    - iDM0[0][Mh_AN][kl][i][j]*H_sts[0][m][n][i][j].i
 		 	    + CDM0[1][Mh_AN][kl][i][j]*H_sts[1][m][n][i][j].r
@@ -5689,7 +5706,7 @@ void Stress_HNL(const OpenMXAtomicViews *atomic, double *****CDM0, double *****i
 		  for (i=0; i<atomic->species.contracted_orbitals[Qwan]; i++){ /* Qwan */
 		    for (j=0; j<atomic->species.contracted_orbitals[Hwan]; j++){ /* Hwan */
 
-		      My_Stress_threads[OMPID][(m-1)*3+(n-1)] +=
+		      openmx_solver_real_matrix_row(&stress_threads,OMPID)[(m-1)*3+(n-1)] +=
 			      CDM0[0][Mq_AN][kl1][i][j]*H_sts[0][m][n][i][j].r
 			    - iDM0[0][Mq_AN][kl1][i][j]*H_sts[0][m][n][i][j].i
 			    + CDM0[1][Mq_AN][kl1][i][j]*H_sts[1][m][n][i][j].r
@@ -5792,7 +5809,7 @@ void Stress_HNL(const OpenMXAtomicViews *atomic, double *****CDM0, double *****i
 
   for(i=0; i<Nthrds0; i++){
     for(j=0; j<9; j++){
-      My_Stress[j] += My_Stress_threads[i][j];
+      My_Stress[j] += openmx_solver_real_matrix_row(&stress_threads,i)[j];
     }
   }
 
@@ -5862,10 +5879,7 @@ void Stress_HNL(const OpenMXAtomicViews *atomic, double *****CDM0, double *****i
 
 
 
-  for (i=0; i<Nthrds0; i++){
-    free(My_Stress_threads[i]);
-  }
-  free(My_Stress_threads);
+
 
   OpenMX_TransferEnd(&projector_transfer);
 }
@@ -5876,7 +5890,7 @@ void Stress_HNL(const OpenMXAtomicViews *atomic, double *****CDM0, double *****i
 
 
 
-void Stress_plus_U_dual(double *****CDM0, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
+void Stress_plus_U_dual(OpenMXSolverInvocation *scratch,double *****CDM0, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 {
 
   double *****OLP=electronic->OLP;
@@ -5884,7 +5898,7 @@ void Stress_plus_U_dual(double *****CDM0, const OpenMXElectronicViews *electroni
   int i,j;
   int numprocs,myid;
   int Nthrds0;
-  double **My_Stress_threads;
+  OpenMXSolverRealTensor stress_threads;
   double Stress[9],My_Stress[9];
 
   MPI_Status stat;
@@ -5904,15 +5918,15 @@ void Stress_plus_U_dual(double *****CDM0, const OpenMXElectronicViews *electroni
 
   /* allocation of array */
 
-  My_Stress_threads=(double**)malloc(sizeof(double*)*(Nthrds0));
+  OpenMX_Stress_ThreadsPrepare(scratch,Nthrds0,&stress_threads);
   for (i=0; i<Nthrds0; i++){
-    My_Stress_threads[i] = (double*)malloc(sizeof(double)*9);
-    for (j=0; j<9; j++) My_Stress_threads[i][j] = 0.0;
+
+    for (j=0; j<9; j++) openmx_solver_real_matrix_row(&stress_threads,i)[j] = 0.0;
   }
 
   /* OpenMP threading for Mc_AN loop */
 
-#pragma omp parallel shared(List_YOUSO,Matomnum,M2G,WhatSpecies,natn,ncn,F_G2M,Spe_Total_NO,Gxyz,atv,FNAN,RMI1,local_basis,OLP,SpinP_switch,CDM0,My_Stress_threads)
+#pragma omp parallel shared(List_YOUSO,Matomnum,M2G,WhatSpecies,natn,ncn,F_G2M,Spe_Total_NO,Gxyz,atv,FNAN,RMI1,local_basis,OLP,SpinP_switch,CDM0,stress_threads)
   {
     int i,j,k,Mc_AN,so,Rn,Gc_AN,Cwan;
     int spin,Gh_AN,Mh_AN,Hwan,h_AN,spinmax;
@@ -5987,15 +6001,15 @@ void Stress_plus_U_dual(double *****CDM0, const OpenMXElectronicViews *electroni
 	  }
 	} /* spin */
 
-	My_Stress_threads[OMPID][0] += 0.5*dEx*lx;
-	My_Stress_threads[OMPID][1] += 0.5*dEy*lx;
-	My_Stress_threads[OMPID][2] += 0.5*dEz*lx;
-	My_Stress_threads[OMPID][3] += 0.5*dEx*ly;
-	My_Stress_threads[OMPID][4] += 0.5*dEy*ly;
-	My_Stress_threads[OMPID][5] += 0.5*dEz*ly;
-	My_Stress_threads[OMPID][6] += 0.5*dEx*lz;
-	My_Stress_threads[OMPID][7] += 0.5*dEy*lz;
-	My_Stress_threads[OMPID][8] += 0.5*dEz*lz;
+	openmx_solver_real_matrix_row(&stress_threads,OMPID)[0] += 0.5*dEx*lx;
+	openmx_solver_real_matrix_row(&stress_threads,OMPID)[1] += 0.5*dEy*lx;
+	openmx_solver_real_matrix_row(&stress_threads,OMPID)[2] += 0.5*dEz*lx;
+	openmx_solver_real_matrix_row(&stress_threads,OMPID)[3] += 0.5*dEx*ly;
+	openmx_solver_real_matrix_row(&stress_threads,OMPID)[4] += 0.5*dEy*ly;
+	openmx_solver_real_matrix_row(&stress_threads,OMPID)[5] += 0.5*dEz*ly;
+	openmx_solver_real_matrix_row(&stress_threads,OMPID)[6] += 0.5*dEx*lz;
+	openmx_solver_real_matrix_row(&stress_threads,OMPID)[7] += 0.5*dEy*lz;
+	openmx_solver_real_matrix_row(&stress_threads,OMPID)[8] += 0.5*dEz*lz;
 
       } /* h_AN */
     } /* Mc_AN */
@@ -6010,7 +6024,7 @@ void Stress_plus_U_dual(double *****CDM0, const OpenMXElectronicViews *electroni
 
   for(i=0; i<Nthrds0; i++){
     for(j=0; j<9; j++){
-      My_Stress[j] += My_Stress_threads[i][j];
+      My_Stress[j] += openmx_solver_real_matrix_row(&stress_threads,i)[j];
     }
   }
 
@@ -6042,10 +6056,7 @@ void Stress_plus_U_dual(double *****CDM0, const OpenMXElectronicViews *electroni
 
   /* freeing of array */
 
-  for (i=0; i<Nthrds0; i++){
-    free(My_Stress_threads[i]);
-  }
-  free(My_Stress_threads);
+
 
 }
 

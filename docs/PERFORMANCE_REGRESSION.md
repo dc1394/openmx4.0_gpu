@@ -3010,3 +3010,34 @@ Normal main, shared core and all energy kernels are unchanged (source/core hashe
 No new performance measurement is claimed; Stage 74 retains the isolated 18-rank/MPS and CPU/Intel comparison.
 The new checks compare 80 converged calculations from custom CPU/GPU `-runtest`/`-runtestL` batches against 20 fresh standalone references.
 These batches test correctness and repeated initialization, rather than isolated timing or the complete distributed input suites.
+
+
+## 第76段階: 応力の所有領域と集計ビュー
+
+9か所の集計領域とHartree FFT行をinvocation所有へ移し、20か所の手動確保を除きました。
+以下はi9-10980XE / RTX 5080、18 MPI×1 OpenMP、他の計算・ビルド・試験がない状態で22回を逐次実行した結果です。
+通常入力の18回に加え、C60で応力を有効にしたCPU/GPUの前後各1回を測定しました。
+GPU6回はMPS 18クライアントと各rankが読む凍結コアを確認しています。
+`Stress`単体の計時は所有者の作成・破棄と最初のMPI待ち合わせを含む定義へ変わったため、内部Totalとwallで比較します。
+通常のC60とsidia333では応力計算は無効です。
+
+| 計算 | 標本 | 内部Total 前→後(s) | wall 前→後(s) | Force 前→後(s) |
+|---|---|---:|---:|---:|
+| sidia333 GPU+MPS | 各1回 | 102.688→102.727 | 106.165→106.061 | 15.397→15.463 |
+| C60 DIISK CPU | 各3回の中央値 | 8.589→8.604 | 10.685→10.684 | 0.199→0.201 |
+| C60 DIISV CPU | 各3回の中央値 | 8.382→8.369 | 10.434→10.435 | 0.205→0.208 |
+| C60 DIISV GPU+MPS | 各1回 | 11.800→11.785 | 14.546→14.343 | 0.275→0.279 |
+| C60 応力有効 CPU | 各1回 | 10.030→9.890 | 12.138→11.988 | 0.201→0.203 |
+| C60 応力有効 GPU+MPS | 各1回 | 13.457→13.421 | 16.197→15.948 | 0.269→0.270 |
+
+元CPU Intel版も同じ応力無効入力で各1回測定し、DIISKは内部`9.662 s`/wall`10.184 s`、
+DIISVは内部`9.521 s`/wall`10.033 s`でした。収束・反復数・E/Fを照合しました。
+この入力と標本の比較であり、一般的な優劣を示すものではありません。
+sidia333は元入力の25 SCF・140³で前後とも未収束の計時で、105秒目標では内部とwallを区別します。
+C60はDIISK 27 SCF/DIISV 26 SCF・84³で収束し、応力を有効にした対照もE/F・応力を照合しました。
+
+394 CTest・4ホスト構成・両SDK各74単位と48組の応力付き収束比較後に計時しました。
+SCF反復数は44/48組で一致しました。06_nio-dual.out（cpu）43→28回、10_nio-dual.out（cpu）43→46回、02_nio-dual.out（gpu）42→41回、10_nio-dual.out（gpu）29→42回の差はNiOの同一プロセス経路に限られます。
+NiO反復数の変動は変更前の同一入力反復でも確認し、数値閾値を変更せず個別に保持しています。原因は未解決です。
+以前のHO/MO出力・DIISの観測も継続対象です。今回のAMD/A100/H100実機性能は未確認です。
+証拠は`build/stress-threads-refactor-20261024/`です。

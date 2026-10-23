@@ -1601,3 +1601,5 @@ DFT.o Divide_Conquer_LNO.o: openmx_dclno_state.h
 DFT.o Krylov.o: openmx_krylov_state.h
 
 Total_Energy.o: openmx_core_dispersion.h ../core/include/openmx_core_dispersion.h
+
+Stress.o: openmx_stress_workspace.h openmx_solver_workspace.h openmx_core_solver_workspace.h ../core/include/openmx_core_solver_workspace.h
