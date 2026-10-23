@@ -29,6 +29,7 @@
 #include "openmx_common.h"
 #include "openmx_gpusolver_dense_utils.h"
 #include "lapack_prototypes.h"
+#include "openmx_solver_workspace.h"
 
 
 #include <omp.h>
@@ -154,7 +155,7 @@ static double Calc_CWF_Cluster_NonCol(const OpenMXChemicalPotentials *chemical,
 				      dcomplex *Full_EVec); 
 
 
-static void Allocate_Free_Cluster_NonCol_CWF( int todo_flag, 
+static void Allocate_Free_Cluster_NonCol_CWF(OpenMXSolverInvocation *scratch, int todo_flag,
 					      int n2,
 					      int MaxN,
 					      int TNum_CWFs,
@@ -923,6 +924,37 @@ double Cluster_DFT_NonCol_CWF(const OpenMXChemicalPotentials *chemical,
 
 
 
+typedef struct {
+  const OpenMXChemicalPotentials *chemical;
+  int myid, numprocs, size_H1;
+  int *is2, *ie2, *MP;
+  int n2, MinN, MaxN;
+  double ****OLP0, *ko;
+  dcomplex *EVec1, *Full_EVec;
+} ClusterNonColCWFArguments;
+
+static double Calc_CWF_Cluster_NonCol_owned(OpenMXSolverInvocation *scratch, const OpenMXChemicalPotentials *chemical,
+    int myid,
+    int numprocs,
+    int size_H1,
+    int *is2,
+    int *ie2,
+    int *MP,
+    int n2,
+    int MinN,
+    int MaxN,
+    double ****OLP0,
+    double *ko,
+    dcomplex *EVec1,
+    dcomplex *Full_EVec);
+
+static int ClusterNonColCWFOperation(OpenMXSolverInvocation *scratch, void *opaque, double *result)
+{
+  const ClusterNonColCWFArguments *a=(const ClusterNonColCWFArguments*)opaque;
+  *result=Calc_CWF_Cluster_NonCol_owned(scratch, a->chemical, a->myid, a->numprocs, a->size_H1, a->is2, a->ie2, a->MP, a->n2, a->MinN, a->MaxN, a->OLP0, a->ko, a->EVec1, a->Full_EVec);
+  return 1;
+}
+
 double Calc_CWF_Cluster_NonCol(const OpenMXChemicalPotentials *chemical,
     int myid,
     int numprocs,
@@ -936,7 +968,26 @@ double Calc_CWF_Cluster_NonCol(const OpenMXChemicalPotentials *chemical,
     double ****OLP0,
     double *ko,
     dcomplex *EVec1,
-    dcomplex *Full_EVec) 
+    dcomplex *Full_EVec)
+{
+  ClusterNonColCWFArguments arguments={chemical, myid, numprocs, size_H1, is2, ie2, MP, n2, MinN, MaxN, OLP0, ko, EVec1, Full_EVec};
+  return OpenMX_Solver_Run(ClusterNonColCWFOperation,&arguments);
+}
+
+static double Calc_CWF_Cluster_NonCol_owned(OpenMXSolverInvocation *scratch, const OpenMXChemicalPotentials *chemical,
+    int myid,
+    int numprocs,
+    int size_H1,
+    int *is2,
+    int *ie2,
+    int *MP,
+    int n2,
+    int MinN,
+    int MaxN,
+    double ****OLP0,
+    double *ko,
+    dcomplex *EVec1,
+    dcomplex *Full_EVec)
 {
   int Gc_AN,GB_AN,Mc_AN,h_AN,Gh_AN,wanB,wan1,tno1,wan2,tno2,TNum_CWFs;
   int i,i1,j,l,k,k1,ig,jg,m1,NumCWFs,num,p,q,ID,ID1,mmin,mmax,m;
@@ -947,7 +998,7 @@ double Calc_CWF_Cluster_NonCol(const OpenMXChemicalPotentials *chemical,
   FILE *fp_Hop;
   double sum,max_x=60.0,x,FermiF,tmp,w1=1.0e-10;
   double in0,in1,out0,out1,e,weight,dif,b0,b1,e0,e1; 
-  double complex *InProd,*InProd_BasisFunc,*C2,**S1,*TmpEVec1;
+  double complex *InProd,*InProd_BasisFunc,*C2,*TmpEVec1;
   double complex *Hop;
   dcomplex *Cs,*Hs,*Vs,*Ws,*WFs,*EVs_PAO,ctmp0,*work;
   double complex ctmp,csum1,csum2;
@@ -966,7 +1017,7 @@ double Calc_CWF_Cluster_NonCol(const OpenMXChemicalPotentials *chemical,
 
   /* find the total number of CWFs */
 
-  MP2 = (int*)malloc(sizeof(int)*(atomnum+1));
+  MP2 = OpenMX_Solver_Int(scratch,"cwf-atom-offsets",(size_t)atomnum+1);
 
   if (CWF_Guiding_Orbital==1 || CWF_Guiding_Orbital==2){
 
@@ -989,7 +1040,7 @@ double Calc_CWF_Cluster_NonCol(const OpenMXChemicalPotentials *chemical,
 
   /* setting of arrays for SCALAPCK */
 
-  Allocate_Free_Cluster_NonCol_CWF( 1, n2, MaxN, TNum_CWFs, &Cs, &Hs, &Vs, &Ws, &EVs_PAO, &WFs );
+  Allocate_Free_Cluster_NonCol_CWF(scratch, 1, n2, MaxN, TNum_CWFs, &Cs, &Hs, &Vs, &Ws, &EVs_PAO, &WFs );
 
   /* find the maximum size of EVec1 */
 
@@ -1001,19 +1052,17 @@ double Calc_CWF_Cluster_NonCol(const OpenMXChemicalPotentials *chemical,
 
   /* allocation of arrays */
 
-  TmpEVec1 = (double complex*)malloc(sizeof(double complex)*Max_EVec1_size);
-  InProd = (double complex*)malloc(sizeof(double complex)*Max_EVec1_size);
-  InProd_BasisFunc = (double complex*)malloc(sizeof(double complex)*Max_EVec1_size);
+  TmpEVec1 = (double complex*)OpenMX_Solver_Bytes(scratch,"cwf-eigenvectors",Max_EVec1_size,sizeof(double complex));
+  InProd = (double complex*)OpenMX_Solver_Bytes(scratch,"cwf-projection",Max_EVec1_size,sizeof(double complex));
+  InProd_BasisFunc = (double complex*)OpenMX_Solver_Bytes(scratch,"cwf-basis-projection",Max_EVec1_size,sizeof(double complex));
 
-  C2 = (double complex*)malloc(sizeof(double complex)*2*List_YOUSO[7]);
-  S1 = (double complex**)malloc(sizeof(double complex*)*2*List_YOUSO[7]);
-  for (i=0; i<2*List_YOUSO[7]; i++) S1[i] = (double complex*)malloc(sizeof(double complex)*2*List_YOUSO[7]);
+  C2 = (double complex*)OpenMX_Solver_Bytes(scratch,"cwf-spinor",2*(size_t)List_YOUSO[7],sizeof(double complex));
 
-  Hop = (double complex*)malloc(sizeof(double complex)*(TNum_CWFs*TNum_CWFs));
+  Hop = (double complex*)OpenMX_Solver_Bytes(scratch,"cwf-hopping",(size_t)TNum_CWFs*TNum_CWFs,sizeof(double complex));
   for (p=0; p<(TNum_CWFs*TNum_CWFs); p++) Hop[p] = 0.0 + 0.0*I;
 
-  sv = (double*)malloc(sizeof(double)*(MaxN+1));
-  rwork = (double*)malloc(sizeof(double)*(1+4*MaxN));
+  sv = OpenMX_Solver_OverwriteReal(scratch,"cwf-singular-values",(size_t)MaxN+1);
+  rwork = OpenMX_Solver_OverwriteReal(scratch,"cwf-svd-real-work",1+4*(size_t)MaxN);
 
   /* get size of work and allocate work */
 
@@ -1028,9 +1077,10 @@ double Calc_CWF_Cluster_NonCol(const OpenMXChemicalPotentials *chemical,
 			     &lwork,
                              rwork,
 			     &info);
+  if(info!=0)OpenMX_Solver_Failure("NC cluster CWF SVD failed");
 
   lwork = (int)ctmp0.r + 1;
-  work = (dcomplex*)malloc(sizeof(dcomplex)*lwork);
+  work = OpenMX_Solver_OverwriteComplex(scratch,"cwf-svd-work",lwork);
 
   /***************************************************
    calculation of <Bloch function|localized orbital>
@@ -1175,13 +1225,14 @@ double Calc_CWF_Cluster_NonCol(const OpenMXChemicalPotentials *chemical,
 
 	    } // h_AN
 
+	    /* The bra is conjugate-linear in the KS spinor. S is real here. */
 	    /* store <Bloch functions|basis functions> */
 
 	    p = m*n2 + MP[Gc_AN] - 1 + i;
-	    InProd_BasisFunc[p] = csum1;
+	    InProd_BasisFunc[p] = conj(csum1);
 
 	    p = m*n2 + MP[Gc_AN] - 1 + i + n2/2;
-	    InProd_BasisFunc[p] = csum2;
+	    InProd_BasisFunc[p] = conj(csum2);
 
 	  } // i
 	} // Mc_AN 
@@ -1252,7 +1303,7 @@ double Calc_CWF_Cluster_NonCol(const OpenMXChemicalPotentials *chemical,
 
 	    /* set MP3 */
 
-            MP3 = (int*)malloc(sizeof(int)*CWF_Grouped_Atoms_EachNum[gidx]);
+            MP3 = OpenMX_Solver_Int(scratch,"cwf-group-offsets",CWF_Grouped_Atoms_EachNum[gidx]);
 
 	    k = 0;
 	    for (Lidx=0; Lidx<CWF_Grouped_Atoms_EachNum[gidx]; Lidx++){
@@ -1295,7 +1346,7 @@ double Calc_CWF_Cluster_NonCol(const OpenMXChemicalPotentials *chemical,
 
             /* freeing of MP3 */
  
-            free(MP3); 
+            /* Group-offset scratch is reused by the invocation owner. */
 
 	  } // gidx
 	} // m
@@ -1431,6 +1482,7 @@ double Calc_CWF_Cluster_NonCol(const OpenMXChemicalPotentials *chemical,
 			     &lwork,
                              rwork,
 			     &info);
+  if(info!=0)OpenMX_Solver_Failure("NC cluster CWF SVD failed");
 
   /*
   if (myid==0){
@@ -1479,7 +1531,7 @@ double Calc_CWF_Cluster_NonCol(const OpenMXChemicalPotentials *chemical,
   /* Hs^dag x Cs -> Ws */
 
   Cblacs_barrier(ictxt1_CWF1,"A");
-  F77_NAME(pzgemm,PZGEMM)( "T","N",
+  F77_NAME(pzgemm,PZGEMM)( "C","N",
 			   &TNum_CWFs, &TNum_CWFs, &MaxN,
 			   &alpha,
 			   Hs,&ONE,&ONE,desc_CWF3,
@@ -1820,7 +1872,7 @@ double Calc_CWF_Cluster_NonCol(const OpenMXChemicalPotentials *chemical,
 
   if (myid==Host_ID){
 
-    int_data = (int*)malloc(sizeof(int)*(atomnum+6));
+    int_data = OpenMX_Solver_Int(scratch,"cwf-hopping-header",(size_t)atomnum+6);
 
     sprintf(fname,"%s%s.CWF.Hop",filepath,filename);
     if ((fp_Hop = fopen(fname,"w")) != NULL) fp_Hop_ok = 1;
@@ -1864,7 +1916,7 @@ double Calc_CWF_Cluster_NonCol(const OpenMXChemicalPotentials *chemical,
       fwrite(&Hop[0],sizeof(double complex),(TNum_CWFs*TNum_CWFs),fp_Hop);
     }
 
-    free(int_data);
+    /* Header storage belongs to this invocation. */
     if (fp_Hop_ok==1) fclose(fp_Hop);
   }
 
@@ -1998,25 +2050,11 @@ double Calc_CWF_Cluster_NonCol(const OpenMXChemicalPotentials *chemical,
                        freeing of arrays
   ***********************************************************/
 
-  free(Hop);
-  free(TmpEVec1);
-  free(MP2);
-  free(InProd);
-  free(InProd_BasisFunc);
-  free(C2);
-
-  for (i=0; i<List_YOUSO[7]; i++){
-    free(S1[i]);
-  }
-  free(S1);
-
-  free(sv);
-  free(rwork);
-  free(work);
+  /* C++ invocation owns all numerical buffers, including early returns. */
 
   /* freeing of arrays for SCALAPCK */
 
-  Allocate_Free_Cluster_NonCol_CWF( 2, n2, MaxN, TNum_CWFs, &Cs, &Hs, &Vs, &Ws, &EVs_PAO, &WFs );
+  Allocate_Free_Cluster_NonCol_CWF(scratch, 2, n2, MaxN, TNum_CWFs, &Cs, &Hs, &Vs, &Ws, &EVs_PAO, &WFs );
 
   /* mearuring elapsed time */
 
@@ -2026,7 +2064,7 @@ double Calc_CWF_Cluster_NonCol(const OpenMXChemicalPotentials *chemical,
 
 
 
-void Allocate_Free_Cluster_NonCol_CWF( int todo_flag, 
+void Allocate_Free_Cluster_NonCol_CWF(OpenMXSolverInvocation *scratch, int todo_flag,
 				       int n2,
 				       int MaxN,
 				       int TNum_CWFs,
@@ -2132,7 +2170,7 @@ void Allocate_Free_Cluster_NonCol_CWF( int todo_flag,
 
     desc_CWF2[1] = desc_CWF1[1];
 
-    (*WFs) = (dcomplex*)malloc(sizeof(dcomplex)*na_rows_max_CWF2*na_cols_max_CWF2); 
+    (*WFs) = OpenMX_Solver_OverwriteComplex(scratch,"cwf-wavefunctions",(size_t)na_rows_max_CWF2*na_cols_max_CWF2);
 
     /* CWF3: setting of BLACS for matrices in size of MaxN x TNum_CWFs */
 
@@ -2204,11 +2242,11 @@ void Allocate_Free_Cluster_NonCol_CWF( int todo_flag,
 
     desc_CWF4[1] = desc_CWF1[1];
 
-    *Cs = (dcomplex*)malloc(sizeof(dcomplex)*na_rows_max_CWF4*na_cols_max_CWF4);
-    *Hs = (dcomplex*)malloc(sizeof(dcomplex)*na_rows_max_CWF4*na_cols_max_CWF4);
-    *Vs = (dcomplex*)malloc(sizeof(dcomplex)*na_rows_max_CWF4*na_cols_max_CWF4);
-    *Ws = (dcomplex*)malloc(sizeof(dcomplex)*na_rows_max_CWF4*na_cols_max_CWF4);
-    *EVs_PAO = (dcomplex*)malloc(sizeof(dcomplex)*na_rows_max_CWF4*na_cols_max_CWF4); 
+    *Cs = OpenMX_Solver_OverwriteComplex(scratch,"cwf-scalapack-Cs",(size_t)na_rows_max_CWF4*na_cols_max_CWF4);
+    *Hs = OpenMX_Solver_OverwriteComplex(scratch,"cwf-scalapack-Hs",(size_t)na_rows_max_CWF4*na_cols_max_CWF4);
+    *Vs = OpenMX_Solver_OverwriteComplex(scratch,"cwf-scalapack-Vs",(size_t)na_rows_max_CWF4*na_cols_max_CWF4);
+    *Ws = OpenMX_Solver_OverwriteComplex(scratch,"cwf-scalapack-Ws",(size_t)na_rows_max_CWF4*na_cols_max_CWF4);
+    *EVs_PAO = OpenMX_Solver_OverwriteComplex(scratch,"cwf-scalapack-EVs_PAO",(size_t)na_rows_max_CWF4*na_cols_max_CWF4);
 
     /* save information of the memory usage */
 
@@ -2230,14 +2268,9 @@ void Allocate_Free_Cluster_NonCol_CWF( int todo_flag,
 
   if (todo_flag==2){
 
+    /* Numeric buffers belong to the enclosing C++ invocation. */
     /* setting for BLACS */
 
-    free(*Cs);
-    free(*Hs);
-    free(*Vs);
-    free(*Ws);
-    free(*WFs);
-    free(*EVs_PAO);
 
     Cfree_blacs_system_handle(bhandle1_CWF1);
     Cblacs_gridexit(ictxt1_CWF1);

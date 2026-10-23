@@ -60,6 +60,12 @@ function(openmx_add_native_state_tests)
   set_tests_properties(solver-noncollinear-energy-output PROPERTIES
     ENVIRONMENT "${_environment}" LABELS "unit;solver;core;native-state" TIMEOUT 180)
 
+  add_test(NAME cwf-noncollinear-projection
+    COMMAND "${Python3_EXECUTABLE}" "${_repo}/tests/run_cwf_projection_cpu.py"
+      --negative-control)
+  set_tests_properties(cwf-noncollinear-projection PROPERTIES
+    ENVIRONMENT "${_environment}" LABELS "unit;solver;core;native-state" TIMEOUT 180)
+
   find_program(OPENMX_TEST_MPICXX NAMES mpicxx mpic++)
   find_program(OPENMX_TEST_MPIEXEC NAMES mpirun mpiexec)
   if(OPENMX_TEST_MPICXX AND OPENMX_TEST_MPIEXEC)
