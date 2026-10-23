@@ -626,9 +626,9 @@ Band_DFT_Dosout.o: Band_DFT_Dosout.c openmx_common.h
 	$(CC) -c Band_DFT_Dosout.c
 Mixing_DM.o: Mixing_DM.c openmx_common.h
 	$(CC) -c Mixing_DM.c
-Mixing_H.o: Mixing_H.c openmx_common.h
+Mixing_H.o: Mixing_H.c openmx_common.h openmx_mixing_policy.h openmx_core_mixing.h
 	$(CC) -c Mixing_H.c
-Mixing_V.o: Mixing_V.c openmx_common.h
+Mixing_V.o: Mixing_V.c openmx_common.h openmx_mixing_policy.h openmx_core_mixing.h
 	$(CC) -c Mixing_V.c
 Force.o: Force.c openmx_common.h openmx_precision.h
 	$(CC) -c Force.c
@@ -697,7 +697,7 @@ Dr_KumoF.o: Dr_KumoF.c openmx_common.h
 	$(CC) -c Dr_KumoF.c
 Pot_NeutralAtom.o: Pot_NeutralAtom.c openmx_common.h
 	$(CC) -c Pot_NeutralAtom.c
-Simple_Mixing_DM.o: Simple_Mixing_DM.c openmx_common.h
+Simple_Mixing_DM.o: Simple_Mixing_DM.c openmx_common.h openmx_mixing_policy.h openmx_core_mixing.h
 	$(CC) -c Simple_Mixing_DM.c
 DIIS_Mixing_DM.o: DIIS_Mixing_DM.c openmx_common.h
 	$(CC) -c DIIS_Mixing_DM.c
@@ -705,9 +705,9 @@ ADIIS_Mixing_DM.o: ADIIS_Mixing_DM.c openmx_common.h
 	$(CC) -c ADIIS_Mixing_DM.c
 GR_Pulay_DM.o: GR_Pulay_DM.c openmx_common.h
 	$(CC) -c GR_Pulay_DM.c
-Kerker_Mixing_Rhok.o: Kerker_Mixing_Rhok.c openmx_common.h
+Kerker_Mixing_Rhok.o: Kerker_Mixing_Rhok.c openmx_common.h openmx_mixing_policy.h openmx_core_mixing.h
 	$(CC) -c Kerker_Mixing_Rhok.c
-DIIS_Mixing_Rhok.o: DIIS_Mixing_Rhok.c openmx_common.h
+DIIS_Mixing_Rhok.o: DIIS_Mixing_Rhok.c openmx_common.h openmx_mixing_policy.h openmx_core_mixing.h
 	$(CC) -c DIIS_Mixing_Rhok.c
 # Same LDA+U Type2/cFLL workaround as above.
 Total_Energy.o: Total_Energy.c openmx_common.h set_hip_default_device_from_local_rank.h

@@ -1084,6 +1084,7 @@
     "openmx_mixing_v_workspace.h",
     "Mixing_V.c",
     "openmx_mixing_lapack.h",
+    "openmx_mixing_policy.h",
     "openmx_core_lu_ops.h",
     "openmx_core_mixing.h",
     "Simple_Mixing_DM.c"

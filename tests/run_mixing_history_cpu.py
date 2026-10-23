@@ -29,6 +29,7 @@ def main():
     weight_line = next(line for line in input_source.splitlines()
                        if 'input_double("scf.Init.Mixing.Weight"' in line)
     generated = '\n'.join([function(helpers, 'sgn'), function(helpers, 'largest'),
+                            '#include "openmx_mixing_policy.h"',
                             function(mixing, 'Simple_Mixing_DM'),
                             function((ROOT / 'source/outputfile1.c').read_text(), 'outputfile1')])
     generated += '\nstatic void parse_weight(OpenMXCoreContext *core) {\n'
@@ -38,7 +39,7 @@ def main():
         (folder / 'mixing_history.inc').write_text(generated)
         executable = folder / 'check'
         command = compiler_command('c++') + [
-            '-I' + str(folder), '-I' + str(ROOT / 'core/include'),
+            '-I' + str(folder), '-I' + str(ROOT / 'core/include'), '-I' + str(ROOT / 'source'),
             str(ROOT / 'tests/mixing_history_harness.cpp'), str(library),
             '-Wl,-rpath,' + str(library.parent), '-o', str(executable)]
         subprocess.run(command, check=True)

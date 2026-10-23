@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <math.h>
 #include "openmx_common.h"
+#include "openmx_mixing_policy.h"
 #include "mpi.h"
 
 
@@ -29,8 +30,8 @@ void Simple_Mixing_DM(OpenMXMixingHistory *history, int Change_switch,
                       double *****iRDM)
 {
   int ian,jan,Mc_AN,Gc_AN;
-  int h_AN,Gh_AN,m,n,spin,i;
-  double Mix_wgt1,Mix_wgt2,Norm,My_Norm,tmp0;
+  int h_AN,Gh_AN,m,n,spin;
+  double Mix_wgt1,Mix_wgt2,Norm,My_Norm;
   double Min_Weight,Max_Weight;
   double nc_weight[4];
   int numprocs,myid,ID;
@@ -42,19 +43,7 @@ void Simple_Mixing_DM(OpenMXMixingHistory *history, int Change_switch,
   /* start... */
 
   Min_Weight = Min_Mixing_weight;
-  if (history->consecutive==-1){
-    Max_Weight = Max_Mixing_weight;
-    history->adaptive_max_weight = Max_Mixing_weight;
-  }
-  else if (history->consecutive==1000){  /* past 3 */
-    history->adaptive_max_weight = 2.0*history->adaptive_max_weight;
-    if (0.7<history->adaptive_max_weight) history->adaptive_max_weight = 0.7;
-    Max_Weight = history->adaptive_max_weight;
-    history->consecutive = 0;
-  }
-  else{
-    Max_Weight = history->adaptive_max_weight;
-  }
+  Max_Weight = OpenMX_Mixing_PrepareLimit(history, Max_Mixing_weight);
 
   /****************************************************
                         NormRD
@@ -109,10 +98,7 @@ void Simple_Mixing_DM(OpenMXMixingHistory *history, int Change_switch,
     find an optimum mixing weight
   ****************************************************/
 
-  for (i=4; 1<=i; i--){
-    history->norm[i] = history->norm[i-1];
-    history->energy[i] = history->energy[i-1];
-  }
+  OpenMX_Mixing_Shift(history);
   history->norm[0] = Norm;
   history->energy[0] = Uele;
 
@@ -121,87 +107,7 @@ void Simple_Mixing_DM(OpenMXMixingHistory *history, int Change_switch,
 
   if (Change_switch==1){
 
-    if ( (int)sgn(history->energy[0]-history->energy[1])
-	  ==(int)sgn(history->energy[1]-history->energy[2])
-       && history->norm[0]<history->norm[1]){
-
-      /* tmp0 = 1.6*Mixing_weight; */
-
-      tmp0 = history->norm[1]/(largest(history->norm[1]-history->norm[0],10e-10))*history->weight;
-
-      if (tmp0<Max_Weight){
-        if (Min_Weight<tmp0){
-          history->weight = tmp0;
-	}
-        else{ 
-          history->weight = Min_Weight;
-	}
-      }
-      else{ 
-        history->weight = Max_Weight;
-        history->consecutive++;
-      }
-    }
-   
-    else if ( (int)sgn(history->energy[0]-history->energy[1])
-            ==(int)sgn(history->energy[1]-history->energy[2])
-             && history->norm[1]<history->norm[0]){
-
-      tmp0 = history->norm[1]/(largest(history->norm[1]+history->norm[0],10e-10))*history->weight;
-
-      /* tmp0 = Mixing_weight/1.6; */
-
-      if (tmp0<Max_Weight){
-        if (Min_Weight<tmp0)
-          history->weight = tmp0;
-        else 
-          history->weight = Min_Weight;
-      }
-      else 
-        history->weight = Max_Weight;
-
-      history->consecutive = -1;
-    }
-
-    else if ( (int)sgn(history->energy[0]-history->energy[1])
-	       !=(int)sgn(history->energy[1]-history->energy[2])
-             && history->norm[0]<history->norm[1]){
-
-      /* tmp0 = Mixing_weight*1.2; */
-
-      tmp0 = history->norm[1]/(largest(history->norm[1]-history->norm[0],10e-10))*history->weight;
-
-      if (tmp0<Max_Weight){
-        if (Min_Weight<tmp0)
-          history->weight = tmp0;
-        else 
-          history->weight = Min_Weight;
-      }
-      else{ 
-        history->weight = Max_Weight;
-        history->consecutive++;
-      }
-    }
-
-    else if ( (int)sgn(history->energy[0]-history->energy[1])
-	       !=(int)sgn(history->energy[1]-history->energy[2])
-             && history->norm[1]<history->norm[0]){
-
-      /* tmp0 = Mixing_weight/2.0; */
-
-      tmp0 = history->norm[1]/(largest(history->norm[1]+history->norm[0],10e-10))*history->weight;
-
-      if (tmp0<Max_Weight){
-        if (Min_Weight<tmp0)
-          history->weight = tmp0;
-        else 
-          history->weight = Min_Weight;
-      }
-      else 
-        history->weight = Max_Weight;
-
-      history->consecutive = -1;
-    }
+    OpenMX_Mixing_Adapt(history, OPENMX_MIXING_DENSITY_RATIO, Min_Weight, Max_Weight);
 
     Mix_wgt = history->weight;
   }

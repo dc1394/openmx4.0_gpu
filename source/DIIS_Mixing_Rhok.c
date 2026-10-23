@@ -16,6 +16,7 @@
 #include <string.h>
 #include "mpi.h"
 #include "openmx_common.h"
+#include "openmx_mixing_policy.h"
 #include "openmx_env.h"
 #include "openmx_mixing_rhok_workspace.h"
 #include "tran_prototypes.h"
@@ -525,10 +526,7 @@ void DIIS_Mixing_Rhok_Normal(OpenMXSolverInvocation *scratch, MixingRhokState *s
 
     /* store NormRD */
 
-    for (i=4; 1<=i; i--){
-      state->history->norm[i] = state->history->norm[i-1];
-      state->history->energy[i] = state->history->energy[i-1];
-    }
+    OpenMX_Mixing_Shift(state->history);
     state->history->norm[0] = openmx_solver_real_matrix_row(&A,0)[0]/(double)Ngrid1/(double)Ngrid2/(double)Ngrid3/(double)spinmax;
     state->history->energy[0] = Uele;
 
@@ -751,87 +749,7 @@ void DIIS_Mixing_Rhok_Normal(OpenMXSolverInvocation *scratch, MixingRhokState *s
       Min_Weight = Min_Mixing_weight;
       Max_Weight = Max_Mixing_weight;
 
-      if ((int)sgn(state->history->energy[0]-state->history->energy[1])
-	  ==(int)sgn(state->history->energy[1]-state->history->energy[2])
-	  && state->history->norm[0]<state->history->norm[1]){
-
-	/* tmp0 = 1.6*Mixing_weight; */
-
-	tmp0 = state->history->norm[1]/(largest(state->history->norm[1]-state->history->norm[0],10e-10))*state->history->weight;
-
-	if (tmp0<Max_Weight){
-	  if (Min_Weight<tmp0){
-	    state->history->weight = tmp0;
-	  }
-	  else{ 
-	    state->history->weight = Min_Weight;
-	  }
-	}
-	else{ 
-	  state->history->weight = Max_Weight;
-	  state->history->consecutive++;
-	}
-      }
-   
-      else if ((int)sgn(state->history->energy[0]-state->history->energy[1])
-	       ==(int)sgn(state->history->energy[1]-state->history->energy[2])
-	       && state->history->norm[1]<state->history->norm[0]){
-
-	tmp0 = state->history->norm[1]/(largest(state->history->norm[1]+state->history->norm[0],10e-10))*state->history->weight;
-
-	/* tmp0 = Mixing_weight/1.6; */
-
-	if (tmp0<Max_Weight){
-	  if (Min_Weight<tmp0)
-	    state->history->weight = tmp0;
-	  else 
-	    state->history->weight = Min_Weight;
-	}
-	else 
-	  state->history->weight = Max_Weight;
-
-	state->history->consecutive = -1;
-      }
-
-      else if ((int)sgn(state->history->energy[0]-state->history->energy[1])
-	       !=(int)sgn(state->history->energy[1]-state->history->energy[2])
-	       && state->history->norm[0]<state->history->norm[1]){
-
-	/* tmp0 = Mixing_weight*1.2; */
-
-	tmp0 = state->history->norm[1]/(largest(state->history->norm[1]-state->history->norm[0],10e-10))*state->history->weight;
-
-	if (tmp0<Max_Weight){
-	  if (Min_Weight<tmp0)
-	    state->history->weight = tmp0;
-	  else 
-	    state->history->weight = Min_Weight;
-	}
-	else{ 
-	  state->history->weight = Max_Weight;
-	  state->history->consecutive++;
-	}
-      }
-
-      else if ((int)sgn(state->history->energy[0]-state->history->energy[1])
-	       !=(int)sgn(state->history->energy[1]-state->history->energy[2])
-	       && state->history->norm[1]<state->history->norm[0]){
-
-	/* tmp0 = Mixing_weight/2.0; */
-
-	tmp0 = state->history->norm[1]/(largest(state->history->norm[1]+state->history->norm[0],10e-10))*state->history->weight;
-
-	if (tmp0<Max_Weight){
-	  if (Min_Weight<tmp0)
-	    state->history->weight = tmp0;
-	  else 
-	    state->history->weight = Min_Weight;
-	}
-	else 
-	  state->history->weight = Max_Weight;
-
-	state->history->consecutive = -1;
-      }
+      OpenMX_Mixing_Adapt(state->history, OPENMX_MIXING_DENSITY_RATIO, Min_Weight, Max_Weight);
 
       Mix_wgt = state->history->weight;
 
@@ -1333,10 +1251,7 @@ void DIIS_Mixing_Rhok_NEGF(OpenMXSolverInvocation *scratch, MixingRhokState *sta
 
     /* store NormRD */
 
-    for (i=4; 1<=i; i--){
-      state->history->norm[i] = state->history->norm[i-1];
-      state->history->energy[i] = state->history->energy[i-1];
-    }
+    OpenMX_Mixing_Shift(state->history);
     state->history->norm[0] = openmx_solver_real_matrix_row(&A,0)[0];
     state->history->energy[0] = Uele;
 
@@ -1489,87 +1404,7 @@ void DIIS_Mixing_Rhok_NEGF(OpenMXSolverInvocation *scratch, MixingRhokState *sta
       Min_Weight = Min_Mixing_weight;
       Max_Weight = Max_Mixing_weight;
 
-      if ((int)sgn(state->history->energy[0]-state->history->energy[1])
-	  ==(int)sgn(state->history->energy[1]-state->history->energy[2])
-	  && state->history->norm[0]<state->history->norm[1]){
-
-	/* tmp0 = 1.6*Mixing_weight; */
-
-	tmp0 = state->history->norm[1]/(largest(state->history->norm[1]-state->history->norm[0],10e-10))*state->history->weight;
-
-	if (tmp0<Max_Weight){
-	  if (Min_Weight<tmp0){
-	    state->history->weight = tmp0;
-	  }
-	  else{ 
-	    state->history->weight = Min_Weight;
-	  }
-	}
-	else{ 
-	  state->history->weight = Max_Weight;
-	  state->history->consecutive++;
-	}
-      }
-   
-      else if ((int)sgn(state->history->energy[0]-state->history->energy[1])
-	       ==(int)sgn(state->history->energy[1]-state->history->energy[2])
-	       && state->history->norm[1]<state->history->norm[0]){
-
-	tmp0 = state->history->norm[1]/(largest(state->history->norm[1]+state->history->norm[0],10e-10))*state->history->weight;
-
-	/* tmp0 = Mixing_weight/1.6; */
-
-	if (tmp0<Max_Weight){
-	  if (Min_Weight<tmp0)
-	    state->history->weight = tmp0;
-	  else 
-	    state->history->weight = Min_Weight;
-	}
-	else 
-	  state->history->weight = Max_Weight;
-
-	state->history->consecutive = -1;
-      }
-
-      else if ((int)sgn(state->history->energy[0]-state->history->energy[1])
-	       !=(int)sgn(state->history->energy[1]-state->history->energy[2])
-	       && state->history->norm[0]<state->history->norm[1]){
-
-	/* tmp0 = Mixing_weight*1.2; */
-
-	tmp0 = state->history->norm[1]/(largest(state->history->norm[1]-state->history->norm[0],10e-10))*state->history->weight;
-
-	if (tmp0<Max_Weight){
-	  if (Min_Weight<tmp0)
-	    state->history->weight = tmp0;
-	  else 
-	    state->history->weight = Min_Weight;
-	}
-	else{ 
-	  state->history->weight = Max_Weight;
-	  state->history->consecutive++;
-	}
-      }
-
-      else if ((int)sgn(state->history->energy[0]-state->history->energy[1])
-	       !=(int)sgn(state->history->energy[1]-state->history->energy[2])
-	       && state->history->norm[1]<state->history->norm[0]){
-
-	/* tmp0 = Mixing_weight/2.0; */
-
-	tmp0 = state->history->norm[1]/(largest(state->history->norm[1]+state->history->norm[0],10e-10))*state->history->weight;
-
-	if (tmp0<Max_Weight){
-	  if (Min_Weight<tmp0)
-	    state->history->weight = tmp0;
-	  else 
-	    state->history->weight = Min_Weight;
-	}
-	else 
-	  state->history->weight = Max_Weight;
-
-	state->history->consecutive = -1;
-      }
+      OpenMX_Mixing_Adapt(state->history, OPENMX_MIXING_DENSITY_RATIO, Min_Weight, Max_Weight);
 
       /* Kerer mixing */
 
