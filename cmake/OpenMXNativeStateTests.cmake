@@ -155,6 +155,12 @@ function(openmx_add_native_state_tests)
   set_tests_properties(projector-scope PROPERTIES
     ENVIRONMENT "${_environment}" LABELS "unit;solver;core;native-state" TIMEOUT 180)
 
+  add_test(NAME neutral-pair
+    COMMAND "${Python3_EXECUTABLE}" "${_repo}/tests/run_neutral_pair_cpu.py"
+      --negative-control)
+  set_tests_properties(neutral-pair PROPERTIES
+    ENVIRONMENT "${_environment}" LABELS "unit;solver;core;native-state" TIMEOUT 180)
+
   find_program(OPENMX_TEST_MPICXX NAMES mpicxx mpic++)
   find_program(OPENMX_TEST_MPIEXEC NAMES mpirun mpiexec)
   if(OPENMX_TEST_MPICXX AND OPENMX_TEST_MPIEXEC)

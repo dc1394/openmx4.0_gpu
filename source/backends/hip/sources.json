@@ -1054,6 +1054,7 @@
     "openmx_mixing_v_state.h",
     "openmx_mixing_v_workspace.h",
     "openmx_native_resources.h",
+    "openmx_neutral_atom.h",
     "openmx_nonlocal_cpu.h",
     "openmx_orbital_harmonics.h",
     "openmx_orbital_optimization.h",

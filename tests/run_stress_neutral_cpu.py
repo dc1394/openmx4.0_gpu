@@ -37,6 +37,7 @@ def main():
     args = parser.parse_args()
     library = args.core_library.resolve(strict=True)
     source = (ROOT/'source/Stress.c').read_text()
+    neutral_header = (ROOT/'source/openmx_neutral_atom.h').read_text()
     native = logical_workers(function(source, 'EH0_TwoCenter_at_Cutoff')+'\n'+function(source, 'Stress_H0'))
     with tempfile.TemporaryDirectory(prefix='openmx-stress-neutral-') as directory:
         folder = Path(directory)
@@ -47,8 +48,9 @@ def main():
             'static inline int omp_get_num_threads(void){return fixture_team;}\n'
             'static inline int omp_get_num_procs(void){return 4;}\n')
 
-        def build(name, code):
+        def build(name, code, neutral=neutral_header):
             (folder/'stress_neutral_native.inc').write_text(code)
+            (folder/'openmx_neutral_atom.h').write_text(neutral)
             executable = folder/name
             subprocess.run(compiler_command('c')+['-I'+str(folder), '-I'+str(ROOT/'source'),
                 '-I'+str(ROOT/'core/include'), '-x', 'c', str(ROOT/'tests/stress_neutral_harness.c'),
@@ -62,11 +64,15 @@ def main():
                                     text=True, preexec_fn=bounded_stack)
             assert failed.returncode == 77 and 'invalid stress' in failed.stderr, failed
         if args.negative_control:
-            for name, original, replacement in [
-                ('grid-axis', 'z = g0[n3];', 'z = g0[0];'),
-                ('cutoff-distance', 'z2 = z - rcut;', 'z2 = z - 0.5*rcut;')]:
-                assert original in native
-                failed = subprocess.run([str(build(name, native.replace(original, replacement)))], cwd=folder,
+            for name, original, replacement, location in [
+                ('grid-axis', 'z = g0[n3];', 'z = g0[0];', 'native'),
+                ('cutoff-distance', 'z2 = z - rcut;', 'z2 = z - 0.5*rcut;', 'header')]:
+                text = native if location == 'native' else neutral_header
+                assert text.count(original) == 1
+                changed = text.replace(original, replacement)
+                executable = (build(name, changed) if location == 'native' else
+                              build(name, native, changed))
+                failed = subprocess.run([str(executable)], cwd=folder,
                                         capture_output=True, text=True, preexec_fn=bounded_stack)
                 assert failed.returncode == 2 and 'FAIL line' in failed.stderr, failed
     print('PASS: neutral grid/cutoff/stress, independent moments/strain, ownership and negative controls')

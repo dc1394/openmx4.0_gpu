@@ -6,6 +6,7 @@
 #include <string.h>
 #include "mpi.h"
 #include "openmx_core_atomic.h"
+#include "openmx_neutral_atom.h"
 #define CHECK(c) do{if(!(c)){fprintf(stderr,"FAIL line %d: %s\n",__LINE__,#c);exit(2);}}while(0)
 #define PI 3.1415926535897932384626433832795
 #define GPUSOLVER 7
@@ -37,7 +38,7 @@ int MPI_Bcast(void *p,int n,int type,int root,MPI_Comm comm){(void)p;(void)root;
 int MPI_Allreduce(const void *s,void *r,int n,int type,int op,MPI_Comm comm){(void)comm;CHECK(n==1&&type==MPI_DOUBLE&&op==MPI_SUM);memcpy(r,s,sizeof(double));return 0;}
 static void Allocate_Arrays(int mode){CHECK(mode==4&&Max_TGN_EH0<=64);++grid_allocations;}
 static double KumoF(int mesh,double x,const double *a,const double *b,const double *c){CHECK(mesh==2&&a&&b&&c&&isfinite(x));return .2+.03*x;}
-static double VH_AtomF(double charge,int mesh,double x,double r,const double *a,const double *b,const double *c){CHECK(mesh==2&&a&&b&&c&&isfinite(x)&&r>0);return 1+.1*charge;}
+double VH_AtomF(double charge,int mesh,double x,double r,double *a,double *b,double *c){CHECK(mesh==2&&a&&b&&c&&isfinite(x)&&r>0);return 1+.1*charge;}
 static void model_pair(int base,int other,int derivative,double distance,const double direction[3],double out[4]){
   out[0]=.3+.04*base+.07*other+.02*distance;
   for(int d=0;d<3;d++)out[d+1]=derivative?(.4+.09*base-.05*other)*direction[d]:0;

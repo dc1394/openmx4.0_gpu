@@ -4,6 +4,7 @@
 #include <string.h>
 #include "mpi.h"
 #include "openmx_core_atomic.h"
+#include "openmx_neutral_atom.h"
 #define PI 3.1415926535897932384626433832795
 #define measure_time 0
 #define CHECK(c) do{if(!(c)){fprintf(stderr,"FAIL line %d: %s\n",__LINE__,#c);exit(2);}}while(0)
@@ -31,7 +32,7 @@ int MPI_Comm_rank(MPI_Comm comm,int *rank){(void)comm;*rank=0;return 0;}
 int MPI_Allreduce(const void *s,void *r,int n,int type,int op,MPI_Comm comm){(void)comm;CHECK(n==9&&type==MPI_DOUBLE&&op==MPI_SUM);memcpy(r,s,9*sizeof(double));return 0;}
 static void Allocate_Arrays(int mode){CHECK(mode==4&&Max_TGN_EH0<=64);++allocations;}
 static double KumoF(int mesh,double x,const double *a,const double *b,const double *c){CHECK(mesh==2&&a&&b&&c&&isfinite(x));return .2+.03*x;}
-static double VH_AtomF(double charge,int mesh,double x,double r,const double *a,const double *b,const double *c){CHECK(mesh==2&&a&&b&&c&&isfinite(x)&&r>0);return 1+.1*charge+.03*r*r;}
+double VH_AtomF(double charge,int mesh,double x,double r,double *a,double *b,double *c){CHECK(mesh==2&&a&&b&&c&&isfinite(x)&&r>0);return 1+.1*charge+.03*r*r;}
 static double slope(int base,int other){return .4+.09*base-.05*other;}
 static void EH0_TwoCenter(const OpenMXAtomicViews *atomic,int atom,int h,double out[4]){
   const int other=natn[atom][h],a=WhatSpecies[atom],b=WhatSpecies[other];

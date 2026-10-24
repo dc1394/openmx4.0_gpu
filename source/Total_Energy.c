@@ -21,6 +21,7 @@
 #include "openmx_env.h"
 #include "openmx_core_vna_matrix.h"
 #include "openmx_energy_workspace.h"
+#include "openmx_neutral_atom.h"
 #include "mpi.h"
 #include <omp.h>
 
@@ -2589,77 +2590,21 @@ void Calc_EXC_EH1(OpenMXSolverInvocation *scratch, const OpenMXAtomicViews *atom
 
 
 void EH0_TwoCenter(const OpenMXAtomicViews *atomic, int Gc_AN, int h_AN, double VH0ij[4])
-{ 
-  int n1,ban;
-  int Gh_AN,Rn,wan1,wan2;
-  double dv,x,y,z,r,r2,xx,va0,rho0,dr_va0;
-  double z2,sum,sumr,sumx,sumy,sumz,wt;
-
-  Gh_AN = natn[Gc_AN][h_AN];
-  Rn = ncn[Gc_AN][h_AN];
-  wan1 = WhatSpecies[Gc_AN];
-  ban = atomic->species.species_index[wan1];
-  wan2 = WhatSpecies[Gh_AN];
-  dv = dv_EH0[ban];
-  
-  sum = 0.0;
-  sumr = 0.0;
-
-  for (n1=0; n1<TGN_EH0[ban]; n1++){
-    x = GridX_EH0[ban][n1];
-    y = GridY_EH0[ban][n1];
-    z = GridZ_EH0[ban][n1];
-    rho0 = Arho_EH0[ban][n1];
-    wt = Wt_EH0[ban][n1];
-    z2 = z - Dis[Gc_AN][h_AN];
-    r2 = x*x + y*y + z2*z2;
-    r = sqrt(r2);
-    xx = 0.5*log(r2);
-
-    /* for empty atoms or finite elemens basis */
-    if (r<1.0e-10) r = 1.0e-10;
-
-    va0 = VH_AtomF(atomic->species.core_charge[wan2],
-                   atomic->species.vps_mesh[wan2], xx, r,
-                   openmx_radial_row2(&atomic->vps_log_radii,wan2), openmx_radial_row2(&atomic->vps_radii,wan2), openmx_radial_row2(&atomic->hartree_potential,wan2));
-
-    sum += wt*va0*rho0;
-
-    if (h_AN!=0 && 1.0e-14<r){
-      dr_va0 = Dr_VH_AtomF(atomic->species.core_charge[wan2],
-                           atomic->species.vps_mesh[wan2], xx, r,
-                           openmx_radial_row2(&atomic->vps_log_radii,wan2), openmx_radial_row2(&atomic->vps_radii,wan2), openmx_radial_row2(&atomic->hartree_potential,wan2));
-
-      sumr -= wt*rho0*dr_va0*z2/r;
-    }
+{
+  const int Gh_AN=natn[Gc_AN][h_AN],Rn=ncn[Gc_AN][h_AN];
+  const int wan1=WhatSpecies[Gc_AN],wan2=WhatSpecies[Gh_AN];
+  const int ban=atomic->species.species_index[wan1];
+  const OpenMXNeutralGridView grid={TGN_EH0[ban],dv_EH0[ban],
+      GridX_EH0[ban],GridY_EH0[ban],GridZ_EH0[ban],Arho_EH0[ban],Wt_EH0[ban]};
+  OpenMXNeutralPotentialView potential;
+  OpenMX_Neutral_PotentialBorrow(atomic,wan2,&potential);
+  double displacement[3]={0.0,0.0,0.0};
+  if(h_AN!=0){
+    displacement[0]=Gxyz[Gc_AN][1]-(Gxyz[Gh_AN][1]+atv[Rn][1]);
+    displacement[1]=Gxyz[Gc_AN][2]-(Gxyz[Gh_AN][2]+atv[Rn][2]);
+    displacement[2]=Gxyz[Gc_AN][3]-(Gxyz[Gh_AN][3]+atv[Rn][3]);
   }
-
-  sum  = sum*dv;
-
-  if (h_AN!=0){
-
-    /* for empty atoms or finite elemens basis */
-    r = Dis[Gc_AN][h_AN];
-    if (r<1.0e-10) r = 1.0e-10;
-
-    x = Gxyz[Gc_AN][1] - (Gxyz[Gh_AN][1] + atv[Rn][1]);
-    y = Gxyz[Gc_AN][2] - (Gxyz[Gh_AN][2] + atv[Rn][2]);
-    z = Gxyz[Gc_AN][3] - (Gxyz[Gh_AN][3] + atv[Rn][3]);
-    sumr = sumr*dv;
-    sumx = sumr*x/r;
-    sumy = sumr*y/r;
-    sumz = sumr*z/r;
-  }
-  else{
-    sumx = 0.0;
-    sumy = 0.0;
-    sumz = 0.0;
-  }
-
-  VH0ij[0] = sum;
-  VH0ij[1] = sumx;
-  VH0ij[2] = sumy;
-  VH0ij[3] = sumz;
+  OpenMX_Neutral_Pair(&grid,&potential,h_AN,Dis[Gc_AN][h_AN],displacement,VH0ij);
 }
 
 
@@ -2677,15 +2622,20 @@ void EH0_TwoCenter(const OpenMXAtomicViews *atomic, int Gc_AN, int h_AN, double 
 
 void EH0_TwoCenter_at_Cutoff(OpenMXSolverInvocation *scratch, const OpenMXAtomicViews *atomic, int wan1, int wan2, double VH0ij[4])
 { 
-  int n1,ban;
-  double dv,x,y,z,r1,r2,va0,rho0,dr_va0,rcut;
-  double z2,sum,sumr,sumx,sumy,sumz,wt,r,xx;
+  int ban;
+  double dv,rcut;
+  double sum,sumx,sumy,sumz;
   /* for OpenMP */
   int OMPID,Nthrds,Nthrds0,Nprocs,Nloop;
   double *my_sum_threads;
 
   ban = atomic->species.species_index[wan1];
   dv  = dv_EH0[ban];
+  const OpenMXNeutralGridView grid={TGN_EH0[ban],dv,
+      GridX_EH0[ban],GridY_EH0[ban],GridZ_EH0[ban],Arho_EH0[ban],Wt_EH0[ban]};
+  OpenMXNeutralPotentialView potential;
+  OpenMX_Neutral_PotentialBorrow(atomic,wan2,&potential);
+
 
   rcut = atomic->species.cutoff[wan1] + atomic->species.cutoff[wan2];
 
@@ -2700,7 +2650,7 @@ void EH0_TwoCenter_at_Cutoff(OpenMXSolverInvocation *scratch, const OpenMXAtomic
     my_sum_threads[Nloop] = 0.0;
   }
 
-#pragma omp parallel shared(atomic,wan2,Wt_EH0,my_sum_threads,rcut,Arho_EH0,GridZ_EH0,GridY_EH0,GridX_EH0,TGN_EH0,ban) private(n1,OMPID,Nthrds,Nprocs,x,y,z,rho0,wt,z2,r2,va0,r,xx)
+#pragma omp parallel shared(grid,potential,my_sum_threads,rcut) private(OMPID,Nthrds,Nprocs)
   {
     /* get info. on OpenMP */
 
@@ -2708,24 +2658,8 @@ void EH0_TwoCenter_at_Cutoff(OpenMXSolverInvocation *scratch, const OpenMXAtomic
     Nthrds = omp_get_num_threads();
     Nprocs = omp_get_num_procs();
 
-    for (n1=OMPID*TGN_EH0[ban]/Nthrds; n1<(OMPID+1)*TGN_EH0[ban]/Nthrds; n1++){
-
-      x = GridX_EH0[ban][n1];
-      y = GridY_EH0[ban][n1];
-      z = GridZ_EH0[ban][n1];
-      rho0 = Arho_EH0[ban][n1];
-      wt = Wt_EH0[ban][n1];
-      z2 = z - rcut;
-      r2 = x*x + y*y + z2*z2;
-      r = sqrt(r2);
-      xx = 0.5*log(r2);
-
-      va0 = VH_AtomF(atomic->species.core_charge[wan2],
-                     atomic->species.vps_mesh[wan2], xx, r,
-                     openmx_radial_row2(&atomic->vps_log_radii,wan2), openmx_radial_row2(&atomic->vps_radii,wan2), openmx_radial_row2(&atomic->hartree_potential,wan2));
-
-      my_sum_threads[OMPID] += wt*va0*rho0;
-    }
+    OpenMX_Neutral_CutoffAccumulate(&grid,&potential,rcut,
+        OMPID*grid.count/Nthrds,(OMPID+1)*grid.count/Nthrds,my_sum_threads+OMPID);
 
   } /* #pragma omp parallel */
 
