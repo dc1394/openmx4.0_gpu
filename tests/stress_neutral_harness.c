@@ -5,6 +5,7 @@
 #include "mpi.h"
 #include "openmx_core_atomic.h"
 #include "openmx_core_neutral_grid.h"
+#include "openmx_core_neutral_grid_metadata.h"
 #include "openmx_neutral_atom.h"
 #define PI 3.1415926535897932384626433832795
 #define measure_time 0
@@ -19,8 +20,8 @@ static int neighbors[4][3]={{0},{1,2},{2,1,3},{3,2}},*natn[4],images[4][3]={{0}}
 static int reverse_data[4][3][1],*reverse_rows[4][3],**RMI1[4];
 static double positions[4][50],*Gxyz[4],distances[4][3],*Dis[4],atv[1][4]={{0}};
 static double Spe_Core_Charge[2]={2,4},time_per_atom[4],EH0_scaling[2][2],Stress_Tensor[9];
-static int Host_ID,level_stdout,Max_Nd,Max_TGN_EH0,CoarseGL_Mesh=2,TGN_EH0[2];
-static double CoarseGL_Abscissae[3]={-.5,.5,0},CoarseGL_Weight[3]={1,1,0},dv_EH0[2];
+static int Host_ID,level_stdout,Max_Nd,Max_TGN_EH0,CoarseGL_Mesh=2,*fixture_counts;
+static double CoarseGL_Abscissae[3]={-.5,.5,0},CoarseGL_Weight[3]={1,1,0},*fixture_spacing;
 static OpenMXNeutralGridTables fixture_tables;
 #include "openmx_stress_workspace.h"
 static void near(double a,double b){if(!isfinite(a)||fabs(a-b)>3e-10*(1+fabs(b))){fprintf(stderr,"values %.17g %.17g\n",a,b);CHECK(0);}}
@@ -41,8 +42,8 @@ static void Allocate_Arrays_with_context(int mode,OpenMXCoreContext *context){
 double KumoF(int mesh,double x,double *a,double *b,double *c){CHECK(mesh==2&&a&&b&&c&&isfinite(x));return .2+.03*x;}
 double VH_AtomF(double charge,int mesh,double x,double r,double *a,double *b,double *c){CHECK(mesh==2&&a&&b&&c&&isfinite(x)&&r>0);return 1+.1*charge+.03*r*r;}
 static double slope(int base,int other){return .4+.09*base-.05*other;}
-static void EH0_TwoCenter(const OpenMXNeutralGridTables *tables,const OpenMXAtomicViews *atomic,int atom,int h,double out[4]){
-  CHECK(tables->values==fixture_tables.values);
+static void EH0_TwoCenter(const OpenMXNeutralGridTables *tables,const OpenMXNeutralGridMetadataView *metadata,const OpenMXAtomicViews *atomic,int atom,int h,double out[4]){
+  CHECK(tables->values==fixture_tables.values&&metadata->counts==fixture_counts&&metadata->spacing==fixture_spacing);
   const int other=natn[atom][h],a=WhatSpecies[atom],b=WhatSpecies[other];
   out[0]=.3+.04*a+.07*b+.02*Dis[atom][h];
   for(int d=0;d<3;d++)out[d+1]=h?slope(atomic->species.species_index[a],b)*(positions[atom][d+1]-positions[other][d+1])/Dis[atom][h]:0;
@@ -53,9 +54,9 @@ static void EH0_TwoCenter(const OpenMXNeutralGridTables *tables,const OpenMXAtom
 static void verify_grid(const OpenMXAtomicViews *atomic){
   for(int s=0;s<2;s++){
     const double cutoff=atomic->species.cutoff[s];const int nz=2*(int)(cutoff/(PI/sqrt(9600.)))+1;
-    const double spacing=2*cutoff/(nz-1);near(dv_EH0[s],spacing);CHECK(TGN_EH0[s]==nz*CoarseGL_Mesh&&atomic->species.species_index[s]==s);
+    const double spacing=2*cutoff/(nz-1);near(fixture_spacing[s],spacing);CHECK(fixture_counts[s]==nz*CoarseGL_Mesh&&atomic->species.species_index[s]==s);
     double moment0=0,momentz=0,momentr2=0;
-    for(int i=0;i<TGN_EH0[s];i++){
+    for(int i=0;i<fixture_counts[s];i++){
       const int zindex=i/CoarseGL_Mesh,xindex=i%CoarseGL_Mesh;const double x=.5*cutoff*(1+CoarseGL_Abscissae[xindex]),z=-cutoff+spacing*zindex;
       const double r2=x*x+z*z,rho=.2+.015*log(r2),weight=PI*x*cutoff*CoarseGL_Weight[xindex];
       near(openmx_core_neutral_grid_row(&fixture_tables,0,s)[i],x);near(openmx_core_neutral_grid_row(&fixture_tables,1,s)[i],0);near(openmx_core_neutral_grid_row(&fixture_tables,2,s)[i],z);near(openmx_core_neutral_grid_row(&fixture_tables,3,s)[i],rho);near(openmx_core_neutral_grid_row(&fixture_tables,4,s)[i],weight);
@@ -114,7 +115,11 @@ int main(int argc,char **argv){
   for(int m=1;m<=3;m++)for(int h=0;h<=FNAN[M2G[m]];h++){
     const int a=M2G[m],b=neighbors[a][h];int found=-1;for(int j=0;j<=FNAN[b];j++)if(neighbors[b][j]==a)found=j;CHECK(found>=0);reverse_data[m][h][0]=found;
   }
-  double cutoff[2]={.11,.14},radial[2][2]={{0}};int index[2],mesh[2]={2,2};Arguments args={0};char context_error[256];args.context=openmx_core_create_host(context_error,sizeof(context_error));CHECK(args.context);args.invalid=argc>1?argv[1]:NULL;
+  double cutoff[2]={.11,.14},radial[2][2]={{0}};int index[2],mesh[2]={2,2};Arguments args={0};char context_error[256];args.context=openmx_core_create_host(context_error,sizeof(context_error));CHECK(args.context);
+  {const OpenMXNeutralGridMetadataShape shape={2};OpenMXNeutralGridMetadataView metadata;char message[256];
+   CHECK(openmx_core_neutral_grid_metadata_prepare(args.context,&shape,&metadata,message,sizeof(message)));
+   fixture_counts=metadata.counts;fixture_spacing=metadata.spacing;}
+args.invalid=argc>1?argv[1]:NULL;
   args.atomic.species.species=2;args.atomic.species.species_index=index;args.atomic.species.cutoff=cutoff;args.atomic.species.core_charge=Spe_Core_Charge;
   args.atomic.species.pao_mesh=args.atomic.species.vps_mesh=mesh;args.atomic.pao_log_radii=args.atomic.pao_radii=args.atomic.density=args.atomic.vps_log_radii=args.atomic.vps_radii=args.atomic.hartree_potential=(OpenMXRadialView2){&radial[0][0],{2,2}};
   for(int mesh_count=2;mesh_count<=3;mesh_count++){

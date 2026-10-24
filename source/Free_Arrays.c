@@ -1702,8 +1702,6 @@ static void array0(OpenMXCoreContext *core)
    /* Allocation_Arrays(2) */
 
   openmx_core_neutral_grid_metadata_release(core);
-  TGN_EH0=NULL;
-  dv_EH0=NULL;
   free(FNAN);
   free(SNAN);
   free(ONAN);

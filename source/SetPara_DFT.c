@@ -22,12 +22,13 @@
 #include "mpi.h"
 #include "openmx_gpu_device.h"
 #include "openmx_core_neutral.h"
+#include "openmx_core_neutral_grid_metadata.h"
 
 
 static void Set_Atom_Weight();
 static void Set_Atom_Symbol();
-static void Read_PAO(OpenMXCoreContext *core, int spe, char *file);
-static void Read_VPS(OpenMXCoreContext *core, int spe, char *file);
+static void Read_PAO(OpenMXCoreContext *core, const OpenMXNeutralGridMetadataView *metadata, int spe, char *file);
+static void Read_VPS(OpenMXCoreContext *core, const OpenMXNeutralGridMetadataView *metadata, int spe, char *file);
 static void ReadPara_DFT(OpenMXCoreContext *core);
 static void Set_BasisPara();
 static void Set_Comp2Real();
@@ -486,6 +487,15 @@ void SetPara_DFT(OpenMXCoreContext *core)
 static void ReadPara_DFT(OpenMXCoreContext *core)
 {
 
+  OpenMXNeutralGridMetadataView metadata;
+  char metadata_error[256]={0};
+  if (!openmx_core_neutral_grid_metadata_get(core,&metadata,metadata_error,sizeof(metadata_error)) ||
+      !metadata.counts || !metadata.spacing || metadata.species!=(size_t)SpeciesNum) {
+    fprintf(stderr,"ReadPara_DFT: neutral grid metadata unavailable or shape mismatch: %s\n",metadata_error);
+    MPI_Abort(mpi_comm_level1,1);
+    return;
+  }
+
   FILE *fp;
   int spe,po;
   int tmp_remake_headfile;
@@ -532,7 +542,7 @@ static void ReadPara_DFT(OpenMXCoreContext *core)
     if ((fp = fopen(FN_PAO,"r")) != NULL){
 
       setvbuf(fp,buf,_IOFBF,fp_bsize);  /* setvbuf */
-      Read_PAO(core,spe,FN_PAO);
+      Read_PAO(core,&metadata,spe,FN_PAO);
       fclose(fp);
     }
     else{
@@ -557,7 +567,7 @@ static void ReadPara_DFT(OpenMXCoreContext *core)
     if ((fp = fopen(FN_PAO,"r")) != NULL){
 
       setvbuf(fp,buf,_IOFBF,fp_bsize);  /* setvbuf */
-      Read_PAO(core,spe,FN_PAO);
+      Read_PAO(core,&metadata,spe,FN_PAO);
       fclose(fp);
 
       if (MYID_MPI_COMM_WORLD==Host_ID && 0<level_stdout){  
@@ -594,7 +604,7 @@ static void ReadPara_DFT(OpenMXCoreContext *core)
     if ((fp = fopen(FN_VPS,"r")) != NULL){
 
       setvbuf(fp,buf,_IOFBF,fp_bsize);  /* setvbuf */
-      Read_VPS(core,spe,FN_VPS);
+      Read_VPS(core,&metadata,spe,FN_VPS);
       fclose(fp);
     }
     else{
@@ -618,7 +628,7 @@ static void ReadPara_DFT(OpenMXCoreContext *core)
     if ((fp = fopen(FN_VPS,"r")) != NULL){
 
       setvbuf(fp,buf,_IOFBF,fp_bsize);  /* setvbuf */
-      Read_VPS(core,spe,FN_VPS);
+      Read_VPS(core,&metadata,spe,FN_VPS);
       fclose(fp);
 
       if (MYID_MPI_COMM_WORLD==Host_ID && 0<level_stdout){  
@@ -697,7 +707,7 @@ static void ReadPara_DFT(OpenMXCoreContext *core)
 
 }
 
-void Read_PAO(OpenMXCoreContext *core, int spe, char *file)
+void Read_PAO(OpenMXCoreContext *core, const OpenMXNeutralGridMetadataView *metadata, int spe, char *file)
 {
   const OpenMXAtomicViews atomic_views=OpenMX_AtomicTables(core);
   const OpenMXAtomicViews *atomic=&atomic_views;
@@ -723,8 +733,8 @@ void Read_PAO(OpenMXCoreContext *core, int spe, char *file)
   else 
     atomic->species.atomic_number[spe] = (int)dum;
 
-  /* dv_EH0 temporaliry is used. */
-  dv_EH0[spe] = dum;
+  /* Keep raw AtomSpecies for the later VPS comparison in the same owned row. */
+  metadata->spacing[spe] = dum;
   
   input_int("grid.num.output",&atomic->species.pao_mesh[spe],0);
 
@@ -851,7 +861,7 @@ void Read_PAO(OpenMXCoreContext *core, int spe, char *file)
 
 
 
-void Read_VPS(OpenMXCoreContext *core, int spe, char *file)
+void Read_VPS(OpenMXCoreContext *core, const OpenMXNeutralGridMetadataView *metadata, int spe, char *file)
 {
   const OpenMXAtomicViews atomic_views=OpenMX_AtomicTables(core);
   const OpenMXAtomicViews *atomic=&atomic_views;
@@ -908,12 +918,12 @@ void Read_VPS(OpenMXCoreContext *core, int spe, char *file)
   else
     tmp0 = (int)dum0;
 
-  if ( dv_EH0[spe]!=dum0 && tmp0!=0 ){
+  if ( metadata->spacing[spe]!=dum0 && tmp0!=0 ){
     printf("Not the same atom in PAO and VPS for spe=%2d\n",spe);
     MPI_Finalize();
     exit(0);
   } 
-  else if (dv_EH0[spe]!=dum0 && tmp0==0){
+  else if (metadata->spacing[spe]!=dum0 && tmp0==0){
 
     /* set zero */ 
     for (i=0; i<atomic->species.pao_mesh[spe]; i++){
@@ -922,7 +932,7 @@ void Read_VPS(OpenMXCoreContext *core, int spe, char *file)
     }
 
     atomic->species.atomic_number[spe] = 0;
-    dv_EH0[spe] = 0;
+    metadata->spacing[spe] = 0;
   }
 
   input_double("total.electron",&te,(double)dum0);

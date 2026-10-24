@@ -11,6 +11,7 @@
 #include "openmx_common.h"
 #include "openmx_env.h"
 #include "openmx_core_neutral_grid.h"
+#include "openmx_core_neutral_grid_metadata.h"
 
 
 #include <string.h>
@@ -366,7 +367,7 @@ static void TotalEnergy_EH0_Kernel(size_t first,size_t count,const void *paramet
     }
 }
 
-void TotalEnergy_EH0_TwoCenter_Batch_OpenACC(const OpenMXNeutralGridTables *tables,const OpenMXAtomicViews *atomic, int pair_count, int *pair_ban, int *pair_wan2,
+void TotalEnergy_EH0_TwoCenter_Batch_OpenACC(const OpenMXNeutralGridTables *tables,const OpenMXNeutralGridMetadataView *metadata,const OpenMXAtomicViews *atomic, int pair_count, int *pair_ban, int *pair_wan2,
                                              int *pair_has_deriv, double *pair_dis,
                                              double *pair_dirx, double *pair_diry, double *pair_dirz,
                                              double *out0, double *out1, double *out2, double *out3)
@@ -410,14 +411,14 @@ void TotalEnergy_EH0_TwoCenter_Batch_OpenACC(const OpenMXNeutralGridTables *tabl
   }
 
   for (spe=0; spe<species_count; spe++){
-    tgn_flat[spe] = TGN_EH0[spe];
+    tgn_flat[spe] = metadata->counts[spe];
     vps_n_flat[spe] = atomic->species.vps_mesh[spe];
-    dv_flat[spe] = dv_EH0[spe];
+    dv_flat[spe] = metadata->spacing[spe];
     core_charge_flat[spe] = atomic->species.core_charge[spe];
 
     for (n=0; n<grid_stride; n++){
       i = spe*grid_stride + n;
-      if (n<TGN_EH0[spe]){
+      if (n<metadata->counts[spe]){
         gridx_flat[i] = openmx_core_neutral_grid_row(tables,0,spe)[n];
         gridy_flat[i] = openmx_core_neutral_grid_row(tables,1,spe)[n];
         gridz_flat[i] = openmx_core_neutral_grid_row(tables,2,spe)[n];

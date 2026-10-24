@@ -48,12 +48,44 @@ def main():
                 assert failed.returncode == 77 and 'Allocate_Arrays: neutral grid metadata:' in failed.stderr, failed
         if args.negative_control:
             for name, old, new in [
-                ('count-alias', 'TGN_EH0=metadata.counts;', 'TGN_EH0=(int*)metadata.spacing;'),
+                ('wrong-shape', 'shape={(size_t)SpeciesNum};', 'shape={(size_t)SpeciesNum+1};'),
                 ('missing-release', 'openmx_core_neutral_grid_metadata_release(core);', '/* missing release */')]:
                 assert native.count(old) == 1
                 failed = subprocess.run([str(build(name, 'c', native.replace(old, new)))], cwd=folder,
                     capture_output=True, text=True, preexec_fn=bounded_stack)
                 assert failed.returncode == 2 and 'FAIL line' in failed.stderr, failed
+
+        # Compile the production input-validation and raw AtomSpecies blocks.
+        # The file parser and MPI exit are modeled; the metadata owners and
+        # radial views are the same real ABI used by the application.
+        source = (ROOT/'source/SetPara_DFT.c').read_text()
+        start = source.index('  OpenMXNeutralGridMetadataView metadata;',
+                             source.index('static void ReadPara_DFT(OpenMXCoreContext *core)\n{'))
+        boundary = source[start:source.index('\n  FILE *fp;', start)]
+        blocks = ['static void metadata_input_boundary(OpenMXCoreContext *core,int SpeciesNum){\n'+boundary+'\n}']
+        for name, stop, locals_ in [('PAO', 'input_int("grid.num.output"', 'double dum;'),
+                                    ('VPS', 'input_double("total.electron"', 'double dum0;int tmp0,i;')]:
+            start = source.index('  input_double("AtomSpecies"', source.index('\nvoid Read_'+name+'('))
+            block = source[start:source.index('  '+stop, start)]
+            blocks.append('static void metadata_read_'+name.lower()+
+                          '(const OpenMXNeutralGridMetadataView *metadata,OpenMXAtomicViews *atomic,int spe){\n'+
+                          locals_+'\n'+block+'\n}')
+        (folder/'neutral_metadata_input.inc').write_text('\n'.join(blocks))
+        for language in ['c', 'c++']:
+            executable = folder/('input-'+language)
+            subprocess.run(compiler_command(language)+['-I'+str(folder), '-I'+str(ROOT/'core/include'),
+                '-x', language, str(ROOT/'tests/neutral_metadata_input_harness.c'), '-x', 'none', str(library),
+                '-Wl,-rpath,'+str(library.parent), '-lm', '-o', str(executable)], check=True)
+            subprocess.run([str(executable)], cwd=folder, check=True, preexec_fn=bounded_stack)
+            for mode in ['boundary-context', 'boundary-empty', 'boundary-shape']:
+                failed = subprocess.run([str(executable), mode], cwd=folder, capture_output=True,
+                                        text=True, preexec_fn=bounded_stack)
+                assert failed.returncode == 77 and 'ReadPara_DFT: neutral grid metadata' in failed.stderr, failed
+            for pao, vps in [('.25', '.75'), ('14', '6'), ('0', '14'), ('.25000000000000006', '.25')]:
+                failed = subprocess.run([str(executable), 'mismatch', pao, vps], cwd=folder,
+                                        capture_output=True, text=True, preexec_fn=bounded_stack)
+                assert failed.returncode == 0 and 'Not the same atom in PAO and VPS' in failed.stdout, failed
+                assert 'exact raw AtomSpecies mismatch rejected' in failed.stderr, failed
     print('PASS: native metadata C11/C++17 adapters, actual C++ owner and negative controls')
 
 

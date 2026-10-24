@@ -579,26 +579,6 @@ extern double *Spe_Atom_Cut1;
 extern double *Spe_Core_Charge;
 
 /*******************************************************
- int *TGN_EH0; 
- the number of 3D grids for calculating EH0 in
- Correction_Energy.c
-  size: TGN_EH0[SpeciesNum]
-  allocation: call as Allocate_Arrays(2) in readfile.c
-  free:       call as Free_Arrays(0) in openmx.c
-*******************************************************/
-extern int *TGN_EH0;
-
-/*******************************************************
- double *dv_EH0; 
- the volume of a grid for calculating EH0 in
- Correction_Energy.c
-  size: dv_EH0[SpeciesNum]
-  allocation: call as Allocate_Arrays(2) in readfile.c
-  free:       call as Free_Arrays(0) in openmx.c
-*******************************************************/
-extern double *dv_EH0;
-
-/*******************************************************
  int *Spe_Num_Mesh_VPS; 
  the number of grids for pseudo potentials
   size: Spe_Num_Mesh_VPS[SpeciesNum]

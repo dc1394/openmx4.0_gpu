@@ -344,8 +344,6 @@ void Allocate_Arrays_with_context(int wherefrom, OpenMXCoreContext *core)
           MPI_Abort(mpi_comm_level1,1);
           return;
         }
-        TGN_EH0=metadata.counts;
-        dv_EH0=metadata.spacing;
       }
       FNAN = (int*)malloc(sizeof(int)*(atomnum+1));
       SNAN = (int*)malloc(sizeof(int)*(atomnum+1));
