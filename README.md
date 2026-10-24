@@ -18,7 +18,8 @@ cmake -S . -B build/hip -DOPENMX_GPU_BACKEND=HIP -DOPENMX_GPU_ARCH=gfx942 \
 cmake --build build/hip
 
 # Full CPU application: MPI, OpenMP, FFTW3 and LP64 ScaLAPACK/BLAS/LAPACK.
-cmake -S . -B build/cpu -DOPENMX_GPU_BACKEND=CPU
+cmake -S . -B build/cpu -DOPENMX_GPU_BACKEND=CPU \
+  -DOPENMX_CPU_COMPILER=GCC -DOPENMX_CPU_MPI=OPENMPI -DOPENMX_CPU_LINALG=OPENBLAS
 cmake --build build/cpu --parallel 4
 ```
 
@@ -36,6 +37,27 @@ Kokkos SIMD kernels. Existing `gpusolver`/`gpusolver2`/`gpusolver3` input decks
 select CPU ELPA2 in this executable. CPU builds also copy the matching Core and
 host SIMD libraries to `work/lib/`. See [CPU dependencies and options](docs/GPU_BACKENDS.md#cpu-専用の本体ビルド)
 for external numerical libraries and MPI compiler selection.
+
+CPU configuration accepts `OPENMX_CPU_COMPILER=GCC|CLANG|ICX`,
+`OPENMX_CPU_LINALG=MKL|OPENBLAS`, and `OPENMX_CPU_MPI=INTEL|OPENMPI`.
+Use a separate build directory for each combination. `OPENMX_CPU_MPI_ROOT`
+selects the MPI installation; `OPENMX_CPU_MKL_ROOT` and
+`OPENMX_CPU_OPENBLAS_ROOT` select numerical-library prefixes. For example:
+
+```sh
+cmake -S . -B build/cpu-icx-mkl -DOPENMX_GPU_BACKEND=CPU \
+  -DOPENMX_CPU_COMPILER=ICX -DOPENMX_CPU_MPI=INTEL -DOPENMX_CPU_LINALG=MKL \
+  -DOPENMX_CPU_MPI_ROOT="$I_MPI_ROOT" -DOPENMX_CPU_MKL_ROOT="$MKLROOT"
+cmake --build build/cpu-icx-mkl --parallel 4
+cmake --install build/cpu-icx-mkl
+```
+
+GNU Fortran is the default Fortran compiler for all three C/C++ families;
+`-DCMAKE_Fortran_COMPILER=ifx` selects Intel Fortran explicitly. MKL selects
+the matching Fortran interface and MPI BLACS, using sequential MKL alongside
+OpenMX's MPI/OpenMP. OpenBLAS uses a matching Netlib ScaLAPACK installation
+or builds the pinned release for the selected MPI. Clang also needs its
+OpenMP development package (`libomp-dev` on Debian/Ubuntu).
 
 To install after building, pass the same build directory used with `cmake -B`:
 

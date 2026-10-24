@@ -47,11 +47,7 @@ static void SetPro_DSVNA_GpuEnd(SetProGpu2Context *g);
 /* forward: the OPENMX_SETPRO_VERBOSE diagnostics (defined below the driver) */
 static void SetPro_note(const char *stage, const char *fmt, ...) __attribute__((noinline));
 
-#ifdef kcomp
-static void Spherical_Bessel2( double x, int lmax, double *sb, double *dsb );
-#else 
-inline void Spherical_Bessel2( double x, int lmax, double *sb, double *dsb );
-#endif      
+static inline void Spherical_Bessel2( double x, int lmax, double *sb, double *dsb );
 
 
 /* ------------------------------------------------------------------ */
@@ -2442,11 +2438,7 @@ static int SetPro_HVNA_DispatchRun(SetProHvnaDispatch *g,double ****h)
 #define xmin  0.0
 #define asize_lmax 30
 
-#ifdef kcomp
-static void Spherical_Bessel2( double x, int lmax, double *sb, double *dsb )
-#else 
-inline void Spherical_Bessel2( double x, int lmax, double *sb, double *dsb )
-#endif      
+static inline void Spherical_Bessel2( double x, int lmax, double *sb, double *dsb )
 {
   int m,n,nmax;
   double tsb[asize_lmax+10];

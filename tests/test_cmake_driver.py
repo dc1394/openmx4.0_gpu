@@ -23,6 +23,7 @@ class CMakeDriverTest(unittest.TestCase):
         for name in ("cmake", "tools", "core", "source/third_party/dist", "DFT_DATA19"):
             (self.repo / name).mkdir(parents=True, exist_ok=True)
         for name in ("CMakeLists.txt", "cmake/OpenMXGPUArchitecture.cmake", "cmake/OpenMXBuildType.cmake",
+                     "cmake/OpenMXCPUOptions.cmake",
                      "tools/prepare_build.py", "tools/copy_openmx.py"):
             shutil.copy2(ROOT / name, self.repo / name)
         (self.repo / "core/core.c").write_text("int fixture(void) { return 0; }\n")
@@ -98,6 +99,16 @@ class CMakeDriverTest(unittest.TestCase):
         failed = self.configure('-DOPENMX_GPU_BACKEND=CPU', '-DOPENMX_CORE_BACKEND=CUDA', success=False)
         self.assertIn('CPU application requires OPENMX_CORE_BACKEND=SERIAL or OPENMP', failed.stderr)
         self.assertFalse(self.gpu_queries.exists())
+
+    def test_cpu_toolchain_selectors_reject_unknown_values_before_detection(self):
+        for option, value in [('COMPILER', 'NVCC'), ('MPI', 'MPICH'), ('LINALG', 'ACCELERATE')]:
+            with self.subTest(option=option):
+                failed = self.configure('-DOPENMX_GPU_BACKEND=CPU',
+                                        '-DOPENMX_CPU_' + option + '=' + value, success=False)
+                self.assertIn('OPENMX_CPU_' + option + ' must be', failed.stderr)
+                self.assertFalse(self.gpu_queries.exists())
+                # Each independent invalid selection starts with a clean cache.
+                shutil.rmtree(self.build)
 
     def test_success_copy_opt_out_custom_directory_and_failed_build(self):
         self.configure("-DOPENMX_GPU_ARCH=sm_80")

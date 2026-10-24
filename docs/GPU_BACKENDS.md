@@ -59,7 +59,8 @@ OpenMX 本体の Intel GPU・Metal バックエンドはまだありません。
 ## CPU 専用の本体ビルド
 
 ```sh
-cmake -S . -B build/cpu -DOPENMX_GPU_BACKEND=CPU
+cmake -S . -B build/cpu -DOPENMX_GPU_BACKEND=CPU \
+  -DOPENMX_CPU_COMPILER=GCC -DOPENMX_CPU_MPI=OPENMPI -DOPENMX_CPU_LINALG=OPENBLAS
 cmake --build build/cpu --parallel 4
 cmake --install build/cpu
 ```
@@ -79,17 +80,64 @@ ELPA は GPU版と同じ固定版 `2026.02.002` のアーカイブを検証・�
 既定ソルバーはCPUの `elpa2` です。`elpa1` / `lapack` の入力も使用でき、
 GPUソルバーを指定した既存入力はCPUの `elpa2` に切り替えます。
 
-コンパイラとMPIは互換性のある組合せを選んでください。特にFortranのMPIモジュールは
-コンパイラ固有です。複数のMPIがある場合は `MPI_C_COMPILER`、`MPI_CXX_COMPILER`、
-`MPI_Fortran_COMPILER` で同じMPIのラッパーを明示できます。
+コンパイラ、数値ライブラリ、MPIは独立して指定できます。各組合せには別のビルドディレクトリを使います。
+
+| 選択 | CMake変数 | 値 |
+| --- | --- | --- |
+| C/C++コンパイラ | `OPENMX_CPU_COMPILER` | `GCC`（gcc/g++）、`CLANG`（clang/clang++）、`ICX`（icx/icpx） |
+| 数値ライブラリ | `OPENMX_CPU_LINALG` | `MKL`、`OPENBLAS` |
+| MPI実装 | `OPENMX_CPU_MPI` | `INTEL`（Intel MPI）、`OPENMPI` |
+
+```sh
+# Intel C/C++ + Intel MPI + MKL
+cmake -S . -B build/cpu-icx-mkl -DOPENMX_GPU_BACKEND=CPU \
+  -DOPENMX_CPU_COMPILER=ICX -DOPENMX_CPU_MPI=INTEL -DOPENMX_CPU_LINALG=MKL \
+  -DOPENMX_CPU_MPI_ROOT="$I_MPI_ROOT" -DOPENMX_CPU_MKL_ROOT="$MKLROOT"
+cmake --build build/cpu-icx-mkl --parallel 4
+cmake --install build/cpu-icx-mkl
+
+# Clang + OpenMPI + OpenBLAS（Clang用OpenMPの開発パッケージも必要）
+cmake -S . -B build/cpu-clang-openblas -DOPENMX_GPU_BACKEND=CPU \
+  -DOPENMX_CPU_COMPILER=CLANG -DOPENMX_CPU_MPI=OPENMPI -DOPENMX_CPU_LINALG=OPENBLAS \
+  -DOPENMX_CPU_MPI_ROOT=/path/to/openmpi
+cmake --build build/cpu-clang-openblas --parallel 4
+cmake --install build/cpu-clang-openblas
+```
+
+コンパイラ・MPIの既定値 `AUTO` は通常のCMake設定・環境から検出します。
+`CMAKE_C_COMPILER` / `CMAKE_CXX_COMPILER` でバージョン付き実行ファイルや絶対パスも指定できます。
+同時に `OPENMX_CPU_COMPILER` を指定した場合はコンパイラの系統が一致する必要があります。
+Fortranは全C/C++系統でgfortranを既定とし、`CMAKE_Fortran_COMPILER` または `FC` で変更できます。
+Intel Fortranを使う場合は `-DCMAKE_Fortran_COMPILER=ifx` を追加します。
+MPIのFortranモジュールはコンパイラ固有です。モジュールが利用できなければELPAを `mpif.h` 経路で構築します。
+MPIラッパー内部でも選択したコンパイラを使い、本体・ELPA・自動構築するScaLAPACKに揃えます。
+異なるMPIの混在、選択と検出結果の不一致、既存ビルドディレクトリ内でのツールチェーン変更はエラーになります。
+
+MKLはLP64のScaLAPACK、実際のFortranコンパイラに合うインターフェース、MPIに合うBLACSを選びます。
+MKL自体はsequential版とし、OpenMXのMPI・OpenMPとELPAのMPI並列化を使います。
+これによりGCCのlibgomp、Clangのlibomp、Intelのlibiomp5とMKL側の別OpenMPランタイムの混在を避けます。
+OpenBLASはLP64版を使用し、pthread版または逐次版を推奨します。OpenMP版を使う場合は本体とランタイムを揃えてください。
+数値ライブラリの `AUTO` はOpenBLASを優先し、なければMKLを探します。
+
+OpenBLASにはScaLAPACKが含まれません。OpenMPIでは `scalapack-openmpi` を検出し、
+それ以外のインストール済みScaLAPACKは `OPENMX_CPU_SCALAPACK_LIBRARY` または `OPENMX_CPU_SCALAPACK_ROOT` で指定します。
+検出できなければ固定版Netlib ScaLAPACK 2.2.3をSHA256で検証し、選択したMPIで自動構築します。
+この自動構築にはCMake 3.26以降と初回のネットワーク接続が必要です。
+オフラインでは同じ公式アーカイブを `OPENMX_CPU_SCALAPACK_ARCHIVE` で指定できます。
+既存ライブラリを必須にする場合は `OPENMX_CPU_BUILD_SCALAPACK=OFF` を指定します。
+
 CPU版はネイティブmakeを呼ばず、`CMAKE_C_FLAGS` / `CMAKE_CXX_FLAGS` と
 以下のCMake変数で設定します。`OPENMX_MAKE_OPTIONS` は使用しません。
 
 | CPU用の変数 | 内容 |
 | --- | --- |
+| `OPENMX_CPU_MPI_ROOT` | 使用するMPIのprefix。ラッパーとmpiexecを同じ `bin/` から選択。Intel MPIでは省略時に `I_MPI_ROOT` も参照。 |
+| `OPENMX_CPU_MKL_ROOT` | MKLのprefix。既定は `MKLROOT`。 |
+| `OPENMX_CPU_OPENBLAS_ROOT` | OpenBLASのprefix。省略時はシステムから検出。 |
 | `OPENMX_CPU_FFTW_INCLUDE_DIR` / `OPENMX_CPU_FFTW_LIBRARY` | FFTW3のヘッダーの場所とライブラリ。通常は自動検出。 |
-| `OPENMX_CPU_SCALAPACK_LIBRARY` | 自動検出するLP64 ScaLAPACKの指定。MPIと同じ実装を使用。 |
-| `OPENMX_CPU_LINALG_LIBRARIES` | ScaLAPACK・LAPACK・BLAS一式をセミコロン区切りで指定。MKLなどの外部構成に使用。 |
+| `OPENMX_CPU_SCALAPACK_LIBRARY` / `OPENMX_CPU_SCALAPACK_ROOT` | OpenBLAS構成で使うLP64 ScaLAPACKの実体またはprefix。選択したMPI用のものを使用。 |
+| `OPENMX_CPU_BUILD_SCALAPACK` / `OPENMX_CPU_SCALAPACK_ARCHIVE` | 未導入時の自動構築（既定ON）とオフライン用の固定版アーカイブ。 |
+| `OPENMX_CPU_LINALG_LIBRARIES` | `OPENMX_CPU_LINALG=CUSTOM` でScaLAPACK・LAPACK・BLAS一式をセミコロン区切りで指定。従来の `AUTO` + この指定も使用可能。 |
 | `OPENMX_CPU_ELPA_ROOT` | 同じMPI/Fortran構成で作ったCPU版ELPA 2026.02.002の既存prefix。未指定なら同梱版を構築。 |
 | `OPENMX_BUILD_JOBS` | 同梱ELPAのmake並列数。CMake本体の並列数は `--parallel` で指定。 |
 
@@ -97,6 +145,30 @@ CPU構成のオブジェクト・ELPA・生成アダプターはビルドディ�
 `cmake --build build/cpu --target clean` で本体オブジェクトを清掃できます。
 ビルド時のソース選択は `build/cpu/cpu-sources.json`、共通ソースの投影は
 `selected-sources.json` で確認できます。
+
+構築した数値ライブラリとELPAの実数・複素数経路は次の2 MPI試験で確認できます。
+
+```sh
+cmake --build build/cpu --target openmx_cpu_numerics --parallel 4
+ctest --test-dir build/cpu -R '^cpu-numerical-toolchain$' --output-on-failure
+```
+
+本体依存ライブラリを構築せずにコンパイラ・MPI・ScaLAPACKの組合せだけを調べる場合は、
+同じ `OPENMX_CPU_*` 選択肢を `cmake -S tests/cpu_toolchain -B build/toolchain-probe ...` に渡し、
+`cmake --build build/toolchain-probe` と `ctest --test-dir build/toolchain-probe --output-on-failure` を実行します。
+
+CPUツールチェーン選択の追加検証では、GCC 13・Clang 18・icx/icpx 2026.0、
+OpenMPI 4.1.6・Intel MPI 2021.18、MKL 2026.0・OpenBLAS 0.3.26の全12組合せで、
+C/C++20/Fortranのビルドと2 MPIのBLACS・実数/複素数ScaLAPACK試験が成功しました。
+Intel MPI + OpenBLAS用ScaLAPACKは固定版2.2.3からの自動構築も検証しています。
+
+GCC + Intel MPI + MKL、Clang + OpenMPI + MKL、icx + Intel MPI + OpenBLASでは
+本体もビルドし、各15件の格子・SIMD・数値ライブラリ試験と、
+4 MPI×2 OpenMPでのノンコリニアクラスター・コリニアGGAバンド計算を検証しました。
+基準値に対する最大エネルギー差は `1.25e-10 Hartree`、最大力成分差は `7.55e-9 Hartree/bohr` です。
+icx + ifx + Intel MPI + MKLでもELPA1/ELPA2の実数・複素数試験が成功しました。
+Clang用inline定義、ELPAの並列ビルド順序、Intelの混合言語リンクと共有ライブラリの
+ランタイム探索も修正しています。ログは `build/cpu-toolchains-20261024/` に保存しています。
 
 2026-10-24 の検証では、GCC 14 / NVHPC Fortran / HPC-X MPI / MKL のホスト構成と、
 CUDA/ROCmを入れていない Ubuntu 24.04 の GCC・gfortran 13 / OpenMPI / OpenBLAS 構成で

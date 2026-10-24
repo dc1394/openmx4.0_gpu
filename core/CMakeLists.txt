@@ -95,6 +95,7 @@ set(_core_sources src/radial.cpp src/radial_table.cpp src/pao_storage.cpp src/vp
   src/local_basis_state.cpp src/local_basis_api.cpp
   src/orbital_optimization.cpp src/orbital_optimization_api.cpp src/solver_workspace.cpp src/native_resources.cpp src/grid_assembly.cpp src/c_api.cpp)
 add_library(openmx_core SHARED ${_core_sources})
+include("${CMAKE_CURRENT_SOURCE_DIR}/../cmake/OpenMXCompilerRuntime.cmake")
 add_library(OpenMX::core ALIAS openmx_core)
 target_include_directories(openmx_core PUBLIC
   "${CMAKE_CURRENT_SOURCE_DIR}/include")
@@ -108,6 +109,7 @@ if(OPENMX_CORE_BACKEND MATCHES "^(CUDA|HIP)$")
   set_source_files_properties(${_core_sources} PROPERTIES LANGUAGE ${OPENMX_CORE_BACKEND})
 endif()
 include("${CMAKE_CURRENT_SOURCE_DIR}/../cmake/OpenMXHostSIMD.cmake")
+openmx_compiler_runtime_rpath(openmx_core CXX)
 # Retain the original quadrature's summation order and avoid contraction when
 # comparing a refactor against the old C implementation.
 target_compile_options(openmx_core PRIVATE

@@ -51,6 +51,10 @@ endif()
 if(OPENMX_BUILD_APPLICATION AND _backend STREQUAL "CUDA")
   openmx_resolve_cuda_architecture()
 endif()
+if(OPENMX_BUILD_APPLICATION AND _backend STREQUAL "CPU")
+  # Select the host toolchain before Core's project() first enables C++.
+  include(cmake/OpenMXCPUOptions.cmake)
+endif()
 # Resolve the architecture before CUDA language / Kokkos configuration, so
 # cross-compilation on a login node never needs a device to infer its target.
 add_subdirectory(core)

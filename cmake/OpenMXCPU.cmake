@@ -1,37 +1,15 @@
 # Full CPU application. The numerical sources and calculation owners are the
 # same as the GPU application; no CUDA/HIP compiler, header or library is used.
-enable_language(C CXX Fortran)
-find_package(MPI REQUIRED COMPONENTS C CXX Fortran)
 find_package(OpenMP REQUIRED COMPONENTS C CXX)
 find_path(OPENMX_CPU_FFTW_INCLUDE_DIR fftw3.h PATH_SUFFIXES include include/fftw REQUIRED)
 find_library(OPENMX_CPU_FFTW_LIBRARY NAMES fftw3 REQUIRED)
-set(OPENMX_CPU_LINALG_LIBRARIES "" CACHE STRING "LP64 ScaLAPACK, LAPACK and BLAS libraries (semicolon-separated)")
-if(NOT OPENMX_CPU_LINALG_LIBRARIES)
-  set(_cpu_scalapack_names scalapack)
-  foreach(directory IN LISTS MPI_C_INCLUDE_DIRS)
-    if(EXISTS "${directory}/mpi.h")
-      file(STRINGS "${directory}/mpi.h" vendor REGEX "^#[ \t]*define[ \t]+(OPEN_MPI|MPICH_NAME|I_MPI_VERSION)")
-      if(vendor MATCHES "OPEN_MPI")
-        list(PREPEND _cpu_scalapack_names scalapack-openmpi)
-        break()
-      elseif(vendor MATCHES "MPICH_NAME|I_MPI_VERSION")
-        list(PREPEND _cpu_scalapack_names scalapack-mpich)
-        break()
-      endif()
-    endif()
-  endforeach()
-  find_library(OPENMX_CPU_SCALAPACK_LIBRARY NAMES ${_cpu_scalapack_names} REQUIRED)
-  set(BLA_SIZEOF_INTEGER 4)
-  find_package(BLAS REQUIRED)
-  find_package(LAPACK REQUIRED)
-  set(OPENMX_CPU_LINALG_LIBRARIES "${OPENMX_CPU_SCALAPACK_LIBRARY};${LAPACK_LIBRARIES};${BLAS_LIBRARIES}" CACHE STRING "LP64 ScaLAPACK, LAPACK and BLAS libraries (semicolon-separated)" FORCE)
-endif()
 if(NOT OPENMX_BUILD_JOBS MATCHES "^[1-9][0-9]*$")
   message(FATAL_ERROR "OPENMX_BUILD_JOBS must be a positive integer")
 endif()
 if(OPENMX_MAKE_OPTIONS)
   message(FATAL_ERROR "CPU builds use CMake directly; use CMAKE_C_FLAGS/CMAKE_CXX_FLAGS and OPENMX_CPU_* options instead of OPENMX_MAKE_OPTIONS")
 endif()
+include("${CMAKE_CURRENT_LIST_DIR}/OpenMXCPULinalg.cmake")
 
 # The very same bundled modern ELPA release as CUDA/HIP, configured without
 # device kernels or COSMA. An existing matching CPU installation is optional.
@@ -51,23 +29,39 @@ else()
   # --as-needed and static BLAS links. Keep libraries as ordered -l
   # arguments for the configure probes and ELPA's own helper programs.
   set(_cpu_elpa_libraries)
-  foreach(library IN LISTS OPENMX_CPU_LINALG_LIBRARIES)
+  # A static ScaLAPACK/ELPA can contain icx C objects while the Fortran
+  # linker is gfortran. Carry C's compiler runtime into Autoconf's probes
+  # and library links as CMake does for mixed-language executables.
+  set(_cpu_elpa_c_runtime)
+  foreach(library IN LISTS CMAKE_C_IMPLICIT_LINK_LIBRARIES)
+    if(NOT library IN_LIST CMAKE_Fortran_IMPLICIT_LINK_LIBRARIES)
+      unset(_cpu_runtime_library)
+      find_library(_cpu_runtime_library NAMES "${library}"
+        PATHS ${CMAKE_C_IMPLICIT_LINK_DIRECTORIES} NO_DEFAULT_PATH NO_CACHE)
+      if(_cpu_runtime_library)
+        list(APPEND _cpu_elpa_c_runtime "${_cpu_runtime_library}")
+      endif()
+    endif()
+  endforeach()
+  foreach(library IN LISTS OPENMX_CPU_LINALG_LIBRARIES _cpu_elpa_c_runtime)
     if(IS_ABSOLUTE "${library}")
       get_filename_component(directory "${library}" DIRECTORY)
       get_filename_component(filename "${library}" NAME)
       if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_Fortran_COMPILER_ID STREQUAL "GNU")
-        list(APPEND _cpu_elpa_libraries "-L'${directory}'" "-l:${filename}")
+        list(APPEND _cpu_elpa_libraries "-L${directory}" "-l:${filename}")
       else()
         string(REGEX REPLACE "^lib|\\.(a|dylib|so(\\..*)?)$" "" name "${filename}")
-        list(APPEND _cpu_elpa_libraries "-L'${directory}'" "-l${name}")
+        list(APPEND _cpu_elpa_libraries "-L${directory}" "-l${name}")
       endif()
-    else()
+    elseif(library MATCHES "^-")
       list(APPEND _cpu_elpa_libraries "${library}")
+    else()
+      list(APPEND _cpu_elpa_libraries "-l${library}")
     endif()
   endforeach()
   string(JOIN " " _cpu_linalg_flags ${_cpu_elpa_libraries})
   set(_cpu_dependency_dirs ${CMAKE_Fortran_IMPLICIT_LINK_DIRECTORIES})
-  foreach(library IN LISTS OPENMX_CPU_LINALG_LIBRARIES MPI_C_LIBRARIES MPI_Fortran_LIBRARIES)
+  foreach(library IN LISTS OPENMX_CPU_LINALG_LIBRARIES MPI_C_LIBRARIES MPI_Fortran_LIBRARIES _cpu_elpa_c_runtime)
     if(IS_ABSOLUTE "${library}")
       get_filename_component(directory "${library}" DIRECTORY)
       list(APPEND _cpu_dependency_dirs "${directory}")
@@ -79,9 +73,18 @@ else()
     "CC=${MPI_C_COMPILER}" "CXX=${MPI_CXX_COMPILER}" "FC=${MPI_Fortran_COMPILER}"
     "OMPI_CC=${CMAKE_C_COMPILER}" "OMPI_CXX=${CMAKE_CXX_COMPILER}" "OMPI_FC=${CMAKE_Fortran_COMPILER}"
     "MPICH_CC=${CMAKE_C_COMPILER}" "MPICH_CXX=${CMAKE_CXX_COMPILER}" "MPICH_FC=${CMAKE_Fortran_COMPILER}"
+    "I_MPI_CC=${CMAKE_C_COMPILER}" "I_MPI_CXX=${CMAKE_CXX_COMPILER}" "I_MPI_F90=${CMAKE_Fortran_COMPILER}"
     "CFLAGS=-O3 -fPIC" "CXXFLAGS=-O3 -fPIC" "FCFLAGS=-O3 -fPIC" "CPPFLAGS=" "LDFLAGS="
     "LIBS=${_cpu_linalg_flags}" "CPATH=" "C_INCLUDE_PATH=" "CPLUS_INCLUDE_PATH="
     "LD_LIBRARY_PATH=${_cpu_dependency_path}")
+  set(_cpu_elpa_options)
+  if(NOT MPI_Fortran_HAVE_F90_MODULE)
+    list(APPEND _cpu_elpa_options --disable-mpi-module)
+  endif()
+  set(_cpu_elpa_dependencies)
+  if(TARGET openmx_cpu_scalapack_build)
+    list(APPEND _cpu_elpa_dependencies openmx_cpu_scalapack_build)
+  endif()
   ExternalProject_Add(openmx_cpu_elpa_build
     URL "${CMAKE_SOURCE_DIR}/source/third_party/dist/elpa-new_release_2026_02_002.zip"
     URL_HASH SHA256=14c05257b2d10a80c7c825eca278c4787ef34bd7c8a6343c2fd4686ad56f22d5
@@ -95,9 +98,13 @@ else()
       --disable-avx-kernels --disable-avx2-kernels --disable-avx512-kernels
       --with-test-programs=no
       --disable-c-tests --disable-cpp-tests --disable-fortran-tests --disable-Fortran-tests
-    BUILD_COMMAND ${_cpu_elpa_env} "${OPENMX_MAKE_EXECUTABLE}" -j${OPENMX_BUILD_JOBS}
+      ${_cpu_elpa_options}
+    # Upstream's unconditional libelpatest has missing inter-library module
+    # dependencies. Finish the public/private ELPA modules before make all.
+    BUILD_COMMAND ${_cpu_elpa_env} "${OPENMX_MAKE_EXECUTABLE}" -j${OPENMX_BUILD_JOBS} libelpa.la
+      COMMAND ${_cpu_elpa_env} "${OPENMX_MAKE_EXECUTABLE}" -j${OPENMX_BUILD_JOBS}
     INSTALL_COMMAND ${_cpu_elpa_env} "${OPENMX_MAKE_EXECUTABLE}" install
-    BUILD_BYPRODUCTS "${OPENMX_CPU_ELPA_LIBRARY}")
+    BUILD_BYPRODUCTS "${OPENMX_CPU_ELPA_LIBRARY}" DEPENDS ${_cpu_elpa_dependencies})
 endif()
 
 # Keep one authoritative list of application translation units. Native GPU
@@ -137,8 +144,17 @@ target_compile_options(openmx_cpu_application PRIVATE
 target_link_libraries(openmx_cpu_application PRIVATE OpenMX::core MPI::MPI_C MPI::MPI_CXX MPI::MPI_Fortran
   OpenMP::OpenMP_C OpenMP::OpenMP_CXX "${OPENMX_CPU_ELPA_LIBRARY}"
   "${OPENMX_CPU_FFTW_LIBRARY}" ${OPENMX_CPU_LINALG_LIBRARIES} ${CMAKE_DL_LIBS} m)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  # Include indirect compiler-runtime dependencies and prefer the selected
+  # MPI/OpenMP libraries over aliases from another loaded SDK. Keep this
+  # after MPI's link options, which may explicitly enable new dtags.
+  target_link_libraries(openmx_cpu_application PRIVATE "-Wl,--disable-new-dtags")
+endif()
 if(TARGET openmx_cpu_elpa_build)
   add_dependencies(openmx_cpu_application openmx_cpu_elpa_build)
+endif()
+if(TARGET openmx_cpu_scalapack_build)
+  add_dependencies(openmx_cpu_application openmx_cpu_scalapack_build)
 endif()
 # Compiler/MPI environments can advertise non-system library directories as
 # implicit link paths. CMake then omits their RPATH, even though a clean login
@@ -176,6 +192,33 @@ else()
 endif()
 set_property(TARGET openmx_cpu_application APPEND PROPERTY BUILD_RPATH
   "${_cpu_loader}/lib" "${_cpu_loader}/../lib" ${_cpu_runtime_dirs})
+openmx_compiler_runtime_rpath(openmx_cpu_application CXX)
+openmx_compiler_runtime_rpath(openmx_cpu_application Fortran)
+if(BUILD_TESTING)
+  add_executable(openmx_cpu_numerics "${CMAKE_SOURCE_DIR}/tests/cpu_numerics.c"
+    "${CMAKE_SOURCE_DIR}/source/openmx_elpa_cpu.c" "${_cpu_backend}/fortran_runtime.f90")
+  target_include_directories(openmx_cpu_numerics PRIVATE "${CMAKE_SOURCE_DIR}/source" "${OPENMX_CPU_ELPA_INCLUDE_DIR}")
+  set_target_properties(openmx_cpu_numerics PROPERTIES POSITION_INDEPENDENT_CODE ON LINKER_LANGUAGE CXX)
+  openmx_compiler_runtime_rpath(openmx_cpu_numerics CXX)
+  openmx_compiler_runtime_rpath(openmx_cpu_numerics C)
+  openmx_compiler_runtime_rpath(openmx_cpu_numerics Fortran)
+  target_link_libraries(openmx_cpu_numerics PRIVATE MPI::MPI_C MPI::MPI_Fortran
+    "${OPENMX_CPU_ELPA_LIBRARY}" ${OPENMX_CPU_LINALG_LIBRARIES} m ${CMAKE_DL_LIBS})
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    target_link_libraries(openmx_cpu_numerics PRIVATE "-Wl,--disable-new-dtags")
+  endif()
+  set_property(TARGET openmx_cpu_numerics APPEND PROPERTY BUILD_RPATH ${_cpu_runtime_dirs})
+  if(TARGET openmx_cpu_elpa_build)
+    add_dependencies(openmx_cpu_numerics openmx_cpu_elpa_build)
+  endif()
+  if(TARGET openmx_cpu_scalapack_build)
+    add_dependencies(openmx_cpu_numerics openmx_cpu_scalapack_build)
+  endif()
+  add_test(NAME cpu-numerical-toolchain COMMAND "${MPIEXEC_EXECUTABLE}" ${MPIEXEC_NUMPROC_FLAG} 2
+    ${MPIEXEC_PREFLAGS} "$<TARGET_FILE:openmx_cpu_numerics>" ${MPIEXEC_POSTFLAGS})
+  set_tests_properties(cpu-numerical-toolchain PROPERTIES LABELS "integration;cpu;mpi"
+    PROCESSORS 2 TIMEOUT 120 ENVIRONMENT "OMP_NUM_THREADS=1;OPENBLAS_NUM_THREADS=1;MKL_NUM_THREADS=1")
+endif()
 set(_cpu_copy_command)
 if(OPENMX_COPY_TO_WORK)
   # A previous GPU install may have a device-enabled Core in work/lib. Publish
