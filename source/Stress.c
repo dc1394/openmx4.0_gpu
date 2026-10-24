@@ -47,8 +47,8 @@ static void dHVNA(const OpenMXVnaMatrixViews *vna, int where_flag, int Mc_AN, in
 static void dHNL(const OpenMXAtomicViews *atomic, int where_flag,
 		 int Mc_AN, int h_AN, int q_AN,
 		 double ******DS_NL1,
-		 dcomplex ***Hx, dcomplex ***Hy, dcomplex ***Hz,
-		 dcomplex *****H_sts, const OpenMXElectronicViews *electronic);
+		 const OpenMXSolverComplexTensor *Hx,const OpenMXSolverComplexTensor *Hy,
+          const OpenMXSolverComplexTensor *Hz,const OpenMXSolverComplexTensor *H_sts, const OpenMXElectronicViews *electronic);
 
 static void dHNL_SO(
 	     double *sumx0r,
@@ -4137,7 +4137,7 @@ void Stress_HNL(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *atomic,
   int l1,l2,l3,l,LL,Mul1,tno0,ncp,so;
   int tno1,tno2,size1,size2,n,kk,num,po,po1,po2;
   int numprocs,myid,tag=999,ID,IDS,IDR;
-  int **S_array,**R_array;
+
   int S_comm_flag,R_comm_flag;
   int SA_num,q,Sc_AN,GSc_AN,smul;
   int Sc_wan,Sh_AN,GSh_AN,Sh_wan;
@@ -4148,11 +4148,11 @@ void Stress_HNL(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *atomic,
   double dEx,dEy,dEz,ene,pref;
   double Stime_atom, Etime_atom;
   dcomplex ***Hx,***Hy,***Hz;
-  dcomplex ***Hx0,***Hy0,***Hz0;
-  dcomplex ***Hx1,***Hy1,***Hz1;
-  dcomplex *****H_sts;
+  OpenMXSolverComplexTensor Hx0,Hy0,Hz0;
+  OpenMXSolverComplexTensor Hx1,Hy1,Hz1;
+  OpenMXSolverComplexTensor H_sts;
   int *Snd_DS_NL_Size,*Rcv_DS_NL_Size;  
-  int *Indicator;
+
   double *tmp_array;
   double *tmp_array2;
 
@@ -4186,18 +4186,6 @@ void Stress_HNL(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *atomic,
   /****************************
        allocation of arrays 
   *****************************/
-
-  Indicator = (int*)malloc(sizeof(int)*numprocs);
-
-  S_array = (int**)malloc(sizeof(int*)*numprocs);
-  for (ID=0; ID<numprocs; ID++){
-    S_array[ID] = (int*)malloc(sizeof(int)*3);
-  }
-
-  R_array = (int**)malloc(sizeof(int*)*numprocs);
-  for (ID=0; ID<numprocs; ID++){
-    R_array[ID] = (int*)malloc(sizeof(int)*3);
-  }
 
   Snd_DS_NL_Size = projector_transfer.buffers.send_sizes;
   Rcv_DS_NL_Size = projector_transfer.buffers.receive_sizes;
@@ -4251,67 +4239,7 @@ void Stress_HNL(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *atomic,
   MPI_Barrier(mpi_comm_level1);
   dtime(&stime);
 
-  Hx0 = (dcomplex***)malloc(sizeof(dcomplex**)*3);
-  for (i=0; i<3; i++){
-    Hx0[i] = (dcomplex**)malloc(sizeof(dcomplex*)*List_YOUSO[7]);
-    for (j=0; j<List_YOUSO[7]; j++){
-      Hx0[i][j] = (dcomplex*)malloc(sizeof(dcomplex)*List_YOUSO[7]);
-    }
-  }
-
-  Hy0 = (dcomplex***)malloc(sizeof(dcomplex**)*3);
-  for (i=0; i<3; i++){
-    Hy0[i] = (dcomplex**)malloc(sizeof(dcomplex*)*List_YOUSO[7]);
-    for (j=0; j<List_YOUSO[7]; j++){
-      Hy0[i][j] = (dcomplex*)malloc(sizeof(dcomplex)*List_YOUSO[7]);
-    }
-  }
-
-  Hz0 = (dcomplex***)malloc(sizeof(dcomplex**)*3);
-  for (i=0; i<3; i++){
-    Hz0[i] = (dcomplex**)malloc(sizeof(dcomplex*)*List_YOUSO[7]);
-    for (j=0; j<List_YOUSO[7]; j++){
-      Hz0[i][j] = (dcomplex*)malloc(sizeof(dcomplex)*List_YOUSO[7]);
-    }
-  }
-
-  Hx1 = (dcomplex***)malloc(sizeof(dcomplex**)*3);
-  for (i=0; i<3; i++){
-    Hx1[i] = (dcomplex**)malloc(sizeof(dcomplex*)*List_YOUSO[7]);
-    for (j=0; j<List_YOUSO[7]; j++){
-      Hx1[i][j] = (dcomplex*)malloc(sizeof(dcomplex)*List_YOUSO[7]);
-    }
-  }
-
-  Hy1 = (dcomplex***)malloc(sizeof(dcomplex**)*3);
-  for (i=0; i<3; i++){
-    Hy1[i] = (dcomplex**)malloc(sizeof(dcomplex*)*List_YOUSO[7]);
-    for (j=0; j<List_YOUSO[7]; j++){
-      Hy1[i][j] = (dcomplex*)malloc(sizeof(dcomplex)*List_YOUSO[7]);
-    }
-  }
-
-  Hz1 = (dcomplex***)malloc(sizeof(dcomplex**)*3);
-  for (i=0; i<3; i++){
-    Hz1[i] = (dcomplex**)malloc(sizeof(dcomplex*)*List_YOUSO[7]);
-    for (j=0; j<List_YOUSO[7]; j++){
-      Hz1[i][j] = (dcomplex*)malloc(sizeof(dcomplex)*List_YOUSO[7]);
-    }
-  }
-
-  H_sts = (dcomplex*****)malloc(sizeof(dcomplex****)*3);
-  for (i=0; i<3; i++){
-    H_sts[i] = (dcomplex****)malloc(sizeof(dcomplex***)*4);
-    for (j=0; j<4; j++){
-      H_sts[i][j] = (dcomplex***)malloc(sizeof(dcomplex**)*4);
-      for (k=0; k<4; k++){
-	H_sts[i][j][k] = (dcomplex**)malloc(sizeof(dcomplex*)*List_YOUSO[7]);
-	for (m=0; m<List_YOUSO[7]; m++){
-	  H_sts[i][j][k][m] = (dcomplex*)malloc(sizeof(dcomplex)*List_YOUSO[7]);
-	}
-      }
-    }
-  }
+  OpenMX_Stress_HnlPrepare(scratch,List_YOUSO[7],&Hx0,&Hy0,&Hz0,&Hx1,&Hy1,&Hz1,&H_sts);
 
   /* initialization of send_progress and receive_progress */
 
@@ -4503,7 +4431,7 @@ void Stress_HNL(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *atomic,
 	      jan = atomic->species.contracted_orbitals[Qwan];
 	      kl = RMI1[Mc_AN][h_AN][q_AN];
 
-              dHNL(atomic, 0,Mc_AN,h_AN,q_AN,DS_NL,Hx0,Hy0,Hz0,H_sts, electronic);
+              dHNL(atomic, 0,Mc_AN,h_AN,q_AN,DS_NL,&Hx0,&Hy0,&Hz0,&H_sts, electronic);
 
 	      /* contribution of force = Trace(CDM0*dH) */
 	      /* spin non-polarization */
@@ -4518,9 +4446,9 @@ void Stress_HNL(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *atomic,
 		for (i=0; i<ian; i++){
 		  for (j=0; j<jan; j++){
 
-		    dEx += pref*CDM0[0][Mh_AN][kl][i][j]*Hx0[0][i][j].r;
-		    dEy += pref*CDM0[0][Mh_AN][kl][i][j]*Hy0[0][i][j].r;
-		    dEz += pref*CDM0[0][Mh_AN][kl][i][j]*Hz0[0][i][j].r;
+		    dEx += pref*CDM0[0][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hx0,0,i)[j].r;
+		    dEy += pref*CDM0[0][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hy0,0,i)[j].r;
+		    dEz += pref*CDM0[0][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hz0,0,i)[j].r;
 		  }
 		}
 
@@ -4530,7 +4458,7 @@ void Stress_HNL(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *atomic,
 		  for (n=1; n<=3; n++){
 		    for (i=0; i<ian; i++){
 		      for (j=0; j<jan; j++){
-			My_Stress[(m-1)*3+(n-1)] += pref*CDM0[0][Mh_AN][kl][i][j]*H_sts[0][m][n][i][j].r;
+			My_Stress[(m-1)*3+(n-1)] += pref*CDM0[0][Mh_AN][kl][i][j]*OpenMX_Stress_HnlStrainRow(&H_sts,0,m,n,i)[j].r;
 		      }
 		    }
 		  }
@@ -4550,12 +4478,12 @@ void Stress_HNL(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *atomic,
 		for (i=0; i<atomic->species.contracted_orbitals[Hwan]; i++){
 		  for (j=0; j<atomic->species.contracted_orbitals[Qwan]; j++){
 
-		    dEx += pref*(  CDM0[0][Mh_AN][kl][i][j]*Hx0[0][i][j].r
-			         + CDM0[1][Mh_AN][kl][i][j]*Hx0[1][i][j].r);
-		    dEy += pref*(  CDM0[0][Mh_AN][kl][i][j]*Hy0[0][i][j].r
-				 + CDM0[1][Mh_AN][kl][i][j]*Hy0[1][i][j].r);
-		    dEz += pref*(  CDM0[0][Mh_AN][kl][i][j]*Hz0[0][i][j].r
-				 + CDM0[1][Mh_AN][kl][i][j]*Hz0[1][i][j].r);
+		    dEx += pref*(  CDM0[0][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hx0,0,i)[j].r
+			         + CDM0[1][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hx0,1,i)[j].r);
+		    dEy += pref*(  CDM0[0][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hy0,0,i)[j].r
+				 + CDM0[1][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hy0,1,i)[j].r);
+		    dEz += pref*(  CDM0[0][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hz0,0,i)[j].r
+				 + CDM0[1][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hz0,1,i)[j].r);
 		  }
 		}
 
@@ -4565,8 +4493,8 @@ void Stress_HNL(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *atomic,
 		  for (n=1; n<=3; n++){
 		    for (i=0; i<ian; i++){
 		      for (j=0; j<jan; j++){
-			My_Stress[(m-1)*3+(n-1)] += pref*( CDM0[0][Mh_AN][kl][i][j]*H_sts[0][m][n][i][j].r
-	                                                 + CDM0[1][Mh_AN][kl][i][j]*H_sts[1][m][n][i][j].r);
+			My_Stress[(m-1)*3+(n-1)] += pref*( CDM0[0][Mh_AN][kl][i][j]*OpenMX_Stress_HnlStrainRow(&H_sts,0,m,n,i)[j].r
+	                                                 + CDM0[1][Mh_AN][kl][i][j]*OpenMX_Stress_HnlStrainRow(&H_sts,1,m,n,i)[j].r);
 		      }
 		    }
 		  }
@@ -4587,28 +4515,28 @@ void Stress_HNL(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *atomic,
 		    for (j=0; j<atomic->species.contracted_orbitals[Qwan]; j++){
 
 		      dEx +=
-			  CDM0[0][Mh_AN][kl][i][j]*Hx0[0][i][j].r
-			- iDM0[0][Mh_AN][kl][i][j]*Hx0[0][i][j].i
-			+ CDM0[1][Mh_AN][kl][i][j]*Hx0[1][i][j].r
-			- iDM0[1][Mh_AN][kl][i][j]*Hx0[1][i][j].i
-		    + 2.0*CDM0[2][Mh_AN][kl][i][j]*Hx0[2][i][j].r
-		    - 2.0*CDM0[3][Mh_AN][kl][i][j]*Hx0[2][i][j].i;
+			  CDM0[0][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hx0,0,i)[j].r
+			- iDM0[0][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hx0,0,i)[j].i
+			+ CDM0[1][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hx0,1,i)[j].r
+			- iDM0[1][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hx0,1,i)[j].i
+		    + 2.0*CDM0[2][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hx0,2,i)[j].r
+		    - 2.0*CDM0[3][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hx0,2,i)[j].i;
 
 		      dEy += 
-			  CDM0[0][Mh_AN][kl][i][j]*Hy0[0][i][j].r
-			- iDM0[0][Mh_AN][kl][i][j]*Hy0[0][i][j].i
-			+ CDM0[1][Mh_AN][kl][i][j]*Hy0[1][i][j].r
-			- iDM0[1][Mh_AN][kl][i][j]*Hy0[1][i][j].i
-		    + 2.0*CDM0[2][Mh_AN][kl][i][j]*Hy0[2][i][j].r
-		    - 2.0*CDM0[3][Mh_AN][kl][i][j]*Hy0[2][i][j].i; 
+			  CDM0[0][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hy0,0,i)[j].r
+			- iDM0[0][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hy0,0,i)[j].i
+			+ CDM0[1][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hy0,1,i)[j].r
+			- iDM0[1][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hy0,1,i)[j].i
+		    + 2.0*CDM0[2][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hy0,2,i)[j].r
+		    - 2.0*CDM0[3][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hy0,2,i)[j].i;
 
 		      dEz +=  
-			  CDM0[0][Mh_AN][kl][i][j]*Hz0[0][i][j].r
-			- iDM0[0][Mh_AN][kl][i][j]*Hz0[0][i][j].i
-			+ CDM0[1][Mh_AN][kl][i][j]*Hz0[1][i][j].r
-			- iDM0[1][Mh_AN][kl][i][j]*Hz0[1][i][j].i
-		    + 2.0*CDM0[2][Mh_AN][kl][i][j]*Hz0[2][i][j].r
-		    - 2.0*CDM0[3][Mh_AN][kl][i][j]*Hz0[2][i][j].i; 
+			  CDM0[0][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hz0,0,i)[j].r
+			- iDM0[0][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hz0,0,i)[j].i
+			+ CDM0[1][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hz0,1,i)[j].r
+			- iDM0[1][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hz0,1,i)[j].i
+		    + 2.0*CDM0[2][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hz0,2,i)[j].r
+		    - 2.0*CDM0[3][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hz0,2,i)[j].i;
 
 		    }
 		  }
@@ -4621,12 +4549,12 @@ void Stress_HNL(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *atomic,
 			for (j=0; j<atomic->species.contracted_orbitals[Qwan]; j++){
 
 			  My_Stress[(m-1)*3+(n-1)] +=
-			          CDM0[0][Mh_AN][kl][i][j]*H_sts[0][m][n][i][j].r
-			        - iDM0[0][Mh_AN][kl][i][j]*H_sts[0][m][n][i][j].i
-			        + CDM0[1][Mh_AN][kl][i][j]*H_sts[1][m][n][i][j].r
-			        - iDM0[1][Mh_AN][kl][i][j]*H_sts[1][m][n][i][j].i
-			    + 2.0*CDM0[2][Mh_AN][kl][i][j]*H_sts[2][m][n][i][j].r
-			    - 2.0*CDM0[3][Mh_AN][kl][i][j]*H_sts[2][m][n][i][j].i;
+			          CDM0[0][Mh_AN][kl][i][j]*OpenMX_Stress_HnlStrainRow(&H_sts,0,m,n,i)[j].r
+			        - iDM0[0][Mh_AN][kl][i][j]*OpenMX_Stress_HnlStrainRow(&H_sts,0,m,n,i)[j].i
+			        + CDM0[1][Mh_AN][kl][i][j]*OpenMX_Stress_HnlStrainRow(&H_sts,1,m,n,i)[j].r
+			        - iDM0[1][Mh_AN][kl][i][j]*OpenMX_Stress_HnlStrainRow(&H_sts,1,m,n,i)[j].i
+			    + 2.0*CDM0[2][Mh_AN][kl][i][j]*OpenMX_Stress_HnlStrainRow(&H_sts,2,m,n,i)[j].r
+			    - 2.0*CDM0[3][Mh_AN][kl][i][j]*OpenMX_Stress_HnlStrainRow(&H_sts,2,m,n,i)[j].i;
 			}
 		      }
 		    }
@@ -4642,28 +4570,28 @@ void Stress_HNL(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *atomic,
 		    for (j=0; j<atomic->species.contracted_orbitals[Qwan]; j++){ /* Qwan  */
 
 		      dEx += 
-			  CDM0[0][Mh_AN][kl ][i][j]*Hx0[0][i][j].r
-			- iDM0[0][Mh_AN][kl ][i][j]*Hx0[0][i][j].i
-			+ CDM0[1][Mh_AN][kl ][i][j]*Hx0[1][i][j].r
-			- iDM0[1][Mh_AN][kl ][i][j]*Hx0[1][i][j].i
-		    + 2.0*CDM0[2][Mh_AN][kl ][i][j]*Hx0[2][i][j].r
-		    - 2.0*CDM0[3][Mh_AN][kl ][i][j]*Hx0[2][i][j].i;
+			  CDM0[0][Mh_AN][kl ][i][j]*openmx_solver_complex_plane_row(&Hx0,0,i)[j].r
+			- iDM0[0][Mh_AN][kl ][i][j]*openmx_solver_complex_plane_row(&Hx0,0,i)[j].i
+			+ CDM0[1][Mh_AN][kl ][i][j]*openmx_solver_complex_plane_row(&Hx0,1,i)[j].r
+			- iDM0[1][Mh_AN][kl ][i][j]*openmx_solver_complex_plane_row(&Hx0,1,i)[j].i
+		    + 2.0*CDM0[2][Mh_AN][kl ][i][j]*openmx_solver_complex_plane_row(&Hx0,2,i)[j].r
+		    - 2.0*CDM0[3][Mh_AN][kl ][i][j]*openmx_solver_complex_plane_row(&Hx0,2,i)[j].i;
 
 		      dEy += 
-			  CDM0[0][Mh_AN][kl ][i][j]*Hy0[0][i][j].r
-			- iDM0[0][Mh_AN][kl ][i][j]*Hy0[0][i][j].i
-			+ CDM0[1][Mh_AN][kl ][i][j]*Hy0[1][i][j].r
-			- iDM0[1][Mh_AN][kl ][i][j]*Hy0[1][i][j].i
-	 	    + 2.0*CDM0[2][Mh_AN][kl ][i][j]*Hy0[2][i][j].r
-		    - 2.0*CDM0[3][Mh_AN][kl ][i][j]*Hy0[2][i][j].i; 
+			  CDM0[0][Mh_AN][kl ][i][j]*openmx_solver_complex_plane_row(&Hy0,0,i)[j].r
+			- iDM0[0][Mh_AN][kl ][i][j]*openmx_solver_complex_plane_row(&Hy0,0,i)[j].i
+			+ CDM0[1][Mh_AN][kl ][i][j]*openmx_solver_complex_plane_row(&Hy0,1,i)[j].r
+			- iDM0[1][Mh_AN][kl ][i][j]*openmx_solver_complex_plane_row(&Hy0,1,i)[j].i
+                    + 2.0*CDM0[2][Mh_AN][kl ][i][j]*openmx_solver_complex_plane_row(&Hy0,2,i)[j].r
+		    - 2.0*CDM0[3][Mh_AN][kl ][i][j]*openmx_solver_complex_plane_row(&Hy0,2,i)[j].i;
 
 		      dEz +=
-			  CDM0[0][Mh_AN][kl ][i][j]*Hz0[0][i][j].r
-			- iDM0[0][Mh_AN][kl ][i][j]*Hz0[0][i][j].i
-			+ CDM0[1][Mh_AN][kl ][i][j]*Hz0[1][i][j].r
-			- iDM0[1][Mh_AN][kl ][i][j]*Hz0[1][i][j].i
-	 	    + 2.0*CDM0[2][Mh_AN][kl ][i][j]*Hz0[2][i][j].r
-		    - 2.0*CDM0[3][Mh_AN][kl ][i][j]*Hz0[2][i][j].i;
+			  CDM0[0][Mh_AN][kl ][i][j]*openmx_solver_complex_plane_row(&Hz0,0,i)[j].r
+			- iDM0[0][Mh_AN][kl ][i][j]*openmx_solver_complex_plane_row(&Hz0,0,i)[j].i
+			+ CDM0[1][Mh_AN][kl ][i][j]*openmx_solver_complex_plane_row(&Hz0,1,i)[j].r
+			- iDM0[1][Mh_AN][kl ][i][j]*openmx_solver_complex_plane_row(&Hz0,1,i)[j].i
+                    + 2.0*CDM0[2][Mh_AN][kl ][i][j]*openmx_solver_complex_plane_row(&Hz0,2,i)[j].r
+		    - 2.0*CDM0[3][Mh_AN][kl ][i][j]*openmx_solver_complex_plane_row(&Hz0,2,i)[j].i;
 
 		    } /* j */
 		  } /* i */
@@ -4676,12 +4604,12 @@ void Stress_HNL(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *atomic,
 			for (j=0; j<atomic->species.contracted_orbitals[Qwan]; j++){
 
 			  My_Stress[(m-1)*3+(n-1)] +=
-			          CDM0[0][Mh_AN][kl][i][j]*H_sts[0][m][n][i][j].r
-			        - iDM0[0][Mh_AN][kl][i][j]*H_sts[0][m][n][i][j].i
-			        + CDM0[1][Mh_AN][kl][i][j]*H_sts[1][m][n][i][j].r
-			        - iDM0[1][Mh_AN][kl][i][j]*H_sts[1][m][n][i][j].i
-			    + 2.0*CDM0[2][Mh_AN][kl][i][j]*H_sts[2][m][n][i][j].r
-			    - 2.0*CDM0[3][Mh_AN][kl][i][j]*H_sts[2][m][n][i][j].i;
+			          CDM0[0][Mh_AN][kl][i][j]*OpenMX_Stress_HnlStrainRow(&H_sts,0,m,n,i)[j].r
+			        - iDM0[0][Mh_AN][kl][i][j]*OpenMX_Stress_HnlStrainRow(&H_sts,0,m,n,i)[j].i
+			        + CDM0[1][Mh_AN][kl][i][j]*OpenMX_Stress_HnlStrainRow(&H_sts,1,m,n,i)[j].r
+			        - iDM0[1][Mh_AN][kl][i][j]*OpenMX_Stress_HnlStrainRow(&H_sts,1,m,n,i)[j].i
+			    + 2.0*CDM0[2][Mh_AN][kl][i][j]*OpenMX_Stress_HnlStrainRow(&H_sts,2,m,n,i)[j].r
+			    - 2.0*CDM0[3][Mh_AN][kl][i][j]*OpenMX_Stress_HnlStrainRow(&H_sts,2,m,n,i)[j].i;
 			}
 		      }
 		    }
@@ -4689,7 +4617,7 @@ void Stress_HNL(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *atomic,
 
                   /* call dHNL */
 
-		  dHNL(atomic, 0,Mc_AN,q_AN,h_AN,DS_NL,Hx1,Hy1,Hz1,H_sts, electronic);
+		  dHNL(atomic, 0,Mc_AN,q_AN,h_AN,DS_NL,&Hx1,&Hy1,&Hz1,&H_sts, electronic);
 		  kl1 = RMI1[Mc_AN][q_AN][h_AN];
 
                   /* for forces */ 
@@ -4698,28 +4626,28 @@ void Stress_HNL(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *atomic,
 		    for (j=0; j<atomic->species.contracted_orbitals[Hwan]; j++){ /* Hwan */
 
 		      dEx += 
-			  CDM0[0][Mq_AN][kl1][i][j]*Hx1[0][i][j].r
-			- iDM0[0][Mq_AN][kl1][i][j]*Hx1[0][i][j].i
-			+ CDM0[1][Mq_AN][kl1][i][j]*Hx1[1][i][j].r
-			- iDM0[1][Mq_AN][kl1][i][j]*Hx1[1][i][j].i
-		    + 2.0*CDM0[2][Mq_AN][kl1][i][j]*Hx1[2][i][j].r
-		    - 2.0*CDM0[3][Mq_AN][kl1][i][j]*Hx1[2][i][j].i;
+			  CDM0[0][Mq_AN][kl1][i][j]*openmx_solver_complex_plane_row(&Hx1,0,i)[j].r
+			- iDM0[0][Mq_AN][kl1][i][j]*openmx_solver_complex_plane_row(&Hx1,0,i)[j].i
+			+ CDM0[1][Mq_AN][kl1][i][j]*openmx_solver_complex_plane_row(&Hx1,1,i)[j].r
+			- iDM0[1][Mq_AN][kl1][i][j]*openmx_solver_complex_plane_row(&Hx1,1,i)[j].i
+		    + 2.0*CDM0[2][Mq_AN][kl1][i][j]*openmx_solver_complex_plane_row(&Hx1,2,i)[j].r
+		    - 2.0*CDM0[3][Mq_AN][kl1][i][j]*openmx_solver_complex_plane_row(&Hx1,2,i)[j].i;
 
 		      dEy += 
-			  CDM0[0][Mq_AN][kl1][i][j]*Hy1[0][i][j].r
-			- iDM0[0][Mq_AN][kl1][i][j]*Hy1[0][i][j].i
-			+ CDM0[1][Mq_AN][kl1][i][j]*Hy1[1][i][j].r
-			- iDM0[1][Mq_AN][kl1][i][j]*Hy1[1][i][j].i
-		    + 2.0*CDM0[2][Mq_AN][kl1][i][j]*Hy1[2][i][j].r
-		    - 2.0*CDM0[3][Mq_AN][kl1][i][j]*Hy1[2][i][j].i; 
+			  CDM0[0][Mq_AN][kl1][i][j]*openmx_solver_complex_plane_row(&Hy1,0,i)[j].r
+			- iDM0[0][Mq_AN][kl1][i][j]*openmx_solver_complex_plane_row(&Hy1,0,i)[j].i
+			+ CDM0[1][Mq_AN][kl1][i][j]*openmx_solver_complex_plane_row(&Hy1,1,i)[j].r
+			- iDM0[1][Mq_AN][kl1][i][j]*openmx_solver_complex_plane_row(&Hy1,1,i)[j].i
+		    + 2.0*CDM0[2][Mq_AN][kl1][i][j]*openmx_solver_complex_plane_row(&Hy1,2,i)[j].r
+		    - 2.0*CDM0[3][Mq_AN][kl1][i][j]*openmx_solver_complex_plane_row(&Hy1,2,i)[j].i;
 
 		      dEz +=
-			  CDM0[0][Mq_AN][kl1][i][j]*Hz1[0][i][j].r
-			- iDM0[0][Mq_AN][kl1][i][j]*Hz1[0][i][j].i
-			+ CDM0[1][Mq_AN][kl1][i][j]*Hz1[1][i][j].r
-			- iDM0[1][Mq_AN][kl1][i][j]*Hz1[1][i][j].i
-		    + 2.0*CDM0[2][Mq_AN][kl1][i][j]*Hz1[2][i][j].r
-		    - 2.0*CDM0[3][Mq_AN][kl1][i][j]*Hz1[2][i][j].i;
+			  CDM0[0][Mq_AN][kl1][i][j]*openmx_solver_complex_plane_row(&Hz1,0,i)[j].r
+			- iDM0[0][Mq_AN][kl1][i][j]*openmx_solver_complex_plane_row(&Hz1,0,i)[j].i
+			+ CDM0[1][Mq_AN][kl1][i][j]*openmx_solver_complex_plane_row(&Hz1,1,i)[j].r
+			- iDM0[1][Mq_AN][kl1][i][j]*openmx_solver_complex_plane_row(&Hz1,1,i)[j].i
+		    + 2.0*CDM0[2][Mq_AN][kl1][i][j]*openmx_solver_complex_plane_row(&Hz1,2,i)[j].r
+		    - 2.0*CDM0[3][Mq_AN][kl1][i][j]*openmx_solver_complex_plane_row(&Hz1,2,i)[j].i;
 
 		    } /* j */
 		  } /* i */
@@ -4732,12 +4660,12 @@ void Stress_HNL(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *atomic,
 			for (j=0; j<atomic->species.contracted_orbitals[Hwan]; j++){ /* Hwan */
 
 			  My_Stress[(m-1)*3+(n-1)] +=
-			          CDM0[0][Mq_AN][kl1][i][j]*H_sts[0][m][n][i][j].r
-			        - iDM0[0][Mq_AN][kl1][i][j]*H_sts[0][m][n][i][j].i
-			        + CDM0[1][Mq_AN][kl1][i][j]*H_sts[1][m][n][i][j].r
-			        - iDM0[1][Mq_AN][kl1][i][j]*H_sts[1][m][n][i][j].i
-			    + 2.0*CDM0[2][Mq_AN][kl1][i][j]*H_sts[2][m][n][i][j].r
-			    - 2.0*CDM0[3][Mq_AN][kl1][i][j]*H_sts[2][m][n][i][j].i;
+			          CDM0[0][Mq_AN][kl1][i][j]*OpenMX_Stress_HnlStrainRow(&H_sts,0,m,n,i)[j].r
+			        - iDM0[0][Mq_AN][kl1][i][j]*OpenMX_Stress_HnlStrainRow(&H_sts,0,m,n,i)[j].i
+			        + CDM0[1][Mq_AN][kl1][i][j]*OpenMX_Stress_HnlStrainRow(&H_sts,1,m,n,i)[j].r
+			        - iDM0[1][Mq_AN][kl1][i][j]*OpenMX_Stress_HnlStrainRow(&H_sts,1,m,n,i)[j].i
+			    + 2.0*CDM0[2][Mq_AN][kl1][i][j]*OpenMX_Stress_HnlStrainRow(&H_sts,2,m,n,i)[j].r
+			    - 2.0*CDM0[3][Mq_AN][kl1][i][j]*OpenMX_Stress_HnlStrainRow(&H_sts,2,m,n,i)[j].i;
 
 			} /* j */
 		      } /* i */
@@ -4801,69 +4729,6 @@ void Stress_HNL(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *atomic,
 
   } while (po!=0);
 
-  for (i=0; i<3; i++){
-    for (j=0; j<List_YOUSO[7]; j++){
-      free(Hx0[i][j]);
-    }
-    free(Hx0[i]);
-  }
-  free(Hx0);
-
-  for (i=0; i<3; i++){
-    for (j=0; j<List_YOUSO[7]; j++){
-      free(Hy0[i][j]);
-    }
-    free(Hy0[i]);
-  }
-  free(Hy0);
-
-  for (i=0; i<3; i++){
-    for (j=0; j<List_YOUSO[7]; j++){
-      free(Hz0[i][j]);
-    }
-    free(Hz0[i]);
-  }
-  free(Hz0);
-
-  for (i=0; i<3; i++){
-    for (j=0; j<List_YOUSO[7]; j++){
-      free(Hx1[i][j]);
-    }
-    free(Hx1[i]);
-  }
-  free(Hx1);
-
-  for (i=0; i<3; i++){
-    for (j=0; j<List_YOUSO[7]; j++){
-      free(Hy1[i][j]);
-    }
-    free(Hy1[i]);
-  }
-  free(Hy1);
-
-  for (i=0; i<3; i++){
-    for (j=0; j<List_YOUSO[7]; j++){
-      free(Hz1[i][j]);
-    }
-    free(Hz1[i]);
-  }
-  free(Hz1);
-
-  for (i=0; i<3; i++){
-    for (j=0; j<4; j++){
-      for (k=0; k<4; k++){
-	for (m=0; m<List_YOUSO[7]; m++){
-	  free(H_sts[i][j][k][m]);
-	}
-        free(H_sts[i][j][k]);
-      }
-      free(H_sts[i][j]);
-    }
-    free(H_sts[i]);
-  }
-  free(H_sts);
-
-
   dtime(&etime);
   if(myid==0 && measure_time){
     printf("Time for part1 of force_NL=%18.5f\n",etime-stime);fflush(stdout);
@@ -4892,72 +4757,12 @@ void Stress_HNL(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *atomic,
 
   dtime(&stime);
 
-#pragma omp parallel shared(time_per_atom,Gxyz,CDM0,SpinP_switch,SO_switch,Hub_U_switch,F_U_flag,Constraint_NCS_switch,Zeeman_NCS_switch,Zeeman_NCO_switch,DS_NL,RMI1,FNAN,WhatSpecies,F_G2M,natn,M2G,Matomnum,List_YOUSO,F_NL_flag,stress_threads,atomic) private(Hx0,Hy0,Hz0,Hx1,Hy1,Hz1,H_sts,OMPID,Nthrds,Nprocs,Mc_AN,Stime_atom,Etime_atom,dEx,dEy,dEz,Gc_AN,h_AN,Gh_AN,Mh_AN,Hwan,ian,q_AN,Gq_AN,Mq_AN,Qwan,jan,kl,kl1,i,j,k,m,n,kk,pref)
+#pragma omp parallel shared(scratch,time_per_atom,Gxyz,CDM0,SpinP_switch,SO_switch,Hub_U_switch,F_U_flag,Constraint_NCS_switch,Zeeman_NCS_switch,Zeeman_NCO_switch,DS_NL,RMI1,FNAN,WhatSpecies,F_G2M,natn,M2G,Matomnum,List_YOUSO,F_NL_flag,stress_threads,atomic) private(Hx0,Hy0,Hz0,Hx1,Hy1,Hz1,H_sts,OMPID,Nthrds,Nprocs,Mc_AN,Stime_atom,Etime_atom,dEx,dEy,dEz,Gc_AN,h_AN,Gh_AN,Mh_AN,Hwan,ian,q_AN,Gq_AN,Mq_AN,Qwan,jan,kl,kl1,i,j,k,m,n,kk,pref)
   {
 
     /* allocation of array */
 
-    Hx0 = (dcomplex***)malloc(sizeof(dcomplex**)*3);
-    for (i=0; i<3; i++){
-      Hx0[i] = (dcomplex**)malloc(sizeof(dcomplex*)*List_YOUSO[7]);
-      for (j=0; j<List_YOUSO[7]; j++){
-	Hx0[i][j] = (dcomplex*)malloc(sizeof(dcomplex)*List_YOUSO[7]);
-      }
-    }
-
-    Hy0 = (dcomplex***)malloc(sizeof(dcomplex**)*3);
-    for (i=0; i<3; i++){
-      Hy0[i] = (dcomplex**)malloc(sizeof(dcomplex*)*List_YOUSO[7]);
-      for (j=0; j<List_YOUSO[7]; j++){
-	Hy0[i][j] = (dcomplex*)malloc(sizeof(dcomplex)*List_YOUSO[7]);
-      }
-    }
-
-    Hz0 = (dcomplex***)malloc(sizeof(dcomplex**)*3);
-    for (i=0; i<3; i++){
-      Hz0[i] = (dcomplex**)malloc(sizeof(dcomplex*)*List_YOUSO[7]);
-      for (j=0; j<List_YOUSO[7]; j++){
-	Hz0[i][j] = (dcomplex*)malloc(sizeof(dcomplex)*List_YOUSO[7]);
-      }
-    }
-
-    Hx1 = (dcomplex***)malloc(sizeof(dcomplex**)*3);
-    for (i=0; i<3; i++){
-      Hx1[i] = (dcomplex**)malloc(sizeof(dcomplex*)*List_YOUSO[7]);
-      for (j=0; j<List_YOUSO[7]; j++){
-	Hx1[i][j] = (dcomplex*)malloc(sizeof(dcomplex)*List_YOUSO[7]);
-      }
-    }
-
-    Hy1 = (dcomplex***)malloc(sizeof(dcomplex**)*3);
-    for (i=0; i<3; i++){
-      Hy1[i] = (dcomplex**)malloc(sizeof(dcomplex*)*List_YOUSO[7]);
-      for (j=0; j<List_YOUSO[7]; j++){
-	Hy1[i][j] = (dcomplex*)malloc(sizeof(dcomplex)*List_YOUSO[7]);
-      }
-    }
-
-    Hz1 = (dcomplex***)malloc(sizeof(dcomplex**)*3);
-    for (i=0; i<3; i++){
-      Hz1[i] = (dcomplex**)malloc(sizeof(dcomplex*)*List_YOUSO[7]);
-      for (j=0; j<List_YOUSO[7]; j++){
-	Hz1[i][j] = (dcomplex*)malloc(sizeof(dcomplex)*List_YOUSO[7]);
-      }
-    }
-
-    H_sts = (dcomplex*****)malloc(sizeof(dcomplex****)*3);
-    for (i=0; i<3; i++){
-      H_sts[i] = (dcomplex****)malloc(sizeof(dcomplex***)*4);
-      for (j=0; j<4; j++){
-	H_sts[i][j] = (dcomplex***)malloc(sizeof(dcomplex**)*4);
-	for (k=0; k<4; k++){
-	  H_sts[i][j][k] = (dcomplex**)malloc(sizeof(dcomplex*)*List_YOUSO[7]);
-	  for (m=0; m<List_YOUSO[7]; m++){
-	    H_sts[i][j][k][m] = (dcomplex*)malloc(sizeof(dcomplex)*List_YOUSO[7]);
-	  }
-	}
-      }
-    }
+    OpenMX_Stress_HnlPrepare(scratch,List_YOUSO[7],&Hx0,&Hy0,&Hz0,&Hx1,&Hy1,&Hz1,&H_sts);
 
     /* get info. on OpenMP */ 
 
@@ -4991,7 +4796,7 @@ void Stress_HNL(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *atomic,
 	  jan = atomic->species.contracted_orbitals[Qwan];
 	  kl = RMI1[Mc_AN][h_AN][q_AN];
 
-          dHNL(atomic, 0,Mc_AN,h_AN,q_AN,DS_NL,Hx0,Hy0,Hz0,H_sts, electronic);
+          dHNL(atomic, 0,Mc_AN,h_AN,q_AN,DS_NL,&Hx0,&Hy0,&Hz0,&H_sts, electronic);
 
 	  if (SpinP_switch==0){
 
@@ -5002,9 +4807,9 @@ void Stress_HNL(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *atomic,
 
 	    for (i=0; i<ian; i++){
 	      for (j=0; j<jan; j++){
-		dEx += pref*CDM0[0][Mh_AN][kl][i][j]*Hx0[0][i][j].r;
-		dEy += pref*CDM0[0][Mh_AN][kl][i][j]*Hy0[0][i][j].r;
-		dEz += pref*CDM0[0][Mh_AN][kl][i][j]*Hz0[0][i][j].r;
+		dEx += pref*CDM0[0][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hx0,0,i)[j].r;
+		dEy += pref*CDM0[0][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hy0,0,i)[j].r;
+		dEz += pref*CDM0[0][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hz0,0,i)[j].r;
 	      }
 	    }
 
@@ -5014,7 +4819,7 @@ void Stress_HNL(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *atomic,
 	      for (n=1; n<=3; n++){
 		for (i=0; i<ian; i++){
 		  for (j=0; j<jan; j++){
-		    openmx_solver_real_matrix_row(&stress_threads,OMPID)[(m-1)*3+(n-1)] += pref*CDM0[0][Mh_AN][kl][i][j]*H_sts[0][m][n][i][j].r;
+		    openmx_solver_real_matrix_row(&stress_threads,OMPID)[(m-1)*3+(n-1)] += pref*CDM0[0][Mh_AN][kl][i][j]*OpenMX_Stress_HnlStrainRow(&H_sts,0,m,n,i)[j].r;
 		  }
 		}
 	      }
@@ -5035,12 +4840,12 @@ void Stress_HNL(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *atomic,
 	    for (i=0; i<ian; i++){
 	      for (j=0; j<jan; j++){
 
-		dEx += pref*(  CDM0[0][Mh_AN][kl][i][j]*Hx0[0][i][j].r
-			     + CDM0[1][Mh_AN][kl][i][j]*Hx0[1][i][j].r);
-		dEy += pref*(  CDM0[0][Mh_AN][kl][i][j]*Hy0[0][i][j].r
-			     + CDM0[1][Mh_AN][kl][i][j]*Hy0[1][i][j].r);
-		dEz += pref*(  CDM0[0][Mh_AN][kl][i][j]*Hz0[0][i][j].r
-			     + CDM0[1][Mh_AN][kl][i][j]*Hz0[1][i][j].r);
+		dEx += pref*(  CDM0[0][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hx0,0,i)[j].r
+			     + CDM0[1][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hx0,1,i)[j].r);
+		dEy += pref*(  CDM0[0][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hy0,0,i)[j].r
+			     + CDM0[1][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hy0,1,i)[j].r);
+		dEz += pref*(  CDM0[0][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hz0,0,i)[j].r
+			     + CDM0[1][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hz0,1,i)[j].r);
 	      }
 	    }
 
@@ -5050,8 +4855,8 @@ void Stress_HNL(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *atomic,
 	      for (n=1; n<=3; n++){
 		for (i=0; i<ian; i++){
 		  for (j=0; j<jan; j++){
-		    openmx_solver_real_matrix_row(&stress_threads,OMPID)[(m-1)*3+(n-1)] += pref*( CDM0[0][Mh_AN][kl][i][j]*H_sts[0][m][n][i][j].r
-	 			                                    + CDM0[1][Mh_AN][kl][i][j]*H_sts[1][m][n][i][j].r);
+		    openmx_solver_real_matrix_row(&stress_threads,OMPID)[(m-1)*3+(n-1)] += pref*( CDM0[0][Mh_AN][kl][i][j]*OpenMX_Stress_HnlStrainRow(&H_sts,0,m,n,i)[j].r
+                                                                    + CDM0[1][Mh_AN][kl][i][j]*OpenMX_Stress_HnlStrainRow(&H_sts,1,m,n,i)[j].r);
 		  }
 		}
 	      }
@@ -5071,28 +4876,28 @@ void Stress_HNL(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *atomic,
 		for (j=0; j<atomic->species.contracted_orbitals[Qwan]; j++){
 
 		  dEx += 
-                      CDM0[0][Mh_AN][kl][i][j]*Hx0[0][i][j].r
-		    - iDM0[0][Mh_AN][kl][i][j]*Hx0[0][i][j].i
-		    + CDM0[1][Mh_AN][kl][i][j]*Hx0[1][i][j].r
-		    - iDM0[1][Mh_AN][kl][i][j]*Hx0[1][i][j].i
-	        + 2.0*CDM0[2][Mh_AN][kl][i][j]*Hx0[2][i][j].r
-		- 2.0*CDM0[3][Mh_AN][kl][i][j]*Hx0[2][i][j].i;
+                      CDM0[0][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hx0,0,i)[j].r
+		    - iDM0[0][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hx0,0,i)[j].i
+		    + CDM0[1][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hx0,1,i)[j].r
+		    - iDM0[1][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hx0,1,i)[j].i
+	        + 2.0*CDM0[2][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hx0,2,i)[j].r
+		- 2.0*CDM0[3][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hx0,2,i)[j].i;
 
 		  dEy += 
-                      CDM0[0][Mh_AN][kl][i][j]*Hy0[0][i][j].r
-		    - iDM0[0][Mh_AN][kl][i][j]*Hy0[0][i][j].i
-		    + CDM0[1][Mh_AN][kl][i][j]*Hy0[1][i][j].r
-		    - iDM0[1][Mh_AN][kl][i][j]*Hy0[1][i][j].i
-		+ 2.0*CDM0[2][Mh_AN][kl][i][j]*Hy0[2][i][j].r
-	        - 2.0*CDM0[3][Mh_AN][kl][i][j]*Hy0[2][i][j].i; 
+                      CDM0[0][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hy0,0,i)[j].r
+		    - iDM0[0][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hy0,0,i)[j].i
+		    + CDM0[1][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hy0,1,i)[j].r
+		    - iDM0[1][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hy0,1,i)[j].i
+		+ 2.0*CDM0[2][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hy0,2,i)[j].r
+	        - 2.0*CDM0[3][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hy0,2,i)[j].i;
 
 		  dEz +=
-                      CDM0[0][Mh_AN][kl][i][j]*Hz0[0][i][j].r
-		    - iDM0[0][Mh_AN][kl][i][j]*Hz0[0][i][j].i
-		    + CDM0[1][Mh_AN][kl][i][j]*Hz0[1][i][j].r
-		    - iDM0[1][Mh_AN][kl][i][j]*Hz0[1][i][j].i
-	        + 2.0*CDM0[2][Mh_AN][kl][i][j]*Hz0[2][i][j].r
-		- 2.0*CDM0[3][Mh_AN][kl][i][j]*Hz0[2][i][j].i;
+                      CDM0[0][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hz0,0,i)[j].r
+		    - iDM0[0][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hz0,0,i)[j].i
+		    + CDM0[1][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hz0,1,i)[j].r
+		    - iDM0[1][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hz0,1,i)[j].i
+	        + 2.0*CDM0[2][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hz0,2,i)[j].r
+		- 2.0*CDM0[3][Mh_AN][kl][i][j]*openmx_solver_complex_plane_row(&Hz0,2,i)[j].i;
 
 		}
 	      }
@@ -5105,12 +4910,12 @@ void Stress_HNL(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *atomic,
 		    for (j=0; j<atomic->species.contracted_orbitals[Qwan]; j++){
 
 		      openmx_solver_real_matrix_row(&stress_threads,OMPID)[(m-1)*3+(n-1)] +=
-		   	      CDM0[0][Mh_AN][kl][i][j]*H_sts[0][m][n][i][j].r
-			    - iDM0[0][Mh_AN][kl][i][j]*H_sts[0][m][n][i][j].i
-		  	    + CDM0[1][Mh_AN][kl][i][j]*H_sts[1][m][n][i][j].r
-			    - iDM0[1][Mh_AN][kl][i][j]*H_sts[1][m][n][i][j].i
-			+ 2.0*CDM0[2][Mh_AN][kl][i][j]*H_sts[2][m][n][i][j].r
-			- 2.0*CDM0[3][Mh_AN][kl][i][j]*H_sts[2][m][n][i][j].i;
+                              CDM0[0][Mh_AN][kl][i][j]*OpenMX_Stress_HnlStrainRow(&H_sts,0,m,n,i)[j].r
+			    - iDM0[0][Mh_AN][kl][i][j]*OpenMX_Stress_HnlStrainRow(&H_sts,0,m,n,i)[j].i
+                            + CDM0[1][Mh_AN][kl][i][j]*OpenMX_Stress_HnlStrainRow(&H_sts,1,m,n,i)[j].r
+			    - iDM0[1][Mh_AN][kl][i][j]*OpenMX_Stress_HnlStrainRow(&H_sts,1,m,n,i)[j].i
+			+ 2.0*CDM0[2][Mh_AN][kl][i][j]*OpenMX_Stress_HnlStrainRow(&H_sts,2,m,n,i)[j].r
+			- 2.0*CDM0[3][Mh_AN][kl][i][j]*OpenMX_Stress_HnlStrainRow(&H_sts,2,m,n,i)[j].i;
 		    }
 		  }
 		}
@@ -5126,28 +4931,28 @@ void Stress_HNL(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *atomic,
 		for (j=0; j<atomic->species.contracted_orbitals[Qwan]; j++){ /* Qwan  */
 
 		  dEx += 
-                      CDM0[0][Mh_AN][kl ][i][j]*Hx0[0][i][j].r
-		    - iDM0[0][Mh_AN][kl ][i][j]*Hx0[0][i][j].i
-		    + CDM0[1][Mh_AN][kl ][i][j]*Hx0[1][i][j].r
-		    - iDM0[1][Mh_AN][kl ][i][j]*Hx0[1][i][j].i
-		+ 2.0*CDM0[2][Mh_AN][kl ][i][j]*Hx0[2][i][j].r
-                - 2.0*CDM0[3][Mh_AN][kl ][i][j]*Hx0[2][i][j].i;
+                      CDM0[0][Mh_AN][kl ][i][j]*openmx_solver_complex_plane_row(&Hx0,0,i)[j].r
+		    - iDM0[0][Mh_AN][kl ][i][j]*openmx_solver_complex_plane_row(&Hx0,0,i)[j].i
+		    + CDM0[1][Mh_AN][kl ][i][j]*openmx_solver_complex_plane_row(&Hx0,1,i)[j].r
+		    - iDM0[1][Mh_AN][kl ][i][j]*openmx_solver_complex_plane_row(&Hx0,1,i)[j].i
+		+ 2.0*CDM0[2][Mh_AN][kl ][i][j]*openmx_solver_complex_plane_row(&Hx0,2,i)[j].r
+                - 2.0*CDM0[3][Mh_AN][kl ][i][j]*openmx_solver_complex_plane_row(&Hx0,2,i)[j].i;
 
 		  dEy += 
-                      CDM0[0][Mh_AN][kl ][i][j]*Hy0[0][i][j].r
-		    - iDM0[0][Mh_AN][kl ][i][j]*Hy0[0][i][j].i
-		    + CDM0[1][Mh_AN][kl ][i][j]*Hy0[1][i][j].r
-		    - iDM0[1][Mh_AN][kl ][i][j]*Hy0[1][i][j].i
-		+ 2.0*CDM0[2][Mh_AN][kl ][i][j]*Hy0[2][i][j].r
-                - 2.0*CDM0[3][Mh_AN][kl ][i][j]*Hy0[2][i][j].i; 
+                      CDM0[0][Mh_AN][kl ][i][j]*openmx_solver_complex_plane_row(&Hy0,0,i)[j].r
+		    - iDM0[0][Mh_AN][kl ][i][j]*openmx_solver_complex_plane_row(&Hy0,0,i)[j].i
+		    + CDM0[1][Mh_AN][kl ][i][j]*openmx_solver_complex_plane_row(&Hy0,1,i)[j].r
+		    - iDM0[1][Mh_AN][kl ][i][j]*openmx_solver_complex_plane_row(&Hy0,1,i)[j].i
+		+ 2.0*CDM0[2][Mh_AN][kl ][i][j]*openmx_solver_complex_plane_row(&Hy0,2,i)[j].r
+                - 2.0*CDM0[3][Mh_AN][kl ][i][j]*openmx_solver_complex_plane_row(&Hy0,2,i)[j].i;
 
 		  dEz +=
-                      CDM0[0][Mh_AN][kl ][i][j]*Hz0[0][i][j].r
-		    - iDM0[0][Mh_AN][kl ][i][j]*Hz0[0][i][j].i
-		    + CDM0[1][Mh_AN][kl ][i][j]*Hz0[1][i][j].r
-		    - iDM0[1][Mh_AN][kl ][i][j]*Hz0[1][i][j].i
-	        + 2.0*CDM0[2][Mh_AN][kl ][i][j]*Hz0[2][i][j].r
-                - 2.0*CDM0[3][Mh_AN][kl ][i][j]*Hz0[2][i][j].i;
+                      CDM0[0][Mh_AN][kl ][i][j]*openmx_solver_complex_plane_row(&Hz0,0,i)[j].r
+		    - iDM0[0][Mh_AN][kl ][i][j]*openmx_solver_complex_plane_row(&Hz0,0,i)[j].i
+		    + CDM0[1][Mh_AN][kl ][i][j]*openmx_solver_complex_plane_row(&Hz0,1,i)[j].r
+		    - iDM0[1][Mh_AN][kl ][i][j]*openmx_solver_complex_plane_row(&Hz0,1,i)[j].i
+	        + 2.0*CDM0[2][Mh_AN][kl ][i][j]*openmx_solver_complex_plane_row(&Hz0,2,i)[j].r
+                - 2.0*CDM0[3][Mh_AN][kl ][i][j]*openmx_solver_complex_plane_row(&Hz0,2,i)[j].i;
 
 		} /* j */
 	      } /* i */
@@ -5160,12 +4965,12 @@ void Stress_HNL(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *atomic,
 		    for (j=0; j<atomic->species.contracted_orbitals[Qwan]; j++){
 
 		      openmx_solver_real_matrix_row(&stress_threads,OMPID)[(m-1)*3+(n-1)] +=
-			      CDM0[0][Mh_AN][kl][i][j]*H_sts[0][m][n][i][j].r
-		  	    - iDM0[0][Mh_AN][kl][i][j]*H_sts[0][m][n][i][j].i
-		 	    + CDM0[1][Mh_AN][kl][i][j]*H_sts[1][m][n][i][j].r
-			    - iDM0[1][Mh_AN][kl][i][j]*H_sts[1][m][n][i][j].i
-			+ 2.0*CDM0[2][Mh_AN][kl][i][j]*H_sts[2][m][n][i][j].r
-			- 2.0*CDM0[3][Mh_AN][kl][i][j]*H_sts[2][m][n][i][j].i;
+			      CDM0[0][Mh_AN][kl][i][j]*OpenMX_Stress_HnlStrainRow(&H_sts,0,m,n,i)[j].r
+                            - iDM0[0][Mh_AN][kl][i][j]*OpenMX_Stress_HnlStrainRow(&H_sts,0,m,n,i)[j].i
+                            + CDM0[1][Mh_AN][kl][i][j]*OpenMX_Stress_HnlStrainRow(&H_sts,1,m,n,i)[j].r
+			    - iDM0[1][Mh_AN][kl][i][j]*OpenMX_Stress_HnlStrainRow(&H_sts,1,m,n,i)[j].i
+			+ 2.0*CDM0[2][Mh_AN][kl][i][j]*OpenMX_Stress_HnlStrainRow(&H_sts,2,m,n,i)[j].r
+			- 2.0*CDM0[3][Mh_AN][kl][i][j]*OpenMX_Stress_HnlStrainRow(&H_sts,2,m,n,i)[j].i;
 		    }
 		  }
 		}
@@ -5173,7 +4978,7 @@ void Stress_HNL(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *atomic,
 
               /* call dHNL */
 
-              dHNL(atomic, 0,Mc_AN,q_AN,h_AN,DS_NL,Hx1,Hy1,Hz1,H_sts, electronic);
+              dHNL(atomic, 0,Mc_AN,q_AN,h_AN,DS_NL,&Hx1,&Hy1,&Hz1,&H_sts, electronic);
        	      kl1 = RMI1[Mc_AN][q_AN][h_AN];
 
               /* for forces */ 
@@ -5182,28 +4987,28 @@ void Stress_HNL(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *atomic,
 		for (j=0; j<atomic->species.contracted_orbitals[Hwan]; j++){ /* Hwan */
 
 		  dEx += 
-		      CDM0[0][Mq_AN][kl1][i][j]*Hx1[0][i][j].r
-		    - iDM0[0][Mq_AN][kl1][i][j]*Hx1[0][i][j].i
-		    + CDM0[1][Mq_AN][kl1][i][j]*Hx1[1][i][j].r
-		    - iDM0[1][Mq_AN][kl1][i][j]*Hx1[1][i][j].i
-		+ 2.0*CDM0[2][Mq_AN][kl1][i][j]*Hx1[2][i][j].r
-		- 2.0*CDM0[3][Mq_AN][kl1][i][j]*Hx1[2][i][j].i;
+		      CDM0[0][Mq_AN][kl1][i][j]*openmx_solver_complex_plane_row(&Hx1,0,i)[j].r
+		    - iDM0[0][Mq_AN][kl1][i][j]*openmx_solver_complex_plane_row(&Hx1,0,i)[j].i
+		    + CDM0[1][Mq_AN][kl1][i][j]*openmx_solver_complex_plane_row(&Hx1,1,i)[j].r
+		    - iDM0[1][Mq_AN][kl1][i][j]*openmx_solver_complex_plane_row(&Hx1,1,i)[j].i
+		+ 2.0*CDM0[2][Mq_AN][kl1][i][j]*openmx_solver_complex_plane_row(&Hx1,2,i)[j].r
+		- 2.0*CDM0[3][Mq_AN][kl1][i][j]*openmx_solver_complex_plane_row(&Hx1,2,i)[j].i;
 
 		  dEy += 
-                      CDM0[0][Mq_AN][kl1][i][j]*Hy1[0][i][j].r
-		    - iDM0[0][Mq_AN][kl1][i][j]*Hy1[0][i][j].i
-		    + CDM0[1][Mq_AN][kl1][i][j]*Hy1[1][i][j].r
-		    - iDM0[1][Mq_AN][kl1][i][j]*Hy1[1][i][j].i
-	        + 2.0*CDM0[2][Mq_AN][kl1][i][j]*Hy1[2][i][j].r
-	        - 2.0*CDM0[3][Mq_AN][kl1][i][j]*Hy1[2][i][j].i; 
+                      CDM0[0][Mq_AN][kl1][i][j]*openmx_solver_complex_plane_row(&Hy1,0,i)[j].r
+		    - iDM0[0][Mq_AN][kl1][i][j]*openmx_solver_complex_plane_row(&Hy1,0,i)[j].i
+		    + CDM0[1][Mq_AN][kl1][i][j]*openmx_solver_complex_plane_row(&Hy1,1,i)[j].r
+		    - iDM0[1][Mq_AN][kl1][i][j]*openmx_solver_complex_plane_row(&Hy1,1,i)[j].i
+	        + 2.0*CDM0[2][Mq_AN][kl1][i][j]*openmx_solver_complex_plane_row(&Hy1,2,i)[j].r
+	        - 2.0*CDM0[3][Mq_AN][kl1][i][j]*openmx_solver_complex_plane_row(&Hy1,2,i)[j].i;
 
 		  dEz +=
-                      CDM0[0][Mq_AN][kl1][i][j]*Hz1[0][i][j].r
-		    - iDM0[0][Mq_AN][kl1][i][j]*Hz1[0][i][j].i
-		    + CDM0[1][Mq_AN][kl1][i][j]*Hz1[1][i][j].r
-		    - iDM0[1][Mq_AN][kl1][i][j]*Hz1[1][i][j].i
-	        + 2.0*CDM0[2][Mq_AN][kl1][i][j]*Hz1[2][i][j].r
-		- 2.0*CDM0[3][Mq_AN][kl1][i][j]*Hz1[2][i][j].i;
+                      CDM0[0][Mq_AN][kl1][i][j]*openmx_solver_complex_plane_row(&Hz1,0,i)[j].r
+		    - iDM0[0][Mq_AN][kl1][i][j]*openmx_solver_complex_plane_row(&Hz1,0,i)[j].i
+		    + CDM0[1][Mq_AN][kl1][i][j]*openmx_solver_complex_plane_row(&Hz1,1,i)[j].r
+		    - iDM0[1][Mq_AN][kl1][i][j]*openmx_solver_complex_plane_row(&Hz1,1,i)[j].i
+	        + 2.0*CDM0[2][Mq_AN][kl1][i][j]*openmx_solver_complex_plane_row(&Hz1,2,i)[j].r
+		- 2.0*CDM0[3][Mq_AN][kl1][i][j]*openmx_solver_complex_plane_row(&Hz1,2,i)[j].i;
 
 		} /* j */
 	      } /* i */
@@ -5216,12 +5021,12 @@ void Stress_HNL(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *atomic,
 		    for (j=0; j<atomic->species.contracted_orbitals[Hwan]; j++){ /* Hwan */
 
 		      openmx_solver_real_matrix_row(&stress_threads,OMPID)[(m-1)*3+(n-1)] +=
-			      CDM0[0][Mq_AN][kl1][i][j]*H_sts[0][m][n][i][j].r
-			    - iDM0[0][Mq_AN][kl1][i][j]*H_sts[0][m][n][i][j].i
-			    + CDM0[1][Mq_AN][kl1][i][j]*H_sts[1][m][n][i][j].r
-			    - iDM0[1][Mq_AN][kl1][i][j]*H_sts[1][m][n][i][j].i
-			+ 2.0*CDM0[2][Mq_AN][kl1][i][j]*H_sts[2][m][n][i][j].r
-			- 2.0*CDM0[3][Mq_AN][kl1][i][j]*H_sts[2][m][n][i][j].i;
+			      CDM0[0][Mq_AN][kl1][i][j]*OpenMX_Stress_HnlStrainRow(&H_sts,0,m,n,i)[j].r
+			    - iDM0[0][Mq_AN][kl1][i][j]*OpenMX_Stress_HnlStrainRow(&H_sts,0,m,n,i)[j].i
+			    + CDM0[1][Mq_AN][kl1][i][j]*OpenMX_Stress_HnlStrainRow(&H_sts,1,m,n,i)[j].r
+			    - iDM0[1][Mq_AN][kl1][i][j]*OpenMX_Stress_HnlStrainRow(&H_sts,1,m,n,i)[j].i
+			+ 2.0*CDM0[2][Mq_AN][kl1][i][j]*OpenMX_Stress_HnlStrainRow(&H_sts,2,m,n,i)[j].r
+			- 2.0*CDM0[3][Mq_AN][kl1][i][j]*OpenMX_Stress_HnlStrainRow(&H_sts,2,m,n,i)[j].i;
 
 		    } /* j */
 		  } /* i */
@@ -5249,68 +5054,6 @@ void Stress_HNL(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *atomic,
     } /* Mc_AN */
 
     /* freeing of array */
-
-    for (i=0; i<3; i++){
-      for (j=0; j<List_YOUSO[7]; j++){
-	free(Hx0[i][j]);
-      }
-      free(Hx0[i]);
-    }
-    free(Hx0);
-
-    for (i=0; i<3; i++){
-      for (j=0; j<List_YOUSO[7]; j++){
-	free(Hy0[i][j]);
-      }
-      free(Hy0[i]);
-    }
-    free(Hy0);
-
-    for (i=0; i<3; i++){
-      for (j=0; j<List_YOUSO[7]; j++){
-	free(Hz0[i][j]);
-      }
-      free(Hz0[i]);
-    }
-    free(Hz0);
-
-    for (i=0; i<3; i++){
-      for (j=0; j<List_YOUSO[7]; j++){
-	free(Hx1[i][j]);
-      }
-      free(Hx1[i]);
-    }
-    free(Hx1);
-
-    for (i=0; i<3; i++){
-      for (j=0; j<List_YOUSO[7]; j++){
-	free(Hy1[i][j]);
-      }
-      free(Hy1[i]);
-    }
-    free(Hy1);
-
-    for (i=0; i<3; i++){
-      for (j=0; j<List_YOUSO[7]; j++){
-	free(Hz1[i][j]);
-      }
-      free(Hz1[i]);
-    }
-    free(Hz1);
-
-    for (i=0; i<3; i++){
-      for (j=0; j<4; j++){
-	for (k=0; k<4; k++){
-	  for (m=0; m<List_YOUSO[7]; m++){
-	    free(H_sts[i][j][k][m]);
-	  }
-	  free(H_sts[i][j][k]);
-	}
-	free(H_sts[i][j]);
-      }
-      free(H_sts[i]);
-    }
-    free(H_sts);
 
   } /* #pragma omp parallel */
 
@@ -5372,23 +5115,6 @@ void Stress_HNL(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *atomic,
   /***********************************
             freeing of arrays 
   ************************************/
-
-  free(Indicator);
-
-  for (ID=0; ID<numprocs; ID++){
-    free(S_array[ID]);
-  }
-  free(S_array);
-
-  for (ID=0; ID<numprocs; ID++){
-    free(R_array[ID]);
-  }
-  free(R_array);
-
-
-
-
-
 
   OpenMX_TransferEnd(&projector_transfer);
 }
@@ -6085,8 +5811,8 @@ void dHVNA(const OpenMXVnaMatrixViews *vna, int where_flag, int Mc_AN, int h_AN,
 void dHNL(const OpenMXAtomicViews *atomic, int where_flag,
           int Mc_AN, int h_AN, int q_AN,
           double ******DS_NL1,
-          dcomplex ***Hx, dcomplex ***Hy, dcomplex ***Hz,
-          dcomplex *****H_sts, const OpenMXElectronicViews *electronic)
+          const OpenMXSolverComplexTensor *Hx,const OpenMXSolverComplexTensor *Hy,
+          const OpenMXSolverComplexTensor *Hz,const OpenMXSolverComplexTensor *H_sts, const OpenMXElectronicViews *electronic)
 {
   double *****HNL=electronic->HNL;
   double *****iHNL=electronic->iHNL;
@@ -6129,9 +5855,9 @@ void dHNL(const OpenMXAtomicViews *atomic, int where_flag,
   for (so=0; so<3; so++){
     for (i=0; i<List_YOUSO[7]; i++){
       for (j=0; j<List_YOUSO[7]; j++){
-	Hx[so][i][j] = Complex(0.0,0.0);
-	Hy[so][i][j] = Complex(0.0,0.0);
-	Hz[so][i][j] = Complex(0.0,0.0);
+	openmx_solver_complex_plane_row(Hx,so,i)[j] = Complex(0.0,0.0);
+	openmx_solver_complex_plane_row(Hy,so,i)[j] = Complex(0.0,0.0);
+	openmx_solver_complex_plane_row(Hz,so,i)[j] = Complex(0.0,0.0);
       }
     }
   }
@@ -6141,7 +5867,7 @@ void dHNL(const OpenMXAtomicViews *atomic, int where_flag,
       for (j=0; j<4; j++){
 	for (m=0; m<List_YOUSO[7]; m++){
 	  for (n=0; n<List_YOUSO[7]; n++){
-	    H_sts[so][i][j][m][n] = Complex(0.0,0.0);
+	    OpenMX_Stress_HnlStrainRow(H_sts,so,i,j,m)[n] = Complex(0.0,0.0);
 	  }
 	}
       }
@@ -6201,39 +5927,39 @@ void dHNL(const OpenMXAtomicViews *atomic, int where_flag,
 
             /* for forces */
 
-	    Hx[0][m][n].r += sumx;
-	    Hy[0][m][n].r += sumy;
-	    Hz[0][m][n].r += sumz;
+	    openmx_solver_complex_plane_row(Hx,0,m)[n].r += sumx;
+	    openmx_solver_complex_plane_row(Hy,0,m)[n].r += sumy;
+	    openmx_solver_complex_plane_row(Hz,0,m)[n].r += sumz;
 
-	    Hx[1][m][n].r += sumx;
-	    Hy[1][m][n].r += sumy;
-	    Hz[1][m][n].r += sumz;
+	    openmx_solver_complex_plane_row(Hx,1,m)[n].r += sumx;
+	    openmx_solver_complex_plane_row(Hy,1,m)[n].r += sumy;
+	    openmx_solver_complex_plane_row(Hz,1,m)[n].r += sumz;
 
             /* for stress calculation */ 
 
-	    H_sts[0][1][1][m][n].r += sumx*tx;
-	    H_sts[0][1][2][m][n].r += sumx*ty;
-	    H_sts[0][1][3][m][n].r += sumx*tz;
+	    OpenMX_Stress_HnlStrainRow(H_sts,0,1,1,m)[n].r += sumx*tx;
+	    OpenMX_Stress_HnlStrainRow(H_sts,0,1,2,m)[n].r += sumx*ty;
+	    OpenMX_Stress_HnlStrainRow(H_sts,0,1,3,m)[n].r += sumx*tz;
 
-	    H_sts[0][2][1][m][n].r += sumy*tx;
-	    H_sts[0][2][2][m][n].r += sumy*ty;
-	    H_sts[0][2][3][m][n].r += sumy*tz;
+	    OpenMX_Stress_HnlStrainRow(H_sts,0,2,1,m)[n].r += sumy*tx;
+	    OpenMX_Stress_HnlStrainRow(H_sts,0,2,2,m)[n].r += sumy*ty;
+	    OpenMX_Stress_HnlStrainRow(H_sts,0,2,3,m)[n].r += sumy*tz;
 
-	    H_sts[0][3][1][m][n].r += sumz*tx;
-	    H_sts[0][3][2][m][n].r += sumz*ty;
-	    H_sts[0][3][3][m][n].r += sumz*tz;
+	    OpenMX_Stress_HnlStrainRow(H_sts,0,3,1,m)[n].r += sumz*tx;
+	    OpenMX_Stress_HnlStrainRow(H_sts,0,3,2,m)[n].r += sumz*ty;
+	    OpenMX_Stress_HnlStrainRow(H_sts,0,3,3,m)[n].r += sumz*tz;
 
-	    H_sts[1][1][1][m][n].r += sumx*tx;
-	    H_sts[1][1][2][m][n].r += sumx*ty;
-	    H_sts[1][1][3][m][n].r += sumx*tz;
+	    OpenMX_Stress_HnlStrainRow(H_sts,1,1,1,m)[n].r += sumx*tx;
+	    OpenMX_Stress_HnlStrainRow(H_sts,1,1,2,m)[n].r += sumx*ty;
+	    OpenMX_Stress_HnlStrainRow(H_sts,1,1,3,m)[n].r += sumx*tz;
 
-	    H_sts[1][2][1][m][n].r += sumy*tx;
-	    H_sts[1][2][2][m][n].r += sumy*ty;
-	    H_sts[1][2][3][m][n].r += sumy*tz;
+	    OpenMX_Stress_HnlStrainRow(H_sts,1,2,1,m)[n].r += sumy*tx;
+	    OpenMX_Stress_HnlStrainRow(H_sts,1,2,2,m)[n].r += sumy*ty;
+	    OpenMX_Stress_HnlStrainRow(H_sts,1,2,3,m)[n].r += sumy*tz;
 
-	    H_sts[1][3][1][m][n].r += sumz*tx;
-	    H_sts[1][3][2][m][n].r += sumz*ty;
-	    H_sts[1][3][3][m][n].r += sumz*tz;
+	    OpenMX_Stress_HnlStrainRow(H_sts,1,3,1,m)[n].r += sumz*tx;
+	    OpenMX_Stress_HnlStrainRow(H_sts,1,3,2,m)[n].r += sumz*ty;
+	    OpenMX_Stress_HnlStrainRow(H_sts,1,3,3,m)[n].r += sumz*tz;
 
 	  } /* n */
 	} /* m */
@@ -6325,109 +6051,109 @@ void dHNL(const OpenMXAtomicViews *atomic, int where_flag,
 
             /* for forces */  
 
-	    Hx[0][m][n].r += sumx0.r;     /* up-up */
-	    Hy[0][m][n].r += sumy0.r;     /* up-up */
-	    Hz[0][m][n].r += sumz0.r;     /* up-up */
+	    openmx_solver_complex_plane_row(Hx,0,m)[n].r += sumx0.r;     /* up-up */
+	    openmx_solver_complex_plane_row(Hy,0,m)[n].r += sumy0.r;     /* up-up */
+	    openmx_solver_complex_plane_row(Hz,0,m)[n].r += sumz0.r;     /* up-up */
 
-	    Hx[1][m][n].r += sumx1.r;     /* dn-dn */
-	    Hy[1][m][n].r += sumy1.r;     /* dn-dn */
-	    Hz[1][m][n].r += sumz1.r;     /* dn-dn */
+	    openmx_solver_complex_plane_row(Hx,1,m)[n].r += sumx1.r;     /* dn-dn */
+	    openmx_solver_complex_plane_row(Hy,1,m)[n].r += sumy1.r;     /* dn-dn */
+	    openmx_solver_complex_plane_row(Hz,1,m)[n].r += sumz1.r;     /* dn-dn */
 
-	    Hx[2][m][n].r += sumx2.r;     /* up-dn */
-	    Hy[2][m][n].r += sumy2.r;     /* up-dn */
-	    Hz[2][m][n].r += sumz2.r;     /* up-dn */
+	    openmx_solver_complex_plane_row(Hx,2,m)[n].r += sumx2.r;     /* up-dn */
+	    openmx_solver_complex_plane_row(Hy,2,m)[n].r += sumy2.r;     /* up-dn */
+	    openmx_solver_complex_plane_row(Hz,2,m)[n].r += sumz2.r;     /* up-dn */
 
-	    Hx[0][m][n].i += sumx0.i;     /* up-up */
-	    Hy[0][m][n].i += sumy0.i;     /* up-up */
-	    Hz[0][m][n].i += sumz0.i;     /* up-up */
+	    openmx_solver_complex_plane_row(Hx,0,m)[n].i += sumx0.i;     /* up-up */
+	    openmx_solver_complex_plane_row(Hy,0,m)[n].i += sumy0.i;     /* up-up */
+	    openmx_solver_complex_plane_row(Hz,0,m)[n].i += sumz0.i;     /* up-up */
 
-	    Hx[1][m][n].i += sumx1.i;     /* dn-dn */
-	    Hy[1][m][n].i += sumy1.i;     /* dn-dn */
-	    Hz[1][m][n].i += sumz1.i;     /* dn-dn */
+	    openmx_solver_complex_plane_row(Hx,1,m)[n].i += sumx1.i;     /* dn-dn */
+	    openmx_solver_complex_plane_row(Hy,1,m)[n].i += sumy1.i;     /* dn-dn */
+	    openmx_solver_complex_plane_row(Hz,1,m)[n].i += sumz1.i;     /* dn-dn */
 
-	    Hx[2][m][n].i += sumx2.i;     /* up-dn */
-	    Hy[2][m][n].i += sumy2.i;     /* up-dn */
-	    Hz[2][m][n].i += sumz2.i;     /* up-dn */
+	    openmx_solver_complex_plane_row(Hx,2,m)[n].i += sumx2.i;     /* up-dn */
+	    openmx_solver_complex_plane_row(Hy,2,m)[n].i += sumy2.i;     /* up-dn */
+	    openmx_solver_complex_plane_row(Hz,2,m)[n].i += sumz2.i;     /* up-dn */
 
             /* for stress calculation */ 
 
             /* up-up, real */
-	    H_sts[0][1][1][m][n].r += sumx0.r*tx;
-	    H_sts[0][1][2][m][n].r += sumx0.r*ty;
-	    H_sts[0][1][3][m][n].r += sumx0.r*tz;
+	    OpenMX_Stress_HnlStrainRow(H_sts,0,1,1,m)[n].r += sumx0.r*tx;
+	    OpenMX_Stress_HnlStrainRow(H_sts,0,1,2,m)[n].r += sumx0.r*ty;
+	    OpenMX_Stress_HnlStrainRow(H_sts,0,1,3,m)[n].r += sumx0.r*tz;
 
-	    H_sts[0][2][1][m][n].r += sumy0.r*tx;
-	    H_sts[0][2][2][m][n].r += sumy0.r*ty;
-	    H_sts[0][2][3][m][n].r += sumy0.r*tz;
+	    OpenMX_Stress_HnlStrainRow(H_sts,0,2,1,m)[n].r += sumy0.r*tx;
+	    OpenMX_Stress_HnlStrainRow(H_sts,0,2,2,m)[n].r += sumy0.r*ty;
+	    OpenMX_Stress_HnlStrainRow(H_sts,0,2,3,m)[n].r += sumy0.r*tz;
 
-	    H_sts[0][3][1][m][n].r += sumz0.r*tx;
-	    H_sts[0][3][2][m][n].r += sumz0.r*ty;
-	    H_sts[0][3][3][m][n].r += sumz0.r*tz;
+	    OpenMX_Stress_HnlStrainRow(H_sts,0,3,1,m)[n].r += sumz0.r*tx;
+	    OpenMX_Stress_HnlStrainRow(H_sts,0,3,2,m)[n].r += sumz0.r*ty;
+	    OpenMX_Stress_HnlStrainRow(H_sts,0,3,3,m)[n].r += sumz0.r*tz;
 
             /* dn-dn, real */
-	    H_sts[1][1][1][m][n].r += sumx1.r*tx;
-	    H_sts[1][1][2][m][n].r += sumx1.r*ty;
-	    H_sts[1][1][3][m][n].r += sumx1.r*tz;
+	    OpenMX_Stress_HnlStrainRow(H_sts,1,1,1,m)[n].r += sumx1.r*tx;
+	    OpenMX_Stress_HnlStrainRow(H_sts,1,1,2,m)[n].r += sumx1.r*ty;
+	    OpenMX_Stress_HnlStrainRow(H_sts,1,1,3,m)[n].r += sumx1.r*tz;
 
-	    H_sts[1][2][1][m][n].r += sumy1.r*tx;
-	    H_sts[1][2][2][m][n].r += sumy1.r*ty;
-	    H_sts[1][2][3][m][n].r += sumy1.r*tz;
+	    OpenMX_Stress_HnlStrainRow(H_sts,1,2,1,m)[n].r += sumy1.r*tx;
+	    OpenMX_Stress_HnlStrainRow(H_sts,1,2,2,m)[n].r += sumy1.r*ty;
+	    OpenMX_Stress_HnlStrainRow(H_sts,1,2,3,m)[n].r += sumy1.r*tz;
 
-	    H_sts[1][3][1][m][n].r += sumz1.r*tx;
-	    H_sts[1][3][2][m][n].r += sumz1.r*ty;
-	    H_sts[1][3][3][m][n].r += sumz1.r*tz;
+	    OpenMX_Stress_HnlStrainRow(H_sts,1,3,1,m)[n].r += sumz1.r*tx;
+	    OpenMX_Stress_HnlStrainRow(H_sts,1,3,2,m)[n].r += sumz1.r*ty;
+	    OpenMX_Stress_HnlStrainRow(H_sts,1,3,3,m)[n].r += sumz1.r*tz;
 
             /* up-dn, real */
-	    H_sts[2][1][1][m][n].r += sumx1.r*tx;
-	    H_sts[2][1][2][m][n].r += sumx1.r*ty;
-	    H_sts[2][1][3][m][n].r += sumx1.r*tz;
+	    OpenMX_Stress_HnlStrainRow(H_sts,2,1,1,m)[n].r += sumx1.r*tx;
+	    OpenMX_Stress_HnlStrainRow(H_sts,2,1,2,m)[n].r += sumx1.r*ty;
+	    OpenMX_Stress_HnlStrainRow(H_sts,2,1,3,m)[n].r += sumx1.r*tz;
 
-	    H_sts[2][2][1][m][n].r += sumy1.r*tx;
-	    H_sts[2][2][2][m][n].r += sumy1.r*ty;
-	    H_sts[2][2][3][m][n].r += sumy1.r*tz;
+	    OpenMX_Stress_HnlStrainRow(H_sts,2,2,1,m)[n].r += sumy1.r*tx;
+	    OpenMX_Stress_HnlStrainRow(H_sts,2,2,2,m)[n].r += sumy1.r*ty;
+	    OpenMX_Stress_HnlStrainRow(H_sts,2,2,3,m)[n].r += sumy1.r*tz;
 
-	    H_sts[2][3][1][m][n].r += sumz1.r*tx;
-	    H_sts[2][3][2][m][n].r += sumz1.r*ty;
-	    H_sts[2][3][3][m][n].r += sumz1.r*tz;
+	    OpenMX_Stress_HnlStrainRow(H_sts,2,3,1,m)[n].r += sumz1.r*tx;
+	    OpenMX_Stress_HnlStrainRow(H_sts,2,3,2,m)[n].r += sumz1.r*ty;
+	    OpenMX_Stress_HnlStrainRow(H_sts,2,3,3,m)[n].r += sumz1.r*tz;
 
             /* up-up, imaginary */
-	    H_sts[0][1][1][m][n].r += sumx0.i*tx;
-	    H_sts[0][1][2][m][n].r += sumx0.i*ty;
-	    H_sts[0][1][3][m][n].r += sumx0.i*tz;
+	    OpenMX_Stress_HnlStrainRow(H_sts,0,1,1,m)[n].r += sumx0.i*tx;
+	    OpenMX_Stress_HnlStrainRow(H_sts,0,1,2,m)[n].r += sumx0.i*ty;
+	    OpenMX_Stress_HnlStrainRow(H_sts,0,1,3,m)[n].r += sumx0.i*tz;
 
-	    H_sts[0][2][1][m][n].r += sumy0.i*tx;
-	    H_sts[0][2][2][m][n].r += sumy0.i*ty;
-	    H_sts[0][2][3][m][n].r += sumy0.i*tz;
+	    OpenMX_Stress_HnlStrainRow(H_sts,0,2,1,m)[n].r += sumy0.i*tx;
+	    OpenMX_Stress_HnlStrainRow(H_sts,0,2,2,m)[n].r += sumy0.i*ty;
+	    OpenMX_Stress_HnlStrainRow(H_sts,0,2,3,m)[n].r += sumy0.i*tz;
 
-	    H_sts[0][3][1][m][n].r += sumz0.i*tx;
-	    H_sts[0][3][2][m][n].r += sumz0.i*ty;
-	    H_sts[0][3][3][m][n].r += sumz0.i*tz;
+	    OpenMX_Stress_HnlStrainRow(H_sts,0,3,1,m)[n].r += sumz0.i*tx;
+	    OpenMX_Stress_HnlStrainRow(H_sts,0,3,2,m)[n].r += sumz0.i*ty;
+	    OpenMX_Stress_HnlStrainRow(H_sts,0,3,3,m)[n].r += sumz0.i*tz;
 
             /* dn-dn, imaginary */
-	    H_sts[1][1][1][m][n].r += sumx1.i*tx;
-	    H_sts[1][1][2][m][n].r += sumx1.i*ty;
-	    H_sts[1][1][3][m][n].r += sumx1.i*tz;
+	    OpenMX_Stress_HnlStrainRow(H_sts,1,1,1,m)[n].r += sumx1.i*tx;
+	    OpenMX_Stress_HnlStrainRow(H_sts,1,1,2,m)[n].r += sumx1.i*ty;
+	    OpenMX_Stress_HnlStrainRow(H_sts,1,1,3,m)[n].r += sumx1.i*tz;
 
-	    H_sts[1][2][1][m][n].r += sumy1.i*tx;
-	    H_sts[1][2][2][m][n].r += sumy1.i*ty;
-	    H_sts[1][2][3][m][n].r += sumy1.i*tz;
+	    OpenMX_Stress_HnlStrainRow(H_sts,1,2,1,m)[n].r += sumy1.i*tx;
+	    OpenMX_Stress_HnlStrainRow(H_sts,1,2,2,m)[n].r += sumy1.i*ty;
+	    OpenMX_Stress_HnlStrainRow(H_sts,1,2,3,m)[n].r += sumy1.i*tz;
 
-	    H_sts[1][3][1][m][n].r += sumz1.i*tx;
-	    H_sts[1][3][2][m][n].r += sumz1.i*ty;
-	    H_sts[1][3][3][m][n].r += sumz1.i*tz;
+	    OpenMX_Stress_HnlStrainRow(H_sts,1,3,1,m)[n].r += sumz1.i*tx;
+	    OpenMX_Stress_HnlStrainRow(H_sts,1,3,2,m)[n].r += sumz1.i*ty;
+	    OpenMX_Stress_HnlStrainRow(H_sts,1,3,3,m)[n].r += sumz1.i*tz;
 
             /* up-dn, imaginary */
-	    H_sts[2][1][1][m][n].r += sumx1.i*tx;
-	    H_sts[2][1][2][m][n].r += sumx1.i*ty;
-	    H_sts[2][1][3][m][n].r += sumx1.i*tz;
+	    OpenMX_Stress_HnlStrainRow(H_sts,2,1,1,m)[n].r += sumx1.i*tx;
+	    OpenMX_Stress_HnlStrainRow(H_sts,2,1,2,m)[n].r += sumx1.i*ty;
+	    OpenMX_Stress_HnlStrainRow(H_sts,2,1,3,m)[n].r += sumx1.i*tz;
 
-	    H_sts[2][2][1][m][n].r += sumy1.i*tx;
-	    H_sts[2][2][2][m][n].r += sumy1.i*ty;
-	    H_sts[2][2][3][m][n].r += sumy1.i*tz;
+	    OpenMX_Stress_HnlStrainRow(H_sts,2,2,1,m)[n].r += sumy1.i*tx;
+	    OpenMX_Stress_HnlStrainRow(H_sts,2,2,2,m)[n].r += sumy1.i*ty;
+	    OpenMX_Stress_HnlStrainRow(H_sts,2,2,3,m)[n].r += sumy1.i*tz;
 
-	    H_sts[2][3][1][m][n].r += sumz1.i*tx;
-	    H_sts[2][3][2][m][n].r += sumz1.i*ty;
-	    H_sts[2][3][3][m][n].r += sumz1.i*tz;
+	    OpenMX_Stress_HnlStrainRow(H_sts,2,3,1,m)[n].r += sumz1.i*tx;
+	    OpenMX_Stress_HnlStrainRow(H_sts,2,3,2,m)[n].r += sumz1.i*ty;
+	    OpenMX_Stress_HnlStrainRow(H_sts,2,3,3,m)[n].r += sumz1.i*tz;
 
 	  }
 	}
@@ -6448,23 +6174,23 @@ void dHNL(const OpenMXAtomicViews *atomic, int where_flag,
       for (m=0; m<ian; m++){
         for (n=m; n<jan; n++){
 
-          tmpx = Hx[0][m][n].r + Hx[0][n][m].r;
-          Hx[0][m][n].r = tmpx; 
-          Hx[0][n][m].r = tmpx;
-          Hx[1][m][n].r = tmpx; 
-          Hx[1][n][m].r = tmpx;
+          tmpx = openmx_solver_complex_plane_row(Hx,0,m)[n].r + openmx_solver_complex_plane_row(Hx,0,n)[m].r;
+          openmx_solver_complex_plane_row(Hx,0,m)[n].r = tmpx;
+          openmx_solver_complex_plane_row(Hx,0,n)[m].r = tmpx;
+          openmx_solver_complex_plane_row(Hx,1,m)[n].r = tmpx;
+          openmx_solver_complex_plane_row(Hx,1,n)[m].r = tmpx;
 
-          tmpy = Hy[0][m][n].r + Hy[0][n][m].r;
-          Hy[0][m][n].r = tmpy; 
-          Hy[0][n][m].r = tmpy;
-          Hy[1][m][n].r = tmpy; 
-          Hy[1][n][m].r = tmpy;
+          tmpy = openmx_solver_complex_plane_row(Hy,0,m)[n].r + openmx_solver_complex_plane_row(Hy,0,n)[m].r;
+          openmx_solver_complex_plane_row(Hy,0,m)[n].r = tmpy;
+          openmx_solver_complex_plane_row(Hy,0,n)[m].r = tmpy;
+          openmx_solver_complex_plane_row(Hy,1,m)[n].r = tmpy;
+          openmx_solver_complex_plane_row(Hy,1,n)[m].r = tmpy;
 
-          tmpz = Hz[0][m][n].r + Hz[0][n][m].r;
-          Hz[0][m][n].r = tmpz; 
-          Hz[0][n][m].r = tmpz;
-          Hz[1][m][n].r = tmpz; 
-          Hz[1][n][m].r = tmpz;
+          tmpz = openmx_solver_complex_plane_row(Hz,0,m)[n].r + openmx_solver_complex_plane_row(Hz,0,n)[m].r;
+          openmx_solver_complex_plane_row(Hz,0,m)[n].r = tmpz;
+          openmx_solver_complex_plane_row(Hz,0,n)[m].r = tmpz;
+          openmx_solver_complex_plane_row(Hz,1,m)[n].r = tmpz;
+          openmx_solver_complex_plane_row(Hz,1,n)[m].r = tmpz;
         }
       }
 
@@ -6475,13 +6201,13 @@ void dHNL(const OpenMXAtomicViews *atomic, int where_flag,
 	  for (m=0; m<ian; m++){
 	    for (n=m; n<jan; n++){
 
-              tmp = H_sts[0][i][j][m][n].r + H_sts[0][i][j][n][m].r;
-              H_sts[0][i][j][m][n].r = tmp;
-              H_sts[0][i][j][n][m].r = tmp;
+              tmp = OpenMX_Stress_HnlStrainRow(H_sts,0,i,j,m)[n].r + OpenMX_Stress_HnlStrainRow(H_sts,0,i,j,n)[m].r;
+              OpenMX_Stress_HnlStrainRow(H_sts,0,i,j,m)[n].r = tmp;
+              OpenMX_Stress_HnlStrainRow(H_sts,0,i,j,n)[m].r = tmp;
 
-              tmp = H_sts[1][i][j][m][n].r + H_sts[1][i][j][n][m].r;
-              H_sts[1][i][j][m][n].r = tmp;
-              H_sts[1][i][j][n][m].r = tmp;
+              tmp = OpenMX_Stress_HnlStrainRow(H_sts,1,i,j,m)[n].r + OpenMX_Stress_HnlStrainRow(H_sts,1,i,j,n)[m].r;
+              OpenMX_Stress_HnlStrainRow(H_sts,1,i,j,m)[n].r = tmp;
+              OpenMX_Stress_HnlStrainRow(H_sts,1,i,j,n)[m].r = tmp;
 	    }
 	  }
         }
@@ -6547,39 +6273,39 @@ void dHNL(const OpenMXAtomicViews *atomic, int where_flag,
 
             /* for forces */
 
-	    Hx[0][m][n].r += sumx;
-	    Hy[0][m][n].r += sumy;
-	    Hz[0][m][n].r += sumz;
+	    openmx_solver_complex_plane_row(Hx,0,m)[n].r += sumx;
+	    openmx_solver_complex_plane_row(Hy,0,m)[n].r += sumy;
+	    openmx_solver_complex_plane_row(Hz,0,m)[n].r += sumz;
 
-	    Hx[1][m][n].r += sumx;
-	    Hy[1][m][n].r += sumy;
-	    Hz[1][m][n].r += sumz;
+	    openmx_solver_complex_plane_row(Hx,1,m)[n].r += sumx;
+	    openmx_solver_complex_plane_row(Hy,1,m)[n].r += sumy;
+	    openmx_solver_complex_plane_row(Hz,1,m)[n].r += sumz;
 
             /* for stress */
 
-	    H_sts[0][1][1][m][n].r += sumx*tx;
-	    H_sts[0][1][2][m][n].r += sumx*ty;
-	    H_sts[0][1][3][m][n].r += sumx*tz;
+	    OpenMX_Stress_HnlStrainRow(H_sts,0,1,1,m)[n].r += sumx*tx;
+	    OpenMX_Stress_HnlStrainRow(H_sts,0,1,2,m)[n].r += sumx*ty;
+	    OpenMX_Stress_HnlStrainRow(H_sts,0,1,3,m)[n].r += sumx*tz;
 
-	    H_sts[0][2][1][m][n].r += sumy*tx;
-	    H_sts[0][2][2][m][n].r += sumy*ty;
-	    H_sts[0][2][3][m][n].r += sumy*tz;
+	    OpenMX_Stress_HnlStrainRow(H_sts,0,2,1,m)[n].r += sumy*tx;
+	    OpenMX_Stress_HnlStrainRow(H_sts,0,2,2,m)[n].r += sumy*ty;
+	    OpenMX_Stress_HnlStrainRow(H_sts,0,2,3,m)[n].r += sumy*tz;
 
-	    H_sts[0][3][1][m][n].r += sumz*tx;
-	    H_sts[0][3][2][m][n].r += sumz*ty;
-	    H_sts[0][3][3][m][n].r += sumz*tz;
+	    OpenMX_Stress_HnlStrainRow(H_sts,0,3,1,m)[n].r += sumz*tx;
+	    OpenMX_Stress_HnlStrainRow(H_sts,0,3,2,m)[n].r += sumz*ty;
+	    OpenMX_Stress_HnlStrainRow(H_sts,0,3,3,m)[n].r += sumz*tz;
 
-	    H_sts[1][1][1][m][n].r += sumx*tx;
-	    H_sts[1][1][2][m][n].r += sumx*ty;
-	    H_sts[1][1][3][m][n].r += sumx*tz;
+	    OpenMX_Stress_HnlStrainRow(H_sts,1,1,1,m)[n].r += sumx*tx;
+	    OpenMX_Stress_HnlStrainRow(H_sts,1,1,2,m)[n].r += sumx*ty;
+	    OpenMX_Stress_HnlStrainRow(H_sts,1,1,3,m)[n].r += sumx*tz;
 
-	    H_sts[1][2][1][m][n].r += sumy*tx;
-	    H_sts[1][2][2][m][n].r += sumy*ty;
-	    H_sts[1][2][3][m][n].r += sumy*tz;
+	    OpenMX_Stress_HnlStrainRow(H_sts,1,2,1,m)[n].r += sumy*tx;
+	    OpenMX_Stress_HnlStrainRow(H_sts,1,2,2,m)[n].r += sumy*ty;
+	    OpenMX_Stress_HnlStrainRow(H_sts,1,2,3,m)[n].r += sumy*tz;
 
-	    H_sts[1][3][1][m][n].r += sumz*tx;
-	    H_sts[1][3][2][m][n].r += sumz*ty;
-	    H_sts[1][3][3][m][n].r += sumz*tz;
+	    OpenMX_Stress_HnlStrainRow(H_sts,1,3,1,m)[n].r += sumz*tx;
+	    OpenMX_Stress_HnlStrainRow(H_sts,1,3,2,m)[n].r += sumz*ty;
+	    OpenMX_Stress_HnlStrainRow(H_sts,1,3,3,m)[n].r += sumz*tz;
 
 	  } /* n */
 	} /* m */
@@ -6643,29 +6369,29 @@ void dHNL(const OpenMXAtomicViews *atomic, int where_flag,
                       DS_NL1);
 	    }
 
-	    Hx[0][m][n].r += sumx0.r;     /* up-up */
-	    Hy[0][m][n].r += sumy0.r;     /* up-up */
-	    Hz[0][m][n].r += sumz0.r;     /* up-up */
+	    openmx_solver_complex_plane_row(Hx,0,m)[n].r += sumx0.r;     /* up-up */
+	    openmx_solver_complex_plane_row(Hy,0,m)[n].r += sumy0.r;     /* up-up */
+	    openmx_solver_complex_plane_row(Hz,0,m)[n].r += sumz0.r;     /* up-up */
 
-	    Hx[1][m][n].r += sumx1.r;     /* dn-dn */
-	    Hy[1][m][n].r += sumy1.r;     /* dn-dn */
-	    Hz[1][m][n].r += sumz1.r;     /* dn-dn */
+	    openmx_solver_complex_plane_row(Hx,1,m)[n].r += sumx1.r;     /* dn-dn */
+	    openmx_solver_complex_plane_row(Hy,1,m)[n].r += sumy1.r;     /* dn-dn */
+	    openmx_solver_complex_plane_row(Hz,1,m)[n].r += sumz1.r;     /* dn-dn */
 
-	    Hx[2][m][n].r += sumx2.r;     /* up-dn */
-	    Hy[2][m][n].r += sumy2.r;     /* up-dn */
-	    Hz[2][m][n].r += sumz2.r;     /* up-dn */
+	    openmx_solver_complex_plane_row(Hx,2,m)[n].r += sumx2.r;     /* up-dn */
+	    openmx_solver_complex_plane_row(Hy,2,m)[n].r += sumy2.r;     /* up-dn */
+	    openmx_solver_complex_plane_row(Hz,2,m)[n].r += sumz2.r;     /* up-dn */
 
-	    Hx[0][m][n].i += sumx0.i;     /* up-up */
-	    Hy[0][m][n].i += sumy0.i;     /* up-up */
-	    Hz[0][m][n].i += sumz0.i;     /* up-up */
+	    openmx_solver_complex_plane_row(Hx,0,m)[n].i += sumx0.i;     /* up-up */
+	    openmx_solver_complex_plane_row(Hy,0,m)[n].i += sumy0.i;     /* up-up */
+	    openmx_solver_complex_plane_row(Hz,0,m)[n].i += sumz0.i;     /* up-up */
 
-	    Hx[1][m][n].i += sumx1.i;     /* dn-dn */
-	    Hy[1][m][n].i += sumy1.i;     /* dn-dn */
-	    Hz[1][m][n].i += sumz1.i;     /* dn-dn */
+	    openmx_solver_complex_plane_row(Hx,1,m)[n].i += sumx1.i;     /* dn-dn */
+	    openmx_solver_complex_plane_row(Hy,1,m)[n].i += sumy1.i;     /* dn-dn */
+	    openmx_solver_complex_plane_row(Hz,1,m)[n].i += sumz1.i;     /* dn-dn */
 
-	    Hx[2][m][n].i += sumx2.i;     /* up-dn */
-	    Hy[2][m][n].i += sumy2.i;     /* up-dn */
-	    Hz[2][m][n].i += sumz2.i;     /* up-dn */
+	    openmx_solver_complex_plane_row(Hx,2,m)[n].i += sumx2.i;     /* up-dn */
+	    openmx_solver_complex_plane_row(Hy,2,m)[n].i += sumy2.i;     /* up-dn */
+	    openmx_solver_complex_plane_row(Hz,2,m)[n].i += sumz2.i;     /* up-dn */
 
 	  }
 	}
@@ -6753,109 +6479,109 @@ void dHNL(const OpenMXAtomicViews *atomic, int where_flag,
 
             /* for forces */ 
 
-	    Hx[0][m][n].r += sumx0.r;     /* up-up */
-	    Hy[0][m][n].r += sumy0.r;     /* up-up */
-	    Hz[0][m][n].r += sumz0.r;     /* up-up */
+	    openmx_solver_complex_plane_row(Hx,0,m)[n].r += sumx0.r;     /* up-up */
+	    openmx_solver_complex_plane_row(Hy,0,m)[n].r += sumy0.r;     /* up-up */
+	    openmx_solver_complex_plane_row(Hz,0,m)[n].r += sumz0.r;     /* up-up */
 
-	    Hx[1][m][n].r += sumx1.r;     /* dn-dn */
-	    Hy[1][m][n].r += sumy1.r;     /* dn-dn */
-	    Hz[1][m][n].r += sumz1.r;     /* dn-dn */
+	    openmx_solver_complex_plane_row(Hx,1,m)[n].r += sumx1.r;     /* dn-dn */
+	    openmx_solver_complex_plane_row(Hy,1,m)[n].r += sumy1.r;     /* dn-dn */
+	    openmx_solver_complex_plane_row(Hz,1,m)[n].r += sumz1.r;     /* dn-dn */
 
-	    Hx[2][m][n].r += sumx2.r;     /* up-dn */
-	    Hy[2][m][n].r += sumy2.r;     /* up-dn */
-	    Hz[2][m][n].r += sumz2.r;     /* up-dn */
+	    openmx_solver_complex_plane_row(Hx,2,m)[n].r += sumx2.r;     /* up-dn */
+	    openmx_solver_complex_plane_row(Hy,2,m)[n].r += sumy2.r;     /* up-dn */
+	    openmx_solver_complex_plane_row(Hz,2,m)[n].r += sumz2.r;     /* up-dn */
 
-	    Hx[0][m][n].i += sumx0.i;     /* up-up */
-	    Hy[0][m][n].i += sumy0.i;     /* up-up */
-	    Hz[0][m][n].i += sumz0.i;     /* up-up */
+	    openmx_solver_complex_plane_row(Hx,0,m)[n].i += sumx0.i;     /* up-up */
+	    openmx_solver_complex_plane_row(Hy,0,m)[n].i += sumy0.i;     /* up-up */
+	    openmx_solver_complex_plane_row(Hz,0,m)[n].i += sumz0.i;     /* up-up */
 
-	    Hx[1][m][n].i += sumx1.i;     /* dn-dn */
-	    Hy[1][m][n].i += sumy1.i;     /* dn-dn */
-	    Hz[1][m][n].i += sumz1.i;     /* dn-dn */
+	    openmx_solver_complex_plane_row(Hx,1,m)[n].i += sumx1.i;     /* dn-dn */
+	    openmx_solver_complex_plane_row(Hy,1,m)[n].i += sumy1.i;     /* dn-dn */
+	    openmx_solver_complex_plane_row(Hz,1,m)[n].i += sumz1.i;     /* dn-dn */
 
-	    Hx[2][m][n].i += sumx2.i;     /* up-dn */
-	    Hy[2][m][n].i += sumy2.i;     /* up-dn */
-	    Hz[2][m][n].i += sumz2.i;     /* up-dn */
+	    openmx_solver_complex_plane_row(Hx,2,m)[n].i += sumx2.i;     /* up-dn */
+	    openmx_solver_complex_plane_row(Hy,2,m)[n].i += sumy2.i;     /* up-dn */
+	    openmx_solver_complex_plane_row(Hz,2,m)[n].i += sumz2.i;     /* up-dn */
 
             /* for stress calculation */ 
 
             /* up-up, real */
-	    H_sts[0][1][1][m][n].r += sumx0.r*tx;
-	    H_sts[0][1][2][m][n].r += sumx0.r*ty;
-	    H_sts[0][1][3][m][n].r += sumx0.r*tz;
+	    OpenMX_Stress_HnlStrainRow(H_sts,0,1,1,m)[n].r += sumx0.r*tx;
+	    OpenMX_Stress_HnlStrainRow(H_sts,0,1,2,m)[n].r += sumx0.r*ty;
+	    OpenMX_Stress_HnlStrainRow(H_sts,0,1,3,m)[n].r += sumx0.r*tz;
 
-	    H_sts[0][2][1][m][n].r += sumy0.r*tx;
-	    H_sts[0][2][2][m][n].r += sumy0.r*ty;
-	    H_sts[0][2][3][m][n].r += sumy0.r*tz;
+	    OpenMX_Stress_HnlStrainRow(H_sts,0,2,1,m)[n].r += sumy0.r*tx;
+	    OpenMX_Stress_HnlStrainRow(H_sts,0,2,2,m)[n].r += sumy0.r*ty;
+	    OpenMX_Stress_HnlStrainRow(H_sts,0,2,3,m)[n].r += sumy0.r*tz;
 
-	    H_sts[0][3][1][m][n].r += sumz0.r*tx;
-	    H_sts[0][3][2][m][n].r += sumz0.r*ty;
-	    H_sts[0][3][3][m][n].r += sumz0.r*tz;
+	    OpenMX_Stress_HnlStrainRow(H_sts,0,3,1,m)[n].r += sumz0.r*tx;
+	    OpenMX_Stress_HnlStrainRow(H_sts,0,3,2,m)[n].r += sumz0.r*ty;
+	    OpenMX_Stress_HnlStrainRow(H_sts,0,3,3,m)[n].r += sumz0.r*tz;
 
             /* dn-dn, real */
-	    H_sts[1][1][1][m][n].r += sumx1.r*tx;
-	    H_sts[1][1][2][m][n].r += sumx1.r*ty;
-	    H_sts[1][1][3][m][n].r += sumx1.r*tz;
+	    OpenMX_Stress_HnlStrainRow(H_sts,1,1,1,m)[n].r += sumx1.r*tx;
+	    OpenMX_Stress_HnlStrainRow(H_sts,1,1,2,m)[n].r += sumx1.r*ty;
+	    OpenMX_Stress_HnlStrainRow(H_sts,1,1,3,m)[n].r += sumx1.r*tz;
 
-	    H_sts[1][2][1][m][n].r += sumy1.r*tx;
-	    H_sts[1][2][2][m][n].r += sumy1.r*ty;
-	    H_sts[1][2][3][m][n].r += sumy1.r*tz;
+	    OpenMX_Stress_HnlStrainRow(H_sts,1,2,1,m)[n].r += sumy1.r*tx;
+	    OpenMX_Stress_HnlStrainRow(H_sts,1,2,2,m)[n].r += sumy1.r*ty;
+	    OpenMX_Stress_HnlStrainRow(H_sts,1,2,3,m)[n].r += sumy1.r*tz;
 
-	    H_sts[1][3][1][m][n].r += sumz1.r*tx;
-	    H_sts[1][3][2][m][n].r += sumz1.r*ty;
-	    H_sts[1][3][3][m][n].r += sumz1.r*tz;
+	    OpenMX_Stress_HnlStrainRow(H_sts,1,3,1,m)[n].r += sumz1.r*tx;
+	    OpenMX_Stress_HnlStrainRow(H_sts,1,3,2,m)[n].r += sumz1.r*ty;
+	    OpenMX_Stress_HnlStrainRow(H_sts,1,3,3,m)[n].r += sumz1.r*tz;
 
             /* up-dn, real */
-	    H_sts[2][1][1][m][n].r += sumx1.r*tx;
-	    H_sts[2][1][2][m][n].r += sumx1.r*ty;
-	    H_sts[2][1][3][m][n].r += sumx1.r*tz;
+	    OpenMX_Stress_HnlStrainRow(H_sts,2,1,1,m)[n].r += sumx1.r*tx;
+	    OpenMX_Stress_HnlStrainRow(H_sts,2,1,2,m)[n].r += sumx1.r*ty;
+	    OpenMX_Stress_HnlStrainRow(H_sts,2,1,3,m)[n].r += sumx1.r*tz;
 
-	    H_sts[2][2][1][m][n].r += sumy1.r*tx;
-	    H_sts[2][2][2][m][n].r += sumy1.r*ty;
-	    H_sts[2][2][3][m][n].r += sumy1.r*tz;
+	    OpenMX_Stress_HnlStrainRow(H_sts,2,2,1,m)[n].r += sumy1.r*tx;
+	    OpenMX_Stress_HnlStrainRow(H_sts,2,2,2,m)[n].r += sumy1.r*ty;
+	    OpenMX_Stress_HnlStrainRow(H_sts,2,2,3,m)[n].r += sumy1.r*tz;
 
-	    H_sts[2][3][1][m][n].r += sumz1.r*tx;
-	    H_sts[2][3][2][m][n].r += sumz1.r*ty;
-	    H_sts[2][3][3][m][n].r += sumz1.r*tz;
+	    OpenMX_Stress_HnlStrainRow(H_sts,2,3,1,m)[n].r += sumz1.r*tx;
+	    OpenMX_Stress_HnlStrainRow(H_sts,2,3,2,m)[n].r += sumz1.r*ty;
+	    OpenMX_Stress_HnlStrainRow(H_sts,2,3,3,m)[n].r += sumz1.r*tz;
 
             /* up-up, imaginary */
-	    H_sts[0][1][1][m][n].r += sumx0.i*tx;
-	    H_sts[0][1][2][m][n].r += sumx0.i*ty;
-	    H_sts[0][1][3][m][n].r += sumx0.i*tz;
+	    OpenMX_Stress_HnlStrainRow(H_sts,0,1,1,m)[n].r += sumx0.i*tx;
+	    OpenMX_Stress_HnlStrainRow(H_sts,0,1,2,m)[n].r += sumx0.i*ty;
+	    OpenMX_Stress_HnlStrainRow(H_sts,0,1,3,m)[n].r += sumx0.i*tz;
 
-	    H_sts[0][2][1][m][n].r += sumy0.i*tx;
-	    H_sts[0][2][2][m][n].r += sumy0.i*ty;
-	    H_sts[0][2][3][m][n].r += sumy0.i*tz;
+	    OpenMX_Stress_HnlStrainRow(H_sts,0,2,1,m)[n].r += sumy0.i*tx;
+	    OpenMX_Stress_HnlStrainRow(H_sts,0,2,2,m)[n].r += sumy0.i*ty;
+	    OpenMX_Stress_HnlStrainRow(H_sts,0,2,3,m)[n].r += sumy0.i*tz;
 
-	    H_sts[0][3][1][m][n].r += sumz0.i*tx;
-	    H_sts[0][3][2][m][n].r += sumz0.i*ty;
-	    H_sts[0][3][3][m][n].r += sumz0.i*tz;
+	    OpenMX_Stress_HnlStrainRow(H_sts,0,3,1,m)[n].r += sumz0.i*tx;
+	    OpenMX_Stress_HnlStrainRow(H_sts,0,3,2,m)[n].r += sumz0.i*ty;
+	    OpenMX_Stress_HnlStrainRow(H_sts,0,3,3,m)[n].r += sumz0.i*tz;
 
             /* dn-dn, imaginary */
-	    H_sts[1][1][1][m][n].r += sumx1.i*tx;
-	    H_sts[1][1][2][m][n].r += sumx1.i*ty;
-	    H_sts[1][1][3][m][n].r += sumx1.i*tz;
+	    OpenMX_Stress_HnlStrainRow(H_sts,1,1,1,m)[n].r += sumx1.i*tx;
+	    OpenMX_Stress_HnlStrainRow(H_sts,1,1,2,m)[n].r += sumx1.i*ty;
+	    OpenMX_Stress_HnlStrainRow(H_sts,1,1,3,m)[n].r += sumx1.i*tz;
 
-	    H_sts[1][2][1][m][n].r += sumy1.i*tx;
-	    H_sts[1][2][2][m][n].r += sumy1.i*ty;
-	    H_sts[1][2][3][m][n].r += sumy1.i*tz;
+	    OpenMX_Stress_HnlStrainRow(H_sts,1,2,1,m)[n].r += sumy1.i*tx;
+	    OpenMX_Stress_HnlStrainRow(H_sts,1,2,2,m)[n].r += sumy1.i*ty;
+	    OpenMX_Stress_HnlStrainRow(H_sts,1,2,3,m)[n].r += sumy1.i*tz;
 
-	    H_sts[1][3][1][m][n].r += sumz1.i*tx;
-	    H_sts[1][3][2][m][n].r += sumz1.i*ty;
-	    H_sts[1][3][3][m][n].r += sumz1.i*tz;
+	    OpenMX_Stress_HnlStrainRow(H_sts,1,3,1,m)[n].r += sumz1.i*tx;
+	    OpenMX_Stress_HnlStrainRow(H_sts,1,3,2,m)[n].r += sumz1.i*ty;
+	    OpenMX_Stress_HnlStrainRow(H_sts,1,3,3,m)[n].r += sumz1.i*tz;
 
             /* up-dn, imaginary */
-	    H_sts[2][1][1][m][n].r += sumx1.i*tx;
-	    H_sts[2][1][2][m][n].r += sumx1.i*ty;
-	    H_sts[2][1][3][m][n].r += sumx1.i*tz;
+	    OpenMX_Stress_HnlStrainRow(H_sts,2,1,1,m)[n].r += sumx1.i*tx;
+	    OpenMX_Stress_HnlStrainRow(H_sts,2,1,2,m)[n].r += sumx1.i*ty;
+	    OpenMX_Stress_HnlStrainRow(H_sts,2,1,3,m)[n].r += sumx1.i*tz;
 
-	    H_sts[2][2][1][m][n].r += sumy1.i*tx;
-	    H_sts[2][2][2][m][n].r += sumy1.i*ty;
-	    H_sts[2][2][3][m][n].r += sumy1.i*tz;
+	    OpenMX_Stress_HnlStrainRow(H_sts,2,2,1,m)[n].r += sumy1.i*tx;
+	    OpenMX_Stress_HnlStrainRow(H_sts,2,2,2,m)[n].r += sumy1.i*ty;
+	    OpenMX_Stress_HnlStrainRow(H_sts,2,2,3,m)[n].r += sumy1.i*tz;
 
-	    H_sts[2][3][1][m][n].r += sumz1.i*tx;
-	    H_sts[2][3][2][m][n].r += sumz1.i*ty;
-	    H_sts[2][3][3][m][n].r += sumz1.i*tz;
+	    OpenMX_Stress_HnlStrainRow(H_sts,2,3,1,m)[n].r += sumz1.i*tx;
+	    OpenMX_Stress_HnlStrainRow(H_sts,2,3,2,m)[n].r += sumz1.i*ty;
+	    OpenMX_Stress_HnlStrainRow(H_sts,2,3,3,m)[n].r += sumz1.i*tz;
 
 	  } /* n */
 	} /* m */
@@ -6918,29 +6644,29 @@ void dHNL(const OpenMXAtomicViews *atomic, int where_flag,
 	    }
 	  }
 
-	  Hx[0][m][n].r = sumx;
-	  Hy[0][m][n].r = sumy;
-	  Hz[0][m][n].r = sumz;
+	  openmx_solver_complex_plane_row(Hx,0,m)[n].r = sumx;
+	  openmx_solver_complex_plane_row(Hy,0,m)[n].r = sumy;
+	  openmx_solver_complex_plane_row(Hz,0,m)[n].r = sumz;
 
-	  Hx[1][m][n].r = sumx;
-	  Hy[1][m][n].r = sumy;
-	  Hz[1][m][n].r = sumz;
+	  openmx_solver_complex_plane_row(Hx,1,m)[n].r = sumx;
+	  openmx_solver_complex_plane_row(Hy,1,m)[n].r = sumy;
+	  openmx_solver_complex_plane_row(Hz,1,m)[n].r = sumz;
 
-	  Hx[2][m][n].r = 0.0;         
-	  Hy[2][m][n].r = 0.0;         
-	  Hz[2][m][n].r = 0.0;         
+	  openmx_solver_complex_plane_row(Hx,2,m)[n].r = 0.0;
+	  openmx_solver_complex_plane_row(Hy,2,m)[n].r = 0.0;
+	  openmx_solver_complex_plane_row(Hz,2,m)[n].r = 0.0;
 
-	  Hx[0][m][n].i = 0.0;
-	  Hy[0][m][n].i = 0.0;
-	  Hz[0][m][n].i = 0.0;
+	  openmx_solver_complex_plane_row(Hx,0,m)[n].i = 0.0;
+	  openmx_solver_complex_plane_row(Hy,0,m)[n].i = 0.0;
+	  openmx_solver_complex_plane_row(Hz,0,m)[n].i = 0.0;
 
-	  Hx[1][m][n].i = 0.0;
-	  Hy[1][m][n].i = 0.0;
-	  Hz[1][m][n].i = 0.0;
+	  openmx_solver_complex_plane_row(Hx,1,m)[n].i = 0.0;
+	  openmx_solver_complex_plane_row(Hy,1,m)[n].i = 0.0;
+	  openmx_solver_complex_plane_row(Hz,1,m)[n].i = 0.0;
 
-	  Hx[2][m][n].i = 0.0;
-	  Hy[2][m][n].i = 0.0;
-	  Hz[2][m][n].i = 0.0;
+	  openmx_solver_complex_plane_row(Hx,2,m)[n].i = 0.0;
+	  openmx_solver_complex_plane_row(Hy,2,m)[n].i = 0.0;
+	  openmx_solver_complex_plane_row(Hz,2,m)[n].i = 0.0;
 
 	}
       }
@@ -6995,29 +6721,29 @@ void dHNL(const OpenMXAtomicViews *atomic, int where_flag,
 		    DS_NL1);
 	  }
 
-	  Hx[0][m][n].r = sumx0.r;     /* up-up */
-	  Hy[0][m][n].r = sumy0.r;     /* up-up */
-	  Hz[0][m][n].r = sumz0.r;     /* up-up */
+	  openmx_solver_complex_plane_row(Hx,0,m)[n].r = sumx0.r;     /* up-up */
+	  openmx_solver_complex_plane_row(Hy,0,m)[n].r = sumy0.r;     /* up-up */
+	  openmx_solver_complex_plane_row(Hz,0,m)[n].r = sumz0.r;     /* up-up */
 
-	  Hx[1][m][n].r = sumx1.r;     /* dn-dn */
-	  Hy[1][m][n].r = sumy1.r;     /* dn-dn */
-	  Hz[1][m][n].r = sumz1.r;     /* dn-dn */
+	  openmx_solver_complex_plane_row(Hx,1,m)[n].r = sumx1.r;     /* dn-dn */
+	  openmx_solver_complex_plane_row(Hy,1,m)[n].r = sumy1.r;     /* dn-dn */
+	  openmx_solver_complex_plane_row(Hz,1,m)[n].r = sumz1.r;     /* dn-dn */
 
-	  Hx[2][m][n].r = sumx2.r;     /* up-dn */
-	  Hy[2][m][n].r = sumy2.r;     /* up-dn */
-	  Hz[2][m][n].r = sumz2.r;     /* up-dn */
+	  openmx_solver_complex_plane_row(Hx,2,m)[n].r = sumx2.r;     /* up-dn */
+	  openmx_solver_complex_plane_row(Hy,2,m)[n].r = sumy2.r;     /* up-dn */
+	  openmx_solver_complex_plane_row(Hz,2,m)[n].r = sumz2.r;     /* up-dn */
 
-	  Hx[0][m][n].i = sumx0.i;     /* up-up */
-	  Hy[0][m][n].i = sumy0.i;     /* up-up */
-	  Hz[0][m][n].i = sumz0.i;     /* up-up */
+	  openmx_solver_complex_plane_row(Hx,0,m)[n].i = sumx0.i;     /* up-up */
+	  openmx_solver_complex_plane_row(Hy,0,m)[n].i = sumy0.i;     /* up-up */
+	  openmx_solver_complex_plane_row(Hz,0,m)[n].i = sumz0.i;     /* up-up */
 
-	  Hx[1][m][n].i = sumx1.i;     /* dn-dn */
-	  Hy[1][m][n].i = sumy1.i;     /* dn-dn */
-	  Hz[1][m][n].i = sumz1.i;     /* dn-dn */
+	  openmx_solver_complex_plane_row(Hx,1,m)[n].i = sumx1.i;     /* dn-dn */
+	  openmx_solver_complex_plane_row(Hy,1,m)[n].i = sumy1.i;     /* dn-dn */
+	  openmx_solver_complex_plane_row(Hz,1,m)[n].i = sumz1.i;     /* dn-dn */
 
-	  Hx[2][m][n].i = sumx2.i;     /* up-dn */
-	  Hy[2][m][n].i = sumy2.i;     /* up-dn */
-	  Hz[2][m][n].i = sumz2.i;     /* up-dn */
+	  openmx_solver_complex_plane_row(Hx,2,m)[n].i = sumx2.i;     /* up-dn */
+	  openmx_solver_complex_plane_row(Hy,2,m)[n].i = sumy2.i;     /* up-dn */
+	  openmx_solver_complex_plane_row(Hz,2,m)[n].i = sumz2.i;     /* up-dn */
 
 	}
       }
@@ -7065,13 +6791,13 @@ void dHNL(const OpenMXAtomicViews *atomic, int where_flag,
 	      }
 	    }
 
-	    Hx[0][m][n].r += sumx;
-	    Hy[0][m][n].r += sumy;
-	    Hz[0][m][n].r += sumz;
+	    openmx_solver_complex_plane_row(Hx,0,m)[n].r += sumx;
+	    openmx_solver_complex_plane_row(Hy,0,m)[n].r += sumy;
+	    openmx_solver_complex_plane_row(Hz,0,m)[n].r += sumz;
 
-	    Hx[1][m][n].r += sumx;
-	    Hy[1][m][n].r += sumy;
-	    Hz[1][m][n].r += sumz;
+	    openmx_solver_complex_plane_row(Hx,1,m)[n].r += sumx;
+	    openmx_solver_complex_plane_row(Hy,1,m)[n].r += sumy;
+	    openmx_solver_complex_plane_row(Hz,1,m)[n].r += sumz;
 	  }
 	}
       }
@@ -7125,29 +6851,29 @@ void dHNL(const OpenMXAtomicViews *atomic, int where_flag,
 		      DS_NL1);
 	    }
 
-	    Hx[0][m][n].r += sumx0.r;     /* up-up */
-	    Hy[0][m][n].r += sumy0.r;     /* up-up */
-	    Hz[0][m][n].r += sumz0.r;     /* up-up */
+	    openmx_solver_complex_plane_row(Hx,0,m)[n].r += sumx0.r;     /* up-up */
+	    openmx_solver_complex_plane_row(Hy,0,m)[n].r += sumy0.r;     /* up-up */
+	    openmx_solver_complex_plane_row(Hz,0,m)[n].r += sumz0.r;     /* up-up */
 
-	    Hx[1][m][n].r += sumx1.r;     /* dn-dn */
-	    Hy[1][m][n].r += sumy1.r;     /* dn-dn */
-	    Hz[1][m][n].r += sumz1.r;     /* dn-dn */
+	    openmx_solver_complex_plane_row(Hx,1,m)[n].r += sumx1.r;     /* dn-dn */
+	    openmx_solver_complex_plane_row(Hy,1,m)[n].r += sumy1.r;     /* dn-dn */
+	    openmx_solver_complex_plane_row(Hz,1,m)[n].r += sumz1.r;     /* dn-dn */
 
-	    Hx[2][m][n].r += sumx2.r;     /* up-dn */
-	    Hy[2][m][n].r += sumy2.r;     /* up-dn */
-	    Hz[2][m][n].r += sumz2.r;     /* up-dn */
+	    openmx_solver_complex_plane_row(Hx,2,m)[n].r += sumx2.r;     /* up-dn */
+	    openmx_solver_complex_plane_row(Hy,2,m)[n].r += sumy2.r;     /* up-dn */
+	    openmx_solver_complex_plane_row(Hz,2,m)[n].r += sumz2.r;     /* up-dn */
 
-	    Hx[0][m][n].i += sumx0.i;     /* up-up */
-	    Hy[0][m][n].i += sumy0.i;     /* up-up */
-	    Hz[0][m][n].i += sumz0.i;     /* up-up */
+	    openmx_solver_complex_plane_row(Hx,0,m)[n].i += sumx0.i;     /* up-up */
+	    openmx_solver_complex_plane_row(Hy,0,m)[n].i += sumy0.i;     /* up-up */
+	    openmx_solver_complex_plane_row(Hz,0,m)[n].i += sumz0.i;     /* up-up */
 
-	    Hx[1][m][n].i += sumx1.i;     /* dn-dn */
-	    Hy[1][m][n].i += sumy1.i;     /* dn-dn */
-	    Hz[1][m][n].i += sumz1.i;     /* dn-dn */
+	    openmx_solver_complex_plane_row(Hx,1,m)[n].i += sumx1.i;     /* dn-dn */
+	    openmx_solver_complex_plane_row(Hy,1,m)[n].i += sumy1.i;     /* dn-dn */
+	    openmx_solver_complex_plane_row(Hz,1,m)[n].i += sumz1.i;     /* dn-dn */
 
-	    Hx[2][m][n].i += sumx2.i;     /* up-dn */
-	    Hy[2][m][n].i += sumy2.i;     /* up-dn */
-	    Hz[2][m][n].i += sumz2.i;     /* up-dn */
+	    openmx_solver_complex_plane_row(Hx,2,m)[n].i += sumx2.i;     /* up-dn */
+	    openmx_solver_complex_plane_row(Hy,2,m)[n].i += sumy2.i;     /* up-dn */
+	    openmx_solver_complex_plane_row(Hz,2,m)[n].i += sumz2.i;     /* up-dn */
 
 	  }
 	}
@@ -7167,13 +6893,13 @@ void dHNL(const OpenMXAtomicViews *atomic, int where_flag,
     for (m=0; m<ian; m++){
       for (n=0; n<jan; n++){
 
-        Hx[so][m][n].r = dmp*Hx[so][m][n].r;
-        Hy[so][m][n].r = dmp*Hy[so][m][n].r;
-        Hz[so][m][n].r = dmp*Hz[so][m][n].r;
+        openmx_solver_complex_plane_row(Hx,so,m)[n].r = dmp*openmx_solver_complex_plane_row(Hx,so,m)[n].r;
+        openmx_solver_complex_plane_row(Hy,so,m)[n].r = dmp*openmx_solver_complex_plane_row(Hy,so,m)[n].r;
+        openmx_solver_complex_plane_row(Hz,so,m)[n].r = dmp*openmx_solver_complex_plane_row(Hz,so,m)[n].r;
 
-        Hx[so][m][n].i = dmp*Hx[so][m][n].i;
-        Hy[so][m][n].i = dmp*Hy[so][m][n].i;
-        Hz[so][m][n].i = dmp*Hz[so][m][n].i;
+        openmx_solver_complex_plane_row(Hx,so,m)[n].i = dmp*openmx_solver_complex_plane_row(Hx,so,m)[n].i;
+        openmx_solver_complex_plane_row(Hy,so,m)[n].i = dmp*openmx_solver_complex_plane_row(Hy,so,m)[n].i;
+        openmx_solver_complex_plane_row(Hz,so,m)[n].i = dmp*openmx_solver_complex_plane_row(Hz,so,m)[n].i;
       }
     }
   }
@@ -7185,8 +6911,8 @@ void dHNL(const OpenMXAtomicViews *atomic, int where_flag,
       for (j=1; j<=3; j++){
 	for (m=0; m<ian; m++){
 	  for (n=0; n<jan; n++){
-	    H_sts[so][i][j][m][n].r = dmp*H_sts[so][i][j][m][n].r;
-	    H_sts[so][i][j][m][n].i = dmp*H_sts[so][i][j][m][n].i;
+	    OpenMX_Stress_HnlStrainRow(H_sts,so,i,j,m)[n].r = dmp*OpenMX_Stress_HnlStrainRow(H_sts,so,i,j,m)[n].r;
+	    OpenMX_Stress_HnlStrainRow(H_sts,so,i,j,m)[n].i = dmp*OpenMX_Stress_HnlStrainRow(H_sts,so,i,j,m)[n].i;
 	  }
 	}
       }
@@ -7251,9 +6977,9 @@ void dHNL(const OpenMXAtomicViews *atomic, int where_flag,
         for (so=0; so<=somax; so++){
 	  for (m=0; m<ian; m++){
 	    for (n=0; n<jan; n++){
-	      Hx[so][m][n].r += HNL[so][Mc_AN][kl][m][n]*dx;
-	      Hy[so][m][n].r += HNL[so][Mc_AN][kl][m][n]*dy;
-	      Hz[so][m][n].r += HNL[so][Mc_AN][kl][m][n]*dz;
+	      openmx_solver_complex_plane_row(Hx,so,m)[n].r += HNL[so][Mc_AN][kl][m][n]*dx;
+	      openmx_solver_complex_plane_row(Hy,so,m)[n].r += HNL[so][Mc_AN][kl][m][n]*dy;
+	      openmx_solver_complex_plane_row(Hz,so,m)[n].r += HNL[so][Mc_AN][kl][m][n]*dz;
 	    }
 	  }
         }
@@ -7263,15 +6989,15 @@ void dHNL(const OpenMXAtomicViews *atomic, int where_flag,
         for (so=0; so<=somax; so++){
 	  for (m=0; m<ian; m++){
 	    for (n=0; n<jan; n++){
-	      H_sts[so][1][1][m][n].r += HNL[so][Mc_AN][kl][m][n]*dx*tx;
-	      H_sts[so][1][2][m][n].r += HNL[so][Mc_AN][kl][m][n]*dx*ty;
-	      H_sts[so][1][3][m][n].r += HNL[so][Mc_AN][kl][m][n]*dx*tz;
-	      H_sts[so][2][1][m][n].r += HNL[so][Mc_AN][kl][m][n]*dy*tx;
-	      H_sts[so][2][2][m][n].r += HNL[so][Mc_AN][kl][m][n]*dy*ty;
-	      H_sts[so][2][3][m][n].r += HNL[so][Mc_AN][kl][m][n]*dy*tz;
-	      H_sts[so][3][1][m][n].r += HNL[so][Mc_AN][kl][m][n]*dz*tx;
-	      H_sts[so][3][2][m][n].r += HNL[so][Mc_AN][kl][m][n]*dz*ty;
-	      H_sts[so][3][3][m][n].r += HNL[so][Mc_AN][kl][m][n]*dz*tz;
+	      OpenMX_Stress_HnlStrainRow(H_sts,so,1,1,m)[n].r += HNL[so][Mc_AN][kl][m][n]*dx*tx;
+	      OpenMX_Stress_HnlStrainRow(H_sts,so,1,2,m)[n].r += HNL[so][Mc_AN][kl][m][n]*dx*ty;
+	      OpenMX_Stress_HnlStrainRow(H_sts,so,1,3,m)[n].r += HNL[so][Mc_AN][kl][m][n]*dx*tz;
+	      OpenMX_Stress_HnlStrainRow(H_sts,so,2,1,m)[n].r += HNL[so][Mc_AN][kl][m][n]*dy*tx;
+	      OpenMX_Stress_HnlStrainRow(H_sts,so,2,2,m)[n].r += HNL[so][Mc_AN][kl][m][n]*dy*ty;
+	      OpenMX_Stress_HnlStrainRow(H_sts,so,2,3,m)[n].r += HNL[so][Mc_AN][kl][m][n]*dy*tz;
+	      OpenMX_Stress_HnlStrainRow(H_sts,so,3,1,m)[n].r += HNL[so][Mc_AN][kl][m][n]*dz*tx;
+	      OpenMX_Stress_HnlStrainRow(H_sts,so,3,2,m)[n].r += HNL[so][Mc_AN][kl][m][n]*dz*ty;
+	      OpenMX_Stress_HnlStrainRow(H_sts,so,3,3,m)[n].r += HNL[so][Mc_AN][kl][m][n]*dz*tz;
 	    }
 	  }
         }
@@ -7285,9 +7011,9 @@ void dHNL(const OpenMXAtomicViews *atomic, int where_flag,
         for (so=0; so<=somax; so++){
 	  for (m=0; m<ian; m++){
 	    for (n=0; n<jan; n++){
-	      Hx[so][m][n].r += HNL[so][Mc_AN][kl][n][m]*dx;
-	      Hy[so][m][n].r += HNL[so][Mc_AN][kl][n][m]*dy;
-	      Hz[so][m][n].r += HNL[so][Mc_AN][kl][n][m]*dz;
+	      openmx_solver_complex_plane_row(Hx,so,m)[n].r += HNL[so][Mc_AN][kl][n][m]*dx;
+	      openmx_solver_complex_plane_row(Hy,so,m)[n].r += HNL[so][Mc_AN][kl][n][m]*dy;
+	      openmx_solver_complex_plane_row(Hz,so,m)[n].r += HNL[so][Mc_AN][kl][n][m]*dz;
 	    }
 	  }
         }
@@ -7303,9 +7029,9 @@ void dHNL(const OpenMXAtomicViews *atomic, int where_flag,
         for (so=0; so<=somax; so++){
 	  for (m=0; m<ian; m++){
 	    for (n=0; n<jan; n++){
-	      Hx[so][m][n].r +=  HNL[so][Mc_AN][kl][m][n]*dx;
-	      Hy[so][m][n].r +=  HNL[so][Mc_AN][kl][m][n]*dy;
-	      Hz[so][m][n].r +=  HNL[so][Mc_AN][kl][m][n]*dz;
+	      openmx_solver_complex_plane_row(Hx,so,m)[n].r +=  HNL[so][Mc_AN][kl][m][n]*dx;
+	      openmx_solver_complex_plane_row(Hy,so,m)[n].r +=  HNL[so][Mc_AN][kl][m][n]*dy;
+	      openmx_solver_complex_plane_row(Hz,so,m)[n].r +=  HNL[so][Mc_AN][kl][m][n]*dz;
 	    }
 	  }
         }
@@ -7315,15 +7041,15 @@ void dHNL(const OpenMXAtomicViews *atomic, int where_flag,
         for (so=0; so<=somax; so++){
 	  for (m=0; m<ian; m++){
 	    for (n=0; n<jan; n++){
-	      H_sts[so][1][1][m][n].r += HNL[so][Mc_AN][kl][m][n]*dx*tx;
-	      H_sts[so][1][2][m][n].r += HNL[so][Mc_AN][kl][m][n]*dx*ty;
-	      H_sts[so][1][3][m][n].r += HNL[so][Mc_AN][kl][m][n]*dx*tz;
-	      H_sts[so][2][1][m][n].r += HNL[so][Mc_AN][kl][m][n]*dy*tx;
-	      H_sts[so][2][2][m][n].r += HNL[so][Mc_AN][kl][m][n]*dy*ty;
-	      H_sts[so][2][3][m][n].r += HNL[so][Mc_AN][kl][m][n]*dy*tz;
-	      H_sts[so][3][1][m][n].r += HNL[so][Mc_AN][kl][m][n]*dz*tx;
-	      H_sts[so][3][2][m][n].r += HNL[so][Mc_AN][kl][m][n]*dz*ty;
-	      H_sts[so][3][3][m][n].r += HNL[so][Mc_AN][kl][m][n]*dz*tz;
+	      OpenMX_Stress_HnlStrainRow(H_sts,so,1,1,m)[n].r += HNL[so][Mc_AN][kl][m][n]*dx*tx;
+	      OpenMX_Stress_HnlStrainRow(H_sts,so,1,2,m)[n].r += HNL[so][Mc_AN][kl][m][n]*dx*ty;
+	      OpenMX_Stress_HnlStrainRow(H_sts,so,1,3,m)[n].r += HNL[so][Mc_AN][kl][m][n]*dx*tz;
+	      OpenMX_Stress_HnlStrainRow(H_sts,so,2,1,m)[n].r += HNL[so][Mc_AN][kl][m][n]*dy*tx;
+	      OpenMX_Stress_HnlStrainRow(H_sts,so,2,2,m)[n].r += HNL[so][Mc_AN][kl][m][n]*dy*ty;
+	      OpenMX_Stress_HnlStrainRow(H_sts,so,2,3,m)[n].r += HNL[so][Mc_AN][kl][m][n]*dy*tz;
+	      OpenMX_Stress_HnlStrainRow(H_sts,so,3,1,m)[n].r += HNL[so][Mc_AN][kl][m][n]*dz*tx;
+	      OpenMX_Stress_HnlStrainRow(H_sts,so,3,2,m)[n].r += HNL[so][Mc_AN][kl][m][n]*dz*ty;
+	      OpenMX_Stress_HnlStrainRow(H_sts,so,3,3,m)[n].r += HNL[so][Mc_AN][kl][m][n]*dz*tz;
 	    }
 	  }
         }
@@ -7336,9 +7062,9 @@ void dHNL(const OpenMXAtomicViews *atomic, int where_flag,
         for (so=0; so<=somax; so++){
 	  for (m=0; m<ian; m++){
 	    for (n=0; n<jan; n++){
-	      Hx[so][m][n].r +=  HNL[so][Mc_AN][kl][n][m]*dx;
-	      Hy[so][m][n].r +=  HNL[so][Mc_AN][kl][n][m]*dy;
-	      Hz[so][m][n].r +=  HNL[so][Mc_AN][kl][n][m]*dz;
+	      openmx_solver_complex_plane_row(Hx,so,m)[n].r +=  HNL[so][Mc_AN][kl][n][m]*dx;
+	      openmx_solver_complex_plane_row(Hy,so,m)[n].r +=  HNL[so][Mc_AN][kl][n][m]*dy;
+	      openmx_solver_complex_plane_row(Hz,so,m)[n].r +=  HNL[so][Mc_AN][kl][n][m]*dz;
 	    }
 	  }
         }
@@ -7353,9 +7079,9 @@ void dHNL(const OpenMXAtomicViews *atomic, int where_flag,
 	  for (so=0; so<=somax; so++){
 	    for (m=0; m<ian; m++){
 	      for (n=0; n<jan; n++){
-		Hx[so][m][n].i += iHNL[so][Mc_AN][kl][m][n]*dx;
-		Hy[so][m][n].i += iHNL[so][Mc_AN][kl][m][n]*dy;
-		Hz[so][m][n].i += iHNL[so][Mc_AN][kl][m][n]*dz;
+		openmx_solver_complex_plane_row(Hx,so,m)[n].i += iHNL[so][Mc_AN][kl][m][n]*dx;
+		openmx_solver_complex_plane_row(Hy,so,m)[n].i += iHNL[so][Mc_AN][kl][m][n]*dy;
+		openmx_solver_complex_plane_row(Hz,so,m)[n].i += iHNL[so][Mc_AN][kl][m][n]*dz;
 	      }
 	    }
 	  }
@@ -7365,15 +7091,15 @@ void dHNL(const OpenMXAtomicViews *atomic, int where_flag,
 	  for (so=0; so<=somax; so++){
 	    for (m=0; m<ian; m++){
 	      for (n=0; n<jan; n++){
-		H_sts[so][1][1][m][n].i += iHNL[so][Mc_AN][kl][m][n]*dx*tx;
-		H_sts[so][1][2][m][n].i += iHNL[so][Mc_AN][kl][m][n]*dx*ty;
-		H_sts[so][1][3][m][n].i += iHNL[so][Mc_AN][kl][m][n]*dx*tz;
-		H_sts[so][2][1][m][n].i += iHNL[so][Mc_AN][kl][m][n]*dy*tx;
-		H_sts[so][2][2][m][n].i += iHNL[so][Mc_AN][kl][m][n]*dy*ty;
-		H_sts[so][2][3][m][n].i += iHNL[so][Mc_AN][kl][m][n]*dy*tz;
-		H_sts[so][3][1][m][n].i += iHNL[so][Mc_AN][kl][m][n]*dz*tx;
-		H_sts[so][3][2][m][n].i += iHNL[so][Mc_AN][kl][m][n]*dz*ty;
-		H_sts[so][3][3][m][n].i += iHNL[so][Mc_AN][kl][m][n]*dz*tz;
+		OpenMX_Stress_HnlStrainRow(H_sts,so,1,1,m)[n].i += iHNL[so][Mc_AN][kl][m][n]*dx*tx;
+		OpenMX_Stress_HnlStrainRow(H_sts,so,1,2,m)[n].i += iHNL[so][Mc_AN][kl][m][n]*dx*ty;
+		OpenMX_Stress_HnlStrainRow(H_sts,so,1,3,m)[n].i += iHNL[so][Mc_AN][kl][m][n]*dx*tz;
+		OpenMX_Stress_HnlStrainRow(H_sts,so,2,1,m)[n].i += iHNL[so][Mc_AN][kl][m][n]*dy*tx;
+		OpenMX_Stress_HnlStrainRow(H_sts,so,2,2,m)[n].i += iHNL[so][Mc_AN][kl][m][n]*dy*ty;
+		OpenMX_Stress_HnlStrainRow(H_sts,so,2,3,m)[n].i += iHNL[so][Mc_AN][kl][m][n]*dy*tz;
+		OpenMX_Stress_HnlStrainRow(H_sts,so,3,1,m)[n].i += iHNL[so][Mc_AN][kl][m][n]*dz*tx;
+		OpenMX_Stress_HnlStrainRow(H_sts,so,3,2,m)[n].i += iHNL[so][Mc_AN][kl][m][n]*dz*ty;
+		OpenMX_Stress_HnlStrainRow(H_sts,so,3,3,m)[n].i += iHNL[so][Mc_AN][kl][m][n]*dz*tz;
 	      }
 	    }
 	  }
@@ -7386,9 +7112,9 @@ void dHNL(const OpenMXAtomicViews *atomic, int where_flag,
 	  for (so=0; so<=somax; so++){
 	    for (m=0; m<ian; m++){
 	      for (n=0; n<jan; n++){
-		Hx[so][m][n].i += iHNL[so][Mc_AN][kl][n][m]*dx;
-		Hy[so][m][n].i += iHNL[so][Mc_AN][kl][n][m]*dy;
-		Hz[so][m][n].i += iHNL[so][Mc_AN][kl][n][m]*dz;
+		openmx_solver_complex_plane_row(Hx,so,m)[n].i += iHNL[so][Mc_AN][kl][n][m]*dx;
+		openmx_solver_complex_plane_row(Hy,so,m)[n].i += iHNL[so][Mc_AN][kl][n][m]*dy;
+		openmx_solver_complex_plane_row(Hz,so,m)[n].i += iHNL[so][Mc_AN][kl][n][m]*dz;
 	      }
 	    }
 	  }

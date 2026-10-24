@@ -136,4 +136,30 @@ static inline double *OpenMX_Stress_VnaStrainRow(const OpenMXSolverRealTensor *v
 {
   return view->values+((axis*view->extent[1]+derivative)*view->extent[2]+orbital)*view->extent[3];
 }
+
+/* Six complex derivatives coexist for the two orientations. Serial worker
+   zero lends its slots to the later joined worker region. Keep explicit
+   outputs: native OpenMP must not return a large aggregate by value. */
+static inline void OpenMX_Stress_HnlPrepare(OpenMXSolverInvocation *owner,int orbitals,
+    OpenMXSolverComplexTensor *x0,OpenMXSolverComplexTensor *y0,OpenMXSolverComplexTensor *z0,
+    OpenMXSolverComplexTensor *x1,OpenMXSolverComplexTensor *y1,OpenMXSolverComplexTensor *z1,
+    OpenMXSolverComplexTensor *strain)
+{
+  if(orbitals<1)OpenMX_Solver_Failure("invalid stress nonlocal orbital count");
+  OpenMX_Stress_KineticPrepare(owner,"stress:nonlocal:x0",orbitals,x0);
+  OpenMX_Stress_KineticPrepare(owner,"stress:nonlocal:y0",orbitals,y0);
+  OpenMX_Stress_KineticPrepare(owner,"stress:nonlocal:z0",orbitals,z0);
+  OpenMX_Stress_KineticPrepare(owner,"stress:nonlocal:x1",orbitals,x1);
+  OpenMX_Stress_KineticPrepare(owner,"stress:nonlocal:y1",orbitals,y1);
+  OpenMX_Stress_KineticPrepare(owner,"stress:nonlocal:z1",orbitals,z1);
+  /* Fold [spin,axis,derivative,row,column] into the rank-four C view. */
+  const size_t shape[4]={12,4,(size_t)orbitals,(size_t)orbitals};char error[256];
+  if(!openmx_core_solver_complex_overwrite(owner,omp_get_thread_num(),"stress:nonlocal:strain",
+        shape,strain,error,sizeof(error)))OpenMX_Solver_Failure(error);
+}
+static inline dcomplex *OpenMX_Stress_HnlStrainRow(const OpenMXSolverComplexTensor *view,
+    size_t spin,size_t axis,size_t derivative,size_t orbital)
+{
+  return view->values+(((spin*4+axis)*view->extent[1]+derivative)*view->extent[2]+orbital)*view->extent[3];
+}
 #endif
