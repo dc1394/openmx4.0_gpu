@@ -947,6 +947,7 @@
     "openmx_core_mixing.h",
     "openmx_core_native_resources.h",
     "openmx_core_neutral.h",
+    "openmx_core_neutral_grid.h",
     "openmx_core_nonlocal.h",
     "openmx_core_orbital_optimization.h",
     "openmx_core_orbital_workspace.h",

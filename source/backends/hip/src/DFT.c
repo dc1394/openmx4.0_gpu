@@ -2866,7 +2866,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   if (!orbitalOpt_Force_Skip) time7 += Force(atomic, vna,reciprocal, H0,DS_NL,OLP,DM[0],EDM, electronic, local_basis);
   
   if (scf_stress_flag){
-    Stress(thermo, atomic, vna,reciprocal, H0,DS_NL,OLP,DM[0],EDM, electronic, local_basis);
+    Stress(core,thermo, atomic, vna,reciprocal, H0,DS_NL,OLP,DM[0],EDM, electronic, local_basis);
   }
 
   /* the matrix-element tables that a non-band run (or a band run with
@@ -2908,7 +2908,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
     printf("<MD=%2d>  Total Energy\n",MD_iter);fflush(stdout);
   }
 
-  if (!orbitalOpt_Force_Skip) time8 += Total_Energy(energies, cwf_values, atomic, vna, MD_iter,ECE, electronic, local_basis);
+  if (!orbitalOpt_Force_Skip) time8 += Total_Energy(core,energies, cwf_values, atomic, vna, MD_iter,ECE, electronic, local_basis);
 
   components->atomic_reference  = 0.0;
   components->core  = ECE[0];

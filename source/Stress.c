@@ -32,7 +32,7 @@ static void Stress3(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *ato
 static void Stress4(const OpenMXAtomicViews *atomic);
 static void Stress4B(OpenMXSolverInvocation *scratch,const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double *****CDM0, const OpenMXLocalBasisViews *local_basis);
 static void Stress_core(OpenMXSolverInvocation *scratch);
-static void Stress_H0(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *atomic);
+static void Stress_H0(OpenMXSolverInvocation *scratch,OpenMXCoreContext *core,const OpenMXAtomicViews *atomic);
 static void Stress_H1(OpenMXSolverInvocation *scratch);
 static void Stress_HNL(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *atomic, double *****CDM0, double *****iDM0, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
 static void Stress_plus_U_dual(OpenMXSolverInvocation *scratch,double *****CDM0, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
@@ -87,6 +87,7 @@ static void dHNL_SO(
 
 
 typedef struct {
+  OpenMXCoreContext *core;
   OpenMXThermodynamicEnergies *thermo;
   const OpenMXAtomicViews *atomic;
   const OpenMXVnaMatrixViews *vna;
@@ -95,7 +96,7 @@ typedef struct {
   const OpenMXElectronicViews *electronic;
   const OpenMXLocalBasisViews *local_basis;
 } OpenMXStressArguments;
-static double Stress_owned(const OpenMXForceWorkspace *halo,OpenMXThermodynamicEnergies *thermo, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double *****H0,
+static double Stress_owned(const OpenMXForceWorkspace *halo,OpenMXCoreContext *core,OpenMXThermodynamicEnergies *thermo, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double *****H0,
 	      double ******DS_NL,
 	      double *****OLP,
 	      double *****CDM,
@@ -103,17 +104,17 @@ static double Stress_owned(const OpenMXForceWorkspace *halo,OpenMXThermodynamicE
 static int Stress_Operation(const OpenMXForceWorkspace *halo,void *opaque,double *result)
 {
   const OpenMXStressArguments *a=opaque;
-  *result=Stress_owned(halo,a->thermo,a->atomic,a->vna,a->reciprocal,a->H0,a->DS_NL,
+  *result=Stress_owned(halo,a->core,a->thermo,a->atomic,a->vna,a->reciprocal,a->H0,a->DS_NL,
       a->OLP,a->CDM,a->EDM,a->electronic,a->local_basis);
   return 1;
 }
-double Stress(OpenMXThermodynamicEnergies *thermo, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double *****H0,
+double Stress(OpenMXCoreContext *core,OpenMXThermodynamicEnergies *thermo, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double *****H0,
 	      double ******DS_NL,
 	      double *****OLP,
 	      double *****CDM,
 	      double *****EDM, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 {
-  OpenMXStressArguments args={thermo,atomic,vna,reciprocal,H0,DS_NL,OLP,CDM,EDM,electronic,local_basis};
+  OpenMXStressArguments args={core,thermo,atomic,vna,reciprocal,H0,DS_NL,OLP,CDM,EDM,electronic,local_basis};
   double begin,end;
   dtime(&begin);
   const int imaginary=SO_switch==1 || (Hub_U_switch==1 && SpinP_switch==3) || Constraint_NCS_switch==1
@@ -125,7 +126,7 @@ double Stress(OpenMXThermodynamicEnergies *thermo, const OpenMXAtomicViews *atom
   return end-begin;
 }
 
-static double Stress_owned(const OpenMXForceWorkspace *halo,OpenMXThermodynamicEnergies *thermo, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double *****H0,
+static double Stress_owned(const OpenMXForceWorkspace *halo,OpenMXCoreContext *core,OpenMXThermodynamicEnergies *thermo, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double *****H0,
 	      double ******DS_NL,
 	      double *****OLP,
 	      double *****CDM,
@@ -1925,7 +1926,7 @@ static double Stress_owned(const OpenMXForceWorkspace *halo,OpenMXThermodynamicE
   }
   dtime(&stime);
   
-  Stress_H0(scratch,atomic);
+  Stress_H0(scratch,core,atomic);
 
   dtime(&etime);
   if(myid==0 && measure_time){
@@ -3587,7 +3588,7 @@ void Stress_core(OpenMXSolverInvocation *scratch)
 
 
 
-void Stress_H0(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *atomic)
+void Stress_H0(OpenMXSolverInvocation *scratch,OpenMXCoreContext *core,const OpenMXAtomicViews *atomic)
 {
   /****************************************************
               EH0 = -1/2\int n^a(r) V^a_H dr
@@ -3695,7 +3696,7 @@ void Stress_H0(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *atomic)
     /* allocation of arrays GridX,Y,Z_EH0, Arho_EH0, and Wt_EH0 */
 
     Max_TGN_EH0 += 10;
-    Allocate_Arrays(4);
+    Allocate_Arrays_with_context(4,core);
 
     /* calculate GridX,Y,Z_EH0 and Wt_EH0 */
 

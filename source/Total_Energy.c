@@ -44,7 +44,7 @@ static int TotalEnergy_ProfileEnabled(void)
 #define MIN(a,b) (((a)<(b))?  (a):(b))
 
 static double Calc_Ecore(OpenMXSolverInvocation *scratch);
-static double Calc_EH0(const OpenMXEnergyWorkspace *workspace, const OpenMXAtomicViews *atomic, int MD_iter);
+static double Calc_EH0(const OpenMXEnergyWorkspace *workspace, OpenMXCoreContext *core, const OpenMXAtomicViews *atomic, int MD_iter);
 static double Calc_Ekin(const OpenMXEnergyWorkspace *workspace, const OpenMXElectronicViews *electronic);
 static double Calc_Ena(const OpenMXEnergyWorkspace *workspace, const OpenMXVnaMatrixViews *vna, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
 static double Calc_Enl(const OpenMXEnergyWorkspace *workspace, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
@@ -106,6 +106,7 @@ static int TotalEnergyUseOpenACC(void)
 
 
 typedef struct {
+  OpenMXCoreContext *core;
   const OpenMXBandEnergies *energies;
   const OpenMXCWFObservables *cwf_values;
   const OpenMXAtomicViews *atomic;
@@ -116,18 +117,18 @@ typedef struct {
   const OpenMXLocalBasisViews *local_basis;
 } TotalEnergyArguments;
 
-static void Total_Energy_owned(OpenMXSolverInvocation *scratch, const OpenMXBandEnergies *energies, const OpenMXCWFObservables *cwf_values, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, int MD_iter, double ECE[], const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
+static void Total_Energy_owned(OpenMXSolverInvocation *scratch, OpenMXCoreContext *core, const OpenMXBandEnergies *energies, const OpenMXCWFObservables *cwf_values, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, int MD_iter, double ECE[], const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
 static int TotalEnergyOperation(OpenMXSolverInvocation *scratch,void *opaque,double *result)
 {
   const TotalEnergyArguments *a=(const TotalEnergyArguments*)opaque;
-  Total_Energy_owned(scratch,a->energies,a->cwf_values,a->atomic,a->vna,a->MD_iter,a->ECE,a->electronic,a->local_basis);
+  Total_Energy_owned(scratch,a->core,a->energies,a->cwf_values,a->atomic,a->vna,a->MD_iter,a->ECE,a->electronic,a->local_basis);
   *result=0.0;
   return 1;
 }
 
-double Total_Energy(const OpenMXBandEnergies *energies, const OpenMXCWFObservables *cwf_values, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, int MD_iter, double ECE[], const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
+double Total_Energy(OpenMXCoreContext *core, const OpenMXBandEnergies *energies, const OpenMXCWFObservables *cwf_values, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, int MD_iter, double ECE[], const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 {
-  TotalEnergyArguments arguments={energies,cwf_values,atomic,vna,MD_iter,ECE,electronic,local_basis};
+  TotalEnergyArguments arguments={core,energies,cwf_values,atomic,vna,MD_iter,ECE,electronic,local_basis};
   double start,end;
   dtime(&start);
   (void)OpenMX_Solver_Run(TotalEnergyOperation,&arguments);
@@ -135,7 +136,7 @@ double Total_Energy(const OpenMXBandEnergies *energies, const OpenMXCWFObservabl
   return end-start;
 }
 
-static void Total_Energy_owned(OpenMXSolverInvocation *scratch, const OpenMXBandEnergies *energies, const OpenMXCWFObservables *cwf_values, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, int MD_iter, double ECE[], const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
+static void Total_Energy_owned(OpenMXSolverInvocation *scratch, OpenMXCoreContext *core, const OpenMXBandEnergies *energies, const OpenMXCWFObservables *cwf_values, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, int MD_iter, double ECE[], const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 { 
   int numprocs,myid;
   int Mc_AN,Gc_AN,h_AN;
@@ -189,7 +190,7 @@ static void Total_Energy_owned(OpenMXSolverInvocation *scratch, const OpenMXBand
 
   dtime(&stime);
 
-  ECE[1] = Calc_EH0(&workspace, atomic, MD_iter);
+  ECE[1] = Calc_EH0(&workspace, core, atomic, MD_iter);
 
   dtime(&etime);
   if(myid==0 && measure_time){
@@ -1197,7 +1198,7 @@ double Calc_Ecore(OpenMXSolverInvocation *scratch)
 
 
 
-double Calc_EH0(const OpenMXEnergyWorkspace *workspace, const OpenMXAtomicViews *atomic, int MD_iter)
+double Calc_EH0(const OpenMXEnergyWorkspace *workspace, OpenMXCoreContext *core, const OpenMXAtomicViews *atomic, int MD_iter)
 {
   /****************************************************
               EH0 = -1/2\int n^a(r) V^a_H dr
@@ -1282,7 +1283,7 @@ double Calc_EH0(const OpenMXEnergyWorkspace *workspace, const OpenMXAtomicViews 
 
     Max_TGN_EH0 += 10; 
 
-    Allocate_Arrays(4);
+    Allocate_Arrays_with_context(4,core);
 
     /* calculate GridX,Y,Z_EH0 and Wt_EH0 */
 

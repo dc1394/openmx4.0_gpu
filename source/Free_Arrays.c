@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <complex.h>
 #include "openmx_common.h"
+#include "openmx_core_neutral_grid.h"
 #include "openmx_core_native_resources.h"
 #include "openmx_electronic.h"
 #include "openmx_core_pao.h"
@@ -778,31 +779,12 @@ static void array0(OpenMXCoreContext *core)
   if (remake_headfile==0){
 
     if (alloc_first[32]==0){
-
-      for (i=0; i<SpeciesNum; i++){
-	free(GridX_EH0[i]);
-      }
-      free(GridX_EH0);
-
-      for (i=0; i<SpeciesNum; i++){
-	free(GridY_EH0[i]);
-      }
-      free(GridY_EH0);
-
-      for (i=0; i<SpeciesNum; i++){
-	free(GridZ_EH0[i]);
-      }
-      free(GridZ_EH0);
-
-      for (i=0; i<SpeciesNum; i++){
-	free(Arho_EH0[i]);
-      }
-      free(Arho_EH0);
-
-      for (i=0; i<SpeciesNum; i++){
-	free(Wt_EH0[i]);
-      }
-      free(Wt_EH0);
+      openmx_core_neutral_grid_release(core);
+      GridX_EH0=NULL;
+      GridY_EH0=NULL;
+      GridZ_EH0=NULL;
+      Arho_EH0=NULL;
+      Wt_EH0=NULL;
 
       if (Energy_Decomposition_flag==1){
 

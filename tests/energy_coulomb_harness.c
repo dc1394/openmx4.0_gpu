@@ -6,6 +6,7 @@
 #include <string.h>
 #include "mpi.h"
 #include "openmx_core_atomic.h"
+#include "openmx_core_neutral_grid.h"
 #include "openmx_neutral_atom.h"
 #define CHECK(c) do{if(!(c)){fprintf(stderr,"FAIL line %d: %s\n",__LINE__,#c);exit(2);}}while(0)
 #define PI 3.1415926535897932384626433832795
@@ -36,7 +37,16 @@ int MPI_Comm_size(MPI_Comm comm,int *n){(void)comm;*n=1;return 0;}
 int MPI_Comm_rank(MPI_Comm comm,int *rank){(void)comm;*rank=0;return 0;}
 int MPI_Bcast(void *p,int n,int type,int root,MPI_Comm comm){(void)p;(void)root;(void)comm;CHECK(n==3&&type==MPI_DOUBLE);return 0;}
 int MPI_Allreduce(const void *s,void *r,int n,int type,int op,MPI_Comm comm){(void)comm;CHECK(n==1&&type==MPI_DOUBLE&&op==MPI_SUM);memcpy(r,s,sizeof(double));return 0;}
-static void Allocate_Arrays(int mode){CHECK(mode==4&&Max_TGN_EH0<=64);++grid_allocations;}
+static void Allocate_Arrays_with_context(int mode,OpenMXCoreContext *context){
+  CHECK(mode==4&&Max_TGN_EH0<=64&&context);
+  const OpenMXNeutralGridShape shape={SpeciesNum,Max_TGN_EH0};OpenMXNeutralGridTables tables;char error[256];
+  CHECK(openmx_core_neutral_grid_prepare(context,&shape,&tables,error,sizeof(error)));
+  for(int s=0;s<SpeciesNum;s++){
+    GridX_EH0[s]=tables.legacy_rows[s];GridY_EH0[s]=tables.legacy_rows[SpeciesNum+s];
+    GridZ_EH0[s]=tables.legacy_rows[2*SpeciesNum+s];Arho_EH0[s]=tables.legacy_rows[3*SpeciesNum+s];Wt_EH0[s]=tables.legacy_rows[4*SpeciesNum+s];
+  }
+  ++grid_allocations;
+}
 double KumoF(int mesh,double x,double *a,double *b,double *c){CHECK(mesh==2&&a&&b&&c&&isfinite(x));return .2+.03*x;}
 double VH_AtomF(double charge,int mesh,double x,double r,double *a,double *b,double *c){CHECK(mesh==2&&a&&b&&c&&isfinite(x)&&r>0);return 1+.1*charge;}
 static void model_pair(int base,int other,int derivative,double distance,const double direction[3],double out[4]){
@@ -87,7 +97,7 @@ static void expected(const OpenMXAtomicViews *atomic,double *core,double *neutra
     atom_energy[m]=.5*(ec+eh);*core+=ec;*neutral+=eh;
   }
 }
-typedef struct {OpenMXAtomicViews atomic;int md;} Arguments;
+typedef struct {OpenMXAtomicViews atomic;int md;OpenMXCoreContext *context;} Arguments;
 static int exercise(OpenMXSolverInvocation *owner,void *opaque,double *result){
   Arguments *args=opaque;OpenMXEnergyWorkspace pairs;
   OpenMX_Energy_PairsPrepare(owner,Matomnum?7:0,&pairs);
@@ -96,7 +106,7 @@ static int exercise(OpenMXSolverInvocation *owner,void *opaque,double *result){
     for(int a=1;a<=3;a++)for(int d=0;d<3;d++)forces[a][d]=positions[a][d+17]=.01*(d+1)*a;
     for(int s=0;s<2;s++)for(int a=0;a<4;a++)dec[s][a]=99;
     batch_calls=grid_allocations=0;
-    const double actual_core=Calc_Ecore(owner),actual_neutral=Calc_EH0(&pairs,&args->atomic,args->md);
+    const double actual_core=Calc_Ecore(owner),actual_neutral=Calc_EH0(&pairs,args->context,&args->atomic,args->md);
     CHECK(batch_calls==(scf_eigen_lib_flag==GPUSOLVER?1:0));CHECK(grid_allocations==(args->md==1?1:0));
     if(args->md==1)for(int s=0;s<2;s++){
       CHECK(args->atomic.species.species_index[s]==s&&TGN_EH0[s]>0&&TGN_EH0[s]<=Max_TGN_EH0);
@@ -135,7 +145,7 @@ int main(void){
     CHECK(found>=0);reverse_data[m][h][0]=found;
   }
   double cutoff[2]={.11,.14},radial[2][2]={{0}};int index[2],mesh[2]={2,2};
-  Arguments args={0};args.atomic.species.species=2;args.atomic.species.species_index=index;
+  Arguments args={0};char context_error[256];args.context=openmx_core_create_host(context_error,sizeof(context_error));CHECK(args.context);args.atomic.species.species=2;args.atomic.species.species_index=index;
   args.atomic.species.cutoff=cutoff;args.atomic.species.core_charge=Spe_Core_Charge;
   args.atomic.species.pao_mesh=args.atomic.species.vps_mesh=mesh;
   args.atomic.pao_log_radii=args.atomic.pao_radii=args.atomic.density=args.atomic.vps_log_radii=args.atomic.vps_radii=args.atomic.hartree_potential=(OpenMXRadialView2){&radial[0][0],{2,2}};
@@ -145,5 +155,6 @@ int main(void){
     for(int s=0;s<2;s++)for(int t=0;t<2;t++)EH0_scaling[s][t]=.8+.2*s+.3*t;
     CHECK(OpenMX_Solver_Run(exercise,&args)==1);
   }
+  openmx_core_destroy(args.context);
   puts("PASS: 48 Coulomb cases, each twice per invocation, including empty ranks and MD initialization");return 0;
 }

@@ -3,6 +3,7 @@
 #include "openmx_core_pao.h"
 #include "openmx_core_vps.h"
 #include "openmx_core_product.h"
+#include "openmx_core_neutral_grid.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include "openmx_common.h"
@@ -457,31 +458,6 @@ void Allocate_Arrays_with_context(int wherefrom, OpenMXCoreContext *core)
 
       if (alloc_first[32]==0){
 
-	for (i=0; i<SpeciesNum; i++){
-	  free(GridX_EH0[i]);
-	}
-        free(GridX_EH0);
-
-	for (i=0; i<SpeciesNum; i++){
-	  free(GridY_EH0[i]);
-	}
-        free(GridY_EH0);
-
-	for (i=0; i<SpeciesNum; i++){
-	  free(GridZ_EH0[i]);
-	}
-        free(GridZ_EH0);
-
-	for (i=0; i<SpeciesNum; i++){
-	  free(Arho_EH0[i]);
-	}
-        free(Arho_EH0);
-
-	for (i=0; i<SpeciesNum; i++){
-	  free(Wt_EH0[i]);
-	}
-        free(Wt_EH0);
-
         if (Energy_Decomposition_flag==1){
 
 	  for (i=0; i<SpeciesNum; i++){
@@ -497,32 +473,23 @@ void Allocate_Arrays_with_context(int wherefrom, OpenMXCoreContext *core)
 	}
       }
 
-      /* call from Total_Energy.c */
-
-      GridX_EH0 = (double**)malloc(sizeof(double*)*SpeciesNum);
-      for (i=0; i<SpeciesNum; i++){
-        GridX_EH0[i] = (double*)malloc(sizeof(double)*Max_TGN_EH0);
+      /* The calculation owns the flat numeric values and compatibility rows. */
+      {
+        const OpenMXNeutralGridShape shape={SpeciesNum,Max_TGN_EH0};
+        OpenMXNeutralGridTables tables;
+        char error[256];
+        if (!openmx_core_neutral_grid_prepare(core,&shape,&tables,error,sizeof(error))) {
+          fprintf(stderr,"Allocate_Arrays: neutral grid: %s\n",error);
+          MPI_Abort(mpi_comm_level1,1);
+          return;
+        }
+        GridX_EH0=tables.legacy_rows;
+        GridY_EH0=tables.legacy_rows+tables.extent[1];
+        GridZ_EH0=tables.legacy_rows+2*tables.extent[1];
+        Arho_EH0=tables.legacy_rows+3*tables.extent[1];
+        Wt_EH0=tables.legacy_rows+4*tables.extent[1];
       }
 
-      GridY_EH0 = (double**)malloc(sizeof(double*)*SpeciesNum);
-      for (i=0; i<SpeciesNum; i++){
-        GridY_EH0[i] = (double*)malloc(sizeof(double)*Max_TGN_EH0);
-      }
-
-      GridZ_EH0 = (double**)malloc(sizeof(double*)*SpeciesNum);
-      for (i=0; i<SpeciesNum; i++){
-        GridZ_EH0[i] = (double*)malloc(sizeof(double)*Max_TGN_EH0);
-      }
-
-      Arho_EH0 = (double**)malloc(sizeof(double*)*SpeciesNum);
-      for (i=0; i<SpeciesNum; i++){
-        Arho_EH0[i] = (double*)malloc(sizeof(double)*Max_TGN_EH0);
-      }
-
-      Wt_EH0 = (double**)malloc(sizeof(double*)*SpeciesNum);
-      for (i=0; i<SpeciesNum; i++){
-        Wt_EH0[i] = (double*)malloc(sizeof(double)*Max_TGN_EH0);
-      }
 
       if (Energy_Decomposition_flag==1){
 
