@@ -162,4 +162,27 @@ static inline dcomplex *OpenMX_Stress_HnlStrainRow(const OpenMXSolverComplexTens
 {
   return view->values+(((spin*4+axis)*view->extent[1]+derivative)*view->extent[2]+orbital)*view->extent[3];
 }
+
+/* Grid coordinates are generated before use by one worker. */
+static inline double *OpenMX_Stress_AxisBuffer(OpenMXSolverInvocation *owner,int points)
+{
+  if(points<1)OpenMX_Solver_Failure("invalid stress neutral grid extent");
+  return OpenMX_Solver_OverwriteReal(owner,"stress:neutral:grid-axis",(size_t)points);
+}
+/* Separate from the parent's stress collectors; joined regions share this
+   padded one-column reduction without sharing writable cache lines. */
+static inline void OpenMX_Stress_CutoffPrepare(OpenMXSolverInvocation *owner,int workers,
+    OpenMXSolverRealTensor *out)
+{
+  if(workers<1)OpenMX_Solver_Failure("invalid stress cutoff worker count");
+  const size_t shape[4]={(size_t)workers,32,1,1};
+  OpenMX_Stress_OverwritePrepare(owner,"stress:neutral:cutoff-sums",shape,out);
+}
+static inline void OpenMX_Stress_OverlapCountsPrepare(OpenMXSolverInvocation *owner,int peers,
+    int **send,int **receive)
+{
+  if(peers<1)OpenMX_Solver_Failure("invalid stress overlap peer count");
+  *send=OpenMX_Solver_Int(owner,"stress:overlap:send-sizes",(size_t)peers);
+  *receive=OpenMX_Solver_Int(owner,"stress:overlap:receive-sizes",(size_t)peers);
+}
 #endif

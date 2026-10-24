@@ -561,6 +561,10 @@ VNA応力のprivate導関数の出力と作業リストをinvocation所有へ移
 [第81段階](CPP_CORE_MIGRATION.md)で406 CTest・4ホスト構成・両SDK各74単位・64組の実計算と性能を検証しました。
 共有コア・Forceの数値本体・CUDA/HIPカーネルは同一で、Intel/Appleを含む将来のバックエンドに依存しないホスト所有境界を使います。
 
+原子密度格子・カットオフ積分・重なり行列通信をinvocation所有へ移し、Stress.cの直接のmalloc/freeを6→0か所にしました。
+[第82段階](CPP_CORE_MIGRATION.md)で409 CTest・4ホスト構成・両SDK各74単位・64組の実計算と性能を検証しました。
+共有コア・Forceの数値本体・CUDA/HIPカーネルは同一で、Intel/Appleを含む将来のバックエンドに依存しないホスト所有境界を使います。
+
 以下の CTest は、コアを含むビルドの完了後に実行します。コアの GPU テストは実機を使います。
 
 ```sh

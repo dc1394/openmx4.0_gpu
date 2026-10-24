@@ -137,9 +137,28 @@ function(openmx_add_native_state_tests)
   set_tests_properties(stress-nonlocal PROPERTIES
     ENVIRONMENT "${_environment}" LABELS "unit;solver;core;native-state" TIMEOUT 180)
 
+  add_test(NAME stress-neutral
+    COMMAND "${Python3_EXECUTABLE}" "${_repo}/tests/run_stress_neutral_cpu.py"
+      --core-library "$<TARGET_FILE:openmx_core>" --negative-control)
+  set_tests_properties(stress-neutral PROPERTIES
+    ENVIRONMENT "${_environment}" LABELS "unit;solver;core;native-state" TIMEOUT 180)
+
+  add_test(NAME stress-overlap
+    COMMAND "${Python3_EXECUTABLE}" "${_repo}/tests/run_stress_overlap_cpu.py"
+      --core-library "$<TARGET_FILE:openmx_core>" --negative-control)
+  set_tests_properties(stress-overlap PROPERTIES
+    ENVIRONMENT "${_environment}" LABELS "unit;solver;core;native-state" TIMEOUT 180)
+
   find_program(OPENMX_TEST_MPICXX NAMES mpicxx mpic++)
   find_program(OPENMX_TEST_MPIEXEC NAMES mpirun mpiexec)
   if(OPENMX_TEST_MPICXX AND OPENMX_TEST_MPIEXEC)
+    add_test(NAME stress-overlap-mpi
+      COMMAND "${Python3_EXECUTABLE}" "${_repo}/tests/run_stress_overlap_cpu.py"
+        --core-library "$<TARGET_FILE:openmx_core>" --negative-control
+        --mpi-cxx "${OPENMX_TEST_MPICXX}" --mpiexec "${OPENMX_TEST_MPIEXEC}")
+    set_tests_properties(stress-overlap-mpi PROPERTIES
+      ENVIRONMENT "${_environment};OMPI_CXX=${CMAKE_CXX_COMPILER};MPICH_CXX=${CMAKE_CXX_COMPILER};I_MPI_CXX=${CMAKE_CXX_COMPILER}"
+      LABELS "unit;solver;core;mpi;native-state-mpi" TIMEOUT 180 PROCESSORS 4)
     add_test(NAME stress-halo-mpi
       COMMAND "${Python3_EXECUTABLE}" "${_repo}/tests/run_stress_halo_cpu.py"
         --core-library "$<TARGET_FILE:openmx_core>" --negative-control

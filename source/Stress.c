@@ -26,7 +26,7 @@
 #define measure_time 0
 
 /*** subroutine */
-static void MPI_OLP(double *****OLP1);
+static void MPI_OLP(OpenMXSolverInvocation *scratch,double *****OLP1);
 static void Stress3(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
 static void Stress4(const OpenMXAtomicViews *atomic);
 static void Stress4B(OpenMXSolverInvocation *scratch,const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double *****CDM0, const OpenMXLocalBasisViews *local_basis);
@@ -36,7 +36,7 @@ static void Stress_H1(OpenMXSolverInvocation *scratch);
 static void Stress_HNL(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *atomic, double *****CDM0, double *****iDM0, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
 static void Stress_plus_U_dual(OpenMXSolverInvocation *scratch,double *****CDM0, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
 static void EH0_TwoCenter(const OpenMXAtomicViews *atomic, int Gc_AN, int h_AN, double VH0ij[4]); /*from Total_Energy.c*/
-static void EH0_TwoCenter_at_Cutoff(const OpenMXAtomicViews *atomic, int wan1, int wan2, double VH0ij[4]); /*from Total_Energy.c*/
+static void EH0_TwoCenter_at_Cutoff(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *atomic, int wan1, int wan2, double VH0ij[4]); /*from Total_Energy.c*/
 
 static void dHVNA(const OpenMXVnaMatrixViews *vna, int where_flag, int Mc_AN, int h_AN, int q_AN,
 		  Type_DS_VNA *****DS_VNA1, 
@@ -991,7 +991,7 @@ static double Stress_owned(const OpenMXForceWorkspace *halo,OpenMXThermodynamicE
     if (myid==Host_ID && 0<level_stdout){
       printf(" LDA+U is not currently supported in Stress.c \n");fflush(stdout);
     }
-    MPI_OLP(OLP);
+    MPI_OLP(scratch,OLP);
   }
 
   MPI_Barrier(mpi_comm_level1);
@@ -3696,12 +3696,12 @@ void Stress_H0(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *atomic)
 
     /* calculate GridX,Y,Z_EH0 and Wt_EH0 */
 
-#pragma omp parallel shared(atomic,Max_Nd,level_stdout,TGN_EH0,Wt_EH0,Arho_EH0,GridZ_EH0,GridY_EH0,GridX_EH0,Scale_Grid_Ecut,dv_EH0,SpeciesNum,CoarseGL_Abscissae,CoarseGL_Weight) private(OMPID,Nthrds,Nprocs,wan,bc,dx,Nd,gnum,n1,n2,n3,x,y,z,tmp0,r1,rho0,g0,Sx,Dx,xx)
+#pragma omp parallel shared(scratch,atomic,Max_Nd,level_stdout,TGN_EH0,Wt_EH0,Arho_EH0,GridZ_EH0,GridY_EH0,GridX_EH0,Scale_Grid_Ecut,dv_EH0,SpeciesNum,CoarseGL_Abscissae,CoarseGL_Weight) private(OMPID,Nthrds,Nprocs,wan,bc,dx,Nd,gnum,n1,n2,n3,x,y,z,tmp0,r1,rho0,g0,Sx,Dx,xx)
     {
 
       /* allocation of arrays g0 */
 
-      g0 = (double*)malloc(sizeof(double)*Max_Nd);
+      g0=OpenMX_Stress_AxisBuffer(scratch,Max_Nd);
 
       /* get info. on OpenMP */
 
@@ -3761,7 +3761,7 @@ void Stress_H0(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *atomic)
       } /* wan */
 
       /* free */
-      free(g0);
+
 	   
     } /* #pragma omp parallel */
     
@@ -3786,7 +3786,7 @@ void Stress_H0(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *atomic)
       for (wan2=0; wan2<SpeciesNum; wan2++){
 
         /* EH0_TwoCenter_at_Cutoff is parallelized by OpenMP */
-        EH0_TwoCenter_at_Cutoff(atomic, wan1, wan2, EH0ij);
+        EH0_TwoCenter_at_Cutoff(scratch,atomic, wan1, wan2, EH0ij);
 
         r2 = atomic->species.cutoff[wan2];
         Z2 = atomic->species.core_charge[wan2];
@@ -7690,7 +7690,7 @@ void dHNL_SO(
 
   
 
-void MPI_OLP(double *****OLP1)
+void MPI_OLP(OpenMXSolverInvocation *scratch,double *****OLP1)
 {
   int i,j,h_AN,Gh_AN,Hwan,n;
   int tno1,tno2,Mc_AN,Gc_AN,Cwan;
@@ -7711,8 +7711,7 @@ void MPI_OLP(double *****OLP1)
     allocation of arrays:
   ****************************************************/
 
-  Snd_S_Size = (int*)malloc(sizeof(int)*numprocs);
-  Rcv_S_Size = (int*)malloc(sizeof(int)*numprocs);
+  OpenMX_Stress_OverlapCountsPrepare(scratch,numprocs,&Snd_S_Size,&Rcv_S_Size);
 
   /******************************************************************
    MPI
@@ -7818,7 +7817,7 @@ void MPI_OLP(double *****OLP1)
 
 	/* allocation of array */
 
-	tmp_array = (double*)malloc(sizeof(double)*size1);
+	tmp_array=OpenMX_Stress_HaloBuffer(scratch,"stress:overlap:send",size1);
 
 	/* multidimentional array to vector array */
 
@@ -7856,7 +7855,7 @@ void MPI_OLP(double *****OLP1)
 	size2 = Rcv_S_Size[IDR];
         
 	/* allocation of array */
-	tmp_array2 = (double*)malloc(sizeof(double)*size2);
+	tmp_array2=OpenMX_Stress_HaloBuffer(scratch,"stress:overlap:receive",size2);
          
 	MPI_Recv(&tmp_array2[0], size2, MPI_DOUBLE, IDR, tag, mpi_comm_level1, &stat);
 
@@ -7885,12 +7884,12 @@ void MPI_OLP(double *****OLP1)
 	}
 
 	/* freeing of array */
-	free(tmp_array2);
+
       }
 
       if (F_Snd_Num[IDS]!=0){
 	MPI_Wait(&request,&stat);
-	free(tmp_array); /* freeing of array */
+	 /* freeing of array */
       }
     }
   }
@@ -7899,8 +7898,8 @@ void MPI_OLP(double *****OLP1)
     freeing of arrays:
   ****************************************************/
 
-  free(Snd_S_Size);
-  free(Rcv_S_Size);
+
+
 }
 
 
@@ -7982,14 +7981,14 @@ void EH0_TwoCenter(const OpenMXAtomicViews *atomic, int Gc_AN, int h_AN, double 
 
 
 
-void EH0_TwoCenter_at_Cutoff(const OpenMXAtomicViews *atomic, int wan1, int wan2, double VH0ij[4])
+void EH0_TwoCenter_at_Cutoff(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *atomic, int wan1, int wan2, double VH0ij[4])
 { 
   int n1,ban;
   double dv,x,y,z,r1,r2,va0,rho0,dr_va0,rcut;
   double z2,sum,sumr,sumx,sumy,sumz,wt,r,xx;
   /* for OpenMP */
   int OMPID,Nthrds,Nthrds0,Nprocs,Nloop;
-  double *my_sum_threads;
+  OpenMXSolverRealTensor cutoff_sums;
 
   ban = atomic->species.species_index[wan1];
   dv  = dv_EH0[ban];
@@ -8001,13 +8000,13 @@ void EH0_TwoCenter_at_Cutoff(const OpenMXAtomicViews *atomic, int wan1, int wan2
   Nthrds0 = omp_get_max_threads();
 
   /* allocation of array */
-  my_sum_threads = (double*)malloc(sizeof(double)*Nthrds0);
+  OpenMX_Stress_CutoffPrepare(scratch,Nthrds0,&cutoff_sums);
 
   for (Nloop=0; Nloop<Nthrds0; Nloop++){
-    my_sum_threads[Nloop] = 0.0;
+    openmx_solver_real_matrix_row(&cutoff_sums,Nloop)[0] = 0.0;
   }
 
-#pragma omp parallel shared(atomic,wan2,Wt_EH0,my_sum_threads,rcut,Arho_EH0,GridZ_EH0,GridY_EH0,GridX_EH0,TGN_EH0,ban) private(n1,OMPID,Nthrds,Nprocs,x,y,z,rho0,wt,z2,r2,va0,r,xx)
+#pragma omp parallel shared(atomic,wan2,Wt_EH0,cutoff_sums,rcut,Arho_EH0,GridZ_EH0,GridY_EH0,GridX_EH0,TGN_EH0,ban) private(n1,OMPID,Nthrds,Nprocs,x,y,z,rho0,wt,z2,r2,va0,r,xx)
   {
     /* get info. on OpenMP */
 
@@ -8031,14 +8030,14 @@ void EH0_TwoCenter_at_Cutoff(const OpenMXAtomicViews *atomic, int wan1, int wan2
                      atomic->species.vps_mesh[wan2], xx, r,
                      openmx_radial_row2(&atomic->vps_log_radii,wan2), openmx_radial_row2(&atomic->vps_radii,wan2), openmx_radial_row2(&atomic->hartree_potential,wan2));
 
-      my_sum_threads[OMPID] += wt*va0*rho0;
+      openmx_solver_real_matrix_row(&cutoff_sums,OMPID)[0] += wt*va0*rho0;
     }
 
   } /* #pragma omp parallel */
 
   sum  = 0.0;
   for (Nloop=0; Nloop<Nthrds0; Nloop++){
-    sum += my_sum_threads[Nloop];
+    sum += openmx_solver_real_matrix_row(&cutoff_sums,Nloop)[0];
   }
 
   sum  = sum*dv;
@@ -8052,7 +8051,7 @@ void EH0_TwoCenter_at_Cutoff(const OpenMXAtomicViews *atomic, int wan1, int wan2
   VH0ij[3] = sumz;
 
   /* freeing of array */
-  free(my_sum_threads);
+
 }
 
 
