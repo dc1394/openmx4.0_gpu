@@ -1,6 +1,7 @@
 #ifndef OPENMX_PROJECTOR_EXCHANGE_H
 #define OPENMX_PROJECTOR_EXCHANGE_H
 #include "openmx_core_projector_exchange.h"
+#include "openmx_core_native_resources.h"
 #include "mpi.h"
 #include <limits.h>
 #include <stdio.h>
@@ -58,5 +59,30 @@ static inline void OpenMX_TransferEnd(OpenMXProjectorTransfer *transfer)
 {
   openmx_core_projector_exchange_destroy(transfer->owner);
   transfer->owner=NULL;
+}
+
+/* A host-handle domain in the explicitly supplied invocation resource group.
+   Existing create/end callers retain their original ownership contract. */
+enum { OPENMX_EXCHANGE_RESOURCE_HANDLE = 8 };
+static inline int OpenMX_TransferReleaseOwned(void *value,int device)
+{
+  (void)device;openmx_core_projector_exchange_destroy((OpenMXProjectorExchange*)value);
+  return 0;
+}
+/* The caller obtains its group before construction. Adoption transfers only
+   on success; failure destroys the fresh object before reporting the error.
+   Complete every MPI request before the enclosing invocation returns. */
+static inline void OpenMX_TransferBeginOwned(OpenMXNativeResources *resources,
+    MPI_Comm communicator,int peers,size_t scalar_bytes,OpenMXProjectorTransfer *out)
+{
+  if(!resources || !out)OpenMX_TransferFail(communicator,"null projector exchange ownership output");
+  OpenMXProjectorTransfer next=OpenMX_TransferBegin(communicator,peers,scalar_bytes);
+  char error[256];
+  if(!openmx_core_native_adopt(resources,OPENMX_EXCHANGE_RESOURCE_HANDLE,next.owner,-1,
+        OpenMX_TransferReleaseOwned,NULL,error,sizeof(error))) {
+    openmx_core_projector_exchange_destroy(next.owner);
+    OpenMX_TransferFail(communicator,error);
+  }
+  *out=next;
 }
 #endif

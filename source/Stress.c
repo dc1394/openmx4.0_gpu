@@ -2704,7 +2704,9 @@ void Stress4B(OpenMXSolverInvocation *scratch,const OpenMXVnaMatrixViews *vna, c
 
   MPI_Comm_size(mpi_comm_level1,&numprocs);
   MPI_Comm_rank(mpi_comm_level1,&myid);
-  OpenMXProjectorTransfer projector_transfer = OpenMX_TransferBegin(mpi_comm_level1,numprocs,sizeof(Type_DS_VNA));
+  OpenMXProjectorTransfer projector_transfer;
+  OpenMX_TransferBeginOwned(OpenMX_Solver_Resources(scratch,"stress:vna:projector-transfer"),
+      mpi_comm_level1,numprocs,sizeof(Type_DS_VNA),&projector_transfer);
   int *send_progress=projector_transfer.buffers.sent;
   int *receive_progress=projector_transfer.buffers.received;
 
@@ -3413,7 +3415,7 @@ void Stress4B(OpenMXSolverInvocation *scratch,const OpenMXVnaMatrixViews *vna, c
             freeing of arrays 
   ************************************/
 
-  OpenMX_TransferEnd(&projector_transfer);
+
 }
 
 
@@ -4176,7 +4178,9 @@ void Stress_HNL(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *atomic,
 
   MPI_Comm_size(mpi_comm_level1,&numprocs);
   MPI_Comm_rank(mpi_comm_level1,&myid);
-  OpenMXProjectorTransfer projector_transfer = OpenMX_TransferBegin(mpi_comm_level1,numprocs,sizeof(double));
+  OpenMXProjectorTransfer projector_transfer;
+  OpenMX_TransferBeginOwned(OpenMX_Solver_Resources(scratch,"stress:nonlocal:projector-transfer"),
+      mpi_comm_level1,numprocs,sizeof(double),&projector_transfer);
   int *send_progress=projector_transfer.buffers.sent;
   int *receive_progress=projector_transfer.buffers.received;
 
@@ -5116,7 +5120,7 @@ void Stress_HNL(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *atomic,
             freeing of arrays 
   ************************************/
 
-  OpenMX_TransferEnd(&projector_transfer);
+
 }
 
 
