@@ -21,6 +21,7 @@ def main():
     parser.add_argument('--negative-control', action='store_true')
     args = parser.parse_args()
     header = (ROOT/'source/openmx_neutral_atom.h').read_text()
+    grid_header=(ROOT/'core/include/openmx_core_neutral_grid.h').read_text()
     native = '\n'.join(function((ROOT/'source'/source).read_text(), 'EH0_TwoCenter')
         .replace('EH0_TwoCenter', entry, 1) for source, entry in
         [('Total_Energy.c', 'EnergyNeutralPair'), ('Stress.c', 'StressNeutralPair')])
@@ -28,8 +29,9 @@ def main():
         folder = Path(directory)
         (folder/'neutral_pair_native.inc').write_text(native)
 
-        def build(name, language, code=header):
+        def build(name, language, code=header, grid=grid_header):
             (folder/'openmx_neutral_atom.h').write_text(code)
+            (folder/'openmx_core_neutral_grid.h').write_text(grid)
             executable = folder/name
             subprocess.run(compiler_command(language)+['-I'+str(folder),
                 '-I'+str(ROOT/'core/include'), '-x', language,
@@ -50,8 +52,14 @@ def main():
                 failed = subprocess.run([str(build(name, 'c', header.replace(original, replacement)))],
                     cwd=folder, capture_output=True, text=True, preexec_fn=bounded_stack)
                 assert failed.returncode == 2 and 'FAIL line' in failed.stderr, failed
+            stride='(component*tables->extent[1]+species)*tables->extent[2]'
+            assert grid_header.count(stride)==1
+            failed=subprocess.run([str(build('flat-row-layout','c',grid=grid_header.replace(
+                stride,'(species*5+component)*tables->extent[2]')))],cwd=folder,
+                capture_output=True,text=True,preexec_fn=bounded_stack)
+            assert failed.returncode==2 and 'FAIL line'in failed.stderr,failed
     print('PASS: shared neutral C11/C++17 kernels and '+str(5 if args.negative_control else 0)+
-          ' arithmetic negative controls')
+          ' arithmetic negative controls and a flat-layout negative control')
 
 
 if __name__ == '__main__':

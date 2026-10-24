@@ -25,6 +25,7 @@ def body(name):
     return s
 globals_=r'''
 #include "openmx_core_atomic.h"
+#include "openmx_core_neutral_grid.h"
 #define PI 3.14159265358979323846264338327950288
 int mpi_comm_level1=0;
 static int MPI_Abort(int comm,int code){(void)comm;exit(code);}
@@ -50,6 +51,8 @@ static void close_to(double a,double b){
  if(!isfinite(a) || !isfinite(b) || fabs(a-b)>2e-11*(1+fabs(b))){fprintf(stderr,"mismatch %.17g vs %.17g\n",a,b);abort();}
 }
 int main(void){
+ double flat_grid[5][NS][5];
+ OpenMXNeutralGridTables grid_tables={&flat_grid[0][0][0],{5,NS,5}};
  OpenMXAtomicViews atomic={0};
  atomic.species.species=NS;atomic.species.vps_mesh=Spe_Num_Mesh_VPS;atomic.species.pao_mesh=Spe_Num_Mesh_PAO;
  atomic.species.cutoff=Spe_Atom_Cut1;atomic.species.core_charge=Spe_Core_Charge;
@@ -71,6 +74,8 @@ int main(void){
   for(int i=0;i<MESH+2;i++){Spe_VH_Atom[s][i]=1/(1+exp(-4+i*.4));Spe_Atomic_Den2[s][i]=.3*exp(-exp(-4+i*.4));}
   for(int i=0;i<5;i++){GridX_EH0[s][i]=.1+i*.04;GridY_EH0[s][i]=.2-i*.02;GridZ_EH0[s][i]=.25+i*.03;Arho_EH0[s][i]=.2;Wt_EH0[s][i]=.3;}
  }
+ for(int c=0;c<5;c++)for(int sp=0;sp<NS;sp++)for(int point=0;point<5;point++)
+  flat_grid[c][sp][point]=(c==0?GridX_EH0:c==1?GridY_EH0:c==2?GridZ_EH0:c==3?Arho_EH0:Wt_EH0)[sp][point];
  for(int a=1;a<4;a++){Gxyz[a][1]=a*.3;Gxyz[a][2]=a*.17;Gxyz[a][3]=a*.11;}
  double leb_data[4][4]={{1,0,0,.25},{0,1,0,.25},{0,0,1,.25},{-.577,-.577,-.577,.25}},*leb[4];
  for(int i=0;i<4;i++)leb[i]=leb_data[i];
@@ -92,7 +97,7 @@ int main(void){
   int ban[7],wan[7],deriv[7];double dis[7],dx[7],dy[7],dz[7],rout[4][7],gout[4][7];
   for(int i=0;i<7;i++){ban[i]=i%NS;wan[i]=(i+1)%NS;deriv[i]=i%2;dis[i]=.13*i;dx[i]=.3;dy[i]=-.2;dz[i]=.4;}
   Reference_EH0_TwoCenter(0,7,ban,wan,deriv,dis,dx,dy,dz,rout[0],rout[1],rout[2],rout[3]);
-  TotalEnergy_EH0_TwoCenter_Batch_OpenACC(&atomic,7,ban,wan,deriv,dis,dx,dy,dz,gout[0],gout[1],gout[2],gout[3]);
+  TotalEnergy_EH0_TwoCenter_Batch_OpenACC(&grid_tables,&atomic,7,ban,wan,deriv,dis,dx,dy,dz,gout[0],gout[1],gout[2],gout[3]);
   for(int a=0;a<4;a++)for(int i=0;i<7;i++)close_to(gout[a][i],rout[a][i]);cases++;
   double pairs[15],rsum,gsum,forces[4][3]={{0}};
   Reference_Exc0(0,3,M2G,pairs,4,leb,&rsum);

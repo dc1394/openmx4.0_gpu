@@ -23,7 +23,7 @@ static int Host_ID,MYID_MPI_COMM_WORLD,level_stdout,SpinP_switch,Energy_Decompos
 static int List_YOUSO[100],Spe_MaxL_Basis[2],basis_data[2][1],*Spe_Num_Basis[2];
 static int scf_eigen_lib_flag,Max_Nd,Max_TGN_EH0,CoarseGL_Mesh=2,TGN_EH0[2];
 static double CoarseGL_Abscissae[2]={-.5,.5},CoarseGL_Weight[2]={1,1},dv_EH0[2];
-static double grid[5][2][64],*GridX_EH0[2],*GridY_EH0[2],*GridZ_EH0[2],*Arho_EH0[2],*Wt_EH0[2];
+static OpenMXNeutralGridTables fixture_tables;
 static double dec[2][4],*dec_rows[2][4],**DecEscc[2];
 #include "openmx_energy_workspace.h"
 static double ticks;
@@ -41,10 +41,7 @@ static void Allocate_Arrays_with_context(int mode,OpenMXCoreContext *context){
   CHECK(mode==4&&Max_TGN_EH0<=64&&context);
   const OpenMXNeutralGridShape shape={SpeciesNum,Max_TGN_EH0};OpenMXNeutralGridTables tables;char error[256];
   CHECK(openmx_core_neutral_grid_prepare(context,&shape,&tables,error,sizeof(error)));
-  for(int s=0;s<SpeciesNum;s++){
-    GridX_EH0[s]=tables.legacy_rows[s];GridY_EH0[s]=tables.legacy_rows[SpeciesNum+s];
-    GridZ_EH0[s]=tables.legacy_rows[2*SpeciesNum+s];Arho_EH0[s]=tables.legacy_rows[3*SpeciesNum+s];Wt_EH0[s]=tables.legacy_rows[4*SpeciesNum+s];
-  }
+  fixture_tables=tables;
   ++grid_allocations;
 }
 double KumoF(int mesh,double x,double *a,double *b,double *c){CHECK(mesh==2&&a&&b&&c&&isfinite(x));return .2+.03*x;}
@@ -53,7 +50,8 @@ static void model_pair(int base,int other,int derivative,double distance,const d
   out[0]=.3+.04*base+.07*other+.02*distance;
   for(int d=0;d<3;d++)out[d+1]=derivative?(.4+.09*base-.05*other)*direction[d]:0;
 }
-static void EH0_TwoCenter(const OpenMXAtomicViews *atomic,int atom,int h,double out[4]){
+static void EH0_TwoCenter(const OpenMXNeutralGridTables *tables,const OpenMXAtomicViews *atomic,int atom,int h,double out[4]){
+  CHECK(tables->values==fixture_tables.values);
   int other=natn[atom][h],a=WhatSpecies[atom],b=WhatSpecies[other];double direction[3]={0};
   if(h)for(int d=0;d<3;d++)direction[d]=(Gxyz[atom][d+1]-Gxyz[other][d+1])/Dis[atom][h];
   model_pair(atomic->species.species_index[a],b,h!=0,Dis[atom][h],direction,out);
@@ -68,9 +66,9 @@ static void batch(const OpenMXAtomicViews *atomic,int count,int *base,int *other
     a[i]=out[0];b[i]=out[1];c[i]=out[2];d[i]=out[3];
   }
 }
-static void TotalEnergy_EH0_TwoCenter_Batch_OpenACC(const OpenMXAtomicViews *a,int n,int *b,int *w,int *h,double *r,double *x,double *y,double *z,double *o0,double *o1,double *o2,double *o3){batch(a,n,b,w,h,r,x,y,z,o0,o1,o2,o3);}
-static void TotalEnergy_EH0_TwoCenter_Batch_OpenMP(const OpenMXAtomicViews *a,int n,int *b,int *w,int *h,double *r,double *x,double *y,double *z,double *o0,double *o1,double *o2,double *o3){batch(a,n,b,w,h,r,x,y,z,o0,o1,o2,o3);}
-static void EH0_TwoCenter_at_Cutoff(OpenMXSolverInvocation*,const OpenMXAtomicViews*,int,int,double[4]);
+static void TotalEnergy_EH0_TwoCenter_Batch_OpenACC(const OpenMXNeutralGridTables *tables,const OpenMXAtomicViews *a,int n,int *b,int *w,int *h,double *r,double *x,double *y,double *z,double *o0,double *o1,double *o2,double *o3){CHECK(tables->values==fixture_tables.values);batch(a,n,b,w,h,r,x,y,z,o0,o1,o2,o3);}
+static void TotalEnergy_EH0_TwoCenter_Batch_OpenMP(const OpenMXNeutralGridTables *tables,const OpenMXAtomicViews *a,int n,int *b,int *w,int *h,double *r,double *x,double *y,double *z,double *o0,double *o1,double *o2,double *o3){CHECK(tables->values==fixture_tables.values);batch(a,n,b,w,h,r,x,y,z,o0,o1,o2,o3);}
+static void EH0_TwoCenter_at_Cutoff(OpenMXSolverInvocation*,const OpenMXNeutralGridTables*,const OpenMXAtomicViews*,int,int,double[4]);
 #include "coulomb_native.inc"
 
 /* Independent assembly oracle: directly sum ordered physical neighbor pairs.
@@ -113,7 +111,7 @@ static int exercise(OpenMXSolverInvocation *owner,void *opaque,double *result){
       /* Constant prescribed potential makes the cutoff integral analytic
          on the supplied quadrature: sum(weight*density)*dv*potential. */
       double integral=0;
-      for(int i=0;i<TGN_EH0[s];i++)integral+=Wt_EH0[s][i]*Arho_EH0[s][i];
+      for(int i=0;i<TGN_EH0[s];i++)integral+=openmx_core_neutral_grid_row(&fixture_tables,4,s)[i]*openmx_core_neutral_grid_row(&fixture_tables,3,s)[i];
       for(int t=0;t<2;t++)near(EH0_scaling[s][t],Spe_Core_Charge[s]*Spe_Core_Charge[t]/
           ((args->atomic.species.cutoff[s]+args->atomic.species.cutoff[t])*integral*dv_EH0[s]*(1+.1*Spe_Core_Charge[t])));
     }
@@ -131,7 +129,6 @@ int main(void){
   }
   for(int s=0;s<2;s++){
     DecEscc[s]=dec_rows[s];Spe_Num_Basis[s]=basis_data[s];
-    GridX_EH0[s]=grid[0][s];GridY_EH0[s]=grid[1][s];GridZ_EH0[s]=grid[2][s];Arho_EH0[s]=grid[3][s];Wt_EH0[s]=grid[4][s];
   }
   for(int a=1;a<=3;a++){positions[a][1]=.3*a;positions[a][2]=.07*a*a;positions[a][3]=-.11*a;}
   for(int a=1;a<=3;a++)for(int h=0;h<=FNAN[a];h++){

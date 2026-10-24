@@ -780,11 +780,6 @@ static void array0(OpenMXCoreContext *core)
 
     if (alloc_first[32]==0){
       openmx_core_neutral_grid_release(core);
-      GridX_EH0=NULL;
-      GridY_EH0=NULL;
-      GridZ_EH0=NULL;
-      Arho_EH0=NULL;
-      Wt_EH0=NULL;
 
       if (Energy_Decomposition_flag==1){
 

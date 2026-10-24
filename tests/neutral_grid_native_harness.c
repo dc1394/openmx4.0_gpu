@@ -8,30 +8,26 @@
 #define CHECK(c) do{if(!(c)){fprintf(stderr,"FAIL line %d: %s\n",__LINE__,#c);exit(2);}}while(0)
 static int SpeciesNum,Max_TGN_EH0,Energy_Decomposition_flag,remake_headfile,alloc_first[64];
 static int Spe_MaxL_Basis[3]={1,0,2},basis[3][3]={{1,2,0},{3,0,0},{2,1,2}},*Spe_Num_Basis[3]={basis[0],basis[1],basis[2]};
-static double **GridX_EH0,**GridY_EH0,**GridZ_EH0,**Arho_EH0,**Wt_EH0,****Arho_EH0_Orb;
+static double ****Arho_EH0_Orb;
 static int mpi_comm_level1=3;
 static OpenMXCoreContext *abort_context;
 static OpenMXNeutralGridTables abort_snapshot;
-static double **abort_rows[5];
 int MPI_Abort(int communicator,int code){
   CHECK(communicator==3&&code==1&&abort_context);OpenMXNeutralGridTables current;char error[256];
   CHECK(openmx_core_neutral_grid_get(abort_context,&current,error,sizeof(error)));
-  CHECK(current.values==abort_snapshot.values&&current.legacy_rows==abort_snapshot.legacy_rows&&current.values[0]==17);
-  CHECK(GridX_EH0==abort_rows[0]&&GridY_EH0==abort_rows[1]&&GridZ_EH0==abort_rows[2]&&Arho_EH0==abort_rows[3]&&Wt_EH0==abort_rows[4]);
+  CHECK(current.values==abort_snapshot.values&&current.values[0]==17);
   _Exit(77);
 }
 #include "neutral_grid_native.inc"
-static double **row_table(int component){return component==0?GridX_EH0:component==1?GridY_EH0:component==2?GridZ_EH0:component==3?Arho_EH0:Wt_EH0;}
 static OpenMXNeutralGridTables get(OpenMXCoreContext *context){
   OpenMXNeutralGridTables view;char error[256];CHECK(openmx_core_neutral_grid_get(context,&view,error,sizeof(error)));return view;
 }
 static void check_grid(OpenMXCoreContext *context,double seed){
   const OpenMXNeutralGridTables view=get(context);CHECK(view.extent[0]==5&&view.extent[1]==(size_t)SpeciesNum&&view.extent[2]==(size_t)Max_TGN_EH0);
   for(int c=0;c<5;c++){
-    CHECK(row_table(c)==view.legacy_rows+c*SpeciesNum);
     for(int s=0;s<SpeciesNum;s++){
-      CHECK(row_table(c)[s]==view.values+(c*SpeciesNum+s)*Max_TGN_EH0);
-      for(int p=0;p<Max_TGN_EH0;p++)row_table(c)[s][p]=seed+10000*c+100*s+p;
+      CHECK(openmx_core_neutral_grid_row(&view,c,s)==view.values+(c*SpeciesNum+s)*Max_TGN_EH0);
+      for(int p=0;p<Max_TGN_EH0;p++)openmx_core_neutral_grid_row(&view,c,s)[p]=seed+10000*c+100*s+p;
     }
   }
   for(int c=0;c<5;c++)for(int s=0;s<SpeciesNum;s++)for(int p=0;p<Max_TGN_EH0;p++)CHECK(view.values[(c*SpeciesNum+s)*Max_TGN_EH0+p]==seed+10000*c+100*s+p);
@@ -40,8 +36,7 @@ static void check_grid(OpenMXCoreContext *context,double seed){
   }
 }
 static void check_empty(OpenMXCoreContext *context){
-  const OpenMXNeutralGridTables view=get(context);CHECK(!view.values&&!view.legacy_rows&&!view.extent[0]);
-  CHECK(!GridX_EH0&&!GridY_EH0&&!GridZ_EH0&&!Arho_EH0&&!Wt_EH0);
+  const OpenMXNeutralGridTables view=get(context);CHECK(!view.values&&!view.extent[0]);
 }
 int main(int argc,char **argv){
   char error[256];OpenMXCoreContext *context=openmx_core_create_host(error,sizeof(error)),*other=openmx_core_create_host(error,sizeof(error));CHECK(context&&other);
@@ -49,7 +44,7 @@ int main(int argc,char **argv){
   CHECK(openmx_core_neutral_grid_prepare(other,&unrelated,&other_grid,error,sizeof(error)));other_grid.values[109]=91;
   if(argc>1){
     SpeciesNum=2;Max_TGN_EH0=7;Energy_Decomposition_flag=0;alloc_first[32]=1;native_allocate(context);check_grid(context,17);
-    abort_context=context;abort_snapshot=get(context);for(int c=0;c<5;c++)abort_rows[c]=row_table(c);
+    abort_context=context;abort_snapshot=get(context);
     if(!strcmp(argv[1],"shape"))SpeciesNum=0;else if(!strcmp(argv[1],"overflow"))SpeciesNum=Max_TGN_EH0=INT_MAX;
     native_allocate(!strcmp(argv[1],"context")?NULL:context);CHECK(0);
   }
@@ -65,5 +60,5 @@ int main(int argc,char **argv){
     CHECK(other_grid.values[109]==91);
   }
   openmx_core_destroy(context);CHECK(other_grid.values[109]==91);openmx_core_destroy(other);
-  printf("PASS: %d actual native allocation cases, five flat/legacy mappings, optional orbital lifecycle, release/clear, independent contexts\n",cases);return 0;
+  printf("PASS: %d actual native allocation cases, five flat row mappings, optional orbital lifecycle, release, independent contexts\n",cases);return 0;
 }

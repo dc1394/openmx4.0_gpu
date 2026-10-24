@@ -10,6 +10,7 @@
 #include <math.h>
 #include "openmx_common.h"
 #include "openmx_env.h"
+#include "openmx_core_neutral_grid.h"
 
 
 #include <string.h>
@@ -365,7 +366,7 @@ static void TotalEnergy_EH0_Kernel(size_t first,size_t count,const void *paramet
     }
 }
 
-void TotalEnergy_EH0_TwoCenter_Batch_OpenACC(const OpenMXAtomicViews *atomic, int pair_count, int *pair_ban, int *pair_wan2,
+void TotalEnergy_EH0_TwoCenter_Batch_OpenACC(const OpenMXNeutralGridTables *tables,const OpenMXAtomicViews *atomic, int pair_count, int *pair_ban, int *pair_wan2,
                                              int *pair_has_deriv, double *pair_dis,
                                              double *pair_dirx, double *pair_diry, double *pair_dirz,
                                              double *out0, double *out1, double *out2, double *out3)
@@ -417,11 +418,11 @@ void TotalEnergy_EH0_TwoCenter_Batch_OpenACC(const OpenMXAtomicViews *atomic, in
     for (n=0; n<grid_stride; n++){
       i = spe*grid_stride + n;
       if (n<TGN_EH0[spe]){
-        gridx_flat[i] = GridX_EH0[spe][n];
-        gridy_flat[i] = GridY_EH0[spe][n];
-        gridz_flat[i] = GridZ_EH0[spe][n];
-        arho_flat[i] = Arho_EH0[spe][n];
-        wt_flat[i] = Wt_EH0[spe][n];
+        gridx_flat[i] = openmx_core_neutral_grid_row(tables,0,spe)[n];
+        gridy_flat[i] = openmx_core_neutral_grid_row(tables,1,spe)[n];
+        gridz_flat[i] = openmx_core_neutral_grid_row(tables,2,spe)[n];
+        arho_flat[i] = openmx_core_neutral_grid_row(tables,3,spe)[n];
+        wt_flat[i] = openmx_core_neutral_grid_row(tables,4,spe)[n];
       }
       else{
         gridx_flat[i] = 0.0;

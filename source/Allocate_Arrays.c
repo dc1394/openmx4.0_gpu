@@ -473,7 +473,7 @@ void Allocate_Arrays_with_context(int wherefrom, OpenMXCoreContext *core)
 	}
       }
 
-      /* The calculation owns the flat numeric values and compatibility rows. */
+      /* The calculation owns the flat numeric values. */
       {
         const OpenMXNeutralGridShape shape={SpeciesNum,Max_TGN_EH0};
         OpenMXNeutralGridTables tables;
@@ -483,11 +483,6 @@ void Allocate_Arrays_with_context(int wherefrom, OpenMXCoreContext *core)
           MPI_Abort(mpi_comm_level1,1);
           return;
         }
-        GridX_EH0=tables.legacy_rows;
-        GridY_EH0=tables.legacy_rows+tables.extent[1];
-        GridZ_EH0=tables.legacy_rows+2*tables.extent[1];
-        Arho_EH0=tables.legacy_rows+3*tables.extent[1];
-        Wt_EH0=tables.legacy_rows+4*tables.extent[1];
       }
 
 

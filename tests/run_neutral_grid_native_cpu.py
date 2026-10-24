@@ -3,7 +3,7 @@
 
 The production case-4 and final-release blocks are compiled as C11/C++17;
 only MPI abort is modeled. Optional orbital allocations exercise their legacy
-lifecycle. Row alias and missing-clear negative controls check the boundary.
+lifecycle. Wrong-shape and missing-release negative controls check the boundary.
 """
 import argparse
 from pathlib import Path
@@ -49,8 +49,8 @@ def main():
                 assert failed.returncode == 77 and 'Allocate_Arrays: neutral grid:' in failed.stderr, failed
         if args.negative_control:
             for name, old, new in [
-                ('row-alias', 'GridY_EH0=tables.legacy_rows+tables.extent[1];', 'GridY_EH0=tables.legacy_rows;'),
-                ('stale-alias', 'GridX_EH0=NULL;', '/* stale alias */')]:
+                ('wrong-shape', 'shape={SpeciesNum,Max_TGN_EH0};', 'shape={SpeciesNum,Max_TGN_EH0+1};'),
+                ('missing-release', 'openmx_core_neutral_grid_release(core);', '/* missing release */')]:
                 assert native.count(old) == 1
                 failed = subprocess.run([str(build(name, 'c', native.replace(old, new)))], cwd=folder,
                     capture_output=True, text=True, preexec_fn=bounded_stack)

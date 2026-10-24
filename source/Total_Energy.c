@@ -22,6 +22,7 @@
 #include "openmx_core_vna_matrix.h"
 #include "openmx_energy_workspace.h"
 #include "openmx_neutral_atom.h"
+#include "openmx_core_neutral_grid.h"
 #include "mpi.h"
 #include <omp.h>
 
@@ -54,8 +55,8 @@ static void Calc_Edc(double ECE[]);
 static double Calc_Ehub(const OpenMXLocalBasisViews *local_basis);   /* --- added by MJ  */
 static double Calc_EdftD();  /* added by okuno */
 static double Calc_EdftD3(OpenMXSolverInvocation *scratch); /* added by Ellner */
-static void EH0_TwoCenter(const OpenMXAtomicViews *atomic, int Gc_AN, int h_AN, double VH0ij[4]);
-static void EH0_TwoCenter_at_Cutoff(OpenMXSolverInvocation *scratch, const OpenMXAtomicViews *atomic, int wan1, int wan2, double VH0ij[4]);
+static void EH0_TwoCenter(const OpenMXNeutralGridTables *tables,const OpenMXAtomicViews *atomic, int Gc_AN, int h_AN, double VH0ij[4]);
+static void EH0_TwoCenter_at_Cutoff(OpenMXSolverInvocation *scratch,const OpenMXNeutralGridTables *tables, const OpenMXAtomicViews *atomic, int wan1, int wan2, double VH0ij[4]);
 static void Energy_Decomposition(const OpenMXBandEnergies *energies, double ECE[], const OpenMXElectronicViews *electronic);
 static void Energy_Decomposition_CWF(OpenMXSolverInvocation *scratch, const OpenMXCWFObservables *cwf_values, double ECE[]);
 #if OPENMX_GPU_HIP
@@ -76,11 +77,11 @@ void TotalEnergy_Dipole_Grid_OpenACC(int GNs, double *My_E_dpx, double *My_E_dpy
 #if OPENMX_GPU_HIP
 void TotalEnergy_CWF_Dc_Grid_OpenMP(int spinmax, double My_dcEH1[2], double My_dcEXC[2]);
 void TotalEnergy_Exc0_Batch_OpenMP(const OpenMXAtomicViews *atomic, int Num_Leb, double **Leb_Grid_XYZW, double *sum_out);
-void TotalEnergy_EH0_TwoCenter_Batch_OpenMP(const OpenMXAtomicViews *atomic, int pair_count, int *pair_ban, int *pair_wan2,
+void TotalEnergy_EH0_TwoCenter_Batch_OpenMP(const OpenMXNeutralGridTables *tables,const OpenMXAtomicViews *atomic, int pair_count, int *pair_ban, int *pair_wan2,
 #else
 void TotalEnergy_CWF_Dc_Grid_OpenACC(int spinmax, double My_dcEH1[2], double My_dcEXC[2]);
 void TotalEnergy_Exc0_Batch_OpenACC(const OpenMXAtomicViews *atomic, int Num_Leb, double **Leb_Grid_XYZW, double *sum_out);
-void TotalEnergy_EH0_TwoCenter_Batch_OpenACC(const OpenMXAtomicViews *atomic, int pair_count, int *pair_ban, int *pair_wan2,
+void TotalEnergy_EH0_TwoCenter_Batch_OpenACC(const OpenMXNeutralGridTables *tables,const OpenMXAtomicViews *atomic, int pair_count, int *pair_ban, int *pair_wan2,
 #endif
                                              int *pair_has_deriv, double *pair_dis,
                                              double *pair_dirx, double *pair_diry, double *pair_dirz,
@@ -1200,6 +1201,18 @@ double Calc_Ecore(OpenMXSolverInvocation *scratch)
 
 double Calc_EH0(const OpenMXEnergyWorkspace *workspace, OpenMXCoreContext *core, const OpenMXAtomicViews *atomic, int MD_iter)
 {
+  OpenMXNeutralGridTables tables;
+  char grid_error[256]={0};
+  if (MD_iter!=1) {
+      if (!openmx_core_neutral_grid_get(core,&tables,grid_error,sizeof(grid_error)) ||
+          !tables.values || tables.extent[1]!=(size_t)SpeciesNum ||
+          tables.extent[2]!=(size_t)Max_TGN_EH0) {
+        fprintf(stderr,"neutral grid view unavailable or shape mismatch: %s\n",grid_error);
+        MPI_Abort(mpi_comm_level1,1);
+        return 0.0;
+      }
+  }
+
   /****************************************************
               EH0 = -1/2\int n^a(r) V^a_H dr
   ****************************************************/
@@ -1284,10 +1297,17 @@ double Calc_EH0(const OpenMXEnergyWorkspace *workspace, OpenMXCoreContext *core,
     Max_TGN_EH0 += 10; 
 
     Allocate_Arrays_with_context(4,core);
+    if (!openmx_core_neutral_grid_get(core,&tables,grid_error,sizeof(grid_error)) ||
+        !tables.values || tables.extent[1]!=(size_t)SpeciesNum ||
+        tables.extent[2]!=(size_t)Max_TGN_EH0) {
+      fprintf(stderr,"neutral grid view unavailable or shape mismatch: %s\n",grid_error);
+      MPI_Abort(mpi_comm_level1,1);
+      return 0.0;
+    }
 
     /* calculate GridX,Y,Z_EH0 and Wt_EH0 */
 
-#pragma omp parallel shared(workspace,atomic,Max_Nd,level_stdout,TGN_EH0,Wt_EH0,Arho_EH0,GridZ_EH0,GridY_EH0,GridX_EH0,Scale_Grid_Ecut,dv_EH0,SpeciesNum,CoarseGL_Abscissae,CoarseGL_Weight) private(OMPID,Nthrds,Nprocs,wan,bc,dx,Nd,gnum,n1,n2,n3,x,y,z,tmp0,r1,rho0,g0,Sx,Dx,xx)
+#pragma omp parallel shared(workspace,atomic,Max_Nd,level_stdout,TGN_EH0,tables,Scale_Grid_Ecut,dv_EH0,SpeciesNum,CoarseGL_Abscissae,CoarseGL_Weight) private(OMPID,Nthrds,Nprocs,wan,bc,dx,Nd,gnum,n1,n2,n3,x,y,z,tmp0,r1,rho0,g0,Sx,Dx,xx)
     {
 
       int l,p;
@@ -1314,7 +1334,11 @@ double Calc_EH0(const OpenMXEnergyWorkspace *workspace, OpenMXCoreContext *core,
 	const OpenMXNeutralQuadratureView quadrature={Nd,CoarseGL_Mesh,bc,dx,PI,
             CoarseGL_Abscissae,CoarseGL_Weight};
         gnum=OpenMX_Neutral_GridFill(atomic,wan,&quadrature,g0,
-            GridX_EH0[wan],GridY_EH0[wan],GridZ_EH0[wan],Arho_EH0[wan],Wt_EH0[wan]);
+            openmx_core_neutral_grid_row(&tables,0,wan),
+            openmx_core_neutral_grid_row(&tables,1,wan),
+            openmx_core_neutral_grid_row(&tables,2,wan),
+            openmx_core_neutral_grid_row(&tables,3,wan),
+            openmx_core_neutral_grid_row(&tables,4,wan));
 
         TGN_EH0[wan] = gnum;
 
@@ -1350,7 +1374,7 @@ double Calc_EH0(const OpenMXEnergyWorkspace *workspace, OpenMXCoreContext *core,
       for (wan2=0; wan2<SpeciesNum; wan2++){
 
 	/* EH0_TwoCenter_at_Cutoff is parallelized by OpenMP */      
-	EH0_TwoCenter_at_Cutoff(workspace->owner, atomic, wan1, wan2, EH0ij);
+	EH0_TwoCenter_at_Cutoff(workspace->owner,&tables, atomic, wan1, wan2, EH0ij);
 
 	r2 = atomic->species.cutoff[wan2];
 	Z2 = atomic->species.core_charge[wan2];
@@ -1474,9 +1498,9 @@ double Calc_EH0(const OpenMXEnergyWorkspace *workspace, OpenMXCoreContext *core,
 
     dtime(&Stime_atom);
 #if OPENMX_GPU_HIP
-    TotalEnergy_EH0_TwoCenter_Batch_OpenMP(atomic, pair_count, pair_ban, pair_wan2,
+    TotalEnergy_EH0_TwoCenter_Batch_OpenMP(&tables,atomic, pair_count, pair_ban, pair_wan2,
 #else
-    TotalEnergy_EH0_TwoCenter_Batch_OpenACC(atomic, pair_count, pair_ban, pair_wan2,
+    TotalEnergy_EH0_TwoCenter_Batch_OpenACC(&tables,atomic, pair_count, pair_ban, pair_wan2,
 #endif
                                             pair_has_deriv, pair_dis,
                                             pair_dirx, pair_diry, pair_dirz,
@@ -1567,7 +1591,7 @@ double Calc_EH0(const OpenMXEnergyWorkspace *workspace, OpenMXCoreContext *core,
           if (h_AN==0) factor = 1.0;
           else         factor = EH0_scaling[wan1][wan2];
 
-          EH0_TwoCenter(atomic, Gc_AN, h_AN, EH0ij);
+          EH0_TwoCenter(&tables,atomic, Gc_AN, h_AN, EH0ij);
           TmpEH0 -= 0.250*factor*EH0ij[0];
           Fx[Mc_AN] = Fx[Mc_AN] - 0.5*factor*EH0ij[1];
           Fy[Mc_AN] = Fy[Mc_AN] - 0.5*factor*EH0ij[2];
@@ -1576,7 +1600,7 @@ double Calc_EH0(const OpenMXEnergyWorkspace *workspace, OpenMXCoreContext *core,
           if (h_AN==0) factor = 1.0;
           else         factor = EH0_scaling[wan2][wan1];
 
-          EH0_TwoCenter(atomic, Gh_AN, RMI1[Mc_AN][h_AN][0], EH0ij);
+          EH0_TwoCenter(&tables,atomic, Gh_AN, RMI1[Mc_AN][h_AN][0], EH0ij);
           TmpEH0 -= 0.250*factor*EH0ij[0];
           Fx[Mc_AN] = Fx[Mc_AN] + 0.5*factor*EH0ij[1];
           Fy[Mc_AN] = Fy[Mc_AN] + 0.5*factor*EH0ij[2];
@@ -2558,13 +2582,17 @@ void Calc_EXC_EH1(OpenMXSolverInvocation *scratch, const OpenMXAtomicViews *atom
 
 
 
-void EH0_TwoCenter(const OpenMXAtomicViews *atomic, int Gc_AN, int h_AN, double VH0ij[4])
+void EH0_TwoCenter(const OpenMXNeutralGridTables *tables,const OpenMXAtomicViews *atomic, int Gc_AN, int h_AN, double VH0ij[4])
 {
   const int Gh_AN=natn[Gc_AN][h_AN],Rn=ncn[Gc_AN][h_AN];
   const int wan1=WhatSpecies[Gc_AN],wan2=WhatSpecies[Gh_AN];
   const int ban=atomic->species.species_index[wan1];
   const OpenMXNeutralGridView grid={TGN_EH0[ban],dv_EH0[ban],
-      GridX_EH0[ban],GridY_EH0[ban],GridZ_EH0[ban],Arho_EH0[ban],Wt_EH0[ban]};
+      openmx_core_neutral_grid_row(tables,0,ban),
+      openmx_core_neutral_grid_row(tables,1,ban),
+      openmx_core_neutral_grid_row(tables,2,ban),
+      openmx_core_neutral_grid_row(tables,3,ban),
+      openmx_core_neutral_grid_row(tables,4,ban)};
   OpenMXNeutralPotentialView potential;
   OpenMX_Neutral_PotentialBorrow(atomic,wan2,&potential);
   double displacement[3]={0.0,0.0,0.0};
@@ -2589,7 +2617,7 @@ void EH0_TwoCenter(const OpenMXAtomicViews *atomic, int Gc_AN, int h_AN, double 
 
 
 
-void EH0_TwoCenter_at_Cutoff(OpenMXSolverInvocation *scratch, const OpenMXAtomicViews *atomic, int wan1, int wan2, double VH0ij[4])
+void EH0_TwoCenter_at_Cutoff(OpenMXSolverInvocation *scratch,const OpenMXNeutralGridTables *tables, const OpenMXAtomicViews *atomic, int wan1, int wan2, double VH0ij[4])
 { 
   int ban;
   double dv,rcut;
@@ -2601,7 +2629,11 @@ void EH0_TwoCenter_at_Cutoff(OpenMXSolverInvocation *scratch, const OpenMXAtomic
   ban = atomic->species.species_index[wan1];
   dv  = dv_EH0[ban];
   const OpenMXNeutralGridView grid={TGN_EH0[ban],dv,
-      GridX_EH0[ban],GridY_EH0[ban],GridZ_EH0[ban],Arho_EH0[ban],Wt_EH0[ban]};
+      openmx_core_neutral_grid_row(tables,0,ban),
+      openmx_core_neutral_grid_row(tables,1,ban),
+      openmx_core_neutral_grid_row(tables,2,ban),
+      openmx_core_neutral_grid_row(tables,3,ban),
+      openmx_core_neutral_grid_row(tables,4,ban)};
   OpenMXNeutralPotentialView potential;
   OpenMX_Neutral_PotentialBorrow(atomic,wan2,&potential);
 

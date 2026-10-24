@@ -21,7 +21,7 @@ static double positions[4][50],*Gxyz[4],distances[4][3],*Dis[4],atv[1][4]={{0}};
 static double Spe_Core_Charge[2]={2,4},time_per_atom[4],EH0_scaling[2][2],Stress_Tensor[9];
 static int Host_ID,level_stdout,Max_Nd,Max_TGN_EH0,CoarseGL_Mesh=2,TGN_EH0[2];
 static double CoarseGL_Abscissae[3]={-.5,.5,0},CoarseGL_Weight[3]={1,1,0},dv_EH0[2];
-static double grid[5][2][64],*GridX_EH0[2],*GridY_EH0[2],*GridZ_EH0[2],*Arho_EH0[2],*Wt_EH0[2];
+static OpenMXNeutralGridTables fixture_tables;
 #include "openmx_stress_workspace.h"
 static void near(double a,double b){if(!isfinite(a)||fabs(a-b)>3e-10*(1+fabs(b))){fprintf(stderr,"values %.17g %.17g\n",a,b);CHECK(0);}}
 static int allocations;
@@ -35,16 +35,14 @@ static void Allocate_Arrays_with_context(int mode,OpenMXCoreContext *context){
   CHECK(mode==4&&Max_TGN_EH0<=64&&context);
   const OpenMXNeutralGridShape shape={SpeciesNum,Max_TGN_EH0};OpenMXNeutralGridTables tables;char error[256];
   CHECK(openmx_core_neutral_grid_prepare(context,&shape,&tables,error,sizeof(error)));
-  for(int s=0;s<SpeciesNum;s++){
-    GridX_EH0[s]=tables.legacy_rows[s];GridY_EH0[s]=tables.legacy_rows[SpeciesNum+s];
-    GridZ_EH0[s]=tables.legacy_rows[2*SpeciesNum+s];Arho_EH0[s]=tables.legacy_rows[3*SpeciesNum+s];Wt_EH0[s]=tables.legacy_rows[4*SpeciesNum+s];
-  }
+  fixture_tables=tables;
   ++allocations;
 }
 double KumoF(int mesh,double x,double *a,double *b,double *c){CHECK(mesh==2&&a&&b&&c&&isfinite(x));return .2+.03*x;}
 double VH_AtomF(double charge,int mesh,double x,double r,double *a,double *b,double *c){CHECK(mesh==2&&a&&b&&c&&isfinite(x)&&r>0);return 1+.1*charge+.03*r*r;}
 static double slope(int base,int other){return .4+.09*base-.05*other;}
-static void EH0_TwoCenter(const OpenMXAtomicViews *atomic,int atom,int h,double out[4]){
+static void EH0_TwoCenter(const OpenMXNeutralGridTables *tables,const OpenMXAtomicViews *atomic,int atom,int h,double out[4]){
+  CHECK(tables->values==fixture_tables.values);
   const int other=natn[atom][h],a=WhatSpecies[atom],b=WhatSpecies[other];
   out[0]=.3+.04*a+.07*b+.02*Dis[atom][h];
   for(int d=0;d<3;d++)out[d+1]=h?slope(atomic->species.species_index[a],b)*(positions[atom][d+1]-positions[other][d+1])/Dis[atom][h]:0;
@@ -60,7 +58,7 @@ static void verify_grid(const OpenMXAtomicViews *atomic){
     for(int i=0;i<TGN_EH0[s];i++){
       const int zindex=i/CoarseGL_Mesh,xindex=i%CoarseGL_Mesh;const double x=.5*cutoff*(1+CoarseGL_Abscissae[xindex]),z=-cutoff+spacing*zindex;
       const double r2=x*x+z*z,rho=.2+.015*log(r2),weight=PI*x*cutoff*CoarseGL_Weight[xindex];
-      near(GridX_EH0[s][i],x);near(GridY_EH0[s][i],0);near(GridZ_EH0[s][i],z);near(Arho_EH0[s][i],rho);near(Wt_EH0[s][i],weight);
+      near(openmx_core_neutral_grid_row(&fixture_tables,0,s)[i],x);near(openmx_core_neutral_grid_row(&fixture_tables,1,s)[i],0);near(openmx_core_neutral_grid_row(&fixture_tables,2,s)[i],z);near(openmx_core_neutral_grid_row(&fixture_tables,3,s)[i],rho);near(openmx_core_neutral_grid_row(&fixture_tables,4,s)[i],weight);
       moment0+=weight*rho;momentz+=weight*rho*z;momentr2+=weight*rho*r2;
     }
     for(int t=0;t<2;t++){
@@ -109,7 +107,6 @@ int main(int argc,char **argv){
   for(int a=0;a<4;a++){
     Gxyz[a]=positions[a];Dis[a]=distances[a];natn[a]=neighbors[a];ncn[a]=images[a];RMI1[a]=reverse_rows[a];for(int h=0;h<3;h++)reverse_rows[a][h]=reverse_data[a][h];
   }
-  for(int s=0;s<2;s++){GridX_EH0[s]=grid[0][s];GridY_EH0[s]=grid[1][s];GridZ_EH0[s]=grid[2][s];Arho_EH0[s]=grid[3][s];Wt_EH0[s]=grid[4][s];}
   for(int a=1;a<=3;a++){positions[a][1]=.3*a;positions[a][2]=.07*a*a;positions[a][3]=-.11*a;}
   for(int a=1;a<=3;a++)for(int h=0;h<=FNAN[a];h++){
     const int b=neighbors[a][h];double r2=0;for(int d=1;d<=3;d++)r2+=pow(positions[a][d]-positions[b][d],2);distances[a][h]=sqrt(r2);

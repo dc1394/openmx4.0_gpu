@@ -11,6 +11,7 @@
 #include <math.h>
 #include "openmx_common.h"
 #include "openmx_env.h"
+#include "openmx_core_neutral_grid.h"
 
 
 #include <string.h>
@@ -367,7 +368,7 @@ static double AMD_TotalEnergy_EH0_Dr_VH_AtomF_flat(int spe, int N, double x, dou
 #pragma omp end declare target
 
 
-static void AMD_TotalEnergy_EH0_TwoCenter_Batch_Run(const OpenMXAtomicViews *atomic, int pair_count, int *pair_ban, int *pair_wan2,
+static void AMD_TotalEnergy_EH0_TwoCenter_Batch_Run(const OpenMXNeutralGridTables *tables,const OpenMXAtomicViews *atomic, int pair_count, int *pair_ban, int *pair_wan2,
                                              int *pair_has_deriv, double *pair_dis,
                                              double *pair_dirx, double *pair_diry, double *pair_dirz,
                                              double *out0, double *out1, double *out2, double *out3)
@@ -420,11 +421,11 @@ static void AMD_TotalEnergy_EH0_TwoCenter_Batch_Run(const OpenMXAtomicViews *ato
     for (n=0; n<grid_stride; n++){
       i = spe*grid_stride + n;
       if (n<TGN_EH0[spe]){
-        gridx_flat[i] = GridX_EH0[spe][n];
-        gridy_flat[i] = GridY_EH0[spe][n];
-        gridz_flat[i] = GridZ_EH0[spe][n];
-        arho_flat[i] = Arho_EH0[spe][n];
-        wt_flat[i] = Wt_EH0[spe][n];
+        gridx_flat[i] = openmx_core_neutral_grid_row(tables,0,spe)[n];
+        gridy_flat[i] = openmx_core_neutral_grid_row(tables,1,spe)[n];
+        gridz_flat[i] = openmx_core_neutral_grid_row(tables,2,spe)[n];
+        arho_flat[i] = openmx_core_neutral_grid_row(tables,3,spe)[n];
+        wt_flat[i] = openmx_core_neutral_grid_row(tables,4,spe)[n];
       }
       else{
         gridx_flat[i] = 0.0;
@@ -542,7 +543,7 @@ static void AMD_TotalEnergy_EH0_TwoCenter_Batch_Run(const OpenMXAtomicViews *ato
 /* A large pair batch already fills a GPU. Limit concurrent long kernels
    and target-data copies from separate MPI processes sharing that device.
    Small batches and separate physical GPUs retain concurrent dispatch. */
-void AMD_TotalEnergy_EH0_TwoCenter_Batch_OpenMP(const OpenMXAtomicViews *atomic, int pair_count, int *pair_ban, int *pair_wan2,
+void AMD_TotalEnergy_EH0_TwoCenter_Batch_OpenMP(const OpenMXNeutralGridTables *tables,const OpenMXAtomicViews *atomic, int pair_count, int *pair_ban, int *pair_wan2,
                                              int *pair_has_deriv, double *pair_dis,
                                              double *pair_dirx, double *pair_diry, double *pair_dirz,
                                              double *out0, double *out1, double *out2, double *out3)
@@ -553,7 +554,7 @@ void AMD_TotalEnergy_EH0_TwoCenter_Batch_OpenMP(const OpenMXAtomicViews *atomic,
   const long requested = openmx_env_long_at(OPENMX_ENV_EH0_GPU_CONCURRENCY, -1);
 
   if (requested==0) {
-    AMD_TotalEnergy_EH0_TwoCenter_Batch_Run(atomic, pair_count,pair_ban,pair_wan2,pair_has_deriv,
+    AMD_TotalEnergy_EH0_TwoCenter_Batch_Run(tables,atomic, pair_count,pair_ban,pair_wan2,pair_has_deriv,
                                      pair_dis,pair_dirx,pair_diry,pair_dirz,out0,out1,out2,out3);
     return;
   }
@@ -583,7 +584,7 @@ void AMD_TotalEnergy_EH0_TwoCenter_Batch_OpenMP(const OpenMXAtomicViews *atomic,
   }
   for (int first=0; first<size; first+=concurrency) {
     if (first<=rank && rank<first+concurrency)
-      AMD_TotalEnergy_EH0_TwoCenter_Batch_Run(atomic, pair_count,pair_ban,pair_wan2,pair_has_deriv,
+      AMD_TotalEnergy_EH0_TwoCenter_Batch_Run(tables,atomic, pair_count,pair_ban,pair_wan2,pair_has_deriv,
                                        pair_dis,pair_dirx,pair_diry,pair_dirz,out0,out1,out2,out3);
     if (concurrency<size) MPI_Barrier(group);
   }
@@ -1513,12 +1514,12 @@ static void TotalEnergy_EH0_Kernel(size_t first,size_t count,const void *paramet
     }
 }
 
-void TotalEnergy_EH0_TwoCenter_Batch_OpenMP(const OpenMXAtomicViews *atomic, int pair_count, int *pair_ban, int *pair_wan2,
+void TotalEnergy_EH0_TwoCenter_Batch_OpenMP(const OpenMXNeutralGridTables *tables,const OpenMXAtomicViews *atomic, int pair_count, int *pair_ban, int *pair_wan2,
                                              int *pair_has_deriv, double *pair_dis,
                                              double *pair_dirx, double *pair_diry, double *pair_dirz,
                                              double *out0, double *out1, double *out2, double *out3)
 {
-  if(TotalEnergy_NativeAdmit((size_t)SpeciesNum*((size_t)Max_TGN_EH0*5+(size_t)List_YOUSO[22]*3+8)*sizeof(double)+(size_t)pair_count*96)){AMD_TotalEnergy_EH0_TwoCenter_Batch_OpenMP(atomic, pair_count,pair_ban,pair_wan2,pair_has_deriv,pair_dis,pair_dirx,pair_diry,pair_dirz,out0,out1,out2,out3);return;}
+  if(TotalEnergy_NativeAdmit((size_t)SpeciesNum*((size_t)Max_TGN_EH0*5+(size_t)List_YOUSO[22]*3+8)*sizeof(double)+(size_t)pair_count*96)){AMD_TotalEnergy_EH0_TwoCenter_Batch_OpenMP(tables,atomic, pair_count,pair_ban,pair_wan2,pair_has_deriv,pair_dis,pair_dirx,pair_diry,pair_dirz,out0,out1,out2,out3);return;}
 
   int spe,n,i;
   int species_count,grid_stride,vps_stride,vh_stride;
@@ -1567,11 +1568,11 @@ void TotalEnergy_EH0_TwoCenter_Batch_OpenMP(const OpenMXAtomicViews *atomic, int
     for (n=0; n<grid_stride; n++){
       i = spe*grid_stride + n;
       if (n<TGN_EH0[spe]){
-        gridx_flat[i] = GridX_EH0[spe][n];
-        gridy_flat[i] = GridY_EH0[spe][n];
-        gridz_flat[i] = GridZ_EH0[spe][n];
-        arho_flat[i] = Arho_EH0[spe][n];
-        wt_flat[i] = Wt_EH0[spe][n];
+        gridx_flat[i] = openmx_core_neutral_grid_row(tables,0,spe)[n];
+        gridy_flat[i] = openmx_core_neutral_grid_row(tables,1,spe)[n];
+        gridz_flat[i] = openmx_core_neutral_grid_row(tables,2,spe)[n];
+        arho_flat[i] = openmx_core_neutral_grid_row(tables,3,spe)[n];
+        wt_flat[i] = openmx_core_neutral_grid_row(tables,4,spe)[n];
       }
       else{
         gridx_flat[i] = 0.0;

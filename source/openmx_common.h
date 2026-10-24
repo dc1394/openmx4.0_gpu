@@ -764,27 +764,7 @@ extern int **ncn_onan1,**ncn_onan2,**ncn_onan3;
 *******************************************************/
 extern double **Dis;
 
-/*******************************************************
- double **GridX_EH0, **GridY_EH0, **GridZ_EH0 ;
-  x,y,and z-coordinates of grids for calculating EH0 in
-  Correction_Energy.c
-  size: GridX_EH0[SpeciesNum][Max_TGN_EH0]
-  allocation: call as Allocate_Arrays(4)
-              in Correcion_Energy.c
-  free:       call as Free_Arrays(0) in openmx.c
-*******************************************************/
-extern double **GridX_EH0,**GridY_EH0,**GridZ_EH0;
 
-/*******************************************************
- double **Arho_EH0;
-  atomic density on grids for calculating EH0 in
-  Correction_Energy.c
-  size: Arho_EH0[SpeciesNum][Max_TGN_EH0]
-  allocation: call as Allocate_Arrays(4)
-              in Correcion_Energy.c
-  free:       call as Free_Arrays(0) in openmx.c
-*******************************************************/
-extern double **Arho_EH0;
 
 /*******************************************************
  double ****Arho_EH0_Orb;
@@ -797,16 +777,6 @@ extern double **Arho_EH0;
 *******************************************************/
 extern double ****Arho_EH0_Orb;
 
-/*******************************************************
- double **Wt_EH0;
-  quadrature weight of grids for calculating EH0
-  in Correction_Energy.c
-  size: Wt_EH0[SpeciesNum][Max_TGN_EH0]
-  allocation: call as Allocate_Arrays(4)
-              in Correcion_Energy.c
-  free:       call as Free_Arrays(0) in openmx.c
-*******************************************************/
-extern double **Wt_EH0;
 
 /*******************************************************
  double **atv;

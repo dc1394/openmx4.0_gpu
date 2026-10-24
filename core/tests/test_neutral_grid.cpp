@@ -22,9 +22,9 @@ OpenMXNeutralGridTables prepare(Context& context,int species,int capacity){
   return view;
 }
 void fill(const OpenMXNeutralGridTables& view,double seed){
-  require(view.extent[0]==5&&view.extent[1]>0&&view.extent[2]>0&&view.values&&view.legacy_rows,"missing grid shape/storage");
+  require(view.extent[0]==5&&view.extent[1]>0&&view.extent[2]>0&&view.values,"missing grid shape/storage");
   for(std::size_t component=0;component<5;++component)for(std::size_t species=0;species<view.extent[1];++species){
-    auto* row=view.legacy_rows[component*view.extent[1]+species];
+    auto* row=openmx_core_neutral_grid_row(&view,component,species);
     require(row==view.values+(component*view.extent[1]+species)*view.extent[2],"row not mapped over flat component/species/point storage");
     for(std::size_t point=0;point<view.extent[2];++point)row[point]=seed+10000*component+100*species+point;
   }
@@ -48,7 +48,7 @@ void replace(){
   for(int n:{3,29,7,29,1}){
     auto view=prepare(a,n==29?3:2,n);fill(view,n+.25);check(view,n+.25);check(other,71);
     OpenMXNeutralGridTables fetched{};require(openmx_core_neutral_grid_get(a.value,&fetched,error,sizeof(error)),error);
-    require(fetched.values==view.values&&fetched.legacy_rows==view.legacy_rows&&fetched.extent[1]==view.extent[1]&&fetched.extent[2]==view.extent[2],"get detached current owner");
+    require(fetched.values==view.values&&fetched.extent[1]==view.extent[1]&&fetched.extent[2]==view.extent[2],"get detached current owner");
   }
 }
 void invalid(){
@@ -74,18 +74,18 @@ void failures(){
     openmx::test::fail_allocation_after(n);const int ok=openmx_core_neutral_grid_prepare(context.value,&shape,&view,error,sizeof(error));openmx::test::fail_allocation_after(-1);
     if(ok){success=true;break;}
     ++failures;require(error[0]&&std::memcmp(&view,&saved,sizeof(view))==0,"allocation failure changed output");
-    OpenMXNeutralGridTables current{};require(openmx_core_neutral_grid_get(context.value,&current,error,sizeof(error))&&current.values==saved.values&&current.legacy_rows==saved.legacy_rows,"failed prepare replaced old owner");
+    OpenMXNeutralGridTables current{};require(openmx_core_neutral_grid_get(context.value,&current,error,sizeof(error))&&current.values==saved.values,"failed prepare replaced old owner");
     check(saved,23);require(openmx::test::live_allocations()==live,"failed prepare leaked");
   }
-  require(success&&failures>=3&&view.extent[1]==3&&view.extent[2]==47,"failure sweep missed object/numeric/row allocations");fill(view,31);check(view,31);
+  require(success&&failures>=2&&view.extent[1]==3&&view.extent[2]==47,"failure sweep missed object/numeric allocations");fill(view,31);check(view,31);
 }
 void lifetime(){
   const auto live=openmx::test::live_allocations();
   for(int i=0;i<16;++i){
     Context context;char error[256];OpenMXNeutralGridTables view{};
-    require(openmx_core_neutral_grid_get(context.value,&view,error,sizeof(error))&&!view.values&&!view.legacy_rows,"absent owner not empty");
+    require(openmx_core_neutral_grid_get(context.value,&view,error,sizeof(error))&&!view.values,"absent owner not empty");
     for(int repeat=0;repeat<3;++repeat){view=prepare(context,2,11);fill(view,repeat);openmx_core_neutral_grid_release(context.value);openmx_core_neutral_grid_release(context.value);
-      require(openmx_core_neutral_grid_get(context.value,&view,error,sizeof(error))&&!view.values&&!view.legacy_rows,"released owner still visible");}
+      require(openmx_core_neutral_grid_get(context.value,&view,error,sizeof(error))&&!view.values,"released owner still visible");}
     view=prepare(context,3,7);openmx_core_finish(context.value);openmx_core_finish(context.value);const auto saved=view;
     require(!openmx_core_neutral_grid_get(context.value,&view,error,sizeof(error))&&std::memcmp(&view,&saved,sizeof(view))==0,"finished get modified output");
     const OpenMXNeutralGridShape shape{1,1};require(!openmx_core_neutral_grid_prepare(context.value,&shape,&view,error,sizeof(error)),"finished context accepted prepare");

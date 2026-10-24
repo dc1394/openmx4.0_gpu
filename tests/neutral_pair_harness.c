@@ -7,11 +7,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include "openmx_core_atomic.h"
+#include "openmx_core_neutral_grid.h"
 #include "openmx_neutral_atom.h"
 #define CHECK(c) do{if(!(c)){fprintf(stderr,"FAIL line %d: %s\n",__LINE__,#c);exit(2);}}while(0)
 static int WhatSpecies[4]={0,0,1,0},neighbors[4][3],images[4][3],*natn[4],*ncn[4];
 static int TGN_EH0[2];
-static double points[5][2][32],*GridX_EH0[2],*GridY_EH0[2],*GridZ_EH0[2],*Arho_EH0[2],*Wt_EH0[2];
+static double points[5][2][32];
+static OpenMXNeutralGridTables grid_tables={&points[0][0][0],{5,2,32}};
 static double dv_EH0[2]={.031,.043},coordinates[4][4],*Gxyz[4],distances[4][3],*Dis[4],atv[2][4];
 static double charges[2]={1.5,2.7},radial[3][2][4];
 static int mesh[2]={4,4},species_index[2]={1,0},value_calls,derivative_calls,pre_guard_logs;
@@ -59,7 +61,7 @@ static int check_pairs(const OpenMXAtomicViews *atomic){
     const double distance=distances[atom][h];long double energy,derivative;moments(base,sp,distance,&energy,&derivative);
     for(int implementation=0;implementation<2;implementation++){
       double out[4]={99,98,97,96};value_calls=derivative_calls=0;
-      if(implementation)StressNeutralPair(atomic,atom,h,out);else EnergyNeutralPair(atomic,atom,h,out);
+      if(implementation)StressNeutralPair(&grid_tables,atomic,atom,h,out);else EnergyNeutralPair(&grid_tables,atomic,atom,h,out);
       CHECK(value_calls==TGN_EH0[row]&&derivative_calls==(h?TGN_EH0[row]:0));near(out[0],energy);
       for(int d=0;d<3;d++){
         const double displacement=coordinates[atom][d+1]-(coordinates[other][d+1]+atv[images[atom][h]][d+1]);
@@ -88,7 +90,6 @@ int main(void){
   atomic.vps_radii=(OpenMXRadialView2){&radial[1][0][0],{2,4}};
   atomic.hartree_potential=(OpenMXRadialView2){&radial[2][0][0],{2,4}};
   for(int s=0;s<2;s++){
-    GridX_EH0[s]=points[0][s];GridY_EH0[s]=points[1][s];GridZ_EH0[s]=points[2][s];Arho_EH0[s]=points[3][s];Wt_EH0[s]=points[4][s];
     radial[2][s][0]=.7+.2*s;radial[2][s][1]=.13-.03*s;radial[2][s][2]=.017+.005*s;
   }
   for(int a=0;a<4;a++){natn[a]=neighbors[a];ncn[a]=images[a];Gxyz[a]=coordinates[a];Dis[a]=distances[a];}
@@ -122,7 +123,7 @@ int main(void){
   const long double r2=(long double)guarded*guarded;
   const long double guard_energy=scale*(radial[2][0][0]+radial[2][0][1]*r2+radial[2][0][2]*r2*r2);
   for(int implementation=0;implementation<2;implementation++){
-    double out[4];if(implementation)StressNeutralPair(&atomic,2,1,out);else EnergyNeutralPair(&atomic,2,1,out);
+    double out[4];if(implementation)StressNeutralPair(&grid_tables,&atomic,2,1,out);else EnergyNeutralPair(&grid_tables,&atomic,2,1,out);
     near(out[0],guard_energy);
     for(int d=0;d<3;d++){
       const double displacement=coordinates[2][d+1]-coordinates[3][d+1];

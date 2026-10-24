@@ -582,6 +582,11 @@ Total_Energy/Stressと両DFTに既存コンテキストを明示し、ネイテ�
 [第86段階](CPP_CORE_MIGRATION.md)で418 CTest・4ホスト構成・両SDK各76単位・64組の物理比較と性能を確認しています。
 共有Coreは変更されています。CUDA/HIPの数値カーネル、GeForce/A100/H100の実行方針は保持しました。
 
+中性原子の5つの大域格子ポインタとCoreの行ポインタ表を削除し、CPU・CUDA・HIPの消費側へ連続ビューを明示しています。
+[第87段階](CPP_CORE_MIGRATION.md)で418 CTest・4ホスト構成・両SDK各77単位・64組の物理比較と性能を確認しました。
+Total_Energy_GPU.cもSDK対象に追加し、CUDA/HIP転送準備のCPU試験各336ケースを実施しています。
+共有Coreは変更されています。GPU数値カーネルと各GPUの容量・同時実行・転送方針は保持しました。
+
 以下の CTest は、コアを含むビルドの完了後に実行します。コアの GPU テストは実機を使います。
 
 ```sh
