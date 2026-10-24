@@ -34,7 +34,12 @@ int openmx_gpu_local_size_noncollective(void);
    is verified, because past that point acc_malloc and the data
    directives abort instead of failing.  Ranks that fail keep the host
    as their OpenACC compute device and must take the host code paths. */
+#if defined(OPENMX_GPU_BACKEND) && OPENMX_GPU_BACKEND == 0
+/* A compile-time constant lets ordinary C remove unreachable device paths. */
+static inline int gpu_rank_device_usable(void) { return 0; }
+#else
 int gpu_rank_device_usable(void);
+#endif
 
 /* cudaMemGetInfo() whose free figure is capped at the device memory that is
    physically free according to NVML.  Every device-memory budget of the GPU

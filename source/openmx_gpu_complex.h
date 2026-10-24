@@ -10,7 +10,7 @@
 #include "hip_complex_compat.h"
 #define OpenMXGpuComplex hipDoubleComplex
 #define OpenMXGpuMakeComplex make_hipDoubleComplex
-#elif OPENMX_GPU_CUDA
+#elif OPENMX_GPU_CUDA || OPENMX_GPU_HOST
 #include <cuComplex.h>
 #define OpenMXGpuComplex cuDoubleComplex
 #define OpenMXGpuMakeComplex make_cuDoubleComplex

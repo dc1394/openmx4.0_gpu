@@ -65,7 +65,7 @@
 #define OpenMXGpuMakeExtent make_hipExtent
 #define OpenMXGpuPointerAttributes hipPointerAttribute_t
 #define OPENMX_GPU_OUT_OF_MEMORY hipErrorOutOfMemory
-#elif OPENMX_GPU_CUDA
+#elif OPENMX_GPU_CUDA || OPENMX_GPU_HOST
 #include <cuda_runtime.h>
 #define OpenMXGpuError cudaError_t
 #define OpenMXGpuStream cudaStream_t

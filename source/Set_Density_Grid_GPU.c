@@ -18,6 +18,7 @@
 #include <accel.h>
 #include <limits.h>
 #include <openacc.h>
+#include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>

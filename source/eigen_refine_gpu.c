@@ -58,6 +58,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <limits.h>
 #include <cuComplex.h>
 
 /* the GEMMul8 bridge (gemmul8_bridge.cu) */

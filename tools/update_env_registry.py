@@ -129,7 +129,8 @@ def split_arguments(args):
 def source_files(source, include_hip=True):
     # HIP overrides are production readers too: otherwise HIP-only names
     # bypass both the snapshot distribution and the registry/doc sync gate.
-    directories = (source, source / "backends/hip/src", source / "backends/hip/include") if include_hip else (source,)
+    directories = (source, source / "backends/hip/src", source / "backends/hip/include",
+                   source / "backends/cpu", source / "backends/cpu/include") if include_hip else (source,)
     return sorted(p for directory in directories if directory.is_dir() for p in directory.iterdir()
                   if p.suffix in (".c", ".cu", ".cpp", ".h") and not p.name.startswith("openmx_env"))
 

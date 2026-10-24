@@ -58,6 +58,7 @@ class UnifiedBuildTest(unittest.TestCase):
         shared = set(self.manifest["shared"])
         overrides = self.manifest["overrides"]
         self.assertFalse(shared.intersection(overrides), "ambiguous HIP source selection")
+
         self.assertEqual(shared | set(overrides), set(self.manifest["import_sha256"]))
         for relative, expected in self.manifest["import_sha256"].items():
             with self.subTest(source=relative):
@@ -70,6 +71,20 @@ class UnifiedBuildTest(unittest.TestCase):
                 projected = self.builds["HIP"] / "native" / relative
                 self.assertTrue(original.is_file())
                 self.assertEqual(digest(projected), digest(original))
+
+    def test_cpu_projection_has_no_vendor_dependency_builds(self):
+        build = self.workspace / 'cpu-only'
+        result = self.prepare(build, 'CPU')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        stage = build / 'native/source'
+        self.assertEqual((stage / 'Set_Hamiltonian.c').resolve(), ROOT / 'source/Set_Hamiltonian.c')
+        self.assertTrue((stage / 'cpu/include/openmx_cpu_runtime.h').is_file())
+        self.assertFalse((stage / 'Makefile').exists())
+        for name in ('GEMMul8', 'fftw3', 'magma', 'gpusolver2-install'):
+            self.assertFalse((stage / 'third_party' / name).exists())
+        rejected = self.prepare(build, 'CUDA')
+        self.assertNotEqual(rejected.returncode, 0)
+        self.assertIn('another backend', rejected.stderr)
 
     def test_backend_selects_production_sources(self):
         cuda, hip = self.stages["CUDA"], self.stages["HIP"]

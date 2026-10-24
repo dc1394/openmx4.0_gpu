@@ -89,6 +89,16 @@ class CMakeDriverTest(unittest.TestCase):
         self.configure("-DCMAKE_BUILD_TYPE=")
         self.assertIn("CMAKE_BUILD_TYPE:STRING=Release", cache.read_text())
 
+    def test_cpu_selection_does_not_query_gpu_hardware(self):
+        self.configure('-DOPENMX_GPU_BACKEND=CPU', '-DOPENMX_BUILD_APPLICATION=OFF')
+        self.command(['cmake', '--build', str(self.build), '--target', 'openmx_core'])
+        self.assertFalse(self.gpu_queries.exists())
+
+    def test_cpu_application_rejects_device_core_before_sdk_detection(self):
+        failed = self.configure('-DOPENMX_GPU_BACKEND=CPU', '-DOPENMX_CORE_BACKEND=CUDA', success=False)
+        self.assertIn('CPU application requires OPENMX_CORE_BACKEND=SERIAL or OPENMP', failed.stderr)
+        self.assertFalse(self.gpu_queries.exists())
+
     def test_success_copy_opt_out_custom_directory_and_failed_build(self):
         self.configure("-DOPENMX_GPU_ARCH=sm_80")
         self.build_application()

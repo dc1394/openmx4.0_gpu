@@ -4,6 +4,27 @@ on:
   pull_request:
 
 jobs:
+  cpu-application:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install CPU compilers and numerical libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends gfortran openmpi-bin libopenmpi-dev libscalapack-openmpi-dev libopenblas-dev libfftw3-dev autoconf automake libtool libtool-bin m4 pkg-config unzip
+      - name: Build the full CPU application without a GPU SDK
+        run: |
+          cmake -S . -B build/cpu -DOPENMX_GPU_BACKEND=CPU -DOPENMX_COPY_TO_WORK=OFF -DOPENMX_BUILD_JOBS=2
+          cmake --build build/cpu --target openmx openmx_grid_assembly_tests openmx_host_simd_boundary_tests --parallel 2
+      - name: Check CPU kernels and accelerator boundaries
+        run: ctest --test-dir build/cpu -R '^(core-(grid-assembly|host-simd-boundary)|cpu-build-accelerator-boundary|environment-registry)' --output-on-failure
+      - name: Reject GPU runtime dependencies
+        run: |
+          ldd build/cpu/openmx > build/cpu/runtime-libraries.txt
+          if grep -E 'not found|lib(cudart|cublas|cusolver|cuda\.so|amdhip64|rocblas|hipsolver)' build/cpu/runtime-libraries.txt; then
+            exit 1
+          fi
+
   host:
     runs-on: ${{ matrix.os }}
     strategy:

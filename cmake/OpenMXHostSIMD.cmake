@@ -29,13 +29,15 @@ ExternalProject_Add(openmx_host_simd_build
     BUILD_ALWAYS TRUE
     BUILD_BYPRODUCTS "${_host_library}"
     INSTALL_COMMAND "")
-add_library(openmx_host_simd SHARED IMPORTED)
+add_library(openmx_host_simd SHARED IMPORTED GLOBAL)
 set_target_properties(openmx_host_simd PROPERTIES IMPORTED_LOCATION "${_host_library}")
 add_dependencies(openmx_host_simd openmx_host_simd_build)
 target_link_libraries(openmx_core PRIVATE openmx_host_simd)
 if(APPLE)
+  set_property(TARGET openmx_core APPEND PROPERTY BUILD_RPATH "@loader_path")
   set_property(TARGET openmx_core APPEND PROPERTY INSTALL_RPATH "@loader_path")
 else()
+  set_property(TARGET openmx_core APPEND PROPERTY BUILD_RPATH "$ORIGIN")
   set_property(TARGET openmx_core APPEND PROPERTY INSTALL_RPATH "$ORIGIN")
 endif()
 install(FILES "${_host_library}" DESTINATION lib)

@@ -27,19 +27,27 @@ if(OPENMX_BUILD_APPLICATION)
     unset(OPENMX_MANAGED_WORK_INSTALL_PREFIX CACHE)
   endif()
 endif()
-set(OPENMX_GPU_BACKEND "CUDA" CACHE STRING "GPU backend: CUDA (NVIDIA) or HIP (AMD)")
-set_property(CACHE OPENMX_GPU_BACKEND PROPERTY STRINGS CUDA HIP)
+set(OPENMX_GPU_BACKEND "CUDA" CACHE STRING "Application backend: CUDA (NVIDIA), HIP (AMD), or CPU")
+set_property(CACHE OPENMX_GPU_BACKEND PROPERTY STRINGS CUDA HIP CPU)
 string(TOUPPER "${OPENMX_GPU_BACKEND}" _backend)
 if(_backend STREQUAL "NVIDIA")
   set(_backend CUDA)
 elseif(_backend STREQUAL "AMD")
   set(_backend HIP)
+elseif(_backend STREQUAL "NONE" OR _backend STREQUAL "HOST")
+  set(_backend CPU)
 endif()
-if(NOT _backend MATCHES "^(CUDA|HIP)$")
-  message(FATAL_ERROR "OPENMX_GPU_BACKEND must be CUDA or HIP")
+if(NOT _backend MATCHES "^(CUDA|HIP|CPU)$")
+  message(FATAL_ERROR "OPENMX_GPU_BACKEND must be CUDA, HIP or CPU")
 endif()
 set(OPENMX_GPU_ARCH "" CACHE STRING "GPU architecture (CUDA: auto via nvidia-smi, sm_80, 90, sm_120; HIP: gfx942)")
 include(cmake/OpenMXGPUArchitecture.cmake)
+if(OPENMX_BUILD_APPLICATION AND _backend STREQUAL "CPU" AND DEFINED OPENMX_CORE_BACKEND)
+  string(TOUPPER "${OPENMX_CORE_BACKEND}" _cpu_core_backend)
+  if(NOT _cpu_core_backend MATCHES "^(SERIAL|OPENMP)$")
+    message(FATAL_ERROR "The CPU application requires OPENMX_CORE_BACKEND=SERIAL or OPENMP")
+  endif()
+endif()
 if(OPENMX_BUILD_APPLICATION AND _backend STREQUAL "CUDA")
   openmx_resolve_cuda_architecture()
 endif()
@@ -60,25 +68,6 @@ set(OPENMX_BUILD_JOBS "4" CACHE STRING "Parallel jobs in the native build")
 set(OPENMX_MAKE_OPTIONS "" CACHE STRING "Native make variable assignments separated by semicolons")
 option(OPENMX_COPY_TO_WORK "Copy the successful application build to OPENMX_WORK_DIR" ON)
 
-set(_native_options "GPUSOLVER2_JOBS=${OPENMX_BUILD_JOBS}" ${OPENMX_MAKE_OPTIONS})
-list(APPEND _native_options "OPENMX_CORE_LIBRARY=$<TARGET_FILE:openmx_core>")
-if(_backend STREQUAL "HIP")
-  list(APPEND _native_options "OPENMX_SOURCE_ROOT=${CMAKE_SOURCE_DIR}/source")
-endif()
-if(_backend STREQUAL "CUDA" AND OPENMX_CUDA_ARCH)
-  list(APPEND _native_options "GEMMUL8_GPU_ARCH=${OPENMX_CUDA_ARCH}")
-elseif(_backend STREQUAL "HIP" AND OPENMX_GPU_ARCH)
-  list(APPEND _native_options "ARCH=${OPENMX_GPU_ARCH}")
-endif()
-foreach(_option IN LISTS _native_options)
-  if(NOT _option MATCHES "^[A-Za-z_][A-Za-z_0-9]*=.*$")
-    message(FATAL_ERROR "Invalid OPENMX_MAKE_OPTIONS entry: ${_option}. Expected NAME=value.")
-  endif()
-endforeach()
-if(NOT OPENMX_BUILD_JOBS MATCHES "^[1-9][0-9]*$")
-  message(FATAL_ERROR "OPENMX_BUILD_JOBS must be a positive integer")
-endif()
-
 set(_prepare "${CMAKE_SOURCE_DIR}/tools/prepare_build.py")
 set(_prepare_command "${Python3_EXECUTABLE}" "${_prepare}"
     --source-root "${CMAKE_SOURCE_DIR}" --build-root "${CMAKE_BINARY_DIR}"
@@ -89,24 +78,48 @@ if(NOT _result EQUAL 0)
   message(FATAL_ERROR "${_error}")
 endif()
 set(_native "${CMAKE_BINARY_DIR}/native/source")
-set(_copy_to_work)
-if(OPENMX_COPY_TO_WORK)
-  list(APPEND _copy_to_work COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/copy_openmx.py"
-       "${CMAKE_BINARY_DIR}/openmx" "${OPENMX_WORK_DIR}/openmx")
+
+if(_backend STREQUAL "CPU")
+  include(cmake/OpenMXCPU.cmake)
+else()
+  set(_native_options "GPUSOLVER2_JOBS=${OPENMX_BUILD_JOBS}" ${OPENMX_MAKE_OPTIONS})
+  list(APPEND _native_options "OPENMX_CORE_LIBRARY=$<TARGET_FILE:openmx_core>")
+  if(_backend STREQUAL "HIP")
+    list(APPEND _native_options "OPENMX_SOURCE_ROOT=${CMAKE_SOURCE_DIR}/source")
+  endif()
+  if(_backend STREQUAL "CUDA" AND OPENMX_CUDA_ARCH)
+    list(APPEND _native_options "GEMMUL8_GPU_ARCH=${OPENMX_CUDA_ARCH}")
+  elseif(_backend STREQUAL "HIP" AND OPENMX_GPU_ARCH)
+    list(APPEND _native_options "ARCH=${OPENMX_GPU_ARCH}")
+  endif()
+  foreach(_option IN LISTS _native_options)
+    if(NOT _option MATCHES "^[A-Za-z_][A-Za-z_0-9]*=.*$")
+      message(FATAL_ERROR "Invalid OPENMX_MAKE_OPTIONS entry: ${_option}. Expected NAME=value.")
+    endif()
+  endforeach()
+  if(NOT OPENMX_BUILD_JOBS MATCHES "^[1-9][0-9]*$")
+    message(FATAL_ERROR "OPENMX_BUILD_JOBS must be a positive integer")
+  endif()
+
+  set(_copy_to_work)
+  if(OPENMX_COPY_TO_WORK)
+    list(APPEND _copy_to_work COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/copy_openmx.py"
+         "${CMAKE_BINARY_DIR}/openmx" "${OPENMX_WORK_DIR}/openmx")
+  endif()
+  add_custom_target(openmx ALL
+      COMMAND ${_prepare_command}
+      COMMAND "${OPENMX_MAKE_EXECUTABLE}" -C "${_native}" -j${OPENMX_BUILD_JOBS}
+              ${_native_options} openmx
+      COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${_native}/openmx" "${CMAKE_BINARY_DIR}/openmx"
+      ${_copy_to_work}
+      BYPRODUCTS "${CMAKE_BINARY_DIR}/openmx"
+      USES_TERMINAL VERBATIM)
+  add_dependencies(openmx openmx_core)
+  add_custom_target(native-clean
+      COMMAND "${OPENMX_MAKE_EXECUTABLE}" -C "${_native}" ${_native_options} clean
+      COMMAND "${CMAKE_COMMAND}" -E rm -f "${CMAKE_BINARY_DIR}/openmx"
+      USES_TERMINAL VERBATIM)
 endif()
-add_custom_target(openmx ALL
-    COMMAND ${_prepare_command}
-    COMMAND "${OPENMX_MAKE_EXECUTABLE}" -C "${_native}" -j${OPENMX_BUILD_JOBS}
-            ${_native_options} openmx
-    COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${_native}/openmx" "${CMAKE_BINARY_DIR}/openmx"
-    ${_copy_to_work}
-    BYPRODUCTS "${CMAKE_BINARY_DIR}/openmx"
-    USES_TERMINAL VERBATIM)
-add_dependencies(openmx openmx_core)
-add_custom_target(native-clean
-    COMMAND "${OPENMX_MAKE_EXECUTABLE}" -C "${_native}" ${_native_options} clean
-    COMMAND "${CMAKE_COMMAND}" -E rm -f "${CMAKE_BINARY_DIR}/openmx"
-    USES_TERMINAL VERBATIM)
 set(_openmx_install_program [=[
   set(_openmx_install_bindir "${CMAKE_INSTALL_PREFIX}/bin")
   if(@_openmx_work_install_default@ AND CMAKE_INSTALL_PREFIX STREQUAL [==[@OPENMX_WORK_DIR@]==])
@@ -128,6 +141,9 @@ install(CODE "${_openmx_install_program}")
 install(TARGETS openmx_core LIBRARY DESTINATION lib)
 
 if(BUILD_TESTING)
+  add_test(NAME cpu-build-accelerator-boundary
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/test_cpu_build.py")
+  set_tests_properties(cpu-build-accelerator-boundary PROPERTIES LABELS "unit;build" TIMEOUT 120)
   foreach(_host_capacity_backend CUDA HIP)
     add_test(NAME "host-simd-hamiltonian-capacity-${_host_capacity_backend}"
       COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_hamiltonian_capacity_cpu.py"

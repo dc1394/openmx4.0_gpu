@@ -20,6 +20,7 @@
 #include "openmx_mixing_rhok_state.h"
 #include "openmx_mixing_dm_state.h"
 #include "openmx_mixing_v_state.h"
+#include <stdio.h>
 #include "openmx_core_grid.h"
 #include "openmx_core_electronic.h"
 #include "openmx_core_local_basis.h"

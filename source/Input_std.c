@@ -821,7 +821,21 @@ void Input_std(char *file, OpenMXCoreContext *core)
   i_vec[5]=GPUSOLVER2;
   s_vec[6]="gpusolver3";
   i_vec[6]=GPUSOLVER3;
+#if OPENMX_GPU_HOST
+  /* The CPU executable defaults to modern CPU ELPA and accepts existing
+     GPU input decks through the same CPU solver. No device is initialized. */
+  s_vec[0]="elpa2"; i_vec[0]=ELPA2;
+  s_vec[3]="gpusolver"; i_vec[3]=GPUSOLVER;
+#endif
   input_string2int("scf.eigen.lib", &scf_eigen_lib_flag, 7, s_vec,i_vec);
+#if OPENMX_GPU_HOST
+  if (scf_eigen_lib_flag==GPUSOLVER || scf_eigen_lib_flag==GPUSOLVER2 ||
+      scf_eigen_lib_flag==GPUSOLVER3 || scf_eigen_lib_flag==-GPUSOLVER) {
+    if (myid==Host_ID && 0<level_stdout)
+      printf("<OpenMX> CPU-only build: using ELPA2 for the requested GPU eigensolver.\n");
+    scf_eigen_lib_flag=ELPA2;
+  }
+#endif
   if (scf_eigen_lib_flag==-GPUSOLVER){
     if (myid==Host_ID){
       printf("Warning: scf.eigen.lib=cusolver is deprecated; use scf.eigen.lib=gpusolver instead.\n");

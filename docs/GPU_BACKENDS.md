@@ -1,8 +1,8 @@
-# CUDA / HIP 統合ビルド
+# CUDA / HIP / CPU ビルド
 
-このリポジトリから NVIDIA 用 CUDA 版と AMD 用 HIP 版をビルドできます。
+このリポジトリから NVIDIA 用 CUDA 版、AMD 用 HIP 版、CPU 専用版をビルドできます。
 バックエンドはビルド時に選択し、実行ファイルごとに固定します。
-CUDA と HIP には別々のビルドディレクトリを使用してください。
+CUDA・HIP・CPU には別々のビルドディレクトリを使用してください。
 元の `~/openmx4.0_amdgpu` チェックアウトは不要です。
 
 ## 必要なツールと構成
@@ -29,12 +29,12 @@ git submodule update --init --recursive
 MI300A と Radeon の判定、固有のメモリ管理、ネイティブ FP64 / GEMMul8 の選択は
 取り込んだ AMD 実装で処理します。
 
-CPU と GPU の固有値計算は、同じ ELPA 2026.02.002 ライブラリを使用します。
+CPU と GPU の固有値計算は、同じ固定版の ELPA 2026.02.002 を使用します。
 `scf.eigen.lib elpa1` は一段階法、`elpa2` は二段階法を CPU 上で実行します。
 `OPENMX_GPU=0` で GPU を無効にした場合も新しい ELPA の CPU 経路に切り替わります。
 OpenMX が以前内蔵していた古い ELPA のソースとビルドルールは除去しました。
 
-CMake は既存の Makefile にあるファイル別の最適化・オフロード設定を使います。
+CUDA/HIP では CMake が既存の Makefile にあるファイル別の最適化・オフロード設定を使います。
 単一構成の CMake ビルドは、種別を省略すると C++ コアも含めて `Release` を使います。
 以前の空の `CMAKE_BUILD_TYPE` も再構成時に `Release` となり、最適化なしのコアが
 意図せず計算に使われることを防ぎます。明示した `Debug` などの指定は維持します。
@@ -56,7 +56,69 @@ ELPA/COSMA などの変更される依存ソース・生成物をビルドごと
 OpenMX 本体の Intel GPU・Metal バックエンドはまだありません。
 対応範囲と検証結果は [2026-10-20 レビュー対応](CODE_REVIEW_20261020.md) に記録しています。
 
-### GPU ビルド内の CPU SIMD
+## CPU 専用の本体ビルド
+
+```sh
+cmake -S . -B build/cpu -DOPENMX_GPU_BACKEND=CPU
+cmake --build build/cpu --parallel 4
+cmake --install build/cpu
+```
+
+コア単独の試験用構成に加え、OpenMX 本体の全CPU計算経路をビルドします。
+生成物は `build/cpu/openmx` で、自動コピーとインストール先の既定は他のバックエンドと同じです。
+CPUの自動コピーでは `work/lib/` のCoreとホストSIMDライブラリも更新し、
+以前のGPU版Coreが残っていてもCPU実行ファイルにGPU SDK依存を持ち込まないようにします。
+CUDA/ROCm SDK、GPUアーキテクチャ指定、`nvidia-smi`、GEMMul8/COSMA/MAGMA は不要です。
+本体は共通のC/C++ソースを通常のコンパイラで構築し、ホストKokkos SIMDも使用します。
+`OPENMX_CORE_BACKEND` は `SERIAL`（既定）または `OPENMP` を指定できます。
+
+必要なものは C/C++20・Fortran コンパイラ、同じ実装のMPI（C/C++/Fortran）、OpenMP、
+FFTW3のヘッダーとライブラリ、LP64版ScaLAPACK/LAPACK/BLASです。
+同梱ELPAの初回構築には autoconf・automake・libtool・m4・make・Python も必要です。
+ELPA は GPU版と同じ固定版 `2026.02.002` のアーカイブを検証・展開し、GPUカーネルを無効にして構築します。
+既定ソルバーはCPUの `elpa2` です。`elpa1` / `lapack` の入力も使用でき、
+GPUソルバーを指定した既存入力はCPUの `elpa2` に切り替えます。
+
+コンパイラとMPIは互換性のある組合せを選んでください。特にFortranのMPIモジュールは
+コンパイラ固有です。複数のMPIがある場合は `MPI_C_COMPILER`、`MPI_CXX_COMPILER`、
+`MPI_Fortran_COMPILER` で同じMPIのラッパーを明示できます。
+CPU版はネイティブmakeを呼ばず、`CMAKE_C_FLAGS` / `CMAKE_CXX_FLAGS` と
+以下のCMake変数で設定します。`OPENMX_MAKE_OPTIONS` は使用しません。
+
+| CPU用の変数 | 内容 |
+| --- | --- |
+| `OPENMX_CPU_FFTW_INCLUDE_DIR` / `OPENMX_CPU_FFTW_LIBRARY` | FFTW3のヘッダーの場所とライブラリ。通常は自動検出。 |
+| `OPENMX_CPU_SCALAPACK_LIBRARY` | 自動検出するLP64 ScaLAPACKの指定。MPIと同じ実装を使用。 |
+| `OPENMX_CPU_LINALG_LIBRARIES` | ScaLAPACK・LAPACK・BLAS一式をセミコロン区切りで指定。MKLなどの外部構成に使用。 |
+| `OPENMX_CPU_ELPA_ROOT` | 同じMPI/Fortran構成で作ったCPU版ELPA 2026.02.002の既存prefix。未指定なら同梱版を構築。 |
+| `OPENMX_BUILD_JOBS` | 同梱ELPAのmake並列数。CMake本体の並列数は `--parallel` で指定。 |
+
+CPU構成のオブジェクト・ELPA・生成アダプターはビルドディレクトリに保存します。
+`cmake --build build/cpu --target clean` で本体オブジェクトを清掃できます。
+ビルド時のソース選択は `build/cpu/cpu-sources.json`、共通ソースの投影は
+`selected-sources.json` で確認できます。
+
+2026-10-24 の検証では、GCC 14 / NVHPC Fortran / HPC-X MPI / MKL のホスト構成と、
+CUDA/ROCmを入れていない Ubuntu 24.04 の GCC・gfortran 13 / OpenMPI / OpenBLAS 構成で
+CPU本体をビルドしました。後者はFFTW3とScaLAPACKもディストリビューションの開発パッケージを使用しています。
+ホスト構成の18件、GNU構成の14件の格子・ビルド境界試験、およびCUDA版の全431 CTestが成功しました。
+
+CPUの組み込み `-runtest` は4 MPI×1 OpenMPの1プロセス群で14入力を連続実行し、
+`runtest.result` の `diff Utot` は最大 `4.6e-11`、`diff Force` は最大 `1.3e-11` でした。
+コリニアGGA／ノンコリニアのクラスター・バンド8組（4 MPI×1/2 OpenMP）を
+SIMD化済みGPU実行ファイルのCPU経路と照合し、SCF反復数・格子数が一致、
+最大エネルギー差 `9.9e-11 Hartree`、最大力成分差 `1.04e-8 Hartree/bohr` を確認しました。
+コリニア4組の出力応力テンソルも一致しています。GNU構成の2組も同じE/F判定閾値 `1e-7` で通過しました。
+
+18 MPI×1 OpenMPでも、ソルバー指定を省略したCPU入力と `gpusolver3` を指定した入力を
+インストール済みCPU実行ファイルで計算し、CPU ELPA2の基準値・反復数・格子数と照合しました。
+同じ条件の通常CUDA＋MPS経路も基準値との比較に通過しています。
+GNU構成ではCoreのビルドディレクトリを隠した環境でも、自動コピー先の実行ファイルと2つの
+共有ライブラリだけで実計算を完了し、全4rankの読込み先を確認しました。
+再ビルド時のコピー、別prefixへのインストール、`LD_LIBRARY_PATH` に頼らない読込みも確認しています。
+検証ログ・入力・比較結果は `build/cpu-build-20261024/` に保存しています。
+
+## GPU ビルド内の CPU SIMD
 
 `Set_Hamiltonian`、`Set_Density_Grid` の CPU 積分と、GPU 容量不足時の
 パック済みハミルトニアン積分に Kokkos experimental SIMD を使用します。
@@ -331,7 +393,7 @@ ELPA/COSMA の構築スクリプトは `PATH` を再設定するため、CMake 3
 
 | 変数 | 内容 |
 | --- | --- |
-| `OPENMX_GPU_BACKEND` | `CUDA`（既定）または `HIP`。別バックエンドには別ディレクトリを使用。 |
+| `OPENMX_GPU_BACKEND` | `CUDA`（既定）、`HIP`、`CPU`。別バックエンドには別ディレクトリを使用。 |
 | `OPENMX_CORE_BACKEND` | 新しい C++ コアの実行空間。`SERIAL`（既定）、`OPENMP`、`CUDA`、`HIP`、`SYCL`。GPU は本体と同じバックエンドを選択。`SYCL` はコア単独で使用。 |
 | `OPENMX_CORE_HOST_SIMD` | CPU 格子積分の SIMD 変種を構築。既定は `ON`。`OFF` ならスカラーのみ。 |
 | `OPENMX_HOST_SIMD_CXX_COMPILER` | ホスト SIMD 用の通常の C++20 コンパイラ。既定は `CMAKE_CXX_COMPILER`。デバイスコンパイラのラッパーは使用不可。 |

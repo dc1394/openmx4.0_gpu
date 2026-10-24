@@ -12,7 +12,7 @@
 #define OpenMXGpuBindRank set_hip_default_device_from_local_rank
 #define OpenMXGpuBindRankLocal set_hip_default_device_from_local_rank_noncollective
 #define OpenMXOffloadBindRank set_openmp_nvidia_device_from_local_rank
-#elif OPENMX_GPU_CUDA
+#elif OPENMX_GPU_CUDA || OPENMX_GPU_HOST
 #include "set_cuda_default_device_from_local_rank.h"
 #include "set_openacc_device_from_local_rank.h"
 #define OpenMXGpuBindRank set_cuda_default_device_from_local_rank

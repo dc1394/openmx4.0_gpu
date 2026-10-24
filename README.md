@@ -1,6 +1,6 @@
 # openmx4.0_gpu
 
-This repository includes both the NVIDIA CUDA and AMD HIP backends. Select one
+This repository includes NVIDIA CUDA, AMD HIP and CPU-only builds. Select one
 per build with CMake; the existing NVIDIA `make -C source` workflow also works.
 Single-configuration CMake builds default to `Release`, including the C++ core.
 Use `-DCMAKE_BUILD_TYPE=Debug` explicitly for debugging; an existing empty build
@@ -16,21 +16,34 @@ cmake --build build/cuda
 cmake -S . -B build/hip -DOPENMX_GPU_BACKEND=HIP -DOPENMX_GPU_ARCH=gfx942 \
   -DOPENMX_MAKE_OPTIONS="ROCM=/opt/rocm;MPI_HOME=/path/to/mpi;AOCL_HOME=/path/to/aocl;AOCC_LIB=/path/to/aocc/lib"
 cmake --build build/hip
+
+# Full CPU application: MPI, OpenMP, FFTW3 and LP64 ScaLAPACK/BLAS/LAPACK.
+cmake -S . -B build/cpu -DOPENMX_GPU_BACKEND=CPU
+cmake --build build/cpu --parallel 4
 ```
 
-The executables are `build/cuda/openmx` and `build/hip/openmx`. Each successful
+The executables are `build/cuda/openmx`, `build/hip/openmx` and `build/cpu/openmx`. Each successful
 build also updates `work/openmx`; `OPENMX_WORK_DIR` changes this directory and
 `OPENMX_COPY_TO_WORK=OFF` disables the copy. Objects and
 dependency builds are isolated in each build directory. See
 [GPU backend build instructions](docs/GPU_BACKENDS.md) for requirements,
 configuration, AMD runtime settings and validation limits.
 
+The CPU build uses ordinary C/C++ and Fortran compilers with a matching MPI,
+requires no GPU SDK, and defaults to `scf.eigen.lib elpa2`. It builds the same
+bundled ELPA 2026.02.002 release with GPU kernels disabled, and uses the host
+Kokkos SIMD kernels. Existing `gpusolver`/`gpusolver2`/`gpusolver3` input decks
+select CPU ELPA2 in this executable. CPU builds also copy the matching Core and
+host SIMD libraries to `work/lib/`. See [CPU dependencies and options](docs/GPU_BACKENDS.md#cpu-専用の本体ビルド)
+for external numerical libraries and MPI compiler selection.
+
 To install after building, pass the same build directory used with `cmake -B`:
 
 ```sh
-# Default: work/openmx and work/lib/libopenmx_core.so
+# Default: work/openmx and both shared libraries in work/lib/
 cmake --install build/cuda
 # For the HIP build: cmake --install build/hip
+# For the CPU build: cmake --install build/cpu
 
 # Optional prefix: $HOME/.local/bin/openmx and $HOME/.local/lib/libopenmx_core.so
 cmake --install build/cuda --prefix "$HOME/.local"
@@ -60,7 +73,7 @@ for the first GPU with a valid compute capability. Configuration fails if the
 command is missing, fails, or reports no usable compute capability; specify
 `-DOPENMX_GPU_ARCH=sm_80` (or the target GPU's architecture) on a login node.
 A cached `CMAKE_CUDA_ARCHITECTURES` value does not bypass this check. Host-only
-core builds do not query a GPU.
+core builds and CPU application builds do not query a GPU.
 
 The `refactor/cpp-kokkos-core` branch begins the migration of the OpenMX
 application to C++, explicit ownership and Kokkos. The new `core/` library

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prepare an isolated native OpenMX build for the selected GPU backend.
+"""Prepare isolated OpenMX sources for the selected application backend.
 
 The native makefiles retain their per-file optimization/offload choices. Source
 files are linked into the build tree; mutable dependency sources are copied.
@@ -19,11 +19,12 @@ COPY_IGNORE = shutil.ignore_patterns(
 
 
 def backend_name(value):
-    names = {'CUDA': 'CUDA', 'NVIDIA': 'CUDA', 'HIP': 'HIP', 'AMD': 'HIP'}
+    names = {'CUDA': 'CUDA', 'NVIDIA': 'CUDA', 'HIP': 'HIP', 'AMD': 'HIP',
+             'CPU': 'CPU', 'HOST': 'CPU', 'NONE': 'CPU'}
     try:
         return names[value.upper()]
     except KeyError:
-        raise ValueError('backend must be CUDA (NVIDIA) or HIP (AMD)')
+        raise ValueError('backend must be CUDA (NVIDIA), HIP (AMD), or CPU')
 
 
 def link_file(source, destination):
@@ -79,6 +80,13 @@ def prepare(source_root, build_root, backend):
     selected = {p.name: p for p in source.iterdir()
                 if p.is_file() and p.suffix in SOURCE_SUFFIXES}
     selected['Makefile'] = source / 'Makefile'
+    if backend == 'CPU':
+        # CMake builds CPU sources directly, with no vendor native makefile.
+        selected.pop('Makefile')
+        cpu = source / 'backends' / 'cpu'
+        for path in cpu.rglob('*'):
+            if path.is_file() and path.suffix in SOURCE_SUFFIXES:
+                selected['cpu/' + str(path.relative_to(cpu))] = path
     hip = source / 'backends' / 'hip'
     if backend == 'HIP':
         manifest = json.loads((hip / 'sources.json').read_text())
@@ -117,7 +125,7 @@ def prepare(source_root, build_root, backend):
     # Both backends use the same pinned GEMMul8 sources, but compile different
     # adapter objects in that tree. Never share its lib/ or object files.
     gemmul8 = third_party / 'GEMMul8'
-    if (gemmul8 / 'Makefile').exists():
+    if backend != 'CPU' and (gemmul8 / 'Makefile').exists():
         copy_sources(gemmul8, private / 'GEMMul8')
     if backend == 'CUDA':
         for path in third_party.iterdir():
@@ -126,7 +134,7 @@ def prepare(source_root, build_root, backend):
         fftw = third_party / 'fftw3'
         if (fftw / 'configure.ac').exists():
             copy_sources(fftw, private / 'fftw3')
-    else:
+    elif backend == 'HIP':
         # The HIP makefile expects these paths relative to its own cwd.
         # MAGMA extracts and patches beside the archive, inside this private tree.
         for path in (third_party / 'hip').iterdir():
