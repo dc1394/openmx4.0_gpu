@@ -5,6 +5,7 @@
 #include <complex.h>
 #include "openmx_common.h"
 #include "openmx_core_neutral_grid.h"
+#include "openmx_core_neutral_grid_metadata.h"
 #include "openmx_core_native_resources.h"
 #include "openmx_electronic.h"
 #include "openmx_core_pao.h"
@@ -1700,8 +1701,9 @@ static void array0(OpenMXCoreContext *core)
 
    /* Allocation_Arrays(2) */
 
-  free(TGN_EH0);
-  free(dv_EH0);
+  openmx_core_neutral_grid_metadata_release(core);
+  TGN_EH0=NULL;
+  dv_EH0=NULL;
   free(FNAN);
   free(SNAN);
   free(ONAN);

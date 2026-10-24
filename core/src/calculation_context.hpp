@@ -5,6 +5,7 @@
 #include "vps_compat.hpp"
 #include "product_compat.hpp"
 #include "neutral_grid_compat.hpp"
+#include "neutral_grid_metadata.hpp"
 #include "vna_matrix_compat.hpp"
 #include "electronic_matrix_compat.hpp"
 #include "local_basis_compat.hpp"
@@ -34,6 +35,7 @@ struct OpenMXCoreContext {
   std::unique_ptr<openmx::core::compat::VpsOwner> vps;
   std::unique_ptr<openmx::core::compat::ProductOwner> products;
   std::unique_ptr<openmx::core::compat::NeutralGridOwner> neutral_grid;
+  std::unique_ptr<openmx::core::compat::NeutralGridMetadataOwner> neutral_grid_metadata;
   std::unique_ptr<openmx::core::compat::VnaMatrixOwner> vna_matrices;
   std::unique_ptr<openmx::core::compat::ElectronicMatrixOwner> electronic;
   std::unique_ptr<openmx::core::compat::LocalBasisOwner> local_basis;

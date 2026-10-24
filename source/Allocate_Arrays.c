@@ -4,6 +4,7 @@
 #include "openmx_core_vps.h"
 #include "openmx_core_product.h"
 #include "openmx_core_neutral_grid.h"
+#include "openmx_core_neutral_grid_metadata.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include "openmx_common.h"
@@ -334,8 +335,18 @@ void Allocate_Arrays_with_context(int wherefrom, OpenMXCoreContext *core)
     case 2:
       /* call from readfile.c */
 
-      TGN_EH0 = (int*)malloc(sizeof(int)*SpeciesNum);
-      dv_EH0 = (double*)malloc(sizeof(double)*SpeciesNum);
+      {
+        const OpenMXNeutralGridMetadataShape shape={(size_t)SpeciesNum};
+        OpenMXNeutralGridMetadataView metadata;
+        char error[256];
+        if (!openmx_core_neutral_grid_metadata_prepare(core,&shape,&metadata,error,sizeof(error))) {
+          fprintf(stderr,"Allocate_Arrays: neutral grid metadata: %s\n",error);
+          MPI_Abort(mpi_comm_level1,1);
+          return;
+        }
+        TGN_EH0=metadata.counts;
+        dv_EH0=metadata.spacing;
+      }
       FNAN = (int*)malloc(sizeof(int)*(atomnum+1));
       SNAN = (int*)malloc(sizeof(int)*(atomnum+1));
       ONAN = (int*)malloc(sizeof(int)*(atomnum+1));

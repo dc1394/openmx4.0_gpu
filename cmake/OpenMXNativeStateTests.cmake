@@ -161,6 +161,12 @@ function(openmx_add_native_state_tests)
   set_tests_properties(neutral-pair PROPERTIES
     ENVIRONMENT "${_environment}" LABELS "unit;solver;core;native-state" TIMEOUT 180)
 
+  add_test(NAME neutral-grid-metadata-native
+    COMMAND "${Python3_EXECUTABLE}" "${_repo}/tests/run_neutral_metadata_native_cpu.py"
+      --core-library "$<TARGET_FILE:openmx_core>" --negative-control)
+  set_tests_properties(neutral-grid-metadata-native PROPERTIES
+    ENVIRONMENT "${_environment}" LABELS "unit;solver;core;native-state" TIMEOUT 180)
+
   add_test(NAME neutral-grid-native
     COMMAND "${Python3_EXECUTABLE}" "${_repo}/tests/run_neutral_grid_native_cpu.py"
       --core-library "$<TARGET_FILE:openmx_core>" --negative-control)

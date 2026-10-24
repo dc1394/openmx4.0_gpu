@@ -266,6 +266,35 @@ extern "C" void openmx_core_neutral_grid_release(OpenMXCoreContext* context)
   if (context) context->neutral_grid.reset();
 }
 
+extern "C" int openmx_core_neutral_grid_metadata_prepare(OpenMXCoreContext* context,
+    const OpenMXNeutralGridMetadataShape* shape,OpenMXNeutralGridMetadataView* output,
+    char* error,std::size_t capacity)
+{
+  return checked_call(error,capacity,[&] {
+    if (!context || !shape || !output || context->implementation.finished())
+      throw std::invalid_argument("neutral grid metadata requires an unfinished context, shape and output");
+    auto owner=std::make_unique<openmx::core::compat::NeutralGridMetadataOwner>(*shape);
+    const auto next=owner->views();
+    context->neutral_grid_metadata=std::move(owner);
+    *output=next;
+  });
+}
+
+extern "C" int openmx_core_neutral_grid_metadata_get(OpenMXCoreContext* context,
+    OpenMXNeutralGridMetadataView* output,char* error,std::size_t capacity)
+{
+  return checked_call(error,capacity,[&] {
+    if (!context || !output || context->implementation.finished())
+      throw std::invalid_argument("neutral grid metadata views require an unfinished context and output");
+    *output=context->neutral_grid_metadata ? context->neutral_grid_metadata->views() : OpenMXNeutralGridMetadataView{};
+  });
+}
+
+extern "C" void openmx_core_neutral_grid_metadata_release(OpenMXCoreContext* context)
+{
+  if (context) context->neutral_grid_metadata.reset();
+}
+
 extern "C" int openmx_core_product_allocate(OpenMXCoreContext* context, const OpenMXProductShape* shape,
     OpenMXProductViews* views, char* error, std::size_t capacity)
 {
@@ -945,6 +974,7 @@ extern "C" void openmx_core_finish(OpenMXCoreContext* context)
     context->pao.reset();
     context->vps.reset();
     context->neutral_grid.reset();
+    context->neutral_grid_metadata.reset();
     context->products.reset();
     context->species.reset();
     context->implementation.finish();
