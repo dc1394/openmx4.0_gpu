@@ -19,7 +19,7 @@ static int reverse_data[4][3][1],*reverse_rows[4][3],**RMI1[4];
 static double positions[4][50],*Gxyz[4],distances[4][3],*Dis[4],atv[1][4]={{0}};
 static double Spe_Core_Charge[2]={2,4},time_per_atom[4],EH0_scaling[2][2],Stress_Tensor[9];
 static int Host_ID,level_stdout,Max_Nd,Max_TGN_EH0,CoarseGL_Mesh=2,TGN_EH0[2];
-static double CoarseGL_Abscissae[2]={-.5,.5},CoarseGL_Weight[2]={1,1},dv_EH0[2];
+static double CoarseGL_Abscissae[3]={-.5,.5,0},CoarseGL_Weight[3]={1,1,0},dv_EH0[2];
 static double grid[5][2][64],*GridX_EH0[2],*GridY_EH0[2],*GridZ_EH0[2],*Arho_EH0[2],*Wt_EH0[2];
 #include "openmx_stress_workspace.h"
 static void near(double a,double b){if(!isfinite(a)||fabs(a-b)>3e-10*(1+fabs(b))){fprintf(stderr,"values %.17g %.17g\n",a,b);CHECK(0);}}
@@ -31,7 +31,7 @@ int MPI_Comm_size(MPI_Comm comm,int *size){(void)comm;*size=1;return 0;}
 int MPI_Comm_rank(MPI_Comm comm,int *rank){(void)comm;*rank=0;return 0;}
 int MPI_Allreduce(const void *s,void *r,int n,int type,int op,MPI_Comm comm){(void)comm;CHECK(n==9&&type==MPI_DOUBLE&&op==MPI_SUM);memcpy(r,s,9*sizeof(double));return 0;}
 static void Allocate_Arrays(int mode){CHECK(mode==4&&Max_TGN_EH0<=64);++allocations;}
-static double KumoF(int mesh,double x,const double *a,const double *b,const double *c){CHECK(mesh==2&&a&&b&&c&&isfinite(x));return .2+.03*x;}
+double KumoF(int mesh,double x,double *a,double *b,double *c){CHECK(mesh==2&&a&&b&&c&&isfinite(x));return .2+.03*x;}
 double VH_AtomF(double charge,int mesh,double x,double r,double *a,double *b,double *c){CHECK(mesh==2&&a&&b&&c&&isfinite(x)&&r>0);return 1+.1*charge+.03*r*r;}
 static double slope(int base,int other){return .4+.09*base-.05*other;}
 static void EH0_TwoCenter(const OpenMXAtomicViews *atomic,int atom,int h,double out[4]){
@@ -45,10 +45,10 @@ static void EH0_TwoCenter(const OpenMXAtomicViews *atomic,int atom,int h,double 
 static void verify_grid(const OpenMXAtomicViews *atomic){
   for(int s=0;s<2;s++){
     const double cutoff=atomic->species.cutoff[s];const int nz=2*(int)(cutoff/(PI/sqrt(9600.)))+1;
-    const double spacing=2*cutoff/(nz-1);near(dv_EH0[s],spacing);CHECK(TGN_EH0[s]==nz*2&&atomic->species.species_index[s]==s);
+    const double spacing=2*cutoff/(nz-1);near(dv_EH0[s],spacing);CHECK(TGN_EH0[s]==nz*CoarseGL_Mesh&&atomic->species.species_index[s]==s);
     double moment0=0,momentz=0,momentr2=0;
     for(int i=0;i<TGN_EH0[s];i++){
-      const int zindex=i/2,xindex=i%2;const double x=.5*cutoff*(1+CoarseGL_Abscissae[xindex]),z=-cutoff+spacing*zindex;
+      const int zindex=i/CoarseGL_Mesh,xindex=i%CoarseGL_Mesh;const double x=.5*cutoff*(1+CoarseGL_Abscissae[xindex]),z=-cutoff+spacing*zindex;
       const double r2=x*x+z*z,rho=.2+.015*log(r2),weight=PI*x*cutoff*CoarseGL_Weight[xindex];
       near(GridX_EH0[s][i],x);near(GridY_EH0[s][i],0);near(GridZ_EH0[s][i],z);near(Arho_EH0[s][i],rho);near(Wt_EH0[s][i],weight);
       moment0+=weight*rho;momentz+=weight*rho*z;momentr2+=weight*rho*r2;
@@ -110,6 +110,13 @@ int main(int argc,char **argv){
   double cutoff[2]={.11,.14},radial[2][2]={{0}};int index[2],mesh[2]={2,2};Arguments args={0};args.invalid=argc>1?argv[1]:NULL;
   args.atomic.species.species=2;args.atomic.species.species_index=index;args.atomic.species.cutoff=cutoff;args.atomic.species.core_charge=Spe_Core_Charge;
   args.atomic.species.pao_mesh=args.atomic.species.vps_mesh=mesh;args.atomic.pao_log_radii=args.atomic.pao_radii=args.atomic.density=args.atomic.vps_log_radii=args.atomic.vps_radii=args.atomic.hartree_potential=(OpenMXRadialView2){&radial[0][0],{2,2}};
-  for(int empty=0;empty<2;empty++){Matomnum=empty?0:3;CHECK(OpenMX_Solver_Run(exercise,&args)==1);}
-  puts("PASS: native neutral grid/cutoff/stress, three capacities each, empty/local atoms, logical teams1/4/2, independent coordinates/moments/nine strain components");return 0;
+  for(int mesh_count=2;mesh_count<=3;mesh_count++){
+    CoarseGL_Mesh=mesh_count;
+    if(mesh_count==3){
+      CoarseGL_Abscissae[0]=-sqrt(3.0/5.0);CoarseGL_Abscissae[1]=0;CoarseGL_Abscissae[2]=sqrt(3.0/5.0);
+      CoarseGL_Weight[0]=CoarseGL_Weight[2]=5.0/9.0;CoarseGL_Weight[1]=8.0/9.0;
+    }
+    for(int empty=0;empty<2;empty++){Matomnum=empty?0:3;CHECK(OpenMX_Solver_Run(exercise,&args)==1);}
+  }
+  puts("PASS: native neutral grid/cutoff/stress, two/three Gauss points, three capacities each, empty/local atoms, logical teams1/4/2, independent coordinates/moments/nine strain components");return 0;
 }

@@ -24,6 +24,7 @@ extern "C" {
    choices without a callback or virtual dispatch inside either integral. */
 double VH_AtomF(double,int,double,double,double*,double*,double*);
 double Dr_VH_AtomF(double,int,double,double,double*,double*,double*);
+double KumoF(int,double,double*,double*,double*);
 #ifdef __cplusplus
 }
 #endif
@@ -118,5 +119,51 @@ static inline void OpenMX_Neutral_CutoffAccumulate(const OpenMXNeutralGridView *
                    potential->log_radii,potential->radii,potential->hartree);
     *partial += wt*va0*rho0;
   }
+}
+
+/* Explicit quadrature inputs and writable output rows borrow existing table
+   owners. The caller retains its per-worker C++ axis scratch and grid capacity. */
+typedef struct {
+  int planes,gauss_points;
+  double cutoff,spacing,pi;
+  const double *abscissae,*weights;
+} OpenMXNeutralQuadratureView;
+
+/* z planes stay outermost, followed by Gauss points. Only the active rows
+   are produced; capacity/padding and the MD initialization policy stay with
+   the caller. Scalar return avoids a large aggregate in native OpenMP. */
+#if defined(__GNUC__) || defined(__clang__) || defined(__NVCOMPILER)
+__attribute__((always_inline))
+#endif
+static inline int OpenMX_Neutral_GridFill(const OpenMXAtomicViews *atomic,int species,
+    const OpenMXNeutralQuadratureView *quadrature,double *axis,
+    double *grid_x,double *grid_y,double *grid_z,double *density,double *weight)
+{
+  int n1,n3,gnum;
+  double x,y,z,tmp0,xx,rho0,Sx,Dx;
+  for (n1=0; n1<quadrature->planes; n1++){
+    axis[n1] = quadrature->spacing*(double)n1 - quadrature->cutoff;
+  }
+  gnum = 0;
+  y = 0.0;
+  Sx = quadrature->cutoff + 0.0;
+  Dx = quadrature->cutoff - 0.0;
+  for (n3=0; n3<quadrature->planes; n3++){
+    z = axis[n3];
+    tmp0 = z*z;
+    for (n1=0; n1<quadrature->gauss_points; n1++){
+      x = 0.50*(Dx*quadrature->abscissae[n1] + Sx);
+      xx = 0.5*log(x*x + tmp0);
+      grid_x[gnum] = x;
+      grid_y[gnum] = y;
+      grid_z[gnum] = z;
+      rho0 = KumoF(atomic->species.pao_mesh[species],xx,
+          openmx_radial_row2(&atomic->pao_log_radii,species),openmx_radial_row2(&atomic->pao_radii,species),openmx_radial_row2(&atomic->density,species));
+      density[gnum] = rho0;
+      weight[gnum] = quadrature->pi*x*quadrature->weights[n1]*Dx;
+      gnum++;
+    }
+  }
+  return gnum;
 }
 #endif

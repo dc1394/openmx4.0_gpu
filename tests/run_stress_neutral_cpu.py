@@ -65,7 +65,7 @@ def main():
             assert failed.returncode == 77 and 'invalid stress' in failed.stderr, failed
         if args.negative_control:
             for name, original, replacement, location in [
-                ('grid-axis', 'z = g0[n3];', 'z = g0[0];', 'native'),
+                ('grid-axis', 'z = axis[n3];', 'z = axis[0];', 'header'),
                 ('cutoff-distance', 'z2 = z - rcut;', 'z2 = z - 0.5*rcut;', 'header')]:
                 text = native if location == 'native' else neutral_header
                 assert text.count(original) == 1

@@ -37,7 +37,7 @@ int MPI_Comm_rank(MPI_Comm comm,int *rank){(void)comm;*rank=0;return 0;}
 int MPI_Bcast(void *p,int n,int type,int root,MPI_Comm comm){(void)p;(void)root;(void)comm;CHECK(n==3&&type==MPI_DOUBLE);return 0;}
 int MPI_Allreduce(const void *s,void *r,int n,int type,int op,MPI_Comm comm){(void)comm;CHECK(n==1&&type==MPI_DOUBLE&&op==MPI_SUM);memcpy(r,s,sizeof(double));return 0;}
 static void Allocate_Arrays(int mode){CHECK(mode==4&&Max_TGN_EH0<=64);++grid_allocations;}
-static double KumoF(int mesh,double x,const double *a,const double *b,const double *c){CHECK(mesh==2&&a&&b&&c&&isfinite(x));return .2+.03*x;}
+double KumoF(int mesh,double x,double *a,double *b,double *c){CHECK(mesh==2&&a&&b&&c&&isfinite(x));return .2+.03*x;}
 double VH_AtomF(double charge,int mesh,double x,double r,double *a,double *b,double *c){CHECK(mesh==2&&a&&b&&c&&isfinite(x)&&r>0);return 1+.1*charge;}
 static void model_pair(int base,int other,int derivative,double distance,const double direction[3],double out[4]){
   out[0]=.3+.04*base+.07*other+.02*distance;

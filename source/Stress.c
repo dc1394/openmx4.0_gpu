@@ -3721,39 +3721,10 @@ void Stress_H0(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *atomic)
         dx = 2.0*bc/(double)(Nd-1);
         dv_EH0[wan] = dx;
 
-        for (n1=0; n1<Nd; n1++){
-          g0[n1] = dx*(double)n1 - bc;
-        }
-
-        gnum = 0;
-        y = 0.0;
-
-        Sx = atomic->species.cutoff[wan] + 0.0;
-        Dx = atomic->species.cutoff[wan] - 0.0;
-
-        for (n3=0; n3<Nd; n3++){
-
-          z = g0[n3];
-          tmp0 = z*z;
-	  for (n1=0; n1<CoarseGL_Mesh; n1++){
-
-            x = 0.50*(Dx*CoarseGL_Abscissae[n1] + Sx);
-            xx = 0.5*log(x*x + tmp0);
-
-            GridX_EH0[wan][gnum] = x;
-            GridY_EH0[wan][gnum] = y;
-            GridZ_EH0[wan][gnum] = z;
-
-            rho0 = KumoF( atomic->species.pao_mesh[wan], xx,
-                          openmx_radial_row2(&atomic->pao_log_radii,wan), openmx_radial_row2(&atomic->pao_radii,wan), openmx_radial_row2(&atomic->density,wan));
-
-            Arho_EH0[wan][gnum] = rho0;
-            Wt_EH0[wan][gnum] = PI*x*CoarseGL_Weight[n1]*Dx;
-
-            gnum++;
-          }
-
-        } /* n3 */
+        const OpenMXNeutralQuadratureView quadrature={Nd,CoarseGL_Mesh,bc,dx,PI,
+            CoarseGL_Abscissae,CoarseGL_Weight};
+        gnum=OpenMX_Neutral_GridFill(atomic,wan,&quadrature,g0,
+            GridX_EH0[wan],GridY_EH0[wan],GridZ_EH0[wan],Arho_EH0[wan],Wt_EH0[wan]);
 
         TGN_EH0[wan] = gnum;
 
