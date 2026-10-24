@@ -7,7 +7,7 @@ extern "C" {
 
 typedef struct OpenMXGridWorkspace OpenMXGridWorkspace;
 enum { OPENMX_GRID_DENSITY=0, OPENMX_GRID_HAMILTONIAN=1 };
-enum { OPENMX_GRID_SCALAR=0, OPENMX_GRID_AVX2=1, OPENMX_GRID_AVX512=2 };
+enum { OPENMX_GRID_SCALAR=0, OPENMX_GRID_AVX2=1, OPENMX_GRID_AVX512=2, OPENMX_GRID_NEON=3 };
 enum { OPENMX_GRID_B2C2=0, OPENMX_GRID_B2C1=1, OPENMX_GRID_B2D=2, OPENMX_GRID_A2B=3 };
 
 /* Native orbital row tables are borrowed only at this boundary. Transposed
@@ -59,6 +59,23 @@ int openmx_core_grid_exchange(OpenMXGridWorkspace*,int kind,size_t send_values,
    bounded by the ISA executable by both the processor and operating system. */
 int openmx_core_grid_simd(const char *value);
 const char *openmx_core_grid_simd_name(int);
+/* Actual host vector width, or zero for an unavailable/unsafe ISA. This does
+   not initialize Kokkos or a device, even in a GPU-default Core build. */
+int openmx_core_grid_simd_width(int);
+
+/* CPU recovery of a packed GPU task. Borrowed contiguous left[points,rows],
+   right[points,columns], potential[points,spins]; output is
+   [spins,output_stride,output_stride], including zero padding. No allocation
+   or runtime/context initialization. Buffers must be disjoint and cover their
+   stated shapes. Invalid dimensions/mode return zero without writing output. */
+typedef struct {
+  int rows,columns,points,spins;
+  size_t output_stride;
+  double volume;
+  const double *left,*right,*potential;
+  double *output;
+} OpenMXGridPackedHamiltonian;
+int openmx_core_grid_hamiltonian_packed(const OpenMXGridPackedHamiltonian*,int mode);
 
 #ifdef __cplusplus
 }

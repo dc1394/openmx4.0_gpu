@@ -3382,3 +3382,94 @@ C60はDIISK 27 SCF/DIISV 26 SCF・84³で収束し、応力有効の対照もE/F
 標本とこの入力に限る比較で、一般的な優劣や全経路の高速化を示しません。AMD/A100/H100の今回の実機測定はありません。
 64組の物理比較、NiOの反復数差と変更前反復の観測、以前のHO/MO/DIISの未解決事項は[移行記録](CPP_CORE_MIGRATION.md)を参照してください。
 証拠は`build/neutral-grid-metadata-owner-refactor-20261024/`です。
+
+
+## ホスト用 Kokkos SIMD (2026-10-24)
+
+所有権の移行を一時停止し、CPU のハミルトニアン・密度格子積分を
+Kokkos 5.2.2 の明示的なホスト SIMD 型へ置換しました。比較元は `c09e51b5` です。
+比較元にも AVX2/AVX-512 のコンパイラ SIMD があり、以下は既存の最適化済みコードとの比較です。
+GPU 用 Kokkos の既定 SIMD 幅には依存しません。ビルドと ABI の分離は
+[バックエンドの説明](GPU_BACKENDS.md#gpu-ビルド内の-cpu-simd) を参照してください。
+
+### CPU 積分の単体測定
+
+i9-10980XE の1コアへ固定し、4,093格子点、13/19軌道、1/2/4成分の各組合せを測定しました。
+1試行100呼出し、5試行の中央値です。パック処理とワーカー呼出しを含み、
+他の計算・ビルド・試験とは重ねていません。表は各6ケースの変更前/変更後の時間比です。
+
+| ISA | 密度格子の速度比 | ハミルトニアン積分の速度比 |
+| --- | ---: | ---: |
+| AVX-512 | 1.058–1.218倍 | 1.273–2.053倍 |
+| AVX2 | 0.980–1.111倍 | 1.195–1.884倍 |
+
+24組の出力チェックサムは比較元と完全一致しました。AVX2 の密度格子には約2%遅いケースもあり、
+すべての形状での高速化を示すものではありません。水平和や FMA を使わず、加算順序を維持します。
+
+```sh
+cmake -S . -B build/core-simd -DOPENMX_BUILD_APPLICATION=OFF \
+  -DOPENMX_CORE_BUILD_BENCHMARKS=ON -DCMAKE_BUILD_TYPE=Release
+cmake --build build/core-simd --target openmx_grid_benchmark --parallel 4
+# Linux の例。利用できる CPU 番号に変更してください。
+taskset -c 8 build/core-simd/core/openmx_grid_benchmark 100 auto
+taskset -c 8 build/core-simd/core/openmx_grid_benchmark 100 avx2
+```
+
+### OpenMX の実計算
+
+同じ i9-10980XE / RTX 5080、18 MPI×1 OpenMPで逐次測定しました。
+GPU は MPS 18クライアント、各rankが読み込む凍結 Core とホスト SIMD ライブラリも確認しています。
+内部Totalと、MPI起動・終了を含むwallを区別します。
+
+| 計算 | 標本 | 内部Total 前→後(s) | wall 前→後(s) | Set_Hamiltonian 前→後(s) | Set_Density_Grid 前→後(s) |
+| --- | --- | ---: | ---: | ---: | ---: |
+| C60 CPU | 各3回の中央値 | 8.485→8.305 | 10.586→10.435 | 0.648→0.552 | 0.543→0.481 |
+| C60 GPU+MPS | 各1回 | 12.139→12.120 | 14.845→14.694 | 5.019→5.021 | 0.346→0.355 |
+| C60 GPU容量再試行 | 各1回 | 63.327→63.303 | 65.895→65.897 | 4.944→4.978 | 35.756→35.586 |
+| sidia333 GPU+MPS | 各1回 | 102.987→103.039 | 106.369→106.362 | 20.374→20.374 | 12.587→12.510 |
+
+C60 CPU の内部Totalは約2.1%、ハミルトニアンは約14.8%、密度格子は約11.4%短縮しました。
+元の Intel CPU 版 `~/openmx4.0/work/openmx` も同じC60入力で測定し、
+内部 `9.708 s` / wall `10.235 s` でした。MPIランタイムの異なるwallと内部Totalの両方を掲載しています。
+C60 は27 SCF・84³で収束しました。sidia333 は元入力の25 SCF・140³で前後とも未収束の計時です。
+この入力・標本での比較であり、全処理が単体測定と同じ比率で速くなるわけではありません。
+
+表の「GPU容量再試行」は `OPENMX_GPU_CAPACITY_TEST_RECOVERY=1`、
+`OPENMX_GPU_WORKERS=0`、`OPENMX_DENSITY_GRID_GPU_LOCAL=0`、
+`OPENMX_DENSITY_GRID_GPU_RESERVE_MB=65536` による別経路の検証です。
+この条件でも所有GPU上の再試行は可能であり、CPU回復の性能値としては扱いません。
+通常経路のE/F・反復数・格子数は比較元と照合し、C60の出力E/Fは完全一致、
+sidia333の最大力差は `1.0e-12 Hartree/bohr` でした。
+
+さらに `OPENMX_GPU_PROBE_RESERVE_MB=65536` を追加したC60では、18rankすべての
+GPU容量判定が拒否され、ELPA2とCPU積分へ切り替わることをログで確認しました。
+前後各1回で内部Total `11.644→11.471 s` / wall `14.396→14.045 s`、
+ハミルトニアン `0.648→0.555 s`、密度格子 `0.524→0.476 s`、E/Fは完全一致です。
+これは起動時の容量判定を使ったCPU回復試験であり、実際にGPUメモリを使い切った計算ではありません。
+計算途中のパック済みハミルトニアンのCPU回復は、下記の実コード試験で別に検証しています。
+
+### 数値とビルド境界の検証
+
+コリニアGGA／ノンコリニアのクラスター・バンド入力について、4 MPI、
+CPU 1/2 OpenMP・GPU 2 OpenMPの12組を比較しました。すべて収束し、格子数・SCF反復数も一致、
+最大エネルギー差は `2.4801e-10 Hartree`、最大力差は `9.839e-9 Hartree/bohr` でした。
+既存のE/F判定閾値 `1e-7` は変更していません。応力を有効にしたコリニア6組は、
+出力された応力テンソルも一致しました。ノンコリニアの応力はこの比較の対象外です。
+
+- 全430 CTestが成功。CUDA/HIP/SYCL/OpenMP、Clang C++23のASan/UBSan、
+  スカラーのみの構成でも、それぞれ12件の格子・ホスト境界試験が成功しました。
+- 実SDKによるコンパイルはCUDA `sm_80` の77単位とHIP `gfx942` の77単位で成功しました。
+  GPU既定Coreのホスト境界試験では、既定幅1に対してホスト幅8を確認しています。
+- NVIDIA/AMDそれぞれの実ソースからCPU回復コールバックを取り出し、SDKのモデルと
+  実Coreをリンクした336ケースを実行しました。各168回の新しいパック済みCPU積分呼出しを捕捉し、
+  独立した元の数式との一致、空・不均一な行列、スピン、確保失敗を検証しました。
+- 通常積分・パック済み積分とも、端数レーン、重複格子点、float/double、1/2/4成分、
+  出力のパディング、既存の加算値を検証しています。GPU数値ループはCPU分岐を除き同一です。
+
+証拠は `build/host-simd-20261024/` の `micro3-summary.json`、
+`performance3-results.json`、`capacity-cpu-results.json`、`science3-status.json`、
+`stress3-status.json`、各計算の `result.json` / `runtime-maps.json` にあります。
+測定時の凍結本体・Core・ホストSIMDは `candidate3-hashes.json` に記録しています。
+その後の変更は、既存の `false` / `no` というSIMD無効指定を保持する選択処理とその試験です。
+積分カーネルと自動選択・AVX2選択での計算は同一です。
+今回 AMD/Intel GPU、A100/H100、Apple Silicon の実機性能測定は行っていません。

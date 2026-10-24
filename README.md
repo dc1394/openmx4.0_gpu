@@ -196,13 +196,31 @@ the C++ core. Explicit calculation workspaces own the contiguous density,
 atom/pair plans, per-worker matrix/orbital scratch and A-to-B MPI work storage;
 SCF iterations reuse these allocations. Density workers process whole atoms,
 and Hamiltonian workers retain the small spin-unpolarized blocked integral.
+The CPU quadratures use Kokkos experimental SIMD with explicit host ABIs:
+AVX2 (4 doubles), AVX-512 (8 doubles), or AArch64 NEON (2 doubles), with a
+scalar fallback. Hamiltonian matrix accumulators stay in registers over a
+16-point tile; neither kernel changes the order of its floating-point sums.
 Host ISA selection checks CPU/OS support. `OPENMX_SETHAM_SIMD`,
 `OPENMX_DENSITY_GRID_COL_SIMD` and `OPENMX_DENSITY_GRID_NC_SIMD` accept
 `scalar` or `avx2` to cap the default automatic selection; append `_TRACE=1`
 to the corresponding variable name to report the selected implementation.
 CUDA/HIP device kernels, cache budgets and GeForce versus A100/H100 dispatch
 policies are retained. The new host kernels require neither a GPU SDK nor a
-second OpenMP team/runtime.
+second OpenMP team/runtime. They also serve the CPU path when GPU memory
+admission fails. Kokkos 5.2.2's default `simd<double>` is not used to select
+the host ABI: CUDA/HIP/SYCL defaults would select width 1.
+
+`libopenmx_host_simd` is built by an ordinary C++20 compiler against a private
+SERIAL configuration of the same pinned Kokkos source. Its Kokkos/C++ symbols
+are hidden, and only two functions exchanging plain descriptors cross the
+library boundary. Device compilers never compile the host SIMD kernels.
+CMake builds and installs this library alongside `libopenmx_core`; keep both
+libraries when copying an installation. If the Core C++ compiler is a device
+wrapper, specify `-DOPENMX_HOST_SIMD_CXX_COMPILER=/path/to/g++` (or `clang++`).
+`-DOPENMX_CORE_HOST_SIMD=OFF` builds only the scalar implementation.
+The optional `openmx_grid_benchmark` target, enabled with
+`-DOPENMX_CORE_BUILD_BENCHMARKS=ON`, compares the CPU quadratures including
+their packing and worker overhead; see [the performance checks](docs/PERFORMANCE_REGRESSION.md).
 `Set_OLP_Kin`, `Set_Nonlocal` and the VNA2/3 CPU fallback in
 `Set_ProExpn_VNA` share a C++ module for real-harmonic transformations,
 Cartesian derivatives and overlap angular momentum. Per-worker RAII tensors

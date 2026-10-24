@@ -31,6 +31,7 @@ FIXTURE = r'''
 #include <stdio.h>
 #include <stdlib.h>
 #include "openmx_target.h"
+#include "openmx_core_grid.h"
 #include "openmx_gpu_task.c"
 #include "gpu_task_native_probe.h"
 typedef struct {int n0,n1,points;} SetHCapacityPair;
@@ -104,6 +105,7 @@ def main():
     parser.add_argument("--arch", default=os.environ.get("GPU_ARCH", "gfx1200"))
     parser.add_argument("--cc", default=os.environ.get("CC"))
     parser.add_argument("--mpicc", default=os.environ.get("MPICC", "mpicc"))
+    parser.add_argument("--core-library", type=Path, required=True)
     args = parser.parse_args()
     compiler = shlex.split(args.cc) if args.cc else [str(args.rocm / "llvm/bin/clang")]
     mpi_flags = shlex.split(subprocess.check_output(
@@ -139,6 +141,8 @@ def main():
             "-I" + str(ROOT / "source/backends/hip/include"),
             "-I" + str(args.rocm / "include"), *mpi_flags, str(source),
             "-L" + str(args.rocm / "lib"), "-x", "none", str(probe), *host_objects, "-lstdc++", "-lamdhip64", "-lm",
+            str(args.core_library.resolve(strict=True)),
+            "-Wl,-rpath,"+str(args.core_library.resolve().parent),
             "-Wl,--gc-sections,-z,nostart-stop-gc", "-o", str(folder / "check")]
         subprocess.run(command, env=env, check=True, timeout=120)
         subprocess.run([str(folder / "check")], env=env, check=True, timeout=120)

@@ -331,7 +331,7 @@
     X(SETHAM_ONTHEFLY_MB, "OPENMX_SETHAM_ONTHEFLY_MB", "mib", "global", "128", "Set_Hamiltonian.c,backends/hip/src/Set_Hamiltonian.c", "") \
     X(SETHAM_ONTHEFLY_PINNED_MB, "OPENMX_SETHAM_ONTHEFLY_PINNED_MB", "mib", "global", "1024", "backends/hip/src/Set_Hamiltonian.c", "Pinned host-memory cap in MiB for on-demand Hamiltonian staging.") \
     X(SETHAM_ONTHEFLY_PLAN_CACHE, "OPENMX_SETHAM_ONTHEFLY_PLAN_CACHE", "flag", "global", "1", "Set_Hamiltonian.c,backends/hip/src/Set_Hamiltonian.c", "default 1: The on-the-fly paths keep a plan per rank: the batches (which pairs, their offsets), the pair descriptors and the per-point index lists (Nc, and th...") \
-    X(SETHAM_SIMD, "OPENMX_SETHAM_SIMD", "string", "global", "", "openmx_grid_assembly.c", "") \
+    X(SETHAM_SIMD, "OPENMX_SETHAM_SIMD", "string", "global", "", "Set_Hamiltonian.c,backends/hip/src/Set_Hamiltonian.c,openmx_grid_assembly.c", "") \
     X(SETHAM_SIMD_TRACE, "OPENMX_SETHAM_SIMD_TRACE", "flag", "global", "", "openmx_grid_assembly.c", "") \
     X(SETHAM_STREAMING, "OPENMX_SETHAM_STREAMING", "int", "global", "1", "Set_Hamiltonian.c", "default 1: Streamed pair batches (256 MiB workspace per rank, OPENMX_SETHAM_STREAM_MB) when the device holds a single whole-rank allocation; 2 streams wheneve...") \
     X(SETHAM_STREAM_MB, "OPENMX_SETHAM_STREAM_MB", "mib", "global", "256", "Set_Hamiltonian.c", "") \

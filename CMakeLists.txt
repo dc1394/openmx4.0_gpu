@@ -128,6 +128,13 @@ install(CODE "${_openmx_install_program}")
 install(TARGETS openmx_core LIBRARY DESTINATION lib)
 
 if(BUILD_TESTING)
+  foreach(_host_capacity_backend CUDA HIP)
+    add_test(NAME "host-simd-hamiltonian-capacity-${_host_capacity_backend}"
+      COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_hamiltonian_capacity_cpu.py"
+        --backend "${_host_capacity_backend}" --core-library "$<TARGET_FILE:openmx_core>")
+    set_tests_properties("host-simd-hamiltonian-capacity-${_host_capacity_backend}"
+      PROPERTIES LABELS "unit;core;grid;gpu" TIMEOUT 120)
+  endforeach()
   add_test(NAME cluster-noncol-dense-index
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_cluster_noncol_dense_index_cpu.py")
   set_tests_properties(cluster-noncol-dense-index PROPERTIES LABELS "unit;gpu" TIMEOUT 120)
@@ -343,7 +350,8 @@ if(BUILD_TESTING)
       add_test(NAME hip-setham-capacity
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_setham_capacity_hip.py"
           --rocm "${CMAKE_HIP_COMPILER_ROCM_ROOT}" --cc "${CMAKE_HIP_COMPILER}"
-          --arch "${_vector_test_arch}" --mpicc "${OPENMX_TEST_MPICC}")
+          --arch "${_vector_test_arch}" --mpicc "${OPENMX_TEST_MPICC}"
+          --core-library "$<TARGET_FILE:openmx_core>")
       set_tests_properties(hip-setham-capacity PROPERTIES
         ENVIRONMENT "OMP_NUM_THREADS=1;OMP_DYNAMIC=FALSE"
         LABELS "gpu;integration" TIMEOUT 240)

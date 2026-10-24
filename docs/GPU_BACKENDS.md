@@ -56,6 +56,36 @@ ELPA/COSMA などの変更される依存ソース・生成物をビルドごと
 OpenMX 本体の Intel GPU・Metal バックエンドはまだありません。
 対応範囲と検証結果は [2026-10-20 レビュー対応](CODE_REVIEW_20261020.md) に記録しています。
 
+### GPU ビルド内の CPU SIMD
+
+`Set_Hamiltonian`、`Set_Density_Grid` の CPU 積分と、GPU 容量不足時の
+パック済みハミルトニアン積分に Kokkos experimental SIMD を使用します。
+Kokkos 5.2.2 の `simd<double>` は既定実行空間が CUDA/HIP/SYCL の場合に幅1になるため、
+ホスト側は `basic_simd<double, HostAbi>` で AVX2（4要素）、AVX-512（8要素）、
+AArch64 NEON（2要素）を明示し、CPU/OS が利用できるものを実行時に選びます。
+対応 ISA がなければスカラーで実行します。
+
+SIMD ヘッダーも `Kokkos_Core.hpp` を取り込むため、単にソースを `LANGUAGE CXX` に
+指定するだけでは GPU 用の構成から分離できません。`libopenmx_host_simd` は、同じ固定版
+Kokkos ソースを使う独立した SERIAL 構成で、通常の C++20 コンパイラによりビルドします。
+Core の GPU 用フラグや ISA フラグを混在させず、Kokkos/C++ シンボルは隠し、
+2つの C リンケージ関数と単純な記述子・関数表だけをライブラリ境界で渡します。
+ホスト積分に Kokkos の初期化や追加の OpenMP チームは必要ありません。
+
+Core の C++ コンパイラが `nvcc_wrapper` / `hipcc` の場合は、
+`-DOPENMX_HOST_SIMD_CXX_COMPILER=/path/to/g++`（または `clang++` / `icpx`）を指定してください。
+`-DOPENMX_CORE_HOST_SIMD=OFF` でスカラーだけをビルドできます。
+実行時の `OPENMX_SETHAM_SIMD`、`OPENMX_DENSITY_GRID_COL_SIMD`、
+`OPENMX_DENSITY_GRID_NC_SIMD` は `scalar` / `avx2` で自動選択を制限できます。
+各変数名に `_TRACE=1` を付けた変数で、通常の CPU 積分の選択結果を確認できます。
+積分の加算順序は保持し、FMA や水平和による丸め方の変更は行いません。
+
+CUDA・HIP・SYCL の実 SDK で構築した Core のホスト試験では、既定 SIMD が幅1でも
+ホスト SIMD が幅8となることと、デバイスを初期化せず CPU 積分できることを確認しました。
+これはホスト境界の検証です。今回の実機性能測定は i9-10980XE / RTX 5080 で行い、
+AMD / Intel GPU、A100/H100、Apple Silicon の実機性能は未測定です。
+測定条件と数値比較は [性能検証](PERFORMANCE_REGRESSION.md#ホスト用-kokkos-simd-2026-10-24) を参照してください。
+
 ## 共通コードとバックエンド境界
 
 CUDA/HIP で重複していた 56 ファイルを `source/` の単一ソースへ統合しました。
@@ -303,6 +333,8 @@ ELPA/COSMA の構築スクリプトは `PATH` を再設定するため、CMake 3
 | --- | --- |
 | `OPENMX_GPU_BACKEND` | `CUDA`（既定）または `HIP`。別バックエンドには別ディレクトリを使用。 |
 | `OPENMX_CORE_BACKEND` | 新しい C++ コアの実行空間。`SERIAL`（既定）、`OPENMP`、`CUDA`、`HIP`、`SYCL`。GPU は本体と同じバックエンドを選択。`SYCL` はコア単独で使用。 |
+| `OPENMX_CORE_HOST_SIMD` | CPU 格子積分の SIMD 変種を構築。既定は `ON`。`OFF` ならスカラーのみ。 |
+| `OPENMX_HOST_SIMD_CXX_COMPILER` | ホスト SIMD 用の通常の C++20 コンパイラ。既定は `CMAKE_CXX_COMPILER`。デバイスコンパイラのラッパーは使用不可。 |
 | `OPENMX_BUILD_APPLICATION` | `OFF` なら MPI や GPU SDK を必要としないコア単独ビルド。既定は `ON`。 |
 | `OPENMX_GPU_ARCH` | CUDA は `sm_80` / `sm_90` / `sm_120`（数値のみも可）、HIP は `gfx942` / `gfx1200` など。CUDA コアの Kokkos 設定にも反映。CUDA で未指定または `auto` の場合は `nvidia-smi` で自動認識し、検出に失敗したら構成をエラー終了。 |
 | `OPENMX_BUILD_JOBS` | ネイティブ make の並列数。既定は `4`。 |
@@ -351,7 +383,8 @@ cmake --build build/cuda
 cmake --install build/cuda
 ```
 
-OpenMX のインストール対象は実行ファイルと `lib/libopenmx_core.so` です。
+OpenMX のインストール対象は実行ファイル、`lib/libopenmx_core.so`、
+`lib/libopenmx_host_simd.so` です。2つの共有ライブラリを一緒に配置してください。
 Kokkos のインストール規則も実行されます。DFT データ、入力ファイル、起動スクリプト、
 既存の数値計算ライブラリはコピーしません。実行時に参照するビルド内の依存ライブラリと、
 ROCm / CUDA / MPI / AOCL のライブラリ配置を維持してください。

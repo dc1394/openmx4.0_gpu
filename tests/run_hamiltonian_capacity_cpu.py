@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Check base assembly and sparse Hamiltonian quadrature across all tiers."""
 import ast
+import argparse
 import os
 from pathlib import Path
 from task_worker_test_bridge import compile_task_test
@@ -8,6 +9,11 @@ import shlex
 import subprocess
 import tempfile
 root=Path(__file__).resolve().parents[1]
+parser=argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--core-library',type=Path,default=os.environ.get('OPENMX_CORE_LIBRARY',root/'build/cuda/core/libopenmx_core.so'))
+parser.add_argument('--backend',choices=['CUDA','HIP'],default='CUDA')
+args=parser.parse_args()
+library=args.core_library.resolve(strict=True)
 def literal(path,name):
  tree=ast.parse((root/path).read_text())
  return next(ast.literal_eval(n.value) for n in tree.body if isinstance(n,ast.Assign) and any(getattr(t,'id','')==name for t in n.targets))
@@ -15,8 +21,15 @@ prefix=literal('tests/run_gpu_vector_cpu.py','prefix')
 body=(root/'source/openmx_gpu_task.c').read_text().replace('#include <cuda_runtime.h>','').replace('#include "set_cuda_default_device_from_local_rank.h"','')
 source=(root/'source/Set_Hamiltonian.c').read_text()
 base=source[source.index('typedef struct {int spins,nc,hub,hch,vna;'):source.index('static void Set_Hamiltonian_Base_OpenACC(',source.index('typedef struct {int spins,nc,hub,hch,vna;'))]
+if args.backend=='HIP':source=(root/'source/backends/hip/src/Set_Hamiltonian.c').read_text()
 pair=source[source.index('typedef struct {int n0,n1,points;}'):source.index('/* Enter once per quadrature phase')]
 main=r'''
+static int host_packed_calls;
+int __real_openmx_core_grid_hamiltonian_packed(const OpenMXGridPackedHamiltonian*,int);
+int __wrap_openmx_core_grid_hamiltonian_packed(const OpenMXGridPackedHamiltonian *p,int mode){
+  host_packed_calls++;
+  return __real_openmx_core_grid_hamiltonian_packed(p,mode);
+}
 int main(void){
  enum{N=7,MAX=3};double a[N],b[N*4],c[N],d[N*4],e[N*4],out[N*4+2];int cases=0;
  for(int i=0;i<N;i++){a[i]=.17*i;c[i]=.21*(i+1);for(int s=0;s<4;s++){b[i*4+s]=.13*(s-i);d[i*4+s]=.02*(1+i+s);e[i*4+s]=.37*(1-i-s);}}
@@ -52,13 +65,14 @@ int main(void){
   }
   assert(matrix[0]==999 && matrix[N*spins*MAX*MAX+1]==999);cases++;
  }
- printf("PASS: %d Hamiltonian cases (spin, VNA/Hubbard/core-hole, unequal/empty pairs, local/remote/CPU)\n",cases);
+ assert(host_packed_calls>0);
+ printf("PASS: %d Hamiltonian cases (spin, VNA/Hubbard/core-hole, unequal/empty pairs, local/remote/CPU); %d host SIMD calls\n",cases,host_packed_calls);
 }
 '''
 with tempfile.TemporaryDirectory(prefix='openmx-hamiltonian-') as folder:
  p=Path(folder);(p/'mpi.h').write_text('typedef int MPI_Comm;\n#define MPI_COMM_NULL (-1)\n')
  (p/"cuda_runtime.h").write_text("/* Runtime mock is provided by the fixture prefix. */\n")
  (p/"openmx_gpu_device.h").write_text("/* Rank availability mock is provided by the fixture prefix. */\n")
- (p/'check.c').write_text(prefix+body+base+pair+main)
- compile_task_test(shlex.split(os.environ.get('CC','cc'))+['-std=c11','-O1','-g','-Wno-unknown-pragmas','-fsanitize=address,undefined','-fno-sanitize-recover=all','-I'+str(p),'-I'+str(root/'source'),str(p/'check.c'),'-lm','-o',str(p/'check')],check=True)
+ (p/'check.c').write_text('#include "openmx_core_grid.h"\n'+prefix+body+base+pair+main)
+ compile_task_test(shlex.split(os.environ.get('CC','cc'))+['-std=c11','-O1','-g','-Wno-unknown-pragmas','-fsanitize=address,undefined','-fno-sanitize-recover=all','-I'+str(p),'-I'+str(root/'source'),str(p/'check.c'),str(library),'-Wl,-rpath,'+str(library.parent),'-Wl,--wrap=openmx_core_grid_hamiltonian_packed','-lm','-o',str(p/'check')],check=True)
  subprocess.run([str(p/'check')],check=True,timeout=60)

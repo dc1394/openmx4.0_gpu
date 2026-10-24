@@ -1745,6 +1745,20 @@ static void SetH_capacity_kernel(size_t first,size_t n,const void *parameters,vo
     const SetHCapacityPair *pairs=v[0];const size_t *pa=v[1],*pb=v[2],*pw=v[3];
     const double *a=openmx_gpu_task_ragged_data(v[1],n),*b=openmx_gpu_task_ragged_data(v[2],n),*w=openmx_gpu_task_ragged_data(v[3],n);
     double *out=v[4];
+    /* Device exhaustion reaches this callback with host pointers. Keep the
+       packed task's zero-seeded sum and padding contract in the host SIMD
+       library; a GPU compiler never sees a Kokkos vector type. */
+    if (!gpu) {
+        const int mode=openmx_core_grid_simd(openmx_env_at(OPENMX_ENV_SETHAM_SIMD));
+        int done=1;
+        for(size_t pair=0;pair<n && done;pair++) {
+            OpenMXGridPackedHamiltonian host={pairs[pair].n0,pairs[pair].n1,
+                pairs[pair].points,spins,(size_t)max_no,volume,
+                a+pa[pair],b+pb[pair],w+pw[pair],out+pair*(size_t)spins*max_no*max_no};
+            done=openmx_core_grid_hamiltonian_packed(&host,mode);
+        }
+        if(done)return;
+    }
 #pragma acc parallel loop gang deviceptr(pairs,pa,pb,pw,a,b,w,out) if(gpu)
     for(size_t pair=0;pair<n;pair++) {
         const int n0=pairs[pair].n0,n1=pairs[pair].n1,points=pairs[pair].points;

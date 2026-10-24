@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <iostream>
 #include <memory>
 #include <stdexcept>
@@ -82,7 +83,8 @@ template<class F> void team(size_t threads,F&& f) {
 template<class T> void quadrature(bool hamiltonian) {
   constexpr int atoms=3;
   for(int spins:{1,2,4})for(auto dims:{std::array<int,2>{3,5},std::array<int,2>{16,16},std::array<int,2>{19,17}})
-    for(int points:{0,1,3,7,8,9,17,33})for(bool transpose:{false,true})for(int mode=0;mode<=openmx_core_grid_simd(nullptr);mode++) {
+    for(int points:{0,1,3,7,8,9,17,33,73})for(bool transpose:{false,true})for(int mode=0;mode<=OPENMX_GRID_NEON;mode++) {
+      if(!openmx_core_grid_simd_width(mode))continue;
       auto ctx=context();auto* w=workspace(ctx.get());const auto storage=density(w,spins,{1,37,37,37});
       std::vector<std::unique_ptr<Pair<T>>> input;
       for(int i=0;i<atoms*2;i++)input.emplace_back(new Pair<T>(dims[0],dims[1],points,spins,transpose,i%2,i));
@@ -171,8 +173,84 @@ void invalid() {
   require(!openmx_core_grid_density_prepare(w,1,2,bad,1,counts,counts,&d,error,sizeof(error)),"grid point overflow accepted");
   require(!d.atoms,"failed density changed output");
   require(openmx_core_grid_simd("scalar")==0 && openmx_core_grid_simd("0")==0 &&
-    openmx_core_grid_simd("avx2")<=1,"SIMD cap ignored");
+    openmx_core_grid_simd("false")==0 && openmx_core_grid_simd("FALSE")==0 &&
+    openmx_core_grid_simd("no")==0 && openmx_core_grid_simd("NO")==0 &&
+    openmx_core_grid_simd_width(openmx_core_grid_simd("avx2"))<=4,"SIMD cap ignored");
   require(std::string(openmx_core_grid_simd_name(-1))=="scalar","SIMD name fallback");
+  require(openmx_core_grid_simd_width(-1)==0 && openmx_core_grid_simd_width(99)==0 &&
+      openmx_core_grid_simd_width(0)==1,"invalid SIMD width");
+  for(int mode=1;mode<=OPENMX_GRID_NEON;++mode) {
+    const int width=openmx_core_grid_simd_width(mode);
+    require(!width || width==(mode==OPENMX_GRID_AVX2?4:mode==OPENMX_GRID_AVX512?8:2),
+        "host SIMD ABI silently became scalar");
+    if(!width)require(!openmx_core_grid_plan(w,0,1,0,0,1,1,mode,&a,&p,error,sizeof(error)),
+        "unsupported host ISA accepted");
+  }
+}
+template<class T> void equivalence() {
+  // Cancellation, negative zero, unaligned orbital rows, every lane tail,
+  // repeated center points, transposed/halo input, and nonzero H seeds.
+  for(bool hamiltonian:{false,true})for(int spins:{1,2,4})for(bool transpose:{false,true})
+    for(int columns:{5,13,19})for(int points=1;points<=17;++points) {
+      std::vector<double> reference;
+      for(int mode=0;mode<=OPENMX_GRID_NEON;++mode) {
+        if(!openmx_core_grid_simd_width(mode))continue;
+        Pair<T> f(13,columns,points+74,spins,transpose,true,1);
+        for(auto& values:f.matrix)for(size_t i=0;i<values.size();++i)
+          values[i]=i%5==0?-0.0:i%5==1?1e8:i%5==2?-1e8:values[i];
+        auto ctx=context();auto* w=workspace(ctx.get());auto out=density(w,spins,{37});
+        char error[256];OpenMXGridAtom* atoms;OpenMXGridPair* pairs;
+        require(openmx_core_grid_plan(w,hamiltonian?1:0,spins,1,1,19,1,mode,
+            &atoms,&pairs,error,sizeof(error)),error);
+        atoms[0]={0,1,0};pairs[0]=f.view(0);
+        openmx::test::fail_allocation_after(0);
+        const int ok=hamiltonian?openmx_core_grid_hamiltonian_worker(w,0,1,error,sizeof(error)):
+            openmx_core_grid_density_worker(w,0,1,nullptr,nullptr,error,sizeof(error));
+        openmx::test::fail_allocation_after(-1);require(ok,error);
+        std::vector<double> values;
+        for(int s=0;s<spins;++s) {
+          if(hamiltonian)values.insert(values.end(),f.matrix[s].begin(),f.matrix[s].end());
+          else values.insert(values.end(),out.atoms[s][0],out.atoms[s][0]+37);
+        }
+        if(mode==0)reference=values;
+        else require(values.size()==reference.size() &&
+            !std::memcmp(values.data(),reference.data(),values.size()*sizeof(double)),
+            "host SIMD changed the scalar accumulation order");
+      }
+    }
+}
+void packed() {
+  for(int spins:{1,2,4})for(int rows:{0,1,13})for(int columns:{0,1,3,5,7,8,9,13,17,19})
+    for(int points:{0,1,3,17,33})for(int mode=0;mode<=OPENMX_GRID_NEON;++mode) {
+      if(!openmx_core_grid_simd_width(mode))continue;
+      const size_t stride=std::max(rows,columns)+3,count=size_t(spins)*stride*stride;
+      std::vector<double> a(size_t(points)*rows),b(size_t(points)*columns),w(size_t(points)*spins);
+      std::vector<double> result(count+2,719),expected(count,0.0);
+      for(size_t i=0;i<a.size();++i)a[i]=i%5==0?-0.0:double(int(i%19)-9)*.13;
+      for(size_t i=0;i<b.size();++i)b[i]=double(int(i%17)-8)*.07;
+      for(size_t i=0;i<w.size();++i)w[i]=double(int(i%13)-6)*.19;
+      for(int s=0;s<spins;++s)for(int i=0;i<rows;++i)for(int j=0;j<columns;++j) {
+        double sum=0;
+        for(int k=0;k<points;++k)sum+=((.237*w[size_t(k)*spins+s])*a[size_t(k)*rows+i])*b[size_t(k)*columns+j];
+        expected[(size_t(s)*stride+i)*stride+j]=sum;
+      }
+      OpenMXGridPackedHamiltonian input{rows,columns,points,spins,stride,.237,a.data(),b.data(),w.data(),result.data()+1};
+      openmx::test::fail_allocation_after(0);
+      const int ok=openmx_core_grid_hamiltonian_packed(&input,mode);
+      openmx::test::fail_allocation_after(-1);
+      require(ok && result.front()==719 && result.back()==719,"packed SIMD guard or allocation failure");
+      require(!std::memcmp(result.data()+1,expected.data(),count*sizeof(double)),"packed SIMD differs from original ascending quadrature");
+    }
+  double sentinel=19;OpenMXGridPackedHamiltonian input{0,0,0,1,0,1,nullptr,nullptr,nullptr,&sentinel};
+  require(openmx_core_grid_hamiltonian_packed(&input,0) && sentinel==19,"empty packed output changed");
+  for(int kind=0;kind<6;++kind) {
+    auto bad=input;
+    if(kind==0)bad.rows=-1;if(kind==1)bad.columns=1;if(kind==2)bad.points=-1;
+    if(kind==3)bad.spins=3;if(kind==4)bad.output_stride=SIZE_MAX;
+    require(!openmx_core_grid_hamiltonian_packed(&bad,kind==5?99:0) && sentinel==19,
+        "invalid packed request changed output");
+  }
+  require(!openmx_core_grid_hamiltonian_packed(nullptr,0),"null packed request accepted");
 }
 void allocation() {
   // Sweep every allocation in a new topology. Failed replacement must preserve
@@ -231,6 +309,8 @@ int main(int argc,char** argv) {
     if(name=="density-float")quadrature<float>(false);else if(name=="density-double")quadrature<double>(false);
     else if(name=="hamiltonian-float")quadrature<float>(true);else if(name=="hamiltonian-double")quadrature<double>(true);
     else if(name=="reuse")reuse();else if(name=="exchange")exchange();else if(name=="invalid")invalid();
+    else if(name=="simd-equivalence"){equivalence<float>();equivalence<double>();}
+    else if(name=="packed")packed();
     else if(name=="allocation")allocation();else if(name=="plans")plans();else throw std::runtime_error("unknown grid assembly case");
     std::cout<<"PASS grid assembly "<<name<<'\n';return 0;
   }catch(const std::exception& e) {openmx::test::fail_allocation_after(-1);std::cerr<<e.what()<<'\n';return 1;}

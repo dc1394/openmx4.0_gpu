@@ -101,18 +101,13 @@ target_include_directories(openmx_core PUBLIC
 target_link_libraries(openmx_core PUBLIC Kokkos::kokkos Threads::Threads)
 install(FILES "${kokkos_SOURCE_DIR}/LICENSE" DESTINATION share/licenses/openmx_core RENAME Kokkos-LICENSE)
 target_compile_features(openmx_core PUBLIC cxx_std_20)
-# SIMD directives do not start or link an OpenMP runtime. The native caller
-# supplies its actual team, including when NVHPC C calls a GNU-built core.
-set_property(SOURCE src/grid_assembly.cpp APPEND PROPERTY COMPILE_OPTIONS
-  "$<$<COMPILE_LANG_AND_ID:CXX,GNU,Clang,AppleClang,IntelLLVM>:-fopenmp-simd>"
-  "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-fopenmp-simd>"
-  "$<$<COMPILE_LANGUAGE:HIP>:-fopenmp-simd>")
 if(OPENMX_CORE_FORCE_KOKKOS_MDSPAN)
   target_compile_definitions(openmx_core PUBLIC OPENMX_CORE_FORCE_KOKKOS_MDSPAN=1)
 endif()
 if(OPENMX_CORE_BACKEND MATCHES "^(CUDA|HIP)$")
   set_source_files_properties(${_core_sources} PROPERTIES LANGUAGE ${OPENMX_CORE_BACKEND})
 endif()
+include("${CMAKE_CURRENT_SOURCE_DIR}/../cmake/OpenMXHostSIMD.cmake")
 # Retain the original quadrature's summation order and avoid contraction when
 # comparing a refactor against the old C implementation.
 target_compile_options(openmx_core PRIVATE
@@ -136,10 +131,13 @@ endif()
 
 option(OPENMX_CORE_BUILD_BENCHMARKS "Build portable core performance probes" OFF)
 if(OPENMX_CORE_BUILD_BENCHMARKS)
+  add_executable(openmx_grid_benchmark benchmarks/grid_assembly.cpp)
+  target_link_libraries(openmx_grid_benchmark PRIVATE OpenMX::core)
   add_executable(openmx_radial_benchmark benchmarks/radial_transform.cpp)
   target_link_libraries(openmx_radial_benchmark PRIVATE OpenMX::core)
   if(OPENMX_CORE_BACKEND MATCHES "^(CUDA|HIP)$")
-    set_source_files_properties(benchmarks/radial_transform.cpp PROPERTIES LANGUAGE ${OPENMX_CORE_BACKEND})
+    set_source_files_properties(benchmarks/radial_transform.cpp benchmarks/grid_assembly.cpp
+      PROPERTIES LANGUAGE ${OPENMX_CORE_BACKEND})
   endif()
 endif()
 

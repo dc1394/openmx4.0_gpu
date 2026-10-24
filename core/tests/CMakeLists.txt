@@ -1,5 +1,10 @@
 # Darwin needs a dylib for dyld interposition across the real shared core.
 # This target and its allocation hooks are test-only; production is unchanged.
+if(OPENMX_CORE_BACKEND STREQUAL "HIP")
+  # hip::device propagates -x hip even to CXX sources. Keep the allocation
+  # interposer on the HIP compiler when the ordinary CXX compiler is GNU.
+  set_source_files_properties(allocation_faults.cpp PROPERTIES LANGUAGE HIP)
+endif()
 if(APPLE)
   add_library(openmx_test_allocation_faults SHARED allocation_faults.cpp)
   target_compile_features(openmx_test_allocation_faults PRIVATE cxx_std_17)
@@ -216,9 +221,16 @@ if(OPENMX_CORE_BACKEND MATCHES "^(CUDA|HIP)$")
   set_source_files_properties(test_two_center.cpp PROPERTIES LANGUAGE ${OPENMX_CORE_BACKEND})
 endif()
 add_executable(openmx_core_tests test_core.cpp)
+add_executable(openmx_host_simd_boundary_tests test_host_simd_boundary.cpp)
+target_link_libraries(openmx_host_simd_boundary_tests PRIVATE OpenMX::core)
+add_test(NAME core-host-simd-boundary COMMAND openmx_host_simd_boundary_tests)
+set_tests_properties(core-host-simd-boundary PROPERTIES LABELS "unit;core;grid" TIMEOUT 120)
+if(OPENMX_CORE_BACKEND MATCHES "^(CUDA|HIP)$")
+  set_source_files_properties(test_host_simd_boundary.cpp PROPERTIES LANGUAGE ${OPENMX_CORE_BACKEND})
+endif()
 openmx_add_fault_test(openmx_grid_assembly_tests test_grid_assembly.cpp)
 target_link_libraries(openmx_grid_assembly_tests PRIVATE OpenMX::core)
-foreach(_case density-float density-double hamiltonian-float hamiltonian-double reuse exchange invalid allocation plans)
+foreach(_case density-float density-double hamiltonian-float hamiltonian-double reuse exchange invalid allocation plans simd-equivalence packed)
   add_test(NAME "core-grid-assembly-${_case}" COMMAND openmx_grid_assembly_tests "${_case}")
   set_tests_properties("core-grid-assembly-${_case}" PROPERTIES LABELS "unit;core;grid" TIMEOUT 120)
 endforeach()
