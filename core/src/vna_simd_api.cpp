@@ -1,5 +1,6 @@
 #include "openmx_core_vna_simd.h"
 #include "host_vna_kernels.hpp"
+#include <algorithm>
 
 namespace {
 const openmx::core::host::VnaKernels* kernels(int mode) { return openmx::core::host::openmx_host_vna_kernels(mode); }
@@ -48,5 +49,32 @@ extern "C" int openmx_core_vna_hvna_block(const OpenMXVnaHvnaBlock* p,int mode) 
                            : (p->left_stride<size_t(p->rows) || p->right_stride<components))return 0;
   }
   k->hvna_block(*p);
+  return 1;
+}
+extern "C" int openmx_core_vna_angular(const OpenMXVnaAngular* p,int mode) {
+  const auto* k=kernels(mode);
+  if(!k || !p || p->l0<0 || p->l1<0 || p->rows!=2*p->l0+1 || p->columns!=2*p->l1+1)return 0;
+  if(p->ll_first<0 || p->ll_count<0 || p->pad<p->l0+p->l1)return 0;
+  if(p->gaunt_stride<size_t(p->columns) || p->acc_stride<size_t(p->columns))return 0;
+  for(int c=0;c<8;++c)if(!p->acc[c])return 0;
+  if(p->ll_count) {
+    const int top=p->ll_first+p->ll_count-1;
+    const int reach=std::max(2*top+1,top+p->l0+p->l1+8);
+    if(p->cy_stride<size_t(p->pad+reach) || p->cy_length<size_t(top+1)*p->cy_stride)return 0;
+    if(!p->cpow_r || !p->cpow_i || !p->s0 || !p->s1 || !p->gaunt)return 0;
+    for(int c=0;c<6;++c)if(!p->cy[c])return 0;
+    for(int t=0;t<p->ll_count;++t)if(!p->gaunt[t])return 0;
+  }
+  k->angular(*p);
+  return 1;
+}
+extern "C" int openmx_core_vna_convert(const OpenMXVnaConvert* p,int mode) {
+  const auto* k=kernels(mode);
+  if(!k || !p || p->rows0<1 || p->rows0>16 || p->columns<1 || p->columns>32)return 0;
+  if(p->acc_stride<size_t(p->columns) || p->width<size_t(p->rows0) || p->ld<size_t(p->columns) || p->out_stride<size_t(p->columns))return 0;
+  if(!p->conv0 || !p->convt_r || !p->convt_i)return 0;
+  for(int c=0;c<8;++c)if(!p->acc[c])return 0;
+  for(int c=0;c<4;++c)if(!p->out[c])return 0;
+  k->convert(*p);
   return 1;
 }

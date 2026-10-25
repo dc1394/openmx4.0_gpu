@@ -1743,6 +1743,7 @@ Force.o: openmx_force_gpu_resources.h openmx_force_archive_lease.h openmx_force_
 Force.o: ../core/include/openmx_core_force_recovery.h
 Force.o: openmx_force_hnl_batch.h openmx_core_force_hnl_batch.h ../core/include/openmx_core_force_hnl_batch.h
 Force.o: openmx_host_simd.h openmx_core_force_simd.h ../core/include/openmx_core_force_simd.h ../core/include/openmx_core_projector_force.h
+Force.o: openmx_core_orbitals_simd.h ../core/include/openmx_core_orbitals_simd.h
 
 # Solver invocation RAII and flat spectral workspaces.
 Cluster_DFT_Col.o Cluster_DFT_NonCol.o Band_DFT_Col.o Band_DFT_NonCol.o Divide_Conquer.o Divide_Conquer_LNO.o Krylov.o: openmx_solver_workspace.h openmx_core_solver_workspace.h

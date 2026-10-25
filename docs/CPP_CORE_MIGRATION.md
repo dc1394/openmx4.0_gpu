@@ -6164,11 +6164,11 @@ C ABI はすべて `int openmx_core_<family>_<op>(..., int mode)`（0 = 拒否�
 
 | 群 / ヘッダー | C ABI | 呼び出し元 |
 | --- | --- | --- |
-| `olg` / `openmx_core_olg.h` | `openmx_core_olg_intersect` | `truncation.c`（`OLG_capacity_kernel` のホスト分岐、`UCellBox_OLG_Host`） |
-| `vna` / `openmx_core_vna_simd.h` | `openmx_core_vna_bessel`, `_contract`, `_quadrature`, `_hvna_block` | `openmx_dsvna_cpu.h`, `openmx_vna_cpu.h`, `openmx_hvna_cpu.h` |
-| `force` / `openmx_core_force_simd.h` | `openmx_core_force_vna_block`, `_grid_pair`, `_nl_block`（+ `*_scratch`） | `Force.c`（融合 Force4B トレース、Force3 第 2 部）、`openmx_force_projectors.h`（`dHNL_block`） |
-| `energy` / `openmx_core_energy_simd.h` | `openmx_core_energy_neutral_points`, `_band_block` | `openmx_neutral_atom.h`（EH0 / cutoff / Stress）、`Band_DFT_Col.c`（`BandCol_DM_Block`） |
-| `orbitals` / `openmx_core_orbitals_simd.h` | `openmx_core_orbitals_points` | `Set_Orbitals_Grid.c`（`SOG_host_points`） |
+| `olg` / `openmx_core_olg.h` | `openmx_core_olg_intersect`, `_intersect_lists`, `_map_fill` / `_map_reset` / `_intersect_map` | `truncation.c`（`OLG_capacity_kernel` のホスト分岐、`UCellBox_OLG_Host`） |
+| `vna` / `openmx_core_vna_simd.h` | `openmx_core_vna_bessel`, `_contract`, `_quadrature`, `_hvna_block`, `_angular`, `_convert` | `openmx_dsvna_cpu.h`, `openmx_vna_cpu.h`, `openmx_hvna_cpu.h` |
+| `force` / `openmx_core_force_simd.h` | `openmx_core_force_vna_block`（+ `_vna_lanes`）, `_grid_pair`, `_grid_points`（+ `_grid_density`）, `_nl_block`（+ `*_scratch`） | `Force.c`（融合 Force4B トレースのタイル化、Force3 第 1・2 部）、`openmx_force_projectors.h`（`dHNL_block`） |
+| `energy` / `openmx_core_energy_simd.h` | `openmx_core_energy_neutral_points`, `_xc_shell`, `_band_block` | `openmx_neutral_atom.h`（EH0 / cutoff / Stress）、`Total_Energy.c`（`Calc_EXC_EH1`）、`Band_DFT_Col.c`（`BandCol_DM_Block`） |
+| `orbitals` / `openmx_core_orbitals_simd.h` | `openmx_core_orbitals_points`, `_dpoints`, `_dpoints_cosines` | `Set_Orbitals_Grid.c`（`SOG_host_points`）、`Force.c`（Force3 第 1 部） |
 | 方針 / `openmx_core_host_simd.h` | `openmx_core_host_simd_mode`, `_name`, `_usable` | `openmx_host_simd.c`（`OpenMX_HostSimdMode`, `OpenMX_HostSimdGridMode`, `OpenMX_HostSimdReport`） |
 
 各群の試験は `core-host-<family>-*`（scalar と各 ISA の bit 一致、元ループの転写との一致、

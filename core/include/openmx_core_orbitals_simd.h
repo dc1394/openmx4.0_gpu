@@ -41,6 +41,37 @@ typedef struct { int ng23, ng3, max_no; double frame[9], origin[3]; } OpenMXOrbi
 int openmx_core_orbitals_points(const OpenMXOrbitalsTables*,const OpenMXOrbitalsFrame*,
     const OpenMXOrbitalsPoint*,size_t count,float *out,int mode);
 
+/* A grid point of a force quadrature given by its displacement from the atom
+   (x, y, z = the dx, dy, dz that Force3 forms from the grid coordinate, the
+   cell translation and the atom position) with the atom's species and
+   orbital count. No grid frame is needed, so the caller controls bitwise how
+   the displacement is formed. */
+typedef struct { int wan, no; double x, y, z; } OpenMXOrbitalsDisplacement;
+
+/* out[(i*no + j)*3 + c] for point i, orbital j, c = 0,1,2 (rows follow the
+   points: with mixed species the row of point i starts at 3 times the sum of
+   the orbital counts of the points before it): the x, y, z
+   derivatives dChi[1..3][j] of Get_dOrbitals_work (Get_dOrbitals.c; inlined
+   in Force3), bitwise its arithmetic with this build's libm for acos, asin,
+   sin and cos: the Rmin = 1e-13 shift of a point on the atom, the spherical
+   angles, the radial spline and its derivative in both mesh branches, the
+   real harmonics with their theta/phi derivatives for L0 <= 3, and the chain
+   rule -dR*dChiR - dQ*dChiQ - dP*dChiP. Zero outside the PAO mesh. The
+   orbital value dChi[0] is not written. Returns 0 without writing on an
+   unsupported mode, a missing buffer, a species beyond L0 = 3 / eight radial
+   functions / fewer than six mesh points, or a point whose species or
+   orbital count is inconsistent; else 1. Pure, re-entrant, allocation-free. */
+int openmx_core_orbitals_dpoints(const OpenMXOrbitalsTables*,const OpenMXOrbitalsDisplacement*,
+    size_t count,double *out,int mode);
+
+/* The same derivatives with sin/cos of theta and phi taken as the direction
+   cosines r1/R, z/R, y/r1, x/r1 of the same branches instead of libm's
+   sin(acos(.)) and sin(asin(.)): no transcendental calls, last-ulp
+   differences from Get_dOrbitals_work (of the order of the libm differences
+   between builds), bitwise across ISAs. Same contract otherwise. */
+int openmx_core_orbitals_dpoints_cosines(const OpenMXOrbitalsTables*,const OpenMXOrbitalsDisplacement*,
+    size_t count,double *out,int mode);
+
 #ifdef __cplusplus
 }
 #endif

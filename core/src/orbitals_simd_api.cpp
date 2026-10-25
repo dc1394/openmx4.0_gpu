@@ -33,3 +33,27 @@ extern "C" int openmx_core_orbitals_points(const OpenMXOrbitalsTables* t,const O
   kernels->points(*t,*f,q,count,out);
   return 1;
 }
+namespace {
+int derivatives(const OpenMXOrbitalsTables* t,const OpenMXOrbitalsDisplacement* q,size_t count,double* out,int mode,bool exact) {
+  const auto* kernels=openmx::core::host::openmx_host_orbitals_kernels(mode);
+  if(!kernels || !t)return 0;
+  if(!count)return 1;
+  if(!q || !out || !t->rv || !t->rwf || !t->rv_off || !t->rwf_base || !t->mesh || !t->maxl || !t->nb)return 0;
+  if(t->species<=0 || t->l0max<0)return 0;
+  for(size_t i=0;i<count;++i) {
+    if(q[i].wan<0 || q[i].wan>=t->species)return 0;
+    const int no=orbitals_of(*t,q[i].wan);
+    if(no<0 || q[i].no!=no)return 0;
+  }
+  (exact?kernels->dpoints:kernels->dpoints_cosines)(*t,q,count,out);
+  return 1;
+}
+}
+extern "C" int openmx_core_orbitals_dpoints(const OpenMXOrbitalsTables* t,const OpenMXOrbitalsDisplacement* q,
+    size_t count,double* out,int mode) {
+  return derivatives(t,q,count,out,mode,true);
+}
+extern "C" int openmx_core_orbitals_dpoints_cosines(const OpenMXOrbitalsTables* t,const OpenMXOrbitalsDisplacement* q,
+    size_t count,double* out,int mode) {
+  return derivatives(t,q,count,out,mode,false);
+}

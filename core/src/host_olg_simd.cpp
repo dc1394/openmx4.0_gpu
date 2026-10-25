@@ -89,10 +89,10 @@ template<class Source> void intersect_impl(const OpenMXOlgLists& l,const Source&
   const bool tabled=count && l.cells<=table_cells;
   const int L1=count?src.l1(0):0,L2=count?src.l2(0):0,L3=count?src.l3(0):0;
   if(tabled)for(int c=0;c<l.cells;++c)table[c]=image(l,c,L1,L2,L3);
-  const Int zero(0),one(1);
+  const Int zero(0),one(1),lane=Int([](auto k){return std::int32_t(k);});
   int pos=0;         // leftmost index of the previous block's last query
   int prev=INT_MIN;  // that query's grid index
-  alignas(64) std::int32_t grids[V],cells[V],found[V];
+  alignas(64) std::int32_t grids[V],cells[V];
   for(size_t first=0;first<count;first+=V) {
     const int n=int(std::min<size_t>(V,count-first));
     // One pass over the block: ascending from the previous block (else the
@@ -132,11 +132,16 @@ template<class Source> void intersect_impl(const OpenMXOlgLists& l,const Source&
     const Mask within=lo<Int(nc);
     const Mask equal=within&&(gather(l.grid,size_t(nc),within,lo)==grid);
     const Mask hit=equal&&inside&&(gather(l.cell,size_t(nc),equal,lo)==target);
-    simd::simd_unchecked_store(select(hit,lo,Int(-1)),found);
-    // A repeated grid index whose first entry has another cell: walk on.
-    const Mask pending=equal&&inside&&!hit;
-    if(any(pending))for(int k=0;k<n;++k)if(pending[k])found[k]=walk(l,lo[k]+1,grids[k],target[k]);
-    for(int k=0;k<n;++k)out[first+k]=found[k];
+    simd::simd_partial_store(select(hit,lo,Int(-1)),out+first,lane<Int(n));
+    // A repeated grid index whose first entry has another cell: walk on, but
+    // only where the next centre entry repeats the index (rare).
+    const Mask missed=equal&&inside&&!hit;
+    if(any(missed)) {
+      const Int next=lo+Int(1);
+      const Mask repeated=missed&&(next<Int(nc));
+      const Mask pending=repeated&&(gather(l.grid,size_t(nc),repeated,next)==grid);
+      if(any(pending))for(int k=0;k<n;++k)if(pending[k])out[first+k]=walk(l,lo[k]+1,grids[k],target[k]);
+    }
     pos=lo[n-1];
   }
 }
@@ -146,7 +151,38 @@ void intersect(const OpenMXOlgLists& l,const OpenMXOlgQuery* q,size_t count,int*
 void intersect_lists(const OpenMXOlgLists& l,const OpenMXOlgNeighbours& n,size_t count,int* out) {
   intersect_impl(l,Arrays{&n},count,out);
 }
-constexpr OlgKernels kernels{V,intersect,intersect_lists};
+// Map form: no merge state, so the queries need not be sorted and a block is
+// three gathers (map, image table, centre cell) plus the duplicate walk.
+void intersect_map(const OpenMXOlgLists& l,const OpenMXOlgNeighbours& nb,const int* map,size_t extent,
+    size_t count,int* out) {
+  const int nc=l.nc;
+  if(nc<=0){std::fill_n(out,count,-1);return;}
+  int table[table_cells];
+  const bool tabled=l.cells<=table_cells;
+  if(tabled)for(int c=0;c<l.cells;++c)table[c]=image(l,c,nb.l1,nb.l2,nb.l3);
+  const Int zero(0),lane=Int([](auto k){return std::int32_t(k);});
+  for(size_t first=0;first<count;first+=V) {
+    const int n=int(std::min<size_t>(V,count-first));
+    const Mask live=lane<Int(n);
+    const Int grid=simd::simd_partial_load<Int>(nb.grid+first,live),cell=simd::simd_partial_load<Int>(nb.cell+first,live);
+    const Int target=tabled?gather(table,size_t(l.cells),live,cell)
+        :Int([&](auto k){return int(k)<n?std::int32_t(image(l,nb.cell[first+size_t(k)],nb.l1,nb.l2,nb.l3)):-1;});
+    const Int index=gather(map,extent,live,grid);   // leftmost centre entry or -1
+    const Mask valid=live&&(index>=zero)&&(target>=zero);
+    const Mask hit=valid&&(gather(l.cell,size_t(nc),valid,index)==target);
+    simd::simd_partial_store(select(hit,index,Int(-1)),out+first,live);
+    // A matched grid index with another cell: walk on only where the next
+    // centre entry repeats the index (rare: periodic images of one point).
+    const Mask missed=valid&&!hit;
+    if(any(missed)) {
+      const Int next=index+Int(1);
+      const Mask repeated=missed&&(next<Int(nc));
+      const Mask pending=repeated&&(gather(l.grid,size_t(nc),repeated,next)==grid);
+      if(any(pending))for(int k=0;k<n;++k)if(pending[k])out[first+k]=walk(l,index[k]+1,grid[k],target[k]);
+    }
+  }
+}
+constexpr OlgKernels kernels{V,intersect,intersect_lists,intersect_map};
 }
 const OlgKernels& OPENMX_HOST_SIMD_FACTORY(olg)() noexcept {return kernels;}
 }

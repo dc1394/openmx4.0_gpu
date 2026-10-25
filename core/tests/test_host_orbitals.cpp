@@ -295,6 +295,155 @@ void legacy_difference() {
   std::cout<<"legacy acos/asin path vs SOG_point_eval: "<<differing<<" of "<<values<<" nonzero floats differ, max |diff| "
       <<worst<<", max relative "<<worst_relative<<'\n';
 }
+
+// ---- derivatives (openmx_core_orbitals_dpoints) ----
+OpenMXOrbitalsDisplacement displacement(const Setup& u,int wan,double x,double y,double z) {
+  OpenMXOrbitalsDisplacement d{};d.wan=wan;d.no=u.species[wan].orbitals();d.x=x;d.y=y;d.z=z;return d;
+}
+OpenMXOrbitalsDisplacement displacement(std::mt19937& rng,const Setup& u,int wan,double distance) {
+  std::normal_distribution<double> n;double d[3];double norm=0;
+  for(int a=0;a<3;++a){d[a]=n(rng);norm+=d[a]*d[a];}
+  norm=std::sqrt(norm);
+  return displacement(u,wan,distance*d[0]/norm,distance*d[1]/norm,distance*d[2]/norm);
+}
+std::vector<double> dexpected(const Setup& u,const std::vector<OpenMXOrbitalsDisplacement>& q) {
+  std::vector<double> e;
+  for(const auto& p:q) {
+    const auto& s=u.species[p.wan];
+    std::vector<double> row(size_t(p.no)*3);
+    openmx::test::get_dorbitals_reference(s.maxl,s.nb,s.mesh,u.rv.data()+u.rv_off[p.wan],u.rwf.data()+u.rwf_base[p.wan],
+        p.x,p.y,p.z,row.data());
+    e.insert(e.end(),row.begin(),row.end());
+  }
+  return e;
+}
+void dcompare(const Setup& u,const std::vector<OpenMXOrbitalsDisplacement>& q,const char* what) {
+  const auto e=dexpected(u,q);
+  const auto tables=u.tables();
+  for(int mode:modes()) {
+    std::vector<double> out(e.size()+2,-7.0);
+    require(openmx_core_orbitals_dpoints(&tables,q.data(),q.size(),out.data()+1,mode),"the derivative kernel refused a valid request");
+    require(out.front()==-7.0 && out.back()==-7.0,"the derivative kernel wrote outside its output");
+    for(size_t i=0;i<e.size();++i)
+      if(std::memcmp(&out[i+1],&e[i],sizeof(double))!=0) {
+        std::cerr<<what<<": mode "<<openmx_core_host_simd_name(mode)<<" value "<<i<<" got "<<out[i+1]<<" expected "<<e[i]<<'\n';
+        throw std::runtime_error("host derivative kernel differs from Get_dOrbitals_work");
+      }
+  }
+}
+void dequivalence() {
+  std::mt19937 rng(4242u);
+  const Setup u=make_setup(rng);
+  std::uniform_real_distribution<double> radius(0.0,1.0);
+  for(int count:{1,2,3,7,8,9,15,16,17,31,33,100,1000,4097})for(int wan=0;wan<int(u.species.size());++wan) {
+    std::vector<OpenMXOrbitalsDisplacement> q;
+    const double rcut=u.species[wan].rv.back();
+    for(int i=0;i<count;++i)q.push_back(displacement(rng,u,wan,1.3*rcut*radius(rng)));
+    dcompare(u,q,"dequivalence");
+  }
+  // Mixed species in one call: ragged rows, runs of 1..40 points.
+  std::uniform_int_distribution<int> length(1,40),which(0,int(u.species.size())-1);
+  std::vector<OpenMXOrbitalsDisplacement> q;
+  while(q.size()<3000) {
+    const int wan=which(rng),n=length(rng);
+    for(int i=0;i<n;++i)q.push_back(displacement(rng,u,wan,1.2*u.species[wan].rv.back()*radius(rng)));
+  }
+  dcompare(u,q,"dequivalence-runs");
+}
+void dedges() {
+  std::mt19937 rng(99u);
+  const Setup u=make_setup(rng);
+  std::vector<OpenMXOrbitalsDisplacement> q;
+  for(int wan=0;wan<int(u.species.size());++wan) {
+    const auto& s=u.species[wan];
+    // On the atom and inside Rmin (the shifted evaluation), on every axis in
+    // both directions, inside the first mesh point, at mesh points, at and
+    // beyond the last one, far away.
+    q.push_back(displacement(u,wan,0.0,0.0,0.0));
+    q.push_back(displacement(u,wan,1.0e-14,0.0,0.0));q.push_back(displacement(u,wan,0.0,-2.0e-14,3.0e-14));
+    q.push_back(displacement(u,wan,-5.0e-14,-5.0e-14,-5.0e-14));q.push_back(displacement(u,wan,0.0,0.0,0.9e-13));
+    for(double dist:{0.5*s.rv[0],s.rv[1],s.rv[4],0.5*s.rv.back(),s.rv.back(),1.001*s.rv.back()}) {
+      q.push_back(displacement(u,wan,dist,0.0,0.0));q.push_back(displacement(u,wan,-dist,0.0,0.0));
+      q.push_back(displacement(u,wan,0.0,dist,0.0));q.push_back(displacement(u,wan,0.0,-dist,0.0));
+      q.push_back(displacement(u,wan,0.0,0.0,dist));q.push_back(displacement(u,wan,0.0,0.0,-dist));
+      q.push_back(displacement(u,wan,dist,dist,0.0));q.push_back(displacement(u,wan,-dist,dist,0.0));
+      q.push_back(displacement(u,wan,-dist,-dist,0.0));q.push_back(displacement(u,wan,dist,-dist,0.0));
+    }
+    for(int m:{1,2,3,4,5,s.mesh/2,s.mesh-2,s.mesh-1})q.push_back(displacement(rng,u,wan,s.rv[m]));
+    q.push_back(displacement(rng,u,wan,2.0e-14));q.push_back(displacement(rng,u,wan,50.0));
+  }
+  for(int i=0;i<20;++i)q.push_back(q[5]);
+  dcompare(u,q,"dedges");
+  const auto tables=u.tables();double sentinel=3.0;
+  for(int mode:modes())require(openmx_core_orbitals_dpoints(&tables,nullptr,0,&sentinel,mode) && sentinel==3.0,"empty derivative request");
+}
+void dinvalid() {
+  std::mt19937 rng(11u);
+  Setup u=make_setup(rng);
+  std::vector<OpenMXOrbitalsDisplacement> q;
+  for(int i=0;i<10;++i)q.push_back(displacement(rng,u,i%2,1.0));
+  const auto tables=u.tables();
+  std::vector<double> out(400,5.0);
+  auto refused=[&](const OpenMXOrbitalsTables* t,const OpenMXOrbitalsDisplacement* p,size_t n,double* o,int mode,const char* what) {
+    require(!openmx_core_orbitals_dpoints(t,p,n,o,mode),what);
+    for(double v:out)require(v==5.0,"a refused derivative call wrote output");
+  };
+  refused(&tables,q.data(),q.size(),out.data(),99,"unknown mode accepted");
+  refused(&tables,q.data(),q.size(),out.data(),OPENMX_HOST_SIMD_LEGACY,"legacy accepted as a kernel");
+  refused(nullptr,q.data(),q.size(),out.data(),OPENMX_GRID_SCALAR,"missing tables accepted");
+  refused(&tables,nullptr,q.size(),out.data(),OPENMX_GRID_SCALAR,"missing points accepted");
+  refused(&tables,q.data(),q.size(),nullptr,OPENMX_GRID_SCALAR,"missing output accepted");
+  auto t=tables;t.rv=nullptr;refused(&t,q.data(),q.size(),out.data(),OPENMX_GRID_SCALAR,"missing radii accepted");
+  require(!openmx_core_orbitals_dpoints_cosines(&tables,q.data(),q.size(),out.data(),99) &&
+      !openmx_core_orbitals_dpoints_cosines(&tables,nullptr,q.size(),out.data(),OPENMX_GRID_SCALAR),"the cosine entry accepted an invalid request");
+  for(double v:out)require(v==5.0,"a refused cosine call wrote output");
+  auto bad=q;bad[3].no+=1;refused(&tables,bad.data(),bad.size(),out.data(),OPENMX_GRID_SCALAR,"wrong orbital count accepted");
+  bad=q;bad[4].wan=-1;refused(&tables,bad.data(),bad.size(),out.data(),OPENMX_GRID_SCALAR,"negative species accepted");
+  bad=q;bad[4].wan=int(u.species.size());refused(&tables,bad.data(),bad.size(),out.data(),OPENMX_GRID_SCALAR,"unknown species accepted");
+  std::vector<int> maxl=u.maxl;maxl[0]=4;t=tables;t.maxl=maxl.data();
+  refused(&t,q.data(),q.size(),out.data(),OPENMX_GRID_SCALAR,"L0 = 4 accepted");
+  std::vector<int> nb=u.nb;nb[1]=9;t=tables;t.nb=nb.data();
+  refused(&t,q.data(),q.size(),out.data(),OPENMX_GRID_SCALAR,"nine radial functions accepted");
+  std::vector<int> mesh=u.mesh;mesh[1]=5;t=tables;t.mesh=mesh.data();
+  refused(&t,q.data(),q.size(),out.data(),OPENMX_GRID_SCALAR,"a five-point mesh accepted");
+}
+void dcosines() {
+  // Bitwise across ISAs; close to the exact kernel (last-ulp angle differences).
+  std::mt19937 rng(321u);
+  const Setup u=make_setup(rng);
+  std::uniform_real_distribution<double> radius(0.0,1.0);
+  std::vector<OpenMXOrbitalsDisplacement> q;
+  for(int wan=0;wan<int(u.species.size());++wan) {
+    const auto& s=u.species[wan];
+    for(int i=0;i<1500;++i)q.push_back(displacement(rng,u,wan,1.2*s.rv.back()*radius(rng)));
+    q.push_back(displacement(u,wan,0.0,0.0,0.0));q.push_back(displacement(u,wan,0.0,0.0,0.3));
+    q.push_back(displacement(u,wan,0.0,-0.3,0.0));q.push_back(displacement(u,wan,-0.3,0.0,0.0));
+    q.push_back(displacement(u,wan,0.5*s.rv[0],0.0,0.0));q.push_back(displacement(u,wan,0.0,0.0,2.0*s.rv.back()));
+  }
+  const auto tables=u.tables();
+  const auto exact=dexpected(u,q);
+  std::vector<double> reference;
+  for(int mode:modes()) {
+    std::vector<double> out(exact.size()+2,-7.0);
+    require(openmx_core_orbitals_dpoints_cosines(&tables,q.data(),q.size(),out.data()+1,mode),"the cosine kernel refused a valid request");
+    require(out.front()==-7.0 && out.back()==-7.0,"the cosine kernel wrote outside its output");
+    out.erase(out.begin());out.pop_back();
+    if(mode==OPENMX_GRID_SCALAR)reference=out;
+    else require(!std::memcmp(out.data(),reference.data(),out.size()*sizeof(double)),"the cosine kernel differs between ISAs");
+  }
+  size_t offset=0;double worst=0.0;
+  for(const auto& p:q) {
+    const size_t n=size_t(p.no)*3;double scale=0.0;
+    for(size_t k=0;k<n;++k)scale=std::max(scale,std::fabs(exact[offset+k]));
+    for(size_t k=0;k<n;++k) {
+      const double d=std::fabs(exact[offset+k]-reference[offset+k]);
+      require(d<=1.0e-11*scale,"the cosine kernel strays from Get_dOrbitals_work beyond last-ulp angles");
+      if(scale>0.0)worst=std::max(worst,d/scale);
+    }
+    offset+=n;
+  }
+  std::cout<<"direction-cosine derivatives vs Get_dOrbitals_work: max difference "<<worst<<" of each point's largest derivative\n";
+}
 }
 int main(int argc,char** argv) {
   try {
@@ -304,6 +453,10 @@ int main(int argc,char** argv) {
     else if(name=="edges")edges();
     else if(name=="invalid")invalid();
     else if(name=="legacy-difference")legacy_difference();
+    else if(name=="dequivalence")dequivalence();
+    else if(name=="dedges")dedges();
+    else if(name=="dinvalid")dinvalid();
+    else if(name=="dcosines")dcosines();
     else throw std::runtime_error("unknown host orbitals case");
     std::cout<<"PASS host orbitals "<<name<<" (modes:";
     for(int mode:modes())std::cout<<' '<<openmx_core_host_simd_name(mode);

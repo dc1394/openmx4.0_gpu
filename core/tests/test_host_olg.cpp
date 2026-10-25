@@ -34,7 +34,7 @@ Case make(std::mt19937& rng,int nc,int nq,int cpy,int cells,bool sorted,bool dup
   for(int i=0;i<rdim*rdim*rdim;++i)c.periodic.push_back(cell(rng));
   for(int i=0;i<nq;++i) {
     OpenMXOlgQuery q;
-    q.grid=nc && coin(rng)<7?c.grid[std::uniform_int_distribution<int>(0,nc-1)(rng)]:std::uniform_int_distribution<int>(-3,value+3)(rng);
+    q.grid=nc && coin(rng)<7?c.grid[std::uniform_int_distribution<int>(0,nc-1)(rng)]:std::uniform_int_distribution<int>(0,value+3)(rng);
     q.cell=cell(rng);q.l1=shift(rng);q.l2=shift(rng);q.l3=shift(rng);
     c.queries.push_back(q);
   }
@@ -77,6 +77,24 @@ void compare(const Case& c,const char* what) {
         std::cerr<<what<<": mode "<<openmx_core_host_simd_name(mode)<<" query "<<i<<" got "<<out[i+1]<<" expected "<<expected[i]<<'\n';
         throw std::runtime_error("host overlap-grid kernel differs from the reference");
       }
+    // Map form: one map per centre list, unsorted queries allowed.
+    {
+      int extent=1;
+      for(int g:c.grid)extent=std::max(extent,g+1);
+      for(int g:qgrid)extent=std::max(extent,g+1);
+      std::vector<int> map(size_t(extent)+3,-1);
+      require(openmx_core_olg_map_fill(&lists,map.data(),size_t(extent),mode),"map_fill refused a valid list");
+      std::vector<int> map_out(c.queries.size()+2,-7);
+      require(openmx_core_olg_intersect_map(&lists,&arrays,map.data(),size_t(extent),c.queries.size(),map_out.data()+1,mode),"intersect_map refused a valid request");
+      require(map_out.front()==-7 && map_out.back()==-7,"intersect_map wrote outside the output");
+      for(size_t i=0;i<uniform.size();++i)
+        if(map_out[i+1]!=uniform[i]) {
+          std::cerr<<what<<": map mode "<<openmx_core_host_simd_name(mode)<<" query "<<i<<" got "<<map_out[i+1]<<" expected "<<uniform[i]<<'\n';
+          throw std::runtime_error("host overlap-grid map kernel differs from the reference");
+        }
+      require(openmx_core_olg_map_reset(&lists,map.data(),size_t(extent),mode),"map_reset refused a valid list");
+      for(int v:map)require(v==-1,"map_reset left an entry");
+    }
     std::vector<int> lists_out(c.queries.size()+2,-7);
     require(openmx_core_olg_intersect_lists(&lists,&arrays,c.queries.size(),lists_out.data()+1,mode),"intersect_lists refused a valid request");
     require(lists_out.front()==-7 && lists_out.back()==-7,"intersect_lists wrote outside the output");
@@ -107,7 +125,7 @@ void edges() {
   // Queries beyond either end of the centre list, every one at the same index,
   // and lists where every query repeats one grid value.
   Case e=make(rng,200,300,1,27,true,true);
-  for(size_t i=0;i<e.queries.size();++i)e.queries[i].grid=i<100?-5:i<200?e.grid[37]:e.grid.back()+9;
+  for(size_t i=0;i<e.queries.size();++i)e.queries[i].grid=i<100?0:i<200?e.grid[37]:e.grid.back()+9;
   compare(e,"ends and repeats");
   // A single cell image table, no periodic copies.
   compare(make(rng,500,700,0,1,true,true),"no copies");
@@ -133,6 +151,19 @@ void invalid() {
   OpenMXOlgNeighbours missing=arrays;missing.cell=nullptr;
   require(!openmx_core_olg_intersect_lists(&lists,&missing,10,out.data(),OPENMX_GRID_SCALAR),"lists: missing cells accepted");
   require(!openmx_core_olg_intersect_lists(&lists,&arrays,10,nullptr,OPENMX_GRID_SCALAR),"lists: missing output accepted");
+  std::vector<int> map(64,-1);
+  require(!openmx_core_olg_map_fill(&lists,map.data(),64,99),"map: unknown mode accepted");
+  require(!openmx_core_olg_map_fill(&lists,map.data(),size_t(c.grid.back()),OPENMX_GRID_SCALAR),"map: short extent accepted");
+  for(int v:map)require(v==-1,"a refused map_fill wrote the map");
+  require(!openmx_core_olg_intersect_map(&lists,&arrays,nullptr,64,10,out.data(),OPENMX_GRID_SCALAR),"map: missing map accepted");
+  std::vector<int> big(10,1000);const OpenMXOlgNeighbours beyond={big.data(),cl.data(),0,0,0};
+  require(!openmx_core_olg_intersect_map(&lists,&beyond,map.data(),64,10,out.data(),OPENMX_GRID_SCALAR),"map: query beyond the extent accepted");
+  std::vector<int> negative(10,-1);const OpenMXOlgNeighbours below={negative.data(),cl.data(),0,0,0};
+  require(!openmx_core_olg_intersect_map(&lists,&below,map.data(),64,10,out.data(),OPENMX_GRID_SCALAR),"map: negative query accepted");
+  // The merge forms accept any query value (a negative one simply never matches).
+  std::vector<int> any_out(10,5);
+  require(openmx_core_olg_intersect_lists(&lists,&below,10,any_out.data(),OPENMX_GRID_SCALAR),"lists: negative query refused");
+  for(int v:any_out)require(v==-1,"lists: negative query matched");
   for(int v:out)require(v==5,"a refused call wrote output");
 }
 void policy() {

@@ -22,6 +22,7 @@
 #include "openmx_core_vna_matrix.h"
 #include "openmx_energy_workspace.h"
 #include "openmx_host_simd.h"
+#include "openmx_core_energy_simd.h"
 #include "openmx_neutral_atom.h"
 #include "openmx_core_neutral_grid.h"
 #include "openmx_core_neutral_grid_metadata.h"
@@ -2132,6 +2133,19 @@ void Calc_EXC_EH1(OpenMXSolverInvocation *scratch, const OpenMXAtomicViews *atom
     OpenMX_Energy_XCPartialsPrepare(scratch,(size_t)Nthrds0,max_neighbors,&xc_partials);
     double *My_sumr=OpenMX_Solver_OverwriteReal(scratch,"total-energy:thread-sums",(size_t)Nthrds0);
 
+    /* The Core's Kokkos::simd shell kernel (OPENMX_HOST_SIMD) takes the
+       Lebedev loop of every radial shell; legacy mode, a refusal or memory
+       shortage keep the loop below. */
+#ifdef OPENMX_HOST_SIMD_H
+    const int xc_mode=OpenMX_HostSimdMode();
+    const int xc_simd=(xc_mode!=OPENMX_HOST_SIMD_LEGACY);
+    const size_t xc_scratch_count=xc_simd?openmx_core_energy_xc_shell_scratch((int)max_neighbors):0;
+#else
+    /* the standalone test harness compiles this block without the host SIMD glue */
+    const int xc_simd=0;
+    const size_t xc_scratch_count=0;
+#endif
+
     for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
 
       Gc_AN = M2G[Mc_AN];
@@ -2162,6 +2176,42 @@ void Calc_EXC_EH1(OpenMXSolverInvocation *scratch, const OpenMXAtomicViews *atom
 	}
       }
 
+      /* the neighbours of this atom for the shell kernel: positions with
+         the cell shift, cutoff squared and PAO density tables */
+      double *xc_nx=NULL,*xc_ny=NULL,*xc_nz=NULL,*xc_cut2=NULL;
+      int *xc_mesh=NULL;
+      const double **xc_xv=NULL,**xc_rv=NULL,**xc_yv=NULL;
+      if (xc_simd){
+        const size_t count=(size_t)FNAN[Gc_AN]+1;
+        xc_nx=(double*)malloc(sizeof(double)*count);
+        xc_ny=(double*)malloc(sizeof(double)*count);
+        xc_nz=(double*)malloc(sizeof(double)*count);
+        xc_cut2=(double*)malloc(sizeof(double)*count);
+        xc_mesh=(int*)malloc(sizeof(int)*count);
+        xc_xv=(const double**)malloc(sizeof(double*)*count);
+        xc_rv=(const double**)malloc(sizeof(double*)*count);
+        xc_yv=(const double**)malloc(sizeof(double*)*count);
+        if (xc_nx && xc_ny && xc_nz && xc_cut2 && xc_mesh && xc_xv && xc_rv && xc_yv){
+          for (h_AN=0; h_AN<=FNAN[Gc_AN]; h_AN++){
+            Gh_AN = natn[Gc_AN][h_AN];
+            Rn = ncn[Gc_AN][h_AN];
+            Hwan = WhatSpecies[Gh_AN];
+            xc_nx[h_AN] = Gxyz[Gh_AN][1] + atv[Rn][1];
+            xc_ny[h_AN] = Gxyz[Gh_AN][2] + atv[Rn][2];
+            xc_nz[h_AN] = Gxyz[Gh_AN][3] + atv[Rn][3];
+            xc_cut2[h_AN] = atomic->species.cutoff[Hwan]*atomic->species.cutoff[Hwan];
+            xc_mesh[h_AN] = atomic->species.pao_mesh[Hwan];
+            xc_xv[h_AN] = openmx_radial_row2(&atomic->pao_log_radii,Hwan);
+            xc_rv[h_AN] = openmx_radial_row2(&atomic->pao_radii,Hwan);
+            xc_yv[h_AN] = openmx_radial_row2(&atomic->density_backup,Hwan);
+          }
+        }
+        else{
+          free(xc_nx); free(xc_ny); free(xc_nz); free(xc_cut2); free(xc_mesh); free(xc_xv); free(xc_rv); free(xc_yv);
+          xc_nx=xc_ny=xc_nz=xc_cut2=NULL; xc_mesh=NULL; xc_xv=xc_rv=xc_yv=NULL;
+        }
+      }
+
 #pragma omp parallel shared(scratch,max_neighbors,xc_partials,atomic,lebedev,Num_Leb_Grid,My_sumr,Dr,Sr,CoarseGL_Abscissae,CoarseGL_Weight,Gxyz,Gc_AN,FNAN,natn,ncn,WhatSpecies,atv,F_Vxc_flag,Cwan,PCC_switch) private(OMPID,Nthrds,Nprocs,ir,ia,r,w,sumt,sumtx,sumty,sumtz,x,x0,y0,z0,h_AN,Gh_AN,Rn,Hwan,x1,y1,z1,dx,dy,dz,r1,den,den0,gden0,dx1,dy1,dz1,exc0,vxc0,i)
       {
 
@@ -2186,6 +2236,8 @@ void Calc_EXC_EH1(OpenMXSolverInvocation *scratch, const OpenMXAtomicViews *atom
         double *partial_x=OpenMX_Energy_XCForceRow(&xc_partials,0,OMPID);
         double *partial_y=OpenMX_Energy_XCForceRow(&xc_partials,1,OMPID);
         double *partial_z=OpenMX_Energy_XCForceRow(&xc_partials,2,OMPID);
+        double *xc_scratch=(xc_nx!=NULL)?(double*)malloc(sizeof(double)*(xc_scratch_count?xc_scratch_count:1)):NULL;
+        double den0_carry=0.0;
 
 	for (ir=(OMPID*CoarseGL_Mesh/Nthrds); ir<((OMPID+1)*CoarseGL_Mesh/Nthrds); ir++){
 
@@ -2198,6 +2250,29 @@ void Calc_EXC_EH1(OpenMXSolverInvocation *scratch, const OpenMXAtomicViews *atom
 	    sum_gz[i] = 0.0;
 	  }
 
+	  int xc_done=0;
+#ifdef OPENMX_HOST_SIMD_H
+	  if (xc_scratch!=NULL){
+	    OpenMXEnergyXcShell shell;
+	    shell.points=Num_Leb_Grid;
+	    shell.lebedev=lebedev.values;
+	    shell.lebedev_stride=lebedev.extent[1];
+	    shell.radius=r;
+	    shell.center[0]=Gxyz[Gc_AN][1];
+	    shell.center[1]=Gxyz[Gc_AN][2];
+	    shell.center[2]=Gxyz[Gc_AN][3];
+	    shell.vxc=(double)F_Vxc_flag;
+	    shell.neighbors=FNAN[Gc_AN]+1;
+	    shell.nx=xc_nx; shell.ny=xc_ny; shell.nz=xc_nz; shell.cutoff2=xc_cut2;
+	    shell.mesh=xc_mesh; shell.log_radii=xc_xv; shell.radii=xc_rv; shell.density=xc_yv;
+	    shell.scratch=xc_scratch; shell.scratch_count=xc_scratch_count;
+	    shell.den0=&den0_carry; shell.sumt=&sumt;
+	    shell.sum_gx=sum_gx; shell.sum_gy=sum_gy; shell.sum_gz=sum_gz;
+	    xc_done=openmx_core_energy_xc_shell(&shell,xc_mode);
+	  }
+#endif
+
+	  if (!xc_done)
 	  for (ia=0; ia<Num_Leb_Grid; ia++){
 
 	    x0 = r*openmx_solver_real_matrix_row(&lebedev,ia)[0] + Gxyz[Gc_AN][1];
@@ -2289,8 +2364,11 @@ void Calc_EXC_EH1(OpenMXSolverInvocation *scratch, const OpenMXAtomicViews *atom
 
 	} /* ir */
 
+        free(xc_scratch);
 
       } /* #pragma omp */
+
+      free(xc_nx); free(xc_ny); free(xc_nz); free(xc_cut2); free(xc_mesh); free(xc_xv); free(xc_rv); free(xc_yv);
 
       sumr = 0.0;
       for (Nloop=0; Nloop<Nthrds0; Nloop++){

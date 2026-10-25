@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
+#include <cstring>
 #include <iomanip>
 #include <iostream>
 #include <random>
@@ -130,6 +131,85 @@ int main(int argc,char** argv) {
           std::string what=std::string(openmx_core_host_simd_name(mode))+(transposed?" (lanes over n)":" (lanes over m)");
           line(what.c_str(),legacy/repeats*1e3,s/repeats*1e3,"ms per pair");
         }
+      }
+    }
+    // DS_VNA m sum and conversions: Si s2p2d1 (L0<=2, radials 2,2,1) against 108 projectors (L1<=8), LL<=16
+    {
+      struct Cx{double r,i;};
+      auto cmul=[](Cx a,Cx b){Cx c;c.r=a.r*b.r-a.i*b.i;c.i=a.i*b.r+a.r*b.i;return c;};
+      auto cadd=[](Cx a,Cx b){Cx c;c.r=a.r+b.r;c.i=a.i+b.i;return c;};
+      auto im_pow=[](int Ls){if(Ls%2==0)return Ls%4==0?Cx{1,0}:Cx{-1,0};return (Ls+1)%4==0?Cx{0,1}:Cx{0,-1};};
+      const int L0max=2,nb[3]={2,2,1},l1max=proj_lmax,llmax=16,width=2*l1max+1,cols=(l1max+1)*(l1max+1)*mult,num_rvna=rows;
+      int orb_rows=0,orb_off[3];for(int l=0;l<=L0max;++l){orb_off[l]=orb_rows;orb_rows+=nb[l]*(2*l+1);}
+      std::vector<double> sum0(size_t(radials)*num_rvna),sum1(sum0.size());for(auto& v:sum0)v=u(rng);for(auto& v:sum1)v=u(rng);
+      std::vector<Cx> Y((llmax+1)*(llmax+1)),Yt(Y.size()),Yp(Y.size());for(auto& v:Y)v={u(rng),u(rng)};for(auto& v:Yt)v={u(rng),u(rng)};for(auto& v:Yp)v={u(rng),u(rng)};
+      const size_t gstride=size_t(2*l1max+1);
+      std::vector<double> gaunt(size_t(9)*(llmax+1)*(l1max+1)*gstride);for(auto& v:gaunt)v=u(rng);
+      auto grow=[&](int L0,int M0,int LL,int L1){return ((((size_t)(L0*(L0+1)+M0))*(llmax+1)+LL)*(l1max+1)+L1)*gstride;};
+      std::vector<double> conv(2*size_t(l1max+1)*width*width),convt_r(size_t(l1max+1)*width*width),convt_i(convt_r.size());
+      for(auto& v:conv)v=u(rng);
+      for(int l=0;l<=l1max;++l)for(int row=0;row<=2*l;++row)for(int col=0;col<=2*l;++col){convt_r[((size_t)l*width+col)*width+row]=conv[2*(((size_t)l*width+row)*width+col)];convt_i[((size_t)l*width+col)*width+row]=conv[2*(((size_t)l*width+row)*width+col)+1];}
+      auto Conv=[&](int l,int row,int col){return Cx{conv[2*(((size_t)l*width+row)*width+col)],conv[2*(((size_t)l*width+row)*width+col)+1]};};
+      auto pairi=[&](int L0,int Mul0,int m0,int L,int m1){const int L1=L/mult,Mul1=L%mult;return (size_t)(orb_off[L0]+Mul0*(2*L0+1)+m0)*cols+(size_t)mult*L1*L1+(size_t)Mul1*(2*L1+1)+m1;};
+      auto sidx=[&](int L0,int Mul0,int L){return (size_t)(L0==0?Mul0:L0==1?2+Mul0:4)*num_rvna+L;};
+      const double siT=0.6,coT=0.8,siP=0.3,coP=0.95,r=5.0;
+      std::vector<Cx> T0((size_t)orb_rows*cols),Tr(T0.size()),Tt(T0.size()),Tp(T0.size());
+      std::vector<Cx> C0((size_t)5*width),Cr(C0.size()),Ct(C0.size()),Cp(C0.size());
+      std::vector<float> ref(4*(size_t)orb_rows*cols),out(ref.size());
+      const double legacy=seconds(repeats,[&]{
+        for(auto& v:T0)v={0,0};for(auto& v:Tr)v={0,0};for(auto& v:Tt)v={0,0};for(auto& v:Tp)v={0,0};
+        for(int LL=0;LL<=llmax;++LL)for(int m=-LL;m<=LL;++m){const Cx cy=Y[LL*LL+LL+m],cyt=Yt[LL*LL+LL+m],cyp=Yp[LL*LL+LL+m];
+          for(int L0=0;L0<=L0max;++L0)for(int Mul0=0;Mul0<nb[L0];++Mul0)for(int L=0;L<num_rvna;++L){const int L1=L/mult,Ls=-L0+L1+LL;
+            if(std::abs(L1-LL)<=L0 && L0<=L1+LL){const Cx cp=im_pow(Ls),y1=cmul(cp,cy),t1=cmul(cp,cyt),p1=cmul(cp,cyp);
+              for(int M0=-L0;M0<=L0;++M0){const int M1=M0-m;if(std::abs(M1)<=L1){const size_t pi=pairi(L0,Mul0,L0+M0,L,L1+M1);const double g=gaunt[grow(L0,M0,LL,L1)+(L1+M1)];
+                const double tmp2=g*sum0[sidx(L0,Mul0,L)],tmp0=g*sum1[sidx(L0,Mul0,L)];
+                T0[pi].r+=y1.r*tmp2;T0[pi].i+=y1.i*tmp2;Tr[pi].r+=y1.r*tmp0;Tr[pi].i+=y1.i*tmp0;Tt[pi].r+=t1.r*tmp2;Tt[pi].i+=t1.i*tmp2;Tp[pi].r+=p1.r*tmp2;Tp[pi].i+=p1.i*tmp2;}}}}}
+        int num0=0;
+        for(int L0=0;L0<=L0max;++L0)for(int Mul0=0;Mul0<nb[L0];++Mul0){int num1=0;
+          for(int L=0;L<num_rvna;++L){const int L1=L/mult;
+            for(int M0=-L0;M0<=L0;++M0)for(int M1=-L1;M1<=L1;++M1){Cx a={0,0},b={0,0},c={0,0},d={0,0};
+              for(int k=-L0;k<=L0;++k){const size_t pi=pairi(L0,Mul0,L0+k,L,L1+M1);Cx c1=Conv(L0,L0+M0,L0+k);c1.i=-c1.i;
+                a=cadd(a,cmul(c1,T0[pi]));b=cadd(b,cmul(c1,Tr[pi]));c=cadd(c,cmul(c1,Tt[pi]));d=cadd(d,cmul(c1,Tp[pi]));}
+              C0[(size_t)(L0+M0)*width+(L1+M1)]=a;Cr[(size_t)(L0+M0)*width+(L1+M1)]=b;Ct[(size_t)(L0+M0)*width+(L1+M1)]=c;Cp[(size_t)(L0+M0)*width+(L1+M1)]=d;}
+            for(int M0=-L0;M0<=L0;++M0)for(int M1=-L1;M1<=L1;++M1){Cx a={0,0},b={0,0},c={0,0},d={0,0};
+              for(int k=-L1;k<=L1;++k){const size_t ci=(size_t)(L0+M0)*width+(L1+k);const Cx cv=Conv(L1,L1+M1,L1+k);
+                a.r+=(C0[ci].r*cv.r-C0[ci].i*cv.i);a.i+=(C0[ci].r*cv.i+C0[ci].i*cv.r);b.r+=(Cr[ci].r*cv.r-Cr[ci].i*cv.i);b.i+=(Cr[ci].r*cv.i+Cr[ci].i*cv.r);
+                c.r+=(Ct[ci].r*cv.r-Ct[ci].i*cv.i);c.i+=(Ct[ci].r*cv.i+Ct[ci].i*cv.r);d.r+=(Cp[ci].r*cv.r-Cp[ci].i*cv.i);d.i+=(Cp[ci].r*cv.i+Cp[ci].i*cv.r);}
+              float* o=ref.data()+(size_t)(num0+L0+M0)*cols+num1+L1+M1;const size_t plane=(size_t)orb_rows*cols;
+              o[0]=8.0*(float)a.r;o[plane]=-8.0*(float)(siT*coP*b.r+coT*coP/r*c.r-siP/siT/r*d.r);o[2*plane]=-8.0*(float)(siT*siP*b.r+coT*siP/r*c.r+coP/siT/r*d.r);o[3*plane]=-8.0*(float)(coT*b.r-siT/r*c.r);}
+            num1+=2*L1+1;}
+          num0+=2*L0+1;}});
+      std::cout<<"DS_VNA m sum + conversions: legacy "<<1e3*legacy/repeats<<" ms per pair\n";
+      const int pad=L0max+l1max;const size_t cy_stride=size_t(pad+std::max(2*llmax+1,llmax+L0max+l1max+8)+8),cy_length=size_t(llmax+1)*cy_stride,plane=(size_t)orb_rows*cols;
+      std::vector<double> cy(6*cy_length,0.0),acc(8*plane),cpr(llmax+1),cpi(llmax+1),s0v(llmax+1),s1v(llmax+1);std::vector<const double*> grows(llmax+1);
+      for(int mode=OPENMX_GRID_SCALAR;mode<=OPENMX_GRID_NEON;++mode) {
+        if(!openmx_core_host_simd_usable(mode))continue;
+        const double s=seconds(repeats,[&]{
+          for(int LL=0;LL<=llmax;++LL)for(int m=-LL;m<=LL;++m){const size_t at=size_t(LL)*cy_stride+size_t(pad+LL-m);cy[at]=Y[LL*LL+LL+m].r;cy[cy_length+at]=Y[LL*LL+LL+m].i;cy[2*cy_length+at]=Yt[LL*LL+LL+m].r;cy[3*cy_length+at]=Yt[LL*LL+LL+m].i;cy[4*cy_length+at]=Yp[LL*LL+LL+m].r;cy[5*cy_length+at]=Yp[LL*LL+LL+m].i;}
+          for(int L0=0;L0<=L0max;++L0)for(int Mul0=0;Mul0<nb[L0];++Mul0)for(int L=0;L<num_rvna;++L){const int L1=L/mult;
+            const int first=std::abs(L1-L0),last=std::min(L1+L0,llmax);int n=0;
+            for(int LL=first;LL<=last;++LL){const Cx cp=im_pow(-L0+L1+LL);cpr[n]=cp.r;cpi[n]=cp.i;s0v[n]=sum0[sidx(L0,Mul0,L)];s1v[n]=sum1[sidx(L0,Mul0,L)];grows[n]=gaunt.data()+grow(L0,-L0,LL,L1);++n;}
+            OpenMXVnaAngular a;a.rows=2*L0+1;a.columns=2*L1+1;a.l0=L0;a.l1=L1;a.pad=pad;a.ll_first=first;a.ll_count=n;a.cy_length=cy_length;a.cy_stride=cy_stride;
+            for(int c=0;c<6;++c)a.cy[c]=cy.data()+c*cy_length;
+            a.cpow_r=cpr.data();a.cpow_i=cpi.data();a.s0=s0v.data();a.s1=s1v.data();a.gaunt=grows.data();a.gaunt_stride=grow(L0,-L0+1,0,L1)-grow(L0,-L0,0,L1);
+            const size_t origin=pairi(L0,Mul0,0,L,0);for(int c=0;c<8;++c)a.acc[c]=acc.data()+c*plane+origin;a.acc_stride=cols;
+            if(!openmx_core_vna_angular(&a,mode))throw std::runtime_error("angular failed");}
+          OpenMXVnaConvert v;v.onsite=0;v.polar=0;v.acc_stride=cols;v.width=width;v.ld=width;v.out_stride=cols;
+          v.c1=siT*coP;v.c2=coT*coP/r;v.c3=siP/siT/r;v.c4=siT*siP;v.c5=coT*siP/r;v.c6=coP/siT/r;v.c7=coT;v.c8=siT/r;
+          int num0=0;
+          for(int L0=0;L0<=L0max;++L0)for(int Mul0=0;Mul0<nb[L0];++Mul0){int num1=0;
+            for(int L=0;L<num_rvna;++L){const int L1=L/mult;const size_t origin=pairi(L0,Mul0,0,L,0);
+              v.rows0=2*L0+1;v.columns=2*L1+1;for(int c=0;c<8;++c)v.acc[c]=acc.data()+c*plane+origin;
+              v.conv0=conv.data()+2*((size_t)L0*width*width);v.convt_r=convt_r.data()+(size_t)L1*width*width;v.convt_i=convt_i.data()+(size_t)L1*width*width;
+              for(int c=0;c<4;++c)v.out[c]=out.data()+c*plane+(size_t)num0*cols+num1;
+              if(!openmx_core_vna_convert(&v,mode))throw std::runtime_error("convert failed");
+              num1+=2*L1+1;}
+            num0+=2*L0+1;}});
+        for(size_t i=0;i<out.size();++i)if(std::memcmp(&out[i],&ref[i],sizeof(float))) {
+          std::cerr<<"component "<<i/plane<<" row "<<(i%plane)/cols<<" column "<<(i%plane)%cols<<": kernel "<<out[i]<<" legacy "<<ref[i]<<'\n';
+          throw std::runtime_error("m sum/conversions differ from the legacy loops");
+        }
+        line(openmx_core_host_simd_name(mode),legacy/repeats*1e3,s/repeats*1e3,"ms per pair");
       }
     }
   }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}

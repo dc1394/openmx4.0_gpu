@@ -21,6 +21,7 @@ std::vector<int> modes() {
   require(!m.empty() && m[0]==OPENMX_GRID_SCALAR,"scalar host kernels must always be usable");
   return m;
 }
+bool same_bits(double a,double b) { return std::memcmp(&a,&b,sizeof(double))==0; }
 bool same(const std::vector<double>& a,const std::vector<double>& b) {
   return a.size()==b.size() && (a.empty() || !std::memcmp(a.data(),b.data(),a.size()*sizeof(double)));
 }
@@ -150,13 +151,20 @@ Points make_points(std::mt19937& rng,int count,const Mesh& m,double separation) 
   std::uniform_real_distribution<double> u(0.0,1.0);
   for(int n=0;n<count;++n) {
     // every branch of the interpolation, both guards, and exact zeros
-    const int kind=n%9;
+    const int kind=n%13;
     double rr;
     if(kind==0)rr=0.0;
     else if(kind==1)rr=1.0e-15*u(rng);
     else if(kind==2)rr=1.0e-11*u(rng);
     else if(kind==3)rr=m.rv[0]*u(rng);
     else if(kind==4)rr=m.rv[m.N-1]*(1.0+3.0*u(rng));
+    // the band around exp(xmax) where the branch needs the logarithm, its
+    // edges, and the first mesh point
+    else if(kind==5)rr=std::exp(m.xv[m.N-1])*(1.0+1.0e-12*(u(rng)-0.5));
+    else if(kind==6)rr=std::exp(m.xv[m.N-1])*(1.0+5.0e-10);
+    else if(kind==7)rr=std::exp(m.xv[m.N-1])*(1.0-5.0e-10);
+    else if(kind==8)rr=std::exp(m.xv[m.N-1])*(1.0+2.0e-9*(u(rng)-0.5));
+    else if(kind==9)rr=m.rv[0]*(1.0+1.0e-12*(u(rng)-0.5));
     else rr=std::exp(m.xv[0]+(m.xv[m.N-1]-m.xv[0])*u(rng));
     const double theta=std::acos(2.0*u(rng)-1.0),phi=6.283185307179586*u(rng);
     p.x.push_back(rr*std::sin(theta)*std::cos(phi));
@@ -222,6 +230,288 @@ void neutral() {
         for(int n=0;n<count;++n)s2+=got[n];
         if(derivative)for(int n=0;n<count;++n)r2-=gotd[n];
         require(std::memcmp(&s2,&sum,sizeof(double))==0 && std::memcmp(&r2,&sumr,sizeof(double))==0,"summing the stored values changed the legacy sum");
+      }
+    }
+}
+
+/* ---- the atomic exchange-correlation shell ---- */
+double KumoF(int N,double x,const double* xv,const double* rv,const double* yv) {
+  if (x<xv[0]){
+    int m;
+    double rm,h1,h2,h3,f1,f2,f3,f4,f,df,r;
+    double g1,g2,x1,x2,y1,y2,y12,y22,a,b;
+    r = std::exp(x);
+    m = 4;
+    rm = rv[m];
+    h1 = rv[m-1] - rv[m-2];
+    h2 = rv[m]   - rv[m-1];
+    h3 = rv[m+1] - rv[m];
+    f1 = yv[m-2];
+    f2 = yv[m-1];
+    f3 = yv[m];
+    f4 = yv[m+1];
+    g1 = ((f3-f2)*h1/h2 + (f2-f1)*h2/h1)/(h1+h2);
+    g2 = ((f4-f3)*h2/h3 + (f3-f2)*h3/h2)/(h2+h3);
+    x1 = rm - rv[m-1];
+    x2 = rm - rv[m];
+    y1 = x1/h2;
+    y2 = x2/h2;
+    y12 = y1*y1;
+    y22 = y2*y2;
+    f =  y22*(3.0*f2 + h2*g1 + (2.0*f2 + h2*g1)*y2)
+       + y12*(3.0*f3 - h2*g2 - (2.0*f3 - h2*g2)*y1);
+    df = 2.0*y2/h2*(3.0*f2 + h2*g1 + (2.0*f2 + h2*g1)*y2)
+       + y22*(2.0*f2 + h2*g1)/h2
+       + 2.0*y1/h2*(3.0*f3 - h2*g2 - (2.0*f3 - h2*g2)*y1)
+       - y12*(2.0*f3 - h2*g2)/h2;
+    a = 0.5*df/rm;
+    b = f - a*rm*rm;
+    return a*r*r + b;
+  }
+  else{
+    int i;
+    double t,dt;
+    double xmin,xmax;
+    xmin = xv[0];
+    xmax = xv[N-1];
+    x = (((x)<(xmax))?  (x):(xmax));
+    x = (((x)>(xmin))?  (x):(xmin));
+    t = ((double)N-1.0)*(x-xmin)/(xmax-xmin);
+    i = std::floor(t);
+    dt = t - (double)i;
+    return 0.5*( ((yv[i+3]-yv[i]-3.0*(yv[i+2]-yv[i+1]))*dt
+                  -yv[i+3]+4.0*yv[i+2]-5.0*yv[i+1]+2.0*yv[i])*dt
+                 +(yv[i+2]-yv[i]))*dt
+                 +yv[i+1];
+  }
+}
+double Dr_KumoF(int N,double x,double r,const double* xv,const double* rv,const double* yv) {
+  if (x<xv[0]){
+    int m;
+    double rm,h1,h2,h3,f1,f2,f3,f4,a,b;
+    double g1,g2,x1,x2,y1,y2,y12,y22,f,df;
+    r = std::exp(x);
+    m = 4;
+    rm = rv[m];
+    h1 = rv[m-1] - rv[m-2];
+    h2 = rv[m]   - rv[m-1];
+    h3 = rv[m+1] - rv[m];
+    f1 = yv[m-2];
+    f2 = yv[m-1];
+    f3 = yv[m];
+    f4 = yv[m+1];
+    g1 = ((f3-f2)*h1/h2 + (f2-f1)*h2/h1)/(h1+h2);
+    g2 = ((f4-f3)*h2/h3 + (f3-f2)*h3/h2)/(h2+h3);
+    x1 = rm - rv[m-1];
+    x2 = rm - rv[m];
+    y1 = x1/h2;
+    y2 = x2/h2;
+    y12 = y1*y1;
+    y22 = y2*y2;
+    f =  y22*(3.0*f2 + h2*g1 + (2.0*f2 + h2*g1)*y2)
+       + y12*(3.0*f3 - h2*g2 - (2.0*f3 - h2*g2)*y1);
+    df = 2.0*y2/h2*(3.0*f2 + h2*g1 + (2.0*f2 + h2*g1)*y2)
+       + y22*(2.0*f2 + h2*g1)/h2
+       + 2.0*y1/h2*(3.0*f3 - h2*g2 - (2.0*f3 - h2*g2)*y1)
+       - y12*(2.0*f3 - h2*g2)/h2;
+    a = 0.5*df/rm;
+    b = f - a*rm*rm;
+    (void)b;
+    return 2.0*a*r;
+  }
+  else{
+    int i;
+    double t,dt;
+    double xmin,xmax,tmp;
+    xmin = xv[0];
+    xmax = xv[N-1];
+    x = ((x)<(xmax))?  (x):(xmax);
+    x = ((x)>(xmin))?  (x):(xmin);
+    tmp = ((double)N-1.0)/(xmax-xmin);
+    t = (x-xmin)*tmp;
+    i = std::floor(t);
+    dt = t - (double)i;
+    return 0.5*(( 3.0*(yv[i+3]-yv[i]-3.0*(yv[i+2]-yv[i+1]))*dt
+                  +2.0*(-yv[i+3]+4.0*yv[i+2]-5.0*yv[i+1]+2.0*yv[i]))*dt
+                  +(yv[i+2]-yv[i]))*tmp/r;
+  }
+}
+double XC_Ceperly_Alder(double den,int P_switch) {
+  double dum,rs,coe;
+  double Ex,Ec,dEx,dEc;
+  double tmp0,tmp1;
+  double result;
+  if (den<=1.0e-15){
+    result = 0.0;
+  }
+  else{
+    coe = 0.6203504908994;
+    rs = coe*std::pow(den,-0.3333333333333333333);
+    tmp0 = 0.458165293632163/rs;
+    Ex = -tmp0;
+    dEx = tmp0/rs;
+    if (1.0<=rs){
+      tmp0 = std::sqrt(rs);
+      dum = (1.0 + 1.0529*tmp0 + 0.3334*rs);
+      tmp1 = 0.1423/dum;
+      Ec = -tmp1;
+      dEc = tmp1/dum*(0.52645/tmp0 + 0.3334);
+    }
+    else{
+      tmp0 = std::log(rs);
+      Ec = -0.0480 + 0.0311*tmp0 + rs*(0.0020*tmp0 - 0.0116);
+      dEc = 0.0311/rs + 0.0020*tmp0 - 0.0096;
+    }
+    if      (P_switch==0)
+      result = Ex + Ec;
+    else if (P_switch==1)
+      result = Ex + Ec - 0.33333333333333333333*rs*(dEx + dEc);
+    else if (P_switch==2)
+      result = 0.3333333333333333333*rs*(dEx + dEc);
+    else
+      result = -0.3333333333333333333/(coe*coe*coe)*rs*rs*rs*rs*(dEx + dEc);
+  }
+  return result;
+}
+struct Shell {
+  int points,neighbors;size_t stride;
+  std::vector<double> lebedev,nx,ny,nz,cutoff2;
+  std::vector<int> mesh;
+  std::vector<Mesh> tables;
+  std::vector<const double*> xv,rv,yv;
+  double radius,center[3],vxc;
+};
+// A shell with neighbours inside and outside the Lebedev sphere, points on a
+// neighbour (r2 = 0), a centre whose test can fail, both XC branches.
+Shell make_shell(std::mt19937& rng,int points,int neighbors,size_t stride,bool weak_center) {
+  Shell sh;sh.points=points;sh.neighbors=neighbors;sh.stride=stride;
+  std::uniform_real_distribution<double> u(0.0,1.0);
+  for(int k=0;k<3;++k)sh.center[k]=10.0*(u(rng)-0.5);
+  const double rcut=4.0+4.0*u(rng);
+  sh.radius=rcut*u(rng);
+  sh.vxc=u(rng)<0.1?0.0:1.0;
+  for(int ia=0;ia<points;++ia) {
+    const double theta=std::acos(2.0*u(rng)-1.0),phi=6.283185307179586*u(rng);
+    std::vector<double> row(stride,-3.0);
+    row[0]=std::sin(theta)*std::cos(phi);row[1]=std::sin(theta)*std::sin(phi);row[2]=std::cos(theta);row[3]=u(rng);
+    sh.lebedev.insert(sh.lebedev.end(),row.begin(),row.end());
+  }
+  for(int h=0;h<neighbors;++h) {
+    const int N=20+int(41*u(rng));
+    Mesh m;m.N=N;m.charge=1.0;
+    const double xmin=std::log(1.0e-4*(1.0+u(rng))),xmax=std::log(rcut*(1.2+u(rng)));
+    for(int i=0;i<N;++i){m.xv.push_back(xmin+(xmax-xmin)*i/(N-1.0));m.rv.push_back(std::exp(m.xv.back()));}
+    for(int i=0;i<N+2;++i){const double r=i<N?m.rv[i]:m.rv[N-1]*(1.0+0.1*(i-N+1));
+      double v=(0.2+u(rng))*std::exp(-r)*(1.0+0.1*(u(rng)-0.5));if(i%23==7)v=1.0e-16;if(i%23==15)v=-0.0;m.yv.push_back(v);}
+    sh.tables.push_back(m);
+    double x,y,z,c2;
+    if(h==0){x=sh.center[0];y=sh.center[1];z=sh.center[2];c2=weak_center?0.25*sh.radius*sh.radius:rcut*rcut;}
+    else if(h%7==3 && points) {  // exactly on a Lebedev point: r2 = 0 there
+      const size_t ia=size_t(h)%size_t(points);
+      x=sh.radius*sh.lebedev[ia*stride]+sh.center[0];y=sh.radius*sh.lebedev[ia*stride+1]+sh.center[1];z=sh.radius*sh.lebedev[ia*stride+2]+sh.center[2];
+      c2=rcut*rcut;
+    }
+    else {
+      const double d=2.2*rcut*u(rng),theta=std::acos(2.0*u(rng)-1.0),phi=6.283185307179586*u(rng);
+      x=sh.center[0]+d*std::sin(theta)*std::cos(phi);y=sh.center[1]+d*std::sin(theta)*std::sin(phi);z=sh.center[2]+d*std::cos(theta);
+      c2=(0.5+u(rng))*rcut*rcut;
+    }
+    sh.nx.push_back(x);sh.ny.push_back(y);sh.nz.push_back(z);sh.cutoff2.push_back(c2);sh.mesh.push_back(N);
+  }
+  for(const auto& m:sh.tables){sh.xv.push_back(m.xv.data());sh.rv.push_back(m.rv.data());sh.yv.push_back(m.yv.data());}
+  return sh;
+}
+// Total_Energy.c, the Lebedev loop of Calc_EXC_EH1 for one radial shell.
+void legacy_shell(const Shell& sh,double& den0,double& sumt,std::vector<double>& sum_gx,std::vector<double>& sum_gy,std::vector<double>& sum_gz) {
+  const int FNAN=sh.neighbors-1;
+  std::vector<double> gx(sh.neighbors),gy(sh.neighbors),gz(sh.neighbors);
+  const double r=sh.radius;
+  for (int ia=0; ia<sh.points; ia++){
+    const double* leb=sh.lebedev.data()+size_t(ia)*sh.stride;
+    double x0 = r*leb[0] + sh.center[0];
+    double y0 = r*leb[1] + sh.center[1];
+    double z0 = r*leb[2] + sh.center[2];
+    double den = 0.0;
+    for (int h_AN=0; h_AN<=FNAN; h_AN++){
+      double rcutH2 = sh.cutoff2[h_AN];
+      double x1 = sh.nx[h_AN];
+      double y1 = sh.ny[h_AN];
+      double z1 = sh.nz[h_AN];
+      double dx = x1 - x0;
+      double dy = y1 - y0;
+      double dz = z1 - z0;
+      double r2 = dx*dx+dy*dy+dz*dz;
+      gx[h_AN] = 0.0;
+      gy[h_AN] = 0.0;
+      gz[h_AN] = 0.0;
+      if (r2<rcutH2){
+        double x = 0.5*std::log(r2);
+        den += KumoF(sh.mesh[h_AN],x,sh.xv[h_AN],sh.rv[h_AN],sh.yv[h_AN])*sh.vxc;
+        if (h_AN==0) den0 = den;
+        if (h_AN!=0){
+          double r1 = std::sqrt(dx*dx + dy*dy + dz*dz);
+          double gden0 = Dr_KumoF(sh.mesh[h_AN],x,r1,sh.xv[h_AN],sh.rv[h_AN],sh.yv[h_AN])*sh.vxc;
+          gx[h_AN] = gden0/r1*dx;
+          gy[h_AN] = gden0/r1*dy;
+          gz[h_AN] = gden0/r1*dz;
+        }
+      }
+    }
+    double exc0 = XC_Ceperly_Alder(den,0);
+    double dexc0 = XC_Ceperly_Alder(den,3);
+    double w = leb[3];
+    sumt += w*den0*exc0;
+    for (int h_AN=1; h_AN<=FNAN; h_AN++){
+      sum_gx[h_AN] += w*den0*dexc0*gx[h_AN];
+      sum_gy[h_AN] += w*den0*dexc0*gy[h_AN];
+      sum_gz[h_AN] += w*den0*dexc0*gz[h_AN];
+    }
+  }
+}
+void xc() {
+  std::mt19937 rng(314u);
+  for(int points:{0,1,2,7,8,9,16,17,50,110})for(int neighbors:{1,2,5,13,40})for(size_t stride:{size_t(4),size_t(6)})
+    for(bool weak:{false,true}) {
+      if(points>50 && neighbors>13)continue;
+      // three consecutive shells share the carried centre density
+      std::vector<Shell> shells;
+      for(int k=0;k<3;++k)shells.push_back(make_shell(rng,points,neighbors,stride,weak));
+      double den0=0.0;
+      std::vector<double> sumt(3),gx(3*neighbors+3),gy(gx.size()),gz(gx.size());
+      std::vector<double> carries;
+      for(int k=0;k<3;++k) {
+        std::vector<double> sx(neighbors,0.0),sy(neighbors,0.0),sz(neighbors,0.0);
+        double st=0.0;
+        legacy_shell(shells[k],den0,st,sx,sy,sz);
+        sumt[k]=st;carries.push_back(den0);
+        std::copy(sx.begin(),sx.end(),gx.begin()+k*neighbors);std::copy(sy.begin(),sy.end(),gy.begin()+k*neighbors);std::copy(sz.begin(),sz.end(),gz.begin()+k*neighbors);
+      }
+      for(int mode:modes()) {
+        std::vector<double> scratch(openmx_core_energy_xc_shell_scratch(neighbors)+1,-9.0);
+        double carry=0.0;
+        for(int k=0;k<3;++k) {
+          const Shell& sh=shells[k];
+          std::vector<double> sx(neighbors+2,0.0),sy(neighbors+2,0.0),sz(neighbors+2,0.0);
+          sx.front()=sx.back()=sy.front()=sy.back()=sz.front()=sz.back()=4.5;
+          double st=0.0;
+          OpenMXEnergyXcShell shell{points,sh.lebedev.data(),stride,sh.radius,{sh.center[0],sh.center[1],sh.center[2]},sh.vxc,
+              neighbors,sh.nx.data(),sh.ny.data(),sh.nz.data(),sh.cutoff2.data(),sh.mesh.data(),sh.xv.data(),sh.rv.data(),sh.yv.data(),
+              scratch.data(),scratch.size()-1,&carry,&st,sx.data()+1,sy.data()+1,sz.data()+1};
+          require(openmx_core_energy_xc_shell(&shell,mode),"xc shell refused a valid request");
+          require(scratch.back()==-9.0 && sx.front()==4.5 && sx.back()==4.5 && sy.back()==4.5 && sz.back()==4.5,"xc shell wrote outside its buffers");
+          require(sx[1]==0.0 && sy[1]==0.0 && sz[1]==0.0,"xc shell touched the centre's gradient slot");
+          // bitwise: a neighbour sitting exactly on a Lebedev point yields 0/0 in
+          // both the legacy loop and the kernel (the same NaN)
+          bool ok=same_bits(st,sumt[k]) && same_bits(carry,carries[k]);
+          for(int h=1;h<neighbors;++h)ok=ok && same_bits(sx[h+1],gx[k*neighbors+h]) && same_bits(sy[h+1],gy[k*neighbors+h]) && same_bits(sz[h+1],gz[k*neighbors+h]);
+          if(!ok) {
+            std::cerr<<std::hexfloat<<"mode "<<openmx_core_host_simd_name(mode)<<" points="<<points<<" neighbors="<<neighbors<<" shell "<<k
+                <<" vxc="<<sh.vxc<<" radius="<<sh.radius<<": sumt "<<st<<" vs "<<sumt[k]<<", den0 "<<carry<<" vs "<<carries[k]<<'\n';
+            for(int h=1;h<neighbors;++h)if(!same_bits(sx[h+1],gx[k*neighbors+h]) || !same_bits(sy[h+1],gy[k*neighbors+h]) || !same_bits(sz[h+1],gz[k*neighbors+h]))
+              std::cerr<<"  h="<<h<<" cutoff2="<<sh.cutoff2[h]<<" gx "<<sx[h+1]<<" vs "<<gx[k*neighbors+h]<<" gy "<<sy[h+1]<<" vs "<<gy[k*neighbors+h]<<" gz "<<sz[h+1]<<" vs "<<gz[k*neighbors+h]<<'\n';
+            throw std::runtime_error("xc shell differs from the legacy loop");
+          }
+        }
       }
     }
 }
@@ -322,6 +612,32 @@ void invalid() {
   for(double x:d)require(x==4.0,"a refused call wrote derivatives");
   broken=s;broken.count=0;broken.hartree=nullptr;
   require(openmx_core_energy_neutral_points(&broken,OPENMX_GRID_SCALAR),"an empty request needs no tables");
+  {
+    const Shell sh=make_shell(rng,9,4,4,false);
+    std::vector<double> scratch(openmx_core_energy_xc_shell_scratch(4),0.0),sx(4,1.0),sy(4,1.0),sz(4,1.0);
+    double carry=0.0,st=1.0;
+    OpenMXEnergyXcShell shell{9,sh.lebedev.data(),4,sh.radius,{sh.center[0],sh.center[1],sh.center[2]},sh.vxc,4,
+        sh.nx.data(),sh.ny.data(),sh.nz.data(),sh.cutoff2.data(),sh.mesh.data(),sh.xv.data(),sh.rv.data(),sh.yv.data(),
+        scratch.data(),scratch.size(),&carry,&st,sx.data(),sy.data(),sz.data()};
+    require(!openmx_core_energy_xc_shell(&shell,99),"unknown xc mode accepted");
+    auto bad=shell;bad.scratch_count=scratch.size()-1;
+    require(!openmx_core_energy_xc_shell(&bad,OPENMX_GRID_SCALAR),"short xc scratch accepted");
+    bad=shell;bad.lebedev_stride=3;
+    require(!openmx_core_energy_xc_shell(&bad,OPENMX_GRID_SCALAR),"narrow lebedev rows accepted");
+    bad=shell;bad.neighbors=0;
+    require(!openmx_core_energy_xc_shell(&bad,OPENMX_GRID_SCALAR),"a shell without its centre accepted");
+    bad=shell;bad.den0=nullptr;
+    require(!openmx_core_energy_xc_shell(&bad,OPENMX_GRID_SCALAR),"missing centre-density carry accepted");
+    bad=shell;bad.sum_gy=nullptr;
+    require(!openmx_core_energy_xc_shell(&bad,OPENMX_GRID_SCALAR),"missing gradient sums accepted");
+    std::vector<int> short_mesh(sh.mesh);short_mesh[2]=5;
+    bad=shell;bad.mesh=short_mesh.data();
+    require(!openmx_core_energy_xc_shell(&bad,OPENMX_GRID_SCALAR),"short density mesh accepted");
+    require(st==1.0 && carry==0.0,"a refused xc call wrote its sums");
+    for(double v:sx)require(v==1.0,"a refused xc call wrote gradient sums");
+    bad=shell;bad.points=0;bad.lebedev=nullptr;
+    require(openmx_core_energy_xc_shell(&bad,OPENMX_GRID_SCALAR) && st==1.0,"an empty shell needs no points");
+  }
   const Band b=make_band(rng,3,5,7);
   std::vector<double> c(15,2.0),e(15,2.0);
   OpenMXEnergyBandBlock block{3,5,7,8,b.re0_rows.data(),b.im0_rows.data(),b.re1T.data(),b.im1T.data(),b.eigen.data(),b.co,b.si,c.data(),e.data()};
@@ -348,6 +664,7 @@ int main(int argc,char** argv) {
   try {
     const std::string name=argc>1?argv[1]:"neutral";
     if(name=="neutral")neutral();
+    else if(name=="xc")xc();
     else if(name=="band")band();
     else if(name=="invalid")invalid();
     else throw std::runtime_error("unknown host energy case");

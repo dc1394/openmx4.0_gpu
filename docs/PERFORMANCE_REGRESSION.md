@@ -3626,6 +3626,19 @@ L2 に収まる 1 対の繰り返しで、実計算の 136 ns より速い値で
 65536 問い合わせごとに 2 回の all-reduce を行う集団タスクループを省き、原子ごとの対を OpenMP で
 分けて局所に処理します（`UCellBox_OLG_Host`）。
 
+第 2 ラウンド（同日夜）では併合をやめ、全体格子番号 → 中心リストの左端要素の写像
+（`int` × Ngrid1·Ngrid2·Ngrid3、原子ごとに 1 回充填して全近傍で再利用、
+`openmx_core_olg_map_fill` / `openmx_core_olg_intersect_map`）を gather で引く形にしました。
+1 問い合わせは写像・像表・中心セルの 3 つの gather と重複格子番号の歩行（次の要素が同じ番号の
+車線だけ）で、問い合わせは昇順でなくても構いません。単体では scalar 3.0 ns、AVX2 4.6 ns、
+AVX-512 3.6 ns / 問い合わせ（写像の充填と復元は中心あたり 0.3 ms）で、Skylake-X の gather が
+遅いため AVX-512 が scalar に勝たない数少ないカーネルです。結果の圧縮（`GListTAtoms1/2` への
+書き込み）も分岐なしにしました。さらに第 1 MD ステップでは `UCell_Box` が同じ幾何で探索を
+2 回（サイズ見積もり `estimate_switch=2` と本番 `0`）行うため、見積もり側で作ったリストを
+保持して本番で引き渡し、2 回目の探索を省きます（`OLG_kept`、同一 MD ステップ・同一原子数・
+同一 FNAN のときだけ、`List_YOUSO[12]` の検査は本番側で実施）。写像が大きすぎる格子
+（2²⁶ 要素超）は併合に戻ります。
+
 実計算（上と同じ sidia333、`OPENMX_HOST_SIMD=legacy` → 既定）:
 
 | 項目 | legacy | 併合（集団ループのまま） | 併合 + 局所経路 + 配列入口 |
@@ -3763,3 +3776,119 @@ CPU + `OPENMX_HOST_SIMD=legacy` の 3 通りで参照との差が従来どおり
 `work/runtest.result.{gpu,cpu,cpu_legacy}_hostsimd_20261025`）でした。
 残る大きなホスト項目は対角化（ELPA2）、`Force3` 第 1 部、`Set_ProExpn_VNA` の複素累積、
 truncation の格子リスト構築と MPI（約 4 s）、`Calc_EXC_EH1` です。
+
+## ホストカーネル群の第 2 ラウンド (2026-10-25 夜)
+
+最終バイナリの CPU モードのプロファイル（sidia333、rank 0、117 s）で残っていたホスト項目を
+追加で置き換えました: `olg` の写像化とリスト保持（上の `olg` 節末尾）、`vna` の DS_VNA 複素累積・
+複素→実変換、`force` の融合トレースのタイル化と Force3 第 1 部（軌道微分）、`energy` の
+`Calc_EXC_EH1` と `neutral_points` の改良、`orbitals` の軌道微分カーネルです。
+
+### DS_VNA の複素累積と複素→実変換（`vna` 群）
+
+残っていた 2.6 s の内訳を転写の単体測定で分けると、対あたり m ループの累積 0.80–0.89 ms
+（3.8 万回の散在した複素更新）、変換 1 が 0.30 ms、変換 2 が 0.65–0.68 ms（15 万 k ステップ）で、
+`ComplexSH`（対あたり 289 回）と面のゼロ化・glue を足すと測定値と整合します。
+`openmx_core_vna_angular` は 1 つの (L0,Mul0,L) ブロックの m 和を LL の全範囲 |L1−L0|…L1+L0 について
+M1 を車線に（対索引は M1 で連続）、LL をレジスタ上で昇順に進めて各要素が従来と同じ順序の更新列を
+受けるようにしました（球面調和は LL ごとの反転・ゼロ詰め表、`Cmul(Cpow,Y)` を展開、
+`tmp2 = gaunt·s0` → `acc + CY1.r·tmp2`）。Gaunt 表は `[L0,M0][LL][L1][M1]` に並べ直しました。
+`openmx_core_vna_convert` は 2 つの変換と DS_VNA 行の書き出し（M1 を車線、k を逐次、従来の
+Cmul/Cadd の順、`8·(float)S`、`−8·(float)(c1·R + c2·T − c3·P)` など、係数は従来の式どおりに C 側で形成、
+on-site は微分 0、極 |siT|<1e-13 は c3/c6 項なし）です。両方とも転写と bit 一致
+（CTest `core-host-vna-{angular,convert}`、この群 7 件、`core-host-*` 全 32 件合格）。
+エンドツーエンドの単体（m 和 + 変換、sidia333 寸法、float 出力の bit 比較）が
+変換行列ブロックの原点 `l·width·width` の glue の誤りを見つけました（修正済み）。
+単体: 0.95–1.09 ms/対 → AVX-512 0.31–0.35 ms（2.7–3.3 倍）、AVX2 2.1–2.3 倍、scalar 1.2 倍。
+残りは 2L1+1 ≤ 17 列の車線利用率とブロックあたりの固定費です。VNA23 側の複素ループ
+（対あたり約 0.03 ms）と `SetPro_Separable`（MPI リングと `openmx_vna_assembly.h` のスカラー
+pack/unpack、0.42 %）は未変更です。
+
+### 融合トレースのタイル化と Force3（`force` 群）
+
+融合トレース（`Force4B` case 1/2）の残りは演算ではなくメモリ通過量でした: 1 つの (q,k) ブロックが
+左の 3 ブロック（`DS_VNA[1..3][Mc][k]`、13×972 float ≈ 151 KB）と右の 1 ブロック（≈50 KB）を読み、
+rank あたり約 3.5 万ブロック ≈ 7 GB/MD ステップを 18 rank が DRAM を分け合って流していました。
+Core 側に「車線被演算子を 1 回転置して多数のブロックで再利用する」`OpenMXForceVnaLanes`
+（面 `[成分][射影子][pad16]`）と行側車線 `lanes_rows` を追加し、C 側では結果の順序を変えずに
+再利用できる形にループを組み替えました: case 1（局所 q）は k 外側で (Mc,k) の 3 微分ブロックを
+1 回準備し、q ごとの累積器で k 昇順を保って最後にループ順で加える; case 1（受信原子）は (Mc,q,k) を
+受信原子の `kl` で束ね、受信ブロックを 1 回準備して共有する原子の H をスロットへ書き、従来の
+Mc ループが k 昇順に足す; case 2 は同じ h の並びをタイル（L2 に収まる 3 本）にまとめて h ブロックを
+タイルごとに準備し、対リスト順の最終パスで dEx/dEy/dEz に加えます。Trace(CDM0·H) 自体は
+原子あたり 0.5 ms（0.4 %）で順序もそのままです。`Force3` 第 2 部は点優先（`Force3Points`: 点ごとの
+CSR 訪問、対ごとの密度行列面、256 点ブロックの `omp for`、(h,Nog,spin) 順の合算）にして微分行の
+読み出しを近傍数（約 25 回）から群数（約 4 回）に減らし、第 1 部は `orbitals` 群の余弦版微分
+カーネルを 256 点ブロックで呼びます（Cnt_switch==0、L0≤3、径関数 ≤8、網目 ≥6 のときだけ）。
+いずれも拒否や legacy では元のループに戻ります。CTest `core-host-force-{vna,tiled,grid,points,nl,invalid}`
+（3 通りの並べ替えを逐次の対ごとの転写と bit 比較）。
+
+単体（1 原子: 近傍 84、(q,k) ブロック 2794 / 対 1375、13×13、P=972、第 1 ラウンドのブロック順との比較）:
+
+| 経路 | 読み出し量 前→後 | 1 コア固定 | 16 同時 |
+| --- | ---: | ---: | ---: |
+| case 1 k 外側、AVX-512 | 539 → 147 MB | 163 → 141 ms/原子（1.16倍） | 206 → 185 ms（1.11倍） |
+| case 2 h タイル 3、AVX-512 | 530 → 192 MB | 186 → 130 ms/原子（1.43倍） | 247 → 171 ms（1.45倍） |
+
+1 コアは DRAM 律速でないため通過量の削減ほどは速くならず、18 rank の実計算が本番の測定です。
+受信原子側は左ブロックを受信原子ごとに 1 回読む構造（通過量の約 75 %）が残り、MPI パイプラインの
+変更なしには減りません。
+
+### 中性原子 XC 殻積分と `neutral_points` の改良（`energy` 群）
+
+`Calc_EXC_EH1` の Lebedev × Gauss-Legendre 原子積分（`Total_Energy.c` 2136–2360 行のホスト経路）は、
+1 径方向殻の Lebedev 点を車線に、近傍ループを車線ごとに逐次実行する `openmx_core_energy_xc_shell`
+に置き換えました。`KumoF` / `Dr_KumoF`（MIN/MAX の刈り込み、区間ごとの 2 種の式、最初の網目点内側の
+`exp` 外挿）、`XC_Ceperly_Alder(den,0)` と `(den,3)`（rs/Ex/Ec とその微分を 1 回で共有）を転写し、
+`sumt += w·den0·exc0` と `sum_g[h] += w·den0·dexc0·g[h]` は車線 0..V−1 の順に点順で加えます。
+中心の判定に失敗した点で前の点の `den0` が残る従来の挙動も入出力の引き継ぎで再現しています。
+`log` / `exp` / `pow` は必要な車線だけで呼ぶ車線ごとの libm です（Kokkos::simd は超越関数を
+ベクトル化しない）。単体（194 点 × 86 近傍、網目 480）: 従来 11.35 ns/(点·近傍) → AVX-512 8.90 ns
+（1.28 倍、AVX2 1.06 倍、scalar 0.99 倍）。内側の対では従来コストの約 45 % が `log` で、これが上限です。
+`neutral_points` は r だけで分岐が決まらない車線（r = exp(xmax) の ±1e-9）だけ `log` を呼び、
+VH と Dr_VH の補間を同じ区間なら 4 つの gather を共有する形にして、単体 27.2 → 20.5 ns/点
+（−25 %、結果は第 1 ラウンドと bit 一致）。CTest `core-host-energy-{neutral,xc,band,invalid}`。
+
+### 軌道微分（`orbitals` 群）
+
+`Get_dOrbitals_work`（`source/Get_dOrbitals.c`、Force3 第 1 部に展開されているもの）を格子点を車線に
+転写した `openmx_core_orbitals_dpoints`（厳密版: 角度は車線ごとの libm `acos`/`asin`/`sin`/`cos`）と
+`openmx_core_orbitals_dpoints_cosines`（方向余弦 r1/R, z/R, y/r1, x/r1 で超越関数なし）を追加しました。
+出力は `out[(点·no + 軌道)·3 + 成分]`、網目外は 0、L0 ≥ 4（複素球面調和の経路）は拒否します。
+厳密版は転写と bit 一致（CTest `core-host-orbitals-{dequivalence,dedges,dinvalid,dcosines}`）、
+余弦版は厳密版と各点の最大微分に対して最大 1.1e-12 の差で、nvc 翻訳の元関数との差
+（`libnvcpumath` と glibc の最終ビット差、最悪 1.0e-10、84 % の点で 1e-13 以内）と同じ桁です。
+単体（65,536 点、13 軌道、網目 500）: 従来 206–225 ns/点、厳密版 AVX-512 189 ns（1.1–1.2 倍、
+6 回の超越関数呼び出しが下限 77–81 ns）、余弦版 AVX-512 81 ns（2.5–2.8 倍）。Force3 には余弦版を接続します。
+見つかった注意点: Kokkos 5.2.2 の AVX2/AVX-512 ベクトルの単項 `-` は `0 - v` で −0 を +0 にする
+（scalar ABI は厳密）ため、bit 一致が必要な符号反転は `Vector(-1.0)*v` で書きます。
+補助関数は `[[gnu::always_inline]]` にしないと約 15 % 遅くなります。
+
+### 第 2 ラウンドの実計算（sidia333、18 MPI × 1 OpenMP、`OPENMX_GPU=0`、3 SCF、各 2 回）
+
+同一バイナリで `OPENMX_HOST_SIMD=legacy` と既定（AVX-512）を交互に 2 回ずつ測定しました
+（`OPENMX_FORCE_PROFILE=1` 付き、他の計算・ビルドとは重ねていません）。1 MD ステップあたりの秒数で、
+括弧内は第 1 ラウンド末の既定値です。
+
+| 段階 | legacy (2 回) | 既定 AVX-512 (2 回) | 第 1 ラウンド末 |
+| --- | ---: | ---: | ---: |
+| truncation | 29.45 / 29.68 | 2.97 / 2.92 | 4.23 |
+| Set_ProExpn_VNA | 26.61 / 27.00 | 5.58 / 5.63 | 7.94 |
+| Force | 17.39 / 17.55 | 12.42 / 12.24 | 14.83 |
+| 　force#3 | 3.39 / 3.43 | 2.47 / 2.44 | 3.24 |
+| 　f4b-case1-r | 7.11 / 7.19 | 4.98 / 4.94 | 5.68 |
+| 　f4b-case2 | 4.74 / 4.71 | 3.34 / 3.35 | 4.34 |
+| 　force-HNL | 1.01 / 1.04 | 0.60 / 0.55 | 0.57 |
+| Total_Energy | 8.63 / 8.71 | 5.37 / 5.19 | 6.99 |
+| Set_Orbitals_Grid | 3.40 / 3.47 | 2.65 / 2.65 | 2.65 |
+| Diagonalization | 67.92 / 68.42 | 64.83 / 65.72 | 65.73 |
+| Total Computational Time | 174.0 / 175.6 | 107.4 / 107.9 | 115.6 |
+| wall（mpirun 含む） | 177.5 / 178.9 | 110.8 / 111.2 | 118.9 |
+
+比較元（2026-10-25 朝、172.0 s）に対して 107.4 s（0.62 倍）です。Utot は legacy −892.691813153392 /
+既定 −892.691813153394 Hartree（第 1 ラウンドと同じ 2×10⁻¹² Hartree）、`.md` の力は出力桁で一致。
+`openmx -runtest`（14 入力、18 MPI）は GPU モード、CPU モード、CPU + legacy の 3 通りで参照との差が
+従来どおり（Utot 最大 6.3e-11 / 8.8e-11 / 1.5e-10、力 1e-11 台、
+`work/runtest.result.{gpu,cpu,cpu_legacy}_r2_20261025`）でした。
+力の残り（case1-r 4.9 s）は受信原子ごとに左ブロックを読み直す MPI パイプラインの構造、
+`Set_ProExpn_VNA` の残り（5.6 s）は HVNA の列カーネルと glue、対角化（ELPA2）は対象外です。

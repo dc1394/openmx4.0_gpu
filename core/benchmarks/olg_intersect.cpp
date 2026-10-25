@@ -64,6 +64,17 @@ int main(int argc,char** argv) {
       const double a=seconds([&]{if(!openmx_core_olg_intersect_lists(&lists,&arrays,points,out.data(),mode))throw std::runtime_error("intersect_lists failed");});
       if(out!=reference)throw std::runtime_error("list kernel differs from the legacy search");
       std::cout<<std::setw(24)<<(std::string(openmx_core_host_simd_name(mode))+" (arrays)")<<std::setw(10)<<1e9*a/(double(points)*pairs)<<" ns/query  ("<<legacy_seconds/a<<"x)\n";
+      const size_t extent=size_t(std::max(grid.back(),queries.back().grid))+1;
+      std::vector<int> map(extent,-1);
+      // In UCell_Box the map is filled once per centre atom and read by all
+      // its neighbours: fill and reset once around the repeated pairs.
+      const auto t0=std::chrono::steady_clock::now();
+      if(!openmx_core_olg_map_fill(&lists,map.data(),extent,mode))throw std::runtime_error("map_fill failed");
+      const double m=seconds([&]{if(!openmx_core_olg_intersect_map(&lists,&arrays,map.data(),extent,points,out.data(),mode))throw std::runtime_error("intersect_map failed");});
+      if(!openmx_core_olg_map_reset(&lists,map.data(),extent,mode))throw std::runtime_error("map_reset failed");
+      const double fill=std::chrono::duration<double>(std::chrono::steady_clock::now()-t0).count()-m;
+      if(out!=reference)throw std::runtime_error("map kernel differs from the legacy search");
+      std::cout<<std::setw(24)<<(std::string(openmx_core_host_simd_name(mode))+" (map)")<<std::setw(10)<<1e9*m/(double(points)*pairs)<<" ns/query  ("<<legacy_seconds/m<<"x; fill+reset "<<1e3*fill<<" ms per centre)\n";
     }
   }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}
 }

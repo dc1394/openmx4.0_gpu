@@ -81,6 +81,62 @@ typedef struct {
 } OpenMXVnaHvnaBlock;
 int openmx_core_vna_hvna_block(const OpenMXVnaHvnaBlock*, int mode);
 
+/* The m sum of the DS_VNA assembly for one (L0, Mul0, L) block over its
+   range of Bessel orders LL = ll_first .. ll_first+ll_count-1 (ascending, as
+   the legacy LL loop): starting from zero, every pair (M0, M1) receives for
+   each LL with |M0-M1| <= LL, in the legacy operation order,
+     S  += Cmul(Cpow(LL), Y(LL,m))   * (gaunt(LL)[M0][M1]*s0(LL))   (real and imaginary parts)
+     R  += Cmul(Cpow(LL), Y(LL,m))   * (gaunt(LL)[M0][M1]*s1(LL))
+     T  += Cmul(Cpow(LL), dYt(LL,m)) * (gaunt(LL)[M0][M1]*s0(LL))
+     P  += Cmul(Cpow(LL), dYp(LL,m)) * (gaunt(LL)[M0][M1]*s0(LL))
+   with m = M0-M1, and every element of the block is written (zero when no
+   LL contributes). The harmonics come reversed and zero padded per LL:
+   cy[c][LL*cy_stride + pad + LL - m] for c = Y.r, Y.i, dYt.r, dYt.i, dYp.r,
+   dYp.i, with pad >= l0+l1 and cy_stride >= pad + max(2*LLmax+1,
+   LLmax+l0+l1+8); cy_length counts the entries of each table. cpow_r/cpow_i,
+   s0, s1 and gaunt are per LL of the range (ll_count entries); gaunt[t] is the
+   row of (L0, M0 = -l0, LL, L1), rows [rows][gaunt_stride] with M1 ascending.
+   The eight planes acc (S.r, S.i, R.r, R.i, T.r, T.i, P.r, P.i) are
+   [rows][acc_stride] at the block origin (M0 = -l0, M1 = -l1). */
+typedef struct {
+  int rows, columns, l0, l1, pad, ll_first, ll_count;
+  size_t cy_length, cy_stride;
+  const double *cy[6];
+  const double *cpow_r, *cpow_i, *s0, *s1;
+  const double *const *gaunt;
+  size_t gaunt_stride;
+  double *acc[8];
+  size_t acc_stride;
+} OpenMXVnaAngular;
+int openmx_core_vna_angular(const OpenMXVnaAngular*, int mode);
+
+/* The two complex-to-real conversions of one (L0, Mul0, L1, Mul1) block and
+   the DS_VNA rows they produce, in the legacy order: first
+     C[q][M0][M1] = sum_k Cmul(conj(conv0[M0][k]), acc_q[k][M1])      (k = -l0..l0)
+   then the real part of sum_k C[q][M0][k]*convt[k][M1] (k = -l1..l1, the
+   legacy adds (a.r*b.r - a.i*b.i) per k), and
+     out[0] = 8*(float)S,  out[1..3] = -8*(float)(derivative combinations)
+   with the coefficients c1..c8 = siT*coP, coT*coP/r, siP/siT/r, siT*siP,
+   coT*siP/r, coP/siT/r, coT, siT/r; polar drops the c3/c6 terms and onsite
+   writes zero derivatives. conv0 is the interleaved complex conversion
+   matrix of l0 (its element (l0+M0, l0+k), 0-based indices, at
+   conv0[2*((l0+M0)*width+(l0+k))]); convt_r/convt_i the transposed matrix of
+   l1 (element (l1+k, l1+M1) at [(l1+k)*ld+(l1+M1)]); out rows are float,
+   [rows0][out_stride] at (M0 = -l0, M1 = -l1). rows0 <= 16, columns <= 32. */
+typedef struct {
+  int rows0, columns, onsite, polar;
+  const double *acc[8];
+  size_t acc_stride;
+  const double *conv0;
+  size_t width;
+  const double *convt_r, *convt_i;
+  size_t ld;
+  float *out[4];
+  size_t out_stride;
+  double c1, c2, c3, c4, c5, c6, c7, c8;
+} OpenMXVnaConvert;
+int openmx_core_vna_convert(const OpenMXVnaConvert*, int mode);
+
 #ifdef __cplusplus
 }
 #endif

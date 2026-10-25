@@ -39,6 +39,18 @@ int openmx_core_olg_intersect(const OpenMXOlgLists*,const OpenMXOlgQuery*,size_t
 typedef struct { const int *grid, *cell; int l1, l2, l3; } OpenMXOlgNeighbours;
 int openmx_core_olg_intersect_lists(const OpenMXOlgLists*,const OpenMXOlgNeighbours*,size_t count,int *out,int mode);
 
+/* The same answers through a map from the global grid index to the leftmost
+   centre entry with that index (-1 elsewhere): built once per centre atom and
+   reused for every neighbour, so a query costs a few gathers instead of a
+   merge, and the queries need not be sorted. map holds extent ints; the
+   caller fills it with -1 once (map_fill writes the centre's entries, map_reset
+   restores -1 at them; both return 0 when a centre grid index is outside
+   [0, extent), with nothing written). */
+int openmx_core_olg_map_fill(const OpenMXOlgLists*,int *map,size_t extent,int mode);
+int openmx_core_olg_map_reset(const OpenMXOlgLists*,int *map,size_t extent,int mode);
+int openmx_core_olg_intersect_map(const OpenMXOlgLists*,const OpenMXOlgNeighbours*,const int *map,
+    size_t extent,size_t count,int *out,int mode);
+
 #ifdef __cplusplus
 }
 #endif

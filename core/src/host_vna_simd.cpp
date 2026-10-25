@@ -270,7 +270,121 @@ template<bool FP32> void hvna_block_typed(const OpenMXVnaHvnaBlock& p) {
 void hvna_block(const OpenMXVnaHvnaBlock& p) {
   if(p.fp32)hvna_block_typed<true>(p);else hvna_block_typed<false>(p);
 }
-constexpr VnaKernels kernels{V,contract,bessel,quadrature,hvna_block};
+// ---- DS_VNA m sum: lanes over M1, LL in registers ----------------------------
+// For fixed (L0, Mul0, L) each pair (M0, M1) receives one update per LL, the
+// one with m = M0-M1, so lanes across M1 with LL ascending inside keep the
+// legacy per-element order. The reversed harmonic tables make the lanes of one
+// M0 a contiguous window; lanes with |m| > LL keep their value for that LL.
+template<bool FULL> void angular_lanes(const OpenMXVnaAngular& p,int a,int j0,Mask tail,Vector lane) {
+  const int m0=a-p.l0;
+  const size_t row=size_t(a)*p.acc_stride;
+  Vector acc[8];
+  for(auto& v:acc)v=Vector(0.0);
+  for(int t=0;t<p.ll_count;++t) {
+    const int ll=p.ll_first+t,r0=ll-m0-p.l1;
+    const int jlo=std::max(0,-r0),jhi=std::min(p.columns-1,2*ll-r0);
+    if(j0>jhi || j0+V-1<jlo)continue;
+    const Mask valid=(lane>=Vector(double(jlo)))&&(lane<=Vector(double(jhi)));
+    const size_t at=size_t(ll)*p.cy_stride+size_t(p.pad+r0+j0);
+    const Vector yr=load(p.cy[0]+at),yi=load(p.cy[1]+at),tr=load(p.cy[2]+at),ti=load(p.cy[3]+at),
+        pr=load(p.cy[4]+at),pi=load(p.cy[5]+at);
+    const Vector cr(p.cpow_r[t]),ci(p.cpow_i[t]);
+    // Cmul(Cpow, Y): r = a.r*b.r - a.i*b.i, i = a.i*b.r + a.r*b.i
+    const Vector y1r=cr*yr-ci*yi,y1i=ci*yr+cr*yi;
+    const Vector t1r=cr*tr-ci*ti,t1i=ci*tr+cr*ti;
+    const Vector p1r=cr*pr-ci*pi,p1i=ci*pr+cr*pi;
+    const Vector g=FULL?load(p.gaunt[t]+size_t(a)*p.gaunt_stride+j0)
+                       :simd::simd_partial_load<Vector>(p.gaunt[t]+size_t(a)*p.gaunt_stride+j0,tail);
+    const Vector tmp2=g*Vector(p.s0[t]),tmp0=g*Vector(p.s1[t]);
+    acc[0]=select(valid,acc[0]+y1r*tmp2,acc[0]);acc[1]=select(valid,acc[1]+y1i*tmp2,acc[1]);
+    acc[2]=select(valid,acc[2]+y1r*tmp0,acc[2]);acc[3]=select(valid,acc[3]+y1i*tmp0,acc[3]);
+    acc[4]=select(valid,acc[4]+t1r*tmp2,acc[4]);acc[5]=select(valid,acc[5]+t1i*tmp2,acc[5]);
+    acc[6]=select(valid,acc[6]+p1r*tmp2,acc[6]);acc[7]=select(valid,acc[7]+p1i*tmp2,acc[7]);
+  }
+  for(int q=0;q<8;++q) {
+    double* d=p.acc[q]+row+j0;
+    if constexpr(FULL)store(acc[q],d);else simd::simd_partial_store(acc[q],d,tail);
+  }
+}
+void angular(const OpenMXVnaAngular& p) {
+  const Vector lanes_d([](auto lane){return double(lane);});
+  for(int a=0;a<p.rows;++a)for(int j0=0;j0<p.columns;j0+=V) {
+    const int count=std::min(V,p.columns-j0);
+    const Mask tail=lane_mask(count);
+    const Vector lane=Vector(double(j0))+lanes_d;
+    if(count>=V)angular_lanes<true>(p,a,j0,tail,lane);else angular_lanes<false>(p,a,j0,tail,lane);
+  }
+}
+
+// ---- DS_VNA complex-to-real conversions: lanes over M1 ---------------------
+template<bool FULL> Vector load_lanes(const double* d,Mask tail) {
+  if constexpr(FULL)return load(d);else return simd::simd_partial_load<Vector>(d,tail);
+}
+template<bool FULL> void store_lanes(Vector v,double* d,Mask tail) {
+  if constexpr(FULL)store(v,d);else simd::simd_partial_store(v,d,tail);
+}
+constexpr int convert_rows=16,convert_columns=32;
+// First pass: C[q][M0][M1] = sum_k conj(conv0[M0][k]) * acc_q[k][M1], legacy Cmul/Cadd order.
+template<bool FULL> void convert_first(const OpenMXVnaConvert& p,double (*cm)[8][convert_columns],int a,int j0,Mask tail) {
+  Vector sum[8];
+  for(auto& v:sum)v=Vector(0.0);
+  for(int k=0;k<p.rows0;++k) {
+    const double* c=p.conv0+2*(size_t(a)*p.width+size_t(k));
+    const Vector ar(c[0]),ai(-c[1]);
+    for(int q=0;q<4;++q) {
+      const Vector tr=load_lanes<FULL>(p.acc[2*q]+size_t(k)*p.acc_stride+j0,tail);
+      const Vector ti=load_lanes<FULL>(p.acc[2*q+1]+size_t(k)*p.acc_stride+j0,tail);
+      sum[2*q]+=ar*tr-ai*ti;
+      sum[2*q+1]+=ai*tr+ar*ti;
+    }
+  }
+  for(int q=0;q<8;++q)store_lanes<FULL>(sum[q],&cm[a][q][j0],tail);
+}
+// Second pass: real part of sum_k C[q][M0][k]*convt[k][M1] (the legacy adds a.r*b.r - a.i*b.i per k), then the DS_VNA rows.
+template<bool FULL> void convert_second(const OpenMXVnaConvert& p,const double (*cm)[8][convert_columns],int a,int j0,int count,Mask tail) {
+  Vector re[4];
+  for(auto& v:re)v=Vector(0.0);
+  for(int k=0;k<p.columns;++k) {
+    const Vector vr=load_lanes<FULL>(p.convt_r+size_t(k)*p.ld+j0,tail),vi=load_lanes<FULL>(p.convt_i+size_t(k)*p.ld+j0,tail);
+    const double* c=cm[a][0]+k;   // plane q of row a at c[q*convert_columns]
+    for(int q=0;q<4;++q) {
+      const Vector mr(c[(2*q)*convert_columns]),mi(c[(2*q+1)*convert_columns]);
+      re[q]+=mr*vr-mi*vi;
+    }
+  }
+  const FloatMask fm=float_mask(count);
+  const auto emit=[&](float* row,Vector v,double scale) {
+    const FloatLanes f(v);          // (Type_DS_VNA) cast
+    const Vector d(f);
+    simd::simd_partial_store(FloatLanes(Vector(scale)*d),row,fm);
+  };
+  const size_t at=size_t(a)*p.out_stride+size_t(j0);
+  emit(p.out[0]+at,re[0],8.0);
+  if(p.onsite) {
+    for(int c=1;c<4;++c)simd::simd_partial_store(FloatLanes(0.0f),p.out[c]+at,fm);
+  } else {
+    Vector v1=Vector(p.c1)*re[1]+Vector(p.c2)*re[2];
+    Vector v2=Vector(p.c4)*re[1]+Vector(p.c5)*re[2];
+    if(!p.polar){v1=v1-Vector(p.c3)*re[3];v2=v2+Vector(p.c6)*re[3];}
+    const Vector v3=Vector(p.c7)*re[1]-Vector(p.c8)*re[2];
+    emit(p.out[1]+at,v1,-8.0);emit(p.out[2]+at,v2,-8.0);emit(p.out[3]+at,v3,-8.0);
+  }
+}
+void convert(const OpenMXVnaConvert& p) {
+  // [M0][plane][k]: the eight planes of one row stay 256 bytes apart
+  alignas(64) double cm[convert_rows][8][convert_columns];
+  for(int a=0;a<p.rows0;++a)for(int j0=0;j0<p.columns;j0+=V) {
+    const int count=std::min(V,p.columns-j0);
+    const Mask tail=lane_mask(count);
+    if(count>=V)convert_first<true>(p,cm,a,j0,tail);else convert_first<false>(p,cm,a,j0,tail);
+  }
+  for(int a=0;a<p.rows0;++a)for(int j0=0;j0<p.columns;j0+=V) {
+    const int count=std::min(V,p.columns-j0);
+    const Mask tail=lane_mask(count);
+    if(count>=V)convert_second<true>(p,cm,a,j0,count,tail);else convert_second<false>(p,cm,a,j0,count,tail);
+  }
+}
+constexpr VnaKernels kernels{V,contract,bessel,quadrature,hvna_block,angular,convert};
 }
 const VnaKernels& OPENMX_HOST_SIMD_FACTORY(vna)() noexcept {return kernels;}
 }

@@ -28,6 +28,38 @@ typedef struct {
 /* Returns 0 for an unsupported mode or a missing buffer (nothing written). */
 int openmx_core_energy_neutral_points(const OpenMXEnergyNeutralPoints*,int mode);
 
+/* One radial shell of the atomic exchange-correlation correction Exc^(0) of
+   Total_Energy (Calc_EXC_EH1): the Lebedev points of radius `radius` about
+   `center` (direction and weight at lebedev[ia*lebedev_stride + 0..3]), the
+   neighbours h < neighbors (h = 0 is the centre) at (nx, ny, nz)[h] with the
+   cell shift applied, their cutoff squared and their PAO density tables
+   (mesh, log radii, radii, density with two trailing entries), vxc =
+   F_Vxc_flag as a factor. The legacy point loop is reproduced exactly:
+   den = sum over the neighbours within cutoff of KumoF*vxc at 0.5*log(r2),
+   the gradient terms Dr_KumoF*vxc/r1*d, XC_Ceperly_Alder(den, 0) and (den, 3),
+   then *sumt += w*den0*exc0 and sum_g{x,y,z}[h] += w*den0*dexc0*g{x,y,z}[h]
+   for h >= 1, point after point. *den0 carries the centre density between
+   calls (the legacy variable keeps its previous value when the centre lies
+   outside its own cutoff). scratch holds at least
+   openmx_core_energy_xc_shell_scratch(neighbors) doubles. */
+typedef struct {
+  int points;
+  const double *lebedev;
+  size_t lebedev_stride;
+  double radius, center[3], vxc;
+  int neighbors;
+  const double *nx, *ny, *nz, *cutoff2;
+  const int *mesh;
+  const double *const *log_radii, *const *radii, *const *density;
+  double *scratch;
+  size_t scratch_count;
+  double *den0, *sumt, *sum_gx, *sum_gy, *sum_gz;
+} OpenMXEnergyXcShell;
+/* Returns 0 for an unsupported mode, a short scratch or a missing buffer
+   (nothing written). */
+int openmx_core_energy_xc_shell(const OpenMXEnergyXcShell*,int mode);
+size_t openmx_core_energy_xc_shell_scratch(int neighbors);
+
 /* One (atom, neighbour) block of the dense band density matrix:
      d1 = sum_k re0[i][k]*re1T[k][j] + im0[i][k]*im1T[k][j]
      d2 = sum_k re0[i][k]*im1T[k][j] - im0[i][k]*re1T[k][j]

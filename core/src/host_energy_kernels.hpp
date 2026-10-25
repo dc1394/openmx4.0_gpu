@@ -10,6 +10,7 @@ namespace openmx::core::host {
 struct EnergyKernels {
   int width;
   void (*neutral_points)(const OpenMXEnergyNeutralPoints&);
+  void (*xc_shell)(const OpenMXEnergyXcShell&);
   void (*band_block)(const OpenMXEnergyBandBlock&);
 };
 extern "C" OPENMX_HOST_SIMD_EXPORT const EnergyKernels* openmx_host_energy_kernels(int mode) noexcept;

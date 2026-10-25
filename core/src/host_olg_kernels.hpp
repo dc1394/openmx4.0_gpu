@@ -11,6 +11,7 @@ struct OlgKernels {
   int width;
   void (*intersect)(const OpenMXOlgLists&,const OpenMXOlgQuery*,size_t,int*);
   void (*intersect_lists)(const OpenMXOlgLists&,const OpenMXOlgNeighbours&,size_t,int*);
+  void (*intersect_map)(const OpenMXOlgLists&,const OpenMXOlgNeighbours&,const int*,size_t,size_t,int*);
 };
 extern "C" OPENMX_HOST_SIMD_EXPORT const OlgKernels* openmx_host_olg_kernels(int mode) noexcept;
 OPENMX_HOST_SIMD_FAMILY(OlgKernels,olg)

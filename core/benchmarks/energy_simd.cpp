@@ -42,6 +42,41 @@ double Dr_VH_AtomF(double core_charge,int N,double x,double r,const double* xv,c
   x=x>xmin?x:xmin;const double tmp=((double)N-1.0)/(xmax-xmin),t=(x-xmin)*tmp;const int i=std::floor(t);const double dt=t-(double)i;
   return 0.5*((3.0*(yv[i+3]-yv[i]-3.0*(yv[i+2]-yv[i+1]))*dt+2.0*(-yv[i+3]+4.0*yv[i+2]-5.0*yv[i+1]+2.0*yv[i]))*dt+(yv[i+2]-yv[i]))*tmp/r;
 }
+double KumoF(int N,double x,const double* xv,const double* rv,const double* yv) {
+  if(x<xv[0]) {
+    const double r=std::exp(x);const int m=4;const double rm=rv[m],h1=rv[m-1]-rv[m-2],h2=rv[m]-rv[m-1],h3=rv[m+1]-rv[m];
+    const double f1=yv[m-2],f2=yv[m-1],f3=yv[m],f4=yv[m+1];
+    const double g1=((f3-f2)*h1/h2+(f2-f1)*h2/h1)/(h1+h2),g2=((f4-f3)*h2/h3+(f3-f2)*h3/h2)/(h2+h3);
+    const double y1=(rm-rv[m-1])/h2,y2=(rm-rv[m])/h2,y12=y1*y1,y22=y2*y2;
+    const double f=y22*(3.0*f2+h2*g1+(2.0*f2+h2*g1)*y2)+y12*(3.0*f3-h2*g2-(2.0*f3-h2*g2)*y1);
+    const double df=2.0*y2/h2*(3.0*f2+h2*g1+(2.0*f2+h2*g1)*y2)+y22*(2.0*f2+h2*g1)/h2+2.0*y1/h2*(3.0*f3-h2*g2-(2.0*f3-h2*g2)*y1)-y12*(2.0*f3-h2*g2)/h2;
+    const double a=0.5*df/rm;return a*r*r+(f-a*rm*rm);
+  }
+  const double xmin=xv[0],xmax=xv[N-1];x=x<xmax?x:xmax;x=x>xmin?x:xmin;
+  const double t=((double)N-1.0)*(x-xmin)/(xmax-xmin);const int i=std::floor(t);const double dt=t-(double)i;
+  return 0.5*(((yv[i+3]-yv[i]-3.0*(yv[i+2]-yv[i+1]))*dt-yv[i+3]+4.0*yv[i+2]-5.0*yv[i+1]+2.0*yv[i])*dt+(yv[i+2]-yv[i]))*dt+yv[i+1];
+}
+double Dr_KumoF(int N,double x,double r,const double* xv,const double* rv,const double* yv) {
+  if(x<xv[0]) {
+    r=std::exp(x);const int m=4;const double rm=rv[m],h1=rv[m-1]-rv[m-2],h2=rv[m]-rv[m-1],h3=rv[m+1]-rv[m];
+    const double f1=yv[m-2],f2=yv[m-1],f3=yv[m],f4=yv[m+1];
+    const double g1=((f3-f2)*h1/h2+(f2-f1)*h2/h1)/(h1+h2),g2=((f4-f3)*h2/h3+(f3-f2)*h3/h2)/(h2+h3);
+    const double y1=(rm-rv[m-1])/h2,y2=(rm-rv[m])/h2,y12=y1*y1,y22=y2*y2;
+    const double df=2.0*y2/h2*(3.0*f2+h2*g1+(2.0*f2+h2*g1)*y2)+y22*(2.0*f2+h2*g1)/h2+2.0*y1/h2*(3.0*f3-h2*g2-(2.0*f3-h2*g2)*y1)-y12*(2.0*f3-h2*g2)/h2;
+    return 2.0*(0.5*df/rm)*r;
+  }
+  const double xmin=xv[0],xmax=xv[N-1];x=x<xmax?x:xmax;x=x>xmin?x:xmin;
+  const double tmp=((double)N-1.0)/(xmax-xmin),t=(x-xmin)*tmp;const int i=std::floor(t);const double dt=t-(double)i;
+  return 0.5*((3.0*(yv[i+3]-yv[i]-3.0*(yv[i+2]-yv[i+1]))*dt+2.0*(-yv[i+3]+4.0*yv[i+2]-5.0*yv[i+1]+2.0*yv[i]))*dt+(yv[i+2]-yv[i]))*tmp/r;
+}
+double XC_Ceperly_Alder(double den,int P_switch) {
+  if(den<=1.0e-15)return 0.0;
+  const double coe=0.6203504908994,rs=coe*std::pow(den,-0.3333333333333333333);
+  double tmp0=0.458165293632163/rs;const double Ex=-tmp0,dEx=tmp0/rs;double Ec,dEc;
+  if(1.0<=rs){tmp0=std::sqrt(rs);const double dum=(1.0+1.0529*tmp0+0.3334*rs),tmp1=0.1423/dum;Ec=-tmp1;dEc=tmp1/dum*(0.52645/tmp0+0.3334);}
+  else{tmp0=std::log(rs);Ec=-0.0480+0.0311*tmp0+rs*(0.0020*tmp0-0.0116);dEc=0.0311/rs+0.0020*tmp0-0.0096;}
+  return P_switch==0?Ex+Ec:-0.3333333333333333333/(coe*coe*coe)*rs*rs*rs*rs*(dEx+dEc);
+}
 template<class F> double seconds(int repeats,F&& body) {
   const auto t0=std::chrono::steady_clock::now();
   for(int r=0;r<repeats;++r)body();
@@ -79,6 +114,56 @@ int main(int argc,char** argv) {
         sum=0.0;sumr=0.0;for(int n=0;n<points;++n)sum+=values[n];for(int n=0;n<points;++n)sumr-=derivatives[n];});
       if(sum!=legacy_sum || sumr!=legacy_sumr)throw std::runtime_error("host kernel differs from the legacy loop");
       std::cout<<std::setw(24)<<openmx_core_host_simd_name(mode)<<std::setw(10)<<1e9*t/(double(points)*repeats)<<" ns/point  ("<<legacy_seconds/t<<"x)\n";
+    }
+    // atomic exchange-correlation shell: 194 Lebedev points, 86 neighbours, PAO mesh 480
+    {
+      const int lpoints=194,nb=86,N=480;
+      std::vector<double> leb(size_t(lpoints)*4),nx(nb),ny(nb),nz(nb),cut2(nb);
+      std::vector<int> mesh(nb,N);
+      std::vector<std::vector<double>> xvs(nb),rvs(nb),yvs(nb);
+      std::vector<const double*> xvp(nb),rvp(nb),yvp(nb);
+      for(int ia=0;ia<lpoints;++ia){const double th=std::acos(2.0*u(rng)-1.0),ph=6.283185307179586*u(rng);
+        leb[ia*4]=std::sin(th)*std::cos(ph);leb[ia*4+1]=std::sin(th)*std::sin(ph);leb[ia*4+2]=std::cos(th);leb[ia*4+3]=1.0/lpoints;}
+      const double rcut=7.0;
+      for(int h=0;h<nb;++h) {
+        const double d=h?2.0*rcut*std::cbrt(u(rng)):0.0,th=std::acos(2.0*u(rng)-1.0),ph=6.283185307179586*u(rng);
+        nx[h]=d*std::sin(th)*std::cos(ph);ny[h]=d*std::sin(th)*std::sin(ph);nz[h]=d*std::cos(th);cut2[h]=rcut*rcut;
+        const double xmn=std::log(1.0e-4),xmx=std::log(rcut*1.3);
+        for(int i=0;i<N;++i){xvs[h].push_back(xmn+(xmx-xmn)*i/(N-1.0));rvs[h].push_back(std::exp(xvs[h].back()));}
+        for(int i=0;i<N+2;++i){const double r=i<N?rvs[h][i]:rvs[h][N-1]*(1.0+0.1*(i-N+1));yvs[h].push_back(0.5*std::exp(-1.3*r)*(1.0+0.1*r));}
+        xvp[h]=xvs[h].data();rvp[h]=rvs[h].data();yvp[h]=yvs[h].data();
+      }
+      const int shells=argc>5?std::atoi(argv[5]):16;
+      std::vector<double> radii(shells);for(auto& r:radii)r=rcut*(0.05+0.9*u(rng));
+      const double vxc=1.0;
+      std::vector<double> ref_sumt(shells),ref_gx(size_t(shells)*nb),ref_gy(ref_gx.size()),ref_gz(ref_gx.size());
+      double den0=0.0;
+      const double xc_legacy=seconds(1,[&]{
+        std::vector<double> gx(nb),gy(nb),gz(nb);
+        for(int sidx=0;sidx<shells;++sidx){const double r=radii[sidx];double sumt=0.0;
+          std::vector<double> sgx(nb,0.0),sgy(nb,0.0),sgz(nb,0.0);
+          for(int ia=0;ia<lpoints;++ia){const double x0=r*leb[ia*4],y0=r*leb[ia*4+1],z0=r*leb[ia*4+2];double den=0.0;
+            for(int h=0;h<nb;++h){const double dx=nx[h]-x0,dy=ny[h]-y0,dz=nz[h]-z0,r2=dx*dx+dy*dy+dz*dz;gx[h]=gy[h]=gz[h]=0.0;
+              if(r2<cut2[h]){const double x=0.5*std::log(r2);den+=KumoF(N,x,xvp[h],rvp[h],yvp[h])*vxc;if(h==0)den0=den;
+                if(h){const double r1=std::sqrt(dx*dx+dy*dy+dz*dz);const double g=Dr_KumoF(N,x,r1,xvp[h],rvp[h],yvp[h])*vxc;gx[h]=g/r1*dx;gy[h]=g/r1*dy;gz[h]=g/r1*dz;}}}
+            const double exc0=XC_Ceperly_Alder(den,0),dexc0=XC_Ceperly_Alder(den,3),w=leb[ia*4+3];
+            sumt+=w*den0*exc0;for(int h=1;h<nb;++h){sgx[h]+=w*den0*dexc0*gx[h];sgy[h]+=w*den0*dexc0*gy[h];sgz[h]+=w*den0*dexc0*gz[h];}}
+          ref_sumt[sidx]=sumt;std::copy(sgx.begin(),sgx.end(),ref_gx.begin()+size_t(sidx)*nb);std::copy(sgy.begin(),sgy.end(),ref_gy.begin()+size_t(sidx)*nb);std::copy(sgz.begin(),sgz.end(),ref_gz.begin()+size_t(sidx)*nb);}});
+      const double pairs=double(shells)*lpoints*nb;
+      std::cout<<"xc shell: points="<<lpoints<<" neighbours="<<nb<<" mesh="<<N<<" shells="<<shells<<'\n'
+          <<std::setw(24)<<"legacy loop"<<std::setw(10)<<1e9*xc_legacy/pairs<<" ns/(point,neighbour)  "<<1e6*xc_legacy/shells<<" us/shell\n";
+      for(int mode=OPENMX_GRID_SCALAR;mode<=OPENMX_GRID_NEON;++mode) {
+        if(!openmx_core_host_simd_usable(mode))continue;
+        std::vector<double> scratch(openmx_core_energy_xc_shell_scratch(nb));
+        std::vector<double> got_sumt(shells),gxs(ref_gx.size()),gys(ref_gx.size()),gzs(ref_gx.size());
+        double carry=0.0;
+        const double t=seconds(1,[&]{for(int sidx=0;sidx<shells;++sidx){double sumt=0.0;std::vector<double> sgx(nb,0.0),sgy(nb,0.0),sgz(nb,0.0);
+          OpenMXEnergyXcShell shell{lpoints,leb.data(),4,radii[sidx],{0.0,0.0,0.0},vxc,nb,nx.data(),ny.data(),nz.data(),cut2.data(),mesh.data(),xvp.data(),rvp.data(),yvp.data(),scratch.data(),scratch.size(),&carry,&sumt,sgx.data(),sgy.data(),sgz.data()};
+          if(!openmx_core_energy_xc_shell(&shell,mode))throw std::runtime_error("xc shell failed");
+          got_sumt[sidx]=sumt;std::copy(sgx.begin(),sgx.end(),gxs.begin()+size_t(sidx)*nb);std::copy(sgy.begin(),sgy.end(),gys.begin()+size_t(sidx)*nb);std::copy(sgz.begin(),sgz.end(),gzs.begin()+size_t(sidx)*nb);}});
+        if(got_sumt!=ref_sumt || gxs!=ref_gx || gys!=ref_gy || gzs!=ref_gz)throw std::runtime_error("xc shell differs from the legacy loop");
+        std::cout<<std::setw(24)<<openmx_core_host_simd_name(mode)<<std::setw(10)<<1e9*t/pairs<<" ns/(point,neighbour)  "<<1e6*t/shells<<" us/shell  ("<<xc_legacy/t<<"x)\n";
+      }
     }
     // band density-matrix block
     const int rows=13,columns=13;const size_t stride=16;

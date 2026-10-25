@@ -9,6 +9,7 @@
 #include <iostream>
 #include <random>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 // Orbital values on the grid points of one atom sphere (an s2p2d1 species,
@@ -55,6 +56,34 @@ int main(int argc,char** argv) {
       const double s=seconds([&]{if(!openmx_core_orbitals_points(&tables,&frame,q.data(),q.size(),out.data(),mode))throw std::runtime_error("kernel refused");});
       if(std::memcmp(out.data(),reference.data(),out.size()*sizeof(float))!=0)throw std::runtime_error("host kernel differs from SOG_point_eval");
       std::cout<<std::setw(24)<<openmx_core_host_simd_name(mode)<<std::setw(10)<<1e9*s/(double(points)*repeats)<<" ns/point  ("<<std::setprecision(2)<<legacy/s<<"x)\n"<<std::setprecision(1);
+    }
+    // Derivatives at Force3 sizes: the same sphere, displacements from the atom.
+    std::vector<OpenMXOrbitalsDisplacement> d;
+    for(const auto& p:q) {
+      const int n1=p.grid/frame.ng23,n2=(p.grid-n1*frame.ng23)/frame.ng3,n3=p.grid-n1*frame.ng23-n2*frame.ng3;
+      OpenMXOrbitalsDisplacement e{};e.wan=0;e.no=no;
+      e.x=n1*spacing+frame.origin[0]-p.xyz[0];e.y=n2*spacing+frame.origin[1]-p.xyz[1];e.z=n3*spacing+frame.origin[2]-p.xyz[2];
+      d.push_back(e);
+    }
+    std::vector<double> dreference(size_t(points)*no*3),dout(size_t(points)*no*3);
+    const int nbs4[4]={nb[0],nb[1],nb[2],nb[3]};
+    const double dlegacy=seconds([&]{for(int i=0;i<points;++i)
+      openmx::test::get_dorbitals_reference(maxl,nbs4,mesh,rv.data(),rwf.data(),d[i].x,d[i].y,d[i].z,dreference.data()+size_t(i)*no*3);});
+    // The libm floor of the exact derivatives: the six transcendental calls per point.
+    volatile double sink=0.0;
+    const double dlibm=seconds([&]{double acc=0.0;for(int i=0;i<points;++i){double S[3];
+      openmx::test::xyz2spherical_reference(d[i].x,d[i].y,d[i].z,S);
+      acc+=std::sin(S[1])+std::cos(S[1])+std::sin(S[2])+std::cos(S[2]);}sink=sink+acc;});
+    std::cout<<"derivatives (Get_dOrbitals_work), "<<points<<" points\n"
+        <<std::setw(24)<<"Get_dOrbitals_work (host)"<<std::setw(10)<<1e9*dlegacy/(double(points)*repeats)<<" ns/point\n"
+        <<std::setw(24)<<"  libm angles alone"<<std::setw(10)<<1e9*dlibm/(double(points)*repeats)<<" ns/point\n";
+    for(int mode=OPENMX_GRID_SCALAR;mode<=OPENMX_GRID_NEON;++mode) {
+      if(!openmx_core_host_simd_usable(mode))continue;
+      const double s=seconds([&]{if(!openmx_core_orbitals_dpoints(&tables,d.data(),d.size(),dout.data(),mode))throw std::runtime_error("derivative kernel refused");});
+      if(std::memcmp(dout.data(),dreference.data(),dout.size()*sizeof(double))!=0)throw std::runtime_error("host derivative kernel differs from Get_dOrbitals_work");
+      std::cout<<std::setw(24)<<openmx_core_host_simd_name(mode)<<std::setw(10)<<1e9*s/(double(points)*repeats)<<" ns/point  ("<<std::setprecision(2)<<dlegacy/s<<"x)\n"<<std::setprecision(1);
+      const double sc=seconds([&]{if(!openmx_core_orbitals_dpoints_cosines(&tables,d.data(),d.size(),dout.data(),mode))throw std::runtime_error("cosine kernel refused");});
+      std::cout<<std::setw(24)<<(std::string(openmx_core_host_simd_name(mode))+" cosines")<<std::setw(10)<<1e9*sc/(double(points)*repeats)<<" ns/point  ("<<std::setprecision(2)<<dlegacy/sc<<"x)\n"<<std::setprecision(1);
     }
   }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}
 }

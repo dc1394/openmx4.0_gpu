@@ -11,6 +11,8 @@ namespace openmx::core::host {
 struct OrbitalsKernels {
   int width;
   void (*points)(const OpenMXOrbitalsTables&,const OpenMXOrbitalsFrame&,const OpenMXOrbitalsPoint*,size_t,float*);
+  void (*dpoints)(const OpenMXOrbitalsTables&,const OpenMXOrbitalsDisplacement*,size_t,double*);
+  void (*dpoints_cosines)(const OpenMXOrbitalsTables&,const OpenMXOrbitalsDisplacement*,size_t,double*);
 };
 extern "C" OPENMX_HOST_SIMD_EXPORT const OrbitalsKernels* openmx_host_orbitals_kernels(int mode) noexcept;
 OPENMX_HOST_SIMD_FAMILY(OrbitalsKernels,orbitals)

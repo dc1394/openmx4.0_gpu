@@ -209,6 +209,131 @@ void hvna_case() {
   }
 }
 
+// ---- DS_VNA m sum and conversions ------------------------------------------
+struct Cx { double r,i; };
+Cx cmul(Cx a,Cx b) { Cx c;c.r=a.r*b.r-a.i*b.i;c.i=a.i*b.r+a.r*b.i;return c; }
+Cx cadd(Cx a,Cx b) { Cx c;c.r=a.r+b.r;c.i=a.i+b.i;return c; }
+Cx im_pow(int Ls) { if(Ls%2==0)return Ls%4==0?Cx{1.0,0.0}:Cx{-1.0,0.0};return (Ls+1)%4==0?Cx{0.0,1.0}:Cx{0.0,-1.0}; }
+void angular_case() {
+  std::mt19937 rng(41u);
+  for(int l0:{0,1,2,3,4})for(int l1:{0,1,2,3,5,8,14})for(int first:{0,1,3,6,13})for(int count:{0,1,2,3,5,9}) {
+    const int rows=2*l0+1,cols=2*l1+1,pad=l0+l1+1,top=first+count-1;
+    const size_t cy_stride=size_t(pad+std::max(2*std::max(top,0)+1,std::max(top,0)+l0+l1+8))+3;
+    const size_t cy_length=size_t(std::max(top,0)+1)*cy_stride,stride=size_t(cols)+3;
+    std::vector<double> cy[6];
+    for(auto& c:cy){c.assign(cy_length,0.0);for(int ll=first;ll<=top;++ll)for(int m=-ll;m<=ll;++m)c[size_t(ll)*cy_stride+size_t(pad+ll-m)]=noisy(rng);}
+    const size_t gstride=size_t(cols)+2;
+    std::vector<std::vector<double>> gaunt(std::max(count,0),std::vector<double>(size_t(rows)*gstride));
+    for(auto& g:gaunt)for(auto& v:g)v=noisy(rng);
+    std::vector<double> cpr(count),cpi(count),s0(count),s1(count);
+    std::vector<const double*> grows(count);
+    for(int t=0;t<count;++t){const Cx cp=im_pow(-l0+l1+first+t+4*int(rng()%2));cpr[t]=cp.r;cpi[t]=cp.i;s0[t]=noisy(rng);s1[t]=noisy(rng);grows[t]=gaunt[t].data();}
+    std::vector<double> seed[8];
+    for(auto& a:seed){a.resize(size_t(rows)*stride+4);for(auto& v:a)v=noisy(rng);}
+    // legacy: zero block; for LL: for m: CY1 = Cmul(Cpow, Y(m)); for M0: M1 = M0-m; if |M1| <= l1: accumulate
+    std::vector<double> expected[8];
+    for(int c=0;c<8;++c)expected[c]=seed[c];
+    for(int c=0;c<8;++c)for(int a=0;a<rows;++a)for(int j=0;j<cols;++j)expected[c][size_t(a)*stride+j]=0.0;
+    for(int t=0;t<count;++t) {
+      const int ll=first+t;const Cx cpow={cpr[t],cpi[t]};
+      for(int m=-ll;m<=ll;++m) {
+        const size_t e=size_t(ll)*cy_stride+size_t(pad+ll-m);
+        const Cx Y={cy[0][e],cy[1][e]},Yt={cy[2][e],cy[3][e]},Yp={cy[4][e],cy[5][e]};
+        const Cx y1=cmul(cpow,Y),t1=cmul(cpow,Yt),p1=cmul(cpow,Yp);
+        for(int m0=-l0;m0<=l0;++m0) {
+          const int m1=m0-m;
+          if(std::abs(m1)>l1)continue;
+          const size_t at=size_t(m0+l0)*stride+size_t(m1+l1);
+          const double gant=gaunt[t][size_t(m0+l0)*gstride+size_t(m1+l1)];
+          const double tmp2=gant*s0[t],tmp0=gant*s1[t];
+          expected[0][at]+=y1.r*tmp2;expected[1][at]+=y1.i*tmp2;
+          expected[2][at]+=y1.r*tmp0;expected[3][at]+=y1.i*tmp0;
+          expected[4][at]+=t1.r*tmp2;expected[5][at]+=t1.i*tmp2;
+          expected[6][at]+=p1.r*tmp2;expected[7][at]+=p1.i*tmp2;
+        }
+      }
+    }
+    for(int mode:modes()) {
+      std::vector<double> acc[8];
+      OpenMXVnaAngular a;
+      a.rows=rows;a.columns=cols;a.l0=l0;a.l1=l1;a.pad=pad;a.ll_first=first;a.ll_count=count;
+      a.cy_length=cy_length;a.cy_stride=cy_stride;
+      for(int c=0;c<6;++c)a.cy[c]=cy[c].data();
+      a.cpow_r=cpr.data();a.cpow_i=cpi.data();a.s0=s0.data();a.s1=s1.data();
+      a.gaunt=grows.data();a.gaunt_stride=gstride;
+      for(int c=0;c<8;++c){acc[c]=seed[c];a.acc[c]=acc[c].data();}
+      a.acc_stride=stride;
+      require(openmx_core_vna_angular(&a,mode),"angular refused a valid request");
+      for(int c=0;c<8;++c)if(!same(acc[c],expected[c]))report("m-sum accumulation differs from the legacy loop",mode,acc[c],expected[c]);
+    }
+  }
+}
+void convert_case() {
+  std::mt19937 rng(43u);
+  for(int l0:{0,1,2,3,4,7})for(int l1:{0,1,2,3,5,8,14,15})for(int onsite:{0,1})for(int polar:{0,1}) {
+    const int rows=2*l0+1,cols=2*l1+1,width=2*std::max(l0,l1)+3;
+    const size_t stride=size_t(cols)+5,ostride=size_t(cols)+7;
+    std::vector<double> acc[8];
+    for(auto& a:acc){a.resize(size_t(rows)*stride);for(auto& v:a)v=noisy(rng);}
+    std::vector<double> conv0(2*size_t(rows)*width),convt_r(size_t(cols)*width),convt_i(convt_r.size());
+    for(auto& v:conv0)v=noisy(rng);for(auto& v:convt_r)v=noisy(rng);for(auto& v:convt_i)v=noisy(rng);
+    const double c[8]={noisy(rng),noisy(rng),noisy(rng),noisy(rng),noisy(rng),noisy(rng),noisy(rng),noisy(rng)};
+    // legacy transcription
+    std::vector<float> expected[4];
+    for(auto& e:expected)e.assign(size_t(rows)*ostride,3.5f);
+    for(int m0=0;m0<rows;++m0) {
+      std::vector<Cx> cmat[4];
+      for(auto& m:cmat)m.resize(cols);
+      for(int m1=0;m1<cols;++m1) {
+        Cx sum[4]={{0,0},{0,0},{0,0},{0,0}};
+        for(int k=0;k<rows;++k) {
+          const Cx c1={conv0[2*(size_t(m0)*width+k)],-conv0[2*(size_t(m0)*width+k)+1]};
+          for(int q=0;q<4;++q) {
+            const Cx t={acc[2*q][size_t(k)*stride+m1],acc[2*q+1][size_t(k)*stride+m1]};
+            sum[q]=cadd(sum[q],cmul(c1,t));
+          }
+        }
+        for(int q=0;q<4;++q)cmat[q][m1]=sum[q];
+      }
+      for(int m1=0;m1<cols;++m1) {
+        Cx s[4]={{0,0},{0,0},{0,0},{0,0}};
+        for(int k=0;k<cols;++k)for(int q=0;q<4;++q) {
+          const double vr=convt_r[size_t(k)*width+m1],vi=convt_i[size_t(k)*width+m1];
+          s[q].r+=(cmat[q][k].r*vr-cmat[q][k].i*vi);
+          s[q].i+=(cmat[q][k].r*vi+cmat[q][k].i*vr);
+        }
+        const size_t at=size_t(m0)*ostride+m1;
+        expected[0][at]=8.0*(float)s[0].r;
+        if(onsite){expected[1][at]=0.0;expected[2][at]=0.0;expected[3][at]=0.0;}
+        else if(polar) {
+          expected[1][at]=-8.0*(float)(c[0]*s[1].r+c[1]*s[2].r);
+          expected[2][at]=-8.0*(float)(c[3]*s[1].r+c[4]*s[2].r);
+          expected[3][at]=-8.0*(float)(c[6]*s[1].r-c[7]*s[2].r);
+        } else {
+          expected[1][at]=-8.0*(float)(c[0]*s[1].r+c[1]*s[2].r-c[2]*s[3].r);
+          expected[2][at]=-8.0*(float)(c[3]*s[1].r+c[4]*s[2].r+c[5]*s[3].r);
+          expected[3][at]=-8.0*(float)(c[6]*s[1].r-c[7]*s[2].r);
+        }
+      }
+    }
+    for(int mode:modes()) {
+      std::vector<float> out[4];
+      OpenMXVnaConvert v;
+      v.rows0=rows;v.columns=cols;v.onsite=onsite;v.polar=polar;
+      for(int q=0;q<8;++q)v.acc[q]=acc[q].data();
+      v.acc_stride=stride;v.conv0=conv0.data();v.width=size_t(width);
+      v.convt_r=convt_r.data();v.convt_i=convt_i.data();v.ld=size_t(width);
+      for(int q=0;q<4;++q){out[q].assign(size_t(rows)*ostride,3.5f);v.out[q]=out[q].data();}
+      v.out_stride=ostride;
+      v.c1=c[0];v.c2=c[1];v.c3=c[2];v.c4=c[3];v.c5=c[4];v.c6=c[5];v.c7=c[6];v.c8=c[7];
+      require(openmx_core_vna_convert(&v,mode),"convert refused a valid request");
+      for(int q=0;q<4;++q)
+        require(out[q].size()==expected[q].size() && !std::memcmp(out[q].data(),expected[q].data(),out[q].size()*sizeof(float)),
+            "conversion output differs from the legacy loop");
+    }
+  }
+}
+
 void invalid_case() {
   double d[16]={0};const double* rows[1]={d};int lengths[1]={2};float f[8]={0};
   OpenMXVnaContract c={4,2,1,2,2,d,rows,rows,d+4,d+8};
@@ -231,6 +356,34 @@ void invalid_case() {
   h.right_stride=1;require(!openmx_core_vna_hvna_block(&h,OPENMX_GRID_SCALAR),"hvna accepted a short component stride");
   h.right_stride=2;h.stride=1;require(!openmx_core_vna_hvna_block(&h,OPENMX_GRID_SCALAR),"hvna accepted a short matrix stride");
   h.stride=2;lengths[0]=-1;require(!openmx_core_vna_hvna_block(&h,OPENMX_GRID_SCALAR),"hvna accepted a negative group length");
+  double cy[40]={0},planes[8*8]={0},one[1]={1.0};
+  const double* grows[1]={cy};
+  OpenMXVnaAngular a;
+  a.rows=1;a.columns=3;a.l0=0;a.l1=1;a.pad=1;a.ll_first=1;a.ll_count=1;a.cy_length=40;a.cy_stride=20;
+  for(int c=0;c<6;++c)a.cy[c]=cy;
+  a.cpow_r=one;a.cpow_i=one;a.s0=one;a.s1=one;a.gaunt=grows;a.gaunt_stride=3;
+  for(int c=0;c<8;++c)a.acc[c]=planes+8*c;
+  a.acc_stride=3;
+  require(openmx_core_vna_angular(&a,OPENMX_GRID_SCALAR),"angular refused a valid request");
+  require(!openmx_core_vna_angular(&a,99),"angular accepted an unknown mode");
+  a.pad=0;require(!openmx_core_vna_angular(&a,OPENMX_GRID_SCALAR),"angular accepted a short pad");
+  a.pad=1;a.cy_length=5;require(!openmx_core_vna_angular(&a,OPENMX_GRID_SCALAR),"angular accepted short harmonic tables");
+  a.cy_length=40;a.rows=2;require(!openmx_core_vna_angular(&a,OPENMX_GRID_SCALAR),"angular accepted rows that do not match l0");
+  a.rows=1;a.ll_first=6;require(!openmx_core_vna_angular(&a,OPENMX_GRID_SCALAR),"angular accepted tables shorter than the m range");
+  a.ll_first=1;a.ll_count=0;a.gaunt=nullptr;require(openmx_core_vna_angular(&a,OPENMX_GRID_SCALAR),"an empty LL range must still zero the block");
+  for(int c=0;c<8;++c)for(int j=0;j<3;++j)require(planes[8*c+j]==0.0,"an empty LL range left the block unwritten");
+  float fo[16]={0};
+  OpenMXVnaConvert v;
+  v.rows0=1;v.columns=3;v.onsite=0;v.polar=0;
+  for(int q=0;q<8;++q)v.acc[q]=planes+8*q;
+  v.acc_stride=3;v.conv0=cy;v.width=1;v.convt_r=cy;v.convt_i=cy;v.ld=3;
+  for(int q=0;q<4;++q)v.out[q]=fo+4*q;
+  v.out_stride=4;v.c1=v.c2=v.c3=v.c4=v.c5=v.c6=v.c7=v.c8=1.0;
+  require(openmx_core_vna_convert(&v,OPENMX_GRID_SCALAR),"convert refused a valid request");
+  require(!openmx_core_vna_convert(&v,99),"convert accepted an unknown mode");
+  v.columns=33;require(!openmx_core_vna_convert(&v,OPENMX_GRID_SCALAR),"convert accepted too many columns");
+  v.columns=3;v.ld=2;require(!openmx_core_vna_convert(&v,OPENMX_GRID_SCALAR),"convert accepted a short transposed stride");
+  v.ld=3;v.out[2]=nullptr;require(!openmx_core_vna_convert(&v,OPENMX_GRID_SCALAR),"convert accepted a missing output row");
 }
 }
 int main(int argc,char** argv) {
@@ -240,6 +393,8 @@ int main(int argc,char** argv) {
     else if(name=="bessel")bessel_case();
     else if(name=="quadrature")quadrature_case();
     else if(name=="hvna")hvna_case();
+    else if(name=="angular")angular_case();
+    else if(name=="convert")convert_case();
     else if(name=="invalid")invalid_case();
     else throw std::runtime_error("unknown host vna case");
     std::cout<<"PASS host vna "<<name<<" (modes:";

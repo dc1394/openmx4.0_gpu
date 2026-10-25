@@ -12,6 +12,24 @@ extern "C" int openmx_core_energy_neutral_points(const OpenMXEnergyNeutralPoints
   kernels->neutral_points(*s);
   return 1;
 }
+extern "C" size_t openmx_core_energy_xc_shell_scratch(int neighbors) {
+  // per-neighbour table constants, then the three gradient components of
+  // every neighbour for eight lanes
+  return neighbors<0?0:size_t(neighbors)*8+size_t(neighbors)*3*8;
+}
+extern "C" int openmx_core_energy_xc_shell(const OpenMXEnergyXcShell* s,int mode) {
+  const auto* kernels=openmx::core::host::openmx_host_energy_kernels(mode);
+  if(!kernels || !s || s->points<0 || s->neighbors<1)return 0;
+  if(!s->den0 || !s->sumt || !s->sum_gx || !s->sum_gy || !s->sum_gz)return 0;
+  if(!s->nx || !s->ny || !s->nz || !s->cutoff2 || !s->mesh || !s->log_radii || !s->radii || !s->density)return 0;
+  for(int h=0;h<s->neighbors;++h)
+    if(s->mesh[h]<6 || !s->log_radii[h] || !s->radii[h] || !s->density[h])return 0;
+  if(!s->scratch || s->scratch_count<openmx_core_energy_xc_shell_scratch(s->neighbors))return 0;
+  if(!s->points)return 1;
+  if(!s->lebedev || s->lebedev_stride<4)return 0;
+  kernels->xc_shell(*s);
+  return 1;
+}
 extern "C" int openmx_core_energy_band_block(const OpenMXEnergyBandBlock* b,int mode) {
   const auto* kernels=openmx::core::host::openmx_host_energy_kernels(mode);
   if(!kernels || !b || b->rows<0 || b->columns<0 || b->bands<0)return 0;

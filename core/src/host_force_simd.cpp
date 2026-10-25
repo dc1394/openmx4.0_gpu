@@ -4,21 +4,21 @@
 #include <cstring>
 
 // Force-stage host kernels. Lanes always span independent output elements
-// (matrix columns n, or density-matrix rows i); every reduction runs in the
-// legacy order, and every product rounds where the legacy C expression
+// (matrix columns n or rows m, density-matrix rows i); every reduction runs in
+// the legacy order, and every product rounds where the legacy C expression
 // rounds (float products before widening when fp32 is set).
 namespace openmx::core::host {
 namespace {
 using NarrowFloat=simd::basic_simd<float,HostAbi>;  // float lanes of Vector's width: converts to Vector exactly
 static_assert(NarrowFloat::size()==lanes);
 #if defined(OPENMX_HOST_SIMD_AVX512)
-constexpr int chunk=4;  // output vectors kept in registers per column chunk
+constexpr int chunk=4;  // output vectors kept in registers per lane chunk
 #else
 constexpr int chunk=2;
 #endif
 NarrowFloat loadf(const float* p) { return simd::simd_unchecked_load<NarrowFloat>(p); }
 
-// rows[n][l] -> out[l*pad+n], padding columns zero.
+// rows[n][l] -> out[l*pad+n], padding lanes zero.
 void transpose(const float* const* rows,int count,int length,float* out,size_t pad) {
   for(int l=0;l<length;++l) {
     float* o=out+size_t(l)*pad;
@@ -40,64 +40,115 @@ void store_partial(Vector v,double* p,int count) {
   for(int k=0;k<count;++k)p[k]=values[k];
 }
 
-template<bool Fp32,int Terms>
-void vna_rows(const OpenMXForceVnaBlock& b,const float* value_t,const float* const* deriv_t,size_t pad) {
+void vna_lanes(const float* const* const* rows,int components,int count,int projectors,float* planes,size_t pad) {
+  for(int c=0;c<components;++c)transpose(rows[c],count,projectors,planes+size_t(c)*size_t(projectors)*pad,pad);
+}
+
+// Lane planes: value, column derivatives x,y,z (lanes over n) or derivatives
+// x,y,z, row value (lanes over m). The other operand streams row by row.
+template<bool Fp32,int Terms,bool LanesRows>
+void vna_rows(const OpenMXForceVnaBlock& b,const float* const planes[4],size_t pad) {
+  const int outer=LanesRows?b.columns:b.rows,lane_count=LanesRows?b.rows:b.columns;
   const int vectors=int(pad/lanes);
-  for(int m=0;m<b.rows;++m) {
-    const float* dx=b.derivative[0][m];const float* dy=b.derivative[1][m];const float* dz=b.derivative[2][m];
-    const float* h0=Terms==2?b.row_value[m]:nullptr;
+  for(int o=0;o<outer;++o) {
+    const float* r0;const float* r1=nullptr;const float* r2=nullptr;const float* r3=nullptr;
+    if constexpr(!LanesRows) {
+      r0=b.derivative[0][o];r1=b.derivative[1][o];r2=b.derivative[2][o];
+      if constexpr(Terms==2)r3=b.row_value[o];
+    }else {
+      r0=b.value[o];
+      if constexpr(Terms==2){r1=b.column_derivative[0][o];r2=b.column_derivative[1][o];r3=b.column_derivative[2][o];}
+    }
     for(int v0=0;v0<vectors;v0+=chunk) {
       const int nv=std::min(chunk,vectors-v0);
       Vector acc[3][chunk];
       for(auto& row:acc)for(auto& a:row)a=Vector(0.0);
       for(int l=0;l<b.projectors;++l) {
         const size_t at=size_t(l)*pad+size_t(v0)*lanes;
-        if constexpr(Fp32) {
-          const NarrowFloat ax(dx[l]),ay(dy[l]),az(dz[l]);
-          if constexpr(Terms==1) {
-            for(int v=0;v<nv;++v) {
-              const NarrowFloat q=loadf(value_t+at+size_t(v)*lanes);
-              acc[0][v]+=Vector(ax*q);acc[1][v]+=Vector(ay*q);acc[2][v]+=Vector(az*q);
+        if constexpr(!LanesRows) {
+          if constexpr(Fp32) {
+            const NarrowFloat ax(r0[l]),ay(r1[l]),az(r2[l]);
+            if constexpr(Terms==1) {
+              for(int v=0;v<nv;++v) {
+                const NarrowFloat q=loadf(planes[0]+at+size_t(v)*lanes);
+                acc[0][v]+=Vector(ax*q);acc[1][v]+=Vector(ay*q);acc[2][v]+=Vector(az*q);
+              }
+            }else {
+              const NarrowFloat h(r3[l]);
+              for(int v=0;v<nv;++v) {
+                const size_t o2=at+size_t(v)*lanes;
+                const NarrowFloat q=loadf(planes[0]+o2),qx=loadf(planes[1]+o2),qy=loadf(planes[2]+o2),qz=loadf(planes[3]+o2);
+                acc[0][v]-=Vector(ax*q)+Vector(h*qx);
+                acc[1][v]-=Vector(ay*q)+Vector(h*qy);
+                acc[2][v]-=Vector(az*q)+Vector(h*qz);
+              }
             }
           }else {
-            const NarrowFloat h(h0[l]);
-            for(int v=0;v<nv;++v) {
-              const size_t o=at+size_t(v)*lanes;
-              const NarrowFloat q=loadf(value_t+o),qx=loadf(deriv_t[0]+o),qy=loadf(deriv_t[1]+o),qz=loadf(deriv_t[2]+o);
-              acc[0][v]-=Vector(ax*q)+Vector(h*qx);
-              acc[1][v]-=Vector(ay*q)+Vector(h*qy);
-              acc[2][v]-=Vector(az*q)+Vector(h*qz);
+            const Vector ax(double(r0[l])),ay(double(r1[l])),az(double(r2[l]));
+            if constexpr(Terms==1) {
+              for(int v=0;v<nv;++v) {
+                const Vector q(loadf(planes[0]+at+size_t(v)*lanes));
+                acc[0][v]+=ax*q;acc[1][v]+=ay*q;acc[2][v]+=az*q;
+              }
+            }else {
+              const Vector h(double(r3[l]));
+              for(int v=0;v<nv;++v) {
+                const size_t o2=at+size_t(v)*lanes;
+                const Vector q(loadf(planes[0]+o2)),qx(loadf(planes[1]+o2)),qy(loadf(planes[2]+o2)),qz(loadf(planes[3]+o2));
+                acc[0][v]-=ax*q+h*qx;acc[1][v]-=ay*q+h*qy;acc[2][v]-=az*q+h*qz;
+              }
             }
           }
         }else {
-          const Vector ax(double(dx[l])),ay(double(dy[l])),az(double(dz[l]));
-          if constexpr(Terms==1) {
-            for(int v=0;v<nv;++v) {
-              const Vector q(loadf(value_t+at+size_t(v)*lanes));
-              acc[0][v]+=ax*q;acc[1][v]+=ay*q;acc[2][v]+=az*q;
+          if constexpr(Fp32) {
+            const NarrowFloat q(r0[l]);
+            if constexpr(Terms==1) {
+              for(int v=0;v<nv;++v) {
+                const size_t o2=at+size_t(v)*lanes;
+                const NarrowFloat hx=loadf(planes[0]+o2),hy=loadf(planes[1]+o2),hz=loadf(planes[2]+o2);
+                acc[0][v]+=Vector(hx*q);acc[1][v]+=Vector(hy*q);acc[2][v]+=Vector(hz*q);
+              }
+            }else {
+              const NarrowFloat qx(r1[l]),qy(r2[l]),qz(r3[l]);
+              for(int v=0;v<nv;++v) {
+                const size_t o2=at+size_t(v)*lanes;
+                const NarrowFloat hx=loadf(planes[0]+o2),hy=loadf(planes[1]+o2),hz=loadf(planes[2]+o2),h0=loadf(planes[3]+o2);
+                acc[0][v]-=Vector(hx*q)+Vector(h0*qx);
+                acc[1][v]-=Vector(hy*q)+Vector(h0*qy);
+                acc[2][v]-=Vector(hz*q)+Vector(h0*qz);
+              }
             }
           }else {
-            const Vector h(double(h0[l]));
-            for(int v=0;v<nv;++v) {
-              const size_t o=at+size_t(v)*lanes;
-              const Vector q(loadf(value_t+o)),qx(loadf(deriv_t[0]+o)),qy(loadf(deriv_t[1]+o)),qz(loadf(deriv_t[2]+o));
-              acc[0][v]-=ax*q+h*qx;
-              acc[1][v]-=ay*q+h*qy;
-              acc[2][v]-=az*q+h*qz;
+            const Vector q(double(r0[l]));
+            if constexpr(Terms==1) {
+              for(int v=0;v<nv;++v) {
+                const size_t o2=at+size_t(v)*lanes;
+                const Vector hx(loadf(planes[0]+o2)),hy(loadf(planes[1]+o2)),hz(loadf(planes[2]+o2));
+                acc[0][v]+=hx*q;acc[1][v]+=hy*q;acc[2][v]+=hz*q;
+              }
+            }else {
+              const Vector qx(double(r1[l])),qy(double(r2[l])),qz(double(r3[l]));
+              for(int v=0;v<nv;++v) {
+                const size_t o2=at+size_t(v)*lanes;
+                const Vector hx(loadf(planes[0]+o2)),hy(loadf(planes[1]+o2)),hz(loadf(planes[2]+o2)),h0(loadf(planes[3]+o2));
+                acc[0][v]-=hx*q+h0*qx;acc[1][v]-=hy*q+h0*qy;acc[2][v]-=hz*q+h0*qz;
+              }
             }
           }
         }
       }
       for(int c=0;c<3;++c)for(int v=0;v<nv;++v) {
-        const int n=(v0+v)*lanes;
-        store_partial(acc[c][v],b.output[c]+size_t(m)*b.output_stride+n,std::min(lanes,b.columns-n));
+        const int n0=(v0+v)*lanes;
+        store_partial(acc[c][v],b.output[c]+size_t(o)*b.output_stride+n0,std::min(lanes,lane_count-n0));
       }
     }
   }
 }
-// One-lane variant: the legacy loops themselves (no transposition).
+// One-lane variant: the legacy loops themselves over the raw rows when the
+// caller passed both sides (the glue always does), else the lane operand is
+// read from its prepared planes.
 template<bool Fp32,int Terms>
-void vna_plain(const OpenMXForceVnaBlock& b) {
+void vna_plain_rows(const OpenMXForceVnaBlock& b) {
   for(int m=0;m<b.rows;++m)for(int n=0;n<b.columns;++n) {
     const float* dx=b.derivative[0][m];const float* dy=b.derivative[1][m];const float* dz=b.derivative[2][m];
     const float* q0=b.value[n];
@@ -119,7 +170,39 @@ void vna_plain(const OpenMXForceVnaBlock& b) {
         }
       }
     }
-    const size_t at=size_t(m)*b.output_stride+n;
+    const size_t at=b.lanes_rows?size_t(n)*b.output_stride+m:size_t(m)*b.output_stride+n;
+    b.output[0][at]=sx;b.output[1][at]=sy;b.output[2][at]=sz;
+  }
+}
+template<bool Fp32,int Terms>
+void vna_plain(const OpenMXForceVnaBlock& b) {
+  const bool raw=b.derivative[0] && b.derivative[1] && b.derivative[2] && b.value &&
+      (Terms==1 || (b.row_value && b.column_derivative[0] && b.column_derivative[1] && b.column_derivative[2]));
+  if(raw || !b.lanes){vna_plain_rows<Fp32,Terms>(b);return;}
+  const float* planes=b.lanes->planes;
+  const size_t pad=b.lanes->pad,plane=size_t(b.projectors)*pad;
+  // lane operand element: component c of lane index idx at projector l
+  const auto lane=[&](int c,int idx,int l)->float {return planes[size_t(c)*plane+size_t(l)*pad+size_t(idx)];};
+  for(int m=0;m<b.rows;++m)for(int n=0;n<b.columns;++n) {
+    double sx=0.0,sy=0.0,sz=0.0;
+    for(int l=0;l<b.projectors;++l) {
+      float hx,hy,hz,q0,h0=0.0f,qx=0.0f,qy=0.0f,qz=0.0f;
+      if(!b.lanes_rows) {
+        hx=b.derivative[0][m][l];hy=b.derivative[1][m][l];hz=b.derivative[2][m][l];q0=lane(0,n,l);
+        if constexpr(Terms==2){h0=b.row_value[m][l];qx=lane(1,n,l);qy=lane(2,n,l);qz=lane(3,n,l);}
+      }else {
+        hx=lane(0,m,l);hy=lane(1,m,l);hz=lane(2,m,l);q0=b.value[n][l];
+        if constexpr(Terms==2){h0=lane(3,m,l);qx=b.column_derivative[0][n][l];qy=b.column_derivative[1][n][l];qz=b.column_derivative[2][n][l];}
+      }
+      if constexpr(Terms==1) {
+        if constexpr(Fp32){sx+=double(hx*q0);sy+=double(hy*q0);sz+=double(hz*q0);}
+        else{sx+=double(hx)*double(q0);sy+=double(hy)*double(q0);sz+=double(hz)*double(q0);}
+      }else {
+        if constexpr(Fp32){sx-=double(hx*q0)+double(h0*qx);sy-=double(hy*q0)+double(h0*qy);sz-=double(hz*q0)+double(h0*qz);}
+        else{sx-=double(hx)*double(q0)+double(h0)*double(qx);sy-=double(hy)*double(q0)+double(h0)*double(qy);sz-=double(hz)*double(q0)+double(h0)*double(qz);}
+      }
+    }
+    const size_t at=b.lanes_rows?size_t(n)*b.output_stride+m:size_t(m)*b.output_stride+n;
     b.output[0][at]=sx;b.output[1][at]=sy;b.output[2][at]=sz;
   }
 }
@@ -130,18 +213,43 @@ void vna_block(const OpenMXForceVnaBlock& b,void* scratch) {
     else{if(b.terms==1)vna_plain<false,1>(b);else vna_plain<false,2>(b);}
     (void)scratch;return;
   }
-  const size_t pad=force_padded(b.columns),plane=size_t(b.projectors)*pad;
-  float* value_t=static_cast<float*>(scratch);
-  const float* deriv_t[3]={nullptr,nullptr,nullptr};
-  transpose(b.value,b.columns,b.projectors,value_t,pad);
-  if(b.terms==2)for(int c=0;c<3;++c) {
-    float* t=value_t+size_t(c+1)*plane;
-    transpose(b.column_derivative[c],b.columns,b.projectors,t,pad);deriv_t[c]=t;
+  const int lane_count=b.lanes_rows?b.rows:b.columns,components=force_vna_planes(b.terms,b.lanes_rows);
+  const size_t pad=force_padded(lane_count),plane=size_t(b.projectors)*pad;
+  const float* planes[4]={nullptr,nullptr,nullptr,nullptr};
+  if(b.lanes) {
+    for(int c=0;c<components;++c)planes[c]=b.lanes->planes+size_t(c)*plane;
+  }else {
+    float* t=static_cast<float*>(scratch);
+    const float* const* source[4];
+    if(!b.lanes_rows){source[0]=b.value;source[1]=b.column_derivative[0];source[2]=b.column_derivative[1];source[3]=b.column_derivative[2];}
+    else{source[0]=b.derivative[0];source[1]=b.derivative[1];source[2]=b.derivative[2];source[3]=b.row_value;}
+    for(int c=0;c<components;++c){transpose(source[c],lane_count,b.projectors,t+size_t(c)*plane,pad);planes[c]=t+size_t(c)*plane;}
   }
-  if(b.fp32){if(b.terms==1)vna_rows<true,1>(b,value_t,deriv_t,pad);else vna_rows<true,2>(b,value_t,deriv_t,pad);}
-  else{if(b.terms==1)vna_rows<false,1>(b,value_t,deriv_t,pad);else vna_rows<false,2>(b,value_t,deriv_t,pad);}
+  if(b.lanes_rows) {
+    if(b.fp32){if(b.terms==1)vna_rows<true,1,true>(b,planes,pad);else vna_rows<true,2,true>(b,planes,pad);}
+    else{if(b.terms==1)vna_rows<false,1,true>(b,planes,pad);else vna_rows<false,2,true>(b,planes,pad);}
+  }else {
+    if(b.fp32){if(b.terms==1)vna_rows<true,1,false>(b,planes,pad);else vna_rows<true,2,false>(b,planes,pad);}
+    else{if(b.terms==1)vna_rows<false,1,false>(b,planes,pad);else vna_rows<false,2,false>(b,planes,pad);}
+  }
 }
 
+// tmp0[i] = sum_j orbitals[j] * dm[j][i] over the density planes of one pair
+// and spin (lanes over i, j ascending), stored for the scalar i-reduction.
+void density_rows(const double* dm,int columns,size_t pad,const float* orbitals,double* tmp0) {
+  const int vectors=int(pad/lanes);
+  for(int v0=0;v0<vectors;v0+=chunk) {
+    const int nv=std::min(chunk,vectors-v0);
+    Vector acc[chunk];
+    for(auto& a:acc)a=Vector(0.0);
+    for(int j=0;j<columns;++j) {
+      const Vector w(double(orbitals[j]));
+      const double* row=dm+size_t(j)*pad+size_t(v0)*lanes;
+      for(int v=0;v<nv;++v)acc[v]+=w*load(row+size_t(v)*lanes);
+    }
+    for(int v=0;v<nv;++v)store(acc[v],tmp0+size_t(v0+v)*lanes);
+  }
+}
 void grid_pair(const OpenMXForceGridPair& g,double* sums,void* scratch) {
   if(!g.points || !g.rows)return;
   const size_t pad=force_padded(g.rows);
@@ -152,24 +260,12 @@ void grid_pair(const OpenMXForceGridPair& g,double* sums,void* scratch) {
     for(int i=0;i<g.rows;++i)o[i]=g.density[s][i][j];
     std::fill(o+g.rows,o+pad,0.0);
   }
-  const int vectors=int(pad/lanes);
   for(int p=0;p<g.points;++p) {
     const int nc=g.center[p];
     const float* orbitals=g.neighbor_rows[g.neighbor?g.neighbor[p]:p];
     const double* const* derivative=g.derivative[nc];
     for(int s=0;s<g.spins;++s) {
-      const double* dm=dm_t+size_t(s)*size_t(g.columns)*pad;
-      for(int v0=0;v0<vectors;v0+=chunk) {
-        const int nv=std::min(chunk,vectors-v0);
-        Vector acc[chunk];
-        for(auto& a:acc)a=Vector(0.0);
-        for(int j=0;j<g.columns;++j) {
-          const Vector w(double(orbitals[j]));
-          const double* row=dm+size_t(j)*pad+size_t(v0)*lanes;
-          for(int v=0;v<nv;++v)acc[v]+=w*load(row+size_t(v)*lanes);
-        }
-        for(int v=0;v<nv;++v)store(acc[v],tmp0+size_t(v0+v)*lanes);
-      }
+      density_rows(dm_t+size_t(s)*size_t(g.columns)*pad,g.columns,pad,orbitals,tmp0);
       double tx=0.0,ty=0.0,tz=0.0;
       for(int i=0;i<g.rows;++i) {
         const double* d=derivative[i];
@@ -177,6 +273,37 @@ void grid_pair(const OpenMXForceGridPair& g,double* sums,void* scratch) {
       }
       const double potential=g.potential[s][nc];
       sums[0]+=tx*potential;sums[1]+=ty*potential;sums[2]+=tz*potential;
+    }
+  }
+}
+void grid_density(const double* const* density[4],int rows,int columns,int columns_max,int spins,double* planes,size_t pad) {
+  for(int s=0;s<spins;++s)for(int j=0;j<columns;++j) {
+    double* o=planes+(size_t(s)*columns_max+j)*pad;
+    for(int i=0;i<rows;++i)o[i]=density[s][i][j];
+    std::fill(o+rows,o+pad,0.0);
+  }
+}
+// Point-major: one derivative row per point, every visit of the point in
+// turn; the terms land in the slots the caller sums in the legacy order.
+void grid_points(const OpenMXForceGridPoints& g,int first,int count,void* scratch) {
+  double* tmp0=static_cast<double*>(scratch);
+  const size_t pad=g.pad_rows,plane=size_t(g.columns_max)*pad;
+  for(int p=first;p<first+count;++p) {
+    const double* d=g.derivative+size_t(p)*g.point_stride;
+    for(size_t v=g.point_offsets[p];v<g.point_offsets[p+1];++v) {
+      const int pair=g.visit_pair[v],columns=g.pair_columns[pair];
+      const float* orbitals=g.pair_rows[pair][g.visit_row[v]];
+      double* term=g.terms+size_t(g.visit_term[v])*size_t(g.spins)*3;
+      for(int s=0;s<g.spins;++s) {
+        density_rows(g.dm+(size_t(pair)*g.spins+s)*plane,columns,pad,orbitals,tmp0);
+        double tx=0.0,ty=0.0,tz=0.0;
+        for(int i=0;i<g.rows;++i) {
+          const double* di=d+size_t(i)*g.row_stride;
+          tx+=di[0]*tmp0[i];ty+=di[1]*tmp0[i];tz+=di[2]*tmp0[i];
+        }
+        const double potential=g.potential[s][p];
+        term[s*3+0]=tx*potential;term[s*3+1]=ty*potential;term[s*3+2]=tz*potential;
+      }
     }
   }
 }
@@ -304,7 +431,7 @@ void nl_block(const OpenMXForceProjectorSpecies& sp,const OpenMXProjectorForceBl
     }
   }
 }
-constexpr ForceKernels kernels{lanes,vna_block,grid_pair,nl_block};
+constexpr ForceKernels kernels{lanes,vna_lanes,vna_block,grid_pair,grid_density,grid_points,nl_block};
 }
 const ForceKernels& OPENMX_HOST_SIMD_FACTORY(force)() noexcept {return kernels;}
 }
