@@ -28,10 +28,10 @@ DEVCCFLAGS   = -O3 -DNDEBUG -DADD_ $(FPIC) $(FOPENMP) -std=c++14 -fno-gpu-rdc
 AOCL_LIB    ?= /system/apps/rhel/aocl/5.1.0/aocc/lib
 
 LIB          =
-LIB         += -lflame -lblis -laoclutils
+HOST_LAPACK_LIBS ?= -L$(AOCL_LIB) -lflame -lblis -laoclutils
+LIB         += $(HOST_LAPACK_LIBS)
 LIB         += -lhipblas -lhipsparse -lrocblas -lamdhip64
 
-LIBDIR      += -L$(AOCL_LIB)
 LIBDIR      += -L$(ROCM_PATH)/lib
 
 INC         += -I$(ROCM_PATH)/include

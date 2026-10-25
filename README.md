@@ -12,9 +12,12 @@ Intel CPU build and earlier GPU versions, see [the regression procedure](docs/PE
 cmake -S . -B build/cuda -DOPENMX_GPU_BACKEND=CUDA -DOPENMX_GPU_ARCH=sm_120
 cmake --build build/cuda
 
-# On a ROCm machine; set the site-specific MPI/AOCL paths as described below.
-cmake -S . -B build/hip -DOPENMX_GPU_BACKEND=HIP -DOPENMX_GPU_ARCH=gfx942 \
-  -DOPENMX_MAKE_OPTIONS="ROCM=/opt/rocm;MPI_HOME=/path/to/mpi;AOCL_HOME=/path/to/aocl;AOCC_LIB=/path/to/aocc/lib"
+# AMD example; use gfx1200 for Radeon RX 9060 XT, gfx942 for MI300A.
+cmake -S . -B build/hip -DOPENMX_GPU_BACKEND=HIP -DOPENMX_GPU_ARCH=gfx1200 \
+  -DOPENMX_HIP_ROCM_ROOT=/opt/rocm \
+  -DOPENMX_HIP_MPI=OPENMPI -DOPENMX_HIP_MPI_ROOT=/path/to/openmpi \
+  -DOPENMX_HIP_LINALG=AOCL -DOPENMX_HIP_AOCL_ROOT=/path/to/aocl/aocc \
+  -DOPENMX_HIP_AOCC_LIB=/path/to/aocc/lib
 cmake --build build/hip
 
 # Full CPU application: MPI, OpenMP, FFTW3 and LP64 ScaLAPACK/BLAS/LAPACK.
@@ -29,6 +32,25 @@ build also updates `work/openmx`; `OPENMX_WORK_DIR` changes this directory and
 dependency builds are isolated in each build directory. See
 [GPU backend build instructions](docs/GPU_BACKENDS.md) for requirements,
 configuration, AMD runtime settings and validation limits.
+
+HIP builds accept `OPENMX_HIP_MPI=OPENMPI|INTEL` and
+`OPENMX_HIP_LINALG=AOCL|MKL|OPENBLAS` (defaults: OpenMPI + AOCL).
+The selected MPI and LP64 libraries are shared by OpenMX, ELPA, COSMA and
+MAGMA. Use a separate build directory for each combination. For example:
+
+```sh
+cmake -S . -B build/hip-intel-mkl -DOPENMX_GPU_BACKEND=HIP -DOPENMX_GPU_ARCH=gfx1200 \
+  -DOPENMX_HIP_ROCM_ROOT=/opt/rocm \
+  -DOPENMX_HIP_MPI=INTEL -DOPENMX_HIP_MPI_ROOT="$I_MPI_ROOT" \
+  -DOPENMX_HIP_LINALG=MKL -DOPENMX_HIP_MKL_ROOT="$MKLROOT"
+cmake --build build/hip-intel-mkl
+```
+
+`OPENMX_HIP_OPENBLAS_ROOT` selects a non-system OpenBLAS installation.
+OpenBLAS and AOCL use a compatible ScaLAPACK installation or build the pinned
+Netlib release for the selected MPI; an OpenMPI ScaLAPACK cannot be reused with
+Intel MPI. FFTW3 is selected separately with `OPENMX_HIP_FFTW_ROOT` (AOCL's
+FFTW is preferred in AOCL builds). See [HIP options](docs/GPU_BACKENDS.md#amd--hip).
 
 The CPU build uses ordinary C/C++ and Fortran compilers with a matching MPI,
 requires no GPU SDK, and defaults to `scf.eigen.lib elpa2`. It builds the same
@@ -624,14 +646,14 @@ buffers and the reserve fit but the basis does not, the GPU path is now
 kept with the FP64 eigensolver for that SCF cycle.
 
 ## Build and install
-Building and installing is more difficult than with standard OpenMX. The NVIDIA build requires the [NVIDIA HPC SDK](https://developer.nvidia.com/hpc-sdk) with its Open MPI, and the AMD build requires ROCm and AOCL; [Dependencies](#dependencies) below lists the requirements. The Makefile contains build examples for several supercomputer systems, and a ready-made site makefile is included for System C "Kugui" at ISSP, Univ. of Tokyo (`Makefile.kugui`, which includes the stock Makefile and builds with the NVHPC 24.7 / CUDA 12.5 that Kugui offers; its header lists the two nvc 24.x code-generation problems it works around, one of them reproduced by `tests/nvc_diag_vectorizer_bug.c`); please refer to it. `Makefile.pegasus` (the Pegasus supercomputer at the University of Tsukuba) and `Makefile.bunshiken` are older standalone copies that do not list the sources added since early October 2026. The first `make` also builds the bundled ELPA/COSMA stack, used by the CPU eigensolvers and "gpusolver2", and MAGMA when it is selected; this adds some time to the first build. A detailed implementation document (English and Japanese, including the list of GPU-related environment variables) is available under [doc/](doc/). If you're unsure about the build and installation process, feel free to ask in English via GitHub issues or [my X account](https://x.com/dc1394) (Japanese is also acceptable on my X account). I'll assist you as much as I can.
+Building and installing is more difficult than with standard OpenMX. The NVIDIA build requires the [NVIDIA HPC SDK](https://developer.nvidia.com/hpc-sdk) with its Open MPI, and the AMD build requires ROCm, OpenMPI or Intel MPI, and AOCL, MKL or OpenBLAS; [Dependencies](#dependencies) below lists the requirements. The Makefile contains build examples for several supercomputer systems, and a ready-made site makefile is included for System C "Kugui" at ISSP, Univ. of Tokyo (`Makefile.kugui`, which includes the stock Makefile and builds with the NVHPC 24.7 / CUDA 12.5 that Kugui offers; its header lists the two nvc 24.x code-generation problems it works around, one of them reproduced by `tests/nvc_diag_vectorizer_bug.c`); please refer to it. `Makefile.pegasus` (the Pegasus supercomputer at the University of Tsukuba) and `Makefile.bunshiken` are older standalone copies that do not list the sources added since early October 2026. The first `make` also builds the bundled ELPA/COSMA stack, used by the CPU eigensolvers and "gpusolver2", and MAGMA when it is selected; this adds some time to the first build. A detailed implementation document (English and Japanese, including the list of GPU-related environment variables) is available under [doc/](doc/). If you're unsure about the build and installation process, feel free to ask in English via GitHub issues or [my X account](https://x.com/dc1394) (Japanese is also acceptable on my X account). I'll assist you as much as I can.
 
 ### Dependencies
 
 Installed on the build machine:
 
 - **NVIDIA build**: the NVIDIA HPC SDK (nvc, nvc++ and nvfortran, its Open MPI, and its LP64 ScaLAPACK, LAPACK and BLAS) with a CUDA toolkit. The default is HPC SDK 26.9 with CUDA 13.4; CUDA 12.3 or later is supported.
-- **AMD build**: ROCm (clang, hipcc, flang and OpenMP offload), AOCL (BLIS, libFLAME, ScaLAPACK, FFTW3 and AOCL Utilities) and an MPI built with ROCm's flang. See [GPU backend build instructions](docs/GPU_BACKENDS.md).
+- **AMD build**: ROCm (clang, hipcc, flang and OpenMP offload), OpenMPI or Intel MPI, LP64 numerical libraries (AOCL, MKL or OpenBLAS with matching ScaLAPACK), and FFTW3. See [GPU backend build instructions](docs/GPU_BACKENDS.md).
 - **Both**: GNU make, a C++20 compiler and standard library for the new core, Python 3.8 or later, and CMake 3.25.2 or later (also used by direct make to build the core). The bundled ELPA needs autoconf 2.71 or later, automake, libtool, m4, python3 and unzip. MAGMA's build needs `patch`, and in the NVIDIA build also CMake with CUDA support. The NVIDIA build of FFTW3 needs `rsync`.
 
 Built during configuration or the first build:
@@ -642,7 +664,7 @@ Built during configuration or the first build:
 | ELPA | 2026.02.002 | CPU eigensolvers ("elpa1", "elpa2") and "gpusolver2" | both | `source/third_party/dist/` |
 | COSMA, COSTA, Tiled-MM | 2.8.4 and the commits it pins | distributed matrix products of "gpusolver2" | both | `source/third_party/dist/` |
 | GEMMul8 | v3.5.2 | FP64 matrix products emulated on integer tensor cores | both | Git submodule `source/third_party/GEMMul8` |
-| FFTW3 | 3.3.11 | FFTs | NVIDIA (AMD uses AOCL's FFTW3) | Git submodule `source/third_party/fftw3` and release tarball `source/third_party/fftw-3.3.11.tar.gz` |
+| FFTW3 | 3.3.11 | FFTs | NVIDIA (AMD uses an external FFTW3, including AOCL's) | Git submodule `source/third_party/fftw3` and release tarball `source/third_party/fftw-3.3.11.tar.gz` |
 | MAGMA | 2.10.0 | multi-GPU Cluster and Band eigensolver | NVIDIA when selected (below); AMD always | `source/third_party/hip/magma/` |
 | CMake | 3.31.12 | building COSMA when the system CMake is older than 3.24 | both | `source/third_party/dist/` |
 
@@ -1029,7 +1051,7 @@ in its Git submodule or source archive under `source/third_party/`.
 #### FFTW3
 
 - **Source**: <https://www.fftw.org/>
-- **Version**: 3.3.11 (Git submodule `source/third_party/fftw3` and release tarball `source/third_party/fftw-3.3.11.tar.gz`), used by the NVIDIA build; the AMD build uses the FFTW3 of AOCL
+- **Version**: 3.3.11 (Git submodule `source/third_party/fftw3` and release tarball `source/third_party/fftw-3.3.11.tar.gz`), used by the NVIDIA build; the AMD build uses external FFTW3 (AOCL or system/user installation)
 - **Copyright**:
   - Copyright (c) 2003, 2007-14 Matteo Frigo
   - Copyright (c) 2003, 2007-14 Massachusetts Institute of Technology

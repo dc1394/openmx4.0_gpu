@@ -65,6 +65,11 @@ endif
 OPENMX_BUILD_ROOT ?= $(CURDIR)
 OPENMX_HIP_DEPS ?= $(OPENMX_SOURCE_ROOT)/third_party/hip
 
+# CMake supplies resolved compiler/MPI/math flags; direct make keeps defaults.
+ifneq ($(strip $(OPENMX_HOST_CONFIG)),)
+include $(OPENMX_HOST_CONFIG)
+endif
+
 ROCM      ?= /opt/rocm-7.2.0
 ROCM_LLVM ?= $(ROCM)/llvm
 ROCM_LIB  ?= $(ROCM)/lib
@@ -115,10 +120,16 @@ MPICC  ?= $(MPI_HOME)/bin/mpicc
 MPICXX ?= $(MPI_HOME)/bin/mpicxx
 MPIF90 ?= $(MPI_HOME)/bin/mpif90
 
-MPI_CFLAGS  := $(shell $(MPICC) --showme:compile 2>/dev/null)
+ifeq ($(origin MPI_CFLAGS),undefined)
+MPI_CFLAGS := $(shell $(MPICC) --showme:compile 2>/dev/null)
+endif
+ifeq ($(origin MPI_FCFLAGS),undefined)
 MPI_FCFLAGS := $(shell $(MPIF90) --showme:compile 2>/dev/null)
+endif
 
-COMMON_INCLUDES = -I. -I$(ROCM)/include -I$(AOCL_INC) -I$(GEMMUL8_DIR)/include -I$(GEMMUL8_DIR)/src -I$(MAGMA_DIR)/include
+MPI_CXXFLAGS ?= $(MPI_CFLAGS)
+HOST_INCLUDES ?= -I$(AOCL_INC)
+COMMON_INCLUDES = -I. -I$(ROCM)/include $(HOST_INCLUDES) -I$(GEMMUL8_DIR)/include -I$(GEMMUL8_DIR)/src -I$(MAGMA_DIR)/include
 CFLAGS_COMMON = -fcommon -Werror=implicit-function-declaration -std=gnu11 -mtune=native -march=native -D__HIP_PLATFORM_AMD__ -DM_PI=3.14159265358979323846264338327950288 $(COMMON_INCLUDES)
 CPPFLAGS_COMMON = -w -fcommon -std=c++20 -mtune=native -march=native -D__HIP_PLATFORM_AMD__ $(COMMON_INCLUDES)
 
@@ -128,7 +139,7 @@ CC3 = $(CLANG) -O2 $(MPI_CFLAGS) $(CFLAGS_COMMON) $(OMP_OFFLOAD)
 CC_NOACC = $(CLANG) -O1 $(MPI_CFLAGS) $(CFLAGS_COMMON) -fopenmp
 CC_NOACC_O3 = $(CLANG) -O3 $(MPI_CFLAGS) $(CFLAGS_COMMON) -fopenmp
 CC_DFTD3 = $(CLANG) -w -O0 $(MPI_CFLAGS) $(CFLAGS_COMMON) -fopenmp
-CXX = $(CPPLANG) -O3 $(MPI_CFLAGS) $(CPPFLAGS_COMMON) $(OMP_OFFLOAD)
+CXX = $(CPPLANG) -O3 $(MPI_CXXFLAGS) $(CPPFLAGS_COMMON) $(OMP_OFFLOAD)
 FC = $(FLANG) -O2 $(MPI_FCFLAGS) -mtune=native -march=native -fopenmp
 
 MPI_LIBDIR ?= $(MPI_HOME)/lib
@@ -136,13 +147,15 @@ MPI_LIBDIR ?= $(MPI_HOME)/lib
 # in libflang/libflangrti/libpgmath from the AOCC install.  Keep $(AOCC_LIB)
 # last: it also ships an older libomp.so that must not shadow ROCm's.
 AOCC_LIB ?= /system/apps/rhel/aocc/5.0.0/lib
-RPATHS = -Wl,--disable-new-dtags -Wl,-rpath,$(ROCM_LLVM_LIB) -Wl,-rpath,$(ROCM_LIB) -Wl,-rpath,$(MPI_LIBDIR) -Wl,-rpath,$(AOCL_LIB) -Wl,-rpath,$(AOCC_LIB)
+RPATHS ?= -Wl,--disable-new-dtags -Wl,-rpath,$(ROCM_LLVM_LIB) -Wl,-rpath,$(ROCM_LIB) -Wl,-rpath,$(MPI_LIBDIR) -Wl,-rpath,$(AOCL_LIB) -Wl,-rpath,$(AOCC_LIB)
 ROCM_GPU_LIBS := -L$(ROCM_LIB) -lamd_smi -lhipsolver -lrocsolver -lhipblas -lhipblaslt -lrocblas -lhipsparse -lamdhip64
 # ROCm ships libflang_rt.* under the clang resource directory, not directly in
 # $(ROCM_LLVM_LIB); ask the compiler where that is instead of hardcoding the
 # LLVM major version.
 FLANG_RT_LIBDIR ?= $(shell $(FLANG) -print-resource-dir 2>/dev/null)/lib/$(shell $(FLANG) -print-target-triple 2>/dev/null)
+ifeq ($(origin FLANG_RTL_LIBS),undefined)
 FLANG_RTL_LIBS := -L$(FLANG_RT_LIBDIR) -L$(ROCM_LLVM_LIB) -lflang_rt.runtime -lflang_rt.quadmath -lquadmath
+endif
 # AOCL (BLIS / libFLAME / ScaLAPACK / FFTW3); module load aocl/5.1.0/aocc5.0.0.
 # AOCL_INC also supplies fftw3.h, so it is part of COMMON_INCLUDES above.
 AOCL_HOME ?= /system/apps/rhel/aocl/5.1.0/aocc
@@ -152,16 +165,17 @@ SCALAPACK_LIBS := -L$(AOCL_LIB) -lscalapack
 LAPACK_LIBS := -L$(AOCL_LIB) -lflame
 BLAS_LIBS := -L$(AOCL_LIB) -lblis
 AOCL_UTILS_LIBS := -L$(AOCL_LIB) -laoclutils
-FFTW_LIBS := -L$(AOCL_LIB) -lfftw3 -lm
+FFTW_LIBS ?= -L$(AOCL_LIB) -lfftw3 -lm
 FFTW3_LIB ?=
-MATH_GROUP := -Wl,--start-group $(SCALAPACK_LIBS) $(LAPACK_LIBS) $(BLAS_LIBS) $(AOCL_UTILS_LIBS) -Wl,--end-group
-MPI_FORTRAN_LIBS := \
+HOST_LAPACK_LIBS ?= $(LAPACK_LIBS) $(BLAS_LIBS) $(AOCL_UTILS_LIBS)
+MATH_GROUP ?= -Wl,--start-group $(SCALAPACK_LIBS) $(LAPACK_LIBS) $(BLAS_LIBS) $(AOCL_UTILS_LIBS) -Wl,--end-group
+MPI_FORTRAN_LIBS ?= \
   $(MPI_LIBDIR)/libmpi_usempif08.so \
   $(MPI_LIBDIR)/libmpi_usempi_ignore_tkr.so \
   $(MPI_LIBDIR)/libmpi_mpifh.so \
   $(MPI_LIBDIR)/libmpi.so
 
-LIB= $(RPATHS) $(FFTW_LIBS) $(GPUSOLVER2_LIBS) $(MATH_GROUP) $(MPI_FORTRAN_LIBS) $(ROCM_GPU_LIBS) $(FLANG_RTL_LIBS) -lstdc++ -lpthread -lm -ldl
+LIB= $(RPATHS) $(FFTW_LIBS) $(GPUSOLVER2_LIBS) $(MATH_GROUP) $(MPI_FORTRAN_LIBS) $(ROCM_GPU_LIBS) $(FLANG_RTL_LIBS) -lstdc++ -lpthread -lm -ldl -Wl,--disable-new-dtags
 
 GEMMUL8_REPO_URL ?= https://github.com/RIKEN-RCCS/GEMMul8.git
 GEMMUL8_REPO_DIR ?= $(OPENMX_BUILD_ROOT)/third_party/GEMMul8
@@ -439,7 +453,7 @@ $(GPUSOLVER2_BUILD_CONFIG): gpusolver2-toolchain-force
 	@mkdir -p "$(dir $@)"
 	@printf '%s\n' '$(GPUSOLVER2_DIST)' '$(GPUSOLVER2_PREFIX)' '$(GPUSOLVER2_HOST_CC)' '$(GPUSOLVER2_HOST_CXX)' '$(GPUSOLVER2_HIPCC)' '$(GPUSOLVER2_GPU_ARCH)' '$(GPUSOLVER2_MPI_BIN)' '$(GPUSOLVER2_MPI_LIBDIR)' '$(GPUSOLVER2_ROCM)' '$(GPUSOLVER2_AOCL_LIB)' '$(GPUSOLVER2_AOCL_INC)' '$(GPUSOLVER2_AOCC_LIB)' '$(GPUSOLVER2_SCALAPACK_SO)' '$(GPUSOLVER2_ELPA_VER)' '$(GPUSOLVER2_CMAKE)' > "$@.tmp"
 	@cmp -s "$@.tmp" "$@" && rm -f "$@.tmp" || mv "$@.tmp" "$@"
-$(GPUSOLVER2_STAMP): $(GPUSOLVER2_BUILD_CONFIG)
+$(GPUSOLVER2_STAMP): $(GPUSOLVER2_BUILD_CONFIG) $(GPUSOLVER2_HOST_CONFIG)
 
 $(MGPU_C_OBJECTS): %.o: %.c $(MGPU_HEADERS)
 	$(CC) -c $< -o $@
@@ -880,6 +894,7 @@ set_xc_grid_hip.o: set_xc_grid_hip.cu
 gpusolver2-stack: $(GPUSOLVER2_STAMP)
 
 $(GPUSOLVER2_STAMP): $(GPUSOLVER2_SCRIPT)
+	GPUSOLVER2_HOST_CONFIG="$(GPUSOLVER2_HOST_CONFIG)" \
 	GPUSOLVER2_DIST="$(GPUSOLVER2_DIST)" GPUSOLVER2_BUILD="$(GPUSOLVER2_BUILD)" \
 	GPUSOLVER2_PREFIX="$(GPUSOLVER2_PREFIX)" \
 	GPUSOLVER2_HOST_CC="$(GPUSOLVER2_HOST_CC)" GPUSOLVER2_HOST_CXX="$(GPUSOLVER2_HOST_CXX)" \
@@ -958,7 +973,7 @@ $(MAGMA_DEVICE_MAP_STAMP): $(MAGMA_STAMP) $(MAGMA_DEVICE_MAP_SCRIPT) $(MAGMA_DEV
 	touch "$@"
 
 $(MAGMA_LIB): $(MAGMA_STAMP) $(MAGMA_DEVICE_MAP_STAMP)
-	$(MAKE) -C "$(MAGMA_DIR)" BACKEND=hip ROCM_PATH="$(ROCM)" GPU_TARGET="$(MAGMA_GPU_TARGET)" AOCL_LIB="$(AOCL_LIB)" HIPCC="$(HIPCC)" CC="$(HIPCC)" CXX="$(HIPCC)" DEVCC="$(HIPCC)" ARCH=ar lib/libmagma.a
+	$(MAKE) -C "$(MAGMA_DIR)" BACKEND=hip ROCM_PATH="$(ROCM)" GPU_TARGET="$(MAGMA_GPU_TARGET)" AOCL_LIB="$(AOCL_LIB)" HOST_LAPACK_LIBS="$(HOST_LAPACK_LIBS)" HIPCC="$(HIPCC)" CC="$(HIPCC)" CXX="$(HIPCC)" DEVCC="$(HIPCC)" ARCH=ar lib/libmagma.a
 Divide_Conquer_Dosout.o: Divide_Conquer_Dosout.c openmx_common.h
 	$(CC) -c Divide_Conquer_Dosout.c
 Krylov.o: Krylov.c openmx_common.h

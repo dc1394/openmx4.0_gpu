@@ -23,7 +23,7 @@ class CMakeDriverTest(unittest.TestCase):
         for name in ("cmake", "tools", "core", "source/third_party/dist", "DFT_DATA19"):
             (self.repo / name).mkdir(parents=True, exist_ok=True)
         for name in ("CMakeLists.txt", "cmake/OpenMXGPUArchitecture.cmake", "cmake/OpenMXBuildType.cmake",
-                     "cmake/OpenMXCPUOptions.cmake",
+                     "cmake/OpenMXCPUOptions.cmake", "cmake/OpenMXMPI.cmake", "cmake/OpenMXHIPOptions.cmake",
                      "tools/prepare_build.py", "tools/copy_openmx.py"):
             shutil.copy2(ROOT / name, self.repo / name)
         (self.repo / "core/core.c").write_text("int fixture(void) { return 0; }\n")
@@ -75,6 +75,27 @@ class CMakeDriverTest(unittest.TestCase):
 
     def build_application(self, **kwargs):
         return self.command(["cmake", "--build", str(self.build), "--target", "openmx"], **kwargs)
+
+    def test_hip_selectors_reject_unknown_values_before_sdk_detection(self):
+        for option, value in (("MPI", "MPICH"), ("LINALG", "ILP64")):
+            with self.subTest(option=option):
+                result = self.configure("-DOPENMX_GPU_BACKEND=HIP",
+                                        "-DOPENMX_HIP_MPI=OPENMPI", "-DOPENMX_HIP_LINALG=AOCL",
+                                        f"-DOPENMX_HIP_{option}={value}", success=False)
+                self.assertIn(f"OPENMX_HIP_{option} must be", result.stdout + result.stderr)
+                self.assertFalse(self.gpu_queries.exists())
+
+    def test_hip_rejects_native_toolchain_overrides(self):
+        result = self.configure("-DOPENMX_GPU_BACKEND=HIP",
+                                "-DOPENMX_MAKE_OPTIONS=MPICC=/different/mpi/mpicc", success=False)
+        self.assertIn("MPICC is managed by the HIP CMake toolchain", result.stdout + result.stderr)
+        self.assertFalse(self.gpu_queries.exists())
+
+    def test_hip_rejects_conflicting_legacy_prefix(self):
+        result = self.configure("-DOPENMX_GPU_BACKEND=HIP", "-DOPENMX_HIP_MPI_ROOT=/selected/mpi",
+                                "-DOPENMX_MAKE_OPTIONS=MPI_HOME=/different/mpi", success=False)
+        self.assertIn("conflicts with OPENMX_HIP_MPI_ROOT", result.stdout + result.stderr)
+        self.assertFalse(self.gpu_queries.exists())
 
     def test_default_release_and_explicit_debug_configuration(self):
         self.configure("-DOPENMX_GPU_ARCH=sm_80", "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON")

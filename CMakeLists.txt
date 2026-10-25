@@ -54,6 +54,8 @@ endif()
 if(OPENMX_BUILD_APPLICATION AND _backend STREQUAL "CPU")
   # Select the host toolchain before Core's project() first enables C++.
   include(cmake/OpenMXCPUOptions.cmake)
+elseif(OPENMX_BUILD_APPLICATION AND _backend STREQUAL "HIP")
+  include(cmake/OpenMXHIPOptions.cmake)
 endif()
 # Resolve the architecture before CUDA language / Kokkos configuration, so
 # cross-compilation on a login node never needs a device to infer its target.
@@ -89,6 +91,7 @@ else()
   set(_native_options "GPUSOLVER2_JOBS=${OPENMX_BUILD_JOBS}" ${OPENMX_MAKE_OPTIONS})
   list(APPEND _native_options "OPENMX_CORE_LIBRARY=$<TARGET_FILE:openmx_core>")
   if(_backend STREQUAL "HIP")
+    include(cmake/OpenMXHIP.cmake)
     list(APPEND _native_options "OPENMX_SOURCE_ROOT=${CMAKE_SOURCE_DIR}/source")
   endif()
   if(_backend STREQUAL "CUDA" AND OPENMX_CUDA_ARCH)
@@ -119,6 +122,9 @@ else()
       BYPRODUCTS "${CMAKE_BINARY_DIR}/openmx"
       USES_TERMINAL VERBATIM)
   add_dependencies(openmx openmx_core)
+  if(TARGET openmx_hip_scalapack_build)
+    add_dependencies(openmx openmx_hip_scalapack_build)
+  endif()
   add_custom_target(native-clean
       COMMAND "${OPENMX_MAKE_EXECUTABLE}" -C "${_native}" ${_native_options} clean
       COMMAND "${CMAKE_COMMAND}" -E rm -f "${CMAKE_BINARY_DIR}/openmx"
@@ -126,7 +132,7 @@ else()
 endif()
 set(_openmx_install_program [=[
   set(_openmx_install_bindir "${CMAKE_INSTALL_PREFIX}/bin")
-  if(@_openmx_work_install_default@ AND CMAKE_INSTALL_PREFIX STREQUAL [==[@OPENMX_WORK_DIR@]==])
+  if("@_openmx_work_install_default@" STREQUAL "ON" AND CMAKE_INSTALL_PREFIX STREQUAL [==[@OPENMX_WORK_DIR@]==])
     set(_openmx_install_bindir "${CMAKE_INSTALL_PREFIX}")
   endif()
   set(_openmx_installed_program "${_openmx_install_bindir}/openmx")

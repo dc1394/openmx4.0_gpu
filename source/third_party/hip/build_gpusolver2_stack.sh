@@ -8,16 +8,17 @@
 # Everything is driven by the OpenMX Makefile ("make gpusolver2-stack"); the
 # knobs below can be overridden from the make command line / environment.
 #
+#   GPUSOLVER2_HOST_CONFIG generated CMake MPI/math/runtime configuration
 #   GPUSOLVER2_DIST      directory holding the bundled archives
 #   GPUSOLVER2_BUILD     scratch build directory (safe to delete)
 #   GPUSOLVER2_PREFIX    installation prefix that openmx links against
 #   GPUSOLVER2_HOST_CC / GPUSOLVER2_HOST_CXX
-#                        host GCC used for the COSMA C parts and cmake
+#                        host compilers (CMake uses ROCm Clang)
 #   GPUSOLVER2_HIPCC     HIP compiler (compiles the ELPA/Tiled-MM kernels)
 #   GPUSOLVER2_GPU_ARCH  GPU architecture (gfx942 for MI300A, gfx1200 ...)
 #   GPUSOLVER2_MPI_BIN / GPUSOLVER2_MPI_LIBDIR
-#                        the SAME MPI openmx is built with (amdflang OpenMPI:
-#                        ELPA's "use mpi" needs its compiler-matched mpi.mod)
+#                        the SAME MPI openmx is built with; CMake uses mpif.h
+#                        if mpi.mod does not match the Fortran compiler
 #   GPUSOLVER2_ROCM      ROCm installation (hip, rocblas, amdhip64)
 #   GPUSOLVER2_AOCL_LIB / GPUSOLVER2_AOCL_INC
 #                        AOCL ScaLAPACK/libFLAME/BLIS used for the host BLAS
@@ -53,6 +54,22 @@ set -u
 : "${GPUSOLVER2_CMAKE:=}"
 : "${GPUSOLVER2_JOBS:=$(nproc 2>/dev/null || echo 8)}"
 
+# The CMake configuration carries resolved MPI wrappers and LP64 providers.
+# Native make without this file continues to use its AOCL/OpenMPI defaults.
+if [ -n "${GPUSOLVER2_HOST_CONFIG:-}" ]; then
+  . "$GPUSOLVER2_HOST_CONFIG"
+fi
+: "${GPUSOLVER2_HOST_FC:=$GPUSOLVER2_ROCM/llvm/bin/flang}"
+: "${GPUSOLVER2_MPICC:=$GPUSOLVER2_MPI_BIN/mpicc}"
+: "${GPUSOLVER2_MPICXX:=$GPUSOLVER2_MPI_BIN/mpicxx}"
+: "${GPUSOLVER2_MPIFC:=$GPUSOLVER2_MPI_BIN/mpif90}"
+: "${GPUSOLVER2_HOST_MATH:=-L$GPUSOLVER2_AOCL_LIB -lscalapack -lflame -lblis -laoclutils}"
+: "${GPUSOLVER2_HOST_BLAS:=$GPUSOLVER2_AOCL_LIB/libblis.so}"
+: "${GPUSOLVER2_HOST_SCALAPACK:=$GPUSOLVER2_SCALAPACK_SO}"
+: "${GPUSOLVER2_HOST_LDFLAGS:=-L$GPUSOLVER2_MPI_LIBDIR -L$GPUSOLVER2_AOCL_LIB -L$GPUSOLVER2_AOCC_LIB -L$GPUSOLVER2_ROCM/lib}"
+: "${GPUSOLVER2_RUNTIME_PATH:=$GPUSOLVER2_ROCM/llvm/lib:$GPUSOLVER2_MPI_LIBDIR:$GPUSOLVER2_ROCM/lib:$GPUSOLVER2_AOCL_LIB:$GPUSOLVER2_AOCC_LIB}"
+: "${GPUSOLVER2_ELPA_MPI_OPTION:=}"
+
 DIST=$GPUSOLVER2_DIST
 SRC=$GPUSOLVER2_BUILD/src
 BLD=$GPUSOLVER2_BUILD/build
@@ -75,6 +92,9 @@ printf '%s\n' "$GPUSOLVER2_HIPCC" "$GPUSOLVER2_GPU_ARCH" \
   "$GPUSOLVER2_CMAKE" > "$STAMP/toolchain.tmp"
 # A build-script fix must also invalidate successful steps from older rules.
 cksum < "$0" >> "$STAMP/toolchain.tmp"
+if [ -n "${GPUSOLVER2_HOST_CONFIG:-}" ]; then
+  cksum < "$GPUSOLVER2_HOST_CONFIG" >> "$STAMP/toolchain.tmp"
+fi
 if ! cmp -s "$STAMP/toolchain.tmp" "$STAMP/toolchain.conf"; then
   rm -f "$STAMP/01_elpa.done" "$STAMP/02_cosma.done"
   rm -rf "$BLD/elpa" "$BLD/cosma"
@@ -96,7 +116,7 @@ unset CFLAGS CXXFLAGS CPPFLAGS LDFLAGS FCFLAGS
 unset I_MPI_ROOT MPI_HOME MPI_ROOT PKG_CONFIG_PATH ONEAPI_ROOT CMAKE_PREFIX_PATH
 unset FI_PROVIDER_PATH CCL_ROOT TBBROOT MKLROOT NLSPATH CMPLR_ROOT
 export PATH="$GPUSOLVER2_MPI_BIN:$GPUSOLVER2_ROCM/bin:$GPUSOLVER2_ROCM/llvm/bin:/usr/bin:/bin"
-export LD_LIBRARY_PATH="$GPUSOLVER2_MPI_LIBDIR:$GPUSOLVER2_ROCM/lib:$GPUSOLVER2_AOCL_LIB:$GPUSOLVER2_AOCC_LIB"
+export LD_LIBRARY_PATH="$GPUSOLVER2_RUNTIME_PATH"
 
 fail() { echo "gpusolver2 stack: FAILED at step $1 (see $LOGS/$1.log)"; exit 1; }
 
@@ -195,14 +215,14 @@ OPENMX_ELPA_CPTR_PATCH
   # (The NVIDIA-side script disables all SIMD kernels for its NVHPC
   # toolchain.)
   "$SRC/elpa/configure" --prefix="$P" \
-    FC="$GPUSOLVER2_MPI_BIN/mpif90" CC="$GPUSOLVER2_MPI_BIN/mpicc" CXX="$GPUSOLVER2_MPI_BIN/mpicxx" \
+    FC="$GPUSOLVER2_MPIFC" CC="$GPUSOLVER2_MPICC" CXX="$GPUSOLVER2_MPICXX" \
     HIPCC="$GPUSOLVER2_HIPCC" \
     FCFLAGS="-O2 -march=x86-64-v3" CFLAGS="-O2 -march=x86-64-v3" CXXFLAGS="-O2 -march=x86-64-v3" \
     HIPCCFLAGS="-O2 --offload-arch=$GPUSOLVER2_GPU_ARCH -I$GPUSOLVER2_ROCM/include/rocsolver" \
     CPPFLAGS="-I$GPUSOLVER2_ROCM/include -I$GPUSOLVER2_ROCM/include/rocsolver" \
-    LDFLAGS="-L$GPUSOLVER2_MPI_LIBDIR -L$GPUSOLVER2_AOCL_LIB -L$GPUSOLVER2_AOCC_LIB -L$GPUSOLVER2_ROCM/lib" \
-    LIBS="-lscalapack -lflame -lblis -lrocblas -lamdhip64 -lstdc++" \
-    --enable-amd-gpu-kernels --disable-shared --enable-static \
+    LDFLAGS="$GPUSOLVER2_HOST_LDFLAGS" \
+    LIBS="$GPUSOLVER2_HOST_MATH -lrocblas -lamdhip64 -lstdc++" \
+    --enable-amd-gpu-kernels --disable-shared --enable-static $GPUSOLVER2_ELPA_MPI_OPTION \
     --enable-generic-kernels --disable-avx512-kernels \
     --disable-c-tests --disable-cpp-tests --disable-fortran-tests --disable-Fortran-tests
   # amdflang's -O2 middle end blows up (tens of GiB of RSS) on the
@@ -259,19 +279,20 @@ echo "gpusolver2 stack: using cmake: $CMAKE ($($CMAKE --version | head -n1))"
 
 # The device code of COSMA's Tiled-MM backend is ordinary C++ over the HIP
 # API, so the whole C++ side is compiled with hipcc (clang); the C side stays
-# on the host GCC.
+# uses the selected host compiler.
 COMMON="-DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$P \
  -DCMAKE_INSTALL_LIBDIR=lib \
  -DCMAKE_PREFIX_PATH=$P;$GPUSOLVER2_ROCM \
  -DBUILD_SHARED_LIBS=OFF -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
  -DCMAKE_C_COMPILER=$GPUSOLVER2_HOST_CC -DCMAKE_CXX_COMPILER=$GPUSOLVER2_HIPCC \
+ -DCMAKE_Fortran_COMPILER=$GPUSOLVER2_HOST_FC \
  -DCMAKE_CXX_FLAGS=--offload-arch=$GPUSOLVER2_GPU_ARCH \
  -DCMAKE_HIP_ARCHITECTURES=$GPUSOLVER2_GPU_ARCH \
  -DCMAKE_FIND_USE_PACKAGE_REGISTRY=OFF"
-MPIARGS="-DMPI_C_COMPILER=$GPUSOLVER2_MPI_BIN/mpicc -DMPI_CXX_COMPILER=$GPUSOLVER2_MPI_BIN/mpicxx \
- -DMPI_CXX_SKIP_MPICXX=ON"
+MPIARGS="-DMPI_C_COMPILER=$GPUSOLVER2_MPICC -DMPI_CXX_COMPILER=$GPUSOLVER2_MPICXX \
+ -DMPI_Fortran_COMPILER=$GPUSOLVER2_MPIFC -DMPI_CXX_SKIP_MPICXX=ON"
 
-# the COSMA CMake builds go through the MPI wrappers: C with GCC, C++ with hipcc
+# Keep MPI discovery on the selected host compiler and HIP C++ toolchain.
 export OMPI_CC=$GPUSOLVER2_HOST_CC
 export OMPI_CXX=$GPUSOLVER2_HIPCC
 
@@ -281,16 +302,14 @@ step_cosma() {
   [ -d "$SRC/cosma" ] || { cd "$SRC" && unzip -q "$DIST/cosma-v$V_COSMA.zip" && mv "COSMA-$V_COSMA" cosma; }
   [ -d "$SRC/COSTA" ] || { cd "$SRC" && unzip -q "$DIST/COSTA-$SHA_COSTA.zip" && mv "COSTA-$SHA_COSTA" COSTA; }
   [ -d "$SRC/Tiled-MM" ] || { cd "$SRC" && unzip -q "$DIST/Tiled-MM-$SHA_TILEDMM.zip" && mv "Tiled-MM-$SHA_TILEDMM" Tiled-MM; }
-  # COSMA_SCALAPACK=CUSTOM forces the host-BLAS vendor to "auto", whose
-  # OPENBLAS probe "succeeds" with NOTFOUND libraries on machines without
-  # OpenBLAS (FindOPENBLAS.cmake creates its target unconditionally).
-  # Predefining the probe's cache variables pins it to the AOCL BLIS
-  # instead -- the same family the final openmx link uses.
+  # COSMA_SCALAPACK=CUSTOM forces automatic host-BLAS detection. Skip its
+  # independent MKL/MPI probe and supply the already resolved host BLAS via
+  # its OPENBLAS target (also for AOCL and MKL); no second vendor is selected.
   $CMAKE -S "$SRC/cosma" -B "$BLD/cosma" $COMMON $MPIARGS \
-    -DCOSMA_BLAS=ROCM -DCOSMA_SCALAPACK=CUSTOM \
-    -DCOSMA_SCALAPACK_LINK_LIBRARIES="$GPUSOLVER2_SCALAPACK_SO" \
-    -DCOSMA_OPENBLAS_LINK_LIBRARIES="$GPUSOLVER2_AOCL_LIB/libblis.so" \
-    -DCOSMA_OPENBLAS_INCLUDE_DIRS="$GPUSOLVER2_AOCL_INC" \
+    -DCOSMA_BLAS=ROCM -DCOSMA_SCALAPACK=CUSTOM -DCMAKE_DISABLE_FIND_PACKAGE_MKL=ON \
+    -DCOSMA_SCALAPACK_LINK_LIBRARIES="$GPUSOLVER2_HOST_SCALAPACK" \
+    -DCOSMA_OPENBLAS_LINK_LIBRARIES="$GPUSOLVER2_HOST_BLAS" \
+    -DCOSMA_OPENBLAS_INCLUDE_DIRS="" \
     -DCOSMA_WITH_TESTS=OFF -DCOSMA_WITH_APPS=OFF -DCOSMA_WITH_BENCHMARKS=OFF \
     -DFETCHCONTENT_FULLY_DISCONNECTED=ON \
     -DFETCHCONTENT_SOURCE_DIR_COSTA="$SRC/COSTA" \

@@ -54,7 +54,10 @@ int main(int argc, char **argv)
             int row = (i / block * size + rank) * block + i % block;
             if (row >= j) {
                 double expected = row == j ? j + 1. : 0.;
-                if (fabs(a[j * local_rows + i] - expected) > 1e-12 ||
+                if (!isfinite(a[j * local_rows + i]) ||
+                    !isfinite(creal(z[j * local_rows + i])) ||
+                    !isfinite(cimag(z[j * local_rows + i])) ||
+                    fabs(a[j * local_rows + i] - expected) > 1e-12 ||
                     cabs(z[j * local_rows + i] - expected) > 1e-12) failed = 1;
             }
         }
