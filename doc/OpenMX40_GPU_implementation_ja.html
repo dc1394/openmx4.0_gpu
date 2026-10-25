@@ -2253,6 +2253,7 @@ input_int("scf.Gpu.Num", &amp;SCF_Gpu_Num, 30);</code></pre>
 <tr><td><code>OPENMX_GRID_FP32_UNTIL</code> / <code>_RESTART</code></td><td>1e-5 / 1</td><td>実験的な FP32 格子段（<code>OPENMX_GRID_FP32=1</code>）: この NormRD より大きい間は素の FP32 カーネルを使う。<code>_RESTART</code> は FP64 への切り替え時に混合履歴をやり直すか。</td></tr>
 <tr><td colspan="3" style="background:#f0f4fa;"><b>C++ コアのホスト格子カーネル（openmx_grid_assembly.c）</b></td></tr>
 <tr><td><code>OPENMX_SETHAM_SIMD</code> / <code>OPENMX_DENSITY_GRID_COL_SIMD</code> / <code>_NC_SIMD</code></td><td>auto</td><td>C++ コアのホスト格子カーネル（ハミルトニアン行列要素、共線・非共線の密度）の SIMD バックエンド: <code>scalar</code>、<code>avx2</code>、未設定 = CPU が対応する最も広いもの（AVX-512、AVX2、scalar）。</td></tr>
+<tr><td><code>OPENMX_HOST_SIMD</code></td><td>auto</td><td>CPU フォールバックが使うコアのホストカーネル群（UCell_Box の重なり格子探索、Set_ProExpn_VNA の積分、Force3/Force4B/dHNL の縮約、中性原子 2 中心エネルギー被積分点とバンド密度行列ブロック、軌道の格子値）の SIMD バックエンド: 未設定/<code>auto</code> = プロセッサが実行できる最も広い ISA（AVX-512、AVX2、NEON、scalar）、<code>scalar</code>、<code>avx2</code>、<code>avx512</code>、<code>neon</code> = 使えるときその ISA、<code>legacy</code>（<code>off</code>/<code>0</code>）= 元の C ループ。格子カーネルは専用ノブが未設定ならこれに従う（そこでは legacy = scalar）。</td></tr>
 <tr><td><code>OPENMX_SETHAM_SIMD_TRACE</code> / <code>OPENMX_DENSITY_GRID_COL_SIMD_TRACE</code> / <code>_NC_SIMD_TRACE</code></td><td>0</td><td>それぞれのカーネルで選ばれた SIMD バックエンドを rank 0 が一度出力する。</td></tr>
 <tr><td colspan="3" style="background:#f0f4fa;"><b>その他の行列要素構築</b></td></tr>
 <tr><td><code>OPENMX_SETNL_OPENACC</code></td><td>1</td><td>Set_Nonlocal の GPU バッチ(0 で CPU パス)</td></tr>

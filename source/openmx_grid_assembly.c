@@ -1,5 +1,6 @@
 #include "openmx_grid_assembly.h"
 #include "openmx_env.h"
+#include "openmx_host_simd.h"
 #include <limits.h>
 #include <omp.h>
 #include <stdio.h>
@@ -87,7 +88,7 @@ void OpenMX_Grid_Density_CPU(OpenMXGridWorkspace *grid,const OpenMXAtomicViews *
   char error[256];
   OpenMXGridAtom *atoms;
   OpenMXGridPair *pairs;
-  const int mode=openmx_core_grid_simd(openmx_env_at(SpinP_switch==3?OPENMX_ENV_DENSITY_GRID_NC_SIMD:OPENMX_ENV_DENSITY_GRID_COL_SIMD));
+  const int mode=OpenMX_HostSimdGridMode(SpinP_switch==3?OPENMX_ENV_DENSITY_GRID_NC_SIMD:OPENMX_ENV_DENSITY_GRID_COL_SIMD);
   MPI_Comm_rank(mpi_comm_level1,&rank);
   for (a=1;a<=Matomnum;a++){
     int g=M2G[a];
@@ -130,7 +131,7 @@ void OpenMX_Grid_Hamiltonian_CPU(OpenMXGridWorkspace *grid,int Cnt_kind,const Op
   OpenMXGridPair *pairs;
   double *****matrix;
   const int *orbitals=Cnt_kind==0?Spe_Total_NO:Spe_Total_CNO;
-  const int mode=openmx_core_grid_simd(openmx_env_at(OPENMX_ENV_SETHAM_SIMD));
+  const int mode=OpenMX_HostSimdGridMode(OPENMX_ENV_SETHAM_SIMD);
   grid_check(Cnt_kind==0 || Cnt_kind==1,"Hamiltonian Cnt_kind must be 0 or 1");
   grid_check(electronic!=NULL,"missing electronic matrix views");
   matrix=Cnt_kind==0?electronic->H:electronic->CntH;

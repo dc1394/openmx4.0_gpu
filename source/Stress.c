@@ -15,6 +15,7 @@
 #include <time.h>
 #include "openmx_common.h"
 #include "openmx_stress_workspace.h"
+#include "openmx_host_simd.h"
 #include "openmx_neutral_atom.h"
 #include "openmx_core_neutral_grid.h"
 #include "openmx_core_neutral_grid_metadata.h"

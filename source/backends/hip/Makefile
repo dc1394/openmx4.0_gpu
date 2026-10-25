@@ -409,7 +409,7 @@ $(FFTW3_USERS): | $(FFTW3_LIB)
 MGPU_C_OBJECTS = openmx_cluster_capacity.o openmx_dense_cpu.o \
  openmx_gpu_bilinear.o openmx_gpu_collective.o openmx_gpu_dm_collective.o \
  openmx_gpu_task.o openmx_gpu_vector.o openmx_gpu_workers.o openmx_gpu_error.o openmx_host_memory.o \
- openmx_env.o
+ openmx_env.o openmx_host_simd.o
 MGPU_HIP_OBJECTS = openmx_gpu_dm.o openmx_gpu_transform.o \
  openmx_mgpu_gemm.o openmx_mgpu_runtime.o
 OBJS += $(MGPU_C_OBJECTS) $(MGPU_HIP_OBJECTS) openmx_gpu_views.o \

@@ -244,6 +244,7 @@
     X(GS2_GPU_VERBOSE, "OPENMX_GS2_GPU_VERBOSE", "int", "global", "0", "elpa_cosma_bridge.c", "") \
     X(GS2_HOST_RESERVE_MB, "OPENMX_GS2_HOST_RESERVE_MB", "mib", "global", "", "elpa_cosma_bridge.c", "gpusolver2 bridge (explicit or as the capacity fallback): host memory that must stay free on every node after COSMA allocates the buffers it keeps...") \
     X(GS2_PROFILE, "OPENMX_GS2_PROFILE", "int", "global", "0", "elpa_cosma_bridge.c", "") \
+    X(HOST_SIMD, "OPENMX_HOST_SIMD", "string", "global", "", "openmx_host_simd.c", "") \
     X(KRYLOV_GEMMUL8, "OPENMX_KRYLOV_GEMMUL8", "flag", "global", "", "backends/hip/src/Krylov.c", "Enable Krylov GEMMul8 products, subject to the input-file GEMMul8 veto.") \
     X(KRYLOV_GPU, "OPENMX_KRYLOV_GPU", "flag", "global", "", "backends/hip/src/Krylov.c", "Enable Krylov GPU dense operations; automatic disables them on oversubscribed devices.") \
     X(KRYLOV_GPU_DGEMM_MIN_FLOPS, "OPENMX_KRYLOV_GPU_DGEMM_MIN_FLOPS", "double", "global", "5×10⁷", "Krylov.c,backends/hip/src/Krylov.c", "default 5×10⁷: Minimum m·n·k for dispatching a GEMM to the GPU") \

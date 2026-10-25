@@ -3570,3 +3570,196 @@ MI300A・NVIDIA実機、多GPU/多ノード、全L/L2/L3は今回の範囲に含
 変更前ホストSIMD: 008e9e605e5ec0bf98b2fdccdb880dca1c78f5a278019e1ef5749a43dbc39fd3
 変更後ホストSIMD: 6c562d45b614cad8c5adcf095559ccdf89e738c6e4b2305c7cc4a9643b2608df
 ```
+
+## ホストカーネル群の Kokkos::simd 化 (2026-10-25)
+
+GPU が使えない経路（デバイス未検出、デバイスメモリ不足による容量復旧、`OPENMX_GPU=0`、CPU ビルド）で
+実行されるホスト側の数値カーネルを、C++ Core の私的ホスト SIMD ライブラリ（`libopenmx_host_simd`、
+Kokkos 5.2.2 の `basic_simd` を明示 ABI で使用）へ「カーネル群（family）」単位で移しました。
+格子積分（`grid` 群、2026-10-24）と同じ仕組みで、1 ソースを scalar / AVX2 / AVX-512 / NEON の各
+ISA で 1 回ずつコンパイルし、CPU と OS が実行できる最も広いものを実行時に選びます。
+仕組みは [バックエンドの説明](GPU_BACKENDS.md#ホストカーネル群kernel-families) を参照してください。
+方針は環境変数 `OPENMX_HOST_SIMD`（未設定 = 自動、`scalar` / `avx2` / `avx512` / `neon`、
+`legacy` = 元の C ループ）で切り替えられ、A/B 比較はこの 1 変数で行えます。
+
+### 比較元の内訳（sidia333、18 MPI × 1 OpenMP、`OPENMX_GPU=0`、3 SCF）
+
+i9-10980XE（AVX-512）で GPU を使わずに実行した 1 MD ステップの内訳です（合計 172.0 s、
+`perf record` は rank 0 と 9）。対角化は ELPA2 ライブラリで、本件の対象外です。
+
+| 処理 | 時間 (s) | ホスト側の主な関数（rank 0 の perf 割合） |
+| --- | ---: | --- |
+| Diagonalization (ELPA2) | 68.2 | zgemm / hh_trafo（ライブラリ） |
+| truncation | 32.2 | `OLG_capacity_kernel` 14.5%（重なり格子探索をホストで逐次実行） |
+| Set_ProExpn_VNA | 26.5 | DSVNA 4.8%、HVNA_Pair 3.5%、VNA23 3.0%、Gaunt 1.7% |
+| Force | 17.5 | f4b-case1-r 7.2 s、f4b-case2 4.7 s、force#3 3.4 s、HNL 1.0 s |
+| Total_Energy | 10.4 | VH_AtomF 2.0%、EH0_TwoCenter 1.9%、Dr_VH_AtomF 0.5% |
+| Set_Density_Grid (3 SCF) | 5.6 | `grid` 群（既に SIMD） |
+| Set_Hamiltonian | 4.1 | `grid` 群（既に SIMD） |
+| Set_Orbitals_Grid | 3.4 | `SOG_capacity_kernel` 1.2% |
+| Band_DFT_Col の密度行列集計 | （対角化に含む） | `Band_DFT_Col_owned` 3.2% |
+
+### 重なり格子探索（`olg` 群）
+
+`UCell_Box` の「2 軌道の重なり格子を見つける」処理は、GPU 版カーネルが近傍格子点ごとに
+中心原子リストの左端二分探索を行います。ホストではこれが逐次実行され、1 問い合わせ約 136 ns、
+rank あたり約 1.8 億問い合わせでした。両リストが格子番号で昇順なので、ホスト版は
+`wide_lanes`（AVX-512 で 16）問い合わせを 1 ブロックとして、直前ブロックの答えから始まる
+窓の中で「自分より小さい中心要素の数」を数える併合（merge）に置き換えました（`O(nc+nh)`）。
+結果は整数のみで、重複格子番号の歩行や問い合わせが昇順でないときの後退（問い合わせ単位の
+二分探索へ戻る）を含めて GPU 版と同一です。`core/tests/test_host_olg.cpp` は乱数リスト（重複あり、
+シャッフル、端の値、周期像の範囲外）で全 ISA を総当たり参照と比較します。
+
+単体ベンチマーク（`openmx_olg_benchmark 180000 20`、1 原子球 18 万点、20 対、CPU 1 コア）:
+
+| 探索 | ns / 問い合わせ | 倍率 |
+| --- | ---: | ---: |
+| 従来の二分探索（GPU カーネルのホスト逐次実行） | 50.6 | 1 |
+| 併合 scalar | 6.56 | 7.7 |
+| 併合 AVX2 | 7.48 | 6.8 |
+| 併合 AVX-512 | 6.46 | 7.8 |
+
+SIMD 幅による差は小さく、高速化の大部分は併合アルゴリズムによるものです（この表の二分探索は
+L2 に収まる 1 対の繰り返しで、実計算の 136 ns より速い値です）。近傍リストを `UCell_Box` が持つ
+2 配列と対の 1 つのセルシフトのまま読む入口（`openmx_core_olg_intersect_lists`、問い合わせレコードを
+作らない）は scalar 5.47 ns、AVX-512 5.69 ns です。実計算では、全 rank に使える GPU がないとき
+65536 問い合わせごとに 2 回の all-reduce を行う集団タスクループを省き、原子ごとの対を OpenMP で
+分けて局所に処理します（`UCellBox_OLG_Host`）。
+
+実計算（上と同じ sidia333、`OPENMX_HOST_SIMD=legacy` → 既定）:
+
+| 項目 | legacy | 併合（集団ループのまま） | 併合 + 局所経路 + 配列入口 |
+| --- | ---: | ---: | ---: |
+| truncation (s / MD ステップ) | 29.85 | 7.79 | 4.23 |
+
+最初の 2 列は他の群のビルドと重なった測定で、最後の列は全群を入れた最終バイナリの測定（下の合計表）
+です。`olg` 群だけを入れた段階で、両実行の `.ene` / `.md` / `.xyz` / `.cif` と `.out` の全エネルギー・力は
+bit 単位で一致しました（整数のみの処理です）。
+
+### 射影子展開（`vna` 群）
+
+`Set_ProExpn_VNA` の CPU カーネル（`openmx_dsvna_cpu.h` / `openmx_vna_cpu.h` / `openmx_hvna_cpu.h`）を
+4 つの Core カーネルに置き換えました。`openmx_core_vna_bessel` は `Spherical_Bessel2` を k 点を車線に
+まとめて評価します（`nmax = lmax+3x+20` の車線ごとの再帰長と 1e250 の再正規化をマスクで再現、
+`[order][point]` と転置 `[point][order]` の両方を書く）。`openmx_core_vna_contract` は DS_VNA の
+Gauss–Legendre 縮約を射影子行を車線に（射影子表は元素種ごとに [point][projector] へ転置、
+4 径関数 × 2 行ベクトルのレジスタブロック）、`openmx_core_vna_quadrature` は HVNA23 の和を LL を車線に
+（結合順 `((((0.5Dk)·tmp0)·tmp1)·w)·k)·k` を保持）、`openmx_core_vna_hvna_block` はエネルギー重み付き
+射影子縮約を左または右ブロックの転置で（fp32 / fp64 の積の意味を保持）。
+C 側では `Gaunt(L0,M0,L1,M1,LL,M0−M1)` の表を呼び出しごとに実関数から作り（bit 一致、m ループの
+約 10⁴ 回/対の呼び出しを置換）、HVNA23 では `ComplexSH` を (LL,m) ごとに 1 回へ巻き上げ、
+`pow(−1,|m|)` を ±1 にしました。4 カーネルとも元ループの転写（`Spherical_Bessel2` は行単位の写し）
+と bit 一致です（CTest `core-host-vna-{contract,bessel,quadrature,hvna,invalid}`）。
+
+単体ベンチマーク（`openmx_vna_benchmark`、sidia333 の寸法: 900 k 点、射影子行 108、13 軌道、
+成分 972、他ビルドと同時で絶対時間は約 2 倍揺れる。倍率は転写比、AVX-512 / AVX2 / scalar）:
+
+| カーネル | AVX-512 | AVX2 | scalar |
+| --- | ---: | ---: | ---: |
+| Bessel lmax 16 | 4.8–12.8倍 | 1.9–5.9倍 | 0.9–3.3倍 |
+| Bessel lmax 4 | 4.8–5.8倍 | 1.9–2.6倍 | 0.9–1.4倍 |
+| DS_VNA 縮約 | 5.3–6.6倍 | 2.9–3.5倍 | 1.5–1.7倍 |
+| HVNA23 求積 | 1.3–1.7倍 | – | – |
+| HVNA ブロック fp32 | 4.5–6.5倍 | 2.7–4.8倍 | 1.2–1.9倍 |
+| HVNA ブロック fp64 | 4.2–6.2倍 | 3.4–4.1倍 | 1.5–1.8倍 |
+
+DS_VNA の m ループの複素累積と複素→実変換は（Gaunt 表の後は熱くないため）スカラーのままです。
+
+### 力の縮約（`force` 群）
+
+CPU モードの `Force4B` は `OPENMX_FORCE4B_FUSED=1`（既定）の融合トレース
+`Force4B_case1_trace_fused_rows` / `Force4B_case2_trace_fused` を通ります。1 射影子ブロックの
+H_c[m][n] = Σ_l d_c[m][l]·q0[n][l]（case 1）、−Σ_l (d_c·q0 + h0·q_c)（case 2）を、右被演算子を
+[l][n] に転置して列 n を車線とする Core カーネル（`openmx_core_force_vna_block`）で求め、
+Trace(CDM0·H) は従来の m/n 順のままです。`float` 積の丸め（`scf.fp32.enable`）も再現します。
+`Force3` の第 2 部（dChi0 × 密度行列 × Vpot の格子縮約）は密度行列を対ごとに転置し、
+行 i を車線に（`openmx_core_force_grid_pair`）、`dHNL` の共線種ブロックは
+`openmx_core_force_nl_block` に置き換えました。いずれも元ループの転写と bit 一致です
+（CTest `core-host-force-{vna,grid,nl,invalid}`）。
+
+単体ベンチマーク（`openmx_force_benchmark`、13×13、射影子 972 = (2+6+1)²·12、他ビルドと同時で ±30%）:
+
+| カーネル | scalar | AVX2 | AVX-512 |
+| --- | ---: | ---: | ---: |
+| VNA ブロック terms=1（case 1） | 1.0–1.8倍 | 2.4–4.5倍 | 3.8–7.5倍 |
+| VNA ブロック terms=2（case 2） | 約1.0倍 | 2.3–2.8倍 | 3.2–3.6倍 |
+| Force3 対（2 万点） | 約1.1倍 | 2.4–2.5倍 | 1.6–1.7倍 |
+| 非局所ブロック（18 成分） | 0.8倍 | 1.5倍 | 1.6倍 |
+
+倍率は g++ −O2 の転写に対するものです。`Force3` の第 1 部（点ごとの `Get_dOrbitals`）、
+相対論的 / 非共線の `dHNL`、`cached_q` を使う turns 経路は従来のままです。
+
+### 中性原子 2 中心積分とバンド密度行列（`energy` 群）
+
+`EH0_TwoCenter` / `EH0_TwoCenter_at_Cutoff`（`OpenMX_Neutral_Pair`、Stress.c の呼び出しも同じヘッダー）
+の被積分点 `wt·VH_AtomF(...)·rho0` と微分項を格子点を車線に評価し
+（`VH_AtomF` / `Dr_VH_AtomF` の 3 分岐を全車線で計算して選択、Hartree 表はマスク付き gather）、
+点の和は従来の順序で逐次に取ります（`openmx_core_energy_neutral_points`）。
+`Band_DFT_Col` の密な密度行列集計（`Band_DFT_Col_owned` 内の CPU ループと非所有者経路の関数）は
+近傍ブロックの固有ベクトルを [band][j] に転置し、列 j を車線、バンドを逐次に
+（`openmx_core_energy_band_block`）。両方とも転写と bit 一致（CTest `core-host-energy-{neutral,band,invalid}`）。
+`Calc_EXC_EH1`（0.9%）は点ごとの `log` / `pow` が支配的で見送りました。
+
+単体ベンチマーク（`openmx_energy_benchmark 4000 200 440 2000`、他ビルドと同時）:
+
+| カーネル | 従来 | scalar | AVX2 | AVX-512 |
+| --- | ---: | ---: | ---: | ---: |
+| 中性原子の対（mesh 240）, ns/点 | 41–65 | 36 | 39 | 27 |
+| バンドブロック 13×13×440, ns/(i,j,k) | 1.19–1.30 | 1.29 | 0.60 | 0.30 |
+
+中性原子の対は車線ごとのスカラー `log`（Kokkos::simd は超越関数を車線ごとに評価）が上限です。
+
+### 軌道の格子値（`orbitals` 群）
+
+`Set_Orbitals_Grid` の GPU カーネルのホスト実行（`SOG_capacity_kernel`、CPU モードで実際に走る経路）を、
+`SOG_point_eval` を同一元素種の連続格子点を車線として転写した Core カーネル
+（`openmx_core_orbitals_points`）に置き換えました。方向余弦、径方向スプライン（網目区間は 2048 分割の
+半径表から種を取り、元の 2 つの補正ループをマスク付き反復で収束）、rv[0] 内側の 3 次外挿、L0≤3 の
+実球面調和関数を全車線で評価して選択し、転写と bit 一致です
+（CTest `core-host-orbitals-{equivalence,runs,edges,invalid,legacy-difference}`）。
+nvc −O3 で翻訳した元関数との差は 68.8 万個中 51 個の float が 1 ulp（nvc の FMA 縮約）でした。
+
+単体ベンチマーク（65,536 点、13 軌道、500 点対数網目、他ビルドと同時）:
+
+| 経路 | ns/点 | 倍率 |
+| --- | ---: | ---: |
+| ホストの `SOG_point_eval` | 124–153 | 1 |
+| Core scalar | 101 | 1.5 |
+| Core AVX2 | 106 | 1.4 |
+| Core AVX-512 | 63.7 | 2.4 |
+
+AVX-512 の残りは径関数ごとの gather とマスク付き scatter、ベクトル除算が占めます。
+
+### 実計算の合計（sidia333、18 MPI × 1 OpenMP、`OPENMX_GPU=0`、3 SCF）
+
+全 5 群を入れた同一バイナリで `OPENMX_HOST_SIMD=legacy` と既定（AVX-512）を交互に測定しました
+（他の計算・ビルドとは重ねていません）。1 MD ステップあたりの秒数で、最終列が `olg` の配列入口を
+含む最終バイナリ（`OPENMX_FORCE_PROFILE=1` 付き）、括弧内はその前のバイナリでの 2 回の繰り返しです。
+`legacy` では格子カーネル（Set_Hamiltonian / Set_Density_Grid）も scalar になるため、その 2 行は
+比較元（AVX-512、4.1 s / 5.6 s）との差ではなく scalar との差です。
+
+| 段階 | legacy | 既定 AVX-512 | 短縮 |
+| --- | ---: | ---: | ---: |
+| truncation | 29.55 (29.59 / 29.75) | 4.23 (7.13 / 7.02) | −25.3 s |
+| Set_ProExpn_VNA | 27.00 (26.79 / 26.94) | 7.94 (8.04 / 7.86) | −19.1 s |
+| Force | 17.71 (17.46 / 17.56) | 14.83 (14.67 / 14.84) | −2.9 s |
+| Total_Energy | 8.51 (8.56 / 8.44) | 6.99 (7.19 / 7.05) | −1.5 s |
+| Set_Orbitals_Grid | 3.40 (3.42 / 3.43) | 2.65 (2.66 / 2.64) | −0.8 s |
+| Diagonalization（密度行列集計を含む） | 68.13 (68.15 / 68.34) | 65.73 (65.20 / 65.40) | −2.4 s |
+| Set_Density_Grid（3 SCF、scalar → AVX-512） | 10.73 (10.72 / 10.78) | 5.52 (5.50 / 5.56) | − |
+| Set_Hamiltonian（scalar → AVX-512） | 6.02 (6.05 / 5.99) | 4.04 (4.06 / 4.12) | − |
+| Total Computational Time | 175.1 (174.7 / 175.3) | 115.6 (118.2 / 118.2) | −59.5 s |
+| wall（mpirun 含む） | 178.6 (178.2 / 178.5) | 118.9 (121.5 / 121.5) | −59.7 s |
+
+力の内訳（`[Force profile]`、legacy → 既定）: f4b-case1-r 7.21 → 5.68 s、f4b-case2 4.83 → 4.34 s、
+force#3 3.43 → 3.24 s、force-HNL 1.05 → 0.57 s、f4b-case1-l 0.69 → 0.52 s。`Force3` の第 1 部
+（点ごとの `Get_dOrbitals`）と融合トレースの Trace(CDM0·H) 部分はスカラーのままで、力の残りを占めます。
+
+比較元（2026-10-25 朝、同じ入力、GPU 側 Kokkos SIMD 格子カーネル込み）の 172.0 s に対しては 115.6 s（0.67 倍）です。
+Utot は legacy −892.691813153392 / 既定 −892.691813153394 Hartree（2×10⁻¹² Hartree、nvc の FMA 縮約と
+`libnvcpumath` を使う元ループと `-ffp-contract=off` の Core カーネルの丸めの差）、`.md` の力は
+出力桁で一致しました。`openmx -runtest`（14 入力、18 MPI）は GPU モード、CPU モード（`OPENMX_GPU=0`）、
+CPU + `OPENMX_HOST_SIMD=legacy` の 3 通りで参照との差が従来どおりの桁（Utot 10⁻¹⁰ 台以下、
+`work/runtest.result.{gpu,cpu,cpu_legacy}_hostsimd_20261025`）でした。
+残る大きなホスト項目は対角化（ELPA2）、`Force3` 第 1 部、`Set_ProExpn_VNA` の複素累積、
+truncation の格子リスト構築と MPI（約 4 s）、`Calc_EXC_EH1` です。

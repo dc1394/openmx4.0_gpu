@@ -21,6 +21,7 @@
 #include "openmx_env.h"
 #include "openmx_core_vna_matrix.h"
 #include "openmx_energy_workspace.h"
+#include "openmx_host_simd.h"
 #include "openmx_neutral_atom.h"
 #include "openmx_core_neutral_grid.h"
 #include "openmx_core_neutral_grid_metadata.h"

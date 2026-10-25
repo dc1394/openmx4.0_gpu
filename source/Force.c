@@ -25,6 +25,8 @@
 #include "openmx_gpu_bilinear.h"
 #include "openmx_host_memory.h"
 #include "openmx_precision.h"
+#include "openmx_host_simd.h"
+#include "openmx_core_force_simd.h"
 #include "set_cuda_default_device_from_local_rank.h"
 #include <math.h>
 #include <omp.h>
@@ -1717,14 +1719,59 @@ static int Force3_capacity_atom(int mc,int rank,double ***derivative,double **po
     free(c.offset);free(c.neighbor);free(c.point);return ok;
 }
 
-static void Force3_capacity_cpu(int Mc_AN,int myid,double ***dChi0,double **Vpot_grid, const OpenMXElectronicViews *electronic)
+/* Part-2 contraction of one (Mc_AN,h_AN) pair through the Core's host
+   kernel (OPENMX_HOST_SIMD): lanes across the density-matrix rows, the
+   legacy point/spin/row order, sums accumulated in place. 0 when refused. */
+static int Force3_simd_pair(int mode, void *scratch, size_t bytes, int myid, int Mc_AN, int h_AN,
+    int Mh_AN, int Gh_AN, int NO0, int NO1, double ******DM, double ***dChi0, double **Vpot_grid,
+    double *sumx, double *sumy, double *sumz)
+{
+    OpenMXForceGridPair pair;
+    double sums[3];
+    int spin;
+
+    if (mode == OPENMX_HOST_SIMD_LEGACY || scratch == NULL || NumOLG[Mc_AN][h_AN] <= 0) return 0;
+    memset(&pair, 0, sizeof(pair));
+    pair.rows = NO0;
+    pair.columns = NO1;
+    pair.spins = SpinP_switch + 1;
+    pair.points = NumOLG[Mc_AN][h_AN];
+    for (spin = 0; spin <= SpinP_switch; spin++) pair.density[spin] = (const double *const *)DM[0][spin][Mc_AN][h_AN];
+    pair.center = GListTAtoms1[Mc_AN][h_AN];
+    if (G2ID[Gh_AN] == myid) {
+        pair.neighbor = GListTAtoms2[Mc_AN][h_AN];
+        pair.neighbor_rows = (const float *const *)Orbs_Grid[Mh_AN];
+    } else {
+        pair.neighbor = NULL;
+        pair.neighbor_rows = (const float *const *)Orbs_Grid_FNAN[Mc_AN][h_AN];
+    }
+    pair.derivative = (const double *const *const *)dChi0;
+    pair.potential = (const double *const *)Vpot_grid;
+    sums[0] = *sumx;
+    sums[1] = *sumy;
+    sums[2] = *sumz;
+    if (!openmx_core_force_grid_pair(&pair, sums, scratch, bytes, mode)) return 0;
+    *sumx = sums[0];
+    *sumy = sums[1];
+    *sumz = sums[2];
+    return 1;
+}
+
+static void Force3_capacity_cpu(int Mc_AN,int myid,double ***dChi0,double **Vpot_grid, const OpenMXElectronicViews *electronic,
+    OpenMXSolverInvocation *scratch)
 {
   double ******DM=electronic->DM;
 
     int Gc_AN=M2G[Mc_AN],NO0=Spe_Total_CNO[WhatSpecies[Gc_AN]];
     double sumx=0,sumy=0,sumz=0;
             int h_AN;
-#pragma omp parallel for schedule(static) reduction(+:sumx,sumy,sumz)
+#pragma omp parallel reduction(+:sumx,sumy,sumz)
+            {
+            const int f3_simd_mode = OpenMX_HostSimdMode();
+            const size_t f3_simd_bytes = f3_simd_mode == OPENMX_HOST_SIMD_LEGACY ? 0
+                : openmx_core_force_grid_scratch(List_YOUSO[7], List_YOUSO[7], SpinP_switch + 1);
+            void *f3_simd = f3_simd_bytes ? OpenMX_Solver_Real(scratch, "Force3:simd", (f3_simd_bytes + sizeof(double) - 1) / sizeof(double)) : NULL;
+#pragma omp for schedule(static)
             for (h_AN = 0; h_AN <= FNAN[Gc_AN]; h_AN++) {
                 double orbs1[List_YOUSO[7]];
 
@@ -1732,6 +1779,9 @@ static void Force3_capacity_cpu(int Mc_AN,int myid,double ***dChi0,double **Vpot
                 int Mh_AN = F_G2M[Gh_AN];
                 int Hwan = WhatSpecies[Gh_AN];
                 int NO1 = Spe_Total_CNO[Hwan];
+
+                if (Force3_simd_pair(f3_simd_mode, f3_simd, f3_simd_bytes, myid, Mc_AN, h_AN, Mh_AN, Gh_AN, NO0, NO1,
+                        DM, dChi0, Vpot_grid, &sumx, &sumy, &sumz)) continue;
 
                 int Nog;
 
@@ -1789,15 +1839,88 @@ static void Force3_capacity_cpu(int Mc_AN,int myid,double ***dChi0,double **Vpot
                 } /* Nog */
 
             } /* h_AN, here omp barrier is called implicitly because of end of for loop  */
+            } /* #pragma omp parallel */
 
     Gxyz[Gc_AN][17]+=sumx*GridVol;Gxyz[Gc_AN][18]+=sumy*GridVol;Gxyz[Gc_AN][19]+=sumz*GridVol;
 }
 
 /* Keep the established float tables.  The precision switch controls whether
    their products round in FP32 or promote both operands before multiplying. */
+/* Host SIMD (OPENMX_HOST_SIMD) evaluation of the fused Force4B traces: the
+   Core's force kernel forms H_c[m][n] of one projector block with the legacy
+   per-element arithmetic (lanes across n), and the trace keeps the legacy
+   m/n order. One instance per thread; legacy mode leaves scratch NULL. */
+typedef struct { int mode; void *scratch; size_t bytes; double *block; size_t stride; } Force4BSimd;
+
+static void Force4B_simd_prepare(OpenMXSolverInvocation *scratch, Force4BSimd *simd)
+{
+    const int num_projectors = (List_YOUSO[35] + 1) * (List_YOUSO[35] + 1) * List_YOUSO[34];
+    simd->mode = OpenMX_HostSimdMode();
+    simd->bytes = 0;
+    simd->scratch = NULL;
+    simd->block = NULL;
+    simd->stride = (size_t)List_YOUSO[7];
+    if (simd->mode == OPENMX_HOST_SIMD_LEGACY) return;
+    simd->bytes = openmx_core_force_vna_scratch(List_YOUSO[7], num_projectors, 2);
+    simd->scratch = simd->bytes ? OpenMX_Solver_Real(scratch, "Force4B:simd", (simd->bytes + sizeof(double) - 1) / sizeof(double)) : NULL;
+    simd->block = OpenMX_Solver_Real(scratch, "Force4B:simd-block", 3 * simd->stride * simd->stride);
+}
+
+/* H_c[m][n] of one block into simd->block; 0 when the kernel refuses the
+   request (the caller keeps its loop, with the same result). */
+static int Force4B_simd_block(const Force4BSimd *simd, int terms, int fp32, int rows, int columns, int projectors,
+    Type_DS_VNA **dx, Type_DS_VNA **dy, Type_DS_VNA **dz, Type_DS_VNA **row_value,
+    Type_DS_VNA **value, Type_DS_VNA **cx, Type_DS_VNA **cy, Type_DS_VNA **cz)
+{
+    OpenMXForceVnaBlock b;
+    int c;
+
+    if (simd == NULL || simd->mode == OPENMX_HOST_SIMD_LEGACY || simd->block == NULL) return 0;
+    memset(&b, 0, sizeof(b));
+    b.rows = rows;
+    b.columns = columns;
+    b.projectors = projectors;
+    b.terms = terms;
+    b.fp32 = fp32;
+    b.derivative[0] = (const float *const *)dx;
+    b.derivative[1] = (const float *const *)dy;
+    b.derivative[2] = (const float *const *)dz;
+    b.row_value = (const float *const *)row_value;
+    b.value = (const float *const *)value;
+    b.column_derivative[0] = (const float *const *)cx;
+    b.column_derivative[1] = (const float *const *)cy;
+    b.column_derivative[2] = (const float *const *)cz;
+    for (c = 0; c < 3; c++) b.output[c] = simd->block + (size_t)c * simd->stride * simd->stride;
+    b.output_stride = simd->stride;
+    return openmx_core_force_vna_block(&b, simd->scratch, simd->bytes, simd->mode);
+}
+
+/* Trace(CDM0*H) over the block in the legacy order (m outer, n inner). */
+static void Force4B_simd_trace(const Force4BSimd *simd, int rows, int columns, double pref,
+    double **cdm0, double **cdm1, double *fx, double *fy, double *fz)
+{
+    const size_t plane = simd->stride * simd->stride;
+    int m, n;
+
+    for (m = 0; m < rows; m++) {
+        const double *hx = simd->block + (size_t)m * simd->stride;
+        const double *hy = hx + plane;
+        const double *hz = hy + plane;
+        const double *cdm0_row = cdm0[m];
+        const double *cdm1_row = cdm1 == NULL ? NULL : cdm1[m];
+        for (n = 0; n < columns; n++) {
+            const double cdm = cdm1_row == NULL ? cdm0_row[n] : cdm0_row[n] + cdm1_row[n];
+            const double scale = pref * cdm;
+            *fx += scale * hx[n];
+            *fy += scale * hy[n];
+            *fz += scale * hz[n];
+        }
+    }
+}
+
 static void Force4B_case2_trace_fused(int Mc_AN, int Gc_AN,
     int h_AN, int q_AN, double***** CDM0, Type_DS_VNA***** DS_VNA,
-    double* dEx, double* dEy, double* dEz)
+    double* dEx, double* dEy, double* dEz, const Force4BSimd *simd)
 {
     const int fp32 = openmx_fp32_enabled();
     int m, n, l;
@@ -1817,6 +1940,16 @@ static void Force4B_case2_trace_fused(int Mc_AN, int Gc_AN,
         : ((SpinP_switch == 0) ? 4.0 : 2.0);
     const double rcut = Spe_Atom_Cut1[Hwan] + Spe_Atom_Cut1[Qwan];
     const double scale0 = pref * dampingF(rcut, Dis[Gh_AN][kl]);
+
+    if (Force4B_simd_block(simd, 2, fp32, ian, jan, num_projectors,
+            DS_VNA[1][Matomnum + 1][kl1], DS_VNA[2][Matomnum + 1][kl1], DS_VNA[3][Matomnum + 1][kl1],
+            DS_VNA[0][Matomnum + 1][kl1],
+            DS_VNA[0][Matomnum + 1][kl2], DS_VNA[1][Matomnum + 1][kl2], DS_VNA[2][Matomnum + 1][kl2],
+            DS_VNA[3][Matomnum + 1][kl2])) {
+        Force4B_simd_trace(simd, ian, jan, scale0, CDM0[0][Mh_AN][kl],
+            SpinP_switch == 0 ? NULL : CDM0[1][Mh_AN][kl], dEx, dEy, dEz);
+        return;
+    }
 
     for (m = 0; m < ian; m++) {
         const Type_DS_VNA* restrict h0 = DS_VNA[0][Matomnum + 1][kl1][m];
@@ -1861,7 +1994,7 @@ static void Force4B_case2_trace_fused(int Mc_AN, int Gc_AN,
 static void Force4B_case1_trace_fused_rows(const OpenMXVnaMatrixViews *vna, int Mc_AN, int Gc_AN, int q_AN,
     double***** CDM0, Type_DS_VNA***** DS_VNA,
     const Type_DS_VNA* cached_q,
-    double* dEx, double* dEy, double* dEz)
+    double* dEx, double* dEy, double* dEz, const Force4BSimd *simd)
 {
     const int fp32 = openmx_fp32_enabled();
     int k, m, n, l;
@@ -1887,6 +2020,13 @@ static void Force4B_case1_trace_fused_rows(const OpenMXVnaMatrixViews *vna, int 
     for (k = 0; k <= FNAN[Gc_AN]; k++) {
         const int qk_kl = RMI1[Mc_AN][q_AN][k];
         if (qk_kl >= 0) {
+            if (cached_q == NULL && Force4B_simd_block(simd, 1, fp32, ian, jan, num_projectors,
+                    DS_VNA[1][Mc_AN][k], DS_VNA[2][Mc_AN][k], DS_VNA[3][Mc_AN][k], NULL,
+                    DS_VNA[0][q_storage][qk_kl], NULL, NULL, NULL)) {
+                Force4B_simd_trace(simd, ian, jan, pref, CDM0[0][center_local][cdm_kl],
+                    SpinP_switch == 0 ? NULL : CDM0[1][center_local][cdm_kl], &force_x, &force_y, &force_z);
+                continue;
+            }
             for (m = 0; m < ian; m++) {
                 double* cdm0_row = CDM0[0][center_local][cdm_kl][m];
                 double* cdm1_row = (SpinP_switch == 0) ? NULL : CDM0[1][center_local][cdm_kl][m];
@@ -1977,10 +2117,10 @@ static void Force4B_case1_trace_fused_rows(const OpenMXVnaMatrixViews *vna, int 
 
 static void Force4B_case1_trace_fused(const OpenMXVnaMatrixViews *vna, int Mc_AN, int Gc_AN, int q_AN,
     double***** CDM0, Type_DS_VNA***** DS_VNA,
-    double* dEx, double* dEy, double* dEz)
+    double* dEx, double* dEy, double* dEz, const Force4BSimd *simd)
 {
     Force4B_case1_trace_fused_rows(vna, Mc_AN, Gc_AN, q_AN, CDM0, DS_VNA, NULL,
-        dEx, dEy, dEz);
+        dEx, dEy, dEz, simd);
 }
 
 static void dH_U_full(int Mc_AN, int h_AN, int q_AN,
@@ -4042,6 +4182,12 @@ void Force3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electr
         double **dorbs0 = OpenMX_Solver_AlignedRealMatrix(scratch,"Force3:orbitals",4,List_YOUSO[7]);
         double* orbs1 = OpenMX_Solver_Real(scratch,"Force3:neighbor-orbitals",List_YOUSO[7]);
 
+        /* the Core's host kernel for the part-2 contraction (OPENMX_HOST_SIMD) */
+        const int f3_simd_mode = OpenMX_HostSimdMode();
+        const size_t f3_simd_bytes = f3_simd_mode == OPENMX_HOST_SIMD_LEGACY ? 0
+            : openmx_core_force_grid_scratch(List_YOUSO[7], List_YOUSO[7], SpinP_switch + 1);
+        void* f3_simd = f3_simd_bytes ? OpenMX_Solver_Real(scratch, "Force3:simd", (f3_simd_bytes + sizeof(double) - 1) / sizeof(double)) : NULL;
+
         OpenMXOrbitalBuffers work_dObs;
         OpenMX_Solver_Orbitals(scratch,"Force3:orbital-sampler",
             (int)atomic->orbitals.extent[1]-1,(int)atomic->orbitals.extent[2],1,&work_dObs);
@@ -4669,6 +4815,9 @@ void Force3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electr
                 int Hwan = WhatSpecies[Gh_AN];
                 int NO1 = atomic->species.contracted_orbitals[Hwan];
 
+                if (Force3_simd_pair(f3_simd_mode, f3_simd, f3_simd_bytes, myid, Mc_AN, h_AN, Mh_AN, Gh_AN, NO0, NO1,
+                        DM, dChi0, Vpot_grid, &sumx, &sumy, &sumz)) continue;
+
                 int Nog;
 
                 for (Nog = 0; Nog < NumOLG[Mc_AN][h_AN]; Nog++) {
@@ -4795,7 +4944,7 @@ void Force3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electr
             }
             int mc_work=late && mc<=Matomnum?mc:0;
             if(!Force3_capacity_atom(mc_work,myid,dChi0,Vpot_grid,capacity_enabled, electronic) && mc_work)
-                Force3_capacity_cpu(mc_work,myid,dChi0,Vpot_grid, electronic);
+                Force3_capacity_cpu(mc_work,myid,dChi0,Vpot_grid, electronic, scratch);
         }
     }
 
@@ -7589,7 +7738,7 @@ static void Force4B_GpuCase1TurnsAccumulate(Force4BCase1Turns *g, const OpenMXVn
                 const Type_DS_VNA* cached_q = source <= Matomnum ? NULL
                     : g->halo_host + g->halo_off[source - Matomnum];
                 Force4B_case1_trace_fused_rows(vna, mc, gc, q, CDM0, DS_VNA, cached_q,
-                    &force[0], &force[1], &force[2]);
+                    &force[0], &force[1], &force[2], NULL);
                 Gxyz[gc][41] += force[0];
                 Gxyz[gc][42] += force[1];
                 Gxyz[gc][43] += force[2];
@@ -9076,6 +9225,8 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
                         HVNAx = OpenMX_Solver_AlignedRealMatrix(scratch,"Force4B:HVNAx",List_YOUSO[7],List_YOUSO[7]);
                         HVNAy = OpenMX_Solver_AlignedRealMatrix(scratch,"Force4B:HVNAy",List_YOUSO[7],List_YOUSO[7]);
                         HVNAz = OpenMX_Solver_AlignedRealMatrix(scratch,"Force4B:HVNAz",List_YOUSO[7],List_YOUSO[7]);
+                        Force4BSimd f4b_simd;
+                        Force4B_simd_prepare(scratch, &f4b_simd);
 
 #pragma omp for schedule(static)
                         for (Mc_AN = 1; Mc_AN <= Matomnum; Mc_AN++) {
@@ -9118,7 +9269,7 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
                                 if (use_force4b_fused && q_AN != 0) {
                                     if (!f4b_gpu_case1 && !f4b_stream_case1 && !f4b_turns_case1) {
                                         Force4B_case1_trace_fused(vna, Mc_AN, Gc_AN, q_AN,
-                                            CDM0, DS_VNA, &dEx, &dEy, &dEz);
+                                            CDM0, DS_VNA, &dEx, &dEy, &dEz, &f4b_simd);
                                     }
                                     continue;
                                 }
@@ -9257,6 +9408,8 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
             HVNAx = OpenMX_Solver_AlignedRealMatrix(scratch,"Force4B:HVNAx",List_YOUSO[7],List_YOUSO[7]);
             HVNAy = OpenMX_Solver_AlignedRealMatrix(scratch,"Force4B:HVNAy",List_YOUSO[7],List_YOUSO[7]);
             HVNAz = OpenMX_Solver_AlignedRealMatrix(scratch,"Force4B:HVNAz",List_YOUSO[7],List_YOUSO[7]);
+            Force4BSimd f4b_simd;
+            Force4B_simd_prepare(scratch, &f4b_simd);
 
 #pragma omp for schedule(static)
             for (Mc_AN = 1; Mc_AN <= Matomnum; Mc_AN++) {
@@ -9288,7 +9441,7 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
                         if (use_force4b_fused && q_AN != 0) {
                             if (!f4b_gpu_case1 && !f4b_stream_case1 && !f4b_turns_case1) {
                                 Force4B_case1_trace_fused(vna, Mc_AN, Gc_AN, q_AN,
-                                    CDM0, DS_VNA, &dEx, &dEy, &dEz);
+                                    CDM0, DS_VNA, &dEx, &dEy, &dEz, &f4b_simd);
                             }
                             continue;
                         }
@@ -9667,6 +9820,8 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
                     HVNAx = OpenMX_Solver_AlignedRealMatrix(scratch,"Force4B:HVNAx",List_YOUSO[7],List_YOUSO[7]);
                     HVNAy = OpenMX_Solver_AlignedRealMatrix(scratch,"Force4B:HVNAy",List_YOUSO[7],List_YOUSO[7]);
                     HVNAz = OpenMX_Solver_AlignedRealMatrix(scratch,"Force4B:HVNAz",List_YOUSO[7],List_YOUSO[7]);
+                    Force4BSimd f4b_simd;
+                    Force4B_simd_prepare(scratch, &f4b_simd);
 
 #pragma omp for schedule(static)
                     for (Nloop = 0; Nloop < ODNloop; Nloop++) {
@@ -9696,7 +9851,7 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
                             if (use_force4b_fused && h_AN != 0 && q_AN != 0 && h_AN != q_AN) {
                                 if (!f4b_gpu_case2) {
                                     Force4B_case2_trace_fused(Mc_AN, Gc_AN, h_AN, q_AN,
-                                        CDM0, DS_VNA, &dEx, &dEy, &dEz);
+                                        CDM0, DS_VNA, &dEx, &dEy, &dEz, &f4b_simd);
                                 }
                                 continue;
                             }

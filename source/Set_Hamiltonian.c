@@ -16,6 +16,7 @@
 #include "orbs_grid_gpu.h"
 #include "openmx_common.h"
 #include "openmx_env.h"
+#include "openmx_host_simd.h"
 #include "openmx_grid_assembly.h"
 #include "openmx_core_vna_matrix.h"
 #include "openmx_gpu_workers.h"
@@ -1749,7 +1750,7 @@ static void SetH_capacity_kernel(size_t first,size_t n,const void *parameters,vo
        packed task's zero-seeded sum and padding contract in the host SIMD
        library; a GPU compiler never sees a Kokkos vector type. */
     if (!gpu) {
-        const int mode=openmx_core_grid_simd(openmx_env_at(OPENMX_ENV_SETHAM_SIMD));
+        const int mode=OpenMX_HostSimdGridMode(OPENMX_ENV_SETHAM_SIMD);
         int done=1;
         for(size_t pair=0;pair<n && done;pair++) {
             OpenMXGridPackedHamiltonian host={pairs[pair].n0,pairs[pair].n1,

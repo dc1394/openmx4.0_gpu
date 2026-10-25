@@ -93,7 +93,7 @@ set(_core_sources src/radial.cpp src/radial_table.cpp src/pao_storage.cpp src/vp
   src/atomic_views.cpp src/orbital_workspace.cpp src/ragged_matrix.cpp src/matrix_scratch.cpp src/unpivoted_inverse.cpp src/pivoted_inverse.cpp src/mixing_history.cpp src/mixing_policy.cpp src/band_energy.cpp src/energy_components.cpp src/thermodynamic_energy.cpp src/dynamics.cpp src/chemical.cpp src/cwf.cpp src/cwf_workspace.cpp
   src/electronic_matrices.cpp src/electronic_matrix_api.cpp
   src/local_basis_state.cpp src/local_basis_api.cpp
-  src/orbital_optimization.cpp src/orbital_optimization_api.cpp src/solver_workspace.cpp src/native_resources.cpp src/grid_assembly.cpp src/c_api.cpp)
+  src/orbital_optimization.cpp src/orbital_optimization_api.cpp src/solver_workspace.cpp src/native_resources.cpp src/grid_assembly.cpp src/host_simd_api.cpp src/olg_api.cpp src/energy_simd_api.cpp src/orbitals_simd_api.cpp src/force_simd_api.cpp src/vna_simd_api.cpp src/c_api.cpp)
 add_library(openmx_core SHARED ${_core_sources})
 include("${CMAKE_CURRENT_SOURCE_DIR}/../cmake/OpenMXCompilerRuntime.cmake")
 add_library(OpenMX::core ALIAS openmx_core)
@@ -137,9 +137,19 @@ if(OPENMX_CORE_BUILD_BENCHMARKS)
   target_link_libraries(openmx_grid_benchmark PRIVATE OpenMX::core)
   add_executable(openmx_radial_benchmark benchmarks/radial_transform.cpp)
   target_link_libraries(openmx_radial_benchmark PRIVATE OpenMX::core)
+  add_executable(openmx_olg_benchmark benchmarks/olg_intersect.cpp)
+  target_link_libraries(openmx_olg_benchmark PRIVATE OpenMX::core)
+  add_executable(openmx_force_benchmark benchmarks/force_simd.cpp)
+  target_link_libraries(openmx_force_benchmark PRIVATE OpenMX::core)
+  add_executable(openmx_energy_benchmark benchmarks/energy_simd.cpp)
+  target_link_libraries(openmx_energy_benchmark PRIVATE OpenMX::core)
+  add_executable(openmx_orbitals_benchmark benchmarks/orbitals_simd.cpp)
+  target_link_libraries(openmx_orbitals_benchmark PRIVATE OpenMX::core)
+  add_executable(openmx_vna_benchmark benchmarks/vna_simd.cpp)
+  target_link_libraries(openmx_vna_benchmark PRIVATE OpenMX::core)
   if(OPENMX_CORE_BACKEND MATCHES "^(CUDA|HIP)$")
     set_source_files_properties(benchmarks/radial_transform.cpp benchmarks/grid_assembly.cpp
-      PROPERTIES LANGUAGE ${OPENMX_CORE_BACKEND})
+      benchmarks/olg_intersect.cpp benchmarks/force_simd.cpp benchmarks/energy_simd.cpp benchmarks/orbitals_simd.cpp benchmarks/vna_simd.cpp PROPERTIES LANGUAGE ${OPENMX_CORE_BACKEND})
   endif()
 endif()
 

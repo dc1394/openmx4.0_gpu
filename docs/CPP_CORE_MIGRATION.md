@@ -6152,3 +6152,25 @@ OpenMP生成関数6個の番号変更とそのアドレス記録は一対一で�
 3,258関数は本段階の変更前後で同じです。前段の文書からの1増加は、CPUコンパイラ対応コミットでClang用に修正したSpherical_Bessel2の出力によります。
 外部大域353・ファイルstatic313・関数内static296・環境名251、他LLM担当の設定298個・構造表278個とその所属は同一です。
 所有・数値・性能の検証後に一覧とベースラインを更新しました。証拠は`build/neutral-grid-metadata-view-refactor-20261024/`、計時は[性能検証](PERFORMANCE_REGRESSION.md)です。
+
+## ホストカーネル群（Kokkos::simd、2026-10-25）
+
+所有権の移行とは別に、GPU が使えない経路のホスト数値カーネルを私的ホスト SIMD ライブラリの
+「群」として Core へ移しました（仕組みは [GPU_BACKENDS.md](GPU_BACKENDS.md#ホストカーネル群kernel-families)、
+測定は [PERFORMANCE_REGRESSION.md](PERFORMANCE_REGRESSION.md#ホストカーネル群の-kokkossimd-化-2026-10-25)）。
+C ABI はすべて `int openmx_core_<family>_<op>(..., int mode)`（0 = 拒否、何も書かない）で、
+呼び出し側は `OpenMX_HostSimdMode()`（`OPENMX_HOST_SIMD`）が `OPENMX_HOST_SIMD_LEGACY` のとき、
+または拒否時に元の C ループを実行します。
+
+| 群 / ヘッダー | C ABI | 呼び出し元 |
+| --- | --- | --- |
+| `olg` / `openmx_core_olg.h` | `openmx_core_olg_intersect` | `truncation.c`（`OLG_capacity_kernel` のホスト分岐、`UCellBox_OLG_Host`） |
+| `vna` / `openmx_core_vna_simd.h` | `openmx_core_vna_bessel`, `_contract`, `_quadrature`, `_hvna_block` | `openmx_dsvna_cpu.h`, `openmx_vna_cpu.h`, `openmx_hvna_cpu.h` |
+| `force` / `openmx_core_force_simd.h` | `openmx_core_force_vna_block`, `_grid_pair`, `_nl_block`（+ `*_scratch`） | `Force.c`（融合 Force4B トレース、Force3 第 2 部）、`openmx_force_projectors.h`（`dHNL_block`） |
+| `energy` / `openmx_core_energy_simd.h` | `openmx_core_energy_neutral_points`, `_band_block` | `openmx_neutral_atom.h`（EH0 / cutoff / Stress）、`Band_DFT_Col.c`（`BandCol_DM_Block`） |
+| `orbitals` / `openmx_core_orbitals_simd.h` | `openmx_core_orbitals_points` | `Set_Orbitals_Grid.c`（`SOG_host_points`） |
+| 方針 / `openmx_core_host_simd.h` | `openmx_core_host_simd_mode`, `_name`, `_usable` | `openmx_host_simd.c`（`OpenMX_HostSimdMode`, `OpenMX_HostSimdGridMode`, `OpenMX_HostSimdReport`） |
+
+各群の試験は `core-host-<family>-*`（scalar と各 ISA の bit 一致、元ループの転写との一致、
+不正引数の拒否）、ベンチマークは `openmx_<family>_benchmark` です。`source/` からは
+1 行のシム `source/openmx_core_<name>.h` 経由でヘッダーを取り込みます。

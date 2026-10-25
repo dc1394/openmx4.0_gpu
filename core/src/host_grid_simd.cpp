@@ -1,49 +1,12 @@
 #include "host_grid_kernels.hpp"
-#if defined(__CUDACC__) || defined(__HIPCC__) || defined(__SYCL_DEVICE_ONLY__)
-#error "Host SIMD kernels must be compiled as ordinary C++, without device compilation"
-#endif
-
-// Explicit host ABIs: simd<double> follows DefaultExecutionSpace and is scalar
-// when that space is CUDA/HIP/SYCL in Kokkos 5.2.2. Do not alter Kokkos's global
-// architecture macros, or expose these headers to device translation units.
-#if defined(OPENMX_HOST_SIMD_AVX512)
-#include <Kokkos_SIMD_AVX512.hpp>
-using HostAbi=Kokkos::Experimental::simd_abi::avx512_fixed_size<8>;
-#define OPENMX_GRID_FACTORY grid_avx512
-#elif defined(OPENMX_HOST_SIMD_AVX2)
-#include <Kokkos_SIMD_AVX2.hpp>
-using HostAbi=Kokkos::Experimental::simd_abi::avx2_fixed_size<4>;
-#define OPENMX_GRID_FACTORY grid_avx2
-#elif defined(OPENMX_HOST_SIMD_NEON)
-#include <Kokkos_SIMD_NEON.hpp>
-using HostAbi=Kokkos::Experimental::simd_abi::neon_fixed_size<2>;
-#define OPENMX_GRID_FACTORY grid_neon
-#else
-#include <Kokkos_SIMD_Scalar.hpp>
-using HostAbi=Kokkos::Experimental::simd_abi::scalar;
-#define OPENMX_GRID_FACTORY grid_scalar
-#endif
+#include "host_simd_abi.hpp"
 #include <algorithm>
-#if defined(KOKKOS_ENABLE_CUDA) || defined(KOKKOS_ENABLE_HIP) || defined(KOKKOS_ENABLE_SYCL)
-#error "Host SIMD requires its private SERIAL Kokkos configuration"
-#endif
+// The explicit host ABIs, the lane counts and load/store come from
+// host_simd_abi.hpp, shared by every per-ISA translation unit of this library.
+#define OPENMX_GRID_FACTORY OPENMX_HOST_SIMD_FACTORY(grid)
 
 namespace openmx::core::host {
 namespace {
-namespace simd=Kokkos::Experimental;
-using Vector=simd::basic_simd<double,HostAbi>;
-constexpr int lanes=Vector::size();
-#if defined(OPENMX_HOST_SIMD_AVX512)
-static_assert(lanes==8);
-#elif defined(OPENMX_HOST_SIMD_AVX2)
-static_assert(lanes==4);
-#elif defined(OPENMX_HOST_SIMD_NEON)
-static_assert(lanes==2);
-#else
-static_assert(lanes==1);
-#endif
-Vector load(const double* p) { return simd::simd_unchecked_load<Vector>(p); }
-void store(Vector v,double* p) { simd::simd_unchecked_store(v,p); }
 template<class T> double orbital(const OpenMXGridOrbitals& o,int point,int index) {
   const auto rows=static_cast<const T* const*>(o.rows);
   return o.transposed?double(rows[index][point]):double(rows[point][index]);

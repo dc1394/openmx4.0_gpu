@@ -22,6 +22,8 @@
 #include "openmx_gpu_views.h"
 #include "openmx_gpu_task.h"
 #include "openmx_host_memory.h"
+#include "openmx_host_simd.h"
+#include "openmx_core_orbitals_simd.h"
 #include <stdint.h>
 #include "mpi.h"
 #include <omp.h>
@@ -1047,8 +1049,31 @@ static int SOG_table_worker(void *opaque, int worker, int phase)
   return Set_Orbitals_Grid_GPU_Part(work->atomic, first,last,work->myid);
 }
 
-typedef struct {int wan,no,grid,cell;double xyz[3],shift[3];} SOG_CapacityPoint;
-typedef struct {int ng23,ng3,max_no;double frame[9],origin[3];} SOG_CapacityParameters;
+/* the Core's host kernel reads the same point and frame records */
+typedef OpenMXOrbitalsPoint SOG_CapacityPoint;
+typedef OpenMXOrbitalsFrame SOG_CapacityParameters;
+/* Host evaluation of a point range through the Core's Kokkos::simd kernel
+   (OPENMX_HOST_SIMD selects the ISA; legacy keeps the loop of the kernel
+   below, which also serves any range the kernel refuses). Threads take
+   contiguous ranges of points. */
+static int SOG_host_points(const SOG_CapacityParameters *p,const SOG_CapacityPoint *points,size_t n,
+    const double *rv,const double *rwf,const double *translations,const size_t *rvo,const size_t *rwbo,
+    const int *mesh,const int *maxl,const int *nb,float *out)
+{
+  const int mode=OpenMX_HostSimdMode();
+  if(mode==OPENMX_HOST_SIMD_LEGACY)return 0;
+  const OpenMXOrbitalsTables tables={rv,rwf,translations,rvo,rwbo,mesh,maxl,nb,SpeciesNum,SOG_L0MAX,SOG_MULMAX,TCpyCell+1};
+  if(n<4096 || omp_in_parallel() || omp_get_max_threads()<=1)
+    return openmx_core_orbitals_points(&tables,p,points,n,out,mode);
+  int ok=1;
+#pragma omp parallel reduction(&&:ok)
+  {
+    const int thread=omp_get_thread_num(),threads=omp_get_num_threads();
+    const size_t begin=n*(size_t)thread/threads,end=n*(size_t)(thread+1)/threads;
+    ok=ok && openmx_core_orbitals_points(&tables,p,points+begin,end-begin,out+begin*(size_t)p->max_no,mode);
+  }
+  return ok;
+}
 static void SOG_capacity_kernel(size_t first,size_t n,const void *parameters,void *const v[],int gpu)
 {
   (void)first;const SOG_CapacityParameters *p=parameters;
@@ -1061,6 +1086,7 @@ static void SOG_capacity_kernel(size_t first,size_t n,const void *parameters,voi
   const double *rv=v[1],*rwf=v[2],*translations=v[3];
   const size_t *rvo=v[4],*rwbo=v[5];const int *mesh=v[6],*maxl=v[7],*nb=v[8];
   float *out=v[9];
+  if(!gpu && SOG_host_points(p,points,n,rv,rwf,translations,rvo,rwbo,mesh,maxl,nb,out))return;
 #pragma acc parallel loop gang vector vector_length(128) deviceptr(points,rv,rwf,translations,rvo,rwbo,mesh,maxl,nb,out) if(gpu)
   for (size_t i=0;i<n;i++) {
     SOG_CapacityPoint q=points[i];
@@ -1078,6 +1104,7 @@ static int SOG_capacity_recover(const OpenMXAtomicViews *atomic, int done,int ra
 {
   int pending=!done,any=0;MPI_Allreduce(&pending,&any,1,MPI_INT,MPI_MAX,mpi_comm_level1);
   if (!any) return done;
+  if (pending && !gpu_rank_device_usable()) OpenMX_HostSimdReport("<Set_Orbitals_Grid> capacity points:");
   SOG_CapacityParameters p={0};p.ng23=Ngrid2*Ngrid3;p.ng3=Ngrid3;
   for (int i=0;i<3;i++) {p.origin[i]=Grid_Origin[i+1];for(int j=0;j<3;j++)p.frame[3*i+j]=gtv[i+1][j+1];}
   size_t rows=0,rvn=0,rwfn=0,tile=262144;

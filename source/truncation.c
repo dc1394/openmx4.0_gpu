@@ -29,6 +29,8 @@
 #include "openmx_gpu_workers.h"
 #include "openmx_gpu_task.h"
 #include "openmx_host_memory.h"
+#include "openmx_host_simd.h"
+#include "openmx_core_olg.h"
 #include "mpi.h"
 #include "omp.h"
 #if !OPENMX_GPU_HIP
@@ -2581,13 +2583,35 @@ static int UCellBox_OLG_GPU_Part(int first,int last,int myid,int estimate_switch
   return 1;
 }
 
-typedef struct {int grid,cell,l1,l2,l3;} OLGCapacityQuery;
+/* the Core's host kernel reads the same five ints */
+typedef OpenMXOlgQuery OLGCapacityQuery;
+/* Host answer of a query range through the Core's Kokkos::simd merge
+   (OPENMX_HOST_SIMD selects the ISA; legacy keeps the loop of the kernel
+   below). Threads take contiguous ranges: each range is one sorted merge. */
+static int OLG_host_intersect(int nc,int cpy,const int *grid,const int *cell,const int *atv,const int *ratv,
+    const OLGCapacityQuery *queries,size_t count,int *out)
+{
+  const int mode=OpenMX_HostSimdMode();
+  if(mode==OPENMX_HOST_SIMD_LEGACY)return 0;
+  const OpenMXOlgLists lists={grid,cell,nc,atv,TCpyCell+1,ratv,cpy};
+  if(count<16384 || omp_in_parallel() || omp_get_max_threads()<=1)
+    return openmx_core_olg_intersect(&lists,queries,count,out,mode);
+  int ok=1;
+#pragma omp parallel reduction(&&:ok)
+  {
+    const int thread=omp_get_thread_num(),threads=omp_get_num_threads();
+    const size_t begin=count*(size_t)thread/threads,end=count*(size_t)(thread+1)/threads;
+    ok=ok && openmx_core_olg_intersect(&lists,queries+begin,end-begin,out+begin,mode);
+  }
+  return ok;
+}
 typedef struct {int nc,cpy;} OLGCapacityParameters;
 static void OLG_capacity_kernel(size_t first,size_t count,const void *parameters,void *const v[],int gpu)
 {
   const OLGCapacityParameters *p=parameters;const int nc=p->nc,cpy=p->cpy,rdim=2*cpy+1;
   const int *grid=v[0],*cell=v[1],*atv=v[2],*ratv=v[3];
   const OLGCapacityQuery *queries=v[4];int *out=v[5];(void)first;
+  if(!gpu && OLG_host_intersect(nc,cpy,grid,cell,atv,ratv,queries,count,out))return;
 #if OPENMX_GPU_HIP
 #pragma omp target teams distribute parallel for is_device_ptr(grid,cell,atv,ratv,queries,out) if(gpu)
 #else
@@ -2606,14 +2630,72 @@ static void OLG_capacity_kernel(size_t first,size_t count,const void *parameters
   }
 }
 
+/* Every rank without a usable device: the chunked collective loop of
+   UCellBox_OLG_GPU would end in openmx_gpu_task_cpu for each 65536-query
+   chunk after two all-reduces, in lock step across the ranks. The Core's host
+   merge answers whole neighbour lists locally instead (OpenMP across the
+   pairs of an atom); legacy keeps the loop. Same lists, same NumOLG. */
+static int UCellBox_OLG_Host(int estimate_switch,int CpyCell,int **grid,int **cell,int *size_GListTAtoms1)
+{
+  const int mode=OpenMX_HostSimdMode();
+  int local=mode!=OPENMX_HOST_SIMD_LEGACY && !gpu_rank_device_usable(),all;
+  MPI_Allreduce(&local,&all,1,MPI_INT,MPI_MIN,mpi_comm_level1);
+  if(!all)return 0;
+  const int rdim=2*CpyCell+1;
+  int *atvf=malloc(3*(size_t)(TCpyCell+1)*sizeof(int)),*ratvf=malloc((size_t)rdim*rdim*rdim*sizeof(int));
+  if(!atvf || !ratvf)MPI_Abort(mpi_comm_level1,1);
+  for(int i=0;i<=TCpyCell;i++)for(int a=0;a<3;a++)atvf[3*i+a]=atv_ijk[i][a+1];
+  for(int a=0;a<rdim;a++)for(int b=0;b<rdim;b++)for(int c=0;c<rdim;c++)ratvf[((size_t)a*rdim+b)*rdim+c]=openmx_periodic_index(CpyCell,a-CpyCell,b-CpyCell,c-CpyCell);
+  OpenMX_HostSimdReport("<UCell_Box> overlap grids (local host):");
+  size_t total=0;int failed=0;
+  for(int mc=1;mc<=Matomnum;mc++){
+    const int gc=M2G[mc];
+    if(!estimate_switch){
+      GListTAtoms1[mc]=malloc((size_t)(FNAN[gc]+1)*sizeof(int*));GListTAtoms2[mc]=malloc((size_t)(FNAN[gc]+1)*sizeof(int*));
+      if(!GListTAtoms1[mc] || !GListTAtoms2[mc])MPI_Abort(mpi_comm_level1,1);
+    }
+    const OpenMXOlgLists lists={grid[mc],cell[mc],GridN_Atom[gc],atvf,TCpyCell+1,ratvf,CpyCell};
+#pragma omp parallel for schedule(dynamic) if(!omp_in_parallel()) reduction(+:total) reduction(|:failed)
+    for(int h=0;h<=FNAN[gc];h++){
+      const int gh=natn[gc][h],mh=F_G2M[gh],nh=GridN_Atom[gh],shift=ncn[gc][h];
+      const OpenMXOlgNeighbours neighbours={grid[mh],cell[mh],atv_ijk[shift][1],atv_ijk[shift][2],atv_ijk[shift][3]};
+      int *result=malloc((nh?(size_t)nh:1)*sizeof(int));
+      if(!result){failed|=1;continue;}
+      if(!openmx_core_olg_intersect_lists(&lists,&neighbours,(size_t)nh,result,mode))failed|=4;
+      int count=0;for(int i=0;i<nh;i++)if(result[i]>=0)count++;
+      NumOLG[mc][h]=count;
+      if(!estimate_switch){
+        if(count>List_YOUSO[12])failed|=2;
+        GListTAtoms1[mc][h]=malloc((count?(size_t)count:1)*sizeof(int));GListTAtoms2[mc][h]=malloc((count?(size_t)count:1)*sizeof(int));
+        if(!GListTAtoms1[mc][h] || !GListTAtoms2[mc][h])failed|=1;
+        else{int at=0;for(int i=0;i<nh;i++)if(result[i]>=0){GListTAtoms1[mc][h][at]=result[i];GListTAtoms2[mc][h][at++]=i;}}
+        total+=(size_t)count;
+      }
+      free(result);
+    }
+  }
+  free(atvf);free(ratvf);
+  if(failed){
+    if(failed&2)fprintf(stderr,"UCell_Box: overlap-grid list exceeds YOUSO12.\n");
+    if(failed&4)fprintf(stderr,"UCell_Box: the host overlap-grid kernel refused its input.\n");
+    MPI_Abort(mpi_comm_level1,1);
+  }
+  if(!estimate_switch)*size_GListTAtoms1+=(int)total;
+  FNAN[0]=0;
+  if(!estimate_switch){GListTAtoms1[0]=malloc(sizeof(int*));GListTAtoms2[0]=malloc(sizeof(int*));GListTAtoms1[0][0]=malloc(sizeof(int));GListTAtoms2[0][0]=malloc(sizeof(int));}
+  return 1;
+}
+
 static int UCellBox_OLG_GPU(int estimate_switch,int CpyCell,int **grid,int **cell,int *size_GListTAtoms1)
 {
   int requested=scf_eigen_lib_flag==GPUSOLVER && openmx_env_flag_at(OPENMX_ENV_UCELL_OLG_GPU,1);
   MPI_Allreduce(MPI_IN_PLACE,&requested,1,MPI_INT,MPI_MIN,mpi_comm_level1);
   if(!requested)return 0;
+  if(UCellBox_OLG_Host(estimate_switch,CpyCell,grid,cell,size_GListTAtoms1))return 1;
   int myid;MPI_Comm_rank(mpi_comm_level1,&myid);
   int done=!Matomnum || (!openmx_gpu_capacity_test_recovery() && OLG_gpu_ready() && UCellBox_OLG_GPU_Part(1,Matomnum+1,myid,estimate_switch,CpyCell,grid,cell,size_GListTAtoms1));
   int mc=done?Matomnum+1:1,h=0;size_t point=0;
+  if(!done)OpenMX_HostSimdReport("<UCell_Box> overlap grids:");
   int *atvf=NULL,*ratvf=NULL,*result=NULL,rdim=2*CpyCell+1;
   /* These small translation tables are also sent to helper nodes. */
   atvf=malloc(3*(size_t)(TCpyCell+1)*sizeof(int));

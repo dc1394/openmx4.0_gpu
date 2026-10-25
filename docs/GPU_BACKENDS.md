@@ -220,6 +220,41 @@ CUDA・HIP・SYCL の実 SDK で構築した Core のホスト試験では、既
 AMD / Intel GPU、A100/H100、Apple Silicon の実機性能は未測定です。
 測定条件と数値比較は [性能検証](PERFORMANCE_REGRESSION.md#ホスト用-kokkos-simd-2026-10-24) を参照してください。
 
+### ホストカーネル群（kernel families）
+
+同じ私的ライブラリに、格子積分以外のホスト経路のカーネルを「群（family）」として追加しました
+（2026-10-25）。1 群 = `core/src/host_<family>_simd.cpp` 1 ソースで、
+`core/host_simd/CMakeLists.txt` の `openmx_host_simd_family(<family> ...)` が scalar / AVX2 /
+AVX-512 / NEON の各 ISA 用オブジェクトを同じソースから作り、`host_simd_abi.hpp` が
+各オブジェクトに `Vector`（double）/ `IntVector` `FloatVector`（int32 / float、2 倍の幅）/
+`IndexVector`（double gather の添字）の明示 ABI と `OPENMX_HOST_SIMD_FACTORY` を与えます。
+`host_simd_dispatch.cpp` が群ごとに 1 つの C リンケージ関数 `openmx_host_<family>_kernels(mode)`
+で POD の関数表を返し（存在しない ISA は `nullptr`、CPU/OS 判定は `openmx_host_simd_usable`）、
+Core の `core/src/<family>_api.cpp` が引数を検査する C ABI
+`openmx_core_<family>_<op>(..., int mode)` として `libopenmx_core` から公開します。
+`source/` 側は 1 行のシム `source/openmx_core_<name>.h` 経由でこのヘッダーを取り込みます。
+Kokkos の型・ISA フラグが C ABI やデバイス翻訳単位へ出ないこと、Kokkos の初期化やデバイスの
+初期化を行わないことは `grid` 群と同じです。
+
+方針は 1 つの環境変数 `OPENMX_HOST_SIMD` で決めます（`source/openmx_host_simd.c`、
+`openmx_core_host_simd_mode()`）: 未設定 / `auto` = 実行できる最も広い ISA、`scalar` /
+`avx2` / `avx512` / `neon` = 使えるときその ISA（使えなければ自動）、`legacy`（`off` / `0`）=
+元の C ループ。各呼び出し元は `OpenMX_HostSimdMode()==OPENMX_HOST_SIMD_LEGACY` で元のループを
+選び、カーネルが形状を拒否したときも元のループへ戻ります。`OPENMX_SETHAM_SIMD` と
+`OPENMX_DENSITY_GRID_*_SIMD` が未設定の `grid` 群もこの方針に従います（`legacy` は scalar）。
+`level.of.stdout >= 2` で rank 0 が選択結果を 1 行報告します。
+
+| 群 | 対象のホスト経路 | 車線（lanes）の取り方 | 数値 |
+| --- | --- | --- | --- |
+| `olg` | `UCell_Box` の重なり格子探索（`OLG_capacity_kernel` のホスト実行、全 rank に GPU がなければ集団ループを省く局所経路） | 問い合わせ 16 件を 1 ブロックとする昇順リストの併合 | 整数のみ、GPU カーネルと同一 |
+| `vna` | `Set_ProExpn_VNA` の CPU カーネル（DS_VNA / VNA23 の k 積分、HVNA の射影子縮約） | 射影子行・LL・列 n など独立な出力 | 元ループの転写と bit 一致 |
+| `force` | `Force4B` の融合トレース（case 1/2 の射影子ブロック）、`Force3` の格子縮約、`dHNL` の共線ブロック | 列 n / 密度行列の行 i | 元ループの転写と bit 一致（fp32 積の丸め点も保持） |
+| `energy` | `EH0_TwoCenter` / cutoff の中性原子 2 中心積分の被積分点、`Band_DFT_Col` の密度行列集計ブロック | 格子点 / 列 j（点和・バンド和は逐次） | 転写と bit 一致（`log` は車線ごとの glibc） |
+| `orbitals` | `SOG_capacity_kernel` のホスト実行（軌道値の格子評価） | 同一元素種の連続した格子点 | `SOG_point_eval` の転写と bit 一致 |
+
+各群は `core/tests/test_host_<family>.cpp`（scalar と各 ISA の bit 一致、元ループの転写との
+一致、不正引数の拒否）と `core/benchmarks/<family>_*.cpp` を持ちます。
+
 ## 共通コードとバックエンド境界
 
 CUDA/HIP で重複していた 56 ファイルを `source/` の単一ソースへ統合しました。

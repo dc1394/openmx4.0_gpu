@@ -2,6 +2,8 @@
 #define OPENMX_FORCE_PROJECTORS_H
 /* Shared host projector derivatives. Include after the native prototypes.
    Core-hole coefficients and angular traces belong to the C++ invocation. */
+#include "openmx_host_simd.h"
+#include "openmx_core_force_simd.h"
 
 static void dHNL_block_term(const OpenMXProjectorForceView *projectors,size_t species,
     const OpenMXElectronicViews *electronic,int a,int ah,int b,int bh,int transpose,
@@ -26,6 +28,18 @@ static void dHNL_block(const OpenMXProjectorForceView *projectors,size_t species
 {
     const OpenMXProjectorForceBlock block={rows,columns,capacity,capacity,count,terms,
         {hx[0][0],hy[0][0],hz[0][0]},accumulate};char error[256];
+    /* Collinear species: the Core's host SIMD block (OPENMX_HOST_SIMD), same
+       per-element arithmetic and order; otherwise, or when refused, the
+       Core's general block. */
+    const int mode=OpenMX_HostSimdMode();
+    if(mode!=OPENMX_HOST_SIMD_LEGACY && rows && columns && !projectors->species_views[species].relativistic) {
+        const size_t bytes=openmx_core_force_nl_scratch((int)columns,projectors->species_views[species].components,count);
+        double stack[4096];
+        void *scratch=bytes<=sizeof(stack)?(void*)stack:malloc(bytes);
+        const int done=scratch && openmx_core_force_nl_block(&projectors->species_views[species],&block,scratch,bytes,mode);
+        if(scratch!=(void*)stack)free(scratch);
+        if(done)return;
+    }
     if(!openmx_core_projector_force_block(projectors,species,&block,error,sizeof(error)))OpenMX_Solver_Failure(error);
 }
 

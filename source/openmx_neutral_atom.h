@@ -2,6 +2,12 @@
 #define OPENMX_NEUTRAL_ATOM_H
 #include "openmx_core_atomic.h"
 #include <math.h>
+/* Include openmx_host_simd.h before this header to route the integrand through
+   the Core's host SIMD kernel (OPENMX_HOST_SIMD); on its own, as in the test
+   harnesses, only the legacy loops are compiled. */
+#ifdef OPENMX_HOST_SIMD_H
+#include "openmx_core_energy_simd.h"
+#endif
 
 /* One species row, borrowed from the existing table owner. No row table,
    allocation, process-global state or backend initialization is needed. */
@@ -40,6 +46,45 @@ static inline void OpenMX_Neutral_PotentialBorrow(const OpenMXAtomicViews *atomi
   out->hartree=openmx_radial_row2(&atomic->hartree_potential,species);
 }
 
+#ifdef OPENMX_HOST_SIMD_H
+/* The Core's Kokkos::simd kernel (OPENMX_HOST_SIMD) evaluates the integrand
+   of the points [first, last) a chunk at a time; the sums over the stored
+   values keep the legacy point order, so the result is the legacy one. Returns
+   0 when the kernel refuses (the caller then runs the legacy loop afresh). */
+static inline int OpenMX_Neutral_PairSimd(const OpenMXNeutralGridView *grid,
+    const OpenMXNeutralPotentialView *potential,int derivative,double separation,
+    int guard,int first,int last,double *sum,double *sumr,int mode)
+{
+  double values[256],derivatives[256];
+  OpenMXEnergyNeutralPoints points;
+  int n1,n,i;
+  points.derivative=derivative;
+  points.guard=guard;
+  points.separation=separation;
+  points.charge=potential->charge;
+  points.mesh=potential->mesh;
+  points.log_radii=potential->log_radii;
+  points.radii=potential->radii;
+  points.hartree=potential->hartree;
+  points.values=values;
+  points.derivatives=derivatives;
+  for (n1=first; n1<last; n1+=256){
+    n = last-n1;
+    if (256<n) n = 256;
+    points.count=n;
+    points.x=grid->x+n1;
+    points.y=grid->y+n1;
+    points.z=grid->z+n1;
+    points.density=grid->density+n1;
+    points.weight=grid->weight+n1;
+    if (!openmx_core_energy_neutral_points(&points,mode)) return 0;
+    for (i=0; i<n; i++) *sum += values[i];
+    if (derivative!=0) for (i=0; i<n; i++) *sumr -= derivatives[i];
+  }
+  return 1;
+}
+#endif
+
 /* Keep the native scalar arithmetic and its two small-distance guards.
    Logarithmic radius is evaluated before the guard, as in the original ABI.
    The caller supplies the actual atom/image displacement, not a direction. */
@@ -51,6 +96,15 @@ static inline void OpenMX_Neutral_Pair(const OpenMXNeutralGridView *grid,
   double x,y,z,r,r2,xx,va0,rho0,dr_va0;
   double z2,sum,sumr,sumx,sumy,sumz,wt;
   const double dv=grid->spacing;
+#ifdef OPENMX_HOST_SIMD_H
+  const int mode=OpenMX_HostSimdMode();
+  sum = 0.0;
+  sumr = 0.0;
+  if (mode==OPENMX_HOST_SIMD_LEGACY ||
+      !OpenMX_Neutral_PairSimd(grid,potential,derivative,separation,1,0,grid->count,&sum,&sumr,mode)){
+#else
+  {
+#endif
   sum = 0.0;
   sumr = 0.0;
   for (n1=0; n1<grid->count; n1++){
@@ -72,6 +126,7 @@ static inline void OpenMX_Neutral_Pair(const OpenMXNeutralGridView *grid,
                            potential->log_radii,potential->radii,potential->hartree);
       sumr -= wt*rho0*dr_va0*z2/r;
     }
+  }
   }
   sum = sum*dv;
   if (derivative!=0){
@@ -105,6 +160,15 @@ static inline void OpenMX_Neutral_CutoffAccumulate(const OpenMXNeutralGridView *
 {
   int n1;
   double x,y,z,rho0,wt,z2,r2,r,xx,va0;
+#ifdef OPENMX_HOST_SIMD_H
+  const int mode=OpenMX_HostSimdMode();
+  const double before=*partial;
+  double unused=0.0;
+  if (mode!=OPENMX_HOST_SIMD_LEGACY){
+    if (OpenMX_Neutral_PairSimd(grid,potential,0,rcut,0,first,last,partial,&unused,mode)) return;
+    *partial = before;
+  }
+#endif
   for (n1=first; n1<last; n1++){
     x = grid->x[n1];
     y = grid->y[n1];

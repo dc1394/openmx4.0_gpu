@@ -1486,6 +1486,19 @@
   {
    "group": "grid",
    "names": [
+    "OPENMX_HOST_SIMD"
+   ],
+   "label": "<code>OPENMX_HOST_SIMD</code>",
+   "default_cell": {
+    "en": "auto",
+    "ja": "auto"
+   },
+   "en": "SIMD backend of the Core's host kernel families used by the CPU fallbacks (the overlap-grid intersection of UCell_Box, the Set_ProExpn_VNA integrals, the Force3/Force4B/dHNL contractions, the two-centre neutral-atom energy integrand and the band density-matrix blocks, the orbital grid values): unset/<code>auto</code> = the widest ISA the processor executes (AVX-512, AVX2, NEON, scalar), <code>scalar</code>, <code>avx2</code>, <code>avx512</code> or <code>neon</code> = that ISA when usable, <code>legacy</code> (<code>off</code>/<code>0</code>) = the original C loops. The grid kernels follow it when their own knobs above are unset (legacy = scalar there).",
+   "ja": "CPU フォールバックが使うコアのホストカーネル群（UCell_Box の重なり格子探索、Set_ProExpn_VNA の積分、Force3/Force4B/dHNL の縮約、中性原子 2 中心エネルギー被積分点とバンド密度行列ブロック、軌道の格子値）の SIMD バックエンド: 未設定/<code>auto</code> = プロセッサが実行できる最も広い ISA（AVX-512、AVX2、NEON、scalar）、<code>scalar</code>、<code>avx2</code>、<code>avx512</code>、<code>neon</code> = 使えるときその ISA、<code>legacy</code>（<code>off</code>/<code>0</code>）= 元の C ループ。格子カーネルは専用ノブが未設定ならこれに従う（そこでは legacy = scalar）。"
+  },
+  {
+   "group": "grid",
+   "names": [
     "OPENMX_SETHAM_SIMD_TRACE",
     "OPENMX_DENSITY_GRID_COL_SIMD_TRACE",
     "OPENMX_DENSITY_GRID_NC_SIMD_TRACE"

@@ -25,6 +25,8 @@
 #include "tran_variables.h"
 #include "eigen_refine_gpu.h"
 #include "openmx_precision.h"
+#include "openmx_host_simd.h"
+#include "openmx_core_energy_simd.h"
 #include <accel.h>
 #include <limits.h>
 #include <math.h>
@@ -1737,6 +1739,132 @@ static void BandCol_UpdateDMEntryPhases(BandColState *state, double k1, double k
     }
 }
 
+/* One (atom, neighbour) block of the dense density-matrix accumulation: the
+   neighbour's eigenvector rows (row j at rows + j*row_stride, weighted by occ
+   when given) against the atom's prepared rows, into cdm/edm in the legacy
+   (i, j) order. With a host SIMD policy and a transposed panel (re1T/im1T of
+   nk x ((tnoB+7)/8*8) doubles) the Core's Kokkos::simd kernel accumulates
+   every element in the legacy band order; otherwise, or when the kernel
+   refuses, the legacy loops run. */
+static void BandCol_DM_Block(int tnoA, int tnoB, int nk, double **ReEVec0, double **ImEVec0,
+                             double **ReEVec1, double **ImEVec1, const dcomplex *rows, size_t row_stride,
+                             const double *occ, const double *TmpEIGEN_local, double co, double si,
+                             double *cdm, double *edm, int simd_mode, double *re1T, double *im1T)
+{
+    size_t p = 0;
+
+    if (simd_mode != OPENMX_HOST_SIMD_LEGACY && re1T != NULL && im1T != NULL) {
+        const size_t stride = ((size_t)tnoB + 7) / 8 * 8;
+        OpenMXEnergyBandBlock block;
+
+        for (int j = 0; j < tnoB; ++j) {
+            const dcomplex *v = rows + (size_t)j * row_stride;
+            if (occ != NULL) {
+                for (int k = 0; k < nk; ++k) {
+                    const double w = occ[k];
+                    re1T[(size_t)k * stride + j] = v[k].r * w;
+                    im1T[(size_t)k * stride + j] = v[k].i * w;
+                }
+            }
+            else {
+                for (int k = 0; k < nk; ++k) {
+                    re1T[(size_t)k * stride + j] = v[k].r;
+                    im1T[(size_t)k * stride + j] = v[k].i;
+                }
+            }
+        }
+        for (int k = 0; k < nk; ++k) {
+            for (size_t j = (size_t)tnoB; j < stride; ++j) {
+                re1T[(size_t)k * stride + j] = 0.0;
+                im1T[(size_t)k * stride + j] = 0.0;
+            }
+        }
+        block.rows    = tnoA;
+        block.columns = tnoB;
+        block.bands   = nk;
+        block.stride  = stride;
+        block.re0     = (const double *const *)ReEVec0;
+        block.im0     = (const double *const *)ImEVec0;
+        block.re1T    = re1T;
+        block.im1T    = im1T;
+        block.eigen   = TmpEIGEN_local;
+        block.co      = co;
+        block.si      = si;
+        block.cdm     = cdm;
+        block.edm     = edm;
+        if (openmx_core_energy_band_block(&block, simd_mode)) return;
+    }
+
+    for (int j = 0; j < tnoB; ++j) {
+        const dcomplex * restrict v  = rows + (size_t)j * row_stride;
+        double * restrict          r  = ReEVec1[j];
+        double * restrict          im = ImEVec1[j];
+        if (occ != NULL) {
+            for (int k = 0; k < nk; ++k) {
+                const double w = occ[k];
+                r[k]           = v[k].r * w;
+                im[k]          = v[k].i * w;
+            }
+        }
+        else {
+            for (int k = 0; k < nk; ++k) {
+                r[k]  = v[k].r;
+                im[k] = v[k].i;
+            }
+        }
+    }
+
+    for (int i = 0; i < tnoA; ++i) {
+        const double * restrict r0  = ReEVec0[i];
+        const double * restrict im0 = ImEVec0[i];
+
+        for (int j = 0; j < tnoB; ++j, ++p) {
+            const double * restrict r1  = ReEVec1[j];
+            const double * restrict im1 = ImEVec1[j];
+            double                  d1 = 0.0, d2 = 0.0, d3 = 0.0, d4 = 0.0;
+            int                     k = 0;
+
+            for (; k + 3 < nk; k += 4) {
+#define KSTEP(idx)                                                                                                     \
+    do {                                                                                                               \
+        double reA = r0[idx] * r1[idx] + im0[idx] * im1[idx];                                                          \
+        double imA = r0[idx] * im1[idx] - im0[idx] * r1[idx];                                                          \
+        d1 += reA;                                                                                                     \
+        d2 += imA;                                                                                                     \
+        d3 += reA * TmpEIGEN_local[idx];                                                                               \
+        d4 += imA * TmpEIGEN_local[idx];                                                                               \
+    } while (0)
+                KSTEP(k);
+                KSTEP(k + 1);
+                KSTEP(k + 2);
+                KSTEP(k + 3);
+#undef KSTEP
+            }
+
+            for (; k < nk; ++k) {
+                double reA = r0[k] * r1[k] + im0[k] * im1[k];
+                double imA = r0[k] * im1[k] - im0[k] * r1[k];
+                d1 += reA;
+                d2 += imA;
+                d3 += reA * TmpEIGEN_local[k];
+                d4 += imA * TmpEIGEN_local[k];
+            }
+
+            cdm[p] += co * d1 - si * d2;
+            edm[p] += co * d3 - si * d4;
+        }
+    }
+}
+
+/* The transposed panel of BandCol_DM_Block for one k point (NULL when the
+   policy is legacy or memory is short: the legacy loops run). */
+static double *BandCol_DM_Panel(int simd_mode, int max_tno, int nk)
+{
+    if (simd_mode == OPENMX_HOST_SIMD_LEGACY) return NULL;
+    const size_t panel = (size_t)nk * (((size_t)max_tno + 7) / 8 * 8);
+    return (double *)malloc(sizeof(double) * (panel ? panel : 1));
+}
+
 static void BandCol_AccumulateDenseTransposedDM(BandColState *state, int n, int nk, int max_tno, int spin, int kloop, double k1,
                                                 double k2, double k3, const dcomplex *evec_t, int evec_stride,
                                                 int *MP, double ***EIGEN, const double *occ_weight, double *CDM1,
@@ -1760,6 +1888,10 @@ static void BandCol_AccumulateDenseTransposedDM(BandColState *state, int n, int 
     ImEVec0_local  = ws->ImEVec0;
     ReEVec1_local  = ws->ReEVec1;
     ImEVec1_local  = ws->ImEVec1;
+
+    const int simd_mode = OpenMX_HostSimdMode();
+    double *  re1T      = BandCol_DM_Panel(simd_mode, max_tno, nk);
+    double *  im1T      = BandCol_DM_Panel(simd_mode, max_tno, nk);
 
     for (int k = 0; k < nk; ++k) {
         TmpEIGEN_local[k] = EIGEN[spin][kloop][k + 1];
@@ -1796,60 +1928,14 @@ static void BandCol_AccumulateDenseTransposedDM(BandColState *state, int n, int 
             const double si  = sin(2.0 * PI * kRn);
             const double co  = cos(2.0 * PI * kRn);
 
-            for (int j = 0; j < tnoB; ++j) {
-                const dcomplex * restrict v  = &evec_t[(size_t)(Bnum + j - 1) * (size_t)evec_stride];
-                double * restrict          r  = ReEVec1_local[j];
-                double * restrict          im = ImEVec1_local[j];
-
-                for (int k = 0; k < nk; ++k) {
-                    const double w = occ_weight[k];
-                    r[k]           = v[k].r * w;
-                    im[k]          = v[k].i * w;
-                }
-            }
-
-            for (int i = 0; i < tnoA; ++i) {
-                const double * restrict r0  = ReEVec0_local[i];
-                const double * restrict im0 = ImEVec0_local[i];
-
-                for (int j = 0; j < tnoB; ++j, ++p) {
-                    const double * restrict r1  = ReEVec1_local[j];
-                    const double * restrict im1 = ImEVec1_local[j];
-                    double                  d1 = 0.0, d2 = 0.0, d3 = 0.0, d4 = 0.0;
-                    int                     k = 0;
-
-                    for (; k + 3 < nk; k += 4) {
-#define KSTEP(idx)                                                                                                     \
-    do {                                                                                                               \
-        double reA = r0[idx] * r1[idx] + im0[idx] * im1[idx];                                                          \
-        double imA = r0[idx] * im1[idx] - im0[idx] * r1[idx];                                                          \
-        d1 += reA;                                                                                                     \
-        d2 += imA;                                                                                                     \
-        d3 += reA * TmpEIGEN_local[idx];                                                                               \
-        d4 += imA * TmpEIGEN_local[idx];                                                                               \
-    } while (0)
-                        KSTEP(k);
-                        KSTEP(k + 1);
-                        KSTEP(k + 2);
-                        KSTEP(k + 3);
-#undef KSTEP
-                    }
-
-                    for (; k < nk; ++k) {
-                        double reA = r0[k] * r1[k] + im0[k] * im1[k];
-                        double imA = r0[k] * im1[k] - im0[k] * r1[k];
-                        d1 += reA;
-                        d2 += imA;
-                        d3 += reA * TmpEIGEN_local[k];
-                        d4 += imA * TmpEIGEN_local[k];
-                    }
-
-                    CDM1[p] += co * d1 - si * d2;
-                    EDM1[p] += co * d3 - si * d4;
-                }
-            }
+            BandCol_DM_Block(tnoA, tnoB, nk, ReEVec0_local, ImEVec0_local, ReEVec1_local, ImEVec1_local,
+                             &evec_t[(size_t)(Bnum - 1) * (size_t)evec_stride], (size_t)evec_stride, occ_weight,
+                             TmpEIGEN_local, co, si, CDM1 + p, EDM1 + p, simd_mode, re1T, im1T);
+            p += (size_t)tnoA * (size_t)tnoB;
         }
     }
+    free(re1T);
+    free(im1T);
 }
 
 /* Stream state panels to the DM kernel as well: a capacity fallback must
@@ -5347,6 +5433,9 @@ diagonalize1:
                         TmpEIGEN_local[k] = src[k];
                 }
 
+                const int simd_mode = OpenMX_HostSimdMode();
+                double *  re1T      = BandCol_DM_Panel(simd_mode, max_tno, nk);
+                double *  im1T      = BandCol_DM_Panel(simd_mode, max_tno, nk);
                 const int stride = ie2[myid2] - is2[myid2] + 1;
                 size_t    p      = 0;
 
@@ -5380,59 +5469,14 @@ diagonalize1:
                         const double si  = sin(2.0 * PI * kRn);
                         const double co  = cos(2.0 * PI * kRn);
 
-                        for (int j = 0; j < tnoB; ++j) {
-                            const size_t     base = (size_t)(Bnum + j - 1) * stride - is2[myid2] + kmin;
-                            const dcomplex * v    = &EVec1[spin][base];
-                            double * restrict r   = ReEVec1_local[j];
-                            double * restrict im  = ImEVec1_local[j];
-                            for (int k = 0; k < nk; ++k) {
-                                r[k]  = v[k].r;
-                                im[k] = v[k].i;
-                            }
-                        }
-
-                        for (int i = 0; i < tnoA; ++i) {
-                            const double * restrict r0  = ReEVec0_local[i];
-                            const double * restrict im0 = ImEVec0_local[i];
-
-                            for (int j = 0; j < tnoB; ++j, ++p) {
-                                const double * restrict r1  = ReEVec1_local[j];
-                                const double * restrict im1 = ImEVec1_local[j];
-
-                                double d1 = 0.0, d2 = 0.0, d3 = 0.0, d4 = 0.0;
-                                int    k = 0;
-
-                                for (; k + 3 < nk; k += 4) {
-#define KSTEP(idx)                                                                                                     \
-    do {                                                                                                               \
-        double reA = r0[idx] * r1[idx] + im0[idx] * im1[idx];                                                          \
-        double imA = r0[idx] * im1[idx] - im0[idx] * r1[idx];                                                          \
-        d1 += reA;                                                                                                     \
-        d2 += imA;                                                                                                     \
-        d3 += reA * TmpEIGEN_local[idx];                                                                               \
-        d4 += imA * TmpEIGEN_local[idx];                                                                               \
-    } while (0)
-                                    KSTEP(k);
-                                    KSTEP(k + 1);
-                                    KSTEP(k + 2);
-                                    KSTEP(k + 3);
-#undef KSTEP
-                                }
-                                for (; k < nk; ++k) {
-                                    double reA = r0[k] * r1[k] + im0[k] * im1[k];
-                                    double imA = r0[k] * im1[k] - im0[k] * r1[k];
-                                    d1 += reA;
-                                    d2 += imA;
-                                    d3 += reA * TmpEIGEN_local[k];
-                                    d4 += imA * TmpEIGEN_local[k];
-                                }
-
-                                CDM1[p] += co * d1 - si * d2;
-                                EDM1[p] += co * d3 - si * d4;
-                            }
-                        }
+                        BandCol_DM_Block(tnoA, tnoB, nk, ReEVec0_local, ImEVec0_local, ReEVec1_local, ImEVec1_local,
+                                         &EVec1[spin][(size_t)(Bnum - 1) * stride - is2[myid2] + kmin], (size_t)stride,
+                                         NULL, TmpEIGEN_local, co, si, CDM1 + p, EDM1 + p, simd_mode, re1T, im1T);
+                        p += (size_t)tnoA * (size_t)tnoB;
                     } /* LB_AN */
                 } /* GA_AN */
+                free(re1T);
+                free(im1T);
             }
 
             if (measure_time) {
