@@ -405,6 +405,22 @@ ELPA の Fortran `mpi` モジュールを読むため、MPI は使用する ROCm
 ROCm flang 用として使用できません。AOCL が依存する AOCC の Fortran ランタイムも
 `AOCC_LIB` に指定します。
 
+ROCm 10.1 の AMD APT パッケージでは、`amdrocm10.1` は実行用であり、
+HIP ヘッダーと CMake の開発用ファイルを含みません。ビルドには同じバージョンの
+開発パッケージも必要です。例えば Radeon RX 9060 XT（gfx1200）では次を使用できます。
+
+```sh
+sudo apt install amdrocm-core-dev10.1-gfx1200
+```
+
+選択した ROCm の `include/hip/hip_runtime.h` と
+`lib/cmake/hip-lang/hip-lang-config.cmake`、hipBLAS/hipSOLVER/rocPRIM/rocThrust の
+開発用ファイルが存在することを確認してください。ROCm を更新した場合は、新しい
+ビルドディレクトリでコンパイラと依存ライブラリを構築し直します。
+`OPENMX_CORE_BACKEND=HIP` を使う場合は、`CMAKE_CXX_COMPILER`、`CMAKE_HIP_COMPILER`、
+`CMAKE_HIP_COMPILER_ROCM_ROOT`、`CMAKE_PREFIX_PATH` とネイティブ側の `ROCM` を
+同じインストール先に揃えます。
+
 HIP Makefile は、選択した `ROCM_LLVM_LIB` を `LIBRARY_PATH` の先頭に置きます。
 ROCm clang は環境変数のライブラリ検索先を明示した `-L` より先に使うため、
 この設定で Intel oneAPI や AOCC の別の OpenMP ランタイムが選ばれることを防ぎます。

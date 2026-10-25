@@ -862,7 +862,7 @@ static void BandNonCol_GpuSolver_EnsureWorkspace(BandNonColState *state, int n, 
     BandNonCol_GpuSolver_EnsureMatrixCapacity(state, n);
     range = (n==maxn) ? HIPSOLVER_EIG_RANGE_ALL : HIPSOLVER_EIG_RANGE_I;
 
-    OpenMXSolverWait(hipsolverDnXsyevdx_bufferSize(w->gpusolver,NULL,jobz,range,uplo,n,
+    OpenMXSolverWait(openmx_hipsolver_xsyevdx_bufferSize(w->gpusolver,NULL,jobz,range,uplo,n,
                                                HIP_C_64F,(hipDoubleComplex*)w->d_A,n,&vl,&vu,1L,maxn,&h_meig,
                                                HIP_R_64F,w->d_W,HIP_C_64F,&d_bytes,&h_bytes));
 
@@ -1451,7 +1451,7 @@ static size_t BandNonCol_QueryGpuSolverWorkBytes(BandNonColState *state, int n, 
             }
         }
         else {
-            solver_status = hipsolverDnXsyevdx_bufferSize(handle,NULL,jobz,range,uplo,n,
+            solver_status = openmx_hipsolver_xsyevdx_bufferSize(handle,NULL,jobz,range,uplo,n,
                                                      HIP_C_64F,NULL,n,&vl,&vu,1L,maxn,&h_meig,
                                                      HIP_R_64F,NULL,HIP_C_64F,&d_bytes,&h_bytes);
         }

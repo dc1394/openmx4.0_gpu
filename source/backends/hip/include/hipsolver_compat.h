@@ -4,9 +4,9 @@
 /*
  * hipSOLVER compatibility header for OpenMX's own sources.
  * C and C++ TUs use the real ROCm hipSOLVER header, plus generic-API emulation
- * wrappers (hipsolverDnXsyevd / hipsolverDnXsyevdx) built on the typed hipSOLVER
- * entry points.  See hip_runtime_compat.h for why the CUDA-named shim headers
- * are kept in the tree for the third-party libraries.
+ * wrappers (openmx_hipsolver_xsyevd / openmx_hipsolver_xsyevdx) built on
+ * the typed hipSOLVER entry points.  See hip_runtime_compat.h for why the
+ * CUDA-named shim headers are kept in the tree for the third-party libraries.
  *
  * The wrappers only translate the generic API into the typed one (FP32/FP64,
  * real/complex).  The solver policy of the NVIDIA build's compatibility layer
@@ -32,7 +32,9 @@
  * vu point to values of dataTypeW, as in the generic API.  The typed API takes
  * int sizes and an element count of workspace, so a dimension or a workspace
  * that does not fit an int is HIPSOLVER_STATUS_INVALID_VALUE.  There is no
- * host workspace.
+ * host workspace.  Keep these wrappers in the OpenMX namespace: recent
+ * hipSOLVER releases also declare native hipsolverDnXsyevd entry points,
+ * whose parameter and workspace contract is independent of this emulation.
  */
 
 /* element size of dataTypeA for the supported combinations, else 0 */
@@ -82,7 +84,7 @@ static inline hipsolverStatus_t openmx_hipsolver_x_bytes(hipsolverStatus_t statu
     return status;
 }
 
-static inline hipsolverStatus_t hipsolverDnXsyevd_bufferSize(
+static inline hipsolverStatus_t openmx_hipsolver_xsyevd_bufferSize(
     hipsolverDnHandle_t handle, void *params, hipsolverEigMode_t jobz,
     hipblasFillMode_t uplo, int64_t n, hipDataType dataTypeA, const void *A,
     int64_t lda, hipDataType dataTypeW, const void *W,
@@ -129,7 +131,7 @@ static inline hipsolverStatus_t hipsolverDnXsyevd_bufferSize(
     return openmx_hipsolver_x_bytes(status, lwork, width, workspaceInBytesOnDevice);
 }
 
-static inline hipsolverStatus_t hipsolverDnXsyevd(
+static inline hipsolverStatus_t openmx_hipsolver_xsyevd(
     hipsolverDnHandle_t handle, void *params, hipsolverEigMode_t jobz,
     hipblasFillMode_t uplo, int64_t n, hipDataType dataTypeA, void *A,
     int64_t lda, hipDataType dataTypeW, void *W, hipDataType computeType,
@@ -169,7 +171,7 @@ static inline hipsolverStatus_t hipsolverDnXsyevd(
 
 /* h_meig of the query: the count the request implies (n for RANGE_ALL and
    for RANGE_V, which has no count before the solve; iu - il + 1 for RANGE_I) */
-static inline hipsolverStatus_t hipsolverDnXsyevdx_bufferSize(
+static inline hipsolverStatus_t openmx_hipsolver_xsyevdx_bufferSize(
     hipsolverDnHandle_t handle, void *params, hipsolverEigMode_t jobz,
     hipsolverEigRange_t range, hipblasFillMode_t uplo, int64_t n,
     hipDataType dataTypeA, const void *A, int64_t lda, const void *vl,
@@ -237,7 +239,7 @@ static inline hipsolverStatus_t hipsolverDnXsyevdx_bufferSize(
 
 /* h_meig is the count the solver reports (hipSOLVER returns it to the host
    before the call returns) */
-static inline hipsolverStatus_t hipsolverDnXsyevdx(
+static inline hipsolverStatus_t openmx_hipsolver_xsyevdx(
     hipsolverDnHandle_t handle, void *params, hipsolverEigMode_t jobz,
     hipsolverEigRange_t range, hipblasFillMode_t uplo, int64_t n,
     hipDataType dataTypeA, void *A, int64_t lda, const void *vl,

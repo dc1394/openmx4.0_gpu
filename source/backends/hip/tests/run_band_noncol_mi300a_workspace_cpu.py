@@ -93,7 +93,7 @@ static int hipsolverDnZheevd_bufferSize(void *h,int job,int uplo,int n,void *a,i
     *lwork=fail_at==6 ? 0 : fail_at==7 ? -1 : native_lwork;
     return fail_at==5;
 }
-static int hipsolverDnXsyevdx_bufferSize(void *h,void *params,int job,int range,int uplo,int n,
+static int openmx_hipsolver_xsyevdx_bufferSize(void *h,void *params,int job,int range,int uplo,int n,
     int atype,void *a,int lda,double *vl,double *vu,int64_t il,int64_t iu,int64_t *meig,
     int wtype,double *w,int ctype,size_t *db,size_t *hb) {
     CHECK(h && !params && job==HIPSOLVER_EIG_MODE_VECTOR && uplo==HIPBLAS_FILL_MODE_LOWER);

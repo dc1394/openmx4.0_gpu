@@ -1,6 +1,6 @@
 /* Check of the generic-API shim source/hipsolver_compat.h, as a C translation
    unit sees it (the HIP port of the NVIDIA tests/cusolver_smoke.c):
-   hipsolverDnXsyevd and hipsolverDnXsyevdx (RANGE_ALL, the first 16 of
+   openmx_hipsolver_xsyevd and openmx_hipsolver_xsyevdx (RANGE_ALL, the first 16 of
    RANGE_I, and RANGE_V over an interval holding the whole spectrum, whose
    bounds are values of the W type) for HIP_R_32F, HIP_R_64F, HIP_C_32F and
    HIP_C_64F, with the
@@ -90,11 +90,11 @@ static void run_case(hipsolverDnHandle_t h, int n, hipDataType type, int api)
     CHECK_HIP(hipMemcpy(dw, wbuf, (n + 1) * real_size, hipMemcpyHostToDevice));
 
     if (api == 0) {
-        CHECK_SOLVER(hipsolverDnXsyevd_bufferSize(h, NULL, HIPSOLVER_EIG_MODE_VECTOR, HIPBLAS_FILL_MODE_LOWER, n,
+        CHECK_SOLVER(openmx_hipsolver_xsyevd_bufferSize(h, NULL, HIPSOLVER_EIG_MODE_VECTOR, HIPBLAS_FILL_MODE_LOWER, n,
                                                   type, da, n, wtype, dw, type, &dbytes, &hbytes));
     }
     else {
-        CHECK_SOLVER(hipsolverDnXsyevdx_bufferSize(h, NULL, HIPSOLVER_EIG_MODE_VECTOR, range,
+        CHECK_SOLVER(openmx_hipsolver_xsyevdx_bufferSize(h, NULL, HIPSOLVER_EIG_MODE_VECTOR, range,
                                                    HIPBLAS_FILL_MODE_LOWER, n, type, da, n, pvl, pvu, 1, maxn, &meig,
                                                    wtype, dw, type, &dbytes, &hbytes));
         if (meig != maxn) {
@@ -109,12 +109,12 @@ static void run_case(hipsolverDnHandle_t h, int n, hipDataType type, int api)
     CHECK_HIP(hipMalloc(&work, dbytes));
     meig = -1;
     if (api == 0) {
-        CHECK_SOLVER(hipsolverDnXsyevd(h, NULL, HIPSOLVER_EIG_MODE_VECTOR, HIPBLAS_FILL_MODE_LOWER, n, type, da, n,
+        CHECK_SOLVER(openmx_hipsolver_xsyevd(h, NULL, HIPSOLVER_EIG_MODE_VECTOR, HIPBLAS_FILL_MODE_LOWER, n, type, da, n,
                                        wtype, dw, type, work, dbytes, NULL, 0, dinfo));
         meig = n;
     }
     else {
-        CHECK_SOLVER(hipsolverDnXsyevdx(h, NULL, HIPSOLVER_EIG_MODE_VECTOR, range,
+        CHECK_SOLVER(openmx_hipsolver_xsyevdx(h, NULL, HIPSOLVER_EIG_MODE_VECTOR, range,
                                         HIPBLAS_FILL_MODE_LOWER, n, type, da, n, pvl, pvu, 1, maxn, &meig, wtype, dw,
                                         type, work, dbytes, NULL, 0, dinfo));
     }
@@ -201,30 +201,30 @@ static void error_paths(hipsolverDnHandle_t h)
     int     ok = 1;
 
     /* complex A with a complex W, an unsupported type (HIP_R_16F = 2) */
-    ok &= hipsolverDnXsyevd_bufferSize(h, NULL, HIPSOLVER_EIG_MODE_VECTOR, HIPBLAS_FILL_MODE_LOWER, 8, HIP_C_64F,
+    ok &= openmx_hipsolver_xsyevd_bufferSize(h, NULL, HIPSOLVER_EIG_MODE_VECTOR, HIPBLAS_FILL_MODE_LOWER, 8, HIP_C_64F,
                                        NULL, 8, HIP_C_64F, NULL, HIP_C_64F, &dbytes, &hbytes) ==
           HIPSOLVER_STATUS_NOT_SUPPORTED;
     ok &= dbytes == 0 && hbytes == 0;
-    ok &= hipsolverDnXsyevdx_bufferSize(h, NULL, HIPSOLVER_EIG_MODE_VECTOR, HIPSOLVER_EIG_RANGE_I,
+    ok &= openmx_hipsolver_xsyevdx_bufferSize(h, NULL, HIPSOLVER_EIG_MODE_VECTOR, HIPSOLVER_EIG_RANGE_I,
                                         HIPBLAS_FILL_MODE_LOWER, 8, (hipDataType)2, NULL, 8, &vl, &vu, 1, 4, &meig,
                                         HIP_R_32F, NULL, (hipDataType)2, &dbytes, &hbytes) ==
           HIPSOLVER_STATUS_NOT_SUPPORTED;
     ok &= meig == 0;
-    ok &= hipsolverDnXsyevdx(h, NULL, HIPSOLVER_EIG_MODE_VECTOR, HIPSOLVER_EIG_RANGE_I, HIPBLAS_FILL_MODE_LOWER, 8,
+    ok &= openmx_hipsolver_xsyevdx(h, NULL, HIPSOLVER_EIG_MODE_VECTOR, HIPSOLVER_EIG_RANGE_I, HIPBLAS_FILL_MODE_LOWER, 8,
                              HIP_R_64F, NULL, 8, &vl, &vu, 1, 4, &meig, HIP_R_32F, NULL, HIP_R_64F, NULL, 0, NULL, 0,
                              NULL) == HIPSOLVER_STATUS_NOT_SUPPORTED;
     /* sizes beyond the int API */
-    ok &= hipsolverDnXsyevd_bufferSize(h, NULL, HIPSOLVER_EIG_MODE_VECTOR, HIPBLAS_FILL_MODE_LOWER,
+    ok &= openmx_hipsolver_xsyevd_bufferSize(h, NULL, HIPSOLVER_EIG_MODE_VECTOR, HIPBLAS_FILL_MODE_LOWER,
                                        (int64_t)INT_MAX + 1, HIP_R_64F, NULL, (int64_t)INT_MAX + 1, HIP_R_64F, NULL,
                                        HIP_R_64F, &dbytes, &hbytes) == HIPSOLVER_STATUS_INVALID_VALUE;
-    ok &= hipsolverDnXsyevd(h, NULL, HIPSOLVER_EIG_MODE_VECTOR, HIPBLAS_FILL_MODE_LOWER, 8, HIP_C_64F, NULL, 8,
+    ok &= openmx_hipsolver_xsyevd(h, NULL, HIPSOLVER_EIG_MODE_VECTOR, HIPBLAS_FILL_MODE_LOWER, 8, HIP_C_64F, NULL, 8,
                             HIP_R_64F, NULL, HIP_C_64F, NULL, ((size_t)INT_MAX + 1) * 16, NULL, 0, NULL) ==
           HIPSOLVER_STATUS_INVALID_VALUE;
-    ok &= hipsolverDnXsyevdx(h, NULL, HIPSOLVER_EIG_MODE_VECTOR, HIPSOLVER_EIG_RANGE_I, HIPBLAS_FILL_MODE_LOWER, 8,
+    ok &= openmx_hipsolver_xsyevdx(h, NULL, HIPSOLVER_EIG_MODE_VECTOR, HIPSOLVER_EIG_RANGE_I, HIPBLAS_FILL_MODE_LOWER, 8,
                              HIP_R_64F, NULL, 8, &vl, &vu, 1, (int64_t)INT_MAX + 1, &meig, HIP_R_64F, NULL,
                              HIP_R_64F, NULL, 0, NULL, 0, NULL) == HIPSOLVER_STATUS_INVALID_VALUE;
     /* a range the library rejects comes back as its status */
-    ok &= hipsolverDnXsyevdx_bufferSize(h, NULL, HIPSOLVER_EIG_MODE_VECTOR, HIPSOLVER_EIG_RANGE_I,
+    ok &= openmx_hipsolver_xsyevdx_bufferSize(h, NULL, HIPSOLVER_EIG_MODE_VECTOR, HIPSOLVER_EIG_RANGE_I,
                                         HIPBLAS_FILL_MODE_LOWER, 8, HIP_R_64F, NULL, 8, &vl, &vu, 1, 9, &meig,
                                         HIP_R_64F, NULL, HIP_R_64F, &dbytes, &hbytes) ==
           HIPSOLVER_STATUS_INVALID_VALUE;

@@ -23,7 +23,7 @@ int main(void)
             size_t device_bytes=0,host_bytes=0;
             int64_t found=0;
             double lo=0,hi=0;
-            hipsolverStatus_t status=hipsolverDnXsyevdx_bufferSize(handle,NULL,HIPSOLVER_EIG_MODE_VECTOR,
+            hipsolverStatus_t status=openmx_hipsolver_xsyevdx_bufferSize(handle,NULL,HIPSOLVER_EIG_MODE_VECTOR,
                 full?HIPSOLVER_EIG_RANGE_ALL:HIPSOLVER_EIG_RANGE_I,HIPBLAS_FILL_MODE_LOWER,
                 n,type,NULL,n,&lo,&hi,1,nev,&found,HIP_R_64F,NULL,type,&device_bytes,&host_bytes);
             printf("WORKSPACE type=%c n=%d nev=%d status=%d matrix_bytes=%zu device_bytes=%zu host_bytes=%zu\n",
