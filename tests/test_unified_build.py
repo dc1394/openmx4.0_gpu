@@ -374,6 +374,26 @@ class UnifiedBuildTest(unittest.TestCase):
                 self.assertIn("openmx_env_registry.h", row.split())
         self.assertFalse(list(stage.glob("*.o")), "make -np unexpectedly compiled an object")
 
+    @unittest.skipUnless(shutil.which("make"), "GNU make is required for native dependency inspection")
+    def test_shared_inline_headers_invalidate_native_objects(self):
+        objects = ("Total_Energy.o", "Stress.o", "Cluster_DFT_Col_CWF.o",
+                   "Cluster_DFT_NonCol_CWF.o", "Band_DFT_Col_CWF.o", "Band_DFT_NonCol_CWF.o")
+        for backend, stage in self.stages.items():
+            architecture = "GEMMUL8_GPU_ARCH=120" if backend == "CUDA" else "ARCH=gfx942"
+            completed = subprocess.run(
+                ["make", "--no-print-directory", "-np", "-C", str(stage), architecture, "FFTW3_LIB=", *objects],
+                capture_output=True, text=True, check=False, env={**os.environ, "LC_ALL": "C"})
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            for obj in objects:
+                with self.subTest(backend=backend, object=obj):
+                    row = next(line for line in completed.stdout.splitlines() if line.startswith(obj + ":"))
+                    # Existing public ABI dependencies use canonical absolute paths.
+                    self.assertTrue(any(p.endswith("/core/include/openmx_core_neutral_grid_metadata.h")
+                                        for p in row.split()), row)
+                    helper = "openmx_cwf_workspace.h" if "CWF" in obj else "openmx_neutral_atom.h"
+                    self.assertIn(helper, row.split())
+            self.assertFalse(list(stage.glob("*.o")), "make -np unexpectedly compiled an object")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

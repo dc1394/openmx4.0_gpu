@@ -191,7 +191,7 @@ template<class T> void equivalence() {
   // Cancellation, negative zero, unaligned orbital rows, every lane tail,
   // repeated center points, transposed/halo input, and nonzero H seeds.
   for(bool hamiltonian:{false,true})for(int spins:{1,2,4})for(bool transpose:{false,true})
-    for(int columns:{5,13,19})for(int points=1;points<=17;++points) {
+    for(int columns:{1,4,5,8,12,13,19})for(int points=1;points<=17;++points) {
       std::vector<double> reference;
       for(int mode=0;mode<=OPENMX_GRID_NEON;++mode) {
         if(!openmx_core_grid_simd_width(mode))continue;

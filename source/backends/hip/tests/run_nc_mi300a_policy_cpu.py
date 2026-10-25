@@ -51,6 +51,7 @@ PREFIX = r'''
 #include <string.h>
 #include "openmx_env.h"
 #include "openmx_core_energy.h"
+#include "openmx_core_chemical.h"
 #define CHECK(x) do { if (!(x)) { fprintf(stderr,"FAIL line %d: %s\n",__LINE__,#x); exit(2); } } while (0)
 typedef void *hipblasHandle_t;
 typedef int hipblasStatus_t;

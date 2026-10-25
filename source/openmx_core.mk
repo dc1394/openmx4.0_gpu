@@ -50,3 +50,8 @@ $(OBJS) openmx_api.o: openmx_core_orbital_workspace.h
 Get_Orbitals.o Get_Cnt_Orbitals.o Get_dOrbitals.o Get_Cnt_dOrbitals.o Set_Orbitals_Grid.o Force.o Stress.o: openmx_orbitals.h
 Get_Orbitals.o Get_Cnt_Orbitals.o Get_dOrbitals.o Get_Cnt_dOrbitals.o Set_Orbitals_Grid.o Force.o Stress.o: openmx_orbital_harmonics.h
 openmx.o openmx_api.o Runtest.o: openmx_atomic.h
+
+# These shared native helpers contain inline numerical/ownership code outside
+# core/include. Track them in both GPU builds as well as the public C ABI.
+Total_Energy.o Stress.o: openmx_neutral_atom.h
+Cluster_DFT_Col_CWF.o Cluster_DFT_NonCol_CWF.o Band_DFT_Col_CWF.o Band_DFT_NonCol_CWF.o: openmx_cwf_workspace.h

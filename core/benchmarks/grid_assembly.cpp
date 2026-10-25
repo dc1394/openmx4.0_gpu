@@ -20,7 +20,7 @@ int main(int argc,char** argv) {
     constexpr int points=4093;
     char error[256];
     auto check=[&](int ok){if(!ok)throw std::runtime_error(error);};
-    for(int spins:{1,2,4})for(int orbitals:{13,19})for(int stage:{0,1}) {
+    for(int spins:{1,2,4})for(int orbitals:{1,4,8,12,13,19})for(int stage:{0,1}) {
       std::unique_ptr<OpenMXCoreContext,decltype(&openmx_core_destroy)> context(
           openmx_core_create_host(error,sizeof(error)),openmx_core_destroy);
       check(bool(context));OpenMXGridWorkspace* workspace;

@@ -135,6 +135,13 @@ def main():
                 "-c",str(ROOT / ('source/openmx_gpu_task_'+module+'.cpp')),"-o",str(output)],
                 env=env,check=True,timeout=120)
             host_objects.append(str(output))
+        # The extracted kernel now uses the typed snapshot API for CPU SIMD.
+        # Link its production implementation, as the application does.
+        environment=folder / "env.o"
+        subprocess.run([str(args.rocm / "llvm/bin/clang"),"-std=c11","-O3",
+            "-I"+str(ROOT / "source"),"-c",str(ROOT / "source/openmx_env.c"),
+            "-o",str(environment)],env=env,check=True,timeout=120)
+        host_objects.append(str(environment))
         command = compiler + ["-x", "c", "-O3", "-std=c11", "-ffp-contract=off", "-fopenmp",
             "--offload-arch=" + args.arch, "-D__HIP_PLATFORM_AMD__",
             "-ffunction-sections", "-fdata-sections", "-I" + str(ROOT / "source"), "-I" + str(ROOT / "tests"),

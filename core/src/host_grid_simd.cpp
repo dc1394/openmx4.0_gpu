@@ -98,7 +98,10 @@ void hamiltonian(const OpenMXGridPair& p,GridScratch w) {
   if(!p.points || !p.rows || !p.columns)return;
   const bool blocked=Spins==1 && p.rows<=16 && p.columns<=16 && !p.center.transposed;
   const size_t stride=blocked?16:w.orbitals;
-  const size_t columns=blocked?16:(size_t(p.columns)+lanes-1)/lanes*lanes;
+  // A fixed row stride does not require computing every padded column.
+  // Small H/C blocks need only their active host SIMD vectors; retain the
+  // stride and ascending quadrature order of every physical matrix entry.
+  const size_t columns=(size_t(p.columns)+lanes-1)/lanes*lanes;
   for(int s=0;s<Spins;++s)for(int i=0;i<p.rows;++i)for(size_t j=0;j<stride;++j)
     w.h[(size_t(s)*p.rows+i)*stride+j]=blocked || j>=size_t(p.columns)?0.0:p.matrix[s][i][j];
   // Scratch already owns a multiple-of-eight row. Zero only the padding,

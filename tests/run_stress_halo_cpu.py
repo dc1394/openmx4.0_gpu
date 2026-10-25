@@ -38,6 +38,12 @@ def main():
         parser.error('--mpi-cxx and --mpiexec must be supplied together')
     library = args.core_library.resolve(strict=True)
     halo, kinetic = blocks((ROOT/'source/Stress.c').read_text())
+    # ROCm Clang's -fopenmp prepends ambient LIBRARY_PATH directories to
+    # wrapper -L flags. An active Intel environment must not replace the
+    # explicitly selected Open MPI (or another wrapper's MPI) at link time.
+    build_env = os.environ.copy()
+    if args.mpi_cxx:
+        build_env.pop('LIBRARY_PATH', None)
     with tempfile.TemporaryDirectory(prefix='openmx-stress-halo-') as directory:
         folder = Path(directory)
         openmp = False
@@ -45,7 +51,7 @@ def main():
             probe = folder/'openmp_probe.c'
             probe.write_text('#include <omp.h>\nint main(void){return omp_get_max_threads()<1;}\n')
             command = compiler_command('c', args.mpi_cxx)+['-fopenmp', '-x', 'c', str(probe), '-o', str(folder/'openmp-probe')]
-            checked = subprocess.run(command, capture_output=True, text=True)
+            checked = subprocess.run(command, capture_output=True, text=True, env=build_env)
             openmp = checked.returncode == 0
         if not args.mpi_cxx:
             (folder/'mpi.h').write_text(MPI.replace('#endif',
@@ -75,7 +81,7 @@ def main():
             command += ['-I'+str(folder), '-I'+str(ROOT/'source'), '-I'+str(ROOT/'core/include'),
                 '-x', 'c', str(ROOT/'tests/stress_halo_harness.c'), '-x', 'none', str(library),
                 '-Wl,-rpath,'+str(library.parent), '-lm', '-o', str(exe)]
-            subprocess.run(command, check=True)
+            subprocess.run(command, check=True, env=build_env)
             return exe
 
         def run(exe, *extra, **kwargs):
