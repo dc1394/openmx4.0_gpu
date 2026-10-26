@@ -67,7 +67,10 @@ int openmx_core_vna_quadrature(const OpenMXVnaQuadrature*, int mode);
    One operand block is transposed to [component][...]: with right_transposed
    the right block is right[L*right_stride+n] and the left block keeps its
    legacy rows left[m*left_stride+L]; otherwise left[L*left_stride+m] and
-   right[n*right_stride+L]. */
+   right[n*right_stride+L]. Without fp32, left_double and right_double may
+   supply both blocks already widened to double (same layouts and strides;
+   left and right are then not read): the products and the results are the
+   same, with no conversion in the inner loop. Zero-initialize them otherwise. */
 typedef struct {
   int rows, columns, groups, fp32, first, right_transposed;
   const int *lengths;
@@ -78,6 +81,7 @@ typedef struct {
   size_t right_stride;
   double *matrix;
   size_t stride;
+  const double *left_double, *right_double;
 } OpenMXVnaHvnaBlock;
 int openmx_core_vna_hvna_block(const OpenMXVnaHvnaBlock*, int mode);
 

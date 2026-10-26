@@ -1,6 +1,7 @@
 #include "openmx_core_orbitals_simd.h"
 #include "openmx_core_host_simd.h"
 #include "../tests/host_orbitals_reference.hpp"
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
@@ -57,6 +58,59 @@ int main(int argc,char** argv) {
       if(std::memcmp(out.data(),reference.data(),out.size()*sizeof(float))!=0)throw std::runtime_error("host kernel differs from SOG_point_eval");
       std::cout<<std::setw(24)<<openmx_core_host_simd_name(mode)<<std::setw(10)<<1e9*s/(double(points)*repeats)<<" ns/point  ("<<std::setprecision(2)<<legacy/s<<"x)\n"<<std::setprecision(1);
     }
+    // The application layout of Set_Orbitals_Grid: the atom's own grid (every
+    // lattice point of its sphere in grid order, rows in one block as
+    // truncation.c allocates them) and its overlaps with six neighbours at the
+    // Si-Si distance (ascending index lists into the own grid, rows in one
+    // block each). Old: the capacity glue's per-point records, the record
+    // kernel into a max_no-strided tile and the copy into the rows; new: the
+    // segment kernel straight into the rows.
+    {
+      const double atom[3]={0.013,-0.021,0.007},bond=4.44;
+      const double neighbours[6][3]={{bond,0,0},{-bond,0,0},{0,bond,0},{0,-bond,0},{0,0,bond},{0,0,-bond}};
+      std::vector<int> own_grid,own_cell;
+      for(int n1=0;n1<ng;++n1)for(int n2=0;n2<ng;++n2)for(int n3=0;n3<ng;++n3) {
+        const double x=n1*spacing+frame.origin[0]-atom[0],y=n2*spacing+frame.origin[1]-atom[1],z=n3*spacing+frame.origin[2]-atom[2];
+        if(x*x+y*y+z*z<=rcut*rcut){own_grid.push_back(n1*frame.ng23+n2*frame.ng3+n3);own_cell.push_back(13);}
+      }
+      struct Run { double xyz[3]; std::vector<int> index; std::vector<float> block; std::vector<float*> rows; };
+      std::vector<Run> runs(7);
+      for(int a=0;a<3;++a)runs[0].xyz[a]=atom[a];
+      for(int h=0;h<6;++h){for(int a=0;a<3;++a)runs[h+1].xyz[a]=atom[a]+neighbours[h][a];
+        for(size_t k=0;k<own_grid.size();++k){const int g=own_grid[k],n1=g/frame.ng23,n2=(g-n1*frame.ng23)/frame.ng3,n3=g-n1*frame.ng23-n2*frame.ng3;
+          const double x=n1*spacing+frame.origin[0]-runs[h+1].xyz[0],y=n2*spacing+frame.origin[1]-runs[h+1].xyz[1],z=n3*spacing+frame.origin[2]-runs[h+1].xyz[2];
+          if(x*x+y*y+z*z<=rcut*rcut)runs[h+1].index.push_back(int(k));}}
+      size_t total=0;
+      std::vector<OpenMXOrbitalsSegment> segs;
+      for(size_t r=0;r<runs.size();++r) {
+        Run& run=runs[r];const size_t count=r?run.index.size():own_grid.size();total+=count;
+        run.block.assign(count*no,0.0f);run.rows.resize(count);for(size_t k=0;k<count;++k)run.rows[k]=run.block.data()+k*no;
+        OpenMXOrbitalsSegment g{};g.wan=0;g.no=no;for(int a=0;a<3;++a){g.xyz[a]=run.xyz[a];g.shift[a]=0.0;}
+        g.count=count;g.index=r?run.index.data():nullptr;g.grid=own_grid.data();g.cell=own_cell.data();g.rows=run.rows.data();
+        segs.push_back(g);
+      }
+      const int mode=openmx_core_host_simd_mode(argc>3?argv[3]:nullptr);
+      const size_t tile=262144;
+      std::vector<OpenMXOrbitalsPoint> staged(tile);std::vector<float*> destination(tile);std::vector<float> tileout(tile*size_t(no));
+      const double old_seconds=seconds([&]{
+        size_t at=0;
+        auto flush=[&]{if(!openmx_core_orbitals_points(&tables,&frame,staged.data(),at,tileout.data(),mode))throw std::runtime_error("kernel refused");
+          for(size_t i=0;i<at;++i)for(int j=0;j<no;++j)destination[i][j]=tileout[i*size_t(frame.max_no)+size_t(j)];at=0;};
+        for(const auto& g:segs)for(size_t k=0;k<g.count;++k) {
+          const size_t i=g.index?size_t(g.index[k]):k;OpenMXOrbitalsPoint& e=staged[at];
+          e.wan=g.wan;e.no=g.no;e.grid=g.grid[i];e.cell=g.cell[i];
+          for(int a=0;a<3;++a){e.xyz[a]=g.xyz[a];e.shift[a]=g.shift[a];}
+          destination[at++]=g.rows[k];if(at==tile)flush();
+        }
+        if(at)flush();});
+      std::vector<std::vector<float>> first;for(const auto& run:runs)first.push_back(run.block);
+      const double new_seconds=seconds([&]{if(!openmx_core_orbitals_segments(&tables,&frame,segs.data(),segs.size(),mode))throw std::runtime_error("segments refused");});
+      for(size_t r=0;r<runs.size();++r)if(std::memcmp(first[r].data(),runs[r].block.data(),first[r].size()*sizeof(float))!=0)
+        throw std::runtime_error("segment rows differ from the staged path");
+      std::cout<<"application layout ("<<openmx_core_host_simd_name(mode)<<"): "<<total<<" points in "<<segs.size()<<" segments\n"
+          <<std::setw(24)<<"records+tile+copy"<<std::setw(10)<<1e9*old_seconds/(double(total)*repeats)<<" ns/point\n"
+          <<std::setw(24)<<"segments into rows"<<std::setw(10)<<1e9*new_seconds/(double(total)*repeats)<<" ns/point  ("<<std::setprecision(2)<<old_seconds/new_seconds<<"x)\n"<<std::setprecision(1);
+    }
     // Derivatives at Force3 sizes: the same sphere, displacements from the atom.
     std::vector<OpenMXOrbitalsDisplacement> d;
     for(const auto& p:q) {
@@ -84,6 +138,10 @@ int main(int argc,char** argv) {
       std::cout<<std::setw(24)<<openmx_core_host_simd_name(mode)<<std::setw(10)<<1e9*s/(double(points)*repeats)<<" ns/point  ("<<std::setprecision(2)<<dlegacy/s<<"x)\n"<<std::setprecision(1);
       const double sc=seconds([&]{if(!openmx_core_orbitals_dpoints_cosines(&tables,d.data(),d.size(),dout.data(),mode))throw std::runtime_error("cosine kernel refused");});
       std::cout<<std::setw(24)<<(std::string(openmx_core_host_simd_name(mode))+" cosines")<<std::setw(10)<<1e9*sc/(double(points)*repeats)<<" ns/point  ("<<std::setprecision(2)<<dlegacy/sc<<"x)\n"<<std::setprecision(1);
+      // Force3's pattern: calls of 256 points (per-call species setup and checks).
+      const double sb=seconds([&]{for(size_t first=0;first<d.size();first+=256){const size_t n=std::min<size_t>(256,d.size()-first);
+        if(!openmx_core_orbitals_dpoints_cosines(&tables,d.data()+first,n,dout.data()+first*size_t(no)*3,mode))throw std::runtime_error("cosine kernel refused");}});
+      std::cout<<std::setw(24)<<(std::string(openmx_core_host_simd_name(mode))+" cosines/256")<<std::setw(10)<<1e9*sb/(double(points)*repeats)<<" ns/point  ("<<std::setprecision(2)<<dlegacy/sb<<"x)\n"<<std::setprecision(1);
     }
   }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}
 }

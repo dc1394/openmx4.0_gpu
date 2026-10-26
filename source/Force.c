@@ -2656,67 +2656,96 @@ static void Force4B_case1_trace_fused(const OpenMXVnaMatrixViews *vna, int Mc_AN
    received atom, k) block, grouped by the received atom's neighbour index
    kl of k, so that each received block is prepared once and reused by every
    atom sharing it (phase A, any order, into per-(pair,k) slots); the atoms
-   then sum their slots in ascending k (phase B, the legacy order). */
+   then sum their slots in ascending k (phase B, the legacy order). Slots
+   exist for the valid k only, numbered pair by pair in ascending k; the
+   plans of all received atoms share one grow-only arena of the Force4B call,
+   so a received atom costs no allocation and its slots stay compact. */
+typedef struct {
+    int *ints; size_t int_capacity;
+    double *slots; size_t slot_capacity;
+} Force4BHaloArena;
+
+static int Force4B_halo_reserve(void **buffer, size_t *capacity, size_t count, size_t element)
+{
+    size_t n;
+
+    if (count <= *capacity) return 1;
+    n = *capacity ? *capacity : 256;
+    while (n < count) n *= 2;
+    free(*buffer);
+    *buffer = malloc(n * element);
+    *capacity = *buffer != NULL ? n : 0;
+    return *buffer != NULL;
+}
+
+static void Force4B_halo_arena_free(Force4BHaloArena *arena)
+{
+    free(arena->ints);
+    free(arena->slots);
+    memset(arena, 0, sizeof(*arena));
+}
+
 typedef struct {
     int valid, failed, kl_count, pair_count, triple_count, jan;
-    int *bucket_start;                       /* [kl_count+1] */
-    int *triple_pair, *triple_k;             /* [triple_count] */
-    int *pair_mc, *pair_q, *pair_base;       /* [pair_count] */
-    int *mc_first;                           /* [Matomnum+2]: the pairs of Mc_AN */
-    double *slots;                           /* (pair_base+k) blocks of slot_values doubles */
+    int *bucket_start;                         /* [kl_count+1] */
+    int *triple_pair, *triple_k, *triple_slot; /* [triple_count] */
+    int *pair_mc, *pair_q, *pair_base;         /* [pair_count]: pair_base = its first slot */
+    int *mc_first;                             /* [Matomnum+2]: the pairs of Mc_AN */
+    double *slots;                             /* triple_count blocks of slot_values doubles */
     size_t slot_values;
 } Force4BHaloPlan;
 
+/* The plan borrows the arena; nothing to release per received atom. */
 static void Force4B_halo_plan_free(Force4BHaloPlan *plan)
 {
-    free(plan->bucket_start);
-    free(plan->triple_pair);
-    free(plan->triple_k);
-    free(plan->pair_mc);
-    free(plan->pair_q);
-    free(plan->pair_base);
-    free(plan->mc_first);
-    free(plan->slots);
     memset(plan, 0, sizeof(*plan));
 }
 
-static void Force4B_halo_plan_build(Force4BHaloPlan *plan, int Original_Mc_AN, int received, int active)
+static void Force4B_halo_plan_build(Force4BHaloPlan *plan, Force4BHaloArena *arena, int Original_Mc_AN, int received, int active)
 {
-    int Mc_AN, j0, k, pairs = 0, triples = 0, slots = 0, at, kl;
+    int Mc_AN, j0, k, pairs = 0, triples = 0, at, kl, slot;
+    int kl_count;
+    size_t ints;
     int *cursor;
 
     memset(plan, 0, sizeof(*plan));
     if (!active || OpenMX_HostSimdMode() == OPENMX_HOST_SIMD_LEGACY) return;
+    kl_count = FNAN[received] + 1;
     for (Mc_AN = 1; Mc_AN <= Matomnum; Mc_AN++) {
         const int Gc_AN = M2G[Mc_AN];
         for (j0 = 1; j0 <= FNAN[Gc_AN]; j0++) {
             if (F_G2M[natn[Gc_AN][j0]] != Original_Mc_AN) continue;
             pairs++;
-            slots += FNAN[Gc_AN] + 1;
-            for (k = 0; k <= FNAN[Gc_AN]; k++) if (0 <= RMI1[Mc_AN][j0][k]) triples++;
+            for (k = 0; k <= FNAN[Gc_AN]; k++) {
+                kl = RMI1[Mc_AN][j0][k];
+                if (0 <= kl && kl < kl_count) triples++;
+            }
         }
     }
     if (pairs == 0 || triples == 0) return;
-    plan->kl_count = FNAN[received] + 1;
+    plan->kl_count = kl_count;
     plan->jan = Spe_Total_CNO[WhatSpecies[received]];
     plan->slot_values = 3 * (size_t)List_YOUSO[7] * (size_t)List_YOUSO[7];
-    plan->bucket_start = (int*)calloc((size_t)plan->kl_count + 1, sizeof(int));
-    plan->triple_pair = (int*)malloc(sizeof(int) * (size_t)triples);
-    plan->triple_k = (int*)malloc(sizeof(int) * (size_t)triples);
-    plan->pair_mc = (int*)malloc(sizeof(int) * (size_t)pairs);
-    plan->pair_q = (int*)malloc(sizeof(int) * (size_t)pairs);
-    plan->pair_base = (int*)malloc(sizeof(int) * (size_t)pairs);
-    plan->mc_first = (int*)malloc(sizeof(int) * (size_t)(Matomnum + 2));
-    plan->slots = (double*)malloc(sizeof(double) * plan->slot_values * (size_t)slots);
-    cursor = (int*)malloc(sizeof(int) * (size_t)(plan->kl_count + 1));
-    if (plan->bucket_start == NULL || plan->triple_pair == NULL || plan->triple_k == NULL || plan->pair_mc == NULL ||
-        plan->pair_q == NULL || plan->pair_base == NULL || plan->mc_first == NULL || plan->slots == NULL || cursor == NULL) {
-        free(cursor);
-        Force4B_halo_plan_free(plan);
+    ints = 2 * ((size_t)kl_count + 1) + 3 * (size_t)triples + 3 * (size_t)pairs + (size_t)Matomnum + 2;
+    if (!Force4B_halo_reserve((void**)&arena->ints, &arena->int_capacity, ints, sizeof(int)) ||
+        !Force4B_halo_reserve((void**)&arena->slots, &arena->slot_capacity, plan->slot_values * (size_t)triples, sizeof(double))) {
+        Force4B_halo_arena_free(arena);
+        memset(plan, 0, sizeof(*plan));
         return;
     }
+    plan->bucket_start = arena->ints;
+    cursor = plan->bucket_start + kl_count + 1;
+    plan->triple_pair = cursor + kl_count + 1;
+    plan->triple_k = plan->triple_pair + triples;
+    plan->triple_slot = plan->triple_k + triples;
+    plan->pair_mc = plan->triple_slot + triples;
+    plan->pair_q = plan->pair_mc + pairs;
+    plan->pair_base = plan->pair_q + pairs;
+    plan->mc_first = plan->pair_base + pairs;
+    plan->slots = arena->slots;
+    for (kl = 0; kl <= kl_count; kl++) plan->bucket_start[kl] = 0;
     pairs = 0;
-    slots = 0;
+    slot = 0;
     for (Mc_AN = 1; Mc_AN <= Matomnum; Mc_AN++) {
         const int Gc_AN = M2G[Mc_AN];
         plan->mc_first[Mc_AN] = pairs;
@@ -2724,32 +2753,36 @@ static void Force4B_halo_plan_build(Force4BHaloPlan *plan, int Original_Mc_AN, i
             if (F_G2M[natn[Gc_AN][j0]] != Original_Mc_AN) continue;
             plan->pair_mc[pairs] = Mc_AN;
             plan->pair_q[pairs] = j0;
-            plan->pair_base[pairs] = slots;
-            slots += FNAN[Gc_AN] + 1;
+            plan->pair_base[pairs] = slot;
             for (k = 0; k <= FNAN[Gc_AN]; k++) {
                 kl = RMI1[Mc_AN][j0][k];
-                if (0 <= kl && kl < plan->kl_count) plan->bucket_start[kl + 1]++;
+                if (0 <= kl && kl < kl_count) {
+                    plan->bucket_start[kl + 1]++;
+                    slot++;
+                }
             }
             pairs++;
         }
     }
     plan->mc_first[Matomnum + 1] = pairs;
-    for (kl = 0; kl < plan->kl_count; kl++) plan->bucket_start[kl + 1] += plan->bucket_start[kl];
-    memcpy(cursor, plan->bucket_start, sizeof(int) * (size_t)(plan->kl_count + 1));
+    for (kl = 0; kl < kl_count; kl++) plan->bucket_start[kl + 1] += plan->bucket_start[kl];
+    memcpy(cursor, plan->bucket_start, sizeof(int) * (size_t)(kl_count + 1));
+    /* the slots in pair order, ascending k: phase B reads them in this order */
+    slot = 0;
     for (at = 0; at < pairs; at++) {
         const int mc = plan->pair_mc[at], q = plan->pair_q[at];
         for (k = 0; k <= FNAN[M2G[mc]]; k++) {
             kl = RMI1[mc][q][k];
-            if (0 <= kl && kl < plan->kl_count) {
+            if (0 <= kl && kl < kl_count) {
                 const int t = cursor[kl]++;
                 plan->triple_pair[t] = at;
                 plan->triple_k[t] = k;
+                plan->triple_slot[t] = slot++;
             }
         }
     }
-    free(cursor);
     plan->pair_count = pairs;
-    plan->triple_count = plan->bucket_start[plan->kl_count];
+    plan->triple_count = plan->bucket_start[kl_count];
     plan->valid = 1;
 }
 
@@ -2770,7 +2803,7 @@ static void Force4B_halo_bucket(Force4BHaloPlan *plan, int kl, Type_DS_VNA***** 
         if (!Force4B_simd_block(simd, 1, 0, &lanes, ian, plan->jan,
                 DS_VNA[1][Mc_AN][k], DS_VNA[2][Mc_AN][k], DS_VNA[3][Mc_AN][k], NULL,
                 DS_VNA[0][Matomnum + 1][kl], NULL, NULL, NULL,
-                plan->slots + (size_t)(plan->pair_base[pair] + k) * plan->slot_values)) failed = 1;
+                plan->slots + (size_t)plan->triple_slot[t] * plan->slot_values)) failed = 1;
     }
     if (failed) {
 #pragma omp atomic write
@@ -2798,8 +2831,9 @@ static void Force4B_halo_trace(const Force4BHaloPlan *plan, const OpenMXVnaMatri
         return;
     }
     for (k = 0; k <= FNAN[Gc_AN]; k++) {
-        if (RMI1[Mc_AN][q_AN][k] < 0) continue;
-        Force4B_simd_trace(simd, plan->slots + (size_t)(base + k) * plan->slot_values, 0, ian, jan, pref,
+        const int kl = RMI1[Mc_AN][q_AN][k];
+        if (kl < 0 || kl >= plan->kl_count) continue;
+        Force4B_simd_trace(simd, plan->slots + (size_t)(base++) * plan->slot_values, 0, ian, jan, pref,
             CDM0[0][center_local][cdm_kl], SpinP_switch == 0 ? NULL : CDM0[1][center_local][cdm_kl],
             &force[0], &force[1], &force[2]);
     }
@@ -9697,6 +9731,7 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
      * device buffers and matches the original contraction.
      */
     const int use_force4b_fused = openmx_env_flag_at(OPENMX_ENV_FORCE4B_FUSED, 1);
+    Force4BHaloArena f4b_halo_arena = { NULL, 0, NULL, 0 };
     Force4BGpuContext *f4b_context=NULL;
     Force4BCase1Stream *f4b_case1_stream=NULL;
     Force4BCase1Turns *f4b_case1_turns=NULL;
@@ -9998,7 +10033,7 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
 
                 {
                 Force4BHaloPlan f4b_plan;
-                Force4B_halo_plan_build(&f4b_plan, Original_Mc_AN, Rcv_GAN[IDR][receive_progress[IDR]],
+                Force4B_halo_plan_build(&f4b_plan, &f4b_halo_arena, Original_Mc_AN, Rcv_GAN[IDR][receive_progress[IDR]],
                     use_force4b_fused && !f4b_gpu_case1 && !f4b_stream_case1 && !f4b_turns_case1);
 #pragma omp parallel shared(use_force4b_fused, List_YOUSO, time_per_atom, Gxyz, CDM0, SpinP_switch, DS_VNA, RMI1, Original_Mc_AN, IDR, Rcv_GAN, receive_progress, Spe_Total_CNO, F_G2M, natn, FNAN, WhatSpecies, M2G, Matomnum, ActiveHVNA2, ActiveHVNA3) private(Stime_atom, Etime_atom, dEx, dEy, dEz, Gc_AN, Mc_AN, Cwan, fan, h_AN, Gh_AN, Mh_AN, Hwan, ian, n, jg, j0, jg0, Mj_AN0, q_AN, Gq_AN, Mq_AN, Qwan, jan, kl, HVNAx, HVNAy, HVNAz, i, j, pref)
                     {
@@ -10810,6 +10845,7 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
               freeing of arrays
     ************************************/
 
+  Force4B_halo_arena_free(&f4b_halo_arena);
   OpenMX_TransferEnd(&projector_transfer);
 }
 

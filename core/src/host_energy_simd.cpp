@@ -137,7 +137,10 @@ Interpolated interpolate(const Table& t,Vector x,Mask m,bool derivative) {
 }
 
 /* ---- the neutral-atom integrand: VH_AtomF and Dr_VH_AtomF ---- */
-void neutral_points(const OpenMXEnergyNeutralPoints& s) {
+// Store = the per-point values (s.values/s.derivatives); otherwise the
+// legacy sums "sum += value; sumr -= derivative", point after point, continue
+// from *sum/*sumr in registers.
+template<bool Store> void neutral_impl(const OpenMXEnergyNeutralPoints& s,double* sum,double* sumr) {
   const Table t=table(s.mesh,s.log_radii,s.radii,s.hartree);
   const Vector separation(s.separation),half(0.5),floor_r(1.0e-10),zero(0.0);
   const Vector charge(s.charge),negative_charge(-s.charge),rv0(t.rv0),xmin(t.xmin),xmax(t.xmax);
@@ -150,6 +153,7 @@ void neutral_points(const OpenMXEnergyNeutralPoints& s) {
   const Vector outer2(outer*outer),inner2(inner*inner);
   const bool derivative=s.derivative!=0;
   alignas(64) double values[lanes],derivatives[lanes];
+  double total=Store?0.0:*sum,total_r=(Store||!derivative)?0.0:*sumr;
   for(int first=0;first<s.count;first+=lanes) {
     const int n=std::min(lanes,s.count-first);
     const bool full=n==lanes;
@@ -186,15 +190,20 @@ void neutral_points(const OpenMXEnergyNeutralPoints& s) {
       if(derivative)dr=select(tab,p.derivative/r,dr);
     }
     simd::simd_unchecked_store((wt*va0)*rho,values);
-    for(int k=0;k<n;++k)s.values[first+k]=values[k];
+    if(Store)for(int k=0;k<n;++k)s.values[first+k]=values[k];
+    else for(int k=0;k<n;++k)total+=values[k];
     if(derivative) {
       const Mask far=active&&(Vector(1.0e-14)<r);
       const Vector d=(((wt*rho)*dr)*z2)/r;
       simd::simd_unchecked_store(select(far,d,zero),derivatives);
-      for(int k=0;k<n;++k)s.derivatives[first+k]=derivatives[k];
+      if(Store)for(int k=0;k<n;++k)s.derivatives[first+k]=derivatives[k];
+      else for(int k=0;k<n;++k)total_r-=derivatives[k];
     }
   }
+  if(!Store){*sum=total;if(derivative)*sumr=total_r;}
 }
+void neutral_points(const OpenMXEnergyNeutralPoints& s) { neutral_impl<true>(s,nullptr,nullptr); }
+void neutral_sum(const OpenMXEnergyNeutralPoints& s,double* sum,double* sumr) { neutral_impl<false>(s,sum,sumr); }
 
 /* ---- the atomic exchange-correlation shell: KumoF, Dr_KumoF, XC_Ceperly_Alder ---- */
 // XC_Ceperly_Alder(den, 0) and (den, 3) for the lanes in `active`; both
@@ -345,7 +354,7 @@ void band_block(const OpenMXEnergyBandBlock& b) {
     if(i<b.rows){if(count>lanes)band_rows<1,2>(b,i,j0,count);else band_rows<1,1>(b,i,j0,count);}
   }
 }
-constexpr EnergyKernels kernels{lanes,neutral_points,xc_shell,band_block};
+constexpr EnergyKernels kernels{lanes,neutral_points,neutral_sum,xc_shell,band_block};
 }
 const EnergyKernels& OPENMX_HOST_SIMD_FACTORY(energy)() noexcept {return kernels;}
 }

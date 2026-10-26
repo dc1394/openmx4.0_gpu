@@ -48,40 +48,32 @@ static inline void OpenMX_Neutral_PotentialBorrow(const OpenMXAtomicViews *atomi
 
 #ifdef OPENMX_HOST_SIMD_H
 /* The Core's Kokkos::simd kernel (OPENMX_HOST_SIMD) evaluates the integrand
-   of the points [first, last) a chunk at a time; the sums over the stored
-   values keep the legacy point order, so the result is the legacy one. Returns
-   0 when the kernel refuses (the caller then runs the legacy loop afresh). */
+   of the points [first, last) and adds it to *sum (and subtracts the
+   derivative term from *sumr) point after point, as the legacy loop does, in
+   one call. Returns 0 when the kernel refuses, with the sums untouched (the
+   caller then runs the legacy loop). */
 static inline int OpenMX_Neutral_PairSimd(const OpenMXNeutralGridView *grid,
     const OpenMXNeutralPotentialView *potential,int derivative,double separation,
     int guard,int first,int last,double *sum,double *sumr,int mode)
 {
-  double values[256],derivatives[256];
   OpenMXEnergyNeutralPoints points;
-  int n1,n,i;
+  points.count=last-first;
   points.derivative=derivative;
   points.guard=guard;
+  points.x=grid->x+first;
+  points.y=grid->y+first;
+  points.z=grid->z+first;
+  points.density=grid->density+first;
+  points.weight=grid->weight+first;
   points.separation=separation;
   points.charge=potential->charge;
   points.mesh=potential->mesh;
   points.log_radii=potential->log_radii;
   points.radii=potential->radii;
   points.hartree=potential->hartree;
-  points.values=values;
-  points.derivatives=derivatives;
-  for (n1=first; n1<last; n1+=256){
-    n = last-n1;
-    if (256<n) n = 256;
-    points.count=n;
-    points.x=grid->x+n1;
-    points.y=grid->y+n1;
-    points.z=grid->z+n1;
-    points.density=grid->density+n1;
-    points.weight=grid->weight+n1;
-    if (!openmx_core_energy_neutral_points(&points,mode)) return 0;
-    for (i=0; i<n; i++) *sum += values[i];
-    if (derivative!=0) for (i=0; i<n; i++) *sumr -= derivatives[i];
-  }
-  return 1;
+  points.values=NULL;
+  points.derivatives=NULL;
+  return openmx_core_energy_neutral_sum(&points,sum,sumr,mode);
 }
 #endif
 

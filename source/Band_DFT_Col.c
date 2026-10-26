@@ -1749,9 +1749,29 @@ static void BandCol_UpdateDMEntryPhases(BandColState *state, double k1, double k
 static void BandCol_DM_Block(int tnoA, int tnoB, int nk, double **ReEVec0, double **ImEVec0,
                              double **ReEVec1, double **ImEVec1, const dcomplex *rows, size_t row_stride,
                              const double *occ, const double *TmpEIGEN_local, double co, double si,
-                             double *cdm, double *edm, int simd_mode, double *re1T, double *im1T)
+                             double *cdm, double *edm, int simd_mode, double *re1T, double *im1T,
+                             const double *pre, const double *pim, size_t pstride)
 {
     size_t p = 0;
+
+    /* the neighbour's panel of this k point is ready (BandCol_DM_Panels) */
+    if (simd_mode != OPENMX_HOST_SIMD_LEGACY && pre != NULL && pim != NULL) {
+        OpenMXEnergyBandBlock block;
+        block.rows    = tnoA;
+        block.columns = tnoB;
+        block.bands   = nk;
+        block.stride  = pstride;
+        block.re0     = (const double *const *)ReEVec0;
+        block.im0     = (const double *const *)ImEVec0;
+        block.re1T    = pre;
+        block.im1T    = pim;
+        block.eigen   = TmpEIGEN_local;
+        block.co      = co;
+        block.si      = si;
+        block.cdm     = cdm;
+        block.edm     = edm;
+        if (openmx_core_energy_band_block(&block, simd_mode)) return;
+    }
 
     if (simd_mode != OPENMX_HOST_SIMD_LEGACY && re1T != NULL && im1T != NULL) {
         const size_t stride = ((size_t)tnoB + 7) / 8 * 8;
@@ -1865,6 +1885,65 @@ static double *BandCol_DM_Panel(int simd_mode, int max_tno, int nk)
     return (double *)malloc(sizeof(double) * (panel ? panel : 1));
 }
 
+/* The neighbour panels of one k point: every atom's eigenvector rows
+   (weighted by occ when given) transposed once to [band][orbital], real and
+   imaginary parts apart, with a row stride of max_tno rounded up to 8 and zero
+   padding, atom after atom. Every (atom, neighbour) block then reads its
+   neighbour's contiguous panel instead of transposing it again for each of
+   the neighbour's ~FNAN partners. Row o of the source is rows + o*row_stride;
+   atom G's panel starts at (G-1)*(*panel). Beyond BANDCOL_DM_PANELS_BYTES, or
+   without memory, the outputs stay NULL and every block builds its own. */
+#define BANDCOL_DM_PANELS_BYTES ((size_t)128 << 20)
+static void BandCol_DM_Panels(int simd_mode, int max_tno, int nk, const dcomplex *rows, size_t row_stride,
+                              const double *occ, const int *MP, double **re, double **im, size_t *pstride,
+                              size_t *panel)
+{
+    *re = *im = NULL;
+    *pstride = *panel = 0;
+    if (simd_mode == OPENMX_HOST_SIMD_LEGACY || max_tno <= 0 || nk <= 0 || atomnum <= 0) return;
+    const size_t stride = ((size_t)max_tno + 7) / 8 * 8;
+    const size_t one    = stride * (size_t)nk;
+    if ((size_t)atomnum > BANDCOL_DM_PANELS_BYTES / (2 * sizeof(double) * one)) return;
+    double *pr = (double *)malloc(sizeof(double) * one * (size_t)atomnum);
+    double *pi = (double *)malloc(sizeof(double) * one * (size_t)atomnum);
+    if (pr == NULL || pi == NULL) {
+        free(pr);
+        free(pi);
+        return;
+    }
+    for (int G = 1; G <= atomnum; ++G) {
+        const int tno = Spe_Total_CNO[WhatSpecies[G]];
+        double *  dr  = pr + (size_t)(G - 1) * one;
+        double *  di  = pi + (size_t)(G - 1) * one;
+        for (int j = 0; j < tno; ++j) {
+            const dcomplex *v = rows + (size_t)(MP[G] + j - 1) * row_stride;
+            if (occ != NULL) {
+                for (int k = 0; k < nk; ++k) {
+                    const double w = occ[k];
+                    dr[(size_t)k * stride + j] = v[k].r * w;
+                    di[(size_t)k * stride + j] = v[k].i * w;
+                }
+            }
+            else {
+                for (int k = 0; k < nk; ++k) {
+                    dr[(size_t)k * stride + j] = v[k].r;
+                    di[(size_t)k * stride + j] = v[k].i;
+                }
+            }
+        }
+        for (int k = 0; k < nk; ++k) {
+            for (size_t j = (size_t)tno; j < stride; ++j) {
+                dr[(size_t)k * stride + j] = 0.0;
+                di[(size_t)k * stride + j] = 0.0;
+            }
+        }
+    }
+    *re      = pr;
+    *im      = pi;
+    *pstride = stride;
+    *panel   = one;
+}
+
 static void BandCol_AccumulateDenseTransposedDM(BandColState *state, int n, int nk, int max_tno, int spin, int kloop, double k1,
                                                 double k2, double k3, const dcomplex *evec_t, int evec_stride,
                                                 int *MP, double ***EIGEN, const double *occ_weight, double *CDM1,
@@ -1890,8 +1969,11 @@ static void BandCol_AccumulateDenseTransposedDM(BandColState *state, int n, int 
     ImEVec1_local  = ws->ImEVec1;
 
     const int simd_mode = OpenMX_HostSimdMode();
-    double *  re1T      = BandCol_DM_Panel(simd_mode, max_tno, nk);
-    double *  im1T      = BandCol_DM_Panel(simd_mode, max_tno, nk);
+    double *  pre = NULL, *pim = NULL;
+    size_t    pstride = 0, panel = 0;
+    BandCol_DM_Panels(simd_mode, max_tno, nk, evec_t, (size_t)evec_stride, occ_weight, MP, &pre, &pim, &pstride, &panel);
+    double *  re1T      = pre ? NULL : BandCol_DM_Panel(simd_mode, max_tno, nk);
+    double *  im1T      = pre ? NULL : BandCol_DM_Panel(simd_mode, max_tno, nk);
 
     for (int k = 0; k < nk; ++k) {
         TmpEIGEN_local[k] = EIGEN[spin][kloop][k + 1];
@@ -1930,12 +2012,16 @@ static void BandCol_AccumulateDenseTransposedDM(BandColState *state, int n, int 
 
             BandCol_DM_Block(tnoA, tnoB, nk, ReEVec0_local, ImEVec0_local, ReEVec1_local, ImEVec1_local,
                              &evec_t[(size_t)(Bnum - 1) * (size_t)evec_stride], (size_t)evec_stride, occ_weight,
-                             TmpEIGEN_local, co, si, CDM1 + p, EDM1 + p, simd_mode, re1T, im1T);
+                             TmpEIGEN_local, co, si, CDM1 + p, EDM1 + p, simd_mode, re1T, im1T,
+                             pre ? pre + (size_t)(GB_AN - 1) * panel : NULL,
+                             pim ? pim + (size_t)(GB_AN - 1) * panel : NULL, pstride);
             p += (size_t)tnoA * (size_t)tnoB;
         }
     }
     free(re1T);
     free(im1T);
+    free(pre);
+    free(pim);
 }
 
 /* Stream state panels to the DM kernel as well: a capacity fallback must
@@ -5434,9 +5520,14 @@ diagonalize1:
                 }
 
                 const int simd_mode = OpenMX_HostSimdMode();
-                double *  re1T      = BandCol_DM_Panel(simd_mode, max_tno, nk);
-                double *  im1T      = BandCol_DM_Panel(simd_mode, max_tno, nk);
                 const int stride = ie2[myid2] - is2[myid2] + 1;
+                double *  pre = NULL, *pim = NULL;
+                size_t    pstride = 0, panel = 0;
+                /* kmin = is2[myid2]: the rank's first owned band */
+                BandCol_DM_Panels(simd_mode, max_tno, nk, &EVec1[spin][(size_t)(kmin - is2[myid2])], (size_t)stride,
+                                  NULL, MP, &pre, &pim, &pstride, &panel);
+                double *  re1T      = pre ? NULL : BandCol_DM_Panel(simd_mode, max_tno, nk);
+                double *  im1T      = pre ? NULL : BandCol_DM_Panel(simd_mode, max_tno, nk);
                 size_t    p      = 0;
 
                 for (int GA_AN = 1; GA_AN <= atomnum; ++GA_AN) {
@@ -5471,12 +5562,16 @@ diagonalize1:
 
                         BandCol_DM_Block(tnoA, tnoB, nk, ReEVec0_local, ImEVec0_local, ReEVec1_local, ImEVec1_local,
                                          &EVec1[spin][(size_t)(Bnum - 1) * stride - is2[myid2] + kmin], (size_t)stride,
-                                         NULL, TmpEIGEN_local, co, si, CDM1 + p, EDM1 + p, simd_mode, re1T, im1T);
+                                         NULL, TmpEIGEN_local, co, si, CDM1 + p, EDM1 + p, simd_mode, re1T, im1T,
+                                         pre ? pre + (size_t)(GB_AN - 1) * panel : NULL,
+                                         pim ? pim + (size_t)(GB_AN - 1) * panel : NULL, pstride);
                         p += (size_t)tnoA * (size_t)tnoB;
                     } /* LB_AN */
                 } /* GA_AN */
                 free(re1T);
                 free(im1T);
+                free(pre);
+                free(pim);
             }
 
             if (measure_time) {

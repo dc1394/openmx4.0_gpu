@@ -2,6 +2,7 @@
 #include "host_simd_abi.hpp"
 #include <algorithm>
 #include <cmath>
+#include <type_traits>
 
 // Host kernels of Set_ProExpn_VNA. Lanes span independent outputs (projector
 // rows, Bessel arguments, Bessel orders, orbital rows or columns); every
@@ -186,89 +187,150 @@ void bessel(const OpenMXVnaBessel& p) {
 }
 
 // ---- HVNA projector contraction -------------------------------------------
-// Left block transposed: lanes over rows m, NB columns at a time.
-template<bool FP32,int NB> void hvna_rows(const OpenMXVnaHvnaBlock& p,int m0,int mcount,int n0) {
-  Vector sum[NB];
-  for(auto& s:sum)s=Vector(0.0);
-  const float* left=p.left+m0;
-  const float* column[NB];
-  for(int c=0;c<NB;++c)column[c]=p.right+size_t(n0+c)*p.right_stride;
-  const size_t ls=p.left_stride;
+// Every output (m, n) is sum_g ene_g * tmp_g with tmp_g the ascending member
+// sum of product(left[m][L], right[n][L]). One operand block is transposed to
+// [L][lanes] (lane operand); the other keeps its legacy rows (broadcast
+// operand). A tile holds BC broadcast rows x LV lane vectors of accumulators:
+// every loaded lane vector serves BC outputs, every broadcast value LV
+// vectors. Products are commutative and exact to reorder (a*b == b*a), lanes
+// span independent outputs, and each output keeps the legacy member/group
+// order, so the result is bitwise the legacy rows'. Tail lanes use masks
+// computed once per tile, outside the component loop. Under fp32 the float
+// lanes are multiplied in float and the product widened (the legacy rounding
+// point); under fp64 with double operands (DOUBLES) both factors are already
+// widened, so the inner loop is one multiply and one add per lane vector.
+constexpr int hvna_lane_vectors=V>=8?2:V>=4?2:4;   // lane vectors per tile
+constexpr int hvna_broadcasts=V>=8?4:2;             // broadcast rows per tile
+
+template<bool FP32,bool DOUBLES,bool FULL,int LV,int BC,class LaneT,class BroadcastT>
+void hvna_tile(const OpenMXVnaHvnaBlock& p,const LaneT* lanes,size_t lane_stride,
+    const BroadcastT* const* broadcast,FloatMask ftail,Mask tail,Vector (&sum)[BC][LV]) {
+  static_assert(!(FP32 && DOUBLES),"double operands serve the fp64 products only");
+  for(auto& row:sum)for(auto& v:row)v=Vector(0.0);
   const int* lengths=p.lengths;const double* energies=p.energies;const int groups=p.groups;
   int L=0;
   for(int g=0;g<groups;++g) {
-    Vector tmp[NB];
-    for(auto& t:tmp)t=Vector(0.0);
+    Vector tmp[BC][LV];
+    for(auto& row:tmp)for(auto& v:row)v=Vector(0.0);
     const int members=lengths[g];
     for(int member=0;member<members;++member,++L) {
-      const FloatLanes lf=load_float(left+size_t(L)*ls,mcount);
-      if constexpr(FP32) {
-        for(int c=0;c<NB;++c)tmp[c]+=Vector(lf*FloatLanes(column[c][L]));
+      const LaneT* at=lanes+size_t(L)*lane_stride;
+      if constexpr(DOUBLES) {
+        Vector ld[LV];
+        for(int c=0;c<LV-1;++c)ld[c]=load(at+c*V);
+        if constexpr(FULL)ld[LV-1]=load(at+(LV-1)*V);
+        else ld[LV-1]=simd::simd_partial_load<Vector>(at+(LV-1)*V,tail);
+        for(int b=0;b<BC;++b) {
+          const Vector a(broadcast[b][L]);
+          for(int c=0;c<LV;++c)tmp[b][c]+=a*ld[c];
+        }
       } else {
-        const Vector ld(lf);
-        for(int c=0;c<NB;++c)tmp[c]+=ld*Vector(double(column[c][L]));
+        FloatLanes lf[LV];
+        for(int c=0;c<LV-1;++c)lf[c]=simd::simd_unchecked_load<FloatLanes>(at+c*V);
+        if constexpr(FULL)lf[LV-1]=simd::simd_unchecked_load<FloatLanes>(at+(LV-1)*V);
+        else lf[LV-1]=simd::simd_partial_load<FloatLanes>(at+(LV-1)*V,ftail);
+        if constexpr(FP32) {
+          // (double)(left*right): the float product, then the exact widening
+          for(int b=0;b<BC;++b) {
+            const FloatLanes a(broadcast[b][L]);
+            for(int c=0;c<LV;++c)tmp[b][c]+=Vector(a*lf[c]);
+          }
+        } else {
+          // (double)left*(double)right: lanes widened once, shared by BC rows
+          Vector ld[LV];
+          for(int c=0;c<LV;++c)ld[c]=Vector(lf[c]);
+          for(int b=0;b<BC;++b) {
+            const Vector a(double(broadcast[b][L]));
+            for(int c=0;c<LV;++c)tmp[b][c]+=a*ld[c];
+          }
+        }
       }
     }
     const Vector ene(energies[g]);
-    for(int c=0;c<NB;++c)sum[c]+=ene*tmp[c];
-  }
-  for(int c=0;c<NB;++c)for(int lane=0;lane<mcount;++lane) {
-    double& d=p.matrix[size_t(m0+lane)*p.stride+size_t(n0+c)];
-    d=p.first?sum[c][lane]:d+sum[c][lane];
+    for(int b=0;b<BC;++b)for(int c=0;c<LV;++c)sum[b][c]+=ene*tmp[b][c];
   }
 }
-// Right block transposed: lanes over columns n, NB rows at a time.
-template<bool FP32,int NB> void hvna_columns(const OpenMXVnaHvnaBlock& p,int m0,int n0,int ncount) {
-  Vector sum[NB];
-  for(auto& s:sum)s=Vector(0.0);
-  const float* right=p.right+n0;
-  const float* row[NB];
-  for(int r=0;r<NB;++r)row[r]=p.left+size_t(m0+r)*p.left_stride;
-  const size_t rs=p.right_stride;
-  const int* lengths=p.lengths;const double* energies=p.energies;const int groups=p.groups;
-  int L=0;
-  for(int g=0;g<groups;++g) {
-    Vector tmp[NB];
-    for(auto& t:tmp)t=Vector(0.0);
-    const int members=lengths[g];
-    for(int member=0;member<members;++member,++L) {
-      const FloatLanes rf=load_float(right+size_t(L)*rs,ncount);
-      if constexpr(FP32) {
-        for(int r=0;r<NB;++r)tmp[r]+=Vector(FloatLanes(row[r][L])*rf);
-      } else {
-        const Vector rd(rf);
-        for(int r=0;r<NB;++r)tmp[r]+=Vector(double(row[r][L]))*rd;
-      }
+template<bool DOUBLES> struct HvnaOperands {
+  using T=std::conditional_t<DOUBLES,double,float>;
+  static const T* left(const OpenMXVnaHvnaBlock& p) {
+    if constexpr(DOUBLES)return p.left_double;else return p.left;
+  }
+  static const T* right(const OpenMXVnaHvnaBlock& p) {
+    if constexpr(DOUBLES)return p.right_double;else return p.right;
+  }
+};
+// Right block transposed: lanes over columns n, broadcast rows m.
+template<bool FP32,bool DOUBLES,bool FULL,int LV,int BC>
+void hvna_columns(const OpenMXVnaHvnaBlock& p,int m0,int n0,FloatMask ftail,Mask tail) {
+  using O=HvnaOperands<DOUBLES>;
+  const typename O::T* rows[BC];
+  for(int b=0;b<BC;++b)rows[b]=O::left(p)+size_t(m0+b)*p.left_stride;
+  Vector sum[BC][LV];
+  hvna_tile<FP32,DOUBLES,FULL,LV,BC>(p,O::right(p)+n0,p.right_stride,rows,ftail,tail,sum);
+  for(int b=0;b<BC;++b)for(int c=0;c<LV;++c) {
+    double* d=p.matrix+size_t(m0+b)*p.stride+size_t(n0+c*V);
+    if(FULL || c<LV-1)store(p.first?sum[b][c]:load(d)+sum[b][c],d);
+    else simd::simd_partial_store(p.first?sum[b][c]:simd::simd_partial_load<Vector>(d,tail)+sum[b][c],d,tail);
+  }
+}
+// Left block transposed: lanes over rows m, broadcast columns n.
+template<bool FP32,bool DOUBLES,bool FULL,int LV,int BC>
+void hvna_rows(const OpenMXVnaHvnaBlock& p,int m0,int n0,int mcount,FloatMask ftail,Mask tail) {
+  using O=HvnaOperands<DOUBLES>;
+  const typename O::T* columns[BC];
+  for(int b=0;b<BC;++b)columns[b]=O::right(p)+size_t(n0+b)*p.right_stride;
+  Vector sum[BC][LV];
+  hvna_tile<FP32,DOUBLES,FULL,LV,BC>(p,O::left(p)+m0,p.left_stride,columns,ftail,tail,sum);
+  for(int b=0;b<BC;++b)for(int c=0;c<LV;++c) {
+    const int count=std::min(V,mcount-c*V);
+    for(int lane=0;lane<count;++lane) {
+      double& d=p.matrix[size_t(m0+c*V+lane)*p.stride+size_t(n0+b)];
+      d=p.first?sum[b][c][lane]:d+sum[b][c][lane];
     }
-    const Vector ene(energies[g]);
-    for(int r=0;r<NB;++r)sum[r]+=ene*tmp[r];
-  }
-  for(int r=0;r<NB;++r) {
-    double* d=p.matrix+size_t(m0+r)*p.stride+n0;
-    store_partial(p.first?sum[r]:load_partial(d,ncount)+sum[r],d,ncount);
   }
 }
-template<bool FP32> void hvna_block_typed(const OpenMXVnaHvnaBlock& p) {
+// One lane chunk (LV vectors, the last FULL or masked) over every broadcast index.
+template<bool FP32,bool DOUBLES,bool FULL,int LV>
+void hvna_chunk(const OpenMXVnaHvnaBlock& p,int lane0,int lanes_left,int broadcasts) {
+  const int tail_count=lanes_left-(LV-1)*V;
+  const FloatMask ftail=float_mask(tail_count);
+  const Mask tail=lane_mask(tail_count);
+  constexpr int B=hvna_broadcasts;
+  int b0=0;
   if(p.right_transposed) {
-    for(int n0=0;n0<p.columns;n0+=V) {
-      const int ncount=std::min(V,p.columns-n0);
-      int m0=0;
-      for(;m0+4<=p.rows;m0+=4)hvna_columns<FP32,4>(p,m0,n0,ncount);
-      for(;m0+2<=p.rows;m0+=2)hvna_columns<FP32,2>(p,m0,n0,ncount);
-      for(;m0<p.rows;++m0)hvna_columns<FP32,1>(p,m0,n0,ncount);
-    }
+    for(;b0+B<=broadcasts;b0+=B)hvna_columns<FP32,DOUBLES,FULL,LV,B>(p,b0,lane0,ftail,tail);
+    if constexpr(B>2)for(;b0+2<=broadcasts;b0+=2)hvna_columns<FP32,DOUBLES,FULL,LV,2>(p,b0,lane0,ftail,tail);
+    for(;b0<broadcasts;++b0)hvna_columns<FP32,DOUBLES,FULL,LV,1>(p,b0,lane0,ftail,tail);
   } else {
-    for(int m0=0;m0<p.rows;m0+=V) {
-      const int mcount=std::min(V,p.rows-m0);
-      int n0=0;
-      for(;n0+4<=p.columns;n0+=4)hvna_rows<FP32,4>(p,m0,mcount,n0);
-      for(;n0+2<=p.columns;n0+=2)hvna_rows<FP32,2>(p,m0,mcount,n0);
-      for(;n0<p.columns;++n0)hvna_rows<FP32,1>(p,m0,mcount,n0);
+    for(;b0+B<=broadcasts;b0+=B)hvna_rows<FP32,DOUBLES,FULL,LV,B>(p,lane0,b0,lanes_left,ftail,tail);
+    if constexpr(B>2)for(;b0+2<=broadcasts;b0+=2)hvna_rows<FP32,DOUBLES,FULL,LV,2>(p,lane0,b0,lanes_left,ftail,tail);
+    for(;b0<broadcasts;++b0)hvna_rows<FP32,DOUBLES,FULL,LV,1>(p,lane0,b0,lanes_left,ftail,tail);
+  }
+}
+template<bool FP32,bool DOUBLES,int LV>
+void hvna_chunk_dispatch(const OpenMXVnaHvnaBlock& p,int lane0,int lanes_left,int broadcasts) {
+  if(lanes_left-(LV-1)*V==V)hvna_chunk<FP32,DOUBLES,true,LV>(p,lane0,lanes_left,broadcasts);
+  else hvna_chunk<FP32,DOUBLES,false,LV>(p,lane0,lanes_left,broadcasts);
+}
+template<bool FP32,bool DOUBLES> void hvna_block_typed(const OpenMXVnaHvnaBlock& p) {
+  const int lanes_total=p.right_transposed?p.columns:p.rows;
+  const int broadcasts=p.right_transposed?p.rows:p.columns;
+  constexpr int chunk=hvna_lane_vectors*V;
+  for(int lane0=0;lane0<lanes_total;lane0+=chunk) {
+    const int lanes_left=std::min(chunk,lanes_total-lane0);
+    const int vectors=(lanes_left+V-1)/V;
+    if constexpr(hvna_lane_vectors>=4) {
+      if(vectors==4){hvna_chunk_dispatch<FP32,DOUBLES,4>(p,lane0,lanes_left,broadcasts);continue;}
+      if(vectors==3){hvna_chunk_dispatch<FP32,DOUBLES,3>(p,lane0,lanes_left,broadcasts);continue;}
     }
+    if(vectors==2)hvna_chunk_dispatch<FP32,DOUBLES,2>(p,lane0,lanes_left,broadcasts);
+    else hvna_chunk_dispatch<FP32,DOUBLES,1>(p,lane0,lanes_left,broadcasts);
   }
 }
 void hvna_block(const OpenMXVnaHvnaBlock& p) {
-  if(p.fp32)hvna_block_typed<true>(p);else hvna_block_typed<false>(p);
+  if(p.fp32)hvna_block_typed<true,false>(p);
+  else if(p.left_double && p.right_double)hvna_block_typed<false,true>(p);
+  else hvna_block_typed<false,false>(p);
 }
 // ---- DS_VNA m sum: lanes over M1, LL in registers ----------------------------
 // For fixed (L0, Mul0, L) each pair (M0, M1) receives one update per LL, the

@@ -22,6 +22,7 @@ using F=simd::basic_simd<float,HostAbi>;
 using DM=typename D::mask_type;
 using IM=typename I::mask_type;
 constexpr int L0MAX=3,MULMAX=8;
+constexpr int MAXNO=MULMAX*(L0MAX+1)*(L0MAX+1);  // orbitals of one species at most
 
 [[gnu::always_inline]] inline D gather(const double* p,size_t n,I index) {
   return simd::unchecked_gather_from<D>(std::span<const double>(p,n),index);
@@ -29,53 +30,77 @@ constexpr int L0MAX=3,MULMAX=8;
 [[gnu::always_inline]] inline D select(DM m,D a,D b) { return simd::condition(m,a,b); }
 // Exact negation (Kokkos computes -v as 0 - v on AVX, which turns -0 into +0).
 [[gnu::always_inline]] inline D negate(D v) { return D(-1.0)*v; }
+// Whether any lane is set (Kokkos's any_of tests the lanes one by one).
+[[gnu::always_inline]] inline bool any(DM m) {
+#if defined(OPENMX_HOST_SIMD_AVX512)
+  return static_cast<__mmask8>(m)!=0;
+#elif defined(OPENMX_HOST_SIMD_AVX2)
+  return _mm256_movemask_pd(static_cast<__m256d>(m))!=0;
+#else
+  return simd::any_of(m);
+#endif
+}
 
-constexpr int seed_bins=2048;
+constexpr int max_bins=2048;
 struct Species {
-  int mesh,maxl,no;
+  int mesh,maxl,no,bins;
   const int* nb;
   const double* rv;
   size_t rwf_base;
-  double rm,rv0,rvlast,seed_scale;
-  std::int32_t seed[seed_bins];  // first interval whose radius bounds each bin's lower edge
+  double rm,rv0,rvlast,rv3,seed_scale;
+  std::int32_t seed[max_bins];  // first interval whose radius bounds each bin's lower edge
 };
 void setup(Species& s,const OpenMXOrbitalsTables& t,int wan) {
   s.mesh=t.mesh[wan];s.maxl=t.maxl[wan];s.nb=t.nb+size_t(wan)*size_t(t.l0max+1);
   s.rv=t.rv+t.rv_off[wan];s.rwf_base=t.rwf_base[wan];
-  s.rv0=s.rv[0];s.rvlast=s.rv[s.mesh-1];s.rm=s.rv[4];
+  s.rv0=s.rv[0];s.rvlast=s.rv[s.mesh-1];s.rv3=s.rv[3];s.rm=s.rv[4];
   s.no=0;for(int l=0;l<=s.maxl;++l)s.no+=s.nb[l]*(2*l+1);
   // seed[k] = the first interval m in [1, mesh-1] with rv[m] >= k*width:
   // never above the interval of a radius in bin k, so the upward loop
-  // finishes the search (a mesh denser than the bins costs iterations only
-  // next to the nucleus).
-  const double width=s.rvlast/double(seed_bins);
+  // finishes the search. Two bins per mesh point keep the setup cheap for
+  // small calls; a mesh denser than the bins costs iterations only next to
+  // the nucleus.
+  s.bins=std::min(max_bins,std::max(64,2*s.mesh));
+  const double width=s.rvlast/double(s.bins);
   s.seed_scale=1.0/width;
-  for(int k=0,m=1;k<seed_bins;++k) {
+  for(int k=0,m=1;k<s.bins;++k) {
     const double edge=k*width;
     while(m<s.mesh-1 && s.rv[m]<edge)++m;
     s.seed[k]=m;
   }
 }
 
-// The spline interval of every lane: the first mesh point at or beyond R
-// (clamped to [1, mesh-1]), interval 4 for radii inside the first mesh
-// point. Kept as a small exact double so that every mask is a double mask.
-[[gnu::always_inline]] inline D interval(const Species& s,D R,DM interior,DM below) {
+// The spline interval of every lane: the first mesh point m at or beyond R
+// (clamped to [1, mesh-1]), with lo = rv[m-1] and hi = rv[m] carried out of
+// the correction loops; interval 4 for radii inside the first mesh point.
+// m is kept as a small exact double so that every mask is a double mask.
+struct Interval { D m,lo,hi; };
+[[gnu::always_inline]] inline Interval interval(const Species& s,D R,DM interior,DM below) {
   const D zero(0.0),one(1.0),last(double(s.mesh-1));
+  const size_t mesh=size_t(s.mesh);
   D bin=select(interior,R*D(s.seed_scale),zero);
-  bin=select(bin>D(double(seed_bins-1)),D(double(seed_bins-1)),bin);
-  D m=D(simd::unchecked_gather_from<I>(std::span<const std::int32_t>(s.seed,size_t(seed_bins)),I(bin)));
+  bin=select(bin>D(double(s.bins-1)),D(double(s.bins-1)),bin);
+  Interval v;
+  v.m=D(simd::unchecked_gather_from<I>(std::span<const std::int32_t>(s.seed,size_t(s.bins)),I(bin)));
+  v.lo=gather(s.rv,mesh,I(v.m-one));
   for(;;) {
-    const DM active=interior&&(one<m)&&(R<=gather(s.rv,size_t(s.mesh),I(m-one)));
-    if(!simd::any_of(active))break;
-    m=select(active,m-one,m);
+    const DM active=interior&&(one<v.m)&&(R<=v.lo);
+    if(!any(active))break;
+    v.m=select(active,v.m-one,v.m);
+    v.lo=gather(s.rv,mesh,I(v.m-one));
   }
+  v.hi=gather(s.rv,mesh,I(v.m));
   for(;;) {
-    const DM active=interior&&(m<last)&&(gather(s.rv,size_t(s.mesh),I(m))<R);
-    if(!simd::any_of(active))break;
-    m=select(active,m+one,m);
+    const DM active=interior&&(v.m<last)&&(v.hi<R);
+    if(!any(active))break;
+    v.m=select(active,v.m+one,v.m);
+    v.lo=select(active,v.hi,v.lo);
+    v.hi=gather(s.rv,mesh,I(v.m));
   }
-  return select(below,D(4.0),m);
+  v.m=select(below,D(4.0),v.m);
+  v.lo=select(below,D(s.rv3),v.lo);
+  v.hi=select(below,D(s.rm),v.hi);
+  return v;
 }
 
 // The interval's constants of the cubic spline (the scalar routines' h1..h3,
@@ -84,16 +109,15 @@ struct Spline {
   I im1,im,i1,i4;
   D h2,y1,y2,y12,y22,dum1,dum2,dum3,dum4;
 };
-[[gnu::always_inline]] inline Spline spline(const Species& s,D R,DM below,D m) {
+[[gnu::always_inline]] inline Spline spline(const Species& s,D R,DM below,const Interval& v) {
   const D one(1.0),two(2.0),last(double(s.mesh-1));
   const size_t mesh=size_t(s.mesh);
   Spline sp;
-  sp.im1=I(m-one);sp.im=I(m);sp.i1=I(select(m==one,m+one,m-two));sp.i4=I(select(m==last,m-two,m+one));
-  const D rvm1=gather(s.rv,mesh,sp.im1),rvm=gather(s.rv,mesh,sp.im);
-  const D h1=rvm1-gather(s.rv,mesh,sp.i1),h3=gather(s.rv,mesh,sp.i4)-rvm;
-  sp.h2=rvm-rvm1;
+  sp.im1=I(v.m-one);sp.im=I(v.m);sp.i1=I(select(v.m==one,v.m+one,v.m-two));sp.i4=I(select(v.m==last,v.m-two,v.m+one));
+  const D h1=v.lo-gather(s.rv,mesh,sp.i1),h3=gather(s.rv,mesh,sp.i4)-v.hi;
+  sp.h2=v.hi-v.lo;
   const D Rb=select(below,D(s.rm),R);
-  const D x1=Rb-rvm1,x2=Rb-rvm;
+  const D x1=Rb-v.lo,x2=Rb-v.hi;
   sp.y1=x1/sp.h2;sp.y2=x2/sp.h2;sp.y12=sp.y1*sp.y1;sp.y22=sp.y2*sp.y2;
   D dh=h1+sp.h2;
   sp.dum1=h1/sp.h2/dh;sp.dum2=sp.h2/h1/dh;
@@ -122,21 +146,14 @@ struct Spline {
   else{b=(three*f-rm*df)/(rm*rm);a=(f-b*rm*rm)/(rm*rm*rm);c=zero;d=zero;}
 }
 
-// One block of `lanes` points of one species; lanes >= n replay point n-1 and
-// their output is masked out.
-void block(const OpenMXOrbitalsTables& t,const OpenMXOrbitalsFrame& f,const Species& s,
-    const OpenMXOrbitalsPoint* q,int n,float* out) {
-  alignas(64) double gxa[lanes],gya[lanes],gza[lanes],axa[lanes],aya[lanes],aza[lanes];
-  alignas(64) std::int32_t grida[lanes],cella[lanes];
-  for(int k=0;k<lanes;++k) {
-    const OpenMXOrbitalsPoint& e=q[std::min(k,n-1)];
-    grida[k]=e.grid;cella[k]=3*e.cell;
-    gxa[k]=e.xyz[0];gya[k]=e.xyz[1];gza[k]=e.xyz[2];axa[k]=e.shift[0];aya[k]=e.shift[1];aza[k]=e.shift[2];
-  }
-  const D zero(0.0),one(1.0),minus(-1.0),two(2.0),three(3.0);
-  // Get_Grid_XYZ: the integer quotients of the grid index, exact in doubles
-  // (a rounded quotient is corrected by at most one), then the displacement
-  // from the shifted atom.
+// Get_Grid_XYZ of every lane's grid index (the integer quotients, exact in
+// doubles: a rounded quotient is corrected by at most one), plus the cell
+// translation (a broadcast when the block shares one cell), minus the atom
+// position and its shift: the device routine's arithmetic, per lane.
+struct Displacement { D x,y,z; };
+[[gnu::always_inline]] inline Displacement displacement(const OpenMXOrbitalsTables& t,const OpenMXOrbitalsFrame& f,
+    const std::int32_t* grida,const std::int32_t* cella,bool uniform,D gx,D gy,D gz,D ax,D ay,D az) {
+  const D one(1.0);
   const D gn=D(simd::simd_unchecked_load<I>(grida)),ng23(double(f.ng23)),ng3(double(f.ng3));
   D n1=D(I(gn/ng23));
   n1=select(n1*ng23>gn,n1-one,n1);n1=select((n1+one)*ng23<=gn,n1+one,n1);
@@ -144,11 +161,28 @@ void block(const OpenMXOrbitalsTables& t,const OpenMXOrbitalsFrame& f,const Spec
   D n2=D(I(rest/ng3));
   n2=select(n2*ng3>rest,n2-one,n2);n2=select((n2+one)*ng3<=rest,n2+one,n2);
   const D n3=rest-n2*ng3;
-  const I cell3=simd::simd_unchecked_load<I>(cella);
-  const size_t shifts=3*size_t(t.cells);
-  const D x=(n1*D(f.frame[0])+n2*D(f.frame[3])+n3*D(f.frame[6])+D(f.origin[0]))+gather(t.translations,shifts,cell3)-load(gxa)-load(axa);
-  const D y=(n1*D(f.frame[1])+n2*D(f.frame[4])+n3*D(f.frame[7])+D(f.origin[1]))+gather(t.translations,shifts,cell3+I(1))-load(gya)-load(aya);
-  const D z=(n1*D(f.frame[2])+n2*D(f.frame[5])+n3*D(f.frame[8])+D(f.origin[2]))+gather(t.translations,shifts,cell3+I(2))-load(gza)-load(aza);
+  D tx,ty,tz;
+  if(uniform) {
+    const double* c=t.translations+cella[0];
+    tx=D(c[0]);ty=D(c[1]);tz=D(c[2]);
+  } else {
+    const I cell3=simd::simd_unchecked_load<I>(cella);
+    const size_t shifts=3*size_t(t.cells);
+    tx=gather(t.translations,shifts,cell3);ty=gather(t.translations,shifts,cell3+I(1));tz=gather(t.translations,shifts,cell3+I(2));
+  }
+  Displacement d;
+  d.x=(n1*D(f.frame[0])+n2*D(f.frame[3])+n3*D(f.frame[6])+D(f.origin[0]))+tx-gx-ax;
+  d.y=(n1*D(f.frame[1])+n2*D(f.frame[4])+n3*D(f.frame[7])+D(f.origin[1]))+ty-gy-ay;
+  d.z=(n1*D(f.frame[2])+n2*D(f.frame[5])+n3*D(f.frame[8])+D(f.origin[2]))+tz-gz-az;
+  return d;
+}
+
+// The orbital values at the lanes' displacements: sink(j, value) for every
+// orbital j of the species in order, zero outside the PAO mesh.
+template<class Sink>
+[[gnu::always_inline]] inline void values(const OpenMXOrbitalsTables& t,const Species& s,const Displacement& p,Sink&& sink) {
+  const D zero(0.0),one(1.0),minus(-1.0),two(2.0),three(3.0);
+  const D x=p.x,y=p.y,z=p.z;
   // Direction cosines without the angles (the device routine's branches).
   const D dum=x*x+y*y;
   const D r=Kokkos::sqrt(dum+z*z),r1=Kokkos::sqrt(dum);
@@ -165,7 +199,7 @@ void block(const OpenMXOrbitalsTables& t,const OpenMXOrbitalsFrame& f,const Spec
   const Spline sp=spline(s,R,below,interval(s,R,interior,below));
   D RF[L0MAX+1][MULMAX];
   const D rm(s.rm);
-  const bool extrapolate=simd::any_of(below);
+  const bool extrapolate=any(below);
   size_t row=s.rwf_base;
   for(int L0=0;L0<=s.maxl;++L0)for(int Mul0=0;Mul0<s.nb[L0];++Mul0) {
     const double* rw=t.rwf+row;row+=size_t(s.mesh);
@@ -197,18 +231,61 @@ void block(const OpenMXOrbitalsTables& t,const OpenMXOrbitalsFrame& f,const Spec
     AF[3][5]=D(0.590043589926644)*siQ*siQ*siQ*(D(4.0)*coP*coP*coP-three*coP);
     AF[3][6]=D(0.590043589926644)*siQ*siQ*siQ*(three*siP-D(4.0)*siP*siP*siP);
   }
-  // Chi = RF*AF per orbital, zero outside the mesh and beyond the species.
+  int index=0;
+  for(int L0=0;L0<=s.maxl;++L0)for(int Mul0=0;Mul0<s.nb[L0];++Mul0)for(int M0=0;M0<=2*L0;++M0)
+    sink(index++,select(outside,zero,RF[L0][Mul0]*AF[L0][M0]));
+}
+
+// One block of `lanes` point records of one species; lanes >= n replay
+// point n-1 and their output is masked out. Rows of max_no floats, zero
+// beyond the species' orbitals.
+void block(const OpenMXOrbitalsTables& t,const OpenMXOrbitalsFrame& f,const Species& s,
+    const OpenMXOrbitalsPoint* q,int n,float* out) {
+  alignas(64) double gxa[lanes],gya[lanes],gza[lanes],axa[lanes],aya[lanes],aza[lanes];
+  alignas(64) std::int32_t grida[lanes],cella[lanes];
+  bool uniform=true;
+  for(int k=0;k<lanes;++k) {
+    const OpenMXOrbitalsPoint& e=q[std::min(k,n-1)];
+    grida[k]=e.grid;cella[k]=3*e.cell;uniform=uniform && cella[k]==cella[0];
+    gxa[k]=e.xyz[0];gya[k]=e.xyz[1];gza[k]=e.xyz[2];axa[k]=e.shift[0];aya[k]=e.shift[1];aza[k]=e.shift[2];
+  }
+  const Displacement p=displacement(t,f,grida,cella,uniform,load(gxa),load(gya),load(gza),load(axa),load(aya),load(aza));
   const I lane([](auto k){return std::int32_t(k);});
   const IM active=lane<I(n);
   const I rows=lane*I(f.max_no);
   std::span<float> destination(out,size_t(n)*size_t(f.max_no));
-  int index=0;
-  for(int L0=0;L0<=s.maxl;++L0)for(int Mul0=0;Mul0<s.nb[L0];++Mul0)for(int M0=0;M0<=2*L0;++M0) {
-    const D value=select(outside,zero,RF[L0][Mul0]*AF[L0][M0]);
-    simd::unchecked_scatter_to(F(value),destination,active,rows+I(index));
-    ++index;
+  values(t,s,p,[&](int j,D v){simd::unchecked_scatter_to(F(v),destination,active,rows+I(j));});
+  for(int j=s.no;j<f.max_no;++j)simd::unchecked_scatter_to(F(D(0.0)),destination,active,rows+I(j));
+}
+
+// One block of `lanes` points of a segment, from point `first` on; lanes
+// >= n replay the last point and are not stored. Each point's no floats go
+// to its own row: by a masked scatter when the block's rows are contiguous,
+// else through a transposed scratch.
+void sblock(const OpenMXOrbitalsTables& t,const OpenMXOrbitalsFrame& f,const Species& s,
+    const OpenMXOrbitalsSegment& g,size_t first,int n) {
+  alignas(64) std::int32_t grida[lanes],cella[lanes];
+  bool uniform=true;
+  for(int k=0;k<lanes;++k) {
+    const size_t p=first+size_t(std::min(k,n-1)),i=g.index?size_t(g.index[p]):p;
+    grida[k]=g.grid[i];cella[k]=3*g.cell[i];uniform=uniform && cella[k]==cella[0];
   }
-  for(;index<f.max_no;++index)simd::unchecked_scatter_to(F(zero),destination,active,rows+I(index));
+  const Displacement p=displacement(t,f,grida,cella,uniform,D(g.xyz[0]),D(g.xyz[1]),D(g.xyz[2]),
+      D(g.shift[0]),D(g.shift[1]),D(g.shift[2]));
+  float* const* rows=g.rows+first;
+  bool contiguous=true;
+  for(int k=1;k<n;++k)contiguous=contiguous && rows[k]==rows[0]+size_t(k)*size_t(s.no);
+  if(contiguous) {
+    const I lane([](auto k){return std::int32_t(k);});
+    const IM active=lane<I(n);
+    const I base=lane*I(s.no);
+    std::span<float> destination(rows[0],size_t(n)*size_t(s.no));
+    values(t,s,p,[&](int j,D v){simd::unchecked_scatter_to(F(v),destination,active,base+I(j));});
+  } else {
+    alignas(64) float scratch[MAXNO][lanes];
+    values(t,s,p,[&](int j,D v){simd::simd_unchecked_store(F(v),&scratch[j][0]);});
+    for(int k=0;k<n;++k){float* row=rows[k];for(int j=0;j<s.no;++j)row[j]=scratch[j][k];}
+  }
 }
 
 void points(const OpenMXOrbitalsTables& t,const OpenMXOrbitalsFrame& f,const OpenMXOrbitalsPoint* q,size_t count,float* out) {
@@ -220,6 +297,17 @@ void points(const OpenMXOrbitalsTables& t,const OpenMXOrbitalsFrame& f,const Ope
     for(size_t i=first;i<last;i+=lanes)
       block(t,f,s,q+i,int(std::min<size_t>(lanes,last-i)),out+i*size_t(f.max_no));
     first=last;
+  }
+}
+
+void segments(const OpenMXOrbitalsTables& t,const OpenMXOrbitalsFrame& f,const OpenMXOrbitalsSegment* g,size_t count) {
+  Species s;int current=-1;
+  for(size_t i=0;i<count;++i) {
+    const OpenMXOrbitalsSegment& e=g[i];
+    if(!e.count)continue;
+    if(e.wan!=current){setup(s,t,e.wan);current=e.wan;}
+    for(size_t first=0;first<e.count;first+=lanes)
+      sblock(t,f,s,e,first,int(std::min<size_t>(lanes,e.count-first)));
   }
 }
 
@@ -264,7 +352,7 @@ void dblock(const OpenMXOrbitalsTables& t,const Species& s,const OpenMXOrbitalsD
   const Spline sp=spline(s,R,below,interval(s,R,interior,below));
   D RF[L0MAX+1][MULMAX],dRF[L0MAX+1][MULMAX];
   const D rm(s.rm);
-  const bool extrapolate=simd::any_of(below);
+  const bool extrapolate=any(below);
   size_t row=s.rwf_base;
   for(int L0=0;L0<=s.maxl;++L0)for(int Mul0=0;Mul0<s.nb[L0];++Mul0) {
     const double* rw=t.rwf+row;row+=size_t(s.mesh);
@@ -364,7 +452,7 @@ void dpoints(const OpenMXOrbitalsTables& t,const OpenMXOrbitalsDisplacement* q,s
 void dpoints_cosines(const OpenMXOrbitalsTables& t,const OpenMXOrbitalsDisplacement* q,size_t count,double* out) {
   dpoints_impl<false>(t,q,count,out);
 }
-constexpr OrbitalsKernels kernels{lanes,points,dpoints,dpoints_cosines};
+constexpr OrbitalsKernels kernels{lanes,points,dpoints,dpoints_cosines,segments};
 }
 const OrbitalsKernels& OPENMX_HOST_SIMD_FACTORY(orbitals)() noexcept {return kernels;}
 }

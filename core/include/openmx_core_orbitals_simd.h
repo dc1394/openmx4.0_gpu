@@ -41,6 +41,31 @@ typedef struct { int ng23, ng3, max_no; double frame[9], origin[3]; } OpenMXOrbi
 int openmx_core_orbitals_points(const OpenMXOrbitalsTables*,const OpenMXOrbitalsFrame*,
     const OpenMXOrbitalsPoint*,size_t count,float *out,int mode);
 
+/* A run of grid points of one atom whose orbital rows the caller owns (the
+   atom's own grid, or its overlap with one neighbour): point k < count is the
+   grid point grid[i] in cell cell[i] with i = index ? index[k] : k, and its no
+   orbital values go to rows[k][0..no) (exactly no floats; the rows need not be
+   contiguous). xyz is the atom position and shift the neighbour's cell shift
+   (zero for the atom's own grid), as in OpenMXOrbitalsPoint. */
+typedef struct {
+  int wan, no;
+  double xyz[3], shift[3];
+  size_t count;
+  const int *index, *grid, *cell;
+  float *const *rows;
+} OpenMXOrbitalsSegment;
+
+/* The orbital values of every point of every segment, bitwise those of
+   openmx_core_orbitals_points for the same points, written straight into
+   the rows (no staging records, no output tile; frame->max_no is not used).
+   Every segment (species, orbital count, buffers) and every point (index,
+   grid index >= 0, cell < tables->cells, row pointer) is checked before
+   anything is written: 0 without writing on any failure or an unsupported
+   mode, else 1. Pure, re-entrant, allocation-free: callers cut segments into
+   pieces (offset index/grid/cell/rows) and split them across threads. */
+int openmx_core_orbitals_segments(const OpenMXOrbitalsTables*,const OpenMXOrbitalsFrame*,
+    const OpenMXOrbitalsSegment*,size_t segments,int mode);
+
 /* A grid point of a force quadrature given by its displacement from the atom
    (x, y, z = the dx, dy, dz that Force3 forms from the grid coordinate, the
    cell translation and the atom position) with the atom's species and

@@ -31,5 +31,11 @@ const GridKernels& grid_scalar() noexcept;
 const GridKernels& grid_avx2() noexcept;
 const GridKernels& grid_avx512() noexcept;
 const GridKernels& grid_neon() noexcept;
+// The committed kernels (host_grid_committed.cpp, one per ISA), used by the
+// grid kernels of the same ISA for the shapes where they are faster.
+const GridKernels& grid_committed_scalar() noexcept;
+const GridKernels& grid_committed_avx2() noexcept;
+const GridKernels& grid_committed_avx512() noexcept;
+const GridKernels& grid_committed_neon() noexcept;
 }
 #endif

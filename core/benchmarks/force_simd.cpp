@@ -205,6 +205,71 @@ int main(int argc,char** argv) {
         }
       }
     }
+    // ---------------- Force4B case 1, one received atom ----------------
+    {
+      // the received atom's 85 blocks (kl), shared by 6 local atoms whose
+      // 86 neighbour blocks each map to the received atom's list for ~40 % of k
+      const int fan=84,locals=6;const double density=0.4;
+      std::mt19937 rng(7u);std::uniform_real_distribution<double> u(0.0,1.0);
+      std::uniform_int_distribution<int> pick(0,fan);
+      std::vector<Rows> received;for(int kl=0;kl<=fan;++kl)received.emplace_back(orbitals,P,double(3000+kl));
+      std::vector<std::vector<std::vector<Rows>>> left(locals);  // left[atom][k][c]
+      struct Triple { int atom,k,kl; };std::vector<Triple> triples;std::vector<std::vector<int>> bucket(fan+1);
+      for(int a=0;a<locals;++a) {
+        left[a].resize(fan+1);
+        std::vector<int> used(fan+1,0);
+        for(int k=0;k<=fan;++k) {
+          for(int c=0;c<3;++c)left[a][k].emplace_back(orbitals,P,double(4000+a*400+k*3+c));
+          if(u(rng)<density){int kl;do kl=pick(rng);while(used[kl]);used[kl]=1;bucket[kl].push_back(int(triples.size()));triples.push_back({a,k,kl});}
+        }
+      }
+      const double block_kb=double(orbitals)*P*4/1024.0;
+      std::cout<<"Force4B case 1, one received atom: "<<locals<<" local atoms, "<<triples.size()<<" (atom,k) blocks over "<<fan+1
+          <<" received blocks; left blocks "<<std::setprecision(1)<<triples.size()*3*block_kb/1024<<" MB\n";
+      const int atom_repeats=std::max(1,repeats/5);
+      const size_t plane=size_t(orbitals)*orbitals;
+      std::vector<double> slots(triples.size()*3*plane);
+      for(int mode:isas) {
+        // (a) every block transposes its right block (the round-1 order)
+        const size_t bytes=openmx_core_force_vna_scratch(orbitals,P,1,0);std::vector<unsigned char> scratch(bytes);
+        const double per_block=seconds([&]{
+          for(size_t t=0;t<triples.size();++t) {
+            const auto& tr=triples[t];
+            OpenMXForceVnaBlock b{};b.rows=b.columns=orbitals;b.projectors=P;b.terms=1;b.fp32=1;b.lanes_rows=0;
+            for(int c=0;c<3;++c){b.derivative[c]=left[tr.atom][tr.k][c].pointers.data();b.output[c]=slots.data()+(t*3+c)*plane;}
+            b.value=received[tr.kl].pointers.data();b.output_stride=orbitals;
+            check(openmx_core_force_vna_block(&b,scratch.data(),bytes,mode),"per-block halo block failed");
+          }},atom_repeats);
+        const std::vector<double> reference=slots;
+        // (b) buckets: each received block prepared once for its blocks
+        const size_t lane_bytes=openmx_core_force_vna_lanes_bytes(orbitals,P,1);std::vector<unsigned char> lane_memory(lane_bytes);
+        double prepare_only=0;
+        const double bucketed=seconds([&]{
+          for(int kl=0;kl<=fan;++kl) {
+            if(bucket[kl].empty())continue;
+            OpenMXForceVnaLanes lanes;const float* const* rows1[4]={received[kl].pointers.data(),nullptr,nullptr,nullptr};
+            check(openmx_core_force_vna_lanes(rows1,1,orbitals,P,lane_memory.data(),lane_bytes,&lanes,mode),"halo lanes failed");
+            for(int t:bucket[kl]) {
+              const auto& tr=triples[t];
+              OpenMXForceVnaBlock b{};b.rows=b.columns=orbitals;b.projectors=P;b.terms=1;b.fp32=1;b.lanes_rows=0;b.lanes=&lanes;
+              for(int c=0;c<3;++c){b.derivative[c]=left[tr.atom][tr.k][c].pointers.data();b.output[c]=slots.data()+(size_t(t)*3+c)*plane;}
+              b.value=received[kl].pointers.data();b.output_stride=orbitals;
+              check(openmx_core_force_vna_block(&b,nullptr,0,mode),"bucketed halo block failed");
+            }
+          }},atom_repeats);
+        check(slots==reference,"bucketed halo blocks differ from the per-block order");
+        prepare_only=seconds([&]{
+          for(int kl=0;kl<=fan;++kl) {
+            if(bucket[kl].empty())continue;
+            OpenMXForceVnaLanes lanes;const float* const* rows1[4]={received[kl].pointers.data(),nullptr,nullptr,nullptr};
+            check(openmx_core_force_vna_lanes(rows1,1,orbitals,P,lane_memory.data(),lane_bytes,&lanes,mode),"halo lanes failed");
+          }},atom_repeats);
+        int nb=0;for(const auto& bk:bucket)nb+=!bk.empty();
+        std::cout<<std::setw(10)<<openmx_core_host_simd_name(mode)<<std::setprecision(1)<<"  per block: "<<1e3*per_block/atom_repeats<<" ms"
+            <<"  buckets: "<<1e3*bucketed/atom_repeats<<" ms ("<<std::setprecision(2)<<per_block/bucketed<<"x), of which "<<nb<<" lane preparations "
+            <<std::setprecision(1)<<1e6*prepare_only/atom_repeats/std::max(1,nb)<<" us each\n";
+      }
+    }
     // ---------------- Force3 pair contraction ----------------
     {
       std::vector<double> dm(size_t(orbitals)*orbitals);for(size_t k=0;k<dm.size();++k)dm[k]=std::cos(0.11*double(k));

@@ -51,6 +51,15 @@ int openmx_core_olg_map_reset(const OpenMXOlgLists*,int *map,size_t extent,int m
 int openmx_core_olg_intersect_map(const OpenMXOlgLists*,const OpenMXOlgNeighbours*,const int *map,
     size_t extent,size_t count,int *out,int mode);
 
+/* Search and compaction in one call: the matched pairs of a neighbour list in
+   ascending neighbour index (the GListTAtoms1/2 order of UCell_Box):
+   center_out[k] = the centre entry, neighbour_out[k] = the neighbour index,
+   k < *found. Both outputs need count entries (the worst case). map != NULL
+   selects the map form (same contract as intersect_map), NULL the merge form.
+   Returns 0 on the same refusals as the two forms, with nothing written. */
+int openmx_core_olg_pairs(const OpenMXOlgLists*,const OpenMXOlgNeighbours*,const int *map,size_t extent,
+    size_t count,int *center_out,int *neighbour_out,size_t *found,int mode);
+
 #ifdef __cplusplus
 }
 #endif

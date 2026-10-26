@@ -65,8 +65,10 @@ void vna() {
   std::mt19937 rng(11u);
   const auto ms=modes();
   for(int terms:{1,2})for(int fp32:{0,1})for(int lanes_rows:{0,1})for(int prepared:{0,1})
-    for(int rows:{1,3,8,13,17})for(int columns:{1,5,8,13,16,19})for(int P:{0,1,7,64,131}) {
+    for(int rows:{1,3,8,13,17,70})for(int columns:{1,5,8,13,16,19,70})for(int P:{0,1,7,64,131}) {
     if((rows==3 || rows==17) && columns!=13 && prepared)continue;  // keep the sweep short
+    // more than 64 lanes: the element-wise transposition; with one other extent only
+    if((rows==70 || columns==70) && (rows+columns<70+13 || P==64 || P==1))continue;
     Rows dx(rng,rows,P,1),dy(rng,rows,P,2),dz(rng,rows,P,3),h0(rng,rows,P,4),q0(rng,columns,P,5),qx(rng,columns,P,6),qy(rng,columns,P,7),qz(rng,columns,P,8);
     OpenMXForceVnaBlock b{};
     b.rows=rows;b.columns=columns;b.projectors=P;b.terms=terms;b.fp32=fp32;b.lanes_rows=lanes_rows;

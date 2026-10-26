@@ -12,6 +12,15 @@ extern "C" int openmx_core_energy_neutral_points(const OpenMXEnergyNeutralPoints
   kernels->neutral_points(*s);
   return 1;
 }
+extern "C" int openmx_core_energy_neutral_sum(const OpenMXEnergyNeutralPoints* s,double* sum,double* sumr,int mode) {
+  const auto* kernels=openmx::core::host::openmx_host_energy_kernels(mode);
+  if(!kernels || !s || s->count<0 || !sum || (s->derivative && !sumr))return 0;
+  if(!s->count)return 1;
+  if(s->mesh<6 || !s->log_radii || !s->radii || !s->hartree)return 0;
+  if(!s->x || !s->y || !s->z || !s->density || !s->weight)return 0;
+  kernels->neutral_sum(*s,sum,sumr);
+  return 1;
+}
 extern "C" size_t openmx_core_energy_xc_shell_scratch(int neighbors) {
   // per-neighbour table constants, then the three gradient components of
   // every neighbour for eight lanes

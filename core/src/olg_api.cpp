@@ -51,3 +51,15 @@ extern "C" int openmx_core_olg_intersect_map(const OpenMXOlgLists* lists,const O
   kernels->intersect_map(*lists,*neighbours,map,extent,count,out);
   return 1;
 }
+
+extern "C" int openmx_core_olg_pairs(const OpenMXOlgLists* lists,const OpenMXOlgNeighbours* neighbours,
+    const int* map,size_t extent,size_t count,int* center_out,int* neighbour_out,size_t* found,int mode) {
+  const auto* kernels=openmx::core::host::openmx_host_olg_kernels(mode);
+  if(!kernels || !lists || !neighbours || !found || lists->nc<0 || lists->cpy<0 || lists->cells<0)return 0;
+  if(count && (!neighbours->grid || !neighbours->cell || !center_out || !neighbour_out))return 0;
+  if(lists->nc>0 && (!lists->grid || !lists->cell))return 0;
+  if(count && lists->nc>0 && (!lists->shifts || !lists->periodic))return 0;
+  if(map)for(size_t i=0;i<count;++i)if(neighbours->grid[i]<0 || size_t(neighbours->grid[i])>=extent)return 0;
+  *found=kernels->pairs(*lists,*neighbours,map,extent,count,center_out,neighbour_out);
+  return 1;
+}

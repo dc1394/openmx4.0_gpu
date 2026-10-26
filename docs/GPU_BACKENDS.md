@@ -246,11 +246,12 @@ Kokkos の型・ISA フラグが C ABI やデバイス翻訳単位へ出ない�
 
 | 群 | 対象のホスト経路 | 車線（lanes）の取り方 | 数値 |
 | --- | --- | --- | --- |
-| `olg` | `UCell_Box` の重なり格子探索（`OLG_capacity_kernel` のホスト実行、全 rank に GPU がなければ集団ループを省く局所経路、第 1 MD ステップの見積もり側リストの引き渡し） | 全体格子番号 → 中心要素の写像を 16 問い合わせずつ gather（大きすぎる格子は昇順リストの併合） | 整数のみ、GPU カーネルと同一 |
+| `grid` | `Set_Hamiltonian` / `Set_Density_Grid` の格子積分（Codex 実装、第 3 ラウンドで行ポインタの一括解決・行車線の密度変種・ベクトル変換、小さい行は HEAD のカーネル `host_grid_committed.cpp`） | 行列の列 / 格子点 / 密度行列の行 | ISA 間・HEAD と bit 一致 |
+| `olg` | `UCell_Box` の重なり格子探索（`OLG_capacity_kernel` のホスト実行、全 rank に GPU がなければ集団ループを省く局所経路、第 1 MD ステップの見積もり側リストの引き渡し、探索と圧縮の一体化） | 全体格子番号 → 中心要素の写像を 16 問い合わせずつ gather（大きすぎる格子は昇順リストの併合） | 整数のみ、GPU カーネルと同一 |
 | `vna` | `Set_ProExpn_VNA` の CPU カーネル（Bessel、DS_VNA / VNA23 の k 積分、m 和の複素累積と複素→実変換、HVNA の射影子縮約） | 射影子行・LL・M1・列 n など独立な出力 | 元ループの転写と bit 一致 |
 | `force` | `Force4B` の融合トレース（case 1/2 の射影子ブロック、車線被演算子の再利用とタイル化）、`Force3` の格子縮約（点優先）と軌道微分、`dHNL` の共線ブロック | 列 n / 行 m / 密度行列の行 i | 元ループの転写と bit 一致（fp32 積の丸め点も保持）、軌道微分は余弦版（≤1e-12） |
 | `energy` | `EH0_TwoCenter` / cutoff の中性原子 2 中心積分の被積分点、`Calc_EXC_EH1` の原子 XC 殻積分、`Band_DFT_Col` の密度行列集計ブロック | 格子点 / Lebedev 点 / 列 j（点和・バンド和は逐次） | 転写と bit 一致（`log` / `exp` / `pow` は車線ごとの glibc） |
-| `orbitals` | `SOG_capacity_kernel` のホスト実行（軌道値の格子評価）と Force3 用の軌道微分（厳密版・余弦版） | 同一元素種の連続した格子点 | `SOG_point_eval` / `Get_dOrbitals_work` の転写と bit 一致（余弦版は ≤1e-12） |
+| `orbitals` | `SOG_capacity_kernel` のホスト実行（軌道値の格子評価、CPU モードでは `Orbs_Grid` 行へ直接）と Force3 用の軌道微分（厳密版・余弦版） | 同一元素種の連続した格子点 | `SOG_point_eval` / `Get_dOrbitals_work` の転写と bit 一致（余弦版は ≤1e-12） |
 
 各群は `core/tests/test_host_<family>.cpp`（scalar と各 ISA の bit 一致、元ループの転写との
 一致、不正引数の拒否）と `core/benchmarks/<family>_*.cpp` を持ちます。

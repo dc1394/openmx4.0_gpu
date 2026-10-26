@@ -230,6 +230,18 @@ void neutral() {
         for(int n=0;n<count;++n)s2+=got[n];
         if(derivative)for(int n=0;n<count;++n)r2-=gotd[n];
         require(std::memcmp(&s2,&sum,sizeof(double))==0 && std::memcmp(&r2,&sumr,sizeof(double))==0,"summing the stored values changed the legacy sum");
+        // the one-call accumulating variant: from zero and from a running total
+        for(double start:{0.0,-0.7310586}) {
+          double legacy_s=start,legacy_r=start;
+          for(int n=0;n<count;++n)legacy_s+=values[n];
+          if(derivative)for(int n=0;n<count;++n)legacy_r-=derivatives[n];
+          double ks=start,kr=start;
+          OpenMXEnergyNeutralPoints q=s;q.values=nullptr;q.derivatives=nullptr;
+          require(openmx_core_energy_neutral_sum(&q,&ks,&kr,mode),"neutral sum refused a valid request");
+          require(std::memcmp(&ks,&legacy_s,sizeof(double))==0,"neutral sum differs from the legacy sum");
+          if(derivative)require(std::memcmp(&kr,&legacy_r,sizeof(double))==0,"neutral sum differs from the legacy derivative sum");
+          else require(kr==start,"neutral sum touched the derivative total without derivative");
+        }
       }
     }
 }
@@ -523,8 +535,10 @@ struct Band {
   std::vector<const double*> re0_rows,im0_rows;
   double co,si;
 };
-Band make_band(std::mt19937& rng,int rows,int columns,int bands) {
-  Band b;b.rows=rows;b.columns=columns;b.bands=bands;b.stride=(size_t(columns)+7)/8*8;
+// extra = additional padding columns (a per-atom panel sized for a larger
+// atom: the stride exceeds the block's columns rounded up to 8)
+Band make_band(std::mt19937& rng,int rows,int columns,int bands,size_t extra=0) {
+  Band b;b.rows=rows;b.columns=columns;b.bands=bands;b.stride=(size_t(columns)+7)/8*8+extra;
   std::uniform_real_distribution<double> u(-1.0,1.0);
   auto fill=[&](std::vector<double>& v,size_t n){v.resize(n);for(size_t i=0;i<n;++i)v[i]=i%23==7?-0.0:i%29==3?1e8*u(rng):u(rng);};
   fill(b.re0,size_t(rows)*bands);fill(b.im0,size_t(rows)*bands);
@@ -568,9 +582,9 @@ void legacy_band(const Band& b,std::vector<double>& CDM1,std::vector<double>& ED
 }
 void band() {
   std::mt19937 rng(77u);
-  for(int rows:{0,1,5,13,16})for(int columns:{0,1,3,7,8,13,16,17,29})for(int bands:{0,1,2,3,4,17,100,441}) {
-    if(bands>100 && rows>5)continue;
-    const Band b=make_band(rng,rows,columns,bands);
+  for(int rows:{0,1,5,13,16})for(int columns:{0,1,3,7,8,13,16,17,29})for(int bands:{0,1,2,3,4,17,100,441})for(size_t extra:{size_t(0),size_t(8),size_t(16)}) {
+    if(bands>100 && (rows>5 || extra))continue;
+    const Band b=make_band(rng,rows,columns,bands,extra);
     std::vector<double> cdm=b.cdm,edm=b.edm;
     legacy_band(b,cdm,edm);
     for(int mode:modes()) {
@@ -612,6 +626,15 @@ void invalid() {
   for(double x:d)require(x==4.0,"a refused call wrote derivatives");
   broken=s;broken.count=0;broken.hartree=nullptr;
   require(openmx_core_energy_neutral_points(&broken,OPENMX_GRID_SCALAR),"an empty request needs no tables");
+  double total=2.0,total_r=3.0;
+  require(!openmx_core_energy_neutral_sum(&s,&total,&total_r,99),"unknown sum mode accepted");
+  require(!openmx_core_energy_neutral_sum(&s,nullptr,&total_r,OPENMX_GRID_SCALAR),"missing sum accepted");
+  require(!openmx_core_energy_neutral_sum(&s,&total,nullptr,OPENMX_GRID_SCALAR),"missing derivative sum accepted");
+  broken=s;broken.weight=nullptr;
+  require(!openmx_core_energy_neutral_sum(&broken,&total,&total_r,OPENMX_GRID_SCALAR),"missing weights accepted by the sum");
+  require(total==2.0 && total_r==3.0,"a refused sum call wrote its totals");
+  broken=s;broken.derivative=0;
+  require(openmx_core_energy_neutral_sum(&broken,&total,nullptr,OPENMX_GRID_SCALAR),"a sum without derivative needs no derivative total");
   {
     const Shell sh=make_shell(rng,9,4,4,false);
     std::vector<double> scratch(openmx_core_energy_xc_shell_scratch(4),0.0),sx(4,1.0),sy(4,1.0),sz(4,1.0);

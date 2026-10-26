@@ -182,7 +182,59 @@ void intersect_map(const OpenMXOlgLists& l,const OpenMXOlgNeighbours& nb,const i
     }
   }
 }
-constexpr OlgKernels kernels{V,intersect,intersect_lists,intersect_map};
+// Branch-free compaction of one block of answers: every entry is written at
+// the running position, which only advances on a match (at <= index always).
+inline size_t compact(const int* answers,int n,size_t first,size_t at,int* center_out,int* neighbour_out) {
+  for(int k=0;k<n;++k) {
+    const int r=answers[k];
+    center_out[at]=r;neighbour_out[at]=int(first)+k;at+=size_t(r>=0);
+  }
+  return at;
+}
+// Map form fused with the compaction: the block's answers never leave L1.
+size_t pairs_map(const OpenMXOlgLists& l,const OpenMXOlgNeighbours& nb,const int* map,size_t extent,
+    size_t count,int* center_out,int* neighbour_out) {
+  const int nc=l.nc;
+  if(nc<=0 || !count)return 0;
+  int table[table_cells];
+  const bool tabled=l.cells<=table_cells;
+  if(tabled)for(int c=0;c<l.cells;++c)table[c]=image(l,c,nb.l1,nb.l2,nb.l3);
+  const Int zero(0),lane=Int([](auto k){return std::int32_t(k);});
+  alignas(64) std::int32_t answers[V];
+  size_t at=0;
+  for(size_t first=0;first<count;first+=V) {
+    const int n=int(std::min<size_t>(V,count-first));
+    const Mask live=lane<Int(n);
+    const Int grid=simd::simd_partial_load<Int>(nb.grid+first,live),cell=simd::simd_partial_load<Int>(nb.cell+first,live);
+    const Int target=tabled?gather(table,size_t(l.cells),live,cell)
+        :Int([&](auto k){return int(k)<n?std::int32_t(image(l,nb.cell[first+size_t(k)],nb.l1,nb.l2,nb.l3)):-1;});
+    const Int index=gather(map,extent,live,grid);
+    const Mask valid=live&&(index>=zero)&&(target>=zero);
+    const Mask hit=valid&&(gather(l.cell,size_t(nc),valid,index)==target);
+    simd::simd_unchecked_store(select(hit,index,Int(-1)),answers);
+    const Mask missed=valid&&!hit;
+    if(any(missed)) {
+      const Int next=index+Int(1);
+      const Mask repeated=missed&&(next<Int(nc));
+      const Mask pending=repeated&&(gather(l.grid,size_t(nc),repeated,next)==grid);
+      if(any(pending))for(int k=0;k<n;++k)if(pending[k])answers[k]=walk(l,index[k]+1,grid[k],target[k]);
+    }
+    if(any(hit) || any(missed))at=compact(answers,n,first,at,center_out,neighbour_out);
+  }
+  return at;
+}
+// Merge form: answers first (into center_out), then compaction in place.
+size_t pairs_lists(const OpenMXOlgLists& l,const OpenMXOlgNeighbours& nb,size_t count,int* center_out,int* neighbour_out) {
+  intersect_lists(l,nb,count,center_out);
+  size_t at=0;
+  for(size_t i=0;i<count;++i){const int r=center_out[i];center_out[at]=r;neighbour_out[at]=int(i);at+=size_t(r>=0);}
+  return at;
+}
+size_t pairs(const OpenMXOlgLists& l,const OpenMXOlgNeighbours& nb,const int* map,size_t extent,size_t count,
+    int* center_out,int* neighbour_out) {
+  return map?pairs_map(l,nb,map,extent,count,center_out,neighbour_out):pairs_lists(l,nb,count,center_out,neighbour_out);
+}
+constexpr OlgKernels kernels{V,intersect,intersect_lists,intersect_map,pairs};
 }
 const OlgKernels& OPENMX_HOST_SIMD_FACTORY(olg)() noexcept {return kernels;}
 }

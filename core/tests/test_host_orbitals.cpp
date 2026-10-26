@@ -444,6 +444,153 @@ void dcosines() {
   }
   std::cout<<"direction-cosine derivatives vs Get_dOrbitals_work: max difference "<<worst<<" of each point's largest derivative\n";
 }
+
+// ---- segments (openmx_core_orbitals_segments) ----
+// Rows with guard values on both sides: each row is exactly no floats.
+struct Rows {
+  std::vector<float> storage;
+  std::vector<float*> rows;
+  size_t no=0;
+  static constexpr float guard=-12345.0f;
+  // contiguous: one block (as truncation.c allocates Orbs_Grid); otherwise
+  // every row in its own guarded slot, in reverse order.
+  Rows(size_t count,size_t no_,bool contiguous):no(no_) {
+    if(contiguous) {
+      storage.assign(count*no+2,guard);
+      for(size_t k=0;k<count;++k)rows.push_back(storage.data()+1+k*no);
+    } else {
+      storage.assign(count*(no+2)+1,guard);
+      for(size_t k=0;k<count;++k)rows.push_back(storage.data()+1+(count-1-k)*(no+2));
+    }
+  }
+  bool guards_intact(bool contiguous) const {
+    if(contiguous)return storage.front()==guard && storage.back()==guard;
+    for(size_t k=0;k<rows.size();++k)if(rows[k][-1]!=guard || rows[k][no]!=guard)return false;
+    return true;
+  }
+};
+struct SegmentCase {
+  OpenMXOrbitalsSegment segment{};
+  std::vector<int> index,grid,cell;
+  Rows rows;
+  std::vector<OpenMXOrbitalsPoint> points;  // the same points as records
+  bool contiguous;
+  SegmentCase(std::mt19937& rng,const Setup& u,int wan,size_t count,bool indexed,bool contiguous_,bool shifted)
+      :rows(count,size_t(u.species[wan].orbitals()),contiguous_),contiguous(contiguous_) {
+    // The atom sits at a lattice point (near a box face for odd counts, so
+    // that its sphere wraps into neighbouring cells); its points are lattice
+    // points around it, wrapped into the box with their cell index, as in
+    // GridListAtom/CellListAtom. An indexed segment picks a shuffled subset.
+    const int ng=u.ng1,reach=int(1.3*u.species[wan].rv.back()/0.19)+1;
+    std::uniform_int_distribution<int> anywhere(0,ng-1),offset(-reach,reach);
+    int centre[3];
+    for(int a=0;a<3;++a)centre[a]=count%2?(a==0?1:anywhere(rng)):anywhere(rng);
+    double position[3];
+    for(int a=0;a<3;++a)position[a]=centre[0]*u.frame.frame[a]+centre[1]*u.frame.frame[3+a]+centre[2]*u.frame.frame[6+a]+u.frame.origin[a]+0.013*(a+1);
+    const int shift_cell=shifted?std::uniform_int_distribution<int>(0,u.cells-1)(rng):13;
+    for(int a=0;a<3;++a){segment.shift[a]=u.translations[3*size_t(shift_cell)+a];segment.xyz[a]=position[a]-segment.shift[a];}
+    const size_t pool=indexed?count+count/2+3:count;
+    for(size_t i=0;i<pool;++i) {
+      int n[3],l[3];
+      for(int a=0;a<3;++a){const int m=centre[a]+offset(rng);l[a]=m<0?-1:m>=ng?1:0;n[a]=m-l[a]*ng;}
+      grid.push_back(n[0]*u.frame.ng23+n[1]*u.frame.ng3+n[2]);
+      cell.push_back((l[0]+1)*9+(l[1]+1)*3+(l[2]+1));
+    }
+    if(indexed){std::vector<int> all(pool);for(size_t i=0;i<pool;++i)all[i]=int(i);std::shuffle(all.begin(),all.end(),rng);
+      index.assign(all.begin(),all.begin()+long(count));}
+    segment.wan=wan;segment.no=u.species[wan].orbitals();
+    segment.count=count;segment.index=indexed?index.data():nullptr;segment.grid=grid.data();segment.cell=cell.data();
+    segment.rows=rows.rows.data();
+    for(size_t k=0;k<count;++k){const size_t i=indexed?size_t(index[k]):k;OpenMXOrbitalsPoint q{};q.wan=wan;q.no=segment.no;
+      q.grid=grid[i];q.cell=cell[i];for(int a=0;a<3;++a){q.xyz[a]=segment.xyz[a];q.shift[a]=segment.shift[a];}points.push_back(q);}
+  }
+};
+void scompare(const Setup& u,std::vector<SegmentCase>& cases,const char* what,bool pieces) {
+  const auto tables=u.tables();
+  // The reference: SOG_point_eval through the record kernel's contract.
+  std::vector<std::vector<float>> expected;
+  for(auto& c:cases) {
+    const auto e=::expected(u,c.points);std::vector<float> rows;
+    for(size_t k=0;k<c.points.size();++k)rows.insert(rows.end(),e.begin()+long(k*size_t(u.frame.max_no)),e.begin()+long(k*size_t(u.frame.max_no)+size_t(c.segment.no)));
+    expected.push_back(rows);
+  }
+  std::mt19937 rng(17u);
+  for(int mode:modes()) {
+    for(auto& c:cases)std::fill(c.rows.storage.begin(),c.rows.storage.end(),Rows::guard);
+    std::vector<OpenMXOrbitalsSegment> list;
+    for(auto& c:cases) {
+      if(!pieces || c.segment.count<2){list.push_back(c.segment);continue;}
+      // cut the segment at random offsets, as a threaded caller does
+      for(size_t first=0;first<c.segment.count;) {
+        const size_t len=std::min(c.segment.count-first,size_t(std::uniform_int_distribution<int>(1,37)(rng)));
+        OpenMXOrbitalsSegment piece=c.segment;piece.count=len;piece.rows=c.segment.rows+first;
+        if(piece.index)piece.index=c.segment.index+first;else{piece.grid=c.segment.grid+first;piece.cell=c.segment.cell+first;}
+        list.push_back(piece);first+=len;
+      }
+    }
+    require(openmx_core_orbitals_segments(&tables,&u.frame,list.data(),list.size(),mode),"the segment kernel refused a valid request");
+    for(size_t i=0;i<cases.size();++i) {
+      auto& c=cases[i];
+      require(c.rows.guards_intact(c.contiguous),"the segment kernel wrote outside its rows");
+      for(size_t k=0;k<c.segment.count;++k)
+        if(std::memcmp(c.rows.rows[k],expected[i].data()+k*size_t(c.segment.no),size_t(c.segment.no)*sizeof(float))!=0) {
+          std::cerr<<what<<": mode "<<openmx_core_host_simd_name(mode)<<" segment "<<i<<" point "<<k<<'\n';
+          throw std::runtime_error("host segment kernel differs from SOG_point_eval");
+        }
+    }
+  }
+}
+void segments_case() {
+  std::mt19937 rng(606u);
+  const Setup u=make_setup(rng);
+  std::vector<SegmentCase> cases;
+  std::uniform_int_distribution<int> which(0,int(u.species.size())-1);
+  for(size_t count:{size_t(0),size_t(1),size_t(2),size_t(7),size_t(8),size_t(9),size_t(15),size_t(16),size_t(17),size_t(100),size_t(1000)})
+    for(bool indexed:{false,true})for(bool contiguous:{true,false})
+      cases.emplace_back(rng,u,which(rng),count,indexed,contiguous,(count%2)!=0);
+  scompare(u,cases,"segments",false);
+  scompare(u,cases,"segment pieces",true);
+}
+void sinvalid() {
+  std::mt19937 rng(808u);
+  const Setup u=make_setup(rng);
+  std::vector<SegmentCase> cases;
+  cases.emplace_back(rng,u,1,40,true,true,true);
+  cases.emplace_back(rng,u,0,25,false,false,false);
+  const auto tables=u.tables();
+  std::vector<OpenMXOrbitalsSegment> good{cases[0].segment,cases[1].segment};
+  auto untouched=[&]{for(auto& c:cases)for(float v:c.rows.storage)if(v!=Rows::guard)return false;return true;};
+  auto refused=[&](const OpenMXOrbitalsTables* t,const OpenMXOrbitalsFrame* f,const std::vector<OpenMXOrbitalsSegment>& g,int mode,const char* what) {
+    require(!openmx_core_orbitals_segments(t,f,g.data(),g.size(),mode),what);
+    require(untouched(),"a refused segment call wrote output");
+  };
+  refused(&tables,&u.frame,good,99,"unknown mode accepted");
+  refused(&tables,&u.frame,good,OPENMX_HOST_SIMD_LEGACY,"legacy accepted as a kernel");
+  refused(nullptr,&u.frame,good,OPENMX_GRID_SCALAR,"missing tables accepted");
+  refused(&tables,nullptr,good,OPENMX_GRID_SCALAR,"missing frame accepted");
+  require(!openmx_core_orbitals_segments(&tables,&u.frame,nullptr,2,OPENMX_GRID_SCALAR),"missing segments accepted");
+  auto t=tables;t.translations=nullptr;refused(&t,&u.frame,good,OPENMX_GRID_SCALAR,"missing translations accepted");
+  auto f=u.frame;f.ng3=0;refused(&tables,&f,good,OPENMX_GRID_SCALAR,"empty grid accepted");
+  auto bad=good;bad[1].no+=1;refused(&tables,&u.frame,bad,OPENMX_GRID_SCALAR,"wrong orbital count accepted");
+  bad=good;bad[1].wan=int(u.species.size());refused(&tables,&u.frame,bad,OPENMX_GRID_SCALAR,"unknown species accepted");
+  bad=good;bad[0].grid=nullptr;refused(&tables,&u.frame,bad,OPENMX_GRID_SCALAR,"missing grid list accepted");
+  bad=good;bad[1].rows=nullptr;refused(&tables,&u.frame,bad,OPENMX_GRID_SCALAR,"missing rows accepted");
+  // per-point checks, in the second segment so that the first stays unwritten
+  std::vector<int> index=cases[0].index;index[5]=-1;bad=good;bad[0].index=index.data();
+  refused(&tables,&u.frame,bad,OPENMX_GRID_SCALAR,"negative index accepted");
+  std::vector<int> cell=cases[1].cell;cell[7]=u.cells;bad=good;bad[1].cell=cell.data();
+  refused(&tables,&u.frame,bad,OPENMX_GRID_SCALAR,"unknown cell accepted");
+  std::vector<int> grid=cases[1].grid;grid[3]=-4;bad=good;bad[1].grid=grid.data();
+  refused(&tables,&u.frame,bad,OPENMX_GRID_SCALAR,"negative grid index accepted");
+  std::vector<float*> rows=cases[1].rows.rows;rows[24]=nullptr;bad=good;bad[1].rows=rows.data();
+  refused(&tables,&u.frame,bad,OPENMX_GRID_SCALAR,"missing row accepted");
+  std::vector<int> maxl=u.maxl;maxl[0]=4;t=tables;t.maxl=maxl.data();
+  refused(&t,&u.frame,good,OPENMX_GRID_SCALAR,"L0 = 4 accepted");
+  // an empty segment list and empty segments are valid and write nothing
+  require(openmx_core_orbitals_segments(&tables,&u.frame,nullptr,0,OPENMX_GRID_SCALAR),"empty segment list refused");
+  bad=good;bad[0].count=0;bad[1].count=0;bad[0].grid=nullptr;
+  require(openmx_core_orbitals_segments(&tables,&u.frame,bad.data(),bad.size(),OPENMX_GRID_SCALAR) && untouched(),"empty segments");
+}
 }
 int main(int argc,char** argv) {
   try {
@@ -457,6 +604,8 @@ int main(int argc,char** argv) {
     else if(name=="dedges")dedges();
     else if(name=="dinvalid")dinvalid();
     else if(name=="dcosines")dcosines();
+    else if(name=="segments")segments_case();
+    else if(name=="sinvalid")sinvalid();
     else throw std::runtime_error("unknown host orbitals case");
     std::cout<<"PASS host orbitals "<<name<<" (modes:";
     for(int mode:modes())std::cout<<' '<<openmx_core_host_simd_name(mode);

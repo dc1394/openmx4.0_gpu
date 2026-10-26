@@ -172,7 +172,9 @@ void quadrature_case() {
 void hvna_case() {
   std::mt19937 rng(31u);
   std::uniform_real_distribution<float> uf(-2.0f,2.0f);
-  for(int rows:{0,1,4,8,9,13,16,17})for(int columns:{0,1,4,8,9,13,19})for(int fp32:{0,1})for(int first:{1,0})for(int transposed:{0,1}) {
+  // every tile remainder: lane chunks of 1..4 vectors (full and masked), broadcast tails 1..3
+  for(int rows:{0,1,2,3,4,5,8,9,13,16,17,23,33})for(int columns:{0,1,2,3,4,7,8,9,13,16,17,19,24,33})
+  for(int fp32:{0,1})for(int first:{1,0})for(int transposed:{0,1}) {
     // projector groups of lengths 2L+1, repeated as in the VNA expansion
     std::vector<int> lengths;std::vector<double> energies;
     const int lmax=int(rng()%4),mult=1+int(rng()%3);
@@ -199,12 +201,17 @@ void hvna_case() {
       }
       if(first)expected[size_t(m)*stride+n]=sum;else expected[size_t(m)*stride+n]+=sum;
     }
-    for(int mode:modes()) {
+    // the fp64 products also from operands widened beforehand (the floats are then not read)
+    std::vector<double> dleft(left.begin(),left.end()),dright(right.begin(),right.end());
+    for(int mode:modes())for(int doubles:{0,1}) {
+      if(doubles && fp32)continue;
       std::vector<double> matrix=seed;
       OpenMXVnaHvnaBlock b={rows,columns,int(lengths.size()),fp32,first,transposed,lengths.data(),energies.data(),
           left.data(),lstride,right.data(),rstride,matrix.data(),stride};
+      if(doubles){b.left=nullptr;b.right=nullptr;b.left_double=dleft.data();b.right_double=dright.data();}
       require(openmx_core_vna_hvna_block(&b,mode),"hvna block refused a valid request");
-      if(!same(matrix,expected))report("HVNA block differs from the legacy rows",mode,matrix,expected);
+      if(!same(matrix,expected))report(doubles?"HVNA block from double operands differs from the legacy rows":
+          "HVNA block differs from the legacy rows",mode,matrix,expected);
     }
   }
 }
@@ -356,6 +363,11 @@ void invalid_case() {
   h.right_stride=1;require(!openmx_core_vna_hvna_block(&h,OPENMX_GRID_SCALAR),"hvna accepted a short component stride");
   h.right_stride=2;h.stride=1;require(!openmx_core_vna_hvna_block(&h,OPENMX_GRID_SCALAR),"hvna accepted a short matrix stride");
   h.stride=2;lengths[0]=-1;require(!openmx_core_vna_hvna_block(&h,OPENMX_GRID_SCALAR),"hvna accepted a negative group length");
+  lengths[0]=2;double dd[8]={0};
+  h.left=nullptr;h.right=nullptr;h.left_double=dd;h.right_double=dd;
+  require(openmx_core_vna_hvna_block(&h,OPENMX_GRID_SCALAR),"hvna refused fp64 products from double operands");
+  h.fp32=1;require(!openmx_core_vna_hvna_block(&h,OPENMX_GRID_SCALAR),"hvna accepted fp32 products without float operands");
+  h.fp32=0;h.right_double=nullptr;require(!openmx_core_vna_hvna_block(&h,OPENMX_GRID_SCALAR),"hvna accepted a lone double operand without floats");
   double cy[40]={0},planes[8*8]={0},one[1]={1.0};
   const double* grows[1]={cy};
   OpenMXVnaAngular a;

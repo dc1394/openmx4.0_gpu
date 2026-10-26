@@ -92,6 +92,16 @@ void compare(const Case& c,const char* what) {
           std::cerr<<what<<": map mode "<<openmx_core_host_simd_name(mode)<<" query "<<i<<" got "<<map_out[i+1]<<" expected "<<uniform[i]<<'\n';
           throw std::runtime_error("host overlap-grid map kernel differs from the reference");
         }
+      // Fused search + compaction, map and merge forms, against the reference.
+      std::vector<int> ref_center,ref_neighbour;
+      for(size_t i=0;i<uniform.size();++i)if(uniform[i]>=0){ref_center.push_back(uniform[i]);ref_neighbour.push_back(int(i));}
+      for(const int* use:{(const int*)map.data(),(const int*)nullptr}) {
+        std::vector<int> pc(c.queries.size()+1,-9),pn(c.queries.size()+1,-9);size_t found=777;
+        require(openmx_core_olg_pairs(&lists,&arrays,use,size_t(extent),c.queries.size(),pc.data(),pn.data(),&found,mode),"pairs refused a valid request");
+        require(found==ref_center.size(),"pairs found a different number of matches");
+        for(size_t k=0;k<found;++k)require(pc[k]==ref_center[k] && pn[k]==ref_neighbour[k],"pairs differ from the compacted reference");
+        require(pc.back()==-9 && pn.back()==-9,"pairs wrote beyond count");
+      }
       require(openmx_core_olg_map_reset(&lists,map.data(),size_t(extent),mode),"map_reset refused a valid list");
       for(int v:map)require(v==-1,"map_reset left an entry");
     }
@@ -158,6 +168,11 @@ void invalid() {
   require(!openmx_core_olg_intersect_map(&lists,&arrays,nullptr,64,10,out.data(),OPENMX_GRID_SCALAR),"map: missing map accepted");
   std::vector<int> big(10,1000);const OpenMXOlgNeighbours beyond={big.data(),cl.data(),0,0,0};
   require(!openmx_core_olg_intersect_map(&lists,&beyond,map.data(),64,10,out.data(),OPENMX_GRID_SCALAR),"map: query beyond the extent accepted");
+  {size_t found=5;std::vector<int> a(10,3),b(10,3);
+   require(!openmx_core_olg_pairs(&lists,&arrays,map.data(),64,10,a.data(),b.data(),nullptr,OPENMX_GRID_SCALAR),"pairs: missing count accepted");
+   require(!openmx_core_olg_pairs(&lists,&arrays,map.data(),64,10,nullptr,b.data(),&found,OPENMX_GRID_SCALAR),"pairs: missing output accepted");
+   require(!openmx_core_olg_pairs(&lists,&arrays,map.data(),64,10,a.data(),b.data(),&found,99),"pairs: unknown mode accepted");
+   require(found==5,"a refused pairs call wrote the count");for(int v:a)require(v==3,"a refused pairs call wrote output");}
   std::vector<int> negative(10,-1);const OpenMXOlgNeighbours below={negative.data(),cl.data(),0,0,0};
   require(!openmx_core_olg_intersect_map(&lists,&below,map.data(),64,10,out.data(),OPENMX_GRID_SCALAR),"map: negative query accepted");
   // The merge forms accept any query value (a negative one simply never matches).

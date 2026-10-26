@@ -74,6 +74,15 @@ int main(int argc,char** argv) {
       if(!openmx_core_olg_map_reset(&lists,map.data(),extent,mode))throw std::runtime_error("map_reset failed");
       const double fill=std::chrono::duration<double>(std::chrono::steady_clock::now()-t0).count()-m;
       if(out!=reference)throw std::runtime_error("map kernel differs from the legacy search");
+      {
+        std::vector<int> pc(points),pn(points);size_t found=0;
+        if(!openmx_core_olg_map_fill(&lists,map.data(),extent,mode))throw std::runtime_error("map_fill failed");
+        const double f=seconds([&]{if(!openmx_core_olg_pairs(&lists,&arrays,map.data(),extent,points,pc.data(),pn.data(),&found,mode))throw std::runtime_error("pairs failed");});
+        if(!openmx_core_olg_map_reset(&lists,map.data(),extent,mode))throw std::runtime_error("map_reset failed");
+        size_t expect=0;for(int v:reference)expect+=v>=0;
+        if(found!=expect)throw std::runtime_error("pairs count differs");
+        std::cout<<std::setw(24)<<(std::string(openmx_core_host_simd_name(mode))+" (pairs)")<<std::setw(10)<<1e9*f/(double(points)*pairs)<<" ns/query  (search + compaction)\n";
+      }
       std::cout<<std::setw(24)<<(std::string(openmx_core_host_simd_name(mode))+" (map)")<<std::setw(10)<<1e9*m/(double(points)*pairs)<<" ns/query  ("<<legacy_seconds/m<<"x; fill+reset "<<1e3*fill<<" ms per centre)\n";
     }
   }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}

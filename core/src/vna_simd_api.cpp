@@ -44,7 +44,8 @@ extern "C" int openmx_core_vna_hvna_block(const OpenMXVnaHvnaBlock* p,int mode) 
   if(p->groups && (!p->lengths || !p->energies))return 0;
   for(int g=0;g<p->groups;++g){if(p->lengths[g]<0)return 0;components+=size_t(p->lengths[g]);}
   if(components) {
-    if(!p->left || !p->right)return 0;
+    const bool doubles=!p->fp32 && p->left_double && p->right_double;
+    if(!doubles && (!p->left || !p->right))return 0;
     if(p->right_transposed ? (p->left_stride<components || p->right_stride<size_t(p->columns))
                            : (p->left_stride<size_t(p->rows) || p->right_stride<components))return 0;
   }

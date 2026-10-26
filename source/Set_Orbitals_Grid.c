@@ -1100,11 +1100,76 @@ static void SOG_capacity_kernel(size_t first,size_t n,const void *parameters,voi
 /* Failed owner staging is retried as independent point tiles. The radial
    tables are small, immutable lookups; no complete rank orbital table is
    replicated on a helper GPU or sent to another node. */
+/* Every orbital row of this rank straight from the Core's segment kernel,
+   for capacity recovery when no rank can run the task on a device: one
+   segment per atom grid and per overlap with an atom of another rank, cut
+   into pieces for the threads, written into Orbs_Grid and Orbs_Grid_FNAN
+   without point records, an output tile or per-tile collectives. 0 (the
+   legacy loops selected or the kernel refused) leaves every row to the
+   tiled path, which overwrites them all. */
+#define SOG_HOST_PIECE 16384
+static int SOG_host_rows(const OpenMXAtomicViews *atomic,const SOG_CapacityParameters *p,const double *rv,const double *rwf,
+    const double *translations,const size_t *rvo,const size_t *rwbo,const int *mesh,const int *maxl,const int *nb,int rank)
+{
+  const int mode=OpenMX_HostSimdMode();
+  if(mode==OPENMX_HOST_SIMD_LEGACY)return 0;
+  const OpenMXOrbitalsTables tables={rv,rwf,translations,rvo,rwbo,mesh,maxl,nb,SpeciesNum,SOG_L0MAX,SOG_MULMAX,TCpyCell+1};
+  size_t pieces=0,total=0;
+  for(int mc=1;mc<=Matomnum;mc++) {
+    const int gc=M2G[mc];
+    for(int h=-1;h<=FNAN[gc];h++) {
+      if(h>=0 && G2ID[natn[gc][h]]==rank)continue;
+      const size_t n=h<0?(size_t)GridN_Atom[gc]:(size_t)NumOLG[mc][h];
+      pieces+=(n+SOG_HOST_PIECE-1)/SOG_HOST_PIECE;total+=n;
+    }
+  }
+  if(!pieces)return 1;
+  OpenMXOrbitalsSegment *seg=malloc(pieces*sizeof(*seg));
+  if(!seg)return 0;
+  size_t at=0;
+  for(int mc=1;mc<=Matomnum;mc++) {
+    const int gc=M2G[mc];
+    for(int h=-1;h<=FNAN[gc];h++) {
+      const int gh=h<0?gc:natn[gc][h];
+      if(h>=0 && G2ID[gh]==rank)continue;
+      const size_t n=h<0?(size_t)GridN_Atom[gc]:(size_t)NumOLG[mc][h];
+      for(size_t first=0;first<n;first+=SOG_HOST_PIECE) {
+        OpenMXOrbitalsSegment *e=seg+at++;
+        e->wan=WhatSpecies[gh];e->no=atomic->species.orbitals[e->wan];
+        for(int d=0;d<3;d++){e->xyz[d]=Gxyz[gh][d+1];e->shift[d]=h<0?0.0:atv[ncn[gc][h]][d+1];}
+        e->count=n-first<SOG_HOST_PIECE?n-first:SOG_HOST_PIECE;
+        if(h<0){e->index=NULL;e->grid=GridListAtom[mc]+first;e->cell=CellListAtom[mc]+first;e->rows=(float *const *)Orbs_Grid[mc]+first;}
+        else{e->index=GListTAtoms1[mc][h]+first;e->grid=GridListAtom[mc];e->cell=CellListAtom[mc];e->rows=(float *const *)Orbs_Grid_FNAN[mc][h]+first;}
+      }
+    }
+  }
+  double begin,end;
+  dtime(&begin);
+  int ok=1;
+  if(omp_in_parallel() || omp_get_max_threads()<=1 || pieces<2) ok=openmx_core_orbitals_segments(&tables,p,seg,pieces,mode);
+  else {
+    long i;
+#pragma omp parallel for schedule(dynamic) reduction(&&:ok)
+    for(i=0;i<(long)pieces;i++) if(ok) ok=openmx_core_orbitals_segments(&tables,p,seg+i,1,mode);
+  }
+  dtime(&end);
+  free(seg);
+  if(3<=level_stdout){
+    printf("<Set_Orbitals_Grid> rank %d host rows: %zu points in %zu pieces, %.3f s%s\n",rank,total,pieces,end-begin,ok?"":" (refused)");
+    fflush(stdout);
+  }
+  return ok;
+}
+
 static int SOG_capacity_recover(const OpenMXAtomicViews *atomic, int done,int rank)
 {
   int pending=!done,any=0;MPI_Allreduce(&pending,&any,1,MPI_INT,MPI_MAX,mpi_comm_level1);
   if (!any) return done;
   if (pending && !gpu_rank_device_usable()) OpenMX_HostSimdReport("<Set_Orbitals_Grid> capacity points:");
+  /* no rank can run the task on a device (the capacity task would end on the
+     host everywhere): each rank writes its rows directly, see SOG_host_rows */
+  int device=gpu_rank_device_usable() || openmx_gpu_workers_capacity_enabled();
+  MPI_Allreduce(MPI_IN_PLACE,&device,1,MPI_INT,MPI_MAX,mpi_comm_level1);
   SOG_CapacityParameters p={0};p.ng23=Ngrid2*Ngrid3;p.ng3=Ngrid3;
   for (int i=0;i<3;i++) {p.origin[i]=Grid_Origin[i+1];for(int j=0;j<3;j++)p.frame[3*i+j]=gtv[i+1][j+1];}
   size_t rows=0,rvn=0,rwfn=0,tile=262144;
@@ -1133,7 +1198,8 @@ static int SOG_capacity_recover(const OpenMXAtomicViews *atomic, int done,int ra
       }
     }
     if(ready)for(int r=0;r<=TCpyCell;r++)for(int i=0;i<3;i++)translations[3*(size_t)r+i]=atv[r][i+1];
-    for(int mc=1;ready && mc<=Matomnum;mc++) {
+    const int direct=ready && !device && SOG_host_rows(atomic,&p,rv,rwf,translations,rvo,rwbo,mesh,maxl,nb,rank);
+    for(int mc=1;ready && !direct && mc<=Matomnum;mc++) {
       int gc=M2G[mc];rows+=(size_t)GridN_Atom[gc];
       for(int h=0;h<=FNAN[gc];h++)if(G2ID[natn[gc][h]]!=rank)rows+=(size_t)NumOLG[mc][h];
     }

@@ -131,6 +131,21 @@ int main(int argc,char** argv) {
           std::string what=std::string(openmx_core_host_simd_name(mode))+(transposed?" (lanes over n)":" (lanes over m)");
           line(what.c_str(),legacy/repeats*1e3,s/repeats*1e3,"ms per pair");
         }
+        if(!fp32) {
+          // operands widened once (the host cache stores double lanes under fp64)
+          std::vector<double> dleft(left.begin(),left.end()),dright(right.begin(),right.end()),dleftT(leftT.begin(),leftT.end()),drightT(rightT.begin(),rightT.end());
+          for(int transposed:{0,1})for(int mode=OPENMX_GRID_SCALAR;mode<=OPENMX_GRID_NEON;++mode) {
+            if(!openmx_core_host_simd_usable(mode))continue;
+            const double s=seconds(repeats,[&]{for(int kk=0;kk<neighbours;++kk){
+              OpenMXVnaHvnaBlock b={orbitals,orbitals,int(lengths.size()),0,kk==0,transposed,lengths.data(),energies.data(),
+                  nullptr,transposed?size_t(components):16,nullptr,transposed?16:size_t(components),matrix.data(),size_t(orbitals)};
+              b.left_double=transposed?dleft.data():dleftT.data();b.right_double=transposed?drightT.data():dright.data();
+              if(!openmx_core_vna_hvna_block(&b,mode))throw std::runtime_error("hvna failed");}});
+            if(matrix!=ref)throw std::runtime_error("HVNA block from double operands differs from the legacy rows");
+            std::string what=std::string(openmx_core_host_simd_name(mode))+(transposed?" (lanes over n, f64 ops)":" (lanes over m, f64 ops)");
+            line(what.c_str(),legacy/repeats*1e3,s/repeats*1e3,"ms per pair");
+          }
+        }
       }
     }
     // DS_VNA m sum and conversions: Si s2p2d1 (L0<=2, radials 2,2,1) against 108 projectors (L1<=8), LL<=16

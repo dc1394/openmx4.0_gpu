@@ -30,16 +30,19 @@ OpenMXGridDensity density(OpenMXGridWorkspace* w,int spins,const std::vector<siz
   return out;
 }
 template<class T> struct Orbitals {
-  int points,orbitals;bool transposed;
+  int points,orbitals,pad;bool transposed;
   std::vector<T> values;
   std::vector<T*> rows;
-  Orbitals(int n,int m,bool transpose,double phase):points(n),orbitals(m),transposed(transpose),
-    values(size_t(n)*m),rows(transpose?m:n) {
-    for(size_t i=0;i<rows.size();i++)rows[i]=values.data()+i*(transpose?n:m);
+  // pad extra elements per ordinary row: a block stride wider than the row;
+  // shift moves the block off the allocator's alignment.
+  Orbitals(int n,int m,bool transpose,double phase,int padding=0,int shift=0):points(n),orbitals(m),pad(padding),
+    transposed(transpose),values(size_t(n)*(m+padding)+size_t(shift)),rows(transpose?m:n) {
+    for(size_t i=0;i<rows.size();i++)rows[i]=values.data()+shift+i*(transpose?size_t(n):size_t(m+padding));
     for(int g=0;g<n;g++)for(int i=0;i<m;i++) {
       const T v=T(std::sin(phase+g*0.073+i*0.33)*0.2);
       if(transpose)rows[i][g]=v;else rows[g][i]=v;
     }
+    for(int g=0;g<n && !transpose;g++)for(int i=m;i<m+padding;i++)rows[g][i]=T(1e30);  // never read
   }
   double at(int g,int i) const {return transposed?double(rows[i][g]):double(rows[g][i]);}
   OpenMXGridOrbitals view(bool halo) const {return {rows.data(),transposed,halo,int(sizeof(T))};}
@@ -51,8 +54,8 @@ template<class T> struct Pair {
   std::array<std::vector<double>,4> matrix,potential;
   std::array<std::vector<double*>,4> rows;
   int r,c,points,spins;bool halo;
-  Pair(int nr,int cols,int n,int s,bool transpose,bool overlap,int id)
-    :center(grid_points,nr,transpose,0.3+id),neighbor(std::max(grid_points,n),cols,transpose,0.7+id),
+  Pair(int nr,int cols,int n,int s,bool transpose,bool overlap,int id,int padding=0,int shift=0)
+    :center(grid_points,nr,transpose,0.3+id,padding,shift),neighbor(std::max(grid_points,n),cols,transpose,0.7+id,padding,shift),
      nc(n),nh(n),potential_index(grid_points),r(nr),c(cols),points(n),spins(s),halo(overlap) {
     for(int g=0;g<n;g++){nc[g]=(g*3+1)%grid_points;nh[g]=(g*7+3)%grid_points;}
     for(int g=0;g<grid_points;g++)potential_index[g]=(g*11+3)%grid_points;
@@ -219,6 +222,56 @@ template<class T> void equivalence() {
       }
     }
 }
+// Row layouts and every kernel the per-ISA choice can take (committed, rows
+// or points across lanes) must give bitwise the scalar result: padded
+// and misaligned row-major tables, halo (positional) neighbours, every lane
+// tail, and transposed tables for the density (the Hamiltonian accumulates
+// small transposed blocks unblocked, by design, so only its row-major
+// layouts are compared).
+template<class T> void layouts() {
+  auto run=[](Pair<T>& f,bool hamiltonian,int spins,int mode) {
+    for(auto& values:f.matrix)for(size_t i=0;i<values.size();++i)
+      values[i]=i%5==0?-0.0:i%5==1?1e8:i%5==2?-1e8:values[i];
+    auto ctx=context();auto* w=workspace(ctx.get());auto out=density(w,spins,{37});
+    char error[256];OpenMXGridAtom* atoms;OpenMXGridPair* pairs;
+    require(openmx_core_grid_plan(w,hamiltonian?1:0,spins,1,1,19,1,mode,&atoms,&pairs,error,sizeof(error)),error);
+    atoms[0]={0,1,0};pairs[0]=f.view(0);
+    openmx::test::fail_allocation_after(0);
+    const int ok=hamiltonian?openmx_core_grid_hamiltonian_worker(w,0,1,error,sizeof(error)):
+        openmx_core_grid_density_worker(w,0,1,nullptr,nullptr,error,sizeof(error));
+    openmx::test::fail_allocation_after(-1);require(ok,error);
+    std::vector<double> values;
+    for(int s=0;s<spins;++s) {
+      if(hamiltonian)values.insert(values.end(),f.matrix[s].begin(),f.matrix[s].end());
+      else values.insert(values.end(),out.atoms[s][0],out.atoms[s][0]+37);
+    }
+    return values;
+  };
+  auto same=[](const std::vector<double>& a,const std::vector<double>& b,const char* what) {
+    require(a.size()==b.size() && !std::memcmp(a.data(),b.data(),a.size()*sizeof(double)),what);
+  };
+  // rows and columns straddle every crossover of the per-ISA kernel choice
+  for(bool hamiltonian:{false,true})for(int spins:{1,2,4})for(bool halo:{false,true})for(int rows:{1,2,3,4,7,8,13,16,19})
+    for(int columns:{1,2,3,4,5,7,8,12,13,16,19})for(int points:{1,3,8,9,17,33}) {
+    std::vector<double> scalar,scalar_transposed;
+    for(int mode=0;mode<=OPENMX_GRID_NEON;++mode) {
+      if(!openmx_core_grid_simd_width(mode))continue;
+      Pair<T> plain(rows,columns,points,spins,false,halo,2);
+      const auto reference=run(plain,hamiltonian,spins,mode);
+      if(mode==OPENMX_GRID_SCALAR)scalar=reference;
+      else same(reference,scalar,"host SIMD changed the scalar accumulation order");
+      for(int padding:{1,3})for(int shift:{0,1}) {
+        Pair<T> spaced(rows,columns,points,spins,false,halo,2,padding,shift);
+        same(run(spaced,hamiltonian,spins,mode),reference,"padded or misaligned rows changed the result");
+      }
+      Pair<T> transposed(rows,columns,points,spins,true,halo,2);
+      const auto columnwise=run(transposed,hamiltonian,spins,mode);
+      if(mode==OPENMX_GRID_SCALAR)scalar_transposed=columnwise;
+      else same(columnwise,scalar_transposed,"host SIMD changed the transposed-table result");
+      if(!hamiltonian)same(columnwise,reference,"a transposed table changed the density");
+    }
+    }
+}
 void packed() {
   for(int spins:{1,2,4})for(int rows:{0,1,13})for(int columns:{0,1,3,5,7,8,9,13,17,19})
     for(int points:{0,1,3,17,33})for(int mode=0;mode<=OPENMX_GRID_NEON;++mode) {
@@ -311,6 +364,7 @@ int main(int argc,char** argv) {
     else if(name=="reuse")reuse();else if(name=="exchange")exchange();else if(name=="invalid")invalid();
     else if(name=="simd-equivalence"){equivalence<float>();equivalence<double>();}
     else if(name=="packed")packed();
+    else if(name=="layouts"){layouts<float>();layouts<double>();}
     else if(name=="allocation")allocation();else if(name=="plans")plans();else throw std::runtime_error("unknown grid assembly case");
     std::cout<<"PASS grid assembly "<<name<<'\n';return 0;
   }catch(const std::exception& e) {openmx::test::fail_allocation_after(-1);std::cerr<<e.what()<<'\n';return 1;}

@@ -18,7 +18,10 @@ constexpr int chunk=2;
 #endif
 NarrowFloat loadf(const float* p) { return simd::simd_unchecked_load<NarrowFloat>(p); }
 
-// rows[n][l] -> out[l*pad+n], padding lanes zero.
+// rows[n][l] -> out[l*pad+n], padding lanes zero. Element by element: on
+// AVX-512/AVX2 hosts a masked gather per output row is no faster (measured
+// 9 and 15 us against 8 us for 13 x 972 floats), and Kokkos::simd offers no
+// in-register transposition.
 void transpose(const float* const* rows,int count,int length,float* out,size_t pad) {
   for(int l=0;l<length;++l) {
     float* o=out+size_t(l)*pad;
@@ -46,103 +49,143 @@ void vna_lanes(const float* const* const* rows,int components,int count,int proj
 
 // Lane planes: value, column derivatives x,y,z (lanes over n) or derivatives
 // x,y,z, row value (lanes over m). The other operand streams row by row.
-template<bool Fp32,int Terms,bool LanesRows>
-void vna_rows(const OpenMXForceVnaBlock& b,const float* const planes[4],size_t pad) {
-  const int outer=LanesRows?b.columns:b.rows,lane_count=LanesRows?b.rows:b.columns;
-  const int vectors=int(pad/lanes);
-  for(int o=0;o<outer;++o) {
-    const float* r0;const float* r1=nullptr;const float* r2=nullptr;const float* r3=nullptr;
+//
+// Register tiles: R rows of the streamed operand share each lane vector loaded
+// (and, without fp32, converted) at projector l, so a tile of R rows x V lane
+// vectors keeps 3*R*V accumulators in registers. Every element still sums its
+// products in ascending l, and under fp32 each product is the float product
+// widened afterwards, exactly as the legacy loops.
+#if defined(__GNUC__)
+#define OPENMX_FORCE_UNROLL _Pragma("GCC unroll 8")
+#else
+#define OPENMX_FORCE_UNROLL
+#endif
+#if defined(OPENMX_HOST_SIMD_AVX512)
+constexpr int tile_rows_one=4,tile_rows_two=2,tile_vectors=2;   // 32 vector registers
+#elif defined(OPENMX_HOST_SIMD_AVX2)
+constexpr int tile_rows_one=2,tile_rows_two=1,tile_vectors=2;   // 16 vector registers
+#elif defined(OPENMX_HOST_SIMD_NEON)
+constexpr int tile_rows_one=4,tile_rows_two=2,tile_vectors=2;   // 32 vector registers
+#else
+constexpr int tile_rows_one=1,tile_rows_two=1,tile_vectors=1;
+#endif
+
+// One tile: streamed-operand rows o0..o0+R-1, lane vectors v0..v0+V-1.
+template<bool Fp32,int Terms,bool LanesRows,int R,int V>
+void vna_tile(const OpenMXForceVnaBlock& b,const float* const planes[4],size_t pad,int lane_count,int o0,int v0) {
+  const float* s0[R];const float* s1[R];const float* s2[R];const float* s3[R];
+  OPENMX_FORCE_UNROLL
+  for(int r=0;r<R;++r) {
+    const int o=o0+r;
     if constexpr(!LanesRows) {
-      r0=b.derivative[0][o];r1=b.derivative[1][o];r2=b.derivative[2][o];
-      if constexpr(Terms==2)r3=b.row_value[o];
+      s0[r]=b.derivative[0][o];s1[r]=b.derivative[1][o];s2[r]=b.derivative[2][o];
+      s3[r]=Terms==2?b.row_value[o]:nullptr;
     }else {
-      r0=b.value[o];
-      if constexpr(Terms==2){r1=b.column_derivative[0][o];r2=b.column_derivative[1][o];r3=b.column_derivative[2][o];}
+      s0[r]=b.value[o];
+      s1[r]=Terms==2?b.column_derivative[0][o]:nullptr;
+      s2[r]=Terms==2?b.column_derivative[1][o]:nullptr;
+      s3[r]=Terms==2?b.column_derivative[2][o]:nullptr;
     }
-    for(int v0=0;v0<vectors;v0+=chunk) {
-      const int nv=std::min(chunk,vectors-v0);
-      Vector acc[3][chunk];
-      for(auto& row:acc)for(auto& a:row)a=Vector(0.0);
-      for(int l=0;l<b.projectors;++l) {
-        const size_t at=size_t(l)*pad+size_t(v0)*lanes;
+  }
+  Vector acc[R][3][V];
+  OPENMX_FORCE_UNROLL
+  for(int r=0;r<R;++r)for(int c=0;c<3;++c)for(int v=0;v<V;++v)acc[r][c][v]=Vector(0.0);
+  const size_t at0=size_t(v0)*lanes;
+  for(int l=0;l<b.projectors;++l) {
+    const size_t at=size_t(l)*pad+at0;
+    if constexpr(Fp32) {
+      // lane vectors of this l, float: the products round in float
+      NarrowFloat p0[V],p1[V],p2[V],p3[V];
+      OPENMX_FORCE_UNROLL
+      for(int v=0;v<V;++v) {
+        p0[v]=loadf(planes[0]+at+size_t(v)*lanes);
+        if constexpr(Terms==2 || LanesRows) {
+          p1[v]=loadf(planes[1]+at+size_t(v)*lanes);p2[v]=loadf(planes[2]+at+size_t(v)*lanes);
+        }
+        if constexpr(Terms==2)p3[v]=loadf(planes[3]+at+size_t(v)*lanes);
+      }
+      OPENMX_FORCE_UNROLL
+      for(int r=0;r<R;++r) {
         if constexpr(!LanesRows) {
-          if constexpr(Fp32) {
-            const NarrowFloat ax(r0[l]),ay(r1[l]),az(r2[l]);
-            if constexpr(Terms==1) {
-              for(int v=0;v<nv;++v) {
-                const NarrowFloat q=loadf(planes[0]+at+size_t(v)*lanes);
-                acc[0][v]+=Vector(ax*q);acc[1][v]+=Vector(ay*q);acc[2][v]+=Vector(az*q);
-              }
-            }else {
-              const NarrowFloat h(r3[l]);
-              for(int v=0;v<nv;++v) {
-                const size_t o2=at+size_t(v)*lanes;
-                const NarrowFloat q=loadf(planes[0]+o2),qx=loadf(planes[1]+o2),qy=loadf(planes[2]+o2),qz=loadf(planes[3]+o2);
-                acc[0][v]-=Vector(ax*q)+Vector(h*qx);
-                acc[1][v]-=Vector(ay*q)+Vector(h*qy);
-                acc[2][v]-=Vector(az*q)+Vector(h*qz);
-              }
-            }
+          const NarrowFloat ax(s0[r][l]),ay(s1[r][l]),az(s2[r][l]);
+          if constexpr(Terms==1) {
+            for(int v=0;v<V;++v){acc[r][0][v]+=Vector(ax*p0[v]);acc[r][1][v]+=Vector(ay*p0[v]);acc[r][2][v]+=Vector(az*p0[v]);}
           }else {
-            const Vector ax(double(r0[l])),ay(double(r1[l])),az(double(r2[l]));
-            if constexpr(Terms==1) {
-              for(int v=0;v<nv;++v) {
-                const Vector q(loadf(planes[0]+at+size_t(v)*lanes));
-                acc[0][v]+=ax*q;acc[1][v]+=ay*q;acc[2][v]+=az*q;
-              }
-            }else {
-              const Vector h(double(r3[l]));
-              for(int v=0;v<nv;++v) {
-                const size_t o2=at+size_t(v)*lanes;
-                const Vector q(loadf(planes[0]+o2)),qx(loadf(planes[1]+o2)),qy(loadf(planes[2]+o2)),qz(loadf(planes[3]+o2));
-                acc[0][v]-=ax*q+h*qx;acc[1][v]-=ay*q+h*qy;acc[2][v]-=az*q+h*qz;
-              }
+            const NarrowFloat h(s3[r][l]);
+            for(int v=0;v<V;++v) {
+              acc[r][0][v]-=Vector(ax*p0[v])+Vector(h*p1[v]);
+              acc[r][1][v]-=Vector(ay*p0[v])+Vector(h*p2[v]);
+              acc[r][2][v]-=Vector(az*p0[v])+Vector(h*p3[v]);
             }
           }
         }else {
-          if constexpr(Fp32) {
-            const NarrowFloat q(r0[l]);
-            if constexpr(Terms==1) {
-              for(int v=0;v<nv;++v) {
-                const size_t o2=at+size_t(v)*lanes;
-                const NarrowFloat hx=loadf(planes[0]+o2),hy=loadf(planes[1]+o2),hz=loadf(planes[2]+o2);
-                acc[0][v]+=Vector(hx*q);acc[1][v]+=Vector(hy*q);acc[2][v]+=Vector(hz*q);
-              }
-            }else {
-              const NarrowFloat qx(r1[l]),qy(r2[l]),qz(r3[l]);
-              for(int v=0;v<nv;++v) {
-                const size_t o2=at+size_t(v)*lanes;
-                const NarrowFloat hx=loadf(planes[0]+o2),hy=loadf(planes[1]+o2),hz=loadf(planes[2]+o2),h0=loadf(planes[3]+o2);
-                acc[0][v]-=Vector(hx*q)+Vector(h0*qx);
-                acc[1][v]-=Vector(hy*q)+Vector(h0*qy);
-                acc[2][v]-=Vector(hz*q)+Vector(h0*qz);
-              }
-            }
+          const NarrowFloat q(s0[r][l]);
+          if constexpr(Terms==1) {
+            for(int v=0;v<V;++v){acc[r][0][v]+=Vector(p0[v]*q);acc[r][1][v]+=Vector(p1[v]*q);acc[r][2][v]+=Vector(p2[v]*q);}
           }else {
-            const Vector q(double(r0[l]));
-            if constexpr(Terms==1) {
-              for(int v=0;v<nv;++v) {
-                const size_t o2=at+size_t(v)*lanes;
-                const Vector hx(loadf(planes[0]+o2)),hy(loadf(planes[1]+o2)),hz(loadf(planes[2]+o2));
-                acc[0][v]+=hx*q;acc[1][v]+=hy*q;acc[2][v]+=hz*q;
-              }
-            }else {
-              const Vector qx(double(r1[l])),qy(double(r2[l])),qz(double(r3[l]));
-              for(int v=0;v<nv;++v) {
-                const size_t o2=at+size_t(v)*lanes;
-                const Vector hx(loadf(planes[0]+o2)),hy(loadf(planes[1]+o2)),hz(loadf(planes[2]+o2)),h0(loadf(planes[3]+o2));
-                acc[0][v]-=hx*q+h0*qx;acc[1][v]-=hy*q+h0*qy;acc[2][v]-=hz*q+h0*qz;
-              }
+            const NarrowFloat qx(s1[r][l]),qy(s2[r][l]),qz(s3[r][l]);
+            for(int v=0;v<V;++v) {
+              acc[r][0][v]-=Vector(p0[v]*q)+Vector(p3[v]*qx);
+              acc[r][1][v]-=Vector(p1[v]*q)+Vector(p3[v]*qy);
+              acc[r][2][v]-=Vector(p2[v]*q)+Vector(p3[v]*qz);
             }
           }
         }
       }
-      for(int c=0;c<3;++c)for(int v=0;v<nv;++v) {
-        const int n0=(v0+v)*lanes;
-        store_partial(acc[c][v],b.output[c]+size_t(o)*b.output_stride+n0,std::min(lanes,lane_count-n0));
+    }else {
+      // lane vectors of this l widened once, shared by the R rows
+      Vector p0[V],p1[V],p2[V],p3[V];
+      OPENMX_FORCE_UNROLL
+      for(int v=0;v<V;++v) {
+        p0[v]=Vector(loadf(planes[0]+at+size_t(v)*lanes));
+        if constexpr(Terms==2 || LanesRows) {
+          p1[v]=Vector(loadf(planes[1]+at+size_t(v)*lanes));p2[v]=Vector(loadf(planes[2]+at+size_t(v)*lanes));
+        }
+        if constexpr(Terms==2)p3[v]=Vector(loadf(planes[3]+at+size_t(v)*lanes));
+      }
+      OPENMX_FORCE_UNROLL
+      for(int r=0;r<R;++r) {
+        if constexpr(!LanesRows) {
+          const Vector ax(NarrowFloat(s0[r][l])),ay(NarrowFloat(s1[r][l])),az(NarrowFloat(s2[r][l]));
+          if constexpr(Terms==1) {
+            for(int v=0;v<V;++v){acc[r][0][v]+=ax*p0[v];acc[r][1][v]+=ay*p0[v];acc[r][2][v]+=az*p0[v];}
+          }else {
+            const Vector h(NarrowFloat(s3[r][l]));
+            for(int v=0;v<V;++v){acc[r][0][v]-=ax*p0[v]+h*p1[v];acc[r][1][v]-=ay*p0[v]+h*p2[v];acc[r][2][v]-=az*p0[v]+h*p3[v];}
+          }
+        }else {
+          const Vector q(NarrowFloat(s0[r][l]));
+          if constexpr(Terms==1) {
+            for(int v=0;v<V;++v){acc[r][0][v]+=p0[v]*q;acc[r][1][v]+=p1[v]*q;acc[r][2][v]+=p2[v]*q;}
+          }else {
+            const Vector qx(NarrowFloat(s1[r][l])),qy(NarrowFloat(s2[r][l])),qz(NarrowFloat(s3[r][l]));
+            for(int v=0;v<V;++v){acc[r][0][v]-=p0[v]*q+p3[v]*qx;acc[r][1][v]-=p1[v]*q+p3[v]*qy;acc[r][2][v]-=p2[v]*q+p3[v]*qz;}
+          }
+        }
       }
     }
   }
+  OPENMX_FORCE_UNROLL
+  for(int r=0;r<R;++r)for(int c=0;c<3;++c)for(int v=0;v<V;++v) {
+    const int n0=(v0+v)*lanes;
+    store_partial(acc[r][c][v],b.output[c]+size_t(o0+r)*b.output_stride+n0,std::min(lanes,lane_count-n0));
+  }
+}
+// The tiles of a vector range [v0, v0+V): row blocks of R, then the rest.
+template<bool Fp32,int Terms,bool LanesRows,int V>
+void vna_rows_v(const OpenMXForceVnaBlock& b,const float* const planes[4],size_t pad,int lane_count,int outer,int v0) {
+  constexpr int R=Terms==1?tile_rows_one:tile_rows_two;
+  int o=0;
+  for(;o+R<=outer;o+=R)vna_tile<Fp32,Terms,LanesRows,R,V>(b,planes,pad,lane_count,o,v0);
+  for(;o<outer;++o)vna_tile<Fp32,Terms,LanesRows,1,V>(b,planes,pad,lane_count,o,v0);
+}
+template<bool Fp32,int Terms,bool LanesRows>
+void vna_rows(const OpenMXForceVnaBlock& b,const float* const planes[4],size_t pad) {
+  const int outer=LanesRows?b.columns:b.rows,lane_count=LanesRows?b.rows:b.columns;
+  const int vectors=int(pad/lanes);
+  int v0=0;
+  if constexpr(tile_vectors>1)for(;v0+tile_vectors<=vectors;v0+=tile_vectors)vna_rows_v<Fp32,Terms,LanesRows,tile_vectors>(b,planes,pad,lane_count,outer,v0);
+  for(;v0<vectors;++v0)vna_rows_v<Fp32,Terms,LanesRows,1>(b,planes,pad,lane_count,outer,v0);
 }
 // One-lane variant: the legacy loops themselves over the raw rows when the
 // caller passed both sides (the glue always does), else the lane operand is

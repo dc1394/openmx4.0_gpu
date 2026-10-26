@@ -115,6 +115,22 @@ int main(int argc,char** argv) {
       if(sum!=legacy_sum || sumr!=legacy_sumr)throw std::runtime_error("host kernel differs from the legacy loop");
       std::cout<<std::setw(24)<<openmx_core_host_simd_name(mode)<<std::setw(10)<<1e9*t/(double(points)*repeats)<<" ns/point  ("<<legacy_seconds/t<<"x)\n";
     }
+    // the legacy glue pattern (256-point chunks, sums through pointers) against one accumulating call
+    for(int mode=OPENMX_GRID_SCALAR;mode<=OPENMX_GRID_NEON;++mode) {
+      if(!openmx_core_host_simd_usable(mode))continue;
+      double sum=0,sumr=0;
+      double chunk_values[256],chunk_derivatives[256];
+      const double chunked=seconds(repeats,[&]{sum=0.0;sumr=0.0;
+        for(int first=0;first<points;first+=256){const int n=std::min(256,points-first);
+          OpenMXEnergyNeutralPoints s{n,1,1,x.data()+first,y.data()+first,z.data()+first,rho.data()+first,wt.data()+first,separation,charge,N,xv.data(),rv.data(),yv.data(),chunk_values,chunk_derivatives};
+          if(!openmx_core_energy_neutral_points(&s,mode))throw std::runtime_error("neutral points failed");
+          for(int k=0;k<n;++k)*(volatile double*)&sum+=chunk_values[k];for(int k=0;k<n;++k)*(volatile double*)&sumr-=chunk_derivatives[k];}});
+      double total=0,total_r=0;
+      OpenMXEnergyNeutralPoints s{points,1,1,x.data(),y.data(),z.data(),rho.data(),wt.data(),separation,charge,N,xv.data(),rv.data(),yv.data(),nullptr,nullptr};
+      const double once=seconds(repeats,[&]{total=0.0;total_r=0.0;if(!openmx_core_energy_neutral_sum(&s,&total,&total_r,mode))throw std::runtime_error("neutral sum failed");});
+      if(total!=legacy_sum || total_r!=legacy_sumr)throw std::runtime_error("neutral sum differs from the legacy loop");
+      std::cout<<std::setw(24)<<openmx_core_host_simd_name(mode)<<"  chunked glue "<<std::setw(8)<<1e9*chunked/(double(points)*repeats)<<" ns/point, one call "<<std::setw(8)<<1e9*once/(double(points)*repeats)<<" ns/point\n";
+    }
     // atomic exchange-correlation shell: 194 Lebedev points, 86 neighbours, PAO mesh 480
     {
       const int lpoints=194,nb=86,N=480;
@@ -192,6 +208,71 @@ int main(int argc,char** argv) {
       const double t=seconds(blocks,[&]{if(!openmx_core_energy_band_block(&b,mode))throw std::runtime_error("band block failed");});
       if(cdm!=cdm_ref || edm!=edm_ref)throw std::runtime_error("band block differs from the legacy loops");
       std::cout<<std::setw(24)<<openmx_core_host_simd_name(mode)<<std::setw(10)<<1e9*t/macs<<" ns/(i,j,k)  ("<<band_legacy/t<<"x)\n";
+    }
+    // The band DM glue of one k point at sidia333 sizes (216 atoms x 13
+    // orbitals, 87 neighbours each, nk bands): the round-2 glue transposed the
+    // neighbour's rows into a panel and zeroed its padding for every (atom,
+    // neighbour) block; the round-3 glue builds every atom's panel once per k
+    // point. Both call the Core kernel; the outputs must agree bitwise.
+    {
+      const int atoms=argc>6?std::atoi(argv[6]):216,tno=13,neighbours=87,nk=bands;
+      const int n=atoms*tno;const size_t pstride=16;
+      std::vector<double> evr(size_t(n)*nk),evi(size_t(n)*nk);   // [orbital][band], re/im of the dcomplex rows
+      for(auto& v:evr)v=u(rng)-0.5;for(auto& v:evi)v=u(rng)-0.5;
+      std::vector<std::vector<int>> natn(atoms);
+      std::uniform_int_distribution<int> pick(0,atoms-1);
+      for(int a=0;a<atoms;++a){natn[a].push_back(a);for(int h=1;h<neighbours;++h)natn[a].push_back(pick(rng));}
+      std::vector<double> phase_co(size_t(atoms)*neighbours),phase_si(phase_co.size());
+      for(size_t q=0;q<phase_co.size();++q){phase_co[q]=std::cos(0.37*double(q));phase_si[q]=std::sin(0.37*double(q));}
+      std::vector<double> re0(size_t(tno)*nk),im0(re0.size());
+      std::vector<const double*> re0_rows(tno),im0_rows(tno);
+      for(int i=0;i<tno;++i){re0_rows[i]=re0.data()+size_t(i)*nk;im0_rows[i]=im0.data()+size_t(i)*nk;}
+      const size_t outputs=size_t(atoms)*neighbours*tno*tno;
+      auto rows_of=[&](int a){for(int i=0;i<tno;++i)for(int k=0;k<nk;++k){re0[size_t(i)*nk+k]=evr[size_t(a*tno+i)*nk+k];im0[size_t(i)*nk+k]=evi[size_t(a*tno+i)*nk+k];}};
+      for(int mode=OPENMX_GRID_SCALAR;mode<=OPENMX_GRID_NEON;++mode) {
+        if(!openmx_core_host_simd_usable(mode))continue;
+        std::vector<double> c_old(outputs,0.0),e_old(outputs,0.0),c_new(outputs,0.0),e_new(outputs,0.0);
+        std::vector<double> pr(size_t(nk)*pstride),pi(pr.size());
+        const double old_glue=seconds(1,[&]{
+          size_t p=0;
+          for(int a=0;a<atoms;++a) {
+            rows_of(a);
+            for(int h=0;h<neighbours;++h) {
+              const int b=natn[a][h];
+              for(int j=0;j<tno;++j)for(int k=0;k<nk;++k){pr[size_t(k)*pstride+j]=evr[size_t(b*tno+j)*nk+k];pi[size_t(k)*pstride+j]=evi[size_t(b*tno+j)*nk+k];}
+              for(int k=0;k<nk;++k)for(size_t j=tno;j<pstride;++j){pr[size_t(k)*pstride+j]=0.0;pi[size_t(k)*pstride+j]=0.0;}
+              OpenMXEnergyBandBlock blk{tno,tno,nk,pstride,re0_rows.data(),im0_rows.data(),pr.data(),pi.data(),eigen.data(),
+                  phase_co[size_t(a)*neighbours+h],phase_si[size_t(a)*neighbours+h],c_old.data()+p,e_old.data()+p};
+              if(!openmx_core_energy_band_block(&blk,mode))throw std::runtime_error("band block failed");
+              p+=size_t(tno)*tno;
+            }
+          }});
+        std::vector<double> panels_r(size_t(atoms)*nk*pstride),panels_i(panels_r.size());
+        double build=0.0;
+        const double new_glue=seconds(1,[&]{
+          const auto t0=std::chrono::steady_clock::now();
+          for(int g=0;g<atoms;++g) {
+            double* dr=panels_r.data()+size_t(g)*nk*pstride;double* di=panels_i.data()+size_t(g)*nk*pstride;
+            for(int j=0;j<tno;++j)for(int k=0;k<nk;++k){dr[size_t(k)*pstride+j]=evr[size_t(g*tno+j)*nk+k];di[size_t(k)*pstride+j]=evi[size_t(g*tno+j)*nk+k];}
+            for(int k=0;k<nk;++k)for(size_t j=tno;j<pstride;++j){dr[size_t(k)*pstride+j]=0.0;di[size_t(k)*pstride+j]=0.0;}
+          }
+          build=std::chrono::duration<double>(std::chrono::steady_clock::now()-t0).count();
+          size_t p=0;
+          for(int a=0;a<atoms;++a) {
+            rows_of(a);
+            for(int h=0;h<neighbours;++h) {
+              const int b=natn[a][h];
+              OpenMXEnergyBandBlock blk{tno,tno,nk,pstride,re0_rows.data(),im0_rows.data(),
+                  panels_r.data()+size_t(b)*nk*pstride,panels_i.data()+size_t(b)*nk*pstride,eigen.data(),
+                  phase_co[size_t(a)*neighbours+h],phase_si[size_t(a)*neighbours+h],c_new.data()+p,e_new.data()+p};
+              if(!openmx_core_energy_band_block(&blk,mode))throw std::runtime_error("band block failed");
+              p+=size_t(tno)*tno;
+            }
+          }});
+        if(c_old!=c_new || e_old!=e_new)throw std::runtime_error("per-k-point panels changed the density matrix");
+        std::cout<<std::setw(24)<<openmx_core_host_simd_name(mode)<<"  band glue per k point (atoms="<<atoms<<", nk="<<nk<<"): per-block panels "
+            <<std::setprecision(1)<<1e3*old_glue<<" ms, per-k-point panels "<<1e3*new_glue<<" ms (build "<<std::setprecision(2)<<1e3*build<<" ms)\n"<<std::setprecision(2);
+      }
     }
   }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}
 }

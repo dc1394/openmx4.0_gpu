@@ -2716,26 +2716,36 @@ static int UCellBox_OLG_Host(int MD_iter,int estimate_switch,int CpyCell,int **g
     }
     const OpenMXOlgLists lists={grid[mc],cell[mc],GridN_Atom[gc],atvf,TCpyCell+1,ratvf,CpyCell};
     const int mapped=map && openmx_core_olg_map_fill(&lists,map,extent,mode);
-#pragma omp parallel for schedule(dynamic) if(!omp_in_parallel()) reduction(+:total) reduction(|:failed)
+    size_t largest=1;
+    for(int h=0;h<=FNAN[gc];h++){const size_t nh=(size_t)GridN_Atom[natn[gc][h]];if(largest<nh)largest=nh;}
+#pragma omp parallel if(!omp_in_parallel()) reduction(+:total) reduction(|:failed)
+    {
+    /* per-thread pair buffers for the whole atom (a malloc per pair would
+       map and fault its pages every time); the Core searches and compacts
+       (this file is built at -O1, where the count and compaction loops
+       would cost as much as the search) */
+    int *centre=malloc(largest*sizeof(int)),*neighbour=malloc(largest*sizeof(int));
+    if(!centre || !neighbour)failed|=1;
+#pragma omp for schedule(dynamic)
     for(int h=0;h<=FNAN[gc];h++){
+      if(!centre || !neighbour)continue;
       const int gh=natn[gc][h],mh=F_G2M[gh],nh=GridN_Atom[gh],shift=ncn[gc][h];
       const OpenMXOlgNeighbours neighbours={grid[mh],cell[mh],atv_ijk[shift][1],atv_ijk[shift][2],atv_ijk[shift][3]};
-      int *result=malloc((nh?(size_t)nh:1)*sizeof(int));
-      if(!result){failed|=1;continue;}
-      if(!(mapped && openmx_core_olg_intersect_map(&lists,&neighbours,map,extent,(size_t)nh,result,mode)) &&
-         !openmx_core_olg_intersect_lists(&lists,&neighbours,(size_t)nh,result,mode))failed|=4;
-      int count=0;for(int i=0;i<nh;i++)count+=(result[i]>=0);
+      size_t found=0;
+      if(!(mapped && openmx_core_olg_pairs(&lists,&neighbours,map,extent,(size_t)nh,centre,neighbour,&found,mode)) &&
+         !openmx_core_olg_pairs(&lists,&neighbours,NULL,0,(size_t)nh,centre,neighbour,&found,mode)){failed|=4;continue;}
+      const int count=(int)found;
       NumOLG[mc][h]=count;
       if(counts)counts[h]=count;
       if(list1){
         if(!estimate_switch && count>List_YOUSO[12])failed|=2;
-        /* one slack entry: the branch-free compaction writes every position */
-        int *at1=list1[h]=malloc(((size_t)count+1)*sizeof(int)),*at2=list2[h]=malloc(((size_t)count+1)*sizeof(int));
+        int *at1=list1[h]=malloc((count?(size_t)count:1)*sizeof(int)),*at2=list2[h]=malloc((count?(size_t)count:1)*sizeof(int));
         if(!at1 || !at2)failed|=1;
-        else{int at=0;for(int i=0;i<nh;i++){const int r=result[i];at1[at]=r;at2[at]=i;at+=(r>=0);}}
+        else if(count){memcpy(at1,centre,(size_t)count*sizeof(int));memcpy(at2,neighbour,(size_t)count*sizeof(int));}
         if(!estimate_switch)total+=(size_t)count;
       }
-      free(result);
+    }
+    free(centre);free(neighbour);
     }
     if(mapped)openmx_core_olg_map_reset(&lists,map,extent,mode);
   }

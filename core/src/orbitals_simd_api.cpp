@@ -15,22 +15,55 @@ int orbitals_of(const OpenMXOrbitalsTables& t,int wan) {
   }
   return no;
 }
+// The species check of a point, repeated only when the species changes
+// (callers pass runs of one species).
+struct SpeciesCheck {
+  const OpenMXOrbitalsTables& t;
+  int wan=-1,no=-1;
+  bool operator()(int w,int count) {
+    if(w<0 || w>=t.species)return false;
+    if(w!=wan){wan=w;no=orbitals_of(t,w);}
+    return no>=0 && count==no;
+  }
+};
+bool radial_tables(const OpenMXOrbitalsTables* t) {
+  return t->rv && t->rwf && t->rv_off && t->rwf_base && t->mesh && t->maxl && t->nb && t->species>0 && t->l0max>=0;
+}
 }
 extern "C" int openmx_core_orbitals_points(const OpenMXOrbitalsTables* t,const OpenMXOrbitalsFrame* f,
     const OpenMXOrbitalsPoint* q,size_t count,float* out,int mode) {
   const auto* kernels=openmx::core::host::openmx_host_orbitals_kernels(mode);
   if(!kernels || !t || !f)return 0;
   if(!count)return 1;
-  if(!q || !out || !t->rv || !t->rwf || !t->translations || !t->rv_off || !t->rwf_base ||
-      !t->mesh || !t->maxl || !t->nb)return 0;
-  if(t->species<=0 || t->l0max<0 || t->cells<=0 || f->ng23<=0 || f->ng3<=0 || f->max_no<0)return 0;
+  if(!q || !out || !radial_tables(t) || !t->translations)return 0;
+  if(t->cells<=0 || f->ng23<=0 || f->ng3<=0 || f->max_no<0)return 0;
+  SpeciesCheck check{*t};
   for(size_t i=0;i<count;++i) {
     const OpenMXOrbitalsPoint& e=q[i];
-    if(e.wan<0 || e.wan>=t->species || e.cell<0 || e.cell>=t->cells || e.grid<0)return 0;
-    const int no=orbitals_of(*t,e.wan);
-    if(no<0 || e.no!=no || no>f->max_no)return 0;
+    if(e.cell<0 || e.cell>=t->cells || e.grid<0 || !check(e.wan,e.no) || e.no>f->max_no)return 0;
   }
   kernels->points(*t,*f,q,count,out);
+  return 1;
+}
+extern "C" int openmx_core_orbitals_segments(const OpenMXOrbitalsTables* t,const OpenMXOrbitalsFrame* f,
+    const OpenMXOrbitalsSegment* g,size_t count,int mode) {
+  const auto* kernels=openmx::core::host::openmx_host_orbitals_kernels(mode);
+  if(!kernels || !t || !f)return 0;
+  if(!count)return 1;
+  if(!g || !radial_tables(t) || !t->translations || t->cells<=0 || f->ng23<=0 || f->ng3<=0)return 0;
+  SpeciesCheck check{*t};
+  for(size_t s=0;s<count;++s) {
+    const OpenMXOrbitalsSegment& e=g[s];
+    if(!check(e.wan,e.no))return 0;
+    if(!e.count)continue;
+    if(!e.grid || !e.cell || !e.rows)return 0;
+    for(size_t k=0;k<e.count;++k) {
+      if(e.index && e.index[k]<0)return 0;
+      const size_t i=e.index?size_t(e.index[k]):k;
+      if(e.grid[i]<0 || e.cell[i]<0 || e.cell[i]>=t->cells || !e.rows[k])return 0;
+    }
+  }
+  kernels->segments(*t,*f,g,count);
   return 1;
 }
 namespace {
@@ -38,13 +71,9 @@ int derivatives(const OpenMXOrbitalsTables* t,const OpenMXOrbitalsDisplacement* 
   const auto* kernels=openmx::core::host::openmx_host_orbitals_kernels(mode);
   if(!kernels || !t)return 0;
   if(!count)return 1;
-  if(!q || !out || !t->rv || !t->rwf || !t->rv_off || !t->rwf_base || !t->mesh || !t->maxl || !t->nb)return 0;
-  if(t->species<=0 || t->l0max<0)return 0;
-  for(size_t i=0;i<count;++i) {
-    if(q[i].wan<0 || q[i].wan>=t->species)return 0;
-    const int no=orbitals_of(*t,q[i].wan);
-    if(no<0 || q[i].no!=no)return 0;
-  }
+  if(!q || !out || !radial_tables(t))return 0;
+  SpeciesCheck check{*t};
+  for(size_t i=0;i<count;++i)if(!check(q[i].wan,q[i].no))return 0;
   (exact?kernels->dpoints:kernels->dpoints_cosines)(*t,q,count,out);
   return 1;
 }

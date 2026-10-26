@@ -27,6 +27,11 @@ typedef struct {
 } OpenMXEnergyNeutralPoints;
 /* Returns 0 for an unsupported mode or a missing buffer (nothing written). */
 int openmx_core_energy_neutral_points(const OpenMXEnergyNeutralPoints*,int mode);
+/* The same integrand summed as the legacy loop sums it: *sum += value and
+   (with derivative) *sumr -= derivative for every point in order, continuing
+   from the given *sum/*sumr. values/derivatives of the record are not used
+   (may be NULL). One call covers a whole pair integral. */
+int openmx_core_energy_neutral_sum(const OpenMXEnergyNeutralPoints*,double *sum,double *sumr,int mode);
 
 /* One radial shell of the atomic exchange-correlation correction Exc^(0) of
    Total_Energy (Calc_EXC_EH1): the Lebedev points of radius `radius` about
