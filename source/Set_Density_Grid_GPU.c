@@ -12,6 +12,7 @@
 #include "openmx_env.h"
 #include "openmx_gpu_workers.h"
 #include "openmx_gpu_views.h"
+#include "openmx_host_simd.h"
 #include "grid_precision.h"
 #include "set_cuda_default_device_from_local_rank.h"
 #include "openmx_gpu_bilinear.h"
@@ -1335,6 +1336,9 @@ typedef struct {
 
 static SDGLocalContext SDG_local = {0};
 
+/* Set_Hamiltonian.c: the planned on-the-fly density call's figures */
+int Set_Hamiltonian_OnTheFly_DensityStage(int otf_ranks, size_t *need_bytes, size_t *budget_bytes);
+
 static void SDG_local_delete_device(SDGLocalContext *c)
 {
   int current_device;
@@ -1551,7 +1555,11 @@ void Set_Density_Grid_GPU_EndCycle(void)
   SDG_local_delete_device(&SDG_local);
 }
 
-static int SDG_local_prepare(const OpenMXAtomicViews *atomic, int Cnt_kind, int Calc_CntOrbital_ON, int node_ranks)
+/* *vote_need / *vote_budget (zero on entry): this rank's figures for the
+   stage vote of Set_Density_Grid_GPU_Local_Prepare, set by the CSR
+   admission; zero need means no CSR staging of its own. */
+static int SDG_local_prepare(const OpenMXAtomicViews *atomic, int Cnt_kind, int Calc_CntOrbital_ON, int node_ranks,
+                             size_t *vote_need, size_t *vote_budget)
 {
   SDGLocalContext *c = &SDG_local;
   int spin_count = SpinP_switch + 1;
@@ -1668,8 +1676,15 @@ static int SDG_local_prepare(const OpenMXAtomicViews *atomic, int Cnt_kind, int 
   reserve_bytes = openmx_env_mib_bytes_at(OPENMX_ENV_DENSITY_GRID_GPU_RESERVE_MB, 256);
   if (c->device_resident && acc_get_device_num(acc_device_nvidia) != c->device_id)
     SDG_local_delete_device(c);
-  if (OpenMX_GpuMemGetInfo(&free_bytes, &total_bytes) != cudaSuccess) return 0;
+  if (OpenMX_GpuMemGetInfo(&free_bytes, &total_bytes) != cudaSuccess) {
+    *vote_need = SIZE_MAX;  /* the stage cannot be planned on this device */
+    return 0;
+  }
   need = SDG_local_call_bytes(c);
+  /* the stage vote: this call's staging against the rank's share of the
+     device, the figures of the admission below */
+  *vote_need = need;
+  *vote_budget = reserve_bytes <= free_bytes ? (free_bytes - reserve_bytes) / (size_t)c->node_ranks : 0;
   if (free_bytes < reserve_bytes) return 0;
   if ((free_bytes - reserve_bytes) / (size_t)c->node_ranks < need) return 0;
   return 1;
@@ -1678,13 +1693,15 @@ static int SDG_local_prepare(const OpenMXAtomicViews *atomic, int Cnt_kind, int 
 /* what the last Set_Density_Grid_GPU_Local_Prepare found, the same on
    every rank: the ranks with atoms, those that declined the distributed
    quadrature, and those among them without space for the minimum compact
-   on-the-fly chunk (the largest such need and the smallest payload) */
+   on-the-fly chunk (the largest such need and the smallest payload); host:
+   the stage vote sent every rank to the host SIMD quadrature */
 static struct {
   int atom_ranks;
   int declined;
   int ws_declined;
   unsigned long long ws_need;
   unsigned long long ws_avail;
+  int host;
 } SDG_census = {0};
 
 /* Every rank participates, including OTF ranks, empty partitions and
@@ -1694,7 +1711,7 @@ int Set_Density_Grid_GPU_Local_Prepare(const OpenMXAtomicViews *atomic, int Cnt_
 {
   MPI_Comm node_comm = MPI_COMM_NULL;
   int node_ranks = 1, node_otf = 0, my_otf, ok, myid = 0, grow = 0, ws_declined = 0;
-  size_t ws_need = 0, ws_avail = 0;
+  size_t ws_need = 0, ws_avail = 0, vote_need = 0, vote_budget = 0;
   unsigned long long mine[2] = {0ULL, 0ULL}, node[2] = {0ULL, 0ULL};
   unsigned long long counts[4], totals[4], extremes[2], worst[2];
 
@@ -1712,7 +1729,7 @@ int Set_Density_Grid_GPU_Local_Prepare(const OpenMXAtomicViews *atomic, int Cnt_
   MPI_Comm_rank(mpi_comm_level1, &myid);
   MPI_Comm_split_type(mpi_comm_level1, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, &node_comm);
   MPI_Comm_size(node_comm, &node_ranks);
-  ok = SDG_local_prepare(atomic, Cnt_kind, Calc_CntOrbital_ON, node_ranks);
+  ok = SDG_local_prepare(atomic, Cnt_kind, Calc_CntOrbital_ON, node_ranks, &vote_need, &vote_budget);
   my_otf = ok && Matomnum > 0 && SDG_local.otf;
   MPI_Allreduce(&my_otf, &node_otf, 1, MPI_INT, MPI_SUM, node_comm);
   Set_Hamiltonian_OnTheFly_SetDensityRanks(node_otf);
@@ -1737,6 +1754,10 @@ int Set_Density_Grid_GPU_Local_Prepare(const OpenMXAtomicViews *atomic, int Cnt_
   MPI_Allreduce(mine, node, 2, MPI_UNSIGNED_LONG_LONG, MPI_SUM, node_comm);
   MPI_Comm_free(&node_comm);
   if (0 < grow && !Set_Hamiltonian_OnTheFly_DensityGrow((size_t)node[0], (int)node[1], &ws_avail)) grow = -1;
+  /* the stage vote of an on-the-fly rank: the workspace the call prefers
+     against the rank's share of the device (no valid plan: the memory query
+     failed, the stage cannot be planned) */
+  if (my_otf && !Set_Hamiltonian_OnTheFly_DensityStage(node_otf, &vote_need, &vote_budget)) vote_need = SIZE_MAX;
   if (grow < 0) {
     ok = 0;
     ws_declined = 1;
@@ -1773,7 +1794,24 @@ int Set_Density_Grid_GPU_Local_Prepare(const OpenMXAtomicViews *atomic, int Cnt_
   SDG_census.ws_declined = (int)totals[3];
   SDG_census.ws_need = worst[0];
   SDG_census.ws_avail = totals[3] ? ULLONG_MAX - worst[1] : 0ULL;
+
+  /* The stage vote, the last collective of the preparation (every rank of a
+     GPU run reaches it): the distributed quadrature's device working set on
+     this rank (the CSR staging of the call, or the workspace an on-the-fly
+     rank prefers) against the rank's share of free memory less the reserve.
+     After a host decision every rank declines, and Set_Density_Grid skips
+     the one-rank service and the capacity recovery as well
+     (Set_Density_Grid_GPU_Local_StageOnHost). */
+  SDG_census.host = OpenMX_HostSimdStageOnHost("Set_Density_Grid", vote_need, vote_budget);
+  if (SDG_census.host) ok = 0;
   return ok;
+}
+
+/* The stage vote of the last Set_Density_Grid_GPU_Local_Prepare, the same on
+   every rank: 1 = the whole call on the host SIMD quadrature. No collective. */
+int Set_Density_Grid_GPU_Local_StageOnHost(void)
+{
+  return SDG_census.host;
 }
 
 /* The census was reduced by Prepare, so every rank makes the same choice

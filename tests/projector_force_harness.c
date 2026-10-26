@@ -1,5 +1,7 @@
 #include "openmx_core_projector_force.h"
 #include "openmx_core_electronic.h"
+#include "openmx_host_simd.h"
+#include "openmx_core_force_simd.h"
 #include <assert.h>
 #include <math.h>
 #include <stdio.h>
@@ -26,6 +28,10 @@ static dcomplex *output_rows[3][3][output_capacity],**output_planes[3][3];
 static dcomplex ***Hx=output_planes[0],***Hy=output_planes[1],***Hz=output_planes[2];
 static dcomplex Complex(double r,double i){return (dcomplex){r,i};}
 static void OpenMX_Solver_Failure(const char *error){fprintf(stderr,"%s\n",error);abort();}
+/* Host SIMD policy seen by dHNL_block: the legacy Core block first, then the
+   widest host SIMD mode, each against the frozen scalar reference. */
+static int harness_host_simd_mode=OPENMX_HOST_SIMD_LEGACY;
+int OpenMX_HostSimdMode(void){return harness_host_simd_mode;}
 /* OPENMX_PROJECTOR_REFERENCE */
 /* OPENMX_PROJECTOR_PRODUCTION */
 static int comparisons;
@@ -113,6 +119,11 @@ int main(void)
     }
   }
   double result;char error[256];
-  assert(openmx_core_solver_run(1,compare,NULL,&result,error,sizeof(error)) && result==19);
-  printf("PASS: %d legacy/projector block comparisons; nine actual native blocks and row fallbacks, scalar/spinor, padded rectangular inputs/outputs, reversed terms, transposes, empty ranges/species, s/p/d/f, repeated channels, signed/zero energies\n",comparisons);
+  const int widest=openmx_core_host_simd_mode(NULL);
+  for(int policy=0;policy<2;++policy) {
+    harness_host_simd_mode=policy?widest:OPENMX_HOST_SIMD_LEGACY;
+    assert(openmx_core_solver_run(1,compare,NULL,&result,error,sizeof(error)) && result==19);
+  }
+  printf("PASS: %d legacy/projector block comparisons; nine actual native blocks and row fallbacks, scalar/spinor, padded rectangular inputs/outputs, reversed terms, transposes, empty ranges/species, s/p/d/f, repeated channels, signed/zero energies; host SIMD policies legacy and %s\n",
+      comparisons,openmx_core_host_simd_name(widest));
 }

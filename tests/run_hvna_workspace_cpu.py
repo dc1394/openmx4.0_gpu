@@ -58,6 +58,12 @@ static OpenMXDoubleBlockMatrix out_matrix;
 static void dtime(double *time){static _Thread_local double tick;*time=tick++;}
 static double dampingF(double cutoff,double distance){return 1.0-distance/(2.0*cutoff);}
 static void SetPro_gpu_abort(const char *error){fprintf(stderr,"%s\n",error);abort();}
+#include "openmx_host_simd.h"
+/* The adapter's host SIMD policy (production: openmx_host_simd.c). The legacy
+   loops are the path this harness was written for; main repeats every case
+   with the widest host SIMD ISA of the linked Core. */
+static int harness_host_simd=OPENMX_HOST_SIMD_LEGACY;
+int OpenMX_HostSimdMode(void){return harness_host_simd;}
 #include "openmx_hvna_cpu.h"
 #include "block_matrix_fixture.h"
 '''
@@ -132,11 +138,15 @@ static void scalar_reference(const OpenMXHvnaProjectorBuffers *table){
 }
 static void execute(const SetProHvnaGeometry *geometry,const OpenMXHvnaProjectors *owner,
     const OpenMXHvnaProjectorBuffers *table,const OpenMXHvnaWorkspaceBuffers *work){
+  /* One halo cache for the whole ring, as SetPro_Separable keeps it. */
+  SetProHvnaHost cache;
+  SetPro_HVNA_CPU_HaloCache(&cache,geometry,table,NG,fp32);
   for(int remote=NG;remote>Matomnum;--remote){
     receive(M2G[remote]);
-    SetPro_HVNA_CPU_Halo(geometry,table,work,&ds_matrix,&out_matrix,remote,M2G[remote],fp32);
+    SetPro_HVNA_CPU_Halo(geometry,table,work,&ds_matrix,&out_matrix,remote,M2G[remote],fp32,&cache);
     poison();
   }
+  SetPro_HvnaHost_Free(&cache);
   SetPro_HVNA_CPU_Local(geometry,owner,table,&ds_matrix,&out_matrix,fp32);
 }
 int main(void){
@@ -150,8 +160,11 @@ int main(void){
   const int bases[4][NS][3]={{{2,0,0},{1,0,0}},{{2,1,2},{0,2,0}},{{0,0,0},{1,1,1}},{{0,0,0},{0,0,0}}};
   const int projects[4][2]={{0,1},{2,2},{14,1},{0,0}},threads[3]={1,2,8},partitions[4]={0,1,3,6};
   int cases=0,missing_cases=0,precision_sensitive=0;
+  const int policies[]={OPENMX_HOST_SIMD_LEGACY,openmx_core_host_simd_mode(NULL)};
+  for(int policy=0;policy<2;++policy)
   for(int basis=0;basis<4;++basis)for(int projection=0;projection<4;++projection)
   for(int split=0;split<3;++split)for(int partition=0;partition<4;++partition)for(fp32=0;fp32<2;++fp32){
+    harness_host_simd=policies[policy];
     configure(partitions[partition]);
     int angular[NS]={2,2},counts[NS][3];int *count_rows[NS]={counts[0],counts[1]};
     for(int s=0;s<NS;++s){
@@ -175,7 +188,7 @@ int main(void){
     for(int p=0;p<Num_RVNA;++p)VNA_List[p]=VNA_List2[p]=-999;
     reset_output();omp_set_num_threads(threads[split]);
     execute(&geometry,owner,&table,&work);
-    if(memcmp(output,expected,sizeof(output))){fprintf(stderr,"legacy mismatch basis=%d projectors=%d threads=%d local=%d fp32=%d\n",basis,projection,threads[split],Matomnum,fp32);abort();}
+    if(memcmp(output,expected,sizeof(output))){fprintf(stderr,"legacy mismatch policy=%s basis=%d projectors=%d threads=%d local=%d fp32=%d\n",openmx_core_host_simd_name(harness_host_simd),basis,projection,threads[split],Matomnum,fp32);abort();}
     for(int mc=1;mc<=Matomnum;++mc)assert(time_per_atom[M2G[mc]]==NG-Matomnum+1);
     energy_storage[0][0][0]=saved_energy;
     cases++;
@@ -200,7 +213,9 @@ int main(void){
     openmx_core_hvna_workspace_destroy(worker);openmx_core_hvna_projectors_destroy(owner);
   }
   assert(sizeof(Type_DS_VNA)!=sizeof(float) || precision_sensitive);
-  printf("PASS: %d exact legacy HVNA cases and %d missing-intersection cases (%zu-byte DS storage); ownership, padding, empty ranks and timing\n",cases,missing_cases,sizeof(Type_DS_VNA));
+  assert(cases==2*4*4*3*4*2);
+  printf("PASS: %d exact legacy HVNA cases and %d missing-intersection cases (%zu-byte DS storage; legacy and %s host policies); ownership, padding, empty ranks and timing\n",
+      cases,missing_cases,sizeof(Type_DS_VNA),openmx_core_host_simd_name(policies[1]));
 }
 '''
 

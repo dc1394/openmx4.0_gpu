@@ -36,6 +36,12 @@ HARNESS = r'''
 #define xmin 0.0
 #define asize_lmax 30
 typedef OPENMX_TEST_DS_TYPE Type_DS_VNA;
+#include "openmx_host_simd.h"
+/* The adapter's host SIMD policy (production: openmx_host_simd.c). The legacy
+   loops are the path this harness was written for; main repeats every case
+   with the widest host SIMD ISA of the linked Core. */
+static int harness_host_simd=OPENMX_HOST_SIMD_LEGACY;
+int OpenMX_HostSimdMode(void){return harness_host_simd;}
 static int List_YOUSO[40],M2G[NA+1]={0,1,2},WhatSpecies[NA+1]={0,0,1};
 static int natn[NA+1][NH],ncn[NA+1][NH],Spe_MaxL_Basis[NS],Spe_Num_Basis[NS][3],GL_Mesh,measure_time;
 static double PAO_Nkmax=2.0,Radial_kmin=0,Spe_Atom_Cut1[NS]={4,4};
@@ -130,7 +136,10 @@ int main(void)
   const int basis_cases[4][NS][3]={{{2,0,0},{1,0,0}},{{2,0,1},{0,2,0}},{{0,0,0},{1,1,1}},{{0,0,0},{0,0,0}}};
   const int projector_cases[][2]={{0,1},{2,2},{0,0}};
   omp_set_dynamic(0);
+  const int policies[]={OPENMX_HOST_SIMD_LEGACY,openmx_core_host_simd_mode(NULL)};
+  for(int policy=0;policy<2;policy++)
   for(int mesh=0;mesh<3;mesh++)for(int split=0;split<3;split++)for(int basis=0;basis<4;basis++)for(int projector=0;projector<3;projector++){
+    harness_host_simd=policies[policy];
     GL_Mesh=meshes[mesh];omp_set_num_threads(threads[split]);
     for(int s=0;s<NS;s++){Spe_MaxL_Basis[s]=basis?2:0;for(int l=0;l<3;l++)Spe_Num_Basis[s][l]=basis_cases[basis][s][l];}
     List_YOUSO[34]=projector_cases[projector][1];List_YOUSO[35]=projector_cases[projector][0];
@@ -187,8 +196,9 @@ int main(void)
     }
     openmx_core_vna_preparation_destroy(owner);cases++;
   }
-  assert(cases==108);
-  printf("PASS: %d DS_VNA cases (%zu-byte storage), exact legacy comparison, analytic max error %.3g; ragged/empty bases, independent metadata, zero-k Bessel, 1/2/8 threads\n",cases,sizeof(Type_DS_VNA),maximum_error);
+  assert(cases==2*108);
+  printf("PASS: %d DS_VNA cases (%zu-byte storage; legacy and %s host policies), exact legacy comparison, analytic max error %.3g; ragged/empty bases, independent metadata, zero-k Bessel, 1/2/8 threads\n",
+      cases,sizeof(Type_DS_VNA),openmx_core_host_simd_name(policies[1]),maximum_error);
 }
 '''
 

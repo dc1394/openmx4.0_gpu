@@ -18,6 +18,24 @@ void OpenMX_HostSimdReport(const char *label);
    env_id); when the knob is unset they follow OPENMX_HOST_SIMD, legacy meaning
    the scalar Core kernel (those paths have no C loop any more). */
 int OpenMX_HostSimdGridMode(int env_id);
+
+/* Device-or-host decision of one GPU stage, collective over mpi_comm_level1:
+   every rank calls it at the same point with its own figures and all ranks
+   get the same answer. 1 means: run the whole stage on the host SIMD paths.
+   A rank votes for the host when its device is unusable, when need_bytes
+   (the stage's device working set; SIZE_MAX = unknown/never fits) exceeds
+   budget_bytes (what the stage may use on this rank's device), or when
+   fitting it would split the work into more than OPENMX_HOST_SIMD_MAX_PIECES
+   device pieces (default 8): small pieces are dominated by transfers and by
+   the collective steps of the capacity recovery, where the host SIMD kernels
+   finish first. One host vote moves every rank (the ranks share devices and
+   the recovery loops are collective). Under OPENMX_HOST_SIMD=legacy only an
+   unusable device votes for the host, which keeps the earlier behaviour.
+   Rank 0 reports host decisions at level.of.stdout >= 2. */
+int OpenMX_HostSimdStageOnHost(const char *stage, size_t need_bytes, size_t budget_bytes);
+/* This rank's device budget: free memory (OpenMX_GpuMemGetInfo) minus
+   reserve_bytes, or 0 when the device is unusable or the query fails. */
+size_t OpenMX_HostSimdDeviceBudget(size_t reserve_bytes);
 #ifdef __cplusplus
 }
 #endif

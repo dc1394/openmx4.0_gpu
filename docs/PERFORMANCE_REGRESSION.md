@@ -3990,3 +3990,53 @@ CPU モードの runtest 合計は 72.1 → 66.6 s です。CTest は 404 件す
 残りの大部分は対角化（ELPA2 / BLAS、65 s）です。力（12.3 s）の Force4B 部分は bit 一致の
 fp32 積の契約によるポート上限にあり、これ以上は和の順序を変える（CDM0 を先に縮約して積和を
 約 1/13 にする、または FMA）必要があるため、既定では行っていません。
+
+## デバイスで処理できない段階のホスト SIMD 化 (2026-10-26)
+
+デバイスは使えるがメモリが足りない状況を、MPS のクライアントごとのデバイスメモリ上限
+（`CUDA_MPS_PINNED_DEVICE_MEM_LIMIT=0=768M`、各 rank の空き約 507 MiB）で再現して測りました。
+それまでの GPU 経路は、収まらない段階を容量回復で細かく分けてデバイスで実行し続け、
+小片ごとの集団通信で待ち合わせていました（rank 0 のサンプルの 65 % が UCC の reduce 待ち）。
+全段階に集団の判定 `OpenMX_HostSimdStageOnHost` を入れ（[仕組み](GPU_BACKENDS.md#デバイスで処理できない段階はホストの-simd-経路へ2026-10-26)）、
+デバイスで処理できない段階は全 rank でホストの SIMD 経路を使うようにしました。
+
+sidia333、18 MPI × 1 OpenMP、MPS、3 SCF、1 MD ステップ（秒）:
+
+| 段階 | GPU 通常 | 768 MiB 上限・変更前 | 768 MiB 上限・`legacy` | 768 MiB 上限・既定 | CPU モード既定 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Set_ProExpn_VNA | 7.34 | 278.3 | 276.3 | 5.03 | 5.05 |
+| 対角化 | 19.52 | 363.6 | 69.3 | 65.38 | 65.41 |
+| Set_Hamiltonian | 3.07 | 49.4 | 49.2 | 3.51 | 3.97 |
+| Force | 11.12 | 44.8 | 49.6 | 12.36 | 12.30 |
+| Set_Density_Grid | 0.98 | 13.7 | 19.9 | 3.63 | 3.59 |
+| truncation | 5.41 | 5.4 | 5.48 | 5.51 | 2.47 |
+| Total_Energy | 1.35 | 1.33 | 1.37 | 1.34 | 4.48 |
+| Set_Orbitals_Grid | 1.17 | 1.17 | 1.19 | 1.19 | 1.26 |
+| 合計（内部 Total） | 52.7 | 760.4 | 474.9 | 100.7 | 102.3 |
+
+- 上限付き GPU の合計は 760 s から 100.7 s になり、CPU モードと同等です。Set_ProExpn_VNA は
+  DS_VNA のバッチ（1 バッチ 836 MiB、空き 507 MiB）と HVNA アーカイブ（約 0.85 GiB/rank、受け入れ 0 rank）
+  がホストに投票し、Set_Hamiltonian・Set_Density_Grid・Force3/Force_HNL も同様です。
+  装置に収まる段階（Total_Energy、Set_Orbitals_Grid、truncation の重なり格子）はデバイスのままです。
+- 対角化の差の大部分は ELPA フォールバック時の GPU 密度行列でした（同じ上限で 1 SCF の比較:
+  GPU 密度行列あり 132 s、`OPENMX_BAND_GPU_DM=0` で 31 s）。今回、この経路は投票でホストの
+  `BandCol_DM_Block` に移り、直接のデバイス試行が断られた場合も集団の容量回復を使わずにホストで
+  集計します（この変更は `legacy` でも有効で、`legacy` 列の対角化 69 s はそのためです）。
+- 判定はデバイスに収まる通常の GPU 実行では発動しません（GPU 通常 52.7 s、変更前 53.8 s、Utot も同一）。
+  CPU モードは第 3 ラウンドと `.ene`・`.md`・`.xyz` が bit 一致しました。上限付きの既定と `legacy` の Utot は
+  −892.691813153412 Hartree で一致しています。
+- 容量回復の故障注入 `OPENMX_GPU_CAPACITY_TEST_RECOVERY=1` は、上限付きで 125.8 s（Set_Nonlocal の
+  容量経路 21.7 s を含む）でした。上限なしの GPU では 1451 s で、その大部分は密な GPU ソルバーの
+  密度行列が故障注入で集団の容量回復に回されるためです。この経路は変更前と同じコードです。
+- `openmx -runtest`（14 入力、18 MPI）は GPU、CPU、CPU + `legacy` の 3 モードで参照との差が従来どおり
+  （Utot 最大 6.3e-11 / 8.8e-11 / 1.5e-10、`work/runtest.result.{gpu,cpu,cpu_legacy}_r4_20261026`）です。
+
+アプリケーション段階の検証スクリプト（トップレベルの `CMakeLists.txt` に登録された 63 件、
+`OPENMX_BUILD_APPLICATION=ON` の構成でだけ登録される）を初めて走らせ、第 1〜第 3 ラウンドで壊れていた
+21 件を直しました（抽出したコードがホスト SIMD の方針関数を参照していた、ヘッダーが単体で
+コンパイルできなかった、抽出の目印がずれた、など）。全 465 件のうち、ASan と OpenMP の終了処理
+（`sigaltstack`）の環境問題で失敗する 4 件（`force-hnl-gpu-archives`、`force-vna-gpu-resources`、
+`vna-stage-status`、`hvna-workspace-integrals`）は作業前のコミットでも同じに失敗し、
+`ASAN_OPTIONS=use_sigaltstack=0` で合格します。重なり格子以外の 2 件の軌道格子スクリプトは、
+アドレス空間のランダム化と ASan のシャドウ領域の衝突で作業前から約半数が失敗していたため、
+検査用の実行ファイルをランダム化なしで起動するようにしました。

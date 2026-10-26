@@ -1499,6 +1499,19 @@
   {
    "group": "grid",
    "names": [
+    "OPENMX_HOST_SIMD_MAX_PIECES"
+   ],
+   "label": "<code>OPENMX_HOST_SIMD_MAX_PIECES</code>",
+   "default_cell": {
+    "en": "8",
+    "ja": "8"
+   },
+   "en": "Device-or-host decision of the GPU stages: a stage whose device working set would need more than this many device pieces on some rank (need / free-minus-reserve), or that cannot fit at all, runs on the host SIMD paths on every rank instead of the capacity recovery. <code>0</code> or negative: any split moves the stage to the host. Not used under <code>OPENMX_HOST_SIMD=legacy</code>, where only an unusable device moves a stage to the host.",
+   "ja": "GPU 各段階のデバイス/ホスト判定: ある rank でデバイスの作業領域が空き容量（予約を除く）に対してこの数を超える分割を要する、または収まらない段階は、容量回復ではなく全 rank でホストの SIMD 経路を使う。<code>0</code> 以下: 分割が要るだけでホストへ移す。<code>OPENMX_HOST_SIMD=legacy</code> では使わず、デバイスが使えないときだけホストへ移す。"
+  },
+  {
+   "group": "grid",
+   "names": [
     "OPENMX_SETHAM_SIMD_TRACE",
     "OPENMX_DENSITY_GRID_COL_SIMD_TRACE",
     "OPENMX_DENSITY_GRID_NC_SIMD_TRACE"

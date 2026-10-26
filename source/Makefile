@@ -1064,7 +1064,7 @@ openmx_host_memory.o: openmx_host_memory.c openmx_host_memory.h
 # The environment settings of the run (every reader includes openmx_env.h).
 openmx_env.o: openmx_env.c openmx_env.h openmx_env_registry.h
 	$(CC_NOACC_O3) -c openmx_env.c
-openmx_host_simd.o: openmx_host_simd.c openmx_host_simd.h openmx_env.h openmx_env_registry.h openmx_core_host_simd.h ../core/include/openmx_core_host_simd.h openmx_core_grid.h ../core/include/openmx_core_grid.h
+openmx_host_simd.o: openmx_host_simd.c openmx_host_simd.h openmx_env.h openmx_env_registry.h openmx_core_host_simd.h ../core/include/openmx_core_host_simd.h openmx_core_grid.h ../core/include/openmx_core_grid.h openmx_gpu_device.h set_cuda_default_device_from_local_rank.h
 	$(CC_NOACC_O3) -c openmx_host_simd.c
 $(OBJS): openmx_env.h openmx_env_registry.h
 openmx_cluster_capacity.o: openmx_cluster_capacity.c openmx_cluster_capacity.h openmx_mgpu_runtime.h elpa_cosma_bridge.h openmx_stdout_level.h openmx_host_memory.h
@@ -1728,7 +1728,7 @@ Band_DFT_Col.o Band_DFT_NonCol.o Cluster_DFT_Col.o Cluster_DFT_NonCol.o: openmx_
 # Invocation-owned projector communication and shared VNA orchestration.
 Force.o Stress.o Set_Nonlocal.o Set_CoreHoleMatrix.o Set_ProExpn_VNA.o: openmx_projector_exchange.h openmx_core_projector_exchange.h
 Set_ProExpn_VNA.o: openmx_vna_assembly.h openmx_core_vna_invocation.h openmx_core_atom_pairs.h openmx_vna_tables.h openmx_vna_status.h
-Set_ProExpn_VNA.o: openmx_host_simd.h openmx_core_vna_simd.h ../core/include/openmx_core_vna_simd.h ../core/include/openmx_core_host_simd.h
+Set_ProExpn_VNA.o: openmx_host_simd.h openmx_core_vna_simd.h ../core/include/openmx_core_vna_simd.h ../core/include/openmx_core_host_simd.h openmx_setpro_host.h openmx_setpro_gaunt.h
 
 # Shared flat orbital optimization and Hubbard force boundaries.
 DFT.o Opt_Contraction.o: openmx_orbital_optimization.h openmx_core_orbital_optimization.h
@@ -1743,6 +1743,7 @@ Force.o: openmx_force_gpu_resources.h openmx_force_archive_lease.h openmx_force_
 Force.o: ../core/include/openmx_core_force_recovery.h
 Force.o: openmx_force_hnl_batch.h openmx_core_force_hnl_batch.h ../core/include/openmx_core_force_hnl_batch.h
 Force.o: openmx_host_simd.h openmx_core_force_simd.h ../core/include/openmx_core_force_simd.h ../core/include/openmx_core_projector_force.h
+Force.o: openmx_core_force_vna_simd.h ../core/include/openmx_core_force_vna_simd.h
 Force.o: openmx_core_orbitals_simd.h ../core/include/openmx_core_orbitals_simd.h
 
 # Solver invocation RAII and flat spectral workspaces.
@@ -1776,6 +1777,7 @@ Stress.o: openmx_stress_workspace.h openmx_solver_workspace.h openmx_core_solver
 
 Total_Energy.o Stress.o: openmx_xc_workspace.h openmx_core_angular_grid.h ../core/include/openmx_core_angular_grid.h
 Total_Energy.o Stress.o: openmx_neutral_atom.h openmx_host_simd.h openmx_core_energy_simd.h ../core/include/openmx_core_energy_simd.h openmx_core_host_simd.h ../core/include/openmx_core_host_simd.h
+Total_Energy_GPU.o: openmx_host_simd.h openmx_core_energy_simd.h ../core/include/openmx_core_energy_simd.h openmx_core_host_simd.h ../core/include/openmx_core_host_simd.h
 Band_DFT_Col.o: openmx_host_simd.h openmx_core_energy_simd.h ../core/include/openmx_core_energy_simd.h openmx_core_host_simd.h ../core/include/openmx_core_host_simd.h
 
 Force.o Stress.o: openmx_mechanical_workspace.h openmx_core_force.h ../core/include/openmx_core_force.h

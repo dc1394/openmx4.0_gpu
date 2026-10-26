@@ -615,12 +615,19 @@ typedef struct {
    must fit next to the reserve.  Only the leading checks are collective;
    the returned decision may differ between ranks (the trace path itself has
    no MPI). */
-static size_t Force3_GpuChunkBudget(void)
+/* The trace's chunk budget on this rank, 0 when the trace cannot run here.
+   *host (same on every rank) reports the host SIMD policy vote of the stage:
+   need = the resident tables plus the smallest chunk scratch, SIZE_MAX when
+   the trace cannot start on this rank (the zero-budget cases below), budget =
+   the per-rank share of the free memory above the node reserve. Every rank
+   that requested the device trace reaches the vote; the per-rank budget
+   arithmetic is unchanged. */
+static size_t Force3_GpuChunkBudget(int *host)
 {
-    int Mc_AN, node_ranks = 1;
+    int Mc_AN, node_ranks = 1, queried;
     size_t orbs_bytes = 0, grid_pts = 0, resident_bytes;
     size_t free_bytes = 0, total_bytes = 0;
-    size_t usable, budget;
+    size_t usable = 0, budget, need;
     /* the chunk scratch is mirrored on the host (gl/fn/dm packing), so a
        large cap multiplies host memory by the rank count; keep it small */
     const size_t budget_cap = (size_t)384 * 1024 * 1024;
@@ -628,6 +635,7 @@ static size_t Force3_GpuChunkBudget(void)
     size_t reserve;
     MPI_Comm node_comm = MPI_COMM_NULL;
 
+    *host = 0;
     int requested=scf_eigen_lib_flag==GPUSOLVER;
     MPI_Allreduce(MPI_IN_PLACE,&requested,1,MPI_INT,MPI_MIN,mpi_comm_level1);
     if (!requested || !openmx_env_flag_at(OPENMX_ENV_FORCE3_GPU, Force_gpu_stage_default())) return 0;
@@ -651,10 +659,17 @@ static size_t Force3_GpuChunkBudget(void)
         + grid_pts * (size_t)(SpinP_switch + 1) * sizeof(double)
         + grid_pts * 3 * sizeof(double);
 
-    if (OpenMX_GpuMemGetInfo(&free_bytes, &total_bytes) != cudaSuccess) return 0;
-    if (free_bytes <= reserve) return 0;
+    queried = OpenMX_GpuMemGetInfo(&free_bytes, &total_bytes) == cudaSuccess;
+    if (queried && free_bytes > reserve) usable = (free_bytes - reserve) / (size_t)node_ranks;
+    need = Matomnum == 0 ? 0
+        : usable > resident_bytes + budget_floor ? resident_bytes + budget_floor : SIZE_MAX;
+    if (OpenMX_HostSimdStageOnHost("Force3", need, usable)) {
+        *host = 1;
+        return 0;
+    }
 
-    usable = (free_bytes - reserve) / (size_t)node_ranks;
+    if (!queried) return 0;
+    if (free_bytes <= reserve) return 0;
     if (usable <= resident_bytes + budget_floor) return 0;
 
     budget = usable - resident_bytes;
@@ -2112,6 +2127,83 @@ static void Force3_capacity_cpu(int Mc_AN,int myid,double ***dChi0,double **Vpot
 
 /* Keep the established float tables.  The precision switch controls whether
    their products round in FP32 or promote both operands before multiplying. */
+/* The late route of Force3 on the host SIMD path: a rank whose batched trace
+   failed after part 1 takes its atoms back. The grid potentials (and, with
+   on-device derivatives, the displacements) come back from the device copies
+   part 1 uploaded; the derivatives come from the Core's cosine kernel in
+   blocks of points (Get_dOrbitals_work when its tables do not cover the
+   basis, or the flat host derivatives without on-device derivatives); the
+   contraction is the SIMD pair kernel. Local to the rank: no collectives. */
+static void Force3_late_host(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electronic,
+    OpenMXSolverInvocation *scratch, int myid, double ***dChi0, double **Vpot_grid,
+    double *vpot_stage, double *vpot_dev_full, const size_t *vpot_off,
+    double *xyz_stage, double *xyz_dev_full, const size_t *xyz_off, int dorb,
+    const double *dchi_all, const size_t *dchi_off)
+{
+    Force3Dpoints dp;
+    const int mode = OpenMX_HostSimdMode();
+    int mc;
+
+    Force3_dpoints_create(&dp, atomic, mode, Cnt_switch, 0);
+    for (mc = 1; mc <= Matomnum; mc++) {
+        const int gc = M2G[mc], wan = WhatSpecies[gc];
+        const int no = atomic->species.contracted_orbitals[wan], ng = GridN_Atom[gc];
+        int spin;
+
+        acc_memcpy_from_device(vpot_stage, vpot_dev_full + vpot_off[mc], (size_t)(SpinP_switch + 1) * (size_t)ng * sizeof(double));
+        for (spin = 0; spin <= SpinP_switch; spin++)
+            memcpy(Vpot_grid[spin], vpot_stage + (size_t)spin * (size_t)ng, (size_t)ng * sizeof(double));
+        if (dorb) {
+            acc_memcpy_from_device(xyz_stage, xyz_dev_full + xyz_off[mc], 3 * (size_t)ng * sizeof(double));
+#pragma omp parallel
+            {
+                double **dorbs0 = OpenMX_Solver_AlignedRealMatrix(scratch, "Force3:orbitals", 4, List_YOUSO[7]);
+                OpenMXOrbitalBuffers work;
+                OpenMXOrbitalsDisplacement *in = dp.active
+                    ? (OpenMXOrbitalsDisplacement*)OpenMX_Solver_Real(scratch, "Force3:dp-in",
+                        (size_t)F3_DP_BLOCK * sizeof(OpenMXOrbitalsDisplacement) / sizeof(double) + 1) : NULL;
+                double *out = dp.active ? OpenMX_Solver_Real(scratch, "Force3:dp-out", (size_t)F3_DP_BLOCK * (size_t)List_YOUSO[7] * 3) : NULL;
+                int nc0;
+
+                OpenMX_Solver_Orbitals(scratch, "Force3:orbital-sampler",
+                    (int)atomic->orbitals.extent[1] - 1, (int)atomic->orbitals.extent[2], 1, &work);
+#pragma omp for schedule(static)
+                for (nc0 = 0; nc0 < ng; nc0 += F3_DP_BLOCK) {
+                    const int count = nc0 + F3_DP_BLOCK < ng ? F3_DP_BLOCK : ng - nc0;
+                    int k, i, axis;
+
+                    if (dp.active) {
+                        for (k = 0; k < count; k++) {
+                            const double *x = xyz_stage + 3 * (size_t)(nc0 + k);
+                            in[k].wan = wan;
+                            in[k].no = no;
+                            in[k].x = x[0];
+                            in[k].y = x[1];
+                            in[k].z = x[2];
+                        }
+                        Force3_dpoints_block(&dp, atomic, wan, no, nc0, count, in, out, mode, 0, NULL, NULL, mc,
+                            dChi0, dorbs0, work);
+                    } else {
+                        for (k = 0; k < count; k++) {
+                            const double *x = xyz_stage + 3 * (size_t)(nc0 + k);
+                            Get_dOrbitals_work(atomic, wan, x[0], x[1], x[2], dorbs0, work);
+                            for (i = 0; i < no; i++)
+                                for (axis = 0; axis < 3; axis++) dChi0[nc0 + k][i][axis] = dorbs0[axis + 1][i];
+                        }
+                    }
+                }
+            }
+        } else {
+            int nc, i;
+            for (nc = 0; nc < ng; nc++)
+                for (i = 0; i < no; i++)
+                    memcpy(dChi0[nc][i], dchi_all + dchi_off[mc] + 3 * ((size_t)nc * (size_t)no + (size_t)i), 3 * sizeof(double));
+        }
+        Force3_capacity_cpu(mc, myid, dChi0, Vpot_grid, electronic, scratch);
+    }
+    Force3_dpoints_destroy(&dp);
+}
+
 /* Host SIMD (OPENMX_HOST_SIMD) evaluation of the fused Force4B traces. The
    Core's force kernel forms H_c[m][n] of one projector block with the legacy
    per-element arithmetic, and the glue keeps the legacy accumulation order
@@ -4832,7 +4924,8 @@ void Force3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electr
     double* vpot_dev_full = NULL;
     double* xyz_dev_full = NULL;
 
-    size_t f3_chunk_budget = Force3_GpuChunkBudget();
+    int f3_host = 0;
+    size_t f3_chunk_budget = Force3_GpuChunkBudget(&f3_host);
 
     if (f3_chunk_budget != 0) {
         size_t dpos = 0, vpos = 0, xpos = 0, maxgrid = 0;
@@ -4887,6 +4980,11 @@ void Force3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electr
     int capacity_enabled=scf_eigen_lib_flag==GPUSOLVER;
     MPI_Allreduce(MPI_IN_PLACE,&capacity_enabled,1,MPI_INT,MPI_MIN,mpi_comm_level1);
     capacity_enabled=capacity_enabled && openmx_env_flag_at(OPENMX_ENV_FORCE3_GPU, Force_gpu_stage_default());
+    /* Host SIMD policy (uniform on every rank): when the stage voted for the
+       host, and in every non-legacy run, a rank without the batched trace
+       (no admission, or its device buffers could not be allocated) runs the
+       host SIMD quadrature below instead of the collective capacity tasks. */
+    if (f3_host || OpenMX_HostSimdMode() != OPENMX_HOST_SIMD_LEGACY) capacity_enabled = 0;
     int recover=capacity_enabled && !use_gpu_trace,steps=Matomnum,recovered=0;
     MPI_Allreduce(MPI_IN_PLACE,&recover,1,MPI_INT,MPI_MAX,mpi_comm_level1);
     if(recover)MPI_Allreduce(MPI_IN_PLACE,&steps,1,MPI_INT,MPI_MAX,mpi_comm_level1);
@@ -5732,7 +5830,13 @@ void Force3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electr
 
     int late=use_gpu_trace && !Force3_GpuTrace(atomic, dchi_all,dchi_off,vpot_dev_full,vpot_off,xyz_dev_full,xyz_off,f3_dorb,f3_chunk_budget, electronic);
     int late_any=late;MPI_Allreduce(MPI_IN_PLACE,&late_any,1,MPI_INT,MPI_MAX,mpi_comm_level1);
-    if(late_any){
+    if(late_any && OpenMX_HostSimdMode()!=OPENMX_HOST_SIMD_LEGACY){
+        /* the failed ranks redo their atoms on the host SIMD path; nothing
+           collective follows, so the other ranks have nothing to join */
+        if(late)Force3_late_host(atomic,electronic,scratch,myid,dChi0,Vpot_grid,vpot_stage,vpot_dev_full,vpot_off,
+            xyz_stage,xyz_dev_full,xyz_off,f3_dorb,dchi_all,dchi_off);
+    }
+    else if(late_any){
         int max_atoms=Matomnum;MPI_Allreduce(MPI_IN_PLACE,&max_atoms,1,MPI_INT,MPI_MAX,mpi_comm_level1);
         for(int mc=1;mc<=max_atoms;mc++){
             if(late && mc<=Matomnum){
@@ -7448,6 +7552,16 @@ static int Force4B_GpuBegin(OpenMXSolverInvocation *scratch, Force4BGpuContext *
            archives.  Reserve the larger lifetime, not their sum. */
         if (stream_case1) case1_bytes = 0;
         need = (!stream_case2 && case1_bytes < case2_bytes ? case2_bytes : case1_bytes);
+
+        /* Host SIMD policy (every rank reaches this point): need = the case
+           lifetime above, budget = the per-rank share of the free memory above
+           the node reserve that the residency test uses. A host vote keeps the
+           fused CPU traces on every rank (no archives, no recovery packets).
+           The capacity test forces the archive recovery: it does not vote. */
+        {
+            const size_t budget = resident && free_bytes > reserve ? (free_bytes - reserve) / (size_t)node_ranks : 0;
+            if (OpenMX_HostSimdStageOnHost("Force4B", openmx_gpu_capacity_test_recovery() ? 0 : need, budget)) return 0;
+        }
 
         resident=resident && free_bytes>reserve && (free_bytes-reserve)/(size_t)node_ranks>need;
         /* Large archives serialize uploads and displace useful cache data on

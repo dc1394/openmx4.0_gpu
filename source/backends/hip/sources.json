@@ -1087,7 +1087,18 @@
     "openmx_stress_workspace.h",
     "openmx_xc_workspace.h",
     "openmx_core_angular_grid.h",
-    "openmx_mechanical_workspace.h"
+    "openmx_mechanical_workspace.h",
+    "openmx_host_simd.c",
+    "openmx_host_simd.h",
+    "openmx_core_host_simd.h",
+    "openmx_core_olg.h",
+    "openmx_core_vna_simd.h",
+    "openmx_core_force_simd.h",
+    "openmx_core_force_vna_simd.h",
+    "openmx_core_energy_simd.h",
+    "openmx_core_orbitals_simd.h",
+    "openmx_setpro_gaunt.h",
+    "openmx_setpro_host.h"
   ],
   "integrated_overrides": {
     "gemmul8_bridge.cu": "src/gemmul8_bridge.cu",

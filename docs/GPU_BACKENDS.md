@@ -256,6 +256,34 @@ Kokkos の型・ISA フラグが C ABI やデバイス翻訳単位へ出ない�
 各群は `core/tests/test_host_<family>.cpp`（scalar と各 ISA の bit 一致、元ループの転写との
 一致、不正引数の拒否）と `core/benchmarks/<family>_*.cpp` を持ちます。
 
+#### デバイスで処理できない段階はホストの SIMD 経路へ（2026-10-26）
+
+各 GPU 段階は、デバイス経路に入る前の判定（作業領域・バッチ・アーカイブの見積もり）で
+`OpenMX_HostSimdStageOnHost(stage, need, budget)`（`source/openmx_host_simd.c`）を呼びます。
+`mpi_comm_level1` 上の集団呼び出しで、全 rank が同じ位置で呼び、同じ答えを受け取ります。
+ある rank のデバイスが使えない、作業領域が収まらない、または収めるのに
+`OPENMX_HOST_SIMD_MAX_PIECES`（既定 8）を超える分割が要るとき、その rank はホストに投票し、
+1 票でも全 rank がその段階をホストの SIMD 経路で実行します（デバイスと容量回復の集団ループを共有するため）。
+デバイスに収まる通常の実行では投票は 0 で、デバイス経路と容量回復は従来どおりです。
+デバイス処理が途中で失敗した場合も、集団の整合を保てる範囲で、容量タスクの逐次ホスト本体ではなく
+ホストの SIMD 経路で再計算します。`OPENMX_HOST_SIMD=legacy` では、デバイスが使えない場合だけ
+ホストへ移る従来の振る舞いです。`level.of.stdout >= 2` で rank 0 が判定を 1 行報告します。
+
+| 段階 | 判定の位置 | ホスト側 |
+| --- | --- | --- |
+| truncation の重なり格子 | 装置アリーナの見積もり / 純 CPU 入力 / 途中失敗 | 写像形式の探索と圧縮 |
+| Set_Orbitals_Grid | 装置部分の一括確保の見積もり / 途中失敗 | `Orbs_Grid` 行への直接書き込み |
+| Set_ProExpn_VNA | DS_VNA のバッチ、HVNA アーカイブの常駐、HVNA2/3 のバッチ / 途中失敗 | CPU の SIMD カーネル |
+| Set_Hamiltonian | ターン計画・逐次生成タイルの見積もり、DC/Krylov の容量回復 / 途中失敗 | `OpenMX_Grid_Hamiltonian_CPU`（`_Ranges`） |
+| Set_Density_Grid | 局所経路の見積もり | `OpenMX_Grid_Density_CPU`、借用なし |
+| Force3 / Force4B / Force_HNL | トレース・アーカイブの常駐見積もり / 途中失敗 | 軌道微分と縮約、融合トレース、共線 dHNL の SIMD |
+| Total_Energy | EH0・Exc0・格子和・双極子・CWF の各バッチ / 途中失敗 | 中性原子の対、XC 殻、ホストの格子和 |
+| バンド密度行列 | GPU DM の見積もり / 途中失敗 | `BandCol_DM_Block` |
+
+HIP 版は共有ソースの経路を引き継ぎますが、HIP 専用の上書きファイル（`backends/hip/src/`）には
+判定を入れていません。新しいヘッダーと `openmx_host_simd.c` は HIP の `sources.json` の
+`integrated_shared` に登録しています。
+
 ## 共通コードとバックエンド境界
 
 CUDA/HIP で重複していた 56 ファイルを `source/` の単一ソースへ統合しました。

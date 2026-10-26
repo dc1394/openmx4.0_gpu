@@ -24,6 +24,8 @@
 #define  measure_time   0
 
 int Set_Density_Grid_GPU_Capacity(int,int,double *****,double ***);
+/* Set_Density_Grid_GPU.c: the stage vote of the last local preparation */
+int Set_Density_Grid_GPU_Local_StageOnHost(void);
 
 
 double Set_Density_Grid(OpenMXGridWorkspace *grid, const OpenMXDensityCacheHooks *cache_hooks, const OpenMXAtomicViews *atomic, int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, double **Density_Grid_B0, const OpenMXLocalBasisViews *local_basis)
@@ -55,7 +57,7 @@ double Set_Density_Grid(OpenMXGridWorkspace *grid, const OpenMXDensityCacheHooks
   int numprocs,myid,tag=999,ID,IDS,IDR;
   double Stime_atom, Etime_atom;
   double time0,time1,time2;
-  int use_local_gpu = 0;
+  int use_local_gpu = 0, stage_on_host = 0;
   int local_ok = 0, local_any = 0, local_path = 0, local_failed = 0, failed_ranks = 0;
   MPI_Request failed_request = MPI_REQUEST_NULL;
 
@@ -92,6 +94,11 @@ double Set_Density_Grid(OpenMXGridWorkspace *grid, const OpenMXDensityCacheHooks
     int flags[2], reduced[2];
 
     local_ok = Set_Density_Grid_GPU_Local_Prepare(atomic, Cnt_kind,Calc_CntOrbital_ON);
+    /* The preparation ends with the stage vote (collective): when the device
+       cannot hold the distributed quadrature in a few pieces on some rank,
+       every rank has declined it and takes the host SIMD quadrature below,
+       without the one-rank service or the capacity recovery. */
+    stage_on_host = Set_Density_Grid_GPU_Local_StageOnHost();
     /* every rank capable (the minimum of ok) and any rank capable (that of -ok) */
     flags[0] = local_ok;
     flags[1] = -local_ok;
@@ -112,7 +119,7 @@ double Set_Density_Grid(OpenMXGridWorkspace *grid, const OpenMXDensityCacheHooks
   /* A single GPU-owner rank can construct the complete B partition and
      bypass the per-rank atom-density/A-to-B path below.  A return value of
      zero keeps the original CPU/OpenMP implementation as the fallback. */
-  if (!use_local_gpu){
+  if (!use_local_gpu && !stage_on_host){
     if (!Set_Density_Grid_GPU_Local_KeepDistributed() &&
         Set_Density_Grid_GPU_Service(cache_hooks, Cnt_kind,Calc_CntOrbital_ON,CDM,Density_Grid_B0,&time0)){
       Set_Density_Grid_GPU_Local_Report(1,0);
@@ -332,8 +339,9 @@ double Set_Density_Grid(OpenMXGridWorkspace *grid, const OpenMXDensityCacheHooks
   }
 
   /* All ranks enter the recovery phase. Completed ranks can lend their
-     node's permitted GPUs; declined ranks publish only a complete shard. */
-  if (Set_Density_Grid_GPU_Capacity(Cnt_kind,use_local_gpu,CDM,Tmp_Den_Grid)) {
+     node's permitted GPUs; declined ranks publish only a complete shard.
+     After a host vote no rank enters it (the vote is the same everywhere). */
+  if (!stage_on_host && Set_Density_Grid_GPU_Capacity(Cnt_kind,use_local_gpu,CDM,Tmp_Den_Grid)) {
     use_local_gpu=1;
     local_failed=0;
   }
@@ -511,7 +519,8 @@ double Set_Density_Grid(OpenMXGridWorkspace *grid, const OpenMXDensityCacheHooks
   if (local_any){
     MPI_Wait(&failed_request,MPI_STATUS_IGNORE);
   }
-  Set_Density_Grid_GPU_Local_Report(local_path,failed_ranks);
+  /* after a host vote the helper has reported the decision */
+  if (!stage_on_host) Set_Density_Grid_GPU_Local_Report(local_path,failed_ranks);
 
   /* Density and packet storage are owned by this calculation. */
 

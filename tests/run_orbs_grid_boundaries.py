@@ -4,10 +4,26 @@
 Only CUDA/OpenACC transfers and the input globals are stubbed. ASan/UBSan check
 the extracted production functions, including first/last radial intervals.
 """
+import ctypes
 import os
 from pathlib import Path
 import subprocess
 import tempfile
+
+
+def without_aslr():
+    """Run the sanitized check like `setarch -R`: ASan maps its shadow at a
+    fixed range, and with the mmap randomization of recent kernels a shared
+    library can land inside it, which aborts the binary at startup ("Shadow
+    memory range interleaves with an existing memory mapping"). Disabling
+    address-space randomization for the child keeps every sanitizer check."""
+    try:
+        libc = ctypes.CDLL(None, use_errno=True)
+        persona = libc.personality(0xffffffff)
+        if persona != -1:
+            libc.personality(persona | 0x0040000)  # ADDR_NO_RANDOMIZE
+    except (OSError, AttributeError):
+        pass
 
 root = Path(__file__).resolve().parents[1]
 source = (root / 'source/Set_Orbitals_Grid.c').read_text()
@@ -133,4 +149,4 @@ with tempfile.TemporaryDirectory(prefix='openmx-orbs-test-') as tmp:
                     '-fsanitize=address,undefined', '-fno-omit-frame-pointer',
                     '-fno-pie', '-no-pie', '-I' + str(root / 'source'),
                     str(test), str(root / 'source/openmx_precision.c'), '-lm', '-o', str(exe)], check=True)
-    subprocess.run([str(exe)], check=True)
+    subprocess.run([str(exe)], check=True, preexec_fn=without_aslr)

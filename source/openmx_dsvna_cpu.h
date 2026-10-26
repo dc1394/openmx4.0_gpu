@@ -6,37 +6,7 @@
 #include "openmx_projector_matrix.h"
 #include "openmx_host_simd.h"
 #include "openmx_core_vna_simd.h"
-
-/* Gaunt coefficients Gaunt(L0,M0,L1,M1,LL,M0-M1) tabulated once per call:
-   the m sums of the projector expansions only ever ask for M0-M1, so the
-   table replaces a pure function whose factorial loops dominated the m
-   loops. Values are the function's own, bitwise. */
-typedef struct { int l0max,l1max,llmax; size_t row_stride; double *values; } SetProGauntTable;
-
-/* values[(((L0*(L0+1)+M0)*(llmax+1)+LL)*(l1max+1)+L1)*(2*l1max+1)+(L1+M1)]:
-   M1 is the contiguous dimension, so the Core kernels load the 2*L1+1
-   coefficients of one (L0,M0,LL,L1) as vector lanes. */
-static inline size_t SetPro_GauntTable_Row(const SetProGauntTable *t,int L0,int M0,int LL,int L1)
-{
-  return ((((size_t)(L0*(L0+1)+M0))*(size_t)(t->llmax+1)+(size_t)LL)*(size_t)(t->l1max+1)+(size_t)L1)*t->row_stride;
-}
-static void SetPro_GauntTable_Build(SetProGauntTable *t,int l0max,int l1max,int llmax)
-{
-  const size_t n0=(size_t)(l0max+1)*(l0max+1);
-  int L0,M0,L1,M1,LL;
-  t->l0max=l0max;t->l1max=l1max;t->llmax=llmax;t->row_stride=(size_t)(2*l1max+1);
-  t->values=(double*)SetPro_checked_malloc(sizeof(double)*n0*(size_t)(llmax+1)*(size_t)(l1max+1)*t->row_stride);
-  memset(t->values,0,sizeof(double)*n0*(size_t)(llmax+1)*(size_t)(l1max+1)*t->row_stride);
-  for (L0=0; L0<=l0max; L0++) for (M0=-L0; M0<=L0; M0++)
-    for (LL=0; LL<=llmax; LL++)
-      for (L1=0; L1<=l1max; L1++) for (M1=-L1; M1<=L1; M1++)
-        t->values[SetPro_GauntTable_Row(t,L0,M0,LL,L1)+(size_t)(L1+M1)] = Gaunt(L0,M0,L1,M1,LL,M0-M1);
-}
-static inline double SetPro_GauntTable_At(const SetProGauntTable *t,int L0,int M0,int L1,int M1,int LL)
-{
-  return t->values[SetPro_GauntTable_Row(t,L0,M0,LL,L1)+(size_t)(L1+M1)];
-}
-static void SetPro_GauntTable_Free(SetProGauntTable *t) { free(t->values); t->values=NULL; }
+#include "openmx_setpro_gaunt.h"
 
 /* Read-only inputs of the Core's host kernels for DS_VNA, shared by all
    workers: the projector table transposed to [point][projector] per species
@@ -67,7 +37,7 @@ static void SetPro_DsvnaHost_Build(SetProDsvnaHost *host,const OpenMXVnaPreparat
   host->table_stride=((size_t)projectors+7)/8*8;
   /* the flat projector index of the sums is L1*multiplicity+Mul1; otherwise keep the loops */
   if ((preparation->projector_lmax+1)*preparation->projector_multiplicity==projectors && projectors>0) {
-    host->projector_table=(double*)SetPro_checked_malloc(sizeof(double)*((size_t)species*points*host->table_stride+1));
+    host->projector_table=(double*)SetPro_HostAlloc(sizeof(double)*((size_t)species*points*host->table_stride+1));
     memset(host->projector_table,0,sizeof(double)*(size_t)species*points*host->table_stride);
     for (spe=0; spe<species; spe++){
       double *table=host->projector_table+(size_t)spe*points*host->table_stride;
@@ -88,7 +58,10 @@ static void SetPro_DsvnaHost_Build(SetProDsvnaHost *host,const OpenMXVnaPreparat
   }
   SetPro_GauntTable_Build(&host->gaunt,l0max,preparation->projector_lmax,llmax);
   host->l0max=l0max;host->l1max=preparation->projector_lmax;host->llmax=llmax;
-  host->angular=(2*l0max+1<=16 && 2*host->l1max+1<=32 && host->projector_table!=NULL);
+  /* the Core conversion writes float DS_VNA rows: double storage keeps the
+     legacy m sum and conversion (the other host SIMD stages are unchanged) */
+  host->angular=(sizeof(Type_DS_VNA)==sizeof(float) && 2*l0max+1<=16 && 2*host->l1max+1<=32 &&
+                 host->projector_table!=NULL);
   host->pad=l0max+host->l1max;
   host->cy_stride=(size_t)(host->pad+(2*llmax+1>llmax+l0max+host->l1max+8?2*llmax+1:llmax+l0max+host->l1max+8)+8);
   host->cy_length=(size_t)(llmax+1)*host->cy_stride;
@@ -96,8 +69,8 @@ static void SetPro_DsvnaHost_Build(SetProDsvnaHost *host,const OpenMXVnaPreparat
   if (host->angular){
     const size_t width=host->width,count=(size_t)(host->l1max+1)*width*width;
     int l,row,col;
-    host->convt_r=(double*)SetPro_checked_malloc(sizeof(double)*(count+1));
-    host->convt_i=(double*)SetPro_checked_malloc(sizeof(double)*(count+1));
+    host->convt_r=(double*)SetPro_HostAlloc(sizeof(double)*(count+1));
+    host->convt_i=(double*)SetPro_HostAlloc(sizeof(double)*(count+1));
     memset(host->convt_r,0,sizeof(double)*count);memset(host->convt_i,0,sizeof(double)*count);
     for (l=0; l<=host->l1max; l++)
       for (row=0; row<=2*l; row++)
@@ -190,23 +163,23 @@ static void SetPro_DSVNA_CPU(const OpenMXProjectorMatrix *DS_VNA, const OpenMXVn
     const size_t simd_plane = buffers.orbital_capacity*buffers.projector_capacity;
     const size_t simd_sum_slice = buffers.radial_capacity*(size_t)Num_RVNA;   /* SumNL0 of one LL */
     if (host.angular) {
-      simd_cy = (double*)SetPro_checked_malloc(sizeof(double)*(6*host.cy_length+1));
+      simd_cy = (double*)SetPro_HostAlloc(sizeof(double)*(6*host.cy_length+1));
       memset(simd_cy,0,sizeof(double)*6*host.cy_length);
-      simd_acc = (double*)SetPro_checked_malloc(sizeof(double)*(8*simd_plane+1));
-      simd_sums = (double*)SetPro_checked_malloc(sizeof(double)*(2*(size_t)(host.llmax+1)*simd_sum_slice+1));
-      simd_cpr = (double*)SetPro_checked_malloc(sizeof(double)*(size_t)(host.llmax+1));
-      simd_cpi = (double*)SetPro_checked_malloc(sizeof(double)*(size_t)(host.llmax+1));
-      simd_s0 = (double*)SetPro_checked_malloc(sizeof(double)*(size_t)(host.llmax+1));
-      simd_s1 = (double*)SetPro_checked_malloc(sizeof(double)*(size_t)(host.llmax+1));
-      simd_grows = (const double**)SetPro_checked_malloc(sizeof(double*)*(size_t)(host.llmax+1));
+      simd_acc = (double*)SetPro_HostAlloc(sizeof(double)*(8*simd_plane+1));
+      simd_sums = (double*)SetPro_HostAlloc(sizeof(double)*(2*(size_t)(host.llmax+1)*simd_sum_slice+1));
+      simd_cpr = (double*)SetPro_HostAlloc(sizeof(double)*(size_t)(host.llmax+1));
+      simd_cpi = (double*)SetPro_HostAlloc(sizeof(double)*(size_t)(host.llmax+1));
+      simd_s0 = (double*)SetPro_HostAlloc(sizeof(double)*(size_t)(host.llmax+1));
+      simd_s1 = (double*)SetPro_HostAlloc(sizeof(double)*(size_t)(host.llmax+1));
+      simd_grows = (const double**)SetPro_HostAlloc(sizeof(double*)*(size_t)(host.llmax+1));
     }
     if (host.mode!=OPENMX_HOST_SIMD_LEGACY) {
-      simd_x = (double*)SetPro_checked_malloc(sizeof(double)*(size_t)points);
-      simd_w = (double*)SetPro_checked_malloc(sizeof(double)*(2*buffers.radial_capacity*(size_t)points+1));
-      simd_a0 = (const double**)SetPro_checked_malloc(sizeof(double*)*(buffers.radial_capacity+1));
-      simd_a1 = (const double**)SetPro_checked_malloc(sizeof(double*)*(buffers.radial_capacity+1));
-      simd_w0 = (const double**)SetPro_checked_malloc(sizeof(double*)*(buffers.radial_capacity+1));
-      simd_w1 = (const double**)SetPro_checked_malloc(sizeof(double*)*(buffers.radial_capacity+1));
+      simd_x = (double*)SetPro_HostAlloc(sizeof(double)*(size_t)points);
+      simd_w = (double*)SetPro_HostAlloc(sizeof(double)*(2*buffers.radial_capacity*(size_t)points+1));
+      simd_a0 = (const double**)SetPro_HostAlloc(sizeof(double*)*(buffers.radial_capacity+1));
+      simd_a1 = (const double**)SetPro_HostAlloc(sizeof(double*)*(buffers.radial_capacity+1));
+      simd_w0 = (const double**)SetPro_HostAlloc(sizeof(double*)*(buffers.radial_capacity+1));
+      simd_w1 = (const double**)SetPro_HostAlloc(sizeof(double*)*(buffers.radial_capacity+1));
       for (i=0; i<(int)buffers.radial_capacity; i++){
         simd_w0[i] = simd_w+(size_t)(2*i)*points;
         simd_w1[i] = simd_w+(size_t)(2*i+1)*points;
@@ -617,7 +590,8 @@ static void SetPro_DSVNA_CPU(const OpenMXProjectorMatrix *DS_VNA, const OpenMXVn
               convert.conv0 = (const double*)(tables->conversion+(size_t)L0*host.width*host.width);
               convert.convt_r = host.convt_r+(size_t)L1*host.width*host.width;
               convert.convt_i = host.convt_i+(size_t)L1*host.width*host.width;
-              for (k=0; k<4; k++) convert.out[k] = openmx_projector_block_row(DS_VNA,k,Mc_AN,h_AN,num0)+num1;
+              for (k=0; k<4; k++)   /* float storage here (host.angular) */
+                convert.out[k] = (float*)(void*)(openmx_projector_block_row(DS_VNA,k,Mc_AN,h_AN,num0)+num1);
               if (!openmx_core_vna_convert(&convert,host.mode))
                 SetPro_gpu_abort("Set_ProExpn_VNA: the Core refused a conversion block it accepted at planning.");
               num1 = num1 + 2*L1 + 1;

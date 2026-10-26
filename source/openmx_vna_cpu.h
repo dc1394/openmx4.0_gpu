@@ -7,11 +7,12 @@
 #include "openmx_core_vna_matrix.h"
 #include "openmx_host_simd.h"
 #include "openmx_core_vna_simd.h"
+#include "openmx_setpro_gaunt.h"
 
 /* Read-only inputs of the Core's host kernels for HVNA23, shared by all
    workers: the product rows of every species transposed to [point][order]
-   per pair of radial functions (L0 <= L1), and the Gaunt table of
-   openmx_dsvna_cpu.h. Legacy mode leaves everything empty. */
+   per pair of radial functions (L0 <= L1), and the Gaunt table
+   (openmx_setpro_gaunt.h). Legacy mode leaves everything empty. */
 typedef struct {
   int mode, points, order_stride, radials_max;
   size_t *species_offset;   /* [species+1] blocks */
@@ -32,8 +33,8 @@ static void SetPro_Vna23Host_Build(SetProVna23Host *host,const OpenMXVnaPreparat
   host->points=points;
   for (spe=0; spe<species; spe++) if (lmax<preparation->maximum_angular[spe]) lmax=preparation->maximum_angular[spe];
   host->order_stride=(2*lmax+1+7)/8*8;
-  host->species_offset=(size_t*)SetPro_checked_malloc(sizeof(size_t)*(size_t)(species+1));
-  host->radials=(int*)SetPro_checked_malloc(sizeof(int)*(size_t)(species>0?species:1));
+  host->species_offset=(size_t*)SetPro_HostAlloc(sizeof(size_t)*(size_t)(species+1));
+  host->radials=(int*)SetPro_HostAlloc(sizeof(int)*(size_t)(species>0?species:1));
   for (spe=0; spe<species; spe++){
     int radials=0;
     for (L0=0; L0<=preparation->maximum_angular[spe]; L0++)
@@ -44,7 +45,7 @@ static void SetPro_Vna23Host_Build(SetProVna23Host *host,const OpenMXVnaPreparat
     blocks+=(size_t)radials*radials;
   }
   host->species_offset[species]=blocks;
-  host->product=(double*)SetPro_checked_malloc(sizeof(double)*(blocks*(size_t)points*host->order_stride+1));
+  host->product=(double*)SetPro_HostAlloc(sizeof(double)*(blocks*(size_t)points*host->order_stride+1));
   for (spe=0; spe<species; spe++){
     for (L0=0; L0<=preparation->maximum_angular[spe]; L0++){
       for (Mul0=0; Mul0<preparation->basis_counts[(size_t)spe*preparation->angular_channels+L0]; Mul0++){
@@ -132,12 +133,12 @@ static void SetPro_VNA23_CPU(const OpenMXDoubleBlockMatrix *HVNA23, int mirror, 
     dcomplex *simd_sh = NULL;
     const int simd_orders = host.mode!=OPENMX_HOST_SIMD_LEGACY ? host.order_stride : 0;
     if (host.mode!=OPENMX_HOST_SIMD_LEGACY) {
-      simd_x = (double*)SetPro_checked_malloc(sizeof(double)*(size_t)points);
-      simd_sphb = (double*)SetPro_checked_malloc(sizeof(double)*(size_t)points*simd_orders);
-      simd_sphbp = (double*)SetPro_checked_malloc(sizeof(double)*(size_t)points*simd_orders);
-      simd_sum = (double*)SetPro_checked_malloc(sizeof(double)*(size_t)simd_orders);
-      simd_sumr = (double*)SetPro_checked_malloc(sizeof(double)*(size_t)simd_orders);
-      simd_sh = (dcomplex*)SetPro_checked_malloc(sizeof(dcomplex)*3*(size_t)simd_orders*simd_orders);
+      simd_x = (double*)SetPro_HostAlloc(sizeof(double)*(size_t)points);
+      simd_sphb = (double*)SetPro_HostAlloc(sizeof(double)*(size_t)points*simd_orders);
+      simd_sphbp = (double*)SetPro_HostAlloc(sizeof(double)*(size_t)points*simd_orders);
+      simd_sum = (double*)SetPro_HostAlloc(sizeof(double)*(size_t)simd_orders);
+      simd_sumr = (double*)SetPro_HostAlloc(sizeof(double)*(size_t)simd_orders);
+      simd_sh = (dcomplex*)SetPro_HostAlloc(sizeof(dcomplex)*3*(size_t)simd_orders*simd_orders);
     }
 
     if (!mirror && omp_get_thread_num() == 0) {

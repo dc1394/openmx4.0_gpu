@@ -87,6 +87,11 @@ static float ***atoms[4][3];static float ****directions[4];
 static double density[2][2][3][2][2];static double *density_rows[2][2][3][2];
 static double **density_blocks[2][2][3];static double ***density_atoms[2][2];static double ****cdm[2];
 #include "openmx_force_gpu_resources.h"
+#include "openmx_host_simd.h"
+/* The stage's host SIMD policy vote (CUDA Force4B_GpuBegin), recorded: the
+   device answer keeps the paths of modes 0-13; mode 14 checks the host one. */
+static int host_vote=0,votes=0;static size_t vote_need=0,vote_budget=0;
+int OpenMX_HostSimdStageOnHost(const char*,size_t need,size_t budget){++votes;vote_need=need;vote_budget=budget;return host_vote;}
 static void Force4B_GpuEnd(Force4BGpuContext*);
 /* OPENMX_FORCE4B_PRODUCTION */
 
@@ -108,6 +113,7 @@ void reset(int mode){
     if(mode==10){recovery=1;host_room=1;}
     if(mode==11)peer_enabled=1;
     if(mode==13)Matomnum=MatomnumF=0;
+    host_vote=mode==14;votes=0;vote_need=vote_budget=0;
 }
 void archives(Force4BGpuContext *g){
     check(g->flat_stride==18 && g->halo_count==27 && g->c2_stride==15,"archive shapes changed");
@@ -152,9 +158,23 @@ int operation(OpenMXSolverInvocation *scope,void *opaque,double *result){
     auto end=[&]{if(c.stage==0)Force4B_GpuEnd(archive);else if(c.stage==1)Force4B_GpuCase1StreamEnd(stream1);
         else if(c.stage==2)Force4B_GpuCase1TurnsEnd(turns);else Force4B_GpuCase2StreamEnd(stream2);};
     begin();
-    if(c.mode==7 || c.mode==8){check(!enabled && !view && !queries && !communicators,"disabled stage allocated or queried GPU state");*result=1;return 1;}
+    if(c.mode==7 || c.mode==8){check(!enabled && !view && !queries && !communicators && !votes,"disabled stage allocated or queried GPU state");*result=1;return 1;}
+#if !OPENMX_GPU_HIP
+    /* The CUDA admission votes once with the residency figures: need = the
+       case lifetime, budget = free minus the node reserve (272 MiB for one
+       node rank), zero without a usable device answer; the capacity test
+       passes need 0. The streams and rank turns do not vote. */
+    if(!c.outer){
+        check(votes==(c.stage==0),"policy vote count differs");
+        if(c.stage==0){
+            check(c.mode==9 || c.mode==10?vote_need==0:vote_need>0,"policy vote need differs");
+            check(vote_budget==(c.mode==4 || c.mode==9 || c.mode==10?0:(size_t(1)<<40)-272ULL*1024*1024),"policy vote budget differs");
+        }
+    }
+#endif
     check(view && view!=c.outer && resources,"missing independent invocation-owned state");
-    const bool expected_enabled=c.stage==0?c.mode!=10:c.stage==2?
+    /* mode 14 votes for the host: only the CUDA admission has the vote */
+    const bool expected_enabled=c.stage==0?c.mode!=10 && (c.mode!=14 || OPENMX_GPU_HIP):c.stage==2?
         (c.mode!=4 && c.mode!=10 && c.mode!=11 && c.mode!=13):
         (c.mode!=4 && c.mode!=5 && c.mode!=6 && c.mode!=13);
     check(bool(enabled)==expected_enabled,"GPU admission changed");
@@ -191,7 +211,7 @@ int main(){
             for(int h=0;h<3;++h){density_blocks[s][a][h]=density_rows[s][a][h];for(int r=0;r<2;++r){density_rows[s][a][h][r]=density[s][a][h][r];
                 for(int j=0;j<2;++j)density[s][a][h][r][j]=.01*(1+s+a+h+r+j);}}}}
         omp_set_dynamic(0);int cases=0,failures=0;
-        for(int threads:{1,2,4,8}){omp_set_num_threads(threads);for(int stage=0;stage<4;++stage)for(int mode=0;mode<14;++mode){
+        for(int threads:{1,2,4,8}){omp_set_num_threads(threads);for(int stage=0;stage<4;++stage)for(int mode=0;mode<15;++mode){
             reset(mode);Case c{stage,mode};char error[256];double result=31;
             const int ok=openmx_core_solver_run(threads,operation,&c,&result,error,sizeof(error));
             if(ok!=(mode!=2 && mode!=3))throw std::runtime_error("stage="+std::to_string(stage)+" mode="+std::to_string(mode)+": "+error);check(result==(ok?1:31),"failed callback published output");

@@ -4,6 +4,7 @@
 #include "openmx_projector_matrix.h"
 #include "openmx_host_simd.h"
 #include "openmx_core_vna_simd.h"
+#include "openmx_setpro_host.h"
 #include <omp.h>
 
 /* Transposed projector blocks for the Core's host HVNA kernel
@@ -14,7 +15,9 @@
    the halo cache lives for the whole ring (one allocation, reset per received
    atom). Under fp32 the cache holds the float lanes; without fp32 it holds
    the lanes widened to double, and each call also widens the broadcast block
-   once, so the kernel's inner loop needs no conversion. Padding lanes are
+   once, so the kernel's inner loop needs no conversion. Double projector
+   storage takes the double path under both settings: its product
+   (double)(left*right) is already the double product. Padding lanes are
    never read (the kernel masks its tail lanes) and stay uninitialized.
    Legacy mode allocates nothing, and the legacy rows below stay in use. */
 typedef struct {
@@ -26,20 +29,23 @@ typedef struct {
   int *ready;
 } SetProHvnaHost;
 
+/* Double operands: the products are double ones. */
+static inline int SetPro_HvnaHost_Fp64(int fp32) { return !fp32 || sizeof(Type_DS_VNA)!=sizeof(float); }
+
 static void SetPro_HvnaHost_Init(SetProHvnaHost *h,int right_transposed,int blocks,int components,
     int max_orbitals,int fp32)
 {
   memset(h,0,sizeof(*h));
   h->mode=OpenMX_HostSimdMode();h->right_transposed=right_transposed;h->blocks=blocks;h->atom=-1;
-  h->fp64=!fp32;h->components=(size_t)(components>0?components:0);
+  h->fp64=SetPro_HvnaHost_Fp64(fp32);h->components=(size_t)(components>0?components:0);
   h->lane_stride=((size_t)max_orbitals+15)/16*16;h->block_values=h->components*h->lane_stride;
   if (h->mode==OPENMX_HOST_SIMD_LEGACY || blocks<=0 || components<=0 || max_orbitals<=0) return;
   if (h->fp64) {
-    h->dvalues=(double*)SetPro_checked_malloc(sizeof(double)*(h->block_values*(size_t)blocks+1));
-    h->broadcast=(double*)SetPro_checked_malloc(sizeof(double)*((size_t)max_orbitals*h->components+1));
+    h->dvalues=(double*)SetPro_HostAlloc(sizeof(double)*(h->block_values*(size_t)blocks+1));
+    h->broadcast=(double*)SetPro_HostAlloc(sizeof(double)*((size_t)max_orbitals*h->components+1));
   }
-  else h->values=(float*)SetPro_checked_malloc(sizeof(float)*(h->block_values*(size_t)blocks+1));
-  h->ready=(int*)SetPro_checked_malloc(sizeof(int)*(size_t)blocks);
+  else h->values=(float*)SetPro_HostAlloc(sizeof(float)*(h->block_values*(size_t)blocks+1));
+  h->ready=(int*)SetPro_HostAlloc(sizeof(int)*(size_t)blocks);
   memset(h->ready,0,sizeof(int)*(size_t)blocks);
 }
 static void SetPro_HvnaHost_Reset(SetProHvnaHost *h,int atom)
@@ -155,9 +161,10 @@ static int SetPro_HVNA_Host_Block(SetProHvnaHost *host,const OpenMXHvnaProjector
     int first,int parallel_rows,int fp32)
 {
   OpenMXVnaHvnaBlock b;
-  if (!host || !host->ready || (host->right_transposed?kl:k)>=host->blocks || host->fp64!=!fp32) return 0;
+  if (!host || !host->ready || (host->right_transposed?kl:k)>=host->blocks ||
+      host->fp64!=SetPro_HvnaHost_Fp64(fp32)) return 0;
   memset(&b,0,sizeof(b));
-  b.rows=rows;b.columns=columns;b.groups=projectors->groups;b.fp32=fp32;b.first=first;
+  b.rows=rows;b.columns=columns;b.groups=projectors->groups;b.fp32=!host->fp64;b.first=first;
   b.lengths=projectors->lengths;b.energies=projectors->energies+(size_t)projector_species*projectors->groups;
   b.matrix=workspace->matrix;b.stride=workspace->orbital_capacity;
   if (host->right_transposed) {
@@ -169,7 +176,7 @@ static int SetPro_HVNA_Host_Block(SetProHvnaHost *host,const OpenMXHvnaProjector
     }
     else {
       b.right=SetPro_HvnaHost_Lanes(host,kl,right,right_stride,columns);
-      b.left=left;b.left_stride=left_stride;
+      b.left=(const float*)(const void*)left;b.left_stride=left_stride;   /* float storage here */
     }
     b.right_stride=host->lane_stride;
     if (parallel_rows && rows>8 && omp_get_max_threads()>1) {
@@ -195,7 +202,7 @@ static int SetPro_HVNA_Host_Block(SetProHvnaHost *host,const OpenMXHvnaProjector
   }
   else {
     b.left=SetPro_HvnaHost_Lanes(host,k,left,left_stride,rows);
-    b.right=right;b.right_stride=right_stride;
+    b.right=(const float*)(const void*)right;b.right_stride=right_stride;   /* float storage here */
   }
   b.left_stride=host->lane_stride;
   return openmx_core_vna_hvna_block(&b,host->mode);

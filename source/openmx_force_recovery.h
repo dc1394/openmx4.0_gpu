@@ -1,6 +1,8 @@
 #ifndef OPENMX_FORCE_RECOVERY_H
 #define OPENMX_FORCE_RECOVERY_H
 #include "openmx_core_force_recovery.h"
+#include "openmx_host_simd.h"
+#include "openmx_core_force_simd.h"
 
 /* The SDK kernels keep their backend-specific reduction policies. Packing and
    MPI participation are shared; each synchronous dispatch borrows one C++
@@ -73,9 +75,111 @@ static int Force4B_RecoveryPacket(const OpenMXForceVnaRecoveryView *packet,void 
     return 1; /* execute also returns zero after successful CPU completion. */
 }
 
+/* Host SIMD body of the recovery items (OPENMX_HOST_SIMD): the quantity of
+   Force4B_capacity_kernel with the Core's projector block kernel, in that
+   kernel's sequential order (per element the k blocks ascending, then the
+   weighted sum over the elements row-major). Rows are read in place from the
+   host archives, else staged from the device archives. Local to the rank. */
+static void Force4B_capacity_rows(const float *base,int rows,int np,const float **table)
+{
+    for(int r=0;r<rows;r++)table[r]=base+(size_t)r*(size_t)np;
+}
+static void Force4B_capacity_host(int kind,Force4BGpuContext *g,int nitems,const Force4BGpuItem *items,
+    const size_t *a,const size_t *b,const int *halo,const double *cdm,double *output)
+{
+    const int np=g->num_proj,fp32=openmx_fp32_enabled(),mode=OpenMX_HostSimdMode();
+    int max_rows=1,p;
+    for(p=0;p<nitems;p++){
+        if(max_rows<items[p].ian)max_rows=items[p].ian;
+        if(max_rows<items[p].jan)max_rows=items[p].jan;
+    }
+#pragma omp parallel if(!omp_in_parallel())
+    {
+        const size_t plane=(size_t)max_rows*(size_t)max_rows;
+        const size_t scratch_bytes=openmx_core_force_vna_scratch(max_rows,np,2,0);
+        const float **tables=(const float**)malloc(sizeof(float*)*8*(size_t)max_rows);
+        float *stage=(float*)malloc(sizeof(float)*8*(size_t)max_rows*(size_t)(np?np:1));
+        double *block=(double*)malloc(sizeof(double)*6*plane);
+        void *scratch=malloc(scratch_bytes?scratch_bytes:1);
+        if(!tables || !stage || !block || !scratch)Force4B_gpu_abort("Force4B: cannot allocate the host recovery workspace.");
+        double *sum=block+3*plane;
+        int q;
+#pragma omp for schedule(dynamic)
+        for(q=0;q<nitems;q++){
+            const Force4BGpuItem it=items[q];
+            const int ian=it.ian,jan=it.jan,mn=ian*jan;
+            const size_t rows_a=(size_t)ian*(size_t)np,rows_b=(size_t)jan*(size_t)np;
+            const float **t[8];
+            OpenMXForceVnaBlock blk;
+            int e,c;
+            for(c=0;c<8;c++)t[c]=tables+(size_t)c*(size_t)max_rows;
+            memset(&blk,0,sizeof(blk));
+            blk.rows=ian;blk.columns=jan;blk.projectors=np;blk.fp32=fp32;blk.lanes_rows=0;blk.output_stride=(size_t)jan;
+            for(c=0;c<3;c++)blk.output[c]=block+(size_t)c*plane;
+            if(kind==1){
+                for(e=0;e<3*mn;e++)sum[(size_t)(e/mn)*plane+(size_t)(e%mn)]=0.0;
+                for(int k=it.k_off;k<it.k_off+it.k_n;k++){
+                    const float *right_host=halo[k]?g->halo_host:g->flat_host;
+                    const float *right_dev=halo[k]?g->halo_dev:g->flat_dev;
+                    for(int dir=1;dir<4;dir++){
+                        const size_t at=(size_t)dir*g->flat_stride+a[k];
+                        const float *base=g->flat_host?g->flat_host+at:stage+(size_t)(dir-1)*rows_a;
+                        if(!g->flat_host)Force4B_capacity_copy(stage+(size_t)(dir-1)*rows_a,NULL,g->flat_dev,at,rows_a);
+                        Force4B_capacity_rows(base,ian,np,t[dir-1]);
+                    }
+                    {
+                        const float *base=right_host?right_host+b[k]:stage+3*rows_a;
+                        if(!right_host)Force4B_capacity_copy(stage+3*rows_a,NULL,right_dev,b[k],rows_b);
+                        Force4B_capacity_rows(base,jan,np,t[3]);
+                    }
+                    blk.terms=1;
+                    for(c=0;c<3;c++)blk.derivative[c]=t[c];
+                    blk.value=t[3];
+                    if(!openmx_core_force_vna_block(&blk,scratch,scratch_bytes,mode))
+                        Force4B_gpu_abort("Force4B: the host recovery kernel refused a block.");
+                    for(c=0;c<3;c++)for(e=0;e<mn;e++)sum[(size_t)c*plane+(size_t)e]+=block[(size_t)c*plane+(size_t)e];
+                }
+            }else{
+                for(int dir=0;dir<4;dir++){
+                    const size_t at_a=(size_t)dir*g->c2_stride+a[q],at_b=(size_t)dir*g->c2_stride+b[q];
+                    const float *base_a=g->c2_host?g->c2_host+at_a:stage+(size_t)dir*rows_a;
+                    const float *base_b=g->c2_host?g->c2_host+at_b:stage+4*rows_a+(size_t)dir*rows_b;
+                    if(!g->c2_host){
+                        Force4B_capacity_copy(stage+(size_t)dir*rows_a,NULL,g->c2_dev,at_a,rows_a);
+                        Force4B_capacity_copy(stage+4*rows_a+(size_t)dir*rows_b,NULL,g->c2_dev,at_b,rows_b);
+                    }
+                    Force4B_capacity_rows(base_a,ian,np,t[dir]);
+                    Force4B_capacity_rows(base_b,jan,np,t[4+dir]);
+                }
+                blk.terms=2;
+                for(c=0;c<3;c++){blk.derivative[c]=t[1+c];blk.column_derivative[c]=t[5+c];}
+                blk.row_value=t[0];blk.value=t[4];
+                blk.output[0]=sum;blk.output[1]=sum+plane;blk.output[2]=sum+2*plane;
+                if(!openmx_core_force_vna_block(&blk,scratch,scratch_bytes,mode))
+                    Force4B_gpu_abort("Force4B: the host recovery kernel refused a block.");
+            }
+            {
+                double fx=0.0,fy=0.0,fz=0.0;
+                for(e=0;e<mn;e++){
+                    const double w=cdm[it.cdm_off+(size_t)e];
+                    fx+=w*sum[(size_t)e];fy+=w*sum[plane+(size_t)e];fz+=w*sum[2*plane+(size_t)e];
+                }
+                output[3*(size_t)q]=fx;output[3*(size_t)q+1]=fy;output[3*(size_t)q+2]=fz;
+            }
+        }
+        free(scratch);free(block);free(stage);free((void*)tables);
+    }
+}
+
 static void Force4B_capacity(int kind,Force4BGpuContext *g,int nitems,Force4BGpuItem *items,
     size_t *a,size_t *b,int *halo,double *cdm,double *output,int done)
 {
+    /* Host SIMD policy (uniform on every rank): no collective recovery; a
+       rank whose batch did not complete evaluates its items itself. */
+    if(OpenMX_HostSimdMode()!=OPENMX_HOST_SIMD_LEGACY){
+        if(!done)Force4B_capacity_host(kind,g,nitems,items,a,b,halo,cdm,output);
+        return;
+    }
     size_t first=done?(size_t)nitems:0;
     ForceVnaRecoveryWork work={kind,g,first,items,a,b,halo,cdm,output,mpi_comm_level1,{kind,g->num_proj,openmx_fp32_enabled()}};
     for(;;){
@@ -154,10 +258,114 @@ static int Force_HNL_RecoveryPacket(const OpenMXForceHnlRecoveryView *packet,voi
     return 1;
 }
 
+/* Host SIMD body of the nonlocal recovery items: the quantity of
+   Force_HNL_capacity_kernel through the Core's nonlocal block kernel, one
+   channel per projector entry l carrying ene[l], so that every product is
+   (ene[l]*a[l])*b[l] as in that kernel and the terms run in its order (the
+   derivative-row loop before the value-row loop of the second case). Then
+   the k blocks ascending and the weighted sum over the elements row-major.
+   The archives are host arrays. Local to the rank. */
+static void Force_HNL_capacity_host(int kind,ForceHNLGpuContext *g,int nitems,const Force4BGpuItem *items,
+    const size_t *a,const size_t *b,const int *halo,const int *ene,const int *nlp,const int *h0,
+    const double *cdm,double *output)
+{
+    const int mode=OpenMX_HostSimdMode();
+    int max_rows=1,max_np=1,p;
+    for(p=0;p<nitems;p++){
+        const Force4BGpuItem *it=items+p;
+        if(max_rows<it->ian)max_rows=it->ian;
+        if(max_rows<it->jan)max_rows=it->jan;
+        if(kind==1){for(int k=it->k_off;k<it->k_off+it->k_n;k++)if(max_np<nlp[k])max_np=nlp[k];}
+        else if(max_np<nlp[p])max_np=nlp[p];
+    }
+#pragma omp parallel if(!omp_in_parallel())
+    {
+        const size_t plane=(size_t)max_rows*(size_t)max_rows;
+        const size_t scratch_bytes=openmx_core_force_nl_scratch(max_rows,(size_t)max_np,2);
+        OpenMXForceProjectorChannel *channels=(OpenMXForceProjectorChannel*)calloc((size_t)max_np,sizeof(*channels));
+        dcomplex *planes=(dcomplex*)malloc(sizeof(dcomplex)*9*plane);
+        double *sum=(double*)malloc(sizeof(double)*3*plane);
+        void *scratch=malloc(scratch_bytes?scratch_bytes:1);
+        if(!channels || !planes || !sum || !scratch)Force4B_gpu_abort("Force_HNL: cannot allocate the host recovery workspace.");
+        int q;
+#pragma omp for schedule(dynamic)
+        for(q=0;q<nitems;q++){
+            const Force4BGpuItem *it=items+q;
+            const int ian=it->ian,jan=it->jan,mn=ian*jan;
+            OpenMXForceProjectorSpecies species;
+            OpenMXProjectorForceTerm terms[2];
+            OpenMXProjectorForceBlock blk;
+            int e,c,kfirst=kind==1?it->k_off:q,klast=kind==1?it->k_off+it->k_n:q+1;
+            for(c=0;c<3;c++)for(e=0;e<mn;e++)sum[(size_t)c*plane+(size_t)e]=0.0;
+            for(int k=kfirst;k<klast;k++){
+                const int np=nlp[k];
+                const double *energy=g->ene+ene[k];
+                size_t count=0;
+                for(int l=0;l<np;l++){
+                    channels[l].twice_angular=0;channels[l].offset=(size_t)l;
+                    channels[l].energy[0]=energy[l];channels[l].energy[1]=0.0;
+                    channels[l].weight[0]=channels[l].weight[1]=1.0;
+                }
+                memset(&species,0,sizeof(species));
+                species.relativistic=0;species.count=(size_t)np;species.components=(size_t)np;species.channels=channels;
+                memset(terms,0,sizeof(terms));
+                if(kind==1){
+                    /* tx += ene[l]*a_dir[m][l]*b[n][l] */
+                    for(c=0;c<3;c++)terms[0].derivative[0][c]=g->flat+(size_t)(c+1)*g->flat_stride+a[k];
+                    terms[0].value[0]=(halo[k]?g->halo:g->flat)+b[k];
+                    terms[0].derivative_rows=(size_t)ian;terms[0].value_rows=(size_t)jan;
+                    terms[0].sign=1.0;
+                    count=1;
+                }else{
+                    const double *a0=h0[k]==1?g->flat+a[k]:g->c2+a[k];
+                    if(h0[k]!=1){
+                        /* sx -= ene[l]*a_dir[m][l]*b0[n][l] */
+                        for(c=0;c<3;c++)terms[count].derivative[0][c]=g->c2+(size_t)(c+1)*g->c2_stride+a[k];
+                        terms[count].value[0]=g->c2+b[k];
+                        terms[count].derivative_rows=(size_t)ian;terms[count].value_rows=(size_t)jan;
+                        terms[count].sign=-1.0;
+                        count++;
+                    }
+                    if(h0[k]==0 || h0[k]==1){
+                        /* sx -= ene[l]*a0[m][l]*b_dir[n][l]: value rows m, derivative rows n */
+                        for(c=0;c<3;c++)terms[count].derivative[0][c]=g->c2+(size_t)(c+1)*g->c2_stride+b[k];
+                        terms[count].value[0]=a0;
+                        terms[count].derivative_rows=(size_t)jan;terms[count].value_rows=(size_t)ian;
+                        terms[count].transpose=1;terms[count].value_first=1;
+                        terms[count].sign=-1.0;
+                        count++;
+                    }
+                }
+                for(size_t t=0;t<count;t++){terms[t].derivative_stride=(size_t)np;terms[t].value_stride=(size_t)np;}
+                memset(&blk,0,sizeof(blk));
+                blk.rows=(size_t)ian;blk.columns=(size_t)jan;blk.output_rows=(size_t)ian;blk.output_stride=(size_t)jan;
+                blk.term_count=count;blk.terms=terms;blk.accumulate=0;
+                for(c=0;c<3;c++)blk.output[c]=planes+(size_t)c*3*plane;
+                if(count && !openmx_core_force_nl_block(&species,&blk,scratch,scratch_bytes,mode))
+                    Force4B_gpu_abort("Force_HNL: the host recovery kernel refused a block.");
+                if(count)for(c=0;c<3;c++)for(e=0;e<mn;e++)sum[(size_t)c*plane+(size_t)e]+=planes[(size_t)c*3*plane+(size_t)e].r;
+            }
+            {
+                const double *w=cdm+it->cdm_off;
+                double fx=0.0,fy=0.0,fz=0.0;
+                for(e=0;e<mn;e++){fx+=w[e]*sum[(size_t)e];fy+=w[e]*sum[plane+(size_t)e];fz+=w[e]*sum[2*plane+(size_t)e];}
+                output[3*(size_t)q]=fx;output[3*(size_t)q+1]=fy;output[3*(size_t)q+2]=fz;
+            }
+        }
+        free(scratch);free(sum);free(planes);free(channels);
+    }
+}
+
 static void Force_HNL_capacity(int kind,ForceHNLGpuContext *g,int nitems,const Force4BGpuItem *items,
     const size_t *a,const size_t *b,const int *halo,const int *ene,const int *nlp,const int *h0,
     const double *cdm,double *output,int done)
 {
+    /* Host SIMD policy (uniform on every rank): no collective recovery; a
+       rank whose batch did not complete evaluates its items itself. */
+    if(OpenMX_HostSimdMode()!=OPENMX_HOST_SIMD_LEGACY){
+        if(!done)Force_HNL_capacity_host(kind,g,nitems,items,a,b,halo,ene,nlp,h0,cdm,output);
+        return;
+    }
     size_t first=done?(size_t)nitems:0;
     ForceHnlRecoveryWork work={kind,g,first,items,a,b,halo,ene,nlp,h0,cdm,output,mpi_comm_level1};
     for(;;){

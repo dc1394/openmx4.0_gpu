@@ -62,6 +62,11 @@ static double* rows[4][3][2][3];static double** blocks[4][3][2];
 static double*** atoms[4][3];static double**** directions[4];static double***** components[]{directions};
 typedef struct ForceHNLGpuContext ForceHNLGpuContext;
 static void Force_HNL_GpuEnd(ForceHNLGpuContext*);
+#include "openmx_host_simd.h"
+/* The stage's host SIMD policy vote, recorded: the device answer keeps the
+   archive paths of modes 0-15; mode 16 checks the host answer. */
+static int host_vote=0,votes=0;static size_t vote_need=0,vote_budget=0;
+int OpenMX_HostSimdStageOnHost(const char*,size_t need,size_t budget){++votes;vote_need=need;vote_budget=budget;return host_vote;}
 #include "openmx_force_hnl_gpu.h"
 
 namespace {
@@ -81,6 +86,7 @@ void reset(int mode){
   if(mode==9)F_NL_flag=0;if(mode==10){SpinP_switch=3;SO_switch=1;}
   if(mode==11)relativistic[0]=1;if(mode==12)usable=0;
   if(mode==13)Matomnum=MatomnumF=0;if(mode==14)radial[0]=radial[1]=0;
+  host_vote=mode==16;votes=0;vote_need=vote_budget=0;
 }
 void packed(const ForceHNLGpuContext* g,int mode){
   check(g && g->enabled && g->resources,"missing invocation-owned archive");
@@ -110,11 +116,18 @@ int nested(OpenMXSolverInvocation* scope,void* outer,double* result){
 int operation(OpenMXSolverInvocation* scope,void* opaque,double* result){
   const int mode=*static_cast<int*>(opaque);auto a=atomic();ForceHNLGpuContext* g=nullptr;
   const int ok=Force_HNL_GpuBegin(&a,components,scope,&g);
-  if(mode>=7 && mode<=11){check(!ok && !g && !queries && !waits && !communicators,"disabled stage touched GPU state");*result=1;return 1;}
-  if(mode==4){check(!ok && !g,"host capacity decline published state");
+  if(mode>=7 && mode<=11){check(!ok && !g && !queries && !waits && !communicators && !votes,"disabled stage touched GPU state");*result=1;return 1;}
+  if(mode==4 || mode==16){check(!ok && !g,"host capacity decline published state");
     check(!openmx_core_native_resource_count(OpenMX_Solver_Resources(scope,"force-hnl-archives")),"capacity decline retained partial host archive");
+    check(votes==(mode==16),"host capacity decline reached the policy vote");
     *result=1;return 1;
   }
+  /* need = the archives (4*18 local + 9 halo + 4*12 staged doubles) plus the
+     128 MiB margin; budget = free minus the node reserve; the capacity test
+     and an unusable device keep their recovery paths without a figure */
+  const size_t archives=(mode==13 || mode==14?0:(4*18+9+4*12)*sizeof(double))+134217728;
+  check(votes==1 && vote_need==(mode==2?0:archives),"policy vote need differs");
+  check(vote_budget==(mode==2 || mode==12?0:(size_t(1)<<40)-256ULL*1024*1024),"policy vote budget differs");
   check(ok,"GPU archive preparation declined");packed(g,mode);
   const bool resident=mode!=2 && mode!=5 && mode!=6 && mode!=12;
   check(!!g->flat_dev==resident,"GPU capacity/adoption fallback changed");
@@ -140,7 +153,7 @@ int main(){
       for(int h=0;h<2;++h){blocks[d][a][h]=rows[d][a][h];for(int r=0;r<3;++r){rows[d][a][h][r]=values[d][a][h][r];
         for(int j=0;j<8;++j)values[d][a][h][r][j]=10000*d+1000*a+100*h+10*r+j+.125;}}}}
     omp_set_dynamic(0);int comparisons=0;
-    for(int threads:{1,2,4,8}){omp_set_num_threads(threads);for(int mode=0;mode<16;++mode){
+    for(int threads:{1,2,4,8}){omp_set_num_threads(threads);for(int mode=0;mode<17;++mode){
       reset(mode);char error[256];double result=31;
       const int ok=openmx_core_solver_run(threads,operation,&mode,&result,error,sizeof(error));
       check(ok==(mode!=2 && mode!=3),error);check(result==(ok?1:31),"failed archive stage published output");

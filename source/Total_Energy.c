@@ -14,6 +14,7 @@
 ***********************************************************************/
 
 #include <stdio.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <math.h>
 #include <time.h>
@@ -105,6 +106,71 @@ static int TotalEnergyUseOpenACC(void)
      device as well. */
   return openmx_env_flag_at(OPENMX_ENV_TOTALENERGY_GPU, 1) && (scf_eigen_lib_flag == GPUSOLVER) && gpu_rank_device_usable();
 }
+
+#ifdef OPENMX_HOST_SIMD_H
+/* Device-or-host decisions of the GPU batches of this file
+   (OpenMX_HostSimdStageOnHost, collective over mpi_comm_level1: every rank
+   calls them at the same point, behind the global GPUSOLVER test). need =
+   the device working set of the whole batch on this rank, laid out as the
+   batch's task views (each view on a 16-byte boundary); budget = free device
+   memory minus the 256 MiB reserve of the worker capacity check. On one
+   device the task executor runs a batch in one piece or not at all, so a
+   batch that does not fit ends in its task's host body (the host SIMD
+   kernels in Total_Energy_GPU.c). OPENMX_TOTALENERGY_GPU=0 switches the
+   batches off: the host branches below replace their task bodies. */
+static size_t TotalEnergy_AddViews(size_t bytes,size_t views,size_t count,size_t item)
+{
+  if (bytes==SIZE_MAX || (item && count>(SIZE_MAX-15)/item)) return SIZE_MAX;
+  const size_t one=(count*item+15)&~(size_t)15;
+  if (views && one>(SIZE_MAX-bytes)/views) return SIZE_MAX;
+  return bytes+views*one;
+}
+static int TotalEnergy_StageOnHost(const char *stage,size_t need)
+{
+  if (!openmx_env_flag_at(OPENMX_ENV_TOTALENERGY_GPU, 1)) need = SIZE_MAX;
+  return OpenMX_HostSimdStageOnHost(stage,need,OpenMX_HostSimdDeviceBudget((size_t)256<<20));
+}
+/* EH0 two-centre pairs: 3 int + 4 double inputs and 4 double outputs per
+   pair, the species tables of the neutral-atom grids and VPS meshes */
+static size_t TotalEnergy_EH0Bytes(size_t pairs)
+{
+  const size_t species=(size_t)SpeciesNum,mesh=(size_t)List_YOUSO[22];
+  size_t b=TotalEnergy_AddViews(0,3,pairs,sizeof(int));
+  b=TotalEnergy_AddViews(b,8,pairs,sizeof(double));
+  b=TotalEnergy_AddViews(b,2,species,sizeof(int));
+  b=TotalEnergy_AddViews(b,2,species,sizeof(double));
+  b=TotalEnergy_AddViews(b,5,species*(size_t)Max_TGN_EH0,sizeof(double));
+  b=TotalEnergy_AddViews(b,2,species*mesh,sizeof(double));
+  return TotalEnergy_AddViews(b,1,species*(mesh+2),sizeof(double));
+}
+/* Exc0 atoms: per local atom its centre and neighbour lists (up to the
+   largest FNAN+1), the energy and pair-force outputs and the per-point
+   prefactor scratch of all radial x Lebedev points, plus the PAO tables */
+static size_t TotalEnergy_Exc0Bytes(int points)
+{
+  size_t atoms=(size_t)Matomnum,nb=1,species=(size_t)SpeciesNum,mesh=(size_t)List_YOUSO[21];
+  for (int mc=1; mc<=Matomnum; mc++) if (nb<(size_t)FNAN[M2G[mc]]+1) nb=(size_t)FNAN[M2G[mc]]+1;
+  size_t b=TotalEnergy_AddViews(0,1,atoms,sizeof(int));
+  b=TotalEnergy_AddViews(b,4,atoms,sizeof(double));
+  b=TotalEnergy_AddViews(b,1,atoms*nb,sizeof(int));
+  b=TotalEnergy_AddViews(b,4,atoms*nb,sizeof(double));
+  b=TotalEnergy_AddViews(b,1,species,sizeof(int));
+  b=TotalEnergy_AddViews(b,2,species*mesh,sizeof(double));
+  b=TotalEnergy_AddViews(b,1,species*(mesh+2),sizeof(double));
+  b=TotalEnergy_AddViews(b,4,(size_t)points,sizeof(double));
+  b=TotalEnergy_AddViews(b,2,(size_t)CoarseGL_Mesh,sizeof(double));
+  b=TotalEnergy_AddViews(b,1,atoms,sizeof(double));
+  b=TotalEnergy_AddViews(b,1,atoms*3*nb,sizeof(double));
+  return TotalEnergy_AddViews(b,1,atoms*(size_t)CoarseGL_Mesh*(size_t)points,sizeof(double));
+}
+/* grid reductions: the coarse-grid arrays each kind reads (as
+   TotalEnergy_Grid_Capacity selects them) and the six sums */
+static size_t TotalEnergy_GridBytes(int kind)
+{
+  size_t arrays=kind==1 ? 2 : kind==2 ? 6 : 9+(ProExpn_VNA==0)+(E_Field_switch==1);
+  return TotalEnergy_AddViews(TotalEnergy_AddViews(0,arrays,(size_t)My_NumGridB_AB,sizeof(double)),1,6,sizeof(double));
+}
+#endif
 
 
 
@@ -1415,7 +1481,12 @@ double Calc_EH0(const OpenMXEnergyWorkspace *workspace, OpenMXCoreContext *core,
 
   My_EH0 = 0.0;
 
-  if (scf_eigen_lib_flag == GPUSOLVER){
+  int eh0_device = scf_eigen_lib_flag == GPUSOLVER;
+#ifdef OPENMX_HOST_SIMD_H
+  if (eh0_device)
+    eh0_device = !TotalEnergy_StageOnHost("Total_Energy EH0",TotalEnergy_EH0Bytes(2*(size_t)workspace->pair_count));
+#endif
+  if (eh0_device){
     int pair_count,pair_index,pair_has_d;
     int Gc2_AN,h2_AN,Gh2_AN,Rn;
     int *pair_ban,*pair_wan2,*pair_has_deriv;
@@ -1977,7 +2048,12 @@ void Calc_EXC_EH1(OpenMXSolverInvocation *scratch, const OpenMXAtomicViews *atom
   My_EXC[1] = 0.0;
 
   dtime(&time0);
-  if (scf_eigen_lib_flag == GPUSOLVER){
+  int grid_device = scf_eigen_lib_flag == GPUSOLVER;
+#ifdef OPENMX_HOST_SIMD_H
+  if (grid_device)
+    grid_device = !TotalEnergy_StageOnHost("Total_Energy XC/Hartree grid",TotalEnergy_GridBytes(0));
+#endif
+  if (grid_device){
 #if OPENMX_GPU_HIP
     TotalEnergy_EXC_EH1_Grid_OpenMP(spinmax, &My_Ena, &My_Eef, &My_EH1, My_EXC);
 #else
@@ -2114,7 +2190,12 @@ void Calc_EXC_EH1(OpenMXSolverInvocation *scratch, const OpenMXAtomicViews *atom
     rs = 0.0;
     sum = 0.0;
 
-    if (scf_eigen_lib_flag == GPUSOLVER){
+    int exc0_device = scf_eigen_lib_flag == GPUSOLVER;
+#ifdef OPENMX_HOST_SIMD_H
+    if (exc0_device)
+      exc0_device = !TotalEnergy_StageOnHost("Total_Energy Exc0",TotalEnergy_Exc0Bytes(Num_Leb_Grid));
+#endif
+    if (exc0_device){
 #if OPENMX_GPU_HIP
       TotalEnergy_Exc0_Batch_OpenMP(atomic, Num_Leb_Grid, Leb_Grid_XYZW, &sum);
 #else
@@ -2511,7 +2592,12 @@ void Calc_EXC_EH1(OpenMXSolverInvocation *scratch, const OpenMXAtomicViews *atom
     My_E_dpy_BG = 0.0;
     My_E_dpz_BG = 0.0; 
 
-    if (scf_eigen_lib_flag == GPUSOLVER){
+    int dipole_device = scf_eigen_lib_flag == GPUSOLVER;
+#ifdef OPENMX_HOST_SIMD_H
+    if (dipole_device)
+      dipole_device = !TotalEnergy_StageOnHost("Total_Energy dipole grid",TotalEnergy_GridBytes(1));
+#endif
+    if (dipole_device){
 #if OPENMX_GPU_HIP
       TotalEnergy_Dipole_Grid_OpenMP(GNs, &My_E_dpx, &My_E_dpy, &My_E_dpz,
 #else
@@ -4414,7 +4500,12 @@ void Energy_Decomposition_CWF(OpenMXSolverInvocation *scratch, const OpenMXCWFOb
   My_dcEXC[0] = 0.0;
   My_dcEXC[1] = 0.0;
 
-  if (scf_eigen_lib_flag == GPUSOLVER){
+  int cwf_device = scf_eigen_lib_flag == GPUSOLVER;
+#ifdef OPENMX_HOST_SIMD_H
+  if (cwf_device)
+    cwf_device = !TotalEnergy_StageOnHost("Total_Energy CWF double counting",TotalEnergy_GridBytes(2));
+#endif
+  if (cwf_device){
 #if OPENMX_GPU_HIP
     TotalEnergy_CWF_Dc_Grid_OpenMP(spinmax, My_dcEH1, My_dcEXC);
 #else

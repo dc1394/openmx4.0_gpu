@@ -327,9 +327,10 @@ typedef struct {
     size_t reserve_bytes;
 } SetHamiltonianGpuTurnPlan;
 
-static int Set_Hamiltonian_Stream_MatrixElements(const SetHamiltonianGpuTurnPlan *plan,
+static int Set_Hamiltonian_Stream_MatrixElements(OpenMXGridWorkspace *grid, const SetHamiltonianGpuTurnPlan *plan,
                                                   int Cnt_kind, int myid, const OpenMXElectronicViews *electronic);
-static int Set_Hamiltonian_OnTheFly_MatrixElements(const OpenMXAtomicViews *atomic, const SetHamiltonianGpuTurnPlan *plan,
+static int Set_Hamiltonian_OnTheFly_MatrixElements(OpenMXGridWorkspace *grid, const OpenMXAtomicViews *atomic,
+                                                    const SetHamiltonianGpuTurnPlan *plan,
                                                     int Cnt_kind, int myid, const OpenMXElectronicViews *electronic);
 
 typedef struct {
@@ -1567,6 +1568,15 @@ double Set_Hamiltonian(OpenMXGridWorkspace *grid, OpenMXMixingVState *mixing_v, 
     SETH_PROF_T0(prof_t0);
 
     if (use_base_openacc) {
+        /* The stage vote (every rank: use_base_openacc is reduced): the base
+           sum's device bytes against the free memory. After a host decision
+           every rank takes the host loops below. */
+        const size_t need = base_requested ? Set_Hamiltonian_Base_OpenACC_DeviceBytes(SCF_iter, myid) : 0;
+        if (OpenMX_HostSimdStageOnHost("Set_Hamiltonian base", need, OpenMX_HostSimdDeviceBudget(0)))
+            use_base_openacc = 0;
+    }
+
+    if (use_base_openacc) {
         Set_Hamiltonian_Base_OpenACC(vna, SCF_iter,H0,HNL,H, electronic);
     }
 
@@ -1737,6 +1747,8 @@ double Set_Hamiltonian(OpenMXGridWorkspace *grid, OpenMXMixingVState *mixing_v, 
 }
 
 static void Set_Hamiltonian_Stream_PairCPU(int,int,int,int, const OpenMXElectronicViews *electronic);
+static void Set_Hamiltonian_Stream_PairRangeCPU(int,int,int,int,int,int, const OpenMXElectronicViews *electronic);
+static size_t SetH_capacity_bytes(int cnt_kind);
 typedef struct {int n0,n1,points;} SetHCapacityPair;
 typedef struct {int spins,max_no;double volume;} SetHCapacityParameters;
 static void SetH_capacity_kernel(size_t first,size_t n,const void *parameters,void *const v[],int gpu)
@@ -1781,7 +1793,8 @@ static void SetH_capacity_kernel(size_t first,size_t n,const void *parameters,vo
 /* Enter once per quadrature phase on all ranks. Only ranks whose existing
    owner/streamed path declined pack work; completed ranks can lend GPUs.
    Bounded host tiles avoid duplicating a full orbital cache on the host. */
-static int SetH_capacity_recover(int cnt_kind,int local_done,int rank, const OpenMXElectronicViews *electronic)
+static int SetH_capacity_recover(int cnt_kind,int local_done,int rank, const OpenMXElectronicViews *electronic,
+                                 int vote)
 {
   double *****CntH=electronic->CntH;
   double *****H=electronic->H;
@@ -1790,6 +1803,15 @@ static int SetH_capacity_recover(int cnt_kind,int local_done,int rank, const Ope
     int pending=enabled && !local_done,any=0;
     MPI_Allreduce(&pending,&any,1,MPI_INT,MPI_MAX,mpi_comm_level1);
     if(!any)return local_done;
+    /* vote: no turn plan voted in this call (no rank requested the device
+       matrix elements, e.g. the DC and Krylov solvers), so the recovery is
+       the stage's device route and takes the stage vote (every rank: any is
+       reduced). This rank's packed tiles against its free memory less the
+       capacity workers' reserve; after a host decision no rank packs, and
+       the pending ranks take the host SIMD quadrature (the caller). */
+    if(vote && OpenMX_HostSimdStageOnHost("Set_Hamiltonian",pending?SetH_capacity_bytes(cnt_kind):0,
+                                          OpenMX_HostSimdDeviceBudget((size_t)256*1024*1024)))
+        return local_done;
     int count=0,*mc_table=NULL,*h_table=NULL,ready=1;
     if(pending) {
         for(int mc=1;mc<=Matomnum;mc++)count+=FNAN[M2G[mc]]+1;
@@ -1862,10 +1884,75 @@ static int SetH_capacity_recover(int cnt_kind,int local_done,int rank, const Ope
     free(mc_table);free(h_table);return local_done || (pending && ready);
 }
 
+/* The bytes SetH_capacity_recover packs for all of this rank's pairs, the
+   same accounting as its tiles (SIZE_MAX on overflow). */
+static size_t SetH_capacity_bytes(int cnt_kind)
+{
+    const size_t spins=(size_t)SpinP_switch+1;
+    size_t max_no=0,bytes=0;
+    for(int s=0;s<SpeciesNum;s++){size_t no=(size_t)(cnt_kind?Spe_Total_CNO[s]:Spe_Total_NO[s]);if(max_no<no)max_no=no;}
+    for(int mc=1;mc<=Matomnum;mc++)for(int h=0;h<=FNAN[M2G[mc]];h++) {
+        int gc=M2G[mc],gh=natn[gc][h];
+        size_t n0=(size_t)(cnt_kind?Spe_Total_CNO[WhatSpecies[gc]]:Spe_Total_NO[WhatSpecies[gc]]);
+        size_t n1=(size_t)(cnt_kind?Spe_Total_CNO[WhatSpecies[gh]]:Spe_Total_NO[WhatSpecies[gh]]);
+        size_t points=(size_t)NumOLG[mc][h];
+        double added=((double)points*(double)(n0+n1+spins)+(double)(spins*max_no*max_no))*(double)sizeof(double);
+        if((double)(SIZE_MAX-bytes)<=added)return SIZE_MAX;
+        bytes+=(size_t)added;
+    }
+    return bytes;
+}
+
+/* A pair (or a point range of one) that a streamed device batch could not
+   take, on this rank alone: the host SIMD quadrature, or the scalar loop of
+   the earlier code under OPENMX_HOST_SIMD=legacy. first/points NULL: whole
+   pairs. No collectives, so any rank may take it at any time. */
+static void SetH_host_ranges(OpenMXGridWorkspace *grid, int Cnt_kind, const OpenMXElectronicViews *electronic,
+                             int count, const int *mc, const int *h, const int *first, const int *points, int myid)
+{
+    if (count <= 0) return;
+    if (OpenMX_HostSimdMode() == OPENMX_HOST_SIMD_LEGACY) {
+        for (int k = 0; k < count; k++)
+            Set_Hamiltonian_Stream_PairRangeCPU(Cnt_kind, mc[k], h[k], first ? first[k] : 0,
+                                                first ? points[k] : NumOLG[mc[k]][h[k]], myid, electronic);
+        return;
+    }
+    OpenMX_Grid_Hamiltonian_CPU_Ranges(grid, Cnt_kind, electronic, (size_t)count, mc, h, first, points);
+}
+
+/* This rank's figures for the stage vote of Calc_MatrixElements_dVH_Vxc_VNA,
+   from its turn plan: the device path that needs the fewer pieces. The
+   tables (the waves, or the streamed batches): the whole requirement
+   against the group's free memory less the reserve, the admission figures
+   of the plan. The on-the-fly tiles: the target workspace the plan keeps
+   for a rank outside the wave against the share the on-the-fly admission
+   computes. Zero need: the rank requests no device work. */
+static void SetH_stage_figures(const SetHamiltonianGpuTurnPlan *plan, size_t required_bytes, int Cnt_kind, int myid,
+                               size_t *need_bytes, size_t *budget_bytes)
+{
+    const size_t otf_need = Set_Hamiltonian_OTF_ShareTarget(Cnt_kind, myid);
+
+    *need_bytes = plan->selected ? required_bytes : 0;
+    *budget_bytes = plan->reserve_bytes < plan->free_bytes ? plan->free_bytes - plan->reserve_bytes : 0;
+    if (plan->selected && 0 < otf_need && plan->device_comm != MPI_COMM_NULL && 0 < *budget_bytes) {
+        const size_t margin = Set_Hamiltonian_OTF_MarginBytes();
+        const size_t base = plan->peak_bytes < plan->free_bytes ? plan->free_bytes - plan->peak_bytes : 0;
+        int outside = plan->device_ranks - plan->concurrent_ranks;
+        size_t share;
+
+        if (outside <= 0) outside = plan->device_ranks > 0 ? plan->device_ranks : 1;
+        share = margin < base ? (base - margin) / (size_t)outside : 0;
+        if (0 < share && (double)otf_need / (double)share < (double)*need_bytes / (double)*budget_bytes) {
+            *need_bytes = otf_need;
+            *budget_bytes = share;
+        }
+    }
+}
+
 void Calc_MatrixElements_dVH_Vxc_VNA(OpenMXGridWorkspace *grid, const OpenMXAtomicViews *atomic, int Cnt_kind, const OpenMXElectronicViews *electronic)
 {
     int myid;
-    int prefer_streaming = 0,local_done=0;
+    int prefer_streaming = 0,local_done=0,stage_on_host=0,stage_voted=0;
     SetHamiltonianGpuTurnPlan plan;
     SetHamiltonianMatrixElementsWork work;
 
@@ -1929,9 +2016,19 @@ void Calc_MatrixElements_dVH_Vxc_VNA(OpenMXGridWorkspace *grid, const OpenMXAtom
             plan = Set_Hamiltonian_CreateGpuTurnPlan(required_bytes, resident_request_class,
                                                      resident_active, Set_Hamiltonian_OTF_ShareTarget(Cnt_kind, myid),
                                                      "matrix-elements OpenACC path", myid);
+            /* The stage vote (every rank: any_request is the same everywhere),
+               with the figures of the device path this rank can take in the
+               fewer pieces (SetH_stage_figures). After a host decision every
+               rank takes the host SIMD quadrature below, without the waves,
+               the tiles or the recovery. */
+            size_t need = 0, budget = 0;
+            SetH_stage_figures(&plan, required_bytes, Cnt_kind, myid, &need, &budget);
+            stage_on_host = OpenMX_HostSimdStageOnHost("Set_Hamiltonian", need, budget);
+            stage_voted = 1;
         }
     }
 
+    if (!stage_on_host) {
     if (plan.device_comm != MPI_COMM_NULL && plan.device_ranks > 1) {
         /* OPENMX_SETHAM_STREAMING=2: stream whenever the device cannot hold
            every rank's whole allocation (the hybrid policy would leave the
@@ -1956,8 +2053,8 @@ void Calc_MatrixElements_dVH_Vxc_VNA(OpenMXGridWorkspace *grid, const OpenMXAtom
         /* Once the group chooses streaming, an allocation failure falls
            back to the CPU, never to a competing whole-rank GPU buffer.
            The on-the-fly tiles come first: no tables to stream at all. */
-        local_done=Set_Hamiltonian_OnTheFly_MatrixElements(atomic, &plan,Cnt_kind,myid, electronic) ||
-            Set_Hamiltonian_Stream_MatrixElements(&plan,Cnt_kind,myid, electronic);
+        local_done=Set_Hamiltonian_OnTheFly_MatrixElements(grid, atomic, &plan,Cnt_kind,myid, electronic) ||
+            Set_Hamiltonian_Stream_MatrixElements(grid, &plan,Cnt_kind,myid, electronic);
     }
     else if (plan.use_gpu && Set_Hamiltonian_GpuSerialWaves()) {
         /* The orbital/topology cache is host-only.  Build it concurrently on
@@ -1995,20 +2092,25 @@ void Calc_MatrixElements_dVH_Vxc_VNA(OpenMXGridWorkspace *grid, const OpenMXAtom
         /* a rank without resident tables: the on-the-fly tiles on the
            device beside the resident ranks, before the CPU */
         if (plan.selected && plan.device_comm != MPI_COMM_NULL) {
-            streamed = Set_Hamiltonian_OnTheFly_MatrixElements(atomic, &plan, Cnt_kind, myid, electronic);
+            streamed = Set_Hamiltonian_OnTheFly_MatrixElements(grid, atomic, &plan, Cnt_kind, myid, electronic);
         }
         if (!streamed && plan.selected && plan.device_comm != MPI_COMM_NULL && plan.concurrent_ranks == 0) {
-            streamed = Set_Hamiltonian_Stream_MatrixElements(&plan, Cnt_kind, myid, electronic);
+            streamed = Set_Hamiltonian_Stream_MatrixElements(grid, &plan, Cnt_kind, myid, electronic);
         }
         local_done=streamed;
     }
+    } /* !stage_on_host */
 
 capacity_recovery:
     if (!local_done) {
         Set_Hamiltonian_ME_ReleaseDeviceCache(0);
         Set_Hamiltonian_ME_Cache.resident_blocked = 1;
     }
-    if (!SetH_capacity_recover(Cnt_kind,local_done,myid, electronic))
+    /* After a host vote every rank takes the host SIMD quadrature and none
+       recovers on a device; otherwise the ranks without a device result
+       recover as before (the recovery votes itself when no turn plan voted
+       in this call). */
+    if (stage_on_host || !SetH_capacity_recover(Cnt_kind,local_done,myid, electronic, !stage_voted))
         OpenMX_Grid_Hamiltonian_CPU(grid, Cnt_kind, electronic);
 
     if (plan.release_resident) {
@@ -3848,7 +3950,8 @@ static void Set_Hamiltonian_OTF_GridIndices(int pair_count, const int *d_NOLG, c
     }
 }
 
-static int Set_Hamiltonian_OnTheFly_MatrixElements(const OpenMXAtomicViews *atomic, const SetHamiltonianGpuTurnPlan *plan,
+static int Set_Hamiltonian_OnTheFly_MatrixElements(OpenMXGridWorkspace *grid, const OpenMXAtomicViews *atomic,
+                                                    const SetHamiltonianGpuTurnPlan *plan,
                                                     int Cnt_kind, int myid, const OpenMXElectronicViews *electronic)
 {
   double *****H=electronic->H;
@@ -3986,9 +4089,10 @@ static int Set_Hamiltonian_OnTheFly_MatrixElements(const OpenMXAtomicViews *atom
             int previous_mc = -1;
 
             if (bt->pair_count == 0) {
-                /* a single pair beyond the workspace: the CPU */
+                /* a single pair beyond the workspace: the host quadrature */
                 SETH_OTF_PROFILE_ADD(pack_seconds);
-                Set_Hamiltonian_Stream_PairCPU(Cnt_kind, otf_plan->mc_table[bt->first], otf_plan->h_table[bt->first], myid, electronic);
+                SetH_host_ranges(grid, Cnt_kind, electronic, 1, otf_plan->mc_table + bt->first,
+                                 otf_plan->h_table + bt->first, NULL, NULL, myid);
                 SETH_OTF_PROFILE_ADD(cpu_seconds);
                 cpu_pairs++;
                 continue;
@@ -4084,11 +4188,19 @@ static int Set_Hamiltonian_OnTheFly_MatrixElements(const OpenMXAtomicViews *atom
                     }
                 }
                 else {
-                    for (int q = bt->first; q < bt->last; q++) {
-                        const int Mc_AN = otf_plan->mc_table[q], h_AN = otf_plan->h_table[q];
-                        Set_Hamiltonian_Stream_PairRangeCPU(Cnt_kind, Mc_AN, h_AN, bt->first_nolg,
-                            bt->compact_orbs0 ? (int)bt->total_nolg : NumOLG[Mc_AN][h_AN], myid, electronic);
+                    /* the batch failed on the device and committed nothing:
+                       its pairs (or the point chunk of its pair) on the host */
+                    const int n = bt->last - bt->first;
+                    int *range = (int *)Set_Hamiltonian_malloc(sizeof(int) * (size_t)(2 * (n > 0 ? n : 1)),
+                                                               "on-the-fly host ranges", myid);
+                    for (int q = 0; q < n; q++) {
+                        const int Mc_AN = otf_plan->mc_table[bt->first + q], h_AN = otf_plan->h_table[bt->first + q];
+                        range[q] = bt->first_nolg;
+                        range[n + q] = bt->compact_orbs0 ? (int)bt->total_nolg : NumOLG[Mc_AN][h_AN];
                     }
+                    SetH_host_ranges(grid, Cnt_kind, electronic, n, otf_plan->mc_table + bt->first,
+                                     otf_plan->h_table + bt->first, range, range + n, myid);
+                    free(range);
                     cpu_pairs += bt->pair_count;
                     SETH_OTF_PROFILE_ADD(cpu_seconds);
                 }
@@ -4268,6 +4380,34 @@ size_t Set_Hamiltonian_OnTheFly_DensityBudget(int spin_count, size_t dm_count, s
     }
     *grow = 1;
     return 0;
+}
+
+/* The planned on-the-fly density call of this rank for the stage vote of
+   Set_Density_Grid. need = what the call takes on a device with room to
+   spare: the fixed buffers, the runtime slack and one workspace of the
+   configured bound (of the largest pair's full tiles when they exceed a
+   default bound; never more than one batch of every pair). The bound is a
+   batch size, not a shortage. budget = the rank's share of free memory less
+   the reserve, the figure the bound and the growth divide among the node's
+   otf_ranks. Returns 0 without a valid plan (the memory query failed). */
+int Set_Hamiltonian_OnTheFly_DensityStage(int otf_ranks, size_t *need_bytes, size_t *budget_bytes)
+{
+    const SetHOTFDensityPlan *p = &Set_Hamiltonian_OTF_DenPlan;
+    const size_t slack = SETH_OTF_DEN_ALIGNMENT_SLACK;
+    int explicit_limit = 0;
+    size_t workspace = SETH_OTF_DensityLimitBytes(&explicit_limit);
+
+    *need_bytes = 0;
+    *budget_bytes = 0;
+    if (!p->valid) return 0;
+    if (!p->explicit_limit && workspace - slack < p->largest)
+        workspace = p->largest < SIZE_MAX - slack ? p->largest + slack : SIZE_MAX;
+    if (p->all < SIZE_MAX - slack && p->all + slack < workspace) workspace = p->all + slack;
+    *need_bytes = (SIZE_MAX - workspace < p->fixed + SETH_OTF_DEN_RUNTIME_SLACK) ? SIZE_MAX
+                  : p->fixed + workspace + SETH_OTF_DEN_RUNTIME_SLACK;
+    *budget_bytes = SETH_OTF_DEN_RESERVE_BYTES < p->free_bytes ?
+                    (p->free_bytes - SETH_OTF_DEN_RESERVE_BYTES) / (size_t)(otf_ranks > 0 ? otf_ranks : 1) : 0;
+    return 1;
 }
 
 /* Share the remaining physical memory among ranks requesting growth.
@@ -4915,7 +5055,7 @@ int Set_Hamiltonian_OnTheFly_Density(const OpenMXAtomicViews *atomic, int Cnt_ki
     return 1;
 }
 
-static int Set_Hamiltonian_Stream_MatrixElements(const SetHamiltonianGpuTurnPlan *plan,
+static int Set_Hamiltonian_Stream_MatrixElements(OpenMXGridWorkspace *grid, const SetHamiltonianGpuTurnPlan *plan,
                                                   int Cnt_kind, int myid, const OpenMXElectronicViews *electronic)
 {
   double *****CntH=electronic->CntH;
@@ -5044,8 +5184,9 @@ static int Set_Hamiltonian_Stream_MatrixElements(const SetHamiltonianGpuTurnPlan
             last++;
         }
         if (last == first) {
+            /* a single pair beyond the workspace: the host quadrature */
             SETH_STREAM_PROFILE_ADD(pack_seconds);
-            Set_Hamiltonian_Stream_PairCPU(Cnt_kind, mc_table[first], h_table[first], myid, electronic);
+            SetH_host_ranges(grid, Cnt_kind, electronic, 1, mc_table + first, h_table + first, NULL, NULL, myid);
             SETH_STREAM_PROFILE_ADD(cpu_seconds);
             cpu_pairs++;
             first++;
@@ -5141,10 +5282,11 @@ static int Set_Hamiltonian_Stream_MatrixElements(const SetHamiltonianGpuTurnPlan
                 Set_Hamiltonian_Finish_OpenACC_MatrixElements(&work, electronic);
             }
             else {
-                /* H is only committed after a successful device result. */
+                /* H is only committed after a successful device result: the
+                   failed batch's whole pairs on the host */
                 free(work.hbuf);
-                for (int p = first; p < last; p++)
-                    Set_Hamiltonian_Stream_PairCPU(Cnt_kind, mc_table[p], h_table[p], myid, electronic);
+                SetH_host_ranges(grid, Cnt_kind, electronic, last - first, mc_table + first, h_table + first,
+                                 NULL, NULL, myid);
                 cpu_pairs += last - first;
                 SETH_STREAM_PROFILE_ADD(cpu_seconds);
             }

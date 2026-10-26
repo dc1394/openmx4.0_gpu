@@ -19,6 +19,16 @@
 #include "openmx_gpu_task.h"
 #include "set_cuda_default_device_from_local_rank.h"
 
+/* Host SIMD bodies of the EH0 and Exc0 tasks: real build only. The capacity
+   harness (tests/run_energy_capacity_cpu.py) compiles this file without
+   openmx_common.h and without the Core library and keeps the serial bodies. */
+#ifdef _OPENMX_COMMON_H_
+#include <stdint.h>
+#include "openmx_host_simd.h"
+#include "openmx_core_energy_simd.h"
+#define TOTALENERGY_HOST_SIMD 1
+#endif
+
 /* Host-backed grid jobs carry their geometry and controls to the helper
    node. No rank-local globals are read by the range kernel. */
 typedef struct {
@@ -275,9 +285,71 @@ static double TotalEnergy_EH0_Dr_VH_AtomF_flat(int spe, int N, double x, double 
 
 
 typedef struct {int grid_stride,vps_stride,vh_stride;} EH0Params;
+
+#ifdef TOTALENERGY_HOST_SIMD
+/* The host body of the EH0 task (a capacity decline or a failed device
+   step): each pair's integral through the Core's Kokkos::simd neutral kernel
+   (VH_AtomF/Dr_VH_AtomF as the device copies form them, the same guard), the
+   sums in the point order of the serial body. Returns 0 under
+   OPENMX_HOST_SIMD=legacy or when the kernel refuses a pair; the serial body
+   then rewrites every output of the range. */
+static int TotalEnergy_EH0_Host(size_t count,const EH0Params *p,void *const view[])
+{
+  const int mode=OpenMX_HostSimdMode();
+  if (mode==OPENMX_HOST_SIMD_LEGACY) return 0;
+  const int *pair_ban=view[0],*pair_wan2=view[1],*pair_has_deriv=view[2];
+  const double *pair_dis=view[3],*pair_dirx=view[4],*pair_diry=view[5],*pair_dirz=view[6];
+  const int *tgn_flat=view[7],*vps_n_flat=view[8];
+  const double *dv_flat=view[9],*core_charge_flat=view[10];
+  const double *gridx_flat=view[11],*gridy_flat=view[12],*gridz_flat=view[13];
+  const double *arho_flat=view[14],*wt_flat=view[15];
+  const double *vps_xv_flat=view[16],*vps_rv_flat=view[17],*vh_atom_flat=view[18];
+  double *out0=view[19],*out1=view[20],*out2=view[21],*out3=view[22];
+  for (size_t pair=0; pair<count; pair++){
+    const int ban=pair_ban[pair],wan2=pair_wan2[pair],has_deriv=pair_has_deriv[pair];
+    const size_t g=(size_t)ban*(size_t)p->grid_stride,v=(size_t)wan2*(size_t)p->vps_stride;
+    OpenMXEnergyNeutralPoints s;
+    double sum=0.0,sumr=0.0;
+    s.count=tgn_flat[ban];
+    s.derivative=has_deriv;
+    s.guard=1;
+    s.x=gridx_flat+g;
+    s.y=gridy_flat+g;
+    s.z=gridz_flat+g;
+    s.density=arho_flat+g;
+    s.weight=wt_flat+g;
+    s.separation=pair_dis[pair];
+    s.charge=core_charge_flat[wan2];
+    s.mesh=vps_n_flat[wan2];
+    s.log_radii=vps_xv_flat+v;
+    s.radii=vps_rv_flat+v;
+    s.hartree=vh_atom_flat+(size_t)wan2*(size_t)p->vh_stride;
+    s.values=NULL;
+    s.derivatives=NULL;
+    if (!openmx_core_energy_neutral_sum(&s,&sum,&sumr,mode)) return 0;
+    out0[pair] = sum*dv_flat[ban];
+    if (has_deriv){
+      sumr = sumr*dv_flat[ban];
+      out1[pair] = sumr*pair_dirx[pair];
+      out2[pair] = sumr*pair_diry[pair];
+      out3[pair] = sumr*pair_dirz[pair];
+    }
+    else{
+      out1[pair] = 0.0;
+      out2[pair] = 0.0;
+      out3[pair] = 0.0;
+    }
+  }
+  return 1;
+}
+#endif
+
 static void TotalEnergy_EH0_Kernel(size_t first,size_t count,const void *parameters,void *const view[],int use_gpu)
 {
   (void)first;const EH0Params *p=parameters;
+#ifdef TOTALENERGY_HOST_SIMD
+  if (!use_gpu && TotalEnergy_EH0_Host(count,p,view)) return;
+#endif
   const int grid_stride=p->grid_stride,vps_stride=p->vps_stride,vh_stride=p->vh_stride;
   const int pair_count=(int)count;int pair;
   int *pair_ban=view[0];
@@ -685,9 +757,118 @@ static double TotalEnergy_Exc0_Dr_KumoF_flat(int N, double x, double r,
 
 typedef struct {int nr,na,nbmax,pao_stride,den_stride,vxc_flag;} Exc0Params;
 
+#ifdef TOTALENERGY_HOST_SIMD
+/* The host body of the Exc0 task: the radial shells of each atom of the
+   range through the Core's Kokkos::simd shell kernel and accumulated as the
+   host branch of Calc_EXC_EH1 accumulates them with one worker: energy =
+   2*PI*Dr*sum_ir w_ir*sumt_ir, pair forces 2*PI*Dr*sum_ir w_ir*sum_g[h]
+   (w_ir = r*r*CoarseGL_Weight[ir]); the caller publishes both as before.
+   Returns 0 under OPENMX_HOST_SIMD=legacy, on a refusal or without memory;
+   the two-pass serial body then rewrites every output of the range. */
+static int TotalEnergy_Exc0_Host(size_t count,const Exc0Params *p,void *const view[])
+{
+  const int mode=OpenMX_HostSimdMode();
+  if (mode==OPENMX_HOST_SIMD_LEGACY) return 0;
+  const int nr=p->nr,na=p->na,nbmax=p->nbmax;
+  const int *at_fnan=view[0];
+  const double *at_cx=view[1],*at_cy=view[2],*at_cz=view[3],*at_dr=view[4];
+  const int *nb_wan=view[5];
+  const double *nb_x=view[6],*nb_y=view[7],*nb_z=view[8],*nb_rcut2=view[9];
+  const int *pao_n_flat=view[10];
+  const double *pao_xv_flat=view[11],*pao_rv_flat=view[12],*den2_flat=view[13];
+  const double *leb_x=view[14],*leb_y=view[15],*leb_z=view[16],*leb_w=view[17];
+  const double *abscissa=view[18],*weight=view[19];
+  double *energy=view[20],*force_pairs=view[21];
+  const size_t scratch_count=openmx_core_energy_xc_shell_scratch(nbmax);
+  double *lebedev=malloc(sizeof(double)*4*(size_t)(na>0?na:1));
+  double *scratch=malloc(sizeof(double)*(scratch_count?scratch_count:1));
+  double *sums=malloc(sizeof(double)*6*(size_t)nbmax);
+  int *mesh=malloc(sizeof(int)*(size_t)nbmax);
+  const double **tables=malloc(sizeof(double*)*3*(size_t)nbmax);
+  int ok=lebedev && scratch && sums && mesh && tables;
+  for (int ia=0; ok && ia<na; ia++){
+    lebedev[4*ia]   = leb_x[ia];
+    lebedev[4*ia+1] = leb_y[ia];
+    lebedev[4*ia+2] = leb_z[ia];
+    lebedev[4*ia+3] = leb_w[ia];
+  }
+  for (size_t mc=0; ok && mc<count; mc++){
+    const int fnan=at_fnan[mc],nb=fnan+1;
+    const size_t koff=mc*(size_t)nbmax;
+    double *sum_gx=sums,*sum_gy=sums+nbmax,*sum_gz=sums+2*(size_t)nbmax;
+    double *partial_x=sums+3*(size_t)nbmax,*partial_y=sums+4*(size_t)nbmax,*partial_z=sums+5*(size_t)nbmax;
+    for (int h=0; h<nb; h++){
+      const int wan=nb_wan[koff+h];
+      mesh[h] = pao_n_flat[wan];
+      tables[h] = pao_xv_flat+(size_t)wan*(size_t)p->pao_stride;
+      tables[nbmax+h] = pao_rv_flat+(size_t)wan*(size_t)p->pao_stride;
+      tables[2*nbmax+h] = den2_flat+(size_t)wan*(size_t)p->den_stride;
+      partial_x[h] = partial_y[h] = partial_z[h] = 0.0;
+    }
+    const double re=at_dr[mc],rs=0.0,Sr=re+rs,Dr=re-rs;
+    double sumr=0.0,den0=0.0;
+    OpenMXEnergyXcShell shell;
+    shell.points=na;
+    shell.lebedev=lebedev;
+    shell.lebedev_stride=4;
+    shell.center[0]=at_cx[mc];
+    shell.center[1]=at_cy[mc];
+    shell.center[2]=at_cz[mc];
+    shell.vxc=(double)p->vxc_flag;
+    shell.neighbors=nb;
+    shell.nx=nb_x+koff;
+    shell.ny=nb_y+koff;
+    shell.nz=nb_z+koff;
+    shell.cutoff2=nb_rcut2+koff;
+    shell.mesh=mesh;
+    shell.log_radii=tables;
+    shell.radii=tables+nbmax;
+    shell.density=tables+2*(size_t)nbmax;
+    shell.scratch=scratch;
+    shell.scratch_count=scratch_count;
+    shell.den0=&den0;
+    shell.sum_gx=sum_gx;
+    shell.sum_gy=sum_gy;
+    shell.sum_gz=sum_gz;
+    for (int ir=0; ok && ir<nr; ir++){
+      const double r=0.50*(Dr*abscissa[ir] + Sr);
+      double sumt=0.0;
+      for (int h=0; h<nb; h++) sum_gx[h] = sum_gy[h] = sum_gz[h] = 0.0;
+      shell.radius=r;
+      shell.sumt=&sumt;
+      ok=openmx_core_energy_xc_shell(&shell,mode);
+      if (!ok) break;
+      const double w=r*r*weight[ir];
+      sumr += w*sumt;
+      for (int h=1; h<nb; h++){
+        partial_x[h] += w*sum_gx[h];
+        partial_y[h] += w*sum_gy[h];
+        partial_z[h] += w*sum_gz[h];
+      }
+    }
+    if (!ok) break;
+    energy[mc] = 2.0*PI*Dr*sumr;
+    for (int k=0; k<nbmax; k++){
+      double *f=force_pairs+3*(koff+(size_t)k);
+      if (0<k && k<=fnan){
+        f[0] = 2.0*PI*Dr*partial_x[k];
+        f[1] = 2.0*PI*Dr*partial_y[k];
+        f[2] = 2.0*PI*Dr*partial_z[k];
+      }
+      else f[0] = f[1] = f[2] = 0.0;
+    }
+  }
+  free(lebedev);free(scratch);free(sums);free(mesh);free((void*)tables);
+  return ok;
+}
+#endif
+
 static void TotalEnergy_Exc0_Kernel(size_t first,size_t count,const void *parameters,void *const view[],int use_gpu)
 {
   (void)first;const Exc0Params *p=parameters;
+#ifdef TOTALENERGY_HOST_SIMD
+  if (!use_gpu && TotalEnergy_Exc0_Host(count,p,view)) return;
+#endif
   const int nr=p->nr,na=p->na,nbmax=p->nbmax,pao_stride=p->pao_stride,den_stride=p->den_stride,vxc_flag=p->vxc_flag;
   const int npt_atom=nr*na;
   int *at_fnan=view[0];

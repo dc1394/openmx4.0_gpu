@@ -22,6 +22,14 @@ assembly = (ROOT / "source/openmx_vna_assembly.h").read_text()
 start = assembly.index("  int pending;\n  do {")
 finish = assembly.index("  openmx_core_hvna_workspace_destroy(halo_owner);", start)
 production = assembly[start:finish]
+# The ring's own helpers (row copies of pack/unpack, verbose phase clock) are
+# production code too: take them from the same header.
+def helper(declaration, terminator="\n}\n"):
+    first = assembly.index(declaration)
+    return assembly[first:assembly.index(terminator, first) + len(terminator)]
+ring_helpers = (helper("static size_t SetPro_RingRows(")
+                + helper("typedef struct { double sizes, pack, send, receive, unpack, halo, wait, bytes; long messages; } SetProRingTimes;", "\n")
+                + helper("static inline void SetPro_RingTick("))
 reference = (ROOT / "tests/fixtures/vna_exchange_before_raii.c").read_text()
 # The frozen loop keeps its pointer-row callback; production now passes flat
 # views. Both callbacks independently inspect the same received payload.
@@ -67,6 +75,8 @@ static int tracked_wait(MPI_Request *request,MPI_Status *status) {
 #define MPI_Recv tracked_receive
 #define MPI_Wait tracked_wait
 static Type_DS_VNA expected(int g,int h,int row,int column) { return (Type_DS_VNA)(g*1000+h*100+row*10+column); }
+static double clock_ticks;
+static void dtime(double *t) { *t=++clock_ticks; }
 static void consume(int original,int gc) {
   (void)original;assert(trace_size<NG+1);trace[trace_size++]=gc;
   for(int h=0;h<=FNAN[gc];++h)
@@ -83,8 +93,9 @@ static void reference_consume_halo(const void *geometry,const void *projectors,c
 '''
 FLAT_CALLBACK = r'''
 static void SetPro_HVNA_CPU_Halo(const void *geometry,const void *projectors,const void *workspace,
-    const OpenMXProjectorMatrix *ds,const OpenMXDoubleBlockMatrix *hvna,int original,int gc,int fp32) {
-  (void)geometry;(void)projectors;(void)workspace;(void)hvna;(void)fp32;
+    const OpenMXProjectorMatrix *ds,const OpenMXDoubleBlockMatrix *hvna,int original,int gc,int fp32,
+    const void *halo_cache) {
+  (void)geometry;(void)projectors;(void)workspace;(void)hvna;(void)fp32;assert(halo_cache);
   for(int h=0;h<=FNAN[gc];++h)
     for(int i=0;i<Spe_Total_NO[WhatSpecies[gc]];++i)
       for(int j=0;j<active_components;++j)
@@ -111,6 +122,9 @@ static void candidate(int gpu) {
   const OpenMXProjectorMatrix projectors_matrix=ds_matrix;
   const OpenMXVnaMatrixViews *matrices=&matrix_views;
   struct {int *orbitals;} preparation={Spe_Total_NO};
+  /* the verbose phase clock runs: it must not disturb the protocol */
+  const int ring_timed=1;SetProRingTimes ring;double ring_clock=0;int halo_cache=0;
+  memset(&ring,0,sizeof(ring));dtime(&ring_clock);
 '''
 MAIN = r'''
 static void configure(int rank,int peers,int scenario) {
@@ -164,7 +178,7 @@ int main(int argc,char** argv) {
 with tempfile.TemporaryDirectory(prefix="openmx-vna-exchange-") as directory:
     folder = Path(directory)
     src, exe = folder / "check.c", folder / "check"
-    src.write_text(PREFIX + FLAT_CALLBACK + LEGACY + reference + "\n}\n" + PRODUCTION + production
+    src.write_text(PREFIX + ring_helpers + FLAT_CALLBACK + LEGACY + reference + "\n}\n" + PRODUCTION + production
                    + "\nOpenMX_TransferEnd(&transfer);\n}\n" + MAIN)
     environment = os.environ.copy()
     environment.setdefault("OMPI_CC", "cc")

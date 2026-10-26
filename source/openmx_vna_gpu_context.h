@@ -55,6 +55,10 @@ typedef struct {
   double *gnt;          /* Gaunt table                                 */
   double *c2r;          /* Comp2Real, packed per L                     */
   int *c2r_off;         /* [L] offset into c2r (complex index)         */
+
+  /* Late device failure: when host_route is set, this rank's pairs from
+     host_first on are left to the host SIMD assembly (zero = none). */
+  int host_route, host_first;
 } SetProGpu2Context;
 
 /* VNA2/VNA3 pair batches. */
@@ -79,6 +83,10 @@ typedef struct {
   double *gnt2;         /* (-1)^|m| Gaunt(L0,M0,L1,M1,LL,-m), m=M1-M0  */
   double *c2r;
   int *c2r_off;
+
+  /* Late device failure, as in SetProGpu2Context; once set, the remaining
+     HVNA2/HVNA3 assembly of this invocation runs on the host SIMD path. */
+  int host_route, host_first;
 } SetProGpu3Context;
 
 #endif

@@ -36,6 +36,22 @@ static size_t SetPro_RingRows(Type_DS_VNA *message,Type_DS_VNA **block,int rows,
   return row_values*(size_t)(rows>0?rows:0);
 }
 
+/* The pairs [first, count) of a pair list, for the host SIMD assembly of the
+   pairs a device batch left unfinished. The CPU kernels read only the per-pair
+   arrays; the per-atom CSR offsets do not describe a pair range. */
+static void SetPro_PairTail(const OpenMXAtomPairBuffers *all,int first,OpenMXAtomPairBuffers *tail)
+{
+  *tail=*all;
+  tail->count=all->count-first;
+  tail->local=all->local+first;
+  tail->neighbor=all->neighbor+first;
+  tail->central_global=all->central_global+first;
+  tail->central_species=all->central_species+first;
+  tail->neighbor_species=all->neighbor_species+first;
+  tail->displacements=all->displacements+(size_t)first*6;
+  tail->offsets=NULL;
+}
+
 /* OPENMX_SETPRO_VERBOSE=1: where the projector ring spends its time (per rank
    and call). Waiting phases are the size handshake, the blocking receive and
    the completion of each send; copies are the message pack and unpack. */
@@ -76,7 +92,15 @@ static double SetPro_Separable(const OpenMXVnaMatrixViews *matrices,const OpenMX
   if (phases_timed) dtime(&phase_clock);
   if (SetPro_DSVNA_GpuBegin(reciprocal, &gpu2,&preparation)) {
     SetPro_DSVNA_GpuRun(DS_VNA,pairs->count,pairs->local,pairs->neighbor,wavevectors,&gpu2);
+    const int host_route=gpu2.host_route,host_first=gpu2.host_first;
     SetPro_DSVNA_GpuEnd(&gpu2);
+    /* a late device failure leaves this rank's remaining pairs to the host
+       SIMD assembly (rank-local; the failure verdict was collective) */
+    if (host_route && host_first<pairs->count) {
+      OpenMXAtomPairBuffers rest;
+      SetPro_PairTail(pairs,host_first,&rest);
+      SetPro_DSVNA_CPU(&projectors_matrix,preparation_owner,&preparation,wavevectors,&rest,tables,&time1,&time2,&time3);
+    }
   }
   else
     SetPro_DSVNA_CPU(&projectors_matrix,preparation_owner,&preparation,wavevectors,pairs,tables,&time1,&time2,&time3);
@@ -106,13 +130,13 @@ static double SetPro_Separable(const OpenMXVnaMatrixViews *matrices,const OpenMX
   SetProRingTimes ring;
   double ring_clock=0.0;
   memset(&ring,0,sizeof(ring));
+  if (ring_timed) dtime(&ring_clock);
 
   /* Preserve the two-pass ring protocol: announce the next atom's size to
      every peer, then transfer one atom per peer and consume its halo before
      reusing the receive slot. Each nonblocking send is waited for before the
      send buffer is reused. The two directions have independent owners. */
   int pending;
-  if (ring_timed) dtime(&ring_clock);
   do {
     for (int id=0;id<peers;++id) {
       const int destination=(rank+id)%peers,source=(rank-id+peers)%peers;
@@ -171,6 +195,7 @@ static double SetPro_Separable(const OpenMXVnaMatrixViews *matrices,const OpenMX
     for (int id=0;id<peers;++id)
       pending|=sent[id]<F_Snd_Num[id] || received[id]<F_Rcv_Num[id];
   } while (pending);
+  openmx_core_hvna_workspace_destroy(halo_owner);
   SetPro_RingTick(phases_timed,&phase_clock,&phase_ring);
   SetPro_HvnaHost_Free(&halo_cache);
   if (ring_timed)
@@ -178,7 +203,6 @@ static double SetPro_Separable(const OpenMXVnaMatrixViews *matrices,const OpenMX
         "halo %s %.3f s, send wait %.3f s; %ld messages, %.1f MiB sent",
         ring.sizes,ring.pack,ring.send,ring.receive,ring.unpack,gpu?"archive":"compute",ring.halo,ring.wait,
         ring.messages,ring.bytes/1048576.0);
-  openmx_core_hvna_workspace_destroy(halo_owner);
   if (measure_time) { dtime(&communication_end);time4=communication_end-communication_begin;dtime(&communication_begin); }
   if (gpu) *used_gpu|=SetPro_HVNA_DispatchRun(&hvna,HVNA);
   else SetPro_HVNA_CPU_Local(&hvna_geometry,projector_owner,&projectors,&projectors_matrix,&matrices->potential,fp32);
@@ -206,8 +230,16 @@ static double SetPro_OneCenter(const OpenMXVnaMatrixViews *matrices,int mirror,
   dtime(&begin);
   const OpenMXAtomPairBuffers *pairs=&invocation->pairs;
   const OpenMXVnaPreparationBuffers *basis=&invocation->preparation;
-  if (gpu->enabled)
+  if (gpu->enabled && !gpu->host_route) {
     SetPro_VNA23_GpuRun(matrix,mirror,pairs->count,pairs->local,pairs->neighbor,invocation->wavevectors,gpu);
+    /* a late device failure (collective verdict) leaves this rank's remaining
+       pairs, and the other orientation, to the host SIMD assembly */
+    if (gpu->host_route && gpu->host_first<pairs->count) {
+      OpenMXAtomPairBuffers rest;
+      SetPro_PairTail(pairs,gpu->host_first,&rest);
+      SetPro_VNA23_CPU(flat,mirror,invocation->wavevectors,basis,&rest,tables);
+    }
+  }
   else
     SetPro_VNA23_CPU(flat,mirror,invocation->wavevectors,basis,pairs,tables);
   if (!mirror) {

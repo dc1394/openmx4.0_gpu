@@ -41,6 +41,12 @@ HARNESS = r'''
 #define NA 2
 #define NH 9
 #define NP 11
+#include "openmx_host_simd.h"
+/* The adapter's host SIMD policy (production: openmx_host_simd.c). The legacy
+   loops are the path this harness was written for; main repeats every case
+   with the widest host SIMD ISA of the linked Core. */
+static int harness_host_simd=OPENMX_HOST_SIMD_LEGACY;
+int OpenMX_HostSimdMode(void){return harness_host_simd;}
 static int List_YOUSO[40], M2G[NA+1]={0,1,2};
 static int WhatSpecies[NA+1]={0,0,1}, natn[NA+1][NH], ncn[NA+1][NH];
 static int Spe_MaxL_Basis[NS], Spe_Num_Basis[NS][1], GL_Mesh;
@@ -135,7 +141,10 @@ int main(void)
   setenv("OPENMX_SETPRO_VERBOSE","1",1);assert(SetPro_verbose()==1);
   omp_set_dynamic(0);
   const int meshes[]={1,3,NP}, threads[]={1,2,8}, multiplicities[][2]={{2,1},{1,2},{0,2},{2,0},{0,0}};
+  const int policies[]={OPENMX_HOST_SIMD_LEGACY,openmx_core_host_simd_mode(NULL)};
+  for(int policy=0;policy<2;policy++)
   for(int mesh=0;mesh<3;mesh++)for(int split=0;split<3;split++)for(int basis=0;basis<5;basis++)for(int mirror=0;mirror<2;mirror++){
+    harness_host_simd=policies[policy];
     GL_Mesh=meshes[mesh];omp_set_num_threads(threads[split]);
     for(int s=0;s<NS;s++){
       Spe_Num_Basis[s][0]=multiplicities[basis][s];
@@ -197,7 +206,9 @@ int main(void)
     }
     cases++;
   }
-  printf("PASS: %d analytic VNA2/3 cases, 1/2/8 threads, empty/unequal species, polar/on-site derivatives; max error %.3g\n",cases,max_error);
+  assert(cases==2*3*3*5*2);
+  printf("PASS: %d analytic VNA2/3 cases (legacy and %s host policies), 1/2/8 threads, empty/unequal species, polar/on-site derivatives; max error %.3g\n",
+      cases,openmx_core_host_simd_name(policies[1]),max_error);
   return 0;
 }
 '''

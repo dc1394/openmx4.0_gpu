@@ -2657,12 +2657,13 @@ static int OLG_kept_matches(int MD_iter)
   for(int mc=1;mc<=Matomnum;mc++)if(OLG_kept.fnan[mc]!=FNAN[M2G[mc]])return 0;
   return 1;
 }
+/* The host SIMD search of this rank's atoms; no collective inside, so a
+   caller may take it on every rank or only on the ranks whose device path
+   failed. Returns 0 (nothing allocated) only in legacy mode. */
 static int UCellBox_OLG_Host(int MD_iter,int estimate_switch,int CpyCell,int **grid,int **cell,int *size_GListTAtoms1)
 {
   const int mode=OpenMX_HostSimdMode();
-  int local=mode!=OPENMX_HOST_SIMD_LEGACY && !gpu_rank_device_usable(),all;
-  MPI_Allreduce(&local,&all,1,MPI_INT,MPI_MIN,mpi_comm_level1);
-  if(!all)return 0;
+  if(mode==OPENMX_HOST_SIMD_LEGACY)return 0;
   if(estimate_switch==0 && OLG_kept_matches(MD_iter)){
     size_t total=0;int failed=0;
     for(int mc=1;mc<=Matomnum;mc++){
@@ -2761,14 +2762,44 @@ static int UCellBox_OLG_Host(int MD_iter,int estimate_switch,int CpyCell,int **g
   return 1;
 }
 
+/* The device arena of UCellBox_OLG_GPU_Part for this rank's atoms. */
+static size_t OLG_device_need(int CpyCell)
+{
+  size_t points=0,out=0,pairs=0;
+  const size_t rdim=2*(size_t)CpyCell+1;
+  for(int m=1;m<=Matomnum+MatomnumF;m++)points+=(size_t)GridN_Atom[m<=Matomnum?M2G[m]:F_M2G[m]];
+  for(int mc=1;mc<=Matomnum;mc++){
+    const int gc=M2G[mc];size_t atom=0;
+    for(int h=0;h<=FNAN[gc];h++)atom+=(size_t)GridN_Atom[natn[gc][h]];
+    if(out<atom)out=atom;
+    if(pairs<(size_t)FNAN[gc]+1)pairs=(size_t)FNAN[gc]+1;
+  }
+  return (2*points+out+3*(size_t)(TCpyCell+1)+rdim*rdim*rdim)*sizeof(int)+pairs*sizeof(OLG_GpuPair)+8*OLG_GPU_ALIGN;
+}
+
 static int UCellBox_OLG_GPU(int MD_iter,int estimate_switch,int CpyCell,int **grid,int **cell,int *size_GListTAtoms1)
 {
+  const int host_simd=OpenMX_HostSimdMode()!=OPENMX_HOST_SIMD_LEGACY;
   int requested=scf_eigen_lib_flag==GPUSOLVER && openmx_env_flag_at(OPENMX_ENV_UCELL_OLG_GPU,1);
   MPI_Allreduce(MPI_IN_PLACE,&requested,1,MPI_INT,MPI_MIN,mpi_comm_level1);
-  if(!requested)return 0;
-  if(UCellBox_OLG_Host(MD_iter,estimate_switch,CpyCell,grid,cell,size_GListTAtoms1))return 1;
+  /* No device stage (CPU input, MD steps after a failed GPU start, or the
+     stage disabled): the host SIMD search, else the legacy loop. */
+  if(!requested)return host_simd && UCellBox_OLG_Host(MD_iter,estimate_switch,CpyCell,grid,cell,size_GListTAtoms1);
+  /* A device that cannot hold the stage on some rank: every rank on the host. */
+  if(OpenMX_HostSimdStageOnHost("UCell_Box overlap grids",Matomnum?OLG_device_need(CpyCell):0,
+                                OpenMX_HostSimdDeviceBudget((size_t)64<<20)))
+    return host_simd ? UCellBox_OLG_Host(MD_iter,estimate_switch,CpyCell,grid,cell,size_GListTAtoms1) : 0;
   int myid;MPI_Comm_rank(mpi_comm_level1,&myid);
   int done=!Matomnum || (!openmx_gpu_capacity_test_recovery() && OLG_gpu_ready() && UCellBox_OLG_GPU_Part(1,Matomnum+1,myid,estimate_switch,CpyCell,grid,cell,size_GListTAtoms1));
+  /* A rank whose device path failed late searches on the host (local work,
+     no collective) and every rank is then done; legacy mode keeps the
+     chunked capacity recovery below. The host search sets up atom 0 itself. */
+  if(host_simd){
+    if(!done)return UCellBox_OLG_Host(MD_iter,estimate_switch,CpyCell,grid,cell,size_GListTAtoms1);
+    FNAN[0]=0;
+    if(!estimate_switch){GListTAtoms1[0]=malloc(sizeof(int*));GListTAtoms2[0]=malloc(sizeof(int*));GListTAtoms1[0][0]=malloc(sizeof(int));GListTAtoms2[0][0]=malloc(sizeof(int));}
+    return 1;
+  }
   int mc=done?Matomnum+1:1,h=0;size_t point=0;
   if(!done)OpenMX_HostSimdReport("<UCell_Box> overlap grids:");
   int *atvf=NULL,*ratvf=NULL,*result=NULL,rdim=2*CpyCell+1;

@@ -164,6 +164,57 @@ void OpenMX_Grid_Hamiltonian_CPU(OpenMXGridWorkspace *grid,int Cnt_kind,const Op
   }
 }
 
+void OpenMX_Grid_Hamiltonian_CPU_Ranges(OpenMXGridWorkspace *grid,int Cnt_kind,
+    const OpenMXElectronicViews *electronic,size_t ranges,const int *atom,const int *neighbor,
+    const int *first,const int *points)
+{
+  int s,rank,max_orbitals=1;
+  size_t k;
+  char error[256];
+  OpenMXGridAtom *atoms;
+  OpenMXGridPair *pairs;
+  double *****matrix;
+  const int *orbitals=Cnt_kind==0?Spe_Total_NO:Spe_Total_CNO;
+  const int mode=OpenMX_HostSimdGridMode(OPENMX_ENV_SETHAM_SIMD);
+  if (ranges==0) return;
+  grid_check(Cnt_kind==0 || Cnt_kind==1,"Hamiltonian Cnt_kind must be 0 or 1");
+  grid_check(electronic!=NULL && atom!=NULL && neighbor!=NULL && (first==NULL)==(points==NULL),
+      "missing Hamiltonian ranges");
+  matrix=Cnt_kind==0?electronic->H:electronic->CntH;
+  MPI_Comm_rank(mpi_comm_level1,&rank);
+  for (k=0;k<ranges;k++){
+    const int g=M2G[atom[k]],n=orbitals[WhatSpecies[natn[g][neighbor[k]]]];
+    if (orbitals[WhatSpecies[g]]>max_orbitals)max_orbitals=orbitals[WhatSpecies[g]];
+    if (n>max_orbitals)max_orbitals=n;
+  }
+  grid_check(openmx_core_grid_plan(grid,OPENMX_GRID_HAMILTONIAN,SpinP_switch+1,0,ranges,
+      (size_t)max_orbitals,(size_t)omp_get_max_threads(),mode,&atoms,&pairs,error,sizeof(error)),error);
+  for (k=0;k<ranges;k++){
+    const int a=atom[k],h=neighbor[k],g=M2G[a];
+    pairs[k]=grid_pair(a,h,orbitals[WhatSpecies[g]],orbitals[WhatSpecies[natn[g][h]]],rank,0);
+    if (first!=NULL){
+      /* a point range: the lists start at first, and a halo neighbour's rows,
+         indexed by the position in the pair's list, start there too */
+      grid_check(0<=first[k] && 0<=points[k] && points[k]<=NumOLG[a][h]-first[k],"invalid Hamiltonian point range");
+      pairs[k].points=points[k];
+      pairs[k].center_points+=first[k];
+      pairs[k].neighbor_points+=first[k];
+      if (pairs[k].neighbor.overlap_rows)
+        pairs[k].neighbor.rows=(const Type_Orbs_Grid *const *)pairs[k].neighbor.rows+first[k];
+    }
+    pairs[k].volume=GridVol;pairs[k].potential_index=MGridListAtom[a];
+    for (s=0;s<=SpinP_switch;s++){
+      pairs[k].matrix[s]=matrix[s][a][h];pairs[k].potential[s]=Vpot_Grid[s];
+    }
+  }
+#pragma omp parallel if (omp_get_max_threads()>1)
+  {
+    char worker_error[256];
+    grid_check(openmx_core_grid_hamiltonian_worker(grid,(size_t)omp_get_thread_num(),(size_t)omp_get_num_threads(),
+        worker_error,sizeof(worker_error)),worker_error);
+  }
+}
+
 OpenMXGridExchange OpenMX_Grid_Exchange(OpenMXGridWorkspace *grid,int kind,
     size_t send_values,size_t receive_values,size_t sends,size_t receives)
 {

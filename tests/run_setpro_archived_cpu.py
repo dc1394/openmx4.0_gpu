@@ -38,6 +38,7 @@ prefix = r'''
 #include <string.h>
 #include "openmx_gpu_task.h"
 #include "openmx_vna_gpu_context.h"
+#include "openmx_core_host_simd.h"
 enum {cudaSuccess, cudaMemcpyHostToDevice, cudaMemcpyDeviceToHost};
 enum {MPI_INT, MPI_MAX};
 static int Matomnum=2,SpeciesNum=2,mpi_comm_level1=0,fp32;
@@ -52,6 +53,10 @@ static size_t available=SIZE_MAX;
 static const void *archive_a,*archive_b;
 static void *tracked[8];
 static int openmx_fp32_enabled(void){return fp32;}
+/* OPENMX_HOST_SIMD policy: legacy keeps the capacity recovery loop this
+   harness checks; any host SIMD mode returns the device verdict instead. */
+static int host_simd=OPENMX_HOST_SIMD_LEGACY;
+static int OpenMX_HostSimdMode(void){return host_simd;}
 static int gpu_rank_device_usable(void){return usable;}
 static int openmx_gpu_capacity_test_recovery(void){return inject;}
 static int openmx_gpu_local_size_noncollective(void){return 1;}
@@ -183,6 +188,17 @@ int main(void){
    else assert(uploads==2 && capacity_calls==0); /* failure index past the last copy */
    for(int a=0;a<3;a++)for(int j=0;j<3;j++)for(int m=0;m<3;m++)for(int n=0;n<3;n++)
     assert(fabs(values[a][j][m][n]-expected[a][j][m][n])<1e-12);
+   /* Host SIMD policy: the same device attempt, no capacity recovery; a
+      failure is reported to the dispatcher with the outputs untouched. */
+   memcpy(values,initial,sizeof(values));
+   faults(scenario,g.device_bytes);host_simd=OPENMX_GRID_SCALAR;
+   const int done=SetPro_HVNA_GpuRun(&g,atoms);host_simd=OPENMX_HOST_SIMD_LEGACY;
+   assert(done==(scenario==0 || scenario==22));
+   assert(!held && !live && capacity_calls==0 && collectives==0);
+   assert(g.flat_dev==NULL && g.halo_dev==NULL && g.flat_host==local && g.halo_host==halo);
+   if(done){for(int a=0;a<3;a++)for(int j=0;j<3;j++)for(int m=0;m<3;m++)for(int n=0;n<3;n++)
+    assert(fabs(values[a][j][m][n]-expected[a][j][m][n])<1e-12);}
+   else assert(!memcmp(values,initial,sizeof(values)));
    cases++;
   }
  }

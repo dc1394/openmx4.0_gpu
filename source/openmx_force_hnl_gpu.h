@@ -1,5 +1,6 @@
 #ifndef OPENMX_FORCE_HNL_GPU_H
 #define OPENMX_FORCE_HNL_GPU_H
+#include "openmx_host_simd.h"
 /* Invocation-owned nonlocal Force archives shared by CUDA/HIP. Native
    kernels and admission policies remain in their backend translation units. */
 #include "openmx_native_resources.h"
@@ -218,6 +219,18 @@ static int Force_HNL_GpuBegin(const OpenMXAtomicViews *atomic, double****** DS_N
         MPI_Allreduce(&fit,&all_fit,1,MPI_INT,MPI_MIN,mpi_comm_level1);
         if(!all_fit){Force_HNL_GpuEnd(g);return 0;}
         size_t reserve=Force_gpu_node_reserve(node_ranks);
+        /* Host SIMD policy (every rank reaches this point): need = the archives
+           plus the 128 MiB transient margin of the residency test, budget = the
+           per-rank share of the free memory above the node reserve. A host vote
+           keeps the CPU dHNL traces (SIMD nonlocal blocks) on every rank. The
+           capacity test forces the recovery: it does not vote. */
+        {
+            const size_t budget=resident && free_bytes>reserve ? (free_bytes-reserve)/(size_t)node_ranks : 0;
+            if(OpenMX_HostSimdStageOnHost("Force_HNL",openmx_gpu_capacity_test_recovery() ? 0 : need+134217728,budget)){
+                Force_HNL_GpuEnd(g);
+                return 0;
+            }
+        }
         resident=resident && free_bytes>reserve && (free_bytes-reserve)/(size_t)node_ranks>need+134217728;
     }
 

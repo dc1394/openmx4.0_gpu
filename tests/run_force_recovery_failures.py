@@ -25,6 +25,10 @@ prefix = r'''
 #include "allocation_faults.hpp"
 #include "openmx_gpu_task.h"
 #include "openmx_env.h"
+#include "openmx_host_simd.h"
+/* Host SIMD policy: the packet failures below belong to the legacy recovery. */
+static int host_simd_policy=OPENMX_HOST_SIMD_LEGACY;
+int OpenMX_HostSimdMode(void){return host_simd_policy;}
 typedef struct OpenMXNativeResources OpenMXNativeResources;
 static int mpi_comm_level1;
 static void Force4B_gpu_abort(const char *message){throw std::runtime_error(message);}
@@ -66,7 +70,19 @@ int main(){
     openmx::test::fail_allocation_after(-1);
     assert(caught && openmx::test::live_allocations()==live);++cases;
   }
-  std::printf("PASS: %d real C++ Force packet allocation failures, no dispatch/leaks; umbrella overrides\n",cases);
+  /* Under the host SIMD policy a rank whose batch completed takes no
+     recovery step at all: no packet, no allocation, no dispatch. */
+  host_simd_policy=openmx_core_host_simd_mode(nullptr);
+  for(int kind=1;kind<=2;++kind){
+    Force4BGpuItem item={0,0,1,1,1};Force4BGpuContext vna={};vna.num_proj=1;
+    ForceHNLGpuContext hnl={};int nlp=1;
+    const auto live=openmx::test::live_allocations();openmx::test::fail_allocation_after(0);
+    if(kind==1)Force4B_capacity(1,&vna,1,&item,nullptr,nullptr,nullptr,nullptr,nullptr,1);
+    else Force_HNL_capacity(1,&hnl,1,&item,nullptr,nullptr,nullptr,nullptr,&nlp,nullptr,nullptr,nullptr,1);
+    openmx::test::fail_allocation_after(-1);
+    assert(openmx::test::live_allocations()==live);++cases;
+  }
+  std::printf("PASS: %d real C++ Force packet allocation failures, no dispatch/leaks; umbrella overrides; host SIMD policy done ranks\n",cases);
 }
 '''
 with tempfile.TemporaryDirectory(prefix="openmx-force-packets-") as directory:

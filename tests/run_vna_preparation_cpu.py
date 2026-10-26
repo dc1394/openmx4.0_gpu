@@ -58,6 +58,14 @@ static int SetPro_gpu_stage_enabled(const char *name){(void)name;return allowed;
 static int SetPro_GpuSharing(MPI_Comm comm){(void)comm;return 1;}
 static size_t SetPro_GpuBatchBudget(int n){(void)n;return SIZE_MAX;}
 static size_t SetPro_DSVNA_DeviceBytes(const SetProGpu2Context *g){(void)g;return 0;}
+/* The production pair count reads these globals; the host SIMD vote is the
+   collective helper of openmx_host_simd.c (a device vote unless forced). */
+static int Matomnum=2,M2G[3]={0,1,2},FNAN[3]={0,3,4},host_vote,votes;
+static int OpenMX_HostSimdStageOnHost(const char *stage,size_t need,size_t budget){
+  (void)need;assert(!strcmp(stage,"Set_ProExpn_VNA: DS_VNA") && budget==SIZE_MAX);votes++;return host_vote;
+}
+static void SetPro_note(const char *stage,const char *fmt,...){(void)stage;(void)fmt;}
+static void SetPro_DSVNA_GpuEnd(SetProGpu2Context *g);
 static void *SetPro_checked_malloc(size_t n){void *p=malloc(n?n:1);assert(p);return p;}
 static double Gaunt(int a,int b,int c,int d,int e,int f){return (a+3*b+5*c+7*d+11*e+13*f)*0.03125;}
 static double RF_BesselF(const OpenMXReciprocalViews *reciprocal,int species,int angular,int radial,double wavevector){
@@ -149,7 +157,12 @@ int main(void)
       }
     }
     SetProGpu2Context a={0},b={0};
-    assert(SetPro_DSVNA_GpuBegin(reciprocal,&a,&v));check_batch(&a,&v);
+    assert(SetPro_LocalPairs()==9);
+    /* A host vote returns without a batch and releases every table. */
+    host_vote=1;votes=0;assert(!SetPro_DSVNA_GpuBegin(reciprocal,&a,&v)&&votes==1);
+    for(size_t i=0;i<sizeof(a);i++)assert(((unsigned char*)&a)[i]==0);
+    host_vote=0;votes=0;
+    assert(SetPro_DSVNA_GpuBegin(reciprocal,&a,&v)&&votes==1);check_batch(&a,&v);
     SpeciesNum=1; // The prepared species count is owned by the snapshot.
     assert(SetPro_DSVNA_GpuBegin(reciprocal,&b,&v));check_batch(&b,&v);
     SpeciesNum=NS;
@@ -172,7 +185,8 @@ with tempfile.TemporaryDirectory(prefix="openmx-vna-preparation-") as folder:
     src.write_text('#include <assert.h>\n#include <math.h>\n#include <stdint.h>\n#include <stdio.h>\n'
                    '#include <stdlib.h>\n#include <string.h>\n#include <omp.h>\n#include "openmx_complex.h"\n'
                    '#include "openmx_core_vna_preparation.h"\n#include "openmx_vna_gpu_context.h"\n'
-                   + PREFIX + function("static int SetPro_DSVNA_GpuBegin(") + '\n'
+                   + PREFIX + function("static int SetPro_LocalPairs(") + '\n'
+                   + function("static int SetPro_DSVNA_GpuBegin(") + '\n'
                    + function("static void SetPro_DSVNA_GpuEnd(")
                    + '\n#include "openmx_vna_preparation.h"\n' + MAIN)
     subprocess.run(shlex.split(os.environ.get("CC", "cc")) + shlex.split(os.environ.get("CFLAGS", "-O2 -g")) +

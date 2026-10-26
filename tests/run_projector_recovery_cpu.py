@@ -37,6 +37,9 @@ functions+=extract_struct(s,'Force4BCapacityParameters')
 functions+=extract_function(s,'Force4B_capacity_kernel')+'\n'
 functions+=extract_function(s,'Force_HNL_capacity_kernel')+'\n'
 functions+=(root/'source/openmx_force_recovery.h').read_text()+'\n'
+# Host SIMD policy of the recovery: the collective packet loop (legacy) and the
+# rank-local SIMD bodies (widest host mode) must both match the owner kernels.
+functions+='static int host_simd_policy=OPENMX_HOST_SIMD_LEGACY;\nint OpenMX_HostSimdMode(void){return host_simd_policy;}\n'
 # These unchanged owner kernels are independent of capacity packing/sharding.
 functions+=function(s,'static void Force4B_GpuCase1Kernel_Single(')+'\n'
 # Skip the forward declaration of the second kernel.
@@ -56,12 +59,16 @@ int main(int argc,char **argv){
  for(int i=0;i<N*16;i++)weights[i]=sin(.09*i);
  for(int i=0;i<MAXK;i++){a[i]=3*i;b[i]=2*i+7;halo[i]=i%2;ene[i]=i%7;nlp[i]=i%4+1;}
  int cases=0;
+ for(int policy=0;policy<2;policy++){
+ host_simd_policy=policy?openmx_core_host_simd_mode(NULL):OPENMX_HOST_SIMD_LEGACY;
+ /* the rank-local bodies ignore the worker tiers: run them once */
+ const int worker_max=policy?1:4,tier_max=policy?1:4;
  for(int kind=1;kind<=2;kind++){
   for(int i=0;i<N;i++){items[i]=(Force4BGpuItem){(size_t)i*16,i*3,i%4,2+i%3,1+i%4};h0[i]=i%3;}
   ForceHNLGpuContext g={0};g.flat=flat;g.halo=halodata;g.c2=c2;g.ene=energies;g.flat_stride=g.c2_stride=STRIDE;
   if(kind==1)reference1(N,items,a,b,halo,ene,nlp,weights,halodata,energies,flat,STRIDE,expected);
   else reference2(N,items,h0,nlp,ene,a,b,weights,c2,energies,flat,STRIDE,expected);
-  for(workers=1;workers<=4;workers++)for(int tier=0;tier<4;tier++){
+  for(workers=1;workers<=worker_max;workers++)for(int tier=0;tier<tier_max;tier++){
    local_fail=tier>0;remote_fail=tier==2;fail_alloc=tier==3;
    for(int i=0;i<3*N+2;i++)out[i]=1234;
    Force_HNL_capacity(kind,&g,N,items,a,b,halo,ene,nlp,h0,weights,out+1,0);
@@ -72,7 +79,7 @@ int main(int argc,char **argv){
    Force4BGpuContext g4={0};g4.num_proj=5;g4.flat_host=flatf;g4.halo_host=halof;g4.c2_host=c2f;g4.flat_stride=g4.c2_stride=STRIDE;
    if(kind==1)Force4B_GpuCase1Kernel_Single(5,flatf,halof,STRIDE,N,items,a,b,halo,weights,expected);
    else Force4B_GpuCase2Kernel_Single(5,c2f,STRIDE,N,items,a,b,weights,expected);
-   for(workers=1;workers<=4;workers++)for(int tier=0;tier<4;tier++){
+   for(workers=1;workers<=worker_max;workers++)for(int tier=0;tier<tier_max;tier++){
     local_fail=tier>0;remote_fail=tier==2;fail_alloc=tier==3;
     for(int i=0;i<3*N+2;i++)out[i]=1234;
     Force4B_capacity(kind,&g4,N,items,a,b,halo,weights,out+1,0);
@@ -81,18 +88,22 @@ int main(int argc,char **argv){
    }
   }
  }
+ /* Done/empty ranks join the collective loop under the legacy policy; the
+    host SIMD policy has no collective step, no dispatch and no output. */
  for(int kind=1;kind<=2;kind++)for(int done=0;done<2;done++){
   Force4BGpuContext g4={0};g4.num_proj=5;ForceHNLGpuContext g={0};
   for(int i=0;i<3*N+2;i++)out[i]=4321;
   peer_rounds=2;empty_dispatches=0;
   Force4B_capacity(kind,&g4,done?N:0,items,a,b,halo,weights,out+1,done);
-  assert(!peer_rounds && empty_dispatches==2);
+  if(policy)assert(peer_rounds==2 && !empty_dispatches);else assert(!peer_rounds && empty_dispatches==2);
   peer_rounds=2;empty_dispatches=0;
   Force_HNL_capacity(kind,&g,done?N:0,items,a,b,halo,ene,nlp,h0,weights,out+1,done);
-  assert(!peer_rounds && empty_dispatches==2);
+  if(policy)assert(peer_rounds==2 && !empty_dispatches);else assert(!peer_rounds && empty_dispatches==2);
   for(int i=0;i<3*N+2;i++)assert(out[i]==4321);
  }
- printf("PASS: %d HNL/VNA force recovery cases against owner kernels (ragged pack, halo, FP32/FP64, local/remote/CPU, empty/done ranks)\n",cases);
+ }
+ peer_rounds=0;
+ printf("PASS: %d HNL/VNA force recovery cases against owner kernels (ragged pack, halo, FP32/FP64, local/remote/CPU, empty/done ranks; host SIMD policies legacy and %s)\n",cases,openmx_core_host_simd_name(openmx_core_host_simd_mode(NULL)));
 }
 '''
 def bounded_stack():

@@ -23,11 +23,24 @@ source=(root/'source/Set_Hamiltonian.c').read_text()
 base=source[source.index('typedef struct {int spins,nc,hub,hch,vna;'):source.index('static void Set_Hamiltonian_Base_OpenACC(',source.index('typedef struct {int spins,nc,hub,hch,vna;'))]
 if args.backend=='HIP':source=(root/'source/backends/hip/src/Set_Hamiltonian.c').read_text()
 pair=source[source.index('typedef struct {int n0,n1,points;}'):source.index('/* Enter once per quadrature phase')]
+# openmx_host_simd.c is not linked: a kernel that takes its packed host mode
+# from the host SIMD policy runs once per grid SIMD mode this processor
+# executes (the policy's choice when OPENMX_SETHAM_SIMD is set).
+policy_kernel='OpenMX_HostSimdGridMode' in pair
+policy=r'''
+static const int harness_policy_kernel=%d;
+static int harness_grid_mode=OPENMX_GRID_SCALAR;
+static inline int OpenMX_HostSimdGridMode(int env_id){
+  const char *value=openmx_env_at(env_id);
+  return value!=NULL && value[0]!='\0' ? openmx_core_grid_simd(value) : harness_grid_mode;
+}
+''' % int(policy_kernel)
 main=r'''
 static int host_packed_calls;
 int __real_openmx_core_grid_hamiltonian_packed(const OpenMXGridPackedHamiltonian*,int);
 int __wrap_openmx_core_grid_hamiltonian_packed(const OpenMXGridPackedHamiltonian *p,int mode){
   host_packed_calls++;
+  if(harness_policy_kernel && openmx_env_at(OPENMX_ENV_SETHAM_SIMD)==NULL)assert(mode==harness_grid_mode);
   return __real_openmx_core_grid_hamiltonian_packed(p,mode);
 }
 int main(void){
@@ -52,6 +65,10 @@ int main(void){
  SetHCapacityPair pairs[N];size_t pa[N+1]={0},pb[N+1]={0},pw[N+1]={0};
  double left[200],right[200],weight[300],matrix[N*4*MAX*MAX+2];
  for(int i=0;i<200;i++){left[i]=.13*(i%11-4);right[i]=.07*(i%13-5);}for(int i=0;i<300;i++)weight[i]=.1*(i%19-8);
+ int modes=0;
+ for(int mode=OPENMX_GRID_SCALAR;mode<=(harness_policy_kernel?OPENMX_GRID_NEON:OPENMX_GRID_SCALAR);mode++){
+ if(harness_policy_kernel && !openmx_core_grid_simd_width(mode))continue;
+ harness_grid_mode=mode;modes++;
  for(int spins=1;spins<=4;spins*=2)for(int tier=0;tier<4;tier++)for(workers=1;workers<=4;workers++){
   for(int i=0;i<N;i++){pairs[i]=(SetHCapacityPair){1+i%3,1+(i+1)%3,i%4};pa[i+1]=pa[i]+pairs[i].points*pairs[i].n0;pb[i+1]=pb[i]+pairs[i].points*pairs[i].n1;pw[i+1]=pw[i]+pairs[i].points*spins;}
   local_fail=tier>0;remote_fail=tier==2;fail_alloc=tier==3;SetHCapacityParameters p={spins,MAX,.23};
@@ -65,14 +82,15 @@ int main(void){
   }
   assert(matrix[0]==999 && matrix[N*spins*MAX*MAX+1]==999);cases++;
  }
- assert(host_packed_calls>0);
- printf("PASS: %d Hamiltonian cases (spin, VNA/Hubbard/core-hole, unequal/empty pairs, local/remote/CPU); %d host SIMD calls\n",cases,host_packed_calls);
+ }
+ assert(host_packed_calls>0 && modes>0);
+ printf("PASS: %d Hamiltonian cases (spin, VNA/Hubbard/core-hole, unequal/empty pairs, local/remote/CPU); %d host SIMD calls in %d grid SIMD mode(s)\n",cases,host_packed_calls,modes);
 }
 '''
 with tempfile.TemporaryDirectory(prefix='openmx-hamiltonian-') as folder:
  p=Path(folder);(p/'mpi.h').write_text('typedef int MPI_Comm;\n#define MPI_COMM_NULL (-1)\n')
  (p/"cuda_runtime.h").write_text("/* Runtime mock is provided by the fixture prefix. */\n")
  (p/"openmx_gpu_device.h").write_text("/* Rank availability mock is provided by the fixture prefix. */\n")
- (p/'check.c').write_text('#include "openmx_core_grid.h"\n'+prefix+body+base+pair+main)
+ (p/'check.c').write_text('#include "openmx_core_grid.h"\n'+prefix+body+base+policy+pair+main)
  compile_task_test(shlex.split(os.environ.get('CC','cc'))+['-std=c11','-O1','-g','-Wno-unknown-pragmas','-fsanitize=address,undefined','-fno-sanitize-recover=all','-I'+str(p),'-I'+str(root/'source'),str(p/'check.c'),str(library),'-Wl,-rpath,'+str(library.parent),'-Wl,--wrap=openmx_core_grid_hamiltonian_packed','-lm','-o',str(p/'check')],check=True)
  subprocess.run([str(p/'check')],check=True,timeout=60)

@@ -2025,20 +2025,35 @@ static void BandCol_AccumulateDenseTransposedDM(BandColState *state, int n, int 
 }
 
 /* Stream state panels to the DM kernel as well: a capacity fallback must
-   never recreate the complete owner GPU eigenvector matrix. */
-static void BandCol_AccumulateDenseTransposedDM_OpenACC(BandColState *state, int n,int nk,int spin,int kloop,double k1,double k2,
+   never recreate the complete owner GPU eigenvector matrix.
+   host_recovery (host eigenvectors of the ELPA/ScaLAPACK fallback): only the
+   direct device attempt runs, without the collective capacity recovery of
+   openmx_gpu_dm_collective (per-chunk collectives with a serial host body);
+   0 is returned when it declines or fails, with CDM1/EDM1 untouched, and the
+   caller accumulates this rank's k point on the host SIMD path
+   (BandCol_DM_Block). No rank then waits for another, so ranks may differ.
+   Otherwise the collective path runs as before and 1 is returned. */
+static int BandCol_AccumulateDenseTransposedDM_OpenACC(BandColState *state, int n,int nk,int spin,int kloop,double k1,double k2,
     double k3,const dcomplex *evec,int stride,int *MP,int *order_GA,double ***EIGEN,const double *weight,
-    double *CDM1,double *EDM1,int size_H1,int state_first,MPI_Comm dm_comm,int host_vectors)
+    double *CDM1,double *EDM1,int size_H1,int state_first,MPI_Comm dm_comm,int host_vectors,int host_recovery)
 {
     int active=nk>0 && evec!=NULL;
+    if(host_recovery && !active)return 1;
     if(active){BandCol_DMEntryCache_Ensure(state, order_GA,MP,n);BandCol_UpdateDMEntryPhases(state, k1,k2,k3);}
     BandColDMEntryCache *cache=&state->dm_entry_cache;
     if(active && cache->entry_count!=size_H1)BandCol_AbortWithMessage("DM entry count mismatch");
     double *outputs[10]={CDM1,EDM1};
+    if(host_recovery)
+        return !openmx_gpu_capacity_test_recovery() &&
+            openmx_gpu_dm_try_entries(OPENMX_GPU_DM_COL,n,nk,stride,cache->entry_count,
+                evec,host_vectors,cache->basis0,cache->basis1,cache->phase_index,
+                cache->pair_count,cache->phase_r,cache->phase_i,weight,EIGEN[spin][kloop]+state_first,
+                NULL,outputs,1);
     openmx_gpu_dm_collective(dm_comm,OPENMX_GPU_DM_COL,n,active?nk:0,stride,active?cache->entry_count:0,
         evec,host_vectors,cache->basis0,cache->basis1,active?cache->phase_index:NULL,
         cache->pair_count,cache->phase_r,cache->phase_i,weight,active?EIGEN[spin][kloop]+state_first:NULL,
         NULL,outputs,1);
+    return 1;
 }
 
 /* GPU DM accumulation inside the ScaLAPACK/ELPA fallback of the collinear
@@ -2053,6 +2068,25 @@ static int BandCol_UseGpuFallbackDM(int n)
 {
     if (!openmx_env_flag_at(OPENMX_ENV_BAND_GPU_DM, 1)) return 0;
     return (scf_eigen_lib_flag == GPUSOLVER && (openmx_mgpu_host_required() || Band_DFT_Col_GpuSwitchNum() <= n));
+}
+
+/* Device-or-host decision of that fallback DM (OpenMX_HostSimdStageOnHost,
+   collective over mpi_comm_level1: called by every rank at the same point,
+   behind the rank-uniform BandCol_UseGpuFallbackDM). need = the working set
+   of the direct device attempt with host eigenvectors (the capacity_cost of
+   openmx_gpu_dm_try_entries): two indices and twelve doubles per DM entry,
+   three weights per state and the eigenvector rows of all n orbitals over the
+   states; budget = free device memory minus the 256 MiB reserve of the worker
+   capacity check. 1 = every rank accumulates on the host SIMD path. */
+static int BandCol_DMOnHost(int n, int states, int entries)
+{
+    size_t need = 0;
+    if (0 < entries && 0 < states)
+        need = (size_t)entries * (2 * sizeof(int) + 12 * sizeof(double))
+             + 3 * (size_t)states * sizeof(double)
+             + (size_t)n * (size_t)states * sizeof(dcomplex);
+    return OpenMX_HostSimdStageOnHost("Band_DFT_Col density matrix", need,
+                                      OpenMX_HostSimdDeviceBudget((size_t)256 << 20));
 }
 
 static void BandCol_GpuSolver_ReleaseDeviceMemory(BandColState *state)
@@ -5416,7 +5450,7 @@ diagonalize1:
                                                                     evec_stride,
                                                                     MP, use_setham_packed_cache ? setham_order_GA : order_GA, EIGEN,
                                                                     state->dm_workspace.OccWeight, CDM1, EDM1,
-                                                                    size_H1, 1,mpi_comm_level1,dm_host);
+                                                                    size_H1, 1,mpi_comm_level1,dm_host,0);
                         BANDCOL_PROF_ADD(dm_kernel, prof_t0);
                         if (dm_owner && !BandCol_GpuPersistentDecide(state)) {
                             BANDCOL_PROF_T0(prof_t0);
@@ -5484,15 +5518,17 @@ diagonalize1:
 
             int gpu_dm_done = 0;
 
-            if(BandCol_UseGpuFallbackDM(n)){
+            /* the vote and the device attempt of every rank; a rank whose
+               attempt declines accumulates on the host SIMD path below */
+            if(BandCol_UseGpuFallbackDM(n) && !BandCol_DMOnHost(n,kmin<=kmax?kmax-kmin+1:0,size_H1)){
                 int nk=kmin<=kmax?kmax-kmin+1:0;
                 int stride=ie2[myid2]-is2[myid2]+1;
                 if(nk){BandCol_DMWorkspace_Ensure(state, max_tno,nk);for(int j=0;j<nk;j++)state->dm_workspace.OccWeight[j]=1;}
                 openmx_mgpu_scope_state dm_scope=openmx_mgpu_band_scope_enter(!gpusolver2_flag,T_knum,kloop);
-                BandCol_AccumulateDenseTransposedDM_OpenACC(state, n,nk,spin,kloop,k1,k2,k3,
+                gpu_dm_done=BandCol_AccumulateDenseTransposedDM_OpenACC(state, n,nk,spin,kloop,k1,k2,k3,
                     nk?EVec1[spin]+kmin-is2[myid2]:NULL,stride,MP,order_GA,EIGEN,
-                    state->dm_workspace.OccWeight,CDM1,EDM1,size_H1,kmin,mpi_comm_level1,1);
-                openmx_mgpu_band_scope_leave(dm_scope);gpu_dm_done=nk>0;
+                    state->dm_workspace.OccWeight,CDM1,EDM1,size_H1,kmin,mpi_comm_level1,1,1) && nk>0;
+                openmx_mgpu_band_scope_leave(dm_scope);
             }
 
             if (!gpu_dm_done && kmin <= kmax) {
@@ -5998,7 +6034,7 @@ diagonalize1:
                     }
                     BandCol_AccumulateDenseTransposedDM_OpenACC(state, n, dm_owner?MaxN:0, spin, kloop, k1, k2, k3, evec_device, evec_stride,
                                                                 MP, use_setham_packed_cache ? setham_order_GA : order_GA,
-                                                                EIGEN, state->dm_workspace.OccWeight, CDM1, EDM1, size_H1, 1,mpi_comm_level1,state->mgpu_host_dense);
+                                                                EIGEN, state->dm_workspace.OccWeight, CDM1, EDM1, size_H1, 1,mpi_comm_level1,state->mgpu_host_dense,0);
                     if(dm_owner)group_ran_gpu_turn = 1;
 
                     if (measure_time) {
@@ -6026,16 +6062,19 @@ diagonalize1:
             if (state->refine.kdense) BandCol_RefineEndStep(state);
 
         } else {
-            const int collective_dm=BandCol_UseGpuFallbackDM(n);
+            /* the vote of every rank before its k points; the device DM then
+               needs no collective (a declined attempt accumulates that k point
+               on the host SIMD path), so the empty turns of the k-point groups
+               with fewer points are kept only as no-ops */
+            const int collective_dm=BandCol_UseGpuFallbackDM(n) && !BandCol_DMOnHost(n,MaxN,size_H1);
             int dm_kloops=num_kloop0;
             if(collective_dm)MPI_Allreduce(MPI_IN_PLACE,&dm_kloops,1,MPI_INT,MPI_MAX,mpi_comm_level1);
             for (kloop0 = 0; kloop0 < dm_kloops; kloop0++) {
 
-                /* K-point groups can own unequal numbers of points. Empty
-                   turns still serve other nodes' density-matrix recovery. */
+                /* K-point groups can own unequal numbers of points. */
                 if(kloop0>=num_kloop0){
                     BandCol_AccumulateDenseTransposedDM_OpenACC(state, n,0,spin,0,0,0,0,NULL,0,
-                        MP,order_GA,EIGEN,NULL,CDM1,EDM1,size_H1,1,mpi_comm_level1,1);
+                        MP,order_GA,EIGEN,NULL,CDM1,EDM1,size_H1,1,mpi_comm_level1,1,1);
                     continue;
                 }
 
@@ -6251,9 +6290,9 @@ diagonalize1:
 
                     if(collective_dm){
                         openmx_mgpu_scope_state dm_scope=openmx_mgpu_band_scope_enter(!gpusolver2_flag,T_knum,kloop);
-                        BandCol_AccumulateDenseTransposedDM_OpenACC(state, n,MaxN,spin,kloop,k1,k2,k3,Hs,na_rows,
-                            MP,order_GA,EIGEN,occ_weight,CDM1,EDM1,size_H1,1,mpi_comm_level1,1);
-                        openmx_mgpu_band_scope_leave(dm_scope);gpu_dm_done=1;
+                        gpu_dm_done=BandCol_AccumulateDenseTransposedDM_OpenACC(state, n,MaxN,spin,kloop,k1,k2,k3,Hs,na_rows,
+                            MP,order_GA,EIGEN,occ_weight,CDM1,EDM1,size_H1,1,mpi_comm_level1,1,1);
+                        openmx_mgpu_band_scope_leave(dm_scope);
                     }
                     if (!gpu_dm_done) {
                         BandCol_AccumulateDenseTransposedDM(state, n, MaxN, max_tno, spin, kloop, k1, k2, k3, Hs, na_rows,

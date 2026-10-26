@@ -119,7 +119,7 @@ int main(void)
                     for (q = 1; q <= FNAN[M2G[mc]]; q++) {
                         stage_source(F_G2M[natn[M2G[mc]][q]]);
                         Force4B_case1_trace_fused(vna, mc, M2G[mc], q, cdm, ds,
-                            &expected[mc][0], &expected[mc][1], &expected[mc][2]);
+                            &expected[mc][0], &expected[mc][1], &expected[mc][2], NULL);
                     }
                     for (i = 0; i < 3; i++) Gxyz[M2G[mc]][41 + i] = 0.37;
                 }

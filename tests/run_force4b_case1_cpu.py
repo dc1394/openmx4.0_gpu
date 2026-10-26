@@ -265,7 +265,7 @@ int main(void)
                     for (q = 1; q <= FNAN[M2G[mc]]; q++) {
                         stage_source(F_G2M[natn[M2G[mc]][q]]);
                         Force4B_case1_trace_fused(vna, mc, M2G[mc], q, cdm, ds,
-                            &expected[mc][0], &expected[mc][1], &expected[mc][2]);
+                            &expected[mc][0], &expected[mc][1], &expected[mc][2], NULL);
                     }
                     for (i = 0; i < 3; i++) Gxyz[M2G[mc]][41 + i] = 0.37;
                 }
@@ -347,9 +347,11 @@ int main(void)
 
 
 def make_harness(source: str) -> str:
-    parts = [common.STUBS, GLOBALS, common.extract_struct(source, "Force4BGpuItem")]
+    parts = [common.STUBS, GLOBALS, common.extract_struct(source, "Force4BGpuItem"),
+             common.extract_struct(source, "Force4BSimd")]
     for name in (
-        "Force_gpu_node_reserve", "Force_gpu_arena_off", "Force4B_case1_trace_fused_rows", "Force4B_case1_trace_fused", "Force4B_GpuCase1Kernel",
+        "Force_gpu_node_reserve", "Force_gpu_arena_off", "Force4B_simd_block", "Force4B_simd_trace",
+        "Force4B_case1_finish", "Force4B_case1_trace_fused_rows", "Force4B_case1_trace_fused", "Force4B_GpuCase1Kernel",
         "Force4B_GpuCase1Accumulate",
     ):
         parts.append(common.extract_function(source, name))

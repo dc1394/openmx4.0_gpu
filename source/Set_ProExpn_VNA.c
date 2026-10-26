@@ -28,6 +28,8 @@
 #include "openmx_gpu_workers.h"
 #include "openmx_gpu_views.h"
 #include "openmx_gpu_task.h"
+#include "openmx_gpu_task_layout.h"
+#include "openmx_host_simd.h"
 #include "openmx_mgpu_runtime.h"
 #include "openmx_host_memory.h"
 #include "openmx_precision.h"
@@ -168,6 +170,33 @@ static size_t SetPro_GpuBatchBudget(int sharing)
   return available>reserve?(available-reserve)/(size_t)(sharing>0?sharing:1):0;
 }
 
+/* This rank's (Mc_AN, h_AN) pairs, the list every DS_VNA / HVNA2/3 batch walks. */
+static int SetPro_LocalPairs(void)
+{
+  int pairs=0;
+  for (int mc=1; mc<=Matomnum; mc++) pairs+=FNAN[M2G[mc]]+1;
+  return pairs;
+}
+
+/* One device attempt of a pair batch. Under the host SIMD policy a failure
+   is not completed by the capacity task (whose host body is the serial
+   device kernel): every rank learns whether any rank failed (one Allreduce,
+   all ranks), and the caller hands each rank's unfinished pairs to the host
+   SIMD assembly. OPENMX_HOST_SIMD=legacy keeps the capacity task. Returns
+   this rank's completion; *all_done is the collective verdict. */
+static int SetPro_BatchAttempt(OpenMXGpuTask *task,const char *label,int *all_done)
+{
+  if (OpenMX_HostSimdMode()==OPENMX_HOST_SIMD_LEGACY) {
+    openmx_gpu_task_execute(mpi_comm_level1,task,1,label);
+    *all_done=1;
+    return 1;
+  }
+  const int done=!task->count || (gpu_rank_device_usable() && openmx_gpu_task_local(task,label));
+  *all_done=done;
+  MPI_Allreduce(MPI_IN_PLACE,all_done,1,MPI_INT,MPI_MIN,mpi_comm_level1);
+  return done;
+}
+
 static int SetPro_HVNA_GpuBegin(const OpenMXReciprocalViews *reciprocal, SetProGpuContext *g, Type_DS_VNA *****DS_VNA,
                                 const OpenMXVnaPreparation *preparation, int Num_RVNA)
 {
@@ -249,6 +278,28 @@ static int SetPro_HVNA_GpuBegin(const OpenMXReciprocalViews *reciprocal, SetProG
        other ranks keep host archives and pack only the projector blocks
        needed by each capacity shard; no full archive is re-uploaded. */
     g->host_archive=openmx_gpu_capacity_test_recovery() || admitted<node_ranks || !gpu_rank_device_usable();
+    {
+      /* Host SIMD vote (every rank, same point): this rank's archives and
+         batch arrays against its share of the node's device budget, the
+         figures of the admission above. Both device paths keep running when
+         the share suffices up to OPENMX_HOST_SIMD_MAX_PIECES times: the
+         resident archives (all ranks admitted) and the archived batch, which
+         uploads one rank's whole working set at a time. When even one rank's
+         working set exceeds the device (need > free - reserve), only the
+         per-row capacity recovery would remain, so the stage counts as one
+         the device cannot hold (the test-recovery switch keeps exercising
+         the device paths). A full device keeps today's admission. */
+      const size_t alone=min_available>reserve ? (size_t)(min_available-reserve) : 0;
+      const size_t budget=alone/(size_t)node_ranks;
+      const size_t stage_need=((size_t)need>alone && !openmx_gpu_capacity_test_recovery()) ? SIZE_MAX : (size_t)need;
+      if (OpenMX_HostSimdStageOnHost("Set_ProExpn_VNA: HVNA",stage_need,budget)) {
+        SetPro_note("HVNA GPU archives","%.0f MiB per rank, %d of %d node ranks admitted: host SIMD HVNA",
+                    (double)need/1048576.0,admitted,node_ranks);
+        MPI_Comm_free(&node_comm);
+        memset(g,0,sizeof(*g));
+        return 0;
+      }
+    }
     unsigned long long host_available=openmx_host_mem_available(),min_host,total_need;
     unsigned long long host_need=g->host_archive?need:0;
     MPI_Allreduce(&host_available,&min_host,1,MPI_UNSIGNED_LONG_LONG,MPI_MIN,node_comm);
@@ -714,10 +765,15 @@ archived_cleanup:
   return ok;
 }
 
-static void SetPro_HVNA_GpuRun(SetProGpuContext *g, double ****HVNA)
+/* Device HVNA of this rank. Under the host SIMD policy the device verdict is
+   returned and SetPro_HVNA_DispatchRun completes a failed rank on the host SIMD
+   path from the archives; OPENMX_HOST_SIMD=legacy keeps the capacity recovery
+   loop below (collective, every rank) and always reports completion. */
+static int SetPro_HVNA_GpuRun(SetProGpuContext *g, double ****HVNA)
 {
   int done=g->host_archive ? SetPro_HVNA_GpuRun_Archived(g,HVNA)
                           : SetPro_HVNA_GpuRun_Part(1,Matomnum+1,g,HVNA);
+  if (OpenMX_HostSimdMode()!=OPENMX_HOST_SIMD_LEGACY) return done;
   int mc=done?Matomnum+1:1,j=0;size_t row=0;
   SetProHVNACapacityParameters p={g->num_proj,g->num_rvna,openmx_fp32_enabled()};
   /* Only recovery duplicates projector rows, and at most one bounded tile.
@@ -776,6 +832,7 @@ static void SetPro_HVNA_GpuRun(SetProGpuContext *g, double ****HVNA)
       if(row==(size_t)Spe_Total_NO[WhatSpecies[gc]]*nh){row=0;if(++j>FNAN[gc]){j=0;mc++;}}
     }
   }
+  return 1;
 }
 
 /* ------------------------------------------------------------------ */
@@ -1117,6 +1174,25 @@ static int SetPro_DSVNA_GpuBegin(const OpenMXReciprocalViews *reciprocal, SetPro
      then CPU from the exact batch footprint. Keep host lookup tables. */
   g->chunk = SETPRO_DSVNA_CHUNK;
   const size_t batch_budget=SetPro_GpuBatchBudget(device_ranks);
+  {
+    /* Host SIMD vote (every rank, same point): the footprint of one full
+       batch (at most this rank's own pairs) against the same per-rank budget
+       the halving below uses. Halving it more than OPENMX_HOST_SIMD_MAX_PIECES
+       times over (e.g. "batches of 1"), or an unusable device, moves DS_VNA to
+       the host SIMD assembly on every rank; otherwise the admission below is
+       unchanged. */
+    const int pairs=SetPro_LocalPairs();
+    g->chunk = pairs<SETPRO_DSVNA_CHUNK ? (pairs>0 ? pairs : 1) : SETPRO_DSVNA_CHUNK;
+    const size_t need=pairs>0 ? SetPro_DSVNA_DeviceBytes(g) : 0;
+    g->chunk = SETPRO_DSVNA_CHUNK;
+    if (OpenMX_HostSimdStageOnHost("Set_ProExpn_VNA: DS_VNA",need,batch_budget)) {
+      SetPro_note("DS_VNA GPU batch","one batch of %d pairs needs %.0f MiB: host SIMD DS_VNA",
+                  pairs<SETPRO_DSVNA_CHUNK ? pairs : SETPRO_DSVNA_CHUNK,(double)need/1048576.0);
+      g->enabled = 1;
+      SetPro_DSVNA_GpuEnd(g);
+      return 0;
+    }
+  }
   while(g->chunk>1 && SetPro_DSVNA_DeviceBytes(g)>batch_budget)g->chunk/=2;
   /* Every rank must make the same number of collective task calls, including
      mixed devices, nodes with different memory, and ranks without a GPU. */
@@ -1603,13 +1679,23 @@ static void SetPro_DSVNA_GpuRun_Part(Type_DS_VNA *****DS_VNA, int OneD_Nloop, co
       task.view[26]=(OpenMXGpuTaskView){NULL,0,((size_t)nLL*cmb_max*num_rvna)*sizeof(double)};
       task.view[27]=(OpenMXGpuTaskView){NULL,0,((size_t)nLL*cmb_max*num_rvna)*sizeof(double)};
       task.view[28]=(OpenMXGpuTaskView){NULL,0,(elem_per_pair*8)*sizeof(double)};
-      openmx_gpu_task_execute(mpi_comm_level1,&task,1,"SetPro_DSVNA");
+      int all_done;
+      const int done=SetPro_BatchAttempt(&task,"SetPro_DSVNA",&all_done);
+      if (!all_done) {
+        /* a late device failure on some rank: from here every rank's
+           unfinished pairs go to the host SIMD DS_VNA assembly */
+        g->host_route = 1;
+        g->host_first = done ? (chunk_start+np<OneD_Nloop ? chunk_start+np : OneD_Nloop) : chunk_start;
+        SetPro_note("DS_VNA GPU batch","device batch failed on %s; pairs %d..%d of this rank go to the host SIMD assembly",
+                    done ? "another rank" : "this rank",g->host_first,OneD_Nloop-1);
+      }
 
 
-      /* host: scatter the chunk results into DS_VNA */
+      /* host: scatter the chunk results into DS_VNA (none after a failure here) */
 
+      const int np_done = done ? np : 0;
 #pragma omp parallel for if(!omp_in_parallel()) schedule(dynamic)
-      for (pp=0; pp<np; pp++){
+      for (pp=0; pp<np_done; pp++){
         int Mc_AN = OneD2Mc_AN[chunk_start+pp];
         int h_AN = OneD2h_AN[chunk_start+pp];
         int tno = pr_tno[pp];
@@ -1624,6 +1710,7 @@ static void SetPro_DSVNA_GpuRun_Part(Type_DS_VNA *****DS_VNA, int OneD_Nloop, co
           }
         }
       }
+      if (!all_done) break;
 
     } /* chunk_start */
 
@@ -1870,6 +1957,20 @@ static int SetPro_VNA23_GpuBegin(const OpenMXReciprocalViews *reciprocal, SetPro
      then CPU from the exact batch footprint. Keep host lookup tables. */
   g->chunk = SETPRO_VNA23_CHUNK;
   const size_t batch_budget=SetPro_GpuBatchBudget(device_ranks);
+  {
+    /* Host SIMD vote, as for DS_VNA: one full batch against the batch budget. */
+    const int pairs=SetPro_LocalPairs();
+    g->chunk = pairs<SETPRO_VNA23_CHUNK ? (pairs>0 ? pairs : 1) : SETPRO_VNA23_CHUNK;
+    const size_t need=pairs>0 ? SetPro_VNA23_DeviceBytes(g) : 0;
+    g->chunk = SETPRO_VNA23_CHUNK;
+    if (OpenMX_HostSimdStageOnHost("Set_ProExpn_VNA: HVNA2/3",need,batch_budget)) {
+      SetPro_note("HVNA2/3 GPU batch","one batch of %d pairs needs %.0f MiB: host SIMD HVNA2/3",
+                  pairs<SETPRO_VNA23_CHUNK ? pairs : SETPRO_VNA23_CHUNK,(double)need/1048576.0);
+      g->enabled = 1;
+      SetPro_VNA23_GpuEnd(g);
+      return 0;
+    }
+  }
   while(g->chunk>1 && SetPro_VNA23_DeviceBytes(g)>batch_budget)g->chunk/=2;
   MPI_Allreduce(MPI_IN_PLACE,&g->chunk,1,MPI_INT,MPI_MIN,mpi_comm_level1);
   g->enabled = 1;
@@ -2361,13 +2462,23 @@ static void SetPro_VNA23_GpuRun_Part(double *****HVNA23, int mirror, int OneD_Nl
       task.view[23]=(OpenMXGpuTaskView){NULL,0,((size_t)nLL*cmb_max*cmb_max)*sizeof(double)};
       task.view[24]=(OpenMXGpuTaskView){NULL,0,((size_t)nLL*cmb_max*cmb_max)*sizeof(double)};
       task.view[25]=(OpenMXGpuTaskView){NULL,0,(elem_per_pair*8)*sizeof(double)};
-      openmx_gpu_task_execute(mpi_comm_level1,&task,1,"SetPro_VNA23");
+      int all_done;
+      const int done=SetPro_BatchAttempt(&task,"SetPro_VNA23",&all_done);
+      if (!all_done) {
+        /* a late device failure on some rank: every rank's unfinished pairs,
+           and the rest of HVNA2/3, go to the host SIMD assembly */
+        g->host_route = 1;
+        g->host_first = done ? (chunk_start+np<OneD_Nloop ? chunk_start+np : OneD_Nloop) : chunk_start;
+        SetPro_note("HVNA2/3 GPU batch","HVNA%d device batch failed on %s; pairs %d..%d of this rank go to the host SIMD assembly",
+                    mirror ? 3 : 2,done ? "another rank" : "this rank",g->host_first,OneD_Nloop-1);
+      }
 
 
-      /* host: scatter into HVNA2 or HVNA3 */
+      /* host: scatter into HVNA2 or HVNA3 (none after a failure here) */
 
+      const int np_done = done ? np : 0;
 #pragma omp parallel for if(!omp_in_parallel()) schedule(dynamic)
-      for (pp=0; pp<np; pp++){
+      for (pp=0; pp<np_done; pp++){
         int Mc_AN = OneD2Mc_AN[chunk_start+pp];
         int h_AN = OneD2h_AN[chunk_start+pp];
         int tno = g->sp_tno[pr_spe[pp]];
@@ -2383,6 +2494,7 @@ static void SetPro_VNA23_GpuRun_Part(double *****HVNA23, int mirror, int OneD_Nl
           }
         }
       }
+      if (!all_done) break;
 
     } /* chunk_start */
 
@@ -2416,6 +2528,81 @@ static void SetPro_VNA23_GpuRun(double *****matrix,int mirror,int count,const in
 #include "openmx_dsvna_cpu.h"
 #include "openmx_hvna_cpu.h"
 
+/* Late failure of the device HVNA batch on this rank: its HVNA blocks on the
+   host SIMD path (openmx_core_vna_hvna_block through the CPU pass's cache),
+   from the archives the device path built: local blocks from the flat archive,
+   received ones from the halo archive (copied back once when device-resident).
+   The CPU pass's orientation, member/group order, first-k initialisation and
+   damping; the legacy rows under OPENMX_HOST_SIMD=legacy or a refused block.
+   Rank-local: no collectives. */
+static void SetPro_HVNA_HostArchives(SetProGpuContext *g,double ****HVNA)
+{
+  const int fp32=openmx_fp32_enabled(),num_proj=g->num_proj;
+  const float *flat=g->flat_host,*halo=g->halo_host;
+  float *flat_copy=NULL,*halo_copy=NULL;
+  int max_orbitals=1,max_blocks=1;
+
+  if (!Matomnum) return;
+  if (!flat) {
+    flat_copy=(float*)malloc(g->flat_count*sizeof(float));
+    if (!flat_copy) SetPro_gpu_abort("Set_ProExpn_VNA: no host memory to recover the local projector archive.");
+    if (cudaMemcpy(flat_copy,g->flat_dev,g->flat_count*sizeof(float),cudaMemcpyDeviceToHost)!=cudaSuccess)
+      SetPro_gpu_abort("Set_ProExpn_VNA: cannot recover an existing projector archive.");
+    flat=flat_copy;
+  }
+  if (!halo && g->halo_count) {
+    halo_copy=(float*)malloc(g->halo_count*sizeof(float));
+    if (!halo_copy) SetPro_gpu_abort("Set_ProExpn_VNA: no host memory to recover the halo projector archive.");
+    if (cudaMemcpy(halo_copy,g->halo_dev,g->halo_count*sizeof(float),cudaMemcpyDeviceToHost)!=cudaSuccess)
+      SetPro_gpu_abort("Set_ProExpn_VNA: cannot recover an existing projector archive.");
+    halo=halo_copy;
+  }
+  for (int spe=0; spe<SpeciesNum; spe++) if (max_orbitals<Spe_Total_NO[spe]) max_orbitals=Spe_Total_NO[spe];
+  for (int mc=1; mc<=Matomnum; mc++) if (max_blocks<FNAN[M2G[mc]]+1) max_blocks=FNAN[M2G[mc]]+1;
+  const OpenMXHvnaProjectorBuffers projectors={SpeciesNum,g->num_rvna,num_proj,Spe_Total_NO,g->l2p1,g->ene};
+  SetPro_note("HVNA host SIMD recovery","%d local atoms from the %s archives",Matomnum,g->host_archive ? "host" : "device");
+
+#pragma omp parallel
+  {
+    /* this worker's atom: its transposed left blocks (mc, k) serve all of its pairs */
+    SetProHvnaHost host;
+    SetPro_HvnaHost_Init(&host,0,max_blocks,num_proj,max_orbitals,fp32);
+    double *matrix=(double*)SetPro_checked_malloc(sizeof(double)*(size_t)max_orbitals*(size_t)max_orbitals);
+    const OpenMXHvnaWorkspaceBuffers workspace={(size_t)max_orbitals,matrix};
+#pragma omp for schedule(dynamic)
+    for (int mc=1; mc<=Matomnum; mc++) {
+      const int gc=M2G[mc],rows=Spe_Total_NO[WhatSpecies[gc]];
+      SetPro_HvnaHost_Reset(&host,mc);
+      for (int j=0; j<=FNAN[gc]; j++) {
+        const int jg=natn[gc][j],mj=F_G2M[jg],columns=Spe_Total_NO[WhatSpecies[jg]];
+        int initialized=0;
+        for (int k=0; k<=FNAN[gc]; k++) {
+          const int kl=RMI1[mc][j][k];
+          if (kl<0) continue;
+          const int projector_species=WhatSpecies[natn[gc][k]];
+          const float *left=flat+g->mck_off[g->mck_base[mc]+k];
+          const float *right=mj<=Matomnum ? flat+g->mck_off[g->mck_base[mj]+kl]
+                                          : halo+g->halo_off[g->halo_base[mj-Matomnum]+kl];
+          if (!SetPro_HVNA_Host_Block(&host,&projectors,&workspace,rows,columns,projector_species,
+                  left,(size_t)num_proj,k,right,(size_t)num_proj,kl,!initialized,0,fp32))
+            for (int m=0; m<rows; m++)
+              SetPro_HVNA_CPU_Row(&projectors,left,(size_t)num_proj,right,(size_t)num_proj,projector_species,
+                  columns,m,matrix,(size_t)max_orbitals,!initialized,fp32);
+          initialized=1;
+        }
+        const double dmp=dampingF(Spe_Atom_Cut1[WhatSpecies[gc]]+Spe_Atom_Cut1[WhatSpecies[jg]],Dis[gc][j]);
+        for (int m=0; m<rows; m++)
+          for (int n=0; n<columns; n++)
+            HVNA[mc][j][m][n]=dmp*(initialized ? matrix[(size_t)m*max_orbitals+n] : 0.0);
+      }
+    }
+    free(matrix);
+    SetPro_HvnaHost_Free(&host);
+  }
+  free(flat_copy);
+  free(halo_copy);
+}
+
 typedef SetProGpuContext SetProHvnaDispatch;
 static int SetPro_HVNA_DispatchBegin(const OpenMXReciprocalViews *reciprocal, SetProHvnaDispatch *g,Type_DS_VNA *****v,
     const OpenMXVnaPreparation *preparation,int n)
@@ -2424,9 +2611,18 @@ static void SetPro_HVNA_DispatchArchive(SetProHvnaDispatch *g,Type_DS_VNA *****v
 { SetPro_HVNA_GpuArchiveHalo(g,v,m,global); }
 static int SetPro_HVNA_DispatchRun(SetProHvnaDispatch *g,double ****h)
 {
+  int done=1;
   for (int turn=0;turn<g->turns;++turn) {
-    if (turn==g->turn) SetPro_HVNA_GpuRun(g,h);
+    if (turn==g->turn) done=SetPro_HVNA_GpuRun(g,h);
     if (g->turns>1) MPI_Barrier(mpi_comm_level1);
+  }
+  if (OpenMX_HostSimdMode()!=OPENMX_HOST_SIMD_LEGACY) {
+    /* every rank, once: a failed device batch completes on the host SIMD path
+       from the archives (rank-local), never in the capacity recovery */
+    int failed=!done,any=0;
+    MPI_Allreduce(&failed,&any,1,MPI_INT,MPI_MAX,mpi_comm_level1);
+    if (failed) SetPro_HVNA_HostArchives(g,h);
+    else if (any) SetPro_note("HVNA GPU batch","another rank recovers its HVNA on the host SIMD path");
   }
   SetPro_HVNA_GpuEnd(g);
   return 1;
