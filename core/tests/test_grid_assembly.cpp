@@ -86,7 +86,7 @@ template<class F> void team(size_t threads,F&& f) {
 template<class T> void quadrature(bool hamiltonian) {
   constexpr int atoms=3;
   for(int spins:{1,2,4})for(auto dims:{std::array<int,2>{3,5},std::array<int,2>{16,16},std::array<int,2>{19,17}})
-    for(int points:{0,1,3,7,8,9,17,33,73})for(bool transpose:{false,true})for(int mode=0;mode<=OPENMX_GRID_NEON;mode++) {
+    for(int points:{0,1,3,7,8,9,17,33,73})for(bool transpose:{false,true})for(int mode=0;mode<OPENMX_GRID_MODE_COUNT;mode++) {
       if(!openmx_core_grid_simd_width(mode))continue;
       auto ctx=context();auto* w=workspace(ctx.get());const auto storage=density(w,spins,{1,37,37,37});
       std::vector<std::unique_ptr<Pair<T>>> input;
@@ -182,9 +182,10 @@ void invalid() {
   require(std::string(openmx_core_grid_simd_name(-1))=="scalar","SIMD name fallback");
   require(openmx_core_grid_simd_width(-1)==0 && openmx_core_grid_simd_width(99)==0 &&
       openmx_core_grid_simd_width(0)==1,"invalid SIMD width");
-  for(int mode=1;mode<=OPENMX_GRID_NEON;++mode) {
+  for(int mode=1;mode<OPENMX_GRID_MODE_COUNT;++mode) {
     const int width=openmx_core_grid_simd_width(mode);
-    require(!width || width==(mode==OPENMX_GRID_AVX2?4:mode==OPENMX_GRID_AVX512?8:2),
+    require(!width || width==(mode==OPENMX_GRID_AVX2 || mode==OPENMX_GRID_SVE256?4:
+        mode==OPENMX_GRID_AVX512 || mode==OPENMX_GRID_SVE512?8:2),
         "host SIMD ABI silently became scalar");
     if(!width)require(!openmx_core_grid_plan(w,0,1,0,0,1,1,mode,&a,&p,error,sizeof(error)),
         "unsupported host ISA accepted");
@@ -196,7 +197,7 @@ template<class T> void equivalence() {
   for(bool hamiltonian:{false,true})for(int spins:{1,2,4})for(bool transpose:{false,true})
     for(int columns:{1,4,5,8,12,13,19})for(int points=1;points<=17;++points) {
       std::vector<double> reference;
-      for(int mode=0;mode<=OPENMX_GRID_NEON;++mode) {
+      for(int mode=0;mode<OPENMX_GRID_MODE_COUNT;++mode) {
         if(!openmx_core_grid_simd_width(mode))continue;
         Pair<T> f(13,columns,points+74,spins,transpose,true,1);
         for(auto& values:f.matrix)for(size_t i=0;i<values.size();++i)
@@ -254,7 +255,7 @@ template<class T> void layouts() {
   for(bool hamiltonian:{false,true})for(int spins:{1,2,4})for(bool halo:{false,true})for(int rows:{1,2,3,4,7,8,13,16,19})
     for(int columns:{1,2,3,4,5,7,8,12,13,16,19})for(int points:{1,3,8,9,17,33}) {
     std::vector<double> scalar,scalar_transposed;
-    for(int mode=0;mode<=OPENMX_GRID_NEON;++mode) {
+    for(int mode=0;mode<OPENMX_GRID_MODE_COUNT;++mode) {
       if(!openmx_core_grid_simd_width(mode))continue;
       Pair<T> plain(rows,columns,points,spins,false,halo,2);
       const auto reference=run(plain,hamiltonian,spins,mode);
@@ -274,7 +275,7 @@ template<class T> void layouts() {
 }
 void packed() {
   for(int spins:{1,2,4})for(int rows:{0,1,13})for(int columns:{0,1,3,5,7,8,9,13,17,19})
-    for(int points:{0,1,3,17,33})for(int mode=0;mode<=OPENMX_GRID_NEON;++mode) {
+    for(int points:{0,1,3,17,33})for(int mode=0;mode<OPENMX_GRID_MODE_COUNT;++mode) {
       if(!openmx_core_grid_simd_width(mode))continue;
       const size_t stride=std::max(rows,columns)+3,count=size_t(spins)*stride*stride;
       std::vector<double> a(size_t(points)*rows),b(size_t(points)*columns),w(size_t(points)*spins);

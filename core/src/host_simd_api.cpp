@@ -5,7 +5,8 @@
 
 namespace {
 int widest() {
-  for(int mode:{OPENMX_GRID_AVX512,OPENMX_GRID_AVX2,OPENMX_GRID_NEON})
+  for(int mode:{OPENMX_GRID_SVE512,OPENMX_GRID_SVE256,OPENMX_GRID_SVE128,
+               OPENMX_GRID_AVX512,OPENMX_GRID_AVX2,OPENMX_GRID_NEON})
     if(openmx::core::host::openmx_host_simd_usable(mode))return mode;
   return OPENMX_GRID_SCALAR;
 }
@@ -21,13 +22,16 @@ extern "C" int openmx_core_host_simd_mode(const char* value) {
   if(v=="legacy" || v=="off" || v=="0" || v=="no" || v=="false" || v=="none")return OPENMX_HOST_SIMD_LEGACY;
   if(v=="scalar")return OPENMX_GRID_SCALAR;
   const int requested=v=="avx2"?OPENMX_GRID_AVX2:(v=="avx512" || v=="avx-512")?OPENMX_GRID_AVX512:
-      v=="neon"?OPENMX_GRID_NEON:-1;
+      v=="neon"?OPENMX_GRID_NEON:v=="sve128"?OPENMX_GRID_SVE128:
+      v=="sve256"?OPENMX_GRID_SVE256:v=="sve512"?OPENMX_GRID_SVE512:-1;
   if(requested>=0 && openmx::core::host::openmx_host_simd_usable(requested))return requested;
   return widest();
 }
 extern "C" const char* openmx_core_host_simd_name(int mode) {
   return mode==OPENMX_HOST_SIMD_LEGACY?"legacy":mode==OPENMX_GRID_AVX512?"AVX-512":
-      mode==OPENMX_GRID_AVX2?"AVX2":mode==OPENMX_GRID_NEON?"NEON":"scalar";
+      mode==OPENMX_GRID_AVX2?"AVX2":mode==OPENMX_GRID_NEON?"NEON":
+      mode==OPENMX_GRID_SVE128?"SVE128":mode==OPENMX_GRID_SVE256?"SVE256":
+      mode==OPENMX_GRID_SVE512?"SVE512":"scalar";
 }
 extern "C" int openmx_core_host_simd_usable(int mode) {
   return openmx::core::host::openmx_host_simd_usable(mode);

@@ -18,7 +18,9 @@ int main() {
     check(bool(context));OpenMXGridWorkspace* w;
     check(openmx_core_grid_workspace(context.get(),&w,error,sizeof(error)));
     const int mode=openmx_core_grid_simd(nullptr),width=openmx_core_grid_simd_width(mode);
-    const int expected=mode==OPENMX_GRID_AVX512?8:mode==OPENMX_GRID_AVX2?4:mode==OPENMX_GRID_NEON?2:1;
+    const int expected=mode==OPENMX_GRID_AVX512 || mode==OPENMX_GRID_SVE512?8:
+        mode==OPENMX_GRID_AVX2 || mode==OPENMX_GRID_SVE256?4:
+        mode==OPENMX_GRID_NEON || mode==OPENMX_GRID_SVE128?2:1;
     if(width!=expected)throw std::runtime_error("host SIMD width follows the device ABI");
     const size_t counts[]={7};OpenMXGridDensity density;
     check(openmx_core_grid_density_prepare(w,1,1,counts,0,nullptr,nullptr,&density,error,sizeof(error)));

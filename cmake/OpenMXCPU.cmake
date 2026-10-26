@@ -236,5 +236,8 @@ add_custom_target(openmx ALL
   COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/copy_openmx.py"
     "$<TARGET_FILE:openmx_cpu_application>" "${CMAKE_BINARY_DIR}/openmx"
   ${_cpu_copy_command} DEPENDS openmx_cpu_application
-  BYPRODUCTS "${CMAKE_BINARY_DIR}/openmx" VERBATIM)
+  VERBATIM)
+# A phony target and a BYPRODUCT with the same name conflict in Ninja.
+# The copy runs on every invocation; register it only for cleaning.
+set_property(DIRECTORY APPEND PROPERTY ADDITIONAL_CLEAN_FILES "${CMAKE_BINARY_DIR}/openmx")
 message(STATUS "Full CPU application: ${_cpu_source_count} shared source units; no GPU SDK")

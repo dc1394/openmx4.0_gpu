@@ -254,8 +254,9 @@ atom/pair plans, per-worker matrix/orbital scratch and A-to-B MPI work storage;
 SCF iterations reuse these allocations. Density workers process whole atoms,
 and Hamiltonian workers retain the small spin-unpolarized blocked integral.
 The CPU quadratures use Kokkos experimental SIMD with explicit host ABIs:
-AVX2 (4 doubles), AVX-512 (8 doubles), or AArch64 NEON (2 doubles), with a
-scalar fallback. Hamiltonian matrix accumulators stay in registers over a
+AVX2 (4 doubles), AVX-512 (8 doubles), AArch64 NEON (2 doubles), or Linux
+AArch64 SVE (128/256/512 bits: 2/4/8 doubles), with a scalar fallback.
+Hamiltonian matrix accumulators stay in registers over a
 16-point tile; neither kernel changes the order of its floating-point sums.
 Host ISA selection checks CPU/OS support. `OPENMX_SETHAM_SIMD`,
 `OPENMX_DENSITY_GRID_COL_SIMD` and `OPENMX_DENSITY_GRID_NC_SIMD` accept
@@ -275,6 +276,21 @@ CMake builds and installs this library alongside `libopenmx_core`; keep both
 libraries when copying an installation. If the Core C++ compiler is a device
 wrapper, specify `-DOPENMX_HOST_SIMD_CXX_COMPILER=/path/to/g++` (or `clang++`).
 `-DOPENMX_CORE_HOST_SIMD=OFF` builds only the scalar implementation.
+On Linux AArch64, GCC/Clang builds also enable SVE when the compiler supports
+its fixed vector lengths. `OPENMX_HOST_SIMD=auto` (the default) or `sve`
+selects SVE only when the OS enables it and the calling thread's current
+vector length exactly matches a compiled variant. Other lengths fall back
+to NEON. `scalar`, `neon`, `sve128`, `sve256` and `sve512` select the named
+usable variant; an unavailable explicit request falls back to automatic
+selection. `legacy` runs the original C loops. No thread's SVE vector length
+is changed. Set `-DOPENMX_CORE_HOST_SVE=OFF` to keep NEON without SVE.
+The private SVE ABI uses ARM ACLE with Kokkos's SIMD interface, including
+masked tails and the half-width FP32/index vectors needed by these kernels.
+It does not depend on Kokkos 5.2.2's incomplete SVE conversion support.
+NEON FP64-to-FP32 conversion follows ordinary scalar rounding, including
+ties, instead of the round-to-odd conversion in Kokkos 5.2.2.
+For ARM numerical validation with real MPI calculations, see
+[the CPU validation instructions](docs/GPU_BACKENDS.md#armneonsve-の検証).
 The optional `openmx_grid_benchmark` target, enabled with
 `-DOPENMX_CORE_BUILD_BENCHMARKS=ON`, compares the CPU quadratures including
 their packing and worker overhead; see [the performance checks](docs/PERFORMANCE_REGRESSION.md).

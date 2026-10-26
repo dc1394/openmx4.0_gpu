@@ -1,6 +1,7 @@
 #ifndef OPENMX_HOST_GRID_KERNELS_HPP
 #define OPENMX_HOST_GRID_KERNELS_HPP
 #include "openmx_core_grid.h"
+#include "host_simd_dispatch.hpp"
 
 // Private, ordinary C++ boundary. Neither Kokkos vector types nor ISA flags
 // cross into the C ABI, device translation units or ownership layer.
@@ -27,15 +28,9 @@ struct GridKernels {
 extern "C" OPENMX_HOST_EXPORT const GridKernels* openmx_host_grid_kernels(int mode) noexcept;
 extern "C" OPENMX_HOST_EXPORT int openmx_host_grid_mode(const char* requested) noexcept;
 #undef OPENMX_HOST_EXPORT
-const GridKernels& grid_scalar() noexcept;
-const GridKernels& grid_avx2() noexcept;
-const GridKernels& grid_avx512() noexcept;
-const GridKernels& grid_neon() noexcept;
+OPENMX_HOST_SIMD_FAMILY(GridKernels,grid)
 // The committed kernels (host_grid_committed.cpp, one per ISA), used by the
 // grid kernels of the same ISA for the shapes where they are faster.
-const GridKernels& grid_committed_scalar() noexcept;
-const GridKernels& grid_committed_avx2() noexcept;
-const GridKernels& grid_committed_avx512() noexcept;
-const GridKernels& grid_committed_neon() noexcept;
+OPENMX_HOST_SIMD_FAMILY(GridKernels,grid_committed)
 }
 #endif

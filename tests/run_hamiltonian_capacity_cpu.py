@@ -66,7 +66,7 @@ int main(void){
  double left[200],right[200],weight[300],matrix[N*4*MAX*MAX+2];
  for(int i=0;i<200;i++){left[i]=.13*(i%11-4);right[i]=.07*(i%13-5);}for(int i=0;i<300;i++)weight[i]=.1*(i%19-8);
  int modes=0;
- for(int mode=OPENMX_GRID_SCALAR;mode<=(harness_policy_kernel?OPENMX_GRID_NEON:OPENMX_GRID_SCALAR);mode++){
+ for(int mode=OPENMX_GRID_SCALAR;mode<=(harness_policy_kernel?OPENMX_GRID_MODE_COUNT-1:OPENMX_GRID_SCALAR);mode++){
  if(harness_policy_kernel && !openmx_core_grid_simd_width(mode))continue;
  harness_grid_mode=mode;modes++;
  for(int spins=1;spins<=4;spins*=2)for(int tier=0;tier<4;tier++)for(workers=1;workers<=4;workers++){

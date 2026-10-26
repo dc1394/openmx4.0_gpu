@@ -112,7 +112,7 @@ std::vector<float> expected(const Setup& u,const std::vector<OpenMXOrbitalsPoint
 }
 std::vector<int> modes() {
   std::vector<int> m;
-  for(int mode=OPENMX_GRID_SCALAR;mode<=OPENMX_GRID_NEON;++mode)if(openmx_core_host_simd_usable(mode))m.push_back(mode);
+  for(int mode=OPENMX_GRID_SCALAR;mode<OPENMX_GRID_MODE_COUNT;++mode)if(openmx_core_host_simd_usable(mode))m.push_back(mode);
   require(!m.empty() && m[0]==OPENMX_GRID_SCALAR,"scalar host kernels must always be usable");
   return m;
 }

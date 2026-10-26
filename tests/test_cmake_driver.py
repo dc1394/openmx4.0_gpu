@@ -116,6 +116,15 @@ class CMakeDriverTest(unittest.TestCase):
         self.command(['cmake', '--build', str(self.build), '--target', 'openmx_core'])
         self.assertFalse(self.gpu_queries.exists())
 
+    @unittest.skipUnless(shutil.which("ninja"), "Ninja required")
+    def test_ninja_application_target_and_output_can_share_a_name(self):
+        self.configure("-G", "Ninja", "-DOPENMX_GPU_ARCH=sm_80")
+        self.build_application()
+        self.assertEqual((self.build / "openmx").read_bytes(), self.payload.read_bytes())
+        self.payload.write_bytes(b"#!/bin/sh\nexit 2\n")
+        self.build_application()
+        self.assertEqual((self.build / "openmx").read_bytes(), self.payload.read_bytes())
+
     def test_cpu_application_rejects_device_core_before_sdk_detection(self):
         failed = self.configure('-DOPENMX_GPU_BACKEND=CPU', '-DOPENMX_CORE_BACKEND=CUDA', success=False)
         self.assertIn('CPU application requires OPENMX_CORE_BACKEND=SERIAL or OPENMP', failed.stderr)

@@ -423,9 +423,9 @@ template<bool FULL> void convert_second(const OpenMXVnaConvert& p,const double (
   }
   const FloatMask fm=float_mask(count);
   const auto emit=[&](float* row,Vector v,double scale) {
-    const FloatLanes f(v);          // (Type_DS_VNA) cast
+    const FloatLanes f=narrow(v);   // (Type_DS_VNA) cast
     const Vector d(f);
-    simd::simd_partial_store(FloatLanes(Vector(scale)*d),row,fm);
+    simd::simd_partial_store(narrow(Vector(scale)*d),row,fm);
   };
   const size_t at=size_t(a)*p.out_stride+size_t(j0);
   emit(p.out[0]+at,re[0],8.0);

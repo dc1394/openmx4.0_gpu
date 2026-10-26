@@ -119,8 +119,8 @@ else()
               ${_native_options} openmx
       COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${_native}/openmx" "${CMAKE_BINARY_DIR}/openmx"
       ${_copy_to_work}
-      BYPRODUCTS "${CMAKE_BINARY_DIR}/openmx"
       USES_TERMINAL VERBATIM)
+  set_property(DIRECTORY APPEND PROPERTY ADDITIONAL_CLEAN_FILES "${CMAKE_BINARY_DIR}/openmx")
   add_dependencies(openmx openmx_core)
   if(TARGET openmx_hip_scalapack_build)
     add_dependencies(openmx openmx_hip_scalapack_build)
@@ -251,6 +251,9 @@ if(BUILD_TESTING)
     ENVIRONMENT "OPENMX_CORE_LIBRARY=$<TARGET_FILE:openmx_core>" TIMEOUT 120)
   add_test(NAME cmake-driver
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/test_cmake_driver.py")
+  add_test(NAME arm-cpu-validation
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/test_arm_cpu_validation.py")
+  set_tests_properties(arm-cpu-validation PROPERTIES LABELS "unit;cpu" TIMEOUT 30)
   add_test(NAME gpu-error-boundary
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_gpu_error_cpu.py")
   add_test(NAME force-recovery-failures

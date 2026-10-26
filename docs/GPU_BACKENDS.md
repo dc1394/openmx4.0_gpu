@@ -190,6 +190,63 @@ GNU構成ではCoreのビルドディレクトリを隠した環境でも、自�
 再ビルド時のコピー、別prefixへのインストール、`LD_LIBRARY_PATH` に頼らない読込みも確認しています。
 検証ログ・入力・比較結果は `build/cpu-build-20261024/` に保存しています。
 
+### ARM/NEON/SVE の検証
+
+Linux AArch64 の GCC/Clang 構成では、NEON に加えてコンパイラが対応する
+SVE128・SVE256・SVE512 を別々のオブジェクトとして構築します。
+`OPENMX_HOST_SIMD=auto`（既定）または `sve` は、CPU/OSのSVE対応と呼出しスレッドの
+現在のベクトル長を調べ、一致するSVE実装を選びます。一致しなければNEONへ戻ります。
+スレッドのベクトル長は変更しません。`neon`、`sve128`、`sve256`、`sve512` の明示指定も可能で、
+指定した実装が使えない場合は自動選択に戻ります。`scalar` はCoreの逐次実装、
+`legacy` は従来のCループです。`level.of.stdout 2` で選択した実装が表示されます。
+
+SVEは `-DOPENMX_CORE_HOST_SVE=OFF`、全SIMDは `-DOPENMX_CORE_HOST_SIMD=OFF` で無効にできます。
+SVE専用のビルドフラグは各カーネルにだけ適用し、ディスパッチと本体には適用しません。
+Kokkos 5.2.2には必要な半幅FP32・整数変換が揃っていないため、SVEはARM ACLEによる
+非公開のKokkos SIMD ABIで実装しています。NEONのFP64→FP32変換はCのキャストと同じ丸めを使用します。
+KrylovのSSE互換処理にも移植可能な2要素演算を用意しています。
+
+```sh
+# ビルド済みのCPU実行ファイルと work/lib/ の対応するライブラリを使用
+python3 tools/validate_arm_cpu.py
+```
+
+このスクリプトは通常のSSH端末など、MPI通信とLeakSanitizerを実行できる環境で使用してください。
+全CTestに続き、Methane・Cr2（ノンコリニア）・Si8（GGAバンド）・DIA8（Krylov）について
+scalar・legacy・NEON・SVEを1 MPI×1 OpenMPおよび4 MPI×2 OpenMPで計算します。
+各入力を `scf.criterion 1e-10` の固定構造の単点計算にし、OpenMXのSCF収束報告、正常終了、実際に選択されたSIMD、
+原子位置と格子数を確認します。同じ並列度のscalarおよび1 MPIのscalarを基準として、
+全エネルギーと全力成分を絶対許容差 `1e-7`（Hartree、Hartree/bohr）で比較します。
+元の入力は変更せず、入力・ログ・JSON結果は `build/cpu/arm-validation-<日時>/` に保存します。
+`--prepare-only` は入力作成のみ、`--skip-ctest` は実計算の比較のみを行います。
+`scf.criterion` はバンドエネルギー変化と密度残差の収束判定に使われ、表示された
+`NormRD` の平方根尺度をそのまま `scf.criterion` と比較するものではありません。
+
+DIA8のSIMD比較には既定で `orderN.KrylovH.order 600` を使用します。この入力の
+局所問題は492軌道で、実際には500次元までで打ち切られ、全局所空間を含みます。
+元の400次元に縮小した基底では、同一scalar設定の反復やMPI/OpenMP並列度の変更だけでも
+力が `1e-7 Hartree/bohr` を超えて変わりました。SCF条件を `1e-12` にしても残るため、
+基底を縮小した経路の数値感度が示唆されます。600次元指定のSIMD比較はこの400次元での
+再現性を保証しません。`--krylov-order 400` で元の条件を検査でき、許容差は同じ `1e-7` のままです。
+この基底設定はDIA8の検証用で、一般の系では局所クラスターとKrylov基底の収束確認が必要です。
+設定の意味は [OpenMX 4.0のKrylov法の説明](https://www.openmx-square.org/openmx_man4.0/s27_3_krylov.html) を参照してください。
+
+2026-10-26のNeoverse N3（GCC 14、OpenMPI 5、OpenBLAS、SVE128）で、
+Methane・Cr2・Si8と上記DIA8の32条件すべてが正常終了・SCF収束し、28組の比較が許容差内でした。
+エネルギー差は最大 `3.43e-10 Hartree`、力の差は最大 `7.9e-11 Hartree/bohr` で、
+DIA8の8条件だけではエネルギー差は出力桁でゼロ、力の差は最大 `1e-12 Hartree/bohr` でした。
+元の400次元では同一scalar、4 MPI×2 OpenMPの3反復間で力が最大 `3.77e-7`、
+SCF条件 `1e-12` の2反復間でも最大 `3.75e-7 Hartree/bohr` 変わる制限を記録しています。
+単体試験は465件中463件が端末側で成功し、検証スクリプトが誤って渡した `OPENMX_GPU=0` に
+影響されたGPU模擬試験2件は設定修正後の再試験で成功しました。追加した検証スクリプトの
+回帰試験も成功しています。集約結果は `build/cpu/arm-validation-summary.json`、元のログは
+`build/cpu/arm-validation-20261026T134230314902Z/` と
+`build/cpu/krylov-probe-20261026T230833984910Z/` に保存しています。
+
+SVEのABI試験はマスク付きロード・ストア・gather/scatterの末尾を保護ページで検査し、
+FP64/FP32変換、半幅整数、マスク変換も確認します。ハードウェアの現在のベクトル長で
+実行できる実装だけを試験するため、SVE128機での成功はSVE256・512の実行検証を意味しません。
+
 ## GPU ビルド内の CPU SIMD
 
 `Set_Hamiltonian`、`Set_Density_Grid` の CPU 積分と、GPU 容量不足時の
@@ -225,7 +282,7 @@ AMD / Intel GPU、A100/H100、Apple Silicon の実機性能は未測定です。
 同じ私的ライブラリに、格子積分以外のホスト経路のカーネルを「群（family）」として追加しました
 （2026-10-25）。1 群 = `core/src/host_<family>_simd.cpp` 1 ソースで、
 `core/host_simd/CMakeLists.txt` の `openmx_host_simd_family(<family> ...)` が scalar / AVX2 /
-AVX-512 / NEON の各 ISA 用オブジェクトを同じソースから作り、`host_simd_abi.hpp` が
+AVX-512 / NEON / SVE128・256・512 の各 ISA 用オブジェクトを同じソースから作り、`host_simd_abi.hpp` が
 各オブジェクトに `Vector`（double）/ `IntVector` `FloatVector`（int32 / float、2 倍の幅）/
 `IndexVector`（double gather の添字）の明示 ABI と `OPENMX_HOST_SIMD_FACTORY` を与えます。
 `host_simd_dispatch.cpp` が群ごとに 1 つの C リンケージ関数 `openmx_host_<family>_kernels(mode)`
@@ -237,8 +294,8 @@ Kokkos の型・ISA フラグが C ABI やデバイス翻訳単位へ出ない�
 初期化を行わないことは `grid` 群と同じです。
 
 方針は 1 つの環境変数 `OPENMX_HOST_SIMD` で決めます（`source/openmx_host_simd.c`、
-`openmx_core_host_simd_mode()`）: 未設定 / `auto` = 実行できる最も広い ISA、`scalar` /
-`avx2` / `avx512` / `neon` = 使えるときその ISA（使えなければ自動）、`legacy`（`off` / `0`）=
+`openmx_core_host_simd_mode()`）: 未設定 / `auto` / `sve` = 実行できる最も広い ISA、`scalar` /
+`avx2` / `avx512` / `neon` / `sve128` / `sve256` / `sve512` = 使えるときその ISA（使えなければ自動）、`legacy`（`off` / `0`）=
 元の C ループ。各呼び出し元は `OpenMX_HostSimdMode()==OPENMX_HOST_SIMD_LEGACY` で元のループを
 選び、カーネルが形状を拒否したときも元のループへ戻ります。`OPENMX_SETHAM_SIMD` と
 `OPENMX_DENSITY_GRID_*_SIMD` が未設定の `grid` 群もこの方針に従います（`legacy` は scalar）。

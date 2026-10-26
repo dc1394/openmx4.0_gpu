@@ -254,8 +254,8 @@ void block(const OpenMXOrbitalsTables& t,const OpenMXOrbitalsFrame& f,const Spec
   const IM active=lane<I(n);
   const I rows=lane*I(f.max_no);
   std::span<float> destination(out,size_t(n)*size_t(f.max_no));
-  values(t,s,p,[&](int j,D v){simd::unchecked_scatter_to(F(v),destination,active,rows+I(j));});
-  for(int j=s.no;j<f.max_no;++j)simd::unchecked_scatter_to(F(D(0.0)),destination,active,rows+I(j));
+  values(t,s,p,[&](int j,D v){simd::unchecked_scatter_to(narrow(v),destination,active,rows+I(j));});
+  for(int j=s.no;j<f.max_no;++j)simd::unchecked_scatter_to(narrow(D(0.0)),destination,active,rows+I(j));
 }
 
 // One block of `lanes` points of a segment, from point `first` on; lanes
@@ -280,10 +280,10 @@ void sblock(const OpenMXOrbitalsTables& t,const OpenMXOrbitalsFrame& f,const Spe
     const IM active=lane<I(n);
     const I base=lane*I(s.no);
     std::span<float> destination(rows[0],size_t(n)*size_t(s.no));
-    values(t,s,p,[&](int j,D v){simd::unchecked_scatter_to(F(v),destination,active,base+I(j));});
+    values(t,s,p,[&](int j,D v){simd::unchecked_scatter_to(narrow(v),destination,active,base+I(j));});
   } else {
     alignas(64) float scratch[MAXNO][lanes];
-    values(t,s,p,[&](int j,D v){simd::simd_unchecked_store(F(v),&scratch[j][0]);});
+    values(t,s,p,[&](int j,D v){simd::simd_unchecked_store(narrow(v),&scratch[j][0]);});
     for(int k=0;k<n;++k){float* row=rows[k];for(int j=0;j<s.no;++j)row[j]=scratch[j][k];}
   }
 }

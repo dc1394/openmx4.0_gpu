@@ -99,12 +99,13 @@ struct Worker {
 };
 struct Plan {
   int spins;
+  int mode;
   const GridKernels* kernels;
   size_t orbitals;
   std::vector<OpenMXGridAtom> atoms;
   std::vector<OpenMXGridPair> pairs;
   std::vector<Worker> workers;
-  Plan(int s,size_t a,size_t p,size_t n,size_t w,int mode):spins(s),kernels(openmx_host_grid_kernels(mode)),orbitals(n),atoms(a),pairs(p) {
+  Plan(int s,size_t a,size_t p,size_t n,size_t w,int selected):spins(s),mode(selected),kernels(openmx_host_grid_kernels(selected)),orbitals(n),atoms(a),pairs(p) {
     workers.reserve(w);for(size_t i=0;i<w;i++)workers.emplace_back(n,s);
   }
 };
@@ -178,7 +179,7 @@ extern "C" int openmx_core_grid_plan(OpenMXGridWorkspace* w,int stage,int spins,
     if(!plan || plan->spins!=spins || plan->atoms.size()!=atoms || plan->pairs.size()!=pairs ||
         plan->orbitals!=max_orbitals || plan->workers.size()!=workers)
       plan=std::make_unique<Plan>(spins,atoms,pairs,max_orbitals,workers,simd);
-    plan->kernels=openmx_host_grid_kernels(simd);*atom_out=plan->atoms.data();*pair_out=plan->pairs.data();
+    plan->mode=simd;plan->kernels=openmx_host_grid_kernels(simd);*atom_out=plan->atoms.data();*pair_out=plan->pairs.data();
   });
 }
 extern "C" int openmx_core_grid_density_worker(OpenMXGridWorkspace* w,size_t worker,size_t team,
@@ -186,6 +187,7 @@ extern "C" int openmx_core_grid_density_worker(OpenMXGridWorkspace* w,size_t wor
   return checked(error,capacity,[&] {
     require(w && w->density && w->plans[OPENMX_GRID_DENSITY],"density grid not prepared");
     auto& p=*w->plans[OPENMX_GRID_DENSITY];auto& d=*w->density;
+    require(openmx_host_simd_usable(p.mode),"grid SIMD mode is unavailable on this worker thread");
     require(team && worker<team && team<=p.workers.size() && p.spins==d.spins,"invalid density worker team");
     const size_t n=p.atoms.size(),base=n/team,tail=n%team;
     const size_t first=worker*base+std::min(worker,tail),count=base+(worker<tail);
@@ -209,6 +211,7 @@ extern "C" int openmx_core_grid_hamiltonian_worker(OpenMXGridWorkspace* w,size_t
   return checked(error,capacity,[&] {
     require(w && w->plans[OPENMX_GRID_HAMILTONIAN],"Hamiltonian grid not prepared");
     auto& plan=*w->plans[OPENMX_GRID_HAMILTONIAN];
+    require(openmx_host_simd_usable(plan.mode),"grid SIMD mode is unavailable on this worker thread");
     require(team && worker<team && team<=plan.workers.size(),"invalid Hamiltonian worker team");
     for(size_t k=worker;k<plan.pairs.size();k+=team) {
       const auto& pair=plan.pairs[k];validate(pair,plan,true);
@@ -228,7 +231,8 @@ extern "C" int openmx_core_grid_exchange(OpenMXGridWorkspace* w,int kind,size_t 
 }
 extern "C" int openmx_core_grid_simd(const char* value) {return openmx_host_grid_mode(value);}
 extern "C" const char* openmx_core_grid_simd_name(int mode) {
-  return mode==OPENMX_GRID_AVX512?"AVX-512":mode==OPENMX_GRID_AVX2?"AVX2":mode==OPENMX_GRID_NEON?"NEON":"scalar";
+  return mode==OPENMX_GRID_AVX512?"AVX-512":mode==OPENMX_GRID_AVX2?"AVX2":mode==OPENMX_GRID_NEON?"NEON":
+      mode==OPENMX_GRID_SVE128?"SVE128":mode==OPENMX_GRID_SVE256?"SVE256":mode==OPENMX_GRID_SVE512?"SVE512":"scalar";
 }
 extern "C" int openmx_core_grid_simd_width(int mode) {
   const auto* kernels=openmx_host_grid_kernels(mode);return kernels?kernels->width:0;

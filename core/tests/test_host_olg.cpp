@@ -52,7 +52,7 @@ int reference(const Case& c,const OpenMXOlgQuery& q) {
 }
 std::vector<int> modes() {
   std::vector<int> m;
-  for(int mode=OPENMX_GRID_SCALAR;mode<=OPENMX_GRID_NEON;++mode)if(openmx_core_host_simd_usable(mode))m.push_back(mode);
+  for(int mode=OPENMX_GRID_SCALAR;mode<OPENMX_GRID_MODE_COUNT;++mode)if(openmx_core_host_simd_usable(mode))m.push_back(mode);
   require(!m.empty() && m[0]==OPENMX_GRID_SCALAR,"scalar host kernels must always be usable");
   return m;
 }
@@ -184,7 +184,7 @@ void invalid() {
 void policy() {
   const int widest=openmx_core_host_simd_mode(nullptr);
   require(openmx_core_host_simd_usable(widest),"auto policy selected an unusable ISA");
-  for(int mode=OPENMX_GRID_SCALAR;mode<=OPENMX_GRID_NEON;++mode)
+  for(int mode=OPENMX_GRID_SCALAR;mode<OPENMX_GRID_MODE_COUNT;++mode)
     require(!openmx_core_host_simd_usable(mode) || mode<=widest || (mode==OPENMX_GRID_NEON && widest==OPENMX_GRID_SCALAR),"auto policy is not the widest usable ISA");
   require(openmx_core_host_simd_mode("")==widest && openmx_core_host_simd_mode("auto")==widest && openmx_core_host_simd_mode("AUTO")==widest,"auto spellings");
   for(const char* legacy:{"legacy","off","0","no","false","none","Legacy"})
@@ -195,6 +195,18 @@ void policy() {
   const int avx2=openmx_core_host_simd_mode("avx2");
   require(avx2==(openmx_core_host_simd_usable(OPENMX_GRID_AVX2)?OPENMX_GRID_AVX2:widest),"avx2 request");
   require(openmx_core_host_simd_mode("sse9")==widest,"unknown spelling falls back to the default policy");
+  for(int mode:{OPENMX_GRID_NEON,OPENMX_GRID_SVE128,OPENMX_GRID_SVE256,OPENMX_GRID_SVE512}) {
+    const char* name=openmx_core_host_simd_name(mode);
+    const int expected=openmx_core_host_simd_usable(mode)?mode:widest;
+    require(openmx_core_host_simd_mode(name)==expected,"ARM explicit selection");
+    require(openmx_core_grid_simd(name)==expected,"grid ARM explicit selection");
+    const int width=openmx_core_grid_simd_width(mode);
+    require(bool(width)==bool(openmx_core_host_simd_usable(mode)),"grid and host ISA availability differ");
+  }
+  require(openmx_core_host_simd_mode("sve")==widest && openmx_core_grid_simd("SVE")==widest,
+      "SVE auto spelling");
+  if(openmx_core_host_simd_usable(OPENMX_GRID_NEON))
+    require(openmx_core_grid_simd("neon")==OPENMX_GRID_NEON,"NEON was parsed as no");
   require(!std::strcmp(openmx_core_host_simd_name(OPENMX_HOST_SIMD_LEGACY),"legacy") &&
       !std::strcmp(openmx_core_host_simd_name(OPENMX_GRID_SCALAR),"scalar") &&
       !std::strcmp(openmx_core_host_simd_name(OPENMX_GRID_AVX2),"AVX2") &&

@@ -117,7 +117,7 @@ static int Krylov_MeasureTime(KrylovState *state)
 
 #include "tran_prototypes.h"
 
-#ifdef nosse
+#if defined(nosse) || !defined(__SSE2__)
 #include "mimic_sse.h"
 #else
 #include <emmintrin.h>

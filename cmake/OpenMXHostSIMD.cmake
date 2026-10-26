@@ -3,6 +3,7 @@
 # Kokkos configuration in an isolated shared library, using ordinary C++.
 # Hidden C++/Kokkos symbols and a POD-only C ABI prevent configuration/ODR leaks.
 option(OPENMX_CORE_HOST_SIMD "Build Kokkos host SIMD variants with safe runtime dispatch" ON)
+option(OPENMX_CORE_HOST_SVE "Build ARM SVE host SIMD variants when supported by the compiler" ON)
 set(OPENMX_HOST_SIMD_CXX_COMPILER "${CMAKE_CXX_COMPILER}" CACHE FILEPATH
     "Ordinary C++20 compiler for CPU SIMD (not nvcc_wrapper/hipcc)")
 include(ExternalProject)
@@ -14,6 +15,8 @@ set(_host_cmake_args
     "-DCMAKE_BUILD_TYPE:STRING=${CMAKE_BUILD_TYPE}"
     "-DOPENMX_KOKKOS_SOURCE_DIR:PATH=${kokkos_SOURCE_DIR}"
     "-DOPENMX_CORE_HOST_SIMD:BOOL=${OPENMX_CORE_HOST_SIMD}"
+    "-DOPENMX_CORE_HOST_SVE:BOOL=${OPENMX_CORE_HOST_SVE}"
+    "-DBUILD_TESTING:BOOL=${BUILD_TESTING}"
     "-DOPENMX_CORE_SANITIZERS:BOOL=${OPENMX_CORE_SANITIZERS}")
 foreach(variable CMAKE_TOOLCHAIN_FILE CMAKE_SYSROOT CMAKE_CXX_COMPILER_TARGET
     CMAKE_OSX_ARCHITECTURES CMAKE_OSX_SYSROOT CMAKE_OSX_DEPLOYMENT_TARGET)
@@ -41,3 +44,7 @@ else()
   set_property(TARGET openmx_core APPEND PROPERTY INSTALL_RPATH "$ORIGIN")
 endif()
 install(FILES "${_host_library}" DESTINATION lib)
+if(BUILD_TESTING AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$")
+  add_test(NAME core-host-sve-abi COMMAND "${_host_build}/openmx_sve_abi_tests")
+  set_tests_properties(core-host-sve-abi PROPERTIES LABELS "unit;core;host-simd" TIMEOUT 120 SKIP_RETURN_CODE 77)
+endif()
