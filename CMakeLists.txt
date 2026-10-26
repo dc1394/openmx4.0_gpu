@@ -161,6 +161,9 @@ if(BUILD_TESTING)
     set_tests_properties("host-simd-hamiltonian-capacity-${_host_capacity_backend}"
       PROPERTIES LABELS "unit;core;grid;gpu" TIMEOUT 120)
   endforeach()
+  add_test(NAME radial-interpolation-endpoints
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_radial_endpoints_cpu.py")
+  set_tests_properties(radial-interpolation-endpoints PROPERTIES LABELS "unit;core;host-simd" TIMEOUT 120)
   add_test(NAME cluster-noncol-dense-index
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_cluster_noncol_dense_index_cpu.py")
   set_tests_properties(cluster-noncol-dense-index PROPERTIES LABELS "unit;gpu" TIMEOUT 120)

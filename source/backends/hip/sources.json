@@ -26,7 +26,6 @@
     "Cluster_DFT_OptOrb.c",
     "DFTD3vdW_init.c",
     "DFTDvdW_init.c",
-    "Dr_KumoF.c",
     "EigenValue_Problem.c",
     "EigenValue_Problem.h",
     "Eigen_HH.c",
@@ -61,7 +60,6 @@
     "Inputtools.c",
     "Inputtools.h",
     "Inputtools_kSpin.c",
-    "KumoF.c",
     "LU_inverse.c",
     "MTRAN_EigenChannel.c",
     "Make_Comm_Worlds.c",
@@ -482,7 +480,6 @@
     "Cluster_DFT_OptOrb.c": "0e1d4a756ecc245d36a80f27ff072df38af5cae20830b8624371b5965ba904fb",
     "DFTD3vdW_init.c": "098b834ff204d2dd267f8385586ff4d2d56d8711ec565b617ac517981ff47153",
     "DFTDvdW_init.c": "5a48e3d00cb5fdc68f702a3b4811f29b9542131e6e60a6584ba53b451a03c46b",
-    "Dr_KumoF.c": "3d0938cbeadeeba6fa55e20bb6eb47fb583ed6c5a83b09c4bd2955ff23be4a87",
     "EigenValue_Problem.c": "0ec387a81ff4e18d07a11c1f93a0b8a8413f7ddea97c7d58264117844175fa8e",
     "EigenValue_Problem.h": "eaa85abb38e5c10e88ef9148cfa58a9da21f6190d2ac59720d1b5a32fdd2bf50",
     "Eigen_HH.c": "c463b1f4b961c4a841cea011a159ee487b38c560c710c478e5ad4100b158a2ab",
@@ -517,7 +514,6 @@
     "Inputtools.c": "51c373a1f404f237ae376b5b27683abda661c7ca3d14b2917f793750a5ffc5f6",
     "Inputtools.h": "520921f60d23e03eb961c7fb354feeb95ca6e2920e5c3fbf37d42178794e69e2",
     "Inputtools_kSpin.c": "0701752e6140ee6a262f6d0dff26d0a33f247d77176bfbf83bbe4d409c0f1e58",
-    "KumoF.c": "d82910ce9eb69039d33d957f7720fc9d7c906202a7a100952d772ef72b6688e7",
     "LU_inverse.c": "c71cf4259b82c79472faf5c3f0f57d753188805e0de223e2b84944e53412c86d",
     "MTRAN_EigenChannel.c": "237621259f7422cd1db23beee03724433c346dfe4e11892758595fb39f78120c",
     "Make_Comm_Worlds.c": "78793919236c418a5563af6a7555e32f38bda8e92f910030b12bf45991995249",
@@ -1098,7 +1094,9 @@
     "openmx_core_energy_simd.h",
     "openmx_core_orbitals_simd.h",
     "openmx_setpro_gaunt.h",
-    "openmx_setpro_host.h"
+    "openmx_setpro_host.h",
+    "Dr_KumoF.c",
+    "KumoF.c"
   ],
   "integrated_overrides": {
     "gemmul8_bridge.cu": "src/gemmul8_bridge.cu",

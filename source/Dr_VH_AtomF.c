@@ -82,6 +82,9 @@ double Dr_VH_AtomF(double core_charge, int N, double x, double r, double *xv, do
     x = MAX(x,xmin); 
     tmp = ((double)N-1.0)/(xmax-xmin);
     t = (x-xmin)*tmp;
+    /* The table has N+2 entries. The endpoint needs no yv[N+2].
+       Rounding can reach it even when x is just below xmax. */
+    if (t >= (double)N-1.0) return 0.5*(yv[N+1]-yv[N-1])*tmp/r;
     i = floor(t); 
     dt = t - (double)i; 
 

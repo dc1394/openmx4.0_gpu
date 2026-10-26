@@ -56,7 +56,7 @@ function(openmx_host_object name)
     "$<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-fno-fast-math;-ffp-contract=off>"
     "$<$<CXX_COMPILER_ID:IntelLLVM>:-fp-model=precise;-fno-fast-math;-ffp-contract=off>")
   if(OPENMX_CORE_SANITIZERS)
-    target_compile_options(${name} PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer)
+    target_compile_options(${name} PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=all)
   endif()
   target_sources(openmx_host_simd PRIVATE $<TARGET_OBJECTS:${name}>)
 endfunction()

@@ -29,7 +29,7 @@ typedef struct {
 int openmx_core_energy_neutral_points(const OpenMXEnergyNeutralPoints*,int mode);
 /* The same integrand summed as the legacy loop sums it: *sum += value and
    (with derivative) *sumr -= derivative for every point in order, continuing
-   from the given *sum/*sumr. values/derivatives of the record are not used
+   from the given *sum and *sumr. values/derivatives of the record are not used
    (may be NULL). One call covers a whole pair integral. */
 int openmx_core_energy_neutral_sum(const OpenMXEnergyNeutralPoints*,double *sum,double *sumr,int mode);
 

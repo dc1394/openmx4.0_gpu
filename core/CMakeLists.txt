@@ -127,7 +127,7 @@ if(OPENMX_CORE_SANITIZERS)
   if(NOT OPENMX_CORE_BACKEND MATCHES "^(SERIAL|OPENMP)$")
     message(FATAL_ERROR "Use a host core build for address/undefined sanitizers")
   endif()
-  target_compile_options(openmx_core PUBLIC -fsanitize=address,undefined -fno-omit-frame-pointer)
+  target_compile_options(openmx_core PUBLIC -fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=all)
   target_link_options(openmx_core PUBLIC -fsanitize=address,undefined)
 endif()
 

@@ -93,10 +93,11 @@ Table table(int mesh,const double* xv,const double* rv,const double* yv) {
 }
 struct Samples { Vector y0,y1,y2,y3; };
 Samples samples(const Table& t,IndexVector i,Mask m) {
-  // The legacy routines read yv[i+3] with i up to N-1 (KumoF's clamp); the
-  // gathers touch exactly those entries, nothing else.
-  const size_t n=size_t(t.mesh)+3;
-  return {gather(t.yv,n,m,i),gather(t.yv,n,m,i+IndexVector(1)),gather(t.yv,n,m,i+IndexVector(2)),gather(t.yv,n,m,i+IndexVector(3))};
+  // Tables have mesh+2 entries. At the upper endpoint i==mesh-1,
+  // y3 would lie outside the table; its coefficient is zero there.
+  const size_t n=size_t(t.mesh)+2;
+  const Mask interior=Mask(i<IndexVector(t.mesh-1));
+  return {gather(t.yv,n,m,i),gather(t.yv,n,m,i+IndexVector(1)),gather(t.yv,n,m,i+IndexVector(2)),gather(t.yv,n,m&&interior,i+IndexVector(3))};
 }
 // The 4-point formula of VH_AtomF/KumoF at the fractional position dt.
 Vector value_formula(const Samples& v,Vector dt) {
@@ -125,13 +126,17 @@ Interpolated interpolate(const Table& t,Vector x,Mask m,bool derivative) {
   const Vector fv=Kokkos::floor(tv);
   const IndexVector iv=to_index(select(m,fv,Vector(0.0)));
   const Samples sv=samples(t,iv,m);
-  Interpolated out{value_formula(sv,tv-fv),Vector(0.0)};
+  // Even x<xmax can round to interval mesh-1. Evaluate that endpoint
+  // directly, including when the normalized coordinate rounds above it.
+  Interpolated out{select(fv>=Vector(t.count),sv.y1,value_formula(sv,tv-fv)),Vector(0.0)};
   if(derivative) {
     const Vector td=shift*Vector(t.tmp);
     const Vector fd=Kokkos::floor(td);
     const IndexVector id=to_index(select(m,fd,Vector(0.0)));
     const bool shared=all((id==iv)||(!IndexMask(m)));
-    out.derivative=derivative_formula(shared?sv:samples(t,id,m),td-fd)*Vector(t.tmp);
+    const Samples sd=shared?sv:samples(t,id,m);
+    out.derivative=select(fd>=Vector(t.count),Vector(0.5)*(sd.y2-sd.y0),
+                          derivative_formula(sd,td-fd))*Vector(t.tmp);
   }
   return out;
 }
@@ -139,7 +144,7 @@ Interpolated interpolate(const Table& t,Vector x,Mask m,bool derivative) {
 /* ---- the neutral-atom integrand: VH_AtomF and Dr_VH_AtomF ---- */
 // Store = the per-point values (s.values/s.derivatives); otherwise the
 // legacy sums "sum += value; sumr -= derivative", point after point, continue
-// from *sum/*sumr in registers.
+// from *sum and *sumr in registers.
 template<bool Store> void neutral_impl(const OpenMXEnergyNeutralPoints& s,double* sum,double* sumr) {
   const Table t=table(s.mesh,s.log_radii,s.radii,s.hartree);
   const Vector separation(s.separation),half(0.5),floor_r(1.0e-10),zero(0.0);

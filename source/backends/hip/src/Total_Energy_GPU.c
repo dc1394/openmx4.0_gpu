@@ -289,6 +289,8 @@ static double AMD_TotalEnergy_EH0_VH_AtomF_flat(int spe, int N, double x, double
     if (x<xmin) x = xmin;
 
     t = ((double)N-1.0)*(x-xmin)/(xmax-xmin);
+    /* The upper endpoint needs no fourth sample beyond the N+2 table. */
+    if (t >= (double)N-1.0) return yv[N];
     i = (int)t;
     dt = t - (double)i;
 
@@ -368,6 +370,8 @@ static double AMD_TotalEnergy_EH0_Dr_VH_AtomF_flat(int spe, int N, double x, dou
 
     tmp = ((double)N-1.0)/(xmax-xmin);
     t = (x-xmin)*tmp;
+    /* The upper endpoint needs no fourth sample beyond the N+2 table. */
+    if (t >= (double)N-1.0) return 0.5*(yv[N+1]-yv[N-1])*tmp/r;
     i = (int)t;
     dt = t - (double)i;
 
@@ -714,6 +718,8 @@ static double AMD_TotalEnergy_Exc0_KumoF_flat(int N, double x,
     if (xmax<x) x = xmax;
     if (x<xmin) x = xmin;
     t = ((double)N-1.0)*(x-xmin)/(xmax-xmin);
+    /* The upper endpoint needs no fourth sample beyond the N+2 table. */
+    if (t >= (double)N-1.0) return yv[N];
     i = (int)floor(t);
     dt = t - (double)i;
 
@@ -790,6 +796,8 @@ static double AMD_TotalEnergy_Exc0_Dr_KumoF_flat(int N, double x, double r,
 
     tmp = ((double)N-1.0)/(xmax-xmin);
     t = (x-xmin)*tmp;
+    /* The upper endpoint needs no fourth sample beyond the N+2 table. */
+    if (t >= (double)N-1.0) return 0.5*(yv[N+1]-yv[N-1])*tmp/r;
     i = (int)floor(t);
     dt = t - (double)i;
 
@@ -1343,6 +1351,8 @@ static double TotalEnergy_EH0_VH_AtomF_flat(int spe, int N, double x, double r,
     if (x<xmin) x = xmin;
 
     t = ((double)N-1.0)*(x-xmin)/(xmax-xmin);
+    /* The upper endpoint needs no fourth sample beyond the N+2 table. */
+    if (t >= (double)N-1.0) return yv[N];
     i = (int)t;
     dt = t - (double)i;
 
@@ -1421,6 +1431,8 @@ static double TotalEnergy_EH0_Dr_VH_AtomF_flat(int spe, int N, double x, double 
 
     tmp = ((double)N-1.0)/(xmax-xmin);
     t = (x-xmin)*tmp;
+    /* The upper endpoint needs no fourth sample beyond the N+2 table. */
+    if (t >= (double)N-1.0) return 0.5*(yv[N+1]-yv[N-1])*tmp/r;
     i = (int)t;
     dt = t - (double)i;
 
@@ -1822,6 +1834,8 @@ static double TotalEnergy_Exc0_KumoF_flat(int N, double x,
     if (xmax<x) x = xmax;
     if (x<xmin) x = xmin;
     t = ((double)N-1.0)*(x-xmin)/(xmax-xmin);
+    /* The upper endpoint needs no fourth sample beyond the N+2 table. */
+    if (t >= (double)N-1.0) return yv[N];
     i = (int)floor(t);
     dt = t - (double)i;
 
@@ -1897,6 +1911,8 @@ static double TotalEnergy_Exc0_Dr_KumoF_flat(int N, double x, double r,
 
     tmp = ((double)N-1.0)/(xmax-xmin);
     t = (x-xmin)*tmp;
+    /* The upper endpoint needs no fourth sample beyond the N+2 table. */
+    if (t >= (double)N-1.0) return 0.5*(yv[N+1]-yv[N-1])*tmp/r;
     i = (int)floor(t);
     dt = t - (double)i;
 

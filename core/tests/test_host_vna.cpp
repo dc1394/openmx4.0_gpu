@@ -22,7 +22,7 @@ std::vector<int> modes() {
   return m;
 }
 bool same(const std::vector<double>& a,const std::vector<double>& b) {
-  return a.size()==b.size() && !std::memcmp(a.data(),b.data(),a.size()*sizeof(double));
+  return a.size()==b.size() && (a.empty() || !std::memcmp(a.data(),b.data(),a.size()*sizeof(double)));
 }
 void report(const char* what,int mode,const std::vector<double>& got,const std::vector<double>& expected) {
   for(size_t i=0;i<got.size();++i)if(std::memcmp(&got[i],&expected[i],sizeof(double))) {
@@ -179,7 +179,9 @@ void hvna_case() {
     std::vector<int> lengths;std::vector<double> energies;
     const int lmax=int(rng()%4),mult=1+int(rng()%3);
     for(int l=0;l<=lmax;++l)for(int m=0;m<mult;++m){lengths.push_back(2*l+1);energies.push_back(noisy(rng));}
-    if(rng()%5==0){lengths.clear();energies.clear();}
+    const int empty=int(rng()%5);
+    if(empty==0){lengths.clear();energies.clear();}
+    else if(empty==1)std::fill(lengths.begin(),lengths.end(),0);
     int components=0;for(int v:lengths)components+=v;
     const size_t lstride=size_t(transposed?components:rows)+1,rstride=size_t(transposed?columns:components)+2;
     std::vector<float> left(size_t(transposed?rows:components)*lstride),right(size_t(transposed?components:columns)*rstride);

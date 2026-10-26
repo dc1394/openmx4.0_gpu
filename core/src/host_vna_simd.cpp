@@ -39,6 +39,13 @@ Vector cosine(Vector v) { return Vector([&](auto i){return std::cos(v[i]);}); }
 Vector magnitude(Vector v) { return select(v<Vector(0.0),Vector(0.0)-v,v); }
 double lane_max(Vector v) { double r=v[0];for(int i=1;i<V;++i)r=std::max(r,v[i]);return r; }
 
+// Empty quadratures/projector groups may have null input storage. Preserve
+// that pointer until the (empty) reduction, rather than forming an address
+// outside an array that does not exist.
+template<class T> const T* offset_if_present(const T* p,size_t offset) {
+  return p?p+offset:nullptr;
+}
+
 // ---- Gauss-Legendre contraction: lanes over projector rows ---------------
 // MG radial functions share each table load; C row vectors per pass keep
 // enough independent accumulators to cover the add latency.
@@ -46,7 +53,7 @@ constexpr int contract_vectors=V>=8?2:1;
 template<int MG,int C,bool FULL> void contract_tile(const OpenMXVnaContract& p,int m0,int r0,int tail) {
   Vector acc0[MG][C],acc1[MG][C];
   for(int m=0;m<MG;++m)for(int c=0;c<C;++c){acc0[m][c]=Vector(0.0);acc1[m][c]=Vector(0.0);}
-  const double* table=p.table+r0;
+  const double* table=offset_if_present(p.table,size_t(r0));
   const size_t ts=p.table_stride;
   const double* w0[MG];const double* w1[MG];
   for(int m=0;m<MG;++m){w0[m]=p.w0[m0+m];w1[m]=p.w1[m0+m];}
@@ -240,7 +247,7 @@ void hvna_tile(const OpenMXVnaHvnaBlock& p,const LaneT* lanes,size_t lane_stride
           Vector ld[LV];
           for(int c=0;c<LV;++c)ld[c]=Vector(lf[c]);
           for(int b=0;b<BC;++b) {
-            const Vector a(double(broadcast[b][L]));
+            const Vector a{double(broadcast[b][L])};
             for(int c=0;c<LV;++c)tmp[b][c]+=a*ld[c];
           }
         }
@@ -264,9 +271,9 @@ template<bool FP32,bool DOUBLES,bool FULL,int LV,int BC>
 void hvna_columns(const OpenMXVnaHvnaBlock& p,int m0,int n0,FloatMask ftail,Mask tail) {
   using O=HvnaOperands<DOUBLES>;
   const typename O::T* rows[BC];
-  for(int b=0;b<BC;++b)rows[b]=O::left(p)+size_t(m0+b)*p.left_stride;
+  for(int b=0;b<BC;++b)rows[b]=offset_if_present(O::left(p),size_t(m0+b)*p.left_stride);
   Vector sum[BC][LV];
-  hvna_tile<FP32,DOUBLES,FULL,LV,BC>(p,O::right(p)+n0,p.right_stride,rows,ftail,tail,sum);
+  hvna_tile<FP32,DOUBLES,FULL,LV,BC>(p,offset_if_present(O::right(p),size_t(n0)),p.right_stride,rows,ftail,tail,sum);
   for(int b=0;b<BC;++b)for(int c=0;c<LV;++c) {
     double* d=p.matrix+size_t(m0+b)*p.stride+size_t(n0+c*V);
     if(FULL || c<LV-1)store(p.first?sum[b][c]:load(d)+sum[b][c],d);
@@ -278,9 +285,9 @@ template<bool FP32,bool DOUBLES,bool FULL,int LV,int BC>
 void hvna_rows(const OpenMXVnaHvnaBlock& p,int m0,int n0,int mcount,FloatMask ftail,Mask tail) {
   using O=HvnaOperands<DOUBLES>;
   const typename O::T* columns[BC];
-  for(int b=0;b<BC;++b)columns[b]=O::right(p)+size_t(n0+b)*p.right_stride;
+  for(int b=0;b<BC;++b)columns[b]=offset_if_present(O::right(p),size_t(n0+b)*p.right_stride);
   Vector sum[BC][LV];
-  hvna_tile<FP32,DOUBLES,FULL,LV,BC>(p,O::left(p)+m0,p.left_stride,columns,ftail,tail,sum);
+  hvna_tile<FP32,DOUBLES,FULL,LV,BC>(p,offset_if_present(O::left(p),size_t(m0)),p.left_stride,columns,ftail,tail,sum);
   for(int b=0;b<BC;++b)for(int c=0;c<LV;++c) {
     const int count=std::min(V,mcount-c*V);
     for(int lane=0;lane<count;++lane) {

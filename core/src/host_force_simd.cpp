@@ -146,19 +146,19 @@ void vna_tile(const OpenMXForceVnaBlock& b,const float* const planes[4],size_t p
       OPENMX_FORCE_UNROLL
       for(int r=0;r<R;++r) {
         if constexpr(!LanesRows) {
-          const Vector ax(NarrowFloat(s0[r][l])),ay(NarrowFloat(s1[r][l])),az(NarrowFloat(s2[r][l]));
+          const Vector ax{NarrowFloat(s0[r][l])},ay{NarrowFloat(s1[r][l])},az{NarrowFloat(s2[r][l])};
           if constexpr(Terms==1) {
             for(int v=0;v<V;++v){acc[r][0][v]+=ax*p0[v];acc[r][1][v]+=ay*p0[v];acc[r][2][v]+=az*p0[v];}
           }else {
-            const Vector h(NarrowFloat(s3[r][l]));
+            const Vector h{NarrowFloat(s3[r][l])};
             for(int v=0;v<V;++v){acc[r][0][v]-=ax*p0[v]+h*p1[v];acc[r][1][v]-=ay*p0[v]+h*p2[v];acc[r][2][v]-=az*p0[v]+h*p3[v];}
           }
         }else {
-          const Vector q(NarrowFloat(s0[r][l]));
+          const Vector q{NarrowFloat(s0[r][l])};
           if constexpr(Terms==1) {
             for(int v=0;v<V;++v){acc[r][0][v]+=p0[v]*q;acc[r][1][v]+=p1[v]*q;acc[r][2][v]+=p2[v]*q;}
           }else {
-            const Vector qx(NarrowFloat(s1[r][l])),qy(NarrowFloat(s2[r][l])),qz(NarrowFloat(s3[r][l]));
+            const Vector qx{NarrowFloat(s1[r][l])},qy{NarrowFloat(s2[r][l])},qz{NarrowFloat(s3[r][l])};
             for(int v=0;v<V;++v){acc[r][0][v]-=p0[v]*q+p3[v]*qx;acc[r][1][v]-=p1[v]*q+p3[v]*qy;acc[r][2][v]-=p2[v]*q+p3[v]*qz;}
           }
         }
@@ -286,7 +286,7 @@ void density_rows(const double* dm,int columns,size_t pad,const float* orbitals,
     Vector acc[chunk];
     for(auto& a:acc)a=Vector(0.0);
     for(int j=0;j<columns;++j) {
-      const Vector w(double(orbitals[j]));
+      const Vector w{double(orbitals[j])};
       const double* row=dm+size_t(j)*pad+size_t(v0)*lanes;
       for(int v=0;v<nv;++v)acc[v]+=w*load(row+size_t(v)*lanes);
     }

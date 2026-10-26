@@ -4125,3 +4125,73 @@ clang の構文木で nvc がコンパイルする OpenMP を含む全 53 ファ
 ほかにアドレス空間のランダム化と ASan のシャドウ領域の衝突で実行ごとに数件が失敗します（今回は
 `host-simd-hamiltonian-capacity-CUDA`/`-HIP` と `dense-kernel-indexing`。単独やランダム化なしでは合格）。
 `ASAN_OPTIONS=use_sigaltstack=0` とランダム化なしの構成では、作業前から失敗している MPI の 4 件だけが失敗します。
+
+
+## Radeon / AVX2 動作検証と修正 (2026-10-26)
+
+`ffff70be` のホスト SIMD 変更を、Ryzen Threadripper 3970X（AVX2、AVX-512 なし）と
+Radeon RX 9060 XT（gfx1200、16 GiB）で検証しました。ROCm 10.1 の開発用 SDK と
+Clang/Flang 24、OpenMPI、AOCL 5.2 を使用し、HIP アプリケーションを CMake で再ビルドしました。
+ビルド先は `build/hip-application-20261025/openmpi-aocl` です。
+`OPENMX_COPY_TO_WORK=OFF` とし、既存の `work/openmx` は置き換えていません。
+
+修正内容:
+
+- Force / VNA の SIMD 変数初期化が Clang では関数宣言と解釈され、scalar / AVX2 オブジェクトの
+  コンパイルが失敗していました。波括弧による初期化に変更しました。
+- 動径補間の最終区間で、`x < xmax` でも丸めにより正規化座標が `N-1` になり、
+  `N+2` 要素の配列から `yv[N+2]` を読み出していました。端点の値と微分を直接評価し、
+  SIMD の第4サンプルの gather をマスクしました。従来の4つのスカラー関数と、CUDA / HIP の
+  12個のデバイス・容量回復用複製にも同じ境界修正を適用しています。通常区間の演算順序は維持しています。
+  `KumoF.c` / `Dr_KumoF.c` は HIP の変更済み共有ソース分類 `integrated_shared` に移しました。
+- VNA の点数・射影子成分数がゼロの場合に、null 入力からオフセット付きポインターを作る
+  未定義動作を修正しました。ゼロ長グループも含め、従来と同じゼロ和・加算の意味を保ちます。
+  検証側の空配列 `memcmp` も修正しました。ASan / UBSan 構成では
+  `-fno-sanitize-recover=all` を指定し、診断を出して終了コード0で合格することを防ぎます。
+- VNA 準備処理のホスト検証スクリプトを、現在の HIP の環境変数 ID とホスト用バッチ容量 API に合わせました。
+
+検証結果:
+
+| 検証 | 結果 |
+| --- | --- |
+| HIP 構成のホスト SIMD / grid 試験 | 49 / 49 合格 |
+| SERIAL 構成の同じ試験、ASan + UBSan（診断時停止） | 49 / 49 合格、サニタイザー診断なし |
+| Hamiltonian 容量判定、VNA、射影子、力、MPI 交換などの接続試験 | 13 / 13 合格 |
+| ビルドドライバー / HIP ソース分類の Python 試験 | 23 + 15 合格 |
+| 動径補間の端点回帰試験 | GCC と ROCm Clang の ASan / UBSan で合格 |
+| 同じ HIP 補間関数の実デバイス試験 | 8関数合格、OpenMP target のホスト代替実行なし |
+| VNA 準備処理の CUDA / HIP ソースによるホスト試験 | 各54条件、1 / 2 / 8スレッドで合格 |
+
+ホスト SIMD の7系列（grid、grid_committed、olg、orbitals、energy、force、vna）の
+AVX2 オブジェクトには YMM 命令があり、ZMM 命令はありません。
+自動選択の境界試験では、GPU 用 Kokkos の既定幅1とは独立にホスト幅4を選び、
+GPU ランタイムを初期化せずに端数7要素の処理も合格しています。
+
+アプリケーションは CPU 0–15 内で実行しました。標準は4 MPI × 4 OpenMP、追加は8 MPI × 2 OpenMPです。
+入力の物理設定と SCF 上限は変更せず、診断を確認するため `level.of.stdout=2` のみ変更しました。
+CPU 試験は `OPENMX_GPU=0`、GPU 試験は `OMP_TARGET_OFFLOAD=MANDATORY` とし、
+小さい cluster でも MAGMA を通るよう切り替え閾値を1にしています。
+
+まずコンパイル・補間端点の修正後に、次の68ケース分が参照比較に合格しました。
+
+- `-runtest` 全14入力を、CPU legacy、CPU AVX2、GPU、GPU + ホスト SIMD 優先の4構成（56件）。
+  ホスト優先構成は `OPENMX_HOST_SIMD=avx2 OPENMX_HOST_SIMD_PREFER=all` で、固有値計算は GPU に残します。
+- CPU AVX2 の8 MPI × 2スレッドで Cr2 / GaAs / HMn / Methane（4件）、scalar で Cr2 / Methane（2件）。
+- `-runtestL` の FeBCC / Pt63 / SialicAcid を CPU AVX2 と GPU の両方（6件）。
+
+その後の VNA 空入力修正を含む最終ビルドでは、上記の単体・接続試験に加えて
+CPU AVX2 と GPU + ホスト SIMD 優先の `-runtest` 全14入力を再実行し、28件すべて合格しました。
+修正段階を区別した検証合計は96件です。すべての出力について有限値、原子・積分格子の一致、
+全エネルギーと力の全成分を確認しています。参照値との差の最大値は
+エネルギー 2.22e-09 Ha、力 2.96e-09 Ha/bohr で、
+判定閾値はそれぞれ `1e-7` です。GPU 試験で記録された MAGMA 呼び出しはすべて `info=0` でした。
+
+`-runtestL` 全件および AVX-512 / NVIDIA 実機は今回の検証範囲に含みません。
+B2C62_Band は構造最適化を含む長い入力のため途中で停止し、固定構造の Pt63 に切り替えました。
+その中断結果は `archives/B2C62-geometry-interrupted` に保存し、合格数から除外しています。
+
+ログと実行ファイル・共有ライブラリのハッシュは `work/codex_avx2_20261026/` に保存しています。
+集計は `verification.json`、修正段階は `calculation-build-before-empty-fix.json` と各試験の
+`command.json`、数値比較は各 `reference-comparison.log` です。
+端点回帰試験は CTest の `radial-interpolation-endpoints` / `core-host-energy-endpoints`、
+SIMD 群は `ctest -R '^core-(host-|grid-assembly)' --output-on-failure` で実行できます。

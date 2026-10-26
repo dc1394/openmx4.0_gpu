@@ -70,6 +70,8 @@ double VH_AtomF(double core_charge,int N,double x,double r,const double* xv,cons
   else{
     x = ((x)>(xmin))?  (x):(xmin);
     t = ((double)N-1.0)*(x-xmin)/(xmax-xmin);
+    // Upper endpoint of the legacy polynomial, without its unused fourth sample.
+    if (t >= (double)N-1.0) return yv[N];
     i = std::floor(t);
     dt = t - (double)i;
     return 0.5*( ((yv[i+3]-yv[i]-3.0*(yv[i+2]-yv[i+1]))*dt
@@ -123,6 +125,8 @@ double Dr_VH_AtomF(double core_charge,int N,double x,double r,const double* xv,c
     x = ((x)>(xmin))?  (x):(xmin);
     tmp = ((double)N-1.0)/(xmax-xmin);
     t = (x-xmin)*tmp;
+    // Upper endpoint of the legacy polynomial, without its unused fourth sample.
+    if (t >= (double)N-1.0) return 0.5*(yv[N+1]-yv[N-1])*tmp/r;
     i = std::floor(t);
     dt = t - (double)i;
     return 0.5*(( 3.0*(yv[i+3]-yv[i]-3.0*(yv[i+2]-yv[i+1]))*dt
@@ -201,6 +205,36 @@ void legacy_points(const Points& p,const Mesh& m,int derivative,int guard,double
     }
   }
 }
+// The last interpolation interval can round up although log(r)<xmax.
+// Only mesh+2 potential entries are available; the fourth sample of that
+// endpoint stencil must never be read, including in an AVX2 tail.
+void endpoints() {
+  constexpr int mesh=6;
+  const double xmax=1.0,xmin=-8.0;
+  std::vector<double> logs(mesh),radii(mesh),potential(mesh+2);
+  for(int i=0;i<mesh;++i){logs[i]=xmin+(xmax-xmin)*i/(mesh-1);radii[i]=std::exp(logs[i]);}
+  for(int i=0;i<mesh+2;++i)potential[i]=double(i*i+1);
+  const double radius=std::nextafter(std::exp(xmax),0.0);
+  const double x=0.5*std::log(radius*radius),tmp=(mesh-1)/(xmax-xmin);
+  require(x<xmax && (mesh-1)*(x-xmin)/(xmax-xmin)==mesh-1,
+          "endpoint fixture must round into the final interval below xmax");
+  const double slope=0.5*(potential[mesh+1]-potential[mesh-1])*tmp/radius;
+  for(int count:{1,2,3,4,5,7,8,9})for(int mode:modes()) {
+    std::vector<double> zero(count,0.0),z(count,radius),one(count,1.0),v(count),d(count);
+    OpenMXEnergyNeutralPoints p{count,1,0,zero.data(),zero.data(),z.data(),one.data(),one.data(),
+        0.0,3.0,mesh,logs.data(),radii.data(),potential.data(),v.data(),d.data()};
+    require(openmx_core_energy_neutral_points(&p,mode),"endpoint request refused");
+    for(int i=0;i<count;++i) {
+      require(v[i]==potential[mesh],"endpoint value differs from its table sample");
+      require(d[i]==slope*radius/radius,"endpoint derivative differs from the polynomial limit");
+    }
+    double sum=0.0,sumr=0.0,expected=0.0,expected_r=0.0;
+    for(int i=0;i<count;++i){expected+=v[i];expected_r-=d[i];}
+    require(openmx_core_energy_neutral_sum(&p,&sum,&sumr,mode),"endpoint sum refused");
+    require(same_bits(sum,expected) && same_bits(sumr,expected_r),"endpoint sums differ");
+  }
+}
+
 void neutral() {
   std::mt19937 rng(2026u);
   for(int N:{6,7,20,61})for(int count:{0,1,2,7,8,9,15,16,17,33,100,1001})for(int derivative:{0,1})
@@ -289,6 +323,8 @@ double KumoF(int N,double x,const double* xv,const double* rv,const double* yv) 
     x = (((x)<(xmax))?  (x):(xmax));
     x = (((x)>(xmin))?  (x):(xmin));
     t = ((double)N-1.0)*(x-xmin)/(xmax-xmin);
+    // Upper endpoint of the legacy polynomial, without its unused fourth sample.
+    if (t >= (double)N-1.0) return yv[N];
     i = std::floor(t);
     dt = t - (double)i;
     return 0.5*( ((yv[i+3]-yv[i]-3.0*(yv[i+2]-yv[i+1]))*dt
@@ -341,6 +377,8 @@ double Dr_KumoF(int N,double x,double r,const double* xv,const double* rv,const 
     x = ((x)>(xmin))?  (x):(xmin);
     tmp = ((double)N-1.0)/(xmax-xmin);
     t = (x-xmin)*tmp;
+    // Upper endpoint of the legacy polynomial, without its unused fourth sample.
+    if (t >= (double)N-1.0) return 0.5*(yv[N+1]-yv[N-1])*tmp/r;
     i = std::floor(t);
     dt = t - (double)i;
     return 0.5*(( 3.0*(yv[i+3]-yv[i]-3.0*(yv[i+2]-yv[i+1]))*dt
@@ -687,6 +725,7 @@ int main(int argc,char** argv) {
   try {
     const std::string name=argc>1?argv[1]:"neutral";
     if(name=="neutral")neutral();
+    else if(name=="endpoints")endpoints();
     else if(name=="xc")xc();
     else if(name=="band")band();
     else if(name=="invalid")invalid();

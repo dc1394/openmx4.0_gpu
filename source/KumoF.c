@@ -82,6 +82,9 @@ double KumoF(int N, double x, double *xv, double *rv, double *yv)
     x = MIN(x,xmax);
     x = MAX(x,xmin); 
     t = ((double)N-1.0)*(x-xmin)/(xmax-xmin);
+    /* The table has N+2 entries. The endpoint needs no yv[N+2].
+       Rounding can reach it even when x is just below xmax. */
+    if (t >= (double)N-1.0) return yv[N];
     i = floor(t); 
     dt = t - (double)i; 
 

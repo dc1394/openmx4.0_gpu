@@ -54,9 +54,10 @@ static void MPI_Comm_size(MPI_Comm c,int *n){(void)c;*n=1;}
 static void MPI_Comm_rank(MPI_Comm c,int *n){(void)c;*n=0;}
 static void MPI_Comm_free(MPI_Comm *c){*c=MPI_COMM_NULL;}
 static int SetPro_collective_env_flag(const char *name,int value){(void)name;(void)value;return allowed;}
-static int SetPro_gpu_stage_enabled(const char *name){(void)name;return allowed;}
+static int SetPro_gpu_stage_enabled(int id){(void)id;return allowed;}
 static int SetPro_GpuSharing(MPI_Comm comm){(void)comm;return 1;}
 static size_t SetPro_GpuBatchBudget(int n){(void)n;return SIZE_MAX;}
+static size_t SetPro_HostSimdBatchBudget(void){return SIZE_MAX;}
 static size_t SetPro_DSVNA_DeviceBytes(const SetProGpu2Context *g){(void)g;return 0;}
 /* The production pair count reads these globals; the host SIMD vote is the
    collective helper of openmx_host_simd.c (a device vote unless forced). */
