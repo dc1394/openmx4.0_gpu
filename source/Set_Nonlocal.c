@@ -35,6 +35,7 @@
 #include "openmx_core_pair_bessel.h"
 #include "openmx_gpu_workers.h"
 #include "openmx_gpu_task.h"
+#include "openmx_host_simd.h"
 #include "mpi.h"
 #include "openmx_projector_exchange.h"
 #include "openmx_solver_workspace.h"
@@ -724,6 +725,36 @@ static int SetNonlocal_CalcDSNL_Part(const OpenMXAtomicViews *atomic, const Open
   arena_bytes = 0;
   chunk_pairs = 1;
 
+  {
+    /* Host SIMD vote (every rank, same point): the arena of the first,
+       largest chunk this rank would claim against its free device memory.
+       Shrinking it more than OPENMX_HOST_SIMD_MAX_PIECES times over, or an
+       unusable device, leaves DS_NL to the CPU path on every rank (the
+       caller); otherwise the attempt below is unchanged. */
+    size_t need = 0;
+    if (0 < total_rows){
+      size_t pos = 0, first_pairs = ((size_t)96*1024*1024)/(sph_stride*sizeof(double));
+      if (first_pairs < 1u) first_pairs = 1u;
+      if ((size_t)OneD_Nloop < first_pairs) first_pairs = (size_t)OneD_Nloop;
+      (void)SetNonlocal_ArenaOff(&pos,sizeof(double)*(size_t)grid_dim);
+      (void)SetNonlocal_ArenaOff(&pos,sizeof(double)*rf_all_elems);
+      (void)SetNonlocal_ArenaOff(&pos,sizeof(double)*nlrf_all_elems);
+      for (int k=0; k<4; k++) (void)SetNonlocal_ArenaOff(&pos,sizeof(int)*(size_t)total_rows);
+      (void)SetNonlocal_ArenaOff(&pos,sizeof(int)*(size_t)OneD_Nloop);
+      (void)SetNonlocal_ArenaOff(&pos,sizeof(double)*(size_t)OneD_Nloop);
+      (void)SetNonlocal_ArenaOff(&pos,sizeof(int)*(size_t)OneD_Nloop);
+      for (int k=0; k<2; k++) (void)SetNonlocal_ArenaOff(&pos,sizeof(double)*(size_t)total_rows);
+      for (int k=0; k<2; k++)
+        (void)SetNonlocal_ArenaOff(&pos,sizeof(double)*SetNonlocal_CheckedMulCount(first_pairs,sph_stride,
+                                                                                    "OpenACC SphB chunk"));
+      need = pos;
+    }
+    if (OpenMX_HostSimdStageOnHost("Set_Nonlocal: DS_NL",need,OpenMX_HostSimdDeviceBudget(0))) {
+      device_ok = 0;
+      goto cleanup;
+    }
+  }
+
   if (0 < total_rows && !openmx_gpu_capacity_test_recovery() && gpu_rank_device_usable()){
 
     size_t budget_pairs = ((size_t)96*1024*1024)/(sph_stride*sizeof(double));
@@ -977,6 +1008,13 @@ static int SetNonlocal_CalcDSNL_Part(const OpenMXAtomicViews *atomic, const Open
 
   if (measure_time) dtime(&t_mark0);
 
+  /* A rank whose device staging failed computes DS_NL on the CPU path (the
+     caller) under the host SIMD policy: no capacity task, so no rank enters
+     its collective. OPENMX_HOST_SIMD=legacy keeps the capacity recovery. */
+  if (OpenMX_HostSimdMode()!=OPENMX_HOST_SIMD_LEGACY) {
+    if (!device_ok) goto cleanup;
+  }
+  else {
   /* Retry only failed owner staging. A row contains its own geometry and
      Fourier-table offsets; remote helpers never access another rank's maps. */
   SetNLCapacityRow *recovery_rows=NULL;int recovery_ready=1;
@@ -998,6 +1036,7 @@ static int SetNonlocal_CalcDSNL_Part(const OpenMXAtomicViews *atomic, const Open
   openmx_gpu_task_execute(mpi_comm_level1,&task,1,"nonlocal-radial-capacity");
   free(recovery_rows);device_ok=device_ok || recovery_ready;
   if (!device_ok) goto cleanup;
+  }
 
   /**********************************************************************
      angular assembly, OpenMP-parallel over the pairs (same structure as

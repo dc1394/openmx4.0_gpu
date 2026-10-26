@@ -5,6 +5,10 @@
    declarations precede this include; the numerical owner has no globals. */
 #include "openmx_core_nonlocal.h"
 #include "openmx_two_center.h"
+#include "openmx_host_simd.h"
+#include "openmx_core_vna_simd.h"
+#include <stdlib.h>
+#include <string.h>
 
 static OpenMXNonlocalWorkspace *SetNonlocal_Workspace(const OpenMXAtomicViews *atomic, int points, const double *wavevectors,
     int cache_entries, OpenMXNonlocalBuffers *buffers)
@@ -55,10 +59,92 @@ static void SetNonlocal_TransformDSNL(const OpenMXAtomicViews *atomic,
   }
 }
 
+/* The host SIMD path of one pair's radial sums: lanes across the (basis
+   function, projector) pairs and every order, the legacy per-element order,
+   so the sums are bitwise those of the C loop of SetNonlocal_CalcDSNL_CPU
+   (openmx_core_vna_nonlocal_radial). The rows of a species pair are
+   transposed to [point][combo] once per (species pair, spin-orbit index), in
+   tables owned by the calling thread; the sums of every order land in
+   sums[2][orders][combos] (S, then Sr) with the combos in the legacy
+   (L0, Mul0, L) order. Returns 0 under OPENMX_HOST_SIMD=legacy or scalar (the
+   C loop shares each basis row's products across the projectors, which one
+   lane cannot: the scalar Core kernel runs at 0.86x of it), when a table
+   cannot be allocated, or when the Core refuses; the caller then runs the C
+   loop. Rank-local. */
+typedef struct {
+  double *rows;        /* [2][points][combos]: basis rows, then projector rows */
+  double *sums;        /* [2][orders][combos] */
+  size_t row_capacity, sum_capacity;  /* doubles */
+  int Cwan, Hwan, combos;             /* the species pair the rows hold; -1: none */
+} SetNonlocalHostRadial;
+
+/* Releases one thread's tables. The members are read through a pointer: nvc
+   26.9 (nvc and nvc++) miscompiles a read of a pointer member at a constant
+   index of an array declared inside an OpenMP region -- host_radial[0].rows
+   evaluates to the member's address, and free() aborts. */
+static void SetNonlocal_RadialHostRelease(SetNonlocalHostRadial *host)
+{
+  free(host->rows);
+  free(host->sums);
+}
+
+static int SetNonlocal_RadialHost(SetNonlocalHostRadial *host, int mode, const OpenMXAtomicViews *atomic,
+    int Cwan, int Hwan, int projector_count, const double *rf_cache, const double *nlrf_cache,
+    const double *Normk_grid, int grid_dim, double h, const double *SphB, const double *SphBp,
+    int orders, int onsite)
+{
+  int combos = 0;
+  if (mode==OPENMX_HOST_SIMD_LEGACY || mode==OPENMX_GRID_SCALAR) return 0;
+  if (grid_dim<=0 || orders<=0 || projector_count<=0) return 0;
+  for (int L0=0; L0<=atomic->species.basis_lmax[Cwan]; L0++)
+    combos += atomic->species.basis[(size_t)(Cwan)*atomic->species.angular_channels+(L0)];
+  combos *= projector_count;
+  if (combos<=0) return 0;
+  const size_t points = (size_t)grid_dim, n = (size_t)combos;
+  if (host->Cwan!=Cwan || host->Hwan!=Hwan || host->combos!=combos){
+    if (2*points*n>host->row_capacity){
+      double *grown = (double*)realloc(host->rows,2*points*n*sizeof(double));
+      if (grown==NULL) return 0;
+      host->rows = grown;
+      host->row_capacity = 2*points*n;
+    }
+    /* point-major, so the writes stream (the source rows stay cached) */
+    for (size_t i=0; i<points; i++){
+      double *row0 = host->rows+i*n, *row1 = host->rows+(points+i)*n;
+      size_t c = 0;
+      for (int L0=0; L0<=atomic->species.basis_lmax[Cwan]; L0++){
+        for (int Mul0=0; Mul0<atomic->species.basis[(size_t)(Cwan)*atomic->species.angular_channels+(L0)]; Mul0++){
+          const double basis_value = rf_cache[(size_t)(L0*List_YOUSO[24]+Mul0)*points+i];
+          for (int L=1; L<=projector_count; L++,c++){
+            row0[c] = basis_value;
+            row1[c] = nlrf_cache[(size_t)L*points+i];
+          }
+        }
+      }
+    }
+    host->Cwan = Cwan;
+    host->Hwan = Hwan;
+    host->combos = combos;
+  }
+  if (2*(size_t)orders*n>host->sum_capacity){
+    double *grown = (double*)realloc(host->sums,2*(size_t)orders*n*sizeof(double));
+    if (grown==NULL) return 0;
+    host->sums = grown;
+    host->sum_capacity = 2*(size_t)orders*n;
+  }
+  OpenMXVnaNonlocalRadial q = {0};
+  q.points = grid_dim; q.orders = orders; q.combos = combos; q.onsite = onsite;
+  q.h = h; q.k = Normk_grid; q.rft = host->rows; q.nlrft = host->rows+points*n; q.table_stride = n;
+  q.sb = SphB; q.sbp = SphBp; q.sb_stride = points;
+  q.out[0] = host->sums; q.out[1] = host->sums+(size_t)orders*n; q.out_stride = n;
+  return openmx_core_vna_nonlocal_radial(&q,mode);
+}
+
 static void SetNonlocal_CalcDSNL_CPU(const OpenMXAtomicViews *atomic, const OpenMXReciprocalViews *reciprocal, double ******DS_NL, const double *Normk_grid,
     int grid_dim, double grid_h, const int *OneD2Mc_AN, const int *OneD2h_AN,
     int OneD_Nloop, int bessel_cache_entries)
 {
+  const int host_simd_mode = OpenMX_HostSimdMode();
 #pragma omp parallel shared(List_YOUSO,time_per_atom,DS_NL,Comp2Real,OneD_Grid,PAO_Nkmax,atv,Gxyz,WhatSpecies,ncn,natn,M2G,OneD2h_AN,OneD2Mc_AN,OneD_Nloop,Ngrid_NormK,reciprocal,atomic)
     {
 
@@ -93,7 +179,10 @@ static void SetNonlocal_CalcDSNL_CPU(const OpenMXAtomicViews *atomic, const Open
       dcomplex *TmpNLr;
       dcomplex *TmpNLt;
       dcomplex *TmpNLp;
+      SetNonlocalHostRadial host_radial[2];
 
+    memset(host_radial,0,sizeof(host_radial));
+    host_radial[0].Cwan = host_radial[1].Cwan = -1;
     workspace = SetNonlocal_Workspace(atomic, grid_dim,Normk_grid,bessel_cache_entries,&buffers);
     TmpNL = buffers.angular[0];
     TmpNLr = buffers.angular[1];
@@ -235,10 +324,32 @@ static void SetNonlocal_CalcDSNL_CPU(const OpenMXAtomicViews *atomic, const Open
           cached_Hwan[so] = Hwan;
         }
 
+	/* the radial sums of every order on the host SIMD path (rank-local) */
+	const int host_sums = SetNonlocal_RadialHost(&host_radial[so],host_simd_mode,atomic,Cwan,Hwan,
+	    projector_count,RF_BesselCache,NLRF_BesselCache[so],Normk_grid,grid_dim,h,SphB,SphBp,
+	    Lmax_Four_Int+1,h_AN==0);
+
 	/* LL loop */
 
 	for(LL=0; LL<=Lmax_Four_Int; LL++){
 
+	  if (host_sums){
+	    /* this order's sums from the host SIMD path, in the legacy (L0, Mul0, L) order */
+	    const size_t combos = (size_t)host_radial[so].combos;
+	    const double *host_S = host_radial[so].sums+(size_t)LL*combos;
+	    const double *host_Sr = host_radial[so].sums+(size_t)(Lmax_Four_Int+1+LL)*combos;
+	    size_t c = 0;
+	    for (L0=0; L0<=atomic->species.basis_lmax[Cwan]; L0++){
+	      for (Mul0=0; Mul0<atomic->species.basis[(size_t)(Cwan)*atomic->species.angular_channels+(L0)]; Mul0++){
+		for (L=1; L<=projector_count; L++,c++){
+		  SumNL0[openmx_core_nonlocal_sum(&buffers,L0,Mul0,L)] = host_S[c];
+		  SumNLr0[openmx_core_nonlocal_sum(&buffers,L0,Mul0,L)] = host_Sr[c];
+		}
+	      }
+	    }
+	  }
+
+	  else {
 	  for (L0=0; L0<=atomic->species.basis_lmax[Cwan]; L0++){
 	    for (Mul0=0; Mul0<atomic->species.basis[(size_t)(Cwan)*atomic->species.angular_channels+(L0)]; Mul0++){
 	      for (L=1; L<=projector_count; L++){
@@ -278,6 +389,7 @@ static void SetNonlocal_CalcDSNL_CPU(const OpenMXAtomicViews *atomic, const Open
 	      }
 	    }
 	  }
+	  } /* the C loop */
 
 	  /* derivatives of "on site" */
 	  if (h_AN==0){
@@ -385,6 +497,8 @@ static void SetNonlocal_CalcDSNL_CPU(const OpenMXAtomicViews *atomic, const Open
 
     } /* Mc_AN */
 
+    SetNonlocal_RadialHostRelease(&host_radial[0]);
+    SetNonlocal_RadialHostRelease(&host_radial[1]);
     openmx_core_nonlocal_destroy(workspace);
 
 #pragma omp flush(DS_NL)

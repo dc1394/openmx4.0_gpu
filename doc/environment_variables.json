@@ -249,8 +249,14 @@
    "names": [
     "OPENMX_BAND_GPU_DM"
    ],
-   "en": "<b>0</b> = CPU loop for the DM accumulation of the collinear band ScaLAPACK/ELPA fallback. By default the fallback keeps the DM on the GPU: the eigenvector panel fits even when the full dense solve does not",
-   "ja": "<b>0</b>=コリニアバンドの ScaLAPACK/ELPA フォールバック時の DM 蓄積を CPU ループに戻す。既定ではフォールバックでも DM は GPU 上で行う(フルソルブが載らなくても固有ベクトルパネルは載るため)"
+   "defaults": {
+    "OPENMX_BAND_GPU_DM": {
+     "en": "0 (1 under OPENMX_HOST_SIMD=legacy)",
+     "ja": "0（OPENMX_HOST_SIMD=legacy では 1）"
+    }
+   },
+   "en": "<b>1</b> = keep the DM accumulation of the collinear band ScaLAPACK/ELPA fallback on the GPU (the eigenvector panel fits even when the full dense solve does not), still subject to the device-or-host vote. By default the fallback accumulates on the host SIMD path (<code>BandCol_DM_Block</code>), which wins where the device is too small for the dense solve: sidia333 at a 1536 MiB device cap, diagonalization 84 s on the GPU vs 64 s on the host. <code>OPENMX_HOST_SIMD=legacy</code> keeps the earlier GPU default",
+   "ja": "<b>1</b>=コリニアバンドの ScaLAPACK/ELPA フォールバック時の DM 蓄積を GPU で行う(フルソルブが載らなくても固有ベクトルパネルは載るため。デバイス/ホストの判定は受ける)。既定はホストの SIMD 経路(<code>BandCol_DM_Block</code>)で、密なソルブが載らない小さなデバイスではこちらが速い(sidia333、1536 MiB の上限で対角化が GPU 84 s に対しホスト 64 s)。<code>OPENMX_HOST_SIMD=legacy</code> では従来どおり GPU が既定"
   },
   {
    "group": "band",
@@ -1508,6 +1514,19 @@
    },
    "en": "Device-or-host decision of the GPU stages: a stage whose device working set would need more than this many device pieces on some rank (need / free-minus-reserve), or that cannot fit at all, runs on the host SIMD paths on every rank instead of the capacity recovery. <code>0</code> or negative: any split moves the stage to the host. Not used under <code>OPENMX_HOST_SIMD=legacy</code>, where only an unusable device moves a stage to the host.",
    "ja": "GPU 各段階のデバイス/ホスト判定: ある rank でデバイスの作業領域が空き容量（予約を除く）に対してこの数を超える分割を要する、または収まらない段階は、容量回復ではなく全 rank でホストの SIMD 経路を使う。<code>0</code> 以下: 分割が要るだけでホストへ移す。<code>OPENMX_HOST_SIMD=legacy</code> では使わず、デバイスが使えないときだけホストへ移す。"
+  },
+  {
+   "group": "grid",
+   "names": [
+    "OPENMX_HOST_SIMD_PREFER"
+   ],
+   "label": "<code>OPENMX_HOST_SIMD_PREFER</code>",
+   "default_cell": {
+    "en": "(empty)",
+    "ja": "（空）"
+   },
+   "en": "Stages that run on the host SIMD paths even when the device holds them: a comma-separated list of case-insensitive substrings of the stage labels (<code>UCell_Box</code>, <code>Set_Orbitals_Grid</code>, <code>Set_ProExpn_VNA</code>, <code>Set_Nonlocal</code>, <code>Set_OLP_Kin</code>, <code>Set_Hamiltonian</code>, <code>Set_Density_Grid</code>, <code>Force3</code>, <code>Force4B</code>, <code>Force_HNL</code>, <code>Total_Energy</code>, <code>density matrix</code>; blanks inside an item are kept) or <code>all</code>. For hosts whose SIMD paths beat the device for a stage; on an RTX 5080 with an 18-core AVX-512 host, <code>UCell_Box,Set_ProExpn_VNA</code> saves 3 to 4 s per MD step on sidia333 (52.5 s to 48.3-49.5 s). Ignored under <code>OPENMX_HOST_SIMD=legacy</code>.",
+   "ja": "デバイスに収まっていてもホストの SIMD 経路で実行する段階: 段階名の一部（大文字小文字を区別しない、<code>UCell_Box</code>、<code>Set_Orbitals_Grid</code>、<code>Set_ProExpn_VNA</code>、<code>Set_Nonlocal</code>、<code>Set_OLP_Kin</code>、<code>Set_Hamiltonian</code>、<code>Set_Density_Grid</code>、<code>Force3</code>、<code>Force4B</code>、<code>Force_HNL</code>、<code>Total_Energy</code>、<code>density matrix</code>。項目中の空白はそのまま使う）のカンマ区切り、または <code>all</code>。ホストの SIMD 経路がデバイスより速い機械向けで、RTX 5080 と 18 コア AVX-512 の機械では <code>UCell_Box,Set_ProExpn_VNA</code> で sidia333 の 1 MD ステップが 3〜4 s 短くなる（52.5 s から 48.3〜49.5 s）。<code>OPENMX_HOST_SIMD=legacy</code> では無視する。"
   },
   {
    "group": "grid",

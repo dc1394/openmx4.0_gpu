@@ -26,6 +26,9 @@
 #include "openmx_gpu_bilinear.h"
 #include "openmx_host_memory.h"
 #include "openmx_precision.h"
+#include "openmx_host_simd.h"
+#include "openmx_core_force_simd.h"
+#include "openmx_core_orbitals_simd.h"
 #include "set_hip_default_device_from_local_rank.h"
 #include <math.h>
 #include <omp.h>
@@ -682,12 +685,19 @@ typedef struct {
    must fit next to the reserve.  Only the leading checks are collective;
    the returned decision may differ between ranks (the trace path itself has
    no MPI). */
-static size_t Force3_GpuChunkBudget(void)
+/* The trace's chunk budget on this rank, 0 when the trace cannot run here.
+   *host (same on every rank) reports the host SIMD policy vote of the stage:
+   need = the resident tables plus the smallest chunk scratch, SIZE_MAX when
+   the trace cannot start on this rank (the zero-budget cases below), budget =
+   the per-rank share of the free memory above the node reserve. Every rank
+   that requested the device trace reaches the vote; the per-rank budget
+   arithmetic is unchanged. */
+static size_t Force3_GpuChunkBudget(int *host)
 {
-    int Mc_AN, node_ranks = 1;
+    int Mc_AN, node_ranks = 1, queried;
     size_t orbs_bytes = 0, grid_pts = 0, resident_bytes;
     size_t free_bytes = 0, total_bytes = 0;
-    size_t usable, budget;
+    size_t usable = 0, budget, need;
     /* the chunk scratch is mirrored on the host (gl/fn/dm packing), so a
        large cap multiplies host memory by the rank count; keep it small */
     const size_t budget_cap = (size_t)384 * 1024 * 1024;
@@ -695,6 +705,7 @@ static size_t Force3_GpuChunkBudget(void)
     size_t reserve;
     MPI_Comm node_comm = MPI_COMM_NULL;
 
+    *host = 0;
     int requested=scf_eigen_lib_flag==GPUSOLVER;
     MPI_Allreduce(MPI_IN_PLACE,&requested,1,MPI_INT,MPI_MIN,mpi_comm_level1);
     if (!requested || !openmx_env_flag_at(OPENMX_ENV_FORCE3_GPU, Force_gpu_stage_default())) return 0;
@@ -718,10 +729,17 @@ static size_t Force3_GpuChunkBudget(void)
         + grid_pts * (size_t)(SpinP_switch + 1) * sizeof(double)
         + grid_pts * 3 * sizeof(double);
 
-    if (OpenMX_GpuMemGetInfo(&free_bytes, &total_bytes) != hipSuccess) return 0;
-    if (free_bytes <= reserve) return 0;
+    queried = OpenMX_GpuMemGetInfo(&free_bytes, &total_bytes) == hipSuccess;
+    if (queried && free_bytes > reserve) usable = (free_bytes - reserve) / (size_t)node_ranks;
+    need = Matomnum == 0 ? 0
+        : usable > resident_bytes + budget_floor ? resident_bytes + budget_floor : SIZE_MAX;
+    if (OpenMX_HostSimdStageOnHost("Force3", need, usable)) {
+        *host = 1;
+        return 0;
+    }
 
-    usable = (free_bytes - reserve) / (size_t)node_ranks;
+    if (!queried) return 0;
+    if (free_bytes <= reserve) return 0;
     if (usable <= resident_bytes + budget_floor) return 0;
 
     budget = usable - resident_bytes;
@@ -1822,14 +1840,324 @@ static int Force3_capacity_atom(int mc,int rank,double ***derivative,double **po
     free(c.offset);free(c.neighbor);free(c.point);return ok;
 }
 
-static void Force3_capacity_cpu(int Mc_AN,int myid,double ***dChi0,double **Vpot_grid, const OpenMXElectronicViews *electronic)
+/* Point-major form of Force3 part 2 (OPENMX_HOST_SIMD): the pairs of one
+   atom are taken in groups (in h order) whose overlap-grid visits fit the
+   term buffer; the kernel visits every grid point once per group (its
+   derivative row read once), forming the legacy per-visit terms into slots,
+   and the master thread sums the slots in the legacy pair/point/spin order.
+   The derivative volume must be flat (points of 3*List_YOUSO[7] doubles,
+   rows of three), else the pair loop stays. */
+#define F3_POINT_BLOCK 256
+#define F3_POINT_GROUP_VISITS ((size_t)1 << 19)
+typedef struct {
+    OpenMXForceGridPoints view;
+    size_t *point_offsets, *cursor, *pair_offset;
+    int *visit_pair, *visit_row, *visit_term, *pair_columns;
+    const float *const **pair_rows;
+    double *terms, *dm;
+    size_t dm_bytes, capacity, max_points;
+    int spins, h_begin, h_end;
+    double sum[3];
+} Force3Points;
+
+static void Force3_points_destroy(Force3Points *p)
+{
+    free(p->point_offsets); free(p->cursor); free(p->pair_offset);
+    free(p->visit_pair); free(p->visit_row); free(p->visit_term); free(p->pair_columns);
+    free((void*)p->pair_rows); free(p->terms); free(p->dm);
+    memset(p, 0, sizeof(*p));
+}
+
+static void Force3_points_create(Force3Points *p, int mode)
+{
+    size_t capacity = F3_POINT_GROUP_VISITS, max_points = 1;
+    int Mc_AN, h_AN;
+
+    memset(p, 0, sizeof(*p));
+    if (mode == OPENMX_HOST_SIMD_LEGACY) return;
+    for (Mc_AN = 1; Mc_AN <= Matomnum; Mc_AN++) {
+        const int Gc_AN = M2G[Mc_AN];
+        if (max_points < (size_t)GridN_Atom[Gc_AN]) max_points = (size_t)GridN_Atom[Gc_AN];
+        for (h_AN = 0; h_AN <= FNAN[Gc_AN]; h_AN++) {
+            if (capacity < (size_t)NumOLG[Mc_AN][h_AN]) capacity = (size_t)NumOLG[Mc_AN][h_AN];
+        }
+    }
+    p->spins = SpinP_switch + 1;
+    p->capacity = capacity;
+    p->max_points = max_points;
+    p->point_offsets = (size_t*)malloc(sizeof(size_t) * (max_points + 1));
+    p->cursor = (size_t*)malloc(sizeof(size_t) * (max_points + 1));
+    p->pair_offset = (size_t*)malloc(sizeof(size_t) * ((size_t)List_YOUSO[8] + 1));
+    p->visit_pair = (int*)malloc(sizeof(int) * capacity);
+    p->visit_row = (int*)malloc(sizeof(int) * capacity);
+    p->visit_term = (int*)malloc(sizeof(int) * capacity);
+    p->pair_columns = (int*)malloc(sizeof(int) * (size_t)List_YOUSO[8]);
+    p->pair_rows = (const float *const **)malloc(sizeof(const float *const *) * (size_t)List_YOUSO[8]);
+    p->terms = (double*)malloc(sizeof(double) * capacity * (size_t)p->spins * 3);
+    p->dm_bytes = openmx_core_force_grid_density_bytes(List_YOUSO[7], List_YOUSO[7], p->spins, List_YOUSO[8]);
+    p->dm = (double*)malloc(p->dm_bytes ? p->dm_bytes : sizeof(double));
+    if (p->point_offsets == NULL || p->cursor == NULL || p->pair_offset == NULL || p->visit_pair == NULL ||
+        p->visit_row == NULL || p->visit_term == NULL || p->pair_columns == NULL || p->pair_rows == NULL ||
+        p->terms == NULL || p->dm == NULL) Force3_points_destroy(p);
+}
+
+/* The visits of the pairs [h_begin, h_end) of the atom, h_end chosen so that
+   they fit the term buffer; 0 when the derivative volume is not flat or a
+   density plane is refused (the pair loop then runs). */
+static int Force3_points_plan(Force3Points *p, int Mc_AN, int Gc_AN, int NO0, int myid, double ******DM,
+    double ***dChi0, double **Vpot_grid, int mode, int h_begin)
+{
+    const int fan = FNAN[Gc_AN], np = GridN_Atom[Gc_AN], spins = p->spins;
+    const size_t point_stride = 3 * (size_t)List_YOUSO[7];
+    const double *base = np ? dChi0[0][0] : NULL;
+    size_t visits = 0, at;
+    int h_AN, Nc, Nog, i, h_end = h_begin;
+
+    if (h_begin == 0) {
+        /* once per atom: the volume's point rows and their three-double rows */
+        for (Nc = 0; Nc < np; Nc++) if (dChi0[Nc][0] != base + (size_t)Nc * point_stride) return 0;
+        for (i = 1; i < NO0 && np; i++) if (dChi0[0][i] != dChi0[0][0] + 3 * (size_t)i) return 0;
+    }
+    while (h_end <= fan && visits + (size_t)NumOLG[Mc_AN][h_end] <= p->capacity) {
+        visits += (size_t)NumOLG[Mc_AN][h_end];
+        h_end++;
+    }
+    if (h_end == h_begin) return 0;
+    for (Nc = 0; Nc <= np; Nc++) p->point_offsets[Nc] = 0;
+    for (h_AN = h_begin; h_AN < h_end; h_AN++) {
+        for (Nog = 0; Nog < NumOLG[Mc_AN][h_AN]; Nog++) p->point_offsets[GListTAtoms1[Mc_AN][h_AN][Nog] + 1]++;
+    }
+    for (Nc = 0; Nc < np; Nc++) p->point_offsets[Nc + 1] += p->point_offsets[Nc];
+    memcpy(p->cursor, p->point_offsets, sizeof(size_t) * ((size_t)np + 1));
+    visits = 0;
+    for (h_AN = h_begin; h_AN < h_end; h_AN++) {
+        const int Gh_AN = natn[Gc_AN][h_AN], Mh_AN = F_G2M[Gh_AN], NO1 = Spe_Total_CNO[WhatSpecies[Gh_AN]];
+        const int local = G2ID[Gh_AN] == myid;
+        const double *const *density[4] = { NULL, NULL, NULL, NULL };
+        int spin;
+
+        p->pair_offset[h_AN] = visits;
+        p->pair_columns[h_AN] = NO1;
+        p->pair_rows[h_AN] = local ? (const float *const *)Orbs_Grid[Mh_AN] : (const float *const *)Orbs_Grid_FNAN[Mc_AN][h_AN];
+        for (spin = 0; spin < spins; spin++) density[spin] = (const double *const *)DM[0][spin][Mc_AN][h_AN];
+        if (!openmx_core_force_grid_density(density, NO0, NO1, List_YOUSO[7], spins, h_AN, p->dm, p->dm_bytes, mode)) return 0;
+        for (Nog = 0; Nog < NumOLG[Mc_AN][h_AN]; Nog++) {
+            at = p->cursor[GListTAtoms1[Mc_AN][h_AN][Nog]]++;
+            p->visit_pair[at] = h_AN;
+            p->visit_row[at] = local ? GListTAtoms2[Mc_AN][h_AN][Nog] : Nog;
+            p->visit_term[at] = (int)(visits + (size_t)Nog);
+        }
+        visits += (size_t)NumOLG[Mc_AN][h_AN];
+    }
+    memset(&p->view, 0, sizeof(p->view));
+    p->view.rows = NO0;
+    p->view.spins = spins;
+    p->view.points = np;
+    p->view.columns_max = List_YOUSO[7];
+    p->view.pad_rows = ((size_t)NO0 + OPENMX_FORCE_SIMD_PAD - 1) / OPENMX_FORCE_SIMD_PAD * OPENMX_FORCE_SIMD_PAD;
+    p->view.dm = p->dm;
+    p->view.pair_columns = p->pair_columns;
+    p->view.point_offsets = p->point_offsets;
+    p->view.visit_pair = p->visit_pair;
+    p->view.visit_row = p->visit_row;
+    p->view.visit_term = p->visit_term;
+    p->view.pair_rows = p->pair_rows;
+    p->view.derivative = base;
+    p->view.point_stride = point_stride;
+    p->view.row_stride = 3;
+    p->view.potential = (const double *const *)Vpot_grid;
+    p->view.terms = p->terms;
+    p->h_begin = h_begin;
+    p->h_end = h_end;
+    return 1;
+}
+
+/* The slots of the group in the legacy pair/point/spin order. */
+static void Force3_points_sum(Force3Points *p, int Mc_AN)
+{
+    int h_AN, Nog, spin;
+
+    for (h_AN = p->h_begin; h_AN < p->h_end; h_AN++) {
+        for (Nog = 0; Nog < NumOLG[Mc_AN][h_AN]; Nog++) {
+            for (spin = 0; spin < p->spins; spin++) {
+                const double *term = p->terms + ((p->pair_offset[h_AN] + (size_t)Nog) * (size_t)p->spins + (size_t)spin) * 3;
+                p->sum[0] += term[0];
+                p->sum[1] += term[1];
+                p->sum[2] += term[2];
+            }
+        }
+    }
+}
+
+/* Force3 part 1 through the Core's orbital-derivative kernel (the cosine
+   variant: direction cosines instead of the spherical angles, last-ulp
+   differences from Get_dOrbitals_work) on blocks of grid points; the
+   displacements are the dx, dy, dz of the loop. The tables are the PAO
+   radial tables of every species as Set_Orbitals_Grid stages them. */
+#define F3_DP_BLOCK 256
+typedef struct {
+    int active;
+    OpenMXOrbitalsTables tables;
+    double *rv, *rwf, translations[3];
+    size_t *rv_off, *rwf_base;
+    int *mesh, *maxl, *nb;
+} Force3Dpoints;
+
+static void Force3_dpoints_destroy(Force3Dpoints *d)
+{
+    free(d->rv); free(d->rwf); free(d->rv_off); free(d->rwf_base); free(d->mesh); free(d->maxl); free(d->nb);
+    memset(d, 0, sizeof(*d));
+}
+
+static void Force3_dpoints_create(Force3Dpoints *d, const OpenMXAtomicViews *atomic, int mode, int cnt_switch, int dorb)
+{
+    size_t rv_count = 0, rwf_count = 0, rpos;
+    int w, L0, Mul0, i;
+
+    memset(d, 0, sizeof(*d));
+    if (mode == OPENMX_HOST_SIMD_LEGACY || cnt_switch != 0 || dorb) return;
+    /* the kernel covers L0 <= 3, at most eight radial functions per L0 and at least six mesh points */
+    for (w = 0; w < SpeciesNum; w++) {
+        if (atomic->species.basis_lmax[w] > 3 || atomic->species.pao_mesh[w] < 6) return;
+        for (L0 = 0; L0 <= atomic->species.basis_lmax[w]; L0++) {
+            if (atomic->species.basis[(size_t)w * atomic->species.angular_channels + (size_t)L0] > 8) return;
+        }
+    }
+    d->rv_off = (size_t*)malloc(sizeof(size_t) * ((size_t)SpeciesNum + 1));
+    d->rwf_base = (size_t*)malloc(sizeof(size_t) * ((size_t)SpeciesNum + 1));
+    d->mesh = (int*)malloc(sizeof(int) * (size_t)SpeciesNum);
+    d->maxl = (int*)malloc(sizeof(int) * (size_t)SpeciesNum);
+    d->nb = (int*)malloc(sizeof(int) * (size_t)SpeciesNum * 4);
+    if (d->rv_off == NULL || d->rwf_base == NULL || d->mesh == NULL || d->maxl == NULL || d->nb == NULL) { Force3_dpoints_destroy(d); return; }
+    for (w = 0; w < SpeciesNum; w++) {
+        int nb_tot = 0;
+
+        d->rv_off[w] = rv_count;
+        d->rwf_base[w] = rwf_count;
+        d->mesh[w] = atomic->species.pao_mesh[w];
+        d->maxl[w] = atomic->species.basis_lmax[w];
+        for (L0 = 0; L0 <= 3; L0++) {
+            const int nb = L0 <= atomic->species.basis_lmax[w]
+                ? atomic->species.basis[(size_t)w * atomic->species.angular_channels + (size_t)L0] : 0;
+            d->nb[w * 4 + L0] = nb;
+            nb_tot += nb;
+        }
+        rv_count += (size_t)atomic->species.pao_mesh[w];
+        rwf_count += (size_t)nb_tot * (size_t)atomic->species.pao_mesh[w];
+    }
+    d->rv_off[SpeciesNum] = rv_count;
+    d->rwf_base[SpeciesNum] = rwf_count;
+    d->rv = (double*)malloc(sizeof(double) * (rv_count ? rv_count : 1));
+    d->rwf = (double*)malloc(sizeof(double) * (rwf_count ? rwf_count : 1));
+    if (d->rv == NULL || d->rwf == NULL) { Force3_dpoints_destroy(d); return; }
+    for (w = 0; w < SpeciesNum; w++) {
+        rpos = d->rwf_base[w];
+        for (i = 0; i < atomic->species.pao_mesh[w]; i++) d->rv[d->rv_off[w] + (size_t)i] = openmx_radial_row2(&atomic->pao_radii,w)[i];
+        for (L0 = 0; L0 <= atomic->species.basis_lmax[w]; L0++) {
+            for (Mul0 = 0; Mul0 < atomic->species.basis[(size_t)w * atomic->species.angular_channels + (size_t)L0]; Mul0++) {
+                for (i = 0; i < atomic->species.pao_mesh[w]; i++) d->rwf[rpos++] = openmx_radial_row4(&atomic->orbitals,w,L0,Mul0)[i];
+            }
+        }
+    }
+    d->tables.rv = d->rv;
+    d->tables.rwf = d->rwf;
+    d->tables.translations = d->translations;
+    d->tables.rv_off = d->rv_off;
+    d->tables.rwf_base = d->rwf_base;
+    d->tables.mesh = d->mesh;
+    d->tables.maxl = d->maxl;
+    d->tables.nb = d->nb;
+    d->tables.species = SpeciesNum;
+    d->tables.l0max = 3;
+    d->tables.mulmax = 8;
+    d->tables.cells = 1;
+    d->active = 1;
+}
+
+/* The derivatives of a block of points [Nc0, Nc0+count) into their rows;
+   a refused block takes Get_dOrbitals_work point by point. */
+static void Force3_dpoints_block(const Force3Dpoints *d, const OpenMXAtomicViews *atomic, int Cwan, int NO0, int Nc0, int count,
+    const OpenMXOrbitalsDisplacement *in, double *out, int mode, int use_gpu_trace, double *dchi_all, const size_t *dchi_off,
+    int Mc_AN, double ***dChi0, double **dorbs0, OpenMXOrbitalBuffers work)
+{
+    const int ok = openmx_core_orbitals_dpoints_cosines(&d->tables, in, (size_t)count, out, mode);
+    int k, i;
+
+    for (k = 0; k < count; k++) {
+        const int Nc = Nc0 + k;
+
+        if (!ok) Get_dOrbitals_work(atomic, Cwan, in[k].x, in[k].y, in[k].z, dorbs0, work);
+        for (i = 0; i < NO0; i++) {
+            double* dchi = use_gpu_trace
+                ? (dchi_all + dchi_off[Mc_AN] + ((size_t)Nc * (size_t)NO0 + (size_t)i) * 3)
+                : dChi0[Nc][i];
+            if (ok) {
+                const double *src = out + ((size_t)k * (size_t)NO0 + (size_t)i) * 3;
+                dchi[0] = src[0];
+                dchi[1] = src[1];
+                dchi[2] = src[2];
+            } else {
+                dchi[0] = dorbs0[1][i];
+                dchi[1] = dorbs0[2][i];
+                dchi[2] = dorbs0[3][i];
+            }
+        }
+    }
+}
+
+/* Part-2 contraction of one (Mc_AN,h_AN) pair through the Core's host
+   kernel (OPENMX_HOST_SIMD): lanes across the density-matrix rows, the
+   legacy point/spin/row order, sums accumulated in place. 0 when refused. */
+static int Force3_simd_pair(int mode, void *scratch, size_t bytes, int myid, int Mc_AN, int h_AN,
+    int Mh_AN, int Gh_AN, int NO0, int NO1, double ******DM, double ***dChi0, double **Vpot_grid,
+    double *sumx, double *sumy, double *sumz)
+{
+    OpenMXForceGridPair pair;
+    double sums[3];
+    int spin;
+
+    if (mode == OPENMX_HOST_SIMD_LEGACY || scratch == NULL || NumOLG[Mc_AN][h_AN] <= 0) return 0;
+    memset(&pair, 0, sizeof(pair));
+    pair.rows = NO0;
+    pair.columns = NO1;
+    pair.spins = SpinP_switch + 1;
+    pair.points = NumOLG[Mc_AN][h_AN];
+    for (spin = 0; spin <= SpinP_switch; spin++) pair.density[spin] = (const double *const *)DM[0][spin][Mc_AN][h_AN];
+    pair.center = GListTAtoms1[Mc_AN][h_AN];
+    if (G2ID[Gh_AN] == myid) {
+        pair.neighbor = GListTAtoms2[Mc_AN][h_AN];
+        pair.neighbor_rows = (const float *const *)Orbs_Grid[Mh_AN];
+    } else {
+        pair.neighbor = NULL;
+        pair.neighbor_rows = (const float *const *)Orbs_Grid_FNAN[Mc_AN][h_AN];
+    }
+    pair.derivative = (const double *const *const *)dChi0;
+    pair.potential = (const double *const *)Vpot_grid;
+    sums[0] = *sumx;
+    sums[1] = *sumy;
+    sums[2] = *sumz;
+    if (!openmx_core_force_grid_pair(&pair, sums, scratch, bytes, mode)) return 0;
+    *sumx = sums[0];
+    *sumy = sums[1];
+    *sumz = sums[2];
+    return 1;
+}
+
+static void Force3_capacity_cpu(int Mc_AN,int myid,double ***dChi0,double **Vpot_grid, const OpenMXElectronicViews *electronic,
+    OpenMXSolverInvocation *scratch)
 {
   double ******DM=electronic->DM;
 
     int Gc_AN=M2G[Mc_AN],NO0=Spe_Total_CNO[WhatSpecies[Gc_AN]];
     double sumx=0,sumy=0,sumz=0;
             int h_AN;
-#pragma omp parallel for schedule(static) reduction(+:sumx,sumy,sumz)
+#pragma omp parallel reduction(+:sumx,sumy,sumz)
+            {
+            const int f3_simd_mode = OpenMX_HostSimdMode();
+            const size_t f3_simd_bytes = f3_simd_mode == OPENMX_HOST_SIMD_LEGACY ? 0
+                : openmx_core_force_grid_scratch(List_YOUSO[7], List_YOUSO[7], SpinP_switch + 1);
+            void *f3_simd = f3_simd_bytes ? OpenMX_Solver_Real(scratch, "Force3:simd", (f3_simd_bytes + sizeof(double) - 1) / sizeof(double)) : NULL;
+#pragma omp for schedule(static)
             for (h_AN = 0; h_AN <= FNAN[Gc_AN]; h_AN++) {
                 double orbs1[List_YOUSO[7]];
 
@@ -1837,6 +2165,9 @@ static void Force3_capacity_cpu(int Mc_AN,int myid,double ***dChi0,double **Vpot
                 int Mh_AN = F_G2M[Gh_AN];
                 int Hwan = WhatSpecies[Gh_AN];
                 int NO1 = Spe_Total_CNO[Hwan];
+
+                if (Force3_simd_pair(f3_simd_mode, f3_simd, f3_simd_bytes, myid, Mc_AN, h_AN, Mh_AN, Gh_AN, NO0, NO1,
+                        DM, dChi0, Vpot_grid, &sumx, &sumy, &sumz)) continue;
 
                 int Nog;
 
@@ -1894,15 +2225,175 @@ static void Force3_capacity_cpu(int Mc_AN,int myid,double ***dChi0,double **Vpot
                 } /* Nog */
 
             } /* h_AN, here omp barrier is called implicitly because of end of for loop  */
+            } /* #pragma omp parallel */
 
     Gxyz[Gc_AN][17]+=sumx*GridVol;Gxyz[Gc_AN][18]+=sumy*GridVol;Gxyz[Gc_AN][19]+=sumz*GridVol;
 }
 
 /* Keep the established float tables.  The precision switch controls whether
    their products round in FP32 or promote both operands before multiplying. */
+/* The late route of Force3 on the host SIMD path: a rank whose batched trace
+   failed after part 1 takes its atoms back. The grid potentials (and, with
+   on-device derivatives, the displacements) come back from the device copies
+   part 1 uploaded; the derivatives come from the Core's cosine kernel in
+   blocks of points (Get_dOrbitals_work when its tables do not cover the
+   basis, or the flat host derivatives without on-device derivatives); the
+   contraction is the SIMD pair kernel. Local to the rank: no collectives. */
+static void Force3_late_host(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electronic,
+    OpenMXSolverInvocation *scratch, int myid, double ***dChi0, double **Vpot_grid,
+    double *vpot_stage, double *vpot_dev_full, const size_t *vpot_off,
+    double *xyz_stage, double *xyz_dev_full, const size_t *xyz_off, int dorb,
+    const double *dchi_all, const size_t *dchi_off)
+{
+    Force3Dpoints dp;
+    const int mode = OpenMX_HostSimdMode();
+    int mc;
+
+    Force3_dpoints_create(&dp, atomic, mode, Cnt_switch, 0);
+    for (mc = 1; mc <= Matomnum; mc++) {
+        const int gc = M2G[mc], wan = WhatSpecies[gc];
+        const int no = atomic->species.contracted_orbitals[wan], ng = GridN_Atom[gc];
+        int spin;
+
+        openmx_target_download(vpot_stage, vpot_dev_full + vpot_off[mc], (size_t)(SpinP_switch + 1) * (size_t)ng * sizeof(double));
+        for (spin = 0; spin <= SpinP_switch; spin++)
+            memcpy(Vpot_grid[spin], vpot_stage + (size_t)spin * (size_t)ng, (size_t)ng * sizeof(double));
+        if (dorb) {
+            openmx_target_download(xyz_stage, xyz_dev_full + xyz_off[mc], 3 * (size_t)ng * sizeof(double));
+#pragma omp parallel
+            {
+                double **dorbs0 = OpenMX_Solver_AlignedRealMatrix(scratch, "Force3:orbitals", 4, List_YOUSO[7]);
+                OpenMXOrbitalBuffers work;
+                OpenMXOrbitalsDisplacement *in = dp.active
+                    ? (OpenMXOrbitalsDisplacement*)OpenMX_Solver_Real(scratch, "Force3:dp-in",
+                        (size_t)F3_DP_BLOCK * sizeof(OpenMXOrbitalsDisplacement) / sizeof(double) + 1) : NULL;
+                double *out = dp.active ? OpenMX_Solver_Real(scratch, "Force3:dp-out", (size_t)F3_DP_BLOCK * (size_t)List_YOUSO[7] * 3) : NULL;
+                int nc0;
+
+                OpenMX_Solver_Orbitals(scratch, "Force3:orbital-sampler",
+                    (int)atomic->orbitals.extent[1] - 1, (int)atomic->orbitals.extent[2], 1, &work);
+#pragma omp for schedule(static)
+                for (nc0 = 0; nc0 < ng; nc0 += F3_DP_BLOCK) {
+                    const int count = nc0 + F3_DP_BLOCK < ng ? F3_DP_BLOCK : ng - nc0;
+                    int k, i, axis;
+
+                    if (dp.active) {
+                        for (k = 0; k < count; k++) {
+                            const double *x = xyz_stage + 3 * (size_t)(nc0 + k);
+                            in[k].wan = wan;
+                            in[k].no = no;
+                            in[k].x = x[0];
+                            in[k].y = x[1];
+                            in[k].z = x[2];
+                        }
+                        Force3_dpoints_block(&dp, atomic, wan, no, nc0, count, in, out, mode, 0, NULL, NULL, mc,
+                            dChi0, dorbs0, work);
+                    } else {
+                        for (k = 0; k < count; k++) {
+                            const double *x = xyz_stage + 3 * (size_t)(nc0 + k);
+                            Get_dOrbitals_work(atomic, wan, x[0], x[1], x[2], dorbs0, work);
+                            for (i = 0; i < no; i++)
+                                for (axis = 0; axis < 3; axis++) dChi0[nc0 + k][i][axis] = dorbs0[axis + 1][i];
+                        }
+                    }
+                }
+            }
+        } else {
+            int nc, i;
+            for (nc = 0; nc < ng; nc++)
+                for (i = 0; i < no; i++)
+                    memcpy(dChi0[nc][i], dchi_all + dchi_off[mc] + 3 * ((size_t)nc * (size_t)no + (size_t)i), 3 * sizeof(double));
+        }
+        Force3_capacity_cpu(mc, myid, dChi0, Vpot_grid, electronic, scratch);
+    }
+    Force3_dpoints_destroy(&dp);
+}
+
+/* Keep the established float tables.  The precision switch controls whether
+   their products round in FP32 or promote both operands before multiplying. */
+/* Host SIMD (OPENMX_HOST_SIMD) evaluation of the fused Force4B traces, the
+   per-block form of the CUDA translation unit (its cache-tiled orders are not
+   ported: the HIP Force4B lifetimes differ). The Core's projector kernel forms
+   H_c[m][n] of one block with the legacy per-element arithmetic (lanes across
+   n, float products under scf.fp32.enable) and the trace keeps the legacy m/n
+   order; legacy mode, no context (NULL) or a refused block keeps the loops.
+   One instance per thread; legacy mode leaves every buffer NULL. */
+typedef struct {
+    int mode, projectors;
+    size_t stride, plane;
+    void *scratch; size_t scratch_bytes;
+    double *block;
+} Force4BSimd;
+
+static void Force4B_simd_prepare(OpenMXSolverInvocation *scratch, Force4BSimd *simd)
+{
+    memset(simd, 0, sizeof(*simd));
+    simd->mode = OpenMX_HostSimdMode();
+    simd->projectors = (List_YOUSO[35] + 1) * (List_YOUSO[35] + 1) * List_YOUSO[34];
+    simd->stride = (size_t)List_YOUSO[7];
+    simd->plane = simd->stride * simd->stride;
+    if (simd->mode == OPENMX_HOST_SIMD_LEGACY) return;
+    simd->scratch_bytes = openmx_core_force_vna_scratch(List_YOUSO[7], simd->projectors, 2, 0);
+    simd->scratch = simd->scratch_bytes
+        ? OpenMX_Solver_Real(scratch, "Force4B:simd", (simd->scratch_bytes + sizeof(double) - 1) / sizeof(double)) : NULL;
+    simd->block = OpenMX_Solver_Real(scratch, "Force4B:simd-block", 3 * simd->plane);
+}
+
+/* H_c[m][n] of one block into simd->block (row stride simd->stride); 0 when
+   the kernel refuses the request (the caller keeps its loop, same result). */
+static int Force4B_simd_block(const Force4BSimd *simd, int terms, int rows, int columns,
+    Type_DS_VNA **dx, Type_DS_VNA **dy, Type_DS_VNA **dz, Type_DS_VNA **row_value,
+    Type_DS_VNA **value, Type_DS_VNA **cx, Type_DS_VNA **cy, Type_DS_VNA **cz)
+{
+    OpenMXForceVnaBlock b;
+    int c;
+
+    if (simd == NULL || simd->mode == OPENMX_HOST_SIMD_LEGACY || simd->block == NULL) return 0;
+    memset(&b, 0, sizeof(b));
+    b.rows = rows;
+    b.columns = columns;
+    b.projectors = simd->projectors;
+    b.terms = terms;
+    b.fp32 = openmx_fp32_enabled();
+    b.lanes_rows = 0;
+    b.derivative[0] = (const float *const *)dx;
+    b.derivative[1] = (const float *const *)dy;
+    b.derivative[2] = (const float *const *)dz;
+    b.row_value = (const float *const *)row_value;
+    b.value = (const float *const *)value;
+    b.column_derivative[0] = (const float *const *)cx;
+    b.column_derivative[1] = (const float *const *)cy;
+    b.column_derivative[2] = (const float *const *)cz;
+    for (c = 0; c < 3; c++) b.output[c] = simd->block + (size_t)c * simd->plane;
+    b.output_stride = simd->stride;
+    return openmx_core_force_vna_block(&b, simd->scratch, simd->scratch_bytes, simd->mode);
+}
+
+/* Trace(CDM0*H) over the block in the legacy order (m outer, n inner). */
+static void Force4B_simd_trace(const Force4BSimd *simd, int rows, int columns, double pref,
+    double **cdm0, double **cdm1, double *fx, double *fy, double *fz)
+{
+    int m, n;
+
+    for (m = 0; m < rows; m++) {
+        const double *hx = simd->block + (size_t)m * simd->stride;
+        const double *hy = hx + simd->plane;
+        const double *hz = hy + simd->plane;
+        const double *cdm0_row = cdm0[m];
+        const double *cdm1_row = cdm1 == NULL ? NULL : cdm1[m];
+        for (n = 0; n < columns; n++) {
+            const double cdm = cdm1_row == NULL ? cdm0_row[n] : cdm0_row[n] + cdm1_row[n];
+            const double scale = pref * cdm;
+            *fx += scale * hx[n];
+            *fy += scale * hy[n];
+            *fz += scale * hz[n];
+        }
+    }
+}
+
 static void Force4B_case2_trace_fused(int Mc_AN, int Gc_AN,
     int h_AN, int q_AN, double***** CDM0, Type_DS_VNA***** DS_VNA,
-    double* dEx, double* dEy, double* dEz)
+    double* dEx, double* dEy, double* dEz, const Force4BSimd *simd)
 {
     const int fp32 = openmx_fp32_enabled();
     int m, n, l;
@@ -1922,6 +2413,16 @@ static void Force4B_case2_trace_fused(int Mc_AN, int Gc_AN,
         : ((SpinP_switch == 0) ? 4.0 : 2.0);
     const double rcut = Spe_Atom_Cut1[Hwan] + Spe_Atom_Cut1[Qwan];
     const double scale0 = pref * dampingF(rcut, Dis[Gh_AN][kl]);
+
+    if (Force4B_simd_block(simd, 2, ian, jan,
+            DS_VNA[1][Matomnum + 1][kl1], DS_VNA[2][Matomnum + 1][kl1], DS_VNA[3][Matomnum + 1][kl1],
+            DS_VNA[0][Matomnum + 1][kl1],
+            DS_VNA[0][Matomnum + 1][kl2], DS_VNA[1][Matomnum + 1][kl2], DS_VNA[2][Matomnum + 1][kl2],
+            DS_VNA[3][Matomnum + 1][kl2])) {
+        Force4B_simd_trace(simd, ian, jan, scale0, CDM0[0][Mh_AN][kl],
+            SpinP_switch == 0 ? NULL : CDM0[1][Mh_AN][kl], dEx, dEy, dEz);
+        return;
+    }
 
     for (m = 0; m < ian; m++) {
         const Type_DS_VNA* restrict h0 = DS_VNA[0][Matomnum + 1][kl1][m];
@@ -1968,7 +2469,7 @@ static void Force4B_case2_trace_fused(int Mc_AN, int Gc_AN,
 static void Force4B_case1_trace_fused_rows(const OpenMXVnaMatrixViews *vna, int Mc_AN, int Gc_AN, int q_AN,
     double***** CDM0, Type_DS_VNA***** DS_VNA,
     const Type_DS_VNA* cached_q,
-    double* dEx, double* dEy, double* dEz)
+    double* dEx, double* dEy, double* dEz, const Force4BSimd *simd)
 {
     const int fp32 = openmx_fp32_enabled();
     int k, m, n, l;
@@ -1994,6 +2495,13 @@ static void Force4B_case1_trace_fused_rows(const OpenMXVnaMatrixViews *vna, int 
     for (k = 0; k <= FNAN[Gc_AN]; k++) {
         const int qk_kl = RMI1[Mc_AN][q_AN][k];
         if (qk_kl >= 0) {
+            if (cached_q == NULL && Force4B_simd_block(simd, 1, ian, jan,
+                    DS_VNA[1][Mc_AN][k], DS_VNA[2][Mc_AN][k], DS_VNA[3][Mc_AN][k], NULL,
+                    DS_VNA[0][q_storage][qk_kl], NULL, NULL, NULL)) {
+                Force4B_simd_trace(simd, ian, jan, pref, CDM0[0][center_local][cdm_kl],
+                    SpinP_switch == 0 ? NULL : CDM0[1][center_local][cdm_kl], &force_x, &force_y, &force_z);
+                continue;
+            }
             for (m = 0; m < ian; m++) {
                 double* cdm0_row = CDM0[0][center_local][cdm_kl][m];
                 double* cdm1_row = (SpinP_switch == 0) ? NULL : CDM0[1][center_local][cdm_kl][m];
@@ -2084,10 +2592,10 @@ static void Force4B_case1_trace_fused_rows(const OpenMXVnaMatrixViews *vna, int 
 
 static void Force4B_case1_trace_fused(const OpenMXVnaMatrixViews *vna, int Mc_AN, int Gc_AN, int q_AN,
     double***** CDM0, Type_DS_VNA***** DS_VNA,
-    double* dEx, double* dEy, double* dEz)
+    double* dEx, double* dEy, double* dEz, const Force4BSimd *simd)
 {
     Force4B_case1_trace_fused_rows(vna, Mc_AN, Gc_AN, q_AN, CDM0, DS_VNA, NULL,
-        dEx, dEy, dEz);
+        dEx, dEy, dEz, simd);
 }
 
 static void dH_U_full(int Mc_AN, int h_AN, int q_AN,
@@ -4084,7 +4592,8 @@ void Force3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electr
     double* vpot_dev_full = NULL;
     double* xyz_dev_full = NULL;
 
-    size_t f3_chunk_budget = Force3_GpuChunkBudget();
+    int f3_host = 0;
+    size_t f3_chunk_budget = Force3_GpuChunkBudget(&f3_host);
 
     if (f3_chunk_budget != 0) {
         size_t dpos = 0, vpos = 0, xpos = 0, maxgrid = 0;
@@ -4139,9 +4648,23 @@ void Force3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electr
     int capacity_enabled=scf_eigen_lib_flag==GPUSOLVER;
     MPI_Allreduce(MPI_IN_PLACE,&capacity_enabled,1,MPI_INT,MPI_MIN,mpi_comm_level1);
     capacity_enabled=capacity_enabled && openmx_env_flag_at(OPENMX_ENV_FORCE3_GPU, Force_gpu_stage_default());
+    /* Host SIMD policy (uniform on every rank): when the stage voted for the
+       host, and in every non-legacy run, a rank without the batched trace
+       (no admission, or its device buffers could not be allocated) runs the
+       host SIMD quadrature below instead of the collective capacity tasks. */
+    if (f3_host || OpenMX_HostSimdMode() != OPENMX_HOST_SIMD_LEGACY) capacity_enabled = 0;
     int recover=capacity_enabled && !use_gpu_trace,steps=Matomnum,recovered=0;
     MPI_Allreduce(MPI_IN_PLACE,&recover,1,MPI_INT,MPI_MAX,mpi_comm_level1);
     if(recover)MPI_Allreduce(MPI_IN_PLACE,&steps,1,MPI_INT,MPI_MAX,mpi_comm_level1);
+
+    /* host SIMD (OPENMX_HOST_SIMD): the point-major part-2 plan and the
+       orbital tables of the derivative kernel of part 1 */
+    Force3Points f3_points;
+    Force3Dpoints f3_dp;
+    const int f3_host_mode = OpenMX_HostSimdMode();
+    int f3_points_ok = 0, f3_points_failed = 0;
+    Force3_points_create(&f3_points, f3_host_mode);
+    Force3_dpoints_create(&f3_dp, atomic, f3_host_mode, Cnt_switch, f3_dorb);
 
 #pragma omp parallel
     {
@@ -4150,6 +4673,18 @@ void Force3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electr
 
         double **dorbs0 = OpenMX_Solver_AlignedRealMatrix(scratch,"Force3:orbitals",4,List_YOUSO[7]);
         double* orbs1 = OpenMX_Solver_Real(scratch,"Force3:neighbor-orbitals",List_YOUSO[7]);
+
+        /* the Core's host kernel for the part-2 contraction (OPENMX_HOST_SIMD) */
+        const int f3_simd_mode = OpenMX_HostSimdMode();
+        const size_t f3_simd_bytes = f3_simd_mode == OPENMX_HOST_SIMD_LEGACY ? 0
+            : openmx_core_force_grid_scratch(List_YOUSO[7], List_YOUSO[7], SpinP_switch + 1);
+        void* f3_simd = f3_simd_bytes ? OpenMX_Solver_Real(scratch, "Force3:simd", (f3_simd_bytes + sizeof(double) - 1) / sizeof(double)) : NULL;
+        OpenMXOrbitalsDisplacement* f3_dp_in = f3_dp.active
+            ? (OpenMXOrbitalsDisplacement*)OpenMX_Solver_Real(scratch, "Force3:dp-in", (size_t)F3_DP_BLOCK * sizeof(OpenMXOrbitalsDisplacement) / sizeof(double) + 1) : NULL;
+        double* f3_dp_out = f3_dp.active ? OpenMX_Solver_Real(scratch, "Force3:dp-out", (size_t)F3_DP_BLOCK * (size_t)List_YOUSO[7] * 3) : NULL;
+        const size_t f3_points_scratch_bytes = f3_points.visit_pair ? openmx_core_force_grid_points_scratch(List_YOUSO[7]) : 0;
+        void* f3_points_scratch = f3_points_scratch_bytes
+            ? OpenMX_Solver_Real(scratch, "Force3:points", (f3_points_scratch_bytes + sizeof(double) - 1) / sizeof(double)) : NULL;
 
         OpenMXOrbitalBuffers work_dObs;
         OpenMX_Solver_Orbitals(scratch,"Force3:orbital-sampler",
@@ -4198,9 +4733,12 @@ void Force3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electr
             dtime(&last_time);
 #endif
 
-            int Nc;
+            int Nc, Nc0;
 #pragma omp for
-            for (Nc = 0; Nc < GridN_Atom[Gc_AN]; Nc++) {
+            for (Nc0 = 0; Nc0 < GridN_Atom[Gc_AN]; Nc0 += F3_DP_BLOCK) {
+            const int Nc1 = Nc0 + F3_DP_BLOCK < GridN_Atom[Gc_AN] ? Nc0 + F3_DP_BLOCK : GridN_Atom[Gc_AN];
+            int f3_dp_count = 0;
+            for (Nc = Nc0; Nc < Nc1; Nc++) {
 
                 int GNc = GridListAtom[Mc_AN][Nc];
                 int GRc = CellListAtom[Mc_AN][Nc];
@@ -4222,6 +4760,16 @@ void Force3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electr
                     xyz_stage[xb + 0] = dx;
                     xyz_stage[xb + 1] = dy;
                     xyz_stage[xb + 2] = dz;
+                }
+                else if (f3_dp.active && Cnt_switch == 0) {
+                    /* the block's derivatives come from the Core's kernel after the loop */
+                    OpenMXOrbitalsDisplacement *d = f3_dp_in + f3_dp_count++;
+
+                    d->wan = Cwan;
+                    d->no = NO0;
+                    d->x = dx;
+                    d->y = dy;
+                    d->z = dz;
                 }
                 else {
 
@@ -4733,7 +5281,12 @@ void Force3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electr
                     vpot_dst[3][Nc] = 4.0 * ImVpt21;
                 }
 
-            } /* Nc, here omp barrier is called implicitly because of end of for loop */
+            } /* Nc */
+            if (f3_dp_count) {
+                Force3_dpoints_block(&f3_dp, atomic, Cwan, NO0, Nc0, f3_dp_count, f3_dp_in, f3_dp_out, f3_host_mode,
+                    use_gpu_trace, dchi_all, dchi_off, Mc_AN, dChi0, dorbs0, work_dObs);
+            }
+            } /* Nc0, here omp barrier is called implicitly because of end of for loop */
 
             if (use_gpu_trace) {
 #pragma omp master
@@ -4769,6 +5322,66 @@ void Force3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electr
             int Gc_AN=M2G[Mc_AN],NO0=atomic->species.contracted_orbitals[WhatSpecies[Gc_AN]];
             if (!use_gpu_trace && !recovered) {
 
+            /* point-major host path: groups of pairs in h order, every grid
+               point visited once per group, the slots summed in the legacy
+               order by the master thread */
+            int f3_done = 0;
+            if (f3_points.visit_pair != NULL) {
+                int h_begin = 0;
+
+                f3_done = 1;
+#pragma omp master
+                {
+                    f3_points.sum[0] = 0.0;
+                    f3_points.sum[1] = 0.0;
+                    f3_points.sum[2] = 0.0;
+                }
+                while (h_begin <= FNAN[Gc_AN]) {
+#pragma omp master
+                    {
+                        f3_points_failed = 0;
+                        f3_points_ok = Force3_points_plan(&f3_points, Mc_AN, Gc_AN, NO0, myid, DM, dChi0, Vpot_grid, f3_host_mode, h_begin);
+                    }
+#pragma omp barrier
+                    if (!f3_points_ok) { f3_done = 0; break; }
+                    {
+                        int first;
+#pragma omp for schedule(static)
+                        for (first = 0; first < GridN_Atom[Gc_AN]; first += F3_POINT_BLOCK) {
+                            const int count = first + F3_POINT_BLOCK < GridN_Atom[Gc_AN] ? F3_POINT_BLOCK : GridN_Atom[Gc_AN] - first;
+                            if (!openmx_core_force_grid_points(&f3_points.view, first, count, f3_points_scratch, f3_points_scratch_bytes, f3_host_mode)) {
+#pragma omp atomic write
+                                f3_points_failed = 1;
+                            }
+                        }
+                    }
+#pragma omp master
+                    {
+                        if (!f3_points_failed) Force3_points_sum(&f3_points, Mc_AN);
+                    }
+#pragma omp barrier
+                    if (f3_points_failed) { f3_done = 0; break; }
+                    h_begin = f3_points.h_end;
+                }
+                if (f3_done) {
+#pragma omp master
+                    {
+                        sumx = 0.0 + f3_points.sum[0];
+                        sumy = 0.0 + f3_points.sum[1];
+                        sumz = 0.0 + f3_points.sum[2];
+                    }
+                } else {
+#pragma omp master
+                    {
+                        sumx = 0.0;
+                        sumy = 0.0;
+                        sumz = 0.0;
+                    }
+                }
+#pragma omp barrier
+            }
+            if (!f3_done) {
+
             int h_AN;
 #pragma omp for schedule(static) reduction(+:sumx, sumy, sumz)
             for (h_AN = 0; h_AN <= FNAN[Gc_AN]; h_AN++) {
@@ -4777,6 +5390,9 @@ void Force3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electr
                 int Mh_AN = F_G2M[Gh_AN];
                 int Hwan = WhatSpecies[Gh_AN];
                 int NO1 = atomic->species.contracted_orbitals[Hwan];
+
+                if (Force3_simd_pair(f3_simd_mode, f3_simd, f3_simd_bytes, myid, Mc_AN, h_AN, Mh_AN, Gh_AN, NO0, NO1,
+                        DM, dChi0, Vpot_grid, &sumx, &sumy, &sumz)) continue;
 
                 int Nog;
 
@@ -4834,6 +5450,7 @@ void Force3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electr
                 } /* Nog */
 
             } /* h_AN, here omp barrier is called implicitly because of end of for loop  */
+            } /* pair loop */
 
             /***********************************
                         calc force #3
@@ -4876,9 +5493,18 @@ void Force3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electr
 
     } /* #pragma omp parallel */
 
+    Force3_points_destroy(&f3_points);
+    Force3_dpoints_destroy(&f3_dp);
+
     int late=use_gpu_trace && !Force3_GpuTrace(atomic, dchi_all,dchi_off,vpot_dev_full,vpot_off,xyz_dev_full,xyz_off,f3_dorb,f3_chunk_budget, electronic);
     int late_any=late;MPI_Allreduce(MPI_IN_PLACE,&late_any,1,MPI_INT,MPI_MAX,mpi_comm_level1);
-    if(late_any){
+    if(late_any && OpenMX_HostSimdMode()!=OPENMX_HOST_SIMD_LEGACY){
+        /* the failed ranks redo their atoms on the host SIMD path; nothing
+           collective follows, so the other ranks have nothing to join */
+        if(late)Force3_late_host(atomic,electronic,scratch,myid,dChi0,Vpot_grid,vpot_stage,vpot_dev_full,vpot_off,
+            xyz_stage,xyz_dev_full,xyz_off,f3_dorb,dchi_all,dchi_off);
+    }
+    else if(late_any){
         int max_atoms=Matomnum;MPI_Allreduce(MPI_IN_PLACE,&max_atoms,1,MPI_INT,MPI_MAX,mpi_comm_level1);
         for(int mc=1;mc<=max_atoms;mc++){
             if(late && mc<=Matomnum){
@@ -4904,7 +5530,7 @@ void Force3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electr
             }
             int mc_work=late && mc<=Matomnum?mc:0;
             if(!Force3_capacity_atom(mc_work,myid,dChi0,Vpot_grid,capacity_enabled, electronic) && mc_work)
-                Force3_capacity_cpu(mc_work,myid,dChi0,Vpot_grid, electronic);
+                Force3_capacity_cpu(mc_work,myid,dChi0,Vpot_grid, electronic, scratch);
         }
     }
 
@@ -6657,6 +7283,17 @@ static int Force4B_GpuBegin(OpenMXSolverInvocation *scratch, Force4BGpuContext *
             if (need < legacy) need = legacy;
         }
 
+        /* Host SIMD policy (every rank reaches this point; f4b_host_only is
+           uniform): need = the case lifetime above, budget = the per-rank
+           share of the free memory above the node reserve that the residency
+           test uses. A host vote keeps the fused CPU traces on every rank (no
+           archives, no recovery packets). The capacity test forces the archive
+           recovery: it does not vote. */
+        {
+            const size_t budget = resident && free_bytes > reserve ? (free_bytes - reserve) / (size_t)node_ranks : 0;
+            if (OpenMX_HostSimdStageOnHost("Force4B", openmx_gpu_capacity_test_recovery() ? 0 : need, budget)) return 0;
+        }
+
         resident=resident && free_bytes>reserve && (free_bytes-reserve)/(size_t)node_ranks>need;
         size_t archive1=(4U*g->flat_stride+g->halo_count)*sizeof(float),archive2=4U*g->c2_stride*sizeof(float);
         unsigned long long room=openmx_host_mem_available();
@@ -7800,7 +8437,7 @@ static void Force4B_GpuCase1TurnsAccumulate(Force4BCase1Turns *g, const OpenMXVn
                 const Type_DS_VNA* cached_q = source <= Matomnum ? NULL
                     : g->halo_host + g->halo_off[source - Matomnum];
                 Force4B_case1_trace_fused_rows(vna, mc, gc, q, CDM0, DS_VNA, cached_q,
-                    &force[0], &force[1], &force[2]);
+                    &force[0], &force[1], &force[2], NULL);
                 Gxyz[gc][41] += force[0];
                 Gxyz[gc][42] += force[1];
                 Gxyz[gc][43] += force[2];
@@ -9310,6 +9947,8 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
                         HVNAx = OpenMX_Solver_AlignedRealMatrix(scratch,"Force4B:HVNAx",List_YOUSO[7],List_YOUSO[7]);
                         HVNAy = OpenMX_Solver_AlignedRealMatrix(scratch,"Force4B:HVNAy",List_YOUSO[7],List_YOUSO[7]);
                         HVNAz = OpenMX_Solver_AlignedRealMatrix(scratch,"Force4B:HVNAz",List_YOUSO[7],List_YOUSO[7]);
+                        Force4BSimd f4b_simd;
+                        Force4B_simd_prepare(scratch, &f4b_simd);
 
 #pragma omp for schedule(static)
                         for (Mc_AN = 1; Mc_AN <= Matomnum; Mc_AN++) {
@@ -9352,7 +9991,7 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
                                 if (use_force4b_fused && q_AN != 0) {
                                     if (!f4b_gpu_case1 && !f4b_stream_case1 && !f4b_turns_case1) {
                                         Force4B_case1_trace_fused(vna, Mc_AN, Gc_AN, q_AN,
-                                            CDM0, DS_VNA, &dEx, &dEy, &dEz);
+                                            CDM0, DS_VNA, &dEx, &dEy, &dEz, &f4b_simd);
                                     }
                                     continue;
                                 }
@@ -9491,6 +10130,8 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
             HVNAx = OpenMX_Solver_AlignedRealMatrix(scratch,"Force4B:HVNAx",List_YOUSO[7],List_YOUSO[7]);
             HVNAy = OpenMX_Solver_AlignedRealMatrix(scratch,"Force4B:HVNAy",List_YOUSO[7],List_YOUSO[7]);
             HVNAz = OpenMX_Solver_AlignedRealMatrix(scratch,"Force4B:HVNAz",List_YOUSO[7],List_YOUSO[7]);
+            Force4BSimd f4b_simd;
+            Force4B_simd_prepare(scratch, &f4b_simd);
 
 #pragma omp for schedule(static)
             for (Mc_AN = 1; Mc_AN <= Matomnum; Mc_AN++) {
@@ -9522,7 +10163,7 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
                         if (use_force4b_fused && q_AN != 0) {
                             if (!f4b_gpu_case1 && !f4b_stream_case1 && !f4b_turns_case1) {
                                 Force4B_case1_trace_fused(vna, Mc_AN, Gc_AN, q_AN,
-                                    CDM0, DS_VNA, &dEx, &dEy, &dEz);
+                                    CDM0, DS_VNA, &dEx, &dEy, &dEz, &f4b_simd);
                             }
                             continue;
                         }
@@ -9913,6 +10554,8 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
                     HVNAx = OpenMX_Solver_AlignedRealMatrix(scratch,"Force4B:HVNAx",List_YOUSO[7],List_YOUSO[7]);
                     HVNAy = OpenMX_Solver_AlignedRealMatrix(scratch,"Force4B:HVNAy",List_YOUSO[7],List_YOUSO[7]);
                     HVNAz = OpenMX_Solver_AlignedRealMatrix(scratch,"Force4B:HVNAz",List_YOUSO[7],List_YOUSO[7]);
+                    Force4BSimd f4b_simd;
+                    Force4B_simd_prepare(scratch, &f4b_simd);
 
 #pragma omp for schedule(static)
                     for (Nloop = 0; Nloop < ODNloop; Nloop++) {
@@ -9942,7 +10585,7 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
                             if (use_force4b_fused && h_AN != 0 && q_AN != 0 && h_AN != q_AN) {
                                 if (!f4b_gpu_case2) {
                                     Force4B_case2_trace_fused(Mc_AN, Gc_AN, h_AN, q_AN,
-                                        CDM0, DS_VNA, &dEx, &dEy, &dEz);
+                                        CDM0, DS_VNA, &dEx, &dEy, &dEz, &f4b_simd);
                                 }
                                 continue;
                             }

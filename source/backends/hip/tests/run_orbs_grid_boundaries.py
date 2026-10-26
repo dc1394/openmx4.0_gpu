@@ -919,6 +919,7 @@ C_PREFIX = r'''
 
 #include "orbs_otf_hip.h"
 #include "openmx_core_atomic.h"
+#include "openmx_env.h"
 
 enum { GPUSOLVER=1 };
 static int scf_eigen_lib_flag=GPUSOLVER;
@@ -1427,7 +1428,7 @@ def c_harness(sog):
              line(sog, r"^#define\s+SOG_L0MAX\b.*$"),
              line(sog, r"^#define\s+SOG_MULMAX\b.*$"),
              line(sog, r"^int Set_Orbitals_Grid_OTF_Prepare\(const OpenMXAtomicViews \*atomic\);$"),
-             function(sog, "SOG_env_flag"),
+             function(sog, "SOG_rows_requested"),
              function(sog, "SOG_gpu_requested"),
              function(sog, "SOG_gpu_eligible"),
              function(sog, "SOG_arena_off"),
@@ -1501,8 +1502,12 @@ def main():
                         str(work / "otf_test.cpp"), "-o", str(work / "otf_test.o")], check=True)
         subprocess.run([*shlex.split(args.cc), *flags, "-std=c11", *include, "-c",
                         str(root / "source/openmx_precision.c"), "-o", str(work / "precision.o")], check=True)
+        # the typed environment readers of the production code (unsynchronised:
+        # they read the variables the checks set and unset)
+        subprocess.run([*shlex.split(args.cc), *flags, "-std=c11", *include, "-c",
+                        str(root / "source/openmx_env.c"), "-o", str(work / "env.o")], check=True)
         subprocess.run([*shlex.split(cxx), *flags, str(work / "otf_test.o"), str(work / "prepare_test.o"),
-                        str(work / "precision.o"), "-lm",
+                        str(work / "precision.o"), str(work / "env.o"), "-lm",
                         "-o", str(work / "check")], check=True)
         env = os.environ.copy()
         for name in ("OPENMX_ORBS_GRID_GPU", "OPENMX_ORBS_EVAL_PRECISION"):

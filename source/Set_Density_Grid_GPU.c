@@ -1761,6 +1761,10 @@ int Set_Density_Grid_GPU_Local_Prepare(const OpenMXAtomicViews *atomic, int Cnt_
   if (grow < 0) {
     ok = 0;
     ws_declined = 1;
+    /* Without room for even the minimum chunk the stage cannot run on this
+       device in pieces: the rank votes host, so no rank enters the capacity
+       recovery (OPENMX_HOST_SIMD=legacy ignores the figures and keeps it). */
+    vote_need = SIZE_MAX;
     if (3 <= level_stdout) {
       fprintf(stderr,
               "<Set_Density_Grid> rank %d: a minimum on-the-fly chunk needs %.3f MiB, %.3f MiB "

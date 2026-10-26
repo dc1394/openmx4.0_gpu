@@ -6,7 +6,8 @@
 extern "C" {
 #endif
 
-/* Host kernels of Set_ProExpn_VNA (the neutral-atom projector expansion) for
+/* Host kernels of Set_ProExpn_VNA (the neutral-atom projector expansion) and
+   of the two-centre radial quadratures of Set_OLP_Kin and Set_Nonlocal for
    the CPU path. Every kernel keeps the legacy per-element operation order,
    so results are bitwise those of the scalar loops when both are compiled
    without contraction; SIMD lanes span independent outputs only. Each entry
@@ -140,6 +141,53 @@ typedef struct {
   double c1, c2, c3, c4, c5, c6, c7, c8;
 } OpenMXVnaConvert;
 int openmx_core_vna_convert(const OpenMXVnaConvert*, int mode);
+
+/* The radial quadrature of Set_OLP_Kin for one pair, lanes across the radial
+   function pairs (combos) and every order l < orders sharing each loaded row;
+   per element the legacy order and association:
+     k2 = k*k; coe0 = 0.5 at the first and last point, else 1;
+     t0 = ((coe0*h)*k2)*rf0[i][c];  t1 = t0*sb[l][i];  t2 = (t0*k)*sbp[l][i];
+     t3 = t1*rf1[i][c];  t4 = t2*rf1[i][c];
+     S[l][c] += t3;  K[l][c] += t3*k2;  Sr[l][c] += t4;  Kr[l][c] += t4*k2
+   in ascending i, with Sr and Kr zero for an on-site pair. rf0t/rf1t are the
+   two species' radial rows transposed to [point][table_stride] (combo c in
+   column c); sb/sbp are [orders][sb_stride]; out[0..3] = S, K, Sr, Kr as
+   [orders][out_stride]. */
+typedef struct {
+  int points, orders, combos, onsite;
+  double h;
+  const double *k;
+  const double *rf0t, *rf1t;
+  size_t table_stride;
+  const double *sb, *sbp;
+  size_t sb_stride;
+  double *out[4];
+  size_t out_stride;
+} OpenMXVnaOverlapRadial;
+int openmx_core_vna_overlap_radial(const OpenMXVnaOverlapRadial*, int mode);
+
+/* The radial quadrature of Set_Nonlocal for one pair and spin-orbit index,
+   lanes across the (basis function, projector) pairs (combos) and every
+   order l < orders sharing each loaded row; per element the legacy order and
+   association:
+     coe0 = 0.5 at the first and last point, else 1;
+     t0 = (((coe0*h)*k)*k)*rf[i][c];  t1 = t0*sb[l][i];  t2 = (t0*k)*sbp[l][i];
+     S[l][c] += t1*nlrf[i][c];  Sr[l][c] += t2*nlrf[i][c]
+   in ascending i, with Sr zero for an on-site pair. rft/nlrft are the basis
+   and projector rows of each combo transposed to [point][table_stride];
+   sb/sbp are [orders][sb_stride]; out[0..1] = S, Sr as [orders][out_stride]. */
+typedef struct {
+  int points, orders, combos, onsite;
+  double h;
+  const double *k;
+  const double *rft, *nlrft;
+  size_t table_stride;
+  const double *sb, *sbp;
+  size_t sb_stride;
+  double *out[2];
+  size_t out_stride;
+} OpenMXVnaNonlocalRadial;
+int openmx_core_vna_nonlocal_radial(const OpenMXVnaNonlocalRadial*, int mode);
 
 #ifdef __cplusplus
 }

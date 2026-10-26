@@ -15,6 +15,7 @@
 #include "openmx_common.h"
 #include "openmx_env.h"
 #include "openmx_grid_assembly.h"
+#include "openmx_host_simd.h"
 extern int openmx_gpu_is_apu(void);
 #include "openmx_core_vna_matrix.h"
 #include "openmx_gpu_task.h"
@@ -479,7 +480,8 @@ static int Set_Hamiltonian_MatrixElements_OpenMP_Enabled(void)
            gpu_rank_device_usable();
 }
 
-static int Set_Hamiltonian_DeviceMemoryOK(size_t required_bytes, const char *where, int myid, int use_device)
+static int Set_Hamiltonian_DeviceMemoryOK(size_t required_bytes, const char *where, int myid, int use_device,
+                                          size_t *group_need, size_t *group_free_bytes)
 {
     MPI_Comm node_comm, device_comm;
     int local_rank, local_size, hip_device_count, device_rank, device_ranks;
@@ -564,6 +566,9 @@ static int Set_Hamiltonian_DeviceMemoryOK(size_t required_bytes, const char *whe
     MPI_Comm_rank(device_comm, &device_rank);
     MPI_Comm_size(device_comm, &device_ranks);
     MPI_Comm_free(&device_comm);
+    /* the admission figures of the device group, for the stage vote */
+    if (group_need != NULL) *group_need = (size_t)group_required;
+    if (group_free_bytes != NULL) *group_free_bytes = (size_t)group_free;
 
     if (group_free < group_required) {
         if (device_rank == 0) {
@@ -635,12 +640,16 @@ static int Set_Hamiltonian_Base_Use_OpenMP(int SCF_iter, int myid)
     required_bytes = Set_Hamiltonian_OpenMP_Rank_Selected ?
         Set_Hamiltonian_Base_OpenMP_DeviceBytes(SCF_iter, myid) : 0;
     memory_ok = Set_Hamiltonian_DeviceMemoryOK(required_bytes, "base OpenMP path", myid,
-                                               Set_Hamiltonian_OpenMP_Rank_Selected);
+                                               Set_Hamiltonian_OpenMP_Rank_Selected, NULL, NULL);
 
     return Set_Hamiltonian_OpenMP_Rank_Selected && memory_ok;
 }
 
-static int Set_Hamiltonian_MatrixElements_Use_OpenMP(int Cnt_kind, int myid)
+/* *any_device: some rank may take the device (the same on every rank);
+   *table_need / *table_budget (zero on entry): the device group's
+   admission figures when this rank asked for the tables */
+static int Set_Hamiltonian_MatrixElements_Use_OpenMP(int Cnt_kind, int myid, int *any_device,
+                                                     size_t *table_need, size_t *table_budget)
 {
     size_t required_bytes;
     int local_enabled, any_enabled, local_use, memory_ok;
@@ -648,6 +657,7 @@ static int Set_Hamiltonian_MatrixElements_Use_OpenMP(int Cnt_kind, int myid)
     local_enabled = Set_Hamiltonian_MatrixElements_OpenMP_Enabled();
     MPI_Allreduce(&local_enabled, &any_enabled, 1, MPI_INT, MPI_MAX,
                   mpi_comm_level1);
+    *any_device = any_enabled;
     if (!any_enabled) {
         return 0;
     }
@@ -659,7 +669,7 @@ static int Set_Hamiltonian_MatrixElements_Use_OpenMP(int Cnt_kind, int myid)
     required_bytes = local_use ?
         Set_Hamiltonian_MatrixElements_OpenMP_DeviceBytes(Cnt_kind, myid) : 0;
     memory_ok = Set_Hamiltonian_DeviceMemoryOK(required_bytes, "matrix-elements OpenMP path", myid,
-                                               local_use);
+                                               local_use, table_need, table_budget);
 
     /* Tables left resident by an earlier call cannot serve the CPU path and
        would only pin memory the other stages need; the next call that fits
@@ -1123,7 +1133,7 @@ double Set_Hamiltonian(OpenMXGridWorkspace *grid, OpenMXMixingVState *mixing_v, 
     int    numprocs, myid;
     double time0, time1, time2, mflops;
     long   Num_C0, Num_C1;
-    int    use_base_openmp;
+    int    use_base_openmp, base_requested;
 
     int trace_timing;
     double prof_t0 = 0.0;
@@ -1143,8 +1153,8 @@ double Set_Hamiltonian(OpenMXGridWorkspace *grid, OpenMXMixingVState *mixing_v, 
     }
 
     SETH_PROF_T0(prof_t0);
-    use_base_openmp = Set_Hamiltonian_OpenMP_Enabled();
-    MPI_Allreduce(MPI_IN_PLACE,&use_base_openmp,1,MPI_INT,MPI_MAX,mpi_comm_level1);
+    base_requested = Set_Hamiltonian_OpenMP_Enabled();
+    MPI_Allreduce(&base_requested,&use_base_openmp,1,MPI_INT,MPI_MAX,mpi_comm_level1);
     SETH_PROF_ADD(memok, prof_t0);
 
     /*****************************************************
@@ -1155,6 +1165,14 @@ double Set_Hamiltonian(OpenMXGridWorkspace *grid, OpenMXMixingVState *mixing_v, 
         dtime(&time1);
 
     SETH_PROF_T0(prof_t0);
+    if (use_base_openmp) {
+        /* The stage vote (every rank: use_base_openmp is reduced): the base
+           sum's device bytes against the free memory. After a host decision
+           every rank takes the host loops below. */
+        const size_t need = base_requested ? Set_Hamiltonian_Base_OpenMP_DeviceBytes(SCF_iter, myid) : 0;
+        if (OpenMX_HostSimdStageOnHost("Set_Hamiltonian base", need, OpenMX_HostSimdDeviceBudget(0)))
+            use_base_openmp = 0;
+    }
     if (use_base_openmp) {
         Set_Hamiltonian_Base_OpenMP(vna, SCF_iter, H0, HNL, H, electronic);
     }
@@ -2380,6 +2398,7 @@ static void Set_Hamiltonian_Stream_PairCPU(int cnt_kind,int mc,int h,int rank, c
         target[spin][mc][h][i][j]+=sum;
     }
 }
+static size_t SetH_capacity_bytes(int cnt_kind);
 typedef struct {int n0,n1,points;} SetHCapacityPair;
 typedef struct {int spins,max_no;double volume;} SetHCapacityParameters;
 static void SetH_capacity_kernel(size_t first,size_t n,const void *parameters,void *const v[],int gpu)
@@ -2428,7 +2447,8 @@ static void SetH_capacity_kernel(size_t first,size_t n,const void *parameters,vo
 /* Enter once per quadrature phase on all ranks. Only ranks whose existing
    owner/streamed path declined pack work; completed ranks can lend GPUs.
    Bounded host tiles avoid duplicating a full orbital cache on the host. */
-static int SetH_capacity_recover(int cnt_kind,int local_done,int rank, const OpenMXElectronicViews *electronic)
+static int SetH_capacity_recover(int cnt_kind,int local_done,int rank, const OpenMXElectronicViews *electronic,
+                                 int vote)
 {
   double *****CntH=electronic->CntH;
   double *****H=electronic->H;
@@ -2438,6 +2458,15 @@ static int SetH_capacity_recover(int cnt_kind,int local_done,int rank, const Ope
     int pending=enabled && !local_done,any=0;
     MPI_Allreduce(&pending,&any,1,MPI_INT,MPI_MAX,mpi_comm_level1);
     if(!any)return local_done;
+    /* vote: no preflight voted in this call (the capacity test or the GPU
+       workers skip the fast paths), so the recovery is the stage's device
+       route and takes the stage vote (every rank: any is reduced). This
+       rank's packed tiles against its free memory less the capacity
+       workers' reserve; after a host decision no rank packs, and the
+       pending ranks take the host SIMD quadrature (the caller). */
+    if(vote && OpenMX_HostSimdStageOnHost("Set_Hamiltonian",pending?SetH_capacity_bytes(cnt_kind):0,
+                                          OpenMX_HostSimdDeviceBudget((size_t)256*1024*1024)))
+        return local_done;
     int count=0,*mc_table=NULL,*h_table=NULL,ready=1;
     if(pending) {
         for(int mc=1;mc<=Matomnum;mc++)count+=FNAN[M2G[mc]]+1;
@@ -2510,14 +2539,107 @@ static int SetH_capacity_recover(int cnt_kind,int local_done,int rank, const Ope
     free(mc_table);free(h_table);return local_done || (pending && ready);
 }
 
+/* The bytes SetH_capacity_recover packs for all of this rank's pairs, the
+   same accounting as its tiles (SIZE_MAX on overflow). */
+static size_t SetH_capacity_bytes(int cnt_kind)
+{
+    const size_t spins=(size_t)SpinP_switch+1;
+    size_t max_no=0,bytes=0;
+    for(int s=0;s<SpeciesNum;s++){size_t no=(size_t)(cnt_kind?Spe_Total_CNO[s]:Spe_Total_NO[s]);if(max_no<no)max_no=no;}
+    for(int mc=1;mc<=Matomnum;mc++)for(int h=0;h<=FNAN[M2G[mc]];h++) {
+        int gc=M2G[mc],gh=natn[gc][h];
+        size_t n0=(size_t)(cnt_kind?Spe_Total_CNO[WhatSpecies[gc]]:Spe_Total_NO[WhatSpecies[gc]]);
+        size_t n1=(size_t)(cnt_kind?Spe_Total_CNO[WhatSpecies[gh]]:Spe_Total_NO[WhatSpecies[gh]]);
+        size_t points=(size_t)NumOLG[mc][h];
+        double added=((double)points*(double)(n0+n1+spins)+(double)(spins*max_no*max_no))*(double)sizeof(double);
+        if((double)(SIZE_MAX-bytes)<=added)return SIZE_MAX;
+        bytes+=(size_t)added;
+    }
+    return bytes;
+}
+
+/* The arena of this rank's on-the-fly matrix elements as SetH_OTF_GetPlan
+   lays out its batches (consecutive atoms while a batch fits the budget, at
+   least one atom), from the host accounting alone, with the potential grid
+   that Calc_MatrixElements_dVH_Vxc_VNA_OnTheFly allocates behind it. */
+static size_t SetH_OTF_StageBytes(int spin_count)
+{
+    const size_t budget = Set_Hamiltonian_OTF_Budget(0);
+    size_t arena = 0;
+    int Mc_AN = 1;
+
+    while (Mc_AN <= Matomnum) {
+        int a1 = Mc_AN + 1;
+        size_t bytes;
+
+        while (a1 <= Matomnum && SetH_OTF_KindBatchBytes(0, Mc_AN, a1 + 1, spin_count) <= budget) a1++;
+        bytes = SetH_OTF_KindBatchBytes(0, Mc_AN, a1, spin_count);
+        if (arena < bytes) arena = bytes;
+        Mc_AN = a1;
+    }
+    return arena + SETH_OTF_ALIGN(sizeof(double) * (size_t)spin_count * (size_t)(My_NumGridC ? My_NumGridC : 1));
+}
+
+/* This rank's figures for the stage vote of Calc_MatrixElements_dVH_Vxc_VNA,
+   after its preflight: the device path that needs the fewer pieces. The
+   tables: the device group's whole requirement against its free memory,
+   the admission figures of Set_Hamiltonian_DeviceMemoryOK. The on-the-fly
+   tiles: the arena this rank allocates against its free memory less the
+   allocation's reserve (SetH_OTF_LockedAlloc). Zero need: no device path
+   of its own. */
+static void SetH_stage_figures(size_t table_need, size_t table_budget, int Cnt_kind,
+                               size_t *need_bytes, size_t *budget_bytes)
+{
+    const int spin_count = (SpinP_switch == 3) ? 4 : (SpinP_switch + 1);
+    const size_t reserve = (size_t)256 * 1024 * 1024;
+    size_t free_bytes = 0, total_bytes = 0;
+
+    *need_bytes = table_need;
+    *budget_bytes = table_budget;
+    if (Cnt_kind != 0 || Matomnum <= 0 || !Set_Hamiltonian_OTF_Enabled() ||
+        !Set_Hamiltonian_MatrixElements_OpenMP_Enabled() || !Set_Hamiltonian_OTF_Rank_Selected()) return;
+    if (hipMemGetInfo(&free_bytes, &total_bytes) != hipSuccess) {
+        (void)hipGetLastError();
+        return;
+    }
+    {
+        const size_t otf_need = SetH_OTF_StageBytes(spin_count);
+        const size_t otf_budget = reserve < free_bytes ? free_bytes - reserve : 0;
+
+        if (*need_bytes == 0 || *budget_bytes == 0 ||
+            (0 < otf_budget && (double)otf_need / (double)otf_budget < (double)*need_bytes / (double)*budget_bytes)) {
+            *need_bytes = otf_need;
+            *budget_bytes = otf_budget;
+        }
+    }
+}
+
 void Calc_MatrixElements_dVH_Vxc_VNA(OpenMXGridWorkspace *grid, const OpenMXAtomicViews *atomic, int Cnt_kind, const OpenMXElectronicViews *electronic)
 {
-    int myid,use_tables=0,local_done=0;
+    int myid,use_tables=0,local_done=0,stage_on_host=0,stage_voted=0;
     Set_Hamiltonian_MatrixElements_GPU_Used=0;
     MPI_Comm_rank(mpi_comm_level1,&myid);
     if(!(openmx_gpu_capacity_test_recovery() || openmx_gpu_workers_requested())) {
-        use_tables=Set_Hamiltonian_MatrixElements_Use_OpenMP(Cnt_kind,myid);
-        if(use_tables && (Set_Hamiltonian_ME_CacheReusable(Cnt_kind) || Set_Hamiltonian_ME_KeepDeviceResident())) {
+        int any_device=0;
+        size_t table_need=0,table_budget=0;
+        use_tables=Set_Hamiltonian_MatrixElements_Use_OpenMP(Cnt_kind,myid,&any_device,&table_need,&table_budget);
+        if(any_device) {
+            /* The stage vote (every rank: any_device is reduced), with the
+               figures of the device path this rank can take in the fewer
+               pieces (SetH_stage_figures). After a host decision every rank
+               takes the host SIMD quadrature below, without the tables, the
+               tiles or the recovery. */
+            size_t need=0,budget=0;
+            SetH_stage_figures(table_need,table_budget,Cnt_kind,&need,&budget);
+            stage_on_host=OpenMX_HostSimdStageOnHost("Set_Hamiltonian",need,budget);
+            stage_voted=1;
+        }
+        if(stage_on_host) {
+            /* tables left resident by an earlier call cannot serve the host
+               path and would only pin memory the other stages need */
+            if(0<Set_Hamiltonian_ME_ResidentBytes())Set_Hamiltonian_Invalidate_OpenMP_MatrixElements_Cache();
+        }
+        else if(use_tables && (Set_Hamiltonian_ME_CacheReusable(Cnt_kind) || Set_Hamiltonian_ME_KeepDeviceResident())) {
             Calc_MatrixElements_dVH_Vxc_VNA_OpenMP(grid, atomic, Cnt_kind, electronic);local_done=1;
         } else if(Calc_MatrixElements_dVH_Vxc_VNA_OnTheFly(atomic, Cnt_kind,myid, electronic)) {
             if(Matomnum>0)Set_Hamiltonian_MatrixElements_GPU_Used=1;
@@ -2527,8 +2649,10 @@ void Calc_MatrixElements_dVH_Vxc_VNA(OpenMXGridWorkspace *grid, const OpenMXAtom
         }
     }
     /* All ranks rendezvous after the existing MI300A/Radeon fast paths.
-       Completed ranks can lend capacity without adding their matrix twice. */
-    if(!SetH_capacity_recover(Cnt_kind,local_done,myid, electronic))
+       Completed ranks can lend capacity without adding their matrix twice.
+       After a host vote no rank recovers on a device; the recovery votes
+       itself when no preflight voted in this call. */
+    if(stage_on_host || !SetH_capacity_recover(Cnt_kind,local_done,myid, electronic, !stage_voted))
         OpenMX_Grid_Hamiltonian_CPU(grid, Cnt_kind, electronic);
 }
 

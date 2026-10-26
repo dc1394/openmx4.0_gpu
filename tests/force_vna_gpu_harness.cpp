@@ -88,8 +88,9 @@ static double density[2][2][3][2][2];static double *density_rows[2][2][3][2];
 static double **density_blocks[2][2][3];static double ***density_atoms[2][2];static double ****cdm[2];
 #include "openmx_force_gpu_resources.h"
 #include "openmx_host_simd.h"
-/* The stage's host SIMD policy vote (CUDA Force4B_GpuBegin), recorded: the
-   device answer keeps the paths of modes 0-13; mode 14 checks the host one. */
+/* The stage's host SIMD policy vote (Force4B_GpuBegin of both backends),
+   recorded: the device answer keeps the paths of modes 0-13; mode 14 checks
+   the host one. */
 static int host_vote=0,votes=0;static size_t vote_need=0,vote_budget=0;
 int OpenMX_HostSimdStageOnHost(const char*,size_t need,size_t budget){++votes;vote_need=need;vote_budget=budget;return host_vote;}
 static void Force4B_GpuEnd(Force4BGpuContext*);
@@ -159,11 +160,10 @@ int operation(OpenMXSolverInvocation *scope,void *opaque,double *result){
         else if(c.stage==2)Force4B_GpuCase1TurnsEnd(turns);else Force4B_GpuCase2StreamEnd(stream2);};
     begin();
     if(c.mode==7 || c.mode==8){check(!enabled && !view && !queries && !communicators && !votes,"disabled stage allocated or queried GPU state");*result=1;return 1;}
-#if !OPENMX_GPU_HIP
-    /* The CUDA admission votes once with the residency figures: need = the
-       case lifetime, budget = free minus the node reserve (272 MiB for one
-       node rank), zero without a usable device answer; the capacity test
-       passes need 0. The streams and rank turns do not vote. */
+    /* The admission votes once with the residency figures: need = the case
+       lifetime, budget = free minus the node reserve (272 MiB for one node
+       rank), zero without a usable device answer; the capacity test passes
+       need 0. The streams and rank turns do not vote. */
     if(!c.outer){
         check(votes==(c.stage==0),"policy vote count differs");
         if(c.stage==0){
@@ -171,10 +171,9 @@ int operation(OpenMXSolverInvocation *scope,void *opaque,double *result){
             check(vote_budget==(c.mode==4 || c.mode==9 || c.mode==10?0:(size_t(1)<<40)-272ULL*1024*1024),"policy vote budget differs");
         }
     }
-#endif
     check(view && view!=c.outer && resources,"missing independent invocation-owned state");
-    /* mode 14 votes for the host: only the CUDA admission has the vote */
-    const bool expected_enabled=c.stage==0?c.mode!=10 && (c.mode!=14 || OPENMX_GPU_HIP):c.stage==2?
+    /* mode 14 votes for the host */
+    const bool expected_enabled=c.stage==0?c.mode!=10 && c.mode!=14:c.stage==2?
         (c.mode!=4 && c.mode!=10 && c.mode!=11 && c.mode!=13):
         (c.mode!=4 && c.mode!=5 && c.mode!=6 && c.mode!=13);
     check(bool(enabled)==expected_enabled,"GPU admission changed");

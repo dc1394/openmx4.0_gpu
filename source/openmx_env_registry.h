@@ -73,7 +73,7 @@
     X(BAND_GPU_CACHED_TURN_GROUP, "OPENMX_BAND_GPU_CACHED_TURN_GROUP", "int", "global", "", "backends/hip/src/Band_DFT_Col.c", "GPU turn-group size after SCF iteration 1; defaults to the normal turn group, clamped to 1..1024.") \
     X(BAND_GPU_DIAG, "OPENMX_BAND_GPU_DIAG", "flag", "global", "", "Band_DFT_Col.c,Band_DFT_NonCol.c,backends/hip/src/Band_DFT_Col.c,backends/hip/src/Band_DFT_NonCol.c", "default auto: 1 = force the dense GPU path ignoring the fits verdict; 0 = always ELPA/ScaLAPACK (§5.6)") \
     X(BAND_GPU_DIAG_RESERVE_MB, "OPENMX_BAND_GPU_DIAG_RESERVE_MB", "mib", "global", "", "backends/hip/src/Band_DFT_Col.c", "Additional band eigensolver memory guard in MiB.") \
-    X(BAND_GPU_DM, "OPENMX_BAND_GPU_DM", "flag", "global", "1", "Band_DFT_Col.c,backends/hip/src/Band_DFT_Col.c", "default 1: 0 = CPU loop for the DM accumulation of the collinear band ScaLAPACK/ELPA fallback. By default the fallback keeps the DM on the GPU: the eigenvecto...") \
+    X(BAND_GPU_DM, "OPENMX_BAND_GPU_DM", "flag", "global", "0 (1 under OPENMX_HOST_SIMD=legacy)", "Band_DFT_Col.c,backends/hip/src/Band_DFT_Col.c", "default 0 (1 under OPENMX_HOST_SIMD=legacy): 1 = GPU DM accumulation of the collinear band ScaLAPACK/ELPA fallback (behind the device-or-host vote); 0 = host SIMD DM (BandCol_DM_Block)") \
     X(BAND_GPU_MAX_CONCURRENT_K, "OPENMX_BAND_GPU_MAX_CONCURRENT_K", "int", "global", "", "Band_DFT_Col.c,Band_DFT_NonCol.c,backends/hip/src/Band_DFT_Col.c,backends/hip/src/Band_DFT_NonCol.c", "") \
     X(BAND_GPU_MAX_DEVICE_RANKS, "OPENMX_BAND_GPU_MAX_DEVICE_RANKS", "int", "global", "16", "backends/hip/src/set_hip_default_device_from_local_rank.c", "Above this many ranks per device, prefer CPU dense band/Krylov paths; 0 disables the limit.") \
     X(BAND_GPU_MAX_RANKS_PER_DEVICE, "OPENMX_BAND_GPU_MAX_RANKS_PER_DEVICE", "int", "global", "", "Band_DFT_Col.c,Band_DFT_NonCol.c,backends/hip/src/Band_DFT_Col.c,backends/hip/src/Band_DFT_NonCol.c", "") \
@@ -246,6 +246,7 @@
     X(GS2_PROFILE, "OPENMX_GS2_PROFILE", "int", "global", "0", "elpa_cosma_bridge.c", "") \
     X(HOST_SIMD, "OPENMX_HOST_SIMD", "string", "global", "", "openmx_host_simd.c", "") \
     X(HOST_SIMD_MAX_PIECES, "OPENMX_HOST_SIMD_MAX_PIECES", "int", "global", "8", "openmx_host_simd.c", "") \
+    X(HOST_SIMD_PREFER, "OPENMX_HOST_SIMD_PREFER", "string", "global", "", "openmx_host_simd.c", "") \
     X(KRYLOV_GEMMUL8, "OPENMX_KRYLOV_GEMMUL8", "flag", "global", "", "backends/hip/src/Krylov.c", "Enable Krylov GEMMul8 products, subject to the input-file GEMMul8 veto.") \
     X(KRYLOV_GPU, "OPENMX_KRYLOV_GPU", "flag", "global", "", "backends/hip/src/Krylov.c", "Enable Krylov GPU dense operations; automatic disables them on oversubscribed devices.") \
     X(KRYLOV_GPU_DGEMM_MIN_FLOPS, "OPENMX_KRYLOV_GPU_DGEMM_MIN_FLOPS", "double", "global", "5×10⁷", "Krylov.c,backends/hip/src/Krylov.c", "default 5×10⁷: Minimum m·n·k for dispatching a GEMM to the GPU") \

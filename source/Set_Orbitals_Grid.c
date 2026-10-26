@@ -1313,10 +1313,11 @@ static int Set_Orbitals_Grid_GPU(const OpenMXAtomicViews *atomic)
   /* Device preflight vote, collective over mpi_comm_level1 (every rank gets
      here once per call): when some rank's device cannot hold the stage, all
      ranks skip the device part and SOG_capacity_recover writes their rows on
-     the host SIMD path. A device that holds it keeps the device part. */
+     the host SIMD path. A device that holds it keeps the device part, and
+     under the legacy policy a usable device always does (old routes). */
   const int host=OpenMX_HostSimdStageOnHost("Set_Orbitals_Grid",
       SOG_device_need(atomic,1,Matomnum+1,work.myid),OpenMX_HostSimdDeviceBudget(0));
-  if (!host && !openmx_gpu_capacity_test_recovery() && gpu_rank_device_usable()) {
+  if ((!host || OpenMX_HostSimdMode()==OPENMX_HOST_SIMD_LEGACY) && !openmx_gpu_capacity_test_recovery() && gpu_rank_device_usable()) {
     if (work.workers.count<=1) done=Set_Orbitals_Grid_GPU_Part(atomic, 1,Matomnum+1,work.myid);
     else done=openmx_gpu_workers_run(&work.workers,SOG_table_worker,&work,"orbital-tables");
   }

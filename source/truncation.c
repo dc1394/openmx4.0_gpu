@@ -2789,6 +2789,9 @@ static int UCellBox_OLG_GPU(int MD_iter,int estimate_switch,int CpyCell,int **gr
   if(OpenMX_HostSimdStageOnHost("UCell_Box overlap grids",Matomnum?OLG_device_need(CpyCell):0,
                                 OpenMX_HostSimdDeviceBudget((size_t)64<<20)))
     return host_simd ? UCellBox_OLG_Host(MD_iter,estimate_switch,CpyCell,grid,cell,size_GListTAtoms1) : 0;
+  /* The device route: lists kept by a host sizing pass would never be
+     consumed and must not reach a later call with the same key. */
+  OLG_kept_release();
   int myid;MPI_Comm_rank(mpi_comm_level1,&myid);
   int done=!Matomnum || (!openmx_gpu_capacity_test_recovery() && OLG_gpu_ready() && UCellBox_OLG_GPU_Part(1,Matomnum+1,myid,estimate_switch,CpyCell,grid,cell,size_GListTAtoms1));
   /* A rank whose device path failed late searches on the host (local work,

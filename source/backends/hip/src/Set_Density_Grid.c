@@ -70,6 +70,7 @@ int Set_Density_Grid_GPU_Local_Run(const OpenMXAtomicViews *atomic, double *****
 int Set_Density_Grid_GPU_Local_OnTheFly(void);
 int Set_Density_Grid_GPU_Capacity(int,int,double *****,double ***);
 void Set_Density_Grid_GPU_Local_Report(int path, int failed);
+int Set_Density_Grid_GPU_Local_StageOnHost(void);
 int Set_Density_Grid_OTF_Prepare(const OpenMXAtomicViews *atomic, int Cnt_kind, size_t *need_bytes, size_t *available_bytes);
 int openmx_grid_precision_df(void);
 
@@ -102,7 +103,7 @@ double Set_Density_Grid(OpenMXGridWorkspace *grid, const OpenMXDensityCacheHooks
   int numprocs,myid,tag=999,ID,IDS,IDR;
   double Stime_atom, Etime_atom;
   double time0,time1,time2;
-  int use_local_gpu = 0;
+  int use_local_gpu = 0, stage_on_host = 0;
   int use_otf_gpu = 0;
   int local_ok = 0, local_any = 0, local_path = 0, local_failed = 0, failed_ranks = 0;
   MPI_Request failed_request = MPI_REQUEST_NULL;
@@ -143,6 +144,12 @@ double Set_Density_Grid(OpenMXGridWorkspace *grid, const OpenMXDensityCacheHooks
   {
     int flags[2], reduced[2];
     local_ok=Set_Density_Grid_GPU_Local_Prepare(atomic, Cnt_kind,Calc_CntOrbital_ON);
+    /* The preparation ends with the stage vote (collective): when the device
+       cannot hold the distributed quadrature in a few pieces on some rank,
+       every rank has declined it and takes the host SIMD quadrature below,
+       without the all-rank on-the-fly mode, the one-rank service or the
+       capacity recovery. */
+    stage_on_host = Set_Density_Grid_GPU_Local_StageOnHost();
     if ((openmx_gpu_capacity_test_recovery() || openmx_gpu_workers_requested())) local_ok=0;
     flags[0] = local_ok;
     flags[1] = -local_ok;
@@ -171,13 +178,14 @@ double Set_Density_Grid(OpenMXGridWorkspace *grid, const OpenMXDensityCacheHooks
 
   /* the orbitals evaluated on the device batch by batch on every rank
      (Set_Hamiltonian.c) rather than the whole density on one owner */
-  if (!use_local_gpu){
+  if (!use_local_gpu && !stage_on_host){
     size_t need, available;
     int otf_ok=Set_Density_Grid_OTF_Prepare(atomic, Cnt_kind,&need,&available);
     MPI_Allreduce(&otf_ok,&use_otf_gpu,1,MPI_INT,MPI_MIN,mpi_comm_level1);
   }
 
-  if (!use_local_gpu && !use_otf_gpu && !(openmx_gpu_capacity_test_recovery() || openmx_gpu_workers_requested())){
+  if (!use_local_gpu && !use_otf_gpu && !stage_on_host &&
+      !(openmx_gpu_capacity_test_recovery() || openmx_gpu_workers_requested())){
     if (Set_Density_Grid_GPU_Service(cache_hooks, Cnt_kind,Calc_CntOrbital_ON,CDM,Density_Grid_B0,&time0)){
       if (local_any) Set_Density_Grid_GPU_Local_Report(1,0);
       return time0;
@@ -418,7 +426,9 @@ double Set_Density_Grid(OpenMXGridWorkspace *grid, const OpenMXDensityCacheHooks
     }
   }
 
-  if (Set_Density_Grid_GPU_Capacity(Cnt_kind,use_local_gpu,CDM,Tmp_Den_Grid)) {
+  /* after a host vote no rank enters the recovery (the vote is the same
+     everywhere) */
+  if (!stage_on_host && Set_Density_Grid_GPU_Capacity(Cnt_kind,use_local_gpu,CDM,Tmp_Den_Grid)) {
     if (!use_local_gpu) sd_mode="gpu-capacity";
     use_local_gpu=1;
   }

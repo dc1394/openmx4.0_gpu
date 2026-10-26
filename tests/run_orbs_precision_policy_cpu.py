@@ -16,6 +16,7 @@ code = r'''
 #include <stdlib.h>
 #include <string.h>
 #include "openmx_precision.h"
+#include "openmx_env.h"
 static int ratio, get_error, attr_error, queries;
 enum { cudaSuccess = 0, cudaDevAttrSingleToDoublePrecisionPerfRatio = 1 };
 static int cudaGetDevice(int *device) { ++queries; *device=0; return get_error; }
@@ -69,5 +70,8 @@ with tempfile.TemporaryDirectory(prefix="openmx-orbs-precision-") as tmp:
     cfile.write_text(code)
     subprocess.run([os.environ.get("CC", "cc"), "-std=c11", "-O2", "-Wall", "-Wextra",
                     "-Werror", "-I" + str(root / "source"), str(cfile),
-                    str(root / "source/openmx_precision.c"), "-o", str(binary)], check=True)
+                    str(root / "source/openmx_precision.c"),
+                    # the typed environment readers (unsynchronised: they read
+                    # the variables the checks set and unset)
+                    str(root / "source/openmx_env.c"), "-o", str(binary)], check=True)
     subprocess.run([str(binary)], check=True)

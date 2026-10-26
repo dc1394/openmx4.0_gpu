@@ -12,6 +12,7 @@
 #include "openmx_env.h"
 #include "openmx_gpu_bilinear.h"
 #include "openmx_gpu_workers.h"
+#include "openmx_host_simd.h"
 #include "set_hip_default_device_from_local_rank.h"
 #include <limits.h>
 #include <omp.h>
@@ -1404,8 +1405,11 @@ static size_t SDG_local_call_bytes(const SDGLocalContext *c)
 /* This rank's choice, without communication: 1 when it can integrate its
    atoms in the local mode (the CSR kernel, or the on-the-fly tiles:
    SDG_local.otf), 0 when it cannot.  node_ranks: the ranks sharing the
-   device. */
-static int SDG_local_prepare(const OpenMXAtomicViews *atomic, int Cnt_kind, int Calc_CntOrbital_ON, int node_ranks)
+   device.  *vote_need / *vote_budget (zero on entry): this rank's figures
+   for the stage vote of Set_Density_Grid_GPU_Local_Prepare, set by the CSR
+   admission; zero need means no CSR staging of its own. */
+static int SDG_local_prepare(const OpenMXAtomicViews *atomic, int Cnt_kind, int Calc_CntOrbital_ON, int node_ranks,
+                             size_t *vote_need, size_t *vote_budget)
 {
   SDGLocalContext *c = &SDG_local;
   int spin_count = SpinP_switch + 1;
@@ -1504,8 +1508,15 @@ static int SDG_local_prepare(const OpenMXAtomicViews *atomic, int Cnt_kind, int 
     if (hipGetDevice(&device) != hipSuccess) return 0;
     if (device != c->device_id) SDG_local_delete_device(c);
   }
-  if (OpenMX_GpuMemGetInfo(&free_bytes, &total_bytes) != hipSuccess) return 0;
+  if (OpenMX_GpuMemGetInfo(&free_bytes, &total_bytes) != hipSuccess) {
+    *vote_need = SIZE_MAX;  /* the stage cannot be planned on this device */
+    return 0;
+  }
   need = SDG_local_call_bytes(c);
+  /* the stage vote: this call's staging against the rank's share of the
+     device, the figures of the admission below */
+  *vote_need = need;
+  *vote_budget = reserve_bytes <= free_bytes ? (free_bytes - reserve_bytes) / (size_t)c->node_ranks : 0;
   if (free_bytes < reserve_bytes) return 0;
   if ((free_bytes - reserve_bytes) / (size_t)c->node_ranks < need) return 0;
   return 1;
@@ -1525,12 +1536,13 @@ static int SDG_local_prepare(const OpenMXAtomicViews *atomic, int Cnt_kind, int 
    reading it). */
 static struct {
   int atom_ranks, declined, workspace_declined;
+  int host;  /* the stage vote sent every rank to the host SIMD quadrature */
 } SDG_census = {0};
 
 int Set_Density_Grid_GPU_Local_Prepare(const OpenMXAtomicViews *atomic, int Cnt_kind, int Calc_CntOrbital_ON)
 {
   unsigned long long counts[4], totals[4];
-  size_t need = 0, available = 0;
+  size_t need = 0, available = 0, vote_need = 0, vote_budget = 0;
   int ok, workspace_declined = 0;
 
   if (scf_eigen_lib_flag != GPUSOLVER) {
@@ -1539,10 +1551,18 @@ int Set_Density_Grid_GPU_Local_Prepare(const OpenMXAtomicViews *atomic, int Cnt_
     return 0;
   }
 
-  ok = SDG_local_prepare(atomic, Cnt_kind, Calc_CntOrbital_ON, openmx_gpu_ranks_per_device_noncollective());
+  ok = SDG_local_prepare(atomic, Cnt_kind, Calc_CntOrbital_ON, openmx_gpu_ranks_per_device_noncollective(),
+                         &vote_need, &vote_budget);
   if (ok && Matomnum > 0 && SDG_local.otf) {
     ok = Set_Density_Grid_OTF_Prepare(atomic, SDG_local.cnt_kind, &need, &available);
     workspace_declined = !ok && need > available;
+    /* the stage vote of an on-the-fly rank: its arena against the free
+       memory less the reserve (no plan: the stage cannot be planned) */
+    vote_need = (ok || need != 0) ? need : SIZE_MAX;
+    vote_budget = available;
+    /* a declined arena cannot run on this device in pieces: the rank votes
+       host, so no rank enters the capacity recovery (legacy keeps it) */
+    if (workspace_declined) vote_need = SIZE_MAX;
     if (workspace_declined && 3 <= level_stdout) {
       int myid;
       MPI_Comm_rank(mpi_comm_level1, &myid);
@@ -1564,7 +1584,24 @@ int Set_Density_Grid_GPU_Local_Prepare(const OpenMXAtomicViews *atomic, int Cnt_
   SDG_census.atom_ranks = (int)totals[1];
   SDG_census.declined = (int)totals[2];
   SDG_census.workspace_declined = (int)totals[3];
+
+  /* The stage vote, the last collective of the preparation (every rank of a
+     GPU run reaches it): the distributed quadrature's device working set on
+     this rank (the CSR staging of the call, or an on-the-fly rank's arena)
+     against what its admission allows. After a host decision every rank
+     declines, and Set_Density_Grid skips the all-rank on-the-fly mode, the
+     one-rank service and the capacity recovery as well
+     (Set_Density_Grid_GPU_Local_StageOnHost). */
+  SDG_census.host = OpenMX_HostSimdStageOnHost("Set_Density_Grid", vote_need, vote_budget);
+  if (SDG_census.host) ok = 0;
   return ok;
+}
+
+/* The stage vote of the last Set_Density_Grid_GPU_Local_Prepare, the same on
+   every rank: 1 = the whole call on the host SIMD quadrature. No collective. */
+int Set_Density_Grid_GPU_Local_StageOnHost(void)
+{
+  return SDG_census.host;
 }
 
 /* No collectives here.  path 1 is the single-owner service; path 2 lets

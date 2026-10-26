@@ -341,6 +341,95 @@ void convert_case() {
   }
 }
 
+// ---- Set_OLP_Kin radial quadrature --------------------------------------------
+void overlap_case() {
+  std::mt19937 rng(51u);
+  for(int points:{0,1,2,3,9,901})for(int orders:{0,1,2,3,5,7,9})for(int combos:{0,1,3,8,9,16,25,33})for(int onsite:{0,1}) {
+    const size_t tstride=size_t(combos)+3,sstride=size_t(points)+2,ostride=size_t(combos)+1;
+    std::vector<double> k(points),r0(size_t(points)*tstride),r1(r0.size()),sb(size_t(orders)*sstride),sbp(sb.size());
+    for(auto& v:k)v=noisy(rng);for(auto& v:r0)v=noisy(rng);for(auto& v:r1)v=noisy(rng);
+    for(auto& v:sb)v=noisy(rng);for(auto& v:sbp)v=noisy(rng);
+    const double h=noisy(rng);
+    // legacy: for l, for combo: for i (Set_OLP_Kin.c CPU branch)
+    std::vector<double> expected[4];
+    for(auto& e:expected)e.assign(size_t(orders)*ostride,5.5);
+    const int last=points-1;
+    for(int l=0;l<orders;l++)for(int c=0;c<combos;c++) {
+      double s0=0,k0=0,sr=0,kr=0;
+      for(int i=0;i<points;i++) {
+        const double coe0=(i==0 || i==last)?0.50:1.00;
+        const double Normk=k[i],Normk2=Normk*Normk,sj=sb[size_t(l)*sstride+i],sjp=sbp[size_t(l)*sstride+i];
+        const double tmp0=coe0*h*Normk2*r0[size_t(i)*tstride+c];
+        const double tmp1=tmp0*sj,tmp2=tmp0*Normk*sjp;
+        const double tmp3=tmp1*r1[size_t(i)*tstride+c],tmp4=tmp2*r1[size_t(i)*tstride+c];
+        s0+=tmp3;k0+=tmp3*Normk2;sr+=tmp4;kr+=tmp4*Normk2;
+      }
+      if(onsite){sr=0.0;kr=0.0;}
+      const size_t at=size_t(l)*ostride+c;
+      expected[0][at]=s0;expected[1][at]=k0;expected[2][at]=sr;expected[3][at]=kr;
+    }
+    for(int mode:modes()) {
+      std::vector<double> out[4];
+      for(auto& o:out)o.assign(size_t(orders)*ostride,5.5);
+      OpenMXVnaOverlapRadial q;
+      q.points=points;q.orders=orders;q.combos=combos;q.onsite=onsite;q.h=h;q.k=k.data();
+      q.rf0t=r0.data();q.rf1t=r1.data();q.table_stride=tstride;q.sb=sb.data();q.sbp=sbp.data();q.sb_stride=sstride;
+      for(int c=0;c<4;++c)q.out[c]=out[c].data();
+      q.out_stride=ostride;
+      require(openmx_core_vna_overlap_radial(&q,mode),"overlap radial refused a valid request");
+      for(int c=0;c<4;++c)if(!same(out[c],expected[c]))report("overlap radial differs from the legacy loop",mode,out[c],expected[c]);
+    }
+  }
+}
+
+// ---- Set_Nonlocal radial quadrature -------------------------------------------
+void nonlocal_case() {
+  std::mt19937 rng(53u);
+  for(int points:{0,1,2,3,9,901})for(int orders:{0,1,2,3,5,7,9})for(int combos:{0,1,3,8,9,16,30,33})for(int onsite:{0,1}) {
+    const size_t tstride=size_t(combos)+3,sstride=size_t(points)+2,ostride=size_t(combos)+1;
+    std::vector<double> k(points),rf(size_t(points)*tstride),nl(rf.size()),sb(size_t(orders)*sstride),sbp(sb.size());
+    for(auto& v:k)v=noisy(rng);for(auto& v:rf)v=noisy(rng);for(auto& v:nl)v=noisy(rng);
+    for(auto& v:sb)v=noisy(rng);for(auto& v:sbp)v=noisy(rng);
+    const double h=noisy(rng);
+    // legacy: for LL, zero the sums, then for i, (L0,Mul0), L (openmx_nonlocal_cpu.h CPU loop)
+    std::vector<double> expected[2];
+    for(auto& e:expected)e.assign(size_t(orders)*ostride,5.5);
+    for(int LL=0;LL<orders;LL++) {
+      std::vector<double> SumNL0(combos,0.0),SumNLr0(combos,0.0);
+      for(int i=0;i<points;i++) {
+        double coe0;
+        if(i==0 || i==(points-1))coe0=0.50;
+        else coe0=1.00;
+        const double Normk=k[i],sj=sb[size_t(LL)*sstride+i],sjp=sbp[size_t(LL)*sstride+i];
+        for(int c=0;c<combos;c++) {
+          const double Bessel_Pro0=rf[size_t(i)*tstride+c];
+          const double tmp0=coe0*h*Normk*Normk*Bessel_Pro0;
+          const double tmp1=tmp0*sj;
+          const double tmp2=tmp0*Normk*sjp;
+          const double Bessel_Pro1=nl[size_t(i)*tstride+c];
+          const double tmp3=tmp1*Bessel_Pro1;
+          const double tmp4=tmp2*Bessel_Pro1;
+          SumNL0[c]+=tmp3;
+          SumNLr0[c]+=tmp4;
+        }
+      }
+      if(onsite)for(int c=0;c<combos;c++)SumNLr0[c]=0.0;
+      for(int c=0;c<combos;c++){expected[0][size_t(LL)*ostride+c]=SumNL0[c];expected[1][size_t(LL)*ostride+c]=SumNLr0[c];}
+    }
+    for(int mode:modes()) {
+      std::vector<double> out[2];
+      for(auto& o:out)o.assign(size_t(orders)*ostride,5.5);
+      OpenMXVnaNonlocalRadial q;
+      q.points=points;q.orders=orders;q.combos=combos;q.onsite=onsite;q.h=h;q.k=k.data();
+      q.rft=rf.data();q.nlrft=nl.data();q.table_stride=tstride;q.sb=sb.data();q.sbp=sbp.data();q.sb_stride=sstride;
+      q.out[0]=out[0].data();q.out[1]=out[1].data();
+      q.out_stride=ostride;
+      require(openmx_core_vna_nonlocal_radial(&q,mode),"nonlocal radial refused a valid request");
+      for(int c=0;c<2;++c)if(!same(out[c],expected[c]))report("nonlocal radial differs from the legacy loop",mode,out[c],expected[c]);
+    }
+  }
+}
+
 void invalid_case() {
   double d[16]={0};const double* rows[1]={d};int lengths[1]={2};float f[8]={0};
   OpenMXVnaContract c={4,2,1,2,2,d,rows,rows,d+4,d+8};
@@ -396,6 +485,39 @@ void invalid_case() {
   v.columns=33;require(!openmx_core_vna_convert(&v,OPENMX_GRID_SCALAR),"convert accepted too many columns");
   v.columns=3;v.ld=2;require(!openmx_core_vna_convert(&v,OPENMX_GRID_SCALAR),"convert accepted a short transposed stride");
   v.ld=3;v.out[2]=nullptr;require(!openmx_core_vna_convert(&v,OPENMX_GRID_SCALAR),"convert accepted a missing output row");
+  // the two radial quadratures: refusals leave every output untouched
+  double ko[4]={1,2,3,4},ro[16]={0},so[16]={0},oo[4][8];
+  auto untouched=[&](const char* message) {
+    for(auto& row:oo)for(double v:row)require(v==7.0,message);
+  };
+  OpenMXVnaOverlapRadial o={};
+  o.points=2;o.orders=2;o.combos=3;o.h=0.1;o.k=ko;o.rf0t=ro;o.rf1t=ro;o.table_stride=3;o.sb=so;o.sbp=so;o.sb_stride=2;
+  for(int c=0;c<4;++c)o.out[c]=oo[c];
+  o.out_stride=3;
+  require(openmx_core_vna_overlap_radial(&o,OPENMX_GRID_SCALAR),"overlap radial refused a valid request");
+  for(auto& row:oo)for(double& v:row)v=7.0;
+  require(!openmx_core_vna_overlap_radial(&o,99) && !openmx_core_vna_overlap_radial(&o,OPENMX_HOST_SIMD_LEGACY),
+          "overlap radial accepted an unknown mode");
+  o.table_stride=2;require(!openmx_core_vna_overlap_radial(&o,OPENMX_GRID_SCALAR),"overlap radial accepted a short table stride");
+  o.table_stride=3;o.sb_stride=1;require(!openmx_core_vna_overlap_radial(&o,OPENMX_GRID_SCALAR),"overlap radial accepted a short Bessel stride");
+  o.sb_stride=2;o.out_stride=2;require(!openmx_core_vna_overlap_radial(&o,OPENMX_GRID_SCALAR),"overlap radial accepted a short output stride");
+  o.out_stride=3;o.rf1t=nullptr;require(!openmx_core_vna_overlap_radial(&o,OPENMX_GRID_SCALAR),"overlap radial accepted a missing table");
+  o.rf1t=ro;o.combos=-1;require(!openmx_core_vna_overlap_radial(&o,OPENMX_GRID_SCALAR),"overlap radial accepted negative combos");
+  o.combos=3;o.out[3]=nullptr;require(!openmx_core_vna_overlap_radial(&o,OPENMX_GRID_SCALAR),"overlap radial accepted a missing output");
+  untouched("overlap radial wrote output on a refused request");
+  OpenMXVnaNonlocalRadial n={};
+  n.points=2;n.orders=2;n.combos=3;n.h=0.1;n.k=ko;n.rft=ro;n.nlrft=ro;n.table_stride=3;n.sb=so;n.sbp=so;n.sb_stride=2;
+  n.out[0]=oo[0];n.out[1]=oo[1];n.out_stride=3;
+  require(!openmx_core_vna_nonlocal_radial(&n,99) && !openmx_core_vna_nonlocal_radial(&n,OPENMX_HOST_SIMD_LEGACY),
+          "nonlocal radial accepted an unknown mode");
+  n.table_stride=2;require(!openmx_core_vna_nonlocal_radial(&n,OPENMX_GRID_SCALAR),"nonlocal radial accepted a short table stride");
+  n.table_stride=3;n.sb_stride=1;require(!openmx_core_vna_nonlocal_radial(&n,OPENMX_GRID_SCALAR),"nonlocal radial accepted a short Bessel stride");
+  n.sb_stride=2;n.out_stride=2;require(!openmx_core_vna_nonlocal_radial(&n,OPENMX_GRID_SCALAR),"nonlocal radial accepted a short output stride");
+  n.out_stride=3;n.nlrft=nullptr;require(!openmx_core_vna_nonlocal_radial(&n,OPENMX_GRID_SCALAR),"nonlocal radial accepted a missing table");
+  n.nlrft=ro;n.points=-1;require(!openmx_core_vna_nonlocal_radial(&n,OPENMX_GRID_SCALAR),"nonlocal radial accepted negative points");
+  n.points=2;n.out[1]=nullptr;require(!openmx_core_vna_nonlocal_radial(&n,OPENMX_GRID_SCALAR),"nonlocal radial accepted a missing output");
+  untouched("nonlocal radial wrote output on a refused request");
+  n.out[1]=oo[1];require(openmx_core_vna_nonlocal_radial(&n,OPENMX_GRID_SCALAR),"nonlocal radial refused a valid request");
 }
 }
 int main(int argc,char** argv) {
@@ -407,6 +529,8 @@ int main(int argc,char** argv) {
     else if(name=="hvna")hvna_case();
     else if(name=="angular")angular_case();
     else if(name=="convert")convert_case();
+    else if(name=="overlap")overlap_case();
+    else if(name=="nonlocal")nonlocal_case();
     else if(name=="invalid")invalid_case();
     else throw std::runtime_error("unknown host vna case");
     std::cout<<"PASS host vna "<<name<<" (modes:";

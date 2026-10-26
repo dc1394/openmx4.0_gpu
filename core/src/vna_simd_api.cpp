@@ -79,3 +79,29 @@ extern "C" int openmx_core_vna_convert(const OpenMXVnaConvert* p,int mode) {
   k->convert(*p);
   return 1;
 }
+extern "C" int openmx_core_vna_overlap_radial(const OpenMXVnaOverlapRadial* p,int mode) {
+  const auto* k=kernels(mode);
+  if(!k || !p || p->points<0 || p->orders<0 || p->combos<0)return 0;
+  if(!p->orders || !p->combos)return 1;
+  for(int q=0;q<4;++q)if(!p->out[q])return 0;
+  if(p->out_stride<size_t(p->combos))return 0;
+  if(p->points) {
+    if(!p->k || !p->rf0t || !p->rf1t || !p->sb || !p->sbp)return 0;
+    if(p->table_stride<size_t(p->combos) || p->sb_stride<size_t(p->points))return 0;
+  }
+  k->overlap_radial(*p);
+  return 1;
+}
+extern "C" int openmx_core_vna_nonlocal_radial(const OpenMXVnaNonlocalRadial* p,int mode) {
+  const auto* k=kernels(mode);
+  if(!k || !p || p->points<0 || p->orders<0 || p->combos<0)return 0;
+  if(!p->orders || !p->combos)return 1;
+  for(int q=0;q<2;++q)if(!p->out[q])return 0;
+  if(p->out_stride<size_t(p->combos))return 0;
+  if(p->points) {
+    if(!p->k || !p->rft || !p->nlrft || !p->sb || !p->sbp)return 0;
+    if(p->table_stride<size_t(p->combos) || p->sb_stride<size_t(p->points))return 0;
+  }
+  k->nonlocal_radial(*p);
+  return 1;
+}

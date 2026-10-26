@@ -13,7 +13,11 @@ admission can be exercised.  Checks:
   - the level1 agreement on the host archives (an allocation failure sends
     every rank to the CPU path; nothing leaks);
   - the stage gates (OPENMX_SETPRO_GPU, OPENMX_SETPRO_HVNA_GPU, APU default);
-  - OPENMX_SETPRO_VERBOSE notes only when requested.
+  - OPENMX_SETPRO_VERBOSE notes only when requested;
+  - under every host SIMD ISA of the linked Core: the device batch, the host
+    SIMD recovery of a failed device batch, and the begin's host vote (more
+    than 8 rank turns or one rank beyond the device) while legacy keeps the
+    turns.
 
     python3 tests/run_setpro_hvna_cpu.py --core-library /path/to/libopenmx_core.so [--sanitize]
     OPENMX_CORE_LIBRARY=/path/to/libopenmx_core.so python3 tests/run_setpro_hvna_cpu.py --gpu
@@ -140,6 +144,31 @@ static int hipFree(void* ptr) { if (ptr != NULL) device_live--; free(ptr); retur
 static int hipMemcpy(void* dst, const void* src, size_t n, int kind) { memcpy(dst, src, n); return hipSuccess; }
 static int hipDeviceSynchronize(void) { return hipSuccess; }
 static int hipGetLastError(void) { return hipSuccess; }
+'''
+
+HOST_SIMD = r'''
+#include <omp.h>
+#include "openmx_host_simd.h"
+/* The OPENMX_HOST_SIMD policy (production: openmx_host_simd.c). Legacy keeps
+   the element fallback and the capacity variant this harness was written
+   for; a host SIMD mode votes like OpenMX_HostSimdStageOnHost with identical
+   ranks (an unknown size, no budget, or more than 8 budget pieces move the
+   stage to the host) and recovers a failed batch on the host SIMD path. */
+static int harness_host_simd = OPENMX_HOST_SIMD_LEGACY, stage_calls = 0, last_host_vote = -1;
+int OpenMX_HostSimdMode(void) { return harness_host_simd; }
+int OpenMX_HostSimdStageOnHost(const char* stage, size_t need, size_t budget)
+{
+    (void)stage;
+    stage_calls++;
+    if (harness_host_simd == OPENMX_HOST_SIMD_LEGACY || need == 0) return 0;
+    return need == SIZE_MAX || budget == 0 || 8.0 < (double)need / (double)budget;
+}
+#ifndef _OPENMP
+/* a host build without OpenMP: the serial runtime the CPU headers query */
+int omp_get_max_threads(void) { return 1; }
+int omp_get_thread_num(void) { return 0; }
+int omp_get_num_threads(void) { return 1; }
+#endif
 '''
 
 HIP_DEVICE = r'''
@@ -341,7 +370,8 @@ static int begin(void) {
     OpenMXVnaPreparation *preparation=openmx_core_vna_preparation_create(&shape,&views,error,sizeof(error));
     CHECK(preparation);
     const OpenMXReciprocalViews reciprocal={.vps={.neutral_energies=VNA_proj_ene}};
-    int enabled=SetPro_HVNA_GpuBegin(&reciprocal,&context,ds,preparation,NRVNA);
+    last_host_vote=-1;
+    int enabled=SetPro_HVNA_GpuBegin(&reciprocal,&context,ds,preparation,NRVNA,&last_host_vote);
     openmx_core_vna_preparation_destroy(preparation);
     return enabled;
 }
@@ -433,6 +463,49 @@ int main(void)
     CHECK(!begin());
     scf_eigen_lib_flag = GPUSOLVER;
 
+    /* OPENMX_HOST_SIMD, every ISA of the linked Core: the device batch, a
+       failed device batch recovered on the host SIMD path (the CPU pass's
+       contraction from the host archives), and the begin vote: up to 8 rank
+       turns keep the device, more turns or one rank beyond the device vote
+       for the host (the dispatcher then runs the CPU passes, not the
+       capacity variant); legacy keeps the turns and the capacity variant. */
+    for (int mode = OPENMX_GRID_SCALAR; mode <= OPENMX_GRID_NEON; mode++) {
+        if (!openmx_core_host_simd_usable(mode)) continue;
+        harness_host_simd = mode;
+        countdown = stage_calls;
+        CHECK(begin() && last_host_vote == 0 && stage_calls == countdown + 1);
+        err = run_batch(); if (max_error < err) max_error = err;
+        CHECK(device_live == 0);
+        SetPro_HVNA_GpuEnd(&context);
+        CHECK(begin());
+        device_fail = 1;
+        err = run_batch(); if (max_error < err) max_error = err;
+        device_fail = 0;
+        CHECK(device_live == 0);
+        SetPro_HVNA_GpuEnd(&context);
+        fake_node_ranks = 4;
+        fake_node_rank = 3;
+        free_bytes_stub = 256 * MiB + 100 * MiB;     /* 4 turns: the device */
+        CHECK(begin() && context.turns == 4 && last_host_vote == 0);
+        SetPro_HVNA_GpuEnd(&context);
+        free_bytes_stub = 256 * MiB + 60 * MiB;      /* not even one rank */
+        CHECK(!begin() && last_host_vote == 1);
+        CHECK(context.flat == NULL && context.halo == NULL && context.enabled == 0);
+        fake_node_ranks = 12;
+        fake_node_rank = 11;
+        free_bytes_stub = 256 * MiB + 70 * MiB;      /* 12 turns: more than 8 pieces */
+        CHECK(!begin() && last_host_vote == 1);
+        harness_host_simd = OPENMX_HOST_SIMD_LEGACY; /* legacy: the turns */
+        CHECK(begin() && context.turns == 12 && last_host_vote == 0);
+        SetPro_HVNA_GpuEnd(&context);
+        free_bytes_stub = 256 * MiB + 60 * MiB;      /* legacy: the capacity variant next */
+        CHECK(!begin() && last_host_vote == 0);
+        fake_node_ranks = 1;
+        fake_node_rank = 0;
+        free_bytes_stub = (size_t)16 << 30;
+    }
+    harness_host_simd = OPENMX_HOST_SIMD_LEGACY;
+
     free_fixture();
     printf("PASS: HVNA device batch and host fallback against the reference (max error %.3g); "
         "rank turns, OPENMX_SETPRO_HVNA_TURNS=0, node RAM cap, unreadable meminfo, host archive "
@@ -444,12 +517,14 @@ int main(void)
 
 def make_harness(source: str, gpu: bool) -> str:
     parts = ['#include "openmx_core_reciprocal.h"', PREFIX, '#include "openmx_precision.h"', HIP_DEVICE if gpu else HOST_DEVICE,
-             "static SetProGpuContext context = { 0 };\n"]
+             HOST_SIMD, "static SetProGpuContext context = { 0 };\n"]
     for name in ("SetPro_gpu_abort", "SetPro_checked_malloc",
                  "SetPro_gpu_default_enabled", "SetPro_gpu_stage_enabled", "SetPro_verbose",
                  "SetPro_free_mib", "SetPro_note", "SetPro_arena_off", "SetPro_device_try",
                  "SetPro_HVNA_element", "SetPro_HVNA_GpuBegin", "SetPro_HVNA_GpuEnd",
-                 "SetPro_HVNA_GpuArchiveHalo", "SetPro_HVNA_GpuRun"):
+                 "SetPro_HVNA_GpuArchiveHalo", "SetPro_HVNA_HostArchives", "SetPro_HVNA_GpuRun"):
+        if name == "SetPro_HVNA_HostArchives":
+            parts.append('#include "openmx_hvna_cpu.h"\n')
         parts.append(extract_function(source, name))
     parts.append(MAIN)
     return "\n".join(parts)

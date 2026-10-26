@@ -27,6 +27,8 @@
 #include "set_hip_default_device_from_local_rank.h"
 #include "orbs_otf_hip.h"
 #include "openmx_precision.h"
+#include "openmx_host_simd.h"
+#include "openmx_core_orbitals_simd.h"
 
 
 /***********************************************************************
@@ -51,11 +53,12 @@ int Set_Orbitals_Grid_OTF_Prepare(const OpenMXAtomicViews *atomic);
 
 
 
-static int SOG_gpu_requested(int Cnt_kind)
+/* The primitive orbital rows this file evaluates outside the host loops
+   (on the device or with the Core's host SIMD kernel): uncontracted bases
+   with L0 <= SOG_L0MAX, float tables; the same on every rank. */
+static int SOG_rows_requested(int Cnt_kind)
 {
   int w, L0;
-
-  if (scf_eigen_lib_flag!=GPUSOLVER || (!openmx_env_flag_at(OPENMX_ENV_GPU, 1))) return 0;
 
   if (Cnt_kind != 0) return 0;
   if (!openmx_env_flag_at(OPENMX_ENV_ORBS_GRID_GPU, 1)) return 0;
@@ -72,6 +75,12 @@ static int SOG_gpu_requested(int Cnt_kind)
   }
 
   return 1;
+}
+
+static int SOG_gpu_requested(int Cnt_kind)
+{
+  if (scf_eigen_lib_flag!=GPUSOLVER || (!openmx_env_flag_at(OPENMX_ENV_GPU, 1))) return 0;
+  return SOG_rows_requested(Cnt_kind);
 }
 static int SOG_gpu_eligible(int Cnt_kind)
 {
@@ -102,6 +111,58 @@ static void *SOG_arena_try(size_t bytes)
     if (arena == NULL) (void)hipGetLastError();
   }
   return arena;
+}
+
+/* The device working set of Set_Orbitals_Grid_GPU on this rank: its staging
+   arena (the per-atom maxima; keep in sync with the layout there) plus the
+   species' tables that Set_Orbitals_Grid_OTF_Prepare uploads (the FP64
+   radial tables, a double-float copy of the radial functions and the cell
+   translations). */
+static size_t SOG_device_need(const OpenMXAtomicViews *atomic,int myid)
+{
+  size_t max_pts=0,max_chi=0,max_fpts=0,max_fchi=0,rv_cnt=0,rwf_cnt=0,pos=0,cnt;
+  int npair_cap=0;
+  for (int Mc_AN=1;Mc_AN<=Matomnum;Mc_AN++) {
+    size_t fpts=0,fchi=0;
+    int npair=0;
+    const int Gc_AN=M2G[Mc_AN];
+    const int NO0=atomic->species.orbitals[WhatSpecies[Gc_AN]];
+    if (max_pts<(size_t)GridN_Atom[Gc_AN]) max_pts=(size_t)GridN_Atom[Gc_AN];
+    cnt=(size_t)GridN_Atom[Gc_AN]*(size_t)NO0;
+    if (max_chi<cnt) max_chi=cnt;
+    for (int h_AN=0;h_AN<=FNAN[Gc_AN];h_AN++) {
+      const int Gh_AN=natn[Gc_AN][h_AN];
+      if (G2ID[Gh_AN]!=myid && 0<NumOLG[Mc_AN][h_AN]) {
+        fpts+=(size_t)NumOLG[Mc_AN][h_AN];
+        fchi+=(size_t)NumOLG[Mc_AN][h_AN]*(size_t)atomic->species.orbitals[WhatSpecies[Gh_AN]];
+        npair++;
+      }
+    }
+    if (max_fpts<fpts) max_fpts=fpts;
+    if (max_fchi<fchi) max_fchi=fchi;
+    if (npair_cap<npair) npair_cap=npair;
+  }
+  if (npair_cap<1) npair_cap=1;
+  if (0<Matomnum) {
+    (void)SOG_arena_off(&pos,sizeof(int)*(max_pts==0 ? 1 : max_pts));
+    (void)SOG_arena_off(&pos,sizeof(int)*(max_pts==0 ? 1 : max_pts));
+    (void)SOG_arena_off(&pos,sizeof(int)*(max_fpts==0 ? 1 : max_fpts));
+    (void)SOG_arena_off(&pos,sizeof(OTF_Atom)*(size_t)npair_cap);
+    (void)SOG_arena_off(&pos,sizeof(int)*(size_t)npair_cap);
+    (void)SOG_arena_off(&pos,sizeof(size_t)*(size_t)npair_cap);
+    (void)SOG_arena_off(&pos,sizeof(size_t)*(size_t)npair_cap);
+    (void)SOG_arena_off(&pos,sizeof(size_t)*(size_t)npair_cap);
+    cnt=max_chi<max_fchi ? max_fchi : max_chi;
+    (void)SOG_arena_off(&pos,sizeof(float)*(cnt==0 ? 1 : cnt));
+  }
+  for (int w=0;w<SpeciesNum;w++) {
+    for (int L0=0;L0<=OTF_L0MAX;L0++) {
+      const int nb=L0<=atomic->species.basis_lmax[w] ? atomic->species.basis[(size_t)w*atomic->species.angular_channels+(size_t)L0] : 0;
+      rwf_cnt+=(size_t)nb*(size_t)atomic->species.pao_mesh[w];
+    }
+    rv_cnt+=(size_t)atomic->species.pao_mesh[w];
+  }
+  return pos+sizeof(double)*(rv_cnt+2*rwf_cnt+3*((size_t)TCpyCell+1));
 }
 
 /* returns 1 when the whole update ran on the device; 0 keeps the host path
@@ -778,10 +839,80 @@ static void SOG_capacity_kernel(size_t first,size_t n,const void *parameters,voi
   }
 }
 
+/* Every orbital row of this rank straight from the Core's segment kernel
+   (Kokkos::simd, bitwise SOG_point_eval), for a rank whose rows are pending
+   (the preflight voted for the host, the device is unusable, or the device
+   part failed): one segment per atom grid and per overlap with an atom of
+   another rank, cut into pieces for the threads, written into Orbs_Grid and
+   Orbs_Grid_FNAN without point records, an output tile or collectives. 0
+   (the legacy loops selected or the kernel refused) leaves every row to the
+   tiled capacity path, which overwrites them all. */
+#define SOG_HOST_PIECE 16384
+static int SOG_host_rows(const OpenMXAtomicViews *atomic,const SOG_CapacityParameters *p,const double *rv,const double *rwf,
+    const double *translations,const size_t *rvo,const size_t *rwbo,const int *mesh,const int *maxl,const int *nb,int rank)
+{
+  const int mode=OpenMX_HostSimdMode();
+  if(mode==OPENMX_HOST_SIMD_LEGACY)return 0;
+  const OpenMXOrbitalsTables tables={rv,rwf,translations,rvo,rwbo,mesh,maxl,nb,SpeciesNum,SOG_L0MAX,SOG_MULMAX,TCpyCell+1};
+  OpenMXOrbitalsFrame frame;
+  frame.ng23=p->ng23;frame.ng3=p->ng3;frame.max_no=p->max_no;
+  for(int i=0;i<9;i++)frame.frame[i]=p->frame[i];
+  for(int i=0;i<3;i++)frame.origin[i]=p->origin[i];
+  size_t pieces=0,total=0;
+  for(int mc=1;mc<=Matomnum;mc++) {
+    const int gc=M2G[mc];
+    for(int h=-1;h<=FNAN[gc];h++) {
+      if(h>=0 && G2ID[natn[gc][h]]==rank)continue;
+      const size_t n=h<0?(size_t)GridN_Atom[gc]:(size_t)NumOLG[mc][h];
+      pieces+=(n+SOG_HOST_PIECE-1)/SOG_HOST_PIECE;total+=n;
+    }
+  }
+  if(!pieces)return 1;
+  OpenMXOrbitalsSegment *seg=malloc(pieces*sizeof(*seg));
+  if(!seg)return 0;
+  size_t at=0;
+  for(int mc=1;mc<=Matomnum;mc++) {
+    const int gc=M2G[mc];
+    for(int h=-1;h<=FNAN[gc];h++) {
+      const int gh=h<0?gc:natn[gc][h];
+      if(h>=0 && G2ID[gh]==rank)continue;
+      const size_t n=h<0?(size_t)GridN_Atom[gc]:(size_t)NumOLG[mc][h];
+      for(size_t first=0;first<n;first+=SOG_HOST_PIECE) {
+        OpenMXOrbitalsSegment *e=seg+at++;
+        e->wan=WhatSpecies[gh];e->no=atomic->species.orbitals[e->wan];
+        for(int d=0;d<3;d++){e->xyz[d]=Gxyz[gh][d+1];e->shift[d]=h<0?0.0:atv[ncn[gc][h]][d+1];}
+        e->count=n-first<SOG_HOST_PIECE?n-first:SOG_HOST_PIECE;
+        if(h<0){e->index=NULL;e->grid=GridListAtom[mc]+first;e->cell=CellListAtom[mc]+first;e->rows=(float *const *)Orbs_Grid[mc]+first;}
+        else{e->index=GListTAtoms1[mc][h]+first;e->grid=GridListAtom[mc];e->cell=CellListAtom[mc];e->rows=(float *const *)Orbs_Grid_FNAN[mc][h]+first;}
+      }
+    }
+  }
+  double begin,end;
+  dtime(&begin);
+  int ok=1;
+  if(omp_in_parallel() || omp_get_max_threads()<=1 || pieces<2) ok=openmx_core_orbitals_segments(&tables,&frame,seg,pieces,mode);
+  else {
+    long i;
+#pragma omp parallel for schedule(dynamic) reduction(&&:ok)
+    for(i=0;i<(long)pieces;i++) if(ok) ok=openmx_core_orbitals_segments(&tables,&frame,seg+i,1,mode);
+  }
+  dtime(&end);
+  free(seg);
+  if(3<=level_stdout){
+    printf("<Set_Orbitals_Grid> rank %d host rows: %zu points in %zu pieces, %.3f s%s\n",rank,total,pieces,end-begin,ok?"":" (refused)");
+    fflush(stdout);
+  }
+  return ok;
+}
+
 /* Failed owner staging is retried as independent point tiles. The radial
    tables are small, immutable lookups; no complete rank orbital table is
-   replicated on a helper GPU or sent to another node. */
-static int SOG_capacity_recover(const OpenMXAtomicViews *atomic, int done,int rank,int requested)
+   replicated on a helper GPU or sent to another node. A pending rank first
+   writes its rows on the host SIMD path (SOG_host_rows, no collectives);
+   the tiles remain for the legacy policy, a kernel refusal, the capacity
+   fault injection and the requested GPU-worker distribution, unless the
+   preflight voted for the host (host). */
+static int SOG_capacity_recover(const OpenMXAtomicViews *atomic, int done,int rank,int requested,int host)
 {
   int pending=requested && !done,any=0;MPI_Allreduce(&pending,&any,1,MPI_INT,MPI_MAX,mpi_comm_level1);
   if (!any) return done;
@@ -813,7 +944,9 @@ static int SOG_capacity_recover(const OpenMXAtomicViews *atomic, int done,int ra
       }
     }
     if(ready)for(int r=0;r<=TCpyCell;r++)for(int i=0;i<3;i++)translations[3*(size_t)r+i]=atv[r][i+1];
-    for(int mc=1;ready && mc<=Matomnum;mc++) {
+    const int direct=ready && (host || !(openmx_gpu_capacity_test_recovery() || openmx_gpu_workers_requested())) &&
+        SOG_host_rows(atomic,&p,rv,rwf,translations,rvo,rwbo,mesh,maxl,nb,rank);
+    for(int mc=1;ready && !direct && mc<=Matomnum;mc++) {
       int gc=M2G[mc];rows+=(size_t)GridN_Atom[gc];
       for(int h=0;h<=FNAN[gc];h++)if(G2ID[natn[gc][h]]!=rank)rows+=(size_t)NumOLG[mc][h];
     }
@@ -897,10 +1030,22 @@ double Set_Orbitals_Grid(const OpenMXAtomicViews *atomic, int Cnt_kind, const Op
 
   dtime(&TStime);
 
-  /* device fast path; on any ineligibility or allocation failure the
-     untouched host loops below produce the same values */
-  int orbital_done=!(openmx_gpu_capacity_test_recovery() || openmx_gpu_workers_requested()) && SOG_gpu_eligible(Cnt_kind) && Set_Orbitals_Grid_GPU(atomic);
-  if (SOG_capacity_recover(atomic, orbital_done,myid,SOG_gpu_requested(Cnt_kind))) {
+  /* Device preflight vote, collective over mpi_comm_level1 (the rows gate is
+     the same on every rank): when some rank's device is unusable or cannot
+     hold the stage, every rank skips the device part and SOG_capacity_recover
+     writes its rows on the host SIMD path; a device failure ends there too.
+     A device that holds the stage keeps the device fast path. Under the
+     legacy policy the old routes stay: a usable device runs its fast path,
+     and without a requested device part the host loops below. Anything
+     else: the untouched host loops. */
+  const int rows_requested=SOG_rows_requested(Cnt_kind);
+  const int legacy=OpenMX_HostSimdMode()==OPENMX_HOST_SIMD_LEGACY;
+  int orbital_done=0,host=0;
+  if (rows_requested) {
+    host=OpenMX_HostSimdStageOnHost("Set_Orbitals_Grid",SOG_device_need(atomic,myid),OpenMX_HostSimdDeviceBudget(0));
+    if (!host || legacy) orbital_done=!(openmx_gpu_capacity_test_recovery() || openmx_gpu_workers_requested()) && SOG_gpu_eligible(Cnt_kind) && Set_Orbitals_Grid_GPU(atomic);
+  }
+  if (SOG_capacity_recover(atomic, orbital_done,myid,legacy?SOG_gpu_requested(Cnt_kind):rows_requested,host)) {
     dtime(&TEtime);
     return TEtime - TStime;
   }

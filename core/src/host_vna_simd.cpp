@@ -446,7 +446,93 @@ void convert(const OpenMXVnaConvert& p) {
     if(count>=V)convert_second<true>(p,cm,a,j0,count,tail);else convert_second<false>(p,cm,a,j0,count,tail);
   }
 }
-constexpr VnaKernels kernels{V,contract,bessel,quadrature,hvna_block,angular,convert};
+// ---- two-centre radial quadratures (Set_OLP_Kin, Set_Nonlocal) -------------
+// Lanes over the radial function pairs (combos), LB orders per pass. Each
+// (l, combo) element sees the legacy point order; t0 and t0*k are the same
+// operations for every l and are formed once per point and lane vector.
+// Sums: S, [K,] Sr[, Kr]; the derivative sums (from Sums/2 on) are zero for
+// an on-site pair, as the legacy loops set them after the quadrature.
+struct OverlapForm {   // Set_OLP_Kin: t0 = ((coe0*h)*k2)*rf0; S, K, Sr, Kr
+  static constexpr int sums=4;
+  static double scale(double coe0_h,double k,double k2) {(void)k;return coe0_h*k2;}
+};
+struct NonlocalForm {  // Set_Nonlocal: t0 = (((coe0*h)*k)*k)*rf; S, Sr
+  static constexpr int sums=2;
+  static double scale(double coe0_h,double k,double k2) {(void)k2;return coe0_h*k*k;}
+};
+struct RadialArgs {
+  int points,orders,combos,onsite;
+  double h;
+  const double *k,*rf0t,*rf1t;
+  size_t table_stride;
+  const double *sb,*sbp;
+  size_t sb_stride;
+  double* const* out;
+  size_t out_stride;
+};
+template<class Form> constexpr int radial_orders() {
+  return Form::sums==4 ? (V>=8?5:V>=4?2:4) : (V>=4?4:5);
+}
+template<class Form,int LB,bool FULL>
+void radial_block(const RadialArgs& p,int c0,int l0,Mask tail) {
+  constexpr int Q=Form::sums;
+  Vector acc[LB][Q];
+  for(int b=0;b<LB;++b)for(int q=0;q<Q;++q)acc[b][q]=Vector(0.0);
+  const double coe_h_edge=0.50*p.h,coe_h=1.00*p.h;
+  const int last=p.points-1;
+  for(int i=0;i<p.points;++i) {
+    const double k=p.k[i],k2=k*k;
+    const double coe0_h=(i==0 || i==last)?coe_h_edge:coe_h;   // coe0*h, the legacy first product
+    const double* r0=p.rf0t+size_t(i)*p.table_stride+size_t(c0);
+    const double* r1=p.rf1t+size_t(i)*p.table_stride+size_t(c0);
+    const Vector rf0=FULL?load(r0):simd::simd_partial_load<Vector>(r0,tail);
+    const Vector rf1=FULL?load(r1):simd::simd_partial_load<Vector>(r1,tail);
+    const Vector t0=Vector(Form::scale(coe0_h,k,k2))*rf0;
+    const Vector t0k=t0*Vector(k);                              // t0*k
+    for(int b=0;b<LB;++b) {
+      const size_t at=size_t(l0+b)*p.sb_stride+size_t(i);
+      const Vector t3=(t0*Vector(p.sb[at]))*rf1;                 // (t0*sj)*rf1
+      acc[b][0]+=t3;
+      if constexpr(Q==4)acc[b][1]+=t3*Vector(k2);
+      if(!p.onsite) {
+        const Vector t4=(t0k*Vector(p.sbp[at]))*rf1;             // ((t0*k)*sjp)*rf1
+        acc[b][Q/2]+=t4;
+        if constexpr(Q==4)acc[b][3]+=t4*Vector(k2);
+      }
+    }
+  }
+  for(int b=0;b<LB;++b) {
+    const size_t at=size_t(l0+b)*p.out_stride+size_t(c0);
+    for(int q=0;q<Q;++q) {
+      const Vector value=(p.onsite && q>=Q/2)?Vector(0.0):acc[b][q];
+      if constexpr(FULL)store(value,p.out[q]+at);
+      else simd::simd_partial_store(value,p.out[q]+at,tail);
+    }
+  }
+}
+template<class Form,bool FULL> void radial_vector(const RadialArgs& p,int c0,Mask tail) {
+  constexpr int B=radial_orders<Form>();
+  int l0=0;
+  for(;l0+B<=p.orders;l0+=B)radial_block<Form,B,FULL>(p,c0,l0,tail);
+  if constexpr(B>2)for(;l0+2<=p.orders;l0+=2)radial_block<Form,2,FULL>(p,c0,l0,tail);
+  for(;l0<p.orders;++l0)radial_block<Form,1,FULL>(p,c0,l0,tail);
+}
+template<class Form> void radial(const RadialArgs& p) {
+  for(int c0=0;c0<p.combos;c0+=V) {
+    const int count=std::min(V,p.combos-c0);
+    const Mask tail=lane_mask(count);
+    if(count>=V)radial_vector<Form,true>(p,c0,tail);else radial_vector<Form,false>(p,c0,tail);
+  }
+}
+void overlap_radial(const OpenMXVnaOverlapRadial& p) {
+  radial<OverlapForm>(RadialArgs{p.points,p.orders,p.combos,p.onsite,p.h,p.k,p.rf0t,p.rf1t,p.table_stride,
+                                 p.sb,p.sbp,p.sb_stride,p.out,p.out_stride});
+}
+void nonlocal_radial(const OpenMXVnaNonlocalRadial& p) {
+  radial<NonlocalForm>(RadialArgs{p.points,p.orders,p.combos,p.onsite,p.h,p.k,p.rft,p.nlrft,p.table_stride,
+                                  p.sb,p.sbp,p.sb_stride,p.out,p.out_stride});
+}
+constexpr VnaKernels kernels{V,contract,bessel,quadrature,hvna_block,angular,convert,overlap_radial,nonlocal_radial};
 }
 const VnaKernels& OPENMX_HOST_SIMD_FACTORY(vna)() noexcept {return kernels;}
 }

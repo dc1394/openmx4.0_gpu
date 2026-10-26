@@ -1577,6 +1577,9 @@ SigmaEK.o: SigmaEK.c
 # Invocation-owned projector communication and shared VNA orchestration.
 Force.o Stress.o Set_Nonlocal.o Set_CoreHoleMatrix.o Set_ProExpn_VNA.o: openmx_projector_exchange.h openmx_core_projector_exchange.h
 Set_ProExpn_VNA.o: openmx_vna_assembly.h openmx_core_vna_invocation.h openmx_core_atom_pairs.h openmx_vna_tables.h openmx_vna_status.h
+Set_ProExpn_VNA.o Set_Nonlocal.o Set_OLP_Kin.o: openmx_host_simd.h openmx_core_host_simd.h openmx_core_vna_simd.h
+Set_ProExpn_VNA.o Set_OLP_Kin.o: openmx_gpu_task_layout.h
+Set_ProExpn_VNA.o: openmx_setpro_host.h openmx_setpro_gaunt.h
 
 # Shared flat orbital optimization and Hubbard force boundaries.
 DFT.o Opt_Contraction.o: openmx_orbital_optimization.h openmx_core_orbital_optimization.h
@@ -1588,6 +1591,9 @@ Force.o: openmx_force_projectors.h openmx_core_core_hole.h
 Force.o: openmx_core_projector_force.h
 Force.o: openmx_force_hnl_gpu.h openmx_native_resources.h openmx_core_native_resources.h
 Force.o: openmx_force_gpu_resources.h openmx_force_recovery.h openmx_core_force_recovery.h
+Force.o: openmx_host_simd.h openmx_core_host_simd.h openmx_core_force_simd.h openmx_core_force_vna_simd.h openmx_core_orbitals_simd.h
+Band_DFT_Col.o Total_Energy_GPU.o: openmx_host_simd.h openmx_core_host_simd.h openmx_core_energy_simd.h
+Cluster_DFT_Col.o Band_DFT_NonCol.o: openmx_host_simd.h openmx_core_host_simd.h
 Force.o: ../core/include/openmx_core_force_recovery.h
 Force.o: openmx_force_hnl_batch.h openmx_core_force_hnl_batch.h ../core/include/openmx_core_force_hnl_batch.h
 

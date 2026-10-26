@@ -21,6 +21,7 @@
 #include "openmx_gpu_transform.h"
 #include "openmx_gpu_dm_collective.h"
 #include "openmx_gpu_workers.h"
+#include "openmx_host_simd.h"
 #include "openmx_mgpu_density.h"
 
 #include "lapack_prototypes.h"
@@ -2281,13 +2282,19 @@ static int BandNonCol_BuildOccupationWeightsDense(const OpenMXChemicalPotentials
     return nk;
 }
 
-static void BandNonCol_AccumulateDMKPoint_OpenACC(BandNonColState *state, int myid2, int *is2, int *ie2, int *MP,
+/* host_recovery: only the direct device attempt runs, without the
+   collective capacity recovery of openmx_gpu_dm_collective; 0 is returned
+   when it declines, with the outputs untouched, and the caller accumulates
+   this k point on the host (Calc_DM_Band_non_collinear, store_flag 0: no
+   collective). Otherwise the collective path runs and 1 is returned. */
+static int BandNonCol_AccumulateDMKPoint_OpenACC(BandNonColState *state, int myid2, int *is2, int *ie2, int *MP,
                                                   int n, int n2, int size_H1,
                                                   double k1, double k2, double k3, const double *ko,
                                                   const dcomplex *EVec1,
                                                   double *rDM11, double *rDM22, double *rDM12,
                                                   double *iDM12, double *iDM11, double *iDM22,
-                                                  double *rEDM11, double *rEDM22,int active,MPI_Comm dm_comm)
+                                                  double *rEDM11, double *rEDM22,int active,MPI_Comm dm_comm,
+                                                  int host_recovery)
 {
     BandNonColDMEntryCache *cache=&state->dm_entry_cache;
     BandNonColDMOccWorkspace *ws=&state->dm_occ_workspace;
@@ -2301,9 +2308,15 @@ static void BandNonCol_AccumulateDMKPoint_OpenACC(BandNonColState *state, int my
     const void *vectors=NULL;int host=0;
     if(nk){vectors=acc_deviceptr((void*)EVec1);host=vectors==NULL;if(host)vectors=EVec1;}
     double *outputs[10]={rDM11,rDM22,rDM12,iDM12,iDM11,iDM22,rEDM11,rEDM22};
+    if(host_recovery)
+        return !nk || (!openmx_gpu_capacity_test_recovery() &&
+            openmx_gpu_dm_try_entries(OPENMX_GPU_DM_NC,n,nk,stride,cache->entry_count,
+                vectors,host,cache->basis0,cache->basis1,cache->phase_index,cache->pair_count,
+                cache->phase_r,cache->phase_i,ws->occ,ws->eig_occ,NULL,outputs,1));
     openmx_gpu_dm_collective(dm_comm,OPENMX_GPU_DM_NC,n,nk,stride,nk?cache->entry_count:0,
         vectors,host,cache->basis0,cache->basis1,nk?cache->phase_index:NULL,cache->pair_count,
         cache->phase_r,cache->phase_i,ws->occ,ws->eig_occ,NULL,outputs,1);
+    return 1;
 }
 
 /* GPU per-k DM accumulation for the legacy multi-k second loop, i.e. the
@@ -2317,6 +2330,23 @@ static int BandNonCol_UseGpuFallbackDM(int n2,size_t evec_bytes)
     (void)evec_bytes;
     return openmx_env_flag_at(OPENMX_ENV_BAND_NONCOL_GPU_DM, 1) && scf_eigen_lib_flag==GPUSOLVER &&
         (openmx_mgpu_host_required() || Band_DFT_NonCol_GpuSwitchNum()<=n2);
+}
+
+/* Device-or-host decision of that fallback DM (OpenMX_HostSimdStageOnHost,
+   collective over mpi_comm_level1: every rank, every k turn, behind the
+   rank-uniform BandNonCol_UseGpuFallbackDM). need = the direct device
+   attempt with host eigenvectors (its capacity_cost): two indices and
+   twelve doubles per entry, three weights per state, the two spinor rows of
+   all n orbitals over the states; budget = free device memory minus the
+   256 MiB reserve of the worker capacity check. */
+static int BandNonCol_DMOnHost(int n2, int states, int entries)
+{
+    size_t need = 0;
+    if (0 < entries && 0 < states)
+        need = (size_t)entries * (2 * sizeof(int) + 12 * sizeof(double)) + 3 * (size_t)states * sizeof(double)
+             + (size_t)n2 * (size_t)states * sizeof(dcomplex);
+    return OpenMX_HostSimdStageOnHost("Band_DFT_NonCol density matrix", need,
+                                      OpenMX_HostSimdDeviceBudget((size_t)256 << 20));
 }
 
 static void BandNonCol_AccumulateDMRootDenseK_OpenACC(BandNonColState *state, int size_H1, int *MP, int n, int n2, int MaxN,
@@ -2363,7 +2393,7 @@ static void BandNonCol_CalcDMAllK1_OpenACC(BandNonColState *state, int myid0, in
     memset(rEDM22,0,sizeof(double)*(size_t)size_H1);
 
     BandNonCol_AccumulateDMKPoint_OpenACC(state, myid2,is2,ie2,MP,n,n2,size_H1,k1,k2,k3,ko,EVec1,
-                                          rDM11,rDM22,rDM12,iDM12,iDM11,iDM22,rEDM11,rEDM22,1,mpi_comm_level1);
+                                          rDM11,rDM22,rDM12,iDM12,iDM11,iDM22,rEDM11,rEDM22,1,mpi_comm_level1,0);
 
     MPI_Allreduce(MPI_IN_PLACE,rDM11, size_H1,MPI_DOUBLE,MPI_SUM,mpi_comm_level1);
     MPI_Allreduce(MPI_IN_PLACE,rDM22, size_H1,MPI_DOUBLE,MPI_SUM,mpi_comm_level1);
@@ -6028,18 +6058,24 @@ static double Band_DFT_NonCol_owned(BandNonColState *state, char *mode,
 
       if ( strcasecmp(mode,"scf")==0 ){
 
-        if (BandNonCol_UseGpuFallbackDM(n2,(size_t)n2*(size_t)(ie2[myid2]-is2[myid2]+1)*sizeof(dcomplex))){
+        int nc_dm_done=0;
+        /* the vote of every rank and k turn, then the direct device attempt;
+           a declined attempt accumulates on the host (no collective) below.
+           OPENMX_HOST_SIMD=legacy keeps the collective capacity recovery. */
+        if (BandNonCol_UseGpuFallbackDM(n2,(size_t)n2*(size_t)(ie2[myid2]-is2[myid2]+1)*sizeof(dcomplex)) &&
+            !BandNonCol_DMOnHost(n2,kloop0<num_kloop0?ie2[myid2]-is2[myid2]+1:0,size_H1)){
           /* accumulates this k on the GPU; EVec1 stays unscaled because the
              kernel applies the Fermi weights itself */
           const openmx_mgpu_scope_state dm_scope =
               openmx_mgpu_band_scope_enter(!gpusolver2_flag,T_knum,kloop);
-          BandNonCol_AccumulateDMKPoint_OpenACC(state, myid2,is2,ie2,MP,n,n2,size_H1,k1,k2,k3,
+          nc_dm_done=BandNonCol_AccumulateDMKPoint_OpenACC(state, myid2,is2,ie2,MP,n,n2,size_H1,k1,k2,k3,
                                                 kloop0<num_kloop0?EIGEN[0][kloop]:NULL,EVec1[0],
                                                 rDM11,rDM22,rDM12,iDM12,iDM11,iDM22,
-                                                rEDM11,rEDM22,kloop0<num_kloop0,mpi_comm_level1);
+                                                rEDM11,rEDM22,kloop0<num_kloop0,mpi_comm_level1,
+                                                OpenMX_HostSimdMode()!=OPENMX_HOST_SIMD_LEGACY);
           openmx_mgpu_band_scope_leave(dm_scope);
         }
-        else{
+        if (!nc_dm_done){
 	Calc_DM_Band_non_collinear(state->chemical,  (kloop0<num_kloop0),0,
 				    myid0,myid2,size_H1,
 				    is2,ie2,MP,n,n2,MaxN,k1,k2,k3,

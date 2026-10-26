@@ -8,9 +8,12 @@ tree=ast.parse((root/'tests/run_gpu_vector_cpu.py').read_text())
 prefix=next(ast.literal_eval(n.value) for n in tree.body if isinstance(n,ast.Assign) and any(getattr(t,'id','')=='prefix' for t in n.targets))
 body=(root/'source/openmx_gpu_task.c').read_text().replace('#include <cuda_runtime.h>','').replace('#include "set_cuda_default_device_from_local_rank.h"','')
 functions=''
-for path,start,end in [('truncation.c','typedef struct {int grid,cell,l1,l2,l3;}','static int UCellBox_OLG_GPU('),('Set_ProExpn_VNA.c','typedef struct {int num_proj,num_rvna,fp32;}','static void SetPro_HVNA_archive_row('),('Set_Nonlocal.c','static void SetNL_capacity_bessel(','/*\n   Two-phase evaluation'),('Set_OLP_Kin.c','typedef struct {int grid_dim,grid_last,combo_count,h_AN;double h;}','static void OLPKin_Radial_Distribute(')]:
+for path,start,end in [('truncation.c','/* the Core\'s host kernel reads the same five ints */','static struct { int valid,md_iter,atoms;'),('Set_ProExpn_VNA.c','typedef struct {int num_proj,num_rvna,fp32;}','static void SetPro_HVNA_archive_row('),('Set_Nonlocal.c','static void SetNL_capacity_bessel(','/*\n   Two-phase evaluation'),('Set_OLP_Kin.c','typedef struct {int grid_dim,grid_last,combo_count,h_AN;double h;}','static void OLPKin_Radial_Distribute(')]:
  s=(root/'source'/path).read_text();a=s.index(start);b=s.index(end,a);functions+=s[a:b]
-functions='#define SETNL_SB_ARR 40\n'+functions
+functions=('#define SETNL_SB_ARR 40\n#include <omp.h>\n#include "openmx_core_olg.h"\n'
+  '#ifndef OPENMX_HOST_SIMD_LEGACY\n#define OPENMX_HOST_SIMD_LEGACY (-1)\n#endif\n'
+  'static int TCpyCell=0;\nstatic int OpenMX_HostSimdMode(void){return OPENMX_HOST_SIMD_LEGACY;}\n'
+  'int openmx_core_olg_intersect(const OpenMXOlgLists *l,const OpenMXOlgQuery *q,size_t n,int *o,int m){(void)l;(void)q;(void)n;(void)o;(void)m;return 0;}\n')+functions
 main=r'''
 static int cases;
 static void check(OpenMXGpuTask *t,const double *ref,int outputs){

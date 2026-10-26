@@ -1,4 +1,5 @@
 #include "openmx_core_vna_simd.h"
+#include "openmx_core_nonlocal.h"
 #include "openmx_core_host_simd.h"
 #include <chrono>
 #include <cmath>
@@ -225,6 +226,85 @@ int main(int argc,char** argv) {
           throw std::runtime_error("m sum/conversions differ from the legacy loops");
         }
         line(openmx_core_host_simd_name(mode),legacy/repeats*1e3,s/repeats*1e3,"ms per pair");
+      }
+    }
+    // Set_OLP_Kin radial quadrature: 901 points, orders l <= 4, 25 radial pairs (Si s2p2d1 x Si), 1044 pairs
+    {
+      const int pts=901,ords=5,combos=25,npairs=1044;const size_t ts=32;
+      std::vector<double> k(pts),r0(size_t(pts)*ts),r1(r0.size()),sb(size_t(ords)*pts),sbp(sb.size());
+      for(int i=0;i<pts;++i){k[i]=0.01*i;for(int c=0;c<combos;++c){r0[size_t(i)*ts+c]=1.0/(1+c+i);r1[size_t(i)*ts+c]=1.0/(2+c+0.5*i);}
+        for(int l=0;l<ords;++l){sb[size_t(l)*pts+i]=1.0/(1+l+i);sbp[size_t(l)*pts+i]=1.0/(3+l+i);}}
+      std::vector<double> ref[4],out[4];for(int q=0;q<4;++q){ref[q].assign(size_t(ords)*combos,0);out[q].assign(ref[q].size(),0);}
+      const double h=0.01;
+      const double legacy=seconds(repeats,[&]{for(int pp=0;pp<npairs;++pp)for(int l=0;l<ords;++l)for(int c=0;c<combos;++c){
+        double s0=0,k0=0,sr=0,kr=0;
+        for(int i=0;i<pts;++i){const double coe0=(i==0||i==pts-1)?0.5:1.0,N=k[i],N2=N*N,t0=coe0*h*N2*r0[size_t(i)*ts+c],t1=t0*sb[size_t(l)*pts+i],t2=t0*N*sbp[size_t(l)*pts+i],t3=t1*r1[size_t(i)*ts+c],t4=t2*r1[size_t(i)*ts+c];
+          s0+=t3;k0+=t3*N2;sr+=t4;kr+=t4*N2;}
+        ref[0][size_t(l)*combos+c]=s0;ref[1][size_t(l)*combos+c]=k0;ref[2][size_t(l)*combos+c]=sr;ref[3][size_t(l)*combos+c]=kr;}});
+      std::cout<<"Set_OLP_Kin radial quadrature: legacy "<<1e3*legacy/repeats<<" ms per call ("<<npairs<<" pairs)\n";
+      for(int mode=OPENMX_GRID_SCALAR;mode<=OPENMX_GRID_NEON;++mode) {
+        if(!openmx_core_host_simd_usable(mode))continue;
+        OpenMXVnaOverlapRadial q={};q.points=pts;q.orders=ords;q.combos=combos;q.onsite=0;q.h=h;q.k=k.data();
+        q.rf0t=r0.data();q.rf1t=r1.data();q.table_stride=ts;q.sb=sb.data();q.sbp=sbp.data();q.sb_stride=pts;
+        for(int c=0;c<4;++c)q.out[c]=out[c].data();
+        q.out_stride=combos;
+        const double s=seconds(repeats,[&]{for(int pp=0;pp<npairs;++pp)if(!openmx_core_vna_overlap_radial(&q,mode))throw std::runtime_error("overlap radial failed");});
+        for(int c=0;c<4;++c)if(out[c]!=ref[c])throw std::runtime_error("overlap radial differs from the legacy loop");
+        line(openmx_core_host_simd_name(mode),legacy/repeats*1e3,s/repeats*1e3,"ms per call");
+      }
+    }
+    // Set_Nonlocal radial quadrature: 901 points, orders l <= 4, 30 combos (Si s2p2d1 x 6 projectors), 1044 pairs
+    {
+      const int pts=901,ords=5,nb=5,np=6,combos=nb*np,npairs=1044;const size_t ts=32;
+      std::vector<double> k(pts),rf(size_t(nb)*pts),nl(size_t(np)*pts),rft(size_t(pts)*ts),nlt(rft.size()),sb(size_t(ords)*pts),sbp(sb.size());
+      for(int i=0;i<pts;++i){k[i]=0.01*i;for(int b=0;b<nb;++b)rf[size_t(b)*pts+i]=1.0/(1+b+i);for(int L=0;L<np;++L)nl[size_t(L)*pts+i]=1.0/(2+L+0.5*i);
+        for(int l=0;l<ords;++l){sb[size_t(l)*pts+i]=1.0/(1+l+i);sbp[size_t(l)*pts+i]=1.0/(3+l+i);}
+        for(int c=0;c<combos;++c){rft[size_t(i)*ts+c]=rf[size_t(c/np)*pts+i];nlt[size_t(i)*ts+c]=nl[size_t(c%np)*pts+i];}}
+      std::vector<double> ref[2],out[2];for(int q=0;q<2;++q){ref[q].assign(size_t(ords)*combos,0);out[q].assign(ref[q].size(),0);}
+      const double h=0.01;
+      // the legacy loop as openmx_nonlocal_cpu.h runs it: per order, points
+      // outermost, basis rows, projectors innermost, the sums addressed through
+      // the workspace buffers (openmx_core_nonlocal_sum) and species tables
+      const int lmax=2,basis[3]={2,2,1};
+      std::vector<double> sum_storage[2];
+      for(auto& v:sum_storage)v.assign(size_t(lmax+1)*2*(np+1),0.0);
+      OpenMXNonlocalBuffers buffers{};
+      buffers.multiplicity=2;buffers.projector_slots=np+1;
+      buffers.sums[0]=sum_storage[0].data();buffers.sums[1]=sum_storage[1].data();
+      std::vector<double> rf_cache(size_t(lmax+1)*2*pts),nl_cache(size_t(np+1)*pts);
+      for(int L0=0,b=0;L0<=lmax;++L0)for(int m=0;m<basis[L0];++m,++b)for(int i=0;i<pts;++i)rf_cache[size_t(L0*2+m)*pts+i]=rf[size_t(b)*pts+i];
+      for(int L=1;L<=np;++L)for(int i=0;i<pts;++i)nl_cache[size_t(L)*pts+i]=nl[size_t(L-1)*pts+i];
+      buffers.radial=rf_cache.data();buffers.nonlocal_radial[0]=nl_cache.data();
+      const double legacy=seconds(repeats,[&]{for(int pp=0;pp<npairs;++pp)for(int LL=0;LL<ords;++LL){
+        double *SumNL0=buffers.sums[0],*SumNLr0=buffers.sums[1];
+        const double *RF_BesselCache=buffers.radial,*NLRF_BesselCache=buffers.nonlocal_radial[0];
+        for(int L0=0;L0<=lmax;++L0)for(int Mul0=0;Mul0<basis[L0];++Mul0)for(int L=1;L<=np;++L){
+          SumNL0[openmx_core_nonlocal_sum(&buffers,L0,Mul0,L)]=0.0;SumNLr0[openmx_core_nonlocal_sum(&buffers,L0,Mul0,L)]=0.0;}
+        for(int i=0;i<pts;++i){
+          const double coe0=(i==0 || i==(pts-1))?0.50:1.00,Normk=k[i],sj=sb[size_t(LL)*pts+i],sjp=sbp[size_t(LL)*pts+i];
+          for(int L0=0;L0<=lmax;++L0)for(int Mul0=0;Mul0<basis[L0];++Mul0){
+            const double Bessel_Pro0=RF_BesselCache[size_t(L0*2+Mul0)*pts+i];
+            const double tmp0=coe0*h*Normk*Normk*Bessel_Pro0,tmp1=tmp0*sj,tmp2=tmp0*Normk*sjp;
+            for(int L=1;L<=np;++L){
+              const double Bessel_Pro1=NLRF_BesselCache[size_t(L)*pts+i];
+              SumNL0[openmx_core_nonlocal_sum(&buffers,L0,Mul0,L)]+=tmp1*Bessel_Pro1;
+              SumNLr0[openmx_core_nonlocal_sum(&buffers,L0,Mul0,L)]+=tmp2*Bessel_Pro1;
+            }
+          }
+        }
+        for(int L0=0,c=0;L0<=lmax;++L0)for(int Mul0=0;Mul0<basis[L0];++Mul0)for(int L=1;L<=np;++L,++c){
+          ref[0][size_t(LL)*combos+c]=SumNL0[openmx_core_nonlocal_sum(&buffers,L0,Mul0,L)];
+          ref[1][size_t(LL)*combos+c]=SumNLr0[openmx_core_nonlocal_sum(&buffers,L0,Mul0,L)];}}});
+      std::cout<<"Set_Nonlocal radial quadrature: legacy "<<1e3*legacy/repeats<<" ms per call ("<<npairs<<" pairs)\n";
+      for(int mode=OPENMX_GRID_SCALAR;mode<=OPENMX_GRID_NEON;++mode) {
+        if(!openmx_core_host_simd_usable(mode))continue;
+        OpenMXVnaNonlocalRadial q={};q.points=pts;q.orders=ords;q.combos=combos;q.onsite=0;q.h=h;q.k=k.data();
+        q.rft=rft.data();q.nlrft=nlt.data();q.table_stride=ts;q.sb=sb.data();q.sbp=sbp.data();q.sb_stride=pts;
+        q.out[0]=out[0].data();q.out[1]=out[1].data();
+        q.out_stride=combos;
+        const double s=seconds(repeats,[&]{for(int pp=0;pp<npairs;++pp)if(!openmx_core_vna_nonlocal_radial(&q,mode))throw std::runtime_error("nonlocal radial failed");});
+        for(int c=0;c<2;++c)if(out[c]!=ref[c])throw std::runtime_error("nonlocal radial differs from the legacy loop");
+        line(openmx_core_host_simd_name(mode),legacy/repeats*1e3,s/repeats*1e3,"ms per call");
       }
     }
   }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}

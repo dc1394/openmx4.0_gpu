@@ -14,6 +14,8 @@ struct VnaKernels {
   void (*hvna_block)(const OpenMXVnaHvnaBlock&);
   void (*angular)(const OpenMXVnaAngular&);
   void (*convert)(const OpenMXVnaConvert&);
+  void (*overlap_radial)(const OpenMXVnaOverlapRadial&);
+  void (*nonlocal_radial)(const OpenMXVnaNonlocalRadial&);
 };
 extern "C" OPENMX_HOST_SIMD_EXPORT const VnaKernels* openmx_host_vna_kernels(int mode) noexcept;
 OPENMX_HOST_SIMD_FAMILY(VnaKernels,vna)

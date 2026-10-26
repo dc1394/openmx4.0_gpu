@@ -33,6 +33,15 @@ int OpenMX_HostSimdGridMode(int env_id);
    unusable device votes for the host, which keeps the earlier behaviour.
    Rank 0 reports host decisions at level.of.stdout >= 2. */
 int OpenMX_HostSimdStageOnHost(const char *stage, size_t need_bytes, size_t budget_bytes);
+/* Stages named in OPENMX_HOST_SIMD_PREFER (comma-separated, case-insensitive
+   substrings of the stage label such as "UCell_Box", "Set_ProExpn_VNA",
+   "Set_Hamiltonian", "Force3"; "all" = every stage) vote for the host even
+   when the device holds them: on hosts whose SIMD paths beat the device for a
+   stage (e.g. the overlap-grid search and the projector expansion on an
+   RTX 5080 with an 18-core AVX-512 host). Empty by default; ignored under
+   OPENMX_HOST_SIMD=legacy. The value is synchronised from rank 0 like every
+   registry entry, so the vote stays collective-consistent. */
+int OpenMX_HostSimdPreferred(const char *stage);
 /* This rank's device budget: free memory (OpenMX_GpuMemGetInfo) minus
    reserve_bytes, or 0 when the device is unusable or the query fails. */
 size_t OpenMX_HostSimdDeviceBudget(size_t reserve_bytes);

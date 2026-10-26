@@ -19,6 +19,7 @@
 #include "openmx_cluster_capacity.h"
 #include "openmx_gpu_dm_collective.h"
 #include "openmx_gpu_workers.h"
+#include "openmx_host_simd.h"
 #include "lapack_prototypes.h"
 #include "set_hip_default_device_from_local_rank.h"
 #include "elpa_cosma_bridge.h"
@@ -4812,6 +4813,23 @@ static double Cluster_DFT_Col_owned(ClusterColState *state, const OpenMXAtomicVi
 /* The local eigenvector panel already stores each basis row contiguously.
    Read it directly instead of duplicating both atoms' rows in every OpenMP
    thread.  size_t row offsets also cover panels larger than INT_MAX entries. */
+/* Device-or-host decision of the cluster DM accumulation
+   (OpenMX_HostSimdStageOnHost, collective over mpi_comm_level1; called by
+   every rank behind the Allreduce'd request). need = the working set of the
+   direct device attempt with host eigenvectors (the capacity_cost of
+   openmx_gpu_dm_try_entries): two indices and twelve doubles per entry,
+   three weights per state and the rows of all n orbitals over the states;
+   budget = free device memory minus the 256 MiB reserve of the worker
+   capacity check. 1 = every rank accumulates with ClusterCol_AccumulateDM_CPU. */
+static int ClusterCol_DMOnHost(int entries, int states, size_t panel_bytes)
+{
+  size_t need = 0;
+  if (0<entries && 0<states)
+    need = (size_t)entries*(2*sizeof(int)+12*sizeof(double)) + 3*(size_t)states*sizeof(double) + panel_bytes;
+  return OpenMX_HostSimdStageOnHost("Cluster_DFT_Col density matrix", need,
+                                    OpenMX_HostSimdDeviceBudget((size_t)256<<20));
+}
+
 static void ClusterCol_AccumulateDM_CPU(ClusterColState *state, int size_H1, int nk, int *MP,
                                         const double *occ, const double *eig, const double *docc,
                                         const double *evec, double *DM1, double *EDM1, double *PDM1)
@@ -4983,10 +5001,23 @@ double Calc_DM_Cluster_collinear(ClusterColState *state,
     if(nk)ClusterCol_DMEntryCache_Ensure(state, MP,n);
     ClusterColDMEntryCache *cache=&state->dm_entry_cache;
     double *outputs[10]={DM1,EDM1,cal_partial_charge?PDM1:NULL};
-    openmx_gpu_dm_collective(mpi_comm_level1,OPENMX_GPU_DM_REAL,n,nk,nk,
-        nk?cache->entry_count:0,EVec1[spin],1,cache->basis0,cache->basis1,NULL,0,NULL,NULL,
-        nk?FF+kmin:NULL,nk?ko[spin]+kmin:NULL,nk && cal_partial_charge?dFF+kmin:NULL,outputs,1);
-    gpu_dm_done=nk>0;
+    /* The vote of every rank, then the direct device attempt; a rank whose
+       attempt declines accumulates with ClusterCol_AccumulateDM_CPU below,
+       without the collective capacity recovery. OPENMX_HOST_SIMD=legacy
+       keeps that recovery. */
+    if(!ClusterCol_DMOnHost(nk?cache->entry_count:0,nk,(size_t)n*(size_t)nk*sizeof(double))){
+      if(OpenMX_HostSimdMode()!=OPENMX_HOST_SIMD_LEGACY)
+        gpu_dm_done=nk>0 && !openmx_gpu_capacity_test_recovery() &&
+          openmx_gpu_dm_try_entries(OPENMX_GPU_DM_REAL,n,nk,nk,cache->entry_count,EVec1[spin],1,
+            cache->basis0,cache->basis1,NULL,0,NULL,NULL,FF+kmin,ko[spin]+kmin,
+            cal_partial_charge?dFF+kmin:NULL,outputs,1);
+      else{
+        openmx_gpu_dm_collective(mpi_comm_level1,OPENMX_GPU_DM_REAL,n,nk,nk,
+            nk?cache->entry_count:0,EVec1[spin],1,cache->basis0,cache->basis1,NULL,0,NULL,NULL,
+            nk?FF+kmin:NULL,nk?ko[spin]+kmin:NULL,nk && cal_partial_charge?dFF+kmin:NULL,outputs,1);
+        gpu_dm_done=nk>0;
+      }
+    }
   }
   if(!gpu_dm_done && kmin<=kmax)
     ClusterCol_AccumulateDM_CPU(state, size_H1,kmax-kmin+1,MP,FF+kmin,ko[spin]+kmin,

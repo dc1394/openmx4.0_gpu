@@ -21,12 +21,16 @@
 #include "openmx_common.h"
 #include "openmx_env.h"
 #include "openmx_gpu_task.h"
+#include "openmx_gpu_task_layout.h"
+#include "openmx_host_simd.h"
 #include "openmx_core_overlap.h"
+#include "openmx_core_vna_simd.h"
 #include "openmx_two_center.h"
 #include "openmx_integral_pairs.h"
 #include "mpi.h"
 #include <omp.h>
 
+typedef struct {int grid_dim,grid_last,combo_count,h_AN;double h;} OLPKinRadialParameters;
 typedef struct {
   int grid_dim,grid_last,combo_count,h_AN,Lmax_Four_Int;
   size_t rf_cache_elems,sph_valid_elems,sum_valid_elems;
@@ -36,7 +40,6 @@ typedef struct {
   const double *sph,*sphp;
   int *off0,*off1;
 } OLPKinRadialWork;
-typedef struct {int grid_dim,grid_last,combo_count,h_AN;double h;} OLPKinRadialParameters;
 static void OLPKin_Radial_Kernel(size_t first,size_t count,const void *parameters,void *const v[],int use_gpu)
 {
   const OLPKinRadialParameters *p=parameters;
@@ -98,20 +101,90 @@ static void OLPKin_Radial_Kernel(size_t first,size_t count,const void *parameter
 	              sumKr0_flat[ix] = local_sumKr0;
                   }
 }
+static void OLPKin_Radial_Task(OLPKinRadialWork *w,OpenMXGpuTask *t,OLPKinRadialParameters *p)
+{
+  *p=(OLPKinRadialParameters){w->grid_dim,w->grid_last,w->combo_count,w->h_AN,w->h};
+  *t=(OpenMXGpuTask){0};t->count=w->sum_valid_elems;t->parameters=p;t->parameter_bytes=sizeof(*p);
+  t->inputs=7;t->outputs=4;t->kernel=OLPKin_Radial_Kernel;
+  t->view[0]=(OpenMXGpuTaskView){(void*)w->norm,(size_t)w->grid_dim*sizeof(double),0};
+  t->view[1]=(OpenMXGpuTaskView){w->rf0,w->rf_cache_elems*sizeof(double),0};
+  t->view[2]=(OpenMXGpuTaskView){w->rf1,w->rf_cache_elems*sizeof(double),0};
+  t->view[3]=(OpenMXGpuTaskView){(void*)w->sph,w->sph_valid_elems*sizeof(double),0};
+  t->view[4]=(OpenMXGpuTaskView){(void*)w->sphp,w->sph_valid_elems*sizeof(double),0};
+  t->view[5]=(OpenMXGpuTaskView){w->off0,(size_t)w->combo_count*sizeof(int),0};
+  t->view[6]=(OpenMXGpuTaskView){w->off1,(size_t)w->combo_count*sizeof(int),0};
+  for(int c=0;c<4;c++)t->view[7+c]=(OpenMXGpuTaskView){w->out[c],0,sizeof(double)};
+}
 static void OLPKin_Radial_Distribute(OLPKinRadialWork *w)
 {
-  OLPKinRadialParameters p={w->grid_dim,w->grid_last,w->combo_count,w->h_AN,w->h};
-  OpenMXGpuTask t={0};t.count=w->sum_valid_elems;t.parameters=&p;t.parameter_bytes=sizeof(p);
-  t.inputs=7;t.outputs=4;t.kernel=OLPKin_Radial_Kernel;
-  t.view[0]=(OpenMXGpuTaskView){(void*)w->norm,(size_t)w->grid_dim*sizeof(double),0};
-  t.view[1]=(OpenMXGpuTaskView){w->rf0,w->rf_cache_elems*sizeof(double),0};
-  t.view[2]=(OpenMXGpuTaskView){w->rf1,w->rf_cache_elems*sizeof(double),0};
-  t.view[3]=(OpenMXGpuTaskView){(void*)w->sph,w->sph_valid_elems*sizeof(double),0};
-  t.view[4]=(OpenMXGpuTaskView){(void*)w->sphp,w->sph_valid_elems*sizeof(double),0};
-  t.view[5]=(OpenMXGpuTaskView){w->off0,(size_t)w->combo_count*sizeof(int),0};
-  t.view[6]=(OpenMXGpuTaskView){w->off1,(size_t)w->combo_count*sizeof(int),0};
-  for(int c=0;c<4;c++)t.view[7+c]=(OpenMXGpuTaskView){w->out[c],0,sizeof(double)};
+  OLPKinRadialParameters p;OpenMXGpuTask t;
+  OLPKin_Radial_Task(w,&t,&p);
   openmx_gpu_task_execute(mpi_comm_level1,&t,1,"overlap-kinetic-radial");
+}
+/* One pair's radial integrals on the device. Returns this rank's completion.
+   Under the host SIMD policy a failed attempt is not completed by the
+   capacity task (whose host body is the device kernel run serially): every
+   rank learns whether any rank failed (one Allreduce, all ranks, every
+   round), *enabled is cleared on all ranks together, and the caller computes
+   a failed pair and every later pair on the CPU path. OPENMX_HOST_SIMD=legacy
+   keeps the capacity task. */
+static int OLPKin_Radial_Attempt(OLPKinRadialWork *w,int *enabled)
+{
+  if (OpenMX_HostSimdMode()==OPENMX_HOST_SIMD_LEGACY) {
+    OLPKin_Radial_Distribute(w);
+    return 1;
+  }
+  OLPKinRadialParameters p;OpenMXGpuTask t;
+  OLPKin_Radial_Task(w,&t,&p);
+  const int done=!t.count || (gpu_rank_device_usable() && openmx_gpu_task_local(&t,"overlap-kinetic-radial"));
+  int all_done=done;
+  MPI_Allreduce(MPI_IN_PLACE,&all_done,1,MPI_INT,MPI_MIN,mpi_comm_level1);
+  if (!all_done) *enabled=0;
+  return done;
+}
+
+/* The host SIMD path of one pair's radial integrals: lanes across the radial
+   function pairs (combos) and the legacy per-element order, so the sums are
+   bitwise those of the C loops (openmx_core_vna_overlap_radial). The radial
+   rows of the species pair are transposed to [point][combo] once per species
+   pair, in a table owned by the calling thread. Returns 0 under
+   OPENMX_HOST_SIMD=legacy, when the table cannot be allocated, or when the
+   Core refuses the request; the caller then runs the C loops. Rank-local. */
+typedef struct {
+  double *rows;     /* [2][grid_dim][combo_count]: species C rows, then H rows */
+  size_t capacity;  /* doubles */
+  int valid;        /* rows hold the current species pair */
+} OLPKinHostRadial;
+
+static int OLPKin_Radial_Host(OLPKinHostRadial *host,int mode,const OLPKinRadialWork *w)
+{
+  if (mode==OPENMX_HOST_SIMD_LEGACY || w->combo_count<=0) return 0;
+  const size_t points=(size_t)w->grid_dim,combos=(size_t)w->combo_count;
+  if (!host->valid){
+    const size_t need=2*points*combos;
+    if (need>host->capacity){
+      double *grown=(double*)realloc(host->rows,need*sizeof(double));
+      if (grown==NULL) return 0;
+      host->rows=grown;
+      host->capacity=need;
+    }
+    /* point-major, so the writes stream (the source rows stay cached) */
+    for (size_t i=0; i<points; i++){
+      double *row0=host->rows+i*combos,*row1=host->rows+(points+i)*combos;
+      for (size_t c=0; c<combos; c++){
+        row0[c]=w->rf0[(size_t)w->off0[c]+i];
+        row1[c]=w->rf1[(size_t)w->off1[c]+i];
+      }
+    }
+    host->valid=1;
+  }
+  OpenMXVnaOverlapRadial q={0};
+  q.points=w->grid_dim;q.orders=w->Lmax_Four_Int+1;q.combos=w->combo_count;q.onsite=w->h_AN==0;
+  q.h=w->h;q.k=w->norm;q.rf0t=host->rows;q.rf1t=host->rows+points*combos;q.table_stride=combos;
+  q.sb=w->sph;q.sbp=w->sphp;q.sb_stride=points;
+  for (int c=0; c<4; c++) q.out[c]=w->out[c];
+  q.out_stride=combos;
+  return openmx_core_vna_overlap_radial(&q,mode);
 }
 
 #if OPENMX_GPU_HIP
@@ -247,8 +320,22 @@ double Set_OLP_Kin(const OpenMXReciprocalViews *reciprocal, double *****OLP, dou
   int radial_capacity=omp_get_max_threads()==1 && SetOLPKinRadialGpuEnabled() && SetOLPKinUseOpenACC();
 #endif
   MPI_Allreduce(MPI_IN_PLACE,&radial_capacity,1,MPI_INT,MPI_MIN,mpi_comm_level1);
+  if (radial_capacity){
+    /* Host SIMD vote (every rank, same point): one pair's radial working set
+       (Fourier rows of both species, the Bessel tables, the four sums)
+       against this rank's free device memory. Splitting it more than
+       OPENMX_HOST_SIMD_MAX_PIECES times over, or an unusable device, keeps
+       the radial integrals on the CPU path on every rank. */
+    const size_t grid=(size_t)OneD_Grid+1,channels=(size_t)(List_YOUSO[25]+1)*List_YOUSO[24];
+    const size_t orders=(size_t)(2*List_YOUSO[25]+1);
+    const size_t need=sizeof(double)*(grid+2*channels*grid+2*orders*grid+4*orders*channels*channels)
+                     +2*sizeof(int)*channels*channels;
+    if (OpenMX_HostSimdStageOnHost("Set_OLP_Kin: radial",OneD_Nloop>0 ? need : 0,OpenMX_HostSimdDeviceBudget(0)))
+      radial_capacity=0;
+  }
   int radial_rounds=OneD_Nloop;
   if(radial_capacity)MPI_Allreduce(MPI_IN_PLACE,&radial_rounds,1,MPI_INT,MPI_MAX,mpi_comm_level1);
+  const int host_simd_mode=OpenMX_HostSimdMode();
 
   /* OpenMP */
 
@@ -306,6 +393,7 @@ double Set_OLP_Kin(const OpenMXReciprocalViews *reciprocal, double *****OLP, dou
     dcomplex *TmpKinp;
 
 	    size_t rf_cache_elems;
+	    OLPKinHostRadial host_radial={0};
 	    double prof_t0_local = 0.0, prof_t1_local = 0.0;
 	    double prof_bessel = 0.0, prof_radial = 0.0, prof_gaunt = 0.0, prof_c2r = 0.0;
 
@@ -359,7 +447,14 @@ double Set_OLP_Kin(const OpenMXReciprocalViews *reciprocal, double *****OLP, dou
     /* one-dimensionalized loop */
 
     for (Nloop=OMPID*radial_rounds/Nthrds; Nloop<(OMPID+1)*radial_rounds/Nthrds; Nloop++){
-      if(Nloop>=OneD_Nloop){OLPKinRadialWork empty={0};OLPKin_Radial_Distribute(&empty);continue;}
+      if(Nloop>=OneD_Nloop){
+#if OPENMX_GPU_HIP
+        if(use_openmp_radial){OLPKinRadialWork empty={0};(void)OLPKin_Radial_Attempt(&empty,&use_openmp_radial);}
+#else
+        if(use_openacc_radial){OLPKinRadialWork empty={0};(void)OLPKin_Radial_Attempt(&empty,&use_openacc_radial);}
+#endif
+        continue;
+      }
 
       dtime(&Stime_atom);
 
@@ -505,28 +600,30 @@ double Set_OLP_Kin(const OpenMXReciprocalViews *reciprocal, double *****OLP, dou
 		}
 		combo_cached_Cwan = Cwan;
 		combo_cached_Hwan = Hwan;
+		host_radial.valid = 0;
 	      }
 
+	      int radial_done=0;
+	      OLPKinRadialWork radial={0};
+	      radial.grid_dim=grid_dim;radial.grid_last=grid_last;radial.combo_count=combo_count;
+	      radial.h_AN=h_AN;radial.Lmax_Four_Int=Lmax_Four_Int;radial.rf_cache_elems=rf_cache_elems;
+	      radial.sph_valid_elems=(size_t)(Lmax_Four_Int+1)*(size_t)grid_dim;
+	      radial.sum_valid_elems=(size_t)(Lmax_Four_Int+1)*(size_t)combo_count;radial.h=h;
+	      radial.norm=Normk_grid;radial.rf0=RF_BesselCache0;radial.rf1=RF_BesselCache1;
+	      radial.sph=SphB_flat;radial.sphp=SphBp_flat;radial.off0=combo_rf0_offset;radial.off1=combo_rf1_offset;
+	      radial.out[0]=sumS0_flat;radial.out[1]=sumK0_flat;radial.out[2]=sumSr0_flat;radial.out[3]=sumKr0_flat;
 #if OPENMX_GPU_HIP
-	      if (use_openmp_radial){
+	      if (use_openmp_radial)
+                radial_done=OLPKin_Radial_Attempt(&radial,&use_openmp_radial);
 #else
-	      if (use_openacc_radial){
+	      if (use_openacc_radial)
+                radial_done=OLPKin_Radial_Attempt(&radial,&use_openacc_radial);
 #endif
-	        size_t sph_valid_elems,sum_valid_elems;
-
-	        sph_valid_elems = (size_t)(Lmax_Four_Int+1)*(size_t)grid_dim;
-	        sum_valid_elems = (size_t)(Lmax_Four_Int+1)*(size_t)combo_count;
-
-                OLPKinRadialWork radial={0};
-                radial.grid_dim=grid_dim;radial.grid_last=grid_last;radial.combo_count=combo_count;
-                radial.h_AN=h_AN;radial.Lmax_Four_Int=Lmax_Four_Int;radial.rf_cache_elems=rf_cache_elems;
-                radial.sph_valid_elems=sph_valid_elems;radial.sum_valid_elems=sum_valid_elems;radial.h=h;
-                radial.norm=Normk_grid;radial.rf0=RF_BesselCache0;radial.rf1=RF_BesselCache1;
-                radial.sph=SphB_flat;radial.sphp=SphBp_flat;radial.off0=combo_rf0_offset;radial.off1=combo_rf1_offset;
-                radial.out[0]=sumS0_flat;radial.out[1]=sumK0_flat;radial.out[2]=sumSr0_flat;radial.out[3]=sumKr0_flat;
-                OLPKin_Radial_Distribute(&radial);
-	      }
-	      else{
+	      /* the host SIMD path, also for a pair whose device attempt failed */
+	      if (!radial_done)
+	        radial_done=OLPKin_Radial_Host(&host_radial,host_simd_mode,&radial);
+	      /* the C loops: OPENMX_HOST_SIMD=legacy or a refused host request */
+	      if (!radial_done){
 	        for(l=0; l<=Lmax_Four_Int; l++){
 		  for (combo=0; combo<combo_count; combo++){
 		    int rf0_offset,rf1_offset;
@@ -774,6 +871,7 @@ double Set_OLP_Kin(const OpenMXReciprocalViews *reciprocal, double *****OLP, dou
 #pragma omp atomic
 	      bessel_misses += thread_misses;
 	    }
+    free(host_radial.rows);
     openmx_core_overlap_destroy(workspace);
 
 	  } /* #pragma omp parallel */

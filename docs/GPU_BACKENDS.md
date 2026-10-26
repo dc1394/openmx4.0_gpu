@@ -275,14 +275,31 @@ Kokkos の型・ISA フラグが C ABI やデバイス翻訳単位へ出ない�
 | Set_Orbitals_Grid | 装置部分の一括確保の見積もり / 途中失敗 | `Orbs_Grid` 行への直接書き込み |
 | Set_ProExpn_VNA | DS_VNA のバッチ、HVNA アーカイブの常駐、HVNA2/3 のバッチ / 途中失敗 | CPU の SIMD カーネル |
 | Set_Hamiltonian | ターン計画・逐次生成タイルの見積もり、DC/Krylov の容量回復 / 途中失敗 | `OpenMX_Grid_Hamiltonian_CPU`（`_Ranges`） |
-| Set_Density_Grid | 局所経路の見積もり | `OpenMX_Grid_Density_CPU`、借用なし |
+| Set_Density_Grid | 局所経路の見積もり / 最小の逐次生成チャンクも置けない rank | `OpenMX_Grid_Density_CPU`、借用なし |
 | Force3 / Force4B / Force_HNL | トレース・アーカイブの常駐見積もり / 途中失敗 | 軌道微分と縮約、融合トレース、共線 dHNL の SIMD |
 | Total_Energy | EH0・Exc0・格子和・双極子・CWF の各バッチ / 途中失敗 | 中性原子の対、XC 殻、ホストの格子和 |
-| バンド密度行列 | GPU DM の見積もり / 途中失敗 | `BandCol_DM_Block` |
+| バンド密度行列 | 密な GPU 固有値ソルバー時の GPU DM の見積もり / 直接試行の辞退。ELPA フォールバック時は既定でホスト（`OPENMX_BAND_GPU_DM=1` で GPU を選ぶと判定を受ける。`legacy` では GPU が既定） | `BandCol_DM_Block`（固有ベクトルを必要ならホストへ戻す） |
+| クラスター密度行列、非共線バンドの多 k 点フォールバック | GPU DM の見積もり / 直接試行の辞退 | `ClusterCol_AccumulateDM_CPU`、`Calc_DM_Band_non_collinear` |
+| Set_Nonlocal / Set_OLP_Kin | 最大チャンクの領域 / 1 対の動径作業領域 / 途中失敗 | CPU 経路（動径積分は `vna` 群の SIMD カーネル） |
 
-HIP 版は共有ソースの経路を引き継ぎますが、HIP 専用の上書きファイル（`backends/hip/src/`）には
-判定を入れていません。新しいヘッダーと `openmx_host_simd.c` は HIP の `sources.json` の
-`integrated_shared` に登録しています。
+`OPENMX_HOST_SIMD_PREFER`（段階名の一部のカンマ区切り、または `all`、既定は空）に挙げた段階は、
+デバイスに収まっていてもホストに投票します。ホストの SIMD 経路がデバイスより速い機械向けの任意設定です。
+
+nvc 26.9（nvc と nvc++、全最適化レベル）は、OpenMP 並列領域の中で宣言した（または private にした）配列から、
+定数の添字でポインター型の要素を読む式を誤ってコンパイルします。`t[0].p`、`t->p`、`d2[0][0].p`、
+`double *a[2][2]` の `a[0][0]` などが値ではなくその要素の**アドレス**になります（書き込み、変数の添字、
+共有・大域・静的な配列、構造体のスカラー、1 次元のポインター配列は正しい）。ホストの SIMD 経路の
+後始末 `free(host_radial[0].rows)` がこれで異常終了したため、ポインターを受け取る関数経由で読む形に
+しています。nvc でコンパイルする OpenMP 領域にホストのコードを足すときは、この形の読み出しを避けてください。
+
+HIP 版の上書きファイル（`backends/hip/src/` の Force.c、Set_ProExpn_VNA.c、Set_Nonlocal.c、
+Set_Hamiltonian.c、Set_Density_Grid*.c、Set_Orbitals_Grid.c、Band_DFT_Col.c、Band_DFT_NonCol.c、
+Cluster_DFT_Col.c、Total_Energy_GPU.c）にも同じ判定とホスト経路を移植しました（Force3 と Force4B の
+ホスト SIMD、HVNA の復旧、密度行列のホスト集計など）。この環境には ROCm がないため、HIP 版は
+最小限のスタブヘッダーを使った `clang -fsyntax-only` の検査（HIP ビルドが取り込む 23 ファイル、
+`-Werror=implicit-function-declaration`）と、ホストで動く HIP 側の検証スクリプトでだけ確認しています。
+実行時の動作は AMD GPU での確認が必要です。新しいヘッダーと `openmx_host_simd.c` は HIP の
+`sources.json` の `integrated_shared` に登録しています。
 
 ## 共通コードとバックエンド境界
 
