@@ -1,4 +1,8 @@
 find_package(Threads REQUIRED)
+add_executable(openmx_basis_text_tests test_text_document.cpp)
+target_link_libraries(openmx_basis_text_tests PRIVATE OpenMX::basis)
+add_test(NAME basis-text-numbers COMMAND openmx_basis_text_tests)
+set_tests_properties(basis-text-numbers PROPERTIES LABELS "unit;basis" TIMEOUT 15)
 set_source_files_properties(fixtures/orbital_radial_before_library.c PROPERTIES COMPILE_OPTIONS
   "$<$<C_COMPILER_ID:GNU,Clang,AppleClang>:-ffp-contract=off>;$<$<C_COMPILER_ID:IntelLLVM>:-fp-model=precise;-ffp-contract=off>;$<$<C_COMPILER_ID:MSVC>:/fp:strict>")
 add_executable(openmx_basis_orbital_radial_tests test_orbital_radial.cpp fixtures/orbital_radial_before_library.c)

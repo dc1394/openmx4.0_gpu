@@ -9,6 +9,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 from native_state_test_support import bounded_stack, compiler_command
+from run_cwf_band_helpers_cpu import function
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -56,36 +57,49 @@ def main():
                 assert failed.returncode == 2 and 'FAIL line' in failed.stderr, failed
 
         # Compile the production input-validation and raw AtomSpecies blocks.
-        # The file parser and MPI exit are modeled; the metadata owners and
-        # radial views are the same real ABI used by the application.
+        # Use the current callback boundary and real RAII PAO/VPS readers.
+        # Only the publication of the atomic view is modeled in this fixture.
         source = (ROOT/'source/SetPara_DFT.c').read_text()
         start = source.index('  OpenMXNeutralGridMetadataView metadata;',
-                             source.index('static void ReadPara_DFT(OpenMXCoreContext *core)\n{'))
-        boundary = source[start:source.index('\n  FILE *fp;', start)]
-        blocks = ['static void metadata_input_boundary(OpenMXCoreContext *core,int SpeciesNum){\n'+boundary+'\n}']
-        for name, stop, locals_ in [('PAO', 'input_int("grid.num.output"', 'double dum;'),
-                                    ('VPS', 'input_double("total.electron"', 'double dum0;int tmp0,i;')]:
-            start = source.index('  input_double("AtomSpecies"', source.index('\nvoid Read_'+name+'('))
-            block = source[start:source.index('  '+stop, start)]
-            blocks.append('static void metadata_read_'+name.lower()+
-                          '(const OpenMXNeutralGridMetadataView *metadata,OpenMXAtomicViews *atomic,int spe){\n'+
-                          locals_+'\n'+block+'\n}')
-        (folder/'neutral_metadata_input.inc').write_text('\n'.join(blocks))
-        for language in ['c', 'c++']:
-            executable = folder/('input-'+language)
+                             source.rindex('\nstatic int ReadPara_DFT('))
+        boundary = source[start:source.index('\n  int spe,po;', start)]
+        blocks = ['static int metadata_input_boundary(OpenMXCoreContext *core,int SpeciesNum,\n'
+                  '    char *error,size_t error_capacity){\n'+boundary+'\nreturn 1;\n}',
+                  function(source, 'Read_PAO')]
+        start = source.rindex('\nstatic int Read_VPS(')
+        # Retain the actual raw-species check, capacity guards and ghost-density
+        # reset. Later projector/Hartree assembly has separate native tests.
+        blocks.append(source[start:source.index('  atomic->species.core_charge[spe]=', start)]+
+                      '\n  return 1;\n}')
+        input_native = '\n'.join(blocks)
+
+        def build_input(name, language, code=input_native):
+            (folder/'neutral_metadata_input.inc').write_text(code)
+            executable = folder/name
             subprocess.run(compiler_command(language)+['-I'+str(folder), '-I'+str(ROOT/'core/include'),
                 '-x', language, str(ROOT/'tests/neutral_metadata_input_harness.c'), '-x', 'none', str(library),
                 '-Wl,-rpath,'+str(library.parent), '-lm', '-o', str(executable)], check=True)
+            return executable
+
+        for language in ['c', 'c++']:
+            executable = build_input('input-'+language, language)
             subprocess.run([str(executable)], cwd=folder, check=True, preexec_fn=bounded_stack)
             for mode in ['boundary-context', 'boundary-empty', 'boundary-shape']:
                 failed = subprocess.run([str(executable), mode], cwd=folder, capture_output=True,
                                         text=True, preexec_fn=bounded_stack)
-                assert failed.returncode == 77 and 'ReadPara_DFT: neutral grid metadata' in failed.stderr, failed
+                assert failed.returncode == 0 and 'neutral grid metadata unavailable or shape mismatch' in failed.stdout, failed
             for pao, vps in [('.25', '.75'), ('14', '6'), ('0', '14'), ('.25000000000000006', '.25')]:
                 failed = subprocess.run([str(executable), 'mismatch', pao, vps], cwd=folder,
                                         capture_output=True, text=True, preexec_fn=bounded_stack)
                 assert failed.returncode == 0 and 'Not the same atom in PAO and VPS' in failed.stdout, failed
-                assert 'exact raw AtomSpecies mismatch rejected' in failed.stderr, failed
+        if args.negative_control:
+            old = 'metadata->spacing[spe]!=data->atom_species && data->atomic_number!=0'
+            assert input_native.count(old) == 1
+            changed = input_native.replace(old, '(int)metadata->spacing[spe]!=(int)data->atom_species && data->atomic_number!=0')
+            executable = build_input('lost-fractional-species', 'c', changed)
+            failed = subprocess.run([str(executable), 'mismatch', '.25', '.75'], cwd=folder,
+                                    capture_output=True, text=True, preexec_fn=bounded_stack)
+            assert failed.returncode == 2 and 'FAIL line' in failed.stderr, failed
     print('PASS: native metadata C11/C++17 adapters, actual C++ owner and negative controls')
 
 

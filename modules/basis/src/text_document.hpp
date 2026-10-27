@@ -5,7 +5,10 @@
 #include <cmath>
 #include <istream>
 #include <iterator>
+#include <limits>
+#include <locale>
 #include <optional>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -13,6 +16,55 @@
 #include <vector>
 
 namespace openmx::basis::detail {
+inline bool decimal_token(std::string_view token)
+{
+  std::size_t position = 0;
+  if (position < token.size() && token[position] == '-') ++position;
+  auto digits = [&] {
+    const auto start = position;
+    while (position < token.size() && token[position] >= '0' && token[position] <= '9') ++position;
+    return position != start;
+  };
+  const bool integer = digits();
+  bool fraction = false;
+  if (position < token.size() && token[position] == '.') { ++position; fraction = digits(); }
+  if (!integer && !fraction) return false;
+  if (position < token.size() && (token[position] == 'e' || token[position] == 'E')) {
+    ++position;
+    if (position < token.size() && (token[position] == '+' || token[position] == '-')) ++position;
+    if (!digits()) return false;
+  }
+  return position == token.size();
+}
+
+// Older libc++ provides only the integer from_chars overloads. Keep the fast
+// conversion when available; file input on those libraries uses a stream with
+// an explicit C locale, without changing the process's C or C++ locale.
+template<class Number, bool PreferFromChars = true>
+bool parse_number(std::string_view token, Number& value)
+{
+  if constexpr (PreferFromChars && requires { std::from_chars(token.data(),token.data()+token.size(),value); }) {
+    const auto parsed = std::from_chars(token.data(),token.data()+token.size(),value);
+    return parsed.ec == std::errc{} && parsed.ptr == token.data()+token.size();
+  } else {
+    if (!decimal_token(token)) return false;
+    std::istringstream input{std::string(token)};
+    input.imbue(std::locale::classic());
+    input >> std::noskipws >> value;
+    if (input.bad() || !input.eof()) return false;
+    // libc++ sets failbit for ERANGE even when strtod returns a representable
+    // subnormal (or rounds it to the smallest normal). Keep that value; all
+    // other conversion failures, including underflow to zero, remain errors.
+    if (input.fail() && !(value != 0 && std::fabs(value) <= std::numeric_limits<Number>::min()))
+      return false;
+    // Some num_get implementations round underflow to zero without failbit.
+    // Match from_chars: a nonzero significand must not silently become zero.
+    if (value == 0 && token.substr(0,token.find_first_of("eE")).find_first_of("123456789") != std::string_view::npos)
+      return false;
+    return true;
+  }
+}
+
 inline bool space(char c) { return c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '\f' || c == '\v'; }
 inline bool equal(std::string_view a, std::string_view b)
 {
@@ -41,7 +93,7 @@ class Tokens {
     text_.remove_prefix(token.size());
     return token;
   }
-  template<class Number> Number number() {
+  template<class Number, bool PreferFromChars = true> Number number() {
     auto token = next();
     if (!token.empty() && token.front() == '+') {
       token.remove_prefix(1);
@@ -49,8 +101,7 @@ class Tokens {
     }
     Number value{};
     if (token.empty()) fail("missing numeric value");
-    const auto parsed = std::from_chars(token.data(),token.data()+token.size(),value);
-    if (parsed.ec != std::errc{} || parsed.ptr != token.data()+token.size() || !std::isfinite(value))
+    if (!parse_number<Number,PreferFromChars>(token,value) || !std::isfinite(value))
       fail("invalid numeric value '"+std::string(token)+"'");
     return value;
   }

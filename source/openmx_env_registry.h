@@ -64,7 +64,7 @@
     X(ABORT_AFTER_EIGEN, "OPENMX_ABORT_AFTER_EIGEN", "flag", "global", "0", "backends/hip/src/Band_DFT_Col.c,backends/hip/src/Band_DFT_NonCol.c", "Diagnostic: terminate after the first band eigensolve.") \
     X(ABORT_AFTER_EIGEN_SCF, "OPENMX_ABORT_AFTER_EIGEN_SCF", "int", "global", "0", "backends/hip/src/Band_DFT_Col.c", "Diagnostic: SCF iteration at which to stop after the band eigensolve; 0 disables.") \
     X(AFFINITY_DIR, "OPENMX_AFFINITY_DIR", "tool", "local", "", "build/tools", "mi300a_rank_launcher.py: directory of the per-rank CPU affinity files") \
-    X(BAND_CACHE_TRACE, "OPENMX_BAND_CACHE_TRACE", "flag", "global", "0", "Band_DFT_Col.c,backends/hip/src/Band_DFT_Col.c,backends/hip/src/Set_Hamiltonian.c", "") \
+    X(BAND_CACHE_TRACE, "OPENMX_BAND_CACHE_TRACE", "flag", "global", "0", "Band_DFT_Col.c,backends/hip/src/Band_DFT_Col.c,backends/hip/src/DFT.c,backends/hip/src/Set_Hamiltonian.c", "") \
     X(BAND_COL_INTERLEAVE_K, "OPENMX_BAND_COL_INTERLEAVE_K", "flag", "global", "", "backends/hip/src/Band_DFT_Col.c", "Override collinear k-point interleaving; retains the existing automatic layout by default.") \
     X(BAND_COL_KCACHE_MB, "OPENMX_BAND_COL_KCACHE_MB", "double", "global", "1024", "Band_DFT_Col.c,backends/hip/src/Band_DFT_Col.c", "") \
     X(BAND_COL_OVERLAP_CACHE_MB, "OPENMX_BAND_COL_OVERLAP_CACHE_MB", "double", "global", "512", "Band_DFT_Col.c,backends/hip/src/Band_DFT_Col.c", "") \
