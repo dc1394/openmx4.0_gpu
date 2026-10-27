@@ -68,7 +68,7 @@ PREFIX = r'''
 #include "openmx_env.h"
 typedef struct OpenMXAtomicViews OpenMXAtomicViews;
 typedef struct OpenMXDensityGpuState OpenMXDensityGpuState;
-typedef struct OpenMXOrbitalGpuState OpenMXOrbitalGpuState;
+typedef struct OpenMXHamiltonianGpuState OpenMXHamiltonianGpuState;
 #include <omp.h>
 #include <stdint.h>
 #include <limits.h>
@@ -85,15 +85,15 @@ int openmx_gpu_fp32_fp64_ratio(void) { return 16; }
 static int openmx_gpu_is_apu(void) { return 0; }
 static int gpu_rank_device_usable(void) { return 1; }
 static int OpenMX_GpuMemGetInfo(size_t *f,size_t *t) { return (int)hipMemGetInfo(f,t); }
-static int Set_Density_Grid_OTF_Possible(OpenMXOrbitalGpuState *orbital_state,const OpenMXAtomicViews *atomic,int k) { (void)k; return 0; }
-static int Set_Density_Grid_OTF_Run(OpenMXOrbitalGpuState *orbital_state,const OpenMXAtomicViews *atomic,int k,double *****C,double ***T) { (void)k; (void)C; (void)T; return 0; }
+static int Set_Density_Grid_OTF_Possible(OpenMXHamiltonianGpuState *hamiltonian_state,const OpenMXAtomicViews *atomic,int k) { (void)k; return 0; }
+static int Set_Density_Grid_OTF_Run(OpenMXHamiltonianGpuState *hamiltonian_state,const OpenMXAtomicViews *atomic,int k,double *****C,double ***T) { (void)k; (void)C; (void)T; return 0; }
 '''
 
 STUBS = r'''
 static SetHamiltonianMETables g_tables;
 static double *g_dm;
-static int Set_Hamiltonian_MatrixElementsTables_Ready(int k) { (void)k; return 1; }
-static int Set_Hamiltonian_GetMatrixElementsTables(int k,SetHamiltonianMETables *t) { (void)k; *t=g_tables; return 1; }
+static int Set_Hamiltonian_MatrixElementsTables_Ready(OpenMXHamiltonianGpuState *hamiltonian_state,int k) { (void)k; return 1; }
+static int Set_Hamiltonian_GetMatrixElementsTables(OpenMXHamiltonianGpuState *hamiltonian_state,int k,SetHamiltonianMETables *t) { (void)k; *t=g_tables; return 1; }
 static int SDG_pack_local_cdm(double *****CDM, double *buffer, size_t expected, int spin_count) {
   (void)CDM; (void)spin_count; memcpy(buffer,g_dm,sizeof(double)*expected); return 1;
 }

@@ -124,7 +124,7 @@ struct OpenMXClusterNonColState {
   OpenMXChemicalPotentials *chemical; /* borrowed from this calculation */
   OpenMXThermodynamicEnergies *thermo; /* borrowed from this calculation */
   OpenMXNativeResources *resources; /* borrowed from this calculation */
-  OpenMXOrbitalGpuState *orbital_state; /* borrowed from this calculation */
+  OpenMXHamiltonianGpuState *hamiltonian_state; /* borrowed from this calculation */
   OpenMXHamiltonianCache *hamiltonian_cache; /* borrowed from this calculation */
   int initialized;
   int mgpu_host_dense;
@@ -182,7 +182,7 @@ OpenMXClusterNonColState *Cluster_DFT_NonCol_Bind_Resources(OpenMXCoreContext *c
   ClusterNonColState *state = (ClusterNonColState *)metadata;
   if (!state->initialized) {
     state->resources = owner;
-    state->orbital_state = Set_Orbitals_Grid_GPU_Bind_Resources(core);
+    state->hamiltonian_state = Set_Hamiltonian_GPU_Bind_Resources(core);
     state->hamiltonian_cache = Set_Hamiltonian_Cache_Bind_Resources(core);
     const ClusterNonColRefineStage initial = {-1, 0.0, 0, 0, 0, 0, 0};
     state->refine = initial;
@@ -248,7 +248,7 @@ extern int openmx_gemmul8ZgemmEnabled(void);
 extern long long openmx_gemmul8NativeCalls(int is_complex);
 extern int openmx_gpu_is_apu(void);
 extern int openmx_gpu_is_mi300a(void);
-extern size_t Set_Hamiltonian_DemoteResidency(OpenMXOrbitalGpuState *orbital_state);
+extern size_t Set_Hamiltonian_DemoteResidency(OpenMXHamiltonianGpuState *hamiltonian_state);
 
 static void ClusterNonCol_DeviceSolveRelease(ClusterNonColState *state);
 static size_t ClusterNonCol_DeviceSolveHeldBytes(ClusterNonColState *state);
@@ -1187,7 +1187,7 @@ static int ClusterNonCol_NativeGpuDiagFits(ClusterNonColState *state, int n2, in
         }
         /* the Hamiltonian's resident orbital tables leave the device for the
            rest of the run (every rank's copies share it), then once more */
-        (void)Set_Hamiltonian_DemoteResidency(state->orbital_state);
+        (void)Set_Hamiltonian_DemoteResidency(state->hamiltonian_state);
         MPI_Barrier(mpi_comm_level1);
     }
     MPI_Allreduce(&local_fit, &fit, 1, MPI_INT, MPI_MIN, mpi_comm_level1);
@@ -1222,7 +1222,7 @@ static int ClusterNonCol_GpuDiagFits(ClusterNonColState *state, int n2,int myid)
             fit=1;
         }
         else if (capacity==OPENMX_CLUSTER_CAPACITY_GS2) {
-            if (openmx_cluster_gs2_admit(state->orbital_state,mpi_comm_level1,ictxt1_2,n2,nblk2,1,"Cluster NC"))
+            if (openmx_cluster_gs2_admit(state->hamiltonian_state,mpi_comm_level1,ictxt1_2,n2,nblk2,1,"Cluster NC"))
                 state->gs2_fallback_n2=n2;
         }
     }

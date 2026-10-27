@@ -260,7 +260,6 @@
     "neb_check.c",
     "openmx_api.h",
     "openmx_api_f08.f90",
-    "openmx_cluster_capacity.h",
     "openmx_dense_cpu.c",
     "openmx_dense_cpu.h",
     "openmx_gpu_collective.h",
@@ -717,7 +716,6 @@
     "neb_check.c": "8f6b832ee1f027f3b26ec563173e4457bbd46c64deb5c91c651e1b3076c785ad",
     "openmx_api.h": "ef05bdfd693b4cb061b21cc04b89f1ba09e403f3b6e94821f9dd9c0806872d56",
     "openmx_api_f08.f90": "2ae51e1b2b5d92c44a8fa56f87ff87589925e647d451e5cfcdb0da5f60073718",
-    "openmx_cluster_capacity.h": "ee98a9352021c20d31fe4a4085d8f3fb45334b2c4297aef45dc048d9f21963b7",
     "openmx_dense_cpu.c": "60dfc53a4f99537d7db1dbf0a09f92c3e0a9ce230a83f36ac12b07674af4b624",
     "openmx_dense_cpu.h": "6c3265ce95426d0096d2b3b5186d6351ebc782155e9e1655bac16434e6068ff7",
     "openmx_gpu_arch_policy.h": "e0347de7dd500b70e9c3134bd14cd26ee0ff195913e8511465219f0b5f5e71ab",
@@ -1095,7 +1093,10 @@
     "openmx_hamiltonian_cache.c",
     "openmx_hamiltonian_cache.h",
     "openmx_hamiltonian_pack.h",
-    "openmx_orbital_gpu_state.h"
+    "openmx_orbital_gpu_state.h",
+    "openmx_hamiltonian_gpu_state.h",
+    "openmx_grid_device_scope.h",
+    "openmx_cluster_capacity.h"
   ],
   "integrated_overrides": {
     "set_hamiltonian_hip.cu": "src/set_hamiltonian_hip.cu",

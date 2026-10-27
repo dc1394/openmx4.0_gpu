@@ -62,14 +62,6 @@ void Free_Arrays_with_context(int wherefrom, OpenMXCoreContext *core)
     openmx_magma_release_fp32_workspace();
     openmx_gpusolver_cache_release();
 #endif
-#if OPENMX_GPU_HIP
-    Set_Hamiltonian_Invalidate_OpenMP_MatrixElements_Cache();
-    /* the on-the-fly state and its batch plans (keyed by the atom count,
-       not by the geometry) must not reach the next input */
-    Set_Hamiltonian_OTF_Release();
-#else
-    Set_Hamiltonian_Invalidate_OpenACC_MatrixElements_Cache();
-#endif
     openmx_core_grid_clear(core);
   }
 

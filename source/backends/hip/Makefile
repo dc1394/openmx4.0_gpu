@@ -1643,3 +1643,8 @@ orbs_otf_hip.o: openmx_orbital_gpu_state.h openmx_core_native_resources.h
 Band_DFT_Col.o Cluster_DFT_NonCol.o: openmx_orbital_gpu_state.h
 
 openmx_cluster_capacity.o Cluster_DFT_Col.o Cluster_DFT_NonCol.o: openmx_orbital_gpu_state.h
+
+DFT.o Force.o Set_Hamiltonian.o Set_Orbitals_Grid.o Set_Density_Grid_GPU.o openmx.o openmx_api.o Runtest.o truncation.o openmx_cluster_capacity.o Cluster_DFT_Col.o Cluster_DFT_NonCol.o: openmx_hamiltonian_gpu_state.h
+Set_Hamiltonian.o: openmx_grid_device_scope.h openmx_core_native_resources.h
+
+Band_DFT_Col.o: openmx_hamiltonian_gpu_state.h

@@ -2,7 +2,7 @@
 #include "openmx_core_energy.h"
 #include "fixtures/native_resources/sdk_model.hpp"
 #include "hamiltonian_cache_binding_fixture.hpp"
-#include "orbital_state_binding_fixture.hpp"
+#include "hamiltonian_state_binding_fixture.hpp"
 #include "density_state_binding_fixture.hpp"
 #include "openmx_complex.h"
 #include "openmx_band_col_state.h"
@@ -144,9 +144,9 @@ int main(){try{
           a->hamiltonian_cache!=b->hamiltonian_cache,
           "solver borrowed another calculation's packed Hamiltonian cache");
 #if OPENMX_GPU_HIP && !BAND_NONCOL
-    check(a->orbital_state==Set_Orbitals_Grid_GPU_Bind_Resources(first.get()) &&
-          b->orbital_state==Set_Orbitals_Grid_GPU_Bind_Resources(second.get()) &&
-          a->orbital_state!=b->orbital_state,"band solver borrowed another calculation's orbital tables");
+    check(a->hamiltonian_state==Set_Hamiltonian_GPU_Bind_Resources(first.get()) &&
+          b->hamiltonian_state==Set_Hamiltonian_GPU_Bind_Resources(second.get()) &&
+          a->hamiltonian_state!=b->hamiltonian_state,"band solver borrowed another calculation's Hamiltonian GPU cache");
 #endif
     a->chemical->chemical_potential=.125;a->chemical->xanes[0]=1.5;
     b->chemical->chemical_potential=-.25;b->chemical->xanes[1]=2.5;

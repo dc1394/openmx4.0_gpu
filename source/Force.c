@@ -1672,12 +1672,12 @@ f3_chunk_cleanup:
     return success;
 }
 
-static int Force3_GpuTrace(const OpenMXAtomicViews *atomic, const double *dchi,const size_t *dchi_off,
+static int Force3_GpuTrace(OpenMXHamiltonianGpuState *hamiltonian_state, const OpenMXAtomicViews *atomic, const double *dchi,const size_t *dchi_off,
     double *potential,const size_t *vpot_off,double *xyz,const size_t *xyz_off,int dorb,size_t budget, const OpenMXElectronicViews *electronic)
 {
     SetHamiltonianMETables tables;const float *orbs1=NULL;int rank;
     MPI_Comm_rank(mpi_comm_level1,&rank);int kind=Cnt_switch==1;
-    int have=Set_Hamiltonian_MatrixElementsTables_Ready(kind) && Set_Hamiltonian_GetMatrixElementsTables(kind,&tables) && tables.orbs1_resident;
+    int have=Set_Hamiltonian_MatrixElementsTables_Ready(hamiltonian_state, kind) && Set_Hamiltonian_GetMatrixElementsTables(hamiltonian_state, kind,&tables) && tables.orbs1_resident;
     if(have){orbs1=acc_deviceptr((void*)tables.orbs1buf);if(!orbs1)have=0;}
     return Force3_GpuTrace_Part(atomic, 1,Matomnum+1,rank,NULL,have?&tables:NULL,orbs1,dchi,dchi_off,potential,vpot_off,xyz,xyz_off,dorb,budget, electronic);
 }
@@ -2990,7 +2990,7 @@ static void dHCH_SO(double* sumx0r, double* sumx0i, double* sumy0r, double* sumy
     double***** OLP1, const OpenMXCoreHoleView *hole, int reverse_penalty);
 
 static void MPI_OLP(double***** OLP1, OpenMXSolverInvocation *scratch);
-static void Force3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis, OpenMXSolverInvocation *scratch);
+static void Force3(OpenMXHamiltonianGpuState *hamiltonian_state, const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis, OpenMXSolverInvocation *scratch);
 static void Force4(const OpenMXAtomicViews *atomic);
 static size_t Force4_OpenACC(const OpenMXAtomicViews *atomic, double* Fx, double* Fy, double* Fz, size_t* atom_terms);
 static void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double***** CDM0, const OpenMXLocalBasisViews *local_basis, OpenMXSolverInvocation *scratch);
@@ -3013,6 +3013,7 @@ static void Force_CoreHole(const OpenMXAtomicViews *atomic, double***** CDM0, do
 #include "openmx_force_stages.h"
 
 typedef struct {
+    OpenMXHamiltonianGpuState *hamiltonian_state;
     OpenMXDensityGpuState *density_state;
     const OpenMXAtomicViews *atomic;
     const OpenMXVnaMatrixViews *vna;
@@ -3021,7 +3022,7 @@ typedef struct {
     const OpenMXElectronicViews *electronic;
     const OpenMXLocalBasisViews *local_basis;
 } ForceArguments;
-static double Force_Impl(OpenMXDensityGpuState *density_state, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double***** H0,
+static double Force_Impl(OpenMXHamiltonianGpuState *hamiltonian_state, OpenMXDensityGpuState *density_state, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double***** H0,
     double****** DS_NL,
     double***** OLP,
     double***** CDM,
@@ -3029,11 +3030,11 @@ static double Force_Impl(OpenMXDensityGpuState *density_state, const OpenMXAtomi
 static int Force_Operation(const OpenMXForceWorkspace *work,void *opaque,double *result)
 {
     const ForceArguments *a=opaque;
-    *result=Force_Impl(a->density_state,a->atomic,a->vna,a->reciprocal,a->H0,a->DS_NL,a->OLP,a->CDM,a->EDM,
+    *result=Force_Impl(a->hamiltonian_state, a->density_state,a->atomic,a->vna,a->reciprocal,a->H0,a->DS_NL,a->OLP,a->CDM,a->EDM,
         a->electronic,a->local_basis,work);
     return 1;
 }
-double Force(OpenMXDensityGpuState *density_state, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double***** H0,
+double Force(OpenMXHamiltonianGpuState *hamiltonian_state, OpenMXDensityGpuState *density_state, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double***** H0,
     double****** DS_NL,
     double***** OLP,
     double***** CDM,
@@ -3043,7 +3044,7 @@ double Force(OpenMXDensityGpuState *density_state, const OpenMXAtomicViews *atom
         || Constraint_NCS_switch>=1 || Zeeman_NCS_switch==1 || Zeeman_NCO_switch==1);
     const OpenMXForceInput input={atomnum,Matomnum,MatomnumF,SpeciesNum,SpinP_switch,imaginary,
         F_M2G,WhatSpecies,atomic->species.contracted_orbitals,FNAN,natn};
-    ForceArguments args={density_state,atomic,vna,reciprocal,H0,DS_NL,OLP,CDM,EDM,electronic,local_basis};
+    ForceArguments args={hamiltonian_state,density_state,atomic,vna,reciprocal,H0,DS_NL,OLP,CDM,EDM,electronic,local_basis};
     double begin,end;
     dtime(&begin);
     (void)OpenMX_ForceRun(&input,Force_Operation,&args);
@@ -3051,7 +3052,7 @@ double Force(OpenMXDensityGpuState *density_state, const OpenMXAtomicViews *atom
     return end-begin;
 }
 
-static double Force_Impl(OpenMXDensityGpuState *density_state, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double***** H0,
+static double Force_Impl(OpenMXHamiltonianGpuState *hamiltonian_state, OpenMXDensityGpuState *density_state, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double***** H0,
     double****** DS_NL,
     double***** OLP,
     double***** CDM,
@@ -4216,7 +4217,7 @@ static double Force_Impl(OpenMXDensityGpuState *density_state, const OpenMXAtomi
         fflush(stdout);
     }
 
-    OpenMX_ForceGrid(atomic,electronic,local_basis);
+    OpenMX_ForceGrid(hamiltonian_state,atomic,electronic,local_basis);
 
     dtime(&etime);
     if (force_profile) {
@@ -4237,7 +4238,7 @@ static double Force_Impl(OpenMXDensityGpuState *density_state, const OpenMXAtomi
         openmx_env_flag_at(OPENMX_ENV_FORCE_RELEASE_SCF_CACHES, 1)) {
         dtime(&stime);
         Set_Density_Grid_GPU_Invalidate(density_state);
-        Set_Hamiltonian_Release_OpenACC_DeviceCache();
+        Set_Hamiltonian_Release_OpenACC_DeviceCache(hamiltonian_state);
         MPI_Barrier(mpi_comm_level1);
         dtime(&etime);
         if (force_profile) {
@@ -4877,7 +4878,7 @@ static double Force_Impl(OpenMXDensityGpuState *density_state, const OpenMXAtomi
 /* OMP by A. Ito */
 
 #ifndef f3omp
-void Force3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis, OpenMXSolverInvocation *scratch)
+void Force3(OpenMXHamiltonianGpuState *hamiltonian_state, const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis, OpenMXSolverInvocation *scratch)
 {
   double ******DM=electronic->DM;
 
@@ -5832,7 +5833,7 @@ void Force3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electr
     Force3_points_destroy(&f3_points);
     Force3_dpoints_destroy(&f3_dp);
 
-    int late=use_gpu_trace && !Force3_GpuTrace(atomic, dchi_all,dchi_off,vpot_dev_full,vpot_off,xyz_dev_full,xyz_off,f3_dorb,f3_chunk_budget, electronic);
+    int late=use_gpu_trace && !Force3_GpuTrace(hamiltonian_state, atomic, dchi_all,dchi_off,vpot_dev_full,vpot_off,xyz_dev_full,xyz_off,f3_dorb,f3_chunk_budget, electronic);
     int late_any=late;MPI_Allreduce(MPI_IN_PLACE,&late_any,1,MPI_INT,MPI_MAX,mpi_comm_level1);
     if(late_any && OpenMX_HostSimdMode()!=OPENMX_HOST_SIMD_LEGACY){
         /* the failed ranks redo their atoms on the host SIMD path; nothing
@@ -5885,7 +5886,7 @@ void Force3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electr
 /* OMP by Ozaki */
 
 #else
-void Force3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis, OpenMXSolverInvocation *scratch)
+void Force3(OpenMXHamiltonianGpuState *hamiltonian_state, const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis, OpenMXSolverInvocation *scratch)
 {
   double ******DM=electronic->DM;
 

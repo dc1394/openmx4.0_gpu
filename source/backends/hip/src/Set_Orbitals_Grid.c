@@ -995,7 +995,7 @@ static int SOG_capacity_recover(const OpenMXAtomicViews *atomic, int done,int ra
   return done || (pending && ready);
 }
 
-double Set_Orbitals_Grid(OpenMXOrbitalGpuState *orbital_state, OpenMXDensityGpuState *density_state, const OpenMXAtomicViews *atomic, int Cnt_kind, const OpenMXLocalBasisViews *local_basis)
+double Set_Orbitals_Grid(OpenMXHamiltonianGpuState *hamiltonian_state, OpenMXOrbitalGpuState *orbital_state, OpenMXDensityGpuState *density_state, const OpenMXAtomicViews *atomic, int Cnt_kind, const OpenMXLocalBasisViews *local_basis)
 {
   int i,j,n,Mc_AN,Gc_AN,Cwan,NO0,GNc,GRc;
   int Gh_AN,Mh_AN,Rnh,Hwan,NO1,Nog,h_AN;
@@ -1016,11 +1016,11 @@ double Set_Orbitals_Grid(OpenMXOrbitalGpuState *orbital_state, OpenMXDensityGpuS
   /* Orbital values and their grid topology back the density GPU service
      cache.  Drop the previous epoch before any values are regenerated. */
   Set_Density_Grid_GPU_Invalidate(density_state);
-  Set_Hamiltonian_Invalidate_OpenMP_MatrixElements_Cache();
+  Set_Hamiltonian_Invalidate_OpenMP_MatrixElements_Cache(hamiltonian_state);
   Set_Orbitals_Grid_OTF_Release(orbital_state);
   {
-    extern void Set_Hamiltonian_OTF_Release(void);
-    Set_Hamiltonian_OTF_Release();
+    extern void Set_Hamiltonian_OTF_Release(OpenMXHamiltonianGpuState *hamiltonian_state);
+    Set_Hamiltonian_OTF_Release(hamiltonian_state);
   }
 
   /* MPI */

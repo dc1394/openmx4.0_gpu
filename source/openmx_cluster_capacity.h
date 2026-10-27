@@ -33,7 +33,7 @@
 #define OPENMX_CLUSTER_CAPACITY_H
 
 #include <mpi.h>
-typedef struct OpenMXOrbitalGpuState OpenMXOrbitalGpuState;
+typedef struct OpenMXHamiltonianGpuState OpenMXHamiltonianGpuState;
 
 #define OPENMX_CLUSTER_CAPACITY_CPU   0
 #define OPENMX_CLUSTER_CAPACITY_MAGMA 1
@@ -52,7 +52,7 @@ int openmx_cluster_capacity_select(MPI_Comm comm, int n, int complex_matrix,
    at level.of.stdout 1 and turns on the bridge's fallback reporting.
    Returns 1 on admission and 0 on every rank when the caller must use its
    CPU path. OPENMX_GS2_ELPA_GPU explicitly fixes the bridge's kernel side. */
-int openmx_cluster_gs2_admit(OpenMXOrbitalGpuState *orbital_state, MPI_Comm comm, int ictxt, int n, int nblk,
+int openmx_cluster_gs2_admit(OpenMXHamiltonianGpuState *hamiltonian_state, MPI_Comm comm, int ictxt, int n, int nblk,
                               int complex_matrix, const char *label);
 
 #endif /* OPENMX_CLUSTER_CAPACITY_H */

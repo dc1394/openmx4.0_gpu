@@ -18,6 +18,7 @@
 #include "openmx_krylov_state.h"
 #include "openmx_hamiltonian_cache.h"
 #include "openmx_orbital_gpu_state.h"
+#include "openmx_hamiltonian_gpu_state.h"
 #include "openmx_density_gpu_state.h"
 #include "openmx_mixing_h_state.h"
 #include "openmx_mixing_rhok_state.h"
@@ -2632,7 +2633,7 @@ double Set_dOrbitals_Grid(const OpenMXAtomicViews *atomic, int Cnt_kind, const O
 double Set_dOrbitals_Grid_xyz(const OpenMXAtomicViews *atomic, int Cnt_kind,int xyz, const OpenMXLocalBasisViews *local_basis);
 /* Fukuda+YTL-end */
 
-double Set_Orbitals_Grid(OpenMXOrbitalGpuState *orbital_state, OpenMXDensityGpuState *density_state, const OpenMXAtomicViews *atomic, int Cnt_kind, const OpenMXLocalBasisViews *local_basis);
+double Set_Orbitals_Grid(OpenMXHamiltonianGpuState *hamiltonian_state, OpenMXOrbitalGpuState *orbital_state, OpenMXDensityGpuState *density_state, const OpenMXAtomicViews *atomic, int Cnt_kind, const OpenMXLocalBasisViews *local_basis);
 double Set_Aden_Grid(const OpenMXAtomicViews *atomic);
 double Set_Density_Grid(OpenMXDensityGpuState *density_state, OpenMXGridWorkspace *grid, const OpenMXDensityCacheHooks *cache_hooks, const OpenMXAtomicViews *atomic, int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, double **Density_Grid_B0, const OpenMXLocalBasisViews *local_basis);
 #if !OPENMX_GPU_HIP
@@ -2878,7 +2879,7 @@ double Poisson_ESM(int fft_charge_flag,
 
  /**  ESM end  **/
 
-double Set_Hamiltonian(OpenMXOrbitalGpuState *orbital_state, OpenMXGridWorkspace *grid, OpenMXMixingVState *mixing_v, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, char *mode,
+double Set_Hamiltonian(OpenMXHamiltonianGpuState *hamiltonian_state, OpenMXGridWorkspace *grid, OpenMXMixingVState *mixing_v, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, char *mode,
                        int MD_iter,
                        int SCF_iter,
                        int SCF_iter0,
@@ -2896,13 +2897,13 @@ void Set_Hamiltonian_GpuSolver_SetMP(int *MP);
 void OpenMX_GpuPhaseNeed_Register(const char *phase, size_t group_bytes);
 size_t OpenMX_GpuPhaseNeed_Max(void);
 size_t OpenMX_GpuPhaseNeed_MaxPrefixed(const char *prefix);
-void Set_Hamiltonian_Invalidate_OpenMP_MatrixElements_Cache(void);
+void Set_Hamiltonian_Invalidate_OpenMP_MatrixElements_Cache(OpenMXHamiltonianGpuState *hamiltonian_state);
 /* the end of the SCF cycle (DFT.c): the on-the-fly state of the grid
    integrals and the density's local-mode device buffers go before the
    forces; Set_Hamiltonian_OTF_Release also at the run boundary */
-void Set_Hamiltonian_OTF_Release(void);
+void Set_Hamiltonian_OTF_Release(OpenMXHamiltonianGpuState *hamiltonian_state);
 void Set_Orbitals_Grid_OTF_Release(OpenMXOrbitalGpuState *orbital_state);
-void Set_Hamiltonian_OnTheFly_EndCycle(OpenMXOrbitalGpuState *orbital_state);
+void Set_Hamiltonian_OnTheFly_EndCycle(OpenMXHamiltonianGpuState *hamiltonian_state);
 int Set_Density_Grid_GPU_Service(OpenMXDensityGpuState *density_state, const OpenMXDensityCacheHooks *cache_hooks, int Cnt_kind, int Calc_CntOrbital_ON,
                                  double *****CDM, double **Density_Grid_B0,
                                  double *elapsed);
@@ -2911,8 +2912,8 @@ void Set_Hamiltonian_Set_OpenACC_Rank_Selected(int selected);
 int Set_Hamiltonian_OpenACC_Rank_Is_Selected(void);
 void Set_Hamiltonian_Set_OpenACC_Work_Rank_Selected(int selected);
 int Set_Hamiltonian_OpenACC_Work_Rank_Is_Selected(void);
-void Set_Hamiltonian_Invalidate_OpenACC_MatrixElements_Cache(void);
-void Set_Hamiltonian_Release_OpenACC_DeviceCache(void);
+void Set_Hamiltonian_Invalidate_OpenACC_MatrixElements_Cache(OpenMXHamiltonianGpuState *hamiltonian_state);
+void Set_Hamiltonian_Release_OpenACC_DeviceCache(OpenMXHamiltonianGpuState *hamiltonian_state);
 #endif
 /* Release geometry-dependent GPU caches between inputs in a test suite. */
 #if !OPENMX_GPU_HIP
@@ -2949,17 +2950,17 @@ typedef struct {
   const Type_Orbs_Grid *orbs1buf;
 } SetHamiltonianMETables;
 
-int Set_Hamiltonian_GetMatrixElementsTables(int Cnt_kind, SetHamiltonianMETables *tables);
-int Set_Hamiltonian_MatrixElementsTables_Ready(int Cnt_kind);
+int Set_Hamiltonian_GetMatrixElementsTables(OpenMXHamiltonianGpuState *hamiltonian_state, int Cnt_kind, SetHamiltonianMETables *tables);
+int Set_Hamiltonian_MatrixElementsTables_Ready(OpenMXHamiltonianGpuState *hamiltonian_state, int Cnt_kind);
 #if !OPENMX_GPU_HIP
-int Set_Hamiltonian_OnTheFly_DensityPossible(OpenMXOrbitalGpuState *orbital_state, const OpenMXAtomicViews *atomic, int Cnt_kind, int myid);
-void Set_Hamiltonian_OnTheFly_EndCycle(OpenMXOrbitalGpuState *orbital_state);
-void Set_Hamiltonian_OnTheFly_SetDensityRanks(int otf_ranks);
-size_t Set_Hamiltonian_OnTheFly_DensityBudget(int spin_count, size_t dm_count, size_t output_count, int otf_ranks,
+int Set_Hamiltonian_OnTheFly_DensityPossible(OpenMXHamiltonianGpuState *hamiltonian_state, const OpenMXAtomicViews *atomic, int Cnt_kind, int myid);
+void Set_Hamiltonian_OnTheFly_EndCycle(OpenMXHamiltonianGpuState *hamiltonian_state);
+void Set_Hamiltonian_OnTheFly_SetDensityRanks(OpenMXHamiltonianGpuState *hamiltonian_state, int otf_ranks);
+size_t Set_Hamiltonian_OnTheFly_DensityBudget(OpenMXHamiltonianGpuState *hamiltonian_state, int spin_count, size_t dm_count, size_t output_count, int otf_ranks,
                                               int *grow, size_t *need_bytes, size_t *avail_bytes, int myid);
-int Set_Hamiltonian_OnTheFly_DensityGrow(size_t others_bytes, int grow_ranks, size_t *avail_bytes);
+int Set_Hamiltonian_OnTheFly_DensityGrow(OpenMXHamiltonianGpuState *hamiltonian_state, size_t others_bytes, int grow_ranks, size_t *avail_bytes);
 size_t Set_Hamiltonian_MatrixElements_TotalH(int Cnt_kind, int myid);
-int Set_Hamiltonian_OnTheFly_Density(OpenMXOrbitalGpuState *orbital_state, const OpenMXAtomicViews *atomic, int Cnt_kind, int spin_count, const double *dm, size_t dm_count,
+int Set_Hamiltonian_OnTheFly_Density(OpenMXHamiltonianGpuState *hamiltonian_state, const OpenMXAtomicViews *atomic, int Cnt_kind, int spin_count, const double *dm, size_t dm_count,
                                      double *tmpden, size_t output_count, const unsigned int *atom_out_base,
                                      int myid);
 int Set_Density_Grid_GPU_Local_Prepare(OpenMXDensityGpuState *density_state, const OpenMXAtomicViews *atomic, int Cnt_kind, int Calc_CntOrbital_ON);
@@ -2971,7 +2972,7 @@ void Set_Hamiltonian_GpuSolver_SetMP(int *MP);
 
 
 double Total_Energy(OpenMXCoreContext *core, const OpenMXBandEnergies *energies, const OpenMXCWFObservables *cwf_values, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, int MD_iter, double ECE[], const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
-double Force(OpenMXDensityGpuState *density_state, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna,const OpenMXReciprocalViews *reciprocal, double *****H0,
+double Force(OpenMXHamiltonianGpuState *hamiltonian_state, OpenMXDensityGpuState *density_state, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna,const OpenMXReciprocalViews *reciprocal, double *****H0,
 	     double ******DS_NL, 
 	     double *****OLP,
 	     double *****CDM, 

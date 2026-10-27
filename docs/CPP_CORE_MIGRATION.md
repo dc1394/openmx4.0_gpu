@@ -6340,3 +6340,54 @@ sidiaは25 SCF上限の未収束入力なので、収束性の26組へ数えて�
 数値カーネル、Force/Krylov修正、H100向けホストsin/cos、Core/SIMDバイナリは基準と一致します。
 ログと凍結ランタイムは`build/orbital-gpu-state-owner-20261027/`、監査と計時は各対応文書へ記録しています。
 行列要素とOTF計画のGPUキャッシュは、次の所有移管の対象です。
+
+
+## 第94段階: 行列要素・OTFキャッシュと作業領域を計算の所有へ移行
+
+CUDA/HIPの`Set_Hamiltonian`が保持する行列要素テーブル、OTF球インデックス、2種のバッチ計画、
+ホスト作業領域、退避・予算・診断状態を`OpenMXHamiltonianGpuState`へ移しました。
+明示した計算コンテキストのC++ native resource groupが全領域を所有します。
+DFT・軌道生成・密度計算・Forceとそのステージ・cluster/bandのメモリ退避へ同じviewを渡し、
+`Free_Arrays`はnative groupのclearから解放します。破棄したviewで後から解放する経路は除去しました。
+
+`openmx_grid_device_scope.h`が確保元のCUDA/OpenACCまたはHIP/OpenMPの束縛を記録し、
+解放後に呼出元を復元します。計算の主GPUはclear/finishまで固定し、別デバイスでの再利用は明示的に失敗します。
+未使用状態の束縛・破棄と、CPUだけの非構築プローブはGPU APIを呼びません。
+所有者のresetは借用した軌道view、幾何情報、MPI通信を参照しません。native groupの解放順序に依存しない設計です。
+通常のEndCycleでは軌道の解放も明示して行います。
+
+部分常駐の優先順、`host_discarded`/`device_filled`、CPUへ退避する際の再構築、OTF予算、
+HIPのページ固定メモリ上限とページ可能メモリへの切替を維持しました。
+CUDAのpotential stagingはSCF・幾何更新の間で再利用し、計算の終了で解放します。
+直接GPUへ格納する途中でホストbounce領域の確保に失敗した場合の未登録領域も、故障注入で再現して修正しました。
+成功したGPUマッピングを直ちに所有状態へ記録するため、構築途中でも所有者から解放できます。
+
+実Coreを使う新規寿命試験はCUDA/HIP各8回の二重計算、同一/異なるGPU、clear/finish/破棄・再束縛、
+呼出元の復元、空状態、部分常駐と再構築、ホスト・GPU・ページ固定・所有状態確保の失敗を検査します。
+HIPは30箇所のホスト確保失敗、部分GPU確保と転送失敗も検査します。CUDAの行列テーブルは本番builderを使用し、
+HIPのテーブルは独立した入力から本番association/releaseを実行します。両者のOTF計画・球インデックスは本番builderです。
+37件のnative-state CTest、Core/SIMDも含めたASan/UBSan関連6件、登録検査と共通ビルド16件が成功しました。
+OTF計画の既存数値検査はCUDA24条件、HIP各60検査（ページ固定/ページ可能）を成功させました。
+Forceの引数転送・ステージ寿命も両バックエンド各84条件で成功しました。追加のCore ASan/UBSan実行では
+`ASAN_OPTIONS=use_sigaltstack=0`を使用し、OpenMP試験の補助シグナルスタックの衝突を避けました。
+メモリ計装は有効です。補助試験には共通のスタック上限も適用しています。
+密度の実MPIはCUDA4/18 rank・HIP4 rank、容量判断は両者各23条件を成功させ、渡した所有者への退避要求も検査します。
+HIP密度実機検証ツールはコンパイル・リンクまで確認しています。
+
+CPU専用GCC/Intel MPI/MKL、NVHPC/CUDAをビルドし、CUDA sm_80の83翻訳単位とHIP gfx942の84翻訳単位を
+実SDKでコンパイルしました。HIPの容量ヘッダーは共通実装へ昇格し、過去のimportハッシュを書き換えていません。
+GPU数値カーネル、主要な軌道・密度・Force処理、HIP Krylov、CPU/GPU両方のCore/SIMDは基準と一致します。
+ランク選択など他の大域状態は残ります。AMD/A100/H100実機での今回の実行・速度は未検証です。
+
+収束したCPU/GPU比較26組はSCF反復数が一致し、最大差はE=2.810e-10 Ha、F=9.039e-9 Ha/bohrでした。
+通常7経路のCPU/GPU14組、CPU専用3組、GPU空rank1組と、同一MPIプロセス群でwater→NC band→DC→waterを
+切り替えるCPU/GPU各4組を含みます。通常14組の基準は、凍結した`5b4af5ee`の本体・Core/SIMDと
+ハッシュが一致する第93段階の結果を使用しました。その他と性能の基準は新しく実行しています。
+検証用-runtestは隔離した4入力で、標準全件の結果ではありません。DC/DC-LNO/Krylovの入力は
+固定構造DIA8・SCF上限200・Krylov次数600を引き継いでいます。
+
+sidia333・18 MPI×1 OpenMP・既存MPSは103.159→103.110秒で、約105秒を維持しました。
+CPU専用C60 DCの各3回中央値は6.42969→6.42988秒で、全件27 SCFで収束しました。
+sidiaは25 SCF上限・未収束の性能確認で、収束性の26組へ数えません。
+測定と数値・監査の記録は`build/hamiltonian-gpu-state-owner-20261027/`、詳細な計時は
+[性能検証](PERFORMANCE_REGRESSION.md)へ保存しています。

@@ -70,7 +70,7 @@ PREFIX = r'''
 #include "openmx_env.h"
 typedef struct OpenMXAtomicViews OpenMXAtomicViews;
 typedef struct OpenMXDensityGpuState OpenMXDensityGpuState;
-typedef struct OpenMXOrbitalGpuState OpenMXOrbitalGpuState;
+typedef struct OpenMXHamiltonianGpuState OpenMXHamiltonianGpuState;
 #include <stdint.h>
 #include <limits.h>
 #include <stdio.h>
@@ -85,7 +85,7 @@ static int Matomnum=1, M2G[5]={0,1,2,3,4}, GridN_Atom[5]={0,2,2,2,2};
 static int rank_id, tables=1, resident=1, otf_possible=1, device_usable=1, fail_alloc;
 static int otf_calls;
 static int level_stdout=3, Host_ID=0, workspace_ok=1;
-static int Set_Density_Grid_OTF_Prepare(OpenMXOrbitalGpuState *orbital_state,const OpenMXAtomicViews *atomic,int k,size_t *need,size_t *avail) {
+static int Set_Density_Grid_OTF_Prepare(OpenMXHamiltonianGpuState *hamiltonian_state,const OpenMXAtomicViews *atomic,int k,size_t *need,size_t *avail) {
   (void)atomic; *need=1024; *avail=workspace_ok ? 2048 : 512; return k==0 && workspace_ok;
 }
 static size_t registered_need = 12345;
@@ -115,8 +115,8 @@ static int gpu_rank_device_usable(void) { return device_usable; }
 static int openmx_gpu_ranks_per_device_noncollective(void) { return 4; }
 static int OpenMX_GpuMemGetInfo(size_t *f,size_t *t) { *f=*t=(size_t)16*1024*1024*1024; return 0; }
 static void OpenMX_GpuPhaseNeed_Register(const char *n,size_t b) { (void)n; registered_need=b; }
-static int Set_Hamiltonian_MatrixElementsTables_Ready(int k) { return k==0 && tables; }
-static int Set_Density_Grid_OTF_Possible(OpenMXOrbitalGpuState *orbital_state,const OpenMXAtomicViews *atomic,int k) { (void)atomic; otf_calls++; return k==0 && otf_possible; }
+static int Set_Hamiltonian_MatrixElementsTables_Ready(OpenMXHamiltonianGpuState *hamiltonian_state,int k) { return k==0 && tables; }
+static int Set_Density_Grid_OTF_Possible(OpenMXHamiltonianGpuState *hamiltonian_state,const OpenMXAtomicViews *atomic,int k) { (void)atomic; otf_calls++; return k==0 && otf_possible; }
 static void check(int ok,const char *what) {
   if (!ok) { fprintf(stderr,"rank %d: %s\n",rank_id,what); MPI_Abort(mpi_comm_level1,1); }
 }
@@ -127,7 +127,7 @@ STUBS = r'''
 static void SDG_local_delete_device(SDGLocalContext *c) {
   c->d_out_ptr=c->d_term_pt=c->d_pt_pair=NULL; c->d_dm=c->d_tmpden=NULL;
 }
-static int Set_Hamiltonian_GetMatrixElementsTables(int k,SetHamiltonianMETables *t) {
+static int Set_Hamiltonian_GetMatrixElementsTables(OpenMXHamiltonianGpuState *hamiltonian_state,int k,SetHamiltonianMETables *t) {
   static int one[1]={1}, two[1]={2}, nc[2]={0,1};
   static size_t zero[1]={0};
   static float orbs[2]={1,2};

@@ -4313,3 +4313,28 @@ AMD/A100/H100実機、Intelコンパイラ版との性能比較は今回実施�
 `build/orbital-gpu-state-owner-20261027/`の`performance/`、`cpu-performance-results.json`、
 `numerical-summary.json`に結果、`unchanged-arithmetic.json`に数値コードの照合を保存しています。
 ビルドは専用ディレクトリを使用し、`work/openmx`は更新していません。
+
+
+## 2026-10-27: 行列要素・OTFキャッシュの計算所有化（第94段階）
+
+変更前`5b4af5ee`と変更後の本体・Core/SIMDを凍結し、18 MPI×1 OpenMPで順次実行しました。
+GPUはRTX 5080・既存MPS・NVHPC/OpenMPI、CPU専用本体はGCC/Intel MPI/MKLです。
+計時中はビルド、単体試験、他のOpenMX計算を重ねていません。
+
+| 入力・指標 | 変更前 | 変更後 |
+| --- | ---: | ---: |
+| sidia333 NC cluster、GPU/MPS、内部Total最大値 (秒) | 99.718 | 99.792 |
+| 同、MPI起動を含む経過時間 (秒) | 103.159 | 103.110 |
+| C60 DC、CPU専用、内部Total中央値 (秒) | 5.950 | 5.964 |
+| 同、MPI起動を含む経過時間中央値 (秒) | 6.42969 | 6.42988 |
+
+sidiaは元入力を各1回測定した25 SCF上限・未収束の比較で、E差0、最大F差1.0e-12 Ha/bohrでした。
+C60は変更前後を交互に各3回測定し、全件27 SCFで収束、対応組のE/F印字値差は0です。
+これらの差を高速化とは主張せず、GeForceの約105秒目標とCPU経路の性能を保つ確認とします。
+AMD/A100/H100実機、Intelコンパイラ版との比較は今回実施していません。
+
+別途、収束した26組でSCF反復数が一致し、最大差E=2.810e-10 Ha、F=9.039e-9 Ha/bohrでした。
+入力と比較範囲は[移行記録](CPP_CORE_MIGRATION.md)の第94段階を参照してください。
+`build/hamiltonian-gpu-state-owner-20261027/`の`performance/`・`cpu-performance-results.json`・
+`numerical-summary.json`に結果、`baseline-proof.json`と`candidate-runtime-hashes.json`に凍結ランタイムの証拠を保存しました。
+`work/openmx`は更新していません。

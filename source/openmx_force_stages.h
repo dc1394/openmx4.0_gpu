@@ -8,6 +8,7 @@ typedef enum {
 } OpenMXForceStageKind;
 typedef struct {
     OpenMXForceStageKind kind;
+    OpenMXHamiltonianGpuState *hamiltonian_state;
     const OpenMXAtomicViews *atomic;
     const OpenMXVnaMatrixViews *vna;
     const OpenMXReciprocalViews *reciprocal;
@@ -20,7 +21,7 @@ static int OpenMX_ForceStageOperation(OpenMXSolverInvocation *scratch,void *opaq
     const OpenMXForceStageArguments *a=opaque;
     switch(a->kind) {
     case OPENMX_FORCE_GRID:
-        Force3(a->atomic,a->electronic,a->local_basis,scratch);break;
+        Force3(a->hamiltonian_state,a->atomic,a->electronic,a->local_basis,scratch);break;
     case OPENMX_FORCE_VNA:
         Force4B(a->vna,a->reciprocal,a->density,a->local_basis,scratch);break;
     case OPENMX_FORCE_NONLOCAL:
@@ -32,10 +33,10 @@ static int OpenMX_ForceStageOperation(OpenMXSolverInvocation *scratch,void *opaq
     }
     *result=0;return 1;
 }
-static inline void OpenMX_ForceGrid(const OpenMXAtomicViews *atomic,
+static inline void OpenMX_ForceGrid(OpenMXHamiltonianGpuState *hamiltonian_state, const OpenMXAtomicViews *atomic,
     const OpenMXElectronicViews *electronic,const OpenMXLocalBasisViews *local_basis)
 {
-    OpenMXForceStageArguments a={.kind=OPENMX_FORCE_GRID,.atomic=atomic,
+    OpenMXForceStageArguments a={.kind=OPENMX_FORCE_GRID,.hamiltonian_state=hamiltonian_state,.atomic=atomic,
         .electronic=electronic,.local_basis=local_basis};
     (void)OpenMX_Solver_Run(OpenMX_ForceStageOperation,&a);
 }

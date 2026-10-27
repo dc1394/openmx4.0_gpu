@@ -43,6 +43,7 @@ prefix = r'''
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "openmx_env.h"
 typedef struct { int wan,no,pt0,pad; size_t out; double gx,gy,gz,ax,ay,az; } SOG_GpuPair;
 static int Matomnum=3;
 static int M2G[4]={0,1,2,3}, Spe_Total_NO[4]={0,3,5,7}, WhatSpecies[4]={0,1,2,3};
@@ -77,10 +78,16 @@ static void Set_Hamiltonian_add_array_bytes(size_t *a,size_t n,size_t z,const ch
 static void Set_Hamiltonian_MatrixElements_CountTotals(int k,int r,int *n,size_t *h,size_t *g,size_t *o0,size_t *o1) {
   (void)k; (void)r; *n=9; *h=*g=*o0=*o1=0;
 }
-static void Set_Hamiltonian_Free_OpenACC_MatrixElements_Cache(void) {}
+typedef struct OpenMXHamiltonianGpuState OpenMXHamiltonianGpuState;
+typedef int OpenMXGridDeviceScope;
+static OpenMXGridDeviceScope OpenMX_GridDeviceEnter(const int *a) { (void)a; return 0; }
+static void OpenMX_GridDeviceLeave(OpenMXGridDeviceScope a) { (void)a; }
+static void OpenMX_GridDeviceCapture(int *a) { (void)a; }
+static void acc_wait_all(void) {}
+static void Set_Hamiltonian_Free_OpenACC_MatrixElements_Cache(OpenMXHamiltonianGpuState *s) { (void)s; }
 '''
 parts = [prefix, typedef("SetHamiltonianOnTheFlyCache"), typedef("SetHOTFBatch"), typedef("SetHOTFPlan"), typedef("SetHOTFPairCost"), typedef("SetHOTFDensityPlan"),
-         "static SetHamiltonianOnTheFlyCache Set_Hamiltonian_OTF;\nstatic SetHOTFPlan Set_Hamiltonian_OTF_Plan[2];\nstatic SetHOTFDensityPlan Set_Hamiltonian_OTF_DenPlan;"]
+         "struct OpenMXHamiltonianGpuState { int affinity; SetHamiltonianOnTheFlyCache otf; SetHOTFPlan plans[2]; SetHOTFDensityPlan density_plan; }; static OpenMXHamiltonianGpuState state, *hamiltonian_state=&state;"]
 for name in ["SETH_OTF_DEN_RESERVE_BYTES", "SETH_OTF_DEN_RUNTIME_SLACK", "SETH_OTF_DEN_ALIGNMENT_SLACK", "SETH_OTF_DEN_GROW_QUANTUM"]:
     parts.append(re.search(r"^#define " + name + r"[^\n]*", source, re.M).group(0))
 for name in ["SETH_OTF_PairCost", "SETH_OTF_CompactCost", "SETH_OTF_DensityLimitBytes", "SETH_OTF_DensityFixedBytes", "SETH_OTF_DensityBoundWorkspace", "SETH_OTF_DensityPairBytes", "Set_Hamiltonian_OnTheFly_DensityBudget", "Set_Hamiltonian_OnTheFly_DensityGrow", "SETH_OTF_FreePlan", "SETH_OTF_FreePlans", "SETH_OTF_GetPlan", "Set_Hamiltonian_OTF_Release", "Set_Hamiltonian_Invalidate_OpenACC_MatrixElements_Cache"]:
@@ -253,6 +260,14 @@ int main(void) {
 ''')
 with tempfile.TemporaryDirectory(prefix="openmx-otf-plan-") as tmp:
     cfile, binary = Path(tmp)/"check.c", Path(tmp)/"check"
-    cfile.write_text("\n\n".join(parts))
-    subprocess.run(shlex.split(os.environ.get("CC", "cc")) + ["-std=c11", "-O1", "-g", "-Wall", "-Wextra"] + shlex.split(os.environ.get("CFLAGS", "")) + [str(cfile), "-o", str(binary)], check=True)
+    generated="\n\n".join(parts)
+    # The numerical fixture supplies one explicit POD. The separate real-core
+    # lifecycle fixture exercises production binding and device restoration.
+    for old,new in [('Set_Hamiltonian_OTF','hamiltonian_state->otf'),('Set_Hamiltonian_OTF_Plan','hamiltonian_state->plans'),('Set_Hamiltonian_OTF_DenPlan','hamiltonian_state->density_plan')]:
+        generated=re.sub(r'\b'+old+r'\b',new,generated)
+    for name in ['SETH_OTF_FreePlans','SETH_OTF_GetPlan','Set_Hamiltonian_OTF_Release','Set_Hamiltonian_Invalidate_OpenACC_MatrixElements_Cache','Set_Hamiltonian_OnTheFly_DensityBudget','Set_Hamiltonian_OnTheFly_DensityGrow']:
+        generated=re.sub(r'\b'+name+r'\((?!OpenMXHamiltonianGpuState|hamiltonian_state)',name+'(hamiltonian_state, ',generated)
+        generated=generated.replace(name+'(hamiltonian_state, )',name+'(hamiltonian_state)')
+    cfile.write_text(generated)
+    subprocess.run(shlex.split(os.environ.get("CC", "cc")) + ["-std=c11", "-O1", "-g", "-Wall", "-Wextra"] + shlex.split(os.environ.get("CFLAGS", "")) + ["-I"+str(ROOT/"source"),str(cfile),str(ROOT/"source/openmx_env.c"), "-o", str(binary)], check=True)
     subprocess.run([str(binary)], check=True, timeout=30)

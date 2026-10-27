@@ -134,7 +134,7 @@ struct OpenMXClusterColState {
   OpenMXChemicalPotentials *chemical; /* borrowed from this calculation */
   OpenMXThermodynamicEnergies *thermo; /* borrowed from this calculation */
   OpenMXNativeResources *resources; /* borrowed from this calculation */
-  OpenMXOrbitalGpuState *orbital_state; /* borrowed from this calculation */
+  OpenMXHamiltonianGpuState *hamiltonian_state; /* borrowed from this calculation */
   OpenMXHamiltonianCache *hamiltonian_cache; /* borrowed from this calculation */
   OpenMXDensityGpuState *density_state; /* borrowed from the same calculation */
   int initialized;
@@ -194,7 +194,7 @@ OpenMXClusterColState *Cluster_DFT_Col_Bind_Resources(OpenMXCoreContext *core)
   ClusterColState *state = (ClusterColState *)metadata;
   if (!state->initialized) {
     state->resources = owner;
-    state->orbital_state = Set_Orbitals_Grid_GPU_Bind_Resources(core);
+    state->hamiltonian_state = Set_Hamiltonian_GPU_Bind_Resources(core);
     state->hamiltonian_cache = Set_Hamiltonian_Cache_Bind_Resources(core);
     state->density_state = Set_Density_Grid_GPU_Bind_Resources(core);
     const ClusterColRefineStage initial = {-1, 0.0, 0, 0, 0, 0, 0, 0, 0, 0, -1, {0, 0}, 0, 0};
@@ -1047,9 +1047,9 @@ static int ClusterCol_GpuDiagFits(ClusterColState *state, int n, int maxn, int m
             int admitted;
             if (SpinP_switch==1 && numprocs0>1) {
                 ClusterCol_UnionGrid_Ensure(state, n);
-                admitted=openmx_cluster_gs2_admit(state->orbital_state,mpi_comm_level1,state->ugrid.ictxt,n,state->ugrid.nblk,0,"Cluster collinear");
+                admitted=openmx_cluster_gs2_admit(state->hamiltonian_state,mpi_comm_level1,state->ugrid.ictxt,n,state->ugrid.nblk,0,"Cluster collinear");
             }
-            else admitted=openmx_cluster_gs2_admit(state->orbital_state,mpi_comm_level1,ictxt1,n,nblk,0,"Cluster collinear");
+            else admitted=openmx_cluster_gs2_admit(state->hamiltonian_state,mpi_comm_level1,ictxt1,n,nblk,0,"Cluster collinear");
             if (admitted) state->gs2_fallback_n=n;
         }
     }

@@ -48,7 +48,7 @@ prefix = r'''
 #include "openmx_env.h"
 typedef struct OpenMXAtomicViews OpenMXAtomicViews;
 typedef struct OpenMXDensityGpuState OpenMXDensityGpuState;
-typedef struct OpenMXOrbitalGpuState OpenMXOrbitalGpuState;
+typedef struct OpenMXHamiltonianGpuState OpenMXHamiltonianGpuState;
 #include <stdint.h>
 #include <limits.h>
 #include <stdio.h>
@@ -90,20 +90,20 @@ static int acc_get_device_num(int x) { (void)x; return 0; }
 static int gpu_rank_device_usable(void) { return 1; }
 static int OpenMX_GpuMemGetInfo(size_t *f,size_t *t) { *f=*t=(size_t)16*1024*1024*1024; return 0; }
 static void OpenMX_GpuPhaseNeed_Register(const char *n,size_t b) { (void)n; registered_need=b; }
-static int Set_Hamiltonian_OnTheFly_DensityStage(int ranks,size_t *need,size_t *budget) {
+static int Set_Hamiltonian_OnTheFly_DensityStage(OpenMXHamiltonianGpuState *hamiltonian_state,int ranks,size_t *need,size_t *budget) {
   (void)ranks; *need=128; *budget=1024; return 1;
 }
-static int Set_Hamiltonian_MatrixElementsTables_Ready(int k) { return k==0 && resident; }
-static int Set_Hamiltonian_OnTheFly_DensityPossible(OpenMXOrbitalGpuState *orbital_state,const OpenMXAtomicViews *atomic,int k,int r) { (void)atomic; (void)r; return k==0 && otf_available && !resident; }
+static int Set_Hamiltonian_MatrixElementsTables_Ready(OpenMXHamiltonianGpuState *hamiltonian_state,int k) { return k==0 && resident; }
+static int Set_Hamiltonian_OnTheFly_DensityPossible(OpenMXHamiltonianGpuState *hamiltonian_state,const OpenMXAtomicViews *atomic,int k,int r) { (void)atomic; (void)r; return k==0 && otf_available && !resident; }
 static size_t Set_Hamiltonian_MatrixElements_TotalH(int k,int r) { (void)r; return k==0 ? 1:0; }
-static void Set_Hamiltonian_OnTheFly_SetDensityRanks(int r) { density_ranks=r; }
-static size_t Set_Hamiltonian_OnTheFly_DensityBudget(int s,size_t dm,size_t out,int ranks,
+static void Set_Hamiltonian_OnTheFly_SetDensityRanks(OpenMXHamiltonianGpuState *hamiltonian_state,int r) { density_ranks=r; }
+static size_t Set_Hamiltonian_OnTheFly_DensityBudget(OpenMXHamiltonianGpuState *hamiltonian_state,int s,size_t dm,size_t out,int ranks,
                                                     int *grow,size_t *need,size_t *avail,int id) {
   (void)s; (void)dm; (void)out; (void)ranks; (void)id;
   *grow=budget_grow; *need=(size_t)536*1024*1024; *avail=(size_t)128*1024*1024;
   return budget_grow ? 0 : (size_t)128*1024*1024;
 }
-static int Set_Hamiltonian_OnTheFly_DensityGrow(size_t others,int ranks,size_t *avail) {
+static int Set_Hamiltonian_OnTheFly_DensityGrow(OpenMXHamiltonianGpuState *hamiltonian_state,size_t others,int ranks,size_t *avail) {
   (void)others; (void)ranks;
   *avail=(size_t)(grow_ok ? 768 : 128)*1024*1024;
   return grow_ok;
@@ -115,7 +115,7 @@ static void check(int ok,const char *what) {
 stubs = r'''
 
 static void SDG_local_delete_device(SDGLocalContext *c) { c->device_resident=0; }
-static int Set_Hamiltonian_GetMatrixElementsTables(int k,SetHamiltonianMETables *t) {
+static int Set_Hamiltonian_GetMatrixElementsTables(OpenMXHamiltonianGpuState *hamiltonian_state,int k,SetHamiltonianMETables *t) {
   static int one[1]={1}, two[1]={2}, nc[2]={0,1};
   static size_t zero[1]={0};
   static float orbs[2]={1,2};

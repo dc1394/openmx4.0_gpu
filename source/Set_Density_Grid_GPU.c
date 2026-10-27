@@ -125,7 +125,7 @@ typedef struct {
 } SDGHostBuffer;
 
 struct OpenMXDensityGpuState {
-  OpenMXOrbitalGpuState *orbital_state; /* borrowed from this calculation */
+  OpenMXHamiltonianGpuState *hamiltonian_state; /* borrowed from this calculation */
   int initialized;
   SetDensityGpuCache cache;
   SDGLocalContext local;
@@ -416,7 +416,7 @@ OpenMXDensityGpuState *Set_Density_Grid_GPU_Bind_Resources(OpenMXCoreContext *co
   }
   OpenMXDensityGpuState *density_state = (OpenMXDensityGpuState *)metadata;
   if (!density_state->initialized) {
-    density_state->orbital_state = Set_Orbitals_Grid_GPU_Bind_Resources(core);
+    density_state->hamiltonian_state = Set_Hamiltonian_GPU_Bind_Resources(core);
     density_state->last_path = density_state->last_cpu = -1;
     density_state->last_workspace = density_state->last_failed = -1;
     density_state->initialized = 1;
@@ -1428,7 +1428,7 @@ int Set_Density_Grid_GPU_Service(OpenMXDensityGpuState *density_state, const Ope
 ***********************************************************************/
 
 /* Set_Hamiltonian.c: the planned on-the-fly density call's figures */
-int Set_Hamiltonian_OnTheFly_DensityStage(int otf_ranks, size_t *need_bytes, size_t *budget_bytes);
+int Set_Hamiltonian_OnTheFly_DensityStage(OpenMXHamiltonianGpuState *hamiltonian_state, int otf_ranks, size_t *need_bytes, size_t *budget_bytes);
 
 static void SDG_local_delete_device(SDGLocalContext *c)
 {
@@ -1495,7 +1495,7 @@ static int SDG_local_build(OpenMXDensityGpuState *density_state, int Cnt_kind, i
         acc_get_num_devices(acc_device_nvidia) <= 0) ok = 0;
   }
 
-  if (ok && !Set_Hamiltonian_GetMatrixElementsTables(Cnt_kind, &c->t)) ok = 0;
+  if (ok && !Set_Hamiltonian_GetMatrixElementsTables(density_state->hamiltonian_state, Cnt_kind, &c->t)) ok = 0;
 
   if (ok) {
     c->spin_count = spin_count;
@@ -1697,14 +1697,14 @@ static int SDG_local_prepare(OpenMXDensityGpuState *density_state, const OpenMXA
     int my_ready, my_otf = 0;
 
     MPI_Comm_rank(mpi_comm_level1, &myid);
-    my_ready = Set_Hamiltonian_MatrixElementsTables_Ready(table_kind);
+    my_ready = Set_Hamiltonian_MatrixElementsTables_Ready(density_state->hamiltonian_state, table_kind);
     if (my_ready) {
       SetHamiltonianMETables probe;
-      if (!Set_Hamiltonian_GetMatrixElementsTables(table_kind, &probe) ||
+      if (!Set_Hamiltonian_GetMatrixElementsTables(density_state->hamiltonian_state, table_kind, &probe) ||
           !(probe.orbs0_resident && probe.orbs1_resident && probe.nolg_resident && probe.meta_resident))
         my_ready = 0;
     }
-    if (!my_ready) my_otf = Set_Hamiltonian_OnTheFly_DensityPossible(density_state->orbital_state, atomic, table_kind, myid);
+    if (!my_ready) my_otf = Set_Hamiltonian_OnTheFly_DensityPossible(density_state->hamiltonian_state, atomic, table_kind, myid);
     if (!(my_ready || my_otf)) return 0;
     if (my_otf) {
       if (c->ready && !c->otf) SDG_local_free(density_state);
@@ -1747,7 +1747,7 @@ static int SDG_local_prepare(OpenMXDensityGpuState *density_state, const OpenMXA
 
   /* refresh the shared-table view: the pointers and the residency flags may
      have changed since the epoch was built */
-  if (!Set_Hamiltonian_GetMatrixElementsTables(table_kind, &c->t) ||
+  if (!Set_Hamiltonian_GetMatrixElementsTables(density_state->hamiltonian_state, table_kind, &c->t) ||
       c->t.total_nolg != c->term_count || c->t.total_h != c->dm_count) {
     SDG_local_free(density_state);
     density_state->local.unavailable = 1;
@@ -1805,7 +1805,7 @@ int Set_Density_Grid_GPU_Local_Prepare(OpenMXDensityGpuState *density_state, con
      need no local-GPU communicator.  Per-rank environment/device/cache
      decisions below must still participate in every collective. */
   if (scf_eigen_lib_flag != GPUSOLVER) {
-    Set_Hamiltonian_OnTheFly_SetDensityRanks(0);
+    Set_Hamiltonian_OnTheFly_SetDensityRanks(density_state->hamiltonian_state, 0);
     OpenMX_GpuPhaseNeed_Register("density_grid_local", 0);
     memset(&density_state->census, 0, sizeof(density_state->census));
     return 0;
@@ -1817,7 +1817,7 @@ int Set_Density_Grid_GPU_Local_Prepare(OpenMXDensityGpuState *density_state, con
   ok = SDG_local_prepare(density_state, atomic, Cnt_kind, Calc_CntOrbital_ON, node_ranks, &vote_need, &vote_budget);
   my_otf = ok && Matomnum > 0 && density_state->local.otf;
   MPI_Allreduce(&my_otf, &node_otf, 1, MPI_INT, MPI_SUM, node_comm);
-  Set_Hamiltonian_OnTheFly_SetDensityRanks(node_otf);
+  Set_Hamiltonian_OnTheFly_SetDensityRanks(density_state->hamiltonian_state, node_otf);
 
   /* Plan the node's on-the-fly workspaces before any quadrature starts.
      Prefer full atom tiles when they fit; otherwise compact overlap-point
@@ -1828,7 +1828,7 @@ int Set_Density_Grid_GPU_Local_Prepare(OpenMXDensityGpuState *density_state, con
      cannot fit, or its memory budget is unavailable.  It then takes its
      CPU loop while the other ranks retain their distributed work. */
   if (my_otf) {
-    mine[0] = (unsigned long long)Set_Hamiltonian_OnTheFly_DensityBudget(
+    mine[0] = (unsigned long long)Set_Hamiltonian_OnTheFly_DensityBudget(density_state->hamiltonian_state,
         density_state->local.spin_count, density_state->local.otf_dm_count, density_state->local.otf_output_count, node_otf,
         &grow, &ws_need, &ws_avail, myid);
     if (0 < grow) mine[1] = 1ULL;
@@ -1838,11 +1838,11 @@ int Set_Density_Grid_GPU_Local_Prepare(OpenMXDensityGpuState *density_state, con
   }
   MPI_Allreduce(mine, node, 2, MPI_UNSIGNED_LONG_LONG, MPI_SUM, node_comm);
   MPI_Comm_free(&node_comm);
-  if (0 < grow && !Set_Hamiltonian_OnTheFly_DensityGrow((size_t)node[0], (int)node[1], &ws_avail)) grow = -1;
+  if (0 < grow && !Set_Hamiltonian_OnTheFly_DensityGrow(density_state->hamiltonian_state, (size_t)node[0], (int)node[1], &ws_avail)) grow = -1;
   /* the stage vote of an on-the-fly rank: the workspace the call prefers
      against the rank's share of the device (no valid plan: the memory query
      failed, the stage cannot be planned) */
-  if (my_otf && !Set_Hamiltonian_OnTheFly_DensityStage(node_otf, &vote_need, &vote_budget)) vote_need = SIZE_MAX;
+  if (my_otf && !Set_Hamiltonian_OnTheFly_DensityStage(density_state->hamiltonian_state, node_otf, &vote_need, &vote_budget)) vote_need = SIZE_MAX;
   if (grow < 0) {
     ok = 0;
     ws_declined = 1;
@@ -2330,7 +2330,7 @@ int Set_Density_Grid_GPU_Local_Run(OpenMXDensityGpuState *density_state, const O
 
     MPI_Comm_rank(mpi_comm_level1, &myid);
     if (ok) ok = SDG_pack_local_cdm(CDM, dm_otf, c->otf_dm_count, spin_count);
-    if (ok) ok = Set_Hamiltonian_OnTheFly_Density(density_state->orbital_state, atomic, c->cnt_kind, spin_count, dm_otf, c->otf_dm_count, den_otf, n_out,
+    if (ok) ok = Set_Hamiltonian_OnTheFly_Density(density_state->hamiltonian_state, atomic, c->cnt_kind, spin_count, dm_otf, c->otf_dm_count, den_otf, n_out,
                                                   c->otf_out_base, myid);
     if (ok) {
       for (spin = 0; spin < spin_count; spin++) {

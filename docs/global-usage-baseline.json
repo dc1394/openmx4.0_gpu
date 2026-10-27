@@ -1,17 +1,17 @@
 {
 "scope": "global-state usage of the C translation units of the NVIDIA build",
-"revision": "6e638a8d",
+"revision": "5b4af5ee",
 "summary": {
 "translation units analysed": 291,
 "translation units not analysed": 0,
-"functions": 3389,
+"functions": 3395,
 "common-header objects (defined in openmx_globals.c)": 942,
 "common-header objects referenced by some function": 936,
 "common-header objects written by some function (direct or through)": 696,
 "function-object edges (common header)": 12399,
 "objects with external linkage defined outside openmx_globals.c": 353,
-"file-scope statics": 307,
-"function-local statics": 286,
+"file-scope statics": 300,
+"function-local statics": 277,
 "environment variables (names read, every unit)": 254,
 "functions calling getenv directly (outside openmx_env.c)": 0,
 "environment names missing from the registry": 0
@@ -9027,20 +9027,20 @@
 "Set_Density_Grid_GPU_Service@source/Set_Density_Grid_GPU.c->level_stdout",
 "Set_Density_Grid_GPU_Service@source/Set_Density_Grid_GPU.c->mpi_comm_level1",
 "Set_Density_Grid_GPU_Service@source/Set_Density_Grid_GPU.c->scf_eigen_lib_flag",
-"Set_Hamiltonian.omp_outlined.37@source/Set_Hamiltonian.c->Constraint_NCS_switch",
-"Set_Hamiltonian.omp_outlined.37@source/Set_Hamiltonian.c->FNAN",
-"Set_Hamiltonian.omp_outlined.37@source/Set_Hamiltonian.c->F_Kin_flag",
-"Set_Hamiltonian.omp_outlined.37@source/Set_Hamiltonian.c->F_NL_flag",
-"Set_Hamiltonian.omp_outlined.37@source/Set_Hamiltonian.c->F_U_flag",
-"Set_Hamiltonian.omp_outlined.37@source/Set_Hamiltonian.c->F_VNA_flag",
-"Set_Hamiltonian.omp_outlined.37@source/Set_Hamiltonian.c->Hub_U_switch",
-"Set_Hamiltonian.omp_outlined.37@source/Set_Hamiltonian.c->M2G",
-"Set_Hamiltonian.omp_outlined.37@source/Set_Hamiltonian.c->Matomnum",
-"Set_Hamiltonian.omp_outlined.37@source/Set_Hamiltonian.c->ProExpn_VNA",
-"Set_Hamiltonian.omp_outlined.37@source/Set_Hamiltonian.c->SpinP_switch",
-"Set_Hamiltonian.omp_outlined.37@source/Set_Hamiltonian.c->WhatSpecies",
-"Set_Hamiltonian.omp_outlined.37@source/Set_Hamiltonian.c->core_hole_state_flag",
-"Set_Hamiltonian.omp_outlined.37@source/Set_Hamiltonian.c->natn",
+"Set_Hamiltonian.omp_outlined.41@source/Set_Hamiltonian.c->Constraint_NCS_switch",
+"Set_Hamiltonian.omp_outlined.41@source/Set_Hamiltonian.c->FNAN",
+"Set_Hamiltonian.omp_outlined.41@source/Set_Hamiltonian.c->F_Kin_flag",
+"Set_Hamiltonian.omp_outlined.41@source/Set_Hamiltonian.c->F_NL_flag",
+"Set_Hamiltonian.omp_outlined.41@source/Set_Hamiltonian.c->F_U_flag",
+"Set_Hamiltonian.omp_outlined.41@source/Set_Hamiltonian.c->F_VNA_flag",
+"Set_Hamiltonian.omp_outlined.41@source/Set_Hamiltonian.c->Hub_U_switch",
+"Set_Hamiltonian.omp_outlined.41@source/Set_Hamiltonian.c->M2G",
+"Set_Hamiltonian.omp_outlined.41@source/Set_Hamiltonian.c->Matomnum",
+"Set_Hamiltonian.omp_outlined.41@source/Set_Hamiltonian.c->ProExpn_VNA",
+"Set_Hamiltonian.omp_outlined.41@source/Set_Hamiltonian.c->SpinP_switch",
+"Set_Hamiltonian.omp_outlined.41@source/Set_Hamiltonian.c->WhatSpecies",
+"Set_Hamiltonian.omp_outlined.41@source/Set_Hamiltonian.c->core_hole_state_flag",
+"Set_Hamiltonian.omp_outlined.41@source/Set_Hamiltonian.c->natn",
 "Set_Hamiltonian.omp_outlined@source/Set_Hamiltonian.c->Constraint_NCS_switch",
 "Set_Hamiltonian.omp_outlined@source/Set_Hamiltonian.c->FNAN",
 "Set_Hamiltonian.omp_outlined@source/Set_Hamiltonian.c->F_Kin_flag",
@@ -12584,48 +12584,6 @@
 },
 {
 "unit": "source/Set_Hamiltonian.c",
-"name": "SetH_prof",
-"type": "%struct.SetHamiltonianProfileCounters zeroinitializer",
-"const": false
-},
-{
-"unit": "source/Set_Hamiltonian.c",
-"name": "Set_Hamiltonian_GpuTestNeed_Now",
-"type": "i64 0",
-"const": false
-},
-{
-"unit": "source/Set_Hamiltonian.c",
-"name": "Set_Hamiltonian_ME_Cache",
-"type": "{ i32",
-"const": false
-},
-{
-"unit": "source/Set_Hamiltonian.c",
-"name": "Set_Hamiltonian_OTF",
-"type": "{ i32",
-"const": false
-},
-{
-"unit": "source/Set_Hamiltonian.c",
-"name": "Set_Hamiltonian_OTF_DenPlan",
-"type": "%struct.SetHOTFDensityPlan zeroinitializer",
-"const": false
-},
-{
-"unit": "source/Set_Hamiltonian.c",
-"name": "Set_Hamiltonian_OTF_Plan",
-"type": "[2 x %struct.SetHOTFPlan] zeroinitializer",
-"const": false
-},
-{
-"unit": "source/Set_Hamiltonian.c",
-"name": "Set_Hamiltonian_OTF_density_ranks",
-"type": "i32 0",
-"const": false
-},
-{
-"unit": "source/Set_Hamiltonian.c",
 "name": "Set_Hamiltonian_OpenACC_Rank_Selected",
 "type": "i32 1",
 "const": false
@@ -15583,72 +15541,9 @@
 },
 {
 "unit": "source/Set_Hamiltonian.c",
-"function": "Calc_MatrixElements_dVH_Vxc_VNA",
-"variable": "call_index",
-"type": "i32 0",
-"const": false
-},
-{
-"unit": "source/Set_Hamiltonian.c",
-"function": "SETH_OTF_StagePotential",
-"variable": "stage",
-"type": "ptr null",
-"const": false
-},
-{
-"unit": "source/Set_Hamiltonian.c",
-"function": "SETH_OTF_StagePotential",
-"variable": "stage_count",
-"type": "i64 0",
-"const": false
-},
-{
-"unit": "source/Set_Hamiltonian.c",
-"function": "Set_Hamiltonian_CreateGpuTurnPlan",
-"variable": "last_concurrent",
-"type": "i32 -1",
-"const": false
-},
-{
-"unit": "source/Set_Hamiltonian.c",
-"function": "Set_Hamiltonian_CreateGpuTurnPlan",
-"variable": "last_device_ranks",
-"type": "i32 -1",
-"const": false
-},
-{
-"unit": "source/Set_Hamiltonian.c",
-"function": "Set_Hamiltonian_OnTheFly_MatrixElements",
-"variable": "last_nonresident",
-"type": "i32 -1",
-"const": false
-},
-{
-"unit": "source/Set_Hamiltonian.c",
-"function": "Set_Hamiltonian_OnTheFly_MatrixElements",
-"variable": "last_workspace",
-"type": "i64 0",
-"const": false
-},
-{
-"unit": "source/Set_Hamiltonian.c",
 "function": "Set_Hamiltonian_ResidentMaskLabel",
 "variable": "names",
-"type": "[4 x ptr] [ptr @.str.150",
-"const": false
-},
-{
-"unit": "source/Set_Hamiltonian.c",
-"function": "Set_Hamiltonian_Run_OpenACC_MatrixElements",
-"variable": "retry_reports",
-"type": "i32 0",
-"const": false
-},
-{
-"unit": "source/Set_Hamiltonian.c",
-"function": "Set_Hamiltonian_Stream_MatrixElements",
-"variable": "last_workspace",
-"type": "i64 0",
+"type": "[4 x ptr] [ptr @.str.154",
 "const": false
 },
 {

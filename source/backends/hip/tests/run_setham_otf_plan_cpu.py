@@ -24,7 +24,7 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE = (ROOT / "source/Set_Hamiltonian.c").read_text()
+SOURCE = (ROOT / "src/Set_Hamiltonian.c").read_text()
 
 
 def function(name):
@@ -57,6 +57,7 @@ PREFIX = r'''
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "openmx_env.h"
 
 typedef struct { int wan; int no; int pad0, pad1; double gx, gy, gz; double ax, ay, az; } OTF_Atom;
 
@@ -82,7 +83,14 @@ static hipError_t hipGetLastError(void) { return hipSuccess; }
 #define NA 7
 static int Matomnum = NA, SpinP_switch=0, otf_possible=1, memory_query_ok=1;
 static size_t free_device_bytes;
-static int Set_Density_Grid_OTF_Possible(int k) { (void)k; return otf_possible; }
+typedef struct OpenMXHamiltonianGpuState OpenMXHamiltonianGpuState;
+typedef struct OpenMXAtomicViews OpenMXAtomicViews;
+typedef int OpenMXGridDeviceScope;
+static OpenMXGridDeviceScope OpenMX_GridDeviceEnter(const int *a) { (void)a; return 0; }
+static void OpenMX_GridDeviceLeave(OpenMXGridDeviceScope a) { (void)a; }
+static void OpenMX_GridDeviceCapture(int *a) { (void)a; }
+static int hipDeviceSynchronize(void) { return 0; }
+static int Set_Density_Grid_OTF_Possible(OpenMXHamiltonianGpuState *s,const OpenMXAtomicViews *a,int k) { (void)s; (void)a; (void)k; return otf_possible; }
 static int OpenMX_GpuMemGetInfo(size_t *f,size_t *t) { *f=*t=free_device_bytes; return memory_query_ok ? hipSuccess : 1; }
 static int M2G[NA + 1], WhatSpecies[NA + 1], GridN_Atom[NA + 1], FNAN[NA + 1];
 static int Spe_Total_NO[3] = {4, 9, 13};
@@ -314,20 +322,22 @@ int main(void)
 
 
 def build_source():
-    parts = [PREFIX,
-             typedef("SetHamOTFState"),
-             "static SetHamOTFState Set_Hamiltonian_OTF_State;",
-             typedef("SetHOTFBatch"),
-             typedef("SetHOTFPlan"),
-             "static SetHOTFPlan SetH_OTF_Plan[2];",
-             static_struct("SetH_OTF_Static"),
-             "static size_t SetH_OTF_PinnedBytes = 0;"]
+    parts = [PREFIX,typedef("SetHamOTFState"),typedef("SetHOTFBatch"),typedef("SetHOTFPlan"),typedef("SetHOTFStatic"),
+        "struct OpenMXHamiltonianGpuState { int affinity; SetHamOTFState otf; SetHOTFPlan plans[2]; SetHOTFStatic static_plan; size_t pinned_bytes; }; static OpenMXHamiltonianGpuState state,*hamiltonian_state=&state;",
+        function("SetH_OTF_PlanCacheEnabled")]
     for name in ["Set_Hamiltonian_OTF_BatchSizes", "SetH_OTF_HostAlloc", "SetH_OTF_HostFree", "SetH_OTF_FreePlan",
                  "SetH_OTF_ReleasePlans", "SetH_OTF_EnsureStatic", "SetH_OTF_KindBatchBytes", "SetH_OTF_GetPlan",
                  "Set_Density_Grid_OTF_Prepare", "SetH_OTF_PackBlocks", "Set_Hamiltonian_OTF_ReleaseDevice", "Set_Hamiltonian_OTF_Release"]:
         parts.append(function(name))
     parts.append(MAIN)
-    return "\n".join(parts)
+    generated="\n".join(parts)
+    for old,new in [('Set_Hamiltonian_OTF_State','hamiltonian_state->otf'),('SetH_OTF_Plan','hamiltonian_state->plans'),('SetH_OTF_Static','hamiltonian_state->static_plan'),('SetH_OTF_PinnedBytes','hamiltonian_state->pinned_bytes')]:
+        generated=re.sub(r'\b'+old+r'\b',new,generated)
+    for name in ['SetH_OTF_GetPlan','Set_Hamiltonian_OTF_ReleaseDevice','Set_Hamiltonian_OTF_Release']:
+        generated=re.sub(r'\b'+name+r'\((?!OpenMXHamiltonianGpuState|hamiltonian_state)',name+'(hamiltonian_state, ',generated)
+        generated=generated.replace(name+'(hamiltonian_state, )',name+'(hamiltonian_state)')
+    generated=re.sub(r'Set_Density_Grid_OTF_Prepare\((?!OpenMXHamiltonianGpuState|hamiltonian_state)', 'Set_Density_Grid_OTF_Prepare(hamiltonian_state,NULL,',generated)
+    return generated
 
 
 def main():
@@ -342,7 +352,7 @@ def main():
         flags = ["-std=c11", "-O1", "-g", "-Wall", "-Wno-unused-function", "-Wno-unused-variable"]
         if args.sanitize:
             flags += ["-fsanitize=address,undefined", "-fno-omit-frame-pointer"]
-        subprocess.run([args.cc, *flags, str(src), "-o", str(exe)], check=True)
+        subprocess.run([args.cc, *flags, "-I"+str(ROOT.parents[1]),str(src),str(ROOT.parents[1]/"openmx_env.c"), "-o", str(exe)], check=True)
         for pinned in (None, "0"):
             env = dict(os.environ)
             env.pop("OPENMX_SETHAM_ONTHEFLY_PINNED_MB", None)

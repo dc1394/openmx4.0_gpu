@@ -187,7 +187,7 @@ struct OpenMXBandColState {
   OpenMXChemicalPotentials *chemical; /* borrowed from this calculation */
   OpenMXBandEnergies *energies; /* borrowed from this calculation */
   OpenMXNativeResources *resources; /* borrowed from this calculation */
-  OpenMXOrbitalGpuState *orbital_state; /* borrowed from this calculation */
+  OpenMXHamiltonianGpuState *hamiltonian_state; /* borrowed from this calculation */
   OpenMXHamiltonianCache *hamiltonian_cache; /* borrowed from this calculation */
   OpenMXDensityGpuState *density_state; /* borrowed from the same calculation */
   int initialized;
@@ -266,7 +266,7 @@ OpenMXBandColState *Band_DFT_Col_Bind_Resources(OpenMXCoreContext *core)
   BandColState *state = (BandColState *)metadata;
   if (!state->initialized) {
     state->resources = owner;
-    state->orbital_state = Set_Orbitals_Grid_GPU_Bind_Resources(core);
+    state->hamiltonian_state = Set_Hamiltonian_GPU_Bind_Resources(core);
     state->hamiltonian_cache = Set_Hamiltonian_Cache_Bind_Resources(core);
     state->density_state = Set_Density_Grid_GPU_Bind_Resources(core);
     const BandColRefineState initial_refine = {-1, 0.0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
@@ -309,7 +309,7 @@ extern int openmx_gpu_eigensolver_use_hipsolver(void);
 extern int openmx_gpu_is_apu(void);
 extern int openmx_magma_release_z_workspace(void);
 extern void openmx_gemmul8TrimWorkspaces(void);
-extern size_t Set_Hamiltonian_DemoteResidency(OpenMXOrbitalGpuState *orbital_state);
+extern size_t Set_Hamiltonian_DemoteResidency(OpenMXHamiltonianGpuState *hamiltonian_state);
 extern int openmx_hipsolver_release_workspace(void);
 extern int BandCol_ReleaseDMDeviceWorkspace_HIP(void);
 
@@ -657,7 +657,7 @@ static int BandCol_NativeGpuDenseFits(BandColState *state, int n, int owns_dense
         Set_Density_Grid_GPU_Release_Device_Caches(state->density_state);
         /* the Hamiltonian's resident orbital tables as well, for the rest of
            the run: re-uploaded per call they leave the eigensolver its room */
-        (void)Set_Hamiltonian_DemoteResidency(state->orbital_state);
+        (void)Set_Hamiltonian_DemoteResidency(state->hamiltonian_state);
         openmx_gemmul8ReleaseWorkspaces();
         (void)openmx_magma_release_z_workspace();
         (void)openmx_hipsolver_release_workspace();

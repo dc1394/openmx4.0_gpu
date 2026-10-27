@@ -85,7 +85,8 @@ int openmx_mgpu_host_precheck(int kp, int n, int z) {
 }
 /* T_RESIDENT: rank 1 holds resident tables; once every rank yielded, the
    distributed solve fits */
-int Set_Hamiltonian_Yield_Resident_DeviceCache(void) {
+int Set_Hamiltonian_Yield_Resident_DeviceCache(OpenMXHamiltonianGpuState *hamiltonian_state) {
+    if (hamiltonian_state!=(OpenMXHamiltonianGpuState *)&yield_calls) abort();
     int r; MPI_Comm_rank(MPI_COMM_WORLD, &r);
     ++yield_calls; yielded = 1;
     return env("T_RESIDENT") && r == 1;
@@ -122,7 +123,7 @@ int main(int argc, char **argv) {
     MPI_Comm_rank(MPI_COMM_WORLD, &myid);
     decision = openmx_cluster_capacity_select(MPI_COMM_WORLD, env("T_N"), env("T_COMPLEX"), "Cluster test");
     if (decision == OPENMX_CLUSTER_CAPACITY_GS2)
-        if (!openmx_cluster_gs2_admit((OpenMXOrbitalGpuState *)&yield_calls,MPI_COMM_WORLD, 0, env("T_N"), 64, env("T_COMPLEX"), "Cluster test"))
+        if (!openmx_cluster_gs2_admit((OpenMXHamiltonianGpuState *)&yield_calls,MPI_COMM_WORLD, 0, env("T_N"), 64, env("T_COMPLEX"), "Cluster test"))
             decision = OPENMX_CLUSTER_CAPACITY_CPU;
     MPI_Allreduce(&decision, &all_min, 1, MPI_INT, MPI_MIN, MPI_COMM_WORLD);
     MPI_Allreduce(&decision, &all_max, 1, MPI_INT, MPI_MAX, MPI_COMM_WORLD);
