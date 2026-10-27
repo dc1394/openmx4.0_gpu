@@ -85,6 +85,11 @@ jobs:
             sanitize: "OFF"
     steps:
       - uses: actions/checkout@v4
+      - name: Install the AppleClang OpenMP runtime
+        if: runner.os == 'macOS'
+        run: |
+          brew install libomp
+          echo "OpenMP_ROOT=$(brew --prefix libomp)" >> "$GITHUB_ENV"
       - name: Install MPI for native solver lifetime tests
         if: matrix.mpi == true
         run: |
@@ -96,6 +101,7 @@ jobs:
           -DOPENMX_CORE_BACKEND=${{ matrix.backend }}
           -DCMAKE_CXX_STANDARD=${{ matrix.standard }}
           -DOPENMX_CORE_SANITIZERS=${{ matrix.sanitize }}
+          -DOPENMX_TEST_REQUIRE_OPENMP=ON
           -DCMAKE_BUILD_TYPE=Debug
       - run: cmake --build build/core --parallel 2
       - name: Inspect Darwin allocation imports

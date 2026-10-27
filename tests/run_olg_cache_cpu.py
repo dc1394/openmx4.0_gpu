@@ -89,7 +89,11 @@ static void check(int total){
 }
 int main(int argc,char** argv){
   assert(argc==3);host_mode=openmx_core_host_simd_mode(argv[1]);assert(host_mode>=0);
-  omp_set_num_threads(atoi(argv[2]));List_YOUSO[12]=100;
+  const int requested=atoi(argv[2]);omp_set_num_threads(requested);
+  int observed=0;
+#pragma omp parallel reduction(+:observed)
+  {observed+=1;}
+  assert(observed==requested);List_YOUSO[12]=100;
   int *grid[4]={NULL,(int*)grids[2],(int*)grids[1],(int*)grids[3]};
   int *cell[4]={NULL,(int*)cells[2],(int*)cells[1],(int*)cells[3]};
   NumOLG=calloc(3,sizeof(int*));assert(NumOLG);
@@ -128,28 +132,39 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--core-library', type=Path, required=True)
     parser.add_argument('--negative-control', action='store_true')
+    parser.add_argument('--openmp-arg', action='append', help='OpenMP compiler/linker argument; repeat as needed')
+    parser.add_argument('--serial', action='store_true', help='Exercise one worker without an OpenMP runtime')
     args = parser.parse_args()
+    if args.serial and args.openmp_arg:
+        parser.error('--serial and --openmp-arg cannot be combined')
     library = args.core_library.resolve(strict=True)
     source = (ROOT / 'source/truncation.c').read_text()
     native = '\n\n'.join(function(source, name) for name in (
         'static void OLG_cache_take(', 'static int UCellBox_OLG_Host('))
     env = {k: v for k, v in os.environ.items() if not k.startswith(('OPENMX_', 'GEMMUL8_'))
            and k not in ('LD_PRELOAD', 'LD_LIBRARY_PATH')}
+    env.update(OMP_DYNAMIC='FALSE', OMP_PROC_BIND='false')
+    openmp_args = [] if args.serial else (args.openmp_arg or ['-fopenmp'])
     with tempfile.TemporaryDirectory(prefix='openmx-olg-cache-') as directory:
         folder = Path(directory)
         (folder / 'main.c').write_text(HARNESS)
+        if args.serial:
+            (folder/'omp.h').write_text('#include <assert.h>\n'
+                'static inline void omp_set_num_threads(int n){assert(n==1);}\n'
+                'static inline int omp_in_parallel(void){return 0;}\n')
 
         def build(name, body):
             (folder / 'olg_cache_native.inc').write_text(body)
             binary = folder / name
-            subprocess.run(compiler_command('c') + ['-fopenmp', '-I' + str(folder),
+            subprocess.run(compiler_command('c') + ['-I' + str(folder),
                 '-I' + str(ROOT / 'core/include'), '-x', 'c', str(folder / 'main.c'),
-                '-x', 'none', str(library), '-Wl,-rpath,' + str(library.parent), '-o', str(binary)], check=True)
+                '-x', 'none', str(library), '-Wl,-rpath,' + str(library.parent)] +
+                openmp_args + ['-o', str(binary)], check=True)
             return binary
 
         binary = build('native-cache', native)
         for mode in ('scalar', 'auto'):
-            for threads in (1, 2, 8):
+            for threads in ((1,) if args.serial else (1, 2, 8)):
                 subprocess.run([str(binary), mode, str(threads)], cwd=folder, env=env,
                                preexec_fn=bounded_stack, check=True, timeout=60)
         if args.negative_control:
@@ -159,7 +174,8 @@ def main():
             result = subprocess.run([str(broken), 'scalar', '1'], cwd=folder, env=env,
                                     preexec_fn=bounded_stack, capture_output=True, text=True, timeout=60)
             assert result.returncode != 0, 'discarding the sizing cache escaped the native reuse test'
-    print('PASS: native overlap cache C ABI and sizing-pass ownership')
+    print('PASS: native overlap cache C ABI and sizing-pass ownership ('+
+          ('serial' if args.serial else 'real OpenMP teams: 1, 2, 8')+')')
 
 
 if __name__ == '__main__':

@@ -37,7 +37,10 @@ set_target_properties(openmx_host_simd PROPERTIES IMPORTED_LOCATION "${_host_lib
 add_dependencies(openmx_host_simd openmx_host_simd_build)
 target_link_libraries(openmx_core PRIVATE openmx_host_simd)
 if(APPLE)
-  set_property(TARGET openmx_core APPEND PROPERTY BUILD_RPATH "@loader_path")
+  # The isolated project writes its dylib below the Core build directory.
+  # Darwin does not infer that runpath from the imported target's location.
+  set_property(TARGET openmx_core APPEND PROPERTY BUILD_RPATH
+    "@loader_path/host-simd/lib" "@loader_path")
   set_property(TARGET openmx_core APPEND PROPERTY INSTALL_RPATH "@loader_path")
 else()
   set_property(TARGET openmx_core APPEND PROPERTY BUILD_RPATH "$ORIGIN")

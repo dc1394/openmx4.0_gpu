@@ -15,9 +15,42 @@ function(openmx_add_native_state_tests)
     list(APPEND _environment "OPENMX_TEST_SANITIZERS=${OPENMX_CORE_SANITIZERS}")
   endif()
 
+  # Native overlap ownership is exercised with real OpenMP workers when the
+  # selected compiler has a runtime. AppleClang needs libomp's include/link
+  # options rather than a bare -fopenmp. Keep SERIAL builds usable without it;
+  # CI requires the parallel case explicitly.
+  option(OPENMX_TEST_REQUIRE_OPENMP "Require OpenMP for the native overlap cache test" OFF)
+  find_package(OpenMP QUIET COMPONENTS CXX)
+  set(_olg_openmp_args)
+  if(OpenMP_CXX_FOUND)
+    separate_arguments(_openmp_flags NATIVE_COMMAND "${OpenMP_CXX_FLAGS}")
+    foreach(_include IN LISTS OpenMP_CXX_INCLUDE_DIRS)
+      list(APPEND _openmp_flags "-I${_include}")
+    endforeach()
+    list(APPEND _openmp_flags ${OpenMP_CXX_LIBRARIES})
+    set(_openmp_runtime_dirs)
+    foreach(_library IN LISTS OpenMP_CXX_LIBRARIES)
+      if(IS_ABSOLUTE "${_library}")
+        get_filename_component(_directory "${_library}" DIRECTORY)
+        list(APPEND _openmp_runtime_dirs "${_directory}")
+      endif()
+    endforeach()
+    list(REMOVE_DUPLICATES _openmp_runtime_dirs)
+    foreach(_directory IN LISTS _openmp_runtime_dirs)
+      list(APPEND _openmp_flags "-Wl,-rpath,${_directory}")
+    endforeach()
+    foreach(_flag IN LISTS _openmp_flags)
+      list(APPEND _olg_openmp_args "--openmp-arg=${_flag}")
+    endforeach()
+  elseif(OPENMX_TEST_REQUIRE_OPENMP)
+    message(FATAL_ERROR "Native overlap tests require OpenMP. Install a runtime (libomp for AppleClang) and set OpenMP_ROOT if needed.")
+  else()
+    list(APPEND _olg_openmp_args --serial)
+  endif()
+
   add_test(NAME olg-cache-native
     COMMAND "${Python3_EXECUTABLE}" "${_repo}/tests/run_olg_cache_cpu.py"
-      --core-library "$<TARGET_FILE:openmx_core>" --negative-control)
+      --core-library "$<TARGET_FILE:openmx_core>" --negative-control ${_olg_openmp_args})
   set_tests_properties(olg-cache-native PROPERTIES
     ENVIRONMENT "${_environment}" LABELS "unit;core;grid" TIMEOUT 180)
 
