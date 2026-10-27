@@ -10,7 +10,7 @@ if(PROJECT_IS_TOP_LEVEL AND NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYP
   set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
 endif()
 
-add_library(openmx_basis STATIC src/radial_table.cpp src/c_api.cpp src/pao_file.cpp)
+add_library(openmx_basis STATIC src/radial_table.cpp src/c_api.cpp src/pao_file.cpp src/vps_file.cpp)
 add_library(OpenMX::basis ALIAS openmx_basis)
 set_target_properties(openmx_basis PROPERTIES
   EXPORT_NAME basis POSITION_INDEPENDENT_CODE ON CXX_EXTENSIONS OFF)

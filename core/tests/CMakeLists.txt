@@ -22,6 +22,18 @@ function(openmx_add_fault_test target)
   endif()
 endfunction()
 
+openmx_add_fault_test(openmx_vps_file_tests test_vps_file.cpp)
+target_link_libraries(openmx_vps_file_tests PRIVATE OpenMX::core)
+target_include_directories(openmx_vps_file_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../../modules/basis/tests")
+foreach(_case contents invalid allocation)
+  add_test(NAME "core-vps-file-${_case}" COMMAND openmx_vps_file_tests "${_case}"
+    "${CMAKE_CURRENT_BINARY_DIR}/vps-file-${_case}.vps")
+  set_tests_properties("core-vps-file-${_case}" PROPERTIES LABELS "unit;core;basis" TIMEOUT 120)
+endforeach()
+if(OPENMX_CORE_BACKEND MATCHES "^(CUDA|HIP)$")
+  set_source_files_properties(test_vps_file.cpp PROPERTIES LANGUAGE ${OPENMX_CORE_BACKEND})
+endif()
+
 openmx_add_fault_test(openmx_pao_file_tests test_pao_file.cpp)
 target_link_libraries(openmx_pao_file_tests PRIVATE OpenMX::core)
 target_include_directories(openmx_pao_file_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../../modules/basis/tests")

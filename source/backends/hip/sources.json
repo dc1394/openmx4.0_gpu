@@ -958,6 +958,7 @@
     "openmx_core_vna_matrix.h",
     "openmx_core_vna_preparation.h",
     "openmx_core_vps.h",
+    "openmx_core_vps_file.h",
     "openmx_dc_state.h",
     "openmx_dclno_state.h",
     "openmx_density_cache_hooks.h",

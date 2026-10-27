@@ -24,12 +24,20 @@
 #include "openmx_core_neutral.h"
 #include "openmx_core_neutral_grid_metadata.h"
 #include "openmx_core_pao_file.h"
+#include "openmx_core_vps_file.h"
 
 
 static void Set_Atom_Weight();
 static void Set_Atom_Symbol();
 static void Read_PAO(OpenMXCoreContext *core, const OpenMXNeutralGridMetadataView *metadata, int spe, int metadata_only, MPI_Comm communicator, const char *file);
-static void Read_VPS(OpenMXCoreContext *core, const OpenMXNeutralGridMetadataView *metadata, int spe, char *file);
+typedef struct {
+  OpenMXCoreContext *core;
+  const OpenMXNeutralGridMetadataView *metadata;
+  int species;
+} OpenMXVpsReadInput;
+static int Read_VPS(void *user, const OpenMXVpsFileData *data, char *error, size_t error_capacity);
+static void Read_VPS_File(OpenMXCoreContext *core, const OpenMXNeutralGridMetadataView *metadata,
+                          int spe, int metadata_only, MPI_Comm communicator, const char *file);
 static void ReadPara_DFT(OpenMXCoreContext *core);
 static void Set_BasisPara();
 static void Set_Comp2Real();
@@ -497,7 +505,6 @@ static void ReadPara_DFT(OpenMXCoreContext *core)
     return;
   }
 
-  FILE *fp;
   int spe,po;
   int tmp_remake_headfile;
 
@@ -507,7 +514,6 @@ static void ReadPara_DFT(OpenMXCoreContext *core)
   char ExtVPS[YOUSO10] = ".vps";
   char FN_PAO[YOUSO10];
   char FN_VPS[YOUSO10];
-  char buf[fp_bsize];          /* setvbuf */
   int numprocs,myid;
   double TZ;
   int i,wanA;
@@ -563,73 +569,42 @@ static void ReadPara_DFT(OpenMXCoreContext *core)
    List_YOUSO[20]
    List_YOUSO[22]
    List_YOUSO[30]
-   List_YOUSO[37]
   *************************/
 
   remake_headfile = 1; 
 
   for (spe=0; spe<real_SpeciesNum; spe++){
-
-    fnjoint2(DirVPS,SpeVPS[spe],ExtVPS,FN_VPS);    
-    if ((fp = fopen(FN_VPS,"r")) != NULL){
-
-      setvbuf(fp,buf,_IOFBF,fp_bsize);  /* setvbuf */
-      Read_VPS(core,&metadata,spe,FN_VPS);
-      fclose(fp);
-    }
-    else{
-      printf("Could not find %s\n",FN_VPS);
-      MPI_Finalize();
-      exit(0);
-    }
-  }
-  remake_headfile = 0;
-
-  Allocate_Arrays_with_context(7,core);
-
-  /*************************
-            read 
-  *************************/
-
-  for (spe=0; spe<real_SpeciesNum; spe++){
-
     fnjoint2(DirVPS,SpeVPS[spe],ExtVPS,FN_VPS);
+    Read_VPS_File(core,&metadata,spe,1,mpi_comm_level1,FN_VPS);
+  }
+  remake_headfile=0;
+  Allocate_Arrays_with_context(7,core);
+  for (spe=0; spe<real_SpeciesNum; spe++){
+    fnjoint2(DirVPS,SpeVPS[spe],ExtVPS,FN_VPS);
+    Read_VPS_File(core,&metadata,spe,0,mpi_comm_level1,FN_VPS);
+    if (MYID_MPI_COMM_WORLD==Host_ID && 0<level_stdout){
+      printf("<SetPara_DFT>  VPSs of species %s were normally found.\n",
+               SpeName[spe]);
+    }
+    if (VPS_j_dependency[spe]==0 && MYID_MPI_COMM_WORLD==Host_ID && 0<level_stdout) {
+      printf("               %s.vps is l-dependent.\n",SpeVPS[spe]);
+    }
+    else if (SO_switch==1 && VPS_j_dependency[spe]==1 && MYID_MPI_COMM_WORLD==Host_ID && 0<level_stdout) {
+      printf("               %s.vps is j-dependent.\n",SpeVPS[spe]);
+    }
+    else if (SO_switch==0 && VPS_j_dependency[spe]==1) {
 
-    if ((fp = fopen(FN_VPS,"r")) != NULL){
-
-      setvbuf(fp,buf,_IOFBF,fp_bsize);  /* setvbuf */
-      Read_VPS(core,&metadata,spe,FN_VPS);
-      fclose(fp);
-
-      if (MYID_MPI_COMM_WORLD==Host_ID && 0<level_stdout){  
-        printf("<SetPara_DFT>  VPSs of species %s were normally found.\n",
-                 SpeName[spe]); 
-      }
-      if (VPS_j_dependency[spe]==0 && MYID_MPI_COMM_WORLD==Host_ID && 0<level_stdout) {
-        printf("               %s.vps is l-dependent.\n",SpeVPS[spe]);
-      }
-      else if (SO_switch==1 && VPS_j_dependency[spe]==1 && MYID_MPI_COMM_WORLD==Host_ID && 0<level_stdout) {
+      if (MYID_MPI_COMM_WORLD==Host_ID && 0<level_stdout){
         printf("               %s.vps is j-dependent.\n",SpeVPS[spe]);
-      }
-      else if (SO_switch==0 && VPS_j_dependency[spe]==1) {
-
-        if (MYID_MPI_COMM_WORLD==Host_ID && 0<level_stdout){ 
-          printf("               %s.vps is j-dependent.\n",SpeVPS[spe]);
-          printf("               In case of scf.SpinOrbit.Coupling=off,\n");
-          printf("               j-dependent pseudo potentials are averaged by j-degeneracy,\n");
-          printf("               which corresponds to a scalar relativistic treatment.\n");
+        printf("               In case of scf.SpinOrbit.Coupling=off,\n");
+        printf("               j-dependent pseudo potentials are averaged by j-degeneracy,\n");
+        printf("               which corresponds to a scalar relativistic treatment.\n");
 	}
 
-        /* switch off VPS_j_dependency */
-        VPS_j_dependency[spe] = 0;
-      }
+      /* switch off VPS_j_dependency */
+      VPS_j_dependency[spe] = 0;
+    }
 
-    }
-    else{
-      printf("Could not find %s\n",FN_VPS);
-      MPI_Finalize();
-      exit(0);
-    }
   }
 
   if (2<=level_stdout){
@@ -717,466 +692,139 @@ void Read_PAO(OpenMXCoreContext *core, const OpenMXNeutralGridMetadataView *meta
 }
 
 
-void Read_VPS(OpenMXCoreContext *core, const OpenMXNeutralGridMetadataView *metadata, int spe, char *file)
+static int Read_VPS(void *user, const OpenMXVpsFileData *data, char *diagnostic, size_t diagnostic_capacity)
 {
+  const OpenMXVpsReadInput *input=(const OpenMXVpsReadInput*)user;
+  OpenMXCoreContext *core=input->core;
+  const OpenMXNeutralGridMetadataView *metadata=input->metadata;
+  const int spe=input->species, metadata_only=data->metadata_only;
   const OpenMXAtomicViews atomic_views=OpenMX_AtomicTables(core);
   const OpenMXAtomicViews *atomic=&atomic_views;
-  FILE *fp;
-  int m,n,k,t,i,j,l,L,ii,jj,NVPS,LVPS,tmp0,maxL,po,p;
-  int number_vps,local_part_vps,charge_pcc_calc;
-  double te,ve,VPS_Rcut,dum,dum0,dum1,r,dumping;
-  double VNA_width,rmin,rmax,Sr,Dr,sum,sum0,dx,dif;
-  double *Vcore,**TmpVNL,**TmpMat;
-  double charge_factor;
-  int numprocs,myid;
-  int i_vec[20];
-  char *s_vec[20];
- 
-  MPI_Comm_size(mpi_comm_level1,&numprocs);
-  MPI_Comm_rank(mpi_comm_level1,&myid);
+  const int spins=data->j_dependent+1, output_spins=data->j_dependent && SO_switch==1 ? 2 : 1;
+  const int points=data->mesh_points, count=(int)data->projector_count;
+  int i,j,LVPS,ii=0;
+  double dum,dum0,dum1,r,dumping,sum,dx,dif,charge_factor=1.0;
+  double *Vcore=data->local_potential;
 
-  /****************************************************
-  allocation of arrays:
-
-  double Vcore[List_YOUSO[22]];
-  double TmpVNL[2][List_YOUSO[19]];
-  double TmpMat[List_YOUSO[37]][List_YOUSO[37]];
-  ****************************************************/
-
-  if (remake_headfile==0){
-    Vcore = (double*)malloc(sizeof(double)*List_YOUSO[22]); 
-
-    TmpVNL = (double**)malloc(sizeof(double*)*2);
-    for (i=0; i<2; i++){
-      TmpVNL[i] = (double*)malloc(sizeof(double)*List_YOUSO[19]);
+  if (metadata->spacing[spe]!=data->atom_species && data->atomic_number!=0) {
+    snprintf(diagnostic,diagnostic_capacity,"Not the same atom in PAO and VPS for spe=%2d",spe);
+    return 0;
+  }
+  if (!metadata_only) {
+    /* The file can change between the metadata and full reads. Check the
+       new dimensions against the calculation's already allocated capacity. */
+    const OpenMXRadialView2 rows[]={atomic->vps_log_radii,atomic->vps_radii,
+      atomic->neutral_potential,atomic->hartree_potential,atomic->partial_core_density};
+    for (i=0; i<5; i++) {
+      const size_t needed=(size_t)points+(i>=3 ? 2 : 0);
+      if (!rows[i].values || (size_t)spe>=rows[i].extent[0] || needed>rows[i].extent[1]) {
+        snprintf(diagnostic,diagnostic_capacity,"insufficient VPS radial output capacity");
+        return 0;
+      }
     }
-
-    TmpMat = (double**)malloc(sizeof(double*)*List_YOUSO[37]);
-    for (i=0; i<List_YOUSO[37]; i++){
-      TmpMat[i] = (double*)malloc(sizeof(double)*List_YOUSO[37]);
+    if (!atomic->projector_angular || (size_t)spe>=atomic->projector_angular_species ||
+        (size_t)count+1>atomic->projector_angular_stride ||
+        !atomic->projectors.values || (size_t)output_spins>atomic->projectors.extent[0] ||
+        (size_t)spe>=atomic->projectors.extent[1] || (size_t)count>atomic->projectors.extent[2] ||
+        (size_t)points>atomic->projectors.extent[3] ||
+        !atomic->projector_energies.values || (size_t)output_spins>atomic->projector_energies.extent[0] ||
+        (size_t)spe>=atomic->projector_energies.extent[1] || (size_t)count>atomic->projector_energies.extent[2]) {
+      snprintf(diagnostic,diagnostic_capacity,"insufficient VPS projector output capacity");
+      return 0;
     }
   }
 
-  /****************************************************
-                      open the file
-  ****************************************************/
-
-  input_open(file);
-
-  /****************************************************
-                       read data
-  ****************************************************/
-
-  input_double("AtomSpecies",&dum0,0.0);
-
-  if (1.0e-15<dum0 && dum0<1.0)
-    tmp0 = 1;
-  else
-    tmp0 = (int)dum0;
-
-  if ( metadata->spacing[spe]!=dum0 && tmp0!=0 ){
-    printf("Not the same atom in PAO and VPS for spe=%2d\n",spe);
-    MPI_Finalize();
-    exit(0);
-  } 
-  else if (metadata->spacing[spe]!=dum0 && tmp0==0){
-
-    /* set zero */ 
-    for (i=0; i<atomic->species.pao_mesh[spe]; i++){
-      openmx_radial_row2(&atomic->density,spe)[i+1]  = 0.0;
-      openmx_radial_row2(&atomic->density_backup,spe)[i+1] = 0.0;
+  if (metadata->spacing[spe]!=data->atom_species && data->atomic_number==0) {
+    for (i=0; i<atomic->species.pao_mesh[spe]; i++) {
+      openmx_radial_row2(&atomic->density,spe)[i+1]=0.0;
+      openmx_radial_row2(&atomic->density_backup,spe)[i+1]=0.0;
     }
-
-    atomic->species.atomic_number[spe] = 0;
-    metadata->spacing[spe] = 0;
+    atomic->species.atomic_number[spe]=0;
+    metadata->spacing[spe]=0;
   }
-
-  input_double("total.electron",&te,(double)dum0);
-  input_double("valence.electron",&ve,(double)0.0);
-  atomic->species.core_charge[spe] = ve + dum0 - te;
-
-  if (Number_of_Electrons_Species_flag==1){
-
+  atomic->species.core_charge[spe]=data->valence_electrons+data->atom_species-data->total_electrons;
+  if (Number_of_Electrons_Species_flag==1) {
     if (atomic->species.core_charge[spe]!=0.0)
-      charge_factor = atomic->species.electrons[spe]/atomic->species.core_charge[spe];
-    else 
-      charge_factor = 1.0;
-
-    atomic->species.core_charge[spe] = atomic->species.electrons[spe];
+      charge_factor=atomic->species.electrons[spe]/atomic->species.core_charge[spe];
+    atomic->species.core_charge[spe]=atomic->species.electrons[spe];
+  }
+  atomic->species.vps_mesh[spe]=points;
+  atomic->species.relativistic[spe]=data->j_dependent;
+  atomic->species.radial_projectors[spe]=count;
+  atomic->species.projector_components[spe]=data->projector_components;
+  if (List_YOUSO[22]<=points+2) List_YOUSO[22]=points+2;
+  if (List_YOUSO[30]<=data->max_angular) List_YOUSO[30]=data->max_angular+2;
+  if (List_YOUSO[30]==0) List_YOUSO[30]=2;
+  if (List_YOUSO[19]<=count) List_YOUSO[19]=count+2;
+  if (List_YOUSO[19]==0) List_YOUSO[19]=3;
+  if (List_YOUSO[20]<=data->projector_components) List_YOUSO[20]=data->projector_components+2;
+  if (List_YOUSO[20]==0) List_YOUSO[20]=3;
+  if (2<=level_stdout) {
+    printf("<Read_VPS>  VPS of %s was a format of %s\n",atomic->species.potential_file[spe],
+           data->legacy_format ? "ADPACK1.1" : "ADPACK1.7");
+    printf("<Read_VPS>  spe=%2d  Spe_Total_VPS_Pro=%2d\n",spe,data->projector_components);
+    printf("<Read_VPS>  spe=%2d  Spe_Num_RVPS=%2d\n",spe,count);
   }
 
-  input_int("grid.num.output",&atomic->species.vps_mesh[spe],0);
-
-  if (List_YOUSO[22]<=(atomic->species.vps_mesh[spe]+2)){
-    List_YOUSO[22] = atomic->species.vps_mesh[spe] + 2;
-  }
-
-  /**************************************************
-      check j-dependency 
-  **************************************************/
-
-  input_logical("j.dependent.pseudo.potentials",&atomic->species.relativistic[spe],0);
-
-  /**************************************************
-       a new format from adpack1.2 and abred1.3
-  **************************************************/
- 
-  if ( (fp=input_find("<project.energies")) != NULL ){
-
-    if (2<=level_stdout){
-      printf("<Read_VPS>  VPS of %s was a format of ADPACK1.7\n",atomic->species.potential_file[spe]);
-    }
-
-    fscanf(fp,"%d",&atomic->species.radial_projectors[spe]);
-    t = 0;
-    maxL = 0;
-
-    for (i=0; i<atomic->species.radial_projectors[spe]; i++){
-
-      /* l-dependent */
-      if (atomic->species.relativistic[spe]==0){
-	fscanf(fp,"%d %lf",&LVPS,&dum0);
-	if (remake_headfile==0){
-	  openmx_radial_row3(&atomic->projector_energies,0,spe)[i] = dum0;
-	  openmx_atomic_projector_angular(atomic,spe)[i+1] = LVPS;
-	}
-      }
-
-      /* j-dependent */
-      else if (atomic->species.relativistic[spe]==1){
-	fscanf(fp,"%d %lf %lf",&LVPS,&dum0,&dum1);
-	if (remake_headfile==0){
-
-	  if (SO_switch==1){
-	    openmx_radial_row3(&atomic->projector_energies,0,spe)[i] = dum0;
-	    openmx_radial_row3(&atomic->projector_energies,1,spe)[i] = dum1;
-	    openmx_atomic_projector_angular(atomic,spe)[i+1] = LVPS;
-	  }
-
-	  /* j-averaging for a scalar relativistic treatment */
-	  else if (SO_switch==0){
-
-	    openmx_radial_row3(&atomic->projector_energies,0,spe)[i] = ( (double)(LVPS+1)*dum0+(double)LVPS*dum1 )/(double)(2*LVPS+1);
-	    openmx_atomic_projector_angular(atomic,spe)[i+1] = LVPS;
-	  }
-
-	}
-      }
-
-      /* count the number of projectors */
-      t = t + 2*LVPS + 1;
-      if (maxL<LVPS) maxL = LVPS;
-      if (2<=level_stdout && remake_headfile==0){
-	printf("<Read_VPS>  i=%2d  Spe_VPS_List=%2d\n",i,openmx_atomic_projector_angular(atomic,spe)[i+1]);
-      }
-    }
-    atomic->species.projector_components[spe] = t;
-
-    if (List_YOUSO[30]<=maxL){
-      List_YOUSO[30] = maxL + 2;
-    }
-    if (List_YOUSO[30]==0){
-      List_YOUSO[30] = 2;
-    }
-
-    if (List_YOUSO[19]<=atomic->species.radial_projectors[spe]){
-      List_YOUSO[19] = atomic->species.radial_projectors[spe] + 2;
-    }
-    if (List_YOUSO[19]==0){
-      List_YOUSO[19] = 3;
-    }
-
-    if (List_YOUSO[20]<=atomic->species.projector_components[spe]){
-      List_YOUSO[20] = atomic->species.projector_components[spe] + 2;
-    }
-    if (List_YOUSO[20]==0){
-      List_YOUSO[20] = 3;
-    }
-
-    if (2<=level_stdout){
-      printf("<Read_VPS>  spe=%2d  Spe_Total_VPS_Pro=%2d\n",spe,atomic->species.projector_components[spe]);
-      printf("<Read_VPS>  spe=%2d  Spe_Num_RVPS=%2d\n",spe,atomic->species.radial_projectors[spe]);
-    }
-
-    if (!input_last("project.energies>")){
-      /* format error */
-      printf("Format error for project.energies in %s\n",file);
-      MPI_Finalize();
-      exit(0);
-    }
-
-    /* Pseudopotentials */
-
-    if (remake_headfile==0){
-      if ( (fp=input_find("<Pseudo.Potentials")) != NULL ){
-        for (i=0; i<atomic->species.vps_mesh[spe]; i++){
-
-	  for (j=0; j<=( (atomic->species.relativistic[spe]+1)*atomic->species.radial_projectors[spe]+2 ); j++){
-
-	    if (fscanf(fp,"%lf",&dum)==EOF){
-	      printf("format error of Pseudo_Potentials in %s\n",file);
-              MPI_Finalize();
-	      exit(0);
-	    }
-            else{
-	      if (j==0)
-                openmx_radial_row2(&atomic->vps_log_radii,spe)[i] = dum;
-	      else if (j==1)
-                openmx_radial_row2(&atomic->vps_radii,spe)[i] = dum;
-	      else if (j==2)
-                Vcore[i] = dum;
-              else{
-
-                /* l-dependent */
-                if      (atomic->species.relativistic[spe]==0){
-                  openmx_radial_row4(&atomic->projectors,0,spe,j-3)[i] = dum;
-		}
-                /* j-dependent */
-                else if (atomic->species.relativistic[spe]==1){
-
-                  if (SO_switch==1){
-                    if (j%2==1)  openmx_radial_row4(&atomic->projectors,0,spe, (j-3)/2 )[i] = dum;
-                    else         openmx_radial_row4(&atomic->projectors,1,spe, (j-3)/2 )[i] = dum;
-		  }
-
-                  /* j-averaging for a scalar relativistic treatment */
-                  else if (SO_switch==0){
-                    if (j%2==1)  TmpVNL[0][ (j-3)/2 ] = dum;
-                    else         TmpVNL[1][ (j-3)/2 ] = dum;
-		  }
-		}
-	      }
-	    }
-	  } /* j */
-
-          /* applying SO factor */
-
-          if ( atomic->species.relativistic[spe]==1 && SO_factor_flag==1 ){
-            for (j=0; j<atomic->species.radial_projectors[spe]; j++){
-
-              LVPS = openmx_atomic_projector_angular(atomic,spe)[j+1];
-              dum0 = openmx_radial_row4(&atomic->projectors,0,spe,j)[i];
-              dum1 = openmx_radial_row4(&atomic->projectors,1,spe,j)[i];
- 
-              sum = 0.5*(dum0 + dum1);
-              dif = 0.5*(dum0 - dum1);
-
-              openmx_radial_row4(&atomic->projectors,0,spe,j)[i] = sum + SO_factor[spe][LVPS]*dif;
-              openmx_radial_row4(&atomic->projectors,1,spe,j)[i] = sum - SO_factor[spe][LVPS]*dif;
-	    }
-	  }
-
-          /* j-averaging for a scalar relativistic treatment */
-          if ( atomic->species.relativistic[spe]==1 && SO_switch==0 ){
-            for (j=0; j<atomic->species.radial_projectors[spe]; j++){
-
-              LVPS = openmx_atomic_projector_angular(atomic,spe)[j+1];
-              openmx_radial_row4(&atomic->projectors,0,spe,j)[i] = ( (double)(LVPS+1)*TmpVNL[0][j]
-                                       +(double)LVPS*TmpVNL[1][j] )/( (double)(2*LVPS+1) );
-	    }
-	  }
-
-	} /* i */
-        if (!input_last("Pseudo.Potentials>")) {
-	  /* format error */
-	  printf("Format error for Pseudo.Potentials\n");
-          MPI_Finalize();
-	  exit(0);
+  if (!metadata_only) {
+    for (j=0; j<count; j++) {
+      LVPS=data->angular[j];
+      openmx_atomic_projector_angular(atomic,spe)[j+1]=LVPS;
+      dum0=data->energies[(size_t)j*spins];
+      if (!data->j_dependent) openmx_radial_row3(&atomic->projector_energies,0,spe)[j]=dum0;
+      else {
+        dum1=data->energies[(size_t)j*spins+1];
+        if (SO_switch==1) {
+          openmx_radial_row3(&atomic->projector_energies,0,spe)[j]=dum0;
+          openmx_radial_row3(&atomic->projector_energies,1,spe)[j]=dum1;
+        } else {
+          openmx_radial_row3(&atomic->projector_energies,0,spe)[j]=
+            ((double)(LVPS+1)*dum0+(double)LVPS*dum1)/(double)(2*LVPS+1);
         }
       }
     }
-
-  }
-
-  /**************************************************
-     an old format before adpack1.2 and abred1.3
-  **************************************************/
-
-  else{
-
-    if (2<=level_stdout){
-      printf("<Read_VPS>  VPS of %s was a format of ADPACK1.1\n",atomic->species.potential_file[spe]);
-    }
-
-    input_int("number.vps",&number_vps,0);
-    input_int("local.part.vps",&local_part_vps,0);
-
-    if (2<=level_stdout){
-      printf("<Read_VPS>  spe=%2d  AtomNum=%2d\n",spe,atomic->species.atomic_number[spe]);
-      printf("<Read_VPS>  spe=%2d  Spe_Core_Charge=%5.2f\n",spe,atomic->species.core_charge[spe]);
-      printf("<Read_VPS>  spe=%2d  Spe_Num_Mesh_VPS=%2d\n",spe,atomic->species.vps_mesh[spe]);
-      printf("<Read_VPS>  spe=%2d  number.vps=%2d\n",spe,number_vps);
-      printf("<Read_VPS>  spe=%2d  local_part_vps=%2d\n",spe,local_part_vps);
-    }
-
-    if ( (fp=input_find("<pseudo.NandL")) != NULL ) {
-      k = 0;
-      t = 0;
-      maxL = 0;
-      for (i=0; i<number_vps; i++){
-        fscanf(fp,"%d %d %d %lf",&j,&NVPS,&LVPS,&VPS_Rcut);
-        if (local_part_vps!=i){
-	  k++;
-          t = t + 2*LVPS + 1;
-          if (maxL<LVPS) maxL = LVPS;
-
-          if (remake_headfile==0){
-	    openmx_atomic_projector_angular(atomic,spe)[k] = LVPS;
-	  }
-
-          if (2<=level_stdout && remake_headfile==0){
-            printf("<Read_VPS>  k=%2d  Spe_VPS_List=%2d\n",k,openmx_atomic_projector_angular(atomic,spe)[k]);
-	  }
-        }
-      }
-      atomic->species.projector_components[spe] = t;
-      atomic->species.radial_projectors[spe] = k;
-
-      if (List_YOUSO[30]<=maxL){
-        List_YOUSO[30] = maxL + 2;
-      }
-      if (List_YOUSO[30]==0){
-        List_YOUSO[30] = 2;
-      }
-
-      if (List_YOUSO[19]<=atomic->species.radial_projectors[spe]){
-        List_YOUSO[19] = atomic->species.radial_projectors[spe] + 2;
-      }
-      if (List_YOUSO[19]==0){
-        List_YOUSO[19] = 3;
-      }
-
-      if (List_YOUSO[20]<=atomic->species.projector_components[spe]){
-        List_YOUSO[20] = atomic->species.projector_components[spe] + 2;
-      }
-      if (List_YOUSO[20]==0){
-        List_YOUSO[20] = 3;
-      }
-
-      if (List_YOUSO[37]==0){
-        List_YOUSO[37] = 2;
-      }
-
-      if (2<=level_stdout){
-        printf("<Read_VPS>  spe=%2d  Spe_Total_VPS_Pro=%2d\n",spe,atomic->species.projector_components[spe]);
-        printf("<Read_VPS>  spe=%2d  Spe_Num_RVPS=%2d\n",spe,atomic->species.radial_projectors[spe]);
-      }
-
-      if (!input_last("pseudo.NandL>")) {
-        /* format error */
-        printf("Format error for pseudo.NandL in %s\n",file);
-        exit(0);
-      }
-
-    }
-
-    /* projection.energies */
-
-    if (remake_headfile==0){
-      if (0<atomic->species.radial_projectors[spe]){
-        if ( (fp=input_find("<projection.energies")) != NULL ) {
-	  for (i=0; i<atomic->species.radial_projectors[spe]; i++){
-
-	    fscanf(fp,"%d %lf",&j,&openmx_radial_row3(&atomic->projector_energies,0,spe)[i]);
-            if (2<=level_stdout){
-              printf("<Read_VPS>  i=%2d Spe_VNLE=%15.12f\n",j,openmx_radial_row3(&atomic->projector_energies,0,spe)[i]);
-	    }
-	  }    
-          if (!input_last("projection.energies>")) {
-	    /* format error */
-	    printf("Format error for projection.energies in %s\n",file);
-	    exit(0);
-	  }
+    for (i=0; i<points; i++) {
+      openmx_radial_row2(&atomic->vps_log_radii,spe)[i]=data->log_radii[i];
+      openmx_radial_row2(&atomic->vps_radii,spe)[i]=data->radii[i];
+      for (j=0; j<count; j++) {
+        LVPS=data->angular[j];
+        dum0=data->projectors[(size_t)j*spins*points+i];
+        if (!data->j_dependent) openmx_radial_row4(&atomic->projectors,0,spe,j)[i]=dum0;
+        else {
+          dum1=data->projectors[((size_t)j*spins+1)*points+i];
+          if (SO_switch==1) {
+            if (SO_factor_flag==1) {
+              sum=0.5*(dum0+dum1);
+              dif=0.5*(dum0-dum1);
+              openmx_radial_row4(&atomic->projectors,0,spe,j)[i]=sum+SO_factor[spe][LVPS]*dif;
+              openmx_radial_row4(&atomic->projectors,1,spe,j)[i]=sum-SO_factor[spe][LVPS]*dif;
+            } else {
+              openmx_radial_row4(&atomic->projectors,0,spe,j)[i]=dum0;
+              openmx_radial_row4(&atomic->projectors,1,spe,j)[i]=dum1;
+            }
+          } else {
+            openmx_radial_row4(&atomic->projectors,0,spe,j)[i]=
+              ((double)(LVPS+1)*dum0+(double)LVPS*dum1)/((double)(2*LVPS+1));
+          }
         }
       }
     }
-
-    /* Pseudo_Potentials */
-
-    if (remake_headfile==0){
-      if ( (fp=input_find("<Pseudo.Potentials")) != NULL ){
-        for (i=0; i<atomic->species.vps_mesh[spe]; i++){
-          for (j=0; j<=(atomic->species.radial_projectors[spe]+2); j++){
-	    if (fscanf(fp,"%lf",&dum)==EOF){
-	      printf("format error of Pseudo_Potentials in %s\n",file);
-	      exit(0);
-	    }
-            else{
-	      if (j==0)
-                openmx_radial_row2(&atomic->vps_log_radii,spe)[i] = dum;
-	      else if (j==1)
-                openmx_radial_row2(&atomic->vps_radii,spe)[i] = dum;
-	      else if (j==2)
-                Vcore[i] = dum;
-              else
-                openmx_radial_row4(&atomic->projectors,0,spe,j-3)[i] = dum;
-	    }
-	  }
-        }
-        if (!input_last("Pseudo.Potentials>")) {
-	  /* format error */
-	  printf("Format error for Pseudo.Potentials\n");
-	  exit(0);
-        }
-      }
-    }		
-  }	
-
-  /* PCC */
-
-  if (remake_headfile==0){
-    input_logical("charge.pcc.calc",&charge_pcc_calc,0);
-
-    /* initialize Spe_Atomic_PCC */
-    for (i=0; i<(atomic->species.vps_mesh[spe]+2); i++) {
-      openmx_radial_row2(&atomic->partial_core_density,spe)[i]=0.0;
-    }
-
-    if (charge_pcc_calc==1){
-      if ((fp=input_find("<density.PCC")) != NULL) {
-	for (i=0; i<atomic->species.vps_mesh[spe]; i++){
-	  for (j=0; j<=2; j++){
-	    if (fscanf(fp,"%lf",&dum)==EOF){
-	      printf("format error of charge.pcc.calc in %s\n",file);
-	      exit(0);
-	    }
-	    else{
-	      if (j==2){
-		openmx_radial_row2(&atomic->partial_core_density,spe)[i+1] = dum;
-	      }
-	    }
-	  }
-	}    
-	if (!input_last("density.PCC>")) {
-	  /* format error */
-	  printf("Format error for density.PCC\n");
-	  exit(0);
-	}
-      }
-      else{
-	printf("There is no data for PCC in %s\n",file);
-	exit(0);
-      }
-
-      /* set [0] and [Spe_Num_Mesh_VPS[spe]+1] */
-      openmx_radial_row2(&atomic->partial_core_density,spe)[0] = 2.0*openmx_radial_row2(&atomic->partial_core_density,spe)[1] - openmx_radial_row2(&atomic->partial_core_density,spe)[2];
-      openmx_radial_row2(&atomic->partial_core_density,spe)[atomic->species.vps_mesh[spe]+1] =
-                     2.0*openmx_radial_row2(&atomic->partial_core_density,spe)[atomic->species.vps_mesh[spe]]
-                       - openmx_radial_row2(&atomic->partial_core_density,spe)[atomic->species.vps_mesh[spe]-1];
+    for (i=0; i<points+2; i++) openmx_radial_row2(&atomic->partial_core_density,spe)[i]=0.0;
+    if (data->partial_core) {
+      for (i=0; i<points; i++)
+        openmx_radial_row2(&atomic->partial_core_density,spe)[i+1]=data->partial_core_density[i];
+      openmx_radial_row2(&atomic->partial_core_density,spe)[0]=
+        2.0*openmx_radial_row2(&atomic->partial_core_density,spe)[1]-openmx_radial_row2(&atomic->partial_core_density,spe)[2];
+      openmx_radial_row2(&atomic->partial_core_density,spe)[points+1]=
+        2.0*openmx_radial_row2(&atomic->partial_core_density,spe)[points]-openmx_radial_row2(&atomic->partial_core_density,spe)[points-1];
     }
   }
-
-  /****************************************************
-                    close the file
-  ****************************************************/
-  
-  input_close();
 
   /****************************************************
         re-normalization of atomic charge density 
   ****************************************************/
 
-  if (remake_headfile==0){
+  if (!metadata_only){
 
     sum = 0.0;
     dx = openmx_radial_row2(&atomic->pao_log_radii,spe)[1] - openmx_radial_row2(&atomic->pao_log_radii,spe)[0];
@@ -1211,7 +859,7 @@ void Read_VPS(OpenMXCoreContext *core, const OpenMXNeutralGridMetadataView *meta
                 calculate VH_Atom and Vna
   ****************************************************/
 
-  if (remake_headfile==0){
+  if (!metadata_only){
 
     /* correct Vcore  */
 
@@ -1283,7 +931,7 @@ void Read_VPS(OpenMXCoreContext *core, const OpenMXNeutralGridMetadataView *meta
               projector expansion of VNA
   ****************************************************/
 
-  if (remake_headfile==0 && ProExpn_VNA==1){
+  if (!metadata_only && ProExpn_VNA==1){
     const OpenMXReciprocalViews reciprocal=OpenMX_ReciprocalTables(core);
     const OpenMXNeutralExpansion input = {List_YOUSO[35],List_YOUSO[34],
       atomic->species.vps_mesh[spe],openmx_radial_row2(&atomic->vps_radii,spe),openmx_radial_row2(&atomic->neutral_potential,spe),
@@ -1293,34 +941,23 @@ void Read_VPS(OpenMXCoreContext *core, const OpenMXNeutralGridMetadataView *meta
     char error[256];
     if (!openmx_core_expand_neutral_projectors(&input,GL_Mesh,GL_Abscissae,GL_Weight,
                                               error,sizeof(error))) {
-      fprintf(stderr,"Read_VPS neutral projectors, species %d: %s\n",spe,error);
-      MPI_Abort(mpi_comm_level1,1);
-      return;
+      snprintf(diagnostic,diagnostic_capacity,"neutral projectors, species %d: %s",spe,error);
+      return 0;
     }
   }
 
-  /****************************************************
-  freeing of arrays:
+  return 1;
+}
 
-  double Vcore[List_YOUSO[22]];
-  double TmpVNL[2][List_YOUSO[19]];
-  double TmpMat[List_YOUSO[37]][List_YOUSO[37]];
-  ****************************************************/
-
-  if (remake_headfile==0){
-    free(Vcore);
-
-    for (i=0; i<2; i++){
-      free(TmpVNL[i]);
-    }
-    free(TmpVNL);
-
-    for (i=0; i<List_YOUSO[37]; i++){
-      free(TmpMat[i]);
-    }
-    free(TmpMat);
+static void Read_VPS_File(OpenMXCoreContext *core, const OpenMXNeutralGridMetadataView *metadata,
+                          int spe, int metadata_only, MPI_Comm communicator, const char *file)
+{
+  OpenMXVpsReadInput input={core,metadata,spe};
+  char error[512];
+  if (!openmx_core_with_vps_file(file,metadata_only,Read_VPS,&input,error,sizeof(error))) {
+    fprintf(stderr,"Read_VPS (%s): %s\n",file,error);
+    MPI_Abort(communicator,1);
   }
-
 }
 
 

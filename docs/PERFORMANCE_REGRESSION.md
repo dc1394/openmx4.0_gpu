@@ -4390,3 +4390,32 @@ C60は変更前後を交互に各3回測定し、全件27SCFで収束、対応�
 `numerical-summary.json`、`pao-data-parity.json` に記録を保存しました。
 AMD/A100/H100実機、Intelコンパイラ版OpenMXとの性能比較は今回実施していません。
 `work/openmx` は更新していません。
+
+
+## 2026-10-27: VPS読取と一時配列の独立所有化（第97段階）
+
+変更前 `e59cc4c3` と変更後の本体・Core/SIMDを凍結し、18 MPI×1 OpenMPで順次実行しました。
+GPUはRTX5080・既存MPS・NVHPC/OpenMPI、CPU専用本体はGCC/Intel MPI/MKLです。
+計時中にビルド、単体試験、他のOpenMX計算は重ねていません。
+
+| 入力・指標 | 変更前 | 変更後 |
+| --- | ---: | ---: |
+| sidia333 NC cluster、GPU/MPS、内部Total最大値 (秒) | 99.278 | 99.485 |
+| 同、MPI起動を含む経過時間 (秒) | 102.456 | 102.656 |
+| C60 DC、CPU専用、内部Total中央値 (秒) | 5.959 | 5.961 |
+| 同、MPI起動を含む経過時間中央値 (秒) | 6.43164 | 6.48021 |
+
+sidiaは元入力を各1回測定した25SCF上限・未収束の比較です。E差ゼロ、最大F差は約1.0e-12 Ha/bohrでした。
+C60は変更前後を交互に各3回測定し、全件27SCFで収束、対応組の印字E/F差はゼロでした。
+約0.2%のsidia経過時間差と、CPU内部計算の約0.03%の差は高速化・劣化と断定せず、
+GeForce約105秒の目安とCPU性能を保つ確認として記録します。
+
+別途、収束した比較29組は反復数が一致し、最大差E=1.2243e-8 Ha、F=4.5824e-8 Ha/bohrで既存1e-7閾値以内でした。
+旧VPS形式、電子数指定、SO有効・SO係数変更、空原子、内殻正孔も含みます。
+最大差だった電子数指定GPUを他の試験を止めて追加比較した結果も、13SCF一致、
+E=8.5720e-9 Ha、F=2.6714e-8 Ha/bohrでした。この追加比較は29組に重複して数えていません。
+PAO395・VPS258ファイルの全数値は旧読み込みとビット単位で一致しています。
+`build/vps-file-library-20261027/` の `performance/`、`cpu-performance-results.json`、
+`numerical-summary.json`、`charge-repeat/`、`pao-data-parity.json`、`vps-data-parity.json` に記録を保存しました。
+AMD/A100/H100実機、Intelコンパイラ版OpenMXとの性能比較は今回実施していません。
+`work/openmx` は更新していません。

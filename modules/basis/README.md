@@ -2,8 +2,8 @@
 
 OpenMX の基底処理を独立して利用する C++20 ライブラリです。
 現在の公開範囲は PAO、非局所射影子、中性原子ポテンシャル、VNA 射影子の
-動径補間、PAO/射影子の波数空間補間と PAO ファイルの読み込みです。本体もこの実装を使用します。
-VPS ファイルの読み込み、球面調和関数、Fourier-Bessel 変換、2中心積分は
+動径補間、PAO/射影子の波数空間補間と PAO/VPS ファイルの読み込みです。本体もこの実装を使用します。
+球面調和関数、Fourier-Bessel 変換、2中心積分は
 まだこのパッケージには含まれません。
 
 CMake 3.25.2 以上と C++20 のコンパイラ・標準ライブラリでビルドできます。
@@ -30,6 +30,11 @@ cmake -S modules/basis/examples/pao -B build/pao-example \
   -DCMAKE_PREFIX_PATH="$PWD/build/basis-install"
 cmake --build build/pao-example
 ./build/pao-example/pao_example DFT_DATA19/PAO/C6.0.pao
+
+cmake -S modules/basis/examples/vps -B build/vps-example \
+  -DCMAKE_PREFIX_PATH="$PWD/build/basis-install"
+cmake --build build/vps-example
+./build/vps-example/vps_example DFT_DATA19/VPS/C_PBE19.vps
 ```
 
 外部プロジェクトの `CMakeLists.txt` は以下だけでリンクできます。
@@ -85,6 +90,49 @@ const auto radial_values = pao.orbital(1, 0); // 借用する span<const double>
 本体は `core/` 内の C アダプターを通じて同じ読み込み実装を利用し、検証を終えてから
 計算所有の配列へ値を渡します。ライブラリ自身は MPI の停止やプロセス終了を行いません。
 
+## VPS ファイルから使う
+
+`<openmx/basis/vps_file.hpp>` の `VpsFile::from_file()` / `read()` は、
+原子種・電子数、動径格子、局所ポテンシャル、非局所射影子・エネルギー、任意のPCC密度を所有します。
+PAO と同じく、ファイルや入力ストリームの寿命に依存せず、コピー・ムーブ・並行読み出しが可能です。
+
+```cpp
+#include <openmx/basis/vps_file.hpp>
+
+const auto vps = openmx::basis::VpsFile::from_file("C_PBE19.vps");
+const double value = vps.sample_projector(0, 0, 0.85); // projector, spin channel, bohr
+const double energy = vps.projector_energy(0, 0);       // Hartree
+```
+
+- `angular()` の順で射影子を保持します。1チャネルのスカラーデータと、2チャネルの
+  j依存データを扱い、j依存の並びはファイル通り `j=l+1/2`、`j=l-1/2` です。
+  `projector_values()` は `[projector][spin channel][radial point]`、
+  `projector_energies()` は `[projector][spin channel]` の連続領域です。
+- 局所ポテンシャルと射影子エネルギーは Hartree、半径は bohr。
+  射影子はファイルの値をそのまま保持し、補間には `RadialKind::projector` を使います。
+  スカラー相対論のj平均、SO係数、指定電子数による補正を読取時に暗黙適用しません。
+- 新しい `<project.energies` 形式と、`number.vps` / `<pseudo.NandL` /
+  `<projection.energies` を使う旧形式に対応します。旧形式はスカラー用です。
+  `local.part.vps` と一致する0始まりの記述行を除き、他の行をその順で射影子にします。
+  範囲外のlocalラベルは行を除外しない従来規約を維持します。
+- `charge.pcc.calc` が無効なら `partial_core_density()` は空です。有効なら物理格子点だけを返します。
+  本体で使う余白・端点の延長は本体のアダプターの責務です。
+  格子は6点以上、正で狭義単調増加の半径と狭義単調増加の対数座標を検証し、
+  PCCの格子もポテンシャルと一致することを確認します。許容差はPAO読取と同じです。
+- `VpsReadMode::metadata` は動径数値表を要求・確保しません。射影子数と角運動量は保持します。
+  新形式では射影子エネルギーも保持し、旧形式では全表読取時に取得します。
+  射影子が0個のファイルも扱えます。
+- `AtomSpecies` の小数値を保持し、整数原子番号の規則はPAOと同じです。
+  `total.electron` の既定値は `AtomSpecies`、`valence.electron` は0です。
+  `core_charge()` は `valence.electron + AtomSpecies - total.electron` を返します。
+  論理値は従来の `on/yes/true/.true./ok`、`off/no/false/.false./ng` を扱います。
+
+PAO/VPSは同じ内部テキスト解析器を使います。VPSの公開ファイルAPIも現在はC++用です。
+本体のC境界は、C++所有者の生存中に同期コールバックへ借用データを渡します。
+局所ポテンシャルの補正用領域はC++が所有し、利用側の早期終了・失敗・例外でも解放します。
+コールバックを抜けたあとにデータを保持してはいけません。解析・確保の失敗では呼び出さず、
+コールバック内で本体の配列を変更した後の失敗をロールバックする契約にはしていません。
+
 ## データと数値規約
 
 - 角運動量 `angular` は `0 <= l <= 29`。チャネルの並び順は呼び出し元が指定し、
@@ -119,7 +167,8 @@ C ABI は呼び出しごとのエラーバッファを使い、失敗時に数�
 `ctest --test-dir build/basis -L unit --output-on-failure` で、解析的な多項式、
 旧実装から固定した参照値、端点、無効入力、コピー・借用・並行性、
 確保失敗を検証します。PAO は解析値を持つ s〜g・各2多重度の小入力で、全軌道・密度、
-不正形式、並行読み込みと所有権を検証します。スカラー補間が確保を行わないことも検査します。
+不正形式、並行読み込みと所有権を検証します。VPSはスカラー/j依存・旧形式・PCC有無・
+射影子0個の組合せを検証します。スカラー補間が確保を行わないことも検査します。
 
 `basis-package-consumer` はこのディレクトリだけをコピーして独立ビルド・インストールし、
 インストール先と元のソース・ビルドディレクトリを移動してから、外部 C/C++ プログラムを

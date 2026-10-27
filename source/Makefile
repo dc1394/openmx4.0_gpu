@@ -638,7 +638,7 @@ Get_OneD_HS_Col.o: Get_OneD_HS_Col.c openmx_common.h
 #
 #
 #  
-SetPara_DFT.o: SetPara_DFT.c openmx_common.h openmx_core_pao_file.h
+SetPara_DFT.o: SetPara_DFT.c openmx_common.h openmx_core_pao_file.h openmx_core_vps_file.h
 	$(CC) -c SetPara_DFT.c
 XC_Ceperly_Alder.o: XC_Ceperly_Alder.c openmx_common.h
 	$(CC) -c XC_Ceperly_Alder.c

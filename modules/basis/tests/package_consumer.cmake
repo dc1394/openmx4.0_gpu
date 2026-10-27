@@ -23,6 +23,23 @@ file(RENAME "${TEST_ROOT}/build" "${TEST_ROOT}/hidden-build")
 file(COPY "${BASIS_SOURCE}/examples/radial/" DESTINATION "${TEST_ROOT}/consumer")
 file(COPY "${BASIS_SOURCE}/tests/test_c.c" DESTINATION "${TEST_ROOT}/consumer")
 configure_file("${BASIS_SOURCE}/examples/pao/main.cpp" "${TEST_ROOT}/consumer/pao_example.cpp" COPYONLY)
+configure_file("${BASIS_SOURCE}/examples/vps/main.cpp" "${TEST_ROOT}/consumer/vps_example.cpp" COPYONLY)
+file(WRITE "${TEST_ROOT}/consumer/fixture.vps" [=[
+AtomSpecies 1
+grid.num.output 6
+<project.energies
+1
+0 -0.5
+project.energies>
+<Pseudo.Potentials
+0 1 -1 2
+1 2 -1 2
+2 3 -1 2
+3 4 -1 2
+4 5 -1 2
+5 6 -1 2
+Pseudo.Potentials>
+]=])
 file(WRITE "${TEST_ROOT}/consumer/fixture.pao" [=[
 AtomSpecies 1
 grid.num.output 3
@@ -53,6 +70,9 @@ add_test(NAME c-consumer COMMAND c_consumer)
 add_executable(pao_consumer pao_example.cpp)
 target_link_libraries(pao_consumer PRIVATE OpenMX::basis)
 add_test(NAME pao-consumer COMMAND pao_consumer "${CMAKE_CURRENT_SOURCE_DIR}/fixture.pao")
+add_executable(vps_consumer vps_example.cpp)
+target_link_libraries(vps_consumer PRIVATE OpenMX::basis)
+add_test(NAME vps-consumer COMMAND vps_consumer "${CMAKE_CURRENT_SOURCE_DIR}/fixture.vps")
 ]=])
 run("${CMAKE_COMMAND}" -S "${TEST_ROOT}/consumer" -B "${TEST_ROOT}/consumer-build"
   "-DCMAKE_CXX_COMPILER=${CXX}" "-DCMAKE_C_COMPILER=${CC}" -DCMAKE_BUILD_TYPE=Release

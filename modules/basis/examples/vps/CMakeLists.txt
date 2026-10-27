@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.25.2)
+project(OpenMXVpsExample LANGUAGES CXX)
+find_package(OpenMXBasis 0.1 CONFIG REQUIRED)
+add_executable(vps_example main.cpp)
+target_link_libraries(vps_example PRIVATE OpenMX::basis)
