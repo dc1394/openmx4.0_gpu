@@ -884,9 +884,12 @@ static int Krylov_ProjectedSolve_GPU(KrylovState *state, Krylov_GPU_Workspace *w
      Below Krylov_gpu_eigen_min LAPACK solves it, as in Krylov_Eigen2 (the
      dispatch of the NVIDIA version). */
   if (state->gpu_eigen_min<=m3){
-    /* The common GPU eigensolver consumes a compact column-major panel. */
-    for (int i=0;i<m3;i++) for (int j=0;j<m3;j++) KU[(size_t)i*(size_t)m3+(size_t)j]=H_DC[(i+1)*(m3+1)+(j+1)];
-    wait_hipfunc(hipMemcpyAsync(ws->d_A,KU,sizeof(double)*mm,hipMemcpyHostToDevice,ws->stream));
+    /* The projected order can exceed the local basis after block rounding.
+       KU holds only (Msize2+2)*m3 entries; use the square staging buffer
+       for the compact column-major panel consumed by the eigensolver. */
+    Krylov_GPU_EnsureHostMatrix(state, ws, mm);
+    for (int i=0;i<m3;i++) for (int j=0;j<m3;j++) ws->h_A[(size_t)i*(size_t)m3+(size_t)j]=H_DC[(i+1)*(m3+1)+(j+1)];
+    wait_hipfunc(hipMemcpyAsync(ws->d_A,ws->h_A,sizeof(double)*mm,hipMemcpyHostToDevice,ws->stream));
     wait_hipfunc(hipStreamSynchronize(ws->stream));
     if (state->ProjectedSolve_GPU_profile) dtime(&t6);
     info=openmx_magma_dsyevdx_gpu(m3,m3,ws->d_A,ko+1,&mout);

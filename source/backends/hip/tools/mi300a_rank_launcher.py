@@ -17,6 +17,7 @@ import json
 import os
 from pathlib import Path
 import re
+import socket
 import sys
 import tempfile
 
@@ -92,6 +93,7 @@ def main(argv=None):
             "timestamp_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
             "rank": rank,
             "local_rank": local_rank,
+            "hostname": socket.gethostname(),
             "pid": os.getpid(),
             "inherited_cpus": cpus,
             "threads": threads,

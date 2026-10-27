@@ -765,6 +765,14 @@ mpirun -np 8 --map-by ppr:8:node:PE=3 --bind-to core \
   "$PWD/build/hip/openmx" /absolute/path/to/input.dat -nt 3
 ```
 
+Sirius では [専用 PBS スクリプト](../tools/sirius_openmx.pbs) を使えます。
+1 APU（24 コア）の既定は GPU 時に 8 MPI × 3 OpenMP、`OPENMX_GPU=0` 時に
+24 MPI × 1 OpenMP です。ビルド手順、4 GPU のローカル MAGMA と 2 ノード 8 GPU の
+ELPA/COSMA、数値比較・性能測定は [2026-10-27 の検証記録](../doc/sirius_unified_validation_20261027.txt)
+にまとめています。Sirius の古い Autoconf を補う場合、HIP ビルドでも
+`OPENMX_MAKE_OPTIONS=GPUSOLVER2_TOOL_PATH=/absolute/path/to/autoconf/bin`
+を指定できます。複数ノードでは PBS のチャンク数と物理ノード数を区別してください。
+
 C++ コアの HIP 実機検証は [C++ / Kokkos 移行記録](CPP_CORE_MIGRATION.md) の
 「AMD 実機検証（2026-10-19）」を参照してください。以下はコア導入前の検証記録です。
 

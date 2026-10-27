@@ -216,6 +216,9 @@ if(BUILD_TESTING)
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_force_lifetime_cpu.py")
   set_tests_properties(force-invocation-lifetime PROPERTIES LABELS "unit;force"
     ENVIRONMENT "OPENMX_CORE_LIBRARY=$<TARGET_FILE:openmx_core>" TIMEOUT 120)
+  add_test(NAME force3-points-threading
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_force3_points_threads_cpu.py")
+  set_tests_properties(force3-points-threading PROPERTIES LABELS "unit;force" TIMEOUT 60)
   add_test(NAME force-spin-trace-calls
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_force_traces_cpu.py")
   set_tests_properties(force-spin-trace-calls PROPERTIES LABELS "unit;force"
@@ -399,6 +402,13 @@ if(BUILD_TESTING)
       COMMAND "${Python3_EXECUTABLE}" "${CMAKE_BINARY_DIR}/native/tests/run_setpro_hvna_cpu.py" --sanitize)
     set_tests_properties(hip-vna-archive PROPERTIES
       ENVIRONMENT "OPENMX_CORE_LIBRARY=$<TARGET_FILE:openmx_core>" TIMEOUT 120)
+    add_test(NAME hip-krylov-gpu-fallback
+      COMMAND "${Python3_EXECUTABLE}" "${CMAKE_BINARY_DIR}/native/tests/run_krylov_gpu_fallback.py" --sanitize)
+    set_tests_properties(hip-krylov-gpu-fallback PROPERTIES LABELS "unit;solver" TIMEOUT 120)
+    if(_hip_lapack_link)
+      set_tests_properties(hip-krylov-gpu-fallback PROPERTIES
+        ENVIRONMENT "LAPACK_LIBS=${_hip_rpaths} ${_hip_lapack_link}")
+    endif()
     foreach(_test IN ITEMS gemmul8_arch_policy nc_mi300a_policy_cpu band_noncol_refine_flow_cpu mi300a_rank_launcher runtest_paths_cpu rocm_runtime_paths_cpu elpa_cptr_interop_cpu deviceless_cleanup_cpu)
       add_test(NAME "hip-${_test}"
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_BINARY_DIR}/native/tests/run_${_test}.py")

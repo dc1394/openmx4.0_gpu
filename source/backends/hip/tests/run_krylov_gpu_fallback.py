@@ -87,6 +87,7 @@ def between(source, first, last):
 
 
 PREFIX = r'''
+#include <limits.h>
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -111,6 +112,8 @@ extern void dgemm_(const char *, const char *, const int *, const int *, const i
 extern void dsyevd_(const char *, const char *, const int *, double *, const int *,
                     double *, double *, const int *, int *, const int *, int *);
 #define wait_hipfunc(call) CHECK((call) == 0)
+typedef struct OpenMXChemicalPotentials OpenMXChemicalPotentials;
+typedef struct OpenMXMixingHistory OpenMXMixingHistory;
 
 /* MPI, one rank */
 typedef int MPI_Comm;
@@ -252,7 +255,9 @@ static void Eigen_lapack2(double *a, int csize, double *ko, int n, int EVmax)
 
 HARNESS = r'''
 #define N 14
+#ifndef M3
 #define M3 8
+#endif
 #define MSIZE2 (N + 3)
 #define CSIZE (N + 40)
 static double worst;
@@ -492,8 +497,6 @@ def main():
         harness = Path(directory) / "krylov_gpu.c"
         binary = Path(directory) / "krylov_gpu"
         harness.write_text(make_harness(source))
-        subprocess.run([*shlex.split(args.cc), *flags, "-std=c11", "-I"+str(root / "source"), str(harness), str(root / "source/openmx_env.c"),
-                        *shlex.split(args.libs), "-lm", "-o", str(binary)], check=True)
         env = os.environ.copy()
         for name in ("OPENMX_KRYLOV_GPU", "OPENMX_KRYLOV_GEMMUL8", "OPENMX_KRYLOV_GPU_FUSED",
                      "OPENMX_KRYLOV_GPU_EIGEN_MIN", "OPENMX_KRYLOV_GPU_DGEMM_MIN_FLOPS",
@@ -501,7 +504,15 @@ def main():
                      "OPENMX_KRYLOV_GPU_RESERVE_MB", "OPENMX_KRYLOV_GPU_PROFILE"):
             env.pop(name, None)
         env.update(OPENBLAS_NUM_THREADS="1", OMP_NUM_THREADS="1", BLIS_NUM_THREADS="1")
-        subprocess.run([str(binary)], env=env, check=True)
+        # The full-space Krylov basis is rounded to a block size and may
+        # exceed Msize2+2. Exercise the same production-sized KU allocation
+        # on both sides of that boundary; ASan detects the old packing bug.
+        for projected_order in (8, 20):
+            subprocess.run([*shlex.split(args.cc), *flags, "-std=c11",
+                            "-DM3="+str(projected_order), "-I"+str(root / "source"),
+                            str(harness), str(root / "source/openmx_env.c"),
+                            *shlex.split(args.libs), "-lm", "-o", str(binary)], check=True)
+            subprocess.run([str(binary)], env=env, check=True)
 
 
 if __name__ == "__main__":

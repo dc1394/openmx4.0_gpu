@@ -53,7 +53,12 @@ openmx_hip_library_flags(_hip_fortran_link NATIVE ${CMAKE_Fortran_IMPLICIT_LINK_
 
 # Put ROCm's OpenMP ahead of the AOCC/Intel runtimes, including transitive
 # dependencies. The application must work from a clean login shell.
-set(_hip_runtime_dirs "${OPENMX_HIP_ROCM_ROOT}/llvm/lib" "${OPENMX_HIP_ROCM_ROOT}/lib")
+# Both ROCm layouts must precede system paths: on some clusters the login
+# node has llvm/lib while compute nodes expose only lib/llvm/lib. Loading
+# system libomp with ROCm libomptarget can crash during device initialization.
+set(_hip_runtime_dirs "${OPENMX_HIP_ROCM_ROOT}/llvm/lib"
+                      "${OPENMX_HIP_ROCM_ROOT}/lib/llvm/lib"
+                      "${OPENMX_HIP_ROCM_ROOT}/lib")
 # MPI must precede host BLAS directories: a system OpenBLAS prefix may also
 # contain a different OpenMPI with the same SONAME as the selected installation.
 foreach(library IN LISTS MPI_C_LIBRARIES MPI_Fortran_LIBRARIES OPENMX_HIP_LINALG_LIBRARIES OPENMX_HIP_FFTW_LIBRARY)

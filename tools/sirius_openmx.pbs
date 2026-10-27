@@ -1,0 +1,88 @@
+#!/bin/bash
+# Submit from the calculation directory, e.g. work/:
+#   qsub -v OMX_INPUT=input.dat ../tools/sirius_openmx.pbs
+# One MI300A: 8 MPI x 3 OpenMP. For more GPUs retain 24 mpiprocs per
+# allocated APU; the script derives threads from each node's allocation.
+# Four local GPUs: -l select=4:ncpus=24:mpiprocs=24:mem=124gb:ngpus=1,place=pack
+# Exactly two full nodes: select four APU chunks on each of two available
+# hosts, e.g. -l 'select=4:ncpus=24:mpiprocs=24:mem=124gb:ngpus=1:host=a12+4:ncpus=24:mpiprocs=24:mem=124gb:ngpus=1:host=a13,place=free'
+# An unpinned select=8,place=free may span more than two physical nodes.
+# Set scf.Gpu.Num in the input to the number of permitted GPUs per node.
+#PBS -A GPU2026
+#PBS -q gen
+#PBS -l select=1:ncpus=24:mpiprocs=24:mem=124gb:ngpus=1
+#PBS -l walltime=00:30:00
+#PBS -N openmx_mi300a
+#PBS -j oe
+#PBS -m n
+
+set -euo pipefail
+cd "${PBS_O_WORKDIR:?Submit with qsub from the calculation directory}"
+: "${OMX_INPUT:?Set OMX_INPUT to an OpenMX input file}"
+: "${PBS_NODEFILE:?The PBS allocation must provide its node file}"
+omx_binary=$(readlink -f "${OMX_BINARY:-$PWD/openmx}")
+[[ -f "$OMX_INPUT" && -x "$omx_binary" ]]
+
+# The supplied resource requests use one mpiprocs slot per CPU core. Keep
+# the node layout explicit: all ranks must have disjoint OpenMP places,
+# and every allocated node must receive ranks.
+read -r omx_nodes omx_slots < <(python3 - "$PBS_NODEFILE" <<'PY'
+from collections import Counter
+from pathlib import Path
+import sys
+slots = Counter(Path(sys.argv[1]).read_text().split())
+if not slots or len(set(slots.values())) != 1:
+    raise SystemExit('Use equal CPU allocations on each node with this job script')
+print(len(slots), next(iter(slots.values())))
+PY
+)
+omx_gpu=${OPENMX_GPU:-1}
+omx_default_ranks=8
+if [[ "$omx_gpu" = 0 ]]; then omx_default_ranks=$omx_slots; fi
+omx_rpn=${OMX_RANKS_PER_NODE:-$omx_default_ranks}
+[[ "$omx_rpn" =~ ^[1-9][0-9]*$ ]]
+(( omx_rpn <= omx_slots ))
+omx_threads=${OMX_THREADS:-$((omx_slots / omx_rpn))}
+[[ "$omx_threads" =~ ^[1-9][0-9]*$ ]]
+(( omx_rpn * omx_threads <= omx_slots ))
+
+# Find the rank launcher from a binary in this repository's work/ or build/.
+# An installation outside the checkout can supply OMX_RANK_LAUNCHER.
+omx_launcher=${OMX_RANK_LAUNCHER:-}
+if [[ -z "$omx_launcher" ]]; then
+  omx_parent=$(dirname "$omx_binary")
+  while [[ "$omx_parent" != / ]]; do
+    omx_candidate="$omx_parent/source/backends/hip/tools/mi300a_rank_launcher.py"
+    if [[ -f "$omx_candidate" ]]; then omx_launcher=$omx_candidate; break; fi
+    omx_parent=$(dirname "$omx_parent")
+  done
+fi
+[[ -f "$omx_launcher" ]] || { echo 'Set OMX_RANK_LAUNCHER to mi300a_rank_launcher.py' >&2; exit 64; }
+
+module purge
+module load rocm/7.2.0 openmpi/5.0.10/rocm7.2.0_amdflang
+unset LD_PRELOAD OMPX_APU_MAPS OMPX_DISABLE_USM_MAPS OMP_TARGET_OFFLOAD
+export LD_LIBRARY_PATH=/opt/rocm-7.2.0/llvm/lib:/opt/rocm-7.2.0/lib/llvm/lib:/opt/rocm-7.2.0/lib:/system/apps/rhel/aocl/5.1.0/aocc/lib:/system/apps/rhel/aocc/5.0.0/lib:${LD_LIBRARY_PATH:-}
+export HSA_XNACK=1 HSA_OVERRIDE_CPU_AFFINITY_DEBUG=0 UCX_RCACHE_ENABLE=n
+export LIBOMPTARGET_MEMORY_MANAGER_THRESHOLD=0
+export OMP_NUM_THREADS="$omx_threads" OMP_MAX_ACTIVE_LEVELS=1 OMP_DYNAMIC=FALSE
+export BLIS_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MAGMA_NUM_THREADS=1
+export OPENMX_GPU="$omx_gpu"
+export OPENMX_AFFINITY_DIR=${OPENMX_AFFINITY_DIR:-"$PWD/affinity.$PBS_JOBID"}
+
+# Prefer the matching installed libraries over the native executable's
+# development-build search path. A build-tree binary uses its own RPATH.
+omx_libdir=${OMX_LIBRARY_DIR:-"$(dirname "$omx_binary")/lib"}
+if [[ -f "$omx_libdir/libopenmx_core.so" && -f "$omx_libdir/libopenmx_host_simd.so" ]]; then
+  export LD_PRELOAD="$omx_libdir/libopenmx_core.so:$omx_libdir/libopenmx_host_simd.so"
+elif [[ -n "${OMX_LIBRARY_DIR:-}" ]]; then
+  echo 'OMX_LIBRARY_DIR must contain both OpenMX shared libraries' >&2
+  exit 64
+fi
+
+mkdir -p "$OPENMX_AFFINITY_DIR"
+qstat -f "$PBS_JOBID" > "$OPENMX_AFFINITY_DIR/allocation.txt"
+printf 'OpenMX: %d nodes, %d MPI ranks/node, %d OpenMP threads/rank\n' "$omx_nodes" "$omx_rpn" "$omx_threads"
+mpirun -np "$((omx_nodes * omx_rpn))" \
+  --map-by "ppr:$omx_rpn:node:PE=$omx_threads" --bind-to core \
+  python3 "$omx_launcher" "$omx_binary" "$OMX_INPUT" -nt "$omx_threads"

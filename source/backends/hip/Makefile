@@ -147,7 +147,7 @@ MPI_LIBDIR ?= $(MPI_HOME)/lib
 # in libflang/libflangrti/libpgmath from the AOCC install.  Keep $(AOCC_LIB)
 # last: it also ships an older libomp.so that must not shadow ROCm's.
 AOCC_LIB ?= /system/apps/rhel/aocc/5.0.0/lib
-RPATHS ?= -Wl,--disable-new-dtags -Wl,-rpath,$(ROCM_LLVM_LIB) -Wl,-rpath,$(ROCM_LIB) -Wl,-rpath,$(MPI_LIBDIR) -Wl,-rpath,$(AOCL_LIB) -Wl,-rpath,$(AOCC_LIB)
+RPATHS ?= -Wl,--disable-new-dtags -Wl,-rpath,$(ROCM_LLVM_LIB) -Wl,-rpath,$(ROCM)/lib/llvm/lib -Wl,-rpath,$(ROCM_LIB) -Wl,-rpath,$(MPI_LIBDIR) -Wl,-rpath,$(AOCL_LIB) -Wl,-rpath,$(AOCC_LIB)
 ROCM_GPU_LIBS := -L$(ROCM_LIB) -lamd_smi -lhipsolver -lrocsolver -lhipblas -lhipblaslt -lrocblas -lhipsparse -lamdhip64
 # ROCm ships libflang_rt.* under the clang resource directory, not directly in
 # $(ROCM_LLVM_LIB); ask the compiler where that is instead of hardcoding the
@@ -232,6 +232,7 @@ GPUSOLVER2_AOCL_INC  ?= $(AOCL_INC)
 GPUSOLVER2_AOCC_LIB  ?= $(AOCC_LIB)
 GPUSOLVER2_SCALAPACK_SO ?= $(AOCL_LIB)/libscalapack.so
 GPUSOLVER2_CMAKE     ?=
+GPUSOLVER2_TOOL_PATH ?=
 GPUSOLVER2_JOBS      ?= $(shell nproc 2>/dev/null || echo 8)
 GPUSOLVER2_ELPA_VER  ?= 2026.02.002
 GPUSOLVER2_ELPA_INCLUDE ?= $(GPUSOLVER2_PREFIX)/include/elpa-$(GPUSOLVER2_ELPA_VER)
@@ -450,7 +451,7 @@ GPUSOLVER2_BUILD_CONFIG := $(GPUSOLVER2_BUILD)/make-toolchain.conf
 .PHONY: gpusolver2-toolchain-force
 $(GPUSOLVER2_BUILD_CONFIG): gpusolver2-toolchain-force
 	@mkdir -p "$(dir $@)"
-	@printf '%s\n' '$(GPUSOLVER2_DIST)' '$(GPUSOLVER2_PREFIX)' '$(GPUSOLVER2_HOST_CC)' '$(GPUSOLVER2_HOST_CXX)' '$(GPUSOLVER2_HIPCC)' '$(GPUSOLVER2_GPU_ARCH)' '$(GPUSOLVER2_MPI_BIN)' '$(GPUSOLVER2_MPI_LIBDIR)' '$(GPUSOLVER2_ROCM)' '$(GPUSOLVER2_AOCL_LIB)' '$(GPUSOLVER2_AOCL_INC)' '$(GPUSOLVER2_AOCC_LIB)' '$(GPUSOLVER2_SCALAPACK_SO)' '$(GPUSOLVER2_ELPA_VER)' '$(GPUSOLVER2_CMAKE)' > "$@.tmp"
+	@printf '%s\n' '$(GPUSOLVER2_DIST)' '$(GPUSOLVER2_PREFIX)' '$(GPUSOLVER2_HOST_CC)' '$(GPUSOLVER2_HOST_CXX)' '$(GPUSOLVER2_HIPCC)' '$(GPUSOLVER2_GPU_ARCH)' '$(GPUSOLVER2_MPI_BIN)' '$(GPUSOLVER2_MPI_LIBDIR)' '$(GPUSOLVER2_ROCM)' '$(GPUSOLVER2_AOCL_LIB)' '$(GPUSOLVER2_AOCL_INC)' '$(GPUSOLVER2_AOCC_LIB)' '$(GPUSOLVER2_SCALAPACK_SO)' '$(GPUSOLVER2_ELPA_VER)' '$(GPUSOLVER2_CMAKE)' '$(GPUSOLVER2_TOOL_PATH)' > "$@.tmp"
 	@cmp -s "$@.tmp" "$@" && rm -f "$@.tmp" || mv "$@.tmp" "$@"
 $(GPUSOLVER2_STAMP): $(GPUSOLVER2_BUILD_CONFIG) $(GPUSOLVER2_HOST_CONFIG)
 
@@ -905,6 +906,7 @@ $(GPUSOLVER2_STAMP): $(GPUSOLVER2_SCRIPT)
 	GPUSOLVER2_SCALAPACK_SO="$(GPUSOLVER2_SCALAPACK_SO)" \
 	GPUSOLVER2_ELPA_VER="$(GPUSOLVER2_ELPA_VER)" \
 	GPUSOLVER2_CMAKE="$(GPUSOLVER2_CMAKE)" GPUSOLVER2_JOBS="$(GPUSOLVER2_JOBS)" \
+	GPUSOLVER2_TOOL_PATH="$(GPUSOLVER2_TOOL_PATH)" \
 	sh "$(GPUSOLVER2_SCRIPT)"
 
 gpusolver2-clean:

@@ -1,0 +1,290 @@
+Sirius validation of the unified GPU build, 2026-10-27
+=====================================================
+
+Revision, scope and architecture
+-------------------------------
+Branch refactor/cpp-kokkos-core; baseline cfaf03a62054b9ab68fba84018a3ac865d303d10.
+The validated candidate adds the corrections below to this baseline;
+its executable and shared-library hashes are retained with the results.
+The source review followed the shared capacity controller, HIP solver and
+GEMM dispatch, native resource ownership, host-SIMD force loops, MPI/device
+mapping, the HIP build and its runtime dependencies.
+
+Sirius has four MI300A APUs per physical node: 24 CPU cores and one gfx942
+GPU with 128 GiB HBM per APU. The single-APU measurements reserve exactly
+24 cores and one GPU. Multi-GPU checks reserve four APUs on one physical
+node, or four APUs on each of two physical nodes. All GPU work runs under
+PBS in queue gen, project GPU2026. The login node sirius02 has no GPU.
+The HIP probes record gfx942:sramecc+:xnack+, integrated=1 and device BDFs.
+The four local GPUs have XGMI peer links. Rank identity records contain
+hostnames and disjoint CPU sets; a PBS chunk count alone is not evidence
+of the physical node count.
+
+The reviewed and exercised capacity hierarchy is:
+  gpusolver: owner GPU -> rank-0-node MAGMA -> distributed ELPA/COSMA -> CPU.
+  gpusolver2: explicit distributed ELPA/COSMA for Cluster.
+  gpusolver3 / OPENMX_MGPU_MEMORY=host: local MAGMA -> CPU, without ELPA.
+
+The MAGMA dense matrices reside on rank 0's node and its permitted GPU
+pool is confined to that node. Remote-node GPUs are not added to this
+MAGMA pool. ELPA/COSMA uses the GPU assigned to each MPI rank across all
+participating physical nodes. Collinear spin channels retain the union
+BLACS placement. The Band tests use two k points, each with its own local
+MAGMA pair (devices 0,1 and 2,3). OPENMX_CLUSTER_GS2_FALLBACK=force skips
+MAGMA; forcing MAGMA still takes precedence over automatic ELPA recovery.
+Small regression inputs lower the size thresholds explicitly; that is
+coverage of a path, not a recommendation to use that path for small jobs.
+
+Build and installation
+----------------------
+ROCm 7.2.0 (Clang 22.0.0git), site Open MPI 5.0.10/ROCm amdflang,
+AOCL 5.1.0 with the AOCC 5.0.0 runtime, CMake 3.31.8. Kokkos 5.2.2 SERIAL
+is the C++ host core; native HIP/OpenMP GPU kernels remain enabled.
+The host-SIMD library selects AVX512 on MI300A. The bundled MAGMA 2.10.0,
+ELPA 2026.02.002, COSMA and pinned GEMMul8 3.5.4 are built in isolation.
+The native-fp64 MI300A dispatch and the Radeon/GEMMul8 policies remain
+separate; no Radeon defaults or arithmetic precision were changed.
+
+From the repository root (this run uses /work/GPU2026/dc1394/openmx4.0_gpu):
+  module purge
+  module load rocm/7.2.0 openmpi/5.0.10/rocm7.2.0_amdflang
+  cmake -S . -B build/sirius-hip \
+    -DCMAKE_BUILD_TYPE=Release -DOPENMX_GPU_BACKEND=HIP \
+    -DOPENMX_GPU_ARCH=gfx942 -DOPENMX_CORE_BACKEND=SERIAL \
+    -DOPENMX_COPY_TO_WORK=OFF -DOPENMX_BUILD_JOBS=12 \
+    -DOPENMX_HIP_ROCM_ROOT=/opt/rocm-7.2.0 \
+    -DOPENMX_HIP_MPI=OPENMPI \
+    -DOPENMX_HIP_MPI_ROOT=/system/apps/rhel/openmpi/5.0.10/rocm/7.2.0-rocm_amdflang/ompi \
+    -DOPENMX_HIP_LINALG=AOCL \
+    -DOPENMX_HIP_AOCL_ROOT=/system/apps/rhel/aocl/5.1.0/aocc \
+    -DOPENMX_HIP_AOCC_LIB=/system/apps/rhel/aocc/5.0.0/lib \
+    -DOPENMX_MAKE_OPTIONS=GPUSOLVER2_TOOL_PATH="$PWD/build/sirius-tools/install/bin"
+  cmake --build build/sirius-hip --parallel 12
+  cmake --install build/sirius-hip
+
+The installed executable is work/openmx. Keep work/lib/libopenmx_core.so
+and work/lib/libopenmx_host_simd.so with it. The build-tree ELPA/COSMA and
+system numerical/ROCm/MPI library paths are also runtime dependencies.
+
+The site's Autoconf 2.69 is older than the pinned ELPA's requirement.
+Autoconf 2.72 was built under build/sirius-tools/install from GNU's
+https://ftp.gnu.org/gnu/autoconf/autoconf-2.72.tar.xz, SHA-256:
+  ba885c1319578d6c94d46e9b0dceb4014caafe2490e437a0dbca3f270a223f5a
+The HIP stack now accepts GPUSOLVER2_TOOL_PATH, as the CUDA builder already
+did, and includes it in the toolchain signature. No system package changed.
+
+Corrections found by actual runs
+-------------------------------
+1. Force3 point-group synchronization (CUDA and HIP).
+   The master could overwrite shared h_end/failure fields for the next
+   group before a slow OpenMP worker consumed the previous group. Threads
+   could then execute different numbers of loop iterations and deadlock at
+   barriers. This froze the GPU S-suite at GaAs; GaAs alone could pass.
+   An entry barrier prevents reuse of the plan until every thread advances.
+   run_force3_points_threads_cpu.py extracts the production loop, delays a
+   reader and tests normal/failing groups on both backends. Removing the
+   new barrier reproduces a failure. The corrected S-suite completes in
+   the same persistent MPI processes, including GaAs.
+
+2. Krylov projected-panel size (HIP).
+   Full-space Krylov order is rounded to a block. The Si8 case has local
+   basis n=1131 but projected order m=1170. The fused GPU path packed m*m
+   elements into KU, allocated for only (Msize2+2)*m, corrupting the heap.
+   It now uses the existing per-thread square host staging workspace.
+   The regression checks both m<n and m>Msize2+2, native/GEMMul8 dispatch,
+   numerical agreement and injected solver/GEMM failures under ASan/UBSan.
+   The unmodified production function reports global-buffer-overflow in
+   the larger-order negative control. No Krylov order or physical input
+   was reduced to hide this failure.
+
+3. ROCm runtime search order (CMake and direct HIP make).
+   Node a14 does not provide /opt/rocm-7.2.0/llvm/lib, although the login
+   node does. Its runtime is under /opt/rocm-7.2.0/lib/llvm/lib. The old
+   executable RPATH encountered /usr/lib64/libomp.so before that path,
+   mixing system OpenMP with ROCm libomptarget. The core dump identifies
+   a null call in ompt::setOmptTimestamp during omp_target_alloc, reached
+   through UCell_Box's device-budget probe, before SCF diagonalization.
+   Both ROCm layouts now precede system/AOCC runtime directories. A host
+   test simulates the missing login-node path and a competing runtime.
+   This is a dependency-loading fix, not an ELPA numerical change.
+
+Execution and performance policy
+--------------------------------
+Use tools/sirius_openmx.pbs from the calculation directory. It defaults to
+8 MPI x 3 OpenMP on one APU, and 24 MPI x 1 OpenMP for OPENMX_GPU=0.
+For a full node its default is 8 MPI x 12 OpenMP; two full nodes use
+16 MPI ranks total, 12 threads each. Override OMX_RANKS_PER_NODE and
+OMX_THREADS for a workload-specific measurement. Set scf.Gpu.Num to the
+permitted number of GPUs per node; the script preserves PBS visibility.
+It selects matching installed core/SIMD libraries and records the PBS
+allocation and each rank's CPU placement before ROCm initialization.
+
+  cd work
+  qsub -v OMX_INPUT=input.dat ../tools/sirius_openmx.pbs
+  qsub -v OMX_INPUT=input.dat,OPENMX_GPU=0 ../tools/sirius_openmx.pbs
+
+For four local GPUs add:
+  -l 'select=4:ncpus=24:mpiprocs=24:mem=124gb:ngpus=1,place=pack'
+For exactly two full nodes, choose two available hosts and request four
+APU chunks explicitly on each, e.g.:
+  -l 'select=4:ncpus=24:mpiprocs=24:mem=124gb:ngpus=1:host=a12+4:ncpus=24:mpiprocs=24:mem=124gb:ngpus=1:host=a13,place=free'
+
+Unpinned select=8,place=free produced both 4+4 and 4+1+3 placements in
+this session. The latter cannot run the intended 2-node 8-GPU comparison;
+its probe was rejected and no OpenMX result was accepted. place=scatter
+is disallowed by the site hook; place=pack cannot fit eight APU chunks on
+one four-APU node. Unequal node CPU allocations are rejected by the script.
+
+The script sets HSA_XNACK=1, explicit OpenMP places, sequential BLAS and
+UCX_RCACHE_ENABLE=n. It leaves GPU worker dispatch at its production
+default. Forcing OPENMX_GPU_WORKERS=1 on every small grid task made a
+four-GPU Si64 collinear run take 263.535 s (application 258.821 s), versus
+20.095 s (application 14.932 s) with capacity-driven default workers in
+that exploratory comparison. Density alone changed from 130.317 s to
+0.491 s. This opt-in forced-worker trial was stopped after diagnosis;
+it is not the default four-GPU performance.
+
+Validation results and timing
+-----------------------------
+Host tests use GCC 14.2 for the extraction/mock harnesses, with matching
+GCC runtime search paths (cc-host and cxx-host retained in the artifacts),
+and the GCC site MPI wrappers for host-only MPI tests. Core-native tests
+retain CMake's production compiler. The initial system GCC 11 lacks the
+ASan runtime required here. Host ASan/MPI checks use pml=ob1,
+btl=self,sm,tcp, osc=sm,rdma and coll=basic,libnbc,tuned,self to avoid the
+site UCX OSC instrumentation conflict; this is not the production GPU MPI
+configuration. The final complete CTest run is in ctest.final.log.
+
+Final host tests: 486/486 passed, including the new Force3 synchronization
+and ASan/UBSan Krylov tests. The runtime path test also simulates a compute
+node lacking the login-node LLVM directory.
+
+All 70 planned final-build calculations pass. The final audit reads the
+actual output files again, requires every planned case, validates hashes,
+normal completion, full forces, SCF counts, CPU placement and GPU routing.
+  Group                                           Calculations   PBS job
+  Standard S, CPU/GPU, 14 cases in one MPI job each      28        47210
+  DC, DC-LNO and Krylov, CPU/GPU                         10        47210
+  One physical node, 4 GPUs: Cluster/Band CPU/GPU        10        47211
+  Two physical nodes, 8 GPUs: Cluster/capacity paths     18        47212
+  One APU: final Si216 CPU/GPU timing                     2        47213
+  Installed executable via Sirius PBS script             2        47212/47213
+
+The four-GPU node is a07. The two-node run uses a14 and a15, including
+the node that exposed the runtime-loading problem. All 16 MPI ranks have
+12 disjoint CPU cores each. The installed-script checks use one APU
+(8x3) and two full nodes (16x12); both select the installed core/SIMD
+libraries. Loader traces confirm that both nodes now select ROCm libomp.
+
+The 4-GPU cases cover collinear nonmagnetic and spin-polarized Cluster,
+NC Cluster with SOC, and collinear/NC Band with two k points. The 2-node
+cases cover nonmagnetic, spin-polarized and NC Cluster, each with CPU,
+local MAGMA recovery, automatic distributed ELPA and explicit gpusolver2.
+Additional spin/NC cases exercise final CPU recovery, forced MAGMA with
+no ELPA fallback, and forced ELPA bypassing MAGMA. Successful MAGMA
+records have valid=1; Band logs verify both device pairs at the full
+matrix order. ELPA and COSMA both report GPU execution, and automatic
+recovery reports 2 nodes, 8 GPUs and 16 ranks.
+
+Maximum CPU/GPU differences from final-build pairs:
+  Group                       Total energy (Ha)       Force (Ha/bohr)
+  Local solvers                  7.101e-10                 2.990e-10
+  One node / four GPUs           2.285e-9                  1.880e-10
+  Two nodes / eight GPUs         8.200e-10                 2.680e-10
+  Si216 timing comparison        5.503e-11                 8.300e-11
+The standard-suite and installed-script comparisons also pass; neither
+exceeds the overall maxima above. Every tolerance remains 1e-7.
+
+
+Final binary, one APU / 24 cores, Si216 NC Cluster + SOC, 25 fixed SCF steps:
+  Mode/layout                 Process wall time    OpenMX total (max rank)
+  CPU, 24 MPI x 1 OpenMP          341.528 s                337.523 s
+  GPU,  8 MPI x 3 OpenMP          107.984 s                104.673 s
+  Wall-time speedup: 3.163x. One final-build measurement of each mode.
+  Total energy CPU: -887.309846613061 Ha
+  Total energy GPU: -887.309846613006 Ha
+  Difference: 5.503e-11 Ha; maximum force difference: 8.300e-11 Ha/bohr.
+  Job 47213, node a19, one visible GPU and 24 disjoint allocated CPU cores.
+
+The earlier same-allocation layout study (job 47201, Force3-fixed binary,
+node a19) interleaved three repetitions for each GPU setting. The later
+changes affect Krylov and RPATH, not the Cluster arithmetic; the final
+paired run above confirms the result with the final executable.
+  Layout/setting              Wall samples (s)             Median (s)
+  GPU 24 MPI x 1 OMP           259.713 260.242 260.043       260.043
+  GPU  8 MPI x 3 OMP           109.139 112.840 113.476       112.840
+  GPU  8 MPI x 3, Force GPU    109.439 109.815 110.119       109.815
+  CPU 24 MPI x 1 OMP           344.921 (one reference run)
+
+The GPU layout change improves the median wall time by 2.305x; compared
+with the CPU reference, the default GPU median is 3.057x faster. The
+phase medians explain the effect of sharing one GPU among fewer ranks:
+  Phase                        GPU 24x1          GPU 8x3
+  Set_Hamiltonian               42.291 s          18.728 s
+  Set_Density_Grid              111.655 s          15.468 s
+  Diagonalization               63.254 s          25.004 s
+  Force                         16.816 s          24.506 s
+The more expensive Force phase is outweighed by reductions in the other
+phases. CPU 8x3 with BLAS threads 1 or 3 took about 696-699 s in the
+exploratory runs; it was not used to inflate the reported CPU/GPU speedup.
+CPU 24x1 is the fastest CPU layout among those measured, not a claim of
+a universal optimum for every input.
+
+OPENMX_FORCE_GPU=1 improves the repeated median by only 2.7%, with samples
+overlapping the default range, and is not made a general default. AVX2
+host SIMD took 117.532 s versus 113.858 s for automatic AVX512 in a separate
+one-sample exploratory comparison; the automatic SIMD choice is retained.
+
+Small Si64 MAGMA runs establish multi-GPU correctness, not a performance
+advantage over CPU. For the larger n=5616 problem that fits one GPU,
+exploratory two-node ELPA timings were 308.484 s (16 MPI x 12 OMP),
+404.231 s (32 MPI x 6 OMP), and 656.889 s (64 MPI x 3 OMP), using the
+pre-Force3-fix baseline; 8 MPI x 24 OMP took 353.424 s with the Force3-fixed
+build. These are one measurement per layout and all pass CPU comparison.
+They show why the default first uses the owner GPU and reserves distributed
+ELPA for capacity recovery, rather than assuming more GPUs always help.
+No distributed strong-scaling gain is claimed for this problem size.
+
+
+Acceptance rules and limitations
+--------------------------------
+All CPU/GPU pairs use identical atoms, coordinates, basis, cutoff and
+physical controls. The retained driver checks the original input hash,
+grid, SCF iteration count, all atomic coordinates, total energy and every
+force component. Energy and force tolerances remain 1e-7 Ha and
+1e-7 Ha/bohr. GPU timing also requires evidence of the requested GPU
+solver, rather than silently accepting a CPU fallback. Route fault tests
+state explicitly when CPU fallback is the expected result.
+
+Si64 short cases use 3 fixed SCF steps. The performance case is Si216
+noncollinear Cluster with SOC, Si7.0-s2p2d1, 200 Ry, grid 140^3, spinor
+matrix order 5616 and 25 fixed SCF steps (criterion 1e-15). These fixed-step
+comparisons do not claim SCF convergence. Standard suite S uses its
+bundled inputs and reference data without changing their convergence
+settings. MPI/core layout measurements are not kernel-speedup claims.
+
+Local solvers additionally use Si8 with the same basis/cutoff,
+orderN.HoppingRanges=4.0 and two hops. The 64-atom DC-NC CPU run used about 112 GiB
+RSS and was stopped while still running; its incomplete result is not
+accepted. Collinear DC was checked on Si64. NC DC-LNO needs fewer ranks
+than atoms to enter its direct GPU solve: with 8 atoms and 8 ranks the
+existing MPI eigensolver path stays on CPU. The explicit GPU comparison
+therefore uses 4 MPI x 6 OpenMP on the same one APU, on both CPU and GPU.
+The 8-rank NC DC-LNO run is not accepted as a GPU eigensolver test.
+
+No new Radeon or NVIDIA hardware test was run in this Sirius session.
+Host tests cover the shared CUDA/HIP change; existing Radeon and NVIDIA
+policies are retained. Two-node success here does not establish scaling
+to more nodes, or behavior for matrices exceeding all eight GPUs' memory.
+Capacity transitions use explicit reserve/host-memory overrides on small
+problems, avoiding a deliberate real out-of-memory allocation.
+
+Reproducibility artifacts
+-------------------------
+All inputs, job files, frozen binary/library hashes, rank identities,
+logs, per-case results, compiler logs and negative controls are retained
+under work/codex_sirius_unified_20261027/ (ignored generated artifacts).
+See its acceptance.json, performance.json and final/manifest.json for the
+accepted case set and exact hashes. Baseline, Force3-fixed and final
+builds are separately frozen. Failed/aborted runs and core backtraces are
+retained and excluded from the accepted case set.

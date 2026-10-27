@@ -9,6 +9,7 @@ Run: python3 tests/run_mi300a_rank_launcher.py
 import json
 import os
 from pathlib import Path
+import socket
 import subprocess
 import sys
 import tempfile
@@ -83,6 +84,7 @@ def main():
             assert identity["kind"] == "mi300a_rank_identity"
             assert identity["schema_version"] == 1
             assert identity["rank"] == 5 and identity["local_rank"] == 5
+            assert identity["hostname"] == socket.gethostname()
             assert identity["pid"] == proc.pid
             assert identity["inherited_cpus"] == sorted(cpus)
             assert identity["threads"] == len(cpus)

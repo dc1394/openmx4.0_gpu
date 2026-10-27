@@ -5670,6 +5670,9 @@ void Force3(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electr
                     f3_points.sum[2] = 0.0;
                 }
                 while (h_begin <= FNAN[Gc_AN]) {
+                    /* Every thread must consume the previous group's h_end
+                       and failure flag before the master replaces the plan. */
+#pragma omp barrier
 #pragma omp master
                     {
                         f3_points_failed = 0;

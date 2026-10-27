@@ -26,6 +26,7 @@ libtool
 /work/bin/nvcc_wrapper
 /work/include/kokkos/
 /work/lib/cmake/Kokkos/
+/work/lib64/cmake/Kokkos/
 /work/share/licenses/openmx_core/
 
 # === Editor / IDE ===

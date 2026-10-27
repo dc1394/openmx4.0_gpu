@@ -21,6 +21,41 @@ AVAILABLE = (MAKE and GCC and CLANG.is_file() and (LLVM_LIB / 'libomptarget.so')
 
 @unittest.skipUnless(AVAILABLE, 'ROCm clang/OpenMP runtime, GNU make and GCC are required')
 class RocmRuntimePaths(unittest.TestCase):
+    def test_compute_node_runtime_layout(self):
+        # The legacy llvm/lib path exists on the login node but can be
+        # absent on a compute node. Its lib/llvm/lib runtime must still win
+        # over a host-library directory containing the same SONAME.
+        with tempfile.TemporaryDirectory(prefix='openmx-rocm-layout-') as name:
+            directory = Path(name)
+            rocm = directory / 'rocm'
+            runtime = rocm / 'lib/llvm/lib'
+            host = directory / 'host'
+            for folder, value in ((runtime, 0), (host, 9)):
+                folder.mkdir(parents=True)
+                source = folder / 'runtime.c'
+                source.write_text(f'int runtime_version(void) {{ return {value}; }}\n')
+                subprocess.run([GCC, '-shared', '-fPIC', str(source),
+                                '-Wl,-soname,libopenmx_runtime_probe.so',
+                                '-o', str(folder / 'libopenmx_runtime_probe.so')], check=True)
+            (directory / 'probe.c').write_text(
+                'extern int runtime_version(void);\n'
+                'int main(void) { return runtime_version(); }\n')
+            rule = ('runtime-layout-probe:\n'
+                    f'\t{GCC} probe.c -L"{runtime}" -lopenmx_runtime_probe '
+                    '$(RPATHS) -o probe')
+            linked = subprocess.run(
+                [MAKE, '--no-print-directory', '-C', str(directory),
+                 '-I', str(MAKEFILE.parent), '-f', str(MAKEFILE),
+                 '--eval', rule, 'runtime-layout-probe', 'ARCH=gfx942',
+                 f'ROCM={rocm}', f'ROCM_LLVM_LIB={rocm / "llvm/lib"}',
+                 f'AOCL_LIB={host}', f'MPI_LIBDIR={host}', f'AOCC_LIB={host}',
+                 f'CLANG={CLANG}', 'MPI_CFLAGS=', 'MPI_FCFLAGS='],
+                capture_output=True, text=True, check=False)
+            self.assertEqual(linked.returncode, 0, linked.stdout + linked.stderr)
+            executed = subprocess.run([str(directory / 'probe')],
+                                      capture_output=True, text=True, check=False)
+            self.assertEqual(executed.returncode, 0, executed.stderr)
+
     def test_ambient_runtime_does_not_shadow_rocm(self):
         with tempfile.TemporaryDirectory(prefix='openmx-rocm-runtime-') as name:
             directory = Path(name)

@@ -52,6 +52,9 @@ set -u
 : "${GPUSOLVER2_SCALAPACK_SO:?set by the Makefile}"
 : "${GPUSOLVER2_ELPA_VER:=2026.02.002}"
 : "${GPUSOLVER2_CMAKE:=}"
+# Match the CUDA builder: a private Autoconf installation may be required
+# on compute systems whose /usr/bin version predates the pinned ELPA.
+: "${GPUSOLVER2_TOOL_PATH:=}"
 : "${GPUSOLVER2_JOBS:=$(nproc 2>/dev/null || echo 8)}"
 
 # The CMake configuration carries resolved MPI wrappers and LP64 providers.
@@ -89,7 +92,7 @@ printf '%s\n' "$GPUSOLVER2_HIPCC" "$GPUSOLVER2_GPU_ARCH" \
   "$GPUSOLVER2_AOCL_LIB" "$GPUSOLVER2_AOCL_INC" "$GPUSOLVER2_AOCC_LIB" \
   "$GPUSOLVER2_SCALAPACK_SO" "$GPUSOLVER2_ELPA_VER" "$GPUSOLVER2_HOST_CC" \
   "$GPUSOLVER2_HOST_CXX" "$GPUSOLVER2_PREFIX" "$GPUSOLVER2_DIST" \
-  "$GPUSOLVER2_CMAKE" > "$STAMP/toolchain.tmp"
+  "$GPUSOLVER2_CMAKE" "$GPUSOLVER2_TOOL_PATH" > "$STAMP/toolchain.tmp"
 # A build-script fix must also invalidate successful steps from older rules.
 cksum < "$0" >> "$STAMP/toolchain.tmp"
 if [ -n "${GPUSOLVER2_HOST_CONFIG:-}" ]; then
@@ -115,7 +118,7 @@ unset CPATH C_INCLUDE_PATH CPLUS_INCLUDE_PATH LIBRARY_PATH LD_LIBRARY_PATH
 unset CFLAGS CXXFLAGS CPPFLAGS LDFLAGS FCFLAGS
 unset I_MPI_ROOT MPI_HOME MPI_ROOT PKG_CONFIG_PATH ONEAPI_ROOT CMAKE_PREFIX_PATH
 unset FI_PROVIDER_PATH CCL_ROOT TBBROOT MKLROOT NLSPATH CMPLR_ROOT
-export PATH="$GPUSOLVER2_MPI_BIN:$GPUSOLVER2_ROCM/bin:$GPUSOLVER2_ROCM/llvm/bin:/usr/bin:/bin"
+export PATH="${GPUSOLVER2_TOOL_PATH:+$GPUSOLVER2_TOOL_PATH:}$GPUSOLVER2_MPI_BIN:$GPUSOLVER2_ROCM/bin:$GPUSOLVER2_ROCM/llvm/bin:/usr/bin:/bin"
 export LD_LIBRARY_PATH="$GPUSOLVER2_RUNTIME_PATH"
 
 fail() { echo "gpusolver2 stack: FAILED at step $1 (see $LOGS/$1.log)"; exit 1; }
