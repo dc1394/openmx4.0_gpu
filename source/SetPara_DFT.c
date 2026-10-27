@@ -23,11 +23,12 @@
 #include "openmx_gpu_device.h"
 #include "openmx_core_neutral.h"
 #include "openmx_core_neutral_grid_metadata.h"
+#include "openmx_core_pao_file.h"
 
 
 static void Set_Atom_Weight();
 static void Set_Atom_Symbol();
-static void Read_PAO(OpenMXCoreContext *core, const OpenMXNeutralGridMetadataView *metadata, int spe, char *file);
+static void Read_PAO(OpenMXCoreContext *core, const OpenMXNeutralGridMetadataView *metadata, int spe, int metadata_only, MPI_Comm communicator, const char *file);
 static void Read_VPS(OpenMXCoreContext *core, const OpenMXNeutralGridMetadataView *metadata, int spe, char *file);
 static void ReadPara_DFT(OpenMXCoreContext *core);
 static void Set_BasisPara();
@@ -536,49 +537,18 @@ static void ReadPara_DFT(OpenMXCoreContext *core)
   remake_headfile = 1; 
 
   for (spe=0; spe<real_SpeciesNum; spe++){
-
-    fnjoint2(DirPAO,SpeBasisName[spe],ExtPAO,FN_PAO);    
-
-    if ((fp = fopen(FN_PAO,"r")) != NULL){
-
-      setvbuf(fp,buf,_IOFBF,fp_bsize);  /* setvbuf */
-      Read_PAO(core,&metadata,spe,FN_PAO);
-      fclose(fp);
-    }
-    else{
-      printf("Could not find %s\n",FN_PAO);
-      MPI_Finalize();
-      exit(0);
-    }
+    fnjoint2(DirPAO,SpeBasisName[spe],ExtPAO,FN_PAO);
+    Read_PAO(core,&metadata,spe,1,mpi_comm_level1,FN_PAO);
   }
 
   remake_headfile = 0;
-
   Allocate_Arrays_with_context(6,core);
 
-  /*************************
-            read
-  *************************/
-
   for (spe=0; spe<real_SpeciesNum; spe++){
-
-    fnjoint2(DirPAO,SpeBasisName[spe],ExtPAO,FN_PAO);    
-
-    if ((fp = fopen(FN_PAO,"r")) != NULL){
-
-      setvbuf(fp,buf,_IOFBF,fp_bsize);  /* setvbuf */
-      Read_PAO(core,&metadata,spe,FN_PAO);
-      fclose(fp);
-
-      if (MYID_MPI_COMM_WORLD==Host_ID && 0<level_stdout){  
-        printf("<SetPara_DFT>  PAOs of species %s were normally found.\n",SpeName[spe]);
-      }
-
-    }
-    else{
-      printf("Could not find %s\n",FN_PAO);
-      MPI_Finalize();
-      exit(0);
+    fnjoint2(DirPAO,SpeBasisName[spe],ExtPAO,FN_PAO);
+    Read_PAO(core,&metadata,spe,0,mpi_comm_level1,FN_PAO);
+    if (MYID_MPI_COMM_WORLD==Host_ID && 0<level_stdout){
+      printf("<SetPara_DFT>  PAOs of species %s were normally found.\n",SpeName[spe]);
     }
   }
 
@@ -707,158 +677,44 @@ static void ReadPara_DFT(OpenMXCoreContext *core)
 
 }
 
-void Read_PAO(OpenMXCoreContext *core, const OpenMXNeutralGridMetadataView *metadata, int spe, char *file)
+void Read_PAO(OpenMXCoreContext *core, const OpenMXNeutralGridMetadataView *metadata,
+              int spe, int metadata_only, MPI_Comm communicator, const char *file)
 {
-  const OpenMXAtomicViews atomic_views=OpenMX_AtomicTables(core);
-  const OpenMXAtomicViews *atomic=&atomic_views;
-  FILE *fp;
-  char file1[YOUSO10],file2[YOUSO10],file3[YOUSO10];
-  int i,j,L;
-  double dum;
-
-  /****************************************************
-                      open the file
-  ****************************************************/
-
-  input_open(file);
-
-  /****************************************************
-                       read data
-  ****************************************************/
-
-  input_double("AtomSpecies",&dum,0.0);
-
-  if (1.0e-15<dum && dum<1.0) 
-    atomic->species.atomic_number[spe] = 1;
-  else 
-    atomic->species.atomic_number[spe] = (int)dum;
-
-  /* Keep raw AtomSpecies for the later VPS comparison in the same owned row. */
-  metadata->spacing[spe] = dum;
-  
-  input_int("grid.num.output",&atomic->species.pao_mesh[spe],0);
-
-  if (2<=level_stdout){
-    printf("<Read_PAO>  spe=%2d  AtomNum=%2d\n",spe,atomic->species.atomic_number[spe]);
-    printf("<Read_PAO>  spe=%2d  Spe_Num_Mesh_PAO=%2d\n",spe,atomic->species.pao_mesh[spe]);
-  }
-
-  if (List_YOUSO[21]<=(atomic->species.pao_mesh[spe]+2))
-    List_YOUSO[21] = atomic->species.pao_mesh[spe] + 2;
-
-  /* density */
-
-  if (remake_headfile==0){
-    if ( (fp=input_find("<valence.charge.density")) != NULL ) {
-      for (i=0; i<atomic->species.pao_mesh[spe]; i++){
-	for (j=0; j<=2; j++){
-	  if (fscanf(fp,"%lf",&dum)==EOF){
-	    printf("format error of valence.charge.density in %s\n",file);
-	    exit(0);
-	  }
-	  else{
-	    if      (j==0) openmx_radial_row2(&atomic->pao_log_radii,spe)[i] = dum;
-	    else if (j==1) openmx_radial_row2(&atomic->pao_radii,spe)[i] = dum;
-	    else if (j==2){
-              openmx_radial_row2(&atomic->density,spe)[i+1]  = dum;
-              openmx_radial_row2(&atomic->density_backup,spe)[i+1] = dum;
-	    }
-	  }
-	}
-      }    
-      if (!input_last("valence.charge.density>")) {
-	/* format error */
-	printf("Format error in valence.charge.density\n");
-	exit(0);
-      }
-    }
-  }
-
-  /* atomic orbitals */
-
-  input_double("radial.cutoff.pao",&atomic->species.cutoff[spe],(double)5.0);
-  input_int("PAO.Lmax",&atomic->species.pao_lmax[spe],0);
-  input_int("PAO.Mul",&atomic->species.pao_multiplicity[spe],0);
-
-  /* Spe_Atom_Cut1[spe] = 4.0; */
-
-  if (List_YOUSO[25]<=(atomic->species.pao_lmax[spe]+1)) List_YOUSO[25] = atomic->species.pao_lmax[spe] + 1;
-  if (List_YOUSO[24]<=atomic->species.pao_multiplicity[spe])      List_YOUSO[24] = atomic->species.pao_multiplicity[spe];
-
-  if ((atomic->species.pao_lmax[spe]<atomic->species.basis_lmax[spe]) && remake_headfile==0){
-    printf("Not enough data for PAO (%s)\n",file);
-    exit(0);
-  }
-  for (L=0; L<=atomic->species.basis_lmax[spe]; L++){
-    if ((atomic->species.pao_multiplicity[spe]<atomic->species.basis[(size_t)(spe)*atomic->species.angular_channels+(L)]) && remake_headfile==0){
-      printf("Not enough data for PAO (%s)\n",file);
-      exit(0);
-    }
-  }
- 
-  if (remake_headfile==0){
-    for (L=0; L<=atomic->species.pao_lmax[spe]; L++){
-      sprintf(file1,"<pseudo.atomic.orbitals.L=%i",L);
-      sprintf(file2,"pseudo.atomic.orbitals.L=%i>",L);
-      if ( (fp=input_find(file1)) != NULL ) {
-	for (i=0; i<atomic->species.pao_mesh[spe]; i++){
-	  for (j=0; j<=(atomic->species.pao_multiplicity[spe]+1); j++){
-	    if (fscanf(fp,"%lf",&dum)==EOF){
-	      printf("File error in pseudo.atomic.orbitals.L=%i\n",L);
-	    }
-	    else{
-	      if (j==0)
-		openmx_radial_row2(&atomic->pao_log_radii,spe)[i] = dum;
-	      else if (j==1)
-		openmx_radial_row2(&atomic->pao_radii,spe)[i] = dum;
-	      else
-		openmx_radial_row4(&atomic->orbitals,spe,L,j-2)[i] = dum;
-	    }
-	  }
-	}
-
-      }
-      if (!input_last(file2)) {
-	/* format error */
-	printf("Format error in pseudo.atomic.orbitals.L=%i\n",L);
-	exit(0);
-      }
-    }
-  }
-
-  /* if (core_hole_state_flag==1) find 'core_hole_state_ev'. */
+  const OpenMXAtomicViews atomic=OpenMX_AtomicTables(core);
+  OpenMXPaoFileInfo information;
+  char error[512];
+  int eigen_angular=-1;
 
   if (core_hole_state_flag==1 && spe==WhatSpecies[Core_Hole_Atom]){
-
-    char char1[10],char2[10];
-    double val;
-    int L,l,mu,i,j;
-
-    if      (strcmp(Core_Hole_Orbital,"s")==0) L = 0;   
-    else if (strcmp(Core_Hole_Orbital,"p")==0) L = 1;   
-    else if (strcmp(Core_Hole_Orbital,"d")==0) L = 2;   
-    else if (strcmp(Core_Hole_Orbital,"f")==0) L = 3;   
-
-    if ( (fp=input_find("Lmax=")) != NULL ) {
-
-      for (l=0; l<=atomic->species.pao_lmax[spe]; l++){
-	for (mu=0; mu<atomic->species.pao_multiplicity[spe]; mu++){
-	  fscanf(fp,"%s %s %d %d %lf",char1,char2,&i,&j,&val);
-          if (i==L && j==0){
-            core_hole_state_ev = val;            
-	  }
-	}
-      }
+    if      (strcmp(Core_Hole_Orbital,"s")==0) eigen_angular=0;
+    else if (strcmp(Core_Hole_Orbital,"p")==0) eigen_angular=1;
+    else if (strcmp(Core_Hole_Orbital,"d")==0) eigen_angular=2;
+    else if (strcmp(Core_Hole_Orbital,"f")==0) eigen_angular=3;
+    else {
+      fprintf(stderr,"Read_PAO: invalid core-hole orbital %s\n",Core_Hole_Orbital);
+      MPI_Abort(communicator,1);
+      return;
     }
   }
 
-  /****************************************************
-                    close the file
-  ****************************************************/
+  if (!openmx_core_pao_read_file(file,metadata_only,eigen_angular,&atomic,(size_t)spe,
+                                &information,error,sizeof(error))) {
+    fprintf(stderr,"Read_PAO: %s\n",error);
+    MPI_Abort(communicator,1);
+    return;
+  }
+  /* Raw AtomSpecies is needed for the subsequent VPS comparison. */
+  metadata->spacing[spe]=information.atom_species;
+  if (information.eigenvalue_found) core_hole_state_ev=information.eigenvalue;
 
-  input_close();
+  if (2<=level_stdout){
+    printf("<Read_PAO>  spe=%2d  AtomNum=%2d\n",spe,information.atomic_number);
+    printf("<Read_PAO>  spe=%2d  Spe_Num_Mesh_PAO=%2d\n",spe,information.mesh_points);
+  }
+  if (List_YOUSO[21]<=information.mesh_points+2) List_YOUSO[21]=information.mesh_points+2;
+  if (List_YOUSO[25]<=information.lmax+1) List_YOUSO[25]=information.lmax+1;
+  if (List_YOUSO[24]<=information.multiplicity) List_YOUSO[24]=information.multiplicity;
 }
-
 
 
 void Read_VPS(OpenMXCoreContext *core, const OpenMXNeutralGridMetadataView *metadata, int spe, char *file)

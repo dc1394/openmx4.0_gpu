@@ -22,6 +22,23 @@ file(RENAME "${TEST_ROOT}/build" "${TEST_ROOT}/hidden-build")
 
 file(COPY "${BASIS_SOURCE}/examples/radial/" DESTINATION "${TEST_ROOT}/consumer")
 file(COPY "${BASIS_SOURCE}/tests/test_c.c" DESTINATION "${TEST_ROOT}/consumer")
+configure_file("${BASIS_SOURCE}/examples/pao/main.cpp" "${TEST_ROOT}/consumer/pao_example.cpp" COPYONLY)
+file(WRITE "${TEST_ROOT}/consumer/fixture.pao" [=[
+AtomSpecies 1
+grid.num.output 3
+PAO.Lmax 0
+PAO.Mul 1
+<valence.charge.density
+0 1 1
+1 2 1
+2 3 1
+valence.charge.density>
+<pseudo.atomic.orbitals.L=0
+0 1 2
+1 2 2
+2 3 2
+pseudo.atomic.orbitals.L=0>
+]=])
 file(APPEND "${TEST_ROOT}/consumer/CMakeLists.txt" [=[
 enable_language(C)
 add_executable(c_consumer test_c.c)
@@ -33,6 +50,9 @@ endif()
 enable_testing()
 add_test(NAME cpp-consumer COMMAND radial_example)
 add_test(NAME c-consumer COMMAND c_consumer)
+add_executable(pao_consumer pao_example.cpp)
+target_link_libraries(pao_consumer PRIVATE OpenMX::basis)
+add_test(NAME pao-consumer COMMAND pao_consumer "${CMAKE_CURRENT_SOURCE_DIR}/fixture.pao")
 ]=])
 run("${CMAKE_COMMAND}" -S "${TEST_ROOT}/consumer" -B "${TEST_ROOT}/consumer-build"
   "-DCMAKE_CXX_COMPILER=${CXX}" "-DCMAKE_C_COMPILER=${CC}" -DCMAKE_BUILD_TYPE=Release

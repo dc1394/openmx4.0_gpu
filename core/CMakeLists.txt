@@ -88,7 +88,7 @@ option(OPENMX_CORE_FORCE_KOKKOS_MDSPAN "Use Kokkos/mdspan even if std::mdspan is
 # bridge. Basis deliberately stays ordinary host C++ even in a device core.
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../modules/basis" "modules/basis")
 
-set(_core_sources src/radial.cpp src/radial_table.cpp src/pao_storage.cpp src/vps_storage.cpp
+set(_core_sources src/radial.cpp src/radial_table.cpp src/pao_storage.cpp src/pao_file_api.cpp src/vps_storage.cpp
   src/product_storage.cpp src/neutral_projectors.cpp src/pair_bessel.cpp
   src/force_workspace.cpp src/force_recovery.cpp src/force_hnl_batch.cpp src/core_hole.cpp src/projector_force.cpp src/dispersion_workspace.cpp src/angular_grid.cpp src/two_center.cpp src/overlap_workspace.cpp src/nonlocal_workspace.cpp src/vna_workspace.cpp src/vna_preparation.cpp
   src/dsvna_workspace.cpp src/hvna_layout.cpp src/hvna_workspace.cpp src/atom_pairs.cpp

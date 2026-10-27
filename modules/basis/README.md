@@ -2,8 +2,8 @@
 
 OpenMX の基底処理を独立して利用する C++20 ライブラリです。
 現在の公開範囲は PAO、非局所射影子、中性原子ポテンシャル、VNA 射影子の
-動径補間と PAO/射影子の波数空間補間です。本体もこの実装を使用します。
-PAO/VPS ファイルの読み込み、球面調和関数、Fourier-Bessel 変換、2中心積分は
+動径補間、PAO/射影子の波数空間補間と PAO ファイルの読み込みです。本体もこの実装を使用します。
+VPS ファイルの読み込み、球面調和関数、Fourier-Bessel 変換、2中心積分は
 まだこのパッケージには含まれません。
 
 CMake 3.25.2 以上と C++20 のコンパイラ・標準ライブラリでビルドできます。
@@ -25,6 +25,11 @@ cmake -S modules/basis/examples/radial -B build/basis-example \
   -DCMAKE_PREFIX_PATH="$PWD/build/basis-install"
 cmake --build build/basis-example
 ./build/basis-example/radial_example
+
+cmake -S modules/basis/examples/pao -B build/pao-example \
+  -DCMAKE_PREFIX_PATH="$PWD/build/basis-install"
+cmake --build build/pao-example
+./build/pao-example/pao_example DFT_DATA19/PAO/C6.0.pao
 ```
 
 外部プロジェクトの `CMakeLists.txt` は以下だけでリンクできます。
@@ -40,6 +45,45 @@ C++ ランタイムが必要なので、CMake の `project()` で `C CXX` を有
 静的ライブラリは PIC で生成します。CMake のビルド中の利用には
 `add_subdirectory(path/to/basis)` と同じ `OpenMX::basis` ターゲットが使えます。
 0.1 系は初期 API であり、C++ バイナリ ABI の固定は約束しません。
+
+## PAO ファイルから使う
+
+`<openmx/basis/pao_file.hpp>` は、ファイルまたは `std::istream` から
+メタデータ・格子・原子密度・軌道・任意の生成時固有値を読み込む入口です。
+
+```cpp
+#include <openmx/basis/pao_file.hpp>
+
+const auto pao = openmx::basis::PaoFile::from_file("C6.0.pao");
+const double value = pao.sample(1, 0, 0.85); // l=1, mu=0, r=0.85 bohr
+const auto radial_values = pao.orbital(1, 0); // 借用する span<const double>
+```
+
+`PaoFile` は連続領域に全データを所有し、入力ストリーム・ファイルの寿命に依存しません。
+コピーは独立、ムーブは所有権を移します。取得した span は所有者の破棄・代入まで有効です。
+並行した読み込みはそれぞれの入力を使い、構築後の同じオブジェクトは複数スレッドから読めます。
+補間は既存の PAO 規約を使い、追加確保を行いません。
+
+- 軌道は `l`、多重度 `mu`、動径点の順で連続配置します。`mu` は0始まりです。
+  密度は物理点だけを返し、本体で使う前後の余白は含めません。
+- 半径は bohr、生成時固有値は Hartree。`log_radii()` はファイルの対数格子をそのまま保持します。
+  `cutoff` はメタデータであり、PAO の補間範囲を格子上端より内側へ切り詰めません。
+- 原子番号は従来通り `AtomSpecies` の整数部分です。`1e-15 < AtomSpecies < 1` は1とし、
+  仮想原子の小数値も `metadata().atom_species` に保存します。
+- `PaoReadMode::metadata` は数値表を要求・確保せず、メタデータと任意の生成時固有値だけを返します。
+  このモードやムーブ元のオブジェクトから軌道を評価することはできません。
+- 大文字小文字、CRLF、空白、`#` コメントを扱います。生成条件など未知の節は無視します。
+  スカラーの重複は最初の値を使います。`radial.cutoff.pao` の既定値は5 bohrです。
+  生成時固有値の `Lmax=` 節がない仮想原子では `orbital_energy()` は `nullopt` を返します。
+- 通常の読み込みでは必須節・終了タグ、数値・寸法、正の半径、半径・対数格子それぞれの狭義単調増加、
+  全軌道節の格子一致を検証します。異なる印字精度には `1e-10*(1+abs(reference))` の許容差を使い、
+  最後の軌道節の格子を採用する従来規約を維持します。
+  欠落・余分な表要素、非有限値、重複する固有値チャネル等は例外になります。
+  旧本体が不完全な入力を継続したり正常終了コードで中断した場合も、明示的に失敗を返します。
+
+この入口は C++ API です。補間用の公開 C ABI にファイル API はまだ追加していません。
+本体は `core/` 内の C アダプターを通じて同じ読み込み実装を利用し、検証を終えてから
+計算所有の配列へ値を渡します。ライブラリ自身は MPI の停止やプロセス終了を行いません。
 
 ## データと数値規約
 
@@ -74,7 +118,8 @@ C ABI は呼び出しごとのエラーバッファを使い、失敗時に数�
 
 `ctest --test-dir build/basis -L unit --output-on-failure` で、解析的な多項式、
 旧実装から固定した参照値、端点、無効入力、コピー・借用・並行性、
-確保失敗を検証します。スカラー補間が確保を行わないことも検査します。
+確保失敗を検証します。PAO は解析値を持つ s〜g・各2多重度の小入力で、全軌道・密度、
+不正形式、並行読み込みと所有権を検証します。スカラー補間が確保を行わないことも検査します。
 
 `basis-package-consumer` はこのディレクトリだけをコピーして独立ビルド・インストールし、
 インストール先と元のソース・ビルドディレクトリを移動してから、外部 C/C++ プログラムを

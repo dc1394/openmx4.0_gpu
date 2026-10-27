@@ -4364,3 +4364,29 @@ E差ゼロ、最大F差は約1.0e-12 Ha/bohrでした。C60は変更前後を交
 `numerical-summary.json`、`interpolation-parity.json` に結果を保存しました。
 AMD/A100/H100実機、Intelコンパイラ版OpenMXとの比較は今回実施していません。
 `work/openmx` は更新していません。
+
+
+## 2026-10-27: PAO読取の独立ライブラリ化（第96段階）
+
+変更前 `5e436aec` と変更後の本体・Core/SIMDを凍結し、18 MPI×1 OpenMPで順次実行しました。
+GPUはRTX5080・既存MPS・NVHPC/OpenMPI、CPU専用本体はGCC/Intel MPI/MKLです。
+計時中にビルド、単体試験、他のOpenMX計算は重ねていません。
+
+| 入力・指標 | 変更前 | 変更後 |
+| --- | ---: | ---: |
+| sidia333 NC cluster、GPU/MPS、内部Total最大値 (秒) | 99.326 | 99.601 |
+| 同、MPI起動を含む経過時間 (秒) | 102.655 | 102.762 |
+| C60 DC、CPU専用、内部Total中央値 (秒) | 5.943 | 5.929 |
+| 同、MPI起動を含む経過時間中央値 (秒) | 6.42989 | 6.43082 |
+
+sidiaは元入力を各1回測定した25SCF上限・未収束の比較です。E差ゼロ、最大F差は約1.0e-12 Ha/bohrでした。
+C60は変更前後を交互に各3回測定し、全件27SCFで収束、対応組の印字E/F差はゼロでした。
+小さな時間差を高速化とは主張せず、独立したPAO読取による性能低下が見られないことを確認しています。
+
+別途、収束したCPU/GPU比較19組でSCF反復数が一致し、最大差E=1.4800e-10 Ha、F=1.0437e-8 Ha/bohrでした。
+うち内殻正孔の `C2H2-CH.dat` はCPU/GPUとも前後を新しく実行し、22SCF収束・印字E/F差ゼロです。
+395 PAOファイルの16,608,945数値も旧読取とビット単位で一致しました。
+`build/pao-file-library-20261027/` の `performance/`、`cpu-performance-results.json`、
+`numerical-summary.json`、`pao-data-parity.json` に記録を保存しました。
+AMD/A100/H100実機、Intelコンパイラ版OpenMXとの性能比較は今回実施していません。
+`work/openmx` は更新していません。

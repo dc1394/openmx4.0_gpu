@@ -1,6 +1,6 @@
 {
 "scope": "global-state usage of the C translation units of the NVIDIA build",
-"revision": "5b4af5ee",
+"revision": "5e436aec",
 "summary": {
 "translation units analysed": 291,
 "translation units not analysed": 0,
@@ -8,7 +8,7 @@
 "common-header objects (defined in openmx_globals.c)": 942,
 "common-header objects referenced by some function": 936,
 "common-header objects written by some function (direct or through)": 696,
-"function-object edges (common header)": 12399,
+"function-object edges (common header)": 12398,
 "objects with external linkage defined outside openmx_globals.c": 353,
 "file-scope statics": 300,
 "function-local statics": 277,
@@ -8253,7 +8253,6 @@
 "Read_PAO@source/SetPara_DFT.c->core_hole_state_ev",
 "Read_PAO@source/SetPara_DFT.c->core_hole_state_flag",
 "Read_PAO@source/SetPara_DFT.c->level_stdout",
-"Read_PAO@source/SetPara_DFT.c->remake_headfile",
 "Read_SCF_keywords@source/DFT.c->DFTSCF_loop",
 "Read_SCF_keywords@source/DFT.c->Kerker_factor",
 "Read_SCF_keywords@source/DFT.c->Max_Mixing_weight",

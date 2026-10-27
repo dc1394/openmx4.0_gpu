@@ -1,4 +1,11 @@
 find_package(Threads REQUIRED)
+add_executable(openmx_basis_pao_tests test_pao_file.cpp)
+target_link_libraries(openmx_basis_pao_tests PRIVATE OpenMX::basis Threads::Threads)
+foreach(_case contents metadata invalid lifetime concurrent allocation)
+  add_test(NAME basis-pao-${_case} COMMAND openmx_basis_pao_tests ${_case})
+  set_tests_properties(basis-pao-${_case} PROPERTIES LABELS "unit;basis" TIMEOUT 15)
+endforeach()
+
 add_executable(openmx_basis_tests test_radial.cpp)
 target_link_libraries(openmx_basis_tests PRIVATE OpenMX::basis Threads::Threads)
 foreach(_case radial reciprocal ownership invalid concurrent allocation)

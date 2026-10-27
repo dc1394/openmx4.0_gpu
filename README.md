@@ -124,7 +124,8 @@ buildable, testable and reusable C++ scientific libraries, composed into OpenMX.
 Ownership, RAII and Kokkos support that goal. See the
 [library architecture and acceptance criteria](docs/CPP_LIBRARY_ARCHITECTURE.md).
 The first package, [OpenMX::basis](modules/basis/README.md), provides the radial
-and reciprocal interpolation used by the application, with C++ and C APIs.
+and reciprocal interpolation used by the application, with C++ and C APIs,
+and an independent C++ PAO file reader with owned data and radial evaluation.
 It builds without Kokkos, MPI, BLAS or a GPU SDK:
 
 ```sh
@@ -135,8 +136,8 @@ cmake --install build/basis --prefix "$PWD/build/basis-install"
 ```
 
 External CMake projects use `find_package(OpenMXBasis 0.1 CONFIG REQUIRED)`
-and link `OpenMX::basis`. This initial package covers interpolation; PAO/VPS
-file loading, full basis evaluation and two-center integrals are still to be
+and link `OpenMX::basis`. This initial package covers interpolation and PAO
+file loading; VPS loading, full basis evaluation and two-center integrals are still to be
 extracted. The `core/` library consumes this package and contains Fourier
 transforms for PAOs, PAO products, nonlocal
 projectors and neutral-atom potentials, spherical Bessel functions and FFT-grid

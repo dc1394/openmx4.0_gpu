@@ -943,6 +943,7 @@
     "openmx_core_overlap.h",
     "openmx_core_pair_bessel.h",
     "openmx_core_pao.h",
+    "openmx_core_pao_file.h",
     "openmx_core_product.h",
     "openmx_core_projector_exchange.h",
     "openmx_core_projector_force.h",
