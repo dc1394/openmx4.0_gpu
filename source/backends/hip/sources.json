@@ -315,7 +315,6 @@
     "openmx_target.h": "include/openmx_target.h",
     "orbs_otf_hip.cu": "src/orbs_otf_hip.cu",
     "orbs_otf_hip.h": "include/orbs_otf_hip.h",
-    "set_hamiltonian_hip.cu": "src/set_hamiltonian_hip.cu",
     "set_hip_default_device_from_local_rank.c": "src/set_hip_default_device_from_local_rank.c",
     "set_hip_default_device_from_local_rank.h": "include/set_hip_default_device_from_local_rank.h",
     "set_openmp_device_from_local_rank.c": "src/set_openmp_device_from_local_rank.c",
@@ -745,7 +744,6 @@
     "run.dat": "6cd6f32d91a5fb368fb9c5a73deabac4d82a474335e847ada437981cc5ebc68d",
     "sep_mpi": "568236f703e5a4a032395520b027e719fc4bcd5043cf5cfb759f866061f8a8b3",
     "sep_mpi.prl": "83a81304bbcde9cd7e462976ed29b326d35346f70b9605ffce9624a8c0b80550",
-    "set_hamiltonian_hip.cu": "afe72a39bc3ae0108f0b366061d72ce7843da7800ebc7457af22ecf4efc6054f",
     "set_hip_default_device_from_local_rank.c": "bd06a5e9a661c9bdb15bf45e98534518a7ceafaf723c97fa9e4154767597b4e7",
     "set_hip_default_device_from_local_rank.h": "39bd9dbe15d2e4cade99b646d816aeda3dc02175384f6f0587fc874b0947836d",
     "set_openmp_device_from_local_rank.c": "3dba462ed814fcff223bba98227b660a6550061b2b95e15aafc080dd027e7f6d",
@@ -1100,6 +1098,7 @@
     "KumoF.c"
   ],
   "integrated_overrides": {
+    "set_hamiltonian_hip.cu": "src/set_hamiltonian_hip.cu",
     "gemmul8_bridge.cu": "src/gemmul8_bridge.cu",
     "Cluster_DFT_Col.c": "src/Cluster_DFT_Col.c",
     "Cluster_DFT_NonCol.c": "src/Cluster_DFT_NonCol.c",

@@ -30,12 +30,14 @@ PREFIX = r'''
 typedef struct {struct {const int *contracted_orbitals;} species;} OpenMXAtomicViews;
 typedef struct Reciprocal OpenMXReciprocalViews;
 typedef struct LocalBasis OpenMXLocalBasisViews;
+typedef struct DensityGpuState OpenMXDensityGpuState;
 static int atomnum=3,Matomnum=1,MatomnumF=1,SpeciesNum=2,SpinP_switch;
 static int SO_switch,Hub_U_switch,F_U_flag,Constraint_NCS_switch,Zeeman_NCS_switch,Zeeman_NCO_switch;
 static int F_M2G[]={-1,3,1},WhatSpecies[]={-1,0,0,1},Spe_Total_CNO[]={3,1},FNAN[]={27,1,0,1};
 static int n1[]={1,2},n2[]={2},n3[]={3,1};static int *natn[]={NULL,n1,n2,n3};
 static int expected_imaginary,invocations;
 static const OpenMXAtomicViews *expected_atomic;
+static OpenMXDensityGpuState *expected_density_state;
 static double *****expected_h0,******expected_ds,*****expected_olp,*****expected_cdm,*****expected_edm;
 static void dtime(double *out){static double clock;*out=clock++;}
 static void OpenMX_Solver_Failure(const char *error){fprintf(stderr,"%s\n",error);abort();}
@@ -77,6 +79,7 @@ static void Force_CoreHole(const OpenMXAtomicViews *a,double *****d,double *****
 '''
 BODY = r'''
 {
+  assert(density_state==expected_density_state);
   assert(atomic==expected_atomic && !vna && !reciprocal && !electronic && !local_basis);
   assert(H0==expected_h0 && DS_NL==expected_ds && OLP==expected_olp && CDM==expected_cdm && EDM==expected_edm);
   const OpenMXAtomBlockLayout *l=&force_work->density.layout;
@@ -107,6 +110,7 @@ BODY = r'''
 '''
 MAIN = r'''
 int main(void){
+  int density_token=0;expected_density_state=(OpenMXDensityGpuState*)&density_token;
   OpenMXAtomicViews atomic={{Spe_Total_CNO}};expected_atomic=&atomic;
   double *addresses[5]={0};expected_h0=(double*****)&addresses[0];expected_ds=(double******)&addresses[1];
   expected_olp=(double*****)&addresses[2];expected_cdm=(double*****)&addresses[3];expected_edm=(double*****)&addresses[4];
@@ -117,7 +121,7 @@ int main(void){
         SO_switch=mode==1;Hub_U_switch=F_U_flag=mode==2;Constraint_NCS_switch=mode==3;
         Zeeman_NCS_switch=mode==4;Zeeman_NCO_switch=mode==5;
         expected_imaginary=(mode==1 || (mode==2 && spin==3) || (mode>=3 && mode<=5));
-        assert(Force(&atomic,NULL,NULL,expected_h0,expected_ds,expected_olp,expected_cdm,expected_edm,NULL,NULL)==1);
+        assert(Force(expected_density_state,&atomic,NULL,NULL,expected_h0,expected_ds,expected_olp,expected_cdm,expected_edm,NULL,NULL)==1);
       }
     }
   }
@@ -135,7 +139,7 @@ with tempfile.TemporaryDirectory(prefix="openmx-force-lifetime-") as directory:
     tmp = Path(directory)
     for backend, name in (("cuda", "source/Force.c"), ("hip", "source/backends/hip/src/Force.c")):
         source = (ROOT / name).read_text()
-        arguments = re.search(r"typedef struct \{\s*const OpenMXAtomicViews \*atomic;.*?\} ForceArguments;", source, re.S)
+        arguments = re.search(r"typedef struct \{\s*OpenMXDensityGpuState \*density_state;\s*const OpenMXAtomicViews \*atomic;.*?\} ForceArguments;", source, re.S)
         assert arguments, name
         first = source.index("static double Force_Impl(")
         declaration = source[first:source.index(";", first)]

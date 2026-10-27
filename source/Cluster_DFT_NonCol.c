@@ -3670,7 +3670,7 @@ static double Cluster_DFT_NonCol_owned(ClusterNonColState *state, const OpenMXAt
   MPI_Comm_free(&mpi_comm_rows);
   MPI_Comm_free(&mpi_comm_cols);
 
-  if (2<=level_stdout){
+  if (myid==Host_ID && 2<=level_stdout){
     for (i1=1; i1<=MaxN; i1++){
       printf("  Eigenvalues of Kohn-Sham %2d  %15.12f\n", i1,ko[i1]);
     }

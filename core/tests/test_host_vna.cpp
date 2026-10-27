@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstring>
 #include <iostream>
+#include <iomanip>
 #include <random>
 #include <stdexcept>
 #include <string>
@@ -26,7 +27,7 @@ bool same(const std::vector<double>& a,const std::vector<double>& b) {
 }
 void report(const char* what,int mode,const std::vector<double>& got,const std::vector<double>& expected) {
   for(size_t i=0;i<got.size();++i)if(std::memcmp(&got[i],&expected[i],sizeof(double))) {
-    std::cerr<<what<<": mode "<<openmx_core_host_simd_name(mode)<<" element "<<i<<" got "<<got[i]<<" expected "<<expected[i]<<'\n';break;
+    std::cerr<<std::setprecision(17)<<what<<": mode "<<openmx_core_host_simd_name(mode)<<" element "<<i<<" got "<<got[i]<<" expected "<<expected[i]<<'\n';break;
   }
   throw std::runtime_error(what);
 }

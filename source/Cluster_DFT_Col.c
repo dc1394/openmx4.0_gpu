@@ -3297,7 +3297,7 @@ static double Cluster_DFT_Col_owned(ClusterColState *state, const OpenMXAtomicVi
 
   if ( strcasecmp(mode,"scf")==0 ){
 
-    if (2<=level_stdout){
+    if (myid0==Host_ID && 2<=level_stdout){
       for (i1=1; i1<=MaxN; i1++){
 	if (SpinP_switch==0)
 	  printf("  Eigenvalues of Kohn-Sham %2d %15.12f %15.12f\n",

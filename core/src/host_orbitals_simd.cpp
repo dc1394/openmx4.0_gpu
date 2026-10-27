@@ -340,7 +340,7 @@ void dblock(const OpenMXOrbitalsTables& t,const Species& s,const OpenMXOrbitalsD
     const D Q=select(normal,Kokkos::acos(cosine),D(0.5)*pi);
     const D arc=Kokkos::asin(sine);
     const D P=select(inplane,select(zero<=x,arc,pi-arc),zero);
-    siQ=Kokkos::sin(Q);coQ=Kokkos::cos(Q);siP=Kokkos::sin(P);coP=Kokkos::cos(P);
+    paired_sincos(Q,siQ,coQ);paired_sincos(P,siP,coP);
   } else {
     coQ=select(normal,cosine,zero);
     siQ=select(normal,select(zaxis,zero,r1/R),one);

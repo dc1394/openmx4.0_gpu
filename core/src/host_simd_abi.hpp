@@ -9,6 +9,7 @@
 #error "Host SIMD kernels must be compiled as ordinary C++, without device compilation"
 #endif
 #include <cstdint>
+#include <cmath>
 #if defined(OPENMX_HOST_SIMD_SVE)
 #include "host_simd_sve.hpp"
 #if OPENMX_HOST_SIMD_SVE == 128
@@ -81,6 +82,20 @@ static_assert(lanes==1 && wide_lanes==1);
 // another variant's load(const double*).
 static inline Vector load(const double* p) { return simd::simd_unchecked_load<Vector>(p); }
 static inline void store(Vector v,double* p) { simd::simd_unchecked_store(v,p); }
+// Keep paired trigonometric calls together in every ISA. GCC combines the
+// legacy scalar sin/cos pair into sincos, but separate eight-lane loops can
+// prevent that combination. glibc's separate calls can differ by an ulp.
+// The scalar call boundary also preserves the compiler's choice in Debug.
+[[gnu::noinline]] static void scalar_paired_sincos(double x,double* sine,double* cosine) {
+  *sine=std::sin(x);*cosine=std::cos(x);
+}
+static inline void paired_sincos(Vector x,Vector& sine,Vector& cosine) {
+  alignas(64) double s[lanes],c[lanes];
+  for(int i=0;i<lanes;++i) {
+    scalar_paired_sincos(x[i],s+i,c+i);
+  }
+  sine=load(s);cosine=load(c);
+}
 using NarrowFloatVector=simd::basic_simd<float,HostAbi>;
 static inline NarrowFloatVector narrow(Vector v) {
 #if defined(OPENMX_HOST_SIMD_NEON)

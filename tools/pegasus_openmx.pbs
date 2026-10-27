@@ -1,0 +1,50 @@
+#!/bin/bash
+# Submit from the calculation directory. Set OMX_INPUT to its input file;
+# OMX_BINARY defaults to ./openmx. Override OMX_RANKS/OMX_THREADS as needed.
+#PBS -A GPU2026
+#PBS -q gen_S
+#PBS -b 1
+#PBS --cpunum-lhost=48
+#PBS --gpunum-lhost=1
+#PBS -l elapstim_req=00:30:00
+#PBS -T openmpi
+#PBS -v NQSV_MPI_VER=nvhpc-hpcx-cuda13/25.11
+#PBS -N openmx_h100
+#PBS -j o
+
+set -euo pipefail
+cd "${PBS_O_WORKDIR:?Submit with qsub from the calculation directory}"
+: "${OMX_INPUT:?Set OMX_INPUT to an OpenMX input file}"
+omx_binary=${OMX_BINARY:-"$PWD/openmx"}
+omx_ranks=${OMX_RANKS:-12}
+omx_threads=${OMX_THREADS:-4}
+[[ -f "$OMX_INPUT" && -x "$omx_binary" ]]
+[[ "$omx_ranks" =~ ^[1-9][0-9]*$ && "$omx_threads" =~ ^[1-9][0-9]*$ ]]
+(( omx_ranks * omx_threads <= 48 ))
+
+if command -v module >/dev/null 2>&1; then module purge >/dev/null 2>&1; fi
+unset LD_LIBRARY_PATH LD_PRELOAD
+omx_sdk=${OMX_NVHPC_ROOT:-/system/apps/ubuntu/22.04-202604/nvhpc/26.5/Linux_x86_64/26.5}
+export PATH="$omx_sdk/comm_libs/mpi/bin:$omx_sdk/compilers/bin:/usr/bin:/bin:$PATH"
+export OMP_NUM_THREADS="$omx_threads" OPENBLAS_NUM_THREADS="$omx_threads"
+export MKL_NUM_THREADS="$omx_threads" OMP_DYNAMIC=FALSE
+export OPENMX_GPU=${OPENMX_GPU:-1}
+
+# The allocation's GPU visibility is retained. Each job owns its MPS daemon.
+omx_mps=$(mktemp -d /tmp/openmx-mps.XXXXXXXX)
+export CUDA_MPS_PIPE_DIRECTORY="$omx_mps/pipe"
+export CUDA_MPS_LOG_DIRECTORY="$omx_mps/log"
+mkdir "$CUDA_MPS_PIPE_DIRECTORY" "$CUDA_MPS_LOG_DIRECTORY"
+cleanup() {
+  if [[ -e "$CUDA_MPS_PIPE_DIRECTORY/control" ]]; then
+    printf 'quit\n' | timeout 15 nvidia-cuda-mps-control || true
+  fi
+  rm -rf -- "$omx_mps"
+}
+trap cleanup EXIT
+nvidia-cuda-mps-control -d
+
+# NQSV supplies the launcher options as a space-separated argument list.
+mpirun ${NQSV_MPIOPTS:-} -np "$omx_ranks" \
+  --map-by "slot:PE=$omx_threads" --bind-to core \
+  "$omx_binary" "$OMX_INPUT" -nt "$omx_threads"

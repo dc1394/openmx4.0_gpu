@@ -662,7 +662,7 @@ buffers and the reserve fit but the basis does not, the GPU path is now
 kept with the FP64 eigensolver for that SCF cycle.
 
 ## Build and install
-Building and installing is more difficult than with standard OpenMX. The NVIDIA build requires the [NVIDIA HPC SDK](https://developer.nvidia.com/hpc-sdk) with its Open MPI, and the AMD build requires ROCm, OpenMPI or Intel MPI, and AOCL, MKL or OpenBLAS; [Dependencies](#dependencies) below lists the requirements. The Makefile contains build examples for several supercomputer systems, and a ready-made site makefile is included for System C "Kugui" at ISSP, Univ. of Tokyo (`Makefile.kugui`, which includes the stock Makefile and builds with the NVHPC 24.7 / CUDA 12.5 that Kugui offers; its header lists the two nvc 24.x code-generation problems it works around, one of them reproduced by `tests/nvc_diag_vectorizer_bug.c`); please refer to it. `Makefile.pegasus` (the Pegasus supercomputer at the University of Tsukuba) and `Makefile.bunshiken` are older standalone copies that do not list the sources added since early October 2026. The first `make` also builds the bundled ELPA/COSMA stack, used by the CPU eigensolvers and "gpusolver2", and MAGMA when it is selected; this adds some time to the first build. A detailed implementation document (English and Japanese, including the list of GPU-related environment variables) is available under [doc/](doc/). If you're unsure about the build and installation process, feel free to ask in English via GitHub issues or [my X account](https://x.com/dc1394) (Japanese is also acceptable on my X account). I'll assist you as much as I can.
+Building and installing is more difficult than with standard OpenMX. The NVIDIA build requires the [NVIDIA HPC SDK](https://developer.nvidia.com/hpc-sdk) with its Open MPI, and the AMD build requires ROCm, OpenMPI or Intel MPI, and AOCL, MKL or OpenBLAS; [Dependencies](#dependencies) below lists the requirements. The Makefile contains build examples for several supercomputer systems, and a ready-made site makefile is included for System C "Kugui" at ISSP, Univ. of Tokyo (`Makefile.kugui`, which includes the stock Makefile and builds with the NVHPC 24.7 / CUDA 12.5 that Kugui offers; its header lists the two nvc 24.x code-generation problems it works around, one of them reproduced by `tests/nvc_diag_vectorizer_bug.c`); please refer to it. `Makefile.pegasus` also includes the shared Makefile, with Pegasus H100 defaults (NVHPC 26.5 / CUDA 13.2 and GCC 12 for the C++20 components). `Makefile.bunshiken` is an older standalone copy that does not list the sources added since early October 2026. The first `make` also builds the bundled ELPA/COSMA stack, used by the CPU eigensolvers and "gpusolver2", and MAGMA when it is selected; this adds some time to the first build. A detailed implementation document (English and Japanese, including the list of GPU-related environment variables) is available under [doc/](doc/). If you're unsure about the build and installation process, feel free to ask in English via GitHub issues or [my X account](https://x.com/dc1394) (Japanese is also acceptable on my X account). I'll assist you as much as I can.
 
 ### Dependencies
 
@@ -740,6 +740,19 @@ The updated branch has not yet been revalidated on Kugui. Older NVHPC versions
 can be combined with a separate modern GCC, but there is no C++17 fallback;
 the CUDA core also requires nvcc 12.2 or later. See the
 [compiler compatibility notes](docs/CPP_CORE_MIGRATION.md#古い-nvidia-コンパイラとの組み合わせ).
+
+For Pegasus H100, `make -C source -f Makefile.pegasus -j12 openmx` uses
+NVHPC 26.5 / CUDA 13.2, GCC 12 and `sm_90`, without querying a GPU on the
+login node. Supply `PEGASUS_CMAKE=/path/to/cmake` if CMake >=3.25.2 is not
+available; the wrapper also recognizes the dependency builder's local
+CMake installation. MAGMA is disabled by default for its one-GPU nodes.
+The common Makefile applies an NVHPC 26.5 workaround to explicit `fmaf`
+calls in three OpenACC source files while retaining the orbital evaluator's
+`-gpu=nofma` accuracy policy. The isolated CMake build commands, H100
+verification and MPI/OpenMP measurements are in
+[the Pegasus validation record](doc/pegasus_refactor_validation_20261027.txt).
+The [Pegasus job script](tools/pegasus_openmx.pbs) starts private MPS and
+defaults to the measured 12 MPI x 4 OpenMP layout; both counts are configurable.
 
 ### HPC SDK 26.9 / CUDA 13.4 update
 

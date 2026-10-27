@@ -33,9 +33,6 @@ bool any(Mask m) { return static_cast<__mmask8>(m)!=0; }
 bool any(Mask m) { return simd::any_of(m); }
 #endif
 Vector truncated(Vector v) { return Vector([&](auto i){return std::trunc(v[i]);}); }
-// Per-lane libm, as the scalar routine calls it; no ISA header dependency.
-Vector sine(Vector v) { return Vector([&](auto i){return std::sin(v[i]);}); }
-Vector cosine(Vector v) { return Vector([&](auto i){return std::cos(v[i]);}); }
 Vector magnitude(Vector v) { return select(v<Vector(0.0),Vector(0.0)-v,v); }
 double lane_max(Vector v) { double r=v[0];for(int i=1;i<V;++i)r=std::max(r,v[i]);return r; }
 
@@ -164,7 +161,8 @@ template<int NB> void bessel_blocks(const OpenMXVnaBessel& p,int first,int count
         for(int m=n-1;m<=lmax+1;++m)tsb[m]=select(big,tsb[m]/tmp,tsb[m]);
       }
     }
-    const Vector si=sine(x[b]),co=cosine(x[b]),ix=Vector(1.0)/x[b];
+    Vector si,co;paired_sincos(x[b],si,co);
+    const Vector ix=Vector(1.0)/x[b];
     const Vector j0=si*ix,j1=si*ix*ix-co*ix;
     const Vector sf=select(magnitude(tsb[1])<magnitude(tsb[0]),j0/tsb[0],j1/tsb[1]);
     for(n=0;n<=lmax+1;++n)sb[n]=select(positive[b],tsb[n]*sf,Vector(n==0?1.0:0.0));

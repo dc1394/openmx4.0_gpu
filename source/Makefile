@@ -156,6 +156,10 @@ FFTW3_LIBS     ?= $(FFTW3_LIB)
 
 COMMON_INCLUDES = $(FFTW3_INCLUDE) -I$(NVHPC_MATH_DIR)/include -I$(NVHPC_CUDA_TARGET)/include -I$(NVHPC_CUDA_HOME)/include
 NVHPC_GPU_FLAGS ?= $(if $(GEMMUL8_BUILD_GPU_ARCH),-gpu=cc$(GEMMUL8_BUILD_GPU_ARCH))
+# NVHPC 26.5 lowers explicit fmaf calls to an unsupported OpenACC FFMA
+# operation in double-float evaluators. Keep their explicit library calls;
+# the orbital evaluator's -gpu=nofma must also remain in effect.
+NVHPC_EXPLICIT_FMA_FLAGS := $(shell "$(NVHPC_COMPILER_BIN)/nvc" --version 2>/dev/null | awk '$$1 == "nvc" && $$2 ~ /^26[.]5(-|$$)/ {print "-Mnobuiltin"; exit}')
 COMMON_CFLAGS   = --diag_error=implicit_func_decl -Minfo=accel -acc $(NVHPC_GPU_FLAGS) -std=gnu11 -mtune=native -march=native -fopenmp $(COMMON_INCLUDES)
 
 CC  = $(MPICC) $(COMMON_CFLAGS) -O3
@@ -779,12 +783,13 @@ Nonlocal_RadialF.o: Nonlocal_RadialF.c openmx_common.h
 # the tiles at FP32 accuracy (-runtest: diff Utot up to 4e-7 Hartree on an
 # RTX 4070 Ti).  The explicit fmaf() calls stay fused.
 Set_Orbitals_Grid.o: Set_Orbitals_Grid.c openmx_common.h orbs_grid_gpu.h openmx_precision.h
+Set_Orbitals_Grid.o Set_Density_Grid_GPU.o Set_Hamiltonian.o: Makefile
 Set_Orbitals_Grid.o: openmx_host_simd.h openmx_core_orbitals_simd.h ../core/include/openmx_core_orbitals_simd.h openmx_core_host_simd.h ../core/include/openmx_core_host_simd.h
-	$(CC) -gpu=nofma -c Set_Orbitals_Grid.c
+	$(CC) $(NVHPC_EXPLICIT_FMA_FLAGS) -gpu=nofma -c Set_Orbitals_Grid.c
 Set_Density_Grid.o: Set_Density_Grid.c openmx_common.h
 	$(CC) -c Set_Density_Grid.c
 Set_Density_Grid_GPU.o: Set_Density_Grid_GPU.c openmx_common.h grid_precision.h
-	$(CC) -c Set_Density_Grid_GPU.c
+	$(CC) $(NVHPC_EXPLICIT_FMA_FLAGS) -c Set_Density_Grid_GPU.c
 Set_Aden_Grid.o: Set_Aden_Grid.c openmx_common.h
 	$(CC) -c Set_Aden_Grid.c
 
@@ -934,7 +939,7 @@ Set_CoreHoleMatrix.o: Set_CoreHoleMatrix.c openmx_common.h
 Set_OLP_p.o: Set_OLP_p.c openmx_common.h 
 	$(CC) -c Set_OLP_p.c
 Set_Hamiltonian.o: Set_Hamiltonian.c openmx_common.h grid_precision.h orbs_grid_gpu.h
-	$(CC) -c Set_Hamiltonian.c
+	$(CC) $(NVHPC_EXPLICIT_FMA_FLAGS) -c Set_Hamiltonian.c
 set_hamiltonian_gpu.o: set_hamiltonian_gpu.cu openmx_stdout_level.h
 	$(NVCC_GEMMUL8_ENV) $(NVCC) $(NVCC_GEMMUL8_FLAGS) -c set_hamiltonian_gpu.cu -o set_hamiltonian_gpu.o
 Set_Vpot.o: Set_Vpot.c openmx_common.h

@@ -1,0 +1,244 @@
+OpenMX 4.0 GPU: Pegasus H100 validation, 2026-10-27
+==================================================
+
+Revision and environment
+------------------------
+Branch: refactor/cpp-kokkos-core
+Base commit: ddd969145871b81a97a610e7deaf1be86af8c8f4
+GEMMul8: f8fdf0b2a5eafd4dbbfab6be8489d3356e0da06a (the branch's v3.5.4 pin)
+
+The application and dependencies were built in build/pegasus-cuda, separately
+from the earlier release-branch build. Results from that earlier branch are
+not evidence for this validation. The changes below were validated together
+on top of this base commit.
+
+Pegasus: one H100 PCIe 80 GB and 48 allocated CPU cores per job, Intel Xeon
+Platinum 8468. Driver 580.95.05. Build host pegasus01 has no visible GPU;
+sm_90 is selected explicitly. GPU execution uses NQSV gen_S allocations,
+matching HPC-X MPI and a private MPS daemon per job.
+
+Toolchain: NVHPC 26.5, its CUDA 13.2 and math libraries, GCC/G++ 12.3.0,
+CMake 3.31.12, Python 3.10, Kokkos 5.2.2 SERIAL core and the separate host
+SIMD library (scalar, AVX2 and AVX-512). Native CUDA/OpenACC paths are enabled.
+Bundled ELPA 2026.02.002, COSMA 2.8.4 and FFTW 3.3.11 were rebuilt in the
+isolated build tree. WITH_MAGMA=0: this is a one-GPU-per-node configuration.
+
+Changes
+-------
+1. Makefile.pegasus now supplies site variables and includes the shared
+   Makefile. The old standalone copy omitted the current C++ core and
+   calculation-state sources. It selects the installed NVHPC/CUDA versions,
+   GCC 12 for C++20 components, sm_90 and a suitable local CMake when present.
+
+2. NVHPC 26.5 failed to compile SOG_point_eval_df, reporting unsupported
+   FFMA and an undefined device routine. It also reported unsupported FFMA
+   in density/Hamiltonian OpenACC regions. Lowering -O3 to -O2/-O1 did not
+   fix the orbital error. -Mnobuiltin permits explicit fmaf library calls;
+   it is applied only to Set_Orbitals_Grid, Set_Density_Grid_GPU and
+   Set_Hamiltonian, and only for NVHPC 26.5. The orbital -gpu=nofma remains
+   enabled. The final build has no unsupported-operation diagnostics.
+
+3. The AVX-512 Bessel/derivative orbital tests exposed last-bit differences:
+   GCC combined scalar/AVX2 sin/cos pairs into sincos, but left AVX-512 as
+   separate calls. This host's libm reproduces a difference between these
+   entry points independently of OpenMX. A scalar call boundary now keeps
+   the pair together for every SIMD width, while preserving the compiler's
+   Debug/Release choice. The existing bitwise comparisons remain unchanged.
+   Failure messages now print 17 significant digits.
+
+4. Cluster eigenvalue listings at stdout level 2 now print on Host_ID once.
+   The CPU Si216 baseline emitted about 2.7 million duplicate/interleaved
+   eigenvalue lines from its 48 ranks. Eigenvalues and output verbosity are
+   preserved; this changes diagnostic I/O, not the eigensolver arithmetic.
+
+5. The Force lifetime test now forwards/checks the calculation-owned density
+   state added earlier in this branch. The already-modified HIP Hamiltonian
+   file is classified as an integrated override, rather than an immutable
+   import snapshot. No HIP numerical code was changed by this validation.
+
+Build reproduction in this workspace
+-----------------------------------
+From /work/1/GPU2026/dc1394/openmx4.0_gpu:
+
+  cmake_exe="$PWD/source/third_party/gpusolver2-install/cmake-bootstrap/bin/cmake"
+  nvhpc_root=/system/apps/ubuntu/22.04-202604/nvhpc/26.5/Linux_x86_64/26.5
+  "$cmake_exe" -S . -B build/pegasus-cuda \
+    -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=/usr/bin/g++-12 \
+    -DOPENMX_GPU_BACKEND=CUDA -DOPENMX_GPU_ARCH=sm_90 \
+    -DOPENMX_CORE_BACKEND=SERIAL -DOPENMX_COPY_TO_WORK=OFF \
+    -DOPENMX_BUILD_JOBS=12 -DPython3_EXECUTABLE=/usr/bin/python3 \
+    "-DOPENMX_MAKE_OPTIONS=NVHPC_ROOT=$nvhpc_root;NVHPC_CUDA_VERSION=13.2;NVCC_HOST=/usr/bin/g++-12;GPUSOLVER2_HOST_CC=/usr/bin/gcc-12;GPUSOLVER2_HOST_CXX=/usr/bin/g++-12;GPUSOLVER2_CMAKE=$cmake_exe;WITH_MAGMA=0" \
+    "-DOPENMX_TEST_MPICC=$nvhpc_root/comm_libs/mpi/bin/mpicc" \
+    "-DOPENMX_TEST_MPICXX=$nvhpc_root/comm_libs/mpi/bin/mpicxx" \
+    "-DOPENMX_TEST_MPIEXEC=$nvhpc_root/comm_libs/mpi/bin/mpirun"
+  "$cmake_exe" --build build/pegasus-cuda --parallel 12
+
+Direct make uses the same source/build rules:
+  make -C source -f Makefile.pegasus -j12 openmx
+This requires CMake >=3.25.2. PEGASUS_CMAKE can override its location.
+The top-level CMake build above is the fully compiled configuration here;
+the site-wrapper core selection and compiler overrides are also tested.
+
+Host tests
+----------
+Set PATH to the CMake 3.31.12 bin directory, the selected SDK MPI bin directory,
+/usr/bin and /bin. Remove inherited LD_LIBRARY_PATH/LD_PRELOAD. Set CC and
+CXX to GCC/G++ 12, OMPI_CC/OMPI_CXX likewise. For login-node MPI tests use
+OMPI_MCA_pml=ob1 and OMPI_MCA_btl=self,sm,tcp.
+
+  ctest --test-dir build/pegasus-cuda --output-on-failure --parallel 6
+
+All 481 tests passed on the final source and build (ctest-final.log,
+115.11 seconds), with the corrected tool selection and fixes. The
+initial inherited environment selected an unrelated Intel-Python mpirun
+and an older CMake inside tests; those failed runs are retained. After the
+portable trigonometric helper and output changes, all 44 affected
+host-SIMD, cluster-state, energy-output and build-isolation checks also passed.
+
+Numerical and performance protocol
+----------------------------------
+Standard S suite: all 14 original inputs in one MPI job, CPU, native H100
+GPU and explicitly selected double-float GPU paths. Compare energies,
+every force component, atoms and grid against bundled references and CPU.
+
+Si64: Cluster/Band x collinear/noncollinear, three SCF iterations, 12 MPI x
+4 OpenMP. Noncollinear cases include spin-orbit coupling. Small dense GPU
+thresholds are explicitly set to 1 to exercise the GPU solver paths.
+
+Si216: noncollinear Cluster + SOC, Si7.0-s2p2d1, 200 Ry, 140 x 140 x 140
+grid, matrix order 5616, 25 SCF steps, criterion 1e-15, one MD step. These are fixed-iteration
+benchmarks, not claims of SCF convergence. Inputs come from this branch's
+silicon_input generator and are retained byte-for-byte for all comparisons.
+Input SHA-256: f1497cbdff57b62951f1565720f9dbd4adf765e163c70eb678eddb83e20955c6
+
+Sweep 48x1, 24x2, 12x4 and 6x8 MPI/OpenMP, keeping 48 CPU cores, one H100,
+MPS, physical input and numerical controls fixed. Repeat the 48x1 baseline
+and fastest passing configuration three times. Compare every run against
+the 25-step CPU result with unchanged 1e-7 Ha / 1e-7 Ha/bohr tolerances.
+Both application maximum time and MPI-launch wall time are recorded.
+No other calculation runs concurrently within a benchmark allocation.
+
+Artifacts and limits
+--------------------
+work/codex_h100_current_20261027/ contains configuration/build logs,
+compiler probes, CTest results, initial frozen binaries and initial runs.
+final/ contains the optimized frozen binary/libraries and its validation
+job. Every case preserves input, complete output, commands, controls,
+binary/core/SIMD SHA-256, atom/grid/SCF checks, full forces and phase timings.
+The initial frozen baseline includes the NVHPC build workaround but precedes
+the SIMD and duplicate-output fixes. Its measurements are labeled separately.
+
+This validation covers a single H100 node. It does not establish multi-node,
+multi-GPU/MAGMA, AMD, or GeForce performance. Double-float is exercised by an
+explicit test override; native FP64 remains the H100 default. GPU-memory
+recovery tests use admission controls, not physical memory exhaustion.
+The Si64 threshold overrides are accuracy checks; small GPU jobs can be
+slower than CPU execution and are not presented as speedup measurements.
+
+Accepted numerical checks of the final build
+-------------------------------------------
+All 14 standard inputs passed in each of the CPU, native GPU and forced-DF
+runs (42 calculations, each suite also exercises repeated input cleanup).
+Largest printed-observable differences:
+
+  Comparison                         |delta E| (Ha)  max |delta F| (Ha/bohr)
+  CPU / bundled references             9.00e-12         7.70e-11
+  Native GPU / bundled references      3.20e-11         7.80e-11
+  Forced DF GPU / bundled references   6.60e-11         1.90e-11
+  Native GPU / same-build CPU          3.00e-11         2.00e-11
+  Forced DF / native GPU               6.90e-11         8.40e-11
+
+All four Si64 GPU paths passed their CPU comparisons: energy differences
+<=7.311e-10 Ha and force differences <=1.881e-10 Ha/bohr. The NC Cluster
+and Band tests with 100000 MiB eigensolver reserves also passed and logged
+the actual CPU eigensolver/matrix-product recovery. Their largest energy
+and force differences were 3.731e-10 Ha and 1.021e-10 Ha/bohr.
+
+Job 177574 additionally tested the installed binary AND installed shared
+libraries on Si64 collinear, 3 SCF, with scf.fp32.enable on. Resident tables
+were disabled and Hamiltonian concurrency capped at one rank to force the
+on-the-fly orbital and density paths. Both FP64 and double-float completed,
+their precision announcements were checked, and density profiles covered
+all 12 ranks. Differences against CPU were <=1.220e-10 Ha in energy and
+<=1.700e-10 Ha/bohr in force. This exercises the explicit-fmaf workaround
+on the H100 rather than relying only on compilation. Artifacts:
+work/codex_h100_current_20261027/otf-validated/validation.json.
+
+An earlier OTF probe (177543) correctly completed CPU and GPU calculations
+but failed its coverage assertion: disabling residence alone did not force
+Hamiltonian OTF on this 80 GB device, though density OTF was active. That
+probe is retained in otf-smoke and is not counted as the accepted OTF test.
+
+Accepted performance measurements
+---------------------------------
+Final-build job 177394, bnode007, one H100 PCIe. The layout-selection metric
+is elapsed time including MPI startup and shutdown. Values for repeated
+configurations are medians; 24x2 and 6x8 have only one sample.
+
+  MPI x OpenMP   Runs   Application maximum (s)   MPI-launch elapsed (s)
+     48 x 1        3             92.387                  102.427
+     24 x 2        1             85.334                   90.981
+     12 x 4        3             86.668                   90.428
+      6 x 8        1             99.484                  102.541
+
+12x4 reduces elapsed time by 11.71% and the application maximum by 6.19%
+relative to 48x1, on the same final binary and allocation. Its elapsed
+range was 90.378--90.577 s; the 48x1 range was 102.277--102.667 s.
+24x2 is competitive and its single application-time sample is lower; these
+measurements do not establish a universal optimum over 12x4 and 24x2.
+The provided job script defaults to 12x4 for this measured workload.
+
+All eight GPU layout/repeat runs retained 216 atoms, the original input
+hash, 140^3 grid and 25 SCF steps. Against the same-build 48x1 CPU result,
+the largest energy and force differences were 5.207e-11 Ha and
+8.400e-11 Ha/bohr. The CPU application maximum was 261.580 s and elapsed
+time 269.698 s (one CPU sample).
+
+The earlier frozen build was also run twice at 48x1 on this same final
+allocation: 102.838 and 102.361 s elapsed. Thus no material whole-application
+speedup is attributed to the SIMD/output code fixes. The accepted speedup
+above comes from MPI/OpenMP tuning. Duplicate-output suppression reduced
+the CPU Si216 log from 132755082 to 11286120 bytes, while preserving its
+printed energy exactly and forces to 1.001e-12 Ha/bohr; the observed CPU
+total time did not improve materially.
+
+Independent initial job 177314 on bnode049, before the SIMD/output fixes,
+also found a repeatable 12x4 improvement: 90.433 s versus 101.909 s median
+elapsed at 48x1. These initial values are not mixed into the final medians.
+final/acceptance-summary.json rechecks all 42 suite calculations and all
+21 individual cases; its 29 run/comparison commands passed. The separate
+installed-launch and OTF tests described here also passed.
+
+Installed application and ordinary job submission
+-------------------------------------------------
+The tested application is installed as work/openmx, with both shared
+libraries in work/lib. The previous work/openmx is preserved in
+work/codex_h100_current_20261027/before-install/openmx.
+
+SHA-256:
+  work/openmx
+    fa38a24f3f98a893824a719b9d9534ed056f63585dee53ede024121a5f7e3bb5
+  work/lib/libopenmx_core.so
+    6a427a31280a660e9deca16a1784cadba9635b2f401a01ded3614f54d416e4a5
+  work/lib/libopenmx_host_simd.so
+    b83d96eeaf27fd6bc1bef25e912bb1834905f7328e12289eda9c4a126245db7c
+The installed core hash differs from the frozen build core because CMake
+changes its RPATH for installation; the application and host-SIMD hashes
+are unchanged. Keep both shared libraries with the executable.
+
+tools/pegasus_openmx.pbs reserves one H100 and 48 CPU cores, selects the
+matching MPI, binds each rank to its OpenMP cores, and owns a private MPS
+daemon. Defaults are 12 ranks x 4 threads. From a calculation directory:
+
+  qsub -v OMX_BINARY=/work/1/GPU2026/dc1394/openmx4.0_gpu/work/openmx,OMX_INPUT=input.dat \
+    /work/1/GPU2026/dc1394/openmx4.0_gpu/tools/pegasus_openmx.pbs
+
+Use OMX_RANKS / OMX_THREADS to override the layout (product <=48), and
+qsub -l elapstim_req=HH:MM:SS to override its 30-minute limit. Existing
+OPENMX_* numerical controls remain available. The input controls its output
+directory in the usual OpenMX way.
+
+Job 177466 successfully ran the installed application through this script
+on Si64 NC/SOC, 3 SCF, 12x4. Against the matching CPU case, |delta E| was
+3.060e-10 Ha and max |delta F| was 8.900e-11 Ha/bohr, with identical atoms,
+grid and iteration count. See installed-smoke/validation.json.

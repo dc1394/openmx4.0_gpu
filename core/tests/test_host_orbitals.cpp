@@ -7,6 +7,7 @@
 #include <cstring>
 #include <initializer_list>
 #include <iostream>
+#include <iomanip>
 #include <random>
 #include <stdexcept>
 #include <string>
@@ -326,7 +327,7 @@ void dcompare(const Setup& u,const std::vector<OpenMXOrbitalsDisplacement>& q,co
     require(out.front()==-7.0 && out.back()==-7.0,"the derivative kernel wrote outside its output");
     for(size_t i=0;i<e.size();++i)
       if(std::memcmp(&out[i+1],&e[i],sizeof(double))!=0) {
-        std::cerr<<what<<": mode "<<openmx_core_host_simd_name(mode)<<" value "<<i<<" got "<<out[i+1]<<" expected "<<e[i]<<'\n';
+        std::cerr<<std::setprecision(17)<<what<<": mode "<<openmx_core_host_simd_name(mode)<<" value "<<i<<" got "<<out[i+1]<<" expected "<<e[i]<<'\n';
         throw std::runtime_error("host derivative kernel differs from Get_dOrbitals_work");
       }
   }

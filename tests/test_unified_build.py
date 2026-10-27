@@ -285,6 +285,24 @@ class UnifiedBuildTest(unittest.TestCase):
                 self.assertIn("-DOPENMX_CORE_BACKEND=SERIAL", completed.stdout)
 
     @unittest.skipUnless(shutil.which("make"), "GNU make is required for native rule dry runs")
+    def test_pegasus_uses_shared_core_and_honors_overrides(self):
+        environment = dict(os.environ)
+        for name in ("OPENMX_CORE_CXX", "OPENMX_CORE_LIBRARY", "OPENMX_CORE_BACKEND"):
+            environment.pop(name, None)
+        for override in (False, True):
+            with self.subTest(override=override):
+                compiler = "/other/gcc/bin/g++" if override else "/usr/bin/g++-12"
+                command = ["make", "--no-print-directory", "-n", "-C", str(self.stages["CUDA"]),
+                           "-f", str(ROOT / "source/Makefile.pegasus"), "openmx-core"]
+                if override:
+                    command.append("OPENMX_CORE_CXX=" + compiler)
+                completed = subprocess.run(command, capture_output=True, text=True,
+                                           check=False, env=environment)
+                self.assertEqual(completed.returncode, 0, completed.stderr)
+                self.assertIn('-DCMAKE_CXX_COMPILER="' + compiler + '"', completed.stdout)
+                self.assertIn("-DOPENMX_CORE_BACKEND=SERIAL", completed.stdout)
+
+    @unittest.skipUnless(shutil.which("make"), "GNU make is required for native rule dry runs")
     def test_native_core_uses_callers_cmake_and_honors_override(self):
         # CUDA replaces PATH for its compiler recipes. A CMake selected from
         # the caller's PATH must still configure/build the core afterward.
