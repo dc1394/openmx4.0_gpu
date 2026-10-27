@@ -1014,12 +1014,10 @@ static double Stress_owned(const OpenMXForceWorkspace *halo,OpenMXCoreContext *c
 
   if (Exc0_correction_flag==1){
 
-    double **Leb_Grid_XYZW;
 
-    OpenMXSolverRealTensor lebedev;
-    OpenMX_XC_LebedevPrepare(scratch,Num_Leb_Grid,&lebedev,&Leb_Grid_XYZW);
+    OpenMXLebedevRuleData lebedev;
+    OpenMX_XC_LebedevPrepare(scratch,Num_Leb_Grid,&lebedev);
 
-    Set_Lebedev_Grid(Num_Leb_Grid,Leb_Grid_XYZW);
 
     /* get Nthrds0 */  
     /* Dynamic teams may grow after a separate probe region. */
@@ -1144,9 +1142,9 @@ static double Stress_owned(const OpenMXForceWorkspace *halo,OpenMXCoreContext *c
 
 	    for (ia=0; ia<Num_Leb_Grid; ia++){
 
-	      x0 = r*openmx_solver_real_matrix_row(&lebedev,ia)[0] + Gxyz[Gc_AN][1];
-	      y0 = r*openmx_solver_real_matrix_row(&lebedev,ia)[1] + Gxyz[Gc_AN][2];
-	      z0 = r*openmx_solver_real_matrix_row(&lebedev,ia)[2] + Gxyz[Gc_AN][3];
+	      x0 = r*openmx_lebedev_point(&lebedev,ia)[0] + Gxyz[Gc_AN][1];
+	      y0 = r*openmx_lebedev_point(&lebedev,ia)[1] + Gxyz[Gc_AN][2];
+	      z0 = r*openmx_lebedev_point(&lebedev,ia)[2] + Gxyz[Gc_AN][3];
 
 	      /* calculate rho_atom + rho_pcc */ 
 
@@ -1197,7 +1195,7 @@ static double Stress_owned(const OpenMXForceWorkspace *halo,OpenMXCoreContext *c
 
 	      /* Lebedev quadrature */
 
-	      w = openmx_solver_real_matrix_row(&lebedev,ia)[3];
+	      w = openmx_lebedev_point(&lebedev,ia)[3];
 	      sumt += w*den0*exc0;
 
 	      for (h_AN=1; h_AN<=FNAN[Gc_AN]; h_AN++){

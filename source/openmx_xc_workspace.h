@@ -4,10 +4,10 @@
 #include "openmx_core_angular_grid.h"
 
 static inline void OpenMX_XC_LebedevPrepare(OpenMXSolverInvocation *owner,int points,
-    OpenMXSolverRealTensor *out,double ***legacy_rows)
+    OpenMXLebedevRuleData *out)
 {
   char error[256];
-  if(!openmx_core_solver_angular_grid(owner,points,out,legacy_rows,error,sizeof(error)))
+  if(!openmx_core_solver_lebedev_rule(owner,points,out,error,sizeof(error)))
     OpenMX_Solver_Failure(error);
 }
 

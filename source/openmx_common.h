@@ -3997,7 +3997,6 @@ dcomplex Cexp(dcomplex a);
 
 double FermiFunc(double x, int spin, int orb, int *index, double *popn);
 double FermiFunc_NC(double x, int orb);
-void Set_Lebedev_Grid(int Np, double **Leb_Grid_XYZW);
 
 void Set_BLACS_variables ( MPI_Comm MPI_Curret_Comm_WD, int numprocs, int myid,
                            int nrows, int ncols, int *np_rows, int *np_cols, 

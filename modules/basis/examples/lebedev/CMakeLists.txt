@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.25.2)
+project(OpenMXLebedevExample LANGUAGES CXX)
+find_package(OpenMXBasis CONFIG REQUIRED)
+add_executable(lebedev_example main.cpp)
+target_link_libraries(lebedev_example PRIVATE OpenMX::basis)

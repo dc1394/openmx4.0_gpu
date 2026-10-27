@@ -7,12 +7,20 @@ and packet/table transfer independently of the HIP numerical regression.
 """
 import ast
 import os
+import resource
 from pathlib import Path
 from task_worker_test_bridge import compile_task_test
 from mock_hip_sources import stage
 import shlex
 import subprocess
 import tempfile
+
+def bounded_stack():
+    # An unlimited Linux stack can place DSOs inside ASan's shadow range.
+    soft,hard=resource.getrlimit(resource.RLIMIT_STACK)
+    limit=8*1024*1024 if hard==resource.RLIM_INFINITY else min(hard,8*1024*1024)
+    if soft==resource.RLIM_INFINITY or soft>limit:
+        resource.setrlimit(resource.RLIMIT_STACK,(limit,hard))
 
 root=Path(__file__).resolve().parents[1]
 tree=ast.parse((root/"tests/run_gpu_vector_cpu.py").read_text())
@@ -96,6 +104,7 @@ int main(void){
  for(int a=1;a<4;a++){Gxyz[a][1]=a*.3;Gxyz[a][2]=a*.17;Gxyz[a][3]=a*.11;}
  double leb_data[4][4]={{1,0,0,.25},{0,1,0,.25},{0,0,1,.25},{-.577,-.577,-.577,.25}},*leb[4];
  for(int i=0;i<4;i++)leb[i]=leb_data[i];
+ const OpenMXLebedevRuleData angular_rule={4,&leb_data[0][0]};
  int cases=0;
  for(workers=1;workers<=4;workers++)for(int tier=0;tier<4;tier++){
   local_fail=tier>0;remote_fail=tier==2;fail_alloc=tier==3;
@@ -128,7 +137,7 @@ int main(void){
   for(int a=0;a<4;a++)for(int d=0;d<3;d++)Gxyz[a][41+d]=0;
   /* The production path must use the supplied rule, never historical globals. */
   for(int i=0;i<3;i++){CoarseGL_Abscissae[i]=NAN;CoarseGL_Weight[i]=NAN;}
-  TotalEnergy_Exc0_Batch_OpenMP(&atomic,&radial,4,leb,&gsum);close_to(gsum,rsum);
+  TotalEnergy_Exc0_Batch_OpenMP(&atomic,&radial,&angular_rule,&gsum);close_to(gsum,rsum);
   memcpy(CoarseGL_Abscissae,borrowed_nodes,sizeof borrowed_nodes);
   memcpy(CoarseGL_Weight,borrowed_weights,sizeof borrowed_weights);
   for(int a=0;a<4;a++)for(int d=0;d<3;d++)close_to(Gxyz[a][41+d],forces[a][d]);cases++;
@@ -145,4 +154,4 @@ with tempfile.TemporaryDirectory(prefix="openmx-energy-capacity-") as folder:
     compile_task_test(shlex.split(os.environ.get("CC","cc"))+[
         "-std=c11","-O1","-g","-Wno-unknown-pragmas","-fsanitize=address,undefined",
         "-fno-sanitize-recover=all","-I"+str(p),"-I"+str(root/"source"),str(p/"check.c"),"-lm","-o",str(p/"check")],check=True)
-    subprocess.run([str(p/"check")],check=True,timeout=60)
+    subprocess.run([str(p/"check")],check=True,timeout=60,preexec_fn=bounded_stack)

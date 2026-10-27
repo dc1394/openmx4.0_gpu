@@ -58,3 +58,6 @@ openmx.o openmx_api.o Runtest.o: openmx_atomic.h
 Total_Energy.o Stress.o: openmx_neutral_atom.h
 truncation.o: openmx_core_olg_cache.h ../core/include/openmx_core_olg_cache.h
 Cluster_DFT_Col_CWF.o Cluster_DFT_NonCol_CWF.o Band_DFT_Col_CWF.o Band_DFT_NonCol_CWF.o: openmx_cwf_workspace.h
+
+# The angular-rule view crosses the Energy CPU/native backend boundary.
+Total_Energy.o Total_Energy_GPU.o Stress.o: openmx_basis_lebedev.h ../modules/basis/include/openmx/basis/lebedev.h openmx_xc_workspace.h openmx_energy_workspace.h

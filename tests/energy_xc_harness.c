@@ -1,4 +1,4 @@
-/* Real C++ ownership; radial/XC/angular/GPU/MPI calls and OpenMP teams are
+/* Real C++ ownership; radial/XC/GPU/MPI calls and OpenMP teams are
    modeled. Workers run sequentially so every host toolchain can check the
    exact production partition and scratch reuse; native concurrency is also
    exercised by the application's OpenMP regression inputs. */
@@ -22,24 +22,30 @@ static int F_Vxc_flag,Exc0_correction_flag,Num_Leb_Grid,scf_eigen_lib_flag,PCC_s
 static int region_calls,gpu_calls,grid_calls;
 static const int CoarseGL_Mesh=5;
 static double CoarseGL_Abscissae[5]={-.8,-.35,.05,.4,.75},CoarseGL_Weight[5]={.3,.45,.5,.4,.35};
+#include "openmx_core_angular_grid.h"
+static int counted_lebedev_prepare(OpenMXSolverInvocation *owner,int points,
+    OpenMXLebedevRuleData *out,char *error,size_t capacity){
+  ++grid_calls;return openmx_core_solver_lebedev_rule(owner,points,out,error,capacity);
+}
+#define openmx_core_solver_lebedev_rule counted_lebedev_prepare
 #include "openmx_energy_workspace.h"
+#undef openmx_core_solver_lebedev_rule
 int MPI_Abort(MPI_Comm comm,int code){(void)comm;(void)code;_Exit(77);}
 int MPI_Allreduce(const void *s,void *r,int n,int type,int op,MPI_Comm comm){(void)comm;CHECK(n==3&&type==MPI_DOUBLE&&op==MPI_SUM);memcpy(r,s,3*sizeof(double));return 0;}
 static void near(double a,double b,double tolerance){CHECK(isfinite(a)&&isfinite(b)&&fabs(a-b)<tolerance*(1+fabs(b)));}
 static int next_team(void){const int teams[3]={1,4,2};return energy_fixture_team=teams[region_calls++%3];}
 
 #ifdef ENERGY_GRID_PRODUCTION
-#include "lebedev_native.inc"
 static int grid_case(OpenMXSolverInvocation *owner,void *unused,double *result){
   (void)unused;const int counts[]={590,1202,2030,590};
   for(int k=0;k<4;k++){
-    OpenMXSolverRealTensor view;double **rows;
-    OpenMX_Energy_LebedevPrepare(owner,counts[k],&view,&rows);
-    Set_Lebedev_Grid(counts[k],rows);
+    OpenMXLebedevRuleData view;
+    OpenMX_Energy_LebedevPrepare(owner,counts[k],&view);
+    const double *rows=view.xyzw;
     long double moment[8]={0};
     for(int i=0;i<counts[k];i++){
-      CHECK(rows[i]==openmx_solver_real_matrix_row(&view,(size_t)i));
-      const double x=rows[i][0],y=rows[i][1],z=rows[i][2],w=rows[i][3];
+      CHECK(openmx_lebedev_point(&view,(size_t)i)==rows+4*i);
+      const double x=rows[4*i+0],y=rows[4*i+1],z=rows[4*i+2],w=rows[4*i+3];
       CHECK(isfinite(w));near(x*x+y*y+z*z,1,2e-13);
       moment[0]+=w;moment[1]+=w*x;moment[2]+=w*y;moment[3]+=w*z;
       moment[4]+=w*x*x;moment[5]+=w*pow(x,4);moment[6]+=w*x*x*y*y;moment[7]+=w*pow(x,8);
@@ -49,18 +55,8 @@ static int grid_case(OpenMXSolverInvocation *owner,void *unused,double *result){
   }
   *result=1;return 1;
 }
-int main(void){CHECK(OpenMX_Solver_Run(grid_case,NULL)==1);puts("PASS: all three production Lebedev presets, spherical moments and flat/legacy row rebinding");return 0;}
+int main(void){CHECK(OpenMX_Solver_Run(grid_case,NULL)==1);puts("PASS: all three production Lebedev presets, spherical moments and read-only flat view rebinding");return 0;}
 #else
-/* A repeated six-axis rule keeps the angular oracle simple while using
-   supported production capacities and exercising growth/rebinding. */
-static void Set_Lebedev_Grid(int points,double **rows){
-  ++grid_calls;
-  for(int i=0;i<points;i++){
-    const int axis=i%6,count=(points+5-axis)/6;
-    for(int d=0;d<3;d++)rows[i][d]=axis/2==d?(axis%2?-1:1):0;
-    rows[i][3]=1.0/(6*count);
-  }
-}
 static double KumoF(int mesh,double x,const double *a,const double *b,const double *c){
   CHECK(mesh==2&&a&&b);return c[0]*exp(-c[1]*exp(2*x));
 }
@@ -72,7 +68,7 @@ static double XC_Ceperly_Alder(double n,int mode){
 }
 /* Independently integrate the prescribed density and polynomial XC energy.
    Coordinate differences of this scalar check the native gradient fields. */
-static double oracle_energy(const OpenMXAtomicViews *atomic,int points,double **rows){
+static double oracle_energy(const OpenMXAtomicViews *atomic,int points,const double *rows){
   if(!F_Vxc_flag)return 0;
   double sum=0;
   for(int m=1;m<=Matomnum;m++){
@@ -87,14 +83,14 @@ static double oracle_energy(const OpenMXAtomicViews *atomic,int points,double **
         for(int h=0;h<=FNAN[a];h++){
           const int b=natn[a][h],t=WhatSpecies[b];double r2=0;
           for(int d=0;d<3;d++){
-            const double delta=Gxyz[b][d+1]-(Gxyz[a][d+1]+radius*rows[i][d]);r2+=delta*delta;
+            const double delta=Gxyz[b][d+1]-(Gxyz[a][d+1]+radius*rows[4*i+d]);r2+=delta*delta;
           }
           if(r2<atomic->species.cutoff[t]*atomic->species.cutoff[t]){
             const double *density=openmx_radial_row2(&atomic->density_backup,(size_t)t);
             n+=density[0]*exp(-density[1]*r2);
           }
         }
-        angular+=rows[i][3]*central*(-.2-.4*n+.05*n*n);
+        angular+=rows[4*i+3]*central*(-.2-.4*n+.05*n*n);
       }
       radial+=radius*radius*CoarseGL_Weight[ir]*angular;
     }
@@ -102,18 +98,18 @@ static double oracle_energy(const OpenMXAtomicViews *atomic,int points,double **
   }
   return sum;
 }
-static double difference(const OpenMXAtomicViews *atomic,int points,double **rows,int atom,int d){
+static double difference(const OpenMXAtomicViews *atomic,int points,const double *rows,int atom,int d){
   const double step=1e-6,saved=Gxyz[atom][d];
   Gxyz[atom][d]=saved+step;const double plus=oracle_energy(atomic,points,rows);
   Gxyz[atom][d]=saved-step;const double minus=oracle_energy(atomic,points,rows);
   Gxyz[atom][d]=saved;return (plus-minus)/(2*step);
 }
-static void gpu(const OpenMXAtomicViews *atomic,int points,double **rows,double *sum){
+static void gpu(const OpenMXAtomicViews *atomic,int points,const double *rows,double *sum){
   ++gpu_calls;*sum=oracle_energy(atomic,points,rows);
   for(int a=1;a<=atomnum;a++)for(int d=1;d<=3;d++)Gxyz[a][d+40]=difference(atomic,points,rows,a,d);
 }
-static void TotalEnergy_Exc0_Batch_OpenACC(const OpenMXAtomicViews *a,const OpenMXGaussRuleData *q,int n,double **g,double *s){CHECK(q && q->count==CoarseGL_Mesh && q->weights==CoarseGL_Weight);gpu(a,n,g,s);}
-static void TotalEnergy_Exc0_Batch_OpenMP(const OpenMXAtomicViews *a,const OpenMXGaussRuleData *q,int n,double **g,double *s){CHECK(q && q->count==CoarseGL_Mesh && q->weights==CoarseGL_Weight);gpu(a,n,g,s);}
+static void TotalEnergy_Exc0_Batch_OpenACC(const OpenMXAtomicViews *a,const OpenMXGaussRuleData *q,const OpenMXLebedevRuleData *g,double *s){CHECK(q && q->count==CoarseGL_Mesh && q->weights==CoarseGL_Weight);gpu(a,(int)g->count,g->xyzw,s);}
+static void TotalEnergy_Exc0_Batch_OpenMP(const OpenMXAtomicViews *a,const OpenMXGaussRuleData *q,const OpenMXLebedevRuleData *g,double *s){CHECK(q && q->count==CoarseGL_Mesh && q->weights==CoarseGL_Weight);gpu(a,(int)g->count,g->xyzw,s);}
 
 static void fine(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *atomic,double My_EXC[2]){
   const OpenMXGaussRuleData view={CoarseGL_Mesh,CoarseGL_Abscissae,CoarseGL_Weight};
@@ -127,9 +123,9 @@ typedef struct {OpenMXAtomicViews atomic;} Arguments;
 static int exercise(OpenMXSolverInvocation *owner,void *opaque,double *result){
   Arguments *args=opaque;const int counts[3]={590,1202,590};
   for(int repeat=0;repeat<3;repeat++){
-    Num_Leb_Grid=counts[repeat];OpenMXSolverRealTensor angular;double **rows;
+    Num_Leb_Grid=counts[repeat];OpenMXLebedevRuleData angular;
     /* Prepare the oracle rule independently of the production fine block. */
-    OpenMX_Energy_LebedevPrepare(owner,Num_Leb_Grid,&angular,&rows);Set_Lebedev_Grid(Num_Leb_Grid,rows);
+    OpenMX_Energy_LebedevPrepare(owner,Num_Leb_Grid,&angular);const double *rows=angular.xyzw;
     const double expected=Exc0_correction_flag?oracle_energy(&args->atomic,Num_Leb_Grid,rows):0;
     double gradients[4][3]={{0}};
     if(Exc0_correction_flag)for(int a=1;a<=3;a++)for(int d=1;d<=3;d++)gradients[a][d-1]=difference(&args->atomic,Num_Leb_Grid,rows,a,d);
@@ -145,7 +141,7 @@ static int exercise(OpenMXSolverInvocation *owner,void *opaque,double *result){
   *result=1;return 1;
 }
 static int bad_grid(OpenMXSolverInvocation *owner,void *opaque,double *result){
-  OpenMXSolverRealTensor view;double **rows;OpenMX_Energy_LebedevPrepare(owner,atoi(opaque),&view,&rows);*result=0;return 1;
+  OpenMXLebedevRuleData view;OpenMX_Energy_LebedevPrepare(owner,atoi(opaque),&view);*result=0;return 1;
 }
 int main(int argc,char **argv){
   if(argc>1){OpenMX_Solver_Run(bad_grid,argv[1]);return 3;}

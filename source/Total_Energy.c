@@ -81,11 +81,11 @@ void TotalEnergy_Dipole_Grid_OpenACC(int GNs, double *My_E_dpx, double *My_E_dpy
                                      double *My_E_dpy_BG, double *My_E_dpz_BG);
 #if OPENMX_GPU_HIP
 void TotalEnergy_CWF_Dc_Grid_OpenMP(int spinmax, double My_dcEH1[2], double My_dcEXC[2]);
-void TotalEnergy_Exc0_Batch_OpenMP(const OpenMXAtomicViews *atomic, const OpenMXGaussRuleData *radial, int Num_Leb, double **Leb_Grid_XYZW, double *sum_out);
+void TotalEnergy_Exc0_Batch_OpenMP(const OpenMXAtomicViews *atomic, const OpenMXGaussRuleData *radial, const OpenMXLebedevRuleData *lebedev, double *sum_out);
 void TotalEnergy_EH0_TwoCenter_Batch_OpenMP(const OpenMXNeutralGridTables *tables,const OpenMXNeutralGridMetadataView *metadata,const OpenMXAtomicViews *atomic, int pair_count, int *pair_ban, int *pair_wan2,
 #else
 void TotalEnergy_CWF_Dc_Grid_OpenACC(int spinmax, double My_dcEH1[2], double My_dcEXC[2]);
-void TotalEnergy_Exc0_Batch_OpenACC(const OpenMXAtomicViews *atomic, const OpenMXGaussRuleData *radial, int Num_Leb, double **Leb_Grid_XYZW, double *sum_out);
+void TotalEnergy_Exc0_Batch_OpenACC(const OpenMXAtomicViews *atomic, const OpenMXGaussRuleData *radial, const OpenMXLebedevRuleData *lebedev, double *sum_out);
 void TotalEnergy_EH0_TwoCenter_Batch_OpenACC(const OpenMXNeutralGridTables *tables,const OpenMXNeutralGridMetadataView *metadata,const OpenMXAtomicViews *atomic, int pair_count, int *pair_ban, int *pair_wan2,
 #endif
                                              int *pair_has_deriv, double *pair_dis,
@@ -2170,11 +2170,9 @@ void Calc_EXC_EH1(OpenMXSolverInvocation *scratch, const OpenMXAtomicViews *atom
   dtime(&time0);
   if (Exc0_correction_flag==1){
 
-    OpenMXSolverRealTensor lebedev;
-    double **Leb_Grid_XYZW;
-    OpenMX_Energy_LebedevPrepare(scratch,Num_Leb_Grid,&lebedev,&Leb_Grid_XYZW);
+    OpenMXLebedevRuleData lebedev;
+    OpenMX_Energy_LebedevPrepare(scratch,Num_Leb_Grid,&lebedev);
 
-    Set_Lebedev_Grid(Num_Leb_Grid,Leb_Grid_XYZW);
 
     /* get Nthrds0 */  
     /* Dynamic teams may grow after a separate probe region. */
@@ -2200,9 +2198,9 @@ void Calc_EXC_EH1(OpenMXSolverInvocation *scratch, const OpenMXAtomicViews *atom
 #endif
     if (exc0_device){
 #if OPENMX_GPU_HIP
-      TotalEnergy_Exc0_Batch_OpenMP(atomic, radial, Num_Leb_Grid, Leb_Grid_XYZW, &sum);
+      TotalEnergy_Exc0_Batch_OpenMP(atomic, radial, &lebedev, &sum);
 #else
-      TotalEnergy_Exc0_Batch_OpenACC(atomic, radial, Num_Leb_Grid, Leb_Grid_XYZW, &sum);
+      TotalEnergy_Exc0_Batch_OpenACC(atomic, radial, &lebedev, &sum);
 #endif
     }
     else{
@@ -2339,8 +2337,8 @@ void Calc_EXC_EH1(OpenMXSolverInvocation *scratch, const OpenMXAtomicViews *atom
 	  if (xc_scratch!=NULL){
 	    OpenMXEnergyXcShell shell;
 	    shell.points=Num_Leb_Grid;
-	    shell.lebedev=lebedev.values;
-	    shell.lebedev_stride=lebedev.extent[1];
+	    shell.lebedev=lebedev.xyzw;
+	    shell.lebedev_stride=4;
 	    shell.radius=r;
 	    shell.center[0]=Gxyz[Gc_AN][1];
 	    shell.center[1]=Gxyz[Gc_AN][2];
@@ -2359,9 +2357,9 @@ void Calc_EXC_EH1(OpenMXSolverInvocation *scratch, const OpenMXAtomicViews *atom
 	  if (!xc_done)
 	  for (ia=0; ia<Num_Leb_Grid; ia++){
 
-	    x0 = r*openmx_solver_real_matrix_row(&lebedev,ia)[0] + Gxyz[Gc_AN][1];
-	    y0 = r*openmx_solver_real_matrix_row(&lebedev,ia)[1] + Gxyz[Gc_AN][2];
-	    z0 = r*openmx_solver_real_matrix_row(&lebedev,ia)[2] + Gxyz[Gc_AN][3];
+	    x0 = r*openmx_lebedev_point(&lebedev,ia)[0] + Gxyz[Gc_AN][1];
+	    y0 = r*openmx_lebedev_point(&lebedev,ia)[1] + Gxyz[Gc_AN][2];
+	    z0 = r*openmx_lebedev_point(&lebedev,ia)[2] + Gxyz[Gc_AN][3];
 
 	    /* calculate rho_atom + rho_pcc */ 
 
@@ -2424,7 +2422,7 @@ void Calc_EXC_EH1(OpenMXSolverInvocation *scratch, const OpenMXAtomicViews *atom
 
 	    /* Lebedev quadrature */
 
-	    w = openmx_solver_real_matrix_row(&lebedev,ia)[3];
+	    w = openmx_lebedev_point(&lebedev,ia)[3];
 	    sumt += w*den0*exc0;
 
 	    for (h_AN=1; h_AN<=FNAN[Gc_AN]; h_AN++){

@@ -3,7 +3,7 @@
 OpenMX の基底処理を独立して利用する C++20 ライブラリです。
 現在の公開範囲は PAO、非局所射影子、中性原子ポテンシャル、VNA 射影子の
 動径補間、PAO/射影子の波数空間補間、PAO/VPSファイルの読み込み、
-原子密度の補間・動径導関数・球対称Hartree積分、Gauss–Legendre積分則の生成、
+原子密度の補間・動径導関数・球対称Hartree積分、Gauss–LegendreとLebedev積分則、
 球Bessel関数と2中心積分用Besselテーブル、球面調和関数と角度導関数です。本体もこの実装を使用します。
 Fourier-Bessel 変換、完全な2中心積分は
 まだこのパッケージには含まれません。
@@ -51,7 +51,7 @@ find_package(OpenMXBasis 0.1 CONFIG REQUIRED)
 target_link_libraries(my_application PRIVATE OpenMX::basis)
 ```
 
-公開ヘッダーは `<openmx/basis/radial_table.hpp>`（C++）と
+動径補間の公開ヘッダーは `<openmx/basis/radial_table.hpp>`（C++）と
 `<openmx/basis/radial.h>`（C ABI）です。C の呼び出し元でもリンク時には
 C++ ランタイムが必要なので、CMake の `project()` で `C CXX` を有効にします。
 静的ライブラリは PIC で生成します。CMake のビルド中の利用には
@@ -250,6 +250,38 @@ mdspan接続用の `storage()` / `row_capacity()` は余裕を持たせた領域
 Fourier変換用のCUDA/HIPカーネルは同じ漸化式にKokkosの数学関数を接続し、大引数での値専用高速経路を維持します。
 公開入口はC++ APIで、MPIやKokkosの初期化は不要です。単独の利用例は `examples/bessel/` にあります。
 
+## Lebedev球面積分則
+
+`<openmx/basis/lebedev.hpp>` の `LebedevRule` は、590・1202・2030点の既存OpenMX格子を所有します。
+座標は単位球面上の無次元値で、重みの総和は1です。球面積分には4πを掛けます。
+点の順番と印字された係数を維持し、正規化し直したり点を並べ替えたりしません。
+
+```cpp
+#include <openmx/basis/lebedev.hpp>
+
+openmx::basis::LebedevRule rule(2030);
+const auto point = rule.point(7); // span<const double,4>: x, y, z, weight
+const auto flat = rule.xyzw();   // [point][4] の連続配置
+rule.reset(590);                 // 容量内では確保せず再利用
+```
+
+- 借用したspanは所有者の破棄・代入・成功した `reset()` まで有効です。
+  容量内でのリセットはアドレスを保ち、同じ点数の繰り返しはO(1)です。
+  異なる点数ではO(点数)で表を入れ替えます。容量を超える場合だけ新しく確保します。
+- 無効な点数や確保失敗は例外となり、前の格子・アドレス・借用ビューを維持します。
+  コピーは独立し、ムーブ元は空になります。ムーブ元も `reset()` で再利用できます。
+  点の範囲外アクセスは例外になります。
+- 同じ格子を複数のスレッドから読むことができます。書き換え・リセットと同時に読むことはできません。
+  共有する可変大域状態、MPI・GPU・Kokkosの初期化はありません。
+- Cでは `<openmx/basis/lebedev.h>` の `openmx_basis_lebedev_fill()` が、呼び出し元の連続配列へ
+  確保なしで表を書きます。容量はdouble要素数で指定します。不正入力では数値配列を変更しません。
+  `OpenMXLebedevRuleData` は読み取り専用の借用ビューで、`openmx_lebedev_point()` は
+  検証済みの添字を使う軽い行アクセスです。診断バッファと数値配列は重ねないでください。
+
+本体のEnergy／Stressは、呼び出しの寿命に結び付けた同じ `LebedevRule` を使います。
+Cの生成関数と互換用の行ポインタ配列を廃止し、GPU用の既存転送配列にもこの連続ビューから値を渡します。
+CPUへ戻る場合も同じ係数を使います。単独の利用例は `examples/lebedev/` です。
+
 ## 球面調和関数と角度微分
 
 `<openmx/basis/harmonics.hpp>` は、値と導関数を所有するC++の戻り値型を提供します。
@@ -328,6 +360,8 @@ C ABI は呼び出しごとのエラーバッファを使い、失敗時に数�
 コピー・ムーブ・並行生成と確保失敗時の出力保持を検査します。
 球Besselは独立したべき級数・解析式・Legendre積分と有限差分で検証します。
 キャッシュのキー・借用寿命・無確保の再利用、確保失敗後の継続、独立した並行評価も検査します。
+Lebedevは全15,288係数の凍結した指紋、球面上の混合多項式積分、所有・移動・容量再利用、
+確保故障時の保持、並行読み取りとC APIで検証します。
 球面調和関数はRodrigues多項式、有限差分、球面上の直交性、加法定理、両極の解析的微分、
 無効入力、無確保・並行評価を検査します。本体のC互換境界は
 `python3 tests/run_harmonics_cpu.py --sanitize` で凍結した旧実装とビット単位で比較します。

@@ -4594,3 +4594,34 @@ Cl₂はCPU/GPUとも17SCF・印字E/F差ゼロです。
 `numerical-summary.json`、`g-orbitals-results.json` に証拠を保存しました。
 AMD/A100/H100実機、Intelコンパイラ版OpenMXとの性能比較は今回実施していません。
 `work/openmx` は更新していません。
+
+
+## 2026-10-28: Lebedev球面積分則の独立化（第104段階）
+
+変更前 `68322894` と変更後の本体・Core/SIMDを凍結し、18 MPI×1 OpenMPで比較しました。
+GPUはRTX5080・既存MPS・NVHPC/OpenMPI、CPU専用本体はGCC/Intel MPI/MKLです。
+以下の採用した計時中にビルド、試験、他のOpenMX計算は重ねていません。
+
+| 入力・指標 | 変更前 | 変更後 |
+| --- | ---: | ---: |
+| sidia333 NC cluster、GPU/MPS、内部Total最大値 (秒) | 99.418 | 99.804 |
+| 同、MPI起動を含む経過時間 (秒) | 102.761 | 102.959 |
+| C60 DC、CPU専用、内部Total中央値 (秒) | 5.981 | 5.978 |
+| 同、MPI起動を含む経過時間中央値 (秒) | 6.48172 | 6.47977 |
+
+sidiaは元入力を各1回測定した25SCF上限・未収束の比較で、E差ゼロ・最大F差約1e-12 Ha/bohrでした。
+C60は交互各3回、全件27SCF収束・印字E/F差ゼロです。GeForce約105秒の目安を維持し、
+CPUの中央値はほぼ同じでした。単発・短時間の差を一般的な高速化や劣化とは扱いません。
+
+最初のsidia計測では、起動手順により変更前後の実行が約14秒重なりました。
+変更版を停止し、変更前108.669秒と中断した変更版14.174秒の両件を比較値から外しました。
+ログ・結果を `performance-overlap-diagnostic/` に残し、起動前の実行中プロセス確認と
+順次実行のドライバーを追加して測り直した値が上表です。
+
+通常29組と1202・2030点の球面格子でのCPU/GPU各2組、計33組が収束し、SCF反復数も一致しました。
+最大E差2.2810e-9 Ha・F差1.4585e-8 Ha/bohr、応力15組は9成分とも小数点以下8桁の印字値が一致しました。
+第98・102段階のGPU再現性の限界を解消したとは扱いません。
+`build/lebedev-library-20261028/` の `performance/`、`cpu-performance-results.json`、
+`numerical-summary.json`、`production-freeze.json` に今回の検証記録を保存しました。
+AMD/A100/H100実機、Intelコンパイラ版OpenMXとの性能比較は今回実施していません。
+`work/openmx` は更新していません。

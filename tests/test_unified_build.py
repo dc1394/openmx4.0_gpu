@@ -107,7 +107,9 @@ class UnifiedBuildTest(unittest.TestCase):
                      '-I' + str(stage), '-'],
                     input='#include "openmx_basis_harmonics.h"\n'
                           '#include "openmx_orbital_harmonics.h"\n'
+                          '#include "openmx_basis_lebedev.h"\n'
                           'void probe(void) { double v[2],dt[2],dp[2];\n'
+                          'OpenMXLebedevRuleData rule={0,0}; (void)rule;\n'
                           'openmx_orbital_complex_sh(4,1,0,1,0,v,dt,dp);\n'
                           'openmx_basis_detail_integral_harmonic(4,1,0,0,v,dt,dp); }\n',
                     capture_output=True, text=True, check=False,
@@ -444,6 +446,9 @@ class UnifiedBuildTest(unittest.TestCase):
                     if obj in angular_objects or obj == "Stress.o":
                         self.assertIn("openmx_basis_harmonics.h", row.split())
                         self.assertIn("../modules/basis/include/openmx/basis/detail/harmonics.h", row.split())
+                    if obj in ("Total_Energy.o", "Stress.o"):
+                        self.assertIn("openmx_basis_lebedev.h", row.split())
+                        self.assertIn("../modules/basis/include/openmx/basis/lebedev.h", row.split())
             self.assertFalse(list(stage.glob("*.o")), "make -np unexpectedly compiled an object")
 
 
