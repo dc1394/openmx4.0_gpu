@@ -5,6 +5,10 @@
 この文書は完了した移行単位と、残っている作業を記録します。
 OpenMX 本体全体の C++ 化、大域変数ゼロ、全カーネルの Kokkos 化はまだ完了していません。
 
+最終目標と今後の優先順位は [C++ ライブラリ構成と完了条件](CPP_LIBRARY_ARCHITECTURE.md)
+に定義します。独立にビルド・検証・外部利用できる物理部品を組み合わせて OpenMX を構成することが目的です。
+大域変数の個数、RAII 化率、ポインタの段数は、その境界と検証可能性を改善するための指標として扱います。
+
 2026-10-20 のレビュー対応では、C ABI ヘッダーを `core/include/` へ移し、
 コアの `source/` 依存を除去しました。`source/` の同名ヘッダーは互換インクルードです。
 本体の共通ヘッダーにあった外部変数と `g_exx` の定義計1,155個は
@@ -39,8 +43,8 @@ C++20 の言語機能である named modules は使用していません。
 | 非局所 Force の射影子とスピノル演算 | `core/src/projector_force.cpp` | 化学種ごとの角運動量・成分オフセット・エネルギー・スピン係数を段階ごとにコピーして所有。ワーカーは不変ビューを共有し、入力・出力の行間隔を明示した矩形ブロックを共通 C++/mdspan 演算へ渡す。 |
 | 計算段階の native 資源と非局所 GPU アーカイブ | `core/src/{solver_workspace,native_resources}.cpp`、`source/openmx_force_hnl_gpu.h` | 段階の呼び出しが名前付き資源グループと POD 状態を所有。ホスト配列・SDK ハンドルは独自 deleter で管理し、非局所 Force は大域の GPU コンテキストを持たない。 |
 | 可変ブロックの一時行列 | `core/src/matrix_scratch.cpp` | 既存電子行列の1履歴分の形状をコピーし、数値領域を上書き用テンソルで所有。CSRと値は呼び出し所有で、C++は`mdspan`、Cは同じ平坦ビューを借用する。 |
-| 動径表と補間 | `core/src/radial_table.cpp` | `RadialTableView` が格子と全入力値を検証して借用する。独立したコピーが必要な場合は `RadialTable` が所有。PAO、非局所 projector、中性原子ポテンシャル、VNA 分離射影子の境界条件を明示して補間する。 |
-| 波数空間の補間 | `core/src/radial_table.cpp` | 波数を `i*step` で求め、PAO/projector の共通補間へ渡す。格子配列を所有せず、`NormK` を必要としない。 |
+| 動径表と補間 | `modules/basis/src/radial_table.cpp` | 独立した `OpenMX::basis` が所有。`RadialTableView` が格子と全入力値を検証して借用し、独立したコピーは `RadialTable` が所有。PAO、非局所 projector、中性原子ポテンシャル、VNA 分離射影子の境界条件を明示して補間する。 |
+| 波数空間の補間 | `modules/basis/src/radial_table.cpp` | 波数を `i*step` で求め、PAO/projector の共通補間へ渡す。格子配列を所有せず、`NormK` を必要としない。 |
 | PAO/NLP/VNA・軌道積の Fourier 変換 | `core/src/radial.cpp` | 半径、積分の測度・方式、波数、チャネル、サンプルを明示的に受け取る。ホスト配列は `Tensor`、実行用配列は `Kokkos::View` が所有。 |
 | FFT グリッド検証 | `core/include/openmx/core/fft_grid.hpp` | 正の整数を 2、3、5、7 の積に分解できるか判定。大域の可変テーブルを持たない。 |
 | 周期セル逆引き | `core/include/openmx_periodic.h` | セルの半径と座標から添字を直接計算。逆引き用の所有配列を持たない。 |
@@ -6391,3 +6395,49 @@ CPU専用C60 DCの各3回中央値は6.42969→6.42988秒で、全件27 SCFで�
 sidiaは25 SCF上限・未収束の性能確認で、収束性の26組へ数えません。
 測定と数値・監査の記録は`build/hamiltonian-gpu-state-owner-20261027/`、詳細な計時は
 [性能検証](PERFORMANCE_REGRESSION.md)へ保存しています。
+
+
+## 第95段階: 基底補間を外部利用できる独立 C++ ライブラリへ切り出す
+
+最終形を [C++ ライブラリ構成と完了条件](CPP_LIBRARY_ARCHITECTURE.md) に定義しました。
+大域変数使用ゼロ、RAII、多重ポインタ廃止等を継続し、物理機能を単独で使い・検証できるようにします。
+最初の部品として `modules/basis/` に `OpenMX::basis` / `OpenMXBasis` 0.1.0 を導入しました。
+
+PAO・非局所射影子・中性原子ポテンシャル・VNA射影子の動径補間と、PAO/projectorの波数補間を
+`openmx::basis` へ移しました。旧 `openmx::core` の型は移行用の別名です。
+`core/` のサンプリングと旧C ABIは同じ数値実装へリンクし、複製した補間コードは持ちません。
+独立パッケージは C++20 標準ライブラリだけを使い、MPI/BLAS/Kokkos/GPU SDKも本体の初期化も不要です。
+CoreがCUDA/HIP実行空間でもこの部品は通常のホストC++でビルドします。
+
+`RadialTable` は連続した格子・チャネル・値を所有し、借用型 `RadialTableView` と用途を分けます。
+公開C ABIは平坦な行とストライド、または不透明な所有者を受け取り、確保途中の例外を外へ出しません。
+入力を一度検証して保持し、定常サンプリングに確保・全表コピーを加えていません。
+CMakeのインストールと `find_package(OpenMXBasis 0.1 CONFIG REQUIRED)` に対応しました。
+
+検証:
+
+- 単独8試験をGCC14.2、Clang、Intel icpx、およびGCC ASan/UBSan構成で成功させました。
+  旧実装の固定参照値・解析多項式、端点、所有/借用/並行性、確保故障、C呼び出しを含みます。
+  コピーした当該ディレクトリだけでビルド・インストールし、インストール先と元のソース・ビルドを移動してから
+  別のC/C++プロジェクトでリンク・実行する試験も含みます。通常の単体試験7件は合計約0.06秒、
+  初回のパッケージ試験を含む8件は約3.3秒でした。
+- 実Coreにリンクした関連数値試験16件をホスト、ASan/UBSan、CUDA実行空間で成功させました。
+  ASan Core上の新しいbasis 8件も成功しています。ローカルASan実行ではスタック上限8 MiB、
+  basis単独のGCCサニタイザー実行ファイルは `-no-pie` を使いました。無制限スタックを継承した初回の
+  ASan起動時のshadow配置衝突は、スタック上限を設定して解消しました。
+- 従来のC ABIを通した移行前後20,280ケースの戻り値・出力値はビット単位で一致しました。
+  補間式・端点処理・検証/サンプル関数の本体もソース照合し、旧C ABIソースは変更していません。
+- NVHPC/CUDA本体とCPU専用GCC/Intel MPI/MKL本体をビルドしました。
+  7経路のCPU/GPU14組とCPU専用cluster/band/空rank3組の計17組は収束・SCF反復数が一致し、
+  最大差はE=2.7701e-10 Ha、F=1.3561e-8 Ha/bohrでした。
+  基準は `f09c291b` の凍結した本体/Core/SIMDとハッシュを照合した第94段階の結果です。
+- 新たな性能比較ではsidia333・18 MPI×1 OpenMP・RTX5080/MPSが103.109→103.208秒、
+  CPU専用C60 DCの交互各3回中央値が6.48146→6.48037秒でした。
+  sidiaは25SCF上限・未収束で性能確認用、C60は全件27SCF収束・印字E/F差ゼロです。
+
+今回のC大域状態監査対象のソースは変更していないため、監査ベースラインは更新していません。
+既存のGPU数値カーネル・チューニング方針も変更していません。AMD/A100/H100実機と
+Intelコンパイラ版OpenMXとの性能比較は未実施です。
+PAO/VPSの読み込み・角度規約・2中心積分の外部API化は次の段階です。
+結果と凍結ランタイムは `build/basis-library-20261027/`、詳細な計時は
+[性能検証](PERFORMANCE_REGRESSION.md) に記録しています。

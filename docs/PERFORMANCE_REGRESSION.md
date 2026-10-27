@@ -4338,3 +4338,29 @@ AMD/A100/H100実機、Intelコンパイラ版との比較は今回実施して�
 `build/hamiltonian-gpu-state-owner-20261027/`の`performance/`・`cpu-performance-results.json`・
 `numerical-summary.json`に結果、`baseline-proof.json`と`candidate-runtime-hashes.json`に凍結ランタイムの証拠を保存しました。
 `work/openmx`は更新していません。
+
+
+## 2026-10-27: 独立した基底補間ライブラリ（第95段階）
+
+変更前 `f09c291b` と変更後の本体・Core/SIMDを凍結し、18 MPI×1 OpenMPで順次実行しました。
+GPUはRTX5080・既存MPS・NVHPC/OpenMPI、CPU専用本体はGCC/Intel MPI/MKLです。
+計時中にビルド、単体試験、他のOpenMX計算は重ねていません。
+
+| 入力・指標 | 変更前 | 変更後 |
+| --- | ---: | ---: |
+| sidia333 NC cluster、GPU/MPS、内部Total最大値 (秒) | 99.804 | 99.917 |
+| 同、MPI起動を含む経過時間 (秒) | 103.109 | 103.208 |
+| C60 DC、CPU専用、内部Total中央値 (秒) | 5.992 | 6.003 |
+| 同、MPI起動を含む経過時間中央値 (秒) | 6.48146 | 6.48037 |
+
+sidiaは元入力を各1回測定した25SCF上限・未収束の性能比較です。
+E差ゼロ、最大F差は約1.0e-12 Ha/bohrでした。C60は変更前後を交互に各3回測定し、
+全件27SCFで収束、対応組の印字E/F差はゼロでした。
+これらの小さな差を高速化とは主張せず、基底のライブラリ化に伴う性能低下が見られないことを確認しています。
+
+別途、収束したCPU/GPU比較17組はSCF反復数が一致し、最大差E=2.7701e-10 Ha、F=1.3561e-8 Ha/bohrでした。
+補間だけの20,280ケースは移行前後でビット単位一致です。
+`build/basis-library-20261027/` の `performance/`、`cpu-performance-results.json`、
+`numerical-summary.json`、`interpolation-parity.json` に結果を保存しました。
+AMD/A100/H100実機、Intelコンパイラ版OpenMXとの比較は今回実施していません。
+`work/openmx` は更新していません。

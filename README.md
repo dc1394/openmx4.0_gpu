@@ -119,9 +119,26 @@ command is missing, fails, or reports no usable compute capability; specify
 A cached `CMAKE_CUDA_ARCHITECTURES` value does not bypass this check. Host-only
 core builds and CPU application builds do not query a GPU.
 
-The `refactor/cpp-kokkos-core` branch begins the migration of the OpenMX
-application to C++, explicit ownership and Kokkos. The new `core/` library
-contains radial interpolation and Fourier transforms for PAOs, PAO products, nonlocal
+The goal of the `refactor/cpp-kokkos-core` branch is a set of independently
+buildable, testable and reusable C++ scientific libraries, composed into OpenMX.
+Ownership, RAII and Kokkos support that goal. See the
+[library architecture and acceptance criteria](docs/CPP_LIBRARY_ARCHITECTURE.md).
+The first package, [OpenMX::basis](modules/basis/README.md), provides the radial
+and reciprocal interpolation used by the application, with C++ and C APIs.
+It builds without Kokkos, MPI, BLAS or a GPU SDK:
+
+```sh
+cmake -S modules/basis -B build/basis
+cmake --build build/basis --parallel
+ctest --test-dir build/basis --output-on-failure
+cmake --install build/basis --prefix "$PWD/build/basis-install"
+```
+
+External CMake projects use `find_package(OpenMXBasis 0.1 CONFIG REQUIRED)`
+and link `OpenMX::basis`. This initial package covers interpolation; PAO/VPS
+file loading, full basis evaluation and two-center integrals are still to be
+extracted. The `core/` library consumes this package and contains Fourier
+transforms for PAOs, PAO products, nonlocal
 projectors and neutral-atom potentials, spherical Bessel functions and FFT-grid
 validation. PAO grids, atomic densities, orbitals, VPS/nonlocal-projector data,
 optional VNA expansion tables and their Fourier tables now have
