@@ -87,7 +87,7 @@ class UnifiedBuildTest(unittest.TestCase):
         self.assertIn('another backend', rejected.stderr)
 
     @unittest.skipUnless(shutil.which("cc"), "C compiler is required")
-    def test_density_adapters_compile_in_all_projections(self):
+    def test_basis_adapters_compile_in_all_projections(self):
         stages = dict(self.stages)
         build = self.workspace / 'density-cpu'
         result = self.prepare(build, 'CPU')
@@ -97,7 +97,7 @@ class UnifiedBuildTest(unittest.TestCase):
             with self.subTest(backend=backend):
                 result = subprocess.run(
                     ['cc', '-std=c11', '-Werror', '-fsyntax-only',
-                     str(stage / 'KumoF.c'), str(stage / 'Dr_KumoF.c')],
+                     str(stage / 'KumoF.c'), str(stage / 'Dr_KumoF.c'), str(stage / 'Gauss_Legendre.c')],
                     capture_output=True, text=True, check=False,
                 )
                 self.assertEqual(result.returncode, 0, result.stderr)

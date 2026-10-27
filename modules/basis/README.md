@@ -3,7 +3,7 @@
 OpenMX の基底処理を独立して利用する C++20 ライブラリです。
 現在の公開範囲は PAO、非局所射影子、中性原子ポテンシャル、VNA 射影子の
 動径補間、PAO/射影子の波数空間補間、PAO/VPSファイルの読み込み、
-原子密度の補間・動径導関数・球対称Hartree積分です。本体もこの実装を使用します。
+原子密度の補間・動径導関数・球対称Hartree積分とGauss–Legendre積分則の生成です。本体もこの実装を使用します。
 球面調和関数、Fourier-Bessel 変換、2中心積分は
 まだこのパッケージには含まれません。
 
@@ -152,9 +152,8 @@ const auto pao = openmx::basis::PaoFile::from_file("C6.0.pao");
 const openmx::basis::LogDensityTable density(pao.log_radii(), pao.radii(), pao.density());
 const double rho = density.sample(0.85);
 const double drho = density.derivative(0.85);
-// nodes, weights は利用者が与えるGauss-Legendre則の配列。
-const openmx::basis::GaussLegendreView quadrature(nodes, weights);
-const double hartree = openmx::basis::atomic_hartree_potential(density.view(), 0.85, quadrature);
+const openmx::basis::GaussLegendreRule quadrature(1500);
+const double hartree = openmx::basis::atomic_hartree_potential(density.view(), 0.85, quadrature.view());
 ```
 
 - 半径はbohr、密度は電子数/bohr³、動径導関数は電子数/bohr⁴、ポテンシャルはHartreeです。
@@ -182,6 +181,28 @@ const double hartree = openmx::basis::atomic_hartree_potential(density.view(), 0
 例外・大域エラー状態を使わず、不正な点数・null配列・NaN座標などはNaNを返します。
 本体のHartree生成はC++所有の一時配列で全物理点を計算し、成功後だけ出力へコピーします。
 空原子はゼロを返し、失敗時は出力を保持します。MPIとKokkosの初期化は要求しません。
+
+## 積分則を生成する
+
+`<openmx/basis/quadrature.hpp>` の `GaussLegendreRule(count)` は[-1,1]の積分点・重みを
+連続配列に所有し、`view()` で確保なしの借用ビューを返します。点数は `1 <= count < INT_MAX`、
+生成コストはO(count²)、ビュー取得はO(1)です。次数は利用者が選び、Hartreeの例の1500点は
+本体の細密積分と同じです。外部から作った積分則には引き続き `GaussLegendreView(nodes, weights)` が使えます。
+
+節点は昇順です。元のOpenMXと同じNewton反復・停止判定1e-13・最終反復時の導関数による重みを
+維持し、奇数点数の中央節点に残るごく小さい丸め値も勝手にゼロへ置き換えません。
+非有限な反復・100反復での未収束は例外になります。コピーは独立、ムーブは所有権を移し、
+同じ不変の積分則を複数スレッドで使用できます。借用配列の寿命は所有者の破棄・代入までです。
+
+`<openmx/basis/quadrature.h>` の `openmx_basis_gauss_legendre()` はC用の入口です。
+呼出側が用意した、重ならない各count要素の出力に全結果を渡します。内部の確保・生成が失敗した場合は
+0を返し、両方の出力を保持します。余分なパディングは要求せず、MPIやKokkosの初期化も不要です。
+本体の古い `Gauss_Legendre` C関数は、この入口を使って従来の余白・制御引数の規約を保つアダプターです。
+
+本体では細密積分の所有者をC++の同期コールバック境界内に置き、原子データの準備後に破棄します。
+コールバック中にだけ節点・重みを借用し、入れ子の呼び出しや例外でも所有領域を共有・保持しません。
+従来の `FineGL_Abscissae` / `FineGL_Weight` 大域配列は不要になりました。
+他の計算でも使う粗・中密度の積分配列は、引き続き本体側に残っています。
 
 ## 動径・波数表のデータと数値規約
 
@@ -221,6 +242,8 @@ C ABI は呼び出しごとのエラーバッファを使い、失敗時に数�
 射影子0個の組合せを検証します。密度では解析的な値・導関数、有限差分、旧実装の参照値、
 一定密度のHartree解析解、異常入力と出力保持を検証します。
 スカラー評価とHartree積分が確保を行わないことも検査します。
+生成したGauss–Legendre則は多項式の厳密積分、節点の順序・対称性、次数1500までの規格化、
+コピー・ムーブ・並行生成と確保失敗時の出力保持を検査します。
 
 `basis-package-consumer` はこのディレクトリだけをコピーして独立ビルド・インストールし、
 インストール先と元のソース・ビルドディレクトリを移動してから、外部 C/C++ プログラムを

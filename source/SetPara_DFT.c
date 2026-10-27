@@ -26,27 +26,28 @@
 #include "openmx_core_pao_file.h"
 #include "openmx_core_vps_file.h"
 #include "openmx_core_atomic_density.h"
+#include "openmx_core_quadrature.h"
 
 
 static void Set_Atom_Weight();
 static void Set_Atom_Symbol();
 static void Read_PAO(OpenMXCoreContext *core, const OpenMXNeutralGridMetadataView *metadata, int spe, int metadata_only, MPI_Comm communicator, const char *file);
 typedef struct {
-  int count;
-  const double *nodes, *weights;
-} OpenMXGaussRuleInput;
-typedef struct {
   OpenMXCoreContext *core;
   const OpenMXNeutralGridMetadataView *metadata;
   int species;
-  OpenMXGaussRuleInput hartree_rule, projector_rule;
+  OpenMXGaussRuleData hartree_rule, projector_rule;
 } OpenMXVpsReadInput;
+typedef struct {
+  OpenMXCoreContext *core;
+  OpenMXGaussRuleData projector_rule;
+} OpenMXReadParaInput;
 static int Read_VPS(void *user, const OpenMXVpsFileData *data, char *error, size_t error_capacity);
 static void Read_VPS_File(OpenMXCoreContext *core, const OpenMXNeutralGridMetadataView *metadata,
                           int spe, int metadata_only, MPI_Comm communicator, const char *file,
-                          const OpenMXGaussRuleInput *hartree_rule, const OpenMXGaussRuleInput *projector_rule);
-static void ReadPara_DFT(OpenMXCoreContext *core, const OpenMXGaussRuleInput *hartree_rule,
-                         const OpenMXGaussRuleInput *projector_rule);
+                          const OpenMXGaussRuleData *hartree_rule, const OpenMXGaussRuleData *projector_rule);
+static int ReadPara_DFT(void *user, const OpenMXGaussRuleData *hartree_rule,
+                        char *error, size_t error_capacity);
 static void Set_BasisPara();
 static void Set_Comp2Real();
 static void Check_InitDensity();
@@ -97,26 +98,28 @@ void SetPara_DFT(OpenMXCoreContext *core)
   fg = 1;
   nf = CoarseGL_Mesh;
   Gauss_Legendre(CoarseGL_Mesh,CoarseGL_Abscissae,CoarseGL_Weight,&nf,&fg);
+  if (!fg) { MPI_Abort(mpi_comm_level1,1); return; }
 
   /* medium mesh */  
 
   fg = 1;
   nf = GL_Mesh;
   Gauss_Legendre(GL_Mesh,GL_Abscissae,GL_Weight,&nf,&fg);
-
-  /* fine mesh */  
-
-  fg = 1;
-  nf = FineGL_Mesh;
-  Gauss_Legendre(FineGL_Mesh,FineGL_Abscissae,FineGL_Weight,&nf,&fg);
+  if (!fg) { MPI_Abort(mpi_comm_level1,1); return; }
 
   /****************************************************
            Read parameters for DFT calculations
   ****************************************************/
 
-  const OpenMXGaussRuleInput hartree_rule={FineGL_Mesh,FineGL_Abscissae,FineGL_Weight};
-  const OpenMXGaussRuleInput projector_rule={GL_Mesh,GL_Abscissae,GL_Weight};
-  ReadPara_DFT(core,&hartree_rule,&projector_rule);
+  OpenMXReadParaInput input={core,{GL_Mesh,GL_Abscissae,GL_Weight}};
+  char quadrature_error[256];
+  /* Fine quadrature is owned only while atomic data are prepared. */
+  if (!openmx_core_with_gauss_rule(FineGL_Mesh,ReadPara_DFT,&input,
+                                   quadrature_error,sizeof(quadrature_error))) {
+    fprintf(stderr,"ReadPara_DFT: %s\n",quadrature_error);
+    MPI_Abort(mpi_comm_level1,1);
+    return;
+  }
   const OpenMXAtomicViews atomic_views=OpenMX_AtomicTables(core);
   const OpenMXAtomicViews *atomic=&atomic_views;
   Check_InitDensity();
@@ -502,17 +505,18 @@ void SetPara_DFT(OpenMXCoreContext *core)
 
 
 
-static void ReadPara_DFT(OpenMXCoreContext *core, const OpenMXGaussRuleInput *hartree_rule,
-                         const OpenMXGaussRuleInput *projector_rule)
+static int ReadPara_DFT(void *user, const OpenMXGaussRuleData *hartree_rule,
+                        char *error, size_t error_capacity)
 {
-
+  const OpenMXReadParaInput *input=(const OpenMXReadParaInput*)user;
+  OpenMXCoreContext *core=input->core;
+  const OpenMXGaussRuleData *projector_rule=&input->projector_rule;
   OpenMXNeutralGridMetadataView metadata;
   char metadata_error[256]={0};
   if (!openmx_core_neutral_grid_metadata_get(core,&metadata,metadata_error,sizeof(metadata_error)) ||
       !metadata.counts || !metadata.spacing || metadata.species!=(size_t)SpeciesNum) {
-    fprintf(stderr,"ReadPara_DFT: neutral grid metadata unavailable or shape mismatch: %s\n",metadata_error);
-    MPI_Abort(mpi_comm_level1,1);
-    return;
+    snprintf(error,error_capacity,"neutral grid metadata unavailable or shape mismatch: %s",metadata_error);
+    return 0;
   }
 
   int spe,po;
@@ -660,6 +664,7 @@ static void ReadPara_DFT(OpenMXCoreContext *core, const OpenMXGaussRuleInput *ha
   exit(0);
   */
 
+  return 1;
 }
 
 void Read_PAO(OpenMXCoreContext *core, const OpenMXNeutralGridMetadataView *metadata,
@@ -956,7 +961,7 @@ static int Read_VPS(void *user, const OpenMXVpsFileData *data, char *diagnostic,
 
 static void Read_VPS_File(OpenMXCoreContext *core, const OpenMXNeutralGridMetadataView *metadata,
                           int spe, int metadata_only, MPI_Comm communicator, const char *file,
-                          const OpenMXGaussRuleInput *hartree_rule, const OpenMXGaussRuleInput *projector_rule)
+                          const OpenMXGaussRuleData *hartree_rule, const OpenMXGaussRuleData *projector_rule)
 {
   OpenMXVpsReadInput input={core,metadata,spe,*hartree_rule,*projector_rule};
   char error[512];

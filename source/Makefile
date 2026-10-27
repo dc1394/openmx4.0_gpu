@@ -638,7 +638,7 @@ Get_OneD_HS_Col.o: Get_OneD_HS_Col.c openmx_common.h
 #
 #
 #  
-SetPara_DFT.o: SetPara_DFT.c openmx_common.h openmx_core_pao_file.h openmx_core_vps_file.h openmx_core_atomic_density.h
+SetPara_DFT.o: SetPara_DFT.c openmx_common.h openmx_core_pao_file.h openmx_core_vps_file.h openmx_core_atomic_density.h openmx_core_quadrature.h
 	$(CC) -c SetPara_DFT.c
 XC_Ceperly_Alder.o: XC_Ceperly_Alder.c openmx_common.h
 	$(CC) -c XC_Ceperly_Alder.c
@@ -747,7 +747,7 @@ Orbital_Moment.o: Orbital_Moment.c openmx_common.h
 	$(CC) -c Orbital_Moment.c
 Smoothing_Func.o: Smoothing_Func.c openmx_common.h
 	$(CC) -c Smoothing_Func.c
-Gauss_Legendre.o: Gauss_Legendre.c openmx_common.h
+Gauss_Legendre.o: Gauss_Legendre.c openmx_basis_quadrature.h ../modules/basis/include/openmx/basis/quadrature.h
 	$(CC) -c Gauss_Legendre.c
 # NVHPC 26.3 + -acc makes DSYGV fail here, corrupting ON2 poles.
 zero_cfrac.o: zero_cfrac.c openmx_common.h

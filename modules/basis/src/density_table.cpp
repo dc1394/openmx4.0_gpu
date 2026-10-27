@@ -237,17 +237,6 @@ LogDensityView LogDensityTable::view() const
   return {log_grid_,radii_,values_,LogDensityView::Validated{}};
 }
 
-GaussLegendreView::GaussLegendreView(std::span<const double> nodes,std::span<const double> weights)
-  :nodes_(nodes),weights_(weights)
-{
-  if(nodes_.empty() || nodes_.size()!=weights_.size() || nodes_.size()>INT_MAX)
-    throw std::invalid_argument("invalid atomic Hartree quadrature shape");
-  for(std::size_t i=0;i<nodes_.size();++i)
-    if(!std::isfinite(nodes_[i]) || nodes_[i]<-1 || nodes_[i]>1 ||
-       !std::isfinite(weights_[i]) || weights_[i]<=0)
-      throw std::invalid_argument("invalid atomic Hartree quadrature node or weight");
-}
-
 double atomic_hartree_potential(const LogDensityView& density,double R,const GaussLegendreView& quadrature)
 {
   if(!std::isfinite(R) || R<=0)throw std::invalid_argument("atomic Hartree radius must be positive");

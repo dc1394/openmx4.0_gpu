@@ -4451,3 +4451,31 @@ GPUケースの再現性の限界と全結果を保存し、閾値を緩めて�
 `charge-tight/`、`legacy-density-results.json` に証拠を保存しました。
 AMD/A100/H100実機、Intelコンパイラ版OpenMXとの性能比較は今回実施していません。
 `work/openmx` は更新していません。
+
+
+## 2026-10-28: Gauss–Legendre則の独立化と細密積分配列の廃止（第99段階）
+
+変更前 `a1fecc9a` と変更後の本体・Core/SIMDを凍結し、18 MPI×1 OpenMPで順次実行しました。
+GPUはRTX5080・既存MPS・NVHPC/OpenMPI、CPU専用本体はGCC/Intel MPI/MKLです。
+計時中にビルド、単体試験、他のOpenMX計算は重ねていません。
+
+| 入力・指標 | 変更前 | 変更後 |
+| --- | ---: | ---: |
+| sidia333 NC cluster、GPU/MPS、内部Total最大値 (秒) | 99.246 | 99.187 |
+| 同、MPI起動を含む経過時間 (秒) | 102.561 | 102.307 |
+| C60 DC、CPU専用、内部Total中央値 (秒) | 5.953 | 5.894 |
+| 同、MPI起動を含む経過時間中央値 (秒) | 6.42922 | 6.38068 |
+
+sidiaは元入力を各1回測定した25SCF上限・未収束の比較で、E差約6.03e-12 Ha・最大F差約1e-12 Ha/bohrでした。
+C60は交互各3回、全件27SCF収束・印字E/F差ゼロです。単発・短時間の差を一般的な高速化とは主張せず、
+GeForce約105秒の目安とCPU性能を維持する確認として記録します。
+
+収束したCPU/GPU比較29組は反復数も一致し、最大E差1.2011e-9 Ha・F差1.4047e-8 Ha/bohrでした。
+電子数指定GPUは前段階の交互診断の最初の変更版を基準にした1組であり、
+第98段階に記録したGPU結果の揺らぎを解決したとは扱いません。
+139次数の積分点・重み33,352値は、旧CをGCCの厳密な浮動小数点設定でコンパイルした比較と
+ビット単位で一致しています。
+`build/quadrature-library-20261028/` の `performance/`、`cpu-performance-results.json`、
+`numerical-summary.json`、`quadrature-parity.json` に証拠を保存しました。
+AMD/A100/H100実機、Intelコンパイラ版OpenMXとの性能比較は今回実施していません。
+`work/openmx` は更新していません。

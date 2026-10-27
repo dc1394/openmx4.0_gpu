@@ -1,5 +1,6 @@
 #pragma once
 
+#include <openmx/basis/quadrature.hpp>
 #include <span>
 #include <utility>
 #include <vector>
@@ -50,17 +51,6 @@ class LogDensityTable {
 
  private:
   std::vector<double> log_grid_,radii_,values_;
-};
-
-// Nodes on [-1,1] and positive weights, borrowed and validated once. The caller
-// chooses the quadrature order. The supplied order of nodes is preserved.
-class GaussLegendreView {
- public:
-  GaussLegendreView(std::span<const double> nodes, std::span<const double> weights);
-  std::span<const double> nodes() const noexcept { return nodes_; }
-  std::span<const double> weights() const noexcept { return weights_; }
- private:
-  std::span<const double> nodes_,weights_;
 };
 
 // Spherical density in electrons/bohr^3, radius in bohr, result in Hartree.

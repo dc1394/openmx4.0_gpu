@@ -23,6 +23,7 @@ file(RENAME "${TEST_ROOT}/build" "${TEST_ROOT}/hidden-build")
 file(COPY "${BASIS_SOURCE}/examples/radial/" DESTINATION "${TEST_ROOT}/consumer")
 file(COPY "${BASIS_SOURCE}/tests/test_c.c" DESTINATION "${TEST_ROOT}/consumer")
 file(COPY "${BASIS_SOURCE}/tests/test_density_c.c" DESTINATION "${TEST_ROOT}/consumer")
+file(COPY "${BASIS_SOURCE}/tests/test_quadrature_c.c" DESTINATION "${TEST_ROOT}/consumer")
 configure_file("${BASIS_SOURCE}/examples/pao/main.cpp" "${TEST_ROOT}/consumer/pao_example.cpp" COPYONLY)
 configure_file("${BASIS_SOURCE}/examples/vps/main.cpp" "${TEST_ROOT}/consumer/vps_example.cpp" COPYONLY)
 configure_file("${BASIS_SOURCE}/examples/density/main.cpp" "${TEST_ROOT}/consumer/density_example.cpp" COPYONLY)
@@ -91,6 +92,9 @@ add_test(NAME density-consumer COMMAND density_consumer "${CMAKE_CURRENT_SOURCE_
 add_executable(density_c_consumer test_density_c.c)
 target_link_libraries(density_c_consumer PRIVATE OpenMX::basis)
 add_test(NAME density-c-consumer COMMAND density_c_consumer)
+add_executable(quadrature_c_consumer test_quadrature_c.c)
+target_link_libraries(quadrature_c_consumer PRIVATE OpenMX::basis)
+add_test(NAME quadrature-c-consumer COMMAND quadrature_c_consumer)
 ]=])
 run("${CMAKE_COMMAND}" -S "${TEST_ROOT}/consumer" -B "${TEST_ROOT}/consumer-build"
   "-DCMAKE_CXX_COMPILER=${CXX}" "-DCMAKE_C_COMPILER=${CC}" -DCMAKE_BUILD_TYPE=Release
