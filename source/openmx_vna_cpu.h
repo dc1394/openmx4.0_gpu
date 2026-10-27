@@ -2,6 +2,7 @@
 #define OPENMX_VNA_CPU_H
 #include "openmx_two_center.h"
 #include "openmx_core_vna.h"
+#include "openmx_core_vna_host_tables.h"
 #include "openmx_core_atom_pairs.h"
 #include "openmx_vna_tables.h"
 #include "openmx_core_vna_matrix.h"
@@ -15,62 +16,32 @@
    (openmx_setpro_gaunt.h). Legacy mode leaves everything empty. */
 typedef struct {
   int mode, points, order_stride, radials_max;
-  size_t *species_offset;   /* [species+1] blocks */
-  int *radials;             /* [species] active radial functions */
-  double *product;          /* [block][points][order_stride], block = left*radials+right */
+  OpenMXVnaHostProducts *packing;
+  const size_t *species_offset;   /* [species+1] blocks */
+  const int *radials;             /* [species] active radial functions */
+  const double *product;          /* [block][points][order_stride], block = left*radials+right */
   SetProGauntTable gaunt;
 } SetProVna23Host;
 
 static void SetPro_Vna23Host_Build(SetProVna23Host *host,const OpenMXVnaPreparation *owner,const OpenMXVnaPreparationBuffers *preparation,
     const SetProVnaTables *tables)
 {
-  const int species=preparation->species,points=preparation->points;
-  int spe,L0,Mul0,L1,Mul1,LL,i,lmax=0;
-  size_t blocks=0;
   memset(host,0,sizeof(*host));
   host->mode=OpenMX_HostSimdMode();
   if (host->mode==OPENMX_HOST_SIMD_LEGACY) return;
-  host->points=points;
-  for (spe=0; spe<species; spe++) if (lmax<preparation->maximum_angular[spe]) lmax=preparation->maximum_angular[spe];
-  host->order_stride=(2*lmax+1+7)/8*8;
-  host->species_offset=(size_t*)SetPro_HostAlloc(sizeof(size_t)*(size_t)(species+1));
-  host->radials=(int*)SetPro_HostAlloc(sizeof(int)*(size_t)(species>0?species:1));
-  for (spe=0; spe<species; spe++){
-    int radials=0;
-    for (L0=0; L0<=preparation->maximum_angular[spe]; L0++)
-      radials+=preparation->basis_counts[(size_t)spe*preparation->angular_channels+L0];
-    host->radials[spe]=radials;
-    if (host->radials_max<radials) host->radials_max=radials;
-    host->species_offset[spe]=blocks;
-    blocks+=(size_t)radials*radials;
-  }
-  host->species_offset[species]=blocks;
-  host->product=(double*)SetPro_HostAlloc(sizeof(double)*(blocks*(size_t)points*host->order_stride+1));
-  for (spe=0; spe<species; spe++){
-    for (L0=0; L0<=preparation->maximum_angular[spe]; L0++){
-      for (Mul0=0; Mul0<preparation->basis_counts[(size_t)spe*preparation->angular_channels+L0]; Mul0++){
-        for (L1=L0; L1<=preparation->maximum_angular[spe]; L1++){
-          for (Mul1=0; Mul1<preparation->basis_counts[(size_t)spe*preparation->angular_channels+L1]; Mul1++){
-            const size_t block=host->species_offset[spe]
-              +openmx_core_vna_basis_radial(preparation,spe,L0,Mul0)*(size_t)host->radials[spe]
-              +openmx_core_vna_basis_radial(preparation,spe,L1,Mul1);
-            double *table=host->product+block*(size_t)points*host->order_stride;
-            memset(table,0,sizeof(double)*(size_t)points*host->order_stride);
-            for (LL=0; LL<=2*L1; LL++){
-              const double *row=openmx_product_radial_row(&tables->products,spe,L0,Mul0,L1,Mul1,LL);
-              for (i=0; i<points; i++) table[(size_t)i*host->order_stride+LL]=row[i];
-            }
-          }
-        }
-      }
-    }
-  }
+  OpenMXVnaHostProductData packed;
+  char error[160];
+  host->packing=openmx_core_vna_host_products_create(owner,&tables->products,&packed,error,sizeof(error));
+  if (!host->packing) { SetPro_gpu_abort(error);abort(); }
+  host->points=preparation->points;host->order_stride=packed.order_stride;
+  host->radials_max=packed.radials_max;host->radials=packed.radials;
+  host->species_offset=packed.species_offsets;host->product=packed.products;
   SetPro_GauntTable_Borrow(&host->gaunt,owner,OPENMX_VNA_GAUNT_PRODUCT);
 }
 static void SetPro_Vna23Host_Free(SetProVna23Host *host)
 {
-  if (host->mode==OPENMX_HOST_SIMD_LEGACY) return;
-  free(host->species_offset);free(host->radials);free(host->product);
+  openmx_core_vna_host_products_destroy(host->packing);host->packing=NULL;
+  host->species_offset=NULL;host->radials=NULL;host->product=NULL;
 }
 
 /* Internal host adapter shared by CUDA/HIP and both pair orientations.

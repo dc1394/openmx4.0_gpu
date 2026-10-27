@@ -6,6 +6,7 @@
 #include "openmx_core_nonlocal.h"
 #include "openmx_core_vna.h"
 #include "openmx_core_vna_preparation.h"
+#include "openmx_core_vna_host_tables.h"
 #include "openmx_core_dsvna.h"
 #include "openmx_core_hvna.h"
 #include "openmx_core_hvna_workspace.h"
@@ -20,6 +21,7 @@
 #include <openmx/core/nonlocal_workspace.hpp>
 #include <openmx/core/vna_workspace.hpp>
 #include <openmx/core/vna_preparation.hpp>
+#include <openmx/core/vna_host_tables.hpp>
 #include <openmx/core/dsvna_workspace.hpp>
 #include <openmx/core/hvna_layout.hpp>
 #include <openmx/core/hvna_workspace.hpp>
@@ -56,6 +58,17 @@ struct OpenMXVnaPreparation {
   OpenMXVnaPreparation(openmx::core::VnaPreparationShape shape,
       std::span<const openmx::core::SpeciesBasisView> species) : implementation(shape,species) {}
   openmx::core::VnaPreparation implementation;
+};
+
+struct OpenMXVnaHostProjectors {
+  OpenMXVnaHostProjectors(openmx::core::VnaProjectorPackingShape shape,const OpenMXVnaHostProjectorInput& input)
+    : implementation(shape,input) {}
+  openmx::core::VnaHostProjectors implementation;
+};
+struct OpenMXVnaHostProducts {
+  OpenMXVnaHostProducts(const openmx::core::RadialBasisLayout& basis,int points,const OpenMXProductRadialView& input)
+    : implementation(basis,points,input) {}
+  openmx::core::VnaHostProducts implementation;
 };
 
 struct OpenMXDsvnaWorkspace {
@@ -641,6 +654,36 @@ extern "C" void openmx_core_vna_preparation_destroy(OpenMXVnaPreparation* prepar
 {
   delete preparation;
 }
+
+extern "C" OpenMXVnaHostProjectors* openmx_core_vna_host_projectors_create(
+    const OpenMXVnaPreparation* preparation,const OpenMXVnaHostProjectorInput* input,
+    OpenMXVnaHostProjectorData* out,char* error,std::size_t capacity)
+{
+  OpenMXVnaHostProjectors* result=nullptr;
+  checked_call(error,capacity,[&] {
+    if(!preparation || !input || !out)throw std::invalid_argument("missing VNA projector packing input/output");
+    const auto& work=preparation->implementation;const auto& shape=work.shape();
+    auto owner=std::make_unique<OpenMXVnaHostProjectors>(openmx::core::VnaProjectorPackingShape{
+        static_cast<int>(work.basis().maximum_angular().size()),shape.points,shape.projector_angular,shape.projector_multiplicity},*input);
+    *out=owner->implementation.view();result=owner.release();
+  });
+  return result;
+}
+extern "C" OpenMXVnaHostProducts* openmx_core_vna_host_products_create(
+    const OpenMXVnaPreparation* preparation,const OpenMXProductRadialView* input,
+    OpenMXVnaHostProductData* out,char* error,std::size_t capacity)
+{
+  OpenMXVnaHostProducts* result=nullptr;
+  checked_call(error,capacity,[&] {
+    if(!preparation || !input || !out)throw std::invalid_argument("missing VNA product packing input/output");
+    const auto& work=preparation->implementation;
+    auto owner=std::make_unique<OpenMXVnaHostProducts>(work.basis(),work.shape().points,*input);
+    *out=owner->implementation.view();result=owner.release();
+  });
+  return result;
+}
+extern "C" void openmx_core_vna_host_projectors_destroy(OpenMXVnaHostProjectors* owner) { delete owner; }
+extern "C" void openmx_core_vna_host_products_destroy(OpenMXVnaHostProducts* owner) { delete owner; }
 
 extern "C" OpenMXDsvnaWorkspace* openmx_core_dsvna_create(const OpenMXVnaPreparation* preparation,
     OpenMXDsvnaBuffers* buffers, char* error, std::size_t capacity)

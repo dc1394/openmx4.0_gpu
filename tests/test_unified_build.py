@@ -109,6 +109,8 @@ class UnifiedBuildTest(unittest.TestCase):
                           '#include "openmx_basis_gaunt.h"\n'
                           '#include "openmx_core_vna_preparation.h"\n'
                           '#include "openmx_core_vna_simd_workspace.h"\n'
+                          '#include "openmx_core_radial_views.h"\n'
+                          '#include "openmx_core_vna_host_tables.h"\n'
                           '#include "openmx_orbital_harmonics.h"\n'
                           '#include "openmx_basis_lebedev.h"\n'
                           '#include "openmx_core_real_harmonics.h"\n'
@@ -452,6 +454,9 @@ class UnifiedBuildTest(unittest.TestCase):
                     self.assertIn("../modules/basis/include/openmx/basis/gaunt.h", row.split())
                     self.assertIn("openmx_core_vna_simd_workspace.h", row.split())
                     self.assertIn("../core/include/openmx_core_vna_simd_workspace.h", row.split())
+                    for header in ("openmx_core_radial_views.h", "openmx_core_vna_host_tables.h"):
+                        self.assertIn(header, row.split())
+                        self.assertIn("../core/include/" + header, row.split())
                     if obj not in angular_objects:
                         helper = "openmx_cwf_workspace.h" if "CWF" in obj else "openmx_neutral_atom.h"
                         self.assertIn(helper, row.split())

@@ -187,6 +187,11 @@ without allocation, and empty basis groups skip absent angular buffers.
 The changed VNA descriptors use distinct `_flat` C entry points and a versioned
 private SIMD dispatcher. Rebuild and deploy the application, Core and SIMD
 libraries together; mixed versions fail to resolve their interface symbols.
+Shared CPU projector, conversion and radial-product transposes also use C++
+owners. They snapshot explicit input views, expose immutable contiguous tables
+to workers and release partial construction on failure. The flat radial-view
+header can be used without including a calculation context. Native quadratures
+and backend kernels keep their existing operation order.
 HVNA archive offsets and projector energies now share one C++ owner across
 CUDA/HIP. Resident archives, rank turns and capacity recovery receive explicit
 invocation state; their backend memory budgets and contraction order are preserved.

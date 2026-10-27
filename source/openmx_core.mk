@@ -67,3 +67,5 @@ Total_Energy.o Total_Energy_GPU.o Stress.o: openmx_basis_lebedev.h ../modules/ba
 $(OBJS) openmx_api.o: openmx_basis_gaunt.h ../modules/basis/include/openmx/basis/detail/gaunt.h ../modules/basis/include/openmx/basis/gaunt.h
 
 $(OBJS) openmx_api.o: openmx_core_vna_simd_workspace.h ../core/include/openmx_core_vna_simd_workspace.h
+
+$(OBJS) openmx_api.o: openmx_core_radial_views.h ../core/include/openmx_core_radial_views.h openmx_core_vna_host_tables.h ../core/include/openmx_core_vna_host_tables.h

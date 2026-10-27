@@ -1,6 +1,7 @@
 #ifndef OPENMX_DSVNA_CPU_H
 #define OPENMX_DSVNA_CPU_H
 #include "openmx_core_dsvna.h"
+#include "openmx_core_vna_host_tables.h"
 #include "openmx_core_atom_pairs.h"
 #include "openmx_vna_tables.h"
 #include "openmx_projector_matrix.h"
@@ -15,41 +16,27 @@
 typedef struct {
   int mode, points, projectors;
   size_t table_stride;
-  double *projector_table;   /* [species][points][table_stride] */
+  OpenMXVnaHostProjectors *packing;
+  const double *projector_table;   /* [species][points][table_stride] */
   SetProGauntTable gaunt;
   /* the m sum and the conversions through the Core (openmx_core_vna_angular_flat /
      _convert): shape caps, the reversed-harmonics padding, and the conversion
      matrices of every projector angular momentum transposed to [l][k][M1] */
   int angular, l0max, l1max, llmax, pad;
   size_t cy_stride, cy_length, width;   /* harmonic tables: one slice of cy_stride per LL */
-  double *convt_r, *convt_i;
+  const double *convt_r, *convt_i;
 } SetProDsvnaHost;
 
 static void SetPro_DsvnaHost_Build(SetProDsvnaHost *host,const OpenMXVnaPreparation *owner,const OpenMXVnaPreparationBuffers *preparation,
     const SetProVnaTables *tables)
 {
   const int species=preparation->species,points=preparation->points,projectors=preparation->projectors;
-  int spe,L,L1,Mul1,i,Lmax=0,l0max=0,llmax=0;
+  int spe,L,Lmax=0,l0max=0,llmax=0;
   memset(host,0,sizeof(*host));
   host->mode=OpenMX_HostSimdMode();
   if (host->mode==OPENMX_HOST_SIMD_LEGACY) return;
   host->points=points;host->projectors=projectors;
   host->table_stride=((size_t)projectors+7)/8*8;
-  /* the flat projector index of the sums is L1*multiplicity+Mul1; otherwise keep the loops */
-  if ((preparation->projector_lmax+1)*preparation->projector_multiplicity==projectors && projectors>0) {
-    host->projector_table=(double*)SetPro_HostAlloc(sizeof(double)*((size_t)species*points*host->table_stride+1));
-    memset(host->projector_table,0,sizeof(double)*(size_t)species*points*host->table_stride);
-    for (spe=0; spe<species; spe++){
-      double *table=host->projector_table+(size_t)spe*points*host->table_stride;
-      L=0;
-      for (L1=0; L1<=preparation->projector_lmax; L1++){
-        for (Mul1=0; Mul1<preparation->projector_multiplicity; Mul1++,L++){
-          const double *row=openmx_radial_row4(&tables->projectors,spe,L1,Mul1);
-          for (i=0; i<points; i++) table[(size_t)i*host->table_stride+L]=row[i];
-        }
-      }
-    }
-  }
   for (L=0; L<projectors; L++) if (Lmax<preparation->projector_angular[L]) Lmax=preparation->projector_angular[L];
   for (spe=0; spe<species; spe++){
     const int lfi=preparation->maximum_angular[spe]<Lmax?2*Lmax:2*preparation->maximum_angular[spe];
@@ -61,31 +48,23 @@ static void SetPro_DsvnaHost_Build(SetProDsvnaHost *host,const OpenMXVnaPreparat
   /* the Core conversion writes float DS_VNA rows: double storage keeps the
      legacy m sum and conversion (the other host SIMD stages are unchanged) */
   host->angular=(sizeof(Type_DS_VNA)==sizeof(float) && 2*l0max+1<=16 && 2*host->l1max+1<=32 &&
-                 host->projector_table!=NULL);
+                 projectors>0);
   host->pad=l0max+host->l1max;
   host->cy_stride=(size_t)(host->pad+(2*llmax+1>llmax+l0max+host->l1max+8?2*llmax+1:llmax+l0max+host->l1max+8)+8);
   host->cy_length=(size_t)(llmax+1)*host->cy_stride;
   host->width=tables->conversion_width;
-  if (host->angular){
-    const size_t width=host->width,count=(size_t)(host->l1max+1)*width*width;
-    int l,row,col;
-    host->convt_r=(double*)SetPro_HostAlloc(sizeof(double)*(count+1));
-    host->convt_i=(double*)SetPro_HostAlloc(sizeof(double)*(count+1));
-    memset(host->convt_r,0,sizeof(double)*count);memset(host->convt_i,0,sizeof(double)*count);
-    for (l=0; l<=host->l1max; l++)
-      for (row=0; row<=2*l; row++)
-        for (col=0; col<=2*l; col++){
-          const dcomplex value=SetPro_Conversion(tables,l,row,col);
-          host->convt_r[((size_t)l*width+col)*width+row]=value.r;
-          host->convt_i[((size_t)l*width+col)*width+row]=value.i;
-        }
-  }
+  const OpenMXVnaHostProjectorInput input={tables->projectors,tables->conversion,host->width,host->angular};
+  OpenMXVnaHostProjectorData packed;
+  char error[160];
+  host->packing=openmx_core_vna_host_projectors_create(owner,&input,&packed,error,sizeof(error));
+  if (!host->packing) { SetPro_gpu_abort(error);abort(); }
+  host->table_stride=packed.stride;host->projector_table=packed.projectors;
+  host->convt_r=packed.conversion_real;host->convt_i=packed.conversion_imag;
 }
 static void SetPro_DsvnaHost_Free(SetProDsvnaHost *host)
 {
-  if (host->mode==OPENMX_HOST_SIMD_LEGACY) return;
-  free(host->projector_table);host->projector_table=NULL;
-  free(host->convt_r);free(host->convt_i);host->convt_r=host->convt_i=NULL;
+  openmx_core_vna_host_projectors_destroy(host->packing);host->packing=NULL;
+  host->projector_table=NULL;host->convt_r=host->convt_i=NULL;
 }
 
 /* Shared CPU projector assembly. Preparation outlives all workers; only
