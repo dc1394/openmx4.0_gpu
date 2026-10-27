@@ -883,7 +883,10 @@ __global__ void csr_dm_split_kernel(std::size_t count, double *dm)
     }
 }
 
-template <int NMAX>
+/* Fixed spin counts remove inner-loop tests and unused live accumulators in
+   the collinear paths.  SPINS=0 preserves the generic 1..4-component kernel.
+   Keep each point's term/row summation order and double-float operations. */
+template <int NMAX, int SPINS>
 __global__ __launch_bounds__(kCsrDfThreads) void csr_density_df_kernel(
     std::size_t output_count, int spin_count, const std::uint32_t *__restrict__ out_ptr,
     const std::uint32_t *__restrict__ term_pt, const std::uint32_t *__restrict__ pt_pair,
@@ -893,9 +896,11 @@ __global__ __launch_bounds__(kCsrDfThreads) void csr_density_df_kernel(
     const float *__restrict__ o1, const float2 *__restrict__ dmf, double *__restrict__ den)
 {
 #pragma clang fp contract(off)
+    constexpr int storage_spins = SPINS > 0 ? SPINS : 4;
+    const int active_spins = SPINS > 0 ? SPINS : spin_count;
     const std::size_t out = static_cast<std::size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
     if (out >= output_count) return;
-    double g[4] = {0.0, 0.0, 0.0, 0.0};
+    double g[storage_spins] = {};
 
     for (std::uint32_t q = out_ptr[out]; q < out_ptr[out + 1]; ++q) {
         const std::uint32_t pt = term_pt[q];
@@ -906,7 +911,7 @@ __global__ __launch_bounds__(kCsrDfThreads) void csr_density_df_kernel(
         /* the central atom's sphere point and the neighbour's overlap point */
         const float *phi0 = o0 + o0off[pair] + static_cast<std::size_t>(nc[pt]) * static_cast<std::size_t>(n0);
         const float *phi1 = o1 + o1off[pair] + (static_cast<std::size_t>(pt) - noff[pair]) * static_cast<std::size_t>(n1);
-        float eh[4] = {0.0f, 0.0f, 0.0f, 0.0f}, el[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+        float eh[storage_spins] = {}, el[storage_spins] = {};
         float f1[NMAX > 0 ? NMAX : 1];
 
         if constexpr (0 < NMAX) {
@@ -916,8 +921,8 @@ __global__ __launch_bounds__(kCsrDfThreads) void csr_density_df_kernel(
         for (int i = 0; i < n0; ++i) {
             const float a = phi0[i];
 #pragma unroll
-            for (int s = 0; s < 4; ++s) {
-                if (s >= spin_count) break;
+            for (int s = 0; s < storage_spins; ++s) {
+                if (s >= active_spins) break;
                 const float2 *row = dp + static_cast<std::size_t>(s) * mat + static_cast<std::size_t>(i) * n1;
                 float ts = 0.0f, tc = 0.0f, qs = 0.0f;
                 if constexpr (0 < NMAX) {
@@ -939,16 +944,30 @@ __global__ __launch_bounds__(kCsrDfThreads) void csr_density_df_kernel(
             }
         }
 #pragma unroll
-        for (int s = 0; s < 4; ++s) {
-            if (s >= spin_count) break;
+        for (int s = 0; s < storage_spins; ++s) {
+            if (s >= active_spins) break;
             g[s] += static_cast<double>(eh[s]) + static_cast<double>(el[s]);
         }
     }
 #pragma unroll
-    for (int s = 0; s < 4; ++s) {
-        if (s >= spin_count) break;
+    for (int s = 0; s < storage_spins; ++s) {
+        if (s >= active_spins) break;
         den[static_cast<std::size_t>(s) * output_count + out] = g[s];
     }
+}
+
+template <int NMAX, int SPINS>
+hipError_t csr_density_df_launch_spin(std::size_t output_count, int spin_count, const std::uint32_t *d_out_ptr,
+                                 const std::uint32_t *d_term_pt, const std::uint32_t *d_pt_pair, const int *d_no0,
+                                 const int *d_no1, const std::size_t *d_hoff, const std::size_t *d_noff,
+                                 const std::size_t *d_o0off, const std::size_t *d_o1off, const int *d_nc,
+                                 const float *d_o0, const float *d_o1, const float2 *d_dmf, double *d_den)
+{
+    hipLaunchKernelGGL((csr_density_df_kernel<NMAX, SPINS>),
+                       dim3(static_cast<unsigned>((output_count + kCsrDfThreads - 1) / kCsrDfThreads)),
+                       dim3(kCsrDfThreads), 0, 0, output_count, spin_count, d_out_ptr, d_term_pt, d_pt_pair, d_no0,
+                       d_no1, d_hoff, d_noff, d_o0off, d_o1off, d_nc, d_o0, d_o1, d_dmf, d_den);
+    return hipGetLastError();
 }
 
 template <int NMAX>
@@ -958,11 +977,13 @@ hipError_t csr_density_df_launch(std::size_t output_count, int spin_count, const
                                  const std::size_t *d_o0off, const std::size_t *d_o1off, const int *d_nc,
                                  const float *d_o0, const float *d_o1, const float2 *d_dmf, double *d_den)
 {
-    hipLaunchKernelGGL(csr_density_df_kernel<NMAX>,
-                       dim3(static_cast<unsigned>((output_count + kCsrDfThreads - 1) / kCsrDfThreads)),
-                       dim3(kCsrDfThreads), 0, 0, output_count, spin_count, d_out_ptr, d_term_pt, d_pt_pair, d_no0,
-                       d_no1, d_hoff, d_noff, d_o0off, d_o1off, d_nc, d_o0, d_o1, d_dmf, d_den);
-    return hipGetLastError();
+    /* Specialize only the collinear paths.  The generic kernel retains the
+       non-collinear code generation and supports spin_count=3. */
+    auto launch = csr_density_df_launch_spin<NMAX, 0>;
+    if (spin_count == 1) launch = csr_density_df_launch_spin<NMAX, 1>;
+    else if (spin_count == 2) launch = csr_density_df_launch_spin<NMAX, 2>;
+    return launch(output_count, spin_count, d_out_ptr, d_term_pt, d_pt_pair, d_no0, d_no1,
+                  d_hoff, d_noff, d_o0off, d_o1off, d_nc, d_o0, d_o1, d_dmf, d_den);
 }
 
 } // namespace

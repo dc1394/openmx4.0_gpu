@@ -379,6 +379,13 @@ if(BUILD_TESTING)
       set_tests_properties(hip-force-reductions PROPERTIES
         ENVIRONMENT "OMP_NUM_THREADS=1;OMP_DYNAMIC=FALSE"
         LABELS "gpu;integration" TIMEOUT 240)
+      add_test(NAME hip-density-precision
+        COMMAND "${CMAKE_COMMAND}" -E env
+          "ROCM=${CMAKE_HIP_COMPILER_ROCM_ROOT}" "ARCH=${_vector_test_arch}"
+          "CC=${CMAKE_C_COMPILER}" "OUT=${CMAKE_BINARY_DIR}/density-precision"
+          bash "${CMAKE_SOURCE_DIR}/source/backends/hip/tools/run_check_density_df_hip.sh")
+      set_tests_properties(hip-density-precision PROPERTIES
+        LABELS "gpu;integration" TIMEOUT 240)
       add_test(NAME hip-setham-capacity
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_setham_capacity_hip.py"
           --rocm "${CMAKE_HIP_COMPILER_ROCM_ROOT}" --cc "${CMAKE_HIP_COMPILER}"

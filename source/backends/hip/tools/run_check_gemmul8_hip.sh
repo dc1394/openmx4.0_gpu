@@ -14,22 +14,33 @@
 # GEMMUL8_LIB the GEMMul8 library with gemmul8_openmx.o and gemmul8_config.o
 #             (default source/third_party/GEMMul8/lib/libgemmul8.a)
 # OUT         build and log directory (default work/check_gemmul8_hip)
+# CC          C compiler for the production environment readers
 # ROCM        ROCm installation (default /opt/rocm-7.2.0); ARCH (default gfx1200)
 set -euo pipefail
 
 root=$(cd "$(dirname "$0")/.." && pwd)
+# Work both in the projected native/tools tree and in source/backends/hip/tools.
+if [ -f "$root/source/openmx_env.c" ]; then
+    source_dir="$root/source"
+else
+    source_dir=$(cd "$root/../.." && pwd)
+fi
 ROCM=${ROCM:-/opt/rocm-7.2.0}
 ARCH=${ARCH:-gfx1200}
-BRIDGE_OBJ=${BRIDGE_OBJ:-$root/source/gemmul8_bridge.o}
-GEMMUL8_LIB=${GEMMUL8_LIB:-$root/source/third_party/GEMMul8/lib/libgemmul8.a}
+BRIDGE_OBJ=${BRIDGE_OBJ:-$source_dir/gemmul8_bridge.o}
+GEMMUL8_LIB=${GEMMUL8_LIB:-$source_dir/third_party/GEMMul8/lib/libgemmul8.a}
 OUT=${OUT:-$root/work/check_gemmul8_hip}
 
 mkdir -p "$OUT"
-"$ROCM/bin/hipcc" -std=c++20 -O2 --offload-arch="$ARCH" -ffp-contract=off \
-    -I"$root/source/third_party/GEMMul8/include" \
-    -c "$root/tools/check_gemmul8_hip.cu" -o "$OUT/check_gemmul8_hip.o" 2> "$OUT/build.log" ||
+# The refactored bridge uses the shared production environment registry.
+"${CC:-$ROCM/llvm/bin/clang}" -std=c11 -O2 -I"$source_dir" \
+    -c "$source_dir/openmx_env.c" -o "$OUT/openmx_env.o" 2> "$OUT/build.log" ||
     { cat "$OUT/build.log"; exit 1; }
-"$ROCM/bin/hipcc" --offload-arch="$ARCH" "$OUT/check_gemmul8_hip.o" "$BRIDGE_OBJ" "$GEMMUL8_LIB" \
+"$ROCM/bin/hipcc" -std=c++20 -O2 --offload-arch="$ARCH" -ffp-contract=off \
+    -I"$source_dir/third_party/GEMMul8/include" \
+    -c "$root/tools/check_gemmul8_hip.cu" -o "$OUT/check_gemmul8_hip.o" 2>> "$OUT/build.log" ||
+    { cat "$OUT/build.log"; exit 1; }
+"$ROCM/bin/hipcc" --offload-arch="$ARCH" "$OUT/check_gemmul8_hip.o" "$BRIDGE_OBJ" "$OUT/openmx_env.o" "$GEMMUL8_LIB" \
     -L"$ROCM/lib" -lhipblas -lhipblaslt -Wl,-rpath,"$ROCM/lib" -o "$OUT/check_gemmul8_hip" 2>> "$OUT/build.log" ||
     { cat "$OUT/build.log"; exit 1; }
 

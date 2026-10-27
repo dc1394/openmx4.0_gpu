@@ -17,11 +17,9 @@
 // on-the-fly kernel (atomics) agrees with the gather, and a pair whose DM
 // blocks exceed the LDS takes the split kernel instead of FP64.
 //
-// Build and run from the repository root (no OpenMX objects are needed: the
-// kernels' translation unit is included):
-//   /opt/rocm-7.2.0/bin/hipcc -std=c++20 -O3 --offload-arch=gfx1200 -ffp-contract=off \
-//       -DOCML_BASIC_ROUNDED_OPERATIONS -Isource tools/check_density_df_hip.cu -o check_density_df_hip
-//   ./check_density_df_hip            (exit status 0 when every check passes)
+// Build and run (links the production environment/precision readers):
+//   ROCM=/path/to/rocm ARCH=gfx1200 bash source/backends/hip/tools/run_check_density_df_hip.sh
+// The CSR checksum can compare binaries across a kernel change; OTF uses atomics.
 #include "set_hamiltonian_hip.cu"
 
 #include <algorithm>
@@ -396,6 +394,13 @@ void run_case(const char *name, int S, const std::vector<int> &species_no, int a
     otf = run_otf(P, D, &t_otf);
     const double t_fp64 = time_fp64(P, D);
 
+    std::uint64_t checksum = 14695981039346656037ULL;
+    for (double value : csr) {
+        std::uint64_t bits;
+        std::memcpy(&bits, &value, sizeof(bits));
+        checksum = (checksum ^ bits) * 1099511628211ULL;
+    }
+    std::printf("  CSR checksum: %016llx\n", static_cast<unsigned long long>(checksum));
     const Errors e_csr = errors(csr, ref, mag), e_otf = errors(otf, ref, mag), e_64 = errors(fp64, ref, mag);
     std::printf("  CSR double-float : max %.2e rms %.2e of the magnitudes, max %.2e of the value\n", e_csr.max_mag,
                 e_csr.rms_mag, e_csr.max_rel);
@@ -405,10 +410,14 @@ void run_case(const char *name, int S, const std::vector<int> &species_no, int a
                 e_64.max_mag, e_64.rms_mag, e_64.max_rel);
     std::printf("  time: CSR df %.3f ms (registers%s), %.3f ms (memory); OTF df %.3f ms; CSR FP64 (HIP) %.3f ms\n",
                 t_reg, P.max_no1 <= 64 ? "" : " = memory", t_mem, t_otf, t_fp64);
+    expect(std::all_of(csr.begin(), csr.end(), [](double x) { return std::isfinite(x); }),
+           "CSR values are finite");
+    expect(std::all_of(otf.begin(), otf.end(), [](double x) { return std::isfinite(x); }),
+           "OTF values are finite");
     expect(e_csr.max_mag < tol, "CSR double-float accuracy");
     expect(e_otf.max_mag < tol, "OTF double-float accuracy");
-    expect(std::equal(csr.begin(), csr.end(), csr2.begin()), "CSR: the same bits on a second run");
-    expect(std::equal(csr.begin(), csr.end(), csr_mem.begin()), "CSR: register and memory variants give the same bits");
+    expect(std::memcmp(csr.data(), csr2.data(), csr.size() * sizeof(double)) == 0, "CSR: the same bits on a second run");
+    expect(std::memcmp(csr.data(), csr_mem.data(), csr.size() * sizeof(double)) == 0, "CSR: register and memory variants give the same bits");
 
     /* the FP64 mode: nothing runs and the DM stays as it is */
     {
@@ -447,6 +456,10 @@ int main()
     run_case("polarized, 41 and 48 orbitals", 2, {41, 48}, 4, 6, 800, 1600, 5u, false, 5.0e-14);
     /* beyond 64 orbitals: the memory variants (no register row) */
     run_case("non-collinear, 80 orbitals", 4, {80, 13}, 3, 4, 600, 1200, 6u, true, 5.0e-14);
+    /* Collinear memory rows and the generic API's three-component boundary. */
+    run_case("unpolarized, 80 orbitals", 1, {80, 13}, 3, 4, 600, 1200, 7u, false, 5.0e-14);
+    run_case("polarized, 80 orbitals", 2, {80, 13}, 3, 4, 600, 1200, 8u, true, 5.0e-14);
+    run_case("three components", 3, {5, 13}, 3, 4, 600, 1200, 9u, false, 5.0e-14);
     if (check::failures != 0) {
         std::printf("FAILED: %d check(s)\n", check::failures);
         return 1;
