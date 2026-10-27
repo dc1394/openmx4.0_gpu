@@ -1,4 +1,14 @@
 find_package(Threads REQUIRED)
+# Compile the frozen C reference under the library's floating-point contract;
+# Intel's default C mode can otherwise reassociate the factorial expression.
+set_source_files_properties(fixtures/gaunt_before_library.c PROPERTIES COMPILE_OPTIONS
+  "$<$<C_COMPILER_ID:GNU,Clang,AppleClang>:-ffp-contract=off>;$<$<C_COMPILER_ID:IntelLLVM>:-fp-model=precise;-ffp-contract=off>;$<$<C_COMPILER_ID:MSVC>:/fp:strict>")
+add_executable(openmx_basis_gaunt_tests test_gaunt.cpp fixtures/gaunt_before_library.c)
+target_link_libraries(openmx_basis_gaunt_tests PRIVATE OpenMX::basis Threads::Threads)
+foreach(_case coefficients physics integration tables invalid ownership allocation concurrent)
+  add_test(NAME basis-gaunt-${_case} COMMAND openmx_basis_gaunt_tests ${_case})
+  set_tests_properties(basis-gaunt-${_case} PROPERTIES LABELS "unit;basis" TIMEOUT 30)
+endforeach()
 add_executable(openmx_basis_real_harmonics_tests test_real_harmonics.cpp)
 target_link_libraries(openmx_basis_real_harmonics_tests PRIVATE OpenMX::basis Threads::Threads)
 foreach(_case values unitarity orbitals invalid ownership allocation concurrent)
@@ -63,6 +73,10 @@ endforeach()
 
 # Compile a real C caller, rather than relying on a C++ compiler accepting it.
 enable_language(C)
+add_executable(openmx_basis_gaunt_c_tests test_gaunt_c.c)
+target_link_libraries(openmx_basis_gaunt_c_tests PRIVATE OpenMX::basis)
+add_test(NAME basis-gaunt-c-abi COMMAND openmx_basis_gaunt_c_tests)
+set_tests_properties(basis-gaunt-c-abi PROPERTIES LABELS "unit;basis" TIMEOUT 15)
 add_executable(openmx_basis_real_harmonics_c_tests test_real_harmonics_c.c)
 target_link_libraries(openmx_basis_real_harmonics_c_tests PRIVATE OpenMX::basis)
 add_test(NAME basis-real-harmonics-c-abi COMMAND openmx_basis_real_harmonics_c_tests)

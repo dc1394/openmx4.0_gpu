@@ -4,7 +4,8 @@ OpenMX の基底処理を独立して利用する C++20 ライブラリです。
 現在の公開範囲は PAO、非局所射影子、中性原子ポテンシャル、VNA 射影子の
 動径補間、PAO/射影子の波数空間補間、PAO/VPSファイルの読み込み、
 原子密度の補間・動径導関数・球対称Hartree積分、Gauss–LegendreとLebedev積分則、
-球Bessel関数と2中心積分用Besselテーブル、球面調和関数と角度導関数、複素から実軌道への変換です。
+球Bessel関数と2中心積分用Besselテーブル、球面調和関数と角度導関数、複素から実軌道への変換、
+Gaunt角度積分と不変の係数表です。
 本体もこの実装を使用します。
 Fourier-Bessel 変換、完全な2中心積分は
 まだこのパッケージには含まれません。
@@ -356,6 +357,44 @@ conversion.transform(1, complex_p, real_p); // px, py, pz
 Voronoi軌道モーメント、Wannier射影へ不変ビューを渡します。GPUへの既存の転送配置は保持します。
 旧 `Comp2Real` 大域配列は不要になりました。独立利用例は `examples/real_harmonics/` です。
 
+## Gaunt角度積分と係数表
+
+`<openmx/basis/gaunt.hpp>` の `gaunt(bra,left,right)` は、規格化された複素球面調和関数の
+`∫conj(Y_bra) Y_left Y_right dΩ` を返します。位相は `integral_harmonic()` と同じ
+Condon–Shortley規約です。状態の初期化やヒープ確保を必要としません。
+
+```cpp
+#include <openmx/basis/gaunt.hpp>
+const double integral = openmx::basis::gaunt({2,0}, {1,0}, {1,0});
+// sqrt(5/pi)/5
+const openmx::basis::GauntTable table(4, 4, 8);
+const double same = table.coefficient(2, 0, 1, 0, 1);
+```
+
+- `HarmonicIndex{degree,order}` は整数の軌道角運動量です。各次数は0〜38、磁気量子数は
+  −degree〜degreeです。三角条件を満たす組では次数の合計を38以下に制限します。
+  これは元の階乗表0!〜39!を越えないための上限で、高次数一般の精度を保証するAPIではありません。
+  三角条件を満たさない組はゼロなので、各次数38まで受け付けます。
+- `GauntTable(l0max,l1max,llmax)` は `G(l0,m0,l1,m1,LL,m0−m1)` を1本の配列に所有します。
+  配置は `[l0*(l0+1)+m0][LL][l1][l1+m1]`、最終幅は2*l1max+1です。
+  `row(l0,m0,LL,l1)` は有効な2*l1+1要素の読み取り専用spanを返します。
+  `view()` はC互換の不変ビューで、余白はゼロ、選択則でゼロになる有効要素は旧演算の符号も保持します。
+- 表の全ての三角条件を満たす組が次数合計38以下であることを検証します。
+  `(4,12,24)` のような長方形の表は、高いLLの行が選択則でゼロになるため利用できます。
+  単に3つの最大次数の合計で拒否する制約にはしていません。
+- コピーは独立した所有、ムーブ元は空になります。借用は所有者の破棄・代入まで有効です。
+  参照・評価は無確保で、並行読み取りが可能です。不正入力では例外を返します。
+- `<openmx/basis/gaunt.h>` にスカラー評価と、呼出側のdouble配列を満たすC APIがあります。
+  成功時は確保せず、失敗時は数値出力・ビューを保持して0を返します。
+  診断バッファは数値出力と重ねないでください。表の容量はdouble要素数で指定します。
+
+本体の `Gaunt()` も同じ計算核を使います。VNAの準備所有者は、CPUで必要になったときに
+射影子用とVNA2/3用の表を作り、両向きのVNA2/3計算で再利用します。再取得は無確保・同一アドレスで、
+初回の並行取得と確保失敗後の再試行にも対応します。GPUだけで処理する場合はホスト表を作りません。
+独立した利用例は `examples/gaunt/` です。
+積分と3j記号の関係は [DLMF §34.3](https://dlmf.nist.gov/34.3)、
+三角条件と階乗和は [DLMF §34.2](https://dlmf.nist.gov/34.2) を参照してください。
+
 ## 動径・波数表のデータと数値規約
 
 - 角運動量 `angular` は `0 <= l <= 29`。チャネルの並び順は呼び出し元が指定し、
@@ -408,6 +447,10 @@ Lebedevは全15,288係数の凍結した指紋、球面上の混合多項式積�
 Cartesian多項式、所有・移動・確保失敗・重なり・並行評価・実C呼び出しで検証します。
 本体のVoronoi角運動量行列は `python3 tests/run_angular_momentum_cpu.py /path/to/libopenmx_core.so` で
 旧実装との一致と交換関係・角運動量の二乗を検証します。
+Gauntは凍結した旧C実装とのビット一致、解析的なs/p/d積分と選択則・対称性、独立した
+Lebedev球面積分で検証します。表の余白、長方形の選択則ゼロ、階乗表の上限、所有・確保故障・
+並行評価と実C APIも検査します。本体境界は `python3 tests/run_gaunt_cpu.py --sanitize` で
+約203万個の係数を旧C実装と比較します。
 
 `basis-package-consumer` はこのディレクトリだけをコピーして独立ビルド・インストールし、
 インストール先と元のソース・ビルドディレクトリを移動してから、外部 C/C++ プログラムを

@@ -237,11 +237,11 @@ static double SetPro_OneCenter(const OpenMXVnaMatrixViews *matrices,int mirror,
     if (gpu->host_route && gpu->host_first<pairs->count) {
       OpenMXAtomPairBuffers rest;
       SetPro_PairTail(pairs,gpu->host_first,&rest);
-      SetPro_VNA23_CPU(flat,mirror,invocation->wavevectors,basis,&rest,tables);
+      SetPro_VNA23_CPU(flat,mirror,invocation->wavevectors,invocation->preparation_owner,basis,&rest,tables);
     }
   }
   else
-    SetPro_VNA23_CPU(flat,mirror,invocation->wavevectors,basis,pairs,tables);
+    SetPro_VNA23_CPU(flat,mirror,invocation->wavevectors,invocation->preparation_owner,basis,pairs,tables);
   if (!mirror) {
     /* Preserve h/i/j accumulation order for the on-site contribution. */
     for (int mc=1;mc<=pairs->local_atoms;++mc) {

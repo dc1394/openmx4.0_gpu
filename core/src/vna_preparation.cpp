@@ -1,4 +1,5 @@
 #include <openmx/core/vna_preparation.hpp>
+#include <algorithm>
 #include <climits>
 #include <cstdint>
 #include <limits>
@@ -84,6 +85,21 @@ VnaPreparation::VnaPreparation(VnaPreparationShape shape, std::span<const Specie
       element(projectors_.view(),0,row) = l;
       element(projectors_.view(),1,row) = radial;
     }
+}
+
+const openmx::basis::GauntTable& VnaPreparation::gaunt_table(bool projector) const
+{
+  auto& once=projector?projector_gaunt_once_:product_gaunt_once_;
+  auto& owner=projector?projector_gaunt_:product_gaunt_;
+  std::call_once(once,[this,projector,&owner] {
+    int l0max=0;
+    for(int angular:basis_.maximum_angular())l0max=std::max(l0max,angular);
+    const int l1max=projector?shape_.projector_angular:l0max;
+    const int llmax=projector?2*std::max(l0max,shape_.projector_multiplicity?l1max:0):2*l0max;
+    auto table=std::make_unique<openmx::basis::GauntTable>(l0max,l1max,llmax);
+    owner=std::move(table);
+  });
+  return *owner;
 }
 
 } // namespace openmx::core

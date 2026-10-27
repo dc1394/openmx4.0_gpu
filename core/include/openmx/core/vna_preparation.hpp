@@ -1,6 +1,9 @@
 #pragma once
 
 #include <openmx/core/tensor.hpp>
+#include <openmx/basis/gaunt.hpp>
+#include <memory>
+#include <mutex>
 #include <span>
 
 namespace openmx::core {
@@ -45,12 +48,18 @@ class VnaPreparation {
   auto projectors() const noexcept { return projectors_.view(); }
   auto weights() noexcept { return weights_.view(); }
   auto weights() const noexcept { return weights_.view(); }
+  // Lazy immutable angular tables. GPU-only/legacy calls allocate none.
+  // Concurrent acquisition is safe; a failed construction can be retried.
+  // References survive subsequent acquisitions until this preparation dies.
+  const openmx::basis::GauntTable& gaunt_table(bool projector) const;
  private:
   VnaPreparationShape shape_;
   RadialBasisLayout basis_;
   int projector_count_, projector_components_;
   Tensor<int,2> projectors_;
   Tensor<double,3> weights_;
+  mutable std::once_flag projector_gaunt_once_, product_gaunt_once_;
+  mutable std::unique_ptr<openmx::basis::GauntTable> projector_gaunt_, product_gaunt_;
 };
 
 } // namespace openmx::core

@@ -4654,3 +4654,31 @@ Wannier最終広がりの差は最大2.7996e-12 Å²でした。入力整備時�
 `numerical-summary.json`、`production-freeze.json` に記録を保存しました。
 AMD/A100/H100実機、Intelコンパイラ版OpenMXとの性能比較は今回実施していません。
 `work/openmx` は更新していません。
+
+
+## 2026-10-28: Gaunt角度積分とVNA係数表の所有権移行（第106段階）
+
+変更前 `39d2b128` と変更後の本体・Core/SIMDを凍結し、18 MPI×1 OpenMPで比較しました。
+GPUはRTX5080・既存MPS・NVHPC/OpenMPI、CPU専用本体はGCC/Intel MPI/MKLです。
+ビルド、試験、他のOpenMX計算を重ねず、順次実行しています。
+
+| 入力・指標 | 変更前 | 変更後 |
+| --- | ---: | ---: |
+| sidia333 NC cluster、GPU/MPS、内部Total最大値 (秒) | 99.449 | 99.537 |
+| 同、MPI起動を含む経過時間 (秒) | 102.757 | 102.660 |
+| C60 DC、CPU専用、内部Total中央値 (秒) | 5.965 | 5.911 |
+| 同、MPI起動を含む経過時間中央値 (秒) | 6.42993 | 6.43015 |
+
+sidiaは元入力を各1回測定した25SCF上限・未収束の性能比較です。
+E差0.0000e+00 Ha・最大F差1.0000e-12 Ha/bohrでした。
+C60は交互各3回、全件27SCF収束で、E差0.0000e+00 Ha・最大F差0.0000e+00 Ha/bohrです。
+短い測定から一般的な高速化・劣化は主張しません。
+
+通常29組とg軌道・Voronoi・WannierのCPU/GPU各1組、計35組が収束し、SCF反復数も一致しました。
+最大E差3.4461e-9 Ha・F差2.3219e-8 Ha/bohr、応力11組の9成分は小数点以下8桁の印字値が一致しました。
+Voronoiモーメントの印字差はゼロ、Wannier初期射影のA†Aの最大差は2.6180e-13、
+最終広がりの差は最大5.9242e-12 Å²です。第98・102段階のGPU再現性の限界を解消したとは扱いません。
+`build/gaunt-library-20261028/` の `performance/`、`cpu-performance-results.json`、
+`numerical-summary.json`、`production-freeze.json` に記録を保存しました。
+AMD/A100/H100実機、Intelコンパイラ版OpenMXとの性能比較は今回実施していません。
+`work/openmx` は更新していません。

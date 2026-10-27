@@ -168,7 +168,7 @@ int main(void)
     const SetProVnaTables tables={{0},{&Spe_ProductRF_Bessel[0][0][0][0][0][0][0],NS,NS*4,NP,layouts},
         {&Spe_CrudeVNA_Bessel[0][0],{NS,NP}},&Comp2Real[0][0][0],1,
         GL_Weight,Radial_kmin,PAO_Nkmax,time_per_atom};
-    SetPro_VNA23_CPU(&matrix,mirror,wavevectors,&prepared_basis,&pairs,&tables);
+    SetPro_VNA23_CPU(&matrix,mirror,wavevectors,basis_owner,&prepared_basis,&pairs,&tables);
     openmx_core_atom_pairs_destroy(plan);openmx_core_vna_preparation_destroy(basis_owner);
     for(int a=1;a<=NA;a++){
       assert(time_per_atom[a]==NH);

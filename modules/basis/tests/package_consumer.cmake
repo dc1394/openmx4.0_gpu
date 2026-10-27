@@ -26,6 +26,7 @@ file(COPY "${BASIS_SOURCE}/tests/test_density_c.c" DESTINATION "${TEST_ROOT}/con
 file(COPY "${BASIS_SOURCE}/tests/test_quadrature_c.c" DESTINATION "${TEST_ROOT}/consumer")
 file(COPY "${BASIS_SOURCE}/tests/test_lebedev_c.c" DESTINATION "${TEST_ROOT}/consumer")
 file(COPY "${BASIS_SOURCE}/tests/test_real_harmonics_c.c" DESTINATION "${TEST_ROOT}/consumer")
+file(COPY "${BASIS_SOURCE}/tests/test_gaunt_c.c" DESTINATION "${TEST_ROOT}/consumer")
 configure_file("${BASIS_SOURCE}/examples/pao/main.cpp" "${TEST_ROOT}/consumer/pao_example.cpp" COPYONLY)
 configure_file("${BASIS_SOURCE}/examples/vps/main.cpp" "${TEST_ROOT}/consumer/vps_example.cpp" COPYONLY)
 configure_file("${BASIS_SOURCE}/examples/density/main.cpp" "${TEST_ROOT}/consumer/density_example.cpp" COPYONLY)
@@ -33,6 +34,7 @@ configure_file("${BASIS_SOURCE}/examples/bessel/main.cpp" "${TEST_ROOT}/consumer
 configure_file("${BASIS_SOURCE}/examples/harmonics/main.cpp" "${TEST_ROOT}/consumer/harmonics_example.cpp" COPYONLY)
 configure_file("${BASIS_SOURCE}/examples/lebedev/main.cpp" "${TEST_ROOT}/consumer/lebedev_example.cpp" COPYONLY)
 configure_file("${BASIS_SOURCE}/examples/real_harmonics/main.cpp" "${TEST_ROOT}/consumer/real_harmonics_example.cpp" COPYONLY)
+configure_file("${BASIS_SOURCE}/examples/gaunt/main.cpp" "${TEST_ROOT}/consumer/gaunt_example.cpp" COPYONLY)
 file(WRITE "${TEST_ROOT}/consumer/fixture.vps" [=[
 AtomSpecies 1
 grid.num.output 6
@@ -119,6 +121,12 @@ add_test(NAME real-harmonics-consumer COMMAND real_harmonics_consumer)
 add_executable(real_harmonics_c_consumer test_real_harmonics_c.c)
 target_link_libraries(real_harmonics_c_consumer PRIVATE OpenMX::basis)
 add_test(NAME real-harmonics-c-consumer COMMAND real_harmonics_c_consumer)
+add_executable(gaunt_consumer gaunt_example.cpp)
+target_link_libraries(gaunt_consumer PRIVATE OpenMX::basis)
+add_test(NAME gaunt-consumer COMMAND gaunt_consumer)
+add_executable(gaunt_c_consumer test_gaunt_c.c)
+target_link_libraries(gaunt_c_consumer PRIVATE OpenMX::basis)
+add_test(NAME gaunt-c-consumer COMMAND gaunt_c_consumer)
 ]=])
 run("${CMAKE_COMMAND}" -S "${TEST_ROOT}/consumer" -B "${TEST_ROOT}/consumer-build"
   "-DCMAKE_CXX_COMPILER=${CXX}" "-DCMAKE_C_COMPILER=${CC}" -DCMAKE_BUILD_TYPE=Release

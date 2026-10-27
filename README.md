@@ -126,6 +126,9 @@ Ownership, RAII and Kokkos support that goal. See the
 The first package, [OpenMX::basis](modules/basis/README.md), provides the radial
 and reciprocal interpolation used by the application, with C++ and C APIs,
 and independent C++ PAO/VPS readers with owned data and radial evaluation.
+It also provides atomic density/Hartree operations, Gauss–Legendre and Lebedev
+quadrature, spherical Bessel functions, spherical harmonics and their derivatives,
+real-orbital transformations, and Gaunt angular integrals with owned coefficient tables.
 It builds without Kokkos, MPI, BLAS or a GPU SDK:
 
 ```sh
@@ -136,9 +139,9 @@ cmake --install build/basis --prefix "$PWD/build/basis-install"
 ```
 
 External CMake projects use `find_package(OpenMXBasis 0.1 CONFIG REQUIRED)`
-and link `OpenMX::basis`. This initial package covers interpolation and PAO/VPS
-file loading; full angular basis evaluation and two-center integrals are still to be
-extracted. The `core/` library consumes this package and contains Fourier
+and link `OpenMX::basis`. Complete PAO basis evaluation and two-center matrix
+integrals are still being assembled from these components.
+The `core/` library consumes this package and contains Fourier
 transforms for PAOs, PAO products, nonlocal
 projectors and neutral-atom potentials, spherical Bessel functions and FFT-grid
 validation. PAO grids, atomic densities, orbitals, VPS/nonlocal-projector data,
@@ -167,7 +170,10 @@ VNA2/VNA3 also share one CPU evaluator with per-thread RAII workspaces;
 packed orbital matrices and reusable Bessel tables replace six-level pointer
 tables and per-pair allocation. Their GPU batch state belongs to each call.
 VNA preparation owns a snapshot of species basis metadata, projector indices
-and contiguous weighted radial rows. Both backends share the CPU sampling
+and contiguous weighted radial rows. Its immutable Gaunt tables are initialized
+on the first CPU request and reused by both VNA2/3 orientations; repeated access
+allocates no memory. GPU-only calls do not allocate those host tables.
+Both backends share the CPU sampling
 loop, and DS_VNA GPU batches also receive their state explicitly per call.
 DS_VNA CPU assembly now shares one evaluator across CUDA/HIP. Per-thread C++
 workspaces own packed angular matrices, radial sums and Bessel scratch;

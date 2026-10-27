@@ -1,6 +1,7 @@
 #ifndef OPENMX_CORE_VNA_PREPARATION_H
 #define OPENMX_CORE_VNA_PREPARATION_H
 #include <stddef.h>
+#include "../../modules/basis/include/openmx/basis/gaunt.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -51,6 +52,15 @@ OpenMXVnaPreparation *openmx_core_vna_preparation_create(const OpenMXVnaPreparat
     OpenMXVnaPreparationBuffers *buffers, char *error, size_t capacity);
 /* Null is accepted. */
 void openmx_core_vna_preparation_destroy(OpenMXVnaPreparation *preparation);
+
+enum OpenMXVnaGauntKind { OPENMX_VNA_GAUNT_PROJECTOR=0, OPENMX_VNA_GAUNT_PRODUCT=1 };
+/* Borrow an immutable table owned by preparation, initialized only when first
+   requested. Concurrent acquisition/read is safe; destruction must follow all
+   borrowers. Failed construction preserves out and allows a later retry.
+   Repeated acquisition preserves addresses and allocates nothing. */
+int openmx_core_vna_gaunt_table(const OpenMXVnaPreparation *preparation,
+    int kind, OpenMXGauntTableData *out,
+    char *error, size_t capacity);
 #ifdef __cplusplus
 }
 #endif

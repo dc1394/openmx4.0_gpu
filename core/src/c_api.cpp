@@ -620,6 +620,23 @@ extern "C" OpenMXVnaPreparation* openmx_core_vna_preparation_create(const OpenMX
   return result;
 }
 
+extern "C" int openmx_core_vna_gaunt_table(const OpenMXVnaPreparation* preparation,
+    int kind, OpenMXGauntTableData* out, char* error, std::size_t capacity)
+{
+  if(error && capacity)*error='\0';
+  try {
+    if(!preparation || !out || (kind!=OPENMX_VNA_GAUNT_PROJECTOR && kind!=OPENMX_VNA_GAUNT_PRODUCT))
+      throw std::invalid_argument("missing VNA preparation/output or invalid Gaunt kind");
+    *out=preparation->implementation.gaunt_table(kind==OPENMX_VNA_GAUNT_PROJECTOR).view();
+    return 1;
+  }catch(const std::exception& exception) {
+    if(error && capacity)std::snprintf(error,capacity,"%s",exception.what());
+  }catch(...) {
+    if(error && capacity)std::snprintf(error,capacity,"unknown VNA Gaunt table error");
+  }
+  return 0;
+}
+
 extern "C" void openmx_core_vna_preparation_destroy(OpenMXVnaPreparation* preparation)
 {
   delete preparation;

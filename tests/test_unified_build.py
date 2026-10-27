@@ -106,6 +106,8 @@ class UnifiedBuildTest(unittest.TestCase):
                     ['cc', '-std=c11', '-Werror', '-fsyntax-only', '-x', 'c',
                      '-I' + str(stage), '-'],
                     input='#include "openmx_basis_harmonics.h"\n'
+                          '#include "openmx_basis_gaunt.h"\n'
+                          '#include "openmx_core_vna_preparation.h"\n'
                           '#include "openmx_orbital_harmonics.h"\n'
                           '#include "openmx_basis_lebedev.h"\n'
                           '#include "openmx_core_real_harmonics.h"\n'
@@ -444,6 +446,9 @@ class UnifiedBuildTest(unittest.TestCase):
                     self.assertIn("openmx_core_real_harmonics.h", row.split())
                     self.assertIn("../modules/basis/include/openmx/basis/real_harmonics.h", row.split())
                     self.assertIn("../modules/basis/include/openmx/basis/complex.h", row.split())
+                    self.assertIn("openmx_basis_gaunt.h", row.split())
+                    self.assertIn("../modules/basis/include/openmx/basis/detail/gaunt.h", row.split())
+                    self.assertIn("../modules/basis/include/openmx/basis/gaunt.h", row.split())
                     if obj not in angular_objects:
                         helper = "openmx_cwf_workspace.h" if "CWF" in obj else "openmx_neutral_atom.h"
                         self.assertIn(helper, row.split())

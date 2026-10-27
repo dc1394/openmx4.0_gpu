@@ -21,7 +21,7 @@ typedef struct {
   SetProGauntTable gaunt;
 } SetProVna23Host;
 
-static void SetPro_Vna23Host_Build(SetProVna23Host *host,const OpenMXVnaPreparationBuffers *preparation,
+static void SetPro_Vna23Host_Build(SetProVna23Host *host,const OpenMXVnaPreparation *owner,const OpenMXVnaPreparationBuffers *preparation,
     const SetProVnaTables *tables)
 {
   const int species=preparation->species,points=preparation->points;
@@ -65,25 +65,24 @@ static void SetPro_Vna23Host_Build(SetProVna23Host *host,const OpenMXVnaPreparat
       }
     }
   }
-  SetPro_GauntTable_Build(&host->gaunt,lmax,lmax,2*lmax);
+  SetPro_GauntTable_Borrow(&host->gaunt,owner,OPENMX_VNA_GAUNT_PRODUCT);
 }
 static void SetPro_Vna23Host_Free(SetProVna23Host *host)
 {
   if (host->mode==OPENMX_HOST_SIMD_LEGACY) return;
   free(host->species_offset);free(host->radials);free(host->product);
-  SetPro_GauntTable_Free(&host->gaunt);
 }
 
 /* Internal host adapter shared by CUDA/HIP and both pair orientations.
    Basis and geometry are owned snapshots; Fourier/output tables are explicit borrowed views. */
 static void SetPro_VNA23_CPU(const OpenMXDoubleBlockMatrix *HVNA23, int mirror, const double *GL_NormK,
-    const OpenMXVnaPreparationBuffers *preparation,const OpenMXAtomPairBuffers *pairs,
+    const OpenMXVnaPreparation *owner,const OpenMXVnaPreparationBuffers *preparation,const OpenMXAtomPairBuffers *pairs,
     const SetProVnaTables *tables)
 {
   const int OneD_Nloop=pairs->count,points=preparation->points;
   const int *OneD2Mc_AN=pairs->local,*OneD2h_AN=pairs->neighbor;
   SetProVna23Host host;
-  SetPro_Vna23Host_Build(&host,preparation,tables);
+  SetPro_Vna23Host_Build(&host,owner,preparation,tables);
 #pragma omp parallel
   {
     int OMPID,Nthrds,Nprocs,Nloop;

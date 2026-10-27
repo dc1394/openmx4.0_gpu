@@ -25,7 +25,7 @@ typedef struct {
   double *convt_r, *convt_i;
 } SetProDsvnaHost;
 
-static void SetPro_DsvnaHost_Build(SetProDsvnaHost *host,const OpenMXVnaPreparationBuffers *preparation,
+static void SetPro_DsvnaHost_Build(SetProDsvnaHost *host,const OpenMXVnaPreparation *owner,const OpenMXVnaPreparationBuffers *preparation,
     const SetProVnaTables *tables)
 {
   const int species=preparation->species,points=preparation->points,projectors=preparation->projectors;
@@ -56,7 +56,7 @@ static void SetPro_DsvnaHost_Build(SetProDsvnaHost *host,const OpenMXVnaPreparat
     if (l0max<preparation->maximum_angular[spe]) l0max=preparation->maximum_angular[spe];
     if (llmax<lfi) llmax=lfi;
   }
-  SetPro_GauntTable_Build(&host->gaunt,l0max,preparation->projector_lmax,llmax);
+  SetPro_GauntTable_Borrow(&host->gaunt,owner,OPENMX_VNA_GAUNT_PROJECTOR);
   host->l0max=l0max;host->l1max=preparation->projector_lmax;host->llmax=llmax;
   /* the Core conversion writes float DS_VNA rows: double storage keeps the
      legacy m sum and conversion (the other host SIMD stages are unchanged) */
@@ -86,7 +86,6 @@ static void SetPro_DsvnaHost_Free(SetProDsvnaHost *host)
   if (host->mode==OPENMX_HOST_SIMD_LEGACY) return;
   free(host->projector_table);host->projector_table=NULL;
   free(host->convt_r);free(host->convt_i);host->convt_r=host->convt_i=NULL;
-  SetPro_GauntTable_Free(&host->gaunt);
 }
 
 /* Shared CPU projector assembly. Preparation outlives all workers; only
@@ -102,7 +101,7 @@ static void SetPro_DSVNA_CPU(const OpenMXProjectorMatrix *DS_VNA, const OpenMXVn
   const int *VNA_List = preparation->projector_angular;
   const double *Bessel_Pro00 = preparation->weighted[0], *Bessel_Pro01 = preparation->weighted[1];
   SetProDsvnaHost host;
-  SetPro_DsvnaHost_Build(&host,preparation,tables);
+  SetPro_DsvnaHost_Build(&host,owner,preparation,tables);
 #pragma omp parallel
 
   {
