@@ -27,6 +27,7 @@ file(COPY "${BASIS_SOURCE}/tests/test_quadrature_c.c" DESTINATION "${TEST_ROOT}/
 configure_file("${BASIS_SOURCE}/examples/pao/main.cpp" "${TEST_ROOT}/consumer/pao_example.cpp" COPYONLY)
 configure_file("${BASIS_SOURCE}/examples/vps/main.cpp" "${TEST_ROOT}/consumer/vps_example.cpp" COPYONLY)
 configure_file("${BASIS_SOURCE}/examples/density/main.cpp" "${TEST_ROOT}/consumer/density_example.cpp" COPYONLY)
+configure_file("${BASIS_SOURCE}/examples/bessel/main.cpp" "${TEST_ROOT}/consumer/bessel_example.cpp" COPYONLY)
 file(WRITE "${TEST_ROOT}/consumer/fixture.vps" [=[
 AtomSpecies 1
 grid.num.output 6
@@ -95,6 +96,9 @@ add_test(NAME density-c-consumer COMMAND density_c_consumer)
 add_executable(quadrature_c_consumer test_quadrature_c.c)
 target_link_libraries(quadrature_c_consumer PRIVATE OpenMX::basis)
 add_test(NAME quadrature-c-consumer COMMAND quadrature_c_consumer)
+add_executable(bessel_consumer bessel_example.cpp)
+target_link_libraries(bessel_consumer PRIVATE OpenMX::basis)
+add_test(NAME bessel-consumer COMMAND bessel_consumer)
 ]=])
 run("${CMAKE_COMMAND}" -S "${TEST_ROOT}/consumer" -B "${TEST_ROOT}/consumer-build"
   "-DCMAKE_CXX_COMPILER=${CXX}" "-DCMAKE_C_COMPILER=${CC}" -DCMAKE_BUILD_TYPE=Release

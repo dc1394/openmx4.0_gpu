@@ -3,7 +3,8 @@
 OpenMX の基底処理を独立して利用する C++20 ライブラリです。
 現在の公開範囲は PAO、非局所射影子、中性原子ポテンシャル、VNA 射影子の
 動径補間、PAO/射影子の波数空間補間、PAO/VPSファイルの読み込み、
-原子密度の補間・動径導関数・球対称Hartree積分とGauss–Legendre積分則の生成です。本体もこの実装を使用します。
+原子密度の補間・動径導関数・球対称Hartree積分、Gauss–Legendre積分則の生成、
+球Bessel関数と2中心積分用Besselテーブルです。本体もこの実装を使用します。
 球面調和関数、Fourier-Bessel 変換、2中心積分は
 まだこのパッケージには含まれません。
 
@@ -202,7 +203,52 @@ const double hartree = openmx::basis::atomic_hartree_potential(density.view(), 0
 本体では細密積分の所有者をC++の同期コールバック境界内に置き、原子データの準備後に破棄します。
 コールバック中にだけ節点・重みを借用し、入れ子の呼び出しや例外でも所有領域を共有・保持しません。
 従来の `FineGL_Abscissae` / `FineGL_Weight` 大域配列は不要になりました。
-他の計算でも使う粗・中密度の積分配列は、引き続き本体側に残っています。
+粗・中密度の積分則も計算ごとに同じC++クラスで所有し、Energy・Stress・Fourier変換・
+VNA組み立てへ不変ビューを渡します。本体の3種類の積分表で大域配列を廃止しました。
+
+## 球Bessel関数と2中心積分用テーブル
+
+`SphericalBesselSample(x, maximum_order)` は、球Bessel関数 `j_l(x)` と
+無次元引数 `x` による導関数を固定長配列で所有します。ヒープ確保は不要です。
+`values()` は `l=0..maximum_order+1`、`derivatives()` は `l=0..maximum_order` の
+読み取り専用spanを返します。所有者をコピーすると結果も独立します。
+
+```cpp
+#include <openmx/basis/bessel.hpp>
+#include <openmx/basis/pair_bessel.hpp>
+#include <array>
+
+const openmx::basis::SphericalBesselSample scalar(1.0, 4);
+const double j0 = scalar.values()[0];
+const std::array wavevectors{0.0, 0.5, 1.0, 2.0}; // bohr^-1
+openmx::basis::PairBesselWorkspace workspace(4, wavevectors, 32);
+const auto table = workspace.sample(3.0, 4);       // distance in bohr
+const auto index = 2 * table.points() + 2;         // l=2, k=1 bohr^-1
+const double j2 = table.values()[index];
+const double radial_derivative = wavevectors[2] * table.derivatives()[index];
+```
+
+`PairBesselWorkspace` は波数格子をコピーし、連続した作業配列と上限付きキャッシュを所有します。
+表の並びは `[角運動量][波数]` です。値と導関数はそれぞれ有効な行だけをspanとして返し、
+mdspan接続用の `storage()` / `row_capacity()` は余裕を持たせた領域の形状も表します。
+`sample()` の導関数も引数 `x=k*r` に関する値です。距離による導関数には波数を掛けます。
+
+- 最大角運動量は0〜29、波数格子は非空で有限・非負、距離も有限・非負です。
+  `maximum_order + int(1.5*x) + 10` がintに収まる範囲を検証します。
+  無効な入力では例外を返し、既存のテーブルとキャッシュ統計を保持します。
+- 元のOpenMXの下降漸化式、正規化、演算順序と `j_0'` の減算規則を維持します。
+  原点では解析的な極限値を返します。極端な浮動小数点入力でのunderflow/overflowや
+  原点付近の減算による精度の制約も継承します。1点の評価コストはO(maximum_order+x)です。
+- キーは距離と角運動量の完全一致です。キャッシュ済みの借用表は所有者の破棄まで有効です。
+  キャッシュが無効・満杯なら事前確保済みの作業表を再利用し、その借用は次の非キャッシュ評価まで有効です。
+  同じ計算内で一時表を保存しておく場合は、次の評価前に必要な結果をコピーしてください。
+- キャッシュの確保が失敗すると成長を止め、作業表で評価を続けます。
+  既存のキャッシュは維持し、ヒット時・作業表の再利用時に確保を行いません。
+  同時に評価する各スレッドが自分のworkspaceを所有します。
+
+本体の重なり・非局所射影子処理もこの所有者を使い、従来のmdspanとC ABIへ借用表を渡します。
+Fourier変換用のCUDA/HIPカーネルは同じ漸化式にKokkosの数学関数を接続し、大引数での値専用高速経路を維持します。
+公開入口はC++ APIで、MPIやKokkosの初期化は不要です。単独の利用例は `examples/bessel/` にあります。
 
 ## 動径・波数表のデータと数値規約
 
@@ -244,6 +290,8 @@ C ABI は呼び出しごとのエラーバッファを使い、失敗時に数�
 スカラー評価とHartree積分が確保を行わないことも検査します。
 生成したGauss–Legendre則は多項式の厳密積分、節点の順序・対称性、次数1500までの規格化、
 コピー・ムーブ・並行生成と確保失敗時の出力保持を検査します。
+球Besselは独立したべき級数・解析式・Legendre積分と有限差分で検証します。
+キャッシュのキー・借用寿命・無確保の再利用、確保失敗後の継続、独立した並行評価も検査します。
 
 `basis-package-consumer` はこのディレクトリだけをコピーして独立ビルド・インストールし、
 インストール先と元のソース・ビルドディレクトリを移動してから、外部 C/C++ プログラムを

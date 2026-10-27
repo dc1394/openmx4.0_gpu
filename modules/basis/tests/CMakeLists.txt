@@ -1,4 +1,11 @@
 find_package(Threads REQUIRED)
+add_executable(openmx_basis_bessel_tests test_bessel.cpp)
+target_link_libraries(openmx_basis_bessel_tests PRIVATE OpenMX::basis Threads::Threads)
+foreach(_case values derivatives cache invalid ownership allocation concurrent)
+  add_test(NAME basis-bessel-${_case} COMMAND openmx_basis_bessel_tests ${_case})
+  set_tests_properties(basis-bessel-${_case} PROPERTIES LABELS "unit;basis" TIMEOUT 15)
+endforeach()
+
 add_executable(openmx_basis_quadrature_tests test_quadrature.cpp)
 target_link_libraries(openmx_basis_quadrature_tests PRIVATE OpenMX::basis Threads::Threads)
 foreach(_case moments invalid ownership concurrent allocation)

@@ -803,3 +803,10 @@ CPU/GPU計算・性能を検証後、同じ監査報告から一覧とベース�
 CPU/GPU性能を検証後に一覧とベースラインを更新しました。
 証拠は `build/neutral-quadrature-owner-20261028/` の `audit-proof.json`、`outlined-renaming.json`、
 `normalized-gate.json`、`numerical-summary.json` と各検証ログです。
+
+
+第102段階では球Bessel関数と、既存C++のBesselテーブル／キャッシュ所有者を独立basisへ移しました。
+新しい可変大域状態はなく、同じ291 C単位を解析した結果は関数ごとの詳細まで前段階と一致します。
+共通定義936個・参照組12,374個、設定298個・固定構造表278個の所属名も不変です。
+ゲートは追加0件で成功しました。大域状態の所有権を新たに移した変更ではないため、
+利用一覧・ベースラインは変更せず、比較証拠を `build/bessel-library-20261028/audit-proof.json` に保存しました。
