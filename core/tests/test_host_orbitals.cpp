@@ -307,12 +307,24 @@ OpenMXOrbitalsDisplacement displacement(std::mt19937& rng,const Setup& u,int wan
   norm=std::sqrt(norm);
   return displacement(u,wan,distance*d[0]/norm,distance*d[1]/norm,distance*d[2]/norm);
 }
+// atan2 retains small transverse components near an axis; asin(y/rho) can
+// lose them before its inverse when y/rho rounds toward +/-1. This oracle
+// still evaluates angles and trigonometric derivatives independently of the
+// production kernel's direct direction cosines.
+void atan2_spherical_reference(double x,double y,double z,double out[3]) {
+  const double transverse=x*x+y*y;
+  const double radius=std::sqrt(transverse+z*z),rho=std::sqrt(transverse);
+  out[0]=radius;
+  out[1]=radius>=10e-15?std::atan2(rho,z):0.5*3.1415926535897932384626;
+  out[2]=radius>=10e-15 && rho>=10e-15?std::atan2(y,x):0.0;
+}
+template<void (*Coordinates)(double,double,double,double*) = openmx::test::xyz2spherical_reference>
 std::vector<double> dexpected(const Setup& u,const std::vector<OpenMXOrbitalsDisplacement>& q) {
   std::vector<double> e;
   for(const auto& p:q) {
     const auto& s=u.species[p.wan];
     std::vector<double> row(size_t(p.no)*3);
-    openmx::test::get_dorbitals_reference(s.maxl,s.nb,s.mesh,u.rv.data()+u.rv_off[p.wan],u.rwf.data()+u.rwf_base[p.wan],
+    openmx::test::get_dorbitals_reference<Coordinates>(s.maxl,s.nb,s.mesh,u.rv.data()+u.rv_off[p.wan],u.rwf.data()+u.rwf_base[p.wan],
         p.x,p.y,p.z,row.data());
     e.insert(e.end(),row.begin(),row.end());
   }
@@ -409,7 +421,7 @@ void dinvalid() {
   refused(&t,q.data(),q.size(),out.data(),OPENMX_GRID_SCALAR,"a five-point mesh accepted");
 }
 void dcosines() {
-  // Bitwise across ISAs; close to the exact kernel (last-ulp angle differences).
+  // Bitwise across ISAs; accurate against well-conditioned spherical angles.
   std::mt19937 rng(321u);
   const Setup u=make_setup(rng);
   std::uniform_real_distribution<double> radius(0.0,1.0);
@@ -420,9 +432,13 @@ void dcosines() {
     q.push_back(displacement(u,wan,0.0,0.0,0.0));q.push_back(displacement(u,wan,0.0,0.0,0.3));
     q.push_back(displacement(u,wan,0.0,-0.3,0.0));q.push_back(displacement(u,wan,-0.3,0.0,0.0));
     q.push_back(displacement(u,wan,0.5*s.rv[0],0.0,0.0));q.push_back(displacement(u,wan,0.0,0.0,2.0*s.rv.back()));
+    q.push_back(displacement(u,wan,-1.3747506774419897e-6,1.9524197111329884,-.59060166557957372));
+    q.push_back(displacement(u,wan,1e-9,.3,.2));q.push_back(displacement(u,wan,-1e-9,-.3,.2));
+    q.push_back(displacement(u,wan,1e-9,0,.3));q.push_back(displacement(u,wan,1e-9,0,-.3));
   }
   const auto tables=u.tables();
-  const auto exact=dexpected(u,q);
+  const auto legacy=dexpected(u,q);
+  const auto exact=dexpected<atan2_spherical_reference>(u,q);
   std::vector<double> reference;
   for(int mode:modes()) {
     std::vector<double> out(exact.size()+2,-7.0);
@@ -432,18 +448,22 @@ void dcosines() {
     if(mode==OPENMX_GRID_SCALAR)reference=out;
     else require(!std::memcmp(out.data(),reference.data(),out.size()*sizeof(double)),"the cosine kernel differs between ISAs");
   }
-  size_t offset=0;double worst=0.0;
+  size_t offset=0;double worst=0.0,legacy_worst=0.0;
   for(const auto& p:q) {
     const size_t n=size_t(p.no)*3;double scale=0.0;
     for(size_t k=0;k<n;++k)scale=std::max(scale,std::fabs(exact[offset+k]));
     for(size_t k=0;k<n;++k) {
       const double d=std::fabs(exact[offset+k]-reference[offset+k]);
-      require(d<=1.0e-11*scale,"the cosine kernel strays from Get_dOrbitals_work beyond last-ulp angles");
-      if(scale>0.0)worst=std::max(worst,d/scale);
+      require(d<=1.0e-11*scale,"the cosine kernel strays from the stable angular reference");
+      if(scale>0.0){
+        worst=std::max(worst,d/scale);
+        legacy_worst=std::max(legacy_worst,std::fabs(legacy[offset+k]-reference[offset+k])/scale);
+      }
     }
     offset+=n;
   }
-  std::cout<<"direction-cosine derivatives vs Get_dOrbitals_work: max difference "<<worst<<" of each point's largest derivative\n";
+  std::cout<<"direction-cosine derivatives: stable atan2 reference "<<worst
+           <<", legacy asin/acos angle difference "<<legacy_worst<<" of each point's largest derivative\n";
 }
 
 // ---- segments (openmx_core_orbitals_segments) ----

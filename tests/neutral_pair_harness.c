@@ -10,6 +10,7 @@
 #include "openmx_core_neutral_grid.h"
 #include "openmx_core_neutral_grid_metadata.h"
 #include "openmx_neutral_atom.h"
+#include "reference_arithmetic.h"
 #define CHECK(c) do{if(!(c)){fprintf(stderr,"FAIL line %d: %s\n",__LINE__,#c);exit(2);}}while(0)
 static int WhatSpecies[4]={0,0,1,0},neighbors[4][3],images[4][3],*natn[4],*ncn[4];
 static int expected_counts[2];
@@ -19,8 +20,8 @@ static double expected_spacing[2]={.031,.043},coordinates[4][4],*Gxyz[4],distanc
 static OpenMXNeutralGridMetadataView grid_metadata={expected_counts,expected_spacing,2};
 static double charges[2]={1.5,2.7},radial[3][2][4];
 static int mesh[2]={4,4},species_index[2]={1,0},value_calls,derivative_calls,pre_guard_logs;
-static void near(double a,long double b){
-  if(!isfinite(a)||fabsl((long double)a-b)>2e-11L*(1+fabsl(b))){fprintf(stderr,"values %.17g %.21Lg\n",a,b);CHECK(0);}
+static void near(double a,OpenMXTestReference b){
+  if(!isfinite(a)||OpenMX_TestReferenceAbs((OpenMXTestReference)a-b)>2e-11L*(1+OpenMX_TestReferenceAbs(b))){fprintf(stderr,"values %.17g %.21Lg\n",a,(long double)b);CHECK(0);}
 }
 static int species(double charge,int count,double *logs,double *radii,double *potential){
   const int s=charge==charges[0]?0:1;CHECK(charge==charges[s]&&count==4);
@@ -38,14 +39,14 @@ double Dr_VH_AtomF(double charge,int count,double logarithm,double r,double *log
 #include "neutral_pair_native.inc"
 /* Closed weighted polynomial moments: no production distance loop or
    derivative interpolation/reduction is reused by the oracle. */
-static void moments(int base,int other,long double distance,long double *energy,long double *derivative){
-  const int row=species_index[base];long double m0=0,mz=0,mq=0,mq2=0,mz2=0,mqz=0;
+static void moments(int base,int other,OpenMXTestReference distance,OpenMXTestReference *energy,OpenMXTestReference *derivative){
+  const int row=species_index[base];OpenMXTestReference m0=0,mz=0,mq=0,mq2=0,mz2=0,mqz=0;
   for(int i=0;i<expected_counts[row];i++){
-    const long double x=points[0][row][i],y=points[1][row][i],z=points[2][row][i],w=(long double)points[3][row][i]*points[4][row][i];
-    const long double q=x*x+y*y+z*z;m0+=w;mz+=w*z;mq+=w*q;mq2+=w*q*q;mz2+=w*z*z;mqz+=w*q*z;
+    const OpenMXTestReference x=points[0][row][i],y=points[1][row][i],z=points[2][row][i],w=(OpenMXTestReference)points[3][row][i]*points[4][row][i];
+    const OpenMXTestReference q=x*x+y*y+z*z;m0+=w;mz+=w*z;mq+=w*q;mq2+=w*q*q;mz2+=w*z*z;mqz+=w*q*z;
   }
-  const long double a=radial[2][other][0],b=radial[2][other][1],c=radial[2][other][2],d=distance;
-  const long double scale=(long double)charges[other]*expected_spacing[row];
+  const OpenMXTestReference a=radial[2][other][0],b=radial[2][other][1],c=radial[2][other][2],d=distance;
+  const OpenMXTestReference scale=(OpenMXTestReference)charges[other]*expected_spacing[row];
   *energy=scale*(a*m0+b*(mq-2*d*mz+d*d*m0)+c*(mq2-4*d*mqz+2*d*d*mq+4*d*d*mz2-4*d*d*d*mz+d*d*d*d*m0));
   *derivative=scale*(b*(-2*mz+2*d*m0)+c*(-4*mqz+4*d*mq+8*d*mz2-12*d*d*mz+4*d*d*d*m0));
 }
@@ -60,7 +61,7 @@ static int check_pairs(const OpenMXAtomicViews *atomic){
   int cases=0;
   for(int atom=1;atom<=3;atom++)for(int h=0;h<3;h++){
     const int other=neighbors[atom][h],base=WhatSpecies[atom],sp=WhatSpecies[other],row=species_index[base];
-    const double distance=distances[atom][h];long double energy,derivative;moments(base,sp,distance,&energy,&derivative);
+    const double distance=distances[atom][h];OpenMXTestReference energy,derivative;moments(base,sp,distance,&energy,&derivative);
     for(int implementation=0;implementation<2;implementation++){
       double out[4]={99,98,97,96};value_calls=derivative_calls=0;
       if(implementation)StressNeutralPair(&grid_tables,&grid_metadata,atomic,atom,h,out);else EnergyNeutralPair(&grid_tables,&grid_metadata,atomic,atom,h,out);
@@ -70,15 +71,18 @@ static int check_pairs(const OpenMXAtomicViews *atomic){
         near(out[d+1],h?derivative*displacement/fmax(distance,1e-10):0);
         /* Independent coordinate gradient of the closed energy moment. */
         if(h&&distance>1e-6&&expected_counts[row]){
-          const long double step=2e-6L;long double e[2],unused;
-          for(int side=0;side<2;side++){
-            long double q=0;for(int axis=0;axis<3;axis++){
-              long double delta=(long double)coordinates[atom][axis+1]-((long double)coordinates[other][axis+1]+atv[images[atom][h]][axis+1]);
-              if(axis==d)delta+=side?step:-step;q+=delta*delta;
+          /* Fourth-order central differences retain the same tolerance
+             when the reference itself has only binary64 precision. */
+          const OpenMXTestReference step=1e-4L;OpenMXTestReference e[4],unused;
+          const int shifts[4]={-2,-1,1,2};
+          for(int side=0;side<4;side++){
+            OpenMXTestReference q=0;for(int axis=0;axis<3;axis++){
+              OpenMXTestReference delta=(OpenMXTestReference)coordinates[atom][axis+1]-((OpenMXTestReference)coordinates[other][axis+1]+atv[images[atom][h]][axis+1]);
+              if(axis==d)delta+=shifts[side]*step;q+=delta*delta;
             }
-            moments(base,sp,sqrtl(q),e+side,&unused);
+            moments(base,sp,OpenMX_TestReferenceSqrt(q),e+side,&unused);
           }
-          near(out[d+1],(e[1]-e[0])/(2*step));
+          near(out[d+1],(8*(e[2]-e[1])-(e[3]-e[0]))/(12*step));
         }
       }
       ++cases;
@@ -121,9 +125,9 @@ int main(void){
   coordinates[3][1]+=3e-12;coordinates[3][3]+=4e-12;geometry();
   const double distance=distances[2][1],guarded=1e-10;
   CHECK(distance>0&&distance<1e-10);
-  const long double scale=(long double)expected_spacing[species_index[1]]*.4L*.7L*charges[0];
-  const long double r2=(long double)guarded*guarded;
-  const long double guard_energy=scale*(radial[2][0][0]+radial[2][0][1]*r2+radial[2][0][2]*r2*r2);
+  const OpenMXTestReference scale=(OpenMXTestReference)expected_spacing[species_index[1]]*.4L*.7L*charges[0];
+  const OpenMXTestReference r2=(OpenMXTestReference)guarded*guarded;
+  const OpenMXTestReference guard_energy=scale*(radial[2][0][0]+radial[2][0][1]*r2+radial[2][0][2]*r2*r2);
   for(int implementation=0;implementation<2;implementation++){
     double out[4];if(implementation)StressNeutralPair(&grid_tables,&grid_metadata,&atomic,2,1,out);else EnergyNeutralPair(&grid_tables,&grid_metadata,&atomic,2,1,out);
     near(out[0],guard_energy);
@@ -137,7 +141,7 @@ int main(void){
   const OpenMXNeutralGridView tiny={1,expected_spacing[0],points[0][0],points[1][0],points[2][0],points[3][0],points[4][0]};
   OpenMXNeutralPotentialView potential;OpenMX_Neutral_PotentialBorrow(&atomic,0,&potential);
   double partial=0;OpenMX_Neutral_CutoffAccumulate(&tiny,&potential,distance,0,1,&partial);
-  near(partial*expected_spacing[0],scale*(radial[2][0][0]+radial[2][0][1]*(long double)distance*distance+radial[2][0][2]*powl(distance,4)));
+  near(partial*expected_spacing[0],scale*(radial[2][0][0]+radial[2][0][1]*(OpenMXTestReference)distance*distance+radial[2][0][2]*OpenMX_TestReferencePow(distance,4)));
   /* Partition and accumulate the shared cutoff kernel over unequal and
      empty slices, retaining the caller's ordered reduction and initial values. */
   radial[2][0][1]=.13;expected_counts[0]=23;
@@ -147,7 +151,7 @@ int main(void){
   }
   const OpenMXNeutralGridView grid={23,expected_spacing[0],points[0][0],points[1][0],points[2][0],points[3][0],points[4][0]};
   for(int nt=1;nt<=32;nt*=2){
-    double sum=0;long double offset=0,energy,derivative;
+    double sum=0;OpenMXTestReference offset=0,energy,derivative;
     for(int t=0;t<nt;t++){
       double value=.003*(t+1);offset+=value;
       OpenMX_Neutral_CutoffAccumulate(&grid,&potential,.71,t*23/nt,(t+1)*23/nt,&value);sum+=value;

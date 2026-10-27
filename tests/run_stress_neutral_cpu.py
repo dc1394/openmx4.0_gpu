@@ -48,17 +48,20 @@ def main():
             'static inline int omp_get_num_threads(void){return fixture_team;}\n'
             'static inline int omp_get_num_procs(void){return 4;}\n')
 
-        def build(name, code, neutral=neutral_header):
+        def build(name, code, neutral=neutral_header, reference64=False):
             (folder/'stress_neutral_native.inc').write_text(code)
             (folder/'openmx_neutral_atom.h').write_text(neutral)
             executable = folder/name
-            subprocess.run(compiler_command('c')+['-I'+str(folder), '-I'+str(ROOT/'source'),
+            flags = ['-DOPENMX_TEST_REFERENCE_BINARY64=1'] if reference64 else []
+            subprocess.run(compiler_command('c')+flags+['-I'+str(folder), '-I'+str(ROOT/'source'),
                 '-I'+str(ROOT/'core/include'), '-x', 'c', str(ROOT/'tests/stress_neutral_harness.c'),
                 '-x', 'none', str(library), '-Wl,-rpath,'+str(library.parent), '-lm', '-o', str(executable)], check=True)
             return executable
 
         executable = build('stress-neutral', native)
         subprocess.run([str(executable)], cwd=folder, check=True, preexec_fn=bounded_stack)
+        subprocess.run([str(build('stress-neutral-binary64', native, reference64=True))],
+                       cwd=folder, check=True, preexec_fn=bounded_stack)
         for mode in ['axis', 'workers', 'peers']:
             failed = subprocess.run([str(executable), mode], cwd=folder, capture_output=True,
                                     text=True, preexec_fn=bounded_stack)
