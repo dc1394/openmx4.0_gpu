@@ -105,7 +105,7 @@ void acc_clear_freelists(void);
 /* #define YOUSO33                # of MO_Nkpoint                                 */
 /* #define YOUSO34                # of radial parts in VNA projector expansion    */
 /* #define YOUSO35                max L of projectors in VNA projector expansion  */
-#define YOUSO36      14           /* max L in Comp2Real array                       */
+#define YOUSO36      14           /* max L in real-harmonic transform                       */
 /* #define YOUSO37                max # of charge states in LESP                  */
 /* #define YOUSO38                max # of previous steps in k-space Pulay mixing */
 /* #define YOUSO39                max # of previous steps in h-space Pulay mixing */
@@ -2309,7 +2309,6 @@ extern double Restart_Spin_Angle_Theta,Restart_Spin_Angle_Phi;
 extern int MD_EvsLattice_flag[3];
 extern int MD_OutABC;
 extern double X_Center_Coordinate,Y_Center_Coordinate,Z_Center_Coordinate;
-extern dcomplex Comp2Real[YOUSO36+1][2*(YOUSO36+1)+1][2*(YOUSO36+1)+1];
 /* added by mari (May 2004) */
 extern double TempScale[30],RatScale[30];
 extern int IntScale[30],NumScale[30];
@@ -2980,13 +2979,13 @@ double Stress(OpenMXCoreContext *core,OpenMXThermodynamicEnergies *thermo, const
 	      double *****OLP,
 	      double *****CDM,
 	      double *****EDM, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
-double Set_OLP_Kin(const OpenMXReciprocalViews *reciprocal, double *****OLP, double *****H0, const OpenMXElectronicViews *electronic);
+double Set_OLP_Kin(const OpenMXRealHarmonicData *conversion,const OpenMXReciprocalViews *reciprocal, double *****OLP, double *****H0, const OpenMXElectronicViews *electronic);
 double Set_Nonlocal(const OpenMXAtomicViews *atomic, const OpenMXReciprocalViews *reciprocal, double *****HNL, double ******DS_NL, const OpenMXElectronicViews *electronic);
 double Set_CoreHoleMatrix(double *****HCH, const OpenMXElectronicViews *electronic);
 double Set_XMCD_penalty(int mode,double *pre_spin_moment,int SCF_iter, const OpenMXElectronicViews *electronic);  // S. An
 double Set_OLP_p(double *****OLP_p);
 
-double Set_ProExpn_VNA(const OpenMXGaussRuleData *radial,const OpenMXVnaMatrixViews *vna,const OpenMXReciprocalViews *reciprocal);
+double Set_ProExpn_VNA(const OpenMXRealHarmonicData *conversion,const OpenMXGaussRuleData *radial,const OpenMXVnaMatrixViews *vna,const OpenMXReciprocalViews *reciprocal);
 void Set_Vpot(OpenMXMixingVState *mixing_v,const OpenMXAtomicViews *atomic, int MD_iter,
               int SCF_iter, 
               int SCF_iter0,

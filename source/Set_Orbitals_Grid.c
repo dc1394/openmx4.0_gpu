@@ -1978,7 +1978,7 @@ double Set_Orbitals_Grid(OpenMXHamiltonianGpuState *hamiltonian_state, OpenMXOrb
     if (Cnt_kind==0)  NO0 = atomic->species.orbitals[Cwan];
     else              NO0 = atomic->species.contracted_orbitals[Cwan];
 
-#pragma omp parallel shared(Comp2Real,List_YOUSO,Orbs_Grid,Cnt_kind,Gxyz,atv,CellListAtom,GridListAtom,GridN_Atom,Gc_AN,Cwan,Mc_AN,NO0,atomic) private(OMPID,Nthrds,Nprocs,Nc,GNc,GRc,Cxyz,x,y,z,dx,dy,dz,i,j)
+#pragma omp parallel shared(List_YOUSO,Orbs_Grid,Cnt_kind,Gxyz,atv,CellListAtom,GridListAtom,GridN_Atom,Gc_AN,Cwan,Mc_AN,NO0,atomic) private(OMPID,Nthrds,Nprocs,Nc,GNc,GRc,Cxyz,x,y,z,dx,dy,dz,i,j)
     {
       double *Chi0;
       double Cxyz0[4]; 
@@ -2281,8 +2281,8 @@ double Set_Orbitals_Grid(OpenMXHamiltonianGpuState *hamiltonian_state, OpenMXOrb
 		  sum0 = 0.0;
 		  sum1 = 0.0; 
 		  for (j=0; j<(L0*2+1); j++){
-		    sum0 += Comp2Real[L0][i][j].r*SH[j][0] - Comp2Real[L0][i][j].i*SH[j][1]; 
-		    sum1 += Comp2Real[L0][i][j].r*SH[j][1] + Comp2Real[L0][i][j].i*SH[j][0]; 
+		    sum0 += openmx_real_harmonic_coefficient(&atomic->real_harmonics,L0,i,j).r*SH[j][0] - openmx_real_harmonic_coefficient(&atomic->real_harmonics,L0,i,j).i*SH[j][1];
+		    sum1 += openmx_real_harmonic_coefficient(&atomic->real_harmonics,L0,i,j).r*SH[j][1] + openmx_real_harmonic_coefficient(&atomic->real_harmonics,L0,i,j).i*SH[j][0];
 		  }
 		  AF[(size_t)(L0)*orbital_buffers.magnetic_capacity+(i)] = sum0 + sum1;
 		}              
@@ -2652,8 +2652,8 @@ double Set_Orbitals_Grid(OpenMXHamiltonianGpuState *hamiltonian_state, OpenMXOrb
 		      sum0 = 0.0;
 		      sum1 = 0.0; 
 		      for (j=0; j<(L0*2+1); j++){
-			sum0 += Comp2Real[L0][i][j].r*SH[j][0] - Comp2Real[L0][i][j].i*SH[j][1]; 
-			sum1 += Comp2Real[L0][i][j].r*SH[j][1] + Comp2Real[L0][i][j].i*SH[j][0]; 
+			sum0 += openmx_real_harmonic_coefficient(&atomic->real_harmonics,L0,i,j).r*SH[j][0] - openmx_real_harmonic_coefficient(&atomic->real_harmonics,L0,i,j).i*SH[j][1];
+			sum1 += openmx_real_harmonic_coefficient(&atomic->real_harmonics,L0,i,j).r*SH[j][1] + openmx_real_harmonic_coefficient(&atomic->real_harmonics,L0,i,j).i*SH[j][0];
 		      }
 		      AF[(size_t)(L0)*orbital_buffers.magnetic_capacity+(i)] = sum0 + sum1;
 		    }              

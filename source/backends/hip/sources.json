@@ -1104,6 +1104,7 @@
     "openmx_basis_harmonics.h",
     "openmx_basis_lebedev.h",
     "openmx_core_quadrature.h",
+    "openmx_core_real_harmonics.h",
     "openmx_quadrature.h"
   ],
   "integrated_overrides": {

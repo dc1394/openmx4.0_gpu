@@ -108,6 +108,7 @@ class UnifiedBuildTest(unittest.TestCase):
                     input='#include "openmx_basis_harmonics.h"\n'
                           '#include "openmx_orbital_harmonics.h"\n'
                           '#include "openmx_basis_lebedev.h"\n'
+                          '#include "openmx_core_real_harmonics.h"\n'
                           'void probe(void) { double v[2],dt[2],dp[2];\n'
                           'OpenMXLebedevRuleData rule={0,0}; (void)rule;\n'
                           'openmx_orbital_complex_sh(4,1,0,1,0,v,dt,dp);\n'
@@ -440,6 +441,9 @@ class UnifiedBuildTest(unittest.TestCase):
                     # Existing public ABI dependencies use canonical absolute paths.
                     self.assertTrue(any(p.endswith("/core/include/openmx_core_neutral_grid_metadata.h")
                                         for p in row.split()), row)
+                    self.assertIn("openmx_core_real_harmonics.h", row.split())
+                    self.assertIn("../modules/basis/include/openmx/basis/real_harmonics.h", row.split())
+                    self.assertIn("../modules/basis/include/openmx/basis/complex.h", row.split())
                     if obj not in angular_objects:
                         helper = "openmx_cwf_workspace.h" if "CWF" in obj else "openmx_neutral_atom.h"
                         self.assertIn(helper, row.split())

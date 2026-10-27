@@ -90,7 +90,7 @@ static double SetPro_Separable(const OpenMXVnaMatrixViews *matrices,const OpenMX
   const int phases_timed=SetPro_verbose();
   double phase_clock=0.0,phase_dsvna=0.0,phase_barrier=0.0,phase_ring=0.0,phase_local=0.0;
   if (phases_timed) dtime(&phase_clock);
-  if (SetPro_DSVNA_GpuBegin(reciprocal, &gpu2,&preparation)) {
+  if (SetPro_DSVNA_GpuBegin(reciprocal, tables->conversion,tables->conversion_width, &gpu2,&preparation)) {
     SetPro_DSVNA_GpuRun(DS_VNA,pairs->count,pairs->local,pairs->neighbor,wavevectors,&gpu2);
     const int host_route=gpu2.host_route,host_first=gpu2.host_first;
     SetPro_DSVNA_GpuEnd(&gpu2);
@@ -260,8 +260,13 @@ static double SetPro_OneCenter(const OpenMXVnaMatrixViews *matrices,int mirror,
 
 /* This boundary borrows the legacy application state explicitly. Everything
    exported by invocation (basis, task maps, geometry, wavevectors) is owned. */
-double Set_ProExpn_VNA_WithStatus(const OpenMXGaussRuleData *radial,const OpenMXVnaMatrixViews *vna,const OpenMXReciprocalViews *reciprocal,int *used_gpu)
+double Set_ProExpn_VNA_WithStatus(const OpenMXRealHarmonicData *conversion,const OpenMXGaussRuleData *radial,const OpenMXVnaMatrixViews *vna,const OpenMXReciprocalViews *reciprocal,int *used_gpu)
 {
+  const int conversion_max=List_YOUSO[25]>List_YOUSO[35]?List_YOUSO[25]:List_YOUSO[35];
+  if (!conversion || !conversion->coefficients || conversion_max<0 ||
+      conversion->orders<=(size_t)conversion_max || conversion->width<2*(size_t)conversion_max+1) {
+    SetPro_gpu_abort("invalid real harmonic conversion table"); abort();
+  }
   if (!radial || radial->count!=GL_Mesh || !radial->nodes || !radial->weights) {
     SetPro_gpu_abort("invalid VNA radial quadrature"); abort();
   }
@@ -276,14 +281,14 @@ double Set_ProExpn_VNA_WithStatus(const OpenMXGaussRuleData *radial,const OpenMX
   OpenMXVnaInvocation *owner=openmx_core_vna_invocation_create(&input,&invocation,error,sizeof(error));
   if (!owner) { SetPro_gpu_abort(error); abort(); }
   const SetProVnaTables tables={reciprocal->neutral_transform,reciprocal->product_transform,reciprocal->potential_transform,
-      &Comp2Real[0][0][0],sizeof(Comp2Real[0][0])/sizeof(Comp2Real[0][0][0]),
+      conversion->coefficients,conversion->width,
       radial->weights,Radial_kmin,PAO_Nkmax,time_per_atom};
   int hvna_gpu_used=0;
   if (used_gpu) *used_gpu=0;
   SetPro_note("entry","");
   const double time1=SetPro_Separable(vna,reciprocal,&invocation,&tables,&hvna_gpu_used);
   SetProGpu3Context gpu3={0};
-  const int vna23_gpu=SetPro_VNA23_GpuBegin(reciprocal, &gpu3);
+  const int vna23_gpu=SetPro_VNA23_GpuBegin(reciprocal, conversion->coefficients,conversion->width, &gpu3);
   const double time2=SetPro_OneCenter(vna,0,&invocation,&tables,&gpu3);
   const double time3=SetPro_OneCenter(vna,1,&invocation,&tables,&gpu3);
   const int vna23_gpu_used=gpu3.used_gpu;
@@ -296,8 +301,8 @@ double Set_ProExpn_VNA_WithStatus(const OpenMXGaussRuleData *radial,const OpenMX
   return time1+time2+time3;
 }
 
-double Set_ProExpn_VNA(const OpenMXGaussRuleData *radial,const OpenMXVnaMatrixViews *vna,const OpenMXReciprocalViews *reciprocal)
+double Set_ProExpn_VNA(const OpenMXRealHarmonicData *conversion,const OpenMXGaussRuleData *radial,const OpenMXVnaMatrixViews *vna,const OpenMXReciprocalViews *reciprocal)
 {
-  return Set_ProExpn_VNA_WithStatus(radial,vna,reciprocal,NULL);
+  return Set_ProExpn_VNA_WithStatus(conversion,radial,vna,reciprocal,NULL);
 }
 #endif

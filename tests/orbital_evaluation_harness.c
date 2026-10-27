@@ -93,6 +93,11 @@ int main(void) {
   atomic.species.contracted_basis=&contracted[0][0];atomic.species.angular_channels=L;
   Set_Comp2Real();
   OpenMXOrbitalBuffers buffers;OpenMXOrbitalShape shape={4,M,1};char error[256];
+  OpenMXCoreContext *calculation=openmx_core_create_host(error,sizeof error);
+  if(!calculation || !openmx_core_real_harmonics_initialize(calculation,4,&atomic.real_harmonics,error,sizeof error)) {
+    fprintf(stderr,"%s\n",error);return 1;
+  }
+  if(atomic.real_harmonics.coefficients==&Comp2Real[0][0][0])abort();
   OpenMXOrbitalWorkspace *owner=openmx_core_orbital_create(&shape,&buffers,error,sizeof(error));
   if(!owner){fprintf(stderr,"%s\n",error);return 1;}
   for (int s=0;s<S;++s) {
@@ -250,6 +255,7 @@ int main(void) {
     }
   }
   openmx_core_orbital_destroy(owner);
+  openmx_core_destroy(calculation);
   printf("PASS: %d orbital comparisons; %d independent derivatives, maximum absolute error %.3g; "
          "all g components, general angles, both poles, contracted/reversed/reused and CUDA/HIP Force/grid fallbacks\n",
          comparisons,derivative_comparisons,max_derivative_error);

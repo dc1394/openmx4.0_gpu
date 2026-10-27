@@ -196,7 +196,6 @@ double Restart_Spin_Angle_Theta = {0},Restart_Spin_Angle_Phi = {0};
 int MD_EvsLattice_flag[3] = {0};
 int MD_OutABC = {0};
 double X_Center_Coordinate = {0},Y_Center_Coordinate = {0},Z_Center_Coordinate = {0};
-dcomplex Comp2Real[YOUSO36+1][2*(YOUSO36+1)+1][2*(YOUSO36+1)+1] = {0};
 double TempScale[30] = {0},RatScale[30] = {0};
 int IntScale[30] = {0},NumScale[30] = {0};
 double TempQ = {0};

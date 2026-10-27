@@ -3,6 +3,7 @@
 
 #include "openmx_core_reciprocal.h"
 #include "openmx_core_species.h"
+#include "openmx_core_real_harmonics.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -22,6 +23,7 @@ typedef struct {
   OpenMXRadialView3 projector_energies;
   int *projector_angular;
   size_t projector_angular_species, projector_angular_stride;
+  OpenMXRealHarmonicData real_harmonics;
 } OpenMXAtomicViews;
 
 /* Unchecked row access for validated species; projector 0 is padding. */

@@ -45,6 +45,8 @@ $(OBJS) openmx_api.o: openmx_core_reciprocal.h
 $(OBJS) openmx_api.o: openmx_core_reciprocal_archive.h
 DFT.o FT_PAO.o FT_NLP.o FT_ProExpn_VNA.o FT_VNA.o FT_ProductPAO.o SetPara_DFT.o Generate_Wannier.o: openmx_reciprocal.h
 DFT.o FT_PAO.o FT_NLP.o FT_ProExpn_VNA.o FT_VNA.o FT_ProductPAO.o SetPara_DFT.o: openmx_atomic.h
+# Public native views use the same C complex type as the standalone module.
+$(OBJS) openmx_api.o: openmx_core_real_harmonics.h ../modules/basis/include/openmx/basis/real_harmonics.h ../modules/basis/include/openmx/basis/complex.h
 
 $(OBJS) openmx_api.o: openmx_core_orbital_workspace.h
 Get_Orbitals.o Get_Cnt_Orbitals.o Get_dOrbitals.o Get_Cnt_dOrbitals.o Set_Orbitals_Grid.o Force.o Stress.o: openmx_orbitals.h

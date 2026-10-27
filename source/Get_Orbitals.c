@@ -248,8 +248,8 @@ void Get_Orbitals(const OpenMXAtomicViews *atomic, int wan, double x, double y, 
           sum0 = 0.0;
           sum1 = 0.0; 
 	  for (j=0; j<(L0*2+1); j++){
-            sum0 += Comp2Real[L0][i][j].r*SH[j][0] - Comp2Real[L0][i][j].i*SH[j][1]; 
-            sum1 += Comp2Real[L0][i][j].r*SH[j][1] + Comp2Real[L0][i][j].i*SH[j][0]; 
+            sum0 += openmx_real_harmonic_coefficient(&atomic->real_harmonics,L0,i,j).r*SH[j][0] - openmx_real_harmonic_coefficient(&atomic->real_harmonics,L0,i,j).i*SH[j][1];
+            sum1 += openmx_real_harmonic_coefficient(&atomic->real_harmonics,L0,i,j).r*SH[j][1] + openmx_real_harmonic_coefficient(&atomic->real_harmonics,L0,i,j).i*SH[j][0];
 	  }
           AF[(size_t)(L0)*orbital_buffers.magnetic_capacity+(i)] = sum0 + sum1;
 	}              

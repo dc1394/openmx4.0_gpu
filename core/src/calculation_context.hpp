@@ -21,6 +21,7 @@
 #include <openmx/core/orbital_optimization.hpp>
 #include <openmx/core/radial.hpp>
 #include <openmx/basis/quadrature.hpp>
+#include <openmx/basis/real_harmonics.hpp>
 
 // Private definition shared by C ABI modules. No implicit/default context.
 // Declaration order keeps the runtime alive until all calculation storage has
@@ -36,6 +37,7 @@ struct OpenMXCoreContext {
   // their synchronous drain completes, before this owner is destroyed.
   std::unique_ptr<openmx::basis::GaussLegendreRule> radial_quadrature;
   std::unique_ptr<openmx::basis::GaussLegendreRule> neutral_quadrature;
+  std::unique_ptr<openmx::basis::RealHarmonicTransform> real_harmonics;
   std::unique_ptr<openmx::core::compat::SpeciesOwner> species;
   std::unique_ptr<openmx::core::compat::PaoOwner> pao;
   std::unique_ptr<openmx::core::compat::VpsOwner> vps;

@@ -4,7 +4,8 @@ OpenMX の基底処理を独立して利用する C++20 ライブラリです。
 現在の公開範囲は PAO、非局所射影子、中性原子ポテンシャル、VNA 射影子の
 動径補間、PAO/射影子の波数空間補間、PAO/VPSファイルの読み込み、
 原子密度の補間・動径導関数・球対称Hartree積分、Gauss–LegendreとLebedev積分則、
-球Bessel関数と2中心積分用Besselテーブル、球面調和関数と角度導関数です。本体もこの実装を使用します。
+球Bessel関数と2中心積分用Besselテーブル、球面調和関数と角度導関数、複素から実軌道への変換です。
+本体もこの実装を使用します。
 Fourier-Bessel 変換、完全な2中心積分は
 まだこのパッケージには含まれません。
 
@@ -318,6 +319,43 @@ const auto orbital = openmx::basis::orbital_harmonic(4, 1,
 公開C++ APIは入力エラーでプロセス終了せず、本体の互換関数だけが従来のエラー処理を持ちます。
 独立した利用例は `examples/harmonics/` にあります。
 
+## 複素から実球面調和関数へ変換する
+
+`<openmx/basis/real_harmonics.hpp>` の `RealHarmonicTransform(maximum_degree)` は、
+次数0〜64までの変換係数を連続配列で所有します。入力の複素調和関数は前節と同じ
+Condon–Shortley位相で、磁気量子数m=-l,...,+lの順に渡します。
+
+```cpp
+#include <openmx/basis/real_harmonics.hpp>
+#include <openmx/basis/harmonics.hpp>
+#include <array>
+
+const openmx::basis::RealHarmonicTransform conversion(4);
+std::array<std::complex<double>, 3> complex_p, real_p;
+for (int m=-1; m<=1; ++m)
+  complex_p[m+1] = openmx::basis::integral_harmonic(1, m, 0.7, -0.3).value;
+conversion.transform(1, complex_p, real_p); // px, py, pz
+```
+
+- 出力順はs、p=(x,y,z)、d=(z²,x²−y²,xy,xz,yz)、l>=3ではm=0,cosφ,sinφ,...,cos(lφ),sin(lφ)です。
+  本体の正規化とCartesian成分の符号を維持します。変換行列はユニタリで、一般の複素入力に
+  対する出力の虚部を捨てません。実球面調和関数の虚部には丸め誤差が残る場合があります。
+- `transform()` は両spanにちょうど2l+1要素を要求します。完全・部分的な重なりを許し、
+  有界のstack領域だけで計算します。不正な次数・寸法は例外になり、出力を保持します。
+- `coefficient(l,row,column)` は有効な2l+1四方の範囲を検証します。
+  `coefficients()` は読み取り専用span、`view()` はCにも渡せる不変ビューです。
+  配置は `[degree][real row][complex column]`、全次数の幅は2*maximum_degree+1で、余白はゼロです。
+- コピーは独立し、ムーブ元は空になります。借用ビューは所有者の破棄・代入まで有効です。
+  同じ所有者の並行読み取りが可能で、係数参照・変換時の追加確保はありません。
+- `<openmx/basis/real_harmonics.h>` の `openmx_basis_real_harmonics_fill()` は、呼出側の
+  `dcomplex` 連続配列に係数を生成するC入口です。容量は複素要素数で指定し、成功時も確保しません。
+  不正入力では0を返して数値出力を保持し、診断バッファは数値配列と重ねない契約です。
+  `dcomplex` と `std::complex<double>` のレイアウトが同一であるという仮定は置きません。
+
+本体では計算ごとに一度所有し、重なり・非局所積分、VNA、Force/gridのCPU処理、
+Voronoi軌道モーメント、Wannier射影へ不変ビューを渡します。GPUへの既存の転送配置は保持します。
+旧 `Comp2Real` 大域配列は不要になりました。独立利用例は `examples/real_harmonics/` です。
+
 ## 動径・波数表のデータと数値規約
 
 - 角運動量 `angular` は `0 <= l <= 29`。チャネルの並び順は呼び出し元が指定し、
@@ -366,6 +404,10 @@ Lebedevは全15,288係数の凍結した指紋、球面上の混合多項式積�
 無効入力、無確保・並行評価を検査します。本体のC互換境界は
 `python3 tests/run_harmonics_cpu.py --sanitize` で凍結した旧実装とビット単位で比較します。
 これはリポジトリ側の試験であり、独立パッケージの試験には不要です。
+実調和関数への変換は旧係数とのビット一致、次数64までのユニタリ性、独立したs〜gの
+Cartesian多項式、所有・移動・確保失敗・重なり・並行評価・実C呼び出しで検証します。
+本体のVoronoi角運動量行列は `python3 tests/run_angular_momentum_cpu.py /path/to/libopenmx_core.so` で
+旧実装との一致と交換関係・角運動量の二乗を検証します。
 
 `basis-package-consumer` はこのディレクトリだけをコピーして独立ビルド・インストールし、
 インストール先と元のソース・ビルドディレクトリを移動してから、外部 C/C++ プログラムを

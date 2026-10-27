@@ -22,6 +22,16 @@ function(openmx_add_fault_test target)
   endif()
 endfunction()
 
+openmx_add_fault_test(openmx_real_harmonics_tests test_real_harmonics.cpp)
+target_link_libraries(openmx_real_harmonics_tests PRIVATE OpenMX::core Threads::Threads)
+foreach(_case contents invalid lifetime allocation concurrent)
+  add_test(NAME "core-real-harmonics-${_case}" COMMAND openmx_real_harmonics_tests "${_case}")
+  set_tests_properties("core-real-harmonics-${_case}" PROPERTIES LABELS "unit;core;basis" TIMEOUT 30)
+endforeach()
+if(OPENMX_CORE_BACKEND MATCHES "^(CUDA|HIP)$")
+  set_source_files_properties(test_real_harmonics.cpp PROPERTIES LANGUAGE ${OPENMX_CORE_BACKEND})
+endif()
+
 openmx_add_fault_test(openmx_quadrature_tests test_quadrature.cpp)
 target_link_libraries(openmx_quadrature_tests PRIVATE OpenMX::core)
 foreach(_case contents lifetime invalid allocation context context-invalid context-lifetime context-allocation

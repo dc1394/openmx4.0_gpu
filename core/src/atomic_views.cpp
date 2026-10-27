@@ -11,6 +11,7 @@ extern "C" int openmx_core_atomic_get(OpenMXCoreContext *context,
     return 0;
   }
   OpenMXAtomicViews result{};
+  if (context->real_harmonics) result.real_harmonics=context->real_harmonics->view();
   if (context->species) result.species=context->species->views();
   if (context->pao) context->pao->atomic_views(result);
   if (context->vps) context->vps->atomic_views(result);

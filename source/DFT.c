@@ -634,7 +634,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
     fflush(stdout);
   }
 
-  time1 = Set_OLP_Kin(reciprocal, OLP,H0, electronic);
+  time1 = Set_OLP_Kin(&atomic->real_harmonics,reciprocal, OLP,H0, electronic);
 
   if (MYID_MPI_COMM_WORLD==Host_ID && 0<level_stdout){
     printf("<MD=%2d>  Calculation of the nonlocal matrix%s\n",MD_iter,
@@ -658,7 +658,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
              DFT_SetProExpnVNAUseGPU() ? " (GPU-accelerated)" : "");
       fflush(stdout);
     }
-    time12 = Set_ProExpn_VNA(&radial,vna,reciprocal);
+    time12 = Set_ProExpn_VNA(&atomic->real_harmonics,&radial,vna,reciprocal);
   }
 
   /* SCF loop */

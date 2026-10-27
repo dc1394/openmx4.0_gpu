@@ -980,6 +980,7 @@ extern "C" void openmx_core_finish(OpenMXCoreContext* context)
     context->species.reset();
     context->radial_quadrature.reset();
     context->neutral_quadrature.reset();
+    context->real_harmonics.reset();
     context->implementation.finish();
   }
 }

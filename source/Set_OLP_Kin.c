@@ -257,7 +257,7 @@ static int SetOLP_ProfileEnabled(void)
 }
 
 
-double Set_OLP_Kin(const OpenMXReciprocalViews *reciprocal, double *****OLP, double *****H0, const OpenMXElectronicViews *electronic)
+double Set_OLP_Kin(const OpenMXRealHarmonicData *conversion,const OpenMXReciprocalViews *reciprocal, double *****OLP, double *****H0, const OpenMXElectronicViews *electronic)
 {
   double *****OLP_L=electronic->OLP_L;
 
@@ -815,7 +815,7 @@ double Set_OLP_Kin(const OpenMXReciprocalViews *reciprocal, double *****OLP, dou
                   work_buffers.orbital_capacity,work_buffers.orbital_capacity,
                   openmx_core_overlap_orbital(work_buffers.multiplicity,L0,Mul0,0),
                   openmx_core_overlap_orbital(work_buffers.multiplicity,L1,Mul1,0),
-                  L0,L1,&Comp2Real[0][0][0], sizeof(Comp2Real)/sizeof(Comp2Real[0]), sizeof(Comp2Real[0][0])/sizeof(Comp2Real[0][0][0]),&geometry);
+                  L0,L1,conversion->coefficients, conversion->orders, conversion->width,&geometry);
               for (M0=0; M0<2*L0+1; ++M0){
                 for (M1=0; M1<2*L1+1; ++M1){
                   for (int axis=0; axis<3; ++axis)

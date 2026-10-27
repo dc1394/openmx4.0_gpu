@@ -42,7 +42,7 @@ static int SpeciesNum=NS, GL_Mesh, mpi_comm_level1=1, scf_eigen_lib_flag=GPUSOLV
 static double Spe_VNA_Bessel[NS][NL][NM][NP];
 static const OpenMXReciprocalViews radial_views={.neutral_transform={&Spe_VNA_Bessel[0][0][0][0],{NS,NL,NM,NP}}};
 static const OpenMXReciprocalViews *reciprocal=&radial_views;
-static dcomplex Comp2Real[NL][2*NL-1][2*NL-1];
+static dcomplex conversion_values[NL][2*NL-1][2*NL-1];
 static int samples[NS][NL][NM];
 static void MPI_Allreduce(const void *s,void *d,int n,int type,int op,MPI_Comm comm){
   (void)s;(void)d;(void)n;(void)type;(void)op;(void)comm;assert(s==MPI_IN_PLACE);
@@ -117,7 +117,7 @@ static void check_batch(const SetProGpu2Context *g,const OpenMXVnaPreparationBuf
     assert(g->c2r_off[l]==offset);
     for(int a=0;a<2*l+1;a++)for(int b=0;b<2*l+1;b++){
       const int p=offset+a*(2*l+1)+b;
-      assert(g->c2r[2*p]==Comp2Real[l][a][b].r&&g->c2r[2*p+1]==Comp2Real[l][a][b].i);
+      assert(g->c2r[2*p]==conversion_values[l][a][b].r&&g->c2r[2*p+1]==conversion_values[l][a][b].i);
     }
     offset+=(2*l+1)*(2*l+1);
   }
@@ -130,7 +130,7 @@ int main(void)
   for(int s=0;s<NS;s++)for(int l=0;l<NL;l++)for(int r=0;r<NM;r++)for(int i=0;i<NP;i++)
     Spe_VNA_Bessel[s][l][r][i]=s+l*0.125+r*0.03125+i*0.001953125;
   for(int l=0;l<NL;l++)for(int a=0;a<2*l+1;a++)for(int b=0;b<2*l+1;b++)
-    Comp2Real[l][a][b]=(dcomplex){0.125*(l+a+b),0.0625*(l-a+b)};
+    conversion_values[l][a][b]=(dcomplex){0.125*(l+a+b),0.0625*(l-a+b)};
   omp_set_dynamic(0);
   for(int mesh=0;mesh<3;mesh++)for(int split=0;split<3;split++)for(int pm=0;pm<3;pm++)for(int empty=0;empty<2;empty++){
     int angular[]={2,-1,1},first[]={2,0,1},last[]={0,2};int *rows[]={first,NULL,last};
@@ -160,20 +160,20 @@ int main(void)
     SetProGpu2Context a={0},b={0};
     assert(SetPro_LocalPairs()==9);
     /* A host vote returns without a batch and releases every table. */
-    host_vote=1;votes=0;assert(!SetPro_DSVNA_GpuBegin(reciprocal,&a,&v)&&votes==1);
+    host_vote=1;votes=0;assert(!SetPro_DSVNA_GpuBegin(reciprocal,&conversion_values[0][0][0],2*NL-1,&a,&v)&&votes==1);
     for(size_t i=0;i<sizeof(a);i++)assert(((unsigned char*)&a)[i]==0);
     host_vote=0;votes=0;
-    assert(SetPro_DSVNA_GpuBegin(reciprocal,&a,&v)&&votes==1);check_batch(&a,&v);
+    assert(SetPro_DSVNA_GpuBegin(reciprocal,&conversion_values[0][0][0],2*NL-1,&a,&v)&&votes==1);check_batch(&a,&v);
     SpeciesNum=1; // The prepared species count is owned by the snapshot.
-    assert(SetPro_DSVNA_GpuBegin(reciprocal,&b,&v));check_batch(&b,&v);
+    assert(SetPro_DSVNA_GpuBegin(reciprocal,&conversion_values[0][0][0],2*NL-1,&b,&v));check_batch(&b,&v);
     SpeciesNum=NS;
     double *retained=a.pro00;
     SetPro_DSVNA_GpuEnd(&b);SetPro_DSVNA_GpuEnd(&b);
     assert(a.enabled&&a.pro00==retained);check_batch(&a,&v);
     SetPro_DSVNA_GpuEnd(&a);SetPro_DSVNA_GpuEnd(&a);
     for(size_t i=0;i<sizeof(a);i++)assert(((unsigned char*)&a)[i]==0);
-    allowed=0;assert(!openmx_env_set("OPENMX_SETPRO_GPU","0"));assert(!SetPro_DSVNA_GpuBegin(reciprocal,&a,&v)&&!a.enabled);SetPro_DSVNA_GpuEnd(&a);allowed=1;assert(!openmx_env_unset("OPENMX_SETPRO_GPU"));
-    scf_eigen_lib_flag=0;assert(!SetPro_DSVNA_GpuBegin(reciprocal,&a,&v)&&!a.enabled);scf_eigen_lib_flag=GPUSOLVER;
+    allowed=0;assert(!openmx_env_set("OPENMX_SETPRO_GPU","0"));assert(!SetPro_DSVNA_GpuBegin(reciprocal,&conversion_values[0][0][0],2*NL-1,&a,&v)&&!a.enabled);SetPro_DSVNA_GpuEnd(&a);allowed=1;assert(!openmx_env_unset("OPENMX_SETPRO_GPU"));
+    scf_eigen_lib_flag=0;assert(!SetPro_DSVNA_GpuBegin(reciprocal,&conversion_values[0][0][0],2*NL-1,&a,&v)&&!a.enabled);scf_eigen_lib_flag=GPUSOLVER;
     openmx_core_vna_preparation_destroy(owner);cases++;
   }
   puts("PASS: 54 VNA preparation cases, exact sampling/packing, metadata snapshots, 1/2/8 threads, empty groups, independent DS_VNA batches and cleanup");

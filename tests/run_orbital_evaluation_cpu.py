@@ -59,7 +59,7 @@ with tempfile.TemporaryDirectory(prefix='openmx-orbital-evaluation-') as directo
     helpers = (ROOT/'source/openmx_common.c').read_text()
     parts = [PREFIX, (ROOT/'source/xyz2spherical.c').read_text().replace('#include "openmx_common.h"', ''),
              function(helpers, 'Associated_Legendre'), function(helpers, 'ComplexSH'),
-             function((ROOT/'source/SetPara_DFT.c').read_text(), 'Set_Comp2Real'),
+             (ROOT/'modules/basis/tests/fixtures/real_harmonics_before_owner.inc').read_text(),
              (ROOT/'tests/fixtures/orbitals_before_flat_views.c').read_text()]
     for name in ('Get_Orbitals.c', 'Get_dOrbitals.c', 'Get_Cnt_Orbitals.c', 'Get_Cnt_dOrbitals.c'):
         parts.append((ROOT/'source'/name).read_text().replace('#include "openmx_common.h"', ''))
