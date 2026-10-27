@@ -967,6 +967,7 @@ extern "C" void openmx_core_finish(OpenMXCoreContext* context)
   if (context) {
     openmx_core_native_resources_clear(context);
     context->grid.reset();
+    context->olg_cache.reset();
     context->orbital_optimization.reset();
     context->local_basis.reset();
     context->electronic.reset();

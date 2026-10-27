@@ -1087,6 +1087,7 @@
     "openmx_host_simd.h",
     "openmx_core_host_simd.h",
     "openmx_core_olg.h",
+    "openmx_core_olg_cache.h",
     "openmx_core_vna_simd.h",
     "openmx_core_force_simd.h",
     "openmx_core_force_vna_simd.h",

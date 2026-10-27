@@ -31,6 +31,7 @@
 #include "openmx_host_memory.h"
 #include "openmx_host_simd.h"
 #include "openmx_core_olg.h"
+#include "openmx_core_olg_cache.h"
 #include "mpi.h"
 #include "omp.h"
 #if !OPENMX_GPU_HIP
@@ -58,7 +59,7 @@ static void Estimate_Trn_System(int CpyCell, int TCpyCell);
 static void Check_System();
 static void Set_RMI();
 static void Output_Connectivity(FILE *fp);
-static void UCell_Box(int MD_iter, int estimate_switch, int CpyCell);
+static void UCell_Box(OpenMXCoreContext *core, int MD_iter, int estimate_switch, int CpyCell);
 static void Set_Inf_SndRcv();
 static void Construct_MPI_Data_Structure_Grid();
 static void Construct_ONAN();
@@ -102,6 +103,9 @@ double truncation(int MD_iter,int UCell_flag,OpenMXCoreContext *core)
   double TStime,TEtime;
   FILE *fp_TRN;
   char buf[fp_bsize];          /* setvbuf */
+
+  /* Sizing lists are reusable only within this truncation invocation. */
+  openmx_core_olg_cache_release(core);
 
   /* MPI */
 
@@ -482,7 +486,7 @@ double truncation(int MD_iter,int UCell_flag,OpenMXCoreContext *core)
     if (2<=level_stdout) printf("\n***** UCell_Box(MD_iter,1,CpyCell) *****\n");
 
     if (measure_time) dtime(&stime); 
-    UCell_Box(MD_iter,1,CpyCell);
+    UCell_Box(core,MD_iter,1,CpyCell);
 
     if (measure_time){
       dtime(&etime); 
@@ -522,7 +526,7 @@ double truncation(int MD_iter,int UCell_flag,OpenMXCoreContext *core)
     if (2<=level_stdout) printf("\n***** UCell_Box(MD_iter,2,CpyCell) *****\n");
 
     if (measure_time) dtime(&stime); 
-    UCell_Box(MD_iter,2,CpyCell);
+    UCell_Box(core,MD_iter,2,CpyCell);
 
     if (measure_time){
       dtime(&etime); 
@@ -549,7 +553,7 @@ double truncation(int MD_iter,int UCell_flag,OpenMXCoreContext *core)
     if (MYID_MPI_COMM_WORLD==Host_ID && 0<level_stdout)  printf("<UCell_Box> Info. of cutoff energy and num. of grids\n");
 
     if (measure_time) dtime(&stime); 
-    UCell_Box(MD_iter,0,CpyCell);
+    UCell_Box(core,MD_iter,0,CpyCell);
 
     if (measure_time){
       dtime(&etime); 
@@ -573,7 +577,7 @@ double truncation(int MD_iter,int UCell_flag,OpenMXCoreContext *core)
 
     if (MYID_MPI_COMM_WORLD==Host_ID && 0<level_stdout) printf("<UCell_Box> Info. of cutoff energy and num. of grids\n");
 
-    UCell_Box(MD_iter,0,CpyCell);
+    UCell_Box(core,MD_iter,0,CpyCell);
 
     List_YOUSO[11] = (int)(Max_GridN_Atom*ScaleSize) + 1;
     List_YOUSO[17] = (int)(Max_OneD_Grids*ScaleSize);
@@ -2635,96 +2639,74 @@ static void OLG_capacity_kernel(size_t first,size_t count,const void *parameters
    chunk after two all-reduces, in lock step across the ranks. The Core's host
    merge answers whole neighbour lists locally instead (OpenMP across the
    pairs of an atom); legacy keeps the loop. Same lists, same NumOLG. */
-/* The first MD step runs the overlap search twice with the same geometry:
-   once to size the lists (estimate_switch 2, counts only) and once for the
-   lists. The host path keeps the lists of the sizing pass and hands them to
-   the final pass instead of searching again; nothing else reads them in
-   between. */
-static struct { int valid,md_iter,atoms; int *fnan,**count; int ***list1,***list2; } OLG_kept={0};
-static void OLG_kept_release(void)
+/* A sizing pass owns its lists in the calculation's C++ cache. The final
+   pass transfers the same malloc-compatible rows/tables to the existing
+   native consumer; cache metadata is released immediately. No search or
+   pair-buffer copy is needed during this ownership transfer. */
+static void OLG_cache_take(OpenMXCoreContext *core,int *size_GListTAtoms1)
 {
-  if(!OLG_kept.valid)return;
-  for(int mc=1;mc<=OLG_kept.atoms;mc++){
-    for(int h=0;h<=OLG_kept.fnan[mc];h++){free(OLG_kept.list1[mc][h]);free(OLG_kept.list2[mc][h]);}
-    free(OLG_kept.list1[mc]);free(OLG_kept.list2[mc]);free(OLG_kept.count[mc]);
+  size_t total=0;int failed=0;char error[256];
+  for(int mc=1;mc<=Matomnum;mc++){
+    OpenMXOlgCacheAtom atom;
+    if(!openmx_core_olg_cache_take_atom(core,(size_t)(mc-1),&atom,error,sizeof(error))){
+      fprintf(stderr,"UCell_Box: %s\n",error);MPI_Abort(mpi_comm_level1,1);abort();
+    }
+    if(atom.pairs!=(size_t)FNAN[M2G[mc]]+1){
+      fprintf(stderr,"UCell_Box: overlap cache atom shape changed.\n");MPI_Abort(mpi_comm_level1,1);abort();
+    }
+    GListTAtoms1[mc]=atom.center;GListTAtoms2[mc]=atom.neighbor;
+    for(int h=0;h<=FNAN[M2G[mc]];h++){
+      const int count=atom.counts[h];
+      NumOLG[mc][h]=count;if(count>List_YOUSO[12])failed=1;total+=(size_t)count;
+    }
   }
-  free(OLG_kept.list1);free(OLG_kept.list2);free(OLG_kept.count);free(OLG_kept.fnan);
-  memset(&OLG_kept,0,sizeof(OLG_kept));
-}
-static int OLG_kept_matches(int MD_iter)
-{
-  if(!OLG_kept.valid || OLG_kept.md_iter!=MD_iter || OLG_kept.atoms!=Matomnum)return 0;
-  for(int mc=1;mc<=Matomnum;mc++)if(OLG_kept.fnan[mc]!=FNAN[M2G[mc]])return 0;
-  return 1;
+  openmx_core_olg_cache_release(core);
+  if(failed){fprintf(stderr,"UCell_Box: overlap-grid list exceeds YOUSO12.\n");MPI_Abort(mpi_comm_level1,1);abort();}
+  *size_GListTAtoms1+=(int)total;
+  FNAN[0]=0;
+  GListTAtoms1[0]=malloc(sizeof(int*));GListTAtoms2[0]=malloc(sizeof(int*));
+  GListTAtoms1[0][0]=malloc(sizeof(int));GListTAtoms2[0][0]=malloc(sizeof(int));
 }
 /* The host SIMD search of this rank's atoms; no collective inside, so a
-   caller may take it on every rank or only on the ranks whose device path
-   failed. Returns 0 (nothing allocated) only in legacy mode. */
-static int UCellBox_OLG_Host(int MD_iter,int estimate_switch,int CpyCell,int **grid,int **cell,int *size_GListTAtoms1)
+   caller may take it on every rank or only on ranks whose device path
+   failed. The sizing cache cannot outlive its calculation. */
+static int UCellBox_OLG_Host(OpenMXCoreContext *core,int MD_iter,int estimate_switch,int CpyCell,
+    int **grid,int **cell,int *size_GListTAtoms1)
 {
   const int mode=OpenMX_HostSimdMode();
   if(mode==OPENMX_HOST_SIMD_LEGACY)return 0;
-  if(estimate_switch==0 && OLG_kept_matches(MD_iter)){
-    size_t total=0;int failed=0;
-    for(int mc=1;mc<=Matomnum;mc++){
-      GListTAtoms1[mc]=OLG_kept.list1[mc];GListTAtoms2[mc]=OLG_kept.list2[mc];
-      for(int h=0;h<=FNAN[M2G[mc]];h++){
-        const int count=OLG_kept.count[mc][h];
-        NumOLG[mc][h]=count;if(count>List_YOUSO[12])failed=1;total+=(size_t)count;
-      }
-      free(OLG_kept.count[mc]);
-    }
-    free(OLG_kept.list1);free(OLG_kept.list2);free(OLG_kept.count);free(OLG_kept.fnan);
-    memset(&OLG_kept,0,sizeof(OLG_kept));
-    if(failed){fprintf(stderr,"UCell_Box: overlap-grid list exceeds YOUSO12.\n");MPI_Abort(mpi_comm_level1,1);}
-    *size_GListTAtoms1+=(int)total;
-    FNAN[0]=0;
-  if(!estimate_switch){GListTAtoms1[0]=malloc(sizeof(int*));GListTAtoms2[0]=malloc(sizeof(int*));GListTAtoms1[0][0]=malloc(sizeof(int));GListTAtoms2[0][0]=malloc(sizeof(int));}
-    return 1;
+  const OpenMXOlgCacheInput input={MD_iter,CpyCell,(size_t)Matomnum,(size_t)atomnum,M2G,FNAN};
+  char error[256];int cached=0;
+  if(!openmx_core_olg_cache_matches(core,&input,&cached,error,sizeof(error))){
+    fprintf(stderr,"UCell_Box: %s\n",error);MPI_Abort(mpi_comm_level1,1);abort();
   }
-  OLG_kept_release();
+  if(estimate_switch==0 && cached){OLG_cache_take(core,size_GListTAtoms1);return 1;}
+  const int retain=estimate_switch==2 || estimate_switch==0;
+  if(retain){
+    if(!openmx_core_olg_cache_prepare(core,&input,error,sizeof(error))){
+      fprintf(stderr,"UCell_Box: %s\n",error);MPI_Abort(mpi_comm_level1,1);abort();
+    }
+  }else openmx_core_olg_cache_release(core);
   const int rdim=2*CpyCell+1;
   int *atvf=malloc(3*(size_t)(TCpyCell+1)*sizeof(int)),*ratvf=malloc((size_t)rdim*rdim*rdim*sizeof(int));
   if(!atvf || !ratvf)MPI_Abort(mpi_comm_level1,1);
   for(int i=0;i<=TCpyCell;i++)for(int a=0;a<3;a++)atvf[3*i+a]=atv_ijk[i][a+1];
   for(int a=0;a<rdim;a++)for(int b=0;b<rdim;b++)for(int c=0;c<rdim;c++)ratvf[((size_t)a*rdim+b)*rdim+c]=openmx_periodic_index(CpyCell,a-CpyCell,b-CpyCell,c-CpyCell);
   OpenMX_HostSimdReport("<UCell_Box> overlap grids (local host):");
-  /* A map from the global grid index to the centre's list entry, filled once
-     per atom and read by every neighbour (a few gathers per query instead
-     of a merge); the merge serves grids too large for the map. */
+  /* A global-grid map is reused by every neighbour; large grids use the
+     existing merge. Neither representation changes pair/point ordering. */
   const size_t extent=(size_t)Ngrid1*(size_t)Ngrid2*(size_t)Ngrid3;
   int *map=extent<=((size_t)1<<26)?malloc(extent*sizeof(int)):NULL;
   if(map)memset(map,0xFF,extent*sizeof(int));
-  const int keep=estimate_switch==2;
-  if(keep){
-    OLG_kept.list1=malloc((size_t)(Matomnum+1)*sizeof(int**));OLG_kept.list2=malloc((size_t)(Matomnum+1)*sizeof(int**));
-    OLG_kept.count=malloc((size_t)(Matomnum+1)*sizeof(int*));OLG_kept.fnan=malloc((size_t)(Matomnum+1)*sizeof(int));
-    if(!OLG_kept.list1 || !OLG_kept.list2 || !OLG_kept.count || !OLG_kept.fnan)MPI_Abort(mpi_comm_level1,1);
-    OLG_kept.valid=1;OLG_kept.md_iter=MD_iter;OLG_kept.atoms=Matomnum;
-  }
-  size_t total=0;int failed=0;
+  int failed=0;
   for(int mc=1;mc<=Matomnum;mc++){
     const int gc=M2G[mc];
-    int **list1=NULL,**list2=NULL,*counts=NULL;
-    if(!estimate_switch || keep){
-      list1=malloc((size_t)(FNAN[gc]+1)*sizeof(int*));list2=malloc((size_t)(FNAN[gc]+1)*sizeof(int*));
-      if(!list1 || !list2)MPI_Abort(mpi_comm_level1,1);
-      if(keep){
-        counts=malloc((size_t)(FNAN[gc]+1)*sizeof(int));if(!counts)MPI_Abort(mpi_comm_level1,1);
-        OLG_kept.list1[mc]=list1;OLG_kept.list2[mc]=list2;OLG_kept.count[mc]=counts;OLG_kept.fnan[mc]=FNAN[gc];
-      }
-      else{GListTAtoms1[mc]=list1;GListTAtoms2[mc]=list2;}
-    }
     const OpenMXOlgLists lists={grid[mc],cell[mc],GridN_Atom[gc],atvf,TCpyCell+1,ratvf,CpyCell};
     const int mapped=map && openmx_core_olg_map_fill(&lists,map,extent,mode);
     size_t largest=1;
     for(int h=0;h<=FNAN[gc];h++){const size_t nh=(size_t)GridN_Atom[natn[gc][h]];if(largest<nh)largest=nh;}
-#pragma omp parallel if(!omp_in_parallel()) reduction(+:total) reduction(|:failed)
+#pragma omp parallel if(!omp_in_parallel()) reduction(|:failed)
     {
-    /* per-thread pair buffers for the whole atom (a malloc per pair would
-       map and fault its pages every time); the Core searches and compacts
-       (this file is built at -O1, where the count and compaction loops
-       would cost as much as the search) */
     int *centre=malloc(largest*sizeof(int)),*neighbour=malloc(largest*sizeof(int));
     if(!centre || !neighbour)failed|=1;
 #pragma omp for schedule(dynamic)
@@ -2737,13 +2719,10 @@ static int UCellBox_OLG_Host(int MD_iter,int estimate_switch,int CpyCell,int **g
          !openmx_core_olg_pairs(&lists,&neighbours,NULL,0,(size_t)nh,centre,neighbour,&found,mode)){failed|=4;continue;}
       const int count=(int)found;
       NumOLG[mc][h]=count;
-      if(counts)counts[h]=count;
-      if(list1){
-        if(!estimate_switch && count>List_YOUSO[12])failed|=2;
-        int *at1=list1[h]=malloc((count?(size_t)count:1)*sizeof(int)),*at2=list2[h]=malloc((count?(size_t)count:1)*sizeof(int));
-        if(!at1 || !at2)failed|=1;
-        else if(count){memcpy(at1,centre,(size_t)count*sizeof(int));memcpy(at2,neighbour,(size_t)count*sizeof(int));}
-        if(!estimate_switch)total+=(size_t)count;
+      if(retain){
+        char worker_error[256];
+        if(!openmx_core_olg_cache_store(core,(size_t)(mc-1),(size_t)h,found,centre,neighbour,
+                                       worker_error,sizeof(worker_error)))failed|=1;
       }
     }
     free(centre);free(neighbour);
@@ -2752,13 +2731,12 @@ static int UCellBox_OLG_Host(int MD_iter,int estimate_switch,int CpyCell,int **g
   }
   free(map);free(atvf);free(ratvf);
   if(failed){
-    if(failed&2)fprintf(stderr,"UCell_Box: overlap-grid list exceeds YOUSO12.\n");
     if(failed&4)fprintf(stderr,"UCell_Box: the host overlap-grid kernel refused its input.\n");
-    MPI_Abort(mpi_comm_level1,1);
+    else fprintf(stderr,"UCell_Box: cannot allocate the overlap-grid lists.\n");
+    MPI_Abort(mpi_comm_level1,1);abort();
   }
-  if(!estimate_switch)*size_GListTAtoms1+=(int)total;
+  if(!estimate_switch)OLG_cache_take(core,size_GListTAtoms1);
   FNAN[0]=0;
-  if(!estimate_switch){GListTAtoms1[0]=malloc(sizeof(int*));GListTAtoms2[0]=malloc(sizeof(int*));GListTAtoms1[0][0]=malloc(sizeof(int));GListTAtoms2[0][0]=malloc(sizeof(int));}
   return 1;
 }
 
@@ -2777,28 +2755,28 @@ static size_t OLG_device_need(int CpyCell)
   return (2*points+out+3*(size_t)(TCpyCell+1)+rdim*rdim*rdim)*sizeof(int)+pairs*sizeof(OLG_GpuPair)+8*OLG_GPU_ALIGN;
 }
 
-static int UCellBox_OLG_GPU(int MD_iter,int estimate_switch,int CpyCell,int **grid,int **cell,int *size_GListTAtoms1)
+static int UCellBox_OLG_GPU(OpenMXCoreContext *core,int MD_iter,int estimate_switch,int CpyCell,int **grid,int **cell,int *size_GListTAtoms1)
 {
   const int host_simd=OpenMX_HostSimdMode()!=OPENMX_HOST_SIMD_LEGACY;
   int requested=scf_eigen_lib_flag==GPUSOLVER && openmx_env_flag_at(OPENMX_ENV_UCELL_OLG_GPU,1);
   MPI_Allreduce(MPI_IN_PLACE,&requested,1,MPI_INT,MPI_MIN,mpi_comm_level1);
   /* No device stage (CPU input, MD steps after a failed GPU start, or the
      stage disabled): the host SIMD search, else the legacy loop. */
-  if(!requested)return host_simd && UCellBox_OLG_Host(MD_iter,estimate_switch,CpyCell,grid,cell,size_GListTAtoms1);
+  if(!requested)return host_simd && UCellBox_OLG_Host(core,MD_iter,estimate_switch,CpyCell,grid,cell,size_GListTAtoms1);
   /* A device that cannot hold the stage on some rank: every rank on the host. */
   if(OpenMX_HostSimdStageOnHost("UCell_Box overlap grids",Matomnum?OLG_device_need(CpyCell):0,
                                 OpenMX_HostSimdDeviceBudget((size_t)64<<20)))
-    return host_simd ? UCellBox_OLG_Host(MD_iter,estimate_switch,CpyCell,grid,cell,size_GListTAtoms1) : 0;
+    return host_simd ? UCellBox_OLG_Host(core,MD_iter,estimate_switch,CpyCell,grid,cell,size_GListTAtoms1) : 0;
   /* The device route: lists kept by a host sizing pass would never be
      consumed and must not reach a later call with the same key. */
-  OLG_kept_release();
+  openmx_core_olg_cache_release(core);
   int myid;MPI_Comm_rank(mpi_comm_level1,&myid);
   int done=!Matomnum || (!openmx_gpu_capacity_test_recovery() && OLG_gpu_ready() && UCellBox_OLG_GPU_Part(1,Matomnum+1,myid,estimate_switch,CpyCell,grid,cell,size_GListTAtoms1));
   /* A rank whose device path failed late searches on the host (local work,
      no collective) and every rank is then done; legacy mode keeps the
      chunked capacity recovery below. The host search sets up atom 0 itself. */
   if(host_simd){
-    if(!done)return UCellBox_OLG_Host(MD_iter,estimate_switch,CpyCell,grid,cell,size_GListTAtoms1);
+    if(!done)return UCellBox_OLG_Host(core,MD_iter,estimate_switch,CpyCell,grid,cell,size_GListTAtoms1);
     FNAN[0]=0;
     if(!estimate_switch){GListTAtoms1[0]=malloc(sizeof(int*));GListTAtoms2[0]=malloc(sizeof(int*));GListTAtoms1[0][0]=malloc(sizeof(int));GListTAtoms2[0][0]=malloc(sizeof(int));}
     return 1;
@@ -2869,7 +2847,7 @@ static int UCellBox_OLG_GPU(int MD_iter,int estimate_switch,int CpyCell,int **gr
   return 1;
 }
 
-void UCell_Box(int MD_iter, int estimate_switch, int CpyCell)
+void UCell_Box(OpenMXCoreContext *core, int MD_iter, int estimate_switch, int CpyCell)
 {
   static int firsttime=1;
   int size_GListTAtoms1;
@@ -3763,7 +3741,7 @@ void UCell_Box(int MD_iter, int estimate_switch, int CpyCell)
 
     /* device fast path; on any ineligibility or allocation failure the
        untouched host loop below produces the same lists */
-    if (!UCellBox_OLG_GPU(MD_iter, estimate_switch, CpyCell, Tmp_GridListAtom, Tmp_CellListAtom,
+    if (!UCellBox_OLG_GPU(core, MD_iter, estimate_switch, CpyCell, Tmp_GridListAtom, Tmp_CellListAtom,
                           &size_GListTAtoms1)) {
 
     for (Mc_AN=0; Mc_AN<=Matomnum; Mc_AN++){

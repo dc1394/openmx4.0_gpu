@@ -93,7 +93,7 @@ set(_core_sources src/radial.cpp src/radial_table.cpp src/pao_storage.cpp src/vp
   src/atomic_views.cpp src/orbital_workspace.cpp src/ragged_matrix.cpp src/matrix_scratch.cpp src/unpivoted_inverse.cpp src/pivoted_inverse.cpp src/mixing_history.cpp src/mixing_policy.cpp src/band_energy.cpp src/energy_components.cpp src/thermodynamic_energy.cpp src/dynamics.cpp src/chemical.cpp src/cwf.cpp src/cwf_workspace.cpp
   src/electronic_matrices.cpp src/electronic_matrix_api.cpp
   src/local_basis_state.cpp src/local_basis_api.cpp
-  src/orbital_optimization.cpp src/orbital_optimization_api.cpp src/solver_workspace.cpp src/native_resources.cpp src/grid_assembly.cpp src/host_simd_api.cpp src/olg_api.cpp src/energy_simd_api.cpp src/orbitals_simd_api.cpp src/force_simd_api.cpp src/vna_simd_api.cpp src/c_api.cpp)
+  src/orbital_optimization.cpp src/orbital_optimization_api.cpp src/solver_workspace.cpp src/native_resources.cpp src/grid_assembly.cpp src/host_simd_api.cpp src/olg_api.cpp src/olg_cache_api.cpp src/energy_simd_api.cpp src/orbitals_simd_api.cpp src/force_simd_api.cpp src/vna_simd_api.cpp src/c_api.cpp)
 add_library(openmx_core SHARED ${_core_sources})
 include("${CMAKE_CURRENT_SOURCE_DIR}/../cmake/OpenMXCompilerRuntime.cmake")
 add_library(OpenMX::core ALIAS openmx_core)

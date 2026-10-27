@@ -17,6 +17,7 @@
 #include <openmx_core_cwf.h>
 #include "cwf_observables.hpp"
 #include "grid_assembly.hpp"
+#include "olg_cache.hpp"
 #include <openmx/core/orbital_optimization.hpp>
 #include <openmx/core/radial.hpp>
 
@@ -41,6 +42,7 @@ struct OpenMXCoreContext {
   std::unique_ptr<openmx::core::compat::LocalBasisOwner> local_basis;
   std::unique_ptr<openmx::core::OrbitalOptimization> orbital_optimization;
   std::unique_ptr<OpenMXGridWorkspace,GridWorkspaceDelete> grid;
+  std::unique_ptr<openmx::core::OlgCache> olg_cache;
   // Fixed-size domain state needs no separate heap/group construction. Keep
   // it alive until all native states borrowing it have drained.
   OpenMXMixingHistory mixing_history{};

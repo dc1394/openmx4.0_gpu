@@ -3638,6 +3638,7 @@ AVX-512 3.6 ns / 問い合わせ（写像の充填と復元は中心あたり 0.
 保持して本番で引き渡し、2 回目の探索を省きます（`OLG_kept`、同一 MD ステップ・同一原子数・
 同一 FNAN のときだけ、`List_YOUSO[12]` の検査は本番側で実施）。写像が大きすぎる格子
 （2²⁶ 要素超）は併合に戻ります。
+この段落の`OLG_kept`は測定当時の実装名です。第90段階で計算コンテキスト所有のRAIIキャッシュへ移し、リスト再利用は維持しています。
 
 実計算（上と同じ sidia333、`OPENMX_HOST_SIMD=legacy` → 既定）:
 
@@ -4195,3 +4196,46 @@ B2C62_Band は構造最適化を含む長い入力のため途中で停止し、
 `command.json`、数値比較は各 `reference-comparison.log` です。
 端点回帰試験は CTest の `radial-interpolation-endpoints` / `core-host-energy-endpoints`、
 SIMD 群は `ctest -R '^core-(host-|grid-assembly)' --output-on-failure` で実行できます。
+
+
+## 第90段階: 重なり格子の見積もりキャッシュ所有移管（2026-10-27）
+
+比較元は`ea0e3888`です。前回の測定値を再利用せず、変更前後の実行ファイル、Core、私的ホストSIMDを別々に固定して再測定しました。
+この変更はOLG_keptを計算コンテキストのRAII所有へ移すものです。見積もりリストの再利用、探索・圧縮、
+CUDA/HIPカーネルと機種別の選択方針は維持しています。私的ホストSIMD共有ライブラリは変更前後でバイト一致します。
+
+全測定は18 MPI×1 OpenMPで、他のOpenMX計算とビルドを停止して順次実行しました。
+GeForce RTX 5080のMPSサーバーは継続使用し、GPUの各測定で18クライアントすべてが対応する凍結Core/SIMDをロードすることを確認しました。
+CPU専用本体はGCC/Intel MPI/MKL、CUDA本体はNVHPC/OpenMPIです。CPUの3回は変更前・変更後を交互に実行しました。
+
+| 計算・指標 | 変更前 | 変更後 |
+| --- | ---: | ---: |
+| sidia333 NC cluster、GPU/MPS、内部Total (s) | 99.949 | 99.789 |
+| 同、起動を含む実時間 (s) | 103.501 | 103.163 |
+| 同、Force (s) | 11.871 | 12.036 |
+| 同、truncation (s) | 5.570 | 5.501 |
+| C60 DC、CPU専用、内部Total中央値 (s) | 6.044 | 6.013 |
+| 同、実時間中央値 (s) | 6.530 | 6.480 |
+| 同、truncation中央値 (s) | 0.114 | 0.112 |
+
+sidia333は元の入力を使った各1回の測定で、SCF上限25回・未収束の性能比較です。収束計算の検証には数えません。
+C60は全6回とも27 SCFで収束し、内部Totalの範囲は変更前5.943–6.312秒、変更後6.003–6.220秒でした。
+約105秒のsidia333目標と今回のCPU性能を保っていますが、この小さな差を統計的な高速化とは主張しません。
+A100/H100・AMD実機の性能、CPUコンパイラや数値ライブラリ間の性能比較は今回実施していません。
+
+性能測定に先立ち、4 MPI×2 OpenMPの収束計算27組を新しい変更前後ランタイムで比較しました。
+単独19組はcollinear/noncollinear cluster・band、DC/DC-LNO/Krylov、3原子を4 rankへ分ける空rank、GCC CPU専用本体を含みます。
+さらに-runtestの入力を隔離した検証用4入力へ置き換え、同一MPIプロセス群でwater→NC band→DC→waterを実行するCPU/GPU各4組を確認しました。
+標準-runtest全件の再検証ではありません。GPU側はOPENMX_HOST_SIMD_PREFER=UCellで変更対象のホスト経路を必ず通しています。
+最大エネルギー差3.360e-10 Ha、最大力成分差1.1364e-8 Ha/bohr、SCF反復数は全27組で一致し、応力を出す単独9組の印字値差も0でした。
+E/F閾値1e-7と応力印字値閾値1e-8を維持しています。DIA8のDC/DC-LNO/Krylovは固定構造1ステップ・SCF上限200の検証用入力で、
+Krylov次数は400→600です。元の短いSCF・構造最適化や次数400の結果として扱いません。
+
+480 CTestは初回478件が成功し、無制限スタックによるASan起動時の衝突2件を8 MiBで再実行して成功しました。
+新しいCoreの9試験と本番Cアダプターのscalar/auto×1/2/8スレッドは、Core/SIMDを含むASan/UBSan構成でも成功しています。
+CUDA/HIP Core各9件はホスト専用コンテキストでの所有権試験、CUDA sm_80/HIP gfx942各78単位は実SDKでのコンパイル確認です。
+AMD実機での実行やA100での速度確認とは区別しています。
+
+入力変更、コマンド、ランタイムのハッシュ、数値比較、MPSのロード証拠、初回失敗を含むログは
+`build/olg-cache-owner-20261027/`に保存しています。主な記録は`input-provenance.json`、`science-results.json`、
+`sequence-results.json`、`performance-results.json`、`*-runtime-hashes.json`、`sidia-*-mps-runtime-maps.json`です。

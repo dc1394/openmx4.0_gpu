@@ -15,6 +15,12 @@ function(openmx_add_native_state_tests)
     list(APPEND _environment "OPENMX_TEST_SANITIZERS=${OPENMX_CORE_SANITIZERS}")
   endif()
 
+  add_test(NAME olg-cache-native
+    COMMAND "${Python3_EXECUTABLE}" "${_repo}/tests/run_olg_cache_cpu.py"
+      --core-library "$<TARGET_FILE:openmx_core>" --negative-control)
+  set_tests_properties(olg-cache-native PROPERTIES
+    ENVIRONMENT "${_environment}" LABELS "unit;core;grid" TIMEOUT 180)
+
   foreach(_solver dc dclno krylov)
     add_test(NAME ${_solver}-calculation-state-lifecycle
       COMMAND "${Python3_EXECUTABLE}" "${_repo}/tests/run_local_solver_state_cpu.py"

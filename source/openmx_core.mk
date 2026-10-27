@@ -54,4 +54,5 @@ openmx.o openmx_api.o Runtest.o: openmx_atomic.h
 # These shared native helpers contain inline numerical/ownership code outside
 # core/include. Track them in both GPU builds as well as the public C ABI.
 Total_Energy.o Stress.o: openmx_neutral_atom.h
+truncation.o: openmx_core_olg_cache.h ../core/include/openmx_core_olg_cache.h
 Cluster_DFT_Col_CWF.o Cluster_DFT_NonCol_CWF.o Band_DFT_Col_CWF.o Band_DFT_NonCol_CWF.o: openmx_cwf_workspace.h
