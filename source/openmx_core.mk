@@ -65,3 +65,5 @@ Cluster_DFT_Col_CWF.o Cluster_DFT_NonCol_CWF.o Band_DFT_Col_CWF.o Band_DFT_NonCo
 Total_Energy.o Total_Energy_GPU.o Stress.o: openmx_basis_lebedev.h ../modules/basis/include/openmx/basis/lebedev.h openmx_xc_workspace.h openmx_energy_workspace.h
 
 $(OBJS) openmx_api.o: openmx_basis_gaunt.h ../modules/basis/include/openmx/basis/detail/gaunt.h ../modules/basis/include/openmx/basis/gaunt.h
+
+$(OBJS) openmx_api.o: openmx_core_vna_simd_workspace.h ../core/include/openmx_core_vna_simd_workspace.h

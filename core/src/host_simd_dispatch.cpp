@@ -48,7 +48,7 @@ extern "C" int openmx_host_simd_usable(int mode) noexcept {
   return 0;
 }
 OPENMX_HOST_SIMD_DISPATCHER(OlgKernels,olg)
-OPENMX_HOST_SIMD_DISPATCHER(VnaKernels,vna)
+OPENMX_HOST_SIMD_DISPATCHER(VnaKernels,vna_v2)
 OPENMX_HOST_SIMD_DISPATCHER(OrbitalsKernels,orbitals)
 OPENMX_HOST_SIMD_DISPATCHER(EnergyKernels,energy)
 OPENMX_HOST_SIMD_DISPATCHER(ForceKernels,force)

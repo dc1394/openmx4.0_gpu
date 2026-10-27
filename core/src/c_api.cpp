@@ -683,6 +683,26 @@ extern "C" void openmx_core_dsvna_destroy(OpenMXDsvnaWorkspace* workspace)
   delete workspace;
 }
 
+extern "C" int openmx_core_vna_simd_workspace(OpenMXVnaWorkspace* workspace,int orders,
+    OpenMXVnaSimdBuffers* out,char* error,std::size_t capacity)
+{
+  return checked_call(error,capacity,[&] {
+    if(!workspace || !out)throw std::invalid_argument("missing VNA worker or SIMD output");
+    const auto data=workspace->implementation.simd(orders).buffers();
+    *out=data;
+  });
+}
+extern "C" int openmx_core_dsvna_simd_workspace(OpenMXDsvnaWorkspace* workspace,int angular,
+    OpenMXDsvnaSimdBuffers* out,char* error,std::size_t capacity)
+{
+  return checked_call(error,capacity,[&] {
+    if(!workspace || !out || (angular!=0 && angular!=1))
+      throw std::invalid_argument("missing DSVNA worker/output or invalid SIMD option");
+    const auto data=workspace->implementation.simd(angular!=0).buffers();
+    *out=data;
+  });
+}
+
 extern "C" OpenMXHvnaLayout* openmx_core_hvna_create(const OpenMXVnaPreparation* preparation,
     const OpenMXHvnaInput* input, OpenMXHvnaBuffers* buffers, char* error, std::size_t capacity)
 {

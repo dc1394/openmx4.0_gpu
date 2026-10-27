@@ -4682,3 +4682,33 @@ Voronoiモーメントの印字差はゼロ、Wannier初期射影のA†Aの最�
 `numerical-summary.json`、`production-freeze.json` に記録を保存しました。
 AMD/A100/H100実機、Intelコンパイラ版OpenMXとの性能比較は今回実施していません。
 `work/openmx` は更新していません。
+
+
+## 2026-10-28: VNAのCPU SIMD作業領域と行ポインタ表の移行（第107段階）
+
+変更前 `b2986595` と変更後の本体・Core/SIMDを凍結し、18 MPI×1 OpenMPで比較しました。
+GPUはRTX5080・既存MPS・NVHPC/OpenMPI、CPU専用本体はGCC/Intel MPI/MKLです。
+他のビルド・試験・計算と重ねず順次実行しています。
+
+| 入力・指標 | 変更前 | 変更後 |
+| --- | ---: | ---: |
+| sidia333 NC cluster、GPU/MPS、内部Total最大値 (秒) | 99.429 | 99.595 |
+| 同、MPI起動を含む経過時間 (秒) | 102.706 | 102.760 |
+| C60 DC、CPU専用、内部Total中央値 (秒) | 5.992 | 5.929 |
+| 同、MPI起動を含む経過時間中央値 (秒) | 6.48059 | 6.43029 |
+
+sidiaは元入力を各1回測定した25SCF上限・未収束の性能比較です。
+E差0.0000e+00 Ha・最大F差1.0000e-12 Ha/bohrでした。
+C60は交互各3回、全件27SCF収束で、E差0.0000e+00 Ha・最大F差0.0000e+00 Ha/bohrです。
+短い測定から一般的な高速化・劣化は主張しません。
+
+通常29組とg軌道Cl₂・Voronoi軌道モーメント・SiのWannier計算のCPU/GPU各1組、
+合計35組が収束し、SCF反復数も一致しました。最大E差5.0940e-09 Ha・
+F差2.1599e-08 Ha/bohr、応力11組は9成分とも小数点以下8桁の印字値が一致しました。
+Voronoiの8原子のモーメントは印字差ゼロ、Wannier初期射影のA†Aの最大差は2.6179e-13、
+最終広がりの差は最大6.4411e-12 Å²です。基準は `b2986595` の凍結した本体・Core・SIMDです。
+第98・102段階のGPU再現性の限界を解消したとは扱いません。
+
+記録は `build/vna-simd-workspace-20261028/` の `performance/`、`cpu-performance-results.json`、
+`numerical-summary.json`、`production-freeze.json` に保存しています。
+AMD/A100/H100/ARM実機、Intelコンパイラ版OpenMXとの性能比較は今回実施していません。

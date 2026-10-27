@@ -28,4 +28,14 @@ VnaWorkspace::VnaWorkspace(VnaShape shape)
     scratch_({2,static_cast<std::size_t>(2*shape_.maximum_angular+3)})
 {}
 
+VnaSimdWorkspace& VnaWorkspace::simd(int orders)
+{
+  if(orders<=0 || orders%8 || orders>((2*shape_.maximum_angular+1+7)/8)*8)
+    throw std::invalid_argument("VNA SIMD orders exceed workspace capacity");
+  if(simd_ && simd_->orders()!=orders)
+    throw std::invalid_argument("VNA SIMD workspace options cannot change");
+  if(!simd_)simd_=std::make_unique<VnaSimdWorkspace>(shape_.points,orders);
+  return *simd_;
+}
+
 } // namespace openmx::core

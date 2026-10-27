@@ -12,22 +12,26 @@ extern "C" {
    so results are bitwise those of the scalar loops when both are compiled
    without contraction; SIMD lanes span independent outputs only. Each entry
    returns 0 for an unsupported mode or an invalid description, with nothing
-   written, else 1. Pure, re-entrant and allocation-free. */
+   written, else 1. Pure, re-entrant and allocation-free.
+   The _flat entry points intentionally have different symbols from the former
+   pointer-row ABI; native callers, Core and host SIMD must be rebuilt together. */
 
 /* Gauss-Legendre contraction of the DS_VNA assembly: for m < count and
    r < rows, in ascending i,
-     out0[m*out_stride+r] = sum_i w0[m][i] * table[i*table_stride+r]
-     out1[m*out_stride+r] = sum_i w1[m][i] * table[i*table_stride+r]
+     out0[m*out_stride+r] = sum_i w0[m*weight_stride+i] * table[i*table_stride+r]
+     out1[m*out_stride+r] = sum_i w1[m*weight_stride+i] * table[i*table_stride+r]
    where w0/w1 are the legacy Bes00/Bes01 rows (radial function times Bessel
-   value) and table is the projector table transposed to [point][projector]. */
+   value) and table is the projector table transposed to [point][projector].
+   weight_stride >= points; both bases may refer to interleaved rows. */
 typedef struct {
   int points, rows, count;
   size_t table_stride, out_stride;
   const double *table;
-  const double *const *w0, *const *w1;
+  const double *w0, *w1;
   double *out0, *out1;
+  size_t weight_stride;
 } OpenMXVnaContract;
-int openmx_core_vna_contract(const OpenMXVnaContract*, int mode);
+int openmx_core_vna_contract_flat(const OpenMXVnaContract*, int mode);
 
 /* Spherical_Bessel2 of Set_ProExpn_VNA for a batch of arguments x[i]:
    sb[l*stride+i] = j_l(x[i]) and dsb[l*stride+i] = j_l'(x[i]) for l <= lmax
@@ -99,8 +103,10 @@ int openmx_core_vna_hvna_block(const OpenMXVnaHvnaBlock*, int mode);
    cy[c][LL*cy_stride + pad + LL - m] for c = Y.r, Y.i, dYt.r, dYt.i, dYp.r,
    dYp.i, with pad >= l0+l1 and cy_stride >= pad + max(2*LLmax+1,
    LLmax+l0+l1+8); cy_length counts the entries of each table. cpow_r/cpow_i,
-   s0, s1 and gaunt are per LL of the range (ll_count entries); gaunt[t] is the
-   row of (L0, M0 = -l0, LL, L1), rows [rows][gaunt_stride] with M1 ascending.
+   s0 and s1 are per LL of the range (ll_count entries). gaunt points to
+   (L0, M0 = -l0, LL = ll_first, L1), with constant strides gaunt_ll_stride
+   between LL and gaunt_stride between M0, and contiguous ascending M1.
+   Each stride is at least columns. No row pointer table is required.
    The eight planes acc (S.r, S.i, R.r, R.i, T.r, T.i, P.r, P.i) are
    [rows][acc_stride] at the block origin (M0 = -l0, M1 = -l1). */
 typedef struct {
@@ -108,12 +114,12 @@ typedef struct {
   size_t cy_length, cy_stride;
   const double *cy[6];
   const double *cpow_r, *cpow_i, *s0, *s1;
-  const double *const *gaunt;
-  size_t gaunt_stride;
+  const double *gaunt;
+  size_t gaunt_stride, gaunt_ll_stride;
   double *acc[8];
   size_t acc_stride;
 } OpenMXVnaAngular;
-int openmx_core_vna_angular(const OpenMXVnaAngular*, int mode);
+int openmx_core_vna_angular_flat(const OpenMXVnaAngular*, int mode);
 
 /* The two complex-to-real conversions of one (L0, Mul0, L1, Mul1) block and
    the DS_VNA rows they produce, in the legacy order: first

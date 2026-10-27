@@ -126,19 +126,18 @@ static void SetPro_VNA23_CPU(const OpenMXDoubleBlockMatrix *HVNA23, int mirror, 
     tmp_SphB = buffers.scratch[0];
     tmp_SphBp = buffers.scratch[1];
 
-    /* host SIMD path: Bessel arguments, the [point][order] Bessel tables, the
-       quadrature sums of one radial pair, and the hoisted harmonics of a pair */
-    double *simd_x = NULL, *simd_sphb = NULL, *simd_sphbp = NULL, *simd_sum = NULL, *simd_sumr = NULL;
-    dcomplex *simd_sh = NULL;
+    /* Flat host SIMD views borrow the existing worker's C++ owner. */
+    OpenMXVnaSimdBuffers simd = {0};
     const int simd_orders = host.mode!=OPENMX_HOST_SIMD_LEGACY ? host.order_stride : 0;
-    if (host.mode!=OPENMX_HOST_SIMD_LEGACY) {
-      simd_x = (double*)SetPro_HostAlloc(sizeof(double)*(size_t)points);
-      simd_sphb = (double*)SetPro_HostAlloc(sizeof(double)*(size_t)points*simd_orders);
-      simd_sphbp = (double*)SetPro_HostAlloc(sizeof(double)*(size_t)points*simd_orders);
-      simd_sum = (double*)SetPro_HostAlloc(sizeof(double)*(size_t)simd_orders);
-      simd_sumr = (double*)SetPro_HostAlloc(sizeof(double)*(size_t)simd_orders);
-      simd_sh = (dcomplex*)SetPro_HostAlloc(sizeof(dcomplex)*3*(size_t)simd_orders*simd_orders);
+    if (host.mode!=OPENMX_HOST_SIMD_LEGACY &&
+        !openmx_core_vna_simd_workspace(workspace,simd_orders,&simd,error,sizeof(error))) {
+      fprintf(stderr,"VNA2/3 SIMD workspace: %s\n",error);
+      SetPro_gpu_abort("Cannot allocate neutral-potential SIMD workspace.");
+      abort();
     }
+    double *simd_x = simd.arguments, *simd_sphb = simd.bessel, *simd_sphbp = simd.bessel_derivative;
+    double *simd_sum = simd.sum, *simd_sumr = simd.sum_derivative;
+    dcomplex *simd_sh = simd.harmonics;
 
     if (!mirror && omp_get_thread_num() == 0) {
       const size_t bytes = sizeof(dcomplex)*buffers.orbital_capacity*buffers.orbital_capacity;
@@ -462,7 +461,6 @@ static void SetPro_VNA23_CPU(const OpenMXDoubleBlockMatrix *HVNA23, int mirror, 
     } /* Mc_AN */
 
     openmx_core_vna_destroy(workspace);
-    free(simd_x); free(simd_sphb); free(simd_sphbp); free(simd_sum); free(simd_sumr); free(simd_sh);
 
 #pragma omp flush(HVNA23)
 

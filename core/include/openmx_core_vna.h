@@ -4,11 +4,11 @@
 #include "openmx_complex.h"
 #include "openmx_core_two_center.h"
 #include "openmx_core_orbitals.h"
+#include "openmx_core_vna_simd_workspace.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-typedef struct OpenMXVnaWorkspace OpenMXVnaWorkspace;
 typedef struct { int maximum_angular, multiplicity, points; } OpenMXVnaShape;
 typedef struct {
   int multiplicity, points;

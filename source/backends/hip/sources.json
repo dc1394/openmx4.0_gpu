@@ -1105,7 +1105,8 @@
     "openmx_basis_lebedev.h",
     "openmx_core_quadrature.h",
     "openmx_core_real_harmonics.h",
-    "openmx_quadrature.h"
+    "openmx_quadrature.h",
+    "openmx_core_vna_simd_workspace.h"
   ],
   "integrated_overrides": {
     "set_hamiltonian_hip.cu": "src/set_hamiltonian_hip.cu",

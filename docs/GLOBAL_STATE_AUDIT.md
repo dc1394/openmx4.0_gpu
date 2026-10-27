@@ -853,3 +853,16 @@ CPU/CUDA/HIP境界、35組の収束計算と後処理、競合しないGPU/CPU�
 歴史的なCore宣言ベースライン1197個は変更していません。
 証拠は `build/gaunt-library-20261028/audit-proof.json`、`kernel-preservation.json`、
 `numerical-summary.json` と性能結果に保存しています。
+
+
+第107段階ではVNAのCPU SIMD用数値バッファ15個をワーカー単位のRAIIへ移し、
+5個の動的な行ポインタ表を基点と間隔へ置き換えました。
+291 C単位・3,416関数・大域定義935個・参照組12,368個と既存関数の大域利用記録は同一です。
+OpenMP生成関数1個の番号変更はLLVM本体・属性・メタデータの同一性を別途検証して対応付けました。
+設定298個・固定構造表278個の所属とC AST宣言940個を維持し、新規参照・static・環境変数は0件です。
+実Coreの54試験（ASan/UBSan・CUDA）、Clang/Intelの各14試験、ネイティブVNA試験、
+CPU/CUDA/HIPビルド境界、旧新ABIの混在検出、35組の収束計算と後処理、競合しないGPU/CPU性能比較を
+確認後に所有権移行のベースラインを更新しました。更新後のゲートも追加0件です。
+歴史的なCore宣言基準1197個は保持します。
+証拠は `build/vna-simd-workspace-20261028/audit-proof.json`、`outlined-renaming.json`、
+`numerical-summary.json` と性能・ABI結果に保存しています。

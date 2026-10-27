@@ -3,11 +3,11 @@
 #include "openmx_complex.h"
 #include "openmx_core_orbitals.h"
 #include "openmx_core_vna_preparation.h"
+#include "openmx_core_vna_simd_workspace.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-typedef struct OpenMXDsvnaWorkspace OpenMXDsvnaWorkspace;
 typedef struct {
   int points, projectors;
   size_t orbital_capacity, projector_capacity, radial_capacity;

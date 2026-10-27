@@ -9,6 +9,8 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+#include <climits>
+#include <limits>
 
 // The Set_ProExpn_VNA host family must reproduce the legacy C loops bit for
 // bit: each case transcribes the legacy loop (compiled here without
@@ -58,15 +60,18 @@ void contract_case() {
       expected[size_t(m)*ostride+r]=tmp1;expected[size_t(count)*ostride+size_t(m)*ostride+r]=tmp2;
     }
     // the glue forms the legacy Bes00/Bes01 rows (radial function times Bessel value)
-    std::vector<std::vector<double>> w0(count,std::vector<double>(points)),w1(count,std::vector<double>(points));
-    for(int m=0;m<count;++m)for(int i=0;i<points;++i){w0[m][i]=a0[m][i]*b0[i];w1[m][i]=a1[m][i]*b1[i];}
-    std::vector<const double*> pw0,pw1;
-    for(int m=0;m<count;++m){pw0.push_back(w0[m].data());pw1.push_back(w1[m].data());}
+    // Interleaved channels with padding exercise the application's flat layout.
+    const size_t wstride=2*size_t(points)+3;
+    std::vector<double> weights(std::max<size_t>(1,size_t(count)*wstride),123.0);
+    for(int m=0;m<count;++m)for(int i=0;i<points;++i) {
+      weights[size_t(m)*wstride+i]=a0[m][i]*b0[i];
+      weights[size_t(m)*wstride+points+i]=a1[m][i]*b1[i];
+    }
     for(int mode:modes()) {
       std::vector<double> out(expected.size(),7.0);
-      OpenMXVnaContract c={points,rows,count,stride,ostride,table.data(),pw0.data(),pw1.data(),
-          out.data(),out.data()+size_t(count)*ostride};
-      require(openmx_core_vna_contract(&c,mode),"contract refused a valid request");
+      OpenMXVnaContract c={points,rows,count,stride,ostride,table.data(),points && count?weights.data():nullptr,points && count?weights.data()+points:nullptr,
+          out.data(),out.data()+size_t(count)*ostride,wstride};
+      require(openmx_core_vna_contract_flat(&c,mode),"contract refused a valid request");
       if(!same(out,expected))report("contraction differs from the legacy loop",mode,out,expected);
     }
   }
@@ -236,8 +241,7 @@ void angular_case() {
     std::vector<std::vector<double>> gaunt(std::max(count,0),std::vector<double>(size_t(rows)*gstride));
     for(auto& g:gaunt)for(auto& v:g)v=noisy(rng);
     std::vector<double> cpr(count),cpi(count),s0(count),s1(count);
-    std::vector<const double*> grows(count);
-    for(int t=0;t<count;++t){const Cx cp=im_pow(-l0+l1+first+t+4*int(rng()%2));cpr[t]=cp.r;cpi[t]=cp.i;s0[t]=noisy(rng);s1[t]=noisy(rng);grows[t]=gaunt[t].data();}
+    for(int t=0;t<count;++t){const Cx cp=im_pow(-l0+l1+first+t+4*int(rng()%2));cpr[t]=cp.r;cpi[t]=cp.i;s0[t]=noisy(rng);s1[t]=noisy(rng);}
     std::vector<double> seed[8];
     for(auto& a:seed){a.resize(size_t(rows)*stride+4);for(auto& v:a)v=noisy(rng);}
     // legacy: zero block; for LL: for m: CY1 = Cmul(Cpow, Y(m)); for M0: M1 = M0-m; if |M1| <= l1: accumulate
@@ -263,18 +267,29 @@ void angular_case() {
         }
       }
     }
-    for(int mode:modes()) {
-      std::vector<double> acc[8];
-      OpenMXVnaAngular a;
-      a.rows=rows;a.columns=cols;a.l0=l0;a.l1=l1;a.pad=pad;a.ll_first=first;a.ll_count=count;
-      a.cy_length=cy_length;a.cy_stride=cy_stride;
-      for(int c=0;c<6;++c)a.cy[c]=cy[c].data();
-      a.cpow_r=cpr.data();a.cpow_i=cpi.data();a.s0=s0.data();a.s1=s1.data();
-      a.gaunt=grows.data();a.gaunt_stride=gstride;
-      for(int c=0;c<8;++c){acc[c]=seed[c];a.acc[c]=acc[c].data();}
-      a.acc_stride=stride;
-      require(openmx_core_vna_angular(&a,mode),"angular refused a valid request");
-      for(int c=0;c<8;++c)if(!same(acc[c],expected[c]))report("m-sum accumulation differs from the legacy loop",mode,acc[c],expected[c]);
+    // Exercise both LL-major packing and the application's M0-major table.
+    for(int layout:{0,1}) {
+      const size_t mstride=layout?size_t(std::max(count,1))*gstride+5:gstride;
+      const size_t llstride=layout?gstride:size_t(rows)*gstride+5;
+      std::vector<double> flat_gaunt(count?size_t(count-1)*llstride+size_t(rows-1)*mstride+cols:1,123.0);
+      for(int ll=0;ll<count;++ll)for(int m=0;m<rows;++m)for(int j=0;j<cols;++j)
+        flat_gaunt[size_t(ll)*llstride+size_t(m)*mstride+j]=gaunt[ll][size_t(m)*gstride+j];
+      for(int mode:modes()) {
+        std::vector<double> acc[8];
+        OpenMXVnaAngular a;
+        a.rows=rows;a.columns=cols;a.l0=l0;a.l1=l1;a.pad=pad;a.ll_first=first;a.ll_count=count;
+        a.cy_length=cy_length;a.cy_stride=cy_stride;
+        for(int c=0;c<6;++c)a.cy[c]=cy[c].data();
+        a.cpow_r=cpr.data();a.cpow_i=cpi.data();a.s0=s0.data();a.s1=s1.data();
+        a.gaunt=flat_gaunt.data();a.gaunt_stride=mstride;a.gaunt_ll_stride=llstride;
+        for(int c=0;c<8;++c){acc[c]=seed[c];a.acc[c]=acc[c].data();}
+        a.acc_stride=stride;
+        if(!openmx_core_vna_angular_flat(&a,mode)) {
+          std::cerr<<"angular shape l0="<<l0<<" l1="<<l1<<" first="<<first<<" count="<<count<<" layout="<<layout<<" mode="<<mode<<'\n';
+          throw std::runtime_error("angular refused a valid request");
+        }
+        for(int c=0;c<8;++c)if(!same(acc[c],expected[c]))report("m-sum accumulation differs from the legacy loop",mode,acc[c],expected[c]);
+      }
     }
   }
 }
@@ -434,12 +449,30 @@ void nonlocal_case() {
 }
 
 void invalid_case() {
-  double d[16]={0};const double* rows[1]={d};int lengths[1]={2};float f[8]={0};
-  OpenMXVnaContract c={4,2,1,2,2,d,rows,rows,d+4,d+8};
-  require(!openmx_core_vna_contract(&c,99) && !openmx_core_vna_contract(&c,-1),"contract accepted an unknown mode");
-  require(openmx_core_vna_contract(&c,OPENMX_GRID_SCALAR),"contract refused a valid request");
-  c.table_stride=1;require(!openmx_core_vna_contract(&c,OPENMX_GRID_SCALAR),"contract accepted a short table stride");
-  c.table_stride=2;c.out0=nullptr;require(!openmx_core_vna_contract(&c,OPENMX_GRID_SCALAR),"contract accepted a missing output");
+  double d[16]={0};int lengths[1]={2};float f[8]={0};
+  OpenMXVnaContract c={4,2,1,2,2,d,d,d,d+4,d+8,4};
+  require(!openmx_core_vna_contract_flat(&c,99) && !openmx_core_vna_contract_flat(&c,-1),"contract accepted an unknown mode");
+  require(openmx_core_vna_contract_flat(&c,OPENMX_GRID_SCALAR),"contract refused a valid request");
+  c.table_stride=1;require(!openmx_core_vna_contract_flat(&c,OPENMX_GRID_SCALAR),"contract accepted a short table stride");
+  c.table_stride=2;c.out0=nullptr;require(!openmx_core_vna_contract_flat(&c,OPENMX_GRID_SCALAR),"contract accepted a missing output");
+  {
+    double output[8];std::fill_n(output,8,17.0);
+    const OpenMXVnaContract valid={2,2,2,2,2,d,d,d,output,output+4,2};
+    const auto rejected=[&](OpenMXVnaContract invalid) {
+      require(!openmx_core_vna_contract_flat(&invalid,OPENMX_GRID_SCALAR),"invalid flat contraction accepted");
+      for(double v:output)require(v==17.0,"invalid contraction wrote output");
+    };
+    auto invalid=valid;invalid.weight_stride=1;rejected(invalid);
+    invalid=valid;invalid.weight_stride=std::numeric_limits<size_t>::max();rejected(invalid);
+    invalid=valid;invalid.out_stride=std::numeric_limits<size_t>::max();rejected(invalid);
+    invalid=valid;invalid.table_stride=std::numeric_limits<size_t>::max();rejected(invalid);
+    invalid=valid;invalid.w0=nullptr;rejected(invalid);
+    // A zero-point contraction writes zeros without even forming input pointers.
+    auto zero=valid;zero.points=0;zero.w0=zero.w1=zero.table=nullptr;
+    zero.weight_stride=std::numeric_limits<size_t>::max();
+    require(openmx_core_vna_contract_flat(&zero,OPENMX_GRID_SCALAR),"zero-point flat contraction refused");
+    for(double v:output)require(v==0.,"zero-point contraction did not zero output");
+  }
   OpenMXVnaBessel b={3,2,d,d+4,d+8,3,nullptr,nullptr,0};
   require(!openmx_core_vna_bessel(&b,99),"bessel accepted an unknown mode");
   b.lmax=31;require(!openmx_core_vna_bessel(&b,OPENMX_GRID_SCALAR),"bessel accepted lmax above the table");
@@ -461,20 +494,33 @@ void invalid_case() {
   h.fp32=1;require(!openmx_core_vna_hvna_block(&h,OPENMX_GRID_SCALAR),"hvna accepted fp32 products without float operands");
   h.fp32=0;h.right_double=nullptr;require(!openmx_core_vna_hvna_block(&h,OPENMX_GRID_SCALAR),"hvna accepted a lone double operand without floats");
   double cy[40]={0},planes[8*8]={0},one[1]={1.0};
-  const double* grows[1]={cy};
   OpenMXVnaAngular a;
   a.rows=1;a.columns=3;a.l0=0;a.l1=1;a.pad=1;a.ll_first=1;a.ll_count=1;a.cy_length=40;a.cy_stride=20;
   for(int c=0;c<6;++c)a.cy[c]=cy;
-  a.cpow_r=one;a.cpow_i=one;a.s0=one;a.s1=one;a.gaunt=grows;a.gaunt_stride=3;
+  a.cpow_r=one;a.cpow_i=one;a.s0=one;a.s1=one;a.gaunt=cy;a.gaunt_stride=3;a.gaunt_ll_stride=3;
   for(int c=0;c<8;++c)a.acc[c]=planes+8*c;
   a.acc_stride=3;
-  require(openmx_core_vna_angular(&a,OPENMX_GRID_SCALAR),"angular refused a valid request");
-  require(!openmx_core_vna_angular(&a,99),"angular accepted an unknown mode");
-  a.pad=0;require(!openmx_core_vna_angular(&a,OPENMX_GRID_SCALAR),"angular accepted a short pad");
-  a.pad=1;a.cy_length=5;require(!openmx_core_vna_angular(&a,OPENMX_GRID_SCALAR),"angular accepted short harmonic tables");
-  a.cy_length=40;a.rows=2;require(!openmx_core_vna_angular(&a,OPENMX_GRID_SCALAR),"angular accepted rows that do not match l0");
-  a.rows=1;a.ll_first=6;require(!openmx_core_vna_angular(&a,OPENMX_GRID_SCALAR),"angular accepted tables shorter than the m range");
-  a.ll_first=1;a.ll_count=0;a.gaunt=nullptr;require(openmx_core_vna_angular(&a,OPENMX_GRID_SCALAR),"an empty LL range must still zero the block");
+  require(openmx_core_vna_angular_flat(&a,OPENMX_GRID_SCALAR),"angular refused a valid request");
+  {
+    const auto rejected=[&](OpenMXVnaAngular invalid) {
+      std::fill_n(planes,64,17.0);
+      require(!openmx_core_vna_angular_flat(&invalid,OPENMX_GRID_SCALAR),"invalid flat angular layout accepted");
+      for(double v:planes)require(v==17.0,"invalid angular layout wrote output");
+    };
+    auto invalid=a;invalid.gaunt_ll_stride=2;rejected(invalid);
+    invalid=a;invalid.ll_count=2;invalid.gaunt_ll_stride=std::numeric_limits<size_t>::max();rejected(invalid);
+    invalid=a;invalid.l0=INT_MAX;rejected(invalid);
+    invalid=a;invalid.ll_first=INT_MAX;rejected(invalid);
+    invalid=a;invalid.ll_count=INT_MAX;rejected(invalid);
+    invalid=a;invalid.cy_stride=std::numeric_limits<size_t>::max();rejected(invalid);
+    invalid=a;invalid.pad=INT_MAX;rejected(invalid);
+  }
+  require(!openmx_core_vna_angular_flat(&a,99),"angular accepted an unknown mode");
+  a.pad=0;require(!openmx_core_vna_angular_flat(&a,OPENMX_GRID_SCALAR),"angular accepted a short pad");
+  a.pad=1;a.cy_length=5;require(!openmx_core_vna_angular_flat(&a,OPENMX_GRID_SCALAR),"angular accepted short harmonic tables");
+  a.cy_length=40;a.rows=2;require(!openmx_core_vna_angular_flat(&a,OPENMX_GRID_SCALAR),"angular accepted rows that do not match l0");
+  a.rows=1;a.ll_first=6;require(!openmx_core_vna_angular_flat(&a,OPENMX_GRID_SCALAR),"angular accepted tables shorter than the m range");
+  a.ll_first=1;a.ll_count=0;a.gaunt=nullptr;require(openmx_core_vna_angular_flat(&a,OPENMX_GRID_SCALAR),"an empty LL range must still zero the block");
   for(int c=0;c<8;++c)for(int j=0;j<3;++j)require(planes[8*c+j]==0.0,"an empty LL range left the block unwritten");
   float fo[16]={0};
   OpenMXVnaConvert v;

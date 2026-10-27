@@ -180,6 +180,13 @@ workspaces own packed angular matrices, radial sums and Bessel scratch;
 species-local offsets replace temporary five-level pointers and omit empty
 basis groups. The zero-wavevector Bessel derivative initializes the extra order
 it reads, and per-atom timing updates are safe across threads.
+DS_VNA and VNA2/3 CPU SIMD scratch now belongs to those same C++ workers.
+Lazy tensors replace 15 manual numeric allocations; explicit weight and Gaunt
+strides remove five runtime row-pointer lists. Reacquisition preserves storage
+without allocation, and empty basis groups skip absent angular buffers.
+The changed VNA descriptors use distinct `_flat` C entry points and a versioned
+private SIMD dispatcher. Rebuild and deploy the application, Core and SIMD
+libraries together; mixed versions fail to resolve their interface symbols.
 HVNA archive offsets and projector energies now share one C++ owner across
 CUDA/HIP. Resident archives, rank turns and capacity recovery receive explicit
 invocation state; their backend memory budgets and contraction order are preserved.
@@ -294,8 +301,8 @@ the host ABI: CUDA/HIP/SYCL defaults would select width 1.
 
 `libopenmx_host_simd` is built by an ordinary C++20 compiler against a private
 SERIAL configuration of the same pinned Kokkos source. Its Kokkos/C++ symbols
-are hidden, and only two functions exchanging plain descriptors cross the
-library boundary. Device compilers never compile the host SIMD kernels.
+are hidden; C entry points exchange plain descriptors and function tables
+across the library boundary. Device compilers never compile the host SIMD kernels.
 CMake builds and installs this library alongside `libopenmx_core`; keep both
 libraries when copying an installation. If the Core C++ compiler is a device
 wrapper, specify `-DOPENMX_HOST_SIMD_CXX_COMPILER=/path/to/g++` (or `clang++`).

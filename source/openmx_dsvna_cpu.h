@@ -17,7 +17,7 @@ typedef struct {
   size_t table_stride;
   double *projector_table;   /* [species][points][table_stride] */
   SetProGauntTable gaunt;
-  /* the m sum and the conversions through the Core (openmx_core_vna_angular /
+  /* the m sum and the conversions through the Core (openmx_core_vna_angular_flat /
      _convert): shape caps, the reversed-harmonics padding, and the conversion
      matrices of every projector angular momentum transposed to [l][k][M1] */
   int angular, l0max, l1max, llmax, pad;
@@ -155,35 +155,23 @@ static void SetPro_DSVNA_CPU(const OpenMXProjectorMatrix *DS_VNA, const OpenMXVn
     Bes00 = buffers.radial[0]; Bes01 = buffers.radial[1];
     SphB = buffers.bessel[0]; SphBp = buffers.bessel[1];
     tmp_SphB = buffers.scratch[0]; tmp_SphBp = buffers.scratch[1];
-    /* host SIMD path: Bessel arguments and the radial-function rows of a pair */
-    double *simd_x = NULL, *simd_w = NULL, *simd_cy = NULL, *simd_acc = NULL, *simd_sums = NULL;
-    double *simd_cpr = NULL, *simd_cpi = NULL, *simd_s0 = NULL, *simd_s1 = NULL;
-    const double **simd_a0 = NULL, **simd_a1 = NULL, **simd_w0 = NULL, **simd_w1 = NULL, **simd_grows = NULL;
-    const size_t simd_plane = buffers.orbital_capacity*buffers.projector_capacity;
-    const size_t simd_sum_slice = buffers.radial_capacity*(size_t)Num_RVNA;   /* SumNL0 of one LL */
-    if (host.angular) {
-      simd_cy = (double*)SetPro_HostAlloc(sizeof(double)*(6*host.cy_length+1));
-      memset(simd_cy,0,sizeof(double)*6*host.cy_length);
-      simd_acc = (double*)SetPro_HostAlloc(sizeof(double)*(8*simd_plane+1));
-      simd_sums = (double*)SetPro_HostAlloc(sizeof(double)*(2*(size_t)(host.llmax+1)*simd_sum_slice+1));
-      simd_cpr = (double*)SetPro_HostAlloc(sizeof(double)*(size_t)(host.llmax+1));
-      simd_cpi = (double*)SetPro_HostAlloc(sizeof(double)*(size_t)(host.llmax+1));
-      simd_s0 = (double*)SetPro_HostAlloc(sizeof(double)*(size_t)(host.llmax+1));
-      simd_s1 = (double*)SetPro_HostAlloc(sizeof(double)*(size_t)(host.llmax+1));
-      simd_grows = (const double**)SetPro_HostAlloc(sizeof(double*)*(size_t)(host.llmax+1));
-    }
+    /* SIMD scratch shares the lifetime of the worker's C++ workspace. */
+    OpenMXDsvnaSimdBuffers simd = {0};
     if (host.mode!=OPENMX_HOST_SIMD_LEGACY) {
-      simd_x = (double*)SetPro_HostAlloc(sizeof(double)*(size_t)points);
-      simd_w = (double*)SetPro_HostAlloc(sizeof(double)*(2*buffers.radial_capacity*(size_t)points+1));
-      simd_a0 = (const double**)SetPro_HostAlloc(sizeof(double*)*(buffers.radial_capacity+1));
-      simd_a1 = (const double**)SetPro_HostAlloc(sizeof(double*)*(buffers.radial_capacity+1));
-      simd_w0 = (const double**)SetPro_HostAlloc(sizeof(double*)*(buffers.radial_capacity+1));
-      simd_w1 = (const double**)SetPro_HostAlloc(sizeof(double*)*(buffers.radial_capacity+1));
-      for (i=0; i<(int)buffers.radial_capacity; i++){
-        simd_w0[i] = simd_w+(size_t)(2*i)*points;
-        simd_w1[i] = simd_w+(size_t)(2*i+1)*points;
+      if (!openmx_core_dsvna_simd_workspace(workspace,host.angular,&simd,error,sizeof(error))) {
+        fprintf(stderr,"DS_VNA SIMD workspace: %s\n",error);
+        SetPro_gpu_abort("Cannot allocate neutral-projector SIMD workspace.");
+        abort();
       }
+      if (simd.pad!=host.pad || simd.llmax!=host.llmax || simd.cy_stride!=host.cy_stride || simd.cy_length!=host.cy_length)
+        SetPro_gpu_abort("DS_VNA SIMD planning dimensions disagree.");
     }
+    double *simd_x = simd.arguments, *simd_w = simd.weighted, *simd_cy = simd.harmonics;
+    double *simd_acc = simd.accumulators, *simd_sums = simd.sums;
+    double *simd_cpr = simd.cpow_real, *simd_cpi = simd.cpow_imag;
+    double *simd_s0 = simd.radial, *simd_s1 = simd.radial_derivative;
+    const size_t simd_plane = buffers.orbital_capacity*buffers.projector_capacity;
+    const size_t simd_sum_slice = buffers.radial_capacity*(size_t)Num_RVNA;
     if (omp_get_thread_num() == 0) {
       const size_t radial_bytes = sizeof(double)*buffers.radial_capacity*buffers.projectors;
       const size_t angular_bytes = sizeof(dcomplex)*buffers.orbital_capacity*buffers.projector_capacity;
@@ -282,6 +270,7 @@ static void SetPro_DSVNA_CPU(const OpenMXProjectorMatrix *DS_VNA, const OpenMXVn
       /* the radial functions of this pair in the legacy order, for the Core's
          contraction (its outputs are the species-local SumNL0/SumNLr0 rows) */
       int simd_radials = -1;
+      const size_t simd_species_offset = preparation->radial_offsets[(size_t)Cwan*preparation->angular_channels]*(size_t)points;
       if (host.mode!=OPENMX_HOST_SIMD_LEGACY && host.projector_table) {
         simd_radials = 0;
         for (L0=0; L0<=preparation->maximum_angular[Cwan]; L0++){
@@ -290,8 +279,6 @@ static void SetPro_DSVNA_CPU(const OpenMXProjectorMatrix *DS_VNA, const OpenMXVn
                 openmx_core_dsvna_sum(&buffers,preparation,Cwan,L0,Mul0,0)!=(size_t)simd_radials*(size_t)Num_RVNA ||
                 (size_t)simd_radials>=buffers.radial_capacity) simd_radials = -1;
             if (simd_radials<0) break;
-            simd_a0[simd_radials] = Bessel_Pro00+openmx_core_vna_radial_offset(preparation,Cwan,L0,Mul0);
-            simd_a1[simd_radials] = Bessel_Pro01+openmx_core_vna_radial_offset(preparation,Cwan,L0,Mul0);
             simd_radials++;
           }
           if (simd_radials<0) break;
@@ -303,7 +290,9 @@ static void SetPro_DSVNA_CPU(const OpenMXProjectorMatrix *DS_VNA, const OpenMXVn
          LL loop, from the per-LL radial sums and the harmonics of every (LL, m)
          (reversed per LL: entry LL*cy_stride+pad+LL-m). The legacy loops keep
          TmpNL*, zeroed here. */
-      const int simd_angular = host.angular && simd_radials>=0 &&
+      /* Empty species own no angular/sum storage, so do not form pointers or
+         call even a zero-byte memset on those absent planes. */
+      const int simd_angular = host.angular && simd_radials>0 &&
                                (size_t)preparation->orbitals[Cwan]<=buffers.orbital_capacity;
       if (simd_angular) {
         for (LL=0; LL<=Lmax_Four_Int; LL++){
@@ -357,19 +346,21 @@ static void SetPro_DSVNA_CPU(const OpenMXProjectorMatrix *DS_VNA, const OpenMXVn
           OpenMXVnaContract contract;
           /* the legacy Bes00/Bes01 rows of every radial function */
           for (k=0; k<simd_radials; k++){
-            double *w0 = (double*)simd_w0[k], *w1 = (double*)simd_w1[k];
+            double *w0 = simd_w+(size_t)(2*k)*points, *w1 = w0+points;
             for (i=0; i<points; i++){
-              w0[i] = simd_a0[k][i]*SphB[(size_t)LL*points+i];
-              w1[i] = simd_a1[k][i]*SphBp[(size_t)LL*points+i];
+              w0[i] = Bessel_Pro00[simd_species_offset+(size_t)k*points+i]*SphB[(size_t)LL*points+i];
+              w1[i] = Bessel_Pro01[simd_species_offset+(size_t)k*points+i]*SphBp[(size_t)LL*points+i];
             }
           }
           contract.points = points; contract.rows = Num_RVNA; contract.count = simd_radials;
           contract.table_stride = host.table_stride; contract.out_stride = (size_t)Num_RVNA;
           contract.table = host.projector_table+(size_t)Hwan*points*host.table_stride;
-          contract.w0 = simd_w0; contract.w1 = simd_w1;
+          contract.w0 = simd_radials ? simd_w : NULL;
+          contract.w1 = simd_radials ? simd_w+points : NULL;
+          contract.weight_stride = simd.weight_stride;
           contract.out0 = simd_angular ? simd_sums+(size_t)LL*simd_sum_slice : SumNL0;
           contract.out1 = simd_angular ? simd_sums+((size_t)(host.llmax+1)+LL)*simd_sum_slice : SumNLr0;
-          simd_contracted = openmx_core_vna_contract(&contract,host.mode);
+          simd_contracted = openmx_core_vna_contract_flat(&contract,host.mode);
           if (simd_angular && !simd_contracted)
             SetPro_gpu_abort("Set_ProExpn_VNA: the Core refused a contraction it accepted at planning.");
           if (simd_angular && h_AN==0)   /* derivatives of "on site" */
@@ -530,7 +521,6 @@ static void SetPro_DSVNA_CPU(const OpenMXProjectorMatrix *DS_VNA, const OpenMXVn
                 simd_cpr[n] = Cpow.r; simd_cpi[n] = Cpow.i;
                 simd_s0[n] = simd_sums[(size_t)LL*simd_sum_slice+radial*(size_t)Num_RVNA+L];
                 simd_s1[n] = simd_sums[((size_t)(host.llmax+1)+LL)*simd_sum_slice+radial*(size_t)Num_RVNA+L];
-                simd_grows[n] = host.gaunt.values+SetPro_GauntTable_Row(&host.gaunt,L0,-L0,LL,L1);
                 n++;
               }
               angular.rows = 2*L0+1; angular.columns = 2*L1+1; angular.l0 = L0; angular.l1 = L1;
@@ -538,12 +528,13 @@ static void SetPro_DSVNA_CPU(const OpenMXProjectorMatrix *DS_VNA, const OpenMXVn
               angular.cy_length = host.cy_length; angular.cy_stride = host.cy_stride;
               for (k=0; k<6; k++) angular.cy[k] = simd_cy+(size_t)k*host.cy_length;
               angular.cpow_r = simd_cpr; angular.cpow_i = simd_cpi; angular.s0 = simd_s0; angular.s1 = simd_s1;
-              angular.gaunt = simd_grows;
+              angular.gaunt = host.gaunt.values+SetPro_GauntTable_Row(&host.gaunt,L0,-L0,first,L1);
+              angular.gaunt_ll_stride = (size_t)(host.gaunt.l1max+1)*host.gaunt.row_stride;
               angular.gaunt_stride = SetPro_GauntTable_Row(&host.gaunt,L0,-L0+1,0,L1)
                                     -SetPro_GauntTable_Row(&host.gaunt,L0,-L0,0,L1);
               for (k=0; k<8; k++) angular.acc[k] = simd_acc+(size_t)k*simd_plane+origin;
               angular.acc_stride = buffers.projector_capacity;
-              if (!openmx_core_vna_angular(&angular,host.mode))
+              if (!openmx_core_vna_angular_flat(&angular,host.mode))
                 SetPro_gpu_abort("Set_ProExpn_VNA: the Core refused an m-sum block it accepted at planning.");
             }
           }
@@ -760,9 +751,6 @@ static void SetPro_DSVNA_CPU(const OpenMXProjectorMatrix *DS_VNA, const OpenMXVn
     } /* Mc_AN */
 
     openmx_core_dsvna_destroy(workspace);
-    free(simd_x); free(simd_w); free(simd_a0); free(simd_a1); free(simd_w0); free(simd_w1);
-    free(simd_cy); free(simd_acc); free(simd_sums);
-    free(simd_cpr); free(simd_cpi); free(simd_s0); free(simd_s1); free(simd_grows);
 
 #pragma omp flush(DS_VNA)
 
