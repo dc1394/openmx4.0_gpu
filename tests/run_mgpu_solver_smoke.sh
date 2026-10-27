@@ -13,6 +13,8 @@ host_cxx=${NVCC_HOST:-g++}
 host_cc=${CC:-gcc}
 magma_prefix=${MAGMA_PREFIX:-$root/source/third_party/magma-install}
 unset CPATH C_INCLUDE_PATH CPLUS_INCLUDE_PATH LIBRARY_PATH LD_LIBRARY_PATH NVCC_PREPEND_FLAGS NVCC_APPEND_FLAGS
+"$host_cc" -std=c11 -O2 -I"$root/source" \
+    -c "$root/source/openmx_env.c" -o "$out/env.o"
 "$host_cc" -std=c11 -O2 -I"$root/source" -I"$cuda_root/include" -I"$math_root/include" \
     -c "$root/source/openmx_cusolver_compat.c" -o "$out/compat.o"
 "$host_cc" -std=c11 -O2 -I"$root/source" \
@@ -28,7 +30,7 @@ fi
     -I"$root/source" -I"$math_root/include" $magma_compile \
     "$root/tests/mgpu_solver_smoke.cpp" "$root/source/openmx_mgpu_runtime.cu" \
     "$root/source/openmx_mgpu_gemm.cu" "$root/source/openmx_magma_mgpu.cpp" \
-    "$out/compat.o" "$out/dense_cpu.o" \
+    "$out/compat.o" "$out/dense_cpu.o" "$out/env.o" \
     $magma_link -L"$math_root/lib64" -L"$cuda_root/lib64" -lcusolver -lcublas -lnvJitLink -ldl \
     -Xlinker -rpath -Xlinker "$math_root/lib64" -Xlinker -rpath -Xlinker "$cuda_root/lib64" \
     ${HOST_LIBDIR:+-L"$HOST_LIBDIR"} ${HOST_LIBDIR:+-Xlinker -rpath -Xlinker "$HOST_LIBDIR"} \
@@ -39,7 +41,7 @@ fi
     -I"$root/source" -I"$math_root/include" $magma_compile \
     "$root/tests/mgpu_dispatch_probe.cu" "$root/source/openmx_mgpu_runtime.cu" \
     "$root/source/openmx_mgpu_gemm.cu" "$root/source/openmx_magma_mgpu.cpp" \
-    "$out/dense_cpu.o" \
+    "$out/dense_cpu.o" "$out/env.o" \
     $magma_link -L"$math_root/lib64" -L"$cuda_root/lib64" -lcusolver -lcublas -lnvJitLink -ldl \
     -Xlinker -rpath -Xlinker "$math_root/lib64" -Xlinker -rpath -Xlinker "$cuda_root/lib64" \
     ${HOST_LIBDIR:+-L"$HOST_LIBDIR"} ${HOST_LIBDIR:+-Xlinker -rpath -Xlinker "$HOST_LIBDIR"} \

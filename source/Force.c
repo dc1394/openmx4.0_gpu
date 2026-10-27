@@ -7186,8 +7186,10 @@ void Force_HNL(const OpenMXAtomicViews *atomic, double***** CDM0, double***** iD
                 }
             }
 
-            // comment out April 28th, 2023 H. Kawai
-#if NVHPC_VERSION >= 250000
+            /* The refactored projector path uses invocation-owned, per-thread
+               scratch. Older compilers retain their default workaround unless
+               the site build explicitly validates this host-only region. */
+#if NVHPC_VERSION >= 250000 || defined(OPENMX_FORCE_HNL_HOST_OPENMP)
             #pragma omp parallel shared(ODNloop,OneD2h_AN,OneD2q_AN,Mc_AN,Gc_AN,dEx_threads,dEy_threads,dEz_threads,CDM0,projectors,Hub_U_switch,Constraint_NCS_switch,Zeeman_NCS_switch,Zeeman_NCO_switch,DS_NL,RMI1,WhatSpecies,F_G2M,natn,FNAN,List_YOUSO,Solver,F_NL_flag,F_U_flag,atomic) private(OMPID,Nthrds,Nprocs,Hx,Hy,Hz,i,j,h_AN,Gh_AN,Mh_AN,Hwan,ian,q_AN,Gq_AN,Mq_AN,Qwan,jan,kl,km,Nloop,pref)
 #endif
             {

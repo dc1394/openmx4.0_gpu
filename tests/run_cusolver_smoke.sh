@@ -10,6 +10,13 @@ sdk_root=${NVHPC_ROOT:-/opt/nvidia/hpc_sdk/Linux_x86_64/26.9}
 test_tmp=$(mktemp -d "${TMPDIR:-/tmp}/openmx-cusolver-test.XXXXXX")
 trap 'rm -rf "$test_tmp"' EXIT HUP INT TERM
 unset LD_LIBRARY_PATH CPATH C_INCLUDE_PATH CPLUS_INCLUDE_PATH LIBRARY_PATH
+# Split SDK installations keep cuSOLVER and nvJitLink in different trees.
+# cuSOLVER's own RUNPATH can suppress the executable's inherited RPATH, so
+# retain nvJitLink as a direct dependency when this CUDA toolkit supplies it.
+jitlink_flags=
+if [ -f "$cuda_root/lib64/libnvJitLink.so" ]; then
+    jitlink_flags='-Wl,--no-as-needed -lnvJitLink -Wl,--as-needed'
+fi
 # The SDK's mpi/ directory is a selector, not an MPI installation. Resolve
 # its real header directories through the selected wrapper.
 comm_root=${NVCOMPILER_COMM_LIBS_HOME:-$sdk_root/comm_libs/13.3}
@@ -19,19 +26,19 @@ mpi_flags=
 for inc in $mpi_includes; do mpi_flags="$mpi_flags -I$inc"; done
 
 ${CC:-cc} -O2 -std=c11 -I"$test_root/source" -I"$math_root/include" -I"$cuda_root/include" \
-    "$test_root/tests/cusolver_smoke.c" "$test_root/source/openmx_cusolver_compat.c" \
+    "$test_root/tests/cusolver_smoke.c" "$test_root/source/openmx_cusolver_compat.c" "$test_root/source/openmx_env.c" \
     -L"$math_root/lib64" -L"$cuda_root/lib64" \
     -Wl,--disable-new-dtags,-rpath,"$math_root/lib64",-rpath,"$cuda_root/lib64" \
-    -lcusolver -lcudart -lm -o "$test_tmp/api"
+    -lcusolver -lcudart $jitlink_flags -lm -o "$test_tmp/api"
 
 NVHPC_CUDA_HOME="$cuda_root" "$sdk_root/compilers/bin/nvc" -O2 -std=c11 -acc -mp \
     -I"$test_root/source" -I"$math_root/include" -I"$cuda_root/include" \
     $mpi_flags \
     "$test_root/tests/gpusolver_wrapper_smoke.c" "$test_root/source/gpusolver_Syevdx.c" \
-    "$test_root/source/openmx_cusolver_compat.c" \
+    "$test_root/source/openmx_cusolver_compat.c" "$test_root/source/openmx_env.c" \
     -L"$math_root/lib64" -L"$cuda_root/lib64" \
     -Wl,--disable-new-dtags,-rpath,"$math_root/lib64",-rpath,"$cuda_root/lib64" \
-    -lcusolver -lcudart -lm -o "$test_tmp/wrappers"
+    -lcusolver -lcudart $jitlink_flags -lm -o "$test_tmp/wrappers"
 
 for mode in auto two-stage legacy; do
     export OPENMX_CUSOLVER_ALGORITHM=$mode OPENMX_CUSOLVER_VERBOSE=1

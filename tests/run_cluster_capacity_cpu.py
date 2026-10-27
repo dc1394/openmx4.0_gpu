@@ -190,6 +190,7 @@ with tempfile.TemporaryDirectory(prefix="openmx-cluster-capacity-") as folder:
     # the mock headers come first; the production headers come from source/
     cmd = ["mpicc", "-std=gnu11", "-O1", "-Wall", "-I" + str(tmp), "-I" + str(root / "source"),
            str(root / "source" / "openmx_cluster_capacity.c"), str(root / "source" / "openmx_host_memory.c"),
+           str(root / "source" / "openmx_env.c"),
            str(tmp / "test.c"), "-o", str(exe)]
     subprocess.run(cmd, check=True)
     for name, settings, want, text, plans, *absent in cases:

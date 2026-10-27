@@ -1,4 +1,4 @@
-/* Hardware check for the runtime's NVLink auto gate and cluster scope.
+/* Hardware check for the opt-in NVLink auto gate and cluster scope.
    Small matrices use a reduced test threshold, keeping this probe cheap. */
 #include "openmx_mgpu_runtime.h"
 #include "openmx_mgpu_gemm.h"
@@ -29,6 +29,11 @@ int main()
         std::fprintf(stderr,"FAIL: dispatch outside cluster scope\n");return 1;
     }
     int previous=openmx_mgpu_scope_enter(1);
+    if(openmx_mgpu_dispatch_dgemm(handle,CUBLAS_OP_N,CUBLAS_OP_N,n,n,n,
+        &one,a,n,b,n,&zero,c,n,&status)) {
+        std::fprintf(stderr,"FAIL: device-resident GEMM should stay on one GPU by default\n");return 1;
+    }
+    setenv("OPENMX_MGPU_GEMM","auto",1);
     const int handled=openmx_mgpu_dispatch_dgemm(handle,CUBLAS_OP_N,CUBLAS_OP_N,n,n,n,
         &one,a,n,b,n,&zero,c,n,&status);
     if(!handled || status!=CUBLAS_STATUS_SUCCESS) {

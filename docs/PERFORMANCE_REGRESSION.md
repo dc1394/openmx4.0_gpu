@@ -94,8 +94,10 @@ python3 tools/run_refactor_case.py \
 
 GPU 比較は MPS が動いている状態で実行します。MPI ランチャーは各バイナリの
 MPI ライブラリと一致させ、計測中に他の計算やビルドを並行しません。
-古いバイナリを保存する場合は対応する `libopenmx_core.so` も保存し、
-`--core-library /path/to/saved/libopenmx_core.so` で版を固定します。
+古いバイナリを保存する場合は対応する `libopenmx_core.so` と
+`libopenmx_host_simd.so` も保存し、`--core-library /path/to/saved/libopenmx_core.so`
+と `--host-simd-library /path/to/saved/libopenmx_host_simd.so` で両方の版を固定します。
+Open MPI では各ランクに `--threads` 個の CPU コアを割り当てます。
 `--reference <比較元の result.json>` を加えると、入力由来、並列数、反復数、
 原子・格子を照合し、エネルギーと全力成分の差が `1e-7` を超えた実行を失敗とします。
 座標は同一入力の SHA-256 と原子の対応を確認し、出力の小数点以下 5 桁の

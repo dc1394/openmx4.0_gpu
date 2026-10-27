@@ -1,0 +1,209 @@
+A100 validation of the calculation-context refactor, 2026-10-27
+=============================================================
+
+Revision and scope
+------------------
+Branch: refactor/cpp-kokkos-core, baseline a850ebcb (Own host overlap sizing
+cache in calculation context). The baseline was rebuilt from this revision;
+the older executable in work/openmx was not used for the comparison.
+The candidate adds the changes described below to this same revision.
+
+Before changing the code, the review followed calculation-context ownership,
+native-resource destruction and synchronization, solver invocation/thread
+workspaces, projector views, environment snapshots, the separate host-SIMD
+library, and Cluster/Band capacity selection. It also checked the site build
+against the current C++20/Kokkos and host-SIMD build configuration. This is
+a targeted review of the current refactor, not a claim of an exhaustive audit.
+
+Hardware: one physical node (acc008), two allocated A100-SXM4-40GB GPUs
+connected by NVLink, AMD EPYC 7763. PBS jobs 949650 and 949677 each reserve
+32 CPU cores and 120 GB host memory. A private CUDA MPS instance serves the
+MPI ranks and is stopped when each allocation exits. Only the allocated
+GPUs are exposed to the tests. No physical multi-node test was submitted.
+
+Toolchain: NVHPC 24.7, CUDA 12.5, driver 560.35.03, site Open MPI 4.1.6,
+GCC 12.2 for the C++20 core and CUDA host compiler. The core uses Kokkos
+5.2.2 SERIAL; native CUDA/OpenACC GPU paths are enabled. The separate
+host-SIMD library selects AVX2 on this CPU and retains its FP-contract policy.
+
+Build from the repository root:
+  make -C source -f Makefile.kugui -j3 GPUSOLVER2_JOBS=3 MAGMA_JOBS=3 openmx
+
+Changes and their rationale
+---------------------------
+1. Force_HNL case 2 has a host-only contraction loop whose OpenMP region
+   was disabled for NVHPC versions before 25. The current refactor supplies
+   invocation-owned Hx/Hy/Hz tensors indexed by omp_get_thread_num(), and
+   force partials sized by omp_get_max_threads() before entering the team.
+   Enabling this existing parallel region removes a measured serial
+   bottleneck in noncollinear calculations with spin-orbit coupling.
+
+   Makefile.kugui defines OPENMX_FORCE_HNL_HOST_OPENMP for Force.o. The
+   other legacy force-region compiler workarounds and -Mnovect remain in
+   effect. This site opt-in was validated with NVHPC 24.7. It does not change
+   the default pre-25 behavior of other build configurations or the already
+   enabled region on newer compilers. No arithmetic precision, GEMM policy,
+   solver selection or GeForce-specific kernel was changed.
+
+2. Standalone cuSOLVER, multi-GPU GEMM/solver and CPU capacity-policy tests
+   now link openmx_env.c, required since the environment-registry refactor.
+   The NVLink dispatch probe checks the current capacity-first default,
+   then explicitly requests OPENMX_MGPU_GEMM=auto to check two-GPU dispatch.
+   The cuSOLVER runner retains nvJitLink as a direct dependency when supplied
+   by the toolkit, allowing the split CUDA/math-library SDK layout to load
+   without relying on LD_LIBRARY_PATH.
+
+3. run_refactor_case.py can freeze and hash both libopenmx_core.so and
+   libopenmx_host_simd.so. Its Open MPI command allocates one CPU core per
+   requested OpenMP thread rather than binding a whole team to one core.
+   Input isolation recognizes both spellings of System.CurrentDirectory.
+   PERFORMANCE_REGRESSION.md records these comparison requirements.
+
+Accepted performance comparison
+-------------------------------
+Si216 noncollinear Cluster with spin-orbit coupling, Si7.0-s2p2d1,
+200 Ry, 140 x 140 x 140 real-space grid, spinor matrix order 5616,
+25 SCF iterations, four MPI ranks and eight threads per rank. Both runs
+expose two GPUs, use the default
+gpusolver path, and keep identical input, numerical controls and libraries.
+This fits the owner GPU; it measures whole-application performance in the
+two-GPU allocation, not strong scaling of a distributed eigensolve.
+
+                                      Baseline      Candidate
+OpenMX total, maximum over ranks       136.116 s     123.349 s
+Elapsed process time with MPI startup  137.706 s     125.008 s
+Force                                  37.985 s      22.778 s
+Force-HNL                              32.868 s      17.664 s
+Diagonalization                        39.278 s      41.001 s
+Set_Hamiltonian                        12.800 s      12.809 s
+
+The application total is 9.38% shorter; Force is 40.03% shorter and
+Force-HNL is 46.26% shorter. These are one before/after measurement each,
+not repeated-run statistics. The optimization is in the host part of an
+A100 calculation; no eigensolver speedup is claimed.
+
+Both printed total energies are -887.309846613052 Ha. The largest force
+difference is 1.001e-12 Ha/bohr. The comparison verifies the input hashes,
+atoms, coordinates, grid and 25 iterations, with the existing 1e-7 energy
+and force tolerances. This is a fixed-iteration benchmark; it is not
+described as reaching the input's 1e-13 SCF convergence criterion.
+
+Si64 before/after checks use two MPI ranks, eight threads, two SCF steps,
+the same basis/cutoff, SOC for NC, and a 2 x 1 x 1 Band k grid:
+
+                         Total baseline/candidate    Force baseline/candidate
+Collinear Cluster          11.262 / 10.917 s            2.048 / 2.046 s
+Noncollinear Cluster       32.241 / 24.774 s           18.433 / 9.351 s
+Collinear Band             11.560 / 11.733 s            2.056 / 2.074 s
+Noncollinear Band          30.805 / 21.356 s           18.375 / 9.275 s
+
+All four comparisons pass: total-energy differences <=1.024e-12 Ha and
+force differences <=1.001e-12 Ha/bohr. These short runs check behavior
+across all four paths; the 25-step comparison above supports the main
+performance result.
+
+Exploratory results and limitations
+----------------------------------
+An initial five-SCF Si216 comparison failed the unchanged 1e-7 total-energy
+check (difference 2.698e-6 Ha), despite force differences <=1.001e-12.
+These runs stop during the transient SCF evolution; small intermediate
+density differences and larger UH1/Uxc differences were observed. The
+cause was not established. That failed comparison is retained and is not
+counted as an accepted accuracy result. The subsequent 25-step comparison
+passes the original tolerances without relaxing the checks.
+
+OPENMX_GPU_WORKER_OVERLAP=1 gave little timing improvement in an exploratory
+five-step run. OPENMX_HOST_SIMD_PREFER=Force4B made Force slower and also
+failed the short-run energy comparison. Neither setting was adopted.
+
+There was no new RTX 5080 or physical multi-node run. The tested matrix
+sizes do not establish performance for the earlier Si1000 workload.
+Memory-pressure checks described below inject reported free-memory limits;
+they do not exhaust physical GPU memory.
+
+Correctness and lifecycle checks
+-------------------------------
+Actual A100 execution:
+  - Multi-GPU GEMM: 169 real/complex cases, transpose/conjugate, alpha/beta,
+    padding, streams, peer/host transfers and transactional decline;
+    maximum error 2.397e-14 against the independent reference.
+  - MAGMA: two GPUs, real lower/complex upper, n=1025, nev=507, repeated
+    solves; eigenvalue error <=7.772e-15, residual <=2.395e-15 and
+    orthogonality error <=2.298e-14.
+  - Dispatch: default owner-GPU behavior, explicit NVLink auto admission,
+    two-GPU numerical result and leaving Cluster scope all pass.
+  - cuSOLVER: real/complex C API and OpenACC wrapper checks pass. The
+    runner exercises auto/two-stage/legacy requests; CUDA 12.5 uses its
+    available legacy implementation, so this is not a CUDA 13 two-stage test.
+  - EPYC host SIMD: 36 cases across OLG, force, VNA, energy and orbitals
+    pass with scalar/AVX2 comparison, edge cases and rejection checks.
+  - Si64 default cuSOLVER versus forced gpusolver3 MAGMA/custom GEMM:
+    collinear/noncollinear Cluster and Band, two SCF steps, eight runs
+    total. Band uses a 1 x 1 x 1 grid to assign both GPUs to a k point.
+    All comparisons pass with energy/force differences <=1.024e-12.
+    These runs use the rebuilt baseline; solver/GEMM code is identical
+    in the final candidate. No ELPA path is used in this comparison.
+  - Built-in Cr2, GaAs, Graphite4 and H2O run sequentially in one MPI job,
+    testing calculation-resource teardown/recreation. The baseline passes
+    at four ranks x one thread. The final candidate passes at four ranks
+    x four threads, with energy/force differences <=3e-12 against the
+    existing suite references.
+  - CPU capacity recovery: a test LD_PRELOAD library reports only 280 MiB
+    free after creation of the first cuSOLVER handle. Baseline Si64
+    collinear and noncollinear Cluster runs complete through the CPU
+    eigensolver and matrix products. Total-energy differences <=2.990e-10
+    Ha and force differences <=1.791e-10 Ha/bohr versus uncapped runs;
+    all component comparisons pass the 1e-7 check.
+    The final candidate also passes the noncollinear case with eight
+    threads: energy difference 4.740e-10 Ha, force difference 9.000e-11
+    Ha/bohr and largest component difference 1.309e-9 Ha. The run requires
+    both the injected-limit and CPU-recovery log messages. These checks
+    use OPENMX_GPU_WORKERS=off to isolate final CPU recovery.
+
+Host checks with modeled device/topology/allocation behavior:
+  - Environment registry checks.
+  - Cluster/Band collinear and noncollinear CUDA/HIP state, resource
+    lifetime and allocation-failure tests with sanitizers.
+  - 344 GEMM cases (172 each for modeled two/four-GPU configurations).
+  - 23/23 Cluster capacity-policy cases, including local/distributed/CPU
+    selection. These do not constitute physical multi-node validation.
+
+Reproduction and provenance
+---------------------------
+Artifacts are under work/codex_a100_refactor_20261027/:
+  environment.sh, build-baseline.log, build-hnl-openmp.log
+  baseline.json, candidate.json, baseline/, candidate/
+  single-node/allocation.pbs, single-node/commands/
+  single-node/full25-baseline/result.json
+  single-node/full25-candidate/result.json
+  single-node/four-paths/summary.json
+  single-node/four-paths-optimized/summary.json
+  single-node/cpu-capacity/summary.json
+  final-node/allocation.pbs, final-node/commands/
+  final-node/suites-optimized/results.json
+  final-node/cpu-capacity-optimized/summary.json
+  host-tests/, host-simd/
+
+The PBS command scripts preserve the actual launch options, inputs and
+environment. Original failures are also retained: missing environment
+registry linkage, the outdated dispatch expectation, the split-SDK loader
+error, and suite argument/slot-count setup mistakes were corrected before
+the corresponding successful checks. The first allocation exited normally
+before the final two checks were queued; job 949677 runs those final checks
+on one node and releases its allocation afterward.
+
+SHA-256, baseline executable:
+  525dcd419a67ee021574bccc8b180465eaf804d6a4167cc56f1e370a6342d014
+SHA-256, candidate executable:
+  6181bd43d1f1135b8fbcd50178cc03ba0bbbdcd95bf863ca086436b77ab3af64
+SHA-256, libopenmx_core.so (identical for both):
+  7855ead435c60ed29b0dff97e0570649d8b947c709b035b965c0f4818c1d7f33
+SHA-256, libopenmx_host_simd.so (identical for both):
+  b6db3ffff690208989c132c868e9734489ed08118063b73482f89a18baba8b50
+
+The tested executable and both matching libraries were installed together;
+installed.json verifies their hashes against candidate.json, and ldd
+reports no missing dependencies:
+  python3.9 tools/copy_openmx.py source/openmx work/openmx
+  python3.9 tools/copy_openmx.py source/build/cpp-core/libopenmx_core.so work/lib/libopenmx_core.so
+  python3.9 tools/copy_openmx.py source/build/cpp-core/host-simd/lib/libopenmx_host_simd.so work/lib/libopenmx_host_simd.so

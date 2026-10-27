@@ -78,6 +78,11 @@ include Makefile
 CC  += -Mnovect
 CC3 += -Mnovect
 
+# The calculation-owned HNL projector scratch is private to each OpenMP
+# thread. Enable that host region with NVHPC 24.7 and the vectorizer workaround
+# above; the other legacy NVHPC < 25 force-region workarounds remain in place.
+Force.o: CC += -DOPENMX_FORCE_HNL_HOST_OPENMP=1
+
 # The GCC 12 objects (GEMMul8, COSMA) need its libstdc++ at link and run
 # time; /opt/gcc is also present on the compute nodes.
 LIB += -L$(KUGUI_GCC_LIBDIR) -Wl,-rpath,$(KUGUI_GCC_LIBDIR)

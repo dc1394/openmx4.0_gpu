@@ -34,6 +34,8 @@ def main():
     parser.add_argument('--threads', type=int, default=1)
     parser.add_argument('--timeout', type=int, default=1200)
     parser.add_argument('--core-library', type=Path)
+    parser.add_argument('--host-simd-library', type=Path,
+                        help='matching libopenmx_host_simd shared library for a frozen core')
     parser.add_argument('--library-path')
     parser.add_argument('--reference', type=Path)
     parser.add_argument('--env', action='append', default=[], metavar='NAME=VALUE',
@@ -56,7 +58,7 @@ def main():
     data_path = (args.input.parent / data_path).resolve(strict=True)
     source = re.sub(r'^(\s*DATA.PATH\s+)\S+', lambda match: match[1] + str(data_path),
                     source, flags=re.M | re.I)
-    source = re.sub(r'^(\s*System.CurrrentDirectory\s+)\S+', r'\g<1>./',
+    source = re.sub(r'^(\s*System.Cur(?:r)?rentDirectory\s+)\S+', r'\g<1>./',
                     source, flags=re.M | re.I)
     if args.mode == 'cpu':
         source = re.sub(r'^(\s*scf.eigen.lib\s+)\S+', r'\g<1>elpa2',
@@ -74,16 +76,22 @@ def main():
                     OPENMX_FORCE_PROFILE='1')
     if args.mpi == 'intel':
         controls.update(I_MPI_PIN='1', I_MPI_PIN_DOMAIN='core')
+    preload = []
     if args.core_library:
         args.core_library = args.core_library.resolve(strict=True)
-        controls['LD_PRELOAD'] = str(args.core_library)
+        preload.append(str(args.core_library))
+    if args.host_simd_library:
+        args.host_simd_library = args.host_simd_library.resolve(strict=True)
+        preload.append(str(args.host_simd_library))
+    if preload:
+        controls['LD_PRELOAD'] = ':'.join(preload)
     if args.library_path:
         controls['LD_LIBRARY_PATH'] = args.library_path
     controls.update(extra_controls)
     environment.update(controls)
     command = [str(args.mpiexec)]
     if args.mpi == 'openmpi':
-        command += ['--bind-to', 'core']
+        command += ['--map-by', 'slot:PE=' + str(args.threads), '--bind-to', 'core']
     command += ['-np', str(args.ranks), str(args.binary), 'input.dat', '-nt', str(args.threads)]
     result = dict(status='running', command=command, controls=controls,
                   original_input_sha256=digest(args.input), input_sha256=digest(input_path),
@@ -91,6 +99,8 @@ def main():
                   ranks=args.ranks, threads=args.threads)
     if args.core_library:
         result['core_sha256'] = digest(args.core_library)
+    if args.host_simd_library:
+        result['host_simd_sha256'] = digest(args.host_simd_library)
     result_path = args.output / 'result.json'
     result_path.write_text(json.dumps(result, indent=2) + '\n')
     begin = time.monotonic()
