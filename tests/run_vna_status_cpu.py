@@ -37,17 +37,18 @@ typedef float Type_DS_VNA;
 #include "openmx_vna_status.h"
 #include "openmx_core_vna_invocation.h"
 #include "openmx_vna_tables.h"
+#include "openmx_core_quadrature.h"
+static OpenMXGaussRuleData quadrature;
 #define measure_time 0
 static const int GL_Mesh=4;
 static const double PAO_Nkmax=3,Radial_kmin=.1;
-static const double GL_Abscissae[]={-1,-1.0/3,1.0/3,1};
 
 static int List_YOUSO[40]={[24]=1},SpeciesNum=1,atomnum=0,Matomnum=0,TCpyCell=-1;
 static int angular[1]={0},count[1]={1},*Spe_Num_Basis[1]={count},*Spe_MaxL_Basis=angular;
 static int *M2G,*WhatSpecies,*FNAN,**natn,**ncn;
 static double **Gxyz,**atv,****Spe_VNA_Bessel,*******Spe_ProductRF_Bessel,**Spe_CrudeVNA_Bessel;
 static dcomplex Comp2Real[1][1][1];
-static double GL_Weight[4],*time_per_atom;
+static double *time_per_atom;
 static void SetPro_gpu_abort(const char *message){fprintf(stderr,"%s\n",message);abort();}
 static const OpenMXReciprocalViews radial_views={0};
 static const OpenMXReciprocalViews *reciprocal=&radial_views;
@@ -56,7 +57,9 @@ static void SetPro_note(const char *stage,const char *format,...){(void)stage;(v
 static double SetPro_Separable(const OpenMXVnaMatrixViews *matrices,const OpenMXReciprocalViews *reciprocal,
     const OpenMXVnaInvocationBuffers *call,const SetProVnaTables *tables,int *status){
  (void)reciprocal;(void)matrices;(void)tables;const double *k=call->wavevectors;
- assert(*status==0);assert(fabs(k[0]-.1)<1e-14 && fabs(k[3]-3)<1e-14);
+ assert(*status==0);
+ for(int i=0;i<GL_Mesh;++i)assert(fabs(k[i]-(.5*(PAO_Nkmax-Radial_kmin)*(quadrature.nodes[i]+1)+Radial_kmin))<1e-14);
+ assert(tables->weights==quadrature.weights);
  assert(call->pairs.count==0 && call->preparation.orbitals[0]==1);
  *status=!!(mode&1);return 1;
 }
@@ -70,6 +73,9 @@ static double SetPro_OneCenter(const OpenMXVnaMatrixViews *matrices,int mirror,
 '''
 MAIN = r'''
 int main(void){
+ char error[256];
+ OpenMXCoreContext *core=openmx_core_create_host(error,sizeof error);
+ assert(core && openmx_core_radial_quadrature_initialize(core,GL_Mesh,&quadrature,error,sizeof error));
  int calls=0;
  for(int threads=1;threads<=8;threads*=2){
   omp_set_dynamic(0);omp_set_num_threads(threads);
@@ -77,18 +83,19 @@ int main(void){
   for(int scenario=0;scenario<16;++scenario){
    mode=scenario;notes=ends=0;
    int result=77;
-   double time=Set_ProExpn_VNA_WithStatus(NULL,reciprocal,&result);
+   double time=Set_ProExpn_VNA_WithStatus(&quadrature,NULL,reciprocal,&result);
    const int expected=!!(mode&1) || (!(mode&8) && !!(mode&6));
    assert(time==6 && result==expected && notes==2 && ends==!(mode&8));calls++;
    /* Compatibility calls and a subsequent CPU call must not retain a
       previous caller's marker. End has already cleared its local batch. */
-   notes=ends=0;assert(Set_ProExpn_VNA(NULL,reciprocal)==6);
+   notes=ends=0;assert(Set_ProExpn_VNA(&quadrature,NULL,reciprocal)==6);
    assert(notes==2 && ends==!(mode&8));calls++;
    mode=0;result=77;notes=ends=0;
-   assert(Set_ProExpn_VNA_WithStatus(NULL,reciprocal,&result)==6 && result==0);
+   assert(Set_ProExpn_VNA_WithStatus(&quadrature,NULL,reciprocal,&result)==6 && result==0);
    assert(notes==2 && ends==1);calls++;
   }
  }
+ openmx_core_destroy(core);
  printf("PASS: %d VNA driver invocations; independent status, end cleanup, CPU reset and legacy wrapper\n",calls);
 }
 '''

@@ -1803,3 +1803,6 @@ openmx_cluster_capacity.o Cluster_DFT_Col.o Cluster_DFT_NonCol.o: openmx_orbital
 
 DFT.o Force.o Set_Hamiltonian.o Set_Orbitals_Grid.o Set_Density_Grid_GPU.o openmx.o openmx_api.o Runtest.o truncation.o openmx_cluster_capacity.o Cluster_DFT_Col.o Cluster_DFT_NonCol.o: openmx_hamiltonian_gpu_state.h
 Set_Hamiltonian.o: openmx_grid_device_scope.h openmx_core_native_resources.h
+
+# Calculation-owned radial quadrature shared by host and native GPU assembly.
+DFT.o SetPara_DFT.o FT_VNA.o FT_ProExpn_VNA.o FT_ProductPAO.o Set_ProExpn_VNA.o: openmx_quadrature.h openmx_core_quadrature.h ../core/include/openmx_core_quadrature.h

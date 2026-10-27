@@ -231,7 +231,7 @@ static double SetPro_OneCenter(const OpenMXVnaMatrixViews *matrices,int mirror,
   const OpenMXAtomPairBuffers *pairs=&invocation->pairs;
   const OpenMXVnaPreparationBuffers *basis=&invocation->preparation;
   if (gpu->enabled && !gpu->host_route) {
-    SetPro_VNA23_GpuRun(matrix,mirror,pairs->count,pairs->local,pairs->neighbor,invocation->wavevectors,gpu);
+    SetPro_VNA23_GpuRun(matrix,mirror,pairs->count,pairs->local,pairs->neighbor,invocation->wavevectors,tables->weights,gpu);
     /* a late device failure (collective verdict) leaves this rank's remaining
        pairs, and the other orientation, to the host SIMD assembly */
     if (gpu->host_route && gpu->host_first<pairs->count) {
@@ -260,13 +260,16 @@ static double SetPro_OneCenter(const OpenMXVnaMatrixViews *matrices,int mirror,
 
 /* This boundary borrows the legacy application state explicitly. Everything
    exported by invocation (basis, task maps, geometry, wavevectors) is owned. */
-double Set_ProExpn_VNA_WithStatus(const OpenMXVnaMatrixViews *vna,const OpenMXReciprocalViews *reciprocal,int *used_gpu)
+double Set_ProExpn_VNA_WithStatus(const OpenMXGaussRuleData *radial,const OpenMXVnaMatrixViews *vna,const OpenMXReciprocalViews *reciprocal,int *used_gpu)
 {
+  if (!radial || radial->count!=GL_Mesh || !radial->nodes || !radial->weights) {
+    SetPro_gpu_abort("invalid VNA radial quadrature"); abort();
+  }
   const OpenMXVnaInvocationInput input={
     {List_YOUSO[25],List_YOUSO[24],List_YOUSO[35],List_YOUSO[34],GL_Mesh,
      SpeciesNum,Spe_MaxL_Basis,Spe_Num_Basis},
     {atomnum,Matomnum,SpeciesNum,TCpyCell+1,M2G,WhatSpecies,FNAN,natn,ncn,Gxyz,atv},
-    Radial_kmin,PAO_Nkmax,GL_Abscissae
+    Radial_kmin,PAO_Nkmax,radial->nodes
   };
   OpenMXVnaInvocationBuffers invocation;
   char error[256];
@@ -274,7 +277,7 @@ double Set_ProExpn_VNA_WithStatus(const OpenMXVnaMatrixViews *vna,const OpenMXRe
   if (!owner) { SetPro_gpu_abort(error); abort(); }
   const SetProVnaTables tables={reciprocal->neutral_transform,reciprocal->product_transform,reciprocal->potential_transform,
       &Comp2Real[0][0][0],sizeof(Comp2Real[0][0])/sizeof(Comp2Real[0][0][0]),
-      GL_Weight,Radial_kmin,PAO_Nkmax,time_per_atom};
+      radial->weights,Radial_kmin,PAO_Nkmax,time_per_atom};
   int hvna_gpu_used=0;
   if (used_gpu) *used_gpu=0;
   SetPro_note("entry","");
@@ -293,8 +296,8 @@ double Set_ProExpn_VNA_WithStatus(const OpenMXVnaMatrixViews *vna,const OpenMXRe
   return time1+time2+time3;
 }
 
-double Set_ProExpn_VNA(const OpenMXVnaMatrixViews *vna,const OpenMXReciprocalViews *reciprocal)
+double Set_ProExpn_VNA(const OpenMXGaussRuleData *radial,const OpenMXVnaMatrixViews *vna,const OpenMXReciprocalViews *reciprocal)
 {
-  return Set_ProExpn_VNA_WithStatus(vna,reciprocal,NULL);
+  return Set_ProExpn_VNA_WithStatus(radial,vna,reciprocal,NULL);
 }
 #endif

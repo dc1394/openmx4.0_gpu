@@ -1648,3 +1648,6 @@ DFT.o Force.o Set_Hamiltonian.o Set_Orbitals_Grid.o Set_Density_Grid_GPU.o openm
 Set_Hamiltonian.o: openmx_grid_device_scope.h openmx_core_native_resources.h
 
 Band_DFT_Col.o: openmx_hamiltonian_gpu_state.h
+
+# Calculation-owned radial quadrature shared by host and native GPU assembly.
+DFT.o SetPara_DFT.o FT_VNA.o FT_ProExpn_VNA.o FT_ProductPAO.o Set_ProExpn_VNA.o: openmx_quadrature.h openmx_core_quadrature.h ../core/include/openmx_core_quadrature.h

@@ -1101,7 +1101,8 @@
     "openmx_core_atomic_density.h",
     "Gauss_Legendre.c",
     "openmx_basis_quadrature.h",
-    "openmx_core_quadrature.h"
+    "openmx_core_quadrature.h",
+    "openmx_quadrature.h"
   ],
   "integrated_overrides": {
     "set_hamiltonian_hip.cu": "src/set_hamiltonian_hip.cu",

@@ -102,17 +102,20 @@ void SetPara_DFT(OpenMXCoreContext *core)
 
   /* medium mesh */  
 
-  fg = 1;
-  nf = GL_Mesh;
-  Gauss_Legendre(GL_Mesh,GL_Abscissae,GL_Weight,&nf,&fg);
-  if (!fg) { MPI_Abort(mpi_comm_level1,1); return; }
+  OpenMXGaussRuleData projector_rule;
+  char quadrature_error[256];
+  if (!openmx_core_radial_quadrature_initialize(core,GL_Mesh,&projector_rule,
+                                                quadrature_error,sizeof(quadrature_error))) {
+    fprintf(stderr,"SetPara_DFT: %s\n",quadrature_error);
+    MPI_Abort(mpi_comm_level1,1);
+    return;
+  }
 
   /****************************************************
            Read parameters for DFT calculations
   ****************************************************/
 
-  OpenMXReadParaInput input={core,{GL_Mesh,GL_Abscissae,GL_Weight}};
-  char quadrature_error[256];
+  OpenMXReadParaInput input={core,projector_rule};
   /* Fine quadrature is owned only while atomic data are prepared. */
   if (!openmx_core_with_gauss_rule(FineGL_Mesh,ReadPara_DFT,&input,
                                    quadrature_error,sizeof(quadrature_error))) {

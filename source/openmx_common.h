@@ -30,6 +30,7 @@
 #include "openmx_core_local_basis.h"
 #include "openmx_core_vna_matrix.h"
 #include "openmx_core_reciprocal.h"
+#include "openmx_core_quadrature.h"
 #include "openmx_core_atomic.h"
 #include "openmx_core_orbital_workspace.h"
 #include "openmx_periodic.h"
@@ -2269,7 +2270,6 @@ extern dcomplex **QAO2_coes;
 
 extern double *pre_spin_moment; // S. An
 extern dcomplex *zp,*Ep,*Rp;
-extern double GL_Abscissae[GL_Mesh+2],GL_Weight[GL_Mesh+2];
 extern double CoarseGL_Abscissae[CoarseGL_Mesh+2],CoarseGL_Weight[CoarseGL_Mesh+2];
 extern char Atom_Symbol[YOUSO14][4];
 extern double Atom_Weight[YOUSO14];
@@ -2987,7 +2987,7 @@ double Set_CoreHoleMatrix(double *****HCH, const OpenMXElectronicViews *electron
 double Set_XMCD_penalty(int mode,double *pre_spin_moment,int SCF_iter, const OpenMXElectronicViews *electronic);  // S. An
 double Set_OLP_p(double *****OLP_p);
 
-double Set_ProExpn_VNA(const OpenMXVnaMatrixViews *vna,const OpenMXReciprocalViews *reciprocal);
+double Set_ProExpn_VNA(const OpenMXGaussRuleData *radial,const OpenMXVnaMatrixViews *vna,const OpenMXReciprocalViews *reciprocal);
 void Set_Vpot(OpenMXMixingVState *mixing_v,const OpenMXAtomicViews *atomic, int MD_iter,
               int SCF_iter, 
               int SCF_iter0,

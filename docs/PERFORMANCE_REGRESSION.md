@@ -4479,3 +4479,31 @@ GeForce約105秒の目安とCPU性能を維持する確認として記録しま�
 `numerical-summary.json`、`quadrature-parity.json` に証拠を保存しました。
 AMD/A100/H100実機、Intelコンパイラ版OpenMXとの性能比較は今回実施していません。
 `work/openmx` は更新していません。
+
+
+## 2026-10-28: 中密度の積分表を計算ごとに所有（第100段階）
+
+変更前 `ac28ac8b` と変更後の本体・Core/SIMDを凍結し、18 MPI×1 OpenMPで順次実行しました。
+GPUはRTX5080・既存MPS・NVHPC/OpenMPI、CPU専用本体はGCC/Intel MPI/MKLです。
+計時中にビルド、単体試験、他のOpenMX計算は重ねていません。
+
+| 入力・指標 | 変更前 | 変更後 |
+| --- | ---: | ---: |
+| sidia333 NC cluster、GPU/MPS、内部Total最大値 (秒) | 99.405 | 99.341 |
+| 同、MPI起動を含む経過時間 (秒) | 102.755 | 102.459 |
+| C60 DC、CPU専用、内部Total中央値 (秒) | 5.946 | 5.957 |
+| 同、MPI起動を含む経過時間中央値 (秒) | 6.42960 | 6.47951 |
+
+sidiaは元入力を各1回測定した25SCF上限・未収束の比較で、E差ゼロ・最大F差約1e-12 Ha/bohrでした。
+C60は交互各3回、全件27SCF収束・印字E/F差ゼロです。短い測定の小さな差を一般的な高速化とは扱いません。
+GeForce約105秒の目安を維持し、CPU内部時間の中央値の増加は約0.2%でした。
+
+収束したCPU/GPU比較29組は反復数も一致し、最大E差7.5200e-10 Ha・F差1.2670e-8 Ha/bohrでした。
+電子数指定GPUの今回の成功は、第98段階に記録した揺らぎを解消したという意味ではありません。
+最初のバンド試験はビルド中の境界編集により旧ABIの生成オブジェクトが残って失敗しました。
+再コンパイル・本体再凍結後の29組だけを上の成功数に含めています。
+失敗時の本体・ログとトレースは `initial-mixed-object-*` / `band-diagnostic/` に保存しました。
+`build/radial-quadrature-owner-20261028/` の `performance/`、`cpu-performance-results.json`、
+`numerical-summary.json`、`kernel-preservation.json` が今回の検証記録です。
+AMD/A100/H100実機、Intelコンパイラ版OpenMXとの性能比較は今回実施していません。
+`work/openmx` は更新していません。

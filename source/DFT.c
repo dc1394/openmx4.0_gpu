@@ -26,6 +26,7 @@
 #include "openmx_electronic.h"
 #include "openmx_atomic.h"
 #include "openmx_reciprocal.h"
+#include "openmx_quadrature.h"
 #include "openmx_vna_matrix.h"
 #include "grid_precision.h"
 #include "Inputtools.h"
@@ -651,12 +652,13 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   }
 
   if (ProExpn_VNA==1){
+    const OpenMXGaussRuleData radial=OpenMX_RadialQuadrature(core,GL_Mesh,mpi_comm_level1);
     if (MYID_MPI_COMM_WORLD==Host_ID && 0<level_stdout){
       printf("<MD=%2d>  Calculation of the VNA projector matrix%s\n",MD_iter,
              DFT_SetProExpnVNAUseGPU() ? " (GPU-accelerated)" : "");
       fflush(stdout);
     }
-    time12 = Set_ProExpn_VNA(vna,reciprocal);
+    time12 = Set_ProExpn_VNA(&radial,vna,reciprocal);
   }
 
   /* SCF loop */

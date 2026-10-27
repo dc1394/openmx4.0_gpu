@@ -978,6 +978,7 @@ extern "C" void openmx_core_finish(OpenMXCoreContext* context)
     context->neutral_grid_metadata.reset();
     context->products.reset();
     context->species.reset();
+    context->radial_quadrature.reset();
     context->implementation.finish();
   }
 }

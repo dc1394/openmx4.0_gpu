@@ -2303,7 +2303,7 @@ static void SetPro_VNA23_capacity_kernel(size_t first,size_t count,const void *p
 
 }
 
-static void SetPro_VNA23_GpuRun_Part(double *****HVNA23, int mirror, int OneD_Nloop, const int *OneD2Mc_AN, const int *OneD2h_AN, SetProGpu3Context *g, double *GL_NormK)
+static void SetPro_VNA23_GpuRun_Part(double *****HVNA23, int mirror, int OneD_Nloop, const int *OneD2Mc_AN, const int *OneD2h_AN, SetProGpu3Context *g, double *GL_NormK, const double *weights)
 {
   const int l0max = g->l0max;
   const int lfi_max = g->lfi_max;
@@ -2446,7 +2446,7 @@ static void SetPro_VNA23_GpuRun_Part(double *****HVNA23, int mirror, int OneD_Nl
       task.view[7]=(OpenMXGpuTaskView){cmb_L0,((size_t)SpeciesNum*cmb_max)*sizeof(int),0};
       task.view[8]=(OpenMXGpuTaskView){cmb_num0,((size_t)SpeciesNum*cmb_max)*sizeof(int),0};
       task.view[9]=(OpenMXGpuTaskView){GL_NormK,(GL_Mesh)*sizeof(double),0};
-      task.view[10]=(OpenMXGpuTaskView){GL_Weight,(GL_Mesh)*sizeof(double),0};
+      task.view[10]=(OpenMXGpuTaskView){(void*)weights,(GL_Mesh)*sizeof(double),0};
       task.view[11]=(OpenMXGpuTaskView){pr_r,0,(1)*sizeof(double)};
       task.view[12]=(OpenMXGpuTaskView){pr_siT,0,(1)*sizeof(double)};
       task.view[13]=(OpenMXGpuTaskView){pr_coT,0,(1)*sizeof(double)};
@@ -2521,8 +2521,8 @@ static void SetPro_VNA23_GpuRun_Part(double *****HVNA23, int mirror, int OneD_Nl
   free(pr_siT);
   free(pr_r);
 }
-static void SetPro_VNA23_GpuRun(double *****matrix,int mirror,int count,const int *mc,const int *h,double *GL_NormK,SetProGpu3Context *g)
-{SetPro_VNA23_GpuRun_Part(matrix,mirror,count,mc,h,g,GL_NormK);}
+static void SetPro_VNA23_GpuRun(double *****matrix,int mirror,int count,const int *mc,const int *h,double *GL_NormK,const double *weights,SetProGpu3Context *g)
+{SetPro_VNA23_GpuRun_Part(matrix,mirror,count,mc,h,g,GL_NormK,weights);}
 
 
 #include "openmx_dsvna_cpu.h"

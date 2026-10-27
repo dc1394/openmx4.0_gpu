@@ -158,7 +158,6 @@ double ***LNAO1_pops = {0};
 dcomplex **QAO2_coes = {0};
 double *pre_spin_moment = {0};
 dcomplex *zp = {0},*Ep = {0},*Rp = {0};
-double GL_Abscissae[GL_Mesh+2] = {0},GL_Weight[GL_Mesh+2] = {0};
 double CoarseGL_Abscissae[CoarseGL_Mesh+2] = {0},CoarseGL_Weight[CoarseGL_Mesh+2] = {0};
 char Atom_Symbol[YOUSO14][4] = {0};
 double Atom_Weight[YOUSO14] = {0};

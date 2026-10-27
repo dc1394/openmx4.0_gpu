@@ -24,7 +24,7 @@ endfunction()
 
 openmx_add_fault_test(openmx_quadrature_tests test_quadrature.cpp)
 target_link_libraries(openmx_quadrature_tests PRIVATE OpenMX::core)
-foreach(_case contents lifetime invalid allocation)
+foreach(_case contents lifetime invalid allocation context context-invalid context-lifetime context-allocation)
   add_test(NAME "core-quadrature-${_case}" COMMAND openmx_quadrature_tests "${_case}")
   set_tests_properties("core-quadrature-${_case}" PROPERTIES LABELS "unit;core;basis" TIMEOUT 120)
 endforeach()
