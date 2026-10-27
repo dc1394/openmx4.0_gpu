@@ -8,6 +8,7 @@
 #include <string.h>
 #include "mpi.h"
 #include "openmx_core_atomic.h"
+#include "openmx_core_quadrature.h"
 #define CHECK(c) do{if(!(c)){fprintf(stderr,"FAIL line %d: %s\n",__LINE__,#c);exit(2);}}while(0)
 #define PI 3.1415926535897932384626433832795
 #define GPUSOLVER 7
@@ -111,10 +112,12 @@ static void gpu(const OpenMXAtomicViews *atomic,int points,double **rows,double 
   ++gpu_calls;*sum=oracle_energy(atomic,points,rows);
   for(int a=1;a<=atomnum;a++)for(int d=1;d<=3;d++)Gxyz[a][d+40]=difference(atomic,points,rows,a,d);
 }
-static void TotalEnergy_Exc0_Batch_OpenACC(const OpenMXAtomicViews *a,int n,double **g,double *s){gpu(a,n,g,s);}
-static void TotalEnergy_Exc0_Batch_OpenMP(const OpenMXAtomicViews *a,int n,double **g,double *s){gpu(a,n,g,s);}
+static void TotalEnergy_Exc0_Batch_OpenACC(const OpenMXAtomicViews *a,const OpenMXGaussRuleData *q,int n,double **g,double *s){CHECK(q && q->count==CoarseGL_Mesh && q->weights==CoarseGL_Weight);gpu(a,n,g,s);}
+static void TotalEnergy_Exc0_Batch_OpenMP(const OpenMXAtomicViews *a,const OpenMXGaussRuleData *q,int n,double **g,double *s){CHECK(q && q->count==CoarseGL_Mesh && q->weights==CoarseGL_Weight);gpu(a,n,g,s);}
 
 static void fine(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *atomic,double My_EXC[2]){
+  const OpenMXGaussRuleData view={CoarseGL_Mesh,CoarseGL_Abscissae,CoarseGL_Weight};
+  const OpenMXGaussRuleData *radial=&view;
   int Nthrds0,Gc_AN,Mc_AN,Cwan,i,j,OMPID,Nthrds,Nprocs,ir,ia,h_AN,Gh_AN,Rn,Hwan,Nloop,myid=0;
   double rs,sum,re,Sr,Dr,r,w,sumt,x0,y0,z0,x1,y1,z1,dx,dy,dz,x,r1,den,den0,gden0,exc0;
   double sumr,sumrx,sumry,sumrz,gradxyz[4];

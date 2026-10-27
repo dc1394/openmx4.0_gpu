@@ -14,6 +14,7 @@
 #include <math.h>
 #include <time.h>
 #include "openmx_common.h"
+#include "openmx_quadrature.h"
 #include "openmx_stress_workspace.h"
 #include "openmx_host_simd.h"
 #include "openmx_neutral_atom.h"
@@ -136,6 +137,7 @@ static double Stress_owned(const OpenMXForceWorkspace *halo,OpenMXCoreContext *c
 	      double *****EDM, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 {
   OpenMXSolverInvocation *scratch=halo->scratch;
+  const OpenMXGaussRuleData radial=OpenMX_NeutralQuadrature(core,CoarseGL_Mesh,mpi_comm_level1);
 
   double *****CntH0=electronic->CntH0;
   double *****CntOLP=electronic->CntOLP;
@@ -1102,7 +1104,7 @@ static double Stress_owned(const OpenMXForceWorkspace *halo,OpenMXCoreContext *c
 	  }
 	}
 	
-#pragma omp parallel shared(scratch,max_neighbors,xc_partials,atomic,lebedev,Num_Leb_Grid,My_sumr,My_Stress,stress_threads,Dr,Sr,CoarseGL_Abscissae,CoarseGL_Weight,Gxyz,Gc_AN,FNAN,natn,ncn,WhatSpecies,atv,F_Vxc_flag,Cwan,PCC_switch) private(OMPID,Nthrds,Nprocs,ir,ia,r,w,sumt,sumtx,sumty,sumtz,x,x0,y0,z0,h_AN,Gh_AN,Rn,Hwan,x1,y1,z1,dx,dy,dz,r1,den,den0,gden0,dx1,dy1,dz1,exc0,vxc0,sumt1,i)
+#pragma omp parallel shared(scratch,max_neighbors,xc_partials,atomic,lebedev,Num_Leb_Grid,My_sumr,My_Stress,stress_threads,Dr,Sr,radial,Gxyz,Gc_AN,FNAN,natn,ncn,WhatSpecies,atv,F_Vxc_flag,Cwan,PCC_switch) private(OMPID,Nthrds,Nprocs,ir,ia,r,w,sumt,sumtx,sumty,sumtz,x,x0,y0,z0,h_AN,Gh_AN,Rn,Hwan,x1,y1,z1,dx,dy,dz,r1,den,den0,gden0,dx1,dy1,dz1,exc0,vxc0,sumt1,i)
 	{
 
 	  double dx2,dy2,dz2;
@@ -1129,7 +1131,7 @@ static double Stress_owned(const OpenMXForceWorkspace *halo,OpenMXCoreContext *c
 
 	  for (ir=(OMPID*CoarseGL_Mesh/Nthrds); ir<((OMPID+1)*CoarseGL_Mesh/Nthrds); ir++){
 
-	    r = 0.50*(Dr*CoarseGL_Abscissae[ir] + Sr);
+	    r = 0.50*(Dr*radial.nodes[ir] + Sr);
 	    sumt  = 0.0; 
 
 	    for (i=0; i<(FNAN[Gc_AN]+1); i++){
@@ -1231,7 +1233,7 @@ static double Stress_owned(const OpenMXForceWorkspace *halo,OpenMXCoreContext *c
 
 	    /* r for Gauss-Legendre quadrature */
 
-	    w = r*r*CoarseGL_Weight[ir]; 
+	    w = r*r*radial.weights[ir];
 	    My_sumr[OMPID]  += w*sumt;
 
 	    for (h_AN=1; h_AN<=FNAN[Gc_AN]; h_AN++){
@@ -3593,6 +3595,7 @@ void Stress_core(OpenMXSolverInvocation *scratch)
 
 void Stress_H0(OpenMXSolverInvocation *scratch,OpenMXCoreContext *core,const OpenMXAtomicViews *atomic)
 {
+  const OpenMXGaussRuleData radial=OpenMX_NeutralQuadrature(core,CoarseGL_Mesh,mpi_comm_level1);
   OpenMXNeutralGridTables tables;
   char grid_error[256]={0};
   OpenMXNeutralGridMetadataView metadata;
@@ -3720,7 +3723,7 @@ void Stress_H0(OpenMXSolverInvocation *scratch,OpenMXCoreContext *core,const Ope
 
     /* calculate GridX,Y,Z_EH0 and Wt_EH0 */
 
-#pragma omp parallel shared(scratch,atomic,Max_Nd,level_stdout,metadata,tables,Scale_Grid_Ecut,SpeciesNum,CoarseGL_Abscissae,CoarseGL_Weight) private(OMPID,Nthrds,Nprocs,wan,bc,dx,Nd,gnum,n1,n2,n3,x,y,z,tmp0,r1,rho0,g0,Sx,Dx,xx)
+#pragma omp parallel shared(scratch,atomic,Max_Nd,level_stdout,metadata,tables,Scale_Grid_Ecut,SpeciesNum,radial) private(OMPID,Nthrds,Nprocs,wan,bc,dx,Nd,gnum,n1,n2,n3,x,y,z,tmp0,r1,rho0,g0,Sx,Dx,xx)
     {
 
       /* allocation of arrays g0 */
@@ -3743,7 +3746,7 @@ void Stress_H0(OpenMXSolverInvocation *scratch,OpenMXCoreContext *core,const Ope
         metadata.spacing[wan] = dx;
 
         const OpenMXNeutralQuadratureView quadrature={Nd,CoarseGL_Mesh,bc,dx,PI,
-            CoarseGL_Abscissae,CoarseGL_Weight};
+            radial.nodes,radial.weights};
         gnum=OpenMX_Neutral_GridFill(atomic,wan,&quadrature,g0,
             openmx_core_neutral_grid_row(&tables,0,wan),
             openmx_core_neutral_grid_row(&tables,1,wan),

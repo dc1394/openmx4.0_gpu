@@ -1806,3 +1806,7 @@ Set_Hamiltonian.o: openmx_grid_device_scope.h openmx_core_native_resources.h
 
 # Calculation-owned radial quadrature shared by host and native GPU assembly.
 DFT.o SetPara_DFT.o FT_VNA.o FT_ProExpn_VNA.o FT_ProductPAO.o Set_ProExpn_VNA.o: openmx_quadrature.h openmx_core_quadrature.h ../core/include/openmx_core_quadrature.h
+
+# Neutral-atom reference quadrature is owned by the calculation.
+Total_Energy.o Stress.o: openmx_quadrature.h openmx_core_quadrature.h ../core/include/openmx_core_quadrature.h
+Total_Energy_GPU.o: openmx_core_quadrature.h ../core/include/openmx_core_quadrature.h

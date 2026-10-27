@@ -8,6 +8,7 @@
 #include <string.h>
 #include "mpi.h"
 #include "openmx_core_atomic.h"
+#include "openmx_core_quadrature.h"
 #define CHECK(c) do{if(!(c)){fprintf(stderr,"FAIL line %d: %s\n",__LINE__,#c);exit(2);}}while(0)
 #define PI 3.1415926535897932384626433832795
 #define GPUSOLVER 7
@@ -100,6 +101,7 @@ static double strain(const OpenMXAtomicViews *atomic,int points,double **rows,in
   return(plus-minus)/(2*h);
 }
 static void fine(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *atomic){
+  const OpenMXGaussRuleData radial={CoarseGL_Mesh,CoarseGL_Abscissae,CoarseGL_Weight};
   int Nthrds0,Gc_AN,Mc_AN,Cwan,i,j,OMPID,Nthrds,Nprocs,ir,ia,h_AN,Gh_AN,Rn,Hwan,Nloop,myid=0;
   double Stress[9]={0},My_Stress[9]={0},sumt1[9],x,y,z,dx,dy,dz,r;
   OpenMXSolverRealTensor stress_threads;

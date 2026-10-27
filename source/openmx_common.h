@@ -2270,7 +2270,6 @@ extern dcomplex **QAO2_coes;
 
 extern double *pre_spin_moment; // S. An
 extern dcomplex *zp,*Ep,*Rp;
-extern double CoarseGL_Abscissae[CoarseGL_Mesh+2],CoarseGL_Weight[CoarseGL_Mesh+2];
 extern char Atom_Symbol[YOUSO14][4];
 extern double Atom_Weight[YOUSO14];
 extern double tv[4][4],rtv[4][4],tv_velocity[4][4];

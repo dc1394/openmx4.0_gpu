@@ -4,6 +4,7 @@
 #include <string.h>
 #include "mpi.h"
 #include "openmx_core_atomic.h"
+#include "openmx_quadrature.h"
 #include "openmx_core_neutral_grid.h"
 #include "openmx_core_neutral_grid_metadata.h"
 #include "openmx_neutral_atom.h"
@@ -115,21 +116,25 @@ int main(int argc,char **argv){
   for(int m=1;m<=3;m++)for(int h=0;h<=FNAN[M2G[m]];h++){
     const int a=M2G[m],b=neighbors[a][h];int found=-1;for(int j=0;j<=FNAN[b];j++)if(neighbors[b][j]==a)found=j;CHECK(found>=0);reverse_data[m][h][0]=found;
   }
-  double cutoff[2]={.11,.14},radial[2][2]={{0}};int index[2],mesh[2]={2,2};Arguments args={0};char context_error[256];args.context=openmx_core_create_host(context_error,sizeof(context_error));CHECK(args.context);
-  {const OpenMXNeutralGridMetadataShape shape={2};OpenMXNeutralGridMetadataView metadata;char message[256];
-   CHECK(openmx_core_neutral_grid_metadata_prepare(args.context,&shape,&metadata,message,sizeof(message)));
-   fixture_counts=metadata.counts;fixture_spacing=metadata.spacing;}
-args.invalid=argc>1?argv[1]:NULL;
+  double cutoff[2]={.11,.14},radial[2][2]={{0}};int index[2],mesh[2]={2,2};Arguments args={0};char context_error[256];
+  args.invalid=argc>1?argv[1]:NULL;
   args.atomic.species.species=2;args.atomic.species.species_index=index;args.atomic.species.cutoff=cutoff;args.atomic.species.core_charge=Spe_Core_Charge;
   args.atomic.species.pao_mesh=args.atomic.species.vps_mesh=mesh;args.atomic.pao_log_radii=args.atomic.pao_radii=args.atomic.density=args.atomic.vps_log_radii=args.atomic.vps_radii=args.atomic.hartree_potential=(OpenMXRadialView2){&radial[0][0],{2,2}};
   for(int mesh_count=2;mesh_count<=3;mesh_count++){
     CoarseGL_Mesh=mesh_count;
+    args.context=openmx_core_create_host(context_error,sizeof(context_error));CHECK(args.context);
+    {const OpenMXNeutralGridMetadataShape shape={2};OpenMXNeutralGridMetadataView metadata;char message[256];
+     CHECK(openmx_core_neutral_grid_metadata_prepare(args.context,&shape,&metadata,message,sizeof(message)));
+     fixture_counts=metadata.counts;fixture_spacing=metadata.spacing;}
+    {OpenMXGaussRuleData rule;
+     CHECK(openmx_core_neutral_quadrature_initialize(args.context,mesh_count,&rule,context_error,sizeof(context_error)));}
+    CoarseGL_Abscissae[0]=-1/sqrt(3.0);CoarseGL_Abscissae[1]=1/sqrt(3.0);
     if(mesh_count==3){
       CoarseGL_Abscissae[0]=-sqrt(3.0/5.0);CoarseGL_Abscissae[1]=0;CoarseGL_Abscissae[2]=sqrt(3.0/5.0);
       CoarseGL_Weight[0]=CoarseGL_Weight[2]=5.0/9.0;CoarseGL_Weight[1]=8.0/9.0;
     }
     for(int empty=0;empty<2;empty++){Matomnum=empty?0:3;CHECK(OpenMX_Solver_Run(exercise,&args)==1);}
+    openmx_core_destroy(args.context);
   }
-  openmx_core_destroy(args.context);
   puts("PASS: native neutral grid/cutoff/stress, two/three Gauss points, three capacities each, empty/local atoms, logical teams1/4/2, independent coordinates/moments/nine strain components");return 0;
 }

@@ -6,6 +6,7 @@
 #include <string.h>
 #include "mpi.h"
 #include "openmx_core_atomic.h"
+#include "openmx_quadrature.h"
 #include "openmx_core_neutral_grid.h"
 #include "openmx_core_neutral_grid_metadata.h"
 #include "openmx_neutral_atom.h"
@@ -144,6 +145,9 @@ int main(void){
   }
   double cutoff[2]={.11,.14},radial[2][2]={{0}};int index[2],mesh[2]={2,2};
   Arguments args={0};char context_error[256];args.context=openmx_core_create_host(context_error,sizeof(context_error));CHECK(args.context);
+  {OpenMXGaussRuleData rule;
+   CHECK(openmx_core_neutral_quadrature_initialize(args.context,CoarseGL_Mesh,&rule,context_error,sizeof(context_error)));}
+  CoarseGL_Abscissae[0]=-1/sqrt(3.0);CoarseGL_Abscissae[1]=1/sqrt(3.0);
   {const OpenMXNeutralGridMetadataShape shape={2};OpenMXNeutralGridMetadataView metadata;char message[256];
    CHECK(openmx_core_neutral_grid_metadata_prepare(args.context,&shape,&metadata,message,sizeof(message)));
    fixture_counts=metadata.counts;fixture_spacing=metadata.spacing;}

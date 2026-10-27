@@ -74,7 +74,6 @@ double complex ******CWF_Coef_NC;
 void SetPara_DFT(OpenMXCoreContext *core)
 {
   int i,j,k,l,wanA,spe;    
-  int nf,fg;
   int core_device = -1;
   int numprocs,myid;
   double MaxCutoffR;
@@ -93,18 +92,12 @@ void SetPara_DFT(OpenMXCoreContext *core)
             Gauss-Legendre quadrature grid
   ****************************************************/
 
-  /* coarse mesh */  
-
-  fg = 1;
-  nf = CoarseGL_Mesh;
-  Gauss_Legendre(CoarseGL_Mesh,CoarseGL_Abscissae,CoarseGL_Weight,&nf,&fg);
-  if (!fg) { MPI_Abort(mpi_comm_level1,1); return; }
-
-  /* medium mesh */  
-
-  OpenMXGaussRuleData projector_rule;
+  /* Persistent neutral-atom and projector rules have independent owners. */
+  OpenMXGaussRuleData neutral_rule,projector_rule;
   char quadrature_error[256];
-  if (!openmx_core_radial_quadrature_initialize(core,GL_Mesh,&projector_rule,
+  if (!openmx_core_neutral_quadrature_initialize(core,CoarseGL_Mesh,&neutral_rule,
+                                                 quadrature_error,sizeof(quadrature_error)) ||
+      !openmx_core_radial_quadrature_initialize(core,GL_Mesh,&projector_rule,
                                                 quadrature_error,sizeof(quadrature_error))) {
     fprintf(stderr,"SetPara_DFT: %s\n",quadrature_error);
     MPI_Abort(mpi_comm_level1,1);

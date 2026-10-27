@@ -23,4 +23,22 @@ static inline OpenMXGaussRuleData OpenMX_RadialQuadrature(
   }
   return rule;
 }
+
+static inline OpenMXGaussRuleData OpenMX_NeutralQuadrature(
+    const OpenMXCoreContext *core, int count, MPI_Comm communicator)
+{
+  OpenMXGaussRuleData rule;
+  char error[256];
+  if (!openmx_core_neutral_quadrature_get(core,&rule,error,sizeof(error))) {
+    fprintf(stderr,"OpenMX neutral quadrature: %s\n",error);
+    MPI_Abort(communicator,1);
+    abort();
+  }
+  if (rule.count!=count) {
+    fprintf(stderr,"OpenMX neutral quadrature: expected %d nodes, found %d\n",count,rule.count);
+    MPI_Abort(communicator,1);
+    abort();
+  }
+  return rule;
+}
 #endif

@@ -4507,3 +4507,30 @@ GeForce約105秒の目安を維持し、CPU内部時間の中央値の増加は�
 `numerical-summary.json`、`kernel-preservation.json` が今回の検証記録です。
 AMD/A100/H100実機、Intelコンパイラ版OpenMXとの性能比較は今回実施していません。
 `work/openmx` は更新していません。
+
+
+## 2026-10-28: 中立原子積分表の所有権移行（第101段階）
+
+変更前 `83dbf264` と変更後の本体・Core/SIMDを凍結し、18 MPI×1 OpenMPで順次実行しました。
+GPUはRTX5080・既存MPS・NVHPC/OpenMPI、CPU専用本体はGCC/Intel MPI/MKLです。
+計時中にビルド、単体試験、他のOpenMX計算は重ねていません。
+
+| 入力・指標 | 変更前 | 変更後 |
+| --- | ---: | ---: |
+| sidia333 NC cluster、GPU/MPS、内部Total最大値 (秒) | 99.542 | 99.449 |
+| 同、MPI起動を含む経過時間 (秒) | 102.859 | 102.660 |
+| C60 DC、CPU専用、内部Total中央値 (秒) | 5.945 | 5.982 |
+| 同、MPI起動を含む経過時間中央値 (秒) | 6.43008 | 6.47871 |
+
+sidiaは元入力を各1回測定した25SCF上限・未収束の比較で、E差・最大F差とも約1e-12でした。
+C60は交互各3回、全件27SCF収束・印字E/F差ゼロです。変更版2回目の7.03143秒（内部6.550秒）も
+除外せず全結果を保存しています。短い測定の差を一般的な高速化とは扱いません。
+GeForce約105秒の目安を維持し、CPU内部時間の中央値の増加は約0.6%でした。
+
+収束したCPU/GPU比較29組は反復数も一致し、最大E差2.9040e-9 Ha・F差1.3827e-8 Ha/bohrでした。
+応力を出力する11組は9成分とも小数点以下8桁の印字値が一致しました。
+電子数指定GPUの今回の成功は、第98段階に記録した揺らぎを解消したという意味ではありません。
+`build/neutral-quadrature-owner-20261028/` の `performance/`、`cpu-performance-results.json`、
+`numerical-summary.json`、`kernel-preservation.json` に証拠を保存しました。
+AMD/A100/H100実機、Intelコンパイラ版OpenMXとの性能比較は今回実施していません。
+`work/openmx` は更新していません。

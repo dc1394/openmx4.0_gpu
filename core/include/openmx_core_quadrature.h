@@ -29,6 +29,14 @@ int openmx_core_radial_quadrature_initialize(OpenMXCoreContext *context, int cou
 int openmx_core_radial_quadrature_get(const OpenMXCoreContext *context,
     OpenMXGaussRuleData *out, char *error, size_t error_capacity);
 
+/* Independent rule for neutral-atom energy, stress and reference XC
+   integration. The ownership and concurrency contract above also applies;
+   initializing either rule never changes the other rule's borrowed views. */
+int openmx_core_neutral_quadrature_initialize(OpenMXCoreContext *context, int count,
+    OpenMXGaussRuleData *out, char *error, size_t error_capacity);
+int openmx_core_neutral_quadrature_get(const OpenMXCoreContext *context,
+    OpenMXGaussRuleData *out, char *error, size_t error_capacity);
+
 #ifdef __cplusplus
 }
 #endif

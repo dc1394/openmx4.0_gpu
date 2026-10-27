@@ -124,6 +124,8 @@ flowchart TD
    第100段階では中密度の積分則も同じ `GaussLegendreRule` を計算ごとに所有し、
    `GL_Abscissae` / `GL_Weight` を削除した。Fourier変換とCPU/CUDA/HIPのVNA組み立ては
    明示された不変ビューを借用する。計算コンテキストは接続側の所有者であり、独立したbasisの依存にはしない。
+   第101段階では粗い積分則も独立した所有者へ移し、`CoarseGL_Abscissae` / `CoarseGL_Weight` を削除した。
+   Energy・Stress・参照XC積分のCPU/CUDA/HIP経路へ明示して渡し、3段階の積分表すべてで大域配列を廃止した。
 3. **xc / grid と行列・分散記述。** 局所演算を優先し、通信を実行しない試験と実際のMPI試験を分ける。
    ここで Hamiltonian/Force が借用するデータの契約を整理する。
 4. **poisson / eigen と外部サービス。** 解法の入力・出力・失敗・fallback の契約を統一し、
