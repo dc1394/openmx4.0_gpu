@@ -2,7 +2,8 @@
 
 OpenMX の基底処理を独立して利用する C++20 ライブラリです。
 現在の公開範囲は PAO、非局所射影子、中性原子ポテンシャル、VNA 射影子の
-動径補間、PAO/射影子の波数空間補間と PAO/VPS ファイルの読み込みです。本体もこの実装を使用します。
+動径補間、PAO/射影子の波数空間補間、PAO/VPSファイルの読み込み、
+原子密度の補間・動径導関数・球対称Hartree積分です。本体もこの実装を使用します。
 球面調和関数、Fourier-Bessel 変換、2中心積分は
 まだこのパッケージには含まれません。
 
@@ -35,6 +36,11 @@ cmake -S modules/basis/examples/vps -B build/vps-example \
   -DCMAKE_PREFIX_PATH="$PWD/build/basis-install"
 cmake --build build/vps-example
 ./build/vps-example/vps_example DFT_DATA19/VPS/C_PBE19.vps
+
+cmake -S modules/basis/examples/density -B build/density-example \
+  -DCMAKE_PREFIX_PATH="$PWD/build/basis-install"
+cmake --build build/density-example
+./build/density-example/density_example DFT_DATA19/PAO/C6.0.pao
 ```
 
 外部プロジェクトの `CMakeLists.txt` は以下だけでリンクできます。
@@ -133,7 +139,51 @@ PAO/VPSは同じ内部テキスト解析器を使います。VPSの公開ファ�
 コールバックを抜けたあとにデータを保持してはいけません。解析・確保の失敗では呼び出さず、
 コールバック内で本体の配列を変更した後の失敗をロールバックする契約にはしていません。
 
-## データと数値規約
+## 原子密度とHartree積分
+
+`<openmx/basis/density_table.hpp>` は密度・格子を所有する `LogDensityTable` と、
+既存の配列を借用する `LogDensityView` を提供します。
+
+```cpp
+#include <openmx/basis/pao_file.hpp>
+#include <openmx/basis/density_table.hpp>
+
+const auto pao = openmx::basis::PaoFile::from_file("C6.0.pao");
+const openmx::basis::LogDensityTable density(pao.log_radii(), pao.radii(), pao.density());
+const double rho = density.sample(0.85);
+const double drho = density.derivative(0.85);
+// nodes, weights は利用者が与えるGauss-Legendre則の配列。
+const openmx::basis::GaussLegendreView quadrature(nodes, weights);
+const double hartree = openmx::basis::atomic_hartree_potential(density.view(), 0.85, quadrature);
+```
+
+- 半径はbohr、密度は電子数/bohr³、動径導関数は電子数/bohr⁴、ポテンシャルはHartreeです。
+  密度の正規化・電子数補正・PCC加算は暗黙には行いません。
+- 対数格子は6点以上で等間隔、半径は正で狭義単調増加とします。
+  `log(r[i])` と格子、等間隔性を `1e-10*(1+abs(reference))` の許容差で構築時に検証します。
+  密度は有限値を要求します。所有表には物理点だけを渡し、線形延長した前後の余白を自動で追加します。
+  借用ビューにはN+2要素の密度を渡し、物理点は+1から配置します。
+- `sample()` と `derivative()` は原点を含む有限・非負の半径を取ります。
+  `sample_log()` は自然対数を取り、負の無限大は原点、正の無限大は上端延長です。
+  原点側は従来の `KumoF` / `Dr_KumoF` の動径ステンシルを維持します。
+  上端外の値は一定ですが、導関数は従来通り端点の対数座標での傾き/半径です。
+  **上端外では、導関数APIは一定延長したsampleの数学的な微分とは一致しません。**
+  この規約を物理的に変更する場合は、リファクタリングとは別の検証が必要です。
+- Hartree積分の半径は有限かつ正とします。節点は[-1,1]、重みは正・有限で、
+  同数の非空配列を借用します。積分次数と節点の順序は利用者が指定します。
+  対数格子下端から評価半径までの内側積分と、評価半径から上端までの外側積分を使い、
+  格子外でも元実装の境界・延長規則を適用します。無限領域積分や原点からの積分ではありません。
+- 所有表のコピーは独立し、借用配列はビューの寿命中に変更してはいけません。
+  検証は構築時に行い、補間・導関数はO(1)、Hartreeは節点数に比例し、評価時の確保はゼロです。
+  同じ不変の表・積分則を複数スレッドで使用できます。
+
+`<openmx/basis/density.h>` は本体のCコードも利用するスカラー評価ABIです。
+内側のループで格子全体を再検証しないため、配列の寸法・格子の有効性は呼び出し元の責任です。
+例外・大域エラー状態を使わず、不正な点数・null配列・NaN座標などはNaNを返します。
+本体のHartree生成はC++所有の一時配列で全物理点を計算し、成功後だけ出力へコピーします。
+空原子はゼロを返し、失敗時は出力を保持します。MPIとKokkosの初期化は要求しません。
+
+## 動径・波数表のデータと数値規約
 
 - 角運動量 `angular` は `0 <= l <= 29`。チャネルの並び順は呼び出し元が指定し、
   同じ `l` を持つ複数の動径関数も扱えます。磁気量子数の展開は行いません。
@@ -168,7 +218,9 @@ C ABI は呼び出しごとのエラーバッファを使い、失敗時に数�
 旧実装から固定した参照値、端点、無効入力、コピー・借用・並行性、
 確保失敗を検証します。PAO は解析値を持つ s〜g・各2多重度の小入力で、全軌道・密度、
 不正形式、並行読み込みと所有権を検証します。VPSはスカラー/j依存・旧形式・PCC有無・
-射影子0個の組合せを検証します。スカラー補間が確保を行わないことも検査します。
+射影子0個の組合せを検証します。密度では解析的な値・導関数、有限差分、旧実装の参照値、
+一定密度のHartree解析解、異常入力と出力保持を検証します。
+スカラー評価とHartree積分が確保を行わないことも検査します。
 
 `basis-package-consumer` はこのディレクトリだけをコピーして独立ビルド・インストールし、
 インストール先と元のソース・ビルドディレクトリを移動してから、外部 C/C++ プログラムを

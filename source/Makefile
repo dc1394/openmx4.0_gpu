@@ -638,7 +638,7 @@ Get_OneD_HS_Col.o: Get_OneD_HS_Col.c openmx_common.h
 #
 #
 #  
-SetPara_DFT.o: SetPara_DFT.c openmx_common.h openmx_core_pao_file.h openmx_core_vps_file.h
+SetPara_DFT.o: SetPara_DFT.c openmx_common.h openmx_core_pao_file.h openmx_core_vps_file.h openmx_core_atomic_density.h
 	$(CC) -c SetPara_DFT.c
 XC_Ceperly_Alder.o: XC_Ceperly_Alder.c openmx_common.h
 	$(CC) -c XC_Ceperly_Alder.c
@@ -793,9 +793,9 @@ Set_Density_Grid_GPU.o: Set_Density_Grid_GPU.c openmx_common.h grid_precision.h
 Set_Aden_Grid.o: Set_Aden_Grid.c openmx_common.h
 	$(CC) -c Set_Aden_Grid.c
 
-KumoF.o: KumoF.c openmx_common.h
+KumoF.o: KumoF.c openmx_basis_density.h ../modules/basis/include/openmx/basis/density.h
 	$(CC) -c KumoF.c
-Dr_KumoF.o: Dr_KumoF.c openmx_common.h
+Dr_KumoF.o: Dr_KumoF.c openmx_basis_density.h ../modules/basis/include/openmx/basis/density.h
 	$(CC) -c Dr_KumoF.c
 Pot_NeutralAtom.o: Pot_NeutralAtom.c openmx_common.h
 	$(CC) -c Pot_NeutralAtom.c

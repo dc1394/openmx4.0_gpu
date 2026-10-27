@@ -4419,3 +4419,35 @@ PAO395・VPS258ファイルの全数値は旧読み込みとビット単位で�
 `numerical-summary.json`、`charge-repeat/`、`pao-data-parity.json`、`vps-data-parity.json` に記録を保存しました。
 AMD/A100/H100実機、Intelコンパイラ版OpenMXとの性能比較は今回実施していません。
 `work/openmx` は更新していません。
+
+
+## 2026-10-28: 原子密度とHartree積分の独立化（第98段階）
+
+変更前 `b3feb780` と変更後の本体・Core/SIMDを凍結し、18 MPI×1 OpenMPで順次実行しました。
+GPUはRTX5080・既存MPS・NVHPC/OpenMPI、CPU専用本体はGCC/Intel MPI/MKLです。
+計時中にビルド、単体試験、他のOpenMX計算は重ねていません。
+
+| 入力・指標 | 変更前 | 変更後 |
+| --- | ---: | ---: |
+| sidia333 NC cluster、GPU/MPS、内部Total最大値 (秒) | 99.264 | 99.697 |
+| 同、MPI起動を含む経過時間 (秒) | 102.558 | 102.862 |
+| C60 DC、CPU専用、内部Total中央値 (秒) | 5.908 | 5.923 |
+| 同、MPI起動を含む経過時間中央値 (秒) | 6.42989 | 6.42933 |
+
+sidiaは元入力を各1回測定した25SCF上限・未収束の比較で、E差ゼロ・最大F差約1e-12 Ha/bohrでした。
+C60は交互各3回、全件27SCF収束・印字E/F差ゼロです。小さな差を高速化とは主張せず、
+GeForce約105秒の目安とCPU性能を維持する確認として記録します。
+
+別途、通常経路と特殊条件の28組は収束・反復数一致、最大E差2.4200e-10、F差2.1258e-8でした。
+電子数指定GPUの最初の比較はF差1.33732e-7で1e-7閾値を超えました。旧版・変更版の交互追加3組は
+13SCF一致、最大E差1.9801e-8・F差7.6790e-8で閾値内です。旧版だけでも以前の実行からF差7.6479e-8
+の揺らぎがありました。SCF条件を1e-9にした追加診断はE差3.8480e-9・F差1.4519e-8でしたが、
+反復数16→13は一致しません。この診断と最初の失敗を、28組の成功数に加えていません。
+GPUケースの再現性の限界と全結果を保存し、閾値を緩めて成功扱いにする変更は行っていません。
+
+395 PAOデータの密度・導関数1,496,736値とHartree39,895値は、旧CをGCCの厳密な浮動小数点設定で
+コンパイルした比較とビット単位で一致しました。`build/atomic-density-library-20261027/` の
+`performance/`、`cpu-performance-results.json`、`numerical-summary.json`、`charge-diagnostic/`、
+`charge-tight/`、`legacy-density-results.json` に証拠を保存しました。
+AMD/A100/H100実機、Intelコンパイラ版OpenMXとの性能比較は今回実施していません。
+`work/openmx` は更新していません。

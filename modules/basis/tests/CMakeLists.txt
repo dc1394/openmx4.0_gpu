@@ -1,4 +1,11 @@
 find_package(Threads REQUIRED)
+add_executable(openmx_basis_density_tests test_density.cpp)
+target_link_libraries(openmx_basis_density_tests PRIVATE OpenMX::basis Threads::Threads)
+foreach(_case interpolation hartree invalid ownership concurrent allocation)
+  add_test(NAME basis-density-${_case} COMMAND openmx_basis_density_tests ${_case})
+  set_tests_properties(basis-density-${_case} PROPERTIES LABELS "unit;basis" TIMEOUT 15)
+endforeach()
+
 add_executable(openmx_basis_vps_tests test_vps_file.cpp)
 target_link_libraries(openmx_basis_vps_tests PRIVATE OpenMX::basis Threads::Threads)
 foreach(_case contents metadata invalid lifetime concurrent allocation)
@@ -22,6 +29,10 @@ endforeach()
 
 # Compile a real C caller, rather than relying on a C++ compiler accepting it.
 enable_language(C)
+add_executable(openmx_basis_density_c_tests test_density_c.c)
+target_link_libraries(openmx_basis_density_c_tests PRIVATE OpenMX::basis)
+add_test(NAME basis-density-c-abi COMMAND openmx_basis_density_c_tests)
+set_tests_properties(basis-density-c-abi PROPERTIES LABELS "unit;basis" TIMEOUT 15)
 add_executable(openmx_basis_c_tests test_c.c)
 target_link_libraries(openmx_basis_c_tests PRIVATE OpenMX::basis)
 add_test(NAME basis-c-api COMMAND openmx_basis_c_tests)

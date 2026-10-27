@@ -25,24 +25,31 @@
 #include "openmx_core_neutral_grid_metadata.h"
 #include "openmx_core_pao_file.h"
 #include "openmx_core_vps_file.h"
+#include "openmx_core_atomic_density.h"
 
 
 static void Set_Atom_Weight();
 static void Set_Atom_Symbol();
 static void Read_PAO(OpenMXCoreContext *core, const OpenMXNeutralGridMetadataView *metadata, int spe, int metadata_only, MPI_Comm communicator, const char *file);
 typedef struct {
+  int count;
+  const double *nodes, *weights;
+} OpenMXGaussRuleInput;
+typedef struct {
   OpenMXCoreContext *core;
   const OpenMXNeutralGridMetadataView *metadata;
   int species;
+  OpenMXGaussRuleInput hartree_rule, projector_rule;
 } OpenMXVpsReadInput;
 static int Read_VPS(void *user, const OpenMXVpsFileData *data, char *error, size_t error_capacity);
 static void Read_VPS_File(OpenMXCoreContext *core, const OpenMXNeutralGridMetadataView *metadata,
-                          int spe, int metadata_only, MPI_Comm communicator, const char *file);
-static void ReadPara_DFT(OpenMXCoreContext *core);
+                          int spe, int metadata_only, MPI_Comm communicator, const char *file,
+                          const OpenMXGaussRuleInput *hartree_rule, const OpenMXGaussRuleInput *projector_rule);
+static void ReadPara_DFT(OpenMXCoreContext *core, const OpenMXGaussRuleInput *hartree_rule,
+                         const OpenMXGaussRuleInput *projector_rule);
 static void Set_BasisPara();
 static void Set_Comp2Real();
 static void Check_InitDensity();
-static double V_Hart_atom(const OpenMXAtomicViews *atomic, int Gensi, double R);
 static void Inverse(int n, double **a, double **ia);
 static void output_structures();
 
@@ -107,7 +114,9 @@ void SetPara_DFT(OpenMXCoreContext *core)
            Read parameters for DFT calculations
   ****************************************************/
 
-  ReadPara_DFT(core);
+  const OpenMXGaussRuleInput hartree_rule={FineGL_Mesh,FineGL_Abscissae,FineGL_Weight};
+  const OpenMXGaussRuleInput projector_rule={GL_Mesh,GL_Abscissae,GL_Weight};
+  ReadPara_DFT(core,&hartree_rule,&projector_rule);
   const OpenMXAtomicViews atomic_views=OpenMX_AtomicTables(core);
   const OpenMXAtomicViews *atomic=&atomic_views;
   Check_InitDensity();
@@ -493,7 +502,8 @@ void SetPara_DFT(OpenMXCoreContext *core)
 
 
 
-static void ReadPara_DFT(OpenMXCoreContext *core)
+static void ReadPara_DFT(OpenMXCoreContext *core, const OpenMXGaussRuleInput *hartree_rule,
+                         const OpenMXGaussRuleInput *projector_rule)
 {
 
   OpenMXNeutralGridMetadataView metadata;
@@ -575,13 +585,13 @@ static void ReadPara_DFT(OpenMXCoreContext *core)
 
   for (spe=0; spe<real_SpeciesNum; spe++){
     fnjoint2(DirVPS,SpeVPS[spe],ExtVPS,FN_VPS);
-    Read_VPS_File(core,&metadata,spe,1,mpi_comm_level1,FN_VPS);
+    Read_VPS_File(core,&metadata,spe,1,mpi_comm_level1,FN_VPS,hartree_rule,projector_rule);
   }
   remake_headfile=0;
   Allocate_Arrays_with_context(7,core);
   for (spe=0; spe<real_SpeciesNum; spe++){
     fnjoint2(DirVPS,SpeVPS[spe],ExtVPS,FN_VPS);
-    Read_VPS_File(core,&metadata,spe,0,mpi_comm_level1,FN_VPS);
+    Read_VPS_File(core,&metadata,spe,0,mpi_comm_level1,FN_VPS,hartree_rule,projector_rule);
     if (MYID_MPI_COMM_WORLD==Host_ID && 0<level_stdout){
       printf("<SetPara_DFT>  VPSs of species %s were normally found.\n",
                SpeName[spe]);
@@ -870,16 +880,10 @@ static int Read_VPS(void *user, const OpenMXVpsFileData *data, char *diagnostic,
       }
     }
 
-    /* calculation of Spe_VH_Atom */
-
-    for (i=0; i<atomic->species.vps_mesh[spe]; i++){
-      r = openmx_radial_row2(&atomic->vps_radii,spe)[i];
-      
-      if (atomic->species.atomic_number[spe]==0) /* empty atom */
-        openmx_radial_row2(&atomic->hartree_potential,spe)[i+1] = 0.0;
-      else 
-        openmx_radial_row2(&atomic->hartree_potential,spe)[i+1] = V_Hart_atom(atomic, spe,r);
-    }
+    /* Explicit quadrature and density; the library owns temporary results. */
+    if (!openmx_core_atomic_hartree(atomic,(size_t)spe,input->hartree_rule.count,
+                                    input->hartree_rule.nodes,input->hartree_rule.weights,
+                                    diagnostic,diagnostic_capacity)) return 0;
 
     openmx_radial_row2(&atomic->hartree_potential,spe)[0] = 2.0*openmx_radial_row2(&atomic->hartree_potential,spe)[1] - openmx_radial_row2(&atomic->hartree_potential,spe)[2];
     openmx_radial_row2(&atomic->hartree_potential,spe)[atomic->species.vps_mesh[spe]+1] =
@@ -933,13 +937,14 @@ static int Read_VPS(void *user, const OpenMXVpsFileData *data, char *diagnostic,
 
   if (!metadata_only && ProExpn_VNA==1){
     const OpenMXReciprocalViews reciprocal=OpenMX_ReciprocalTables(core);
-    const OpenMXNeutralExpansion input = {List_YOUSO[35],List_YOUSO[34],
+    const OpenMXNeutralExpansion projector = {List_YOUSO[35],List_YOUSO[34],
       atomic->species.vps_mesh[spe],openmx_radial_row2(&atomic->vps_radii,spe),openmx_radial_row2(&atomic->neutral_potential,spe),
       atomic->species.pao_lmax[spe],atomic->species.pao_multiplicity[spe],atomic->species.pao_mesh[spe],
       openmx_radial_row2(&atomic->pao_radii,spe),reciprocal.pao.orbitals[spe],atomic->species.atomic_number[spe]==0,
       reciprocal.vps.neutral_projectors[spe],reciprocal.vps.neutral_energies[spe]};
     char error[256];
-    if (!openmx_core_expand_neutral_projectors(&input,GL_Mesh,GL_Abscissae,GL_Weight,
+    if (!openmx_core_expand_neutral_projectors(&projector,input->projector_rule.count,
+                                              input->projector_rule.nodes,input->projector_rule.weights,
                                               error,sizeof(error))) {
       snprintf(diagnostic,diagnostic_capacity,"neutral projectors, species %d: %s",spe,error);
       return 0;
@@ -950,9 +955,10 @@ static int Read_VPS(void *user, const OpenMXVpsFileData *data, char *diagnostic,
 }
 
 static void Read_VPS_File(OpenMXCoreContext *core, const OpenMXNeutralGridMetadataView *metadata,
-                          int spe, int metadata_only, MPI_Comm communicator, const char *file)
+                          int spe, int metadata_only, MPI_Comm communicator, const char *file,
+                          const OpenMXGaussRuleInput *hartree_rule, const OpenMXGaussRuleInput *projector_rule)
 {
-  OpenMXVpsReadInput input={core,metadata,spe};
+  OpenMXVpsReadInput input={core,metadata,spe,*hartree_rule,*projector_rule};
   char error[512];
   if (!openmx_core_with_vps_file(file,metadata_only,Read_VPS,&input,error,sizeof(error))) {
     fprintf(stderr,"Read_VPS (%s): %s\n",file,error);
@@ -960,110 +966,6 @@ static void Read_VPS_File(OpenMXCoreContext *core, const OpenMXNeutralGridMetada
   }
 }
 
-
-
-double V_Hart_atom(const OpenMXAtomicViews *atomic, int spe, double R)
-{ 
-  int i;
-  double xmin,xmax,Sx,Dx,x,rp,dx;
-  double Inside,Outside,result;
-  
-  /****************************************************
-              contribution from the inside
-  ****************************************************/
-
-  /****************
-    simple mesh
-  ****************/
-
-  /*
-  xmin = openmx_radial_row2(&atomic->pao_log_radii,spe)[0];
-  xmax = log(R);
-  dx = (xmax - xmin)/(double)OneD_Grid;
-
-  Inside = 0.0;
-  for (i=0; i<=OneD_Grid; i++){
-    x = xmin + (double)i*dx;
-    rp = exp(x);
-    if (i==0 || i==OneD_Grid)
-      Inside = Inside + 0.5*AtomicDenF(spe,rp)*rp*rp*rp;
-    else
-      Inside = Inside + AtomicDenF(spe,rp)*rp*rp*rp;
-  }
-  Inside = 4.0*PI*Inside*dx/R; 
-  */
-
-  /******************
-     Gauss-Legendre
-  ******************/
-
-  xmin = openmx_radial_row2(&atomic->pao_log_radii,spe)[0];
-  xmax = log(R);
-  Sx = xmax + xmin;
-  Dx = xmax - xmin;
-  
-  Inside = 0.0;
-  for (i=0; i<=(FineGL_Mesh-1); i++){
-    x = 0.50*(Dx*FineGL_Abscissae[i] + Sx);
-    rp = exp(x);
-    Inside = Inside +
-        KumoF( atomic->species.pao_mesh[spe], x,
-        openmx_radial_row2(&atomic->pao_log_radii,spe), openmx_radial_row2(&atomic->pao_radii,spe), openmx_radial_row2(&atomic->density,spe))*FineGL_Weight[i]*rp*rp*rp;
-  } 
-
-  Inside = 0.50*Dx*Inside;
-  Inside = 4.0*PI*Inside/R;
-
-  /****************************************************
-              Contribution from the outside
-  ****************************************************/
-
-  /****************
-    simple mesh
-  ****************/
-
-  /*
-  xmin = log(R);
-  xmax = openmx_radial_row2(&atomic->pao_log_radii,spe)[Spe_Num_Mesh_PAO[spe]-1];
-  dx = (xmax - xmin)/(double)OneD_Grid;
-
-  Outside = 0.0;
-  for (i=0; i<=OneD_Grid; i++){
-    x = xmin + (double)i*dx;
-    rp = exp(x);
-    if (i==0 || i==OneD_Grid)
-      Outside = Outside + 0.5*AtomicDenF(spe,rp)*rp*rp;
-    else
-      Outside = Outside + AtomicDenF(spe,rp)*rp*rp;
-  }  
-  Outside = 4.0*PI*Outside*dx;
-  */
-
-  /******************
-     Gauss-Legendre
-  ******************/
-
-  xmin = log(R);
-  xmax = openmx_radial_row2(&atomic->pao_log_radii,spe)[atomic->species.pao_mesh[spe]-1];
-  Sx = xmax + xmin;
-  Dx = xmax - xmin;
-  
-  Outside = 0.0;
-  for (i=0; i<=(FineGL_Mesh-1); i++){
-    x = 0.50*(Dx*FineGL_Abscissae[i] + Sx);
-    rp = exp(x);
-    Outside = Outside +
-        KumoF( atomic->species.pao_mesh[spe], x,
-        openmx_radial_row2(&atomic->pao_log_radii,spe), openmx_radial_row2(&atomic->pao_radii,spe), openmx_radial_row2(&atomic->density,spe))*FineGL_Weight[i]*rp*rp;
-  } 
-
-  Outside = 0.50*Dx*Outside;
-  Outside = 4.0*PI*Outside;
-
-  result = Inside + Outside;
-
-  return result;
-} 
 
 
 void Set_BasisPara()

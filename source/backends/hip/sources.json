@@ -1098,7 +1098,9 @@
     "openmx_orbital_gpu_state.h",
     "openmx_hamiltonian_gpu_state.h",
     "openmx_grid_device_scope.h",
-    "openmx_cluster_capacity.h"
+    "openmx_cluster_capacity.h",
+    "openmx_basis_density.h",
+    "openmx_core_atomic_density.h"
   ],
   "integrated_overrides": {
     "set_hamiltonian_hip.cu": "src/set_hamiltonian_hip.cu",

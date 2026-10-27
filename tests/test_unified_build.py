@@ -2,8 +2,8 @@
 """Verify CUDA/HIP source selection and build isolation without GPU toolchains.
 
 Real repository inputs are projected into temporary directories. Native make
-is exercised only with non-recursive object dry runs; no dependency downloads,
-compilation, or changes to the repository's dependency checkouts are made.
+is exercised only with non-recursive object dry runs. Independent C adapters
+are syntax checked; no dependency downloads or builds are made.
 """
 
 import hashlib
@@ -85,6 +85,22 @@ class UnifiedBuildTest(unittest.TestCase):
         rejected = self.prepare(build, 'CUDA')
         self.assertNotEqual(rejected.returncode, 0)
         self.assertIn('another backend', rejected.stderr)
+
+    @unittest.skipUnless(shutil.which("cc"), "C compiler is required")
+    def test_density_adapters_compile_in_all_projections(self):
+        stages = dict(self.stages)
+        build = self.workspace / 'density-cpu'
+        result = self.prepare(build, 'CPU')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        stages['CPU'] = build / 'native/source'
+        for backend, stage in stages.items():
+            with self.subTest(backend=backend):
+                result = subprocess.run(
+                    ['cc', '-std=c11', '-Werror', '-fsyntax-only',
+                     str(stage / 'KumoF.c'), str(stage / 'Dr_KumoF.c')],
+                    capture_output=True, text=True, check=False,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_backend_selects_production_sources(self):
         cuda, hip = self.stages["CUDA"], self.stages["HIP"]
