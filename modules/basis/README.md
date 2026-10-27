@@ -5,7 +5,7 @@ OpenMX の基底処理を独立して利用する C++20 ライブラリです。
 動径補間、PAO/射影子の波数空間補間、PAO/VPSファイルの読み込み、
 原子密度の補間・動径導関数・球対称Hartree積分、Gauss–LegendreとLebedev積分則、
 球Bessel関数と2中心積分用Besselテーブル、球面調和関数と角度導関数、複素から実軌道への変換、
-Gaunt角度積分と不変の係数表です。
+Gaunt角度積分と不変の係数表、実空間の軌道評価用の動径値・動径導関数です。
 本体もこの実装を使用します。
 Fourier-Bessel 変換、完全な2中心積分は
 まだこのパッケージには含まれません。
@@ -456,3 +456,39 @@ Lebedev球面積分で検証します。表の余白、長方形の選択則ゼ�
 インストール先と元のソース・ビルドディレクトリを移動してから、外部 C/C++ プログラムを
 ビルド・実行します。上位の `core/` や SDK への依存を持ち込むと、この試験が失敗します。
 サニタイザーは `-DOPENMX_BASIS_SANITIZERS=ON` で有効にできます。
+
+
+## 実空間の軌道用動径補間
+
+`<openmx/basis/orbital_radial.hpp>` は `Get_Orbitals` / `Get_dOrbitals` の動径値と
+`dR_l/dr` を、所有版 `OrbitalRadialTable` と借用版 `OrbitalRadialTableView` で公開します。
+所有版はメッシュ・角運動量・数値行をコピーし、元の配列やPAOファイルの所有者を破棄しても評価できます。
+借用版は構築時に全入力を検査し、その後は元のメッシュ・記述子・数値行を生存させ、変更せずに使います。
+`sample()` と、1つの区間計画を全行で共有する `evaluate()` は成功時に確保をせず、
+別の出力を使う並行評価が可能です。コピーは独立し、ムーブ元は再代入するまで評価を拒否します。
+
+```cpp
+#include <openmx/basis/pao_file.hpp>
+#include <openmx/basis/orbital_radial.hpp>
+
+auto file = openmx::basis::PaoFile::from_file("C6.0.pao");
+const openmx::basis::RadialChannel channel{0, file.orbital(0, 0)};
+const openmx::basis::OrbitalRadialTable table(file.radii(), {&channel, 1});
+auto sample = table.sample(0, 0.5);  // radius in bohr
+// sample.value = R_l(r), sample.radial_derivative = dR_l/dr
+```
+
+この規約は既存の `RadialKind::pao` / PhiF の補間と異なります。
+最初の区間を区間2へ固定せず反射端点を使い、最初の点より内側はメッシュの添字4で値と傾きを合わせる
+従来の3次外挿を使います。l=0は定数とr²、l=1はrとr³、l≥2はr²とr³です。
+一般の高角運動量についてr^lの正則性を新たに保証するものではありません。
+少なくとも5個の有限で非負・狭義単調増加のメッシュ点と、0〜29の角運動量を受け付けます。
+末端より外側は値・導関数ともゼロで、別のcutoffは適用しません。
+原点での座標補正や角度・Cartesian変換は呼び出し側の責務です。
+`Get_dOrbitals` が返す原子中心に対する導関数の符号は、この `dR_l/dr` の符号と区別します。
+
+C APIは `<openmx/basis/orbital_radial.h>` の `openmx_orbital_radial_sample()` です。
+全メッシュ・数値行を検査し、無効な入力では数値出力を保って0を返します。
+診断領域は数値の入出力と重ねずに渡します。
+例は `examples/orbital_radial/` にあり、インストール済みの `OpenMX::basis` だけでビルドできます。
+本体のスカラー軌道評価とCUDA/HIPのForce・格子のCPUフォールバックも同じ計算核を使います。

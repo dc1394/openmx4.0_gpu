@@ -1108,7 +1108,8 @@
     "openmx_quadrature.h",
     "openmx_core_vna_simd_workspace.h",
     "openmx_core_radial_views.h",
-    "openmx_core_vna_host_tables.h"
+    "openmx_core_vna_host_tables.h",
+    "openmx_basis_orbital_radial.h"
   ],
   "integrated_overrides": {
     "set_hamiltonian_hip.cu": "src/set_hamiltonian_hip.cu",

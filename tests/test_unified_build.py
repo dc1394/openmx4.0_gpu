@@ -107,6 +107,7 @@ class UnifiedBuildTest(unittest.TestCase):
                      '-I' + str(stage), '-'],
                     input='#include "openmx_basis_harmonics.h"\n'
                           '#include "openmx_basis_gaunt.h"\n'
+                          '#include "openmx_basis_orbital_radial.h"\n'
                           '#include "openmx_core_vna_preparation.h"\n'
                           '#include "openmx_core_vna_simd_workspace.h"\n'
                           '#include "openmx_core_radial_views.h"\n'
@@ -452,6 +453,9 @@ class UnifiedBuildTest(unittest.TestCase):
                     self.assertIn("openmx_basis_gaunt.h", row.split())
                     self.assertIn("../modules/basis/include/openmx/basis/detail/gaunt.h", row.split())
                     self.assertIn("../modules/basis/include/openmx/basis/gaunt.h", row.split())
+                    self.assertIn("openmx_basis_orbital_radial.h", row.split())
+                    self.assertIn("../modules/basis/include/openmx/basis/orbital_radial.h", row.split())
+                    self.assertIn("../modules/basis/include/openmx/basis/detail/orbital_radial.h", row.split())
                     self.assertIn("openmx_core_vna_simd_workspace.h", row.split())
                     self.assertIn("../core/include/openmx_core_vna_simd_workspace.h", row.split())
                     for header in ("openmx_core_radial_views.h", "openmx_core_vna_host_tables.h"):

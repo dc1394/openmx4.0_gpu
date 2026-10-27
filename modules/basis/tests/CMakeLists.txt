@@ -1,4 +1,12 @@
 find_package(Threads REQUIRED)
+set_source_files_properties(fixtures/orbital_radial_before_library.c PROPERTIES COMPILE_OPTIONS
+  "$<$<C_COMPILER_ID:GNU,Clang,AppleClang>:-ffp-contract=off>;$<$<C_COMPILER_ID:IntelLLVM>:-fp-model=precise;-ffp-contract=off>;$<$<C_COMPILER_ID:MSVC>:/fp:strict>")
+add_executable(openmx_basis_orbital_radial_tests test_orbital_radial.cpp fixtures/orbital_radial_before_library.c)
+target_link_libraries(openmx_basis_orbital_radial_tests PRIVATE OpenMX::basis Threads::Threads)
+foreach(_case legacy analytic derivatives policy invalid ownership allocation concurrent)
+  add_test(NAME basis-orbital-radial-${_case} COMMAND openmx_basis_orbital_radial_tests ${_case})
+  set_tests_properties("basis-orbital-radial-${_case}" PROPERTIES LABELS "unit;basis" TIMEOUT 30)
+endforeach()
 # Compile the frozen C reference under the library's floating-point contract;
 # Intel's default C mode can otherwise reassociate the factorial expression.
 set_source_files_properties(fixtures/gaunt_before_library.c PROPERTIES COMPILE_OPTIONS
@@ -73,6 +81,10 @@ endforeach()
 
 # Compile a real C caller, rather than relying on a C++ compiler accepting it.
 enable_language(C)
+add_executable(openmx_basis_orbital_radial_c_tests test_orbital_radial_c.c)
+target_link_libraries(openmx_basis_orbital_radial_c_tests PRIVATE OpenMX::basis)
+add_test(NAME basis-orbital-radial-c-abi COMMAND openmx_basis_orbital_radial_c_tests)
+set_tests_properties(basis-orbital-radial-c-abi PROPERTIES LABELS "unit;basis" TIMEOUT 15)
 add_executable(openmx_basis_gaunt_c_tests test_gaunt_c.c)
 target_link_libraries(openmx_basis_gaunt_c_tests PRIVATE OpenMX::basis)
 add_test(NAME basis-gaunt-c-abi COMMAND openmx_basis_gaunt_c_tests)

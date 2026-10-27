@@ -69,3 +69,5 @@ $(OBJS) openmx_api.o: openmx_basis_gaunt.h ../modules/basis/include/openmx/basis
 $(OBJS) openmx_api.o: openmx_core_vna_simd_workspace.h ../core/include/openmx_core_vna_simd_workspace.h
 
 $(OBJS) openmx_api.o: openmx_core_radial_views.h ../core/include/openmx_core_radial_views.h openmx_core_vna_host_tables.h ../core/include/openmx_core_vna_host_tables.h
+
+$(OBJS) openmx_api.o: openmx_basis_orbital_radial.h ../modules/basis/include/openmx/basis/orbital_radial.h ../modules/basis/include/openmx/basis/detail/orbital_radial.h

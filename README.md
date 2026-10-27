@@ -128,7 +128,12 @@ and reciprocal interpolation used by the application, with C++ and C APIs,
 and independent C++ PAO/VPS readers with owned data and radial evaluation.
 It also provides atomic density/Hartree operations, Gauss–Legendre and Lebedev
 quadrature, spherical Bessel functions, spherical harmonics and their derivatives,
-real-orbital transformations, and Gaunt angular integrals with owned coefficient tables.
+real-orbital transformations, Gaunt angular integrals with owned coefficient tables,
+and real-space orbital radial values and radial derivatives.
+The orbital radial API preserves the native first-interval and origin-continuation
+conventions, separately from the existing PAO/PhiF radial policy. Owned tables
+and validated borrowed views support allocation-free evaluation. Native scalar
+orbitals and CUDA/HIP CPU fallbacks share the same numerical kernel.
 It builds without Kokkos, MPI, BLAS or a GPU SDK:
 
 ```sh

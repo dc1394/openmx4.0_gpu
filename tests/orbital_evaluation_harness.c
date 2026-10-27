@@ -100,6 +100,29 @@ int main(void) {
   if(atomic.real_harmonics.coefficients==&Comp2Real[0][0][0])abort();
   OpenMXOrbitalWorkspace *owner=openmx_core_orbital_create(&shape,&buffers,error,sizeof(error));
   if(!owner){fprintf(stderr,"%s\n",error);return 1;}
+  /* Outside the mesh, the native evaluators need no numerical PAO rows.
+     Keep the former zero-only behavior without forming NULL+offset. */
+  for(int s=0;s<S;++s) {
+    OpenMXAtomicViews absent=atomic;absent.orbitals.values=NULL;
+    const double radius=radii[s][mesh[s]-1]+1.;
+    int no=0;for(int l=0;l<=lmax[s];++l)no+=basis[s][l]*(2*l+1);
+    double values[5][128],derivatives[5][4][128],*rows[4];
+    for(int k=0;k<5;++k)for(int j=0;j<128;++j){values[k][j]=NAN;for(int d=0;d<4;++d)derivatives[k][d][j]=NAN;}
+    Get_Orbitals(&absent,s,radius,0.,0.,values[0]);
+    grid_cuda_0(&absent,s,radius,0.,0.,values[1]);grid_cuda_1(&absent,s,radius,0.,0.,values[2]);
+    grid_hip_0(&absent,s,radius,0.,0.,values[3]);grid_hip_1(&absent,s,radius,0.,0.,values[4]);
+    for(int d=0;d<4;++d)rows[d]=derivatives[0][d];Get_dOrbitals(&absent,s,radius,0.,0.,rows);
+    for(int d=0;d<4;++d)rows[d]=derivatives[1][d];Get_dOrbitals2(&absent,s,radius,0.,0.,rows);
+    for(int d=0;d<4;++d)rows[d]=derivatives[2][d];Get_dOrbitals_work(&absent,s,radius,0.,0.,rows,buffers);
+    for(int d=0;d<4;++d)rows[d]=derivatives[3][d];force_cuda(&absent,s,radius,0.,0.,rows,buffers);
+    for(int d=0;d<4;++d)rows[d]=derivatives[4][d];force_hip(&absent,s,radius,0.,0.,rows,buffers);
+    for(int k=0;k<5;++k)for(int j=0;j<no;++j) {
+      check_value(values[k][j],0.);
+      /* Force writes gradient rows 1..3; value row 0 stays untouched. */
+      if(k>=3 && !isnan(derivatives[k][0][j]))abort();
+      for(int d=k>=3?1:0;d<4;++d)check_value(derivatives[k][d][j],0.);
+    }
+  }
   for (int s=0;s<S;++s) {
     int no=0,nc=0;
     for(int l=0;l<=lmax[s];++l){no+=basis[s][l]*(2*l+1);nc+=contracted[s][l]*(2*l+1);}
