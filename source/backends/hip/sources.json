@@ -313,8 +313,6 @@
     "openmx_gpu_arch_policy.h": "include/openmx_gpu_arch_policy.h",
     "openmx_magma_lock.h": "include/openmx_magma_lock.h",
     "openmx_target.h": "include/openmx_target.h",
-    "orbs_otf_hip.cu": "src/orbs_otf_hip.cu",
-    "orbs_otf_hip.h": "include/orbs_otf_hip.h",
     "set_hip_default_device_from_local_rank.c": "src/set_hip_default_device_from_local_rank.c",
     "set_hip_default_device_from_local_rank.h": "include/set_hip_default_device_from_local_rank.h",
     "set_openmp_device_from_local_rank.c": "src/set_openmp_device_from_local_rank.c",
@@ -732,8 +730,6 @@
     "openmx_precision.h": "63c8f163fd4be012b43a856c1c6ad29f6a64cf037d128839155dd21d1a9ecc19",
     "openmx_stdout_level.h": "1d82a6ecdddd8c2ec50076cf3ec412997f25b158c6f2b75cb0ec3130c999035a",
     "openmx_target.h": "8157c34297ed4193729966f9e130b5b9edbd6e92e9585d79c06e413777262fa4",
-    "orbs_otf_hip.cu": "0be2b46487bc4eab1a05e8d42729007965081029ff58303528188270f5236dad",
-    "orbs_otf_hip.h": "032f741c6fd6c8117db9e5f144a760f63316b388766760cc6964bb766fe97092",
     "pdb2pao.c": "59cd03a564cb340c6a0829cf890156c04e84ea79cada439dcbd10a1caa456bb4",
     "polB.c": "a3847a33299c545e6fd81f9bad92171b8965e1f3d348e6be0a9b46fea9b01a65",
     "pyopenmx_api.c": "0bbb58fafa3264b0a52ad31f0fd2c9a8276a7b119ef535fa69b47223e47ed96c",
@@ -1098,7 +1094,8 @@
     "KumoF.c",
     "openmx_hamiltonian_cache.c",
     "openmx_hamiltonian_cache.h",
-    "openmx_hamiltonian_pack.h"
+    "openmx_hamiltonian_pack.h",
+    "openmx_orbital_gpu_state.h"
   ],
   "integrated_overrides": {
     "set_hamiltonian_hip.cu": "src/set_hamiltonian_hip.cu",
@@ -1130,6 +1127,9 @@
     "my_hipblasZgemm.c": "src/my_hipblasZgemm.c",
     "eigen_refine_gpu.cu": "src/eigen_refine_gpu.cu",
     "eigen_refine_gpu.h": "include/eigen_refine_gpu.h",
-    "eigen_refine_hooks.h": "include/eigen_refine_hooks.h"
+    "eigen_refine_hooks.h": "include/eigen_refine_hooks.h",
+    "orbs_otf_state_hip.h": "include/orbs_otf_state_hip.h",
+    "orbs_otf_hip.cu": "src/orbs_otf_hip.cu",
+    "orbs_otf_hip.h": "include/orbs_otf_hip.h"
   }
 }

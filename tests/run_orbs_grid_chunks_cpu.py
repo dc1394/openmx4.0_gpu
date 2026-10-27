@@ -31,7 +31,7 @@ root = Path(__file__).resolve().parents[1]
 source = (root / "source/Set_Orbitals_Grid.c").read_text()
 point = source[source.index("#pragma acc routine seq\nstatic void SOG_point_eval("):
                source.index("/* One launch evaluates every grid point of one atom")]
-prepare = source[source.index("int SOG_Device_Prepare(const OpenMXAtomicViews *atomic)"):
+prepare = source[source.index("int SOG_Device_Prepare(OpenMXOrbitalGpuState *orbital_state, const OpenMXAtomicViews *atomic)"):
                  source.index("\nconst char *SOG_Device_EvalPrecisionName")]
 chunk_start = source.index("static void SOG_Device_EvalPairChunk_Part(")
 chunk = source[chunk_start:source.index("\n}\n", chunk_start)+3]
@@ -45,9 +45,18 @@ code = r'''
 #include "openmx_precision.h"
 #define SOG_L0MAX 3
 #define SOG_MULMAX 8
+/* This fixture isolates the spline math; production ownership is tested
+   separately against the real core and SDK allocation model. */
+struct OpenMXOrbitalGpuState { void *resources; };
+static OpenMXOrbitalGpuState fixture_state;
+enum { OPENMX_RESOURCE_ACC=3 };
+static int OpenMX_Resource_AccFreeCallback(void *p,int d) { (void)p;(void)d;return 0; }
+static int OpenMX_Resource_Adopt(void *owner,int domain,void *p,int(*release)(void*,int),void *sync) {
+  (void)owner;(void)domain;(void)p;(void)release;(void)sync;return 1;
+}
 static SOG_DeviceTables SOG_dev;
 static int SOG_dev_fp32_enabled = -1;
-void SOG_Device_Release(void) {
+void SOG_Device_Release(OpenMXOrbitalGpuState *orbital_state) {
   free(SOG_dev.arena); memset(&SOG_dev,0,sizeof(SOG_dev)); SOG_dev_fp32_enabled=-1;
 }
 static int SpeciesNum=1, TCpyCell=2, Ngrid2=5, Ngrid3=7;
@@ -65,6 +74,7 @@ static int SOG_gpu_eligible(int kind) { (void)kind; return 1; }
 static int SOG_eval_double_float(void) { return openmx_fp32_enabled(); }
 static size_t SOG_arena_off(size_t *p,size_t n) { size_t o=*p; *p=(o+n+511)&~(size_t)511; return o; }
 static void *SOG_arena_try(size_t n) { return malloc(n); }
+static void acc_free(void *p) { free(p); }
 static void acc_memcpy_to_device(void *d,const void *s,size_t n) { memcpy(d,s,n); }
 '''
 code += point + prepare + chunk
@@ -100,7 +110,7 @@ int main(void)
   atomic.species.basis=nb;atomic.species.angular_channels=4;
   for(int l=0;l<4;l++) for(int m=0;m<nb[l];m++)
     memcpy(flat_radial[l][m],Spe_PAO_RWF[0][l][m],sizeof(flat_radial[l][m]));
-  assert(SOG_Device_Prepare(&atomic));
+  assert(SOG_Device_Prepare(&fixture_state, &atomic));
   for(int i=0;i<GPREFIX+ROWS+7;i++) { gla[i]=0; cla[i]=0; }
   for(int i=0;i<ROWS;i++) { gla[GPREFIX+i]=(i*53)%557-278; cla[GPREFIX+i]=i%3; }
   for(int i=0;i<NPREFIX+POINTS+3;i++) nc[i]=0;
@@ -146,7 +156,7 @@ int main(void)
      while disabled and restoring them when a later input enables FP32. */
   for(int enabled=0;enabled<3;enabled++) {
     openmx_set_fp32_enabled(enabled%2);
-    assert(SOG_Device_Prepare(&atomic));
+    assert(SOG_Device_Prepare(&fixture_state, &atomic));
     assert(SOG_dev.eval_df==enabled%2);
     assert((SOG_dev.rwd!=NULL)==enabled%2);
     assert((SOG_dev.mcd!=NULL)==enabled%2);
@@ -158,7 +168,7 @@ int main(void)
     SOG_Device_EvalPairChunk_Part(&SOG_dev,&pair,POINTS,nc+NPREFIX,gla+GPREFIX,cla+GPREFIX,&guard);
     assert(guard==913.5f);
   }
-  SOG_Device_Release();
+  SOG_Device_Release(&fixture_state);
   printf("PASS: %d FP64/DF compact orbital gathers; signed coordinates, cell/neighbor shifts, "
          "s/p/d/f orbitals, repeated sphere indices, chunk offsets, empty/unready calls, output guards\n",cases);
 }

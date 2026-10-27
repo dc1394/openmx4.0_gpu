@@ -125,6 +125,7 @@ typedef struct {
 } SDGHostBuffer;
 
 struct OpenMXDensityGpuState {
+  OpenMXOrbitalGpuState *orbital_state; /* borrowed from this calculation */
   int initialized;
   SetDensityGpuCache cache;
   SDGLocalContext local;
@@ -415,6 +416,7 @@ OpenMXDensityGpuState *Set_Density_Grid_GPU_Bind_Resources(OpenMXCoreContext *co
   }
   OpenMXDensityGpuState *density_state = (OpenMXDensityGpuState *)metadata;
   if (!density_state->initialized) {
+    density_state->orbital_state = Set_Orbitals_Grid_GPU_Bind_Resources(core);
     density_state->last_path = density_state->last_cpu = -1;
     density_state->last_workspace = density_state->last_failed = -1;
     density_state->initialized = 1;
@@ -1702,7 +1704,7 @@ static int SDG_local_prepare(OpenMXDensityGpuState *density_state, const OpenMXA
           !(probe.orbs0_resident && probe.orbs1_resident && probe.nolg_resident && probe.meta_resident))
         my_ready = 0;
     }
-    if (!my_ready) my_otf = Set_Hamiltonian_OnTheFly_DensityPossible(atomic, table_kind, myid);
+    if (!my_ready) my_otf = Set_Hamiltonian_OnTheFly_DensityPossible(density_state->orbital_state, atomic, table_kind, myid);
     if (!(my_ready || my_otf)) return 0;
     if (my_otf) {
       if (c->ready && !c->otf) SDG_local_free(density_state);
@@ -2328,7 +2330,7 @@ int Set_Density_Grid_GPU_Local_Run(OpenMXDensityGpuState *density_state, const O
 
     MPI_Comm_rank(mpi_comm_level1, &myid);
     if (ok) ok = SDG_pack_local_cdm(CDM, dm_otf, c->otf_dm_count, spin_count);
-    if (ok) ok = Set_Hamiltonian_OnTheFly_Density(atomic, c->cnt_kind, spin_count, dm_otf, c->otf_dm_count, den_otf, n_out,
+    if (ok) ok = Set_Hamiltonian_OnTheFly_Density(density_state->orbital_state, atomic, c->cnt_kind, spin_count, dm_otf, c->otf_dm_count, den_otf, n_out,
                                                   c->otf_out_base, myid);
     if (ok) {
       for (spin = 0; spin < spin_count; spin++) {

@@ -122,7 +122,7 @@ int main(int argc, char **argv) {
     MPI_Comm_rank(MPI_COMM_WORLD, &myid);
     decision = openmx_cluster_capacity_select(MPI_COMM_WORLD, env("T_N"), env("T_COMPLEX"), "Cluster test");
     if (decision == OPENMX_CLUSTER_CAPACITY_GS2)
-        if (!openmx_cluster_gs2_admit(MPI_COMM_WORLD, 0, env("T_N"), 64, env("T_COMPLEX"), "Cluster test"))
+        if (!openmx_cluster_gs2_admit((OpenMXOrbitalGpuState *)&yield_calls,MPI_COMM_WORLD, 0, env("T_N"), 64, env("T_COMPLEX"), "Cluster test"))
             decision = OPENMX_CLUSTER_CAPACITY_CPU;
     MPI_Allreduce(&decision, &all_min, 1, MPI_INT, MPI_MIN, MPI_COMM_WORLD);
     MPI_Allreduce(&decision, &all_max, 1, MPI_INT, MPI_MAX, MPI_COMM_WORLD);

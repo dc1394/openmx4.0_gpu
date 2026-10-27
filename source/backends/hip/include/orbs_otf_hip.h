@@ -18,6 +18,7 @@
 #define ORBS_OTF_HIP_H
 
 #include <stddef.h>
+#include "openmx_orbital_gpu_state.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -59,11 +60,11 @@ typedef struct {
    allocation or a transfer failed (worth a retry), -1 when the tables are
    outside the evaluator (no species, L > OTF_L0MAX, more than OTF_MULMAX
    radial functions of one L, fewer than 6 mesh points) */
-int    OTF_Orbitals_Upload(const OTF_HostTables *t, int double_float);
-void   OTF_Orbitals_Release(void);
-int    OTF_Orbitals_Ready(void);
-int    OTF_Orbitals_DoubleFloat(void);
-size_t OTF_Orbitals_Bytes(void);
+int    OTF_Orbitals_Upload(OpenMXOrbitalGpuState *orbital_state, const OTF_HostTables *t, int double_float);
+void   OTF_Orbitals_Release(OpenMXOrbitalGpuState *orbital_state);
+int    OTF_Orbitals_Ready(OpenMXOrbitalGpuState *orbital_state);
+int    OTF_Orbitals_DoubleFloat(OpenMXOrbitalGpuState *orbital_state);
+size_t OTF_Orbitals_Bytes(OpenMXOrbitalGpuState *orbital_state);
 
 /* Device arrays.  Item p evaluates atoms[p] at npts[p] points; its k-th
    point is the sphere index Nc = idx[idx_off[p] + k] (k itself when idx is
@@ -71,13 +72,13 @@ size_t OTF_Orbitals_Bytes(void);
    cla[sph_off[p] + Nc]; the no values of point k go to
    out[out_off[p] + k * no].  max_npts bounds every npts[p] (it sizes the
    launch).  Asynchronous on stream; 0 on success. */
-int OTF_Orbitals_Eval(void *stream, int count, int max_npts, const OTF_Atom *atoms, const int *npts,
+int OTF_Orbitals_Eval(OpenMXOrbitalGpuState *orbital_state, void *stream, int count, int max_npts, const OTF_Atom *atoms, const int *npts,
                       const size_t *idx_off, const size_t *out_off, const size_t *sph_off, const int *idx,
                       const int *gla, const int *cla, float *out);
 
 /* the same in FP64 whatever the uploaded precision (the tables
    Orbs_Grid / Orbs_Grid_FNAN of Set_Orbitals_Grid.c) */
-int OTF_Orbitals_Eval_FP64(void *stream, int count, int max_npts, const OTF_Atom *atoms, const int *npts,
+int OTF_Orbitals_Eval_FP64(OpenMXOrbitalGpuState *orbital_state, void *stream, int count, int max_npts, const OTF_Atom *atoms, const int *npts,
                            const size_t *idx_off, const size_t *out_off, const size_t *sph_off, const int *idx,
                            const int *gla, const int *cla, float *out);
 

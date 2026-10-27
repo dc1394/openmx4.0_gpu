@@ -144,7 +144,7 @@ int openmx_cluster_capacity_select(MPI_Comm comm, int n, int complex_matrix,
    rank and keep them transient for the rest of the MD step (1: there were
    some) */
 #if OPENMX_GPU_HIP
-extern size_t Set_Hamiltonian_DemoteResidency(void);
+extern size_t Set_Hamiltonian_DemoteResidency(OpenMXOrbitalGpuState *orbital_state);
 #else
 extern int Set_Hamiltonian_Yield_Resident_DeviceCache(void);
 #endif
@@ -236,7 +236,7 @@ static void count_placement(MPI_Comm comm, int *nodes, int *gpus, int *idle)
     free(all);
 }
 
-int openmx_cluster_gs2_admit(MPI_Comm comm, int ictxt, int n, int nblk,
+int openmx_cluster_gs2_admit(OpenMXOrbitalGpuState *orbital_state, MPI_Comm comm, int ictxt, int n, int nblk,
                               int complex_matrix, const char *label)
 {
     unsigned long long need_mb = 0, free_mb = 0, worst[2], least_free;
@@ -260,7 +260,7 @@ int openmx_cluster_gs2_admit(MPI_Comm comm, int ictxt, int n, int nblk,
            can step aside: every rank releases its own, and the solve is
            admitted again on the memory they leave */
 #if OPENMX_GPU_HIP
-        int resident = (Set_Hamiltonian_DemoteResidency()!=0), any_resident = 0;
+        int resident = (Set_Hamiltonian_DemoteResidency(orbital_state)!=0), any_resident = 0;
 #else
         int resident = Set_Hamiltonian_Yield_Resident_DeviceCache(), any_resident = 0;
 #endif

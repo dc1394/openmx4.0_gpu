@@ -67,7 +67,6 @@ void Free_Arrays_with_context(int wherefrom, OpenMXCoreContext *core)
     /* the on-the-fly state and its batch plans (keyed by the atom count,
        not by the geometry) must not reach the next input */
     Set_Hamiltonian_OTF_Release();
-    Set_Orbitals_Grid_OTF_Release();
 #else
     Set_Hamiltonian_Invalidate_OpenACC_MatrixElements_Cache();
 #endif

@@ -74,8 +74,8 @@ static int SetH_ProfileEnabled(void)
         }                                                                                                              \
     } while (0)
 
-void Calc_MatrixElements_dVH_Vxc_VNA(OpenMXGridWorkspace *grid, const OpenMXAtomicViews *atomic, int Cnt_kind, const OpenMXElectronicViews *electronic);
-static void Calc_MatrixElements_dVH_Vxc_VNA_OpenMP(OpenMXGridWorkspace *grid, const OpenMXAtomicViews *atomic, int Cnt_kind, const OpenMXElectronicViews *electronic);
+void Calc_MatrixElements_dVH_Vxc_VNA(OpenMXOrbitalGpuState *orbital_state, OpenMXGridWorkspace *grid, const OpenMXAtomicViews *atomic, int Cnt_kind, const OpenMXElectronicViews *electronic);
+static void Calc_MatrixElements_dVH_Vxc_VNA_OpenMP(OpenMXOrbitalGpuState *orbital_state, OpenMXGridWorkspace *grid, const OpenMXAtomicViews *atomic, int Cnt_kind, const OpenMXElectronicViews *electronic);
 static void Set_Hamiltonian_Base_OpenMP(const OpenMXVnaMatrixViews *vna, int SCF_iter, double *****H0, double *****HNL, double *****H, const OpenMXElectronicViews *electronic);
 static size_t Set_Hamiltonian_Base_OpenMP_DeviceBytes(int SCF_iter, int myid);
 static size_t Set_Hamiltonian_MatrixElements_OpenMP_DeviceBytes(int Cnt_kind, int myid);
@@ -101,16 +101,16 @@ static size_t Set_Hamiltonian_ME_ResidentBytes(void);
 void Set_Hamiltonian_Invalidate_OpenMP_MatrixElements_Cache(void);
 
 #include "orbs_otf_hip.h"
-int Set_Orbitals_Grid_OTF_Prepare(const OpenMXAtomicViews *atomic);
-void Set_Orbitals_Grid_OTF_Release(void);
+int Set_Orbitals_Grid_OTF_Prepare(OpenMXOrbitalGpuState *orbital_state, const OpenMXAtomicViews *atomic);
+void Set_Orbitals_Grid_OTF_Release(OpenMXOrbitalGpuState *orbital_state);
 void Set_Hamiltonian_OTF_Release(void);
 static void Set_Hamiltonian_OTF_ReleaseDevice(void);
-static size_t Set_Hamiltonian_OTF_DeviceBytes(void);
+static size_t Set_Hamiltonian_OTF_DeviceBytes(OpenMXOrbitalGpuState *orbital_state);
 
 /* OPENMX_OTF_CHECK=1: the first table build of a geometry also evaluates
    every table entry with the device orbital evaluator (orbs_otf_hip.cu)
    and reports the largest difference on each rank */
-static void Set_Hamiltonian_OTF_Check(const OpenMXAtomicViews *atomic, int pair_count, const int *pair_Mc_AN, const int *pair_h_AN,
+static void Set_Hamiltonian_OTF_Check(OpenMXOrbitalGpuState *orbital_state, const OpenMXAtomicViews *atomic, int pair_count, const int *pair_Mc_AN, const int *pair_h_AN,
                                       const int *pair_NO0, const int *pair_NO1, const int *pair_NOLG,
                                       const size_t *pair_nolg_offset, const size_t *pair_orbs1_offset,
                                       const int *nolg_Nc, size_t total_nolg,
@@ -128,7 +128,7 @@ static void Set_Hamiltonian_OTF_Check(const OpenMXAtomicViews *atomic, int pair_
     double max0 = 0.0, max1 = 0.0, ref0 = 0.0, ref1 = 0.0;
     size_t diff0 = 0, diff1 = 0, k;
 
-    if (!Set_Orbitals_Grid_OTF_Prepare(atomic)) {
+    if (!Set_Orbitals_Grid_OTF_Prepare(orbital_state, atomic)) {
         printf("<OTF check> rank %d: no device orbital tables\n", myid);
         fflush(stdout);
         return;
@@ -198,7 +198,7 @@ static void Set_Hamiltonian_OTF_Check(const OpenMXAtomicViews *atomic, int pair_
     OTF_CK(hipMemcpy(d_idx_off, idx_off, sizeof(size_t) * (size_t)Matomnum, hipMemcpyHostToDevice));
     OTF_CK(hipMemcpy(d_out_off, out_off, sizeof(size_t) * (size_t)Matomnum, hipMemcpyHostToDevice));
     OTF_CK(hipMemcpy(d_sph_off, sph_off, sizeof(size_t) * (size_t)Matomnum, hipMemcpyHostToDevice));
-    if (OTF_Orbitals_Eval(NULL, Matomnum, max_atom, (const OTF_Atom *)d_atoms, (const int *)d_npts,
+    if (OTF_Orbitals_Eval(orbital_state, NULL, Matomnum, max_atom, (const OTF_Atom *)d_atoms, (const int *)d_npts,
                           (const size_t *)d_idx_off, (const size_t *)d_out_off, (const size_t *)d_sph_off, NULL,
                           (const int *)d_gla, (const int *)d_cla, (float *)d_o0) != 0) goto cleanup;
     OTF_CK(hipDeviceSynchronize());
@@ -225,7 +225,7 @@ static void Set_Hamiltonian_OTF_Check(const OpenMXAtomicViews *atomic, int pair_
     OTF_CK(hipMemcpy(d_idx_off, idx_off, sizeof(size_t) * (size_t)pair_count, hipMemcpyHostToDevice));
     OTF_CK(hipMemcpy(d_out_off, out_off, sizeof(size_t) * (size_t)pair_count, hipMemcpyHostToDevice));
     OTF_CK(hipMemcpy(d_sph_off, sph_off, sizeof(size_t) * (size_t)pair_count, hipMemcpyHostToDevice));
-    if (OTF_Orbitals_Eval(NULL, pair_count, max_pair, (const OTF_Atom *)d_atoms, (const int *)d_npts,
+    if (OTF_Orbitals_Eval(orbital_state, NULL, pair_count, max_pair, (const OTF_Atom *)d_atoms, (const int *)d_npts,
                           (const size_t *)d_idx_off, (const size_t *)d_out_off, (const size_t *)d_sph_off,
                           (const int *)d_nc, (const int *)d_gla, (const int *)d_cla, (float *)d_o1) != 0) goto cleanup;
     OTF_CK(hipDeviceSynchronize());
@@ -247,7 +247,7 @@ static void Set_Hamiltonian_OTF_Check(const OpenMXAtomicViews *atomic, int pair_
     ok = 1;
     printf("<OTF check> rank %d (%s): central atoms %zu values, %zu differ, max |diff| %.3e (max |value| %.3e); "
            "neighbours %zu values, %zu differ, max |diff| %.3e (max |value| %.3e)\n",
-           myid, OTF_Orbitals_DoubleFloat() ? "double-float" : "FP64", total_orbs0, diff0, max0, ref0,
+           myid, OTF_Orbitals_DoubleFloat(orbital_state) ? "double-float" : "FP64", total_orbs0, diff0, max0, ref0,
            total_orbs1, diff1, max1, ref1);
     fflush(stdout);
 
@@ -335,7 +335,7 @@ static int Set_Hamiltonian_ME_KeepDeviceResident(void)
 /* every rank of a dense eigensolver whose memory test failed: the resident
    orbital tables go now and stay off the device for the rest of the run;
    rank-local, returns the device bytes released on this rank */
-size_t Set_Hamiltonian_DemoteResidency(void)
+size_t Set_Hamiltonian_DemoteResidency(OpenMXOrbitalGpuState *orbital_state)
 {
     static int checked = 0, enabled = 1;
     size_t released;
@@ -353,9 +353,9 @@ size_t Set_Hamiltonian_DemoteResidency(void)
        the PAO tables): idle during the eigensolver, rebuilt lazily by the
        next Set_Hamiltonian or Set_Density_Grid; the batch plans are host
        memory of this geometry and stay */
-    released += Set_Hamiltonian_OTF_DeviceBytes();
+    released += Set_Hamiltonian_OTF_DeviceBytes(orbital_state);
     Set_Hamiltonian_OTF_ReleaseDevice();
-    Set_Orbitals_Grid_OTF_Release();
+    Set_Orbitals_Grid_OTF_Release(orbital_state);
     return released;
 }
 
@@ -707,7 +707,7 @@ void Set_Hamiltonian_GpuSolver_SetMP(int *MP)
 }
 
 
-double Set_Hamiltonian(OpenMXGridWorkspace *grid, OpenMXMixingVState *mixing_v, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, char * mode, int MD_iter, int SCF_iter, int SCF_iter0, int TRAN_Poisson_flag2,
+double Set_Hamiltonian(OpenMXOrbitalGpuState *orbital_state, OpenMXGridWorkspace *grid, OpenMXMixingVState *mixing_v, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, char * mode, int MD_iter, int SCF_iter, int SCF_iter0, int TRAN_Poisson_flag2,
                        int SucceedReadingDMfile, int Cnt_kind, double ***** H0, double ***** HNL, double ***** CDM,
                        double ***** H, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 {
@@ -908,7 +908,7 @@ double Set_Hamiltonian(OpenMXGridWorkspace *grid, OpenMXMixingVState *mixing_v, 
   *****************************************************/
 
     SETH_PROF_T0(prof_t0);
-    Calc_MatrixElements_dVH_Vxc_VNA(grid, atomic, Cnt_kind, electronic);
+    Calc_MatrixElements_dVH_Vxc_VNA(orbital_state, grid, atomic, Cnt_kind, electronic);
     SETH_PROF_ADD(matel, prof_t0);
     if (trace_timing) dtime(&trace_matrix_end);
 
@@ -1025,17 +1025,17 @@ void Set_Hamiltonian_OTF_Release(void)
    the on-the-fly state and the PAO tables of the tiles go, so that the
    forces find the device memory free; a later Set_Density_Grid or the next
    geometry rebuilds them */
-void Set_Hamiltonian_OnTheFly_EndCycle(void)
+void Set_Hamiltonian_OnTheFly_EndCycle(OpenMXOrbitalGpuState *orbital_state)
 {
     Set_Hamiltonian_OTF_Release();
-    Set_Orbitals_Grid_OTF_Release();
+    Set_Orbitals_Grid_OTF_Release(orbital_state);
 }
 
 /* the device bytes of the on-the-fly state of this rank */
-static size_t Set_Hamiltonian_OTF_DeviceBytes(void)
+static size_t Set_Hamiltonian_OTF_DeviceBytes(OpenMXOrbitalGpuState *orbital_state)
 {
     const SetHamOTFState *st = &Set_Hamiltonian_OTF_State;
-    size_t bytes = OTF_Orbitals_Bytes();
+    size_t bytes = OTF_Orbitals_Bytes(orbital_state);
 
     if (st->d_gla != NULL) bytes += 3 * sizeof(int) * st->sph_total;
     return bytes;
@@ -1612,7 +1612,7 @@ static int SetH_OTF_UploadPotential(double *d_vgrid, int spin_count, size_t vgri
 
 /* 1 when this rank's matrix elements were computed on the device; 0 leaves
    them untouched for the table or CPU path.  Rank-local. */
-static int Calc_MatrixElements_dVH_Vxc_VNA_OnTheFly(const OpenMXAtomicViews *atomic, int Cnt_kind, int myid, const OpenMXElectronicViews *electronic)
+static int Calc_MatrixElements_dVH_Vxc_VNA_OnTheFly(OpenMXOrbitalGpuState *orbital_state, const OpenMXAtomicViews *atomic, int Cnt_kind, int myid, const OpenMXElectronicViews *electronic)
 {
   double *****H=electronic->H;
 
@@ -1639,7 +1639,7 @@ static int Calc_MatrixElements_dVH_Vxc_VNA_OnTheFly(const OpenMXAtomicViews *ato
 
     if (Cnt_kind != 0 || Matomnum <= 0 || !Set_Hamiltonian_OTF_Enabled() ||
         !Set_Hamiltonian_MatrixElements_OpenMP_Enabled() || !Set_Hamiltonian_OTF_Rank_Selected()) return 0;
-    if (!Set_Orbitals_Grid_OTF_Prepare(atomic) || !Set_Hamiltonian_OTF_Ensure(atomic)) return 0;
+    if (!Set_Orbitals_Grid_OTF_Prepare(orbital_state, atomic) || !Set_Hamiltonian_OTF_Ensure(atomic)) return 0;
     if (timing) { dtime(&t_mark); t_start = t_mark; }
     pl = SetH_OTF_GetPlan(0, spin_count);
     if (pl == NULL) return 0;
@@ -1666,13 +1666,13 @@ static int Calc_MatrixElements_dVH_Vxc_VNA_OnTheFly(const OpenMXAtomicViews *ato
 
         if (!SetH_OTF_Upload(pl, bt, arena)) goto done;
         SETH_OTF_TIME(t_pack);
-        if (OTF_Orbitals_Eval(NULL, bt->na, bt->max_sphere, (const OTF_Atom *)(void *)(arena + bt->o_a_items),
+        if (OTF_Orbitals_Eval(orbital_state, NULL, bt->na, bt->max_sphere, (const OTF_Atom *)(void *)(arena + bt->o_a_items),
                               (const int *)(void *)(arena + bt->o_a_npts),
                               (const size_t *)(void *)(arena + bt->o_a_ioff),
                               (const size_t *)(void *)(arena + bt->o_a_ooff),
                               (const size_t *)(void *)(arena + bt->o_a_soff), NULL, st->d_gla, st->d_cla,
                               (float *)(void *)(arena + bt->o_o0)) != 0) goto done;
-        if (OTF_Orbitals_Eval(NULL, bt->np, bt->max_nolg, (const OTF_Atom *)(void *)(arena + bt->o_p_items),
+        if (OTF_Orbitals_Eval(orbital_state, NULL, bt->np, bt->max_nolg, (const OTF_Atom *)(void *)(arena + bt->o_p_items),
                               (const int *)(void *)(arena + bt->o_p_npts),
                               (const size_t *)(void *)(arena + bt->o_p_ioff),
                               (const size_t *)(void *)(arena + bt->o_p_ooff),
@@ -1742,7 +1742,7 @@ static int Calc_MatrixElements_dVH_Vxc_VNA_OnTheFly(const OpenMXAtomicViews *ato
         if (last_batches != batch_count || last_workspace / 16 < drift || (3 <= level_stdout && drift != 0)) {
             printf("<Set_Hamiltonian> GPU on-the-fly orbital tiles: %d batch(es) of %.1f MiB on rank %d, %s "
                    "evaluation, %s plan\n", batch_count, (double)pl->arena_bytes / (1024.0 * 1024.0), myid,
-                   OTF_Orbitals_DoubleFloat() ? "double-float" : "FP64",
+                   OTF_Orbitals_DoubleFloat(orbital_state) ? "double-float" : "FP64",
                    SetH_OTF_PlanCacheEnabled() ? "cached" : "per-call");
             fflush(stdout);
             last_workspace = pl->arena_bytes;
@@ -1780,7 +1780,7 @@ int Set_Hamiltonian_Hip_OTF_Density(int pair_count, int max_nolg, int spin_count
    OPENMX_DENSITY_GRID_ONTHEFLY=0 turns it off. */
 /* rank-local: whether this rank can take the on-the-fly density (the
    caller agrees on it across the ranks before the single-owner service) */
-int Set_Density_Grid_OTF_Possible(const OpenMXAtomicViews *atomic, int Cnt_kind)
+int Set_Density_Grid_OTF_Possible(OpenMXOrbitalGpuState *orbital_state, const OpenMXAtomicViews *atomic, int Cnt_kind)
 {
 
 
@@ -1793,7 +1793,7 @@ int Set_Density_Grid_OTF_Possible(const OpenMXAtomicViews *atomic, int Cnt_kind)
     /* a rank without atoms has nothing to compute and must not hold the
        others back (the caller takes the minimum over the ranks) */
     if (Matomnum <= 0) return 1;
-    return Set_Orbitals_Grid_OTF_Prepare(atomic) && Set_Hamiltonian_OTF_Ensure(atomic);
+    return Set_Orbitals_Grid_OTF_Prepare(orbital_state, atomic) && Set_Hamiltonian_OTF_Ensure(atomic);
 }
 
 /* Plan before the density dispatch, as in the NVIDIA implementation.  This
@@ -1802,14 +1802,14 @@ int Set_Density_Grid_OTF_Possible(const OpenMXAtomicViews *atomic, int Cnt_kind)
    reserve as Run, rather than the NVIDIA pair-workspace accounting.  This
    check is rank-local; the locked allocation in Run remains authoritative
    when peer ranks allocate after this snapshot. */
-int Set_Density_Grid_OTF_Prepare(const OpenMXAtomicViews *atomic, int Cnt_kind, size_t *need_bytes, size_t *available_bytes)
+int Set_Density_Grid_OTF_Prepare(OpenMXOrbitalGpuState *orbital_state, const OpenMXAtomicViews *atomic, int Cnt_kind, size_t *need_bytes, size_t *available_bytes)
 {
     SetHOTFPlan *pl;
     size_t free_bytes = 0, total_bytes = 0;
     const size_t reserve = (size_t)256 * 1024 * 1024;
 
     *need_bytes = *available_bytes = 0;
-    if (!Set_Density_Grid_OTF_Possible(atomic, Cnt_kind)) return 0;
+    if (!Set_Density_Grid_OTF_Possible(orbital_state, atomic, Cnt_kind)) return 0;
     if (Matomnum <= 0) return 1;
     pl = SetH_OTF_GetPlan(1, SpinP_switch + 1);
     if (pl == NULL) return 0;
@@ -1819,7 +1819,7 @@ int Set_Density_Grid_OTF_Prepare(const OpenMXAtomicViews *atomic, int Cnt_kind, 
     return pl->arena_bytes <= *available_bytes;
 }
 
-int Set_Density_Grid_OTF_Run(const OpenMXAtomicViews *atomic, int Cnt_kind, double *****CDM, double ***Tmp_Den_Grid)
+int Set_Density_Grid_OTF_Run(OpenMXOrbitalGpuState *orbital_state, const OpenMXAtomicViews *atomic, int Cnt_kind, double *****CDM, double ***Tmp_Den_Grid)
 {
     const int spin_count = SpinP_switch + 1;
     SetHamOTFState *st = &Set_Hamiltonian_OTF_State;
@@ -1849,7 +1849,7 @@ int Set_Density_Grid_OTF_Run(const OpenMXAtomicViews *atomic, int Cnt_kind, doub
         }
         return 0;
     }
-    if (!Set_Orbitals_Grid_OTF_Prepare(atomic) || !Set_Hamiltonian_OTF_Ensure(atomic)) return 0;
+    if (!Set_Orbitals_Grid_OTF_Prepare(orbital_state, atomic) || !Set_Hamiltonian_OTF_Ensure(atomic)) return 0;
     if (timing) { dtime(&t_mark); t_start = t_mark; }
     pl = SetH_OTF_GetPlan(1, spin_count);
     if (pl == NULL) return 0;
@@ -1880,13 +1880,13 @@ int Set_Density_Grid_OTF_Run(const OpenMXAtomicViews *atomic, int Cnt_kind, doub
         if (!SetH_OTF_Upload(pl, bt, arena) ||
             hipMemset(arena + bt->o_den, 0, (size_t)spin_count * bt->sph * sizeof(double)) != hipSuccess) goto done;
         SDG_OTF_TIME(t_pack);
-        if (OTF_Orbitals_Eval(NULL, bt->na, bt->max_sphere, (const OTF_Atom *)(void *)(arena + bt->o_a_items),
+        if (OTF_Orbitals_Eval(orbital_state, NULL, bt->na, bt->max_sphere, (const OTF_Atom *)(void *)(arena + bt->o_a_items),
                               (const int *)(void *)(arena + bt->o_a_npts),
                               (const size_t *)(void *)(arena + bt->o_a_ioff),
                               (const size_t *)(void *)(arena + bt->o_a_ooff),
                               (const size_t *)(void *)(arena + bt->o_a_soff), NULL, st->d_gla, st->d_cla,
                               (float *)(void *)(arena + bt->o_o0)) != 0) goto done;
-        if (OTF_Orbitals_Eval(NULL, bt->np, bt->max_nolg, (const OTF_Atom *)(void *)(arena + bt->o_p_items),
+        if (OTF_Orbitals_Eval(orbital_state, NULL, bt->np, bt->max_nolg, (const OTF_Atom *)(void *)(arena + bt->o_p_items),
                               (const int *)(void *)(arena + bt->o_p_npts),
                               (const size_t *)(void *)(arena + bt->o_p_ioff),
                               (const size_t *)(void *)(arena + bt->o_p_ooff),
@@ -1937,7 +1937,7 @@ int Set_Density_Grid_OTF_Run(const OpenMXAtomicViews *atomic, int Cnt_kind, doub
         /* mode as the NVIDIA version prints it: 2 double-float, 0 FP64 */
         fprintf(stderr, "SETHOTFDENPROF id=%d batches=%d workspace_mib=%.1f mode=%d pack=%.3f eval=%.3f device=%.3f "
                         "total=%.3f\n", myid, batch_count, (double)pl->arena_bytes / (1024.0 * 1024.0),
-                OTF_Orbitals_DoubleFloat() ? 2 : 0, t_plan + t_alloc + t_pack, t_eval, t_kernel + t_unpack,
+                OTF_Orbitals_DoubleFloat(orbital_state) ? 2 : 0, t_plan + t_alloc + t_pack, t_eval, t_kernel + t_unpack,
                 t_now - t_start);
     }
 #undef SDG_OTF_TIME
@@ -2214,7 +2214,7 @@ static void SetH_stage_figures(size_t table_need, size_t table_budget, int Cnt_k
     }
 }
 
-void Calc_MatrixElements_dVH_Vxc_VNA(OpenMXGridWorkspace *grid, const OpenMXAtomicViews *atomic, int Cnt_kind, const OpenMXElectronicViews *electronic)
+void Calc_MatrixElements_dVH_Vxc_VNA(OpenMXOrbitalGpuState *orbital_state, OpenMXGridWorkspace *grid, const OpenMXAtomicViews *atomic, int Cnt_kind, const OpenMXElectronicViews *electronic)
 {
     int myid,use_tables=0,local_done=0,stage_on_host=0,stage_voted=0;
     Set_Hamiltonian_MatrixElements_GPU_Used=0;
@@ -2240,12 +2240,12 @@ void Calc_MatrixElements_dVH_Vxc_VNA(OpenMXGridWorkspace *grid, const OpenMXAtom
             if(0<Set_Hamiltonian_ME_ResidentBytes())Set_Hamiltonian_Invalidate_OpenMP_MatrixElements_Cache();
         }
         else if(use_tables && (Set_Hamiltonian_ME_CacheReusable(Cnt_kind) || Set_Hamiltonian_ME_KeepDeviceResident())) {
-            Calc_MatrixElements_dVH_Vxc_VNA_OpenMP(grid, atomic, Cnt_kind, electronic);local_done=1;
-        } else if(Calc_MatrixElements_dVH_Vxc_VNA_OnTheFly(atomic, Cnt_kind,myid, electronic)) {
+            Calc_MatrixElements_dVH_Vxc_VNA_OpenMP(orbital_state, grid, atomic, Cnt_kind, electronic);local_done=1;
+        } else if(Calc_MatrixElements_dVH_Vxc_VNA_OnTheFly(orbital_state, atomic, Cnt_kind,myid, electronic)) {
             if(Matomnum>0)Set_Hamiltonian_MatrixElements_GPU_Used=1;
             local_done=1;
         } else if(use_tables) {
-            Calc_MatrixElements_dVH_Vxc_VNA_OpenMP(grid, atomic, Cnt_kind, electronic);local_done=1;
+            Calc_MatrixElements_dVH_Vxc_VNA_OpenMP(orbital_state, grid, atomic, Cnt_kind, electronic);local_done=1;
         }
     }
     /* All ranks rendezvous after the existing MI300A/Radeon fast paths.
@@ -2711,7 +2711,7 @@ static void Calc_MatrixElements_dVH_Vxc_VNA_OpenMP_Resident(OpenMXGridWorkspace 
     free(hbuf);
 }
 
-static void Calc_MatrixElements_dVH_Vxc_VNA_OpenMP(OpenMXGridWorkspace *grid, const OpenMXAtomicViews *atomic, int Cnt_kind, const OpenMXElectronicViews *electronic)
+static void Calc_MatrixElements_dVH_Vxc_VNA_OpenMP(OpenMXOrbitalGpuState *orbital_state, OpenMXGridWorkspace *grid, const OpenMXAtomicViews *atomic, int Cnt_kind, const OpenMXElectronicViews *electronic)
 {
   double *****CntH=electronic->CntH;
   double *****H=electronic->H;
@@ -2904,7 +2904,7 @@ static void Calc_MatrixElements_dVH_Vxc_VNA_OpenMP(OpenMXGridWorkspace *grid, co
     {
 
         if (openmx_env_flag_at(OPENMX_ENV_OTF_CHECK, 0) && Cnt_kind == 0) {
-            Set_Hamiltonian_OTF_Check(atomic, pair_count, pair_Mc_AN, pair_h_AN, pair_NO0, pair_NO1, pair_NOLG,
+            Set_Hamiltonian_OTF_Check(orbital_state, atomic, pair_count, pair_Mc_AN, pair_h_AN, pair_NO0, pair_NO1, pair_NOLG,
                                       pair_nolg_offset, pair_orbs1_offset, nolg_Nc, total_nolg_all,
                                       orbs0buf, packed_total_orbs0, orbs1buf, packed_total_orbs1, myid);
         }

@@ -57,6 +57,7 @@ import re
 import shlex
 import subprocess
 import tempfile
+import sys
 
 
 def function(source, name):
@@ -83,6 +84,7 @@ STUB_HIP = r'''
 /* stub HIP runtime for a host build of orbs_otf_hip.cu */
 #pragma once
 #include <cstddef>
+#include <memory>
 #include <cstdlib>
 #include <cstring>
 
@@ -107,6 +109,8 @@ extern int stub_launch_fail, stub_last_error;
 
 /* C linkage: the extracted C code of Set_Orbitals_Grid.c calls them too */
 extern "C" {
+hipError_t hipGetDevice(int *device);
+hipError_t hipSetDevice(int device);
 hipError_t hipMalloc(void **p, size_t n);
 hipError_t hipFree(void *p);
 hipError_t hipMemcpy(void *d, const void *s, size_t n, hipMemcpyKind kind);
@@ -145,9 +149,38 @@ CXX_TEST = r'''
 #include <cstring>
 #include <new>
 #include <vector>
+#include <array>
 
 #include "orbs_otf_hip.cu"
 #include "openmx_precision.h"
+
+extern "C" { OpenMXOrbitalGpuState *test_orbital_state=nullptr; }
+static auto owned_upload=&OTF_Orbitals_Upload;
+static auto owned_release=&OTF_Orbitals_Release;
+static auto owned_ready=&OTF_Orbitals_Ready;
+static auto owned_eval=&OTF_Orbitals_Eval;
+static auto owned_fp64=&OTF_Orbitals_Eval_FP64;
+static int fixture_upload(const OTF_HostTables *t,int df) {return OTF_Orbitals_Upload(test_orbital_state,t,df);}
+static void fixture_release() {OTF_Orbitals_Release(test_orbital_state);}
+static int fixture_ready() {return OTF_Orbitals_Ready(test_orbital_state);}
+static int fixture_df() {return OTF_Orbitals_DoubleFloat(test_orbital_state);}
+static size_t fixture_bytes() {return OTF_Orbitals_Bytes(test_orbital_state);}
+static int fixture_eval(void *stream,int n,int maxn,const OTF_Atom *a,const int *np,
+    const size_t *ix,const size_t *outoff,const size_t *sph,const int *idx,const int *gla,const int *cla,float *out) {
+  return OTF_Orbitals_Eval(test_orbital_state,stream,n,maxn,a,np,ix,outoff,sph,idx,gla,cla,out);
+}
+static int fixture_fp64(void *stream,int n,int maxn,const OTF_Atom *a,const int *np,
+    const size_t *ix,const size_t *outoff,const size_t *sph,const int *idx,const int *gla,const int *cla,float *out) {
+  return OTF_Orbitals_Eval_FP64(test_orbital_state,stream,n,maxn,a,np,ix,outoff,sph,idx,gla,cla,out);
+}
+#define OTF_Orbitals_Upload fixture_upload
+#define OTF_Orbitals_Release fixture_release
+#define OTF_Orbitals_Ready fixture_ready
+#define OTF_Orbitals_DoubleFloat fixture_df
+#define OTF_Orbitals_Bytes fixture_bytes
+#define OTF_Orbitals_Eval fixture_eval
+#define OTF_Orbitals_Eval_FP64 fixture_fp64
+#define g_dev (test_orbital_state->tables)
 
 #define CHECK(condition) do { if (!(condition)) { \
     fprintf(stderr, "FAIL line %d: %s\n", __LINE__, #condition); exit(2); \
@@ -158,6 +191,10 @@ CXX_TEST = r'''
 dim3 blockIdx, threadIdx, blockDim, gridDim;
 int stub_malloc_fail_at, stub_malloc_fail_count = 1, stub_memcpy_fail_at, stub_launch_fail;
 int stub_mallocs, stub_memcpys, stub_live, stub_last_error;
+static int stub_device=0,stub_device_queries=0;
+static std::array<std::pair<void*,int>,64> device_allocations;
+extern "C" hipError_t hipGetDevice(int *d) {stub_device_queries++;*d=stub_device;return hipSuccess;}
+extern "C" hipError_t hipSetDevice(int d) {stub_device=d;return hipSuccess;}
 
 /* hipMalloc number fail_at .. fail_at + fail_count - 1 fails */
 extern "C" hipError_t hipMalloc(void **p, size_t n)
@@ -172,6 +209,9 @@ extern "C" hipError_t hipMalloc(void **p, size_t n)
     return stub_last_error = hipErrorOutOfMemory;
   }
   memset(*p, 0xa5, n);   /* the arena's padding is garbage, as on the device */
+  bool recorded=false;
+  for(auto &a:device_allocations)if(!a.first){a={*p,stub_device};recorded=true;break;}
+  CHECK(recorded);
   stub_live++;
   return hipSuccess;
 }
@@ -179,6 +219,9 @@ extern "C" hipError_t hipMalloc(void **p, size_t n)
 extern "C" hipError_t hipFree(void *p)
 {
   if (p != nullptr) {
+    bool recorded=false;
+    for(auto &a:device_allocations)if(a.first==p){CHECK(a.second==stub_device);a={};recorded=true;break;}
+    CHECK(recorded);
     stub_live--;
     free(p);
   }
@@ -201,26 +244,7 @@ extern "C" hipError_t hipGetLastError(void)
   return e;
 }
 
-/* host allocations (the double-float tables) with failure injection */
-static long new_fail_at, new_count, new_live;
-
-void *operator new(std::size_t n)
-{
-  void *p;
-  if (++new_count == new_fail_at) throw std::bad_alloc();
-  p = std::malloc(n ? n : 1);
-  if (p == nullptr) throw std::bad_alloc();
-  new_live++;
-  return p;
-}
-void operator delete(void *p) noexcept
-{
-  if (p != nullptr) {
-    new_live--;
-    std::free(p);
-  }
-}
-void operator delete(void *p, std::size_t) noexcept { operator delete(p); }
+#include "allocation_faults.hpp"
 
 /* ---- two species: 0 the mesh of the NVIDIA test, 1 a longer logarithmic one ---- */
 
@@ -737,16 +761,26 @@ static int upload_checks(void)
     }
     stub_memcpy_fail_at = 0;
     for (int k = 1; double_float && k <= 3; k++) {
-      const long live = new_live;
+      const long live = openmx::test::live_allocations();
 
       stub_mallocs = 0;
-      new_count = 0;
-      new_fail_at = k;
+      openmx::test::fail_allocation_after(k-1);
       CHECK(OTF_Orbitals_Upload(&t, double_float) == 0);
-      CHECK(!OTF_Orbitals_Ready() && stub_live == 0 && stub_mallocs == 0 && new_live == live);
+      CHECK(!OTF_Orbitals_Ready() && stub_live == 0 && stub_mallocs == 0 && openmx::test::live_allocations() == live);
       checks++;
     }
-    new_fail_at = 0;
+    openmx::test::fail_allocation_after(-1);
+    // The arena already exists when ownership metadata allocation fails.
+    // Its temporary RAII owner must release it without publishing the table.
+    {
+      const long before=openmx::test::live_allocations();
+      stub_mallocs=0;openmx::test::fail_allocation_after(double_float?3:0);
+      CHECK(OTF_Orbitals_Upload(&t,double_float)==0);
+      openmx::test::fail_allocation_after(-1);
+      CHECK(!OTF_Orbitals_Ready() && stub_live==0 && stub_mallocs==1 && openmx::test::live_allocations()==before);
+      CHECK(openmx_core_native_resource_count(test_orbital_state->resources)==0);
+      checks++;
+    }
     stub_memcpys = 0;
     CHECK(OTF_Orbitals_Upload(&t, double_float) == 1);
     CHECK(stub_memcpys == copies && stub_live == 1 && OTF_Orbitals_Ready() && 0 < OTF_Orbitals_Bytes());
@@ -781,10 +815,10 @@ extern "C" {
 int upload_force = 0, upload_calls = 0;
 
 /* Set_Orbitals_Grid_OTF_Prepare's OTF_Orbitals_Upload: forced result or the real one */
-int test_OTF_Orbitals_Upload(const OTF_HostTables *t, int double_float)
+int test_OTF_Orbitals_Upload(OpenMXOrbitalGpuState *orbital_state, const OTF_HostTables *t, int double_float)
 {
   upload_calls++;
-  return upload_force ? upload_force : OTF_Orbitals_Upload(t, double_float);
+  return upload_force ? upload_force : owned_upload(orbital_state,t,double_float);
 }
 
 void test_device_fail(int malloc_at, int memcpy_at)
@@ -851,12 +885,46 @@ int run_prepare_tests(int *checks);
 int run_table_tests(int *checks);
 }
 
+
+static void owner_lifetimes() {
+  char error[256];
+  // Empty bind/clear/destroy must not initialize any GPU runtime.
+  int queries=stub_device_queries;
+  auto *empty=openmx_core_create_host(error,sizeof(error));CHECK(empty);
+  (void)Set_Orbitals_Grid_GPU_Bind_Resources(empty);
+  openmx_core_native_resources_clear(empty);openmx_core_destroy(empty);
+  CHECK(stub_device_queries==queries);
+  const OTF_HostTables t=tables();
+  for(int cycle=0;cycle<8;cycle++) {
+    auto *a=openmx_core_create_host(error,sizeof(error));CHECK(a);
+    auto *b=openmx_core_create_host(error,sizeof(error));CHECK(b);
+    auto *sa=Set_Orbitals_Grid_GPU_Bind_Resources(a),*sb=Set_Orbitals_Grid_GPU_Bind_Resources(b);
+    CHECK(sa!=sb && sa==Set_Orbitals_Grid_GPU_Bind_Resources(a));
+    stub_device=1;CHECK(owned_upload(sa,&t,1)==1);
+    stub_device=cycle%2?1:2;CHECK(owned_upload(sb,&t,0)==1);auto *keep=sb->tables.arena;
+    std::vector<unsigned char> bytes(keep,keep+sb->tables.bytes);
+    stub_device=7;openmx_core_native_resources_clear(a);CHECK(stub_device==7 && stub_live==1);
+    CHECK(owned_ready(sb) && keep==sb->tables.arena &&
+          std::memcmp(bytes.data(),keep,bytes.size())==0);
+    sa=Set_Orbitals_Grid_GPU_Bind_Resources(a);CHECK(!owned_ready(sa));
+    stub_device=3;CHECK(owned_upload(sa,&t,1)==1);
+    stub_device=7;openmx_core_finish(a);CHECK(stub_device==7 && stub_live==1);
+    openmx_core_destroy(a);openmx_core_destroy(b);CHECK(stub_device==7 && stub_live==0);
+  }
+  stub_device=0;
+  std::puts("PASS: HIP orbital ownership, empty bind, 8 dual contexts, clear/finish and device restoration");
+}
+
 int main(void)
 {
   int radial = 0, upload = 0, prepare = 0, table = 0;
   Tally tally;
 
   build_species();
+  owner_lifetimes();
+  char error[256];
+  OpenMXCoreContext *core=openmx_core_create_host(error,sizeof(error));CHECK(core);
+  test_orbital_state=Set_Orbitals_Grid_GPU_Bind_Resources(core);
 
   /* 2: FP64 upload, then double-float upload with the forced FP64 */
   {
@@ -905,6 +973,7 @@ int main(void)
          "checks; %d prepare checks; %d table build checks\n",
          radial, tally.values, tally.points, tally.below, tally.beyond, tally.end_intervals, tally.worst64,
          tally.worst_df, tally.worst_tiny, tally.df_differ, tally.df_tiny, upload, prepare, table);
+  openmx_core_destroy(core);
   return 0;
 }
 '''
@@ -919,7 +988,9 @@ C_PREFIX = r'''
 
 #include "orbs_otf_hip.h"
 #include "openmx_core_atomic.h"
+#include "orbs_otf_state_hip.h"
 #include "openmx_env.h"
+extern OpenMXOrbitalGpuState *test_orbital_state;
 
 enum { GPUSOLVER=1 };
 static int scf_eigen_lib_flag=GPUSOLVER;
@@ -957,7 +1028,7 @@ int gpu_rank_device_usable(void) { return device_usable; }
 int openmx_gpu_fp32_fp64_ratio(void) { return fp_ratio; }
 
 /* the C++ side */
-int test_OTF_Orbitals_Upload(const OTF_HostTables *t, int double_float);
+int test_OTF_Orbitals_Upload(OpenMXOrbitalGpuState *orbital_state, const OTF_HostTables *t, int double_float);
 extern int upload_force, upload_calls;
 void test_device_fail(int malloc_at, int memcpy_at);
 void test_device_fail_window(int malloc_at, int count, int launch);
@@ -1010,6 +1081,11 @@ C_TEST = r'''
 #undef calloc
 #undef free
 #undef OTF_Orbitals_Upload
+#define Set_Orbitals_Grid_OTF_Prepare(atomic) Set_Orbitals_Grid_OTF_Prepare(test_orbital_state,atomic)
+#define Set_Orbitals_Grid_OTF_Release() Set_Orbitals_Grid_OTF_Release(test_orbital_state)
+#define Set_Orbitals_Grid_GPU(atomic) Set_Orbitals_Grid_GPU(test_orbital_state,atomic)
+#define OTF_Orbitals_Ready() OTF_Orbitals_Ready(test_orbital_state)
+#define OTF_Orbitals_DoubleFloat() OTF_Orbitals_DoubleFloat(test_orbital_state)
 
 /* the species of the C++ side in OpenMX's arrays */
 enum { NS = 2 };
@@ -1427,7 +1503,7 @@ def c_harness(sog):
     parts = [C_PREFIX, '#include "openmx_precision.h"',
              line(sog, r"^#define\s+SOG_L0MAX\b.*$"),
              line(sog, r"^#define\s+SOG_MULMAX\b.*$"),
-             line(sog, r"^int Set_Orbitals_Grid_OTF_Prepare\(const OpenMXAtomicViews \*atomic\);$"),
+             line(sog, r"^int Set_Orbitals_Grid_OTF_Prepare\(OpenMXOrbitalGpuState \*orbital_state, const OpenMXAtomicViews \*atomic\);$"),
              function(sog, "SOG_rows_requested"),
              function(sog, "SOG_gpu_requested"),
              function(sog, "SOG_gpu_eligible"),
@@ -1435,11 +1511,12 @@ def c_harness(sog):
              function(sog, "SOG_arena_try"),
              function(sog, "Set_Orbitals_Grid_GPU"),
              line(sog, r"^extern int openmx_gpu_fp32_fp64_ratio\(void\);$"),
-             line(sog, r"^static int SOG_otf_unavailable = 0;$"),
-             line(sog, r"^static int SOG_otf_fp32_enabled = -1;$"),
              function(sog, "SOG_otf_double_float"),
              function(sog, "Set_Orbitals_Grid_OTF_Release"),
              function(sog, "Set_Orbitals_Grid_OTF_Prepare"),
+             function(sog, "Set_Orbitals_Grid_GPU_Release"),
+             function(sog, "SOG_Reset"),
+             function(sog, "Set_Orbitals_Grid_GPU_Bind_Resources"),
              C_TEST]
     return "\n\n".join(parts)
 
@@ -1463,6 +1540,7 @@ def static_checks(sources, makefile):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--core-library", type=Path, default=os.environ.get("OPENMX_CORE_LIBRARY"))
     parser.add_argument("--cc", default=os.environ.get("CC", "cc"), help="C compiler (default: $CC or cc)")
     parser.add_argument("--cxx", default=None,
                         help="C++ compiler (default: $CXX, else g++ / clang++ after --cc)")
@@ -1471,22 +1549,30 @@ def main():
                         help="directory holding orbs_otf_hip.cu, orbs_otf_hip.h and Set_Orbitals_Grid.c "
                              "(default: the repository's source/)")
     args = parser.parse_args()
-    root = Path(__file__).resolve().parents[1]
-    source_dir = Path(args.source).resolve() if args.source else root / "source"
+    root = Path(__file__).resolve().parents[4]
+    if not args.core_library:parser.error("--core-library or OPENMX_CORE_LIBRARY is required")
+    library=Path(args.core_library).resolve(strict=True)
+    sys.path.insert(0,str(root/'tests'))
+    from native_state_test_support import (compiler_command, bounded_stack,
+        allocation_fault_source, allocation_fault_environment)
+    if args.no_sanitize:os.environ['OPENMX_TEST_SANITIZERS']='OFF'
+    cc_command=compiler_command('c',args.cc)
+
+    source_dir = Path(args.source).resolve() if args.source else root / "source/backends/hip/src"
+    headers=source_dir if (source_dir/"orbs_otf_hip.h").exists() else root/"source/backends/hip/include"
     cxx = args.cxx or os.environ.get("CXX")
     if cxx is None:
         # the C++ driver next to the C compiler (--cc /opt/rocm/llvm/bin/clang -> its clang++)
         cc = Path(shlex.split(args.cc)[0])
         name = "clang++" if "clang" in cc.name else "g++"
         cxx = str(cc.with_name(name)) if cc.parent != Path(".") and cc.with_name(name).exists() else name
-    sources = {name: (source_dir / name).read_text()
+    cxx_command=compiler_command('c++',cxx)
+    sources = {name: ((source_dir if name.endswith((".cu",".c")) else headers) / name).read_text()
                for name in ("orbs_otf_hip.cu", "orbs_otf_hip.h", "Set_Orbitals_Grid.c")}
-    makefile = (source_dir / "makefile") if (source_dir / "makefile").exists() else root / "source/makefile"
+    makefile = (source_dir / "makefile") if (source_dir / "makefile").exists() else root / "source/backends/hip/Makefile"
     static_checks(sources, makefile.read_text())
 
-    flags = ["-O1", "-g", "-ffp-contract=off", "-fno-omit-frame-pointer"]
-    if not args.no_sanitize:
-        flags += ["-fsanitize=address,undefined", "-fno-sanitize-recover=all"]
+    flags = ["-ffp-contract=off", "-fno-omit-frame-pointer"]
     with tempfile.TemporaryDirectory(prefix="openmx-orbs-test-") as directory:
         work = Path(directory)
         (work / "hip").mkdir()
@@ -1495,24 +1581,24 @@ def main():
         (work / "orbs_otf_hip.h").write_text(sources["orbs_otf_hip.h"])
         (work / "otf_test.cpp").write_text(CXX_TEST)
         (work / "prepare_test.c").write_text(c_harness(sources["Set_Orbitals_Grid.c"]))
-        include = ["-I" + str(work), "-I" + str(root / "source")]
-        subprocess.run([*shlex.split(args.cc), *flags, "-std=c11", *include, "-c", str(work / "prepare_test.c"),
+        include = ["-I" + str(work), "-I" + str(root / "source"), "-I"+str(headers), "-I"+str(root/"core/tests")]
+        subprocess.run([*cc_command, *flags, "-std=c11", "-x", "c", *include, "-c", str(work / "prepare_test.c"),
                         "-o", str(work / "prepare_test.o")], check=True)
-        subprocess.run([*shlex.split(cxx), *flags, "-std=c++17", "-Wno-unknown-pragmas", *include, "-c",
+        subprocess.run([*cxx_command, *flags, "-std=c++17", "-Wno-unknown-pragmas", *include, "-c",
                         str(work / "otf_test.cpp"), "-o", str(work / "otf_test.o")], check=True)
-        subprocess.run([*shlex.split(args.cc), *flags, "-std=c11", *include, "-c",
+        subprocess.run([*cc_command, *flags, "-std=c11", "-x", "c", *include, "-c",
                         str(root / "source/openmx_precision.c"), "-o", str(work / "precision.o")], check=True)
         # the typed environment readers of the production code (unsynchronised:
         # they read the variables the checks set and unset)
-        subprocess.run([*shlex.split(args.cc), *flags, "-std=c11", *include, "-c",
+        subprocess.run([*cc_command, *flags, "-std=c11", "-x", "c", *include, "-c",
                         str(root / "source/openmx_env.c"), "-o", str(work / "env.o")], check=True)
-        subprocess.run([*shlex.split(cxx), *flags, str(work / "otf_test.o"), str(work / "prepare_test.o"),
-                        str(work / "precision.o"), str(work / "env.o"), "-lm",
+        subprocess.run([*cxx_command, *flags, str(work / "otf_test.o"), str(work / "prepare_test.o"),
+                        str(work / "precision.o"), str(work / "env.o"), allocation_fault_source(work), str(library), "-Wl,-rpath,"+str(library.parent), "-lm",
                         "-o", str(work / "check")], check=True)
-        env = os.environ.copy()
+        env = dict(os.environ, **allocation_fault_environment(work))
         for name in ("OPENMX_ORBS_GRID_GPU", "OPENMX_ORBS_EVAL_PRECISION"):
             env.pop(name, None)
-        subprocess.run([str(work / "check")], env=env, check=True)
+        subprocess.run([str(work / "check")], env=env, check=True, preexec_fn=bounded_stack)
 
 
 if __name__ == "__main__":

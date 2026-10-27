@@ -22,7 +22,7 @@ import sys
 import tempfile
 from mock_hip_sources import stage
 
-root = Path(__file__).resolve().parents[1]
+root = Path(__file__).resolve().parents[4]
 
 headers = {
 "hip_runtime_compat.h": r'''
@@ -86,7 +86,8 @@ int openmx_mgpu_host_precheck(int kp, int n, int z) {
 }
 /* T_RESIDENT: rank 1 holds resident tables; once every rank yielded, the
    distributed solve fits */
-size_t Set_Hamiltonian_DemoteResidency(void) {
+size_t Set_Hamiltonian_DemoteResidency(OpenMXOrbitalGpuState *orbital_state) {
+    if (orbital_state!=(OpenMXOrbitalGpuState *)&yield_calls) abort();
     int r; MPI_Comm_rank(MPI_COMM_WORLD, &r);
     ++yield_calls; yielded = 1;
     return env("T_RESIDENT") && r == 1;
@@ -124,7 +125,7 @@ int main(int argc, char **argv) {
     MPI_Comm_rank(MPI_COMM_WORLD, &myid);
     decision = openmx_cluster_capacity_select(MPI_COMM_WORLD, env("T_N"), env("T_COMPLEX"), "Cluster test");
     if (decision == OPENMX_CLUSTER_CAPACITY_GS2)
-        if (!openmx_cluster_gs2_admit(MPI_COMM_WORLD, 0, env("T_N"), 64, env("T_COMPLEX"), "Cluster test"))
+        if (!openmx_cluster_gs2_admit((OpenMXOrbitalGpuState *)&yield_calls,MPI_COMM_WORLD, 0, env("T_N"), 64, env("T_COMPLEX"), "Cluster test"))
             decision = OPENMX_CLUSTER_CAPACITY_CPU;
     MPI_Allreduce(&decision, &all_min, 1, MPI_INT, MPI_MIN, MPI_COMM_WORLD);
     MPI_Allreduce(&decision, &all_max, 1, MPI_INT, MPI_MAX, MPI_COMM_WORLD);
@@ -188,12 +189,12 @@ with tempfile.TemporaryDirectory(prefix="openmx-cluster-capacity-") as folder:
     (tmp / "openmx_stdout_level.h").write_text(
         '#pragma once\nextern int level_stdout;\n#define OPENMX_STDOUT_LEVEL(l) ((l) <= level_stdout)\n')
     (tmp / "test.c").write_text(mocks)
-    stage(root,tmp,"openmx_cluster_capacity.c","openmx_host_memory.c")
+    stage(root,tmp,"openmx_cluster_capacity.c","openmx_host_memory.c","openmx_env.c")
     exe = tmp / "test"
     # the mock headers come first; the production headers come from source/
     cmd = ["mpicc", "-std=gnu11", "-O1", "-Wall", "-I" + str(tmp), "-I" + str(root / "source"),
            str(tmp / "openmx_cluster_capacity.c"), str(tmp / "openmx_host_memory.c"),
-           str(tmp / "test.c"), "-o", str(exe)]
+           str(tmp / "openmx_env.c"), str(tmp / "test.c"), "-o", str(exe)]
     subprocess.run(cmd, check=True)
     for name, settings, want, text, plans, *absent in cases:
         run_env = dict(os.environ)

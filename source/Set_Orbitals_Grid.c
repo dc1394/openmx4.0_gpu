@@ -30,6 +30,7 @@
 #include <openacc.h>
 #include "set_cuda_default_device_from_local_rank.h"
 #include "orbs_grid_gpu.h"
+#include "openmx_native_resources.h"
 #include "openmx_precision.h"
 
 /***********************************************************************
@@ -1330,8 +1331,12 @@ static int Set_Orbitals_Grid_GPU(const OpenMXAtomicViews *atomic)
    the device; Set_Hamiltonian evaluates the orbitals of each batch of
    atom pairs from them instead of holding the multi-GiB tables.
    --------------------------------------------------------------------- */
-static SOG_DeviceTables SOG_devices[OPENMX_GPU_WORKERS_MAX];
-static int SOG_fp32_modes[OPENMX_GPU_WORKERS_MAX];
+struct OpenMXOrbitalGpuState {
+  OpenMXNativeResources *resources;
+  int initialized;
+  SOG_DeviceTables devices[OPENMX_GPU_WORKERS_MAX];
+  int fp32_modes[OPENMX_GPU_WORKERS_MAX];
+};
 static int SOG_cache_device(void)
 {
   int device=-1;
@@ -1341,8 +1346,8 @@ static int SOG_cache_device(void)
   }
   return device;
 }
-#define SOG_dev SOG_devices[SOG_cache_device()]
-#define SOG_dev_fp32_enabled SOG_fp32_modes[SOG_cache_device()]
+#define SOG_dev orbital_state->devices[SOG_cache_device()]
+#define SOG_dev_fp32_enabled orbital_state->fp32_modes[SOG_cache_device()]
 
 
 /* OPENMX_ORBS_EVAL_PRECISION: "df" or "fp64" for the on-the-fly
@@ -1370,10 +1375,10 @@ static int SOG_eval_double_float(void)
   }
 }
 
-void SOG_Device_Release(void)
+void SOG_Device_Release(OpenMXOrbitalGpuState *orbital_state)
 {
   if (SOG_dev.arena != NULL) {
-    acc_free(SOG_dev.arena);
+    OpenMX_Resource_AccFree(orbital_state->resources, SOG_dev.arena);
     if (cudaDeviceSynchronize() == cudaSuccess) acc_clear_freelists();
   }
   memset(&SOG_dev, 0, sizeof(SOG_dev));
@@ -1381,12 +1386,12 @@ void SOG_Device_Release(void)
 }
 
 /* Release every cache without initializing a GPU on a CPU-only run. */
-void SOG_Device_ReleaseAll(void)
+void SOG_Device_ReleaseAll(OpenMXOrbitalGpuState *orbital_state)
 {
   int saved_cuda=-1,saved_acc=-1,have_saved=0;
   acc_device_t saved_type=acc_device_none;
   for (int device=0;device<OPENMX_GPU_WORKERS_MAX;device++) {
-    if (SOG_devices[device].arena!=NULL) {
+    if (orbital_state->devices[device].arena!=NULL) {
       if (!have_saved) {
         (void)cudaGetDevice(&saved_cuda);
         saved_type=acc_get_device_type();saved_acc=acc_get_device_num(saved_type);
@@ -1397,10 +1402,10 @@ void SOG_Device_ReleaseAll(void)
         exit(EXIT_FAILURE);
       }
       acc_set_device_num(device,acc_device_nvidia);
-      SOG_Device_Release();
+      SOG_Device_Release(orbital_state);
     } else {
-      memset(SOG_devices+device,0,sizeof(SOG_devices[device]));
-      SOG_fp32_modes[device]=-1;
+      memset(orbital_state->devices+device,0,sizeof(orbital_state->devices[device]));
+      orbital_state->fp32_modes[device]=-1;
     }
   }
   if (have_saved) {
@@ -1409,7 +1414,7 @@ void SOG_Device_ReleaseAll(void)
   }
 }
 
-int SOG_Device_Prepare(const OpenMXAtomicViews *atomic)
+int SOG_Device_Prepare(OpenMXOrbitalGpuState *orbital_state, const OpenMXAtomicViews *atomic)
 {
   int w, L0, Mul0, i;
   size_t rv_cnt = 0, rwf_cnt = 0, atv_rows, r, pos = 0;
@@ -1422,7 +1427,7 @@ int SOG_Device_Prepare(const OpenMXAtomicViews *atomic)
 
   if (SOG_dev.ready) {
     if (SOG_dev_fp32_enabled == openmx_fp32_enabled()) return 1;
-    SOG_Device_Release();
+    SOG_Device_Release(orbital_state);
   }
   if (SOG_dev.unavailable) return 0;
   if (!SOG_gpu_eligible(0)) { SOG_dev.unavailable = 1; return 0; }
@@ -1536,6 +1541,11 @@ int SOG_Device_Prepare(const OpenMXAtomicViews *atomic)
   }
   arena = (unsigned char*)SOG_arena_try(pos);
   if (arena == NULL) goto host_fallback;
+  if (!OpenMX_Resource_Adopt(orbital_state->resources, OPENMX_RESOURCE_ACC, arena,
+      OpenMX_Resource_AccFreeCallback, NULL)) {
+    acc_free(arena);
+    goto host_fallback;
+  }
   acc_memcpy_to_device(arena + o_rv, pao_rv, sizeof(double) * (rv_cnt == 0 ? 1 : rv_cnt));
   acc_memcpy_to_device(arena + o_rwf, pao_rwf, sizeof(double) * (rwf_cnt == 0 ? 1 : rwf_cnt));
   acc_memcpy_to_device(arena + o_rvo, rv_off_h, sizeof(size_t) * (size_t)(SpeciesNum + 1));
@@ -1582,17 +1592,17 @@ host_fallback:
   return 0;
 }
 
-const char *SOG_Device_EvalPrecisionName(void)
+const char *SOG_Device_EvalPrecisionName(OpenMXOrbitalGpuState *orbital_state)
 {
   return SOG_dev.eval_df && openmx_fp32_enabled() ? "double-float" : "FP64";
 }
 
-const SOG_DeviceTables *SOG_Device_Tables(void)
+const SOG_DeviceTables *SOG_Device_Tables(OpenMXOrbitalGpuState *orbital_state)
 {
   return SOG_dev.ready ? &SOG_dev : NULL;
 }
 
-size_t SOG_Device_Bytes(void)
+size_t SOG_Device_Bytes(OpenMXOrbitalGpuState *orbital_state)
 {
   return SOG_dev.ready ? SOG_dev.bytes : 0;
 }
@@ -1847,7 +1857,7 @@ static int SOG_tile_worker(void *opaque,int worker,int phase)
   return 1;
 }
 
-static int SOG_tiles_distribute(SOG_TileWork *w)
+static int SOG_tiles_distribute(OpenMXOrbitalGpuState *orbital_state, SOG_TileWork *w)
 {
   if (w->n<=0 || !SOG_dev.ready) return 0;
   openmx_gpu_workers_local(&w->workers,(size_t)w->n);
@@ -1893,31 +1903,31 @@ static int SOG_tiles_distribute(SOG_TileWork *w)
   return ok;
 }
 
-void SOG_Device_EvalPairTiles(int n,const SOG_GpuPair *pairs,const int *count,
+void SOG_Device_EvalPairTiles(OpenMXOrbitalGpuState *orbital_state, int n,const SOG_GpuPair *pairs,const int *count,
     const size_t *noff,const size_t *ooff,const size_t *goff,const int *nc,
     const int *gla,const int *cla,float *out)
 {
   SOG_TileWork w={0};w.n=n;w.pairs=pairs;w.count=count;w.noff=noff;w.ooff=ooff;w.goff=goff;
   w.nc=nc;w.gla=gla;w.cla=cla;w.out=out;
-  if (!SOG_tiles_distribute(&w)) SOG_Device_EvalPairTiles_Part(&SOG_dev,n,pairs,count,noff,ooff,goff,nc,gla,cla,out);
+  if (!SOG_tiles_distribute(orbital_state, &w)) SOG_Device_EvalPairTiles_Part(&SOG_dev,n,pairs,count,noff,ooff,goff,nc,gla,cla,out);
 }
 
-void SOG_Device_EvalAtomTile(const SOG_GpuPair *pair,int n,const int *gla,const int *cla,float *out)
+void SOG_Device_EvalAtomTile(OpenMXOrbitalGpuState *orbital_state, const SOG_GpuPair *pair,int n,const int *gla,const int *cla,float *out)
 {
   SOG_TileWork w={0};w.kind=1;w.n=n;w.pair=*pair;w.gla=gla;w.cla=cla;w.out=out;
-  if (!SOG_tiles_distribute(&w)) SOG_Device_EvalAtomTile_Part(&SOG_dev,pair,n,gla,cla,out);
+  if (!SOG_tiles_distribute(orbital_state, &w)) SOG_Device_EvalAtomTile_Part(&SOG_dev,pair,n,gla,cla,out);
 }
 
-void SOG_Device_EvalPairChunk(const SOG_GpuPair *pair,int n,const int *nc,
+void SOG_Device_EvalPairChunk(OpenMXOrbitalGpuState *orbital_state, const SOG_GpuPair *pair,int n,const int *nc,
     const int *gla,const int *cla,float *out)
 {
   SOG_TileWork w={0};w.kind=2;w.n=n;w.pair=*pair;w.nc=nc;w.gla=gla;w.cla=cla;w.out=out;
-  if (!SOG_tiles_distribute(&w)) SOG_Device_EvalPairChunk_Part(&SOG_dev,pair,n,nc,gla,cla,out);
+  if (!SOG_tiles_distribute(orbital_state, &w)) SOG_Device_EvalPairChunk_Part(&SOG_dev,pair,n,nc,gla,cla,out);
 }
 
-double Set_Orbitals_Grid(OpenMXDensityGpuState *density_state, const OpenMXAtomicViews *atomic, int Cnt_kind, const OpenMXLocalBasisViews *local_basis)
+double Set_Orbitals_Grid(OpenMXOrbitalGpuState *orbital_state, OpenMXDensityGpuState *density_state, const OpenMXAtomicViews *atomic, int Cnt_kind, const OpenMXLocalBasisViews *local_basis)
 {
-  SOG_Device_ReleaseAll();   /* the grid frame may have changed */
+  SOG_Device_ReleaseAll(orbital_state);   /* the grid frame may have changed */
   int i,j,n,Mc_AN,Gc_AN,Cwan,NO0,GNc,GRc;
   int Gh_AN,Mh_AN,Rnh,Hwan,NO1,Nog,h_AN;
   long int k,Nc;
@@ -2693,4 +2703,35 @@ double Set_Orbitals_Grid(OpenMXDensityGpuState *density_state, const OpenMXAtomi
   time0 = TEtime - TStime;
 
   return time0;
+}
+
+
+void Set_Orbitals_Grid_GPU_Release(OpenMXOrbitalGpuState *orbital_state)
+{
+  SOG_Device_ReleaseAll(orbital_state);
+}
+
+static void SOG_Reset(OpenMXNativeResources *owner, void *metadata)
+{
+  (void)owner;
+  Set_Orbitals_Grid_GPU_Release((OpenMXOrbitalGpuState *)metadata);
+}
+
+OpenMXOrbitalGpuState *Set_Orbitals_Grid_GPU_Bind_Resources(OpenMXCoreContext *core)
+{
+  OpenMXNativeResources *owner=NULL;
+  void *metadata=NULL;
+  char error[256];
+  if (!openmx_core_native_resources_state(core, "Set_Orbitals_Grid_GPU",
+      sizeof(OpenMXOrbitalGpuState), SOG_Reset, &owner, &metadata, error, sizeof(error))) {
+    fprintf(stderr, "OpenMX orbital GPU state: %s\n", error);
+    abort();
+  }
+  OpenMXOrbitalGpuState *orbital_state=(OpenMXOrbitalGpuState *)metadata;
+  if (!orbital_state->initialized) {
+    orbital_state->resources=owner;
+    for (int d=0;d<OPENMX_GPU_WORKERS_MAX;d++) orbital_state->fp32_modes[d]=-1;
+    orbital_state->initialized=1;
+  }
+  return orbital_state;
 }

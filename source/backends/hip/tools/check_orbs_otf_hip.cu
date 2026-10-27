@@ -25,7 +25,7 @@
 // Build (from the repository root):
 //   /opt/rocm-7.2.0/bin/hipcc -std=c++20 -O3 --offload-arch=gfx1200 -ffp-contract=off \
 //       -DOCML_BASIC_ROUNDED_OPERATIONS -Isource tools/check_orbs_otf_hip.cu source/orbs_otf_hip.cu \
-//       source/openmx_precision.c -o check_orbs_otf_hip
+//       source/openmx_precision.c "$OPENMX_CORE_LIBRARY" -o check_orbs_otf_hip
 // Baseline (B: a directory with the other orbs_otf_hip.cu/.h):
 //   R="-DOTF_Orbitals_Upload=baseline_OTF_Orbitals_Upload -DOTF_Orbitals_Eval=baseline_OTF_Orbitals_Eval
 //      -DOTF_Orbitals_Release=baseline_OTF_Orbitals_Release -DOTF_Orbitals_Ready=baseline_OTF_Orbitals_Ready
@@ -34,7 +34,9 @@
 //   hipcc <flags above> $R -I$B -c $B/orbs_otf_hip.cu -o baseline.o
 //   hipcc <flags above> -DOTF_BASELINE -Isource -c tools/check_orbs_otf_hip.cu -o check.o
 //   hipcc <flags above> -Isource -c source/orbs_otf_hip.cu -o orbs_otf_hip.o
-//   hipcc --offload-arch=gfx1200 check.o orbs_otf_hip.o baseline.o source/openmx_precision.c -o check_orbs_otf_hip
+//   hipcc --offload-arch=gfx1200 check.o orbs_otf_hip.o baseline.o source/openmx_precision.c "$OPENMX_CORE_LIBRARY" -o check_orbs_otf_hip
+// Link the matching libopenmx_core shared library and its runtime search path.
+// Saved baseline sources must use their matching saved headers.
 // Run: ./check_orbs_otf_hip [atoms] [spacing] [repetitions]   (defaults 6 0.20 3; < 1 GiB of device memory)
 #include <hip/hip_runtime.h>
 
@@ -46,6 +48,8 @@
 #include <vector>
 
 #include "orbs_otf_hip.h"
+#include "orbs_otf_state_hip.h"
+#include <memory>
 
 #define CK(x)                                                                                    \
     do {                                                                                         \
@@ -63,7 +67,7 @@
         }                                                                                        \
     } while (0)
 
-typedef int (*EvalFn)(void *, int, int, const OTF_Atom *, const int *, const size_t *, const size_t *,
+typedef int (*EvalFn)(OpenMXOrbitalGpuState *, void *, int, int, const OTF_Atom *, const int *, const size_t *, const size_t *,
                       const size_t *, const int *, const int *, const int *, float *);
 
 #ifdef OTF_BASELINE
@@ -288,7 +292,16 @@ struct Job {
 
 // the jobs in turn, reps rounds (a shared or throttled GPU slows them
 // alike); the best time of each, its values from the last round
-static void run(std::vector<Job> &jobs, int reps)
+#ifdef OTF_BASELINE
+static int baseline_eval_adapter(OpenMXOrbitalGpuState *,void *stream,int n,int maxn,
+    const OTF_Atom *atoms,const int *npts,const size_t *idx_off,const size_t *out_off,
+    const size_t *sph_off,const int *idx,const int *gla,const int *cla,float *out)
+{
+  return baseline_OTF_Orbitals_Eval(stream,n,maxn,atoms,npts,idx_off,out_off,sph_off,idx,gla,cla,out);
+}
+#endif
+
+static void run(OpenMXOrbitalGpuState *orbital_state, std::vector<Job> &jobs, int reps)
 {
     hipEvent_t e0, e1;
     CK(hipEventCreate(&e0));
@@ -301,7 +314,7 @@ static void run(std::vector<Job> &jobs, int reps)
             float ms;
             CK(hipMemset(d.out, 0xff, sizeof(float) * it.out_size));   // NaN
             CK(hipEventRecord(e0, nullptr));
-            CHECK(j.fn(nullptr, (int)it.atoms.size(), it.max_npts, d.atoms, d.npts, d.idx_off, d.out_off, d.sph_off,
+            CHECK(j.fn(orbital_state, nullptr, (int)it.atoms.size(), it.max_npts, d.atoms, d.npts, d.idx_off, d.out_off, d.sph_off,
                        it.use_idx ? d.idx : nullptr, d.gla, d.cla, d.out) == 0);
             CK(hipEventRecord(e1, nullptr));
             CK(hipEventSynchronize(e1));
@@ -428,6 +441,18 @@ static void tables(OTF_HostTables *t, std::vector<size_t> &rvo, std::vector<size
 
 int main(int argc, char **argv)
 {
+    char error[256];
+    std::unique_ptr<OpenMXCoreContext,decltype(&openmx_core_destroy)> core(
+        openmx_core_create_host(error,sizeof(error)),openmx_core_destroy);
+    CHECK(core);
+    OpenMXNativeResources *owner=nullptr;void *metadata=nullptr;
+    CHECK(openmx_core_native_resources_state(core.get(),"orbital-device-check",
+        sizeof(OpenMXOrbitalGpuState),[](OpenMXNativeResources *,void *p) {
+            OTF_Orbitals_Release(static_cast<OpenMXOrbitalGpuState*>(p));
+        },&owner,&metadata,error,sizeof(error)));
+    auto *orbital_state=static_cast<OpenMXOrbitalGpuState*>(metadata);
+    orbital_state->resources=owner;
+
     const int natoms = (argc > 1) ? atoi(argv[1]) : 6;
     const double spacing = (argc > 2) ? atof(argv[2]) : 0.20;
     const int reps = (argc > 3) ? atoi(argv[3]) : 3;
@@ -540,13 +565,13 @@ int main(int argc, char **argv)
     {
         std::vector<Job> jobs = {{&S, &dS, OTF_Orbitals_Eval, &sdf, 0}, {&S, &dS, OTF_Orbitals_Eval_FP64, &s64f, 0},
                                  {&P, &dP, OTF_Orbitals_Eval, &pdf, 0}, {&P, &dP, OTF_Orbitals_Eval_FP64, &p64f, 0}};
-        CHECK(OTF_Orbitals_Upload(&t, 1) == 1);
+        CHECK(OTF_Orbitals_Upload(orbital_state, &t, 1) == 1);
 #ifdef OTF_BASELINE
         CHECK(baseline_OTF_Orbitals_Upload(&t, 1) == 1);
-        jobs.push_back({&S, &dS, baseline_OTF_Orbitals_Eval, &b[0], 0});
-        jobs.push_back({&P, &dP, baseline_OTF_Orbitals_Eval, &b[2], 0});
+        jobs.push_back({&S, &dS, baseline_eval_adapter, &b[0], 0});
+        jobs.push_back({&P, &dP, baseline_eval_adapter, &b[2], 0});
 #endif
-        run(jobs, reps);
+        run(orbital_state, jobs, reps);
         ms[0][0] = jobs[0].ms;
         ms[0][1] = jobs[1].ms;
         ms[1][0] = jobs[2].ms;
@@ -557,16 +582,16 @@ int main(int argc, char **argv)
 #endif
         // FP64 upload: the FP64 tiles (and the baseline's FP64)
         jobs = {{&S, &dS, OTF_Orbitals_Eval, &s64, 0}, {&P, &dP, OTF_Orbitals_Eval, &p64, 0}};
-        CHECK(OTF_Orbitals_Upload(&t, 0) == 1);
+        CHECK(OTF_Orbitals_Upload(orbital_state, &t, 0) == 1);
 #ifdef OTF_BASELINE
         CHECK(baseline_OTF_Orbitals_Upload(&t, 0) == 1);
-        jobs.push_back({&S, &dS, baseline_OTF_Orbitals_Eval, &b[1], 0});
-        jobs.push_back({&P, &dP, baseline_OTF_Orbitals_Eval, &b[3], 0});
+        jobs.push_back({&S, &dS, baseline_eval_adapter, &b[1], 0});
+        jobs.push_back({&P, &dP, baseline_eval_adapter, &b[3], 0});
 #endif
-        run(jobs, reps);
+        run(orbital_state, jobs, reps);
         ms[0][2] = jobs[0].ms;
         ms[1][2] = jobs[1].ms;
-        OTF_Orbitals_Release();
+        OTF_Orbitals_Release(orbital_state);
 #ifdef OTF_BASELINE
         bms[0][1] = jobs[2].ms;
         bms[1][1] = jobs[3].ms;

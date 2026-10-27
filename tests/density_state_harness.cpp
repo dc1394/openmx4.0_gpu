@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <memory>
+#include "orbital_state_binding_fixture.hpp"
 
 using Type_Orbs_Grid = float;
 constexpr int cudaSuccess=0,hipSuccess=0,cudaMemcpyHostToDevice=1,
@@ -106,6 +107,7 @@ int main(){
   {
     auto c=calculation();auto *s=Set_Density_Grid_GPU_Bind_Resources(c.get());
     assert(s->last_path==-1 && s->last_cpu==-1 && s->last_workspace==-1 && s->last_failed==-1);
+    assert(s->orbital_state==Set_Orbitals_Grid_GPU_Bind_Resources(c.get()));
     Set_Density_Grid_GPU_EndCycle(s);Set_Density_Grid_GPU_Invalidate(s);
     openmx_core_native_resources_clear(c.get());
   }

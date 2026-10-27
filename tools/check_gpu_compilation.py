@@ -51,7 +51,7 @@ def main():
         "Divide_Conquer.c", "Divide_Conquer_LNO.c", "Mixing_H.c", "DIIS_Mixing_Rhok.c",
         "Kerker_Mixing_Rhok.c", "DIIS_Mixing_DM.c", "ADIIS_Mixing_DM.c",
         "GR_Pulay_DM.c", "Mixing_DM.c", "Simple_Mixing_DM.c", "Mixing_V.c", "Set_Vpot.c",
-        "openmx_hamiltonian_cache.c", "Set_Hamiltonian.c", "Set_Density_Grid.c", "Set_Density_Grid_GPU.c", "Set_Orbitals_Grid.c", "DFT.c", "Force.c", "Krylov.c", "Input_std.c", "outputfile1.c",
+        "openmx_cluster_capacity.c", "openmx_hamiltonian_cache.c", "Set_Hamiltonian.c", "Set_Density_Grid.c", "Set_Density_Grid_GPU.c", "Set_Orbitals_Grid.c", "DFT.c", "Force.c", "Krylov.c", "Input_std.c", "outputfile1.c",
         "Total_Energy.c", "Total_Energy_GPU.c", "Allocate_Arrays.c", "Free_Arrays.c", "MD_pac.c", "iterout_md.c", "openmx.c", "Runtest.c", "openmx_api.c", "init.c", "iterout.c", "Stress.c",
         "Force_test.c", "Stress_test.c", "neb_run.c", "Make_InputFile_with_FinalCoord.c", "truncation.c")]
     # Chemical-potential ownership reaches output, CWF and analysis units.
@@ -61,6 +61,9 @@ def main():
     jobs += [(cxx, n) for n in (
         "openmx_gpu_dm.cu", "openmx_gpu_transform.cu", "openmx_mgpu_gemm.cu",
         "openmx_mgpu_runtime.cu")]
+
+    if args.backend == "HIP":
+        jobs.append((cxx, "orbs_otf_hip.cu"))
 
     def compile_unit(job):
         command, name = job

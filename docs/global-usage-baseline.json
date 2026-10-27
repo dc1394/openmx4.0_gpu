@@ -1,16 +1,16 @@
 {
 "scope": "global-state usage of the C translation units of the NVIDIA build",
-"revision": "16eedaa0",
+"revision": "6e638a8d",
 "summary": {
 "translation units analysed": 291,
 "translation units not analysed": 0,
-"functions": 3381,
+"functions": 3389,
 "common-header objects (defined in openmx_globals.c)": 942,
 "common-header objects referenced by some function": 936,
 "common-header objects written by some function (direct or through)": 696,
 "function-object edges (common header)": 12399,
 "objects with external linkage defined outside openmx_globals.c": 353,
-"file-scope statics": 309,
+"file-scope statics": 307,
 "function-local statics": 286,
 "environment variables (names read, every unit)": 254,
 "functions calling getenv directly (outside openmx_env.c)": 0,
@@ -12634,18 +12634,6 @@
 "unit": "source/Set_Hamiltonian.c",
 "name": "Set_Hamiltonian_OpenACC_Work_Rank_Selected",
 "type": "i32 1",
-"const": false
-},
-{
-"unit": "source/Set_Orbitals_Grid.c",
-"name": "SOG_devices",
-"type": "[64 x %struct.SOG_DeviceTables] zeroinitializer",
-"const": false
-},
-{
-"unit": "source/Set_Orbitals_Grid.c",
-"name": "SOG_fp32_modes",
-"type": "[64 x i32] zeroinitializer",
 "const": false
 },
 {

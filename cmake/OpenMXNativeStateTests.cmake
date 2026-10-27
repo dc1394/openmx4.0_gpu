@@ -27,6 +27,12 @@ function(openmx_add_native_state_tests)
   set_tests_properties(density-calculation-state-lifecycle PROPERTIES
     ENVIRONMENT "${_environment}" LABELS "unit;gpu;core;native-state" TIMEOUT 180)
 
+  add_test(NAME orbital-calculation-state-lifecycle
+    COMMAND "${Python3_EXECUTABLE}" "${_repo}/tests/run_orbital_gpu_state_cpu.py"
+      --core-library "$<TARGET_FILE:openmx_core>")
+  set_tests_properties(orbital-calculation-state-lifecycle PROPERTIES
+    ENVIRONMENT "${_environment}" LABELS "unit;gpu;core;native-state" TIMEOUT 240)
+
   add_test(NAME hamiltonian-packing-calculation-state-lifecycle
     COMMAND "${Python3_EXECUTABLE}" "${_repo}/tests/run_hamiltonian_packing_cpu.py"
       --core-library "$<TARGET_FILE:openmx_core>" --negative-control)

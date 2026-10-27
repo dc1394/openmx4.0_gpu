@@ -121,6 +121,7 @@ struct OpenMXClusterColState {
   OpenMXChemicalPotentials *chemical; /* borrowed from this calculation */
   OpenMXThermodynamicEnergies *thermo; /* borrowed from this calculation */
   OpenMXNativeResources *resources; /* borrowed from this calculation */
+  OpenMXOrbitalGpuState *orbital_state; /* borrowed from this calculation */
   OpenMXHamiltonianCache *hamiltonian_cache; /* borrowed from this calculation */
   int initialized;
   int mgpu_host_dense;
@@ -169,6 +170,7 @@ OpenMXClusterColState *Cluster_DFT_Col_Bind_Resources(OpenMXCoreContext *core)
   ClusterColState *state = (ClusterColState *)metadata;
   if (!state->initialized) {
     state->resources = owner;
+    state->orbital_state = Set_Orbitals_Grid_GPU_Bind_Resources(core);
     state->hamiltonian_cache = Set_Hamiltonian_Cache_Bind_Resources(core);
     const ClusterColRefineState initial = {-1, 0.0, 0, 0, 0, 0, 0, 0, 0, 0, -1, {0, 0}, 0, 0};
     state->refine = initial;
@@ -1703,11 +1705,11 @@ host_capacity:
             if (SpinP_switch==1 && numprocs0>1){
                 ClusterCol_UnionGrid_Ensure(state, n);
                 state->ugrid.overlap_n = 0;
-                admitted = openmx_cluster_gs2_admit(mpi_comm_level1,state->ugrid.ictxt,n,state->ugrid.nblk,0,
+                admitted = openmx_cluster_gs2_admit(state->orbital_state,mpi_comm_level1,state->ugrid.ictxt,n,state->ugrid.nblk,0,
                                          "Cluster collinear");
             }
             else{
-                admitted = openmx_cluster_gs2_admit(mpi_comm_level1,ictxt1,n,nblk,0,"Cluster collinear");
+                admitted = openmx_cluster_gs2_admit(state->orbital_state,mpi_comm_level1,ictxt1,n,nblk,0,"Cluster collinear");
             }
             if (admitted) state->gs2_fallback_n = n;
         }

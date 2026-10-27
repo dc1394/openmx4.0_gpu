@@ -145,6 +145,7 @@ struct OpenMXClusterNonColState {
   OpenMXChemicalPotentials *chemical; /* borrowed from this calculation */
   OpenMXThermodynamicEnergies *thermo; /* borrowed from this calculation */
   OpenMXNativeResources *resources; /* borrowed from this calculation */
+  OpenMXOrbitalGpuState *orbital_state; /* borrowed from this calculation */
   OpenMXHamiltonianCache *hamiltonian_cache; /* borrowed from this calculation */
   int initialized;
   ClusterNonColDenseArena dense_arena;
@@ -193,6 +194,7 @@ OpenMXClusterNonColState *Cluster_DFT_NonCol_Bind_Resources(OpenMXCoreContext *c
   ClusterNonColState *state = (ClusterNonColState *)metadata;
   if (!state->initialized) {
     state->resources = owner;
+    state->orbital_state = Set_Orbitals_Grid_GPU_Bind_Resources(core);
     state->hamiltonian_cache = Set_Hamiltonian_Cache_Bind_Resources(core);
     const ClusterNonColRefineState initial = {-1, 0.0, 0, 0, 0, 0, 0};
     state->refine = initial;
@@ -2370,7 +2372,7 @@ host_capacity:
                gpusolver2 branches then run (ClusterNonCol_UseGs2).  The
                decision is made at SCF_iter 1 only (cached below), where that
                family also diagonalizes the overlap. */
-            if (openmx_cluster_gs2_admit(mpi_comm_level1,ictxt1_2,n2,nblk2,1,"Cluster NC"))
+            if (openmx_cluster_gs2_admit(state->orbital_state,mpi_comm_level1,ictxt1_2,n2,nblk2,1,"Cluster NC"))
                 state->gs2_fallback_n2 = n2;
         }
         else if (capacity==OPENMX_CLUSTER_CAPACITY_MAGMA) {

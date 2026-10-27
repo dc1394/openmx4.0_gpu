@@ -1795,3 +1795,8 @@ openmx_hamiltonian_cache.o: openmx_hamiltonian_cache.c openmx_hamiltonian_cache.
 
 DFT.o: openmx_hamiltonian_pack.h
 $(OBJS): openmx_hamiltonian_cache.h
+
+DFT.o Set_Hamiltonian.o Set_Orbitals_Grid.o Set_Density_Grid_GPU.o openmx.o openmx_api.o Runtest.o: openmx_orbital_gpu_state.h
+Set_Orbitals_Grid.o: openmx_native_resources.h openmx_core_native_resources.h
+
+openmx_cluster_capacity.o Cluster_DFT_Col.o Cluster_DFT_NonCol.o: openmx_orbital_gpu_state.h

@@ -8,7 +8,7 @@ import tempfile
 root = Path(__file__).resolve().parents[1]
 source = (root / "source/Set_Orbitals_Grid.c").read_text()
 start = source.index("static int SOG_eval_double_float(void)")
-end = source.index("\nvoid SOG_Device_Release(void)", start)
+end = source.index("\nvoid SOG_Device_Release(OpenMXOrbitalGpuState *orbital_state)", start)
 code = r'''
 #define _POSIX_C_SOURCE 200809L
 #include <assert.h>

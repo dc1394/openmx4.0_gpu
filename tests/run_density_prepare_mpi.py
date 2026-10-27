@@ -48,6 +48,7 @@ prefix = r'''
 #include "openmx_env.h"
 typedef struct OpenMXAtomicViews OpenMXAtomicViews;
 typedef struct OpenMXDensityGpuState OpenMXDensityGpuState;
+typedef struct OpenMXOrbitalGpuState OpenMXOrbitalGpuState;
 #include <stdint.h>
 #include <limits.h>
 #include <stdio.h>
@@ -93,7 +94,7 @@ static int Set_Hamiltonian_OnTheFly_DensityStage(int ranks,size_t *need,size_t *
   (void)ranks; *need=128; *budget=1024; return 1;
 }
 static int Set_Hamiltonian_MatrixElementsTables_Ready(int k) { return k==0 && resident; }
-static int Set_Hamiltonian_OnTheFly_DensityPossible(const OpenMXAtomicViews *atomic,int k,int r) { (void)atomic; (void)r; return k==0 && otf_available && !resident; }
+static int Set_Hamiltonian_OnTheFly_DensityPossible(OpenMXOrbitalGpuState *orbital_state,const OpenMXAtomicViews *atomic,int k,int r) { (void)atomic; (void)r; return k==0 && otf_available && !resident; }
 static size_t Set_Hamiltonian_MatrixElements_TotalH(int k,int r) { (void)r; return k==0 ? 1:0; }
 static void Set_Hamiltonian_OnTheFly_SetDensityRanks(int r) { density_ranks=r; }
 static size_t Set_Hamiltonian_OnTheFly_DensityBudget(int s,size_t dm,size_t out,int ranks,

@@ -26,6 +26,7 @@
 #include <omp.h>
 #include "set_hip_default_device_from_local_rank.h"
 #include "orbs_otf_hip.h"
+#include "orbs_otf_state_hip.h"
 #include "openmx_precision.h"
 #include "openmx_host_simd.h"
 #include "openmx_core_orbitals_simd.h"
@@ -49,7 +50,7 @@
 #define SOG_L0MAX  OTF_L0MAX
 #define SOG_MULMAX OTF_MULMAX
 
-int Set_Orbitals_Grid_OTF_Prepare(const OpenMXAtomicViews *atomic);
+int Set_Orbitals_Grid_OTF_Prepare(OpenMXOrbitalGpuState *orbital_state, const OpenMXAtomicViews *atomic);
 
 
 
@@ -167,9 +168,8 @@ static size_t SOG_device_need(const OpenMXAtomicViews *atomic,int myid)
 
 /* returns 1 when the whole update ran on the device; 0 keeps the host path
    (which then rewrites every value) */
-static int Set_Orbitals_Grid_GPU(const OpenMXAtomicViews *atomic)
+static int Set_Orbitals_Grid_GPU(OpenMXOrbitalGpuState *orbital_state, const OpenMXAtomicViews *atomic)
 {
-  static int table_notice_done = 0, fail_notice_done = 0, device_notice_done = 0, active_notice_done = 0;
   int myid;
   int Mc_AN, Gc_AN, Cwan, h_AN, Gh_AN, Hwan, Rnh, NO0, NO1;
   int npair_cap;
@@ -191,9 +191,9 @@ static int Set_Orbitals_Grid_GPU(const OpenMXAtomicViews *atomic)
 
   /* the species' tables on the device: those of the on-the-fly tiles,
      which keep them for this geometry */
-  if (!Set_Orbitals_Grid_OTF_Prepare(atomic)) {
-    if (!table_notice_done) {
-      table_notice_done = 1;
+  if (!Set_Orbitals_Grid_OTF_Prepare(orbital_state, atomic)) {
+    if (!orbital_state->table_notice_done) {
+      orbital_state->table_notice_done = 1;
       fprintf(stderr, "Set_Orbitals_Grid: device orbital tables unavailable; using the host path.\n");
       fflush(stderr);
     }
@@ -262,8 +262,8 @@ static int Set_Orbitals_Grid_GPU(const OpenMXAtomicViews *atomic)
 
   arena = (unsigned char*)SOG_arena_try(arena_bytes);
   if (arena == NULL) {
-    if (!fail_notice_done && 2 <= level_stdout) {
-      fail_notice_done = 1;
+    if (!orbital_state->fail_notice_done && 2 <= level_stdout) {
+      orbital_state->fail_notice_done = 1;
       fprintf(stderr,
               "Set_Orbitals_Grid: %.1f MiB of device staging unavailable; using the host path.\n",
               (double)arena_bytes / (1024.0 * 1024.0));
@@ -319,7 +319,7 @@ static int Set_Orbitals_Grid_GPU(const OpenMXAtomicViews *atomic)
             hipMemcpy((void*)d_cla, CellListAtom[Mc_AN], sizeof(int) * (size_t)npts,
                       hipMemcpyHostToDevice) != hipSuccess ||
             hipMemcpy(arena + o_dsc, desc_host, desc_bytes, hipMemcpyHostToDevice) != hipSuccess ||
-            OTF_Orbitals_Eval_FP64(NULL, 1, npts, d_atm, d_npt, d_iof, d_oof, d_sof, NULL,
+            OTF_Orbitals_Eval_FP64(orbital_state, NULL, 1, npts, d_atm, d_npt, d_iof, d_oof, d_sof, NULL,
                                    d_gla, d_cla, d_chi) != 0 ||
             hipMemcpy(chi_host, d_chi, sizeof(float) * (size_t)npts * (size_t)NO0,
                       hipMemcpyDeviceToHost) != hipSuccess) goto device_failure;
@@ -380,7 +380,7 @@ static int Set_Orbitals_Grid_GPU(const OpenMXAtomicViews *atomic)
 
         if (hipMemcpy((void*)d_nog, nog_host, sizeof(int) * fpts, hipMemcpyHostToDevice) != hipSuccess ||
             hipMemcpy(arena + o_dsc, desc_host, desc_bytes, hipMemcpyHostToDevice) != hipSuccess ||
-            OTF_Orbitals_Eval_FP64(NULL, npair, max_nolg, d_atm, d_npt, d_iof, d_oof, d_sof, d_nog,
+            OTF_Orbitals_Eval_FP64(orbital_state, NULL, npair, max_nolg, d_atm, d_npt, d_iof, d_oof, d_sof, d_nog,
                                    d_gla, d_cla, d_chi) != 0 ||
             hipMemcpy(chi_host, d_chi, sizeof(float) * fchi, hipMemcpyDeviceToHost) != hipSuccess)
           goto device_failure;
@@ -412,8 +412,8 @@ static int Set_Orbitals_Grid_GPU(const OpenMXAtomicViews *atomic)
   hipFree(arena);
   free(chi_host); free(nog_host); free(pair_hAN); free(desc_host);
 
-  if (!active_notice_done) {
-    active_notice_done = 1;
+  if (!orbital_state->active_notice_done) {
+    orbital_state->active_notice_done = 1;
     if (openmx_env_flag_at(OPENMX_ENV_ORBS_GRID_GPU_VERBOSE, 0) && myid == Host_ID) {
       fprintf(stderr, "Set_Orbitals_Grid: GPU path active\n");
       fflush(stderr);
@@ -422,8 +422,8 @@ static int Set_Orbitals_Grid_GPU(const OpenMXAtomicViews *atomic)
   return 1;
 
 device_failure:
-  if (!device_notice_done) {
-    device_notice_done = 1;
+  if (!orbital_state->device_notice_done) {
+    orbital_state->device_notice_done = 1;
     fprintf(stderr, "Set_Orbitals_Grid: a device call failed; using the host path.\n");
     fflush(stderr);
   }
@@ -457,8 +457,7 @@ extern int openmx_gpu_fp32_fp64_ratio(void);
    until the next release; a failed allocation or transfer is not, so that
    a rank short of device memory for a moment tries again at the next call
    instead of staying on the host for the rest of the geometry */
-static int SOG_otf_unavailable = 0;
-static int SOG_otf_fp32_enabled = -1;
+
 
 static int SOG_otf_double_float(void)
 {
@@ -475,15 +474,15 @@ static int SOG_otf_double_float(void)
   return 8 <= openmx_gpu_fp32_fp64_ratio();
 }
 
-void Set_Orbitals_Grid_OTF_Release(void)
+void Set_Orbitals_Grid_OTF_Release(OpenMXOrbitalGpuState *orbital_state)
 {
-  OTF_Orbitals_Release();
-  SOG_otf_unavailable = 0;
-  SOG_otf_fp32_enabled = -1;
+  OTF_Orbitals_Release(orbital_state);
+  orbital_state->unavailable = 0;
+  orbital_state->fp32_enabled = -1;
 }
 
 /* 1 when the device tables are ready (built now if needed); rank-local */
-int Set_Orbitals_Grid_OTF_Prepare(const OpenMXAtomicViews *atomic)
+int Set_Orbitals_Grid_OTF_Prepare(OpenMXOrbitalGpuState *orbital_state, const OpenMXAtomicViews *atomic)
 {
   OTF_HostTables t;
   size_t *rv_off_h = NULL, *rwf_base_h = NULL;
@@ -492,13 +491,13 @@ int Set_Orbitals_Grid_OTF_Prepare(const OpenMXAtomicViews *atomic)
   size_t rv_cnt = 0, rwf_cnt = 0, r;
   int w, L0, Mul0, i, rc, ok = 0;
 
-  if (OTF_Orbitals_Ready()) {
-    if (SOG_otf_fp32_enabled == openmx_fp32_enabled()) return 1;
-    Set_Orbitals_Grid_OTF_Release();
+  if (OTF_Orbitals_Ready(orbital_state)) {
+    if (orbital_state->fp32_enabled == openmx_fp32_enabled()) return 1;
+    Set_Orbitals_Grid_OTF_Release(orbital_state);
   }
-  if (SOG_otf_unavailable) return 0;
+  if (orbital_state->unavailable) return 0;
   if (!SOG_gpu_eligible(0)) {
-    SOG_otf_unavailable = 1;
+    orbital_state->unavailable = 1;
     return 0;
   }
 
@@ -561,13 +560,13 @@ int Set_Orbitals_Grid_OTF_Prepare(const OpenMXAtomicViews *atomic)
     t.g[i][2] = gtv[i + 1][3];
     t.org[i] = Grid_Origin[i + 1];
   }
-  rc = OTF_Orbitals_Upload(&t, SOG_otf_double_float());
+  rc = OTF_Orbitals_Upload(orbital_state, &t, SOG_otf_double_float());
   /* tables outside the evaluator stay so until the next geometry; a
      failed device allocation or transfer (rc 0) is retried by the next
      call */
-  if (rc < 0) SOG_otf_unavailable = 1;
+  if (rc < 0) orbital_state->unavailable = 1;
   ok = (0 < rc);
-  if (ok) SOG_otf_fp32_enabled = openmx_fp32_enabled();
+  if (ok) orbital_state->fp32_enabled = openmx_fp32_enabled();
 
 done:
   free(rv_off_h); free(rwf_base_h); free(sp_mesh_h); free(sp_maxl_h); free(sp_nb_h);
@@ -996,7 +995,7 @@ static int SOG_capacity_recover(const OpenMXAtomicViews *atomic, int done,int ra
   return done || (pending && ready);
 }
 
-double Set_Orbitals_Grid(OpenMXDensityGpuState *density_state, const OpenMXAtomicViews *atomic, int Cnt_kind, const OpenMXLocalBasisViews *local_basis)
+double Set_Orbitals_Grid(OpenMXOrbitalGpuState *orbital_state, OpenMXDensityGpuState *density_state, const OpenMXAtomicViews *atomic, int Cnt_kind, const OpenMXLocalBasisViews *local_basis)
 {
   int i,j,n,Mc_AN,Gc_AN,Cwan,NO0,GNc,GRc;
   int Gh_AN,Mh_AN,Rnh,Hwan,NO1,Nog,h_AN;
@@ -1018,7 +1017,7 @@ double Set_Orbitals_Grid(OpenMXDensityGpuState *density_state, const OpenMXAtomi
      cache.  Drop the previous epoch before any values are regenerated. */
   Set_Density_Grid_GPU_Invalidate(density_state);
   Set_Hamiltonian_Invalidate_OpenMP_MatrixElements_Cache();
-  Set_Orbitals_Grid_OTF_Release();
+  Set_Orbitals_Grid_OTF_Release(orbital_state);
   {
     extern void Set_Hamiltonian_OTF_Release(void);
     Set_Hamiltonian_OTF_Release();
@@ -1043,7 +1042,7 @@ double Set_Orbitals_Grid(OpenMXDensityGpuState *density_state, const OpenMXAtomi
   int orbital_done=0,host=0;
   if (rows_requested) {
     host=OpenMX_HostSimdStageOnHost("Set_Orbitals_Grid",SOG_device_need(atomic,myid),OpenMX_HostSimdDeviceBudget(0));
-    if (!host || legacy) orbital_done=!(openmx_gpu_capacity_test_recovery() || openmx_gpu_workers_requested()) && SOG_gpu_eligible(Cnt_kind) && Set_Orbitals_Grid_GPU(atomic);
+    if (!host || legacy) orbital_done=!(openmx_gpu_capacity_test_recovery() || openmx_gpu_workers_requested()) && SOG_gpu_eligible(Cnt_kind) && Set_Orbitals_Grid_GPU(orbital_state, atomic);
   }
   if (SOG_capacity_recover(atomic, orbital_done,myid,legacy?SOG_gpu_requested(Cnt_kind):rows_requested,host)) {
     dtime(&TEtime);
@@ -1789,4 +1788,35 @@ double Set_Orbitals_Grid(OpenMXDensityGpuState *density_state, const OpenMXAtomi
   time0 = TEtime - TStime;
 
   return time0;
+}
+
+
+void Set_Orbitals_Grid_GPU_Release(OpenMXOrbitalGpuState *orbital_state)
+{
+  Set_Orbitals_Grid_OTF_Release(orbital_state);
+}
+
+static void SOG_Reset(OpenMXNativeResources *owner, void *metadata)
+{
+  (void)owner;
+  Set_Orbitals_Grid_GPU_Release((OpenMXOrbitalGpuState *)metadata);
+}
+
+OpenMXOrbitalGpuState *Set_Orbitals_Grid_GPU_Bind_Resources(OpenMXCoreContext *core)
+{
+  OpenMXNativeResources *owner=NULL;
+  void *metadata=NULL;
+  char error[256];
+  if (!openmx_core_native_resources_state(core, "Set_Orbitals_Grid_GPU",
+      sizeof(OpenMXOrbitalGpuState), SOG_Reset, &owner, &metadata, error, sizeof(error))) {
+    fprintf(stderr, "OpenMX orbital GPU state: %s\n", error);
+    abort();
+  }
+  OpenMXOrbitalGpuState *orbital_state=(OpenMXOrbitalGpuState *)metadata;
+  if (!orbital_state->initialized) {
+    orbital_state->resources=owner;
+    orbital_state->fp32_enabled=-1;
+    orbital_state->initialized=1;
+  }
+  return orbital_state;
 }

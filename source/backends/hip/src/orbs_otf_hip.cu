@@ -18,9 +18,11 @@
 #include <cstdlib>
 #include <cstring>
 #include <new>
+#include <memory>
 #include <vector>
 
 #include "orbs_otf_hip.h"
+#include "orbs_otf_state_hip.h"
 #include "openmx_precision.h"
 
 #pragma clang fp contract(off)
@@ -31,21 +33,26 @@ constexpr int kThreads = 128;
 constexpr int kMcdStride = 12;   /* per mesh point: rv, h2, dum1..dum4 as (hi, lo) */
 constexpr double kPi = 3.141592653589793238;
 
-struct DeviceTables {
-  int ready = 0;
-  int double_float = 0;
-  unsigned char *arena = nullptr;
-  size_t bytes = 0;
-  const double *rv = nullptr, *rwf = nullptr, *atv = nullptr;
-  const size_t *rvo = nullptr, *rwb = nullptr;
-  const int *spm = nullptr, *spx = nullptr, *spb = nullptr;
-  const float *rwd = nullptr, *mcd = nullptr, *spl = nullptr;
-  int ng23 = 0, ng3 = 0;
-  double g[3][3] = {{0.0}};
-  double org[3] = {0.0};
-};
+using DeviceTables = OTF_DeviceTables;
 
-DeviceTables g_dev;
+/* The C++ calculation owner remembers the allocation device. Upload owns its
+   temporary arena until every copy succeeds and registration commits it. */
+int otf_arena_free(void *pointer, int device)
+{
+  int previous=-1;
+  hipError_t status=hipGetDevice(&previous);
+  if (status!=hipSuccess) return (int)status;
+  if (previous!=device && (status=hipSetDevice(device))!=hipSuccess) return (int)status;
+  (void)hipDeviceSynchronize();
+  status=hipFree(pointer);
+  if (previous!=device) (void)hipSetDevice(previous);
+  return (int)status;
+}
+
+struct ArenaDeleter {
+  int device;
+  void operator()(unsigned char *pointer) const { if (pointer) (void)otf_arena_free(pointer,device); }
+};
 
 /* the kernel's view: plain pointers and values passed by argument */
 struct TablesArg {
@@ -667,40 +674,40 @@ size_t arena_off(size_t *pos, size_t bytes)
 
 /* the launch of OTF_Orbitals_Eval (double_float: the uploaded precision)
    and of OTF_Orbitals_Eval_FP64 */
-int otf_launch(bool double_float, void *stream, int count, int max_npts, const OTF_Atom *atoms, const int *npts,
+int otf_launch(OpenMXOrbitalGpuState *orbital_state, bool double_float, void *stream, int count, int max_npts, const OTF_Atom *atoms, const int *npts,
                const size_t *idx_off, const size_t *out_off, const size_t *sph_off, const int *idx, const int *gla,
                const int *cla, float *out)
 {
   TablesArg t;
   unsigned ychunks;
 
-  if (!g_dev.ready) return 1;
+  if (!orbital_state->tables.ready) return 1;
   if (count <= 0 || max_npts <= 0) return 0;
-  t.rv = g_dev.rv;
-  t.rwf = g_dev.rwf;
-  t.atv = g_dev.atv;
-  t.rvo = g_dev.rvo;
-  t.rwb = g_dev.rwb;
-  t.spm = g_dev.spm;
-  t.spx = g_dev.spx;
-  t.spb = g_dev.spb;
-  t.rwd = g_dev.rwd;
-  t.mcd = g_dev.mcd;
-  t.spl = g_dev.spl;
-  t.ng23 = g_dev.ng23;
-  t.ng3 = g_dev.ng3;
-  t.g11 = g_dev.g[0][0];
-  t.g12 = g_dev.g[0][1];
-  t.g13 = g_dev.g[0][2];
-  t.g21 = g_dev.g[1][0];
-  t.g22 = g_dev.g[1][1];
-  t.g23 = g_dev.g[1][2];
-  t.g31 = g_dev.g[2][0];
-  t.g32 = g_dev.g[2][1];
-  t.g33 = g_dev.g[2][2];
-  t.org1 = g_dev.org[0];
-  t.org2 = g_dev.org[1];
-  t.org3 = g_dev.org[2];
+  t.rv = orbital_state->tables.rv;
+  t.rwf = orbital_state->tables.rwf;
+  t.atv = orbital_state->tables.atv;
+  t.rvo = orbital_state->tables.rvo;
+  t.rwb = orbital_state->tables.rwb;
+  t.spm = orbital_state->tables.spm;
+  t.spx = orbital_state->tables.spx;
+  t.spb = orbital_state->tables.spb;
+  t.rwd = orbital_state->tables.rwd;
+  t.mcd = orbital_state->tables.mcd;
+  t.spl = orbital_state->tables.spl;
+  t.ng23 = orbital_state->tables.ng23;
+  t.ng3 = orbital_state->tables.ng3;
+  t.g11 = orbital_state->tables.g[0][0];
+  t.g12 = orbital_state->tables.g[0][1];
+  t.g13 = orbital_state->tables.g[0][2];
+  t.g21 = orbital_state->tables.g[1][0];
+  t.g22 = orbital_state->tables.g[1][1];
+  t.g23 = orbital_state->tables.g[1][2];
+  t.g31 = orbital_state->tables.g[2][0];
+  t.g32 = orbital_state->tables.g[2][1];
+  t.g33 = orbital_state->tables.g[2][2];
+  t.org1 = orbital_state->tables.org[0];
+  t.org2 = orbital_state->tables.org[1];
+  t.org3 = orbital_state->tables.org[2];
   /* enough blocks per item to fill the device when the items are few (an
      atom's whole sphere), one when they are many (pairs) */
   ychunks = (unsigned)((max_npts + kThreads - 1) / kThreads);
@@ -723,31 +730,34 @@ int otf_launch(bool double_float, void *stream, int count, int max_npts, const O
 
 } // namespace
 
-extern "C" void OTF_Orbitals_Release(void)
+extern "C" void OTF_Orbitals_Release(OpenMXOrbitalGpuState *orbital_state)
 {
-  if (g_dev.arena != nullptr) {
-    (void)hipDeviceSynchronize();
-    (void)hipFree(g_dev.arena);
+  if (orbital_state->tables.arena != nullptr) {
+    int status=0;
+    if (!openmx_core_native_release(orbital_state->resources,1,orbital_state->tables.arena,&status)) {
+      fprintf(stderr,"OpenMX orbital arena lost its calculation owner.\n");
+      abort();
+    }
   }
-  g_dev = DeviceTables();
+  orbital_state->tables = DeviceTables();
 }
 
-extern "C" int OTF_Orbitals_Ready(void)
+extern "C" int OTF_Orbitals_Ready(OpenMXOrbitalGpuState *orbital_state)
 {
-  return g_dev.ready;
+  return orbital_state->tables.ready;
 }
 
-extern "C" int OTF_Orbitals_DoubleFloat(void)
+extern "C" int OTF_Orbitals_DoubleFloat(OpenMXOrbitalGpuState *orbital_state)
 {
-  return g_dev.ready && g_dev.double_float && openmx_fp32_enabled();
+  return orbital_state->tables.ready && orbital_state->tables.double_float && openmx_fp32_enabled();
 }
 
-extern "C" size_t OTF_Orbitals_Bytes(void)
+extern "C" size_t OTF_Orbitals_Bytes(OpenMXOrbitalGpuState *orbital_state)
 {
-  return g_dev.ready ? g_dev.bytes : 0;
+  return orbital_state->tables.ready ? orbital_state->tables.bytes : 0;
 }
 
-extern "C" int OTF_Orbitals_Upload(const OTF_HostTables *t, int double_float)
+extern "C" int OTF_Orbitals_Upload(OpenMXOrbitalGpuState *orbital_state, const OTF_HostTables *t, int double_float)
 {
   const size_t rv_cnt = (t->rv_count == 0) ? 1 : t->rv_count;
   const size_t rwf_cnt = (t->rwf_count == 0) ? 1 : t->rwf_count;
@@ -757,7 +767,7 @@ extern "C" int OTF_Orbitals_Upload(const OTF_HostTables *t, int double_float)
   unsigned char *arena = nullptr;
 
   double_float = double_float && openmx_fp32_enabled();
-  OTF_Orbitals_Release();
+  OTF_Orbitals_Release(orbital_state);
   if (species <= 0) return -1;
   for (int w = 0; w < species; w++) {
     if (t->maxl[w] > OTF_L0MAX || t->mesh[w] < 6) return -1;
@@ -832,14 +842,15 @@ extern "C" int OTF_Orbitals_Upload(const OTF_HostTables *t, int double_float)
     o_mcd = arena_off(&pos, sizeof(float) * mcd.size());
     o_spl = arena_off(&pos, sizeof(float) * spl.size());
   }
-  if (hipMalloc(&arena, pos) != hipSuccess) {
+  int device=-1;
+  if (hipGetDevice(&device)!=hipSuccess || hipMalloc(&arena, pos) != hipSuccess) {
     (void)hipGetLastError();
     return 0;
   }
+  std::unique_ptr<unsigned char,ArenaDeleter> pending(arena,ArenaDeleter{device});
 #define OTF_COPY(off, src, bytes)                                                                        \
   do {                                                                                                   \
     if (hipMemcpy(arena + (off), (src), (bytes), hipMemcpyHostToDevice) != hipSuccess) {                \
-      (void)hipFree(arena);                                                                              \
       (void)hipGetLastError();                                                                           \
       return 0;                                                                                          \
     }                                                                                                    \
@@ -859,43 +870,47 @@ extern "C" int OTF_Orbitals_Upload(const OTF_HostTables *t, int double_float)
   }
 #undef OTF_COPY
 
-  g_dev.arena = arena;
-  g_dev.bytes = pos;
-  g_dev.double_float = double_float ? 1 : 0;
-  g_dev.rv = reinterpret_cast<const double *>(arena + o_rv);
-  g_dev.rwf = reinterpret_cast<const double *>(arena + o_rwf);
-  g_dev.rvo = reinterpret_cast<const size_t *>(arena + o_rvo);
-  g_dev.rwb = reinterpret_cast<const size_t *>(arena + o_rwb);
-  g_dev.spm = reinterpret_cast<const int *>(arena + o_spm);
-  g_dev.spx = reinterpret_cast<const int *>(arena + o_spx);
-  g_dev.spb = reinterpret_cast<const int *>(arena + o_spb);
-  g_dev.atv = reinterpret_cast<const double *>(arena + o_atv);
+  char error[256];
+  if (!openmx_core_native_adopt(orbital_state->resources,1,arena,device,
+      otf_arena_free,nullptr,error,sizeof(error))) return 0;
+  (void)pending.release();
+  orbital_state->tables.arena = arena;
+  orbital_state->tables.bytes = pos;
+  orbital_state->tables.double_float = double_float ? 1 : 0;
+  orbital_state->tables.rv = reinterpret_cast<const double *>(arena + o_rv);
+  orbital_state->tables.rwf = reinterpret_cast<const double *>(arena + o_rwf);
+  orbital_state->tables.rvo = reinterpret_cast<const size_t *>(arena + o_rvo);
+  orbital_state->tables.rwb = reinterpret_cast<const size_t *>(arena + o_rwb);
+  orbital_state->tables.spm = reinterpret_cast<const int *>(arena + o_spm);
+  orbital_state->tables.spx = reinterpret_cast<const int *>(arena + o_spx);
+  orbital_state->tables.spb = reinterpret_cast<const int *>(arena + o_spb);
+  orbital_state->tables.atv = reinterpret_cast<const double *>(arena + o_atv);
   if (double_float) {
-    g_dev.rwd = reinterpret_cast<const float *>(arena + o_rwd);
-    g_dev.mcd = reinterpret_cast<const float *>(arena + o_mcd);
-    g_dev.spl = reinterpret_cast<const float *>(arena + o_spl);
+    orbital_state->tables.rwd = reinterpret_cast<const float *>(arena + o_rwd);
+    orbital_state->tables.mcd = reinterpret_cast<const float *>(arena + o_mcd);
+    orbital_state->tables.spl = reinterpret_cast<const float *>(arena + o_spl);
   }
-  g_dev.ng23 = t->ng23;
-  g_dev.ng3 = t->ng3;
+  orbital_state->tables.ng23 = t->ng23;
+  orbital_state->tables.ng3 = t->ng3;
   for (int i = 0; i < 3; i++) {
-    for (int j = 0; j < 3; j++) g_dev.g[i][j] = t->g[i][j];
-    g_dev.org[i] = t->org[i];
+    for (int j = 0; j < 3; j++) orbital_state->tables.g[i][j] = t->g[i][j];
+    orbital_state->tables.org[i] = t->org[i];
   }
-  g_dev.ready = 1;
+  orbital_state->tables.ready = 1;
   return 1;
 }
 
-extern "C" int OTF_Orbitals_Eval(void *stream, int count, int max_npts, const OTF_Atom *atoms, const int *npts,
+extern "C" int OTF_Orbitals_Eval(OpenMXOrbitalGpuState *orbital_state, void *stream, int count, int max_npts, const OTF_Atom *atoms, const int *npts,
                                  const size_t *idx_off, const size_t *out_off, const size_t *sph_off, const int *idx,
                                  const int *gla, const int *cla, float *out)
 {
-  return otf_launch(g_dev.double_float != 0 && openmx_fp32_enabled(), stream, count, max_npts, atoms, npts, idx_off, out_off, sph_off, idx,
+  return otf_launch(orbital_state, orbital_state->tables.double_float != 0 && openmx_fp32_enabled(), stream, count, max_npts, atoms, npts, idx_off, out_off, sph_off, idx,
                     gla, cla, out);
 }
 
-extern "C" int OTF_Orbitals_Eval_FP64(void *stream, int count, int max_npts, const OTF_Atom *atoms, const int *npts,
+extern "C" int OTF_Orbitals_Eval_FP64(OpenMXOrbitalGpuState *orbital_state, void *stream, int count, int max_npts, const OTF_Atom *atoms, const int *npts,
                                       const size_t *idx_off, const size_t *out_off, const size_t *sph_off,
                                       const int *idx, const int *gla, const int *cla, float *out)
 {
-  return otf_launch(false, stream, count, max_npts, atoms, npts, idx_off, out_off, sph_off, idx, gla, cla, out);
+  return otf_launch(orbital_state, false, stream, count, max_npts, atoms, npts, idx_off, out_off, sph_off, idx, gla, cla, out);
 }

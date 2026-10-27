@@ -482,6 +482,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
   const OpenMXNativeSolverStates solver_states=OpenMX_Native_Resources_Bind(core);
   OpenMXHamiltonianCache *hamiltonian_cache = Set_Hamiltonian_Cache_Bind_Resources(core);
+  OpenMXOrbitalGpuState *orbital_state = Set_Orbitals_Grid_GPU_Bind_Resources(core);
   OpenMXDensityGpuState *density_state = Set_Density_Grid_GPU_Bind_Resources(core);
   OpenMXMixingHState *mixing_h=Mixing_H_Bind_Resources(core);
   OpenMXMixingRhokState *mixing_rhok=Mixing_Rhok_Bind_Resources(core);
@@ -775,7 +776,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
       } /* end of if (Solver==4) */
 
-      time10 += Set_Orbitals_Grid(density_state, atomic, Cnt_kind, local_basis);
+      time10 += Set_Orbitals_Grid(orbital_state, density_state, atomic, Cnt_kind, local_basis);
 
       /* YTL-start */
       if (CDDF_on == 1){
@@ -909,7 +910,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
                && Zeeman_NCS_switch==0 && Zeeman_NCO_switch==0) /* non-spin-orbit coupling and non-LDA+U */
 	    ){
 
-          time3 += Set_Hamiltonian(OpenMX_Grid_Workspace(core), mixing_v, atomic, vna, "nostdout",
+          time3 += Set_Hamiltonian(orbital_state, OpenMX_Grid_Workspace(core), mixing_v, atomic, vna, "nostdout",
                                     MD_iter,
                                     LSCF_iter-SCF_iter_shift,
                                     SCF_iter-SCF_iter_shift,
@@ -933,7 +934,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 	  time4 += TRAN_Poisson(ReVk,ImVk,SCF_iter,TRAN_SCF_Iter_Band,SucceedReadingDMfile);
 	}
 
-	time3 += Set_Hamiltonian(OpenMX_Grid_Workspace(core), mixing_v, atomic, vna, "nostdout",
+	time3 += Set_Hamiltonian(orbital_state, OpenMX_Grid_Workspace(core), mixing_v, atomic, vna, "nostdout",
                                   MD_iter,
                                   LSCF_iter-SCF_iter_shift,
                                   SCF_iter-SCF_iter_shift,
@@ -992,7 +993,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
       if (xmcd_calc == 1) time4 += Set_XMCD_penalty(1,pre_spin_moment,SCF_iter, electronic); // S. An
 
-      time3 += Set_Hamiltonian(OpenMX_Grid_Workspace(core), mixing_v, atomic, vna, "stdout",
+      time3 += Set_Hamiltonian(orbital_state, OpenMX_Grid_Workspace(core), mixing_v, atomic, vna, "stdout",
                                 MD_iter,
                                 LSCF_iter-SCF_iter_shift,
                                 SCF_iter-SCF_iter_shift,
@@ -1554,11 +1555,11 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
       /* calculate the total energy */
 
       /*
-	time10 += Set_Orbitals_Grid(1);
+	time10 += Set_Orbitals_Grid(orbital_state, 1);
 	time11 += Set_Density_Grid(density_state, OpenMX_Grid_Workspace(core), &density_cache_hooks, atomic, 1, 0, DM[0], Density_Grid_B, local_basis);
 	time7 += Force(vna,reciprocal, H0,DS_NL,OLP,DM[0],EDM);
 	time8 += Total_Energy(vna, MD_iter,ECE);
-	time10 += Set_Orbitals_Grid(0);
+	time10 += Set_Orbitals_Grid(orbital_state, 0);
 
 	TotalE = 0.0;
 	for (i=0; i<=12; i++){
@@ -1980,7 +1981,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   Grid_Precision_EndCycle();
   /* the on-the-fly state of the grid integrals and the density's resident
      device buffers go as well, before the forces */
-  Set_Hamiltonian_OnTheFly_EndCycle();
+  Set_Hamiltonian_OnTheFly_EndCycle(orbital_state);
   Set_Density_Grid_GPU_EndCycle(density_state);
 
   /*********************************************************************
@@ -2662,13 +2663,13 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
     printf("<MD=%2d>  Force calculation\n",MD_iter);fflush(stdout);
   }
 
-  if (Cnt_switch==1 && Cnt_Now==1) time10 += Set_Orbitals_Grid(density_state, atomic, 1, local_basis);
+  if (Cnt_switch==1 && Cnt_Now==1) time10 += Set_Orbitals_Grid(orbital_state, density_state, atomic, 1, local_basis);
   if (Solver!=12) time11 += Set_Density_Grid(density_state, OpenMX_Grid_Workspace(core), &density_cache_hooks, atomic, 1, 0, DM[0], Density_Grid_B, local_basis);
 
   /* the final density may have rebuilt the on-the-fly tables and the
      density-grid device buffers that the end of the SCF cycle released;
      return them before the force batches size their workspaces */
-  Set_Hamiltonian_OnTheFly_EndCycle();
+  Set_Hamiltonian_OnTheFly_EndCycle(orbital_state);
   Set_Density_Grid_GPU_EndCycle(density_state);
 
   if (Solver==4) {

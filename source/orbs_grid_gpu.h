@@ -14,6 +14,7 @@
 
 #include <stddef.h>
 #include "openmx_core_atomic.h"
+#include "openmx_orbital_gpu_state.h"
 
 typedef struct {
   int wan;              /* species of the evaluated atom */
@@ -40,19 +41,19 @@ typedef struct {
   double org[3];
 } SOG_DeviceTables;
 
-int SOG_Device_Prepare(const OpenMXAtomicViews *atomic);
-void SOG_Device_Release(void);
-void SOG_Device_ReleaseAll(void);
-const SOG_DeviceTables *SOG_Device_Tables(void);
-size_t SOG_Device_Bytes(void);
-const char *SOG_Device_EvalPrecisionName(void);
-void SOG_Device_EvalPairTiles(int pair_count, const SOG_GpuPair *pairs, const int *pair_NOLG,
+int SOG_Device_Prepare(OpenMXOrbitalGpuState *orbital_state, const OpenMXAtomicViews *atomic);
+void SOG_Device_Release(OpenMXOrbitalGpuState *orbital_state);
+void SOG_Device_ReleaseAll(OpenMXOrbitalGpuState *orbital_state);
+const SOG_DeviceTables *SOG_Device_Tables(OpenMXOrbitalGpuState *orbital_state);
+size_t SOG_Device_Bytes(OpenMXOrbitalGpuState *orbital_state);
+const char *SOG_Device_EvalPrecisionName(OpenMXOrbitalGpuState *orbital_state);
+void SOG_Device_EvalPairTiles(OpenMXOrbitalGpuState *orbital_state, int pair_count, const SOG_GpuPair *pairs, const int *pair_NOLG,
                               const size_t *nolg_off, const size_t *out_off, const size_t *gla_off,
                               const int *nolg_Nc, const int *gla, const int *cla, float *out);
-void SOG_Device_EvalAtomTile(const SOG_GpuPair *pair, int npts, const int *gla, const int *cla, float *out);
+void SOG_Device_EvalAtomTile(OpenMXOrbitalGpuState *orbital_state, const SOG_GpuPair *pair, int npts, const int *gla, const int *cla, float *out);
 
 /* Host descriptor; device overlap indices, sphere indices, and compact output. */
-void SOG_Device_EvalPairChunk(const SOG_GpuPair *pair, int npts, const int *nolg_Nc,
+void SOG_Device_EvalPairChunk(OpenMXOrbitalGpuState *orbital_state, const SOG_GpuPair *pair, int npts, const int *nolg_Nc,
                               const int *gla, const int *cla, float *out);
 
 #endif

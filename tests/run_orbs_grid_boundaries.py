@@ -29,7 +29,7 @@ root = Path(__file__).resolve().parents[1]
 source = (root / 'source/Set_Orbitals_Grid.c').read_text()
 helpers = source[source.index('typedef struct { float hi, lo; } SOG_df;'):
                  source.index('#pragma acc routine seq\nstatic void SOG_point_eval_df')]
-prepare = source[source.index('int SOG_Device_Prepare(const OpenMXAtomicViews *atomic)'):
+prepare = source[source.index('int SOG_Device_Prepare(OpenMXOrbitalGpuState *orbital_state, const OpenMXAtomicViews *atomic)'):
                  source.index('\nconst char *SOG_Device_EvalPrecisionName')]
 code = r'''
 #include <assert.h>
@@ -46,9 +46,18 @@ static void *checked_malloc(size_t n) {
   void *p = malloc(n); assert(p); ++live; return p;
 }
 static void checked_free(void *p) { if (p) { --live; free(p); } }
+/* This fixture isolates the spline math; production ownership is tested
+   separately against the real core and SDK allocation model. */
+struct OpenMXOrbitalGpuState { void *resources; };
+static OpenMXOrbitalGpuState fixture_state;
+enum { OPENMX_RESOURCE_ACC=3 };
+static int OpenMX_Resource_AccFreeCallback(void *p,int d) { (void)p;(void)d;return 0; }
+static int OpenMX_Resource_Adopt(void *owner,int domain,void *p,int(*release)(void*,int),void *sync) {
+  (void)owner;(void)domain;(void)p;(void)release;(void)sync;return 1;
+}
 static SOG_DeviceTables SOG_dev;
 static int SOG_dev_fp32_enabled = -1;
-void SOG_Device_Release(void) {
+void SOG_Device_Release(OpenMXOrbitalGpuState *orbital_state) {
   free(SOG_dev.arena); memset(&SOG_dev,0,sizeof(SOG_dev)); SOG_dev_fp32_enabled=-1;
 }
 static int SpeciesNum = 1, TCpyCell = 0, Ngrid2 = 3, Ngrid3 = 3;
@@ -66,6 +75,7 @@ static size_t SOG_arena_off(size_t *pos, size_t bytes) {
   size_t off = *pos; *pos = (off + bytes + 511U) & ~(size_t)511U; return off;
 }
 static void *SOG_arena_try(size_t n) { return fail_device ? NULL : malloc(n); }
+static void acc_free(void *p) { free(p); }
 static void acc_memcpy_to_device(void *d, const void *s, size_t n) { memcpy(d,s,n); }
 '''
 code += helpers
@@ -82,13 +92,13 @@ int main(void) {
 
   for (int failure = 1; failure <= 11; ++failure) {
     fail_at = failure; allocation = 0;
-    assert(!SOG_Device_Prepare(&atomic)); assert(!SOG_dev.ready); assert(!SOG_dev.arena);
+    assert(!SOG_Device_Prepare(&fixture_state, &atomic)); assert(!SOG_dev.ready); assert(!SOG_dev.arena);
     assert(live == 0);
   }
   fail_at = 0; allocation = 0; fail_device = 1;
-  assert(!SOG_Device_Prepare(&atomic)); assert(live == 0); assert(!SOG_dev.ready);
+  assert(!SOG_Device_Prepare(&fixture_state, &atomic)); assert(live == 0); assert(!SOG_dev.ready);
   fail_device = 0; allocation = 0;
-  assert(SOG_Device_Prepare(&atomic)); assert(live == 0); assert(allocation == 11);
+  assert(SOG_Device_Prepare(&fixture_state, &atomic)); assert(live == 0); assert(allocation == 11);
   float *radial = malloc(12 * sizeof(float));
   assert(radial); memcpy(radial, SOG_dev.rwd, 12 * sizeof(float));
   /* Use the actual production mesh constants and radial hi/lo table. */
@@ -118,26 +128,26 @@ int main(void) {
   eval_df = 0;
   for (int failure = 1; failure <= 8; ++failure) {
     fail_at = failure; allocation = 0;
-    assert(!SOG_Device_Prepare(&atomic)); assert(!SOG_dev.ready); assert(!SOG_dev.arena);
+    assert(!SOG_Device_Prepare(&fixture_state, &atomic)); assert(!SOG_dev.ready); assert(!SOG_dev.arena);
     assert(live == 0);
   }
   fail_at = 0; allocation = 0;
-  assert(SOG_Device_Prepare(&atomic)); assert(live == 0); assert(allocation == 8);
+  assert(SOG_Device_Prepare(&fixture_state, &atomic)); assert(live == 0); assert(allocation == 8);
   assert(SOG_dev.bytes < df_bytes);
   assert(!SOG_dev.rwd && !SOG_dev.mcd && !SOG_dev.spl);
   assert(SOG_dev.rv && SOG_dev.rwf && !SOG_dev.eval_df);
-  SOG_Device_Release();
+  SOG_Device_Release(&fixture_state);
   eval_df = 1;
   for (int enabled = 0; enabled < 3; ++enabled) {
     openmx_set_fp32_enabled(enabled % 2); allocation = 0;
-    assert(SOG_Device_Prepare(&atomic)); assert(live == 0);
+    assert(SOG_Device_Prepare(&fixture_state, &atomic)); assert(live == 0);
     assert(allocation == (enabled % 2 ? 11 : 8));
     assert(SOG_dev.eval_df == enabled % 2);
     assert((SOG_dev.rwd != NULL) == enabled % 2);
     assert((SOG_dev.mcd != NULL) == enabled % 2);
     assert((SOG_dev.spl != NULL) == enabled % 2);
   }
-  SOG_Device_Release();
+  SOG_Device_Release(&fixture_state);
   puts("PASS: orbital end intervals, DF/FP64 allocation failures, device OOM, retry, FP64 table savings");
 }
 '''

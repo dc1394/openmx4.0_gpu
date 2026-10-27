@@ -144,6 +144,7 @@ typedef struct {
 } SDGCensus;
 
 struct OpenMXDensityGpuState {
+  OpenMXOrbitalGpuState *orbital_state; /* borrowed from this calculation */
   int initialized;
   SetDensityGpuCache cache;
   SDGLocalContext local;
@@ -389,6 +390,7 @@ OpenMXDensityGpuState *Set_Density_Grid_GPU_Bind_Resources(OpenMXCoreContext *co
   }
   OpenMXDensityGpuState *density_state = (OpenMXDensityGpuState *)metadata;
   if (!density_state->initialized) {
+    density_state->orbital_state = Set_Orbitals_Grid_GPU_Bind_Resources(core);
     density_state->last_path = density_state->last_cpu = -1;
     density_state->last_workspace = density_state->last_failed = -1;
     density_state->initialized = 1;
@@ -1236,9 +1238,9 @@ extern int Set_Density_Grid_Hip_LocalDensity(size_t output_count, int spin_count
                                              const size_t *d_o1off, const int *d_nc, const float *d_o0,
                                              const float *d_o1, double *d_dm, double *d_den);
 /* Set_Hamiltonian.c: the on-the-fly density of a rank (rank-local) */
-extern int Set_Density_Grid_OTF_Possible(const OpenMXAtomicViews *atomic, int Cnt_kind);
-extern int Set_Density_Grid_OTF_Prepare(const OpenMXAtomicViews *atomic, int Cnt_kind, size_t *need_bytes, size_t *available_bytes);
-extern int Set_Density_Grid_OTF_Run(const OpenMXAtomicViews *atomic, int Cnt_kind, double *****CDM, double ***Tmp_Den_Grid);
+extern int Set_Density_Grid_OTF_Possible(OpenMXOrbitalGpuState *orbital_state, const OpenMXAtomicViews *atomic, int Cnt_kind);
+extern int Set_Density_Grid_OTF_Prepare(OpenMXOrbitalGpuState *orbital_state, const OpenMXAtomicViews *atomic, int Cnt_kind, size_t *need_bytes, size_t *available_bytes);
+extern int Set_Density_Grid_OTF_Run(OpenMXOrbitalGpuState *orbital_state, const OpenMXAtomicViews *atomic, int Cnt_kind, double *****CDM, double ***Tmp_Den_Grid);
 
 static void SDG_local_delete_device(SDGLocalContext *c)
 {
@@ -1522,7 +1524,7 @@ static int SDG_local_prepare(OpenMXDensityGpuState *density_state, const OpenMXA
        keeps its gates (the matrix-elements GPU path, at most
        OPENMX_BAND_GPU_MAX_DEVICE_RANKS ranks per device,
        OPENMX_DENSITY_GRID_ONTHEFLY) */
-    if (mode != 1 || !Set_Density_Grid_OTF_Possible(atomic, table_kind)) return 0;
+    if (mode != 1 || !Set_Density_Grid_OTF_Possible(density_state->orbital_state, atomic, table_kind)) return 0;
     if (!c->otf) {
       SDG_local_free(density_state);
       c->otf = 1;
@@ -1609,7 +1611,7 @@ int Set_Density_Grid_GPU_Local_Prepare(OpenMXDensityGpuState *density_state, con
   ok = SDG_local_prepare(density_state, atomic, Cnt_kind, Calc_CntOrbital_ON, openmx_gpu_ranks_per_device_noncollective(),
                          &vote_need, &vote_budget);
   if (ok && Matomnum > 0 && density_state->local.otf) {
-    ok = Set_Density_Grid_OTF_Prepare(atomic, density_state->local.cnt_kind, &need, &available);
+    ok = Set_Density_Grid_OTF_Prepare(density_state->orbital_state, atomic, density_state->local.cnt_kind, &need, &available);
     workspace_declined = !ok && need > available;
     /* the stage vote of an on-the-fly rank: its arena against the free
        memory less the reserve (no plan: the stage cannot be planned) */
@@ -1730,7 +1732,7 @@ int Set_Density_Grid_GPU_Local_Run(OpenMXDensityGpuState *density_state, const O
   if (Matomnum == 0) return 1;
   /* the on-the-fly tiles fill Tmp_Den_Grid themselves (and leave it as
      they found it when they fail) */
-  if (c->otf) return Set_Density_Grid_OTF_Run(atomic, c->cnt_kind, CDM, Tmp_Den_Grid);
+  if (c->otf) return Set_Density_Grid_OTF_Run(density_state->orbital_state, atomic, c->cnt_kind, CDM, Tmp_Den_Grid);
 
   if (!c->ready || output_count == 0) return 0;
   if (!SDG_pack_local_cdm(CDM, dm, dm_count, spin_count)) return 0;
