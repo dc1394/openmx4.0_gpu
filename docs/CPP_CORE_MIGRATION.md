@@ -6255,3 +6255,45 @@ CPU専用本体でも3入力を実行し、うち2入力をNVHPCのCPU経路と�
 GeForceで約105秒の目標を維持しています。AMD/A100/H100実機の速度は未検証です。
 ファイルstatic3個・関数内static10個の削減と分類照合は[大域状態監査](GLOBAL_STATE_AUDIT.md)、
 条件と記録は[性能検証](PERFORMANCE_REGRESSION.md)と`build/density-gpu-state-owner-20261027/`に保存しています。
+
+
+## 第92段階: H/S集約キャッシュを共通モジュールと計算の所有へ移行
+
+Radeon・H100・MI300Aの追加修正3コミットを読み、`16eedaa0`から基準ランタイムを再ビルドしました。
+Force3の同期、Krylovの投影行列領域、ホストsin/cos、NVHPC 26.5の対策、
+Radeonのスピン数別密度カーネルを保持してから、次の所有移管を行っています。
+
+CUDA/HIPで重複していた原子順序・S・H・虚数非局所行列の集約を、SDKに依存しない
+`openmx_hamiltonian_cache.c`へ移しました。`OpenMXHamiltonianCache`と全配列・一時領域を
+明示的な計算コンテキストのC++ native resource groupが所有します。
+DFT、collinear/noncollinear cluster・bandは同じ計算のviewを借用します。
+clear・finish・破棄はMPIや元の原子配置に触れず、途中の確保も含めてローカルに解放します。
+
+原子配置・選択rank・通信器を引数にし、共通モジュールから共通大域変数への参照をなくしました。
+collinear/noncollinearのpack順序、選択rankへの集約と配布を保持しています。
+HIPはSCF内のS・原子順序を再利用し、幾何更新・縮約基底更新時には再構築します。
+H・虚数非局所成分は毎回更新します。CUDAは従来どおり毎回再構築し、
+不要な再利用判定のAllreduceを追加していません。GPU容量判断と数値カーネルは変更していません。
+
+新規試験は本番Cモジュール全体と実C++ Coreをリンクし、独立にソートした座標からの参照値と比較します。
+各実行111例でスピン、縮約、2計算の分離、S再利用、選択rank変更、片rankの失効、
+空rank・全体空行列、逆順通信器と分割通信器、連続入力の解放を確認しました。
+22箇所の確保失敗は、単一rankの試験だけでMPIの異常終了を捕捉し、途中の領域が所有者から解放されることを確認しています。
+本番の異常終了を回復処理へ変えたものではありません。非コリニアのpack順序を壊した対照も確実に失敗します。
+35件のnative-state試験、Core/SIMDを含むASan/UBSanでの関連6件、実MPI 4/18 rankの試験が成功しました。
+CPU専用GCC/Intel MPI/MKLとNVHPC/CUDAをビルドし、実SDKのCUDA sm_80/HIP gfx942各82翻訳単位も成功しています。
+
+最新基準との収束した数値比較は26組です。CPU/GPUのcluster/band各collinear/noncollinear、
+DC/DC-LNO/Krylovの14組、CPU専用本体3組、GPU空rank1組、
+同一MPIプロセス群でwater→NC band→DC→waterを実行するCPU/GPU各4組を含みます。
+4 MPI×2 OpenMPでSCF反復数はすべて一致し、最大差はE=2.760e-10 Ha、F=8.805e-9 Ha/bohrでした。
+E/Fの許容値1e-7は維持しています。DC系/Krylovは固定構造・SCF上限200のDIA8検証入力、Krylov次数600です。
+標準-runtest全件の再検証ではありません。
+
+RTX 5080のsidia333・18 MPI×1 OpenMP・MPSは103.110→103.213秒でした。
+CPU専用C60 DCの3回中央値も6.431→6.429秒で、性能を維持しています。
+sidiaは25 SCF固定ステップの未収束入力、C60は全6実行とも27 SCFで収束しました。
+今回AMD/A100/H100実機の実行・速度は未検証です。記録は
+`build/hamiltonian-packed-owner-20261027/`、監査差分は[大域状態監査](GLOBAL_STATE_AUDIT.md)、
+計時は[性能検証](PERFORMANCE_REGRESSION.md)に保存しています。
+軌道表・行列要素のGPUキャッシュ、共通大域定義の削減は引き続き対象です。

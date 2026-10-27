@@ -1095,7 +1095,10 @@
     "openmx_setpro_gaunt.h",
     "openmx_setpro_host.h",
     "Dr_KumoF.c",
-    "KumoF.c"
+    "KumoF.c",
+    "openmx_hamiltonian_cache.c",
+    "openmx_hamiltonian_cache.h",
+    "openmx_hamiltonian_pack.h"
   ],
   "integrated_overrides": {
     "set_hamiltonian_hip.cu": "src/set_hamiltonian_hip.cu",

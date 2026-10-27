@@ -17,6 +17,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include "openmx_common.h"
+#include "openmx_hamiltonian_pack.h"
 #include "openmx_env.h"
 #include "openmx_grid_assembly.h"
 #include "openmx_native_resources.h"
@@ -302,7 +303,7 @@ static void DFT_ConfigureSetHamiltonianOpenMP(int myid0)
     Set_Hamiltonian_Set_OpenMP_Rank_Selected(DFT_SetHamiltonianOpenMPSelectedRank(myid0));
 }
 
-static void DFT_PrepareGpuSolverHSPackedCache(int SCF_iter, const OpenMXElectronicViews *electronic)
+static void DFT_PrepareGpuSolverHSPackedCache(OpenMXHamiltonianCache *cache, int SCF_iter, const OpenMXElectronicViews *electronic)
 {
     /* The packed H/S cache feeds the dense-GPU band paths AND the collinear
        cluster solver (Cluster_DFT_Col consumes it whenever it is ready; a
@@ -322,10 +323,27 @@ static void DFT_PrepareGpuSolverHSPackedCache(int SCF_iter, const OpenMXElectron
            cycle.  Rebuild them at SCF 1 (and whenever contracted orbitals may
            change), then refresh only the Hamiltonian on later iterations. */
         const int refresh_static = (SCF_iter <= 1 || Cnt_switch == 1);
-        Set_Hamiltonian_Build_GpuSolver_HS_Cache(Cnt_switch == 1, refresh_static, electronic);
+        const OpenMXHamiltonianPacking input = {
+            .atom_count = atomnum, .local_atom_count = Matomnum, .spin_mode = SpinP_switch,
+            .local_to_global = M2G, .species = WhatSpecies, .orbitals = Spe_Total_CNO,
+            .neighbor_count = FNAN, .neighbors = natn,
+            .selected = Set_Hamiltonian_OpenMP_Rank_Is_Selected(), .use_contracted = Cnt_switch == 1,
+            .reuse_static = 1, .refresh_static = refresh_static
+        };
+        const int rebuilt = Set_Hamiltonian_Build_GpuSolver_HS_Cache(cache, mpi_comm_level1, &input, electronic);
+        if (openmx_env_flag_at(OPENMX_ENV_BAND_CACHE_TRACE, 0) &&
+            Set_Hamiltonian_GpuSolver_Packed_CacheReady(cache)) {
+            int rank;
+            MPI_Comm_rank(mpi_comm_level1, &rank);
+            if (rank == Host_ID) {
+                printf("<DFT> packed HS cache: overlap/order %s, Hamiltonian refreshed\n",
+                       rebuilt ? "rebuilt" : "reused");
+                fflush(stdout);
+            }
+        }
     }
     else {
-        Set_Hamiltonian_Invalidate_GpuSolver_HS_Cache();
+        Set_Hamiltonian_Invalidate_GpuSolver_HS_Cache(cache);
     }
 }
 
@@ -427,6 +445,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   }
 
   const OpenMXNativeSolverStates solver_states=OpenMX_Native_Resources_Bind(core);
+  OpenMXHamiltonianCache *hamiltonian_cache = Set_Hamiltonian_Cache_Bind_Resources(core);
   OpenMXDensityGpuState *density_state = Set_Density_Grid_GPU_Bind_Resources(core);
   OpenMXMixingHState *mixing_h=Mixing_H_Bind_Resources(core);
   OpenMXMixingRhokState *mixing_rhok=Mixing_Rhok_Bind_Resources(core);
@@ -1055,7 +1074,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
       fflush(stdout);
     }
 
-    DFT_PrepareGpuSolverHSPackedCache(SCF_iter, electronic);
+    DFT_PrepareGpuSolverHSPackedCache(hamiltonian_cache, SCF_iter, electronic);
 
     /* The non-collinear spinor diagonalization is extremely sensitive to
        the multi-GiB flattened orbital tables built by Set_Hamiltonian.  On

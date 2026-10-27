@@ -222,6 +222,7 @@ struct OpenMXBandNonColState {
   OpenMXChemicalPotentials *chemical; /* borrowed from this calculation */
   OpenMXBandEnergies *energies; /* borrowed from this calculation */
   OpenMXNativeResources *resources; /* borrowed from this calculation */
+  OpenMXHamiltonianCache *hamiltonian_cache; /* borrowed from this calculation */
   int initialized;
   size_t k_overlap_bytes;
   size_t k_overlap_used;
@@ -291,6 +292,7 @@ OpenMXBandNonColState *Band_DFT_NonCol_Bind_Resources(OpenMXCoreContext *core)
   BandNonColState *state = (BandNonColState *)metadata;
   if (!state->initialized) {
     state->resources = owner;
+    state->hamiltonian_cache = Set_Hamiltonian_Cache_Bind_Resources(core);
     const BandNonColRefineState initial_refine = {-1, 0.0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     state->refine = initial_refine;
     state->Construct_Band_Ms_firsttime = 1;
@@ -3939,23 +3941,23 @@ static void BandNonCol_RootDenseRefinedSecondHalf(BandNonColState *state, int n,
    rank/atom/orbital order as PackDenseM1. Borrow them on dense k owners
    instead of repeating the gathers for every GPU turn in both passes.
    Agree collectively before skipping any of the fallback collectives. */
-static int BandNonCol_PackedKCacheReady(int owns_dense, int size_H1)
+static int BandNonCol_PackedKCacheReady(BandNonColState *state, int owns_dense, int size_H1)
 {
 
     int ready = (openmx_env_flag_at(OPENMX_ENV_BAND_NONCOL_PACKED_CACHE, 1)) &&
-        Set_Hamiltonian_GpuSolver_Packed_CacheReady() &&
-        Set_Hamiltonian_GpuSolver_Packed_OrderMode() == 1 &&
-        Set_Hamiltonian_GpuSolver_Packed_Size() == size_H1;
+        Set_Hamiltonian_GpuSolver_Packed_CacheReady(state->hamiltonian_cache) &&
+        Set_Hamiltonian_GpuSolver_Packed_OrderMode(state->hamiltonian_cache) == 1 &&
+        Set_Hamiltonian_GpuSolver_Packed_Size(state->hamiltonian_cache) == size_H1;
     int all_ready = 0;
 
     if (ready && owns_dense) {
-        ready = Set_Hamiltonian_GpuSolver_Packed_OwnsCache() &&
-                Set_Hamiltonian_GpuSolver_Packed_OrderGA() != NULL &&
-                Set_Hamiltonian_GpuSolver_Packed_Overlap() != NULL;
+        ready = Set_Hamiltonian_GpuSolver_Packed_OwnsCache(state->hamiltonian_cache) &&
+                Set_Hamiltonian_GpuSolver_Packed_OrderGA(state->hamiltonian_cache) != NULL &&
+                Set_Hamiltonian_GpuSolver_Packed_Overlap(state->hamiltonian_cache) != NULL;
         for (int spin = 0; spin < 4; ++spin)
-            ready = ready && Set_Hamiltonian_GpuSolver_Packed_H(spin) != NULL;
+            ready = ready && Set_Hamiltonian_GpuSolver_Packed_H(state->hamiltonian_cache, spin) != NULL;
         for (int comp = 0; comp < 3; ++comp)
-            ready = ready && Set_Hamiltonian_GpuSolver_Packed_ImNL(comp) != NULL;
+            ready = ready && Set_Hamiltonian_GpuSolver_Packed_ImNL(state->hamiltonian_cache, comp) != NULL;
     }
     MPI_Allreduce(&ready, &all_ready, 1, MPI_INT, MPI_MIN, mpi_comm_level1);
     return all_ready;
@@ -5167,11 +5169,11 @@ static double Band_DFT_NonCol_owned(BandNonColState *state, char *mode,
   if (use_k_dense_gpusolver) {
     int interleave_k = 1;
 
-    use_k_packed_cache = BandNonCol_PackedKCacheReady(owns_dense_k_rank, size_H1);
+    use_k_packed_cache = BandNonCol_PackedKCacheReady(state, owns_dense_k_rank, size_H1);
     if (use_k_packed_cache) {
       Set_Hamiltonian_GpuSolver_SetMP(MP);
       if (owns_dense_k_rank)
-        packed_k_order = Set_Hamiltonian_GpuSolver_Packed_OrderGA();
+        packed_k_order = Set_Hamiltonian_GpuSolver_Packed_OrderGA(state->hamiltonian_cache);
       if (myid0 == Host_ID && BandNonCol_GpuVerbose())
         printf("<Band> SCF %d: reusing shared packed H/S for all non-collinear k points.\n", SCF_iter);
     }
@@ -5399,14 +5401,14 @@ static double Band_DFT_NonCol_owned(BandNonColState *state, char *mode,
 
 	      if (use_k_packed_cache){
 	        if (owns_dense_k_group){
-	          m_olp = Set_Hamiltonian_GpuSolver_Packed_Overlap();
-	          m_h11 = Set_Hamiltonian_GpuSolver_Packed_H(0);
-	          m_h22 = Set_Hamiltonian_GpuSolver_Packed_H(1);
-	          m_h12 = Set_Hamiltonian_GpuSolver_Packed_H(2);
-	          m_h12i = Set_Hamiltonian_GpuSolver_Packed_H(3);
-	          m_i11 = Set_Hamiltonian_GpuSolver_Packed_ImNL(0);
-	          m_i22 = Set_Hamiltonian_GpuSolver_Packed_ImNL(1);
-	          m_i12 = Set_Hamiltonian_GpuSolver_Packed_ImNL(2);
+	          m_olp = Set_Hamiltonian_GpuSolver_Packed_Overlap(state->hamiltonian_cache);
+	          m_h11 = Set_Hamiltonian_GpuSolver_Packed_H(state->hamiltonian_cache, 0);
+	          m_h22 = Set_Hamiltonian_GpuSolver_Packed_H(state->hamiltonian_cache, 1);
+	          m_h12 = Set_Hamiltonian_GpuSolver_Packed_H(state->hamiltonian_cache, 2);
+	          m_h12i = Set_Hamiltonian_GpuSolver_Packed_H(state->hamiltonian_cache, 3);
+	          m_i11 = Set_Hamiltonian_GpuSolver_Packed_ImNL(state->hamiltonian_cache, 0);
+	          m_i22 = Set_Hamiltonian_GpuSolver_Packed_ImNL(state->hamiltonian_cache, 1);
+	          m_i12 = Set_Hamiltonian_GpuSolver_Packed_ImNL(state->hamiltonian_cache, 2);
 	        }
 	      }
 	      else if (owns_dense_k_group){
@@ -5521,8 +5523,8 @@ static double Band_DFT_NonCol_owned(BandNonColState *state, char *mode,
 		    const int refine_resident = state->refine.last_refined;
 		    int resident_kloop = -1;
 		    int use_setham_packed_cache =
-		      (Set_Hamiltonian_GpuSolver_Packed_CacheReady() &&
-	       Set_Hamiltonian_GpuSolver_Packed_OrderMode()==1);
+		      (Set_Hamiltonian_GpuSolver_Packed_CacheReady(state->hamiltonian_cache) &&
+	       Set_Hamiltonian_GpuSolver_Packed_OrderMode(state->hamiltonian_cache)==1);
 	    int root_s_valid = 0;
 	    int rebuild_overlap;
 	    BandNonColRootDenseWorkspace *rdw;
@@ -5586,18 +5588,18 @@ static double Band_DFT_NonCol_owned(BandNonColState *state, char *mode,
 
 	      if (use_setham_packed_cache){
 	        if (owns_root_dense_group){
-	          if (!Set_Hamiltonian_GpuSolver_Packed_OwnsCache()){
+	          if (!Set_Hamiltonian_GpuSolver_Packed_OwnsCache(state->hamiltonian_cache)){
 	            BandNonCol_AbortWithMessage("Set_Hamiltonian packed cache is not owned by this rank in Band_DFT_NonCol.c.");
 	          }
-	          packed_order_GA = Set_Hamiltonian_GpuSolver_Packed_OrderGA();
-	          m_olp = Set_Hamiltonian_GpuSolver_Packed_Overlap();
-	          m_h11 = Set_Hamiltonian_GpuSolver_Packed_H(0);
-	          m_h22 = Set_Hamiltonian_GpuSolver_Packed_H(1);
-	          m_h12 = Set_Hamiltonian_GpuSolver_Packed_H(2);
-	          m_h12i = Set_Hamiltonian_GpuSolver_Packed_H(3);
-	          m_i11 = Set_Hamiltonian_GpuSolver_Packed_ImNL(0);
-	          m_i22 = Set_Hamiltonian_GpuSolver_Packed_ImNL(1);
-	          m_i12 = Set_Hamiltonian_GpuSolver_Packed_ImNL(2);
+	          packed_order_GA = Set_Hamiltonian_GpuSolver_Packed_OrderGA(state->hamiltonian_cache);
+	          m_olp = Set_Hamiltonian_GpuSolver_Packed_Overlap(state->hamiltonian_cache);
+	          m_h11 = Set_Hamiltonian_GpuSolver_Packed_H(state->hamiltonian_cache, 0);
+	          m_h22 = Set_Hamiltonian_GpuSolver_Packed_H(state->hamiltonian_cache, 1);
+	          m_h12 = Set_Hamiltonian_GpuSolver_Packed_H(state->hamiltonian_cache, 2);
+	          m_h12i = Set_Hamiltonian_GpuSolver_Packed_H(state->hamiltonian_cache, 3);
+	          m_i11 = Set_Hamiltonian_GpuSolver_Packed_ImNL(state->hamiltonian_cache, 0);
+	          m_i22 = Set_Hamiltonian_GpuSolver_Packed_ImNL(state->hamiltonian_cache, 1);
+	          m_i12 = Set_Hamiltonian_GpuSolver_Packed_ImNL(state->hamiltonian_cache, 2);
 
 	          if (packed_order_GA==NULL || m_olp==NULL || m_h11==NULL || m_h22==NULL ||
 	              m_h12==NULL || m_h12i==NULL || m_i11==NULL || m_i22==NULL || m_i12==NULL){
@@ -6696,14 +6698,14 @@ static double Band_DFT_NonCol_owned(BandNonColState *state, char *mode,
 
 		        if (use_k_packed_cache){
 		          if (owns_dense_k_group){
-		            m_olp = Set_Hamiltonian_GpuSolver_Packed_Overlap();
-		            m_h11 = Set_Hamiltonian_GpuSolver_Packed_H(0);
-		            m_h22 = Set_Hamiltonian_GpuSolver_Packed_H(1);
-		            m_h12 = Set_Hamiltonian_GpuSolver_Packed_H(2);
-		            m_h12i = Set_Hamiltonian_GpuSolver_Packed_H(3);
-		            m_i11 = Set_Hamiltonian_GpuSolver_Packed_ImNL(0);
-		            m_i22 = Set_Hamiltonian_GpuSolver_Packed_ImNL(1);
-		            m_i12 = Set_Hamiltonian_GpuSolver_Packed_ImNL(2);
+		            m_olp = Set_Hamiltonian_GpuSolver_Packed_Overlap(state->hamiltonian_cache);
+		            m_h11 = Set_Hamiltonian_GpuSolver_Packed_H(state->hamiltonian_cache, 0);
+		            m_h22 = Set_Hamiltonian_GpuSolver_Packed_H(state->hamiltonian_cache, 1);
+		            m_h12 = Set_Hamiltonian_GpuSolver_Packed_H(state->hamiltonian_cache, 2);
+		            m_h12i = Set_Hamiltonian_GpuSolver_Packed_H(state->hamiltonian_cache, 3);
+		            m_i11 = Set_Hamiltonian_GpuSolver_Packed_ImNL(state->hamiltonian_cache, 0);
+		            m_i22 = Set_Hamiltonian_GpuSolver_Packed_ImNL(state->hamiltonian_cache, 1);
+		            m_i12 = Set_Hamiltonian_GpuSolver_Packed_ImNL(state->hamiltonian_cache, 2);
 		          }
 		        }
 		        else if (group_needs_solve && owns_dense_k_group){

@@ -4261,3 +4261,30 @@ AMD/A100/H100実機やCPUの性能向上を示す測定ではありません。
 `build/density-gpu-state-owner-20261027/performance/`に変更前後の`result.json`とログ、
 同ディレクトリの親にMPS情報、入力・本体・ライブラリ・変更ソースのハッシュ、数値比較結果を保存しています。
 `work/openmx`は更新せず、ビルドと計算には専用ディレクトリを使用しました。
+
+
+## 2026-10-27: H/S集約キャッシュの共通化・計算所有化（第92段階）
+
+Radeon/H100/MI300Aの修正を含む`16eedaa0`から新しい基準をビルドし、今回の変更と比較しました。
+本体・Core・ホストSIMDを両側で凍結し、18 MPI×1 OpenMPで他の計算・ビルドと重ねずに実行しました。
+GPUはRTX 5080・既存MPS・NVHPC/OpenMPI、CPU専用本体はGCC/Intel MPI/MKLです。
+
+| 入力・指標 | 変更前 | 変更後 |
+| --- | ---: | ---: |
+| sidia333 NC cluster、GPU/MPS、内部Total最大値 (秒) | 99.654 | 99.745 |
+| 同、MPI起動を含む経過時間 (秒) | 103.110 | 103.213 |
+| C60 DC、CPU専用、内部Total中央値 (秒) | 5.954 | 5.944 |
+| 同、MPI起動を含む経過時間中央値 (秒) | 6.431 | 6.429 |
+
+sidiaは元入力を各1回実行した25 SCF上限・未収束の性能比較です。E差0、最大F差1.0e-12 Ha/bohrでした。
+C60は変更前後を交互に各3回測定し、全実行が27 SCFで収束、各対応組のE/F印字値差は0です。
+小さな時間差を高速化とは主張せず、GeForceの約105秒目標とCPU経路の性能を保つ確認とします。
+AMD/A100/H100実機や他のCPUコンパイラ・数値ライブラリとの性能比較は今回実施していません。
+
+別途、4 MPI×2 OpenMPで収束した26組を比較し、最大差E=2.760e-10 Ha、F=8.805e-9 Ha/bohr、
+SCF反復数はすべて一致しました。同一プロセスで4入力を切り替える検証用-runtestも含みますが、
+標準-runtest全件の結果ではありません。詳しい範囲は[移行記録](CPP_CORE_MIGRATION.md)の第92段階を参照してください。
+
+`build/hamiltonian-packed-owner-20261027/`に数値結果、入力、本体・Core/SIMD、ソースハッシュ、
+監査差分、SDK/サニタイザー/実MPIの記録を保存しています。計時は`performance/`と
+`cpu-performance-results.json`、数値集計は`numerical-summary.json`です。`work/openmx`は更新していません。

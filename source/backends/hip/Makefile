@@ -413,7 +413,7 @@ MGPU_C_OBJECTS = openmx_cluster_capacity.o openmx_dense_cpu.o \
 MGPU_HIP_OBJECTS = openmx_gpu_dm.o openmx_gpu_transform.o \
  openmx_mgpu_gemm.o openmx_mgpu_runtime.o
 OBJS += $(MGPU_C_OBJECTS) $(MGPU_HIP_OBJECTS) openmx_gpu_views.o \
- openmx_gpu_task_worker.o openmx_gpu_task_cpu.o openmx_gpu_task_packet.o openmx_gpu_vector_worker.o openmx_gpu_vector_packet.o openmx_gpu_bilinear_pack.o openmx_magma_mgpu.o elpa_cosma_memory.o openmx_globals.o
+ openmx_gpu_task_worker.o openmx_gpu_task_cpu.o openmx_gpu_task_packet.o openmx_gpu_vector_worker.o openmx_gpu_vector_packet.o openmx_gpu_bilinear_pack.o openmx_magma_mgpu.o elpa_cosma_memory.o openmx_globals.o openmx_hamiltonian_cache.o
 
 openmx_globals.o: openmx_globals.c openmx_common.h
 	$(CC_NOACC) -fno-common -c openmx_globals.c -o $@
@@ -1629,3 +1629,9 @@ Stress.o: openmx_stress_workspace.h openmx_solver_workspace.h openmx_core_solver
 Total_Energy.o Stress.o: openmx_xc_workspace.h openmx_core_angular_grid.h ../core/include/openmx_core_angular_grid.h
 
 Force.o Stress.o: openmx_mechanical_workspace.h openmx_core_force.h ../core/include/openmx_core_force.h
+
+openmx_hamiltonian_cache.o: openmx_hamiltonian_cache.c openmx_hamiltonian_cache.h openmx_hamiltonian_pack.h openmx_core_native_resources.h
+	$(CC) -c openmx_hamiltonian_cache.c
+
+DFT.o: openmx_hamiltonian_pack.h
+$(OBJS): openmx_hamiltonian_cache.h

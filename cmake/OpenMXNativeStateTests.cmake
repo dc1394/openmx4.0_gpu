@@ -27,6 +27,12 @@ function(openmx_add_native_state_tests)
   set_tests_properties(density-calculation-state-lifecycle PROPERTIES
     ENVIRONMENT "${_environment}" LABELS "unit;gpu;core;native-state" TIMEOUT 180)
 
+  add_test(NAME hamiltonian-packing-calculation-state-lifecycle
+    COMMAND "${Python3_EXECUTABLE}" "${_repo}/tests/run_hamiltonian_packing_cpu.py"
+      --core-library "$<TARGET_FILE:openmx_core>" --negative-control)
+  set_tests_properties(hamiltonian-packing-calculation-state-lifecycle PROPERTIES
+    ENVIRONMENT "${_environment}" LABELS "unit;solver;core;native-state" TIMEOUT 180)
+
   foreach(_solver dc dclno krylov)
     add_test(NAME ${_solver}-calculation-state-lifecycle
       COMMAND "${Python3_EXECUTABLE}" "${_repo}/tests/run_local_solver_state_cpu.py"
@@ -188,6 +194,13 @@ function(openmx_add_native_state_tests)
   find_program(OPENMX_TEST_MPICXX NAMES mpicxx mpic++)
   find_program(OPENMX_TEST_MPIEXEC NAMES mpirun mpiexec)
   if(OPENMX_TEST_MPICXX AND OPENMX_TEST_MPIEXEC)
+    add_test(NAME hamiltonian-packing-calculation-state-mpi
+      COMMAND "${Python3_EXECUTABLE}" "${_repo}/tests/run_hamiltonian_packing_cpu.py"
+        --core-library "$<TARGET_FILE:openmx_core>" --negative-control
+        --mpi-cxx "${OPENMX_TEST_MPICXX}" --mpiexec "${OPENMX_TEST_MPIEXEC}")
+    set_tests_properties(hamiltonian-packing-calculation-state-mpi PROPERTIES
+      ENVIRONMENT "${_environment};OMPI_CXX=${CMAKE_CXX_COMPILER};MPICH_CXX=${CMAKE_CXX_COMPILER};I_MPI_CXX=${CMAKE_CXX_COMPILER}"
+      LABELS "unit;solver;core;mpi;native-state-mpi" TIMEOUT 180 PROCESSORS 4)
     add_test(NAME stress-overlap-mpi
       COMMAND "${Python3_EXECUTABLE}" "${_repo}/tests/run_stress_overlap_cpu.py"
         --core-library "$<TARGET_FILE:openmx_core>" --negative-control

@@ -134,6 +134,7 @@ struct OpenMXClusterColState {
   OpenMXChemicalPotentials *chemical; /* borrowed from this calculation */
   OpenMXThermodynamicEnergies *thermo; /* borrowed from this calculation */
   OpenMXNativeResources *resources; /* borrowed from this calculation */
+  OpenMXHamiltonianCache *hamiltonian_cache; /* borrowed from this calculation */
   OpenMXDensityGpuState *density_state; /* borrowed from the same calculation */
   int initialized;
   int mgpu_host_dense;
@@ -192,6 +193,7 @@ OpenMXClusterColState *Cluster_DFT_Col_Bind_Resources(OpenMXCoreContext *core)
   ClusterColState *state = (ClusterColState *)metadata;
   if (!state->initialized) {
     state->resources = owner;
+    state->hamiltonian_cache = Set_Hamiltonian_Cache_Bind_Resources(core);
     state->density_state = Set_Density_Grid_GPU_Bind_Resources(core);
     const ClusterColRefineStage initial = {-1, 0.0, 0, 0, 0, 0, 0, 0, 0, 0, -1, {0, 0}, 0, 0};
     state->refine = initial;
@@ -2729,8 +2731,8 @@ static void ClusterCol_GpuSolverRootDensePath(ClusterColState *state, int SCF_it
     int spin_end = SpinP_switch;
     int rebuild_s = (SCF_iter==1);
     int use_setham_packed_cache =
-        (Set_Hamiltonian_GpuSolver_Packed_CacheReady() &&
-         Set_Hamiltonian_GpuSolver_Packed_OrderMode() == 0);
+        (Set_Hamiltonian_GpuSolver_Packed_CacheReady(state->hamiltonian_cache) &&
+         Set_Hamiltonian_GpuSolver_Packed_OrderMode(state->hamiltonian_cache) == 0);
     /* the two spin worlds' owners solve at the same time; on one device
        (the admission counted them) neither forward transform takes the
        full GEMMul8 workspace */
@@ -2793,12 +2795,12 @@ static void ClusterCol_GpuSolverRootDensePath(ClusterColState *state, int SCF_it
     if (rebuild_s){
         if (use_setham_packed_cache) {
             if (owns_dense) {
-                int tnum = Set_Hamiltonian_GpuSolver_Packed_Size();
-                int *cache_order_GA = Set_Hamiltonian_GpuSolver_Packed_OrderGA();
-                double *cache_S = Set_Hamiltonian_GpuSolver_Packed_Overlap();
+                int tnum = Set_Hamiltonian_GpuSolver_Packed_Size(state->hamiltonian_cache);
+                int *cache_order_GA = Set_Hamiltonian_GpuSolver_Packed_OrderGA(state->hamiltonian_cache);
+                double *cache_S = Set_Hamiltonian_GpuSolver_Packed_Overlap(state->hamiltonian_cache);
                 int *dense_index = NULL;
 
-                if (!Set_Hamiltonian_GpuSolver_Packed_OwnsCache() || cache_order_GA == NULL || cache_S == NULL) {
+                if (!Set_Hamiltonian_GpuSolver_Packed_OwnsCache(state->hamiltonian_cache) || cache_order_GA == NULL || cache_S == NULL) {
                     ClusterCol_AbortWithMessage("Set_Hamiltonian packed overlap cache is missing in Cluster_DFT_Col.c.");
                 }
                 dense_index = (int*)ClusterCol_MallocArray(state, (size_t)tnum,sizeof(int),"packed overlap dense_index");
@@ -2820,14 +2822,14 @@ static void ClusterCol_GpuSolverRootDensePath(ClusterColState *state, int SCF_it
     for (int spin=spin_start; spin<=spin_end; spin++){
         if (use_setham_packed_cache) {
             if (owns_dense){
-                int tnum = Set_Hamiltonian_GpuSolver_Packed_Size();
-                int *cache_order_GA = Set_Hamiltonian_GpuSolver_Packed_OrderGA();
-                double *cache_H = Set_Hamiltonian_GpuSolver_Packed_H(spin);
+                int tnum = Set_Hamiltonian_GpuSolver_Packed_Size(state->hamiltonian_cache);
+                int *cache_order_GA = Set_Hamiltonian_GpuSolver_Packed_OrderGA(state->hamiltonian_cache);
+                double *cache_H = Set_Hamiltonian_GpuSolver_Packed_H(state->hamiltonian_cache, spin);
                 int *dense_index = NULL;
                 size_t nmax = ClusterCol_CheckedMulCount((size_t)n,(size_t)MaxN,"root dense eigenvectors");
                 double *C = NULL;
 
-                if (!Set_Hamiltonian_GpuSolver_Packed_OwnsCache() || cache_order_GA == NULL || cache_H == NULL) {
+                if (!Set_Hamiltonian_GpuSolver_Packed_OwnsCache(state->hamiltonian_cache) || cache_order_GA == NULL || cache_H == NULL) {
                     ClusterCol_AbortWithMessage("Set_Hamiltonian packed Hamiltonian cache is missing in Cluster_DFT_Col.c.");
                 }
                 dense_index = (int*)ClusterCol_MallocArray(state, (size_t)tnum,sizeof(int),"packed Hamiltonian dense_index");
@@ -2923,8 +2925,8 @@ static void ClusterCol_GpuSolverRootDenseSerialPath(ClusterColState *state,
     int SCF_iter, double **ko, double *****nh, double ****CntOLP,
     int numprocs0, int myworld1, int myid1, int *MP, int n, int MaxN)
 {
-    int packed = Set_Hamiltonian_GpuSolver_Packed_CacheReady() &&
-                 Set_Hamiltonian_GpuSolver_Packed_OrderMode() == 0;
+    int packed = Set_Hamiltonian_GpuSolver_Packed_CacheReady(state->hamiltonian_cache) &&
+                 Set_Hamiltonian_GpuSolver_Packed_OrderMode(state->hamiltonian_cache) == 0;
 
     if (packed) Set_Hamiltonian_GpuSolver_SetMP(MP);
     ClusterCol_RefineBeginSolve(state, SCF_iter, 2, -1);   /* serialized spins keep the FP64 eigensolver */
@@ -2965,12 +2967,12 @@ static void ClusterCol_GpuSolverRootDenseSerialPath(ClusterColState *state,
             }
             if (packed) {
                 if (owns_dense) {
-                    int tnum = Set_Hamiltonian_GpuSolver_Packed_Size();
-                    int *order = Set_Hamiltonian_GpuSolver_Packed_OrderGA();
-                    double *matrix = hamiltonian ? Set_Hamiltonian_GpuSolver_Packed_H(spin)
-                                                 : Set_Hamiltonian_GpuSolver_Packed_Overlap();
+                    int tnum = Set_Hamiltonian_GpuSolver_Packed_Size(state->hamiltonian_cache);
+                    int *order = Set_Hamiltonian_GpuSolver_Packed_OrderGA(state->hamiltonian_cache);
+                    double *matrix = hamiltonian ? Set_Hamiltonian_GpuSolver_Packed_H(state->hamiltonian_cache, spin)
+                                                 : Set_Hamiltonian_GpuSolver_Packed_Overlap(state->hamiltonian_cache);
                     int *index;
-                    if (!Set_Hamiltonian_GpuSolver_Packed_OwnsCache() || order == NULL || matrix == NULL)
+                    if (!Set_Hamiltonian_GpuSolver_Packed_OwnsCache(state->hamiltonian_cache) || order == NULL || matrix == NULL)
                         ClusterCol_AbortWithMessage("Missing packed matrix for serial GPU spin solve.");
                     index = (int*)ClusterCol_MallocArray(state, (size_t)tnum, sizeof(int), "serial dense index");
                     ClusterCol_BuildDenseIndex(order, MP, n, tnum, index);

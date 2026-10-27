@@ -17,6 +17,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include "openmx_common.h"
+#include "openmx_hamiltonian_pack.h"
 #include "openmx_env.h"
 #include "openmx_grid_assembly.h"
 #include "openmx_native_resources.h"
@@ -365,13 +366,20 @@ static void DFT_ConfigureSetHamiltonianOpenACC(int myid0)
     Set_Hamiltonian_Set_OpenACC_Work_Rank_Selected(DFT_SetHamiltonianOpenACCWorkSelectedRank(myid0));
 }
 
-static void DFT_PrepareGpuSolverHSPackedCache(const OpenMXElectronicViews *electronic)
+static void DFT_PrepareGpuSolverHSPackedCache(OpenMXHamiltonianCache *cache, const OpenMXElectronicViews *electronic)
 {
     if (scf_eigen_lib_flag == GPUSOLVER && (Solver == 2 || Solver == 3)) {
-        Set_Hamiltonian_Build_GpuSolver_HS_Cache(Cnt_switch == 1, electronic);
+        const OpenMXHamiltonianPacking input = {
+            .atom_count = atomnum, .local_atom_count = Matomnum, .spin_mode = SpinP_switch,
+            .local_to_global = M2G, .species = WhatSpecies, .orbitals = Spe_Total_CNO,
+            .neighbor_count = FNAN, .neighbors = natn,
+            .selected = Set_Hamiltonian_OpenACC_Rank_Is_Selected(), .use_contracted = Cnt_switch == 1,
+            .reuse_static = 0, .refresh_static = 1
+        };
+        Set_Hamiltonian_Build_GpuSolver_HS_Cache(cache, mpi_comm_level1, &input, electronic);
     }
     else {
-        Set_Hamiltonian_Invalidate_GpuSolver_HS_Cache();
+        Set_Hamiltonian_Invalidate_GpuSolver_HS_Cache(cache);
     }
 }
 
@@ -473,6 +481,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   }
 
   const OpenMXNativeSolverStates solver_states=OpenMX_Native_Resources_Bind(core);
+  OpenMXHamiltonianCache *hamiltonian_cache = Set_Hamiltonian_Cache_Bind_Resources(core);
   OpenMXDensityGpuState *density_state = Set_Density_Grid_GPU_Bind_Resources(core);
   OpenMXMixingHState *mixing_h=Mixing_H_Bind_Resources(core);
   OpenMXMixingRhokState *mixing_rhok=Mixing_Rhok_Bind_Resources(core);
@@ -1042,7 +1051,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
       fflush(stdout);
     }
 
-    DFT_PrepareGpuSolverHSPackedCache(electronic);
+    DFT_PrepareGpuSolverHSPackedCache(hamiltonian_cache, electronic);
 
     if (Cnt_switch==0){
 

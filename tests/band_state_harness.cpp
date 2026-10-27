@@ -1,6 +1,7 @@
 #include "openmx_core_chemical.h"
 #include "openmx_core_energy.h"
 #include "fixtures/native_resources/sdk_model.hpp"
+#include "hamiltonian_cache_binding_fixture.hpp"
 #include "density_state_binding_fixture.hpp"
 #include "openmx_complex.h"
 #include "openmx_band_col_state.h"
@@ -137,6 +138,10 @@ int main(){try{
         auto* a=band_bind(first.get());auto* b=band_bind(second.get());
     check(a->chemical==owned_chemical(first.get()) && b->chemical==owned_chemical(second.get()) && a->chemical!=b->chemical,
           "native solver borrowed another calculation's chemical potentials");
+    check(a->hamiltonian_cache==Set_Hamiltonian_Cache_Bind_Resources(first.get()) &&
+          b->hamiltonian_cache==Set_Hamiltonian_Cache_Bind_Resources(second.get()) &&
+          a->hamiltonian_cache!=b->hamiltonian_cache,
+          "solver borrowed another calculation's packed Hamiltonian cache");
     a->chemical->chemical_potential=.125;a->chemical->xanes[0]=1.5;
     b->chemical->chemical_potential=-.25;b->chemical->xanes[1]=2.5;
         check(a!=b && a->resources!=b->resources && !queries && !live,"binding shared state or touched SDK");

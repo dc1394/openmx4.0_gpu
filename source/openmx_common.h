@@ -16,6 +16,7 @@
 #include "openmx_dc_state.h"
 #include "openmx_dclno_state.h"
 #include "openmx_krylov_state.h"
+#include "openmx_hamiltonian_cache.h"
 #include "openmx_density_gpu_state.h"
 #include "openmx_mixing_h_state.h"
 #include "openmx_mixing_rhok_state.h"
@@ -2890,8 +2891,6 @@ double Set_Hamiltonian(OpenMXGridWorkspace *grid, OpenMXMixingVState *mixing_v, 
 #if OPENMX_GPU_HIP
 void Set_Hamiltonian_Set_OpenMP_Rank_Selected(int selected);
 int Set_Hamiltonian_OpenMP_Rank_Is_Selected(void);
-void Set_Hamiltonian_Invalidate_GpuSolver_HS_Cache(void);
-void Set_Hamiltonian_Build_GpuSolver_HS_Cache(int use_contracted, int refresh_static, const OpenMXElectronicViews *electronic);
 void Set_Hamiltonian_GpuSolver_SetMP(int *MP);
 void OpenMX_GpuPhaseNeed_Register(const char *phase, size_t group_bytes);
 size_t OpenMX_GpuPhaseNeed_Max(void);
@@ -2966,18 +2965,8 @@ int Set_Density_Grid_GPU_Local_Prepare(OpenMXDensityGpuState *density_state, con
 int Set_Density_Grid_GPU_Local_KeepDistributed(OpenMXDensityGpuState *density_state);
 int Set_Density_Grid_GPU_Local_Run(OpenMXDensityGpuState *density_state, const OpenMXAtomicViews *atomic, double *****CDM, double ***Tmp_Den_Grid);
 void Set_Density_Grid_GPU_Local_Report(OpenMXDensityGpuState *density_state, int path, int failed);
-void Set_Hamiltonian_Invalidate_GpuSolver_HS_Cache(void);
-void Set_Hamiltonian_Build_GpuSolver_HS_Cache(int use_contracted, const OpenMXElectronicViews *electronic);
 void Set_Hamiltonian_GpuSolver_SetMP(int *MP);
 #endif
-int Set_Hamiltonian_GpuSolver_Packed_CacheReady(void);
-int Set_Hamiltonian_GpuSolver_Packed_OwnsCache(void);
-int Set_Hamiltonian_GpuSolver_Packed_OrderMode(void);
-int Set_Hamiltonian_GpuSolver_Packed_Size(void);
-int *Set_Hamiltonian_GpuSolver_Packed_OrderGA(void);
-double *Set_Hamiltonian_GpuSolver_Packed_Overlap(void);
-double *Set_Hamiltonian_GpuSolver_Packed_H(int spin);
-double *Set_Hamiltonian_GpuSolver_Packed_ImNL(int comp);
 
 
 double Total_Energy(OpenMXCoreContext *core, const OpenMXBandEnergies *energies, const OpenMXCWFObservables *cwf_values, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, int MD_iter, double ECE[], const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);

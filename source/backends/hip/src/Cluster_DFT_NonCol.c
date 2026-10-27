@@ -124,6 +124,7 @@ struct OpenMXClusterNonColState {
   OpenMXChemicalPotentials *chemical; /* borrowed from this calculation */
   OpenMXThermodynamicEnergies *thermo; /* borrowed from this calculation */
   OpenMXNativeResources *resources; /* borrowed from this calculation */
+  OpenMXHamiltonianCache *hamiltonian_cache; /* borrowed from this calculation */
   int initialized;
   int mgpu_host_dense;
   int gs2_fallback_n2;
@@ -180,6 +181,7 @@ OpenMXClusterNonColState *Cluster_DFT_NonCol_Bind_Resources(OpenMXCoreContext *c
   ClusterNonColState *state = (ClusterNonColState *)metadata;
   if (!state->initialized) {
     state->resources = owner;
+    state->hamiltonian_cache = Set_Hamiltonian_Cache_Bind_Resources(core);
     const ClusterNonColRefineStage initial = {-1, 0.0, 0, 0, 0, 0, 0};
     state->refine = initial;
     state->firsttime = 1;
@@ -1764,8 +1766,8 @@ static void ClusterNonCol_BuildDenseOnDevice(ClusterNonColState *state, const do
    (device 0, through the OpenMP build) or the device of the root solve */
 static void ClusterNonCol_LoadDeviceDenseFromSetHamCache(ClusterNonColState *state, const double *H1, int *MP, int n, double *H, int device)
 {
-    int tnum = Set_Hamiltonian_GpuSolver_Packed_Size();
-    int *order_GA = Set_Hamiltonian_GpuSolver_Packed_OrderGA();
+    int tnum = Set_Hamiltonian_GpuSolver_Packed_Size(state->hamiltonian_cache);
+    int *order_GA = Set_Hamiltonian_GpuSolver_Packed_OrderGA(state->hamiltonian_cache);
     int *dense_index;
 
     if (H1 == NULL || order_GA == NULL) {
@@ -2723,8 +2725,8 @@ static void ClusterNonCol_GpuSolverRootDensePath(ClusterNonColState *state, int 
     ClusterNonColDeviceSolve *ds = &state->dsolve;
     const int owns_dense = (myid == Host_ID);
     const int profile = owns_dense && ClusterNonCol_ProfileEnabled(state);
-    const int cache_ready = Set_Hamiltonian_GpuSolver_Packed_CacheReady();
-    const int cache_order = Set_Hamiltonian_GpuSolver_Packed_OrderMode();
+    const int cache_ready = Set_Hamiltonian_GpuSolver_Packed_CacheReady(state->hamiltonian_cache);
+    const int cache_order = Set_Hamiltonian_GpuSolver_Packed_OrderMode(state->hamiltonian_cache);
 
     const int use_setham_packed_cache = (cache_ready && cache_order == 1 &&
                                          (openmx_env_flag_at(OPENMX_ENV_CLUSTER_NC_SETHAM_CACHE, 1)));
@@ -2782,10 +2784,10 @@ static void ClusterNonCol_GpuSolverRootDensePath(ClusterNonColState *state, int 
     if (rebuild_s) {
         if (use_setham_packed_cache) {
             if (owns_dense) {
-                if (!Set_Hamiltonian_GpuSolver_Packed_OwnsCache()) {
+                if (!Set_Hamiltonian_GpuSolver_Packed_OwnsCache(state->hamiltonian_cache)) {
                     ClusterNonCol_AbortWithMessage("Set_Hamiltonian packed overlap cache is not owned by this rank.");
                 }
-                ClusterNonCol_LoadDeviceDenseFromSetHamCache(state, Set_Hamiltonian_GpuSolver_Packed_Overlap(), MP, n, S, 0);
+                ClusterNonCol_LoadDeviceDenseFromSetHamCache(state, Set_Hamiltonian_GpuSolver_Packed_Overlap(state->hamiltonian_cache), MP, n, S, 0);
             }
         }
         else {
@@ -2847,18 +2849,18 @@ static void ClusterNonCol_GpuSolverRootDensePath(ClusterNonColState *state, int 
 
     if (use_setham_packed_cache) {
         if (owns_dense) {
-            if (!Set_Hamiltonian_GpuSolver_Packed_OwnsCache()) {
+            if (!Set_Hamiltonian_GpuSolver_Packed_OwnsCache(state->hamiltonian_cache)) {
                 ClusterNonCol_AbortWithMessage("Set_Hamiltonian packed Hamiltonian cache is not owned by this rank.");
             }
-            ClusterNonCol_LoadDeviceDenseFromSetHamCache(state, Set_Hamiltonian_GpuSolver_Packed_H(0), MP, n, mats[0], device);
-            ClusterNonCol_LoadDeviceDenseFromSetHamCache(state, Set_Hamiltonian_GpuSolver_Packed_H(1), MP, n, mats[2], device);
-            ClusterNonCol_LoadDeviceDenseFromSetHamCache(state, Set_Hamiltonian_GpuSolver_Packed_H(2), MP, n, mats[1], device);
-            ClusterNonCol_LoadDeviceDenseFromSetHamCache(state, Set_Hamiltonian_GpuSolver_Packed_H(3), MP, n, mats[4], device);
-            ClusterNonCol_LoadDeviceDenseFromSetHamCache(state, Set_Hamiltonian_GpuSolver_Packed_ImNL(0), MP, n, mats[3],
+            ClusterNonCol_LoadDeviceDenseFromSetHamCache(state, Set_Hamiltonian_GpuSolver_Packed_H(state->hamiltonian_cache, 0), MP, n, mats[0], device);
+            ClusterNonCol_LoadDeviceDenseFromSetHamCache(state, Set_Hamiltonian_GpuSolver_Packed_H(state->hamiltonian_cache, 1), MP, n, mats[2], device);
+            ClusterNonCol_LoadDeviceDenseFromSetHamCache(state, Set_Hamiltonian_GpuSolver_Packed_H(state->hamiltonian_cache, 2), MP, n, mats[1], device);
+            ClusterNonCol_LoadDeviceDenseFromSetHamCache(state, Set_Hamiltonian_GpuSolver_Packed_H(state->hamiltonian_cache, 3), MP, n, mats[4], device);
+            ClusterNonCol_LoadDeviceDenseFromSetHamCache(state, Set_Hamiltonian_GpuSolver_Packed_ImNL(state->hamiltonian_cache, 0), MP, n, mats[3],
                                                          device);
-            ClusterNonCol_LoadDeviceDenseFromSetHamCache(state, Set_Hamiltonian_GpuSolver_Packed_ImNL(1), MP, n, mats[5],
+            ClusterNonCol_LoadDeviceDenseFromSetHamCache(state, Set_Hamiltonian_GpuSolver_Packed_ImNL(state->hamiltonian_cache, 1), MP, n, mats[5],
                                                          device);
-            ClusterNonCol_LoadDeviceDenseFromSetHamCache(state, Set_Hamiltonian_GpuSolver_Packed_ImNL(2), MP, n, mats[6],
+            ClusterNonCol_LoadDeviceDenseFromSetHamCache(state, Set_Hamiltonian_GpuSolver_Packed_ImNL(state->hamiltonian_cache, 2), MP, n, mats[6],
                                                          device);
         }
     }

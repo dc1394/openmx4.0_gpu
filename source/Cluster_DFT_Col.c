@@ -121,6 +121,7 @@ struct OpenMXClusterColState {
   OpenMXChemicalPotentials *chemical; /* borrowed from this calculation */
   OpenMXThermodynamicEnergies *thermo; /* borrowed from this calculation */
   OpenMXNativeResources *resources; /* borrowed from this calculation */
+  OpenMXHamiltonianCache *hamiltonian_cache; /* borrowed from this calculation */
   int initialized;
   int mgpu_host_dense;
   int gs2_fallback_n;
@@ -168,6 +169,7 @@ OpenMXClusterColState *Cluster_DFT_Col_Bind_Resources(OpenMXCoreContext *core)
   ClusterColState *state = (ClusterColState *)metadata;
   if (!state->initialized) {
     state->resources = owner;
+    state->hamiltonian_cache = Set_Hamiltonian_Cache_Bind_Resources(core);
     const ClusterColRefineState initial = {-1, 0.0, 0, 0, 0, 0, 0, 0, 0, 0, -1, {0, 0}, 0, 0};
     state->refine = initial;
     state->firsttime = 1;
@@ -1628,8 +1630,8 @@ static int ClusterCol_GpuDiagFits(ClusterColState *state, int SCF_iter, int n, i
        and it rebuilds the second spin's dense Hamiltonian from the packed
        Set_Hamiltonian cache on spin world 0's owner */
     serial_allowed = (serial_knob!=0 && SpinP_switch==1 && numprocs0!=1 &&
-                      Set_Hamiltonian_GpuSolver_Packed_CacheReady() &&
-                      Set_Hamiltonian_GpuSolver_Packed_OrderMode()==0);
+                      Set_Hamiltonian_GpuSolver_Packed_CacheReady(state->hamiltonian_cache) &&
+                      Set_Hamiltonian_GpuSolver_Packed_OrderMode(state->hamiltonian_cache)==0);
 
     if (serial_knob==2 && serial_allowed){
         /* testing aid: skip the concurrent probe and go straight to the
@@ -2182,8 +2184,8 @@ static void ClusterCol_GpuSolverRootDensePath(ClusterColState *state, int SCF_it
     int spin_end = SpinP_switch;
     int rebuild_s = (SCF_iter==1);
     int use_setham_packed_cache =
-        (Set_Hamiltonian_GpuSolver_Packed_CacheReady() &&
-         Set_Hamiltonian_GpuSolver_Packed_OrderMode() == 0);
+        (Set_Hamiltonian_GpuSolver_Packed_CacheReady(state->hamiltonian_cache) &&
+         Set_Hamiltonian_GpuSolver_Packed_OrderMode(state->hamiltonian_cache) == 0);
     double *C = NULL;
 
     /* the stash refers to the previous SCF step's eigenvectors until the
@@ -2244,12 +2246,12 @@ static void ClusterCol_GpuSolverRootDensePath(ClusterColState *state, int SCF_it
     if (rebuild_s){
         if (use_setham_packed_cache) {
             if (owns_dense) {
-                int tnum = Set_Hamiltonian_GpuSolver_Packed_Size();
-                int *cache_order_GA = Set_Hamiltonian_GpuSolver_Packed_OrderGA();
-                double *cache_S = Set_Hamiltonian_GpuSolver_Packed_Overlap();
+                int tnum = Set_Hamiltonian_GpuSolver_Packed_Size(state->hamiltonian_cache);
+                int *cache_order_GA = Set_Hamiltonian_GpuSolver_Packed_OrderGA(state->hamiltonian_cache);
+                double *cache_S = Set_Hamiltonian_GpuSolver_Packed_Overlap(state->hamiltonian_cache);
                 const int *dense_index;
 
-                if (!Set_Hamiltonian_GpuSolver_Packed_OwnsCache() || cache_order_GA == NULL || cache_S == NULL) {
+                if (!Set_Hamiltonian_GpuSolver_Packed_OwnsCache(state->hamiltonian_cache) || cache_order_GA == NULL || cache_S == NULL) {
                     ClusterCol_AbortWithMessage("Set_Hamiltonian packed overlap cache is missing in Cluster_DFT_Col.c.");
                 }
                 dense_index = ClusterCol_DenseIndexCache_Get(state, cache_order_GA,MP,n,tnum);
@@ -2270,12 +2272,12 @@ static void ClusterCol_GpuSolverRootDensePath(ClusterColState *state, int SCF_it
         for (int spin=spin_start; spin<=spin_end; spin++){
             if (use_setham_packed_cache) {
                 if (owns_dense) {
-                    int tnum = Set_Hamiltonian_GpuSolver_Packed_Size();
-                    int *cache_order_GA = Set_Hamiltonian_GpuSolver_Packed_OrderGA();
-                    double *cache_H = Set_Hamiltonian_GpuSolver_Packed_H(spin);
+                    int tnum = Set_Hamiltonian_GpuSolver_Packed_Size(state->hamiltonian_cache);
+                    int *cache_order_GA = Set_Hamiltonian_GpuSolver_Packed_OrderGA(state->hamiltonian_cache);
+                    double *cache_H = Set_Hamiltonian_GpuSolver_Packed_H(state->hamiltonian_cache, spin);
                     const int *dense_index;
 
-                    if (!Set_Hamiltonian_GpuSolver_Packed_OwnsCache() || cache_order_GA == NULL || cache_H == NULL) {
+                    if (!Set_Hamiltonian_GpuSolver_Packed_OwnsCache(state->hamiltonian_cache) || cache_order_GA == NULL || cache_H == NULL) {
                         ClusterCol_AbortWithMessage("Set_Hamiltonian packed Hamiltonian cache is missing in Cluster_DFT_Col.c.");
                     }
                     dense_index = ClusterCol_DenseIndexCache_Get(state, cache_order_GA,MP,n,tnum);
@@ -2328,12 +2330,12 @@ static void ClusterCol_GpuSolverRootDensePath(ClusterColState *state, int SCF_it
         if (myworld1==0){
             if (owns_dense){
                 for (int spin=1; 0<=spin; spin--){
-                    int tnum = Set_Hamiltonian_GpuSolver_Packed_Size();
-                    int *cache_order_GA = Set_Hamiltonian_GpuSolver_Packed_OrderGA();
-                    double *cache_H = Set_Hamiltonian_GpuSolver_Packed_H(spin);
+                    int tnum = Set_Hamiltonian_GpuSolver_Packed_Size(state->hamiltonian_cache);
+                    int *cache_order_GA = Set_Hamiltonian_GpuSolver_Packed_OrderGA(state->hamiltonian_cache);
+                    double *cache_H = Set_Hamiltonian_GpuSolver_Packed_H(state->hamiltonian_cache, spin);
                     const int *dense_index;
 
-                    if (!Set_Hamiltonian_GpuSolver_Packed_OwnsCache() || cache_order_GA == NULL || cache_H == NULL) {
+                    if (!Set_Hamiltonian_GpuSolver_Packed_OwnsCache(state->hamiltonian_cache) || cache_order_GA == NULL || cache_H == NULL) {
                         ClusterCol_AbortWithMessage("Set_Hamiltonian packed Hamiltonian cache is missing in Cluster_DFT_Col.c.");
                     }
                     dense_index = ClusterCol_DenseIndexCache_Get(state, cache_order_GA,MP,n,tnum);

@@ -376,7 +376,7 @@ OBJS += openmx_mgpu_runtime.o openmx_mgpu_gemm.o openmx_magma_mgpu.o
 OBJS += openmx_gpu_workers.o openmx_gpu_error.o openmx_gpu_views.o openmx_globals.o
 OBJS += openmx_gpu_transform.o
 OBJS += openmx_gpu_dm.o openmx_gpu_dm_collective.o
-OBJS += openmx_cluster_capacity.o openmx_host_memory.o elpa_cosma_memory.o
+OBJS += openmx_cluster_capacity.o openmx_host_memory.o elpa_cosma_memory.o openmx_hamiltonian_cache.o
 OBJS += openmx_env.o
 OBJS += openmx_host_simd.o
 OBJS += openmx_dense_cpu.o
@@ -1789,3 +1789,9 @@ Band_DFT_Col.o: openmx_host_simd.h openmx_core_energy_simd.h ../core/include/ope
 Cluster_DFT_Col.o Band_DFT_NonCol.o: openmx_host_simd.h openmx_core_host_simd.h ../core/include/openmx_core_host_simd.h
 
 Force.o Stress.o: openmx_mechanical_workspace.h openmx_core_force.h ../core/include/openmx_core_force.h
+
+openmx_hamiltonian_cache.o: openmx_hamiltonian_cache.c openmx_hamiltonian_cache.h openmx_hamiltonian_pack.h openmx_core_native_resources.h
+	$(CC_NOACC_O3) -c openmx_hamiltonian_cache.c
+
+DFT.o: openmx_hamiltonian_pack.h
+$(OBJS): openmx_hamiltonian_cache.h

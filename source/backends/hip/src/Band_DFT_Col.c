@@ -187,6 +187,7 @@ struct OpenMXBandColState {
   OpenMXChemicalPotentials *chemical; /* borrowed from this calculation */
   OpenMXBandEnergies *energies; /* borrowed from this calculation */
   OpenMXNativeResources *resources; /* borrowed from this calculation */
+  OpenMXHamiltonianCache *hamiltonian_cache; /* borrowed from this calculation */
   OpenMXDensityGpuState *density_state; /* borrowed from the same calculation */
   int initialized;
   int refine_e0_n;
@@ -264,6 +265,7 @@ OpenMXBandColState *Band_DFT_Col_Bind_Resources(OpenMXCoreContext *core)
   BandColState *state = (BandColState *)metadata;
   if (!state->initialized) {
     state->resources = owner;
+    state->hamiltonian_cache = Set_Hamiltonian_Cache_Bind_Resources(core);
     state->density_state = Set_Density_Grid_GPU_Bind_Resources(core);
     const BandColRefineState initial_refine = {-1, 0.0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     state->refine = initial_refine;
@@ -3840,14 +3842,14 @@ static double Band_DFT_Col_owned(BandColState *state, int SCF_iter, int knum_i, 
     }
 
     use_setham_packed_cache =
-        (use_gpusolver_dense && all_knum == 1 && Set_Hamiltonian_GpuSolver_Packed_CacheReady() &&
-         Set_Hamiltonian_GpuSolver_Packed_OrderMode() == 0);
+        (use_gpusolver_dense && all_knum == 1 && Set_Hamiltonian_GpuSolver_Packed_CacheReady(state->hamiltonian_cache) &&
+         Set_Hamiltonian_GpuSolver_Packed_OrderMode(state->hamiltonian_cache) == 0);
     if (use_setham_packed_cache) {
-        size_H1 = Set_Hamiltonian_GpuSolver_Packed_Size();
+        size_H1 = Set_Hamiltonian_GpuSolver_Packed_Size(state->hamiltonian_cache);
         Set_Hamiltonian_GpuSolver_SetMP(MP);
-        if (Set_Hamiltonian_GpuSolver_Packed_OwnsCache()) {
-            setham_order_GA = Set_Hamiltonian_GpuSolver_Packed_OrderGA();
-            setham_S1 = Set_Hamiltonian_GpuSolver_Packed_Overlap();
+        if (Set_Hamiltonian_GpuSolver_Packed_OwnsCache(state->hamiltonian_cache)) {
+            setham_order_GA = Set_Hamiltonian_GpuSolver_Packed_OrderGA(state->hamiltonian_cache);
+            setham_S1 = Set_Hamiltonian_GpuSolver_Packed_Overlap(state->hamiltonian_cache);
         }
     }
 
@@ -4129,7 +4131,7 @@ static double Band_DFT_Col_owned(BandColState *state, int SCF_iter, int knum_i, 
     /* set S1 */
 
     if (use_setham_packed_cache) {
-        if (Set_Hamiltonian_GpuSolver_Packed_OwnsCache()) {
+        if (Set_Hamiltonian_GpuSolver_Packed_OwnsCache(state->hamiltonian_cache)) {
             if (setham_order_GA == NULL || setham_S1 == NULL) {
                 BandCol_AbortWithMessage("Set_Hamiltonian packed overlap cache is missing in Band_DFT_Col.c.");
             }
@@ -4148,8 +4150,8 @@ diagonalize1:
     if (use_setham_packed_cache) {
         int cache_spin = (SpinP_switch == 0) ? 0 : spin;
 
-        if (Set_Hamiltonian_GpuSolver_Packed_OwnsCache()) {
-            setham_H1 = Set_Hamiltonian_GpuSolver_Packed_H(cache_spin);
+        if (Set_Hamiltonian_GpuSolver_Packed_OwnsCache(state->hamiltonian_cache)) {
+            setham_H1 = Set_Hamiltonian_GpuSolver_Packed_H(state->hamiltonian_cache, cache_spin);
             if (setham_H1 == NULL) {
                 BandCol_AbortWithMessage("Set_Hamiltonian packed Hamiltonian cache is missing in Band_DFT_Col.c.");
             }

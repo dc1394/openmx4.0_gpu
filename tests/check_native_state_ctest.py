@@ -3,7 +3,7 @@
 
 This guards the SDK-free CI contract: the application may be disabled, but all
 seven solver states, mixing ownership/workspaces and the energy bridge must be tested.
-The MPI CI configuration additionally requires both real-communicator tests.
+The MPI CI configuration additionally requires the real-communicator tests.
 """
 import argparse
 from collections import Counter
@@ -13,7 +13,7 @@ import subprocess
 
 
 def check_inventory(inventory, build, require_mpi=False):
-    solvers = ['cluster-col', 'cluster-noncol', 'band-col', 'band-noncol', 'dc', 'dclno', 'krylov', 'mixing-h', 'mixing-rhok', 'density']
+    solvers = ['cluster-col', 'cluster-noncol', 'band-col', 'band-noncol', 'dc', 'dclno', 'krylov', 'mixing-h', 'mixing-rhok', 'density', 'hamiltonian-packing']
     expected = {name + '-calculation-state-lifecycle': 'native-state' for name in solvers}
     expected['solver-noncollinear-energy-output'] = 'native-state'
     expected['mixing-rhok-workspace-lifecycle'] = 'native-state'
@@ -22,7 +22,7 @@ def check_inventory(inventory, build, require_mpi=False):
     expected['mixing-history-native'] = 'native-state'
     if require_mpi:
         expected.update({name + '-calculation-state-mpi': 'native-state-mpi'
-                         for name in ['dclno', 'krylov']})
+                         for name in ['dclno', 'krylov', 'hamiltonian-packing']})
     tests = inventory.get('tests', [])
     counts = Counter(test['name'] for test in tests)
     by_name = {test['name']: test for test in tests}
@@ -53,6 +53,7 @@ def check_inventory(inventory, build, require_mpi=False):
             'krylov': 'run_local_solver_state_cpu.py', 'mixing-h': 'run_mixing_h_state_cpu.py',
             'mixing-rhok': 'run_mixing_rhok_state_cpu.py',
             'density': 'run_density_state_cpu.py',
+            'hamiltonian-packing': 'run_hamiltonian_packing_cpu.py',
             'mixing-rhok-workspace-lifecycle': 'run_mixing_rhok_workspace_cpu.py',
             'mixing-dm-workspace-lifecycle': 'run_mixing_dm_workspace_cpu.py',
             'mixing-v-workspace-lifecycle': 'run_mixing_v_workspace_cpu.py',
