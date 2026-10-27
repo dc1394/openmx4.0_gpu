@@ -18,6 +18,7 @@
 #include "openmx_common.h"
 #include "mpi.h"
 #include "lapack_prototypes.h"
+#include "openmx_basis_harmonics.h"
 
 void Generation_ATV(int N)
 {
@@ -641,67 +642,10 @@ void asbessel(int n, double x, double sbe[2])
 void ComplexSH(int l, int m, double theta, double phi,
                double SH[2], double dSHt[2], double dSHp[2])
 {
-  int i;
-  long double fact0,fact1;
-  double co,si,tmp0,ALeg[2];
-
-  /* Compute (l-|m|)! */
-
-  fact0 = 1.0;
-  for (i=1; i<=(l-abs(m)); i++){
-    fact0 *= i;
+  if (!openmx_basis_detail_integral_harmonic(l,m,theta,phi,SH,dSHt,dSHp)) {
+    printf("Invalid arguments in routine Associated_Legendre\n");
+    exit(0);
   }
-  
-  /* Compute (l+|m|)! */
-  fact1 = 1.0;
-  for (i=1; i<=(l+abs(m)); i++){
-    fact1 *= i;
-  }
-
-  /* sqrt((2*l+1)/(4*PI)*(l-|m|)!/(l+|m|)!) */
-  
-  tmp0 = sqrt((2.0*(double)l+1.0)/(4.0*PI)*fact0/fact1);
-
-  /* P_l^|m| */
-
-  Associated_Legendre(l,abs(m),cos(theta),ALeg);
-
-  /* Ylm */
-
-  co = cos((double)m*phi);
-  si = sin((double)m*phi);
-
-  if (0<=m){
-    SH[0]   = tmp0*ALeg[0]*co;
-    SH[1]   = tmp0*ALeg[0]*si;
-    dSHt[0] = tmp0*ALeg[1]*co;
-    dSHt[1] = tmp0*ALeg[1]*si;
-    dSHp[0] = -(double)m*tmp0*ALeg[0]*si;
-    dSHp[1] =  (double)m*tmp0*ALeg[0]*co;
-  }
-  else{
-    if (abs(m)%2==0){
-
-      SH[0]   = tmp0*ALeg[0]*co;
-      SH[1]   = tmp0*ALeg[0]*si;
-      dSHt[0] = tmp0*ALeg[1]*co;
-      dSHt[1] = tmp0*ALeg[1]*si;
-      dSHp[0] = -(double)m*tmp0*ALeg[0]*si;
-      dSHp[1] =  (double)m*tmp0*ALeg[0]*co;
-
-    }
-    else{
-
-      SH[0]   = -tmp0*ALeg[0]*co;
-      SH[1]   = -tmp0*ALeg[0]*si;
-      dSHt[0] = -tmp0*ALeg[1]*co;
-      dSHt[1] = -tmp0*ALeg[1]*si;
-      dSHp[0] =  (double)m*tmp0*ALeg[0]*si;
-      dSHp[1] = -(double)m*tmp0*ALeg[0]*co;
-
-    }
-  } 
-
 }
 
 
@@ -709,93 +653,9 @@ void ComplexSH(int l, int m, double theta, double phi,
 
 void Associated_Legendre(int l, int m, double x, double ALeg[2])
 {
-  /*****************************************************
-   associated Legendre polynomial Plm(x) with integers
-   m (0<=m<=l) and l. The range of x is -1<=x<=1. 
-   Its derivative is given by 
-   dP_l^m(x)/dtheta =
-   1/sqrt{1-x*x}*(l*x*Plm(x)-(l+m)*P{l-1}m(x))     
-   where x=cos(theta)
-  ******************************************************/
-
-  double cut0=1.0e-24,cut1=1.0e-12;
-  double Pm,Pm1,f,p0,p1,dP,tmp0; 
-  int i,ll;
-  
-  if (m<0 || m>l || fabs(x)>1.0){
+  if (!openmx_basis_detail_associated_legendre(l,m,x,ALeg)) {
     printf("Invalid arguments in routine Associated_Legendre\n");
     exit(0);
-  }
-  else if ((1.0-cut0)<fabs(x)){
-    x = sgn(x)*(1.0-cut0);
-  }
-
-  /* calculate Pm */
-
-  Pm = 1.0; 
-
-  if (m>0){
-
-    f = 1.0;
-    tmp0 = sqrt((1.0 - x)*(1.0 + x));
-    for (i=1; i<=m; i++){
-      Pm = -Pm*f*tmp0;
-      f += 2.0;
-    }
-  }
-    
-  if (l==m){
-    p0 = Pm;
-    p1 = 0.0;
-
-    tmp0 = sqrt(1.0-x*x);
-
-    if (cut1<tmp0)  dP = ((double)l*x*p0 - (double)(l+m)*p1)/tmp0;
-    else            dP = 0.0;
-
-    ALeg[0] = p0;
-    ALeg[1] = dP;
-  }
-
-  else{
-
-    /* calculate Pm1 */
-
-    Pm1 = x*(2.0*(double)m + 1.0)*Pm;
-
-    if (l==(m+1)){
-      p0 = Pm1; 
-      p1 = Pm;
-
-      tmp0 = sqrt(1.0-x*x);
-
-      if (cut1<tmp0) dP = ((double)l*x*p0 - (double)(l+m)*p1)/tmp0;
-      else           dP = 0.0;
-
-      ALeg[0] = p0;
-      ALeg[1] = dP;
-    }
-
-    /* calculate Plm, l>m+1 */
-
-    else{
-
-      for (ll=m+2; ll<=l; ll++){
-        tmp0 = (x*(2.0*(double)ll-1.0)*Pm1 - ((double)ll+(double)m-1.0)*Pm)/(double)(ll-m);
-        Pm  = Pm1;
-        Pm1 = tmp0;
-      }
-      p0 = Pm1;
-      p1 = Pm;
-
-      tmp0 = sqrt(1.0-x*x);
-
-      if (cut1<tmp0)  dP = ((double)l*x*p0 - (double)(l+m)*p1)/tmp0;
-      else            dP = 0.0;
-
-      ALeg[0] = p0;
-      ALeg[1] = dP;
-    }
   }
 }
 

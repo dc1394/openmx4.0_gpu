@@ -47,6 +47,7 @@ def main():
         cxx += ["-arch=sm_"+args.arch]
     jobs = [(cc, n) for n in (
         "openmx_gpu_error.c", "openmx_gpu_workers.c", "openmx_globals.c", "Band_DFT_Col.c",
+        "openmx_common.c", "Get_Orbitals.c", "Get_dOrbitals.c", "Get_Cnt_Orbitals.c", "Get_Cnt_dOrbitals.c",
         "Band_DFT_NonCol.c", "Band_DFT_NonCol_GB.c",
         "Divide_Conquer.c", "Divide_Conquer_LNO.c", "Mixing_H.c", "DIIS_Mixing_Rhok.c",
         "Kerker_Mixing_Rhok.c", "DIIS_Mixing_DM.c", "ADIIS_Mixing_DM.c",

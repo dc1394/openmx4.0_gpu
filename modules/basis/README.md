@@ -4,8 +4,8 @@ OpenMX の基底処理を独立して利用する C++20 ライブラリです。
 現在の公開範囲は PAO、非局所射影子、中性原子ポテンシャル、VNA 射影子の
 動径補間、PAO/射影子の波数空間補間、PAO/VPSファイルの読み込み、
 原子密度の補間・動径導関数・球対称Hartree積分、Gauss–Legendre積分則の生成、
-球Bessel関数と2中心積分用Besselテーブルです。本体もこの実装を使用します。
-球面調和関数、Fourier-Bessel 変換、2中心積分は
+球Bessel関数と2中心積分用Besselテーブル、球面調和関数と角度導関数です。本体もこの実装を使用します。
+Fourier-Bessel 変換、完全な2中心積分は
 まだこのパッケージには含まれません。
 
 CMake 3.25.2 以上と C++20 のコンパイラ・標準ライブラリでビルドできます。
@@ -250,6 +250,42 @@ mdspan接続用の `storage()` / `row_capacity()` は余裕を持たせた領域
 Fourier変換用のCUDA/HIPカーネルは同じ漸化式にKokkosの数学関数を接続し、大引数での値専用高速経路を維持します。
 公開入口はC++ APIで、MPIやKokkosの初期化は不要です。単独の利用例は `examples/bessel/` にあります。
 
+## 球面調和関数と角度微分
+
+`<openmx/basis/harmonics.hpp>` は、値と導関数を所有するC++の戻り値型を提供します。
+計算に確保・アプリケーション状態は不要で、別々のスレッドから同時に利用できます。
+
+```cpp
+#include <openmx/basis/harmonics.hpp>
+#include <cmath>
+
+const double theta = 0.7, phi = -0.3;
+const auto integral = openmx::basis::integral_harmonic(4, 1, theta, phi);
+const auto orbital = openmx::basis::orbital_harmonic(4, 1,
+    std::sin(theta), std::cos(theta), phi);
+```
+
+- `integral_harmonic()` の `IntegralHarmonicSample` は複素Y、`polar_derivative` = dY/dθ、
+  `azimuthal_derivative` = dY/dφを返します。本体の `ComplexSH()` と同じ積分用規約です。
+  θは0〜πで、`sqrt(1-cos²θ) <= 1e-12` のときθ微分をゼロにする従来処理も保ちます。
+- `orbital_harmonic()` の `OrbitalHarmonicSample` は、最後の成分が
+  `azimuthal_over_sine` = (dY/dφ)/sinθです。g軌道の修正済み実装に基づき、両極での有限な方向微分を保ちます。
+  半径r>0での角度部分の空間勾配は `(polar_derivative*e_theta + azimuthal_over_sine*e_phi)/r` です。
+  位相φは極での接線方向を選びます。2種類の出力は混同を防ぐため別の型にしています。
+- 極付近では `acos(z/r)` からsinθを復元せず、`hypot(x,y)/r` を渡します。
+  sinθは0〜1、cosθは−1〜1で、二乗和が1からdoubleの16 epsilon以内であることを検証します。
+  入力を再正規化せず、cosθが±1に丸められたときも小さなsinθを保持します。
+- `associated_legendre(l,m,cosθ)` はm>=0のPとθ微分を返します。x=cosθに関する微分ではありません。
+  積分用と同じ極の打切り規約です。
+- 公開入口はl=0〜64、|m|<=l、有限な角度と有限なmφを受け入れ、無効な入力は例外にします。
+  次数の上限はlong doubleとdoubleが同じ範囲の環境でも階乗の中間値を表せる範囲です。
+  [規格化と位相](https://dlmf.nist.gov/14.30.E1)はCondon–Shortley規約に従います。
+
+本体のC側は同じ内部計算核をインラインで使い、ホストC++への呼び出しを各軌道へ追加しません。
+積分用と軌道用の式・演算順序を維持し、積分用の極処理を軌道用の処理で置き換えてはいません。
+公開C++ APIは入力エラーでプロセス終了せず、本体の互換関数だけが従来のエラー処理を持ちます。
+独立した利用例は `examples/harmonics/` にあります。
+
 ## 動径・波数表のデータと数値規約
 
 - 角運動量 `angular` は `0 <= l <= 29`。チャネルの並び順は呼び出し元が指定し、
@@ -292,6 +328,10 @@ C ABI は呼び出しごとのエラーバッファを使い、失敗時に数�
 コピー・ムーブ・並行生成と確保失敗時の出力保持を検査します。
 球Besselは独立したべき級数・解析式・Legendre積分と有限差分で検証します。
 キャッシュのキー・借用寿命・無確保の再利用、確保失敗後の継続、独立した並行評価も検査します。
+球面調和関数はRodrigues多項式、有限差分、球面上の直交性、加法定理、両極の解析的微分、
+無効入力、無確保・並行評価を検査します。本体のC互換境界は
+`python3 tests/run_harmonics_cpu.py --sanitize` で凍結した旧実装とビット単位で比較します。
+これはリポジトリ側の試験であり、独立パッケージの試験には不要です。
 
 `basis-package-consumer` はこのディレクトリだけをコピーして独立ビルド・インストールし、
 インストール先と元のソース・ビルドディレクトリを移動してから、外部 C/C++ プログラムを

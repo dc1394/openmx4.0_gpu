@@ -1101,6 +1101,7 @@
     "openmx_core_atomic_density.h",
     "Gauss_Legendre.c",
     "openmx_basis_quadrature.h",
+    "openmx_basis_harmonics.h",
     "openmx_core_quadrature.h",
     "openmx_quadrature.h"
   ],

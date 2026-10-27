@@ -36,6 +36,7 @@ PREFIX = r'''
 #include "openmx_core_atomic.h"
 #include "openmx_core_local_basis.h"
 #include "openmx_complex.h"
+#include "openmx_basis_harmonics.h"
 #define PI 3.1415926535897932384626
 #define Supported_MaxL 4
 #define YOUSO36 4

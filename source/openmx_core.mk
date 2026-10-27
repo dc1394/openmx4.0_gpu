@@ -49,6 +49,8 @@ DFT.o FT_PAO.o FT_NLP.o FT_ProExpn_VNA.o FT_VNA.o FT_ProductPAO.o SetPara_DFT.o:
 $(OBJS) openmx_api.o: openmx_core_orbital_workspace.h
 Get_Orbitals.o Get_Cnt_Orbitals.o Get_dOrbitals.o Get_Cnt_dOrbitals.o Set_Orbitals_Grid.o Force.o Stress.o: openmx_orbitals.h
 Get_Orbitals.o Get_Cnt_Orbitals.o Get_dOrbitals.o Get_Cnt_dOrbitals.o Set_Orbitals_Grid.o Force.o Stress.o: openmx_orbital_harmonics.h
+# Shared angular kernels are inlined by both native backends.
+openmx_common.o Get_Orbitals.o Get_Cnt_Orbitals.o Get_dOrbitals.o Get_Cnt_dOrbitals.o Set_Orbitals_Grid.o Force.o Stress.o: openmx_basis_harmonics.h ../modules/basis/include/openmx/basis/detail/harmonics.h
 openmx.o openmx_api.o Runtest.o: openmx_atomic.h
 
 # These shared native helpers contain inline numerical/ownership code outside

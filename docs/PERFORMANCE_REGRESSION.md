@@ -4565,3 +4565,32 @@ SO有効GPUの初回は13→10SCFとなり、E差6.07629e-7・F差1.09787e-7で�
 `so-diagnostic/`、`so-boundary-trace/`、`numerical-parity.json` に証拠を保存しました。
 AMD/A100/H100実機、Intelコンパイラ版OpenMXとの性能比較は今回実施していません。
 `work/openmx` は更新していません。
+
+
+## 2026-10-28: 球面調和関数の独立化（第103段階）
+
+変更前 `17f46679` と変更後の本体・Core/SIMDを凍結し、18 MPI×1 OpenMPで順次実行しました。
+GPUはRTX5080・既存MPS・NVHPC/OpenMPI、CPU専用本体はGCC/Intel MPI/MKLです。
+計時中にビルド、単体試験、他のOpenMX計算は重ねていません。
+
+| 入力・指標 | 変更前 | 変更後 |
+| --- | ---: | ---: |
+| sidia333 NC cluster、GPU/MPS、内部Total最大値 (秒) | 99.493 | 99.378 |
+| 同、MPI起動を含む経過時間 (秒) | 102.861 | 102.561 |
+| C60 DC、CPU専用、内部Total中央値 (秒) | 5.979 | 5.950 |
+| 同、MPI起動を含む経過時間中央値 (秒) | 6.47979 | 6.43107 |
+
+sidiaは元入力を各1回測定した25SCF上限・未収束の比較で、E差・最大F差とも約1e-12です。
+C60は交互各3回、全件27SCF収束・印字E/F差ゼロでした。全計時を保存し、値の除外はしていません。
+GeForce約105秒の目安を維持しています。短い測定の差から一般的な高速化は主張しません。
+
+通常の29組とg軌道Cl₂のCPU/GPU各1組、合計31組は収束・反復数が一致し、
+最大E差6.5300e-10 Ha・F差1.1638e-8 Ha/bohr、応力11組は小数点以下8桁の印字値が一致しました。
+Cl₂はCPU/GPUとも17SCF・印字E/F差ゼロです。
+今回のSO GPUは前段階の診断で取得した同じ凍結バイナリの13SCF結果と一致しました。
+第98・102段階に記録した揺らぎの原因を今回の成功で解消したとは扱いません。
+
+`build/harmonics-library-20261028/` の `performance/`、`cpu-performance-results.json`、
+`numerical-summary.json`、`g-orbitals-results.json` に証拠を保存しました。
+AMD/A100/H100実機、Intelコンパイラ版OpenMXとの性能比較は今回実施していません。
+`work/openmx` は更新していません。
