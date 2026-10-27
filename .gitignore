@@ -37,6 +37,7 @@ libtool
 *.md
 !docs/PERFORMANCE_REGRESSION.md
 !docs/CODE_REVIEW_20261020.md
+!docs/GEMMUL8_3.5.4_VALIDATION.md
 *.md2
 *.xyz
 *.cif

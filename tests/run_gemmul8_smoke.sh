@@ -8,6 +8,8 @@ set -eu
 # Older toolkit: CUDA_HOME=/usr/local/cuda-13.2 \
 #   NVHPC_ROOT=/opt/nvidia/hpc_sdk/Linux_x86_64/26.5 tests/run_gemmul8_smoke.sh
 # SDK layout: also set CUDA_MATH_ROOT="$NVHPC_ROOT/math_libs/13.2".
+# GEMMUL8_TEST_LARGE_N=1 also tests the v3.5.4 launch-limit regression.
+# Run that check alone on the GPU; it needs several GiB of free memory.
 test_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cuda_root=${CUDA_HOME:-/usr/local/cuda-13.4}
 math_root=${CUDA_MATH_ROOT:-$cuda_root}
@@ -42,3 +44,11 @@ OPENMX_GEMMUL8_NUM_MOD_D=15 OPENMX_GEMMUL8_NUM_MOD_Z=15 \
 OPENMX_GEMMUL8_MAX_WORKSPACE_MB=256 OPENMX_GEMMUL8_MAX_WORKSPACE_PERCENT=0 \
 OPENMX_GEMMUL8_MIN_FREE_AFTER_MB=0 OPENMX_GEMMUL8_LOCAL_RANKS=1 \
 OPENMX_GEMMUL8_VERBOSE=1 "$test_tmp/check"
+
+if [ "${GEMMUL8_TEST_LARGE_N:-0}" = 1 ]; then
+    OPENMX_GEMMUL8_DISABLE=0 OPENMX_GEMMUL8_DISABLE_D=0 OPENMX_GEMMUL8_DISABLE_Z=0 \
+    OPENMX_GEMMUL8_NUM_MOD_D=15 OPENMX_GEMMUL8_NUM_MOD_Z=15 \
+    OPENMX_GEMMUL8_MAX_WORKSPACE_MB=0 OPENMX_GEMMUL8_MAX_WORKSPACE_PERCENT=0 \
+    OPENMX_GEMMUL8_MIN_FREE_AFTER_MB=0 OPENMX_GEMMUL8_LOCAL_RANKS=1 \
+    OPENMX_GEMMUL8_VERBOSE=1 "$test_tmp/check" --large-n
+fi

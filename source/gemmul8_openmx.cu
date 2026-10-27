@@ -32,6 +32,18 @@ inline constexpr auto CUBLASLT_MATMUL_DESC_A_SCALE_MODE = static_cast<cublasLtMa
 inline constexpr auto CUBLASLT_MATMUL_DESC_B_SCALE_MODE = static_cast<cublasLtMatmulDescAttributes_t>(32);
 #endif
 
+/*
+ * GEMMul8 3.5.4's shared scaling headers use __maxnreg__ on FP8 kernels
+ * without checking whether the toolkit defines that attribute.  Older
+ * nvcc versions reject those declarations even though this TU instantiates
+ * only INT8.  Omit the unused FP8 hint only when it is unavailable; keep
+ * supported register hints, upstream sources and INT8 launch bounds unchanged.
+ */
+#if defined(__CUDACC__) && !defined(__maxnreg__)
+#define OPENMX_GEMMUL8_LEGACY_MAXNREG
+#define __maxnreg__(...)
+#endif
+
 #include "gemm/gemm_impl.hpp"
 #include "worksize/worksize_impl.hpp"
 /* GEMMul8 3.5 uses handle-local workspace configuration in GEMM. */
@@ -51,6 +63,11 @@ inline constexpr auto CUBLASLT_MATMUL_DESC_B_SCALE_MODE = static_cast<cublasLtMa
 #include "oz2/scaling/general/scaling_rowwise.hpp"
 #include "oz2/scaling/general/scaling_colwise.hpp"
 #include "oz2/undo_scaling/undo_scaling.hpp"
+
+#ifdef OPENMX_GEMMUL8_LEGACY_MAXNREG
+#undef __maxnreg__
+#undef OPENMX_GEMMUL8_LEGACY_MAXNREG
+#endif
 
 namespace gemmul8 {
 

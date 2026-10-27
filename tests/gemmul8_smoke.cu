@@ -8,6 +8,7 @@
 #include <complex>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <type_traits>
 #include <vector>
 
@@ -20,6 +21,7 @@ extern "C" size_t openmx_gemmul8ForwardCounters(long long[5],double[2]);
 extern "C" void openmx_gemmul8ReleasePrepared();
 extern "C" void openmx_gemmul8ReleaseWorkspaces();
 extern "C" size_t openmx_gemmul8ZWorkspaceSize(int,int,int);
+extern "C" long long openmx_gemmul8NativeCalls(int);
 
 void check(cudaError_t status) { if (status != cudaSuccess) { fprintf(stderr,"CUDA: %s\n",cudaGetErrorString(status)); exit(2); } }
 void check(cublasStatus_t status) { if (status != CUBLAS_STATUS_SUCCESS) { fprintf(stderr,"cuBLAS: %d\n",int(status)); exit(2); } }
@@ -69,6 +71,9 @@ template<class T> double run(cublasHandle_t handle,cublasOperation_t ta,cublasOp
                 product+=av*bv;
             }
             auto ref=wide(alpha)*product+wide(beta)*wide(c[i+j*ldc]);
+            if (!std::isfinite(wide(out[i+j*ldc]).real()) || !std::isfinite(wide(out[i+j*ldc]).imag())) {
+                fprintf(stderr,"Nonfinite GEMM result\n"); exit(3);
+            }
             error=std::max(error,std::abs(wide(out[i+j*ldc])-ref)); scale=std::max(scale,std::abs(ref));
         }
         for (int j=0;j<n;++j) for(int i=m;i<ldc;++i) if(wide(c[i+j*ldc])!=wide(out[i+j*ldc])) {fprintf(stderr,"Padding overwritten\n");exit(3);}
@@ -80,12 +85,35 @@ template<class T> double run(cublasHandle_t handle,cublasOperation_t ta,cublasOp
     return worst;
 }
 
-int main() {
+int main(int argc, char **argv) {
+    const bool large_n=argc==2 && std::strcmp(argv[1],"--large-n")==0;
+    if (argc!=1 && !large_n) { fprintf(stderr,"Usage: %s [--large-n]\n",argv[0]); return 1; }
     cublasHandle_t handle; check(cublasCreate(&handle));
     int cuda_version=0,blas_version=0;
     check(cudaRuntimeGetVersion(&cuda_version)); check(cublasGetVersion(handle,&blas_version));
     printf("CUDA runtime %d, cuBLAS %d\n",cuda_version,blas_version);
     double worst=0; int count=0;
+    if (large_n) {
+        // v3.5.4 splits undo-scaling launches at grid.y's 65535-block limit.
+        // Four columns per block: this is the first invalid size in v3.5.2,
+        // while the padded product still fits one grouped-CRT tile. Disable
+        // workspace blocking in the runner so it cannot hide the boundary.
+        constexpr int columns=65535*4+1;
+        for (const char *fast:{"0","1"}) {
+            setenv("OPENMX_GEMMUL8_FASTMODE_D",fast,1);
+            setenv("OPENMX_GEMMUL8_FASTMODE_Z",fast,1);
+            worst=std::max(worst,run<double>(handle,CUBLAS_OP_N,CUBLAS_OP_T,3,columns,3));
+            openmx_gemmul8ReleaseWorkspaces();
+            worst=std::max(worst,run<cuDoubleComplex>(handle,CUBLAS_OP_C,CUBLAS_OP_C,3,columns,3));
+            openmx_gemmul8ReleaseWorkspaces();
+        }
+        if (openmx_gemmul8NativeCalls(0)!=0 || openmx_gemmul8NativeCalls(1)!=0) {
+            fprintf(stderr,"Large-N test fell back to native GEMM; run alone with sufficient GPU memory\n"); return 6;
+        }
+        check(cudaGetLastError()); check(cublasDestroy(handle));
+        printf("PASS: 4 real/complex large-N GEMMs (%d columns), fast/accurate, no fallback; max relative error %.3e\n",columns,worst);
+        return 0;
+    }
     for(const char *fast:{"0","1"}) {
         setenv("OPENMX_GEMMUL8_FASTMODE_D",fast,1); setenv("OPENMX_GEMMUL8_FASTMODE_Z",fast,1);
         for(auto ta:{CUBLAS_OP_N,CUBLAS_OP_T,CUBLAS_OP_C}) for(auto tb:{CUBLAS_OP_N,CUBLAS_OP_T,CUBLAS_OP_C}) {

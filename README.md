@@ -679,7 +679,7 @@ Built during configuration or the first build:
 | Kokkos / bundled mdspan | 5.2.2 | C++ core execution and multidimensional views | Serial, OpenMP, CUDA, HIP; SYCL in the standalone core | CMake FetchContent; pinned release and SHA-256 in `core/CMakeLists.txt` |
 | ELPA | 2026.02.002 | CPU eigensolvers ("elpa1", "elpa2") and "gpusolver2" | both | `source/third_party/dist/` |
 | COSMA, COSTA, Tiled-MM | 2.8.4 and the commits it pins | distributed matrix products of "gpusolver2" | both | `source/third_party/dist/` |
-| GEMMul8 | v3.5.2 | FP64 matrix products emulated on integer tensor cores | both | Git submodule `source/third_party/GEMMul8` |
+| GEMMul8 | v3.5.4 | FP64 matrix products emulated on integer tensor cores | both | Git submodule `source/third_party/GEMMul8` |
 | FFTW3 | 3.3.11 | FFTs | NVIDIA (AMD uses an external FFTW3, including AOCL's) | Git submodule `source/third_party/fftw3` and release tarball `source/third_party/fftw-3.3.11.tar.gz` |
 | MAGMA | 2.10.0 | multi-GPU Cluster and Band eigensolver | NVIDIA when selected (below); AMD always | `source/third_party/hip/magma/` |
 | CMake | 3.31.12 | building COSMA when the system CMake is older than 3.24 | both | `source/third_party/dist/` |
@@ -760,13 +760,22 @@ make -j18 NVHPC_ROOT=/opt/nvidia/hpc_sdk/Linux_x86_64/26.5 \
   GEMMUL8_GPU_ARCH=120
 ```
 
-GEMMul8 is pinned to upstream **v3.5.2**
-(`603b52363715796a0af5e4aa1ed8d386349b4251`). Initialize/update submodules
+GEMMul8 is pinned to upstream **v3.5.4**
+(`f8fdf0b2a5eafd4dbbfab6be8489d3356e0da06a`). Initialize/update submodules
 with `git submodule update --init --recursive` after updating the repository.
-The OpenMX adapter includes v3.5.2's memory-saving configuration and K-block
-modular-reduction implementation. The adapter also enables memory-saving
+The update includes upstream's large-column kernel-launch fixes and FP8
+workspace/reduction improvements; OpenMX continues to instantiate the INT8
+backend for double and complex-double products. The adapter enables memory-saving
 blocking with a 256 MiB default target (`OPENMX_GEMMUL8_MAX_WORKSPACE_MB`),
 and divides the available-memory budget between ranks sharing each GPU.
+The ordinary CUDA, Pegasus and HIP Makefiles pin the same release; Kugui
+inherits the ordinary CUDA pin. See the [update validation](docs/GEMMUL8_3.5.4_VALIDATION.md)
+for numerical and compiler checks.
+
+`GEMMUL8_TEST_LARGE_N=1 tests/run_gemmul8_smoke.sh` additionally checks the
+262,141-column launch boundary against a CPU `long double` reference. This
+optional check disables workspace blocking and needs several GiB of free GPU
+memory; run it alone on the device. The default smoke test retains its 256 MiB cap.
 
 On GPUs with weak native FP64, cuSOLVER handles enable FP64 fixed-point
 emulation with the performant strategy and dynamic mantissa selection when
@@ -787,7 +796,11 @@ algorithm selection or emulation modes fall back to the compatible implementatio
 The cuSOLVER layer also compiles against CUDA 12.3. The bundled GEMMul8
 translation unit supplies compatibility declarations for newer cuBLASLt
 attributes referenced by upstream headers; OpenMX's instantiated
-`cublasHandle_t` path does not execute that newer Lt setup. CUDA 12.5 is
+`cublasHandle_t` path does not execute that newer Lt setup. It also omits
+unused FP8 register hints when the toolkit lacks `__maxnreg__`.
+The CUDA 12.3 cuSOLVER check does not establish a complete GEMMul8 build:
+nvcc 12.3 with GCC 12 rejects an upstream grouped-CRT template in both
+GEMMul8 v3.5.2 and v3.5.4. Use CUDA 12.5 or newer for that build. CUDA 12.5 is
 supported by `Makefile.kugui`; CUDA 13.2 and 13.4 builds were verified earlier.
 CUDA 12.5 uses cuSOLVER 11.6.3 and does not expose the newer FP64-emulation
 or two-stage-selection APIs.
@@ -1078,7 +1091,7 @@ in its Git submodule or source archive under `source/third_party/`.
 #### GEMMul8
 
 - **Source**: <https://github.com/RIKEN-RCCS/GEMMul8>
-- **Version**: v3.5.2 (Git submodule `source/third_party/GEMMul8`)
+- **Version**: v3.5.4 (Git submodule `source/third_party/GEMMul8`)
 - **Copyright**: Copyright (c) 2025- RIKEN R-CCS
 - **Responsible developer**: Yuki Uchino (RIKEN Center for Computational Science)
 - **License**: MIT License (`MIT`)

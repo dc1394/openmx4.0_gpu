@@ -182,9 +182,8 @@ GEMMUL8_REPO_DIR ?= $(OPENMX_BUILD_ROOT)/third_party/GEMMul8
 GEMMUL8_SOURCE_DIR ?= $(OPENMX_SOURCE_ROOT)/third_party/GEMMul8
 # gemmul8_openmx.cu instantiates GEMMul8 internals directly, so the
 # checkout must stay pinned to a commit whose internal layout it matches.
-# 603b523 is the v3.5.2 release (grouped CRT reconstruction and the
-# HIP host/device constexpr compilation fix).
-GEMMUL8_COMMIT ?= 603b52363715796a0af5e4aa1ed8d386349b4251
+# f8fdf0b is the v3.5.4 release.
+GEMMUL8_COMMIT ?= f8fdf0b2a5eafd4dbbfab6be8489d3356e0da06a
 GEMMUL8_DIR ?= $(GEMMUL8_REPO_DIR)
 GEMMUL8_LIB ?= $(GEMMUL8_DIR)/lib/libgemmul8.a
 GEMMUL8_OPENMX_OBJ ?= $(GEMMUL8_DIR)/src/gemmul8_openmx.o
