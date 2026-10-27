@@ -16,6 +16,7 @@
 #include "openmx_dc_state.h"
 #include "openmx_dclno_state.h"
 #include "openmx_krylov_state.h"
+#include "openmx_density_gpu_state.h"
 #include "openmx_mixing_h_state.h"
 #include "openmx_mixing_rhok_state.h"
 #include "openmx_mixing_dm_state.h"
@@ -2629,13 +2630,12 @@ double Set_dOrbitals_Grid(const OpenMXAtomicViews *atomic, int Cnt_kind, const O
 double Set_dOrbitals_Grid_xyz(const OpenMXAtomicViews *atomic, int Cnt_kind,int xyz, const OpenMXLocalBasisViews *local_basis);
 /* Fukuda+YTL-end */
 
-double Set_Orbitals_Grid(const OpenMXAtomicViews *atomic, int Cnt_kind, const OpenMXLocalBasisViews *local_basis);
+double Set_Orbitals_Grid(OpenMXDensityGpuState *density_state, const OpenMXAtomicViews *atomic, int Cnt_kind, const OpenMXLocalBasisViews *local_basis);
 double Set_Aden_Grid(const OpenMXAtomicViews *atomic);
-double Set_Density_Grid(OpenMXGridWorkspace *grid, const OpenMXDensityCacheHooks *cache_hooks, const OpenMXAtomicViews *atomic, int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, double **Density_Grid_B0, const OpenMXLocalBasisViews *local_basis);
+double Set_Density_Grid(OpenMXDensityGpuState *density_state, OpenMXGridWorkspace *grid, const OpenMXDensityCacheHooks *cache_hooks, const OpenMXAtomicViews *atomic, int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, double **Density_Grid_B0, const OpenMXLocalBasisViews *local_basis);
 #if !OPENMX_GPU_HIP
-int Set_Density_Grid_GPU_Service(const OpenMXDensityCacheHooks *cache_hooks, int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM,
+int Set_Density_Grid_GPU_Service(OpenMXDensityGpuState *density_state, const OpenMXDensityCacheHooks *cache_hooks, int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM,
                                  double **Density_Grid_B0, double *elapsed);
-void Set_Density_Grid_GPU_Invalidate(void);
 #endif
 void diagonalize_nc_density(double **Density_Grid_B0);
 void Data_Grid_Copy_B2C_1(double *data_B, double *data_C); 
@@ -2897,15 +2897,13 @@ void OpenMX_GpuPhaseNeed_Register(const char *phase, size_t group_bytes);
 size_t OpenMX_GpuPhaseNeed_Max(void);
 size_t OpenMX_GpuPhaseNeed_MaxPrefixed(const char *prefix);
 void Set_Hamiltonian_Invalidate_OpenMP_MatrixElements_Cache(void);
-void Set_Density_Grid_GPU_Invalidate(void);
 /* the end of the SCF cycle (DFT.c): the on-the-fly state of the grid
    integrals and the density's local-mode device buffers go before the
    forces; Set_Hamiltonian_OTF_Release also at the run boundary */
 void Set_Hamiltonian_OTF_Release(void);
 void Set_Orbitals_Grid_OTF_Release(void);
 void Set_Hamiltonian_OnTheFly_EndCycle(void);
-void Set_Density_Grid_GPU_EndCycle(void);
-int Set_Density_Grid_GPU_Service(const OpenMXDensityCacheHooks *cache_hooks, int Cnt_kind, int Calc_CntOrbital_ON,
+int Set_Density_Grid_GPU_Service(OpenMXDensityGpuState *density_state, const OpenMXDensityCacheHooks *cache_hooks, int Cnt_kind, int Calc_CntOrbital_ON,
                                  double *****CDM, double **Density_Grid_B0,
                                  double *elapsed);
 #else
@@ -2960,15 +2958,14 @@ void Set_Hamiltonian_OnTheFly_SetDensityRanks(int otf_ranks);
 size_t Set_Hamiltonian_OnTheFly_DensityBudget(int spin_count, size_t dm_count, size_t output_count, int otf_ranks,
                                               int *grow, size_t *need_bytes, size_t *avail_bytes, int myid);
 int Set_Hamiltonian_OnTheFly_DensityGrow(size_t others_bytes, int grow_ranks, size_t *avail_bytes);
-void Set_Density_Grid_GPU_EndCycle(void);
 size_t Set_Hamiltonian_MatrixElements_TotalH(int Cnt_kind, int myid);
 int Set_Hamiltonian_OnTheFly_Density(const OpenMXAtomicViews *atomic, int Cnt_kind, int spin_count, const double *dm, size_t dm_count,
                                      double *tmpden, size_t output_count, const unsigned int *atom_out_base,
                                      int myid);
-int Set_Density_Grid_GPU_Local_Prepare(const OpenMXAtomicViews *atomic, int Cnt_kind, int Calc_CntOrbital_ON);
-int Set_Density_Grid_GPU_Local_KeepDistributed(void);
-int Set_Density_Grid_GPU_Local_Run(const OpenMXAtomicViews *atomic, double *****CDM, double ***Tmp_Den_Grid);
-void Set_Density_Grid_GPU_Local_Report(int path, int failed);
+int Set_Density_Grid_GPU_Local_Prepare(OpenMXDensityGpuState *density_state, const OpenMXAtomicViews *atomic, int Cnt_kind, int Calc_CntOrbital_ON);
+int Set_Density_Grid_GPU_Local_KeepDistributed(OpenMXDensityGpuState *density_state);
+int Set_Density_Grid_GPU_Local_Run(OpenMXDensityGpuState *density_state, const OpenMXAtomicViews *atomic, double *****CDM, double ***Tmp_Den_Grid);
+void Set_Density_Grid_GPU_Local_Report(OpenMXDensityGpuState *density_state, int path, int failed);
 void Set_Hamiltonian_Invalidate_GpuSolver_HS_Cache(void);
 void Set_Hamiltonian_Build_GpuSolver_HS_Cache(int use_contracted, const OpenMXElectronicViews *electronic);
 void Set_Hamiltonian_GpuSolver_SetMP(int *MP);
@@ -2984,7 +2981,7 @@ double *Set_Hamiltonian_GpuSolver_Packed_ImNL(int comp);
 
 
 double Total_Energy(OpenMXCoreContext *core, const OpenMXBandEnergies *energies, const OpenMXCWFObservables *cwf_values, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, int MD_iter, double ECE[], const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
-double Force(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna,const OpenMXReciprocalViews *reciprocal, double *****H0,
+double Force(OpenMXDensityGpuState *density_state, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna,const OpenMXReciprocalViews *reciprocal, double *****H0,
 	     double ******DS_NL, 
 	     double *****OLP,
 	     double *****CDM, 

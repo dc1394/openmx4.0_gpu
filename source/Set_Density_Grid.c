@@ -25,10 +25,10 @@
 
 int Set_Density_Grid_GPU_Capacity(int,int,double *****,double ***);
 /* Set_Density_Grid_GPU.c: the stage vote of the last local preparation */
-int Set_Density_Grid_GPU_Local_StageOnHost(void);
+int Set_Density_Grid_GPU_Local_StageOnHost(OpenMXDensityGpuState *density_state);
 
 
-double Set_Density_Grid(OpenMXGridWorkspace *grid, const OpenMXDensityCacheHooks *cache_hooks, const OpenMXAtomicViews *atomic, int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, double **Density_Grid_B0, const OpenMXLocalBasisViews *local_basis)
+double Set_Density_Grid(OpenMXDensityGpuState *density_state, OpenMXGridWorkspace *grid, const OpenMXDensityCacheHooks *cache_hooks, const OpenMXAtomicViews *atomic, int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, double **Density_Grid_B0, const OpenMXLocalBasisViews *local_basis)
 {
 
   static int firsttime=1;
@@ -93,12 +93,12 @@ double Set_Density_Grid(OpenMXGridWorkspace *grid, const OpenMXDensityCacheHooks
   {
     int flags[2], reduced[2];
 
-    local_ok = Set_Density_Grid_GPU_Local_Prepare(atomic, Cnt_kind,Calc_CntOrbital_ON);
+    local_ok = Set_Density_Grid_GPU_Local_Prepare(density_state, atomic, Cnt_kind,Calc_CntOrbital_ON);
     /* The preparation ends with the stage vote (collective): when the device
        cannot hold the distributed quadrature in a few pieces on some rank,
        every rank has declined it and takes the host SIMD quadrature below,
        without the one-rank service or the capacity recovery. */
-    stage_on_host = Set_Density_Grid_GPU_Local_StageOnHost();
+    stage_on_host = Set_Density_Grid_GPU_Local_StageOnHost(density_state);
     /* every rank capable (the minimum of ok) and any rank capable (that of -ok) */
     flags[0] = local_ok;
     flags[1] = -local_ok;
@@ -120,9 +120,9 @@ double Set_Density_Grid(OpenMXGridWorkspace *grid, const OpenMXDensityCacheHooks
      bypass the per-rank atom-density/A-to-B path below.  A return value of
      zero keeps the original CPU/OpenMP implementation as the fallback. */
   if (!use_local_gpu && !stage_on_host){
-    if (!Set_Density_Grid_GPU_Local_KeepDistributed() &&
-        Set_Density_Grid_GPU_Service(cache_hooks, Cnt_kind,Calc_CntOrbital_ON,CDM,Density_Grid_B0,&time0)){
-      Set_Density_Grid_GPU_Local_Report(1,0);
+    if (!Set_Density_Grid_GPU_Local_KeepDistributed(density_state) &&
+        Set_Density_Grid_GPU_Service(density_state, cache_hooks, Cnt_kind,Calc_CntOrbital_ON,CDM,Density_Grid_B0,&time0)){
+      Set_Density_Grid_GPU_Local_Report(density_state, 1,0);
       return time0;
     }
     /* Ranks that can integrate their own atoms on the device still do;
@@ -333,7 +333,7 @@ double Set_Density_Grid(OpenMXGridWorkspace *grid, const OpenMXDensityCacheHooks
 
   /* the distributed GPU quadrature fills Tmp_Den_Grid directly; a run-time
      failure on any rank simply falls back to the CPU loop on that rank */
-  if (use_local_gpu && !Set_Density_Grid_GPU_Local_Run(atomic, CDM,Tmp_Den_Grid)){
+  if (use_local_gpu && !Set_Density_Grid_GPU_Local_Run(density_state, atomic, CDM,Tmp_Den_Grid)){
     use_local_gpu = 0;
     local_failed = 1;
   }
@@ -520,7 +520,7 @@ double Set_Density_Grid(OpenMXGridWorkspace *grid, const OpenMXDensityCacheHooks
     MPI_Wait(&failed_request,MPI_STATUS_IGNORE);
   }
   /* after a host vote the helper has reported the decision */
-  if (!stage_on_host) Set_Density_Grid_GPU_Local_Report(local_path,failed_ranks);
+  if (!stage_on_host) Set_Density_Grid_GPU_Local_Report(density_state, local_path,failed_ranks);
 
   /* Density and packet storage are owned by this calculation. */
 

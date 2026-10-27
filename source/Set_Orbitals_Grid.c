@@ -1915,7 +1915,7 @@ void SOG_Device_EvalPairChunk(const SOG_GpuPair *pair,int n,const int *nc,
   if (!SOG_tiles_distribute(&w)) SOG_Device_EvalPairChunk_Part(&SOG_dev,pair,n,nc,gla,cla,out);
 }
 
-double Set_Orbitals_Grid(const OpenMXAtomicViews *atomic, int Cnt_kind, const OpenMXLocalBasisViews *local_basis)
+double Set_Orbitals_Grid(OpenMXDensityGpuState *density_state, const OpenMXAtomicViews *atomic, int Cnt_kind, const OpenMXLocalBasisViews *local_basis)
 {
   SOG_Device_ReleaseAll();   /* the grid frame may have changed */
   int i,j,n,Mc_AN,Gc_AN,Cwan,NO0,GNc,GRc;
@@ -1936,7 +1936,7 @@ double Set_Orbitals_Grid(const OpenMXAtomicViews *atomic, int Cnt_kind, const Op
 
   /* Orbital values and their grid topology back the density GPU service
      cache.  Drop the previous epoch before any values are regenerated. */
-  Set_Density_Grid_GPU_Invalidate();
+  Set_Density_Grid_GPU_Invalidate(density_state);
   Set_Hamiltonian_Invalidate_OpenACC_MatrixElements_Cache();
 
   /* MPI */

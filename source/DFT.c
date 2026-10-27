@@ -473,6 +473,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   }
 
   const OpenMXNativeSolverStates solver_states=OpenMX_Native_Resources_Bind(core);
+  OpenMXDensityGpuState *density_state = Set_Density_Grid_GPU_Bind_Resources(core);
   OpenMXMixingHState *mixing_h=Mixing_H_Bind_Resources(core);
   OpenMXMixingRhokState *mixing_rhok=Mixing_Rhok_Bind_Resources(core);
   OpenMXMixingDMState *mixing_dm=Mixing_DM_Bind_Resources(core);
@@ -765,7 +766,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
       } /* end of if (Solver==4) */
 
-      time10 += Set_Orbitals_Grid(atomic, Cnt_kind, local_basis);
+      time10 += Set_Orbitals_Grid(density_state, atomic, Cnt_kind, local_basis);
 
       /* YTL-start */
       if (CDDF_on == 1){
@@ -1545,7 +1546,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
       /*
 	time10 += Set_Orbitals_Grid(1);
-	time11 += Set_Density_Grid(OpenMX_Grid_Workspace(core), &density_cache_hooks, atomic, 1, 0, DM[0], Density_Grid_B, local_basis);
+	time11 += Set_Density_Grid(density_state, OpenMX_Grid_Workspace(core), &density_cache_hooks, atomic, 1, 0, DM[0], Density_Grid_B, local_basis);
 	time7 += Force(vna,reciprocal, H0,DS_NL,OLP,DM[0],EDM);
 	time8 += Total_Energy(vna, MD_iter,ECE);
 	time10 += Set_Orbitals_Grid(0);
@@ -1646,7 +1647,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 			  Residual_ReRhok,Residual_ImRhok,
 			  ReVk,ImVk,ReRhoAtomk,ImRhoAtomk, electronic);
 
-      time11 += Set_Density_Grid(OpenMX_Grid_Workspace(core), &density_cache_hooks, atomic, Cnt_kind,Calc_CntOrbital_ON,DM[0],Density_Grid_B, local_basis);
+      time11 += Set_Density_Grid(density_state, OpenMX_Grid_Workspace(core), &density_cache_hooks, atomic, Cnt_kind,Calc_CntOrbital_ON,DM[0],Density_Grid_B, local_basis);
 
       if (Solver==4) {
 	TRAN_Add_Density_Lead(mpi_comm_level1,
@@ -1665,7 +1666,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
     
     else if (Mixing_switch==3 || Mixing_switch==4) {
 
-      time11 += Set_Density_Grid(OpenMX_Grid_Workspace(core), &density_cache_hooks, atomic, Cnt_kind,Calc_CntOrbital_ON,DM[0],Density_Grid_B, local_basis);
+      time11 += Set_Density_Grid(density_state, OpenMX_Grid_Workspace(core), &density_cache_hooks, atomic, Cnt_kind,Calc_CntOrbital_ON,DM[0],Density_Grid_B, local_basis);
 
       if (Solver==4) {
 	TRAN_Add_Density_Lead(mpi_comm_level1,
@@ -1731,7 +1732,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
     else if (Mixing_switch==5 || Mixing_switch==7){
 
-      time11 += Set_Density_Grid(OpenMX_Grid_Workspace(core), &density_cache_hooks, atomic,  Cnt_kind,Calc_CntOrbital_ON,DM[0],Density_Grid_B , local_basis);
+      time11 += Set_Density_Grid(density_state, OpenMX_Grid_Workspace(core), &density_cache_hooks, atomic,  Cnt_kind,Calc_CntOrbital_ON,DM[0],Density_Grid_B , local_basis);
 
       if (Solver==4) {
 	TRAN_Add_Density_Lead(mpi_comm_level1,
@@ -1971,7 +1972,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   /* the on-the-fly state of the grid integrals and the density's resident
      device buffers go as well, before the forces */
   Set_Hamiltonian_OnTheFly_EndCycle();
-  Set_Density_Grid_GPU_EndCycle();
+  Set_Density_Grid_GPU_EndCycle(density_state);
 
   /*********************************************************************
    After achieving the SCF, the diagonalization with PAOs is performed
@@ -2652,14 +2653,14 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
     printf("<MD=%2d>  Force calculation\n",MD_iter);fflush(stdout);
   }
 
-  if (Cnt_switch==1 && Cnt_Now==1) time10 += Set_Orbitals_Grid(atomic, 1, local_basis);
-  if (Solver!=12) time11 += Set_Density_Grid(OpenMX_Grid_Workspace(core), &density_cache_hooks, atomic, 1, 0, DM[0], Density_Grid_B, local_basis);
+  if (Cnt_switch==1 && Cnt_Now==1) time10 += Set_Orbitals_Grid(density_state, atomic, 1, local_basis);
+  if (Solver!=12) time11 += Set_Density_Grid(density_state, OpenMX_Grid_Workspace(core), &density_cache_hooks, atomic, 1, 0, DM[0], Density_Grid_B, local_basis);
 
   /* the final density may have rebuilt the on-the-fly tables and the
      density-grid device buffers that the end of the SCF cycle released;
      return them before the force batches size their workspaces */
   Set_Hamiltonian_OnTheFly_EndCycle();
-  Set_Density_Grid_GPU_EndCycle();
+  Set_Density_Grid_GPU_EndCycle(density_state);
 
   if (Solver==4) {
     TRAN_Add_Density_Lead(mpi_comm_level1,
@@ -2761,7 +2762,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   openmx_gemmul8ReleaseWorkspaces();
   openmx_gemmul8ReleasePrepared();
 
-  if (!orbitalOpt_Force_Skip) time7 += Force(atomic, vna,reciprocal, H0,DS_NL,OLP,DM[0],EDM, electronic, local_basis);
+  if (!orbitalOpt_Force_Skip) time7 += Force(density_state, atomic, vna,reciprocal, H0,DS_NL,OLP,DM[0],EDM, electronic, local_basis);
 
   if (scf_stress_flag){
     Stress(core,thermo, atomic, vna,reciprocal, H0,DS_NL,OLP,DM[0],EDM, electronic, local_basis);

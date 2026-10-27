@@ -131,7 +131,7 @@ double truncation(int MD_iter,int UCell_flag,OpenMXCoreContext *core)
   ****************************************************/
 
 #if OPENMX_GPU_HIP
-  Set_Density_Grid_GPU_Invalidate();
+  Set_Density_Grid_GPU_Invalidate(Set_Density_Grid_GPU_Bind_Resources(core));
   Set_Hamiltonian_Invalidate_OpenMP_MatrixElements_Cache();
 
 #endif
@@ -141,7 +141,7 @@ double truncation(int MD_iter,int UCell_flag,OpenMXCoreContext *core)
   /* The following free invalidates every pointer used by the density GPU
      service.  Release its host/device cache while the old topology is still
      well defined. */
-  Set_Density_Grid_GPU_Invalidate();
+  Set_Density_Grid_GPU_Invalidate(Set_Density_Grid_GPU_Bind_Resources(core));
   Set_Hamiltonian_Invalidate_OpenACC_MatrixElements_Cache();
 #endif
 

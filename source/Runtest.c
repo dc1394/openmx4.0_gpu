@@ -798,7 +798,7 @@ static int run_main_with_context(int argc, char *argv[], int numprocs0, int myid
   if (Solver == 4 && TRAN_analysis == 1) {
 
     /* if SCF is skipped, calculate values of basis functions on each grid */
-    if (TRAN_SCF_skip == 1) i = Set_Orbitals_Grid(atomic, 0, OpenMX_LocalBasisAt(core,mpi_comm_level1,&local_basis_storage));
+    if (TRAN_SCF_skip == 1) i = Set_Orbitals_Grid(Set_Density_Grid_GPU_Bind_Resources(core), atomic, 0, OpenMX_LocalBasisAt(core,mpi_comm_level1,&local_basis_storage));
 
     if (SpinP_switch == 3) {
       TRAN_Main_Analysis_NC(atomic, mpi_comm_level1, argc, argv, Matomnum, M2G,

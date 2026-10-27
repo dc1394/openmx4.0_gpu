@@ -1,17 +1,17 @@
 {
 "scope": "global-state usage of the C translation units of the NVIDIA build",
-"revision": "ea0e3888",
+"revision": "d1baeaaa",
 "summary": {
 "translation units analysed": 290,
 "translation units not analysed": 0,
-"functions": 3371,
+"functions": 3375,
 "common-header objects (defined in openmx_globals.c)": 942,
 "common-header objects referenced by some function": 936,
 "common-header objects written by some function (direct or through)": 696,
 "function-object edges (common header)": 12409,
 "objects with external linkage defined outside openmx_globals.c": 353,
-"file-scope statics": 313,
-"function-local statics": 296,
+"file-scope statics": 310,
+"function-local statics": 286,
 "environment variables (names read, every unit)": 254,
 "functions calling getenv directly (outside openmx_env.c)": 0,
 "environment names missing from the registry": 0
@@ -12593,24 +12593,6 @@
 "const": false
 },
 {
-"unit": "source/Set_Density_Grid_GPU.c",
-"name": "SDG_cache",
-"type": "%struct.SetDensityGpuCache zeroinitializer",
-"const": false
-},
-{
-"unit": "source/Set_Density_Grid_GPU.c",
-"name": "SDG_census",
-"type": "{ i32",
-"const": false
-},
-{
-"unit": "source/Set_Density_Grid_GPU.c",
-"name": "SDG_local",
-"type": "{ i32",
-"const": false
-},
-{
 "unit": "source/Set_Hamiltonian.c",
 "name": "SetH_prof",
 "type": "%struct.SetHamiltonianProfileCounters zeroinitializer",
@@ -15625,76 +15607,6 @@
 "function": "Set_Density_Grid",
 "variable": "firsttime",
 "type": "i32 1",
-"const": false
-},
-{
-"unit": "source/Set_Density_Grid_GPU.c",
-"function": "Set_Density_Grid_GPU_Local_Report",
-"variable": "last_cpu",
-"type": "i32 -1",
-"const": false
-},
-{
-"unit": "source/Set_Density_Grid_GPU.c",
-"function": "Set_Density_Grid_GPU_Local_Report",
-"variable": "last_failed",
-"type": "i32 -1",
-"const": false
-},
-{
-"unit": "source/Set_Density_Grid_GPU.c",
-"function": "Set_Density_Grid_GPU_Local_Report",
-"variable": "last_path",
-"type": "i32 -1",
-"const": false
-},
-{
-"unit": "source/Set_Density_Grid_GPU.c",
-"function": "Set_Density_Grid_GPU_Local_Report",
-"variable": "last_ws",
-"type": "i32 -1",
-"const": false
-},
-{
-"unit": "source/Set_Density_Grid_GPU.c",
-"function": "Set_Density_Grid_GPU_Local_Run",
-"variable": "den_cap",
-"type": "i64 0",
-"const": false
-},
-{
-"unit": "source/Set_Density_Grid_GPU.c",
-"function": "Set_Density_Grid_GPU_Local_Run",
-"variable": "den_otf",
-"type": "ptr null",
-"const": false
-},
-{
-"unit": "source/Set_Density_Grid_GPU.c",
-"function": "Set_Density_Grid_GPU_Local_Run",
-"variable": "den_pageable",
-"type": "i32 0",
-"const": false
-},
-{
-"unit": "source/Set_Density_Grid_GPU.c",
-"function": "Set_Density_Grid_GPU_Local_Run",
-"variable": "dm_cap",
-"type": "i64 0",
-"const": false
-},
-{
-"unit": "source/Set_Density_Grid_GPU.c",
-"function": "Set_Density_Grid_GPU_Local_Run",
-"variable": "dm_otf",
-"type": "ptr null",
-"const": false
-},
-{
-"unit": "source/Set_Density_Grid_GPU.c",
-"function": "Set_Density_Grid_GPU_Local_Run",
-"variable": "dm_pageable",
-"type": "i32 0",
 "const": false
 },
 {

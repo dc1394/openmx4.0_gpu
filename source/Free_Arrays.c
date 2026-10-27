@@ -50,7 +50,7 @@ void Free_Arrays_with_context(int wherefrom, OpenMXCoreContext *core)
     extern int openmx_hipsolver_release_workspace(void);
 
 #endif
-    /* All native solver states drain here, before host arrays and MPI end. */
+    /* Native solver and density states drain before host arrays and MPI end. */
     openmx_core_native_resources_clear(core);
 #if !OPENMX_GPU_HIP
     openmx_gpusolver_cache_release();
@@ -63,7 +63,6 @@ void Free_Arrays_with_context(int wherefrom, OpenMXCoreContext *core)
     openmx_magma_release_fp32_workspace();
     openmx_gpusolver_cache_release();
 #endif
-    Set_Density_Grid_GPU_Invalidate();
 #if OPENMX_GPU_HIP
     Set_Hamiltonian_Invalidate_OpenMP_MatrixElements_Cache();
     /* the on-the-fly state and its batch plans (keyed by the atom count,

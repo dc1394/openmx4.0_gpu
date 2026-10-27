@@ -9,9 +9,24 @@ import tempfile
 root=Path(__file__).resolve().parents[1]
 tree=ast.parse((root/'tests/run_gpu_vector_cpu.py').read_text())
 prefix=next(ast.literal_eval(n.value) for n in tree.body if isinstance(n,ast.Assign) and any(getattr(t,'id','')=='prefix' for t in n.targets))
+prefix += r'''
+int openmx_gpu_workers_capacity_device(OpenMXGpuWorkers *p,size_t n,int kind,
+    OpenMXGpuWorkerDeviceCost cost,void *ctx){
+ (void)kind;p->items=n;p->count=n<(size_t)workers?(int)n:workers;
+ if(local_fail && !remote)return 0;
+ for(;p->count>0;p->count--){
+  int fit=1;for(int i=0;i<p->count;i++){p->devices[i]=i;if(cost(ctx,i,p->count,i)==SIZE_MAX)fit=0;}
+  if(fit)return 1;
+ }
+ return 0;
+}
+static int cudaGetDevice(int *device){*device=0;return 0;}
+static int cudaSetDevice(int device){(void)device;return 0;}
+static int OpenMX_GpuMemGetInfo(size_t *available,size_t *total){*available=*total=(size_t)8<<30;return 0;}
+'''
 body=(root/'source/openmx_gpu_bilinear.c').read_text().replace('#include <cuda_runtime.h>','').replace('#include "set_cuda_default_device_from_local_rank.h"','')
 sdg=(root/'source/Set_Density_Grid_GPU.c').read_text()
-sdg=sdg[sdg.index('typedef struct {int mc,h,point;} SDGRecoveryTerm;'):sdg.index('static int SDG_env_bool(')]
+sdg=sdg[sdg.index('typedef struct {int mc,h,point;} SDGRecoveryTerm;'):sdg.index('static int SDG_add_bytes(')]
 fixture=r'''
 #ifndef ORB_DOUBLE
 typedef float Type_Orbs_Grid;
@@ -107,5 +122,5 @@ with tempfile.TemporaryDirectory(prefix='openmx-density-') as folder:
  subprocess.run(cxx+['-std=c++17']+flags+['-c',str(root/'source/openmx_gpu_bilinear_pack.cpp'),'-o',str(p/'pack.o')],check=True)
  for mode in ([],['-DORB_DOUBLE']):
   subprocess.run(cc+['-std=c11','-Wno-unknown-pragmas']+flags+mode+['-c',str(p/'check.c'),'-o',str(p/'check.o')],check=True)
-  subprocess.run(cxx+flags+[str(p/'check.o'),str(p/'pack.o'),'-lm','-o',str(p/'check')],check=True)
+  subprocess.run(cxx+flags+[str(p/'check.o'),str(p/'pack.o'),str(root/'source/openmx_env.c'),'-lm','-o',str(p/'check')],check=True)
   subprocess.run([str(p/'check')],check=True,timeout=60)

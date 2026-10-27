@@ -26,7 +26,7 @@ the buffers are staged per call instead.
 
 Run from the repository root (one GPU process at a time, < 100 MiB of
 device memory, a few seconds):
-  python3 tools/check_density_local_run_hip.py [--hipcc HIPCC] [--clang CLANG] [--arch gfx1200]
+  python3 source/backends/hip/tools/check_density_local_run_hip.py [--hipcc HIPCC] [--clang CLANG] [--arch gfx1200]
 """
 import argparse
 import os
@@ -35,8 +35,11 @@ import re
 import subprocess
 import tempfile
 
-ROOT = Path(__file__).resolve().parents[1]
-ROCM = Path("/opt/rocm-7.2.0")
+ROOT = Path(__file__).resolve().parents[4]
+import sys
+sys.path.insert(0, str(ROOT / 'tests'))
+from run_density_state_cpu import declarations
+ROCM = Path(os.environ.get("ROCM_PATH", "/opt/rocm"))
 
 
 def function(source, name):
@@ -62,6 +65,9 @@ def typedef(source, name):
 PREFIX = r'''
 #define _POSIX_C_SOURCE 200809L
 #include <hip/hip_runtime_api.h>
+#include "openmx_env.h"
+typedef struct OpenMXAtomicViews OpenMXAtomicViews;
+typedef struct OpenMXDensityGpuState OpenMXDensityGpuState;
 #include <omp.h>
 #include <stdint.h>
 #include <limits.h>
@@ -78,8 +84,8 @@ int openmx_gpu_fp32_fp64_ratio(void) { return 16; }
 static int openmx_gpu_is_apu(void) { return 0; }
 static int gpu_rank_device_usable(void) { return 1; }
 static int OpenMX_GpuMemGetInfo(size_t *f,size_t *t) { return (int)hipMemGetInfo(f,t); }
-static int Set_Density_Grid_OTF_Possible(int k) { (void)k; return 0; }
-static int Set_Density_Grid_OTF_Run(int k,double *****C,double ***T) { (void)k; (void)C; (void)T; return 0; }
+static int Set_Density_Grid_OTF_Possible(const OpenMXAtomicViews *atomic,int k) { (void)k; return 0; }
+static int Set_Density_Grid_OTF_Run(const OpenMXAtomicViews *atomic,int k,double *****C,double ***T) { (void)k; (void)C; (void)T; return 0; }
 '''
 
 STUBS = r'''
@@ -92,7 +98,7 @@ static int SDG_pack_local_cdm(double *****CDM, double *buffer, size_t expected, 
 }
 '''
 
-NAMES = ["SDG_env_bool", "SDG_env_mib", "SDG_gpu_default_enabled", "SDG_add_bytes", "SDG_malloc",
+NAMES = ["SDG_gpu_default_enabled", "SDG_add_bytes", "SDG_malloc",
          "SDG_solver_supported", "SDG_local_delete_device", "SDG_local_upload", "SDG_local_free",
          "SDG_local_build", "SDG_local_call_bytes", "SDG_local_prepare", "Set_Density_Grid_GPU_EndCycle",
          "Set_Density_Grid_GPU_Local_Run"]
@@ -113,6 +119,8 @@ static void associate(void *host, size_t bytes) {
 }
 #define MAXP 4096
 int main(int argc, char **argv) {
+  OpenMXDensityGpuState state={0};
+  OpenMXDensityGpuState *density_state=&state;
   const int S = atoi(argv[1]), atoms = atoi(argv[2]), nbr = atoi(argv[3]);
   const int species[3] = { atoi(argv[4]), 5, 19 };
   static int pair_Mc_AN[MAXP], pair_h_AN[MAXP], pair_NO0[MAXP], pair_NO1[MAXP], pair_NOLG[MAXP];
@@ -211,10 +219,11 @@ int main(int argc, char **argv) {
   for (int round = 0; round < 4; round++) {
     double maxe = 0.0;
     int split = -1;
-    if (round == 2) Set_Density_Grid_GPU_EndCycle();
-    if (!SDG_local_prepare(0, 0, 1)) { printf(" FAIL: prepare in round %d\n", round); return 1; }
+    if (round == 2) Set_Density_Grid_GPU_EndCycle(density_state);
+    size_t need=0,budget=0;
+    if (!SDG_local_prepare(density_state, NULL, 0, 0, 1, &need, &budget)) { printf(" FAIL: prepare in round %d\n", round); return 1; }
     for (s = 0; s < S; s++) for (a = 1; a <= atoms; a++) memset(Tmp[s][a], 0, sizeof(double) * GridN_Atom[a]);
-    if (!Set_Density_Grid_GPU_Local_Run(NULL, Tmp)) { printf(" FAIL: run in round %d\n", round); return 1; }
+    if (!Set_Density_Grid_GPU_Local_Run(density_state, NULL, NULL, Tmp)) { printf(" FAIL: run in round %d\n", round); return 1; }
     for (s = 0; s < S; s++) {
       size_t off = (size_t)s * out_total;
       for (a = 1; a <= atoms; a++) for (int g = 0; g < GridN_Atom[a]; g++, off++) {
@@ -226,9 +235,9 @@ int main(int argc, char **argv) {
       }
     }
     /* the double-float kernel leaves the resident device DM split */
-    if (SDG_local.d_dm != NULL) {
+    if (density_state->local.d_dm != NULL) {
       double *back = malloc(sizeof(double) * n_h);
-      if (hipMemcpy(back, SDG_local.d_dm, sizeof(double) * n_h, hipMemcpyDeviceToHost) != hipSuccess) return 2;
+      if (hipMemcpy(back, density_state->local.d_dm, sizeof(double) * n_h, hipMemcpyDeviceToHost) != hipSuccess) return 2;
       split = memcmp(back, dm, sizeof(double) * n_h) != 0;
       free(back);
     }
@@ -236,8 +245,8 @@ int main(int argc, char **argv) {
     if (split >= 0 && split != df) { printf(" FAIL: the %s kernel did not run", df ? "double-float" : "FP64"); fails++; }
     if (maxe > (df ? 5e-14 : 1e-15)) { printf(" FAIL: accuracy"); fails++; }
   }
-  Set_Density_Grid_GPU_EndCycle();
-  SDG_local_free();
+  Set_Density_Grid_GPU_EndCycle(density_state);
+  SDG_local_free(density_state);
   printf("\n");
   return fails ? 1 : 0;
 }
@@ -253,14 +262,15 @@ def main():
     parser.add_argument("--hipcc", default=str(ROCM / "bin/hipcc"))
     parser.add_argument("--clang", default=str(ROCM / "llvm/bin/clang"))
     parser.add_argument("--arch", default="gfx1200")
+    parser.add_argument("--compile-only", action="store_true", help="compile and link without a GPU")
     args = parser.parse_args()
 
-    source = (ROOT / "source/Set_Density_Grid_GPU.c").read_text()
+    source = (ROOT / "source/backends/hip/src/Set_Density_Grid_GPU.c").read_text()
     header = (ROOT / "source/openmx_common.h").read_text().replace("\r", "")
     decl_start = source.index("/* set_hamiltonian_hip.cu */")
-    decl_end = source.index("typedef struct {", decl_start)
+    decl_end = source.index("static void SDG_local_delete_device(", decl_start)
     parts = [PREFIX, typedef(header, "SetHamiltonianMETables"), source[decl_start:decl_end],
-             typedef(source, "SDGLocalContext"), "static SDGLocalContext SDG_local = {0};", STUBS]
+             declarations(source), STUBS]
     parts += [function(source, name) for name in NAMES]
     parts.append(MAIN)
 
@@ -270,11 +280,15 @@ def main():
         subprocess.run([args.hipcc, "-std=c++20", "-O3", "-fPIC", f"--offload-arch={args.arch}",
                         "-D__HIP_PLATFORM_AMD__", "-ffp-contract=off", "-DOCML_BASIC_ROUNDED_OPERATIONS",
                         "-Wno-unused-result", "-Wno-unused-value", "-I" + str(ROOT / "source"),
-                        "-c", str(ROOT / "source/set_hamiltonian_hip.cu"), "-o", str(tmp / "kernels.o")], check=True)
-        subprocess.run([args.clang, "-O3", "-std=c11", "-w", "-D__HIP_PLATFORM_AMD__", "-I" + str(ROCM / "include"),
+                        "-c", str(ROOT / "source/backends/hip/src/set_hamiltonian_hip.cu"), "-o", str(tmp / "kernels.o")], check=True)
+        subprocess.run([args.clang, "-O3", "-std=c11", "-D_POSIX_C_SOURCE=200809L", "-w", "-D__HIP_PLATFORM_AMD__", "-I" + str(ROCM / "include"), "-I" + str(ROOT / "source"),
                         "-fopenmp", f"--offload-arch={args.arch}", str(tmp / "check.c"), str(tmp / "kernels.o"),
+                        str(ROOT / "source/openmx_env.c"), str(ROOT / "source/openmx_precision.c"),
                         "-L" + str(ROCM / "lib"), "-Wl,-rpath," + str(ROCM / "lib"), "-lamdhip64", "-lstdc++", "-lm",
                         "-o", str(tmp / "check")], check=True)
+        if args.compile_only:
+            print("PASS: HIP density local-mode fixture compiled and linked (device execution skipped)")
+            return
         failures = 0
         for cache in ("32", "0"):
             for mode in ("df", "fp64"):

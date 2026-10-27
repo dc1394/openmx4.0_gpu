@@ -21,6 +21,12 @@ function(openmx_add_native_state_tests)
   set_tests_properties(olg-cache-native PROPERTIES
     ENVIRONMENT "${_environment}" LABELS "unit;core;grid" TIMEOUT 180)
 
+  add_test(NAME density-calculation-state-lifecycle
+    COMMAND "${Python3_EXECUTABLE}" "${_repo}/tests/run_density_state_cpu.py"
+      --core-library "$<TARGET_FILE:openmx_core>")
+  set_tests_properties(density-calculation-state-lifecycle PROPERTIES
+    ENVIRONMENT "${_environment}" LABELS "unit;gpu;core;native-state" TIMEOUT 180)
+
   foreach(_solver dc dclno krylov)
     add_test(NAME ${_solver}-calculation-state-lifecycle
       COMMAND "${Python3_EXECUTABLE}" "${_repo}/tests/run_local_solver_state_cpu.py"

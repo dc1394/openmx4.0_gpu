@@ -3013,6 +3013,7 @@ static void Force_CoreHole(const OpenMXAtomicViews *atomic, double***** CDM0, do
 #include "openmx_force_stages.h"
 
 typedef struct {
+    OpenMXDensityGpuState *density_state;
     const OpenMXAtomicViews *atomic;
     const OpenMXVnaMatrixViews *vna;
     const OpenMXReciprocalViews *reciprocal;
@@ -3020,7 +3021,7 @@ typedef struct {
     const OpenMXElectronicViews *electronic;
     const OpenMXLocalBasisViews *local_basis;
 } ForceArguments;
-static double Force_Impl(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double***** H0,
+static double Force_Impl(OpenMXDensityGpuState *density_state, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double***** H0,
     double****** DS_NL,
     double***** OLP,
     double***** CDM,
@@ -3028,11 +3029,11 @@ static double Force_Impl(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixV
 static int Force_Operation(const OpenMXForceWorkspace *work,void *opaque,double *result)
 {
     const ForceArguments *a=opaque;
-    *result=Force_Impl(a->atomic,a->vna,a->reciprocal,a->H0,a->DS_NL,a->OLP,a->CDM,a->EDM,
+    *result=Force_Impl(a->density_state,a->atomic,a->vna,a->reciprocal,a->H0,a->DS_NL,a->OLP,a->CDM,a->EDM,
         a->electronic,a->local_basis,work);
     return 1;
 }
-double Force(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double***** H0,
+double Force(OpenMXDensityGpuState *density_state, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double***** H0,
     double****** DS_NL,
     double***** OLP,
     double***** CDM,
@@ -3042,7 +3043,7 @@ double Force(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, c
         || Constraint_NCS_switch>=1 || Zeeman_NCS_switch==1 || Zeeman_NCO_switch==1);
     const OpenMXForceInput input={atomnum,Matomnum,MatomnumF,SpeciesNum,SpinP_switch,imaginary,
         F_M2G,WhatSpecies,atomic->species.contracted_orbitals,FNAN,natn};
-    ForceArguments args={atomic,vna,reciprocal,H0,DS_NL,OLP,CDM,EDM,electronic,local_basis};
+    ForceArguments args={density_state,atomic,vna,reciprocal,H0,DS_NL,OLP,CDM,EDM,electronic,local_basis};
     double begin,end;
     dtime(&begin);
     (void)OpenMX_ForceRun(&input,Force_Operation,&args);
@@ -3050,7 +3051,7 @@ double Force(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, c
     return end-begin;
 }
 
-static double Force_Impl(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double***** H0,
+static double Force_Impl(OpenMXDensityGpuState *density_state, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double***** H0,
     double****** DS_NL,
     double***** OLP,
     double***** CDM,
@@ -4235,7 +4236,7 @@ static double Force_Impl(const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixV
     if (scf_eigen_lib_flag == GPUSOLVER && Solver == 3 &&
         openmx_env_flag_at(OPENMX_ENV_FORCE_RELEASE_SCF_CACHES, 1)) {
         dtime(&stime);
-        Set_Density_Grid_GPU_Invalidate();
+        Set_Density_Grid_GPU_Invalidate(density_state);
         Set_Hamiltonian_Release_OpenACC_DeviceCache();
         MPI_Barrier(mpi_comm_level1);
         dtime(&etime);

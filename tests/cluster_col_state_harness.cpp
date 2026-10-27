@@ -1,5 +1,6 @@
 #include "openmx_core_chemical.h"
 #include "fixtures/native_resources/sdk_model.hpp"
+#include "density_state_binding_fixture.hpp"
 #include "openmx_cluster_col_state.h"
 #include "openmx_core_energy.h"
 #include "openmx_env.h"

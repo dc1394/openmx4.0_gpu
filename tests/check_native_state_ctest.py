@@ -13,7 +13,7 @@ import subprocess
 
 
 def check_inventory(inventory, build, require_mpi=False):
-    solvers = ['cluster-col', 'cluster-noncol', 'band-col', 'band-noncol', 'dc', 'dclno', 'krylov', 'mixing-h', 'mixing-rhok']
+    solvers = ['cluster-col', 'cluster-noncol', 'band-col', 'band-noncol', 'dc', 'dclno', 'krylov', 'mixing-h', 'mixing-rhok', 'density']
     expected = {name + '-calculation-state-lifecycle': 'native-state' for name in solvers}
     expected['solver-noncollinear-energy-output'] = 'native-state'
     expected['mixing-rhok-workspace-lifecycle'] = 'native-state'
@@ -52,6 +52,7 @@ def check_inventory(inventory, build, require_mpi=False):
             'dc': 'run_local_solver_state_cpu.py', 'dclno': 'run_local_solver_state_cpu.py',
             'krylov': 'run_local_solver_state_cpu.py', 'mixing-h': 'run_mixing_h_state_cpu.py',
             'mixing-rhok': 'run_mixing_rhok_state_cpu.py',
+            'density': 'run_density_state_cpu.py',
             'mixing-rhok-workspace-lifecycle': 'run_mixing_rhok_workspace_cpu.py',
             'mixing-dm-workspace-lifecycle': 'run_mixing_dm_workspace_cpu.py',
             'mixing-v-workspace-lifecycle': 'run_mixing_v_workspace_cpu.py',

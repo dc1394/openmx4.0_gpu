@@ -187,6 +187,7 @@ struct OpenMXBandColState {
   OpenMXChemicalPotentials *chemical; /* borrowed from this calculation */
   OpenMXBandEnergies *energies; /* borrowed from this calculation */
   OpenMXNativeResources *resources; /* borrowed from this calculation */
+  OpenMXDensityGpuState *density_state; /* borrowed from the same calculation */
   int initialized;
   int refine_e0_n;
   double *refine_e0;
@@ -263,6 +264,7 @@ OpenMXBandColState *Band_DFT_Col_Bind_Resources(OpenMXCoreContext *core)
   BandColState *state = (BandColState *)metadata;
   if (!state->initialized) {
     state->resources = owner;
+    state->density_state = Set_Density_Grid_GPU_Bind_Resources(core);
     const BandColRefineState initial_refine = {-1, 0.0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     state->refine = initial_refine;
     state->Band_DFT_Col_owned_firsttime = 1;
@@ -306,7 +308,7 @@ extern void openmx_gemmul8TrimWorkspaces(void);
 extern size_t Set_Hamiltonian_DemoteResidency(void);
 extern int openmx_hipsolver_release_workspace(void);
 extern int BandCol_ReleaseDMDeviceWorkspace_HIP(void);
-extern void Set_Density_Grid_GPU_Release_Device_Caches(void);
+
 extern hipblasStatus_t openmx_gemmul8ZgemmSolve(hipblasHandle_t handle, hipblasOperation_t transa,
                                                 hipblasOperation_t transb, int m, int n, int k,
                                                 const hipDoubleComplex *alpha, const hipDoubleComplex *A, int lda,
@@ -648,7 +650,7 @@ static int BandCol_NativeGpuDenseFits(BandColState *state, int n, int owns_dense
         BandCol_ConstructCache_Reset(state);
         /* the basis the resident refined path keeps for its warm start */
         BandCol_RefineDropBasis(state);
-        Set_Density_Grid_GPU_Release_Device_Caches();
+        Set_Density_Grid_GPU_Release_Device_Caches(state->density_state);
         /* the Hamiltonian's resident orbital tables as well, for the rest of
            the run: re-uploaded per call they leave the eigensolver its room */
         (void)Set_Hamiltonian_DemoteResidency();

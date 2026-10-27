@@ -9,6 +9,7 @@
 
 #include "mpi.h"
 #include "openmx_common.h"
+#include "openmx_core_native_resources.h"
 #include "openmx_env.h"
 #include "openmx_gpu_workers.h"
 #include "openmx_gpu_views.h"
@@ -47,6 +48,7 @@ typedef struct {
   uint32_t nh_mask;
   int local_cdm_count;
   int device_resident;
+  int device_id;
 
   size_t atom_count;
   size_t orbital_count;
@@ -80,7 +82,57 @@ typedef struct {
   int *scatter_displs;
 } SetDensityGpuCache;
 
-static SetDensityGpuCache SDG_cache = {0};
+typedef struct {
+  int ready;
+  int unavailable;
+  int spin_count;
+  int cnt_kind;
+  int node_ranks;
+  size_t output_count;     /* sum of GridN_Atom over the rank's atoms */
+  size_t term_count;       /* overlap points of the rank's pairs */
+  size_t dm_count;         /* packed density-matrix doubles */
+  size_t extra_bytes;      /* device bytes owned by this mode alone */
+  uint32_t *atom_out_base; /* Matomnum+2, host only */
+  uint32_t *out_ptr;       /* CSR over the output points */
+  uint32_t *term_pt;       /* CSR payload: global overlap-point index */
+  uint32_t *pt_pair;       /* overlap point -> pair */
+  double *dm;
+  double *tmpden;
+  int device_resident;
+  int device_id;
+  SetHamiltonianMETables t;
+  /* the on-the-fly mode of a rank without resident tables (orbs_grid_gpu.h):
+     no CSR, the density from per-pair tiles evaluated on the device */
+  int otf;
+  size_t otf_dm_count;
+  size_t otf_output_count;
+  uint32_t *otf_out_base;
+} SDGLocalContext;
+
+typedef struct {
+  int atom_ranks;
+  int declined;
+  int ws_declined;
+  unsigned long long ws_need;
+  unsigned long long ws_avail;
+  int host;
+} SDGCensus;
+
+typedef struct {
+  double *data;
+  size_t capacity;
+  int pageable;
+} SDGHostBuffer;
+
+struct OpenMXDensityGpuState {
+  int initialized;
+  SetDensityGpuCache cache;
+  SDGLocalContext local;
+  SDGCensus census;
+  int last_path, last_cpu, last_workspace, last_failed;
+  SDGHostBuffer dm_staging, den_staging;
+};
+
 
 typedef struct {int mc,h,point;} SDGRecoveryTerm;
 typedef struct {
@@ -246,6 +298,9 @@ static void *SDG_create(void *host,size_t bytes) {return SDG_map(host,bytes,0);}
 static void SDG_delete_device(SetDensityGpuCache *cache)
 {
   if (!cache->device_resident) return;
+  int previous = acc_get_device_num(acc_device_nvidia);
+  if (previous != cache->device_id)
+    acc_set_device_num(cache->device_id, acc_device_nvidia);
 
   /* Upload can fail after only a prefix of these mappings was created.
      Query the present table so the same cleanup handles full and partial
@@ -274,6 +329,8 @@ static void SDG_delete_device(SetDensityGpuCache *cache)
      before the next SCF diagonalization. */
   acc_clear_freelists();
   cache->device_resident = 0;
+  if (previous != cache->device_id)
+    acc_set_device_num(previous, acc_device_nvidia);
 }
 
 static void SDG_free_host(SetDensityGpuCache *cache)
@@ -300,12 +357,69 @@ static void SDG_free_host(SetDensityGpuCache *cache)
   memset(cache, 0, sizeof(*cache));
 }
 
-static void SDG_local_free(void);
-
-void Set_Density_Grid_GPU_Invalidate(void)
+/* Grow-only staging belongs to one calculation, not one geometry. */
+static void SDG_staging_free(SDGHostBuffer *buffer)
 {
-  SDG_free_host(&SDG_cache);
-  SDG_local_free();
+  if (buffer->data != NULL) {
+    if (buffer->pageable) free(buffer->data);
+    else (void)cudaFreeHost(buffer->data);
+  }
+  memset(buffer, 0, sizeof(*buffer));
+}
+
+static double *SDG_staging_reserve(SDGHostBuffer *buffer, size_t count)
+{
+  if (count > SIZE_MAX / sizeof(double)) return NULL;
+  if (buffer->capacity < count) {
+    SDG_staging_free(buffer);
+    if (cudaMallocHost((void **)&buffer->data, sizeof(double) * count) != cudaSuccess) {
+      (void)cudaGetLastError();
+      buffer->data = (double *)SDG_malloc(count, sizeof(double));
+      buffer->pageable = 1;
+    }
+    if (buffer->data != NULL) buffer->capacity = count;
+  }
+  return buffer->data;
+}
+
+static void SDG_local_free(OpenMXDensityGpuState *density_state);
+
+void Set_Density_Grid_GPU_Invalidate(OpenMXDensityGpuState *density_state)
+{
+  if (!density_state) return;
+  SDG_free_host(&density_state->cache);
+  SDG_local_free(density_state);
+}
+
+
+/* Called by the C++ calculation owner before its metadata is destroyed.
+   All users must be quiescent; this callback never enters MPI collectives. */
+static void SDG_Reset(OpenMXNativeResources *owner, void *metadata)
+{
+  OpenMXDensityGpuState *density_state = (OpenMXDensityGpuState *)metadata;
+  (void)owner;
+  Set_Density_Grid_GPU_Invalidate(density_state);
+  SDG_staging_free(&density_state->dm_staging);
+  SDG_staging_free(&density_state->den_staging);
+}
+
+OpenMXDensityGpuState *Set_Density_Grid_GPU_Bind_Resources(OpenMXCoreContext *core)
+{
+  OpenMXNativeResources *owner = NULL;
+  void *metadata = NULL;
+  char error[256];
+  if (!openmx_core_native_resources_state(core, "Set_Density_Grid_GPU",
+      sizeof(OpenMXDensityGpuState), SDG_Reset, &owner, &metadata, error, sizeof(error))) {
+    fprintf(stderr, "OpenMX density GPU state: %s\n", error);
+    abort();
+  }
+  OpenMXDensityGpuState *density_state = (OpenMXDensityGpuState *)metadata;
+  if (!density_state->initialized) {
+    density_state->last_path = density_state->last_cpu = -1;
+    density_state->last_workspace = density_state->last_failed = -1;
+    density_state->initialized = 1;
+  }
+  return density_state;
 }
 
 static void SDG_disable_current_epoch(SetDensityGpuCache *cache)
@@ -390,9 +504,9 @@ static int SDG_compute_local_counts(unsigned long long counts[SDG_COUNT_FIELDS],
   return 1;
 }
 
-static int SDG_build_cache(int spin_count, int owner, int myid, int numprocs)
+static int SDG_build_cache(OpenMXDensityGpuState *density_state, int spin_count, int owner, int myid, int numprocs)
 {
-  SetDensityGpuCache *cache = &SDG_cache;
+  SetDensityGpuCache *cache = &density_state->cache;
   unsigned long long local_counts[SDG_COUNT_FIELDS] = {0};
   unsigned long long *rank_counts = NULL;
   int local_max_grid = 0, local_max_h = 0, max_grid = 0, max_h = 0;
@@ -812,6 +926,9 @@ static int SDG_pack_local_cdm(double *****CDM, double *buffer, size_t expected, 
 
 static int SDG_upload_device(SetDensityGpuCache *cache)
 {
+  if (cache->device_resident &&
+      cache->device_id != acc_get_device_num(acc_device_nvidia))
+    SDG_delete_device(cache);
   if (cache->device_resident) {
     acc_update_device(cache->cdm, cache->cdm_count * sizeof(double));
     return 1;
@@ -819,6 +936,7 @@ static int SDG_upload_device(SetDensityGpuCache *cache)
 
   /* Mark the upload as resident before the first allocation so a partial
      failure is rolled back by SDG_delete_device(). */
+  cache->device_id = acc_get_device_num(acc_device_nvidia);
   cache->device_resident = 1;
   if (SDG_copyin(cache->orbs, cache->orbital_count * sizeof(Type_Orbs_Grid)) == NULL ||
       SDG_copyin(cache->atom_out_offset, (cache->atom_count + 1) * sizeof(uint32_t)) == NULL ||
@@ -1144,10 +1262,10 @@ static int SDG_solver_supported(int local_mode)
   return local_mode && (Solver == 5 || Solver == 8 || Solver == 11);
 }
 
-int Set_Density_Grid_GPU_Service(const OpenMXDensityCacheHooks *cache_hooks, int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM,
+int Set_Density_Grid_GPU_Service(OpenMXDensityGpuState *density_state, const OpenMXDensityCacheHooks *cache_hooks, int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM,
                                  double **Density_Grid_B0, double *elapsed)
 {
-  SetDensityGpuCache *cache = &SDG_cache;
+  SetDensityGpuCache *cache = &density_state->cache;
   int numprocs, myid, owner = Host_ID;
   int enabled = 0, device_count = 0, device = 0;
   int spin_count = SpinP_switch + 1;
@@ -1180,11 +1298,11 @@ int Set_Density_Grid_GPU_Service(const OpenMXDensityCacheHooks *cache_hooks, int
   if (!enabled || cache->unavailable) return 0;
 
   if (!cache->ready) {
-    if (!SDG_build_cache(spin_count, owner, myid, numprocs)) return 0;
+    if (!SDG_build_cache(density_state, spin_count, owner, myid, numprocs)) return 0;
   }
   if (cache->spin_count != spin_count) {
-    Set_Density_Grid_GPU_Invalidate();
-    if (!SDG_build_cache(spin_count, owner, myid, numprocs)) return 0;
+    Set_Density_Grid_GPU_Invalidate(density_state);
+    if (!SDG_build_cache(density_state, spin_count, owner, myid, numprocs)) return 0;
   }
 
   reserve_bytes = openmx_env_mib_bytes_at(OPENMX_ENV_DENSITY_GRID_GPU_RESERVE_MB, 256);
@@ -1307,35 +1425,6 @@ int Set_Density_Grid_GPU_Service(const OpenMXDensityCacheHooks *cache_hooks, int
    Set_Density_Grid.c distributes it afterwards.
 ***********************************************************************/
 
-typedef struct {
-  int ready;
-  int unavailable;
-  int spin_count;
-  int cnt_kind;
-  int node_ranks;
-  size_t output_count;     /* sum of GridN_Atom over the rank's atoms */
-  size_t term_count;       /* overlap points of the rank's pairs */
-  size_t dm_count;         /* packed density-matrix doubles */
-  size_t extra_bytes;      /* device bytes owned by this mode alone */
-  uint32_t *atom_out_base; /* Matomnum+2, host only */
-  uint32_t *out_ptr;       /* CSR over the output points */
-  uint32_t *term_pt;       /* CSR payload: global overlap-point index */
-  uint32_t *pt_pair;       /* overlap point -> pair */
-  double *dm;
-  double *tmpden;
-  int device_resident;
-  int device_id;
-  SetHamiltonianMETables t;
-  /* the on-the-fly mode of a rank without resident tables (orbs_grid_gpu.h):
-     no CSR, the density from per-pair tiles evaluated on the device */
-  int otf;
-  size_t otf_dm_count;
-  size_t otf_output_count;
-  uint32_t *otf_out_base;
-} SDGLocalContext;
-
-static SDGLocalContext SDG_local = {0};
-
 /* Set_Hamiltonian.c: the planned on-the-fly density call's figures */
 int Set_Hamiltonian_OnTheFly_DensityStage(int otf_ranks, size_t *need_bytes, size_t *budget_bytes);
 
@@ -1373,12 +1462,12 @@ static int SDG_local_upload(SDGLocalContext *c)
   return 1;
 }
 
-static void SDG_local_free(void)
+static void SDG_local_free(OpenMXDensityGpuState *density_state)
 {
-  free(SDG_local.otf_out_base);
-  SDG_local.otf_out_base = NULL;
-  SDG_local.otf = 0;
-  SDGLocalContext *c = &SDG_local;
+  free(density_state->local.otf_out_base);
+  density_state->local.otf_out_base = NULL;
+  density_state->local.otf = 0;
+  SDGLocalContext *c = &density_state->local;
 
   SDG_local_delete_device(c);
   free(c->atom_out_base);
@@ -1390,9 +1479,9 @@ static void SDG_local_free(void)
   memset(c, 0, sizeof(*c));
 }
 
-static int SDG_local_build(int Cnt_kind, int spin_count)
+static int SDG_local_build(OpenMXDensityGpuState *density_state, int Cnt_kind, int spin_count)
 {
-  SDGLocalContext *c = &SDG_local;
+  SDGLocalContext *c = &density_state->local;
   uint32_t *degree = NULL;
   int ok = 1;
   int Mc_AN, p;
@@ -1508,8 +1597,8 @@ static int SDG_local_build(int Cnt_kind, int spin_count)
   /* This builder is rank-local: OTF, cached, empty and failed ranks do
      not enter it.  Collective decisions belong to the public Prepare. */
   if (!ok) {
-    SDG_local_free();
-    SDG_local.unavailable = 1;
+    SDG_local_free(density_state);
+    density_state->local.unavailable = 1;
     return 0;
   }
 
@@ -1550,18 +1639,19 @@ static size_t SDG_local_call_bytes(const SDGLocalContext *c)
 
 /* the end of an SCF cycle: the resident device buffers of the local mode go
    (the next cycle stages them again) */
-void Set_Density_Grid_GPU_EndCycle(void)
+void Set_Density_Grid_GPU_EndCycle(OpenMXDensityGpuState *density_state)
 {
-  SDG_local_delete_device(&SDG_local);
+  if (!density_state) return;
+  SDG_local_delete_device(&density_state->local);
 }
 
 /* *vote_need / *vote_budget (zero on entry): this rank's figures for the
    stage vote of Set_Density_Grid_GPU_Local_Prepare, set by the CSR
    admission; zero need means no CSR staging of its own. */
-static int SDG_local_prepare(const OpenMXAtomicViews *atomic, int Cnt_kind, int Calc_CntOrbital_ON, int node_ranks,
+static int SDG_local_prepare(OpenMXDensityGpuState *density_state, const OpenMXAtomicViews *atomic, int Cnt_kind, int Calc_CntOrbital_ON, int node_ranks,
                              size_t *vote_need, size_t *vote_budget)
 {
-  SDGLocalContext *c = &SDG_local;
+  SDGLocalContext *c = &density_state->local;
   int spin_count = SpinP_switch + 1;
   /* Without orbital optimization the contracted orbitals are the primitive
      ones (CNO == NO), so the final density of an MD step (Cnt_kind 1, for
@@ -1615,18 +1705,18 @@ static int SDG_local_prepare(const OpenMXAtomicViews *atomic, int Cnt_kind, int 
     if (!my_ready) my_otf = Set_Hamiltonian_OnTheFly_DensityPossible(atomic, table_kind, myid);
     if (!(my_ready || my_otf)) return 0;
     if (my_otf) {
-      if (c->ready && !c->otf) SDG_local_free();
+      if (c->ready && !c->otf) SDG_local_free(density_state);
       if (!c->otf || c->spin_count != spin_count || c->cnt_kind != table_kind) {
         int Mc_AN;
         size_t base = 0;
-        SDG_local_free();
+        SDG_local_free(density_state);
         c->otf_out_base = (uint32_t *)SDG_malloc((size_t)Matomnum + 2, sizeof(uint32_t));
         if (c->otf_out_base == NULL) return 0;
         for (Mc_AN = 1; Mc_AN <= Matomnum; Mc_AN++) {
           c->otf_out_base[Mc_AN] = (uint32_t)base;
           const int n = GridN_Atom[M2G[Mc_AN]];
           if (n < 0 || (size_t)n > (size_t)UINT32_MAX - base) {
-            SDG_local_free();
+            SDG_local_free(density_state);
             return 0;
           }
           base += (size_t)n;
@@ -1640,25 +1730,25 @@ static int SDG_local_prepare(const OpenMXAtomicViews *atomic, int Cnt_kind, int 
       }
       return c->otf_output_count != 0;
     }
-    if (c->otf) SDG_local_free();
+    if (c->otf) SDG_local_free(density_state);
   }
 
-  if (c->otf) SDG_local_free(); /* switching auto OTF to forced CSR */
+  if (c->otf) SDG_local_free(density_state); /* switching auto OTF to forced CSR */
   if (c->unavailable) return 0;
 
   if (c->ready && (c->spin_count != spin_count || c->cnt_kind != table_kind)) {
-    SDG_local_free();
+    SDG_local_free(density_state);
   }
   if (!c->ready) {
-    if (!SDG_local_build(table_kind, spin_count)) return 0;
+    if (!SDG_local_build(density_state, table_kind, spin_count)) return 0;
   }
 
   /* refresh the shared-table view: the pointers and the residency flags may
      have changed since the epoch was built */
   if (!Set_Hamiltonian_GetMatrixElementsTables(table_kind, &c->t) ||
       c->t.total_nolg != c->term_count || c->t.total_h != c->dm_count) {
-    SDG_local_free();
-    SDG_local.unavailable = 1;
+    SDG_local_free(density_state);
+    density_state->local.unavailable = 1;
     return 0;
   }
 
@@ -1695,19 +1785,12 @@ static int SDG_local_prepare(const OpenMXAtomicViews *atomic, int Cnt_kind, int 
    quadrature, and those among them without space for the minimum compact
    on-the-fly chunk (the largest such need and the smallest payload); host:
    the stage vote sent every rank to the host SIMD quadrature */
-static struct {
-  int atom_ranks;
-  int declined;
-  int ws_declined;
-  unsigned long long ws_need;
-  unsigned long long ws_avail;
-  int host;
-} SDG_census = {0};
+
 
 /* Every rank participates, including OTF ranks, empty partitions and
    ranks whose local preparation failed.  A collective inside the CSR
    builder deadlocks when any other rank reuses a cache or chooses OTF. */
-int Set_Density_Grid_GPU_Local_Prepare(const OpenMXAtomicViews *atomic, int Cnt_kind, int Calc_CntOrbital_ON)
+int Set_Density_Grid_GPU_Local_Prepare(OpenMXDensityGpuState *density_state, const OpenMXAtomicViews *atomic, int Cnt_kind, int Calc_CntOrbital_ON)
 {
   MPI_Comm node_comm = MPI_COMM_NULL;
   int node_ranks = 1, node_otf = 0, my_otf, ok, myid = 0, grow = 0, ws_declined = 0;
@@ -1722,15 +1805,15 @@ int Set_Density_Grid_GPU_Local_Prepare(const OpenMXAtomicViews *atomic, int Cnt_
   if (scf_eigen_lib_flag != GPUSOLVER) {
     Set_Hamiltonian_OnTheFly_SetDensityRanks(0);
     OpenMX_GpuPhaseNeed_Register("density_grid_local", 0);
-    memset(&SDG_census, 0, sizeof(SDG_census));
+    memset(&density_state->census, 0, sizeof(density_state->census));
     return 0;
   }
 
   MPI_Comm_rank(mpi_comm_level1, &myid);
   MPI_Comm_split_type(mpi_comm_level1, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, &node_comm);
   MPI_Comm_size(node_comm, &node_ranks);
-  ok = SDG_local_prepare(atomic, Cnt_kind, Calc_CntOrbital_ON, node_ranks, &vote_need, &vote_budget);
-  my_otf = ok && Matomnum > 0 && SDG_local.otf;
+  ok = SDG_local_prepare(density_state, atomic, Cnt_kind, Calc_CntOrbital_ON, node_ranks, &vote_need, &vote_budget);
+  my_otf = ok && Matomnum > 0 && density_state->local.otf;
   MPI_Allreduce(&my_otf, &node_otf, 1, MPI_INT, MPI_SUM, node_comm);
   Set_Hamiltonian_OnTheFly_SetDensityRanks(node_otf);
 
@@ -1744,12 +1827,12 @@ int Set_Density_Grid_GPU_Local_Prepare(const OpenMXAtomicViews *atomic, int Cnt_
      CPU loop while the other ranks retain their distributed work. */
   if (my_otf) {
     mine[0] = (unsigned long long)Set_Hamiltonian_OnTheFly_DensityBudget(
-        SDG_local.spin_count, SDG_local.otf_dm_count, SDG_local.otf_output_count, node_otf,
+        density_state->local.spin_count, density_state->local.otf_dm_count, density_state->local.otf_output_count, node_otf,
         &grow, &ws_need, &ws_avail, myid);
     if (0 < grow) mine[1] = 1ULL;
   }
   else if (ok && Matomnum > 0) {
-    mine[0] = (unsigned long long)SDG_local_call_bytes(&SDG_local);
+    mine[0] = (unsigned long long)SDG_local_call_bytes(&density_state->local);
   }
   MPI_Allreduce(mine, node, 2, MPI_UNSIGNED_LONG_LONG, MPI_SUM, node_comm);
   MPI_Comm_free(&node_comm);
@@ -1778,8 +1861,8 @@ int Set_Density_Grid_GPU_Local_Prepare(const OpenMXAtomicViews *atomic, int Cnt_
      ranks without CSR buffers contribute zero.  The census rides along. */
   /* Include the transient precision image in the next-phase hint too, so
      Set_Hamiltonian can release enough resident storage before density. */
-  counts[0] = SDG_local.ready && !SDG_local.otf ?
-      (unsigned long long)SDG_local_workspace_bytes(&SDG_local) : 0ULL;
+  counts[0] = density_state->local.ready && !density_state->local.otf ?
+      (unsigned long long)SDG_local_workspace_bytes(&density_state->local) : 0ULL;
   counts[1] = Matomnum > 0 ? 1ULL : 0ULL;
   counts[2] = (Matomnum > 0 && !ok) ? 1ULL : 0ULL;
   counts[3] = (unsigned long long)ws_declined;
@@ -1793,11 +1876,11 @@ int Set_Density_Grid_GPU_Local_Prepare(const OpenMXAtomicViews *atomic, int Cnt_
     MPI_Allreduce(extremes, worst, 2, MPI_UNSIGNED_LONG_LONG, MPI_MAX, mpi_comm_level1);
   }
   OpenMX_GpuPhaseNeed_Register("density_grid_local", (size_t)totals[0]);
-  SDG_census.atom_ranks = (int)totals[1];
-  SDG_census.declined = (int)totals[2];
-  SDG_census.ws_declined = (int)totals[3];
-  SDG_census.ws_need = worst[0];
-  SDG_census.ws_avail = totals[3] ? ULLONG_MAX - worst[1] : 0ULL;
+  density_state->census.atom_ranks = (int)totals[1];
+  density_state->census.declined = (int)totals[2];
+  density_state->census.ws_declined = (int)totals[3];
+  density_state->census.ws_need = worst[0];
+  density_state->census.ws_avail = totals[3] ? ULLONG_MAX - worst[1] : 0ULL;
 
   /* The stage vote, the last collective of the preparation (every rank of a
      GPU run reaches it): the distributed quadrature's device working set on
@@ -1806,16 +1889,16 @@ int Set_Density_Grid_GPU_Local_Prepare(const OpenMXAtomicViews *atomic, int Cnt_
      After a host decision every rank declines, and Set_Density_Grid skips
      the one-rank service and the capacity recovery as well
      (Set_Density_Grid_GPU_Local_StageOnHost). */
-  SDG_census.host = OpenMX_HostSimdStageOnHost("Set_Density_Grid", vote_need, vote_budget);
-  if (SDG_census.host) ok = 0;
+  density_state->census.host = OpenMX_HostSimdStageOnHost("Set_Density_Grid", vote_need, vote_budget);
+  if (density_state->census.host) ok = 0;
   return ok;
 }
 
 /* The stage vote of the last Set_Density_Grid_GPU_Local_Prepare, the same on
    every rank: 1 = the whole call on the host SIMD quadrature. No collective. */
-int Set_Density_Grid_GPU_Local_StageOnHost(void)
+int Set_Density_Grid_GPU_Local_StageOnHost(OpenMXDensityGpuState *density_state)
 {
-  return SDG_census.host;
+  return density_state->census.host;
 }
 
 /* The census was reduced by Prepare, so every rank makes the same choice
@@ -1825,9 +1908,9 @@ int Set_Density_Grid_GPU_Local_StageOnHost(void)
    count as capable atom ranks.  With the local mode explicitly disabled,
    or without a distributed implementation for this call, both conditions
    are false and the existing service remains available. */
-int Set_Density_Grid_GPU_Local_KeepDistributed(void)
+int Set_Density_Grid_GPU_Local_KeepDistributed(OpenMXDensityGpuState *density_state)
 {
-  return SDG_census.ws_declined > 0 || SDG_census.declined < SDG_census.atom_ranks;
+  return density_state->census.ws_declined > 0 || density_state->census.declined < density_state->census.atom_ranks;
 }
 
 /* The level-2 line of a Set_Density_Grid call in which ranks with atoms
@@ -1840,41 +1923,40 @@ int Set_Density_Grid_GPU_Local_KeepDistributed(void)
    without a device path for a call (orbital optimization, an unsupported
    solver) take the service or the CPU loop silently, as designed.  No
    collectives; every rank keeps the same state. */
-void Set_Density_Grid_GPU_Local_Report(int path, int failed)
+void Set_Density_Grid_GPU_Local_Report(OpenMXDensityGpuState *density_state, int path, int failed)
 {
-  static int last_path = -1, last_cpu = -1, last_ws = -1, last_failed = -1;
   int myid, cpu, other;
-  const int ws = SDG_census.ws_declined;
+  const int ws = density_state->census.ws_declined;
   char what[192] = "";
 
   if (ws == 0 && failed == 0) {
     /* a later departure is announced again */
-    last_path = -1;
+    density_state->last_path = -1;
     return;
   }
-  cpu = (path == 2 ? SDG_census.declined : 0) + failed;
-  if (path == last_path && cpu == last_cpu && ws == last_ws && failed == last_failed) return;
-  last_path = path;
-  last_cpu = cpu;
-  last_ws = ws;
-  last_failed = failed;
+  cpu = (path == 2 ? density_state->census.declined : 0) + failed;
+  if (path == density_state->last_path && cpu == density_state->last_cpu && ws == density_state->last_workspace && failed == density_state->last_failed) return;
+  density_state->last_path = path;
+  density_state->last_cpu = cpu;
+  density_state->last_workspace = ws;
+  density_state->last_failed = failed;
   MPI_Comm_rank(mpi_comm_level1, &myid);
   if (myid != Host_ID || level_stdout < 2) return;
 
   if (0 < ws) {
     snprintf(what, sizeof(what),
              "cannot hold a minimum on-the-fly chunk (up to %.3f MiB needed, %.3f MiB available)",
-             (double)SDG_census.ws_need / (1024.0 * 1024.0), (double)SDG_census.ws_avail / (1024.0 * 1024.0));
+             (double)density_state->census.ws_need / (1024.0 * 1024.0), (double)density_state->census.ws_avail / (1024.0 * 1024.0));
   }
   if (path == 1) {
     printf("<Set_Density_Grid> %d of %d rank(s) with atoms %s; the one-rank GPU service integrates the density\n",
-           ws, SDG_census.atom_ranks, what);
+           ws, density_state->census.atom_ranks, what);
   }
   else {
     const char *sep = ": ";
 
     other = cpu - failed - (path == 2 ? ws : 0);
-    printf("<Set_Density_Grid> CPU loop on %d of %d rank(s) with atoms", cpu, SDG_census.atom_ranks);
+    printf("<Set_Density_Grid> CPU loop on %d of %d rank(s) with atoms", cpu, density_state->census.atom_ranks);
     if (path == 2 && 0 < ws) {
       printf("%s%d %s; keeping distributed quadrature", sep, ws, what);
       sep = "; ";
@@ -2198,9 +2280,9 @@ static int SDG_local_distribute(SDGKernelInput *input)
   return ok;
 }
 
-int Set_Density_Grid_GPU_Local_Run(const OpenMXAtomicViews *atomic, double *****CDM, double ***Tmp_Den_Grid)
+int Set_Density_Grid_GPU_Local_Run(OpenMXDensityGpuState *density_state, const OpenMXAtomicViews *atomic, double *****CDM, double ***Tmp_Den_Grid)
 {
-  SDGLocalContext *c = &SDG_local;
+  SDGLocalContext *c = &density_state->local;
   const int spin_count = c->spin_count;
   const int pair_count = c->t.pair_count;
   const size_t output_count = c->output_count;
@@ -2236,32 +2318,11 @@ int Set_Density_Grid_GPU_Local_Run(const OpenMXAtomicViews *atomic, double *****
     /* persistent, pinned when possible: dm_otf goes up and den_otf comes
        back every step (tens of MiB; a pageable transfer runs at a fraction
        of the PCIe rate), so they are kept across calls (grow-only) */
-    static double *dm_otf = NULL, *den_otf = NULL;
-    static size_t dm_cap = 0, den_cap = 0;
-    static int dm_pageable = 0, den_pageable = 0;
     const size_t dm_need = c->otf_dm_count ? c->otf_dm_count : 1;
     const size_t den_need = (size_t)spin_count * (n_out ? n_out : 1);
+    double *dm_otf = SDG_staging_reserve(&density_state->dm_staging, dm_need);
+    double *den_otf = SDG_staging_reserve(&density_state->den_staging, den_need);
     int ok;
-    if (dm_cap < dm_need) {
-      if (dm_otf != NULL) { if (dm_pageable) free(dm_otf); else (void)cudaFreeHost(dm_otf); }
-      dm_otf = NULL; dm_cap = 0; dm_pageable = 0;
-      if (cudaMallocHost((void **)&dm_otf, sizeof(double) * dm_need) != cudaSuccess) {
-        (void)cudaGetLastError();
-        dm_otf = (double *)SDG_malloc(dm_need, sizeof(double));
-        dm_pageable = 1;
-      }
-      if (dm_otf != NULL) dm_cap = dm_need;
-    }
-    if (den_cap < den_need) {
-      if (den_otf != NULL) { if (den_pageable) free(den_otf); else (void)cudaFreeHost(den_otf); }
-      den_otf = NULL; den_cap = 0; den_pageable = 0;
-      if (cudaMallocHost((void **)&den_otf, sizeof(double) * den_need) != cudaSuccess) {
-        (void)cudaGetLastError();
-        den_otf = (double *)SDG_malloc(den_need, sizeof(double));
-        den_pageable = 1;
-      }
-      if (den_otf != NULL) den_cap = den_need;
-    }
     ok = dm_otf != NULL && den_otf != NULL && n_out != 0;
     int myid = 0;
 

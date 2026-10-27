@@ -427,6 +427,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   }
 
   const OpenMXNativeSolverStates solver_states=OpenMX_Native_Resources_Bind(core);
+  OpenMXDensityGpuState *density_state = Set_Density_Grid_GPU_Bind_Resources(core);
   OpenMXMixingHState *mixing_h=Mixing_H_Bind_Resources(core);
   OpenMXMixingRhokState *mixing_rhok=Mixing_Rhok_Bind_Resources(core);
   OpenMXMixingDMState *mixing_dm=Mixing_DM_Bind_Resources(core);
@@ -730,7 +731,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
       } /* end of if (Solver==4) */
 
-      time10 += Set_Orbitals_Grid(atomic, Cnt_kind, local_basis);
+      time10 += Set_Orbitals_Grid(density_state, atomic, Cnt_kind, local_basis);
 
       {
         extern void openmx_gpu_zheevd_selftest(const char *label);
@@ -1607,7 +1608,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
       /*
 	time10 += Set_Orbitals_Grid(1);
-	time11 += Set_Density_Grid(OpenMX_Grid_Workspace(core), &density_cache_hooks, atomic, 1, 0, DM[0], Density_Grid_B, local_basis);
+	time11 += Set_Density_Grid(density_state, OpenMX_Grid_Workspace(core), &density_cache_hooks, atomic, 1, 0, DM[0], Density_Grid_B, local_basis);
 	time7 += Force(vna,reciprocal, H0,DS_NL,OLP,DM[0],EDM);
 	time8 += Total_Energy(vna, MD_iter,ECE);
 	time10 += Set_Orbitals_Grid(0);
@@ -1708,7 +1709,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 			  Residual_ReRhok,Residual_ImRhok,
 			  ReVk,ImVk,ReRhoAtomk,ImRhoAtomk, electronic);
 
-      time11 += Set_Density_Grid(OpenMX_Grid_Workspace(core), &density_cache_hooks, atomic, Cnt_kind,Calc_CntOrbital_ON,DM[0],Density_Grid_B, local_basis);
+      time11 += Set_Density_Grid(density_state, OpenMX_Grid_Workspace(core), &density_cache_hooks, atomic, Cnt_kind,Calc_CntOrbital_ON,DM[0],Density_Grid_B, local_basis);
 
       if (Solver==4) {
 	TRAN_Add_Density_Lead(mpi_comm_level1,
@@ -1727,7 +1728,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
     
     else if (Mixing_switch==3 || Mixing_switch==4) {
 
-      time11 += Set_Density_Grid(OpenMX_Grid_Workspace(core), &density_cache_hooks, atomic, Cnt_kind,Calc_CntOrbital_ON,DM[0],Density_Grid_B, local_basis);
+      time11 += Set_Density_Grid(density_state, OpenMX_Grid_Workspace(core), &density_cache_hooks, atomic, Cnt_kind,Calc_CntOrbital_ON,DM[0],Density_Grid_B, local_basis);
 
       if (Solver==4) {
 	TRAN_Add_Density_Lead(mpi_comm_level1,
@@ -1793,7 +1794,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
     else if (Mixing_switch==5 || Mixing_switch==7){
 
-      time11 += Set_Density_Grid(OpenMX_Grid_Workspace(core), &density_cache_hooks, atomic,  Cnt_kind,Calc_CntOrbital_ON,DM[0],Density_Grid_B , local_basis);
+      time11 += Set_Density_Grid(density_state, OpenMX_Grid_Workspace(core), &density_cache_hooks, atomic,  Cnt_kind,Calc_CntOrbital_ON,DM[0],Density_Grid_B , local_basis);
 
       if (Solver==4) {
 	TRAN_Add_Density_Lead(mpi_comm_level1,
@@ -2751,8 +2752,8 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
     printf("<MD=%2d>  Force calculation\n",MD_iter);fflush(stdout);
   }
 
-  if (Cnt_switch==1 && Cnt_Now==1) time10 += Set_Orbitals_Grid(atomic, 1, local_basis);
-  if (Solver!=12) time11 += Set_Density_Grid(OpenMX_Grid_Workspace(core), &density_cache_hooks, atomic, 1, 0, DM[0], Density_Grid_B, local_basis);
+  if (Cnt_switch==1 && Cnt_Now==1) time10 += Set_Orbitals_Grid(density_state, atomic, 1, local_basis);
+  if (Solver!=12) time11 += Set_Density_Grid(density_state, OpenMX_Grid_Workspace(core), &density_cache_hooks, atomic, 1, 0, DM[0], Density_Grid_B, local_basis);
 
   if (Solver==4) {
     TRAN_Add_Density_Lead(mpi_comm_level1,
@@ -2849,7 +2850,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
      at the end of the loop, because the Cnt_kind 1 density above takes the
      same paths on AMD and would rebuild them */
   Set_Hamiltonian_OnTheFly_EndCycle();
-  Set_Density_Grid_GPU_EndCycle();
+  Set_Density_Grid_GPU_EndCycle(density_state);
   /* The dense-GEMM and eigensolver library workspaces of the SCF loop are
      dead weight from here on (they are re-created on demand at the next SCF
      step), but on a device shared by many ranks they can hold the very GiBs
@@ -2863,7 +2864,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   openmx_magma_release_fp32_workspace();
   (void)openmx_hipsolver_release_workspace();
   openmx_gpusolver_cache_release();
-  if (!orbitalOpt_Force_Skip) time7 += Force(atomic, vna,reciprocal, H0,DS_NL,OLP,DM[0],EDM, electronic, local_basis);
+  if (!orbitalOpt_Force_Skip) time7 += Force(density_state, atomic, vna,reciprocal, H0,DS_NL,OLP,DM[0],EDM, electronic, local_basis);
   
   if (scf_stress_flag){
     Stress(core,thermo, atomic, vna,reciprocal, H0,DS_NL,OLP,DM[0],EDM, electronic, local_basis);
@@ -2873,7 +2874,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
      OPENMX_FORCE_RELEASE_SCF_CACHES=0) kept on the device through Force3:
      nothing after the forces reads them, and the next geometry rebuilds
      them anyway (idempotent when Force already released them) */
-  Set_Density_Grid_GPU_Invalidate();
+  Set_Density_Grid_GPU_Invalidate(density_state);
   Set_Hamiltonian_Invalidate_OpenMP_MatrixElements_Cache();
 
   /*

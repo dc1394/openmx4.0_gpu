@@ -134,6 +134,7 @@ struct OpenMXClusterColState {
   OpenMXChemicalPotentials *chemical; /* borrowed from this calculation */
   OpenMXThermodynamicEnergies *thermo; /* borrowed from this calculation */
   OpenMXNativeResources *resources; /* borrowed from this calculation */
+  OpenMXDensityGpuState *density_state; /* borrowed from the same calculation */
   int initialized;
   int mgpu_host_dense;
   int gs2_fallback_n;
@@ -191,6 +192,7 @@ OpenMXClusterColState *Cluster_DFT_Col_Bind_Resources(OpenMXCoreContext *core)
   ClusterColState *state = (ClusterColState *)metadata;
   if (!state->initialized) {
     state->resources = owner;
+    state->density_state = Set_Density_Grid_GPU_Bind_Resources(core);
     const ClusterColRefineStage initial = {-1, 0.0, 0, 0, 0, 0, 0, 0, 0, 0, -1, {0, 0}, 0, 0};
     state->refine = initial;
     state->DeviceEvecSpin = -1;
@@ -348,7 +350,7 @@ extern int openmx_magma_dsyevdx_gpu(int n, int maxn, double *d_A, double *w, int
 extern int openmx_magma_release_z_workspace(void);
 extern int openmx_magma_release_d_workspace(void);
 extern int openmx_hipsolver_release_workspace(void);
-extern void Set_Density_Grid_GPU_Release_Device_Caches(void);
+
 
 /* d_tmp retains the most recently backtransformed spin until the next
    solve. The other spin of a single-rank run still uses its host copy. */
@@ -990,7 +992,7 @@ static int ClusterCol_NativeGpuDiagFits(ClusterColState *state, int n, int maxn,
             printf("<Cluster_DFT_Col> Reclaiming GPU workspaces before retrying the dense memory budget.\n");
             fflush(stdout);
         }
-        Set_Density_Grid_GPU_Release_Device_Caches();
+        Set_Density_Grid_GPU_Release_Device_Caches(state->density_state);
         openmx_gemmul8ReleaseWorkspaces();
         (void)openmx_magma_release_z_workspace();
         (void)openmx_hipsolver_release_workspace();

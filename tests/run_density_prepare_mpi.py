@@ -16,6 +16,7 @@ import tempfile
 
 
 ROOT = Path(__file__).resolve().parents[1]
+from run_density_state_cpu import declarations
 
 
 def function(source, name):
@@ -44,6 +45,9 @@ header = (ROOT / "source/openmx_common.h").read_text()
 prefix = r'''
 #define _POSIX_C_SOURCE 200809L
 #include <mpi.h>
+#include "openmx_env.h"
+typedef struct OpenMXAtomicViews OpenMXAtomicViews;
+typedef struct OpenMXDensityGpuState OpenMXDensityGpuState;
 #include <stdint.h>
 #include <limits.h>
 #include <stdio.h>
@@ -70,14 +74,26 @@ static int test_allreduce(const void *send,void *recv,int n,MPI_Datatype type,MP
   reduce_calls++;
   return PMPI_Allreduce(send,recv,n,type,op,comm);
 }
+static int force_host;
+/* Model the stage vote boundary with a real collective; preparation and its
+   census/control flow below are the production functions. */
+static int OpenMX_HostSimdStageOnHost(const char *name,size_t need,size_t budget) {
+  (void)name; (void)need; (void)budget;
+  int all=0;
+  test_allreduce(&force_host,&all,1,MPI_INT,MPI_MAX,mpi_comm_level1);
+  return all;
+}
 static int cudaGetDeviceCount(int *p) { *p=1; return 0; }
 static int acc_get_num_devices(int x) { (void)x; return 1; }
 static int acc_get_device_num(int x) { (void)x; return 0; }
 static int gpu_rank_device_usable(void) { return 1; }
 static int OpenMX_GpuMemGetInfo(size_t *f,size_t *t) { *f=*t=(size_t)16*1024*1024*1024; return 0; }
 static void OpenMX_GpuPhaseNeed_Register(const char *n,size_t b) { (void)n; registered_need=b; }
+static int Set_Hamiltonian_OnTheFly_DensityStage(int ranks,size_t *need,size_t *budget) {
+  (void)ranks; *need=128; *budget=1024; return 1;
+}
 static int Set_Hamiltonian_MatrixElementsTables_Ready(int k) { return k==0 && resident; }
-static int Set_Hamiltonian_OnTheFly_DensityPossible(int k,int r) { (void)r; return k==0 && otf_available && !resident; }
+static int Set_Hamiltonian_OnTheFly_DensityPossible(const OpenMXAtomicViews *atomic,int k,int r) { (void)atomic; (void)r; return k==0 && otf_available && !resident; }
 static size_t Set_Hamiltonian_MatrixElements_TotalH(int k,int r) { (void)r; return k==0 ? 1:0; }
 static void Set_Hamiltonian_OnTheFly_SetDensityRanks(int r) { density_ranks=r; }
 static size_t Set_Hamiltonian_OnTheFly_DensityBudget(int s,size_t dm,size_t out,int ranks,
@@ -96,7 +112,7 @@ static void check(int ok,const char *what) {
 }
 '''
 stubs = r'''
-static SDGLocalContext SDG_local;
+
 static void SDG_local_delete_device(SDGLocalContext *c) { c->device_resident=0; }
 static int Set_Hamiltonian_GetMatrixElementsTables(int k,SetHamiltonianMETables *t) {
   static int one[1]={1}, two[1]={2}, nc[2]={0,1};
@@ -113,12 +129,12 @@ static int Set_Hamiltonian_GetMatrixElementsTables(int k,SetHamiltonianMETables 
 }
 static void *test_malloc(size_t n) { return fail_alloc ? NULL : malloc(n); }
 '''
-names = ["SDG_env_bool", "SDG_env_mib", "SDG_add_bytes", "SDG_malloc", "SDG_solver_supported",
+names = ["SDG_add_bytes", "SDG_malloc", "SDG_solver_supported",
          "SDG_local_free", "SDG_local_build", "SDG_local_workspace_bytes", "SDG_local_call_bytes", "SDG_local_prepare",
          "Set_Density_Grid_GPU_Local_Prepare", "Set_Density_Grid_GPU_Local_KeepDistributed",
          "Set_Density_Grid_GPU_Local_Report"]
-census = re.search(r"static struct \{[^}]*\} SDG_census = \{0\};", source).group(0)
-parts = [prefix, typedef(header, "SetHamiltonianMETables"), typedef(source, "SDGLocalContext"), stubs, census]
+
+parts = [prefix, typedef(header, "SetHamiltonianMETables"), declarations(source), stubs]
 for name in names:
     text = function(source, name)
     if name == "SDG_malloc":
@@ -128,6 +144,10 @@ for name in names:
     parts.append(text)
 parts.append(r'''
 int main(int argc,char **argv) {
+  OpenMXDensityGpuState storage={0};
+  OpenMXDensityGpuState *density_state=&storage;
+  density_state->last_path=density_state->last_cpu=-1;
+  density_state->last_workspace=density_state->last_failed=-1;
   int n, ok, all_ok, rounds=0;
   MPI_Init(&argc,&argv); mpi_comm_level1=MPI_COMM_WORLD;
   MPI_Comm_rank(mpi_comm_level1,&rank_id); MPI_Comm_size(mpi_comm_level1,&n);
@@ -135,20 +155,20 @@ int main(int argc,char **argv) {
   for(int step=0;step<21;step++) {
     if(n==18 && step<7) continue;
     scf_eigen_lib_flag=GPUSOLVER; Cnt_switch=0;
-    setenv("OPENMX_DENSITY_GRID_GPU_LOCAL","1",1);
+    openmx_env_set("OPENMX_DENSITY_GRID_GPU_LOCAL","1");
     Matomnum=rank_id==2 ? 0:1;
     resident=rank_id!=1; fail_alloc=0;
     budget_grow=0; grow_ok=1; otf_available=1;
     int cnt_kind=0, expected_ok=1, expected_all=1, expected_keep=1, expected_ws=0;
-    if(step==1 && rank_id==3) SDG_local_free(); /* one fresh CSR among caches */
-    if(step==2 && rank_id==3) { SDG_local_free(); fail_alloc=1; }
+    if(step==1 && rank_id==3) SDG_local_free(density_state); /* one fresh CSR among caches */
+    if(step==2 && rank_id==3) { SDG_local_free(density_state); fail_alloc=1; }
     if(step==3) {
-      if(rank_id==3) SDG_local_free();
-      if(rank_id==1) setenv("OPENMX_DENSITY_GRID_GPU_LOCAL","0",1);
+      if(rank_id==3) SDG_local_free(density_state);
+      if(rank_id==1) openmx_env_set("OPENMX_DENSITY_GRID_GPU_LOCAL","0");
     }
-    if(step==4) setenv("OPENMX_DENSITY_GRID_GPU_LOCAL","2",1); /* OTF -> CSR */
+    if(step==4) openmx_env_set("OPENMX_DENSITY_GRID_GPU_LOCAL","2"); /* OTF -> CSR */
     if(step==5 && rank_id==1) {
-      SDG_local_free(); Matomnum=3;
+      SDG_local_free(density_state); Matomnum=3;
       GridN_Atom[1]=GridN_Atom[2]=GridN_Atom[3]=INT_MAX;
     }
     if(step==6) { scf_eigen_lib_flag=0; density_ranks=7; registered_need=1234; }
@@ -159,7 +179,7 @@ int main(int argc,char **argv) {
       expected_keep=step!=6;
     }
     else {
-      if(step!=20) SDG_local_free();
+      if(step!=20) SDG_local_free(density_state);
       GridN_Atom[1]=GridN_Atom[2]=GridN_Atom[3]=2;
       Matomnum=1; resident=0;
       switch(step) {
@@ -172,14 +192,14 @@ int main(int argc,char **argv) {
         case 9: /* explicit workspace cap, all ranks decline */
           budget_grow=-1; expected_ok=expected_all=0; expected_ws=n; break;
         case 10: /* explicit local-mode disable keeps the service policy */
-          setenv("OPENMX_DENSITY_GRID_GPU_LOCAL","0",1);
+          openmx_env_set("OPENMX_DENSITY_GRID_GPU_LOCAL","0");
           expected_ok=expected_all=expected_keep=0; break;
         case 11: /* final density reuses primitive on-the-fly tables */
           cnt_kind=1; break;
         case 12: /* successful growth stays entirely distributed */
           budget_grow=1; break;
         case 13: /* a disabled peer must not veto another rank's GPU work */
-          if(rank_id!=0) setenv("OPENMX_DENSITY_GRID_GPU_LOCAL","0",1);
+          if(rank_id!=0) openmx_env_set("OPENMX_DENSITY_GRID_GPU_LOCAL","0");
           expected_ok=rank_id==0; expected_all=0; break;
         case 14: /* empty ranks cannot hide the lack of a distributed path */
           Matomnum=rank_id==0 ? 1:0; otf_available=0;
@@ -200,39 +220,46 @@ int main(int argc,char **argv) {
       }
     }
     const int splits_before=split_calls, reductions_before=reduce_calls;
-    ok=Set_Density_Grid_GPU_Local_Prepare(cnt_kind,0);
+    ok=Set_Density_Grid_GPU_Local_Prepare(density_state,NULL,cnt_kind,0);
     if(step==6 || step==15) {
       check(split_calls==splits_before && reduce_calls==reductions_before,"CPU path entered collectives");
       check(density_ranks==0 && registered_need==0,"CPU path retained GPU budget hints");
     }
     else {
       check(split_calls==splits_before+1 &&
-            reduce_calls==reductions_before+3+(expected_ws>0),"GPU collective participation");
+            reduce_calls==reductions_before+4+(expected_ws>0),"GPU collective participation");
     }
-    check(Set_Density_Grid_GPU_Local_KeepDistributed()==expected_keep,"wrong distributed/service fallback policy");
-    check(SDG_census.ws_declined==expected_ws,"wrong workspace rejection count");
+    check(Set_Density_Grid_GPU_Local_KeepDistributed(density_state)==expected_keep,"wrong distributed/service fallback policy");
+    check(density_state->census.ws_declined==expected_ws,"wrong workspace rejection count");
     MPI_Allreduce(&ok,&all_ok,1,MPI_INT,MPI_MIN,mpi_comm_level1);
     check(all_ok==expected_all,"wrong collective eligibility");
     check(ok==expected_ok, "unexpected local preparation");
-    if(ok && Matomnum>0) check(SDG_local.cnt_kind==0,"wrong cached orbital kind");
-    if(step==11) check(SDG_local.otf && SDG_local.otf_dm_count==1,"final OTF density missing");
-    if(step==16 || step==20) check(SDG_local.ready && !SDG_local.otf,"final CSR density missing");
+    if(ok && Matomnum>0) check(density_state->local.cnt_kind==0,"wrong cached orbital kind");
+    if(step==11) check(density_state->local.otf && density_state->local.otf_dm_count==1,"final OTF density missing");
+    if(step==16 || step==20) check(density_state->local.ready && !density_state->local.otf,"final CSR density missing");
     if(step==0 || step==1) {
       check(density_ranks==1,"wrong OTF rank count");
       check(registered_need==2*(7*sizeof(uint32_t)+3*sizeof(double)+2*sizeof(float)),
             "CSR phase hint omitted transient double-float image");
       if(rank_id==0 || rank_id==3) {
-        check(SDG_local.ready && SDG_local.output_count==2,"CSR not ready");
-        check(SDG_local.out_ptr[0]==0 && SDG_local.out_ptr[1]==1 && SDG_local.out_ptr[2]==2,"CSR offsets");
-        check(SDG_local.term_pt[0]==0 && SDG_local.term_pt[1]==1,"CSR payload");
+        check(density_state->local.ready && density_state->local.output_count==2,"CSR not ready");
+        check(density_state->local.out_ptr[0]==0 && density_state->local.out_ptr[1]==1 && density_state->local.out_ptr[2]==2,"CSR offsets");
+        check(density_state->local.term_pt[0]==0 && density_state->local.term_pt[1]==1,"CSR payload");
       }
     }
-    if(step==5 && rank_id==1) check(!SDG_local.otf,"overflow retained OTF state");
-    if(step==7) Set_Density_Grid_GPU_Local_Report(2,0);
+    if(step==5 && rank_id==1) check(!density_state->local.otf,"overflow retained OTF state");
+    if(step==7) Set_Density_Grid_GPU_Local_Report(density_state,2,0);
     rounds++;
   }
-  SDG_local_free();
+  SDG_local_free(density_state);
   if(rank_id==0) printf("PASS: %d real-MPI rounds on %d ranks, mixed CSR/OTF, empty/cached ranks, allocation failure, mode switch, offset overflow, crowded workspace fallback, final density table reuse and CPU collective bypass\n",rounds,n);
+  scf_eigen_lib_flag=GPUSOLVER; fail_alloc=0; Cnt_switch=0; Matomnum=0;
+  force_host=rank_id==0;
+  check(!Set_Density_Grid_GPU_Local_Prepare(density_state,NULL,0,0),"host vote did not demote every rank");
+  check(density_state->census.host,"host vote not retained in the calculation");
+  scf_eigen_lib_flag=0;
+  Set_Density_Grid_GPU_Local_Prepare(density_state,NULL,0,0);
+  check(!density_state->census.host,"CPU bypass retained a previous GPU vote");
   MPI_Finalize(); return 0;
 }
 ''')
@@ -243,7 +270,7 @@ env.setdefault("OMPI_CC", "gcc")
 with tempfile.TemporaryDirectory(prefix="openmx-density-mpi-") as tmp:
     cfile, binary = Path(tmp)/"check.c", Path(tmp)/"check"
     cfile.write_text("\n\n".join(parts))
-    subprocess.run(shlex.split(env.get("MPICC", "mpicc")) + ["-std=c11", "-O1", "-g", "-Wall", "-Wextra", str(cfile), "-o", str(binary)], env=env, check=True)
+    subprocess.run(shlex.split(env.get("MPICC", "mpicc")) + ["-std=c11", "-O1", "-g", "-Wall", "-Wextra", "-I"+str(ROOT/"source"), str(cfile), str(ROOT/"source/openmx_env.c"), "-o", str(binary)], env=env, check=True)
     for ranks in (4, 18):
         result = subprocess.run(shlex.split(env.get("MPIEXEC", "mpirun")) +
                                 ["--oversubscribe", "--bind-to", "none", "-np", str(ranks), str(binary)],

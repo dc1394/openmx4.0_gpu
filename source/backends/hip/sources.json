@@ -1041,6 +1041,7 @@
     "openmx_mixing_dm_internal.h",
     "openmx_mixing_dm_state.h",
     "openmx_mixing_dm_workspace.h",
+    "openmx_density_gpu_state.h",
     "openmx_mixing_h_state.h",
     "openmx_mixing_lapack.h",
     "openmx_mixing_policy.h",

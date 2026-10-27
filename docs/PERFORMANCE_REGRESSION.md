@@ -4241,3 +4241,23 @@ AMD実機での実行やA100での速度確認とは区別しています。
 入力変更、コマンド、ランタイムのハッシュ、数値比較、MPSのロード証拠、初回失敗を含むログは
 `build/olg-cache-owner-20261027/`に保存しています。主な記録は`input-provenance.json`、`science-results.json`、
 `sequence-results.json`、`performance-results.json`、`*-runtime-hashes.json`、`sidia-*-mps-runtime-maps.json`です。
+
+
+## 2026-10-27: 密度格子GPUキャッシュの計算所有化（第91段階）
+
+変更前`d1baeaaa`と今回の変更を、元のsidia333入力・18 MPI×1 OpenMP・既存MPSで比較しました。
+GeForce RTX 5080、NVHPC/CUDAの本体と対応するCore/ホストSIMDをそれぞれ凍結して使用しています。
+
+| ランタイム | Total Computational Timeの最大値 (秒) | MPI起動を含む経過時間 (秒) |
+| --- | ---: | ---: |
+| 変更前 | 100.867 | 104.425 |
+| 密度格子GPU状態の所有移管後 | 100.616 | 104.115 |
+
+格子・原子・25 SCFは一致し、エネルギー差0、力の最大成分差1.0e-12 Ha/bohrでした。
+約0.3秒の差は高速化の証拠とはせず、約105秒の目標を保つ確認とします。
+この入力はSCF上限に達しており、収束性の確認には別途26組の収束した計算を使用しました。
+AMD/A100/H100実機やCPUの性能向上を示す測定ではありません。
+
+`build/density-gpu-state-owner-20261027/performance/`に変更前後の`result.json`とログ、
+同ディレクトリの親にMPS情報、入力・本体・ライブラリ・変更ソースのハッシュ、数値比較結果を保存しています。
+`work/openmx`は更新せず、ビルドと計算には専用ディレクトリを使用しました。

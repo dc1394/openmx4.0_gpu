@@ -928,7 +928,7 @@ static int run_openmx(int argc, char *argv[], OpenMXCoreContext *core)
   if (Solver==4 && TRAN_analysis==1) {
 
     /* if SCF is skipped, calculate values of basis functions on each grid */ 
-    if (1<=TRAN_SCF_skip) i = Set_Orbitals_Grid(atomic, 0, OpenMX_LocalBasisAt(core,mpi_comm_level1,&local_basis_storage));
+    if (1<=TRAN_SCF_skip) i = Set_Orbitals_Grid(Set_Density_Grid_GPU_Bind_Resources(core), atomic, 0, OpenMX_LocalBasisAt(core,mpi_comm_level1,&local_basis_storage));
 
     if (SpinP_switch==3) {
       TRAN_Main_Analysis_NC(atomic,  mpi_comm_level1, argc, argv, Matomnum, M2G,

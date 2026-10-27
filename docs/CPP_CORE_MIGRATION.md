@@ -6218,3 +6218,40 @@ GPUの探索・容量回復・数値カーネルとホストSIMD共有ライブ�
 GeForce/A100/H100の選択方針とAMDの同時実行制御も維持しました。今回AMD/A100/H100実機の性能は未検証です。
 監査差分は[大域状態監査](GLOBAL_STATE_AUDIT.md)、計時は[性能検証](PERFORMANCE_REGRESSION.md)、
 ログ・凍結した本体/Core・ハッシュ・入力は`build/olg-cache-owner-20261027/`に保存しています。
+
+
+## 第91段階: 密度格子GPUキャッシュを計算の所有へ移行
+
+`OpenMXDensityGpuState`を明示的な計算コンテキストのnative resource groupに置き、
+C++所有者のclear・finish・破棄からCUDA/HIPのキャッシュ解放を実行します。
+サービス用配列、局所CSR、CPU切替の集計、通知履歴を計算間で共有しなくなりました。
+CUDAのgrow-only固定ホスト領域はSCF・幾何更新間で再利用し、計算終了で解放します。
+固定メモリ確保失敗時の通常ホストメモリへの切替と、容量不足時のCPU経路を保持しています。
+
+DFTで一度束縛したviewを密度格子・軌道格子・Forceへ渡し、truncationと連続入力の境界でも
+同じ所有者を使います。HIPのcollinear cluster/bandが密行列計算前に行う退避も、このviewを受け取ります。
+解放時には確保元デバイスへ一時的に切り替え、呼び出し元のデバイスを復元します。
+HIPサービスではOpenMPの関連付け先も復元します。未使用の状態の束縛・解放はGPUを初期化しません。
+数学カーネル・精度・GPU容量判断・集合通信の順序と、GPU種別ごとの選択方針は維持しました。
+
+実Coreをリンクした所有権試験は、独立した計算、再束縛、clear/finish/破棄、複数デバイス、
+固定/通常ホスト領域の再利用と確保失敗、両バックエンド各35箇所の部分アップロード失敗を検証します。
+34件のnative-state CTestと、ASan/UBSanのCoreで実行した関連3件が成功しました。
+既存の密度MPI試験を現在の引数・環境レジストリ・host voteに追従させ、CUDAは4/18 rank、HIPは4 rankで成功しました。
+CUDAのmapping rollback450例、容量計算96例とoverflow4例、容量回復の密度計算192例も成功しています。
+CPU専用GCC/Intel MPI/MKL本体とNVHPC/CUDA本体をビルドし、CUDA sm_80/HIP gfx942各81翻訳単位を確認しました。
+HIPの局所密度試験も更新し、実SDKでコンパイル・リンクまで確認しました。AMD実機の実行試験ではありません。
+
+収束した数値比較は26組です。通常CPU/GPUのcluster/band（collinear/noncollinear）と
+DC/DC-LNO/Krylovの14組、service/CSR/host SIMD/空rankの4組、同一MPIプロセス群で
+4入力を続けて実行するCPU/GPU各4組を含みます。通常14組の変更前結果は、今回凍結した
+`d1baeaaa`相当の本体/Core/ホストSIMDとハッシュが一致する直前の検証結果を使用しました。
+全組でSCF反復数が一致し、最大差はエネルギー4.600e-10 Ha、力1.4393e-8 Ha/bohrでした。
+応力を出力する通常4組の印字値差は0です。閾値E/F 1e-7、応力1e-8は変更していません。
+CPU専用本体でも3入力を実行し、うち2入力をNVHPCのCPU経路と比較しました。
+
+元のsidia333入力の18 MPI×1 OpenMP・MPSでは、経過時間は104.425→104.115秒でした。
+25 SCFで上限に達するこの入力は性能比較用であり、上の収束した26組には数えていません。
+GeForceで約105秒の目標を維持しています。AMD/A100/H100実機の速度は未検証です。
+ファイルstatic3個・関数内static10個の削減と分類照合は[大域状態監査](GLOBAL_STATE_AUDIT.md)、
+条件と記録は[性能検証](PERFORMANCE_REGRESSION.md)と`build/density-gpu-state-owner-20261027/`に保存しています。
