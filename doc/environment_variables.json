@@ -1696,6 +1696,26 @@
   {
    "group": "gs2",
    "names": [
+    "ELPA_DEFAULT_real_kernel",
+    "ELPA_DEFAULT_complex_kernel"
+   ],
+   "label": "<code>ELPA_DEFAULT_real_kernel</code> / <code>ELPA_DEFAULT_complex_kernel</code>",
+   "defaults": {
+    "ELPA_DEFAULT_real_kernel": {
+     "en": "unset (OpenMX chooses)",
+     "ja": "未設定（OpenMX が選ぶ）"
+    },
+    "ELPA_DEFAULT_complex_kernel": {
+     "en": "unset (OpenMX chooses)",
+     "ja": "未設定（OpenMX が選ぶ）"
+    }
+   },
+   "en": "ELPA's own 2-stage kernel override (an <code>ELPA_2STAGE_REAL_*</code> / <code>ELPA_2STAGE_COMPLEX_*</code> name as printed by <code>elpa2_print_kernels</code>). When set, the CPU ELPA2 path leaves the kernel to ELPA instead of selecting the fastest kernel compiled in that the CPU supports (AVX-512, AVX2, AVX, SSE, generic in that order).",
+   "ja": "ELPA 自身の 2 段階カーネル指定（<code>elpa2_print_kernels</code> が表示する <code>ELPA_2STAGE_REAL_*</code> / <code>ELPA_2STAGE_COMPLEX_*</code> の名前）。設定されていると、CPU の ELPA2 経路はカーネルを ELPA に任せ、組み込まれたカーネルのうち CPU が対応する最速のもの（AVX-512、AVX2、AVX、SSE、汎用の順）を選ぶ処理を行わない。"
+  },
+  {
+   "group": "gs2",
+   "names": [
     "OPENMX_GS2_GPU_VERBOSE",
     "OPENMX_GS2_PROFILE"
    ],

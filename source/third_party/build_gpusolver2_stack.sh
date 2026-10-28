@@ -53,6 +53,7 @@ set -u
 : "${GPUSOLVER2_COMPILER_LIB:?set by the Makefile}"
 : "${GPUSOLVER2_SCALAPACK_SO:?set by the Makefile}"
 : "${GPUSOLVER2_ELPA_VER:=2026.02.002}"
+: "${GPUSOLVER2_ELPA_KERNELS:=auto}"
 : "${GPUSOLVER2_CMAKE:=}"
 : "${GPUSOLVER2_JOBS:=$(nproc 2>/dev/null || echo 8)}"
 : "${GPUSOLVER2_TOOL_PATH:=}"
@@ -150,24 +151,65 @@ step_elpa() {
   mkdir -p "$BLD/elpa" && cd "$BLD/elpa"
   # ELPA's nvcc rule does not see CPPFLAGS; the cuBLAS headers of an SDK
   # layout with separate math_libs have to reach it through NVCCFLAGS.
-  # Generic real/complex CPU kernels support both elpa1 and elpa2.
-  # NVHPC does not support all x86 intrinsic templates; keep its SIMD
-  # kernels disabled while retaining the portable CPU implementation.
+  # Generic real/complex CPU kernels support both elpa1 and elpa2.  The x86
+  # SIMD kernels are C intrinsic templates that NVHPC's nvc cannot compile,
+  # so with them enabled the C side goes through the MPI wrapper to the host
+  # GCC (OMPI_CC) while the Fortran side keeps the SDK compiler; the kernel
+  # set and the -m flags follow the build host's CPU like the application's
+  # -march=native (the kernel block before run_step 01_elpa), and
+  # openmx_elpa_cpu.c selects the kernel at run time with the generic
+  # kernels as the fallback.
+  case "$ELPA_KERNEL_CC" in
+    gcc) export OMPI_CC="$GPUSOLVER2_HOST_CC" OMPI_CXX="$GPUSOLVER2_HOST_CXX" ;;
+  esac
   "$SRC/elpa/configure" --prefix="$P" \
     FC="$GPUSOLVER2_MPI_BIN/mpif90" CC="$GPUSOLVER2_MPI_BIN/mpicc" CXX="$GPUSOLVER2_MPI_BIN/mpicxx" \
-    FCFLAGS="-O2" CFLAGS="-O2" CXXFLAGS="-O2" \
+    FCFLAGS="-O2" CFLAGS="-O2 $ELPA_SIMD_CFLAGS" CXXFLAGS="-O2 $ELPA_SIMD_CFLAGS" \
     CPPFLAGS="-I$GPUSOLVER2_MATH_DIR/include -I$GPUSOLVER2_CUDA_HOME/targets/x86_64-linux/include" \
     NVCCFLAGS="-I$GPUSOLVER2_MATH_DIR/include" \
     LDFLAGS="-L$GPUSOLVER2_MPI_LIBDIR -L$SCALAPACK_DIR -L$GPUSOLVER2_COMPILER_LIB -L$GPUSOLVER2_MATH_DIR/lib" \
     LIBS="-lscalapack_lp64 -llapack_lp64 -lblas_lp64 -lstdc++" \
     --enable-nvidia-gpu-kernels --with-NVIDIA-GPU-compute-capability=sm_$GPUSOLVER2_GPU_ARCH $SM80 \
     --with-cuda-path="$GPUSOLVER2_CUDA_HOME" --disable-shared --enable-static \
-    --enable-generic-kernels \
-    --disable-sse-assembly-kernels --disable-sse-kernels --disable-avx-kernels --disable-avx2-kernels --disable-avx512-kernels \
+    $ELPA_KERNEL_OPTS \
     --disable-c-tests --disable-cpp-tests --disable-fortran-tests --disable-Fortran-tests
   make -j "$J"
   make install
 }
+# The CPU kernels of ELPA's 2-stage solver (GPUSOLVER2_ELPA_KERNELS: auto =
+# the SIMD kernels this build host can run, generic = portable kernels only).
+# The MPI wrapper's own C compiler builds them when it can (GCC, Clang);
+# NVHPC's nvc cannot, and the host GCC is used through OMPI_CC instead.
+ELPA_KERNEL_OPTS="--enable-generic-kernels --disable-sse-assembly-kernels"
+ELPA_SIMD_CFLAGS=""
+ELPA_KERNEL_CC=wrapper
+if [ "$GPUSOLVER2_ELPA_KERNELS" = auto ] && grep -qw avx2 /proc/cpuinfo 2>/dev/null \
+   && grep -qw fma /proc/cpuinfo 2>/dev/null; then
+  ELPA_KERNEL_OPTS="$ELPA_KERNEL_OPTS --enable-sse-kernels --enable-avx-kernels --enable-avx2-kernels"
+  ELPA_SIMD_CFLAGS="-msse4.2 -mavx -mfma -mavx2"
+  if grep -qw avx512f /proc/cpuinfo && grep -qw avx512dq /proc/cpuinfo \
+     && grep -qw avx512bw /proc/cpuinfo && grep -qw avx512vl /proc/cpuinfo; then
+    ELPA_KERNEL_OPTS="$ELPA_KERNEL_OPTS --enable-avx512-kernels"
+    ELPA_SIMD_CFLAGS="$ELPA_SIMD_CFLAGS -mavx512f -mavx512cd -mavx512dq -mavx512bw -mavx512vl"
+  else
+    ELPA_KERNEL_OPTS="$ELPA_KERNEL_OPTS --disable-avx512-kernels"
+  fi
+  case "$("$GPUSOLVER2_MPI_BIN/mpicc" --showme:command 2>/dev/null)" in
+    nvc*|pgcc*) ELPA_KERNEL_CC=gcc ;;
+  esac
+else
+  ELPA_KERNEL_OPTS="$ELPA_KERNEL_OPTS --disable-sse-kernels --disable-avx-kernels --disable-avx2-kernels --disable-avx512-kernels"
+fi
+# The kernel set is part of ELPA's configuration: a change rebuilds ELPA
+# alone (COSMA does not depend on it).
+printf '%s\n' "$ELPA_KERNEL_OPTS" "$ELPA_SIMD_CFLAGS" "$ELPA_KERNEL_CC" > "$STAMP/elpa-kernels.tmp"
+if ! cmp -s "$STAMP/elpa-kernels.tmp" "$STAMP/elpa-kernels.conf"; then
+  rm -f "$STAMP/01_elpa.done"
+  rm -rf "$BLD/elpa"
+  mv "$STAMP/elpa-kernels.tmp" "$STAMP/elpa-kernels.conf"
+else
+  rm -f "$STAMP/elpa-kernels.tmp"
+fi
 run_step 01_elpa step_elpa
 
 # ---------- cmake >= 3.24 for COSMA: use $GPUSOLVER2_CMAKE, else system cmake, else bootstrap

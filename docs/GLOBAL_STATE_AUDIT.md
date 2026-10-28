@@ -889,3 +889,13 @@ CPU/CUDA/HIPビルド境界、旧新ABIの混在検出、35組の収束計算と
 更新後のゲートも追加0件です。歴史的なCore宣言基準1197個は保持します。
 証拠は `build/orbital-radial-library-20261028/audit-proof.json`、`kernel-preservation.json`、
 `numerical-summary.json` と性能結果に保存しています。
+
+2026-10-28、ELPA の CPU カーネル選択と非共線の添字補助関数の共有化（`8e6f7b83` の直後）:
+`Hamiltonian_{Band,Cluster}_NC_Hs2.c` / `Overlap_{Band,Cluster}_NC_Ss2.c` の同一な static 補助関数
+`trans_indices_n_to_n2`（行列要素ごとに全原子をなめて基底数を数え直していた）を `openmx_nc_indices.h` の
+2 関数に置き換え、基底数は呼び出し元が 1 回だけ数えます。`openmx_elpa_cpu.c` は ELPA の 2 段階カーネルを
+CPUID で選び、ELPA 自身の環境変数 `ELPA_DEFAULT_real_kernel` / `ELPA_DEFAULT_complex_kernel` をレジストリ
+（`EXT_` id は大文字小文字を保つよう `tools/update_env_registry.py` を拡張）経由で読みます。
+参照組は 12,368 → 12,369（新しい関数の 37 組を追加、旧補助関数の 36 組を削除）、関数数 3,428 → 3,438、
+file-scope / 関数内 static は 300 / 277 のまま、環境変数名は 254 → 256（ELPA の 2 件）、getenv の直接呼び出しは 0 です。
+`tests/run_nc_indices_cpu.py`（CTest `nc-block-indices`）が旧補助関数との完全一致を 1.2 億要素で確かめます。

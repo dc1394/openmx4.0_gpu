@@ -281,6 +281,9 @@ GPUSOLVER2_SCALAPACK_SO ?= $(NVHPC_MPI_LIBDIR)/libscalapack_lp64.so
 GPUSOLVER2_CMAKE     ?=
 GPUSOLVER2_JOBS      ?= $(shell nproc 2>/dev/null || echo 8)
 GPUSOLVER2_ELPA_VER  ?= 2026.02.002
+# CPU kernels of the bundled ELPA: auto = the SIMD kernels of the build host
+# (built with the host GCC when the MPI C compiler is NVHPC), generic = none.
+GPUSOLVER2_ELPA_KERNELS ?= auto
 GPUSOLVER2_ELPA_INCLUDE ?= $(GPUSOLVER2_PREFIX)/include/elpa-$(GPUSOLVER2_ELPA_VER)
 GPUSOLVER2_STAMP     = $(GPUSOLVER2_BUILD)/stamp/02_cosma.done
 
@@ -607,13 +610,13 @@ Hamiltonian_Cluster.o: Hamiltonian_Cluster.c openmx_common.h
 	$(CC) -c Hamiltonian_Cluster.c
 Hamiltonian_Cluster_Hs.o: Hamiltonian_Cluster_Hs.c openmx_common.h
 	$(CC) -c Hamiltonian_Cluster_Hs.c
-Hamiltonian_Cluster_NC_Hs2.o: Hamiltonian_Cluster_NC_Hs2.c openmx_common.h
+Hamiltonian_Cluster_NC_Hs2.o: Hamiltonian_Cluster_NC_Hs2.c openmx_common.h openmx_nc_indices.h
 	$(CC) -c Hamiltonian_Cluster_NC_Hs2.c
-Hamiltonian_Band_NC_Hs2.o: Hamiltonian_Band_NC_Hs2.c openmx_common.h
+Hamiltonian_Band_NC_Hs2.o: Hamiltonian_Band_NC_Hs2.c openmx_common.h openmx_nc_indices.h
 	$(CC) -c Hamiltonian_Band_NC_Hs2.c
-Overlap_Cluster_NC_Ss2.o: Overlap_Cluster_NC_Ss2.c openmx_common.h
+Overlap_Cluster_NC_Ss2.o: Overlap_Cluster_NC_Ss2.c openmx_common.h openmx_nc_indices.h
 	$(CC) -c Overlap_Cluster_NC_Ss2.c
-Overlap_Band_NC_Ss2.o: Overlap_Band_NC_Ss2.c openmx_common.h
+Overlap_Band_NC_Ss2.o: Overlap_Band_NC_Ss2.c openmx_common.h openmx_nc_indices.h
 	$(CC) -c Overlap_Band_NC_Ss2.c
 Overlap_Cluster.o: Overlap_Cluster.c openmx_common.h
 	$(CC) -c Overlap_Cluster.c  
@@ -1049,7 +1052,7 @@ $(GPUSOLVER2_STAMP): third_party/build_gpusolver2_stack.sh
 	GPUSOLVER2_CUDA_HOME="$(GPUSOLVER2_CUDA_HOME)" GPUSOLVER2_MATH_DIR="$(GPUSOLVER2_MATH_DIR)" \
 	GPUSOLVER2_COMPILER_LIB="$(GPUSOLVER2_COMPILER_LIB)" GPUSOLVER2_COMPILER_BIN="$(GPUSOLVER2_COMPILER_BIN)" \
 	GPUSOLVER2_SCALAPACK_SO="$(GPUSOLVER2_SCALAPACK_SO)" \
-	GPUSOLVER2_ELPA_VER="$(GPUSOLVER2_ELPA_VER)" \
+	GPUSOLVER2_ELPA_VER="$(GPUSOLVER2_ELPA_VER)" GPUSOLVER2_ELPA_KERNELS="$(GPUSOLVER2_ELPA_KERNELS)" \
 	GPUSOLVER2_CMAKE="$(GPUSOLVER2_CMAKE)" GPUSOLVER2_JOBS="$(GPUSOLVER2_JOBS)" \
 	sh third_party/build_gpusolver2_stack.sh
 	@touch "$@"

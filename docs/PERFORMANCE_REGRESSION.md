@@ -4788,3 +4788,71 @@ AMD/A100/H100/ARM実機、Intelコンパイラ版OpenMXとの性能比較は今�
 
 CPU専用C60の経過時間は、変更前 6.38141, 6.37921, 7.43332 秒、変更後 6.37903, 6.37995, 6.42932 秒でした。
 変更前3回目の長い計時も除外せず保存し、事前に定めた各3回の中央値で比較しています。
+
+## 残るホスト側スカラー処理の分析と FMA の実測 (2026-10-28)
+
+第 5 ラウンド後に、CPU モード（`OPENMX_GPU=0`、18 MPI × 1 OpenMP）の時間を `perf` で分類しました
+（rank 0 と 9、サンプリング 499 Hz、分類は共有ライブラリと関数名による）。
+
+| 実行 | 合計 | BLAS/LAPACK（ELPA の中身を含む） | ホスト SIMD 群 | MPI | OpenMX の C コード |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 共線 sidia333、3 SCF | 99 s | 54 % | 23 % | 9 % | 7 % |
+| 非共線バンド sidia333（k 点 4）、2 SCF | 359 s（対角化 315 s） | 77 % | 7 % | 3 % | 8 % |
+| 非共線クラスター sidia333、4 SCF | 138 s（対角化 85 s） | 36 % | 25 % | 9 % | 24 % |
+
+- 共線の C コード 7 % は、添字の準備やコピー（Force3 の訪問計画、固有ベクトルの詰め替え、Kerker 混合の
+  配列コピー）、順序が固定された逐次和（Force4B の Trace(CDM0·dH)）、nvc がすでに FMA 付きでベクトル化している
+  ループ（`Construct_Band_CsHs`）が大半で、ビット一致のまま SIMD 化できるのは `Multiply_DS_NL`（0.37 %）、
+  XC の 27 点勾配ステンシル、Bessel 表、`Set_Aden_Grid` の合計 1 s 未満です。
+- 非共線では SIMD ではなくアルゴリズムの問題が大きい:
+  `Hamiltonian_{Band,Cluster}_NC_Hs2` / `Overlap_{Band,Cluster}_NC_Ss2` の 4 ファイルにあった同じ補助関数
+  `trans_indices_n_to_n2` が、行列要素ごとに全原子をなめて基底数 n を数え直していました（各関数の 45〜75 %、
+  バンド NC で合計 3.4 %）。共有ヘッダー `openmx_nc_indices.h` の 1 つの関数にまとめ、n は呼び出しごとに 1 回だけ数えます
+  （整数処理で結果は不変）。クラスター NC の密度行列 `Calc_DM_Cluster_non_collinear_ScaLAPACK` は成分ごとに 6〜10 回
+  固有ベクトルを読み直しており（15.5 %、約 21 s）、1 回の走査にまとめれば各成分の加算順を保ったまま速くなります（未着手）。
+  バンド NC の `Calc_DM_Band_non_collinear`（1.9 %）も列方向のレーンでビット一致のまま SIMD 化できます（未着手）。
+
+### FMA の上限値の実測
+
+nvc は `-march=native` でホストの C ループを既定で FMA にしており（`vfmadd` を確認）、ホスト SIMD 群は
+`-ffp-contract=off` です。legacy と既定の Utot の 2e-12 の差はこの違いです。FMA を入れた場合の上限を、ソースを変えずに
+ホスト SIMD ライブラリを `-ffp-contract=fast -mfma` で作り直して測りました（コンパイラが融合できる所をすべて融合）。
+
+| 対象 | FMA なし → あり |
+| --- | --- |
+| カーネル単体（13 軌道）: 格子の密度 / ハミルトニアン | 1.11 倍 / 1.02 倍 |
+| カーネル単体: Force3 の対 / Force4B の fp32 タイル / 非局所ブロック | 1.18 倍 / 1.0〜1.16 倍 / 0.87 倍 |
+| 共線 sidia333 CPU モード 3 SCF（内部 Total） | 98.2 s → 97.6 s |
+| Utot / `.ene` `.md` / `.xyz` | 同一 / 同一 / 最終桁（3e-15 以下） |
+| `openmx -runtest` CPU モード（14 入力） | Utot 最大 1.6e-10 → 8.5e-11（参照との差、どちらも合格） |
+
+Force4B の fp32 タイル（ホスト SIMD 時間の約 5 %）は float の積を float で丸めてから double に足す契約なので
+融合できる積和がなく、残りも大半はロードや依存で止まっていて FMA の効果は 1 % 未満でした。
+明示的な `fma()` を入れる価値はないと判断し、ホスト SIMD 群は `-ffp-contract=off` のままにします。
+
+### 同梱 ELPA の SIMD カーネル
+
+同梱 ELPA の C 側は NVHPC の `mpicc`（nvc）でコンパイルされていて、nvc は ELPA の x86 SIMD カーネル（intrinsic の
+テンプレート）をコンパイルできないため、SSE/AVX/AVX2/AVX-512 のカーネルがすべて無効で、さらに OpenMX 側
+（`openmx_elpa_cpu.c`）が 2 段階ソルバーのカーネルを `GENERIC` に固定していました（HIP 版は AVX2 まで組み込んでいたのに
+使われていませんでした）。構築ホストの CPU に合わせてカーネルを有効にし（C 側は MPI ラッパー経由で gcc、Fortran 側は
+nvfortran のまま、`GPUSOLVER2_ELPA_KERNELS=auto|generic`、CPU 専用ビルドは `OPENMX_CPU_ELPA_KERNELS`）、実行時に
+CPUID で CPU の対応する最速のカーネルを選ぶようにしました（ELPA 自身は CPU を検査しません。
+`ELPA_DEFAULT_real_kernel` / `ELPA_DEFAULT_complex_kernel` があればそれを優先）。
+
+sidia333、18 MPI、CPU モード（秒、同じ HEAD のバイナリ）:
+
+| 実行 | 汎用カーネル | AVX-512 BLOCK1（既定） | AVX-512 BLOCK2 |
+| --- | ---: | ---: | ---: |
+| 共線 3 SCF: 対角化 / 内部 Total | 63.7 / 98.3 | 59.9 / 94.1 | 58.8 / 93.2 |
+| 共線 3 SCF: 各 SCF の固有値計算 | 30.0, 16.8, 16.7 | 27.0, 16.4, 16.3 | 26.2, 16.2, 16.2 |
+| 非共線バンド（k 点 4）2 SCF: 対角化 | 315 | 311 | — |
+| 768 MiB 上限の GPU 実行（ELPA へ退避）: 対角化 | 64.1 | 60.3 | — |
+
+ELPA 2 段階法の Householder 変換カーネルは対角化時間の 1 割程度で、残りは BLAS（`zgemm`/`zhemv`/`zgemv`）なので、
+効果は対角化で 6〜8 % にとどまります。Utot は汎用カーネルと AVX-512 で同じ（…392）、runtest は GPU/CPU とも合格です。
+非共線バンドでは `zgemv` が時間の半分以上を占めており、ELPA の使い方（分散やブロック化）を別途見直す余地があります。
+
+NC の再配置の修正（`openmx_nc_indices.h`）は、クラスター NC の 4 SCF で `Hamiltonian_Cluster_NC_Hs2` を 1.69 % → 0.81 %、
+`Overlap_Cluster_NC_Ss2` を 0.28 % → 0.07 % にしました。写像は整数演算なので、`tests/run_nc_indices_cpu.py` が旧実装と
+1.2 億要素で完全一致することを確かめます（CTest `nc-block-indices`）。

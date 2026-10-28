@@ -3,7 +3,8 @@
 
   The registry of the environment settings this build reads: one X() line
   per name, sorted by name.  openmx_env.h turns the first column into the
-  ids OPENMX_ENV_<id>, openmx_env.c into the table behind openmx_env_at()
+  ids OPENMX_ENV_<id> (an EXT_ id keeps its case: ELPA's ELPA_DEFAULT_real_kernel
+  is read as OPENMX_ENV_EXT_ELPA_DEFAULT_real_kernel), openmx_env.c into the table behind openmx_env_at()
   and friends.  tools/update_env_registry.py rewrites this file from the
   readers in source/ (adds names, derives the kind and the default from
   the accessors, keeps the descriptions); tools/env_registry_doc.py turns
@@ -35,6 +36,8 @@
     X(EXT_COSMA_GPU_STREAMS, "COSMA_GPU_STREAMS", "int", "global", "2", "elpa_cosma_bridge.c", "COSMA: GPU streams, read to size the GPU GEMM workspace") \
     X(EXT_CUBLAS_MIN_FREE_AFTER_MB, "CUBLAS_MIN_FREE_AFTER_MB", "mib", "global", "", "Divide_Conquer.c,backends/hip/src/Divide_Conquer.c", "device memory to keep free after a cuBLAS workspace (OPENMX_CUBLAS_MIN_FREE_AFTER_MB wins)") \
     X(EXT_DC_GPU_MAX_RANKS_PER_DEVICE, "DC_GPU_MAX_RANKS_PER_DEVICE", "uint", "global", "", "backends/hip/src/Divide_Conquer.c", "Alias of OPENMX_DC_GPU_MAX_RANKS_PER_DEVICE.") \
+    X(EXT_ELPA_DEFAULT_complex_kernel, "ELPA_DEFAULT_complex_kernel", "string", "global", "unset (OpenMX chooses)", "openmx_elpa_cpu.c", "") \
+    X(EXT_ELPA_DEFAULT_real_kernel, "ELPA_DEFAULT_real_kernel", "string", "global", "unset (OpenMX chooses)", "openmx_elpa_cpu.c", "") \
     X(EXT_GEMMUL8_DISABLE, "GEMMUL8_DISABLE", "flag", "global", "", "backends/hip/src/gemmul8_bridge.cu,gemmul8_bridge.cu", "") \
     X(EXT_GEMMUL8_DISABLE_D, "GEMMUL8_DISABLE_D", "flag", "global", "", "backends/hip/src/gemmul8_bridge.cu,gemmul8_bridge.cu", "") \
     X(EXT_GEMMUL8_DISABLE_Z, "GEMMUL8_DISABLE_Z", "flag", "global", "", "backends/hip/src/gemmul8_bridge.cu,gemmul8_bridge.cu", "") \

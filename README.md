@@ -55,7 +55,11 @@ FFTW is preferred in AOCL builds). See [HIP options](docs/GPU_BACKENDS.md#amd--h
 The CPU build uses ordinary C/C++ and Fortran compilers with a matching MPI,
 requires no GPU SDK, and defaults to `scf.eigen.lib elpa2`. It builds the same
 bundled ELPA 2026.02.002 release with GPU kernels disabled, and uses the host
-Kokkos SIMD kernels. Existing `gpusolver`/`gpusolver2`/`gpusolver3` input decks
+Kokkos SIMD kernels. In every build the bundled ELPA also gets the x86 SIMD
+kernels the build host can run (SSE/AVX/AVX2/AVX-512; `GPUSOLVER2_ELPA_KERNELS`
+for the NVIDIA Makefile, `OPENMX_CPU_ELPA_KERNELS` for the CPU build, `auto`
+or `generic`), and the ELPA2 path selects the fastest one the CPU supports at
+run time (`ELPA_DEFAULT_real_kernel` / `ELPA_DEFAULT_complex_kernel` override it). Existing `gpusolver`/`gpusolver2`/`gpusolver3` input decks
 select CPU ELPA2 in this executable. CPU builds also copy the matching Core and
 host SIMD libraries to `work/lib/`. See [CPU dependencies and options](docs/GPU_BACKENDS.md#cpu-専用の本体ビルド)
 for external numerical libraries and MPI compiler selection.

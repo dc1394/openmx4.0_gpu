@@ -69,12 +69,42 @@ else()
   endforeach()
   list(REMOVE_DUPLICATES _cpu_dependency_dirs)
   string(JOIN ":" _cpu_dependency_path ${_cpu_dependency_dirs})
+  # ELPA's 2-stage CPU kernels: auto enables the x86 SIMD kernels the build
+  # host can run (SSE/AVX/AVX2/AVX-512 from /proc/cpuinfo, with the matching
+  # -m flags for the C kernels), like the host SIMD library's ISA variants;
+  # generic keeps the portable kernels only. The generic kernels are always
+  # built and the application selects the kernel at run time
+  # (source/openmx_elpa_cpu.c, overridable with ELPA_DEFAULT_*_kernel).
+  set(OPENMX_CPU_ELPA_KERNELS "auto" CACHE STRING
+      "ELPA 2-stage CPU kernels: auto (the build host's SIMD kernels) or generic")
+  set(_cpu_elpa_kernel_options --enable-generic-kernels --disable-sse-assembly-kernels)
+  set(_cpu_elpa_simd_flags "")
+  set(_cpu_elpa_cpu_flags "")
+  if(OPENMX_CPU_ELPA_KERNELS STREQUAL "auto" AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|i686"
+     AND EXISTS "/proc/cpuinfo")
+    file(READ "/proc/cpuinfo" _cpu_elpa_cpuinfo LIMIT 65536)
+    string(REGEX MATCH "flags[^\n]*" _cpu_elpa_cpu_flags "${_cpu_elpa_cpuinfo}")
+  endif()
+  if(_cpu_elpa_cpu_flags MATCHES "[ \t]avx2([ \t]|$)" AND _cpu_elpa_cpu_flags MATCHES "[ \t]fma([ \t]|$)")
+    list(APPEND _cpu_elpa_kernel_options --enable-sse-kernels --enable-avx-kernels --enable-avx2-kernels)
+    set(_cpu_elpa_simd_flags " -msse4.2 -mavx -mfma -mavx2")
+    if(_cpu_elpa_cpu_flags MATCHES "[ \t]avx512f([ \t]|$)" AND _cpu_elpa_cpu_flags MATCHES "[ \t]avx512dq([ \t]|$)"
+       AND _cpu_elpa_cpu_flags MATCHES "[ \t]avx512bw([ \t]|$)" AND _cpu_elpa_cpu_flags MATCHES "[ \t]avx512vl([ \t]|$)")
+      list(APPEND _cpu_elpa_kernel_options --enable-avx512-kernels)
+      string(APPEND _cpu_elpa_simd_flags " -mavx512f -mavx512cd -mavx512dq -mavx512bw -mavx512vl")
+    else()
+      list(APPEND _cpu_elpa_kernel_options --disable-avx512-kernels)
+    endif()
+  else()
+    list(APPEND _cpu_elpa_kernel_options --disable-sse-kernels --disable-avx-kernels
+         --disable-avx2-kernels --disable-avx512-kernels)
+  endif()
   set(_cpu_elpa_env "${CMAKE_COMMAND}" -E env
     "CC=${MPI_C_COMPILER}" "CXX=${MPI_CXX_COMPILER}" "FC=${MPI_Fortran_COMPILER}"
     "OMPI_CC=${CMAKE_C_COMPILER}" "OMPI_CXX=${CMAKE_CXX_COMPILER}" "OMPI_FC=${CMAKE_Fortran_COMPILER}"
     "MPICH_CC=${CMAKE_C_COMPILER}" "MPICH_CXX=${CMAKE_CXX_COMPILER}" "MPICH_FC=${CMAKE_Fortran_COMPILER}"
     "I_MPI_CC=${CMAKE_C_COMPILER}" "I_MPI_CXX=${CMAKE_CXX_COMPILER}" "I_MPI_F90=${CMAKE_Fortran_COMPILER}"
-    "CFLAGS=-O3 -fPIC" "CXXFLAGS=-O3 -fPIC" "FCFLAGS=-O3 -fPIC" "CPPFLAGS=" "LDFLAGS="
+    "CFLAGS=-O3 -fPIC${_cpu_elpa_simd_flags}" "CXXFLAGS=-O3 -fPIC${_cpu_elpa_simd_flags}" "FCFLAGS=-O3 -fPIC" "CPPFLAGS=" "LDFLAGS="
     "LIBS=${_cpu_linalg_flags}" "CPATH=" "C_INCLUDE_PATH=" "CPLUS_INCLUDE_PATH="
     "LD_LIBRARY_PATH=${_cpu_dependency_path}")
   set(_cpu_elpa_options)
@@ -94,8 +124,7 @@ else()
     CONFIGURE_COMMAND ${_cpu_elpa_env} <SOURCE_DIR>/configure
       --prefix=${_cpu_elpa_prefix} --disable-shared --enable-static --with-pic
       --disable-nvidia-gpu-kernels --disable-amd-gpu-kernels --disable-intel-gpu-sycl-kernels
-      --enable-generic-kernels --disable-sse-assembly-kernels --disable-sse-kernels
-      --disable-avx-kernels --disable-avx2-kernels --disable-avx512-kernels
+      ${_cpu_elpa_kernel_options}
       --with-test-programs=no
       --disable-c-tests --disable-cpp-tests --disable-fortran-tests --disable-Fortran-tests
       ${_cpu_elpa_options}

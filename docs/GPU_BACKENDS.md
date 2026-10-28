@@ -77,6 +77,12 @@ CUDA/ROCm SDK、GPUアーキテクチャ指定、`nvidia-smi`、GEMMul8/COSMA/MA
 FFTW3のヘッダーとライブラリ、LP64版ScaLAPACK/LAPACK/BLASです。
 同梱ELPAの初回構築には autoconf・automake・libtool・m4・make・Python も必要です。
 ELPA は GPU版と同じ固定版 `2026.02.002` のアーカイブを検証・展開し、GPUカーネルを無効にして構築します。
+ELPA の 2 段階ソルバーの CPU カーネルは、構築ホストが実行できる x86 SIMD カーネル
+（SSE/AVX/AVX2/AVX-512、`/proc/cpuinfo` から判定、C カーネルには対応する `-m` フラグ）を汎用カーネルと
+一緒に組み込みます（`OPENMX_CPU_ELPA_KERNELS=auto|generic`、NVIDIA の Makefile では
+`GPUSOLVER2_ELPA_KERNELS`）。実行時には `openmx_elpa_cpu.c` が CPU の対応する最速のカーネルを選び、
+ELPA 自身の `ELPA_DEFAULT_real_kernel` / `ELPA_DEFAULT_complex_kernel` が設定されていればそれを優先します
+（`level.of.stdout >= 2` で選んだカーネルを 1 行報告）。ELPA 自身は CPU を検査しないため、この選択が必要です。
 既定ソルバーはCPUの `elpa2` です。`elpa1` / `lapack` の入力も使用でき、
 GPUソルバーを指定した既存入力はCPUの `elpa2` に切り替えます。
 
@@ -140,6 +146,7 @@ CPU版はネイティブmakeを呼ばず、`CMAKE_C_FLAGS` / `CMAKE_CXX_FLAGS` �
 | `OPENMX_CPU_LINALG_LIBRARIES` | `OPENMX_CPU_LINALG=CUSTOM` でScaLAPACK・LAPACK・BLAS一式をセミコロン区切りで指定。従来の `AUTO` + この指定も使用可能。 |
 | `OPENMX_CPU_ELPA_ROOT` | 同じMPI/Fortran構成で作ったCPU版ELPA 2026.02.002の既存prefix。未指定なら同梱版を構築。 |
 | `OPENMX_BUILD_JOBS` | 同梱ELPAのmake並列数。CMake本体の並列数は `--parallel` で指定。 |
+| `OPENMX_CPU_ELPA_KERNELS` | 同梱ELPAの2段階CPUカーネル。`auto`（既定）は構築ホストのSSE/AVX/AVX2/AVX-512カーネルを汎用カーネルと一緒に組み込み、`generic` は汎用カーネルだけ。 |
 
 CPU構成のオブジェクト・ELPA・生成アダプターはビルドディレクトリに保存します。
 `cmake --build build/cpu --target clean` で本体オブジェクトを清掃できます。
