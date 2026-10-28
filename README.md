@@ -167,6 +167,13 @@ The application's CPU paths in `Set_XC_Grid.c`, `Force.c`, `Stress.c` and
 routines are frozen as test fixtures and the package tests show the library
 bitwise identical to them. External CMake projects use
 `find_package(OpenMXXc 0.1 CONFIG REQUIRED)` and link `OpenMX::xc`.
+The third package, [OpenMX::io](modules/io/README.md), reads OpenMX keyword
+files (scalar, vector and block keywords) through an owning `KeywordFile`
+and the original nesting model `KeywordFiles`, with C++ and C APIs, no global
+state and no process exit. The application's `Inputtools.c` is a thin
+compatibility layer over it, and the frozen original is the reference of the
+package tests. External CMake projects use
+`find_package(OpenMXIo 0.1 CONFIG REQUIRED)` and link `OpenMX::io`.
 VNA separable-projector construction and orthogonalization use an independent
 C++ module with RAII workspaces; their Fourier transforms also use the common
 Kokkos kernels. The legacy PhiF interpolation shares the checked radial code.

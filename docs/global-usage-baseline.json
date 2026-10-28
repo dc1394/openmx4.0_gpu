@@ -1,16 +1,16 @@
 {
 "scope": "global-state usage of the C translation units of the NVIDIA build",
-"revision": "f6aa64d1",
+"revision": "26515343",
 "summary": {
 "translation units analysed": 286,
 "translation units not analysed": 0,
-"functions": 3441,
+"functions": 3439,
 "common-header objects (defined in openmx_globals.c)": 935,
 "common-header objects referenced by some function": 929,
 "common-header objects written by some function (direct or through)": 696,
 "function-object edges (common header)": 12377,
 "objects with external linkage defined outside openmx_globals.c": 353,
-"file-scope statics": 300,
+"file-scope statics": 296,
 "function-local statics": 277,
 "environment variables (names read, every unit)": 257,
 "functions calling getenv directly (outside openmx_env.c)": 0,
@@ -12532,32 +12532,8 @@
 },
 {
 "unit": "source/Inputtools.c",
-"name": "errorlevel",
-"type": "i32 0",
-"const": false
-},
-{
-"unit": "source/Inputtools.c",
-"name": "fp",
+"name": "files",
 "type": "ptr null",
-"const": false
-},
-{
-"unit": "source/Inputtools.c",
-"name": "fpnest",
-"type": "[14 x ptr] zeroinitializer",
-"const": false
-},
-{
-"unit": "source/Inputtools.c",
-"name": "nestlevel",
-"type": "i32 -1",
-"const": false
-},
-{
-"unit": "source/Inputtools.c",
-"name": "printlevel",
-"type": "i32 0",
 "const": false
 },
 {

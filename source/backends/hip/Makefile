@@ -1121,8 +1121,8 @@ clean: fftw3-clean gemmul8-clean magma-clean
 #
 #
 
-DosMain: DosMain.o Inputtools.o malloc_multidimarray.o Tetrahedron_Blochl.o 
-	$(CC) -o $@ DosMain.o Inputtools.o malloc_multidimarray.o Tetrahedron_Blochl.o -lm 
+DosMain: DosMain.o Inputtools.o malloc_multidimarray.o Tetrahedron_Blochl.o $(OPENMX_CORE_LIBRARY)
+	$(CC) -o $@ DosMain.o Inputtools.o malloc_multidimarray.o Tetrahedron_Blochl.o $(OPENMX_IO_LIBRARY) -lstdc++ -lm 
 	cp DosMain $(DESTDIR)/DosMain
 
 DosMain.o :DosMain.c openmx_common.h
@@ -1134,8 +1134,8 @@ Tetrahedron_Blochl.o : Tetrahedron_Blochl.c
 #  COHP: Crystal Orbital Hamilton Population
 #
 
-cohp: cohp.o Inputtools.o Tetrahedron_Blochl.o
-	$(CC) -o $@ cohp.o Inputtools.o Tetrahedron_Blochl.o -lm
+cohp: cohp.o Inputtools.o Tetrahedron_Blochl.o $(OPENMX_CORE_LIBRARY)
+	$(CC) -o $@ cohp.o Inputtools.o Tetrahedron_Blochl.o $(OPENMX_IO_LIBRARY) -lstdc++ -lm
 	cp cohp $(DESTDIR)/cohp
 
 cohp.o :cohp.c openmx_common.h
@@ -1226,8 +1226,8 @@ esp.o : esp.c Inputtools.h
 #
 #
 
-check_lead: check_lead.o Inputtools.o
-	$(CC) check_lead.o Inputtools.o -lm -o check_lead
+check_lead: check_lead.o Inputtools.o $(OPENMX_CORE_LIBRARY)
+	$(CC) check_lead.o Inputtools.o $(OPENMX_IO_LIBRARY) -lstdc++ -lm -o check_lead
 	cp check_lead $(DESTDIR)/check_lead
 
 check_lead.o: check_lead.c Inputtools.h 
@@ -1241,7 +1241,7 @@ check_lead.o: check_lead.c Inputtools.h
 
 OpticalConductivityMain: OpticalConductivityMain.o \
               Inputtools.o  malloc_multidimarray.o
-	$(CC) -o $@   OpticalConductivityMain.o  Inputtools.o  malloc_multidimarray.o -lm 
+	$(CC) -o $@   OpticalConductivityMain.o  Inputtools.o  malloc_multidimarray.o $(OPENMX_IO_LIBRARY) -lstdc++ -lm 
 	cp OpticalConductivityMain $(DESTDIR)/OpticalConductivityMain
 
 #

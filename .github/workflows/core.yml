@@ -66,6 +66,37 @@ jobs:
           ulimit -s 8192
           ctest --test-dir build/xc --output-on-failure
 
+  io:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            cxx: g++
+            cc: gcc
+            sanitize: "OFF"
+          - os: ubuntu-24.04
+            cxx: clang++
+            cc: clang
+            sanitize: "ON"
+          - os: macos-14
+            cxx: clang++
+            cc: clang
+            sanitize: "OFF"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build only the reusable io package (no SDK or numerical stack)
+        run: >-
+          cmake -S modules/io -B build/io
+          -DCMAKE_CXX_COMPILER=${{ matrix.cxx }} -DCMAKE_C_COMPILER=${{ matrix.cc }}
+          -DOPENMX_IO_SANITIZERS=${{ matrix.sanitize }}
+      - run: cmake --build build/io --parallel 2
+      - name: Legacy-agreement, ownership and external consumer tests
+        run: |
+          ulimit -s 8192
+          ctest --test-dir build/io --output-on-failure
+
   cpu-application:
     runs-on: ubuntu-24.04
     strategy:

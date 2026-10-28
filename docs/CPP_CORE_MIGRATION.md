@@ -7335,3 +7335,54 @@ Makefile 利用者（CUDA/HIP）も CPU 専用の CMake ビルドも `openmx_cor
   3 SCF + Opt、CPU モード）の `.ene` と `.md`、Methane（CPU の auto / legacy 両モード）の `.ene` が
   一致し、legacy モードの Methane の偏差は移行前から同じ値です。CPU 専用ビルドでは、OpenMX 本体と
   独立パッケージのどちらも浮動小数点の縮約を行わないため、ライブラリの結果は元ルーチンと bit 一致します。
+
+## 第111段階: キーワード入力ファイルの読み取りを独立 OpenMX::io へ移行
+
+`modules/io/` に `OpenMX::io` / `OpenMXIo` 0.1.0 を加えました。`openmx::io::KeywordFile` は開いた
+ストリームを所有し（ムーブ可、コピー不可、明示的な `close()`、デストラクタで閉じる）、スカラー
+（論理値・整数・実数・文字列・選択肢）、ベクトル（文字列・実数・整数）、ブロック（`find`/`last` の
+従来の読み方と、タグの間の行を返す `block()`）を検索して、エラー数とメッセージを記録します。
+`openmx::io::KeywordFiles` は元の `Inputtools.c` の入れ子モデル（最大 14 段のスタック、先頭が応答、
+`open` ごとに 0 に戻り閉じたファイルの分も引き継ぐエラー数）を明示的な所有物にしたものです。
+C API（`openmx_io_*`）は元の `input_*` と同じ戻り値の規約（1 見つかった / 0 なし / -1 不正）を持ち、
+NULL と未オープンの状態を安全に扱います。大域変数、プロセス終了、MPI はありません。
+
+検索規則（各行の最初のトークンを大文字小文字を区別せず同じ長さで比較。元の `strlen_trim` は
+ループの誤りで `strlen` と同じ動作だったので、空白の除去はしません）、論理値の綴り、`sscanf` に基づく
+数値変換（`12abc` → 12、`0x1A` → 0）、ベクトル値のカーソル（キーの 1 文字後から空白とタブを飛ばし、
+トークンの長さだけ進める）、エラーメッセージの文面は元のままです。意図的な差は、行の長さの上限が
+ないこと、文字列の格納先に容量を渡すこと、実数の不正値に -1 を返すこと（本体の互換層は元の 0 を
+保つ）の 3 点です。元の `Inputtools.c` は `modules/io/tests/fixtures/` へ移動して凍結し、試験の参照に
+しています。
+
+本体の `source/Inputtools.c` は互換層になりました。`input_open` 以降の呼び出しは、最初の呼び出しで作る
+1 つの所有物（`OpenMXKeywordFiles`、`atexit` で解放）へ委譲し、元の 5 つの file-scope static
+（`fp`、`nestlevel`、`fpnest[]`、`printlevel`、`errorlevel`）は消えました。36 ファイル・約 900 か所の
+呼び出し側は無変更です。Core は `modules/io` を `add_subdirectory` してオブジェクトを
+`libopenmx_core.so` に同梱し、本体と `jx`・`esp`（`$(LIB)` 経由）はそのまま C ABI を解決します。
+`Inputtools.o` だけを使う単独ツール（`DosMain`、`cohp`、`check_lead`、`OpticalConductivityMain`）は
+`openmx_core.mk` の `OPENMX_IO_LIBRARY`（パッケージの静的アーカイブ）と `-lstdc++` を直接リンクします。
+HIP の `sources.json` には転送ヘッダー `openmx_io.h` を登録し、`Inputtools.c` のハッシュを更新しました。
+GitHub Actions には `basis`/`xc` と同じ行列の `io` ジョブを加えました。
+
+検証:
+
+- 独立パッケージの 5 試験（`io-legacy`、`io-semantics`、`io-invalid`、`io-c-api`、`io-package-consumer`）が
+  GCC と Clang + ASan/UBSan で成功しました。`io-legacy` は凍結した元の `Inputtools.c` と、戻り値・値・
+  エラー数・標準出力に出た診断の文面を、スカラー・ベクトル・ブロック（`fscanf` と `fgets`+`ungetc` の
+  2 つの読み方）・CRLF・入れ子・開けないファイルの場面で比較します。
+- 実ファイルでの差分試験: sidia333 の入力、`Si7.0.pao`、`Si_PBE19.vps` の全行の先頭トークン 4,351 個を
+  キーにして全検索（`find` の位置、`last`、各スカラー・ベクトル）を旧実装と比べ、gcc 版・nvc 版とも
+  不一致 0 でした。さらに本体の互換層に呼び出しの記録を入れた Methane の実行（240 回の呼び出し）を
+  旧実装で再生し、全呼び出しで一致しました。
+- CPU 専用の CMake ビルドで io・xc・CI 相当の 26 試験が成功し、HIP 版の互換層と `Input_std.c`、`DosMain.c`
+  の構文検査、`tests/test_unified_build.py`、大域変数監査（基準を再生成）が通りました。`DosMain` と
+  `OpticalConductivityMain` は Core の共有ライブラリに依存せずリンクでき、実行できます（`cohp.c`、
+  `check_lead.c` は自身の既存のコンパイルエラーで nvc ではビルドできず、今回の変更とは無関係）。
+- CMake ドライバで再ビルドした nvc 版の runtest は、GPU・CPU・CPU legacy の 3 モードとも第110段階と
+  同じ結果表（最大 |ΔUtot| 5.1e-11 / 5.7e-11 / 2.31e-10）で、sidia333（CPU モード）の `.ene`・`.md` は
+  移行前のバイナリと一致します。
+- 注意: `build/cpu`（CPU 専用の CMake ビルド）は既定で `OPENMX_COPY_TO_WORK=ON` のため、その `openmx`
+  ターゲットのビルドが `work/openmx` を gcc 版で上書きします。検証中に一度これが起き、CPU 専用ビルドの
+  別問題（ELPA の SIMD カーネル、次段で修正）を nvc 版の退行と誤認しかけました。CPU 専用ビルドは
+  `-DOPENMX_COPY_TO_WORK=OFF`（CI と同じ）で構成してください。

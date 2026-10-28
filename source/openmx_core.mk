@@ -25,6 +25,9 @@ endif
 # work/openmx uses work/lib; an explicit installation prefix uses bin/../lib.
 LIB += $(OPENMX_CORE_LIBRARY) -Wl,-rpath,$(dir $(OPENMX_CORE_LIBRARY)) -Wl,-rpath,'$$ORIGIN/lib' -Wl,-rpath,'$$ORIGIN/../lib'
 openmx: $(OPENMX_CORE_LIBRARY)
+# The post-processing tools that only need the keyword-file reader link the
+# io package's archive directly (the application gets it through the core).
+OPENMX_IO_LIBRARY ?= $(dir $(OPENMX_CORE_LIBRARY))modules/io/libopenmx_io.a
 $(OBJS): openmx_core.h openmx_periodic.h openmx_complex.h
 # Track the canonical public headers behind source/ compatibility includes.
 $(OBJS) openmx_api.o: $(wildcard $(OPENMX_CORE_SOURCE_DIR)/include/*.h)
@@ -72,3 +75,4 @@ $(OBJS) openmx_api.o: openmx_core_radial_views.h ../core/include/openmx_core_rad
 
 $(OBJS) openmx_api.o: openmx_basis_orbital_radial.h ../modules/basis/include/openmx/basis/orbital_radial.h ../modules/basis/include/openmx/basis/detail/orbital_radial.h
 Set_XC_Grid.o Force.o Stress.o Total_Energy.o: openmx_xc.h ../modules/xc/include/openmx/xc/xc.h
+Inputtools.o: openmx_io.h ../modules/io/include/openmx/io/keyword_file.h

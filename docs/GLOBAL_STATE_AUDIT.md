@@ -915,3 +915,14 @@ getenv の直接呼び出しは 0 です。CTest `core-host-energy-nc` が両方
 `symmetrize_spins` を 1 回求めて渡す形になり、ライブラリ側は大域変数も static も持ちません。
 関数数は 3,446 → 3,441、参照組は 12,379 → 12,377、file-scope / 関数内 static は 300 / 277 のまま、
 環境変数名 257、getenv の直接呼び出しは 0 です。基準とインベントリを再生成しました。
+
+## キーワード入力ファイルの読み取りの独立化（第111段階、2026-10-28）
+
+`Inputtools.c` の読み取り本体が `modules/io/` の `OpenMX::io` になり、本体側は互換層だけになりました。
+元の 5 つの file-scope static（現在のファイル `fp`、入れ子の `nestlevel` と `fpnest[]`、`printlevel`、
+`errorlevel`）は、最初の `input_open` で作る 1 つの所有物（`OpenMXKeywordFiles`、`atexit` で解放）に
+置き換わり、監査には新しい static `source/Inputtools.c:files` が 1 件加わりました（基準を再生成）。
+file-scope static は 300 → 296、関数数は 3,441 → 3,439（解析器の内部ヘルパーがライブラリへ移動）、
+参照組 12,377、関数内 static 277、環境変数名 257、getenv の直接呼び出し 0 です。残る 1 件の static は、
+約 900 か所の呼び出し側がハンドルを持たない元の API を使い続けるための「現在の入力ファイル」であり、
+呼び出し側がハンドルを渡す形へ移すときに消えます。
