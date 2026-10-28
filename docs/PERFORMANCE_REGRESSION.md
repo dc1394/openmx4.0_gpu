@@ -4880,3 +4880,44 @@ NC の再配置の修正（`openmx_nc_indices.h`）は、クラスター NC の 
   クラスター NC ではこの最終桁の差が SCF で増幅され、Utot で 1e-14、力で 2e-11 になります。
 - `openmx -runtest`（14 入力、Cr2 と GaAs の非共線を含む）は GPU / CPU / CPU+legacy で合格です
   （Utot 最大 5.1e-11 / 3.1e-11 / 3.1e-11）。
+
+## gpusolver2（ELPA GPU + COSMA）の行列積: GEMMul8 化とタイル上限の修正（2026-10-28）
+
+GEMMul8 と FP32 + 荻田・相島補正を gpusolver2 / gpusolver3 で使える箇所の調査の結果です。
+gpusolver3（単一ノード強制 MAGMA）は協調行列積が既定で GEMMul8 ブリッジを通り、FP32 基底 + 補正も
+`OPENMX_MAGMA_FP32=1` で選べる（2 枚の RTX 5090 で検証済み、`doc/rtx5090_magma_fp32.txt`）ため、変更はありません。
+この計算機（GPU 1 枚、MAGMA なし）では実行できません。
+
+gpusolver2 はどちらも使っていませんでした。計測は `work/gs2_nc10/sidia333_cluster.dat`（216 Si 原子の非共線
+Cluster、n = 2808 / 2n = 5616）と `work/sidia333_cluster_cosma_elpa/sidia333_cluster.dat`（同じ系の共線 Cluster）
+を SCF 3 回、`level.of.stdout 2`、8 MPI × 1 OpenMP（RTX 5080 1 枚、MPS）、`OPENMX_GS2_PROFILE=1` で行い、
+`GS2PROF` 行（rank 0 の壁時計、入退場を含む）を集計しました。
+
+まず退行が見つかりました。`8bc12fa6`（2026-10-22、環境レジストリ）以降、ブリッジは COSMA のタイル上限を
+起動時のレジストリの写しから読み、自分が後から `setenv` する `COSMA_GPU_MAX_TILE_*`（既定 1024）を「未設定」と
+見て COSMA の既定 5000 で GPU 作業領域を見積もっていました（複素 5616 次で 2288 MB/rank × 8 ランク）。そのため
+複素の逆変換 `pzgemm` は毎回 ScaLAPACK（CPU、3.6 秒）に送られていました。利用者の設定がなければ公開した上限を
+使うように直しました。
+
+次に、COSMA の Tiled-MM の局所タイル積（最大 1024 角）を本体の GEMMul8 ブリッジへ渡しました
+（`source/third_party/tiledmm-openmx-gemm-hook.patch`、`OPENMX_GS2_GEMMUL8=0` で cuBLAS FP64 のまま）。
+
+| 非共線 Cluster、8 ランク、SCF 3 回 | pzgemm 5616³ ×3 | pdgemm 2808³ ×36 | 経過時間 | Utot (Hartree) |
+| --- | ---: | ---: | ---: | --- |
+| 修正前（pzgemm が CPU）、cuBLAS FP64 タイル | 10.83 s | 3.90 s | 111.6 s | -892.540984015326 |
+| 修正前、GEMMul8 タイル | 10.85 s | 3.34 s | 109.6 s | -892.540984015299 |
+| 修正後、cuBLAS FP64 タイル（`OPENMX_GS2_GEMMUL8=0`） | 6.68 s | 3.92 s | 105.7 s | -892.540984015261 |
+| 修正後、GEMMul8 タイル（既定） | 2.57 s | 3.39 s | 102.0 s | -892.540984015184 |
+
+複素 5616³ の変換 1 回は CPU 3.6 秒 → GPU cuBLAS FP64 2.23 秒 → GEMMul8 0.86 秒です。実数 2808³ は
+0.109 → 0.094 秒で、GEMMul8 のデバイス時間は 1 回 0.008 秒（rank 0 の計 288 タイル積で 0.30 秒）にすぎず、
+COSMA 側の再分配と転送が支配的です。Utot の差は最大 1.4e-13 Hartree です。共線 Cluster（pdgemm 2808³ ×9）は
+1.015 → 0.911 秒、経過時間 53.3 → 51.6 秒で、Utot と NormRD は 15 桁一致しました。
+
+FP32 + 荻田・相島補正は gpusolver2 には入れませんでした。`OPENMX_GS2_FP32_PROBE=1`（ELPA の単精度解法を
+全固有対で計時する計測用ノブ）では、複素 5616 次の ELPA 解法が FP64 の 11.3 秒（nev = n）/ 7.0 秒
+（nev = 1987）に対し 2.9 秒、実数 2808 次が 0.91 秒に対し 0.52 秒でした。しかし分散版の補正は 1 ステップに
+n×n×n の COSMA 積を 4 回以上（X の射影 3 回と更新 1 回）、最後に Rayleigh–Ritz と検証の積が必要で、複素の積
+1 回が 0.86〜2.2 秒、実数でも 0.09 秒（ほぼ COSMA の通信・転送）かかるため、節約分（複素 4.1 秒、実数 0.4 秒）
+を使い切ります。単一 GPU の `gpusolver` ではデバイス上の積が解法よりはるかに安いので補正が有効ですが、
+分散経路では積の方が主役です。この結論は、この規模と GeForce 1 枚での計測に基づきます。

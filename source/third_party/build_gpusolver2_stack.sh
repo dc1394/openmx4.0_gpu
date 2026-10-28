@@ -268,6 +268,23 @@ step_cosma() {
   [ -d "$SRC/cosma" ] || { cd "$SRC" && unzip -q "$DIST/cosma-v$V_COSMA.zip" && mv "COSMA-$V_COSMA" cosma; }
   [ -d "$SRC/COSTA" ] || { cd "$SRC" && unzip -q "$DIST/COSTA-$SHA_COSTA.zip" && mv "COSTA-$SHA_COSTA" COSTA; }
   [ -d "$SRC/Tiled-MM" ] || { cd "$SRC" && unzip -q "$DIST/Tiled-MM-$SHA_TILEDMM.zip" && mv "Tiled-MM-$SHA_TILEDMM" Tiled-MM; }
+  # OpenMX's product hook in Tiled-MM (see the patch header): its double and
+  # complex-double tile products call the application's GEMMul8 bridge.
+  # Forward/reverse dry-runs reject an unexpected source tree and make
+  # repeat builds idempotent; the hashes pin the one file the patch changes.
+  tiledmm_file="$SRC/Tiled-MM/src/Tiled-MM/tiled_mm.cpp"
+  if ! printf '%s  %s\n' "$TILEDMM_ORIGINAL" "$tiledmm_file" | sha256sum -c - >/dev/null 2>&1 &&
+     ! printf '%s  %s\n' "$TILEDMM_PATCHED" "$tiledmm_file" | sha256sum -c - >/dev/null 2>&1; then
+    echo "ERROR: unexpected Tiled-MM source hash; refusing to patch $tiledmm_file"
+    return 1
+  fi
+  if patch --batch --fuzz=0 --forward --dry-run -d "$SRC/Tiled-MM" -p1 < "$TILEDMM_PATCH" >/dev/null 2>&1; then
+    patch --batch --fuzz=0 --forward -d "$SRC/Tiled-MM" -p1 < "$TILEDMM_PATCH"
+  elif ! patch --batch --fuzz=0 --reverse --dry-run -d "$SRC/Tiled-MM" -p1 < "$TILEDMM_PATCH" >/dev/null 2>&1; then
+    echo "ERROR: Tiled-MM source does not match $TILEDMM_PATCH"
+    return 1
+  fi
+  printf '%s  %s\n' "$TILEDMM_PATCHED" "$tiledmm_file" | sha256sum -c -
   # COSMA_SCALAPACK=CUSTOM forces the host-BLAS vendor to "auto", whose
   # OPENBLAS probe "succeeds" with NOTFOUND libraries on machines without
   # OpenBLAS (FindOPENBLAS.cmake creates its target unconditionally).
@@ -286,6 +303,20 @@ step_cosma() {
   $CMAKE --build "$BLD/cosma" -j "$J"
   $CMAKE --install "$BLD/cosma"
 }
+# The Tiled-MM patch is part of COSMA's configuration: a change rebuilds
+# COSMA alone (ELPA does not depend on it).
+TILEDMM_PATCH=$(dirname "$DIST")/tiledmm-openmx-gemm-hook.patch
+TILEDMM_ORIGINAL=9b33855deba33b276bd1d95db921fba95a81152018f477255d02c86ab3b3e5fb
+TILEDMM_PATCHED=908237509e8d66cfdf73da7acc6501aa35adf62dd6a9126749c1e8071d9d473c
+[ -f "$TILEDMM_PATCH" ] || { echo "ERROR: missing $TILEDMM_PATCH"; exit 1; }
+sha256sum < "$TILEDMM_PATCH" > "$STAMP/cosma-patches.tmp"
+if ! cmp -s "$STAMP/cosma-patches.tmp" "$STAMP/cosma-patches.conf"; then
+  rm -f "$STAMP/02_cosma.done"
+  rm -rf "$BLD/cosma"
+  mv "$STAMP/cosma-patches.tmp" "$STAMP/cosma-patches.conf"
+else
+  rm -f "$STAMP/cosma-patches.tmp"
+fi
 run_step 02_cosma step_cosma
 
 echo "gpusolver2 stack: all components installed into $P"

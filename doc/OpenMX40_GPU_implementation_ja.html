@@ -2290,9 +2290,11 @@ input_int("scf.Gpu.Num", &amp;SCF_Gpu_Num, 30);</code></pre>
 <tr><td><code>OPENMX_MIXH_GPU_RESERVE_MB</code> / <code>_VERBOSE</code></td><td>max(総/10,1536) / 0</td><td>GPU 層の予約量 / 選択結果の表示</td></tr>
 <tr><td colspan="3" style="background:#f0f4fa;"><b>gpusolver2(ELPA-GPU / COSMA)</b></td></tr>
 <tr><td><code>OPENMX_GS2_ELPA_SOLVER</code></td><td>2</td><td>gpusolver2 の ELPA ソルバ選択。1 で 1stage、それ以外は 2stage(既定)</td></tr>
+<tr><td><code>OPENMX_GS2_FP32_PROBE</code></td><td>0</td><td>計測用プローブ。<b>1</b> で gpusolver2 の ELPA 倍精度解法を全固有対の単精度解法に置き換え、<code>OPENMX_GS2_PROFILE</code> の <code>op=elpa32</code> として計時する（補正付き解法の FP32 基底の見積もり用）。その実行の結果は単精度の精度しかない（警告を表示）。</td></tr>
 <tr><td><code>OPENMX_CLUSTER_GS2_FALLBACK</code></td><td>auto</td><td>クラスター法の <code>gpusolver</code> で密な固有値計算が GPU 1 枚に入らないときの代替: まず rank 0 のノードの GPU で MAGMA、それが使えなければ(マルチノード実行で)ジョブの全ランクによる分散 gpusolver2(ELPA GPU カーネル + COSMA。各ランクの GPU を使う。スピン分極の共線は全ランクのグリッドで両スピンを順に解く)に集団的な GPU メモリ判定のうえで切り替える。<code>off</code> = 分散段に進まない、<code>on</code> = 単一ノードでも進む、<code>force</code> = MAGMA を飛ばす。強制 MAGMA(gpusolver3、<code>OPENMX_MGPU_MEMORY=host</code>)は分散段に進まない。<code>OPENMX_CLUSTER_HOST_MEM_AVAILABLE_MB</code> で MAGMA のホストメモリ判定の値を上書きできる</td></tr>
 <tr><td><code>OPENMX_GS2_HOST_RESERVE_MB</code></td><td>ノードメモリの 1/4(最小 4096)</td><td>gpusolver2 ブリッジ(明示指定時と容量フォールバック時): COSMA が実行終了まで保持するホストバッファ(メモリプールと COSTA の送受信バッファ。COSMA 自身の分割戦略から見積もる)を確保した後も各ノードに残すべき空きメモリ。足りなければその変換は ScaLAPACK で行う</td></tr>
 <tr><td><code>OPENMX_GS2_ELPA_GPU</code> / <code>OPENMX_GS2_GEMM_GPU</code></td><td>auto</td><td>gpusolver2 の ELPA 固有値ソルバー / COSMA 行列積を GPU に強制（<b>1</b>）、CPU カーネル / ScaLAPACK に強制（<b>0</b>）。未設定ならメモリ判定で決める。設定は rank 0 から全ランクへ配布されるのでグリッド内で食い違わない。</td></tr>
+<tr><td><code>OPENMX_GS2_GEMMUL8</code></td><td>1</td><td>gpusolver2 の COSMA 変換の局所タイル積を GEMMul8 ブリッジ経由にする（<b>1</b>、既定）。FP64 の弱い GPU（GeForce の既定）では GEMMul8、A100/H100 では native FP64、<code>scf.gemmul8.enable</code> と作業領域の保護は他の積と同じ。<b>0</b> で COSMA を cuBLAS FP64 のままにする（CUDA ビルド。ROCm の Tiled-MM は rocBLAS のまま）。</td></tr>
 <tr><td><code>OPENMX_GS2_GPU_FACTOR</code> / <code>_FIXED_MB</code></td><td>3 / 128</td><td>ELPA GPU ソルバーのデバイスメモリモデル: ローカルのブロック巡回行列の FACTOR 倍と固定分（MiB）。実測の約 2 × local + 約 110 MB/ランクに校正。</td></tr>
 <tr><td><code>OPENMX_GS2_GPU_RESERVE_MB</code></td><td>512</td><td>GPU 判定で ELPA/COSMA の確保後に残っていなければならない空きデバイスメモリ。</td></tr>
 <tr><td><code>OPENMX_GS2_GPU_TILE</code> / <code>COSMA_GPU_MAX_TILE_M</code> / <code>_N</code> / <code>_K</code> / <code>COSMA_GPU_STREAMS</code></td><td>1024 / 5000 / 5000 / 5000 / 2</td><td>COSMA へ渡す Tiled-MM のタイル上限（<code>COSMA_GPU_MAX_TILE_M/N/K</code> が未設定ならこの値を設定する。利用者の設定が優先）と COSMA のストリーム数。どちらも GPU GEMM 作業領域の見積もりに使う。</td></tr>
@@ -2504,6 +2506,14 @@ CUDA は選択した NVHPC/MPI、HIP は ROCm flang と互換の MPI を使う(�
   クラスター対角化以外(SetH/密度/力/混合などの GPU 経路、CWF 等の付加処理)は gpusolver と完全同一
   (内部では <code>scf_eigen_lib_flag=GPUSOLVER</code> のまま <code>gpusolver2_flag</code> で対角化だけを切替)。
   GPU 不在時は gpusolver 同様 ELPA2 へ降格する。</li>
+  <li><b>GEMMul8 ブリッジ経由の行列積</b> — COSMA の Tiled-MM バックエンドの倍精度・複素倍精度タイル積は、
+  本体がリンクされていれば cuBLAS の代わりに <code>openmx_tiledmm_dgemm/zgemm</code>(gemmul8_bridge.cu)を呼ぶ
+  (build_gpusolver2_stack.sh が適用する Tiled-MM の小さなパッチ <code>third_party/tiledmm-openmx-gemm-hook.patch</code>、
+  CUDA スタックのみ)。したがって変換は §10.3 の一般 GEMM と同じ方針に従う: FP64 の弱い GPU では GEMMul8、
+  A100/H100 では native FP64、<code>scf.gemmul8.enable</code> と作業領域の保護も同じ。<code>OPENMX_GS2_GEMMUL8=0</code>
+  で cuBLAS のまま。固有値計算は FP64 のまま: 分散版の FP32 + 荻田・相島補正は 1 ステップに n×n×n の COSMA 積を
+  4 回以上必要とし、計測した規模ではその積 1 回が FP32 解法の節約分に相当する
+  (<code>OPENMX_GS2_FP32_PROBE=1</code> で FP32 解法単体を計時できる)。</li>
   <li><b>DLA-Future を採用しなかった理由(記録)</b> — 当初 DLA-Future + COSMA で実装・検証したが、
   DLA-Future の非同期集団通信は HPC-X の Open MPI 4.1 では 3 ランク以上で必ず破綻する
   (MPI_ERR_TRUNCATE/ハング。PMPI トレースで当方の通信列の正しさまで確認済み。Open MPI 5 でのみ解消)。

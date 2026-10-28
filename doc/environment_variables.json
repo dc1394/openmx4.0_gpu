@@ -1065,6 +1065,14 @@
   {
    "group": "gs2",
    "names": [
+    "OPENMX_GS2_FP32_PROBE"
+   ],
+   "en": "Measurement probe: <b>1</b> replaces the ELPA double solves of gpusolver2 by ELPA's single-precision solve of all eigenpairs, timed by <code>OPENMX_GS2_PROFILE</code> as <code>op=elpa32</code>, to size the FP32 basis of a refined solve. The results of such a run are only single-precision accurate (a warning says so).",
+   "ja": "計測用プローブ。<b>1</b> で gpusolver2 の ELPA 倍精度解法を全固有対の単精度解法に置き換え、<code>OPENMX_GS2_PROFILE</code> の <code>op=elpa32</code> として計時する（補正付き解法の FP32 基底の見積もり用）。その実行の結果は単精度の精度しかない（警告を表示）。"
+  },
+  {
+   "group": "gs2",
+   "names": [
     "OPENMX_CLUSTER_GS2_FALLBACK"
    ],
    "defaults": {
@@ -1665,6 +1673,14 @@
    },
    "en": "Force the ELPA eigensolver / the COSMA matrix products of gpusolver2 onto the GPU (<b>1</b>) or onto the CPU kernels / ScaLAPACK (<b>0</b>); unset = the memory verdict decides. The setting reaches every rank from rank 0, so the grid cannot disagree.",
    "ja": "gpusolver2 の ELPA 固有値ソルバー / COSMA 行列積を GPU に強制（<b>1</b>）、CPU カーネル / ScaLAPACK に強制（<b>0</b>）。未設定ならメモリ判定で決める。設定は rank 0 から全ランクへ配布されるのでグリッド内で食い違わない。"
+  },
+  {
+   "group": "gs2",
+   "names": [
+    "OPENMX_GS2_GEMMUL8"
+   ],
+   "en": "The local tile products of the COSMA transforms of gpusolver2 go through the GEMMul8 bridge (<b>1</b>, default): GEMMul8 on GPUs with weak FP64 (the GeForce default), native FP64 on A100/H100, <code>scf.gemmul8.enable</code> and the workspace guards as for every other product. <b>0</b> keeps COSMA on cuBLAS FP64 (CUDA build; the ROCm Tiled-MM keeps rocBLAS).",
+   "ja": "gpusolver2 の COSMA 変換の局所タイル積を GEMMul8 ブリッジ経由にする（<b>1</b>、既定）。FP64 の弱い GPU（GeForce の既定）では GEMMul8、A100/H100 では native FP64、<code>scf.gemmul8.enable</code> と作業領域の保護は他の積と同じ。<b>0</b> で COSMA を cuBLAS FP64 のままにする（CUDA ビルド。ROCm の Tiled-MM は rocBLAS のまま）。"
   },
   {
    "group": "gs2",

@@ -542,6 +542,12 @@ CUDA 版の MAGMA は、複数 GPU を使う Cluster／Band の密行列固有�
 `WITH_MAGMA=0` を `OPENMX_MAKE_OPTIONS` に追加します。
 MAGMA 2.10.0 は HIP 用に同梱したアーカイブ（SHA-256 を検証）から作るので、ネットワーク接続は不要です。
 その構築には CUDA 対応の CMake 3.18 以上が必要です。
+gpusolver2 の依存スタックを構築するとき、`build_gpusolver2_stack.sh` は展開した Tiled-MM に
+`source/third_party/tiledmm-openmx-gemm-hook.patch` を当てます（元と適用後のファイルの SHA-256 を照合、
+再実行時は適用済みとして通過）。この小さなパッチで COSMA の倍精度・複素倍精度タイル積が本体の GEMMul8
+ブリッジ（`openmx_tiledmm_dgemm/zgemm`）を呼び、分散変換も他の密行列積と同じ GEMMul8 の方針に従います
+（`OPENMX_GS2_GEMMUL8=0` で cuBLAS FP64 のまま）。パッチを変えると COSMA だけを作り直します。
+HIP の Tiled-MM（rocBLAS）は変更しません。
 従来の NVIDIA ビルドも使用できます。
 
 ```sh

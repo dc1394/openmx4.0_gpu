@@ -1033,7 +1033,7 @@ endif
 .PHONY: gpusolver2-stack gpusolver2-clean
 gpusolver2-stack: $(GPUSOLVER2_STAMP)
 
-$(GPUSOLVER2_STAMP): third_party/build_gpusolver2_stack.sh
+$(GPUSOLVER2_STAMP): third_party/build_gpusolver2_stack.sh third_party/tiledmm-openmx-gemm-hook.patch
 	GPUSOLVER2_DIST="$(GPUSOLVER2_DIST)" GPUSOLVER2_BUILD="$(GPUSOLVER2_BUILD)" \
 	GPUSOLVER2_PREFIX="$(GPUSOLVER2_PREFIX)" \
 	GPUSOLVER2_HOST_CC="$(GPUSOLVER2_HOST_CC)" GPUSOLVER2_HOST_CXX="$(GPUSOLVER2_HOST_CXX)" \

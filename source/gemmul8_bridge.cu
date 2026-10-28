@@ -1108,6 +1108,47 @@ template<class T> cublasStatus_t forward_tile(cublasHandle_t handle,cublasOperat
 
 } // namespace
 
+/* COSMA's local tile products of the gpusolver2 transforms.  Tiled-MM,
+   patched at stack-build time (third_party/tiledmm-openmx-gemm-hook.patch),
+   calls these entry points instead of cuBLAS when they are linked in, so
+   the distributed transforms take the general-GEMM policy above: GEMMul8
+   on GPUs with weak FP64 (the GeForce default), native FP64 on A100/H100,
+   scf.gemmul8.enable and the workspace guards as for every other product.
+   Tiled-MM binds one cuBLAS handle to each of its streams, so each stream
+   keeps its own capped workspace (its tiles are at most 1024 wide,
+   OPENMX_GS2_GPU_TILE).  OPENMX_GS2_GEMMUL8=0 keeps COSMA on cuBLAS FP64
+   for comparison.  Counted and timed with the general products of
+   OPENMX_GEMMUL8_TIMING. */
+namespace {
+bool cosma_products_through_bridge()
+{
+    static const bool through = openmx_env_flag_at(OPENMX_ENV_GS2_GEMMUL8, 1) != 0;
+    return through;
+}
+} // namespace
+
+extern "C" cublasStatus_t openmx_tiledmm_dgemm(cublasHandle_t handle, cublasOperation_t transa,
+                                                cublasOperation_t transb, int m, int n, int k,
+                                                const double *alpha, const double *A, int lda,
+                                                const double *B, int ldb, const double *beta,
+                                                double *C, int ldc)
+{
+    if (!cosma_products_through_bridge())
+        return cublasDgemm(handle, transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
+    return openmx_gemmul8Dgemm(handle, transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
+}
+
+extern "C" cublasStatus_t openmx_tiledmm_zgemm(cublasHandle_t handle, cublasOperation_t transa,
+                                                cublasOperation_t transb, int m, int n, int k,
+                                                const cuDoubleComplex *alpha, const cuDoubleComplex *A,
+                                                int lda, const cuDoubleComplex *B, int ldb,
+                                                const cuDoubleComplex *beta, cuDoubleComplex *C, int ldc)
+{
+    if (!cosma_products_through_bridge())
+        return cublasZgemm(handle, transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
+    return openmx_gemmul8Zgemm(handle, transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
+}
+
 extern "C" cublasStatus_t openmx_gemmul8DgemmFixed(cublasHandle_t handle, int x_is_left, cublasOperation_t op_x,
                                                     int m, int n, int k, const double *X, int ldx, const double *V,
                                                     int ldv, double *C, int ldc, int x_id,

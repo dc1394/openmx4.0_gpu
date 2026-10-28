@@ -926,3 +926,16 @@ file-scope static は 300 → 296、関数数は 3,441 → 3,439（解析器の�
 参照組 12,377、関数内 static 277、環境変数名 257、getenv の直接呼び出し 0 です。残る 1 件の static は、
 約 900 か所の呼び出し側がハンドルを持たない元の API を使い続けるための「現在の入力ファイル」であり、
 呼び出し側がハンドルを渡す形へ移すときに消えます。
+
+## gpusolver2 の行列積の GEMMul8 化と COSMA タイル上限の修正（2026-10-28）
+
+`elpa_cosma_bridge.c` の `gs2_gemm_init_once` が COSMA のタイル上限を環境レジストリの写し
+（起動時に取るので、ブリッジ自身が後から `setenv` する `COSMA_GPU_MAX_TILE_*` を「未設定」と報告する）から
+読んでいたため、`8bc12fa6`（2026-10-22）以降は COSMA の既定 5000 で GPU 作業領域を見積もり、大きな変換を
+ScaLAPACK（CPU）へ送っていました。利用者が設定していなければ、公開した上限（既定 1024）を使うようにしました。
+COSMA の Tiled-MM の倍精度・複素倍精度タイル積は、スタック構築時のパッチ
+（`source/third_party/tiledmm-openmx-gemm-hook.patch`）で `gemmul8_bridge.cu` の
+`openmx_tiledmm_dgemm/zgemm` を呼び、一般 GEMM と同じ方針で GEMMul8 を使います
+（`OPENMX_GS2_GEMMUL8`、既定 1）。計測用の `OPENMX_GS2_FP32_PROBE`（ELPA の単精度解法の計時）も加わりました。
+関数数は 3,441 → 3,442（計測プローブ）、参照組 12,377、file-scope / 関数内 static は 296 / 277 のまま、
+環境変数名は 257 → 259（上記 2 件）、getenv の直接呼び出しは 0 です。基準とインベントリを再生成しました。

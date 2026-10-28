@@ -42,6 +42,10 @@ void elpa_eigenvectors_double(elpa_t, double *, double *, double *, int *);
 void elpa_eigenvectors_double_complex(elpa_t, double complex *, double *, double complex *, int *);
 void elpa_eigenvectors_a_h_a_d(elpa_t, double *, double *, double *, int *);
 void elpa_eigenvectors_a_h_a_dc(elpa_t, double complex *, double *, double complex *, int *);
+void elpa_eigenvectors_float(elpa_t, float *, float *, float *, int *);
+void elpa_eigenvectors_float_complex(elpa_t, float complex *, float *, float complex *, int *);
+void elpa_eigenvectors_a_h_a_f(elpa_t, float *, float *, float *, int *);
+void elpa_eigenvectors_a_h_a_fc(elpa_t, float complex *, float *, float complex *, int *);
 '''
 DRIVER = r'''
 #define _POSIX_C_SOURCE 200809L
@@ -122,6 +126,10 @@ void elpa_eigenvectors_double(elpa_t h, double *a, double *w, double *z, int *er
 void elpa_eigenvectors_double_complex(elpa_t h, double complex *a, double *w, double complex *z, int *err) { CHECK(0); }
 void elpa_eigenvectors_a_h_a_d(elpa_t h, double *a, double *w, double *z, int *err) { ++host_solves; *err=0; }
 void elpa_eigenvectors_a_h_a_dc(elpa_t h, double complex *a, double *w, double complex *z, int *err) { ++host_solves; *err=0; }
+void elpa_eigenvectors_float(elpa_t h, float *a, float *w, float *z, int *err) { CHECK(0); }
+void elpa_eigenvectors_float_complex(elpa_t h, float complex *a, float *w, float complex *z, int *err) { CHECK(0); }
+void elpa_eigenvectors_a_h_a_f(elpa_t h, float *a, float *w, float *z, int *err) { ++host_solves; *err=0; }
+void elpa_eigenvectors_a_h_a_fc(elpa_t h, float complex *a, float *w, float complex *z, int *err) { ++host_solves; *err=0; }
 
 int main(int argc, char **argv) {
     MPI_Init(&argc, &argv);
@@ -275,8 +283,12 @@ def rank_map():
 
 
 def main():
+    # The former "mixed-elpa"/"mixed-gemm" cases (one rank forcing the kernel
+    # side through its own environment) are obsolete: the environment
+    # registry (openmx_env.c) gives every rank the values of rank 0, so the
+    # grid cannot disagree and the bridge no longer has a stop for it.
     cases = ["cap", "block", "mod", "uuid", "allocation", "query", "grid-change", "grid-cache-skew",
-             "overflow", "mixed-elpa", "mixed-gemm", "cpu-dispatch", "handle-errors", "block-change",
+             "overflow", "cpu-dispatch", "handle-errors", "block-change",
              "asymmetric-handle-errors", "handle-cache-skew", "handle-comm-change", "handle-mode-skew"]
     failures = []
     with tempfile.TemporaryDirectory(prefix="openmx-gs2-memory-") as directory:
@@ -289,7 +301,8 @@ def main():
         command = shlex.split(os.environ.get("MPICC", "mpicc")) + [
             "-std=gnu11", "-O1", "-g", "-Wall", "-Wextra", "-ffunction-sections", "-fdata-sections",
             "-fsanitize=undefined", "-fno-sanitize-recover=all", "-Wl,--gc-sections",
-            "-I" + str(tmp), "-I" + str(ROOT / "source"), str(tmp / "check.c"), "-o", str(exe)]
+            "-I" + str(tmp), "-I" + str(ROOT / "source"), str(tmp / "check.c"),
+            str(ROOT / "source" / "openmx_env.c"), "-o", str(exe)]
         subprocess.run(command, check=True)
         for case in cases:
             command = shlex.split(os.environ.get("MPIEXEC", "mpirun --oversubscribe"))

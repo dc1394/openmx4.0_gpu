@@ -1,0 +1,62 @@
+OpenMX: route Tiled-MM's double and complex-double tile products through
+the application's GEMMul8 bridge.  The two wrappers call the weak symbols
+openmx_tiledmm_dgemm / openmx_tiledmm_zgemm (gemmul8_bridge.cu) when the
+application defines them and cuBLAS as before otherwise, so a standalone
+Tiled-MM and the ROCm backend are unchanged.  Applied to the extracted
+Tiled-MM source by third_party/build_gpusolver2_stack.sh (CUDA stack).
+
+--- a/src/Tiled-MM/tiled_mm.cpp
++++ b/src/Tiled-MM/tiled_mm.cpp
+@@ -29,6 +29,22 @@
+ using zfloat = std::complex<float>;
+ using zdouble = std::complex<double>;
+ 
++#if defined(TILED_MM_CUDA)
++// OpenMX: the application may supply replacements for the double and
++// complex-double tile products (its GEMMul8 bridge decides per call between
++// integer-tensor-core emulation and cuBLAS FP64).  The references are weak:
++// a standalone Tiled-MM takes cuBLAS as before.
++extern "C" blas_api::StatusType openmx_tiledmm_dgemm(
++    blas_api::HandleType handle, blas_api::OperationType op_a, blas_api::OperationType op_b,
++    int m, int n, int k, const double* alpha, const double* a, int lda,
++    const double* b, int ldb, const double* beta, double* c, int ldc) __attribute__((weak));
++extern "C" blas_api::StatusType openmx_tiledmm_zgemm(
++    blas_api::HandleType handle, blas_api::OperationType op_a, blas_api::OperationType op_b,
++    int m, int n, int k, const blas_api::ComplexDoubleType* alpha,
++    const blas_api::ComplexDoubleType* a, int lda, const blas_api::ComplexDoubleType* b, int ldb,
++    const blas_api::ComplexDoubleType* beta, blas_api::ComplexDoubleType* c, int ldc) __attribute__((weak));
++#endif
++
+ int get_first(char trans, int m, int n) {
+     return trans == 'N' ? m : n;
+ }
+@@ -212,6 +228,12 @@
+     int ld_a = get_first(trans_a, m , k);
+     int ld_b = get_first(trans_b, k , n);
+ 
++#if defined(TILED_MM_CUDA)
++    if (openmx_tiledmm_dgemm != nullptr) {
++        return openmx_tiledmm_dgemm(handle, op_a, op_b, m, n, k,
++                                    alpha, a, ld_a, b, ld_b, beta, c, lld_c);
++    }
++#endif
+     return blas_api::dgemm(handle, op_a, op_b, m, n, k,
+                          alpha, a, ld_a, b, ld_b, beta, c, lld_c);
+ }
+@@ -259,6 +281,16 @@
+     int ld_a = get_first(trans_a, m , k);
+     int ld_b = get_first(trans_b, k , n);
+ 
++#if defined(TILED_MM_CUDA)
++    if (openmx_tiledmm_zgemm != nullptr) {
++        return openmx_tiledmm_zgemm(handle, op_a, op_b, m, n, k,
++                         reinterpret_cast<const blas_api::ComplexDoubleType*>(alpha),
++                         reinterpret_cast<const blas_api::ComplexDoubleType*>(a), ld_a,
++                         reinterpret_cast<const blas_api::ComplexDoubleType*>(b), ld_b,
++                         reinterpret_cast<const blas_api::ComplexDoubleType*>(beta),
++                         reinterpret_cast<blas_api::ComplexDoubleType*>(c), lld_c);
++    }
++#endif
+     return blas_api::zgemm(handle, op_a, op_b, m, n, k,
+                          reinterpret_cast<const blas_api::ComplexDoubleType*>(alpha),
+                          reinterpret_cast<const blas_api::ComplexDoubleType*>(a), ld_a,

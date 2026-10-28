@@ -1,10 +1,10 @@
 {
 "scope": "global-state usage of the C translation units of the NVIDIA build",
-"revision": "26515343",
+"revision": "9451d780",
 "summary": {
 "translation units analysed": 286,
 "translation units not analysed": 0,
-"functions": 3439,
+"functions": 3442,
 "common-header objects (defined in openmx_globals.c)": 935,
 "common-header objects referenced by some function": 929,
 "common-header objects written by some function (direct or through)": 696,
@@ -12,7 +12,7 @@
 "objects with external linkage defined outside openmx_globals.c": 353,
 "file-scope statics": 296,
 "function-local statics": 277,
-"environment variables (names read, every unit)": 257,
+"environment variables (names read, every unit)": 259,
 "functions calling getenv directly (outside openmx_env.c)": 0,
 "environment names missing from the registry": 0
 },
@@ -14189,7 +14189,7 @@
 {
 "unit": "source/openmx_env.c",
 "name": "registry",
-"type": "[335 x %struct.OpenMXEnvEntry] [%struct.OpenMXEnvEntry { ptr @.str",
+"type": "[337 x %struct.OpenMXEnvEntry] [%struct.OpenMXEnvEntry { ptr @.str",
 "const": true
 },
 {
@@ -16724,6 +16724,12 @@
 ],
 "OPENMX_GS2_ELPA_SOLVER": [
 "source/elpa_cosma_bridge.c"
+],
+"OPENMX_GS2_FP32_PROBE": [
+"source/elpa_cosma_bridge.c"
+],
+"OPENMX_GS2_GEMMUL8": [
+"source/gemmul8_bridge.cu"
 ],
 "OPENMX_GS2_GEMM_GPU": [
 "source/elpa_cosma_bridge.c"

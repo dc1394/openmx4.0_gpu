@@ -30,9 +30,9 @@
 
 #define OPENMX_ENV_LIST(X) \
     X(EXT_COSMA_CPU_MAX_MEMORY, "COSMA_CPU_MAX_MEMORY", "mib", "global", "unset (COSMA's default)", "elpa_cosma_memory.cpp", "COSMA: host memory cap in MiB, read for the CPU fallback planner") \
-    X(EXT_COSMA_GPU_MAX_TILE_K, "COSMA_GPU_MAX_TILE_K", "int", "global", "5000", "elpa_cosma_bridge.c", "COSMA: Tiled-MM tile size, read to size the GPU GEMM workspace") \
-    X(EXT_COSMA_GPU_MAX_TILE_M, "COSMA_GPU_MAX_TILE_M", "int", "global", "5000", "elpa_cosma_bridge.c", "COSMA: Tiled-MM tile size, read to size the GPU GEMM workspace") \
-    X(EXT_COSMA_GPU_MAX_TILE_N, "COSMA_GPU_MAX_TILE_N", "int", "global", "5000", "elpa_cosma_bridge.c", "COSMA: Tiled-MM tile size, read to size the GPU GEMM workspace") \
+    X(EXT_COSMA_GPU_MAX_TILE_K, "COSMA_GPU_MAX_TILE_K", "int", "global", "", "elpa_cosma_bridge.c", "COSMA: Tiled-MM tile size, read to size the GPU GEMM workspace") \
+    X(EXT_COSMA_GPU_MAX_TILE_M, "COSMA_GPU_MAX_TILE_M", "int", "global", "", "elpa_cosma_bridge.c", "COSMA: Tiled-MM tile size, read to size the GPU GEMM workspace") \
+    X(EXT_COSMA_GPU_MAX_TILE_N, "COSMA_GPU_MAX_TILE_N", "int", "global", "", "elpa_cosma_bridge.c", "COSMA: Tiled-MM tile size, read to size the GPU GEMM workspace") \
     X(EXT_COSMA_GPU_STREAMS, "COSMA_GPU_STREAMS", "int", "global", "2", "elpa_cosma_bridge.c", "COSMA: GPU streams, read to size the GPU GEMM workspace") \
     X(EXT_CUBLAS_MIN_FREE_AFTER_MB, "CUBLAS_MIN_FREE_AFTER_MB", "mib", "global", "", "Divide_Conquer.c,backends/hip/src/Divide_Conquer.c", "device memory to keep free after a cuBLAS workspace (OPENMX_CUBLAS_MIN_FREE_AFTER_MB wins)") \
     X(EXT_DC_GPU_MAX_RANKS_PER_DEVICE, "DC_GPU_MAX_RANKS_PER_DEVICE", "uint", "global", "", "backends/hip/src/Divide_Conquer.c", "Alias of OPENMX_DC_GPU_MAX_RANKS_PER_DEVICE.") \
@@ -239,6 +239,8 @@
     X(GRID_PRECISION, "OPENMX_GRID_PRECISION", "string", "global", "df / fp64", "backends/hip/src/set_hamiltonian_hip.cu,grid_precision.c", "default df / fp64: The arithmetic of the grid-integral kernels (the dVH+Vxc+VNA matrix elements and the density): df = double-float, FP32 arithmetic with error-free t...") \
     X(GS2_ELPA_GPU, "OPENMX_GS2_ELPA_GPU", "flag", "global", "", "elpa_cosma_bridge.c", "") \
     X(GS2_ELPA_SOLVER, "OPENMX_GS2_ELPA_SOLVER", "int", "global", "2", "elpa_cosma_bridge.c", "default 2: ELPA solver used by gpusolver2: 1 = 1stage, anything else = 2stage (default)") \
+    X(GS2_FP32_PROBE, "OPENMX_GS2_FP32_PROBE", "int", "global", "0", "elpa_cosma_bridge.c", "") \
+    X(GS2_GEMMUL8, "OPENMX_GS2_GEMMUL8", "flag", "global", "1", "gemmul8_bridge.cu", "") \
     X(GS2_GEMM_GPU, "OPENMX_GS2_GEMM_GPU", "flag", "global", "", "elpa_cosma_bridge.c", "") \
     X(GS2_GPU_FACTOR, "OPENMX_GS2_GPU_FACTOR", "int", "global", "3", "elpa_cosma_bridge.c", "") \
     X(GS2_GPU_FIXED_MB, "OPENMX_GS2_GPU_FIXED_MB", "mib", "global", "128", "elpa_cosma_bridge.c", "") \

@@ -2420,9 +2420,11 @@ decimal numbers.</p>
 <tr><td><code>OPENMX_MIXH_GPU_RESERVE_MB</code> / <code>_VERBOSE</code></td><td>max(total/10,1536) / 0</td><td>GPU-tier reserve / print the tier decision</td></tr>
 <tr><td colspan="3" style="background:#f0f4fa;"><b>gpusolver2 (ELPA-GPU / COSMA)</b></td></tr>
 <tr><td><code>OPENMX_GS2_ELPA_SOLVER</code></td><td>2</td><td>ELPA solver used by gpusolver2: 1 = 1stage, anything else = 2stage (default)</td></tr>
+<tr><td><code>OPENMX_GS2_FP32_PROBE</code></td><td>0</td><td>Measurement probe: <b>1</b> replaces the ELPA double solves of gpusolver2 by ELPA's single-precision solve of all eigenpairs, timed by <code>OPENMX_GS2_PROFILE</code> as <code>op=elpa32</code>, to size the FP32 basis of a refined solve. The results of such a run are only single-precision accurate (a warning says so).</td></tr>
 <tr><td><code>OPENMX_CLUSTER_GS2_FALLBACK</code></td><td>auto</td><td>Capacity fallback of <code>gpusolver</code> in the cluster solvers when the dense solve does not fit on one GPU: MAGMA on the GPUs of rank 0's node first, then (multi-node runs) the distributed gpusolver2 path on every rank of the run (a spin-polarized collinear run solves its spins in turn on a grid over all ranks; ELPA/COSMA use the GPU of each rank), with a collective GPU admission. <code>OPENMX_CLUSTER_HOST_MEM_AVAILABLE_MB</code> overrides the host memory of the MAGMA test. <code>off</code> = never the distributed step, <code>on</code> = also on one node, <code>force</code> = skip MAGMA. Forced MAGMA (gpusolver3, <code>OPENMX_MGPU_MEMORY=host</code>) never takes the distributed step</td></tr>
 <tr><td><code>OPENMX_GS2_HOST_RESERVE_MB</code></td><td>a quarter of the node memory (at least 4096)</td><td>gpusolver2 bridge (explicit or as the capacity fallback): host memory that must stay free on every node after COSMA allocates the buffers it keeps for the rest of the run (memory pool and COSTA send/receive buffers, estimated from COSMA's own strategy); otherwise the transform runs on ScaLAPACK</td></tr>
 <tr><td><code>OPENMX_GS2_ELPA_GPU</code> / <code>OPENMX_GS2_GEMM_GPU</code></td><td>auto</td><td>Force the ELPA eigensolver / the COSMA matrix products of gpusolver2 onto the GPU (<b>1</b>) or onto the CPU kernels / ScaLAPACK (<b>0</b>); unset = the memory verdict decides. The setting reaches every rank from rank 0, so the grid cannot disagree.</td></tr>
+<tr><td><code>OPENMX_GS2_GEMMUL8</code></td><td>1</td><td>The local tile products of the COSMA transforms of gpusolver2 go through the GEMMul8 bridge (<b>1</b>, default): GEMMul8 on GPUs with weak FP64 (the GeForce default), native FP64 on A100/H100, <code>scf.gemmul8.enable</code> and the workspace guards as for every other product. <b>0</b> keeps COSMA on cuBLAS FP64 (CUDA build; the ROCm Tiled-MM keeps rocBLAS).</td></tr>
 <tr><td><code>OPENMX_GS2_GPU_FACTOR</code> / <code>_FIXED_MB</code></td><td>3 / 128</td><td>Device-memory model of the ELPA GPU solver: FACTOR copies of the local block-cyclic matrix plus a fixed head in MiB (calibrated to about 2 × local + 110 MB per rank).</td></tr>
 <tr><td><code>OPENMX_GS2_GPU_RESERVE_MB</code></td><td>512</td><td>Free device memory that must remain after the ELPA/COSMA allocations for a GPU verdict.</td></tr>
 <tr><td><code>OPENMX_GS2_GPU_TILE</code> / <code>COSMA_GPU_MAX_TILE_M</code> / <code>_N</code> / <code>_K</code> / <code>COSMA_GPU_STREAMS</code></td><td>1024 / 5000 / 5000 / 5000 / 2</td><td>Tiled-MM tile cap published to COSMA (<code>COSMA_GPU_MAX_TILE_M/N/K</code> are set to it when unset; a user-set value wins) and COSMA's stream count; both size the GPU GEMM workspace estimate.</td></tr>
@@ -2644,6 +2646,15 @@ selected NVHPC/MPI toolchain; HIP needs MPI compatible with ROCm flang (§9.7).<
   (SetH/density/force/mixing GPU paths, CWF post-processing, …) behaves exactly like gpusolver
   (internally <code>scf_eigen_lib_flag</code> stays GPUSOLVER and <code>gpusolver2_flag</code> switches
   just the diagonalization). Without a GPU the run demotes to ELPA2, as with gpusolver.</li>
+  <li><b>Products through the GEMMul8 bridge</b> — the double and complex-double tile products of
+  COSMA's Tiled-MM backend call <code>openmx_tiledmm_dgemm/zgemm</code> (gemmul8_bridge.cu) instead of
+  cuBLAS when the application is linked in (a patch of Tiled-MM that build_gpusolver2_stack.sh applies,
+  <code>third_party/tiledmm-openmx-gemm-hook.patch</code>, CUDA stack only), so the transforms follow the
+  general-GEMM policy of §10.3: GEMMul8 on GPUs with weak FP64, native FP64 on A100/H100,
+  <code>scf.gemmul8.enable</code> and the workspace guards; <code>OPENMX_GS2_GEMMUL8=0</code> keeps cuBLAS.
+  The eigensolves stay in FP64: a distributed FP32 + Ogita-Aishima correction would need at least four
+  n×n×n COSMA products per step, and on the measured sizes one such product costs as much as the FP32
+  solve saves (<code>OPENMX_GS2_FP32_PROBE=1</code> times the FP32 solve alone).</li>
   <li><b>Why not DLA-Future (for the record)</b> — the feature was first implemented and tested with
   DLA-Future + COSMA, but DLA-Future's nonblocking collectives reliably break on the HPC-X Open MPI 4.1
   with 3+ ranks (MPI_ERR_TRUNCATE/hangs; PMPI traces confirmed our collective streams were correct; only
