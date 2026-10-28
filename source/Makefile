@@ -309,8 +309,8 @@ OBJS    = openmx_grid_assembly.o openmx.o openmx_common.o Input_std.o Inputtools
           Overlap_Cluster_NC_Ss2.o Overlap_Band_NC_Ss2.o Overlap_Cluster.o Overlap_Cluster_Ss.o Overlap_Cluster_LNO_Ss.o \
           Set_ContMat_Cluster_LNO.o Hamiltonian_Band.o Matrix_Band_LNO.o Overlap_Band.o Hamiltonian_Cluster_NC.o \
           Hamiltonian_Band_NC.o Hamiltonian_Cluster_SO.o Get_OneD_HS_Col.o \
-          SetPara_DFT.o XC_Ceperly_Alder.o XC_CA_LSDA.o \
-          XC_PW92C.o XC_PBE.o XC_EX.o DFT.o Mixing_DM.o Mixing_H.o Mixing_V.o Force.o Stress.o Poisson.o Poisson_ESM.o \
+          SetPara_DFT.o \
+          DFT.o Mixing_DM.o Mixing_H.o Mixing_V.o Force.o Stress.o Poisson.o Poisson_ESM.o \
           Cluster_DFT_Col.o Cluster_DFT_NonCol.o Cluster_DFT_Dosout.o Cluster_DFT_ON2.o Cluster_DFT_Col_LNO.o \
           Band_DFT_Col.o Band_DFT_NonCol.o Band_DFT_NonCol_GB.o Band_DFT_kpath.o Band_DFT_kpath_LNO.o Band_DFT_MO.o \
           Cluster_DFT_Col_CWF.o Cluster_DFT_NonCol_CWF.o Band_DFT_Col_CWF.o Band_DFT_NonCol_CWF.o \
@@ -643,16 +643,6 @@ Get_OneD_HS_Col.o: Get_OneD_HS_Col.c openmx_common.h
 #  
 SetPara_DFT.o: SetPara_DFT.c openmx_common.h openmx_core_pao_file.h openmx_core_vps_file.h openmx_core_atomic_density.h openmx_core_quadrature.h
 	$(CC) -c SetPara_DFT.c
-XC_Ceperly_Alder.o: XC_Ceperly_Alder.c openmx_common.h
-	$(CC) -c XC_Ceperly_Alder.c
-XC_CA_LSDA.o: XC_CA_LSDA.c openmx_common.h
-	$(CC) -c XC_CA_LSDA.c
-XC_PW92C.o: XC_PW92C.c openmx_common.h
-	$(CC) -c XC_PW92C.c
-XC_PBE.o: XC_PBE.c openmx_common.h
-	$(CC) -c XC_PBE.c
-XC_EX.o: XC_EX.c openmx_common.h
-	$(CC) -c XC_EX.c
 #
 # SCF
 #

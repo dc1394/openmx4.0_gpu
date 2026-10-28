@@ -3,6 +3,7 @@
 #include <math.h>
 #include <time.h>
 #include "openmx_common.h"
+#include "openmx_xc.h"
 #include "openmx_env.h"
 #include "openmx_target.h"
 #include "openmx_gpu_workers.h"
@@ -898,6 +899,9 @@ void Set_XC_Grid(int SCF_iter, int XC_P_switch, int XC_switch,
   double Ec_unif[1],Vc_unif[2],Exc[2],Vxc[2];
   double Ex[2],Ec[2];  
   double Ex_unif[1],Vx_unif[2],tot_den;
+  /* LDA+U cFLL (dc_Type 3 or 4 after the first SCF step): the functionals
+     see the spin-averaged density, as the local exchange branches below do */
+  const int symmetrize_spins = (dc_Type==3 || dc_Type==4) && SCF_iter>1;
   double ED[2],GDENS[3][2];
   double DEXDD[2],DECDD[2];
   double DEXDGD[3][2],DECDGD[3][2];
@@ -1278,7 +1282,7 @@ void Set_XC_Grid(int SCF_iter, int XC_P_switch, int XC_switch,
 	  tot_den += PCCDensity_Grid_D[0][MN] + PCCDensity_Grid_D[1][MN];
 	}
 
-	tmp0 = XC_Ceperly_Alder(tot_den,XC_P_switch);
+	tmp0 = openmx_xc_ceperley_alder(tot_den,XC_P_switch);
 
 	Vxc0[MN] = tmp0;
 	Vxc1[MN] = tmp0;
@@ -1309,7 +1313,7 @@ void Set_XC_Grid(int SCF_iter, int XC_P_switch, int XC_switch,
 	  ED[1] += PCCDensity_Grid_D[1][MN];
 	}
 
-	XC_CA_LSDA(SCF_iter, ED[0], ED[1], Exc, Ex, Ec, XC_P_switch);
+	openmx_xc_ca_lsda(ED[0], ED[1], XC_P_switch, symmetrize_spins, Exc, Ex, Ec);
 
 	Vxc0[MN] = Exc[0];
 	Vxc1[MN] = Exc[1];
@@ -1342,27 +1346,27 @@ void Set_XC_Grid(int SCF_iter, int XC_P_switch, int XC_switch,
 
 	  if (XC_P_switch==0){
 
-	    XC_PW92C(SCF_iter,ED,Ec_unif,Vc_unif);
+	    openmx_xc_pw92_correlation(ED,symmetrize_spins,Ec_unif,Vc_unif);
 
 	    Vxc[0] = Vc_unif[0];
 	    Vxc[1] = Vc_unif[1];
 	    Exc[0] = Ec_unif[0];
 
             if((dc_Type==3 || dc_Type==4) && SCF_iter>1){  /* for LDA+U with cFLL by S.Ryee */
-  	      XC_EX(1,ED[0]+ED[1],ED,Ex_unif,Vx_unif);
+  	      openmx_xc_lda_exchange(ED[0]+ED[1],Ex_unif,Vx_unif);
 	      Vxc[0] = Vxc[0] + Vx_unif[0];
 	      Exc[1] = 2.0*((ED[0]+ED[1])/2.0)*Ex_unif[0];
 
-	      XC_EX(1,ED[0]+ED[1],ED,Ex_unif,Vx_unif);
+	      openmx_xc_lda_exchange(ED[0]+ED[1],Ex_unif,Vx_unif);
 	      Vxc[1] += Vx_unif[0];
 	      Exc[1] += 2.0*((ED[0]+ED[1])/2.0)*Ex_unif[0];
             }
             else{
-  	      XC_EX(1,2.0*ED[0],ED,Ex_unif,Vx_unif);
+  	      openmx_xc_lda_exchange(2.0*ED[0],Ex_unif,Vx_unif);
 	      Vxc[0] = Vxc[0] + Vx_unif[0];
 	      Exc[1] = 2.0*ED[0]*Ex_unif[0];
 
-	      XC_EX(1,2.0*ED[1],ED,Ex_unif,Vx_unif);
+	      openmx_xc_lda_exchange(2.0*ED[1],Ex_unif,Vx_unif);
 	      Vxc[1] += Vx_unif[0];
 	      Exc[1] += 2.0*ED[1]*Ex_unif[0];
             }
@@ -1374,22 +1378,22 @@ void Set_XC_Grid(int SCF_iter, int XC_P_switch, int XC_switch,
 	  }
 
 	  else if (XC_P_switch==1){
-	    XC_PW92C(SCF_iter,ED,Ec_unif,Vc_unif);
+	    openmx_xc_pw92_correlation(ED,symmetrize_spins,Ec_unif,Vc_unif);
 	    Vxc0[MN] = Vc_unif[0];
 	    Vxc1[MN] = Vc_unif[1];
            
             if((dc_Type==3 || dc_Type==4) && SCF_iter>1){  /* for LDA+U with cFLL by S.Ryee */
-	      XC_EX(1,ED[0]+ED[1],ED,Ex_unif,Vx_unif);
+	      openmx_xc_lda_exchange(ED[0]+ED[1],Ex_unif,Vx_unif);
 	      Vxc0[MN] = Vxc0[MN] + Vx_unif[0];
 
-	      XC_EX(1,ED[0]+ED[1],ED,Ex_unif,Vx_unif);
+	      openmx_xc_lda_exchange(ED[0]+ED[1],Ex_unif,Vx_unif);
 	      Vxc1[MN] = Vxc1[MN] + Vx_unif[0];
             }
             else{
-	      XC_EX(1,2.0*ED[0],ED,Ex_unif,Vx_unif);
+	      openmx_xc_lda_exchange(2.0*ED[0],Ex_unif,Vx_unif);
 	      Vxc0[MN] = Vxc0[MN] + Vx_unif[0];
 
-	      XC_EX(1,2.0*ED[1],ED,Ex_unif,Vx_unif);
+	      openmx_xc_lda_exchange(2.0*ED[1],Ex_unif,Vx_unif);
 	      Vxc1[MN] = Vxc1[MN] + Vx_unif[0];
             }
 
@@ -1397,27 +1401,27 @@ void Set_XC_Grid(int SCF_iter, int XC_P_switch, int XC_switch,
 
 	  else if (XC_P_switch==2){
 
-	    XC_PW92C(SCF_iter,ED,Ec_unif,Vc_unif);
+	    openmx_xc_pw92_correlation(ED,symmetrize_spins,Ec_unif,Vc_unif);
 
 	    Vxc[0] = Vc_unif[0];
 	    Vxc[1] = Vc_unif[1];
 	    Exc[0] = Ec_unif[0];
 
             if((dc_Type==3 || dc_Type==4) && SCF_iter>1){  /* for LDA+U with cFLL by S.Ryee */
-	      XC_EX(1,ED[0]+ED[1],ED,Ex_unif,Vx_unif);
+	      openmx_xc_lda_exchange(ED[0]+ED[1],Ex_unif,Vx_unif);
 	      Vxc[0]  = Vxc[0] + Vx_unif[0];
 	      Exc[1]  = 2.0*((ED[0]+ED[1])/2.0)*Ex_unif[0];
 
-	      XC_EX(1,ED[0]+ED[1],ED,Ex_unif,Vx_unif);
+	      openmx_xc_lda_exchange(ED[0]+ED[1],Ex_unif,Vx_unif);
 	      Vxc[1] += Vx_unif[0];
 	      Exc[1] += 2.0*((ED[0]+ED[1])/2.0)*Ex_unif[0];
             }
             else{
-	      XC_EX(1,2.0*ED[0],ED,Ex_unif,Vx_unif);
+	      openmx_xc_lda_exchange(2.0*ED[0],Ex_unif,Vx_unif);
 	      Vxc[0]  = Vxc[0] + Vx_unif[0];
 	      Exc[1]  = 2.0*ED[0]*Ex_unif[0];
 
-	      XC_EX(1,2.0*ED[1],ED,Ex_unif,Vx_unif);
+	      openmx_xc_lda_exchange(2.0*ED[1],Ex_unif,Vx_unif);
 	      Vxc[1] += Vx_unif[0];
 	      Exc[1] += 2.0*ED[1]*Ex_unif[0];
             }
@@ -1514,7 +1518,7 @@ void Set_XC_Grid(int SCF_iter, int XC_P_switch, int XC_switch,
 	    ED[1] += PCCDensity_Grid_D[1][MN];
 	  }
 
-	  XC_PBE(SCF_iter, ED, GDENS, Exc, DEXDD, DECDD, DEXDGD, DECDGD);
+	  openmx_xc_pbe(ED, GDENS, symmetrize_spins, Exc, DEXDD, DECDD, DEXDGD, DECDGD);
 
 	  /* XC energy density */
 	  if      (XC_P_switch==0){

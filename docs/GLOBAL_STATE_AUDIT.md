@@ -906,3 +906,12 @@ file-scope / 関数内 static は 300 / 277 のまま、環境変数名は 254 �
 `OPENMX_NC_DM_HOST_ONEPASS=0` では従来のループのままです。参照組は 12,369 → 12,379（新しい関数の 10 組）、
 関数数 3,438 → 3,446、file-scope / 関数内 static は 300 / 277 のまま、環境変数名は 256 → 257、
 getenv の直接呼び出しは 0 です。CTest `core-host-energy-nc` が両方の従来ループの転記との bit 一致を確かめます。
+
+## 交換相関汎関数の独立化（第110段階、2026-10-28）
+
+`XC_Ceperly_Alder.c`、`XC_CA_LSDA.c`、`XC_PW92C.c`、`XC_EX.c`、`XC_PBE.c` の 5 関数が本体を離れ、
+`modules/xc/` の `OpenMX::xc` になりました（元ソースは試験の参照として `modules/xc/tests/fixtures/` へ
+移動）。これらが読んでいた唯一の大域変数 `dc_Type` は、呼び出し側の `Set_XC_Grid()` が
+`symmetrize_spins` を 1 回求めて渡す形になり、ライブラリ側は大域変数も static も持ちません。
+関数数は 3,446 → 3,441、参照組は 12,379 → 12,377、file-scope / 関数内 static は 300 / 277 のまま、
+環境変数名 257、getenv の直接呼び出しは 0 です。基準とインベントリを再生成しました。

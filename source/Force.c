@@ -13,6 +13,7 @@
 #include "mpi.h"
 #include "openmx_projector_exchange.h"
 #include "openmx_common.h"
+#include "openmx_xc.h"
 #include "openmx_env.h"
 #include "openmx_force_workspace.h"
 #include "openmx_core_force_recovery.h"
@@ -3603,7 +3604,7 @@ static double Force_Impl(OpenMXHamiltonianGpuState *hamiltonian_state, OpenMXDen
         if (PCC_switch == 1) {
             tot_den += PCCDensity_Grid_B[0][BN_AB] + PCCDensity_Grid_B[1][BN_AB];
         }
-        RefVxc_Grid_B[BN_AB] = XC_Ceperly_Alder(tot_den, XC_P_switch);
+        RefVxc_Grid_B[BN_AB] = openmx_xc_ceperley_alder(tot_den, XC_P_switch);
     }
 
     Data_Grid_Copy_B2C_1(RefVxc_Grid_B, RefVxc_Grid);

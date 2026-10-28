@@ -3000,13 +3000,6 @@ void Set_XC_Grid(int SCF_iter, int XC_P_switch, int XC_switch,
                  double ***dDen_Grid);
 
 double Pot_NeutralAtom(const OpenMXAtomicViews *atomic, int ct_AN, double Gx, double Gy, double Gz);
-double XC_Ceperly_Alder(double den, int P_switch);
-void XC_CA_LSDA(int SCF_iter, double den0, double den1, double XC[2], double X[2], double C[2], int P_switch);
-void XC_PW92C(int SCF_iter, double dens[2], double Ec[1], double Vc[2]);
-void XC_PBE(int SCF_iter, double dens[2], double GDENS[3][2], double Exc[2],
-            double DEXDD[2], double DECDD[2],
-            double DEXDGD[3][2], double DECDGD[3][2]);
-void XC_EX(int NSP, double DS0, double DS[2], double EX[1], double VX[2]);
 void Voronoi_Charge();
 void Voronoi_Orbital_Moment(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electronic);
 

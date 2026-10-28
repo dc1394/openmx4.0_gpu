@@ -14,6 +14,7 @@
 #include <math.h>
 #include <time.h>
 #include "openmx_common.h"
+#include "openmx_xc.h"
 #include "openmx_quadrature.h"
 #include "openmx_stress_workspace.h"
 #include "openmx_host_simd.h"
@@ -668,7 +669,7 @@ static double Stress_owned(const OpenMXForceWorkspace *halo,OpenMXCoreContext *c
       if (PCC_switch==1) {
 	tot_den += PCCDensity_Grid_B[0][BN_AB] + PCCDensity_Grid_B[1][BN_AB];
       }
-      RefVxc_Grid_B[BN_AB] = XC_Ceperly_Alder(tot_den,XC_P_switch);
+      RefVxc_Grid_B[BN_AB] = openmx_xc_ceperley_alder(tot_den,XC_P_switch);
     }
   
     Data_Grid_Copy_B2C_1( RefVxc_Grid_B,  RefVxc_Grid  );
@@ -680,7 +681,7 @@ static double Stress_owned(const OpenMXForceWorkspace *halo,OpenMXCoreContext *c
     XC_P_switch = 0;
     for (BN=0; BN<My_NumGridB_AB; BN++){
       aden = 2.0*ADensity_Grid_B[BN];
-      tmp1 = XC_Ceperly_Alder(aden,XC_P_switch);
+      tmp1 = openmx_xc_ceperley_alder(aden,XC_P_switch);
       My_EXC += aden*tmp1;
     }
     
@@ -784,7 +785,7 @@ static double Stress_owned(const OpenMXForceWorkspace *halo,OpenMXCoreContext *c
 	    if (Exc0_correction_flag==1){
 
 	      double exc0;
-	      /*exc0 = XC_Ceperly_Alder(tmp2,0)*F_Vxc_flag;*/
+	      /*exc0 = openmx_xc_ceperley_alder(tmp2,0)*F_Vxc_flag;*/
 	      /*tmp3 = RefVxc_Grid[MNc]*tmp2*F_Vxc_flag;*/
 	      /*tmp3 = tmp2*exc0;*/
 
@@ -1188,10 +1189,10 @@ static double Stress_owned(const OpenMXForceWorkspace *halo,OpenMXCoreContext *c
 	      } /* h_AN */
 
 	      /* calculate the CA-LDA exchange-correlation energy density */
-	      exc0 = XC_Ceperly_Alder(den,0);
+	      exc0 = openmx_xc_ceperley_alder(den,0);
 
 	      /* calculate the CA-LDA exchange-correlation potential */
-	      dexc0 = XC_Ceperly_Alder(den,3);
+	      dexc0 = openmx_xc_ceperley_alder(den,3);
 
 	      /* Lebedev quadrature */
 

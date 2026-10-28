@@ -7288,3 +7288,50 @@ AMD/A100/H100/ARM実機とIntelコンパイラ版OpenMXとの性能比較は今�
 
 CPU専用C60の経過時間は、変更前 6.38141, 6.37921, 7.43332 秒、変更後 6.37903, 6.37995, 6.42932 秒でした。
 変更前3回目の長い計時も除外せず保存し、事前に定めた各3回の中央値で比較しています。
+
+## 第110段階: 交換相関汎関数を独立 OpenMX::xc へ移行
+
+`modules/xc/` に `OpenMX::xc` / `OpenMXXc` 0.1.0 を加えました。Ceperley–Alder LDA（Perdew–Zunger 形）と
+その LSDA、Perdew–Wang 92 相関、一様電子ガスの Slater 交換、スピン分解した GGA-PBE を、
+大域変数も状態も確保も持たない純粋な関数として C++（`openmx::xc`）と C（`openmx_xc_*`）から使えます。
+元の `XC_Ceperly_Alder.c`、`XC_CA_LSDA.c`、`XC_PW92C.c`、`XC_EX.c`、`XC_PBE.c` は演算の順序と定数を
+保って移し、密度の下限（1e-14 bohr^-3）とスピン分極の clamp も含めて、縮約なしでコンパイルした元の
+ルーチンと bit 一致します。5 つの元ソースは `modules/xc/tests/fixtures/` へ移動して凍結し（削除はせず）、
+試験の参照にしています。
+
+唯一の大域変数だった `dc_Type`（LDA+U の cFLL 規則: `(dc_Type==3 || dc_Type==4) && SCF_iter>1` で
+両スピンに平均密度を見せ分極を 0 にする）は、引数 `symmetrize_spins` になりました。本体では
+`Set_XC_Grid()` がこの条件を 1 回だけ求めて渡します。`XC_EX` の NSP=2 分岐は呼び出し側が存在せず
+（未初期化のスピン密度を読む経路でした）、公開していません。`XC_PW92C` と `XC_PBE` が入力密度配列を
+下限値で書き換える挙動は、C API では元のまま維持し、C++ API では戻り値 `density_used` として返します。
+未知の量の指定や NULL の出力には、未初期化の値を書く代わりに 0 を返します。
+
+本体の接続は Core 経由です。`core/CMakeLists.txt` が `modules/xc` を `add_subdirectory` し、
+パッケージのオブジェクトを `$<TARGET_OBJECTS:openmx_xc>` として `libopenmx_core.so` に同梱するので、
+Makefile 利用者（CUDA/HIP）も CPU 専用の CMake ビルドも `openmx_core.mk` の既存のリンクだけで C ABI を
+解決します。本体側は `source/openmx_xc.h`（`modules/xc/include/openmx/xc/xc.h` への転送ヘッダー）を通して
+`Set_XC_Grid.c`（CUDA 版と HIP 版）、`Force.c`（同）、`Stress.c`、`Total_Energy.c` が呼び出し、
+`openmx_common.h` の 5 つのプロトタイプ、両 Makefile のオブジェクトと規則、HIP の `sources.json` の
+共有ソース項目を取り除きました。`Set_XC_Grid.c` の OpenACC デバイス側コピー（`SXG_XC_PW92C`、
+`SXG_XC_PBE`）は従来のまま本体に残ります。GitHub Actions には `basis` と同じ行列
+（ubuntu gcc、ubuntu clang + ASan/UBSan、macos-14）の `xc` ジョブを加えました。
+
+検証:
+
+- 独立パッケージの 6 試験（`xc-legacy`、`xc-analytic`、`xc-derivatives`、`xc-invalid`、`xc-c-api`、
+  `xc-package-consumer`）が GCC と Clang + ASan/UBSan で成功しました。`xc-legacy` は密度の下限前後、
+  rs<1 と rs≥1、負の密度、分極の clamp、対称化の有無（`dc_Type`/`SCF_iter` の 5 組）、4 種類の勾配の組
+  （0、1e-15、密度の 1 割、30 bohr^-4）にわたる 296,230 組の出力を凍結した旧 C と bit 比較します。
+- `xc-analytic` は Slater 交換の閉じた式と 4/3 則、PW92 論文の式 (10)、LSDA の非分極極限と
+  完全分極の 2^{1/3} 則、勾配ゼロでの PBE の Slater + PW92 への帰着（エネルギーとポテンシャル）を、
+  `xc-derivatives` は LDA/LSDA/PW92 のポテンシャルと PBE の密度・勾配導関数を中心差分と比べます。
+- CPU 専用の CMake ビルド（GCC/OpenMPI/OpenBLAS）で本体と `openmx_cpu_numerics` がビルドでき、
+  CI と同じ CTest 部分集合と xc の 6 試験が成功しました（`cpu-numerical-toolchain` は、このマシンの
+  古いビルドディレクトリが Intel の mpiexec で OpenMPI のバイナリを起動する既知の局所的な理由で失敗します）。
+  HIP 版のステージングと構文検査も成功しています。大域変数監査の基準とインベントリを再生成しました。
+- CMake ドライバで再ビルドした nvc 版（`work/openmx`）の runtest は GPU モードで最大 |ΔUtot| 5.1e-11
+  （C60）、|ΔForce| 8e-12、CPU モードで 5.7e-11（Methane）、7e-12、CPU legacy SIMD モードで 2.31e-10
+  （Methane）、7e-12 でした。移行前のバイナリ（`source/openmx`）との直接比較では、sidia333（GGA-PBE、
+  3 SCF + Opt、CPU モード）の `.ene` と `.md`、Methane（CPU の auto / legacy 両モード）の `.ene` が
+  一致し、legacy モードの Methane の偏差は移行前から同じ値です。CPU 専用ビルドでは、OpenMX 本体と
+  独立パッケージのどちらも浮動小数点の縮約を行わないため、ライブラリの結果は元ルーチンと bit 一致します。

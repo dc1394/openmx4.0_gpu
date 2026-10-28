@@ -71,3 +71,4 @@ $(OBJS) openmx_api.o: openmx_core_vna_simd_workspace.h ../core/include/openmx_co
 $(OBJS) openmx_api.o: openmx_core_radial_views.h ../core/include/openmx_core_radial_views.h openmx_core_vna_host_tables.h ../core/include/openmx_core_vna_host_tables.h
 
 $(OBJS) openmx_api.o: openmx_basis_orbital_radial.h ../modules/basis/include/openmx/basis/orbital_radial.h ../modules/basis/include/openmx/basis/detail/orbital_radial.h
+Set_XC_Grid.o Force.o Stress.o Total_Energy.o: openmx_xc.h ../modules/xc/include/openmx/xc/xc.h
