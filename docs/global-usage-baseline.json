@@ -1,18 +1,18 @@
 {
 "scope": "global-state usage of the C translation units of the NVIDIA build",
-"revision": "9451d780",
+"revision": "8161ec64",
 "summary": {
 "translation units analysed": 286,
 "translation units not analysed": 0,
-"functions": 3442,
+"functions": 3449,
 "common-header objects (defined in openmx_globals.c)": 935,
 "common-header objects referenced by some function": 929,
 "common-header objects written by some function (direct or through)": 696,
-"function-object edges (common header)": 12377,
+"function-object edges (common header)": 12378,
 "objects with external linkage defined outside openmx_globals.c": 353,
 "file-scope statics": 296,
 "function-local statics": 277,
-"environment variables (names read, every unit)": 259,
+"environment variables (names read, every unit)": 260,
 "functions calling getenv directly (outside openmx_env.c)": 0,
 "environment names missing from the registry": 0
 },
@@ -12254,6 +12254,7 @@
 "refine_blocks_ensure@source/eigen_refine_gpu.c->level_stdout",
 "refine_fp32_attempt@source/eigen_refine_gpu.c->level_stdout",
 "refine_fp32_solve@source/eigen_refine_gpu.c->level_stdout",
+"refine_fp32_update_prepare@source/eigen_refine_gpu.c->level_stdout",
 "refine_nonfinite@source/eigen_refine_gpu.c->level_stdout",
 "rtv_c_by_rtv@source/Unfolding_Bands.c->rtv",
 "run_main_with_context@source/Runtest.c->CellListAtom",
@@ -14189,7 +14190,7 @@
 {
 "unit": "source/openmx_env.c",
 "name": "registry",
-"type": "[337 x %struct.OpenMXEnvEntry] [%struct.OpenMXEnvEntry { ptr @.str",
+"type": "[338 x %struct.OpenMXEnvEntry] [%struct.OpenMXEnvEntry { ptr @.str",
 "const": true
 },
 {
@@ -16505,6 +16506,9 @@
 "source/eigen_refine_gpu.c"
 ],
 "OPENMX_EIGEN_REFINE_COMPLEMENT": [
+"source/eigen_refine_gpu.c"
+],
+"OPENMX_EIGEN_REFINE_FP32_UPDATE": [
 "source/eigen_refine_gpu.c"
 ],
 "OPENMX_EIGEN_REFINE_STOP_GUARD": [

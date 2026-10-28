@@ -939,3 +939,11 @@ COSMA の Tiled-MM の倍精度・複素倍精度タイル積は、スタック�
 （`OPENMX_GS2_GEMMUL8`、既定 1）。計測用の `OPENMX_GS2_FP32_PROBE`（ELPA の単精度解法の計時）も加わりました。
 関数数は 3,441 → 3,442（計測プローブ）、参照組 12,377、file-scope / 関数内 static は 296 / 277 のまま、
 環境変数名は 257 → 259（上記 2 件）、getenv の直接呼び出しは 0 です。基準とインベントリを再生成しました。
+
+## 補正付き FP32 固有値解法の更新積の FP32 化（2026-10-28）
+
+`eigen_refine_gpu.c` に、補正ステップの更新積 X·E を cuBLAS の FP32 で計算する経路
+（`OPENMX_EIGEN_REFINE_FP32_UPDATE`、既定 0。計測では RTX 5080 で利得なし、`docs/PERFORMANCE_REGRESSION.md`）を
+加えました。FP32 の複製はデバイスの一時領域で、関数内 static は増えていません。
+関数数は 3,442 → 3,449（更新積の補助関数）、file-scope / 関数内 static は 296 / 277 のまま、
+環境変数名は 259 → 260、getenv の直接呼び出しは 0 です。基準とインベントリを再生成しました。

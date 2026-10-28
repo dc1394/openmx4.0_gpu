@@ -484,6 +484,14 @@
   {
    "group": "refine",
    "names": [
+    "OPENMX_EIGEN_REFINE_FP32_UPDATE"
+   ],
+   "en": "<b>1</b> computes the update products X E of the refined FP32 eigensolver (the correction of the refined columns and the rotation of the unrefined ones) in cuBLAS FP32 instead of GEMMul8: the correction is small (1e-6 of X after the FP32 solve, 1e-12 after a Newton step) and the next step's FP64 residual products correct what FP32 leaves. Off by default: on the RTX 5080 the GEMMul8 products of these shapes already run at tensor-core speed, and the FP32 products changed the refined solve of sidia333 by -6 % (n = 2808) and +2 % (2n = 5616) with identical results. Falls back to GEMMul8 when the FP32 copies find no room.",
+   "ja": "<b>1</b> で補正付き FP32 固有値解法の更新積 X E（補正する列の修正と、補正しない列の回転）を GEMMul8 ではなく cuBLAS の FP32 で計算する。補正は小さく（FP32 解法の直後で X の 1e-6、Newton 1 歩後で 1e-12）、次の歩の FP64 残差積が FP32 の取りこぼしを直す。既定は 0: RTX 5080 ではこの形の GEMMul8 の積が既にテンソルコアの速さで動き、FP32 の積は sidia333 の補正解法を n = 2808 で -6 %、2n = 5616 で +2 % 変えただけで結果は同一だった。FP32 の複製を置く余地がなければ GEMMul8 に戻る。"
+  },
+  {
+   "group": "refine",
+   "names": [
     "OPENMX_EIGEN_FP32_TWO_STAGE"
    ],
    "en": "The full FP32 solve of the refined eigensolver uses the two-stage cusolverDnXsyevd (CUSOLVER_ALG_2; cuSOLVER 12.3.4 and later; RTX 5080, n = 5616: 323 ms instead of 638), <b>0</b> = the one-stage cusolverDnXsyevdx. Since 2026-10-09 a two-stage solve that fails to converge (info &gt; 0: sporadic on the RTX 5080, e.g. info=297 on a 2808 x 2808 band problem) is retried once with the one-stage algorithm from a fresh conversion of the FP64 matrix before the solver falls to FP64; before, one such failure left the rest of the SCF cycle in FP64 (sidia333 band_on D: Diagonalization 68 s to 95 s)",

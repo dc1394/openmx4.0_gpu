@@ -300,6 +300,111 @@ static cublasStatus_t native_gemm(const EigenRefineDevice *dev, int cplx, cublas
     }
 }
 
+/* The update products X E of a refinement step in FP32 (cuBLAS SGEMM /
+   CGEMM; OPENMX_EIGEN_REFINE_FP32_UPDATE=1, off by default: on the RTX 5080
+   the GEMMul8 products of these shapes already run at tensor-core speed,
+   and the FP32 products changed the refined solve of sidia333 by -6 % (n =
+   2808) and +2 % (2n = 5616), 2026-10-28): the correction
+   E is small (about 1e-6 of X after the FP32 solve, 1e-12 after one Newton
+   step), so an FP32 product of X E is accurate to about 6e-8 of E, and
+   the next step's FP64 residual products see and correct what is left;
+   the last step's error is 6e-8 of a correction that is itself below the
+   FP64 target.  The FP32 copies of X (n x n) and of the two operands take
+   width * (n^2 + n * max(kc, n - kc) + n * kc) floats of device memory
+   for the duration of the finish; without room the products stay GEMMul8.
+   C (m x ncol, FP64) += op(A) B with A = X (n x n, FP64, the first m rows)
+   or its first k columns, B (k x ncol, FP64) a correction block. */
+typedef struct {
+    float *xf;     /* X in FP32, n x n (both parts of a complex element) */
+    float *ef;     /* the correction block in FP32 */
+    float *rf;     /* the FP32 product */
+    size_t ef_count, rf_count;   /* capacities in floats */
+    void  *own;
+    int    valid;  /* xf holds the current X */
+} RefineFp32Update;
+
+static int refine_fp32_update_enabled(void)
+{
+    return openmx_env_flag_at(OPENMX_ENV_EIGEN_REFINE_FP32_UPDATE, 0);
+}
+
+static void refine_fp32_update_release(RefineFp32Update *u, const EigenRefineDevice *dev)
+{
+    if (u->own != NULL) refine_check(OpenMX_Resource_GpuFree(dev->resources, u->own), "cudaFree FP32 update scratch");
+    memset(u, 0, sizeof(*u));
+}
+
+/* room for the FP32 copies; 0 (and the GEMMul8 products) when there is none */
+static int refine_fp32_update_prepare(RefineFp32Update *u, EigenRefineDevice *dev, int cplx, int n, int kc,
+                                      int transient)
+{
+    size_t const width = cplx ? 2 : 1;
+    size_t const nc = (size_t)n - (size_t)kc;
+    size_t const x_count = width * (size_t)n * (size_t)n;
+    size_t const e_count = width * (size_t)n * (size_t)kc;
+    size_t const r_count = width * (size_t)n * (size_t)(nc > (size_t)kc ? nc : (size_t)kc);
+    size_t const bytes = (x_count + e_count + r_count) * sizeof(float);
+
+    memset(u, 0, sizeof(*u));
+    if (!refine_fp32_update_enabled()) return 0;
+    if (openmx_eigen_refine_malloc(dev, &u->own, bytes) != cudaSuccess) {
+        if (OPENMX_STDOUT_LEVEL(2)) {
+            printf("<eigen_refine_gpu> no room for the %.1f MiB of FP32 update scratch; GEMMul8 update products%s\n",
+                   (double)bytes / (1024.0 * 1024.0), transient ? "" : " this step");
+            fflush(stdout);
+        }
+        u->own = NULL;
+        return 0;
+    }
+    u->xf = (float *)u->own;
+    u->ef = u->xf + x_count;
+    u->rf = u->ef + e_count;
+    u->ef_count = e_count;
+    u->rf_count = r_count;
+    return 1;
+}
+
+static void refine_to_fp32(const double *src, float *dst, size_t count)
+{
+#pragma acc parallel loop deviceptr(src, dst)
+    for (size_t i = 0; i < count; i++) dst[i] = (float)src[i];
+}
+
+/* C (m x ncol, FP64, leading dimension ldc) += X(:, 0:k) B, B (k x ncol, FP64,
+   leading dimension k); xf holds X (n x n) in FP32 already */
+static void refine_fp32_update_apply(RefineFp32Update *u, const EigenRefineDevice *dev, int cplx, int n, int m,
+                                     int k, int ncol, const double *b, double *c, int ldc)
+{
+    size_t const width = cplx ? 2 : 1;
+    size_t const e_count = width * (size_t)k * (size_t)ncol;
+    size_t const r_count = width * (size_t)m * (size_t)ncol;
+
+    if (e_count > u->ef_count || r_count > u->rf_count) refine_check(cudaErrorInvalidValue, "FP32 update scratch");
+    refine_to_fp32(b, u->ef, e_count);
+    if (cplx) {
+        cuComplex const one = make_cuComplex(1.0f, 0.0f), zero = make_cuComplex(0.0f, 0.0f);
+
+        refine_check_blas(cublasCgemm(dev->cublas, CUBLAS_OP_N, CUBLAS_OP_N, m, ncol, k, &one, (const cuComplex *)u->xf,
+                                      n, (const cuComplex *)u->ef, k, &zero, (cuComplex *)u->rf, m),
+                          "FP32 X E");
+    }
+    else {
+        float const one = 1.0f, zero = 0.0f;
+
+        refine_check_blas(cublasSgemm(dev->cublas, CUBLAS_OP_N, CUBLAS_OP_N, m, ncol, k, &one, u->xf, n, u->ef, k, &zero,
+                                      u->rf, m),
+                          "FP32 X E");
+    }
+    refine_check(cudaDeviceSynchronize(), "synchronize");
+    {
+        float const  *rf = u->rf;
+        size_t const  ldc_w = width * (size_t)ldc, m_w = width * (size_t)m, total = m_w * (size_t)ncol;
+
+#pragma acc parallel loop deviceptr(rf, c)
+        for (size_t t = 0; t < total; t++) c[(t / m_w) * ldc_w + t % m_w] += (double)rf[t];
+    }
+}
+
 /* ------------------------------------------------------------------ */
 
 /* One FP32 solve of all n eigenpairs of a (n x n, device) into af (the
@@ -783,6 +888,8 @@ int openmx_eigen_refine_finish(EigenRefineState *st, EigenRefineDevice *dev, con
     double const anorm = refine_anorm;
     long long    native0;
     int          rr_clusters = 0, rr_largest = 0, rr_ok = 1;
+    RefineFp32Update upd;
+    int          fp32_update;
     /* the cluster's H and overlap (2 m^2) go into b2 (n maxn); beyond 2048
        states the cluster solve would cost more than the FP64 eigensolver
        saves on a GeForce */
@@ -800,6 +907,7 @@ int openmx_eigen_refine_finish(EigenRefineState *st, EigenRefineDevice *dev, con
     b2 = st->b2;
     yb = (st->b3 != NULL) ? st->b3 : b1;
 
+    fp32_update = refine_fp32_update_prepare(&upd, dev, cplx, n, kc, pb->transient);
     native0 = openmx_gemmul8NativeCalls(cplx);
     for (int it = 0; it < pb->iterations; it++) {
         /* Y = A X1 to b3 (b1 without a complement), S = X^H Y to b2,
@@ -821,6 +929,7 @@ int openmx_eigen_refine_finish(EigenRefineState *st, EigenRefineDevice *dev, con
             refine_blocks_release(st);
             st->basis_valid = 0;
             report->persistent = 2;
+            refine_fp32_update_release(&upd, dev);
             return 0;
         }
 
@@ -832,9 +941,9 @@ int openmx_eigen_refine_finish(EigenRefineState *st, EigenRefineDevice *dev, con
         }
 
         if (!refine_maxima(cplx, b1, b2, n, kc, &max_s, &max_r))
-            return refine_nonfinite(st, pb, report);
+            { refine_fp32_update_release(&upd, dev); return refine_nonfinite(st, pb, report); }
         delta = 2.0 * (max_s + anorm * max_r);
-        if (!isfinite(delta)) return refine_nonfinite(st, pb, report);
+        if (!isfinite(delta)) { refine_fp32_update_release(&upd, dev); return refine_nonfinite(st, pb, report); }
         if (it == 0) {
             /* a warm start's residual is far below an FP32 solve's, which
                would shrink delta and the cluster chain to nothing: keep the
@@ -913,28 +1022,41 @@ int openmx_eigen_refine_finish(EigenRefineState *st, EigenRefineDevice *dev, con
                     if (cplx) b3[width * at + 1] = ei;
                 }
             }
-            refine_check_blas(refine_gemm(dev, cplx, CUBLAS_OP_N, CUBLAS_OP_N, n, nc, kc, x, n, b3, kc, 1.0, xc, n),
-                              "X_c + X_r E_rc");
+            if (fp32_update) {
+                refine_to_fp32(x, upd.xf, (size_t)width * (size_t)n * (size_t)n);
+                refine_fp32_update_apply(&upd, dev, cplx, n, n, kc, nc, b3, xc, n);
+            }
+            else {
+                refine_check_blas(refine_gemm(dev, cplx, CUBLAS_OP_N, CUBLAS_OP_N, n, nc, kc, x, n, b3, kc, 1.0, xc, n),
+                                  "X_c + X_r E_rc");
+                refine_check(cudaDeviceSynchronize(), "synchronize");
+            }
+        }
+
+        /* X1 + X E: in FP32 directly into x, else GEMMul8 through b2 */
+        if (fp32_update) {
+            refine_to_fp32(x, upd.xf, (size_t)width * (size_t)n * (size_t)n);
+            refine_fp32_update_apply(&upd, dev, cplx, n, n, n, kc, b1, x, n);
+        }
+        else {
+            {
+                size_t const count = width * nk;
+
+#pragma acc parallel loop deviceptr(b2, x)
+                for (size_t i = 0; i < count; i++) b2[i] = x[i];
+            }
+            refine_check_blas(refine_gemm(dev, cplx, CUBLAS_OP_N, CUBLAS_OP_N, n, kc, n, x, n, b1, n, 1.0, b2, n),
+                              "X1 + X E");
             refine_check(cudaDeviceSynchronize(), "synchronize");
-        }
-
-        /* X1 + X E, through b2 */
-        {
-            size_t const count = width * nk;
+            {
+                size_t const count = width * nk;
 
 #pragma acc parallel loop deviceptr(b2, x)
-            for (size_t i = 0; i < count; i++) b2[i] = x[i];
-        }
-        refine_check_blas(refine_gemm(dev, cplx, CUBLAS_OP_N, CUBLAS_OP_N, n, kc, n, x, n, b1, n, 1.0, b2, n),
-                          "X1 + X E");
-        refine_check(cudaDeviceSynchronize(), "synchronize");
-        {
-            size_t const count = width * nk;
-
-#pragma acc parallel loop deviceptr(b2, x)
-            for (size_t i = 0; i < count; i++) x[i] = b2[i];
+                for (size_t i = 0; i < count; i++) x[i] = b2[i];
+            }
         }
     }
+    refine_fp32_update_release(&upd, dev);
 
     if (!refine_result_finite(width, x, lam, n, kc)) return refine_nonfinite(st, pb, report);
 

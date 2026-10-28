@@ -160,6 +160,7 @@
     X(EIGEN_REFINE_CHECK, "OPENMX_EIGEN_REFINE_CHECK", "flag", "global", "0", "backends/hip/src/eigen_refine_gpu.cu,eigen_refine_gpu.c", "") \
     X(EIGEN_REFINE_COMPLEMENT, "OPENMX_EIGEN_REFINE_COMPLEMENT", "flag", "global", "1", "backends/hip/src/eigen_refine_gpu.cu,eigen_refine_gpu.c", "") \
     X(EIGEN_REFINE_FIRST_ALL, "OPENMX_EIGEN_REFINE_FIRST_ALL", "flag", "global", "0", "backends/hip/src/Cluster_DFT_Col.c,backends/hip/src/Cluster_DFT_NonCol.c", "Refine every state in the first cluster SCF step.") \
+    X(EIGEN_REFINE_FP32_UPDATE, "OPENMX_EIGEN_REFINE_FP32_UPDATE", "flag", "global", "0", "eigen_refine_gpu.c", "") \
     X(EIGEN_REFINE_MIN_N, "OPENMX_EIGEN_REFINE_MIN_N", "int", "global", "1000", "backends/hip/src/eigen_refine_gpu.cu", "Minimum matrix order for refined FP32 eigensolves.") \
     X(EIGEN_REFINE_STOP_GUARD, "OPENMX_EIGEN_REFINE_STOP_GUARD", "double", "global", "100", "DFT.c,backends/hip/src/DFT.c", "default 100: An SCF stop on a refined FP32 step also needs the printed NormRD below this factor times scf.criterion; OpenMX's test on dUele alone fired on a coi...") \
     X(EIGEN_REFINE_UNBLOCKED, "OPENMX_EIGEN_REFINE_UNBLOCKED", "flag", "global", "1", "backends/hip/src/eigen_refine_gpu.cu,eigen_refine_gpu.c", "default 1: The refinement products with the full GEMMul8 workspace when the device has room for it (about 1.7x faster than the blocked products at the 256 MiB...") \
