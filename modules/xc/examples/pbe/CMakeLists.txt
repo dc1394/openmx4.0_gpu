@@ -9,5 +9,9 @@ option(OPENMX_XC_EXAMPLE_C_TEST "Also build tests/test_c.c copied next to this f
 if(OPENMX_XC_EXAMPLE_C_TEST)
   add_executable(c_consumer test_c.c)
   target_link_libraries(c_consumer PRIVATE OpenMX::xc $<$<PLATFORM_ID:Linux>:m>)
+  # The inlined kernels agree bitwise with the library only under the same
+  # contraction policy (see kernels.h).
+  target_compile_options(c_consumer PRIVATE
+    "$<$<C_COMPILER_ID:GNU,Clang,AppleClang,IntelLLVM>:-ffp-contract=off>")
   set_target_properties(c_consumer PROPERTIES LINKER_LANGUAGE CXX)
 endif()

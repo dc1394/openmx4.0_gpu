@@ -16,6 +16,10 @@ endforeach()
 
 add_executable(openmx_xc_c_tests test_c.c)
 target_link_libraries(openmx_xc_c_tests PRIVATE OpenMX::xc $<$<PLATFORM_ID:Linux>:m>)
+# The test inlines kernels.h and compares it bitwise with the library, which
+# needs the library's contraction policy in the including unit.
+target_compile_options(openmx_xc_c_tests PRIVATE
+  "$<$<C_COMPILER_ID:GNU,Clang,AppleClang,IntelLLVM>:-ffp-contract=off>")
 set_target_properties(openmx_xc_c_tests PROPERTIES LINKER_LANGUAGE CXX)
 add_test(NAME xc-c-api COMMAND openmx_xc_c_tests)
 set_tests_properties(xc-c-api PROPERTIES LABELS "unit;xc" TIMEOUT 30)

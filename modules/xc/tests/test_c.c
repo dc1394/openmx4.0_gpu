@@ -1,7 +1,9 @@
 #include <openmx/xc/xc.h>
+#include <openmx/xc/kernels.h>
 
 #include <math.h>
 #include <stdio.h>
+#include <string.h>
 
 /* Always active, including Release/NDEBUG. */
 #define CHECK(expression) do { if (!(expression)) { \
@@ -61,6 +63,17 @@ int main(void)
     CHECK(close_to(dexdd[0], vx[0], 1e-10) && close_to(decdd[1], vc[1], 1e-10));
   }
   CHECK(!openmx_xc_pbe(dens, gdens, 0, NULL, dexdd, decdd, dexdgd, decdgd));
+
+  /* the inline kernels (shared with GPU device code) are the library's arithmetic */
+  {
+    double kdens[2] = {0.02, 0.005}, kexc[2], kdexdd[2], kdecdd[2], kdexdgd[3][2], kdecdgd[3][2];
+    CHECK(openmx_xc_pbe(dens, gdens, 0, exc, dexdd, decdd, dexdgd, decdgd));
+    openmx_xc_kernel_pbe(kdens, gdens, 0, kexc, kdexdd, kdecdd, kdexdgd, kdecdgd);
+    CHECK(memcmp(exc, kexc, sizeof exc) == 0 && memcmp(dexdgd, kdexdgd, sizeof dexdgd) == 0);
+    CHECK(memcmp(decdd, kdecdd, sizeof decdd) == 0 && kdens[0] == dens[0]);
+    CHECK(openmx_xc_kernel_ceperley_alder(0.01, 1) == openmx_xc_ceperley_alder(0.01, 1));
+    CHECK(openmx_xc_kernel_ceperley_alder(0.0, 0) == 0.0 && openmx_xc_kernel_ceperley_alder(0.01, 9) == 0.0);
+  }
   printf("PASS xc C interface\n");
   return 0;
 }

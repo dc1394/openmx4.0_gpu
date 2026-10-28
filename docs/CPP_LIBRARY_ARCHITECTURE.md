@@ -135,6 +135,7 @@ flowchart TD
    ここで Hamiltonian/Force が借用するデータの契約を整理する。
    第110段階で交換相関汎関数を `OpenMX::xc`（`modules/xc/`）へ独立化した。
    第111段階でキーワード入力ファイルの読み取りを `OpenMX::io`（`modules/io/`）へ独立化した。
+   第112段階で XC の計算核を `openmx/xc/kernels.h` に一本化し、CUDA/HIP のデバイス側コピーを廃止した。
 4. **poisson / eigen と外部サービス。** 解法の入力・出力・失敗・fallback の契約を統一し、
    CPU・GeForce・データセンターGPUそれぞれの実装を差し替え可能にする。
 5. **hamiltonian / scf / transport / io を構成する。** 本体をライブラリの利用者へ移し、
@@ -196,8 +197,11 @@ PW92 相関、Slater 交換、GGA-PBE を純粋な関数として C++ と C か�
 GPU SDK を必要としません。元の大域変数 `dc_Type` による cFLL の対称化は引数 `symmetrize_spins` になり、
 本体の `Set_XC_Grid` が条件を一度だけ求めて渡します。5 つの元ルーチンは凍結した試験の参照として残り、
 ライブラリは縮約なしでコンパイルした旧コードと bit 一致します。Core はパッケージのオブジェクトを
-`libopenmx_core.so` に同梱して本体へ C ABI を渡します。GPU 側の OpenACC デバイス関数（`SXG_XC_PW92C`、
-`SXG_XC_PBE`）は本体の組み立て層に残しており、これらをライブラリの計算核と共有することが次の候補です。
+`libopenmx_core.so` に同梱して本体へ C ABI を渡します。第112段階で計算核を `openmx/xc/kernels.h` の
+inline C 関数に一本化し、C++ ライブラリ、C の利用者、本体の GPU デバイスコード（CUDA の OpenACC
+`routine seq`、HIP の OpenMP `declare target`）がすべて同じ式を使うようにしました。両バックエンドの
+`Set_XC_Grid.c` にあった約 220 行ずつのデバイス側コピー（`SXG_XC_EX1`/`SXG_XC_PW92C`/`SXG_XC_PBE`）は
+ヘッダーの関数を呼ぶ数行の wrapper になりました。
 
 第111段階では `OpenMX::io` の最初の部品として、キーワード入力ファイルの読み取りを独立化しました。
 `openmx::io::KeywordFile` が開いたストリームとエラーの記録を所有し、`KeywordFiles` が元の入れ子モデル

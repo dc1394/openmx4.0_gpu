@@ -35,6 +35,12 @@ cmake --build build/xc-example
 
 C++ からは `openmx/xc/functionals.hpp`（`openmx::xc::pbe` など）、C からは
 `openmx/xc/xc.h`（`openmx_xc_pbe` など。配列の形は元の OpenMX ルーチンと同じ）を使います。
+計算核そのものは `openmx/xc/kernels.h` の `static inline` な C 関数（`openmx_xc_kernel_pbe` など）で、
+ライブラリも本体の GPU デバイスコード（nvc の OpenACC `routine seq`、hipcc/clang の OpenMP
+`declare target`。後者は include 前に `OPENMX_XC_KERNELS_OMP_TARGET` を定義）もこれを使います。
+インライン展開されるため、ライブラリと bit 一致するのは include 側も浮動小数点の縮約なし
+（`-ffp-contract=off`）でコンパイルしたときだけです（GPU のデバイスコードや既定で縮約する
+コンパイラでは最終桁が異なります）。
 
 ## テスト
 

@@ -7391,3 +7391,36 @@ GitHub Actions には `basis`/`xc` と同じ行列の `io` ジョブを加えま
   ターゲットのビルドが `work/openmx` を gcc 版で上書きします。検証中に一度これが起き、CPU 専用ビルドの
   別問題（ELPA の SIMD カーネル、次段で修正）を nvc 版の退行と誤認しかけました。CPU 専用ビルドは
   `-DOPENMX_COPY_TO_WORK=OFF`（CI と同じ）で構成してください。
+
+## 第112段階: XC の計算核を kernels.h に一本化し、GPU デバイス側コピーを廃止
+
+`modules/xc/include/openmx/xc/kernels.h` に、交換相関汎関数の式を `static inline` な C 関数
+（`openmx_xc_kernel_ceperley_alder` / `_ca_lsda` / `_pw92` / `_exchange` / `_pbe`）として置きました。
+C++ ライブラリ（`functionals.cpp`）はこの関数の所有型による薄い view になり、C の利用者も同じ関数を
+直接 inline できます。OpenACC（nvc）では各関数に `_Pragma("acc routine seq")` が付き、OpenMP offload
+（hipcc/clang）では include 前に `OPENMX_XC_KERNELS_OMP_TARGET` を定義すると `declare target` 領域に
+入ります。本体の CUDA 版・HIP 版 `Set_XC_Grid.c` にあった約 220 行ずつのデバイス側コピー
+（`SXG_largest`、`SXG_XC_EX1`、`SXG_XC_PW92C`、`SXG_XC_PBE`）は、ヘッダーの関数を呼ぶ 2 つの wrapper
+（cFLL の対称化なし。GPU 経路は `SXG_gpu_enabled()` が cFLL の計算では使われない）になりました。
+転送ヘッダー `source/openmx_xc_kernels.h` を HIP の `sources.json` と `openmx_core.mk` に登録し、
+HIP 版 `Set_XC_Grid.c` のハッシュを更新しました。
+
+inline 展開されるため、ヘッダーの関数がライブラリと bit 一致するのは include 側も浮動小数点の縮約なしで
+コンパイルしたときだけです。パッケージの C 試験と外部利用例の C 試験に `-ffp-contract=off` を与え
+（clang の既定 `-ffp-contract=on` では `-O3` で PBE の相関ポテンシャル導関数が最終桁で異なり、
+ASan 構成の外部利用試験で検出されました）、ヘッダーと README にこの性質を記しました。
+GPU のデバイスコードは nvc が FMA で縮約するので、従来のデバイス側コピーと同様に CPU 経路とは
+最終桁で異なります。
+
+検証:
+
+- 独立パッケージの 6 試験が GCC と Clang + ASan/UBSan で成功しました。`xc-legacy` の 296,230 組の bit 比較は
+  共通カーネル経由の値で行われます。C 試験はヘッダーを直接 inline した結果と C API の結果の bit 一致も
+  確かめます。
+- CPU 専用の CMake ビルドと xc・CI 相当の 21 試験、HIP 版 `Set_XC_Grid.c`（OpenMP `declare target`）と
+  `Force.c`・`Total_Energy.c` の構文検査、`tests/test_unified_build.py`、大域変数監査が通りました。
+- nvc 版は `openmx_xc_kernel_pbe` と `SXG_XC_PBE` の GPU コードを生成し（`-Minfo=accel`）、runtest は
+  GPU モードで最大 |ΔUtot| 5.1e-11（C60）、|ΔForce| 8e-12（第111段階と最大値は同じ。H2O と Methane の
+  行が 1e-12 〜 1e-11 の桁で動いた）、CPU モードは第111段階と同一の結果表でした。sidia333 は GPU モードで
+  `.ene` が変更前の GPU 実行と一致し、`.md` は力の 1 成分が -0.00000 と 0.00000 で異なるだけ、
+  CPU モードでは `.ene`・`.md` とも移行前のバイナリと一致します。

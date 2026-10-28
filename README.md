@@ -165,10 +165,12 @@ The second package, [OpenMX::xc](modules/xc/README.md), provides the
 exchange-correlation functionals (Ceperley–Alder LDA/LSDA, Perdew–Wang 92
 correlation, Slater exchange and GGA-PBE with its density and gradient
 derivatives) as pure functions with C++ and C APIs and no global state.
-The application's CPU paths in `Set_XC_Grid.c`, `Force.c`, `Stress.c` and
-`Total_Energy.c` call it through `libopenmx_core.so`; the five original C
-routines are frozen as test fixtures and the package tests show the library
-bitwise identical to them. External CMake projects use
+Its arithmetic is one set of inline C kernels (`openmx/xc/kernels.h`) that the
+library, C callers and the application's GPU device code (OpenACC routines on
+CUDA, OpenMP target regions on HIP) share. The application's CPU paths in
+`Set_XC_Grid.c`, `Force.c`, `Stress.c` and `Total_Energy.c` call it through
+`libopenmx_core.so`; the five original C routines are frozen as test fixtures
+and the package tests show the library bitwise identical to them. External CMake projects use
 `find_package(OpenMXXc 0.1 CONFIG REQUIRED)` and link `OpenMX::xc`.
 The third package, [OpenMX::io](modules/io/README.md), reads OpenMX keyword
 files (scalar, vector and block keywords) through an owning `KeywordFile`
