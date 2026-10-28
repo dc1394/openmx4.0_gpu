@@ -136,6 +136,7 @@ flowchart TD
    第110段階で交換相関汎関数を `OpenMX::xc`（`modules/xc/`）へ独立化した。
    第111段階でキーワード入力ファイルの読み取りを `OpenMX::io`（`modules/io/`）へ独立化した。
    第112段階で XC の計算核を `openmx/xc/kernels.h` に一本化し、CUDA/HIP のデバイス側コピーを廃止した。
+   第113段階で基底指定文字列（`Si7.0-s2p2d1`）の解析器を `OpenMX::io` に加え、`Input_std.c` から呼ぶようにした。
 4. **poisson / eigen と外部サービス。** 解法の入力・出力・失敗・fallback の契約を統一し、
    CPU・GeForce・データセンターGPUそれぞれの実装を差し替え可能にする。
 5. **hamiltonian / scf / transport / io を構成する。** 本体をライブラリの利用者へ移し、

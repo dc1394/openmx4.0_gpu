@@ -10,6 +10,11 @@ foreach(_case legacy semantics invalid)
   set_tests_properties(io-${_case} PROPERTIES LABELS "unit;io" TIMEOUT 60)
 endforeach()
 
+add_executable(openmx_io_basis_spec_tests test_basis_spec.cpp)
+target_link_libraries(openmx_io_basis_spec_tests PRIVATE OpenMX::io)
+add_test(NAME io-basis-spec COMMAND openmx_io_basis_spec_tests)
+set_tests_properties(io-basis-spec PROPERTIES LABELS "unit;io" TIMEOUT 30)
+
 add_executable(openmx_io_c_tests test_c.c)
 target_link_libraries(openmx_io_c_tests PRIVATE OpenMX::io)
 set_target_properties(openmx_io_c_tests PROPERTIES LINKER_LANGUAGE CXX)

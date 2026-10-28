@@ -7424,3 +7424,31 @@ GPU のデバイスコードは nvc が FMA で縮約するので、従来のデ
   行が 1e-12 〜 1e-11 の桁で動いた）、CPU モードは第111段階と同一の結果表でした。sidia333 は GPU モードで
   `.ene` が変更前の GPU 実行と一致し、`.md` は力の 1 成分が -0.00000 と 0.00000 で異なるだけ、
   CPU モードでは `.ene`・`.md` とも移行前のバイナリと一致します。
+
+## 第113段階: 基底指定文字列の解析器を OpenMX::io へ
+
+`modules/io` に `openmx::io::parse_basis_spec`（C: `openmx_io_parse_basis_spec`）を加えました。
+種の定義の `Si7.0-s2p2d1`（`-` の前が PAO 名、以後は `s p d f g` と原始動径関数の数、軌道最適化では
+`s3>2p2>1` の `原始>縮約`）を、名前・l ごとの原始数と縮約数・最大 l・縮約の有無を持つ型に解析します。
+`-` のない文字列、`spdfg` 以外の文字、数字でない文字、縮約なしでの 4 桁目や `>`、原始数より大きい
+縮約数は、元の読取器の 2 種類の診断文（`Format error in Definition of Atomic Species` と
+`# of contracted orbitals are larger ...`）付きで誤りになります。元の読取器は `spdfg` 以外の文字を
+`atoi` で 0 と数え、`-` のない文字列では終端を越えて読んでいたので、これらは誤りとして報告する差に
+なります。有効な文字列の結果は同じです。
+
+本体の `Input_std.c` の `SpeciesString2int` は、この解析器を呼んで `SpeBasisName`、`Spe_Num_Basis`、
+`Spe_Num_CBasis`（軌道最適化のときだけ）、`Spe_MaxL_Basis` を埋める約 40 行になり、元の報告
+（`level.of.stdout >= 2`）と `MPI_Finalize` + `exit` はそのまま残しました。`Show_DFT_DATA.c` の
+古い複製（2 桁目を縮約数と解釈する別の文法）と `GetOrbital.c`（単独ツール）の複製は変更していません。
+転送ヘッダー `openmx_io.h` が `basis_spec.h` も含むようになり、`openmx_core.mk` の依存と HIP の
+`sources.json` のハッシュを更新しました。
+
+検証:
+
+- 独立パッケージの 6 試験（新しい `io-basis-spec` を含む）が GCC と Clang + ASan/UBSan で成功し、CPU 専用
+  ビルドでは io・xc・CI 相当の 27 試験、HIP 版 `Input_std.c` の構文検査、`tests/test_unified_build.py`、
+  大域変数監査が通りました。gcc ビルドの Methane（`level.of.stdout 2` の種の報告も元と同じ形式）の
+  `.ene` は nvc 版の参照と一致します。
+- nvc 版の runtest は CPU モードで第112段階と同一の結果表、GPU モードでは最大値は同じで数行が
+  1e-12 の桁で動きました（GPU の非決定性）。sidia333（CPU モード）の `.ene`・`.md` は移行前の
+  バイナリと一致します。

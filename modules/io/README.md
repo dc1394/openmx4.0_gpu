@@ -22,6 +22,16 @@ CMake 3.25.2 以上と C++20 のコンパイラ・標準ライブラリでビル
 OpenMX の実行ファイル・大域変数ヘッダー、ネットワーク接続を必要としません。
 コードのライセンスは元の OpenMX と同じです。
 
+## 基底指定文字列
+
+`openmx/io/basis_spec.hpp`（`openmx::io::parse_basis_spec`）と `openmx/io/basis_spec.h`
+（`openmx_io_parse_basis_spec`）は、種の定義にある `Si7.0-s2p2d1` 形式（`-` の前が PAO 名、以後は
+`s p d f g` の各文字に続く原始動径関数の数（1〜3 桁）。軌道最適化では `s3>2p2>1` のように
+`原始>縮約`）を解析し、名前・l ごとの原始数と縮約数・最大 l を返します。`-` のない文字列、`spdfg`
+以外の文字、数字でない文字、4 桁目、縮約が許されていないときの `>`、原始数より大きい縮約数は、
+元の読取器と同じ文面の診断付きで誤りになります（元の読取器は不正な文字を 0 として数えていました）。
+本体の `Input_std.c` の `SpeciesString2int` はこの解析器を呼び、種の表を埋めます。
+
 ## ビルドと外部利用
 
 リポジトリのルートで実行します。
@@ -49,4 +59,5 @@ C++ からは `openmx/io/keyword_file.hpp`（`openmx::io::KeywordFile`、`Keywor
 - `io-semantics`: RAII（ムーブ、明示的な close、開けないファイルでの例外）、`block()`、
   メッセージの文面、診断ストリーム、スタックの容量。
 - `io-invalid`: NULL や未オープンの状態、容量不足の文字列、空の選択肢。
+- `io-basis-spec`: 基底指定文字列の文法（有効な例、繰り返し文字、縮約、各種の誤りと診断の文面、C API）。
 - `io-c-api`、`io-package-consumer`: C からの利用と、インストールしたパッケージからの利用。
