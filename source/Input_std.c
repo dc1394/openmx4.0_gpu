@@ -306,26 +306,28 @@ void Input_std(char *file, OpenMXCoreContext *core)
                            read species
   *************************************************************/ 
 
-  if ( (fp=input_find("<Definition.of.Atomic.Species")) != NULL ) {
-
-    for (i=0; i<SpeciesNum; i++){
-      fgets(buf,MAXBUF,fp);
-      sscanf(buf,"%s %s %s %lf",SpeName[i],SpeBasis[i],SpeVPS[i],&Spe_AtomicMass[i]);
-      SpeciesString2int(i);
-    }
-
-    ungetc('\n',fp);
-
-    if (! input_last("Definition.of.Atomic.Species>")) {
+  {
+    /* the io package reads the block (name, basis, VPS, optional mass per
+       line); an absent block leaves the species untouched as before */
+    char message[200];
+    int status = openmx_io_read_species_definitions(input_keyword_files(), SpeciesNum,
+                                                    SpeName, SpeBasis, SpeVPS, Spe_AtomicMass,
+                                                    YOUSO10, message, sizeof(message));
+    if (status<0){
       /* format error */
 
       po++;
 
       if (myid==Host_ID){
-        printf("Format error for Definition.of.Atomic.Species\n");
+        printf("%s", message);
       }
       MPI_Finalize();
       exit(0);
+    }
+    else if (0<status){
+      for (i=0; i<SpeciesNum; i++){
+        SpeciesString2int(i);
+      }
     }
   }
 
@@ -1654,10 +1656,32 @@ void Input_std(char *file, OpenMXCoreContext *core)
     input_string2int("Atoms.SpeciesAndCoordinates.Unit",
                      &coordinates_unit,3,s_vec,i_vec);
 
-    if ( (fp=input_find("<Atoms.SpeciesAndCoordinates")) != NULL ) {
+    {
+      /* the io package reads the block into records; the items each line
+         converted are applied like the original sscanf did (a short line
+         leaves the remaining values as they were), then the original
+         per-atom processing follows */
+      OpenMXAtomDefinition *atoms = (OpenMXAtomDefinition*)malloc(sizeof(OpenMXAtomDefinition)*(atomnum+1));
+      char message[200];
+      int status = openmx_io_read_atom_definitions(input_keyword_files(), atomnum, SpinP_switch==3,
+                                                   atoms, message, sizeof(message));
+      if (status<0){
+        /* format error */
+        printf("%s", message);
+        po++;
+      }
 
-      for (i=1; i<=atomnum; i++){
-        fgets(buf,MAXBUF,fp);
+      for (i=1; 0<status && i<=atomnum; i++){
+        const OpenMXAtomDefinition *atom = &atoms[i-1];
+        const int fields = atom->fields;
+
+        if (1<=fields) j = atom->index;
+        if (2<=fields) strcpy(Species, atom->species);
+        if (3<=fields) Gxyz[i][1] = atom->position[0];
+        if (4<=fields) Gxyz[i][2] = atom->position[1];
+        if (5<=fields) Gxyz[i][3] = atom->position[2];
+        if (6<=fields) InitN_USpin[i] = atom->spin[0];
+        if (7<=fields) InitN_DSpin[i] = atom->spin[1];
 
 	/* spin non-collinear */ 
 	if (SpinP_switch==3){
@@ -1666,14 +1690,12 @@ void Input_std(char *file, OpenMXCoreContext *core)
                (1) spin non-collinear
 	  *******************************************************/
 
-	  sscanf(buf,"%i %s %lf %lf %lf %lf %lf %lf %lf %lf %lf %d %s",
-		 &j, Species,
-		 &Gxyz[i][1],&Gxyz[i][2],&Gxyz[i][3],
-		 &InitN_USpin[i],&InitN_DSpin[i],
-		 &Angle0_Spin[i], &Angle1_Spin[i], 
-		 &Angle0_Orbital[i], &Angle1_Orbital[i],
-		 &Constraint_SpinAngle[i],
-		 OrbPol );
+          if ( 8<=fields) Angle0_Spin[i] = atom->spin_angle[0];
+          if ( 9<=fields) Angle1_Spin[i] = atom->spin_angle[1];
+          if (10<=fields) Angle0_Orbital[i] = atom->orbital_angle[0];
+          if (11<=fields) Angle1_Orbital[i] = atom->orbital_angle[1];
+          if (12<=fields) Constraint_SpinAngle[i] = atom->constraint;
+          if (13<=fields) strcpy(OrbPol, atom->orbital_polarization);
 
 	  /* atomMove is initialzed as 1 */
 
@@ -1731,16 +1753,13 @@ void Input_std(char *file, OpenMXCoreContext *core)
           }
 	}
 
+
 	/**************************************************
                   (2) spin collinear
 	**************************************************/
 
 	else{ 
-
-	  sscanf(buf,"%i %s %lf %lf %lf %lf %lf %s",
-		 &j, Species,
-		 &Gxyz[i][1],&Gxyz[i][2],&Gxyz[i][3],
-		 &InitN_USpin[i],&InitN_DSpin[i], OrbPol );
+          if (8<=fields) strcpy(OrbPol, atom->orbital_polarization);
 	}
 
         WhatSpecies[i] = Species2int(Species);
@@ -1758,13 +1777,8 @@ void Input_std(char *file, OpenMXCoreContext *core)
         }
       }
 
-      ungetc('\n',fp);
-      if (!input_last("Atoms.SpeciesAndCoordinates>")) {
-        /* format error */
-        printf("Format error for Atoms.SpeciesAndCoordinates\n");
-        po++;
-      }
 
+      free(atoms);
     }
 
     /****************************************************
@@ -1790,13 +1804,22 @@ void Input_std(char *file, OpenMXCoreContext *core)
 
     if ( (fp=input_find("<Atoms.Unitvectors")) != NULL ) {
 
-      for (i=1; i<=3; i++){
-        fscanf(fp,"%lf %lf %lf",&tv[i][1],&tv[i][2],&tv[i][3]);
-      }
-      if ( ! input_last("Atoms.Unitvectors>") ) {
+      /* the io package reads the nine numbers (a malformed block leaves tv) */
+      double cell[3][3];
+      char message[200];
+      int status = openmx_io_read_unit_vectors(input_keyword_files(), cell, message, sizeof(message));
+
+      if (status<0){
         /* format error */
-        printf("Format error for Atoms.Unitvectors\n");
+        printf("%s", message);
         po++;
+      }
+      else if (0<status){
+        for (i=1; i<=3; i++){
+          tv[i][1] = cell[i-1][0];
+          tv[i][2] = cell[i-1][1];
+          tv[i][3] = cell[i-1][2];
+        }
       }
 
       /* Ang to AU */

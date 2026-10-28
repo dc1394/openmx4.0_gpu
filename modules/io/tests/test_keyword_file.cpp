@@ -3,6 +3,12 @@
 // the C++ ownership semantics, and the boundary behaviour of the C interface.
 #include <openmx/io/keyword_file.h>
 #include <openmx/io/keyword_file.hpp>
+#include <openmx/io/atoms.h>
+#include <openmx/io/settings.h>
+#include <openmx/io/settings.hpp>
+#include <openmx/io/atoms.hpp>
+#include <openmx/io/species.h>
+#include <openmx/io/species.hpp>
 
 #include <cstdio>
 #include <cstring>
@@ -358,6 +364,201 @@ void invalid() {
   openmx_io_keyword_files_destroy(files);
   std::fprintf(stderr, "PASS io invalid\n");
 }
+
+void species() {
+  TempDir dir;
+  const std::string good = dir.write("species.dat",
+    "Species.Number 3\n"
+    "<Definition.of.Atomic.Species\n"
+    " H   H5.0-s2p1     H_PBE19   1.00794\n"
+    "\tC   C5.0-s2p2d1   C_PBE19\n"
+    " O   O5.0-s2p2d1   O_PBE19   15.9994 # comment\n"
+    "Definition.of.Atomic.Species>\n");
+  const std::string absent = dir.write("absent.dat", "Species.Number 1\n");
+  const std::string unterminated = dir.write("open.dat", "<Definition.of.Atomic.Species\n H H5.0-s1 H_PBE19\n");
+  const std::string short_line = dir.write("short.dat", "<Definition.of.Atomic.Species\n H H5.0-s1\nDefinition.of.Atomic.Species>\n");
+  {
+    KeywordFile file(good);
+    std::string error;
+    const auto species = openmx::io::read_species_definitions(file, 3, &error);
+    require(species && species->size() == 3 && error.empty(), "three species");
+    require((*species)[0].name == "H" && (*species)[0].basis == "H5.0-s2p1" && (*species)[0].pseudopotential == "H_PBE19", "fields");
+    require((*species)[0].mass_given && (*species)[0].mass == 1.00794, "mass");
+    require(!(*species)[1].mass_given && (*species)[1].mass == 0.0 && (*species)[1].name == "C", "no mass, tab-led line");
+    require((*species)[2].mass_given && (*species)[2].mass == 15.9994, "mass before a comment");
+    require(!openmx::io::read_species_definitions(file, 2, &error) && error == "Format error for Definition.of.Atomic.Species\n", "count mismatch");
+    require(!openmx::io::read_species_definitions(file, 4, &error) && !error.empty(), "count too large");
+    int n = 0;
+    require(file.integer("Species.Number", n, 0) == Lookup::found && n == 3, "the file stays usable");
+  }
+  {
+    KeywordFile file(absent);
+    std::string error = "stale";
+    require(!openmx::io::read_species_definitions(file, 1, &error) && error.empty(), "absent block: no error text");
+  }
+  {
+    KeywordFile file(unterminated);
+    std::string error;
+    require(!openmx::io::read_species_definitions(file, 1, &error) && !error.empty(), "unterminated block");
+  }
+  {
+    KeywordFile file(short_line);
+    std::string error;
+    require(!openmx::io::read_species_definitions(file, 1, &error) && !error.empty(), "a line with two tokens");
+  }
+  // C interface over the stack
+  OpenMXKeywordFiles* lib = openmx_io_keyword_files_create(2, nullptr);
+  char n0[32], n1[32], n2[32], b0[32], b1[32], b2[32], v0[32], v1[32], v2[32], message[120];
+  char* names[3] = {n0, n1, n2};
+  char* basis[3] = {b0, b1, b2};
+  char* vps[3] = {v0, v1, v2};
+  double mass[3] = {-1.0, -1.0, -1.0};
+  require(openmx_io_read_species_definitions(lib, 3, names, basis, vps, mass, 32, message, sizeof message) == -1, "nothing open");
+  require(openmx_io_open(lib, good.c_str()) == 1, "open");
+  require(openmx_io_read_species_definitions(lib, 3, names, basis, vps, mass, 32, message, sizeof message) == 1, "C read");
+  require(std::string(n1) == "C" && std::string(b2) == "O5.0-s2p2d1" && std::string(v0) == "H_PBE19", "C fields");
+  require(mass[0] == 1.00794 && mass[1] == -1.0 && mass[2] == 15.9994 && message[0] == '\0', "C masses: absent keeps the old value");
+  require(openmx_io_read_species_definitions(lib, 2, names, basis, vps, mass, 32, message, sizeof message) == -1, "C count mismatch");
+  require(std::string(message) == "Format error for Definition.of.Atomic.Species\n", "C message");
+  require(openmx_io_read_species_definitions(lib, 3, names, basis, vps, mass, 4, message, sizeof message) == -1, "C field too long");
+  require(openmx_io_open(lib, absent.c_str()) == 1, "open absent");
+  require(openmx_io_read_species_definitions(lib, 1, names, basis, vps, mass, 32, message, sizeof message) == 0, "C absent block");
+  require(openmx_io_read_species_definitions(lib, 0, nullptr, nullptr, nullptr, nullptr, 32, message, sizeof message) == 0, "C absent, zero count");
+  openmx_io_keyword_files_destroy(lib);
+  std::fprintf(stderr, "PASS io species\n");
+}
+
+void atoms() {
+  TempDir dir;
+  const std::string collinear = dir.write("col.dat",
+    "<Atoms.SpeciesAndCoordinates\n"
+    " 1  O  0.000 0.000 0.000  3.0 3.0\n"
+    " 2  H  0.757 0.586 0.000  0.5 0.5  on\n"
+    " 3  H -0.757 0.586 1e-3   0.5\n"              // a short line: the down charge is missing
+    "Atoms.SpeciesAndCoordinates>\n");
+  const std::string noncollinear = dir.write("nc.dat",
+    "<Atoms.SpeciesAndCoordinates\n"
+    " 1 Mn 0.0 0.0 0.0 8.0 5.0 90.0 0.0 90.0 0.0 1 off\n"
+    " 2 O  1.5 0.0 0.0 3.0 3.0 45.0 30.0 0.0 0.0 0\n"
+    "Atoms.SpeciesAndCoordinates>\n");
+  {
+    KeywordFile file(collinear);
+    std::string error;
+    const auto atoms = openmx::io::read_atom_definitions(file, 3, false, &error);
+    require(atoms && atoms->size() == 3 && error.empty(), "three atoms");
+    require((*atoms)[0].fields == 7 && (*atoms)[0].index == 1 && (*atoms)[0].species == "O", "first atom");
+    require((*atoms)[0].position[2] == 0.0 && (*atoms)[0].spin[0] == 3.0 && (*atoms)[0].orbital_polarization.empty(), "first atom values");
+    require((*atoms)[1].fields == 8 && (*atoms)[1].orbital_polarization == "on" && (*atoms)[1].position[0] == 0.757, "polarization keyword");
+    require((*atoms)[2].fields == 6 && (*atoms)[2].position[2] == 1e-3 && (*atoms)[2].spin[0] == 0.5 && (*atoms)[2].spin[1] == 0.0, "short line keeps the default");
+    require(!openmx::io::read_atom_definitions(file, 2, false, &error) && error == "Format error for Atoms.SpeciesAndCoordinates\n", "count mismatch");
+  }
+  {
+    KeywordFile file(noncollinear);
+    std::string error;
+    const auto atoms = openmx::io::read_atom_definitions(file, 2, true, &error);
+    require(atoms && atoms->size() == 2, "two non-collinear atoms");
+    const openmx::io::AtomDefinition& mn = (*atoms)[0];
+    require(mn.fields == 13 && mn.spin[0] == 8.0 && mn.spin_angle[0] == 90.0 && mn.orbital_angle[0] == 90.0 && mn.constraint == 1 && mn.orbital_polarization == "off", "non-collinear fields");
+    require((*atoms)[1].fields == 12 && (*atoms)[1].spin_angle[1] == 30.0 && (*atoms)[1].constraint == 0 && (*atoms)[1].orbital_polarization.empty(), "no polarization keyword");
+    const auto as_collinear = openmx::io::read_atom_definitions(file, 2, false, &error);
+    // a collinear reading of a non-collinear line takes the next token as the polarization keyword, as sscanf("%s") did
+    require(as_collinear && (*as_collinear)[0].fields == 8 && (*as_collinear)[0].orbital_polarization == "90.0", "collinear reading of a non-collinear line");
+  }
+  {
+    const std::string bad = dir.write("bad.dat", "<Atoms.SpeciesAndCoordinates\n x H 0 0 0 1 1\nAtoms.SpeciesAndCoordinates>\n");
+    KeywordFile file(bad);
+    const auto atoms = openmx::io::read_atom_definitions(file, 1, false);
+    require(atoms && (*atoms)[0].fields == 0, "a non-numeric index converts nothing");
+    KeywordFile none(dir.write("none.dat", "Atoms.Number 1\n"));
+    std::string error = "stale";
+    require(!openmx::io::read_atom_definitions(none, 1, false, &error) && error.empty(), "absent block");
+  }
+  OpenMXKeywordFiles* lib = openmx_io_keyword_files_create(2, nullptr);
+  OpenMXAtomDefinition c[3];
+  char message[120];
+  require(openmx_io_open(lib, collinear.c_str()) == 1, "open");
+  require(openmx_io_read_atom_definitions(lib, 3, 0, c, message, sizeof message) == 1, "C read");
+  require(c[1].fields == 8 && std::string(c[1].orbital_polarization) == "on" && c[2].spin[1] == 0.0 && c[0].index == 1, "C records");
+  require(openmx_io_read_atom_definitions(lib, 1, 0, c, message, sizeof message) == -1 && std::string(message) == "Format error for Atoms.SpeciesAndCoordinates\n", "C count mismatch");
+  require(openmx_io_read_atom_definitions(nullptr, 3, 0, c, message, sizeof message) == -1, "C null stack");
+  openmx_io_keyword_files_destroy(lib);
+  std::fprintf(stderr, "PASS io atoms\n");
+}
+
+void settings() {
+  TempDir dir;
+  const std::string input = dir.write("water.dat",
+    "System.CurrrentDirectory  ./\n"
+    "System.Name   water\n"
+    "level.of.stdout 2\n"
+    "DATA.PATH  /opt/DFT_DATA19\n"
+    "Species.Number 2\n"
+    "<Definition.of.Atomic.Species\n"
+    " H  H5.0-s2p1    H_PBE19\n"
+    " O  O5.0-s2p2d1  O_PBE19  15.9994\n"
+    "Definition.of.Atomic.Species>\n"
+    "Atoms.Number 3\n"
+    "Atoms.SpeciesAndCoordinates.Unit  AU\n"
+    "<Atoms.SpeciesAndCoordinates\n"
+    " 1 O 0.0 0.0 0.0 3.0 3.0\n"
+    " 2 H 1.43 1.1 0.0 0.5 0.5\n"
+    " 3 H -1.43 1.1 0.0 0.5 0.5\n"
+    "Atoms.SpeciesAndCoordinates>\n"
+    "Atoms.UnitVectors.Unit  Ang\n"
+    "<Atoms.Unitvectors\n"
+    " 10.0 0.0 0.0\n"
+    " 0.0 10.0 0.0\n"
+    " 0.0 0.0 10.0  # a3: trailing text after the ninth number is skipped\n"
+    "Atoms.Unitvectors>\n"
+    "scf.SpinPolarization  off\n");
+  {
+    KeywordFile file(input);
+    std::string error;
+    const auto s = openmx::io::read_settings(file, &error);
+    require(s && error.empty(), "settings read");
+    require(s->system_name == "water" && s->stdout_level == 2 && s->data_path == "/opt/DFT_DATA19" && s->current_directory == "./", "system keywords");
+    require(s->spin_polarization == openmx::io::SpinPolarization::off && s->species_count == 2 && s->species.size() == 2, "spin and species");
+    require(s->species[1].mass_given && s->species[1].mass == 15.9994 && s->species[0].basis == "H5.0-s2p1", "species values");
+    require(s->atom_count == 3 && s->atoms.size() == 3 && s->coordinates_unit == openmx::io::LengthUnit::bohr && s->atoms[1].position[0] == 1.43, "atoms");
+    require(s->unit_vectors_given && s->unit_vectors_unit == openmx::io::LengthUnit::angstrom && s->unit_vectors[1][1] == 10.0 && s->unit_vectors[2][2] == 10.0, "unit vectors, a trailing comment ignored");
+    const auto cell = openmx::io::read_unit_vectors(file, &error);
+    require(cell && (*cell)[0][0] == 10.0 && error.empty(), "unit vectors alone");
+  }
+  {
+    // defaults of an almost empty input, absent blocks, a non-collinear flag
+    KeywordFile file(dir.write("empty.dat", "scf.SpinPolarization NC\n"));
+    std::string error;
+    const auto s = openmx::io::read_settings(file, &error);
+    require(s && s->system_name == "default" && s->data_path == "../DFT_DATA19" && s->stdout_level == 1, "defaults");
+    require(s->spin_polarization == openmx::io::SpinPolarization::noncollinear && s->species.empty() && s->atoms.empty() && !s->unit_vectors_given, "absent blocks");
+    require(s->coordinates_unit == openmx::io::LengthUnit::angstrom && s->unit_vectors_unit == openmx::io::LengthUnit::angstrom, "unit defaults");
+  }
+  {
+    KeywordFile bad(dir.write("bad-unit.dat", "Atoms.UnitVectors.Unit  parsec\n"));
+    std::string error;
+    require(!openmx::io::read_settings(bad, &error) && error.find("Atoms.UnitVectors.Unit") != std::string::npos, "unknown unit");
+    KeywordFile mismatch(dir.write("mismatch.dat", "Species.Number 1\n<Definition.of.Atomic.Species\n H H5.0-s1 H_PBE19\n O O5.0-s1 O_PBE19\nDefinition.of.Atomic.Species>\n"));
+    require(!openmx::io::read_settings(mismatch, &error) && error == "Format error for Definition.of.Atomic.Species\n", "species count mismatch propagates");
+    KeywordFile short_cell(dir.write("cell8.dat", "<Atoms.Unitvectors\n 1 0 0\n 0 1 0\n 0 0\nAtoms.Unitvectors>\n"));
+    require(!openmx::io::read_unit_vectors(short_cell, &error) && error == "Format error for Atoms.Unitvectors\n", "eight numbers");
+    KeywordFile long_cell(dir.write("cell4.dat", "<Atoms.Unitvectors\n 1 0 0\n 0 1 0\n 0 0 1\n 0 0 0\nAtoms.Unitvectors>\n"));
+    require(!openmx::io::read_unit_vectors(long_cell, &error), "a fourth line");
+    KeywordFile comment_inside(dir.write("cell-comment.dat", "<Atoms.Unitvectors\n 1 0 0 # a1\n 0 1 0\n 0 0 1\nAtoms.Unitvectors>\n"));
+    require(!openmx::io::read_unit_vectors(comment_inside, &error), "text before the ninth number, which fscanf could not read either");
+    KeywordFile one_line(dir.write("cell1.dat", "<Atoms.Unitvectors\n 1 0 0 0 1 0 0 0 1\nAtoms.Unitvectors>\n"));
+    const auto cell = openmx::io::read_unit_vectors(one_line, &error);
+    require(cell && (*cell)[2][2] == 1.0 && (*cell)[1][1] == 1.0, "nine numbers on one line, as fscanf accepted");
+  }
+  OpenMXKeywordFiles* lib = openmx_io_keyword_files_create(2, nullptr);
+  double tv[3][3];
+  char message[120];
+  require(openmx_io_open(lib, input.c_str()) == 1, "open");
+  require(openmx_io_read_unit_vectors(lib, tv, message, sizeof message) == 1 && tv[0][0] == 10.0 && tv[2][1] == 0.0, "C unit vectors");
+  require(openmx_io_open(lib, dir.write("none.dat", "x 1\n").c_str()) == 1 && openmx_io_read_unit_vectors(lib, tv, message, sizeof message) == 0, "C absent block");
+  require(openmx_io_read_unit_vectors(nullptr, tv, message, sizeof message) == -1, "C null stack");
+  openmx_io_keyword_files_destroy(lib);
+  std::fprintf(stderr, "PASS io settings\n");
+}
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -366,6 +567,9 @@ int main(int argc, char** argv) {
     if (name == "legacy") legacy();
     else if (name == "semantics") semantics();
     else if (name == "invalid") invalid();
+    else if (name == "species") species();
+    else if (name == "atoms") atoms();
+    else if (name == "settings") settings();
     else throw std::runtime_error("unknown io test case");
     return 0;
   } catch (const std::exception& e) {

@@ -54,6 +54,11 @@ int input_errorCount()
   return openmx_io_error_count(stack());
 }
 
+OpenMXKeywordFiles *input_keyword_files(void)
+{
+  return stack();
+}
+
 int input_logical(const char *key, int *ret, const int defval)
 {
   return openmx_io_logical(stack(), key, ret, defval);

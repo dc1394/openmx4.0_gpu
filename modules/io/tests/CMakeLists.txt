@@ -5,7 +5,7 @@ set_source_files_properties(fixtures/Inputtools.c PROPERTIES COMPILE_OPTIONS
   "$<$<C_COMPILER_ID:GNU,Clang,AppleClang,IntelLLVM>:-w>")
 target_include_directories(openmx_io_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/legacy_include")
 target_link_libraries(openmx_io_tests PRIVATE OpenMX::io)
-foreach(_case legacy semantics invalid)
+foreach(_case legacy semantics invalid species atoms settings)
   add_test(NAME io-${_case} COMMAND openmx_io_tests ${_case})
   set_tests_properties(io-${_case} PROPERTIES LABELS "unit;io" TIMEOUT 60)
 endforeach()

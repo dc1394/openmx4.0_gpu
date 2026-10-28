@@ -137,6 +137,10 @@ flowchart TD
    第111段階でキーワード入力ファイルの読み取りを `OpenMX::io`（`modules/io/`）へ独立化した。
    第112段階で XC の計算核を `openmx/xc/kernels.h` に一本化し、CUDA/HIP のデバイス側コピーを廃止した。
    第113段階で基底指定文字列（`Si7.0-s2p2d1`）の解析器を `OpenMX::io` に加え、`Input_std.c` から呼ぶようにした。
+   第114段階で種定義ブロックの型付き読取器を `OpenMX::io` に加え、本体の入力スタックを `input_keyword_files()` で渡すようにした。
+   第115段階で原子座標ブロックの型付き読取器を `OpenMX::io` に加え、`Input_std.c` の読取りを置き換えた。
+   第116段階で型付き設定 `openmx::io::Settings`（系・種・原子・単位胞）と単位胞ブロックの読取器を加えた。
+   残るスカラーキーワード（約 400）を `Settings` へ移すことが io の次の段階である。
 4. **poisson / eigen と外部サービス。** 解法の入力・出力・失敗・fallback の契約を統一し、
    CPU・GeForce・データセンターGPUそれぞれの実装を差し替え可能にする。
 5. **hamiltonian / scf / transport / io を構成する。** 本体をライブラリの利用者へ移し、

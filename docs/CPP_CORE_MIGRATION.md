@@ -7454,3 +7454,59 @@ GPU のデバイスコードは nvc が FMA で縮約するので、従来のデ
   実行ごとに動く値で（GPU 側の非決定性。第110段階以降の各ビルドでも 4.4e-11〜4.7e-11）、
   CPU モードの結果表が同一なので解析器の変更によるものではありません。sidia333（CPU モード）の
   `.ene`・`.md` は移行前のバイナリと一致します。
+
+## 第114段階: 種定義ブロックの型付き読取器を OpenMX::io へ
+
+`modules/io` に `openmx::io::read_species_definitions`（C: `openmx_io_read_species_definitions`）を
+加えました。`<Definition.of.Atomic.Species` ブロックの各行を種名・基底指定・擬ポテンシャル名・
+省略可能な原子質量の型付き値（`SpeciesDefinition`）として返し、行数が期待数と異なる、3 トークン未満の行、
+閉じタグなしは元の読取器の診断文 `Format error for Definition.of.Atomic.Species` で誤り、ブロックがない
+場合は元の読取器と同じく誤りではありません（質量が省略された種の質量は変更しません）。
+
+本体の `Input_std.c` は、`fgets` + `sscanf` + `ungetc` + `input_last` の読取りをこの関数の 1 回の呼び出しに
+置き換え、戻り値が正のときだけ各種の `SpeciesString2int` を呼びます。そのために `Inputtools.h` に
+`input_keyword_files()`（互換層が持つ入力ファイルのスタック）を加えました。これは「呼び出し側がハンドルを
+持つ」形への最初の一歩で、互換層の最後の static を消すときにはこの関数の呼び出し側がハンドルを
+受け取る形になります。
+
+## 第115段階: 原子座標ブロックの型付き読取器を OpenMX::io へ
+
+`modules/io` に `openmx::io::read_atom_definitions`（C: `openmx_io_read_atom_definitions`）を加えました。
+`<Atoms.SpeciesAndCoordinates` の各行を `AtomDefinition`（番号、種名、座標、初期電荷、非共線の Euler 角と
+拘束フラグ、軌道分極の語）として返し、行数の不一致と閉じタグなしは元の診断文
+`Format error for Atoms.SpeciesAndCoordinates` で誤りに、ブロックがない場合は誤りではありません。
+元の `sscanf` と同じく変換は最初に合わない項目で止まり、変換できた項目数を `fields` に返します
+（`%i` の番号、`%s` の種名、`%lf` の数値、`%s` の語という順序と、共線行として非共線行を読むと次の数値が
+分極の語になる振る舞いも同じです）。
+
+本体の `Input_std.c` は、`fgets` + `sscanf`（共線・非共線の 2 形式）+ `ungetc` + `input_last` を
+この関数の 1 回の呼び出しに置き換え、各原子では変換できた項目だけを `Gxyz`、`InitN_USpin/DSpin`、
+`Angle0/1_Spin`、`Angle0/1_Orbital`、`Constraint_SpinAngle`、`Species`、`OrbPol` に書き込みます
+（短い行で元の値が残る振る舞いを保つため）。角度の乱数摂動と球座標への変換、電荷の入れ替え、
+`Species2int`・`OrbPol2int`、番号の検査と報告は元のコードのまま残しています。
+
+## 第116段階: 型付き設定 openmx::io::Settings と単位胞ブロックの読取器
+
+`modules/io` に `openmx::io::Settings` と `read_settings` を加えました。本体の `Input_std.c` と同じ既定値と
+綴りで、`System.Name`・`System.CurrrentDirectory`・`DATA.PATH`・`level.of.stdout`・`scf.SpinPolarization`
+（off/on/nc）・`Species.Number` と種定義ブロック・`Atoms.Number`・`Atoms.SpeciesAndCoordinates.Unit`
+（Ang/AU/FRAC）と原子座標ブロック・`Atoms.UnitVectors.Unit`（Ang/AU）と単位胞ブロックを、大域変数を
+持たない 1 つの型に読みます。単位胞ブロックは `read_unit_vectors`（C: `openmx_io_read_unit_vectors`）で、
+元の `fscanf` ×3 + 閉じタグ検査が受け付けた形（9 個の数を行をまたいで読み、9 個目がブロック最後の行）
+をそのまま受け付け、`Format error for Atoms.Unitvectors` で誤りを報告します。本体の `Input_std.c` の
+単位胞ブロックはこの読取器を呼ぶようになりました。
+
+これで本体の入力のうち、構造（種・原子・単位胞）とその単位・数の指定は型付きで読めますが、
+残る約 400 のスカラーキーワード（SCF、混合、MD、出力などの設定）はまだ `KeywordFile` 経由で
+`Input_std.c` が大域変数に読んでいます。これらを `Settings` の下位構造へ移し、`Input_std.c` を
+`Settings` から大域表を埋める層にすることが io の次の段階です。
+
+検証（第114〜116段階）:
+
+- 独立パッケージの 9 試験（`io-species`、`io-atoms`、`io-settings` を含む）が GCC と Clang + ASan/UBSan で
+  成功しました。CPU 専用ビルドでは io・xc・CI 相当の 30 試験、HIP 版 `Input_std.c`・`Inputtools.c` の
+  構文検査、`tests/test_unified_build.py`（`Inputtools.c`/`.h` のハッシュを更新）、大域変数監査が通りました。
+- nvc 版の runtest は CPU モードで第113段階と同一の結果表、GPU モードは最大 |ΔUtot| 5.1e-11（C60）で
+  Methane などの行が実行ごとの 1e-12〜1e-10 の桁で動くだけでした（非共線の Cr2・GaAs を含む 14 入力の
+  種・原子・単位胞ブロックがこの読取器を通ります）。sidia333（CPU モード）の `.ene`・`.md` は移行前の
+  バイナリと一致し、gcc の CPU 専用ビルドの Methane の `.ene` も nvc 版の参照と一致します。

@@ -10,6 +10,11 @@ struct OpenMXKeywordFiles {
   openmx::io::KeywordFiles files;
 };
 
+openmx::io::KeywordFile* openmx_io_keyword_files_current(OpenMXKeywordFiles* files) noexcept
+{
+  return files ? files->files.current() : nullptr;
+}
+
 namespace {
 
 int code(openmx::io::Lookup lookup) noexcept { return static_cast<int>(lookup); }

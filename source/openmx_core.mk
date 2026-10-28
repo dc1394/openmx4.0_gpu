@@ -75,5 +75,5 @@ $(OBJS) openmx_api.o: openmx_core_radial_views.h ../core/include/openmx_core_rad
 
 $(OBJS) openmx_api.o: openmx_basis_orbital_radial.h ../modules/basis/include/openmx/basis/orbital_radial.h ../modules/basis/include/openmx/basis/detail/orbital_radial.h
 Set_XC_Grid.o Force.o Stress.o Total_Energy.o: openmx_xc.h ../modules/xc/include/openmx/xc/xc.h
-Inputtools.o Input_std.o: openmx_io.h ../modules/io/include/openmx/io/keyword_file.h ../modules/io/include/openmx/io/basis_spec.h
+Inputtools.o Input_std.o: openmx_io.h ../modules/io/include/openmx/io/keyword_file.h ../modules/io/include/openmx/io/basis_spec.h ../modules/io/include/openmx/io/species.h ../modules/io/include/openmx/io/atoms.h ../modules/io/include/openmx/io/settings.h
 Set_XC_Grid.o: openmx_xc_kernels.h ../modules/xc/include/openmx/xc/kernels.h

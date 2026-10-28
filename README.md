@@ -175,7 +175,10 @@ and the package tests show the library bitwise identical to them. External CMake
 The third package, [OpenMX::io](modules/io/README.md), reads OpenMX keyword
 files (scalar, vector and block keywords) through an owning `KeywordFile`
 and the original nesting model `KeywordFiles`, with C++ and C APIs, no global
-state and no process exit. The application's `Inputtools.c` is a thin
+state and no process exit. It also parses basis specifications
+("Si7.0-s2p2d1"), the species, atom and unit-cell blocks, and composes them
+with the structural keywords into typed `Settings`; `Input_std.c` reads those
+blocks through it. The application's `Inputtools.c` is a thin
 compatibility layer over it, and the frozen original is the reference of the
 package tests. External CMake projects use
 `find_package(OpenMXIo 0.1 CONFIG REQUIRED)` and link `OpenMX::io`.
