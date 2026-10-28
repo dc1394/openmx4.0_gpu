@@ -178,11 +178,27 @@ jobs:
         env:
           OMP_NUM_THREADS: 2
           OMP_PROC_BIND: "false"
+        # Failed test names go to an annotation and the step summary, which
+        # are readable without the job log.
         run: |
           ulimit -s 8192
           test_status=0
+          failed=""
           ctest --test-dir build/core -L '^native-state$' --no-tests=error --output-on-failure || test_status=$?
+          failed="$failed $(cat build/core/Testing/Temporary/LastTestsFailed.log 2>/dev/null | tr '\n' ' ')"
           ctest --test-dir build/core -LE '^native-state(-mpi)?$' --no-tests=error --output-on-failure || test_status=$?
+          failed="$failed $(cat build/core/Testing/Temporary/LastTestsFailed.log 2>/dev/null | tr '\n' ' ')"
+          if [ "$test_status" -ne 0 ]; then
+            echo "::error::ctest exit status $test_status; failed tests:$failed"
+            {
+              echo "## Failed core tests"
+              echo "$failed"
+              echo
+              echo '```'
+              tail -c 60000 build/core/Testing/Temporary/LastTest.log
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
           exit "$test_status"
       - name: Real MPI solver state cleanup
         if: matrix.mpi == true
