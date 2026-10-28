@@ -66,6 +66,8 @@ static double Dr_KumoF(int mesh,double x,double r,const double *a,const double *
 static double XC_Ceperly_Alder(double n,int mode){
   CHECK(mode==0||mode==3);return mode==0?-.2-.4*n+.05*n*n:-.4+.1*n;
 }
+/* The production code calls the xc package's entry; the harness keeps the model. */
+static double openmx_xc_ceperley_alder(double density,int quantity){return XC_Ceperly_Alder(density,quantity);}
 /* Independently integrate the prescribed density and polynomial XC energy.
    Coordinate differences of this scalar check the native gradient fields. */
 static double oracle_energy(const OpenMXAtomicViews *atomic,int points,const double *rows){

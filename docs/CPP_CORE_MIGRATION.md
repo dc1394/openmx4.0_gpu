@@ -7329,6 +7329,11 @@ Makefile 利用者（CUDA/HIP）も CPU 専用の CMake ビルドも `openmx_cor
   CI と同じ CTest 部分集合と xc の 6 試験が成功しました（`cpu-numerical-toolchain` は、このマシンの
   古いビルドディレクトリが Intel の mpiexec で OpenMPI のバイナリを起動する既知の局所的な理由で失敗します）。
   HIP 版のステージングと構文検査も成功しています。大域変数監査の基準とインベントリを再生成しました。
+- CI の `host` ジョブでは、`Total_Energy.c` と `Stress.c` から切り出した領域をハーネスでコンパイルする
+  `total-energy-xc` / `stress-xc`（`native-state` ラベル）が、切り出し部分の新しい呼び出し
+  `openmx_xc_ceperley_alder` の暗黙宣言で失敗しました。両ハーネス（`tests/energy_xc_harness.c`、
+  `tests/stress_xc_harness.c`）は XC を多項式の模型で置き換えているので、模型を新しい名前でも提供して
+  直しました。`-LE native-state` の 516 試験だけを再現していたため、ローカルでは見逃していました。
 - CMake ドライバで再ビルドした nvc 版（`work/openmx`）の runtest は GPU モードで最大 |ΔUtot| 5.1e-11
   （C60）、|ΔForce| 8e-12、CPU モードで 5.7e-11（Methane）、7e-12、CPU legacy SIMD モードで 2.31e-10
   （Methane）、7e-12 でした。移行前のバイナリ（`source/openmx`）との直接比較では、sidia333（GGA-PBE、
