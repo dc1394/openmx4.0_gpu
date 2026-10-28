@@ -261,6 +261,14 @@
   {
    "group": "band",
    "names": [
+    "OPENMX_NC_DM_HOST_ONEPASS"
+   ],
+   "en": "<b>0</b> = accumulate the non-collinear density matrix on the host with the legacy per-component loops (the cluster routine's 6-10 passes over the eigenvectors, the band routine's per-neighbour copies) instead of the one-pass host SIMD kernel of <code>openmx_nc_dm_cpu.h</code>. The two are bitwise equal; the switch isolates this pass for comparisons. Not used under <code>OPENMX_HOST_SIMD=legacy</code>, which keeps the legacy loops anyway.",
+   "ja": "<b>0</b>=非共線の密度行列をホストで集計するとき、<code>openmx_nc_dm_cpu.h</code> の 1 回走査のホスト SIMD カーネルではなく従来の成分ごとのループ（クラスターは固有ベクトルを 6〜10 回読み直す、バンドは近接原子ごとにコピーする）を使う。両者は bit 一致で、この切り替えは比較のためのもの。<code>OPENMX_HOST_SIMD=legacy</code> では元から従来のループなので使わない。"
+  },
+  {
+   "group": "band",
+   "names": [
     "OPENMX_BAND_NONCOL_GPU_DM"
    ],
    "en": "<b>0</b> = CPU loop for the per-k DM accumulation of the noncollinear ScaLAPACK/ELPA-fallback multi-k loop (the k-dense GPU flow keeps its own device DM regardless)",

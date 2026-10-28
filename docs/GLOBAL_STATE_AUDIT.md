@@ -899,3 +899,10 @@ CPUID で選び、ELPA 自身の環境変数 `ELPA_DEFAULT_real_kernel` / `ELPA_
 参照組は 12,368 → 12,369（新しい関数の 37 組を追加、旧補助関数の 36 組を削除）、関数数 3,428 → 3,438、
 file-scope / 関数内 static は 300 / 277 のまま、環境変数名は 254 → 256（ELPA の 2 件）、getenv の直接呼び出しは 0 です。
 `tests/run_nc_indices_cpu.py`（CTest `nc-block-indices`）が旧補助関数との完全一致を 1.2 億要素で確かめます。
+
+2026-10-28、非共線密度行列の 1 回走査（`5e34d86d` の直後）: `openmx_nc_dm_cpu.h` の `NcDM_Cluster_OnePass` /
+`NcDM_Band_Panels` が、クラスターの成分ごとの 6〜10 回の走査とバンドの近接原子ごとのコピーを、Core の
+`openmx_core_energy_nc_block`（全成分を 1 回の走査で集計）に置き換えます。`OPENMX_HOST_SIMD=legacy` と
+`OPENMX_NC_DM_HOST_ONEPASS=0` では従来のループのままです。参照組は 12,369 → 12,379（新しい関数の 10 組）、
+関数数 3,438 → 3,446、file-scope / 関数内 static は 300 / 277 のまま、環境変数名は 256 → 257、
+getenv の直接呼び出しは 0 です。CTest `core-host-energy-nc` が両方の従来ループの転記との bit 一致を確かめます。

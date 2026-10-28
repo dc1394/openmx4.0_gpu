@@ -661,7 +661,7 @@ DFT.o: DFT.c openmx_common.h tran_prototypes.h grid_precision.h
 	$(CC) -c DFT.c
 Cluster_DFT_Col.o: Cluster_DFT_Col.c openmx_common.h eigen_refine_gpu.h openmx_precision.h
 	$(CC) -c Cluster_DFT_Col.c
-Cluster_DFT_NonCol.o: Cluster_DFT_NonCol.c openmx_common.h eigen_refine_gpu.h openmx_precision.h
+Cluster_DFT_NonCol.o: Cluster_DFT_NonCol.c openmx_common.h eigen_refine_gpu.h openmx_precision.h openmx_nc_dm_cpu.h openmx_host_simd.h openmx_core_energy_simd.h
 	$(CC) -c Cluster_DFT_NonCol.c
 Cluster_DFT_Dosout.o: Cluster_DFT_Dosout.c openmx_common.h
 	$(CC) -c Cluster_DFT_Dosout.c
@@ -707,7 +707,7 @@ Overlap_Cluster_LNO_Ss.o: Overlap_Cluster_LNO_Ss.c openmx_common.h
 	$(CC) -c Overlap_Cluster_LNO_Ss.c
 leakdetect.o: leakdetect.c leakdetect.h
 	$(CC) -c leakdetect.c
-Band_DFT_NonCol.o: Band_DFT_NonCol.c openmx_common.h eigen_refine_gpu.h openmx_precision.h
+Band_DFT_NonCol.o: Band_DFT_NonCol.c openmx_common.h eigen_refine_gpu.h openmx_precision.h openmx_nc_dm_cpu.h openmx_host_simd.h openmx_core_energy_simd.h
 	$(CC3) -c Band_DFT_NonCol.c
 Band_DFT_NonCol_GB.o: Band_DFT_NonCol_GB.c openmx_common.h
 	$(CC) -c Band_DFT_NonCol_GB.c

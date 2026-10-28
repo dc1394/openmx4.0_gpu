@@ -26,6 +26,7 @@
 #include "elpa_cosma_bridge.h"
 #include "eigen_refine_gpu.h"
 #include "openmx_precision.h"
+#include "openmx_nc_dm_cpu.h"
 #include "eigen_refine_hooks.h"
 #include <limits.h>
 #include <math.h>
@@ -4258,6 +4259,15 @@ static double Cluster_DFT_NonCol_owned(ClusterNonColState *state, const OpenMXAt
       }
     }
     else {
+      /* DM: every component in one pass on the host SIMD path
+         (openmx_nc_dm_cpu.h), else the legacy per-component routine */
+      {
+        double nc_seconds = 0.0;
+        if (NcDM_Cluster_OnePass(state->chemical, myid, size_H1, is2, ie2, MP, n, n2, CDM, iDM[0], EDM, ko,
+                                 EVec1, Cnt_switch==1, OpenMX_HostSimdMode(), &nc_seconds)) {
+          time6 += nc_seconds;
+        }
+        else {
       /* DM */
 
       time6 += Calc_DM_Cluster_non_collinear_ScaLAPACK(state->chemical,  1, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
@@ -4293,6 +4303,8 @@ static double Cluster_DFT_NonCol_owned(ClusterNonColState *state, const OpenMXAt
 
         time6 += Calc_DM_Cluster_non_collinear_ScaLAPACK(state->chemical,  10, myid, numprocs, size_H1, is2, ie2, MP, n, n2,
                                                           CDM, iDM[0], EDM, ko, DM1, Work1, EVec1, electronic);
+      }
+        }
       }
 
       /* calculation of ParDM */

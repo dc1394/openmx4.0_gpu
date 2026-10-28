@@ -1045,6 +1045,7 @@
     "openmx_neutral_atom.h",
     "openmx_nonlocal_cpu.h",
     "openmx_nc_indices.h",
+    "openmx_nc_dm_cpu.h",
     "openmx_orbital_harmonics.h",
     "openmx_orbital_optimization.h",
     "openmx_orbitals.h",

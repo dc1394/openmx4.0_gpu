@@ -343,7 +343,7 @@ Kokkos の型・ISA フラグが C ABI やデバイス翻訳単位へ出ない�
 | Force3 / Force4B / Force_HNL | トレース・アーカイブの常駐見積もり / 途中失敗 | 軌道微分と縮約、融合トレース、共線 dHNL の SIMD |
 | Total_Energy | EH0・Exc0・格子和・双極子・CWF の各バッチ / 途中失敗 | 中性原子の対、XC 殻、ホストの格子和 |
 | バンド密度行列 | 密な GPU 固有値ソルバー時の GPU DM の見積もり / 直接試行の辞退。ELPA フォールバック時は既定でホスト（`OPENMX_BAND_GPU_DM=1` で GPU を選ぶと判定を受ける。`legacy` では GPU が既定） | `BandCol_DM_Block`（固有ベクトルを必要ならホストへ戻す） |
-| クラスター密度行列、非共線バンドの多 k 点フォールバック | GPU DM の見積もり / 直接試行の辞退 | `ClusterCol_AccumulateDM_CPU`、`Calc_DM_Band_non_collinear` |
+| クラスター密度行列、非共線バンドの多 k 点フォールバック | GPU DM の見積もり / 直接試行の辞退 | `ClusterCol_AccumulateDM_CPU`、非共線は `openmx_nc_dm_cpu.h`（全成分を 1 回の走査で集計する `energy` 群の `openmx_core_energy_nc_block`） |
 | Set_Nonlocal / Set_OLP_Kin | 最大チャンクの領域 / 1 対の動径作業領域 / 途中失敗 | CPU 経路（動径積分は `vna` 群の SIMD カーネル） |
 
 `OPENMX_HOST_SIMD_PREFER`（段階名の一部のカンマ区切り、または `all`、既定は空）に挙げた段階は、

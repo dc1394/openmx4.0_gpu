@@ -4856,3 +4856,27 @@ ELPA 2 段階法の Householder 変換カーネルは対角化時間の 1 割程
 NC の再配置の修正（`openmx_nc_indices.h`）は、クラスター NC の 4 SCF で `Hamiltonian_Cluster_NC_Hs2` を 1.69 % → 0.81 %、
 `Overlap_Cluster_NC_Ss2` を 0.28 % → 0.07 % にしました。写像は整数演算なので、`tests/run_nc_indices_cpu.py` が旧実装と
 1.2 億要素で完全一致することを確かめます（CTest `nc-block-indices`）。
+
+### 非共線の密度行列を 1 回の走査で（`openmx_core_energy_nc_block`）
+
+クラスター NC の `Calc_DM_Cluster_non_collinear_ScaLAPACK` は成分ごと（6 成分、エネルギー密度行列ありで 10 成分）に
+固有ベクトルを読み直し、バンド NC の `Calc_DM_Band_non_collinear` は近接原子ごとに固有ベクトルの行をコピーし直して
+いました。`energy` 群に加えた `openmx_core_energy_nc_block` は、近接原子側を 1 回だけ [帯][列] の 4 面（実部・虚部 ×
+スピノル上下）に転置し、(原子, 近接原子) ブロックごとに全成分を 1 回の走査で集計します（各要素の帯についての和の順序は
+従来どおり）。接続は `openmx_nc_dm_cpu.h`（CUDA/HIP 両方の `Cluster_DFT_NonCol.c` / `Band_DFT_NonCol.c`）で、
+`OPENMX_HOST_SIMD=legacy` と `OPENMX_NC_DM_HOST_ONEPASS=0` では従来のループのままです。
+
+同じバイナリで `OPENMX_NC_DM_HOST_ONEPASS` を切り替えた CPU モードの比較（sidia333、18 MPI）:
+
+| 実行 | 従来のループ | 1 回走査 |
+| --- | ---: | ---: |
+| クラスター NC 4 SCF: 対角化（密度行列を含む）/ 内部 Total | 78.3 / 131.2 s | 71.0 / 125.4 s |
+| クラスター NC: 密度行列の集計の割合（rank 0 の perf） | 15.5 %（約 21 s） | 5.0 %（約 6 s、カーネル本体） |
+| バンド NC 2 SCF（k 点 4）: 対角化 | 305 s | 316 s（差は ELPA の揺らぎの範囲。密度行列は約 7 s → 数 s） |
+
+- 数値: バンド NC は `.ene` と `.md` が bit 一致、クラスター NC は 1 SCF の Utot が一致します。力（`.xyz` の 15 桁目）は
+  最大 1e-15 だけ異なります。従来のループは nvc が FMA 付きでコンパイルしており（他の群と同じ事情）、カーネルは FMA を
+  使わないためで、CTest `core-host-energy-nc` は FMA なしの転記との bit 一致を全 ISA で確かめています。4 SCF の
+  クラスター NC ではこの最終桁の差が SCF で増幅され、Utot で 1e-14、力で 2e-11 になります。
+- `openmx -runtest`（14 入力、Cr2 と GaAs の非共線を含む）は GPU / CPU / CPU+legacy で合格です
+  （Utot 最大 5.1e-11 / 3.1e-11 / 3.1e-11）。

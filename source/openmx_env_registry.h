@@ -300,6 +300,7 @@
     X(NC_BACKTRANSFORM_BARRIER, "OPENMX_NC_BACKTRANSFORM_BARRIER", "flag", "global", "0", "backends/hip/src/Band_DFT_NonCol.c", "Opt in to a barrier around noncollinear band back-transforms.") \
     X(NC_DENSE_BUFFER_CACHE, "OPENMX_NC_DENSE_BUFFER_CACHE", "flag", "global", "0", "backends/hip/src/Band_DFT_NonCol.c", "Keep noncollinear band dense buffers; implied by device-eigenvector DM.") \
     X(NC_DEVICE_EIGENVECTOR_DM, "OPENMX_NC_DEVICE_EIGENVECTOR_DM", "flag", "global", "0", "backends/hip/src/Band_DFT_NonCol.c", "Opt in to noncollinear band DM generation from device-resident eigenvectors.") \
+    X(NC_DM_HOST_ONEPASS, "OPENMX_NC_DM_HOST_ONEPASS", "flag", "global", "1", "openmx_nc_dm_cpu.h", "") \
     X(NC_EIGEN_DEMOTE_SETHAM, "OPENMX_NC_EIGEN_DEMOTE_SETHAM", "flag", "global", "1", "backends/hip/src/DFT.c,backends/hip/src/Set_Hamiltonian.c", "Release orbital-table residency for noncollinear band dense eigensolves.") \
     X(NC_HAMILTONIAN_EIGENSOLVER, "OPENMX_NC_HAMILTONIAN_EIGENSOLVER", "string", "global", "", "backends/hip/src/Band_DFT_NonCol.c", "Set to hipsolver to select the HIP noncollinear Hamiltonian solver explicitly.") \
     X(NC_HIPSOLVER_TURN_RELEASE, "OPENMX_NC_HIPSOLVER_TURN_RELEASE", "flag", "global", "", "backends/hip/src/Band_DFT_NonCol.c", "Release hipSOLVER workspaces after a noncollinear band turn; default follows APU detection.") \

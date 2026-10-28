@@ -48,3 +48,14 @@ extern "C" int openmx_core_energy_band_block(const OpenMXEnergyBandBlock* b,int 
   kernels->band_block(*b);
   return 1;
 }
+extern "C" int openmx_core_energy_nc_block(const OpenMXEnergyNcBlock* b,int mode) {
+  const auto* kernels=openmx::core::host::openmx_host_energy_kernels(mode);
+  if(!kernels || !b || b->rows<0 || b->columns<0 || b->bands<0)return 0;
+  if(!b->rows || !b->columns)return 1;
+  if(b->stride%8 || b->stride<size_t(b->columns) || b->out_stride<size_t(b->columns))return 0;
+  if(b->bands && !b->eigen)for(int q=6;q<10;++q)if(b->out[q])return 0;
+  if(b->bands && (!b->re0_1 || !b->im0_1 || !b->re0_2 || !b->im0_2 ||
+                  !b->re1T_1 || !b->im1T_1 || !b->re1T_2 || !b->im1T_2))return 0;
+  kernels->nc_block(*b);
+  return 1;
+}

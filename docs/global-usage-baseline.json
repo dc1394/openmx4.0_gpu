@@ -1,18 +1,18 @@
 {
 "scope": "global-state usage of the C translation units of the NVIDIA build",
-"revision": "8e6f7b83",
+"revision": "5e34d86d",
 "summary": {
 "translation units analysed": 291,
 "translation units not analysed": 0,
-"functions": 3438,
+"functions": 3446,
 "common-header objects (defined in openmx_globals.c)": 935,
 "common-header objects referenced by some function": 929,
 "common-header objects written by some function (direct or through)": 696,
-"function-object edges (common header)": 12369,
+"function-object edges (common header)": 12379,
 "objects with external linkage defined outside openmx_globals.c": 353,
 "file-scope statics": 300,
 "function-local statics": 277,
-"environment variables (names read, every unit)": 256,
+"environment variables (names read, every unit)": 257,
 "functions calling getenv directly (outside openmx_env.c)": 0,
 "environment names missing from the registry": 0
 },
@@ -1457,6 +1457,7 @@
 "Calc_DM_Band_non_collinear@source/Band_DFT_NonCol.c->FNAN",
 "Calc_DM_Band_non_collinear@source/Band_DFT_NonCol.c->F_G2M",
 "Calc_DM_Band_non_collinear@source/Band_DFT_NonCol.c->G2ID",
+"Calc_DM_Band_non_collinear@source/Band_DFT_NonCol.c->List_YOUSO",
 "Calc_DM_Band_non_collinear@source/Band_DFT_NonCol.c->Spe_Total_CNO",
 "Calc_DM_Band_non_collinear@source/Band_DFT_NonCol.c->WhatSpecies",
 "Calc_DM_Band_non_collinear@source/Band_DFT_NonCol.c->atomnum",
@@ -7266,6 +7267,15 @@
 "NVT_VS@source/MD_pac.c->filename",
 "NVT_VS@source/MD_pac.c->filepath",
 "NVT_VS@source/MD_pac.c->mpi_comm_level1",
+"NcDM_Cluster_OnePass@source/Cluster_DFT_NonCol.c->Beta",
+"NcDM_Cluster_OnePass@source/Cluster_DFT_NonCol.c->FNAN",
+"NcDM_Cluster_OnePass@source/Cluster_DFT_NonCol.c->F_G2M",
+"NcDM_Cluster_OnePass@source/Cluster_DFT_NonCol.c->G2ID",
+"NcDM_Cluster_OnePass@source/Cluster_DFT_NonCol.c->Spe_Total_CNO",
+"NcDM_Cluster_OnePass@source/Cluster_DFT_NonCol.c->WhatSpecies",
+"NcDM_Cluster_OnePass@source/Cluster_DFT_NonCol.c->atomnum",
+"NcDM_Cluster_OnePass@source/Cluster_DFT_NonCol.c->mpi_comm_level1",
+"NcDM_Cluster_OnePass@source/Cluster_DFT_NonCol.c->natn",
 "Nested_Dissection@source/Cluster_DFT_ON2.c->Cell_Gxyz",
 "Nested_Dissection@source/Cluster_DFT_ON2.c->FNAN",
 "Nested_Dissection@source/Cluster_DFT_ON2.c->Max_FSNAN",
@@ -14205,7 +14215,7 @@
 {
 "unit": "source/openmx_env.c",
 "name": "registry",
-"type": "[334 x %struct.OpenMXEnvEntry] [%struct.OpenMXEnvEntry { ptr @.str",
+"type": "[335 x %struct.OpenMXEnvEntry] [%struct.OpenMXEnvEntry { ptr @.str",
 "const": true
 },
 {
@@ -16898,6 +16908,11 @@
 "source/GR_Pulay_DM.c",
 "source/Kerker_Mixing_Rhok.c",
 "source/Mixing_V.c"
+],
+"OPENMX_NC_DM_HOST_ONEPASS": [
+"source/Band_DFT_NonCol.c",
+"source/Cluster_DFT_NonCol.c",
+"source/openmx_nc_dm_cpu.h"
 ],
 "OPENMX_OLPKIN_BESSEL_CACHE_MAX": [
 "source/Set_OLP_Kin.c"

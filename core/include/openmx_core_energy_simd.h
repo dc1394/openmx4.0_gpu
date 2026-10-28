@@ -85,6 +85,45 @@ typedef struct {
 /* Returns 0 for an unsupported mode, an invalid stride or a missing buffer. */
 int openmx_core_energy_band_block(const OpenMXEnergyBandBlock*,int mode);
 
+/* One (atom, neighbour) block of the non-collinear density matrix, every
+   component in one pass over the bands. For each element (i, j) and band k,
+   with the centre's spinor rows re0_1/im0_1 (up) and re0_2/im0_2 (down) and
+   the neighbour's transposed panels re1T_1/im1T_1, re1T_2/im1T_2:
+     ReA = re0_1[i][k]*re1T_1[k][j] + im0_1[i][k]*im1T_1[k][j]
+     ImA = re0_1[i][k]*im1T_1[k][j] - im0_1[i][k]*re1T_1[k][j]
+     ReB, ImB: the same with the down components;  ReC, ImC: up centre, down
+     neighbour.  Each term t is weight[k]*term when weight is given (the
+   cluster loops: FermiF*(...)), else the term itself (the band loops, whose
+   vectors carry sqrt(FermiF)); the twelve sums s0..s5 = sum t and s6..s11 =
+   sum t*eigen[k] (only when eigen is given) run in band order.  Outputs,
+   element (i, j) at i*out_stride + j, NULL = not requested:
+     phase 0: out[0..9] += s0, s2, s4, s5, s1, s3, s6, s8, s10, s11
+              (Re11, Re22, Re12, Im12, Im11, Im22 and the eigen-weighted
+              Re11, Re22, Re12, Im12 of Calc_DM_Cluster_non_collinear)
+     phase 1: the Bloch phase of Calc_DM_Band_non_collinear:
+              rDM11 += co*s0 - si*s1, rDM22 += co*s2 - si*s3,
+              rDM12 += co*s4 - si*s5, iDM12 += co*s5 + si*s4,
+              iDM11 += co*s1 + si*s0, iDM22 += co*s3 + si*s2,
+              rEDM11 += co*s6 - si*s7, rEDM22 += co*s8 - si*s9,
+              rEDM12 += co*s10 - si*s11, iEDM12 += co*s11 + si*s10.
+   The panels have a row stride that is a multiple of 8 and at least
+   columns; the padding must hold finite values. Every element follows the
+   legacy accumulation order exactly. */
+typedef struct {
+  int rows, columns, bands;
+  size_t stride;
+  const double *const *re0_1, *const *im0_1, *const *re0_2, *const *im0_2;
+  const double *re1T_1, *im1T_1, *re1T_2, *im1T_2;
+  const double *weight, *eigen;
+  int phase;
+  double co, si;
+  double *out[10];
+  size_t out_stride;
+} OpenMXEnergyNcBlock;
+/* Returns 0 for an unsupported mode, an invalid stride, a missing input of a
+   block with bands, or an eigen-weighted output without eigen. */
+int openmx_core_energy_nc_block(const OpenMXEnergyNcBlock*,int mode);
+
 #ifdef __cplusplus
 }
 #endif
