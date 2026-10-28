@@ -224,8 +224,11 @@ set_property(TARGET openmx_cpu_application APPEND PROPERTY BUILD_RPATH
 openmx_compiler_runtime_rpath(openmx_cpu_application CXX)
 openmx_compiler_runtime_rpath(openmx_cpu_application Fortran)
 if(BUILD_TESTING)
+  # openmx_elpa_cpu.c reads ELPA's kernel override through the environment
+  # registry, so the registry module links here as in the application.
   add_executable(openmx_cpu_numerics "${CMAKE_SOURCE_DIR}/tests/cpu_numerics.c"
-    "${CMAKE_SOURCE_DIR}/source/openmx_elpa_cpu.c" "${_cpu_backend}/fortran_runtime.f90")
+    "${CMAKE_SOURCE_DIR}/source/openmx_elpa_cpu.c" "${CMAKE_SOURCE_DIR}/source/openmx_env.c"
+    "${_cpu_backend}/fortran_runtime.f90")
   target_include_directories(openmx_cpu_numerics PRIVATE "${CMAKE_SOURCE_DIR}/source" "${OPENMX_CPU_ELPA_INCLUDE_DIR}")
   set_target_properties(openmx_cpu_numerics PROPERTIES POSITION_INDEPENDENT_CODE ON LINKER_LANGUAGE CXX)
   openmx_compiler_runtime_rpath(openmx_cpu_numerics CXX)
