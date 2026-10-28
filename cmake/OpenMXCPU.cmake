@@ -104,7 +104,12 @@ else()
     "OMPI_CC=${CMAKE_C_COMPILER}" "OMPI_CXX=${CMAKE_CXX_COMPILER}" "OMPI_FC=${CMAKE_Fortran_COMPILER}"
     "MPICH_CC=${CMAKE_C_COMPILER}" "MPICH_CXX=${CMAKE_CXX_COMPILER}" "MPICH_FC=${CMAKE_Fortran_COMPILER}"
     "I_MPI_CC=${CMAKE_C_COMPILER}" "I_MPI_CXX=${CMAKE_CXX_COMPILER}" "I_MPI_F90=${CMAKE_Fortran_COMPILER}"
-    "CFLAGS=-O3 -fPIC${_cpu_elpa_simd_flags}" "CXXFLAGS=-O3 -fPIC${_cpu_elpa_simd_flags}" "FCFLAGS=-O3 -fPIC" "CPPFLAGS=" "LDFLAGS="
+    # -O2 like the gpusolver2 script: the C SIMD kernels compiled by gcc 14
+    # with -O3 returned wrong eigenvectors from every SSE/AVX/AVX2/AVX-512
+    # kernel (identical wrong results, correct eigenvalues) while the generic
+    # Fortran kernel was right, and the Fortran side at -O3 was not involved;
+    # tests/cpu_numerics.c checks the vectors since then.
+    "CFLAGS=-O2 -fPIC${_cpu_elpa_simd_flags}" "CXXFLAGS=-O2 -fPIC${_cpu_elpa_simd_flags}" "FCFLAGS=-O2 -fPIC" "CPPFLAGS=" "LDFLAGS="
     "LIBS=${_cpu_linalg_flags}" "CPATH=" "C_INCLUDE_PATH=" "CPLUS_INCLUDE_PATH="
     "LD_LIBRARY_PATH=${_cpu_dependency_path}")
   set(_cpu_elpa_options)

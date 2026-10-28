@@ -83,6 +83,10 @@ ELPA の 2 段階ソルバーの CPU カーネルは、構築ホストが実行�
 `GPUSOLVER2_ELPA_KERNELS`）。実行時には `openmx_elpa_cpu.c` が CPU の対応する最速のカーネルを選び、
 ELPA 自身の `ELPA_DEFAULT_real_kernel` / `ELPA_DEFAULT_complex_kernel` が設定されていればそれを優先します
 （`level.of.stdout >= 2` で選んだカーネルを 1 行報告）。ELPA 自身は CPU を検査しないため、この選択が必要です。
+同梱 ELPA は gpusolver2 のスクリプトと同じ `-O2` で構築します。C カーネルを gcc 14 の `-O3` で構築すると
+（2026-10-28 に確認）、SSE〜AVX-512 のすべての C カーネルが固有値は正しいまま同一の誤った固有ベクトルを返し、
+汎用 Fortran カーネルだけが正しい結果になりました（Fortran 側の `-O3` は無関係でした）。実行時のカーネルは `ELPA_DEFAULT_real_kernel=ELPA_2STAGE_REAL_GENERIC`
+などで差し替えて切り分けできます。
 既定ソルバーはCPUの `elpa2` です。`elpa1` / `lapack` の入力も使用でき、
 GPUソルバーを指定した既存入力はCPUの `elpa2` に切り替えます。
 
@@ -159,6 +163,9 @@ CPU構成のオブジェクト・ELPA・生成アダプターはビルドディ�
 cmake --build build/cpu --target openmx_cpu_numerics --parallel 4
 ctest --test-dir build/cpu -R '^cpu-numerical-toolchain$' --output-on-failure
 ```
+
+この試験は Cholesky と ELPA1/ELPA2 の固有値に加えて、固有ベクトルの残差 ‖Aq − λq‖ と直交性 QᵀQ = I も検査します
+（固有値だけでは 2 段階ソルバーの逆変換カーネルの誤りに気付けません）。
 
 本体依存ライブラリを構築せずにコンパイラ・MPI・ScaLAPACKの組合せだけを調べる場合は、
 同じ `OPENMX_CPU_*` 選択肢を `cmake -S tests/cpu_toolchain -B build/toolchain-probe ...` に渡し、

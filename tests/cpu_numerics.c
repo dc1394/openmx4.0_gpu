@@ -6,6 +6,7 @@
 #include <mpi.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 extern void Cblacs_get(int, int, int *);
 extern void Cblacs_gridinit(int *, const char *, int, int);
@@ -16,6 +17,64 @@ extern void F77_NAME(pzpotrf, PZPOTRF)(const char *, int *, void *, int *, int *
 #ifdef OPENMX_TEST_CXX_BOUNDARY
 extern int openmx_test_cpu_cxx(void);
 #endif
+
+/* The eigenvectors are gathered to every rank (two ranks, 16 rows) and
+   checked by the residual ||A q - lambda q|| and by Q^T Q = I. ELPA's
+   2-stage back-transformation kernels, selected at run time among the SIMD
+   variants, determine the vectors; eigenvalues alone would not notice a
+   broken kernel build. */
+static void gather_rows(const void *local, void *full, int n, int local_rows, int block, int size, MPI_Datatype type, size_t width)
+{
+    char gathered[2 * 128 * 16];
+    MPI_Allgather(local, local_rows * n, type, gathered, local_rows * n, type, MPI_COMM_WORLD);
+    for (int r = 0; r < size; ++r)
+        for (int i = 0; i < local_rows; ++i) {
+            int row = (i / block * size + r) * block + i % block;
+            for (int k = 0; k < n; ++k)
+                memcpy((char *)full + (row * n + k) * width,
+                       gathered + ((size_t)r * local_rows * n + (size_t)k * local_rows + i) * width, width);
+        }
+}
+
+static int check_real_vectors(const double *q, const double *ev, int n, int local_rows, int block, int size)
+{
+    double full[16 * 16];
+    int bad = 0;
+    gather_rows(q, full, n, local_rows, block, size, MPI_DOUBLE, sizeof(double));
+    for (int k = 0; k < n; ++k) {
+        for (int row = 0; row < n; ++row) {
+            double aq = 2. * full[row * n + k] + (row > 0 ? full[(row - 1) * n + k] : 0.)
+                      + (row + 1 < n ? full[(row + 1) * n + k] : 0.);
+            if (!isfinite(aq) || fabs(aq - ev[k] * full[row * n + k]) > 1e-10) bad = 1;
+        }
+        for (int l = 0; l < n; ++l) {
+            double dot = 0.;
+            for (int row = 0; row < n; ++row) dot += full[row * n + k] * full[row * n + l];
+            if (fabs(dot - (k == l)) > 1e-10) bad = 1;
+        }
+    }
+    return bad;
+}
+
+static int check_complex_vectors(const double complex *v, const double *ev, int n, int local_rows, int block, int size)
+{
+    double complex full[16 * 16];
+    int bad = 0;
+    gather_rows(v, full, n, local_rows, block, size, MPI_C_DOUBLE_COMPLEX, sizeof(double complex));
+    for (int k = 0; k < n; ++k) {
+        for (int row = 0; row < n; ++row) {
+            double complex av = 2. * full[row * n + k] + (row > 0 ? I * full[(row - 1) * n + k] : 0.)
+                              - (row + 1 < n ? I * full[(row + 1) * n + k] : 0.);
+            if (!isfinite(creal(av)) || !isfinite(cimag(av)) || cabs(av - ev[k] * full[row * n + k]) > 1e-10) bad = 1;
+        }
+        for (int l = 0; l < n; ++l) {
+            double complex dot = 0.;
+            for (int row = 0; row < n; ++row) dot += conj(full[row * n + k]) * full[row * n + l];
+            if (cabs(dot - (k == l)) > 1e-10) bad = 1;
+        }
+    }
+    return bad;
+}
 
 int main(int argc, char **argv)
 {
@@ -87,6 +146,7 @@ int main(int argc, char **argv)
             double expected = 2. - 2. * cos((k + 1.) * acos(-1.) / (n + 1.));
             if (!isfinite(ev[k]) || fabs(ev[k] - expected) > 2e-11) failed = 1;
         }
+        if (check_real_vectors(q, ev, n, local_rows, block, size)) failed = 1;
         if (stage == 1) {
             F77_NAME(solve_evp_complex, SOLVE_EVP_COMPLEX)(&n, &n, z, &local_rows, ev, v, &local_rows, &block, &frows, &fcols);
         } else {
@@ -97,6 +157,7 @@ int main(int argc, char **argv)
             double expected = 2. - 2. * cos((k + 1.) * acos(-1.) / (n + 1.));
             if (!isfinite(ev[k]) || fabs(ev[k] - expected) > 2e-11) failed = 1;
         }
+        if (check_complex_vectors(v, ev, n, local_rows, block, size)) failed = 1;
     }
     MPI_Comm_free(&cols);
     MPI_Comm_free(&rows);

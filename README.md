@@ -60,7 +60,10 @@ kernels the build host can run (SSE/AVX/AVX2/AVX-512; `GPUSOLVER2_ELPA_KERNELS`
 for the NVIDIA Makefile, `OPENMX_CPU_ELPA_KERNELS` for the CPU build, `auto`
 or `generic`), and the ELPA2 path selects the fastest one the CPU supports at
 run time (`ELPA_DEFAULT_real_kernel` / `ELPA_DEFAULT_complex_kernel` override it). Existing `gpusolver`/`gpusolver2`/`gpusolver3` input decks
-select CPU ELPA2 in this executable. CPU builds also copy the matching Core and
+select CPU ELPA2 in this executable. The bundled ELPA is compiled with `-O2`:
+its C SIMD kernels built by gcc 14 with `-O3` returned wrong eigenvectors
+(with correct eigenvalues) while the generic kernel was right, so the CPU
+numerics test checks eigenvectors too. CPU builds also copy the matching Core and
 host SIMD libraries to `work/lib/`. See [CPU dependencies and options](docs/GPU_BACKENDS.md#cpu-専用の本体ビルド)
 for external numerical libraries and MPI compiler selection.
 
