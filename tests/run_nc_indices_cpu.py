@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """The non-collinear 2n x 2n block-cyclic index map (source/openmx_nc_indices.h).
 
-Compiles the shared helper next to the former per-file copy (the version of
-Hamiltonian_Band_NC_Hs2.c in HEAD recounted the basis size over every atom for
+Compiles the shared helper next to the retained legacy copy in
+Hamiltonian_NC_Hs2.c (which recounts the basis size over every atom for
 every matrix element) with stubbed globals, and compares the twelve outputs of
 both over several process grids, block sizes, atom lists and every local
 element of every process.  The map is pure integer arithmetic, so the two
@@ -20,9 +20,8 @@ HEADER = ROOT / "source" / "openmx_nc_indices.h"
 
 
 def legacy_helper():
-    """The former static helper, from the committed Hamiltonian_Band_NC_Hs2.c."""
-    text = subprocess.run(["git", "-C", str(ROOT), "show", "HEAD:source/Hamiltonian_Band_NC_Hs2.c"],
-                          capture_output=True, text=True, check=True).stdout
+    """The unmigrated legacy helper; independent of Git HEAD and shared code."""
+    text = (ROOT / "source" / "Hamiltonian_NC_Hs2.c").read_text()
     start = text.index("\nvoid trans_indices_n_to_n2(") + 1
     brace = text.index("{", start)
     depth, at = 0, brace

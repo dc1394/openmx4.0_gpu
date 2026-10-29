@@ -106,7 +106,7 @@ int main(int argc,char** argv) {
       legacy_sum=sum;legacy_sumr=sumr;});
     std::cout<<std::fixed<<std::setprecision(2)<<"neutral pair: points="<<points<<" mesh="<<N<<" repeats="<<repeats<<'\n'
         <<std::setw(24)<<"legacy loop"<<std::setw(10)<<1e9*legacy_seconds/(double(points)*repeats)<<" ns/point\n";
-    for(int mode=OPENMX_GRID_SCALAR;mode<=OPENMX_GRID_NEON;++mode) {
+    for(int mode=OPENMX_GRID_SCALAR;mode<OPENMX_GRID_MODE_COUNT;++mode) {
       if(!openmx_core_host_simd_usable(mode))continue;
       double sum=0,sumr=0;
       OpenMXEnergyNeutralPoints s{points,1,1,x.data(),y.data(),z.data(),rho.data(),wt.data(),separation,charge,N,xv.data(),rv.data(),yv.data(),values.data(),derivatives.data()};
@@ -116,7 +116,7 @@ int main(int argc,char** argv) {
       std::cout<<std::setw(24)<<openmx_core_host_simd_name(mode)<<std::setw(10)<<1e9*t/(double(points)*repeats)<<" ns/point  ("<<legacy_seconds/t<<"x)\n";
     }
     // the legacy glue pattern (256-point chunks, sums through pointers) against one accumulating call
-    for(int mode=OPENMX_GRID_SCALAR;mode<=OPENMX_GRID_NEON;++mode) {
+    for(int mode=OPENMX_GRID_SCALAR;mode<OPENMX_GRID_MODE_COUNT;++mode) {
       if(!openmx_core_host_simd_usable(mode))continue;
       double sum=0,sumr=0;
       double chunk_values[256],chunk_derivatives[256];
@@ -168,7 +168,7 @@ int main(int argc,char** argv) {
       const double pairs=double(shells)*lpoints*nb;
       std::cout<<"xc shell: points="<<lpoints<<" neighbours="<<nb<<" mesh="<<N<<" shells="<<shells<<'\n'
           <<std::setw(24)<<"legacy loop"<<std::setw(10)<<1e9*xc_legacy/pairs<<" ns/(point,neighbour)  "<<1e6*xc_legacy/shells<<" us/shell\n";
-      for(int mode=OPENMX_GRID_SCALAR;mode<=OPENMX_GRID_NEON;++mode) {
+      for(int mode=OPENMX_GRID_SCALAR;mode<OPENMX_GRID_MODE_COUNT;++mode) {
         if(!openmx_core_host_simd_usable(mode))continue;
         std::vector<double> scratch(openmx_core_energy_xc_shell_scratch(nb));
         std::vector<double> got_sumt(shells),gxs(ref_gx.size()),gys(ref_gx.size()),gzs(ref_gx.size());
@@ -201,7 +201,7 @@ int main(int argc,char** argv) {
     const double macs=double(rows)*columns*bands*blocks;
     std::cout<<"band block: "<<rows<<"x"<<columns<<" bands="<<bands<<" blocks="<<blocks<<'\n'
         <<std::setw(24)<<"legacy loops"<<std::setw(10)<<1e9*band_legacy/macs<<" ns/(i,j,k)\n";
-    for(int mode=OPENMX_GRID_SCALAR;mode<=OPENMX_GRID_NEON;++mode) {
+    for(int mode=OPENMX_GRID_SCALAR;mode<OPENMX_GRID_MODE_COUNT;++mode) {
       if(!openmx_core_host_simd_usable(mode))continue;
       std::vector<double> cdm(cdm_ref.size(),0.0),edm(cdm_ref.size(),0.0);
       OpenMXEnergyBandBlock b{rows,columns,bands,stride,re0_rows.data(),im0_rows.data(),re1T.data(),im1T.data(),eigen.data(),co,si,cdm.data(),edm.data()};
@@ -229,7 +229,7 @@ int main(int argc,char** argv) {
       for(int i=0;i<tno;++i){re0_rows[i]=re0.data()+size_t(i)*nk;im0_rows[i]=im0.data()+size_t(i)*nk;}
       const size_t outputs=size_t(atoms)*neighbours*tno*tno;
       auto rows_of=[&](int a){for(int i=0;i<tno;++i)for(int k=0;k<nk;++k){re0[size_t(i)*nk+k]=evr[size_t(a*tno+i)*nk+k];im0[size_t(i)*nk+k]=evi[size_t(a*tno+i)*nk+k];}};
-      for(int mode=OPENMX_GRID_SCALAR;mode<=OPENMX_GRID_NEON;++mode) {
+      for(int mode=OPENMX_GRID_SCALAR;mode<OPENMX_GRID_MODE_COUNT;++mode) {
         if(!openmx_core_host_simd_usable(mode))continue;
         std::vector<double> c_old(outputs,0.0),e_old(outputs,0.0),c_new(outputs,0.0),e_new(outputs,0.0);
         std::vector<double> pr(size_t(nk)*pstride),pi(pr.size());

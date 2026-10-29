@@ -1,5 +1,6 @@
 #include "openmx_core_force_simd.h"
 #include "openmx_core_host_simd.h"
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
@@ -48,7 +49,7 @@ int main(int argc,char** argv) {
     if(repeats<1)throw std::invalid_argument("positive repetition count required");
     const int orbitals=13,P=972,points=20000;
     std::vector<int> isas;
-    for(int mode=OPENMX_GRID_SCALAR;mode<=OPENMX_GRID_NEON;++mode)if(openmx_core_host_simd_usable(mode))isas.push_back(mode);
+    for(int mode=OPENMX_GRID_SCALAR;mode<OPENMX_GRID_MODE_COUNT;++mode)if(openmx_core_host_simd_usable(mode))isas.push_back(mode);
     // ---------------- single blocks ----------------
     Rows dx(orbitals,P,1),dy(orbitals,P,2),dz(orbitals,P,3),h0(orbitals,P,4),q0(orbitals,P,5),qx(orbitals,P,6),qy(orbitals,P,7),qz(orbitals,P,8);
     std::vector<double> out[3];for(auto& o:out)o.assign(size_t(orbitals)*orbitals,0.0);

@@ -54,7 +54,7 @@ int main(int argc,char** argv) {
       for(int i=0;i<points;++i)x[i]=k[i]*10.0;
       const double legacy=seconds(repeats,[&]{double a[40],b[40];for(int i=0;i<points;++i){legacy_bessel(x[i],lmax,a,b);for(int l=0;l<=lmax;++l){rsb[size_t(l)*points+i]=a[l];rdsb[size_t(l)*points+i]=b[l];}}});
       std::cout<<"Spherical_Bessel2 lmax="<<lmax<<", "<<points<<" arguments: legacy "<<1e3*legacy/repeats<<" ms per pair\n";
-      for(int mode=OPENMX_GRID_SCALAR;mode<=OPENMX_GRID_NEON;++mode) {
+      for(int mode=OPENMX_GRID_SCALAR;mode<OPENMX_GRID_MODE_COUNT;++mode) {
         if(!openmx_core_host_simd_usable(mode))continue;
         OpenMXVnaBessel b={points,lmax,x.data(),sb.data(),dsb.data(),size_t(points),nullptr,nullptr,0};
         const double s=seconds(repeats,[&]{if(!openmx_core_vna_bessel(&b,mode))throw std::runtime_error("bessel failed");});
@@ -76,7 +76,7 @@ int main(int argc,char** argv) {
           for(int r=0;r<rows;++r){double t1=0,t2=0;for(int i=0;i<points;++i){t1+=bes0[i]*table[size_t(i)*rows+r];t2+=bes1[i]*table[size_t(i)*rows+r];}ref0[size_t(m)*rows+r]=t1;ref1[size_t(m)*rows+r]=t2;}
         }});
       std::cout<<"DS_VNA contraction: legacy "<<1e3*legacy/repeats<<" ms per pair\n";
-      for(int mode=OPENMX_GRID_SCALAR;mode<=OPENMX_GRID_NEON;++mode) {
+      for(int mode=OPENMX_GRID_SCALAR;mode<OPENMX_GRID_MODE_COUNT;++mode) {
         if(!openmx_core_host_simd_usable(mode))continue;
         const double s=seconds(repeats,[&]{for(int ll=0;ll<orders;++ll){
           for(int m=0;m<radials;++m)for(int i=0;i<points;++i){w0[size_t(m)*points+i]=a0[m][i]*sphb[size_t(ll)*points+i];w1[size_t(m)*points+i]=a1[m][i]*sphbp[size_t(ll)*points+i];}
@@ -97,7 +97,7 @@ int main(int argc,char** argv) {
         for(int i=0;i<points;++i){const double t=0.50*dk*crude[i]*product[size_t(i)*orders+ll]*w[i]*k[i]*k[i];s+=t*bessel[size_t(i)*orders+ll];sr+=t*bd[size_t(i)*orders+ll]*k[i];}
         rsum[ll]=s;rsumr[ll]=sr;}});
       std::cout<<"HVNA23 quadrature: legacy "<<1e3*legacy/repeats<<" ms per pair\n";
-      for(int mode=OPENMX_GRID_SCALAR;mode<=OPENMX_GRID_NEON;++mode) {
+      for(int mode=OPENMX_GRID_SCALAR;mode<OPENMX_GRID_MODE_COUNT;++mode) {
         if(!openmx_core_host_simd_usable(mode))continue;
         OpenMXVnaQuadrature q={points,orders,size_t(orders),product.data(),bessel.data(),bd.data(),crude.data(),w.data(),k.data(),0.50*dk,sum.data(),sumr.data()};
         const double s=seconds(repeats,[&]{for(int p=0;p<pairs;++p)if(!openmx_core_vna_quadrature(&q,mode))throw std::runtime_error("quadrature failed");});
@@ -121,7 +121,7 @@ int main(int argc,char** argv) {
             sum+=energies[g]*tmp0;}
           if(kk==0)ref[size_t(m)*orbitals+n]=sum;else ref[size_t(m)*orbitals+n]+=sum;}});
         std::cout<<"HVNA projector contraction (fp32="<<fp32<<"): legacy "<<1e3*legacy/repeats<<" ms per pair\n";
-        for(int transposed:{0,1})for(int mode=OPENMX_GRID_SCALAR;mode<=OPENMX_GRID_NEON;++mode) {
+        for(int transposed:{0,1})for(int mode=OPENMX_GRID_SCALAR;mode<OPENMX_GRID_MODE_COUNT;++mode) {
           if(!openmx_core_host_simd_usable(mode))continue;
           const double s=seconds(repeats,[&]{for(int kk=0;kk<neighbours;++kk){
             OpenMXVnaHvnaBlock b={orbitals,orbitals,int(lengths.size()),fp32,kk==0,transposed,lengths.data(),energies.data(),
@@ -134,7 +134,7 @@ int main(int argc,char** argv) {
         if(!fp32) {
           // operands widened once (the host cache stores double lanes under fp64)
           std::vector<double> dleft(left.begin(),left.end()),dright(right.begin(),right.end()),dleftT(leftT.begin(),leftT.end()),drightT(rightT.begin(),rightT.end());
-          for(int transposed:{0,1})for(int mode=OPENMX_GRID_SCALAR;mode<=OPENMX_GRID_NEON;++mode) {
+          for(int transposed:{0,1})for(int mode=OPENMX_GRID_SCALAR;mode<OPENMX_GRID_MODE_COUNT;++mode) {
             if(!openmx_core_host_simd_usable(mode))continue;
             const double s=seconds(repeats,[&]{for(int kk=0;kk<neighbours;++kk){
               OpenMXVnaHvnaBlock b={orbitals,orbitals,int(lengths.size()),0,kk==0,transposed,lengths.data(),energies.data(),
@@ -197,7 +197,7 @@ int main(int argc,char** argv) {
       std::cout<<"DS_VNA m sum + conversions: legacy "<<1e3*legacy/repeats<<" ms per pair\n";
       const int pad=L0max+l1max;const size_t cy_stride=size_t(pad+std::max(2*llmax+1,llmax+L0max+l1max+8)+8),cy_length=size_t(llmax+1)*cy_stride,plane=(size_t)orb_rows*cols;
       std::vector<double> cy(6*cy_length,0.0),acc(8*plane),cpr(llmax+1),cpi(llmax+1),s0v(llmax+1),s1v(llmax+1);
-      for(int mode=OPENMX_GRID_SCALAR;mode<=OPENMX_GRID_NEON;++mode) {
+      for(int mode=OPENMX_GRID_SCALAR;mode<OPENMX_GRID_MODE_COUNT;++mode) {
         if(!openmx_core_host_simd_usable(mode))continue;
         const double s=seconds(repeats,[&]{
           for(int LL=0;LL<=llmax;++LL)for(int m=-LL;m<=LL;++m){const size_t at=size_t(LL)*cy_stride+size_t(pad+LL-m);cy[at]=Y[LL*LL+LL+m].r;cy[cy_length+at]=Y[LL*LL+LL+m].i;cy[2*cy_length+at]=Yt[LL*LL+LL+m].r;cy[3*cy_length+at]=Yt[LL*LL+LL+m].i;cy[4*cy_length+at]=Yp[LL*LL+LL+m].r;cy[5*cy_length+at]=Yp[LL*LL+LL+m].i;}
@@ -241,7 +241,7 @@ int main(int argc,char** argv) {
           s0+=t3;k0+=t3*N2;sr+=t4;kr+=t4*N2;}
         ref[0][size_t(l)*combos+c]=s0;ref[1][size_t(l)*combos+c]=k0;ref[2][size_t(l)*combos+c]=sr;ref[3][size_t(l)*combos+c]=kr;}});
       std::cout<<"Set_OLP_Kin radial quadrature: legacy "<<1e3*legacy/repeats<<" ms per call ("<<npairs<<" pairs)\n";
-      for(int mode=OPENMX_GRID_SCALAR;mode<=OPENMX_GRID_NEON;++mode) {
+      for(int mode=OPENMX_GRID_SCALAR;mode<OPENMX_GRID_MODE_COUNT;++mode) {
         if(!openmx_core_host_simd_usable(mode))continue;
         OpenMXVnaOverlapRadial q={};q.points=pts;q.orders=ords;q.combos=combos;q.onsite=0;q.h=h;q.k=k.data();
         q.rf0t=r0.data();q.rf1t=r1.data();q.table_stride=ts;q.sb=sb.data();q.sbp=sbp.data();q.sb_stride=pts;
@@ -295,7 +295,7 @@ int main(int argc,char** argv) {
           ref[0][size_t(LL)*combos+c]=SumNL0[openmx_core_nonlocal_sum(&buffers,L0,Mul0,L)];
           ref[1][size_t(LL)*combos+c]=SumNLr0[openmx_core_nonlocal_sum(&buffers,L0,Mul0,L)];}}});
       std::cout<<"Set_Nonlocal radial quadrature: legacy "<<1e3*legacy/repeats<<" ms per call ("<<npairs<<" pairs)\n";
-      for(int mode=OPENMX_GRID_SCALAR;mode<=OPENMX_GRID_NEON;++mode) {
+      for(int mode=OPENMX_GRID_SCALAR;mode<OPENMX_GRID_MODE_COUNT;++mode) {
         if(!openmx_core_host_simd_usable(mode))continue;
         OpenMXVnaNonlocalRadial q={};q.points=pts;q.orders=ords;q.combos=combos;q.onsite=0;q.h=h;q.k=k.data();
         q.rft=rft.data();q.nlrft=nlt.data();q.table_stride=ts;q.sb=sb.data();q.sbp=sbp.data();q.sb_stride=pts;

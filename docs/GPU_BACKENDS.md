@@ -261,6 +261,12 @@ SVEのABI試験はマスク付きロード・ストア・gather/scatterの末尾
 FP64/FP32変換、半幅整数、マスク変換も確認します。ハードウェアの現在のベクトル長で
 実行できる実装だけを試験するため、SVE128機での成功はSVE256・512の実行検証を意味しません。
 
+2026-10-29にはDebian 12 / GCC 12.2 / OpenMPI 4.1.4のNeoverse-N3でもCPU版を構築し、
+NEON/SVE128の密度・ハミルトニアン積分の選択と、SVEの異種要素間マスク変換を最適化しました。
+測定条件と検証範囲は [性能記録](PERFORMANCE_REGRESSION.md#neoverse-n3-の-neonsve128-cpu-経路2026-10-29) に記載しています。
+検証JSONには実行ファイル・Coreに加えて `libopenmx_host_simd.so` のSHA-256も記録します。
+Debian 12の標準CMake 3.25.1は必要な3.25.2に届かないため、別途用意した新しいCMakeを使用してください。
+
 ## GPU ビルド内の CPU SIMD
 
 `Set_Hamiltonian`、`Set_Density_Grid` の CPU 積分と、GPU 容量不足時の

@@ -4921,3 +4921,137 @@ n×n×n の COSMA 積を 4 回以上（X の射影 3 回と更新 1 回）、最
 1 回が 0.86〜2.2 秒、実数でも 0.09 秒（ほぼ COSMA の通信・転送）かかるため、節約分（複素 4.1 秒、実数 0.4 秒）
 を使い切ります。単一 GPU の `gpusolver` ではデバイス上の積が解法よりはるかに安いので補正が有効ですが、
 分散経路では積の方が主役です。この結論は、この規模と GeForce 1 枚での計測に基づきます。
+
+## Neoverse-N3 の NEON/SVE128 CPU 経路（2026-10-29）
+
+Debian 12 AArch64、8 CPUのNeoverse-N3で、コミット `e5d818248744f7752a0408940788cec9a671fc44`
+からCPU専用版を構築しました。GCC/g++/gfortran 12.2、OpenMPI 4.1.4、OpenBLAS 0.3.21、
+ScaLAPACK 2.2.1、FFTW 3.3.10、同梱ELPA 2026.02.002（汎用CPUカーネル）、Kokkos 5.2.2を使用しています。
+現在のスレッドのSVEベクトル長は128 bitです。SVE256/512もコンパイルしますが、この環境では実行しません。
+
+Debian標準のCMake 3.25.1は本体の最低要件3.25.2を満たさないため、用意済みのCMake 3.31.12ソースを
+ユーザーディレクトリで構築しました。追加のsudo操作は不要でした。Kokkosも展開済みソースを指定しています。
+
+```sh
+# リポジトリのルートで実行。依存ソースはあらかじめ展開済み。
+cmake -S /home/dc1394/openmx-deps/cmake-3.31.12 \
+  -B /home/dc1394/openmx-deps/cmake-build \
+  -DCMAKE_USE_OPENSSL=OFF -DBUILD_TESTING=OFF
+cmake --build /home/dc1394/openmx-deps/cmake-build --target cmake ctest --parallel 6
+export PATH=/home/dc1394/openmx-deps/cmake-build/bin:$PATH
+
+cmake -S . -B build/cpu \
+  -DOPENMX_GPU_BACKEND=CPU -DOPENMX_CPU_COMPILER=GCC \
+  -DOPENMX_CPU_MPI=OPENMPI -DOPENMX_CPU_LINALG=OPENBLAS \
+  -DFETCHCONTENT_SOURCE_DIR_KOKKOS=/home/dc1394/openmx-deps/kokkos-5.2.2 \
+  -DOPENMX_BUILD_JOBS=6 -DOPENMX_CORE_BUILD_BENCHMARKS=ON \
+  -DCMAKE_BUILD_TYPE=Release
+cmake --build build/cpu --parallel 6
+```
+
+ソケット作成が禁止されたエージェント環境では、OpenMPIのラッパーがフラグ照会にも通信エラーを出し、
+CMake FindMPIの解析が失敗しました。この環境内での構成・ビルドに限り、コマンドに
+`OMPI_MCA_if=^posix_ipv4,linux_ipv6` を付けて不要なインターフェース検出を止めています。
+通常のSSH端末でのMPI検証にはこの設定を渡しません。生成された `work/openmx` と対応する
+`work/lib/libopenmx_core.so`、`work/lib/libopenmx_host_simd.so` にCUDA/HIP依存はありません。
+
+### 修正と測定
+
+SVEのFP64マスクと半幅FP32/整数マスクの変換で、レーンを逐次抽出して再ロードする処理を
+predicateのzip/unzipに置き換えました。半幅ベクトルの未使用上位レーンは明示的に無効化します。
+全マスクパターンの往復変換と、保護ページ直前での異種要素gather/scatter・ロード・ストアを試験します。
+
+NEON/SVE128では、密度積分を行列の形とスピン数に応じて既存のpoint/rowカーネルへ振り分け、
+ハミルトニアン積分は小さいブロックを除いて行全体のFP32→FP64変換を使用します。
+GCC 12で大きいrowカーネルを選択部にインライン展開すると一部のSVE128条件が遅くなったため、
+この2経路ではその展開を抑えています。加算順と丸めの設定は維持しています。
+
+ベンチマークのISA列挙がNEONで終わりSVEを測定していなかった問題と、Forceベンチマークの
+`<algorithm>` 欠落も修正しました。下表の変更前もこの測定用修正を適用したビルドです。
+変更前後を交互の順序で各3回、CPU 2に固定、OpenBLAS/OpenMP各1スレッドで実行しました。
+格子は4093点、1/2/4スピン、1/4/8/12/13/19軌道の正方ブロックです。各条件の3回の中央値を比較し、
+格子の表は18条件の速度比の中央値を示します。軌道は32768点・13軌道、中性原子対は8192点です。
+
+| カーネル | 変更前 | 変更後 | 速度比 |
+| --- | ---: | ---: | ---: |
+| NEON 密度積分（18条件の中央値） | — | — | 1.170倍（範囲0.995–1.524） |
+| NEON ハミルトニアン積分（同上） | — | — | 1.053倍（範囲1.000–1.190） |
+| SVE128 密度積分（同上） | — | — | 1.054倍（範囲0.995–1.243） |
+| SVE128 ハミルトニアン積分（同上） | — | — | 1.047倍（範囲0.999–1.138） |
+| SVE128 軌道値 | 108.6 ns/点 | 79.3 ns/点 | 1.369倍 |
+| SVE128 軌道値、segmentから行配列へ | 104.7 ns/点 | 74.0 ns/点 | 1.415倍 |
+| SVE128 軌道微分、cosine入力 | 140.2 ns/点 | 95.3 ns/点 | 1.471倍 |
+| SVE128 中性原子ポテンシャル対 | 48.52 ns/点 | 31.32 ns/点 | 1.549倍 |
+| SVE128 XC shell | 15.02 ns/(点,近傍) | 11.10 ns/(点,近傍) | 1.353倍 |
+
+格子の変更前後324組（3 ISA × 36条件 × 3回）は出力チェックサムが完全一致しました。
+scalar格子の速度比の中央値は両積分とも1.001倍でしたが、個別条件には約5.5%の時間増加もあり、
+小さい差には測定変動が含まれます。SVE128がすべてのカーネルでNEONより速いわけではありません。
+これらは単体カーネルの測定で、OpenMX実計算全体の速度比ではありません。
+
+実行例（`baseline` と `optimized` それぞれに対応する実行ファイルとライブラリを保存）:
+
+```sh
+(
+  export OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1
+  variant=optimized
+  export LD_LIBRARY_PATH="$PWD/build/arm-results/$variant/lib"
+  taskset -c 2 "build/arm-results/$variant/openmx_grid_benchmark" 20 neon float
+  taskset -c 2 "build/arm-results/$variant/openmx_grid_benchmark" 20 sve128 float
+  taskset -c 2 "build/arm-results/$variant/openmx_orbitals_benchmark" 32768 5
+  taskset -c 2 "build/arm-results/$variant/openmx_energy_benchmark" 8192 10
+)
+```
+
+### 検証範囲と記録
+
+MPIを除く614 CTestは成功しました。うち古いテスト用リポジトリのディレクトリ構成、
+非共線添字の旧参照コードの抽出元、Basisライブラリ移行後の動径端点試験のリンクの3件は、
+初回失敗の原因を修正して再試験しています。数値比較や許容差は緩めていません。
+host SIMDライブラリをASan/UBSanで再構築して実行した格子・軌道・力・エネルギー等の51試験も成功しました。
+最終調整後のRelease版51試験と、変更箇所に対応するASan/UBSan版13試験も成功しました。
+サンドボックス内ではLeakSanitizerを無効にしています。
+
+通常のSSH端末でLeakSanitizerを有効にした全625 CTestでは624件が成功し、MPI関連11件もすべて成功しました。
+`total-energy-workspace` のみ180秒でタイムアウトしました。サンドボックスでの同じ試験は4.05秒で通過しています。
+リーク検査を有効にした単独再試験は235.25秒で成功しました。正常終了する39子プロセスの所要時間は
+中央値5.933秒、最大5.950秒で、既存の180秒の制限では全ケースを完了できませんでした。
+36件の数値比較・2件の配置検査・8件の想定した入力拒否・負の対照試験がすべて通過しています。
+この試験のCTest上限を600秒へ変更しました。数値比較とリーク検査の設定は維持しています。
+子プロセスの固定的な時間増加はサニタイザ終了処理の影響が疑われますが、その内部原因までは特定していません。
+合計で625件すべてが、初回CTestと単独再試験を合わせて通過しています。
+
+続くMethane・Cr2・Si8・DIA8の4系 × 4経路 × 2並列条件の32実計算はすべて正常終了・SCF収束し、
+28組の比較が絶対許容差 `1e-7`（エネルギー: Hartree、力: Hartree/bohr）以内でした。
+
+| 入力 | 比較数 | 最大エネルギー差 (Hartree) | 最大力成分差 (Hartree/bohr) |
+| --- | ---: | ---: | ---: |
+| Methane | 7 | 2.66e-10 | 3.00e-11 |
+| Cr2（ノンコリニア） | 7 | 9.01e-12 | 1.42e-10 |
+| Si8（GGAバンド） | 7 | 2.00e-12 | 1.00e-12 |
+| DIA8（Krylov基底600） | 7 | 出力精度で0 | 1.00e-12 |
+
+DIA8は既存の検証条件どおりKrylov基底600を指定しています。元の400での数値感度は
+[ARM検証の説明](GPU_BACKENDS.md#armneonsve-の検証) を参照してください。
+今回の実計算は各条件1回の数値検証です。DIA8の1 MPI・SVE128ではDFT時間230.3秒
+（うち対角化213.7秒）となり、scalarの90.4秒（対角化79.6秒）より長くなりました。
+4 MPI×2 OpenMPの対角化はscalar 10.15秒、SVE128 10.54秒でした。
+1 MPIでの時間増加の原因は確定しておらず、実計算全体の性能比較には使用しません。
+
+最終的なMPI/LeakSanitizer検証コマンド（通常のSSH端末から実行）:
+
+```sh
+PATH=/home/dc1394/openmx-deps/cmake-build/bin:$PATH \
+  python3 tools/validate_arm_cpu.py
+```
+
+出力先を省略すると新しい日時付きディレクトリを作成するため、既存の検証ログを残して再実行できます。
+
+測定ログは `build/arm-results/repeated/`、集計は同ディレクトリの `summary.json` に保存しています。
+`baseline/` と `optimized/` に比較バイナリ・共有ライブラリ・SHA-256を保存し、
+格子候補の探索結果は `tuning-neon.csv` と `tuning-sve128.csv`、サニタイザ検証は `asan-host/`、
+CTest結果は `ctest-sandbox.log` と `ctest-repaired-fixtures.log` に記録しています。
+外部検証のログと入力は `validation-mpi/`、全体の集計は `build/arm-results/summary.json` に保存しています。
+単独再試験の完了記録は `energy-workspace-completed.json`（全50子コマンドと所要時間）です。
+別の中断実行のテキストログは `energy-workspace-interrupted.log` として区別して保存しています。
+`validation-mpi/results.json` は初回タイムアウト時の `failed` を保存し、再試験を含む合格判定は集約JSONに記録しています。

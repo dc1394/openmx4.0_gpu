@@ -52,7 +52,7 @@ int main(int argc,char** argv) {
         frame.origin[0],frame.origin[1],frame.origin[2],reference.data()+size_t(i)*no);}});
     std::cout<<std::fixed<<std::setprecision(1)<<"points="<<points<<" orbitals="<<no<<" mesh="<<mesh<<" repeats="<<repeats<<'\n'
         <<std::setw(24)<<"SOG_point_eval (host)"<<std::setw(10)<<1e9*legacy/(double(points)*repeats)<<" ns/point\n";
-    for(int mode=OPENMX_GRID_SCALAR;mode<=OPENMX_GRID_NEON;++mode) {
+    for(int mode=OPENMX_GRID_SCALAR;mode<OPENMX_GRID_MODE_COUNT;++mode) {
       if(!openmx_core_host_simd_usable(mode))continue;
       const double s=seconds([&]{if(!openmx_core_orbitals_points(&tables,&frame,q.data(),q.size(),out.data(),mode))throw std::runtime_error("kernel refused");});
       if(std::memcmp(out.data(),reference.data(),out.size()*sizeof(float))!=0)throw std::runtime_error("host kernel differs from SOG_point_eval");
@@ -131,7 +131,7 @@ int main(int argc,char** argv) {
     std::cout<<"derivatives (Get_dOrbitals_work), "<<points<<" points\n"
         <<std::setw(24)<<"Get_dOrbitals_work (host)"<<std::setw(10)<<1e9*dlegacy/(double(points)*repeats)<<" ns/point\n"
         <<std::setw(24)<<"  libm angles alone"<<std::setw(10)<<1e9*dlibm/(double(points)*repeats)<<" ns/point\n";
-    for(int mode=OPENMX_GRID_SCALAR;mode<=OPENMX_GRID_NEON;++mode) {
+    for(int mode=OPENMX_GRID_SCALAR;mode<OPENMX_GRID_MODE_COUNT;++mode) {
       if(!openmx_core_host_simd_usable(mode))continue;
       const double s=seconds([&]{if(!openmx_core_orbitals_dpoints(&tables,d.data(),d.size(),dout.data(),mode))throw std::runtime_error("derivative kernel refused");});
       if(std::memcmp(dout.data(),dreference.data(),dout.size()*sizeof(double))!=0)throw std::runtime_error("host derivative kernel differs from Get_dOrbitals_work");

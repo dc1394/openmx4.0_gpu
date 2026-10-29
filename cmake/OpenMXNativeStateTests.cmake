@@ -143,8 +143,11 @@ function(openmx_add_native_state_tests)
   add_test(NAME total-energy-workspace
     COMMAND "${Python3_EXECUTABLE}" "${_repo}/tests/run_energy_workspace_cpu.py"
       --core-library "$<TARGET_FILE:openmx_core>" --negative-control)
+  # With leak checks enabled, the 39 normally exiting fixture processes took
+  # about 6 seconds each on Debian 12 AArch64 (235 seconds for the full test).
+  # Allow that overhead without disabling leak detection or dropping cases.
   set_tests_properties(total-energy-workspace PROPERTIES
-    ENVIRONMENT "${_environment}" LABELS "unit;solver;core;native-state" TIMEOUT 180)
+    ENVIRONMENT "${_environment}" LABELS "unit;solver;core;native-state" TIMEOUT 600)
 
   add_test(NAME total-energy-coulomb
     COMMAND "${Python3_EXECUTABLE}" "${_repo}/tests/run_energy_coulomb_cpu.py"

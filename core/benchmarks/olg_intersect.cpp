@@ -54,7 +54,7 @@ int main(int argc,char** argv) {
     size_t hits=0;for(int v:reference)hits+=v>=0;
     std::cout<<std::fixed<<std::setprecision(2)<<"points="<<points<<" pairs="<<pairs<<" hits="<<hits<<'\n'
         <<std::setw(24)<<"legacy binary search"<<std::setw(10)<<1e9*legacy_seconds/(double(points)*pairs)<<" ns/query\n";
-    for(int mode=OPENMX_GRID_SCALAR;mode<=OPENMX_GRID_NEON;++mode) {
+    for(int mode=OPENMX_GRID_SCALAR;mode<OPENMX_GRID_MODE_COUNT;++mode) {
       if(!openmx_core_host_simd_usable(mode))continue;
       const double s=seconds([&]{if(!openmx_core_olg_intersect(&lists,queries.data(),points,out.data(),mode))throw std::runtime_error("intersect failed");});
       if(out!=reference)throw std::runtime_error("host kernel differs from the legacy search");

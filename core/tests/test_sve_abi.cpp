@@ -71,12 +71,51 @@ void conversions() {
   const Vector::mask_type dmask(imask);
   for(int k=0;k<lanes;++k)require(mask[k]==imask[k] && imask[k]==dmask[k],"mixed element mask conversion");
 }
+
+// Exercise every mask pattern across element widths. Inactive gather/scatter
+// indices point into protected memory; a conversion must neither move a live
+// lane nor enable any of the unused upper lanes of a half-width vector.
+template<class V,class SourceMask> void mask_conversions() {
+  using T=typename V::value_type;
+  using M=typename V::mask_type;
+  using I=simd::basic_simd<std::int32_t,typename V::abi_type>;
+  constexpr int count=V::size();
+  Guarded<T> input(count),output(count);
+  for(int k=0;k<count;++k)input.data[k]=T(k+1);
+  for(unsigned pattern=0;pattern<(1u<<count);++pattern) {
+    const SourceMask source([&](int k){return (pattern>>k)&1u;});
+    const M converted(source);
+    const SourceMask roundtrip(converted);
+    require(simd::any_of(converted)==(pattern!=0),"converted mask any_of");
+    require(simd::all_of(converted)==(pattern==(1u<<count)-1),"converted mask all_of");
+    const I indices([&](int k){return source[k]?k:count;});
+    const auto value=simd::unchecked_gather_from<V>(std::span<const T>(input.data,count),source,indices);
+    for(int k=0;k<count;++k) {
+      require(converted[k]==source[k] && roundtrip[k]==source[k],"mask pattern conversion");
+      require(value[k]==(source[k]?input.data[k]:T(0)),"cross-width masked gather");
+      output.data[k]=T(-99);
+    }
+    simd::unchecked_scatter_to(value,std::span<T>(output.data,count),source,indices);
+    for(int k=0;k<count;++k)
+      require(output.data[k]==(source[k]?input.data[k]:T(-99)),"cross-width masked scatter");
+    // Contiguous access at the page end detects nonzero upper predicate bits.
+    for(int k=0;k<count;++k)output.data[k]=T(-99);
+    simd::simd_partial_store(simd::simd_partial_load<V>(input.data,converted),output.data,converted);
+    for(int k=0;k<count;++k)
+      require(output.data[k]==(source[k]?input.data[k]:T(-99)),"converted mask contiguous access");
+  }
+}
 }
 
 extern "C" int OPENMX_HOST_SIMD_FACTORY(openmx_test_abi)() {
   try {
     tails<Vector>();tails<NarrowFloatVector>();tails<IndexVector>();
     tails<FloatVector>();tails<IntVector>();conversions();
+    mask_conversions<Vector,IndexVector::mask_type>();
+    mask_conversions<Vector,NarrowFloatVector::mask_type>();
+    mask_conversions<IndexVector,Vector::mask_type>();
+    mask_conversions<NarrowFloatVector,Vector::mask_type>();
+    mask_conversions<IndexVector,NarrowFloatVector::mask_type>();
   } catch(const std::exception& error) {
     std::cerr<<error.what()<<'\n';return 1;
   }

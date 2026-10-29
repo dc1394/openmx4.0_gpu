@@ -20,7 +20,7 @@ class CMakeDriverTest(unittest.TestCase):
         self.root = Path(temporary.name)
         self.repo = self.root / "repo"
         self.build = self.root / "build"
-        for name in ("cmake", "tools", "core", "source/third_party/dist", "DFT_DATA19"):
+        for name in ("cmake", "tools", "core", "modules", "source/third_party/dist", "DFT_DATA19"):
             (self.repo / name).mkdir(parents=True, exist_ok=True)
         for name in ("CMakeLists.txt", "cmake/OpenMXGPUArchitecture.cmake", "cmake/OpenMXBuildType.cmake",
                      "cmake/OpenMXCPUOptions.cmake", "cmake/OpenMXMPI.cmake", "cmake/OpenMXHIPOptions.cmake",

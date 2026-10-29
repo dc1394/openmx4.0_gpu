@@ -63,6 +63,11 @@ template<class T> [[gnu::always_inline]] inline void copy_row(const OpenMXGridOr
 // Blocks of Points points share the density-matrix loads and interleave
 // their scalar i-sums; the output adds keep ascending point order.
 template<int Spins,int Points>
+#if defined(OPENMX_HOST_SIMD_NEON) || (defined(OPENMX_HOST_SIMD_SVE) && OPENMX_HOST_SIMD_SVE == 128)
+// GCC 12 inlining into the shape dispatcher regressed SVE128 single-spin
+// timings. Keep this sizable kernel independent of the dispatch branches.
+[[gnu::noinline]]
+#endif
 void density_rowwise(const OpenMXGridPair& p,GridScratch w,double* const* output) {
   const int chunks=(p.rows+lanes-1)/lanes;
   const size_t pad=size_t(chunks)*lanes;
@@ -201,8 +206,8 @@ const GridKernels& committed() noexcept {return OPENMX_HOST_SIMD_FACTORY(grid_co
 // the choice is only about speed. Measured per ISA on an i9-10980XE against the committed kernels
 // (2000-point pairs; rows 1-19 x columns 1-19, spins 1/2/4; float rows):
 // a shape takes a new kernel only where it was faster, otherwise the
-// committed one, so no shape is slower than before. NEON keeps the committed
-// kernels (unmeasured).
+// committed one. The NEON/SVE128 choices below were measured separately on
+// Neoverse-N3; wider SVE variants retain their existing policy.
 enum class DensityKernel {committed,points,rows2,rows4};
 DensityKernel density_kernel(int rows,int columns,int spins) {
 #if defined(OPENMX_HOST_SIMD_AVX512)
@@ -215,7 +220,17 @@ DensityKernel density_kernel(int rows,int columns,int spins) {
   if(spins==1 && rows>=16 && columns>=13)return DensityKernel::rows2;
   return DensityKernel::points;
 #elif defined(OPENMX_HOST_SIMD_NEON)
-  (void)rows;(void)columns;(void)spins;return DensityKernel::committed;
+  if(rows==1 && columns==1)return DensityKernel::committed;
+  // Hoist row-pointer resolution out of the orbital loop. Four points share
+  // the matrix loads for larger single-spin blocks; narrow and multi-spin
+  // blocks benefit more from keeping points across the two SIMD lanes.
+  if(spins==1 && ((rows>=8 && columns>=8) || (rows>=4 && columns>=12)))
+    return DensityKernel::rows4;
+  return DensityKernel::points;
+#elif defined(OPENMX_HOST_SIMD_SVE) && OPENMX_HOST_SIMD_SVE == 128
+  if(rows==1 && columns==1)return DensityKernel::committed;
+  if(spins==1 && (rows>=8 || (rows>=4 && columns>=12)))return DensityKernel::rows4;
+  return DensityKernel::points;
 #else
   // the scalar build gains from interleaved rows (several points per pass)
   if(spins==1)return columns>=2?DensityKernel::rows4:DensityKernel::committed;
@@ -233,6 +248,10 @@ bool hamiltonian_rows(int rows,int columns) {
   return !(columns<=2 || (rows<8 && columns<8));
 #elif defined(OPENMX_HOST_SIMD_AVX2)
   return !((rows<8 && columns<=2) || (rows<=3 && columns<=5));
+#elif defined(OPENMX_HOST_SIMD_NEON) || (defined(OPENMX_HOST_SIMD_SVE) && OPENMX_HOST_SIMD_SVE == 128)
+  // Whole-vector FP32->FP64 row copies pay for their setup beyond tiny
+  // blocks on Neoverse-N3; retain the element loop for the small cases.
+  return rows>=4 || columns>=4;
 #else
   // one-lane builds have no vector conversion to gain
   (void)rows;(void)columns;return false;

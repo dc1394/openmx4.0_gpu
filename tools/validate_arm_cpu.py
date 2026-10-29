@@ -148,8 +148,9 @@ def main():
         parser.error('krylov-order must be positive')
     build, binary = args.build.resolve(), args.binary.resolve()
     core = binary.parent / 'lib/libopenmx_core.so'
-    if not binary.is_file() or not core.is_file():
-        parser.error('build the application and its matching lib/libopenmx_core.so first')
+    host_simd = core.with_name('libopenmx_host_simd.so')
+    if not all(path.is_file() for path in (binary, core, host_simd)):
+        parser.error('build the application and its matching Core and host SIMD libraries first')
     api = ctypes.CDLL(str(core))
     api.openmx_core_host_simd_mode.argtypes = [ctypes.c_char_p]
     api.openmx_core_host_simd_mode.restype = ctypes.c_int
@@ -170,6 +171,7 @@ def main():
     report = dict(status='prepared', available_modes=available, selected_modes=selected,
                   binary=str(binary), binary_sha256=hashlib.sha256(binary.read_bytes()).hexdigest(),
                   core_sha256=hashlib.sha256(core.read_bytes()).hexdigest(),
+                  host_simd_sha256=hashlib.sha256(host_simd.read_bytes()).hexdigest(),
                   git_head=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=repo, text=True).strip(),
                   tolerance=args.tolerance, scf_criterion=SCF_CRITERION, krylov_order=args.krylov_order,
                   ctest=dict(status='not_run'), runs=[], comparisons=[])

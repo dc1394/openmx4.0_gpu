@@ -62,8 +62,22 @@ public:
     value_ = svcmpne(active(), svld1(active(), values), 0);
   }
   template<class U>
-  basic_simd_mask(const basic_simd_mask<U, abi_type>& other) noexcept
-      : basic_simd_mask([&](int i) { return other[i]; }) {}
+  basic_simd_mask(const basic_simd_mask<U, abi_type>& other) noexcept {
+    if constexpr(sizeof(T) == sizeof(U)) value_ = other.native();
+    else {
+      // Predicates use one bit per byte: a 64-bit lane tests every second
+      // 32-bit predicate element. Zip/uzp preserve logical lane numbers
+      // without extracting each predicate into a scalar and reloading it.
+      svbool_t converted;
+      if constexpr(sizeof(T) == 8)
+        converted = svzip1_b32(other.native(), other.native());
+      else
+        converted = svuzp1_b32(other.native(), other.native());
+      // Unzip duplicates the narrow result into the upper half. Those bits
+      // must stay inactive, including for masked accesses at a page boundary.
+      value_ = svand_b_z(active(), converted, active());
+    }
+  }
   bool operator[](int i) const noexcept {
     if constexpr(sizeof(T) == 8) return svptest_last(svwhilele_b64(0, i), value_);
     else return svptest_last(svwhilele_b32(0, i), value_);

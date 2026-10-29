@@ -76,10 +76,23 @@ with tempfile.TemporaryDirectory(prefix="openmx-radial-endpoints-") as folder:
     for name in names:
         (out / (name + ".c")).write_bytes((root / "source" / (name + ".c")).read_bytes())
     (out / "main.c").write_text(main)
-    command = shlex.split(os.environ.get("CC", "cc")) + [
-        "-std=c11", "-O1", "-g", "-fno-fast-math", "-ffp-contract=off",
+    flags = [
+        "-O1", "-g", "-fno-fast-math", "-ffp-contract=off",
         "-fsanitize=address,undefined", "-fno-sanitize-recover=all", "-fno-omit-frame-pointer",
-        *(["-fno-pie", "-no-pie"] if sys.platform.startswith("linux") else []), str(out / "main.c"),
-        *[str(out / (name + ".c")) for name in names], "-lm", "-o", str(out / "check")]
+        *(["-fno-pie", "-no-pie"] if sys.platform.startswith("linux") else [])]
+    # KumoF/Dr_KumoF now delegate to the independent Basis library. Compile
+    # that actual implementation under the same sanitizers, keeping the C
+    # bridge translation units (and their ABI) in this endpoint regression.
+    objects = []
+    for name in ("main", *names):
+        obj = out / (name + ".o")
+        subprocess.run([*shlex.split(os.environ.get("CC", "cc")), "-std=c11", *flags,
+                        "-I" + str(root / "source"), "-c", str(out / (name + ".c")),
+                        "-o", str(obj)], check=True)
+        objects.append(str(obj))
+    command = [*shlex.split(os.environ.get("CXX", "c++")), "-std=c++20", *flags,
+               "-I" + str(root / "modules/basis/include"),
+               str(root / "modules/basis/src/density_table.cpp"), *objects,
+               "-lm", "-o", str(out / "check")]
     subprocess.run(command, check=True)
     subprocess.run([str(out / "check")], check=True, timeout=30)
