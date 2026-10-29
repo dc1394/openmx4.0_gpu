@@ -1,5 +1,10 @@
 # openmx4.0_gpu
 
+Alongside GPU acceleration, this fork includes [extended lanthanide
+pseudopotentials and PAO basis sets](#extended-lanthanide-pseudopotentials-and-pao)
+in `DFT_DATA19`: additional datasets absent from upstream OpenMX 4.0, plus
+updated datasets for elements already supported upstream.
+
 This repository includes NVIDIA CUDA, AMD HIP and CPU-only builds. Select one
 per build with CMake; the existing NVIDIA `make -C source` workflow also works.
 Single-configuration CMake builds default to `Release`, including the C++ core.
@@ -1122,11 +1127,96 @@ The test suite writes elapsed times and differences from the bundled reference
 results to `runtest.result`. Inspect the output files and compare every force
 component with `tools/compare_gpu_suites.py` as described above.
 
+## Extended lanthanide pseudopotentials and PAO
+
+[DFT_DATA19/VPS](DFT_DATA19/VPS) and [DFT_DATA19/PAO](DFT_DATA19/PAO) contain
+this fork's additional and updated lanthanide datasets, versioned together
+with the code. The reference for the original OpenMX 4.0 data is the
+[official VPS/PAO database (2019)](https://www.openmx-square.org/vps_pao2019/).
+This fork adds Eu, Gd and Er datasets with both explicit 4f valence states
+and open-core treatment, and Tm open-core datasets; these elements have no
+downloadable entries in that official database. It also adds Ho open-core
+data and revises datasets for elements already present upstream, including
+Yb with 4f in valence, Yb open core and Dy open core.
+
+The extension includes the following combinations. `CA26` and `PBE26` are
+the filenames of this fork's LDA and GGA-PBE VPS datasets, respectively;
+they are not an upstream database release designation. `_OC` denotes
+open-core treatment of the 4f states.
+
+| Element(s) | 4f in valence | Open core |
+| --- | --- | --- |
+| Eu, Gd, Er | CA26/PBE26 VPS and PAO | CA26/PBE26_OC VPS and PAO |
+| Tm | — | CA26/PBE26_OC VPS and PAO |
+| Tb, Yb | Updated CA26/PBE26 VPS and PAO | Updated CA26/PBE26_OC VPS and PAO |
+| Ho | Updated CA26/PBE26 VPS with the existing PAO | CA26/PBE26_OC VPS and PAO |
+| Dy | Existing 2019 data | Updated CA26/PBE26_OC VPS and replaced PAO |
+| Sm | Existing 2019 data | Updated CA26/PBE26_OC VPS with the existing PAO |
+
+PAO files use confinement radii of 8.0, 10.0 and 12.0 bohr. For example,
+`Yb8.0.pao` pairs with `Yb_PBE26.vps` for explicit 4f valence states, while
+`Yb8.0_OC.pao` pairs with `Yb_PBE26_OC.vps` for open-core treatment. Choose the
+matching names in `Definition.of.Atomic.Species`, omitting the extensions:
+
+```text
+# Species   PAO basis              VPS
+Yb          Yb8.0-s3p2d2f1         Yb_PBE26
+# Alternative open-core definition for the same species:
+# Yb        Yb8.0_OC-s3p2d2f1      Yb_PBE26_OC
+```
+
+The supplied `Yb_CA26_OC`/`Yb_PBE26_OC` files and their PAOs specify **11
+valence electrons** (4f13 in the core), whereas the
+[upstream Yb open-core dataset](https://www.openmx-square.org/vps_pao2019/Yb/Yb_OC/index.html)
+specifies 10 valence electrons. Set initial spin populations and any
+open-core occupations from the selected dataset. The supplied 4f-in-valence
+Yb VPS files specify 24 valence electrons; the separately named
+`Yb_PBE24.vps` is also retained under version control.
+
+The newly added/replaced PAOs contain s, p, d and f radial channels
+(`maxL.pao = 3`, `num.pao = 15`). In particular, the updated `Dy8.0_OC.pao`,
+`Dy10.0_OC.pao` and `Dy12.0_OC.pao` replace the previous files at the same
+paths. Existing 2019 VPS filenames remain available; record the repository
+commit and exact PAO/VPS names when reproducing a calculation. These
+datasets can be selected in CPU, CUDA and HIP builds.
+
 ## Benchmarks
+
 Published benchmarks of GPU-accelerated OpenMX are available in
 [the JPSJ paper](https://journals.jps.jp/doi/10.7566/JPSJ.94.124003).
 For measurements of the current version on your hardware, use the commands in
 [Reproducible GPU regression runs](#reproducible-gpu-regression-runs).
+
+Two input decks are also tracked in [benchmarks/inputs](benchmarks/inputs),
+copied verbatim from the supplied benchmark inputs:
+
+| Input | System | Solver / spin | SCF limit / MD limit |
+| --- | --- | --- | --- |
+| [sidia333_nc_cluster.dat](benchmarks/inputs/sidia333_nc_cluster.dat) | 216 Si atoms | Cluster / noncollinear | 25 / 1 |
+| [cghelgeo.dat](benchmarks/inputs/cghelgeo.dat) | 650 atoms (H, C, N, O, P) | Band / spin unpolarized, 1 × 1 × 3 k points | 200 / 1 |
+
+Both inputs use `DATA.PATH ../../DFT_DATA19`. Prepare separate run
+directories two levels below the checkout root so that the path resolves
+to the bundled data and outputs stay separate from the versioned inputs:
+
+```sh
+# From the repository root:
+mkdir -p work/bench_sidia333_nc_cluster work/bench_cghelgeo
+cp benchmarks/inputs/sidia333_nc_cluster.dat work/bench_sidia333_nc_cluster/
+cp benchmarks/inputs/cghelgeo.dat work/bench_cghelgeo/
+
+# Example after building work/openmx; use the MPI matching that binary.
+cd work/bench_sidia333_nc_cluster
+OMP_NUM_THREADS=1 OPENMX_GPU=1 mpirun -np 18 ../openmx sidia333_nc_cluster.dat > run.log 2>&1
+# For the other case, run ../openmx cghelgeo.dat from work/bench_cghelgeo.
+```
+
+For a CPU-path comparison with the same GPU-enabled binary, use
+`OPENMX_GPU=0` in a fresh run directory. Enable MPS before NVIDIA GPU
+measurements when comparing against the MPS baseline. Keep the input
+settings unchanged and record the actual SCF iterations and convergence
+status along with time, energy and forces; reaching an iteration limit
+does not establish SCF convergence.
 
 ## Important notes
 Performance depends on the system, solver, hardware and MPI/OpenMP layout.
