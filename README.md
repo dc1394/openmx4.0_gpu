@@ -1140,124 +1140,157 @@ I would appreciate it if you could actively report any bugs. Please report them 
 ## License
 
 This project is a derivative work of **OpenMX** and is licensed under the
-**GNU General Public License v3.0 or later (GPL-3.0-or-later)**, consistent
-with the upstream OpenMX license. See the [LICENSE](LICENSE) file for the
-full license text.
+**GNU General Public License v3.0 or later (GPL-3.0-or-later)**. See
+[LICENSE](LICENSE) for the full license text.
 
-```
+```text
 SPDX-License-Identifier: GPL-3.0-or-later
 ```
 
-### Upstream Project
+### Upstream Project and OpenMX Packages
 
-This project is based on:
-
-- **OpenMX** (Open source package for Material eXplorer)
-- **Version**: 4.0
+- **OpenMX** (Open source package for Material eXplorer), version **4.0**
 - **Upstream**: <https://www.openmx-square.org/>
-- **Copyright**: Copyright (c) Taisuke Ozaki and OpenMX contributors
-- **License**: GNU General Public License v3.0 or later
+- **Copyright**: Taisuke Ozaki and OpenMX contributors
+- **Project license**: `GPL-3.0-or-later`
 
-The original OpenMX source code retains its original copyright notices and
-license headers. Modifications made in this project (GPU acceleration for
-NVIDIA CUDA and AMD HIP backends) are also licensed under GPL-3.0-or-later.
+The original OpenMX files retain their copyright notices and license headers.
+This project's CPU/GPU changes and C++ core are covered by the project license.
+The independent `OpenMX::basis`, `OpenMX::xc` and `OpenMX::io` packages carry
+copies in [modules/basis/LICENSE](modules/basis/LICENSE),
+[modules/xc/LICENSE](modules/xc/LICENSE) and
+[modules/io/LICENSE](modules/io/LICENSE).
+The third-party components below retain their own licenses and notices.
 
 ### Third-Party Components
 
-This project incorporates source code from the following third-party projects.
-Each component retains its original license; its original license file is
-in its Git submodule or source archive under `source/third_party/`.
+The build uses dependencies from Git submodules, source archives under
+`source/third_party/`, and the pinned Kokkos release fetched by CMake. The
+following entries describe those versions and identify their upstream license
+texts and file-specific notices.
+
+#### Kokkos, mdspan and desul atomics
+
+- **Kokkos version**: **5.2.2**, pinned with its source URL and SHA-256 in
+  [core/CMakeLists.txt](core/CMakeLists.txt)
+- **Source**: <https://github.com/kokkos/kokkos/tree/5.2.2>
+- **Copyright**: Contributors to the Kokkos project; see the release's
+  [COPYRIGHT.md](https://github.com/kokkos/kokkos/blob/5.2.2/COPYRIGHT.md)
+- **License**: Apache License 2.0 with LLVM Exceptions
+  (`Apache-2.0 WITH LLVM-exception`)
+- **Original license text**:
+  [Kokkos 5.2.2 LICENSE](https://github.com/kokkos/kokkos/blob/5.2.2/LICENSE).
+  CMake installs this file as
+  `<prefix>/share/licenses/openmx_core/Kokkos-LICENSE`.
+
+Kokkos provides execution spaces and views for the C++ core in CPU-only,
+NVIDIA CUDA and AMD HIP builds, and in the standalone SYCL core. The isolated
+host SIMD library uses a SERIAL configuration of the same pinned source.
+
+The release also supplies two components with their own notices:
+
+- **mdspan**: the bundled snapshot recorded in
+  [tpls/mdspan-hash.txt](https://github.com/kokkos/kokkos/blob/5.2.2/tpls/mdspan-hash.txt)
+  also uses `Apache-2.0 WITH LLVM-exception`. Its
+  [header notices](https://github.com/kokkos/kokkos/blob/5.2.2/tpls/mdspan/include/mdspan/mdspan.hpp)
+  identify NTESS and the applicable terms. The core uses these headers for
+  multidimensional views; where supported, its public host views can instead
+  use the toolchain's `std::mdspan` implementation.
+- **desul atomics**: Kokkos bundles snapshot `83d26f34` of
+  [desul/desul](https://github.com/desul/desul/tree/83d26f34db50b4fefe30ed4db38b10e04c7a9384)
+  for atomic operations. These headers retain the copyright of Lawrence
+  Livermore National Security, LLC and DESUL contributors and use
+  **BSD 3-Clause** (`BSD-3-Clause`), as stated in their
+  [bundled notices](https://github.com/kokkos/kokkos/blob/5.2.2/tpls/desul/include/desul/atomics.hpp)
+  and [upstream LICENSE](https://github.com/desul/desul/blob/83d26f34db50b4fefe30ed4db38b10e04c7a9384/LICENSE).
 
 #### FFTW3
 
 - **Source**: <https://www.fftw.org/>
-- **Version**: 3.3.11 (Git submodule `source/third_party/fftw3` and release tarball `source/third_party/fftw-3.3.11.tar.gz`), used by the NVIDIA build; the AMD build uses external FFTW3 (AOCL or system/user installation)
+- **Version**: **3.3.11**, supplied by the Git submodule
+  `source/third_party/fftw3` and the release archive
+  `source/third_party/fftw-3.3.11.tar.gz`
 - **Copyright**:
   - Copyright (c) 2003, 2007-14 Matteo Frigo
   - Copyright (c) 2003, 2007-14 Massachusetts Institute of Technology
 - **License**: GNU General Public License v2.0 or later (`GPL-2.0-or-later`)
-- **Used here under**: GPL v3 (selected via the "or any later version" clause)
-- **Original license file**: `COPYING` in the submodule (`source/third_party/fftw3/COPYING`)
+- **Original license files**: `COPYING` and the source-file notices in the
+  submodule and archive
+
+The NVIDIA build uses this bundled FFTW3. AMD and CPU-only builds use an
+external FFTW3 selected from the build environment.
 
 #### GEMMul8
 
 - **Source**: <https://github.com/RIKEN-RCCS/GEMMul8>
-- **Version**: v3.5.4 (Git submodule `source/third_party/GEMMul8`)
+- **Version**: **v3.5.4**, Git submodule `source/third_party/GEMMul8`
 - **Copyright**: Copyright (c) 2025- RIKEN R-CCS
 - **Responsible developer**: Yuki Uchino (RIKEN Center for Computational Science)
-- **License**: MIT License (`MIT`)
-- **Original license file**: `LICENSE` in the submodule (`source/third_party/GEMMul8/LICENSE`)
+- **License**: MIT (`MIT`)
+- **Original license file**: `source/third_party/GEMMul8/LICENSE`
 
-GEMMul8 (GEMMulate) is a library for emulating high-precision matrix
-multiplication (SGEMM, DGEMM, CGEMM, ZGEMM) using INT8/FP8 matrix engines
-based on the Ozaki Scheme II. 
-
-If you use this project in academic work, please also cite the GEMMul8
-upstream references (see the GEMMul8 repository).
+GEMMul8 supplies emulated matrix products when selected by the GPU build and
+runtime policy. For academic use, please also cite the upstream GEMMul8
+references.
 
 #### ELPA, COSMA, COSTA and Tiled-MM
 
-ELPA serves the CPU eigensolvers (`scf.eigen.lib elpa1` and `elpa2`) and,
-with COSMA, the distributed multi-GPU cluster diagonalization
-(`scf.eigen.lib gpusolver2`). The four libraries are bundled as source
-archives under `source/third_party/dist/` and built automatically by the
-first `make`; each archive carries its original license file:
+The pinned source archives are in `source/third_party/dist/`. ELPA supplies
+CPU eigensolvers and the ELPA/COSMA `gpusolver2` path; COSMA uses COSTA and
+Tiled-MM for its distributed GPU matrix products.
 
-- **ELPA** 2026.02.002 — <https://elpa.mpcdf.mpg.de/> — Copyright (c) the ELPA
-  consortium — **GNU Lesser General Public License v3.0 (`LGPL-3.0`)**
-  (`COPYING/` inside the archive)
-- **COSMA** 2.8.4 — <https://github.com/eth-cscs/COSMA> — Copyright (c) ETH
-  Zürich (parts: Advanced Micro Devices, Inc.) — **BSD 3-Clause License
-  (`BSD-3-Clause`)**
-- **COSTA** and **Tiled-MM** (COSMA dependencies, at the commits COSMA 2.8.4
-  pins) — <https://github.com/eth-cscs/COSTA>,
-  <https://github.com/eth-cscs/Tiled-MM> — Copyright (c) ETH Zürich —
-  **BSD 3-Clause License (`BSD-3-Clause`)**
+| Component | Pinned version | Upstream license | License text in its archive |
+|---|---|---|---|
+| [ELPA](https://elpa.mpcdf.mpg.de/) | 2026.02.002 | GNU LGPL v3 (`LGPL-3.0-only`) | `LICENSE`, `COPYING/lgpl.txt` and `COPYING/gpl.txt` |
+| [COSMA](https://github.com/eth-cscs/COSMA) | 2.8.4 | BSD 3-Clause (`BSD-3-Clause`) | `LICENSE` |
+| [COSTA](https://github.com/eth-cscs/COSTA) | 2.3.0, commit `2484769535772f807d402901ffca63bb6678dd42` | BSD 3-Clause (`BSD-3-Clause`) | `LICENSE` |
+| [Tiled-MM](https://github.com/eth-cscs/Tiled-MM) | Commit `0eb75179e670a04c649b50ae5e91bb71b43e4d06`, pinned by COSMA 2.8.4 | BSD 3-Clause (`BSD-3-Clause`) | `LICENSE` |
+
+ELPA retains the copyright of its consortium and contributors. COSMA retains
+ETH Zürich and Advanced Micro Devices notices; COSTA and Tiled-MM retain their
+ETH Zürich notices. OpenMX's build patches preserve these upstream notices.
 
 #### MAGMA
 
 - **Source**: <https://icl.utk.edu/magma/>
-- **Version**: 2.10.0 (`source/third_party/hip/magma/magma-2.10.0.tar.gz`, used by both backends)
+- **Version**: **2.10.0**, archive
+  `source/third_party/hip/magma/magma-2.10.0.tar.gz`, shared by both GPU backends
 - **Copyright**: Copyright (c) 2009-2023, The University of Tennessee
-- **License**: BSD 3-Clause License (`BSD-3-Clause`); `COPYRIGHT` inside the archive
+- **License**: BSD 3-Clause (`BSD-3-Clause`)
+- **Original license file**: `COPYRIGHT` inside the archive
 
-MAGMA is the multi-GPU dense eigensolver of the Cluster and Band solvers.
-The AMD build always links it; the NVIDIA build links it as described under
-[Dependencies](#dependencies). The build applies OpenMX's patches to the
-extracted sources: `source/third_party/magma-device-map.patch` (NVIDIA:
-maps MAGMA's logical GPU numbers to the selected Band GPU group) and
-`source/third_party/hip/magma-ozaki2.patch` (AMD: routes the matrix
-products of the eigensolvers through GEMMul8's Ozaki-II emulation).
+MAGMA supplies the multi-GPU dense eigensolver when enabled. The build applies
+`source/third_party/magma-device-map.patch` for NVIDIA and
+`source/third_party/hip/magma-ozaki2.patch` for AMD.
 
-#### Kokkos and bundled mdspan
+### Build Tools and External Libraries
 
-The C++ core uses [Kokkos 5.2.2](https://github.com/kokkos/kokkos/releases/tag/5.2.2)
-and its bundled mdspan headers. Both carry `Apache-2.0 WITH LLVM-exception`
-notices. The release's `LICENSE` is retained in the fetched source and installed
-as `share/licenses/openmx_core/Kokkos-LICENSE`. The source URL and SHA-256 are
-pinned in `core/CMakeLists.txt`.
+The bundled **CMake 3.31.12** archive,
+`source/third_party/dist/cmake-3.31.12.tar.gz`, is a fallback build tool for the
+ELPA/COSMA stack. Its main license is **BSD 3-Clause** (`BSD-3-Clause`), with
+Copyright 2000-2024 Kitware, Inc. and Contributors in `Copyright.txt`. CMake is
+not linked into the OpenMX executable; its archive retains its additional
+third-party notices.
 
-#### CMake (build tool)
+CUDA/NVIDIA HPC SDK, ROCm libraries, MPI, and the selected numerical libraries
+(such as oneMKL, AOCL or OpenBLAS/ScaLAPACK) come from the build environment.
+Those installations, the external FFTW3 and the compiler's standard library
+have their own license and redistribution terms.
 
-- **Source**: <https://cmake.org/>
-- **Version**: 3.31.12 (`source/third_party/dist/cmake-3.31.12.tar.gz`)
-- **Copyright**: Copyright 2000-2024 Kitware, Inc. and Contributors
-- **License**: BSD 3-Clause License (`BSD-3-Clause`); `Copyright.txt` inside the archive
+### License Summary
 
-It is built only when the system CMake is older than the 3.24 that COSMA
-needs, and it is not part of the OpenMX executable.
+| Component | License | Use in this project |
+|---|---|---|
+| OpenMX and this project's CPU/GPU/C++ changes | `GPL-3.0-or-later` | Application, C++ core and the basis/xc/io packages |
+| Kokkos 5.2.2 | `Apache-2.0 WITH LLVM-exception` | Core execution spaces, views and host SIMD |
+| mdspan bundled with Kokkos 5.2.2 | `Apache-2.0 WITH LLVM-exception` | Multidimensional views |
+| desul atomics bundled with Kokkos 5.2.2 | `BSD-3-Clause` | Atomic operations |
+| FFTW3 3.3.11 | `GPL-2.0-or-later` | Bundled NVIDIA FFT implementation |
+| GEMMul8 v3.5.4 | `MIT` | Selected GPU matrix products |
+| ELPA 2026.02.002 | `LGPL-3.0-only` | CPU and distributed GPU eigensolvers |
+| COSMA / COSTA / Tiled-MM | `BSD-3-Clause` | Distributed matrix products |
+| MAGMA 2.10.0 | `BSD-3-Clause` | Multi-GPU dense eigensolver |
+| CMake 3.31.12 | `BSD-3-Clause` | Build tool only |
 
-### License Compatibility Summary
-
-| Component | Original License | Compatible with GPL v3 |
-|-----------|------------------|------------------------|
-| OpenMX (upstream) | GPL-3.0-or-later | — (same license) |
-| GPU modifications (this project) | GPL-3.0-or-later | — (same license) |
-| FFTW3 | GPL-2.0-or-later | Yes (via "or later" clause) |
-| GEMMul8 | MIT | Yes (permissive → strong copyleft) |
-| ELPA 2026.02.002 | LGPL-3.0 | Yes (LGPL v3 code may be conveyed under GPL v3) |
-| COSMA (with COSTA, Tiled-MM) | BSD-3-Clause | Yes (permissive → strong copyleft) |
-| MAGMA 2.10.0 | BSD-3-Clause | Yes (permissive → strong copyleft) |
-| CMake (build tool only) | BSD-3-Clause | Yes (permissive → strong copyleft) |
-
-The combined work is distributed under the terms of GPL v3 or later.
+The OpenMX-derived application is distributed under `GPL-3.0-or-later`;
+third-party components retain the terms and notices identified above.
