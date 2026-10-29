@@ -26,7 +26,7 @@ int MPI_Barrier(MPI_Comm c){(void)c;return 0;}
 int MPI_Bcast(void *v,int n,int type,int root,MPI_Comm c)
 {(void)v;(void)root;(void)c;CHECK((n==1||n==3)&&type==MPI_DOUBLE);return 0;}
 int MPI_Allreduce(const void *s,void *r,int n,int type,int op,MPI_Comm c)
-{(void)c;CHECK((n==1||n==9)&&type==MPI_DOUBLE&&op==MPI_SUM);memcpy(r,s,n*sizeof(double));return 0;}
+{(void)c;CHECK((n==1||n==9||n==atomnum+1)&&type==MPI_DOUBLE&&op==MPI_SUM);if(s!=MPI_IN_PLACE)memcpy(r,s,n*sizeof(double));return 0;}
 #include "dispersion_native.inc"
 
 /* Sum the model's ordered-pair energy with long-double scalar arithmetic.

@@ -3783,6 +3783,7 @@ double Calc_EdftD3(OpenMXSolverInvocation *scratch)
   double exparg,expval, powarg, powval; /**/
   double Z, W, C6_ref, dAi, dBj, Lij, C6, C8, dZi, dZj, dWi, dWj; /* Gaussian distance C6, C8 parameter */
   double C8C6;
+  double dCN_AB; /* d(CN_A)/d(r_AB) of one image, recomputed in the three-body loop */
   double my_st[9],st[9];
 
 
@@ -3799,10 +3800,13 @@ double Calc_EdftD3(OpenMXSolverInvocation *scratch)
 
   for (i=0; i<9; i++) my_st[i] = 0.0;
 
-  OpenMX_Energy_DispersionPrepare(scratch,atomnum,n1_CN_DFT_D,n2_CN_DFT_D,n3_CN_DFT_D,&dispersion);
+  /* [d3mem 2026-10-29] dCN_AB/dr_AB is only needed for the owned atom A and is recomputed where it is used (the
+     three-body loop), so no (atom, atom, image) storage is requested: image radius 0. With the full radius every
+     rank held (atomnum+1)^2 x images doubles, 0.92 GB per rank for 2064 atoms and 27 images. */
+  OpenMX_Energy_DispersionPrepare(scratch,atomnum,0,0,0,&dispersion);
   CN=dispersion.coordination;
 
-  /* Compute coordination numbers CN_A and derivative dCN_AB/dr_AB by adding an inverse damping function */
+  /* Compute coordination numbers CN_A by adding an inverse damping function (dCN_AB/dr_AB: three-body loop) */
   for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
     Gc_AN = M2G[Mc_AN];
     wanA = WhatSpecies[Gc_AN];
@@ -3848,10 +3852,6 @@ double Calc_EdftD3(OpenMXSolverInvocation *scratch)
 		  expval = exp(exparg);
 		  fdamp = 1.0/(1.0+expval);
 		  xn+=fdamp;
-		  (*openmx_dispersion_coordination(&dispersion,Gc_AN,Gc_BN,n1+n1_CN_DFT_D,n2+n2_CN_DFT_D,n3+n3_CN_DFT_D))=-fdamp*fdamp*expval*k1_dftD*rcovab_dftD[wanA][wanB]/dist2;
-		}
-		else{
-		  (*openmx_dispersion_coordination(&dispersion,Gc_AN,Gc_BN,n1+n1_CN_DFT_D,n2+n2_CN_DFT_D,n3+n3_CN_DFT_D))=0.0;
 		}
 	      } /* n3 */
 	    } /* n2 */
@@ -3862,38 +3862,16 @@ double Calc_EdftD3(OpenMXSolverInvocation *scratch)
     }
   } /* Mc_AN */
 
-  /*MPI BROADCAST CN NUMBERS - MPI_Barrier(mpi_comm_level1); */
-  MPI_Barrier(mpi_comm_level1);  /* NOT SURE IF NEEDED! */
+  /* [d3mpi 2026-10-29] Broadcast CN only (atomnum calls). dCN_AB is no longer stored, and was only read for the
+     owned atom A; its element-wise MPI_Bcast took atomnum^2 x images calls (1.2e8 for 2064 atoms and 27 images,
+     about 600 s per MD step on 256 ranks in OpenMX 4.0.1). */
+  MPI_Barrier(mpi_comm_level1);
   for (Gc_AN=1; Gc_AN<=atomnum; Gc_AN++){
     wanA = WhatSpecies[Gc_AN];
     iZ = Spe_WhatAtom[wanA];
     if ( iZ>0 ) {
       ID = G2ID[Gc_AN];
       MPI_Bcast(&CN[Gc_AN], 1, MPI_DOUBLE, ID, mpi_comm_level1);
-      for (Gc_BN=1; Gc_BN<=atomnum; Gc_BN++){
-	wanB = WhatSpecies[Gc_BN];
-	iZ = Spe_WhatAtom[wanB];
-	if ( iZ>0 ) {
-	  per_flagB = (int)Gxyz[Gc_BN][60];
-	  if (per_flagB==0){
-	    n1_max = 0;
-	    n2_max = 0;
-	    n3_max = 0;
-	  }
-	  else {
-	    n1_max = n1_CN_DFT_D;
-	    n2_max = n2_CN_DFT_D;
-	    n3_max = n3_CN_DFT_D;
-	  }
-	  for (n1=-n1_max; n1<=n1_max; n1++){
-	    for (n2=-n2_max; n2<=n2_max; n2++){
-	      for (n3=-n3_max; n3<=n3_max; n3++){
-		MPI_Bcast(&(*openmx_dispersion_coordination(&dispersion,Gc_AN,Gc_BN,n1+n1_CN_DFT_D,n2+n2_CN_DFT_D,n3+n3_CN_DFT_D)), 1, MPI_DOUBLE, ID, mpi_comm_level1);
-	      } /* n3 */
-	    } /* n2 */
-	  } /* n1 */
-	}
-      } /* Gc_BN */
     }
   } /* Gc_AN */
 
@@ -4099,20 +4077,15 @@ double Calc_EdftD3(OpenMXSolverInvocation *scratch)
 
   MPI_Allreduce(&My_EdftD, &EdftD, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
 
+  /* [d3mpi 2026-10-29] Row A of the C6 and energy derivatives is written only by the owner of A and is zero on every
+     other rank (the prepare zeroes it), so a row-wise MPI_SUM gives every rank exactly the owner's values. This
+     replaces 2 x atomnum^2 element-wise MPI_Bcast calls. CN was broadcast above. */
   for (Gc_AN=1; Gc_AN<=atomnum; Gc_AN++){
     wanA = WhatSpecies[Gc_AN];
     iZ = Spe_WhatAtom[wanA];
     if ( iZ>0 ) {
-      ID = G2ID[Gc_AN];
-      MPI_Bcast(&CN[Gc_AN], 1, MPI_DOUBLE, ID, mpi_comm_level1);
-      for (Gc_BN=1; Gc_BN<=atomnum; Gc_BN++){
-	wanB = WhatSpecies[Gc_BN];
-	iZ = Spe_WhatAtom[wanB];
-	if ( iZ>0 ) {
-	  MPI_Bcast(&(*openmx_dispersion_c6(&dispersion,Gc_AN,Gc_BN)), 1, MPI_DOUBLE, ID, mpi_comm_level1);
-	  MPI_Bcast(&(*openmx_dispersion_energy(&dispersion,Gc_AN,Gc_BN)), 1, MPI_DOUBLE, ID, mpi_comm_level1);
-	}
-      } /* Gc_BN */
+      MPI_Allreduce(MPI_IN_PLACE, openmx_dispersion_c6(&dispersion,Gc_AN,0), atomnum+1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
+      MPI_Allreduce(MPI_IN_PLACE, openmx_dispersion_energy(&dispersion,Gc_AN,0), atomnum+1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
     }
   } /* Gc_AN */
 
@@ -4178,10 +4151,16 @@ double Calc_EdftD3(OpenMXSolverInvocation *scratch)
 
 		  dist = sqrt(dist2);
 
+		  /* [d3mem 2026-10-29] dCN_AB/dr_AB with the same expressions as in the CN loop */
+		  exparg = -k1_dftD*((rcovab_dftD[wanA][wanB]/dist)-1.0);
+		  expval = exp(exparg);
+		  fdamp = 1.0/(1.0+expval);
+		  dCN_AB=-fdamp*fdamp*expval*k1_dftD*rcovab_dftD[wanA][wanB]/dist2;
+
 		  for(Gc_CN=1; Gc_CN<=atomnum; Gc_CN++){
 
-		    dEC += (*openmx_dispersion_energy(&dispersion,Gc_AN,Gc_CN))*(*openmx_dispersion_c6(&dispersion,Gc_AN,Gc_CN))*(*openmx_dispersion_coordination(&dispersion,Gc_AN,Gc_BN,n1+n1_CN_DFT_D,n2+n2_CN_DFT_D,n3+n3_CN_DFT_D));
-		    dEC += (*openmx_dispersion_energy(&dispersion,Gc_BN,Gc_CN))*(*openmx_dispersion_c6(&dispersion,Gc_BN,Gc_CN))*(*openmx_dispersion_coordination(&dispersion,Gc_AN,Gc_BN,n1+n1_CN_DFT_D,n2+n2_CN_DFT_D,n3+n3_CN_DFT_D));
+		    dEC += (*openmx_dispersion_energy(&dispersion,Gc_AN,Gc_CN))*(*openmx_dispersion_c6(&dispersion,Gc_AN,Gc_CN))*dCN_AB;
+		    dEC += (*openmx_dispersion_energy(&dispersion,Gc_BN,Gc_CN))*(*openmx_dispersion_c6(&dispersion,Gc_BN,Gc_CN))*dCN_AB;
 
 		  } /* Gc_CN */
 
