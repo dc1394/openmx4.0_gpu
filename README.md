@@ -1149,9 +1149,22 @@ open-core treatment of the 4f states.
 | Eu, Gd, Er | CA26/PBE26 VPS and PAO | CA26/PBE26_OC VPS and PAO |
 | Tm | — | CA26/PBE26_OC VPS and PAO |
 | Tb, Yb | Updated CA26/PBE26 VPS and PAO | Updated CA26/PBE26_OC VPS and PAO |
-| Ho | Updated CA26/PBE26 VPS with the existing PAO | CA26/PBE26_OC VPS and PAO |
+| Ho | CA26 VPS and existing CA19/PBE19 VPS with the public 2019 PAO | CA26/PBE26_OC VPS and PAO |
 | Dy | Existing 2019 data | Updated CA26/PBE26_OC VPS and replaced PAO |
 | Sm | Existing 2019 data | Updated CA26/PBE26_OC VPS with the existing PAO |
+
+For Ho, the 4f-in-valence `Ho_PBE26.vps` and its corresponding non-public
+PAO update are excluded from the current dataset. The retained
+`Ho8.0.pao`, `Ho10.0.pao` and `Ho12.0.pao` are the unchanged PAOs from the
+[public 2019 Ho dataset](https://www.openmx-square.org/vps_pao2019/Ho/index.html).
+`Ho_CA26.vps` remains included. The Ho open-core data are
+`Ho_CA26_OC.vps` / `Ho_PBE26_OC.vps` and `Ho8.0_OC.pao`, `Ho10.0_OC.pao`,
+`Ho12.0_OC.pao`.
+
+For Tb open-core calculations, use the supplied `Tb_CA26_OC.vps` or
+`Tb_PBE26_OC.vps` with `Tb8.0_OC.pao`, `Tb10.0_OC.pao` or `Tb12.0_OC.pao`.
+These form the versioned open-core set; the names without `_OC` select
+the separate 4f-in-valence data.
 
 PAO files use confinement radii of 8.0, 10.0 and 12.0 bohr. For example,
 `Yb8.0.pao` pairs with `Yb_PBE26.vps` for explicit 4f valence states, while
