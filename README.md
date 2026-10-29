@@ -1237,6 +1237,104 @@ settings unchanged and record the actual SCF iterations and convergence
 status along with time, energy and forces; reaching an iteration limit
 does not establish SCF convergence.
 
+### Radeon RX 9060 XT validation (2026-10-29–30)
+
+Both applications were built and installed before measurement. The fork was
+`main` at `a90c8220`, with the HIP density-state fix described below. The host
+was a Ryzen Threadripper 3970X (32 physical cores, SMT disabled), 256 GB RAM,
+and one Radeon RX 9060 XT with 16 GiB VRAM (`gfx1200`). Every run used
+**16 MPI ranks × 2 OpenMP threads**, bound to 32 cores. Jobs ran sequentially,
+with one measurement per configuration; these are individual timings rather
+than repeated-run averages.
+
+| Configuration | Build and execution |
+| --- | --- |
+| Upstream CPU | OpenMX 4.0 with [official patch 4.0.1](https://www.openmx-square.org/bugfixed/26May08/README.txt), Intel icx/ifx 2026.0, Intel MPI 2021.18, threaded LP64 MKL; `scf.eigen.lib elpa2` |
+| Fork CPU path | Release HIP build using ROCm SDK `core-10.1` Clang/Flang, OpenMPI 5.0.9 and AOCL 5.2; `OPENMX_GPU=0`, `scf.eigen.lib elpa2` |
+| Fork HIP path | The same installed executable and matching Core/SIMD libraries; `OPENMX_GPU=1`, `scf.eigen.lib gpusolver`, `HSA_ENABLE_SDMA=0` |
+
+The upstream patch files were compared with the official archive before use.
+The existing upstream `Set_ProExpn_VNA.c` static/inline compatibility adjustment
+was retained. All configurations used the same upstream `DFT_DATA19` files;
+the suites used upstream reference inputs/outputs, and the two named cases
+used the tracked inputs above. Only `DATA.PATH` and `scf.eigen.lib` were changed
+in the measurement copies. Geometry, grids, SCF/MD limits, convergence criteria
+and arithmetic policy were retained. OpenMP used `OMP_DYNAMIC=FALSE`,
+`OMP_PROC_BIND=close`, `OMP_PLACES=cores` and `OMP_MAX_ACTIVE_LEVELS=1`.
+AOCL/BLIS used one BLAS thread per rank; upstream MKL used two. Consequently,
+the upstream comparison includes compiler, MPI and numerical-library effects.
+
+The validation exposed stale HIP on-the-fly density calls left behind when
+Hamiltonian state ownership became explicit. Their missing first argument
+shifted the remaining arguments and caused invalid writes, including in the
+HIP executable with `OPENMX_GPU=0`. The fix passes the density state's owning
+Hamiltonian state through typed wrappers and shares the actual declarations
+in the state headers. The application was rebuilt and reinstalled before
+collecting the successful fork timings below.
+
+On this machine, the default runtime also stalled during the OpenMP GPU probe
+with 16 MPI ranks. Setting `HSA_ENABLE_SDMA=0` allowed the run to complete while
+GPU kernels remained enabled. This is a recorded runtime workaround for these
+measurements, not a change to the application's default environment. NVIDIA
+MPS does not apply to this AMD HIP device.
+
+Times below are seconds. Suite times sum the native per-case elapsed times;
+the named cases use OpenMX's maximum-rank `Total Computational Time`. MPI
+launch/shutdown overhead is excluded.
+
+| Test | Upstream CPU | Fork CPU path | Fork HIP path |
+| --- | ---: | ---: | ---: |
+| `-runtest` (14 cases) | 59.02 | 48.39 | 65.87 |
+| `-runtestL` (16 cases) | 4319.34 | 3246.98 | 4287.30 |
+| `sidia333_nc_cluster.dat` | 483.443 | 808.006 | 199.327 |
+| `cghelgeo.dat` | 1896.871 | 3123.226 | 3188.305 |
+
+All 14 small and 16 large cases passed their bundled references in all three
+configurations. Cross-configuration checks also passed for these suites and
+both named cases: finite total energies and every atomic force component,
+matching grids/geometry, absolute energy differences ≤ `1e-7` Ha and maximum
+force-component differences ≤ `1e-7` Ha/bohr. Completion markers alone were
+not used as the numerical acceptance criterion.
+
+For `sidia333_nc_cluster`, the HIP path was 4.05× faster than the fork CPU path
+and 2.43× faster than upstream. All three runs reached the input's 25-SCF limit;
+this comparison does not establish SCF convergence. For `cghelgeo`, the SCF
+counts were 60 (upstream), 59 (fork CPU) and 60 (fork HIP).
+
+**The cghelgeo HIP result includes CPU dense diagonalization.** All 60 SCF
+steps rejected the dense GPU path at its memory admission check. For the
+6670 × 6670 complex matrix, the HIP estimate was 16004.569 MiB: two concurrent
+k-point solves at 3394.285 MiB each, 512 MiB reserved for each of 16 MPI ranks,
+and an additional 1024 MiB guard. The first check found only 12794 MiB free.
+The subsequent host-backed MAGMA recovery requires a multi-GPU group, which
+this single-GPU run could not form; `available pool=0` describes that cooperative
+pool, not failure to detect the Radeon. The preceding `GPU-accelerated, MAGMA`
+label is printed before memory admission and does not prove that the dense
+solve ran on the GPU. Other GPU phases remained active.
+
+A separate three-SCF diagnostic with
+`OPENMX_BAND_GPU_MAX_RANKS_PER_DEVICE=1` admitted the first GPU solve, but
+subsequent steps again selected CPU: the second check found 12336 MiB free
+against a 12610.285 MiB estimate. It is therefore not a validated workaround
+for the full run. Further cghelgeo investigation was stopped at the user's
+request; the paired CPU diagnostic was interrupted and is excluded from the
+benchmark table.
+
+**`-runtestL3` was stopped for host-memory pressure.** During upstream
+`Si1280-LNO`, the process-tree RSS sum reached 223.48 GiB and `MemAvailable`
+fell to 31.69 GiB, triggering the 32 GiB reserve at 05:52 JST on October 30.
+The remaining upstream cases and both fork L3 runs were cancelled. Of the
+16 upstream cases completed before the stop, 15 passed the component-wise
+reference comparison; `Ni63-O64` had a maximum force-component difference of
+`1.21338e-5` Ha/bohr (energy difference `3.65e-9` Ha), above the chosen tolerance.
+That discrepancy remains unresolved. No complete L3 timing or CPU/GPU speedup
+is reported.
+
+Local commands, executable hashes, per-case results, resource samples and
+interrupted-run archives are retained in `work/codex_benchmark_20261029/`;
+`comparison.tsv` contains the case-level timings and numerical differences.
+These local artifacts are not part of the source distribution.
+
 ## Important notes
 Performance depends on the system, solver, hardware and MPI/OpenMP layout.
 Use the same binary and inputs when comparing CPU and GPU execution;

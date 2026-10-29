@@ -71,7 +71,6 @@ int Set_Density_Grid_GPU_Local_OnTheFly(OpenMXDensityGpuState *density_state);
 int Set_Density_Grid_GPU_Capacity(int,int,double *****,double ***);
 void Set_Density_Grid_GPU_Local_Report(OpenMXDensityGpuState *density_state, int path, int failed);
 int Set_Density_Grid_GPU_Local_StageOnHost(OpenMXDensityGpuState *density_state);
-int Set_Density_Grid_OTF_Prepare(const OpenMXAtomicViews *atomic, int Cnt_kind, size_t *need_bytes, size_t *available_bytes);
 int openmx_grid_precision_df(void);
 
 double Set_Density_Grid(OpenMXDensityGpuState *density_state, OpenMXGridWorkspace *grid, const OpenMXDensityCacheHooks *cache_hooks, const OpenMXAtomicViews *atomic, int Cnt_kind, int Calc_CntOrbital_ON, double *****CDM, double **Density_Grid_B0, const OpenMXLocalBasisViews *local_basis)
@@ -180,7 +179,7 @@ double Set_Density_Grid(OpenMXDensityGpuState *density_state, OpenMXGridWorkspac
      (Set_Hamiltonian.c) rather than the whole density on one owner */
   if (!use_local_gpu && !stage_on_host){
     size_t need, available;
-    int otf_ok=Set_Density_Grid_OTF_Prepare(atomic, Cnt_kind,&need,&available);
+    int otf_ok=Set_Density_Grid_GPU_OTF_Prepare(density_state, atomic, Cnt_kind,&need,&available);
     MPI_Allreduce(&otf_ok,&use_otf_gpu,1,MPI_INT,MPI_MIN,mpi_comm_level1);
   }
 
@@ -415,9 +414,8 @@ double Set_Density_Grid(OpenMXDensityGpuState *density_state, OpenMXGridWorkspac
   /* the orbitals evaluated on the device batch by batch (Set_Hamiltonian.c),
      rank by rank, before the CPU loop */
   {
-    extern int Set_Density_Grid_OTF_Run(const OpenMXAtomicViews *atomic, int Cnt_kind, double *****CDM, double ***Tmp_Den_Grid);
     if (!use_local_gpu && use_otf_gpu && !(openmx_gpu_capacity_test_recovery() || openmx_gpu_workers_requested())){
-      if (Set_Density_Grid_OTF_Run(atomic, Cnt_kind,CDM,Tmp_Den_Grid)) {
+      if (Set_Density_Grid_GPU_OTF_Run(density_state, atomic, Cnt_kind,CDM,Tmp_Den_Grid)) {
         use_local_gpu=1;
         local_failed=0;
         sd_mode = "otf";

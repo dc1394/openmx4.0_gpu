@@ -1238,9 +1238,19 @@ extern int Set_Density_Grid_Hip_LocalDensity(size_t output_count, int spin_count
                                              const size_t *d_o1off, const int *d_nc, const float *d_o0,
                                              const float *d_o1, double *d_dm, double *d_den);
 /* Set_Hamiltonian.c: the on-the-fly density of a rank (rank-local) */
-extern int Set_Density_Grid_OTF_Possible(OpenMXHamiltonianGpuState *hamiltonian_state, const OpenMXAtomicViews *atomic, int Cnt_kind);
-extern int Set_Density_Grid_OTF_Prepare(OpenMXHamiltonianGpuState *hamiltonian_state, const OpenMXAtomicViews *atomic, int Cnt_kind, size_t *need_bytes, size_t *available_bytes);
-extern int Set_Density_Grid_OTF_Run(OpenMXHamiltonianGpuState *hamiltonian_state, const OpenMXAtomicViews *atomic, int Cnt_kind, double *****CDM, double ***Tmp_Den_Grid);
+int Set_Density_Grid_GPU_OTF_Prepare(OpenMXDensityGpuState *density_state,
+    const OpenMXAtomicViews *atomic, int Cnt_kind, size_t *need_bytes, size_t *available_bytes)
+{
+  return Set_Density_Grid_OTF_Prepare(density_state->hamiltonian_state, atomic,
+                                    Cnt_kind, need_bytes, available_bytes);
+}
+
+int Set_Density_Grid_GPU_OTF_Run(OpenMXDensityGpuState *density_state,
+    const OpenMXAtomicViews *atomic, int Cnt_kind, double *****CDM, double ***Tmp_Den_Grid)
+{
+  return Set_Density_Grid_OTF_Run(density_state->hamiltonian_state, atomic,
+                                Cnt_kind, CDM, Tmp_Den_Grid);
+}
 
 static void SDG_local_delete_device(SDGLocalContext *c)
 {
