@@ -9,6 +9,9 @@ macro(openmx_configure_linalg _math_prefix _math_target _math_directory)
   option(${_math_prefix}_BUILD_SCALAPACK "Build matching Netlib ScaLAPACK if no compatible installation is found" ON)
   set(${_math_prefix}_SCALAPACK_ARCHIVE "" CACHE FILEPATH "Offline ScaLAPACK 2.2.3 source archive; empty downloads the pinned release")
   set(${_math_prefix}_AOCL_ROOT "$ENV{AOCL_ROOT}" CACHE PATH "AOCL LP64 installation prefix")
+  set(${_math_prefix}_MKL_THREADING "SEQUENTIAL" CACHE STRING
+      "MKL threading layer: SEQUENTIAL, or INTEL (mkl_intel_thread) when C, C++ and Fortran all use Intel OpenMP")
+  set_property(CACHE ${_math_prefix}_MKL_THREADING PROPERTY STRINGS SEQUENTIAL INTEL)
   set(_host_math_roots "${${_math_prefix}_MKL_ROOT}|${${_math_prefix}_OPENBLAS_ROOT}|${${_math_prefix}_SCALAPACK_ROOT}")
   if("${_math_prefix}" STREQUAL "OPENMX_HIP" OR ${_math_prefix}_LINALG STREQUAL "AOCL")
     string(APPEND _host_math_roots "|${${_math_prefix}_AOCL_ROOT}")
@@ -51,7 +54,31 @@ macro(openmx_configure_linalg _math_prefix _math_target _math_directory)
     else()
       set(_host_math_mkl_blacs mkl_blacs_intelmpi_lp64 mkl_blacs_lp64)
     endif()
-    foreach(component SCALAPACK INTERFACE SEQUENTIAL CORE BLACS)
+    # Sequential MKL avoids loading libgomp and libiomp5 in the same process.
+    # An all-Intel toolchain already uses libiomp5, so INTEL links
+    # mkl_intel_thread with it: the BLAS that ScaLAPACK and ELPA call outside
+    # OpenMX's parallel regions then uses the rank's OpenMP threads, while
+    # calls inside those regions stay single-threaded (MKL's nested default).
+    set(_host_math_mkl_runtime)
+    if(${_math_prefix}_MKL_THREADING STREQUAL "INTEL")
+      foreach(_host_math_language C CXX Fortran)
+        if(NOT CMAKE_${_host_math_language}_COMPILER_ID MATCHES "^Intel")
+          message(FATAL_ERROR "${_math_prefix}_MKL_THREADING=INTEL needs Intel OpenMP in every language; "
+            "the ${_host_math_language} compiler is ${CMAKE_${_host_math_language}_COMPILER_ID}")
+        endif()
+      endforeach()
+      set(_host_math_mkl_threading INTEL_THREAD)
+      # ELPA's Autoconf probes link without OpenMP flags, so name the runtime.
+      get_filename_component(_host_math_compiler_bin "${CMAKE_C_COMPILER}" DIRECTORY)
+      find_library(${_math_prefix}_MKL_IOMP5_LIBRARY NAMES iomp5
+        HINTS "${_host_math_compiler_bin}/../lib" "${_host_math_compiler_bin}/../compiler/lib/intel64_lin" REQUIRED)
+      set(_host_math_mkl_runtime "${${_math_prefix}_MKL_IOMP5_LIBRARY}")
+    elseif(${_math_prefix}_MKL_THREADING STREQUAL "SEQUENTIAL")
+      set(_host_math_mkl_threading SEQUENTIAL)
+    else()
+      message(FATAL_ERROR "${_math_prefix}_MKL_THREADING must be SEQUENTIAL or INTEL")
+    endif()
+    foreach(component SCALAPACK INTERFACE ${_host_math_mkl_threading} CORE BLACS)
       if(component STREQUAL "INTERFACE")
         set(names "${_host_math_mkl_interface}")
       elseif(component STREQUAL "BLACS")
@@ -71,15 +98,14 @@ macro(openmx_configure_linalg _math_prefix _math_target _math_directory)
       endif()
     endforeach()
     set(${_math_prefix}_BLAS_LIBRARIES "${${_math_prefix}_MKL_INTERFACE_LIBRARY}"
-      "${${_math_prefix}_MKL_SEQUENTIAL_LIBRARY}" "${${_math_prefix}_MKL_CORE_LIBRARY}" pthread m ${CMAKE_DL_LIBS})
+      "${${_math_prefix}_MKL_${_host_math_mkl_threading}_LIBRARY}" "${${_math_prefix}_MKL_CORE_LIBRARY}"
+      ${_host_math_mkl_runtime} pthread m ${CMAKE_DL_LIBS})
     set(${_math_prefix}_LAPACK_LIBRARIES ${${_math_prefix}_BLAS_LIBRARIES})
     # A rescan group also supports static MKL's circular BLAS dependencies.
-    # Sequential MKL avoids loading libgomp and libiomp5 in the same process;
-    # parallelism remains in OpenMX's MPI/OpenMP and ELPA kernels.
     set(${_math_prefix}_LINALG_LIBRARIES
       "-Wl,--start-group" "${${_math_prefix}_MKL_SCALAPACK_LIBRARY}" "${${_math_prefix}_MKL_INTERFACE_LIBRARY}"
-      "${${_math_prefix}_MKL_SEQUENTIAL_LIBRARY}" "${${_math_prefix}_MKL_CORE_LIBRARY}"
-      "${${_math_prefix}_MKL_BLACS_LIBRARY}" "-Wl,--end-group" pthread m ${CMAKE_DL_LIBS})
+      "${${_math_prefix}_MKL_${_host_math_mkl_threading}_LIBRARY}" "${${_math_prefix}_MKL_CORE_LIBRARY}"
+      "${${_math_prefix}_MKL_BLACS_LIBRARY}" "-Wl,--end-group" ${_host_math_mkl_runtime} pthread m ${CMAKE_DL_LIBS})
   else()
     if(${_math_prefix}_LINALG_RESOLVED STREQUAL "AOCL")
       if(NOT ${_math_prefix}_AOCL_ROOT)

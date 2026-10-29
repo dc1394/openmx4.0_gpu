@@ -126,6 +126,13 @@ MPIラッパー内部でも選択したコンパイラを使い、本体・ELPA�
 MKLはLP64のScaLAPACK、実際のFortranコンパイラに合うインターフェース、MPIに合うBLACSを選びます。
 MKL自体はsequential版とし、OpenMXのMPI・OpenMPとELPAのMPI並列化を使います。
 これによりGCCのlibgomp、Clangのlibomp、Intelのlibiomp5とMKL側の別OpenMPランタイムの混在を避けます。
+C・C++・FortranがすべてIntelのコンパイラなら、`-DOPENMX_CPU_MKL_THREADING=INTEL`（新しいビルドディレクトリで）で
+スレッド版MKL（mkl_intel_thread）を同じlibiomp5とリンクできます。OpenMXの並列領域の外でScaLAPACK・ELPAが呼ぶBLASが
+各ランクのOpenMPスレッドを使い、並列領域の中の呼び出しはMKLの既定どおり1スレッドです。
+AMD EPYC 7702（2×64コア）でノードあたり32ランク×4スレッドのとき、650原子のBand（2ノード、SCF 1回と力・応力）は
+1194 s→928 s（対角化 946 s→673 s）、2064原子のDC-LNO（8ノード、SCF 5回）は356 s→205 s（対角化 281 s→127 s）、
+全エネルギーの差は5e-12 Ha・2e-10 Haでした。逐次MKLのままノードあたり128ランク×1スレッドにすると、
+650原子のBandは1800 sで終わらず、さらに遅くなりました。
 OpenBLASはLP64版を使用し、pthread版または逐次版を推奨します。OpenMP版を使う場合は本体とランタイムを揃えてください。
 数値ライブラリの `AUTO` はOpenBLASを優先し、なければMKLを探します。
 

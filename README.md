@@ -89,7 +89,17 @@ cmake --install build/cpu-icx-mkl
 GNU Fortran is the default Fortran compiler for all three C/C++ families;
 `-DCMAKE_Fortran_COMPILER=ifx` selects Intel Fortran explicitly. MKL selects
 the matching Fortran interface and MPI BLACS, using sequential MKL alongside
-OpenMX's MPI/OpenMP. OpenBLAS uses a matching Netlib ScaLAPACK installation
+OpenMX's MPI/OpenMP by default. When the C, C++ and Fortran compilers are all
+Intel's, `-DOPENMX_CPU_MKL_THREADING=INTEL` (in a new build directory) links
+the threaded MKL with the same libiomp5, so the BLAS that ScaLAPACK and ELPA
+call outside OpenMX's parallel regions uses each rank's OpenMP threads. On
+2 x 64-core AMD EPYC 7702 nodes with 32 ranks x 4 threads per node it cut a
+650-atom Band SCF with forces and stress (2 nodes) from 1194 s to 928 s
+(diagonalization 946 s to 673 s) and five SCF iterations of a 2064-atom
+DC-LNO cell (8 nodes) from 356 s to 205 s (diagonalization 281 s to 127 s);
+total energies agreed to 5e-12 and 2e-10 Ha. Flat MPI with sequential MKL
+(128 ranks per node) was slower still: the Band case did not finish within
+1800 s. OpenBLAS uses a matching Netlib ScaLAPACK installation
 or builds the pinned release for the selected MPI. Clang also needs its
 OpenMP development package (`libomp-dev` on Debian/Ubuntu).
 
