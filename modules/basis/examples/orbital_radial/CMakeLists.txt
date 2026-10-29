@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.25.2)
+project(OpenMXOrbitalRadialExample LANGUAGES CXX)
+find_package(OpenMXBasis 0.1 CONFIG REQUIRED)
+add_executable(orbital_radial_example main.cpp)
+target_link_libraries(orbital_radial_example PRIVATE OpenMX::basis)

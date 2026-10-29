@@ -10,6 +10,8 @@
 #include <stdlib.h>
 #include <math.h>
 #include "openmx_common.h"
+#include "openmx_basis_lebedev.h"
+#include "openmx_core_quadrature.h"
 #include "openmx_env.h"
 #include "openmx_core_neutral_grid.h"
 #include "openmx_core_neutral_grid_metadata.h"
@@ -809,8 +811,12 @@ static double AMD_TotalEnergy_Exc0_Dr_KumoF_flat(int N, double x, double r,
 #pragma omp end declare target
 
 
-void AMD_TotalEnergy_Exc0_Batch_OpenMP(const OpenMXAtomicViews *atomic, int Num_Leb, double **Leb_Grid_XYZW, double *sum_out)
+void AMD_TotalEnergy_Exc0_Batch_OpenMP(const OpenMXAtomicViews *atomic, const OpenMXGaussRuleData *radial, const OpenMXLebedevRuleData *angular, double *sum_out)
 {
+  const int Num_Leb=(int)angular->count;
+  const double *Leb_Grid_XYZW=angular->xyzw;
+  const double *abscissa=radial->nodes,*weight=radial->weights;
+
   /* fine-mesh Exc^0 correction of Calc_EXC_EH1: for every local atom,
      integrate den0*exc(den) over the atom-centred Gauss-Legendre x
      Lebedev grid, together with the density-gradient force terms.
@@ -928,10 +934,10 @@ void AMD_TotalEnergy_Exc0_Batch_OpenMP(const OpenMXAtomicViews *atomic, int Num_
   }
 
   for (i=0; i<na; i++){
-    leb_x[i] = Leb_Grid_XYZW[i][0];
-    leb_y[i] = Leb_Grid_XYZW[i][1];
-    leb_z[i] = Leb_Grid_XYZW[i][2];
-    leb_w[i] = Leb_Grid_XYZW[i][3];
+    leb_x[i] = Leb_Grid_XYZW[4*i+0];
+    leb_y[i] = Leb_Grid_XYZW[4*i+1];
+    leb_z[i] = Leb_Grid_XYZW[4*i+2];
+    leb_w[i] = Leb_Grid_XYZW[4*i+3];
   }
 
   energy_sum = 0.0;
@@ -946,7 +952,7 @@ void AMD_TotalEnergy_Exc0_Batch_OpenMP(const OpenMXAtomicViews *atomic, int Num_
                         nb_wan[0:nb_total], nb_x[0:nb_total], nb_y[0:nb_total], \
                         nb_z[0:nb_total], nb_rcut2[0:nb_total], \
                         leb_x[0:na], leb_y[0:na], leb_z[0:na], leb_w[0:na], \
-                        CoarseGL_Abscissae[0:nr], CoarseGL_Weight[0:nr]) map(from:pref[0:npt_total])
+                        abscissa[0:nr], weight[0:nr]) map(from:pref[0:npt_total])
   {
 
     /* pass 1: energy and per-point force prefactors */
@@ -962,7 +968,7 @@ void AMD_TotalEnergy_Exc0_Batch_OpenMP(const OpenMXAtomicViews *atomic, int Num_
       ia = rem - ir*na;
 
       dr_atom = at_dr[mc];
-      r = 0.50*(dr_atom*CoarseGL_Abscissae[ir] + dr_atom);
+      r = 0.50*(dr_atom*abscissa[ir] + dr_atom);
 
       x0 = r*leb_x[ia] + at_cx[mc];
       y0 = r*leb_y[ia] + at_cy[mc];
@@ -999,7 +1005,7 @@ void AMD_TotalEnergy_Exc0_Batch_OpenMP(const OpenMXAtomicViews *atomic, int Num_
       exc0 = AMD_TotalEnergy_Exc0_XC_CA(den,0);
       dexc0 = AMD_TotalEnergy_Exc0_XC_CA(den,3);
 
-      wpt = leb_w[ia]*r*r*CoarseGL_Weight[ir];
+      wpt = leb_w[ia]*r*r*weight[ir];
 
       pref[pt] = wpt*den0*dexc0;
       energy_sum += 2.0*PI*dr_atom*wpt*den0*exc0;
@@ -1046,7 +1052,7 @@ void AMD_TotalEnergy_Exc0_Batch_OpenMP(const OpenMXAtomicViews *atomic, int Num_
             at_cx[0:Matomnum+1], at_cy[0:Matomnum+1], at_cz[0:Matomnum+1], at_dr[0:Matomnum+1], \
             nb_wan[0:nb_total], nb_x[0:nb_total], nb_y[0:nb_total], nb_z[0:nb_total], \
             nb_rcut2[0:nb_total], leb_x[0:na], leb_y[0:na], leb_z[0:na], leb_w[0:na], \
-            CoarseGL_Abscissae[0:nr], CoarseGL_Weight[0:nr], pref[0:npt_total]) \
+            abscissa[0:nr], weight[0:nr], pref[0:npt_total]) \
         map(from:item_fx[0:nitems_alloc], item_fy[0:nitems_alloc], item_fz[0:nitems_alloc])
       {
 #pragma omp target teams distribute thread_limit(128)
@@ -1075,7 +1081,7 @@ void AMD_TotalEnergy_Exc0_Batch_OpenMP(const OpenMXAtomicViews *atomic, int Num_
             ir = pt2/na;
             ia = pt2 - ir*na;
 
-            r = 0.50*(dr_atom*CoarseGL_Abscissae[ir] + dr_atom);
+            r = 0.50*(dr_atom*abscissa[ir] + dr_atom);
             x0 = r*leb_x[ia] + cx;
             y0 = r*leb_y[ia] + cy;
             z0 = r*leb_z[ia] + cz;
@@ -1931,7 +1937,7 @@ typedef struct {int nr,na,nbmax,pao_stride,den_stride,vxc_flag;} Exc0Params;
    range through the Core's Kokkos::simd shell kernel and accumulated as the
    host branch of Calc_EXC_EH1 accumulates them with one worker: energy =
    2*PI*Dr*sum_ir w_ir*sumt_ir, pair forces 2*PI*Dr*sum_ir w_ir*sum_g[h]
-   (w_ir = r*r*CoarseGL_Weight[ir]); the caller publishes both as before.
+   (w_ir = r*r*quadrature_weight[ir]); the caller publishes both as before.
    Returns 0 under OPENMX_HOST_SIMD=legacy, on a refusal or without memory;
    the two-pass serial body then rewrites every output of the range. */
 static int TotalEnergy_Exc0_Host(size_t count,const Exc0Params *p,void *const view[])
@@ -2176,9 +2182,11 @@ static void TotalEnergy_Exc0_Kernel(size_t first,size_t count,const void *parame
   }
 }
 
-void TotalEnergy_Exc0_Batch_OpenMP(const OpenMXAtomicViews *atomic, int na,double **leb,double *sum)
+void TotalEnergy_Exc0_Batch_OpenMP(const OpenMXAtomicViews *atomic, const OpenMXGaussRuleData *radial, const OpenMXLebedevRuleData *angular,double *sum)
 {
-  if(TotalEnergy_NativeAdmit((size_t)Matomnum*CoarseGL_Mesh*na*64+(size_t)Matomnum*List_YOUSO[8]*128+(size_t)SpeciesNum*List_YOUSO[21]*24)){AMD_TotalEnergy_Exc0_Batch_OpenMP(atomic, na,leb,sum);return;}
+  const int na=(int)angular->count;
+  const double *leb=angular->xyzw;
+  if(TotalEnergy_NativeAdmit((size_t)Matomnum*CoarseGL_Mesh*na*64+(size_t)Matomnum*List_YOUSO[8]*128+(size_t)SpeciesNum*List_YOUSO[21]*24)){AMD_TotalEnergy_Exc0_Batch_OpenMP(atomic, radial,angular,sum);return;}
 
   int nbmax=1;
   for (int mc=1;mc<=Matomnum;mc++) if (nbmax<FNAN[M2G[mc]]+1) nbmax=FNAN[M2G[mc]]+1;
@@ -2250,9 +2258,9 @@ void TotalEnergy_Exc0_Batch_OpenMP(const OpenMXAtomicViews *atomic, int na,doubl
       nb_rcut2[k]=atomic->species.cutoff[wan]*atomic->species.cutoff[wan];
     }
   }
-  for (int i=0;i<na;i++) {leb_x[i]=leb[i][0];leb_y[i]=leb[i][1];leb_z[i]=leb[i][2];leb_w[i]=leb[i][3];}
-  memcpy(abscissa,CoarseGL_Abscissae,(size_t)p.nr*sizeof(double));
-  memcpy(weight,CoarseGL_Weight,(size_t)p.nr*sizeof(double));
+  for (int i=0;i<na;i++) {leb_x[i]=leb[4*i+0];leb_y[i]=leb[4*i+1];leb_z[i]=leb[4*i+2];leb_w[i]=leb[4*i+3];}
+  memcpy(abscissa,radial->nodes,(size_t)p.nr*sizeof(double));
+  memcpy(weight,radial->weights,(size_t)p.nr*sizeof(double));
   openmx_gpu_task_execute(mpi_comm_level1,&t,TotalEnergy_GPU_Enabled(),"energy-Exc0-two-pass");
   *sum=0;
   for (int mc=0;mc<Matomnum;mc++) {

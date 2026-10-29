@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.25.2)
+project(OpenMXBesselExample LANGUAGES CXX)
+find_package(OpenMXBasis 0.1 REQUIRED)
+add_executable(bessel_example main.cpp)
+target_link_libraries(bessel_example PRIVATE OpenMX::basis)

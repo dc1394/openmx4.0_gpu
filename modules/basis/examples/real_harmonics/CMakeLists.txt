@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.25.2)
+project(OpenMXRealHarmonicsExample LANGUAGES CXX)
+find_package(OpenMXBasis CONFIG REQUIRED)
+add_executable(real_harmonics_example main.cpp)
+target_link_libraries(real_harmonics_example PRIVATE OpenMX::basis)

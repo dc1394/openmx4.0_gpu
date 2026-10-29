@@ -4338,3 +4338,586 @@ AMD/A100/H100実機、Intelコンパイラ版との比較は今回実施して�
 `build/hamiltonian-gpu-state-owner-20261027/`の`performance/`・`cpu-performance-results.json`・
 `numerical-summary.json`に結果、`baseline-proof.json`と`candidate-runtime-hashes.json`に凍結ランタイムの証拠を保存しました。
 `work/openmx`は更新していません。
+
+
+## 2026-10-27: 独立した基底補間ライブラリ（第95段階）
+
+変更前 `f09c291b` と変更後の本体・Core/SIMDを凍結し、18 MPI×1 OpenMPで順次実行しました。
+GPUはRTX5080・既存MPS・NVHPC/OpenMPI、CPU専用本体はGCC/Intel MPI/MKLです。
+計時中にビルド、単体試験、他のOpenMX計算は重ねていません。
+
+| 入力・指標 | 変更前 | 変更後 |
+| --- | ---: | ---: |
+| sidia333 NC cluster、GPU/MPS、内部Total最大値 (秒) | 99.804 | 99.917 |
+| 同、MPI起動を含む経過時間 (秒) | 103.109 | 103.208 |
+| C60 DC、CPU専用、内部Total中央値 (秒) | 5.992 | 6.003 |
+| 同、MPI起動を含む経過時間中央値 (秒) | 6.48146 | 6.48037 |
+
+sidiaは元入力を各1回測定した25SCF上限・未収束の性能比較です。
+E差ゼロ、最大F差は約1.0e-12 Ha/bohrでした。C60は変更前後を交互に各3回測定し、
+全件27SCFで収束、対応組の印字E/F差はゼロでした。
+これらの小さな差を高速化とは主張せず、基底のライブラリ化に伴う性能低下が見られないことを確認しています。
+
+別途、収束したCPU/GPU比較17組はSCF反復数が一致し、最大差E=2.7701e-10 Ha、F=1.3561e-8 Ha/bohrでした。
+補間だけの20,280ケースは移行前後でビット単位一致です。
+`build/basis-library-20261027/` の `performance/`、`cpu-performance-results.json`、
+`numerical-summary.json`、`interpolation-parity.json` に結果を保存しました。
+AMD/A100/H100実機、Intelコンパイラ版OpenMXとの比較は今回実施していません。
+`work/openmx` は更新していません。
+
+
+## 2026-10-27: PAO読取の独立ライブラリ化（第96段階）
+
+変更前 `5e436aec` と変更後の本体・Core/SIMDを凍結し、18 MPI×1 OpenMPで順次実行しました。
+GPUはRTX5080・既存MPS・NVHPC/OpenMPI、CPU専用本体はGCC/Intel MPI/MKLです。
+計時中にビルド、単体試験、他のOpenMX計算は重ねていません。
+
+| 入力・指標 | 変更前 | 変更後 |
+| --- | ---: | ---: |
+| sidia333 NC cluster、GPU/MPS、内部Total最大値 (秒) | 99.326 | 99.601 |
+| 同、MPI起動を含む経過時間 (秒) | 102.655 | 102.762 |
+| C60 DC、CPU専用、内部Total中央値 (秒) | 5.943 | 5.929 |
+| 同、MPI起動を含む経過時間中央値 (秒) | 6.42989 | 6.43082 |
+
+sidiaは元入力を各1回測定した25SCF上限・未収束の比較です。E差ゼロ、最大F差は約1.0e-12 Ha/bohrでした。
+C60は変更前後を交互に各3回測定し、全件27SCFで収束、対応組の印字E/F差はゼロでした。
+小さな時間差を高速化とは主張せず、独立したPAO読取による性能低下が見られないことを確認しています。
+
+別途、収束したCPU/GPU比較19組でSCF反復数が一致し、最大差E=1.4800e-10 Ha、F=1.0437e-8 Ha/bohrでした。
+うち内殻正孔の `C2H2-CH.dat` はCPU/GPUとも前後を新しく実行し、22SCF収束・印字E/F差ゼロです。
+395 PAOファイルの16,608,945数値も旧読取とビット単位で一致しました。
+`build/pao-file-library-20261027/` の `performance/`、`cpu-performance-results.json`、
+`numerical-summary.json`、`pao-data-parity.json` に記録を保存しました。
+AMD/A100/H100実機、Intelコンパイラ版OpenMXとの性能比較は今回実施していません。
+`work/openmx` は更新していません。
+
+
+## 2026-10-27: VPS読取と一時配列の独立所有化（第97段階）
+
+変更前 `e59cc4c3` と変更後の本体・Core/SIMDを凍結し、18 MPI×1 OpenMPで順次実行しました。
+GPUはRTX5080・既存MPS・NVHPC/OpenMPI、CPU専用本体はGCC/Intel MPI/MKLです。
+計時中にビルド、単体試験、他のOpenMX計算は重ねていません。
+
+| 入力・指標 | 変更前 | 変更後 |
+| --- | ---: | ---: |
+| sidia333 NC cluster、GPU/MPS、内部Total最大値 (秒) | 99.278 | 99.485 |
+| 同、MPI起動を含む経過時間 (秒) | 102.456 | 102.656 |
+| C60 DC、CPU専用、内部Total中央値 (秒) | 5.959 | 5.961 |
+| 同、MPI起動を含む経過時間中央値 (秒) | 6.43164 | 6.48021 |
+
+sidiaは元入力を各1回測定した25SCF上限・未収束の比較です。E差ゼロ、最大F差は約1.0e-12 Ha/bohrでした。
+C60は変更前後を交互に各3回測定し、全件27SCFで収束、対応組の印字E/F差はゼロでした。
+約0.2%のsidia経過時間差と、CPU内部計算の約0.03%の差は高速化・劣化と断定せず、
+GeForce約105秒の目安とCPU性能を保つ確認として記録します。
+
+別途、収束した比較29組は反復数が一致し、最大差E=1.2243e-8 Ha、F=4.5824e-8 Ha/bohrで既存1e-7閾値以内でした。
+旧VPS形式、電子数指定、SO有効・SO係数変更、空原子、内殻正孔も含みます。
+最大差だった電子数指定GPUを他の試験を止めて追加比較した結果も、13SCF一致、
+E=8.5720e-9 Ha、F=2.6714e-8 Ha/bohrでした。この追加比較は29組に重複して数えていません。
+PAO395・VPS258ファイルの全数値は旧読み込みとビット単位で一致しています。
+`build/vps-file-library-20261027/` の `performance/`、`cpu-performance-results.json`、
+`numerical-summary.json`、`charge-repeat/`、`pao-data-parity.json`、`vps-data-parity.json` に記録を保存しました。
+AMD/A100/H100実機、Intelコンパイラ版OpenMXとの性能比較は今回実施していません。
+`work/openmx` は更新していません。
+
+
+## 2026-10-28: 原子密度とHartree積分の独立化（第98段階）
+
+変更前 `b3feb780` と変更後の本体・Core/SIMDを凍結し、18 MPI×1 OpenMPで順次実行しました。
+GPUはRTX5080・既存MPS・NVHPC/OpenMPI、CPU専用本体はGCC/Intel MPI/MKLです。
+計時中にビルド、単体試験、他のOpenMX計算は重ねていません。
+
+| 入力・指標 | 変更前 | 変更後 |
+| --- | ---: | ---: |
+| sidia333 NC cluster、GPU/MPS、内部Total最大値 (秒) | 99.264 | 99.697 |
+| 同、MPI起動を含む経過時間 (秒) | 102.558 | 102.862 |
+| C60 DC、CPU専用、内部Total中央値 (秒) | 5.908 | 5.923 |
+| 同、MPI起動を含む経過時間中央値 (秒) | 6.42989 | 6.42933 |
+
+sidiaは元入力を各1回測定した25SCF上限・未収束の比較で、E差ゼロ・最大F差約1e-12 Ha/bohrでした。
+C60は交互各3回、全件27SCF収束・印字E/F差ゼロです。小さな差を高速化とは主張せず、
+GeForce約105秒の目安とCPU性能を維持する確認として記録します。
+
+別途、通常経路と特殊条件の28組は収束・反復数一致、最大E差2.4200e-10、F差2.1258e-8でした。
+電子数指定GPUの最初の比較はF差1.33732e-7で1e-7閾値を超えました。旧版・変更版の交互追加3組は
+13SCF一致、最大E差1.9801e-8・F差7.6790e-8で閾値内です。旧版だけでも以前の実行からF差7.6479e-8
+の揺らぎがありました。SCF条件を1e-9にした追加診断はE差3.8480e-9・F差1.4519e-8でしたが、
+反復数16→13は一致しません。この診断と最初の失敗を、28組の成功数に加えていません。
+GPUケースの再現性の限界と全結果を保存し、閾値を緩めて成功扱いにする変更は行っていません。
+
+395 PAOデータの密度・導関数1,496,736値とHartree39,895値は、旧CをGCCの厳密な浮動小数点設定で
+コンパイルした比較とビット単位で一致しました。`build/atomic-density-library-20261027/` の
+`performance/`、`cpu-performance-results.json`、`numerical-summary.json`、`charge-diagnostic/`、
+`charge-tight/`、`legacy-density-results.json` に証拠を保存しました。
+AMD/A100/H100実機、Intelコンパイラ版OpenMXとの性能比較は今回実施していません。
+`work/openmx` は更新していません。
+
+
+## 2026-10-28: Gauss–Legendre則の独立化と細密積分配列の廃止（第99段階）
+
+変更前 `a1fecc9a` と変更後の本体・Core/SIMDを凍結し、18 MPI×1 OpenMPで順次実行しました。
+GPUはRTX5080・既存MPS・NVHPC/OpenMPI、CPU専用本体はGCC/Intel MPI/MKLです。
+計時中にビルド、単体試験、他のOpenMX計算は重ねていません。
+
+| 入力・指標 | 変更前 | 変更後 |
+| --- | ---: | ---: |
+| sidia333 NC cluster、GPU/MPS、内部Total最大値 (秒) | 99.246 | 99.187 |
+| 同、MPI起動を含む経過時間 (秒) | 102.561 | 102.307 |
+| C60 DC、CPU専用、内部Total中央値 (秒) | 5.953 | 5.894 |
+| 同、MPI起動を含む経過時間中央値 (秒) | 6.42922 | 6.38068 |
+
+sidiaは元入力を各1回測定した25SCF上限・未収束の比較で、E差約6.03e-12 Ha・最大F差約1e-12 Ha/bohrでした。
+C60は交互各3回、全件27SCF収束・印字E/F差ゼロです。単発・短時間の差を一般的な高速化とは主張せず、
+GeForce約105秒の目安とCPU性能を維持する確認として記録します。
+
+収束したCPU/GPU比較29組は反復数も一致し、最大E差1.2011e-9 Ha・F差1.4047e-8 Ha/bohrでした。
+電子数指定GPUは前段階の交互診断の最初の変更版を基準にした1組であり、
+第98段階に記録したGPU結果の揺らぎを解決したとは扱いません。
+139次数の積分点・重み33,352値は、旧CをGCCの厳密な浮動小数点設定でコンパイルした比較と
+ビット単位で一致しています。
+`build/quadrature-library-20261028/` の `performance/`、`cpu-performance-results.json`、
+`numerical-summary.json`、`quadrature-parity.json` に証拠を保存しました。
+AMD/A100/H100実機、Intelコンパイラ版OpenMXとの性能比較は今回実施していません。
+`work/openmx` は更新していません。
+
+
+## 2026-10-28: 中密度の積分表を計算ごとに所有（第100段階）
+
+変更前 `ac28ac8b` と変更後の本体・Core/SIMDを凍結し、18 MPI×1 OpenMPで順次実行しました。
+GPUはRTX5080・既存MPS・NVHPC/OpenMPI、CPU専用本体はGCC/Intel MPI/MKLです。
+計時中にビルド、単体試験、他のOpenMX計算は重ねていません。
+
+| 入力・指標 | 変更前 | 変更後 |
+| --- | ---: | ---: |
+| sidia333 NC cluster、GPU/MPS、内部Total最大値 (秒) | 99.405 | 99.341 |
+| 同、MPI起動を含む経過時間 (秒) | 102.755 | 102.459 |
+| C60 DC、CPU専用、内部Total中央値 (秒) | 5.946 | 5.957 |
+| 同、MPI起動を含む経過時間中央値 (秒) | 6.42960 | 6.47951 |
+
+sidiaは元入力を各1回測定した25SCF上限・未収束の比較で、E差ゼロ・最大F差約1e-12 Ha/bohrでした。
+C60は交互各3回、全件27SCF収束・印字E/F差ゼロです。短い測定の小さな差を一般的な高速化とは扱いません。
+GeForce約105秒の目安を維持し、CPU内部時間の中央値の増加は約0.2%でした。
+
+収束したCPU/GPU比較29組は反復数も一致し、最大E差7.5200e-10 Ha・F差1.2670e-8 Ha/bohrでした。
+電子数指定GPUの今回の成功は、第98段階に記録した揺らぎを解消したという意味ではありません。
+最初のバンド試験はビルド中の境界編集により旧ABIの生成オブジェクトが残って失敗しました。
+再コンパイル・本体再凍結後の29組だけを上の成功数に含めています。
+失敗時の本体・ログとトレースは `initial-mixed-object-*` / `band-diagnostic/` に保存しました。
+`build/radial-quadrature-owner-20261028/` の `performance/`、`cpu-performance-results.json`、
+`numerical-summary.json`、`kernel-preservation.json` が今回の検証記録です。
+AMD/A100/H100実機、Intelコンパイラ版OpenMXとの性能比較は今回実施していません。
+`work/openmx` は更新していません。
+
+
+## 2026-10-28: 中立原子積分表の所有権移行（第101段階）
+
+変更前 `83dbf264` と変更後の本体・Core/SIMDを凍結し、18 MPI×1 OpenMPで順次実行しました。
+GPUはRTX5080・既存MPS・NVHPC/OpenMPI、CPU専用本体はGCC/Intel MPI/MKLです。
+計時中にビルド、単体試験、他のOpenMX計算は重ねていません。
+
+| 入力・指標 | 変更前 | 変更後 |
+| --- | ---: | ---: |
+| sidia333 NC cluster、GPU/MPS、内部Total最大値 (秒) | 99.542 | 99.449 |
+| 同、MPI起動を含む経過時間 (秒) | 102.859 | 102.660 |
+| C60 DC、CPU専用、内部Total中央値 (秒) | 5.945 | 5.982 |
+| 同、MPI起動を含む経過時間中央値 (秒) | 6.43008 | 6.47871 |
+
+sidiaは元入力を各1回測定した25SCF上限・未収束の比較で、E差・最大F差とも約1e-12でした。
+C60は交互各3回、全件27SCF収束・印字E/F差ゼロです。変更版2回目の7.03143秒（内部6.550秒）も
+除外せず全結果を保存しています。短い測定の差を一般的な高速化とは扱いません。
+GeForce約105秒の目安を維持し、CPU内部時間の中央値の増加は約0.6%でした。
+
+収束したCPU/GPU比較29組は反復数も一致し、最大E差2.9040e-9 Ha・F差1.3827e-8 Ha/bohrでした。
+応力を出力する11組は9成分とも小数点以下8桁の印字値が一致しました。
+電子数指定GPUの今回の成功は、第98段階に記録した揺らぎを解消したという意味ではありません。
+`build/neutral-quadrature-owner-20261028/` の `performance/`、`cpu-performance-results.json`、
+`numerical-summary.json`、`kernel-preservation.json` に証拠を保存しました。
+AMD/A100/H100実機、Intelコンパイラ版OpenMXとの性能比較は今回実施していません。
+`work/openmx` は更新していません。
+
+
+## 2026-10-28: 球Bessel関数とテーブル所有者の独立化（第102段階）
+
+変更前 `518d7880` と変更後の本体・Core/SIMDを凍結し、18 MPI×1 OpenMPで順次実行しました。
+GPUはRTX5080・既存MPS・NVHPC/OpenMPI、CPU専用本体はGCC/Intel MPI/MKLです。
+計時中にビルド、単体試験、他のOpenMX計算は重ねていません。
+
+| 入力・指標 | 変更前 | 変更後 |
+| --- | ---: | ---: |
+| sidia333 NC cluster、GPU/MPS、内部Total最大値 (秒) | 99.177 | 99.475 |
+| 同、MPI起動を含む経過時間 (秒) | 102.558 | 102.707 |
+| C60 DC、CPU専用、内部Total中央値 (秒) | 5.987 | 6.032 |
+| 同、MPI起動を含む経過時間中央値 (秒) | 6.47955 | 6.53116 |
+
+sidiaは元入力を各1回測定した25SCF上限・未収束の比較で、E差ゼロ、最大F差は約1e-12 Ha/bohrでした。
+C60は交互各3回、全件27SCF収束・印字E/F差ゼロです。変更版2回目の6.93088秒も除外せず保存しています。
+GeForce約105秒の目安を維持し、CPU内部時間の中央値の増加は約0.8%でした。
+短い測定の差から一般的な高速化・減速を断定しません。
+
+通常のCPU/GPU比較29組中28組は反復数も一致し、最大E差1.7460e-9 Ha・F差1.1585e-8 Ha/bohrでした。
+応力を出力する11組は小数点以下8桁の印字値が一致しました。
+SO有効GPUの初回は13→10SCFとなり、E差6.07629e-7・F差1.09787e-7で比較失敗です。
+その後の交互3組はすべて13SCF、最大E差1.1300e-10・F差7.9640e-9でした。
+実計算から採取した4rank・696呼び出しのBesselテーブル6,270,960値も旧版とビット単位で一致しました。
+初回の早期収束の原因を特定・解消したとは扱わず、失敗と全追加診断を残しています。
+
+`build/bessel-library-20261028/` の `performance/`、`cpu-performance-results.json`、`numerical-summary.json`、
+`so-diagnostic/`、`so-boundary-trace/`、`numerical-parity.json` に証拠を保存しました。
+AMD/A100/H100実機、Intelコンパイラ版OpenMXとの性能比較は今回実施していません。
+`work/openmx` は更新していません。
+
+
+## 2026-10-28: 球面調和関数の独立化（第103段階）
+
+変更前 `17f46679` と変更後の本体・Core/SIMDを凍結し、18 MPI×1 OpenMPで順次実行しました。
+GPUはRTX5080・既存MPS・NVHPC/OpenMPI、CPU専用本体はGCC/Intel MPI/MKLです。
+計時中にビルド、単体試験、他のOpenMX計算は重ねていません。
+
+| 入力・指標 | 変更前 | 変更後 |
+| --- | ---: | ---: |
+| sidia333 NC cluster、GPU/MPS、内部Total最大値 (秒) | 99.493 | 99.378 |
+| 同、MPI起動を含む経過時間 (秒) | 102.861 | 102.561 |
+| C60 DC、CPU専用、内部Total中央値 (秒) | 5.979 | 5.950 |
+| 同、MPI起動を含む経過時間中央値 (秒) | 6.47979 | 6.43107 |
+
+sidiaは元入力を各1回測定した25SCF上限・未収束の比較で、E差・最大F差とも約1e-12です。
+C60は交互各3回、全件27SCF収束・印字E/F差ゼロでした。全計時を保存し、値の除外はしていません。
+GeForce約105秒の目安を維持しています。短い測定の差から一般的な高速化は主張しません。
+
+通常の29組とg軌道Cl₂のCPU/GPU各1組、合計31組は収束・反復数が一致し、
+最大E差6.5300e-10 Ha・F差1.1638e-8 Ha/bohr、応力11組は小数点以下8桁の印字値が一致しました。
+Cl₂はCPU/GPUとも17SCF・印字E/F差ゼロです。
+今回のSO GPUは前段階の診断で取得した同じ凍結バイナリの13SCF結果と一致しました。
+第98・102段階に記録した揺らぎの原因を今回の成功で解消したとは扱いません。
+
+`build/harmonics-library-20261028/` の `performance/`、`cpu-performance-results.json`、
+`numerical-summary.json`、`g-orbitals-results.json` に証拠を保存しました。
+AMD/A100/H100実機、Intelコンパイラ版OpenMXとの性能比較は今回実施していません。
+`work/openmx` は更新していません。
+
+
+## 2026-10-28: Lebedev球面積分則の独立化（第104段階）
+
+変更前 `68322894` と変更後の本体・Core/SIMDを凍結し、18 MPI×1 OpenMPで比較しました。
+GPUはRTX5080・既存MPS・NVHPC/OpenMPI、CPU専用本体はGCC/Intel MPI/MKLです。
+以下の採用した計時中にビルド、試験、他のOpenMX計算は重ねていません。
+
+| 入力・指標 | 変更前 | 変更後 |
+| --- | ---: | ---: |
+| sidia333 NC cluster、GPU/MPS、内部Total最大値 (秒) | 99.418 | 99.804 |
+| 同、MPI起動を含む経過時間 (秒) | 102.761 | 102.959 |
+| C60 DC、CPU専用、内部Total中央値 (秒) | 5.981 | 5.978 |
+| 同、MPI起動を含む経過時間中央値 (秒) | 6.48172 | 6.47977 |
+
+sidiaは元入力を各1回測定した25SCF上限・未収束の比較で、E差ゼロ・最大F差約1e-12 Ha/bohrでした。
+C60は交互各3回、全件27SCF収束・印字E/F差ゼロです。GeForce約105秒の目安を維持し、
+CPUの中央値はほぼ同じでした。単発・短時間の差を一般的な高速化や劣化とは扱いません。
+
+最初のsidia計測では、起動手順により変更前後の実行が約14秒重なりました。
+変更版を停止し、変更前108.669秒と中断した変更版14.174秒の両件を比較値から外しました。
+ログ・結果を `performance-overlap-diagnostic/` に残し、起動前の実行中プロセス確認と
+順次実行のドライバーを追加して測り直した値が上表です。
+
+通常29組と1202・2030点の球面格子でのCPU/GPU各2組、計33組が収束し、SCF反復数も一致しました。
+最大E差2.2810e-9 Ha・F差1.4585e-8 Ha/bohr、応力15組は9成分とも小数点以下8桁の印字値が一致しました。
+第98・102段階のGPU再現性の限界を解消したとは扱いません。
+`build/lebedev-library-20261028/` の `performance/`、`cpu-performance-results.json`、
+`numerical-summary.json`、`production-freeze.json` に今回の検証記録を保存しました。
+AMD/A100/H100実機、Intelコンパイラ版OpenMXとの性能比較は今回実施していません。
+`work/openmx` は更新していません。
+
+
+## 2026-10-28: 実調和関数変換表の所有権移行（第105段階）
+
+変更前 `aeadecf0` と変更後の本体・Core/SIMDを凍結し、18 MPI×1 OpenMPで比較しました。
+GPUはRTX5080・既存MPS・NVHPC/OpenMPI、CPU専用本体はGCC/Intel MPI/MKLです。
+ビルド、試験、他のOpenMX計算を重ねず、順次実行しています。
+
+| 入力・指標 | 変更前 | 変更後 |
+| --- | ---: | ---: |
+| sidia333 NC cluster、GPU/MPS、内部Total最大値 (秒) | 99.598 | 99.848 |
+| 同、MPI起動を含む経過時間 (秒) | 102.959 | 103.013 |
+| C60 DC、CPU専用、内部Total中央値 (秒) | 5.966 | 6.005 |
+| 同、MPI起動を含む経過時間中央値 (秒) | 6.47984 | 6.48054 |
+
+sidiaは元入力を各1回測定した25SCF上限・未収束の比較で、E/F差は約1e-12でした。
+C60は交互各3回、全件27SCF収束・印字E/F差ゼロです。約105秒の目安を維持し、
+CPUの経過時間中央値もほぼ同じでした。内部時間中央値の増加は約0.7%で、
+短時間の3回から一般的な性能変化は断定しません。
+
+通常29組とg軌道・Voronoi・WannierのCPU/GPU各1組、計35組が収束し、SCF反復数も一致しました。
+最大E差1.6190e-9 Ha・F差1.6244e-8 Ha/bohr、応力11組の9成分は小数点以下8桁の印字値が一致しました。
+Voronoiモーメントと、Wannier初期射影の位相に依存しないA†Aも一致し、最大差は2.1240e-13です。
+Wannier最終広がりの差は最大2.7996e-12 Å²でした。入力整備時の失敗も保存してあり、
+第98・102段階のGPU再現性の限界を解消したとは扱いません。
+`build/real-harmonic-transform-20261028/` の `performance/`、`cpu-performance-results.json`、
+`numerical-summary.json`、`production-freeze.json` に記録を保存しました。
+AMD/A100/H100実機、Intelコンパイラ版OpenMXとの性能比較は今回実施していません。
+`work/openmx` は更新していません。
+
+
+## 2026-10-28: Gaunt角度積分とVNA係数表の所有権移行（第106段階）
+
+変更前 `39d2b128` と変更後の本体・Core/SIMDを凍結し、18 MPI×1 OpenMPで比較しました。
+GPUはRTX5080・既存MPS・NVHPC/OpenMPI、CPU専用本体はGCC/Intel MPI/MKLです。
+ビルド、試験、他のOpenMX計算を重ねず、順次実行しています。
+
+| 入力・指標 | 変更前 | 変更後 |
+| --- | ---: | ---: |
+| sidia333 NC cluster、GPU/MPS、内部Total最大値 (秒) | 99.449 | 99.537 |
+| 同、MPI起動を含む経過時間 (秒) | 102.757 | 102.660 |
+| C60 DC、CPU専用、内部Total中央値 (秒) | 5.965 | 5.911 |
+| 同、MPI起動を含む経過時間中央値 (秒) | 6.42993 | 6.43015 |
+
+sidiaは元入力を各1回測定した25SCF上限・未収束の性能比較です。
+E差0.0000e+00 Ha・最大F差1.0000e-12 Ha/bohrでした。
+C60は交互各3回、全件27SCF収束で、E差0.0000e+00 Ha・最大F差0.0000e+00 Ha/bohrです。
+短い測定から一般的な高速化・劣化は主張しません。
+
+通常29組とg軌道・Voronoi・WannierのCPU/GPU各1組、計35組が収束し、SCF反復数も一致しました。
+最大E差3.4461e-9 Ha・F差2.3219e-8 Ha/bohr、応力11組の9成分は小数点以下8桁の印字値が一致しました。
+Voronoiモーメントの印字差はゼロ、Wannier初期射影のA†Aの最大差は2.6180e-13、
+最終広がりの差は最大5.9242e-12 Å²です。第98・102段階のGPU再現性の限界を解消したとは扱いません。
+`build/gaunt-library-20261028/` の `performance/`、`cpu-performance-results.json`、
+`numerical-summary.json`、`production-freeze.json` に記録を保存しました。
+AMD/A100/H100実機、Intelコンパイラ版OpenMXとの性能比較は今回実施していません。
+`work/openmx` は更新していません。
+
+
+## 2026-10-28: VNAのCPU SIMD作業領域と行ポインタ表の移行（第107段階）
+
+変更前 `b2986595` と変更後の本体・Core/SIMDを凍結し、18 MPI×1 OpenMPで比較しました。
+GPUはRTX5080・既存MPS・NVHPC/OpenMPI、CPU専用本体はGCC/Intel MPI/MKLです。
+他のビルド・試験・計算と重ねず順次実行しています。
+
+| 入力・指標 | 変更前 | 変更後 |
+| --- | ---: | ---: |
+| sidia333 NC cluster、GPU/MPS、内部Total最大値 (秒) | 99.429 | 99.595 |
+| 同、MPI起動を含む経過時間 (秒) | 102.706 | 102.760 |
+| C60 DC、CPU専用、内部Total中央値 (秒) | 5.992 | 5.929 |
+| 同、MPI起動を含む経過時間中央値 (秒) | 6.48059 | 6.43029 |
+
+sidiaは元入力を各1回測定した25SCF上限・未収束の性能比較です。
+E差0.0000e+00 Ha・最大F差1.0000e-12 Ha/bohrでした。
+C60は交互各3回、全件27SCF収束で、E差0.0000e+00 Ha・最大F差0.0000e+00 Ha/bohrです。
+短い測定から一般的な高速化・劣化は主張しません。
+
+通常29組とg軌道Cl₂・Voronoi軌道モーメント・SiのWannier計算のCPU/GPU各1組、
+合計35組が収束し、SCF反復数も一致しました。最大E差5.0940e-09 Ha・
+F差2.1599e-08 Ha/bohr、応力11組は9成分とも小数点以下8桁の印字値が一致しました。
+Voronoiの8原子のモーメントは印字差ゼロ、Wannier初期射影のA†Aの最大差は2.6179e-13、
+最終広がりの差は最大6.4411e-12 Å²です。基準は `b2986595` の凍結した本体・Core・SIMDです。
+第98・102段階のGPU再現性の限界を解消したとは扱いません。
+
+記録は `build/vna-simd-workspace-20261028/` の `performance/`、`cpu-performance-results.json`、
+`numerical-summary.json`、`production-freeze.json` に保存しています。
+AMD/A100/H100/ARM実機、Intelコンパイラ版OpenMXとの性能比較は今回実施していません。
+
+
+## 2026-10-28: VNAの共有CPU転置表の所有権移行（第108段階）
+
+変更前 `f85dc3f8` と変更後の本体・Core/SIMDを凍結し、18 MPI×1 OpenMPで比較しました。
+GPUはRTX5080・既存MPS・NVHPC/OpenMPI、CPU専用本体はGCC/Intel MPI/MKLです。
+他のビルド・試験・計算と重ねず順次実行しています。
+
+| 入力・指標 | 変更前 | 変更後 |
+| --- | ---: | ---: |
+| sidia333 NC cluster、GPU/MPS、内部Total最大値 (秒) | 99.352 | 99.378 |
+| 同、MPI起動を含む経過時間 (秒) | 102.660 | 102.609 |
+| C60 DC、CPU専用、内部Total中央値 (秒) | 5.951 | 5.953 |
+| 同、MPI起動を含む経過時間中央値 (秒) | 6.42998 | 6.43051 |
+
+sidiaは元入力を各1回測定した25SCF上限・未収束の性能比較です。
+E差0.0000e+00 Ha・最大F差1.0000e-12 Ha/bohrでした。
+C60は交互各3回、全件27SCF収束で、E差0.0000e+00 Ha・最大F差0.0000e+00 Ha/bohrです。
+短い測定から一般的な高速化・劣化は主張しません。
+
+通常29組とg軌道Cl₂・Voronoi軌道モーメント・SiのWannier計算のCPU/GPU各1組、
+合計35組が収束し、SCF反復数も一致しました。最大E差1.0520e-09 Ha・
+F差9.7350e-09 Ha/bohrです。応力11組の9成分は小数点以下8桁の印字値が一致しました。
+Voronoiの8原子のモーメントの印字差は最大0.0000e+00、Wannier初期射影のA†Aの最大差は2.6862e-13、
+最終広がりの差は最大2.1938e-12 Å²です。基準は `f85dc3f8` の凍結した本体・Core・SIMDです。
+第98・102段階のGPU再現性の限界を解消したとは扱いません。
+
+記録は `build/vna-host-tables-20261028/` の `performance/`、`cpu-performance-results.json`、
+`numerical-summary.json`、`production-freeze.json` に保存しています。
+AMD/A100/H100/ARM実機、Intelコンパイラ版OpenMXとの性能比較は今回実施していません。
+
+
+## 2026-10-28: 実空間の軌道用動径補間の独立化（第109段階）
+
+変更前 `fdada050` と変更後の本体・Core/SIMDを凍結し、18 MPI×1 OpenMPで比較しました。
+GPUはRTX5080・既存MPS・NVHPC/OpenMPI、CPU専用本体はGCC/Intel MPI/MKLです。
+他のビルド・試験・計算と重ねず順次実行しています。
+
+| 入力・指標 | 変更前 | 変更後 |
+| --- | ---: | ---: |
+| sidia333 NC cluster、GPU/MPS、内部Total最大値 (秒) | 98.290 | 98.359 |
+| 同、MPI起動を含む経過時間 (秒) | 101.658 | 101.553 |
+| C60 DC、CPU専用、内部Total中央値 (秒) | 5.929 | 5.903 |
+| 同、MPI起動を含む経過時間中央値 (秒) | 6.38141 | 6.37995 |
+
+sidiaは元入力を各1回測定した25SCF上限・未収束の性能比較です。
+E差0.0000e+00 Ha・最大F差1.0000e-12 Ha/bohrでした。
+C60は交互各3回、全件27SCF収束で、E差0.0000e+00 Ha・最大F差0.0000e+00 Ha/bohrです。
+短い測定から一般的な高速化・劣化は主張しません。
+
+スカラーCPUフォールバックは、同じコア・同じ座標列・同じ再利用scratchで、
+最大l=3/4・200万点・前後交互各3回を測りました。GCC/NVHPCとも最初の1,000点の全値・導関数はビット一致です。
+前後とも `-O3 -march=native` で、ビルド・試験・別計算を重ねていません。
+初回20万点の計時は0.05〜0.20秒と短かったため診断用として保存し、最終比較は200万点に延ばしました。
+この小さな合成入力から一般のCPU性能向上は主張しません。
+
+| スカラー軌道評価・最大l | 変更前中央値 (秒) | 変更後中央値 (秒) | 後/前 |
+| --- | ---: | ---: | ---: |
+| gcc、l=3 | 0.690525 | 0.649191 | 0.9401 |
+| gcc、l=4 | 2.057798 | 2.007155 | 0.9754 |
+| nvhpc、l=3 | 0.538665 | 0.526918 | 0.9782 |
+| nvhpc、l=4 | 1.849423 | 1.872413 | 1.0124 |
+
+通常29組とg軌道Cl₂・Voronoi軌道モーメント・SiのWannier計算のCPU/GPU各1組、
+合計35組が収束し、SCF反復数も一致しました。最大E差1.0675e-08 Ha・
+F差2.3903e-08 Ha/bohrです。応力11組の9成分は小数点以下8桁の印字値が一致しました。
+Voronoiの8原子のモーメントの印字差は最大0.0000e+00、Wannier初期射影のA†Aの最大差は1.9311e-13、
+最終広がりの差は最大3.3467e-12 Å²です。基準は `fdada050` の凍結した本体・Core・SIMDです。
+第98・102段階のGPU再現性の限界を解消したとは扱いません。
+
+記録は `build/orbital-radial-library-20261028/` の `performance/`、`native-orbital-performance.json`、
+`cpu-performance-results.json`、`numerical-summary.json`、`production-freeze.json` に保存しています。
+AMD/A100/H100/ARM実機、Intelコンパイラ版OpenMXとの性能比較は今回実施していません。
+
+CPU専用C60の経過時間は、変更前 6.38141, 6.37921, 7.43332 秒、変更後 6.37903, 6.37995, 6.42932 秒でした。
+変更前3回目の長い計時も除外せず保存し、事前に定めた各3回の中央値で比較しています。
+
+## 残るホスト側スカラー処理の分析と FMA の実測 (2026-10-28)
+
+第 5 ラウンド後に、CPU モード（`OPENMX_GPU=0`、18 MPI × 1 OpenMP）の時間を `perf` で分類しました
+（rank 0 と 9、サンプリング 499 Hz、分類は共有ライブラリと関数名による）。
+
+| 実行 | 合計 | BLAS/LAPACK（ELPA の中身を含む） | ホスト SIMD 群 | MPI | OpenMX の C コード |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 共線 sidia333、3 SCF | 99 s | 54 % | 23 % | 9 % | 7 % |
+| 非共線バンド sidia333（k 点 4）、2 SCF | 359 s（対角化 315 s） | 77 % | 7 % | 3 % | 8 % |
+| 非共線クラスター sidia333、4 SCF | 138 s（対角化 85 s） | 36 % | 25 % | 9 % | 24 % |
+
+- 共線の C コード 7 % は、添字の準備やコピー（Force3 の訪問計画、固有ベクトルの詰め替え、Kerker 混合の
+  配列コピー）、順序が固定された逐次和（Force4B の Trace(CDM0·dH)）、nvc がすでに FMA 付きでベクトル化している
+  ループ（`Construct_Band_CsHs`）が大半で、ビット一致のまま SIMD 化できるのは `Multiply_DS_NL`（0.37 %）、
+  XC の 27 点勾配ステンシル、Bessel 表、`Set_Aden_Grid` の合計 1 s 未満です。
+- 非共線では SIMD ではなくアルゴリズムの問題が大きい:
+  `Hamiltonian_{Band,Cluster}_NC_Hs2` / `Overlap_{Band,Cluster}_NC_Ss2` の 4 ファイルにあった同じ補助関数
+  `trans_indices_n_to_n2` が、行列要素ごとに全原子をなめて基底数 n を数え直していました（各関数の 45〜75 %、
+  バンド NC で合計 3.4 %）。共有ヘッダー `openmx_nc_indices.h` の 1 つの関数にまとめ、n は呼び出しごとに 1 回だけ数えます
+  （整数処理で結果は不変）。クラスター NC の密度行列 `Calc_DM_Cluster_non_collinear_ScaLAPACK` は成分ごとに 6〜10 回
+  固有ベクトルを読み直しており（15.5 %、約 21 s）、1 回の走査にまとめれば各成分の加算順を保ったまま速くなります（未着手）。
+  バンド NC の `Calc_DM_Band_non_collinear`（1.9 %）も列方向のレーンでビット一致のまま SIMD 化できます（未着手）。
+
+### FMA の上限値の実測
+
+nvc は `-march=native` でホストの C ループを既定で FMA にしており（`vfmadd` を確認）、ホスト SIMD 群は
+`-ffp-contract=off` です。legacy と既定の Utot の 2e-12 の差はこの違いです。FMA を入れた場合の上限を、ソースを変えずに
+ホスト SIMD ライブラリを `-ffp-contract=fast -mfma` で作り直して測りました（コンパイラが融合できる所をすべて融合）。
+
+| 対象 | FMA なし → あり |
+| --- | --- |
+| カーネル単体（13 軌道）: 格子の密度 / ハミルトニアン | 1.11 倍 / 1.02 倍 |
+| カーネル単体: Force3 の対 / Force4B の fp32 タイル / 非局所ブロック | 1.18 倍 / 1.0〜1.16 倍 / 0.87 倍 |
+| 共線 sidia333 CPU モード 3 SCF（内部 Total） | 98.2 s → 97.6 s |
+| Utot / `.ene` `.md` / `.xyz` | 同一 / 同一 / 最終桁（3e-15 以下） |
+| `openmx -runtest` CPU モード（14 入力） | Utot 最大 1.6e-10 → 8.5e-11（参照との差、どちらも合格） |
+
+Force4B の fp32 タイル（ホスト SIMD 時間の約 5 %）は float の積を float で丸めてから double に足す契約なので
+融合できる積和がなく、残りも大半はロードや依存で止まっていて FMA の効果は 1 % 未満でした。
+明示的な `fma()` を入れる価値はないと判断し、ホスト SIMD 群は `-ffp-contract=off` のままにします。
+
+### 同梱 ELPA の SIMD カーネル
+
+同梱 ELPA の C 側は NVHPC の `mpicc`（nvc）でコンパイルされていて、nvc は ELPA の x86 SIMD カーネル（intrinsic の
+テンプレート）をコンパイルできないため、SSE/AVX/AVX2/AVX-512 のカーネルがすべて無効で、さらに OpenMX 側
+（`openmx_elpa_cpu.c`）が 2 段階ソルバーのカーネルを `GENERIC` に固定していました（HIP 版は AVX2 まで組み込んでいたのに
+使われていませんでした）。構築ホストの CPU に合わせてカーネルを有効にし（C 側は MPI ラッパー経由で gcc、Fortran 側は
+nvfortran のまま、`GPUSOLVER2_ELPA_KERNELS=auto|generic`、CPU 専用ビルドは `OPENMX_CPU_ELPA_KERNELS`）、実行時に
+CPUID で CPU の対応する最速のカーネルを選ぶようにしました（ELPA 自身は CPU を検査しません。
+`ELPA_DEFAULT_real_kernel` / `ELPA_DEFAULT_complex_kernel` があればそれを優先）。
+
+sidia333、18 MPI、CPU モード（秒、同じ HEAD のバイナリ）:
+
+| 実行 | 汎用カーネル | AVX-512 BLOCK1（既定） | AVX-512 BLOCK2 |
+| --- | ---: | ---: | ---: |
+| 共線 3 SCF: 対角化 / 内部 Total | 63.7 / 98.3 | 59.9 / 94.1 | 58.8 / 93.2 |
+| 共線 3 SCF: 各 SCF の固有値計算 | 30.0, 16.8, 16.7 | 27.0, 16.4, 16.3 | 26.2, 16.2, 16.2 |
+| 非共線バンド（k 点 4）2 SCF: 対角化 | 315 | 311 | — |
+| 768 MiB 上限の GPU 実行（ELPA へ退避）: 対角化 | 64.1 | 60.3 | — |
+
+ELPA 2 段階法の Householder 変換カーネルは対角化時間の 1 割程度で、残りは BLAS（`zgemm`/`zhemv`/`zgemv`）なので、
+効果は対角化で 6〜8 % にとどまります。Utot は汎用カーネルと AVX-512 で同じ（…392）、runtest は GPU/CPU とも合格です。
+非共線バンドでは `zgemv` が時間の半分以上を占めており、ELPA の使い方（分散やブロック化）を別途見直す余地があります。
+
+NC の再配置の修正（`openmx_nc_indices.h`）は、クラスター NC の 4 SCF で `Hamiltonian_Cluster_NC_Hs2` を 1.69 % → 0.81 %、
+`Overlap_Cluster_NC_Ss2` を 0.28 % → 0.07 % にしました。写像は整数演算なので、`tests/run_nc_indices_cpu.py` が旧実装と
+1.2 億要素で完全一致することを確かめます（CTest `nc-block-indices`）。
+
+### 非共線の密度行列を 1 回の走査で（`openmx_core_energy_nc_block`）
+
+クラスター NC の `Calc_DM_Cluster_non_collinear_ScaLAPACK` は成分ごと（6 成分、エネルギー密度行列ありで 10 成分）に
+固有ベクトルを読み直し、バンド NC の `Calc_DM_Band_non_collinear` は近接原子ごとに固有ベクトルの行をコピーし直して
+いました。`energy` 群に加えた `openmx_core_energy_nc_block` は、近接原子側を 1 回だけ [帯][列] の 4 面（実部・虚部 ×
+スピノル上下）に転置し、(原子, 近接原子) ブロックごとに全成分を 1 回の走査で集計します（各要素の帯についての和の順序は
+従来どおり）。接続は `openmx_nc_dm_cpu.h`（CUDA/HIP 両方の `Cluster_DFT_NonCol.c` / `Band_DFT_NonCol.c`）で、
+`OPENMX_HOST_SIMD=legacy` と `OPENMX_NC_DM_HOST_ONEPASS=0` では従来のループのままです。
+
+同じバイナリで `OPENMX_NC_DM_HOST_ONEPASS` を切り替えた CPU モードの比較（sidia333、18 MPI）:
+
+| 実行 | 従来のループ | 1 回走査 |
+| --- | ---: | ---: |
+| クラスター NC 4 SCF: 対角化（密度行列を含む）/ 内部 Total | 78.3 / 131.2 s | 71.0 / 125.4 s |
+| クラスター NC: 密度行列の集計の割合（rank 0 の perf） | 15.5 %（約 21 s） | 5.0 %（約 6 s、カーネル本体） |
+| バンド NC 2 SCF（k 点 4）: 対角化 | 305 s | 316 s（差は ELPA の揺らぎの範囲。密度行列は約 7 s → 数 s） |
+
+- 数値: バンド NC は `.ene` と `.md` が bit 一致、クラスター NC は 1 SCF の Utot が一致します。力（`.xyz` の 15 桁目）は
+  最大 1e-15 だけ異なります。従来のループは nvc が FMA 付きでコンパイルしており（他の群と同じ事情）、カーネルは FMA を
+  使わないためで、CTest `core-host-energy-nc` は FMA なしの転記との bit 一致を全 ISA で確かめています。4 SCF の
+  クラスター NC ではこの最終桁の差が SCF で増幅され、Utot で 1e-14、力で 2e-11 になります。
+- `openmx -runtest`（14 入力、Cr2 と GaAs の非共線を含む）は GPU / CPU / CPU+legacy で合格です
+  （Utot 最大 5.1e-11 / 3.1e-11 / 3.1e-11）。
+
+## gpusolver2（ELPA GPU + COSMA）の行列積: GEMMul8 化とタイル上限の修正（2026-10-28）
+
+GEMMul8 と FP32 + 荻田・相島補正を gpusolver2 / gpusolver3 で使える箇所の調査の結果です。
+gpusolver3（単一ノード強制 MAGMA）は協調行列積が既定で GEMMul8 ブリッジを通り、FP32 基底 + 補正も
+`OPENMX_MAGMA_FP32=1` で選べる（2 枚の RTX 5090 で検証済み、`doc/rtx5090_magma_fp32.txt`）ため、変更はありません。
+この計算機（GPU 1 枚、MAGMA なし）では実行できません。
+
+gpusolver2 はどちらも使っていませんでした。計測は `work/gs2_nc10/sidia333_cluster.dat`（216 Si 原子の非共線
+Cluster、n = 2808 / 2n = 5616）と `work/sidia333_cluster_cosma_elpa/sidia333_cluster.dat`（同じ系の共線 Cluster）
+を SCF 3 回、`level.of.stdout 2`、8 MPI × 1 OpenMP（RTX 5080 1 枚、MPS）、`OPENMX_GS2_PROFILE=1` で行い、
+`GS2PROF` 行（rank 0 の壁時計、入退場を含む）を集計しました。
+
+まず退行が見つかりました。`8bc12fa6`（2026-10-22、環境レジストリ）以降、ブリッジは COSMA のタイル上限を
+起動時のレジストリの写しから読み、自分が後から `setenv` する `COSMA_GPU_MAX_TILE_*`（既定 1024）を「未設定」と
+見て COSMA の既定 5000 で GPU 作業領域を見積もっていました（複素 5616 次で 2288 MB/rank × 8 ランク）。そのため
+複素の逆変換 `pzgemm` は毎回 ScaLAPACK（CPU、3.6 秒）に送られていました。利用者の設定がなければ公開した上限を
+使うように直しました。
+
+次に、COSMA の Tiled-MM の局所タイル積（最大 1024 角）を本体の GEMMul8 ブリッジへ渡しました
+（`source/third_party/tiledmm-openmx-gemm-hook.patch`、`OPENMX_GS2_GEMMUL8=0` で cuBLAS FP64 のまま）。
+
+| 非共線 Cluster、8 ランク、SCF 3 回 | pzgemm 5616³ ×3 | pdgemm 2808³ ×36 | 経過時間 | Utot (Hartree) |
+| --- | ---: | ---: | ---: | --- |
+| 修正前（pzgemm が CPU）、cuBLAS FP64 タイル | 10.83 s | 3.90 s | 111.6 s | -892.540984015326 |
+| 修正前、GEMMul8 タイル | 10.85 s | 3.34 s | 109.6 s | -892.540984015299 |
+| 修正後、cuBLAS FP64 タイル（`OPENMX_GS2_GEMMUL8=0`） | 6.68 s | 3.92 s | 105.7 s | -892.540984015261 |
+| 修正後、GEMMul8 タイル（既定） | 2.57 s | 3.39 s | 102.0 s | -892.540984015184 |
+
+複素 5616³ の変換 1 回は CPU 3.6 秒 → GPU cuBLAS FP64 2.23 秒 → GEMMul8 0.86 秒です。実数 2808³ は
+0.109 → 0.094 秒で、GEMMul8 のデバイス時間は 1 回 0.008 秒（rank 0 の計 288 タイル積で 0.30 秒）にすぎず、
+COSMA 側の再分配と転送が支配的です。Utot の差は最大 1.4e-13 Hartree です。共線 Cluster（pdgemm 2808³ ×9）は
+1.015 → 0.911 秒、経過時間 53.3 → 51.6 秒で、Utot と NormRD は 15 桁一致しました。
+
+FP32 + 荻田・相島補正は gpusolver2 には入れませんでした。`OPENMX_GS2_FP32_PROBE=1`（ELPA の単精度解法を
+全固有対で計時する計測用ノブ）では、複素 5616 次の ELPA 解法が FP64 の 11.3 秒（nev = n）/ 7.0 秒
+（nev = 1987）に対し 2.9 秒、実数 2808 次が 0.91 秒に対し 0.52 秒でした。しかし分散版の補正は 1 ステップに
+n×n×n の COSMA 積を 4 回以上（X の射影 3 回と更新 1 回）、最後に Rayleigh–Ritz と検証の積が必要で、複素の積
+1 回が 0.86〜2.2 秒、実数でも 0.09 秒（ほぼ COSMA の通信・転送）かかるため、節約分（複素 4.1 秒、実数 0.4 秒）
+を使い切ります。単一 GPU の `gpusolver` ではデバイス上の積が解法よりはるかに安いので補正が有効ですが、
+分散経路では積の方が主役です。この結論は、この規模と GeForce 1 枚での計測に基づきます。

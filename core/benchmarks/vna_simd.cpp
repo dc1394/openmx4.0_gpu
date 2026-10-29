@@ -69,8 +69,7 @@ int main(int argc,char** argv) {
       for(auto& v:table)v=u(rng);for(auto& v:pro0)v=u(rng);for(auto& v:pro1)v=u(rng);for(auto& v:sphb)v=u(rng);for(auto& v:sphbp)v=u(rng);
       std::vector<double> out0(size_t(radials)*rows),out1(out0.size()),ref0(out0.size()),ref1(out0.size()),bes0(points),bes1(points);
       std::vector<const double*> a0,a1;for(int m=0;m<radials;++m){a0.push_back(pro0.data()+size_t(m)*points);a1.push_back(pro1.data()+size_t(m)*points);}
-      std::vector<double> w0(size_t(radials)*points),w1(w0.size());std::vector<const double*> pw0,pw1;
-      for(int m=0;m<radials;++m){pw0.push_back(w0.data()+size_t(m)*points);pw1.push_back(w1.data()+size_t(m)*points);}
+      std::vector<double> w0(size_t(radials)*points),w1(w0.size());
       const double legacy=seconds(repeats,[&]{
         for(int ll=0;ll<orders;++ll)for(int m=0;m<radials;++m) {
           for(int i=0;i<points;++i){bes0[i]=a0[m][i]*sphb[size_t(ll)*points+i];bes1[i]=a1[m][i]*sphbp[size_t(ll)*points+i];}
@@ -81,8 +80,8 @@ int main(int argc,char** argv) {
         if(!openmx_core_host_simd_usable(mode))continue;
         const double s=seconds(repeats,[&]{for(int ll=0;ll<orders;++ll){
           for(int m=0;m<radials;++m)for(int i=0;i<points;++i){w0[size_t(m)*points+i]=a0[m][i]*sphb[size_t(ll)*points+i];w1[size_t(m)*points+i]=a1[m][i]*sphbp[size_t(ll)*points+i];}
-          OpenMXVnaContract c={points,rows,radials,size_t(rows),size_t(rows),table.data(),pw0.data(),pw1.data(),out0.data(),out1.data()};
-          if(!openmx_core_vna_contract(&c,mode))throw std::runtime_error("contract failed");}});
+          OpenMXVnaContract c={points,rows,radials,size_t(rows),size_t(rows),table.data(),w0.data(),w1.data(),out0.data(),out1.data(),size_t(points)};
+          if(!openmx_core_vna_contract_flat(&c,mode))throw std::runtime_error("contract failed");}});
         if(out0!=ref0 || out1!=ref1)throw std::runtime_error("contraction differs from the legacy loop");
         line(openmx_core_host_simd_name(mode),legacy/repeats*1e3,s/repeats*1e3,"ms per pair");
       }
@@ -197,19 +196,19 @@ int main(int argc,char** argv) {
           num0+=2*L0+1;}});
       std::cout<<"DS_VNA m sum + conversions: legacy "<<1e3*legacy/repeats<<" ms per pair\n";
       const int pad=L0max+l1max;const size_t cy_stride=size_t(pad+std::max(2*llmax+1,llmax+L0max+l1max+8)+8),cy_length=size_t(llmax+1)*cy_stride,plane=(size_t)orb_rows*cols;
-      std::vector<double> cy(6*cy_length,0.0),acc(8*plane),cpr(llmax+1),cpi(llmax+1),s0v(llmax+1),s1v(llmax+1);std::vector<const double*> grows(llmax+1);
+      std::vector<double> cy(6*cy_length,0.0),acc(8*plane),cpr(llmax+1),cpi(llmax+1),s0v(llmax+1),s1v(llmax+1);
       for(int mode=OPENMX_GRID_SCALAR;mode<=OPENMX_GRID_NEON;++mode) {
         if(!openmx_core_host_simd_usable(mode))continue;
         const double s=seconds(repeats,[&]{
           for(int LL=0;LL<=llmax;++LL)for(int m=-LL;m<=LL;++m){const size_t at=size_t(LL)*cy_stride+size_t(pad+LL-m);cy[at]=Y[LL*LL+LL+m].r;cy[cy_length+at]=Y[LL*LL+LL+m].i;cy[2*cy_length+at]=Yt[LL*LL+LL+m].r;cy[3*cy_length+at]=Yt[LL*LL+LL+m].i;cy[4*cy_length+at]=Yp[LL*LL+LL+m].r;cy[5*cy_length+at]=Yp[LL*LL+LL+m].i;}
           for(int L0=0;L0<=L0max;++L0)for(int Mul0=0;Mul0<nb[L0];++Mul0)for(int L=0;L<num_rvna;++L){const int L1=L/mult;
             const int first=std::abs(L1-L0),last=std::min(L1+L0,llmax);int n=0;
-            for(int LL=first;LL<=last;++LL){const Cx cp=im_pow(-L0+L1+LL);cpr[n]=cp.r;cpi[n]=cp.i;s0v[n]=sum0[sidx(L0,Mul0,L)];s1v[n]=sum1[sidx(L0,Mul0,L)];grows[n]=gaunt.data()+grow(L0,-L0,LL,L1);++n;}
+            for(int LL=first;LL<=last;++LL){const Cx cp=im_pow(-L0+L1+LL);cpr[n]=cp.r;cpi[n]=cp.i;s0v[n]=sum0[sidx(L0,Mul0,L)];s1v[n]=sum1[sidx(L0,Mul0,L)];++n;}
             OpenMXVnaAngular a;a.rows=2*L0+1;a.columns=2*L1+1;a.l0=L0;a.l1=L1;a.pad=pad;a.ll_first=first;a.ll_count=n;a.cy_length=cy_length;a.cy_stride=cy_stride;
             for(int c=0;c<6;++c)a.cy[c]=cy.data()+c*cy_length;
-            a.cpow_r=cpr.data();a.cpow_i=cpi.data();a.s0=s0v.data();a.s1=s1v.data();a.gaunt=grows.data();a.gaunt_stride=grow(L0,-L0+1,0,L1)-grow(L0,-L0,0,L1);
+            a.cpow_r=cpr.data();a.cpow_i=cpi.data();a.s0=s0v.data();a.s1=s1v.data();a.gaunt=gaunt.data()+grow(L0,-L0,first,L1);a.gaunt_ll_stride=size_t(l1max+1)*(2*l1max+1);a.gaunt_stride=grow(L0,-L0+1,0,L1)-grow(L0,-L0,0,L1);
             const size_t origin=pairi(L0,Mul0,0,L,0);for(int c=0;c<8;++c)a.acc[c]=acc.data()+c*plane+origin;a.acc_stride=cols;
-            if(!openmx_core_vna_angular(&a,mode))throw std::runtime_error("angular failed");}
+            if(!openmx_core_vna_angular_flat(&a,mode))throw std::runtime_error("angular failed");}
           OpenMXVnaConvert v;v.onsite=0;v.polar=0;v.acc_stride=cols;v.width=width;v.ld=width;v.out_stride=cols;
           v.c1=siT*coP;v.c2=coT*coP/r;v.c3=siP/siT/r;v.c4=siT*siP;v.c5=coT*siP/r;v.c6=coP/siT/r;v.c7=coT;v.c8=siT/r;
           int num0=0;

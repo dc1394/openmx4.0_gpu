@@ -189,6 +189,7 @@ def main():
             '\t$(CC_NOACC_O3) -I$(GPUSOLVER2_ELPA_INCLUDE) '
             f'-I{shlex.quote(str(ROOT / "source"))} '
             f'{shlex.quote(str(ROOT / "source/openmx_elpa_cpu.c"))} '
+            f'{shlex.quote(str(ROOT / "source/openmx_env.c"))} '   # the kernel override is read through the registry
             f'{shlex.quote(str(driver))} -o {shlex.quote(str(binary))} $(LIB)\n')
         subprocess.run([args.make, '-C', str(native), '-f', args.makefile, '-f', str(makefile),
                         'check-elpa-cpu'], check=True, timeout=args.timeout)

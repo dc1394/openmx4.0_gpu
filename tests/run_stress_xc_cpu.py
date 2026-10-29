@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Check production fine-XC stress with real C++ ownership and scalar oracles.
 
-MPI, radial/XC/angular rules and sequential logical OpenMP teams are modeled.
+MPI, radial/XC functions and sequential logical OpenMP teams are modeled.
 Independent coordinate and center/image strain differences check the outputs.
 """
 import argparse
@@ -23,7 +23,7 @@ def main():
     args = parser.parse_args()
     library = args.core_library.resolve(strict=True)
     source = (ROOT/'source/Stress.c').read_text()
-    marker = source.index('    OpenMXSolverRealTensor lebedev;')
+    marker = source.index('    OpenMXLebedevRuleData lebedev;')
     start = source.rindex('if (Exc0_correction_flag==1){', 0, marker)
     native = source[start:closing(source, source.index('{', start))]
     pragma = re.search(r'^#pragma omp parallel[^\n]*', native, re.M)

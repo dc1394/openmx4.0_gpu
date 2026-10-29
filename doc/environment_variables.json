@@ -261,6 +261,14 @@
   {
    "group": "band",
    "names": [
+    "OPENMX_NC_DM_HOST_ONEPASS"
+   ],
+   "en": "<b>0</b> = accumulate the non-collinear density matrix on the host with the legacy per-component loops (the cluster routine's 6-10 passes over the eigenvectors, the band routine's per-neighbour copies) instead of the one-pass host SIMD kernel of <code>openmx_nc_dm_cpu.h</code>. The two are bitwise equal; the switch isolates this pass for comparisons. Not used under <code>OPENMX_HOST_SIMD=legacy</code>, which keeps the legacy loops anyway.",
+   "ja": "<b>0</b>=非共線の密度行列をホストで集計するとき、<code>openmx_nc_dm_cpu.h</code> の 1 回走査のホスト SIMD カーネルではなく従来の成分ごとのループ（クラスターは固有ベクトルを 6〜10 回読み直す、バンドは近接原子ごとにコピーする）を使う。両者は bit 一致で、この切り替えは比較のためのもの。<code>OPENMX_HOST_SIMD=legacy</code> では元から従来のループなので使わない。"
+  },
+  {
+   "group": "band",
+   "names": [
     "OPENMX_BAND_NONCOL_GPU_DM"
    ],
    "en": "<b>0</b> = CPU loop for the per-k DM accumulation of the noncollinear ScaLAPACK/ELPA-fallback multi-k loop (the k-dense GPU flow keeps its own device DM regardless)",
@@ -1057,6 +1065,14 @@
   {
    "group": "gs2",
    "names": [
+    "OPENMX_GS2_FP32_PROBE"
+   ],
+   "en": "Measurement probe: <b>1</b> replaces the ELPA double solves of gpusolver2 by ELPA's single-precision solve of all eigenpairs, timed by <code>OPENMX_GS2_PROFILE</code> as <code>op=elpa32</code>, to size the FP32 basis of a refined solve. The results of such a run are only single-precision accurate (a warning says so).",
+   "ja": "計測用プローブ。<b>1</b> で gpusolver2 の ELPA 倍精度解法を全固有対の単精度解法に置き換え、<code>OPENMX_GS2_PROFILE</code> の <code>op=elpa32</code> として計時する（補正付き解法の FP32 基底の見積もり用）。その実行の結果は単精度の精度しかない（警告を表示）。"
+  },
+  {
+   "group": "gs2",
+   "names": [
     "OPENMX_CLUSTER_GS2_FALLBACK"
    ],
    "defaults": {
@@ -1661,6 +1677,14 @@
   {
    "group": "gs2",
    "names": [
+    "OPENMX_GS2_GEMMUL8"
+   ],
+   "en": "The local tile products of the COSMA transforms of gpusolver2 go through the GEMMul8 bridge (<b>1</b>, default): GEMMul8 on GPUs with weak FP64 (the GeForce default), native FP64 on A100/H100, <code>scf.gemmul8.enable</code> and the workspace guards as for every other product. <b>0</b> keeps COSMA on cuBLAS FP64 (CUDA build; the ROCm Tiled-MM keeps rocBLAS).",
+   "ja": "gpusolver2 の COSMA 変換の局所タイル積を GEMMul8 ブリッジ経由にする（<b>1</b>、既定）。FP64 の弱い GPU（GeForce の既定）では GEMMul8、A100/H100 では native FP64、<code>scf.gemmul8.enable</code> と作業領域の保護は他の積と同じ。<b>0</b> で COSMA を cuBLAS FP64 のままにする（CUDA ビルド。ROCm の Tiled-MM は rocBLAS のまま）。"
+  },
+  {
+   "group": "gs2",
+   "names": [
     "OPENMX_GS2_GPU_FACTOR",
     "OPENMX_GS2_GPU_FIXED_MB"
    ],
@@ -1692,6 +1716,26 @@
    },
    "en": "Tiled-MM tile cap published to COSMA (<code>COSMA_GPU_MAX_TILE_M/N/K</code> are set to it when unset; a user-set value wins) and COSMA's stream count; both size the GPU GEMM workspace estimate.",
    "ja": "COSMA へ渡す Tiled-MM のタイル上限（<code>COSMA_GPU_MAX_TILE_M/N/K</code> が未設定ならこの値を設定する。利用者の設定が優先）と COSMA のストリーム数。どちらも GPU GEMM 作業領域の見積もりに使う。"
+  },
+  {
+   "group": "gs2",
+   "names": [
+    "ELPA_DEFAULT_real_kernel",
+    "ELPA_DEFAULT_complex_kernel"
+   ],
+   "label": "<code>ELPA_DEFAULT_real_kernel</code> / <code>ELPA_DEFAULT_complex_kernel</code>",
+   "defaults": {
+    "ELPA_DEFAULT_real_kernel": {
+     "en": "unset (OpenMX chooses)",
+     "ja": "未設定（OpenMX が選ぶ）"
+    },
+    "ELPA_DEFAULT_complex_kernel": {
+     "en": "unset (OpenMX chooses)",
+     "ja": "未設定（OpenMX が選ぶ）"
+    }
+   },
+   "en": "ELPA's own 2-stage kernel override (an <code>ELPA_2STAGE_REAL_*</code> / <code>ELPA_2STAGE_COMPLEX_*</code> name as printed by <code>elpa2_print_kernels</code>). When set, the CPU ELPA2 path leaves the kernel to ELPA instead of selecting the fastest kernel compiled in that the CPU supports (AVX-512, AVX2, AVX, SSE, generic in that order).",
+   "ja": "ELPA 自身の 2 段階カーネル指定（<code>elpa2_print_kernels</code> が表示する <code>ELPA_2STAGE_REAL_*</code> / <code>ELPA_2STAGE_COMPLEX_*</code> の名前）。設定されていると、CPU の ELPA2 経路はカーネルを ELPA に任せ、組み込まれたカーネルのうち CPU が対応する最速のもの（AVX-512、AVX2、AVX、SSE、汎用の順）を選ぶ処理を行わない。"
   },
   {
    "group": "gs2",

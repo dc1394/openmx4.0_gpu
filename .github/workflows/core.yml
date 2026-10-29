@@ -4,6 +4,99 @@ on:
   pull_request:
 
 jobs:
+  basis:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            cxx: g++
+            cc: gcc
+            sanitize: "OFF"
+          - os: ubuntu-24.04
+            cxx: clang++
+            cc: clang
+            sanitize: "ON"
+          - os: macos-14
+            cxx: clang++
+            cc: clang
+            sanitize: "OFF"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build only the reusable basis package (no SDK or numerical stack)
+        run: >-
+          cmake -S modules/basis -B build/basis
+          -DCMAKE_CXX_COMPILER=${{ matrix.cxx }} -DCMAKE_C_COMPILER=${{ matrix.cc }}
+          -DOPENMX_BASIS_SANITIZERS=${{ matrix.sanitize }}
+      - run: cmake --build build/basis --parallel 2
+      - name: Numerical, ownership and external consumer tests
+        run: |
+          ulimit -s 8192
+          ctest --test-dir build/basis --output-on-failure
+
+  xc:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            cxx: g++
+            cc: gcc
+            sanitize: "OFF"
+          - os: ubuntu-24.04
+            cxx: clang++
+            cc: clang
+            sanitize: "ON"
+          - os: macos-14
+            cxx: clang++
+            cc: clang
+            sanitize: "OFF"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build only the reusable xc package (no SDK or numerical stack)
+        run: >-
+          cmake -S modules/xc -B build/xc
+          -DCMAKE_CXX_COMPILER=${{ matrix.cxx }} -DCMAKE_C_COMPILER=${{ matrix.cc }}
+          -DOPENMX_XC_SANITIZERS=${{ matrix.sanitize }}
+      - run: cmake --build build/xc --parallel 2
+      - name: Bitwise, analytic, derivative and external consumer tests
+        run: |
+          ulimit -s 8192
+          ctest --test-dir build/xc --output-on-failure
+
+  io:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            cxx: g++
+            cc: gcc
+            sanitize: "OFF"
+          - os: ubuntu-24.04
+            cxx: clang++
+            cc: clang
+            sanitize: "ON"
+          - os: macos-14
+            cxx: clang++
+            cc: clang
+            sanitize: "OFF"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build only the reusable io package (no SDK or numerical stack)
+        run: >-
+          cmake -S modules/io -B build/io
+          -DCMAKE_CXX_COMPILER=${{ matrix.cxx }} -DCMAKE_C_COMPILER=${{ matrix.cc }}
+          -DOPENMX_IO_SANITIZERS=${{ matrix.sanitize }}
+      - run: cmake --build build/io --parallel 2
+      - name: Legacy-agreement, ownership and external consumer tests
+        run: |
+          ulimit -s 8192
+          ctest --test-dir build/io --output-on-failure
+
   cpu-application:
     runs-on: ubuntu-24.04
     strategy:
@@ -54,6 +147,11 @@ jobs:
             sanitize: "OFF"
     steps:
       - uses: actions/checkout@v4
+      - name: Install the AppleClang OpenMP runtime
+        if: runner.os == 'macOS'
+        run: |
+          brew install libomp
+          echo "OpenMP_ROOT=$(brew --prefix libomp)" >> "$GITHUB_ENV"
       - name: Install MPI for native solver lifetime tests
         if: matrix.mpi == true
         run: |
@@ -65,6 +163,7 @@ jobs:
           -DOPENMX_CORE_BACKEND=${{ matrix.backend }}
           -DCMAKE_CXX_STANDARD=${{ matrix.standard }}
           -DOPENMX_CORE_SANITIZERS=${{ matrix.sanitize }}
+          -DOPENMX_TEST_REQUIRE_OPENMP=ON
           -DCMAKE_BUILD_TYPE=Debug
       - run: cmake --build build/core --parallel 2
       - name: Inspect Darwin allocation imports
@@ -79,11 +178,27 @@ jobs:
         env:
           OMP_NUM_THREADS: 2
           OMP_PROC_BIND: "false"
+        # Failed test names go to an annotation and the step summary, which
+        # are readable without the job log.
         run: |
           ulimit -s 8192
           test_status=0
+          failed=""
           ctest --test-dir build/core -L '^native-state$' --no-tests=error --output-on-failure || test_status=$?
+          failed="$failed $(cat build/core/Testing/Temporary/LastTestsFailed.log 2>/dev/null | tr '\n' ' ')"
           ctest --test-dir build/core -LE '^native-state(-mpi)?$' --no-tests=error --output-on-failure || test_status=$?
+          failed="$failed $(cat build/core/Testing/Temporary/LastTestsFailed.log 2>/dev/null | tr '\n' ' ')"
+          if [ "$test_status" -ne 0 ]; then
+            echo "::error::ctest exit status $test_status; failed tests:$failed"
+            {
+              echo "## Failed core tests"
+              echo "$failed"
+              echo
+              echo '```'
+              tail -c 60000 build/core/Testing/Temporary/LastTest.log
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
           exit "$test_status"
       - name: Real MPI solver state cleanup
         if: matrix.mpi == true

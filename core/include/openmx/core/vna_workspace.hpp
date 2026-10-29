@@ -3,6 +3,8 @@
 #include <openmx/core/tensor.hpp>
 #include "openmx_complex.h"
 #include <openmx/core/two_center.hpp>
+#include <openmx/core/vna_simd_workspace.hpp>
+#include <memory>
 
 namespace openmx::core {
 
@@ -26,12 +28,14 @@ class VnaWorkspace {
   auto bessel() const noexcept { return bessel_.view(); }
   auto scratch() const noexcept { return scratch_.view(); }
   auto two_center() noexcept { return two_center_.buffers(); }
+  VnaSimdWorkspace& simd(int orders);
  private:
   VnaShape shape_;
   Tensor<dcomplex,3> angular_;
   TwoCenterWorkspace two_center_;
   Tensor<double,3> bessel_;
   Tensor<double,2> scratch_;
+  std::unique_ptr<VnaSimdWorkspace> simd_;
 };
 
 } // namespace openmx::core

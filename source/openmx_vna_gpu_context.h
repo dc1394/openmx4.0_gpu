@@ -53,7 +53,7 @@ typedef struct {
   double *pro01;
   double *vnab;         /* [spe][num_rvna][GL_Mesh]                    */
   double *gnt;          /* Gaunt table                                 */
-  double *c2r;          /* Comp2Real, packed per L                     */
+  double *c2r;          /* Real-harmonic conversion, packed per L                     */
   int *c2r_off;         /* [L] offset into c2r (complex index)         */
 
   /* Late device failure: when host_route is set, this rank's pairs from

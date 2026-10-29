@@ -4,7 +4,7 @@
   OpenMX historically called a private ELPA 2018 implementation and an
   older one-stage Fortran module.  These compatibility entry points keep
   the distributed matrix convention of those calls while using the same
-  ELPA library as the GPU backend, with CPU kernels explicitly selected.
+  ELPA library as the GPU backend, with the CPU kernel chosen at run time.
 ***********************************************************************/
 
 #include "openmx_elpa_cpu.h"
@@ -16,6 +16,89 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "openmx_env.h"
+#include "openmx_stdout_level.h"
+
+/* The 2-stage kernel.  ELPA_DEFAULT_{real,complex}_kernel in the environment
+   is ELPA's own override and is left alone.  Otherwise the fastest kernel
+   compiled into the bundled library that this CPU can execute, in ELPA's
+   preference order (AVX-512, AVX2, AVX, SSE, generic): the library checks
+   the CPU only with --enable-heterogenous-cluster-support, so a kernel the
+   CPU lacks would trap inside the solver.  Every rank of a node chooses the
+   same kernel; the generic kernels are always built.  No static state and
+   no direct getenv: the global-state audit admits neither. */
+#if defined(__x86_64__) || defined(__i386__)
+#include <cpuid.h>
+/* CPUID and XCR0 directly: nvc compiles __builtin_cpu_supports but has no
+   runtime symbol for it, and the OS must have enabled the YMM/ZMM state. */
+static unsigned cpu_xcr0_low(void)
+{
+    unsigned eax, edx;
+    __asm__ __volatile__("xgetbv" : "=a"(eax), "=d"(edx) : "c"(0));
+    (void)edx;
+    return eax;
+}
+static int cpu_isa_available(int level)   /* 4 AVX-512, 3 AVX2+FMA, 2 AVX, 1 SSE4.2, 0 any */
+{
+    unsigned a, b, c, d, b7 = 0, xcr0 = 0;
+    int avx_state, avx512_state;
+
+    if (level <= 0) return 1;
+    if (!__get_cpuid(1, &a, &b, &c, &d)) return 0;
+    if ((c >> 27) & 1) xcr0 = cpu_xcr0_low();          /* OSXSAVE */
+    avx_state = (xcr0 & 0x6) == 0x6;                    /* XMM and YMM saved */
+    avx512_state = (xcr0 & 0xe6) == 0xe6;               /* plus opmask and ZMM */
+    {
+        const unsigned c1 = c;                          /* leaf 1 ECX: FMA, AVX, SSE4.2 */
+        if (!__get_cpuid_count(7, 0, &a, &b7, &c, &d)) b7 = 0;
+        switch (level) {
+        case 4: return avx512_state && ((b7 >> 16) & 1) && ((b7 >> 17) & 1) && ((b7 >> 30) & 1) && ((b7 >> 31) & 1);
+        case 3: return avx_state && ((b7 >> 5) & 1) && ((c1 >> 12) & 1);
+        case 2: return avx_state && ((c1 >> 28) & 1);
+        default: return (c1 >> 20) & 1;
+        }
+    }
+}
+#else
+static int cpu_isa_available(int level)
+{
+    return level <= 0;
+}
+#endif
+
+static void cpu_select_kernel(elpa_t handle, int is_complex, MPI_Comm parent, int *error)
+{
+    const struct { int level; int real_kernel, complex_kernel; const char *name; } candidates[] = {
+        { 4, ELPA_2STAGE_REAL_AVX512_BLOCK2, ELPA_2STAGE_COMPLEX_AVX512_BLOCK1, "AVX-512" },
+        { 3, ELPA_2STAGE_REAL_AVX2_BLOCK2,   ELPA_2STAGE_COMPLEX_AVX2_BLOCK1,   "AVX2" },
+        { 2, ELPA_2STAGE_REAL_AVX_BLOCK2,    ELPA_2STAGE_COMPLEX_AVX_BLOCK1,    "AVX" },
+        { 1, ELPA_2STAGE_REAL_SSE_BLOCK2,    ELPA_2STAGE_COMPLEX_SSE_BLOCK1,    "SSE" },
+        { 0, ELPA_2STAGE_REAL_GENERIC,       ELPA_2STAGE_COMPLEX_GENERIC,       "generic" },
+    };
+    const char *name = is_complex ? "complex_kernel" : "real_kernel";
+    size_t i;
+
+    if (*error != ELPA_OK) return;
+    /* ELPA's own override (registry ids EXT_ELPA_DEFAULT_*_kernel, ELPA's mixed-case names): leave the
+       library's default to it */
+    if (openmx_env_at(is_complex ? OPENMX_ENV_EXT_ELPA_DEFAULT_complex_kernel
+                                 : OPENMX_ENV_EXT_ELPA_DEFAULT_real_kernel) != NULL) return;
+    for (i = 0; i < sizeof(candidates) / sizeof(candidates[0]); i++) {
+        int status = ELPA_OK, rank = 0;
+        if (!cpu_isa_available(candidates[i].level)) continue;
+        elpa_set_integer(handle, name, is_complex ? candidates[i].complex_kernel : candidates[i].real_kernel, &status);
+        if (status != ELPA_OK) continue;   /* not compiled into this library */
+        /* per-solve diagnostics (level 3), like the other per-step lines */
+        MPI_Comm_rank(parent, &rank);
+        if (rank == 0 && OPENMX_STDOUT_LEVEL(3)) {
+            printf("<ELPA> 2-stage %s kernel: %s\n", is_complex ? "complex" : "real", candidates[i].name);
+            fflush(stdout);
+        }
+        return;
+    }
+    *error = ELPA_ERROR;
+}
 
 static int cpu_numroc(int n, int block, int process, int processes)
 {
@@ -228,11 +311,7 @@ static void cpu_eigenvectors(int solver, int is_complex,
     error = cpu_collective_error(elpa_setup(handle), parent);
     if (error != ELPA_OK) cpu_abort("setup", error, rows, cols);
     cpu_set_integer(handle, "solver", solver, &error);
-    if (solver == ELPA_SOLVER_2STAGE) {
-        cpu_set_integer(handle, is_complex ? "complex_kernel" : "real_kernel",
-                        is_complex ? ELPA_2STAGE_COMPLEX_GENERIC : ELPA_2STAGE_REAL_GENERIC,
-                        &error);
-    }
+    if (solver == ELPA_SOLVER_2STAGE) cpu_select_kernel(handle, is_complex, parent, &error);
     error = cpu_collective_error(error, parent);
     if (error != ELPA_OK) cpu_abort("CPU solver selection", error, rows, cols);
 

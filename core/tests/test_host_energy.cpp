@@ -640,6 +640,137 @@ void band() {
     }
   }
 }
+/* ---- non-collinear density-matrix block ---- */
+struct Nc {
+  int rows,columns,bands;size_t stride,out_stride;
+  std::vector<double> re0[2],im0[2],re1[2],im1[2],re1T[2],im1T[2],weight,eigen,out[10];
+  std::vector<const double*> re0_rows[2],im0_rows[2];
+  double co,si;
+};
+Nc make_nc(std::mt19937& rng,int rows,int columns,int bands,size_t extra,size_t out_extra) {
+  Nc b;b.rows=rows;b.columns=columns;b.bands=bands;b.stride=(size_t(columns)+7)/8*8+extra;b.out_stride=size_t(columns)+out_extra;
+  std::uniform_real_distribution<double> u(-1.0,1.0);
+  auto fill=[&](std::vector<double>& v,size_t n){v.resize(n);for(size_t i=0;i<n;++i)v[i]=i%23==7?-0.0:i%29==3?1e8*u(rng):u(rng);};
+  for(int c=0;c<2;++c) {
+    fill(b.re0[c],size_t(rows)*bands);fill(b.im0[c],size_t(rows)*bands);
+    fill(b.re1[c],size_t(columns)*bands);fill(b.im1[c],size_t(columns)*bands);
+    b.re1T[c].assign(size_t(bands)*b.stride,0.0);b.im1T[c].assign(size_t(bands)*b.stride,0.0);
+    for(int k=0;k<bands;++k)for(size_t j=0;j<b.stride;++j) {
+      b.re1T[c][k*b.stride+j]=j<size_t(columns)?b.re1[c][j*bands+k]:0.5*u(rng);
+      b.im1T[c][k*b.stride+j]=j<size_t(columns)?b.im1[c][j*bands+k]:0.5*u(rng);
+    }
+    for(int i=0;i<rows;++i){b.re0_rows[c].push_back(b.re0[c].data()+size_t(i)*bands);b.im0_rows[c].push_back(b.im0[c].data()+size_t(i)*bands);}
+  }
+  // non-null pointers even without bands (only eigen[k<bands] is read)
+  b.weight.resize(std::max(bands,1));for(int k=0;k<bands;++k)b.weight[k]=k%5==4?1e-13:0.5+0.5*u(rng);   // Fermi factors
+  fill(b.eigen,size_t(std::max(bands,1)));
+  for(auto& o:b.out)fill(o,size_t(rows)*b.out_stride);
+  b.co=std::cos(2.1*u(rng));b.si=std::sin(2.1*u(rng));
+  return b;
+}
+// Cluster_DFT_NonCol.c, Calc_DM_Cluster_non_collinear_ScaLAPACK: one pass per
+// component (calc_flag 1..10) over the bands, FermiF*(...) and *ko[k].
+void legacy_nc_cluster(const Nc& b,std::vector<double> out[10],bool energy) {
+  const int nk=b.bands;
+  for(int flag=1;flag<=(energy?10:6);++flag) {
+    std::vector<double>& DM1=out[flag-1];
+    for(int k=0;k<nk;++k) {
+      const double FermiF=b.weight[k];
+      for(int i=0;i<b.rows;++i)for(int j=0;j<b.columns;++j) {
+        const double ar=b.re0[0][size_t(i)*nk+k],ai=b.im0[0][size_t(i)*nk+k],cr=b.re0[1][size_t(i)*nk+k],ci=b.im0[1][size_t(i)*nk+k];
+        const double br=b.re1[0][size_t(j)*nk+k],bi=b.im1[0][size_t(j)*nk+k],dr=b.re1[1][size_t(j)*nk+k],di=b.im1[1][size_t(j)*nk+k];
+        double& v=DM1[size_t(i)*b.out_stride+j];
+        switch(flag) {
+        case 1: v+=FermiF*(ar*br+ai*bi);break;
+        case 2: v+=FermiF*(cr*dr+ci*di);break;
+        case 3: v+=FermiF*(ar*dr+ai*di);break;
+        case 4: v+=FermiF*(ar*di-ai*dr);break;
+        case 5: v+=FermiF*(ar*bi-ai*br);break;
+        case 6: v+=FermiF*(cr*di-ci*dr);break;
+        case 7: v+=FermiF*(ar*br+ai*bi)*b.eigen[k];break;
+        case 8: v+=FermiF*(cr*dr+ci*di)*b.eigen[k];break;
+        case 9: v+=FermiF*(ar*dr+ai*di)*b.eigen[k];break;
+        case 10: v+=FermiF*(ar*di-ai*dr)*b.eigen[k];break;
+        }
+      }
+    }
+  }
+}
+// Band_DFT_NonCol.c, Calc_DM_Band_non_collinear: the (i, j, k) loops with the
+// Bloch phase applied to the ten band sums of each element.
+void legacy_nc_band(const Nc& b,std::vector<double> out[10]) {
+  const int nk=b.bands;
+  for(int i=0;i<b.rows;++i)for(int j=0;j<b.columns;++j) {
+    double d1=0,d2=0,d3=0,d4=0,d5=0,d6=0,d7=0,d8=0,d9=0,d10=0;
+    for(int k=0;k<nk;++k) {
+      const double re_i1=b.re0[0][size_t(i)*nk+k],im_i1=b.im0[0][size_t(i)*nk+k],re_i2=b.re0[1][size_t(i)*nk+k],im_i2=b.im0[1][size_t(i)*nk+k];
+      const double re_j1=b.re1[0][size_t(j)*nk+k],im_j1=b.im1[0][size_t(j)*nk+k],re_j2=b.re1[1][size_t(j)*nk+k],im_j2=b.im1[1][size_t(j)*nk+k];
+      const double ReA=re_i1*re_j1+im_i1*im_j1,ImA=re_i1*im_j1-im_i1*re_j1;
+      const double ReB=re_i2*re_j2+im_i2*im_j2,ImB=re_i2*im_j2-im_i2*re_j2;
+      const double ReC=re_i1*re_j2+im_i1*im_j2,ImC=re_i1*im_j2-im_i1*re_j2;
+      d1+=ReA;d2+=ImA;d3+=ReB;d4+=ImB;d5+=ReC;d6+=ImC;
+      d7+=ReA*b.eigen[k];d8+=ImA*b.eigen[k];d9+=ReB*b.eigen[k];d10+=ImB*b.eigen[k];
+    }
+    const size_t p=size_t(i)*b.out_stride+j;
+    out[0][p]+=b.co*d1-b.si*d2;out[1][p]+=b.co*d3-b.si*d4;out[2][p]+=b.co*d5-b.si*d6;out[3][p]+=b.co*d6+b.si*d5;
+    out[4][p]+=b.co*d2+b.si*d1;out[5][p]+=b.co*d4+b.si*d3;out[6][p]+=b.co*d7-b.si*d8;out[7][p]+=b.co*d9-b.si*d10;
+  }
+}
+void nc() {
+  std::mt19937 rng(91u);
+  for(int rows:{0,1,2,5,13,16})for(int columns:{0,1,3,7,8,13,16,17,29})for(int bands:{0,1,2,3,7,64,313})for(size_t extra:{size_t(0),size_t(8)})for(size_t out_extra:{size_t(0),size_t(3)}) {
+    if(bands>64 && (rows>5 || extra || out_extra))continue;
+    const Nc b=make_nc(rng,rows,columns,bands,extra,out_extra);
+    const size_t n=size_t(rows)*b.out_stride;
+    // the cluster loops, with and without the eigen-weighted components; the
+    // routine zeroes DM1 before accumulating, so both sides start from 0.0
+    for(int energy:{1,0}) {
+      std::vector<double> ref[10];for(int q=0;q<10;++q)ref[q].assign(n,0.0);
+      legacy_nc_cluster(b,ref,energy!=0);
+      for(int mode:modes()) {
+        std::vector<double> got[10];double* ptr[10];
+        for(int q=0;q<10;++q){got[q].assign(n+2,3.25);std::fill(got[q].begin()+1,got[q].end()-1,0.0);ptr[q]=(q<6 || energy)?got[q].data()+1:nullptr;}
+        OpenMXEnergyNcBlock block{rows,columns,bands,b.stride,b.re0_rows[0].data(),b.im0_rows[0].data(),b.re0_rows[1].data(),b.im0_rows[1].data(),
+            b.re1T[0].data(),b.im1T[0].data(),b.re1T[1].data(),b.im1T[1].data(),b.weight.data(),energy?b.eigen.data():nullptr,0,1.0,0.0,
+            {ptr[0],ptr[1],ptr[2],ptr[3],ptr[4],ptr[5],ptr[6],ptr[7],ptr[8],ptr[9]},b.out_stride};
+        if(!openmx_core_energy_nc_block(&block,mode)) {
+          std::cerr<<"cluster mode "<<mode<<" rows="<<rows<<" columns="<<columns<<" bands="<<bands<<" stride="<<b.stride<<" out_stride="<<b.out_stride<<" energy="<<energy<<'\n';
+          throw std::runtime_error("NC block refused a valid cluster request");
+        }
+        for(int q=0;q<10;++q) {
+          require(got[q].front()==3.25 && got[q].back()==3.25,"NC block wrote outside an output");
+          std::vector<double> g(got[q].begin()+1,got[q].end()-1);
+          const bool expect=q<6 || energy;
+          const std::vector<double> untouched(n,0.0);
+          if(expect?!same(g,ref[q]):!same(g,untouched)) {
+            std::cerr<<"cluster mode "<<openmx_core_host_simd_name(mode)<<" rows="<<rows<<" columns="<<columns<<" bands="<<bands<<" output "<<q<<" energy="<<energy<<'\n';
+            throw std::runtime_error("NC density-matrix block differs from the cluster loops");
+          }
+        }
+      }
+    }
+    // the band loops: unweighted vectors, the phase, eight outputs
+    {
+      std::vector<double> ref[10];for(int q=0;q<10;++q)ref[q]=b.out[q];
+      legacy_nc_band(b,ref);
+      for(int mode:modes()) {
+        std::vector<double> got[10];double* ptr[10];
+        for(int q=0;q<10;++q){got[q].assign(n+2,3.25);std::copy(b.out[q].begin(),b.out[q].end(),got[q].begin()+1);ptr[q]=q<8?got[q].data()+1:nullptr;}
+        OpenMXEnergyNcBlock block{rows,columns,bands,b.stride,b.re0_rows[0].data(),b.im0_rows[0].data(),b.re0_rows[1].data(),b.im0_rows[1].data(),
+            b.re1T[0].data(),b.im1T[0].data(),b.re1T[1].data(),b.im1T[1].data(),nullptr,b.eigen.data(),1,b.co,b.si,
+            {ptr[0],ptr[1],ptr[2],ptr[3],ptr[4],ptr[5],ptr[6],ptr[7],ptr[8],ptr[9]},b.out_stride};
+        require(openmx_core_energy_nc_block(&block,mode),"NC block refused a valid band request");
+        for(int q=0;q<10;++q) {
+          std::vector<double> g(got[q].begin()+1,got[q].end()-1);
+          if(q<8?!same(g,ref[q]):!same(g,b.out[q])) {
+            std::cerr<<"band mode "<<openmx_core_host_simd_name(mode)<<" rows="<<rows<<" columns="<<columns<<" bands="<<bands<<" output "<<q<<'\n';
+            throw std::runtime_error("NC density-matrix block differs from the band loops");
+          }
+        }
+      }
+    }
+  }
+}
 void invalid() {
   std::mt19937 rng(5u);
   const Mesh m=make_mesh(rng,20);
@@ -718,6 +849,26 @@ void invalid() {
   require(openmx_core_energy_band_block(&bad,OPENMX_GRID_SCALAR),"an empty block needs no inputs");
   bad=block;bad.bands=0;bad.re1T=nullptr;bad.eigen=nullptr;
   require(openmx_core_energy_band_block(&bad,OPENMX_GRID_SCALAR),"a block without bands needs no inputs");
+  {
+    const Nc c=make_nc(rng,3,5,7,0,0);
+    double* outs[10]={nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr};
+    std::vector<double> o(15,0.0);outs[0]=o.data();
+    OpenMXEnergyNcBlock n{3,5,7,8,c.re0_rows[0].data(),c.im0_rows[0].data(),c.re0_rows[1].data(),c.im0_rows[1].data(),
+        c.re1T[0].data(),c.im1T[0].data(),c.re1T[1].data(),c.im1T[1].data(),nullptr,nullptr,0,1.0,0.0,
+        {outs[0],outs[1],outs[2],outs[3],outs[4],outs[5],outs[6],outs[7],outs[8],outs[9]},5};
+    require(openmx_core_energy_nc_block(&n,OPENMX_GRID_SCALAR),"NC block refused a valid request");
+    require(!openmx_core_energy_nc_block(&n,99),"unknown NC mode accepted");
+    auto nbad=n;nbad.stride=12;
+    require(!openmx_core_energy_nc_block(&nbad,OPENMX_GRID_SCALAR),"NC stride not a multiple of 8 accepted");
+    nbad=n;nbad.out_stride=4;
+    require(!openmx_core_energy_nc_block(&nbad,OPENMX_GRID_SCALAR),"NC output stride below the columns accepted");
+    nbad=n;nbad.out[6]=o.data();
+    require(!openmx_core_energy_nc_block(&nbad,OPENMX_GRID_SCALAR),"eigen-weighted output without eigen accepted");
+    nbad=n;nbad.re1T_2=nullptr;
+    require(!openmx_core_energy_nc_block(&nbad,OPENMX_GRID_SCALAR),"missing NC panel accepted");
+    nbad=n;nbad.rows=0;nbad.re0_1=nullptr;
+    require(openmx_core_energy_nc_block(&nbad,OPENMX_GRID_SCALAR),"an empty NC block needs no inputs");
+  }
   for(double x:c)require(x==2.0,"a block without bands changed the output");
 }
 }
@@ -728,6 +879,7 @@ int main(int argc,char** argv) {
     else if(name=="endpoints")endpoints();
     else if(name=="xc")xc();
     else if(name=="band")band();
+    else if(name=="nc")nc();
     else if(name=="invalid")invalid();
     else throw std::runtime_error("unknown host energy case");
     std::cout<<"PASS host energy "<<name<<" (modes:";

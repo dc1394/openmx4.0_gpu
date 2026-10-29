@@ -1230,7 +1230,7 @@ static int SetNonlocal_CalcDSNL_Part(const OpenMXAtomicViews *atomic, const Open
 
         const OpenMXTwoCenterGeometry geometry={r,siT,coT,siP,coP,h_AN==0};
         SetNonlocal_TransformDSNL(atomic,&buffers,Cwan,Hwan,so,Mc_AN,h_AN,DS_NL,
-            &Comp2Real[0][0][0], sizeof(Comp2Real)/sizeof(Comp2Real[0]), sizeof(Comp2Real[0][0])/sizeof(Comp2Real[0][0][0]),&geometry);
+            atomic->real_harmonics.coefficients, atomic->real_harmonics.orders, atomic->real_harmonics.width,&geometry);
       }
 
       dtime(&Etime_atom);

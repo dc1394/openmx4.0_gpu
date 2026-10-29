@@ -1,4 +1,4 @@
-/* Real C++ ownership; radial/XC/angular/GPU/MPI calls and OpenMP teams are
+/* Real C++ ownership; radial/XC/GPU/MPI calls and OpenMP teams are
    modeled. Workers run sequentially so every host toolchain can check the
    exact production partition and scratch reuse; native concurrency is also
    exercised by the application's OpenMP regression inputs. */
@@ -8,6 +8,7 @@
 #include <string.h>
 #include "mpi.h"
 #include "openmx_core_atomic.h"
+#include "openmx_core_quadrature.h"
 #define CHECK(c) do{if(!(c)){fprintf(stderr,"FAIL line %d: %s\n",__LINE__,#c);exit(2);}}while(0)
 #define PI 3.1415926535897932384626433832795
 #define GPUSOLVER 7
@@ -22,22 +23,19 @@ static int region_calls,grid_calls,Host_ID;
 static double Stress_Tensor[9];
 static const int CoarseGL_Mesh=5;
 static double CoarseGL_Abscissae[5]={-.8,-.35,.05,.4,.75},CoarseGL_Weight[5]={.3,.45,.5,.4,.35};
+#include "openmx_core_angular_grid.h"
+static int counted_lebedev_prepare(OpenMXSolverInvocation *owner,int points,
+    OpenMXLebedevRuleData *out,char *error,size_t capacity){
+  ++grid_calls;return openmx_core_solver_lebedev_rule(owner,points,out,error,capacity);
+}
+#define openmx_core_solver_lebedev_rule counted_lebedev_prepare
 #include "openmx_stress_workspace.h"
+#undef openmx_core_solver_lebedev_rule
 int MPI_Abort(MPI_Comm comm,int code){(void)comm;(void)code;_Exit(77);}
 int MPI_Allreduce(const void *s,void *r,int n,int type,int op,MPI_Comm comm){(void)comm;CHECK(n==9&&type==MPI_DOUBLE&&op==MPI_SUM);memcpy(r,s,9*sizeof(double));return 0;}
 static void near(double a,double b,double tolerance){CHECK(isfinite(a)&&isfinite(b)&&fabs(a-b)<tolerance*(1+fabs(b)));}
 static int next_team(void){const int teams[3]={1,4,2};return energy_fixture_team=teams[region_calls++%3];}
 
-/* A repeated six-axis rule keeps the angular oracle simple while using
-   supported production capacities and exercising growth/rebinding. */
-static void Set_Lebedev_Grid(int points,double **rows){
-  ++grid_calls;
-  for(int i=0;i<points;i++){
-    const int axis=i%6,count=(points+5-axis)/6;
-    for(int d=0;d<3;d++)rows[i][d]=axis/2==d?(axis%2?-1:1):0;
-    rows[i][3]=1.0/(6*count);
-  }
-}
 static double KumoF(int mesh,double x,const double *a,const double *b,const double *c){
   CHECK(mesh==2&&a&&b);return c[0]*exp(-c[1]*exp(2*x));
 }
@@ -47,9 +45,11 @@ static double Dr_KumoF(int mesh,double x,double r,const double *a,const double *
 static double XC_Ceperly_Alder(double n,int mode){
   CHECK(mode==0||mode==3);return mode==0?-.2-.4*n+.05*n*n:-.4+.1*n;
 }
+/* The production code calls the xc package's entry; the harness keeps the model. */
+static double openmx_xc_ceperley_alder(double density,int quantity){return XC_Ceperly_Alder(density,quantity);}
 /* Independently integrate the prescribed density and polynomial XC energy.
    Coordinate differences of this scalar check the native gradient fields. */
-static double oracle_energy(const OpenMXAtomicViews *atomic,int points,double **rows){
+static double oracle_energy(const OpenMXAtomicViews *atomic,int points,const double *rows){
   if(!F_Vxc_flag)return 0;
   double sum=0;
   for(int m=1;m<=Matomnum;m++){
@@ -64,12 +64,12 @@ static double oracle_energy(const OpenMXAtomicViews *atomic,int points,double **
         for(int h=0;h<=FNAN[a];h++){
           const int b=natn[a][h],t=WhatSpecies[b];double r2=0;
           for(int d=0;d<3;d++){
-            const double delta=Gxyz[b][d+1]+atv[ncn[a][h]][d+1]-(Gxyz[a][d+1]+radius*rows[i][d]);r2+=delta*delta;
+            const double delta=Gxyz[b][d+1]+atv[ncn[a][h]][d+1]-(Gxyz[a][d+1]+radius*rows[4*i+d]);r2+=delta*delta;
           }
           const double *density=openmx_radial_row2(&atomic->density_backup,(size_t)t);
           n+=density[0]*exp(-density[1]*r2);
         }
-        angular+=rows[i][3]*central*(-.2-.4*n+.05*n*n);
+        angular+=rows[4*i+3]*central*(-.2-.4*n+.05*n*n);
       }
       radial+=radius*radius*CoarseGL_Weight[ir]*angular;
     }
@@ -77,7 +77,7 @@ static double oracle_energy(const OpenMXAtomicViews *atomic,int points,double **
   }
   return sum;
 }
-static double difference(const OpenMXAtomicViews *atomic,int points,double **rows,int atom,int d){
+static double difference(const OpenMXAtomicViews *atomic,int points,const double *rows,int atom,int d){
   const double step=1e-6,saved=Gxyz[atom][d];
   Gxyz[atom][d]=saved+step;const double plus=oracle_energy(atomic,points,rows);
   Gxyz[atom][d]=saved-step;const double minus=oracle_energy(atomic,points,rows);
@@ -86,7 +86,7 @@ static double difference(const OpenMXAtomicViews *atomic,int points,double **row
 
 /* Deform centers and image translations; the atomic radial/angular rule
    follows its center without a volume factor in this fine correction. */
-static double strain(const OpenMXAtomicViews *atomic,int points,double **rows,int i,int j){
+static double strain(const OpenMXAtomicViews *atomic,int points,const double *rows,int i,int j){
   double saved[4][4]={{0}},translations[3][4];memcpy(translations,atv,sizeof(atv));
   for(int a=1;a<=3;a++)for(int d=1;d<=3;d++)saved[a][d]=Gxyz[a][d];
   const double h=1e-6;
@@ -100,6 +100,7 @@ static double strain(const OpenMXAtomicViews *atomic,int points,double **rows,in
   return(plus-minus)/(2*h);
 }
 static void fine(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *atomic){
+  const OpenMXGaussRuleData radial={CoarseGL_Mesh,CoarseGL_Abscissae,CoarseGL_Weight};
   int Nthrds0,Gc_AN,Mc_AN,Cwan,i,j,OMPID,Nthrds,Nprocs,ir,ia,h_AN,Gh_AN,Rn,Hwan,Nloop,myid=0;
   double Stress[9]={0},My_Stress[9]={0},sumt1[9],x,y,z,dx,dy,dz,r;
   OpenMXSolverRealTensor stress_threads;
@@ -109,8 +110,8 @@ typedef struct {OpenMXAtomicViews atomic;} Arguments;
 static int exercise(OpenMXSolverInvocation *owner,void *opaque,double *result){
   Arguments *args=opaque;const int counts[3]={590,1202,590};
   for(int repeat=0;repeat<3;repeat++){
-    Num_Leb_Grid=counts[repeat];OpenMXSolverRealTensor angular;double **rows;
-    OpenMX_XC_LebedevPrepare(owner,Num_Leb_Grid,&angular,&rows);Set_Lebedev_Grid(Num_Leb_Grid,rows);
+    Num_Leb_Grid=counts[repeat];OpenMXLebedevRuleData angular;
+    OpenMX_XC_LebedevPrepare(owner,Num_Leb_Grid,&angular);const double *rows=angular.xyzw;
     double gradients[4][3]={{0}},stress[9]={0};
     if(Exc0_correction_flag){
       for(int a=1;a<=3;a++)for(int d=1;d<=3;d++)gradients[a][d-1]=difference(&args->atomic,Num_Leb_Grid,rows,a,d);

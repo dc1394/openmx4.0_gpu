@@ -3,7 +3,8 @@
 
   The registry of the environment settings this build reads: one X() line
   per name, sorted by name.  openmx_env.h turns the first column into the
-  ids OPENMX_ENV_<id>, openmx_env.c into the table behind openmx_env_at()
+  ids OPENMX_ENV_<id> (an EXT_ id keeps its case: ELPA's ELPA_DEFAULT_real_kernel
+  is read as OPENMX_ENV_EXT_ELPA_DEFAULT_real_kernel), openmx_env.c into the table behind openmx_env_at()
   and friends.  tools/update_env_registry.py rewrites this file from the
   readers in source/ (adds names, derives the kind and the default from
   the accessors, keeps the descriptions); tools/env_registry_doc.py turns
@@ -29,12 +30,14 @@
 
 #define OPENMX_ENV_LIST(X) \
     X(EXT_COSMA_CPU_MAX_MEMORY, "COSMA_CPU_MAX_MEMORY", "mib", "global", "unset (COSMA's default)", "elpa_cosma_memory.cpp", "COSMA: host memory cap in MiB, read for the CPU fallback planner") \
-    X(EXT_COSMA_GPU_MAX_TILE_K, "COSMA_GPU_MAX_TILE_K", "int", "global", "5000", "elpa_cosma_bridge.c", "COSMA: Tiled-MM tile size, read to size the GPU GEMM workspace") \
-    X(EXT_COSMA_GPU_MAX_TILE_M, "COSMA_GPU_MAX_TILE_M", "int", "global", "5000", "elpa_cosma_bridge.c", "COSMA: Tiled-MM tile size, read to size the GPU GEMM workspace") \
-    X(EXT_COSMA_GPU_MAX_TILE_N, "COSMA_GPU_MAX_TILE_N", "int", "global", "5000", "elpa_cosma_bridge.c", "COSMA: Tiled-MM tile size, read to size the GPU GEMM workspace") \
+    X(EXT_COSMA_GPU_MAX_TILE_K, "COSMA_GPU_MAX_TILE_K", "int", "global", "", "elpa_cosma_bridge.c", "COSMA: Tiled-MM tile size, read to size the GPU GEMM workspace") \
+    X(EXT_COSMA_GPU_MAX_TILE_M, "COSMA_GPU_MAX_TILE_M", "int", "global", "", "elpa_cosma_bridge.c", "COSMA: Tiled-MM tile size, read to size the GPU GEMM workspace") \
+    X(EXT_COSMA_GPU_MAX_TILE_N, "COSMA_GPU_MAX_TILE_N", "int", "global", "", "elpa_cosma_bridge.c", "COSMA: Tiled-MM tile size, read to size the GPU GEMM workspace") \
     X(EXT_COSMA_GPU_STREAMS, "COSMA_GPU_STREAMS", "int", "global", "2", "elpa_cosma_bridge.c", "COSMA: GPU streams, read to size the GPU GEMM workspace") \
     X(EXT_CUBLAS_MIN_FREE_AFTER_MB, "CUBLAS_MIN_FREE_AFTER_MB", "mib", "global", "", "Divide_Conquer.c,backends/hip/src/Divide_Conquer.c", "device memory to keep free after a cuBLAS workspace (OPENMX_CUBLAS_MIN_FREE_AFTER_MB wins)") \
     X(EXT_DC_GPU_MAX_RANKS_PER_DEVICE, "DC_GPU_MAX_RANKS_PER_DEVICE", "uint", "global", "", "backends/hip/src/Divide_Conquer.c", "Alias of OPENMX_DC_GPU_MAX_RANKS_PER_DEVICE.") \
+    X(EXT_ELPA_DEFAULT_complex_kernel, "ELPA_DEFAULT_complex_kernel", "string", "global", "unset (OpenMX chooses)", "openmx_elpa_cpu.c", "") \
+    X(EXT_ELPA_DEFAULT_real_kernel, "ELPA_DEFAULT_real_kernel", "string", "global", "unset (OpenMX chooses)", "openmx_elpa_cpu.c", "") \
     X(EXT_GEMMUL8_DISABLE, "GEMMUL8_DISABLE", "flag", "global", "", "backends/hip/src/gemmul8_bridge.cu,gemmul8_bridge.cu", "") \
     X(EXT_GEMMUL8_DISABLE_D, "GEMMUL8_DISABLE_D", "flag", "global", "", "backends/hip/src/gemmul8_bridge.cu,gemmul8_bridge.cu", "") \
     X(EXT_GEMMUL8_DISABLE_Z, "GEMMUL8_DISABLE_Z", "flag", "global", "", "backends/hip/src/gemmul8_bridge.cu,gemmul8_bridge.cu", "") \
@@ -64,7 +67,7 @@
     X(ABORT_AFTER_EIGEN, "OPENMX_ABORT_AFTER_EIGEN", "flag", "global", "0", "backends/hip/src/Band_DFT_Col.c,backends/hip/src/Band_DFT_NonCol.c", "Diagnostic: terminate after the first band eigensolve.") \
     X(ABORT_AFTER_EIGEN_SCF, "OPENMX_ABORT_AFTER_EIGEN_SCF", "int", "global", "0", "backends/hip/src/Band_DFT_Col.c", "Diagnostic: SCF iteration at which to stop after the band eigensolve; 0 disables.") \
     X(AFFINITY_DIR, "OPENMX_AFFINITY_DIR", "tool", "local", "", "build/tools", "mi300a_rank_launcher.py: directory of the per-rank CPU affinity files") \
-    X(BAND_CACHE_TRACE, "OPENMX_BAND_CACHE_TRACE", "flag", "global", "0", "Band_DFT_Col.c,backends/hip/src/Band_DFT_Col.c,backends/hip/src/Set_Hamiltonian.c", "") \
+    X(BAND_CACHE_TRACE, "OPENMX_BAND_CACHE_TRACE", "flag", "global", "0", "Band_DFT_Col.c,backends/hip/src/Band_DFT_Col.c,backends/hip/src/DFT.c,backends/hip/src/Set_Hamiltonian.c", "") \
     X(BAND_COL_INTERLEAVE_K, "OPENMX_BAND_COL_INTERLEAVE_K", "flag", "global", "", "backends/hip/src/Band_DFT_Col.c", "Override collinear k-point interleaving; retains the existing automatic layout by default.") \
     X(BAND_COL_KCACHE_MB, "OPENMX_BAND_COL_KCACHE_MB", "double", "global", "1024", "Band_DFT_Col.c,backends/hip/src/Band_DFT_Col.c", "") \
     X(BAND_COL_OVERLAP_CACHE_MB, "OPENMX_BAND_COL_OVERLAP_CACHE_MB", "double", "global", "512", "Band_DFT_Col.c,backends/hip/src/Band_DFT_Col.c", "") \
@@ -236,6 +239,8 @@
     X(GRID_PRECISION, "OPENMX_GRID_PRECISION", "string", "global", "df / fp64", "backends/hip/src/set_hamiltonian_hip.cu,grid_precision.c", "default df / fp64: The arithmetic of the grid-integral kernels (the dVH+Vxc+VNA matrix elements and the density): df = double-float, FP32 arithmetic with error-free t...") \
     X(GS2_ELPA_GPU, "OPENMX_GS2_ELPA_GPU", "flag", "global", "", "elpa_cosma_bridge.c", "") \
     X(GS2_ELPA_SOLVER, "OPENMX_GS2_ELPA_SOLVER", "int", "global", "2", "elpa_cosma_bridge.c", "default 2: ELPA solver used by gpusolver2: 1 = 1stage, anything else = 2stage (default)") \
+    X(GS2_FP32_PROBE, "OPENMX_GS2_FP32_PROBE", "int", "global", "0", "elpa_cosma_bridge.c", "") \
+    X(GS2_GEMMUL8, "OPENMX_GS2_GEMMUL8", "flag", "global", "1", "gemmul8_bridge.cu", "") \
     X(GS2_GEMM_GPU, "OPENMX_GS2_GEMM_GPU", "flag", "global", "", "elpa_cosma_bridge.c", "") \
     X(GS2_GPU_FACTOR, "OPENMX_GS2_GPU_FACTOR", "int", "global", "3", "elpa_cosma_bridge.c", "") \
     X(GS2_GPU_FIXED_MB, "OPENMX_GS2_GPU_FIXED_MB", "mib", "global", "128", "elpa_cosma_bridge.c", "") \
@@ -297,6 +302,7 @@
     X(NC_BACKTRANSFORM_BARRIER, "OPENMX_NC_BACKTRANSFORM_BARRIER", "flag", "global", "0", "backends/hip/src/Band_DFT_NonCol.c", "Opt in to a barrier around noncollinear band back-transforms.") \
     X(NC_DENSE_BUFFER_CACHE, "OPENMX_NC_DENSE_BUFFER_CACHE", "flag", "global", "0", "backends/hip/src/Band_DFT_NonCol.c", "Keep noncollinear band dense buffers; implied by device-eigenvector DM.") \
     X(NC_DEVICE_EIGENVECTOR_DM, "OPENMX_NC_DEVICE_EIGENVECTOR_DM", "flag", "global", "0", "backends/hip/src/Band_DFT_NonCol.c", "Opt in to noncollinear band DM generation from device-resident eigenvectors.") \
+    X(NC_DM_HOST_ONEPASS, "OPENMX_NC_DM_HOST_ONEPASS", "flag", "global", "1", "openmx_nc_dm_cpu.h", "") \
     X(NC_EIGEN_DEMOTE_SETHAM, "OPENMX_NC_EIGEN_DEMOTE_SETHAM", "flag", "global", "1", "backends/hip/src/DFT.c,backends/hip/src/Set_Hamiltonian.c", "Release orbital-table residency for noncollinear band dense eigensolves.") \
     X(NC_HAMILTONIAN_EIGENSOLVER, "OPENMX_NC_HAMILTONIAN_EIGENSOLVER", "string", "global", "", "backends/hip/src/Band_DFT_NonCol.c", "Set to hipsolver to select the HIP noncollinear Hamiltonian solver explicitly.") \
     X(NC_HIPSOLVER_TURN_RELEASE, "OPENMX_NC_HIPSOLVER_TURN_RELEASE", "flag", "global", "", "backends/hip/src/Band_DFT_NonCol.c", "Release hipSOLVER workspaces after a noncollinear band turn; default follows APU detection.") \

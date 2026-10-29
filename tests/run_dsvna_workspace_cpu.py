@@ -67,9 +67,9 @@ static void SetPro_gpu_abort(const char *message){fprintf(stderr,"%s\n",message)
 static void xyz2spherical(double x,double y,double z,double a,double b,double c,double *s){
   (void)a;(void)b;(void)c;s[0]=sqrt(x*x+y*y+z*z);s[1]=atan2(hypot(x,y),z);s[2]=atan2(y,x);
 }
+double legacy_Gaunt(int,int,int,int,int,int);
 static double Gaunt(int a,int b,int c,int d,int e,int f){
-  if(!(a||b||c||d||e||f))return 1.0/sqrt(4.0*acos(-1.0));
-  return (1+a+2*b+3*c+5*d+7*e+11*f)*0.015625;
+  return legacy_Gaunt(a,b,c,d,e,f);
 }
 static void ComplexSH(int l,int m,double theta,double phi,double *v,double *dt,double *dp){
   if(l==0){assert(m==0);v[0]=1.0/sqrt(4.0*acos(-1.0));v[1]=dt[0]=dt[1]=dp[0]=dp[1]=0;return;}
@@ -211,6 +211,6 @@ with tempfile.TemporaryDirectory(prefix="openmx-dsvna-workspace-") as folder:
     for precision in ("float", "double"):
         subprocess.run(shlex.split(os.environ.get("CC", "cc")) + shlex.split(os.environ.get("CFLAGS", "-O2 -g")) +
                        ["-std=c11", "-fopenmp", "-DOPENMX_TEST_DS_TYPE=" + precision,
-                        "-I" + str(ROOT / "source"), "-I" + str(ROOT / "tests"), str(src), str(CORE),
+                        "-I" + str(ROOT / "source"), "-I" + str(ROOT / "tests"), str(src), str(ROOT / "modules/basis/tests/fixtures/gaunt_before_library.c"), str(CORE),
                         "-Wl,-rpath," + str(CORE.parent), "-lm", "-o", str(exe)], check=True)
         subprocess.run([str(exe)], check=True)

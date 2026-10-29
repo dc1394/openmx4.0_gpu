@@ -212,6 +212,9 @@ if(BUILD_TESTING)
   add_test(NAME environment-registry
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_env_registry_cpu.py")
   set_tests_properties(environment-registry PROPERTIES LABELS "unit" TIMEOUT 120)
+  add_test(NAME nc-block-indices
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_nc_indices_cpu.py")
+  set_tests_properties(nc-block-indices PROPERTIES LABELS "unit" TIMEOUT 600)
   add_test(NAME force-invocation-lifetime
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_force_lifetime_cpu.py")
   set_tests_properties(force-invocation-lifetime PROPERTIES LABELS "unit;force"
@@ -274,6 +277,12 @@ if(BUILD_TESTING)
   add_test(NAME orbital-evaluation COMMAND "${Python3_EXECUTABLE}"
     "${CMAKE_SOURCE_DIR}/tests/run_orbital_evaluation_cpu.py" "$<TARGET_FILE:openmx_core>")
   set_tests_properties(orbital-evaluation PROPERTIES TIMEOUT 180 LABELS "unit;orbitals")
+  add_test(NAME gaunt-coefficients COMMAND "${Python3_EXECUTABLE}"
+    "${CMAKE_SOURCE_DIR}/tests/run_gaunt_cpu.py")
+  set_tests_properties(gaunt-coefficients PROPERTIES TIMEOUT 120 LABELS "unit;basis")
+  add_test(NAME angular-momentum COMMAND "${Python3_EXECUTABLE}"
+    "${CMAKE_SOURCE_DIR}/tests/run_angular_momentum_cpu.py" "$<TARGET_FILE:openmx_core>")
+  set_tests_properties(angular-momentum PROPERTIES TIMEOUT 120 LABELS "unit;orbitals")
   add_test(NAME local-basis-contraction COMMAND "${Python3_EXECUTABLE}"
     "${CMAKE_SOURCE_DIR}/tests/run_local_contraction.py")
   set_tests_properties(local-basis-contraction PROPERTIES TIMEOUT 60 LABELS "unit;orbitals")

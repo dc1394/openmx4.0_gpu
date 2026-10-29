@@ -6,6 +6,7 @@
 #include "openmx_core_nonlocal.h"
 #include "openmx_core_vna.h"
 #include "openmx_core_vna_preparation.h"
+#include "openmx_core_vna_host_tables.h"
 #include "openmx_core_dsvna.h"
 #include "openmx_core_hvna.h"
 #include "openmx_core_hvna_workspace.h"
@@ -20,6 +21,7 @@
 #include <openmx/core/nonlocal_workspace.hpp>
 #include <openmx/core/vna_workspace.hpp>
 #include <openmx/core/vna_preparation.hpp>
+#include <openmx/core/vna_host_tables.hpp>
 #include <openmx/core/dsvna_workspace.hpp>
 #include <openmx/core/hvna_layout.hpp>
 #include <openmx/core/hvna_workspace.hpp>
@@ -56,6 +58,17 @@ struct OpenMXVnaPreparation {
   OpenMXVnaPreparation(openmx::core::VnaPreparationShape shape,
       std::span<const openmx::core::SpeciesBasisView> species) : implementation(shape,species) {}
   openmx::core::VnaPreparation implementation;
+};
+
+struct OpenMXVnaHostProjectors {
+  OpenMXVnaHostProjectors(openmx::core::VnaProjectorPackingShape shape,const OpenMXVnaHostProjectorInput& input)
+    : implementation(shape,input) {}
+  openmx::core::VnaHostProjectors implementation;
+};
+struct OpenMXVnaHostProducts {
+  OpenMXVnaHostProducts(const openmx::core::RadialBasisLayout& basis,int points,const OpenMXProductRadialView& input)
+    : implementation(basis,points,input) {}
+  openmx::core::VnaHostProducts implementation;
 };
 
 struct OpenMXDsvnaWorkspace {
@@ -620,10 +633,57 @@ extern "C" OpenMXVnaPreparation* openmx_core_vna_preparation_create(const OpenMX
   return result;
 }
 
+extern "C" int openmx_core_vna_gaunt_table(const OpenMXVnaPreparation* preparation,
+    int kind, OpenMXGauntTableData* out, char* error, std::size_t capacity)
+{
+  if(error && capacity)*error='\0';
+  try {
+    if(!preparation || !out || (kind!=OPENMX_VNA_GAUNT_PROJECTOR && kind!=OPENMX_VNA_GAUNT_PRODUCT))
+      throw std::invalid_argument("missing VNA preparation/output or invalid Gaunt kind");
+    *out=preparation->implementation.gaunt_table(kind==OPENMX_VNA_GAUNT_PROJECTOR).view();
+    return 1;
+  }catch(const std::exception& exception) {
+    if(error && capacity)std::snprintf(error,capacity,"%s",exception.what());
+  }catch(...) {
+    if(error && capacity)std::snprintf(error,capacity,"unknown VNA Gaunt table error");
+  }
+  return 0;
+}
+
 extern "C" void openmx_core_vna_preparation_destroy(OpenMXVnaPreparation* preparation)
 {
   delete preparation;
 }
+
+extern "C" OpenMXVnaHostProjectors* openmx_core_vna_host_projectors_create(
+    const OpenMXVnaPreparation* preparation,const OpenMXVnaHostProjectorInput* input,
+    OpenMXVnaHostProjectorData* out,char* error,std::size_t capacity)
+{
+  OpenMXVnaHostProjectors* result=nullptr;
+  checked_call(error,capacity,[&] {
+    if(!preparation || !input || !out)throw std::invalid_argument("missing VNA projector packing input/output");
+    const auto& work=preparation->implementation;const auto& shape=work.shape();
+    auto owner=std::make_unique<OpenMXVnaHostProjectors>(openmx::core::VnaProjectorPackingShape{
+        static_cast<int>(work.basis().maximum_angular().size()),shape.points,shape.projector_angular,shape.projector_multiplicity},*input);
+    *out=owner->implementation.view();result=owner.release();
+  });
+  return result;
+}
+extern "C" OpenMXVnaHostProducts* openmx_core_vna_host_products_create(
+    const OpenMXVnaPreparation* preparation,const OpenMXProductRadialView* input,
+    OpenMXVnaHostProductData* out,char* error,std::size_t capacity)
+{
+  OpenMXVnaHostProducts* result=nullptr;
+  checked_call(error,capacity,[&] {
+    if(!preparation || !input || !out)throw std::invalid_argument("missing VNA product packing input/output");
+    const auto& work=preparation->implementation;
+    auto owner=std::make_unique<OpenMXVnaHostProducts>(work.basis(),work.shape().points,*input);
+    *out=owner->implementation.view();result=owner.release();
+  });
+  return result;
+}
+extern "C" void openmx_core_vna_host_projectors_destroy(OpenMXVnaHostProjectors* owner) { delete owner; }
+extern "C" void openmx_core_vna_host_products_destroy(OpenMXVnaHostProducts* owner) { delete owner; }
 
 extern "C" OpenMXDsvnaWorkspace* openmx_core_dsvna_create(const OpenMXVnaPreparation* preparation,
     OpenMXDsvnaBuffers* buffers, char* error, std::size_t capacity)
@@ -664,6 +724,26 @@ extern "C" OpenMXDsvnaWorkspace* openmx_core_dsvna_create(const OpenMXVnaPrepara
 extern "C" void openmx_core_dsvna_destroy(OpenMXDsvnaWorkspace* workspace)
 {
   delete workspace;
+}
+
+extern "C" int openmx_core_vna_simd_workspace(OpenMXVnaWorkspace* workspace,int orders,
+    OpenMXVnaSimdBuffers* out,char* error,std::size_t capacity)
+{
+  return checked_call(error,capacity,[&] {
+    if(!workspace || !out)throw std::invalid_argument("missing VNA worker or SIMD output");
+    const auto data=workspace->implementation.simd(orders).buffers();
+    *out=data;
+  });
+}
+extern "C" int openmx_core_dsvna_simd_workspace(OpenMXDsvnaWorkspace* workspace,int angular,
+    OpenMXDsvnaSimdBuffers* out,char* error,std::size_t capacity)
+{
+  return checked_call(error,capacity,[&] {
+    if(!workspace || !out || (angular!=0 && angular!=1))
+      throw std::invalid_argument("missing DSVNA worker/output or invalid SIMD option");
+    const auto data=workspace->implementation.simd(angular!=0).buffers();
+    *out=data;
+  });
 }
 
 extern "C" OpenMXHvnaLayout* openmx_core_hvna_create(const OpenMXVnaPreparation* preparation,
@@ -978,6 +1058,9 @@ extern "C" void openmx_core_finish(OpenMXCoreContext* context)
     context->neutral_grid_metadata.reset();
     context->products.reset();
     context->species.reset();
+    context->radial_quadrature.reset();
+    context->neutral_quadrature.reset();
+    context->real_harmonics.reset();
     context->implementation.finish();
   }
 }

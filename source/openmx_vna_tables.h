@@ -1,7 +1,7 @@
 #ifndef OPENMX_VNA_TABLES_H
 #define OPENMX_VNA_TABLES_H
 #include "openmx_complex.h"
-#include "openmx_core_reciprocal.h"
+#include "openmx_core_radial_views.h"
 #include <stddef.h>
 
 /* Fourier/output tables remain borrowed for this synchronous invocation.

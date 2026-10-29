@@ -70,157 +70,7 @@ void Get_dOrbitals(const OpenMXAtomicViews *atomic, int wan, double x, double y,
     P = S_coordinate[2];
   }  
 
-  po = 0;
-  mp_min = 0;
-  mp_max = atomic->species.pao_mesh[wan] - 1;
-
-  if (openmx_radial_row2(&atomic->pao_radii,wan)[atomic->species.pao_mesh[wan]-1]<R){
-
-    for (L0=0; L0<=atomic->species.basis_lmax[wan]; L0++){
-      for (Mul0=0; Mul0<atomic->species.basis[(size_t)(wan)*atomic->species.angular_channels+(L0)]; Mul0++){
-         RF[(size_t)(L0)*orbital_buffers.multiplicity+(Mul0)] = 0.0;
-        dRF[(size_t)(L0)*orbital_buffers.multiplicity+(Mul0)] = 0.0;
-      }
-    }
-
-    po = 1;
-  }
-
-  else if (R<openmx_radial_row2(&atomic->pao_radii,wan)[0]){
-
-    m = 4;
-    rm = openmx_radial_row2(&atomic->pao_radii,wan)[m];
-
-    /* Use reflected endpoint samples before forming the spline weights. */
-    h1 = (m==1) ? openmx_radial_row2(&atomic->pao_radii,wan)[m-1] - openmx_radial_row2(&atomic->pao_radii,wan)[m+1]
-      : openmx_radial_row2(&atomic->pao_radii,wan)[m-1] - openmx_radial_row2(&atomic->pao_radii,wan)[m-2];
-    h2 = openmx_radial_row2(&atomic->pao_radii,wan)[m]   - openmx_radial_row2(&atomic->pao_radii,wan)[m-1];
-    h3 = (m==atomic->species.pao_mesh[wan]-1) ? openmx_radial_row2(&atomic->pao_radii,wan)[m-2] - openmx_radial_row2(&atomic->pao_radii,wan)[m]
-      : openmx_radial_row2(&atomic->pao_radii,wan)[m+1] - openmx_radial_row2(&atomic->pao_radii,wan)[m];
-
-    x1 = rm - openmx_radial_row2(&atomic->pao_radii,wan)[m-1];
-    x2 = rm - openmx_radial_row2(&atomic->pao_radii,wan)[m];
-    y1 = x1/h2;
-    y2 = x2/h2;
-    y12 = y1*y1;
-    y22 = y2*y2;
-
-    dum = h1 + h2;
-    dum1 = h1/h2/dum;
-    dum2 = h2/h1/dum;
-    dum = h2 + h3;
-    dum3 = h2/h3/dum;
-    dum4 = h3/h2/dum;
-
-    for (L0=0; L0<=atomic->species.basis_lmax[wan]; L0++){
-      for (Mul0=0; Mul0<atomic->species.basis[(size_t)(wan)*atomic->species.angular_channels+(L0)]; Mul0++){
-
-        f1 = openmx_radial_row4(&atomic->orbitals,wan,L0,Mul0)[(m==1) ? m+1 : m-2];
-        f2 = openmx_radial_row4(&atomic->orbitals,wan,L0,Mul0)[m-1];
-        f3 = openmx_radial_row4(&atomic->orbitals,wan,L0,Mul0)[m];
-        f4 = openmx_radial_row4(&atomic->orbitals,wan,L0,Mul0)[(m==atomic->species.pao_mesh[wan]-1) ? m-2 : m+1];
-
-        dum = f3 - f2;
-        g1 = dum*dum1 + (f2-f1)*dum2;
-        g2 = (f4-f3)*dum3 + dum*dum4;
-
-        f =  y22*(3.0*f2 + h2*g1 + (2.0*f2 + h2*g1)*y2)
-           + y12*(3.0*f3 - h2*g2 - (2.0*f3 - h2*g2)*y1);
-
-        df = 2.0*y2/h2*(3.0*f2 + h2*g1 + (2.0*f2 + h2*g1)*y2)
-           + y22*(2.0*f2 + h2*g1)/h2
-           + 2.0*y1/h2*(3.0*f3 - h2*g2 - (2.0*f3 - h2*g2)*y1)
-           - y12*(2.0*f3 - h2*g2)/h2;
-
-        if (L0==0){
-          a = 0.0;
-          b = 0.5*df/rm;
-          c = 0.0;
-          d = f - b*rm*rm;
-        }
-
-        else if (L0==1){
-          a = (rm*df - f)/(2.0*rm*rm*rm);
-          b = 0.0;
-          c = df - 3.0*a*rm*rm;
-          d = 0.0;
-        }
-
-        else{
-          b = (3.0*f - rm*df)/(rm*rm);
-          a = (f - b*rm*rm)/(rm*rm*rm);
-          c = 0.0;
-          d = 0.0;
-        }
-
-        RF[(size_t)(L0)*orbital_buffers.multiplicity+(Mul0)] = a*R*R*R + b*R*R + c*R + d;
-        dRF[(size_t)(L0)*orbital_buffers.multiplicity+(Mul0)] = 3.0*a*R*R + 2.0*b*R + c;
-
-      }
-    }
-
-  }
-
-  else{
-
-    do{
-      m = (mp_min + mp_max)/2;
-      if (openmx_radial_row2(&atomic->pao_radii,wan)[m]<R)
-        mp_min = m;
-      else 
-        mp_max = m;
-    }
-    while((mp_max-mp_min)!=1);
-    m = mp_max;
-
-    h1 = (m==1) ? openmx_radial_row2(&atomic->pao_radii,wan)[m-1] - openmx_radial_row2(&atomic->pao_radii,wan)[m+1]
-      : openmx_radial_row2(&atomic->pao_radii,wan)[m-1] - openmx_radial_row2(&atomic->pao_radii,wan)[m-2];
-    h2 = openmx_radial_row2(&atomic->pao_radii,wan)[m]   - openmx_radial_row2(&atomic->pao_radii,wan)[m-1];
-    h3 = (m==atomic->species.pao_mesh[wan]-1) ? openmx_radial_row2(&atomic->pao_radii,wan)[m-2] - openmx_radial_row2(&atomic->pao_radii,wan)[m]
-      : openmx_radial_row2(&atomic->pao_radii,wan)[m+1] - openmx_radial_row2(&atomic->pao_radii,wan)[m];
-
-    x1 = R - openmx_radial_row2(&atomic->pao_radii,wan)[m-1];
-    x2 = R - openmx_radial_row2(&atomic->pao_radii,wan)[m];
-    y1 = x1/h2;
-    y2 = x2/h2;
-    y12 = y1*y1;
-    y22 = y2*y2;
-
-    dum = h1 + h2;
-    dum1 = h1/h2/dum;
-    dum2 = h2/h1/dum;
-    dum = h2 + h3;
-    dum3 = h2/h3/dum;
-    dum4 = h3/h2/dum;
-
-    for (L0=0; L0<=atomic->species.basis_lmax[wan]; L0++){
-      for (Mul0=0; Mul0<atomic->species.basis[(size_t)(wan)*atomic->species.angular_channels+(L0)]; Mul0++){
-
-        f1 = openmx_radial_row4(&atomic->orbitals,wan,L0,Mul0)[(m==1) ? m+1 : m-2];
-        f2 = openmx_radial_row4(&atomic->orbitals,wan,L0,Mul0)[m-1];
-        f3 = openmx_radial_row4(&atomic->orbitals,wan,L0,Mul0)[m];
-        f4 = openmx_radial_row4(&atomic->orbitals,wan,L0,Mul0)[(m==atomic->species.pao_mesh[wan]-1) ? m-2 : m+1];
-
-        dum = f3 - f2;
-        g1 = dum*dum1 + (f2-f1)*dum2;
-        g2 = (f4-f3)*dum3 + dum*dum4;
-
-        f =  y22*(3.0*f2 + h2*g1 + (2.0*f2 + h2*g1)*y2)
-           + y12*(3.0*f3 - h2*g2 - (2.0*f3 - h2*g2)*y1);
-
-        df = 2.0*y2/h2*(3.0*f2 + h2*g1 + (2.0*f2 + h2*g1)*y2)
-           + y2*y2*(2.0*f2 + h2*g1)/h2
-           + 2.0*y1/h2*(3.0*f3 - h2*g2 - (2.0*f3 - h2*g2)*y1)
-           - y1*y1*(2.0*f3 - h2*g2)/h2;
-
-         RF[(size_t)(L0)*orbital_buffers.multiplicity+(Mul0)] = f;
-        dRF[(size_t)(L0)*orbital_buffers.multiplicity+(Mul0)] = df;
-
-      }
-    }
-  }
-
-  /* dr/dx,y,z, dQ/dx,y,z, dP/dx,y,z and dAngular */
+  po = OpenMX_OrbitalRadial(atomic,wan,R,1,&orbital_buffers);
 
   if (po==0){
 
@@ -347,24 +197,24 @@ void Get_dOrbitals(const OpenMXAtomicViews *atomic, int wan, double x, double y,
           sum0 = 0.0;
           sum1 = 0.0; 
 	  for (j=0; j<(L0*2+1); j++){
-            sum0 += Comp2Real[L0][i][j].r*SH[j][0] - Comp2Real[L0][i][j].i*SH[j][1]; 
-            sum1 += Comp2Real[L0][i][j].r*SH[j][1] + Comp2Real[L0][i][j].i*SH[j][0]; 
+            sum0 += openmx_real_harmonic_coefficient(&atomic->real_harmonics,L0,i,j).r*SH[j][0] - openmx_real_harmonic_coefficient(&atomic->real_harmonics,L0,i,j).i*SH[j][1];
+            sum1 += openmx_real_harmonic_coefficient(&atomic->real_harmonics,L0,i,j).r*SH[j][1] + openmx_real_harmonic_coefficient(&atomic->real_harmonics,L0,i,j).i*SH[j][0];
 	  }
           AF[(size_t)(L0)*orbital_buffers.magnetic_capacity+(i)] = sum0 + sum1;
 
           sum0 = 0.0;
           sum1 = 0.0; 
 	  for (j=0; j<(L0*2+1); j++){
-            sum0 += Comp2Real[L0][i][j].r*dSHt[j][0] - Comp2Real[L0][i][j].i*dSHt[j][1]; 
-            sum1 += Comp2Real[L0][i][j].r*dSHt[j][1] + Comp2Real[L0][i][j].i*dSHt[j][0]; 
+            sum0 += openmx_real_harmonic_coefficient(&atomic->real_harmonics,L0,i,j).r*dSHt[j][0] - openmx_real_harmonic_coefficient(&atomic->real_harmonics,L0,i,j).i*dSHt[j][1];
+            sum1 += openmx_real_harmonic_coefficient(&atomic->real_harmonics,L0,i,j).r*dSHt[j][1] + openmx_real_harmonic_coefficient(&atomic->real_harmonics,L0,i,j).i*dSHt[j][0];
 	  }
           dAFQ[(size_t)(L0)*orbital_buffers.magnetic_capacity+(i)] = sum0 + sum1;
 
           sum0 = 0.0;
           sum1 = 0.0; 
 	  for (j=0; j<(L0*2+1); j++){
-            sum0 += Comp2Real[L0][i][j].r*dSHp[j][0] - Comp2Real[L0][i][j].i*dSHp[j][1]; 
-            sum1 += Comp2Real[L0][i][j].r*dSHp[j][1] + Comp2Real[L0][i][j].i*dSHp[j][0]; 
+            sum0 += openmx_real_harmonic_coefficient(&atomic->real_harmonics,L0,i,j).r*dSHp[j][0] - openmx_real_harmonic_coefficient(&atomic->real_harmonics,L0,i,j).i*dSHp[j][1];
+            sum1 += openmx_real_harmonic_coefficient(&atomic->real_harmonics,L0,i,j).r*dSHp[j][1] + openmx_real_harmonic_coefficient(&atomic->real_harmonics,L0,i,j).i*dSHp[j][0];
 	  }
           dAFP[(size_t)(L0)*orbital_buffers.magnetic_capacity+(i)] = sum0 + sum1;
 	}              
@@ -449,155 +299,7 @@ void Get_dOrbitals_work(const OpenMXAtomicViews *atomic, int wan, double x, doub
     P = S_coordinate[2];
   }
 
-  po = 0;
-  mp_min = 0;
-  mp_max = atomic->species.pao_mesh[wan] - 1;
-
-  if (openmx_radial_row2(&atomic->pao_radii,wan)[atomic->species.pao_mesh[wan] - 1] < R) {
-
-    for (L0 = 0; L0 <= atomic->species.basis_lmax[wan]; L0++) {
-      for (Mul0 = 0; Mul0 < atomic->species.basis[(size_t)(wan)*atomic->species.angular_channels+(L0)]; Mul0++) {
-	RF[(size_t)(L0)*buffer.multiplicity+(Mul0)] = 0.0;
-	dRF[(size_t)(L0)*buffer.multiplicity+(Mul0)] = 0.0;
-      }
-    }
-
-    po = 1;
-  }
-
-  else if (R < openmx_radial_row2(&atomic->pao_radii,wan)[0]) {
-
-    m = 4;
-    rm = openmx_radial_row2(&atomic->pao_radii,wan)[m];
-
-    h1 = (m==1) ? openmx_radial_row2(&atomic->pao_radii,wan)[m-1] - openmx_radial_row2(&atomic->pao_radii,wan)[m+1]
-      : openmx_radial_row2(&atomic->pao_radii,wan)[m-1] - openmx_radial_row2(&atomic->pao_radii,wan)[m-2];
-    h2 = openmx_radial_row2(&atomic->pao_radii,wan)[m] - openmx_radial_row2(&atomic->pao_radii,wan)[m - 1];
-    h3 = (m==atomic->species.pao_mesh[wan]-1) ? openmx_radial_row2(&atomic->pao_radii,wan)[m-2] - openmx_radial_row2(&atomic->pao_radii,wan)[m]
-      : openmx_radial_row2(&atomic->pao_radii,wan)[m+1] - openmx_radial_row2(&atomic->pao_radii,wan)[m];
-
-    x1 = rm - openmx_radial_row2(&atomic->pao_radii,wan)[m - 1];
-    x2 = rm - openmx_radial_row2(&atomic->pao_radii,wan)[m];
-    y1 = x1 / h2;
-    y2 = x2 / h2;
-    y12 = y1*y1;
-    y22 = y2*y2;
-
-    dum = h1 + h2;
-    dum1 = h1 / h2 / dum;
-    dum2 = h2 / h1 / dum;
-    dum = h2 + h3;
-    dum3 = h2 / h3 / dum;
-    dum4 = h3 / h2 / dum;
-
-    for (L0 = 0; L0 <= atomic->species.basis_lmax[wan]; L0++) {
-      for (Mul0 = 0; Mul0 < atomic->species.basis[(size_t)(wan)*atomic->species.angular_channels+(L0)]; Mul0++) {
-
-	f1 = openmx_radial_row4(&atomic->orbitals,wan,L0,Mul0)[(m==1) ? m+1 : m-2];
-	f2 = openmx_radial_row4(&atomic->orbitals,wan,L0,Mul0)[m - 1];
-	f3 = openmx_radial_row4(&atomic->orbitals,wan,L0,Mul0)[m];
-	f4 = openmx_radial_row4(&atomic->orbitals,wan,L0,Mul0)[(m==atomic->species.pao_mesh[wan]-1) ? m-2 : m+1];
-
-	dum = f3 - f2;
-	g1 = dum*dum1 + (f2 - f1)*dum2;
-	g2 = (f4 - f3)*dum3 + dum*dum4;
-
-	f = y22*(3.0*f2 + h2*g1 + (2.0*f2 + h2*g1)*y2)
-	  + y12*(3.0*f3 - h2*g2 - (2.0*f3 - h2*g2)*y1);
-
-	df = 2.0*y2 / h2*(3.0*f2 + h2*g1 + (2.0*f2 + h2*g1)*y2)
-	  + y22*(2.0*f2 + h2*g1) / h2
-	  + 2.0*y1 / h2*(3.0*f3 - h2*g2 - (2.0*f3 - h2*g2)*y1)
-	  - y12*(2.0*f3 - h2*g2) / h2;
-
-	if (L0 == 0) {
-	  a = 0.0;
-	  b = 0.5*df / rm;
-	  c = 0.0;
-	  d = f - b*rm*rm;
-	}
-
-	else if (L0 == 1) {
-	  a = (rm*df - f) / (2.0*rm*rm*rm);
-	  b = 0.0;
-	  c = df - 3.0*a*rm*rm;
-	  d = 0.0;
-	}
-
-	else {
-	  b = (3.0*f - rm*df) / (rm*rm);
-	  a = (f - b*rm*rm) / (rm*rm*rm);
-	  c = 0.0;
-	  d = 0.0;
-	}
-
-	RF[(size_t)(L0)*buffer.multiplicity+(Mul0)] = a*R*R*R + b*R*R + c*R + d;
-	dRF[(size_t)(L0)*buffer.multiplicity+(Mul0)] = 3.0*a*R*R + 2.0*b*R + c;
-
-      }
-    }
-
-  }
-
-  else {
-
-    do {
-      m = (mp_min + mp_max) / 2;
-      if (openmx_radial_row2(&atomic->pao_radii,wan)[m] < R)
-	mp_min = m;
-      else
-	mp_max = m;
-    } while ((mp_max - mp_min) != 1);
-    m = mp_max;
-
-    h1 = (m==1) ? openmx_radial_row2(&atomic->pao_radii,wan)[m-1] - openmx_radial_row2(&atomic->pao_radii,wan)[m+1]
-      : openmx_radial_row2(&atomic->pao_radii,wan)[m-1] - openmx_radial_row2(&atomic->pao_radii,wan)[m-2];
-    h2 = openmx_radial_row2(&atomic->pao_radii,wan)[m] - openmx_radial_row2(&atomic->pao_radii,wan)[m - 1];
-    h3 = (m==atomic->species.pao_mesh[wan]-1) ? openmx_radial_row2(&atomic->pao_radii,wan)[m-2] - openmx_radial_row2(&atomic->pao_radii,wan)[m]
-      : openmx_radial_row2(&atomic->pao_radii,wan)[m+1] - openmx_radial_row2(&atomic->pao_radii,wan)[m];
-
-    x1 = R - openmx_radial_row2(&atomic->pao_radii,wan)[m - 1];
-    x2 = R - openmx_radial_row2(&atomic->pao_radii,wan)[m];
-    y1 = x1 / h2;
-    y2 = x2 / h2;
-    y12 = y1*y1;
-    y22 = y2*y2;
-
-    dum = h1 + h2;
-    dum1 = h1 / h2 / dum;
-    dum2 = h2 / h1 / dum;
-    dum = h2 + h3;
-    dum3 = h2 / h3 / dum;
-    dum4 = h3 / h2 / dum;
-
-    for (L0 = 0; L0 <= atomic->species.basis_lmax[wan]; L0++) {
-      for (Mul0 = 0; Mul0 < atomic->species.basis[(size_t)(wan)*atomic->species.angular_channels+(L0)]; Mul0++) {
-
-	f1 = openmx_radial_row4(&atomic->orbitals,wan,L0,Mul0)[(m==1) ? m+1 : m-2];
-	f2 = openmx_radial_row4(&atomic->orbitals,wan,L0,Mul0)[m - 1];
-	f3 = openmx_radial_row4(&atomic->orbitals,wan,L0,Mul0)[m];
-	f4 = openmx_radial_row4(&atomic->orbitals,wan,L0,Mul0)[(m==atomic->species.pao_mesh[wan]-1) ? m-2 : m+1];
-
-	dum = f3 - f2;
-	g1 = dum*dum1 + (f2 - f1)*dum2;
-	g2 = (f4 - f3)*dum3 + dum*dum4;
-
-	f = y22*(3.0*f2 + h2*g1 + (2.0*f2 + h2*g1)*y2)
-	  + y12*(3.0*f3 - h2*g2 - (2.0*f3 - h2*g2)*y1);
-
-	df = 2.0*y2 / h2*(3.0*f2 + h2*g1 + (2.0*f2 + h2*g1)*y2)
-	  + y2*y2*(2.0*f2 + h2*g1) / h2
-	  + 2.0*y1 / h2*(3.0*f3 - h2*g2 - (2.0*f3 - h2*g2)*y1)
-	  - y1*y1*(2.0*f3 - h2*g2) / h2;
-
-	RF[(size_t)(L0)*buffer.multiplicity+(Mul0)] = f;
-	dRF[(size_t)(L0)*buffer.multiplicity+(Mul0)] = df;
-
-      }
-    }
-  }
-
-  /* dr/dx,y,z, dQ/dx,y,z, dP/dx,y,z and dAngular */
+  po = OpenMX_OrbitalRadial(atomic,wan,R,1,&buffer);
 
   if (po == 0) {
 
@@ -720,24 +422,24 @@ void Get_dOrbitals_work(const OpenMXAtomicViews *atomic, int wan, double x, doub
 	  sum0 = 0.0;
 	  sum1 = 0.0;
 	  for (j = 0; j < (L0 * 2 + 1); j++) {
-	    sum0 += Comp2Real[L0][i][j].r*SH[j][0] - Comp2Real[L0][i][j].i*SH[j][1];
-	    sum1 += Comp2Real[L0][i][j].r*SH[j][1] + Comp2Real[L0][i][j].i*SH[j][0];
+	    sum0 += openmx_real_harmonic_coefficient(&atomic->real_harmonics,L0,i,j).r*SH[j][0] - openmx_real_harmonic_coefficient(&atomic->real_harmonics,L0,i,j).i*SH[j][1];
+	    sum1 += openmx_real_harmonic_coefficient(&atomic->real_harmonics,L0,i,j).r*SH[j][1] + openmx_real_harmonic_coefficient(&atomic->real_harmonics,L0,i,j).i*SH[j][0];
 	  }
 	  AF[(size_t)(L0)*buffer.magnetic_capacity+(i)] = sum0 + sum1;
 
 	  sum0 = 0.0;
 	  sum1 = 0.0;
 	  for (j = 0; j < (L0 * 2 + 1); j++) {
-	    sum0 += Comp2Real[L0][i][j].r*dSHt[j][0] - Comp2Real[L0][i][j].i*dSHt[j][1];
-	    sum1 += Comp2Real[L0][i][j].r*dSHt[j][1] + Comp2Real[L0][i][j].i*dSHt[j][0];
+	    sum0 += openmx_real_harmonic_coefficient(&atomic->real_harmonics,L0,i,j).r*dSHt[j][0] - openmx_real_harmonic_coefficient(&atomic->real_harmonics,L0,i,j).i*dSHt[j][1];
+	    sum1 += openmx_real_harmonic_coefficient(&atomic->real_harmonics,L0,i,j).r*dSHt[j][1] + openmx_real_harmonic_coefficient(&atomic->real_harmonics,L0,i,j).i*dSHt[j][0];
 	  }
 	  dAFQ[(size_t)(L0)*buffer.magnetic_capacity+(i)] = sum0 + sum1;
 
 	  sum0 = 0.0;
 	  sum1 = 0.0;
 	  for (j = 0; j < (L0 * 2 + 1); j++) {
-	    sum0 += Comp2Real[L0][i][j].r*dSHp[j][0] - Comp2Real[L0][i][j].i*dSHp[j][1];
-	    sum1 += Comp2Real[L0][i][j].r*dSHp[j][1] + Comp2Real[L0][i][j].i*dSHp[j][0];
+	    sum0 += openmx_real_harmonic_coefficient(&atomic->real_harmonics,L0,i,j).r*dSHp[j][0] - openmx_real_harmonic_coefficient(&atomic->real_harmonics,L0,i,j).i*dSHp[j][1];
+	    sum1 += openmx_real_harmonic_coefficient(&atomic->real_harmonics,L0,i,j).r*dSHp[j][1] + openmx_real_harmonic_coefficient(&atomic->real_harmonics,L0,i,j).i*dSHp[j][0];
 	  }
 	  dAFP[(size_t)(L0)*buffer.magnetic_capacity+(i)] = sum0 + sum1;
 	}
@@ -829,156 +531,7 @@ void Get_dOrbitals2(const OpenMXAtomicViews *atomic, int wan, double x, double y
     P = S_coordinate[2];
   }  
 
-  po = 0;
-  mp_min = 0;
-  mp_max = atomic->species.pao_mesh[wan] - 1;
-
-  if (openmx_radial_row2(&atomic->pao_radii,wan)[atomic->species.pao_mesh[wan]-1]<R){
-
-    for (L0=0; L0<=atomic->species.basis_lmax[wan]; L0++){
-      for (Mul0=0; Mul0<atomic->species.basis[(size_t)(wan)*atomic->species.angular_channels+(L0)]; Mul0++){
-         RF[(size_t)(L0)*orbital_buffers.multiplicity+(Mul0)] = 0.0;
-        dRF[(size_t)(L0)*orbital_buffers.multiplicity+(Mul0)] = 0.0;
-      }
-    }
-
-    po = 1;
-  }
-
-  else if (R<openmx_radial_row2(&atomic->pao_radii,wan)[0]){
-
-    m = 4;
-    rm = openmx_radial_row2(&atomic->pao_radii,wan)[m];
-
-    h1 = (m==1) ? openmx_radial_row2(&atomic->pao_radii,wan)[m-1] - openmx_radial_row2(&atomic->pao_radii,wan)[m+1]
-      : openmx_radial_row2(&atomic->pao_radii,wan)[m-1] - openmx_radial_row2(&atomic->pao_radii,wan)[m-2];
-    h2 = openmx_radial_row2(&atomic->pao_radii,wan)[m]   - openmx_radial_row2(&atomic->pao_radii,wan)[m-1];
-    h3 = (m==atomic->species.pao_mesh[wan]-1) ? openmx_radial_row2(&atomic->pao_radii,wan)[m-2] - openmx_radial_row2(&atomic->pao_radii,wan)[m]
-      : openmx_radial_row2(&atomic->pao_radii,wan)[m+1] - openmx_radial_row2(&atomic->pao_radii,wan)[m];
-
-    x1 = rm - openmx_radial_row2(&atomic->pao_radii,wan)[m-1];
-    x2 = rm - openmx_radial_row2(&atomic->pao_radii,wan)[m];
-    y1 = x1/h2;
-    y2 = x2/h2;
-    y12 = y1*y1;
-    y22 = y2*y2;
-
-    dum = h1 + h2;
-    dum1 = h1/h2/dum;
-    dum2 = h2/h1/dum;
-    dum = h2 + h3;
-    dum3 = h2/h3/dum;
-    dum4 = h3/h2/dum;
-
-    for (L0=0; L0<=atomic->species.basis_lmax[wan]; L0++){
-      for (Mul0=0; Mul0<atomic->species.basis[(size_t)(wan)*atomic->species.angular_channels+(L0)]; Mul0++){
-
-        f1 = openmx_radial_row4(&atomic->orbitals,wan,L0,Mul0)[(m==1) ? m+1 : m-2];
-        f2 = openmx_radial_row4(&atomic->orbitals,wan,L0,Mul0)[m-1];
-        f3 = openmx_radial_row4(&atomic->orbitals,wan,L0,Mul0)[m];
-        f4 = openmx_radial_row4(&atomic->orbitals,wan,L0,Mul0)[(m==atomic->species.pao_mesh[wan]-1) ? m-2 : m+1];
-
-        dum = f3 - f2;
-        g1 = dum*dum1 + (f2-f1)*dum2;
-        g2 = (f4-f3)*dum3 + dum*dum4;
-
-        f =  y22*(3.0*f2 + h2*g1 + (2.0*f2 + h2*g1)*y2)
-           + y12*(3.0*f3 - h2*g2 - (2.0*f3 - h2*g2)*y1);
-
-        df = 2.0*y2/h2*(3.0*f2 + h2*g1 + (2.0*f2 + h2*g1)*y2)
-           + y22*(2.0*f2 + h2*g1)/h2
-           + 2.0*y1/h2*(3.0*f3 - h2*g2 - (2.0*f3 - h2*g2)*y1)
-           - y12*(2.0*f3 - h2*g2)/h2;
-
-        if (L0==0){
-          a = 0.0;
-          b = 0.5*df/rm;
-          c = 0.0;
-          d = f - b*rm*rm;
-        }
-
-        else if (L0==1){
-          a = (rm*df - f)/(2.0*rm*rm*rm);
-          b = 0.0;
-          c = df - 3.0*a*rm*rm;
-          d = 0.0;
-        }
-
-        else{
-          b = (3.0*f - rm*df)/(rm*rm);
-          a = (f - b*rm*rm)/(rm*rm*rm);
-          c = 0.0;
-          d = 0.0;
-        }
-
-        RF[(size_t)(L0)*orbital_buffers.multiplicity+(Mul0)] = a*R*R*R + b*R*R + c*R + d;
-        dRF[(size_t)(L0)*orbital_buffers.multiplicity+(Mul0)] = 3.0*a*R*R + 2.0*b*R + c;
-
-      }
-    }
-
-  }
-
-  else{
-
-    do{
-      m = (mp_min + mp_max)/2;
-      if (openmx_radial_row2(&atomic->pao_radii,wan)[m]<R)
-        mp_min = m;
-      else 
-        mp_max = m;
-    }
-    while((mp_max-mp_min)!=1);
-    m = mp_max;
-
-    h1 = (m==1) ? openmx_radial_row2(&atomic->pao_radii,wan)[m-1] - openmx_radial_row2(&atomic->pao_radii,wan)[m+1]
-      : openmx_radial_row2(&atomic->pao_radii,wan)[m-1] - openmx_radial_row2(&atomic->pao_radii,wan)[m-2];
-    h2 = openmx_radial_row2(&atomic->pao_radii,wan)[m]   - openmx_radial_row2(&atomic->pao_radii,wan)[m-1];
-    h3 = (m==atomic->species.pao_mesh[wan]-1) ? openmx_radial_row2(&atomic->pao_radii,wan)[m-2] - openmx_radial_row2(&atomic->pao_radii,wan)[m]
-      : openmx_radial_row2(&atomic->pao_radii,wan)[m+1] - openmx_radial_row2(&atomic->pao_radii,wan)[m];
-
-    x1 = R - openmx_radial_row2(&atomic->pao_radii,wan)[m-1];
-    x2 = R - openmx_radial_row2(&atomic->pao_radii,wan)[m];
-    y1 = x1/h2;
-    y2 = x2/h2;
-    y12 = y1*y1;
-    y22 = y2*y2;
-
-    dum = h1 + h2;
-    dum1 = h1/h2/dum;
-    dum2 = h2/h1/dum;
-    dum = h2 + h3;
-    dum3 = h2/h3/dum;
-    dum4 = h3/h2/dum;
-
-    for (L0=0; L0<=atomic->species.basis_lmax[wan]; L0++){
-      for (Mul0=0; Mul0<atomic->species.basis[(size_t)(wan)*atomic->species.angular_channels+(L0)]; Mul0++){
-
-        f1 = openmx_radial_row4(&atomic->orbitals,wan,L0,Mul0)[(m==1) ? m+1 : m-2];
-        f2 = openmx_radial_row4(&atomic->orbitals,wan,L0,Mul0)[m-1];
-        f3 = openmx_radial_row4(&atomic->orbitals,wan,L0,Mul0)[m];
-        f4 = openmx_radial_row4(&atomic->orbitals,wan,L0,Mul0)[(m==atomic->species.pao_mesh[wan]-1) ? m-2 : m+1];
-
-        dum = f3 - f2;
-        g1 = dum*dum1 + (f2-f1)*dum2;
-        g2 = (f4-f3)*dum3 + dum*dum4;
-
-        f =  y22*(3.0*f2 + h2*g1 + (2.0*f2 + h2*g1)*y2)
-           + y12*(3.0*f3 - h2*g2 - (2.0*f3 - h2*g2)*y1);
-
-        df = 2.0*y2/h2*(3.0*f2 + h2*g1 + (2.0*f2 + h2*g1)*y2)
-           + y2*y2*(2.0*f2 + h2*g1)/h2
-           + 2.0*y1/h2*(3.0*f3 - h2*g2 - (2.0*f3 - h2*g2)*y1)
-           - y1*y1*(2.0*f3 - h2*g2)/h2;
-
-         RF[(size_t)(L0)*orbital_buffers.multiplicity+(Mul0)] = f;
-        dRF[(size_t)(L0)*orbital_buffers.multiplicity+(Mul0)] = df;
-
-      }
-    }
-  }
-
-  /* dr/dx,y,z, dQ/dx,y,z, dP/dx,y,z and dAngular */
+  po = OpenMX_OrbitalRadial(atomic,wan,R,1,&orbital_buffers);
 
   if (po==0){
 
@@ -1105,24 +658,24 @@ void Get_dOrbitals2(const OpenMXAtomicViews *atomic, int wan, double x, double y
           sum0 = 0.0;
           sum1 = 0.0; 
     for (j=0; j<(L0*2+1); j++){
-            sum0 += Comp2Real[L0][i][j].r*SH[j][0] - Comp2Real[L0][i][j].i*SH[j][1]; 
-            sum1 += Comp2Real[L0][i][j].r*SH[j][1] + Comp2Real[L0][i][j].i*SH[j][0]; 
+            sum0 += openmx_real_harmonic_coefficient(&atomic->real_harmonics,L0,i,j).r*SH[j][0] - openmx_real_harmonic_coefficient(&atomic->real_harmonics,L0,i,j).i*SH[j][1];
+            sum1 += openmx_real_harmonic_coefficient(&atomic->real_harmonics,L0,i,j).r*SH[j][1] + openmx_real_harmonic_coefficient(&atomic->real_harmonics,L0,i,j).i*SH[j][0];
     }
           AF[(size_t)(L0)*orbital_buffers.magnetic_capacity+(i)] = sum0 + sum1;
 
           sum0 = 0.0;
           sum1 = 0.0; 
     for (j=0; j<(L0*2+1); j++){
-            sum0 += Comp2Real[L0][i][j].r*dSHt[j][0] - Comp2Real[L0][i][j].i*dSHt[j][1]; 
-            sum1 += Comp2Real[L0][i][j].r*dSHt[j][1] + Comp2Real[L0][i][j].i*dSHt[j][0]; 
+            sum0 += openmx_real_harmonic_coefficient(&atomic->real_harmonics,L0,i,j).r*dSHt[j][0] - openmx_real_harmonic_coefficient(&atomic->real_harmonics,L0,i,j).i*dSHt[j][1];
+            sum1 += openmx_real_harmonic_coefficient(&atomic->real_harmonics,L0,i,j).r*dSHt[j][1] + openmx_real_harmonic_coefficient(&atomic->real_harmonics,L0,i,j).i*dSHt[j][0];
     }
           dAFQ[(size_t)(L0)*orbital_buffers.magnetic_capacity+(i)] = sum0 + sum1;
 
           sum0 = 0.0;
           sum1 = 0.0; 
     for (j=0; j<(L0*2+1); j++){
-            sum0 += Comp2Real[L0][i][j].r*dSHp[j][0] - Comp2Real[L0][i][j].i*dSHp[j][1]; 
-            sum1 += Comp2Real[L0][i][j].r*dSHp[j][1] + Comp2Real[L0][i][j].i*dSHp[j][0]; 
+            sum0 += openmx_real_harmonic_coefficient(&atomic->real_harmonics,L0,i,j).r*dSHp[j][0] - openmx_real_harmonic_coefficient(&atomic->real_harmonics,L0,i,j).i*dSHp[j][1];
+            sum1 += openmx_real_harmonic_coefficient(&atomic->real_harmonics,L0,i,j).r*dSHp[j][1] + openmx_real_harmonic_coefficient(&atomic->real_harmonics,L0,i,j).i*dSHp[j][0];
     }
           dAFP[(size_t)(L0)*orbital_buffers.magnetic_capacity+(i)] = sum0 + sum1;
   }              

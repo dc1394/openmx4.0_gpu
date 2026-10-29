@@ -77,6 +77,16 @@ CUDA/ROCm SDK、GPUアーキテクチャ指定、`nvidia-smi`、GEMMul8/COSMA/MA
 FFTW3のヘッダーとライブラリ、LP64版ScaLAPACK/LAPACK/BLASです。
 同梱ELPAの初回構築には autoconf・automake・libtool・m4・make・Python も必要です。
 ELPA は GPU版と同じ固定版 `2026.02.002` のアーカイブを検証・展開し、GPUカーネルを無効にして構築します。
+ELPA の 2 段階ソルバーの CPU カーネルは、構築ホストが実行できる x86 SIMD カーネル
+（SSE/AVX/AVX2/AVX-512、`/proc/cpuinfo` から判定、C カーネルには対応する `-m` フラグ）を汎用カーネルと
+一緒に組み込みます（`OPENMX_CPU_ELPA_KERNELS=auto|generic`、NVIDIA の Makefile では
+`GPUSOLVER2_ELPA_KERNELS`）。実行時には `openmx_elpa_cpu.c` が CPU の対応する最速のカーネルを選び、
+ELPA 自身の `ELPA_DEFAULT_real_kernel` / `ELPA_DEFAULT_complex_kernel` が設定されていればそれを優先します
+（`level.of.stdout >= 2` で選んだカーネルを 1 行報告）。ELPA 自身は CPU を検査しないため、この選択が必要です。
+同梱 ELPA は gpusolver2 のスクリプトと同じ `-O2` で構築します。C カーネルを gcc 14 の `-O3` で構築すると
+（2026-10-28 に確認）、SSE〜AVX-512 のすべての C カーネルが固有値は正しいまま同一の誤った固有ベクトルを返し、
+汎用 Fortran カーネルだけが正しい結果になりました（Fortran 側の `-O3` は無関係でした）。実行時のカーネルは `ELPA_DEFAULT_real_kernel=ELPA_2STAGE_REAL_GENERIC`
+などで差し替えて切り分けできます。
 既定ソルバーはCPUの `elpa2` です。`elpa1` / `lapack` の入力も使用でき、
 GPUソルバーを指定した既存入力はCPUの `elpa2` に切り替えます。
 
@@ -140,6 +150,7 @@ CPU版はネイティブmakeを呼ばず、`CMAKE_C_FLAGS` / `CMAKE_CXX_FLAGS` �
 | `OPENMX_CPU_LINALG_LIBRARIES` | `OPENMX_CPU_LINALG=CUSTOM` でScaLAPACK・LAPACK・BLAS一式をセミコロン区切りで指定。従来の `AUTO` + この指定も使用可能。 |
 | `OPENMX_CPU_ELPA_ROOT` | 同じMPI/Fortran構成で作ったCPU版ELPA 2026.02.002の既存prefix。未指定なら同梱版を構築。 |
 | `OPENMX_BUILD_JOBS` | 同梱ELPAのmake並列数。CMake本体の並列数は `--parallel` で指定。 |
+| `OPENMX_CPU_ELPA_KERNELS` | 同梱ELPAの2段階CPUカーネル。`auto`（既定）は構築ホストのSSE/AVX/AVX2/AVX-512カーネルを汎用カーネルと一緒に組み込み、`generic` は汎用カーネルだけ。 |
 
 CPU構成のオブジェクト・ELPA・生成アダプターはビルドディレクトリに保存します。
 `cmake --build build/cpu --target clean` で本体オブジェクトを清掃できます。
@@ -152,6 +163,9 @@ CPU構成のオブジェクト・ELPA・生成アダプターはビルドディ�
 cmake --build build/cpu --target openmx_cpu_numerics --parallel 4
 ctest --test-dir build/cpu -R '^cpu-numerical-toolchain$' --output-on-failure
 ```
+
+この試験は Cholesky と ELPA1/ELPA2 の固有値に加えて、固有ベクトルの残差 ‖Aq − λq‖ と直交性 QᵀQ = I も検査します
+（固有値だけでは 2 段階ソルバーの逆変換カーネルの誤りに気付けません）。
 
 本体依存ライブラリを構築せずにコンパイラ・MPI・ScaLAPACKの組合せだけを調べる場合は、
 同じ `OPENMX_CPU_*` 選択肢を `cmake -S tests/cpu_toolchain -B build/toolchain-probe ...` に渡し、
@@ -336,7 +350,7 @@ Kokkos の型・ISA フラグが C ABI やデバイス翻訳単位へ出ない�
 | Force3 / Force4B / Force_HNL | トレース・アーカイブの常駐見積もり / 途中失敗 | 軌道微分と縮約、融合トレース、共線 dHNL の SIMD |
 | Total_Energy | EH0・Exc0・格子和・双極子・CWF の各バッチ / 途中失敗 | 中性原子の対、XC 殻、ホストの格子和 |
 | バンド密度行列 | 密な GPU 固有値ソルバー時の GPU DM の見積もり / 直接試行の辞退。ELPA フォールバック時は既定でホスト（`OPENMX_BAND_GPU_DM=1` で GPU を選ぶと判定を受ける。`legacy` では GPU が既定） | `BandCol_DM_Block`（固有ベクトルを必要ならホストへ戻す） |
-| クラスター密度行列、非共線バンドの多 k 点フォールバック | GPU DM の見積もり / 直接試行の辞退 | `ClusterCol_AccumulateDM_CPU`、`Calc_DM_Band_non_collinear` |
+| クラスター密度行列、非共線バンドの多 k 点フォールバック | GPU DM の見積もり / 直接試行の辞退 | `ClusterCol_AccumulateDM_CPU`、非共線は `openmx_nc_dm_cpu.h`（全成分を 1 回の走査で集計する `energy` 群の `openmx_core_energy_nc_block`） |
 | Set_Nonlocal / Set_OLP_Kin | 最大チャンクの領域 / 1 対の動径作業領域 / 途中失敗 | CPU 経路（動径積分は `vna` 群の SIMD カーネル） |
 
 `OPENMX_HOST_SIMD_PREFER`（段階名の一部のカンマ区切り、または `all`、既定は空）に挙げた段階は、
@@ -528,6 +542,12 @@ CUDA 版の MAGMA は、複数 GPU を使う Cluster／Band の密行列固有�
 `WITH_MAGMA=0` を `OPENMX_MAKE_OPTIONS` に追加します。
 MAGMA 2.10.0 は HIP 用に同梱したアーカイブ（SHA-256 を検証）から作るので、ネットワーク接続は不要です。
 その構築には CUDA 対応の CMake 3.18 以上が必要です。
+gpusolver2 の依存スタックを構築するとき、`build_gpusolver2_stack.sh` は展開した Tiled-MM に
+`source/third_party/tiledmm-openmx-gemm-hook.patch` を当てます（元と適用後のファイルの SHA-256 を照合、
+再実行時は適用済みとして通過）。この小さなパッチで COSMA の倍精度・複素倍精度タイル積が本体の GEMMul8
+ブリッジ（`openmx_tiledmm_dgemm/zgemm`）を呼び、分散変換も他の密行列積と同じ GEMMul8 の方針に従います
+（`OPENMX_GS2_GEMMUL8=0` で cuBLAS FP64 のまま）。パッチを変えると COSMA だけを作り直します。
+HIP の Tiled-MM（rocBLAS）は変更しません。
 従来の NVIDIA ビルドも使用できます。
 
 ```sh

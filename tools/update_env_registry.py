@@ -48,7 +48,8 @@ HEADER = '''/*******************************************************************
 
   The registry of the environment settings this build reads: one X() line
   per name, sorted by name.  openmx_env.h turns the first column into the
-  ids OPENMX_ENV_<id>, openmx_env.c into the table behind openmx_env_at()
+  ids OPENMX_ENV_<id> (an EXT_ id keeps its case: ELPA's ELPA_DEFAULT_real_kernel
+  is read as OPENMX_ENV_EXT_ELPA_DEFAULT_real_kernel), openmx_env.c into the table behind openmx_env_at()
   and friends.  tools/update_env_registry.py rewrites this file from the
   readers in source/ (adds names, derives the kind and the default from
   the accessors, keeps the descriptions); tools/env_registry_doc.py turns
@@ -144,7 +145,7 @@ def scan_sources(source, include_hip=True):
     # those ids as well, so regeneration can add them rather than silently
     # ignoring a setting that would fail the next build.
     for path in source_files(source, include_hip):
-        for token in re.findall(r"\bOPENMX_ENV_([A-Z][A-Z0-9_]*)\b", path.read_text(errors="replace")):
+        for token in re.findall(r"\bOPENMX_ENV_([A-Z][A-Za-z0-9_]*)\b", path.read_text(errors="replace")):
             if token not in ("COUNT", "LIST", "ID_", "ENTRY_"):
                 ids.setdefault(token, token[4:] if token.startswith("EXT_") else "OPENMX_" + token)
 
@@ -187,7 +188,7 @@ def scan_sources(source, include_hip=True):
                         break
                     for name in names_in(part):
                         note(name, kind, path.relative_to(source).as_posix(), fallback)
-        for token in re.findall(r'\bOPENMX_ENV_([A-Z][A-Z0-9_]*)\b', text):
+        for token in re.findall(r'\bOPENMX_ENV_([A-Z][A-Za-z0-9_]*)\b', text):
             if token in ids and token not in ("COUNT", "LIST", "ID_", "ENTRY_"):
                 note(ids[token], None, path.relative_to(source).as_posix())
     return usage

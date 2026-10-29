@@ -24,6 +24,7 @@
 #include "openmx_gpu_dm_collective.h"
 #include "openmx_gpu_workers.h"
 #include "openmx_host_simd.h"
+#include "openmx_nc_dm_cpu.h"
 
 #include "eigen_refine_gpu.h"
 #include "openmx_precision.h"
@@ -8127,6 +8128,13 @@ double Calc_DM_Band_non_collinear(const OpenMXChemicalPotentials *chemical,
       }
     }    
 
+    /* the neighbour planes of this k point for the host SIMD kernel of
+       openmx_nc_dm_cpu.h; NULL planes (legacy policy, no memory) keep the
+       legacy loops below */
+    OpenMXNcDMPanels nc_panels;
+    const int nc_mode = OpenMX_HostSimdMode();
+    NcDM_Band_Panels(&nc_panels, nc_mode, EVec1, ie2[myid2]-is2[myid2]+1, is2[myid2], kmin, kmax, n, List_YOUSO[7]);
+
     /* loop for GA_AN */
     
     p = 0;
@@ -8157,6 +8165,15 @@ double Calc_DM_Band_non_collinear(const OpenMXChemicalPotentials *chemical,
 	}
       }
 
+      if (nc_panels.re1 != NULL) {
+        for (i=0; i<tnoA; i++){
+          nc_panels.rows[0*nc_panels.max_rows+i] = openmx_solver_real_matrix_row(&spinors->ReEVec_i1,i) + kmin;
+          nc_panels.rows[1*nc_panels.max_rows+i] = openmx_solver_real_matrix_row(&spinors->ImEVec_i1,i) + kmin;
+          nc_panels.rows[2*nc_panels.max_rows+i] = openmx_solver_real_matrix_row(&spinors->ReEVec_i2,i) + kmin;
+          nc_panels.rows[3*nc_panels.max_rows+i] = openmx_solver_real_matrix_row(&spinors->ImEVec_i2,i) + kmin;
+        }
+      }
+
       /* loop for LB_AN */
 
       for (LB_AN=0; LB_AN<=FNAN[GA_AN]; LB_AN++){
@@ -8173,6 +8190,26 @@ double Calc_DM_Band_non_collinear(const OpenMXChemicalPotentials *chemical,
 	kRn = k1*(double)l1 + k2*(double)l2 + k3*(double)l3;
 	si = sin(2.0*PI*kRn);
 	co = cos(2.0*PI*kRn);
+
+        /* every component of this block in one pass over the bands */
+        if (nc_panels.re1 != NULL) {
+          OpenMXEnergyNcBlock block;
+          block.rows = tnoA; block.columns = tnoB; block.bands = nc_panels.bands; block.stride = nc_panels.stride;
+          block.re0_1 = nc_panels.rows; block.im0_1 = nc_panels.rows + nc_panels.max_rows;
+          block.re0_2 = nc_panels.rows + 2*nc_panels.max_rows; block.im0_2 = nc_panels.rows + 3*nc_panels.max_rows;
+          block.re1T_1 = nc_panels.re1 + (Bnum - 1); block.im1T_1 = nc_panels.im1 + (Bnum - 1);
+          block.re1T_2 = nc_panels.re2 + (Bnum - 1); block.im1T_2 = nc_panels.im2 + (Bnum - 1);
+          block.weight = NULL; block.eigen = ko + kmin;
+          block.phase = 1; block.co = co; block.si = si;
+          block.out[0] = rDM11 + p;  block.out[1] = rDM22 + p;  block.out[2] = rDM12 + p;  block.out[3] = iDM12 + p;
+          block.out[4] = iDM11 + p;  block.out[5] = iDM22 + p;  block.out[6] = rEDM11 + p; block.out[7] = rEDM22 + p;
+          block.out[8] = NULL; block.out[9] = NULL;
+          block.out_stride = (size_t)tnoB;
+          if (openmx_core_energy_nc_block(&block, nc_mode)) {
+            p += tnoA*tnoB;
+            continue;
+          }
+        }
 
         /* store EVec1 to temporal arrays */
 
@@ -8273,6 +8310,7 @@ double Calc_DM_Band_non_collinear(const OpenMXChemicalPotentials *chemical,
 	}
       }
     } /* GA_AN */
+    NcDM_PanelsFree(&nc_panels);
 
   } /* if (calc_flag==1) */
 

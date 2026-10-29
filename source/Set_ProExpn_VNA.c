@@ -41,7 +41,7 @@
 #include <omp.h>
 #include <openacc.h>
 
-static int SetPro_VNA23_GpuBegin(const OpenMXReciprocalViews *reciprocal, SetProGpu3Context *g);
+static int SetPro_VNA23_GpuBegin(const OpenMXReciprocalViews *reciprocal, const dcomplex *conversion, size_t conversion_width, SetProGpu3Context *g);
 static void SetPro_VNA23_GpuEnd(SetProGpu3Context *g);
 /* forward: SetPro_DSVNA_GpuBegin releases its tables through this when the
    device-memory check sends the DS_VNA build down the CPU path */
@@ -992,7 +992,7 @@ static size_t SetPro_DSVNA_DeviceBytes(const SetProGpu2Context *g)
   return bytes;
 }
 
-static int SetPro_DSVNA_GpuBegin(const OpenMXReciprocalViews *reciprocal, SetProGpu2Context *g,
+static int SetPro_DSVNA_GpuBegin(const OpenMXReciprocalViews *reciprocal, const dcomplex *conversion, size_t conversion_width, SetProGpu2Context *g,
     const OpenMXVnaPreparationBuffers *preparation)
 {
   const int *VNA_List = preparation->projector_angular;
@@ -1145,7 +1145,7 @@ static int SetPro_DSVNA_GpuBegin(const OpenMXReciprocalViews *reciprocal, SetPro
     }
   }
 
-  /* packed Comp2Real up to max(l0max, l1max) */
+  /* packed real-harmonic conversion up to max(l0max, l1max) */
 
   {
     const int lc = (g->l0max_all<g->l1max) ? g->l1max : g->l0max_all;
@@ -1163,8 +1163,8 @@ static int SetPro_DSVNA_GpuBegin(const OpenMXReciprocalViews *reciprocal, SetPro
       for (M=0; M<(2*Lc+1); M++){
         for (k=0; k<(2*Lc+1); k++){
           size_t idx = (size_t)g->c2r_off[Lc] + (size_t)M*(2*Lc+1) + k;
-          g->c2r[2*idx  ] = Comp2Real[Lc][M][k].r;
-          g->c2r[2*idx+1] = Comp2Real[Lc][M][k].i;
+          g->c2r[2*idx  ] = conversion[((size_t)(Lc)*conversion_width+(M))*conversion_width+(k)].r;
+          g->c2r[2*idx+1] = conversion[((size_t)(Lc)*conversion_width+(M))*conversion_width+(k)].i;
         }
       }
     }
@@ -1792,7 +1792,7 @@ static size_t SetPro_VNA23_DeviceBytes(const SetProGpu3Context *g)
   return bytes;
 }
 
-static int SetPro_VNA23_GpuBegin(const OpenMXReciprocalViews *reciprocal, SetProGpu3Context *g)
+static int SetPro_VNA23_GpuBegin(const OpenMXReciprocalViews *reciprocal, const dcomplex *conversion, size_t conversion_width, SetProGpu3Context *g)
 {
   int spe,L0,Mul0,L1,Mul1,LL,i,c0,c1,k;
   size_t free_bytes = 0,total_bytes = 0;
@@ -1946,8 +1946,8 @@ static int SetPro_VNA23_GpuBegin(const OpenMXReciprocalViews *reciprocal, SetPro
       for (M=0; M<(2*Lc+1); M++){
         for (k=0; k<(2*Lc+1); k++){
           size_t idx = (size_t)g->c2r_off[Lc] + (size_t)M*(2*Lc+1) + k;
-          g->c2r[2*idx  ] = Comp2Real[Lc][M][k].r;
-          g->c2r[2*idx+1] = Comp2Real[Lc][M][k].i;
+          g->c2r[2*idx  ] = conversion[((size_t)(Lc)*conversion_width+(M))*conversion_width+(k)].r;
+          g->c2r[2*idx+1] = conversion[((size_t)(Lc)*conversion_width+(M))*conversion_width+(k)].i;
         }
       }
     }
@@ -2303,7 +2303,7 @@ static void SetPro_VNA23_capacity_kernel(size_t first,size_t count,const void *p
 
 }
 
-static void SetPro_VNA23_GpuRun_Part(double *****HVNA23, int mirror, int OneD_Nloop, const int *OneD2Mc_AN, const int *OneD2h_AN, SetProGpu3Context *g, double *GL_NormK)
+static void SetPro_VNA23_GpuRun_Part(double *****HVNA23, int mirror, int OneD_Nloop, const int *OneD2Mc_AN, const int *OneD2h_AN, SetProGpu3Context *g, double *GL_NormK, const double *weights)
 {
   const int l0max = g->l0max;
   const int lfi_max = g->lfi_max;
@@ -2446,7 +2446,7 @@ static void SetPro_VNA23_GpuRun_Part(double *****HVNA23, int mirror, int OneD_Nl
       task.view[7]=(OpenMXGpuTaskView){cmb_L0,((size_t)SpeciesNum*cmb_max)*sizeof(int),0};
       task.view[8]=(OpenMXGpuTaskView){cmb_num0,((size_t)SpeciesNum*cmb_max)*sizeof(int),0};
       task.view[9]=(OpenMXGpuTaskView){GL_NormK,(GL_Mesh)*sizeof(double),0};
-      task.view[10]=(OpenMXGpuTaskView){GL_Weight,(GL_Mesh)*sizeof(double),0};
+      task.view[10]=(OpenMXGpuTaskView){(void*)weights,(GL_Mesh)*sizeof(double),0};
       task.view[11]=(OpenMXGpuTaskView){pr_r,0,(1)*sizeof(double)};
       task.view[12]=(OpenMXGpuTaskView){pr_siT,0,(1)*sizeof(double)};
       task.view[13]=(OpenMXGpuTaskView){pr_coT,0,(1)*sizeof(double)};
@@ -2521,8 +2521,8 @@ static void SetPro_VNA23_GpuRun_Part(double *****HVNA23, int mirror, int OneD_Nl
   free(pr_siT);
   free(pr_r);
 }
-static void SetPro_VNA23_GpuRun(double *****matrix,int mirror,int count,const int *mc,const int *h,double *GL_NormK,SetProGpu3Context *g)
-{SetPro_VNA23_GpuRun_Part(matrix,mirror,count,mc,h,g,GL_NormK);}
+static void SetPro_VNA23_GpuRun(double *****matrix,int mirror,int count,const int *mc,const int *h,double *GL_NormK,const double *weights,SetProGpu3Context *g)
+{SetPro_VNA23_GpuRun_Part(matrix,mirror,count,mc,h,g,GL_NormK,weights);}
 
 
 #include "openmx_dsvna_cpu.h"

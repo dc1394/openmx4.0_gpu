@@ -140,7 +140,7 @@ void Hamiltonian_Band_NC_Wannier(double *****RH, double *****IH,
 
 void Calc_OLP_exp(int tot_bvector, double **bvector);
 void Find_NN_Projectors_Basis();
-void Set_OLP_Projector_Basis(const OpenMXReciprocalViews *reciprocal, double ****OLP_WP);
+void Set_OLP_Projector_Basis(const OpenMXRealHarmonicData *conversion, const OpenMXReciprocalViews *reciprocal, double ****OLP_WP);
 
 
 void Wannier(int Solver, 
@@ -199,6 +199,12 @@ void Generate_Wannier(char *inputfile, OpenMXCoreContext *core)
   double *****OLP=electronic->OLP;
   double *****iHNL=electronic->iHNL;
 
+  OpenMXAtomicViews atomic;
+  if(!openmx_core_atomic_get(core,&atomic,chemical_error,sizeof(chemical_error))) {
+    fprintf(stderr,"OpenMX atomic tables: %s\n",chemical_error);
+    MPI_Abort(mpi_comm_level1,1);
+    abort();
+  }
   const OpenMXReciprocalViews radial_views=OpenMX_ReciprocalTables(core);
   const OpenMXReciprocalViews *reciprocal=&radial_views;
   int ct_AN,wan1,TNO1;
@@ -264,7 +270,7 @@ void Generate_Wannier(char *inputfile, OpenMXCoreContext *core)
 
     /* calculate overlap matrix between projectors and basis functions */
 
-    Set_OLP_Projector_Basis(reciprocal, tmpOLP);
+    Set_OLP_Projector_Basis(&atomic.real_harmonics,reciprocal, tmpOLP);
 
     for (p=0; p<Wannier_Num_Kinds_Projectors; p++){
 
@@ -385,7 +391,7 @@ void Generate_Wannier(char *inputfile, OpenMXCoreContext *core)
 
 
 #pragma optimization_level 1
-void Set_OLP_Projector_Basis(const OpenMXReciprocalViews *reciprocal, double ****OLP_WP)
+void Set_OLP_Projector_Basis(const OpenMXRealHarmonicData *conversion, const OpenMXReciprocalViews *reciprocal, double ****OLP_WP)
 {
   /****************************************************
           Evaluate overlap and kinetic integrals
@@ -695,7 +701,7 @@ void Set_OLP_Projector_Basis(const OpenMXReciprocalViews *reciprocal, double ***
 
      	          for (k=-L0; k<=L0; k++){
 
-                    Ctmp1 = Conjg(Comp2Real[L0][L0+M0][L0+k]);
+                    Ctmp1 = Conjg(openmx_real_harmonic_coefficient(conversion,L0,L0+M0,L0+k));
 
                     /* S */
 
@@ -717,7 +723,7 @@ void Set_OLP_Projector_Basis(const OpenMXReciprocalViews *reciprocal, double ***
 
                     /* S */ 
 
-                    Ctmp1 = Cmul(CmatS0[L0+M0][L1+k],Comp2Real[L1][L1+M1][L1+k]);
+                    Ctmp1 = Cmul(CmatS0[L0+M0][L1+k],openmx_real_harmonic_coefficient(conversion,L1,L1+M1,L1+k));
                     CsumS0 = Cadd(CsumS0,Ctmp1);
 		  }
 

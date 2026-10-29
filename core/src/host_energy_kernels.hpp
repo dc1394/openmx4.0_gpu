@@ -13,6 +13,7 @@ struct EnergyKernels {
   void (*neutral_sum)(const OpenMXEnergyNeutralPoints&,double*,double*);
   void (*xc_shell)(const OpenMXEnergyXcShell&);
   void (*band_block)(const OpenMXEnergyBandBlock&);
+  void (*nc_block)(const OpenMXEnergyNcBlock&);
 };
 extern "C" OPENMX_HOST_SIMD_EXPORT const EnergyKernels* openmx_host_energy_kernels(int mode) noexcept;
 OPENMX_HOST_SIMD_FAMILY(EnergyKernels,energy)

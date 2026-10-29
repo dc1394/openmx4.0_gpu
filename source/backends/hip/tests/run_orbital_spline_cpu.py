@@ -80,7 +80,6 @@ static int mpi_comm_level1;
 #include "openmx_orbitals.h"
 static OpenMXAtomicViews atomic_values, *atomic=&atomic_values;
 static double flat_wave[1][1][2][6];
-static dcomplex Comp2Real[4][7][7];
 static int List_YOUSO[64], M2G[2]={0,1}, F_M2G[4]={0,1,1,1}, WhatSpecies[2]={0,0};
 static int Spe_Num_Mesh_PAO[1]={6}, Spe_MaxL_Basis[1]={0};
 static int Spe_PAO_LMAX[1]={0}, Spe_PAO_Mul[1]={2};

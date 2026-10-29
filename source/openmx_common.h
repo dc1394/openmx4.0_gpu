@@ -30,6 +30,7 @@
 #include "openmx_core_local_basis.h"
 #include "openmx_core_vna_matrix.h"
 #include "openmx_core_reciprocal.h"
+#include "openmx_core_quadrature.h"
 #include "openmx_core_atomic.h"
 #include "openmx_core_orbital_workspace.h"
 #include "openmx_periodic.h"
@@ -104,7 +105,7 @@ void acc_clear_freelists(void);
 /* #define YOUSO33                # of MO_Nkpoint                                 */
 /* #define YOUSO34                # of radial parts in VNA projector expansion    */
 /* #define YOUSO35                max L of projectors in VNA projector expansion  */
-#define YOUSO36      14           /* max L in Comp2Real array                       */
+#define YOUSO36      14           /* max L in real-harmonic transform                       */
 /* #define YOUSO37                max # of charge states in LESP                  */
 /* #define YOUSO38                max # of previous steps in k-space Pulay mixing */
 /* #define YOUSO39                max # of previous steps in h-space Pulay mixing */
@@ -2269,9 +2270,6 @@ extern dcomplex **QAO2_coes;
 
 extern double *pre_spin_moment; // S. An
 extern dcomplex *zp,*Ep,*Rp;
-extern double GL_Abscissae[GL_Mesh+2],GL_Weight[GL_Mesh+2];
-extern double FineGL_Abscissae[FineGL_Mesh+2],FineGL_Weight[FineGL_Mesh+2];
-extern double CoarseGL_Abscissae[CoarseGL_Mesh+2],CoarseGL_Weight[CoarseGL_Mesh+2];
 extern char Atom_Symbol[YOUSO14][4];
 extern double Atom_Weight[YOUSO14];
 extern double tv[4][4],rtv[4][4],tv_velocity[4][4];
@@ -2311,7 +2309,6 @@ extern double Restart_Spin_Angle_Theta,Restart_Spin_Angle_Phi;
 extern int MD_EvsLattice_flag[3];
 extern int MD_OutABC;
 extern double X_Center_Coordinate,Y_Center_Coordinate,Z_Center_Coordinate;
-extern dcomplex Comp2Real[YOUSO36+1][2*(YOUSO36+1)+1][2*(YOUSO36+1)+1];
 /* added by mari (May 2004) */
 extern double TempScale[30],RatScale[30];
 extern int IntScale[30],NumScale[30];
@@ -2982,13 +2979,13 @@ double Stress(OpenMXCoreContext *core,OpenMXThermodynamicEnergies *thermo, const
 	      double *****OLP,
 	      double *****CDM,
 	      double *****EDM, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
-double Set_OLP_Kin(const OpenMXReciprocalViews *reciprocal, double *****OLP, double *****H0, const OpenMXElectronicViews *electronic);
+double Set_OLP_Kin(const OpenMXRealHarmonicData *conversion,const OpenMXReciprocalViews *reciprocal, double *****OLP, double *****H0, const OpenMXElectronicViews *electronic);
 double Set_Nonlocal(const OpenMXAtomicViews *atomic, const OpenMXReciprocalViews *reciprocal, double *****HNL, double ******DS_NL, const OpenMXElectronicViews *electronic);
 double Set_CoreHoleMatrix(double *****HCH, const OpenMXElectronicViews *electronic);
 double Set_XMCD_penalty(int mode,double *pre_spin_moment,int SCF_iter, const OpenMXElectronicViews *electronic);  // S. An
 double Set_OLP_p(double *****OLP_p);
 
-double Set_ProExpn_VNA(const OpenMXVnaMatrixViews *vna,const OpenMXReciprocalViews *reciprocal);
+double Set_ProExpn_VNA(const OpenMXRealHarmonicData *conversion,const OpenMXGaussRuleData *radial,const OpenMXVnaMatrixViews *vna,const OpenMXReciprocalViews *reciprocal);
 void Set_Vpot(OpenMXMixingVState *mixing_v,const OpenMXAtomicViews *atomic, int MD_iter,
               int SCF_iter, 
               int SCF_iter0,
@@ -3003,13 +3000,6 @@ void Set_XC_Grid(int SCF_iter, int XC_P_switch, int XC_switch,
                  double ***dDen_Grid);
 
 double Pot_NeutralAtom(const OpenMXAtomicViews *atomic, int ct_AN, double Gx, double Gy, double Gz);
-double XC_Ceperly_Alder(double den, int P_switch);
-void XC_CA_LSDA(int SCF_iter, double den0, double den1, double XC[2], double X[2], double C[2], int P_switch);
-void XC_PW92C(int SCF_iter, double dens[2], double Ec[1], double Vc[2]);
-void XC_PBE(int SCF_iter, double dens[2], double GDENS[3][2], double Exc[2],
-            double DEXDD[2], double DECDD[2],
-            double DEXDGD[3][2], double DECDGD[3][2]);
-void XC_EX(int NSP, double DS0, double DS[2], double EX[1], double VX[2]);
 void Voronoi_Charge();
 void Voronoi_Orbital_Moment(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electronic);
 
@@ -3999,7 +3989,6 @@ dcomplex Cexp(dcomplex a);
 
 double FermiFunc(double x, int spin, int orb, int *index, double *popn);
 double FermiFunc_NC(double x, int orb);
-void Set_Lebedev_Grid(int Np, double **Leb_Grid_XYZW);
 
 void Set_BLACS_variables ( MPI_Comm MPI_Curret_Comm_WD, int numprocs, int myid,
                            int nrows, int ncols, int *np_rows, int *np_cols, 

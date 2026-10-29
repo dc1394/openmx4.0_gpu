@@ -211,8 +211,10 @@ OPENMX_ELPA_CPTR_PATCH
   # subdirectory but ELPA's ROCm sources include plain <rocsolver.h>.
   # The SSE/AVX/AVX2 kernels stay enabled (their default) and the whole
   # library is built with the x86-64-v3 baseline so ELPA's intrinsics
-  # probes pass; ELPA picks the best kernel by CPUID at run time, which is
-  # what the CPU-kernel fallback of the memory guard runs on.  AVX-512 is
+  # probes pass; openmx_elpa_cpu.c picks the fastest compiled kernel the
+  # CPU supports at run time (ELPA itself checks the CPU only with
+  # heterogeneous-cluster support), which is what the CPU-kernel fallback
+  # of the memory guard runs on.  AVX-512 is
   # disabled: it would raise the baseline beyond Zen 2 build/dev hosts, and
   # on the Zen 4 target its double-pumped AVX-512 gains little over AVX2.
   # (The NVIDIA-side script disables all SIMD kernels for its NVHPC

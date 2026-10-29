@@ -359,7 +359,80 @@ void band_block(const OpenMXEnergyBandBlock& b) {
     if(i<b.rows){if(count>lanes)band_rows<1,2>(b,i,j0,count);else band_rows<1,1>(b,i,j0,count);}
   }
 }
-constexpr EnergyKernels kernels{lanes,neutral_points,neutral_sum,xc_shell,band_block};
+/* ---- non-collinear density-matrix block ---- */
+// Rows [i, i+Rows) of one block for the columns [j0, j0+count), count <=
+// lanes: the neighbour's four vectors of each band serve all Rows rows and
+// every element's twelve band sums stay sequential. Weighted: t = w*term
+// (the cluster loops); Energy: the eigen-weighted sums as well.
+template<int Rows,bool Weighted,bool Energy> void nc_rows(const OpenMXEnergyNcBlock& b,int i,int j0,int count) {
+  constexpr int Sums=Energy?12:6;
+  alignas(64) double s[12][lanes];
+  Vector d[Rows][Sums];
+  for(int r=0;r<Rows;++r)for(int q=0;q<Sums;++q)d[r][q]=Vector(0.0);
+  const double* a1[Rows];const double* g1[Rows];const double* a2[Rows];const double* g2[Rows];
+  for(int r=0;r<Rows;++r){a1[r]=b.re0_1[i+r];g1[r]=b.im0_1[i+r];a2[r]=b.re0_2[i+r];g2[r]=b.im0_2[i+r];}
+  for(int k=0;k<b.bands;++k) {
+    const size_t at=size_t(k)*b.stride+j0;
+    const Vector x1=load(b.re1T_1+at),y1=load(b.im1T_1+at),x2=load(b.re1T_2+at),y2=load(b.im1T_2+at);
+    const Vector w(Weighted?b.weight[k]:0.0),e(Energy?b.eigen[k]:0.0);
+    for(int r=0;r<Rows;++r) {
+      const Vector p1(a1[r][k]),q1(g1[r][k]),p2(a2[r][k]),q2(g2[r][k]);
+      Vector t[6];
+      t[0]=p1*x1+q1*y1;   // ReA: re_i1*re_j1 + im_i1*im_j1
+      t[1]=p1*y1-q1*x1;   // ImA: re_i1*im_j1 - im_i1*re_j1
+      t[2]=p2*x2+q2*y2;   // ReB
+      t[3]=p2*y2-q2*x2;   // ImB
+      t[4]=p1*x2+q1*y2;   // ReC: up centre, down neighbour
+      t[5]=p1*y2-q1*x2;   // ImC
+      for(int q=0;q<6;++q) {
+        if constexpr(Weighted)t[q]=w*t[q];
+        d[r][q]+=t[q];
+        if constexpr(Energy)d[r][6+q]+=t[q]*e;
+      }
+    }
+  }
+  for(int r=0;r<Rows;++r) {
+    for(int q=0;q<Sums;++q)store(d[r][q],s[q]);
+    double* const* o=b.out;
+    const size_t at=size_t(i+r)*b.out_stride+j0;
+    if(b.phase) {
+      const double co=b.co,si=b.si;
+      for(int j=0;j<count;++j) {
+        if(o[0])o[0][at+j]+=co*s[0][j]-si*s[1][j];
+        if(o[1])o[1][at+j]+=co*s[2][j]-si*s[3][j];
+        if(o[2])o[2][at+j]+=co*s[4][j]-si*s[5][j];
+        if(o[3])o[3][at+j]+=co*s[5][j]+si*s[4][j];
+        if(o[4])o[4][at+j]+=co*s[1][j]+si*s[0][j];
+        if(o[5])o[5][at+j]+=co*s[3][j]+si*s[2][j];
+        if constexpr(Energy) {
+          if(o[6])o[6][at+j]+=co*s[6][j]-si*s[7][j];
+          if(o[7])o[7][at+j]+=co*s[8][j]-si*s[9][j];
+          if(o[8])o[8][at+j]+=co*s[10][j]-si*s[11][j];
+          if(o[9])o[9][at+j]+=co*s[11][j]+si*s[10][j];
+        }
+      }
+    } else {
+      static constexpr int from[10]={0,2,4,5,1,3,6,8,10,11};
+      for(int q=0;q<(Energy?10:6);++q)if(o[q])for(int j=0;j<count;++j)o[q][at+j]+=s[from[q]][j];
+    }
+  }
+}
+template<bool Weighted,bool Energy> void nc_block_impl(const OpenMXEnergyNcBlock& b) {
+  for(int j0=0;j0<b.columns;j0+=lanes) {
+    const int count=std::min(lanes,b.columns-j0);
+    int i=0;
+    for(;i+2<=b.rows;i+=2)nc_rows<2,Weighted,Energy>(b,i,j0,count);
+    if(i<b.rows)nc_rows<1,Weighted,Energy>(b,i,j0,count);
+  }
+}
+void nc_block(const OpenMXEnergyNcBlock& b) {
+  // Without bands the cluster loops never touch their outputs, while the
+  // band loops still add their (signed) zeros through the phase.
+  if(!b.bands && !b.phase)return;
+  if(b.weight){if(b.eigen)nc_block_impl<true,true>(b);else nc_block_impl<true,false>(b);}
+  else{if(b.eigen)nc_block_impl<false,true>(b);else nc_block_impl<false,false>(b);}
+}
+constexpr EnergyKernels kernels{lanes,neutral_points,neutral_sum,xc_shell,band_block,nc_block};
 }
 const EnergyKernels& OPENMX_HOST_SIMD_FACTORY(energy)() noexcept {return kernels;}
 }

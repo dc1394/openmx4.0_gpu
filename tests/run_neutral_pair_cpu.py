@@ -29,11 +29,12 @@ def main():
         folder = Path(directory)
         (folder/'neutral_pair_native.inc').write_text(native)
 
-        def build(name, language, code=header, grid=grid_header):
+        def build(name, language, code=header, grid=grid_header, reference64=False):
             (folder/'openmx_neutral_atom.h').write_text(code)
             (folder/'openmx_core_neutral_grid.h').write_text(grid)
             executable = folder/name
-            subprocess.run(compiler_command(language)+['-I'+str(folder),
+            flags = ['-DOPENMX_TEST_REFERENCE_BINARY64=1'] if reference64 else []
+            subprocess.run(compiler_command(language)+flags+['-I'+str(folder),
                 '-I'+str(ROOT/'core/include'), '-x', language,
                 str(ROOT/'tests/neutral_pair_harness.c'), '-lm', '-o', str(executable)], check=True)
             return executable
@@ -41,6 +42,8 @@ def main():
         for language in ['c', 'c++']:
             subprocess.run([str(build('neutral-pair-'+language, language))], cwd=folder,
                            check=True, preexec_fn=bounded_stack)
+            subprocess.run([str(build('neutral-pair-binary64-'+language, language, reference64=True))],
+                           cwd=folder, check=True, preexec_fn=bounded_stack)
         if args.negative_control:
             for name, original, replacement in [
                 ('sign', 'sumr -= wt*rho0*dr_va0*z2/r;', 'sumr += wt*rho0*dr_va0*z2/r;'),

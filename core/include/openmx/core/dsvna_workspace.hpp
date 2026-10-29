@@ -2,6 +2,8 @@
 
 #include <openmx/core/vna_preparation.hpp>
 #include "openmx_complex.h"
+#include <openmx/core/vna_simd_workspace.hpp>
+#include <memory>
 
 namespace openmx::core {
 
@@ -24,10 +26,13 @@ class DsvnaWorkspace {
   auto radial() const noexcept { return radial_.view(); }
   auto bessel() const noexcept { return bessel_.view(); }
   auto scratch() const noexcept { return scratch_.view(); }
+  DsvnaSimdWorkspace& simd(bool angular);
  private:
   Tensor<dcomplex,3> angular_, conversion_;
   Tensor<double,3> sums_, bessel_;
   Tensor<double,2> radial_, scratch_;
+  DsvnaSimdShape simd_shape_;
+  std::unique_ptr<DsvnaSimdWorkspace> simd_;
 };
 
 } // namespace openmx::core

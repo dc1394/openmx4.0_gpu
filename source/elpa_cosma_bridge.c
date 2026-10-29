@@ -543,6 +543,61 @@ static void gs2_update_retained(gs2_handle_slot *s, size_t free_before, size_t f
     }
 }
 
+/* Measurement probe (OPENMX_GS2_FP32_PROBE=1): ELPA's single-precision
+   solve of all n eigenpairs in place of the double solve, to time the
+   FP32 basis a refined solve would start from (GS2PROF op=elpa32).  The
+   eigenpairs are only single-precision accurate, so the run's results are
+   not usable; a warning says so once. */
+static int gs2_eigen_float_probe(int n, int is_complex, const int *desca, const double *a,
+                                 double *w, double *z)
+{
+    int err = 0, nprow, npcol, myrow, mycol, ZERO = 0;
+    int ictxt = desca[1], nblk = desca[4];
+    const double started = gs2_profile_start();
+    gs2_handle_slot *s = gs2_get_handle(ictxt, n, n, is_complex, nblk, &err);
+    size_t local, i;
+    float *af, *zf, *wf;
+
+    if (s == NULL) return (err != 0) ? err : -1;
+    {
+        int myid = 0;
+        MPI_Comm_rank(s->comm, &myid);
+        if (myid == 0) {
+            printf("Warning: OPENMX_GS2_FP32_PROBE=1: this gpusolver2 eigensolve (n=%d) runs ELPA's single-precision\n"
+                   "         solver (timing probe); the eigenpairs and everything computed from them are only\n"
+                   "         single-precision accurate.\n", n);
+            fflush(stdout);
+        }
+    }
+    Cblacs_gridinfo(ictxt, &nprow, &npcol, &myrow, &mycol);
+    local = (size_t)numroc_(&n, &nblk, &myrow, &ZERO, &nprow) *
+            (size_t)numroc_(&n, &nblk, &mycol, &ZERO, &npcol) * (is_complex ? 2u : 1u);
+    af = (float *)malloc(local * sizeof(float));
+    zf = (float *)malloc(local * sizeof(float));
+    wf = (float *)malloc((size_t)n * sizeof(float));
+    if (af == NULL || zf == NULL || wf == NULL) { free(af); free(zf); free(wf); return -1; }
+    for (i = 0; i < local; i++) af[i] = (float)a[i];
+    if (is_complex) {
+        if (s->gpu) elpa_eigenvectors_float_complex(s->h, (float complex *)af, wf, (float complex *)zf, &err);
+        else elpa_eigenvectors_a_h_a_fc(s->h, (float complex *)af, wf, (float complex *)zf, &err);
+    }
+    else {
+        if (s->gpu) elpa_eigenvectors_float(s->h, af, wf, zf, &err);
+        else elpa_eigenvectors_a_h_a_f(s->h, af, wf, zf, &err);
+    }
+    if (err == ELPA_OK) {
+        for (i = 0; i < local; i++) z[i] = (double)zf[i];
+        for (i = 0; i < (size_t)n; i++) w[i] = (double)wf[i];
+    }
+    else {
+        fprintf(stderr, "openmx gpusolver2: single-precision elpa_eigenvectors failed: %s\n",
+                elpa_strerr(err));
+    }
+    free(af); free(zf); free(wf);
+    gs2_profile_report(s->comm, "elpa32", is_complex, n, n, 0, s->gpu, started);
+    return err;
+}
+
 int openmx_gs2_eigen_real(int n, int nev, double *a, int *desca, double *w, double *z,
                           int *descz)
 {
@@ -553,6 +608,7 @@ int openmx_gs2_eigen_real(int n, int nev, double *a, int *desca, double *w, doub
 
     (void)descz;
     if (s == NULL) return (err != 0) ? err : -1;
+    if (gs2_env_long(OPENMX_ENV_GS2_FP32_PROBE, 0)) return gs2_eigen_float_probe(n, 0, desca, a, w, z);
 
     free_before = s->gpu ? gs2_free_now() : 0;
     if (s->gpu) elpa_eigenvectors_double(s->h, a, w, z, &err);
@@ -577,6 +633,7 @@ int openmx_gs2_eigen_complex(int n, int nev, void *a, int *desca, double *w, voi
 
     (void)descz;
     if (s == NULL) return (err != 0) ? err : -1;
+    if (gs2_env_long(OPENMX_ENV_GS2_FP32_PROBE, 0)) return gs2_eigen_float_probe(n, 1, desca, (const double *)a, w, (double *)z);
 
     free_before = s->gpu ? gs2_free_now() : 0;
     if (s->gpu) elpa_eigenvectors_double_complex(s->h, (double complex *)a, w, (double complex *)z, &err);
@@ -649,11 +706,21 @@ static void gs2_gemm_init_once(void)
         setenv("COSMA_GPU_MAX_TILE_K", buf, 0);
     }
 
-    /* the caps actually in effect (a user-set environment wins above) */
-    gs2_tile_cap = gs2_env_long(OPENMX_ENV_EXT_COSMA_GPU_MAX_TILE_M, 5000);
+    /* the caps actually in effect: a user-set COSMA_GPU_MAX_TILE_* wins
+       above, otherwise the cap just published (the registry snapshot was
+       taken at start-up, before the setenv, so it still reports the
+       variables as unset; reading it alone would assume COSMA's 5000 and
+       send every large transform to ScaLAPACK for want of GPU memory) */
     {
-        long capn = gs2_env_long(OPENMX_ENV_EXT_COSMA_GPU_MAX_TILE_N, 5000);
-        long capk = gs2_env_long(OPENMX_ENV_EXT_COSMA_GPU_MAX_TILE_K, 5000);
+        const long published = cap > 0 ? cap : 5000;
+        long capm = published, capn = published, capk = published;
+        if (openmx_env_at(OPENMX_ENV_EXT_COSMA_GPU_MAX_TILE_M) != NULL)
+            capm = gs2_env_long(OPENMX_ENV_EXT_COSMA_GPU_MAX_TILE_M, 5000);
+        if (openmx_env_at(OPENMX_ENV_EXT_COSMA_GPU_MAX_TILE_N) != NULL)
+            capn = gs2_env_long(OPENMX_ENV_EXT_COSMA_GPU_MAX_TILE_N, 5000);
+        if (openmx_env_at(OPENMX_ENV_EXT_COSMA_GPU_MAX_TILE_K) != NULL)
+            capk = gs2_env_long(OPENMX_ENV_EXT_COSMA_GPU_MAX_TILE_K, 5000);
+        gs2_tile_cap = capm;
         if (capn > gs2_tile_cap) gs2_tile_cap = capn;
         if (capk > gs2_tile_cap) gs2_tile_cap = capk;
     }

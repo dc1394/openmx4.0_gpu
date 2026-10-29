@@ -13,3 +13,6 @@ FILE *input_find(const char *key);
 int input_last(const char *key);
 int input_string2int(const char *key, int *ret,int nvals,  char **strval,  int *ivals);
 int input_errorCount();
+/* the keyword-file stack behind this API, for the io package's block readers */
+typedef struct OpenMXKeywordFiles OpenMXKeywordFiles;
+OpenMXKeywordFiles *input_keyword_files(void);

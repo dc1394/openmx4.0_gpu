@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.25.2)
+project(GauntExample LANGUAGES CXX)
+find_package(OpenMXBasis CONFIG REQUIRED)
+add_executable(gaunt_example main.cpp)
+target_link_libraries(gaunt_example PRIVATE OpenMX::basis)

@@ -278,6 +278,10 @@ inline void xyz2spherical_reference(double x,double y,double z,double S_coordina
   else{ theta = 0.5*PI; phi = 0.0; }
   S_coordinate[0] = r;  S_coordinate[1] = theta;  S_coordinate[2] = phi;
 }
+// The default preserves the frozen legacy angles. The cosine-kernel test can
+// inject a well-conditioned coordinate conversion without changing this
+// radial/angular derivative transcription or its default bitwise checks.
+template<void (*Coordinates)(double,double,double,double*) = xyz2spherical_reference>
 inline void get_dorbitals_reference(int maxl,const int *nb,int mesh,const double *rv,const double *rwf_rows,
                                     double x,double y,double z,double *out) {
   int i1, po, L0, Mul0, M0, mp_min, mp_max, m;
@@ -292,11 +296,11 @@ inline void get_dorbitals_reference(int maxl,const int *nb,int mesh,const double
   double dRx, dRy, dRz, dQx, dQy, dQz, dPx, dPy, dPz;
   double dChiR, dChiQ, dChiP;
   Rmin = 10e-14;
-  xyz2spherical_reference(x, y, z, S_coordinate);
+  Coordinates(x, y, z, S_coordinate);
   R = S_coordinate[0]; Q = S_coordinate[1]; P = S_coordinate[2];
   if (R < Rmin) {
     x = x + Rmin; y = y + Rmin; z = z + Rmin;
-    xyz2spherical_reference(x, y, z, S_coordinate);
+    Coordinates(x, y, z, S_coordinate);
     R = S_coordinate[0]; Q = S_coordinate[1]; P = S_coordinate[2];
   }
   po = 0; mp_min = 0; mp_max = mesh - 1;

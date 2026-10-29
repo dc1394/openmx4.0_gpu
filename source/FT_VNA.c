@@ -20,6 +20,7 @@
 /*  end stat section */
 #include "openmx_common.h"
 #include "openmx_reciprocal.h"
+#include "openmx_quadrature.h"
 #include "openmx_atomic.h"
 #include "mpi.h"
 #include "openmx_core_radial.h"
@@ -36,6 +37,7 @@ void FT_VNA(OpenMXCoreContext *core, int device)
   OpenMXReciprocalArchive *archive=OpenMX_ReciprocalArchiveBegin(core,OPENMX_ARCHIVE_NEUTRAL_POTENTIAL,&archive_rows);
   char archive_error[256];
   const OpenMXReciprocalViews reciprocal=OpenMX_ReciprocalTables(core);
+  const OpenMXGaussRuleData rule=OpenMX_RadialQuadrature(core,GL_Mesh,mpi_comm_level1);
   double **Spe_CrudeVNA_Bessel=reciprocal.vps.potential_transform;
 
   int numprocs,myid,ID,NumSpe;
@@ -87,7 +89,7 @@ void FT_VNA(OpenMXCoreContext *core, int device)
         const OpenMXNeutralTable table = {atomic->species.vps_mesh[spe],openmx_radial_row2(&atomic->vps_radii,spe),
           openmx_radial_row2(&atomic->neutral_potential,spe),atomic->species.cutoff[spe],Spe_CrudeVNA_Bessel[spe]};
         const OpenMXSquaredRadialGrid grid = {OneD_Grid,GL_Mesh,openmx_radial_row2(&atomic->pao_radii,spe)[0],
-          atomic->species.cutoff[spe]+0.5,Radial_kmin,PAO_Nkmax,GL_Abscissae};
+          atomic->species.cutoff[spe]+0.5,Radial_kmin,PAO_Nkmax,rule.nodes};
         if (!openmx_core_transform_neutral_potential(core,device,&table,&grid,error,sizeof(error))) {
           fprintf(stderr,"FT_VNA: %s\n",error);
           MPI_Abort(mpi_comm_level1,1);

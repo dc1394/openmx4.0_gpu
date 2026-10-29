@@ -1,8 +1,7 @@
 #pragma once
 
 #include <openmx/core/tensor.hpp>
-#include <span>
-#include <vector>
+#include <openmx/basis/pair_bessel.hpp>
 
 namespace openmx::core {
 
@@ -10,12 +9,10 @@ struct PairBesselTable {
   Tensor<double,3>::const_view_type values;
   int angular;
 };
+using PairBesselStatistics = openmx::basis::PairBesselStatistics;
 
-struct PairBesselStatistics {
-  long hits = 0;
-  long misses = 0;
-};
-
+// Compatibility view for existing overlap/nonlocal workspaces. Storage,
+// cache policy and numerical evaluation belong to the independent library.
 class PairBesselWorkspace {
  public:
   PairBesselWorkspace(int maximum_angular, std::span<const double> wavevectors,
@@ -23,23 +20,10 @@ class PairBesselWorkspace {
   PairBesselWorkspace(const PairBesselWorkspace&) = delete;
   PairBesselWorkspace& operator=(const PairBesselWorkspace&) = delete;
   PairBesselTable sample(double distance, int angular);
-  PairBesselStatistics statistics() const noexcept { return statistics_; }
-  std::size_t cached_tables() const noexcept { return entries_.size(); }
-
+  PairBesselStatistics statistics() const noexcept { return implementation_.statistics(); }
+  std::size_t cached_tables() const noexcept { return implementation_.cached_tables(); }
  private:
-  struct Entry {
-    double distance;
-    int angular;
-    Tensor<double,3> table;
-  };
-  void fill(Tensor<double,3>& table, double distance, int angular) const;
-  std::vector<double> wavevectors_;
-  int maximum_angular_;
-  double maximum_wavevector_;
-  std::size_t cache_limit_;
-  Tensor<double,3> scratch_;
-  std::vector<Entry> entries_;
-  PairBesselStatistics statistics_;
+  openmx::basis::PairBesselWorkspace implementation_;
 };
 
 } // namespace openmx::core

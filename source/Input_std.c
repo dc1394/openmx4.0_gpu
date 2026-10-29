@@ -18,6 +18,7 @@
 #include "openmx_gpu_workers.h"
 
 #include "Inputtools.h"
+#include "openmx_io.h"
 #include "mpi.h"
 #include <omp.h>
 #include "flpq_dm.h"
@@ -305,26 +306,28 @@ void Input_std(char *file, OpenMXCoreContext *core)
                            read species
   *************************************************************/ 
 
-  if ( (fp=input_find("<Definition.of.Atomic.Species")) != NULL ) {
-
-    for (i=0; i<SpeciesNum; i++){
-      fgets(buf,MAXBUF,fp);
-      sscanf(buf,"%s %s %s %lf",SpeName[i],SpeBasis[i],SpeVPS[i],&Spe_AtomicMass[i]);
-      SpeciesString2int(i);
-    }
-
-    ungetc('\n',fp);
-
-    if (! input_last("Definition.of.Atomic.Species>")) {
+  {
+    /* the io package reads the block (name, basis, VPS, optional mass per
+       line); an absent block leaves the species untouched as before */
+    char message[200];
+    int status = openmx_io_read_species_definitions(input_keyword_files(), SpeciesNum,
+                                                    SpeName, SpeBasis, SpeVPS, Spe_AtomicMass,
+                                                    YOUSO10, message, sizeof(message));
+    if (status<0){
       /* format error */
 
       po++;
 
       if (myid==Host_ID){
-        printf("Format error for Definition.of.Atomic.Species\n");
+        printf("%s", message);
       }
       MPI_Finalize();
       exit(0);
+    }
+    else if (0<status){
+      for (i=0; i<SpeciesNum; i++){
+        SpeciesString2int(i);
+      }
     }
   }
 
@@ -1653,10 +1656,32 @@ void Input_std(char *file, OpenMXCoreContext *core)
     input_string2int("Atoms.SpeciesAndCoordinates.Unit",
                      &coordinates_unit,3,s_vec,i_vec);
 
-    if ( (fp=input_find("<Atoms.SpeciesAndCoordinates")) != NULL ) {
+    {
+      /* the io package reads the block into records; the items each line
+         converted are applied like the original sscanf did (a short line
+         leaves the remaining values as they were), then the original
+         per-atom processing follows */
+      OpenMXAtomDefinition *atoms = (OpenMXAtomDefinition*)malloc(sizeof(OpenMXAtomDefinition)*(atomnum+1));
+      char message[200];
+      int status = openmx_io_read_atom_definitions(input_keyword_files(), atomnum, SpinP_switch==3,
+                                                   atoms, message, sizeof(message));
+      if (status<0){
+        /* format error */
+        printf("%s", message);
+        po++;
+      }
 
-      for (i=1; i<=atomnum; i++){
-        fgets(buf,MAXBUF,fp);
+      for (i=1; 0<status && i<=atomnum; i++){
+        const OpenMXAtomDefinition *atom = &atoms[i-1];
+        const int fields = atom->fields;
+
+        if (1<=fields) j = atom->index;
+        if (2<=fields) strcpy(Species, atom->species);
+        if (3<=fields) Gxyz[i][1] = atom->position[0];
+        if (4<=fields) Gxyz[i][2] = atom->position[1];
+        if (5<=fields) Gxyz[i][3] = atom->position[2];
+        if (6<=fields) InitN_USpin[i] = atom->spin[0];
+        if (7<=fields) InitN_DSpin[i] = atom->spin[1];
 
 	/* spin non-collinear */ 
 	if (SpinP_switch==3){
@@ -1665,14 +1690,12 @@ void Input_std(char *file, OpenMXCoreContext *core)
                (1) spin non-collinear
 	  *******************************************************/
 
-	  sscanf(buf,"%i %s %lf %lf %lf %lf %lf %lf %lf %lf %lf %d %s",
-		 &j, Species,
-		 &Gxyz[i][1],&Gxyz[i][2],&Gxyz[i][3],
-		 &InitN_USpin[i],&InitN_DSpin[i],
-		 &Angle0_Spin[i], &Angle1_Spin[i], 
-		 &Angle0_Orbital[i], &Angle1_Orbital[i],
-		 &Constraint_SpinAngle[i],
-		 OrbPol );
+          if ( 8<=fields) Angle0_Spin[i] = atom->spin_angle[0];
+          if ( 9<=fields) Angle1_Spin[i] = atom->spin_angle[1];
+          if (10<=fields) Angle0_Orbital[i] = atom->orbital_angle[0];
+          if (11<=fields) Angle1_Orbital[i] = atom->orbital_angle[1];
+          if (12<=fields) Constraint_SpinAngle[i] = atom->constraint;
+          if (13<=fields) strcpy(OrbPol, atom->orbital_polarization);
 
 	  /* atomMove is initialzed as 1 */
 
@@ -1730,16 +1753,13 @@ void Input_std(char *file, OpenMXCoreContext *core)
           }
 	}
 
+
 	/**************************************************
                   (2) spin collinear
 	**************************************************/
 
 	else{ 
-
-	  sscanf(buf,"%i %s %lf %lf %lf %lf %lf %s",
-		 &j, Species,
-		 &Gxyz[i][1],&Gxyz[i][2],&Gxyz[i][3],
-		 &InitN_USpin[i],&InitN_DSpin[i], OrbPol );
+          if (8<=fields) strcpy(OrbPol, atom->orbital_polarization);
 	}
 
         WhatSpecies[i] = Species2int(Species);
@@ -1757,13 +1777,8 @@ void Input_std(char *file, OpenMXCoreContext *core)
         }
       }
 
-      ungetc('\n',fp);
-      if (!input_last("Atoms.SpeciesAndCoordinates>")) {
-        /* format error */
-        printf("Format error for Atoms.SpeciesAndCoordinates\n");
-        po++;
-      }
 
+      free(atoms);
     }
 
     /****************************************************
@@ -1789,13 +1804,22 @@ void Input_std(char *file, OpenMXCoreContext *core)
 
     if ( (fp=input_find("<Atoms.Unitvectors")) != NULL ) {
 
-      for (i=1; i<=3; i++){
-        fscanf(fp,"%lf %lf %lf",&tv[i][1],&tv[i][2],&tv[i][3]);
-      }
-      if ( ! input_last("Atoms.Unitvectors>") ) {
+      /* the io package reads the nine numbers (a malformed block leaves tv) */
+      double cell[3][3];
+      char message[200];
+      int status = openmx_io_read_unit_vectors(input_keyword_files(), cell, message, sizeof(message));
+
+      if (status<0){
         /* format error */
-        printf("Format error for Atoms.Unitvectors\n");
+        printf("%s", message);
         po++;
+      }
+      else if (0<status){
+        for (i=1; i<=3; i++){
+          tv[i][1] = cell[i-1][0];
+          tv[i][2] = cell[i-1][1];
+          tv[i][3] = cell[i-1][2];
+        }
       }
 
       /* Ang to AU */
@@ -6043,168 +6067,35 @@ int Analyze_Wannier_Projectors(int p, char ctmp[YOUSO10],
 
 void SpeciesString2int(int p)
 {
-  int i,l,n,po,k,base;
-  int tmp;
-  int nlist[10]; 
-  char c,cstr[YOUSO10*3];
+  /* The grammar of "Si7.0-s2p2d1" (and "s3>2p2>1" with orbital
+     optimization) lives in the io package; this fills the species tables and
+     keeps the original reports and exits. */
+  OpenMXBasisSpec spec;
+  char message[200];
+  int l;
   int numprocs,myid;
 
   MPI_Comm_size(mpi_comm_level1,&numprocs);
   MPI_Comm_rank(mpi_comm_level1,&myid);
 
-  /* initialize nlist */
-
-  for (i=0; i<10; i++) nlist[i] = 0;
-  
-  /* Get basis name */
-
-  sprintf(SpeBasisName[p],"");
-
-  i = 0;
-  po = 0;
-  while( ((c=SpeBasis[p][i])!='\0' || po==0) && i<YOUSO10 ){
-    if (c=='-'){
-      po = 1;
-      SpeBasisName[p][i] = '\0';  
-    }
-    if (po==0) SpeBasisName[p][i] = SpeBasis[p][i]; 
-    i++;
+  if (!openmx_io_parse_basis_spec(SpeBasis[p], Cnt_switch, SpeBasisName[p], YOUSO10,
+                                  &spec, message, sizeof(message))){
+    printf("%s", message);
+    MPI_Finalize();
+    exit(0);
   }
 
   if (2<=level_stdout && myid==Host_ID){
     printf("<Input_std>  SpeBasisName=%s\n",SpeBasisName[p]);
   }
 
-  /* Get basis type */
+  for (l=0; l<5; l++){
+    Spe_Num_Basis[p][l] = spec.primitive[l];
+    if (Cnt_switch==1) Spe_Num_CBasis[p][l] = spec.contracted[l];
+  }
+  if (0<=spec.max_l) Spe_MaxL_Basis[p] = spec.max_l;
 
   for (l=0; l<5; l++){
-    Spe_Num_Basis[p][l] = 0;
-  }
-
-  i = 0;
-  po = 0;
-  n = 0; 
-
-  /* get informations of basis set */
-
-  while((c=SpeBasis[p][i])!='\0'){
-
-    if (po==1){
-
-      /* in case of orbital optimization, set Spe_Num_CBasis */
-      if ( (c=='s' || c=='p' || c=='d' || c=='f' || c=='g') 
-          && n!=0 && Cnt_switch==1){
-
-	Spe_Num_CBasis[p][l] = 0;
-	base = 1;
-	for (k=(n-1); 0<=k; k--){
-	  Spe_Num_CBasis[p][l] += nlist[k]*base;
-	  base *= 10;
-	}
-      }
-
-      /* analysis of the string */
-
-      if      (c=='s'){ l=0; n=0; }
-      else if (c=='p'){ l=1; n=0; }
-      else if (c=='d'){ l=2; n=0; }
-      else if (c=='f'){ l=3; n=0; }
-      else if (c=='g'){ l=4; n=0; }
-      else{
-
-        /* no orbital optimization */
-        if (Cnt_switch==0){
-
-          if (c=='>') {
-	    printf("Format error in Definition of Atomic Species\n");
-	    MPI_Finalize();
-	    exit(0);
-          }
-
-	  if (n==0){
-	    cstr[0] = c;
-	    cstr[1] = '\0';
-	    Spe_Num_Basis[p][l] = atoi(cstr); /* corrected by t.ohwaki */
-	    n++;
-	  }
-	  else if (n==1){
-	    cstr[0] = c;
-	    cstr[1] = '\0';
-            tmp = Spe_Num_Basis[p][l];
-	    Spe_Num_Basis[p][l] = 10*tmp + atoi(cstr);  /* corrected by t.ohwaki */ 
-	    n++;
-	  }
-	  else if (n==2){
-	    cstr[0] = c;
-	    cstr[1] = '\0';
-            tmp = Spe_Num_Basis[p][l];
-	    Spe_Num_Basis[p][l] = 10*tmp + atoi(cstr);  /* corrected by t.ohwaki */ 
-	    n++;
-	  }
-	  else {
-	    printf("Format error in Definition of Atomic Species\n");
-	    MPI_Finalize();
-	    exit(0);
-	  }
-	}
-
-        /* orbital optimization */
-        else if (Cnt_switch==1){
-
-          if (c=='>'){
-
-            /* set Spe_Num_Basis */
-	    Spe_Num_Basis[p][l] = 0;
-            base = 1;
-            for (k=(n-1); 0<=k; k--){
-   	      Spe_Num_Basis[p][l] += nlist[k]*base;
-              base *= 10;
-            }
-            
-            /* reset n */
-            n = 0;
-          } 
-          
-          else {
-	    cstr[0] = c;
-	    cstr[1] = '\0';
-            nlist[n] = atoi(cstr);
-            n++;
-          }
-	}
-
-      } 
-    }  
-
-    if (SpeBasis[p][i]=='-') po = 1;
-    i++;
-  }
-
-  /* in case of orbital optimization, set Spe_Num_CBasis */
-
-  if ( n!=0 && Cnt_switch==1){
-
-    Spe_Num_CBasis[p][l] = 0;
-    base = 1;
-    for (k=(n-1); 0<=k; k--){
-      Spe_Num_CBasis[p][l] += nlist[k]*base;
-      base *= 10;
-    }
-  }
-
-  /* check the number of primitive and contracted basis functions */
-
-  for (l=0; l<5; l++){
-    if (Spe_Num_Basis[p][l]!=0) Spe_MaxL_Basis[p] = l;
-
-    if (Spe_Num_Basis[p][l]<Spe_Num_CBasis[p][l]){
-
-      printf("# of contracted orbitals are larger than # of primitive oribitals\n");
-      printf("Primitive=%3d Contracted=%3d\n",Spe_Num_Basis[p][l],Spe_Num_CBasis[p][l]);
-      MPI_Finalize();
-      exit(0); 
-    } 
-
     if (2<=level_stdout && Cnt_switch==0 && myid==Host_ID){
       printf("<Input_std>  p=%2d l=%2d Primitive=%3d\n",
               p,l,Spe_Num_Basis[p][l]);
@@ -6213,10 +6104,7 @@ void SpeciesString2int(int p)
       printf("<Input_std>  p=%2d l=%2d Primitive=%3d Contracted=%3d\n",
               p,l,Spe_Num_Basis[p][l],Spe_Num_CBasis[p][l]);
     }
-
   }
-
-  if (2<=level_stdout || Cnt_switch==1) printf("\n");
 }
 
 

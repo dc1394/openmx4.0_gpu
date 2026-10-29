@@ -281,6 +281,9 @@ GPUSOLVER2_SCALAPACK_SO ?= $(NVHPC_MPI_LIBDIR)/libscalapack_lp64.so
 GPUSOLVER2_CMAKE     ?=
 GPUSOLVER2_JOBS      ?= $(shell nproc 2>/dev/null || echo 8)
 GPUSOLVER2_ELPA_VER  ?= 2026.02.002
+# CPU kernels of the bundled ELPA: auto = the SIMD kernels of the build host
+# (built with the host GCC when the MPI C compiler is NVHPC), generic = none.
+GPUSOLVER2_ELPA_KERNELS ?= auto
 GPUSOLVER2_ELPA_INCLUDE ?= $(GPUSOLVER2_PREFIX)/include/elpa-$(GPUSOLVER2_ELPA_VER)
 GPUSOLVER2_STAMP     = $(GPUSOLVER2_BUILD)/stamp/02_cosma.done
 
@@ -306,8 +309,8 @@ OBJS    = openmx_grid_assembly.o openmx.o openmx_common.o Input_std.o Inputtools
           Overlap_Cluster_NC_Ss2.o Overlap_Band_NC_Ss2.o Overlap_Cluster.o Overlap_Cluster_Ss.o Overlap_Cluster_LNO_Ss.o \
           Set_ContMat_Cluster_LNO.o Hamiltonian_Band.o Matrix_Band_LNO.o Overlap_Band.o Hamiltonian_Cluster_NC.o \
           Hamiltonian_Band_NC.o Hamiltonian_Cluster_SO.o Get_OneD_HS_Col.o \
-          SetPara_DFT.o XC_Ceperly_Alder.o XC_CA_LSDA.o \
-          XC_PW92C.o XC_PBE.o XC_EX.o DFT.o Mixing_DM.o Mixing_H.o Mixing_V.o Force.o Stress.o Poisson.o Poisson_ESM.o \
+          SetPara_DFT.o \
+          DFT.o Mixing_DM.o Mixing_H.o Mixing_V.o Force.o Stress.o Poisson.o Poisson_ESM.o \
           Cluster_DFT_Col.o Cluster_DFT_NonCol.o Cluster_DFT_Dosout.o Cluster_DFT_ON2.o Cluster_DFT_Col_LNO.o \
           Band_DFT_Col.o Band_DFT_NonCol.o Band_DFT_NonCol_GB.o Band_DFT_kpath.o Band_DFT_kpath_LNO.o Band_DFT_MO.o \
           Cluster_DFT_Col_CWF.o Cluster_DFT_NonCol_CWF.o Band_DFT_Col_CWF.o Band_DFT_NonCol_CWF.o \
@@ -607,13 +610,13 @@ Hamiltonian_Cluster.o: Hamiltonian_Cluster.c openmx_common.h
 	$(CC) -c Hamiltonian_Cluster.c
 Hamiltonian_Cluster_Hs.o: Hamiltonian_Cluster_Hs.c openmx_common.h
 	$(CC) -c Hamiltonian_Cluster_Hs.c
-Hamiltonian_Cluster_NC_Hs2.o: Hamiltonian_Cluster_NC_Hs2.c openmx_common.h
+Hamiltonian_Cluster_NC_Hs2.o: Hamiltonian_Cluster_NC_Hs2.c openmx_common.h openmx_nc_indices.h
 	$(CC) -c Hamiltonian_Cluster_NC_Hs2.c
-Hamiltonian_Band_NC_Hs2.o: Hamiltonian_Band_NC_Hs2.c openmx_common.h
+Hamiltonian_Band_NC_Hs2.o: Hamiltonian_Band_NC_Hs2.c openmx_common.h openmx_nc_indices.h
 	$(CC) -c Hamiltonian_Band_NC_Hs2.c
-Overlap_Cluster_NC_Ss2.o: Overlap_Cluster_NC_Ss2.c openmx_common.h
+Overlap_Cluster_NC_Ss2.o: Overlap_Cluster_NC_Ss2.c openmx_common.h openmx_nc_indices.h
 	$(CC) -c Overlap_Cluster_NC_Ss2.c
-Overlap_Band_NC_Ss2.o: Overlap_Band_NC_Ss2.c openmx_common.h
+Overlap_Band_NC_Ss2.o: Overlap_Band_NC_Ss2.c openmx_common.h openmx_nc_indices.h
 	$(CC) -c Overlap_Band_NC_Ss2.c
 Overlap_Cluster.o: Overlap_Cluster.c openmx_common.h
 	$(CC) -c Overlap_Cluster.c  
@@ -638,18 +641,8 @@ Get_OneD_HS_Col.o: Get_OneD_HS_Col.c openmx_common.h
 #
 #
 #  
-SetPara_DFT.o: SetPara_DFT.c openmx_common.h
+SetPara_DFT.o: SetPara_DFT.c openmx_common.h openmx_core_pao_file.h openmx_core_vps_file.h openmx_core_atomic_density.h openmx_core_quadrature.h
 	$(CC) -c SetPara_DFT.c
-XC_Ceperly_Alder.o: XC_Ceperly_Alder.c openmx_common.h
-	$(CC) -c XC_Ceperly_Alder.c
-XC_CA_LSDA.o: XC_CA_LSDA.c openmx_common.h
-	$(CC) -c XC_CA_LSDA.c
-XC_PW92C.o: XC_PW92C.c openmx_common.h
-	$(CC) -c XC_PW92C.c
-XC_PBE.o: XC_PBE.c openmx_common.h
-	$(CC) -c XC_PBE.c
-XC_EX.o: XC_EX.c openmx_common.h
-	$(CC) -c XC_EX.c
 #
 # SCF
 #
@@ -658,7 +651,7 @@ DFT.o: DFT.c openmx_common.h tran_prototypes.h grid_precision.h
 	$(CC) -c DFT.c
 Cluster_DFT_Col.o: Cluster_DFT_Col.c openmx_common.h eigen_refine_gpu.h openmx_precision.h
 	$(CC) -c Cluster_DFT_Col.c
-Cluster_DFT_NonCol.o: Cluster_DFT_NonCol.c openmx_common.h eigen_refine_gpu.h openmx_precision.h
+Cluster_DFT_NonCol.o: Cluster_DFT_NonCol.c openmx_common.h eigen_refine_gpu.h openmx_precision.h openmx_nc_dm_cpu.h openmx_host_simd.h openmx_core_energy_simd.h
 	$(CC) -c Cluster_DFT_NonCol.c
 Cluster_DFT_Dosout.o: Cluster_DFT_Dosout.c openmx_common.h
 	$(CC) -c Cluster_DFT_Dosout.c
@@ -704,7 +697,7 @@ Overlap_Cluster_LNO_Ss.o: Overlap_Cluster_LNO_Ss.c openmx_common.h
 	$(CC) -c Overlap_Cluster_LNO_Ss.c
 leakdetect.o: leakdetect.c leakdetect.h
 	$(CC) -c leakdetect.c
-Band_DFT_NonCol.o: Band_DFT_NonCol.c openmx_common.h eigen_refine_gpu.h openmx_precision.h
+Band_DFT_NonCol.o: Band_DFT_NonCol.c openmx_common.h eigen_refine_gpu.h openmx_precision.h openmx_nc_dm_cpu.h openmx_host_simd.h openmx_core_energy_simd.h
 	$(CC3) -c Band_DFT_NonCol.c
 Band_DFT_NonCol_GB.o: Band_DFT_NonCol_GB.c openmx_common.h
 	$(CC) -c Band_DFT_NonCol_GB.c
@@ -747,7 +740,7 @@ Orbital_Moment.o: Orbital_Moment.c openmx_common.h
 	$(CC) -c Orbital_Moment.c
 Smoothing_Func.o: Smoothing_Func.c openmx_common.h
 	$(CC) -c Smoothing_Func.c
-Gauss_Legendre.o: Gauss_Legendre.c openmx_common.h
+Gauss_Legendre.o: Gauss_Legendre.c openmx_basis_quadrature.h ../modules/basis/include/openmx/basis/quadrature.h
 	$(CC) -c Gauss_Legendre.c
 # NVHPC 26.3 + -acc makes DSYGV fail here, corrupting ON2 poles.
 zero_cfrac.o: zero_cfrac.c openmx_common.h
@@ -793,9 +786,9 @@ Set_Density_Grid_GPU.o: Set_Density_Grid_GPU.c openmx_common.h grid_precision.h
 Set_Aden_Grid.o: Set_Aden_Grid.c openmx_common.h
 	$(CC) -c Set_Aden_Grid.c
 
-KumoF.o: KumoF.c openmx_common.h
+KumoF.o: KumoF.c openmx_basis_density.h ../modules/basis/include/openmx/basis/density.h
 	$(CC) -c KumoF.c
-Dr_KumoF.o: Dr_KumoF.c openmx_common.h
+Dr_KumoF.o: Dr_KumoF.c openmx_basis_density.h ../modules/basis/include/openmx/basis/density.h
 	$(CC) -c Dr_KumoF.c
 Pot_NeutralAtom.o: Pot_NeutralAtom.c openmx_common.h
 	$(CC) -c Pot_NeutralAtom.c
@@ -1040,7 +1033,7 @@ endif
 .PHONY: gpusolver2-stack gpusolver2-clean
 gpusolver2-stack: $(GPUSOLVER2_STAMP)
 
-$(GPUSOLVER2_STAMP): third_party/build_gpusolver2_stack.sh
+$(GPUSOLVER2_STAMP): third_party/build_gpusolver2_stack.sh third_party/tiledmm-openmx-gemm-hook.patch
 	GPUSOLVER2_DIST="$(GPUSOLVER2_DIST)" GPUSOLVER2_BUILD="$(GPUSOLVER2_BUILD)" \
 	GPUSOLVER2_PREFIX="$(GPUSOLVER2_PREFIX)" \
 	GPUSOLVER2_HOST_CC="$(GPUSOLVER2_HOST_CC)" GPUSOLVER2_HOST_CXX="$(GPUSOLVER2_HOST_CXX)" \
@@ -1049,7 +1042,7 @@ $(GPUSOLVER2_STAMP): third_party/build_gpusolver2_stack.sh
 	GPUSOLVER2_CUDA_HOME="$(GPUSOLVER2_CUDA_HOME)" GPUSOLVER2_MATH_DIR="$(GPUSOLVER2_MATH_DIR)" \
 	GPUSOLVER2_COMPILER_LIB="$(GPUSOLVER2_COMPILER_LIB)" GPUSOLVER2_COMPILER_BIN="$(GPUSOLVER2_COMPILER_BIN)" \
 	GPUSOLVER2_SCALAPACK_SO="$(GPUSOLVER2_SCALAPACK_SO)" \
-	GPUSOLVER2_ELPA_VER="$(GPUSOLVER2_ELPA_VER)" \
+	GPUSOLVER2_ELPA_VER="$(GPUSOLVER2_ELPA_VER)" GPUSOLVER2_ELPA_KERNELS="$(GPUSOLVER2_ELPA_KERNELS)" \
 	GPUSOLVER2_CMAKE="$(GPUSOLVER2_CMAKE)" GPUSOLVER2_JOBS="$(GPUSOLVER2_JOBS)" \
 	sh third_party/build_gpusolver2_stack.sh
 	@touch "$@"
@@ -1277,8 +1270,8 @@ clean: fftw3-clean gemmul8-clean
 #
 #
 
-DosMain: DosMain.o Inputtools.o malloc_multidimarray.o Tetrahedron_Blochl.o 
-	$(CC) -o $@ DosMain.o Inputtools.o malloc_multidimarray.o Tetrahedron_Blochl.o -lm 
+DosMain: DosMain.o Inputtools.o malloc_multidimarray.o Tetrahedron_Blochl.o $(OPENMX_CORE_LIBRARY)
+	$(CC) -o $@ DosMain.o Inputtools.o malloc_multidimarray.o Tetrahedron_Blochl.o $(OPENMX_IO_LIBRARY) -lstdc++ -lm 
 	cp DosMain $(DESTDIR)/DosMain
 
 DosMain.o :DosMain.c openmx_common.h
@@ -1290,8 +1283,8 @@ Tetrahedron_Blochl.o : Tetrahedron_Blochl.c
 #  COHP: Crystal Orbital Hamilton Population
 #
 
-cohp: cohp.o Inputtools.o Tetrahedron_Blochl.o
-	$(CC) -o $@ cohp.o Inputtools.o Tetrahedron_Blochl.o -lm
+cohp: cohp.o Inputtools.o Tetrahedron_Blochl.o $(OPENMX_CORE_LIBRARY)
+	$(CC) -o $@ cohp.o Inputtools.o Tetrahedron_Blochl.o $(OPENMX_IO_LIBRARY) -lstdc++ -lm
 	cp cohp $(DESTDIR)/cohp
 
 cohp.o :cohp.c openmx_common.h
@@ -1382,8 +1375,8 @@ esp.o : esp.c Inputtools.h
 #
 #
 
-check_lead: check_lead.o Inputtools.o
-	$(CC) check_lead.o Inputtools.o -lm -o check_lead
+check_lead: check_lead.o Inputtools.o $(OPENMX_CORE_LIBRARY)
+	$(CC) check_lead.o Inputtools.o $(OPENMX_IO_LIBRARY) -lstdc++ -lm -o check_lead
 	cp check_lead $(DESTDIR)/check_lead
 
 check_lead.o: check_lead.c Inputtools.h 
@@ -1397,7 +1390,7 @@ check_lead.o: check_lead.c Inputtools.h
 
 OpticalConductivityMain: OpticalConductivityMain.o \
               Inputtools.o  malloc_multidimarray.o
-	$(CC) -o $@   OpticalConductivityMain.o  Inputtools.o  malloc_multidimarray.o -lm 
+	$(CC) -o $@   OpticalConductivityMain.o  Inputtools.o  malloc_multidimarray.o $(OPENMX_IO_LIBRARY) -lstdc++ -lm 
 	cp OpticalConductivityMain $(DESTDIR)/OpticalConductivityMain
 
 #
@@ -1803,3 +1796,10 @@ openmx_cluster_capacity.o Cluster_DFT_Col.o Cluster_DFT_NonCol.o: openmx_orbital
 
 DFT.o Force.o Set_Hamiltonian.o Set_Orbitals_Grid.o Set_Density_Grid_GPU.o openmx.o openmx_api.o Runtest.o truncation.o openmx_cluster_capacity.o Cluster_DFT_Col.o Cluster_DFT_NonCol.o: openmx_hamiltonian_gpu_state.h
 Set_Hamiltonian.o: openmx_grid_device_scope.h openmx_core_native_resources.h
+
+# Calculation-owned radial quadrature shared by host and native GPU assembly.
+DFT.o SetPara_DFT.o FT_VNA.o FT_ProExpn_VNA.o FT_ProductPAO.o Set_ProExpn_VNA.o: openmx_quadrature.h openmx_core_quadrature.h ../core/include/openmx_core_quadrature.h
+
+# Neutral-atom reference quadrature is owned by the calculation.
+Total_Energy.o Stress.o: openmx_quadrature.h openmx_core_quadrature.h ../core/include/openmx_core_quadrature.h
+Total_Energy_GPU.o: openmx_core_quadrature.h ../core/include/openmx_core_quadrature.h

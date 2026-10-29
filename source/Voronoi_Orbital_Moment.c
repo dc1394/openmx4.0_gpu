@@ -22,7 +22,7 @@
 void Orbitals_on_Grid(const OpenMXAtomicViews *atomic, int wan, int Lmax, int Nmul, double x, double y, double z,
                       double ***Chi, double **RF, double **AF);
 
-void Generate_L_Matrix(int Lmax, double ***Lx0, double ***Ly0, double ***Lz0);
+void Generate_L_Matrix(const OpenMXRealHarmonicData *conversion, int Lmax, double ***Lx0, double ***Ly0, double ***Lz0);
 
 
 void Voronoi_Orbital_Moment(const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electronic)
@@ -198,7 +198,7 @@ void Voronoi_Orbital_Moment(const OpenMXAtomicViews *atomic, const OpenMXElectro
                 generate the L-matrix
   ****************************************************/
 
-  Generate_L_Matrix(Lmax,Lx0,Ly0,Lz0); 
+  Generate_L_Matrix(&atomic->real_harmonics,Lmax,Lx0,Ly0,Lz0);
 
   /****************************************************
       iDM[0][k][Matomnum] -> iDM0              
@@ -912,7 +912,7 @@ void Orbitals_on_Grid(const OpenMXAtomicViews *atomic, int wan, int Lmax, int Nm
 
 
 
-void Generate_L_Matrix(int Lmax, double ***Lx0, double ***Ly0, double ***Lz0)
+void Generate_L_Matrix(const OpenMXRealHarmonicData *conversion, int Lmax, double ***Lx0, double ***Ly0, double ***Lz0)
 {
   int L,M1,M2,M3,M,m1,m2;      
   dcomplex ***CLx,***CLy,***CLz;     
@@ -1009,7 +1009,7 @@ void Generate_L_Matrix(int Lmax, double ***Lx0, double ***Ly0, double ***Lz0)
 
         for (M3=0; M3<=2*L; M3++){
 
-          Ctmp1 = Comp2Real[L][M2][M3];
+          Ctmp1 = openmx_real_harmonic_coefficient(conversion,L,M2,M3);
 
           Ctmpx.r += CLx[L][M1][M3].r*Ctmp1.r - CLx[L][M1][M3].i*Ctmp1.i;  
           Ctmpx.i += CLx[L][M1][M3].r*Ctmp1.i + CLx[L][M1][M3].i*Ctmp1.r;  
@@ -1040,7 +1040,7 @@ void Generate_L_Matrix(int Lmax, double ***Lx0, double ***Ly0, double ***Lz0)
 
         for (M3=0; M3<=2*L; M3++){
  
-          Ctmp1 = Conjg(Comp2Real[L][M1][M3]);
+          Ctmp1 = Conjg(openmx_real_harmonic_coefficient(conversion,L,M1,M3));
 
           Ctmpx.r += CLx1[L][M3][M2].r*Ctmp1.r - CLx1[L][M3][M2].i*Ctmp1.i;  
           Ctmpx.i += CLx1[L][M3][M2].r*Ctmp1.i + CLx1[L][M3][M2].i*Ctmp1.r;  

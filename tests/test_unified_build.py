@@ -2,8 +2,8 @@
 """Verify CUDA/HIP source selection and build isolation without GPU toolchains.
 
 Real repository inputs are projected into temporary directories. Native make
-is exercised only with non-recursive object dry runs; no dependency downloads,
-compilation, or changes to the repository's dependency checkouts are made.
+is exercised only with non-recursive object dry runs. Independent C adapters
+are syntax checked; no dependency downloads or builds are made.
 """
 
 import hashlib
@@ -85,6 +85,43 @@ class UnifiedBuildTest(unittest.TestCase):
         rejected = self.prepare(build, 'CUDA')
         self.assertNotEqual(rejected.returncode, 0)
         self.assertIn('another backend', rejected.stderr)
+
+    @unittest.skipUnless(shutil.which("cc"), "C compiler is required")
+    def test_basis_adapters_compile_in_all_projections(self):
+        stages = dict(self.stages)
+        build = self.workspace / 'density-cpu'
+        result = self.prepare(build, 'CPU')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        stages['CPU'] = build / 'native/source'
+        for backend, stage in stages.items():
+            with self.subTest(backend=backend):
+                result = subprocess.run(
+                    ['cc', '-std=c11', '-Werror', '-fsyntax-only',
+                     str(stage / 'KumoF.c'), str(stage / 'Dr_KumoF.c'), str(stage / 'Gauss_Legendre.c')],
+                    capture_output=True, text=True, check=False,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+
+                result = subprocess.run(
+                    ['cc', '-std=c11', '-Werror', '-fsyntax-only', '-x', 'c',
+                     '-I' + str(stage), '-'],
+                    input='#include "openmx_basis_harmonics.h"\n'
+                          '#include "openmx_basis_gaunt.h"\n'
+                          '#include "openmx_basis_orbital_radial.h"\n'
+                          '#include "openmx_core_vna_preparation.h"\n'
+                          '#include "openmx_core_vna_simd_workspace.h"\n'
+                          '#include "openmx_core_radial_views.h"\n'
+                          '#include "openmx_core_vna_host_tables.h"\n'
+                          '#include "openmx_orbital_harmonics.h"\n'
+                          '#include "openmx_basis_lebedev.h"\n'
+                          '#include "openmx_core_real_harmonics.h"\n'
+                          'void probe(void) { double v[2],dt[2],dp[2];\n'
+                          'OpenMXLebedevRuleData rule={0,0}; (void)rule;\n'
+                          'openmx_orbital_complex_sh(4,1,0,1,0,v,dt,dp);\n'
+                          'openmx_basis_detail_integral_harmonic(4,1,0,0,v,dt,dp); }\n',
+                    capture_output=True, text=True, check=False,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_backend_selects_production_sources(self):
         cuda, hip = self.stages["CUDA"], self.stages["HIP"]
@@ -394,8 +431,10 @@ class UnifiedBuildTest(unittest.TestCase):
 
     @unittest.skipUnless(shutil.which("make"), "GNU make is required for native dependency inspection")
     def test_shared_inline_headers_invalidate_native_objects(self):
+        angular_objects = ("openmx_common.o", "Get_Orbitals.o", "Get_dOrbitals.o",
+                           "Get_Cnt_Orbitals.o", "Get_Cnt_dOrbitals.o", "Set_Orbitals_Grid.o", "Force.o")
         objects = ("Total_Energy.o", "Stress.o", "Cluster_DFT_Col_CWF.o",
-                   "Cluster_DFT_NonCol_CWF.o", "Band_DFT_Col_CWF.o", "Band_DFT_NonCol_CWF.o")
+                   "Cluster_DFT_NonCol_CWF.o", "Band_DFT_Col_CWF.o", "Band_DFT_NonCol_CWF.o") + angular_objects
         for backend, stage in self.stages.items():
             architecture = "GEMMUL8_GPU_ARCH=120" if backend == "CUDA" else "ARCH=gfx942"
             completed = subprocess.run(
@@ -408,8 +447,29 @@ class UnifiedBuildTest(unittest.TestCase):
                     # Existing public ABI dependencies use canonical absolute paths.
                     self.assertTrue(any(p.endswith("/core/include/openmx_core_neutral_grid_metadata.h")
                                         for p in row.split()), row)
-                    helper = "openmx_cwf_workspace.h" if "CWF" in obj else "openmx_neutral_atom.h"
-                    self.assertIn(helper, row.split())
+                    self.assertIn("openmx_core_real_harmonics.h", row.split())
+                    self.assertIn("../modules/basis/include/openmx/basis/real_harmonics.h", row.split())
+                    self.assertIn("../modules/basis/include/openmx/basis/complex.h", row.split())
+                    self.assertIn("openmx_basis_gaunt.h", row.split())
+                    self.assertIn("../modules/basis/include/openmx/basis/detail/gaunt.h", row.split())
+                    self.assertIn("../modules/basis/include/openmx/basis/gaunt.h", row.split())
+                    self.assertIn("openmx_basis_orbital_radial.h", row.split())
+                    self.assertIn("../modules/basis/include/openmx/basis/orbital_radial.h", row.split())
+                    self.assertIn("../modules/basis/include/openmx/basis/detail/orbital_radial.h", row.split())
+                    self.assertIn("openmx_core_vna_simd_workspace.h", row.split())
+                    self.assertIn("../core/include/openmx_core_vna_simd_workspace.h", row.split())
+                    for header in ("openmx_core_radial_views.h", "openmx_core_vna_host_tables.h"):
+                        self.assertIn(header, row.split())
+                        self.assertIn("../core/include/" + header, row.split())
+                    if obj not in angular_objects:
+                        helper = "openmx_cwf_workspace.h" if "CWF" in obj else "openmx_neutral_atom.h"
+                        self.assertIn(helper, row.split())
+                    if obj in angular_objects or obj == "Stress.o":
+                        self.assertIn("openmx_basis_harmonics.h", row.split())
+                        self.assertIn("../modules/basis/include/openmx/basis/detail/harmonics.h", row.split())
+                    if obj in ("Total_Energy.o", "Stress.o"):
+                        self.assertIn("openmx_basis_lebedev.h", row.split())
+                        self.assertIn("../modules/basis/include/openmx/basis/lebedev.h", row.split())
             self.assertFalse(list(stage.glob("*.o")), "make -np unexpectedly compiled an object")
 
 

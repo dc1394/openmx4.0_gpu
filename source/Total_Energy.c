@@ -19,9 +19,11 @@
 #include <math.h>
 #include <time.h>
 #include "openmx_common.h"
+#include "openmx_xc.h"
 #include "openmx_env.h"
 #include "openmx_core_vna_matrix.h"
 #include "openmx_energy_workspace.h"
+#include "openmx_quadrature.h"
 #include "openmx_host_simd.h"
 #include "openmx_core_energy_simd.h"
 #include "openmx_neutral_atom.h"
@@ -54,7 +56,7 @@ static double Calc_Ekin(const OpenMXEnergyWorkspace *workspace, const OpenMXElec
 static double Calc_Ena(const OpenMXEnergyWorkspace *workspace, const OpenMXVnaMatrixViews *vna, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
 static double Calc_Enl(const OpenMXEnergyWorkspace *workspace, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
 static double Calc_ECH(const OpenMXEnergyWorkspace *workspace, const OpenMXElectronicViews *electronic);
-static void Calc_EXC_EH1(OpenMXSolverInvocation *scratch, const OpenMXAtomicViews *atomic, double ECE[]);
+static void Calc_EXC_EH1(OpenMXSolverInvocation *scratch, const OpenMXAtomicViews *atomic, const OpenMXGaussRuleData *radial, double ECE[]);
 static void Calc_Edc(double ECE[]);
 static double Calc_Ehub(const OpenMXLocalBasisViews *local_basis);   /* --- added by MJ  */
 static double Calc_EdftD();  /* added by okuno */
@@ -80,11 +82,11 @@ void TotalEnergy_Dipole_Grid_OpenACC(int GNs, double *My_E_dpx, double *My_E_dpy
                                      double *My_E_dpy_BG, double *My_E_dpz_BG);
 #if OPENMX_GPU_HIP
 void TotalEnergy_CWF_Dc_Grid_OpenMP(int spinmax, double My_dcEH1[2], double My_dcEXC[2]);
-void TotalEnergy_Exc0_Batch_OpenMP(const OpenMXAtomicViews *atomic, int Num_Leb, double **Leb_Grid_XYZW, double *sum_out);
+void TotalEnergy_Exc0_Batch_OpenMP(const OpenMXAtomicViews *atomic, const OpenMXGaussRuleData *radial, const OpenMXLebedevRuleData *lebedev, double *sum_out);
 void TotalEnergy_EH0_TwoCenter_Batch_OpenMP(const OpenMXNeutralGridTables *tables,const OpenMXNeutralGridMetadataView *metadata,const OpenMXAtomicViews *atomic, int pair_count, int *pair_ban, int *pair_wan2,
 #else
 void TotalEnergy_CWF_Dc_Grid_OpenACC(int spinmax, double My_dcEH1[2], double My_dcEXC[2]);
-void TotalEnergy_Exc0_Batch_OpenACC(const OpenMXAtomicViews *atomic, int Num_Leb, double **Leb_Grid_XYZW, double *sum_out);
+void TotalEnergy_Exc0_Batch_OpenACC(const OpenMXAtomicViews *atomic, const OpenMXGaussRuleData *radial, const OpenMXLebedevRuleData *lebedev, double *sum_out);
 void TotalEnergy_EH0_TwoCenter_Batch_OpenACC(const OpenMXNeutralGridTables *tables,const OpenMXNeutralGridMetadataView *metadata,const OpenMXAtomicViews *atomic, int pair_count, int *pair_ban, int *pair_wan2,
 #endif
                                              int *pair_has_deriv, double *pair_dis,
@@ -208,6 +210,7 @@ double Total_Energy(OpenMXCoreContext *core, const OpenMXBandEnergies *energies,
 
 static void Total_Energy_owned(OpenMXSolverInvocation *scratch, OpenMXCoreContext *core, const OpenMXBandEnergies *energies, const OpenMXCWFObservables *cwf_values, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, int MD_iter, double ECE[], const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 { 
+  const OpenMXGaussRuleData radial=OpenMX_NeutralQuadrature(core,CoarseGL_Mesh,mpi_comm_level1);
   int numprocs,myid;
   int Mc_AN,Gc_AN,h_AN;
   double stime,etime;
@@ -329,7 +332,7 @@ static void Total_Energy_owned(OpenMXSolverInvocation *scratch, OpenMXCoreContex
 
   dtime(&stime);
 
-  Calc_EXC_EH1(scratch, atomic, ECE);
+  Calc_EXC_EH1(scratch, atomic, &radial, ECE);
   if (Solver==12) Calc_Edc(ECE);
 
   dtime(&etime);
@@ -1270,6 +1273,7 @@ double Calc_Ecore(OpenMXSolverInvocation *scratch)
 
 double Calc_EH0(const OpenMXEnergyWorkspace *workspace, OpenMXCoreContext *core, const OpenMXAtomicViews *atomic, int MD_iter)
 {
+  const OpenMXGaussRuleData radial=OpenMX_NeutralQuadrature(core,CoarseGL_Mesh,mpi_comm_level1);
   OpenMXNeutralGridTables tables;
   char grid_error[256]={0};
   OpenMXNeutralGridMetadataView metadata;
@@ -1383,7 +1387,7 @@ double Calc_EH0(const OpenMXEnergyWorkspace *workspace, OpenMXCoreContext *core,
 
     /* calculate GridX,Y,Z_EH0 and Wt_EH0 */
 
-#pragma omp parallel shared(workspace,atomic,Max_Nd,level_stdout,metadata,tables,Scale_Grid_Ecut,SpeciesNum,CoarseGL_Abscissae,CoarseGL_Weight) private(OMPID,Nthrds,Nprocs,wan,bc,dx,Nd,gnum,n1,n2,n3,x,y,z,tmp0,r1,rho0,g0,Sx,Dx,xx)
+#pragma omp parallel shared(workspace,atomic,Max_Nd,level_stdout,metadata,tables,Scale_Grid_Ecut,SpeciesNum,radial) private(OMPID,Nthrds,Nprocs,wan,bc,dx,Nd,gnum,n1,n2,n3,x,y,z,tmp0,r1,rho0,g0,Sx,Dx,xx)
     {
 
       int l,p;
@@ -1408,7 +1412,7 @@ double Calc_EH0(const OpenMXEnergyWorkspace *workspace, OpenMXCoreContext *core,
 	metadata.spacing[wan] = dx;
 
 	const OpenMXNeutralQuadratureView quadrature={Nd,CoarseGL_Mesh,bc,dx,PI,
-            CoarseGL_Abscissae,CoarseGL_Weight};
+            radial.nodes,radial.weights};
         gnum=OpenMX_Neutral_GridFill(atomic,wan,&quadrature,g0,
             openmx_core_neutral_grid_row(&tables,0,wan),
             openmx_core_neutral_grid_row(&tables,1,wan),
@@ -1917,7 +1921,7 @@ void Calc_Edc(double ECE[])
 
 
 #pragma optimization_level 1
-void Calc_EXC_EH1(OpenMXSolverInvocation *scratch, const OpenMXAtomicViews *atomic, double ECE[])
+void Calc_EXC_EH1(OpenMXSolverInvocation *scratch, const OpenMXAtomicViews *atomic, const OpenMXGaussRuleData *radial, double ECE[])
 {
   /************************************************************
      EXC = \sum_{\sigma} (n_{\sigma}(r)+n_pcc(r)\epsilon_{xc}
@@ -2030,7 +2034,7 @@ void Calc_EXC_EH1(OpenMXSolverInvocation *scratch, const OpenMXAtomicViews *atom
     if (PCC_switch==1) {
       tot_den += PCCDensity_Grid_B[0][BN_AB] + PCCDensity_Grid_B[1][BN_AB];
     }
-    RefVxc_Grid_B[BN_AB] = XC_Ceperly_Alder(tot_den,XC_P_switch);
+    RefVxc_Grid_B[BN_AB] = openmx_xc_ceperley_alder(tot_den,XC_P_switch);
   }
   dtime(&time1);
   if (myid==0 && measure_time){
@@ -2167,11 +2171,9 @@ void Calc_EXC_EH1(OpenMXSolverInvocation *scratch, const OpenMXAtomicViews *atom
   dtime(&time0);
   if (Exc0_correction_flag==1){
 
-    OpenMXSolverRealTensor lebedev;
-    double **Leb_Grid_XYZW;
-    OpenMX_Energy_LebedevPrepare(scratch,Num_Leb_Grid,&lebedev,&Leb_Grid_XYZW);
+    OpenMXLebedevRuleData lebedev;
+    OpenMX_Energy_LebedevPrepare(scratch,Num_Leb_Grid,&lebedev);
 
-    Set_Lebedev_Grid(Num_Leb_Grid,Leb_Grid_XYZW);
 
     /* get Nthrds0 */  
     /* Dynamic teams may grow after a separate probe region. */
@@ -2197,9 +2199,9 @@ void Calc_EXC_EH1(OpenMXSolverInvocation *scratch, const OpenMXAtomicViews *atom
 #endif
     if (exc0_device){
 #if OPENMX_GPU_HIP
-      TotalEnergy_Exc0_Batch_OpenMP(atomic, Num_Leb_Grid, Leb_Grid_XYZW, &sum);
+      TotalEnergy_Exc0_Batch_OpenMP(atomic, radial, &lebedev, &sum);
 #else
-      TotalEnergy_Exc0_Batch_OpenACC(atomic, Num_Leb_Grid, Leb_Grid_XYZW, &sum);
+      TotalEnergy_Exc0_Batch_OpenACC(atomic, radial, &lebedev, &sum);
 #endif
     }
     else{
@@ -2293,7 +2295,7 @@ void Calc_EXC_EH1(OpenMXSolverInvocation *scratch, const OpenMXAtomicViews *atom
         }
       }
 
-#pragma omp parallel shared(scratch,max_neighbors,xc_partials,atomic,lebedev,Num_Leb_Grid,My_sumr,Dr,Sr,CoarseGL_Abscissae,CoarseGL_Weight,Gxyz,Gc_AN,FNAN,natn,ncn,WhatSpecies,atv,F_Vxc_flag,Cwan,PCC_switch) private(OMPID,Nthrds,Nprocs,ir,ia,r,w,sumt,sumtx,sumty,sumtz,x,x0,y0,z0,h_AN,Gh_AN,Rn,Hwan,x1,y1,z1,dx,dy,dz,r1,den,den0,gden0,dx1,dy1,dz1,exc0,vxc0,i)
+#pragma omp parallel shared(scratch,max_neighbors,xc_partials,atomic,lebedev,Num_Leb_Grid,My_sumr,Dr,Sr,radial,Gxyz,Gc_AN,FNAN,natn,ncn,WhatSpecies,atv,F_Vxc_flag,Cwan,PCC_switch) private(OMPID,Nthrds,Nprocs,ir,ia,r,w,sumt,sumtx,sumty,sumtz,x,x0,y0,z0,h_AN,Gh_AN,Rn,Hwan,x1,y1,z1,dx,dy,dz,r1,den,den0,gden0,dx1,dy1,dz1,exc0,vxc0,i)
       {
 
 	double *gx,*gy,*gz,dexc0;
@@ -2322,7 +2324,7 @@ void Calc_EXC_EH1(OpenMXSolverInvocation *scratch, const OpenMXAtomicViews *atom
 
 	for (ir=(OMPID*CoarseGL_Mesh/Nthrds); ir<((OMPID+1)*CoarseGL_Mesh/Nthrds); ir++){
 
-	  r = 0.50*(Dr*CoarseGL_Abscissae[ir] + Sr);
+	  r = 0.50*(Dr*radial->nodes[ir] + Sr);
 	  sumt  = 0.0; 
 
 	  for (i=0; i<(FNAN[Gc_AN]+1); i++){
@@ -2336,8 +2338,8 @@ void Calc_EXC_EH1(OpenMXSolverInvocation *scratch, const OpenMXAtomicViews *atom
 	  if (xc_scratch!=NULL){
 	    OpenMXEnergyXcShell shell;
 	    shell.points=Num_Leb_Grid;
-	    shell.lebedev=lebedev.values;
-	    shell.lebedev_stride=lebedev.extent[1];
+	    shell.lebedev=lebedev.xyzw;
+	    shell.lebedev_stride=4;
 	    shell.radius=r;
 	    shell.center[0]=Gxyz[Gc_AN][1];
 	    shell.center[1]=Gxyz[Gc_AN][2];
@@ -2356,9 +2358,9 @@ void Calc_EXC_EH1(OpenMXSolverInvocation *scratch, const OpenMXAtomicViews *atom
 	  if (!xc_done)
 	  for (ia=0; ia<Num_Leb_Grid; ia++){
 
-	    x0 = r*openmx_solver_real_matrix_row(&lebedev,ia)[0] + Gxyz[Gc_AN][1];
-	    y0 = r*openmx_solver_real_matrix_row(&lebedev,ia)[1] + Gxyz[Gc_AN][2];
-	    z0 = r*openmx_solver_real_matrix_row(&lebedev,ia)[2] + Gxyz[Gc_AN][3];
+	    x0 = r*openmx_lebedev_point(&lebedev,ia)[0] + Gxyz[Gc_AN][1];
+	    y0 = r*openmx_lebedev_point(&lebedev,ia)[1] + Gxyz[Gc_AN][2];
+	    z0 = r*openmx_lebedev_point(&lebedev,ia)[2] + Gxyz[Gc_AN][3];
 
 	    /* calculate rho_atom + rho_pcc */ 
 
@@ -2414,14 +2416,14 @@ void Calc_EXC_EH1(OpenMXSolverInvocation *scratch, const OpenMXAtomicViews *atom
 	    } /* h_AN */
 
 	    /* calculate the CA-LDA exchange-correlation energy density */
-	    exc0 = XC_Ceperly_Alder(den,0);
+	    exc0 = openmx_xc_ceperley_alder(den,0);
 
 	    /* calculate the CA-LDA exchange-correlation potential */
-	    dexc0 = XC_Ceperly_Alder(den,3);
+	    dexc0 = openmx_xc_ceperley_alder(den,3);
 
 	    /* Lebedev quadrature */
 
-	    w = openmx_solver_real_matrix_row(&lebedev,ia)[3];
+	    w = openmx_lebedev_point(&lebedev,ia)[3];
 	    sumt += w*den0*exc0;
 
 	    for (h_AN=1; h_AN<=FNAN[Gc_AN]; h_AN++){
@@ -2434,7 +2436,7 @@ void Calc_EXC_EH1(OpenMXSolverInvocation *scratch, const OpenMXAtomicViews *atom
 
 	  /* r for Gauss-Legendre quadrature */
 
-	  w = r*r*CoarseGL_Weight[ir]; 
+	  w = r*r*radial->weights[ir];
 	  My_sumr[OMPID]  += w*sumt;
 
 	  for (h_AN=1; h_AN<=FNAN[Gc_AN]; h_AN++){

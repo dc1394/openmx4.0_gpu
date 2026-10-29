@@ -14,6 +14,8 @@
 #include <math.h>
 #include <time.h>
 #include "openmx_common.h"
+#include "openmx_xc.h"
+#include "openmx_quadrature.h"
 #include "openmx_stress_workspace.h"
 #include "openmx_host_simd.h"
 #include "openmx_neutral_atom.h"
@@ -136,6 +138,7 @@ static double Stress_owned(const OpenMXForceWorkspace *halo,OpenMXCoreContext *c
 	      double *****EDM, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 {
   OpenMXSolverInvocation *scratch=halo->scratch;
+  const OpenMXGaussRuleData radial=OpenMX_NeutralQuadrature(core,CoarseGL_Mesh,mpi_comm_level1);
 
   double *****CntH0=electronic->CntH0;
   double *****CntOLP=electronic->CntOLP;
@@ -666,7 +669,7 @@ static double Stress_owned(const OpenMXForceWorkspace *halo,OpenMXCoreContext *c
       if (PCC_switch==1) {
 	tot_den += PCCDensity_Grid_B[0][BN_AB] + PCCDensity_Grid_B[1][BN_AB];
       }
-      RefVxc_Grid_B[BN_AB] = XC_Ceperly_Alder(tot_den,XC_P_switch);
+      RefVxc_Grid_B[BN_AB] = openmx_xc_ceperley_alder(tot_den,XC_P_switch);
     }
   
     Data_Grid_Copy_B2C_1( RefVxc_Grid_B,  RefVxc_Grid  );
@@ -678,7 +681,7 @@ static double Stress_owned(const OpenMXForceWorkspace *halo,OpenMXCoreContext *c
     XC_P_switch = 0;
     for (BN=0; BN<My_NumGridB_AB; BN++){
       aden = 2.0*ADensity_Grid_B[BN];
-      tmp1 = XC_Ceperly_Alder(aden,XC_P_switch);
+      tmp1 = openmx_xc_ceperley_alder(aden,XC_P_switch);
       My_EXC += aden*tmp1;
     }
     
@@ -782,7 +785,7 @@ static double Stress_owned(const OpenMXForceWorkspace *halo,OpenMXCoreContext *c
 	    if (Exc0_correction_flag==1){
 
 	      double exc0;
-	      /*exc0 = XC_Ceperly_Alder(tmp2,0)*F_Vxc_flag;*/
+	      /*exc0 = openmx_xc_ceperley_alder(tmp2,0)*F_Vxc_flag;*/
 	      /*tmp3 = RefVxc_Grid[MNc]*tmp2*F_Vxc_flag;*/
 	      /*tmp3 = tmp2*exc0;*/
 
@@ -1012,12 +1015,10 @@ static double Stress_owned(const OpenMXForceWorkspace *halo,OpenMXCoreContext *c
 
   if (Exc0_correction_flag==1){
 
-    double **Leb_Grid_XYZW;
 
-    OpenMXSolverRealTensor lebedev;
-    OpenMX_XC_LebedevPrepare(scratch,Num_Leb_Grid,&lebedev,&Leb_Grid_XYZW);
+    OpenMXLebedevRuleData lebedev;
+    OpenMX_XC_LebedevPrepare(scratch,Num_Leb_Grid,&lebedev);
 
-    Set_Lebedev_Grid(Num_Leb_Grid,Leb_Grid_XYZW);
 
     /* get Nthrds0 */  
     /* Dynamic teams may grow after a separate probe region. */
@@ -1102,7 +1103,7 @@ static double Stress_owned(const OpenMXForceWorkspace *halo,OpenMXCoreContext *c
 	  }
 	}
 	
-#pragma omp parallel shared(scratch,max_neighbors,xc_partials,atomic,lebedev,Num_Leb_Grid,My_sumr,My_Stress,stress_threads,Dr,Sr,CoarseGL_Abscissae,CoarseGL_Weight,Gxyz,Gc_AN,FNAN,natn,ncn,WhatSpecies,atv,F_Vxc_flag,Cwan,PCC_switch) private(OMPID,Nthrds,Nprocs,ir,ia,r,w,sumt,sumtx,sumty,sumtz,x,x0,y0,z0,h_AN,Gh_AN,Rn,Hwan,x1,y1,z1,dx,dy,dz,r1,den,den0,gden0,dx1,dy1,dz1,exc0,vxc0,sumt1,i)
+#pragma omp parallel shared(scratch,max_neighbors,xc_partials,atomic,lebedev,Num_Leb_Grid,My_sumr,My_Stress,stress_threads,Dr,Sr,radial,Gxyz,Gc_AN,FNAN,natn,ncn,WhatSpecies,atv,F_Vxc_flag,Cwan,PCC_switch) private(OMPID,Nthrds,Nprocs,ir,ia,r,w,sumt,sumtx,sumty,sumtz,x,x0,y0,z0,h_AN,Gh_AN,Rn,Hwan,x1,y1,z1,dx,dy,dz,r1,den,den0,gden0,dx1,dy1,dz1,exc0,vxc0,sumt1,i)
 	{
 
 	  double dx2,dy2,dz2;
@@ -1129,7 +1130,7 @@ static double Stress_owned(const OpenMXForceWorkspace *halo,OpenMXCoreContext *c
 
 	  for (ir=(OMPID*CoarseGL_Mesh/Nthrds); ir<((OMPID+1)*CoarseGL_Mesh/Nthrds); ir++){
 
-	    r = 0.50*(Dr*CoarseGL_Abscissae[ir] + Sr);
+	    r = 0.50*(Dr*radial.nodes[ir] + Sr);
 	    sumt  = 0.0; 
 
 	    for (i=0; i<(FNAN[Gc_AN]+1); i++){
@@ -1142,9 +1143,9 @@ static double Stress_owned(const OpenMXForceWorkspace *halo,OpenMXCoreContext *c
 
 	    for (ia=0; ia<Num_Leb_Grid; ia++){
 
-	      x0 = r*openmx_solver_real_matrix_row(&lebedev,ia)[0] + Gxyz[Gc_AN][1];
-	      y0 = r*openmx_solver_real_matrix_row(&lebedev,ia)[1] + Gxyz[Gc_AN][2];
-	      z0 = r*openmx_solver_real_matrix_row(&lebedev,ia)[2] + Gxyz[Gc_AN][3];
+	      x0 = r*openmx_lebedev_point(&lebedev,ia)[0] + Gxyz[Gc_AN][1];
+	      y0 = r*openmx_lebedev_point(&lebedev,ia)[1] + Gxyz[Gc_AN][2];
+	      z0 = r*openmx_lebedev_point(&lebedev,ia)[2] + Gxyz[Gc_AN][3];
 
 	      /* calculate rho_atom + rho_pcc */ 
 
@@ -1188,14 +1189,14 @@ static double Stress_owned(const OpenMXForceWorkspace *halo,OpenMXCoreContext *c
 	      } /* h_AN */
 
 	      /* calculate the CA-LDA exchange-correlation energy density */
-	      exc0 = XC_Ceperly_Alder(den,0);
+	      exc0 = openmx_xc_ceperley_alder(den,0);
 
 	      /* calculate the CA-LDA exchange-correlation potential */
-	      dexc0 = XC_Ceperly_Alder(den,3);
+	      dexc0 = openmx_xc_ceperley_alder(den,3);
 
 	      /* Lebedev quadrature */
 
-	      w = openmx_solver_real_matrix_row(&lebedev,ia)[3];
+	      w = openmx_lebedev_point(&lebedev,ia)[3];
 	      sumt += w*den0*exc0;
 
 	      for (h_AN=1; h_AN<=FNAN[Gc_AN]; h_AN++){
@@ -1231,7 +1232,7 @@ static double Stress_owned(const OpenMXForceWorkspace *halo,OpenMXCoreContext *c
 
 	    /* r for Gauss-Legendre quadrature */
 
-	    w = r*r*CoarseGL_Weight[ir]; 
+	    w = r*r*radial.weights[ir];
 	    My_sumr[OMPID]  += w*sumt;
 
 	    for (h_AN=1; h_AN<=FNAN[Gc_AN]; h_AN++){
@@ -3593,6 +3594,7 @@ void Stress_core(OpenMXSolverInvocation *scratch)
 
 void Stress_H0(OpenMXSolverInvocation *scratch,OpenMXCoreContext *core,const OpenMXAtomicViews *atomic)
 {
+  const OpenMXGaussRuleData radial=OpenMX_NeutralQuadrature(core,CoarseGL_Mesh,mpi_comm_level1);
   OpenMXNeutralGridTables tables;
   char grid_error[256]={0};
   OpenMXNeutralGridMetadataView metadata;
@@ -3720,7 +3722,7 @@ void Stress_H0(OpenMXSolverInvocation *scratch,OpenMXCoreContext *core,const Ope
 
     /* calculate GridX,Y,Z_EH0 and Wt_EH0 */
 
-#pragma omp parallel shared(scratch,atomic,Max_Nd,level_stdout,metadata,tables,Scale_Grid_Ecut,SpeciesNum,CoarseGL_Abscissae,CoarseGL_Weight) private(OMPID,Nthrds,Nprocs,wan,bc,dx,Nd,gnum,n1,n2,n3,x,y,z,tmp0,r1,rho0,g0,Sx,Dx,xx)
+#pragma omp parallel shared(scratch,atomic,Max_Nd,level_stdout,metadata,tables,Scale_Grid_Ecut,SpeciesNum,radial) private(OMPID,Nthrds,Nprocs,wan,bc,dx,Nd,gnum,n1,n2,n3,x,y,z,tmp0,r1,rho0,g0,Sx,Dx,xx)
     {
 
       /* allocation of arrays g0 */
@@ -3743,7 +3745,7 @@ void Stress_H0(OpenMXSolverInvocation *scratch,OpenMXCoreContext *core,const Ope
         metadata.spacing[wan] = dx;
 
         const OpenMXNeutralQuadratureView quadrature={Nd,CoarseGL_Mesh,bc,dx,PI,
-            CoarseGL_Abscissae,CoarseGL_Weight};
+            radial.nodes,radial.weights};
         gnum=OpenMX_Neutral_GridFill(atomic,wan,&quadrature,g0,
             openmx_core_neutral_grid_row(&tables,0,wan),
             openmx_core_neutral_grid_row(&tables,1,wan),

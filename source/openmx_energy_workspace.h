@@ -65,12 +65,12 @@ static inline void OpenMX_Energy_CWFScratch(OpenMXSolverInvocation *owner,
     OpenMX_Solver_Failure(error);
 }
 
-/* The legacy angular-grid producer and GPU entry points borrow a row table;
-   its metadata and the flat [point,xyz/weight] data share this invocation. */
+/* The initialized, read-only angular rule belongs to this invocation.
+   CPU and GPU entry points borrow the same contiguous [point,xyz/weight] data. */
 static inline void OpenMX_Energy_LebedevPrepare(OpenMXSolverInvocation *owner,
-    int points,OpenMXSolverRealTensor *out,double ***legacy_rows)
+    int points,OpenMXLebedevRuleData *out)
 {
-  OpenMX_XC_LebedevPrepare(owner,points,out,legacy_rows);
+  OpenMX_XC_LebedevPrepare(owner,points,out);
 }
 
 /* Flat [component,worker,neighbor] partials, shared only during one atom's

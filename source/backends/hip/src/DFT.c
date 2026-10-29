@@ -26,6 +26,7 @@
 #include "openmx_electronic.h"
 #include "openmx_atomic.h"
 #include "openmx_reciprocal.h"
+#include "openmx_quadrature.h"
 #include "openmx_vna_matrix.h"
 #include "openmx_vna_status.h"
 #include "Inputtools.h"
@@ -596,7 +597,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
     fflush(stdout);
   }
 
-  time1 = Set_OLP_Kin(reciprocal, OLP,H0, electronic);
+  time1 = Set_OLP_Kin(&atomic->real_harmonics,reciprocal, OLP,H0, electronic);
 
   time2 = Set_Nonlocal(atomic, reciprocal, HNL,DS_NL, electronic);
   {
@@ -615,8 +616,9 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   }
 
   if (ProExpn_VNA==1){
+    const OpenMXGaussRuleData radial=OpenMX_RadialQuadrature(core,GL_Mesh,mpi_comm_level1);
     int vna_gpu_used = 0;
-    time12 = Set_ProExpn_VNA_WithStatus(vna,reciprocal, &vna_gpu_used);
+    time12 = Set_ProExpn_VNA_WithStatus(&atomic->real_harmonics,&radial,vna,reciprocal, &vna_gpu_used);
     {
       const char *gpu_label = DFT_GPU_StageLabel(vna_gpu_used);
       if (MYID_MPI_COMM_WORLD==Host_ID && 0<level_stdout){

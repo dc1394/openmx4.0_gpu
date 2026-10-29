@@ -1,0 +1,97 @@
+# OpenMX Io
+
+OpenMX のキーワード形式入力ファイル（`System.Name  h2o`、`scf.Kgrid 4 4 1`、`<Atoms.SpeciesAndCoordinates` …
+`Atoms.SpeciesAndCoordinates>` のブロック）を読む C++20 ライブラリです。`openmx::io::KeywordFile` が
+開いたストリームを所有し、スカラー（論理値・整数・実数・文字列・選択肢）、ベクトル、ブロックの
+検索と、記録したエラー数・メッセージを提供します。`openmx::io::KeywordFiles` は元の OpenMX の入れ子
+モデル（ファイルのスタック、先頭が応答、open ごとに 0 に戻るエラー数）です。大域変数も、プロセス終了も、
+MPI もありません。本体の `Inputtools.c` はこのライブラリの薄い互換層になりました。
+
+検索規則（各行の最初の空白区切りトークンを、大文字小文字を区別せず同じ長さで比較）、受け付ける綴り
+（`on yes true .true. ok` / `off no false .false. ng`）、`sscanf` に基づく数値変換、ベクトル値の
+カーソルの進め方、エラーメッセージの文面は、元の `Inputtools.c`（Hiori Kino）のものです。元のソースは
+`tests/fixtures/` に凍結し、テストがライブラリとの一致を確かめます。意図的な差は次の 3 点です。
+
+- 1 行の長さに上限がありません（元は 4096 文字で行が分割されました）。
+- 文字列の格納先には容量を渡し、入り切らない値はエラーになります（元は無制限にコピーしました）。
+- 実数の値が不正なとき、C++ API と C API は他の型と同じく `invalid`（-1）を返します
+  （元の `input_double` は 0 を返しました。本体の互換層はその戻り値を保っています）。
+
+CMake 3.25.2 以上と C++20 のコンパイラ・標準ライブラリでビルドできます。
+このディレクトリだけを取り出して利用でき、MPI、BLAS、Kokkos、GPU SDK、
+OpenMX の実行ファイル・大域変数ヘッダー、ネットワーク接続を必要としません。
+コードのライセンスは元の OpenMX と同じです。
+
+## 基底指定文字列
+
+`openmx/io/basis_spec.hpp`（`openmx::io::parse_basis_spec`）と `openmx/io/basis_spec.h`
+（`openmx_io_parse_basis_spec`）は、種の定義にある `Si7.0-s2p2d1` 形式（`-` の前が PAO 名、以後は
+`s p d f g` の各文字に続く原始動径関数の数（1〜3 桁）。軌道最適化では `s3>2p2>1` のように
+`原始>縮約`）を解析し、名前・l ごとの原始数と縮約数・最大 l を返します。`-` のない文字列、`spdfg`
+以外の文字、数字でない文字、4 桁目、縮約が許されていないときの `>`、原始数より大きい縮約数は、
+元の読取器と同じ文面の診断付きで誤りになります（元の読取器は不正な文字を 0 として数えていました）。
+本体の `Input_std.c` の `SpeciesString2int` はこの解析器を呼び、種の表を埋めます。
+
+## 種定義ブロック
+
+`openmx/io/species.hpp`（`openmx::io::read_species_definitions`）と `openmx/io/species.h`
+（`openmx_io_read_species_definitions`）は `<Definition.of.Atomic.Species` … `Definition.of.Atomic.Species>`
+のブロック（1 行に種名・基底指定・擬ポテンシャル名・省略可能な原子質量）を読みます。行数が期待数と
+異なる、3 トークン未満の行がある、閉じタグがない場合は元の読取器の診断文で誤りになり、ブロックがない
+場合は（元の読取器と同じく）誤りではありません。本体の `Input_std.c` はこの読取器で種の表を埋め、
+`Inputtools.h` の `input_keyword_files()` がそのための入力ファイルのスタックを返します。
+
+## 原子座標ブロック
+
+`openmx/io/atoms.hpp`（`openmx::io::read_atom_definitions`）と `openmx/io/atoms.h`
+（`openmx_io_read_atom_definitions`）は `<Atoms.SpeciesAndCoordinates` ブロックを原子ごとの記録
+（番号、種名、座標 3 成分、初期の上向き・下向き電荷、非共線のときはスピンと軌道の Euler 角と拘束フラグ、
+省略可能な軌道分極の語）として読みます。元の `sscanf` と同じく、行の途中で変換できなくなった場合は
+そこまでの項目数 `fields` を返し、残りは既定値のままです（本体はそのとき元の値を保ちます）。
+単位変換、角度の乱数摂動と球座標への変換、種名の番号化などの処理は本体の `Input_std.c` に残っています。
+
+## 型付き設定
+
+`openmx/io/settings.hpp` の `openmx::io::read_settings` は、本体の `Input_std.c` と同じ既定値と綴りで
+系の構造に関わる設定を 1 つの型 `Settings` に読みます: `System.Name`、`System.CurrrentDirectory`、
+`DATA.PATH`、`level.of.stdout`、`scf.SpinPolarization`、`Species.Number` と種定義ブロック、`Atoms.Number`、
+`Atoms.SpeciesAndCoordinates.Unit` と原子座標ブロック、`Atoms.UnitVectors.Unit` と単位胞ブロック
+（`read_unit_vectors`、C: `openmx_io_read_unit_vectors`。元の `fscanf` と同じく 9 個の数を行をまたいで
+読み、9 個目がブロック最後の行にあることを求めます）。不明な選択肢やブロックの形式誤りは最初の診断文
+付きで失敗します。入力の残りのスカラーキーワード（約 400）はこの型にまだなく、`KeywordFile` で読みます。
+
+## ビルドと外部利用
+
+リポジトリのルートで実行します。
+
+```sh
+cmake -S modules/io -B build/io -DCMAKE_BUILD_TYPE=Release
+cmake --build build/io --parallel
+ctest --test-dir build/io --output-on-failure
+cmake --install build/io --prefix "$PWD/build/io-install"
+
+cmake -S modules/io/examples/keywords -B build/io-example \
+  -DCMAKE_PREFIX_PATH="$PWD/build/io-install"
+cmake --build build/io-example
+```
+
+C++ からは `openmx/io/keyword_file.hpp`（`openmx::io::KeywordFile`、`KeywordFiles`）、C からは
+`openmx/io/keyword_file.h`（`openmx_io_open`、`openmx_io_int`、`openmx_io_find` など。戻り値の規約は
+元の `input_*` と同じ）を使います。
+
+## テスト
+
+- `io-legacy`: 凍結した元の `Inputtools.c` との一致（戻り値、値、エラー数、標準出力に出た診断の文面）。
+  大文字小文字、タブ区切り、コメント、値のない行、不正な整数・実数・論理値、接尾辞付きの整数、
+  ベクトルの不足、CRLF、`fscanf` / `fgets` + `ungetc` によるブロック読み、入れ子とエラー数の引き継ぎ。
+- `io-semantics`: RAII（ムーブ、明示的な close、開けないファイルでの例外）、`block()`、
+  メッセージの文面、診断ストリーム、スタックの容量。
+- `io-invalid`: NULL や未オープンの状態、容量不足の文字列、空の選択肢。
+- `io-species`: 種定義ブロック（質量の有無、タブ始まりの行、コメント、行数の不一致、閉じタグなし、
+  不足トークン、C API でブロックがない場合と容量不足）。
+- `io-atoms`: 原子座標ブロック（共線・非共線、軌道分極の語、短い行、非共線行の共線読み、不正な番号、
+  行数の不一致、ブロックなし、C API）。
+- `io-settings`: 型付き設定（全項目の読み取り、既定値、ブロックなし、不明な単位、種数の不一致の伝播、
+  単位胞ブロックの 8 個・4 行・途中のコメント・1 行 9 個、C API）。
+- `io-basis-spec`: 基底指定文字列の文法（有効な例、繰り返し文字、縮約、各種の誤りと診断の文面、C API）。
+- `io-c-api`、`io-package-consumer`: C からの利用と、インストールしたパッケージからの利用。

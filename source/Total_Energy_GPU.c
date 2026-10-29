@@ -9,6 +9,8 @@
 #include <stdlib.h>
 #include <math.h>
 #include "openmx_common.h"
+#include "openmx_basis_lebedev.h"
+#include "openmx_core_quadrature.h"
 #include "openmx_env.h"
 #include "openmx_core_neutral_grid.h"
 #include "openmx_core_neutral_grid_metadata.h"
@@ -770,7 +772,7 @@ typedef struct {int nr,na,nbmax,pao_stride,den_stride,vxc_flag;} Exc0Params;
    range through the Core's Kokkos::simd shell kernel and accumulated as the
    host branch of Calc_EXC_EH1 accumulates them with one worker: energy =
    2*PI*Dr*sum_ir w_ir*sumt_ir, pair forces 2*PI*Dr*sum_ir w_ir*sum_g[h]
-   (w_ir = r*r*CoarseGL_Weight[ir]); the caller publishes both as before.
+   (w_ir = r*r*quadrature_weight[ir]); the caller publishes both as before.
    Returns 0 under OPENMX_HOST_SIMD=legacy, on a refusal or without memory;
    the two-pass serial body then rewrites every output of the range. */
 static int TotalEnergy_Exc0_Host(size_t count,const Exc0Params *p,void *const view[])
@@ -1015,8 +1017,10 @@ static void TotalEnergy_Exc0_Kernel(size_t first,size_t count,const void *parame
   }
 }
 
-void TotalEnergy_Exc0_Batch_OpenACC(const OpenMXAtomicViews *atomic, int na,double **leb,double *sum)
+void TotalEnergy_Exc0_Batch_OpenACC(const OpenMXAtomicViews *atomic, const OpenMXGaussRuleData *radial, const OpenMXLebedevRuleData *angular,double *sum)
 {
+  const int na=(int)angular->count;
+  const double *leb=angular->xyzw;
   int nbmax=1;
   for (int mc=1;mc<=Matomnum;mc++) if (nbmax<FNAN[M2G[mc]]+1) nbmax=FNAN[M2G[mc]]+1;
   Exc0Params p={CoarseGL_Mesh,na,nbmax,List_YOUSO[21],List_YOUSO[21]+2,F_Vxc_flag};
@@ -1087,9 +1091,9 @@ void TotalEnergy_Exc0_Batch_OpenACC(const OpenMXAtomicViews *atomic, int na,doub
       nb_rcut2[k]=atomic->species.cutoff[wan]*atomic->species.cutoff[wan];
     }
   }
-  for (int i=0;i<na;i++) {leb_x[i]=leb[i][0];leb_y[i]=leb[i][1];leb_z[i]=leb[i][2];leb_w[i]=leb[i][3];}
-  memcpy(abscissa,CoarseGL_Abscissae,(size_t)p.nr*sizeof(double));
-  memcpy(weight,CoarseGL_Weight,(size_t)p.nr*sizeof(double));
+  for (int i=0;i<na;i++) {leb_x[i]=leb[4*i+0];leb_y[i]=leb[4*i+1];leb_z[i]=leb[4*i+2];leb_w[i]=leb[4*i+3];}
+  memcpy(abscissa,radial->nodes,(size_t)p.nr*sizeof(double));
+  memcpy(weight,radial->weights,(size_t)p.nr*sizeof(double));
   openmx_gpu_task_execute(mpi_comm_level1,&t,TotalEnergy_GPU_Enabled(),"energy-Exc0-two-pass");
   *sum=0;
   for (int mc=0;mc<Matomnum;mc++) {

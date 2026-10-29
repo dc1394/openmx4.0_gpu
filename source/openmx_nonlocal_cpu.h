@@ -145,7 +145,7 @@ static void SetNonlocal_CalcDSNL_CPU(const OpenMXAtomicViews *atomic, const Open
     int OneD_Nloop, int bessel_cache_entries)
 {
   const int host_simd_mode = OpenMX_HostSimdMode();
-#pragma omp parallel shared(List_YOUSO,time_per_atom,DS_NL,Comp2Real,OneD_Grid,PAO_Nkmax,atv,Gxyz,WhatSpecies,ncn,natn,M2G,OneD2h_AN,OneD2Mc_AN,OneD_Nloop,Ngrid_NormK,reciprocal,atomic)
+#pragma omp parallel shared(List_YOUSO,time_per_atom,DS_NL,OneD_Grid,PAO_Nkmax,atv,Gxyz,WhatSpecies,ncn,natn,M2G,OneD2h_AN,OneD2Mc_AN,OneD_Nloop,Ngrid_NormK,reciprocal,atomic)
     {
 
       int OMPID,Nthrds,Nprocs,Nloop;
@@ -487,7 +487,7 @@ static void SetNonlocal_CalcDSNL_CPU(const OpenMXAtomicViews *atomic, const Open
 
         const OpenMXTwoCenterGeometry geometry={r,siT,coT,siP,coP,h_AN==0};
         SetNonlocal_TransformDSNL(atomic,&buffers,Cwan,Hwan,so,Mc_AN,h_AN,DS_NL,
-            &Comp2Real[0][0][0], sizeof(Comp2Real)/sizeof(Comp2Real[0]), sizeof(Comp2Real[0][0])/sizeof(Comp2Real[0][0][0]),&geometry);
+            atomic->real_harmonics.coefficients, atomic->real_harmonics.orders, atomic->real_harmonics.width,&geometry);
       } /* so */
 
 

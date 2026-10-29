@@ -4,9 +4,11 @@
 #include <string.h>
 #include "mpi.h"
 #include "openmx_core_atomic.h"
+#include "openmx_quadrature.h"
 #include "openmx_core_neutral_grid.h"
 #include "openmx_core_neutral_grid_metadata.h"
 #include "openmx_neutral_atom.h"
+#include "reference_arithmetic.h"
 #define PI 3.1415926535897932384626433832795
 #define measure_time 0
 #define CHECK(c) do{if(!(c)){fprintf(stderr,"FAIL line %d: %s\n",__LINE__,#c);exit(2);}}while(0)
@@ -72,15 +74,15 @@ static void verify_grid(const OpenMXAtomicViews *atomic){
 /* Ordered-pair potential with derivative equal to the prescribed native
    two-center kernel. Apply affine strain to coordinates, independently of
    the production virial assembly and its reverse-neighbor indexing. */
-static long double strain_energy(int axis,int other,long double epsilon){
-  long double value=0;
+static OpenMXTestReference strain_energy(int axis,int other,OpenMXTestReference epsilon){
+  OpenMXTestReference value=0;
   for(int m=1;m<=Matomnum;m++){
     const int a=M2G[m],sa=WhatSpecies[a];
     for(int h=1;h<=FNAN[a];h++){
-      const int b=neighbors[a][h],sb=WhatSpecies[b];long double r[3],r2=0;
-      for(int d=0;d<3;d++)r[d]=(long double)positions[a][d+1]-(long double)positions[b][d+1];
+      const int b=neighbors[a][h],sb=WhatSpecies[b];OpenMXTestReference r[3],r2=0;
+      for(int d=0;d<3;d++)r[d]=(OpenMXTestReference)positions[a][d+1]-(OpenMXTestReference)positions[b][d+1];
       r[axis]+=epsilon*r[other];for(int d=0;d<3;d++)r2+=r[d]*r[d];
-      value-=.25L*((long double)EH0_scaling[sa][sb]*slope(sa,sb)+(long double)EH0_scaling[sb][sa]*slope(sb,sa))*sqrtl(r2);
+      value-=(OpenMXTestReference).25*((OpenMXTestReference)EH0_scaling[sa][sb]*slope(sa,sb)+(OpenMXTestReference)EH0_scaling[sb][sa]*slope(sb,sa))*OpenMX_TestReferenceSqrt(r2);
     }
   }return value;
 }
@@ -98,7 +100,12 @@ static int exercise(OpenMXSolverInvocation *owner,void *opaque,double *result){
     for(int k=0;k<9;k++)Stress_Tensor[k]=.003*(k+1);
     allocations=0;Stress_H0(owner,args->context,&args->atomic);CHECK(allocations==1&&FNAN[0]==99);verify_grid(&args->atomic);
     for(int a=0;a<3;a++)for(int b=0;b<3;b++){
-      const long double delta=2e-6L;near(Stress_Tensor[3*a+b],.003*(3*a+b+1)+(strain_energy(a,b,delta)-strain_energy(a,b,-delta))/(2*delta));
+      /* A larger fourth-order stencil avoids subtractive cancellation
+         on ABIs where long double is binary64; the tolerance stays fixed. */
+      const OpenMXTestReference delta=1e-4L;
+      const OpenMXTestReference derivative=(8*(strain_energy(a,b,delta)-strain_energy(a,b,-delta))-
+          (strain_energy(a,b,2*delta)-strain_energy(a,b,-2*delta)))/(12*delta);
+      near(Stress_Tensor[3*a+b],.003*(3*a+b+1)+derivative);
     }
     int *send,*receive;OpenMX_Stress_OverlapCountsPrepare(owner,4,&send,&receive);CHECK(send!=receive);send[3]=17;receive[3]=29;CHECK(send[3]==17);
   }
@@ -115,21 +122,25 @@ int main(int argc,char **argv){
   for(int m=1;m<=3;m++)for(int h=0;h<=FNAN[M2G[m]];h++){
     const int a=M2G[m],b=neighbors[a][h];int found=-1;for(int j=0;j<=FNAN[b];j++)if(neighbors[b][j]==a)found=j;CHECK(found>=0);reverse_data[m][h][0]=found;
   }
-  double cutoff[2]={.11,.14},radial[2][2]={{0}};int index[2],mesh[2]={2,2};Arguments args={0};char context_error[256];args.context=openmx_core_create_host(context_error,sizeof(context_error));CHECK(args.context);
-  {const OpenMXNeutralGridMetadataShape shape={2};OpenMXNeutralGridMetadataView metadata;char message[256];
-   CHECK(openmx_core_neutral_grid_metadata_prepare(args.context,&shape,&metadata,message,sizeof(message)));
-   fixture_counts=metadata.counts;fixture_spacing=metadata.spacing;}
-args.invalid=argc>1?argv[1]:NULL;
+  double cutoff[2]={.11,.14},radial[2][2]={{0}};int index[2],mesh[2]={2,2};Arguments args={0};char context_error[256];
+  args.invalid=argc>1?argv[1]:NULL;
   args.atomic.species.species=2;args.atomic.species.species_index=index;args.atomic.species.cutoff=cutoff;args.atomic.species.core_charge=Spe_Core_Charge;
   args.atomic.species.pao_mesh=args.atomic.species.vps_mesh=mesh;args.atomic.pao_log_radii=args.atomic.pao_radii=args.atomic.density=args.atomic.vps_log_radii=args.atomic.vps_radii=args.atomic.hartree_potential=(OpenMXRadialView2){&radial[0][0],{2,2}};
   for(int mesh_count=2;mesh_count<=3;mesh_count++){
     CoarseGL_Mesh=mesh_count;
+    args.context=openmx_core_create_host(context_error,sizeof(context_error));CHECK(args.context);
+    {const OpenMXNeutralGridMetadataShape shape={2};OpenMXNeutralGridMetadataView metadata;char message[256];
+     CHECK(openmx_core_neutral_grid_metadata_prepare(args.context,&shape,&metadata,message,sizeof(message)));
+     fixture_counts=metadata.counts;fixture_spacing=metadata.spacing;}
+    {OpenMXGaussRuleData rule;
+     CHECK(openmx_core_neutral_quadrature_initialize(args.context,mesh_count,&rule,context_error,sizeof(context_error)));}
+    CoarseGL_Abscissae[0]=-1/sqrt(3.0);CoarseGL_Abscissae[1]=1/sqrt(3.0);
     if(mesh_count==3){
       CoarseGL_Abscissae[0]=-sqrt(3.0/5.0);CoarseGL_Abscissae[1]=0;CoarseGL_Abscissae[2]=sqrt(3.0/5.0);
       CoarseGL_Weight[0]=CoarseGL_Weight[2]=5.0/9.0;CoarseGL_Weight[1]=8.0/9.0;
     }
     for(int empty=0;empty<2;empty++){Matomnum=empty?0:3;CHECK(OpenMX_Solver_Run(exercise,&args)==1);}
+    openmx_core_destroy(args.context);
   }
-  openmx_core_destroy(args.context);
   puts("PASS: native neutral grid/cutoff/stress, two/three Gauss points, three capacities each, empty/local atoms, logical teams1/4/2, independent coordinates/moments/nine strain components");return 0;
 }

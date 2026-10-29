@@ -53,7 +53,10 @@ template<int MG,int C,bool FULL> void contract_tile(const OpenMXVnaContract& p,i
   const double* table=offset_if_present(p.table,size_t(r0));
   const size_t ts=p.table_stride;
   const double* w0[MG];const double* w1[MG];
-  for(int m=0;m<MG;++m){w0[m]=p.w0[m0+m];w1[m]=p.w1[m0+m];}
+  for(int m=0;m<MG;++m) {
+    const size_t offset=p.points?size_t(m0+m)*p.weight_stride:0;
+    w0[m]=p.points?p.w0+offset:nullptr;w1[m]=p.points?p.w1+offset:nullptr;
+  }
   const Mask mask=lane_mask(tail);
   for(int i=0;i<p.points;++i) {
     Vector t[C];
@@ -360,8 +363,8 @@ template<bool FULL> void angular_lanes(const OpenMXVnaAngular& p,int a,int j0,Ma
     const Vector y1r=cr*yr-ci*yi,y1i=ci*yr+cr*yi;
     const Vector t1r=cr*tr-ci*ti,t1i=ci*tr+cr*ti;
     const Vector p1r=cr*pr-ci*pi,p1i=ci*pr+cr*pi;
-    const Vector g=FULL?load(p.gaunt[t]+size_t(a)*p.gaunt_stride+j0)
-                       :simd::simd_partial_load<Vector>(p.gaunt[t]+size_t(a)*p.gaunt_stride+j0,tail);
+    const double* gaunt=p.gaunt+size_t(t)*p.gaunt_ll_stride+size_t(a)*p.gaunt_stride+j0;
+    const Vector g=FULL?load(gaunt):simd::simd_partial_load<Vector>(gaunt,tail);
     const Vector tmp2=g*Vector(p.s0[t]),tmp0=g*Vector(p.s1[t]);
     acc[0]=select(valid,acc[0]+y1r*tmp2,acc[0]);acc[1]=select(valid,acc[1]+y1i*tmp2,acc[1]);
     acc[2]=select(valid,acc[2]+y1r*tmp0,acc[2]);acc[3]=select(valid,acc[3]+y1i*tmp0,acc[3]);
@@ -539,5 +542,5 @@ void nonlocal_radial(const OpenMXVnaNonlocalRadial& p) {
 }
 constexpr VnaKernels kernels{V,contract,bessel,quadrature,hvna_block,angular,convert,overlap_radial,nonlocal_radial};
 }
-const VnaKernels& OPENMX_HOST_SIMD_FACTORY(vna)() noexcept {return kernels;}
+const VnaKernels& OPENMX_HOST_SIMD_FACTORY(vna_v2)() noexcept {return kernels;}
 }

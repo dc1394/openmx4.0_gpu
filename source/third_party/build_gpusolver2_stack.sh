@@ -53,6 +53,7 @@ set -u
 : "${GPUSOLVER2_COMPILER_LIB:?set by the Makefile}"
 : "${GPUSOLVER2_SCALAPACK_SO:?set by the Makefile}"
 : "${GPUSOLVER2_ELPA_VER:=2026.02.002}"
+: "${GPUSOLVER2_ELPA_KERNELS:=auto}"
 : "${GPUSOLVER2_CMAKE:=}"
 : "${GPUSOLVER2_JOBS:=$(nproc 2>/dev/null || echo 8)}"
 : "${GPUSOLVER2_TOOL_PATH:=}"
@@ -150,24 +151,65 @@ step_elpa() {
   mkdir -p "$BLD/elpa" && cd "$BLD/elpa"
   # ELPA's nvcc rule does not see CPPFLAGS; the cuBLAS headers of an SDK
   # layout with separate math_libs have to reach it through NVCCFLAGS.
-  # Generic real/complex CPU kernels support both elpa1 and elpa2.
-  # NVHPC does not support all x86 intrinsic templates; keep its SIMD
-  # kernels disabled while retaining the portable CPU implementation.
+  # Generic real/complex CPU kernels support both elpa1 and elpa2.  The x86
+  # SIMD kernels are C intrinsic templates that NVHPC's nvc cannot compile,
+  # so with them enabled the C side goes through the MPI wrapper to the host
+  # GCC (OMPI_CC) while the Fortran side keeps the SDK compiler; the kernel
+  # set and the -m flags follow the build host's CPU like the application's
+  # -march=native (the kernel block before run_step 01_elpa), and
+  # openmx_elpa_cpu.c selects the kernel at run time with the generic
+  # kernels as the fallback.
+  case "$ELPA_KERNEL_CC" in
+    gcc) export OMPI_CC="$GPUSOLVER2_HOST_CC" OMPI_CXX="$GPUSOLVER2_HOST_CXX" ;;
+  esac
   "$SRC/elpa/configure" --prefix="$P" \
     FC="$GPUSOLVER2_MPI_BIN/mpif90" CC="$GPUSOLVER2_MPI_BIN/mpicc" CXX="$GPUSOLVER2_MPI_BIN/mpicxx" \
-    FCFLAGS="-O2" CFLAGS="-O2" CXXFLAGS="-O2" \
+    FCFLAGS="-O2" CFLAGS="-O2 $ELPA_SIMD_CFLAGS" CXXFLAGS="-O2 $ELPA_SIMD_CFLAGS" \
     CPPFLAGS="-I$GPUSOLVER2_MATH_DIR/include -I$GPUSOLVER2_CUDA_HOME/targets/x86_64-linux/include" \
     NVCCFLAGS="-I$GPUSOLVER2_MATH_DIR/include" \
     LDFLAGS="-L$GPUSOLVER2_MPI_LIBDIR -L$SCALAPACK_DIR -L$GPUSOLVER2_COMPILER_LIB -L$GPUSOLVER2_MATH_DIR/lib" \
     LIBS="-lscalapack_lp64 -llapack_lp64 -lblas_lp64 -lstdc++" \
     --enable-nvidia-gpu-kernels --with-NVIDIA-GPU-compute-capability=sm_$GPUSOLVER2_GPU_ARCH $SM80 \
     --with-cuda-path="$GPUSOLVER2_CUDA_HOME" --disable-shared --enable-static \
-    --enable-generic-kernels \
-    --disable-sse-assembly-kernels --disable-sse-kernels --disable-avx-kernels --disable-avx2-kernels --disable-avx512-kernels \
+    $ELPA_KERNEL_OPTS \
     --disable-c-tests --disable-cpp-tests --disable-fortran-tests --disable-Fortran-tests
   make -j "$J"
   make install
 }
+# The CPU kernels of ELPA's 2-stage solver (GPUSOLVER2_ELPA_KERNELS: auto =
+# the SIMD kernels this build host can run, generic = portable kernels only).
+# The MPI wrapper's own C compiler builds them when it can (GCC, Clang);
+# NVHPC's nvc cannot, and the host GCC is used through OMPI_CC instead.
+ELPA_KERNEL_OPTS="--enable-generic-kernels --disable-sse-assembly-kernels"
+ELPA_SIMD_CFLAGS=""
+ELPA_KERNEL_CC=wrapper
+if [ "$GPUSOLVER2_ELPA_KERNELS" = auto ] && grep -qw avx2 /proc/cpuinfo 2>/dev/null \
+   && grep -qw fma /proc/cpuinfo 2>/dev/null; then
+  ELPA_KERNEL_OPTS="$ELPA_KERNEL_OPTS --enable-sse-kernels --enable-avx-kernels --enable-avx2-kernels"
+  ELPA_SIMD_CFLAGS="-msse4.2 -mavx -mfma -mavx2"
+  if grep -qw avx512f /proc/cpuinfo && grep -qw avx512dq /proc/cpuinfo \
+     && grep -qw avx512bw /proc/cpuinfo && grep -qw avx512vl /proc/cpuinfo; then
+    ELPA_KERNEL_OPTS="$ELPA_KERNEL_OPTS --enable-avx512-kernels"
+    ELPA_SIMD_CFLAGS="$ELPA_SIMD_CFLAGS -mavx512f -mavx512cd -mavx512dq -mavx512bw -mavx512vl"
+  else
+    ELPA_KERNEL_OPTS="$ELPA_KERNEL_OPTS --disable-avx512-kernels"
+  fi
+  case "$("$GPUSOLVER2_MPI_BIN/mpicc" --showme:command 2>/dev/null)" in
+    nvc*|pgcc*) ELPA_KERNEL_CC=gcc ;;
+  esac
+else
+  ELPA_KERNEL_OPTS="$ELPA_KERNEL_OPTS --disable-sse-kernels --disable-avx-kernels --disable-avx2-kernels --disable-avx512-kernels"
+fi
+# The kernel set is part of ELPA's configuration: a change rebuilds ELPA
+# alone (COSMA does not depend on it).
+printf '%s\n' "$ELPA_KERNEL_OPTS" "$ELPA_SIMD_CFLAGS" "$ELPA_KERNEL_CC" > "$STAMP/elpa-kernels.tmp"
+if ! cmp -s "$STAMP/elpa-kernels.tmp" "$STAMP/elpa-kernels.conf"; then
+  rm -f "$STAMP/01_elpa.done"
+  rm -rf "$BLD/elpa"
+  mv "$STAMP/elpa-kernels.tmp" "$STAMP/elpa-kernels.conf"
+else
+  rm -f "$STAMP/elpa-kernels.tmp"
+fi
 run_step 01_elpa step_elpa
 
 # ---------- cmake >= 3.24 for COSMA: use $GPUSOLVER2_CMAKE, else system cmake, else bootstrap
@@ -226,6 +268,23 @@ step_cosma() {
   [ -d "$SRC/cosma" ] || { cd "$SRC" && unzip -q "$DIST/cosma-v$V_COSMA.zip" && mv "COSMA-$V_COSMA" cosma; }
   [ -d "$SRC/COSTA" ] || { cd "$SRC" && unzip -q "$DIST/COSTA-$SHA_COSTA.zip" && mv "COSTA-$SHA_COSTA" COSTA; }
   [ -d "$SRC/Tiled-MM" ] || { cd "$SRC" && unzip -q "$DIST/Tiled-MM-$SHA_TILEDMM.zip" && mv "Tiled-MM-$SHA_TILEDMM" Tiled-MM; }
+  # OpenMX's product hook in Tiled-MM (see the patch header): its double and
+  # complex-double tile products call the application's GEMMul8 bridge.
+  # Forward/reverse dry-runs reject an unexpected source tree and make
+  # repeat builds idempotent; the hashes pin the one file the patch changes.
+  tiledmm_file="$SRC/Tiled-MM/src/Tiled-MM/tiled_mm.cpp"
+  if ! printf '%s  %s\n' "$TILEDMM_ORIGINAL" "$tiledmm_file" | sha256sum -c - >/dev/null 2>&1 &&
+     ! printf '%s  %s\n' "$TILEDMM_PATCHED" "$tiledmm_file" | sha256sum -c - >/dev/null 2>&1; then
+    echo "ERROR: unexpected Tiled-MM source hash; refusing to patch $tiledmm_file"
+    return 1
+  fi
+  if patch --batch --fuzz=0 --forward --dry-run -d "$SRC/Tiled-MM" -p1 < "$TILEDMM_PATCH" >/dev/null 2>&1; then
+    patch --batch --fuzz=0 --forward -d "$SRC/Tiled-MM" -p1 < "$TILEDMM_PATCH"
+  elif ! patch --batch --fuzz=0 --reverse --dry-run -d "$SRC/Tiled-MM" -p1 < "$TILEDMM_PATCH" >/dev/null 2>&1; then
+    echo "ERROR: Tiled-MM source does not match $TILEDMM_PATCH"
+    return 1
+  fi
+  printf '%s  %s\n' "$TILEDMM_PATCHED" "$tiledmm_file" | sha256sum -c -
   # COSMA_SCALAPACK=CUSTOM forces the host-BLAS vendor to "auto", whose
   # OPENBLAS probe "succeeds" with NOTFOUND libraries on machines without
   # OpenBLAS (FindOPENBLAS.cmake creates its target unconditionally).
@@ -244,6 +303,20 @@ step_cosma() {
   $CMAKE --build "$BLD/cosma" -j "$J"
   $CMAKE --install "$BLD/cosma"
 }
+# The Tiled-MM patch is part of COSMA's configuration: a change rebuilds
+# COSMA alone (ELPA does not depend on it).
+TILEDMM_PATCH=$(dirname "$DIST")/tiledmm-openmx-gemm-hook.patch
+TILEDMM_ORIGINAL=9b33855deba33b276bd1d95db921fba95a81152018f477255d02c86ab3b3e5fb
+TILEDMM_PATCHED=908237509e8d66cfdf73da7acc6501aa35adf62dd6a9126749c1e8071d9d473c
+[ -f "$TILEDMM_PATCH" ] || { echo "ERROR: missing $TILEDMM_PATCH"; exit 1; }
+sha256sum < "$TILEDMM_PATCH" > "$STAMP/cosma-patches.tmp"
+if ! cmp -s "$STAMP/cosma-patches.tmp" "$STAMP/cosma-patches.conf"; then
+  rm -f "$STAMP/02_cosma.done"
+  rm -rf "$BLD/cosma"
+  mv "$STAMP/cosma-patches.tmp" "$STAMP/cosma-patches.conf"
+else
+  rm -f "$STAMP/cosma-patches.tmp"
+fi
 run_step 02_cosma step_cosma
 
 echo "gpusolver2 stack: all components installed into $P"

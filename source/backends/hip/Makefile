@@ -260,8 +260,8 @@ OBJS    = openmx_grid_assembly.o openmx.o openmx_common.o Input_std.o Inputtools
           Overlap_Cluster_NC_Ss2.o Overlap_Band_NC_Ss2.o Overlap_Cluster.o Overlap_Cluster_Ss.o Overlap_Cluster_LNO_Ss.o \
           Set_ContMat_Cluster_LNO.o Hamiltonian_Band.o Matrix_Band_LNO.o Overlap_Band.o Hamiltonian_Cluster_NC.o \
           Hamiltonian_Band_NC.o Hamiltonian_Cluster_SO.o Get_OneD_HS_Col.o \
-          SetPara_DFT.o XC_Ceperly_Alder.o XC_CA_LSDA.o \
-          XC_PW92C.o XC_PBE.o XC_EX.o DFT.o Mixing_DM.o Mixing_H.o Mixing_V.o Force.o Stress.o Poisson.o Poisson_ESM.o \
+          SetPara_DFT.o \
+          DFT.o Mixing_DM.o Mixing_H.o Mixing_V.o Force.o Stress.o Poisson.o Poisson_ESM.o \
           Cluster_DFT_Col.o Cluster_DFT_Col_dm_hip.o Cluster_DFT_NonCol.o Cluster_DFT_NonCol_dm_hip.o Cluster_DFT_Dosout.o Cluster_DFT_ON2.o Cluster_DFT_Col_LNO.o \
           Band_DFT_Col.o Band_DFT_NonCol.o Band_DFT_NonCol_GB.o Band_DFT_kpath.o Band_DFT_kpath_LNO.o Band_DFT_MO.o \
           Cluster_DFT_Col_CWF.o Cluster_DFT_NonCol_CWF.o Band_DFT_Col_CWF.o Band_DFT_NonCol_CWF.o \
@@ -558,18 +558,8 @@ Get_OneD_HS_Col.o: Get_OneD_HS_Col.c openmx_common.h
 #
 #
 #  
-SetPara_DFT.o: SetPara_DFT.c openmx_common.h
+SetPara_DFT.o: SetPara_DFT.c openmx_common.h openmx_core_pao_file.h openmx_core_vps_file.h openmx_core_atomic_density.h openmx_core_quadrature.h
 	$(CC) -c SetPara_DFT.c
-XC_Ceperly_Alder.o: XC_Ceperly_Alder.c openmx_common.h
-	$(CC) -c XC_Ceperly_Alder.c
-XC_CA_LSDA.o: XC_CA_LSDA.c openmx_common.h
-	$(CC) -c XC_CA_LSDA.c
-XC_PW92C.o: XC_PW92C.c openmx_common.h
-	$(CC) -c XC_PW92C.c
-XC_PBE.o: XC_PBE.c openmx_common.h
-	$(CC) -c XC_PBE.c
-XC_EX.o: XC_EX.c openmx_common.h
-	$(CC) -c XC_EX.c
 #
 # SCF
 #
@@ -673,7 +663,7 @@ Orbital_Moment.o: Orbital_Moment.c openmx_common.h
 	$(CC) -c Orbital_Moment.c
 Smoothing_Func.o: Smoothing_Func.c openmx_common.h
 	$(CC) -c Smoothing_Func.c
-Gauss_Legendre.o: Gauss_Legendre.c openmx_common.h
+Gauss_Legendre.o: Gauss_Legendre.c openmx_basis_quadrature.h ../modules/basis/include/openmx/basis/quadrature.h
 	$(CC) -c Gauss_Legendre.c
 # NVHPC 26.3 + -acc makes DSYGV fail here, corrupting ON2 poles.
 zero_cfrac.o: zero_cfrac.c openmx_common.h
@@ -711,9 +701,9 @@ Set_Density_Grid_GPU.o: Set_Density_Grid_GPU.c openmx_common.h set_hip_default_d
 Set_Aden_Grid.o: Set_Aden_Grid.c openmx_common.h
 	$(CC) -c Set_Aden_Grid.c
 
-KumoF.o: KumoF.c openmx_common.h
+KumoF.o: KumoF.c openmx_basis_density.h ../modules/basis/include/openmx/basis/density.h
 	$(CC) -c KumoF.c
-Dr_KumoF.o: Dr_KumoF.c openmx_common.h
+Dr_KumoF.o: Dr_KumoF.c openmx_basis_density.h ../modules/basis/include/openmx/basis/density.h
 	$(CC) -c Dr_KumoF.c
 Pot_NeutralAtom.o: Pot_NeutralAtom.c openmx_common.h
 	$(CC) -c Pot_NeutralAtom.c
@@ -1131,8 +1121,8 @@ clean: fftw3-clean gemmul8-clean magma-clean
 #
 #
 
-DosMain: DosMain.o Inputtools.o malloc_multidimarray.o Tetrahedron_Blochl.o 
-	$(CC) -o $@ DosMain.o Inputtools.o malloc_multidimarray.o Tetrahedron_Blochl.o -lm 
+DosMain: DosMain.o Inputtools.o malloc_multidimarray.o Tetrahedron_Blochl.o $(OPENMX_CORE_LIBRARY)
+	$(CC) -o $@ DosMain.o Inputtools.o malloc_multidimarray.o Tetrahedron_Blochl.o $(OPENMX_IO_LIBRARY) -lstdc++ -lm 
 	cp DosMain $(DESTDIR)/DosMain
 
 DosMain.o :DosMain.c openmx_common.h
@@ -1144,8 +1134,8 @@ Tetrahedron_Blochl.o : Tetrahedron_Blochl.c
 #  COHP: Crystal Orbital Hamilton Population
 #
 
-cohp: cohp.o Inputtools.o Tetrahedron_Blochl.o
-	$(CC) -o $@ cohp.o Inputtools.o Tetrahedron_Blochl.o -lm
+cohp: cohp.o Inputtools.o Tetrahedron_Blochl.o $(OPENMX_CORE_LIBRARY)
+	$(CC) -o $@ cohp.o Inputtools.o Tetrahedron_Blochl.o $(OPENMX_IO_LIBRARY) -lstdc++ -lm
 	cp cohp $(DESTDIR)/cohp
 
 cohp.o :cohp.c openmx_common.h
@@ -1236,8 +1226,8 @@ esp.o : esp.c Inputtools.h
 #
 #
 
-check_lead: check_lead.o Inputtools.o
-	$(CC) check_lead.o Inputtools.o -lm -o check_lead
+check_lead: check_lead.o Inputtools.o $(OPENMX_CORE_LIBRARY)
+	$(CC) check_lead.o Inputtools.o $(OPENMX_IO_LIBRARY) -lstdc++ -lm -o check_lead
 	cp check_lead $(DESTDIR)/check_lead
 
 check_lead.o: check_lead.c Inputtools.h 
@@ -1251,7 +1241,7 @@ check_lead.o: check_lead.c Inputtools.h
 
 OpticalConductivityMain: OpticalConductivityMain.o \
               Inputtools.o  malloc_multidimarray.o
-	$(CC) -o $@   OpticalConductivityMain.o  Inputtools.o  malloc_multidimarray.o -lm 
+	$(CC) -o $@   OpticalConductivityMain.o  Inputtools.o  malloc_multidimarray.o $(OPENMX_IO_LIBRARY) -lstdc++ -lm 
 	cp OpticalConductivityMain $(DESTDIR)/OpticalConductivityMain
 
 #
@@ -1648,3 +1638,10 @@ DFT.o Force.o Set_Hamiltonian.o Set_Orbitals_Grid.o Set_Density_Grid_GPU.o openm
 Set_Hamiltonian.o: openmx_grid_device_scope.h openmx_core_native_resources.h
 
 Band_DFT_Col.o: openmx_hamiltonian_gpu_state.h
+
+# Calculation-owned radial quadrature shared by host and native GPU assembly.
+DFT.o SetPara_DFT.o FT_VNA.o FT_ProExpn_VNA.o FT_ProductPAO.o Set_ProExpn_VNA.o: openmx_quadrature.h openmx_core_quadrature.h ../core/include/openmx_core_quadrature.h
+
+# Neutral-atom reference quadrature is owned by the calculation.
+Total_Energy.o Stress.o: openmx_quadrature.h openmx_core_quadrature.h ../core/include/openmx_core_quadrature.h
+Total_Energy_GPU.o: openmx_core_quadrature.h ../core/include/openmx_core_quadrature.h

@@ -17,7 +17,9 @@ struct VnaKernels {
   void (*overlap_radial)(const OpenMXVnaOverlapRadial&);
   void (*nonlocal_radial)(const OpenMXVnaNonlocalRadial&);
 };
-extern "C" OPENMX_HOST_SIMD_EXPORT const VnaKernels* openmx_host_vna_kernels(int mode) noexcept;
-OPENMX_HOST_SIMD_FAMILY(VnaKernels,vna)
+// v2 uses flat weight/Gaunt descriptors. A mismatched old private library must
+// fail symbol resolution instead of interpreting a different struct layout.
+extern "C" OPENMX_HOST_SIMD_EXPORT const VnaKernels* openmx_host_vna_v2_kernels(int mode) noexcept;
+OPENMX_HOST_SIMD_FAMILY(VnaKernels,vna_v2)
 }
 #endif

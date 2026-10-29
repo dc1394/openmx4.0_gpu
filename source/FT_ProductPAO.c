@@ -21,6 +21,7 @@
 /*  end stat section */
 #include "openmx_common.h"
 #include "openmx_reciprocal.h"
+#include "openmx_quadrature.h"
 #include "openmx_atomic.h"
 #include "mpi.h"
 #include "openmx_core_product.h"
@@ -36,6 +37,7 @@ void FT_ProductPAO(OpenMXCoreContext *core, int device)
   OpenMXReciprocalArchive *archive=OpenMX_ReciprocalArchiveBegin(core,OPENMX_ARCHIVE_PRODUCT,&archive_rows);
   char archive_error[256];
   const OpenMXReciprocalViews reciprocal=OpenMX_ReciprocalTables(core);
+  const OpenMXGaussRuleData rule=OpenMX_RadialQuadrature(core,GL_Mesh,mpi_comm_level1);
   double *******Spe_ProductRF_Bessel=reciprocal.products.rows;
 
   int numprocs,myid,ID,NumSpe;
@@ -83,7 +85,7 @@ void FT_ProductPAO(OpenMXCoreContext *core, int device)
       const OpenMXProductTable table = {atomic->species.basis_lmax[spe],atomic->species.pao_mesh[spe],
         atomic->species.basis_rows[spe],openmx_radial_row2(&atomic->pao_radii,spe),reciprocal.pao.orbitals[spe],Spe_ProductRF_Bessel[spe]};
       const OpenMXGaussRadialGrid grid = {GL_Mesh,GL_Mesh,openmx_radial_row2(&atomic->vps_radii,spe)[0],
-        atomic->species.cutoff[spe]+0.5,Radial_kmin,PAO_Nkmax,GL_Abscissae,GL_Weight,GL_Abscissae};
+        atomic->species.cutoff[spe]+0.5,Radial_kmin,PAO_Nkmax,rule.nodes,rule.weights,rule.nodes};
       char error[256];
       if (!openmx_core_transform_products(core,device,&table,&grid,error,sizeof(error))) {
         fprintf(stderr,"FT_ProductPAO species %d: %s\n",spe,error);

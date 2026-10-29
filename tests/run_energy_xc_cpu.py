@@ -2,7 +2,7 @@
 """Check production fine-XC assembly, flat scratch and the real Lebedev tables.
 
 The actual C++ owner is linked. Fine-XC tests model MPI/GPU calls, radial/XC
-kernels, angular rules and sequential logical OpenMP teams. An independent
+kernels and sequential logical OpenMP teams. An independent
 scalar integral and coordinate differences check the native gradients. A
 separate executable tests all three actual angular tables and their moments.
 """
@@ -37,7 +37,7 @@ def main():
     args = parser.parse_args()
     library = args.core_library.resolve(strict=True)
     source = function((ROOT/'source/Total_Energy.c').read_text(), 'Calc_EXC_EH1')
-    marker = source.index('    OpenMXSolverRealTensor lebedev;')
+    marker = source.index('    OpenMXLebedevRuleData lebedev;')
     start = source.rindex('if (Exc0_correction_flag==1){', 0, marker)
     native = source[start:closing(source, source.index('{', start))]
     pragma = re.search(r'^#pragma omp parallel[^\n]*', native, re.M)
@@ -51,8 +51,6 @@ def main():
               'energy_fixture_worker<energy_fixture_size; energy_fixture_worker++)' +
               native[pragma.end():opening+1]+'\nenergy_fixture_thread=energy_fixture_worker;\n'+
               native[opening+1:end]+'\nenergy_fixture_thread=0;energy_fixture_team=1;\n'+native[end:])
-    grid = function((ROOT/'source/openmx_common.c').read_text(), 'Set_Lebedev_Grid')
-    assert set(map(int, re.findall(r'\bNp\s*==\s*(\d+)', grid))) == {590, 1202, 2030}
     with tempfile.TemporaryDirectory(prefix='openmx-energy-xc-') as directory:
         folder = Path(directory)
         (folder/'mpi.h').write_text(MPI)
@@ -61,16 +59,13 @@ def main():
                                   'static inline int omp_get_thread_num(void){return energy_fixture_thread;}\n'
                                   'static inline int omp_get_num_threads(void){return energy_fixture_team;}\n'
                                   'static inline int omp_get_num_procs(void){return 4;}\n')
-        (folder/'lebedev_native.inc').write_text(grid)
 
         def build(name, backend=0, code=native, production_grid=False):
             (folder/'xc_native.inc').write_text(code)
             executable = folder/name
             flags = ['-DOPENMX_GPU_HIP='+str(backend)]
             if production_grid:
-                # Thousands of constant stores need no optimizer for the
-                # independent moments/layout check; keep every store sanitized.
-                flags += ['-DENERGY_GRID_PRODUCTION=1', '-O0']
+                flags += ['-DENERGY_GRID_PRODUCTION=1']
             subprocess.run(compiler_command('c')+flags+['-I'+str(folder),
                 '-I'+str(ROOT/'source'), '-I'+str(ROOT/'core/include'), '-x', 'c',
                 str(ROOT/'tests/energy_xc_harness.c'), '-x', 'none', str(library),

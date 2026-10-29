@@ -61,7 +61,7 @@ static int layout(OpenMXSolverInvocation *owner,void *argument,double *result){
   const char *mode=argument;
   if(!strcmp(mode,"bad-count"))OpenMX_Energy_PairsPrepare(owner,(size_t)INT_MAX+1,NULL);
   if(!strcmp(mode,"bad-eh0-count"))OpenMX_Energy_EH0BatchPrepare(owner,(size_t)INT_MAX+1,NULL);
-  if(!strcmp(mode,"bad-lebedev"))OpenMX_Energy_LebedevPrepare(owner,591,NULL,NULL);
+  if(!strcmp(mode,"bad-lebedev"))OpenMX_Energy_LebedevPrepare(owner,591,NULL);
   if(!strcmp(mode,"bad-cwf")){
     OpenMXSolverRealTensor a,b;OpenMX_Energy_CWFScratch(owner,0,&a,&b);
   }
@@ -109,11 +109,22 @@ static int layout(OpenMXSolverInvocation *owner,void *argument,double *result){
   for(int i=0;i<18;i++)worker.values[i]=i+.25;
   OpenMX_Energy_XCWorkerPrepare(owner,3,&again);CHECK(again.values==worker.values);
   for(int i=0;i<18;i++)CHECK(again.values[i]==i+.25);
-  OpenMXSolverRealTensor angular;double **rows;
-  OpenMX_Energy_LebedevPrepare(owner,590,&angular,&rows);
-  for(int i=0;i<590;i++)CHECK(rows[i]==angular.values+4*i);
-  OpenMX_Energy_LebedevPrepare(owner,1202,&angular,&rows);
-  for(int i=0;i<1202;i++)CHECK(rows[i]==angular.values+4*i);
+  OpenMXLebedevRuleData angular,retained;
+  for(int k=0;k<3;k++){
+    const int points=k==0?590:k==1?1202:2030;
+    OpenMX_Energy_LebedevPrepare(owner,points,&angular);
+    CHECK(angular.count==(size_t)points && angular.xyzw);
+    double weight=0;
+    for(int i=0;i<points;i++){
+      const double *point=openmx_lebedev_point(&angular,(size_t)i);
+      CHECK(point==angular.xyzw+4*i);
+      CHECK(fabs(point[0]*point[0]+point[1]*point[1]+point[2]*point[2]-1)<2e-14);
+      weight+=point[3];
+    }
+    CHECK(fabs(weight-1)<2e-13);
+    OpenMX_Energy_LebedevPrepare(owner,points,&retained);
+    CHECK(retained.xyzw==angular.xyzw && retained.count==angular.count);
+  }
   OpenMXSolverRealTensor a,b;OpenMX_Energy_CWFScratch(owner,3,&a,&b);
   CHECK(a.extent[0]==2 && a.extent[1]==3 && a.values!=b.values);
   for(int i=0;i<6;i++){a.values[i]=i+.5;b.values[i]=-i-.5;}

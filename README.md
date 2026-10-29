@@ -55,8 +55,15 @@ FFTW is preferred in AOCL builds). See [HIP options](docs/GPU_BACKENDS.md#amd--h
 The CPU build uses ordinary C/C++ and Fortran compilers with a matching MPI,
 requires no GPU SDK, and defaults to `scf.eigen.lib elpa2`. It builds the same
 bundled ELPA 2026.02.002 release with GPU kernels disabled, and uses the host
-Kokkos SIMD kernels. Existing `gpusolver`/`gpusolver2`/`gpusolver3` input decks
-select CPU ELPA2 in this executable. CPU builds also copy the matching Core and
+Kokkos SIMD kernels. In every build the bundled ELPA also gets the x86 SIMD
+kernels the build host can run (SSE/AVX/AVX2/AVX-512; `GPUSOLVER2_ELPA_KERNELS`
+for the NVIDIA Makefile, `OPENMX_CPU_ELPA_KERNELS` for the CPU build, `auto`
+or `generic`), and the ELPA2 path selects the fastest one the CPU supports at
+run time (`ELPA_DEFAULT_real_kernel` / `ELPA_DEFAULT_complex_kernel` override it). Existing `gpusolver`/`gpusolver2`/`gpusolver3` input decks
+select CPU ELPA2 in this executable. The bundled ELPA is compiled with `-O2`:
+its C SIMD kernels built by gcc 14 with `-O3` returned wrong eigenvectors
+(with correct eigenvalues) while the generic kernel was right, so the CPU
+numerics test checks eigenvectors too. CPU builds also copy the matching Core and
 host SIMD libraries to `work/lib/`. See [CPU dependencies and options](docs/GPU_BACKENDS.md#cpu-専用の本体ビルド)
 for external numerical libraries and MPI compiler selection.
 
@@ -119,15 +126,62 @@ command is missing, fails, or reports no usable compute capability; specify
 A cached `CMAKE_CUDA_ARCHITECTURES` value does not bypass this check. Host-only
 core builds and CPU application builds do not query a GPU.
 
-The `refactor/cpp-kokkos-core` branch begins the migration of the OpenMX
-application to C++, explicit ownership and Kokkos. The new `core/` library
-contains radial interpolation and Fourier transforms for PAOs, PAO products, nonlocal
+The goal of the `refactor/cpp-kokkos-core` branch is a set of independently
+buildable, testable and reusable C++ scientific libraries, composed into OpenMX.
+Ownership, RAII and Kokkos support that goal. See the
+[library architecture and acceptance criteria](docs/CPP_LIBRARY_ARCHITECTURE.md).
+The first package, [OpenMX::basis](modules/basis/README.md), provides the radial
+and reciprocal interpolation used by the application, with C++ and C APIs,
+and independent C++ PAO/VPS readers with owned data and radial evaluation.
+It also provides atomic density/Hartree operations, Gauss–Legendre and Lebedev
+quadrature, spherical Bessel functions, spherical harmonics and their derivatives,
+real-orbital transformations, Gaunt angular integrals with owned coefficient tables,
+and real-space orbital radial values and radial derivatives.
+The orbital radial API preserves the native first-interval and origin-continuation
+conventions, separately from the existing PAO/PhiF radial policy. Owned tables
+and validated borrowed views support allocation-free evaluation. Native scalar
+orbitals and CUDA/HIP CPU fallbacks share the same numerical kernel.
+It builds without Kokkos, MPI, BLAS or a GPU SDK:
+
+```sh
+cmake -S modules/basis -B build/basis
+cmake --build build/basis --parallel
+ctest --test-dir build/basis --output-on-failure
+cmake --install build/basis --prefix "$PWD/build/basis-install"
+```
+
+External CMake projects use `find_package(OpenMXBasis 0.1 CONFIG REQUIRED)`
+and link `OpenMX::basis`. Complete PAO basis evaluation and two-center matrix
+integrals are still being assembled from these components.
+The `core/` library consumes this package and contains Fourier
+transforms for PAOs, PAO products, nonlocal
 projectors and neutral-atom potentials, spherical Bessel functions and FFT-grid
 validation. PAO grids, atomic densities, orbitals, VPS/nonlocal-projector data,
 optional VNA expansion tables and their Fourier tables now have
 calculation-scoped C++ ownership, with borrowed views for legacy consumers.
 Ragged PAO-product tables use offsets into one contiguous allocation and
 mdspan block views; their Gauss quadrature uses the common Kokkos kernels.
+The second package, [OpenMX::xc](modules/xc/README.md), provides the
+exchange-correlation functionals (Ceperley–Alder LDA/LSDA, Perdew–Wang 92
+correlation, Slater exchange and GGA-PBE with its density and gradient
+derivatives) as pure functions with C++ and C APIs and no global state.
+Its arithmetic is one set of inline C kernels (`openmx/xc/kernels.h`) that the
+library, C callers and the application's GPU device code (OpenACC routines on
+CUDA, OpenMP target regions on HIP) share. The application's CPU paths in
+`Set_XC_Grid.c`, `Force.c`, `Stress.c` and `Total_Energy.c` call it through
+`libopenmx_core.so`; the five original C routines are frozen as test fixtures
+and the package tests show the library bitwise identical to them. External CMake projects use
+`find_package(OpenMXXc 0.1 CONFIG REQUIRED)` and link `OpenMX::xc`.
+The third package, [OpenMX::io](modules/io/README.md), reads OpenMX keyword
+files (scalar, vector and block keywords) through an owning `KeywordFile`
+and the original nesting model `KeywordFiles`, with C++ and C APIs, no global
+state and no process exit. It also parses basis specifications
+("Si7.0-s2p2d1"), the species, atom and unit-cell blocks, and composes them
+with the structural keywords into typed `Settings`; `Input_std.c` reads those
+blocks through it. The application's `Inputtools.c` is a thin
+compatibility layer over it, and the frozen original is the reference of the
+package tests. External CMake projects use
+`find_package(OpenMXIo 0.1 CONFIG REQUIRED)` and link `OpenMX::io`.
 VNA separable-projector construction and orthogonalization use an independent
 C++ module with RAII workspaces; their Fourier transforms also use the common
 Kokkos kernels. The legacy PhiF interpolation shares the checked radial code.
@@ -149,13 +203,28 @@ VNA2/VNA3 also share one CPU evaluator with per-thread RAII workspaces;
 packed orbital matrices and reusable Bessel tables replace six-level pointer
 tables and per-pair allocation. Their GPU batch state belongs to each call.
 VNA preparation owns a snapshot of species basis metadata, projector indices
-and contiguous weighted radial rows. Both backends share the CPU sampling
+and contiguous weighted radial rows. Its immutable Gaunt tables are initialized
+on the first CPU request and reused by both VNA2/3 orientations; repeated access
+allocates no memory. GPU-only calls do not allocate those host tables.
+Both backends share the CPU sampling
 loop, and DS_VNA GPU batches also receive their state explicitly per call.
 DS_VNA CPU assembly now shares one evaluator across CUDA/HIP. Per-thread C++
 workspaces own packed angular matrices, radial sums and Bessel scratch;
 species-local offsets replace temporary five-level pointers and omit empty
 basis groups. The zero-wavevector Bessel derivative initializes the extra order
 it reads, and per-atom timing updates are safe across threads.
+DS_VNA and VNA2/3 CPU SIMD scratch now belongs to those same C++ workers.
+Lazy tensors replace 15 manual numeric allocations; explicit weight and Gaunt
+strides remove five runtime row-pointer lists. Reacquisition preserves storage
+without allocation, and empty basis groups skip absent angular buffers.
+The changed VNA descriptors use distinct `_flat` C entry points and a versioned
+private SIMD dispatcher. Rebuild and deploy the application, Core and SIMD
+libraries together; mixed versions fail to resolve their interface symbols.
+Shared CPU projector, conversion and radial-product transposes also use C++
+owners. They snapshot explicit input views, expose immutable contiguous tables
+to workers and release partial construction on failure. The flat radial-view
+header can be used without including a calculation context. Native quadratures
+and backend kernels keep their existing operation order.
 HVNA archive offsets and projector energies now share one C++ owner across
 CUDA/HIP. Resident archives, rank turns and capacity recovery receive explicit
 invocation state; their backend memory budgets and contraction order are preserved.
@@ -270,8 +339,8 @@ the host ABI: CUDA/HIP/SYCL defaults would select width 1.
 
 `libopenmx_host_simd` is built by an ordinary C++20 compiler against a private
 SERIAL configuration of the same pinned Kokkos source. Its Kokkos/C++ symbols
-are hidden, and only two functions exchanging plain descriptors cross the
-library boundary. Device compilers never compile the host SIMD kernels.
+are hidden; C entry points exchange plain descriptors and function tables
+across the library boundary. Device compilers never compile the host SIMD kernels.
 CMake builds and installs this library alongside `libopenmx_core`; keep both
 libraries when copying an installation. If the Core C++ compiler is a device
 wrapper, specify `-DOPENMX_HOST_SIMD_CXX_COMPILER=/path/to/g++` (or `clang++`).
@@ -395,6 +464,8 @@ replaces the cluster diagonalization (collinear and non-collinear) with [ELPA](h
 
 - "gpusolver2" supports only `scf.EigenvalueSolver cluster`; any other solver stops with an input error. It retains the existing per-rank GPU paths outside cluster diagonalization, and a machine without a usable GPU demotes itself to ELPA2 as usual.
 - When the GPU memory cannot hold a solve, that solve automatically falls back to the ELPA CPU kernels / ScaLAPACK instead of aborting the run.
+- The local tile products of the COSMA transforms go through the same GEMMul8 bridge as the other dense products (CUDA build): GEMMul8 on GPUs with weak FP64 (the GeForce default), native cuBLAS FP64 on A100/H100, `scf.gemmul8.enable` and the workspace guards as elsewhere; `OPENMX_GS2_GEMMUL8=0` keeps COSMA on cuBLAS FP64. The hook is a small patch of Tiled-MM that the stack build applies (`source/third_party/tiledmm-openmx-gemm-hook.patch`); the ROCm Tiled-MM keeps rocBLAS.
+- The eigensolves stay in FP64 (ELPA GPU kernels). The refined FP32 eigensolver of `gpusolver` (an FP32 solve plus Ogita-Aishima correction through GEMMul8) does not pay in the distributed path: each correction step needs at least four n×n×n distributed products, and on the measured sizes (sidia333, 8 ranks on one RTX 5080) one COSMA product costs as much as the time the FP32 solve saves (`OPENMX_GS2_FP32_PROBE=1` times the FP32 solve alone; see [docs/PERFORMANCE_REGRESSION.md](docs/PERFORMANCE_REGRESSION.md)).
 - The required libraries (ELPA, COSMA, COSTA, Tiled-MM) are bundled as source archives under `source/third_party/dist/` and are built automatically from those archives by the first `make` (the build tools, and the one download that `Makefile.kugui` adds, are listed under [Dependencies](#dependencies)). The CPU "elpa1"/"elpa2" paths and "gpusolver2" share the same ELPA 2026.02.002 library. The CPU keywords select its one-stage and two-stage solvers with GPU execution disabled; the old embedded ELPA has been removed.
 
 ## Single-node multi-GPU Cluster and Band
@@ -495,7 +566,7 @@ The experimental paper implementation has been removed. See
 [capacity-path validation](doc/mgpu_capacity_validation.txt).
 
 ## GEMMul8: FP64 matrix multiplication on integer tensor cores
-The large dense matrix multiplications of the GPU eigensolver path use a device-aware bridge to [GEMMul8](https://github.com/RIKEN-RCCS/GEMMul8) or native cuBLAS FP64. GEMMul8 emulates FP64 GEMM on INT8 tensor cores using the Ozaki scheme II and remains the default on consumer GPUs (GeForce) with limited native FP64 throughput. General GEMMs on A100 and H100 instead default to native FP64, including the FP64 Tensor Core kernels selected by cuBLAS, avoiding integer decomposition and its workspace. The choice uses the device's FP32:FP64 throughput ratio: a known positive ratio below 8 selects native FP64. A100 has a separate size-dependent exception for the collinear cluster forward transform, described below.
+The large dense matrix multiplications of the GPU eigensolver path (including the local tile products of the distributed `gpusolver2` transforms) use a device-aware bridge to [GEMMul8](https://github.com/RIKEN-RCCS/GEMMul8) or native cuBLAS FP64. GEMMul8 emulates FP64 GEMM on INT8 tensor cores using the Ozaki scheme II and remains the default on consumer GPUs (GeForce) with limited native FP64 throughput. General GEMMs on A100 and H100 instead default to native FP64, including the FP64 Tensor Core kernels selected by cuBLAS, avoiding integer decomposition and its workspace. The choice uses the device's FP32:FP64 throughput ratio: a known positive ratio below 8 selects native FP64. A100 has a separate size-dependent exception for the collinear cluster forward transform, described below.
 
 Omitting `scf.gemmul8.enable` selects this device default. Explicit settings override it:
 
