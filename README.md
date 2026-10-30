@@ -1289,6 +1289,114 @@ launch/shutdown overhead is excluded.
 | `sidia333_nc_cluster.dat` | 483.443 | 808.006 | 199.327 |
 | `cghelgeo.dat` | 1896.871 | 3123.226 | 3188.305 |
 
+The case-level tables below use elapsed seconds from `runtest.result` and
+`runtestL.result`, as in the earlier test-suite benchmarks. `Upstream / HIP`
+and `Fork CPU / HIP` divide the respective CPU time by the HIP-path time;
+a value above 1 means the HIP path was faster. `sp` denotes spin-polarized
+collinear calculations and `NC` noncollinear calculations. A HIP-path timing
+includes any CPU fallbacks selected during that run.
+
+The expandable checks show the total number of SCF steps across all MD steps
+of each input. Their maximum absolute energy and force-component differences
+cover all three bundled-reference comparisons and all three pairwise
+comparisons between configurations. Every listed check passed the `1e-7`
+energy/force tolerances stated below.
+
+#### `-runtest`: all 14 cases
+
+| Input | Atoms | Solver | Upstream CPU (s) | Fork CPU (s) | Fork HIP (s) | Upstream / HIP | Fork CPU / HIP |
+| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: |
+| Benzene | 12 | cluster | 2.39 | 1.76 | 3.67 | 0.65 | 0.48 |
+| C60 | 60 | dc | 4.97 | 5.42 | 8.53 | 0.58 | 0.64 |
+| CO | 2 | cluster | 5.99 | 4.73 | 15.63 | 0.38 | 0.30 |
+| Cr2 | 2 | cluster (NC) | 4.07 | 3.35 | 3.33 | 1.22 | 1.01 |
+| Crys-MnO | 4 | band (sp) | 6.57 | 5.11 | 5.16 | 1.27 | 0.99 |
+| GaAs | 2 | band (NC) | 11.56 | 9.41 | 8.15 | 1.42 | 1.15 |
+| Glycine | 10 | cluster | 2.35 | 1.77 | 3.68 | 0.64 | 0.48 |
+| Graphite4 | 4 | band | 1.62 | 0.95 | 1.53 | 1.06 | 0.62 |
+| H2O-EF | 3 | cluster | 2.15 | 1.68 | 2.10 | 1.02 | 0.80 |
+| H2O | 3 | cluster | 1.88 | 1.09 | 2.62 | 0.72 | 0.42 |
+| HMn | 2 | cluster (sp) | 7.66 | 6.43 | 5.55 | 1.38 | 1.16 |
+| Methane | 5 | cluster | 1.46 | 1.06 | 1.67 | 0.87 | 0.63 |
+| Mol_MnO | 2 | cluster (sp) | 4.09 | 3.44 | 3.30 | 1.24 | 1.04 |
+| Ndia2 | 2 | band | 2.26 | 2.19 | 0.95 | 2.38 | 2.31 |
+| **Total** | | | **59.02** | **48.39** | **65.87** | **0.90** | **0.73** |
+
+<details>
+<summary>SCF counts and numerical checks for all 14 -runtest cases</summary>
+
+| Input | Total SCF steps (upstream / fork CPU / HIP) | Max abs ΔE (Ha) | Max abs ΔF (Ha/bohr) | Check |
+| --- | --- | ---: | ---: | --- |
+| Benzene | 19 / 19 / 19 | 9.948e-13 | 0.000e+00 | PASS |
+| C60 | 27 / 27 / 27 | 3.200e-11 | 1.000e-12 | PASS |
+| CO | 16 / 16 / 16 | 0.000e+00 | 2.000e-11 | PASS |
+| Cr2 | 21 / 23 / 21 | 7.987e-12 | 1.780e-10 | PASS |
+| Crys-MnO | 40 / 37 / 37 | 1.799e-11 | 3.200e-11 | PASS |
+| GaAs | 13 / 13 / 13 | 1.899e-11 | 7.000e-12 | PASS |
+| Glycine | 20 / 20 / 20 | 9.948e-13 | 1.000e-12 | PASS |
+| Graphite4 | 14 / 14 / 14 | 2.000e-12 | 1.000e-12 | PASS |
+| H2O-EF | 17 / 17 / 17 | 9.983e-13 | 1.000e-12 | PASS |
+| H2O | 31 / 31 / 31 | 1.002e-12 | 1.000e-12 | PASS |
+| HMn | 26 / 26 / 26 | 9.948e-13 | 0.000e+00 | PASS |
+| Methane | 14 / 14 / 14 | 9.800e-11 | 1.100e-11 | PASS |
+| Mol_MnO | 26 / 26 / 26 | 9.948e-13 | 1.000e-12 | PASS |
+| Ndia2 | 13 / 13 / 13 | 4.000e-12 | 1.000e-12 | PASS |
+
+</details>
+
+#### `-runtestL`: all 16 cases
+
+| Input | Atoms | Solver | Upstream CPU (s) | Fork CPU (s) | Fork HIP (s) | Upstream / HIP | Fork CPU / HIP |
+| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: |
+| 5_5_13COb2 | 155 | band | 63.35 | 58.42 | 65.63 | 0.97 | 0.89 |
+| B2C62_Band | 64 | band | 363.23 | 318.86 | 820.54 | 0.44 | 0.39 |
+| CG15c-DC-LNO | 650 | dc-lno | 137.22 | 95.97 | 113.05 | 1.21 | 0.85 |
+| DIA512-1 | 512 | krylov | 87.11 | 73.61 | 101.53 | 0.86 | 0.73 |
+| FeBCC | 16 | band (sp) | 96.30 | 101.45 | 114.17 | 0.84 | 0.89 |
+| GEL | 40 | band | 27.11 | 25.62 | 101.88 | 0.27 | 0.25 |
+| GFRAG | 54 | cluster | 28.73 | 25.48 | 36.66 | 0.78 | 0.70 |
+| GGFF | 40 | band (NC) | 952.28 | 909.12 | 1189.17 | 0.80 | 0.76 |
+| MCCN | 564 | krylov | 174.76 | 168.71 | 179.62 | 0.97 | 0.94 |
+| Mn12_148_F | 148 | cluster (sp) | 66.39 | 60.77 | 69.68 | 0.95 | 0.87 |
+| N1C999 | 1000 | dc-lno (sp) | 1985.77 | 1054.12 | 1090.90 | 1.82 | 0.97 |
+| Ni63-O64 | 127 | band (sp) | 58.47 | 53.60 | 70.13 | 0.83 | 0.76 |
+| Pt63 | 63 | cluster | 35.53 | 45.42 | 56.68 | 0.63 | 0.80 |
+| SialicAcid | 40 | cluster | 12.74 | 11.08 | 20.05 | 0.64 | 0.55 |
+| ZrB2_2x2 | 76 | band | 155.01 | 157.35 | 181.13 | 0.86 | 0.87 |
+| nsV4Bz5 | 64 | cluster | 75.34 | 87.40 | 76.48 | 0.99 | 1.14 |
+| **Total** | | | **4319.34** | **3246.98** | **4287.30** | **1.01** | **0.76** |
+
+<details>
+<summary>SCF counts and numerical checks for all 16 -runtestL cases</summary>
+
+| Input | Total SCF steps (upstream / fork CPU / HIP) | Max abs ΔE (Ha) | Max abs ΔF (Ha/bohr) | Check |
+| --- | --- | ---: | ---: | --- |
+| 5_5_13COb2 | 66 / 66 / 67 | 1.467e-09 | 3.610e-10 | PASS |
+| B2C62_Band | 204 / 204 / 204 | 9.101e-11 | 3.267e-08 | PASS |
+| CG15c-DC-LNO | 44 / 42 / 42 | 1.264e-09 | 1.560e-10 | PASS |
+| DIA512-1 | 29 / 29 / 29 | 7.622e-10 | 7.555e-09 | PASS |
+| FeBCC | 62 / 62 / 62 | 9.209e-11 | 1.600e-11 | PASS |
+| GEL | 58 / 58 / 58 | 1.570e-10 | 4.420e-10 | PASS |
+| GFRAG | 60 / 60 / 60 | 5.490e-10 | 2.332e-09 | PASS |
+| GGFF | 102 / 96 / 101 | 2.410e-10 | 1.090e-10 | PASS |
+| MCCN | 67 / 67 / 67 | 3.702e-10 | 3.600e-11 | PASS |
+| Mn12_148_F | 61 / 61 / 61 | 2.410e-10 | 5.580e-10 | PASS |
+| N1C999 | 79 / 59 / 58 | 1.543e-09 | 3.100e-11 | PASS |
+| Ni63-O64 | 69 / 67 / 62 | 4.020e-09 | 7.970e-10 | PASS |
+| Pt63 | 58 / 83 / 68 | 1.701e-08 | 4.610e-09 | PASS |
+| SialicAcid | 29 / 29 / 29 | 3.180e-10 | 5.330e-10 | PASS |
+| ZrB2_2x2 | 49 / 49 / 49 | 1.348e-10 | 2.960e-10 | PASS |
+| nsV4Bz5 | 57 / 57 / 57 | 1.600e-10 | 9.690e-10 | PASS |
+
+</details>
+
+SCF counts differ for some inputs, so these ratios compare complete input
+runs rather than a fixed number of iterations. For example, `N1C999` took
+79 / 59 / 58 SCF steps (upstream / fork CPU / HIP), `GGFF` 102 / 96 / 101,
+and `Pt63` 58 / 83 / 68. Their timing differences include those changes in
+iteration count. The total time ratios are 0.90 / 0.73 for `-runtest` and
+1.01 / 0.76 for `-runtestL` (upstream / HIP and fork CPU / HIP respectively).
+
 All 14 small and 16 large cases passed their bundled references in all three
 configurations. Cross-configuration checks also passed for these suites and
 both named cases: finite total energies and every atomic force component,
