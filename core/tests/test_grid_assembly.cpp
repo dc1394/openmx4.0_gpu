@@ -133,6 +133,64 @@ template<class T> void quadrature(bool hamiltonian) {
       }
     }
 }
+// Few atoms per worker cut the pairs between points across the team, with one
+// private density per worker summed by the last worker to finish. One, two and
+// nine atoms with teams of one to five take both schedules (one atom always
+// splits, nine never do, two split from three workers). Empty pairs, repeated
+// center points, halo and transposed neighbors must all give the long double
+// reference. The split needs no barrier: the same workers called one after
+// another on one thread give the same density without allocating, and a
+// second call without a new plan adds the density again.
+thread_local double split_tick=0;
+void split_clock(double* t) {*t=split_tick++;}
+template<class T> void split() {
+  constexpr int per_atom=7,grid=37;
+  const int mode=openmx_core_grid_simd(nullptr);
+  for(int spins:{1,2})for(bool transpose:{false,true})for(int atoms:{1,2,9})for(size_t threads:{1,2,3,5})
+    for(bool sequential:{false,true}) {
+    if(sequential && threads==1)continue;
+    auto ctx=context();auto* w=workspace(ctx.get());
+    std::vector<size_t> sizes(size_t(atoms)+1,grid);sizes[0]=1;
+    const auto storage=density(w,spins,sizes);
+    std::vector<std::unique_ptr<Pair<T>>> input;
+    for(int i=0;i<atoms*per_atom;i++)
+      input.emplace_back(new Pair<T>(i%3?13:5,i%4?19:4,(i*29)%73,spins,transpose,i%2,i));
+    OpenMXGridAtom* atom_plan;OpenMXGridPair* pairs;char error[256];
+    require(openmx_core_grid_plan(w,OPENMX_GRID_DENSITY,spins,size_t(atoms),input.size(),19,8,mode,
+        &atom_plan,&pairs,error,sizeof(error)),error);
+    std::vector<long double> reference(size_t(spins)*atoms*grid,0);
+    for(int a=0;a<atoms;a++)atom_plan[a]={size_t(a)*per_atom,per_atom,a+1};
+    for(size_t k=0;k<input.size();k++) {
+      auto& f=*input[k];const int a=int(k)/per_atom;pairs[k]=f.view(a+1);
+      for(int s=0;s<spins;s++)for(int g=0;g<f.points;g++) {
+        const int nc=f.nc[g],nh=f.halo?g:f.nh[g];long double sum=0;
+        for(int i=0;i<f.r;i++) {
+          long double tmp=0;
+          for(int j=0;j<f.c;j++)tmp+=(long double)f.rows[s][i][j]*f.neighbor.at(nh,j);
+          sum+=(long double)f.center.at(nc,i)*tmp;
+        }
+        reference[(size_t(s)*atoms+a)*grid+nc]+=sum;
+      }
+    }
+    std::vector<double> seconds(size_t(atoms)+1,0.0);
+    for(int call=1;call<=2;call++) {
+      if(sequential) {
+        openmx::test::fail_allocation_after(0);
+        for(size_t t=0;t<threads;t++)require(openmx_core_grid_density_worker(w,t,threads,seconds.data(),split_clock,
+            error,sizeof(error)),error);
+        openmx::test::fail_allocation_after(-1);
+      }
+      else team(threads,[&](size_t t,size_t n,char* e,size_t cap) {
+        return openmx_core_grid_density_worker(w,t,n,seconds.data(),split_clock,e,cap);
+      });
+      for(int s=0;s<spins;s++)for(int a=0;a<atoms;a++)for(int g=0;g<grid;g++)
+        require(std::abs((long double)storage.atoms[s][a+1][g]-call*reference[(size_t(s)*atoms+a)*grid+g])<4e-12L,
+          "split density differs from long double reference");
+    }
+    require(seconds[0]==0,"split timing touched an unused atom");
+    for(int a=0;a<atoms;a++)require(seconds[size_t(a)+1]>=1,"split timing lost an atom");
+  }
+}
 void reuse() {
   auto ctx=context();auto* w=workspace(ctx.get());auto first=density(w,4,{1,9,0,7});
   first.atoms[3][3][6]=91;first.send[1][7]=17;first.receive[0][2]=29;
@@ -362,6 +420,7 @@ int main(int argc,char** argv) {
     const std::string name=argc==2?argv[1]:"";
     if(name=="density-float")quadrature<float>(false);else if(name=="density-double")quadrature<double>(false);
     else if(name=="hamiltonian-float")quadrature<float>(true);else if(name=="hamiltonian-double")quadrature<double>(true);
+    else if(name=="density-split"){split<float>();split<double>();}
     else if(name=="reuse")reuse();else if(name=="exchange")exchange();else if(name=="invalid")invalid();
     else if(name=="simd-equivalence"){equivalence<float>();equivalence<double>();}
     else if(name=="packed")packed();

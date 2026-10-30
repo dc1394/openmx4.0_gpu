@@ -4,6 +4,7 @@
 #include <openmx/core/tensor.hpp>
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -94,8 +95,16 @@ struct Scratch {
 };
 struct Worker {
   Scratch dm,orb0,orb1,h;
+  // Split density schedule only: a private copy of the rank's atom densities
+  // (allocated by the plan, zeroed and first touched by this worker), the
+  // seconds spent per atom, and the rows of a cut pair's positional transposed
+  // neighbor table.
+  std::unique_ptr<double[]> partial;
+  size_t partial_values=0;
+  std::vector<double> seconds;
+  std::vector<const void*> shifted;
   Worker(size_t n,int spins):dm(mul(mul(n,n),size_t(spins))),orb0(mul(n,16)),orb1(mul(n,16)),
-    h(mul(mul(n,n),size_t(spins))) {}
+    h(mul(mul(n,n),size_t(spins))),shifted(n) {}
 };
 struct Plan {
   int spins;
@@ -105,6 +114,8 @@ struct Plan {
   std::vector<OpenMXGridAtom> atoms;
   std::vector<OpenMXGridPair> pairs;
   std::vector<Worker> workers;
+  size_t split_workers=0;               // workers with private densities (0: whole atoms only)
+  std::atomic<size_t> finished{0};      // workers done with the current split density call
   Plan(int s,size_t a,size_t p,size_t n,size_t w,int selected):spins(s),mode(selected),kernels(openmx_host_grid_kernels(selected)),orbitals(n),atoms(a),pairs(p) {
     workers.reserve(w);for(size_t i=0;i<w;i++)workers.emplace_back(n,s);
   }
@@ -140,6 +151,131 @@ void validate(const OpenMXGridPair& p,const Plan& plan,bool hamiltonian) {
 
 GridScratch scratch(Worker& worker,size_t orbitals) {
   return {worker.dm.data(),worker.orb0.data(),worker.orb1.data(),worker.h.data(),orbitals};
+}
+
+// Split density schedule. Whole atoms are the density workers' unit, so a
+// rank that owns fewer atoms than threads leaves the rest of its team idle: a
+// one-atom fcc cell (Er, 8 ranks x 16 threads) ran all of its ~10^2 pairs on
+// one thread. When whole atoms would leave most of the team idle, the
+// (pair, point) positions of the rank's atoms are cut instead into contiguous
+// ranges of equal rows x columns work, one per worker. Each worker adds its
+// range into a private copy of the atom densities, and the last worker to
+// finish adds the copies in worker order: no barrier, and the caller's OpenMP
+// team or threads stay as they are. Sums are reassociated by worker, so the
+// density can change in the last bits with the team size; whole atoms keep
+// the previous order (and are kept whenever they balance the team).
+constexpr size_t split_atoms_per_worker=4;     // at least this many atoms per worker: whole atoms
+constexpr size_t split_bytes=size_t(1)<<30;    // all private densities of a rank (1 GiB)
+// Workers of the split schedule for a team (0: whole atoms). Cut only when the
+// private copies fit and the cut team beats the busiest worker of whole atoms
+// by a quarter (which covers the zeroing and the final sum).
+size_t split_team(size_t atoms,size_t team,size_t values) {
+  if(team<2 || !atoms || !values || atoms>=split_atoms_per_worker*team)return 0;
+  const size_t workers=std::min(team,split_bytes/sizeof(double)/values);
+  const size_t busiest=(atoms+team-1)/team;
+  return workers>=2 && double(workers)>1.25*double(atoms)/double(busiest)?workers:0;
+}
+// Private densities for the split schedule of a full team, allocated while the
+// plan is made (one thread), never by the workers. A failure disables the
+// split schedule, whose workers then process whole atoms.
+void prepare_split(Plan& plan,const Density* density) {
+  plan.split_workers=0;
+  const size_t values=density?density->values.size():0;
+  const size_t workers=split_team(plan.atoms.size(),plan.workers.size(),values);
+  for(size_t t=0;t<workers;t++) {
+    auto& worker=plan.workers[t];
+    if(worker.partial_values!=values) {worker.partial.reset(new double[values]);worker.partial_values=values;}
+    if(worker.seconds.size()!=plan.atoms.size())worker.seconds.assign(plan.atoms.size(),0.0);
+  }
+  plan.split_workers=workers;
+}
+bool active(const OpenMXGridPair& p) {return p.points>0 && p.rows>0 && p.columns>0;}
+uint64_t weight(const OpenMXGridPair& p) {return uint64_t(p.rows)*uint64_t(p.columns);}
+// Points [first, first+count) of a pair. Center rows are always indexed by
+// the center list; a positional (overlap) neighbor table is indexed by the
+// position in the pair, so its rows move with the cut.
+OpenMXGridPair cut(const OpenMXGridPair& pair,size_t first,size_t count,std::vector<const void*>& shifted) {
+  OpenMXGridPair q=pair;
+  q.points=int(count);q.center_points+=first;q.neighbor_points+=first;
+  if(q.neighbor.overlap_rows) {
+    if(!q.neighbor.transposed)q.neighbor.rows=static_cast<const void* const*>(q.neighbor.rows)+first;
+    else {
+      for(int j=0;j<q.columns;j++)
+        shifted[size_t(j)]=q.neighbor.element_bytes==int(sizeof(float))?
+          static_cast<const void*>(static_cast<const float* const*>(q.neighbor.rows)[j]+first):
+          static_cast<const void*>(static_cast<const double* const*>(q.neighbor.rows)[j]+first);
+      q.neighbor.rows=shifted.data();
+    }
+  }
+  return q;
+}
+void density_split(Plan& p,Density& d,size_t worker,size_t team,size_t workers,double* seconds,void (*clock)(double*)) {
+  // Every worker validates every pair: the same errors as whole atoms.
+  for(const auto& atom:p.atoms) {
+    require(atom.first<=p.pairs.size() && atom.count<=p.pairs.size()-atom.first,"invalid grid atom pair range");
+    for(size_t k=atom.first;k<atom.first+atom.count;k++) {
+      validate(p.pairs[k],p,false);
+      require(p.pairs[k].atom>=0 && size_t(p.pairs[k].atom)<d.points.size(),"invalid density output atom");
+    }
+  }
+  const size_t values=d.values.size(),total=d.offsets.back();
+  if(worker<workers) {
+    auto& self=p.workers[worker];
+    std::fill_n(self.partial.get(),values,0.0);
+    std::fill(self.seconds.begin(),self.seconds.end(),0.0);
+    uint64_t work=0;size_t positions=0;
+    for(const auto& atom:p.atoms)for(size_t k=atom.first;k<atom.first+atom.count;k++)
+      if(active(p.pairs[k])) {work+=uint64_t(p.pairs[k].points)*weight(p.pairs[k]);positions+=size_t(p.pairs[k].points);}
+    // First position whose preceding work reaches floor(work*t/workers).
+    auto boundary=[&](size_t t) {
+      if(t==0)return size_t(0);
+      if(t>=workers)return positions;
+      const uint64_t target=work/workers*t+work%workers*t/workers;
+      uint64_t done=0;size_t position=0;
+      for(const auto& atom:p.atoms)for(size_t k=atom.first;k<atom.first+atom.count;k++) {
+        const auto& pair=p.pairs[k];
+        if(!active(pair))continue;
+        const uint64_t cost=uint64_t(pair.points)*weight(pair);
+        if(done+cost>target)
+          return position+size_t(std::min<uint64_t>((target-done+weight(pair)-1)/weight(pair),uint64_t(pair.points)));
+        done+=cost;position+=size_t(pair.points);
+      }
+      return positions;
+    };
+    const size_t low=boundary(worker),high=boundary(worker+1);
+    size_t position=0;
+    for(size_t a=0;a<p.atoms.size() && position<high;a++) {
+      const auto& atom=p.atoms[a];
+      for(size_t k=atom.first;k<atom.first+atom.count;k++) {
+        const auto& pair=p.pairs[k];
+        if(!active(pair))continue;
+        const size_t begin=position,end=position+size_t(pair.points);
+        position=end;
+        if(end<=low)continue;
+        if(begin>=high)break;
+        const size_t first=std::max(low,begin)-begin,last=std::min(high,end)-begin;
+        double start=0,stop=0;if(seconds && clock)clock(&start);
+        double* output[4]{};
+        for(int spin=0;spin<p.spins;++spin)output[spin]=self.partial.get()+size_t(spin)*total+d.offsets[size_t(pair.atom)];
+        p.kernels->density(cut(pair,first,last-first,self.shifted),scratch(self,p.orbitals),output,p.spins);
+        if(seconds && clock) {clock(&stop);self.seconds[a]+=stop-start;}
+      }
+    }
+  }
+  // The release/acquire chain of the counter makes every private density
+  // visible to the last worker, which adds them in worker order.
+  if(p.finished.fetch_add(1,std::memory_order_acq_rel)+1==team) {
+    double* const density=d.values.data();
+    for(size_t t=0;t<workers;t++) {
+      const double* const partial=p.workers[t].partial.get();
+      for(size_t i=0;i<values;i++)density[i]+=partial[i];
+    }
+    if(seconds && clock)for(size_t a=0;a<p.atoms.size();a++) {
+      double sum=0;for(size_t t=0;t<workers;t++)sum+=p.workers[t].seconds[a];
+      seconds[p.atoms[a].global_atom]+=sum;
+    }
+    p.finished.store(0,std::memory_order_relaxed);
+  }
 }
 }
 
@@ -177,8 +313,14 @@ extern "C" int openmx_core_grid_plan(OpenMXGridWorkspace* w,int stage,int spins,
     max_orbitals=mul(add(std::max(size_t(16),max_orbitals),7)/8,8);
     auto& plan=w->plans[stage];
     if(!plan || plan->spins!=spins || plan->atoms.size()!=atoms || plan->pairs.size()!=pairs ||
-        plan->orbitals!=max_orbitals || plan->workers.size()!=workers)
-      plan=std::make_unique<Plan>(spins,atoms,pairs,max_orbitals,workers,simd);
+        plan->orbitals!=max_orbitals || plan->workers.size()!=workers) {
+      // A new plan is complete (with its private densities) before it replaces the old one.
+      auto fresh=std::make_unique<Plan>(spins,atoms,pairs,max_orbitals,workers,simd);
+      if(stage==OPENMX_GRID_DENSITY)prepare_split(*fresh,w->density.get());
+      plan=std::move(fresh);
+    }
+    else if(stage==OPENMX_GRID_DENSITY)prepare_split(*plan,w->density.get());
+    plan->finished.store(0,std::memory_order_relaxed);
     plan->mode=simd;plan->kernels=openmx_host_grid_kernels(simd);*atom_out=plan->atoms.data();*pair_out=plan->pairs.data();
   });
 }
@@ -189,6 +331,13 @@ extern "C" int openmx_core_grid_density_worker(OpenMXGridWorkspace* w,size_t wor
     auto& p=*w->plans[OPENMX_GRID_DENSITY];auto& d=*w->density;
     require(openmx_host_simd_usable(p.mode),"grid SIMD mode is unavailable on this worker thread");
     require(team && worker<team && team<=p.workers.size() && p.spins==d.spins,"invalid density worker team");
+    // The decision depends only on the plan, the density and the team, so every
+    // worker of a call takes the same schedule.
+    const size_t split=split_team(p.atoms.size(),team,d.values.size());
+    bool ready=split && split<=p.split_workers;
+    for(size_t t=0;ready && t<split;t++)
+      ready=p.workers[t].partial_values==d.values.size() && p.workers[t].seconds.size()==p.atoms.size();
+    if(ready) {density_split(p,d,worker,team,split,seconds,clock);return;}
     const size_t n=p.atoms.size(),base=n/team,tail=n%team;
     const size_t first=worker*base+std::min(worker,tail),count=base+(worker<tail);
     auto& worker_scratch=p.workers[worker];

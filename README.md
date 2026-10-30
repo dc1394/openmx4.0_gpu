@@ -335,8 +335,15 @@ native globals, borrowed row interfaces and kernels still require migration.
 `Set_Hamiltonian` and `Set_Density_Grid` now share their host quadrature in
 the C++ core. Explicit calculation workspaces own the contiguous density,
 atom/pair plans, per-worker matrix/orbital scratch and A-to-B MPI work storage;
-SCF iterations reuse these allocations. Density workers process whole atoms,
-and Hamiltonian workers retain the small spin-unpolarized blocked integral.
+SCF iterations reuse these allocations. Density workers process whole atoms
+unless that leaves threads idle: when a rank owns fewer than four atoms per
+thread (a small cell, or many ranks per atom) and cutting balances the team at
+least a quarter better, the rank's pair points are cut into ranges of equal
+work, one per thread. Each thread sums its range into a private copy of the
+atom densities (at most 1 GiB per rank), and the last thread to finish adds the
+copies in thread order. That order depends on the thread count, so the density
+can then differ in the last bits between team sizes. Hamiltonian workers retain
+the small spin-unpolarized blocked integral.
 The CPU quadratures use Kokkos experimental SIMD with explicit host ABIs:
 AVX2 (4 doubles), AVX-512 (8 doubles), AArch64 NEON (2 doubles), or Linux
 AArch64 SVE (128/256/512 bits: 2/4/8 doubles), with a scalar fallback.
