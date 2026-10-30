@@ -4,6 +4,7 @@
 #include "openmx_gpu_transform.h"
 #include "openmx_gpu_workers.h"
 #include "allocation_faults.hpp"
+#include <cmath>
 #include <iostream>
 #include <stdexcept>
 #include <thread>
@@ -167,8 +168,42 @@ void worker_lifetimes(){
     }
     check(!live,"worker tests retained device storage");reset(0);
 }
+
+void density_panel_transfers(){
+    int small_copies=-1;
+    for(int n:{7,257}){
+        constexpr int states=3,stride=5;
+        std::vector<double> vectors(size_t(n)*stride,-913),dm(n,7),edm(n,11);
+        std::vector<int> left(n),right(n);
+        const double occupation[states]={0.7,0.2,0.1},energy[states]={-1,2,3};
+        for(int i=0;i<n;i++){
+            left[i]=(i*3)%n;right[i]=n-1-i;
+            for(int k=0;k<states;k++)vectors[size_t(i)*stride+k]=(i+1)*0.125+k*0.25;
+        }
+        double *targets[10]={dm.data(),edm.data()};
+        reset(0);const long heap=openmx::test::live_allocations();
+        check(openmx_gpu_dm_try_entries(OPENMX_GPU_DM_REAL,n,states,stride,n,vectors.data(),1,
+            left.data(),right.data(),nullptr,0,nullptr,nullptr,occupation,energy,nullptr,targets,1),
+            "packed density panel failed");
+        for(int i=0;i<n;i++){
+            long double d=7,e=11;
+            for(int k=0;k<states;k++){
+                const long double product=(long double)occupation[k]*vectors[size_t(left[i])*stride+k]*vectors[size_t(right[i])*stride+k];
+                d+=product;e+=product*energy[k];
+            }
+            check(std::abs(dm[i]-d)<1e-12L*(1+std::abs(d)) &&
+                  std::abs(edm[i]-e)<1e-12L*(1+std::abs(e)),
+                  "packed density panel changed padding, row order or accumulation");
+        }
+        if(small_copies<0)small_copies=trace.count[copy];
+        else check(trace.count[copy]<=small_copies,
+                   "host panel transfer count grows with the number of basis rows");
+        check(!live && openmx::test::live_allocations()==heap,"density panel retained temporary storage");
+    }
+    std::cout<<"PASS: padded sparse density panels; transfer count independent of basis-row count\n";
+}
 }
 int main(){
-    try{buffer_lifetimes();worker_lifetimes();return 0;}
+    try{buffer_lifetimes();worker_lifetimes();density_panel_transfers();return 0;}
     catch(const std::exception& error){openmx::test::fail_allocation_after(-1);std::cerr<<error.what()<<'\n';return 1;}
 }

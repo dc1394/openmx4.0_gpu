@@ -60,6 +60,26 @@ work outside the generalized eigenproblem follows the same capacity order:
 owner GPU, local GPUs, other nodes, CPU. See gpu_workers.txt.
 OPENMX_GPU_WORKERS=1 additionally requests distribution for performance.
 
+Density-matrix preparation with shared GPUs
+------------------------------------------
+Density-matrix entry workers prepare basis maps, host panels, weights and
+private output staging before acquiring the shared GPU admission lock.
+Capacity probes and execution reuse the selected worker layout. Basis
+mapping takes O(n + entries) time; a full-basis layout reuses the caller's
+indices without allocating a duplicate sparse-index array on every rank.
+Packed host panels are uploaded in one transfer per worker. Device panels
+coalesce consecutive basis rows when their state dimension is packed.
+After every worker succeeds, host output is published outside the lock.
+GPU allocation, execution and release retain the existing admission policy.
+
+This matters when many MPI ranks share one GPU through MPS: synchronous
+row-by-row uploads and host sorting inside the admission lock otherwise
+serialize substantial CPU work across those ranks. OPENMX_BAND_PROFILE=1
+emits CLUSTERDMPROF records for the collinear DM interval, including this
+preparation and lock waiting as well as GPU execution. The standard
+Diagonalization timer also includes density-matrix work; it is not an
+eigensolver-only measurement.
+
 Multi-node capacity fallback
 ----------------------------
 When the cluster solvers' collective admission finds that the dense solve

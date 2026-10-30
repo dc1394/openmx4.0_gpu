@@ -103,8 +103,8 @@ static void scatter(int format,bool imaginary){
     }else{Device<double> out(std::vector<double>(n*n,77));
         require(openmx_gpu_scatter(n,count,format,di.p,count,dv.p,0,nullptr,nullptr,0,out.p)==1,"scatter real handled");compare(out.read(),real,"scatter real");}
 }
-static void density(int kind,bool host,bool phased,bool accumulate,bool energy,int output_mask=1023){
-    const int n=7,states=17,stride=23,entries=39,phases=5;
+static void density(int kind,bool host,bool phased,bool accumulate,bool energy,int output_mask=1023,bool packed=false){
+    const int n=7,states=17,stride=packed?states:23,entries=39,phases=5;
     const bool gather=kind>=OPENMX_GPU_DM_GATHER,isreal=kind==OPENMX_GPU_DM_REAL;
     size_t count=gather?size_t(2*n)*2*n:(size_t(kind==OPENMX_GPU_DM_NC?2*n:n)-1)*stride+states;
     std::vector<Z> v(count);std::vector<double> rv(count),occ(states),ew(states),pw(states),pr(phases),pi(phases);
@@ -174,6 +174,8 @@ int main(int argc,char **argv){
             for(int mask:{63,15,10,0})density(kind,host,phase,acc,true,mask);
             if(kind<=OPENMX_GPU_DM_NC)density(kind,host,false,acc,false);
         }
+        for(int kind:{OPENMX_GPU_DM_REAL,OPENMX_GPU_DM_COL,OPENMX_GPU_DM_NC})
+            for(bool host:{false,true})density(kind,host,false,true,true,1023,true);
         int restored=-1;check(cudaGetDevice(&restored));require(restored==origin,"CUDA binding restored");
         require(acc_get_device_num(acc_device_nvidia)==origin,"OpenACC binding restored");
         std::printf("configuration %d group=%d..%d origin=%d PASS\n",config,probe_first,probe_first+probe_count-1,origin);std::fflush(stdout);
