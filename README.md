@@ -1244,6 +1244,182 @@ settings unchanged and record the actual SCF iterations and convergence
 status along with time, energy and forces; reaching an iteration limit
 does not establish SCF convergence.
 
+### Pegasus H100 benchmarks (2026-10-29–30)
+
+Each node had one Intel Xeon Platinum 8468 (48 allocated physical cores,
+SMT disabled), about 124.5 GiB host memory and one H100 PCIe 80 GB.
+Every node used **24 MPI ranks × 2 OpenMP threads**, bound to two cores
+per rank. Every CUDA run started a private NVIDIA MPS server on each node.
+`L2` and `L3` used four nodes (96 MPI ranks); the other tests used one.
+
+After updating `main` to `db516abd`, the application and dependencies
+were rebuilt and installed in a separate prefix. The fork used NVHPC 26.5,
+CUDA 13.2 (`sm_90`), SDK Open MPI 5.0.10rc2, SDK BLAS/LAPACK/ScaLAPACK,
+GCC 12.3 for the Kokkos SERIAL Core/SIMD libraries, ELPA 2026.02.002 and
+COSMA 2.8.4; MAGMA was disabled. CPU and CUDA routes used the same executable
+and matching installed libraries: `OPENMX_GPU=0`, `scf.eigen.lib elpa2`
+versus `OPENMX_GPU=1`, the inputs' original `gpusolver` setting.
+
+| Measurements | Fork CPU source | Fork CUDA source |
+| --- | --- | --- |
+| Fresh `-runtest` and both named inputs | `db516abd` | `db516abd` |
+| Retained `-runtestL`, `L2`, `L3` | `bfa0ee65` | `bfa0ee65` + density-matrix fix published in `cb078e29` |
+
+The large-suite measurements were retained at the user's request. Their
+CUDA binary contains the density-matrix fix; it does not represent a new
+large-suite run of `db516abd`. Upstream measurements were also retained:
+OpenMX 4.0 + official patch 4.0.1, Intel icx/ifx 2025.3.2, Intel MPI 2021.17
+and MKL 2025.3. Upstream `L2` was excluded at the user's request.
+
+The full original inputs and used PAO/VPS files were preserved. The 16 fresh
+input decks and their 29 data files match the previous input snapshot.
+Only deployment paths and CPU eigensolver selection differ between routes;
+SCF/MD limits, grids, geometry and convergence criteria were retained.
+Each suite ran once in one MPI job. Each named input ran three times per
+route; CPU and GPU shared a node sequentially within each repeat, with the
+second repeat reversing their order. Separate repeats used distinct nodes.
+
+Times below use the sum of per-case output `Elapsed.Time` for suites and
+the median of three such values for named inputs. Launcher wall times and
+per-repeat times are recorded separately. Ratios above 1 favor CUDA; the
+upstream comparison also includes compiler, MPI and math-library effects.
+
+| Test | Nodes | Upstream CPU (s) | Fork CPU (s) | Fork CUDA (s) | Fork CPU / CUDA |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `-runtest` (14 cases) | 1 | 75.294 | 42.665 | 73.308 | 0.582 |
+| `-runtestL` (16 cases) | 1 | 2847.609 | 2033.184 | 2059.800 | 0.987 |
+| `-runtestL2` (7 cases) | 4 | — | 17012.827 | 8713.207 | 1.953 |
+| `-runtestL3` (20 cases) | 4 | 1400.949 | 947.836 | 665.300 | 1.425 |
+| `sidia333_nc_cluster.dat` | 1 | 315.049 | 236.132 | 71.658 | 3.295 |
+| `cghelgeo.dat` | 1 | 1102.810 | 1494.259 | 244.441 | 6.113 |
+
+CUDA-path times include the CPU work and capacity fallbacks selected by
+the application. SCF counts can differ between routes; the speedups compare
+complete input runs and include those differences. Sidia333 reaches its
+25-SCF limit, and `L3` inputs use three SCF steps; those fixed limits do
+not establish SCF convergence.
+
+<details>
+<summary>-runtest: all 14 case timings</summary>
+
+| Input | Atoms | Solver | Upstream CPU (s) | Fork CPU (s) | Fork CUDA (s) | Fork CPU / CUDA |
+| --- | ---: | --- | ---: | ---: | ---: | ---: |
+| Benzene | 12 | cluster | 6.284 | 2.484 | 5.235 | 0.474 |
+| C60 | 60 | dc | 6.160 | 4.376 | 8.573 | 0.510 |
+| CO | 2 | cluster | 4.908 | 3.055 | 19.778 | 0.154 |
+| Cr2 | 2 | cluster (NC) | 7.081 | 4.160 | 5.192 | 0.801 |
+| Crys-MnO | 4 | band (sp) | 7.400 | 4.493 | 5.666 | 0.793 |
+| GaAs | 2 | band (NC) | 12.480 | 7.191 | 6.343 | 1.134 |
+| Glycine | 10 | cluster | 3.196 | 1.897 | 2.961 | 0.641 |
+| Graphite4 | 4 | band | 2.661 | 0.793 | 1.512 | 0.524 |
+| H2O | 3 | cluster | 2.885 | 1.146 | 1.470 | 0.780 |
+| H2O-EF | 3 | cluster | 3.151 | 1.640 | 2.475 | 0.663 |
+| HMn | 2 | cluster (sp) | 8.221 | 6.002 | 6.982 | 0.860 |
+| Methane | 5 | cluster | 2.432 | 1.061 | 1.924 | 0.551 |
+| Mol_MnO | 2 | cluster (sp) | 5.397 | 3.274 | 4.374 | 0.749 |
+| Ndia2 | 2 | band | 3.038 | 1.093 | 0.823 | 1.328 |
+
+</details>
+
+<details>
+<summary>-runtestL: all 16 case timings</summary>
+
+| Input | Atoms | Solver | Upstream CPU (s) | Fork CPU (s) | Fork CUDA (s) | Fork CPU / CUDA |
+| --- | ---: | --- | ---: | ---: | ---: | ---: |
+| 5_5_13COb2 | 155 | band | 40.022 | 33.679 | 28.786 | 1.170 |
+| B2C62_Band | 64 | band | 311.743 | 243.554 | 181.475 | 1.342 |
+| CG15c-DC-LNO | 650 | dc-lno | 91.053 | 58.965 | 123.249 | 0.478 |
+| DIA512-1 | 512 | krylov | 64.126 | 45.877 | 116.373 | 0.394 |
+| FeBCC | 16 | band (sp) | 96.602 | 79.504 | 80.559 | 0.987 |
+| GEL | 40 | band | 26.502 | 20.096 | 20.015 | 1.004 |
+| GFRAG | 54 | cluster | 17.599 | 16.344 | 14.808 | 1.104 |
+| GGFF | 40 | band (NC) | 597.858 | 586.247 | 275.322 | 2.129 |
+| MCCN | 564 | krylov | 103.045 | 105.775 | 201.915 | 0.524 |
+| Mn12_148_F | 148 | cluster (sp) | 48.396 | 38.193 | 24.914 | 1.533 |
+| N1C999 | 1000 | dc-lno (sp) | 1187.484 | 610.100 | 852.166 | 0.716 |
+| Ni63-O64 | 127 | band (sp) | 48.381 | 33.921 | 25.550 | 1.328 |
+| Pt63 | 63 | cluster | 34.478 | 28.034 | 21.523 | 1.303 |
+| SialicAcid | 40 | cluster | 11.082 | 8.116 | 8.949 | 0.907 |
+| ZrB2_2x2 | 76 | band | 120.799 | 84.664 | 54.722 | 1.547 |
+| nsV4Bz5 | 64 | cluster | 48.439 | 40.115 | 29.474 | 1.361 |
+
+</details>
+
+<details>
+<summary>-runtestL2: all 7 case timings</summary>
+
+| Input | Atoms | Solver | Upstream CPU (s) | Fork CPU (s) | Fork CUDA (s) | Fork CPU / CUDA |
+| --- | ---: | --- | ---: | ---: | ---: | ---: |
+| C1000 | 1000 | cluster | — | 579.165 | 531.040 | 1.091 |
+| Fe1000 | 1000 | cluster (sp) | — | 11141.951 | 3892.310 | 2.863 |
+| GRA1024 | 1024 | cluster | — | 961.666 | 370.095 | 2.598 |
+| Ih-Ice1200 | 1200 | cluster | — | 247.576 | 217.712 | 1.137 |
+| Pt500 | 500 | cluster | — | 2546.974 | 2715.434 | 0.938 |
+| R-TiO2-1050 | 1050 | cluster | — | 943.072 | 544.432 | 1.732 |
+| Si1000 | 1000 | cluster | — | 592.423 | 442.184 | 1.340 |
+
+</details>
+
+<details>
+<summary>-runtestL3: all 20 case timings</summary>
+
+| Input | Atoms | Solver | Upstream CPU (s) | Fork CPU (s) | Fork CUDA (s) | Fork CPU / CUDA |
+| --- | ---: | --- | ---: | ---: | ---: | ---: |
+| 5_5_13COb2 | 155 | band | 7.517 | 3.425 | 7.861 | 0.436 |
+| C1000 | 1000 | cluster | 75.529 | 65.236 | 55.336 | 1.179 |
+| C60 | 60 | dc | 2.422 | 0.935 | 1.911 | 0.489 |
+| CG15c | 650 | dc-lno | 43.160 | 22.323 | 24.938 | 0.895 |
+| Crys-MnO | 4 | band (sp) | 5.273 | 1.374 | 1.273 | 1.079 |
+| DIA512-1 | 512 | krylov | 12.696 | 7.032 | 9.247 | 0.760 |
+| Fe1000 | 1000 | cluster (sp) | 103.523 | 103.838 | 49.128 | 2.114 |
+| GEL | 40 | band | 8.111 | 3.195 | 3.756 | 0.851 |
+| GFRAG | 54 | cluster | 3.418 | 1.459 | 2.162 | 0.675 |
+| GGFF | 40 | band (NC) | 72.409 | 67.906 | 69.343 | 0.979 |
+| MCCN | 564 | dc-lno | 40.405 | 19.896 | 25.883 | 0.769 |
+| Mn12_148_F | 148 | cluster (sp) | 7.765 | 3.702 | 3.442 | 1.076 |
+| N1C999 | 1000 | dc-lno (sp) | 402.708 | 239.828 | 113.903 | 2.106 |
+| Ni63-O64 | 127 | band (sp) | 7.812 | 3.862 | 4.495 | 0.859 |
+| Pt500 | 500 | cluster | 142.883 | 104.050 | 110.710 | 0.940 |
+| Pt63 | 63 | cluster | 5.064 | 2.539 | 3.321 | 0.765 |
+| Si1280-LNO | 1280 | dc-lno | 431.747 | 282.116 | 163.999 | 1.720 |
+| SialicAcid | 40 | cluster | 3.855 | 1.780 | 2.546 | 0.699 |
+| ZrB2_2x2 | 76 | band | 17.233 | 9.517 | 8.320 | 1.144 |
+| nsV4Bz5 | 64 | cluster | 7.419 | 3.823 | 3.726 | 1.026 |
+
+</details>
+
+All requested executions completed normally. Numerical checks compare total
+energy and every force component against the first fork CPU run, with
+tolerances of `1e-7` Ha and `1e-7` Ha/bohr. Atom identities and grids must
+match; printed coordinates allow `1e-5` rounding. CPU repeat, paired-route
+and bundled-reference comparisons are recorded separately in `accuracy.csv`.
+Of 63 CUDA-to-first-CPU comparisons, 60 were within tolerance.
+
+| Test / input | CUDA repeat | abs ΔE (Ha) | Max abs ΔF (Ha/bohr) |
+| --- | ---: | ---: | ---: |
+| L2 / Pt500 | 1 | 7.87259e-09 | 1.3046e-07 |
+| L3 / Fe1000 | 1 | 3.73984e-09 | 5.46807e-07 |
+| L3 / Ni63-O64 | 1 | 1.63205e-07 | 8.48693e-06 |
+
+These discrepancies remain recorded; completion is not numerical acceptance.
+Retained L3 Fe1000 and Ni63-O64 already differed from the earlier CPU
+route. Same-node controls found force variation between repeated old
+GPU runs as well. Retained L2 Pt500 used 158 SCF steps on CUDA and 175
+on CPU; its force-component difference remains unresolved.
+
+Additional first-CPU checks found 0 CPU-repeat and
+3 retained-upstream comparisons outside tolerance;
+0 additional paired CPU/CUDA checks were outside tolerance.
+Their case/repeat identities and all bundled-reference results are retained
+in the detailed record and `accuracy.csv`.
+
+The versioned [CSV/JSON records](benchmarks/results/pegasus_h100_20261030)
+include every case, repeat, SCF count, numerical comparison, executable/input
+hash and run placement. [The detailed validation record](doc/pegasus_benchmark_20261030.txt)
+describes the builds and retained results. Full local logs and resource
+samples are under `work/benchmarks_refresh_20261030/`, with the two earlier
+campaigns identified in the manifest.
+
 ### Radeon RX 9060 XT validation (2026-10-29–30)
 
 Both applications were built and installed before measurement. The fork was

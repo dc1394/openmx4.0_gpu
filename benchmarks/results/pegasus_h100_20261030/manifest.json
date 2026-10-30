@@ -1,0 +1,168 @@
+{
+  "recorded": "2026-10-30 15:23:15 JST",
+  "protocol": {
+    "ranks_per_node": 24,
+    "threads_per_rank": 2,
+    "gpu_per_node": 1,
+    "gpu_mps": true,
+    "nodes": {
+      "S": 1,
+      "L": 1,
+      "L2": 4,
+      "L3": 4,
+      "sidia333_nc_cluster": 1,
+      "cghelgeo": 1
+    },
+    "suite_repeats": 1,
+    "individual_repeats": 3,
+    "individual_order": [
+      "cpu,gpu",
+      "gpu,cpu",
+      "cpu,gpu"
+    ],
+    "individual_pairing": "Each repeat runs CPU and GPU sequentially in one allocation; separate repeats use different exclusive nodes concurrently.",
+    "metric": "Sum of output Elapsed.Time for suites; median of three output Elapsed.Time values for individual inputs.",
+    "time_unit": "seconds",
+    "upstream_remeasured": false,
+    "upstream_L2_excluded": true
+  },
+  "builds": {
+    "fresh": {
+      "source_commit": "db516abddc6d989056bc28469689caec1f2cd1e7",
+      "binary_sha256": "0cd141837c0aaf6f8f1001630c9d191881c6109949f581fb8ead1e024a935701",
+      "libraries": [
+        {
+          "name": "libopenmx_core.so",
+          "sha256": "702fb45087caadfeb20c54f72c8b80ba225c44e31fa0cd652ff341f8075b6ea0"
+        },
+        {
+          "name": "libopenmx_host_simd.so",
+          "sha256": "999847a457502a28f69d31cd2b54d438c3912b6824e21a0335331329882c3e17"
+        }
+      ],
+      "toolchain": {
+        "nvc": {
+          "command": [
+            "/system/apps/ubuntu/22.04-202604/nvhpc/26.5/Linux_x86_64/26.5/compilers/bin/nvc",
+            "--version"
+          ],
+          "stdout": "\nnvc 26.5-0 64-bit target on x86-64 Linux -tp sapphirerapids \nNVIDIA Compilers and Tools\nCopyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.  All rights reserved.\n",
+          "stderr": ""
+        },
+        "nvfortran": {
+          "command": [
+            "/system/apps/ubuntu/22.04-202604/nvhpc/26.5/Linux_x86_64/26.5/compilers/bin/nvfortran",
+            "--version"
+          ],
+          "stdout": "\nnvfortran 26.5-0 64-bit target on x86-64 Linux -tp sapphirerapids \nNVIDIA Compilers and Tools\nCopyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.  All rights reserved.\n",
+          "stderr": ""
+        },
+        "gcc": {
+          "command": [
+            "/usr/bin/gcc-12",
+            "--version"
+          ],
+          "stdout": "gcc-12 (Ubuntu 12.3.0-1ubuntu1~22.04.3) 12.3.0\nCopyright (C) 2022 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n\n",
+          "stderr": ""
+        },
+        "cuda": {
+          "command": [
+            "/system/apps/ubuntu/22.04-202604/nvhpc/26.5/Linux_x86_64/26.5/cuda/13.2/bin/nvcc",
+            "--version"
+          ],
+          "stdout": "nvcc: NVIDIA (R) Cuda compiler driver\nCopyright (c) 2005-2026 NVIDIA Corporation\nBuilt on Thu_Mar_19_11:12:51_PM_PDT_2026\nCuda compilation tools, release 13.2, V13.2.78\nBuild cuda_13.2.r13.2/compiler.37668154_0\n",
+          "stderr": ""
+        },
+        "mpi": {
+          "command": [
+            "/system/apps/ubuntu/22.04-202604/nvhpc/26.5/Linux_x86_64/26.5/comm_libs/mpi/bin/mpirun",
+            "--version"
+          ],
+          "stdout": "mpirun (Open MPI) 5.0.10rc2\n\nReport bugs to https://www.open-mpi.org/community/help/\n\n",
+          "stderr": ""
+        }
+      },
+      "tests": {
+        "build": 0,
+        "dftd3_interpolation": 0,
+        "energy_dispersion_with_negative_control": 0
+      }
+    },
+    "retained_fork_cpu": {
+      "source_commit": "bfa0ee65b7857eae1429e93fc0ab5409f8ed9b74",
+      "binary_sha256": "063ffaa82d6c77d0ecfd997dd67092051a31db913c311b4d93fd9a6d1e3eb84d"
+    },
+    "retained_fork_gpu_large": {
+      "base_commit": "bfa0ee65b7857eae1429e93fc0ab5409f8ed9b74",
+      "patch_sha256": "172ac9438ae62d0383d3c3d29c6dd88ed5b6e9f7415783cf573e19c3506ee3e3",
+      "change_commit": "cb078e29d77b5e6335ecab8d0057e3b722f5fd08",
+      "binary_sha256": "3d7ec73948da7b64279c9e98180dd14349b37f04272f53e480b794ed6c8b9067"
+    },
+    "retained_upstream": {
+      "version": "OpenMX 4.0 + official patch 4.0.1 (2026-05-08)",
+      "binary_sha256": "b4ec4e2f4d896c4eaed9d6ec5f3f7adce14f622a1ce34abfdc88a72c50f81a49",
+      "compiler": "Intel icx/ifx 2025.3.2",
+      "mpi": "Intel MPI 2021.17",
+      "mkl": "2025.3",
+      "archive_sha256": {
+        "patch4.0.1.tar.gz": "c5312eeee13e17e0123beeb4eb2379bcf7c7cafa1815b1dcf6846452f9620bef",
+        "patch-README.txt": "71c036c161a8ad13db02c0dd2e52bd7da2c66a0882c61600167e32fc75b962e2",
+        "openmx4.0.tar.gz": "8d5338faf70885f276352bbd2826cdfed2ffd08f33eca58752666d79a7d0c3bf"
+      },
+      "patch_file_sha256": {
+        "Band_DFT_Dosout.c": "f328851a91154b90398d38e33d263d414659dad5259ba799d0b8c248d98d7c3e",
+        "Mulliken_Charge.c": "8795dee2aa939778f2344c2e0264375f0c69c4e30fb025353802f6c9c3cbc3da",
+        "GaAs.dat": "b2571de088368e512c9967f770273aa6682563eb4bf77db5973b6d604bea1141"
+      }
+    }
+  },
+  "validation": {
+    "tolerance": {
+      "energy_ha": 1e-07,
+      "max_force_ha_bohr": 1e-07,
+      "printed_positions": 1.000001e-05
+    },
+    "fresh_runs": 14,
+    "retained_runs": 15,
+    "case_rows": 59,
+    "final_run_audit": {
+      "all_fresh_runs_completed": true,
+      "run_count": 14,
+      "prepared_inputs_verified": 40,
+      "only_deployment_and_eigensolver_changes": true,
+      "installed_file_hashes_verified": true,
+      "retained_gpu_runtime_hashes_verified": true
+    },
+    "retained_result_audit": [
+      {
+        "benchmark": "L",
+        "CPU_seconds": 2033.1840000000004,
+        "GPU_seconds": 2059.7999999999997,
+        "matched_prior_aggregates": true
+      },
+      {
+        "benchmark": "L2",
+        "CPU_seconds": 17012.826999999994,
+        "GPU_seconds": 8713.207,
+        "matched_prior_aggregates": true
+      },
+      {
+        "benchmark": "L3",
+        "CPU_seconds": 947.8359999999999,
+        "GPU_seconds": 665.3000000000001,
+        "matched_prior_aggregates": true
+      }
+    ],
+    "gpu_vs_first_cpu_comparisons": 63,
+    "gpu_vs_first_cpu_failures": 3,
+    "bundled_reference_comparisons": 164,
+    "bundled_reference_failures": 6,
+    "total_comparisons": 291,
+    "total_failures": 12
+  },
+  "local_artifacts": [
+    "work/benchmarks_refresh_20261030",
+    "work/benchmarks_dmfix_20261030",
+    "work/benchmarks_main_20261029"
+  ]
+}

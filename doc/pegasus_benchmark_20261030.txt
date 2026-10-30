@@ -1,0 +1,89 @@
+OpenMX 4.0 GPU: Pegasus H100 benchmark record, 2026-10-30
+=====================================================================
+
+Fresh source commit: db516abddc6d989056bc28469689caec1f2cd1e7
+Fresh executable SHA256: 0cd141837c0aaf6f8f1001630c9d191881c6109949f581fb8ead1e024a935701
+Retained CPU source: bfa0ee65b7857eae1429e93fc0ab5409f8ed9b74
+Retained large-suite GPU base: bfa0ee65b7857eae1429e93fc0ab5409f8ed9b74
+Retained GPU patch SHA256: 172ac9438ae62d0383d3c3d29c6dd88ed5b6e9f7415783cf573e19c3506ee3e3
+Retained GPU executable SHA256: 3d7ec73948da7b64279c9e98180dd14349b37f04272f53e480b794ed6c8b9067
+
+All times and run identities are in benchmarks/results/pegasus_h100_20261030/.
+manifest.json distinguishes builds, protocol, exclusions and validation.
+runs.json includes actual hardware, placement and the invocation for each run.
+timing-summary.csv: six complete benchmark sets; named-case medians.
+case-results.csv: all 59 distinct cases, time ranges, SCF counts and versions.
+run-results.csv: all 182 per-run case observations and output/input hashes.
+accuracy.csv: all 291 numerical comparisons, with their reference scope.
+
+Hardware: Xeon Platinum 8468, 48 allocated physical cores, no SMT;
+one H100 PCIe 80 GB per node, driver 580.95.05, about 124.5 GiB host RAM.
+24 MPI ranks/node x 2 OpenMP threads, affinity verified for fresh runs.
+Private MPS on every GPU node; one node except L2/L3 (four nodes).
+Some earliest retained one-node upstream runs predate the rank wrapper;
+their original launch settings are retained and per-rank verification is
+marked unavailable in runs.json. No upstream runs were repeated.
+
+Fresh build: NVHPC 26.5, CUDA 13.2, sm_90, SDK Open MPI 5.0.10rc2,
+SDK BLAS/LAPACK/ScaLAPACK, GCC 12.3, Kokkos SERIAL, ELPA 2026.02.002,
+COSMA 2.8.4, FFTW 3.3.11, WITH_MAGMA=0. Tool versions are in manifest.json.
+The application and dependencies used a new isolated build tree,
+build/pegasus-main-db516abd, and a frozen installation prefix under
+work/benchmarks_refresh_20261030/install/gpu; matching libraries were
+exported explicitly to every rank. work/openmx and work/lib were updated.
+Previous default files were saved in before-install/.
+
+Build reproduction: scripts/build-gpu.sh in the fresh local campaign.
+CMake Release, GCC/G++ 12, OPENMX_GPU_BACKEND=CUDA, OPENMX_GPU_ARCH=sm_90,
+OPENMX_CORE_BACKEND=SERIAL, OPENMX_COPY_TO_WORK=OFF, 12 build jobs.
+The detailed NVHPC/CUDA/GCC and MPI tool selections match
+doc/pegasus_refactor_validation_20261027.txt, with the current source pin.
+Host D3 validation passed 33 interpolation/gradient cases and 32 production
+energy/coordinate-gradient/strain cases, including the missing-gradient
+negative control. Those tests exercise the newly included D3 optimization.
+
+For a fresh run directory, CPU uses OPENMX_GPU=0 and scf.eigen.lib=elpa2;
+GPU uses OPENMX_GPU=1 and the original gpusolver input. OpenMP, MKL and
+OpenBLAS thread controls are 2, dynamic teams disabled, OMP_PLACES=cores,
+OMP_PROC_BIND=close. Open MPI maps ppr:24:node:PE=2 and binds to cores.
+The MPS control/server starts before application launch on every GPU node.
+Full inputs are used: -runtest runs its 14 cases in one MPI invocation.
+The named inputs run three CPU/GPU pairs with the second pair GPU-first.
+Each pair occupies its own node; no simultaneous CPU/GPU run shares a node.
+All source input/data hashes match the prior snapshots. The original MD/SCF
+limits and convergence criteria are unchanged.
+
+L/L2/L3 reuse completed earlier measurements with explicit source/binary
+identities. Their timings are not measurements of the refreshed executable.
+Upstream uses the earlier Intel icx/ifx 2025.3.2, Intel MPI 2021.17 and
+MKL 2025.3 build of official OpenMX 4.0 + patch 4.0.1 (2026-05-08).
+Upstream L2 remains excluded at the user request. Partial or cancelled
+runs never contribute a suite total.
+
+Numerical acceptance: absolute energy <=1e-7 Ha, maximum absolute individual
+force component <=1e-7 Ha/bohr, matching atoms and grids; printed coordinate
+rounding <=1.000001e-5. Native runtest force sums are not this criterion.
+Sidia333 stops at its 25-SCF limit; L3 uses fixed three-SCF inputs.
+SCF counts differ elsewhere; full-run speed ratios include these differences.
+Elapsed.Time is used consistently; launcher wall times are separate columns.
+Resource monitoring samples every 2 seconds with a 4 GiB available-memory
+guard. RSS sums include shared pages, so they are not unique memory usage.
+
+Comparisons outside tolerance (all scopes; see accuracy.csv):
+  first_cpu L2/Pt500 gpu r1: energy=7.872586138546467e-09, max_force=1.3046e-07, same_SCF=False
+  bundled_reference L2/Pt500 gpu r1: energy=8.62200977280736e-09, max_force=1.2152000000000002e-07, same_SCF=False
+  first_cpu L3/Fe1000 gpu r1: energy=3.739842213690281e-09, max_force=5.468069999999919e-07, same_SCF=True
+  first_cpu L3/Fe1000 upstream r1: energy=1.0622898116707802e-09, max_force=2.958309999999962e-07, same_SCF=True
+  bundled_reference L3/Fe1000 cpu r1: energy=4.99130692332983e-09, max_force=3.7451800000001063e-07, same_SCF=True
+  bundled_reference L3/Fe1000 gpu r1: energy=1.2514647096395493e-09, max_force=6.033220000000085e-07, same_SCF=True
+  first_cpu L3/Ni63-O64 gpu r1: energy=1.6320518625434488e-07, max_force=8.486932999999999e-06, same_SCF=True
+  first_cpu L3/Ni63-O64 upstream r1: energy=1.6496233001817018e-07, max_force=9.279526000000125e-06, same_SCF=True
+  bundled_reference L3/Ni63-O64 cpu r1: energy=1.6279591363854706e-07, max_force=1.2105127000000028e-05, same_SCF=True
+  bundled_reference L3/Ni63-O64 gpu r1: energy=4.092726157978177e-10, max_force=1.1326359000000171e-05, same_SCF=True
+  bundled_reference L3/Ni63-O64 upstream r1: energy=2.166416379623115e-09, max_force=1.6377858999999748e-05, same_SCF=True
+  first_cpu cghelgeo/cghelgeo upstream r1: energy=3.196264515281655e-07, max_force=6.555499999999839e-08, same_SCF=False
+
+Local raw logs:
+  work/benchmarks_refresh_20261030/
+  work/benchmarks_dmfix_20261030/
+  work/benchmarks_main_20261029/
