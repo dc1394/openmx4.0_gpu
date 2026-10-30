@@ -1,0 +1,217 @@
+{
+  "purpose": "Supporting tighter-convergence cghelgeo diagnostic; excluded from every benchmark timing",
+  "geometry_audit": {
+    "max_input_vs_printed_output_coordinate_difference": {
+      "upstream": 1.0658141036401503e-14,
+      "fork_cpu": 1.0658141036401503e-14,
+      "fork_gpu": 1.0658141036401503e-14
+    }
+  },
+  "runs": [
+    {
+      "variant": "upstream",
+      "purpose": "fixed-geometry tighter-convergence diagnostic, excluded from benchmark timings",
+      "changes": {
+        "scf.criterion": "1.0e-10",
+        "scf.Init.Mixing.Weight": "0.10",
+        "scf.Mixing.StartPulay": "2",
+        "MD.Type": "Nomd",
+        "scf.maxIter": "60",
+        "scf.restart": "on"
+      },
+      "command": [
+        "/home/dc1394/intel/oneapi/mpi/2021.18/bin/mpiexec",
+        "-np",
+        "18",
+        "/home/dc1394/openmx4.0_gpu/build/rtx5080-benchmark-20261030-194150/binaries/upstream/openmx",
+        "input.dat",
+        "-nt",
+        "2"
+      ],
+      "input_sha256": "2cbaa0e42ddf1b454e280b07bb4a114379e1aad1b78ebce08c8e1a80ffda5065",
+      "returncode": 0,
+      "wall_seconds": 1610.6102258090104,
+      "restart_failure_messages": [],
+      "case": {
+        "atom_count": 650,
+        "force_component_count": 1950,
+        "case": "cghelgeo",
+        "system": "cghelgeo",
+        "energy_hartree": -4153.148190613894,
+        "grids": [
+          210,
+          210,
+          250
+        ],
+        "output_sha256": "151e63a15153500e3d09cae9488cb883e08ec076cab074975c16e214ece8b0fc",
+        "scf_steps": 28,
+        "scf_last_iteration": 28,
+        "scf_converged_md": 1,
+        "scf_unconverged_md": 0,
+        "output_elapsed_seconds": 1606.684,
+        "total_time_max_seconds": 1606.684
+      },
+      "only_stated_input_changes_verified": true,
+      "change_from_timed_state": {
+        "energy_difference_hartree": 1.5049590729176998e-07,
+        "max_force_difference_hartree_per_bohr": 1.0665899999665052e-07,
+        "max_printed_coordinate_difference": 0.0,
+        "atom_ids_match": true,
+        "grids_match": true
+      },
+      "working_directory": "/home/dc1394/openmx4.0_gpu/build/rtx5080-benchmark-20261030-194150/diagnostics/upstream"
+    },
+    {
+      "variant": "fork_cpu",
+      "purpose": "fixed-geometry tighter-convergence diagnostic, excluded from benchmark timings",
+      "changes": {
+        "scf.criterion": "1.0e-10",
+        "scf.Init.Mixing.Weight": "0.10",
+        "scf.Mixing.StartPulay": "2",
+        "MD.Type": "Nomd",
+        "scf.maxIter": "60",
+        "scf.restart": "on"
+      },
+      "command": [
+        "/opt/nvidia/hpc_sdk/Linux_x86_64/26.9/comm_libs/mpi/bin/mpirun",
+        "--use-hwthread-cpus",
+        "--map-by",
+        "slot:PE=2",
+        "--bind-to",
+        "hwthread",
+        "--report-bindings",
+        "-np",
+        "18",
+        "/home/dc1394/openmx4.0_gpu/build/rtx5080-benchmark-20261030-194150/binaries/fork/openmx",
+        "input.dat",
+        "-nt",
+        "2"
+      ],
+      "input_sha256": "2cbaa0e42ddf1b454e280b07bb4a114379e1aad1b78ebce08c8e1a80ffda5065",
+      "returncode": 0,
+      "wall_seconds": 724.8959077770123,
+      "restart_failure_messages": [],
+      "case": {
+        "atom_count": 650,
+        "force_component_count": 1950,
+        "case": "cghelgeo",
+        "system": "cghelgeo",
+        "energy_hartree": -4153.148190614358,
+        "grids": [
+          210,
+          210,
+          250
+        ],
+        "output_sha256": "c46530324d8a745e02d538b0df1f69ce2571705f0ad6df6c5e102c38fd151bc2",
+        "scf_steps": 10,
+        "scf_last_iteration": 10,
+        "scf_converged_md": 1,
+        "scf_unconverged_md": 0,
+        "output_elapsed_seconds": 720.288,
+        "total_time_max_seconds": 720.288
+      },
+      "only_stated_input_changes_verified": true,
+      "change_from_timed_state": {
+        "energy_difference_hartree": 4.232242645230144e-08,
+        "max_force_difference_hartree_per_bohr": 1.925400000199473e-08,
+        "max_printed_coordinate_difference": 0.0,
+        "atom_ids_match": true,
+        "grids_match": true
+      },
+      "working_directory": "/home/dc1394/openmx4.0_gpu/build/rtx5080-benchmark-20261030-194150/diagnostics/fork_cpu"
+    },
+    {
+      "variant": "fork_gpu",
+      "purpose": "fixed-geometry tighter-convergence diagnostic, excluded from benchmark timings",
+      "changes": {
+        "scf.criterion": "1.0e-10",
+        "scf.Init.Mixing.Weight": "0.10",
+        "scf.Mixing.StartPulay": "2",
+        "MD.Type": "Nomd",
+        "scf.maxIter": "60",
+        "scf.restart": "on"
+      },
+      "command": [
+        "/opt/nvidia/hpc_sdk/Linux_x86_64/26.9/comm_libs/mpi/bin/mpirun",
+        "--use-hwthread-cpus",
+        "--map-by",
+        "slot:PE=2",
+        "--bind-to",
+        "hwthread",
+        "--report-bindings",
+        "-np",
+        "18",
+        "/home/dc1394/openmx4.0_gpu/build/rtx5080-benchmark-20261030-194150/binaries/fork/openmx",
+        "input.dat",
+        "-nt",
+        "2"
+      ],
+      "input_sha256": "b7be0740d8361e21f319c9df15f0c545754331168d5884183cb7fe23d3b61bc5",
+      "returncode": 0,
+      "wall_seconds": 244.6574387709843,
+      "restart_failure_messages": [],
+      "case": {
+        "atom_count": 650,
+        "force_component_count": 1950,
+        "case": "cghelgeo",
+        "system": "cghelgeo",
+        "energy_hartree": -4153.148190613771,
+        "grids": [
+          210,
+          210,
+          250
+        ],
+        "output_sha256": "b02a0bb5fed48f97f428134eed309c85d66727f415e3c67747cb3be999dd1ffe",
+        "scf_steps": 19,
+        "scf_last_iteration": 19,
+        "scf_converged_md": 1,
+        "scf_unconverged_md": 0,
+        "output_elapsed_seconds": 241.279,
+        "total_time_max_seconds": 241.279
+      },
+      "only_stated_input_changes_verified": true,
+      "change_from_timed_state": {
+        "energy_difference_hartree": 5.817400960950181e-08,
+        "max_force_difference_hartree_per_bohr": 9.98099999871549e-09,
+        "max_printed_coordinate_difference": 0.0,
+        "atom_ids_match": true,
+        "grids_match": true
+      },
+      "working_directory": "/home/dc1394/openmx4.0_gpu/build/rtx5080-benchmark-20261030-194150/diagnostics/fork_gpu"
+    }
+  ],
+  "pairwise_comparisons": [
+    {
+      "baseline": "upstream",
+      "candidate": "fork_cpu",
+      "energy_difference_hartree": 4.638422979041934e-10,
+      "max_force_difference_hartree_per_bohr": 1.94000000092176e-10,
+      "max_printed_coordinate_difference": 0.0,
+      "atom_ids_match": true,
+      "grids_match": true,
+      "passed": true
+    },
+    {
+      "baseline": "upstream",
+      "candidate": "fork_gpu",
+      "energy_difference_hartree": 1.2369127944111824e-10,
+      "max_force_difference_hartree_per_bohr": 3.660000080785153e-10,
+      "max_printed_coordinate_difference": 0.0,
+      "atom_ids_match": true,
+      "grids_match": true,
+      "passed": true
+    },
+    {
+      "baseline": "fork_cpu",
+      "candidate": "fork_gpu",
+      "energy_difference_hartree": 5.875335773453116e-10,
+      "max_force_difference_hartree_per_bohr": 3.629999911769488e-10,
+      "max_printed_coordinate_difference": 0.0,
+      "atom_ids_match": true,
+      "grids_match": true,
+      "passed": true
+    }
+  ],
+  "all_scf_converged": true,
+  "all_pairwise_checks_passed": true
+}

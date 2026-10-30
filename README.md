@@ -1244,6 +1244,194 @@ settings unchanged and record the actual SCF iterations and convergence
 status along with time, energy and forces; reaching an iteration limit
 does not establish SCF convergence.
 
+### GeForce RTX 5080 / Core i9-10980XE (2026-10-30–2026-10-31)
+
+`main` at `2132126a` was pulled, rebuilt with CMake in Release mode and
+installed before this measurement. The host has an Intel Core i9-10980XE
+(18 physical cores, SMT enabled: 36 logical CPUs), 256 GiB RAM and one
+GeForce RTX 5080 (16 GiB, `sm_120`, driver 595.99.02). All runs used
+**18 MPI ranks × 2 OpenMP threads**: rank `i` used the two SMT siblings
+`i` and `i+18` on one physical core. Affinity probes using each MPI/OpenMP
+toolchain verified all 36 logical CPUs and two threads per rank.
+Every invocation used MPI `-np 18`, OpenMX `-nt 2` and `OMP_NUM_THREADS=2`.
+
+| Configuration | Build and execution |
+| --- | --- |
+| Upstream CPU | Existing `~/openmx4.0/work/openmx`; Intel icx/ifx 2026.0, Intel MPI 2021.18, LP64 oneMKL 2026.0; `scf.eigen.lib elpa2` |
+| Fork CPU path | Installed NVIDIA Release build, NVHPC 26.9 / GCC 14.2 C++ core, Open MPI 5.0.10rc2, SDK LP64 BLAS/LAPACK/ScaLAPACK, bundled ELPA 2026.02.002, host SIMD; `OPENMX_GPU=0`, `scf.eigen.lib elpa2` |
+| Fork CUDA path | The same installed executable and matching Core/SIMD libraries, CUDA 13.4, a private NVIDIA MPS daemon; `OPENMX_GPU=1`, `scf.eigen.lib gpusolver` |
+
+Each configuration was measured once, sequentially, with no concurrent
+calculation or build. The order for each test was CUDA, fork CPU, upstream;
+the tests ran in the order `-runtest`, sidia333, cghelgeo, `-runtestL`.
+These are individual measurements, not repeated-run averages. The CPU
+comparison includes compiler, MPI, eigensolver and numerical-library effects.
+CUDA timings include CPU work and any automatically selected fallbacks.
+All four CUDA jobs were observed with 18 clients connected to MPS.
+Each suite ran as one native `-runtest*` MPI job, retaining the normal
+cache and cleanup behavior between cases.
+
+The three configurations used the same 32 input definitions and 44 PAO/VPS
+files. Only `DATA.PATH` (an absolute shared path) and `scf.eigen.lib` (ELPA2
+for CPU execution) were changed in measurement copies. Geometry, grids,
+SCF/MD limits, mixing and convergence criteria were preserved. OpenMP used
+`OMP_DYNAMIC=FALSE`, `OMP_PROC_BIND=close`, `OMP_PLACES=threads`,
+`OMP_MAX_ACTIVE_LEVELS=1` and a 64 MiB thread stack. The numerical-library
+controls were `MKL_NUM_THREADS=2`, `MKL_DYNAMIC=FALSE`,
+`OPENBLAS_NUM_THREADS=1` and `BLIS_NUM_THREADS=1`.
+Open MPI used `--use-hwthread-cpus --map-by slot:PE=2 --bind-to hwthread`;
+Intel MPI used the equivalent explicit CPU masks. Installed binaries and
+matching libraries were frozen for the campaign; the Core/SIMD copies were
+preloaded to keep their versions fixed.
+
+Times below are seconds. Suite times sum the native per-case elapsed times
+in `runtest.result` / `runtestL.result`; individual times are the maximum-rank
+`Total Computational Time`. MPI launch/shutdown overhead is excluded.
+A ratio above one means the denominator configuration was faster.
+
+| Test | Upstream CPU | Fork CPU | Fork CUDA + MPS | Upstream / Fork CPU | Upstream / CUDA | Fork CPU / CUDA |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `-runtest` (14 cases) | 107.11 | 66.12 | 80.75 | 1.62 | 1.33 | 0.82 |
+| `-runtestL` (16 cases) | 6814.43 | 5212.22 | 4344.67 | 1.31 | 1.57 | 1.20 |
+| `sidia333_nc_cluster.dat` | 819.045 | 569.390 | 98.822 | 1.44 | 8.29 | 5.76 |
+| `cghelgeo.dat` | 3202.452 | 3829.606 | 574.217 | 0.84 | 5.58 | 6.67 |
+
+The following wall times include the MPI job and the measurement monitor
+(two-second polling interval); they are separate from the native timings above.
+
+| Test | Upstream wall (s) | Fork CPU wall (s) | CUDA wall (s) |
+| --- | ---: | ---: | ---: |
+| `-runtest` (14 cases) | 108.28 | 69.67 | 85.72 |
+| `-runtestL` (16 cases) | 6820.64 | 5216.34 | 4349.25 |
+| `sidia333_nc_cluster.dat` | 822.07 | 573.57 | 103.23 |
+| `cghelgeo.dat` | 3204.65 | 3832.76 | 578.59 |
+
+Numerical checks compare total energy and **every force component**, using
+`1e-7 Ha` and `1e-7 Ha/bohr` tolerances. Atom identities and FFT grids must
+match; printed coordinates allow `1.000001e-5` for last-digit rounding.
+Each suite was checked against its bundled references and all three
+configuration pairs; the individual cases were checked pairwise. Completion
+of a job is recorded separately from numerical agreement and SCF convergence.
+
+Across these checks the largest absolute energy difference was `1.086e-07 Ha` and the largest force component difference was `9.703e-08 Ha/bohr`. Of 186 numerical comparisons, 185 passed and 1 exceeded the limits.
+All 90 comparisons with the bundled suite references passed.
+
+The sidia333 input requests 25 SCF steps at `scf.criterion=1e-13`
+and one MD step. This is a performance comparison at the iteration limit;
+it does not establish SCF convergence. SCF counts below cover all MD steps;
+different converged iteration counts affect the measured timings.
+
+| Individual input | SCF steps (upstream / fork CPU / CUDA) | Unconverged MD steps (same order) | Max abs ΔE (Ha) | Max abs ΔF (Ha/bohr) |
+| --- | --- | --- | ---: | ---: |
+| `sidia333_nc_cluster.dat` | 25 / 25 / 25 | 1 / 1 / 1 | 4.195e-11 | 1.650e-10 |
+| `cghelgeo.dat` | 58 / 58 / 60 | 0 / 0 / 0 | 1.086e-07 | 9.703e-08 |
+
+For `cghelgeo`, the measured upstream / fork CPU energy difference was
+`1.086373231e-07 Ha`, slightly above the predefined `1e-7 Ha`
+limit; this comparison remains recorded as **FAIL**. Its force difference
+was `8.757e-08 Ha/bohr`. The input uses
+`scf.criterion=1e-7`; the CPU configurations converged in 58 SCF steps and
+CUDA in 60. The CUDA comparisons with each CPU configuration passed both
+energy and force limits.
+
+A separate restart check, excluded from the benchmark timings, refined each configuration's
+saved `cghelgeo` density at the same fixed geometry, using
+`scf.criterion=1e-10`, `MD.Type Nomd`, `scf.maxIter=60`,
+`scf.Init.Mixing.Weight=0.10` and `scf.Mixing.StartPulay=2`.
+All three refinements converged and passed the same pairwise checks:
+maximum ΔE `5.875e-10 Ha`, maximum ΔF `3.660e-10 Ha/bohr`.
+This is consistent with a difference due to finite SCF convergence in the original
+comparison. The supporting check changes neither the original failure flag
+nor any benchmark timing. Its inputs, results and checks are recorded in
+[supporting-convergence.json](benchmarks/results/rtx5080_20261030/supporting-convergence.json).
+
+<details>
+<summary>`-runtest` (14 cases): per-case timings, SCF counts and numerical checks</summary>
+
+| Case | Upstream (s) | Fork CPU (s) | CUDA (s) | Upstream / CUDA | Fork CPU / CUDA |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Benzene | 4.14 | 2.52 | 4.12 | 1.00 | 0.61 |
+| C60 | 9.32 | 6.72 | 10.91 | 0.85 | 0.62 |
+| CO | 7.37 | 5.86 | 19.88 | 0.37 | 0.29 |
+| Cr2 | 7.64 | 4.52 | 4.25 | 1.80 | 1.06 |
+| Crys-MnO | 13.88 | 7.45 | 7.34 | 1.89 | 1.01 |
+| GaAs | 24.11 | 13.80 | 10.79 | 2.23 | 1.28 |
+| Glycine | 4.08 | 2.84 | 3.08 | 1.32 | 0.92 |
+| Graphite4 | 3.31 | 1.03 | 1.32 | 2.51 | 0.78 |
+| H2O-EF | 3.83 | 2.30 | 2.49 | 1.54 | 0.92 |
+| H2O | 3.51 | 2.04 | 1.77 | 1.98 | 1.15 |
+| HMn | 11.81 | 9.35 | 7.72 | 1.53 | 1.21 |
+| Methane | 2.73 | 1.30 | 1.72 | 1.59 | 0.76 |
+| Mol_MnO | 7.35 | 4.79 | 4.33 | 1.70 | 1.11 |
+| Ndia2 | 4.03 | 1.60 | 1.03 | 3.91 | 1.55 |
+
+| Case | SCF steps (upstream / fork CPU / CUDA) | Unconverged MD steps | Max abs ΔE (Ha) | Max abs ΔF (Ha/bohr) | Check |
+| --- | --- | --- | ---: | ---: | --- |
+| Benzene | 19 / 19 / 19 | 0 / 0 / 0 | 9.948e-13 | 0.000e+00 | PASS |
+| C60 | 27 / 27 / 27 | 0 / 0 / 0 | 5.201e-11 | 8.000e-12 | PASS |
+| CO | 16 / 16 / 16 | 0 / 0 / 0 | 0.000e+00 | 2.200e-11 | PASS |
+| Cr2 | 21 / 21 / 21 | 0 / 0 / 0 | 3.013e-12 | 1.720e-10 | PASS |
+| Crys-MnO | 43 / 40 / 40 | 0 / 0 / 0 | 2.299e-11 | 2.000e-11 | PASS |
+| GaAs | 13 / 13 / 13 | 0 / 0 / 0 | 1.899e-11 | 7.000e-12 | PASS |
+| Glycine | 20 / 20 / 20 | 0 / 0 / 0 | 9.948e-13 | 1.000e-12 | PASS |
+| Graphite4 | 14 / 14 / 14 | 0 / 0 / 0 | 2.000e-12 | 1.000e-12 | PASS |
+| H2O-EF | 17 / 17 / 17 | 0 / 0 / 0 | 9.983e-13 | 1.000e-12 | PASS |
+| H2O | 31 / 31 / 31 | 0 / 0 / 0 | 1.002e-12 | 1.000e-12 | PASS |
+| HMn | 26 / 26 / 26 | 0 / 0 / 0 | 9.948e-13 | 0.000e+00 | PASS |
+| Methane | 14 / 14 / 14 | 0 / 0 / 0 | 9.400e-11 | 1.000e-11 | PASS |
+| Mol_MnO | 26 / 26 / 26 | 0 / 0 / 0 | 9.948e-13 | 1.000e-12 | PASS |
+| Ndia2 | 13 / 13 / 13 | 0 / 0 / 0 | 4.000e-12 | 1.000e-12 | PASS |
+
+</details>
+
+<details>
+<summary>`-runtestL` (16 cases): per-case timings, SCF counts and numerical checks</summary>
+
+| Case | Upstream (s) | Fork CPU (s) | CUDA (s) | Upstream / CUDA | Fork CPU / CUDA |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 5_5_13COb2 | 96.91 | 88.99 | 54.97 | 1.76 | 1.62 |
+| B2C62_Band | 723.02 | 458.23 | 363.05 | 1.99 | 1.26 |
+| CG15c-DC-LNO | 192.67 | 136.95 | 198.34 | 0.97 | 0.69 |
+| DIA512-1 | 158.08 | 120.79 | 219.33 | 0.72 | 0.55 |
+| FeBCC | 178.51 | 133.13 | 133.05 | 1.34 | 1.00 |
+| GEL | 54.70 | 36.67 | 34.72 | 1.58 | 1.06 |
+| GFRAG | 44.16 | 39.50 | 30.51 | 1.45 | 1.29 |
+| GGFF | 1598.46 | 1720.90 | 548.31 | 2.92 | 3.14 |
+| MCCN | 238.17 | 241.69 | 357.88 | 0.67 | 0.68 |
+| Mn12_148_F | 113.08 | 91.60 | 53.54 | 2.11 | 1.71 |
+| N1C999 | 2791.62 | 1685.79 | 2055.09 | 1.36 | 0.82 |
+| Ni63-O64 | 112.09 | 65.44 | 48.92 | 2.29 | 1.34 |
+| Pt63 | 84.01 | 71.30 | 46.01 | 1.83 | 1.55 |
+| SialicAcid | 23.54 | 17.66 | 14.50 | 1.62 | 1.22 |
+| ZrB2_2x2 | 283.19 | 197.50 | 119.78 | 2.36 | 1.65 |
+| nsV4Bz5 | 122.22 | 106.08 | 66.67 | 1.83 | 1.59 |
+
+| Case | SCF steps (upstream / fork CPU / CUDA) | Unconverged MD steps | Max abs ΔE (Ha) | Max abs ΔF (Ha/bohr) | Check |
+| --- | --- | --- | ---: | ---: | --- |
+| 5_5_13COb2 | 67 / 66 / 67 | 0 / 0 / 0 | 1.447e-09 | 2.520e-10 | PASS |
+| B2C62_Band | 204 / 204 / 204 | 0 / 0 / 0 | 1.060e-10 | 3.475e-08 | PASS |
+| CG15c-DC-LNO | 47 / 42 / 42 | 0 / 0 / 0 | 1.271e-09 | 1.560e-10 | PASS |
+| DIA512-1 | 29 / 29 / 29 | 0 / 0 / 0 | 7.130e-10 | 6.569e-09 | PASS |
+| FeBCC | 62 / 62 / 62 | 0 / 0 / 0 | 4.002e-11 | 1.200e-11 | PASS |
+| GEL | 58 / 58 / 58 | 0 / 0 / 0 | 2.592e-11 | 6.100e-11 | PASS |
+| GFRAG | 60 / 60 / 60 | 0 / 0 / 0 | 4.130e-10 | 2.475e-09 | PASS |
+| GGFF | 94 / 97 / 101 | 0 / 0 / 0 | 1.280e-10 | 1.490e-10 | PASS |
+| MCCN | 67 / 67 / 67 | 0 / 0 / 0 | 3.829e-10 | 3.600e-11 | PASS |
+| Mn12_148_F | 61 / 61 / 61 | 0 / 0 / 0 | 2.719e-10 | 5.420e-10 | PASS |
+| N1C999 | 66 / 59 / 59 | 0 / 0 / 0 | 1.635e-09 | 3.200e-11 | PASS |
+| Ni63-O64 | 69 / 62 / 62 | 0 / 0 / 0 | 4.124e-09 | 7.970e-10 | PASS |
+| Pt63 | 75 / 77 / 68 | 0 / 0 / 0 | 4.752e-09 | 3.270e-10 | PASS |
+| SialicAcid | 29 / 29 / 29 | 0 / 0 / 0 | 3.170e-10 | 3.670e-10 | PASS |
+| ZrB2_2x2 | 49 / 49 / 49 | 0 / 0 / 0 | 2.040e-10 | 2.260e-10 | PASS |
+| nsV4Bz5 | 57 / 57 / 57 | 0 / 0 / 0 | 3.050e-10 | 1.364e-09 | PASS |
+
+</details>
+
+Versioned [timings, per-case checks and input hashes](benchmarks/results/rtx5080_20261030/manifest.json)
+identify the exact binaries, libraries, controls and source commit.
+The complete local logs, outputs, resource samples and affinity probes are
+under `build/rtx5080-benchmark-20261030-194150/`.
+
 ### Pegasus H100 benchmarks (2026-10-29–30)
 
 Each node had one Intel Xeon Platinum 8468 (48 allocated physical cores,
