@@ -14,7 +14,6 @@
 
 using Type_Orbs_Grid = float;
 using MPI_Comm = int;
-struct OpenMXAtomicViews {};
 struct BindingAbort {};
 [[noreturn]] static void binding_abort() { throw BindingAbort{}; }
 // Only the borrowed orbital binding is modeled here; its production upload
