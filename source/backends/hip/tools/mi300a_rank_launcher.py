@@ -8,7 +8,7 @@ Example (OPENMX_AFFINITY_DIR must name this run's identity directory):
 The inherited affinity must contain exactly the requested number of threads.
 Use explicit OpenMP places so subsequent runtime initialization cannot infer
 places from a helper thread's broader affinity.  Each rank records only its
-identity and placement settings, then execs the target with the same PID.
+identity, placement and runtime settings, then execs the target with the same PID.
 No GPU runtime or OpenMX build is needed by this launcher.
 """
 
@@ -100,6 +100,8 @@ def main(argv=None):
             "omp_places": env["OMP_PLACES"],
             "omp_proc_bind": env["OMP_PROC_BIND"],
             "hsa_override_cpu_affinity_debug": env["HSA_OVERRIDE_CPU_AFFINITY_DEBUG"],
+            "runtime_environment": {key: value for key, value in env.items()
+                if key.startswith(("OMP_", "BLIS_", "OPENBLAS_", "MAGMA_", "UCX_", "HSA_", "LIBOMP", "LD_", "OMPI_MCA_memory"))},
         }
         _write_identity(Path(directory), identity)
     except (OSError, ValueError) as error:

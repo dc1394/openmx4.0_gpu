@@ -20,13 +20,24 @@ handles keep their existing one-thread host team. CPU-only and CUDA build
 rules also use the OpenMP archive and matching headers; CUDA hardware was
 not available for validation on this AMD system.
 
-BLAS was already threaded in the accepted official and superseded fork
-measurements: LD_PRELOAD put AOCL libblis-mt.so.5 first. Untimed executions of
-the actual OpenMX binaries (C60 and noncollinear GaAs, all three routes,
-32 MPI x 3 threads on one complete node) confirmed dgemm_/zgemm_ bindings
-to that library. OMPT callbacks observed three actual BLIS workers on all
-32 ranks. Automatic AOCL selection had preferred the sequential library;
-the remote fix now selects OpenMP BLIS directly by default.
+The old benchmark executables resolved BLAS to the threaded
+libblis-mt.so.5 through LD_PRELOAD. Direct untimed OpenMX executions of
+C60 and noncollinear GaAs with BLIS_NUM_THREADS=3 confirmed three actual
+BLIS workers on all 32 ranks. These probes did not cover the native-suite
+launch helper. A later audit of its command.json files found that
+run_gpu_suites.py unconditionally replaced BLIS_NUM_THREADS=3 with 1.
+Thus all earlier S/L/L2/L3 measurements, including the official CPU route,
+used one BLAS worker and are excluded. The earlier claim that these suite
+measurements used three BLAS workers was incorrect. The four direct named
+CPU measurements after the ELPA correction remain valid.
+
+The helper now preserves explicitly supplied BLAS settings, with --env
+retaining final precedence. A launch-stub regression test checks the actual
+child environment, including inheritance, defaults and explicit overrides.
+The Sirius campaign additionally specifies BLIS_NUM_THREADS=3 on the helper
+command line, rejects a mismatched environment before mpirun, and verifies
+all MPI rank records after the run. This catches launcher overrides that a
+parent-process probe cannot detect.
 
 The final integrated HIP executable was audited again without LD_PRELOAD.
 Both CPU/GPU routes, both C60/GaAs, all 32 ranks used libblis-mt with three
@@ -62,9 +73,9 @@ recovery under ASan/UBSan. A previous full-node DIA512-1 calculation passed
 energy/force comparison (PBS 48451); all fork benchmark workloads are being
 rerun with the final OpenMP-enabled build, including this Krylov change.
 
-All twelve requested fork CPU/GPU measurements require replacement. Old
-OpenMP-disabled fork results are excluded. The official CPU measurements
-remain valid. Full calculations, input controls, 32 MPI x 3 threads per
+All twelve native suite measurements (four suites x three routes) require
+replacement after the launcher correction. Old OpenMP-disabled fork results
+are also excluded. Only direct named CPU measurements remain valid. Full calculations, input controls, 32 MPI x 3 threads per
 physical node, and ordinary gpusolver dispatch are preserved; no separate
 gpusolver2/gpusolver3 timing is added.
 

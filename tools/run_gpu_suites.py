@@ -135,7 +135,10 @@ def main():
     shutil.copy2(binary, output / 'openmx')
     binary = output / 'openmx'
     env = os.environ.copy()
-    env.update(OMP_NUM_THREADS=str(args.threads), OPENBLAS_NUM_THREADS='1', BLIS_NUM_THREADS='1')
+    env['OMP_NUM_THREADS'] = str(args.threads)
+    # Keep explicit site/user BLAS settings; --env below has final precedence.
+    env.setdefault('OPENBLAS_NUM_THREADS', '1')
+    env.setdefault('BLIS_NUM_THREADS', '1')
     for item in args.env:
         if '=' not in item or not item.split('=', 1)[0]:
             parser.error('--env requires NAME=VALUE')
@@ -156,6 +159,7 @@ def main():
         env=args.env, binary_sha256=hashlib.sha256(binary.read_bytes()).hexdigest(),
         environment={k: v for k, v in env.items() if k.startswith((
             'OPENMX_', 'OMP_', 'BLIS_', 'OPENBLAS_', 'MAGMA_', 'GEMMUL8_',
+            'UCX_', 'HSA_', 'LIBOMP', 'LD_', 'OMPI_MCA_memory',
             'CUDA_', 'CUBLAS_', 'CUSOLVER_', 'NVCOMPILER_'))},
         min_available_gib=args.min_available_gib, timeout=args.timeout), indent=2))
     groups = [cases] if args.together else [[inp] for inp in cases]

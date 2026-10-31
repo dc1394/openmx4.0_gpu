@@ -859,7 +859,7 @@ defaults to 8 MPI x 3 OpenMP per APU for CPU and GPU runs, hence
 loads the matching installed libraries. From `work/`, submit with
 `qsub -v OMX_INPUT=input.dat ../tools/sirius_openmx.pbs`.
 The [Sirius threading audit](doc/sirius_threading_validation_20261031.txt)
-records ELPA/BLAS worker checks and the required replacement of earlier fork timings.
+records ELPA/BLAS worker checks and the replacement of earlier native suite timings.
 
 ### HPC SDK 26.9 / CUDA 13.4 update
 

@@ -212,6 +212,9 @@ if(BUILD_TESTING)
   add_test(NAME environment-registry
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_env_registry_cpu.py")
   set_tests_properties(environment-registry PROPERTIES LABELS "unit" TIMEOUT 120)
+  add_test(NAME gpu-suite-environment
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/test_gpu_suite_environment.py")
+  set_tests_properties(gpu-suite-environment PROPERTIES LABELS "unit;benchmark" TIMEOUT 90)
   add_test(NAME nc-block-indices
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_nc_indices_cpu.py")
   set_tests_properties(nc-block-indices PROPERTIES LABELS "unit" TIMEOUT 600)
