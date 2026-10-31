@@ -155,6 +155,15 @@ matrices of earlier steps, so its host estimate starts from the same
 baseline each time. A job with more than two nodes uses all of them; the
 grids are not restricted to two nodes.
 
+The ELPA GPU handles use one host thread per rank. With ELPA 2026.02,
+handle destruction reads the caller's OpenMP limit rather than the size
+of the GPU handle array created during the solve. The bridge therefore
+releases its handles under the same one-thread limit, then restores the
+application's limit. This applies to cache replacement, setup failure,
+grid release and finalization. CPU ELPA and host BLAS retain their
+configured parallelism. tests/run_gs2_memory_mpi.py checks these lifecycle
+paths with a three-thread caller, including deallocation errors.
+
 OPENMX_GS2_PROFILE=1 prints GS2PROF records for ELPA eigensolves and
 COSMA/ScaLAPACK products. They include matrix dimensions, real/complex type,
 the selected GPU/CPU path, and the grid root's complete call time (including

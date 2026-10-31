@@ -1,0 +1,58 @@
+Pegasus gpusolver2 OpenMP teardown correction, 2026-10-31
+=======================================================
+
+Problem and correction
+----------------------
+With a two-thread caller, ELPA 2026.02 GPU solves create one thread of GPU
+handles under the object omp_threads=1 limit, then restore the caller limit.
+Its destructor uses omp_get_max_threads() rather than the allocated array size.
+It therefore attempts to destroy a second, invalid cuBLAS handle. Benzene and
+Cr2 reproduced this after SCF with 24 MPI ranks, two OpenMP threads and MPS.
+
+The shared CUDA/HIP bridge now uses the same host-thread constant for handle
+configuration and destruction. A single release helper temporarily applies
+that limit, calls elpa_deallocate, then restores the caller limit, including
+when ELPA returns an error. Every release path uses it: replacement, failed
+allocation/setup, slot eviction, grid release and finalization.
+CPU ELPA configuration, BLAS provider and numerical operations are unchanged.
+
+Validation
+----------
+Host model: 0:199960.nqsv, four real MPI ranks, three-thread caller, UBSan.
+All 17 admission/lifecycle cases pass. They exercise cache reuse/replacement,
+grid release, setup/parameter failures, asymmetric allocation errors and
+finalization with a returned destructor error. The caller limit is restored.
+The new lifecycle test fails against the unmodified base bridge, confirming
+that it detects the original mismatch.
+
+Native H100 validation: 0:199967.nqsv, one node, 24 MPI ranks, two cores/rank, MPS.
+Benzene at one/two threads and Cr2 at two threads all normally finish with
+ELPA/COSMA GPU kernels explicitly activated. Cr2 also passes without the tracer.
+The tracer forwards cublasDestroy_v2 unchanged and records its return value.
+Every observed cuBLAS destruction succeeds. All 24 ranks destroy ELPA handles
+under the one-thread limit and subsequent application cleanup observes the
+restored caller limit. The two-thread cases retain two application threads.
+Maximum energy difference from the retained CPU output: 4.00746102969e-12 Ha.
+Maximum force-component difference: 2.22e-10 Ha/bohr (both tolerances 1e-7).
+
+The newly built CPU ELPA library also passes 24 real/complex ELPA1/ELPA2 ABI
+cases per rank at 8 MPI x 2 OpenMP, checking eigenvalues, residuals and
+orthogonality against LAPACK with a 2e-11 tolerance. Maxima: {'eigenvalue': 2.27e-13, 'residual': 2.88e-14, 'orthogonality': 2.59e-15}.
+The OpenMP-enabled library and the caller omp_threads=2 setting are retained.
+GPU runtime validation here covers CUDA/H100; the shared bridge model runs on the host.
+
+Build and artifacts
+-------------------
+Tested base: 3e2f5c73e7eef9b3a2be2e7dd33e2aedafdfcc9e
+Tested source patch SHA256: be9641db27c869d669840185bbdf9c0d15357f6a1179b7cc52ffc9f2d9aa9058
+Modified bridge SHA256: be37e04b58ac9525710625ab9c64f37596c685b77be83e1e7ee3bd0bac8cf103
+Installed executable SHA256: b26f08f85225fd87737d135b058882f7d283af6fa5557d3e307f8b1d0abe9524
+NVHPC 26.5, CUDA 13.2, SDK OpenMPI/HPC-X 2.50, ELPA 2026.02.002, sm_90.
+Installed work/openmx and work/lib/libopenmx*.so match the frozen test prefix.
+The preceding installation and failure diagnostics are retained.
+These are functional tests; published large-suite benchmark timings were not replaced.
+
+Compact evidence: benchmarks/results/pegasus_gpusolver2_cleanup_20261031.json
+Raw builds, logs, commands, rank placement and cuBLAS events:
+  work/gpusolver2_cleanup_fix_20261031/
+Prior failure and one-thread controls: work/threading_fix_validation_20261031/

@@ -50,6 +50,7 @@ void elpa_eigenvectors_a_h_a_fc(elpa_t, float complex *, float *, float complex 
 DRIVER = r'''
 #define _POSIX_C_SOURCE 200809L
 #include <mpi.h>
+#include <omp.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -100,18 +101,26 @@ double openmx_gs2_cosma_host_bytes(char a, char b, int m, int n, int k,
     return 1024.0;
 }
 static int live_handles, allocations, last_block, fail_setup, fail_allocate, fail_init;
+static int handle_threads = 1, deallocations, fail_deallocate;
 static const char *fail_key;
 int elpa_init(int v) { (void)v; return fail_init ? 42 : 0; }
 void elpa_uninit(int *err) { *err = 0; }
 elpa_t elpa_allocate(int *err) {
     if (fail_allocate) { *err = 42; return NULL; }
-    ++live_handles; ++allocations; *err = 0; return &live_handles;
+    ++live_handles; ++allocations; handle_threads = 1; *err = 0; return &live_handles;
 }
-void elpa_deallocate(elpa_t h, int *err) { CHECK(h == &live_handles); --live_handles; *err = 0; }
+void elpa_deallocate(elpa_t h, int *err) {
+    CHECK(h == &live_handles);
+    /* Model ELPA's GPU destructor: the current OpenMP limit must match
+       the number of handles created under the object's omp_threads. */
+    CHECK(omp_get_max_threads() == handle_threads);
+    --live_handles; ++deallocations; *err = fail_deallocate ? 42 : 0;
+}
 void elpa_set_integer(elpa_t h, const char *key, int v, int *err) {
     CHECK(h == &live_handles);
     if (strcmp(key, "nblk") == 0) last_block = v;
     *err = fail_key && strcmp(key, fail_key) == 0 ? 42 : 0;
+    if (*err == 0 && strcmp(key, "omp_threads") == 0) handle_threads = v;
 }
 int elpa_setup(elpa_t h) {
     CHECK(h == &live_handles);
@@ -135,6 +144,8 @@ int main(int argc, char **argv) {
     MPI_Init(&argc, &argv);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank_id); MPI_Comm_size(MPI_COMM_WORLD, &rank_count);
     CHECK(rank_count == 4 && argc == 2);
+    omp_set_dynamic(0);
+    omp_set_num_threads(3);
     grid_comm = MPI_COMM_WORLD;
     launcher_size = rank_count;
     unsetenv("OPENMX_GS2_ELPA_GPU"); unsetenv("OPENMX_GS2_GEMM_GPU");
@@ -210,12 +221,33 @@ int main(int argc, char **argv) {
         CHECK(host_solves==2 && memory_queries==0);
         openmx_gs2_grid_free(0); CHECK(live_handles==0);
     }
+    else if (strcmp(argv[1], "handle-thread-lifecycle") == 0) {
+        int err;
+        setenv("OPENMX_GS2_ELPA_GPU", "1", 1);
+        CHECK(gs2_get_handle(0, 64, 64, 0, 16, &err) && err == 0);
+        CHECK(handle_threads == 1 && omp_get_max_threads() == 3);
+        /* A new configuration evicts the old GPU handle; a cached solve
+           leaves the same handle and the caller's thread limit intact. */
+        CHECK(gs2_get_handle(0, 64, 32, 0, 16, &err) && deallocations == 1);
+        CHECK(gs2_get_handle(0, 64, 32, 0, 16, &err) && allocations == 2);
+        CHECK(omp_get_max_threads() == 3);
+        openmx_gs2_grid_free(0);
+        CHECK(live_handles == 0 && deallocations == 2 && omp_get_max_threads() == 3);
+        CHECK(gs2_get_handle(0, 64, 64, 1, 16, &err));
+        /* Even an error returned by the destructor must restore the
+           caller's limit. Finalization remains idempotent. */
+        fail_deallocate = 1;
+        openmx_gs2_finalize();
+        CHECK(live_handles == 0 && deallocations == 3 && omp_get_max_threads() == 3);
+        openmx_gs2_finalize();
+        CHECK(deallocations == 3);
+    }
     else if (strcmp(argv[1], "handle-errors") == 0) {
         setenv("OPENMX_GS2_ELPA_GPU", "0", 1);
-        const char *keys[] = {"na", "nvidia-gpu", "solver", NULL};
-        for (int i = 0; i < 4; ++i) {
+        const char *keys[] = {"omp_threads", "na", "nvidia-gpu", "solver", NULL};
+        for (int i = 0; i < 5; ++i) {
             int err;
-            fail_key = keys[i]; fail_setup = i == 3;
+            fail_key = keys[i]; fail_setup = i == 4;
             CHECK(gs2_get_handle(0, 64, 64, 0, 16, &err) == NULL && err == 42);
             CHECK(live_handles == 0);
         }
@@ -267,6 +299,7 @@ int main(int argc, char **argv) {
         openmx_gs2_grid_free(0); CHECK(live_handles == 0);
     }
     else CHECK(0);
+    CHECK(omp_get_max_threads() == 3);
     MPI_Barrier(MPI_COMM_WORLD);
     if (rank_id == 0) printf("PASS: %s\n", argv[1]);
     MPI_Finalize();
@@ -288,7 +321,7 @@ def main():
     # registry (openmx_env.c) gives every rank the values of rank 0, so the
     # grid cannot disagree and the bridge no longer has a stop for it.
     cases = ["cap", "block", "mod", "uuid", "allocation", "query", "grid-change", "grid-cache-skew",
-             "overflow", "cpu-dispatch", "handle-errors", "block-change",
+             "overflow", "cpu-dispatch", "handle-thread-lifecycle", "handle-errors", "block-change",
              "asymmetric-handle-errors", "handle-cache-skew", "handle-comm-change", "handle-mode-skew"]
     failures = []
     with tempfile.TemporaryDirectory(prefix="openmx-gs2-memory-") as directory:
@@ -299,7 +332,7 @@ def main():
         (tmp / "check.c").write_text(DRIVER + rank_map())
         exe = tmp / "check"
         command = shlex.split(os.environ.get("MPICC", "mpicc")) + [
-            "-std=gnu11", "-O1", "-g", "-Wall", "-Wextra", "-ffunction-sections", "-fdata-sections",
+            "-std=gnu11", "-O1", "-g", "-fopenmp", "-Wall", "-Wextra", "-ffunction-sections", "-fdata-sections",
             "-fsanitize=undefined", "-fno-sanitize-recover=all", "-Wl,--gc-sections",
             "-I" + str(tmp), "-I" + str(ROOT / "source"), str(tmp / "check.c"),
             str(ROOT / "source" / "openmx_env.c"), "-o", str(exe)]

@@ -25,6 +25,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 
 extern void Cblacs_gridinfo(int ictxt, int *nprow, int *npcol, int *myrow, int *mycol);
 extern void Cblacs_get(int ictxt, int what, int *val);
@@ -33,6 +36,27 @@ extern int numroc_(int *n, int *nb, int *iproc, int *isrcproc, int *nprocs);
 extern int SCF_Gpu_Num;
 
 static int gs2_elpa_inited = 0;
+
+/* ELPA GPU work is rank-parallel. Keep this limit consistent throughout
+   the lifetime of every handle owned by this bridge. */
+enum { GS2_ELPA_HOST_THREADS = 1 };
+
+static void gs2_deallocate_handle(elpa_t handle, int *error)
+{
+#ifdef _OPENMP
+    const int caller_threads = omp_get_max_threads();
+    /* ELPA 2026.02 creates GPU handle arrays under its omp_threads limit,
+       but its destructor loops to the caller's omp_get_max_threads(). A
+       larger caller team would access handles beyond that allocation.
+       Restore the application's limit even when deallocation reports an
+       error; CPU ELPA and threaded host BLAS must retain their own teams. */
+    omp_set_num_threads(GS2_ELPA_HOST_THREADS);
+#endif
+    elpa_deallocate(handle, error);
+#ifdef _OPENMP
+    omp_set_num_threads(caller_threads);
+#endif
+}
 
 /* set while the cluster solvers use this bridge as the automatic capacity
    fallback of scf.eigen.lib=gpusolver: a solve or transform that the GPU
@@ -409,7 +433,7 @@ static gs2_handle_slot *gs2_get_handle(int ictxt, int n, int nev, int is_complex
     for (i = 0; i < GS2_MAX_HANDLES; i++) {
         if (gs2_slots[i].used) {
             int derr;
-            elpa_deallocate(gs2_slots[i].h, &derr);
+            gs2_deallocate_handle(gs2_slots[i].h, &derr);
             gs2_slots[i].used = 0;
         }
     }
@@ -453,13 +477,13 @@ static gs2_handle_slot *gs2_get_handle(int ictxt, int n, int nev, int is_complex
     err = gs2_collective_error(err, comm);
     if (err != ELPA_OK) {
         *perr = err;
-        if (h != NULL) { int derr; elpa_deallocate(h, &derr); }
+        if (h != NULL) { int derr; gs2_deallocate_handle(h, &derr); }
         return NULL;
     }
 
     /* GPU work is rank-parallel; keep its host team at one thread while
        the shared ELPA library also supports hybrid CPU solves. */
-    elpa_set_integer(h, "omp_threads", 1, &err);
+    elpa_set_integer(h, "omp_threads", GS2_ELPA_HOST_THREADS, &err);
     if (err == ELPA_OK) elpa_set_integer(h, "na", n, &err);
     if (err == ELPA_OK) elpa_set_integer(h, "nev", nev, &err);
     if (err == ELPA_OK) elpa_set_integer(h, "local_nrows", na_rows, &err);
@@ -499,7 +523,7 @@ static gs2_handle_slot *gs2_get_handle(int ictxt, int n, int nev, int is_complex
     }
     if (i == GS2_MAX_HANDLES) { /* should not happen; recycle the first slot */
         int derr;
-        elpa_deallocate(gs2_slots[0].h, &derr);
+        gs2_deallocate_handle(gs2_slots[0].h, &derr);
         i = 0;
     }
     gs2_slots[i].used = 1;
@@ -519,7 +543,7 @@ static gs2_handle_slot *gs2_get_handle(int ictxt, int n, int nev, int is_complex
 
 setup_failed:
     *perr = err;
-    { int derr; elpa_deallocate(h, &derr); }
+    { int derr; gs2_deallocate_handle(h, &derr); }
     return NULL;
 }
 
@@ -1030,7 +1054,7 @@ void openmx_gs2_grid_free(int ictxt)
 
     for (i = 0; i < GS2_MAX_HANDLES; i++) {
         if (gs2_slots[i].used && gs2_slots[i].ictxt == ictxt) {
-            elpa_deallocate(gs2_slots[i].h, &err);
+            gs2_deallocate_handle(gs2_slots[i].h, &err);
             gs2_slots[i].used = 0;
         }
     }
@@ -1043,7 +1067,7 @@ void openmx_gs2_finalize(void)
     if (!gs2_elpa_inited) return;
     for (i = 0; i < GS2_MAX_HANDLES; i++) {
         if (gs2_slots[i].used) {
-            elpa_deallocate(gs2_slots[i].h, &err);
+            gs2_deallocate_handle(gs2_slots[i].h, &err);
             gs2_slots[i].used = 0;
         }
     }

@@ -1,0 +1,160 @@
+{
+  "tested_base_commit": "3e2f5c73e7eef9b3a2be2e7dd33e2aedafdfcc9e",
+  "tested_patch_sha256": "be9641db27c869d669840185bbdf9c0d15357f6a1179b7cc52ffc9f2d9aa9058",
+  "bridge_sha256": "be37e04b58ac9525710625ab9c64f37596c685b77be83e1e7ee3bd0bac8cf103",
+  "executable_sha256": "b26f08f85225fd87737d135b058882f7d283af6fa5557d3e307f8b1d0abe9524",
+  "backend": "CUDA",
+  "gpu": "NVIDIA H100 PCIe",
+  "mpi_ranks_per_node": 24,
+  "cores_per_rank": 2,
+  "mps_enabled": true,
+  "elpa_openmp_enabled": true,
+  "toolchain": {
+    "nvhpc": "26.5",
+    "cuda": "13.2",
+    "mpi": "SDK OpenMPI 5.0.10rc2 / HPC-X 2.50",
+    "elpa": "2026.02.002"
+  },
+  "host_regression": {
+    "job_id": "0:199960.nqsv",
+    "completed": 1793442532.2042098,
+    "negative_control_returncode": 1,
+    "old_code_reproduces_thread_mismatch": true,
+    "production_cases_passed": 17,
+    "caller_threads": 3,
+    "ranks": 4,
+    "sanitizer": "undefined",
+    "positive_returncode": 0
+  },
+  "cpu_elpa_abi": {
+    "ranks": 8,
+    "threads": 2,
+    "cases_per_rank": 24,
+    "tolerance": 2e-11,
+    "max_errors": {
+      "eigenvalue": 2.27e-13,
+      "residual": 2.88e-14,
+      "orthogonality": 2.59e-15
+    },
+    "passed": true
+  },
+  "gpu_runs": [
+    {
+      "case": "Benzene",
+      "traced": true,
+      "ranks": 24,
+      "threads": 1,
+      "cores_per_rank": 2,
+      "host": "bnode090",
+      "returncode": 0,
+      "normal_finish": true,
+      "gpu_elpa_activated": true
+    },
+    {
+      "case": "Benzene",
+      "traced": true,
+      "ranks": 24,
+      "threads": 2,
+      "cores_per_rank": 2,
+      "host": "bnode090",
+      "returncode": 0,
+      "normal_finish": true,
+      "gpu_elpa_activated": true
+    },
+    {
+      "case": "Cr2",
+      "traced": true,
+      "ranks": 24,
+      "threads": 2,
+      "cores_per_rank": 2,
+      "host": "bnode090",
+      "returncode": 0,
+      "normal_finish": true,
+      "gpu_elpa_activated": true
+    },
+    {
+      "case": "Cr2",
+      "traced": false,
+      "ranks": 24,
+      "threads": 2,
+      "cores_per_rank": 2,
+      "host": "bnode090",
+      "returncode": 0,
+      "normal_finish": true,
+      "gpu_elpa_activated": true
+    }
+  ],
+  "accuracy": [
+    {
+      "case": "Benzene",
+      "threads": 1,
+      "traced": true,
+      "energy_difference_ha": 9.947598300641403e-13,
+      "max_force_difference_ha_bohr": 0.0,
+      "passed": true
+    },
+    {
+      "case": "Benzene",
+      "threads": 2,
+      "traced": true,
+      "energy_difference_ha": 9.947598300641403e-13,
+      "max_force_difference_ha_bohr": 0.0,
+      "passed": true
+    },
+    {
+      "case": "Cr2",
+      "threads": 2,
+      "traced": true,
+      "energy_difference_ha": 4.007461029686965e-12,
+      "max_force_difference_ha_bohr": 1.9199999923280586e-10,
+      "passed": true
+    },
+    {
+      "case": "Cr2",
+      "threads": 2,
+      "traced": false,
+      "energy_difference_ha": 4.007461029686965e-12,
+      "max_force_difference_ha_bohr": 2.220000000000929e-10,
+      "passed": true
+    }
+  ],
+  "cleanup_traces": [
+    {
+      "case": "Benzene",
+      "threads": 1,
+      "ranks": 24,
+      "total_destroy_calls": 96,
+      "elpa_destroy_calls": 24,
+      "all_statuses_success": true,
+      "elpa_destruction_threads": 1,
+      "restored_application_threads": 1,
+      "application_ranks_observed": 24
+    },
+    {
+      "case": "Benzene",
+      "threads": 2,
+      "ranks": 24,
+      "total_destroy_calls": 96,
+      "elpa_destroy_calls": 24,
+      "all_statuses_success": true,
+      "elpa_destruction_threads": 1,
+      "restored_application_threads": 2,
+      "application_ranks_observed": 24
+    },
+    {
+      "case": "Cr2",
+      "threads": 2,
+      "ranks": 24,
+      "total_destroy_calls": 192,
+      "elpa_destroy_calls": 48,
+      "all_statuses_success": true,
+      "elpa_destruction_threads": 1,
+      "restored_application_threads": 2,
+      "application_ranks_observed": 24
+    }
+  ],
+  "native_gpu_job": "0:199967.nqsv",
+  "installed_executable": "work/openmx",
+  "raw_artifacts": "work/gpusolver2_cleanup_fix_20261031",
+  "previous_failure_artifacts": "work/threading_fix_validation_20261031"
+}
