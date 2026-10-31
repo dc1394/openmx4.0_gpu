@@ -21,8 +21,10 @@ DRIVER = r'''
 #include <complex.h>
 #include <math.h>
 #include <mpi.h>
+#include <omp.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <elpa/elpa.h>
 #include "openmx_elpa_cpu.h"
 
 extern void dsyev_(char *, char *, int *, double *, int *, double *, double *, int *, int *);
@@ -148,6 +150,18 @@ int main(int argc,char **argv)
     CHECK(provided>=MPI_THREAD_SERIALIZED);
     MPI_Comm_rank(MPI_COMM_WORLD,&world_rank); MPI_Comm_size(MPI_COMM_WORLD,&world_size);
     CHECK(world_size==6 || world_size==8);
+    /* A serial ELPA archive can pass all eigenpair checks with OMP_NUM_THREADS
+       set. Reject that build explicitly when a threaded run was requested. */
+    int error, configured_threads;
+    const int threads=omp_get_max_threads();
+    CHECK(elpa_init(ELPA_API_VERSION)==ELPA_OK);
+    elpa_t probe=elpa_allocate(&error);
+    CHECK(error==ELPA_OK && probe);
+    elpa_set_integer(probe,"omp_threads",threads,&error);CHECK(error==ELPA_OK);
+    elpa_get_integer(probe,"omp_threads",&configured_threads,&error);
+    CHECK(error==ELPA_OK && configured_threads==threads);
+    elpa_deallocate(probe,&error);CHECK(error==ELPA_OK);
+    if(world_rank==0)printf("ELPA accepts %d OpenMP threads per rank\n",threads);
     const int wide=world_size/2;
     for(int solver=1;solver<=2;solver++)for(int z=0;z<=1;z++) {
         run_case(MPI_COMM_WORLD,2,wide,solver,z,23,13,3);

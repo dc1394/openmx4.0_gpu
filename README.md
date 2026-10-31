@@ -42,7 +42,7 @@ HIP builds accept `OPENMX_HIP_MPI=OPENMPI|INTEL` and
 `OPENMX_HIP_LINALG=AOCL|MKL|OPENBLAS` (defaults: OpenMPI + AOCL).
 AOCL defaults to OpenMP BLIS (`libblis-mt`); set
 `OPENMX_HIP_AOCL_THREADING=SEQUENTIAL` to select sequential BLIS explicitly.
-The HIP ELPA archive is also OpenMP-enabled, so CPU diagonalization uses
+The CUDA and HIP ELPA archives are OpenMP-enabled, so CPU diagonalization uses
 both the MPI ranks and their OpenMP threads.
 The selected MPI and LP64 libraries are shared by OpenMX, ELPA, COSMA and
 MAGMA. Use a separate build directory for each combination. For example:

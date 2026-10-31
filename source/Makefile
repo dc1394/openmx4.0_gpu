@@ -171,6 +171,9 @@ CC_DFTD3 = $(MPICC) -w -O0 -std=gnu11 -fopenmp $(COMMON_INCLUDES)
 FC = $(MPIF90) -O2 -mtune=native -march=native -fopenmp $(FFTW3_INCLUDE) -I$(NVHPC_MATH_DIR)/include
 
 NVPL_SCALAPACK_LIB ?= $(NVHPC_MPI_LIBDIR)/libscalapack_lp64.a
+# The x86 NVHPC LP64 archives use the SDK's OpenMP OpenBLAS implementation.
+# Keep the same provider for the application, ELPA, COSMA and MAGMA; -mp
+# supplies its runtime and OMP_NUM_THREADS controls the worker team.
 NVPL_LAPACK_LIB    ?= $(NVHPC_COMPILER_LIB)/liblapack_lp64.a
 NVPL_BLAS_LIB      ?= $(NVHPC_COMPILER_LIB)/libblas_lp64.a
 NVPL_LIBS          ?= -Wl,--start-group $(NVPL_SCALAPACK_LIB) $(NVPL_LAPACK_LIB) $(NVPL_BLAS_LIB) -Wl,--end-group
@@ -284,14 +287,14 @@ GPUSOLVER2_ELPA_VER  ?= 2026.02.002
 # CPU kernels of the bundled ELPA: auto = the SIMD kernels of the build host
 # (built with the host GCC when the MPI C compiler is NVHPC), generic = none.
 GPUSOLVER2_ELPA_KERNELS ?= auto
-GPUSOLVER2_ELPA_INCLUDE ?= $(GPUSOLVER2_PREFIX)/include/elpa-$(GPUSOLVER2_ELPA_VER)
+GPUSOLVER2_ELPA_INCLUDE ?= $(GPUSOLVER2_PREFIX)/include/elpa_openmp-$(GPUSOLVER2_ELPA_VER)
 GPUSOLVER2_STAMP     = $(GPUSOLVER2_BUILD)/stamp/02_cosma.done
 
 # Keep vendor ScaLAPACK symbols intact. COSTA's unprefixed compatibility
 # archive also replaces internal SVD transpose/redistribution calls and
 # corrupts distributed singular vectors. Use only the explicit costa_ and
 # cosma_ interfaces for accelerated operations.
-GPUSOLVER2_LIBS = $(GPUSOLVER2_PREFIX)/lib/libelpa.a \
+GPUSOLVER2_LIBS = $(GPUSOLVER2_PREFIX)/lib/libelpa_openmp.a \
  -Wl,--start-group \
  $(GPUSOLVER2_PREFIX)/lib/libcosma_prefixed_pxgemm.a \
  $(GPUSOLVER2_PREFIX)/lib/libcosma.a \

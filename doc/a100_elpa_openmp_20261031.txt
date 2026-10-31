@@ -1,0 +1,80 @@
+A100 ELPA/OpenMP correction and BLAS audit, 2026-10-31
+===================================================
+
+Base revision: e00049a59de5cff5346994030af3efe83c642e74 (main).
+This includes the HIP threading fix and MPI_THREAD_SERIALIZED startup.
+
+The previous NVIDIA ELPA configure log had empty OPENMP_CFLAGS and
+OPENMP_FCFLAGS. The native CUDA Makefile linked libelpa.a with the matching
+serial headers. OMP_NUM_THREADS=2 alone could not enable ELPA threading.
+
+The CUDA builder now passes --enable-openmp, and the application links
+libelpa_openmp.a using include/elpa_openmp-2026.02.002. A checksum of the
+dependency builder invalidates successful build stamps when its rules change.
+The public/private ELPA modules are built before the diagnostic programs to
+avoid the bundled test library's incomplete Fortran module dependencies.
+
+The NVHPC 24.7 LP64 BLAS was already threaded. Its actual static archive reports
+OpenBLAS 0.3.23, DYNAMIC_ARCH, USE_OPENMP, LP64. The final application uses the
+SDK libnvomp.so runtime. No BLAS provider replacement was needed. The retained
+upstream OpenMX build uses -qopenmp, libmkl_intel_thread and libiomp5.
+
+Validation
+----------
+The native numerical-library link regression passes for CUDA and HIP, including
+its negative control for unprefixed COSTA symbol interposition. The DC-LNO
+device-binding regression still passes all 7,224 checks.
+
+tests/run_elpa_cpu_mpi.py now checks that the linked ELPA actually accepts the
+requested OpenMP thread count. The old serial archive rejects two threads;
+the rebuilt OpenMP archive passes 24 real/complex CPU ELPA ABI cases per rank.
+Those cases cover both solver stages, rectangular process grids, partial
+eigenvectors, unequal leading dimensions, small local matrices and disjoint
+communicators. Eigenvalues, residuals and orthogonality are checked against
+LAPACK with a 2e-11 tolerance.
+
+A100 validation completed on acc008 as PBS 955165.kugui-pbs, exit status 0,
+at 17:31:22 JST on October 31. The CPU ELPA ABI cases passed with both
+6 MPI x 2 threads and 8 MPI x 2 threads. A BLAS probe linked the same static
+LP64 archive as OpenMX and evaluated six 1536-square DGEMMs:
+
+  Requested threads  Reported BLAS threads  Wall seconds  CPU seconds  Max error
+          1                   1                0.977        0.962         0
+          2                   2                0.532        1.045         0
+
+These probe timings establish threaded execution; they are not SCF benchmarks.
+
+The native Cr2 case also passed with 8 MPI x 2 threads and one A100 under MPS,
+forcing gpusolver2 to exercise CUDA ELPA/COSMA. ELPA's GPU-activation messages
+confirm that its GPU kernels ran. Compared with the new CPU elpa2 path:
+  absolute energy difference: 2.9843e-12 Ha
+  maximum force difference:   1.6100e-10 Ha/bohr
+  integration grids:         identical
+
+Installed and frozen executable SHA256:
+b2d47f4ac29816dc9eb6c864ab5059ad74fdd0da6081c09863f867cd650b7005
+
+Full logs and dependency configuration are retained under:
+  work/codex_elpa_blas_fix_20261031/
+
+Fresh CPU/GPU benchmark matrix
+-----------------------------
+work/codex_cpu_gpu_threaded_20261031/ records the corrected build and source
+patch, frozen inputs/libraries, job ledger, raw outputs and comparison report.
+All 59 requested inputs are repeated on both paths: runtest, runtestL,
+runtestL2, runtestL3, sidia333_nc_cluster.dat and cghelgeo.dat.
+Every benchmark node uses 32 MPI ranks x 2 OpenMP threads. L2/L3 use two nodes;
+the other cases use one node. GPU benchmarks use gpusolver with private MPS,
+initially two GPUs/node and four reserved for capacity retries. The correctness
+validation above is separate from this benchmark matrix.
+
+The previous CPU/GPU experiment and its coordinator were stopped. Its outputs
+are retained without mixing them into the new CPU/GPU comparison. Fe1000's
+previous CPU run hit a three-hour timeout; its new allocation allows sixteen
+hours with a ten-hour per-case timeout. SCF/MD limits and physical inputs are
+unchanged.
+
+The separate official-CPU experiment is retained. Its shell launcher now saves
+the suite arguments before sourcing Intel vars.sh, which clears positional
+parameters. Previously failed startup attempts are preserved, and only
+unstarted cases are resumed with the same official binary and input settings.

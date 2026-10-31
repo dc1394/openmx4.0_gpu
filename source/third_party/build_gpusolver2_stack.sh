@@ -75,6 +75,9 @@ printf '%s\n' "$GPUSOLVER2_COMPILER_LIB" "$GPUSOLVER2_MPI_BIN" "$GPUSOLVER2_MPI_
   "$GPUSOLVER2_GPU_ARCH" "$GPUSOLVER2_ELPA_VER" "$GPUSOLVER2_HOST_CC" "$GPUSOLVER2_HOST_CXX" \
   "$GPUSOLVER2_PREFIX" "${GPUSOLVER2_COMPILER_BIN:-}" "$GPUSOLVER2_SCALAPACK_SO" \
   > "$STAMP/toolchain.tmp"
+# Configuration fixes (including enabling OpenMP) must invalidate the old
+# successful stamps even when compiler and installation paths are unchanged.
+cksum < "$0" >> "$STAMP/toolchain.tmp"
 if ! cmp -s "$STAMP/toolchain.tmp" "$STAMP/toolchain.conf"; then
   rm -f "$STAMP/01_elpa.done" "$STAMP/02_cosma.done"
   # CMake/autoconf caches embed absolute compiler and MPI paths.
@@ -170,9 +173,12 @@ step_elpa() {
     LDFLAGS="-L$GPUSOLVER2_MPI_LIBDIR -L$SCALAPACK_DIR -L$GPUSOLVER2_COMPILER_LIB -L$GPUSOLVER2_MATH_DIR/lib" \
     LIBS="-lscalapack_lp64 -llapack_lp64 -lblas_lp64 -lstdc++" \
     --enable-nvidia-gpu-kernels --with-NVIDIA-GPU-compute-capability=sm_$GPUSOLVER2_GPU_ARCH $SM80 \
-    --with-cuda-path="$GPUSOLVER2_CUDA_HOME" --disable-shared --enable-static \
+    --with-cuda-path="$GPUSOLVER2_CUDA_HOME" --enable-openmp --disable-shared --enable-static \
     $ELPA_KERNEL_OPTS \
     --disable-c-tests --disable-cpp-tests --disable-fortran-tests --disable-Fortran-tests
+  # Finish the public/private modules before ELPA's diagnostics/tests: the
+  # bundled libelpatest has incomplete inter-library Fortran dependencies.
+  make -j "$J" libelpa_openmp.la
   make -j "$J"
   make install
 }
