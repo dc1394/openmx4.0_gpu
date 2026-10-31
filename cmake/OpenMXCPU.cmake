@@ -240,6 +240,7 @@ if(BUILD_TESTING)
   openmx_compiler_runtime_rpath(openmx_cpu_numerics C)
   openmx_compiler_runtime_rpath(openmx_cpu_numerics Fortran)
   target_link_libraries(openmx_cpu_numerics PRIVATE MPI::MPI_C MPI::MPI_Fortran
+    OpenMP::OpenMP_C OpenMP::OpenMP_CXX
     "${OPENMX_CPU_ELPA_LIBRARY}" ${OPENMX_CPU_LINALG_LIBRARIES} m ${CMAKE_DL_LIBS})
   if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     target_link_libraries(openmx_cpu_numerics PRIVATE "-Wl,--disable-new-dtags")
