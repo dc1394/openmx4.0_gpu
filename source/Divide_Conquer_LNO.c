@@ -323,7 +323,9 @@ static void DCLNO_GPUProxy_Init(DCLNOState *state)
         state->ngpu = SCF_Gpu_Num;
     }
 
-    state->gpu_id = state->node_rank % state->ngpu;
+    state->gpu_id = openmx_gpu_map_rank_to_device(
+        openmx_gpu_local_rank_noncollective(),
+        openmx_gpu_local_size_noncollective(), state->ngpu);
     color = state->gpu_id;
 
     MPI_Comm_split(state->node_comm, color, state->node_rank, &state->gpu_group_comm);

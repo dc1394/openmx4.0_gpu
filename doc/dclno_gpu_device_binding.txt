@@ -1,0 +1,84 @@
+DC-LNO GPU binding correction, 2026-10-31
+========================================
+
+CG15c-DC-LNO and N1C999 failed in their GPU paths with 32 MPI ranks,
+two OpenMP threads per rank, two visible A100 GPUs and NVIDIA MPS.
+Both logs contain 16 CUDA_ERROR_INVALID_HANDLE failures in
+SOG_Device_EvalAtomTile_Part, after the first DC-LNO eigenproblem.
+
+DCLNO_GPUProxy_Init selected node_rank % ngpu, while the shared CUDA and
+OpenACC binding uses contiguous blocks of node-local MPI ranks by default.
+For 32 ranks and two GPUs, ranks 0..15 initially use GPU 0 and ranks
+16..31 use GPU 1. DC-LNO's modulo selection moved 16 ranks to a different
+device after their per-device orbital tables/runtime state were prepared:
+
+  Local rank    Shared default device    Former DC-LNO device
+       1                  0                       1
+      16                  1                       0
+
+The initialization now uses openmx_gpu_map_rank_to_device with the same
+launcher-local rank and size as the other CUDA/OpenACC binding sites.
+This also preserves the original device when the solver communicator is
+only a subset of the node's MPI ranks. scf.gpu.num remains the upper bound;
+OPENMX_GPU_RANK_MAP=mod continues to select the common modulo map.
+
+The change is in source/Divide_Conquer_LNO.c. The orbital evaluation and
+numerical algorithms are unchanged.
+
+Validation
+----------
+tests/run_dclno_device_binding_cpu.py extracts the production DC-LNO
+initializer and the production common rank map, with MPI/CUDA boundaries
+stubbed. It checks the pre-existing CUDA/OpenACC assignment is preserved,
+device caps, block/modulo maps, uneven rank counts, communicator subsets
+and initialization reuse. The original initializer fails the assignment
+check. The repaired initializer passes all 7,224 binding checks.
+
+The NVIDIA build and installation completed with Makefile.kugui,
+NVHPC 24.7 / CUDA 12.5, GCC 12.2 and site Open MPI 4.1.6.
+
+A paired full-input A100 regression completed as PBS 954877.kugui-pbs,
+with exit status zero on acc008 at 09:05:20 JST on October 31.
+It ran the original frozen binary first, then the repaired binary,
+with the same 32 MPI x 2 OpenMP / two-GPU / private-MPS allocation.
+Both original inputs retain their SCF limits. Repaired energies and every
+force component were compared with the completed CPU references at 1e-7
+Ha and 1e-7 Ha/bohr. Both original GPU cases reproduced the same
+CUDA_ERROR_INVALID_HANDLE failure. Both repaired GPU cases completed:
+
+Case             CPU seconds  Repaired GPU seconds   abs dE (Ha)   max abs dF (Ha/bohr)
+CG15c-DC-LNO         63.602           97.903             1.67e-10          1.00e-12
+N1C999             548.362          715.987             1.28e-09          1.00e-12
+
+SCF counts were CPU/GPU 42/42 for CG15c-DC-LNO and 59/58 for N1C999.
+The native Total Computational Time includes application initialization.
+The rank records verify 32 MPI processes, two threads each, 64 distinct
+CPU cores, two visible GPUs and the private MPS pipe. Its MPS server was
+shut down after verification. No full CPU/GPU suite has been resumed.
+
+Artifacts:
+  work/codex_dclno_device_fix_20261031/source-fix.patch
+  work/codex_dclno_device_fix_20261031/submitted-job.json
+  work/codex_dclno_device_fix_20261031/jobs/regression/job.log
+  work/codex_dclno_device_fix_20261031/before/results/
+  work/codex_dclno_device_fix_20261031/after/results/
+  work/codex_dclno_device_fix_20261031/validation.json
+  work/codex_dclno_device_fix_20261031/cpu-binding-regression.json
+
+The existing run_dclno_solver_retry.py numerical fixture currently fails
+to compile because OpenMXChemicalPotentials has no declaration in that
+fixture. This occurs outside the device-binding function tested here.
+
+Benchmark state
+---------------
+The previous CPU/GPU matrix and its automatic Git publication have been
+stopped at the user's request. The two targeted GPU regressions described
+above have completed for this fix. Separately, 44 upstream-CPU cases (cghelgeo and
+the L/L2/L3 suites) are scheduled using the frozen official OpenMX 4.0.1
+oneAPI / Intel MPI / MKL build on GPU nodes. Each node uses 32 MPI ranks
+and two OpenMP threads; L2/L3 use two nodes. Their results are in
+work/codex_upstream_benchmark_20261031/.
+
+Relevant runtime documentation:
+  https://docs.nvidia.com/hpc-sdk/compilers/openacc-gs/index.html
+  https://docs.nvidia.com/cuda/cuda-driver-api/cuda_driver_api/group__CUDA__EXEC.html
