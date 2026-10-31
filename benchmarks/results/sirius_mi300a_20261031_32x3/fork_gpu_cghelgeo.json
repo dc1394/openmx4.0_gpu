@@ -1,0 +1,67 @@
+{
+  "status": "completed",
+  "route": "fork_gpu",
+  "workload": "cghelgeo",
+  "nodes": 1,
+  "ranks_per_node": 32,
+  "threads": 3,
+  "jobid": "48503.pbs",
+  "environment": {
+    "MAGMA_NUM_THREADS": "1",
+    "HSA_XNACK": "1",
+    "UCX_NET_DEVICES": "mlx5_0:1,mlx5_1:1,mlx5_2:1,mlx5_3:1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "HSA_ENABLE_SDMA": "1",
+    "HSA_NO_SCRATCH_RECLAIM": "1",
+    "OMP_DYNAMIC": "FALSE",
+    "HSA_OVERRIDE_CPU_AFFINITY_DEBUG": "0",
+    "LD_LIBRARY_PATH": "/opt/rocm-7.2.0/llvm/lib:/opt/rocm-7.2.0/lib/llvm/lib:/opt/rocm-7.2.0/lib:/system/apps/rhel/aocl/5.1.0/aocc/lib:/system/apps/rhel/aocc/5.0.0/lib:/system/apps/rhel/openmpi/5.0.10/rocm/7.2.0-rocm_amdflang/ompi/lib:/system/apps/rhel/openmpi/5.0.10/rocm/7.2.0-rocm_amdflang/ofi/lib:/system/apps/rhel/openmpi/5.0.10/rocm/7.2.0-rocm_amdflang/ucc/lib:/system/apps/rhel/openmpi/5.0.10/rocm/7.2.0-rocm_amdflang/ucx/lib:/opt/rocm-7.2.0/lib",
+    "BLIS_NUM_THREADS": "3",
+    "OMP_MAX_ACTIVE_LEVELS": "1",
+    "UCX_TLS": "self,cma,rc",
+    "OMP_NUM_THREADS": "3",
+    "UCX_RCACHE_ENABLE": "n",
+    "OPENMX_GPU": "1",
+    "OPENMX_GPU_VERBOSE": "1",
+    "OPENMX_AFFINITY_DIR": "/work/GPU2026/dc1394/openmx4.0_gpu/work/codex_sirius_benchmark_20261031/runs/fork_gpu/cghelgeo/affinity",
+    "LIBOMPTARGET_MEMORY_MANAGER_THRESHOLD": "0",
+    "LD_PRELOAD": "/system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5:/work/GPU2026/dc1394/openmx4.0_gpu/work/codex_sirius_benchmark_20261031/binaries/fork_gpu/libopenmx_core.so:/work/GPU2026/dc1394/openmx4.0_gpu/work/codex_sirius_benchmark_20261031/binaries/fork_gpu/libopenmx_host_simd.so"
+  },
+  "binary_sha256": "9f32ba753465990df98c4d52978780f06241340f6877fdaa655486d707c4bd93",
+  "blas_configuration": {
+    "bli_info_get_enable_threading": 1,
+    "bli_info_get_enable_openmp": 1,
+    "bli_info_get_enable_pthreads": 0,
+    "bli_thread_get_num_threads": 3,
+    "omp_get_max_threads": 3,
+    "omp_get_max_active_levels": 1,
+    "dgemm_provider": "/system/apps/rhel/9.6-202602/aocl/5.1.0/aocc/lib_LP64/libblis-mt.so.5.1.0",
+    "openmp_provider": "/opt/rocm-7.2.0/lib/llvm/lib/libomp.so"
+  },
+  "command": [
+    "mpirun",
+    "-np",
+    "32",
+    "--bind-to",
+    "core",
+    "--map-by",
+    "ppr:32:node:PE=3",
+    "/bin/python3",
+    "/work/GPU2026/dc1394/openmx4.0_gpu/work/codex_sirius_benchmark_20261031/rank-launcher.py",
+    "/work/GPU2026/dc1394/openmx4.0_gpu/work/codex_sirius_benchmark_20261031/binaries/fork_gpu/openmx",
+    "input.dat",
+    "-nt",
+    "3"
+  ],
+  "returncode": 0,
+  "wall_seconds": 350.22884072200395,
+  "affinity": {
+    "nodes": {
+      "a05": 32
+    },
+    "ranks": 32,
+    "threads_per_rank": 3,
+    "unique_cores_per_node": 96
+  },
+  "benchmark_seconds": 344.113
+}

@@ -1,0 +1,22 @@
+{
+  "user_corrected_condition": "4APU/one node/32MPIx3OpenMP",
+  "workloads": {
+    "S": 1,
+    "L": 1,
+    "sidia333_nc_cluster": 1,
+    "cghelgeo": 1
+  },
+  "reuse_measurements": 9,
+  "new_gpu_measurements": [
+    "sidia333_nc_cluster",
+    "cghelgeo",
+    "L"
+  ],
+  "excluded": [
+    "L2",
+    "L3"
+  ],
+  "no_24x2_or_48x2_jobs_submitted": true,
+  "point_estimate": 3.93341223754,
+  "hard_cap": 16
+}

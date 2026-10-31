@@ -1,0 +1,20 @@
+{
+  "allocation_apus": 4,
+  "physical_nodes": 1,
+  "mpi_ranks": 32,
+  "openmp_threads": 3,
+  "additional_measurements": [
+    "fork_gpu/sidia333_nc_cluster",
+    "fork_gpu/cghelgeo",
+    "fork_gpu/L"
+  ],
+  "reused_measurements": 9,
+  "jobid": "48503.pbs",
+  "allocated_walltime_seconds": 3534,
+  "allocation_coefficient": 1,
+  "additional_apu_hours": 3.9266666666666667,
+  "accounting_points_rounded": 3.93,
+  "requested_point_limit": 150,
+  "job_walltime_limit_hours": 4,
+  "job_point_limit": 16
+}

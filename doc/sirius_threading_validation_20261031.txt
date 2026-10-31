@@ -95,7 +95,19 @@ Later remote integration: 73c4a2c0 (NVIDIA ELPA GPU handle cleanup) was
 fast-forwarded and rebuilt on Sirius. Its 17 MPI admission/lifecycle model
 cases pass with a three-thread caller and UBSan. The new guard changes
 only GPU ELPA destruction, preserving the caller's thread limit afterward.
-The CPU code and shared DSOs are unchanged. Remaining GPU measurements
-use this guard; the completed S14 result used no GPU ELPA handle. Exact
-source and executable versions are retained per workload. No additional
-gpusolver2 timing was run for this integration.
+The CPU code and shared DSOs are unchanged. GPU S14 was subsequently
+repeated with the guard at the user's request. All four final GPU workloads
+use the same corrected executable; the earlier S result is excluded.
+Exact source and executable versions are retained per workload. No
+additional gpusolver2 timing was run for this integration.
+
+Final user-selected scope: one four-APU node, 32 MPI x 3 OpenMP, native S14,
+L16, sidia333_nc_cluster and cghelgeo, for official CPU, fork CPU and fork
+gpusolver routes. L2/L3 were removed from the scope after the budget stop.
+The eight matching CPU measurements and corrected GPU S result were reused;
+only the three missing GPU workloads were run in PBS 48503. All twelve
+measurements finish and all 96 pairwise energy/force comparisons pass 1e-7.
+Maximum energy difference: 2.8780050343e-8 Ha; maximum force-component
+difference: 4.7201e-8 Ha/bohr. The unchanged 25-SCF sidia333 deck remains
+unconverged on all three routes; numerical agreement is reported separately.
+Final data: benchmarks/results/sirius_mi300a_20261031_32x3/README.txt

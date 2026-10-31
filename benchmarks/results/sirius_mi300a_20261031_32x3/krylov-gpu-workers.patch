@@ -1,0 +1,42 @@
+diff --git a/source/backends/hip/src/Krylov.c b/source/backends/hip/src/Krylov.c
+index 4ab90299..2450f4c9 100644
+--- a/source/backends/hip/src/Krylov.c
++++ b/source/backends/hip/src/Krylov.c
+@@ -25,6 +25,7 @@
+ #include "lapack_prototypes.h"
+ #include "set_hip_default_device_from_local_rank.h"
+ #include <omp.h>
++#include <rocblas/rocblas.h>
+ 
+ /* Stage timing of the Krylov solver (the time1..time16 blocks below, printed
+    per rank at the end of each call): set OPENMX_KRYLOV_MEASURE_TIME=1.
+@@ -253,7 +254,13 @@ static void Krylov_GPU_InitOnce(KrylovState *state)
+     if (eigen > 0) state->gpu_eigen_min = eigen > INT_MAX ? INT_MAX : (int)eigen;
+     state->gpu_fused = openmx_env_flag_at(OPENMX_ENV_KRYLOV_GPU_FUSED, state->gpu_fused);
+     state->gpu_gemmul8 = openmx_env_flag_at(OPENMX_ENV_KRYLOV_GEMMUL8, state->gpu_gemmul8);
+-    if (Krylov_GPU_Enabled(state)) wait_hipfunc(OpenMX_Resource_GpuFree(state->resources, 0));
++    if (Krylov_GPU_Enabled(state)){
++      wait_hipfunc(OpenMX_Resource_GpuFree(state->resources, 0));
++      /* Initialize the device's Tensile kernel library before OpenMP
++         workers enter their first GEMM. Concurrent lazy initialization
++         can leave hipErrorNoBinaryForGpu even when GEMM and sync succeed. */
++      rocblas_initialize();
++    }
+ }
+ 
+ 
+@@ -286,6 +293,14 @@ static Krylov_GPU_Workspace *Krylov_GPU_GetWorkspace(KrylovState *state, int thr
+   if (!Krylov_GPU_Enabled(state) ||
+       thread_id < 0 || state->gpu_ws_pool_size <= thread_id) return NULL;
+ 
++  /* HIP's current device belongs to the host thread. OpenMP workers can
++     start on device 0 or retain a device from an earlier region. Bind every
++     entry before creating a stream or using the rank's resident KU cache. */
++  if (hipSetDevice(state->GPU_Preflight_hip_device) != hipSuccess){
++    (void)hipGetLastError();
++    return NULL;
++  }
++
+   ws = &state->gpu_ws_pool[thread_id];
+   if (!ws->active && ws->stream == NULL){
+     Krylov_GPU_Workspace_Init(state, ws);

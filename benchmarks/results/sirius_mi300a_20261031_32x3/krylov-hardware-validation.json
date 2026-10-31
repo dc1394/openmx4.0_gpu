@@ -1,0 +1,37 @@
+{
+  "jobid": "48451.pbs",
+  "status": "passed",
+  "nodes": 1,
+  "ranks": 32,
+  "threads": 3,
+  "physical_gpus": 4,
+  "case": "DIA512-1",
+  "selector": "gpusolver",
+  "binary_sha256": "f93f762dc0298497326b40a768d96ed16db78f5da51ccf4b352724f2a537ae4a",
+  "native_result": [
+    {
+      "case": "DIA512-1",
+      "status": "completed",
+      "returncode": 0,
+      "wall_seconds": 110.37128512901836,
+      "peak_rss_gib": 156.17330932617188,
+      "min_available_gib": 262.07579803466797,
+      "elapsed_seconds": 102.68,
+      "diff_utot": 3.59e-10,
+      "diff_force": 6.73e-10
+    }
+  ],
+  "comparisons": [
+    {
+      "baseline": "upstream_cpu",
+      "delta_energy_hartree": 8.149072527885437e-10,
+      "max_delta_force_hartree_per_bohr": 8.404999999808704e-09
+    },
+    {
+      "baseline": "fork_cpu",
+      "delta_energy_hartree": 8.321876521222293e-10,
+      "max_delta_force_hartree_per_bohr": 2.4780000000730606e-09
+    }
+  ],
+  "gpu_eigensolver_calls": 14848
+}

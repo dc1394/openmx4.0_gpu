@@ -1,0 +1,36 @@
+{
+  "date": "2026-10-31",
+  "scope": [
+    "S14",
+    "L16",
+    "sidia333_nc_cluster",
+    "cghelgeo"
+  ],
+  "nodes": 1,
+  "apus": 4,
+  "ranks": 32,
+  "threads": 3,
+  "blas_threads": 3,
+  "completed_measurements": 12,
+  "cases_per_route": 32,
+  "completed_calculations": 96,
+  "pairwise_comparisons": 96,
+  "passed_comparisons": 96,
+  "energy_tolerance_hartree": 1e-07,
+  "force_tolerance_hartree_per_bohr": 1e-07,
+  "max_delta_energy_hartree": 2.878005034290254e-08,
+  "max_delta_force_hartree_per_bohr": 4.7200999999997856e-08,
+  "reused_matching_completed_measurements": 9,
+  "additional_gpu_measurements": [
+    "sidia333_nc_cluster",
+    "cghelgeo",
+    "L"
+  ],
+  "additional_gpu_job": "48503.pbs",
+  "gpu_binary_sha256": "9f32ba753465990df98c4d52978780f06241340f6877fdaa655486d707c4bd93",
+  "gpu_source_commit": "73c4a2c03e605ad675bbc3a30d690681b1e6b387",
+  "all_gpu_workloads_include_73c4a2c0": true,
+  "fixed_scf_input": "sidia333 retains25SCF and is not fully converged on all three routes; the other31cases converge on all routes.",
+  "result_directory": "benchmarks/results/sirius_mi300a_20261031_32x3",
+  "no_separate_gpusolver2_or_3_benchmarks": true
+}

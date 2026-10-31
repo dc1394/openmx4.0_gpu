@@ -1,0 +1,16 @@
+#!/usr/bin/python3
+import os,sys
+from pathlib import Path
+args=sys.argv[1:]
+import json
+expected={'OMP_NUM_THREADS':'3','BLIS_NUM_THREADS':'3','OPENBLAS_NUM_THREADS':'1'}
+for key,value in expected.items():
+    if os.environ.get(key)!=value: raise SystemExit('MPI launch environment mismatch: '+key+'='+str(os.environ.get(key)))
+folder=Path(os.environ['OPENMX_AFFINITY_DIR']).parent
+folder.mkdir(parents=True,exist_ok=True)
+(folder/'launch-environment.json').write_text(json.dumps({k:v for k,v in os.environ.items() if k.startswith(('OMP','BLIS','OPENBLAS','MAGMA','HSA','UCX','LIBOMP','LD_'))},indent=2)+'\n')
+indices=[i for i,v in enumerate(args) if Path(v).name=='openmx']
+if len(indices)!=1: raise SystemExit('Expected one OpenMX executable')
+i=indices[0]
+args[i:i]=['/usr/bin/python3', '/work/GPU2026/dc1394/openmx4.0_gpu/work/codex_sirius_benchmark_20261031/rank-launcher.py']
+os.execvp('mpirun',['mpirun',*args])

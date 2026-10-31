@@ -1,0 +1,28 @@
+{
+  "parallel": {
+    "gemm_calls": 288,
+    "workers": 96,
+    "pending_error_counts": {
+      "0,0": 274,
+      "209,209": 14
+    },
+    "all_products_exact": true,
+    "numerical_failures": 0
+  },
+  "initialize": {
+    "gemm_calls": 288,
+    "workers": 96,
+    "pending_error_counts": {
+      "0,0": 288
+    },
+    "all_products_exact": true,
+    "numerical_failures": 0
+  },
+  "jobid": "48450.pbs",
+  "nodes": 1,
+  "ranks": 32,
+  "threads_per_rank": 3,
+  "gpus": 4,
+  "note": "Diagnostic, not a benchmark. Same native DGEMM shapes as Krylov fused path. Upfront rocblas_initialize runs on the main thread before the three-worker region. No pending HIP errors are discarded in production.",
+  "reference": "/opt/rocm-7.2.0/include/rocblas/internal/rocblas-functions.h:25002"
+}

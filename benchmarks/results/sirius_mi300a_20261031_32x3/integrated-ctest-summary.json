@@ -1,0 +1,16 @@
+{
+  "total": 634,
+  "passed": 632,
+  "failed": {
+    "628": {
+      "name": "neutral-grid-metadata-native",
+      "passed": false,
+      "log": "integrated-threaded-host-env.log"
+    },
+    "72": {
+      "name": "basis-text-numbers",
+      "passed": false,
+      "log": "integrated-threaded-host-env.log"
+    }
+  }
+}

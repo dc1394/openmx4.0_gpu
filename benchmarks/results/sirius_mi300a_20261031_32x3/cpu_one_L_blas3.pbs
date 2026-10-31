@@ -1,0 +1,33 @@
+#!/bin/bash
+#PBS -A GPU2026
+#PBS -q gen
+#PBS -l select=4:ncpus=24:mpiprocs=24:mem=124gb:ngpus=1:host=a05
+#PBS -l place=pack
+#PBS -l walltime=02:00:00
+#PBS -N omx_cpu_one_L_blas3
+#PBS -j oe
+#PBS -m n
+#PBS -o /work/GPU2026/dc1394/openmx4.0_gpu/work/codex_sirius_benchmark_20261031/cpu_one_L_blas3.pbs.log
+set -euo pipefail
+b=/work/GPU2026/dc1394/openmx4.0_gpu/work/codex_sirius_benchmark_20261031
+exec > "$b/cpu_one_L_blas3.log" 2>&1
+module purge
+module load rocm/7.2.0 openmpi/5.0.10/rocm7.2.0_amdflang
+unset OMP_TOOL OMP_TOOL_LIBRARIES LD_DEBUG LD_DEBUG_OUTPUT
+unset HIP_LAUNCH_BLOCKING AMD_SERIALIZE_KERNEL AMD_SERIALIZE_COPY OFFLOAD_TRACK_ALLOCATION_TRACES OFFLOAD_TRACK_NUM_KERNEL_LAUNCH_TRACES OMX_PROFILE_DIR
+unset LD_PRELOAD OMPX_APU_MAPS OMPX_DISABLE_USM_MAPS OMP_TARGET_OFFLOAD
+export LD_LIBRARY_PATH=/opt/rocm-7.2.0/llvm/lib:/opt/rocm-7.2.0/lib/llvm/lib:/opt/rocm-7.2.0/lib:/system/apps/rhel/aocl/5.1.0/aocc/lib:/system/apps/rhel/aocc/5.0.0/lib:${LD_LIBRARY_PATH:-}
+export UCX_TLS=self,cma,rc
+export HSA_ENABLE_SDMA=1 HSA_NO_SCRATCH_RECLAIM=1
+export HSA_XNACK=1 HSA_OVERRIDE_CPU_AFFINITY_DEBUG=0 UCX_RCACHE_ENABLE=n
+export OMP_NUM_THREADS=3 OMP_MAX_ACTIVE_LEVELS=1 OMP_DYNAMIC=FALSE
+export BLIS_NUM_THREADS=3 OPENBLAS_NUM_THREADS=1 MAGMA_NUM_THREADS=1
+qstat -f "$PBS_JOBID" > "$b/cpu_one_L_blas3.allocation.txt"
+cp "$PBS_NODEFILE" "$b/cpu_one_L_blas3.nodefile"
+module list
+mpirun --version
+hostname
+date -Is
+unset HIP_LAUNCH_BLOCKING AMD_SERIALIZE_KERNEL AMD_SERIALIZE_COPY OFFLOAD_TRACK_ALLOCATION_TRACES OFFLOAD_TRACK_NUM_KERNEL_LAUNCH_TRACES LIBOMP_USE_HIDDEN_HELPER_TASK OMPI_MCA_memory
+python3 "$b/run.py" upstream_cpu L
+python3 "$b/run.py" fork_cpu L

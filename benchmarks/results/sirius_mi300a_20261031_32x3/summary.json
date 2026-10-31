@@ -1,0 +1,2978 @@
+{
+  "scope": {
+    "S": 1,
+    "L": 1,
+    "sidia333_nc_cluster": 1,
+    "cghelgeo": 1
+  },
+  "expected_measurements": 12,
+  "expected_cases_per_route": 32,
+  "energy_tolerance_hartree": 1e-07,
+  "force_tolerance_hartree_per_bohr": 1e-07,
+  "completed_measurements": 12,
+  "timings": [
+    {
+      "workload": "S",
+      "nodes": 1,
+      "route": "upstream_cpu",
+      "status": "completed",
+      "benchmark_seconds": 61.97,
+      "wall_seconds": 67.63379326599534,
+      "cases": 14,
+      "jobid": "48495.pbs",
+      "error": null,
+      "binary_sha256": "dccf49f4d3fcbd68b4cece301c355f7994d86b700bd575d11bfea96eddf32a69"
+    },
+    {
+      "workload": "S",
+      "nodes": 1,
+      "route": "fork_cpu",
+      "status": "completed",
+      "benchmark_seconds": 43.580000000000005,
+      "wall_seconds": 50.92910010702326,
+      "cases": 14,
+      "jobid": "48495.pbs",
+      "error": null,
+      "binary_sha256": "5878fedc02e93bd5db526e6bea87112fa8113f737ed964f32c517dce9689bdf9"
+    },
+    {
+      "workload": "S",
+      "nodes": 1,
+      "route": "fork_gpu",
+      "status": "completed",
+      "benchmark_seconds": 140.31,
+      "wall_seconds": 147.76030890498077,
+      "cases": 14,
+      "jobid": "48500.pbs",
+      "error": null,
+      "binary_sha256": "9f32ba753465990df98c4d52978780f06241340f6877fdaa655486d707c4bd93"
+    },
+    {
+      "workload": "L",
+      "nodes": 1,
+      "route": "upstream_cpu",
+      "status": "completed",
+      "benchmark_seconds": 2219.35,
+      "wall_seconds": 2226.224368443014,
+      "cases": 16,
+      "jobid": "48498.pbs",
+      "error": null,
+      "binary_sha256": "dccf49f4d3fcbd68b4cece301c355f7994d86b700bd575d11bfea96eddf32a69"
+    },
+    {
+      "workload": "L",
+      "nodes": 1,
+      "route": "fork_cpu",
+      "status": "completed",
+      "benchmark_seconds": 1533.4099999999999,
+      "wall_seconds": 1541.3409335179895,
+      "cases": 16,
+      "jobid": "48498.pbs",
+      "error": null,
+      "binary_sha256": "5878fedc02e93bd5db526e6bea87112fa8113f737ed964f32c517dce9689bdf9"
+    },
+    {
+      "workload": "L",
+      "nodes": 1,
+      "route": "fork_gpu",
+      "status": "completed",
+      "benchmark_seconds": 3032.94,
+      "wall_seconds": 3041.749775927019,
+      "cases": 16,
+      "jobid": "48503.pbs",
+      "error": null,
+      "binary_sha256": "9f32ba753465990df98c4d52978780f06241340f6877fdaa655486d707c4bd93"
+    },
+    {
+      "workload": "sidia333_nc_cluster",
+      "nodes": 1,
+      "route": "upstream_cpu",
+      "status": "completed",
+      "benchmark_seconds": 247.52,
+      "wall_seconds": 252.56348240500665,
+      "cases": 1,
+      "jobid": "48407.pbs",
+      "error": null,
+      "binary_sha256": "dccf49f4d3fcbd68b4cece301c355f7994d86b700bd575d11bfea96eddf32a69"
+    },
+    {
+      "workload": "sidia333_nc_cluster",
+      "nodes": 1,
+      "route": "fork_cpu",
+      "status": "completed",
+      "benchmark_seconds": 192.886,
+      "wall_seconds": 199.8122979089967,
+      "cases": 1,
+      "jobid": "48479.pbs",
+      "error": null,
+      "binary_sha256": "5878fedc02e93bd5db526e6bea87112fa8113f737ed964f32c517dce9689bdf9"
+    },
+    {
+      "workload": "sidia333_nc_cluster",
+      "nodes": 1,
+      "route": "fork_gpu",
+      "status": "completed",
+      "benchmark_seconds": 133.143,
+      "wall_seconds": 140.21032965098857,
+      "cases": 1,
+      "jobid": "48503.pbs",
+      "error": null,
+      "binary_sha256": "9f32ba753465990df98c4d52978780f06241340f6877fdaa655486d707c4bd93"
+    },
+    {
+      "workload": "cghelgeo",
+      "nodes": 1,
+      "route": "upstream_cpu",
+      "status": "completed",
+      "benchmark_seconds": 860.989,
+      "wall_seconds": 865.8686388409988,
+      "cases": 1,
+      "jobid": "48407.pbs",
+      "error": null,
+      "binary_sha256": "dccf49f4d3fcbd68b4cece301c355f7994d86b700bd575d11bfea96eddf32a69"
+    },
+    {
+      "workload": "cghelgeo",
+      "nodes": 1,
+      "route": "fork_cpu",
+      "status": "completed",
+      "benchmark_seconds": 792.17,
+      "wall_seconds": 798.4553116230236,
+      "cases": 1,
+      "jobid": "48479.pbs",
+      "error": null,
+      "binary_sha256": "5878fedc02e93bd5db526e6bea87112fa8113f737ed964f32c517dce9689bdf9"
+    },
+    {
+      "workload": "cghelgeo",
+      "nodes": 1,
+      "route": "fork_gpu",
+      "status": "completed",
+      "benchmark_seconds": 344.113,
+      "wall_seconds": 350.22884072200395,
+      "cases": 1,
+      "jobid": "48503.pbs",
+      "error": null,
+      "binary_sha256": "9f32ba753465990df98c4d52978780f06241340f6877fdaa655486d707c4bd93"
+    }
+  ],
+  "comparisons": [
+    {
+      "workload": "S",
+      "case": "Benzene",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_cpu",
+      "delta_energy_hartree": 0.0,
+      "max_delta_force_hartree_per_bohr": 0.0,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 19,
+      "candidate_scf": 19,
+      "status": "passed"
+    },
+    {
+      "workload": "S",
+      "case": "C60",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_cpu",
+      "delta_energy_hartree": 1.0231815394945443e-12,
+      "max_delta_force_hartree_per_bohr": 1.0000056338554941e-12,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 27,
+      "candidate_scf": 27,
+      "status": "passed"
+    },
+    {
+      "workload": "S",
+      "case": "CO",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_cpu",
+      "delta_energy_hartree": 0.0,
+      "max_delta_force_hartree_per_bohr": 1.5000001241105565e-11,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 182,
+      "candidate_scf": 182,
+      "status": "passed"
+    },
+    {
+      "workload": "S",
+      "case": "Cr2",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_cpu",
+      "delta_energy_hartree": 0.0,
+      "max_delta_force_hartree_per_bohr": 2.0100000000004263e-10,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 21,
+      "candidate_scf": 21,
+      "status": "passed"
+    },
+    {
+      "workload": "S",
+      "case": "Crys-MnO",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_cpu",
+      "delta_energy_hartree": 4.660023478209041e-10,
+      "max_delta_force_hartree_per_bohr": 6.39e-10,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 37,
+      "candidate_scf": 40,
+      "status": "passed"
+    },
+    {
+      "workload": "S",
+      "case": "GaAs",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_cpu",
+      "delta_energy_hartree": 1.0231815394945443e-12,
+      "max_delta_force_hartree_per_bohr": 3.000000000000093e-12,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 13,
+      "candidate_scf": 13,
+      "status": "passed"
+    },
+    {
+      "workload": "S",
+      "case": "Glycine",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_cpu",
+      "delta_energy_hartree": 1.0018652574217413e-12,
+      "max_delta_force_hartree_per_bohr": 1.0000056338554941e-12,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 20,
+      "candidate_scf": 20,
+      "status": "passed"
+    },
+    {
+      "workload": "S",
+      "case": "Graphite4",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_cpu",
+      "delta_energy_hartree": 0.0,
+      "max_delta_force_hartree_per_bohr": 1.000000000001134e-12,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 14,
+      "candidate_scf": 14,
+      "status": "passed"
+    },
+    {
+      "workload": "S",
+      "case": "H2O",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_cpu",
+      "delta_energy_hartree": 0.0,
+      "max_delta_force_hartree_per_bohr": 9.999999999999965e-13,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 31,
+      "candidate_scf": 31,
+      "status": "passed"
+    },
+    {
+      "workload": "S",
+      "case": "H2O-EF",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_cpu",
+      "delta_energy_hartree": 0.0,
+      "max_delta_force_hartree_per_bohr": 1.0000056338554941e-12,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 17,
+      "candidate_scf": 17,
+      "status": "passed"
+    },
+    {
+      "workload": "S",
+      "case": "HMn",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_cpu",
+      "delta_energy_hartree": 0.0,
+      "max_delta_force_hartree_per_bohr": 0.0,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 26,
+      "candidate_scf": 26,
+      "status": "passed"
+    },
+    {
+      "workload": "S",
+      "case": "Methane",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_cpu",
+      "delta_energy_hartree": 1.4299850192855956e-10,
+      "max_delta_force_hartree_per_bohr": 1.599999299717325e-11,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 14,
+      "candidate_scf": 14,
+      "status": "passed"
+    },
+    {
+      "workload": "S",
+      "case": "Mol_MnO",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_cpu",
+      "delta_energy_hartree": 9.947598300641403e-13,
+      "max_delta_force_hartree_per_bohr": 0.0,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 26,
+      "candidate_scf": 26,
+      "status": "passed"
+    },
+    {
+      "workload": "S",
+      "case": "Ndia2",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_cpu",
+      "delta_energy_hartree": 0.0,
+      "max_delta_force_hartree_per_bohr": 0.0,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 13,
+      "candidate_scf": 13,
+      "status": "passed"
+    },
+    {
+      "workload": "S",
+      "case": "Benzene",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 9.947598300641403e-13,
+      "max_delta_force_hartree_per_bohr": 0.0,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 19,
+      "candidate_scf": 19,
+      "status": "passed"
+    },
+    {
+      "workload": "S",
+      "case": "C60",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 2.802380549837835e-11,
+      "max_delta_force_hartree_per_bohr": 1.0000056338554941e-12,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 27,
+      "candidate_scf": 27,
+      "status": "passed"
+    },
+    {
+      "workload": "S",
+      "case": "CO",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 0.0,
+      "max_delta_force_hartree_per_bohr": 1e-11,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 182,
+      "candidate_scf": 182,
+      "status": "passed"
+    },
+    {
+      "workload": "S",
+      "case": "Cr2",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 3.0127011996228248e-12,
+      "max_delta_force_hartree_per_bohr": 2.0100000000004263e-10,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 21,
+      "candidate_scf": 21,
+      "status": "passed"
+    },
+    {
+      "workload": "S",
+      "case": "Crys-MnO",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 4.739888481708476e-10,
+      "max_delta_force_hartree_per_bohr": 6.449999999999999e-10,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 37,
+      "candidate_scf": 41,
+      "status": "passed"
+    },
+    {
+      "workload": "S",
+      "case": "GaAs",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 1.6001422409317456e-11,
+      "max_delta_force_hartree_per_bohr": 3.999999999999986e-12,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 13,
+      "candidate_scf": 13,
+      "status": "passed"
+    },
+    {
+      "workload": "S",
+      "case": "Glycine",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 1.0018652574217413e-12,
+      "max_delta_force_hartree_per_bohr": 1.0000056338554941e-12,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 20,
+      "candidate_scf": 20,
+      "status": "passed"
+    },
+    {
+      "workload": "S",
+      "case": "Graphite4",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 2.000177801164682e-12,
+      "max_delta_force_hartree_per_bohr": 0.0,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 14,
+      "candidate_scf": 14,
+      "status": "passed"
+    },
+    {
+      "workload": "S",
+      "case": "H2O",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 1.0018652574217413e-12,
+      "max_delta_force_hartree_per_bohr": 9.999999999999965e-13,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 31,
+      "candidate_scf": 31,
+      "status": "passed"
+    },
+    {
+      "workload": "S",
+      "case": "H2O-EF",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 9.983125437429408e-13,
+      "max_delta_force_hartree_per_bohr": 1.0000056338554941e-12,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 17,
+      "candidate_scf": 17,
+      "status": "passed"
+    },
+    {
+      "workload": "S",
+      "case": "HMn",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 9.947598300641403e-13,
+      "max_delta_force_hartree_per_bohr": 0.0,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 26,
+      "candidate_scf": 26,
+      "status": "passed"
+    },
+    {
+      "workload": "S",
+      "case": "Methane",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 1.2399858917433448e-10,
+      "max_delta_force_hartree_per_bohr": 1.3999995607250071e-11,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 14,
+      "candidate_scf": 14,
+      "status": "passed"
+    },
+    {
+      "workload": "S",
+      "case": "Mol_MnO",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 9.947598300641403e-13,
+      "max_delta_force_hartree_per_bohr": 9.999986949615902e-13,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 26,
+      "candidate_scf": 26,
+      "status": "passed"
+    },
+    {
+      "workload": "S",
+      "case": "Ndia2",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 3.000266701747023e-12,
+      "max_delta_force_hartree_per_bohr": 9.999999960041972e-13,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 13,
+      "candidate_scf": 13,
+      "status": "passed"
+    },
+    {
+      "workload": "S",
+      "case": "Benzene",
+      "baseline": "fork_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 9.947598300641403e-13,
+      "max_delta_force_hartree_per_bohr": 0.0,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 19,
+      "candidate_scf": 19,
+      "status": "passed"
+    },
+    {
+      "workload": "S",
+      "case": "C60",
+      "baseline": "fork_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 2.7000623958883807e-11,
+      "max_delta_force_hartree_per_bohr": 1.0000021644085422e-12,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 27,
+      "candidate_scf": 27,
+      "status": "passed"
+    },
+    {
+      "workload": "S",
+      "case": "CO",
+      "baseline": "fork_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 0.0,
+      "max_delta_force_hartree_per_bohr": 8.999998662995168e-12,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 182,
+      "candidate_scf": 182,
+      "status": "passed"
+    },
+    {
+      "workload": "S",
+      "case": "Cr2",
+      "baseline": "fork_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 3.0127011996228248e-12,
+      "max_delta_force_hartree_per_bohr": 9.999986949615902e-13,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 21,
+      "candidate_scf": 21,
+      "status": "passed"
+    },
+    {
+      "workload": "S",
+      "case": "Crys-MnO",
+      "baseline": "fork_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 7.986500349943526e-12,
+      "max_delta_force_hartree_per_bohr": 1.200000000000001e-11,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 40,
+      "candidate_scf": 41,
+      "status": "passed"
+    },
+    {
+      "workload": "S",
+      "case": "GaAs",
+      "baseline": "fork_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 1.4978240869822912e-11,
+      "max_delta_force_hartree_per_bohr": 6.999999999999976e-12,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 13,
+      "candidate_scf": 13,
+      "status": "passed"
+    },
+    {
+      "workload": "S",
+      "case": "Glycine",
+      "baseline": "fork_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 0.0,
+      "max_delta_force_hartree_per_bohr": 0.0,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 20,
+      "candidate_scf": 20,
+      "status": "passed"
+    },
+    {
+      "workload": "S",
+      "case": "Graphite4",
+      "baseline": "fork_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 2.000177801164682e-12,
+      "max_delta_force_hartree_per_bohr": 1.000000000001134e-12,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 14,
+      "candidate_scf": 14,
+      "status": "passed"
+    },
+    {
+      "workload": "S",
+      "case": "H2O",
+      "baseline": "fork_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 1.0018652574217413e-12,
+      "max_delta_force_hartree_per_bohr": 0.0,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 31,
+      "candidate_scf": 31,
+      "status": "passed"
+    },
+    {
+      "workload": "S",
+      "case": "H2O-EF",
+      "baseline": "fork_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 9.983125437429408e-13,
+      "max_delta_force_hartree_per_bohr": 0.0,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 17,
+      "candidate_scf": 17,
+      "status": "passed"
+    },
+    {
+      "workload": "S",
+      "case": "HMn",
+      "baseline": "fork_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 9.947598300641403e-13,
+      "max_delta_force_hartree_per_bohr": 0.0,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 26,
+      "candidate_scf": 26,
+      "status": "passed"
+    },
+    {
+      "workload": "S",
+      "case": "Methane",
+      "baseline": "fork_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 1.899991275422508e-11,
+      "max_delta_force_hartree_per_bohr": 2.0000043288170843e-12,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 14,
+      "candidate_scf": 14,
+      "status": "passed"
+    },
+    {
+      "workload": "S",
+      "case": "Mol_MnO",
+      "baseline": "fork_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 0.0,
+      "max_delta_force_hartree_per_bohr": 9.999986949615902e-13,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 26,
+      "candidate_scf": 26,
+      "status": "passed"
+    },
+    {
+      "workload": "S",
+      "case": "Ndia2",
+      "baseline": "fork_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 3.000266701747023e-12,
+      "max_delta_force_hartree_per_bohr": 9.999999960041972e-13,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 13,
+      "candidate_scf": 13,
+      "status": "passed"
+    },
+    {
+      "workload": "L",
+      "case": "5_5_13COb2",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_cpu",
+      "delta_energy_hartree": 0.0,
+      "max_delta_force_hartree_per_bohr": 2.0000008593701324e-12,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 66,
+      "candidate_scf": 66,
+      "status": "passed"
+    },
+    {
+      "workload": "L",
+      "case": "B2C62_Band",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_cpu",
+      "delta_energy_hartree": 1.4097167877480388e-10,
+      "max_delta_force_hartree_per_bohr": 4.7200999999997856e-08,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 203,
+      "candidate_scf": 203,
+      "status": "passed"
+    },
+    {
+      "workload": "L",
+      "case": "CG15c-DC-LNO",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_cpu",
+      "delta_energy_hartree": 6.220943760126829e-10,
+      "max_delta_force_hartree_per_bohr": 1.7900000925941129e-10,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 42,
+      "candidate_scf": 42,
+      "status": "passed"
+    },
+    {
+      "workload": "L",
+      "case": "DIA512-1",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_cpu",
+      "delta_energy_hartree": 4.18367562815547e-11,
+      "max_delta_force_hartree_per_bohr": 9.659000000002138e-09,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 29,
+      "candidate_scf": 29,
+      "status": "passed"
+    },
+    {
+      "workload": "L",
+      "case": "FeBCC",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_cpu",
+      "delta_energy_hartree": 9.78843672783114e-10,
+      "max_delta_force_hartree_per_bohr": 6.1e-11,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 62,
+      "candidate_scf": 62,
+      "status": "passed"
+    },
+    {
+      "workload": "L",
+      "case": "GEL",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_cpu",
+      "delta_energy_hartree": 2.0907009457005188e-10,
+      "max_delta_force_hartree_per_bohr": 2.640000000005111e-10,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 58,
+      "candidate_scf": 58,
+      "status": "passed"
+    },
+    {
+      "workload": "L",
+      "case": "GFRAG",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_cpu",
+      "delta_energy_hartree": 9.663381206337363e-13,
+      "max_delta_force_hartree_per_bohr": 1.0000056338554941e-12,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 60,
+      "candidate_scf": 60,
+      "status": "passed"
+    },
+    {
+      "workload": "L",
+      "case": "GGFF",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_cpu",
+      "delta_energy_hartree": 1.4097167877480388e-11,
+      "max_delta_force_hartree_per_bohr": 1.1000000389727038e-11,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 100,
+      "candidate_scf": 98,
+      "status": "passed"
+    },
+    {
+      "workload": "L",
+      "case": "MCCN",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_cpu",
+      "delta_energy_hartree": 0.0,
+      "max_delta_force_hartree_per_bohr": 3.000000009696635e-11,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 67,
+      "candidate_scf": 67,
+      "status": "passed"
+    },
+    {
+      "workload": "L",
+      "case": "Mn12_148_F",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_cpu",
+      "delta_energy_hartree": 9.094947017729282e-13,
+      "max_delta_force_hartree_per_bohr": 1.0000056338554941e-12,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 61,
+      "candidate_scf": 61,
+      "status": "passed"
+    },
+    {
+      "workload": "L",
+      "case": "N1C999",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_cpu",
+      "delta_energy_hartree": 3.001332515850663e-11,
+      "max_delta_force_hartree_per_bohr": 3.099999998455033e-11,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 61,
+      "candidate_scf": 59,
+      "status": "passed"
+    },
+    {
+      "workload": "L",
+      "case": "Ni63-O64",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_cpu",
+      "delta_energy_hartree": 1.1459633242338896e-10,
+      "max_delta_force_hartree_per_bohr": 1.470000000631383e-10,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 62,
+      "candidate_scf": 69,
+      "status": "passed"
+    },
+    {
+      "workload": "L",
+      "case": "Pt63",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_cpu",
+      "delta_energy_hartree": 6.790287443436682e-09,
+      "max_delta_force_hartree_per_bohr": 1.5699999980633983e-10,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 67,
+      "candidate_scf": 78,
+      "status": "passed"
+    },
+    {
+      "workload": "L",
+      "case": "SialicAcid",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_cpu",
+      "delta_energy_hartree": 0.0,
+      "max_delta_force_hartree_per_bohr": 1.0000056338554941e-12,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 29,
+      "candidate_scf": 29,
+      "status": "passed"
+    },
+    {
+      "workload": "L",
+      "case": "ZrB2_2x2",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_cpu",
+      "delta_energy_hartree": 1.5006662579253316e-11,
+      "max_delta_force_hartree_per_bohr": 3.8199999999826264e-10,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 49,
+      "candidate_scf": 49,
+      "status": "passed"
+    },
+    {
+      "workload": "L",
+      "case": "nsV4Bz5",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_cpu",
+      "delta_energy_hartree": 0.0,
+      "max_delta_force_hartree_per_bohr": 6.839999990015944e-10,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 57,
+      "candidate_scf": 57,
+      "status": "passed"
+    },
+    {
+      "workload": "L",
+      "case": "5_5_13COb2",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 7.369180821115151e-10,
+      "max_delta_force_hartree_per_bohr": 1.329999999022391e-10,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 66,
+      "candidate_scf": 67,
+      "status": "passed"
+    },
+    {
+      "workload": "L",
+      "case": "B2C62_Band",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 1.1999645721516572e-10,
+      "max_delta_force_hartree_per_bohr": 3.528099999999916e-08,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 203,
+      "candidate_scf": 204,
+      "status": "passed"
+    },
+    {
+      "workload": "L",
+      "case": "CG15c-DC-LNO",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 4.43833414465189e-10,
+      "max_delta_force_hartree_per_bohr": 1.7900000925941129e-10,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 42,
+      "candidate_scf": 42,
+      "status": "passed"
+    },
+    {
+      "workload": "L",
+      "case": "DIA512-1",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 7.948983693495393e-10,
+      "max_delta_force_hartree_per_bohr": 8.543999999903809e-09,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 29,
+      "candidate_scf": 29,
+      "status": "passed"
+    },
+    {
+      "workload": "L",
+      "case": "FeBCC",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 1.0270468919770792e-09,
+      "max_delta_force_hartree_per_bohr": 5.9e-11,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 62,
+      "candidate_scf": 62,
+      "status": "passed"
+    },
+    {
+      "workload": "L",
+      "case": "GEL",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 1.240323399542831e-10,
+      "max_delta_force_hartree_per_bohr": 4.109999999992749e-10,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 58,
+      "candidate_scf": 58,
+      "status": "passed"
+    },
+    {
+      "workload": "L",
+      "case": "GFRAG",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 1.6405010683229193e-10,
+      "max_delta_force_hartree_per_bohr": 1.7759999998423481e-09,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 60,
+      "candidate_scf": 60,
+      "status": "passed"
+    },
+    {
+      "workload": "L",
+      "case": "GGFF",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 7.207745511550456e-11,
+      "max_delta_force_hartree_per_bohr": 1.3899999987826428e-10,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 100,
+      "candidate_scf": 101,
+      "status": "passed"
+    },
+    {
+      "workload": "L",
+      "case": "MCCN",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 3.3924152376130223e-10,
+      "max_delta_force_hartree_per_bohr": 3.6000000072991534e-11,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 67,
+      "candidate_scf": 67,
+      "status": "passed"
+    },
+    {
+      "workload": "L",
+      "case": "Mn12_148_F",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 2.7284841053187847e-11,
+      "max_delta_force_hartree_per_bohr": 2.9599999990144454e-10,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 61,
+      "candidate_scf": 61,
+      "status": "passed"
+    },
+    {
+      "workload": "L",
+      "case": "N1C999",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 1.5379555406980217e-09,
+      "max_delta_force_hartree_per_bohr": 3.099999998455033e-11,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 61,
+      "candidate_scf": 59,
+      "status": "passed"
+    },
+    {
+      "workload": "L",
+      "case": "Ni63-O64",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 2.7048372430726886e-09,
+      "max_delta_force_hartree_per_bohr": 5.619999999769733e-10,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 62,
+      "candidate_scf": 62,
+      "status": "passed"
+    },
+    {
+      "workload": "L",
+      "case": "Pt63",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 4.769390216097236e-09,
+      "max_delta_force_hartree_per_bohr": 2.339999999323439e-10,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 67,
+      "candidate_scf": 69,
+      "status": "passed"
+    },
+    {
+      "workload": "L",
+      "case": "SialicAcid",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 3.0127011996228248e-12,
+      "max_delta_force_hartree_per_bohr": 1.0000056338554941e-12,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 29,
+      "candidate_scf": 29,
+      "status": "passed"
+    },
+    {
+      "workload": "L",
+      "case": "ZrB2_2x2",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 1.1004885891452432e-10,
+      "max_delta_force_hartree_per_bohr": 2.079999999989653e-10,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 49,
+      "candidate_scf": 49,
+      "status": "passed"
+    },
+    {
+      "workload": "L",
+      "case": "nsV4Bz5",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 1.2397549653542228e-10,
+      "max_delta_force_hartree_per_bohr": 5.6e-10,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 57,
+      "candidate_scf": 57,
+      "status": "passed"
+    },
+    {
+      "workload": "L",
+      "case": "5_5_13COb2",
+      "baseline": "fork_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 7.369180821115151e-10,
+      "max_delta_force_hartree_per_bohr": 1.329999999022391e-10,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 66,
+      "candidate_scf": 67,
+      "status": "passed"
+    },
+    {
+      "workload": "L",
+      "case": "B2C62_Band",
+      "baseline": "fork_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 2.0975221559638157e-11,
+      "max_delta_force_hartree_per_bohr": 3.3662999999999816e-08,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 203,
+      "candidate_scf": 204,
+      "status": "passed"
+    },
+    {
+      "workload": "L",
+      "case": "CG15c-DC-LNO",
+      "baseline": "fork_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 1.7826096154749393e-10,
+      "max_delta_force_hartree_per_bohr": 1.0000056338554941e-12,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 42,
+      "candidate_scf": 42,
+      "status": "passed"
+    },
+    {
+      "workload": "L",
+      "case": "DIA512-1",
+      "baseline": "fork_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 7.530616130679846e-10,
+      "max_delta_force_hartree_per_bohr": 1.6030000000999411e-09,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 29,
+      "candidate_scf": 29,
+      "status": "passed"
+    },
+    {
+      "workload": "L",
+      "case": "FeBCC",
+      "baseline": "fork_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 4.8203219193965197e-11,
+      "max_delta_force_hartree_per_bohr": 1.7e-11,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 62,
+      "candidate_scf": 62,
+      "status": "passed"
+    },
+    {
+      "workload": "L",
+      "case": "GEL",
+      "baseline": "fork_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 8.503775461576879e-11,
+      "max_delta_force_hartree_per_bohr": 3.619999999629822e-10,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 58,
+      "candidate_scf": 58,
+      "status": "passed"
+    },
+    {
+      "workload": "L",
+      "case": "GFRAG",
+      "baseline": "fork_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 1.6501644495292567e-10,
+      "max_delta_force_hartree_per_bohr": 1.7759999998423481e-09,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 60,
+      "candidate_scf": 60,
+      "status": "passed"
+    },
+    {
+      "workload": "L",
+      "case": "GGFF",
+      "baseline": "fork_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 8.617462299298495e-11,
+      "max_delta_force_hartree_per_bohr": 1.349999998942475e-10,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 98,
+      "candidate_scf": 101,
+      "status": "passed"
+    },
+    {
+      "workload": "L",
+      "case": "MCCN",
+      "baseline": "fork_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 3.3924152376130223e-10,
+      "max_delta_force_hartree_per_bohr": 1.600000015290759e-11,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 67,
+      "candidate_scf": 67,
+      "status": "passed"
+    },
+    {
+      "workload": "L",
+      "case": "Mn12_148_F",
+      "baseline": "fork_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 2.8194335754960775e-11,
+      "max_delta_force_hartree_per_bohr": 2.9599999990144454e-10,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 61,
+      "candidate_scf": 61,
+      "status": "passed"
+    },
+    {
+      "workload": "L",
+      "case": "N1C999",
+      "baseline": "fork_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 1.5679688658565283e-09,
+      "max_delta_force_hartree_per_bohr": 1.0000000502143058e-12,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 59,
+      "candidate_scf": 59,
+      "status": "passed"
+    },
+    {
+      "workload": "L",
+      "case": "Ni63-O64",
+      "baseline": "fork_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 2.8194335754960775e-09,
+      "max_delta_force_hartree_per_bohr": 6.220000000082757e-10,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 69,
+      "candidate_scf": 62,
+      "status": "passed"
+    },
+    {
+      "workload": "L",
+      "case": "Pt63",
+      "baseline": "fork_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 2.0208972273394465e-09,
+      "max_delta_force_hartree_per_bohr": 1.329999999022391e-10,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 78,
+      "candidate_scf": 69,
+      "status": "passed"
+    },
+    {
+      "workload": "L",
+      "case": "SialicAcid",
+      "baseline": "fork_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 3.0127011996228248e-12,
+      "max_delta_force_hartree_per_bohr": 9.999999960041972e-13,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 29,
+      "candidate_scf": 29,
+      "status": "passed"
+    },
+    {
+      "workload": "L",
+      "case": "ZrB2_2x2",
+      "baseline": "fork_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 9.5042196335271e-11,
+      "max_delta_force_hartree_per_bohr": 2.1799999999627673e-10,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 49,
+      "candidate_scf": 49,
+      "status": "passed"
+    },
+    {
+      "workload": "L",
+      "case": "nsV4Bz5",
+      "baseline": "fork_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 1.2397549653542228e-10,
+      "max_delta_force_hartree_per_bohr": 5.929999997988933e-10,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 57,
+      "candidate_scf": 57,
+      "status": "passed"
+    },
+    {
+      "workload": "sidia333_nc_cluster",
+      "case": "sidia333_nc_cluster",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_cpu",
+      "delta_energy_hartree": 4.899902705801651e-11,
+      "max_delta_force_hartree_per_bohr": 2.0099999999983087e-10,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 25,
+      "candidate_scf": 25,
+      "status": "passed"
+    },
+    {
+      "workload": "sidia333_nc_cluster",
+      "case": "sidia333_nc_cluster",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 9.299583325628191e-11,
+      "max_delta_force_hartree_per_bohr": 1.1700000000005326e-10,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 25,
+      "candidate_scf": 25,
+      "status": "passed"
+    },
+    {
+      "workload": "sidia333_nc_cluster",
+      "case": "sidia333_nc_cluster",
+      "baseline": "fork_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 1.4199486031429842e-10,
+      "max_delta_force_hartree_per_bohr": 1.199999999999243e-10,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 25,
+      "candidate_scf": 25,
+      "status": "passed"
+    },
+    {
+      "workload": "cghelgeo",
+      "case": "cghelgeo",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_cpu",
+      "delta_energy_hartree": 5.567926564253867e-09,
+      "max_delta_force_hartree_per_bohr": 1.2927000001689004e-08,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 59,
+      "candidate_scf": 61,
+      "status": "passed"
+    },
+    {
+      "workload": "cghelgeo",
+      "case": "cghelgeo",
+      "baseline": "upstream_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 2.3212123778648674e-08,
+      "max_delta_force_hartree_per_bohr": 7.82500000212627e-09,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 59,
+      "candidate_scf": 60,
+      "status": "passed"
+    },
+    {
+      "workload": "cghelgeo",
+      "case": "cghelgeo",
+      "baseline": "fork_cpu",
+      "candidate": "fork_gpu",
+      "delta_energy_hartree": 2.878005034290254e-08,
+      "max_delta_force_hartree_per_bohr": 5.196000001789214e-09,
+      "max_delta_position_angstrom": 0.0,
+      "grids_match": true,
+      "atoms_match": true,
+      "baseline_scf": 61,
+      "candidate_scf": 60,
+      "status": "passed"
+    }
+  ],
+  "convergence": [
+    {
+      "route": "upstream_cpu",
+      "workload": "S",
+      "case": "Benzene",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "upstream_cpu",
+      "workload": "S",
+      "case": "C60",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "upstream_cpu",
+      "workload": "S",
+      "case": "CO",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        },
+        {
+          "md_step": 2,
+          "scf_converged": true
+        },
+        {
+          "md_step": 3,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "upstream_cpu",
+      "workload": "S",
+      "case": "Cr2",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "upstream_cpu",
+      "workload": "S",
+      "case": "Crys-MnO",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "upstream_cpu",
+      "workload": "S",
+      "case": "GaAs",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "upstream_cpu",
+      "workload": "S",
+      "case": "Glycine",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "upstream_cpu",
+      "workload": "S",
+      "case": "Graphite4",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "upstream_cpu",
+      "workload": "S",
+      "case": "H2O-EF",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "upstream_cpu",
+      "workload": "S",
+      "case": "H2O",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        },
+        {
+          "md_step": 2,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "upstream_cpu",
+      "workload": "S",
+      "case": "HMn",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "upstream_cpu",
+      "workload": "S",
+      "case": "Methane",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "upstream_cpu",
+      "workload": "S",
+      "case": "Mol_MnO",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "upstream_cpu",
+      "workload": "S",
+      "case": "Ndia2",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_cpu",
+      "workload": "S",
+      "case": "Benzene",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_cpu",
+      "workload": "S",
+      "case": "C60",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_cpu",
+      "workload": "S",
+      "case": "CO",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        },
+        {
+          "md_step": 2,
+          "scf_converged": true
+        },
+        {
+          "md_step": 3,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_cpu",
+      "workload": "S",
+      "case": "Cr2",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_cpu",
+      "workload": "S",
+      "case": "Crys-MnO",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_cpu",
+      "workload": "S",
+      "case": "GaAs",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_cpu",
+      "workload": "S",
+      "case": "Glycine",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_cpu",
+      "workload": "S",
+      "case": "Graphite4",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_cpu",
+      "workload": "S",
+      "case": "H2O-EF",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_cpu",
+      "workload": "S",
+      "case": "H2O",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        },
+        {
+          "md_step": 2,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_cpu",
+      "workload": "S",
+      "case": "HMn",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_cpu",
+      "workload": "S",
+      "case": "Methane",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_cpu",
+      "workload": "S",
+      "case": "Mol_MnO",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_cpu",
+      "workload": "S",
+      "case": "Ndia2",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_gpu",
+      "workload": "S",
+      "case": "Benzene",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_gpu",
+      "workload": "S",
+      "case": "C60",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_gpu",
+      "workload": "S",
+      "case": "CO",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        },
+        {
+          "md_step": 2,
+          "scf_converged": true
+        },
+        {
+          "md_step": 3,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_gpu",
+      "workload": "S",
+      "case": "Cr2",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_gpu",
+      "workload": "S",
+      "case": "Crys-MnO",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_gpu",
+      "workload": "S",
+      "case": "GaAs",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_gpu",
+      "workload": "S",
+      "case": "Glycine",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_gpu",
+      "workload": "S",
+      "case": "Graphite4",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_gpu",
+      "workload": "S",
+      "case": "H2O-EF",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_gpu",
+      "workload": "S",
+      "case": "H2O",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        },
+        {
+          "md_step": 2,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_gpu",
+      "workload": "S",
+      "case": "HMn",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_gpu",
+      "workload": "S",
+      "case": "Methane",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_gpu",
+      "workload": "S",
+      "case": "Mol_MnO",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_gpu",
+      "workload": "S",
+      "case": "Ndia2",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "upstream_cpu",
+      "workload": "L",
+      "case": "5_5_13COb2",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "upstream_cpu",
+      "workload": "L",
+      "case": "B2C62_Band",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        },
+        {
+          "md_step": 2,
+          "scf_converged": true
+        },
+        {
+          "md_step": 3,
+          "scf_converged": true
+        },
+        {
+          "md_step": 4,
+          "scf_converged": true
+        },
+        {
+          "md_step": 5,
+          "scf_converged": true
+        },
+        {
+          "md_step": 6,
+          "scf_converged": true
+        },
+        {
+          "md_step": 7,
+          "scf_converged": true
+        },
+        {
+          "md_step": 8,
+          "scf_converged": true
+        },
+        {
+          "md_step": 9,
+          "scf_converged": true
+        },
+        {
+          "md_step": 10,
+          "scf_converged": true
+        },
+        {
+          "md_step": 11,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "upstream_cpu",
+      "workload": "L",
+      "case": "CG15c-DC-LNO",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "upstream_cpu",
+      "workload": "L",
+      "case": "DIA512-1",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "upstream_cpu",
+      "workload": "L",
+      "case": "FeBCC",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "upstream_cpu",
+      "workload": "L",
+      "case": "GEL",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "upstream_cpu",
+      "workload": "L",
+      "case": "GFRAG",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "upstream_cpu",
+      "workload": "L",
+      "case": "GGFF",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "upstream_cpu",
+      "workload": "L",
+      "case": "MCCN",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "upstream_cpu",
+      "workload": "L",
+      "case": "Mn12_148_F",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "upstream_cpu",
+      "workload": "L",
+      "case": "N1C999",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "upstream_cpu",
+      "workload": "L",
+      "case": "Ni63-O64",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "upstream_cpu",
+      "workload": "L",
+      "case": "Pt63",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "upstream_cpu",
+      "workload": "L",
+      "case": "SialicAcid",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "upstream_cpu",
+      "workload": "L",
+      "case": "ZrB2_2x2",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "upstream_cpu",
+      "workload": "L",
+      "case": "nsV4Bz5",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_cpu",
+      "workload": "L",
+      "case": "5_5_13COb2",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_cpu",
+      "workload": "L",
+      "case": "B2C62_Band",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        },
+        {
+          "md_step": 2,
+          "scf_converged": true
+        },
+        {
+          "md_step": 3,
+          "scf_converged": true
+        },
+        {
+          "md_step": 4,
+          "scf_converged": true
+        },
+        {
+          "md_step": 5,
+          "scf_converged": true
+        },
+        {
+          "md_step": 6,
+          "scf_converged": true
+        },
+        {
+          "md_step": 7,
+          "scf_converged": true
+        },
+        {
+          "md_step": 8,
+          "scf_converged": true
+        },
+        {
+          "md_step": 9,
+          "scf_converged": true
+        },
+        {
+          "md_step": 10,
+          "scf_converged": true
+        },
+        {
+          "md_step": 11,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_cpu",
+      "workload": "L",
+      "case": "CG15c-DC-LNO",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_cpu",
+      "workload": "L",
+      "case": "DIA512-1",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_cpu",
+      "workload": "L",
+      "case": "FeBCC",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_cpu",
+      "workload": "L",
+      "case": "GEL",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_cpu",
+      "workload": "L",
+      "case": "GFRAG",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_cpu",
+      "workload": "L",
+      "case": "GGFF",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_cpu",
+      "workload": "L",
+      "case": "MCCN",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_cpu",
+      "workload": "L",
+      "case": "Mn12_148_F",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_cpu",
+      "workload": "L",
+      "case": "N1C999",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_cpu",
+      "workload": "L",
+      "case": "Ni63-O64",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_cpu",
+      "workload": "L",
+      "case": "Pt63",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_cpu",
+      "workload": "L",
+      "case": "SialicAcid",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_cpu",
+      "workload": "L",
+      "case": "ZrB2_2x2",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_cpu",
+      "workload": "L",
+      "case": "nsV4Bz5",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_gpu",
+      "workload": "L",
+      "case": "5_5_13COb2",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_gpu",
+      "workload": "L",
+      "case": "B2C62_Band",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        },
+        {
+          "md_step": 2,
+          "scf_converged": true
+        },
+        {
+          "md_step": 3,
+          "scf_converged": true
+        },
+        {
+          "md_step": 4,
+          "scf_converged": true
+        },
+        {
+          "md_step": 5,
+          "scf_converged": true
+        },
+        {
+          "md_step": 6,
+          "scf_converged": true
+        },
+        {
+          "md_step": 7,
+          "scf_converged": true
+        },
+        {
+          "md_step": 8,
+          "scf_converged": true
+        },
+        {
+          "md_step": 9,
+          "scf_converged": true
+        },
+        {
+          "md_step": 10,
+          "scf_converged": true
+        },
+        {
+          "md_step": 11,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_gpu",
+      "workload": "L",
+      "case": "CG15c-DC-LNO",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_gpu",
+      "workload": "L",
+      "case": "DIA512-1",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_gpu",
+      "workload": "L",
+      "case": "FeBCC",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_gpu",
+      "workload": "L",
+      "case": "GEL",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_gpu",
+      "workload": "L",
+      "case": "GFRAG",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_gpu",
+      "workload": "L",
+      "case": "GGFF",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_gpu",
+      "workload": "L",
+      "case": "MCCN",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_gpu",
+      "workload": "L",
+      "case": "Mn12_148_F",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_gpu",
+      "workload": "L",
+      "case": "N1C999",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_gpu",
+      "workload": "L",
+      "case": "Ni63-O64",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_gpu",
+      "workload": "L",
+      "case": "Pt63",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_gpu",
+      "workload": "L",
+      "case": "SialicAcid",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_gpu",
+      "workload": "L",
+      "case": "ZrB2_2x2",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_gpu",
+      "workload": "L",
+      "case": "nsV4Bz5",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "upstream_cpu",
+      "workload": "sidia333_nc_cluster",
+      "case": "sidia333_nc_cluster",
+      "converged_all_md": false,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": false
+        }
+      ]
+    },
+    {
+      "route": "fork_cpu",
+      "workload": "sidia333_nc_cluster",
+      "case": "sidia333_nc_cluster",
+      "converged_all_md": false,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": false
+        }
+      ]
+    },
+    {
+      "route": "fork_gpu",
+      "workload": "sidia333_nc_cluster",
+      "case": "sidia333_nc_cluster",
+      "converged_all_md": false,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": false
+        }
+      ]
+    },
+    {
+      "route": "upstream_cpu",
+      "workload": "cghelgeo",
+      "case": "cghelgeo",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_cpu",
+      "workload": "cghelgeo",
+      "case": "cghelgeo",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    },
+    {
+      "route": "fork_gpu",
+      "workload": "cghelgeo",
+      "case": "cghelgeo",
+      "converged_all_md": true,
+      "md_steps": [
+        {
+          "md_step": 1,
+          "scf_converged": true
+        }
+      ]
+    }
+  ],
+  "input_checks": [
+    {
+      "workload": "S",
+      "case": "Benzene",
+      "scientific_sha256": "351aafa255819e6100f1dd9141ca98298e8d3c97d54961c2786100d9abd5e013"
+    },
+    {
+      "workload": "S",
+      "case": "C60",
+      "scientific_sha256": "11cf5a76ae693a7b4ad6890fd0331d0e6fad55080d959d40127f6950ec0ac9c2"
+    },
+    {
+      "workload": "S",
+      "case": "CO",
+      "scientific_sha256": "f31b618118630ddc89459a5d005704af7141fb341598d60dfddf473b32f10a71"
+    },
+    {
+      "workload": "S",
+      "case": "Cr2",
+      "scientific_sha256": "62e7ea868f947dfbceecba1b22349fc766cffdba0e3eac2406cbae5d44027e7d"
+    },
+    {
+      "workload": "S",
+      "case": "Crys-MnO",
+      "scientific_sha256": "0203451b5d61b11c6a246f3ac2248c7269983040e11468ddd7641fb724ec0d02"
+    },
+    {
+      "workload": "S",
+      "case": "GaAs",
+      "scientific_sha256": "a2240bbc3567ab373fa719dedc027ea092a25848977b17a63ad2fc57fd29ac7c"
+    },
+    {
+      "workload": "S",
+      "case": "Glycine",
+      "scientific_sha256": "751f5210fc9a5d1fad8173ed7c85078ff4c6342798f4416cf2b55fd623dc99b4"
+    },
+    {
+      "workload": "S",
+      "case": "Graphite4",
+      "scientific_sha256": "2efff07b2951b4e6780c6ada727aeab1cf6ed236d1d812e42d9f94774000e345"
+    },
+    {
+      "workload": "S",
+      "case": "H2O-EF",
+      "scientific_sha256": "e908b3500f64c32d38987ace2811ba3deef60232eb444e55fbe5ee8f2bcc6f67"
+    },
+    {
+      "workload": "S",
+      "case": "H2O",
+      "scientific_sha256": "2a0549b3891db0c6568c1482a1d37bc3dbc4fbaba86a525edcbbc2de757d8ff6"
+    },
+    {
+      "workload": "S",
+      "case": "HMn",
+      "scientific_sha256": "0b96999c10ac845c699a9708b4b8853122bd69f58188a6733d504a5ea66c1c88"
+    },
+    {
+      "workload": "S",
+      "case": "Methane",
+      "scientific_sha256": "0a432667fa5ad0b3c9fa23b490de9986c38e77f0d190d5a4d88e881531bcf68b"
+    },
+    {
+      "workload": "S",
+      "case": "Mol_MnO",
+      "scientific_sha256": "af22480ff570166801093151e48eb9750dc03fa3f11a690dd68fecbf7f82aac1"
+    },
+    {
+      "workload": "S",
+      "case": "Ndia2",
+      "scientific_sha256": "0e357a5c55ec270ffb9e4c2cb04aa077c0a725b3f82f573a8fae6cf6b591f182"
+    },
+    {
+      "workload": "L",
+      "case": "5_5_13COb2",
+      "scientific_sha256": "d63ea82d3972d466b3dc02e614fd605fa4464cf2389a3e9f66e537a96da40114"
+    },
+    {
+      "workload": "L",
+      "case": "B2C62_Band",
+      "scientific_sha256": "a2be59cc89bf9c5a0fd32ee9fb67fa5a7ec8ec479fcc4ed7aea2005c7f310002"
+    },
+    {
+      "workload": "L",
+      "case": "CG15c-DC-LNO",
+      "scientific_sha256": "6281903ebf1945903522f1877c88ee7ef32401245eeb5bdbdc4258cd1c35c91c"
+    },
+    {
+      "workload": "L",
+      "case": "DIA512-1",
+      "scientific_sha256": "767d111f2e07f26b7e588d069e3d444560d96b4d50720e949ed3ddf866af49b5"
+    },
+    {
+      "workload": "L",
+      "case": "FeBCC",
+      "scientific_sha256": "1c84bec0b198ae5374cf3b5f110dcca7ae30f5e83334d2287173058d97194147"
+    },
+    {
+      "workload": "L",
+      "case": "GEL",
+      "scientific_sha256": "bb973cb0bb0e105e60a62f8bcd75da7966a00443c79c33161e020c734d8df448"
+    },
+    {
+      "workload": "L",
+      "case": "GFRAG",
+      "scientific_sha256": "cdc4a16c32f71222c1ff0e7943fb02c22df6608a16024fc78a58696ce772d314"
+    },
+    {
+      "workload": "L",
+      "case": "GGFF",
+      "scientific_sha256": "91af02b8523f46784c56847c1a3de7c43248f6f62d7fcd14fcc417a52da4ff7d"
+    },
+    {
+      "workload": "L",
+      "case": "MCCN",
+      "scientific_sha256": "dba41e98627c2c09a0e073846df3b1a95fe7343e8e9e447a7dbe937f0114f65e"
+    },
+    {
+      "workload": "L",
+      "case": "Mn12_148_F",
+      "scientific_sha256": "456b504de9c35ef086048ab3ddd2b972fe096ba920b5532a55b2300abf6f4146"
+    },
+    {
+      "workload": "L",
+      "case": "N1C999",
+      "scientific_sha256": "300d608ab4e90eb6ccfb775df1ef2b24aabba8a89d38f5f8cc88520d83f0801b"
+    },
+    {
+      "workload": "L",
+      "case": "Ni63-O64",
+      "scientific_sha256": "6cde50b1ae3d4f4957fa696a0947cd6ac13766d171bdb2f3692243835188ab5b"
+    },
+    {
+      "workload": "L",
+      "case": "Pt63",
+      "scientific_sha256": "79426132a4de051e76230dd0c998cdf18925ff691df9e40cfe9875f58d227ee8"
+    },
+    {
+      "workload": "L",
+      "case": "SialicAcid",
+      "scientific_sha256": "6a16e5cf2c429606471de64115ce71b3cc48f31f65842def10a51d8f656d8eca"
+    },
+    {
+      "workload": "L",
+      "case": "ZrB2_2x2",
+      "scientific_sha256": "f2ddfe8a80a10ad4fef7fc4126565f100750a3c5e601df08e2c3da5bfa127719"
+    },
+    {
+      "workload": "L",
+      "case": "nsV4Bz5",
+      "scientific_sha256": "ee1ecd253a06cae2c97c63795d2fb9cc774ac1a38302905babfcbaa5c194829e"
+    },
+    {
+      "workload": "sidia333_nc_cluster",
+      "case": "sidia333_nc_cluster",
+      "scientific_sha256": "087222a6f28a97fc4c5eec3a3cef0d3d1259d2db90f15aa2ac7e736f25bccf5c"
+    },
+    {
+      "workload": "cghelgeo",
+      "case": "cghelgeo",
+      "scientific_sha256": "5063d1d3f3be7b1a92df908760a2b7a3f9c7b5398e0805b09ed93c2b4d2f3870"
+    }
+  ],
+  "data_files_checked": 47
+}

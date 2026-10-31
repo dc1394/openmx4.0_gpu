@@ -1,0 +1,12 @@
+{
+  "integrated_at": "2026-10-31T19:47:36.587275+09:00",
+  "commit": "73c4a2c03e605ad675bbc3a30d690681b1e6b387",
+  "base": "3e2f5c73e7eef9b3a2be2e7dd33e2aedafdfcc9e",
+  "new_gpu_binary_sha256": "9f32ba753465990df98c4d52978780f06241340f6877fdaa655486d707c4bd93",
+  "retained_cpu_and_gpu_S_binary_sha256": "5878fedc02e93bd5db526e6bea87112fa8113f737ed964f32c517dce9689bdf9",
+  "shared_dsos_unchanged": true,
+  "host_lifecycle_cases": 17,
+  "host_lifecycle_passed": 17,
+  "scope": "ELPA GPU handle destruction; no numerical operation or BLAS/CPU ELPA thread configuration changes",
+  "benchmark_scope_unchanged": true
+}

@@ -1,0 +1,6 @@
+{
+  "expected_failure": true,
+  "returncode": 2,
+  "stderr": "FAIL line 1046: w && w->active && current_device==3\nFAIL line 1046: w && w->active && current_device==3\nFAIL line 1046: w && w->active && current_device==3\n",
+  "removed": "worker hipSetDevice binding"
+}

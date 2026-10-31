@@ -1,0 +1,12 @@
+Internal ctest changing into directory: /home/CP24I024/dc1394/myhome/openmx4.0_gpu/build/sirius-hip
+Test project /home/CP24I024/dc1394/myhome/openmx4.0_gpu/build/sirius-hip
+    Start 63: hip-krylov-gpu-fallback
+1/1 Test #63: hip-krylov-gpu-fallback ..........   Passed    3.55 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Label Time Summary:
+solver    =   3.55 sec*proc (1 test)
+unit      =   3.55 sec*proc (1 test)
+
+Total Test time (real) =   3.60 sec

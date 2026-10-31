@@ -1,0 +1,140 @@
+{
+  "verified_at": "2026-10-31T20:52:55.436427+09:00",
+  "reason": "User explicitly requested GPU S14 remeasurement with73c4a2c0.",
+  "source_commit": "73c4a2c03e605ad675bbc3a30d690681b1e6b387",
+  "binary_sha256": "9f32ba753465990df98c4d52978780f06241340f6877fdaa655486d707c4bd93",
+  "jobid": "48500.pbs",
+  "nodes": 1,
+  "hostname": "a05",
+  "ranks": 32,
+  "threads": 3,
+  "blas_threads": 3,
+  "unique_cores": 96,
+  "cases": 14,
+  "native_benchmark_seconds": 140.31,
+  "launcher_wall_seconds": 147.76030890498077,
+  "superseded_benchmark_seconds": 133.29000000000005,
+  "change_percent": 5.266711681296377,
+  "timing_caveat": "Each time is one measurement. This difference alone does not establish a performance effect of the source change.",
+  "all_cases_scf_converged": true,
+  "energy_tolerance_hartree": 1e-07,
+  "force_tolerance_hartree_per_bohr": 1e-07,
+  "comparisons": [
+    {
+      "baseline": "upstream_cpu",
+      "cases": 14,
+      "passed": 14,
+      "max_delta_energy_hartree": 4.739888481708476e-10,
+      "max_delta_force_hartree_per_bohr": 6.449999999999999e-10
+    },
+    {
+      "baseline": "fork_cpu",
+      "cases": 14,
+      "passed": 14,
+      "max_delta_energy_hartree": 2.7000623958883807e-11,
+      "max_delta_force_hartree_per_bohr": 1.200000000000001e-11
+    }
+  ],
+  "old_new_max_delta_energy_hartree": 1.1999290450148692e-11,
+  "old_new_max_delta_force_hartree_per_bohr": 1.0000000000000004e-11,
+  "per_case": [
+    {
+      "case": "Benzene",
+      "old_seconds": 7.86,
+      "new_seconds": 7.75,
+      "old_scf_iterations": 19,
+      "new_scf_iterations": 19
+    },
+    {
+      "case": "C60",
+      "old_seconds": 8.62,
+      "new_seconds": 8.47,
+      "old_scf_iterations": 27,
+      "new_scf_iterations": 27
+    },
+    {
+      "case": "CO",
+      "old_seconds": 44.43,
+      "new_seconds": 48.35,
+      "old_scf_iterations": 182,
+      "new_scf_iterations": 182
+    },
+    {
+      "case": "Cr2",
+      "old_seconds": 5.3,
+      "new_seconds": 5.8,
+      "old_scf_iterations": 21,
+      "new_scf_iterations": 21
+    },
+    {
+      "case": "Crys-MnO",
+      "old_seconds": 10.81,
+      "new_seconds": 10.78,
+      "old_scf_iterations": 43,
+      "new_scf_iterations": 41
+    },
+    {
+      "case": "GaAs",
+      "old_seconds": 8.73,
+      "new_seconds": 8.97,
+      "old_scf_iterations": 13,
+      "new_scf_iterations": 13
+    },
+    {
+      "case": "Glycine",
+      "old_seconds": 5.97,
+      "new_seconds": 6.19,
+      "old_scf_iterations": 20,
+      "new_scf_iterations": 20
+    },
+    {
+      "case": "Graphite4",
+      "old_seconds": 3.89,
+      "new_seconds": 3.8,
+      "old_scf_iterations": 14,
+      "new_scf_iterations": 14
+    },
+    {
+      "case": "H2O-EF",
+      "old_seconds": 4.26,
+      "new_seconds": 4.44,
+      "old_scf_iterations": 17,
+      "new_scf_iterations": 17
+    },
+    {
+      "case": "H2O",
+      "old_seconds": 4.43,
+      "new_seconds": 4.29,
+      "old_scf_iterations": 31,
+      "new_scf_iterations": 31
+    },
+    {
+      "case": "HMn",
+      "old_seconds": 13.96,
+      "new_seconds": 15.48,
+      "old_scf_iterations": 26,
+      "new_scf_iterations": 26
+    },
+    {
+      "case": "Methane",
+      "old_seconds": 3.7,
+      "new_seconds": 3.83,
+      "old_scf_iterations": 14,
+      "new_scf_iterations": 14
+    },
+    {
+      "case": "Mol_MnO",
+      "old_seconds": 9.25,
+      "new_seconds": 9.97,
+      "old_scf_iterations": 26,
+      "new_scf_iterations": 26
+    },
+    {
+      "case": "Ndia2",
+      "old_seconds": 2.08,
+      "new_seconds": 2.19,
+      "old_scf_iterations": 13,
+      "new_scf_iterations": 13
+    }
+  ]
+}

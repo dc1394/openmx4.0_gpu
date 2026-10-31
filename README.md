@@ -860,6 +860,10 @@ loads the matching installed libraries. From `work/`, submit with
 `qsub -v OMX_INPUT=input.dat ../tools/sirius_openmx.pbs`.
 The [Sirius threading audit](doc/sirius_threading_validation_20261031.txt)
 records ELPA/BLAS worker checks and the replacement of earlier native suite timings.
+The [one-node 32 MPI x 3 OpenMP benchmark data](benchmarks/results/sirius_mi300a_20261031_32x3/README.txt)
+compare official CPU, fork CPU and ordinary GPU execution for S14, L16,
+sidia333 and cghelgeo. All 96 energy/force comparisons pass 1e-7; the
+original 25-SCF sidia333 deck is retained and remains unconverged.
 
 ### HPC SDK 26.9 / CUDA 13.4 update
 

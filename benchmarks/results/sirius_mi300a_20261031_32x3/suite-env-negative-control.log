@@ -1,0 +1,19 @@
+F
+======================================================================
+FAIL: test_preserves_explicit_blas_settings (suite_test.SuiteEnvironmentTest)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/work/GPU2026/dc1394/openmx4.0_gpu/tests/test_gpu_suite_environment.py", line 50, in test_preserves_explicit_blas_settings
+    self.assertEqual(self.launch(dict(OMP_NUM_THREADS='8', BLIS_NUM_THREADS='3',
+AssertionError: {'OMP_NUM_THREADS': '3', 'BLIS_NUM_THREADS': '1', 'OPENBLAS_NUM_THREADS': '1'} != {'OMP_NUM_THREADS': '3', 'BLIS_NUM_THREADS': '3', 'OPENBLAS_NUM_THREADS': '2'}
+- {'BLIS_NUM_THREADS': '1', 'OMP_NUM_THREADS': '3', 'OPENBLAS_NUM_THREADS': '1'}
+?                       ^                                                    ^
+
++ {'BLIS_NUM_THREADS': '3', 'OMP_NUM_THREADS': '3', 'OPENBLAS_NUM_THREADS': '2'}
+?                       ^                                                    ^
+
+
+----------------------------------------------------------------------
+Ran 1 test in 0.309s
+
+FAILED (failures=1)

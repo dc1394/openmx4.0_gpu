@@ -1,0 +1,135 @@
+In file included from /tmp/openmx-gs2-memory-cbaq3t1j/check.c:19:
+In file included from /work/GPU2026/dc1394/openmx4.0_gpu/source/elpa_cosma_bridge.c:17:
+/work/GPU2026/dc1394/openmx4.0_gpu/source/openmx_stdout_level.h:27:40: warning: attribute declaration must precede definition [-Wignored-attributes]
+   27 | extern int level_stdout __attribute__((weak));
+      |                                        ^
+/tmp/openmx-gs2-memory-cbaq3t1j/check.c:13:22: note: previous definition is here
+   13 | int SCF_Gpu_Num = 4, level_stdout = 0;
+      |                      ^
+/tmp/openmx-gs2-memory-cbaq3t1j/check.c:85:38: warning: unused parameter 'h' [-Wunused-parameter]
+   85 | void elpa_eigenvectors_double(elpa_t h, double *a, double *w, double *z, int *err) { CHECK(0); }
+      |                                      ^
+/tmp/openmx-gs2-memory-cbaq3t1j/check.c:85:49: warning: unused parameter 'a' [-Wunused-parameter]
+   85 | void elpa_eigenvectors_double(elpa_t h, double *a, double *w, double *z, int *err) { CHECK(0); }
+      |                                                 ^
+/tmp/openmx-gs2-memory-cbaq3t1j/check.c:85:60: warning: unused parameter 'w' [-Wunused-parameter]
+   85 | void elpa_eigenvectors_double(elpa_t h, double *a, double *w, double *z, int *err) { CHECK(0); }
+      |                                                            ^
+/tmp/openmx-gs2-memory-cbaq3t1j/check.c:85:71: warning: unused parameter 'z' [-Wunused-parameter]
+   85 | void elpa_eigenvectors_double(elpa_t h, double *a, double *w, double *z, int *err) { CHECK(0); }
+      |                                                                       ^
+/tmp/openmx-gs2-memory-cbaq3t1j/check.c:85:79: warning: unused parameter 'err' [-Wunused-parameter]
+   85 | void elpa_eigenvectors_double(elpa_t h, double *a, double *w, double *z, int *err) { CHECK(0); }
+      |                                                                               ^
+/tmp/openmx-gs2-memory-cbaq3t1j/check.c:86:46: warning: unused parameter 'h' [-Wunused-parameter]
+   86 | void elpa_eigenvectors_double_complex(elpa_t h, double complex *a, double *w, double complex *z, int *err) { CHECK(0); }
+      |                                              ^
+/tmp/openmx-gs2-memory-cbaq3t1j/check.c:86:65: warning: unused parameter 'a' [-Wunused-parameter]
+   86 | void elpa_eigenvectors_double_complex(elpa_t h, double complex *a, double *w, double complex *z, int *err) { CHECK(0); }
+      |                                                                 ^
+/tmp/openmx-gs2-memory-cbaq3t1j/check.c:86:76: warning: unused parameter 'w' [-Wunused-parameter]
+   86 | void elpa_eigenvectors_double_complex(elpa_t h, double complex *a, double *w, double complex *z, int *err) { CHECK(0); }
+      |                                                                            ^
+/tmp/openmx-gs2-memory-cbaq3t1j/check.c:86:95: warning: unused parameter 'z' [-Wunused-parameter]
+   86 | void elpa_eigenvectors_double_complex(elpa_t h, double complex *a, double *w, double complex *z, int *err) { CHECK(0); }
+      |                                                                                               ^
+/tmp/openmx-gs2-memory-cbaq3t1j/check.c:86:103: warning: unused parameter 'err' [-Wunused-parameter]
+   86 | void elpa_eigenvectors_double_complex(elpa_t h, double complex *a, double *w, double complex *z, int *err) { CHECK(0); }
+      |                                                                                                       ^
+/tmp/openmx-gs2-memory-cbaq3t1j/check.c:87:39: warning: unused parameter 'h' [-Wunused-parameter]
+   87 | void elpa_eigenvectors_a_h_a_d(elpa_t h, double *a, double *w, double *z, int *err) { ++host_solves; *err=0; }
+      |                                       ^
+/tmp/openmx-gs2-memory-cbaq3t1j/check.c:87:50: warning: unused parameter 'a' [-Wunused-parameter]
+   87 | void elpa_eigenvectors_a_h_a_d(elpa_t h, double *a, double *w, double *z, int *err) { ++host_solves; *err=0; }
+      |                                                  ^
+/tmp/openmx-gs2-memory-cbaq3t1j/check.c:87:61: warning: unused parameter 'w' [-Wunused-parameter]
+   87 | void elpa_eigenvectors_a_h_a_d(elpa_t h, double *a, double *w, double *z, int *err) { ++host_solves; *err=0; }
+      |                                                             ^
+/tmp/openmx-gs2-memory-cbaq3t1j/check.c:87:72: warning: unused parameter 'z' [-Wunused-parameter]
+   87 | void elpa_eigenvectors_a_h_a_d(elpa_t h, double *a, double *w, double *z, int *err) { ++host_solves; *err=0; }
+      |                                                                        ^
+/tmp/openmx-gs2-memory-cbaq3t1j/check.c:88:40: warning: unused parameter 'h' [-Wunused-parameter]
+   88 | void elpa_eigenvectors_a_h_a_dc(elpa_t h, double complex *a, double *w, double complex *z, int *err) { ++host_solves; *err=0; }
+      |                                        ^
+/tmp/openmx-gs2-memory-cbaq3t1j/check.c:88:59: warning: unused parameter 'a' [-Wunused-parameter]
+   88 | void elpa_eigenvectors_a_h_a_dc(elpa_t h, double complex *a, double *w, double complex *z, int *err) { ++host_solves; *err=0; }
+      |                                                           ^
+/tmp/openmx-gs2-memory-cbaq3t1j/check.c:88:70: warning: unused parameter 'w' [-Wunused-parameter]
+   88 | void elpa_eigenvectors_a_h_a_dc(elpa_t h, double complex *a, double *w, double complex *z, int *err) { ++host_solves; *err=0; }
+      |                                                                      ^
+/tmp/openmx-gs2-memory-cbaq3t1j/check.c:88:89: warning: unused parameter 'z' [-Wunused-parameter]
+   88 | void elpa_eigenvectors_a_h_a_dc(elpa_t h, double complex *a, double *w, double complex *z, int *err) { ++host_solves; *err=0; }
+      |                                                                                         ^
+/tmp/openmx-gs2-memory-cbaq3t1j/check.c:89:37: warning: unused parameter 'h' [-Wunused-parameter]
+   89 | void elpa_eigenvectors_float(elpa_t h, float *a, float *w, float *z, int *err) { CHECK(0); }
+      |                                     ^
+/tmp/openmx-gs2-memory-cbaq3t1j/check.c:89:47: warning: unused parameter 'a' [-Wunused-parameter]
+   89 | void elpa_eigenvectors_float(elpa_t h, float *a, float *w, float *z, int *err) { CHECK(0); }
+      |                                               ^
+/tmp/openmx-gs2-memory-cbaq3t1j/check.c:89:57: warning: unused parameter 'w' [-Wunused-parameter]
+   89 | void elpa_eigenvectors_float(elpa_t h, float *a, float *w, float *z, int *err) { CHECK(0); }
+      |                                                         ^
+/tmp/openmx-gs2-memory-cbaq3t1j/check.c:89:67: warning: unused parameter 'z' [-Wunused-parameter]
+   89 | void elpa_eigenvectors_float(elpa_t h, float *a, float *w, float *z, int *err) { CHECK(0); }
+      |                                                                   ^
+/tmp/openmx-gs2-memory-cbaq3t1j/check.c:89:75: warning: unused parameter 'err' [-Wunused-parameter]
+   89 | void elpa_eigenvectors_float(elpa_t h, float *a, float *w, float *z, int *err) { CHECK(0); }
+      |                                                                           ^
+/tmp/openmx-gs2-memory-cbaq3t1j/check.c:90:45: warning: unused parameter 'h' [-Wunused-parameter]
+   90 | void elpa_eigenvectors_float_complex(elpa_t h, float complex *a, float *w, float complex *z, int *err) { CHECK(0); }
+      |                                             ^
+/tmp/openmx-gs2-memory-cbaq3t1j/check.c:90:63: warning: unused parameter 'a' [-Wunused-parameter]
+   90 | void elpa_eigenvectors_float_complex(elpa_t h, float complex *a, float *w, float complex *z, int *err) { CHECK(0); }
+      |                                                               ^
+/tmp/openmx-gs2-memory-cbaq3t1j/check.c:90:73: warning: unused parameter 'w' [-Wunused-parameter]
+   90 | void elpa_eigenvectors_float_complex(elpa_t h, float complex *a, float *w, float complex *z, int *err) { CHECK(0); }
+      |                                                                         ^
+/tmp/openmx-gs2-memory-cbaq3t1j/check.c:90:91: warning: unused parameter 'z' [-Wunused-parameter]
+   90 | void elpa_eigenvectors_float_complex(elpa_t h, float complex *a, float *w, float complex *z, int *err) { CHECK(0); }
+      |                                                                                           ^
+/tmp/openmx-gs2-memory-cbaq3t1j/check.c:90:99: warning: unused parameter 'err' [-Wunused-parameter]
+   90 | void elpa_eigenvectors_float_complex(elpa_t h, float complex *a, float *w, float complex *z, int *err) { CHECK(0); }
+      |                                                                                                   ^
+/tmp/openmx-gs2-memory-cbaq3t1j/check.c:91:39: warning: unused parameter 'h' [-Wunused-parameter]
+   91 | void elpa_eigenvectors_a_h_a_f(elpa_t h, float *a, float *w, float *z, int *err) { ++host_solves; *err=0; }
+      |                                       ^
+/tmp/openmx-gs2-memory-cbaq3t1j/check.c:91:49: warning: unused parameter 'a' [-Wunused-parameter]
+   91 | void elpa_eigenvectors_a_h_a_f(elpa_t h, float *a, float *w, float *z, int *err) { ++host_solves; *err=0; }
+      |                                                 ^
+/tmp/openmx-gs2-memory-cbaq3t1j/check.c:91:59: warning: unused parameter 'w' [-Wunused-parameter]
+   91 | void elpa_eigenvectors_a_h_a_f(elpa_t h, float *a, float *w, float *z, int *err) { ++host_solves; *err=0; }
+      |                                                           ^
+/tmp/openmx-gs2-memory-cbaq3t1j/check.c:91:69: warning: unused parameter 'z' [-Wunused-parameter]
+   91 | void elpa_eigenvectors_a_h_a_f(elpa_t h, float *a, float *w, float *z, int *err) { ++host_solves; *err=0; }
+      |                                                                     ^
+/tmp/openmx-gs2-memory-cbaq3t1j/check.c:92:40: warning: unused parameter 'h' [-Wunused-parameter]
+   92 | void elpa_eigenvectors_a_h_a_fc(elpa_t h, float complex *a, float *w, float complex *z, int *err) { ++host_solves; *err=0; }
+      |                                        ^
+/tmp/openmx-gs2-memory-cbaq3t1j/check.c:92:58: warning: unused parameter 'a' [-Wunused-parameter]
+   92 | void elpa_eigenvectors_a_h_a_fc(elpa_t h, float complex *a, float *w, float complex *z, int *err) { ++host_solves; *err=0; }
+      |                                                          ^
+/tmp/openmx-gs2-memory-cbaq3t1j/check.c:92:68: warning: unused parameter 'w' [-Wunused-parameter]
+   92 | void elpa_eigenvectors_a_h_a_fc(elpa_t h, float complex *a, float *w, float complex *z, int *err) { ++host_solves; *err=0; }
+      |                                                                    ^
+/tmp/openmx-gs2-memory-cbaq3t1j/check.c:92:86: warning: unused parameter 'z' [-Wunused-parameter]
+   92 | void elpa_eigenvectors_a_h_a_fc(elpa_t h, float complex *a, float *w, float complex *z, int *err) { ++host_solves; *err=0; }
+      |                                                                                      ^
+37 warnings generated.
+PASS: cap
+PASS: block
+PASS: mod
+PASS: uuid
+PASS: allocation
+PASS: query
+PASS: grid-change
+PASS: grid-cache-skew
+PASS: overflow
+PASS: cpu-dispatch
+PASS: handle-thread-lifecycle
+PASS: handle-errors
+PASS: block-change
+PASS: asymmetric-handle-errors
+PASS: handle-cache-skew
+PASS: handle-comm-change
+PASS: handle-mode-skew
+17/17 distributed admission/lifecycle cases passed

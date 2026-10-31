@@ -1,0 +1,76 @@
+{
+  "upstream_cpu": {
+    "version": "2018.05.001",
+    "openmp": true,
+    "config_header": "/work/GPU2026/dc1394/openmx4.0_gpu/build/sirius-upstream-4.0.1/openmx4.0/source/elpa-2018.05.001/config-f90.h",
+    "fortran_flags": "-O3 -march=native -fopenmp",
+    "object_symbols": {
+      "elpa2_compute_real.o": [
+        "__kmpc_barrier",
+        "__kmpc_end_single",
+        "__kmpc_for_static_fini",
+        "__kmpc_for_static_init_4u",
+        "__kmpc_fork_call",
+        "__kmpc_global_thread_num",
+        "__kmpc_push_num_threads",
+        "__kmpc_single",
+        "omp_get_num_threads",
+        "omp_get_thread_num"
+      ],
+      "elpa2_compute_complex.o": [
+        "__kmpc_barrier",
+        "__kmpc_end_single",
+        "__kmpc_for_static_fini",
+        "__kmpc_for_static_init_4u",
+        "__kmpc_fork_call",
+        "__kmpc_global_thread_num",
+        "__kmpc_push_num_threads",
+        "__kmpc_single",
+        "omp_get_num_threads",
+        "omp_get_thread_num"
+      ],
+      "elpa1_compute_real.o": [
+        "__kmpc_barrier",
+        "__kmpc_end_master",
+        "__kmpc_for_static_fini",
+        "__kmpc_for_static_init_4u",
+        "__kmpc_fork_call",
+        "__kmpc_global_thread_num",
+        "__kmpc_master",
+        "__kmpc_push_num_threads",
+        "omp_get_thread_num"
+      ],
+      "elpa_solve_evp_complex_2stage_double_impl.o": [
+        "omp_get_max_threads"
+      ],
+      "elpa_solve_evp_real_2stage_double_impl.o": [
+        "omp_get_max_threads"
+      ],
+      "elpa1_compute_complex.o": [
+        "__kmpc_barrier",
+        "__kmpc_end_master",
+        "__kmpc_for_static_fini",
+        "__kmpc_for_static_init_4u",
+        "__kmpc_fork_call",
+        "__kmpc_global_thread_num",
+        "__kmpc_master",
+        "__kmpc_push_num_threads"
+      ]
+    }
+  },
+  "fork_cpu": {
+    "version": "2026.02.002",
+    "openmp": false,
+    "config_header": "/work/GPU2026/dc1394/openmx4.0_gpu/build/sirius-hip/native/source/build/gpusolver2/build/elpa/config.h",
+    "config_log": "/work/GPU2026/dc1394/openmx4.0_gpu/build/sirius-hip/native/source/build/gpusolver2/build/elpa/config.log",
+    "archive": "/work/GPU2026/dc1394/openmx4.0_gpu/build/sirius-hip/native/source/third_party/gpusolver2-install/lib/libelpa.a",
+    "archive_sha256": "ea1d09c2bca9e6c06c1894c567e0f8efa96f100477034a7b104a77d085c1b191",
+    "openmp_symbols": []
+  },
+  "blas": {
+    "library": "AOCL libblis-mt.so.5",
+    "threads": 3,
+    "note": "Threaded BLAS does not enable ELPA-internal OpenMP loops."
+  },
+  "note": "Audit of actual Sirius benchmark builds, 2026-10-31. No benchmark condition changed by this read-only check."
+}

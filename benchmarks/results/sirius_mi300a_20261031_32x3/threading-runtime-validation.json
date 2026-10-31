@@ -1,0 +1,584 @@
+{
+  "date": "2026-10-31",
+  "machine": "Sirius MI300A",
+  "remote_base": "ef6cacaa",
+  "prior_build_elpa": {
+    "upstream_cpu": {
+      "version": "2018.05.001",
+      "openmp": true,
+      "config_header": "/work/GPU2026/dc1394/openmx4.0_gpu/build/sirius-upstream-4.0.1/openmx4.0/source/elpa-2018.05.001/config-f90.h",
+      "fortran_flags": "-O3 -march=native -fopenmp",
+      "object_symbols": {
+        "elpa2_compute_real.o": [
+          "__kmpc_barrier",
+          "__kmpc_end_single",
+          "__kmpc_for_static_fini",
+          "__kmpc_for_static_init_4u",
+          "__kmpc_fork_call",
+          "__kmpc_global_thread_num",
+          "__kmpc_push_num_threads",
+          "__kmpc_single",
+          "omp_get_num_threads",
+          "omp_get_thread_num"
+        ],
+        "elpa2_compute_complex.o": [
+          "__kmpc_barrier",
+          "__kmpc_end_single",
+          "__kmpc_for_static_fini",
+          "__kmpc_for_static_init_4u",
+          "__kmpc_fork_call",
+          "__kmpc_global_thread_num",
+          "__kmpc_push_num_threads",
+          "__kmpc_single",
+          "omp_get_num_threads",
+          "omp_get_thread_num"
+        ],
+        "elpa1_compute_real.o": [
+          "__kmpc_barrier",
+          "__kmpc_end_master",
+          "__kmpc_for_static_fini",
+          "__kmpc_for_static_init_4u",
+          "__kmpc_fork_call",
+          "__kmpc_global_thread_num",
+          "__kmpc_master",
+          "__kmpc_push_num_threads",
+          "omp_get_thread_num"
+        ],
+        "elpa_solve_evp_complex_2stage_double_impl.o": [
+          "omp_get_max_threads"
+        ],
+        "elpa_solve_evp_real_2stage_double_impl.o": [
+          "omp_get_max_threads"
+        ],
+        "elpa1_compute_complex.o": [
+          "__kmpc_barrier",
+          "__kmpc_end_master",
+          "__kmpc_for_static_fini",
+          "__kmpc_for_static_init_4u",
+          "__kmpc_fork_call",
+          "__kmpc_global_thread_num",
+          "__kmpc_master",
+          "__kmpc_push_num_threads"
+        ]
+      }
+    },
+    "fork_cpu": {
+      "version": "2026.02.002",
+      "openmp": false,
+      "config_header": "/work/GPU2026/dc1394/openmx4.0_gpu/build/sirius-hip/native/source/build/gpusolver2/build/elpa/config.h",
+      "config_log": "/work/GPU2026/dc1394/openmx4.0_gpu/build/sirius-hip/native/source/build/gpusolver2/build/elpa/config.log",
+      "archive": "/work/GPU2026/dc1394/openmx4.0_gpu/build/sirius-hip/native/source/third_party/gpusolver2-install/lib/libelpa.a",
+      "archive_sha256": "ea1d09c2bca9e6c06c1894c567e0f8efa96f100477034a7b104a77d085c1b191",
+      "openmp_symbols": []
+    },
+    "blas": {
+      "library": "AOCL libblis-mt.so.5",
+      "threads": 3,
+      "note": "Direct diagnostic observations only. The old native-suite helper overrode BLIS_NUM_THREADS to 1; all earlier native-suite timings are excluded."
+    },
+    "note": "Audit of actual Sirius benchmark builds, 2026-10-31. No benchmark condition changed by this read-only check."
+  },
+  "blas_integrated_no_preload": [
+    {
+      "route": "fork_cpu",
+      "case": "C60",
+      "preload": false,
+      "jobid": "48473.pbs",
+      "binary_sha256": "5878fedc02e93bd5db526e6bea87112fa8113f737ed964f32c517dce9689bdf9",
+      "ompt_counts": [
+        {
+          "provider": "libblis-mt",
+          "requested": 3,
+          "actual": 3,
+          "ranks": 32
+        }
+      ],
+      "bindings": [
+        "696683:\tbinding file /system/apps/rhel/aocl/5.1.0/aocc/lib/libscalapack.so [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `dgemm_'",
+        "696683:\tbinding file /system/apps/rhel/aocl/5.1.0/aocc/lib/libscalapack.so [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `zgemm_'",
+        "696683:\tbinding file /system/apps/rhel/aocl/5.1.0/aocc/lib/libscalapack.so [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `dgemm_'",
+        "696683:\tbinding file /system/apps/rhel/aocl/5.1.0/aocc/lib/libscalapack.so [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `zgemm_'",
+        "696683:\tbinding file /work/GPU2026/dc1394/openmx4.0_gpu/work/codex_sirius_benchmark_20261031/binaries/fork_cpu/openmx [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `dgemm_'"
+      ]
+    },
+    {
+      "route": "fork_cpu",
+      "case": "GaAs",
+      "preload": false,
+      "jobid": "48473.pbs",
+      "binary_sha256": "5878fedc02e93bd5db526e6bea87112fa8113f737ed964f32c517dce9689bdf9",
+      "ompt_counts": [
+        {
+          "provider": "libblis-mt",
+          "requested": 3,
+          "actual": 3,
+          "ranks": 32
+        }
+      ],
+      "bindings": [
+        "697229:\tbinding file /system/apps/rhel/aocl/5.1.0/aocc/lib/libscalapack.so [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `dgemm_'",
+        "697229:\tbinding file /system/apps/rhel/aocl/5.1.0/aocc/lib/libscalapack.so [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `zgemm_'",
+        "697229:\tbinding file /system/apps/rhel/aocl/5.1.0/aocc/lib/libscalapack.so [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `dgemm_'",
+        "697229:\tbinding file /system/apps/rhel/aocl/5.1.0/aocc/lib/libscalapack.so [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `zgemm_'",
+        "697229:\tbinding file /work/GPU2026/dc1394/openmx4.0_gpu/work/codex_sirius_benchmark_20261031/binaries/fork_cpu/openmx [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `zgemm_'",
+        "697229:\tbinding file /system/apps/rhel/aocl/5.1.0/aocc/lib/libflame.so [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `dgemm_'",
+        "697229:\tbinding file /work/GPU2026/dc1394/openmx4.0_gpu/work/codex_sirius_benchmark_20261031/binaries/fork_cpu/openmx [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `dgemm_'"
+      ]
+    },
+    {
+      "route": "fork_gpu",
+      "case": "C60",
+      "preload": false,
+      "jobid": "48473.pbs",
+      "binary_sha256": "5878fedc02e93bd5db526e6bea87112fa8113f737ed964f32c517dce9689bdf9",
+      "ompt_counts": [
+        {
+          "provider": "libblis-mt",
+          "requested": 3,
+          "actual": 3,
+          "ranks": 32
+        }
+      ],
+      "bindings": [
+        "697748:\tbinding file /system/apps/rhel/aocl/5.1.0/aocc/lib/libscalapack.so [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `dgemm_'",
+        "697748:\tbinding file /system/apps/rhel/aocl/5.1.0/aocc/lib/libscalapack.so [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `zgemm_'",
+        "697748:\tbinding file /system/apps/rhel/aocl/5.1.0/aocc/lib/libscalapack.so [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `dgemm_'",
+        "697748:\tbinding file /system/apps/rhel/aocl/5.1.0/aocc/lib/libscalapack.so [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `zgemm_'",
+        "697748:\tbinding file /work/GPU2026/dc1394/openmx4.0_gpu/work/codex_sirius_benchmark_20261031/binaries/fork_gpu/openmx [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `dgemm_'"
+      ]
+    },
+    {
+      "route": "fork_gpu",
+      "case": "GaAs",
+      "preload": false,
+      "jobid": "48473.pbs",
+      "binary_sha256": "5878fedc02e93bd5db526e6bea87112fa8113f737ed964f32c517dce9689bdf9",
+      "ompt_counts": [
+        {
+          "provider": "libblis-mt",
+          "requested": 3,
+          "actual": 3,
+          "ranks": 32
+        }
+      ],
+      "bindings": [
+        "698328:\tbinding file /system/apps/rhel/aocl/5.1.0/aocc/lib/libscalapack.so [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `dgemm_'",
+        "698328:\tbinding file /system/apps/rhel/aocl/5.1.0/aocc/lib/libscalapack.so [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `zgemm_'",
+        "698328:\tbinding file /system/apps/rhel/aocl/5.1.0/aocc/lib/libscalapack.so [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `dgemm_'",
+        "698328:\tbinding file /system/apps/rhel/aocl/5.1.0/aocc/lib/libscalapack.so [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `zgemm_'",
+        "698328:\tbinding file /system/apps/rhel/aocl/5.1.0/aocc/lib/libflame.so [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `dgemm_'",
+        "698328:\tbinding file /work/GPU2026/dc1394/openmx4.0_gpu/work/codex_sirius_benchmark_20261031/binaries/fork_gpu/openmx [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `zgemm_'",
+        "698328:\tbinding file /work/GPU2026/dc1394/openmx4.0_gpu/work/codex_sirius_benchmark_20261031/binaries/fork_gpu/openmx [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `dgemm_'"
+      ]
+    }
+  ],
+  "elpa_integrated": {
+    "version": "2026.02.002",
+    "openmp": true,
+    "cpu_handle_threads": 3,
+    "gpu_handle_host_threads": 1,
+    "mpi_thread_level": "MPI_THREAD_SERIALIZED",
+    "configure_options": [
+      "--enable-openmp",
+      "--enable-amd-gpu-kernels",
+      "--disable-avx512-kernels"
+    ],
+    "openmp_cflags": "-fopenmp",
+    "openmp_fcflags": "-fopenmp",
+    "tests": [
+      {
+        "ranks": 6,
+        "threads": 3,
+        "cases_per_rank": 24,
+        "workers_observed_on_every_rank": 3,
+        "eigenvalue_residual_orthogonality_tolerance": 2e-11,
+        "passed": true
+      },
+      {
+        "ranks": 8,
+        "threads": 3,
+        "cases_per_rank": 24,
+        "workers_observed_on_every_rank": 3,
+        "eigenvalue_residual_orthogonality_tolerance": 2e-11,
+        "passed": true
+      }
+    ],
+    "worker_observation_option": "--check-elpa-workers",
+    "nvidia_default_probe_retained": true
+  },
+  "host_tests": {
+    "total": 634,
+    "passed": 632,
+    "failed": {
+      "628": {
+        "name": "neutral-grid-metadata-native",
+        "passed": false,
+        "log": "integrated-threaded-host-env.log"
+      },
+      "72": {
+        "name": "basis-text-numbers",
+        "passed": false,
+        "log": "integrated-threaded-host-env.log"
+      }
+    }
+  },
+  "existing_numeric_failure": {
+    "baseline_control_reproduced": true,
+    "basis_test_sha256": "effcef1e841dacb5361e134b36f7c3f5f3fe3edbae5b4df6b9fb713f6786f6a0",
+    "integrated_basis_test_sha256": "effcef1e841dacb5361e134b36f7c3f5f3fe3edbae5b4df6b9fb713f6786f6a0",
+    "standalone_probe": [
+      "2.2250738585072012e-308 from_chars ec=34 value=91 strtod=2.2250738585072014e-308 errno=34",
+      "9.9999999999999694e-311 from_chars ec=34 value=91 strtod=9.9999999999999694e-311 errno=34"
+    ]
+  },
+  "benchmark_policy": {
+    "ranks_per_node": 32,
+    "threads": 3,
+    "gpu_selector": "gpusolver",
+    "rerun_all_twelve_fork_measurements": true,
+    "exclude_all_prior_openmp_disabled_fork_measurements": true,
+    "retain_official_cpu_measurements": false,
+    "retain_only_direct_named_cpu_measurements": true,
+    "rerun_all_twelve_native_suite_measurements": true
+  },
+  "evidence_directory": "work/codex_sirius_benchmark_20261031",
+  "logs": {
+    "integrated-threaded-build.log": "c006fd6d3237cd5453d949323a387f9b761d721107b8c40f75c5e0363e8e0488",
+    "integrated-elpa-threaded-mpi.log": "8d7b499ed42837118c2706997cb2e6de1fbb2f9832f5e82f517845fd387d85cb",
+    "integrated-elpa-threaded-mpi-8.log": "ebfa451f19723fb8d71ff23b304db5dbe259f86730af42e9a9365334ce3de7f2",
+    "integrated-threaded-ctest.log": "a0631bfe4a5717fb532dd4e9ae4c8afe33194706edd4f39e4714c1c7fd8b614c",
+    "integrated-threaded-ctest-retry.log": "6223939eaf6e0cc195ccfd3ff10f83095533e34474cefa186a37b705f0820be6",
+    "integrated-threaded-host-recovery.log": "94d83e0995276ff5f69b3356f1fe2dc1d81623558e94892a6e4b2bfb69e547e7",
+    "integrated-threaded-host-env.log": "5837aedac96724c2fdd8f6d196ac17784b05bb9265a55995ec426d765d264b36",
+    "integrated-threaded-mpi-env.log": "7b07204932a9944c0033bd3dc0824ad6b6d19fc8b86354fd42dffdc2d67eb0f2",
+    "integrated-gpu-worker-env.log": "5cf23cc2b72a84d9d820a0d44e8ac3de72488369570729cefb02d52a617ea930",
+    "numeric-baseline-control.log": "28e70346925171242b3ee7e9710cca566dd1af5e388cf3a057644949103ac0f4",
+    "numeric-runtime-probe.log": "74a7c98d7032e4131d764a1a43ffd4dbce1a5ba3b8ae5fab695ef3ecbae1e417",
+    "blas_integrated_audit.pbs": "01f7664ed1f754096cebd61a43fb98336e6fc3c6d04a9b5fe0f3958957ab8fc4",
+    "integrated-nvidia-build.log": "30730288f0e3aab3f461544a727763eec2896f94882bf77ab8fafa14490ee54a",
+    "integrated-nvidia-related-ctest.log": "c4ffc25ee9dece06b4f0cda87cb37c59125e8899618faebac01cae20fad5953d",
+    "gs2-cleanup-73c4a2c0-model.log": "9e3af94525b757b7aab15ea2edc79da8ab7110a6d25e37f94fbf47018b389924",
+    "build-73c4a2c0.log": "1b2f28e75f7d31cc72efae6eb612757a00db1ecaccec114b9a22f420dd8bc772"
+  },
+  "integrated_remote_fixes": [
+    "e00049a5",
+    "ef6cacaa",
+    "73c4a2c0"
+  ],
+  "nvidia_merge_hip_binary_unchanged": true,
+  "related_tests_after_nvidia_merge": {
+    "total": 6,
+    "passed": 6
+  },
+  "verified_hip_production_inputs": {
+    "source/openmx.c": "fa5ce02c83fde682cabde536b6363d80d72c42c11dfdbd6f453efe3a25dae367",
+    "source/openmx_elpa_cpu.c": "1704b5f11b275ebac902298b88e5a917736eba92406838be2c5b1668168a5b8b",
+    "source/elpa_cosma_bridge.c": "a29348d66bd68ce6c4f469c1a8396bc389c64a5465cc18110032b7f577337d6c",
+    "source/openmx_env_registry.h": "867c5287cb1bc6bf0ad40edb6ea29e0f55f40055d7fd912363bdf2dd52fc0391",
+    "source/backends/hip/src/Krylov.c": "1ea8bcfc4953af8261afd91b6da6a13ef48f54c73449a1d6de6b8fe651935ce4",
+    "source/backends/hip/Makefile": "ae4190321879219fe029257bf9033fda8a6029e9c7ca80f95b753c54ad9e120d",
+    "source/third_party/hip/build_gpusolver2_stack.sh": "a3876cc2910ea91837dddcbe46dfee59686992a16c1af21c83ffd0ab70b4879b"
+  },
+  "direct_blas_diagnostics_before_fix": [
+    {
+      "route": "upstream_cpu",
+      "case": "C60",
+      "ompt_counts": [
+        {
+          "provider": "libblis-mt",
+          "requested": 1,
+          "actual": 1,
+          "ranks": 32
+        },
+        {
+          "provider": "libblis-mt",
+          "requested": 3,
+          "actual": 3,
+          "ranks": 32
+        }
+      ],
+      "bindings": [
+        "688138:\tbinding file /system/apps/rhel/aocl/5.1.0/aocc/lib/libscalapack.so [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `dgemm_'",
+        "688138:\tbinding file /system/apps/rhel/aocl/5.1.0/aocc/lib/libscalapack.so [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `zgemm_'",
+        "688138:\tbinding file /work/GPU2026/dc1394/openmx4.0_gpu/work/codex_sirius_benchmark_20261031/binaries/upstream_cpu/openmx [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `dgemm_'"
+      ]
+    },
+    {
+      "route": "upstream_cpu",
+      "case": "GaAs",
+      "ompt_counts": [
+        {
+          "provider": "libblis-mt",
+          "requested": 3,
+          "actual": 3,
+          "ranks": 32
+        }
+      ],
+      "bindings": [
+        "688534:\tbinding file /system/apps/rhel/aocl/5.1.0/aocc/lib/libflame.so [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `dgemm_'",
+        "688534:\tbinding file /system/apps/rhel/aocl/5.1.0/aocc/lib/libscalapack.so [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `dgemm_'",
+        "688534:\tbinding file /system/apps/rhel/aocl/5.1.0/aocc/lib/libscalapack.so [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `zgemm_'",
+        "688534:\tbinding file /work/GPU2026/dc1394/openmx4.0_gpu/work/codex_sirius_benchmark_20261031/binaries/upstream_cpu/openmx [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `dgemm_'",
+        "688534:\tbinding file /work/GPU2026/dc1394/openmx4.0_gpu/work/codex_sirius_benchmark_20261031/binaries/upstream_cpu/openmx [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `zgemm_'"
+      ]
+    },
+    {
+      "route": "fork_cpu",
+      "case": "C60",
+      "ompt_counts": [
+        {
+          "provider": "libblis-mt",
+          "requested": 3,
+          "actual": 3,
+          "ranks": 32
+        }
+      ],
+      "bindings": [
+        "689882:\tbinding file /system/apps/rhel/aocl/5.1.0/aocc/lib/libscalapack.so [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `dgemm_'",
+        "689882:\tbinding file /system/apps/rhel/aocl/5.1.0/aocc/lib/libscalapack.so [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `zgemm_'",
+        "689882:\tbinding file /work/GPU2026/dc1394/openmx4.0_gpu/work/codex_sirius_benchmark_20261031/binaries/fork_cpu/openmx [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `dgemm_'"
+      ]
+    },
+    {
+      "route": "fork_cpu",
+      "case": "GaAs",
+      "ompt_counts": [
+        {
+          "provider": "libblis-mt",
+          "requested": 3,
+          "actual": 3,
+          "ranks": 32
+        }
+      ],
+      "bindings": [
+        "690427:\tbinding file /system/apps/rhel/aocl/5.1.0/aocc/lib/libflame.so [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `dgemm_'",
+        "690427:\tbinding file /system/apps/rhel/aocl/5.1.0/aocc/lib/libscalapack.so [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `dgemm_'",
+        "690427:\tbinding file /system/apps/rhel/aocl/5.1.0/aocc/lib/libscalapack.so [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `zgemm_'",
+        "690427:\tbinding file /work/GPU2026/dc1394/openmx4.0_gpu/work/codex_sirius_benchmark_20261031/binaries/fork_cpu/openmx [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `dgemm_'",
+        "690427:\tbinding file /work/GPU2026/dc1394/openmx4.0_gpu/work/codex_sirius_benchmark_20261031/binaries/fork_cpu/openmx [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `zgemm_'"
+      ]
+    },
+    {
+      "route": "fork_gpu",
+      "case": "C60",
+      "ompt_counts": [
+        {
+          "provider": "libblis-mt",
+          "requested": 3,
+          "actual": 3,
+          "ranks": 32
+        }
+      ],
+      "bindings": [
+        "690967:\tbinding file /system/apps/rhel/aocl/5.1.0/aocc/lib/libscalapack.so [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `dgemm_'",
+        "690967:\tbinding file /system/apps/rhel/aocl/5.1.0/aocc/lib/libscalapack.so [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `zgemm_'",
+        "690967:\tbinding file /work/GPU2026/dc1394/openmx4.0_gpu/work/codex_sirius_benchmark_20261031/binaries/fork_gpu/openmx [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `dgemm_'"
+      ]
+    },
+    {
+      "route": "fork_gpu",
+      "case": "GaAs",
+      "ompt_counts": [
+        {
+          "provider": "libblis-mt",
+          "requested": 3,
+          "actual": 3,
+          "ranks": 32
+        }
+      ],
+      "bindings": [
+        "691528:\tbinding file /system/apps/rhel/aocl/5.1.0/aocc/lib/libflame.so [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `dgemm_'",
+        "691528:\tbinding file /system/apps/rhel/aocl/5.1.0/aocc/lib/libscalapack.so [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `dgemm_'",
+        "691528:\tbinding file /system/apps/rhel/aocl/5.1.0/aocc/lib/libscalapack.so [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `zgemm_'",
+        "691528:\tbinding file /work/GPU2026/dc1394/openmx4.0_gpu/work/codex_sirius_benchmark_20261031/binaries/fork_gpu/openmx [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `dgemm_'",
+        "691528:\tbinding file /work/GPU2026/dc1394/openmx4.0_gpu/work/codex_sirius_benchmark_20261031/binaries/fork_gpu/openmx [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `zgemm_'"
+      ]
+    }
+  ],
+  "benchmark_helper_correction": {
+    "finding": "The native-suite helper unconditionally overwrote BLIS_NUM_THREADS=3 with 1. Parent-process and independent direct-execution probes did not verify that helper.",
+    "excluded": "All S/L/L2/L3 measurements from all three routes before the helper fix",
+    "retained": "Only the four direct named CPU measurements after the ELPA correction",
+    "regression_tests": "MPI-launch stub verifies actual inherited/default/CLI-override BLAS environment; three cases pass",
+    "examples": [
+      {
+        "route": "upstream_cpu",
+        "workload": "S",
+        "actual_helper_environment": {
+          "MAGMA_NUM_THREADS": "1",
+          "OPENBLAS_NUM_THREADS": "1",
+          "OMP_DYNAMIC": "FALSE",
+          "BLIS_NUM_THREADS": "1",
+          "OMP_MAX_ACTIVE_LEVELS": "1",
+          "OMP_NUM_THREADS": "3",
+          "OPENMX_GPU": "0",
+          "OPENMX_GPU_VERBOSE": "1",
+          "OPENMX_AFFINITY_DIR": "/work/GPU2026/dc1394/openmx4.0_gpu/work/codex_sirius_benchmark_20261031/runs/upstream_cpu/S/affinity"
+        }
+      },
+      {
+        "route": "fork_cpu",
+        "workload": "S",
+        "actual_helper_environment": {
+          "MAGMA_NUM_THREADS": "1",
+          "OPENBLAS_NUM_THREADS": "1",
+          "OMP_DYNAMIC": "FALSE",
+          "BLIS_NUM_THREADS": "1",
+          "OMP_MAX_ACTIVE_LEVELS": "1",
+          "OMP_NUM_THREADS": "3",
+          "OPENMX_GPU": "0",
+          "OPENMX_GPU_VERBOSE": "1",
+          "OPENMX_AFFINITY_DIR": "/work/GPU2026/dc1394/openmx4.0_gpu/work/codex_sirius_benchmark_20261031/runs/fork_cpu/S/affinity"
+        }
+      },
+      {
+        "route": "fork_gpu",
+        "workload": "L2",
+        "actual_helper_environment": {
+          "MAGMA_NUM_THREADS": "1",
+          "OPENBLAS_NUM_THREADS": "1",
+          "OMP_DYNAMIC": "FALSE",
+          "BLIS_NUM_THREADS": "1",
+          "OMP_MAX_ACTIVE_LEVELS": "1",
+          "OMP_NUM_THREADS": "3",
+          "OPENMX_GPU": "1",
+          "OPENMX_GPU_VERBOSE": "1",
+          "OPENMX_AFFINITY_DIR": "/work/GPU2026/dc1394/openmx4.0_gpu/work/codex_sirius_benchmark_20261031/runs/fork_gpu/L2/affinity"
+        }
+      }
+    ],
+    "native_worker_validation_job": "48495.pbs",
+    "native_worker_validation_passed": true
+  },
+  "native_suite_blas_diagnostic": {
+    "jobid": "48495.pbs",
+    "exit_status": 0,
+    "helper_commit": "42889fb07eee238402a87670ef920376b4aea328",
+    "helper_sha256": "142dbe07eb33a607aca96e01af7a28ea25f9510b618706ee7ef28f1e148c6274",
+    "rank_launcher_sha256": "ed7b5dc289688856401ca1f0e42e4140d39907c312b584b29920a7cfa1c6d438",
+    "timings_excluded": true,
+    "note": "Actual native-suite helper and MPI wrapper, full node 32 MPI x 3. OMPT records actual workers from BLIS parallel regions. The official route also legitimately creates one-worker BLAS teams; every rank additionally creates a three-worker BLAS team.",
+    "routes": [
+      {
+        "route": "upstream_cpu",
+        "cases": [
+          "C60",
+          "GaAs"
+        ],
+        "jobid": "48495.pbs",
+        "ranks": 32,
+        "threads": 3,
+        "three_blas_workers_observed_on_all_ranks": true,
+        "ompt_counts": [
+          {
+            "provider": "libblis-mt",
+            "requested": 1,
+            "actual": 1,
+            "ranks": 32
+          },
+          {
+            "provider": "libblis-mt",
+            "requested": 3,
+            "actual": 3,
+            "ranks": 32
+          }
+        ],
+        "run_log_sha256": "2f132948f7600150097faeccda371bf74b2f3a734d00afad0df648b833c32c7d",
+        "helper_command_sha256": "2c0854b0f2540979bb1d0921ecd312b101e6581edf801ea6adc13181a4341ead",
+        "mpi_launch_environment_sha256": "863b66a14e9649efeed69d6954e456e6df4475c22b34eaa01acc7ade81307382"
+      },
+      {
+        "route": "fork_cpu",
+        "cases": [
+          "C60",
+          "GaAs"
+        ],
+        "jobid": "48495.pbs",
+        "ranks": 32,
+        "threads": 3,
+        "three_blas_workers_observed_on_all_ranks": true,
+        "ompt_counts": [
+          {
+            "provider": "libblis-mt",
+            "requested": 3,
+            "actual": 3,
+            "ranks": 32
+          }
+        ],
+        "run_log_sha256": "82118c2a9436fb2c19bfe5a2fb42dcfa8be9d57c286ea1be88bf2711b80a8f1f",
+        "helper_command_sha256": "e41e94bf627bc7c00e05f62001d353bfcdb39b8ff4e53fa6b89b56a7fd63540e",
+        "mpi_launch_environment_sha256": "a0bd5afece7c2986b3a5a6c2efc80a516b1ac3ee4dc18a99265e279dc9193fa6"
+      },
+      {
+        "route": "fork_gpu",
+        "cases": [
+          "C60",
+          "GaAs"
+        ],
+        "jobid": "48495.pbs",
+        "ranks": 32,
+        "threads": 3,
+        "three_blas_workers_observed_on_all_ranks": true,
+        "ompt_counts": [
+          {
+            "provider": "libblis-mt",
+            "requested": 3,
+            "actual": 3,
+            "ranks": 32
+          }
+        ],
+        "run_log_sha256": "0c5505b618a33d718ed3240856605afea41c0325dd4757939433aff77862d1a1",
+        "helper_command_sha256": "743df9bc7af69a9cdebe43f1752903e21751083df949ca093fda922778c373b5",
+        "mpi_launch_environment_sha256": "f7279fc8113823d0fc30eadc37c6ca2725d0e3c8c8ccd3ac09c9b0d92f99a6e6"
+      }
+    ]
+  },
+  "later_remote_cleanup_integration": {
+    "integrated_at": "2026-10-31T19:47:36.587275+09:00",
+    "commit": "73c4a2c03e605ad675bbc3a30d690681b1e6b387",
+    "base": "3e2f5c73e7eef9b3a2be2e7dd33e2aedafdfcc9e",
+    "new_gpu_binary_sha256": "9f32ba753465990df98c4d52978780f06241340f6877fdaa655486d707c4bd93",
+    "retained_cpu_and_gpu_S_binary_sha256": "5878fedc02e93bd5db526e6bea87112fa8113f737ed964f32c517dce9689bdf9",
+    "shared_dsos_unchanged": true,
+    "host_lifecycle_cases": 17,
+    "host_lifecycle_passed": 17,
+    "scope": "ELPA GPU handle destruction; no numerical operation or BLAS/CPU ELPA thread configuration changes",
+    "benchmark_scope_unchanged": true
+  },
+  "final_one_node_benchmarks": {
+    "date": "2026-10-31",
+    "scope": [
+      "S14",
+      "L16",
+      "sidia333_nc_cluster",
+      "cghelgeo"
+    ],
+    "nodes": 1,
+    "apus": 4,
+    "ranks": 32,
+    "threads": 3,
+    "blas_threads": 3,
+    "completed_measurements": 12,
+    "cases_per_route": 32,
+    "completed_calculations": 96,
+    "pairwise_comparisons": 96,
+    "passed_comparisons": 96,
+    "energy_tolerance_hartree": 1e-07,
+    "force_tolerance_hartree_per_bohr": 1e-07,
+    "max_delta_energy_hartree": 2.878005034290254e-08,
+    "max_delta_force_hartree_per_bohr": 4.7200999999997856e-08,
+    "reused_matching_completed_measurements": 9,
+    "additional_gpu_measurements": [
+      "sidia333_nc_cluster",
+      "cghelgeo",
+      "L"
+    ],
+    "additional_gpu_job": "48503.pbs",
+    "gpu_binary_sha256": "9f32ba753465990df98c4d52978780f06241340f6877fdaa655486d707c4bd93",
+    "gpu_source_commit": "73c4a2c03e605ad675bbc3a30d690681b1e6b387",
+    "all_gpu_workloads_include_73c4a2c0": true,
+    "fixed_scf_input": "sidia333 retains25SCF and is not fully converged on all three routes; the other31cases converge on all routes.",
+    "result_directory": "benchmarks/results/sirius_mi300a_20261031_32x3",
+    "no_separate_gpusolver2_or_3_benchmarks": true
+  }
+}

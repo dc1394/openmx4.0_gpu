@@ -1,0 +1,94 @@
+[
+  {
+    "route": "fork_cpu",
+    "case": "C60",
+    "preload": false,
+    "jobid": "48473.pbs",
+    "binary_sha256": "5878fedc02e93bd5db526e6bea87112fa8113f737ed964f32c517dce9689bdf9",
+    "ompt_counts": [
+      {
+        "provider": "libblis-mt",
+        "requested": 3,
+        "actual": 3,
+        "ranks": 32
+      }
+    ],
+    "bindings": [
+      "696683:\tbinding file /system/apps/rhel/aocl/5.1.0/aocc/lib/libscalapack.so [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `dgemm_'",
+      "696683:\tbinding file /system/apps/rhel/aocl/5.1.0/aocc/lib/libscalapack.so [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `zgemm_'",
+      "696683:\tbinding file /system/apps/rhel/aocl/5.1.0/aocc/lib/libscalapack.so [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `dgemm_'",
+      "696683:\tbinding file /system/apps/rhel/aocl/5.1.0/aocc/lib/libscalapack.so [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `zgemm_'",
+      "696683:\tbinding file /work/GPU2026/dc1394/openmx4.0_gpu/work/codex_sirius_benchmark_20261031/binaries/fork_cpu/openmx [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `dgemm_'"
+    ]
+  },
+  {
+    "route": "fork_cpu",
+    "case": "GaAs",
+    "preload": false,
+    "jobid": "48473.pbs",
+    "binary_sha256": "5878fedc02e93bd5db526e6bea87112fa8113f737ed964f32c517dce9689bdf9",
+    "ompt_counts": [
+      {
+        "provider": "libblis-mt",
+        "requested": 3,
+        "actual": 3,
+        "ranks": 32
+      }
+    ],
+    "bindings": [
+      "697229:\tbinding file /system/apps/rhel/aocl/5.1.0/aocc/lib/libscalapack.so [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `dgemm_'",
+      "697229:\tbinding file /system/apps/rhel/aocl/5.1.0/aocc/lib/libscalapack.so [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `zgemm_'",
+      "697229:\tbinding file /system/apps/rhel/aocl/5.1.0/aocc/lib/libscalapack.so [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `dgemm_'",
+      "697229:\tbinding file /system/apps/rhel/aocl/5.1.0/aocc/lib/libscalapack.so [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `zgemm_'",
+      "697229:\tbinding file /work/GPU2026/dc1394/openmx4.0_gpu/work/codex_sirius_benchmark_20261031/binaries/fork_cpu/openmx [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `zgemm_'",
+      "697229:\tbinding file /system/apps/rhel/aocl/5.1.0/aocc/lib/libflame.so [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `dgemm_'",
+      "697229:\tbinding file /work/GPU2026/dc1394/openmx4.0_gpu/work/codex_sirius_benchmark_20261031/binaries/fork_cpu/openmx [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `dgemm_'"
+    ]
+  },
+  {
+    "route": "fork_gpu",
+    "case": "C60",
+    "preload": false,
+    "jobid": "48473.pbs",
+    "binary_sha256": "5878fedc02e93bd5db526e6bea87112fa8113f737ed964f32c517dce9689bdf9",
+    "ompt_counts": [
+      {
+        "provider": "libblis-mt",
+        "requested": 3,
+        "actual": 3,
+        "ranks": 32
+      }
+    ],
+    "bindings": [
+      "697748:\tbinding file /system/apps/rhel/aocl/5.1.0/aocc/lib/libscalapack.so [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `dgemm_'",
+      "697748:\tbinding file /system/apps/rhel/aocl/5.1.0/aocc/lib/libscalapack.so [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `zgemm_'",
+      "697748:\tbinding file /system/apps/rhel/aocl/5.1.0/aocc/lib/libscalapack.so [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `dgemm_'",
+      "697748:\tbinding file /system/apps/rhel/aocl/5.1.0/aocc/lib/libscalapack.so [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `zgemm_'",
+      "697748:\tbinding file /work/GPU2026/dc1394/openmx4.0_gpu/work/codex_sirius_benchmark_20261031/binaries/fork_gpu/openmx [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `dgemm_'"
+    ]
+  },
+  {
+    "route": "fork_gpu",
+    "case": "GaAs",
+    "preload": false,
+    "jobid": "48473.pbs",
+    "binary_sha256": "5878fedc02e93bd5db526e6bea87112fa8113f737ed964f32c517dce9689bdf9",
+    "ompt_counts": [
+      {
+        "provider": "libblis-mt",
+        "requested": 3,
+        "actual": 3,
+        "ranks": 32
+      }
+    ],
+    "bindings": [
+      "698328:\tbinding file /system/apps/rhel/aocl/5.1.0/aocc/lib/libscalapack.so [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `dgemm_'",
+      "698328:\tbinding file /system/apps/rhel/aocl/5.1.0/aocc/lib/libscalapack.so [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `zgemm_'",
+      "698328:\tbinding file /system/apps/rhel/aocl/5.1.0/aocc/lib/libscalapack.so [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `dgemm_'",
+      "698328:\tbinding file /system/apps/rhel/aocl/5.1.0/aocc/lib/libscalapack.so [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `zgemm_'",
+      "698328:\tbinding file /system/apps/rhel/aocl/5.1.0/aocc/lib/libflame.so [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `dgemm_'",
+      "698328:\tbinding file /work/GPU2026/dc1394/openmx4.0_gpu/work/codex_sirius_benchmark_20261031/binaries/fork_gpu/openmx [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `zgemm_'",
+      "698328:\tbinding file /work/GPU2026/dc1394/openmx4.0_gpu/work/codex_sirius_benchmark_20261031/binaries/fork_gpu/openmx [0] to /system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5 [0]: normal symbol `dgemm_'"
+    ]
+  }
+]

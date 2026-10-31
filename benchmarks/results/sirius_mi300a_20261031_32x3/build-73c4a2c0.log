@@ -1,0 +1,46 @@
+[  3%] Built target openmx_xc
+[  6%] Performing build step for 'openmx_host_simd_build'
+gmake[4]: warning: -j2 forced in submake: resetting jobserver mode.
+[  9%] Built target openmx_io
+[ 18%] Built target openmx_basis
+[ 34%] Built target kokkoscore
+[ 36%] Built target kokkoscore
+[ 34%] Built target kokkossimd
+[ 40%] Built target kokkossimd
+[ 37%] Built target kokkosalgorithms
+[ 44%] Built target kokkosalgorithms
+[ 37%] Built target kokkoscontainers
+[ 48%] Built target kokkoscontainers
+[ 51%] Built target openmx_host_simd_dispatch
+[ 53%] Built target openmx_host_grid_dispatch
+[ 55%] Built target openmx_host_grid_scalar
+[ 57%] Built target openmx_host_grid_avx2
+[ 59%] Built target openmx_host_grid_committed_scalar
+[ 61%] Built target openmx_host_grid_avx512
+[ 63%] Built target openmx_host_grid_committed_avx2
+[ 65%] Built target openmx_host_grid_committed_avx512
+[ 68%] Built target openmx_host_olg_scalar
+[ 70%] Built target openmx_host_olg_avx2
+[ 72%] Built target openmx_host_olg_avx512
+[ 74%] Built target openmx_host_orbitals_scalar
+[ 76%] Built target openmx_host_orbitals_avx2
+[ 78%] Built target openmx_host_orbitals_avx512
+[ 80%] Built target openmx_host_energy_scalar
+[ 82%] Built target openmx_host_energy_avx2
+[ 85%] Built target openmx_host_energy_avx512
+[ 87%] Built target openmx_host_force_scalar
+[ 89%] Built target openmx_host_force_avx2
+[ 91%] Built target openmx_host_vna_scalar
+[ 93%] Built target openmx_host_force_avx512
+[ 95%] Built target openmx_host_vna_avx512
+[ 97%] Built target openmx_host_vna_avx2
+[100%] Built target openmx_host_simd
+[ 40%] No install step for 'openmx_host_simd_build'
+[ 40%] Completed 'openmx_host_simd_build'
+[ 40%] Built target openmx_host_simd_build
+[100%] Built target openmx_core
+/work/GPU2026/dc1394/openmx4.0_gpu/build/sirius-hip-threaded/native/source
+gmake[4]: warning: -j12 forced in submake: resetting jobserver mode.
+gpusolver2 stack: using cmake: /usr/bin/cmake (cmake version 3.31.8)
+gpusolver2 stack: all components installed into /work/GPU2026/dc1394/openmx4.0_gpu/build/sirius-hip-threaded/native/source/third_party/gpusolver2-install
+[100%] Built target openmx
