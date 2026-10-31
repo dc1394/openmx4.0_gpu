@@ -1,0 +1,1402 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-31",
+  "base_revision": "f823dcec41b55b67d3dea714b9fc4eb5654da364",
+  "uncommitted_source_patch_sha256": "7b726f77bfdfcb28ba606185c0fd9708bbde6a47171a0c9e0e7450c5a41da03c",
+  "host": "AMD Ryzen Threadripper 3970X, 256 GiB RAM; Radeon RX 9060 XT (GPU disabled in cghelgeo diagnosis)",
+  "compiler": "ROCm core-10.1 Clang/Flang 24",
+  "fork_mpi": "OpenMPI 5.0.9",
+  "fork_math": "AOCL 5.2 LP64",
+  "upstream_toolchain": "Intel oneAPI icx/ifx 2026.0, Intel MPI 2021.18, MKL 2026.0",
+  "input": "benchmarks/inputs/cghelgeo.dat",
+  "input_changes": "DATA.PATH absolute shared upstream DFT_DATA19; scf.eigen.lib elpa2; scf.maxIter=3. Geometry, basis, k mesh and tolerances unchanged.",
+  "cpu_set": "0-15",
+  "timing_scope": "Native maximum-rank stage times; one run per configuration. Three SCF iterations plus initialization and forces, not converged/full-run benchmark.",
+  "energy_tolerance_Ha": 1e-07,
+  "force_component_tolerance_Ha_bohr": 1e-07,
+  "baseline_variant": "fork-aocl-seq",
+  "runs": [
+    {
+      "variant": "fork-aocl-seq",
+      "program": "OpenMX GPU CPU path",
+      "elpa_version": "2026.02.002",
+      "elpa_openmp": false,
+      "blas": "AOCL BLIS sequential",
+      "blas_threads": 1,
+      "ranks": 8,
+      "omp_threads": 2,
+      "scf_steps": 3,
+      "total_seconds": 398.069,
+      "diagonalization_seconds": 312.061,
+      "force_seconds": 45.972,
+      "wall_seconds": 400.3506959970109,
+      "energy_Ha": -4131.354235749595,
+      "delta_energy_Ha": 0.0,
+      "max_delta_force_Ha_bohr": 0.0,
+      "same_geometry": true,
+      "same_grids": true,
+      "passed": true,
+      "peak_rss_gib": 40.602684020996094,
+      "command": [
+        "taskset",
+        "-c",
+        "0-15",
+        "/home/kawai/opt/openmpi-rocmclang/bin/mpirun",
+        "-np",
+        "8",
+        "--map-by",
+        "slot:PE=2",
+        "--bind-to",
+        "core",
+        "/home/kawai/openmx4.0_gpu/work/codex_cghelgeo_cpu_20261031/installed/openmx",
+        "input.dat",
+        "-nt",
+        "2"
+      ],
+      "controls": {
+        "OMP_NUM_THREADS": "2",
+        "OMP_DYNAMIC": "FALSE",
+        "OMP_PROC_BIND": "close",
+        "OMP_PLACES": "cores",
+        "OMP_MAX_ACTIVE_LEVELS": "1",
+        "OPENBLAS_NUM_THREADS": "1",
+        "BLIS_NUM_THREADS": "1",
+        "MKL_NUM_THREADS": "1",
+        "HIP_VISIBLE_DEVICES": "0",
+        "ROCR_VISIBLE_DEVICES": "0",
+        "LD_LIBRARY_PATH": "/home/kawai/openmx4.0_gpu/work/codex_rocm_upgrade_20261025/sdk/opt/rocm/core-10.1/llvm/lib:/home/kawai/openmx4.0_gpu/work/codex_rocm_upgrade_20261025/sdk/opt/rocm/core-10.1/lib:/home/kawai/opt/openmpi-rocmclang/lib:/opt/AMD/aocl/aocl-linux-aocc-5.2.0/aocc/lib:/opt/AMD/aocc-compiler-5.1.0/lib",
+        "OPENMX_GPU": "0",
+        "LD_PRELOAD": "/home/kawai/openmx4.0_gpu/work/codex_cghelgeo_cpu_20261031/installed/lib/libopenmx_core.so:/home/kawai/openmx4.0_gpu/work/codex_cghelgeo_cpu_20261031/installed/lib/libopenmx_host_simd.so:/home/kawai/openmx4.0_gpu/work/codex_cghelgeo_cpu_20261031/provider-probe.so",
+        "LIBOMPTARGET_HEAP_SIZE": "67108864",
+        "HSA_OVERRIDE_CPU_AFFINITY_DEBUG": "0"
+      },
+      "binary_sha256": "986f0bc65b8b943348ea7b07a11a06a2cbca8156091a022cd62e74da1d23e8d7",
+      "input_sha256": "ada5fe62fc7598047a374d0dad847be303069aa70c3bed333d54616995bce8b6",
+      "provider_lines": [
+        "<CPU_PROVIDER> zgemm_=/opt/AMD/aocl/aocl-linux-aocc-5.2.0/aocc/lib/libblis.so.5",
+        "<CPU_PROVIDER> pzgemm_=/opt/AMD/aocl/aocl-linux-aocc-5.2.0/aocc/lib/libscalapack.so",
+        "<CPU_PROVIDER> elpa_eigenvectors_a_h_a_dc=not dynamically visible",
+        "<CPU_PROVIDER> BLIS compiled OpenMP=0"
+      ],
+      "raw_log": "work/codex_cghelgeo_cpu_20261031/fork-aocl-seq/run.log"
+    },
+    {
+      "variant": "fork-aocl-mt-2t",
+      "program": "OpenMX GPU CPU path",
+      "elpa_version": "2026.02.002",
+      "elpa_openmp": false,
+      "blas": "AOCL BLIS OpenMP",
+      "blas_threads": 2,
+      "ranks": 8,
+      "omp_threads": 2,
+      "scf_steps": 3,
+      "total_seconds": 299.799,
+      "diagonalization_seconds": 213.119,
+      "force_seconds": 46.222,
+      "wall_seconds": 301.19193190988153,
+      "energy_Ha": -4131.354235749585,
+      "delta_energy_Ha": 1.000444171950221e-11,
+      "max_delta_force_Ha_bohr": 3.0000030237786746e-12,
+      "same_geometry": true,
+      "same_grids": true,
+      "passed": true,
+      "peak_rss_gib": 40.507102966308594,
+      "command": [
+        "taskset",
+        "-c",
+        "0-15",
+        "/home/kawai/opt/openmpi-rocmclang/bin/mpirun",
+        "-np",
+        "8",
+        "--map-by",
+        "slot:PE=2",
+        "--bind-to",
+        "core",
+        "/home/kawai/openmx4.0_gpu/work/codex_cghelgeo_cpu_20261031/installed/openmx",
+        "input.dat",
+        "-nt",
+        "2"
+      ],
+      "controls": {
+        "OMP_NUM_THREADS": "2",
+        "OMP_DYNAMIC": "FALSE",
+        "OMP_PROC_BIND": "close",
+        "OMP_PLACES": "cores",
+        "OMP_MAX_ACTIVE_LEVELS": "1",
+        "OPENBLAS_NUM_THREADS": "1",
+        "BLIS_NUM_THREADS": "2",
+        "MKL_NUM_THREADS": "1",
+        "HIP_VISIBLE_DEVICES": "0",
+        "ROCR_VISIBLE_DEVICES": "0",
+        "LD_LIBRARY_PATH": "/home/kawai/openmx4.0_gpu/work/codex_rocm_upgrade_20261025/sdk/opt/rocm/core-10.1/llvm/lib:/home/kawai/openmx4.0_gpu/work/codex_rocm_upgrade_20261025/sdk/opt/rocm/core-10.1/lib:/home/kawai/opt/openmpi-rocmclang/lib:/opt/AMD/aocl/aocl-linux-aocc-5.2.0/aocc/lib:/opt/AMD/aocc-compiler-5.1.0/lib",
+        "OPENMX_GPU": "0",
+        "LD_PRELOAD": "/opt/AMD/aocl/aocl-linux-aocc-5.2.0/aocc/lib/libblis-mt.so.5:/home/kawai/openmx4.0_gpu/work/codex_cghelgeo_cpu_20261031/installed/lib/libopenmx_core.so:/home/kawai/openmx4.0_gpu/work/codex_cghelgeo_cpu_20261031/installed/lib/libopenmx_host_simd.so:/home/kawai/openmx4.0_gpu/work/codex_cghelgeo_cpu_20261031/provider-probe.so",
+        "LIBOMPTARGET_HEAP_SIZE": "67108864",
+        "HSA_OVERRIDE_CPU_AFFINITY_DEBUG": "0"
+      },
+      "binary_sha256": "986f0bc65b8b943348ea7b07a11a06a2cbca8156091a022cd62e74da1d23e8d7",
+      "input_sha256": "ada5fe62fc7598047a374d0dad847be303069aa70c3bed333d54616995bce8b6",
+      "provider_lines": [
+        "<CPU_PROVIDER> zgemm_=/opt/AMD/aocl/aocl-linux-aocc-5.2.0/aocc/lib/libblis-mt.so.5",
+        "<CPU_PROVIDER> pzgemm_=/opt/AMD/aocl/aocl-linux-aocc-5.2.0/aocc/lib/libscalapack.so",
+        "<CPU_PROVIDER> elpa_eigenvectors_a_h_a_dc=not dynamically visible",
+        "<CPU_PROVIDER> BLIS compiled OpenMP=1"
+      ],
+      "raw_log": "work/codex_cghelgeo_cpu_20261031/fork-aocl-mt-2t/run.log"
+    },
+    {
+      "variant": "elpa-omp-blas-seq",
+      "program": "OpenMX GPU CPU path",
+      "elpa_version": "2026.02.002",
+      "elpa_openmp": true,
+      "blas": "AOCL BLIS sequential",
+      "blas_threads": 1,
+      "ranks": 8,
+      "omp_threads": 2,
+      "scf_steps": 3,
+      "total_seconds": 360.674,
+      "diagonalization_seconds": 274.438,
+      "force_seconds": 46.144,
+      "wall_seconds": 363.4588022190146,
+      "energy_Ha": -4131.354235749995,
+      "delta_energy_Ha": 3.992681740783155e-10,
+      "max_delta_force_Ha_bohr": 9.140000006846449e-10,
+      "same_geometry": true,
+      "same_grids": true,
+      "passed": true,
+      "peak_rss_gib": 40.308509826660156,
+      "command": [
+        "taskset",
+        "-c",
+        "0-15",
+        "/home/kawai/opt/openmpi-rocmclang/bin/mpirun",
+        "-np",
+        "8",
+        "--map-by",
+        "slot:PE=2",
+        "--bind-to",
+        "core",
+        "/home/kawai/openmx4.0_gpu/work/codex_cghelgeo_cpu_20261031/fixed-validation/installed/openmx",
+        "input.dat",
+        "-nt",
+        "2"
+      ],
+      "controls": {
+        "OMP_NUM_THREADS": "2",
+        "OMP_DYNAMIC": "FALSE",
+        "OMP_PROC_BIND": "close",
+        "OMP_PLACES": "cores",
+        "OMP_MAX_ACTIVE_LEVELS": "1",
+        "OPENBLAS_NUM_THREADS": "1",
+        "BLIS_NUM_THREADS": "1",
+        "MKL_NUM_THREADS": "1",
+        "HIP_VISIBLE_DEVICES": "0",
+        "ROCR_VISIBLE_DEVICES": "0",
+        "LD_LIBRARY_PATH": "/home/kawai/openmx4.0_gpu/work/codex_rocm_upgrade_20261025/sdk/opt/rocm/core-10.1/llvm/lib:/home/kawai/openmx4.0_gpu/work/codex_rocm_upgrade_20261025/sdk/opt/rocm/core-10.1/lib:/home/kawai/opt/openmpi-rocmclang/lib:/opt/AMD/aocl/aocl-linux-aocc-5.2.0/aocc/lib:/opt/AMD/aocc-compiler-5.1.0/lib",
+        "OPENMX_GPU": "0",
+        "LD_PRELOAD": "/opt/AMD/aocl/aocl-linux-aocc-5.2.0/aocc/lib/libblis.so.5:/home/kawai/openmx4.0_gpu/work/codex_cghelgeo_cpu_20261031/fixed-validation/installed/lib/libopenmx_core.so:/home/kawai/openmx4.0_gpu/work/codex_cghelgeo_cpu_20261031/fixed-validation/installed/lib/libopenmx_host_simd.so:/home/kawai/openmx4.0_gpu/work/codex_cghelgeo_cpu_20261031/provider-probe.so",
+        "LIBOMPTARGET_HEAP_SIZE": "67108864",
+        "HSA_OVERRIDE_CPU_AFFINITY_DEBUG": "0"
+      },
+      "binary_sha256": "b59db5175c42d365f2f2adedcc256ae22442d3c616bf37520edccbb8447d0162",
+      "input_sha256": "ada5fe62fc7598047a374d0dad847be303069aa70c3bed333d54616995bce8b6",
+      "provider_lines": [
+        "<CPU_PROVIDER> zgemm_=/opt/AMD/aocl/aocl-linux-aocc-5.2.0/aocc/lib/libblis.so.5",
+        "<CPU_PROVIDER> pzgemm_=/opt/AMD/aocl/aocl-linux-aocc-5.2.0/aocc/lib/libscalapack.so",
+        "<CPU_PROVIDER> elpa_eigenvectors_a_h_a_dc=not dynamically visible",
+        "<CPU_PROVIDER> BLIS compiled OpenMP=0"
+      ],
+      "raw_log": "work/codex_cghelgeo_cpu_20261031/fixed-validation/elpa-omp-blas-seq/run.log"
+    },
+    {
+      "variant": "elpa-omp-blas-mt-2t",
+      "program": "OpenMX GPU CPU path",
+      "elpa_version": "2026.02.002",
+      "elpa_openmp": true,
+      "blas": "AOCL BLIS OpenMP",
+      "blas_threads": 2,
+      "ranks": 8,
+      "omp_threads": 2,
+      "scf_steps": 3,
+      "total_seconds": 276.196,
+      "diagonalization_seconds": 189.491,
+      "force_seconds": 46.366,
+      "wall_seconds": 278.6901760478504,
+      "energy_Ha": -4131.354235750005,
+      "delta_energy_Ha": 4.092726157978177e-10,
+      "max_delta_force_Ha_bohr": 9.140000006846449e-10,
+      "same_geometry": true,
+      "same_grids": true,
+      "passed": true,
+      "peak_rss_gib": 40.4285888671875,
+      "command": [
+        "taskset",
+        "-c",
+        "0-15",
+        "/home/kawai/opt/openmpi-rocmclang/bin/mpirun",
+        "-np",
+        "8",
+        "--map-by",
+        "slot:PE=2",
+        "--bind-to",
+        "core",
+        "/home/kawai/openmx4.0_gpu/work/codex_cghelgeo_cpu_20261031/fixed-validation/installed/openmx",
+        "input.dat",
+        "-nt",
+        "2"
+      ],
+      "controls": {
+        "OMP_NUM_THREADS": "2",
+        "OMP_DYNAMIC": "FALSE",
+        "OMP_PROC_BIND": "close",
+        "OMP_PLACES": "cores",
+        "OMP_MAX_ACTIVE_LEVELS": "1",
+        "OPENBLAS_NUM_THREADS": "1",
+        "BLIS_NUM_THREADS": "2",
+        "MKL_NUM_THREADS": "1",
+        "HIP_VISIBLE_DEVICES": "0",
+        "ROCR_VISIBLE_DEVICES": "0",
+        "LD_LIBRARY_PATH": "/home/kawai/openmx4.0_gpu/work/codex_rocm_upgrade_20261025/sdk/opt/rocm/core-10.1/llvm/lib:/home/kawai/openmx4.0_gpu/work/codex_rocm_upgrade_20261025/sdk/opt/rocm/core-10.1/lib:/home/kawai/opt/openmpi-rocmclang/lib:/opt/AMD/aocl/aocl-linux-aocc-5.2.0/aocc/lib:/opt/AMD/aocc-compiler-5.1.0/lib",
+        "OPENMX_GPU": "0",
+        "LD_PRELOAD": "/home/kawai/openmx4.0_gpu/work/codex_cghelgeo_cpu_20261031/fixed-validation/installed/lib/libopenmx_core.so:/home/kawai/openmx4.0_gpu/work/codex_cghelgeo_cpu_20261031/fixed-validation/installed/lib/libopenmx_host_simd.so:/home/kawai/openmx4.0_gpu/work/codex_cghelgeo_cpu_20261031/provider-probe.so",
+        "LIBOMPTARGET_HEAP_SIZE": "67108864",
+        "HSA_OVERRIDE_CPU_AFFINITY_DEBUG": "0"
+      },
+      "binary_sha256": "b59db5175c42d365f2f2adedcc256ae22442d3c616bf37520edccbb8447d0162",
+      "input_sha256": "ada5fe62fc7598047a374d0dad847be303069aa70c3bed333d54616995bce8b6",
+      "provider_lines": [
+        "<CPU_PROVIDER> zgemm_=/opt/AMD/aocl/aocl-linux-aocc-5.2.0/aocc/lib/libblis-mt.so.5",
+        "<CPU_PROVIDER> pzgemm_=/opt/AMD/aocl/aocl-linux-aocc-5.2.0/aocc/lib/libscalapack.so",
+        "<CPU_PROVIDER> elpa_eigenvectors_a_h_a_dc=not dynamically visible",
+        "<CPU_PROVIDER> BLIS compiled OpenMP=1"
+      ],
+      "raw_log": "work/codex_cghelgeo_cpu_20261031/fixed-validation/elpa-omp-blas-mt-2t/run.log"
+    },
+    {
+      "variant": "upstream-mkl-2t",
+      "program": "upstream OpenMX 4.0.1",
+      "elpa_version": "2018 embedded",
+      "elpa_openmp": true,
+      "blas": "Intel MKL",
+      "blas_threads": 2,
+      "ranks": 8,
+      "omp_threads": 2,
+      "scf_steps": 3,
+      "total_seconds": 306.216,
+      "diagonalization_seconds": 171.914,
+      "force_seconds": 37.329,
+      "wall_seconds": 309.0288260271773,
+      "energy_Ha": -4131.354235749546,
+      "delta_energy_Ha": 4.9112713895738125e-11,
+      "max_delta_force_Ha_bohr": 5.499999999707128e-11,
+      "same_geometry": true,
+      "same_grids": true,
+      "passed": true,
+      "peak_rss_gib": 41.74172592163086,
+      "command": [
+        "taskset",
+        "-c",
+        "0-15",
+        "/opt/intel/oneapi/mpi/2021.18/bin/mpiexec",
+        "-np",
+        "8",
+        "/home/kawai/openmx4.0_gpu/work/codex_benchmark_20261029/installed/upstream-intel-e1bd6ef26720/openmx",
+        "input.dat",
+        "-nt",
+        "2"
+      ],
+      "controls": {
+        "OMP_NUM_THREADS": "2",
+        "OMP_DYNAMIC": "FALSE",
+        "OMP_PROC_BIND": "close",
+        "OMP_PLACES": "cores",
+        "OMP_MAX_ACTIVE_LEVELS": "1",
+        "OPENBLAS_NUM_THREADS": "1",
+        "BLIS_NUM_THREADS": "1",
+        "OPENMX_GPU": "0",
+        "MKL_NUM_THREADS": "2",
+        "MKL_DYNAMIC": "FALSE",
+        "I_MPI_PIN": "1",
+        "I_MPI_PIN_DOMAIN": "omp",
+        "I_MPI_PIN_ORDER": "compact",
+        "I_MPI_FABRICS": "shm",
+        "LD_LIBRARY_PATH": "/opt/intel/oneapi/compiler/2026.0/lib:/opt/intel/oneapi/mpi/2021.18/lib:/opt/intel/oneapi/mkl/latest/lib",
+        "LIBOMPTARGET_HEAP_SIZE": "67108864",
+        "HSA_OVERRIDE_CPU_AFFINITY_DEBUG": "0",
+        "LD_PRELOAD": "/home/kawai/openmx4.0_gpu/work/codex_cghelgeo_cpu_20261031/provider-probe.so"
+      },
+      "binary_sha256": "e1bd6ef267206c93de8ef8f4f4b27e92840505473f4da0ccd51348c715bd9ddd",
+      "input_sha256": "ada5fe62fc7598047a374d0dad847be303069aa70c3bed333d54616995bce8b6",
+      "provider_lines": [
+        "<CPU_PROVIDER> zgemm_=not dynamically visible",
+        "<CPU_PROVIDER> pzgemm_=not dynamically visible",
+        "<CPU_PROVIDER> elpa_eigenvectors_a_h_a_dc=not dynamically visible"
+      ],
+      "raw_log": "work/codex_cghelgeo_cpu_20261031/upstream-mkl-2t/run.log"
+    },
+    {
+      "variant": "upstream-mkl-1t",
+      "program": "upstream OpenMX 4.0.1",
+      "elpa_version": "2018 embedded",
+      "elpa_openmp": true,
+      "blas": "Intel MKL",
+      "blas_threads": 1,
+      "ranks": 8,
+      "omp_threads": 2,
+      "scf_steps": 3,
+      "total_seconds": 390.896,
+      "diagonalization_seconds": 256.601,
+      "force_seconds": 37.251,
+      "wall_seconds": 393.6982597550377,
+      "energy_Ha": -4131.354235749532,
+      "delta_energy_Ha": 6.366462912410498e-11,
+      "max_delta_force_Ha_bohr": 5.4000000001067083e-11,
+      "same_geometry": true,
+      "same_grids": true,
+      "passed": true,
+      "peak_rss_gib": 42.13784408569336,
+      "command": [
+        "taskset",
+        "-c",
+        "0-15",
+        "/opt/intel/oneapi/mpi/2021.18/bin/mpiexec",
+        "-np",
+        "8",
+        "/home/kawai/openmx4.0_gpu/work/codex_benchmark_20261029/installed/upstream-intel-e1bd6ef26720/openmx",
+        "input.dat",
+        "-nt",
+        "2"
+      ],
+      "controls": {
+        "OMP_NUM_THREADS": "2",
+        "OMP_DYNAMIC": "FALSE",
+        "OMP_PROC_BIND": "close",
+        "OMP_PLACES": "cores",
+        "OMP_MAX_ACTIVE_LEVELS": "1",
+        "OPENBLAS_NUM_THREADS": "1",
+        "BLIS_NUM_THREADS": "1",
+        "OPENMX_GPU": "0",
+        "MKL_NUM_THREADS": "1",
+        "MKL_DYNAMIC": "FALSE",
+        "I_MPI_PIN": "1",
+        "I_MPI_PIN_DOMAIN": "omp",
+        "I_MPI_PIN_ORDER": "compact",
+        "I_MPI_FABRICS": "shm",
+        "LD_LIBRARY_PATH": "/opt/intel/oneapi/compiler/2026.0/lib:/opt/intel/oneapi/mpi/2021.18/lib:/opt/intel/oneapi/mkl/latest/lib",
+        "LIBOMPTARGET_HEAP_SIZE": "67108864",
+        "HSA_OVERRIDE_CPU_AFFINITY_DEBUG": "0",
+        "LD_PRELOAD": "/home/kawai/openmx4.0_gpu/work/codex_cghelgeo_cpu_20261031/provider-probe.so"
+      },
+      "binary_sha256": "e1bd6ef267206c93de8ef8f4f4b27e92840505473f4da0ccd51348c715bd9ddd",
+      "input_sha256": "ada5fe62fc7598047a374d0dad847be303069aa70c3bed333d54616995bce8b6",
+      "provider_lines": [
+        "<CPU_PROVIDER> zgemm_=not dynamically visible",
+        "<CPU_PROVIDER> pzgemm_=not dynamically visible",
+        "<CPU_PROVIDER> elpa_eigenvectors_a_h_a_dc=not dynamically visible"
+      ],
+      "raw_log": "work/codex_cghelgeo_cpu_20261031/upstream-mkl-1t/run.log"
+    }
+  ],
+  "fixed_build": {
+    "revision": "f823dcec41b55b67d3dea714b9fc4eb5654da364",
+    "started": 1793432424.7458508,
+    "steps": [
+      {
+        "name": "hip-configure",
+        "command": [
+          "/home/kawai/openmx4.0_amdgpu/source/third_party/gpusolver2-install/cmake-bootstrap/bin/cmake",
+          "-S",
+          "/home/kawai/openmx4.0_gpu",
+          "-B",
+          "/home/kawai/openmx4.0_gpu/build/hip-application-20261025/openmpi-aocl",
+          "-DCMAKE_BUILD_TYPE=Release",
+          "-DOPENMX_BUILD_JOBS=16",
+          "-DOPENMX_COPY_TO_WORK=OFF",
+          "-DOPENMX_GPU_BACKEND=HIP",
+          "-DOPENMX_GPU_ARCH=gfx1200",
+          "-DOPENMX_HIP_MPI=OPENMPI",
+          "-DOPENMX_HIP_LINALG=AOCL"
+        ],
+        "cwd": "/home/kawai/openmx4.0_gpu",
+        "start": 1793432424.7458687,
+        "status": "complete",
+        "returncode": 0,
+        "seconds": 5.93880295753479
+      },
+      {
+        "name": "hip-build",
+        "command": [
+          "/home/kawai/openmx4.0_amdgpu/source/third_party/gpusolver2-install/cmake-bootstrap/bin/cmake",
+          "--build",
+          "/home/kawai/openmx4.0_gpu/build/hip-application-20261025/openmpi-aocl",
+          "--parallel",
+          "16"
+        ],
+        "cwd": "/home/kawai/openmx4.0_gpu",
+        "start": 1793432430.6850035,
+        "status": "complete",
+        "returncode": 0,
+        "seconds": 689.4895045757294
+      },
+      {
+        "name": "hip-install",
+        "command": [
+          "/home/kawai/openmx4.0_amdgpu/source/third_party/gpusolver2-install/cmake-bootstrap/bin/cmake",
+          "--install",
+          "/home/kawai/openmx4.0_gpu/build/hip-application-20261025/openmpi-aocl"
+        ],
+        "cwd": "/home/kawai/openmx4.0_gpu",
+        "start": 1793433120.2368019,
+        "status": "complete",
+        "returncode": 0,
+        "seconds": 0.7176485061645508
+      }
+    ],
+    "finished": 1793433120.9547179,
+    "installed_files": {
+      "openmx": "b59db5175c42d365f2f2adedcc256ae22442d3c616bf37520edccbb8447d0162",
+      "lib/libopenmx_core.so": "a804511290cd46e4239da8e96bd00fabb426ed487b98401b71353b0efc7e3e9a",
+      "lib/libopenmx_host_simd.so": "d9c2a984550ecc79de80107625839f260c869ea6148acdcf47d027f7d7cc19c2"
+    },
+    "hip_sha256": "b59db5175c42d365f2f2adedcc256ae22442d3c616bf37520edccbb8447d0162",
+    "baseline_directory": "/home/kawai/openmx4.0_gpu/work/codex_benchmark_20261029"
+  },
+  "final_build_check": {
+    "seconds": 6.545245197135955,
+    "validated_installed_hashes_unchanged": true,
+    "installed_files": {
+      "openmx": "b59db5175c42d365f2f2adedcc256ae22442d3c616bf37520edccbb8447d0162",
+      "lib/libopenmx_core.so": "a804511290cd46e4239da8e96bd00fabb426ed487b98401b71353b0efc7e3e9a",
+      "lib/libopenmx_host_simd.so": "d9c2a984550ecc79de80107625839f260c869ea6148acdcf47d027f7d7cc19c2"
+    }
+  },
+  "elpa_configuration": {
+    "WITH_OPENMP_TRADITIONAL": 1,
+    "HAVE_SUFFICIENT_MPI_THREADING_SUPPORT": 1,
+    "application_mpi_thread_level_requested": "MPI_THREAD_SERIALIZED",
+    "archive": "libelpa_openmp.a",
+    "driver_optimization": "-O1 -march=x86-64-v3 -fopenmp; other Fortran kernels retain -O2"
+  },
+  "aocl_configuration_checks": [
+    {
+      "choice": "SEQUENTIAL",
+      "returncode": 0,
+      "math_group": "MATH_GROUP := /opt/AMD/aocl/aocl-linux-aocc-5.2.0/aocc/lib/libscalapack.so /opt/AMD/aocl/aocl-linux-aocc-5.2.0/aocc/lib/libflame.so /opt/AMD/aocl/aocl-linux-aocc-5.2.0/aocc/lib/libblis.so /opt/AMD/aocl/aocl-linux-aocc-5.2.0/aocc/lib/libaoclutils.so -Wl,--no-as-needed /opt/AMD/aocl/aocl-linux-aocc-5.2.0/aocc/lib/libflame.so /opt/AMD/aocl/aocl-linux-aocc-5.2.0/aocc/lib/libaoclutils.so /lib/x86_64-linux-gnu/libstdc++.so.6 /opt/AMD/aocl/aocl-linux-aocc-5.2.0/aocc/lib/libblis-mt.so.5 /home/kawai/opt/openmpi-rocmclang/lib/libmpi_usempif08.so.40 /home/kawai/opt/openmpi-rocmclang/lib/libmpi_usempi_ignore_tkr.so.40 /home/kawai/opt/openmpi-rocmclang/lib/libmpi_mpifh.so.40 /home/kawai/opt/openmpi-rocmclang/lib/libmpi.so.40 /opt/AMD/aocc-compiler-5.1.0/lib/libflang.so /opt/AMD/aocc-compiler-5.1.0/lib/libflangrti.so /opt/AMD/aocc-compiler-5.1.0/lib/libpgmath.so /lib/x86_64-linux-gnu/libquadmath.so.0 /home/kawai/openmx4.0_gpu/work/codex_rocm_upgrade_20261025/sdk/opt/rocm/core-10.1/llvm/lib/libomp.so /lib/x86_64-linux-gnu/libm.so.6 /lib/x86_64-linux-gnu/librt.so.1 /lib/x86_64-linux-gnu/libpthread.so.0 /lib/x86_64-linux-gnu/libc.so.6 /usr/lib64/ld-linux-x86-64.so.2 /lib/x86_64-linux-gnu/libgcc_s.so.1 -Wl,--as-needed"
+    },
+    {
+      "choice": "OPENMP",
+      "returncode": 0,
+      "math_group": "MATH_GROUP := /opt/AMD/aocl/aocl-linux-aocc-5.2.0/aocc/lib/libscalapack.so /opt/AMD/aocl/aocl-linux-aocc-5.2.0/aocc/lib/libflame.so /opt/AMD/aocl/aocl-linux-aocc-5.2.0/aocc/lib/libblis-mt.so /opt/AMD/aocl/aocl-linux-aocc-5.2.0/aocc/lib/libaoclutils.so -Wl,--no-as-needed /opt/AMD/aocl/aocl-linux-aocc-5.2.0/aocc/lib/libflame.so /opt/AMD/aocl/aocl-linux-aocc-5.2.0/aocc/lib/libaoclutils.so /lib/x86_64-linux-gnu/libstdc++.so.6 /opt/AMD/aocl/aocl-linux-aocc-5.2.0/aocc/lib/libblis-mt.so.5 /home/kawai/opt/openmpi-rocmclang/lib/libmpi_usempif08.so.40 /home/kawai/opt/openmpi-rocmclang/lib/libmpi_usempi_ignore_tkr.so.40 /home/kawai/opt/openmpi-rocmclang/lib/libmpi_mpifh.so.40 /home/kawai/opt/openmpi-rocmclang/lib/libmpi.so.40 /opt/AMD/aocc-compiler-5.1.0/lib/libflang.so /opt/AMD/aocc-compiler-5.1.0/lib/libflangrti.so /opt/AMD/aocc-compiler-5.1.0/lib/libpgmath.so /lib/x86_64-linux-gnu/libquadmath.so.0 /home/kawai/openmx4.0_gpu/work/codex_rocm_upgrade_20261025/sdk/opt/rocm/core-10.1/llvm/lib/libomp.so /lib/x86_64-linux-gnu/libm.so.6 /lib/x86_64-linux-gnu/librt.so.1 /lib/x86_64-linux-gnu/libpthread.so.0 /lib/x86_64-linux-gnu/libc.so.6 /usr/lib64/ld-linux-x86-64.so.2 /lib/x86_64-linux-gnu/libgcc_s.so.1 -Wl,--as-needed"
+    },
+    {
+      "choice": "INVALID",
+      "returncode": 1,
+      "rejected": true
+    }
+  ],
+  "elpa_mpi_abi": {
+    "ranks": 8,
+    "threads": 2,
+    "cases_per_rank": 24,
+    "passed": true,
+    "max_eigen_error": 1.93e-13,
+    "max_residual": 3.21e-14,
+    "max_orthogonality_error": 3.87e-15,
+    "avx2_selected": true,
+    "cases": [
+      {
+        "solver": 1,
+        "kind": "real",
+        "grid": [
+          2,
+          4
+        ],
+        "n": 23,
+        "nev": 13,
+        "eigen_error": 7.99e-15,
+        "residual": 3.08e-15,
+        "orthogonality": 1.46e-15
+      },
+      {
+        "solver": 1,
+        "kind": "real",
+        "grid": [
+          4,
+          2
+        ],
+        "n": 11,
+        "nev": 11,
+        "eigen_error": 2.66e-15,
+        "residual": 2.61e-15,
+        "orthogonality": 8.42e-16
+      },
+      {
+        "solver": 1,
+        "kind": "real",
+        "grid": [
+          4,
+          2
+        ],
+        "n": 3,
+        "nev": 2,
+        "eigen_error": 8.88e-16,
+        "residual": 1.4e-15,
+        "orthogonality": 2.92e-16
+      },
+      {
+        "solver": 1,
+        "kind": "real",
+        "grid": [
+          2,
+          4
+        ],
+        "n": 3,
+        "nev": 2,
+        "eigen_error": 8.88e-16,
+        "residual": 1.4e-15,
+        "orthogonality": 2.92e-16
+      },
+      {
+        "solver": 1,
+        "kind": "real",
+        "grid": [
+          2,
+          4
+        ],
+        "n": 257,
+        "nev": 31,
+        "eigen_error": 1.75e-13,
+        "residual": 2.35e-14,
+        "orthogonality": 2.26e-15
+      },
+      {
+        "solver": 1,
+        "kind": "complex",
+        "grid": [
+          2,
+          4
+        ],
+        "n": 23,
+        "nev": 13,
+        "eigen_error": 3.55e-15,
+        "residual": 1.98e-15,
+        "orthogonality": 1.21e-15
+      },
+      {
+        "solver": 1,
+        "kind": "complex",
+        "grid": [
+          4,
+          2
+        ],
+        "n": 11,
+        "nev": 11,
+        "eigen_error": 4.44e-15,
+        "residual": 1.31e-15,
+        "orthogonality": 6.97e-16
+      },
+      {
+        "solver": 1,
+        "kind": "complex",
+        "grid": [
+          4,
+          2
+        ],
+        "n": 3,
+        "nev": 2,
+        "eigen_error": 8.88e-16,
+        "residual": 6.04e-16,
+        "orthogonality": 5.79e-16
+      },
+      {
+        "solver": 1,
+        "kind": "complex",
+        "grid": [
+          2,
+          4
+        ],
+        "n": 3,
+        "nev": 2,
+        "eigen_error": 8.88e-16,
+        "residual": 6.04e-16,
+        "orthogonality": 5.79e-16
+      },
+      {
+        "solver": 1,
+        "kind": "complex",
+        "grid": [
+          2,
+          4
+        ],
+        "n": 257,
+        "nev": 31,
+        "eigen_error": 1.93e-13,
+        "residual": 2.16e-14,
+        "orthogonality": 2.65e-15
+      },
+      {
+        "solver": 2,
+        "kind": "real",
+        "grid": [
+          2,
+          4
+        ],
+        "n": 23,
+        "nev": 13,
+        "eigen_error": 6.22e-15,
+        "residual": 4.38e-15,
+        "orthogonality": 8.78e-16
+      },
+      {
+        "solver": 2,
+        "kind": "real",
+        "grid": [
+          4,
+          2
+        ],
+        "n": 11,
+        "nev": 11,
+        "eigen_error": 5.33e-15,
+        "residual": 2.77e-15,
+        "orthogonality": 1.68e-15
+      },
+      {
+        "solver": 2,
+        "kind": "real",
+        "grid": [
+          4,
+          2
+        ],
+        "n": 3,
+        "nev": 2,
+        "eigen_error": 4.44e-16,
+        "residual": 9.61e-16,
+        "orthogonality": 3.11e-16
+      },
+      {
+        "solver": 2,
+        "kind": "real",
+        "grid": [
+          2,
+          4
+        ],
+        "n": 3,
+        "nev": 2,
+        "eigen_error": 4.44e-16,
+        "residual": 9.61e-16,
+        "orthogonality": 3.11e-16
+      },
+      {
+        "solver": 2,
+        "kind": "real",
+        "grid": [
+          2,
+          4
+        ],
+        "n": 257,
+        "nev": 31,
+        "eigen_error": 1.53e-13,
+        "residual": 3.21e-14,
+        "orthogonality": 3.87e-15
+      },
+      {
+        "solver": 2,
+        "kind": "complex",
+        "grid": [
+          2,
+          4
+        ],
+        "n": 23,
+        "nev": 13,
+        "eigen_error": 5.33e-15,
+        "residual": 3.84e-15,
+        "orthogonality": 1.62e-15
+      },
+      {
+        "solver": 2,
+        "kind": "complex",
+        "grid": [
+          4,
+          2
+        ],
+        "n": 11,
+        "nev": 11,
+        "eigen_error": 3.11e-15,
+        "residual": 1.08e-15,
+        "orthogonality": 7.53e-16
+      },
+      {
+        "solver": 2,
+        "kind": "complex",
+        "grid": [
+          4,
+          2
+        ],
+        "n": 3,
+        "nev": 2,
+        "eigen_error": 8.88e-16,
+        "residual": 5.1e-16,
+        "orthogonality": 2.31e-16
+      },
+      {
+        "solver": 2,
+        "kind": "complex",
+        "grid": [
+          2,
+          4
+        ],
+        "n": 3,
+        "nev": 2,
+        "eigen_error": 8.88e-16,
+        "residual": 5.1e-16,
+        "orthogonality": 2.31e-16
+      },
+      {
+        "solver": 2,
+        "kind": "complex",
+        "grid": [
+          2,
+          4
+        ],
+        "n": 257,
+        "nev": 31,
+        "eigen_error": 1.81e-13,
+        "residual": 2.78e-14,
+        "orthogonality": 2.36e-15
+      },
+      {
+        "solver": 1,
+        "kind": "real",
+        "grid": [
+          1,
+          4
+        ],
+        "n": 17,
+        "nev": 7,
+        "eigen_error": 3.55e-15,
+        "residual": 2.8e-15,
+        "orthogonality": 6.01e-16
+      },
+      {
+        "solver": 1,
+        "kind": "real",
+        "grid": [
+          4,
+          1
+        ],
+        "n": 19,
+        "nev": 8,
+        "eigen_error": 4.44e-15,
+        "residual": 2.05e-15,
+        "orthogonality": 1.55e-15
+      },
+      {
+        "solver": 1,
+        "kind": "complex",
+        "grid": [
+          1,
+          4
+        ],
+        "n": 17,
+        "nev": 7,
+        "eigen_error": 2.66e-15,
+        "residual": 1.91e-15,
+        "orthogonality": 1.46e-15
+      },
+      {
+        "solver": 1,
+        "kind": "complex",
+        "grid": [
+          4,
+          1
+        ],
+        "n": 19,
+        "nev": 8,
+        "eigen_error": 3.33e-15,
+        "residual": 4.39e-15,
+        "orthogonality": 1.69e-15
+      },
+      {
+        "solver": 2,
+        "kind": "real",
+        "grid": [
+          1,
+          4
+        ],
+        "n": 17,
+        "nev": 7,
+        "eigen_error": 7.55e-15,
+        "residual": 5.12e-15,
+        "orthogonality": 6.42e-16
+      },
+      {
+        "solver": 2,
+        "kind": "real",
+        "grid": [
+          4,
+          1
+        ],
+        "n": 19,
+        "nev": 8,
+        "eigen_error": 2.66e-15,
+        "residual": 4.19e-15,
+        "orthogonality": 7.28e-16
+      },
+      {
+        "solver": 2,
+        "kind": "complex",
+        "grid": [
+          1,
+          4
+        ],
+        "n": 17,
+        "nev": 7,
+        "eigen_error": 4.44e-15,
+        "residual": 1.46e-15,
+        "orthogonality": 5.48e-16
+      },
+      {
+        "solver": 2,
+        "kind": "complex",
+        "grid": [
+          4,
+          1
+        ],
+        "n": 19,
+        "nev": 8,
+        "eigen_error": 5.77e-15,
+        "residual": 4.04e-15,
+        "orthogonality": 6.73e-16
+      }
+    ]
+  },
+  "suite_checks": [
+    {
+      "test": "S-cpu",
+      "reference_returncode": 0
+    },
+    {
+      "test": "S-hip",
+      "reference_returncode": 0
+    },
+    {
+      "test": "S-cpu-vs-hip",
+      "returncode": 0
+    }
+  ],
+  "suites": {
+    "S-cpu": {
+      "ranks": 8,
+      "threads": 2,
+      "cases": [
+        {
+          "case": "Benzene",
+          "status": "completed",
+          "returncode": 0,
+          "wall_seconds": 57.77783847786486,
+          "peak_rss_gib": 5.511848449707031,
+          "min_available_gib": 243.02605438232422,
+          "elapsed_seconds": 2.09,
+          "diff_utot": 0.0,
+          "diff_force": 0.0
+        },
+        {
+          "case": "C60",
+          "status": "completed",
+          "returncode": 0,
+          "wall_seconds": 57.77783847786486,
+          "peak_rss_gib": 5.511848449707031,
+          "min_available_gib": 243.02605438232422,
+          "elapsed_seconds": 8.02,
+          "diff_utot": 3e-12,
+          "diff_force": 0.0
+        },
+        {
+          "case": "CO",
+          "status": "completed",
+          "returncode": 0,
+          "wall_seconds": 57.77783847786486,
+          "peak_rss_gib": 5.511848449707031,
+          "min_available_gib": 243.02605438232422,
+          "elapsed_seconds": 3.83,
+          "diff_utot": 0.0,
+          "diff_force": 3e-12
+        },
+        {
+          "case": "Cr2",
+          "status": "completed",
+          "returncode": 0,
+          "wall_seconds": 57.77783847786486,
+          "peak_rss_gib": 5.511848449707031,
+          "min_available_gib": 243.02605438232422,
+          "elapsed_seconds": 3.44,
+          "diff_utot": 0.0,
+          "diff_force": 7.1e-11
+        },
+        {
+          "case": "Crys-MnO",
+          "status": "completed",
+          "returncode": 0,
+          "wall_seconds": 57.77783847786486,
+          "peak_rss_gib": 5.511848449707031,
+          "min_available_gib": 243.02605438232422,
+          "elapsed_seconds": 6.55,
+          "diff_utot": 4.73e-10,
+          "diff_force": 1.677e-09
+        },
+        {
+          "case": "GaAs",
+          "status": "completed",
+          "returncode": 0,
+          "wall_seconds": 57.77783847786486,
+          "peak_rss_gib": 5.511848449707031,
+          "min_available_gib": 243.02605438232422,
+          "elapsed_seconds": 12.99,
+          "diff_utot": 1.1e-11,
+          "diff_force": 0.0
+        },
+        {
+          "case": "Glycine",
+          "status": "completed",
+          "returncode": 0,
+          "wall_seconds": 57.77783847786486,
+          "peak_rss_gib": 5.511848449707031,
+          "min_available_gib": 243.02605438232422,
+          "elapsed_seconds": 2.11,
+          "diff_utot": 0.0,
+          "diff_force": 1e-12
+        },
+        {
+          "case": "Graphite4",
+          "status": "completed",
+          "returncode": 0,
+          "wall_seconds": 57.77783847786486,
+          "peak_rss_gib": 5.511848449707031,
+          "min_available_gib": 243.02605438232422,
+          "elapsed_seconds": 1.72,
+          "diff_utot": 0.0,
+          "diff_force": 1e-12
+        },
+        {
+          "case": "H2O-EF",
+          "status": "completed",
+          "returncode": 0,
+          "wall_seconds": 57.77783847786486,
+          "peak_rss_gib": 5.511848449707031,
+          "min_available_gib": 243.02605438232422,
+          "elapsed_seconds": 2.2,
+          "diff_utot": 0.0,
+          "diff_force": 0.0
+        },
+        {
+          "case": "H2O",
+          "status": "completed",
+          "returncode": 0,
+          "wall_seconds": 57.77783847786486,
+          "peak_rss_gib": 5.511848449707031,
+          "min_available_gib": 243.02605438232422,
+          "elapsed_seconds": 1.05,
+          "diff_utot": 0.0,
+          "diff_force": 1e-12
+        },
+        {
+          "case": "HMn",
+          "status": "completed",
+          "returncode": 0,
+          "wall_seconds": 57.77783847786486,
+          "peak_rss_gib": 5.511848449707031,
+          "min_available_gib": 243.02605438232422,
+          "elapsed_seconds": 7.02,
+          "diff_utot": 0.0,
+          "diff_force": 0.0
+        },
+        {
+          "case": "Methane",
+          "status": "completed",
+          "returncode": 0,
+          "wall_seconds": 57.77783847786486,
+          "peak_rss_gib": 5.511848449707031,
+          "min_available_gib": 243.02605438232422,
+          "elapsed_seconds": 0.95,
+          "diff_utot": 5.9e-11,
+          "diff_force": 1e-12
+        },
+        {
+          "case": "Mol_MnO",
+          "status": "completed",
+          "returncode": 0,
+          "wall_seconds": 57.77783847786486,
+          "peak_rss_gib": 5.511848449707031,
+          "min_available_gib": 243.02605438232422,
+          "elapsed_seconds": 3.45,
+          "diff_utot": 0.0,
+          "diff_force": 1e-12
+        },
+        {
+          "case": "Ndia2",
+          "status": "completed",
+          "returncode": 0,
+          "wall_seconds": 57.77783847786486,
+          "peak_rss_gib": 5.511848449707031,
+          "min_available_gib": 243.02605438232422,
+          "elapsed_seconds": 1.4,
+          "diff_utot": 0.0,
+          "diff_force": 0.0
+        }
+      ],
+      "command": {
+        "gpu_info": null,
+        "command": [
+          "/home/kawai/opt/openmpi-rocmclang/bin/mpirun",
+          "-np",
+          "8",
+          "--bind-to",
+          "core",
+          "--map-by",
+          "slot:PE=2",
+          "/home/kawai/openmx4.0_gpu/work/codex_cghelgeo_cpu_20261031/fixed-validation/S-cpu/openmx",
+          "-runtest",
+          "-nt",
+          "2"
+        ],
+        "suite": "S",
+        "input_directory": "input_example",
+        "together": true,
+        "cases": [
+          "Benzene",
+          "C60",
+          "CO",
+          "Cr2",
+          "Crys-MnO",
+          "GaAs",
+          "Glycine",
+          "Graphite4",
+          "H2O-EF",
+          "H2O",
+          "HMn",
+          "Methane",
+          "Mol_MnO",
+          "Ndia2"
+        ],
+        "metrics_scope": "job",
+        "env": [
+          "OMP_NUM_THREADS=2",
+          "OMP_DYNAMIC=FALSE",
+          "OMP_PROC_BIND=close",
+          "OMP_PLACES=cores",
+          "OMP_MAX_ACTIVE_LEVELS=1",
+          "OPENBLAS_NUM_THREADS=1",
+          "BLIS_NUM_THREADS=2",
+          "MKL_NUM_THREADS=1",
+          "HIP_VISIBLE_DEVICES=0",
+          "ROCR_VISIBLE_DEVICES=0",
+          "LD_LIBRARY_PATH=/home/kawai/openmx4.0_gpu/work/codex_rocm_upgrade_20261025/sdk/opt/rocm/core-10.1/llvm/lib:/home/kawai/openmx4.0_gpu/work/codex_rocm_upgrade_20261025/sdk/opt/rocm/core-10.1/lib:/home/kawai/opt/openmpi-rocmclang/lib:/opt/AMD/aocl/aocl-linux-aocc-5.2.0/aocc/lib:/opt/AMD/aocc-compiler-5.1.0/lib",
+          "OPENMX_GPU=0",
+          "LD_PRELOAD=/home/kawai/openmx4.0_gpu/work/codex_cghelgeo_cpu_20261031/fixed-validation/installed/lib/libopenmx_core.so:/home/kawai/openmx4.0_gpu/work/codex_cghelgeo_cpu_20261031/fixed-validation/installed/lib/libopenmx_host_simd.so:/home/kawai/openmx4.0_gpu/work/codex_cghelgeo_cpu_20261031/provider-probe.so",
+          "LIBOMPTARGET_HEAP_SIZE=67108864",
+          "HSA_OVERRIDE_CPU_AFFINITY_DEBUG=0",
+          "HSA_ENABLE_SDMA=0"
+        ],
+        "binary_sha256": "b59db5175c42d365f2f2adedcc256ae22442d3c616bf37520edccbb8447d0162",
+        "environment": {
+          "OMP_NUM_THREADS": "2",
+          "OMP_DYNAMIC": "FALSE",
+          "OMP_PROC_BIND": "close",
+          "OMP_PLACES": "cores",
+          "OMP_MAX_ACTIVE_LEVELS": "1",
+          "OPENBLAS_NUM_THREADS": "1",
+          "BLIS_NUM_THREADS": "2",
+          "OPENMX_GPU": "0"
+        },
+        "min_available_gib": 32.0,
+        "timeout": 300.0
+      },
+      "reference_log": "work/codex_cghelgeo_cpu_20261031/fixed-validation/S-cpu-reference.log"
+    },
+    "S-hip": {
+      "ranks": 8,
+      "threads": 2,
+      "cases": [
+        {
+          "case": "Benzene",
+          "status": "completed",
+          "returncode": 0,
+          "wall_seconds": 66.93572257319465,
+          "peak_rss_gib": 5.096904754638672,
+          "min_available_gib": 242.88638305664062,
+          "elapsed_seconds": 2.96,
+          "diff_utot": 1e-12,
+          "diff_force": 0.0
+        },
+        {
+          "case": "C60",
+          "status": "completed",
+          "returncode": 0,
+          "wall_seconds": 66.93572257319465,
+          "peak_rss_gib": 5.096904754638672,
+          "min_available_gib": 242.88638305664062,
+          "elapsed_seconds": 11.09,
+          "diff_utot": 3.1e-11,
+          "diff_force": 4e-12
+        },
+        {
+          "case": "CO",
+          "status": "completed",
+          "returncode": 0,
+          "wall_seconds": 66.93572257319465,
+          "peak_rss_gib": 5.096904754638672,
+          "min_available_gib": 242.88638305664062,
+          "elapsed_seconds": 12.55,
+          "diff_utot": 0.0,
+          "diff_force": 3e-12
+        },
+        {
+          "case": "Cr2",
+          "status": "completed",
+          "returncode": 0,
+          "wall_seconds": 66.93572257319465,
+          "peak_rss_gib": 5.096904754638672,
+          "min_available_gib": 242.88638305664062,
+          "elapsed_seconds": 3.15,
+          "diff_utot": 2e-12,
+          "diff_force": 7.2e-11
+        },
+        {
+          "case": "Crys-MnO",
+          "status": "completed",
+          "returncode": 0,
+          "wall_seconds": 66.93572257319465,
+          "peak_rss_gib": 5.096904754638672,
+          "min_available_gib": 242.88638305664062,
+          "elapsed_seconds": 6.07,
+          "diff_utot": 4.83e-10,
+          "diff_force": 1.675e-09
+        },
+        {
+          "case": "GaAs",
+          "status": "completed",
+          "returncode": 0,
+          "wall_seconds": 66.93572257319465,
+          "peak_rss_gib": 5.096904754638672,
+          "min_available_gib": 242.88638305664062,
+          "elapsed_seconds": 11.62,
+          "diff_utot": 7e-12,
+          "diff_force": 1e-12
+        },
+        {
+          "case": "Glycine",
+          "status": "completed",
+          "returncode": 0,
+          "wall_seconds": 66.93572257319465,
+          "peak_rss_gib": 5.096904754638672,
+          "min_available_gib": 242.88638305664062,
+          "elapsed_seconds": 2.82,
+          "diff_utot": 0.0,
+          "diff_force": 0.0
+        },
+        {
+          "case": "Graphite4",
+          "status": "completed",
+          "returncode": 0,
+          "wall_seconds": 66.93572257319465,
+          "peak_rss_gib": 5.096904754638672,
+          "min_available_gib": 242.88638305664062,
+          "elapsed_seconds": 1.18,
+          "diff_utot": 2e-12,
+          "diff_force": 0.0
+        },
+        {
+          "case": "H2O-EF",
+          "status": "completed",
+          "returncode": 0,
+          "wall_seconds": 66.93572257319465,
+          "peak_rss_gib": 5.096904754638672,
+          "min_available_gib": 242.88638305664062,
+          "elapsed_seconds": 1.84,
+          "diff_utot": 1e-12,
+          "diff_force": 0.0
+        },
+        {
+          "case": "H2O",
+          "status": "completed",
+          "returncode": 0,
+          "wall_seconds": 66.93572257319465,
+          "peak_rss_gib": 5.096904754638672,
+          "min_available_gib": 242.88638305664062,
+          "elapsed_seconds": 1.5,
+          "diff_utot": 1e-12,
+          "diff_force": 0.0
+        },
+        {
+          "case": "HMn",
+          "status": "completed",
+          "returncode": 0,
+          "wall_seconds": 66.93572257319465,
+          "peak_rss_gib": 5.096904754638672,
+          "min_available_gib": 242.88638305664062,
+          "elapsed_seconds": 5.73,
+          "diff_utot": 1e-12,
+          "diff_force": 0.0
+        },
+        {
+          "case": "Methane",
+          "status": "completed",
+          "returncode": 0,
+          "wall_seconds": 66.93572257319465,
+          "peak_rss_gib": 5.096904754638672,
+          "min_available_gib": 242.88638305664062,
+          "elapsed_seconds": 1.35,
+          "diff_utot": 4.5e-11,
+          "diff_force": 0.0
+        },
+        {
+          "case": "Mol_MnO",
+          "status": "completed",
+          "returncode": 0,
+          "wall_seconds": 66.93572257319465,
+          "peak_rss_gib": 5.096904754638672,
+          "min_available_gib": 242.88638305664062,
+          "elapsed_seconds": 3.32,
+          "diff_utot": 1e-12,
+          "diff_force": 0.0
+        },
+        {
+          "case": "Ndia2",
+          "status": "completed",
+          "returncode": 0,
+          "wall_seconds": 66.93572257319465,
+          "peak_rss_gib": 5.096904754638672,
+          "min_available_gib": 242.88638305664062,
+          "elapsed_seconds": 0.96,
+          "diff_utot": 4e-12,
+          "diff_force": 1e-12
+        }
+      ],
+      "command": {
+        "gpu_info": null,
+        "command": [
+          "/home/kawai/opt/openmpi-rocmclang/bin/mpirun",
+          "-np",
+          "8",
+          "--bind-to",
+          "core",
+          "--map-by",
+          "slot:PE=2",
+          "/home/kawai/openmx4.0_gpu/work/codex_cghelgeo_cpu_20261031/fixed-validation/S-hip/openmx",
+          "-runtest",
+          "-nt",
+          "2"
+        ],
+        "suite": "S",
+        "input_directory": "input_example",
+        "together": true,
+        "cases": [
+          "Benzene",
+          "C60",
+          "CO",
+          "Cr2",
+          "Crys-MnO",
+          "GaAs",
+          "Glycine",
+          "Graphite4",
+          "H2O-EF",
+          "H2O",
+          "HMn",
+          "Methane",
+          "Mol_MnO",
+          "Ndia2"
+        ],
+        "metrics_scope": "job",
+        "env": [
+          "OMP_NUM_THREADS=2",
+          "OMP_DYNAMIC=FALSE",
+          "OMP_PROC_BIND=close",
+          "OMP_PLACES=cores",
+          "OMP_MAX_ACTIVE_LEVELS=1",
+          "OPENBLAS_NUM_THREADS=1",
+          "BLIS_NUM_THREADS=2",
+          "MKL_NUM_THREADS=1",
+          "HIP_VISIBLE_DEVICES=0",
+          "ROCR_VISIBLE_DEVICES=0",
+          "LD_LIBRARY_PATH=/home/kawai/openmx4.0_gpu/work/codex_rocm_upgrade_20261025/sdk/opt/rocm/core-10.1/llvm/lib:/home/kawai/openmx4.0_gpu/work/codex_rocm_upgrade_20261025/sdk/opt/rocm/core-10.1/lib:/home/kawai/opt/openmpi-rocmclang/lib:/opt/AMD/aocl/aocl-linux-aocc-5.2.0/aocc/lib:/opt/AMD/aocc-compiler-5.1.0/lib",
+          "OPENMX_GPU=1",
+          "LD_PRELOAD=/home/kawai/openmx4.0_gpu/work/codex_cghelgeo_cpu_20261031/fixed-validation/installed/lib/libopenmx_core.so:/home/kawai/openmx4.0_gpu/work/codex_cghelgeo_cpu_20261031/fixed-validation/installed/lib/libopenmx_host_simd.so:/home/kawai/openmx4.0_gpu/work/codex_cghelgeo_cpu_20261031/provider-probe.so",
+          "LIBOMPTARGET_HEAP_SIZE=67108864",
+          "HSA_OVERRIDE_CPU_AFFINITY_DEBUG=0",
+          "HSA_ENABLE_SDMA=0"
+        ],
+        "binary_sha256": "b59db5175c42d365f2f2adedcc256ae22442d3c616bf37520edccbb8447d0162",
+        "environment": {
+          "OMP_NUM_THREADS": "2",
+          "OMP_DYNAMIC": "FALSE",
+          "OMP_PROC_BIND": "close",
+          "OMP_PLACES": "cores",
+          "OMP_MAX_ACTIVE_LEVELS": "1",
+          "OPENBLAS_NUM_THREADS": "1",
+          "BLIS_NUM_THREADS": "2",
+          "OPENMX_GPU": "1"
+        },
+        "min_available_gib": 32.0,
+        "timeout": 300.0
+      },
+      "reference_log": "work/codex_cghelgeo_cpu_20261031/fixed-validation/S-hip-reference.log"
+    }
+  },
+  "forced_elpa_hip_Cr2": {
+    "returncode": 0,
+    "wall_seconds": 13.54138608602807,
+    "elpa_gpu_decisions": 2,
+    "delta_energy_Ha": 1.9895196601282805e-12,
+    "max_delta_force_Ha_bohr": 4.9000000000717307e-11,
+    "same_geometry": true,
+    "same_grids": true,
+    "passed": true,
+    "command": {
+      "command": [
+        "taskset",
+        "-c",
+        "0-15",
+        "/home/kawai/opt/openmpi-rocmclang/bin/mpirun",
+        "-np",
+        "8",
+        "--map-by",
+        "slot:PE=2",
+        "--bind-to",
+        "core",
+        "/home/kawai/openmx4.0_gpu/work/codex_cghelgeo_cpu_20261031/fixed-validation/installed/openmx",
+        "input.dat",
+        "-nt",
+        "2"
+      ],
+      "environment": {
+        "OMP_NUM_THREADS": "2",
+        "OMP_DYNAMIC": "FALSE",
+        "OMP_PROC_BIND": "close",
+        "OMP_PLACES": "cores",
+        "OMP_MAX_ACTIVE_LEVELS": "1",
+        "OPENBLAS_NUM_THREADS": "1",
+        "BLIS_NUM_THREADS": "2",
+        "MKL_NUM_THREADS": "1",
+        "HIP_VISIBLE_DEVICES": "0",
+        "ROCR_VISIBLE_DEVICES": "0",
+        "LD_LIBRARY_PATH": "/home/kawai/openmx4.0_gpu/work/codex_rocm_upgrade_20261025/sdk/opt/rocm/core-10.1/llvm/lib:/home/kawai/openmx4.0_gpu/work/codex_rocm_upgrade_20261025/sdk/opt/rocm/core-10.1/lib:/home/kawai/opt/openmpi-rocmclang/lib:/opt/AMD/aocl/aocl-linux-aocc-5.2.0/aocc/lib:/opt/AMD/aocc-compiler-5.1.0/lib",
+        "OPENMX_GPU": "1",
+        "LD_PRELOAD": "/home/kawai/openmx4.0_gpu/work/codex_cghelgeo_cpu_20261031/fixed-validation/installed/lib/libopenmx_core.so:/home/kawai/openmx4.0_gpu/work/codex_cghelgeo_cpu_20261031/fixed-validation/installed/lib/libopenmx_host_simd.so:/home/kawai/openmx4.0_gpu/work/codex_cghelgeo_cpu_20261031/provider-probe.so",
+        "LIBOMPTARGET_HEAP_SIZE": "67108864",
+        "HSA_OVERRIDE_CPU_AFFINITY_DEBUG": "0",
+        "HSA_ENABLE_SDMA": "0",
+        "OPENMX_GS2_ELPA_GPU": "1",
+        "OPENMX_GS2_GEMM_GPU": "0",
+        "OPENMX_GS2_GPU_VERBOSE": "1"
+      }
+    },
+    "input_sha256": "d7ee435b416d16844af7943fdd74df58cbe45ef7a07e8d51c9f0959837a5b4cf"
+  },
+  "excluded_runs": [
+    {
+      "directory": "work/codex_cghelgeo_cpu_20261031/archives/probe-affinity-initialization",
+      "reason": "Initial diagnostic constructor initialized OpenMP before exec and changed rank-0 affinity; stopped and rerun with corrected probe."
+    }
+  ],
+  "raw_logs_directory": "work/codex_cghelgeo_cpu_20261031"
+}

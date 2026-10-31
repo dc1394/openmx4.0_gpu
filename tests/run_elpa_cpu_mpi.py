@@ -143,14 +143,19 @@ static void run_case(MPI_Comm parent, int np_rows, int np_cols,
 
 int main(int argc,char **argv)
 {
-    int world_size;
-    MPI_Init(&argc,&argv); MPI_Comm_rank(MPI_COMM_WORLD,&world_rank); MPI_Comm_size(MPI_COMM_WORLD,&world_size);
-    CHECK(world_size==6);
+    int world_size,provided;
+    CHECK(MPI_Init_thread(&argc,&argv,MPI_THREAD_SERIALIZED,&provided)==MPI_SUCCESS);
+    CHECK(provided>=MPI_THREAD_SERIALIZED);
+    MPI_Comm_rank(MPI_COMM_WORLD,&world_rank); MPI_Comm_size(MPI_COMM_WORLD,&world_size);
+    CHECK(world_size==6 || world_size==8);
+    const int wide=world_size/2;
     for(int solver=1;solver<=2;solver++)for(int z=0;z<=1;z++) {
-        run_case(MPI_COMM_WORLD,2,3,solver,z,23,13,3);
-        run_case(MPI_COMM_WORLD,3,2,solver,z,11,11,2);
-        run_case(MPI_COMM_WORLD,3,2,solver,z,3,2,2);
-        run_case(MPI_COMM_WORLD,2,3,solver,z,3,2,2);
+        run_case(MPI_COMM_WORLD,2,wide,solver,z,23,13,3);
+        run_case(MPI_COMM_WORLD,wide,2,solver,z,11,11,2);
+        run_case(MPI_COMM_WORLD,wide,2,solver,z,3,2,2);
+        run_case(MPI_COMM_WORLD,2,wide,solver,z,3,2,2);
+        /* Enough rows for both OpenMP workers and the SIMD backtransform. */
+        run_case(MPI_COMM_WORLD,2,wide,solver,z,257,31,16);
     }
     /* Equal-sized, interleaved groups use different spectra and row/column
        orientations. Accidental MPI_COMM_WORLD collectives then cannot pass. */
@@ -158,7 +163,7 @@ int main(int argc,char **argv)
     int color=world_rank%2;
     MPI_Comm_split(MPI_COMM_WORLD,color,world_rank,&group);
     for(int solver=1;solver<=2;solver++)for(int z=0;z<=1;z++)
-        run_case(group,color?3:1,color?1:3,solver,z,17+2*color,7+color,2);
+        run_case(group,color?wide:1,color?1:wide,solver,z,17+2*color,7+color,2);
     MPI_Comm_free(&group);
     if(world_rank==0)printf("PASS: %d CPU ELPA ABI cases per rank\n",checked);
     MPI_Finalize();return 0;
@@ -173,7 +178,11 @@ def main():
     parser.add_argument('--make', default='make')
     parser.add_argument('--makefile', default='Makefile', help='Native site configuration, e.g. Makefile.kugui')
     parser.add_argument('--timeout', type=int, default=180)
+    parser.add_argument('--ranks', type=int, choices=(6, 8), default=6)
+    parser.add_argument('--threads', type=int, default=1)
     args = parser.parse_args()
+    if args.threads < 1:
+        parser.error('--threads must be positive')
     native = args.native_source.resolve()
     if not (native / 'Makefile').is_file():
         parser.error('Build OpenMX first, or provide --native-source')
@@ -194,8 +203,8 @@ def main():
         subprocess.run([args.make, '-C', str(native), '-f', args.makefile, '-f', str(makefile),
                         'check-elpa-cpu'], check=True, timeout=args.timeout)
         env = os.environ.copy()
-        env.update(OPENMX_GPU='0', CUDA_VISIBLE_DEVICES='', OMP_NUM_THREADS='1', OPENBLAS_NUM_THREADS='1', BLIS_NUM_THREADS='1')
-        subprocess.run([*shlex.split(args.mpiexec), '-np', '6', '--bind-to', 'core', str(binary)],
+        env.update(OPENMX_GPU='0', CUDA_VISIBLE_DEVICES='', OMP_NUM_THREADS=str(args.threads), OMP_DYNAMIC='FALSE', OMP_MAX_ACTIVE_LEVELS='1', OPENBLAS_NUM_THREADS=str(args.threads), BLIS_NUM_THREADS=str(args.threads))
+        subprocess.run([*shlex.split(args.mpiexec), '-np', str(args.ranks), '--map-by', f'slot:PE={args.threads}', '--bind-to', 'core', str(binary)],
                        check=True, timeout=args.timeout, env=env)
 
 

@@ -14,6 +14,7 @@ MPI_CFLAGS := @_hip_C_flags@
 MPI_CXXFLAGS := @_hip_CXX_flags@
 MPI_FCFLAGS := @_hip_Fortran_flags@
 HOST_INCLUDES := -I@OPENMX_HIP_FFTW_INCLUDE_DIR@
+AOCL_THREADING := @OPENMX_HIP_AOCL_THREADING@
 MATH_GROUP := @_hip_math_link@
 HOST_LAPACK_LIBS := @_hip_lapack_link@
 FFTW_LIBS := @OPENMX_HIP_FFTW_LIBRARY@ -lm

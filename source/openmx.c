@@ -157,7 +157,21 @@ static int run_openmx(int argc, char *argv[], OpenMXCoreContext *core)
   mpi_comm_level1 = MPI_COMM_WORLD; 
   MPI_COMM_WORLD1 = MPI_COMM_WORLD; 
 
-  MPI_Init(&argc,&argv);
+  /* ELPA's hybrid CPU kernels require serialized (or multiple) MPI
+     thread support, even though application collectives stay outside teams. */
+  {
+    int provided = MPI_THREAD_SINGLE;
+    int status = MPI_Init_thread(&argc,&argv,MPI_THREAD_SERIALIZED,&provided);
+    if (status != MPI_SUCCESS) {
+      fprintf(stderr,"OpenMX: MPI_Init_thread failed (%d).\n",status);
+      return EXIT_FAILURE;
+    }
+    if (provided < MPI_THREAD_SERIALIZED) {
+      fprintf(stderr,"OpenMX: MPI_THREAD_SERIALIZED is required for hybrid ELPA (provided %d).\n",provided);
+      MPI_Abort(MPI_COMM_WORLD,EXIT_FAILURE);
+      return EXIT_FAILURE;
+    }
+  }
   MPI_Comm_size(MPI_COMM_WORLD1,&numprocs);
   MPI_Comm_rank(MPI_COMM_WORLD1,&myid);
   NUMPROCS_MPI_COMM_WORLD = numprocs;

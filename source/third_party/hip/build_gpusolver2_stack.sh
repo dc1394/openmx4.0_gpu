@@ -22,6 +22,7 @@
 #   GPUSOLVER2_ROCM      ROCm installation (hip, rocblas, amdhip64)
 #   GPUSOLVER2_AOCL_LIB / GPUSOLVER2_AOCL_INC
 #                        AOCL ScaLAPACK/libFLAME/BLIS used for the host BLAS
+#   GPUSOLVER2_AOCL_THREADING OPENMP (default) or SEQUENTIAL BLIS
 #   GPUSOLVER2_AOCC_LIB  AOCC runtime libs AOCL's ScaLAPACK was built against
 #   GPUSOLVER2_SCALAPACK_SO shared ScaLAPACK used for CMake/configure probes
 #   GPUSOLVER2_ELPA_VER  ELPA version (tag new_release_<ver with underscores>)
@@ -66,8 +67,15 @@ fi
 : "${GPUSOLVER2_MPICC:=$GPUSOLVER2_MPI_BIN/mpicc}"
 : "${GPUSOLVER2_MPICXX:=$GPUSOLVER2_MPI_BIN/mpicxx}"
 : "${GPUSOLVER2_MPIFC:=$GPUSOLVER2_MPI_BIN/mpif90}"
-: "${GPUSOLVER2_HOST_MATH:=-L$GPUSOLVER2_AOCL_LIB -lscalapack -lflame -lblis -laoclutils}"
-: "${GPUSOLVER2_HOST_BLAS:=$GPUSOLVER2_AOCL_LIB/libblis.so}"
+# Native make uses the same BLIS choice as CMake. Both variants are LP64.
+: "${GPUSOLVER2_AOCL_THREADING:=OPENMP}"
+case "$GPUSOLVER2_AOCL_THREADING" in
+  OPENMP) aocl_blas=blis-mt ;;
+  SEQUENTIAL) aocl_blas=blis ;;
+  *) echo "GPUSOLVER2_AOCL_THREADING must be OPENMP or SEQUENTIAL" >&2; exit 1 ;;
+esac
+: "${GPUSOLVER2_HOST_MATH:=-L$GPUSOLVER2_AOCL_LIB -lscalapack -lflame -l$aocl_blas -laoclutils}"
+: "${GPUSOLVER2_HOST_BLAS:=$GPUSOLVER2_AOCL_LIB/lib$aocl_blas.so}"
 : "${GPUSOLVER2_HOST_SCALAPACK:=$GPUSOLVER2_SCALAPACK_SO}"
 : "${GPUSOLVER2_HOST_LDFLAGS:=-L$GPUSOLVER2_MPI_LIBDIR -L$GPUSOLVER2_AOCL_LIB -L$GPUSOLVER2_AOCC_LIB -L$GPUSOLVER2_ROCM/lib}"
 : "${GPUSOLVER2_RUNTIME_PATH:=$GPUSOLVER2_ROCM/llvm/lib:$GPUSOLVER2_MPI_LIBDIR:$GPUSOLVER2_ROCM/lib:$GPUSOLVER2_AOCL_LIB:$GPUSOLVER2_AOCC_LIB}"
@@ -92,7 +100,7 @@ printf '%s\n' "$GPUSOLVER2_HIPCC" "$GPUSOLVER2_GPU_ARCH" \
   "$GPUSOLVER2_AOCL_LIB" "$GPUSOLVER2_AOCL_INC" "$GPUSOLVER2_AOCC_LIB" \
   "$GPUSOLVER2_SCALAPACK_SO" "$GPUSOLVER2_ELPA_VER" "$GPUSOLVER2_HOST_CC" \
   "$GPUSOLVER2_HOST_CXX" "$GPUSOLVER2_PREFIX" "$GPUSOLVER2_DIST" \
-  "$GPUSOLVER2_CMAKE" "$GPUSOLVER2_TOOL_PATH" > "$STAMP/toolchain.tmp"
+  "$GPUSOLVER2_CMAKE" "$GPUSOLVER2_TOOL_PATH" "$GPUSOLVER2_AOCL_THREADING" > "$STAMP/toolchain.tmp"
 # A build-script fix must also invalidate successful steps from older rules.
 cksum < "$0" >> "$STAMP/toolchain.tmp"
 if [ -n "${GPUSOLVER2_HOST_CONFIG:-}" ]; then
@@ -219,6 +227,8 @@ OPENMX_ELPA_CPTR_PATCH
   # on the Zen 4 target its double-pumped AVX-512 gains little over AVX2.
   # (The NVIDIA-side script disables all SIMD kernels for its NVHPC
   # toolchain.)
+  # CPU recovery must use the caller's OpenMP team rather than a serial
+  # ELPA build; retain the HIP kernels in the same OpenMP-enabled archive.
   "$SRC/elpa/configure" --prefix="$P" \
     FC="$GPUSOLVER2_MPIFC" CC="$GPUSOLVER2_MPICC" CXX="$GPUSOLVER2_MPICXX" \
     HIPCC="$GPUSOLVER2_HIPCC" \
@@ -227,14 +237,14 @@ OPENMX_ELPA_CPTR_PATCH
     CPPFLAGS="-I$GPUSOLVER2_ROCM/include -I$GPUSOLVER2_ROCM/include/rocsolver" \
     LDFLAGS="$GPUSOLVER2_HOST_LDFLAGS" \
     LIBS="$GPUSOLVER2_HOST_MATH -lrocblas -lamdhip64 -lstdc++" \
-    --enable-amd-gpu-kernels --disable-shared --enable-static $GPUSOLVER2_ELPA_MPI_OPTION \
+    --enable-amd-gpu-kernels --enable-openmp --disable-shared --enable-static $GPUSOLVER2_ELPA_MPI_OPTION \
     --enable-generic-kernels --disable-avx512-kernels \
     --disable-c-tests --disable-cpp-tests --disable-fortran-tests --disable-Fortran-tests
   # amdflang's -O2 middle end blows up (tens of GiB of RSS) on the
   # generated elpa2_compute.F90 once the SIMD kernel templates are enabled;
   # build that one driver TU at -O1 up front.  The hot kernels live in
   # their own TUs and keep the full optimization level.
-  make FCFLAGS="-O1 -march=x86-64-v3" src/elpa2/libelpa_private_la-elpa2_compute.lo
+  make FCFLAGS="-O1 -march=x86-64-v3 -fopenmp" src/elpa2/libelpa_openmp_private_la-elpa2_compute.lo
   # bin_PROGRAMS= noinst_PROGRAMS=: skip the elpa2_print_kernels diagnostic
   # binary and the validate_* self-test binaries ("make all" builds both
   # even with the test suites disabled).  Their libtool links expand
@@ -245,9 +255,9 @@ OPENMX_ELPA_CPTR_PATCH
   # binaries link it) while keeping the two convenience libraries that
   # make up libelpa itself.
   make -j "$J" bin_PROGRAMS= noinst_PROGRAMS= \
-    noinst_LTLIBRARIES="libelpa_public.la libelpa_private.la"
+    noinst_LTLIBRARIES="libelpa_openmp_public.la libelpa_openmp_private.la"
   make install bin_PROGRAMS= noinst_PROGRAMS= \
-    noinst_LTLIBRARIES="libelpa_public.la libelpa_private.la"
+    noinst_LTLIBRARIES="libelpa_openmp_public.la libelpa_openmp_private.la"
 }
 run_step 01_elpa step_elpa
 

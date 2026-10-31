@@ -72,8 +72,10 @@ def main():
             subprocess.run(archiver + ["rcs", str(path), *map(str, units)], check=True)
             return path
 
-        archive("elpa", [compile_unit("elpa", declarations +
-                "\nint elpa_boundary_probe(void){return " + calls + ";}\n")])
+        elpa_unit = compile_unit("elpa", declarations +
+                "\nint elpa_boundary_probe(void){return " + calls + ";}\n")
+        archive("elpa", [elpa_unit])
+        archive("elpa_openmp", [elpa_unit])
         archive("cosma_prefixed_pxgemm", [compile_unit("cosma_entry", """
 extern int cosma_boundary_transform(void);
 int cosma_pdgemm_(void){return 200+cosma_boundary_transform();}

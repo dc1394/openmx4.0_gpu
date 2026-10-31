@@ -86,10 +86,14 @@ class CMakeDriverTest(unittest.TestCase):
                 self.assertFalse(self.gpu_queries.exists())
 
     def test_hip_rejects_native_toolchain_overrides(self):
-        result = self.configure("-DOPENMX_GPU_BACKEND=HIP",
-                                "-DOPENMX_MAKE_OPTIONS=MPICC=/different/mpi/mpicc", success=False)
-        self.assertIn("MPICC is managed by the HIP CMake toolchain", result.stdout + result.stderr)
-        self.assertFalse(self.gpu_queries.exists())
+        for assignment in ("MPICC=/different/mpi/mpicc", "AOCL_THREADING=SEQUENTIAL",
+                           "GPUSOLVER2_AOCL_THREADING=SEQUENTIAL"):
+            with self.subTest(assignment=assignment):
+                result = self.configure("-DOPENMX_GPU_BACKEND=HIP",
+                                        "-DOPENMX_MAKE_OPTIONS=" + assignment, success=False)
+                self.assertIn(assignment.split("=", 1)[0] + " is managed by the HIP CMake toolchain",
+                              result.stdout + result.stderr)
+                self.assertFalse(self.gpu_queries.exists())
 
     def test_hip_rejects_conflicting_legacy_prefix(self):
         result = self.configure("-DOPENMX_GPU_BACKEND=HIP", "-DOPENMX_HIP_MPI_ROOT=/selected/mpi",

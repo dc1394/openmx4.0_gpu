@@ -40,6 +40,10 @@ configuration, AMD runtime settings and validation limits.
 
 HIP builds accept `OPENMX_HIP_MPI=OPENMPI|INTEL` and
 `OPENMX_HIP_LINALG=AOCL|MKL|OPENBLAS` (defaults: OpenMPI + AOCL).
+AOCL defaults to OpenMP BLIS (`libblis-mt`); set
+`OPENMX_HIP_AOCL_THREADING=SEQUENTIAL` to select sequential BLIS explicitly.
+The HIP ELPA archive is also OpenMP-enabled, so CPU diagonalization uses
+both the MPI ranks and their OpenMP threads.
 The selected MPI and LP64 libraries are shared by OpenMX, ELPA, COSMA and
 MAGMA. Use a separate build directory for each combination. For example:
 
@@ -1657,12 +1661,12 @@ Times below are seconds. Suite times sum the native per-case elapsed times;
 the named cases use OpenMX's maximum-rank `Total Computational Time`. MPI
 launch/shutdown overhead is excluded.
 
-| Test | Upstream CPU (Oct 29) | Fork CPU previous | Fork CPU current | Fork HIP previous | Fork HIP current |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| `-runtest` (14 cases) | 59.02 | 48.39 | 46.27 | 65.87 | 66.98 |
-| `-runtestL` (16 cases) | 4319.34 | 3246.98 | 3281.64 | 4287.30 | 4379.79 |
-| `sidia333_nc_cluster.dat` | 483.443 | 808.006 | 425.396 | 199.327 | 193.592 |
-| `cghelgeo.dat` | 1896.871 | 3123.226 | 3128.978 | 3188.305 | 3124.626 |
+| Test | Upstream CPU (Oct 29) | Fork CPU path | Fork HIP path |
+| --- | ---: | ---: | ---: |
+| `-runtest` (14 cases) | 59.02 | 46.27 | 66.98 |
+| `-runtestL` (16 cases) | 4319.34 | 3281.64 | 4379.79 |
+| `sidia333_nc_cluster.dat` | 483.443 | 425.396 | 193.592 |
+| `cghelgeo.dat` | 1896.871 | 3128.978 | 3124.626 |
 
 The case-level tables below use elapsed seconds from `runtest.result` and
 `runtestL.result`, as in the earlier test-suite benchmarks. `Upstream / HIP`
@@ -1783,11 +1787,8 @@ not used as the numerical acceptance criterion.
 For `sidia333_nc_cluster`, the new HIP path was 2.20× faster than the fork
 CPU path and 2.50× faster than the retained upstream baseline. Both new runs
 reached the input's 25-SCF limit; this comparison does not establish SCF
-convergence. Compared with the previous fork measurement, CPU time fell from
-808.006 to 425.396 s and HIP time from 199.327 to 193.592 s. These are single
-measurements and do not isolate the cause of each timing change. For
-`cghelgeo`, both new paths took 58 SCF steps, versus 59 (fork CPU) and 60
-(fork HIP) previously; the retained upstream run took 60.
+convergence. These are single measurements. For `cghelgeo`, both fork paths
+took 58 SCF steps; the retained upstream run took 60.
 
 **The cghelgeo HIP result includes CPU dense diagonalization.** All 58 SCF
 steps rejected the dense GPU path at its memory admission check. For the
@@ -1827,6 +1828,61 @@ the measured revision, installed binary/library hashes, runtime controls,
 dataset hashes and all eight job outcomes. Raw logs and resource samples
 remain in `work/codex_benchmark_20261030_rerun/`; previous measurements and
 interrupted-run archives remain in `work/codex_benchmark_20261029/`.
+
+### Radeon cghelgeo CPU threading diagnosis (2026-10-31)
+
+After rebuilding `main` at `f823dcec`, the CPU path was investigated on the
+same Threadripper/Radeon host with **8 MPI ranks × 2 OpenMP threads**, pinned
+to CPU cores 0–15. These controlled runs use `cghelgeo.dat` with
+`scf.maxIter=3`; geometry, basis, k mesh, precision and convergence thresholds
+are unchanged. Times include initialization, three SCF iterations and forces.
+They are single diagnostic measurements; the full 16×2 benchmark above
+retains its October 30 results.
+
+Two build settings limited CPU diagonalization. The HIP ELPA 2026.02.002
+archive had been configured without OpenMP, and the application linked
+sequential AOCL BLIS (`libblis.so`). Although threaded BLIS was also present
+as a transitive dependency, actual `zgemm_` calls resolved to the sequential
+library. The retained upstream build uses OpenMP ELPA 2018 and threaded MKL.
+
+| CPU configuration | Total (s) | Diagonalization section (s) |
+| --- | ---: | ---: |
+| Fork before: serial ELPA + sequential BLIS | 398.069 | 312.061 |
+| Fork control: serial ELPA + BLIS, 2 threads | 299.799 | 213.119 |
+| Fork control: OpenMP ELPA + sequential BLIS | 360.674 | 274.438 |
+| Fork fixed: OpenMP ELPA + BLIS, 2 threads | 276.196 | 189.491 |
+| Upstream: OpenMP ELPA 2018 + MKL, 2 threads | 306.216 | 171.914 |
+| Upstream control: OpenMP ELPA 2018 + MKL, 1 thread | 390.896 | 256.601 |
+
+Enabling ELPA OpenMP alone reduced total time by 9.4%; selecting two-thread
+BLIS alone reduced it by 24.7%. The combined fix reduced total time from
+**398.069 to 276.196 s** (1.44×, 30.6% shorter).
+The configuration effects overlap and their percentages should not be added.
+
+HIP now builds `libelpa_openmp` and uses its matching headers, retaining
+`-fopenmp` in the Flang `-O1` workaround for the generated ELPA2 driver.
+MPI initialization requests `MPI_THREAD_SERIALIZED`, the minimum supported
+level for this ELPA configuration. AOCL defaults to `libblis-mt`; use
+`OPENMX_HIP_AOCL_THREADING=SEQUENTIAL` (native make:
+`AOCL_THREADING=SEQUENTIAL`) for an explicit sequential BLAS build.
+`BLIS_NUM_THREADS=1` still limits BLAS to one thread; the two-thread controls
+above set `BLIS_NUM_THREADS=2`, with `OMP_MAX_ACTIVE_LEVELS=1`.
+
+All six cghelgeo controls passed finite-energy and full force-component
+checks at identical grids/geometry. Relative to the original fork control,
+the maximum differences were 4.093e-10 Ha in energy and 9.140e-10 Ha/bohr in
+force components, below `1e-7` in both cases. The CPU ELPA adapter also passed
+24 MPI/ABI cases per rank at 8×2, covering real/complex ELPA1 and ELPA2,
+AVX2, unequal leading dimensions, empty local blocks and disjoint process
+groups. Both CPU and HIP `-runtest` runs passed all 14 bundled references and
+the paired component-wise comparison. A separate full Cr2 calculation with
+forced ELPA GPU kernels also agreed with the CPU result.
+
+The [diagnostic CSV](benchmarks/results/radeon_cghelgeo_threading_20261031_8x2.csv)
+and [provenance/validation JSON](benchmarks/results/radeon_cghelgeo_threading_20261031_8x2.json)
+record stage times, numerical differences, input/binary hashes, library
+providers, build settings and regression checks. Local logs are retained in
+`work/codex_cghelgeo_cpu_20261031/`.
 
 ## Important notes
 Performance depends on the system, solver, hardware and MPI/OpenMP layout.

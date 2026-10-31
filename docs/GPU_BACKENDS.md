@@ -634,6 +634,7 @@ cmake --build build/hip-openmpi-openblas
 | `OPENMX_HIP_ROCM_ROOT` | 開発パッケージを含む ROCm SDK。既定 `/opt/rocm`。 |
 | `OPENMX_HIP_MPI_ROOT` | MPI の prefix。同じインストールの C/C++/Fortran ラッパーと `mpiexec` を検出。未指定時は環境変数と `PATH` を検索し、実装を検証。 |
 | `OPENMX_HIP_AOCL_ROOT` | AOCL の LP64 prefix（`include/`、`lib/`）。既定は環境変数 `AOCL_ROOT`。 |
+| `OPENMX_HIP_AOCL_THREADING` | `OPENMP`（既定）は `libblis-mt`、`SEQUENTIAL` は `libblis` を使用。 |
 | `OPENMX_HIP_AOCC_LIB` | AOCC で構築された AOCL が必要とするランタイムのディレクトリ。ROCm の OpenMP より後に検索。 |
 | `OPENMX_HIP_MKL_ROOT` | MKL prefix。既定は環境変数 `MKLROOT`。 |
 | `OPENMX_HIP_OPENBLAS_ROOT` | OpenBLAS prefix。未指定ならシステムを検索。ILP64 は不可。 |
@@ -651,6 +652,11 @@ CMake と矛盾するネイティブ make の設定は構成時に拒否しま�
 
 初回には GEMMul8、パッチ適用済み MAGMA、ELPA/COSMA もビルドします。
 ELPA/COSMA の構築には autoconf、automake、libtoolize、m4、unzip も必要です。
+HIP の ELPA は CPU・GPU カーネルを含む OpenMP 版（`libelpa_openmp`）を構築し、
+アプリケーションは `MPI_THREAD_SERIALIZED` 以上で MPI を初期化します。
+AOCL のスレッド版 BLIS と ELPA は、各 MPI ランクの `-nt` / `OMP_NUM_THREADS` に従います。
+`BLIS_NUM_THREADS=1` を設定すると BLAS は1スレッドに制限されます。
+直接 make でも `AOCL_THREADING=OPENMP` が既定で、`SEQUENTIAL` に変更できます。
 ROCm の OpenMP ランタイムを先に検索し、選択した MPI・数値ライブラリ・Fortran
 ランタイムのパスを実行ファイルに記録します。
 
