@@ -10,6 +10,9 @@ eigensolves are LAPACK/BLAS, so the results can be compared with the CPU
 sequence of Krylov_Col (Krylov_Dgemm/Krylov_Eigen2 without a workspace).
 
 Checked:
+  * three OpenMP workers bind new and reused workspaces to their rank GPU,
+    a failed binding falls back to CPU, and CPU selection avoids rocBLAS
+    initialization while GPU selection initializes once before workers;
   * the fused path and the per-call path agree with the CPU sequence
     (eigenvalues, and the eigenvector rows of C up to their sign), with
     and without the KU cache;
@@ -94,6 +97,7 @@ PREFIX = r'''
 #include <stdlib.h>
 #include "openmx_env.h"
 #include <string.h>
+#include <omp.h>
 
 #define CHECK(condition) do { if (!(condition)) { \
     fprintf(stderr, "FAIL line %d: %s\n", __LINE__, #condition); exit(2); \
@@ -152,6 +156,7 @@ static void dtime(double *t) { *t = 0.0; }
 
 /* HIP */
 static int device_allocations;
+static _Thread_local int current_device, bind_failure;
 static size_t free_memory = (size_t)8 << 30;
 static int hipFree(void *p) { if (p) { free(p); device_allocations--; } return 0; }
 static int hipMalloc(void **p, size_t bytes)
@@ -163,10 +168,16 @@ static int hipMemcpyAsync(void *to, const void *from, size_t bytes, int kind, hi
     memcpy(to, from, bytes); return 0;
 }
 static int hipStreamSynchronize(hipStream_t s) { return 0; }
-static int hipStreamCreateWithFlags(hipStream_t *s, int flags) { *s = (void *)1; return 0; }
+static int hipStreamCreateWithFlags(hipStream_t *s, int flags)
+{ *s = (void *)(uintptr_t)(current_device+1); return 0; }
 static int hipStreamDestroy(hipStream_t s) { return 0; }
 static int hipGetLastError(void) { return 0; }
-static int hipGetDevice(int *d) { *d = 0; return 0; }
+static int hipGetDevice(int *d) { *d = current_device; return 0; }
+static int hipSetDevice(int d)
+{ if (bind_failure) return 1; current_device=d; return 0; }
+static int rocblas_initializations;
+static void rocblas_initialize(void)
+{ CHECK(!omp_in_parallel()); rocblas_initializations++; }
 static const char *hipGetErrorString(int e) { return "stub error"; }
 static int OpenMX_GpuMemGetInfo(size_t *free_bytes, size_t *total_bytes)
 {
@@ -332,6 +343,36 @@ static void reset(void)
     events[0] = 0;
 }
 
+static void check_worker_devices(void)
+{
+    Krylov_GPU_PreparePool(3);
+    state->GPU_Preflight_hip_device=3;
+    #pragma omp parallel num_threads(3)
+    {
+        const int tid=omp_get_thread_num();
+        for (int pass=0;pass<2;pass++) {
+            /* New workers and reused teams can have different devices. */
+            current_device=(tid+pass)%3;
+            Krylov_GPU_Workspace *w=Krylov_GPU_GetWorkspace(tid);
+            CHECK(w && w->active && current_device==3);
+            CHECK(w->stream==(void *)(uintptr_t)4);
+        }
+        current_device=0;bind_failure=1;
+        CHECK(Krylov_GPU_GetWorkspace(tid)==NULL);
+        CHECK(current_device==0);
+        bind_failure=0;
+    }
+    CHECK(hipSetDevice(3)==hipSuccess);
+    Krylov_Release_GPU_Caches();
+    state->GPU_Preflight_hip_device=0;
+    CHECK(hipSetDevice(1)==hipSuccess);
+    scf_eigen_lib_flag=0;
+    CHECK(Krylov_GPU_GetWorkspace(0)==NULL && current_device==1);
+    scf_eigen_lib_flag=GPUSOLVER;
+    CHECK(hipSetDevice(0)==hipSuccess);
+    puts("PASS: three OpenMP workers bind the rank GPU before stream/cache use");
+}
+
 int main(void)
 {
     static double Cref[CSIZE*CSIZE], koref[CSIZE], C[CSIZE*CSIZE], ko[CSIZE];
@@ -343,7 +384,15 @@ int main(void)
     per_call(NULL, H_DC, KU, Cref, koref);
     CHECK(lapack_calls == 1);
 
+    scf_eigen_lib_flag=0;
     Krylov_GPU_InitOnce();
+    CHECK(rocblas_initializations==0);
+    state->GPU_InitOnce_initialized=0;
+    scf_eigen_lib_flag=GPUSOLVER;
+    Krylov_GPU_InitOnce();
+    Krylov_GPU_InitOnce();
+    CHECK(rocblas_initializations==1);
+    check_worker_devices();
     Krylov_GPU_PreparePool(2);
     ws = Krylov_GPU_GetWorkspace(0);
     CHECK(ws != NULL && ws->active);
@@ -508,7 +557,7 @@ def main():
         # exceed Msize2+2. Exercise the same production-sized KU allocation
         # on both sides of that boundary; ASan detects the old packing bug.
         for projected_order in (8, 20):
-            subprocess.run([*shlex.split(args.cc), *flags, "-std=c11",
+            subprocess.run([*shlex.split(args.cc), *flags, "-std=c11", "-fopenmp",
                             "-DM3="+str(projected_order), "-I"+str(root / "source"),
                             str(harness), str(root / "source/openmx_env.c"),
                             *shlex.split(args.libs), "-lm", "-o", str(binary)], check=True)
