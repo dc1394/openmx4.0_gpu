@@ -1,0 +1,962 @@
+[
+  {
+    "variant": "fork_cpu",
+    "test": "L",
+    "case": "5_5_13COb2",
+    "system": "5_5_13COb2",
+    "source": "work/large_example/5_5_13COb2.dat",
+    "original_sha256": "927a27a84881266b6b8b530b3924b69a32d0d61c1f0fdfda954e8c6efb13e5d5",
+    "measured_input_sha256": "5042feacc84bc7a0f1acbf85a2257c4b86b4fbe37d742883a293e8ef30c8ff23",
+    "physical_input_sha256": "9b017828abfd9d30635f3dd46af549427bd05f1af48484bce7405bcd77cdae2b"
+  },
+  {
+    "variant": "fork_cpu",
+    "test": "L",
+    "case": "B2C62_Band",
+    "system": "B2C62_Band",
+    "source": "work/large_example/B2C62_Band.dat",
+    "original_sha256": "15abe8dc8eb2f2a7f34a462adbb29f35a5f6684f2a6b89c36e49f9b9d0e5b227",
+    "measured_input_sha256": "26977f13b235b8660f110c6c56e71ab0f272946ee8830d1855a09612ab58bb23",
+    "physical_input_sha256": "880b8bc61e5220c991aa145c032b2a22b3f277c2e36c558bb4e5f113c6510a12"
+  },
+  {
+    "variant": "fork_cpu",
+    "test": "L",
+    "case": "CG15c-DC-LNO",
+    "system": "CG15c-DC-LNO",
+    "source": "work/large_example/CG15c-DC-LNO.dat",
+    "original_sha256": "f8a256ea70df08d1100d4aa8887656ba83c2964a3a99b3ee435f9b17c7bcfd9f",
+    "measured_input_sha256": "1d5b1a49db93cb893f31b4397bf88b793c2dfeca0644fb3244759fbadee7c67b",
+    "physical_input_sha256": "0b6857ccb981b5b840e0fb03eecc8a7e22706b62bea8bb136f6559c937e47978"
+  },
+  {
+    "variant": "fork_cpu",
+    "test": "L",
+    "case": "DIA512-1",
+    "system": "DIA512-1",
+    "source": "work/large_example/DIA512-1.dat",
+    "original_sha256": "c35000c6260b808cc10e5947fc108f65c146472d3b44a9fd8ef301e732844151",
+    "measured_input_sha256": "83c93854833af9ed1d7edcc4bf6199570cd151938377443c8ab7c1a3ce5a05ca",
+    "physical_input_sha256": "b667a8aed1b04b6e7468c279ce22c002ba402614894564fe3bd34501bd6cc02f"
+  },
+  {
+    "variant": "fork_cpu",
+    "test": "L",
+    "case": "FeBCC",
+    "system": "FeBCC",
+    "source": "work/large_example/FeBCC.dat",
+    "original_sha256": "7181dbb66708c4ec41b32f2b0b5be3a4a7a067c9a26029d9b78e66abeadd366a",
+    "measured_input_sha256": "6696aaae0c3e7d72ff5cbf868e88d67fafa606f547b01cb7a3de290389f14cb6",
+    "physical_input_sha256": "2d56ddf2c8a0a62408730f2e35b19f61b14b47441d7f06975dbbea741ba93e76"
+  },
+  {
+    "variant": "fork_cpu",
+    "test": "L",
+    "case": "GEL",
+    "system": "GEL",
+    "source": "work/large_example/GEL.dat",
+    "original_sha256": "707143410502e8e25c9958a7f3cc009ec6c7cb327e046997c86e5520512e6b6b",
+    "measured_input_sha256": "205fcaf86148715b6ef4657f7b7aa2dce4c8aa98b2677b4b513ac67116d1c655",
+    "physical_input_sha256": "95abc7384bcffac7a00346ca180e1a043e01d41e040b5d892364bcadb7433272"
+  },
+  {
+    "variant": "fork_cpu",
+    "test": "L",
+    "case": "GFRAG",
+    "system": "GFRAG",
+    "source": "work/large_example/GFRAG.dat",
+    "original_sha256": "8c95ae8d0039d7f2fcf8644ea1d171a26d1cb32e206f3c6757d5cd1c27dca31c",
+    "measured_input_sha256": "fcbce4f42f8529a9e26a04b8e2f2017631f816a41c55c7702032ea787ebbbf44",
+    "physical_input_sha256": "7c9241d390850f5f2b57c5e9d0e6bdcf3b2739fff3d067f630ab02117294cd9a"
+  },
+  {
+    "variant": "fork_cpu",
+    "test": "L",
+    "case": "GGFF",
+    "system": "GGFF",
+    "source": "work/large_example/GGFF.dat",
+    "original_sha256": "6a80fcc4f96e97944cc7b6affd20df04f24764cfb4852703f01e105ae3dc701f",
+    "measured_input_sha256": "20c56eaf05f3d24cf723b9934a3a27cb33c478e05232da39f0c16f7243b5ae7c",
+    "physical_input_sha256": "221fe24a4195e42a7f155c02f73bddc2de130546f6b974cd3a6e7bb5f81c3562"
+  },
+  {
+    "variant": "fork_cpu",
+    "test": "L",
+    "case": "MCCN",
+    "system": "MCCN",
+    "source": "work/large_example/MCCN.dat",
+    "original_sha256": "37f879f006313c05bfc45d8376abc7850854ce2819f796bdfd682b9017026358",
+    "measured_input_sha256": "8fa0424bdbf83911128d5cd1a11a8bbfb418e022ed47852c1e96b4bd7e1d3d9f",
+    "physical_input_sha256": "65026421e545061bc86257fe7f7549146c45acf6c7a1994f2779e68c4818da2b"
+  },
+  {
+    "variant": "fork_cpu",
+    "test": "L",
+    "case": "Mn12_148_F",
+    "system": "Mn12_148_F",
+    "source": "work/large_example/Mn12_148_F.dat",
+    "original_sha256": "877994aa5ad590d39055d65d3f6835737e1f40bea69001a9c015c1226b7ab0c5",
+    "measured_input_sha256": "71f43ad49ff8dd7ed2ba5969329d98d4f27b9888b604cc0f9d3c474c23d4ac44",
+    "physical_input_sha256": "c5742f1b9db7214b5a80e85019bfe72a913c6f90461740a16a62281d28b2943b"
+  },
+  {
+    "variant": "fork_cpu",
+    "test": "L",
+    "case": "N1C999",
+    "system": "N1C999",
+    "source": "work/large_example/N1C999.dat",
+    "original_sha256": "236f095357c5c4770f4b11594ab6e1506e37ff65b4d902bae9fd15dfe4f6444f",
+    "measured_input_sha256": "c5bb52aac88d1156317cc61cb383f45d3927fe84221a44f00e819b65a69e8ae3",
+    "physical_input_sha256": "96744e60f7cb48cb57880ab2ba10523c45b01a89e350ea8629754d99e8fc0493"
+  },
+  {
+    "variant": "fork_cpu",
+    "test": "L",
+    "case": "Ni63-O64",
+    "system": "Ni63-O64",
+    "source": "work/large_example/Ni63-O64.dat",
+    "original_sha256": "54c93baa76a77f149e298cd264fbebc645751dbeb5be1f2d451df6c02cec33e6",
+    "measured_input_sha256": "f5874420456acfe112affaf6dba685290aecaffae80de61b314b0cf53701497d",
+    "physical_input_sha256": "b6e4a166250fc81b2ee98b28bfac9cc8fa7ad494ac0874d879152ad687124bcf"
+  },
+  {
+    "variant": "fork_cpu",
+    "test": "L",
+    "case": "Pt63",
+    "system": "Pt63",
+    "source": "work/large_example/Pt63.dat",
+    "original_sha256": "36dc8082db9435af8abf0d059f7935b0855151637b685af81aad52143149ae0d",
+    "measured_input_sha256": "a10be0d2cfe29a12d84d0564965485aae12a640589fcd978a9d2c737e0a879bb",
+    "physical_input_sha256": "96c76aa83163e8d3db6feed5f4668520ea86aecf6d2abf70229286095aea06ec"
+  },
+  {
+    "variant": "fork_cpu",
+    "test": "L",
+    "case": "SialicAcid",
+    "system": "SialicAcid",
+    "source": "work/large_example/SialicAcid.dat",
+    "original_sha256": "9175362d96ce6423e7a3383319a5435e85072f1bbe1095ef5fadeefdfd602df7",
+    "measured_input_sha256": "b5a38df12ea3fa39c0843dc4fccf9bde4ebfe24f4bb9b57789f4013cb3c04f49",
+    "physical_input_sha256": "2be602e61ba4761bd772f7e14c8b6f57497b30a7d278062a496300bfe3d5074c"
+  },
+  {
+    "variant": "fork_cpu",
+    "test": "L",
+    "case": "ZrB2_2x2",
+    "system": "ZrB2_2x2",
+    "source": "work/large_example/ZrB2_2x2.dat",
+    "original_sha256": "d31735b20697aa7e7f2d4c02d603fe20e28dc68cbc917ef4938650d54ce73e82",
+    "measured_input_sha256": "ac54b2b318ac00859f3391e05969c82289546cf9ef08560e24a5e3e1be479293",
+    "physical_input_sha256": "6269cb09d553251bed54f475d3e0790c4554a0a40cc0e125d218399786996a77"
+  },
+  {
+    "variant": "fork_cpu",
+    "test": "L",
+    "case": "nsV4Bz5",
+    "system": "nsV4Bz5",
+    "source": "work/large_example/nsV4Bz5.dat",
+    "original_sha256": "0614c3619e1b04916d05649685c94415fc7270ae9fe88a7c33a92bac1dbb84e6",
+    "measured_input_sha256": "3fa6ee58d9febc7c8ca217d37a3a4826de07b37296623570aecfaf10e5a58bd6",
+    "physical_input_sha256": "bba6c1f8ad15574e0d938101a1f1e9541e6f8bf5d7ac146d98d6f803d5a80c9e"
+  },
+  {
+    "variant": "fork_cpu",
+    "test": "S",
+    "case": "Benzene",
+    "system": "Benzene",
+    "source": "work/input_example/Benzene.dat",
+    "original_sha256": "c7f445ef1ed49115a52049f6b81711b0999d074b5be2119f85886fa3209dfc66",
+    "measured_input_sha256": "fb9d8765a82f84e8de7996bbd6b968629540ff11c3e0bcdc2b5b3471ad4e7348",
+    "physical_input_sha256": "645c48443afeb170aadaaa600d08fcc36bed316feac489cd6ce663477012a7cb"
+  },
+  {
+    "variant": "fork_cpu",
+    "test": "S",
+    "case": "C60",
+    "system": "C60",
+    "source": "work/input_example/C60.dat",
+    "original_sha256": "7c2bd103986adb335ae2302685be43f0a23545861fa21d7885bd6f663bb6f6f8",
+    "measured_input_sha256": "39d1d3c28e2d539ddd26f1b090524fc1161945c62c83230706040508ebb5e583",
+    "physical_input_sha256": "ad3d1da5f946909fa7f312c0687287e44d809819ad2f0525bb33e20acaa81f85"
+  },
+  {
+    "variant": "fork_cpu",
+    "test": "S",
+    "case": "CO",
+    "system": "CO",
+    "source": "work/input_example/CO.dat",
+    "original_sha256": "6fea9256df9ce5db091c80b9c644bc93a6dc55187949b61b682012f54566ff05",
+    "measured_input_sha256": "ef80ecdd19cd9fedeca44149a3604c1b5680c2ad427385111a89cf602a89cf3d",
+    "physical_input_sha256": "628d43217254933e9ee2a4c43d5265066d4ac7f2628d18d17ff10f07df235857"
+  },
+  {
+    "variant": "fork_cpu",
+    "test": "S",
+    "case": "Cr2",
+    "system": "Cr2",
+    "source": "work/input_example/Cr2.dat",
+    "original_sha256": "37ce5beffcf397b8460975e6525ed2783c2be7320941e99d031bb77e2e888e3e",
+    "measured_input_sha256": "d1a589b632048165e0d8aab85d9abbd509757d7d251a880c438340d1de30e255",
+    "physical_input_sha256": "aae6bbdbec74e0dca7f97c2c592dd7170f7ee4edce50390a865d53073555e6fb"
+  },
+  {
+    "variant": "fork_cpu",
+    "test": "S",
+    "case": "Crys-MnO",
+    "system": "Crys-MnO",
+    "source": "work/input_example/Crys-MnO.dat",
+    "original_sha256": "315a3b870e4e57a0edb5ac48f4135593f9dbc63cdcc1f0d344783ac9b4ef9c62",
+    "measured_input_sha256": "cd341a076c41df08fe3b9cf035328713f1811890f169ca72c16f46873095798f",
+    "physical_input_sha256": "85756c40cc324e35764dacc68788f16d23d93fd34d7a10a57cbafbaeaa8e1175"
+  },
+  {
+    "variant": "fork_cpu",
+    "test": "S",
+    "case": "GaAs",
+    "system": "GaAs",
+    "source": "work/input_example/GaAs.dat",
+    "original_sha256": "62c958351460fabc5d1a4f12d1cb51565f56ce10c4570d24131da25637f852c6",
+    "measured_input_sha256": "d0733a3031319f29b34e930dd86fd685f0a9008fc92633d4c442348de95bd208",
+    "physical_input_sha256": "b2571de088368e512c9967f770273aa6682563eb4bf77db5973b6d604bea1141"
+  },
+  {
+    "variant": "fork_cpu",
+    "test": "S",
+    "case": "Glycine",
+    "system": "Glycine",
+    "source": "work/input_example/Glycine.dat",
+    "original_sha256": "4781425789fc08433ab49f4934c7c012d7cad0ad87b7f3df737138118afa8bca",
+    "measured_input_sha256": "d8fbabd9391a6fac273236b23c75f272ee1e5936830639e001e5d016ac8bc0ac",
+    "physical_input_sha256": "f849e0cb5f880d55df52d168e6b811e81fd4bbdf267b8af9d3a9bcb0dd648b3f"
+  },
+  {
+    "variant": "fork_cpu",
+    "test": "S",
+    "case": "Graphite4",
+    "system": "Graphite4",
+    "source": "work/input_example/Graphite4.dat",
+    "original_sha256": "9ed8513b6eaac5ef8dc2343422c88175bd0b1b6b1e101f7bd113f63a9d2ed2f6",
+    "measured_input_sha256": "13066f354f0489517a4919d0855dfcf1472ce91dcda3fcc76b1d773458a58ffc",
+    "physical_input_sha256": "8e1b494fe68a87cd27e1ff663b28daad965589d05ee6744465fa6a859043a68d"
+  },
+  {
+    "variant": "fork_cpu",
+    "test": "S",
+    "case": "H2O-EF",
+    "system": "H2O-EF",
+    "source": "work/input_example/H2O-EF.dat",
+    "original_sha256": "9f528eb4f5d13f0635772d5dc87635d4e7c99266dc2085a1ef820a19e23f97d9",
+    "measured_input_sha256": "865233273f451776fc3532d73a7e693231ce148cb94b87cb7ee83e2c71eb0f2e",
+    "physical_input_sha256": "a296c2fc62e4b9d7e4a7bb80cb97086b9df35030f98392b7fef3961784292d80"
+  },
+  {
+    "variant": "fork_cpu",
+    "test": "S",
+    "case": "H2O",
+    "system": "H2O",
+    "source": "work/input_example/H2O.dat",
+    "original_sha256": "5e2044197d163bdb97728c78666d3b3dac9e0221bd07aa7b86781fca12770804",
+    "measured_input_sha256": "fae455087b69f522ab03e952dc345f88bf8b8db00a45239505aff844c129f01b",
+    "physical_input_sha256": "0a423e482edaca4fbce88366bd6ee56ccf0f9546fd211e49653f4a6597e87dd9"
+  },
+  {
+    "variant": "fork_cpu",
+    "test": "S",
+    "case": "HMn",
+    "system": "HMn",
+    "source": "work/input_example/HMn.dat",
+    "original_sha256": "d29997cfe87ce73dcea408285c019c25c1573ae0c8d45cedc21c367a00abb703",
+    "measured_input_sha256": "7493408de20531196bed92bd01a130774e7c558aba0d87ea67898caff3d65073",
+    "physical_input_sha256": "7eb9c80d6b672b2ef8fca78f1c4f6158d65fe31cbfe96daa58d9d54e12cf3f75"
+  },
+  {
+    "variant": "fork_cpu",
+    "test": "S",
+    "case": "Methane",
+    "system": "Methane",
+    "source": "work/input_example/Methane.dat",
+    "original_sha256": "259179e38dad7c6d8ece6f51ea8b0a1fbc3657a15defc43cb9ad104413a415bb",
+    "measured_input_sha256": "c5b3b51321c44c1e18238c25a0c1e71995856cd458559407aa4b6338e7dc231f",
+    "physical_input_sha256": "33bfd31ece53aece5c1f98bcc4d5cd3c3e5f65ca0eeb84b31df3528623d24fc8"
+  },
+  {
+    "variant": "fork_cpu",
+    "test": "S",
+    "case": "Mol_MnO",
+    "system": "Mol_MnO",
+    "source": "work/input_example/Mol_MnO.dat",
+    "original_sha256": "7294bb18e450cefa7ab169b88c19c64284158a0f702a877324c3bd466c026670",
+    "measured_input_sha256": "7e5520a514772e31ed489a473c2e132f5b10f1e0f3be767c1e65db73ae766be7",
+    "physical_input_sha256": "24fb49bd26c17c7aef6941ded88b5a84f120faa6df887d9a383477a88f2fc974"
+  },
+  {
+    "variant": "fork_cpu",
+    "test": "S",
+    "case": "Ndia2",
+    "system": "Ndia2",
+    "source": "work/input_example/Ndia2.dat",
+    "original_sha256": "68fccb2f50ba4e06d1625446db230a0fbc0981881352c66ae120ad1cefdc19ec",
+    "measured_input_sha256": "b55d07c7a785f2487fca9225102f96204655002712dbca7985d8ad4acbb82344",
+    "physical_input_sha256": "c7a1a3d42891934cc8a72fe8b71588f4a5f6f33c4201c0e5937cffc5418665d0"
+  },
+  {
+    "variant": "fork_cpu",
+    "test": "cghelgeo",
+    "case": "cghelgeo",
+    "system": "cghelgeo",
+    "source": "benchmarks/inputs/cghelgeo.dat",
+    "original_sha256": "9c3958e470820ab2182af859b4749a0f3375c41d1a56ac013e0f398b441d0ff7",
+    "measured_input_sha256": "3e2f80a720e6ee0bf4dc995e23620f69ce74ba8fcc77d26c7ded7f7409da0077",
+    "physical_input_sha256": "2cbe17913f1aaa6be0baaa65bc1846976fff25f10fe6ff629e1574dcd84301fe"
+  },
+  {
+    "variant": "fork_cpu",
+    "test": "sidia333_nc_cluster",
+    "case": "sidia333_nc_cluster",
+    "system": "sidia333_nc_cluster",
+    "source": "benchmarks/inputs/sidia333_nc_cluster.dat",
+    "original_sha256": "9c5466abf560c6481b83ec9a51976f4b218856a1da330e5a209b9041239decd0",
+    "measured_input_sha256": "18fb6f16e3fc1f3e0d2583defeda315fd0f81957e9c04ec2b6bc4169671cf9fd",
+    "physical_input_sha256": "72054ac48d0c72bbf9593376c2f26b64a55a6a85e3a52e55b5a10350fc6c168d"
+  },
+  {
+    "variant": "fork_gpu",
+    "test": "L",
+    "case": "5_5_13COb2",
+    "system": "5_5_13COb2",
+    "source": "work/large_example/5_5_13COb2.dat",
+    "original_sha256": "927a27a84881266b6b8b530b3924b69a32d0d61c1f0fdfda954e8c6efb13e5d5",
+    "measured_input_sha256": "0ebadbe334a19c552e21b4b17fe8b766a7ebff4f02e4a1b973c461dcfd79adbc",
+    "physical_input_sha256": "9b017828abfd9d30635f3dd46af549427bd05f1af48484bce7405bcd77cdae2b"
+  },
+  {
+    "variant": "fork_gpu",
+    "test": "L",
+    "case": "B2C62_Band",
+    "system": "B2C62_Band",
+    "source": "work/large_example/B2C62_Band.dat",
+    "original_sha256": "15abe8dc8eb2f2a7f34a462adbb29f35a5f6684f2a6b89c36e49f9b9d0e5b227",
+    "measured_input_sha256": "0e9aa68106b32a5bf738b937681ba396b29e1b0f62e4f62a3ec1f3a6d98806e3",
+    "physical_input_sha256": "880b8bc61e5220c991aa145c032b2a22b3f277c2e36c558bb4e5f113c6510a12"
+  },
+  {
+    "variant": "fork_gpu",
+    "test": "L",
+    "case": "CG15c-DC-LNO",
+    "system": "CG15c-DC-LNO",
+    "source": "work/large_example/CG15c-DC-LNO.dat",
+    "original_sha256": "f8a256ea70df08d1100d4aa8887656ba83c2964a3a99b3ee435f9b17c7bcfd9f",
+    "measured_input_sha256": "96f274aff050d97ec1e569db945cdfe927d187dc9c69b61b50ea716f6cde09e3",
+    "physical_input_sha256": "0b6857ccb981b5b840e0fb03eecc8a7e22706b62bea8bb136f6559c937e47978"
+  },
+  {
+    "variant": "fork_gpu",
+    "test": "L",
+    "case": "DIA512-1",
+    "system": "DIA512-1",
+    "source": "work/large_example/DIA512-1.dat",
+    "original_sha256": "c35000c6260b808cc10e5947fc108f65c146472d3b44a9fd8ef301e732844151",
+    "measured_input_sha256": "48bf2944a4d43824f15b8612ef2de001f444794fd658ddb10fca9cab94124929",
+    "physical_input_sha256": "b667a8aed1b04b6e7468c279ce22c002ba402614894564fe3bd34501bd6cc02f"
+  },
+  {
+    "variant": "fork_gpu",
+    "test": "L",
+    "case": "FeBCC",
+    "system": "FeBCC",
+    "source": "work/large_example/FeBCC.dat",
+    "original_sha256": "7181dbb66708c4ec41b32f2b0b5be3a4a7a067c9a26029d9b78e66abeadd366a",
+    "measured_input_sha256": "1ac1a7cf6a5bf1128281dd9c0370a5e4f0b63e349953ab3b56ccb40436e14ad7",
+    "physical_input_sha256": "2d56ddf2c8a0a62408730f2e35b19f61b14b47441d7f06975dbbea741ba93e76"
+  },
+  {
+    "variant": "fork_gpu",
+    "test": "L",
+    "case": "GEL",
+    "system": "GEL",
+    "source": "work/large_example/GEL.dat",
+    "original_sha256": "707143410502e8e25c9958a7f3cc009ec6c7cb327e046997c86e5520512e6b6b",
+    "measured_input_sha256": "f2b83d676d5fec972cd3936c20d83a56b0f8b265c44ce91e1b2f555385a2d1d9",
+    "physical_input_sha256": "95abc7384bcffac7a00346ca180e1a043e01d41e040b5d892364bcadb7433272"
+  },
+  {
+    "variant": "fork_gpu",
+    "test": "L",
+    "case": "GFRAG",
+    "system": "GFRAG",
+    "source": "work/large_example/GFRAG.dat",
+    "original_sha256": "8c95ae8d0039d7f2fcf8644ea1d171a26d1cb32e206f3c6757d5cd1c27dca31c",
+    "measured_input_sha256": "03d212ee81919f96a6a5fadb06db8a4773fa69a2bf7a92e43f428803914b70da",
+    "physical_input_sha256": "7c9241d390850f5f2b57c5e9d0e6bdcf3b2739fff3d067f630ab02117294cd9a"
+  },
+  {
+    "variant": "fork_gpu",
+    "test": "L",
+    "case": "GGFF",
+    "system": "GGFF",
+    "source": "work/large_example/GGFF.dat",
+    "original_sha256": "6a80fcc4f96e97944cc7b6affd20df04f24764cfb4852703f01e105ae3dc701f",
+    "measured_input_sha256": "0642c281fd3843800b7106907170b767b11a3dc5c5a9a11124874d2fd93f5db9",
+    "physical_input_sha256": "221fe24a4195e42a7f155c02f73bddc2de130546f6b974cd3a6e7bb5f81c3562"
+  },
+  {
+    "variant": "fork_gpu",
+    "test": "L",
+    "case": "MCCN",
+    "system": "MCCN",
+    "source": "work/large_example/MCCN.dat",
+    "original_sha256": "37f879f006313c05bfc45d8376abc7850854ce2819f796bdfd682b9017026358",
+    "measured_input_sha256": "c0fd254888687613031c6bc9ce208b8ff920ed3cdcb4e8733e19fd91f1cdc036",
+    "physical_input_sha256": "65026421e545061bc86257fe7f7549146c45acf6c7a1994f2779e68c4818da2b"
+  },
+  {
+    "variant": "fork_gpu",
+    "test": "L",
+    "case": "Mn12_148_F",
+    "system": "Mn12_148_F",
+    "source": "work/large_example/Mn12_148_F.dat",
+    "original_sha256": "877994aa5ad590d39055d65d3f6835737e1f40bea69001a9c015c1226b7ab0c5",
+    "measured_input_sha256": "a2220ace650e2dacd3418cc4a3b975dc54cbc1e0a41013c3de84e0ed74379b53",
+    "physical_input_sha256": "c5742f1b9db7214b5a80e85019bfe72a913c6f90461740a16a62281d28b2943b"
+  },
+  {
+    "variant": "fork_gpu",
+    "test": "L",
+    "case": "N1C999",
+    "system": "N1C999",
+    "source": "work/large_example/N1C999.dat",
+    "original_sha256": "236f095357c5c4770f4b11594ab6e1506e37ff65b4d902bae9fd15dfe4f6444f",
+    "measured_input_sha256": "4e58dcf8c87e3d6999b7c02c0a73dd0cb01452e3c4cbdca1d624f1869af88e4b",
+    "physical_input_sha256": "96744e60f7cb48cb57880ab2ba10523c45b01a89e350ea8629754d99e8fc0493"
+  },
+  {
+    "variant": "fork_gpu",
+    "test": "L",
+    "case": "Ni63-O64",
+    "system": "Ni63-O64",
+    "source": "work/large_example/Ni63-O64.dat",
+    "original_sha256": "54c93baa76a77f149e298cd264fbebc645751dbeb5be1f2d451df6c02cec33e6",
+    "measured_input_sha256": "c58f28f90331ca10e9e4c82609212b0fc9ac699387dbe0ee73249314dd92f65c",
+    "physical_input_sha256": "b6e4a166250fc81b2ee98b28bfac9cc8fa7ad494ac0874d879152ad687124bcf"
+  },
+  {
+    "variant": "fork_gpu",
+    "test": "L",
+    "case": "Pt63",
+    "system": "Pt63",
+    "source": "work/large_example/Pt63.dat",
+    "original_sha256": "36dc8082db9435af8abf0d059f7935b0855151637b685af81aad52143149ae0d",
+    "measured_input_sha256": "31298c8289acb66cfac5bc31266fe85ba15d88f91e2b6e9a40260c8fa38fa0c5",
+    "physical_input_sha256": "96c76aa83163e8d3db6feed5f4668520ea86aecf6d2abf70229286095aea06ec"
+  },
+  {
+    "variant": "fork_gpu",
+    "test": "L",
+    "case": "SialicAcid",
+    "system": "SialicAcid",
+    "source": "work/large_example/SialicAcid.dat",
+    "original_sha256": "9175362d96ce6423e7a3383319a5435e85072f1bbe1095ef5fadeefdfd602df7",
+    "measured_input_sha256": "803a4c12f4202fa6bc4059bae0ddd59a98bc0307f008649dc0c5481bda1cc15b",
+    "physical_input_sha256": "2be602e61ba4761bd772f7e14c8b6f57497b30a7d278062a496300bfe3d5074c"
+  },
+  {
+    "variant": "fork_gpu",
+    "test": "L",
+    "case": "ZrB2_2x2",
+    "system": "ZrB2_2x2",
+    "source": "work/large_example/ZrB2_2x2.dat",
+    "original_sha256": "d31735b20697aa7e7f2d4c02d603fe20e28dc68cbc917ef4938650d54ce73e82",
+    "measured_input_sha256": "4105c10cfdbfd8ee468391fe935b00c5bafb96283ee822579d6682ee482e087b",
+    "physical_input_sha256": "6269cb09d553251bed54f475d3e0790c4554a0a40cc0e125d218399786996a77"
+  },
+  {
+    "variant": "fork_gpu",
+    "test": "L",
+    "case": "nsV4Bz5",
+    "system": "nsV4Bz5",
+    "source": "work/large_example/nsV4Bz5.dat",
+    "original_sha256": "0614c3619e1b04916d05649685c94415fc7270ae9fe88a7c33a92bac1dbb84e6",
+    "measured_input_sha256": "9b82af254cf4e9160f32e4b7ca95daf1af8a3693750c187cbb41766f86bdcdd0",
+    "physical_input_sha256": "bba6c1f8ad15574e0d938101a1f1e9541e6f8bf5d7ac146d98d6f803d5a80c9e"
+  },
+  {
+    "variant": "fork_gpu",
+    "test": "S",
+    "case": "Benzene",
+    "system": "Benzene",
+    "source": "work/input_example/Benzene.dat",
+    "original_sha256": "c7f445ef1ed49115a52049f6b81711b0999d074b5be2119f85886fa3209dfc66",
+    "measured_input_sha256": "18846f6aedccca4f9538553b1bd66230e27b93fe6d074d861cf7d042e657a83a",
+    "physical_input_sha256": "645c48443afeb170aadaaa600d08fcc36bed316feac489cd6ce663477012a7cb"
+  },
+  {
+    "variant": "fork_gpu",
+    "test": "S",
+    "case": "C60",
+    "system": "C60",
+    "source": "work/input_example/C60.dat",
+    "original_sha256": "7c2bd103986adb335ae2302685be43f0a23545861fa21d7885bd6f663bb6f6f8",
+    "measured_input_sha256": "9e2df92e2554db582ffbb1697ad811b5c58ce1c88b17c9f22998ba4994a983ca",
+    "physical_input_sha256": "ad3d1da5f946909fa7f312c0687287e44d809819ad2f0525bb33e20acaa81f85"
+  },
+  {
+    "variant": "fork_gpu",
+    "test": "S",
+    "case": "CO",
+    "system": "CO",
+    "source": "work/input_example/CO.dat",
+    "original_sha256": "6fea9256df9ce5db091c80b9c644bc93a6dc55187949b61b682012f54566ff05",
+    "measured_input_sha256": "4ff28f07aaae0f61de0536680cca7b14d7ffea11e5970e57228c6ef2661eb082",
+    "physical_input_sha256": "628d43217254933e9ee2a4c43d5265066d4ac7f2628d18d17ff10f07df235857"
+  },
+  {
+    "variant": "fork_gpu",
+    "test": "S",
+    "case": "Cr2",
+    "system": "Cr2",
+    "source": "work/input_example/Cr2.dat",
+    "original_sha256": "37ce5beffcf397b8460975e6525ed2783c2be7320941e99d031bb77e2e888e3e",
+    "measured_input_sha256": "64c18832169e862b6b4aaac53882cf60159a580e845b4ade92ae2d37e5395379",
+    "physical_input_sha256": "aae6bbdbec74e0dca7f97c2c592dd7170f7ee4edce50390a865d53073555e6fb"
+  },
+  {
+    "variant": "fork_gpu",
+    "test": "S",
+    "case": "Crys-MnO",
+    "system": "Crys-MnO",
+    "source": "work/input_example/Crys-MnO.dat",
+    "original_sha256": "315a3b870e4e57a0edb5ac48f4135593f9dbc63cdcc1f0d344783ac9b4ef9c62",
+    "measured_input_sha256": "86380a9676c21f123e3d01d770de80ca6c8774b45d1cfcc7dbca960ed89692f1",
+    "physical_input_sha256": "85756c40cc324e35764dacc68788f16d23d93fd34d7a10a57cbafbaeaa8e1175"
+  },
+  {
+    "variant": "fork_gpu",
+    "test": "S",
+    "case": "GaAs",
+    "system": "GaAs",
+    "source": "work/input_example/GaAs.dat",
+    "original_sha256": "62c958351460fabc5d1a4f12d1cb51565f56ce10c4570d24131da25637f852c6",
+    "measured_input_sha256": "689577c5a11436abc1186f9136bb898090a3c04b7853f5d49fb74890bce63bf7",
+    "physical_input_sha256": "b2571de088368e512c9967f770273aa6682563eb4bf77db5973b6d604bea1141"
+  },
+  {
+    "variant": "fork_gpu",
+    "test": "S",
+    "case": "Glycine",
+    "system": "Glycine",
+    "source": "work/input_example/Glycine.dat",
+    "original_sha256": "4781425789fc08433ab49f4934c7c012d7cad0ad87b7f3df737138118afa8bca",
+    "measured_input_sha256": "6f5f11586bbf63d39a809c8a362b4ddd9208d2fb9f59947b63b760f066bb348d",
+    "physical_input_sha256": "f849e0cb5f880d55df52d168e6b811e81fd4bbdf267b8af9d3a9bcb0dd648b3f"
+  },
+  {
+    "variant": "fork_gpu",
+    "test": "S",
+    "case": "Graphite4",
+    "system": "Graphite4",
+    "source": "work/input_example/Graphite4.dat",
+    "original_sha256": "9ed8513b6eaac5ef8dc2343422c88175bd0b1b6b1e101f7bd113f63a9d2ed2f6",
+    "measured_input_sha256": "4ca4f25568b68c6ab3111865316a662e407738ef7de9a6411245517b1620b157",
+    "physical_input_sha256": "8e1b494fe68a87cd27e1ff663b28daad965589d05ee6744465fa6a859043a68d"
+  },
+  {
+    "variant": "fork_gpu",
+    "test": "S",
+    "case": "H2O-EF",
+    "system": "H2O-EF",
+    "source": "work/input_example/H2O-EF.dat",
+    "original_sha256": "9f528eb4f5d13f0635772d5dc87635d4e7c99266dc2085a1ef820a19e23f97d9",
+    "measured_input_sha256": "6eedc502db87076749a937b913718222a436e02ef1f409a746093055949d008d",
+    "physical_input_sha256": "a296c2fc62e4b9d7e4a7bb80cb97086b9df35030f98392b7fef3961784292d80"
+  },
+  {
+    "variant": "fork_gpu",
+    "test": "S",
+    "case": "H2O",
+    "system": "H2O",
+    "source": "work/input_example/H2O.dat",
+    "original_sha256": "5e2044197d163bdb97728c78666d3b3dac9e0221bd07aa7b86781fca12770804",
+    "measured_input_sha256": "80d3706091139a62a9a7c31502c9e7c7026c2b68de7b402b82abab874638a1a4",
+    "physical_input_sha256": "0a423e482edaca4fbce88366bd6ee56ccf0f9546fd211e49653f4a6597e87dd9"
+  },
+  {
+    "variant": "fork_gpu",
+    "test": "S",
+    "case": "HMn",
+    "system": "HMn",
+    "source": "work/input_example/HMn.dat",
+    "original_sha256": "d29997cfe87ce73dcea408285c019c25c1573ae0c8d45cedc21c367a00abb703",
+    "measured_input_sha256": "05b6af2c054b56dba70c9e5f0f17a8bf26a981f950338a70b3db14b0e9db8cd4",
+    "physical_input_sha256": "7eb9c80d6b672b2ef8fca78f1c4f6158d65fe31cbfe96daa58d9d54e12cf3f75"
+  },
+  {
+    "variant": "fork_gpu",
+    "test": "S",
+    "case": "Methane",
+    "system": "Methane",
+    "source": "work/input_example/Methane.dat",
+    "original_sha256": "259179e38dad7c6d8ece6f51ea8b0a1fbc3657a15defc43cb9ad104413a415bb",
+    "measured_input_sha256": "30dbabf7bba6938cfeca789abf1bf24acf34a5cff405a3609ec98b1f816c55be",
+    "physical_input_sha256": "33bfd31ece53aece5c1f98bcc4d5cd3c3e5f65ca0eeb84b31df3528623d24fc8"
+  },
+  {
+    "variant": "fork_gpu",
+    "test": "S",
+    "case": "Mol_MnO",
+    "system": "Mol_MnO",
+    "source": "work/input_example/Mol_MnO.dat",
+    "original_sha256": "7294bb18e450cefa7ab169b88c19c64284158a0f702a877324c3bd466c026670",
+    "measured_input_sha256": "603e3a7ae5d59966cdc24fd7afbb613f95d2a0ba643fc93b4288db6639a78f76",
+    "physical_input_sha256": "24fb49bd26c17c7aef6941ded88b5a84f120faa6df887d9a383477a88f2fc974"
+  },
+  {
+    "variant": "fork_gpu",
+    "test": "S",
+    "case": "Ndia2",
+    "system": "Ndia2",
+    "source": "work/input_example/Ndia2.dat",
+    "original_sha256": "68fccb2f50ba4e06d1625446db230a0fbc0981881352c66ae120ad1cefdc19ec",
+    "measured_input_sha256": "d525237bbba537ee28477fb1d31291f5da5dc532af1a46add06c62f2ae0625f7",
+    "physical_input_sha256": "c7a1a3d42891934cc8a72fe8b71588f4a5f6f33c4201c0e5937cffc5418665d0"
+  },
+  {
+    "variant": "fork_gpu",
+    "test": "cghelgeo",
+    "case": "cghelgeo",
+    "system": "cghelgeo",
+    "source": "benchmarks/inputs/cghelgeo.dat",
+    "original_sha256": "9c3958e470820ab2182af859b4749a0f3375c41d1a56ac013e0f398b441d0ff7",
+    "measured_input_sha256": "95217f6a4b3b98d4aff8ff5afd6c8ca87f85018f09dd653278442659e6acb905",
+    "physical_input_sha256": "2cbe17913f1aaa6be0baaa65bc1846976fff25f10fe6ff629e1574dcd84301fe"
+  },
+  {
+    "variant": "fork_gpu",
+    "test": "sidia333_nc_cluster",
+    "case": "sidia333_nc_cluster",
+    "system": "sidia333_nc_cluster",
+    "source": "benchmarks/inputs/sidia333_nc_cluster.dat",
+    "original_sha256": "9c5466abf560c6481b83ec9a51976f4b218856a1da330e5a209b9041239decd0",
+    "measured_input_sha256": "cb9d43d6207ca4ffa4bf9b7819330c1dd4fef8b44a3057c886787425facdaffb",
+    "physical_input_sha256": "72054ac48d0c72bbf9593376c2f26b64a55a6a85e3a52e55b5a10350fc6c168d"
+  },
+  {
+    "variant": "upstream",
+    "test": "L",
+    "case": "5_5_13COb2",
+    "system": "5_5_13COb2",
+    "source": "work/large_example/5_5_13COb2.dat",
+    "original_sha256": "927a27a84881266b6b8b530b3924b69a32d0d61c1f0fdfda954e8c6efb13e5d5",
+    "measured_input_sha256": "5042feacc84bc7a0f1acbf85a2257c4b86b4fbe37d742883a293e8ef30c8ff23",
+    "physical_input_sha256": "9b017828abfd9d30635f3dd46af549427bd05f1af48484bce7405bcd77cdae2b"
+  },
+  {
+    "variant": "upstream",
+    "test": "L",
+    "case": "B2C62_Band",
+    "system": "B2C62_Band",
+    "source": "work/large_example/B2C62_Band.dat",
+    "original_sha256": "15abe8dc8eb2f2a7f34a462adbb29f35a5f6684f2a6b89c36e49f9b9d0e5b227",
+    "measured_input_sha256": "26977f13b235b8660f110c6c56e71ab0f272946ee8830d1855a09612ab58bb23",
+    "physical_input_sha256": "880b8bc61e5220c991aa145c032b2a22b3f277c2e36c558bb4e5f113c6510a12"
+  },
+  {
+    "variant": "upstream",
+    "test": "L",
+    "case": "CG15c-DC-LNO",
+    "system": "CG15c-DC-LNO",
+    "source": "work/large_example/CG15c-DC-LNO.dat",
+    "original_sha256": "f8a256ea70df08d1100d4aa8887656ba83c2964a3a99b3ee435f9b17c7bcfd9f",
+    "measured_input_sha256": "1d5b1a49db93cb893f31b4397bf88b793c2dfeca0644fb3244759fbadee7c67b",
+    "physical_input_sha256": "0b6857ccb981b5b840e0fb03eecc8a7e22706b62bea8bb136f6559c937e47978"
+  },
+  {
+    "variant": "upstream",
+    "test": "L",
+    "case": "DIA512-1",
+    "system": "DIA512-1",
+    "source": "work/large_example/DIA512-1.dat",
+    "original_sha256": "c35000c6260b808cc10e5947fc108f65c146472d3b44a9fd8ef301e732844151",
+    "measured_input_sha256": "83c93854833af9ed1d7edcc4bf6199570cd151938377443c8ab7c1a3ce5a05ca",
+    "physical_input_sha256": "b667a8aed1b04b6e7468c279ce22c002ba402614894564fe3bd34501bd6cc02f"
+  },
+  {
+    "variant": "upstream",
+    "test": "L",
+    "case": "FeBCC",
+    "system": "FeBCC",
+    "source": "work/large_example/FeBCC.dat",
+    "original_sha256": "7181dbb66708c4ec41b32f2b0b5be3a4a7a067c9a26029d9b78e66abeadd366a",
+    "measured_input_sha256": "6696aaae0c3e7d72ff5cbf868e88d67fafa606f547b01cb7a3de290389f14cb6",
+    "physical_input_sha256": "2d56ddf2c8a0a62408730f2e35b19f61b14b47441d7f06975dbbea741ba93e76"
+  },
+  {
+    "variant": "upstream",
+    "test": "L",
+    "case": "GEL",
+    "system": "GEL",
+    "source": "work/large_example/GEL.dat",
+    "original_sha256": "707143410502e8e25c9958a7f3cc009ec6c7cb327e046997c86e5520512e6b6b",
+    "measured_input_sha256": "205fcaf86148715b6ef4657f7b7aa2dce4c8aa98b2677b4b513ac67116d1c655",
+    "physical_input_sha256": "95abc7384bcffac7a00346ca180e1a043e01d41e040b5d892364bcadb7433272"
+  },
+  {
+    "variant": "upstream",
+    "test": "L",
+    "case": "GFRAG",
+    "system": "GFRAG",
+    "source": "work/large_example/GFRAG.dat",
+    "original_sha256": "8c95ae8d0039d7f2fcf8644ea1d171a26d1cb32e206f3c6757d5cd1c27dca31c",
+    "measured_input_sha256": "fcbce4f42f8529a9e26a04b8e2f2017631f816a41c55c7702032ea787ebbbf44",
+    "physical_input_sha256": "7c9241d390850f5f2b57c5e9d0e6bdcf3b2739fff3d067f630ab02117294cd9a"
+  },
+  {
+    "variant": "upstream",
+    "test": "L",
+    "case": "GGFF",
+    "system": "GGFF",
+    "source": "work/large_example/GGFF.dat",
+    "original_sha256": "6a80fcc4f96e97944cc7b6affd20df04f24764cfb4852703f01e105ae3dc701f",
+    "measured_input_sha256": "20c56eaf05f3d24cf723b9934a3a27cb33c478e05232da39f0c16f7243b5ae7c",
+    "physical_input_sha256": "221fe24a4195e42a7f155c02f73bddc2de130546f6b974cd3a6e7bb5f81c3562"
+  },
+  {
+    "variant": "upstream",
+    "test": "L",
+    "case": "MCCN",
+    "system": "MCCN",
+    "source": "work/large_example/MCCN.dat",
+    "original_sha256": "37f879f006313c05bfc45d8376abc7850854ce2819f796bdfd682b9017026358",
+    "measured_input_sha256": "8fa0424bdbf83911128d5cd1a11a8bbfb418e022ed47852c1e96b4bd7e1d3d9f",
+    "physical_input_sha256": "65026421e545061bc86257fe7f7549146c45acf6c7a1994f2779e68c4818da2b"
+  },
+  {
+    "variant": "upstream",
+    "test": "L",
+    "case": "Mn12_148_F",
+    "system": "Mn12_148_F",
+    "source": "work/large_example/Mn12_148_F.dat",
+    "original_sha256": "877994aa5ad590d39055d65d3f6835737e1f40bea69001a9c015c1226b7ab0c5",
+    "measured_input_sha256": "71f43ad49ff8dd7ed2ba5969329d98d4f27b9888b604cc0f9d3c474c23d4ac44",
+    "physical_input_sha256": "c5742f1b9db7214b5a80e85019bfe72a913c6f90461740a16a62281d28b2943b"
+  },
+  {
+    "variant": "upstream",
+    "test": "L",
+    "case": "N1C999",
+    "system": "N1C999",
+    "source": "work/large_example/N1C999.dat",
+    "original_sha256": "236f095357c5c4770f4b11594ab6e1506e37ff65b4d902bae9fd15dfe4f6444f",
+    "measured_input_sha256": "c5bb52aac88d1156317cc61cb383f45d3927fe84221a44f00e819b65a69e8ae3",
+    "physical_input_sha256": "96744e60f7cb48cb57880ab2ba10523c45b01a89e350ea8629754d99e8fc0493"
+  },
+  {
+    "variant": "upstream",
+    "test": "L",
+    "case": "Ni63-O64",
+    "system": "Ni63-O64",
+    "source": "work/large_example/Ni63-O64.dat",
+    "original_sha256": "54c93baa76a77f149e298cd264fbebc645751dbeb5be1f2d451df6c02cec33e6",
+    "measured_input_sha256": "f5874420456acfe112affaf6dba685290aecaffae80de61b314b0cf53701497d",
+    "physical_input_sha256": "b6e4a166250fc81b2ee98b28bfac9cc8fa7ad494ac0874d879152ad687124bcf"
+  },
+  {
+    "variant": "upstream",
+    "test": "L",
+    "case": "Pt63",
+    "system": "Pt63",
+    "source": "work/large_example/Pt63.dat",
+    "original_sha256": "36dc8082db9435af8abf0d059f7935b0855151637b685af81aad52143149ae0d",
+    "measured_input_sha256": "a10be0d2cfe29a12d84d0564965485aae12a640589fcd978a9d2c737e0a879bb",
+    "physical_input_sha256": "96c76aa83163e8d3db6feed5f4668520ea86aecf6d2abf70229286095aea06ec"
+  },
+  {
+    "variant": "upstream",
+    "test": "L",
+    "case": "SialicAcid",
+    "system": "SialicAcid",
+    "source": "work/large_example/SialicAcid.dat",
+    "original_sha256": "9175362d96ce6423e7a3383319a5435e85072f1bbe1095ef5fadeefdfd602df7",
+    "measured_input_sha256": "b5a38df12ea3fa39c0843dc4fccf9bde4ebfe24f4bb9b57789f4013cb3c04f49",
+    "physical_input_sha256": "2be602e61ba4761bd772f7e14c8b6f57497b30a7d278062a496300bfe3d5074c"
+  },
+  {
+    "variant": "upstream",
+    "test": "L",
+    "case": "ZrB2_2x2",
+    "system": "ZrB2_2x2",
+    "source": "work/large_example/ZrB2_2x2.dat",
+    "original_sha256": "d31735b20697aa7e7f2d4c02d603fe20e28dc68cbc917ef4938650d54ce73e82",
+    "measured_input_sha256": "ac54b2b318ac00859f3391e05969c82289546cf9ef08560e24a5e3e1be479293",
+    "physical_input_sha256": "6269cb09d553251bed54f475d3e0790c4554a0a40cc0e125d218399786996a77"
+  },
+  {
+    "variant": "upstream",
+    "test": "L",
+    "case": "nsV4Bz5",
+    "system": "nsV4Bz5",
+    "source": "work/large_example/nsV4Bz5.dat",
+    "original_sha256": "0614c3619e1b04916d05649685c94415fc7270ae9fe88a7c33a92bac1dbb84e6",
+    "measured_input_sha256": "3fa6ee58d9febc7c8ca217d37a3a4826de07b37296623570aecfaf10e5a58bd6",
+    "physical_input_sha256": "bba6c1f8ad15574e0d938101a1f1e9541e6f8bf5d7ac146d98d6f803d5a80c9e"
+  },
+  {
+    "variant": "upstream",
+    "test": "S",
+    "case": "Benzene",
+    "system": "Benzene",
+    "source": "work/input_example/Benzene.dat",
+    "original_sha256": "c7f445ef1ed49115a52049f6b81711b0999d074b5be2119f85886fa3209dfc66",
+    "measured_input_sha256": "fb9d8765a82f84e8de7996bbd6b968629540ff11c3e0bcdc2b5b3471ad4e7348",
+    "physical_input_sha256": "645c48443afeb170aadaaa600d08fcc36bed316feac489cd6ce663477012a7cb"
+  },
+  {
+    "variant": "upstream",
+    "test": "S",
+    "case": "C60",
+    "system": "C60",
+    "source": "work/input_example/C60.dat",
+    "original_sha256": "7c2bd103986adb335ae2302685be43f0a23545861fa21d7885bd6f663bb6f6f8",
+    "measured_input_sha256": "39d1d3c28e2d539ddd26f1b090524fc1161945c62c83230706040508ebb5e583",
+    "physical_input_sha256": "ad3d1da5f946909fa7f312c0687287e44d809819ad2f0525bb33e20acaa81f85"
+  },
+  {
+    "variant": "upstream",
+    "test": "S",
+    "case": "CO",
+    "system": "CO",
+    "source": "work/input_example/CO.dat",
+    "original_sha256": "6fea9256df9ce5db091c80b9c644bc93a6dc55187949b61b682012f54566ff05",
+    "measured_input_sha256": "ef80ecdd19cd9fedeca44149a3604c1b5680c2ad427385111a89cf602a89cf3d",
+    "physical_input_sha256": "628d43217254933e9ee2a4c43d5265066d4ac7f2628d18d17ff10f07df235857"
+  },
+  {
+    "variant": "upstream",
+    "test": "S",
+    "case": "Cr2",
+    "system": "Cr2",
+    "source": "work/input_example/Cr2.dat",
+    "original_sha256": "37ce5beffcf397b8460975e6525ed2783c2be7320941e99d031bb77e2e888e3e",
+    "measured_input_sha256": "d1a589b632048165e0d8aab85d9abbd509757d7d251a880c438340d1de30e255",
+    "physical_input_sha256": "aae6bbdbec74e0dca7f97c2c592dd7170f7ee4edce50390a865d53073555e6fb"
+  },
+  {
+    "variant": "upstream",
+    "test": "S",
+    "case": "Crys-MnO",
+    "system": "Crys-MnO",
+    "source": "work/input_example/Crys-MnO.dat",
+    "original_sha256": "315a3b870e4e57a0edb5ac48f4135593f9dbc63cdcc1f0d344783ac9b4ef9c62",
+    "measured_input_sha256": "cd341a076c41df08fe3b9cf035328713f1811890f169ca72c16f46873095798f",
+    "physical_input_sha256": "85756c40cc324e35764dacc68788f16d23d93fd34d7a10a57cbafbaeaa8e1175"
+  },
+  {
+    "variant": "upstream",
+    "test": "S",
+    "case": "GaAs",
+    "system": "GaAs",
+    "source": "work/input_example/GaAs.dat",
+    "original_sha256": "62c958351460fabc5d1a4f12d1cb51565f56ce10c4570d24131da25637f852c6",
+    "measured_input_sha256": "d0733a3031319f29b34e930dd86fd685f0a9008fc92633d4c442348de95bd208",
+    "physical_input_sha256": "b2571de088368e512c9967f770273aa6682563eb4bf77db5973b6d604bea1141"
+  },
+  {
+    "variant": "upstream",
+    "test": "S",
+    "case": "Glycine",
+    "system": "Glycine",
+    "source": "work/input_example/Glycine.dat",
+    "original_sha256": "4781425789fc08433ab49f4934c7c012d7cad0ad87b7f3df737138118afa8bca",
+    "measured_input_sha256": "d8fbabd9391a6fac273236b23c75f272ee1e5936830639e001e5d016ac8bc0ac",
+    "physical_input_sha256": "f849e0cb5f880d55df52d168e6b811e81fd4bbdf267b8af9d3a9bcb0dd648b3f"
+  },
+  {
+    "variant": "upstream",
+    "test": "S",
+    "case": "Graphite4",
+    "system": "Graphite4",
+    "source": "work/input_example/Graphite4.dat",
+    "original_sha256": "9ed8513b6eaac5ef8dc2343422c88175bd0b1b6b1e101f7bd113f63a9d2ed2f6",
+    "measured_input_sha256": "13066f354f0489517a4919d0855dfcf1472ce91dcda3fcc76b1d773458a58ffc",
+    "physical_input_sha256": "8e1b494fe68a87cd27e1ff663b28daad965589d05ee6744465fa6a859043a68d"
+  },
+  {
+    "variant": "upstream",
+    "test": "S",
+    "case": "H2O-EF",
+    "system": "H2O-EF",
+    "source": "work/input_example/H2O-EF.dat",
+    "original_sha256": "9f528eb4f5d13f0635772d5dc87635d4e7c99266dc2085a1ef820a19e23f97d9",
+    "measured_input_sha256": "865233273f451776fc3532d73a7e693231ce148cb94b87cb7ee83e2c71eb0f2e",
+    "physical_input_sha256": "a296c2fc62e4b9d7e4a7bb80cb97086b9df35030f98392b7fef3961784292d80"
+  },
+  {
+    "variant": "upstream",
+    "test": "S",
+    "case": "H2O",
+    "system": "H2O",
+    "source": "work/input_example/H2O.dat",
+    "original_sha256": "5e2044197d163bdb97728c78666d3b3dac9e0221bd07aa7b86781fca12770804",
+    "measured_input_sha256": "fae455087b69f522ab03e952dc345f88bf8b8db00a45239505aff844c129f01b",
+    "physical_input_sha256": "0a423e482edaca4fbce88366bd6ee56ccf0f9546fd211e49653f4a6597e87dd9"
+  },
+  {
+    "variant": "upstream",
+    "test": "S",
+    "case": "HMn",
+    "system": "HMn",
+    "source": "work/input_example/HMn.dat",
+    "original_sha256": "d29997cfe87ce73dcea408285c019c25c1573ae0c8d45cedc21c367a00abb703",
+    "measured_input_sha256": "7493408de20531196bed92bd01a130774e7c558aba0d87ea67898caff3d65073",
+    "physical_input_sha256": "7eb9c80d6b672b2ef8fca78f1c4f6158d65fe31cbfe96daa58d9d54e12cf3f75"
+  },
+  {
+    "variant": "upstream",
+    "test": "S",
+    "case": "Methane",
+    "system": "Methane",
+    "source": "work/input_example/Methane.dat",
+    "original_sha256": "259179e38dad7c6d8ece6f51ea8b0a1fbc3657a15defc43cb9ad104413a415bb",
+    "measured_input_sha256": "c5b3b51321c44c1e18238c25a0c1e71995856cd458559407aa4b6338e7dc231f",
+    "physical_input_sha256": "33bfd31ece53aece5c1f98bcc4d5cd3c3e5f65ca0eeb84b31df3528623d24fc8"
+  },
+  {
+    "variant": "upstream",
+    "test": "S",
+    "case": "Mol_MnO",
+    "system": "Mol_MnO",
+    "source": "work/input_example/Mol_MnO.dat",
+    "original_sha256": "7294bb18e450cefa7ab169b88c19c64284158a0f702a877324c3bd466c026670",
+    "measured_input_sha256": "7e5520a514772e31ed489a473c2e132f5b10f1e0f3be767c1e65db73ae766be7",
+    "physical_input_sha256": "24fb49bd26c17c7aef6941ded88b5a84f120faa6df887d9a383477a88f2fc974"
+  },
+  {
+    "variant": "upstream",
+    "test": "S",
+    "case": "Ndia2",
+    "system": "Ndia2",
+    "source": "work/input_example/Ndia2.dat",
+    "original_sha256": "68fccb2f50ba4e06d1625446db230a0fbc0981881352c66ae120ad1cefdc19ec",
+    "measured_input_sha256": "b55d07c7a785f2487fca9225102f96204655002712dbca7985d8ad4acbb82344",
+    "physical_input_sha256": "c7a1a3d42891934cc8a72fe8b71588f4a5f6f33c4201c0e5937cffc5418665d0"
+  },
+  {
+    "variant": "upstream",
+    "test": "cghelgeo",
+    "case": "cghelgeo",
+    "system": "cghelgeo",
+    "source": "benchmarks/inputs/cghelgeo.dat",
+    "original_sha256": "9c3958e470820ab2182af859b4749a0f3375c41d1a56ac013e0f398b441d0ff7",
+    "measured_input_sha256": "3e2f80a720e6ee0bf4dc995e23620f69ce74ba8fcc77d26c7ded7f7409da0077",
+    "physical_input_sha256": "2cbe17913f1aaa6be0baaa65bc1846976fff25f10fe6ff629e1574dcd84301fe"
+  },
+  {
+    "variant": "upstream",
+    "test": "sidia333_nc_cluster",
+    "case": "sidia333_nc_cluster",
+    "system": "sidia333_nc_cluster",
+    "source": "benchmarks/inputs/sidia333_nc_cluster.dat",
+    "original_sha256": "9c5466abf560c6481b83ec9a51976f4b218856a1da330e5a209b9041239decd0",
+    "measured_input_sha256": "18fb6f16e3fc1f3e0d2583defeda315fd0f81957e9c04ec2b6bc4169671cf9fd",
+    "physical_input_sha256": "72054ac48d0c72bbf9593376c2f26b64a55a6a85e3a52e55b5a10350fc6c168d"
+  }
+]

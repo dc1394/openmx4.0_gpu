@@ -1,0 +1,325 @@
+{
+  "source_commit": "0681d63ec3e00edc0c75f4b6d7c8f83c0643bbf3",
+  "os": "Linux-6.8.0-147-generic-x86_64-with-glibc2.39",
+  "hardware": {
+    "cpu": "Intel Core i9-10980XE",
+    "physical_cores": 18,
+    "logical_CPUs": 36,
+    "ram_bytes": 269917429760,
+    "gpu": "NVIDIA GeForce RTX 5080, 12.0, 16303 MiB, 595.99.02"
+  },
+  "binaries": {
+    "fork": "5eea8378ee39c901406346e934e3656eb5cb62673ba50dc5b0805c2c2d99a1c4",
+    "upstream": "59b23d044be0ef14cd678793abb80bdd6d9bd464debdbf9f395fb32a586f4ce0"
+  },
+  "libraries": {
+    "libopenmx_core.so": "c668308721e9e96a909f00f090034d48e9fe89d0b1e4d5ac7c2760f892eda73b",
+    "libopenmx_host_simd.so": "ab19fb8d12b8e20f59b6348bc9122e951758cea1e6c5f7b1d8841f0868c72511"
+  },
+  "protocol": {
+    "mpi_ranks": 18,
+    "openmp_threads_per_rank": 2,
+    "binding": {
+      "fork": true,
+      "upstream": true,
+      "mapping": "rank i uses logical CPUs i and i+18; two SMT siblings on physical core i",
+      "ranks": 18,
+      "threads": 2
+    },
+    "repetitions": 1,
+    "order": "S, sidia333_nc_cluster, cghelgeo, L; GPU then fork CPU then upstream for each",
+    "GPU_MPS": true,
+    "numeric_tolerances": {
+      "energy_hartree": 1e-07,
+      "max_force_component_hartree_per_bohr": 1e-07,
+      "printed_coordinate_tolerance": 1.000001e-05
+    },
+    "case_time_metric": "max-rank Total Computational Time",
+    "suite_time_metric": "sum of native per-case runtest*.result elapsed times",
+    "input_changes": [
+      "absolute DATA.PATH",
+      "scf.eigen.lib=elpa2 on both CPU configurations"
+    ],
+    "data_source": "same fork DFT_DATA19 files for all three configurations",
+    "blas_controls": {
+      "OPENBLAS_NUM_THREADS": 2,
+      "BLIS_NUM_THREADS": 2,
+      "MKL_NUM_THREADS": 2,
+      "MKL_DYNAMIC": "FALSE"
+    },
+    "ELPA": "OpenMP-enabled ELPA 2026.02.002; CPU handles explicitly use two OpenMP threads; MPI_THREAD_SERIALIZED startup",
+    "intel_mpi_pin_masks": [
+      "40001",
+      "80002",
+      "100004",
+      "200008",
+      "400010",
+      "800020",
+      "1000040",
+      "2000080",
+      "4000100",
+      "8000200",
+      "10000400",
+      "20000800",
+      "40001000",
+      "80002000",
+      "100004000",
+      "200008000",
+      "400010000",
+      "800020000"
+    ],
+    "wall_metric": "monotonic MPI-job wall time including startup, shutdown and up to one two-second polling interval",
+    "full_native_suite_jobs": true
+  },
+  "runner_sha256": "7550c9fe09686417d0c712fd6c801a335b51ed6470cf6f4bec3e1fff54770d07",
+  "local_evidence": "build/rtx5080-benchmark-20261031-210530",
+  "preflight_validation": {
+    "elpa_openmp_cflags": "-fopenmp",
+    "elpa_openmp_fcflags": "-fopenmp",
+    "elpa_abi_cases_per_rank": 24,
+    "elpa_abi_ranks": 8,
+    "elpa_abi_threads": 2,
+    "actual_fork_elpa_and_blas_workers_observed_on_all_18_ranks": true,
+    "all_modes_omp_limit_at_exit": 2,
+    "upstream_worker_observation": "Public omp_get_thread_num ABI observer does not see Intel intrinsic calls; MKL_VERBOSE reports two threads, and matching-runtime affinity probes verify 36 OpenMP workers."
+  },
+  "publication_base_commit": "77c0be4f9a28c0055d07a8ac255331f78d9ee5b7",
+  "recorded": "2026-11-01T04:55:09+09:00",
+  "start_time": "2026-10-31 21:26:15 +0900",
+  "end_time": "2026-11-01 04:53:48 +0900",
+  "toolchains": {
+    "nvc": {
+      "command": [
+        "/opt/nvidia/hpc_sdk/Linux_x86_64/26.9/compilers/bin/nvc",
+        "--version"
+      ],
+      "returncode": 0,
+      "stdout": "\nnvc 26.9-0 64-bit target on x86-64 Linux -tp cascadelake \nNVIDIA Compilers and Tools\nCopyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.  All rights reserved.\n",
+      "stderr": ""
+    },
+    "nvfortran": {
+      "command": [
+        "/opt/nvidia/hpc_sdk/Linux_x86_64/26.9/compilers/bin/nvfortran",
+        "--version"
+      ],
+      "returncode": 0,
+      "stdout": "\nnvfortran 26.9-0 64-bit target on x86-64 Linux -tp cascadelake \nNVIDIA Compilers and Tools\nCopyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.  All rights reserved.\n",
+      "stderr": ""
+    },
+    "nvcc": {
+      "command": [
+        "/usr/local/cuda-13.4/bin/nvcc",
+        "--version"
+      ],
+      "returncode": 0,
+      "stdout": "nvcc: NVIDIA (R) Cuda compiler driver\nCopyright (c) 2005-2026 NVIDIA Corporation\nBuilt on Tue_Sep_01_08:45:21_PDT_2026\nCuda compilation tools, release 13.4, V13.4.92\nBuild cuda_13.4.r13.4/compiler.38855100_0\n",
+      "stderr": ""
+    },
+    "icx": {
+      "command": [
+        "/home/dc1394/intel/oneapi/compiler/2026.0/bin/icx",
+        "--version"
+      ],
+      "returncode": 0,
+      "stdout": "Intel(R) oneAPI DPC++/C++ Compiler 2026.0.0 (2026.0.0.20260331)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/dc1394/intel/oneapi/compiler/2026.0/bin/compiler\nConfiguration file: /home/dc1394/intel/oneapi/compiler/2026.0/bin/compiler/../icx.cfg\n",
+      "stderr": ""
+    },
+    "openmpi": {
+      "command": [
+        "/opt/nvidia/hpc_sdk/Linux_x86_64/26.9/comm_libs/mpi/bin/mpirun",
+        "--version"
+      ],
+      "returncode": 0,
+      "stdout": "mpirun (Open MPI) 5.0.10rc2\n\nReport bugs to https://www.open-mpi.org/community/help/\n\n",
+      "stderr": ""
+    },
+    "intelmpi": {
+      "command": [
+        "/home/dc1394/intel/oneapi/mpi/2021.18/bin/mpiexec",
+        "--version"
+      ],
+      "returncode": 0,
+      "stdout": "Intel(R) MPI Library for Linux* OS, Version 2021.18.0 Build 20260327 (id: 821f207)\nCopyright 2003-2026, Intel Corporation.\n",
+      "stderr": ""
+    },
+    "gcc": {
+      "command": [
+        "/usr/bin/c++",
+        "--version"
+      ],
+      "returncode": 0,
+      "stdout": "c++ (Ubuntu 14.2.0-4ubuntu2~24.04.1) 14.2.0\nCopyright (C) 2024 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n\n",
+      "stderr": ""
+    },
+    "cmake": {
+      "command": [
+        "/usr/bin/cmake",
+        "--version"
+      ],
+      "returncode": 0,
+      "stdout": "cmake version 4.4.5\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n",
+      "stderr": ""
+    }
+  },
+  "build": {
+    "configure": [
+      "cmake",
+      "-S",
+      ".",
+      "-B",
+      "build/cuda",
+      "-DOPENMX_GPU_BACKEND=CUDA",
+      "-DOPENMX_GPU_ARCH=sm_120",
+      "-DCMAKE_BUILD_TYPE=Release"
+    ],
+    "build": [
+      "cmake",
+      "--build",
+      "build/cuda",
+      "--parallel",
+      "8"
+    ],
+    "install": [
+      "cmake",
+      "--install",
+      "build/cuda"
+    ],
+    "status": "completed",
+    "upstream": "Existing ~/openmx4.0/work/openmx, copied without rebuilding",
+    "fork_cpu": "OPENMX_GPU=0 CPU path of the installed CUDA executable, scf.eigen.lib=elpa2"
+  },
+  "validation": {
+    "completed_runs": 12,
+    "case_results": 96,
+    "numerical_checks": 186,
+    "numerical_failures": 0,
+    "accuracy_failures": [],
+    "maximum_energy_difference_hartree": 7.501512300223112e-08,
+    "maximum_force_component_difference_hartree_per_bohr": 3.609500000000088e-08,
+    "source_inputs_unchanged": 32,
+    "PAO_VPS_files_unchanged": 44,
+    "bundled_references_identical": 30,
+    "all_binary_and_library_hashes_verified": true,
+    "installed_binary_and_libraries_verified": true,
+    "runtime_frozen_library_checks": [
+      {
+        "variant": "fork_cpu",
+        "test": "L",
+        "frozen_libraries_verified": true
+      },
+      {
+        "variant": "fork_cpu",
+        "test": "S",
+        "frozen_libraries_verified": true
+      },
+      {
+        "variant": "fork_cpu",
+        "test": "cghelgeo",
+        "frozen_libraries_verified": true
+      },
+      {
+        "variant": "fork_cpu",
+        "test": "sidia333_nc_cluster",
+        "frozen_libraries_verified": true
+      },
+      {
+        "variant": "fork_gpu",
+        "test": "L",
+        "frozen_libraries_verified": true
+      },
+      {
+        "variant": "fork_gpu",
+        "test": "S",
+        "frozen_libraries_verified": true
+      },
+      {
+        "variant": "fork_gpu",
+        "test": "cghelgeo",
+        "frozen_libraries_verified": true
+      },
+      {
+        "variant": "fork_gpu",
+        "test": "sidia333_nc_cluster",
+        "frozen_libraries_verified": true
+      }
+    ],
+    "MPS_client_samples": [
+      {
+        "test": "S",
+        "clients": 18,
+        "sample_time_epoch": 1793449656.8206627
+      },
+      {
+        "test": "L",
+        "clients": 18,
+        "sample_time_epoch": 1793463350.2821724
+      },
+      {
+        "test": "sidia333_nc_cluster",
+        "clients": 18,
+        "sample_time_epoch": 1793449929.4415896
+      },
+      {
+        "test": "cghelgeo",
+        "clients": 18,
+        "sample_time_epoch": 1793451927.5750153
+      }
+    ],
+    "affinity": {
+      "fork": true,
+      "upstream": true,
+      "mapping": "rank i uses logical CPUs i and i+18; two SMT siblings on physical core i",
+      "ranks": 18,
+      "threads": 2
+    }
+  },
+  "supporting_diagnostic": {
+    "performed": false
+  },
+  "limitations": [
+    "Single sample per configuration; no claim of statistical repeatability.",
+    "CPU comparisons include compiler, MPI, BLAS/LAPACK/ScaLAPACK and eigensolver differences.",
+    "SCF and geometry iteration counts can differ between configurations; see case-results.csv.",
+    "sidia333 runs all stop at the unchanged 25-SCF limit without convergence.",
+    "Whole-job wall times include a two-second monitoring interval; native times are the primary metric."
+  ],
+  "peak_rss_definition": "Sum of RSS for the MPI process family; shared pages may be counted more than once.",
+  "files": {
+    "accuracy.csv": {
+      "sha256": "dfa3c8344f006b70ac7f8fd53d9f24dc01a6d0dea3fc8df66bad5c7175f6a110",
+      "bytes": 17152
+    },
+    "bundled-reference-audit.json": {
+      "sha256": "2e9bc95c7a53633d2432973880617e2d048711d3d6d6cf022e336bbfbf2f83e4",
+      "bytes": 6859
+    },
+    "case-results.csv": {
+      "sha256": "cdd1396bf753dcd93b01848b8e1ed7839ad4a935b00bc788709fb03035ebd17f",
+      "bytes": 16197
+    },
+    "input-audit.json": {
+      "sha256": "cfec93a1c8db920d73884284e9a7f82ca1be07513e4204c2f4643155c0a9faef",
+      "bytes": 41559
+    },
+    "run-commands.json": {
+      "sha256": "f3a885e48294813dc8786aa6fea562581d88a5e40f7164de875691024fa8423f",
+      "bytes": 17098
+    },
+    "run-results.csv": {
+      "sha256": "d20b4f9ba4e9fc040f18e1e5922ab49fa58ed4f5fecbca70e3a64e039a29e6ef",
+      "bytes": 1888
+    },
+    "source-input-audit.json": {
+      "sha256": "add93595e7401405cdc0d59d60cd49b7d051fef5a27149c18b10b512e5b83d4b",
+      "bytes": 10805
+    },
+    "threading-audit.json": {
+      "sha256": "08d493733c59d876a8ea2c493775ee2d5a87e66950e84e138c95dc96037e912e",
+      "bytes": 15212
+    },
+    "timing-summary.csv": {
+      "sha256": "f756ad29917c264440877a69f60d41a82075b99eb1ff0f16726642bb128a5e5a",
+      "bytes": 439
+    }
+  }
+}

@@ -1,0 +1,212 @@
+[
+  {
+    "test": "S",
+    "case": "Benzene",
+    "source": "work/input_example/Benzene.out",
+    "sha256": "37ed741ff147c48b56ae4f021b0377caac5fb89b4e8bdc78edba989639258b8e",
+    "all_three_measurement_copies_identical": true
+  },
+  {
+    "test": "S",
+    "case": "C60",
+    "source": "work/input_example/C60.out",
+    "sha256": "568a35d076fe2d266107007949cd565c28fc943588c690973b41386af9090e3a",
+    "all_three_measurement_copies_identical": true
+  },
+  {
+    "test": "S",
+    "case": "CO",
+    "source": "work/input_example/CO.out",
+    "sha256": "65d49e808711572a31e253a4c487449c48b66d9680ad92518d5533ede270f541",
+    "all_three_measurement_copies_identical": true
+  },
+  {
+    "test": "S",
+    "case": "Cr2",
+    "source": "work/input_example/Cr2.out",
+    "sha256": "678328a40982ec0533a531921a1c2148ba891da5ed67f1defebb05445c43311b",
+    "all_three_measurement_copies_identical": true
+  },
+  {
+    "test": "S",
+    "case": "Crys-MnO",
+    "source": "work/input_example/Crys-MnO.out",
+    "sha256": "d9a9fa9d913f88ce3ca31d5aaf9b3be167d3835a71ee4192a8dac2e63335cd09",
+    "all_three_measurement_copies_identical": true
+  },
+  {
+    "test": "S",
+    "case": "GaAs",
+    "source": "work/input_example/GaAs.out",
+    "sha256": "1517c9ef8fc049daeff98ef41915d7ece94dcb1fef8cb0b01b0e058e0bfe6e4b",
+    "all_three_measurement_copies_identical": true
+  },
+  {
+    "test": "S",
+    "case": "Glycine",
+    "source": "work/input_example/Glycine.out",
+    "sha256": "ea51d09a9d07880c152787335c32126b98ff3975f22c13adf1ec74d015631eb8",
+    "all_three_measurement_copies_identical": true
+  },
+  {
+    "test": "S",
+    "case": "Graphite4",
+    "source": "work/input_example/Graphite4.out",
+    "sha256": "deefb59004ab80bffa03179f725f65271b66d6652910de56805e1226e797c64f",
+    "all_three_measurement_copies_identical": true
+  },
+  {
+    "test": "S",
+    "case": "H2O-EF",
+    "source": "work/input_example/H2O-EF.out",
+    "sha256": "ea014fc6ff9730d90e5bd90d4aead2fa0413979da5368d6c80600dcae3a15841",
+    "all_three_measurement_copies_identical": true
+  },
+  {
+    "test": "S",
+    "case": "H2O",
+    "source": "work/input_example/H2O.out",
+    "sha256": "af8101a592a55ffd526df5110764ca239463a3317eb1c52b8e8c5d2e38709fd5",
+    "all_three_measurement_copies_identical": true
+  },
+  {
+    "test": "S",
+    "case": "HMn",
+    "source": "work/input_example/HMn.out",
+    "sha256": "bf122f24053179b50fc320cf36ee153f203fcd46aff20565f621c61fcb258370",
+    "all_three_measurement_copies_identical": true
+  },
+  {
+    "test": "S",
+    "case": "Methane",
+    "source": "work/input_example/Methane.out",
+    "sha256": "5136f81103237bc249fa405f60d5a656606774079d2a3420116e0adf8b4a416e",
+    "all_three_measurement_copies_identical": true
+  },
+  {
+    "test": "S",
+    "case": "Mol_MnO",
+    "source": "work/input_example/Mol_MnO.out",
+    "sha256": "d7784dfc6822ca6010e1ca5298986136ed26aaef1a8de90cfd06f20de0510ba7",
+    "all_three_measurement_copies_identical": true
+  },
+  {
+    "test": "S",
+    "case": "Ndia2",
+    "source": "work/input_example/Ndia2.out",
+    "sha256": "e121f0554de81fe56a31528c8e0ad1fdcee8256ec9bc24da8331d4086f187cea",
+    "all_three_measurement_copies_identical": true
+  },
+  {
+    "test": "L",
+    "case": "5_5_13COb2",
+    "source": "work/large_example/5_5_13COb2.out",
+    "sha256": "325895fdc5b21980ab7255172dd47b22d00b36cf9aa63e0d5553f12311e639e3",
+    "all_three_measurement_copies_identical": true
+  },
+  {
+    "test": "L",
+    "case": "B2C62_Band",
+    "source": "work/large_example/B2C62_Band.out",
+    "sha256": "29b45e14e9803f6820956f112ffaf7ddf315de80c63365ec59ae71829f25a76f",
+    "all_three_measurement_copies_identical": true
+  },
+  {
+    "test": "L",
+    "case": "CG15c-DC-LNO",
+    "source": "work/large_example/CG15c-DC-LNO.out",
+    "sha256": "14a482b799180a811cdb250180fd117c6a4c829ae23b1d7f9a897c52365dc003",
+    "all_three_measurement_copies_identical": true
+  },
+  {
+    "test": "L",
+    "case": "DIA512-1",
+    "source": "work/large_example/DIA512-1.out",
+    "sha256": "ef9cff6a8a2a39ca0c8fde4a968d460c6aec37f26c569b3895eb7e24291b9377",
+    "all_three_measurement_copies_identical": true
+  },
+  {
+    "test": "L",
+    "case": "FeBCC",
+    "source": "work/large_example/FeBCC.out",
+    "sha256": "8cadef3dd3fe965c7222b65d9307d5705a3df50fb1c9da7540d970e74c1c0c68",
+    "all_three_measurement_copies_identical": true
+  },
+  {
+    "test": "L",
+    "case": "GEL",
+    "source": "work/large_example/GEL.out",
+    "sha256": "4834ad4b945f9104b3cbead1c0de35693da8113db3a60e8336ad7f39ca489d64",
+    "all_three_measurement_copies_identical": true
+  },
+  {
+    "test": "L",
+    "case": "GFRAG",
+    "source": "work/large_example/GFRAG.out",
+    "sha256": "51a1d084610f0ad2063ec698b56f3c1af54416dbfbb89c93a4aeaa6dfc3713da",
+    "all_three_measurement_copies_identical": true
+  },
+  {
+    "test": "L",
+    "case": "GGFF",
+    "source": "work/large_example/GGFF.out",
+    "sha256": "e41aabe15cf6d5261d0dfd313600743045b2fd16192b330dfdd65501c3932152",
+    "all_three_measurement_copies_identical": true
+  },
+  {
+    "test": "L",
+    "case": "MCCN",
+    "source": "work/large_example/MCCN.out",
+    "sha256": "a2cfacc2a25a5b8dbfd9a95353f8b2630eb412673f8d704b24f886b3140754d9",
+    "all_three_measurement_copies_identical": true
+  },
+  {
+    "test": "L",
+    "case": "Mn12_148_F",
+    "source": "work/large_example/Mn12_148_F.out",
+    "sha256": "b19131eca970f2bad27cce5e7670001d64217d856a426d5af2ace0dd7cdf5371",
+    "all_three_measurement_copies_identical": true
+  },
+  {
+    "test": "L",
+    "case": "N1C999",
+    "source": "work/large_example/N1C999.out",
+    "sha256": "778c7ca8124c518a865e630d0091594f5652fda8b87d405ef53972c564db746c",
+    "all_three_measurement_copies_identical": true
+  },
+  {
+    "test": "L",
+    "case": "Ni63-O64",
+    "source": "work/large_example/Ni63-O64.out",
+    "sha256": "64c93aa823cde1bbb96c9504d9d88c78bfca81960ddd2bfb5b57ae3a2226f4c9",
+    "all_three_measurement_copies_identical": true
+  },
+  {
+    "test": "L",
+    "case": "Pt63",
+    "source": "work/large_example/Pt63.out",
+    "sha256": "4675e51817d5f6dd4300eff9677eb35b202f52e0aadc2574fb640661b0461498",
+    "all_three_measurement_copies_identical": true
+  },
+  {
+    "test": "L",
+    "case": "SialicAcid",
+    "source": "work/large_example/SialicAcid.out",
+    "sha256": "586dfea0e71b24097a1c5e3ef9abb4cf68b26e2157a3782578723a39770b90dd",
+    "all_three_measurement_copies_identical": true
+  },
+  {
+    "test": "L",
+    "case": "ZrB2_2x2",
+    "source": "work/large_example/ZrB2_2x2.out",
+    "sha256": "5d60e2c0869eeb1d2c19c51bf88aedb40e7876d8f38c64afe76b6829f99f1af0",
+    "all_three_measurement_copies_identical": true
+  },
+  {
+    "test": "L",
+    "case": "nsV4Bz5",
+    "source": "work/large_example/nsV4Bz5.out",
+    "sha256": "7fcf5b011b71d2ec53bf850915379b50e456c96d7825157bf019fdba77f0f1c4",
+    "all_three_measurement_copies_identical": true
+  }
+]

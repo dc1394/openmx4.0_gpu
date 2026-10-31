@@ -1,0 +1,540 @@
+{
+  "purpose": "Untimed native C60/GaAs suite diagnostics; excluded from benchmark times",
+  "method": "Interpose public OpenMP thread-number calls and classify return addresses using the executable symbol table; NVHPC OpenBLAS worker helpers and ELPA functions are counted separately.",
+  "upstream_limitation": "Intel intrinsic calls do not use the observed public ABI. Zero observed worker masks do not mean zero workers. Matching-runtime affinity probes verify two OpenMP threads/rank and the separate MKL_VERBOSE log reports NThr:2.",
+  "observer_source_sha256": "fd9e0ec518d1cd81d79254d84a3f66864e45081f494f6741bca8b9bcd39565b5",
+  "raw_audit_sha256": "aedf01527b536d9c41358bdcdf5e84b171248b547e1b99d95104f71b00b69953",
+  "report_aggregation": "Identical ELPA thread reports are counted; all per-rank worker observations are retained. The unabridged native-team-audit.json is in the local evidence directory.",
+  "runs": [
+    {
+      "variant": "fork_cpu",
+      "purpose": "Instrumented native C60/GaAs suite, excluded from benchmark times",
+      "command": [
+        "/opt/nvidia/hpc_sdk/Linux_x86_64/26.9/comm_libs/mpi/bin/mpirun",
+        "--use-hwthread-cpus",
+        "--map-by",
+        "slot:PE=2",
+        "--bind-to",
+        "hwthread",
+        "--report-bindings",
+        "-np",
+        "18",
+        "/home/dc1394/openmx4.0_gpu/build/rtx5080-benchmark-20261031-210530/binaries/fork/openmx",
+        "-runtest",
+        "-nt",
+        "2"
+      ],
+      "returncode": 0,
+      "normal_finishes": 2,
+      "elpa_thread_reports": [
+        {
+          "requested": 2,
+          "configured": 2,
+          "MPI_thread": 2,
+          "occurrences": 17836
+        }
+      ],
+      "observations": [
+        {
+          "rank": 0,
+          "blas_worker_mask": 3,
+          "elpa_worker_mask": 3,
+          "blas_observations": 13378,
+          "elpa_observations": 73112,
+          "omp_limit_at_exit": 2
+        },
+        {
+          "rank": 1,
+          "blas_worker_mask": 3,
+          "elpa_worker_mask": 3,
+          "blas_observations": 13378,
+          "elpa_observations": 73112,
+          "omp_limit_at_exit": 2
+        },
+        {
+          "rank": 10,
+          "blas_worker_mask": 3,
+          "elpa_worker_mask": 3,
+          "blas_observations": 13378,
+          "elpa_observations": 73112,
+          "omp_limit_at_exit": 2
+        },
+        {
+          "rank": 11,
+          "blas_worker_mask": 3,
+          "elpa_worker_mask": 3,
+          "blas_observations": 13378,
+          "elpa_observations": 73112,
+          "omp_limit_at_exit": 2
+        },
+        {
+          "rank": 12,
+          "blas_worker_mask": 3,
+          "elpa_worker_mask": 3,
+          "blas_observations": 13378,
+          "elpa_observations": 73112,
+          "omp_limit_at_exit": 2
+        },
+        {
+          "rank": 13,
+          "blas_worker_mask": 3,
+          "elpa_worker_mask": 3,
+          "blas_observations": 13378,
+          "elpa_observations": 73112,
+          "omp_limit_at_exit": 2
+        },
+        {
+          "rank": 14,
+          "blas_worker_mask": 3,
+          "elpa_worker_mask": 3,
+          "blas_observations": 13378,
+          "elpa_observations": 73112,
+          "omp_limit_at_exit": 2
+        },
+        {
+          "rank": 15,
+          "blas_worker_mask": 3,
+          "elpa_worker_mask": 3,
+          "blas_observations": 13378,
+          "elpa_observations": 73112,
+          "omp_limit_at_exit": 2
+        },
+        {
+          "rank": 16,
+          "blas_worker_mask": 3,
+          "elpa_worker_mask": 3,
+          "blas_observations": 13378,
+          "elpa_observations": 73112,
+          "omp_limit_at_exit": 2
+        },
+        {
+          "rank": 17,
+          "blas_worker_mask": 3,
+          "elpa_worker_mask": 3,
+          "blas_observations": 14080,
+          "elpa_observations": 76960,
+          "omp_limit_at_exit": 2
+        },
+        {
+          "rank": 2,
+          "blas_worker_mask": 3,
+          "elpa_worker_mask": 3,
+          "blas_observations": 13378,
+          "elpa_observations": 73112,
+          "omp_limit_at_exit": 2
+        },
+        {
+          "rank": 3,
+          "blas_worker_mask": 3,
+          "elpa_worker_mask": 3,
+          "blas_observations": 13378,
+          "elpa_observations": 73112,
+          "omp_limit_at_exit": 2
+        },
+        {
+          "rank": 4,
+          "blas_worker_mask": 3,
+          "elpa_worker_mask": 3,
+          "blas_observations": 13378,
+          "elpa_observations": 73112,
+          "omp_limit_at_exit": 2
+        },
+        {
+          "rank": 5,
+          "blas_worker_mask": 3,
+          "elpa_worker_mask": 3,
+          "blas_observations": 13378,
+          "elpa_observations": 73112,
+          "omp_limit_at_exit": 2
+        },
+        {
+          "rank": 6,
+          "blas_worker_mask": 3,
+          "elpa_worker_mask": 3,
+          "blas_observations": 13378,
+          "elpa_observations": 73112,
+          "omp_limit_at_exit": 2
+        },
+        {
+          "rank": 7,
+          "blas_worker_mask": 3,
+          "elpa_worker_mask": 3,
+          "blas_observations": 13378,
+          "elpa_observations": 73112,
+          "omp_limit_at_exit": 2
+        },
+        {
+          "rank": 8,
+          "blas_worker_mask": 3,
+          "elpa_worker_mask": 3,
+          "blas_observations": 13378,
+          "elpa_observations": 73112,
+          "omp_limit_at_exit": 2
+        },
+        {
+          "rank": 9,
+          "blas_worker_mask": 3,
+          "elpa_worker_mask": 3,
+          "blas_observations": 13378,
+          "elpa_observations": 73112,
+          "omp_limit_at_exit": 2
+        }
+      ],
+      "both_blas_workers_observed": 18,
+      "both_elpa_workers_observed": 18,
+      "elpa_thread_report_count": 17836
+    },
+    {
+      "variant": "fork_gpu",
+      "purpose": "Instrumented native C60/GaAs suite, excluded from benchmark times",
+      "command": [
+        "/opt/nvidia/hpc_sdk/Linux_x86_64/26.9/comm_libs/mpi/bin/mpirun",
+        "--use-hwthread-cpus",
+        "--map-by",
+        "slot:PE=2",
+        "--bind-to",
+        "hwthread",
+        "--report-bindings",
+        "-np",
+        "18",
+        "/home/dc1394/openmx4.0_gpu/build/rtx5080-benchmark-20261031-210530/binaries/fork/openmx",
+        "-runtest",
+        "-nt",
+        "2"
+      ],
+      "returncode": 0,
+      "normal_finishes": 2,
+      "elpa_thread_reports": [
+        {
+          "requested": 2,
+          "configured": 2,
+          "MPI_thread": 2,
+          "occurrences": 17836
+        }
+      ],
+      "observations": [
+        {
+          "rank": 0,
+          "blas_worker_mask": 3,
+          "elpa_worker_mask": 3,
+          "blas_observations": 10426,
+          "elpa_observations": 1482,
+          "omp_limit_at_exit": 2
+        },
+        {
+          "rank": 1,
+          "blas_worker_mask": 3,
+          "elpa_worker_mask": 3,
+          "blas_observations": 10426,
+          "elpa_observations": 1482,
+          "omp_limit_at_exit": 2
+        },
+        {
+          "rank": 10,
+          "blas_worker_mask": 3,
+          "elpa_worker_mask": 3,
+          "blas_observations": 10426,
+          "elpa_observations": 1482,
+          "omp_limit_at_exit": 2
+        },
+        {
+          "rank": 11,
+          "blas_worker_mask": 3,
+          "elpa_worker_mask": 3,
+          "blas_observations": 10426,
+          "elpa_observations": 1482,
+          "omp_limit_at_exit": 2
+        },
+        {
+          "rank": 12,
+          "blas_worker_mask": 3,
+          "elpa_worker_mask": 3,
+          "blas_observations": 10426,
+          "elpa_observations": 1482,
+          "omp_limit_at_exit": 2
+        },
+        {
+          "rank": 13,
+          "blas_worker_mask": 3,
+          "elpa_worker_mask": 3,
+          "blas_observations": 10426,
+          "elpa_observations": 1482,
+          "omp_limit_at_exit": 2
+        },
+        {
+          "rank": 14,
+          "blas_worker_mask": 3,
+          "elpa_worker_mask": 3,
+          "blas_observations": 10426,
+          "elpa_observations": 1482,
+          "omp_limit_at_exit": 2
+        },
+        {
+          "rank": 15,
+          "blas_worker_mask": 3,
+          "elpa_worker_mask": 3,
+          "blas_observations": 10426,
+          "elpa_observations": 1482,
+          "omp_limit_at_exit": 2
+        },
+        {
+          "rank": 16,
+          "blas_worker_mask": 3,
+          "elpa_worker_mask": 3,
+          "blas_observations": 10426,
+          "elpa_observations": 1482,
+          "omp_limit_at_exit": 2
+        },
+        {
+          "rank": 17,
+          "blas_worker_mask": 3,
+          "elpa_worker_mask": 3,
+          "blas_observations": 10972,
+          "elpa_observations": 1560,
+          "omp_limit_at_exit": 2
+        },
+        {
+          "rank": 2,
+          "blas_worker_mask": 3,
+          "elpa_worker_mask": 3,
+          "blas_observations": 10426,
+          "elpa_observations": 1482,
+          "omp_limit_at_exit": 2
+        },
+        {
+          "rank": 3,
+          "blas_worker_mask": 3,
+          "elpa_worker_mask": 3,
+          "blas_observations": 10426,
+          "elpa_observations": 1482,
+          "omp_limit_at_exit": 2
+        },
+        {
+          "rank": 4,
+          "blas_worker_mask": 3,
+          "elpa_worker_mask": 3,
+          "blas_observations": 10426,
+          "elpa_observations": 1482,
+          "omp_limit_at_exit": 2
+        },
+        {
+          "rank": 5,
+          "blas_worker_mask": 3,
+          "elpa_worker_mask": 3,
+          "blas_observations": 10426,
+          "elpa_observations": 1482,
+          "omp_limit_at_exit": 2
+        },
+        {
+          "rank": 6,
+          "blas_worker_mask": 3,
+          "elpa_worker_mask": 3,
+          "blas_observations": 10426,
+          "elpa_observations": 1482,
+          "omp_limit_at_exit": 2
+        },
+        {
+          "rank": 7,
+          "blas_worker_mask": 3,
+          "elpa_worker_mask": 3,
+          "blas_observations": 10426,
+          "elpa_observations": 1482,
+          "omp_limit_at_exit": 2
+        },
+        {
+          "rank": 8,
+          "blas_worker_mask": 3,
+          "elpa_worker_mask": 3,
+          "blas_observations": 10426,
+          "elpa_observations": 1482,
+          "omp_limit_at_exit": 2
+        },
+        {
+          "rank": 9,
+          "blas_worker_mask": 3,
+          "elpa_worker_mask": 3,
+          "blas_observations": 10426,
+          "elpa_observations": 1482,
+          "omp_limit_at_exit": 2
+        }
+      ],
+      "both_blas_workers_observed": 18,
+      "both_elpa_workers_observed": 18,
+      "elpa_thread_report_count": 17836
+    },
+    {
+      "variant": "upstream",
+      "purpose": "Instrumented native C60/GaAs suite, excluded from benchmark times",
+      "command": [
+        "/home/dc1394/intel/oneapi/mpi/2021.18/bin/mpiexec",
+        "-np",
+        "18",
+        "/home/dc1394/openmx4.0_gpu/build/rtx5080-benchmark-20261031-210530/binaries/upstream/openmx",
+        "-runtest",
+        "-nt",
+        "2"
+      ],
+      "returncode": 0,
+      "normal_finishes": 2,
+      "elpa_thread_reports": [],
+      "observations": [
+        {
+          "rank": 0,
+          "blas_worker_mask": 0,
+          "elpa_worker_mask": 0,
+          "blas_observations": 0,
+          "elpa_observations": 0,
+          "omp_limit_at_exit": 2
+        },
+        {
+          "rank": 1,
+          "blas_worker_mask": 0,
+          "elpa_worker_mask": 0,
+          "blas_observations": 0,
+          "elpa_observations": 0,
+          "omp_limit_at_exit": 2
+        },
+        {
+          "rank": 10,
+          "blas_worker_mask": 0,
+          "elpa_worker_mask": 0,
+          "blas_observations": 0,
+          "elpa_observations": 0,
+          "omp_limit_at_exit": 2
+        },
+        {
+          "rank": 11,
+          "blas_worker_mask": 0,
+          "elpa_worker_mask": 0,
+          "blas_observations": 0,
+          "elpa_observations": 0,
+          "omp_limit_at_exit": 2
+        },
+        {
+          "rank": 12,
+          "blas_worker_mask": 0,
+          "elpa_worker_mask": 0,
+          "blas_observations": 0,
+          "elpa_observations": 0,
+          "omp_limit_at_exit": 2
+        },
+        {
+          "rank": 13,
+          "blas_worker_mask": 0,
+          "elpa_worker_mask": 0,
+          "blas_observations": 0,
+          "elpa_observations": 0,
+          "omp_limit_at_exit": 2
+        },
+        {
+          "rank": 14,
+          "blas_worker_mask": 0,
+          "elpa_worker_mask": 0,
+          "blas_observations": 0,
+          "elpa_observations": 0,
+          "omp_limit_at_exit": 2
+        },
+        {
+          "rank": 15,
+          "blas_worker_mask": 0,
+          "elpa_worker_mask": 0,
+          "blas_observations": 0,
+          "elpa_observations": 0,
+          "omp_limit_at_exit": 2
+        },
+        {
+          "rank": 16,
+          "blas_worker_mask": 0,
+          "elpa_worker_mask": 0,
+          "blas_observations": 0,
+          "elpa_observations": 0,
+          "omp_limit_at_exit": 2
+        },
+        {
+          "rank": 17,
+          "blas_worker_mask": 0,
+          "elpa_worker_mask": 0,
+          "blas_observations": 0,
+          "elpa_observations": 0,
+          "omp_limit_at_exit": 2
+        },
+        {
+          "rank": 2,
+          "blas_worker_mask": 0,
+          "elpa_worker_mask": 0,
+          "blas_observations": 0,
+          "elpa_observations": 0,
+          "omp_limit_at_exit": 2
+        },
+        {
+          "rank": 3,
+          "blas_worker_mask": 0,
+          "elpa_worker_mask": 0,
+          "blas_observations": 0,
+          "elpa_observations": 0,
+          "omp_limit_at_exit": 2
+        },
+        {
+          "rank": 4,
+          "blas_worker_mask": 0,
+          "elpa_worker_mask": 0,
+          "blas_observations": 0,
+          "elpa_observations": 0,
+          "omp_limit_at_exit": 2
+        },
+        {
+          "rank": 5,
+          "blas_worker_mask": 0,
+          "elpa_worker_mask": 0,
+          "blas_observations": 0,
+          "elpa_observations": 0,
+          "omp_limit_at_exit": 2
+        },
+        {
+          "rank": 6,
+          "blas_worker_mask": 0,
+          "elpa_worker_mask": 0,
+          "blas_observations": 0,
+          "elpa_observations": 0,
+          "omp_limit_at_exit": 2
+        },
+        {
+          "rank": 7,
+          "blas_worker_mask": 0,
+          "elpa_worker_mask": 0,
+          "blas_observations": 0,
+          "elpa_observations": 0,
+          "omp_limit_at_exit": 2
+        },
+        {
+          "rank": 8,
+          "blas_worker_mask": 0,
+          "elpa_worker_mask": 0,
+          "blas_observations": 0,
+          "elpa_observations": 0,
+          "omp_limit_at_exit": 2
+        },
+        {
+          "rank": 9,
+          "blas_worker_mask": 0,
+          "elpa_worker_mask": 0,
+          "blas_observations": 0,
+          "elpa_observations": 0,
+          "omp_limit_at_exit": 2
+        }
+      ],
+      "both_blas_workers_observed": 0,
+      "both_elpa_workers_observed": 0,
+      "elpa_thread_report_count": 0
+    }
+  ],
+  "elpa_abi_test": {
+    "ranks": 8,
+    "threads": 2,
+    "cases_per_rank": 24,
+    "passed": true,
+    "make_environment": {
+      "OPENMX_CORE_LIBRARY": "/home/dc1394/openmx4.0_gpu/build/cuda/core/libopenmx_core.so"
+    }
+  }
+}
