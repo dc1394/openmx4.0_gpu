@@ -1,0 +1,2545 @@
+{
+  "schema_version": 1,
+  "measured_revision": "0681d63ec3e00edc0c75f4b6d7c8f83c0643bbf3",
+  "started_jst": "2026-10-31T21:00:34.970653+09:00",
+  "finished_jst": "2026-11-01T00:28:45.008957+09:00",
+  "machine": {
+    "cpu": "AMD Ryzen Threadripper 3970X",
+    "physical_cores": 32,
+    "smt": false,
+    "host_ram_gib": 256,
+    "gpu": "AMD Radeon RX 9060 XT",
+    "gpu_arch": "gfx1200",
+    "gpu_vram_gib": 16
+  },
+  "fork_build": {
+    "revision": "0681d63ec3e00edc0c75f4b6d7c8f83c0643bbf3",
+    "started": 1793447488.181289,
+    "steps": [
+      {
+        "name": "hip-configure",
+        "command": [
+          "/home/kawai/openmx4.0_amdgpu/source/third_party/gpusolver2-install/cmake-bootstrap/bin/cmake",
+          "-S",
+          "/home/kawai/openmx4.0_gpu",
+          "-B",
+          "/home/kawai/openmx4.0_gpu/build/hip-application-20261025/openmpi-aocl",
+          "-DCMAKE_BUILD_TYPE=Release",
+          "-DOPENMX_BUILD_JOBS=16",
+          "-DOPENMX_COPY_TO_WORK=OFF",
+          "-DOPENMX_GPU_BACKEND=HIP",
+          "-DOPENMX_GPU_ARCH=gfx1200",
+          "-DOPENMX_HIP_MPI=OPENMPI",
+          "-DOPENMX_HIP_LINALG=AOCL"
+        ],
+        "cwd": "/home/kawai/openmx4.0_gpu",
+        "start": 1793447488.1813056,
+        "status": "complete",
+        "returncode": 0,
+        "seconds": 5.675000190734863
+      },
+      {
+        "name": "hip-build",
+        "command": [
+          "/home/kawai/openmx4.0_amdgpu/source/third_party/gpusolver2-install/cmake-bootstrap/bin/cmake",
+          "--build",
+          "/home/kawai/openmx4.0_gpu/build/hip-application-20261025/openmpi-aocl",
+          "--parallel",
+          "16"
+        ],
+        "cwd": "/home/kawai/openmx4.0_gpu",
+        "start": 1793447493.856647,
+        "status": "complete",
+        "returncode": 0,
+        "seconds": 276.9501509666443
+      },
+      {
+        "name": "hip-install",
+        "command": [
+          "/home/kawai/openmx4.0_amdgpu/source/third_party/gpusolver2-install/cmake-bootstrap/bin/cmake",
+          "--install",
+          "/home/kawai/openmx4.0_gpu/build/hip-application-20261025/openmpi-aocl"
+        ],
+        "cwd": "/home/kawai/openmx4.0_gpu",
+        "start": 1793447770.8471568,
+        "status": "complete",
+        "returncode": 0,
+        "seconds": 0.5794658660888672
+      }
+    ],
+    "finished": 1793447771.4268663,
+    "installed_files": {
+      "openmx": "063ddccb2e4ce445bd648308e74ad98ee44c202323d06d20a1a155b76bca0823",
+      "lib/libopenmx_core.so": "a804511290cd46e4239da8e96bd00fabb426ed487b98401b71353b0efc7e3e9a",
+      "lib/libopenmx_host_simd.so": "d9c2a984550ecc79de80107625839f260c869ea6148acdcf47d027f7d7cc19c2"
+    },
+    "hip_sha256": "063ddccb2e4ce445bd648308e74ad98ee44c202323d06d20a1a155b76bca0823",
+    "baseline_directory": "/home/kawai/openmx4.0_gpu/work/codex_benchmark_20261029"
+  },
+  "layout": {
+    "mpi_ranks": 16,
+    "openmp_threads_per_rank": 2,
+    "blas_threads_per_rank": 2,
+    "physical_cores": 32,
+    "OMP_MAX_ACTIVE_LEVELS": 1
+  },
+  "installed_sha256": {
+    "openmx": "063ddccb2e4ce445bd648308e74ad98ee44c202323d06d20a1a155b76bca0823",
+    "lib/libopenmx_core.so": "a804511290cd46e4239da8e96bd00fabb426ed487b98401b71353b0efc7e3e9a",
+    "lib/libopenmx_host_simd.so": "d9c2a984550ecc79de80107625839f260c869ea6148acdcf47d027f7d7cc19c2"
+  },
+  "upstream_baseline": {
+    "remeasured": false,
+    "date": "2026-10-29",
+    "openmx": "4.0 + official patch 4.0.1",
+    "compiler": "icx/ifx 2026.0",
+    "mpi": "Intel MPI 2021.18",
+    "linalg": "threaded LP64 MKL"
+  },
+  "previous_fork_baseline": {
+    "date": "2026-10-30",
+    "manifest": "benchmarks/results/radeon_rx9060xt_20261030_16x2.json",
+    "controls_note": "The old fork used one BLAS thread per rank. This refresh explicitly uses two, with the corrected OpenMP-enabled ELPA build."
+  },
+  "timing": {
+    "unit": "s",
+    "suites": "Sum of native runtest.result / runtestL.result per-case elapsed seconds",
+    "named_inputs": "OpenMX maximum-rank Total Computational Time",
+    "mpi_launch_shutdown_included": false
+  },
+  "validation": {
+    "new_case_executions": 64,
+    "all_pass": true,
+    "energy_tolerance_Ha": 1e-07,
+    "force_component_tolerance_Ha_bohr": 1e-07,
+    "geometry_grids_finite_energy_and_all_force_components_checked": true,
+    "comparison_scope": "Both fork paths against bundled references, each other, retained upstream CPU and previous fork result; all applicable checks are included in per-case maxima.",
+    "force_components_checked": 27552,
+    "maximum_checked_energy_difference_Ha": 3.1862327887210995e-08,
+    "maximum_checked_force_component_difference_Ha_bohr": 4.367099999999994e-08
+  },
+  "postbuild_checks": {
+    "attempts": [
+      {
+        "name": "elpa-workers",
+        "command": [
+          "/usr/bin/python3",
+          "tests/run_elpa_cpu_mpi.py",
+          "--native-source",
+          "/home/kawai/openmx4.0_gpu/build/hip-application-20261025/openmpi-aocl/native/source",
+          "--mpiexec",
+          "taskset -c 0-15 /home/kawai/opt/openmpi-rocmclang/bin/mpirun",
+          "--ranks",
+          "8",
+          "--threads",
+          "2",
+          "--check-elpa-workers"
+        ],
+        "returncode": 0,
+        "seconds": 1.209951443132013
+      },
+      {
+        "name": "gs2-lifecycle",
+        "command": [
+          "/usr/bin/python3",
+          "tests/run_gs2_memory_mpi.py"
+        ],
+        "returncode": 1,
+        "seconds": 0.29404882760718465
+      },
+      {
+        "name": "gs2-lifecycle",
+        "command": [
+          "/usr/bin/python3",
+          "tests/run_gs2_memory_mpi.py"
+        ],
+        "returncode": 1,
+        "seconds": 0.5400553843937814,
+        "test_environment": {
+          "MPICC": "/home/kawai/opt/openmpi-rocmclang/bin/mpicc -idirafter /usr/lib/gcc/x86_64-linux-gnu/12/include",
+          "OMPI_CC": "/home/kawai/openmx4.0_gpu/work/codex_rocm_upgrade_20261025/sdk/opt/rocm/core-10.1/llvm/bin/clang",
+          "OMPI_MCA_memory": "^patcher",
+          "MPIEXEC": "taskset -c 0-11 /home/kawai/opt/openmpi-rocmclang/bin/mpirun --map-by slot:PE=3 --bind-to core",
+          "OMP_NUM_THREADS": "3",
+          "OMP_MAX_ACTIVE_LEVELS": "1",
+          "OMP_DYNAMIC": "FALSE"
+        }
+      },
+      {
+        "name": "gs2-lifecycle",
+        "command": [
+          "/usr/bin/python3",
+          "tests/run_gs2_memory_mpi.py"
+        ],
+        "returncode": 0,
+        "seconds": 3.6464222567155957,
+        "test_environment": {
+          "MPICC": "/home/kawai/opt/openmpi-rocmclang/bin/mpicc -idirafter /usr/lib/gcc/x86_64-linux-gnu/12/include",
+          "OMPI_CC": "/home/kawai/openmx4.0_gpu/work/codex_rocm_upgrade_20261025/sdk/opt/rocm/core-10.1/llvm/bin/clang",
+          "OMPI_MCA_memory": "^patcher",
+          "MPIEXEC": "taskset -c 0-11 /home/kawai/opt/openmpi-rocmclang/bin/mpirun --map-by slot:PE=3 --bind-to core",
+          "OMP_NUM_THREADS": "3",
+          "OMP_MAX_ACTIVE_LEVELS": "1",
+          "OMP_DYNAMIC": "FALSE"
+        }
+      },
+      {
+        "name": "suite-environment",
+        "command": [
+          "/usr/bin/python3",
+          "tests/test_gpu_suite_environment.py"
+        ],
+        "returncode": 0,
+        "seconds": 0.9110931069590151,
+        "test_environment": {}
+      }
+    ],
+    "final": {
+      "elpa-workers": {
+        "name": "elpa-workers",
+        "command": [
+          "/usr/bin/python3",
+          "tests/run_elpa_cpu_mpi.py",
+          "--native-source",
+          "/home/kawai/openmx4.0_gpu/build/hip-application-20261025/openmpi-aocl/native/source",
+          "--mpiexec",
+          "taskset -c 0-15 /home/kawai/opt/openmpi-rocmclang/bin/mpirun",
+          "--ranks",
+          "8",
+          "--threads",
+          "2",
+          "--check-elpa-workers"
+        ],
+        "returncode": 0,
+        "seconds": 1.209951443132013
+      },
+      "gs2-lifecycle": {
+        "name": "gs2-lifecycle",
+        "command": [
+          "/usr/bin/python3",
+          "tests/run_gs2_memory_mpi.py"
+        ],
+        "returncode": 0,
+        "seconds": 3.6464222567155957,
+        "test_environment": {
+          "MPICC": "/home/kawai/opt/openmpi-rocmclang/bin/mpicc -idirafter /usr/lib/gcc/x86_64-linux-gnu/12/include",
+          "OMPI_CC": "/home/kawai/openmx4.0_gpu/work/codex_rocm_upgrade_20261025/sdk/opt/rocm/core-10.1/llvm/bin/clang",
+          "OMPI_MCA_memory": "^patcher",
+          "MPIEXEC": "taskset -c 0-11 /home/kawai/opt/openmpi-rocmclang/bin/mpirun --map-by slot:PE=3 --bind-to core",
+          "OMP_NUM_THREADS": "3",
+          "OMP_MAX_ACTIVE_LEVELS": "1",
+          "OMP_DYNAMIC": "FALSE"
+        }
+      },
+      "suite-environment": {
+        "name": "suite-environment",
+        "command": [
+          "/usr/bin/python3",
+          "tests/test_gpu_suite_environment.py"
+        ],
+        "returncode": 0,
+        "seconds": 0.9110931069590151,
+        "test_environment": {}
+      }
+    },
+    "setup_retries": "The standalone CUDA-host model required GCC openacc.h and a clean MPI library search; initial compile/link attempts are archived and excluded from numerical acceptance."
+  },
+  "gpu_runtime_controls": {
+    "HSA_ENABLE_SDMA": "0",
+    "LIBOMPTARGET_HEAP_SIZE": "67108864",
+    "HSA_OVERRIDE_CPU_AFFINITY_DEBUG": "0",
+    "NVIDIA_MPS": "Not applicable to AMD HIP/Radeon"
+  },
+  "cghelgeo_dense_path": {
+    "scf_steps": 60,
+    "dense_memory_rejection_messages": 60,
+    "multi_gpu_pool_cpu_solve_messages": 60,
+    "first_memory_rejection": "Band_DFT_Col: GPU device is shared by 16 rank(s), has 12794.000 MiB free (16304.000 MiB total), but 16004.569 MiB is required for the dense GPU diagonalization (512.000 MiB library reserve per rank); switching to CPU path.",
+    "first_pool_message": "<OpenMX_MGPU> Band collinear n=6670: MAGMA needs 2..8 GPUs per matrix: available pool=0, scf.gpu.num limit=30, kpoints=2; GPU limit will not be exceeded; CPU solve."
+  },
+  "L3": "Not repeated: the original campaign was stopped for host-memory pressure at the 32 GiB reserve. No complete L3 timing or speedup is reported.",
+  "dataset_sha256": {
+    "PAO/As7.0.pao": "5086cbd85771b1a58aa181cd1e4181b7e865c855ef84e0bc7e7fc1cee69eb4b8",
+    "PAO/B7.0.pao": "be54b87052bf5e94f9878a92e2f66692af13168bdbd83f3d4afd1bf1a9c19db7",
+    "PAO/C5.0.pao": "03f7f3843ea89c87106a861cdee4a87d9324a948e1c41f101cc36c4b0e999934",
+    "PAO/C6.0.pao": "1442a834dbc2b9b55e8f11a20734c7b77765fa4e05ca3e1b1f004da46bfaaef4",
+    "PAO/C7.0.pao": "d6e270f980f6ede1d22c31ae60ccd2e900f5d9709caeca4b8918dd8a17910d22",
+    "PAO/Cr8.0.pao": "f2518dc2dee792c62591fbff11a3712ca7e97b28c0d23bd2c95eba788b4cba10",
+    "PAO/Fe6.0S.pao": "e42ab5f418dd9f20ead6204843b9ff7495f43ed94b3566376b6e7ba3c5562b5b",
+    "PAO/Ga7.0.pao": "56c7dd5801872438caec84801813a18c91ebc66f3d66beb2872d32d2252a78ea",
+    "PAO/H5.0.pao": "31b4a1bb098e57fdde6c5158596929362f304909132dc9eeb2cc389c08fbbf46",
+    "PAO/H6.0.pao": "53ad2af2e281eef9320500b17176e612e607b01d7aca23cae644fa03965a1639",
+    "PAO/H7.0.pao": "878ed02256724be95a08e316f1eb567c0c05728cedeef20c8ae474b1bf109d6c",
+    "PAO/Mn6.0.pao": "6f703434c7520d67cd9145de2e40ed98382f4fabfe462c580297998df8907d31",
+    "PAO/Mn8.0.pao": "2b245c47e822a8ca267a66f8f6f35e96f5b9589b746999795cd3f6e88c32efc9",
+    "PAO/N5.0.pao": "d975949f913191dc18e22ccc9b0a5b095369f302ae31316497b8932719437a82",
+    "PAO/N6.0.pao": "063efc7ac0674c36e2ccb2c2ba0bc3aa953c94f39046b0c2acc4cf514c048ff7",
+    "PAO/N7.0.pao": "0661849a5b5d5e3b7aa3d13a7ed609e3d77a2ac21e75454b638938ab8ae431d6",
+    "PAO/Ni6.0S.pao": "7db801d0a65d9b06dfa1de2347cb6da8d9a021ad1886d47f7752ca9c770ad057",
+    "PAO/O5.0.pao": "2d33f5ce0ea9b6ef4230aba6e2d9761194aff800db3b1465cda090c235d0d40f",
+    "PAO/O6.0.pao": "ed4df18367ad3e4229a6028583d3a2ecd103076a634db86fd5e82f7075eb1cf1",
+    "PAO/O7.0.pao": "7411fc9c218ee947234bcc15a1f3ff12f48954eb8c5ce4c617436f8671810ec4",
+    "PAO/P7.0.pao": "9ae4ec8e1cddf035464c2b9cb7d0fccbffb40f118114b225e3106ac5cc8f1314",
+    "PAO/Pt7.0.pao": "6b538646defba7371d1a8ce6e2b60f5d962642fc1c8dfc2442ab69b48fb0c896",
+    "PAO/Si7.0.pao": "24c45d323ad0e4f652776791c0dd9a4c1357d7e63b91333503634401352f843f",
+    "PAO/V8.0.pao": "41c7e9a897130426ca24b5549eb64589e913ff0e9306b2f12d1f66d3676fa50b",
+    "PAO/Zr7.0.pao": "091bde9d6f0ad151991da731b36d3d41736bf6840ec6f4c9c88d3ed36116eb7f",
+    "VPS/As_PBE19.vps": "82a13ff8563f308440e63ccd551012c7a06eedab6cef6522a20997c9755dd541",
+    "VPS/B_PBE19.vps": "ceda8e581a2bc1d9eae39d7c7af8a23bb2d40009a14e4a8b0c0c8924e1900fde",
+    "VPS/C_CA19.vps": "1bb1fd54ad8171745b44f3a738c2579f251198f20c777e72d5c35fbc00e49200",
+    "VPS/C_PBE19.vps": "4b9c78eb72be25ca46366b8fd39c74ae7172d7db9e77b29782a42f71901b38a7",
+    "VPS/Cr_CA19.vps": "ff8d763cf7b0814e82da82b26031c8383674df17e1ed5db6319c7f2bf140f125",
+    "VPS/Fe_PBE19S.vps": "e136a81b91517301f6e4124a8f347487ac4639427d842b15088c9ff99b0061e7",
+    "VPS/Ga_PBE19.vps": "52825d621c3c4d8ea9ecd773630decc85acfa5b1849cb3b3c2a032d3867a3aec",
+    "VPS/H_CA19.vps": "71b331412a798c98a9a0c9853f37f2715298621bd271aa027a2031938ea93690",
+    "VPS/H_PBE19.vps": "cdb7685cc3f34bd2bf81f809594bb4371728476d1a624dca291c4b9ff361c6fa",
+    "VPS/Mn_PBE19.vps": "5a06a9c926b9b586375647ab08509147339529cb2685ffe364ee1babf3e32867",
+    "VPS/N_PBE19.vps": "904c1c6e59a86448830178681a39cd3c4d14fb2daf9be8f4742673ddfc8e3466",
+    "VPS/Ni_CA19S.vps": "43daac35da9cd0a33c7f670cf4d8fcb1e464f054b7670dab4772508bd8302a35",
+    "VPS/O_CA19.vps": "d5c892ccb655e953da945adf2b8f5fdbc012e7fcab2655a1931ea2e6e3b59af1",
+    "VPS/O_PBE19.vps": "afb469c2da38c80854b1bdf7df1f6da6dc8d7c874a75f0bf7c294a96046410fc",
+    "VPS/P_PBE19.vps": "91a543cf3f29b743133c80ff6442851a9be8adfb215fd571d56a169cf2f740b6",
+    "VPS/Pt_PBE19.vps": "f1fa6e677a2f6f101ade6d728b31486d4720b5aca94fac49b3bf47b24f679ff4",
+    "VPS/Si_PBE19.vps": "9a274b3f50cd247d53e735b8ad1669d491286934b61c295bcd6e8b6ba555d80a",
+    "VPS/V_PBE19.vps": "6b4b5cf6d2858a9d02c7aa692aeeafc82b8f375ef16c869cf13ea3feb84b45f8",
+    "VPS/Zr_PBE19.vps": "fa1bd0f8c7e304519b6cd4244f20fe1590018013862f627396bccfb2fd5413ba"
+  },
+  "results_csv": "benchmarks/results/radeon_rx9060xt_20261031_16x2.csv",
+  "results_csv_sha256": "dc2fd3da8288af8d7ea2e4419e68604a0e8dfab3a26166241613455db42efea7",
+  "raw_artifacts": "work/codex_benchmark_20261031_refresh",
+  "jobs": [
+    {
+      "variant": "fork-cpu",
+      "test": "S",
+      "status": "completed",
+      "started": "2026-10-31T21:00:34.985306+09:00",
+      "directory": "/home/kawai/openmx4.0_gpu/work/codex_benchmark_20261031_refresh/runs/S-fork-cpu",
+      "normal_finish_markers": 14,
+      "ended": "2026-10-31T21:01:24.819799+09:00",
+      "returncode": 0,
+      "wall_seconds": 49.83419930934906,
+      "peak_rss_gib": 7.286003112792969,
+      "min_available_gib": 240.14032745361328,
+      "completed": 14,
+      "expected": 14,
+      "validation_pass": true,
+      "command": {
+        "command": [
+          "/home/kawai/opt/openmpi-rocmclang/bin/mpirun",
+          "-np",
+          "16",
+          "--map-by",
+          "slot:PE=2",
+          "--bind-to",
+          "core",
+          "/home/kawai/openmx4.0_gpu/work/codex_benchmark_20261031_refresh/installed/fork-cpu-32e3f3981593/openmx",
+          "-runtest",
+          "-nt",
+          "2"
+        ],
+        "controls": {
+          "OMP_NUM_THREADS": "2",
+          "OMP_DYNAMIC": "FALSE",
+          "OMP_PROC_BIND": "close",
+          "OMP_PLACES": "cores",
+          "OMP_MAX_ACTIVE_LEVELS": "1",
+          "OPENBLAS_NUM_THREADS": "1",
+          "BLIS_NUM_THREADS": "2",
+          "MKL_NUM_THREADS": "1",
+          "HIP_VISIBLE_DEVICES": "0",
+          "ROCR_VISIBLE_DEVICES": "0",
+          "LIBOMPTARGET_HEAP_SIZE": "67108864",
+          "HSA_OVERRIDE_CPU_AFFINITY_DEBUG": "0",
+          "LD_LIBRARY_PATH": "/home/kawai/openmx4.0_gpu/work/codex_rocm_upgrade_20261025/sdk/opt/rocm/core-10.1/llvm/lib:/home/kawai/openmx4.0_gpu/work/codex_rocm_upgrade_20261025/sdk/opt/rocm/core-10.1/lib:/home/kawai/opt/openmpi-rocmclang/lib:/opt/AMD/aocl/aocl-linux-aocc-5.2.0/aocc/lib:/opt/AMD/aocc-compiler-5.1.0/lib",
+          "OPENMX_GPU": "0",
+          "LD_PRELOAD": "/home/kawai/openmx4.0_gpu/work/codex_benchmark_20261031_refresh/installed/fork-cpu-32e3f3981593/lib/libopenmx_core.so:/home/kawai/openmx4.0_gpu/work/codex_benchmark_20261031_refresh/installed/fork-cpu-32e3f3981593/lib/libopenmx_host_simd.so"
+        },
+        "binary_sha256": "063ddccb2e4ce445bd648308e74ad98ee44c202323d06d20a1a155b76bca0823",
+        "inputs": [
+          {
+            "case": "Benzene",
+            "system": "Benzene",
+            "source": "/home/kawai/openmx4.0/work/input_example/Benzene.dat",
+            "original_sha256": "645c48443afeb170aadaaa600d08fcc36bed316feac489cd6ce663477012a7cb",
+            "input_sha256": "ba37f96c262b42bcf244c4dcb1312402f0556f05a4fef921dc425db77116e9c6",
+            "status": "pending"
+          },
+          {
+            "case": "C60",
+            "system": "C60",
+            "source": "/home/kawai/openmx4.0/work/input_example/C60.dat",
+            "original_sha256": "ad3d1da5f946909fa7f312c0687287e44d809819ad2f0525bb33e20acaa81f85",
+            "input_sha256": "9687b198f3d0c1d8683ff319fecba17e0661e4fe373eb0c01a3b80a19e4bc1ff",
+            "status": "pending"
+          },
+          {
+            "case": "CO",
+            "system": "CO",
+            "source": "/home/kawai/openmx4.0/work/input_example/CO.dat",
+            "original_sha256": "628d43217254933e9ee2a4c43d5265066d4ac7f2628d18d17ff10f07df235857",
+            "input_sha256": "06984c20f4e481e06c717182e76673a4e2ff5e4e0f828edab7c7767a44e38dda",
+            "status": "pending"
+          },
+          {
+            "case": "Cr2",
+            "system": "Cr2",
+            "source": "/home/kawai/openmx4.0/work/input_example/Cr2.dat",
+            "original_sha256": "aae6bbdbec74e0dca7f97c2c592dd7170f7ee4edce50390a865d53073555e6fb",
+            "input_sha256": "7a5d4c25aad2bc2e11d2629ea8c12371aebe6167867a26235249c68530d9124e",
+            "status": "pending"
+          },
+          {
+            "case": "Crys-MnO",
+            "system": "Crys-MnO",
+            "source": "/home/kawai/openmx4.0/work/input_example/Crys-MnO.dat",
+            "original_sha256": "85756c40cc324e35764dacc68788f16d23d93fd34d7a10a57cbafbaeaa8e1175",
+            "input_sha256": "effa165c45dc4c1af920ff9ca339bb8b793aa8efd96d59cc35bb3be9e8572f9f",
+            "status": "pending"
+          },
+          {
+            "case": "GaAs",
+            "system": "GaAs",
+            "source": "/home/kawai/openmx4.0/work/input_example/GaAs.dat",
+            "original_sha256": "b2571de088368e512c9967f770273aa6682563eb4bf77db5973b6d604bea1141",
+            "input_sha256": "9c8fedc789cbca678bd9c0ac63caf2405f6e5384a66f52fa789d4fc6d22bb0c5",
+            "status": "pending"
+          },
+          {
+            "case": "Glycine",
+            "system": "Glycine",
+            "source": "/home/kawai/openmx4.0/work/input_example/Glycine.dat",
+            "original_sha256": "f849e0cb5f880d55df52d168e6b811e81fd4bbdf267b8af9d3a9bcb0dd648b3f",
+            "input_sha256": "b0be3aa932bdbf33352f9af97647c4248b62bbfeab1a8e9c492f3547a4cacc0e",
+            "status": "pending"
+          },
+          {
+            "case": "Graphite4",
+            "system": "Graphite4",
+            "source": "/home/kawai/openmx4.0/work/input_example/Graphite4.dat",
+            "original_sha256": "8e1b494fe68a87cd27e1ff663b28daad965589d05ee6744465fa6a859043a68d",
+            "input_sha256": "f797234e1ed7c9ae4e127a9b47c0a03a1d5d482011061f60b8ae6c5e8f223140",
+            "status": "pending"
+          },
+          {
+            "case": "H2O-EF",
+            "system": "H2O-EF",
+            "source": "/home/kawai/openmx4.0/work/input_example/H2O-EF.dat",
+            "original_sha256": "a296c2fc62e4b9d7e4a7bb80cb97086b9df35030f98392b7fef3961784292d80",
+            "input_sha256": "065453d4157aa0154ccf6d3a29f56075c2c82218ce66a0e860b1e7ed34798423",
+            "status": "pending"
+          },
+          {
+            "case": "H2O",
+            "system": "H2O",
+            "source": "/home/kawai/openmx4.0/work/input_example/H2O.dat",
+            "original_sha256": "0a423e482edaca4fbce88366bd6ee56ccf0f9546fd211e49653f4a6597e87dd9",
+            "input_sha256": "931671f7d03f113ad56bc039598b643d9b99e06c2792c5b13d19639d84d78688",
+            "status": "pending"
+          },
+          {
+            "case": "HMn",
+            "system": "HMn",
+            "source": "/home/kawai/openmx4.0/work/input_example/HMn.dat",
+            "original_sha256": "7eb9c80d6b672b2ef8fca78f1c4f6158d65fe31cbfe96daa58d9d54e12cf3f75",
+            "input_sha256": "c709ab5fbaded99b77765970dc5f5647e36420962cb35351fb57ffe4e1cab18e",
+            "status": "pending"
+          },
+          {
+            "case": "Methane",
+            "system": "Methane",
+            "source": "/home/kawai/openmx4.0/work/input_example/Methane.dat",
+            "original_sha256": "33bfd31ece53aece5c1f98bcc4d5cd3c3e5f65ca0eeb84b31df3528623d24fc8",
+            "input_sha256": "a117614fb432c82bf87ff87149ab70dcde715447c448b6085c282d7c49e3cd05",
+            "status": "pending"
+          },
+          {
+            "case": "Mol_MnO",
+            "system": "Mol_MnO",
+            "source": "/home/kawai/openmx4.0/work/input_example/Mol_MnO.dat",
+            "original_sha256": "e5149431f1ac555a80f7f3c62e158d6baae9209ba129f7b353382a7489c65b39",
+            "input_sha256": "2f35c206186d535d23c54f4b6804ea2adcc99986e8e3d75bea83a5675f0e68e0",
+            "status": "pending"
+          },
+          {
+            "case": "Ndia2",
+            "system": "Ndia2",
+            "source": "/home/kawai/openmx4.0/work/input_example/Ndia2.dat",
+            "original_sha256": "c7a1a3d42891934cc8a72fe8b71588f4a5f6f33c4201c0e5937cffc5418665d0",
+            "input_sha256": "06ed0cfed7522bc7292115c8655061e69164d001748f5f3f17936bdefd5e5141",
+            "status": "pending"
+          }
+        ]
+      },
+      "rank_environment": [
+        {
+          "rank": 0,
+          "pid": 573079,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            0,
+            1
+          ]
+        },
+        {
+          "rank": 1,
+          "pid": 573080,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            2,
+            3
+          ]
+        },
+        {
+          "rank": 2,
+          "pid": 573081,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            4,
+            5
+          ]
+        },
+        {
+          "rank": 3,
+          "pid": 573082,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            6,
+            7
+          ]
+        },
+        {
+          "rank": 4,
+          "pid": 573083,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            8,
+            9
+          ]
+        },
+        {
+          "rank": 5,
+          "pid": 573084,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            10,
+            11
+          ]
+        },
+        {
+          "rank": 6,
+          "pid": 573085,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            12,
+            13
+          ]
+        },
+        {
+          "rank": 7,
+          "pid": 573086,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            14,
+            15
+          ]
+        },
+        {
+          "rank": 8,
+          "pid": 573087,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            16,
+            17
+          ]
+        },
+        {
+          "rank": 9,
+          "pid": 573088,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            18,
+            19
+          ]
+        },
+        {
+          "rank": 10,
+          "pid": 573089,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            20,
+            21
+          ]
+        },
+        {
+          "rank": 11,
+          "pid": 573090,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            22,
+            23
+          ]
+        },
+        {
+          "rank": 12,
+          "pid": 573091,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            24,
+            25
+          ]
+        },
+        {
+          "rank": 13,
+          "pid": 573092,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            26,
+            27
+          ]
+        },
+        {
+          "rank": 14,
+          "pid": 573093,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            28,
+            29
+          ]
+        },
+        {
+          "rank": 15,
+          "pid": 573094,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            30,
+            31
+          ]
+        }
+      ]
+    },
+    {
+      "variant": "fork-gpu",
+      "test": "S",
+      "status": "completed",
+      "started": "2026-10-31T21:01:24.849061+09:00",
+      "directory": "/home/kawai/openmx4.0_gpu/work/codex_benchmark_20261031_refresh/runs/S-fork-gpu",
+      "normal_finish_markers": 14,
+      "ended": "2026-10-31T21:02:34.926461+09:00",
+      "returncode": 0,
+      "wall_seconds": 70.07687092479318,
+      "peak_rss_gib": 8.554573059082031,
+      "min_available_gib": 239.95545959472656,
+      "completed": 14,
+      "expected": 14,
+      "validation_pass": true,
+      "command": {
+        "command": [
+          "/home/kawai/opt/openmpi-rocmclang/bin/mpirun",
+          "-np",
+          "16",
+          "--map-by",
+          "slot:PE=2",
+          "--bind-to",
+          "core",
+          "/home/kawai/openmx4.0_gpu/work/codex_benchmark_20261031_refresh/installed/fork-gpu-32e3f3981593/openmx",
+          "-runtest",
+          "-nt",
+          "2"
+        ],
+        "controls": {
+          "OMP_NUM_THREADS": "2",
+          "OMP_DYNAMIC": "FALSE",
+          "OMP_PROC_BIND": "close",
+          "OMP_PLACES": "cores",
+          "OMP_MAX_ACTIVE_LEVELS": "1",
+          "OPENBLAS_NUM_THREADS": "1",
+          "BLIS_NUM_THREADS": "2",
+          "MKL_NUM_THREADS": "1",
+          "HIP_VISIBLE_DEVICES": "0",
+          "ROCR_VISIBLE_DEVICES": "0",
+          "LIBOMPTARGET_HEAP_SIZE": "67108864",
+          "HSA_OVERRIDE_CPU_AFFINITY_DEBUG": "0",
+          "LD_LIBRARY_PATH": "/home/kawai/openmx4.0_gpu/work/codex_rocm_upgrade_20261025/sdk/opt/rocm/core-10.1/llvm/lib:/home/kawai/openmx4.0_gpu/work/codex_rocm_upgrade_20261025/sdk/opt/rocm/core-10.1/lib:/home/kawai/opt/openmpi-rocmclang/lib:/opt/AMD/aocl/aocl-linux-aocc-5.2.0/aocc/lib:/opt/AMD/aocc-compiler-5.1.0/lib",
+          "OPENMX_GPU": "1",
+          "HSA_ENABLE_SDMA": "0",
+          "LD_PRELOAD": "/home/kawai/openmx4.0_gpu/work/codex_benchmark_20261031_refresh/installed/fork-gpu-32e3f3981593/lib/libopenmx_core.so:/home/kawai/openmx4.0_gpu/work/codex_benchmark_20261031_refresh/installed/fork-gpu-32e3f3981593/lib/libopenmx_host_simd.so"
+        },
+        "binary_sha256": "063ddccb2e4ce445bd648308e74ad98ee44c202323d06d20a1a155b76bca0823",
+        "inputs": [
+          {
+            "case": "Benzene",
+            "system": "Benzene",
+            "source": "/home/kawai/openmx4.0/work/input_example/Benzene.dat",
+            "original_sha256": "645c48443afeb170aadaaa600d08fcc36bed316feac489cd6ce663477012a7cb",
+            "input_sha256": "a165902ca4b62929a5ec3aa6742fa2fca2cbd9a94fab64c2d2c2b39af085fbb9",
+            "status": "pending"
+          },
+          {
+            "case": "C60",
+            "system": "C60",
+            "source": "/home/kawai/openmx4.0/work/input_example/C60.dat",
+            "original_sha256": "ad3d1da5f946909fa7f312c0687287e44d809819ad2f0525bb33e20acaa81f85",
+            "input_sha256": "7965819cb2706323e4d0b73d9eb16d58356494cf266a4e514c4ced1998c3b236",
+            "status": "pending"
+          },
+          {
+            "case": "CO",
+            "system": "CO",
+            "source": "/home/kawai/openmx4.0/work/input_example/CO.dat",
+            "original_sha256": "628d43217254933e9ee2a4c43d5265066d4ac7f2628d18d17ff10f07df235857",
+            "input_sha256": "d76f1603c681b83a2d6873b43f3d4a6049b0ce5a5254f99b86ac29b4b8c5915b",
+            "status": "pending"
+          },
+          {
+            "case": "Cr2",
+            "system": "Cr2",
+            "source": "/home/kawai/openmx4.0/work/input_example/Cr2.dat",
+            "original_sha256": "aae6bbdbec74e0dca7f97c2c592dd7170f7ee4edce50390a865d53073555e6fb",
+            "input_sha256": "05dc8ed504c85f4f3eee79e75cebb3a87e5a58a01d618613e24dd87a00591c60",
+            "status": "pending"
+          },
+          {
+            "case": "Crys-MnO",
+            "system": "Crys-MnO",
+            "source": "/home/kawai/openmx4.0/work/input_example/Crys-MnO.dat",
+            "original_sha256": "85756c40cc324e35764dacc68788f16d23d93fd34d7a10a57cbafbaeaa8e1175",
+            "input_sha256": "e1fcc5ef624dbe84ed4049e0f24779a8c5160da3b3c4f12207e67c1e8faa7502",
+            "status": "pending"
+          },
+          {
+            "case": "GaAs",
+            "system": "GaAs",
+            "source": "/home/kawai/openmx4.0/work/input_example/GaAs.dat",
+            "original_sha256": "b2571de088368e512c9967f770273aa6682563eb4bf77db5973b6d604bea1141",
+            "input_sha256": "3d6dd1ab2ff4f9f7e60cd5cd472c064e1f0b8a6f224b9b58a501d21f97048f68",
+            "status": "pending"
+          },
+          {
+            "case": "Glycine",
+            "system": "Glycine",
+            "source": "/home/kawai/openmx4.0/work/input_example/Glycine.dat",
+            "original_sha256": "f849e0cb5f880d55df52d168e6b811e81fd4bbdf267b8af9d3a9bcb0dd648b3f",
+            "input_sha256": "dfea2dc2dd811630499ae18fd966c74ab87259b2b01faa4299cc6bbd0ec9886e",
+            "status": "pending"
+          },
+          {
+            "case": "Graphite4",
+            "system": "Graphite4",
+            "source": "/home/kawai/openmx4.0/work/input_example/Graphite4.dat",
+            "original_sha256": "8e1b494fe68a87cd27e1ff663b28daad965589d05ee6744465fa6a859043a68d",
+            "input_sha256": "94ffaebf2b3f3255aea60b4662b4c629b101e2a0c2d69e6346c9978800157887",
+            "status": "pending"
+          },
+          {
+            "case": "H2O-EF",
+            "system": "H2O-EF",
+            "source": "/home/kawai/openmx4.0/work/input_example/H2O-EF.dat",
+            "original_sha256": "a296c2fc62e4b9d7e4a7bb80cb97086b9df35030f98392b7fef3961784292d80",
+            "input_sha256": "8aaa441c10006412dd20a2ada9a125f565ebb53b256fc7baa875ca4830f35b96",
+            "status": "pending"
+          },
+          {
+            "case": "H2O",
+            "system": "H2O",
+            "source": "/home/kawai/openmx4.0/work/input_example/H2O.dat",
+            "original_sha256": "0a423e482edaca4fbce88366bd6ee56ccf0f9546fd211e49653f4a6597e87dd9",
+            "input_sha256": "f07f2ab2d1ce430728f6ad11626a8a2d0ec74959b68816bcf6c2c90cae25351b",
+            "status": "pending"
+          },
+          {
+            "case": "HMn",
+            "system": "HMn",
+            "source": "/home/kawai/openmx4.0/work/input_example/HMn.dat",
+            "original_sha256": "7eb9c80d6b672b2ef8fca78f1c4f6158d65fe31cbfe96daa58d9d54e12cf3f75",
+            "input_sha256": "686cdb42932c3b54df8b6bd4678e281fe45201d424beb62bd46843fcf7c66ed0",
+            "status": "pending"
+          },
+          {
+            "case": "Methane",
+            "system": "Methane",
+            "source": "/home/kawai/openmx4.0/work/input_example/Methane.dat",
+            "original_sha256": "33bfd31ece53aece5c1f98bcc4d5cd3c3e5f65ca0eeb84b31df3528623d24fc8",
+            "input_sha256": "01cbc8496e1a35eb90fc9379e0502e8f5ce30940247004a78871d45071a748c1",
+            "status": "pending"
+          },
+          {
+            "case": "Mol_MnO",
+            "system": "Mol_MnO",
+            "source": "/home/kawai/openmx4.0/work/input_example/Mol_MnO.dat",
+            "original_sha256": "e5149431f1ac555a80f7f3c62e158d6baae9209ba129f7b353382a7489c65b39",
+            "input_sha256": "f94db451810319ba2ce1bdda3886688d621d397eca9cbc639cdddd0737be8454",
+            "status": "pending"
+          },
+          {
+            "case": "Ndia2",
+            "system": "Ndia2",
+            "source": "/home/kawai/openmx4.0/work/input_example/Ndia2.dat",
+            "original_sha256": "c7a1a3d42891934cc8a72fe8b71588f4a5f6f33c4201c0e5937cffc5418665d0",
+            "input_sha256": "9c5f5851c5afb4c2ec96170ebce3a81392aeb110be4e9df4558b86be735eab1b",
+            "status": "pending"
+          }
+        ]
+      },
+      "rank_environment": [
+        {
+          "rank": 0,
+          "pid": 573320,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            0,
+            1
+          ]
+        },
+        {
+          "rank": 1,
+          "pid": 573321,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            2,
+            3
+          ]
+        },
+        {
+          "rank": 2,
+          "pid": 573322,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            4,
+            5
+          ]
+        },
+        {
+          "rank": 3,
+          "pid": 573323,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            6,
+            7
+          ]
+        },
+        {
+          "rank": 4,
+          "pid": 573324,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            8,
+            9
+          ]
+        },
+        {
+          "rank": 5,
+          "pid": 573325,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            10,
+            11
+          ]
+        },
+        {
+          "rank": 6,
+          "pid": 573326,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            12,
+            13
+          ]
+        },
+        {
+          "rank": 7,
+          "pid": 573327,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            14,
+            15
+          ]
+        },
+        {
+          "rank": 8,
+          "pid": 573328,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            16,
+            17
+          ]
+        },
+        {
+          "rank": 9,
+          "pid": 573329,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            18,
+            19
+          ]
+        },
+        {
+          "rank": 10,
+          "pid": 573330,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            20,
+            21
+          ]
+        },
+        {
+          "rank": 11,
+          "pid": 573331,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            22,
+            23
+          ]
+        },
+        {
+          "rank": 12,
+          "pid": 573332,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            24,
+            25
+          ]
+        },
+        {
+          "rank": 13,
+          "pid": 573333,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            26,
+            27
+          ]
+        },
+        {
+          "rank": 14,
+          "pid": 573334,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            28,
+            29
+          ]
+        },
+        {
+          "rank": 15,
+          "pid": 573335,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            30,
+            31
+          ]
+        }
+      ]
+    },
+    {
+      "variant": "fork-cpu",
+      "test": "sidia333_nc_cluster",
+      "status": "completed",
+      "started": "2026-10-31T21:02:34.949035+09:00",
+      "directory": "/home/kawai/openmx4.0_gpu/work/codex_benchmark_20261031_refresh/runs/sidia333_nc_cluster-fork-cpu",
+      "normal_finish_markers": 1,
+      "ended": "2026-10-31T21:08:29.433181+09:00",
+      "returncode": 0,
+      "wall_seconds": 354.48369051516056,
+      "peak_rss_gib": 48.18048095703125,
+      "min_available_gib": 201.2588348388672,
+      "completed": 1,
+      "expected": 1,
+      "validation_pass": true,
+      "command": {
+        "command": [
+          "/home/kawai/opt/openmpi-rocmclang/bin/mpirun",
+          "-np",
+          "16",
+          "--map-by",
+          "slot:PE=2",
+          "--bind-to",
+          "core",
+          "/home/kawai/openmx4.0_gpu/work/codex_benchmark_20261031_refresh/installed/fork-cpu-32e3f3981593/openmx",
+          "input.dat",
+          "-nt",
+          "2"
+        ],
+        "controls": {
+          "OMP_NUM_THREADS": "2",
+          "OMP_DYNAMIC": "FALSE",
+          "OMP_PROC_BIND": "close",
+          "OMP_PLACES": "cores",
+          "OMP_MAX_ACTIVE_LEVELS": "1",
+          "OPENBLAS_NUM_THREADS": "1",
+          "BLIS_NUM_THREADS": "2",
+          "MKL_NUM_THREADS": "1",
+          "HIP_VISIBLE_DEVICES": "0",
+          "ROCR_VISIBLE_DEVICES": "0",
+          "LIBOMPTARGET_HEAP_SIZE": "67108864",
+          "HSA_OVERRIDE_CPU_AFFINITY_DEBUG": "0",
+          "LD_LIBRARY_PATH": "/home/kawai/openmx4.0_gpu/work/codex_rocm_upgrade_20261025/sdk/opt/rocm/core-10.1/llvm/lib:/home/kawai/openmx4.0_gpu/work/codex_rocm_upgrade_20261025/sdk/opt/rocm/core-10.1/lib:/home/kawai/opt/openmpi-rocmclang/lib:/opt/AMD/aocl/aocl-linux-aocc-5.2.0/aocc/lib:/opt/AMD/aocc-compiler-5.1.0/lib",
+          "OPENMX_GPU": "0",
+          "LD_PRELOAD": "/home/kawai/openmx4.0_gpu/work/codex_benchmark_20261031_refresh/installed/fork-cpu-32e3f3981593/lib/libopenmx_core.so:/home/kawai/openmx4.0_gpu/work/codex_benchmark_20261031_refresh/installed/fork-cpu-32e3f3981593/lib/libopenmx_host_simd.so"
+        },
+        "binary_sha256": "063ddccb2e4ce445bd648308e74ad98ee44c202323d06d20a1a155b76bca0823",
+        "inputs": [
+          {
+            "case": "sidia333_nc_cluster",
+            "system": "sidia333_nc_cluster",
+            "source": "/home/kawai/openmx4.0_gpu/benchmarks/inputs/sidia333_nc_cluster.dat",
+            "original_sha256": "9c5466abf560c6481b83ec9a51976f4b218856a1da330e5a209b9041239decd0",
+            "input_sha256": "d9578dddb6e1239013653b846d6b148e644ac7cba62d6ceacf53c31c2d5feb60",
+            "status": "pending"
+          }
+        ]
+      },
+      "rank_environment": [
+        {
+          "rank": 0,
+          "pid": 573663,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            0,
+            1
+          ]
+        },
+        {
+          "rank": 1,
+          "pid": 573664,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            2,
+            3
+          ]
+        },
+        {
+          "rank": 2,
+          "pid": 573665,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            4,
+            5
+          ]
+        },
+        {
+          "rank": 3,
+          "pid": 573666,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            6,
+            7
+          ]
+        },
+        {
+          "rank": 4,
+          "pid": 573667,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            8,
+            9
+          ]
+        },
+        {
+          "rank": 5,
+          "pid": 573668,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            10,
+            11
+          ]
+        },
+        {
+          "rank": 6,
+          "pid": 573669,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            12,
+            13
+          ]
+        },
+        {
+          "rank": 7,
+          "pid": 573670,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            14,
+            15
+          ]
+        },
+        {
+          "rank": 8,
+          "pid": 573671,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            16,
+            17
+          ]
+        },
+        {
+          "rank": 9,
+          "pid": 573672,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            18,
+            19
+          ]
+        },
+        {
+          "rank": 10,
+          "pid": 573673,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            20,
+            21
+          ]
+        },
+        {
+          "rank": 11,
+          "pid": 573674,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            22,
+            23
+          ]
+        },
+        {
+          "rank": 12,
+          "pid": 573675,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            24,
+            25
+          ]
+        },
+        {
+          "rank": 13,
+          "pid": 573676,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            26,
+            27
+          ]
+        },
+        {
+          "rank": 14,
+          "pid": 573677,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            28,
+            29
+          ]
+        },
+        {
+          "rank": 15,
+          "pid": 573678,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            30,
+            31
+          ]
+        }
+      ]
+    },
+    {
+      "variant": "fork-gpu",
+      "test": "sidia333_nc_cluster",
+      "status": "completed",
+      "started": "2026-10-31T21:08:29.456988+09:00",
+      "directory": "/home/kawai/openmx4.0_gpu/work/codex_benchmark_20261031_refresh/runs/sidia333_nc_cluster-fork-gpu",
+      "normal_finish_markers": 1,
+      "ended": "2026-10-31T21:11:47.015693+09:00",
+      "returncode": 0,
+      "wall_seconds": 197.55823301896453,
+      "peak_rss_gib": 66.50242614746094,
+      "min_available_gib": 183.42010498046875,
+      "completed": 1,
+      "expected": 1,
+      "validation_pass": true,
+      "command": {
+        "command": [
+          "/home/kawai/opt/openmpi-rocmclang/bin/mpirun",
+          "-np",
+          "16",
+          "--map-by",
+          "slot:PE=2",
+          "--bind-to",
+          "core",
+          "/home/kawai/openmx4.0_gpu/work/codex_benchmark_20261031_refresh/installed/fork-gpu-32e3f3981593/openmx",
+          "input.dat",
+          "-nt",
+          "2"
+        ],
+        "controls": {
+          "OMP_NUM_THREADS": "2",
+          "OMP_DYNAMIC": "FALSE",
+          "OMP_PROC_BIND": "close",
+          "OMP_PLACES": "cores",
+          "OMP_MAX_ACTIVE_LEVELS": "1",
+          "OPENBLAS_NUM_THREADS": "1",
+          "BLIS_NUM_THREADS": "2",
+          "MKL_NUM_THREADS": "1",
+          "HIP_VISIBLE_DEVICES": "0",
+          "ROCR_VISIBLE_DEVICES": "0",
+          "LIBOMPTARGET_HEAP_SIZE": "67108864",
+          "HSA_OVERRIDE_CPU_AFFINITY_DEBUG": "0",
+          "LD_LIBRARY_PATH": "/home/kawai/openmx4.0_gpu/work/codex_rocm_upgrade_20261025/sdk/opt/rocm/core-10.1/llvm/lib:/home/kawai/openmx4.0_gpu/work/codex_rocm_upgrade_20261025/sdk/opt/rocm/core-10.1/lib:/home/kawai/opt/openmpi-rocmclang/lib:/opt/AMD/aocl/aocl-linux-aocc-5.2.0/aocc/lib:/opt/AMD/aocc-compiler-5.1.0/lib",
+          "OPENMX_GPU": "1",
+          "HSA_ENABLE_SDMA": "0",
+          "LD_PRELOAD": "/home/kawai/openmx4.0_gpu/work/codex_benchmark_20261031_refresh/installed/fork-gpu-32e3f3981593/lib/libopenmx_core.so:/home/kawai/openmx4.0_gpu/work/codex_benchmark_20261031_refresh/installed/fork-gpu-32e3f3981593/lib/libopenmx_host_simd.so"
+        },
+        "binary_sha256": "063ddccb2e4ce445bd648308e74ad98ee44c202323d06d20a1a155b76bca0823",
+        "inputs": [
+          {
+            "case": "sidia333_nc_cluster",
+            "system": "sidia333_nc_cluster",
+            "source": "/home/kawai/openmx4.0_gpu/benchmarks/inputs/sidia333_nc_cluster.dat",
+            "original_sha256": "9c5466abf560c6481b83ec9a51976f4b218856a1da330e5a209b9041239decd0",
+            "input_sha256": "dede3130a938b71813fb5108cfdd29b41d908db7e7273f573a0b599dc28464e3",
+            "status": "pending"
+          }
+        ]
+      },
+      "rank_environment": [
+        {
+          "rank": 0,
+          "pid": 574492,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            0,
+            1
+          ]
+        },
+        {
+          "rank": 1,
+          "pid": 574493,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            2,
+            3
+          ]
+        },
+        {
+          "rank": 2,
+          "pid": 574494,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            4,
+            5
+          ]
+        },
+        {
+          "rank": 3,
+          "pid": 574495,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            6,
+            7
+          ]
+        },
+        {
+          "rank": 4,
+          "pid": 574496,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            8,
+            9
+          ]
+        },
+        {
+          "rank": 5,
+          "pid": 574497,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            10,
+            11
+          ]
+        },
+        {
+          "rank": 6,
+          "pid": 574498,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            12,
+            13
+          ]
+        },
+        {
+          "rank": 7,
+          "pid": 574499,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            14,
+            15
+          ]
+        },
+        {
+          "rank": 8,
+          "pid": 574500,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            16,
+            17
+          ]
+        },
+        {
+          "rank": 9,
+          "pid": 574501,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            18,
+            19
+          ]
+        },
+        {
+          "rank": 10,
+          "pid": 574502,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            20,
+            21
+          ]
+        },
+        {
+          "rank": 11,
+          "pid": 574503,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            22,
+            23
+          ]
+        },
+        {
+          "rank": 12,
+          "pid": 574504,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            24,
+            25
+          ]
+        },
+        {
+          "rank": 13,
+          "pid": 574505,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            26,
+            27
+          ]
+        },
+        {
+          "rank": 14,
+          "pid": 574506,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            28,
+            29
+          ]
+        },
+        {
+          "rank": 15,
+          "pid": 574507,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            30,
+            31
+          ]
+        }
+      ]
+    },
+    {
+      "variant": "fork-cpu",
+      "test": "cghelgeo",
+      "status": "completed",
+      "started": "2026-10-31T21:11:47.040946+09:00",
+      "directory": "/home/kawai/openmx4.0_gpu/work/codex_benchmark_20261031_refresh/runs/cghelgeo-fork-cpu",
+      "normal_finish_markers": 1,
+      "ended": "2026-10-31T21:53:50.504638+09:00",
+      "returncode": 0,
+      "wall_seconds": 2523.463232147973,
+      "peak_rss_gib": 48.662723541259766,
+      "min_available_gib": 200.32714080810547,
+      "completed": 1,
+      "expected": 1,
+      "validation_pass": true,
+      "command": {
+        "command": [
+          "/home/kawai/opt/openmpi-rocmclang/bin/mpirun",
+          "-np",
+          "16",
+          "--map-by",
+          "slot:PE=2",
+          "--bind-to",
+          "core",
+          "/home/kawai/openmx4.0_gpu/work/codex_benchmark_20261031_refresh/installed/fork-cpu-32e3f3981593/openmx",
+          "input.dat",
+          "-nt",
+          "2"
+        ],
+        "controls": {
+          "OMP_NUM_THREADS": "2",
+          "OMP_DYNAMIC": "FALSE",
+          "OMP_PROC_BIND": "close",
+          "OMP_PLACES": "cores",
+          "OMP_MAX_ACTIVE_LEVELS": "1",
+          "OPENBLAS_NUM_THREADS": "1",
+          "BLIS_NUM_THREADS": "2",
+          "MKL_NUM_THREADS": "1",
+          "HIP_VISIBLE_DEVICES": "0",
+          "ROCR_VISIBLE_DEVICES": "0",
+          "LIBOMPTARGET_HEAP_SIZE": "67108864",
+          "HSA_OVERRIDE_CPU_AFFINITY_DEBUG": "0",
+          "LD_LIBRARY_PATH": "/home/kawai/openmx4.0_gpu/work/codex_rocm_upgrade_20261025/sdk/opt/rocm/core-10.1/llvm/lib:/home/kawai/openmx4.0_gpu/work/codex_rocm_upgrade_20261025/sdk/opt/rocm/core-10.1/lib:/home/kawai/opt/openmpi-rocmclang/lib:/opt/AMD/aocl/aocl-linux-aocc-5.2.0/aocc/lib:/opt/AMD/aocc-compiler-5.1.0/lib",
+          "OPENMX_GPU": "0",
+          "LD_PRELOAD": "/home/kawai/openmx4.0_gpu/work/codex_benchmark_20261031_refresh/installed/fork-cpu-32e3f3981593/lib/libopenmx_core.so:/home/kawai/openmx4.0_gpu/work/codex_benchmark_20261031_refresh/installed/fork-cpu-32e3f3981593/lib/libopenmx_host_simd.so"
+        },
+        "binary_sha256": "063ddccb2e4ce445bd648308e74ad98ee44c202323d06d20a1a155b76bca0823",
+        "inputs": [
+          {
+            "case": "cghelgeo",
+            "system": "cghelgeo",
+            "source": "/home/kawai/openmx4.0_gpu/benchmarks/inputs/cghelgeo.dat",
+            "original_sha256": "9c3958e470820ab2182af859b4749a0f3375c41d1a56ac013e0f398b441d0ff7",
+            "input_sha256": "17e0b1c59e4825ba024a017c52bcf3173b27697bafdb5753267fa02a4b46066f",
+            "status": "pending"
+          }
+        ]
+      },
+      "rank_environment": [
+        {
+          "rank": 0,
+          "pid": 575143,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            0,
+            1
+          ]
+        },
+        {
+          "rank": 1,
+          "pid": 575144,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            2,
+            3
+          ]
+        },
+        {
+          "rank": 2,
+          "pid": 575145,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            4,
+            5
+          ]
+        },
+        {
+          "rank": 3,
+          "pid": 575146,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            6,
+            7
+          ]
+        },
+        {
+          "rank": 4,
+          "pid": 575147,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            8,
+            9
+          ]
+        },
+        {
+          "rank": 5,
+          "pid": 575148,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            10,
+            11
+          ]
+        },
+        {
+          "rank": 6,
+          "pid": 575149,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            12,
+            13
+          ]
+        },
+        {
+          "rank": 7,
+          "pid": 575150,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            14,
+            15
+          ]
+        },
+        {
+          "rank": 8,
+          "pid": 575151,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            16,
+            17
+          ]
+        },
+        {
+          "rank": 9,
+          "pid": 575152,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            18,
+            19
+          ]
+        },
+        {
+          "rank": 10,
+          "pid": 575153,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            20,
+            21
+          ]
+        },
+        {
+          "rank": 11,
+          "pid": 575154,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            22,
+            23
+          ]
+        },
+        {
+          "rank": 12,
+          "pid": 575155,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            24,
+            25
+          ]
+        },
+        {
+          "rank": 13,
+          "pid": 575156,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            26,
+            27
+          ]
+        },
+        {
+          "rank": 14,
+          "pid": 575157,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            28,
+            29
+          ]
+        },
+        {
+          "rank": 15,
+          "pid": 575158,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            30,
+            31
+          ]
+        }
+      ]
+    },
+    {
+      "variant": "fork-gpu",
+      "test": "cghelgeo",
+      "status": "completed",
+      "started": "2026-10-31T21:53:50.531480+09:00",
+      "directory": "/home/kawai/openmx4.0_gpu/work/codex_benchmark_20261031_refresh/runs/cghelgeo-fork-gpu",
+      "normal_finish_markers": 1,
+      "ended": "2026-10-31T22:36:10.617390+09:00",
+      "returncode": 0,
+      "wall_seconds": 2540.085406426806,
+      "peak_rss_gib": 65.28925704956055,
+      "min_available_gib": 184.6447868347168,
+      "completed": 1,
+      "expected": 1,
+      "validation_pass": true,
+      "command": {
+        "command": [
+          "/home/kawai/opt/openmpi-rocmclang/bin/mpirun",
+          "-np",
+          "16",
+          "--map-by",
+          "slot:PE=2",
+          "--bind-to",
+          "core",
+          "/home/kawai/openmx4.0_gpu/work/codex_benchmark_20261031_refresh/installed/fork-gpu-32e3f3981593/openmx",
+          "input.dat",
+          "-nt",
+          "2"
+        ],
+        "controls": {
+          "OMP_NUM_THREADS": "2",
+          "OMP_DYNAMIC": "FALSE",
+          "OMP_PROC_BIND": "close",
+          "OMP_PLACES": "cores",
+          "OMP_MAX_ACTIVE_LEVELS": "1",
+          "OPENBLAS_NUM_THREADS": "1",
+          "BLIS_NUM_THREADS": "2",
+          "MKL_NUM_THREADS": "1",
+          "HIP_VISIBLE_DEVICES": "0",
+          "ROCR_VISIBLE_DEVICES": "0",
+          "LIBOMPTARGET_HEAP_SIZE": "67108864",
+          "HSA_OVERRIDE_CPU_AFFINITY_DEBUG": "0",
+          "LD_LIBRARY_PATH": "/home/kawai/openmx4.0_gpu/work/codex_rocm_upgrade_20261025/sdk/opt/rocm/core-10.1/llvm/lib:/home/kawai/openmx4.0_gpu/work/codex_rocm_upgrade_20261025/sdk/opt/rocm/core-10.1/lib:/home/kawai/opt/openmpi-rocmclang/lib:/opt/AMD/aocl/aocl-linux-aocc-5.2.0/aocc/lib:/opt/AMD/aocc-compiler-5.1.0/lib",
+          "OPENMX_GPU": "1",
+          "HSA_ENABLE_SDMA": "0",
+          "LD_PRELOAD": "/home/kawai/openmx4.0_gpu/work/codex_benchmark_20261031_refresh/installed/fork-gpu-32e3f3981593/lib/libopenmx_core.so:/home/kawai/openmx4.0_gpu/work/codex_benchmark_20261031_refresh/installed/fork-gpu-32e3f3981593/lib/libopenmx_host_simd.so"
+        },
+        "binary_sha256": "063ddccb2e4ce445bd648308e74ad98ee44c202323d06d20a1a155b76bca0823",
+        "inputs": [
+          {
+            "case": "cghelgeo",
+            "system": "cghelgeo",
+            "source": "/home/kawai/openmx4.0_gpu/benchmarks/inputs/cghelgeo.dat",
+            "original_sha256": "9c3958e470820ab2182af859b4749a0f3375c41d1a56ac013e0f398b441d0ff7",
+            "input_sha256": "6d73d87569cdcf9b46bb1d16f2395086cfadb692b5ee73c4e636a537d8d6bd38",
+            "status": "pending"
+          }
+        ]
+      },
+      "rank_environment": [
+        {
+          "rank": 0,
+          "pid": 580456,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            0,
+            1
+          ]
+        },
+        {
+          "rank": 1,
+          "pid": 580457,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            2,
+            3
+          ]
+        },
+        {
+          "rank": 2,
+          "pid": 580458,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            4,
+            5
+          ]
+        },
+        {
+          "rank": 3,
+          "pid": 580459,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            6,
+            7
+          ]
+        },
+        {
+          "rank": 4,
+          "pid": 580460,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            8,
+            9
+          ]
+        },
+        {
+          "rank": 5,
+          "pid": 580461,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            10,
+            11
+          ]
+        },
+        {
+          "rank": 6,
+          "pid": 580462,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            12,
+            13
+          ]
+        },
+        {
+          "rank": 7,
+          "pid": 580463,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            14,
+            15
+          ]
+        },
+        {
+          "rank": 8,
+          "pid": 580464,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            16,
+            17
+          ]
+        },
+        {
+          "rank": 9,
+          "pid": 580465,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            18,
+            19
+          ]
+        },
+        {
+          "rank": 10,
+          "pid": 580466,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            20,
+            21
+          ]
+        },
+        {
+          "rank": 11,
+          "pid": 580467,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            22,
+            23
+          ]
+        },
+        {
+          "rank": 12,
+          "pid": 580468,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            24,
+            25
+          ]
+        },
+        {
+          "rank": 13,
+          "pid": 580469,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            26,
+            27
+          ]
+        },
+        {
+          "rank": 14,
+          "pid": 580470,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            28,
+            29
+          ]
+        },
+        {
+          "rank": 15,
+          "pid": 580471,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            30,
+            31
+          ]
+        }
+      ]
+    },
+    {
+      "variant": "fork-cpu",
+      "test": "L",
+      "status": "completed",
+      "started": "2026-10-31T22:36:10.663792+09:00",
+      "directory": "/home/kawai/openmx4.0_gpu/work/codex_benchmark_20261031_refresh/runs/L-fork-cpu",
+      "normal_finish_markers": 16,
+      "ended": "2026-10-31T23:23:19.763913+09:00",
+      "returncode": 0,
+      "wall_seconds": 2829.099424084183,
+      "peak_rss_gib": 42.081600189208984,
+      "min_available_gib": 207.28208541870117,
+      "completed": 16,
+      "expected": 16,
+      "validation_pass": true,
+      "command": {
+        "command": [
+          "/home/kawai/opt/openmpi-rocmclang/bin/mpirun",
+          "-np",
+          "16",
+          "--map-by",
+          "slot:PE=2",
+          "--bind-to",
+          "core",
+          "/home/kawai/openmx4.0_gpu/work/codex_benchmark_20261031_refresh/installed/fork-cpu-32e3f3981593/openmx",
+          "-runtestL",
+          "-nt",
+          "2"
+        ],
+        "controls": {
+          "OMP_NUM_THREADS": "2",
+          "OMP_DYNAMIC": "FALSE",
+          "OMP_PROC_BIND": "close",
+          "OMP_PLACES": "cores",
+          "OMP_MAX_ACTIVE_LEVELS": "1",
+          "OPENBLAS_NUM_THREADS": "1",
+          "BLIS_NUM_THREADS": "2",
+          "MKL_NUM_THREADS": "1",
+          "HIP_VISIBLE_DEVICES": "0",
+          "ROCR_VISIBLE_DEVICES": "0",
+          "LIBOMPTARGET_HEAP_SIZE": "67108864",
+          "HSA_OVERRIDE_CPU_AFFINITY_DEBUG": "0",
+          "LD_LIBRARY_PATH": "/home/kawai/openmx4.0_gpu/work/codex_rocm_upgrade_20261025/sdk/opt/rocm/core-10.1/llvm/lib:/home/kawai/openmx4.0_gpu/work/codex_rocm_upgrade_20261025/sdk/opt/rocm/core-10.1/lib:/home/kawai/opt/openmpi-rocmclang/lib:/opt/AMD/aocl/aocl-linux-aocc-5.2.0/aocc/lib:/opt/AMD/aocc-compiler-5.1.0/lib",
+          "OPENMX_GPU": "0",
+          "LD_PRELOAD": "/home/kawai/openmx4.0_gpu/work/codex_benchmark_20261031_refresh/installed/fork-cpu-32e3f3981593/lib/libopenmx_core.so:/home/kawai/openmx4.0_gpu/work/codex_benchmark_20261031_refresh/installed/fork-cpu-32e3f3981593/lib/libopenmx_host_simd.so"
+        },
+        "binary_sha256": "063ddccb2e4ce445bd648308e74ad98ee44c202323d06d20a1a155b76bca0823",
+        "inputs": [
+          {
+            "case": "5_5_13COb2",
+            "system": "5_5_13COb2",
+            "source": "/home/kawai/openmx4.0/work/large_example/5_5_13COb2.dat",
+            "original_sha256": "9b017828abfd9d30635f3dd46af549427bd05f1af48484bce7405bcd77cdae2b",
+            "input_sha256": "4eb1db197745e0474c18d7e8f00950f69e15e06e2dda1205f19fd802bd12ccc0",
+            "status": "pending"
+          },
+          {
+            "case": "B2C62_Band",
+            "system": "B2C62_Band",
+            "source": "/home/kawai/openmx4.0/work/large_example/B2C62_Band.dat",
+            "original_sha256": "880b8bc61e5220c991aa145c032b2a22b3f277c2e36c558bb4e5f113c6510a12",
+            "input_sha256": "916e9131bcd577da5b72ce0d8ebc1b89b22a139997cc9f54cd5706358f063e62",
+            "status": "pending"
+          },
+          {
+            "case": "CG15c-DC-LNO",
+            "system": "CG15c-DC-LNO",
+            "source": "/home/kawai/openmx4.0/work/large_example/CG15c-DC-LNO.dat",
+            "original_sha256": "0b6857ccb981b5b840e0fb03eecc8a7e22706b62bea8bb136f6559c937e47978",
+            "input_sha256": "3221c9fc1022d1dbde2b523fd7a54097e303a751287afbbccba180c493729d9f",
+            "status": "pending"
+          },
+          {
+            "case": "DIA512-1",
+            "system": "DIA512-1",
+            "source": "/home/kawai/openmx4.0/work/large_example/DIA512-1.dat",
+            "original_sha256": "b667a8aed1b04b6e7468c279ce22c002ba402614894564fe3bd34501bd6cc02f",
+            "input_sha256": "101ecf5ea62b88d37cb5e868dfce01b0181bfaef6a3845fd1a1f54c339049ca0",
+            "status": "pending"
+          },
+          {
+            "case": "FeBCC",
+            "system": "FeBCC",
+            "source": "/home/kawai/openmx4.0/work/large_example/FeBCC.dat",
+            "original_sha256": "2d56ddf2c8a0a62408730f2e35b19f61b14b47441d7f06975dbbea741ba93e76",
+            "input_sha256": "97bd56d494df18eba6b2851c751ee0dfbf2ece7393eeaf060614ec9e609d3339",
+            "status": "pending"
+          },
+          {
+            "case": "GEL",
+            "system": "GEL",
+            "source": "/home/kawai/openmx4.0/work/large_example/GEL.dat",
+            "original_sha256": "991bdd261adcea7f26f173075a557b372397116560c4d2d15e254b80322ef053",
+            "input_sha256": "9f7bb534d09f68805044f29173c0cf9b3eecb147144b857d6b1860a6038c2aca",
+            "status": "pending"
+          },
+          {
+            "case": "GFRAG",
+            "system": "GFRAG",
+            "source": "/home/kawai/openmx4.0/work/large_example/GFRAG.dat",
+            "original_sha256": "7c9241d390850f5f2b57c5e9d0e6bdcf3b2739fff3d067f630ab02117294cd9a",
+            "input_sha256": "008189f7abfdde60042d78b115d026a5e0ada550f2baa9be44319c97e6c157c4",
+            "status": "pending"
+          },
+          {
+            "case": "GGFF",
+            "system": "GGFF",
+            "source": "/home/kawai/openmx4.0/work/large_example/GGFF.dat",
+            "original_sha256": "6d06805e04e83ada2a3069c0b8ade2c3fcfbf300f7901af00caeefb7a0dca6e8",
+            "input_sha256": "468169d9bf72d6e71a81549f15ee3e09e1e5c38045b348e147026f9670a31db9",
+            "status": "pending"
+          },
+          {
+            "case": "MCCN",
+            "system": "MCCN",
+            "source": "/home/kawai/openmx4.0/work/large_example/MCCN.dat",
+            "original_sha256": "6c0fd22cb34c148df27963f5ac7f913091d9ccadbafbfcaba4e064f26c2db476",
+            "input_sha256": "595f823ee6d6070def90db6c29f66195798f3c4aaf6fdf9e91bd55f8a188e6b7",
+            "status": "pending"
+          },
+          {
+            "case": "Mn12_148_F",
+            "system": "Mn12_148_F",
+            "source": "/home/kawai/openmx4.0/work/large_example/Mn12_148_F.dat",
+            "original_sha256": "b4df5faef6821dbe262ef826fa206ffa5024679068cef845dc19ef0f8d576c8a",
+            "input_sha256": "cab4c04be7843f664c78aa809ca8152498690d5586999282f2a82e91b154fb4d",
+            "status": "pending"
+          },
+          {
+            "case": "N1C999",
+            "system": "N1C999",
+            "source": "/home/kawai/openmx4.0/work/large_example/N1C999.dat",
+            "original_sha256": "96744e60f7cb48cb57880ab2ba10523c45b01a89e350ea8629754d99e8fc0493",
+            "input_sha256": "4150be2e43fd6824710e6706b5a0dd5a6210130521cd22afecdae0c45c1da81d",
+            "status": "pending"
+          },
+          {
+            "case": "Ni63-O64",
+            "system": "Ni63-O64",
+            "source": "/home/kawai/openmx4.0/work/large_example/Ni63-O64.dat",
+            "original_sha256": "b6e4a166250fc81b2ee98b28bfac9cc8fa7ad494ac0874d879152ad687124bcf",
+            "input_sha256": "9a64e0ac2975ba914e601a79894f54bc7649d70ae1490c7c69f7d67429fcc5d1",
+            "status": "pending"
+          },
+          {
+            "case": "Pt63",
+            "system": "Pt63",
+            "source": "/home/kawai/openmx4.0/work/large_example/Pt63.dat",
+            "original_sha256": "96c76aa83163e8d3db6feed5f4668520ea86aecf6d2abf70229286095aea06ec",
+            "input_sha256": "400ae6c07f3b2fd62b6664024326f9d82f03a4165db9149938e93756b74a091f",
+            "status": "pending"
+          },
+          {
+            "case": "SialicAcid",
+            "system": "SialicAcid",
+            "source": "/home/kawai/openmx4.0/work/large_example/SialicAcid.dat",
+            "original_sha256": "2be602e61ba4761bd772f7e14c8b6f57497b30a7d278062a496300bfe3d5074c",
+            "input_sha256": "d75a4a873cf2b501d4b235b3a17c14091e0cbe16a5129ea7a59c8cb7e066cb0c",
+            "status": "pending"
+          },
+          {
+            "case": "ZrB2_2x2",
+            "system": "ZrB2_2x2",
+            "source": "/home/kawai/openmx4.0/work/large_example/ZrB2_2x2.dat",
+            "original_sha256": "6269cb09d553251bed54f475d3e0790c4554a0a40cc0e125d218399786996a77",
+            "input_sha256": "bec5269640f73d71c32d2f047682e198213d1a8158a9725e0efeaa39f41030b8",
+            "status": "pending"
+          },
+          {
+            "case": "nsV4Bz5",
+            "system": "nsV4Bz5",
+            "source": "/home/kawai/openmx4.0/work/large_example/nsV4Bz5.dat",
+            "original_sha256": "bba6c1f8ad15574e0d938101a1f1e9541e6f8bf5d7ac146d98d6f803d5a80c9e",
+            "input_sha256": "03ed331c2bbac36293fac90288589bcaa3a3e369d3689795312e3c3801911743",
+            "status": "pending"
+          }
+        ]
+      },
+      "rank_environment": [
+        {
+          "rank": 0,
+          "pid": 586003,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            0,
+            1
+          ]
+        },
+        {
+          "rank": 1,
+          "pid": 586004,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            2,
+            3
+          ]
+        },
+        {
+          "rank": 2,
+          "pid": 586005,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            4,
+            5
+          ]
+        },
+        {
+          "rank": 3,
+          "pid": 586006,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            6,
+            7
+          ]
+        },
+        {
+          "rank": 4,
+          "pid": 586007,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            8,
+            9
+          ]
+        },
+        {
+          "rank": 5,
+          "pid": 586008,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            10,
+            11
+          ]
+        },
+        {
+          "rank": 6,
+          "pid": 586009,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            12,
+            13
+          ]
+        },
+        {
+          "rank": 7,
+          "pid": 586010,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            14,
+            15
+          ]
+        },
+        {
+          "rank": 8,
+          "pid": 586011,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            16,
+            17
+          ]
+        },
+        {
+          "rank": 9,
+          "pid": 586012,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            18,
+            19
+          ]
+        },
+        {
+          "rank": 10,
+          "pid": 586013,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            20,
+            21
+          ]
+        },
+        {
+          "rank": 11,
+          "pid": 586014,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            22,
+            23
+          ]
+        },
+        {
+          "rank": 12,
+          "pid": 586015,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            24,
+            25
+          ]
+        },
+        {
+          "rank": 13,
+          "pid": 586016,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            26,
+            27
+          ]
+        },
+        {
+          "rank": 14,
+          "pid": 586017,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            28,
+            29
+          ]
+        },
+        {
+          "rank": 15,
+          "pid": 586018,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            30,
+            31
+          ]
+        }
+      ]
+    },
+    {
+      "variant": "fork-gpu",
+      "test": "L",
+      "status": "completed",
+      "started": "2026-10-31T23:23:19.860491+09:00",
+      "directory": "/home/kawai/openmx4.0_gpu/work/codex_benchmark_20261031_refresh/runs/L-fork-gpu",
+      "normal_finish_markers": 16,
+      "ended": "2026-11-01T00:28:44.921180+09:00",
+      "returncode": 0,
+      "wall_seconds": 3925.060301932972,
+      "peak_rss_gib": 64.78369903564453,
+      "min_available_gib": 186.47040939331055,
+      "completed": 16,
+      "expected": 16,
+      "validation_pass": true,
+      "command": {
+        "command": [
+          "/home/kawai/opt/openmpi-rocmclang/bin/mpirun",
+          "-np",
+          "16",
+          "--map-by",
+          "slot:PE=2",
+          "--bind-to",
+          "core",
+          "/home/kawai/openmx4.0_gpu/work/codex_benchmark_20261031_refresh/installed/fork-gpu-32e3f3981593/openmx",
+          "-runtestL",
+          "-nt",
+          "2"
+        ],
+        "controls": {
+          "OMP_NUM_THREADS": "2",
+          "OMP_DYNAMIC": "FALSE",
+          "OMP_PROC_BIND": "close",
+          "OMP_PLACES": "cores",
+          "OMP_MAX_ACTIVE_LEVELS": "1",
+          "OPENBLAS_NUM_THREADS": "1",
+          "BLIS_NUM_THREADS": "2",
+          "MKL_NUM_THREADS": "1",
+          "HIP_VISIBLE_DEVICES": "0",
+          "ROCR_VISIBLE_DEVICES": "0",
+          "LIBOMPTARGET_HEAP_SIZE": "67108864",
+          "HSA_OVERRIDE_CPU_AFFINITY_DEBUG": "0",
+          "LD_LIBRARY_PATH": "/home/kawai/openmx4.0_gpu/work/codex_rocm_upgrade_20261025/sdk/opt/rocm/core-10.1/llvm/lib:/home/kawai/openmx4.0_gpu/work/codex_rocm_upgrade_20261025/sdk/opt/rocm/core-10.1/lib:/home/kawai/opt/openmpi-rocmclang/lib:/opt/AMD/aocl/aocl-linux-aocc-5.2.0/aocc/lib:/opt/AMD/aocc-compiler-5.1.0/lib",
+          "OPENMX_GPU": "1",
+          "HSA_ENABLE_SDMA": "0",
+          "LD_PRELOAD": "/home/kawai/openmx4.0_gpu/work/codex_benchmark_20261031_refresh/installed/fork-gpu-32e3f3981593/lib/libopenmx_core.so:/home/kawai/openmx4.0_gpu/work/codex_benchmark_20261031_refresh/installed/fork-gpu-32e3f3981593/lib/libopenmx_host_simd.so"
+        },
+        "binary_sha256": "063ddccb2e4ce445bd648308e74ad98ee44c202323d06d20a1a155b76bca0823",
+        "inputs": [
+          {
+            "case": "5_5_13COb2",
+            "system": "5_5_13COb2",
+            "source": "/home/kawai/openmx4.0/work/large_example/5_5_13COb2.dat",
+            "original_sha256": "9b017828abfd9d30635f3dd46af549427bd05f1af48484bce7405bcd77cdae2b",
+            "input_sha256": "163aaea803e803f43e17545c1262f0bff24716fc68397481a75c76d13ab83b7c",
+            "status": "pending"
+          },
+          {
+            "case": "B2C62_Band",
+            "system": "B2C62_Band",
+            "source": "/home/kawai/openmx4.0/work/large_example/B2C62_Band.dat",
+            "original_sha256": "880b8bc61e5220c991aa145c032b2a22b3f277c2e36c558bb4e5f113c6510a12",
+            "input_sha256": "f573ffd8f7ff5c74320cc9e0f494acdb65b608cc3806747114ec62bc20a7fcb6",
+            "status": "pending"
+          },
+          {
+            "case": "CG15c-DC-LNO",
+            "system": "CG15c-DC-LNO",
+            "source": "/home/kawai/openmx4.0/work/large_example/CG15c-DC-LNO.dat",
+            "original_sha256": "0b6857ccb981b5b840e0fb03eecc8a7e22706b62bea8bb136f6559c937e47978",
+            "input_sha256": "62bcf8e3dca5e4ffabc28253cc2dad650b1e972bd1700f232ba24e51b5534dd3",
+            "status": "pending"
+          },
+          {
+            "case": "DIA512-1",
+            "system": "DIA512-1",
+            "source": "/home/kawai/openmx4.0/work/large_example/DIA512-1.dat",
+            "original_sha256": "b667a8aed1b04b6e7468c279ce22c002ba402614894564fe3bd34501bd6cc02f",
+            "input_sha256": "d1cc0859dfddcdaf2a7c07f51f7b0d3c365a964347d01c7a8088b16ff80f9ca1",
+            "status": "pending"
+          },
+          {
+            "case": "FeBCC",
+            "system": "FeBCC",
+            "source": "/home/kawai/openmx4.0/work/large_example/FeBCC.dat",
+            "original_sha256": "2d56ddf2c8a0a62408730f2e35b19f61b14b47441d7f06975dbbea741ba93e76",
+            "input_sha256": "0f35bb4adf716a25713eab965bbb47eaaa3715ab30d7655210e161a37c936270",
+            "status": "pending"
+          },
+          {
+            "case": "GEL",
+            "system": "GEL",
+            "source": "/home/kawai/openmx4.0/work/large_example/GEL.dat",
+            "original_sha256": "991bdd261adcea7f26f173075a557b372397116560c4d2d15e254b80322ef053",
+            "input_sha256": "69ef6ad9bcca0e9d59f7208f7cd7a7cf6dca463de4c08e7f57100763277959e5",
+            "status": "pending"
+          },
+          {
+            "case": "GFRAG",
+            "system": "GFRAG",
+            "source": "/home/kawai/openmx4.0/work/large_example/GFRAG.dat",
+            "original_sha256": "7c9241d390850f5f2b57c5e9d0e6bdcf3b2739fff3d067f630ab02117294cd9a",
+            "input_sha256": "7ebd2dd031cee3072d4b32e6c8938f59f2bed8d24c2fa63b8ccbea2a78652dca",
+            "status": "pending"
+          },
+          {
+            "case": "GGFF",
+            "system": "GGFF",
+            "source": "/home/kawai/openmx4.0/work/large_example/GGFF.dat",
+            "original_sha256": "6d06805e04e83ada2a3069c0b8ade2c3fcfbf300f7901af00caeefb7a0dca6e8",
+            "input_sha256": "1e9081fb1ff3a80c2bf21f0777539c51cbc7844b4a88ac1e54970f6e15160f67",
+            "status": "pending"
+          },
+          {
+            "case": "MCCN",
+            "system": "MCCN",
+            "source": "/home/kawai/openmx4.0/work/large_example/MCCN.dat",
+            "original_sha256": "6c0fd22cb34c148df27963f5ac7f913091d9ccadbafbfcaba4e064f26c2db476",
+            "input_sha256": "f74e4c1aebdcf79346911d9c2a3f8532757fd20b257f58f7ea6c7fa14ccbf90f",
+            "status": "pending"
+          },
+          {
+            "case": "Mn12_148_F",
+            "system": "Mn12_148_F",
+            "source": "/home/kawai/openmx4.0/work/large_example/Mn12_148_F.dat",
+            "original_sha256": "b4df5faef6821dbe262ef826fa206ffa5024679068cef845dc19ef0f8d576c8a",
+            "input_sha256": "f3e1b20fe419fd6116ef994d7ba452b24aaab135aa4a4ecfbc353624fecc2f81",
+            "status": "pending"
+          },
+          {
+            "case": "N1C999",
+            "system": "N1C999",
+            "source": "/home/kawai/openmx4.0/work/large_example/N1C999.dat",
+            "original_sha256": "96744e60f7cb48cb57880ab2ba10523c45b01a89e350ea8629754d99e8fc0493",
+            "input_sha256": "e8caba3e07e81dd0f10c76cbe488db42b14bde08f0b7140bc6421203190e09de",
+            "status": "pending"
+          },
+          {
+            "case": "Ni63-O64",
+            "system": "Ni63-O64",
+            "source": "/home/kawai/openmx4.0/work/large_example/Ni63-O64.dat",
+            "original_sha256": "b6e4a166250fc81b2ee98b28bfac9cc8fa7ad494ac0874d879152ad687124bcf",
+            "input_sha256": "876fb3b50cea12fb337effc615c5c99584f7aac3d393ce929ae1b2f8de0b2435",
+            "status": "pending"
+          },
+          {
+            "case": "Pt63",
+            "system": "Pt63",
+            "source": "/home/kawai/openmx4.0/work/large_example/Pt63.dat",
+            "original_sha256": "96c76aa83163e8d3db6feed5f4668520ea86aecf6d2abf70229286095aea06ec",
+            "input_sha256": "027d610a5eb9ac1821a35393bef13c8d11c25beef72a92d9f8955aed7e139b5c",
+            "status": "pending"
+          },
+          {
+            "case": "SialicAcid",
+            "system": "SialicAcid",
+            "source": "/home/kawai/openmx4.0/work/large_example/SialicAcid.dat",
+            "original_sha256": "2be602e61ba4761bd772f7e14c8b6f57497b30a7d278062a496300bfe3d5074c",
+            "input_sha256": "16b0d3f3e3a93026858bf0eac205f0653ba3ce0b4a771edd919df0479eb846c6",
+            "status": "pending"
+          },
+          {
+            "case": "ZrB2_2x2",
+            "system": "ZrB2_2x2",
+            "source": "/home/kawai/openmx4.0/work/large_example/ZrB2_2x2.dat",
+            "original_sha256": "6269cb09d553251bed54f475d3e0790c4554a0a40cc0e125d218399786996a77",
+            "input_sha256": "6d8da4709d3f4e59af58bc7a5fa70588611726bb291722a3e0bfe1ba2ed6fbc1",
+            "status": "pending"
+          },
+          {
+            "case": "nsV4Bz5",
+            "system": "nsV4Bz5",
+            "source": "/home/kawai/openmx4.0/work/large_example/nsV4Bz5.dat",
+            "original_sha256": "bba6c1f8ad15574e0d938101a1f1e9541e6f8bf5d7ac146d98d6f803d5a80c9e",
+            "input_sha256": "05eca43dda7458c66ab7747876ba62d417ac2cf10f3366ce67a01e1d42f62c42",
+            "status": "pending"
+          }
+        ]
+      },
+      "rank_environment": [
+        {
+          "rank": 0,
+          "pid": 591441,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            0,
+            1
+          ]
+        },
+        {
+          "rank": 1,
+          "pid": 591442,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            2,
+            3
+          ]
+        },
+        {
+          "rank": 2,
+          "pid": 591443,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            4,
+            5
+          ]
+        },
+        {
+          "rank": 3,
+          "pid": 591444,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            6,
+            7
+          ]
+        },
+        {
+          "rank": 4,
+          "pid": 591445,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            8,
+            9
+          ]
+        },
+        {
+          "rank": 5,
+          "pid": 591446,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            10,
+            11
+          ]
+        },
+        {
+          "rank": 6,
+          "pid": 591447,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            12,
+            13
+          ]
+        },
+        {
+          "rank": 7,
+          "pid": 591448,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            14,
+            15
+          ]
+        },
+        {
+          "rank": 8,
+          "pid": 591449,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            16,
+            17
+          ]
+        },
+        {
+          "rank": 9,
+          "pid": 591450,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            18,
+            19
+          ]
+        },
+        {
+          "rank": 10,
+          "pid": 591451,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            20,
+            21
+          ]
+        },
+        {
+          "rank": 11,
+          "pid": 591452,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            22,
+            23
+          ]
+        },
+        {
+          "rank": 12,
+          "pid": 591453,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            24,
+            25
+          ]
+        },
+        {
+          "rank": 13,
+          "pid": 591454,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            26,
+            27
+          ]
+        },
+        {
+          "rank": 14,
+          "pid": 591455,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            28,
+            29
+          ]
+        },
+        {
+          "rank": 15,
+          "pid": 591456,
+          "OMP_NUM_THREADS": "2",
+          "BLIS_NUM_THREADS": "2",
+          "allowed_cpus": [
+            30,
+            31
+          ]
+        }
+      ]
+    }
+  ],
+  "verified_frozen_runtime_hashes": {
+    "work/codex_benchmark_20261031_refresh/installed/fork-cpu-32e3f3981593": {
+      "openmx": "063ddccb2e4ce445bd648308e74ad98ee44c202323d06d20a1a155b76bca0823",
+      "lib/libopenmx_core.so": "a804511290cd46e4239da8e96bd00fabb426ed487b98401b71353b0efc7e3e9a",
+      "lib/libopenmx_host_simd.so": "d9c2a984550ecc79de80107625839f260c869ea6148acdcf47d027f7d7cc19c2"
+    },
+    "work/codex_benchmark_20261031_refresh/installed/fork-gpu-32e3f3981593": {
+      "openmx": "063ddccb2e4ce445bd648308e74ad98ee44c202323d06d20a1a155b76bca0823",
+      "lib/libopenmx_core.so": "a804511290cd46e4239da8e96bd00fabb426ed487b98401b71353b0efc7e3e9a",
+      "lib/libopenmx_host_simd.so": "d9c2a984550ecc79de80107625839f260c869ea6148acdcf47d027f7d7cc19c2"
+    }
+  },
+  "installed_files_still_match_measured_build": true
+}

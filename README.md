@@ -1619,114 +1619,110 @@ describes the builds and retained results. Full local logs and resource
 samples are under `work/benchmarks_refresh_20261030/`, with the two earlier
 campaigns identified in the manifest.
 
-### Radeon RX 9060 XT validation (2026-10-29–30)
+### Radeon RX 9060 XT validation (2026-10-31 refresh)
 
-The upstream CPU baseline was measured on October 29. The fork was rebuilt
-and installed from `main` at `db516abd` on October 30, including the density
-matrix preparation and transfer optimization in `cb078e29` and the HIP
-density state fix described below. Its CPU/HIP remeasurement ran from 14:43 to 18:48
-JST; upstream OpenMX was not rerun. The tables below use the new fork results
-and retain that upstream baseline. The host was a Ryzen Threadripper 3970X
-(32 physical cores, SMT disabled), 256 GB RAM,
-and one Radeon RX 9060 XT with 16 GiB VRAM (`gfx1200`). Every run used
-**16 MPI ranks × 2 OpenMP threads**, bound to 32 cores. Jobs ran sequentially,
-with one measurement per configuration; these are individual timings rather
-than repeated-run averages.
+The fork was pulled, rebuilt and installed from `main` at
+`0681d63e` before this refresh. Its CPU and HIP runs started at
+2026-10-31 21:00 JST and finished at
+2026-11-01 00:28 JST.
+The upstream CPU baseline remains the October 29 measurement.
+The host was a Ryzen Threadripper 3970X (32 physical cores, SMT disabled),
+256 GB RAM, and one Radeon RX 9060 XT with 16 GiB VRAM (`gfx1200`).
+Every benchmark used **16 MPI ranks × 2 OpenMP threads**, bound to 32 cores.
+Jobs ran sequentially, in CPU/HIP pairs for `-runtest`, sidia333, cghelgeo
+and `-runtestL`.
 
-| Configuration | Build and execution |
+| Path | Build and runtime |
 | --- | --- |
-| Upstream CPU | OpenMX 4.0 with [official patch 4.0.1](https://www.openmx-square.org/bugfixed/26May08/README.txt), Intel icx/ifx 2026.0, Intel MPI 2021.18, threaded LP64 MKL; `scf.eigen.lib elpa2` |
-| Fork CPU path | Release HIP build using ROCm SDK `core-10.1` Clang/Flang, OpenMPI 5.0.9 and AOCL 5.2; `OPENMX_GPU=0`, `scf.eigen.lib elpa2` |
-| Fork HIP path | The same installed executable and matching Core/SIMD libraries; `OPENMX_GPU=1`, `scf.eigen.lib gpusolver`, `HSA_ENABLE_SDMA=0` |
+| Upstream CPU | OpenMX 4.0 + [official patch 4.0.1](https://www.openmx-square.org/bugfixed/26May08/README.txt), Intel icx/ifx 2026.0, Intel MPI 2021.18, threaded LP64 MKL; `scf.eigen.lib elpa2` |
+| Fork CPU | Release HIP build, ROCm SDK `core-10.1` Clang/Flang, OpenMPI 5.0.9, AOCL 5.2, OpenMP ELPA 2026.02.002; `OPENMX_GPU=0`, `scf.eigen.lib elpa2` |
+| Fork HIP | Same installed executable and Core/SIMD libraries; `OPENMX_GPU=1`, `scf.eigen.lib gpusolver`, `HSA_ENABLE_SDMA=0` |
 
-The upstream patch files were compared with the official archive before use.
-The existing upstream `Set_ProExpn_VNA.c` static/inline compatibility adjustment
-was retained. All configurations used the same upstream `DFT_DATA19` files;
-the suites used upstream reference inputs/outputs, and the two named cases
-used the tracked inputs above. Only `DATA.PATH` and `scf.eigen.lib` were changed
-in the measurement copies. Geometry, grids, SCF/MD limits, convergence criteria
-and arithmetic policy were retained. OpenMP used `OMP_DYNAMIC=FALSE`,
-`OMP_PROC_BIND=close`, `OMP_PLACES=cores` and `OMP_MAX_ACTIVE_LEVELS=1`.
-AOCL/BLIS used one BLAS thread per rank; upstream MKL used two. Consequently,
-the upstream comparison includes compiler, MPI and numerical-library effects.
+The updated source includes explicit CPU ELPA handle thread counts, scoped
+GPU ELPA handle teardown, HIP Krylov worker device binding and preservation
+of explicit BLAS settings by the suite helper. ELPA worker observation
+confirmed two workers on every rank in a separate 8×2 numerical check;
+24 real/complex ELPA1/ELPA2 ABI cases per rank and all 17 GPU-handle lifecycle
+model cases passed before the benchmark.
 
-The validation exposed stale HIP on-the-fly density calls left behind when
-Hamiltonian state ownership became explicit. Their missing first argument
-shifted the remaining arguments and caused invalid writes, including in the
-HIP executable with `OPENMX_GPU=0`. The fix passes the density state's owning
-Hamiltonian state through typed wrappers and shares the actual declarations
-in the state headers. The application was rebuilt and reinstalled before
-collecting the successful fork timings below.
+Both fork paths explicitly use `BLIS_NUM_THREADS=2`, `OMP_NUM_THREADS=2`,
+`OMP_DYNAMIC=FALSE`, `OMP_PROC_BIND=close`, `OMP_PLACES=cores` and
+`OMP_MAX_ACTIVE_LEVELS=1`. Each job's 16 rank environments and CPU affinity
+were checked. The October 30 fork runs used one BLAS thread per rank;
+those archived timings also precede the ELPA/threading corrections.
+The upstream baseline uses two MKL threads per rank.
+Upstream/fork ratios also include compiler, MPI and numerical-library differences.
 
-On this machine, the default runtime also stalled during the OpenMP GPU probe
-with 16 MPI ranks. Setting `HSA_ENABLE_SDMA=0` allowed the run to complete while
-GPU kernels remained enabled. This is a recorded runtime workaround for these
-measurements, not a change to the application's default environment. NVIDIA
-MPS does not apply to this AMD HIP device.
+Inputs, basis/pseudopotential data, geometry, grids, SCF/MD limits,
+convergence thresholds and stdout levels match the earlier campaign.
+Only `DATA.PATH` and `scf.eigen.lib` are set for the respective paths.
+All 44 basis/pseudopotential file hashes match the prior record.
+`LIBOMPTARGET_HEAP_SIZE=67108864` avoids heap re-execution and
+`HSA_OVERRIDE_CPU_AFFINITY_DEBUG=0` keeps HSA helpers within rank affinity.
+The HIP run retains the validated `HSA_ENABLE_SDMA=0` runtime workaround;
+NVIDIA MPS does not apply to this Radeon device.
 
-Times below are seconds. Suite times sum the native per-case elapsed times;
-the named cases use OpenMX's maximum-rank `Total Computational Time`. MPI
-launch/shutdown overhead is excluded.
+Times are seconds. Suite totals sum native per-case elapsed times from
+`runtest.result` / `runtestL.result`; named inputs use the maximum-rank
+`Total Computational Time`. GPU-path times include CPU fallbacks selected
+by the application; MPI launch/shutdown overhead is excluded.
+`Upstream / HIP` and `Fork CPU / HIP` above 1 indicate
+a faster HIP-path time. `sp` means spin-polarized and `NC` noncollinear.
 
 | Test | Upstream CPU (Oct 29) | Fork CPU path | Fork HIP path |
 | --- | ---: | ---: | ---: |
-| `-runtest` (14 cases) | 59.02 | 46.27 | 66.98 |
-| `-runtestL` (16 cases) | 4319.34 | 3281.64 | 4379.79 |
-| `sidia333_nc_cluster.dat` | 483.443 | 425.396 | 193.592 |
-| `cghelgeo.dat` | 1896.871 | 3128.978 | 3124.626 |
+| `-runtest` (14 cases) | 59.02 | 48.21 | 68.97 |
+| `-runtestL` (16 cases) | 4319.34 | 2827.62 | 3922.23 |
+| `sidia333_nc_cluster.dat` | 483.443 | 352.563 | 195.224 |
+| `cghelgeo.dat` | 1896.871 | 2522.141 | 2538.406 |
 
-The case-level tables below use elapsed seconds from `runtest.result` and
-`runtestL.result`, as in the earlier test-suite benchmarks. `Upstream / HIP`
-and `Fork CPU / HIP` divide the respective CPU time by the HIP-path time;
-a value above 1 means the HIP path was faster. `sp` denotes spin-polarized
-collinear calculations and `NC` noncollinear calculations. A HIP-path timing
-includes any CPU fallbacks selected during that run.
-
-The expandable checks show the total number of SCF steps across all MD steps
-of each input. Their maximum absolute energy and force-component differences
-cover the current fork CPU/HIP bundled-reference checks, the current
-CPU/HIP comparison, and each current path against its previous result and
-the retained upstream baseline. Every listed check passed the `1e-7`
-energy/force tolerances stated below. Upstream times and SCF counts are the
-October 29 measurements; fork times and counts are from the October 30 rerun.
+The per-case accuracy maxima below cover both paths against their bundled
+references, each other, the retained upstream CPU output and the prior fork
+output wherever applicable. Checks require finite total energies and every
+atomic force component, matching geometry/grids, absolute ΔE ≤ `1e-7` Ha
+and maximum force-component ΔF ≤ `1e-7` Ha/bohr. Completion markers are
+recorded separately and do not determine numerical acceptance.
+SCF counts sum all MD steps of each input. Counts can differ between paths;
+the timing ratios compare complete input runs rather than a fixed number of
+SCF iterations.
 
 #### `-runtest`: all 14 cases
 
 | Input | Atoms | Solver | Upstream CPU (s) | Fork CPU (s) | Fork HIP (s) | Upstream / HIP | Fork CPU / HIP |
 | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: |
-| Benzene | 12 | cluster | 2.39 | 1.91 | 3.56 | 0.67 | 0.54 |
-| C60 | 60 | dc | 4.97 | 5.35 | 8.51 | 0.58 | 0.63 |
-| CO | 2 | cluster | 5.99 | 3.02 | 16.13 | 0.37 | 0.19 |
-| Cr2 | 2 | cluster (NC) | 4.07 | 3.31 | 3.76 | 1.08 | 0.88 |
-| Crys-MnO | 4 | band (sp) | 6.57 | 5.24 | 5.56 | 1.18 | 0.94 |
-| GaAs | 2 | band (NC) | 11.56 | 9.40 | 8.30 | 1.39 | 1.13 |
-| Glycine | 10 | cluster | 2.35 | 1.81 | 3.55 | 0.66 | 0.51 |
-| Graphite4 | 4 | band | 1.62 | 1.11 | 1.52 | 1.07 | 0.73 |
-| H2O-EF | 3 | cluster | 2.15 | 1.53 | 2.16 | 1.00 | 0.71 |
-| H2O | 3 | cluster | 1.88 | 1.00 | 1.84 | 1.02 | 0.54 |
-| HMn | 2 | cluster (sp) | 7.66 | 6.55 | 5.82 | 1.32 | 1.13 |
-| Methane | 5 | cluster | 1.46 | 0.87 | 1.70 | 0.86 | 0.51 |
-| Mol_MnO | 2 | cluster (sp) | 4.09 | 3.87 | 3.58 | 1.14 | 1.08 |
-| Ndia2 | 2 | band | 2.26 | 1.30 | 0.99 | 2.28 | 1.31 |
-| **Total** | | | **59.02** | **46.27** | **66.98** | **0.88** | **0.69** |
+| Benzene | 12 | cluster | 2.39 | 1.80 | 4.00 | 0.60 | 0.45 |
+| C60 | 60 | dc | 4.97 | 5.34 | 8.79 | 0.57 | 0.61 |
+| CO | 2 | cluster | 5.99 | 4.48 | 15.91 | 0.38 | 0.28 |
+| Cr2 | 2 | cluster (NC) | 4.07 | 3.22 | 3.51 | 1.16 | 0.92 |
+| Crys-MnO | 4 | band (sp) | 6.57 | 5.29 | 5.72 | 1.15 | 0.92 |
+| GaAs | 2 | band (NC) | 11.56 | 9.53 | 8.74 | 1.32 | 1.09 |
+| Glycine | 10 | cluster | 2.35 | 1.75 | 3.66 | 0.64 | 0.48 |
+| Graphite4 | 4 | band | 1.62 | 0.92 | 1.85 | 0.88 | 0.50 |
+| H2O-EF | 3 | cluster | 2.15 | 1.55 | 2.15 | 1.00 | 0.72 |
+| H2O | 3 | cluster | 1.88 | 1.09 | 1.83 | 1.03 | 0.60 |
+| HMn | 2 | cluster (sp) | 7.66 | 6.53 | 6.53 | 1.17 | 1.00 |
+| Methane | 5 | cluster | 1.46 | 0.89 | 1.68 | 0.87 | 0.53 |
+| Mol_MnO | 2 | cluster (sp) | 4.09 | 3.50 | 3.45 | 1.19 | 1.01 |
+| Ndia2 | 2 | band | 2.26 | 2.32 | 1.15 | 1.97 | 2.02 |
+| **Total** | | | **59.02** | **48.21** | **68.97** | **0.86** | **0.70** |
 
 <details>
-<summary>SCF counts and numerical checks for all 14 -runtest cases</summary>
+<summary>SCF counts and numerical checks for all 14 cases</summary>
 
-| Input | Total SCF steps (upstream / fork CPU / HIP) | Max abs ΔE (Ha) | Max abs ΔF (Ha/bohr) | Check |
-| --- | --- | ---: | ---: | --- |
+| Input | SCF upstream / CPU / HIP | Max abs ΔE (Ha) | Max abs ΔF (Ha/bohr) | Status |
+| --- | ---: | ---: | ---: | --- |
 | Benzene | 19 / 19 / 19 | 9.948e-13 | 0.000e+00 | PASS |
 | C60 | 27 / 27 / 27 | 3.200e-11 | 1.000e-12 | PASS |
-| CO | 16 / 16 / 16 | 0.000e+00 | 2.000e-11 | PASS |
-| Cr2 | 21 / 21 / 21 | 7.987e-12 | 1.920e-10 | PASS |
-| Crys-MnO | 40 / 40 / 40 | 2.299e-11 | 2.800e-11 | PASS |
-| GaAs | 13 / 13 / 13 | 1.998e-11 | 7.000e-12 | PASS |
+| CO | 16 / 16 / 16 | 0.000e+00 | 2.100e-11 | PASS |
+| Cr2 | 21 / 21 / 21 | 2.984e-12 | 2.260e-10 | PASS |
+| Crys-MnO | 40 / 40 / 39 | 4.850e-10 | 6.410e-10 | PASS |
+| GaAs | 13 / 13 / 13 | 2.100e-11 | 8.000e-12 | PASS |
 | Glycine | 20 / 20 / 20 | 9.948e-13 | 1.000e-12 | PASS |
 | Graphite4 | 14 / 14 / 14 | 2.000e-12 | 1.000e-12 | PASS |
 | H2O-EF | 17 / 17 / 17 | 9.983e-13 | 1.000e-12 | PASS |
 | H2O | 31 / 31 / 31 | 1.002e-12 | 1.000e-12 | PASS |
 | HMn | 26 / 26 / 26 | 9.948e-13 | 0.000e+00 | PASS |
-| Methane | 14 / 14 / 14 | 8.000e-11 | 9.000e-12 | PASS |
+| Methane | 14 / 14 / 14 | 6.600e-11 | 8.000e-12 | PASS |
 | Mol_MnO | 26 / 26 / 26 | 9.948e-13 | 1.000e-12 | PASS |
 | Ndia2 | 13 / 13 / 13 | 4.000e-12 | 1.000e-12 | PASS |
 
@@ -1736,88 +1732,75 @@ October 29 measurements; fork times and counts are from the October 30 rerun.
 
 | Input | Atoms | Solver | Upstream CPU (s) | Fork CPU (s) | Fork HIP (s) | Upstream / HIP | Fork CPU / HIP |
 | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: |
-| 5_5_13COb2 | 155 | band | 63.35 | 59.21 | 70.84 | 0.89 | 0.84 |
-| B2C62_Band | 64 | band | 363.23 | 321.00 | 830.81 | 0.44 | 0.39 |
-| CG15c-DC-LNO | 650 | dc-lno | 137.22 | 96.63 | 116.92 | 1.17 | 0.83 |
-| DIA512-1 | 512 | krylov | 87.11 | 73.76 | 104.95 | 0.83 | 0.70 |
-| FeBCC | 16 | band (sp) | 96.30 | 103.63 | 113.80 | 0.85 | 0.91 |
-| GEL | 40 | band | 27.11 | 25.75 | 103.12 | 0.26 | 0.25 |
-| GFRAG | 54 | cluster | 28.73 | 25.53 | 37.18 | 0.77 | 0.69 |
-| GGFF | 40 | band (NC) | 952.28 | 948.90 | 1204.30 | 0.79 | 0.79 |
-| MCCN | 564 | krylov | 174.76 | 168.94 | 183.44 | 0.95 | 0.92 |
-| Mn12_148_F | 148 | cluster (sp) | 66.39 | 60.94 | 76.66 | 0.87 | 0.79 |
-| N1C999 | 1000 | dc-lno (sp) | 1985.77 | 1038.87 | 1123.31 | 1.77 | 0.92 |
-| Ni63-O64 | 127 | band (sp) | 58.47 | 53.92 | 76.22 | 0.77 | 0.71 |
-| Pt63 | 63 | cluster | 35.53 | 45.08 | 58.02 | 0.61 | 0.78 |
-| SialicAcid | 40 | cluster | 12.74 | 11.08 | 19.34 | 0.66 | 0.57 |
-| ZrB2_2x2 | 76 | band | 155.01 | 159.11 | 184.15 | 0.84 | 0.86 |
-| nsV4Bz5 | 64 | cluster | 75.34 | 89.29 | 76.73 | 0.98 | 1.16 |
-| **Total** | | | **4319.34** | **3281.64** | **4379.79** | **0.99** | **0.75** |
+| 5_5_13COb2 | 155 | band | 63.35 | 58.28 | 66.01 | 0.96 | 0.88 |
+| B2C62_Band | 64 | band | 363.23 | 274.05 | 794.23 | 0.46 | 0.35 |
+| CG15c-DC-LNO | 650 | dc-lno | 137.22 | 92.78 | 112.91 | 1.22 | 0.82 |
+| DIA512-1 | 512 | krylov | 87.11 | 74.78 | 104.47 | 0.83 | 0.72 |
+| FeBCC | 16 | band (sp) | 96.30 | 89.11 | 104.39 | 0.92 | 0.85 |
+| GEL | 40 | band | 27.11 | 22.84 | 102.20 | 0.27 | 0.22 |
+| GFRAG | 54 | cluster | 28.73 | 25.76 | 36.63 | 0.78 | 0.70 |
+| GGFF | 40 | band (NC) | 952.28 | 780.87 | 1040.88 | 0.91 | 0.75 |
+| MCCN | 564 | krylov | 174.76 | 170.29 | 184.11 | 0.95 | 0.92 |
+| Mn12_148_F | 148 | cluster (sp) | 66.39 | 60.50 | 76.69 | 0.87 | 0.79 |
+| N1C999 | 1000 | dc-lno (sp) | 1985.77 | 846.50 | 907.10 | 2.19 | 0.93 |
+| Ni63-O64 | 127 | band (sp) | 58.47 | 44.89 | 72.08 | 0.81 | 0.62 |
+| Pt63 | 63 | cluster | 35.53 | 40.21 | 52.54 | 0.68 | 0.77 |
+| SialicAcid | 40 | cluster | 12.74 | 10.92 | 19.51 | 0.65 | 0.56 |
+| ZrB2_2x2 | 76 | band | 155.01 | 147.93 | 172.46 | 0.90 | 0.86 |
+| nsV4Bz5 | 64 | cluster | 75.34 | 87.91 | 76.02 | 0.99 | 1.16 |
+| **Total** | | | **4319.34** | **2827.62** | **3922.23** | **1.10** | **0.72** |
 
 <details>
-<summary>SCF counts and numerical checks for all 16 -runtestL cases</summary>
+<summary>SCF counts and numerical checks for all 16 cases</summary>
 
-| Input | Total SCF steps (upstream / fork CPU / HIP) | Max abs ΔE (Ha) | Max abs ΔF (Ha/bohr) | Check |
-| --- | --- | ---: | ---: | --- |
-| 5_5_13COb2 | 66 / 67 / 66 | 1.501e-09 | 3.270e-10 | PASS |
-| B2C62_Band | 204 / 204 / 203 | 9.101e-11 | 3.635e-08 | PASS |
-| CG15c-DC-LNO | 44 / 42 / 42 | 1.269e-09 | 1.560e-10 | PASS |
-| DIA512-1 | 29 / 29 / 29 | 7.381e-10 | 5.951e-09 | PASS |
-| FeBCC | 62 / 62 / 61 | 1.410e-10 | 1.700e-11 | PASS |
-| GEL | 58 / 58 / 58 | 1.560e-10 | 4.420e-10 | PASS |
-| GFRAG | 60 / 60 / 60 | 4.120e-10 | 2.332e-09 | PASS |
-| GGFF | 102 / 99 / 101 | 2.360e-10 | 1.090e-10 | PASS |
-| MCCN | 67 / 67 / 67 | 3.688e-10 | 3.600e-11 | PASS |
-| Mn12_148_F | 61 / 61 / 61 | 2.401e-10 | 4.640e-10 | PASS |
-| N1C999 | 79 / 58 / 59 | 1.545e-09 | 3.100e-11 | PASS |
-| Ni63-O64 | 69 / 67 / 62 | 3.989e-09 | 6.090e-10 | PASS |
-| Pt63 | 58 / 82 / 69 | 1.706e-08 | 4.625e-09 | PASS |
-| SialicAcid | 29 / 29 / 29 | 3.180e-10 | 5.330e-10 | PASS |
-| ZrB2_2x2 | 49 / 49 / 49 | 1.339e-10 | 2.960e-10 | PASS |
-| nsV4Bz5 | 57 / 57 / 57 | 1.810e-10 | 1.070e-09 | PASS |
+| Input | SCF upstream / CPU / HIP | Max abs ΔE (Ha) | Max abs ΔF (Ha/bohr) | Status |
+| --- | ---: | ---: | ---: | --- |
+| 5_5_13COb2 | 66 / 66 / 67 | 1.480e-09 | 2.550e-10 | PASS |
+| B2C62_Band | 204 / 203 / 203 | 2.010e-10 | 4.367e-08 | PASS |
+| CG15c-DC-LNO | 44 / 42 / 42 | 1.270e-09 | 1.560e-10 | PASS |
+| DIA512-1 | 29 / 29 / 29 | 7.781e-10 | 1.109e-08 | PASS |
+| FeBCC | 62 / 61 / 62 | 1.110e-09 | 6.800e-11 | PASS |
+| GEL | 58 / 58 / 58 | 2.369e-10 | 4.410e-10 | PASS |
+| GFRAG | 60 / 60 / 60 | 5.660e-10 | 1.916e-09 | PASS |
+| GGFF | 102 / 98 / 101 | 7.221e-10 | 8.100e-11 | PASS |
+| MCCN | 67 / 67 / 67 | 3.720e-10 | 3.700e-11 | PASS |
+| Mn12_148_F | 61 / 61 / 61 | 2.510e-10 | 5.570e-10 | PASS |
+| N1C999 | 79 / 59 / 59 | 1.542e-09 | 3.100e-11 | PASS |
+| Ni63-O64 | 69 / 58 / 62 | 2.905e-09 | 8.380e-10 | PASS |
+| Pt63 | 58 / 73 / 62 | 1.884e-08 | 4.641e-09 | PASS |
+| SialicAcid | 29 / 29 / 29 | 3.120e-10 | 5.310e-10 | PASS |
+| ZrB2_2x2 | 49 / 49 / 49 | 8.799e-11 | 5.320e-10 | PASS |
+| nsV4Bz5 | 57 / 57 / 57 | 9.999e-11 | 1.049e-09 | PASS |
 
 </details>
 
-SCF counts differ for some inputs, so these ratios compare complete input
-runs rather than a fixed number of iterations. For example, `N1C999` took
-79 / 58 / 59 SCF steps (upstream / fork CPU / HIP), `GGFF` 102 / 99 / 101,
-and `Pt63` 58 / 82 / 69. The total time ratios are 0.88 / 0.69 for `-runtest`
-and 0.99 / 0.75 for `-runtestL` (upstream / HIP and fork CPU / HIP respectively).
+#### Named inputs
 
-All 64 new case executions completed and passed their numerical checks:
-14 small cases, 16 large cases and the two named inputs in each fork path.
-Checks include finite total energies and every atomic force component,
-matching grids/geometry, absolute energy differences ≤ `1e-7` Ha and maximum
-force-component differences ≤ `1e-7` Ha/bohr. Completion markers alone were
-not used as the numerical acceptance criterion.
+| Input | Atoms | Solver | SCF upstream / CPU / HIP | Max abs ΔE (Ha) | Max abs ΔF (Ha/bohr) | Status |
+| --- | ---: | --- | ---: | ---: | ---: | --- |
+| `sidia333_nc_cluster.dat` | 216 | cluster (NC) | 25 / 25 / 25 | 1.060e-10 | 1.870e-10 | PASS |
+| `cghelgeo.dat` | 650 | band | 60 / 60 / 60 | 3.186e-08 | 2.469e-08 | PASS |
 
-For `sidia333_nc_cluster`, the new HIP path was 2.20× faster than the fork
-CPU path and 2.50× faster than the retained upstream baseline. Both new runs
-reached the input's 25-SCF limit; this comparison does not establish SCF
-convergence. These are single measurements. For `cghelgeo`, both fork paths
-took 58 SCF steps; the retained upstream run took 60.
+All **64 new case executions** completed and passed the numerical checks.
+For sidia333, the HIP path was 1.81× faster than the
+fork CPU path and 2.48× faster than retained upstream.
+The sidia333 input has a 25-SCF limit, so these timings do not establish SCF
+convergence. All reported times are single measurements.
 
-**The cghelgeo HIP result includes CPU dense diagonalization.** All 58 SCF
-steps rejected the dense GPU path at its memory admission check. For the
-6670 × 6670 complex matrix, the HIP estimate was 16004.569 MiB: two concurrent
-k-point solves at 3394.285 MiB each, 512 MiB reserved for each of 16 MPI ranks,
-and an additional 1024 MiB guard. The first check found only 12794 MiB free.
-The subsequent host-backed MAGMA recovery requires a multi-GPU group, which
-this single-GPU run could not form; `available pool=0` describes that cooperative
-pool, not failure to detect the Radeon. The preceding `GPU-accelerated, MAGMA`
-label is printed before memory admission and does not prove that the dense
-solve ran on the GPU. Other GPU phases remained active.
+**The cghelgeo HIP timing includes CPU dense diagonalization.** The log
+records 60 dense-memory rejections across 60 SCF steps;
+the first verdict was:
 
-An earlier separate three-SCF diagnostic with
-`OPENMX_BAND_GPU_MAX_RANKS_PER_DEVICE=1` admitted the first GPU solve, but
-subsequent steps again selected CPU: the second check found 12336 MiB free
-against a 12610.285 MiB estimate. It is therefore not a validated workaround
-for the full run. Further cghelgeo investigation was stopped at the user's
-request; the paired CPU diagnostic was interrupted and is excluded from the
-benchmark table.
+```text
+Band_DFT_Col: GPU device is shared by 16 rank(s), has 12794.000 MiB free (16304.000 MiB total), but 16004.569 MiB is required for the dense GPU diagonalization (512.000 MiB library reserve per rank); switching to CPU path.
+```
+
+The single Radeon could not form the cooperative MAGMA multi-GPU pool
+(60 CPU-solve pool messages). Other HIP phases remained enabled.
+The pre-admission GPU banner alone does not establish GPU eigensolver use.
 
 **The initial `-runtestL3` was stopped for host-memory pressure; it was not
-remeasured in this rerun.** During upstream
+repeated in this refresh.** During upstream
 `Si1280-LNO`, the process-tree RSS sum reached 223.48 GiB and `MemAvailable`
 fell to 31.69 GiB, triggering the 32 GiB reserve at 05:52 JST on October 30.
 The remaining upstream cases and both fork L3 runs were cancelled. Of the
@@ -1827,14 +1810,15 @@ reference comparison; `Ni63-O64` had a maximum force-component difference of
 That discrepancy remains unresolved. No complete L3 timing or CPU/GPU speedup
 is reported.
 
-The [versioned case-level CSV](benchmarks/results/radeon_rx9060xt_20261030_16x2.csv)
-contains every timing, SCF count, numerical-check maximum and input hash,
-including the previous fork and upstream timings. The accompanying
-[provenance JSON](benchmarks/results/radeon_rx9060xt_20261030_16x2.json) records
-the measured revision, installed binary/library hashes, runtime controls,
-dataset hashes and all eight job outcomes. Raw logs and resource samples
-remain in `work/codex_benchmark_20261030_rerun/`; previous measurements and
-interrupted-run archives remain in `work/codex_benchmark_20261029/`.
+The [case-level CSV](benchmarks/results/radeon_rx9060xt_20261031_16x2.csv) records every
+case timing, SCF count, comparison maximum and input hash. The accompanying
+[provenance JSON](benchmarks/results/radeon_rx9060xt_20261031_16x2.json) records revision,
+build, binary/library hashes, runtime controls, rank audits, dataset hashes,
+validation and all eight jobs. Raw logs are under
+`work/codex_benchmark_20261031_refresh/`. The
+[October 30 record](benchmarks/results/radeon_rx9060xt_20261030_16x2.json)
+and [October 31 threading diagnosis](benchmarks/results/radeon_cghelgeo_threading_20261031_8x2.json)
+remain available as separate earlier measurements.
 
 ### Radeon cghelgeo CPU threading diagnosis (2026-10-31)
 
@@ -1843,8 +1827,8 @@ same Threadripper/Radeon host with **8 MPI ranks × 2 OpenMP threads**, pinned
 to CPU cores 0–15. These controlled runs use `cghelgeo.dat` with
 `scf.maxIter=3`; geometry, basis, k mesh, precision and convergence thresholds
 are unchanged. Times include initialization, three SCF iterations and forces.
-They are single diagnostic measurements; the full 16×2 benchmark above
-retains its October 30 results.
+They are single diagnostic measurements, separate from the refreshed full
+16×2 benchmark above.
 
 Two build settings limited CPU diagonalization. The HIP ELPA 2026.02.002
 archive had been configured without OpenMP, and the application linked
