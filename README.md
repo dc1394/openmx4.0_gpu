@@ -1436,6 +1436,97 @@ identify the exact binaries, libraries, controls and source commit.
 The complete local logs, outputs, resource samples and affinity probes are
 under `build/rtx5080-benchmark-20261031-210530/`.
 
+### Pegasus H100 benchmarks (2026-10-31–2026-11-01)
+
+All six tests below were rerun from commit `0681d63e` with the same freshly
+built and installed CUDA Release executable for both fork routes. Each node
+had one Intel Xeon Platinum 8468, 48 allocated physical cores (SMT disabled),
+about 124.5 GiB host memory and one H100 PCIe 80 GB. Every node used
+**24 MPI ranks × 2 OpenMP threads**, bound to two cores per rank. `L2` and
+`L3` used four nodes (96 ranks); the other tests used one node. Every CUDA
+run started a private NVIDIA MPS server on every allocated node.
+
+The build used NVHPC 26.5, CUDA 13.2 (`sm_90`), SDK HPC-X 2.50 / Open MPI,
+ELPA 2026.02.002 with OpenMP enabled, and the SDK's threaded LP64 OpenBLAS.
+Application OpenMP was also enabled. OpenMP and all BLAS thread controls
+were explicitly exported as 2 to every MPI rank. CPU runs selected
+`OPENMX_GPU=0` and `scf.eigen.lib elpa2`; CUDA runs selected `OPENMX_GPU=1`
+and the original `gpusolver` setting, including its capacity fallbacks.
+Placement, thread controls, MPS connections and file hashes passed all
+690 checks in the [execution audit](benchmarks/results/pegasus_h100_20261031/execution-audit.json).
+
+Each suite ran once. Each named input ran three times per route, with CPU
+and CUDA sharing the same allocation sequentially within each repeat; the
+second repeat reversed their order. Original geometries, grids, SCF/MD
+limits and stopping criteria were preserved. Only deployment paths and
+CPU eigensolver selection changed, as recorded in the
+[input audit](benchmarks/results/pegasus_h100_20261031/input-audit.json).
+
+Times are the sum of per-case output `Elapsed.Time` for suites and the
+median of three output times for named inputs. Ratios above 1 favor CUDA.
+
+| Test | Nodes | Fork CPU (s) | Fork CUDA (s) | CPU / CUDA |
+| --- | ---: | ---: | ---: | ---: |
+| `-runtest` (14 cases) | 1 | 43.972 | 73.516 | 0.598 |
+| `-runtestL` (16 cases) | 1 | 1952.185 | 2049.231 | 0.953 |
+| `-runtestL2` (7 cases) | 4 | 16325.286 | 8392.880 | 1.945 |
+| `-runtestL3` (20 cases) | 4 | 930.853 | 663.907 | 1.402 |
+| `sidia333_nc_cluster.dat` | 1 | 228.009 | 72.137 | 3.161 |
+| `cghelgeo.dat` | 1 | 1304.279 | 243.684 | 5.352 |
+
+These ratios include differences in SCF iteration counts. For example,
+`L2/Fe1000` used 436 CPU steps and 342 CUDA steps. `cghelgeo` used
+59/56/59 steps on CPU and 60/53/60 on CUDA; its input limit remained 200.
+Sidia333 reached its original 25-step cap in all six runs, and the `L3`
+inputs use three SCF steps. Assess convergence from the recorded final
+residuals alongside these timings.
+
+<details>
+<summary>-runtestL2: case timings and SCF counts</summary>
+
+| Input | CPU (s) | CUDA (s) | CPU SCF steps | CUDA SCF steps | CPU / CUDA |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| C1000 | 583.088 | 530.061 | 41 | 41 | 1.100 |
+| Fe1000 | 10391.753 | 3195.273 | 436 | 342 | 3.252 |
+| GRA1024 | 791.450 | 369.214 | 60 | 48 | 2.144 |
+| Ih-Ice1200 | 247.206 | 217.339 | 36 | 35 | 1.137 |
+| Pt500 | 2955.237 | 3097.813 | 204 | 181 | 0.954 |
+| R-TiO2-1050 | 767.323 | 542.767 | 34 | 39 | 1.414 |
+| Si1000 | 589.229 | 440.413 | 42 | 41 | 1.338 |
+
+[Whole-run time divided by SCF count](benchmarks/results/pegasus_h100_20261031/L2-iteration-reference.csv)
+is also recorded as a reference; it includes initialization and force work.
+
+</details>
+
+All 20 CPU/CUDA runs completed normally, producing 126 case observations.
+Paired CPU/CUDA checks compare total energy and every force component,
+with tolerances of `1e-7` Ha and `1e-7` Ha/bohr. Of 63 paired comparisons,
+59 were within tolerance. The four exceptions were:
+
+| Test / input | Repeat | abs ΔE (Ha) | Max abs ΔF (Ha/bohr) |
+| --- | ---: | ---: | ---: |
+| L3 / Fe1000 | 1 | 5.04951e-09 | 2.33676e-07 |
+| L3 / Ni63-O64 | 1 | 2.30648e-09 | 3.66447e-06 |
+| cghelgeo | 2 | 2.23568e-07 | 6.98300e-08 |
+| cghelgeo | 3 | 1.03287e-07 | 4.41100e-09 |
+
+All seven `L2` paired comparisons were within tolerance. Its `Pt500`
+maximum force-component difference was `9.7019e-8` Ha/bohr in this run.
+Bundled-reference force checks also exceeded tolerance for `L3/Fe1000`
+(CUDA) and `L3/Ni63-O64` (both CPU and CUDA). CUDA `cghelgeo` repeat 2
+exceeded the energy tolerance against CUDA repeat 1. All 185 paired,
+repeat and bundled-reference comparisons are retained separately in
+[accuracy.csv](benchmarks/results/pegasus_h100_20261031/accuracy.csv).
+
+The campaign consumed **32.08 points**, within the 150-point cap. The ten
+allocations totaled 32.072778 node-hours, including preparation and cleanup.
+The [versioned CSV/JSON records](benchmarks/results/pegasus_h100_20261031/manifest.json)
+include per-case times, SCF counts, final residuals, numerical comparisons,
+build/input hashes, launch commands and allocation accounting. Full local
+outputs, rank records and MPS logs remain under
+`work/benchmarks_threaded_20261031/`.
+
 ### Pegasus H100 benchmarks (2026-10-29–30)
 
 Each node had one Intel Xeon Platinum 8468 (48 allocated physical cores,

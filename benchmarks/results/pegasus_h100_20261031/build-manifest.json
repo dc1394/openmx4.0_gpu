@@ -1,0 +1,32 @@
+{
+  "source_commit": "0681d63ec3e00edc0c75f4b6d7c8f83c0643bbf3",
+  "dirty_source": false,
+  "installed_at": "2026-10-31T20:42:45.754407+09:00",
+  "files": [
+    {
+      "source": "/work/1/GPU2026/dc1394/openmx4.0_gpu/work/benchmarks_threaded_20261031/install/gpu/bin/openmx",
+      "destination": "/work/1/GPU2026/dc1394/openmx4.0_gpu/work/openmx",
+      "sha256": "d945a6df603f1c4034afe36b6883adfcec1ecde7a656d25c31a04d6814abe258"
+    },
+    {
+      "source": "/work/1/GPU2026/dc1394/openmx4.0_gpu/work/benchmarks_threaded_20261031/install/gpu/lib/libopenmx_core.so",
+      "destination": "/work/1/GPU2026/dc1394/openmx4.0_gpu/work/lib/libopenmx_core.so",
+      "sha256": "28f63e86eb86f6d58e6362628bccdec5135376183b810e76192b731016751a41"
+    },
+    {
+      "source": "/work/1/GPU2026/dc1394/openmx4.0_gpu/work/benchmarks_threaded_20261031/install/gpu/lib/libopenmx_host_simd.so",
+      "destination": "/work/1/GPU2026/dc1394/openmx4.0_gpu/work/lib/libopenmx_host_simd.so",
+      "sha256": "999847a457502a28f69d31cd2b54d438c3912b6824e21a0335331329882c3e17"
+    }
+  ],
+  "elpa_openmp_enabled": true,
+  "elpa_archive_sha256": "7a59e32840e900df876a2f24ea5e6405ac6972ecc1021b585c05316f1414d08b",
+  "bridge_sha256": "be37e04b58ac9525710625ab9c64f37596c685b77be83e1e7ee3bd0bac8cf103",
+  "core_backend": "SERIAL",
+  "application_openmp": true,
+  "compiler": "NVHPC 26.5",
+  "cuda": "13.2",
+  "mpi": "SDK HPC-X 2.50 / OpenMPI",
+  "gpu_arch": "sm_90",
+  "host_math": "NVHPC SDK static OpenBLAS OpenMP LP64"
+}

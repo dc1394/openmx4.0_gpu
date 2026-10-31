@@ -1,0 +1,209 @@
+{
+  "recorded": "2026-11-01T03:45:08.547325+09:00",
+  "source_commit": "0681d63ec3e00edc0c75f4b6d7c8f83c0643bbf3",
+  "source_dirty": false,
+  "measurement_started": "2026-10-31T20:42:54.389303+09:00",
+  "measurement_finished": "2026-11-01T03:41:53.477742+09:00",
+  "protocol": {
+    "ranks_per_node": 24,
+    "threads_per_rank": 2,
+    "blas_thread_controls": 2,
+    "gpus_per_node": 1,
+    "gpu_mps": true,
+    "nodes": {
+      "S": 1,
+      "L": 1,
+      "L2": 4,
+      "L3": 4,
+      "sidia333_nc_cluster": 1,
+      "cghelgeo": 1
+    },
+    "cpu": {
+      "OPENMX_GPU": 0,
+      "eigensolver": "elpa2"
+    },
+    "gpu": {
+      "OPENMX_GPU": 1,
+      "eigensolver": "gpusolver",
+      "capacity_fallbacks": "enabled"
+    },
+    "suite_repeats": 1,
+    "individual_repeats": 3,
+    "individual_order": [
+      "cpu,gpu",
+      "gpu,cpu",
+      "cpu,gpu"
+    ],
+    "timing": "Sum of per-case output Elapsed.Time for suites; median of three output Elapsed.Time values for named inputs.",
+    "time_unit": "seconds",
+    "individual_scf_limits": {
+      "sidia333_nc_cluster": 25,
+      "cghelgeo": 200
+    },
+    "L3_scf_limit": 3,
+    "upstream_remeasured": false
+  },
+  "build_manifest": "build-manifest.json",
+  "validation": {
+    "completed_runs": 20,
+    "case_observations": 126,
+    "tolerances": {
+      "energy_ha": 1e-07,
+      "max_force_component_ha_bohr": 1e-07,
+      "printed_positions": 1.000001e-05
+    },
+    "comparison_counts": {
+      "cpu-vs-bundled-reference": {
+        "total": 57,
+        "failed": 1
+      },
+      "gpu-vs-paired-cpu": {
+        "total": 63,
+        "failed": 4
+      },
+      "gpu-vs-bundled-reference": {
+        "total": 57,
+        "failed": 2
+      },
+      "cpu-repeat-vs-first": {
+        "total": 4,
+        "failed": 0
+      },
+      "gpu-repeat-vs-first": {
+        "total": 4,
+        "failed": 1
+      }
+    },
+    "L2_all_paired_comparisons_passed": true,
+    "L2_Pt500_max_force_component_difference_ha_bohr": 9.7019e-08,
+    "execution_audit": "execution-audit.json",
+    "execution_audit_checks": 690,
+    "execution_audit_failed_checks": 0,
+    "input_audit": "input-audit.json"
+  },
+  "accounting": {
+    "node_hours": 32.07277777777778,
+    "points_debited": 32.08,
+    "cap_points": 150,
+    "allocations": [
+      {
+        "allocation": "S-pair-r1",
+        "job_id": "200161.nqsv",
+        "nodes": 1,
+        "elapsed_seconds": 158,
+        "node_hours": 0.04388888888888889
+      },
+      {
+        "allocation": "L2-pair-r1",
+        "job_id": "200169.nqsv",
+        "nodes": 4,
+        "elapsed_seconds": 24766,
+        "node_hours": 27.517777777777777
+      },
+      {
+        "allocation": "L3-pair-r1",
+        "job_id": "200170.nqsv",
+        "nodes": 4,
+        "elapsed_seconds": 1638,
+        "node_hours": 1.82
+      },
+      {
+        "allocation": "L-pair-r1",
+        "job_id": "200171.nqsv",
+        "nodes": 1,
+        "elapsed_seconds": 4039,
+        "node_hours": 1.1219444444444444
+      },
+      {
+        "allocation": "cghelgeo-pair-r1",
+        "job_id": "200172.nqsv",
+        "nodes": 1,
+        "elapsed_seconds": 1597,
+        "node_hours": 0.4436111111111111
+      },
+      {
+        "allocation": "sidia333_nc_cluster-pair-r1",
+        "job_id": "200173.nqsv",
+        "nodes": 1,
+        "elapsed_seconds": 333,
+        "node_hours": 0.0925
+      },
+      {
+        "allocation": "cghelgeo-pair-r2",
+        "job_id": "200174.nqsv",
+        "nodes": 1,
+        "elapsed_seconds": 1473,
+        "node_hours": 0.4091666666666667
+      },
+      {
+        "allocation": "sidia333_nc_cluster-pair-r2",
+        "job_id": "200175.nqsv",
+        "nodes": 1,
+        "elapsed_seconds": 327,
+        "node_hours": 0.09083333333333334
+      },
+      {
+        "allocation": "cghelgeo-pair-r3",
+        "job_id": "200176.nqsv",
+        "nodes": 1,
+        "elapsed_seconds": 1580,
+        "node_hours": 0.4388888888888889
+      },
+      {
+        "allocation": "sidia333_nc_cluster-pair-r3",
+        "job_id": "200177.nqsv",
+        "nodes": 1,
+        "elapsed_seconds": 339,
+        "node_hours": 0.09416666666666666
+      }
+    ],
+    "local_accounting_records": [
+      "work/benchmarks_threaded_20261031/accounting/budget-before.txt",
+      "work/benchmarks_threaded_20261031/accounting/budget-final.txt"
+    ]
+  },
+  "local_artifacts": "work/benchmarks_threaded_20261031",
+  "raw_output_and_input_path_base": "work/benchmarks_threaded_20261031",
+  "files": {
+    "L2-iteration-reference.csv": {
+      "sha256": "b39a68aa8e92eab29bda5ae9a8bc15d05ce564ee7a4756468773c7313be2dd67",
+      "bytes": 930
+    },
+    "accuracy.csv": {
+      "sha256": "850b255097a6c17d61413d2ec0d6755a41d40434c31bff79e6a906bb58a6ea6d",
+      "bytes": 27992
+    },
+    "build-manifest.json": {
+      "sha256": "5720b8c932a5beabe69746f961da86a5ba76c0c68442f96f44026c4731bc9b08",
+      "bytes": 1501
+    },
+    "case-results.csv": {
+      "sha256": "83b331220428a4d3a97bc91ffdade642b71a7a11fbabd360d5deec7c7d3f18d8",
+      "bytes": 13211
+    },
+    "execution-audit.json": {
+      "sha256": "f7390c8c4bcefac4f5ba737be2d6cad80cec644fad5580ff92205981f229fac1",
+      "bytes": 764
+    },
+    "input-audit.json": {
+      "sha256": "065ec14752bc7cbf163e206ff73bf15c1c0c4a398a902e58fb88578c768a3dac",
+      "bytes": 6646
+    },
+    "input-manifest.json": {
+      "sha256": "dcd34f433d648e667a4e8cef7a622663527ad0872f219758136dfd6894652755",
+      "bytes": 22481
+    },
+    "run-metadata.json": {
+      "sha256": "c3b4f2251b1854b48cd2f1428834446a00c495b9df7c7507f48ff9768ce60246",
+      "bytes": 170651
+    },
+    "runs.json": {
+      "sha256": "fa5544a6a34eb1e57200842a983d3511eac462bc18a89b1d0a8d1d1c93ff449d",
+      "bytes": 8940
+    },
+    "timing-summary.csv": {
+      "sha256": "3aaea3a711abe8eb1a319ec497a69a8ce6116d8272c838a1fdf1a4d49b743536",
+      "bytes": 394
+    }
+  }
+}

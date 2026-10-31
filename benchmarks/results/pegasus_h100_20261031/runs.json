@@ -1,0 +1,394 @@
+[
+  {
+    "benchmark": "S",
+    "variant": "cpu",
+    "repeat": 1,
+    "nodes": 1,
+    "status": "completed",
+    "completed_cases": 14,
+    "expected_cases": 14,
+    "wall_seconds": 70.13406910502817,
+    "application_seconds": 43.972,
+    "rank_placement": {
+      "host_counts": {
+        "bnode038": 24
+      },
+      "all_two_cores": true,
+      "all_controls_correct": true
+    },
+    "run": "S-cpu-n1-r1"
+  },
+  {
+    "benchmark": "S",
+    "variant": "gpu",
+    "repeat": 1,
+    "nodes": 1,
+    "status": "completed",
+    "completed_cases": 14,
+    "expected_cases": 14,
+    "wall_seconds": 79.17078104196116,
+    "application_seconds": 73.516,
+    "rank_placement": {
+      "host_counts": {
+        "bnode038": 24
+      },
+      "all_two_cores": true,
+      "all_controls_correct": true
+    },
+    "run": "S-gpu-n1-r1"
+  },
+  {
+    "benchmark": "L",
+    "variant": "cpu",
+    "repeat": 1,
+    "nodes": 1,
+    "status": "completed",
+    "completed_cases": 16,
+    "expected_cases": 16,
+    "wall_seconds": 1975.7767586869886,
+    "application_seconds": 1952.1850000000002,
+    "rank_placement": {
+      "host_counts": {
+        "bnode145": 24
+      },
+      "all_two_cores": true,
+      "all_controls_correct": true
+    },
+    "run": "L-cpu-n1-r1"
+  },
+  {
+    "benchmark": "L",
+    "variant": "gpu",
+    "repeat": 1,
+    "nodes": 1,
+    "status": "completed",
+    "completed_cases": 16,
+    "expected_cases": 16,
+    "wall_seconds": 2054.6223070079577,
+    "application_seconds": 2049.231,
+    "rank_placement": {
+      "host_counts": {
+        "bnode145": 24
+      },
+      "all_two_cores": true,
+      "all_controls_correct": true
+    },
+    "run": "L-gpu-n1-r1"
+  },
+  {
+    "benchmark": "L2",
+    "variant": "cpu",
+    "repeat": 1,
+    "nodes": 4,
+    "status": "completed",
+    "completed_cases": 7,
+    "expected_cases": 7,
+    "wall_seconds": 16342.125775425986,
+    "application_seconds": 16325.286,
+    "rank_placement": {
+      "host_counts": {
+        "bnode060": 24,
+        "bnode064": 24,
+        "bnode056": 24,
+        "bnode059": 24
+      },
+      "all_two_cores": true,
+      "all_controls_correct": true
+    },
+    "run": "L2-cpu-n4-r1"
+  },
+  {
+    "benchmark": "L2",
+    "variant": "gpu",
+    "repeat": 1,
+    "nodes": 4,
+    "status": "completed",
+    "completed_cases": 7,
+    "expected_cases": 7,
+    "wall_seconds": 8406.564210100973,
+    "application_seconds": 8392.880000000001,
+    "rank_placement": {
+      "host_counts": {
+        "bnode064": 24,
+        "bnode060": 24,
+        "bnode056": 24,
+        "bnode059": 24
+      },
+      "all_two_cores": true,
+      "all_controls_correct": true
+    },
+    "run": "L2-gpu-n4-r1"
+  },
+  {
+    "benchmark": "L3",
+    "variant": "gpu",
+    "repeat": 1,
+    "nodes": 4,
+    "status": "completed",
+    "completed_cases": 20,
+    "expected_cases": 20,
+    "wall_seconds": 682.0534178299713,
+    "application_seconds": 663.9069999999999,
+    "rank_placement": {
+      "host_counts": {
+        "bnode084": 24,
+        "bnode136": 24,
+        "bnode137": 24,
+        "bnode135": 24
+      },
+      "all_two_cores": true,
+      "all_controls_correct": true
+    },
+    "run": "L3-gpu-n4-r1"
+  },
+  {
+    "benchmark": "L3",
+    "variant": "cpu",
+    "repeat": 1,
+    "nodes": 4,
+    "status": "completed",
+    "completed_cases": 20,
+    "expected_cases": 20,
+    "wall_seconds": 936.770416120009,
+    "application_seconds": 930.8530000000001,
+    "rank_placement": {
+      "host_counts": {
+        "bnode137": 24,
+        "bnode084": 24,
+        "bnode135": 24,
+        "bnode136": 24
+      },
+      "all_two_cores": true,
+      "all_controls_correct": true
+    },
+    "run": "L3-cpu-n4-r1"
+  },
+  {
+    "benchmark": "sidia333_nc_cluster",
+    "variant": "cpu",
+    "repeat": 1,
+    "nodes": 1,
+    "status": "completed",
+    "completed_cases": 1,
+    "expected_cases": 1,
+    "wall_seconds": 241.42642940604128,
+    "application_seconds": 228.009,
+    "rank_placement": {
+      "host_counts": {
+        "bnode082": 24
+      },
+      "all_two_cores": true,
+      "all_controls_correct": true
+    },
+    "run": "sidia333_nc_cluster-cpu-n1-r1"
+  },
+  {
+    "benchmark": "sidia333_nc_cluster",
+    "variant": "gpu",
+    "repeat": 1,
+    "nodes": 1,
+    "status": "completed",
+    "completed_cases": 1,
+    "expected_cases": 1,
+    "wall_seconds": 81.1482104419847,
+    "application_seconds": 76.147,
+    "rank_placement": {
+      "host_counts": {
+        "bnode082": 24
+      },
+      "all_two_cores": true,
+      "all_controls_correct": true
+    },
+    "run": "sidia333_nc_cluster-gpu-n1-r1"
+  },
+  {
+    "benchmark": "sidia333_nc_cluster",
+    "variant": "gpu",
+    "repeat": 2,
+    "nodes": 1,
+    "status": "completed",
+    "completed_cases": 1,
+    "expected_cases": 1,
+    "wall_seconds": 88.15849440800957,
+    "application_seconds": 70.304,
+    "rank_placement": {
+      "host_counts": {
+        "bnode133": 24
+      },
+      "all_two_cores": true,
+      "all_controls_correct": true
+    },
+    "run": "sidia333_nc_cluster-gpu-n1-r2"
+  },
+  {
+    "benchmark": "sidia333_nc_cluster",
+    "variant": "cpu",
+    "repeat": 2,
+    "nodes": 1,
+    "status": "completed",
+    "completed_cases": 1,
+    "expected_cases": 1,
+    "wall_seconds": 229.4032693709596,
+    "application_seconds": 225.379,
+    "rank_placement": {
+      "host_counts": {
+        "bnode133": 24
+      },
+      "all_two_cores": true,
+      "all_controls_correct": true
+    },
+    "run": "sidia333_nc_cluster-cpu-n1-r2"
+  },
+  {
+    "benchmark": "sidia333_nc_cluster",
+    "variant": "cpu",
+    "repeat": 3,
+    "nodes": 1,
+    "status": "completed",
+    "completed_cases": 1,
+    "expected_cases": 1,
+    "wall_seconds": 251.44170872995164,
+    "application_seconds": 229.91,
+    "rank_placement": {
+      "host_counts": {
+        "bnode066": 24
+      },
+      "all_two_cores": true,
+      "all_controls_correct": true
+    },
+    "run": "sidia333_nc_cluster-cpu-n1-r3"
+  },
+  {
+    "benchmark": "sidia333_nc_cluster",
+    "variant": "gpu",
+    "repeat": 3,
+    "nodes": 1,
+    "status": "completed",
+    "completed_cases": 1,
+    "expected_cases": 1,
+    "wall_seconds": 77.14134107797872,
+    "application_seconds": 72.137,
+    "rank_placement": {
+      "host_counts": {
+        "bnode066": 24
+      },
+      "all_two_cores": true,
+      "all_controls_correct": true
+    },
+    "run": "sidia333_nc_cluster-gpu-n1-r3"
+  },
+  {
+    "benchmark": "cghelgeo",
+    "variant": "cpu",
+    "repeat": 1,
+    "nodes": 1,
+    "status": "completed",
+    "completed_cases": 1,
+    "expected_cases": 1,
+    "wall_seconds": 1337.656270759995,
+    "application_seconds": 1320.712,
+    "rank_placement": {
+      "host_counts": {
+        "bnode031": 24
+      },
+      "all_two_cores": true,
+      "all_controls_correct": true
+    },
+    "run": "cghelgeo-cpu-n1-r1"
+  },
+  {
+    "benchmark": "cghelgeo",
+    "variant": "gpu",
+    "repeat": 1,
+    "nodes": 1,
+    "status": "completed",
+    "completed_cases": 1,
+    "expected_cases": 1,
+    "wall_seconds": 249.44960638001794,
+    "application_seconds": 244.048,
+    "rank_placement": {
+      "host_counts": {
+        "bnode031": 24
+      },
+      "all_two_cores": true,
+      "all_controls_correct": true
+    },
+    "run": "cghelgeo-gpu-n1-r1"
+  },
+  {
+    "benchmark": "cghelgeo",
+    "variant": "gpu",
+    "repeat": 2,
+    "nodes": 1,
+    "status": "completed",
+    "completed_cases": 1,
+    "expected_cases": 1,
+    "wall_seconds": 231.38566753698979,
+    "application_seconds": 216.756,
+    "rank_placement": {
+      "host_counts": {
+        "bnode063": 24
+      },
+      "all_two_cores": true,
+      "all_controls_correct": true
+    },
+    "run": "cghelgeo-gpu-n1-r2"
+  },
+  {
+    "benchmark": "cghelgeo",
+    "variant": "cpu",
+    "repeat": 2,
+    "nodes": 1,
+    "status": "completed",
+    "completed_cases": 1,
+    "expected_cases": 1,
+    "wall_seconds": 1230.4460644310457,
+    "application_seconds": 1226.553,
+    "rank_placement": {
+      "host_counts": {
+        "bnode063": 24
+      },
+      "all_two_cores": true,
+      "all_controls_correct": true
+    },
+    "run": "cghelgeo-cpu-n1-r2"
+  },
+  {
+    "benchmark": "cghelgeo",
+    "variant": "cpu",
+    "repeat": 3,
+    "nodes": 1,
+    "status": "completed",
+    "completed_cases": 1,
+    "expected_cases": 1,
+    "wall_seconds": 1321.4364417889738,
+    "application_seconds": 1304.279,
+    "rank_placement": {
+      "host_counts": {
+        "bnode075": 24
+      },
+      "all_two_cores": true,
+      "all_controls_correct": true
+    },
+    "run": "cghelgeo-cpu-n1-r3"
+  },
+  {
+    "benchmark": "cghelgeo",
+    "variant": "gpu",
+    "repeat": 3,
+    "nodes": 1,
+    "status": "completed",
+    "completed_cases": 1,
+    "expected_cases": 1,
+    "wall_seconds": 248.38897815998644,
+    "application_seconds": 243.684,
+    "rank_placement": {
+      "host_counts": {
+        "bnode075": 24
+      },
+      "all_two_cores": true,
+      "all_controls_correct": true
+    },
+    "run": "cghelgeo-gpu-n1-r3"
+  }
+]
