@@ -39,6 +39,15 @@ command line, rejects a mismatched environment before mpirun, and verifies
 all MPI rank records after the run. This catches launcher overrides that a
 parent-process probe cannot detect.
 
+The corrected native helper was then tested on a full Sirius node with the
+C60/GaAs sequence for all three routes (PBS 48495, exit 0). Both cases
+finished in each route. OMPT observed three actual BLIS workers on every
+one of the 32 ranks in every route. The official route also creates some
+one-worker BLAS teams; its three-worker teams were observed on all ranks.
+Helper metadata, the environment immediately before mpirun, and every MPI
+rank record all retain BLIS_NUM_THREADS=3. These instrumented diagnostic
+times are excluded; the separate uninstrumented S14 measurements pass.
+
 The final integrated HIP executable was audited again without LD_PRELOAD.
 Both CPU/GPU routes, both C60/GaAs, all 32 ranks used libblis-mt with three
 actual workers (PBS 48473, exit 0). These instrumented runs are excluded
@@ -81,3 +90,12 @@ gpusolver2/gpusolver3 timing is added.
 
 Compact evidence: benchmarks/results/sirius_threading_audit_20261031.json
 Full audit/build/test logs: work/codex_sirius_benchmark_20261031/
+
+Later remote integration: 73c4a2c0 (NVIDIA ELPA GPU handle cleanup) was
+fast-forwarded and rebuilt on Sirius. Its 17 MPI admission/lifecycle model
+cases pass with a three-thread caller and UBSan. The new guard changes
+only GPU ELPA destruction, preserving the caller's thread limit afterward.
+The CPU code and shared DSOs are unchanged. Remaining GPU measurements
+use this guard; the completed S14 result used no GPU ELPA handle. Exact
+source and executable versions are retained per workload. No additional
+gpusolver2 timing was run for this integration.

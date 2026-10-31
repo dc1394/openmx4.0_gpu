@@ -74,7 +74,7 @@
     "blas": {
       "library": "AOCL libblis-mt.so.5",
       "threads": 3,
-      "note": "Threaded BLAS does not enable ELPA-internal OpenMP loops."
+      "note": "Direct diagnostic observations only. The old native-suite helper overrode BLIS_NUM_THREADS to 1; all earlier native-suite timings are excluded."
     },
     "note": "Audit of actual Sirius benchmark builds, 2026-10-31. No benchmark condition changed by this read-only check."
   },
@@ -256,11 +256,14 @@
     "numeric-runtime-probe.log": "74a7c98d7032e4131d764a1a43ffd4dbce1a5ba3b8ae5fab695ef3ecbae1e417",
     "blas_integrated_audit.pbs": "01f7664ed1f754096cebd61a43fb98336e6fc3c6d04a9b5fe0f3958957ab8fc4",
     "integrated-nvidia-build.log": "30730288f0e3aab3f461544a727763eec2896f94882bf77ab8fafa14490ee54a",
-    "integrated-nvidia-related-ctest.log": "c4ffc25ee9dece06b4f0cda87cb37c59125e8899618faebac01cae20fad5953d"
+    "integrated-nvidia-related-ctest.log": "c4ffc25ee9dece06b4f0cda87cb37c59125e8899618faebac01cae20fad5953d",
+    "gs2-cleanup-73c4a2c0-model.log": "9e3af94525b757b7aab15ea2edc79da8ab7110a6d25e37f94fbf47018b389924",
+    "build-73c4a2c0.log": "1b2f28e75f7d31cc72efae6eb612757a00db1ecaccec114b9a22f420dd8bc772"
   },
   "integrated_remote_fixes": [
     "e00049a5",
-    "ef6cacaa"
+    "ef6cacaa",
+    "73c4a2c0"
   ],
   "nvidia_merge_hip_binary_unchanged": true,
   "related_tests_after_nvidia_merge": {
@@ -443,6 +446,103 @@
           "OPENMX_AFFINITY_DIR": "/work/GPU2026/dc1394/openmx4.0_gpu/work/codex_sirius_benchmark_20261031/runs/fork_gpu/L2/affinity"
         }
       }
+    ],
+    "native_worker_validation_job": "48495.pbs",
+    "native_worker_validation_passed": true
+  },
+  "native_suite_blas_diagnostic": {
+    "jobid": "48495.pbs",
+    "exit_status": 0,
+    "helper_commit": "42889fb07eee238402a87670ef920376b4aea328",
+    "helper_sha256": "142dbe07eb33a607aca96e01af7a28ea25f9510b618706ee7ef28f1e148c6274",
+    "rank_launcher_sha256": "ed7b5dc289688856401ca1f0e42e4140d39907c312b584b29920a7cfa1c6d438",
+    "timings_excluded": true,
+    "note": "Actual native-suite helper and MPI wrapper, full node 32 MPI x 3. OMPT records actual workers from BLIS parallel regions. The official route also legitimately creates one-worker BLAS teams; every rank additionally creates a three-worker BLAS team.",
+    "routes": [
+      {
+        "route": "upstream_cpu",
+        "cases": [
+          "C60",
+          "GaAs"
+        ],
+        "jobid": "48495.pbs",
+        "ranks": 32,
+        "threads": 3,
+        "three_blas_workers_observed_on_all_ranks": true,
+        "ompt_counts": [
+          {
+            "provider": "libblis-mt",
+            "requested": 1,
+            "actual": 1,
+            "ranks": 32
+          },
+          {
+            "provider": "libblis-mt",
+            "requested": 3,
+            "actual": 3,
+            "ranks": 32
+          }
+        ],
+        "run_log_sha256": "2f132948f7600150097faeccda371bf74b2f3a734d00afad0df648b833c32c7d",
+        "helper_command_sha256": "2c0854b0f2540979bb1d0921ecd312b101e6581edf801ea6adc13181a4341ead",
+        "mpi_launch_environment_sha256": "863b66a14e9649efeed69d6954e456e6df4475c22b34eaa01acc7ade81307382"
+      },
+      {
+        "route": "fork_cpu",
+        "cases": [
+          "C60",
+          "GaAs"
+        ],
+        "jobid": "48495.pbs",
+        "ranks": 32,
+        "threads": 3,
+        "three_blas_workers_observed_on_all_ranks": true,
+        "ompt_counts": [
+          {
+            "provider": "libblis-mt",
+            "requested": 3,
+            "actual": 3,
+            "ranks": 32
+          }
+        ],
+        "run_log_sha256": "82118c2a9436fb2c19bfe5a2fb42dcfa8be9d57c286ea1be88bf2711b80a8f1f",
+        "helper_command_sha256": "e41e94bf627bc7c00e05f62001d353bfcdb39b8ff4e53fa6b89b56a7fd63540e",
+        "mpi_launch_environment_sha256": "a0bd5afece7c2986b3a5a6c2efc80a516b1ac3ee4dc18a99265e279dc9193fa6"
+      },
+      {
+        "route": "fork_gpu",
+        "cases": [
+          "C60",
+          "GaAs"
+        ],
+        "jobid": "48495.pbs",
+        "ranks": 32,
+        "threads": 3,
+        "three_blas_workers_observed_on_all_ranks": true,
+        "ompt_counts": [
+          {
+            "provider": "libblis-mt",
+            "requested": 3,
+            "actual": 3,
+            "ranks": 32
+          }
+        ],
+        "run_log_sha256": "0c5505b618a33d718ed3240856605afea41c0325dd4757939433aff77862d1a1",
+        "helper_command_sha256": "743df9bc7af69a9cdebe43f1752903e21751083df949ca093fda922778c373b5",
+        "mpi_launch_environment_sha256": "f7279fc8113823d0fc30eadc37c6ca2725d0e3c8c8ccd3ac09c9b0d92f99a6e6"
+      }
     ]
+  },
+  "later_remote_cleanup_integration": {
+    "integrated_at": "2026-10-31T19:47:36.587275+09:00",
+    "commit": "73c4a2c03e605ad675bbc3a30d690681b1e6b387",
+    "base": "3e2f5c73e7eef9b3a2be2e7dd33e2aedafdfcc9e",
+    "new_gpu_binary_sha256": "9f32ba753465990df98c4d52978780f06241340f6877fdaa655486d707c4bd93",
+    "retained_cpu_and_gpu_S_binary_sha256": "5878fedc02e93bd5db526e6bea87112fa8113f737ed964f32c517dce9689bdf9",
+    "shared_dsos_unchanged": true,
+    "host_lifecycle_cases": 17,
+    "host_lifecycle_passed": 17,
+    "scope": "ELPA GPU handle destruction; no numerical operation or BLAS/CPU ELPA thread configuration changes",
+    "benchmark_scope_unchanged": true
   }
 }
