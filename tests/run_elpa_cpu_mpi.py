@@ -22,6 +22,9 @@ DRIVER = r'''
 #include <math.h>
 #include <mpi.h>
 #include <omp.h>
+#ifdef OPENMX_TEST_ELPA_WORKERS
+#include <stdatomic.h>
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <elpa/elpa.h>
@@ -31,6 +34,17 @@ extern void dsyev_(char *, char *, int *, double *, int *, double *, double *, i
 extern void zheev_(char *, char *, int *, double complex *, int *, double *, double complex *, int *, double *, int *);
 
 static int world_rank, checked;
+#ifdef OPENMX_TEST_ELPA_WORKERS
+static _Atomic int observed_elpa_threads;
+extern int __real_omp_get_thread_num(void);
+int __wrap_omp_get_thread_num(void)
+{
+    const int threads=__real_omp_get_thread_num()+1;
+    int old=atomic_load(&observed_elpa_threads);
+    while(old<threads && !atomic_compare_exchange_weak(&observed_elpa_threads,&old,threads)) {}
+    return threads-1;
+}
+#endif
 #define CHECK(x) do { if (!(x)) { fprintf(stderr,"rank %d line %d: %s\n",world_rank,__LINE__,#x); MPI_Abort(MPI_COMM_WORLD,1); } } while (0)
 
 static int local_count(int n, int block, int coord, int procs)
@@ -180,6 +194,12 @@ int main(int argc,char **argv)
         run_case(group,color?wide:1,color?1:wide,solver,z,17+2*color,7+color,2);
     MPI_Comm_free(&group);
     if(world_rank==0)printf("PASS: %d CPU ELPA ABI cases per rank\n",checked);
+#ifdef OPENMX_TEST_ELPA_WORKERS
+    int observed=atomic_load(&observed_elpa_threads),minimum;
+    MPI_Allreduce(&observed,&minimum,1,MPI_INT,MPI_MIN,MPI_COMM_WORLD);
+    if(omp_get_max_threads()>1)CHECK(minimum==omp_get_max_threads());
+    if(world_rank==0)printf("PASS: ELPA workers observed on every rank: %d threads\n",minimum);
+#endif
     MPI_Finalize();return 0;
 }
 '''
@@ -194,6 +214,8 @@ def main():
     parser.add_argument('--timeout', type=int, default=180)
     parser.add_argument('--ranks', type=int, choices=(6, 8), default=6)
     parser.add_argument('--threads', type=int, default=1)
+    parser.add_argument('--check-elpa-workers', action='store_true',
+                        help='Observe ELPA worker IDs through GNU-style linker wrapping (static ELPA with the C omp_get_thread_num ABI)')
     args = parser.parse_args()
     if args.threads < 1:
         parser.error('--threads must be positive')
@@ -206,6 +228,7 @@ def main():
         driver.write_text(DRIVER)
         binary = directory / 'check'
         makefile = directory / 'check.mk'
+        worker_flags = '-DOPENMX_TEST_ELPA_WORKERS -Wl,--wrap=omp_get_thread_num' if args.check_elpa_workers else ''
         # Use exactly the production compiler and release library stack.
         makefile.write_text(
             '.PHONY: check-elpa-cpu\ncheck-elpa-cpu:\n'
@@ -213,11 +236,13 @@ def main():
             f'-I{shlex.quote(str(ROOT / "source"))} '
             f'{shlex.quote(str(ROOT / "source/openmx_elpa_cpu.c"))} '
             f'{shlex.quote(str(ROOT / "source/openmx_env.c"))} '   # the kernel override is read through the registry
-            f'{shlex.quote(str(driver))} -o {shlex.quote(str(binary))} $(LIB)\n')
+            f'{shlex.quote(str(driver))} -o {shlex.quote(str(binary))} {worker_flags} $(LIB)\n')
         subprocess.run([args.make, '-C', str(native), '-f', args.makefile, '-f', str(makefile),
                         'check-elpa-cpu'], check=True, timeout=args.timeout)
         env = os.environ.copy()
-        env.update(OPENMX_GPU='0', CUDA_VISIBLE_DEVICES='', OMP_NUM_THREADS=str(args.threads), OMP_DYNAMIC='FALSE', OMP_MAX_ACTIVE_LEVELS='1', OPENBLAS_NUM_THREADS=str(args.threads), BLIS_NUM_THREADS=str(args.threads))
+        # Keep BLAS serial here so the worker observation proves ELPA's own
+        # OpenMP team, independently of the selected BLAS implementation.
+        env.update(OPENMX_GPU='0', CUDA_VISIBLE_DEVICES='', OMP_NUM_THREADS=str(args.threads), OMP_DYNAMIC='FALSE', OMP_MAX_ACTIVE_LEVELS='1', OPENBLAS_NUM_THREADS='1', BLIS_NUM_THREADS='1')
         subprocess.run([*shlex.split(args.mpiexec), '-np', str(args.ranks), '--map-by', f'slot:PE={args.threads}', '--bind-to', 'core', str(binary)],
                        check=True, timeout=args.timeout, env=env)
 

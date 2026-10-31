@@ -1,0 +1,72 @@
+Sirius ELPA / BLAS threading audit, 2026-10-31
+============================================
+
+Integrated origin/main e00049a5 ("Fix hybrid CPU diagonalization in HIP
+builds") and ef6cacaa ("Enable OpenMP in the CUDA ELPA dependency stack")
+before applying the additional Sirius changes. Their AOCL threading
+selection, CUDA build rules and Radeon/A100 validation records are retained.
+
+The original Sirius fork executable embedded ELPA 2026.02.002 built without
+OpenMP. The official OpenMX executable uses ELPA 2018.05.001 with OpenMP.
+Enabling BLAS threads does not enable ELPA's internal parallel regions.
+
+The merged HIP build enables ELPA OpenMP, uses libelpa_openmp and matching
+headers, preserves the configured OpenMP flags in Flang's ELPA2 -O1
+workaround, and initializes MPI with MPI_THREAD_SERIALIZED. The CPU adapter
+also explicitly sets each handle's omp_threads from the caller's OpenMP
+limit: ELPA 2026 defaults this option to one even in an OpenMP build.
+Nested callers or insufficient MPI thread support use one thread. GPU ELPA
+handles keep their existing one-thread host team. CPU-only and CUDA build
+rules also use the OpenMP archive and matching headers; CUDA hardware was
+not available for validation on this AMD system.
+
+BLAS was already threaded in the accepted official and superseded fork
+measurements: LD_PRELOAD put AOCL libblis-mt.so.5 first. Untimed executions of
+the actual OpenMX binaries (C60 and noncollinear GaAs, all three routes,
+32 MPI x 3 threads on one complete node) confirmed dgemm_/zgemm_ bindings
+to that library. OMPT callbacks observed three actual BLIS workers on all
+32 ranks. Automatic AOCL selection had preferred the sequential library;
+the remote fix now selects OpenMP BLIS directly by default.
+
+The final integrated HIP executable was audited again without LD_PRELOAD.
+Both CPU/GPU routes, both C60/GaAs, all 32 ranks used libblis-mt with three
+actual workers (PBS 48473, exit 0). These instrumented runs are excluded
+from benchmark times.
+
+Validation of the integrated source:
+  * Production CPU ELPA adapter: 6 MPI x 3 and 8 MPI x 3, 24 cases per rank,
+    real/complex ELPA1/ELPA2, rectangular grids, disjoint subcommunicators,
+    partial eigenvectors and unequal/padded leading dimensions. All pass
+    eigenvalue, residual and orthogonality tolerances of 2e-11. The actual
+    ELPA library calls observe three workers on every rank, with BLAS held
+    at one thread in this diagnostic. Worker observation is opt-in via
+    --check-elpa-workers for static ELPA builds with the C OpenMP ABI; the
+    normal NVIDIA numerical/ELPA-configuration checks remain available.
+  * Host CTests: 632 of 634 distinct checks pass, including the changed
+    Krylov worker tests, link-boundary and CMake-driver tests. Two existing
+    checks (basis-text-numbers and neutral-grid-metadata-native) fail on
+    representable subnormals. The old and new basis-test executables are
+    byte-identical. A standalone probe confirms that this system's
+    libstdc++ from_chars returns ERANGE for these inputs while strtod
+    returns a representable value. This change does not alter that parser.
+  * Host-test environment: Clang sanitizer runtime, GCC's OpenACC header
+    for CUDA SDK models, and OMPI_MCA_memory=^patcher for allocation/MPI
+    models. The GPU worker allocation-failure model also disables offload
+    and hidden helper tasks. Initial failures under other environments
+    and the successful retries are retained, not reported as code passes.
+
+The HIP Krylov change also binds every OpenMP worker to its rank's GPU on
+each workspace entry and initializes rocBLAS before the first parallel
+GEMM. The worker model checks new/reused teams, binding failure and CPU
+recovery under ASan/UBSan. A previous full-node DIA512-1 calculation passed
+energy/force comparison (PBS 48451); all fork benchmark workloads are being
+rerun with the final OpenMP-enabled build, including this Krylov change.
+
+All twelve requested fork CPU/GPU measurements require replacement. Old
+OpenMP-disabled fork results are excluded. The official CPU measurements
+remain valid. Full calculations, input controls, 32 MPI x 3 threads per
+physical node, and ordinary gpusolver dispatch are preserved; no separate
+gpusolver2/gpusolver3 timing is added.
+
+Compact evidence: benchmarks/results/sirius_threading_audit_20261031.json
+Full audit/build/test logs: work/codex_sirius_benchmark_20261031/

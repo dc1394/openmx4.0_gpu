@@ -108,3 +108,8 @@ __pycache__/
 !/modules/*/README.md
 !/docs/RADEON_VALIDATION_20261027.md
 !/source/third_party/hip/*.md
+
+# Headers, CMake packages and licenses from cmake --install into work/.
+/work/include/
+/work/lib64/
+/work/share/

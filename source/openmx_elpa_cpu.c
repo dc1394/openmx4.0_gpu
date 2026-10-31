@@ -16,6 +16,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 
 #include "openmx_env.h"
 #include "openmx_stdout_level.h"
@@ -292,6 +295,17 @@ static void cpu_eigenvectors(int solver, int is_complex,
     error = cpu_collective_error(error, parent);
     if (error != ELPA_OK) cpu_abort("handle allocation", error, rows, cols);
 
+    /* ELPA defaults to one thread even in an OpenMP-enabled library.
+       Do not create a nested team or violate the caller's MPI thread level. */
+    int requested_threads = 1, mpi_threads = MPI_THREAD_SINGLE;
+#ifdef _OPENMP
+    if (!omp_in_parallel()) requested_threads = omp_get_max_threads();
+#endif
+    MPI_Query_thread(&mpi_threads);
+    int elpa_threads = mpi_threads >= MPI_THREAD_SERIALIZED ? requested_threads : 1;
+    if (elpa_threads < 1) elpa_threads = 1;
+    cpu_set_integer(handle, "omp_threads", elpa_threads, &error);
+
     cpu_set_integer(handle, "na", na, &error);
     cpu_set_integer(handle, "nev", nev, &error);
     cpu_set_integer(handle, "local_nrows", ld, &error);
@@ -310,6 +324,19 @@ static void cpu_eigenvectors(int solver, int is_complex,
 
     error = cpu_collective_error(elpa_setup(handle), parent);
     if (error != ELPA_OK) cpu_abort("setup", error, rows, cols);
+    int configured_threads = 0;
+    elpa_get_integer(handle, "omp_threads", &configured_threads, &error);
+    error = cpu_collective_error(error, parent);
+    if (error != ELPA_OK) cpu_abort("OpenMP thread query", error, rows, cols);
+    if (OPENMX_STDOUT_LEVEL(3) || openmx_env_flag_at(OPENMX_ENV_GPU_VERBOSE, 0)) {
+        int rank = 0;
+        MPI_Comm_rank(parent, &rank);
+        if (rank == 0) {
+            printf("<ELPA> CPU OpenMP threads: requested=%d configured=%d MPI_thread=%d\n",
+                   requested_threads, configured_threads, mpi_threads);
+            fflush(stdout);
+        }
+    }
     cpu_set_integer(handle, "solver", solver, &error);
     if (solver == ELPA_SOLVER_2STAGE) cpu_select_kernel(handle, is_complex, parent, &error);
     error = cpu_collective_error(error, parent);

@@ -17,14 +17,14 @@ set(OPENMX_CPU_ELPA_ROOT "" CACHE PATH "Existing CPU ELPA 2026.02.002 prefix; em
 set(_cpu_backend "${CMAKE_SOURCE_DIR}/source/backends/cpu")
 if(OPENMX_CPU_ELPA_ROOT)
   find_path(OPENMX_CPU_ELPA_INCLUDE_DIR elpa/elpa.h
-    PATHS "${OPENMX_CPU_ELPA_ROOT}/include/elpa-2026.02.002" NO_DEFAULT_PATH REQUIRED)
-  find_library(OPENMX_CPU_ELPA_LIBRARY NAMES elpa
+    PATHS "${OPENMX_CPU_ELPA_ROOT}/include/elpa_openmp-2026.02.002" "${OPENMX_CPU_ELPA_ROOT}/include/elpa-2026.02.002" NO_DEFAULT_PATH REQUIRED)
+  find_library(OPENMX_CPU_ELPA_LIBRARY NAMES elpa_openmp elpa
     PATHS "${OPENMX_CPU_ELPA_ROOT}/lib" "${OPENMX_CPU_ELPA_ROOT}/lib64" NO_DEFAULT_PATH REQUIRED)
 else()
   include(ExternalProject)
   set(_cpu_elpa_prefix "${CMAKE_BINARY_DIR}/cpu-elpa")
-  set(OPENMX_CPU_ELPA_INCLUDE_DIR "${_cpu_elpa_prefix}/include/elpa-2026.02.002")
-  set(OPENMX_CPU_ELPA_LIBRARY "${_cpu_elpa_prefix}/lib/libelpa.a")
+  set(OPENMX_CPU_ELPA_INCLUDE_DIR "${_cpu_elpa_prefix}/include/elpa_openmp-2026.02.002")
+  set(OPENMX_CPU_ELPA_LIBRARY "${_cpu_elpa_prefix}/lib/libelpa_openmp.a")
   # Libtool hoists absolute library filenames before libelpa.a, which breaks
   # --as-needed and static BLAS links. Keep libraries as ordered -l
   # arguments for the configure probes and ELPA's own helper programs.
@@ -127,7 +127,7 @@ else()
     UPDATE_COMMAND ""
     PATCH_COMMAND ${_cpu_elpa_env} sh <SOURCE_DIR>/autogen.sh
     CONFIGURE_COMMAND ${_cpu_elpa_env} <SOURCE_DIR>/configure
-      --prefix=${_cpu_elpa_prefix} --disable-shared --enable-static --with-pic
+      --prefix=${_cpu_elpa_prefix} --enable-openmp --disable-shared --enable-static --with-pic
       --disable-nvidia-gpu-kernels --disable-amd-gpu-kernels --disable-intel-gpu-sycl-kernels
       ${_cpu_elpa_kernel_options}
       --with-test-programs=no
@@ -135,7 +135,7 @@ else()
       ${_cpu_elpa_options}
     # Upstream's unconditional libelpatest has missing inter-library module
     # dependencies. Finish the public/private ELPA modules before make all.
-    BUILD_COMMAND ${_cpu_elpa_env} "${OPENMX_MAKE_EXECUTABLE}" -j${OPENMX_BUILD_JOBS} libelpa.la
+    BUILD_COMMAND ${_cpu_elpa_env} "${OPENMX_MAKE_EXECUTABLE}" -j${OPENMX_BUILD_JOBS} libelpa_openmp.la
       COMMAND ${_cpu_elpa_env} "${OPENMX_MAKE_EXECUTABLE}" -j${OPENMX_BUILD_JOBS}
     INSTALL_COMMAND ${_cpu_elpa_env} "${OPENMX_MAKE_EXECUTABLE}" install
     BUILD_BYPRODUCTS "${OPENMX_CPU_ELPA_LIBRARY}" DEPENDS ${_cpu_elpa_dependencies})

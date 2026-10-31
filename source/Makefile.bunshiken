@@ -1366,8 +1366,8 @@ SigmaEK.o: SigmaEK.c
 # Legacy site template: use the same modern ELPA install as the main build.
 GPUSOLVER2_PREFIX ?= $(CURDIR)/third_party/gpusolver2-install
 GPUSOLVER2_ELPA_VER ?= 2026.02.002
-GPUSOLVER2_ELPA_INCLUDE ?= $(GPUSOLVER2_PREFIX)/include/elpa-$(GPUSOLVER2_ELPA_VER)
-LIB += $(GPUSOLVER2_PREFIX)/lib/libelpa.a
+GPUSOLVER2_ELPA_INCLUDE ?= $(GPUSOLVER2_PREFIX)/include/elpa_openmp-$(GPUSOLVER2_ELPA_VER)
+LIB += $(GPUSOLVER2_PREFIX)/lib/libelpa_openmp.a
 
-openmx_elpa_cpu.o: openmx_elpa_cpu.c openmx_elpa_cpu.h $(GPUSOLVER2_PREFIX)/lib/libelpa.a
+openmx_elpa_cpu.o: openmx_elpa_cpu.c openmx_elpa_cpu.h $(GPUSOLVER2_PREFIX)/lib/libelpa_openmp.a
 	$(CC) -I$(GPUSOLVER2_ELPA_INCLUDE) -c openmx_elpa_cpu.c -o $@

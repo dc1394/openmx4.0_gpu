@@ -854,9 +854,12 @@ defaults to the measured 12 MPI x 4 OpenMP layout; both counts are configurable.
 For Sirius MI300A, the [build and validation record](doc/sirius_unified_validation_20261027.txt)
 covers the unified HIP build, one APU, four local GPUs and two physical
 nodes with eight GPUs. The [Sirius PBS script](tools/sirius_openmx.pbs)
-defaults to 8 MPI x 3 OpenMP for one APU (24 CPU cores), records rank placement and
+defaults to 8 MPI x 3 OpenMP per APU for CPU and GPU runs, hence
+32 MPI x 3 OpenMP on a full four-APU node. It records rank placement and
 loads the matching installed libraries. From `work/`, submit with
 `qsub -v OMX_INPUT=input.dat ../tools/sirius_openmx.pbs`.
+The [Sirius threading audit](doc/sirius_threading_validation_20261031.txt)
+records ELPA/BLAS worker checks and the required replacement of earlier fork timings.
 
 ### HPC SDK 26.9 / CUDA 13.4 update
 

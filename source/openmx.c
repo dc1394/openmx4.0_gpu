@@ -157,6 +157,9 @@ static int run_openmx(int argc, char *argv[], OpenMXCoreContext *core)
   mpi_comm_level1 = MPI_COMM_WORLD; 
   MPI_COMM_WORLD1 = MPI_COMM_WORLD; 
 
+#ifdef nompi
+  MPI_Init(&argc,&argv);
+#else
   /* ELPA's hybrid CPU kernels require serialized (or multiple) MPI
      thread support, even though application collectives stay outside teams. */
   {
@@ -172,6 +175,7 @@ static int run_openmx(int argc, char *argv[], OpenMXCoreContext *core)
       return EXIT_FAILURE;
     }
   }
+#endif
   MPI_Comm_size(MPI_COMM_WORLD1,&numprocs);
   MPI_Comm_rank(MPI_COMM_WORLD1,&myid);
   NUMPROCS_MPI_COMM_WORLD = numprocs;

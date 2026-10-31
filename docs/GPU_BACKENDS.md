@@ -655,6 +655,8 @@ ELPA/COSMA の構築には autoconf、automake、libtoolize、m4、unzip も必�
 HIP の ELPA は CPU・GPU カーネルを含む OpenMP 版（`libelpa_openmp`）を構築し、
 アプリケーションは `MPI_THREAD_SERIALIZED` 以上で MPI を初期化します。
 AOCL のスレッド版 BLIS と ELPA は、各 MPI ランクの `-nt` / `OMP_NUM_THREADS` に従います。
+CPU 用 ELPA ハンドルの `omp_threads` も明示的に設定します。ELPA の OpenMP 有効化だけでは、
+この値は既定の1のままです。GPU 用 ELPA ハンドルのホスト側スレッド数は1を維持します。
 `BLIS_NUM_THREADS=1` を設定すると BLAS は1スレッドに制限されます。
 直接 make でも `AOCL_THREADING=OPENMP` が既定で、`SEQUENTIAL` に変更できます。
 ROCm の OpenMP ランタイムを先に検索し、選択した MPI・数値ライブラリ・Fortran
@@ -805,8 +807,14 @@ mpirun -np 8 --map-by ppr:8:node:PE=3 --bind-to core \
 ```
 
 Sirius では [専用 PBS スクリプト](../tools/sirius_openmx.pbs) を使えます。
-1 APU（24 コア）の既定は GPU 時に 8 MPI × 3 OpenMP、`OPENMX_GPU=0` 時に
-24 MPI × 1 OpenMP です。ビルド手順、4 GPU のローカル MAGMA と 2 ノード 8 GPU の
+2026-10-31 以降は CPU/GPU とも 1 APU（24 コア）あたり 8 MPI × 3 OpenMP を既定とし、
+4 APU の 1 ノードは 32 MPI × 3 OpenMP、2 ノードは合計 64 MPI × 3 OpenMP です。
+AOCL の OpenMP 版 `libblis-mt` を優先し、BLIS のスレッド数もランクあたりの
+OpenMP スレッド数に合わせます。Sirius の実行環境では `UCX_TLS=self,cma,rc` と
+`HSA_NO_SCRATCH_RECLAIM=1` を既定にしています。前者は CPU/GPU 両方で停止した
+UCX MM 転送を外し、後者は ROCm の一時メモリをキューに保持する設定です。
+環境変数で明示した値は優先されます。
+ビルド手順、4 GPU のローカル MAGMA と 2 ノード 8 GPU の
 ELPA/COSMA、数値比較・性能測定は [2026-10-27 の検証記録](../doc/sirius_unified_validation_20261027.txt)
 にまとめています。Sirius の古い Autoconf を補う場合、HIP ビルドでも
 `OPENMX_MAKE_OPTIONS=GPUSOLVER2_TOOL_PATH=/absolute/path/to/autoconf/bin`

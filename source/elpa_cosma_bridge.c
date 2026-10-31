@@ -457,7 +457,10 @@ static gs2_handle_slot *gs2_get_handle(int ictxt, int n, int nev, int is_complex
         return NULL;
     }
 
-    elpa_set_integer(h, "na", n, &err);
+    /* GPU work is rank-parallel; keep its host team at one thread while
+       the shared ELPA library also supports hybrid CPU solves. */
+    elpa_set_integer(h, "omp_threads", 1, &err);
+    if (err == ELPA_OK) elpa_set_integer(h, "na", n, &err);
     if (err == ELPA_OK) elpa_set_integer(h, "nev", nev, &err);
     if (err == ELPA_OK) elpa_set_integer(h, "local_nrows", na_rows, &err);
     if (err == ELPA_OK) elpa_set_integer(h, "local_ncols", na_cols, &err);

@@ -1,8 +1,9 @@
 #!/bin/bash
 # Submit from the calculation directory, e.g. work/:
 #   qsub -v OMX_INPUT=input.dat ../tools/sirius_openmx.pbs
-# One MI300A: 8 MPI x 3 OpenMP. For more GPUs retain 24 mpiprocs per
-# allocated APU; the script derives threads from each node's allocation.
+# Each MI300A: 8 MPI x 3 OpenMP, for both CPU and GPU comparisons.
+# A full four-APU node uses 32 MPI x 3 OpenMP. Retain 24 mpiprocs per
+# allocated APU; the script derives ranks from each node's CPU allocation.
 # Four local GPUs: -l select=4:ncpus=24:mpiprocs=24:mem=124gb:ngpus=1,place=pack
 # Exactly two full nodes: select four APU chunks on each of two available
 # hosts, e.g. -l 'select=4:ncpus=24:mpiprocs=24:mem=124gb:ngpus=1:host=a12+4:ncpus=24:mpiprocs=24:mem=124gb:ngpus=1:host=a13,place=free'
@@ -37,8 +38,7 @@ print(len(slots), next(iter(slots.values())))
 PY
 )
 omx_gpu=${OPENMX_GPU:-1}
-omx_default_ranks=8
-if [[ "$omx_gpu" = 0 ]]; then omx_default_ranks=$omx_slots; fi
+omx_default_ranks=$((omx_slots / 3))
 omx_rpn=${OMX_RANKS_PER_NODE:-$omx_default_ranks}
 [[ "$omx_rpn" =~ ^[1-9][0-9]*$ ]]
 (( omx_rpn <= omx_slots ))
@@ -64,9 +64,13 @@ module load rocm/7.2.0 openmpi/5.0.10/rocm7.2.0_amdflang
 unset LD_PRELOAD OMPX_APU_MAPS OMPX_DISABLE_USM_MAPS OMP_TARGET_OFFLOAD
 export LD_LIBRARY_PATH=/opt/rocm-7.2.0/llvm/lib:/opt/rocm-7.2.0/lib/llvm/lib:/opt/rocm-7.2.0/lib:/system/apps/rhel/aocl/5.1.0/aocc/lib:/system/apps/rhel/aocc/5.0.0/lib:${LD_LIBRARY_PATH:-}
 export HSA_XNACK=1 HSA_OVERRIDE_CPU_AFFINITY_DEBUG=0 UCX_RCACHE_ENABLE=n
+# Sirius UCX 1.19's MM transport aborted in both upstream and fork runs.
+# Keep host MPI traffic on CMA/InfiniBand, and retain ROCm queue scratch.
+export UCX_TLS=${UCX_TLS:-self,cma,rc}
+export HSA_NO_SCRATCH_RECLAIM=${HSA_NO_SCRATCH_RECLAIM:-1}
 export LIBOMPTARGET_MEMORY_MANAGER_THRESHOLD=0
 export OMP_NUM_THREADS="$omx_threads" OMP_MAX_ACTIVE_LEVELS=1 OMP_DYNAMIC=FALSE
-export BLIS_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MAGMA_NUM_THREADS=1
+export BLIS_NUM_THREADS="$omx_threads" OPENBLAS_NUM_THREADS=1 MAGMA_NUM_THREADS=1
 export OPENMX_GPU="$omx_gpu"
 export OPENMX_AFFINITY_DIR=${OPENMX_AFFINITY_DIR:-"$PWD/affinity.$PBS_JOBID"}
 
@@ -79,6 +83,12 @@ elif [[ -n "${OMX_LIBRARY_DIR:-}" ]]; then
   echo 'OMX_LIBRARY_DIR must contain both OpenMX shared libraries' >&2
   exit 64
 fi
+
+# AOCL also supplies a serial libblis.so. Preload its OpenMP implementation
+# first so dense CPU BLAS uses the same per-rank thread count as OpenMX.
+omx_blas=/system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5
+[[ -f "$omx_blas" ]]
+export LD_PRELOAD="$omx_blas${LD_PRELOAD:+:$LD_PRELOAD}"
 
 mkdir -p "$OPENMX_AFFINITY_DIR"
 qstat -f "$PBS_JOBID" > "$OPENMX_AFFINITY_DIR/allocation.txt"

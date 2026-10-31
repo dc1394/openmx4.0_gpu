@@ -244,7 +244,9 @@ OPENMX_ELPA_CPTR_PATCH
   # generated elpa2_compute.F90 once the SIMD kernel templates are enabled;
   # build that one driver TU at -O1 up front.  The hot kernels live in
   # their own TUs and keep the full optimization level.
-  make FCFLAGS="-O1 -march=x86-64-v3 -fopenmp" src/elpa2/libelpa_openmp_private_la-elpa2_compute.lo
+  # The low-optimization workaround must retain configure's OpenMP flags.
+  elpa_openmp_fcflags=$(sed -n 's/^OPENMP_FCFLAGS = //p' Makefile)
+  make FCFLAGS="$elpa_openmp_fcflags -O1 -march=x86-64-v3" src/elpa2/libelpa_openmp_private_la-elpa2_compute.lo
   # bin_PROGRAMS= noinst_PROGRAMS=: skip the elpa2_print_kernels diagnostic
   # binary and the validate_* self-test binaries ("make all" builds both
   # even with the test suites disabled).  Their libtool links expand

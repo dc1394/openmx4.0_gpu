@@ -8,6 +8,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <thread>
+#include <vector>
 
 using namespace gpu_views_model;
 using openmx::gpu::DeviceBuffer;

@@ -60,6 +60,8 @@ typedef struct { double r, i; } dcomplex;
 #define HIPBLAS_STATUS_SUCCESS 0
 #define wait_hipfunc(x) CHECK((x)==0)
 typedef struct OpenMXNativeResources OpenMXNativeResources;
+typedef struct OpenMXHamiltonianGpuState OpenMXHamiltonianGpuState;
+typedef struct OpenMXHamiltonianCache OpenMXHamiltonianCache;
 typedef struct OpenMXClusterNonColState OpenMXClusterNonColState;
 typedef OpenMXClusterNonColState ClusterNonColState;
 typedef int EigenRefineState;
