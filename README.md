@@ -1258,8 +1258,7 @@ does not establish SCF convergence.
 ### GeForce RTX 5080 / Core i9-10980XE (2026-10-31–2026-11-01)
 
 `main` at `0681d63e` was pulled, rebuilt with CMake in Release mode and
-installed before this measurement. This replaces the October 30–31 measurements
-at `2132126a`, whose bundled CPU ELPA did not enable OpenMP. The host has an Intel Core i9-10980XE
+installed before this measurement. The host has an Intel Core i9-10980XE
 (18 physical cores, SMT enabled: 36 logical CPUs), 256 GiB RAM and one
 GeForce RTX 5080 (16 GiB, `sm_120`, driver 595.99.02). All runs used
 **18 MPI ranks × 2 OpenMP threads**: rank `i` used the two SMT siblings
@@ -1462,17 +1461,35 @@ limits and stopping criteria were preserved. Only deployment paths and
 CPU eigensolver selection changed, as recorded in the
 [input audit](benchmarks/results/pegasus_h100_20261031/input-audit.json).
 
-Times are the sum of per-case output `Elapsed.Time` for suites and the
-median of three output times for named inputs. Ratios above 1 favor CUDA.
+The upstream CPU column uses the retained **October 29, 2026** measurements
+of OpenMX 4.0 + official patch 4.0.1, built with Intel icx/ifx 2025.3.2,
+Intel MPI 2021.17, threaded MKL 2025.3 and OpenMP ELPA 2018.05.001.
+Those runs used the same 24 MPI × 2 OpenMP layout per node and the same
+node counts as the latest fork runs. Input
+definitions and all 47 used PAO/VPS files match. The retained output hashes,
+build and measurement dates are recorded in the
+[upstream baseline](benchmarks/results/pegasus_h100_20261031/upstream-baseline.json).
+Upstream `L2` has no completed baseline measurement, so its cells are marked
+with a dash.
 
-| Test | Nodes | Fork CPU (s) | Fork CUDA (s) | CPU / CUDA |
-| --- | ---: | ---: | ---: | ---: |
-| `-runtest` (14 cases) | 1 | 43.972 | 73.516 | 0.598 |
-| `-runtestL` (16 cases) | 1 | 1952.185 | 2049.231 | 0.953 |
-| `-runtestL2` (7 cases) | 4 | 16325.286 | 8392.880 | 1.945 |
-| `-runtestL3` (20 cases) | 4 | 930.853 | 663.907 | 1.402 |
-| `sidia333_nc_cluster.dat` | 1 | 228.009 | 72.137 | 3.161 |
-| `cghelgeo.dat` | 1 | 1304.279 | 243.684 | 5.352 |
+Times are the sum of per-case output `Elapsed.Time` for suites and the
+median of three output times for named inputs, including the upstream
+baseline. Ratios above 1 favor the denominator configuration; comparisons
+against upstream include compiler, MPI and math-library effects.
+
+| Test | Nodes | Upstream CPU (s) | Fork CPU (s) | Fork CUDA (s) | Upstream / Fork CPU | Upstream / CUDA | Fork CPU / CUDA |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `-runtest` (14 cases) | 1 | 75.294 | 43.972 | 73.516 | 1.712 | 1.024 | 0.598 |
+| `-runtestL` (16 cases) | 1 | 2847.609 | 1952.185 | 2049.231 | 1.459 | 1.390 | 0.953 |
+| `-runtestL2` (7 cases) | 4 | — | 16325.286 | 8392.880 | — | — | 1.945 |
+| `-runtestL3` (20 cases) | 4 | 1400.949 | 930.853 | 663.907 | 1.505 | 2.110 | 1.402 |
+| `sidia333_nc_cluster.dat` | 1 | 315.049 | 228.009 | 72.137 | 1.382 | 4.367 | 3.161 |
+| `cghelgeo.dat` | 1 | 1102.810 | 1304.279 | 243.684 | 0.846 | 4.526 | 5.352 |
+
+The [comparison CSV](benchmarks/results/pegasus_h100_20261031/upstream-comparison.csv)
+records these totals and ratios; the
+[per-case comparison](benchmarks/results/pegasus_h100_20261031/upstream-case-comparison.csv)
+includes timings and SCF counts for all 59 input definitions.
 
 These ratios include differences in SCF iteration counts. For example,
 `L2/Fe1000` used 436 CPU steps and 342 CUDA steps. `cghelgeo` used
@@ -1519,6 +1536,29 @@ exceeded the energy tolerance against CUDA repeat 1. All 185 paired,
 repeat and bundled-reference comparisons are retained separately in
 [accuracy.csv](benchmarks/results/pegasus_h100_20261031/accuracy.csv).
 
+The retained upstream outputs were also checked against the latest fork
+outputs at the same energy/force tolerances, matching case and repeat
+index. Of 56 comparisons per route, 54 CPU and 52 CUDA comparisons were
+within tolerance. The following six exceptions are separate from the
+CPU/CUDA comparisons above.
+
+<details>
+<summary>Numerical differences against the retained upstream CPU baseline</summary>
+
+| Test / input | Latest fork route | Repeat | abs ΔE (Ha) | Max abs ΔF (Ha/bohr) |
+| --- | --- | ---: | ---: | ---: |
+| L3 / Fe1000 | CUDA | 1 | 4.80213e-09 | 3.02135e-07 |
+| L3 / Ni63-O64 | CPU | 1 | 5.58430e-10 | 8.70978e-06 |
+| L3 / Ni63-O64 | CUDA | 1 | 1.74805e-09 | 5.07938e-06 |
+| cghelgeo | CPU | 1 | 2.34339e-07 | 6.85210e-08 |
+| cghelgeo | CUDA | 1 | 3.19112e-07 | 6.56320e-08 |
+| cghelgeo | CUDA | 2 | 2.88112e-07 | 6.39600e-08 |
+
+All 112 comparisons, including input/output hashes, are recorded in
+[upstream-accuracy.csv](benchmarks/results/pegasus_h100_20261031/upstream-accuracy.csv).
+
+</details>
+
 The campaign consumed **32.08 points**, within the 150-point cap. The ten
 allocations totaled 32.072778 node-hours, including preparation and cleanup.
 The [versioned CSV/JSON records](benchmarks/results/pegasus_h100_20261031/manifest.json)
@@ -1526,182 +1566,6 @@ include per-case times, SCF counts, final residuals, numerical comparisons,
 build/input hashes, launch commands and allocation accounting. Full local
 outputs, rank records and MPS logs remain under
 `work/benchmarks_threaded_20261031/`.
-
-### Pegasus H100 benchmarks (2026-10-29–30)
-
-Each node had one Intel Xeon Platinum 8468 (48 allocated physical cores,
-SMT disabled), about 124.5 GiB host memory and one H100 PCIe 80 GB.
-Every node used **24 MPI ranks × 2 OpenMP threads**, bound to two cores
-per rank. Every CUDA run started a private NVIDIA MPS server on each node.
-`L2` and `L3` used four nodes (96 MPI ranks); the other tests used one.
-
-After updating `main` to `db516abd`, the application and dependencies
-were rebuilt and installed in a separate prefix. The fork used NVHPC 26.5,
-CUDA 13.2 (`sm_90`), SDK Open MPI 5.0.10rc2, SDK BLAS/LAPACK/ScaLAPACK,
-GCC 12.3 for the Kokkos SERIAL Core/SIMD libraries, ELPA 2026.02.002 and
-COSMA 2.8.4; MAGMA was disabled. CPU and CUDA routes used the same executable
-and matching installed libraries: `OPENMX_GPU=0`, `scf.eigen.lib elpa2`
-versus `OPENMX_GPU=1`, the inputs' original `gpusolver` setting.
-
-| Measurements | Fork CPU source | Fork CUDA source |
-| --- | --- | --- |
-| Fresh `-runtest` and both named inputs | `db516abd` | `db516abd` |
-| Retained `-runtestL`, `L2`, `L3` | `bfa0ee65` | `bfa0ee65` + density-matrix fix published in `cb078e29` |
-
-The large-suite measurements were retained at the user's request. Their
-CUDA binary contains the density-matrix fix; it does not represent a new
-large-suite run of `db516abd`. Upstream measurements were also retained:
-OpenMX 4.0 + official patch 4.0.1, Intel icx/ifx 2025.3.2, Intel MPI 2021.17
-and MKL 2025.3. Upstream `L2` was excluded at the user's request.
-
-The full original inputs and used PAO/VPS files were preserved. The 16 fresh
-input decks and their 29 data files match the previous input snapshot.
-Only deployment paths and CPU eigensolver selection differ between routes;
-SCF/MD limits, grids, geometry and convergence criteria were retained.
-Each suite ran once in one MPI job. Each named input ran three times per
-route; CPU and GPU shared a node sequentially within each repeat, with the
-second repeat reversing their order. Separate repeats used distinct nodes.
-
-Times below use the sum of per-case output `Elapsed.Time` for suites and
-the median of three such values for named inputs. Launcher wall times and
-per-repeat times are recorded separately. Ratios above 1 favor CUDA; the
-upstream comparison also includes compiler, MPI and math-library effects.
-
-| Test | Nodes | Upstream CPU (s) | Fork CPU (s) | Fork CUDA (s) | Fork CPU / CUDA |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| `-runtest` (14 cases) | 1 | 75.294 | 42.665 | 73.308 | 0.582 |
-| `-runtestL` (16 cases) | 1 | 2847.609 | 2033.184 | 2059.800 | 0.987 |
-| `-runtestL2` (7 cases) | 4 | — | 17012.827 | 8713.207 | 1.953 |
-| `-runtestL3` (20 cases) | 4 | 1400.949 | 947.836 | 665.300 | 1.425 |
-| `sidia333_nc_cluster.dat` | 1 | 315.049 | 236.132 | 71.658 | 3.295 |
-| `cghelgeo.dat` | 1 | 1102.810 | 1494.259 | 244.441 | 6.113 |
-
-CUDA-path times include the CPU work and capacity fallbacks selected by
-the application. SCF counts can differ between routes; the speedups compare
-complete input runs and include those differences. Sidia333 reaches its
-25-SCF limit, and `L3` inputs use three SCF steps; those fixed limits do
-not establish SCF convergence.
-
-<details>
-<summary>-runtest: all 14 case timings</summary>
-
-| Input | Atoms | Solver | Upstream CPU (s) | Fork CPU (s) | Fork CUDA (s) | Fork CPU / CUDA |
-| --- | ---: | --- | ---: | ---: | ---: | ---: |
-| Benzene | 12 | cluster | 6.284 | 2.484 | 5.235 | 0.474 |
-| C60 | 60 | dc | 6.160 | 4.376 | 8.573 | 0.510 |
-| CO | 2 | cluster | 4.908 | 3.055 | 19.778 | 0.154 |
-| Cr2 | 2 | cluster (NC) | 7.081 | 4.160 | 5.192 | 0.801 |
-| Crys-MnO | 4 | band (sp) | 7.400 | 4.493 | 5.666 | 0.793 |
-| GaAs | 2 | band (NC) | 12.480 | 7.191 | 6.343 | 1.134 |
-| Glycine | 10 | cluster | 3.196 | 1.897 | 2.961 | 0.641 |
-| Graphite4 | 4 | band | 2.661 | 0.793 | 1.512 | 0.524 |
-| H2O | 3 | cluster | 2.885 | 1.146 | 1.470 | 0.780 |
-| H2O-EF | 3 | cluster | 3.151 | 1.640 | 2.475 | 0.663 |
-| HMn | 2 | cluster (sp) | 8.221 | 6.002 | 6.982 | 0.860 |
-| Methane | 5 | cluster | 2.432 | 1.061 | 1.924 | 0.551 |
-| Mol_MnO | 2 | cluster (sp) | 5.397 | 3.274 | 4.374 | 0.749 |
-| Ndia2 | 2 | band | 3.038 | 1.093 | 0.823 | 1.328 |
-
-</details>
-
-<details>
-<summary>-runtestL: all 16 case timings</summary>
-
-| Input | Atoms | Solver | Upstream CPU (s) | Fork CPU (s) | Fork CUDA (s) | Fork CPU / CUDA |
-| --- | ---: | --- | ---: | ---: | ---: | ---: |
-| 5_5_13COb2 | 155 | band | 40.022 | 33.679 | 28.786 | 1.170 |
-| B2C62_Band | 64 | band | 311.743 | 243.554 | 181.475 | 1.342 |
-| CG15c-DC-LNO | 650 | dc-lno | 91.053 | 58.965 | 123.249 | 0.478 |
-| DIA512-1 | 512 | krylov | 64.126 | 45.877 | 116.373 | 0.394 |
-| FeBCC | 16 | band (sp) | 96.602 | 79.504 | 80.559 | 0.987 |
-| GEL | 40 | band | 26.502 | 20.096 | 20.015 | 1.004 |
-| GFRAG | 54 | cluster | 17.599 | 16.344 | 14.808 | 1.104 |
-| GGFF | 40 | band (NC) | 597.858 | 586.247 | 275.322 | 2.129 |
-| MCCN | 564 | krylov | 103.045 | 105.775 | 201.915 | 0.524 |
-| Mn12_148_F | 148 | cluster (sp) | 48.396 | 38.193 | 24.914 | 1.533 |
-| N1C999 | 1000 | dc-lno (sp) | 1187.484 | 610.100 | 852.166 | 0.716 |
-| Ni63-O64 | 127 | band (sp) | 48.381 | 33.921 | 25.550 | 1.328 |
-| Pt63 | 63 | cluster | 34.478 | 28.034 | 21.523 | 1.303 |
-| SialicAcid | 40 | cluster | 11.082 | 8.116 | 8.949 | 0.907 |
-| ZrB2_2x2 | 76 | band | 120.799 | 84.664 | 54.722 | 1.547 |
-| nsV4Bz5 | 64 | cluster | 48.439 | 40.115 | 29.474 | 1.361 |
-
-</details>
-
-<details>
-<summary>-runtestL2: all 7 case timings</summary>
-
-| Input | Atoms | Solver | Upstream CPU (s) | Fork CPU (s) | Fork CUDA (s) | Fork CPU / CUDA |
-| --- | ---: | --- | ---: | ---: | ---: | ---: |
-| C1000 | 1000 | cluster | — | 579.165 | 531.040 | 1.091 |
-| Fe1000 | 1000 | cluster (sp) | — | 11141.951 | 3892.310 | 2.863 |
-| GRA1024 | 1024 | cluster | — | 961.666 | 370.095 | 2.598 |
-| Ih-Ice1200 | 1200 | cluster | — | 247.576 | 217.712 | 1.137 |
-| Pt500 | 500 | cluster | — | 2546.974 | 2715.434 | 0.938 |
-| R-TiO2-1050 | 1050 | cluster | — | 943.072 | 544.432 | 1.732 |
-| Si1000 | 1000 | cluster | — | 592.423 | 442.184 | 1.340 |
-
-</details>
-
-<details>
-<summary>-runtestL3: all 20 case timings</summary>
-
-| Input | Atoms | Solver | Upstream CPU (s) | Fork CPU (s) | Fork CUDA (s) | Fork CPU / CUDA |
-| --- | ---: | --- | ---: | ---: | ---: | ---: |
-| 5_5_13COb2 | 155 | band | 7.517 | 3.425 | 7.861 | 0.436 |
-| C1000 | 1000 | cluster | 75.529 | 65.236 | 55.336 | 1.179 |
-| C60 | 60 | dc | 2.422 | 0.935 | 1.911 | 0.489 |
-| CG15c | 650 | dc-lno | 43.160 | 22.323 | 24.938 | 0.895 |
-| Crys-MnO | 4 | band (sp) | 5.273 | 1.374 | 1.273 | 1.079 |
-| DIA512-1 | 512 | krylov | 12.696 | 7.032 | 9.247 | 0.760 |
-| Fe1000 | 1000 | cluster (sp) | 103.523 | 103.838 | 49.128 | 2.114 |
-| GEL | 40 | band | 8.111 | 3.195 | 3.756 | 0.851 |
-| GFRAG | 54 | cluster | 3.418 | 1.459 | 2.162 | 0.675 |
-| GGFF | 40 | band (NC) | 72.409 | 67.906 | 69.343 | 0.979 |
-| MCCN | 564 | dc-lno | 40.405 | 19.896 | 25.883 | 0.769 |
-| Mn12_148_F | 148 | cluster (sp) | 7.765 | 3.702 | 3.442 | 1.076 |
-| N1C999 | 1000 | dc-lno (sp) | 402.708 | 239.828 | 113.903 | 2.106 |
-| Ni63-O64 | 127 | band (sp) | 7.812 | 3.862 | 4.495 | 0.859 |
-| Pt500 | 500 | cluster | 142.883 | 104.050 | 110.710 | 0.940 |
-| Pt63 | 63 | cluster | 5.064 | 2.539 | 3.321 | 0.765 |
-| Si1280-LNO | 1280 | dc-lno | 431.747 | 282.116 | 163.999 | 1.720 |
-| SialicAcid | 40 | cluster | 3.855 | 1.780 | 2.546 | 0.699 |
-| ZrB2_2x2 | 76 | band | 17.233 | 9.517 | 8.320 | 1.144 |
-| nsV4Bz5 | 64 | cluster | 7.419 | 3.823 | 3.726 | 1.026 |
-
-</details>
-
-All requested executions completed normally. Numerical checks compare total
-energy and every force component against the first fork CPU run, with
-tolerances of `1e-7` Ha and `1e-7` Ha/bohr. Atom identities and grids must
-match; printed coordinates allow `1e-5` rounding. CPU repeat, paired-route
-and bundled-reference comparisons are recorded separately in `accuracy.csv`.
-Of 63 CUDA-to-first-CPU comparisons, 60 were within tolerance.
-
-| Test / input | CUDA repeat | abs ΔE (Ha) | Max abs ΔF (Ha/bohr) |
-| --- | ---: | ---: | ---: |
-| L2 / Pt500 | 1 | 7.87259e-09 | 1.3046e-07 |
-| L3 / Fe1000 | 1 | 3.73984e-09 | 5.46807e-07 |
-| L3 / Ni63-O64 | 1 | 1.63205e-07 | 8.48693e-06 |
-
-These discrepancies remain recorded; completion is not numerical acceptance.
-Retained L3 Fe1000 and Ni63-O64 already differed from the earlier CPU
-route. Same-node controls found force variation between repeated old
-GPU runs as well. Retained L2 Pt500 used 158 SCF steps on CUDA and 175
-on CPU; its force-component difference remains unresolved.
-
-Additional first-CPU checks found 0 CPU-repeat and
-3 retained-upstream comparisons outside tolerance;
-0 additional paired CPU/CUDA checks were outside tolerance.
-Their case/repeat identities and all bundled-reference results are retained
-in the detailed record and `accuracy.csv`.
-
-The versioned [CSV/JSON records](benchmarks/results/pegasus_h100_20261030)
-include every case, repeat, SCF count, numerical comparison, executable/input
-hash and run placement. [The detailed validation record](doc/pegasus_benchmark_20261030.txt)
-describes the builds and retained results. Full local logs and resource
-samples are under `work/benchmarks_refresh_20261030/`, with the two earlier
-campaigns identified in the manifest.
 
 ### Radeon RX 9060 XT validation (2026-10-31 refresh)
 
@@ -1899,65 +1763,7 @@ case timing, SCF count, comparison maximum and input hash. The accompanying
 [provenance JSON](benchmarks/results/radeon_rx9060xt_20261031_16x2.json) records revision,
 build, binary/library hashes, runtime controls, rank audits, dataset hashes,
 validation and all eight jobs. Raw logs are under
-`work/codex_benchmark_20261031_refresh/`. The
-[October 30 record](benchmarks/results/radeon_rx9060xt_20261030_16x2.json)
-and [October 31 threading diagnosis](benchmarks/results/radeon_cghelgeo_threading_20261031_8x2.json)
-remain available as separate earlier measurements.
-
-### Radeon cghelgeo CPU threading diagnosis (2026-10-31)
-
-After rebuilding `main` at `f823dcec`, the CPU path was investigated on the
-same Threadripper/Radeon host with **8 MPI ranks × 2 OpenMP threads**, pinned
-to CPU cores 0–15. These controlled runs use `cghelgeo.dat` with
-`scf.maxIter=3`; geometry, basis, k mesh, precision and convergence thresholds
-are unchanged. Times include initialization, three SCF iterations and forces.
-They are single diagnostic measurements, separate from the refreshed full
-16×2 benchmark above.
-
-Two build settings limited CPU diagonalization. The HIP ELPA 2026.02.002
-archive had been configured without OpenMP, and the application linked
-sequential AOCL BLIS (`libblis.so`). Although threaded BLIS was also present
-as a transitive dependency, actual `zgemm_` calls resolved to the sequential
-library. The retained upstream build uses OpenMP ELPA 2018 and threaded MKL.
-
-| CPU configuration | Total (s) | Diagonalization section (s) |
-| --- | ---: | ---: |
-| Fork before: serial ELPA + sequential BLIS | 398.069 | 312.061 |
-| Fork control: serial ELPA + BLIS, 2 threads | 299.799 | 213.119 |
-| Fork control: OpenMP ELPA + sequential BLIS | 360.674 | 274.438 |
-| Fork fixed: OpenMP ELPA + BLIS, 2 threads | 276.196 | 189.491 |
-| Upstream: OpenMP ELPA 2018 + MKL, 2 threads | 306.216 | 171.914 |
-| Upstream control: OpenMP ELPA 2018 + MKL, 1 thread | 390.896 | 256.601 |
-
-Enabling ELPA OpenMP alone reduced total time by 9.4%; selecting two-thread
-BLIS alone reduced it by 24.7%. The combined fix reduced total time from
-**398.069 to 276.196 s** (1.44×, 30.6% shorter).
-The configuration effects overlap and their percentages should not be added.
-
-HIP now builds `libelpa_openmp` and uses its matching headers, retaining
-`-fopenmp` in the Flang `-O1` workaround for the generated ELPA2 driver.
-MPI initialization requests `MPI_THREAD_SERIALIZED`, the minimum supported
-level for this ELPA configuration. AOCL defaults to `libblis-mt`; use
-`OPENMX_HIP_AOCL_THREADING=SEQUENTIAL` (native make:
-`AOCL_THREADING=SEQUENTIAL`) for an explicit sequential BLAS build.
-`BLIS_NUM_THREADS=1` still limits BLAS to one thread; the two-thread controls
-above set `BLIS_NUM_THREADS=2`, with `OMP_MAX_ACTIVE_LEVELS=1`.
-
-All six cghelgeo controls passed finite-energy and full force-component
-checks at identical grids/geometry. Relative to the original fork control,
-the maximum differences were 4.093e-10 Ha in energy and 9.140e-10 Ha/bohr in
-force components, below `1e-7` in both cases. The CPU ELPA adapter also passed
-24 MPI/ABI cases per rank at 8×2, covering real/complex ELPA1 and ELPA2,
-AVX2, unequal leading dimensions, empty local blocks and disjoint process
-groups. Both CPU and HIP `-runtest` runs passed all 14 bundled references and
-the paired component-wise comparison. A separate full Cr2 calculation with
-forced ELPA GPU kernels also agreed with the CPU result.
-
-The [diagnostic CSV](benchmarks/results/radeon_cghelgeo_threading_20261031_8x2.csv)
-and [provenance/validation JSON](benchmarks/results/radeon_cghelgeo_threading_20261031_8x2.json)
-record stage times, numerical differences, input/binary hashes, library
-providers, build settings and regression checks. Local logs are retained in
-`work/codex_cghelgeo_cpu_20261031/`.
+`work/codex_benchmark_20261031_refresh/`.
 
 ## Important notes
 Performance depends on the system, solver, hardware and MPI/OpenMP layout.

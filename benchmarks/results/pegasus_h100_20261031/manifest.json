@@ -204,6 +204,44 @@
     "timing-summary.csv": {
       "sha256": "3aaea3a711abe8eb1a319ec497a69a8ce6116d8272c838a1fdf1a4d49b743536",
       "bytes": 394
+    },
+    "upstream-accuracy.csv": {
+      "sha256": "74b2cfbe6636c7e404f074ea93193bfdd75af098431fd2159795f32432502a29",
+      "bytes": 44673
+    },
+    "upstream-baseline.json": {
+      "sha256": "3286a3df8c89bc0807693f98564d2b6e6d0d6ae3b1df96a53b78a21cb3010860",
+      "bytes": 50722
+    },
+    "upstream-case-comparison.csv": {
+      "sha256": "d8e68ae53f10a23f96dcb0ff4b2beaf8a9ea987eed8757c332eb3dba1a8ff9ba",
+      "bytes": 5513
+    },
+    "upstream-comparison.csv": {
+      "sha256": "034000329dec80af55429988076d6a7c9ca3fe8b37bcd8fc41904c0b65133247",
+      "bytes": 714
+    },
+    "upstream-run-results.csv": {
+      "sha256": "d7f0249ef16938fbe25187c45dabd791be4279ee1d89c3b27e1222569822b441",
+      "bytes": 22955
     }
+  },
+  "retained_upstream_comparison": {
+    "baseline": "upstream-baseline.json",
+    "timing": "upstream-comparison.csv",
+    "case_timing": "upstream-case-comparison.csv",
+    "accuracy": "upstream-accuracy.csv",
+    "run_results": "upstream-run-results.csv",
+    "comparison_counts": {
+      "cpu": {
+        "total": 56,
+        "failed": 2
+      },
+      "gpu": {
+        "total": 56,
+        "failed": 4
+      }
+    },
+    "upstream_remeasured": false
   }
 }
