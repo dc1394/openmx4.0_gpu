@@ -1,0 +1,201 @@
+{
+  "source_commit": "5925e71a8ddeea57db7f926145e1afc5da15ef7c",
+  "base_commit": "08fd12679004e6188944fb39dd30c432100a10db",
+  "compiled_source_sha256": {
+    "source/openmx_gpu_k_waves.h": "c33fd1bc51c901cd917436ef8f847aaf9e5e360771d721004385376c0a957ba6",
+    "source/backends/hip/sources.json": "45b95af6d506708611bd454c79cfa1af7027ace64f7e321be86d70fe7df9589f",
+    "source/backends/hip/src/Band_DFT_NonCol.c": "ce50d410fe5075a5fda268f5de442f5ea3ac6b3e671c262c4c5e4ba936d91ab5",
+    "source/backends/hip/src/Cluster_DFT_NonCol_dm_hip.cu": "d33bed345b7f603796d671e3e200dc8896cc3f29f3ef50e511b24a67b4376a9d",
+    "source/backends/hip/src/magma_openmx.cu": "7719b7d7a704fd730af7dbd32049fa0cb4ace91d8047d968d4f212dd62ee82e1",
+    "source/backends/hip/tests/gpusolver_wrapper_smoke.c": "3df5dd946b7e25e95750495bd3845aa8ac831adb75da3885dcb0fbf628516dc4",
+    "source/openmx_env_registry.h": "3b90d260a29d847b789b233044e75c7427691ba6f08d04b62b27648ac2f4d3ec"
+  },
+  "binaries": {
+    "openmx": "d1513fa2539bdac2264b1b346ba8541dfabb6bfbcbf2fb5f3b810abc964651b1",
+    "libopenmx_core.so": "ce99ecfda97573a0991fbc6c3ffed3f3d28da5e24b90b69b4e9d78c53290be94",
+    "libopenmx_host_simd.so": "889b483d8cffd5d00949ff5172dd9b16665b2f019ea614f677a719fe637bf9ca"
+  },
+  "baseline": "benchmarks/results/sirius_mi300a_20261031_32x3",
+  "ci_commit": "25b45161a9972381b8b2a3664cd412b97f569776",
+  "ci_jobs_passed": 18,
+  "settings": {
+    "physical_nodes": 1,
+    "gpus": 4,
+    "mpi_ranks": 32,
+    "threads_per_rank": 3,
+    "blas_threads": 3,
+    "gpu_rank_map": "block",
+    "solver": "gpusolver"
+  },
+  "conservative_total_points": 6.75,
+  "jobs": [
+    {
+      "jobid": "48517.pbs",
+      "script": "probe.pbs",
+      "exit_status": 1,
+      "wall_seconds": 46,
+      "conservative_points": 0.06
+    },
+    {
+      "jobid": "48518.pbs",
+      "script": "probe.pbs",
+      "exit_status": 0,
+      "wall_seconds": 370,
+      "conservative_points": 0.42
+    },
+    {
+      "jobid": "48519.pbs",
+      "script": "cache.pbs",
+      "exit_status": 1,
+      "wall_seconds": 6,
+      "conservative_points": 0.01
+    },
+    {
+      "jobid": "48520.pbs",
+      "script": "cache.pbs",
+      "exit_status": 1,
+      "wall_seconds": 4,
+      "conservative_points": 0.01
+    },
+    {
+      "jobid": "48521.pbs",
+      "script": "cache.pbs",
+      "exit_status": 1,
+      "wall_seconds": 5,
+      "conservative_points": 0.01
+    },
+    {
+      "jobid": "48522.pbs",
+      "script": "cache.pbs",
+      "exit_status": 0,
+      "wall_seconds": 1083,
+      "conservative_points": 1.21
+    },
+    {
+      "jobid": "48523.pbs",
+      "script": "density.pbs",
+      "exit_status": 0,
+      "wall_seconds": 633,
+      "conservative_points": 0.71
+    },
+    {
+      "jobid": "48524.pbs",
+      "script": "regression.pbs",
+      "exit_status": 0,
+      "wall_seconds": 2831,
+      "conservative_points": 3.15
+    },
+    {
+      "jobid": "48525.pbs",
+      "script": "s-ab.pbs",
+      "exit_status": 1,
+      "wall_seconds": 154,
+      "conservative_points": 0.18
+    },
+    {
+      "jobid": "48526.pbs",
+      "script": "s-ab.pbs",
+      "exit_status": 0,
+      "wall_seconds": 299,
+      "conservative_points": 0.34
+    },
+    {
+      "jobid": "48527.pbs",
+      "script": "mccn-ab.pbs",
+      "exit_status": 0,
+      "wall_seconds": 349,
+      "conservative_points": 0.39
+    },
+    {
+      "jobid": "48528.pbs",
+      "script": "mccn-ab.pbs",
+      "exit_status": 0,
+      "wall_seconds": 231,
+      "conservative_points": 0.26
+    }
+  ],
+  "diagnostic_variants": {
+    "schedule": {
+      "created": "2026-11-01T11:08:55.254356+09:00",
+      "base_commit": "128dfcfb28de0e41def8014b4d71c9620b33293d",
+      "files": {
+        "openmx": {
+          "source": "/work/GPU2026/dc1394/openmx4.0_gpu/build/sirius-hip-threaded/openmx",
+          "sha256": "30deedaa447229388b8ec06943f4077367f19cc5af3ecf8df20eb407cf65f0c1"
+        },
+        "libopenmx_core.so": {
+          "source": "/work/GPU2026/dc1394/openmx4.0_gpu/build/sirius-hip-threaded/core/libopenmx_core.so",
+          "sha256": "ce99ecfda97573a0991fbc6c3ffed3f3d28da5e24b90b69b4e9d78c53290be94"
+        },
+        "libopenmx_host_simd.so": {
+          "source": "/work/GPU2026/dc1394/openmx4.0_gpu/build/sirius-hip-threaded/core/host-simd/lib/libopenmx_host_simd.so",
+          "sha256": "889b483d8cffd5d00949ff5172dd9b16665b2f019ea614f677a719fe637bf9ca"
+        }
+      }
+    },
+    "cache_async": {
+      "base_commit": "128dfcfb28de0e41def8014b4d71c9620b33293d",
+      "files": {
+        "openmx": {
+          "source": "/work/GPU2026/dc1394/openmx4.0_gpu/build/sirius-hip-threaded/openmx",
+          "sha256": "991391f5fdc5e6880efe90d41411e6388b909909a529e40cd61a3bc73f1fc7c8"
+        },
+        "libopenmx_core.so": {
+          "source": "/work/GPU2026/dc1394/openmx4.0_gpu/build/sirius-hip-threaded/core/libopenmx_core.so",
+          "sha256": "ce99ecfda97573a0991fbc6c3ffed3f3d28da5e24b90b69b4e9d78c53290be94"
+        },
+        "libopenmx_host_simd.so": {
+          "source": "/work/GPU2026/dc1394/openmx4.0_gpu/build/sirius-hip-threaded/core/host-simd/lib/libopenmx_host_simd.so",
+          "sha256": "889b483d8cffd5d00949ff5172dd9b16665b2f019ea614f677a719fe637bf9ca"
+        }
+      },
+      "source_files": {
+        "CMakeLists.txt": "9e6483f9964848c00c4ff8bffbeaf0a69752f86afc36577fa9d7fbdc37e85e5c",
+        "source/backends/hip/sources.json": "45b95af6d506708611bd454c79cfa1af7027ace64f7e321be86d70fe7df9589f",
+        "source/backends/hip/src/Band_DFT_NonCol.c": "94a6125f33a17c05701d7d804910b2e6206149822a8251ffc42a98f9e0a0faa5",
+        "source/backends/hip/src/Cluster_DFT_NonCol_dm_hip.cu": "8dc001f3fee799817c98a3c25890c293137cee3467165635922a6704e1805bdc",
+        "source/backends/hip/src/magma_openmx.cu": "7719b7d7a704fd730af7dbd32049fa0cb4ace91d8047d968d4f212dd62ee82e1",
+        "source/openmx_env_registry.h": "d361de3adca5fbcb79dac77b66cfa033cd5f4fa5bcfc1a41e6ba0718beefb229",
+        "source/backends/hip/tests/run_mi300a_build_cache_cpu.py": "b83c3ca93ed4898ecfda64437cb010e5f466a8185210f5c325837e1653131ffb",
+        "source/backends/hip/tests/run_mi300a_k_waves_cpu.py": "26e198bd8af6f075c31c122f53d57a4e209ebe4178a329fee02babfdc17e36ac",
+        "source/openmx_gpu_k_waves.h": "c33fd1bc51c901cd917436ef8f847aaf9e5e360771d721004385376c0a957ba6"
+      }
+    },
+    "density": {
+      "base_commit": "08fd12679004e6188944fb39dd30c432100a10db",
+      "files": {
+        "openmx": {
+          "source": "/work/GPU2026/dc1394/openmx4.0_gpu/build/sirius-hip-threaded/openmx",
+          "sha256": "d1513fa2539bdac2264b1b346ba8541dfabb6bfbcbf2fb5f3b810abc964651b1"
+        },
+        "libopenmx_core.so": {
+          "source": "/work/GPU2026/dc1394/openmx4.0_gpu/build/sirius-hip-threaded/core/libopenmx_core.so",
+          "sha256": "ce99ecfda97573a0991fbc6c3ffed3f3d28da5e24b90b69b4e9d78c53290be94"
+        },
+        "libopenmx_host_simd.so": {
+          "source": "/work/GPU2026/dc1394/openmx4.0_gpu/build/sirius-hip-threaded/core/host-simd/lib/libopenmx_host_simd.so",
+          "sha256": "889b483d8cffd5d00949ff5172dd9b16665b2f019ea614f677a719fe637bf9ca"
+        }
+      },
+      "source_files": {
+        "source/backends/hip/tests/run_mi300a_build_cache_cpu.py": "b83c3ca93ed4898ecfda64437cb010e5f466a8185210f5c325837e1653131ffb",
+        "source/backends/hip/tests/run_mi300a_dm_waves_cpu.py": "09187cd577c5c004fef4edfd1bfe88c95f6232eaebb385cfe6ed9e359fee6026",
+        "source/backends/hip/tests/run_mi300a_k_waves_cpu.py": "26e198bd8af6f075c31c122f53d57a4e209ebe4178a329fee02babfdc17e36ac",
+        "source/openmx_gpu_k_waves.h": "c33fd1bc51c901cd917436ef8f847aaf9e5e360771d721004385376c0a957ba6",
+        "CMakeLists.txt": "898303ed06095a2bf2b796594d5ea6f19fa6c050fcd307d2f255d0cfbd11038c",
+        "doc/OpenMX40_GPU_implementation_en.html": "d561f520cdd81747a383d4db99bb15b433ee42d53ed87e9f2defc4c3b2e758d7",
+        "doc/OpenMX40_GPU_implementation_ja.html": "7ea67c8ccd63d0b10289fef3cebd5c9c6581ba5b012902b7b5bba876d0ab7eed",
+        "doc/environment_variables.json": "a8913561589b7883e1443e21184a23c3c86abf4de27a346e093d9096df2f0299",
+        "docs/ENVIRONMENT_VARIABLES.md": "725cc086fad7af4a3dd78c4ee65d158455d5de00e57957bd2604f66e17ad7b26",
+        "source/backends/hip/sources.json": "45b95af6d506708611bd454c79cfa1af7027ace64f7e321be86d70fe7df9589f",
+        "source/backends/hip/src/Band_DFT_NonCol.c": "ce50d410fe5075a5fda268f5de442f5ea3ac6b3e671c262c4c5e4ba936d91ab5",
+        "source/backends/hip/src/Cluster_DFT_NonCol_dm_hip.cu": "d33bed345b7f603796d671e3e200dc8896cc3f29f3ef50e511b24a67b4376a9d",
+        "source/backends/hip/src/magma_openmx.cu": "7719b7d7a704fd730af7dbd32049fa0cb4ace91d8047d968d4f212dd62ee82e1",
+        "source/backends/hip/tests/gpusolver_wrapper_smoke.c": "3df5dd946b7e25e95750495bd3845aa8ac831adb75da3885dcb0fbf628516dc4",
+        "source/backends/hip/tests/run_gpusolver_smoke.sh": "a7a8f4a96cbd9d32a666d76028af054b79b68575aa7e827998bc68275b8f5a0f",
+        "source/openmx_env_registry.h": "3b90d260a29d847b789b233044e75c7427691ba6f08d04b62b27648ac2f4d3ec"
+      },
+      "source_commit": "5925e71a8ddeea57db7f926145e1afc5da15ef7c"
+    }
+  }
+}

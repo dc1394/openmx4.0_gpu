@@ -1,0 +1,62 @@
+[
+  {
+    "candidate": "cache_full",
+    "baseline": "upstream_cpu",
+    "delta_energy_hartree": 6.798472895752639e-11,
+    "max_delta_force_hartree_per_bohr": 1.3899999987826428e-10,
+    "max_delta_position_angstrom": 0.0,
+    "grids_match": true,
+    "atoms_match": true,
+    "passed": true
+  },
+  {
+    "candidate": "cache_full",
+    "baseline": "fork_cpu",
+    "delta_energy_hartree": 8.208189683500677e-11,
+    "max_delta_force_hartree_per_bohr": 1.279999999222181e-10,
+    "max_delta_position_angstrom": 0.0,
+    "grids_match": true,
+    "atoms_match": true,
+    "passed": true
+  },
+  {
+    "candidate": "cache_full",
+    "baseline": "fork_gpu",
+    "delta_energy_hartree": 4.092726157978177e-12,
+    "max_delta_force_hartree_per_bohr": 1.399999994405876e-11,
+    "max_delta_position_angstrom": 0.0,
+    "grids_match": true,
+    "atoms_match": true,
+    "passed": true
+  },
+  {
+    "candidate": "density_full",
+    "baseline": "upstream_cpu",
+    "delta_energy_hartree": 6.798472895752639e-11,
+    "max_delta_force_hartree_per_bohr": 1.3899999987826428e-10,
+    "max_delta_position_angstrom": 0.0,
+    "grids_match": true,
+    "atoms_match": true,
+    "passed": true
+  },
+  {
+    "candidate": "density_full",
+    "baseline": "fork_cpu",
+    "delta_energy_hartree": 8.208189683500677e-11,
+    "max_delta_force_hartree_per_bohr": 1.279999999222181e-10,
+    "max_delta_position_angstrom": 0.0,
+    "grids_match": true,
+    "atoms_match": true,
+    "passed": true
+  },
+  {
+    "candidate": "density_full",
+    "baseline": "fork_gpu",
+    "delta_energy_hartree": 4.092726157978177e-12,
+    "max_delta_force_hartree_per_bohr": 1.399999994405876e-11,
+    "max_delta_position_angstrom": 0.0,
+    "grids_match": true,
+    "atoms_match": true,
+    "passed": true
+  }
+]

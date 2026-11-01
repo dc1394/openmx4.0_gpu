@@ -1,0 +1,8 @@
+SOLVER_PROBE mode=0 active=1 n=912 nev=432 driver=heevd seconds=0.028858 residual=1.310e-16 delta_eigenvalue=0.000e+00 valid=1 workspace_mib=29.057
+SOLVER_PROBE mode=0 active=1 n=912 nev=432 driver=heevdx seconds=0.291741 residual=1.147e-16 delta_eigenvalue=4.219e-15 valid=1 workspace_mib=41.536
+SOLVER_PROBE mode=1 active=4 n=912 nev=432 driver=heevd seconds=0.123584 residual=1.310e-16 delta_eigenvalue=0.000e+00 valid=1 workspace_mib=29.057
+SOLVER_PROBE mode=1 active=4 n=912 nev=432 driver=heevdx seconds=0.454847 residual=1.147e-16 delta_eigenvalue=4.219e-15 valid=1 workspace_mib=41.536
+SOLVER_PROBE mode=2 active=4 n=912 nev=432 driver=heevd seconds=0.028894 residual=1.310e-16 delta_eigenvalue=0.000e+00 valid=1 workspace_mib=29.057
+SOLVER_PROBE mode=2 active=4 n=912 nev=432 driver=heevdx seconds=0.293575 residual=1.147e-16 delta_eigenvalue=4.219e-15 valid=1 workspace_mib=41.536
+SOLVER_PROBE mode=3 active=32 n=912 nev=432 driver=heevd seconds=0.260635 residual=1.310e-16 delta_eigenvalue=0.000e+00 valid=1 workspace_mib=29.057
+SOLVER_PROBE mode=3 active=32 n=912 nev=432 driver=heevdx seconds=0.670284 residual=1.147e-16 delta_eigenvalue=4.219e-15 valid=1 workspace_mib=41.536

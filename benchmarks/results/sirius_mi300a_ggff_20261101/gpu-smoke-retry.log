@@ -1,0 +1,60 @@
+backend(n=300, real) = 1, backend(n=300, complex) = 1 (1 rocSOLVER, 0 MAGMA)
+OpenMX GPU eigensolver: retry test (OPENMX_GPUSOLVER_RETRY_TEST=1): every rocSOLVER solve is solved again with MAGMA (first n=64).
+OpenMX: GPU eigensolver retry test (OPENMX_GPUSOLVER_RETRY_TEST=1): every solve is solved again (first: MAGMA Ozaki-II dsyevdx -> MAGMA dsyevdx, n=64, input copy in device memory).
+wrapper real laplacian host n=64 maxn=64 max_eigenvalue_error=1.776e-15
+wrapper real laplacian host n=129 maxn=7 max_eigenvalue_error=4.038e-16
+wrapper real laplacian host n=257 maxn=7 max_eigenvalue_error=3.978e-16
+wrapper real laplacian host n=257 maxn=257 max_eigenvalue_error=1.332e-15
+wrapper complex laplacian host n=64 maxn=64 max_eigenvalue_error=8.882e-16
+wrapper complex laplacian host n=129 maxn=7 max_eigenvalue_error=1.874e-16
+wrapper complex laplacian host n=257 maxn=7 max_eigenvalue_error=1.804e-16
+wrapper complex laplacian host n=257 maxn=257 max_eigenvalue_error=1.332e-15
+wrapper real laplacian openmp(host arrays) n=64 maxn=64 max_eigenvalue_error=1.776e-15
+wrapper real laplacian openmp(host arrays) n=129 maxn=7 max_eigenvalue_error=4.038e-16
+wrapper real laplacian openmp(host arrays) n=257 maxn=7 max_eigenvalue_error=3.978e-16
+wrapper real laplacian openmp(host arrays) n=257 maxn=257 max_eigenvalue_error=1.332e-15
+wrapper complex laplacian openmp(host arrays) n=64 maxn=64 max_eigenvalue_error=8.882e-16
+wrapper complex laplacian openmp(host arrays) n=129 maxn=7 max_eigenvalue_error=1.874e-16
+wrapper complex laplacian openmp(host arrays) n=257 maxn=7 max_eigenvalue_error=1.804e-16
+wrapper complex laplacian openmp(host arrays) n=257 maxn=257 max_eigenvalue_error=1.332e-15
+wrapper real laplacian openmp(device arrays) n=64 maxn=64 max_eigenvalue_error=1.776e-15
+wrapper real laplacian openmp(device arrays) n=129 maxn=7 max_eigenvalue_error=4.038e-16
+wrapper real laplacian openmp(device arrays) n=257 maxn=7 max_eigenvalue_error=3.978e-16
+wrapper real laplacian openmp(device arrays) n=257 maxn=257 max_eigenvalue_error=1.332e-15
+wrapper complex laplacian openmp(device arrays) n=64 maxn=64 max_eigenvalue_error=8.882e-16
+wrapper complex laplacian openmp(device arrays) n=129 maxn=7 max_eigenvalue_error=1.874e-16
+wrapper complex laplacian openmp(device arrays) n=257 maxn=7 max_eigenvalue_error=1.804e-16
+wrapper complex laplacian openmp(device arrays) n=257 maxn=257 max_eigenvalue_error=1.332e-15
+wrapper real laplacian openmp(mapped arrays) n=64 maxn=64 max_eigenvalue_error=1.776e-15
+wrapper real laplacian openmp(mapped arrays) n=129 maxn=7 max_eigenvalue_error=4.038e-16
+wrapper real laplacian openmp(mapped arrays) n=257 maxn=7 max_eigenvalue_error=3.978e-16
+wrapper real laplacian openmp(mapped arrays) n=257 maxn=257 max_eigenvalue_error=1.332e-15
+wrapper complex laplacian openmp(mapped arrays) n=64 maxn=64 max_eigenvalue_error=8.882e-16
+wrapper complex laplacian openmp(mapped arrays) n=129 maxn=7 max_eigenvalue_error=1.874e-16
+wrapper complex laplacian openmp(mapped arrays) n=257 maxn=7 max_eigenvalue_error=1.804e-16
+wrapper complex laplacian openmp(mapped arrays) n=257 maxn=257 max_eigenvalue_error=1.332e-15
+wrapper complex real-valued host n=200 maxn=200 max_eigenvalue_error=1.776e-15
+wrapper complex block-diagonal host n=200 maxn=200 max_eigenvalue_error=1.332e-15
+wrapper complex real-valued host n=200 maxn=16 max_eigenvalue_error=6.210e-16
+wrapper complex block-diagonal host n=200 maxn=16 max_eigenvalue_error=6.245e-16
+wrapper complex real-valued openmp(host arrays) n=200 maxn=200 max_eigenvalue_error=1.776e-15
+wrapper complex block-diagonal openmp(host arrays) n=200 maxn=200 max_eigenvalue_error=1.332e-15
+wrapper complex real-valued openmp(host arrays) n=200 maxn=16 max_eigenvalue_error=6.210e-16
+wrapper complex block-diagonal openmp(host arrays) n=200 maxn=16 max_eigenvalue_error=6.245e-16
+OpenMX GPU eigensolver: n=100 failed (-2): the input has 2 non-finite values, max |a| = 2.000e+00, max |a_ij - conj(a_ji)| = 0.000e+00 (both triangles; the solvers read the lower)
+wrapper real with-NaN host n=100 maxn=100: failed as expected (info=-2), A and W untouched
+OpenMX GPU eigensolver: n=100 failed (-2): the input has 2 non-finite values, max |a| = 2.000e+00, max |a_ij - conj(a_ji)| = 0.000e+00 (both triangles; the solvers read the lower)
+wrapper complex with-NaN openmp(host arrays) n=100 maxn=10: failed as expected (info=-2), A and W untouched
+OpenMX GPU eigensolver: retry test (OPENMX_GPUSOLVER_RETRY_TEST=1): every rocSOLVER solve is solved again with MAGMA (first n=64).
+wrapper real laplacian host n=64 maxn=7 max_eigenvalue_error=4.996e-16
+wrapper complex laplacian host n=64 maxn=7 max_eigenvalue_error=2.914e-16
+magma entry real laplacian n=300 maxn=300 max_eigenvalue_error=1.776e-15
+magma entry real laplacian n=300 maxn=20 max_eigenvalue_error=4.580e-16
+magma entry complex laplacian n=300 maxn=300 max_eigenvalue_error=1.776e-15
+magma entry complex block-diagonal n=300 maxn=20 max_eigenvalue_error=3.637e-16
+hipsolver zheevd entry complex real-valued n=300 maxn=300 max_eigenvalue_error=1.776e-15
+hipsolver zheevd entry complex block-diagonal n=300 maxn=20 max_eigenvalue_error=3.637e-16
+hipsolver zheevd entry(mapped array) complex laplacian n=300 maxn=300 max_eigenvalue_error=1.776e-15
+hipsolver zheevd entry(mapped array) complex block-diagonal n=300 maxn=20 max_eigenvalue_error=3.637e-16
+magma entry real laplacian n=300 maxn=20 max_eigenvalue_error=4.580e-16
+gpusolver wrapper smoke: all cases passed
