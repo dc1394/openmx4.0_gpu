@@ -1,0 +1,3 @@
+cnc128 np=16 T_gemm_cu=7.563s T_gemm_g8=0.635s s_eff=11.912 f_diag=0.2215 S_pred_diag=1.255 S_meas_diag=1.221 err=+2.71% f_total=0.0553 S_pred_total=1.053 S_meas_total=1.035 delta=0.0216
+amdahl csv row: cnc128,16,7.563,0.635,11.912,0.2215,1.255,1.221,0.0553,1.053,1.035
+table row: cnc128 & 0.222 & 11.91 & 1.255 & 1.221 & +2.71\\

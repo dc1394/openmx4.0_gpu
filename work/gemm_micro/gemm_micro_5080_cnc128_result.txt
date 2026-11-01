@@ -1,0 +1,43 @@
+cnc128 addendum to the single-GEMM microbenchmark (M2) and the Amdahl assembly (M3), RTX 5080
+(2026-11-01) -- the four dense-solver call shapes of cnc128 (NC cluster, 128 Si, n = 1664,
+n2 = 3328, MaxN = 512 + 0.2*3328 = 1177) were not part of the 2026-08-27 campaign of 42
+conditions; they are measured here so that the Amdahl table covers all eight fixed-work
+systems of the RTX 5080 comparison.
+
+=== provenance ===
+tree       ~/openmx4.0_gpu_thesis = fresh clone of github.com:dc1394/openmx4.0_gpu at tag
+           v2.0_thesis (db72cd4b), submodules GEMMul8 833e5761 (v3.2.0) + fftw3 d69d34f0;
+           built 2026-11-01 13:19-13:25 JST (make fftw3; make -j16 all GEMMUL8_GPU_ARCH=120 twice
+           -- the known utility-link race -- then make install; work/openmx md5
+           0bcf958838b64b179c2a5b854e615bb4, manifest_buildinfo RELEASE_TAG "v2.0_thesis").
+bench      bench_gemm.cu + build.sh are NOT in the tag: copied unchanged (md5-identical) from
+           release/v2.0_thesis commit 1e98213c (the campaign's own files, ~/openmx4.0_thesis);
+           built here against this tree's third_party/GEMMul8/lib/libgemmul8.a (same commit
+           833e5761 as the campaign), nvcc 26.5 / CUDA 13.2 math libs, sm_120.
+procedure  identical to the campaign: gemmul8::gemm<..., Backend::INT8>, num_moduli 15,
+           fastmode false, alpha=1 beta=0, natural leading dims, one preallocated workspace;
+           cuBLAS = plain cublasDgemm/Zgemm; 7 reps interleaved ABAB, median; idle GPU
+           (ambient 249 MiB, no compute processes), no MPS daemon, 41-46 C, 472->2760 MHz
+           (bench_env_5080_cnc128.txt).
+shapes     shapes_cnc128.txt: dfwd1 D N N 1664^3, dfwd2 D T N 1664^3, zback Z T T (1177,3328,3328),
+           zback1 Z T T 3328^3 (SCF1, MaxN = n2).  Counts per 25-SCF production run from the
+           campaign manifests s5p_cnc128_g11..g15 (d_calls 300, z_calls 25, 0 fallbacks):
+           150 / 150 / 24 / 1.
+walls      v2 aggregate = paper Table V (np16, 5-rep means): diag cuBLAS 34.14 s, GEMMul8 27.95 s,
+           total 136.87 s / 132.20 s.
+
+=== M2 result (gemm_micro_5080_cnc128.csv) ===
+label          cuBLAS ms  G8 ms   s_gemm  cuBLAS GF  G8 GF   relerr
+cnc128_dfwd1   13.765     1.438    9.57     669.4    6406.9  3.4e-15
+cnc128_dfwd2   13.595     1.401    9.70     677.8    6577.7  3.6e-15
+cnc128_zback   129.158    7.912   16.33     807.4   13181.3  6.6e-15
+cnc128_zback1  359.100   19.133   18.77     821.2   15411.6  6.4e-15
+The maximum normalized difference stays below the campaign's 1.4e-14.
+
+=== M3 result (amdahl_5080_cnc128.csv; analysis_cnc128.py = analysis.py's formulas) ===
+T_gemm,cuBLAS = 7.563 s   T_gemm,G8 = 0.635 s   s_eff = 11.91
+f_diag = 0.222   S_pred,diag = 1.255   S_meas,diag = 1.221   error +2.71 %   delta = 0.0216
+f_total = 0.055  S_pred,total = 1.053  S_meas,total = 1.035
+Table VI row:  cnc128 & 0.222 & 11.91 & 1.255 & 1.221 & +2.71
+The prediction overestimates by 2.7 % (between the 1.5 % group and bnc128's 5.3 %); the count
+of systems within 1.5 % stays five, now of eight.

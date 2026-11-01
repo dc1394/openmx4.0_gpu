@@ -1,0 +1,2 @@
+system,np,T_gemm_cublas_s,T_gemm_g8mix_s,s_eff,f_diag,S_pred_diag,S_meas_diag,f_total,S_pred_total,S_meas_total
+cnc128,16,7.563,0.635,11.912,0.2215,1.255,1.221,0.0553,1.053,1.035

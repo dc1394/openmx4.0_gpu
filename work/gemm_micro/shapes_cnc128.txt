@@ -1,0 +1,9 @@
+# M2 microbenchmark shapes of cnc128 (NC cluster, 128 Si, n = 1664, n2 = 3328,
+# MaxN = Nele + 0.2*n2 = 512 + 665 = 1177), the same call structure as cnc216:
+#   12 D/solve = 6 blocks x {NN,TN} at (n2/2)^3; 1 Z back TT (MaxN,n2,n2), SCF1 MaxN = n2
+#   counts per 25-SCF production run: dfwd1 150, dfwd2 150, zback 24, zback1 1
+# label          type opA opB  m    n    k
+cnc128_dfwd1     d    N   N   1664 1664 1664
+cnc128_dfwd2     d    T   N   1664 1664 1664
+cnc128_zback     z    T   T   1177 3328 3328
+cnc128_zback1    z    T   T   3328 3328 3328

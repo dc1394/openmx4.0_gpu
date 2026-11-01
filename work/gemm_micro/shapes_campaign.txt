@@ -53,3 +53,9 @@ sweep_z_4096     z    N   N   4096 4096 4096
 sweep_z_4992     z    N   N   4992 4992 4992
 sweep_z_5616     z    N   N   5616 5616 5616
 sweep_z_6656     z    N   N   6656 6656 6656
+# cnc128 addendum (2026-11-01, same program/library/procedure; see gemm_micro_5080_cnc128_result.txt):
+#   cluster NC 128 Si: n = 1664, n2 = 3328, MaxN = 512 + 0.2*3328 = 1177; counts/run 150, 150, 24, 1
+cnc128_dfwd1     d    N   N   1664 1664 1664
+cnc128_dfwd2     d    T   N   1664 1664 1664
+cnc128_zback     z    T   T   1177 3328 3328
+cnc128_zback1    z    T   T   3328 3328 3328
