@@ -248,9 +248,17 @@ static void run_case(int n, int maxn, int cplx, int kind, int entry)
 
 #pragma omp target data map(tofrom : a[0 : na], w[0 : nw])
             {
-                /* the host arrays are stale inside the region: scribble on
-                   them, the wrapper must use the device copies */
-                for (size_t p = 0; p < na; ++p) a[p] = -7.0;
+                void *mapped = NULL;
+#pragma omp target data use_device_ptr(a)
+                mapped = a;
+                if (!mapped) fail("no GPU mapping",n,maxn);
+                /* A discrete device has a distinct copy: poison the stale
+                   host view to verify that the wrapper selects it. On an
+                   APU/USM mapping the views alias, so poisoning the host
+                   would overwrite the solver's actual matrix. The same
+                   eigenpair, residual and guard checks still apply. */
+                if (mapped!=(void*)a)
+                    for (size_t p = 0; p < na; ++p) a[p] = -7.0;
                 info = call_wrapper(entry, cplx, a, w, n, maxn);
             }
         }
@@ -310,8 +318,9 @@ static void run_device_entry(int n, int maxn, int cplx, int kind, int entry)
         memcpy(v, orig, abytes);
 #pragma omp target data map(tofrom : v[0 : na])
         {
-            d_a = omp_get_mapped_ptr(v, omp_get_default_device());
-            if (d_a == NULL || d_a == (void *)v) fail("no device copy of the mapped array", n, maxn);
+#pragma omp target data use_device_ptr(v)
+            d_a = v;
+            if (d_a == NULL) fail("no GPU mapping of the array", n, maxn);
             info = openmx_hipsolver_zheevd_gpu(n, maxn, d_a, w, &mout);
         }
     }
@@ -339,8 +348,15 @@ static void run_device_entry(int n, int maxn, int cplx, int kind, int entry)
 int main(void)
 {
     const char *expect = getenv("OPENMX_TEST_EXPECT_BACKEND");
+    int initial_device = 1;
 
     setvbuf(stdout, NULL, _IOLBF, 0);
+    /* A real target region also registers this standalone test's device
+       image. A target-data region alone can appear mapped under APU USM
+       even when no offload image has been registered. */
+#pragma omp target map(from : initial_device)
+    initial_device = omp_is_initial_device();
+    if (initial_device) fail("OpenMP target did not execute on the GPU", 0, 0);
     if (gpusolver_Syevdx(NULL, NULL, 0, 0) != 0 || gpusolver_Syevdx(NULL, NULL, 4, 5) != -1 ||
         gpusolver_Syevdx_Complex(NULL, NULL, -1, 0) != -1 || gpusolver_Syevdx_openmp(NULL, NULL, 3, 2) != -1)
         fail("argument checks", 0, 0);

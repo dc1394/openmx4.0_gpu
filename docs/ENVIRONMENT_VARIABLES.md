@@ -45,7 +45,7 @@ and `off`/`no`/`false`; `auto`, an empty value and an unset variable select the 
 | `OPENMX_BAND_GPU_RESERVE_MB` | max(total/10, 1536) | Raises the reserve used by the concurrency planner and the fits verdicts The default shown is for CUDA; HIP retains a 512 MiB reserve. |
 | `OPENMX_BAND_GPU_RANK_OVERHEAD_MB` | 256 | Runtime overhead added to the per-rank requirement model |
 | `OPENMX_BAND_SYEVDX_NOVECTOR` | 1 | Solve the eigenvalues-only first pass with NOVECTOR (0 restores the old behavior) |
-| `OPENMX_BAND_GPU_MAX_CONCURRENT_K` / `OPENMX_BAND_GPU_TURN_GROUP` / `OPENMX_BAND_GPU_MAX_RANKS_PER_DEVICE` | uncapped | **Explicit caps** on the concurrent rank count (first found in this order). The old "initial value" meaning is gone; actual concurrency always comes from the adaptive scan This adaptive-scan policy describes CUDA. HIP retains its existing turn-group policy: the collinear concurrency default is eight for n <= 512, otherwise the turn-group default; explicit caps still apply. |
+| `OPENMX_BAND_GPU_MAX_CONCURRENT_K` / `OPENMX_BAND_GPU_TURN_GROUP` / `OPENMX_BAND_GPU_MAX_RANKS_PER_DEVICE` | uncapped | **Explicit caps** on the concurrent rank count (first found in this order). The old "initial value" meaning is gone; actual concurrency always comes from the adaptive scan This adaptive-scan policy describes CUDA. HIP retains its existing turn-group policy: the collinear concurrency default is eight for n <= 512, otherwise the turn-group default; explicit caps still apply. The MI300A noncollinear owner-wave path instead uses MAX_CONCURRENT_K (falling back to MAX_RANKS_PER_DEVICE) as a per-GPU owner cap, with no fixed four-owner ceiling; its actual limit is memory guarded. Radeon noncollinear k turns retain the legacy global ceiling of four. |
 | `OPENMX_GPUSOLVER_SERIAL_GPU_TURNS` | 1 | GPU-turn serialization of the all_knum==1 path (0 = concurrent submission) |
 | `OPENMX_BAND_GPU_PERSISTENT` / `_MIN_FREE_MB` | — / 2048 | Device-buffer persistence across SCF iterations (not recommended on shared GPUs) |
 | `OPENMX_BAND_GEMMUL8_TURN_RELEASE` | — | Per-turn GEMMul8 workspace release (0 keeps them) |
@@ -56,6 +56,10 @@ and `off`/`no`/`false`; `auto`, an empty value and an unset variable select the 
 | `OPENMX_BAND_REFINE_BASIS_MB` | 1024 | Host budget (MiB per rank) of the refined eigensolver's warm-start basis kept per k-point slot (collinear and noncollinear band); 0 disables the warm-start cache. |
 | `OPENMX_BAND_CACHE_TRACE` / `OPENMX_BAND_NONCOL_CACHE_TRACE` | 0 / 0 | One line per rank and SCF step with the hit counts and sizes of the k-point caches (`BAND_NONCOL_CACHE` lines on the noncollinear path). |
 | `OPENMX_BAND_NONCOL_INTERLEAVE_K` | auto | Noncollinear band: interleave the order in which the dense k-points are solved across the owner ranks; 0 keeps the natural k order. |
+| `OPENMX_MI300A_BAND_SCHEDULE` | 1 | MI300A only, ordinary gpusolver noncollinear SCF two-pass dense-k path: schedule owner waves separately for each physical GPU, using its memory-based owner limit. Preserves MPI k ownership, GPU assignment and CPU/NUMA binding. The existing OPENMX_BAND_GPU_MAX_CONCURRENT_K becomes a per-GPU upper bound; 0 here restores the legacy global turns. Radeon keeps its existing scheduling policy. |
+| `OPENMX_MI300A_BAND_BUILD_CACHE` | 1 | With MI300A owner-wave scheduling enabled, retain dense-construction indices across SCF steps, packed values within an SCF call, and phases within a k point. Queues uploads and scatter kernels on the default stream; falls back to the streaming builder if the cache budget or allocation is insufficient. 0 disables. |
+| `OPENMX_MI300A_BAND_BUILD_CACHE_MB` | 64 | MI300A dense-construction cache budget in MiB per owner rank (maximum 1024). The complete budget is included in the per-GPU concurrency memory guard. 0 uses the streaming builder. |
+| `OPENMX_MI300A_BAND_DM_WAVES` | 1 | With MI300A owner-wave scheduling and all local k-point eigenvector panels cached, build density matrices on each owner without per-k world collectives. Synchronize success at wave boundaries, then keep the existing final density reductions. Missing panels, recovery mode or a failed wave restore the original collective path; partial sums are cleared before replay. 0 disables. |
 
 ## Cluster calculations (Cluster_DFT_Col.c / Cluster_DFT_NonCol.c)
 
@@ -100,6 +104,7 @@ and `off`/`no`/`false`; `auto`, an empty value and an unset variable select the 
 | `OPENMX_CUSOLVER_CACHE_MB` | 64 | Per-rank cap of the cuSOLVER workspace retained between host-array solves; larger solves release it so the Band/Cluster arenas and the force buffers keep their room. |
 | `OPENMX_CUSOLVER_VERBOSE` | 0 | Messages of the cuSOLVER policy (emulation availability, algorithm choice) and of the cluster scratch release. |
 | `OPENMX_CUSOLVER_RETRY_TEST` | 0 | Test hook: exercise the native-FP64 retry after every emulated solve. |
+| `OPENMX_MI300A_SOLVER_ASYNC` | 1 | MI300A rocSOLVER only: use pinned result storage and collect solver status, finite-value checks and requested eigenvalues with asynchronous copies and one final stream wait. The solve remains synchronous to its caller and preserves failure/retry handling. 0, pinning failure and Radeon retain the existing blocking completion path. |
 
 ## DC method (Divide_Conquer.c)
 

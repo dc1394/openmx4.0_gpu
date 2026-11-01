@@ -281,6 +281,7 @@ int                 g_hs_query_cplx = -1;
 int                 g_hs_query_lwork = 0;
 double             *g_hs_dW = nullptr;
 double             *g_hs_hW = nullptr;
+bool                g_hs_host_pinned = false;
 int                 g_hs_W_n = 0;
 int                *g_hs_dinfo = nullptr;    /* [0] info, [1] non-finite flag */
 
@@ -301,16 +302,27 @@ int ensure_hipsolver_ready(int n)
     }
     if (n > g_hs_W_n) {
         if (g_hs_dW != nullptr) hipFree(g_hs_dW);
-        if (g_hs_hW != nullptr) std::free(g_hs_hW);
+        if (g_hs_hW != nullptr) {
+            if (g_hs_host_pinned) (void)hipHostFree(g_hs_hW);
+            else std::free(g_hs_hW);
+        }
         g_hs_dW = nullptr;
         g_hs_hW = nullptr;
+        g_hs_host_pinned = false;
         g_hs_W_n = 0;
         if (hipMalloc((void **)&g_hs_dW, sizeof(double) * (size_t)n) != hipSuccess) {
             (void)hipGetLastError();
             g_hs_dW = nullptr;
             return -1;
         }
-        g_hs_hW = (double *)std::malloc(sizeof(double) * (size_t)n);
+        if (openmx_gpu_device_is_mi300a() && openmx_env_flag_at(OPENMX_ENV_MI300A_SOLVER_ASYNC,1)) {
+            /* One pinned result block: eigenvalues followed by info and
+               the finite-value flag. Its lifetime is the cached handle's. */
+            if (hipHostMalloc((void **)&g_hs_hW,sizeof(double)*(size_t)n+2*sizeof(int),
+                              hipHostMallocDefault)==hipSuccess) g_hs_host_pinned=true;
+            else { (void)hipGetLastError(); g_hs_hW=nullptr; }
+        }
+        if (!g_hs_hW) g_hs_hW = (double *)std::malloc(sizeof(double) * (size_t)n);
         if (g_hs_hW == nullptr) {
             return -1;
         }
@@ -718,6 +730,43 @@ int rocsolver_evd_locked(int cplx, int n, int maxn, void *d_A, double *w, int *m
     }
     if (status != HIPSOLVER_STATUS_SUCCESS) {
         return (int)status;
+    }
+
+    if (openmx_gpu_device_is_mi300a() && g_hs_host_pinned &&
+        openmx_env_flag_at(OPENMX_ENV_MI300A_SOLVER_ASYNC,1)) {
+        /* The default-stream solver orders its completion before the
+           vector phase/check kernels. Check even a failed solve's allocated
+           output, then collect both status words and the requested values
+           with one final wait. Failure still returns info first and follows
+           the unchanged input-backup/retry policy. */
+        if (detail) {
+            if (hipStreamSynchronize(nullptr)!=hipSuccess) return MAGMA_ERR_UNKNOWN;
+            const auto now=std::chrono::steady_clock::now();
+            solve_seconds=std::chrono::duration<double>(now-phase_start).count();
+            phase_start=now;
+        }
+        int *host_info=reinterpret_cast<int*>(g_hs_hW+g_hs_W_n);
+        if (eigen_check(cplx,cplx,d_A,n,n,g_hs_dW,maxn,g_hs_dinfo+1,nullptr)!=hipSuccess ||
+            hipMemcpyAsync(host_info,g_hs_dinfo,2*sizeof(int),hipMemcpyDeviceToHost,nullptr)!=hipSuccess ||
+            hipMemcpyAsync(g_hs_hW,g_hs_dW,sizeof(double)*(size_t)maxn,hipMemcpyDeviceToHost,nullptr)!=hipSuccess ||
+            hipStreamSynchronize(nullptr)!=hipSuccess) {
+            (void)hipGetLastError();return MAGMA_ERR_UNKNOWN;
+        }
+        if (host_info[0]!=0) return host_info[0];
+        if (host_info[1]) {
+            std::fprintf(stderr,"OpenMX: rocSOLVER %s returned non-finite eigenpairs (n=%d)\n",name,n);
+            return MAGMA_ERR_UNKNOWN;
+        }
+        std::memcpy(w,g_hs_hW,sizeof(double)*(size_t)maxn);
+        if (detail) {
+            check_seconds=std::chrono::duration<double>(std::chrono::steady_clock::now()-phase_start).count();
+            std::fprintf(stderr,"GPUEIGENDETAIL rank=%d n=%d maxn=%d type=%s stage=rocsolver "
+                "setup=%.6f phase_in=%.6f solve=%.6f phase_out_check=%.6f values=0.000000 workspace_mib=%.3f completion=batched\n",
+                MYID_MPI_COMM_WORLD,n,maxn,cplx?"complex":"real",setup_seconds,phase_in_seconds,
+                solve_seconds,check_seconds,(double)g_hs_work_bytes/1048576.0);
+        }
+        *mout_out=maxn;
+        return 0;
     }
 
     if (hipMemcpy(&info, g_hs_dinfo, sizeof(int), hipMemcpyDeviceToHost) != hipSuccess) {

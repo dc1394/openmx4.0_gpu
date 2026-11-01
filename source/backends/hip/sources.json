@@ -750,6 +750,7 @@
     "zero_fermi.c": "7fd63b6fda92a69414cdf38a34d006c0f32cc74d5a765ddfe601d6aba5872d7a"
   },
   "integrated_shared": [
+    "openmx_gpu_k_waves.h",
     "ADIIS_Mixing_DM.c",
     "Allocate_Arrays.c",
     "Band_DFT_Col_CWF.c",

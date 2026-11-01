@@ -295,6 +295,11 @@
     X(MGPU_SOLVER_MIN_N, "OPENMX_MGPU_SOLVER_MIN_N", "int", "global", "4096", "openmx_mgpu_runtime.cu", "") \
     X(MGPU_TUNE_TRIALS, "OPENMX_MGPU_TUNE_TRIALS", "int", "global", "2", "openmx_mgpu_runtime.cu", "") \
     X(MGPU_VERBOSE, "OPENMX_MGPU_VERBOSE", "int", "global", "0", "openmx_gpu_workers.c,openmx_mgpu_runtime.cu", "") \
+    X(MI300A_BAND_BUILD_CACHE, "OPENMX_MI300A_BAND_BUILD_CACHE", "flag", "global", "1", "backends/hip/src/Band_DFT_NonCol.c", "Cache MI300A k-dense construction metadata and SCF values; Radeon retains its streaming driver.") \
+    X(MI300A_BAND_BUILD_CACHE_MB, "OPENMX_MI300A_BAND_BUILD_CACHE_MB", "mib", "global", "64", "backends/hip/src/Band_DFT_NonCol.c", "Per-owner MI300A dense construction cache limit in MiB, capped at 1024; larger inputs stream instead.") \
+    X(MI300A_BAND_DM_WAVES, "OPENMX_MI300A_BAND_DM_WAVES", "flag", "global", "1", "backends/hip/src/Band_DFT_NonCol.c", "MI300A cached density construction in owner waves; retain per-k collective recovery on failure.") \
+    X(MI300A_BAND_SCHEDULE, "OPENMX_MI300A_BAND_SCHEDULE", "flag", "global", "1", "backends/hip/src/Band_DFT_NonCol.c", "MI300A device-limited k-point owner waves; zero restores the legacy HIP schedule.") \
+    X(MI300A_SOLVER_ASYNC, "OPENMX_MI300A_SOLVER_ASYNC", "flag", "global", "1", "backends/hip/src/magma_openmx.cu", "MI300A pinned eigenvalue/status results with one completion wait; other devices retain their existing path.") \
     X(MIXH_GPU, "OPENMX_MIXH_GPU", "int", "global", "auto", "Mixing_H.c", "default auto: RMM-DIISH tier selection: unset=auto, 0=legacy, 1=force GPU tier, 2=force incremental CPU tier") \
     X(MIXH_GPU_RESERVE_MB, "OPENMX_MIXH_GPU_RESERVE_MB", "mib", "global", "max(total/10,1536)", "Mixing_H.c", "") \
     X(MIXH_GPU_VERBOSE, "OPENMX_MIXH_GPU_VERBOSE", "flag", "global", "0", "Mixing_H.c", "") \

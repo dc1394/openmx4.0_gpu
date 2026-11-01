@@ -44,13 +44,14 @@ done
     -I"$mpi/include" -I"$rocm/include" -c "$src/gpusolver_Syevdx.c" -o "$test_tmp/gpusolver_Syevdx.o"
 "$clang" -O2 -std=c11 -fopenmp --offload-arch="$arch" -D__HIP_PLATFORM_AMD__ -I"$src" -I"$rocm/include" \
     -c "$test_root/tests/gpusolver_wrapper_smoke.c" -o "$test_tmp/wrapper.o"
+"$clang" -O2 -std=c11 -I"$src" -c "$src/openmx_env.c" -o "$test_tmp/env.o"
 "$clang" -fopenmp --offload-arch="$arch" "$test_tmp/wrapper.o" "$test_tmp/gpusolver_Syevdx.o" \
-    "$test_tmp/magma_openmx.o" "$src/third_party/magma/lib/libmagma.a" \
+    "$test_tmp/magma_openmx.o" "$test_tmp/env.o" "$src/third_party/magma/lib/libmagma.a" \
     "$src/third_party/GEMMul8/lib/libgemmul8.a" -L"$rocm/lib" -Wl,-rpath,"$rocm/lib" \
     -lhipsolver -lrocsolver -lhipblas -lhipblaslt -lrocblas -lhipsparse -lamdhip64 $lapack -lstdc++ -lm \
     -o "$test_tmp/wrappers"
 "$clang" -O2 -std=c11 -D__HIP_PLATFORM_AMD__ -I"$src" -I"$rocm/include" "$test_root/tests/hipsolver_smoke.c" \
-    -L"$rocm/lib" -Wl,-rpath,"$rocm/lib" -lhipsolver -lamdhip64 -lm -o "$test_tmp/shim"
+    "$test_tmp/env.o" -L"$rocm/lib" -Wl,-rpath,"$rocm/lib" -lhipsolver -lamdhip64 -lm -o "$test_tmp/shim"
 
 "$test_tmp/shim" "${1:-257}"
 

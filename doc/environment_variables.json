@@ -316,8 +316,8 @@
     "en": "uncapped",
     "ja": "制限なし"
    },
-   "en": "<b>Explicit caps</b> on the concurrent rank count (first found in this order). The old \"initial value\" meaning is gone; actual concurrency always comes from the adaptive scan This adaptive-scan policy describes CUDA. HIP retains its existing turn-group policy: the collinear concurrency default is eight for n <= 512, otherwise the turn-group default; explicit caps still apply.",
-   "ja": "同時実行ランク数の<b>明示上限</b>(この優先順で最初に見つかったもの)。旧版の「初期値」の意味は廃止され、実際の並列度は常に適応スキャンで決まる 適応スキャンはCUDAの方針です。HIP は既存のターングループ方針を維持し、共線の同時実行数はn <= 512で8、それ以外は既定のターングループ数です。明示した上限も適用します。"
+   "en": "<b>Explicit caps</b> on the concurrent rank count (first found in this order). The old \"initial value\" meaning is gone; actual concurrency always comes from the adaptive scan This adaptive-scan policy describes CUDA. HIP retains its existing turn-group policy: the collinear concurrency default is eight for n <= 512, otherwise the turn-group default; explicit caps still apply. The MI300A noncollinear owner-wave path instead uses MAX_CONCURRENT_K (falling back to MAX_RANKS_PER_DEVICE) as a per-GPU owner cap, with no fixed four-owner ceiling; its actual limit is memory guarded. Radeon noncollinear k turns retain the legacy global ceiling of four.",
+   "ja": "同時実行ランク数の<b>明示上限</b>(この優先順で最初に見つかったもの)。旧版の「初期値」の意味は廃止され、実際の並列度は常に適応スキャンで決まる 適応スキャンはCUDAの方針です。HIP は既存のターングループ方針を維持し、共線の同時実行数はn <= 512で8、それ以外は既定のターングループ数です。明示した上限も適用します。 MI300A の非共線・所有ランク単位経路では MAX_CONCURRENT_K（未指定時は MAX_RANKS_PER_DEVICE）を GPU ごとの所有ランク上限とし、固定 4 件制限を設けずメモリで実際の並列度を制限する。Radeon の非共線 k ターンは従来の全体 4 件上限を維持する。"
   },
   {
    "group": "band",
@@ -2645,6 +2645,46 @@
    ],
    "en": "Print HIP band dense-solve timings.",
    "ja": "HIPバンド密固有値計算の時間を表示。"
+  },
+  {
+   "group": "band",
+   "names": [
+    "OPENMX_MI300A_BAND_SCHEDULE"
+   ],
+   "en": "MI300A only, ordinary gpusolver noncollinear SCF two-pass dense-k path: schedule owner waves separately for each physical GPU, using its memory-based owner limit. Preserves MPI k ownership, GPU assignment and CPU/NUMA binding. The existing OPENMX_BAND_GPU_MAX_CONCURRENT_K becomes a per-GPU upper bound; 0 here restores the legacy global turns. Radeon keeps its existing scheduling policy.",
+   "ja": "MI300A の通常 gpusolver・非共線 SCF の二段階稠密 k 点経路のみ。物理 GPU ごとにメモリに応じた所有ランク数で処理を区切る。MPI の k 点所有、GPU 割り当て、CPU/NUMA 配置を維持する。既存の OPENMX_BAND_GPU_MAX_CONCURRENT_K は GPU ごとの上限になる。本変数を 0 にすると従来の全体ターン方式に戻る。Radeon は従来の方針を維持。"
+  },
+  {
+   "group": "band",
+   "names": [
+    "OPENMX_MI300A_BAND_BUILD_CACHE"
+   ],
+   "en": "With MI300A owner-wave scheduling enabled, retain dense-construction indices across SCF steps, packed values within an SCF call, and phases within a k point. Queues uploads and scatter kernels on the default stream; falls back to the streaming builder if the cache budget or allocation is insufficient. 0 disables.",
+   "ja": "MI300A の所有ランク単位スケジュールが有効な場合、稠密行列構築の添字を SCF 間、パック済み値を 1 SCF 呼び出し内、位相を 1 k 点内で保持する。転送と scatter カーネルを既定ストリームに投入し、予算不足・確保失敗時は従来のストリーミング構築に戻る。0 で無効。"
+  },
+  {
+   "group": "band",
+   "names": [
+    "OPENMX_MI300A_BAND_BUILD_CACHE_MB"
+   ],
+   "en": "MI300A dense-construction cache budget in MiB per owner rank (maximum 1024). The complete budget is included in the per-GPU concurrency memory guard. 0 uses the streaming builder.",
+   "ja": "MI300A の稠密行列構築キャッシュ予算（所有ランクあたり MiB、最大 1024）。予算全体を GPU ごとの同時実行メモリ判定に含める。0 は従来のストリーミング構築。"
+  },
+  {
+   "group": "cusolver",
+   "names": [
+    "OPENMX_MI300A_SOLVER_ASYNC"
+   ],
+   "en": "MI300A rocSOLVER only: use pinned result storage and collect solver status, finite-value checks and requested eigenvalues with asynchronous copies and one final stream wait. The solve remains synchronous to its caller and preserves failure/retry handling. 0, pinning failure and Radeon retain the existing blocking completion path.",
+   "ja": "MI300A の rocSOLVER のみ。ページ固定の結果領域を使い、ソルバー状態・有限値検査・要求した固有値を非同期転送し、最後のストリーム待ちにまとめる。呼び出し元への同期完了と失敗・再試行処理は維持する。0、ページ固定失敗時、および Radeon では従来の同期完了処理を使う。"
+  },
+  {
+   "group": "band",
+   "names": [
+    "OPENMX_MI300A_BAND_DM_WAVES"
+   ],
+   "en": "With MI300A owner-wave scheduling and all local k-point eigenvector panels cached, build density matrices on each owner without per-k world collectives. Synchronize success at wave boundaries, then keep the existing final density reductions. Missing panels, recovery mode or a failed wave restore the original collective path; partial sums are cleared before replay. 0 disables.",
+   "ja": "MI300A の所有ランク単位スケジュールで、全所有 k 点の固有ベクトルが保持されている場合、k 点ごとの全体通信を省いて各所有ランクで密度行列を構築する。処理グループの境界で成功を確認し、最後の密度行列の全体還元は維持する。パネル欠落、回復試験中、計算失敗時は従来の通信経路に戻し、途中の和を消去して再実行する。0 で無効。"
   }
  ]
 }

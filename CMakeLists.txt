@@ -421,7 +421,7 @@ if(BUILD_TESTING)
       set_tests_properties(hip-krylov-gpu-fallback PROPERTIES
         ENVIRONMENT "LAPACK_LIBS=${_hip_rpaths} ${_hip_lapack_link}")
     endif()
-    foreach(_test IN ITEMS gemmul8_arch_policy nc_mi300a_policy_cpu band_noncol_refine_flow_cpu mi300a_rank_launcher runtest_paths_cpu rocm_runtime_paths_cpu elpa_cptr_interop_cpu deviceless_cleanup_cpu)
+    foreach(_test IN ITEMS mi300a_k_waves_cpu mi300a_build_cache_cpu mi300a_dm_waves_cpu gemmul8_arch_policy nc_mi300a_policy_cpu band_noncol_refine_flow_cpu mi300a_rank_launcher runtest_paths_cpu rocm_runtime_paths_cpu elpa_cptr_interop_cpu deviceless_cleanup_cpu)
       add_test(NAME "hip-${_test}"
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_BINARY_DIR}/native/tests/run_${_test}.py")
     endforeach()

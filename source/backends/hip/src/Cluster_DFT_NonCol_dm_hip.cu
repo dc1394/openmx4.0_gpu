@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <new>
 
 typedef struct {
     double r;
@@ -974,6 +975,124 @@ cleanup:
     return failed;
 }
 
+namespace {
+struct Mi300aBandBuildCache {
+    int device=-1,n=0,count=0,h_count=0,phase_count=0;
+    unsigned long long geometry=0,frame=0;
+    BandNonColHipConstructEntry *entries=nullptr;
+    double *phase_r=nullptr,*phase_i=nullptr,*values[8]={};
+    unsigned valid_values=0;
+    bool phase_valid=false;
+    double k[3]={};
+    unsigned long long builds=0,metadata_uploads=0,value_uploads=0,phase_uploads=0;
+    void clear() {
+        /* All users of these buffers run on the default stream. The
+           frontend also completes each eigenvector panel before moving
+           to another k point or releasing its host packing arrays. */
+        (void)hipStreamSynchronize(nullptr);
+        for(auto &p:values){if(p)(void)hipFree(p);p=nullptr;}
+        if(entries)(void)hipFree(entries);
+        if(phase_r)(void)hipFree(phase_r);
+        if(phase_i)(void)hipFree(phase_i);
+        entries=nullptr;phase_r=phase_i=nullptr;
+        n=count=h_count=phase_count=0;valid_values=0;phase_valid=false;
+    }
+};
+}
+
+extern "C" void BandNonCol_BuildDenseCacheRelease_HIP(void **opaque)
+{
+    if(!opaque || !*opaque)return; // CPU-only cleanup must not touch HIP.
+    auto *cache=static_cast<Mi300aBandBuildCache*>(*opaque);
+    int owner=cache->device,current=owner;
+    (void)hipGetDevice(&current);
+    if(current!=owner)(void)hipSetDevice(owner);
+    cache->clear();delete cache;*opaque=nullptr;
+    if(current!=owner)(void)hipSetDevice(current);
+}
+
+/* MI300A-only caller. Return 2 before any matrix work when the bounded
+   cache cannot be retained; the frontend then uses the streaming driver.
+   Metadata is reused across k points/SCF steps, values only within one
+   SCF call, and phases only within one k point. No host buffer may change
+   until that point's synchronous eigensolve/backtransform has completed. */
+extern "C" int BandNonCol_BuildDenseMsCached_HIP(void **opaque,
+    unsigned long long geometry,unsigned long long frame,int slot,
+    int cpx_flag,int count,int h_count,int phase_count,int n,
+    const BandNonColHipConstructEntry *entries,const double *phase_r,
+    const double *phase_i,const double *values,double k1,double k2,double k3,
+    dcomplex *matrix,size_t limit)
+{
+    if(!opaque || slot<0 || slot>=8 || count<1 || h_count<1 || phase_count<1 || n<1 ||
+       !entries || !phase_r || !phase_i || !values || !matrix)return 1;
+    if((size_t)count>SIZE_MAX/sizeof(*entries) || (size_t)h_count>SIZE_MAX/sizeof(double) ||
+       (size_t)phase_count>SIZE_MAX/sizeof(double) || (size_t)n>SIZE_MAX/(size_t)n/sizeof(*matrix))return 1;
+    size_t meta=(size_t)count*sizeof(*entries),phase=(size_t)phase_count*sizeof(double);
+    size_t value=(size_t)h_count*sizeof(double);
+    if(meta>limit || phase>(limit-meta)/2 || value>(limit-meta-2*phase)/8){
+        BandNonCol_BuildDenseCacheRelease_HIP(opaque);
+        return 2;
+    }
+    int device;
+    if(hipGetDevice(&device)!=hipSuccess)return 1;
+    auto *cache=static_cast<Mi300aBandBuildCache*>(*opaque);
+    if(cache && cache->device!=device){
+        BandNonCol_BuildDenseCacheRelease_HIP(opaque);cache=nullptr;
+    }
+    if(!cache){
+        cache=new(std::nothrow)Mi300aBandBuildCache;
+        if(!cache)return 2;
+        cache->device=device;*opaque=cache;
+    }
+    if(cache->n!=n || cache->count!=count || cache->h_count!=h_count ||
+       cache->phase_count!=phase_count || cache->geometry!=geometry){
+        cache->clear();cache->device=device;
+        if(hipMalloc(&cache->entries,meta)!=hipSuccess ||
+           hipMalloc(&cache->phase_r,phase)!=hipSuccess ||
+           hipMalloc(&cache->phase_i,phase)!=hipSuccess)goto allocation_failed;
+        if(hipMemcpyAsync(cache->entries,entries,meta,hipMemcpyHostToDevice,nullptr)!=hipSuccess)goto failed;
+        cache->n=n;cache->count=count;cache->h_count=h_count;cache->phase_count=phase_count;
+        cache->geometry=geometry;cache->metadata_uploads++;
+    }
+    if(cache->frame!=frame){cache->valid_values=0;cache->frame=frame;}
+    if(!(cache->valid_values&(1u<<slot))){
+        if(!cache->values[slot] && hipMalloc(&cache->values[slot],value)!=hipSuccess)goto allocation_failed;
+        if(hipMemcpyAsync(cache->values[slot],values,value,hipMemcpyHostToDevice,nullptr)!=hipSuccess)goto failed;
+        cache->valid_values|=1u<<slot;cache->value_uploads++;
+    }
+    if(!cache->phase_valid || cache->k[0]!=k1 || cache->k[1]!=k2 || cache->k[2]!=k3){
+        if(hipMemcpyAsync(cache->phase_r,phase_r,phase,hipMemcpyHostToDevice,nullptr)!=hipSuccess ||
+           hipMemcpyAsync(cache->phase_i,phase_i,phase,hipMemcpyHostToDevice,nullptr)!=hipSuccess)goto failed;
+        cache->k[0]=k1;cache->k[1]=k2;cache->k[2]=k3;cache->phase_valid=true;cache->phase_uploads++;
+    }
+    if(hipMemsetAsync(matrix,0,(size_t)n*n*sizeof(*matrix),nullptr)!=hipSuccess)goto failed;
+    /* Keep the legacy chunk boundaries and stream order of atomic sums.
+       The index table is uploaded once, with no per-chunk copy or host
+       synchronization between these kernels and the following BLAS call. */
+    for(int offset=0;offset<count;offset+=262144){
+        int chunk=count-offset<262144 ? count-offset : 262144;
+        hipLaunchKernelGGL(BandNonColDenseMsKernel,dim3((chunk+255)/256),dim3(256),0,0,
+            cpx_flag,chunk,cache->entries+offset,cache->values[slot],cache->phase_r,cache->phase_i,matrix);
+        if(hipGetLastError()!=hipSuccess)goto failed;
+    }
+    cache->builds++;
+    return 0;
+allocation_failed:
+    (void)hipGetLastError();
+    BandNonCol_BuildDenseCacheRelease_HIP(opaque);
+    return 2;
+failed:
+    BandNonCol_BuildDenseCacheRelease_HIP(opaque);
+    return 1;
+}
+
+extern "C" void BandNonCol_BuildDenseCacheStats_HIP(void *opaque,unsigned long long values[4])
+{
+    auto *cache=static_cast<Mi300aBandBuildCache*>(opaque);
+    values[0]=cache?cache->builds:0;values[1]=cache?cache->metadata_uploads:0;
+    values[2]=cache?cache->value_uploads:0;values[3]=cache?cache->phase_uploads:0;
+}
+
 __global__ static void BandNonColAddDenseKernel(int count, dcomplex *dst, const dcomplex *src)
 {
     int idx = (int)(blockIdx.x * blockDim.x + threadIdx.x);
@@ -1606,6 +1725,18 @@ extern "C" int BandNonCol_CalcDMRootDense_HIP(int entry_count, int pair_count, i
     return BandNonCol_CalcDMRootDenseImpl_HIP(entry_count,pair_count,size_H1,n,n2,nk_occ,
                                               basis0,basis1,phase_index,phase_r,phase_i,
                                               occ,eig_occ,dense_evec,n2,0,dm_buffer);
+}
+
+/* Compact host panels retained by the MI300A k-point owners. Only the
+   occupied columns are staged; their row stride is MaxN, rather than n2. */
+extern "C" int BandNonCol_CalcDMRootDenseHostPanel_HIP(int entry_count, int pair_count, int size_H1,
+    int n, int n2, int nk_occ, const int *basis0, const int *basis1,
+    const int *phase_index, const double *phase_r, const double *phase_i,
+    const double *occ, const double *eig_occ, const dcomplex *dense_evec,
+    int dense_evec_ld, double *dm_buffer)
+{
+    return BandNonCol_CalcDMRootDenseImpl_HIP(entry_count,pair_count,size_H1,n,n2,nk_occ,
+        basis0,basis1,phase_index,phase_r,phase_i,occ,eig_occ,dense_evec,dense_evec_ld,0,dm_buffer);
 }
 
 extern "C" int BandNonCol_CalcDMRootDenseDevice_HIP(int entry_count, int pair_count, int size_H1,

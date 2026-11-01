@@ -2168,7 +2168,7 @@ input_int("scf.Gpu.Num", &amp;SCF_Gpu_Num, 30);</code></pre>
 <tr><td><code>OPENMX_BAND_GPU_RESERVE_MB</code></td><td>max(総VRAM/10, 1536)</td><td>並列度決定・fits 判定で空けておく予約量の引き上げ 表の既定値はCUDA向けです。HIP は512 MiBの予約量を維持します。</td></tr>
 <tr><td><code>OPENMX_BAND_GPU_RANK_OVERHEAD_MB</code></td><td>256</td><td>per-rank 所要量見積りに加算するランタイムオーバーヘッド</td></tr>
 <tr><td><code>OPENMX_BAND_SYEVDX_NOVECTOR</code></td><td>1</td><td>固有値のみ必要な第 1 パスを NOVECTOR で解く(0 で旧動作)</td></tr>
-<tr><td><code>OPENMX_BAND_GPU_MAX_CONCURRENT_K</code> / <code>OPENMX_BAND_GPU_TURN_GROUP</code> / <code>OPENMX_BAND_GPU_MAX_RANKS_PER_DEVICE</code></td><td>制限なし</td><td>同時実行ランク数の<b>明示上限</b>(この優先順で最初に見つかったもの)。旧版の「初期値」の意味は廃止され、実際の並列度は常に適応スキャンで決まる 適応スキャンはCUDAの方針です。HIP は既存のターングループ方針を維持し、共線の同時実行数はn <= 512で8、それ以外は既定のターングループ数です。明示した上限も適用します。</td></tr>
+<tr><td><code>OPENMX_BAND_GPU_MAX_CONCURRENT_K</code> / <code>OPENMX_BAND_GPU_TURN_GROUP</code> / <code>OPENMX_BAND_GPU_MAX_RANKS_PER_DEVICE</code></td><td>制限なし</td><td>同時実行ランク数の<b>明示上限</b>(この優先順で最初に見つかったもの)。旧版の「初期値」の意味は廃止され、実際の並列度は常に適応スキャンで決まる 適応スキャンはCUDAの方針です。HIP は既存のターングループ方針を維持し、共線の同時実行数はn <= 512で8、それ以外は既定のターングループ数です。明示した上限も適用します。 MI300A の非共線・所有ランク単位経路では MAX_CONCURRENT_K（未指定時は MAX_RANKS_PER_DEVICE）を GPU ごとの所有ランク上限とし、固定 4 件制限を設けずメモリで実際の並列度を制限する。Radeon の非共線 k ターンは従来の全体 4 件上限を維持する。</td></tr>
 <tr><td><code>OPENMX_GPUSOLVER_SERIAL_GPU_TURNS</code></td><td>1</td><td>all_knum==1 経路の GPU ターン直列化(0 で並行投入)</td></tr>
 <tr><td><code>OPENMX_BAND_GPU_PERSISTENT</code> / <code>_MIN_FREE_MB</code></td><td>— / 2048</td><td>SCF 反復間のデバイスバッファ常駐(共有 GPU では非推奨)</td></tr>
 <tr><td><code>OPENMX_BAND_GEMMUL8_TURN_RELEASE</code></td><td>—</td><td>ターン毎の GEMMul8 ワークスペース解放(0 で保持)</td></tr>
@@ -2179,6 +2179,10 @@ input_int("scf.Gpu.Num", &amp;SCF_Gpu_Num, 30);</code></pre>
 <tr><td><code>OPENMX_BAND_REFINE_BASIS_MB</code></td><td>1024</td><td>精密化固有値ソルバーのウォームスタート基底を k 点スロットごとに保持するホスト予算（ランクあたり MiB。共線・非共線バンド）。0 でウォームスタートのキャッシュ無効。</td></tr>
 <tr><td><code>OPENMX_BAND_CACHE_TRACE</code> / <code>OPENMX_BAND_NONCOL_CACHE_TRACE</code></td><td>0 / 0</td><td>k 点キャッシュのヒット数と大きさをランクと SCF ステップごとに 1 行出力する（非共線では <code>BAND_NONCOL_CACHE</code> 行）。</td></tr>
 <tr><td><code>OPENMX_BAND_NONCOL_INTERLEAVE_K</code></td><td>auto</td><td>非共線バンド: 稠密 k 点を解く順序を所有ランク間で交互に並べる。0 で k の自然順。</td></tr>
+<tr><td><code>OPENMX_MI300A_BAND_SCHEDULE</code></td><td>1</td><td>MI300A の通常 gpusolver・非共線 SCF の二段階稠密 k 点経路のみ。物理 GPU ごとにメモリに応じた所有ランク数で処理を区切る。MPI の k 点所有、GPU 割り当て、CPU/NUMA 配置を維持する。既存の OPENMX_BAND_GPU_MAX_CONCURRENT_K は GPU ごとの上限になる。本変数を 0 にすると従来の全体ターン方式に戻る。Radeon は従来の方針を維持。</td></tr>
+<tr><td><code>OPENMX_MI300A_BAND_BUILD_CACHE</code></td><td>1</td><td>MI300A の所有ランク単位スケジュールが有効な場合、稠密行列構築の添字を SCF 間、パック済み値を 1 SCF 呼び出し内、位相を 1 k 点内で保持する。転送と scatter カーネルを既定ストリームに投入し、予算不足・確保失敗時は従来のストリーミング構築に戻る。0 で無効。</td></tr>
+<tr><td><code>OPENMX_MI300A_BAND_BUILD_CACHE_MB</code></td><td>64</td><td>MI300A の稠密行列構築キャッシュ予算（所有ランクあたり MiB、最大 1024）。予算全体を GPU ごとの同時実行メモリ判定に含める。0 は従来のストリーミング構築。</td></tr>
+<tr><td><code>OPENMX_MI300A_BAND_DM_WAVES</code></td><td>1</td><td>MI300A の所有ランク単位スケジュールで、全所有 k 点の固有ベクトルが保持されている場合、k 点ごとの全体通信を省いて各所有ランクで密度行列を構築する。処理グループの境界で成功を確認し、最後の密度行列の全体還元は維持する。パネル欠落、回復試験中、計算失敗時は従来の通信経路に戻し、途中の和を消去して再実行する。0 で無効。</td></tr>
 <tr><td colspan="3" style="background:#f0f4fa;"><b>クラスタ計算(Cluster_DFT_Col.c / Cluster_DFT_NonCol.c)</b></td></tr>
 <tr><td><code>OPENMX_CLUSTER_GPU_DIAG</code></td><td>—</td><td><b>1</b>=実予約失敗でも GPU 強制(失敗時は診断つき abort)、<b>0</b>=常に ELPA(§5.6)</td></tr>
 <tr><td><code>OPENMX_CLUSTER_GPU_SWITCH_NUM</code></td><td>400</td><td>コリニアクラスタ密行列経路の GPU/CPU 切替次元(実測では n=240 まで全サイズで GPU が勝利)</td></tr>
@@ -2211,6 +2215,7 @@ input_int("scf.Gpu.Num", &amp;SCF_Gpu_Num, 30);</code></pre>
 <tr><td><code>OPENMX_CUSOLVER_CACHE_MB</code></td><td>64</td><td>ホスト配列ソルバー呼び出し間で保持する cuSOLVER 作業領域のランクあたり上限（MiB）。それより大きな分解は解放し、バンド・クラスターのアリーナや力のバッファの余地を残す。</td></tr>
 <tr><td><code>OPENMX_CUSOLVER_VERBOSE</code></td><td>0</td><td>cuSOLVER の方針（エミュレーションの可否、アルゴリズムの選択）とクラスター作業領域解放のメッセージ。</td></tr>
 <tr><td><code>OPENMX_CUSOLVER_RETRY_TEST</code></td><td>0</td><td>テスト用: エミュレーション分解のたびにネイティブ FP64 への再試行を実行する。</td></tr>
+<tr><td><code>OPENMX_MI300A_SOLVER_ASYNC</code></td><td>1</td><td>MI300A の rocSOLVER のみ。ページ固定の結果領域を使い、ソルバー状態・有限値検査・要求した固有値を非同期転送し、最後のストリーム待ちにまとめる。呼び出し元への同期完了と失敗・再試行処理は維持する。0、ページ固定失敗時、および Radeon では従来の同期完了処理を使う。</td></tr>
 <tr><td colspan="3" style="background:#f0f4fa;"><b>DC 法(Divide_Conquer.c)</b></td></tr>
 <tr><td><code>OPENMX_DC_GPU_THRESHOLD</code></td><td>400</td><td>GPU 化する局所クラスタ次元 NUM の下限(コリニア)</td></tr>
 <tr><td><code>OPENMX_DC_NONCOL_GPU_THRESHOLD</code></td><td>300</td><td>GPU 化するスピノル次元 2·NUM の下限(非コリニア)</td></tr>

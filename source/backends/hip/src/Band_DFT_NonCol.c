@@ -23,6 +23,7 @@
 #include "openmx_mgpu_band_plan.h"
 #include "openmx_gpu_dm_collective.h"
 #include "openmx_gpu_workers.h"
+#include "openmx_gpu_k_waves.h"
 #include "openmx_host_simd.h"
 #include "openmx_nc_dm_cpu.h"
 
@@ -83,6 +84,8 @@ typedef struct
     int                       phase_count;
     int                       dense_device_valid;
     unsigned long long        fingerprint;
+    int                       phase_valid;
+    double                    phase_k1,phase_k2,phase_k3;
     int *                     phase_l1;
     int *                     phase_l2;
     int *                     phase_l3;
@@ -269,8 +272,21 @@ struct OpenMXBandNonColState {
     } QueryGpuSolverWorkBytes_native_cache[2];
   unsigned QueryGpuSolverWorkBytes_native_next;
   int SolveTimingEnabled_enabled;
+  int mi300a_k_enabled;
+  int mi300a_k_rank_limit;
+  int mi300a_k_reported_waves;
+  int mi300a_k_reported_devices;
+  void *mi300a_build_cache;
+  unsigned long long mi300a_build_frame;
 };
 typedef OpenMXBandNonColState BandNonColState;
+
+static size_t BandNonCol_MI300ABuildCacheLimit(BandNonColState *state)
+{
+    if (!state->mi300a_k_enabled || !openmx_env_flag_at(OPENMX_ENV_MI300A_BAND_BUILD_CACHE,1)) return 0;
+    size_t bytes=openmx_env_mib_bytes_at(OPENMX_ENV_MI300A_BAND_BUILD_CACHE_MB,64);
+    return bytes>(size_t)1024*1024*1024 ? (size_t)1024*1024*1024 : bytes;
+}
 
 static void BandNonCol_ReleaseCaches(BandNonColState *state);
 static void BandNonCol_Reset(OpenMXNativeResources *owner, void *metadata)
@@ -341,6 +357,12 @@ static int BandNonCol_SolveTimingEnabled(BandNonColState *state)
 extern int BandNonCol_BuildDenseMs_HIP(int cpx_flag, int count, int h_count, int phase_count, int n,
                                        const BandNonColConstructEntry *entries, const double *phase_r,
                                        const double *phase_i, const double *M1, dcomplex *d_M);
+extern int BandNonCol_BuildDenseMsCached_HIP(void **cache,unsigned long long geometry,
+    unsigned long long frame,int slot,int cpx,int count,int h_count,int phase_count,int n,
+    const BandNonColConstructEntry *entries,const double *phase_r,const double *phase_i,
+    const double *values,double k1,double k2,double k3,dcomplex *matrix,size_t limit);
+extern void BandNonCol_BuildDenseCacheRelease_HIP(void **cache);
+extern void BandNonCol_BuildDenseCacheStats_HIP(void *cache,unsigned long long values[4]);
 extern int BandNonCol_AddDense_HIP(int count, dcomplex *d_dst, const dcomplex *d_src);
 extern int BandNonCol_SymmetrizeDenseHermitian_HIP(int n, dcomplex *d_A);
 extern int BandNonCol_BuildDenseHs2_HIP(int n, int n2, const dcomplex *d_H11,
@@ -362,6 +384,11 @@ extern int BandNonCol_CalcDMRootDenseDevice_HIP(int entry_count, int pair_count,
                                                 const double *eig_occ,
                                                 const dcomplex *d_dense_evec,
                                                 int dense_evec_ld, double *dm_buffer);
+extern int BandNonCol_CalcDMRootDenseHostPanel_HIP(int entry_count, int pair_count, int size_H1,
+    int n, int n2, int nk_occ, const int *basis0, const int *basis1,
+    const int *phase_index, const double *phase_r, const double *phase_i,
+    const double *occ, const double *eig_occ, const dcomplex *dense_evec,
+    int dense_evec_ld, double *dm_buffer);
 
 static void BandNonCol_AbortWithMessage(const char *msg);
 extern void openmx_gemmul8TrimWorkspaces(void);
@@ -819,6 +846,17 @@ static int BandNonCol_GpuTurnGroup(BandNonColState *state, int n, int n2, int Ma
 static int BandNonCol_MaxConcurrentKGpuTurns(BandNonColState *state, int n, int n2, int MaxN, int size_H1,
                                              int owns_dense_rank, int myid0)
 {
+    if (state->mi300a_k_enabled){
+        long cap = openmx_env_long_at(OPENMX_ENV_BAND_GPU_MAX_CONCURRENT_K,
+            openmx_env_long_at(OPENMX_ENV_BAND_GPU_MAX_RANKS_PER_DEVICE, INT_MAX));
+        int requested = cap < 1 ? 1 : cap > INT_MAX ? INT_MAX : (int)cap;
+        int ranks = 1;
+        (void)BandNonCol_AutoGpuTurnLimit(state,requested,n,n2,MaxN,size_H1,owns_dense_rank,myid0);
+        /* RefineFits takes a global owner upper bound. The actual FP64
+           waves below use each device's independently checked capacity. */
+        MPI_Comm_size(mpi_comm_level1,&ranks);
+        return ranks;
+    }
     long limit = openmx_env_long_at(OPENMX_ENV_BAND_GPU_MAX_CONCURRENT_K,
         openmx_env_long_at(OPENMX_ENV_BAND_GPU_MAX_RANKS_PER_DEVICE, 4));
     int requested = limit < 1 ? 1 : limit > 4 ? 4 : (int)limit;
@@ -1610,7 +1648,19 @@ static size_t BandNonCol_RootDenseDeviceBytes(BandNonColState *state, int n, int
                             "root dense cached wavefunction scale vector");
     }
 
-    return BandNonCol_MaxBytes(overlap_peak,BandNonCol_MaxBytes(hamiltonian_peak,wavefunction_peak));
+    size_t peak=BandNonCol_MaxBytes(overlap_peak,BandNonCol_MaxBytes(hamiltonian_peak,wavefunction_peak));
+    if (state->mi300a_k_enabled && openmx_env_flag_at(OPENMX_ENV_MI300A_BAND_DM_WAVES,1)){
+        /* The density pass can overlap the same owners. Budget its sparse
+           outputs, indices, phases, weights and compact input in addition
+           to any retained dense buffers, conservatively, before admission. */
+        BandNonCol_AddBytes(&peak,BandNonCol_ArrayBytes(packed_count,
+            3U*sizeof(int)+10U*sizeof(double),"MI300A local DM entries"),"MI300A local DM entries");
+        BandNonCol_AddBytes(&peak,compact_evec_bytes,"MI300A local DM panel");
+        BandNonCol_AddBytes(&peak,BandNonCol_ArrayBytes((size_t)MaxN,
+            2U*sizeof(double),"MI300A local DM weights"),"MI300A local DM weights");
+    }
+    BandNonCol_AddBytes(&peak,BandNonCol_MI300ABuildCacheLimit(state),"MI300A persistent dense build cache");
+    return peak;
 }
 
 static size_t BandNonCol_RootDenseReserveBytes(size_t total_bytes, size_t required_bytes)
@@ -1670,7 +1720,8 @@ static int BandNonCol_AutoGpuTurnLimit(BandNonColState *state, int requested, in
 
     (void)myid0;
 
-    if (requested<=2){
+    if (state->mi300a_k_enabled) state->mi300a_k_rank_limit = owns_dense_rank ? 1 : 0;
+    if (requested<=2 && !state->mi300a_k_enabled){
         return requested;
     }
 
@@ -1699,7 +1750,28 @@ static int BandNonCol_AutoGpuTurnLimit(BandNonColState *state, int requested, in
 
         MPI_Comm_size(device_comm,&device_ranks);
 
-        {
+        if (state->mi300a_k_enabled){
+            unsigned long long values[3] = {(unsigned long long)free_bytes,
+                (unsigned long long)total_bytes,(unsigned long long)required_bytes};
+            unsigned long long common[3];
+            int selected = 1;
+            MPI_Allreduce(values,common,2,MPI_UNSIGNED_LONG_LONG,MPI_MIN,device_comm);
+            MPI_Allreduce(values+2,common+2,1,MPI_UNSIGNED_LONG_LONG,MPI_MAX,device_comm);
+            for (int c=device_ranks<requested ? device_ranks : requested; c>0; --c){
+                if (BandNonCol_GpuTurnMemoryFits((size_t)common[0],(size_t)common[1],
+                                                (size_t)common[2],c,NULL,NULL)){
+                    selected=c;
+                    break;
+                }
+            }
+            state->mi300a_k_rank_limit=local_limit=selected;
+            size_t peak=0,reserve=0;
+            (void)BandNonCol_GpuTurnMemoryFits(SIZE_MAX,(size_t)common[1],(size_t)common[2],
+                                              selected,&peak,&reserve);
+            if (peak!=SIZE_MAX && peak<=SIZE_MAX-reserve)
+                OpenMX_GpuPhaseNeed_Register("band_noncol_vec",peak+reserve);
+        }
+        else {
             int concurrent_ranks = (device_ranks<requested) ? device_ranks : requested;
             size_t published_required = 0U;
             size_t published_reserve = 0U;
@@ -1739,6 +1811,62 @@ static int BandNonCol_AutoGpuTurnLimit(BandNonColState *state, int requested, in
     MPI_Allreduce(&local_limit,&global_limit,1,MPI_INT,MPI_MIN,mpi_comm_level1);
 
     return global_limit;
+}
+
+/* Every rank builds the same plan from actual node/device identities.
+   No CPU binding, rank/device map or k-point ownership is changed. */
+static int BandNonCol_MI300AKWaves(BandNonColState *state, int points, int ranks,
+                                   int owns_dense, const int *owner, int interleave,
+                                   int *order, int *offset)
+{
+    MPI_Comm node;
+    int rank,leader,device=-1,groups=0,waves;
+    int local[3];
+    int *info=(int*)openmx_core_native_malloc(state->resources,(size_t)ranks,3*sizeof(int),0);
+    int *map=(int*)openmx_core_native_malloc(state->resources,(size_t)ranks,sizeof(int),0);
+    int *limit=(int*)openmx_core_native_malloc(state->resources,(size_t)ranks,sizeof(int),0);
+    if (!info || !map || !limit)
+        BandNonCol_AbortWithMessage("Cannot allocate MI300A k-point device plan.");
+    MPI_Comm_rank(mpi_comm_level1,&rank);
+    MPI_Comm_split_type(mpi_comm_level1,MPI_COMM_TYPE_SHARED,0,MPI_INFO_NULL,&node);
+    MPI_Allreduce(&rank,&leader,1,MPI_INT,MPI_MIN,node);
+    MPI_Comm_free(&node);
+    if (owns_dense) wait_hipfunc(hipGetDevice(&device));
+    local[0]=leader;
+    local[1]=device;
+    local[2]=owns_dense ? state->mi300a_k_rank_limit : 0;
+    MPI_Allgather(local,3,MPI_INT,info,3,MPI_INT,mpi_comm_level1);
+    for (int r=0;r<ranks;++r){
+        map[r]=-1;
+        if (info[3*r+1]<0 || info[3*r+2]<1) continue;
+        for (int previous=0;previous<r;++previous){
+            if (map[previous]>=0 && info[3*r]==info[3*previous] &&
+                info[3*r+1]==info[3*previous+1]){
+                map[r]=map[previous];
+                break;
+            }
+        }
+        if (map[r]<0){
+            map[r]=groups;
+            limit[groups++]=info[3*r+2];
+        }
+        else if (info[3*r+2]<limit[map[r]]) limit[map[r]]=info[3*r+2];
+    }
+    waves=openmx_gpu_k_waves(points,ranks,groups,owner,map,limit,interleave,order,offset);
+    if (waves<1) BandNonCol_AbortWithMessage("Invalid MI300A k-point device plan.");
+    if (rank==Host_ID && BandNonCol_GpuVerbose() &&
+        (state->mi300a_k_reported_waves!=waves || state->mi300a_k_reported_devices!=groups)){
+        printf("<Band> MI300A k schedule: devices=%d owner_waves=%d, per-device owner limits=",groups,waves);
+        for (int d=0;d<groups;++d) printf("%s%d",d?",":"",limit[d]);
+        printf("; MPI/NUMA bindings preserved.\n");
+        fflush(stdout);
+        state->mi300a_k_reported_waves=waves;
+        state->mi300a_k_reported_devices=groups;
+    }
+    openmx_core_native_free(state->resources,limit);
+    openmx_core_native_free(state->resources,map);
+    openmx_core_native_free(state->resources,info);
+    return waves;
 }
 
 static int BandNonCol_RootDenseParallelKWorldsFit(BandNonColState *state, int n, int n2, int MaxN, int size_H1,
@@ -2218,7 +2346,7 @@ static void BandNonCol_DenseGpuEigen(BandNonColState *state, dcomplex *d_A, doub
     for (l=maxn; 1<=l; l--) ko[l] = ko[l-1];
 }
 
-static void BandNonCol_ConstructDenseMsFromPacked_HIP(BandNonColState *state, int cpx_flag, const double *M1, dcomplex *d_M,
+static void BandNonCol_ConstructDenseMsFromPacked_HIP(BandNonColState *state, int slot, int cpx_flag, const double *M1, dcomplex *d_M,
                                                       int *order_GA, int *MP,
                                                       double k1, double k2, double k3, int n)
 {
@@ -2231,12 +2359,28 @@ static void BandNonCol_ConstructDenseMsFromPacked_HIP(BandNonColState *state, in
     BandNonCol_ConstructCache_Ensure(state, order_GA,MP,n);
     cache = &state->construct_cache;
 
+    size_t build_cache_limit=BandNonCol_MI300ABuildCacheLimit(state);
+    if (!build_cache_limit || !cache->phase_valid || cache->phase_k1!=k1 ||
+        cache->phase_k2!=k2 || cache->phase_k3!=k3){
     for (int p=0; p<cache->phase_count; p++){
         double kRn = k1*(double)cache->phase_l1[p]
                    + k2*(double)cache->phase_l2[p]
                    + k3*(double)cache->phase_l3[p];
         cache->phase_i[p] = sin(2.0*PI*kRn);
         cache->phase_r[p] = cos(2.0*PI*kRn);
+    }
+    if (build_cache_limit){
+        cache->phase_valid=1;cache->phase_k1=k1;cache->phase_k2=k2;cache->phase_k3=k3;
+    }
+    }
+
+    if (build_cache_limit){
+        int result=BandNonCol_BuildDenseMsCached_HIP(&state->mi300a_build_cache,
+            cache->fingerprint,state->mi300a_build_frame,slot,cpx_flag,
+            cache->dense_count,cache->h_count,cache->phase_count,n,
+            cache->dense_entries,cache->phase_r,cache->phase_i,M1,k1,k2,k3,d_M,build_cache_limit);
+        if (result==0) return;
+        if (result!=2) BandNonCol_AbortWithMessage("MI300A dense matrix cache failed.");
     }
 
     if (BandNonCol_BuildDenseMs_HIP(cpx_flag,cache->dense_count,cache->h_count,
@@ -2769,6 +2913,64 @@ static void BandNonCol_AccumulateDMRootDenseK_HIP(BandNonColState *state, int si
         ws->occ,ws->eig_occ,NULL,outputs,1);
 }
 
+/* No collective inside an owner's k-point work. The old per-point recovery
+   collective serialized otherwise independent GPUs. Keep all panels until
+   every wave succeeds, so a failed rank can discard its partial sums and
+   all ranks can replay the original recovery path without losing input. */
+static int BandNonCol_AccumulateDMCachedKWaves_HIP(BandNonColState *state,
+    int rank,int points,int waves,const int *offset,const int *order,const int *owner,
+    int size_H1,int *MP,int n,int n2,int MaxN,
+    const double *k1,const double *k2,const double *k3,double **eigen,
+    dcomplex **panels,double *outputs[8])
+{
+    int ready=state->mi300a_k_enabled && !state->mgpu_host_dense &&
+        !openmx_gpu_capacity_test_recovery() &&
+        openmx_env_flag_at(OPENMX_ENV_MI300A_BAND_DM_WAVES,1);
+    int all_ready,owns=0;
+    double *buffer=NULL;
+    if (ready) for(int p=0;p<points;++p) if(owner[p]==rank){
+        owns=1;
+        if(!panels || !panels[p]) ready=0;
+    }
+    MPI_Allreduce(&ready,&all_ready,1,MPI_INT,MPI_MIN,mpi_comm_level1);
+    if(!all_ready)return 0;
+    if(owns){
+        buffer=openmx_core_native_malloc(state->resources,(size_t)size_H1,8*sizeof(double),0);
+        ready=buffer!=NULL;
+        BandNonCol_DMOccWorkspace_Ensure(state,MaxN);
+        BandNonCol_DMEntryCache_Ensure(state,MP,n);
+        if(state->dm_entry_cache.entry_count!=size_H1)
+            BandNonCol_AbortWithMessage("NC cached DM entry count mismatch");
+    }
+    MPI_Allreduce(&ready,&all_ready,1,MPI_INT,MPI_MIN,mpi_comm_level1);
+    if(!all_ready){openmx_core_native_free(state->resources,buffer);return 0;}
+    for(int wave=0;wave<waves;++wave){
+        for(int turn=offset[wave];turn<offset[wave+1];++turn){
+            int p=order[turn];
+            if(owner[p]!=rank)continue;
+            BandNonColDMEntryCache *cache=&state->dm_entry_cache;
+            BandNonColDMOccWorkspace *ws=&state->dm_occ_workspace;
+            int nk=BandNonCol_BuildOccupationWeightsDense(state->chemical,1,MaxN,eigen[p],ws->occ,ws->eig_occ);
+            BandNonCol_UpdateDMEntryPhases(state,k1[p],k2[p],k3[p]);
+            if(nk && BandNonCol_CalcDMRootDenseHostPanel_HIP(size_H1,cache->pair_count,size_H1,
+                n,n2,nk,cache->basis0,cache->basis1,cache->phase_index,cache->phase_r,cache->phase_i,
+                ws->occ,ws->eig_occ,panels[p],MaxN,buffer)!=0){
+                (void)hipGetLastError();ready=0;break;
+            }
+            if(nk)for(int c=0;c<8;++c)for(int i=0;i<size_H1;++i)
+                outputs[c][i]+=buffer[(size_t)c*size_H1+i];
+        }
+        MPI_Allreduce(&ready,&all_ready,1,MPI_INT,MPI_MIN,mpi_comm_level1);
+        if(!all_ready)break;
+    }
+    openmx_core_native_free(state->resources,buffer);
+    if(!all_ready){
+        for(int c=0;c<8;++c)memset(outputs[c],0,(size_t)size_H1*sizeof(double));
+        return 0;
+    }
+    return 1;
+}
+
 static void BandNonCol_CalcDMRootDenseAllK1_HIP(BandNonColState *state, int myid0, int owns_root_dense, int size_H1,
                                                 int *MP, int n, int n2, int MaxN,
                                                 double k1, double k2, double k3,
@@ -2917,6 +3119,8 @@ static void BandNonCol_RootDenseWorkspace_Reset(BandNonColState *state)
    arrays were freed and their addresses reused.  Idempotent. */
 static void BandNonCol_ReleaseCaches(BandNonColState *state)
 {
+    if (state->mi300a_build_cache) BandNonCol_BuildDenseCacheRelease_HIP(&state->mi300a_build_cache);
+    state->mi300a_k_reported_waves=state->mi300a_k_reported_devices=0;
     state->mgpu_host_dense=0;
     BandNonCol_RefineRelease(state);
     /* the refinement's stage (iterations, a cycle or run turned to FP64)
@@ -3671,7 +3875,7 @@ static void BandNonCol_RootDenseBuildH2(BandNonColState *state, int rebuild_over
     BandNonCol_DenseGpu_Ensure(state, n,n2);
 
     if (rebuild_overlap){
-        BandNonCol_ConstructDenseMsFromPacked_HIP(state, 0,m_olp,w->d_S,packed_order_GA,MP,k1,k2,k3,n);
+        BandNonCol_ConstructDenseMsFromPacked_HIP(state, 0,0,m_olp,w->d_S,packed_order_GA,MP,k1,k2,k3,n);
     }
     BandNonCol_DenseGpuPrepareOverlap(state, rebuild_overlap,n,n2,ko,rdw->s_all,cache_buffers);
 
@@ -3680,24 +3884,24 @@ static void BandNonCol_RootDenseBuildH2(BandNonColState *state, int rebuild_over
     if (rebuild_overlap) BandNonCol_ReleaseOverlapWorkspace(n);
     BandNonCol_DenseGpu_Ensure(state, n,n2);
 
-    BandNonCol_ConstructDenseMsFromPacked_HIP(state, 0,m_h11,w->d_H11,packed_order_GA,MP,k1,k2,k3,n);
-    BandNonCol_ConstructDenseMsFromPacked_HIP(state, 1,m_i11,w->d_tmp,packed_order_GA,MP,k1,k2,k3,n);
+    BandNonCol_ConstructDenseMsFromPacked_HIP(state, 1,0,m_h11,w->d_H11,packed_order_GA,MP,k1,k2,k3,n);
+    BandNonCol_ConstructDenseMsFromPacked_HIP(state, 5,1,m_i11,w->d_tmp,packed_order_GA,MP,k1,k2,k3,n);
     if (BandNonCol_AddDense_HIP(n*n,w->d_H11,w->d_tmp) != 0){
         BandNonCol_AbortWithMessage("Band_DFT_NonCol HIP H11 add failed.");
     }
 
-    BandNonCol_ConstructDenseMsFromPacked_HIP(state, 0,m_h22,w->d_H22,packed_order_GA,MP,k1,k2,k3,n);
-    BandNonCol_ConstructDenseMsFromPacked_HIP(state, 1,m_i22,w->d_tmp,packed_order_GA,MP,k1,k2,k3,n);
+    BandNonCol_ConstructDenseMsFromPacked_HIP(state, 2,0,m_h22,w->d_H22,packed_order_GA,MP,k1,k2,k3,n);
+    BandNonCol_ConstructDenseMsFromPacked_HIP(state, 6,1,m_i22,w->d_tmp,packed_order_GA,MP,k1,k2,k3,n);
     if (BandNonCol_AddDense_HIP(n*n,w->d_H22,w->d_tmp) != 0){
         BandNonCol_AbortWithMessage("Band_DFT_NonCol HIP H22 add failed.");
     }
 
-    BandNonCol_ConstructDenseMsFromPacked_HIP(state, 0,m_h12,w->d_H12,packed_order_GA,MP,k1,k2,k3,n);
-    BandNonCol_ConstructDenseMsFromPacked_HIP(state, 1,m_h12i,w->d_tmp,packed_order_GA,MP,k1,k2,k3,n);
+    BandNonCol_ConstructDenseMsFromPacked_HIP(state, 3,0,m_h12,w->d_H12,packed_order_GA,MP,k1,k2,k3,n);
+    BandNonCol_ConstructDenseMsFromPacked_HIP(state, 4,1,m_h12i,w->d_tmp,packed_order_GA,MP,k1,k2,k3,n);
     if (BandNonCol_AddDense_HIP(n*n,w->d_H12,w->d_tmp) != 0){
         BandNonCol_AbortWithMessage("Band_DFT_NonCol HIP H12 add failed.");
     }
-    BandNonCol_ConstructDenseMsFromPacked_HIP(state, 1,m_i12,w->d_tmp,packed_order_GA,MP,k1,k2,k3,n);
+    BandNonCol_ConstructDenseMsFromPacked_HIP(state, 7,1,m_i12,w->d_tmp,packed_order_GA,MP,k1,k2,k3,n);
     if (BandNonCol_AddDense_HIP(n*n,w->d_H12,w->d_tmp) != 0){
         BandNonCol_AbortWithMessage("Band_DFT_NonCol HIP H12 ImNL add failed.");
     }
@@ -4618,6 +4822,9 @@ static double Band_DFT_NonCol_owned(BandNonColState *state, char *mode,
   int owns_dense_k_rank;
   int *dense_k_owner = NULL;
   int *dense_k_order = NULL;
+  int *mi300a_wave_offsets = NULL;
+  int mi300a_waves = 0;
+  int interleave_k = 1;
   dcomplex **k_evec_cache = NULL;
   size_t k_cache_bytes = 0, k_cache_used = 0, k_cache_limit = 0;
   int k_cache_hits = 0, k_overlap_hits = 0;
@@ -4667,7 +4874,11 @@ static double Band_DFT_NonCol_owned(BandNonColState *state, char *mode,
   /* the transformed overlaps of the k-dense path are kept across the SCF
      steps of one geometry; new inputs and geometry updates both start a new
      SCF cycle */
-  if (SCF_iter <= 1) BandNonCol_KOverlapReset(state);
+  if (SCF_iter <= 1){
+    BandNonCol_KOverlapReset(state);
+    if (state->mi300a_build_cache) BandNonCol_BuildDenseCacheRelease_HIP(&state->mi300a_build_cache);
+  }
+  ++state->mi300a_build_frame;
 
   time1 = 0.0;
   time2 = 0.0;
@@ -5070,8 +5281,13 @@ static double Band_DFT_NonCol_owned(BandNonColState *state, char *mode,
 	  MPI_Allreduce(&num_kloop0, &max_num_kloop0, 1, MPI_INT, MPI_MAX, mpi_comm_level1);
 
 			  {
+			    int mi300a = scf_eigen_lib_flag==GPUSOLVER && !gpusolver2_flag && !gpusolver3_flag && all_knum!=1 &&
+                      strcasecmp(mode,"scf")==0 && openmx_gpu_is_mi300a() &&
+                      openmx_env_flag_at(OPENMX_ENV_MI300A_BAND_SCHEDULE,1);
+                MPI_Allreduce(&mi300a,&state->mi300a_k_enabled,1,MPI_INT,MPI_MIN,mpi_comm_level1);
 			    int gpu_diag_fit=(scf_eigen_lib_flag==GPUSOLVER && (openmx_mgpu_host_required() || Band_DFT_NonCol_GpuSwitchNum()<=n2)) ?
 			      BandNonCol_GpuDiagFits(state, n,n2,MaxN,size_H1,Set_Hamiltonian_OpenMP_Rank_Is_Selected()) : 0;
+                if (state->mgpu_host_dense) state->mi300a_k_enabled=0;
 			    use_root_dense_gpusolver = (gpu_diag_fit && all_knum==1);
 			    use_k_dense_gpusolver = (gpu_diag_fit && all_knum!=1 && strcasecmp(mode,"scf")==0);
 			  }
@@ -5168,8 +5384,6 @@ static double Band_DFT_NonCol_owned(BandNonColState *state, char *mode,
 			    }
 			  }
   if (use_k_dense_gpusolver) {
-    int interleave_k = 1;
-
     use_k_packed_cache = BandNonCol_PackedKCacheReady(state, owns_dense_k_rank, size_H1);
     if (use_k_packed_cache) {
       Set_Hamiltonian_GpuSolver_SetMP(MP);
@@ -5192,7 +5406,13 @@ static double Band_DFT_NonCol_owned(BandNonColState *state, char *mode,
       interleave_k = openmx_env_flag_at(OPENMX_ENV_BAND_NONCOL_INTERLEAVE_K, interleave_k);
     }
     MPI_Bcast(&interleave_k, 1, MPI_INT, Host_ID, mpi_comm_level1);
-    if (interleave_k)
+    if (state->mi300a_k_enabled){
+      mi300a_wave_offsets=OpenMX_Solver_Int(solver_owner,"mi300a_wave_offsets",(size_t)T_knum+1);
+      if (!mi300a_wave_offsets) BandNonCol_AbortWithMessage("Cannot allocate MI300A k-point waves.");
+      mi300a_waves=BandNonCol_MI300AKWaves(state,T_knum,numprocs0,owns_dense_k_rank,
+                                          dense_k_owner,interleave_k,dense_k_order,mi300a_wave_offsets);
+    }
+    else if (interleave_k)
       BandNonCol_InterleaveKOrder(state, T_knum, numprocs0, dense_k_owner, dense_k_order);
     else
       for (int point=0; point<T_knum; ++point) dense_k_order[point] = point;
@@ -5385,10 +5605,10 @@ static double Band_DFT_NonCol_owned(BandNonColState *state, char *mode,
 
 	    if (owns_dense_k_rank) BandNonCol_KOverlapPrepare(state, n,T_knum);
 
-	    for (int group_first=0; group_first<T_knum; group_first+=max_concurrent_gpu_turns){
-	      int group_last =
-	        (group_first + max_concurrent_gpu_turns < T_knum) ?
-	        (group_first + max_concurrent_gpu_turns) : T_knum;
+	    for (int wave=0; wave<(mi300a_wave_offsets ? mi300a_waves : (T_knum>0 ? 1+(T_knum-1)/max_concurrent_gpu_turns : 0)); ++wave){
+              int group_first = mi300a_wave_offsets ? mi300a_wave_offsets[wave] : wave*max_concurrent_gpu_turns;
+              int group_last = mi300a_wave_offsets ? mi300a_wave_offsets[wave+1] :
+                (T_knum-group_first<max_concurrent_gpu_turns ? T_knum : group_first+max_concurrent_gpu_turns);
 	      int owns_dense_k_group = 0;
 
 	      for (int gpu_turn=group_first; gpu_turn<group_last; gpu_turn++){
@@ -6652,6 +6872,9 @@ static double Band_DFT_NonCol_owned(BandNonColState *state, char *mode,
 	    if (use_k_dense_gpusolver){
 	      int max_concurrent_gpu_turns =
 	        BandNonCol_MaxConcurrentKGpuTurns(state, n,n2,MaxN,size_H1,owns_dense_k_rank,myid0);
+          if (mi300a_wave_offsets)
+            mi300a_waves=BandNonCol_MI300AKWaves(state,T_knum,numprocs0,owns_dense_k_rank,
+                                                dense_k_owner,interleave_k,dense_k_order,mi300a_wave_offsets);
 	      BandNonColRootDenseWorkspace *rdw;
 	      double *pack_buffer = NULL;
 	      double *m_olp = NULL;
@@ -6672,10 +6895,26 @@ static double Band_DFT_NonCol_owned(BandNonColState *state, char *mode,
 	      memset(rEDM11,0,sizeof(double)*(size_t)size_H1);
 	      memset(rEDM22,0,sizeof(double)*(size_t)size_H1);
 
-		      for (int group_first=0; group_first<T_knum; group_first+=max_concurrent_gpu_turns){
-		        int group_last =
-		          (group_first + max_concurrent_gpu_turns < T_knum) ?
-		          (group_first + max_concurrent_gpu_turns) : T_knum;
+          int cached_dm_done=0;
+          if(mi300a_wave_offsets){
+            double *outputs[8]={rDM11,rDM22,rDM12,iDM12,iDM11,iDM22,rEDM11,rEDM22};
+            cached_dm_done=BandNonCol_AccumulateDMCachedKWaves_HIP(state,myid0,T_knum,
+                mi300a_waves,mi300a_wave_offsets,dense_k_order,dense_k_owner,
+                size_H1,MP,n,n2,MaxN,T_KGrids1,T_KGrids2,T_KGrids3,EIGEN[0],k_evec_cache,outputs);
+          }
+          if(cached_dm_done){
+            for(int p=0;p<T_knum;++p)if(dense_k_owner[p]==myid0){
+              openmx_core_native_free(state->resources,k_evec_cache[p]);
+              k_evec_cache[p]=NULL;++k_cache_hits;
+            }
+            if(!use_k_packed_cache)k_gather_skips+=mi300a_waves;
+            if(myid0==Host_ID && BandNonCol_GpuVerbose())
+              printf("<Band> MI300A cached density: owner_waves=%d; per-k collectives skipped.\n",mi300a_waves);
+          }
+		      for (int wave=0; !cached_dm_done && wave<(mi300a_wave_offsets ? mi300a_waves : (T_knum>0 ? 1+(T_knum-1)/max_concurrent_gpu_turns : 0)); ++wave){
+              int group_first = mi300a_wave_offsets ? mi300a_wave_offsets[wave] : wave*max_concurrent_gpu_turns;
+              int group_last = mi300a_wave_offsets ? mi300a_wave_offsets[wave+1] :
+                (T_knum-group_first<max_concurrent_gpu_turns ? T_knum : group_first+max_concurrent_gpu_turns);
 		        int owns_dense_k_group = 0;
 		        int local_needs_solve = 0, group_needs_solve = 1;
 
@@ -7419,6 +7658,12 @@ static double Band_DFT_NonCol_owned(BandNonColState *state, char *mode,
 
 
     if (openmx_env_flag_at(OPENMX_ENV_BAND_NONCOL_CACHE_TRACE, 0)) {
+      if (state->mi300a_build_cache){
+        unsigned long long stats[4];
+        BandNonCol_BuildDenseCacheStats_HIP(state->mi300a_build_cache,stats);
+        printf("MI300A_BAND_BUILD_CACHE rank=%d SCF=%d builds=%llu metadata_uploads=%llu value_uploads=%llu phase_uploads=%llu\n",
+               myid0,SCF_iter,stats[0],stats[1],stats[2],stats[3]);
+      }
       printf("BAND_NONCOL_CACHE rank=%d SCF=%d evec_hits=%d overlap_hits=%d evec=%.1f MiB overlap=%.1f MiB "
              "packed=%s dm_gathers=%d dm_gathers_skipped=%d\n",
              myid0, SCF_iter, k_cache_hits, k_overlap_hits, k_cache_used/1048576.0,
