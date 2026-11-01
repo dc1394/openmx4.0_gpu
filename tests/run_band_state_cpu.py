@@ -71,8 +71,14 @@ def main():
                 ['openmx_eigen_refine_malloc', 'openmx_eigen_refine_host_malloc'])
             release = '\n'.join(function(refine.read_text(), name) for name in
                 ['refine_blocks_release', 'openmx_eigen_refine_state_release'])
+            build_cache = ''
+            if backend == 'hip' and kind == 'NonCol':
+                kernels = (base / 'src/Cluster_DFT_NonCol_dm_hip.cu').read_text()
+                build_cache = ('\nusing BandNonColHipConstructEntry = BandNonColConstructEntry;\n'
+                    + kernels[kernels.index('namespace {\nstruct Mi300aBandBuildCache'):
+                              kernels.index('/* MI300A-only caller.')])
             generated = (sdk_types + '\n' + calculation_state_declaration(text, prefix + 'State') +
-                '\n' + prototypes + '\n' + allocation + '\n' + release +
+                build_cache + '\n' + prototypes + '\n' + allocation + '\n' + release +
                 '\nstatic void openmx_eigen_refine_device_release(EigenRefineDevice*) { refine_device_drains++; }\n' +
                 '\n'.join(bodies))
             # Only names are aliased for one common test driver; production

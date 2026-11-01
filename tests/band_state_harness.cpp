@@ -37,6 +37,8 @@ static int hipGetDevice(int* device){return OpenMXGpuGetDevice(device);}
 static int hipSetDevice(int device){return OpenMXGpuSetDevice(device);}
 static int hipGetLastError(){return 0;}
 static int hipDeviceSynchronize(){return 0;}
+static int hipStreamSynchronize(void* stream){return OpenMXGpuStreamSynchronize(stream);}
+static int hipFree(void* pointer){return OpenMXGpuFree(pointer);}
 static void acc_wait_all(){}
 static void acc_clear_freelists(){}
 static void MPI_Comm_rank(int,int* rank){*rank=0;}
@@ -87,6 +89,15 @@ void populate(BandState* s,int device){
     device_buffer(s,&dense.d_S);device_buffer(s,&dense.d_H2);device_buffer(s,&dense.d_C2);device_buffer(s,&dense.d_scale);
     dense.h_scale=host_buffer<dcomplex>(s);check(!OpenMX_Resource_BlasCreate(s->resources,&dense.hipblas),"dense BLAS");
     device_buffer(s,&s->refine_buf.d_scratch);device_buffer(s,&s->refine_buf.d_w);device_buffer(s,&s->refine_buf.d_info);device_buffer(s,&s->refine_buf.d_work);
+    // The production CU cache owns these allocations outside the core's
+    // resource registry. Run its real release on two distinct devices too.
+    auto* build=new Mi300aBandBuildCache;build->device=device;
+    check(!OpenMXGpuMalloc(reinterpret_cast<void**>(&build->entries),64),"build indices");
+    check(!OpenMXGpuMalloc(reinterpret_cast<void**>(&build->phase_r),64),"build phases real");
+    check(!OpenMXGpuMalloc(reinterpret_cast<void**>(&build->phase_i),64),"build phases imaginary");
+    check(!OpenMXGpuMalloc(reinterpret_cast<void**>(&build->values[0]),64),"build overlap");
+    check(!OpenMXGpuMalloc(reinterpret_cast<void**>(&build->values[7]),64),"build Hamiltonian");
+    s->mi300a_build_cache=build;
 #else
     check(!OpenMX_Resource_BlasCreate(s->resources,&d.cublas),"DM BLAS");
     s->dm_occ_workspace.occ=host_buffer<double>(s);s->dm_occ_workspace.eig_occ=host_buffer<double>(s);
@@ -164,6 +175,9 @@ int main(){try{
         check(a->k_overlap && openmx_core_native_resource_count(a->resources)>0,"cycle end lost retained overlap/solver cache");
         check(openmx_core_native_resource_count(b->resources)==count_b && b->kref && b->refine_state.basis_valid,"cycle end invalidated another calculation");
         band_release(a);band_release(a);
+#if OPENMX_GPU_HIP && BAND_NONCOL
+        check(!a->mi300a_build_cache && b->mi300a_build_cache,"build cache release crossed calculations or retained a stale pointer");
+#endif
         check(!openmx_core_native_resource_count(a->resources) && a->refine.iterations==-1,"run-boundary drain leaked or lost policy reset");
         event_count=0;openmx::test::fail_allocation_after(0);openmx_core_native_resources_clear(first.get());
     check(owned_chemical(first.get())->chemical_potential==0 && owned_chemical(first.get())->xanes[0]==0 &&
