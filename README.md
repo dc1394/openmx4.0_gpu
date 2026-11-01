@@ -1765,6 +1765,56 @@ build, binary/library hashes, runtime controls, rank audits, dataset hashes,
 validation and all eight jobs. Raw logs are under
 `work/codex_benchmark_20261031_refresh/`.
 
+### Sirius MI300A benchmarks (2026-10-31)
+
+Every measurement used **one physical node with four MI300A APUs**
+(96 CPU cores and four GPUs), **32 MPI ranks × 3 OpenMP threads**,
+and three disjoint CPU cores per rank. All three configurations used
+AMD ROCm 7.2.0 Clang/flang, Open MPI 5.0.10 and AOCL 5.1.0, with the
+OpenMP BLIS provider set to three threads per rank.
+
+The upstream CPU executable is official OpenMX 4.0 plus the official
+4.0.1 patches, using its OpenMP-enabled ELPA 2018.05.001. The fork CPU
+path uses `OPENMX_GPU=0` and `scf.eigen.lib elpa2`; the HIP GPU path uses
+`OPENMX_GPU=1` and ordinary `scf.eigen.lib gpusolver`. The fork uses
+OpenMP-enabled ELPA 2026.02.002, with three threads for CPU handles.
+The fork CPU executable is frozen at `3e2f5c73`; all GPU measurements use
+`73c4a2c0`, which adds the ELPA handle-cleanup correction. Their Core/SIMD
+shared libraries are identical. Exact executable/library hashes are in the
+[manifest](benchmarks/results/sirius_mi300a_20261031_32x3/manifest.json).
+
+Times below are seconds: the sum of native per-case result rows for each
+complete S/L suite, and `Elapsed.Time.` for the named inputs. Each is one
+measurement; launcher wall times are retained separately.
+
+| Workload | Upstream CPU (s) | Fork CPU (s) | Fork HIP GPU (s) |
+| --- | ---: | ---: | ---: |
+| `-runtest` (14 cases) | 61.970 | 43.580 | 140.310 |
+| `-runtestL` (16 cases) | 2219.350 | 1533.410 | 3032.940 |
+| `sidia333_nc_cluster.dat` | 247.520 | 192.886 | 133.143 |
+| `cghelgeo.dat` | 860.989 | 792.170 | 344.113 |
+
+The GPU path is faster on the two named inputs and slower on the S/L
+suites. All **96 pairwise comparisons** across the 32 inputs and three
+configurations pass **1e-7 Ha** for energy and **1e-7 Ha/bohr** for every
+force component. The maximum differences are **2.878005e-8 Ha** and
+**4.7201e-8 Ha/bohr**, respectively. Input physics, geometry, grids, basis,
+SCF/MD limits and convergence thresholds were preserved. The original
+**25-SCF sidia333 input remains unconverged on all three routes**;
+numerical agreement is separate from SCF convergence. All other cases
+converged on every route.
+
+The eight matching CPU measurements and corrected GPU S result were
+reused. Only GPU L, sidia333 and cghelgeo needed another allocation,
+consuming **3.93 points**. Full commands, affinity/thread checks, inputs
+and hashes are described in the
+[measurement record](benchmarks/results/sirius_mi300a_20261031_32x3/README.txt);
+[timings](benchmarks/results/sirius_mi300a_20261031_32x3/timings.csv),
+[per-case results](benchmarks/results/sirius_mi300a_20261031_32x3/cases.csv)
+and [energy/force comparisons](benchmarks/results/sirius_mi300a_20261031_32x3/comparisons.csv)
+are retained as CSV files. No separate `gpusolver2`/`gpusolver3` timing
+was run, and L2/L3 are outside this final scope.
+
 ## Important notes
 Performance depends on the system, solver, hardware and MPI/OpenMP layout.
 Use the same binary and inputs when comparing CPU and GPU execution;
