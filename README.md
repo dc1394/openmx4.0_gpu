@@ -1815,6 +1815,102 @@ and [energy/force comparisons](benchmarks/results/sirius_mi300a_20261031_32x3/co
 are retained as CSV files. No separate `gpusolver2`/`gpusolver3` timing
 was run, and L2/L3 are outside this final scope.
 
+In the per-case tables, ratios above 1 mean that HIP is faster than the
+respective CPU path. `sp` denotes collinear spin polarization and `NC`
+denotes noncollinear spin. SCF counts are summed over all MD steps;
+different converged iteration counts can affect timings. Error columns
+show the largest absolute difference among the three configuration pairs
+for that input. `PASS` requires all three comparisons to pass the
+energy/force tolerances above and the atom, grid and geometry checks.
+
+#### `-runtest`: all 14 cases
+
+| Input | Atoms | Solver | Upstream CPU (s) | Fork CPU (s) | Fork HIP (s) | Upstream / HIP | Fork CPU / HIP |
+| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: |
+| Benzene | 12 | cluster | 2.90 | 2.31 | 7.75 | 0.37 | 0.30 |
+| C60 | 60 | dc | 5.11 | 4.83 | 8.47 | 0.60 | 0.57 |
+| CO | 2 | cluster | 6.14 | 5.19 | 48.35 | 0.13 | 0.11 |
+| Cr2 | 2 | cluster (NC) | 4.46 | 3.23 | 5.80 | 0.77 | 0.56 |
+| Crys-MnO | 4 | band (sp) | 8.17 | 5.11 | 10.78 | 0.76 | 0.47 |
+| GaAs | 2 | band (NC) | 10.98 | 6.72 | 8.97 | 1.22 | 0.75 |
+| Glycine | 10 | cluster | 2.73 | 2.05 | 6.19 | 0.44 | 0.33 |
+| Graphite4 | 4 | band | 2.30 | 1.09 | 3.80 | 0.61 | 0.29 |
+| H2O-EF | 3 | cluster | 2.42 | 1.63 | 4.44 | 0.55 | 0.37 |
+| H2O | 3 | cluster | 2.44 | 1.46 | 4.29 | 0.57 | 0.34 |
+| HMn | 2 | cluster (sp) | 5.81 | 4.45 | 15.48 | 0.38 | 0.29 |
+| Methane | 5 | cluster | 1.73 | 1.08 | 3.83 | 0.45 | 0.28 |
+| Mol_MnO | 2 | cluster (sp) | 4.32 | 3.10 | 9.97 | 0.43 | 0.31 |
+| Ndia2 | 2 | band | 2.46 | 1.33 | 2.19 | 1.12 | 0.61 |
+| **Total** | | | **61.97** | **43.58** | **140.31** | **0.44** | **0.31** |
+
+<details>
+<summary>SCF counts and numerical checks for all 14 cases</summary>
+
+| Input | SCF upstream / CPU / HIP | Max abs ΔE (Ha) | Max abs ΔF (Ha/bohr) | Status |
+| --- | ---: | ---: | ---: | --- |
+| Benzene | 19 / 19 / 19 | 9.948e-13 | 0.000e+00 | PASS |
+| C60 | 27 / 27 / 27 | 2.802e-11 | 1.000e-12 | PASS |
+| CO | 182 / 182 / 182 | 0.000e+00 | 1.500e-11 | PASS |
+| Cr2 | 21 / 21 / 21 | 3.013e-12 | 2.010e-10 | PASS |
+| Crys-MnO | 37 / 40 / 41 | 4.740e-10 | 6.450e-10 | PASS |
+| GaAs | 13 / 13 / 13 | 1.600e-11 | 7.000e-12 | PASS |
+| Glycine | 20 / 20 / 20 | 1.002e-12 | 1.000e-12 | PASS |
+| Graphite4 | 14 / 14 / 14 | 2.000e-12 | 1.000e-12 | PASS |
+| H2O-EF | 17 / 17 / 17 | 9.983e-13 | 1.000e-12 | PASS |
+| H2O | 31 / 31 / 31 | 1.002e-12 | 1.000e-12 | PASS |
+| HMn | 26 / 26 / 26 | 9.948e-13 | 0.000e+00 | PASS |
+| Methane | 14 / 14 / 14 | 1.430e-10 | 1.600e-11 | PASS |
+| Mol_MnO | 26 / 26 / 26 | 9.948e-13 | 1.000e-12 | PASS |
+| Ndia2 | 13 / 13 / 13 | 3.000e-12 | 1.000e-12 | PASS |
+
+</details>
+
+#### `-runtestL`: all 16 cases
+
+| Input | Atoms | Solver | Upstream CPU (s) | Fork CPU (s) | Fork HIP (s) | Upstream / HIP | Fork CPU / HIP |
+| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: |
+| 5_5_13COb2 | 155 | band | 49.98 | 45.82 | 41.39 | 1.21 | 1.11 |
+| B2C62_Band | 64 | band | 270.33 | 174.90 | 355.85 | 0.76 | 0.49 |
+| CG15c-DC-LNO | 650 | dc-lno | 69.52 | 51.52 | 55.73 | 1.25 | 0.92 |
+| DIA512-1 | 512 | krylov | 43.24 | 30.89 | 96.98 | 0.45 | 0.32 |
+| FeBCC | 16 | band (sp) | 70.56 | 51.16 | 71.84 | 0.98 | 0.71 |
+| GEL | 40 | band | 26.58 | 17.78 | 101.98 | 0.26 | 0.17 |
+| GFRAG | 54 | cluster | 31.14 | 28.66 | 40.67 | 0.77 | 0.70 |
+| GGFF | 40 | band (NC) | 457.27 | 336.62 | 1161.92 | 0.39 | 0.29 |
+| MCCN | 564 | krylov | 65.10 | 58.56 | 145.83 | 0.45 | 0.40 |
+| Mn12_148_F | 148 | cluster (sp) | 59.80 | 52.05 | 62.38 | 0.96 | 0.83 |
+| N1C999 | 1000 | dc-lno (sp) | 810.54 | 465.16 | 507.02 | 1.60 | 0.92 |
+| Ni63-O64 | 127 | band (sp) | 54.35 | 49.48 | 51.81 | 1.05 | 0.96 |
+| Pt63 | 63 | cluster | 43.76 | 46.29 | 56.78 | 0.77 | 0.82 |
+| SialicAcid | 40 | cluster | 10.84 | 8.71 | 19.90 | 0.54 | 0.44 |
+| ZrB2_2x2 | 76 | band | 103.47 | 72.77 | 140.68 | 0.74 | 0.52 |
+| nsV4Bz5 | 64 | cluster | 52.87 | 43.04 | 122.18 | 0.43 | 0.35 |
+| **Total** | | | **2219.35** | **1533.41** | **3032.94** | **0.73** | **0.51** |
+
+<details>
+<summary>SCF counts and numerical checks for all 16 cases</summary>
+
+| Input | SCF upstream / CPU / HIP | Max abs ΔE (Ha) | Max abs ΔF (Ha/bohr) | Status |
+| --- | ---: | ---: | ---: | --- |
+| 5_5_13COb2 | 66 / 66 / 67 | 7.369e-10 | 1.330e-10 | PASS |
+| B2C62_Band | 203 / 203 / 204 | 1.410e-10 | 4.720e-08 | PASS |
+| CG15c-DC-LNO | 42 / 42 / 42 | 6.221e-10 | 1.790e-10 | PASS |
+| DIA512-1 | 29 / 29 / 29 | 7.949e-10 | 9.659e-09 | PASS |
+| FeBCC | 62 / 62 / 62 | 1.027e-09 | 6.100e-11 | PASS |
+| GEL | 58 / 58 / 58 | 2.091e-10 | 4.110e-10 | PASS |
+| GFRAG | 60 / 60 / 60 | 1.650e-10 | 1.776e-09 | PASS |
+| GGFF | 100 / 98 / 101 | 8.617e-11 | 1.390e-10 | PASS |
+| MCCN | 67 / 67 / 67 | 3.392e-10 | 3.600e-11 | PASS |
+| Mn12_148_F | 61 / 61 / 61 | 2.819e-11 | 2.960e-10 | PASS |
+| N1C999 | 61 / 59 / 59 | 1.568e-09 | 3.100e-11 | PASS |
+| Ni63-O64 | 62 / 69 / 62 | 2.819e-09 | 6.220e-10 | PASS |
+| Pt63 | 67 / 78 / 69 | 6.790e-09 | 2.340e-10 | PASS |
+| SialicAcid | 29 / 29 / 29 | 3.013e-12 | 1.000e-12 | PASS |
+| ZrB2_2x2 | 49 / 49 / 49 | 1.100e-10 | 3.820e-10 | PASS |
+| nsV4Bz5 | 57 / 57 / 57 | 1.240e-10 | 6.840e-10 | PASS |
+
+</details>
+
 ## Important notes
 Performance depends on the system, solver, hardware and MPI/OpenMP layout.
 Use the same binary and inputs when comparing CPU and GPU execution;
