@@ -99,7 +99,10 @@ else()
     list(APPEND _cpu_elpa_kernel_options --disable-sse-kernels --disable-avx-kernels
          --disable-avx2-kernels --disable-avx512-kernels)
   endif()
-  set(_cpu_elpa_env "${CMAKE_COMMAND}" -E env
+  # ELPA's OpenMP configure runs an MPI program directly to check the thread
+  # level. Sites that set I_MPI_PMI_LIBRARY to Slurm's PMI2 for srun make
+  # that singleton abort in PMI2_Job_GetId, so the check reports no threading.
+  set(_cpu_elpa_env "${CMAKE_COMMAND}" -E env --unset=I_MPI_PMI_LIBRARY
     "CC=${MPI_C_COMPILER}" "CXX=${MPI_CXX_COMPILER}" "FC=${MPI_Fortran_COMPILER}"
     "OMPI_CC=${CMAKE_C_COMPILER}" "OMPI_CXX=${CMAKE_CXX_COMPILER}" "OMPI_FC=${CMAKE_Fortran_COMPILER}"
     "MPICH_CC=${CMAKE_C_COMPILER}" "MPICH_CXX=${CMAKE_CXX_COMPILER}" "MPICH_FC=${CMAKE_Fortran_COMPILER}"
