@@ -6,8 +6,13 @@ import shlex
 import subprocess
 import tempfile
 
-root = Path(__file__).resolve().parents[4]
-source = (root/'source/backends/hip/src/Cluster_DFT_NonCol_dm_hip.cu').read_text()
+# Prefer the production unit staged by CMake, falling back to the HIP overlay.
+root = Path(__file__).resolve().parents[1]
+source_path = root/'source/Cluster_DFT_NonCol_dm_hip.cu'
+if not source_path.is_file():
+    root = Path(__file__).resolve().parents[4]
+    source_path = root/'source/backends/hip/src/Cluster_DFT_NonCol_dm_hip.cu'
+source = source_path.read_text()
 kernel = source[source.index('__global__ static void BandNonColDenseMsKernel'):
                 source.index('extern "C" int BandNonCol_BuildDenseMs_HIP')]
 cache = source[source.index('namespace {\nstruct Mi300aBandBuildCache'):

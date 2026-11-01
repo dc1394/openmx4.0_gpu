@@ -6,8 +6,13 @@ import shlex
 import subprocess
 import tempfile
 
-root = Path(__file__).resolve().parents[4]
-source = (root/'source/backends/hip/src/Band_DFT_NonCol.c').read_text()
+# Prefer the production unit staged by CMake, falling back to the HIP overlay.
+root = Path(__file__).resolve().parents[1]
+source_path = root/'source/Band_DFT_NonCol.c'
+if not source_path.is_file():
+    root = Path(__file__).resolve().parents[4]
+    source_path = root/'source/backends/hip/src/Band_DFT_NonCol.c'
+source = source_path.read_text()
 helper = source[source.index('static int BandNonCol_AccumulateDMCachedKWaves_HIP('):
                 source.index('static void BandNonCol_CalcDMRootDenseAllK1_HIP(')]
 prefix = r'''

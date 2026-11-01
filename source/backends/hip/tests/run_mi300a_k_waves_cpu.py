@@ -6,7 +6,10 @@ import shlex
 import subprocess
 import tempfile
 
-root = Path(__file__).resolve().parents[4]
+# CMake stages these tests beside native/source; also allow direct HIP-overlay runs.
+root = Path(__file__).resolve().parents[1]
+if not (root/'source/openmx_gpu_k_waves.h').is_file():
+    root = Path(__file__).resolve().parents[4]
 test = r'''
 #include "openmx_gpu_k_waves.h"
 #include <stdio.h>
