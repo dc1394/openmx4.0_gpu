@@ -1,0 +1,187 @@
+{
+  "points_rounded_up": 61.47,
+  "allowance_points": 100,
+  "peak_actual_plus_reserved_points": 98.75,
+  "submission_envelopes": [
+    {
+      "jobid": "48536.pbs",
+      "script": "/work/GPU2026/dc1394/openmx4.0_gpu/work/codex_gpu_rebench_20261101_1318/one.pbs",
+      "gpus": 4,
+      "reserved_points": 6.0,
+      "submitted": "2026-11-01T13:27:01.320918+09:00",
+      "state": "F",
+      "previous_actual_or_reserved": 0,
+      "envelope_points_at_submission": 6.0,
+      "exit_status": 0,
+      "actual_wall_seconds": 2812,
+      "actual_points": 3.13
+    },
+    {
+      "jobid": "48537.pbs",
+      "script": "/work/GPU2026/dc1394/openmx4.0_gpu/work/codex_gpu_rebench_20261101_1318/L2.pbs",
+      "gpus": 8,
+      "reserved_points": 80.0,
+      "submitted": "2026-11-01T13:27:35.588076+09:00",
+      "state": "H",
+      "previous_actual_or_reserved": 6,
+      "envelope_points_at_submission": 86.0
+    },
+    {
+      "jobid": "48538.pbs",
+      "script": "/work/GPU2026/dc1394/openmx4.0_gpu/work/codex_gpu_rebench_20261101_1318/L3.pbs",
+      "gpus": 8,
+      "reserved_points": 12.0,
+      "submitted": "2026-11-01T13:27:38.892861+09:00",
+      "state": "F",
+      "previous_actual_or_reserved": 86,
+      "envelope_points_at_submission": 98.0,
+      "exit_status": 0,
+      "actual_wall_seconds": 1625,
+      "actual_points": 3.62
+    },
+    {
+      "jobid": "48542.pbs",
+      "script": "/work/GPU2026/dc1394/openmx4.0_gpu/work/codex_gpu_rebench_20261101_1318/cpu-L3.pbs",
+      "gpus": 8,
+      "reserved_points": 12.0,
+      "previous_actual_or_reserved": 86.75,
+      "envelope_points_at_submission": 98.75,
+      "submitted": "2026-11-01T14:14:50.811705+09:00",
+      "state": "H"
+    }
+  ],
+  "jobs": [
+    {
+      "jobid": "48536.pbs",
+      "gpus": 4,
+      "walltime": "00:46:52",
+      "actual_points_rounded_up": 3.13,
+      "reserved_points": 6.0,
+      "job_state": "F",
+      "Exit_status": 0,
+      "Resource_List": {
+        "am_job_cache": "{\"job.ngpus\": 4.0, \"queue.resources_default[coef]\": 1.0, \"job.walltime\": 5400, \"am_cloud_enabled\": false}",
+        "mem": "496gb",
+        "mpiprocs": 96,
+        "ncpus": 96,
+        "ngpus": 4,
+        "nodect": 4,
+        "place": "pack",
+        "select": "4:ncpus=24:mpiprocs=24:mem=124gb:ngpus=1:host=a05",
+        "walltime": "01:30:00"
+      },
+      "resources_used": {
+        "cpupercent": 7300,
+        "cput": "43:15:02",
+        "gpu_usage": "a05(amd.sdma=0.000s, amd.cu_occupancy=0.0, amd.vram=41320.250MB, amd.memUsagePerc=16.565%)",
+        "mem": "169160592kb",
+        "ncpus": 96,
+        "ngpus": 4,
+        "vmem": "3535548120kb",
+        "walltime": "00:46:52"
+      },
+      "exec_host": "a05/0*24+a05/1*24+a05/2*24+a05/3*24",
+      "stime": "Sun Nov  1 13:27:16 2026",
+      "obittime": "Sun Nov  1 14:14:24 2026"
+    },
+    {
+      "jobid": "48537.pbs",
+      "gpus": 8,
+      "walltime": "05:39:10",
+      "actual_points_rounded_up": 45.23,
+      "reserved_points": 80.0,
+      "job_state": "F",
+      "Exit_status": 0,
+      "Resource_List": {
+        "am_job_cache": "{\"job.ngpus\": 8.0, \"queue.resources_default[coef]\": 1.0, \"job.walltime\": 36000, \"am_cloud_enabled\": false}",
+        "mem": "992gb",
+        "mpiprocs": 192,
+        "ncpus": 192,
+        "ngpus": 8,
+        "nodect": 8,
+        "place": "free",
+        "select": "4:ncpus=24:mpiprocs=24:mem=124gb:ngpus=1:host=a10+4:ncpus=24:mpiprocs=24:mem=124gb:ngpus=1:host=a11",
+        "walltime": "10:00:00"
+      },
+      "resources_used": {
+        "cpupercent": 10986,
+        "cput": "356:31:36",
+        "gpu_usage": "a10(amd.sdma=0.000s, amd.cu_occupancy=0.0, amd.vram=22306.793MB, amd.memUsagePerc=5.436%), a11(amd.sdma=0.000s, amd.cu_occupancy=0.0, amd.vram=35783.910MB, amd.memUsagePerc=4.772%)",
+        "mem": "401944012kb",
+        "ncpus": 192,
+        "ngpus": 8,
+        "vmem": "96788kb",
+        "walltime": "05:39:10"
+      },
+      "exec_host": "a10/0*24+a10/1*24+a10/2*24+a10/3*24+a11/0*24+a11/1*24+a11/2*24+a11/3*24",
+      "stime": "Sun Nov  1 13:27:36 2026",
+      "obittime": "Sun Nov  1 19:07:05 2026"
+    },
+    {
+      "jobid": "48538.pbs",
+      "gpus": 8,
+      "walltime": "00:27:05",
+      "actual_points_rounded_up": 3.62,
+      "reserved_points": 12.0,
+      "job_state": "F",
+      "Exit_status": 0,
+      "Resource_List": {
+        "am_job_cache": "{\"job.ngpus\": 8.0, \"queue.resources_default[coef]\": 1.0, \"job.walltime\": 5400, \"am_cloud_enabled\": false}",
+        "mem": "992gb",
+        "mpiprocs": 192,
+        "ncpus": 192,
+        "ngpus": 8,
+        "nodect": 8,
+        "place": "free",
+        "select": "4:ncpus=24:mpiprocs=24:mem=124gb:ngpus=1:host=a12+4:ncpus=24:mpiprocs=24:mem=124gb:ngpus=1:host=a13",
+        "walltime": "01:30:00"
+      },
+      "resources_used": {
+        "cpupercent": 15469,
+        "cput": "48:53:33",
+        "gpu_usage": "a12(amd.sdma=0.000s, amd.cu_occupancy=0.0, amd.vram=46017.969MB, amd.memUsagePerc=9.880%), a13(amd.sdma=0.000s, amd.cu_occupancy=0.0, amd.vram=46773.930MB, amd.memUsagePerc=9.926%)",
+        "mem": "625463888kb",
+        "ncpus": 192,
+        "ngpus": 8,
+        "vmem": "96468kb",
+        "walltime": "00:27:05"
+      },
+      "exec_host": "a12/0*24+a12/1*24+a12/2*24+a12/3*24+a13/0*24+a13/1*24+a13/2*24+a13/3*24",
+      "stime": "Sun Nov  1 13:27:40 2026",
+      "obittime": "Sun Nov  1 13:55:03 2026"
+    },
+    {
+      "jobid": "48542.pbs",
+      "gpus": 8,
+      "walltime": "01:11:08",
+      "actual_points_rounded_up": 9.49,
+      "reserved_points": 12.0,
+      "job_state": "F",
+      "Exit_status": 0,
+      "Resource_List": {
+        "am_job_cache": "{\"job.ngpus\": 8.0, \"queue.resources_default[coef]\": 1.0, \"job.walltime\": 5400, \"am_cloud_enabled\": false}",
+        "mem": "992gb",
+        "mpiprocs": 192,
+        "ncpus": 192,
+        "ngpus": 8,
+        "nodect": 8,
+        "place": "free",
+        "select": "4:ncpus=24:mpiprocs=24:mem=124gb:ngpus=1:host=a12+4:ncpus=24:mpiprocs=24:mem=124gb:ngpus=1:host=a13",
+        "walltime": "01:30:00"
+      },
+      "resources_used": {
+        "cpupercent": 18769,
+        "cput": "163:49:54",
+        "gpu_usage": "a12(amd.sdma=0.000s, amd.cu_occupancy=0.0, amd.vram=0.000MB, amd.memUsagePerc=1.733%), a13(amd.sdma=0.000s, amd.cu_occupancy=0.0, amd.vram=18175.500MB, amd.memUsagePerc=1.733%)",
+        "mem": "433496788kb",
+        "ncpus": 192,
+        "ngpus": 8,
+        "vmem": "100508kb",
+        "walltime": "01:11:08"
+      },
+      "exec_host": "a12/0*24+a12/1*24+a12/2*24+a12/3*24+a13/0*24+a13/1*24+a13/2*24+a13/3*24",
+      "stime": "Sun Nov  1 14:14:52 2026",
+      "obittime": "Sun Nov  1 15:26:18 2026"
+    }
+  ]
+}

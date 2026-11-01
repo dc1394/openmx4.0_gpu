@@ -1,0 +1,63 @@
+{
+  "method": "Estimate only; no historical GPU measurement reused in the new results.",
+  "mandatory": {
+    "reference_wall_seconds": 2831,
+    "estimated_points": 3.1455555555555557,
+    "reserved_points": 6,
+    "walltime_seconds": 5400
+  },
+  "L2": {
+    "non_Fe_reference_multiplier": 2,
+    "non_Fe_projected_seconds": 14631.0,
+    "Fe1000_previous_partial_iterations": 234,
+    "Fe1000_projected_seconds_per_scf": 14.294350427350427,
+    "Fe1000_original_maxiter": 1000,
+    "projected_wall_seconds": 28925.350427350426,
+    "estimated_points": 64.27855650522316,
+    "reserved_points": 80,
+    "walltime_seconds": 36000
+  },
+  "L3": {
+    "reference_multiplier": 2,
+    "projected_wall_seconds": 2878.618,
+    "estimated_points": 6.396928888888889,
+    "reserved_points": 12,
+    "walltime_seconds": 5400
+  },
+  "total_estimated_points": 73.8210409496676,
+  "total_reserved_points": 98,
+  "allowance_points": 100,
+  "reference_seconds": {
+    "L2": {
+      "C1000": 717.145,
+      "Fe1000": 9109.014,
+      "GRA1024": 752.946,
+      "Ih-Ice1200": 365.863,
+      "Pt500": 3626.623,
+      "R-TiO2-1050": 1084.207,
+      "Si1000": 768.716
+    },
+    "L3": {
+      "5_5_13COb2": 6.212,
+      "C1000": 106.885,
+      "C60": 1.815,
+      "CG15c": 53.262,
+      "Crys-MnO": 5.768,
+      "DIA512-1": 13.475,
+      "Fe1000": 130.115,
+      "GEL": 11.052,
+      "GFRAG": 4.206,
+      "GGFF": 80.849,
+      "MCCN": 46.743,
+      "Mn12_148_F": 9.773,
+      "N1C999": 264.174,
+      "Ni63-O64": 9.55,
+      "Pt500": 187.753,
+      "Pt63": 6.407,
+      "Si1280-LNO": 458.47,
+      "SialicAcid": 4.434,
+      "ZrB2_2x2": 27.785,
+      "nsV4Bz5": 10.581
+    }
+  }
+}

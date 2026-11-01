@@ -1,0 +1,232 @@
+{
+  "decision": "No full rebenchmark of the already completed four CPU workloads is required for the GPU-only task.",
+  "cpu_source_commit": "3e2f5c73e7eef9b3a2be2e7dd33e2aedafdfcc9e",
+  "gpu_source_commit": "5925e71a8ddeea57db7f926145e1afc5da15ef7c",
+  "audit_checkout": "c6648c294c174e95ef24946360cd49f887d46468",
+  "production_changes_reviewed": [
+    "source/backends/hip/src/Band_DFT_NonCol.c",
+    "source/backends/hip/src/Cluster_DFT_NonCol_dm_hip.cu",
+    "source/backends/hip/src/magma_openmx.cu",
+    "source/elpa_cosma_bridge.c",
+    "cmake/OpenMXCPU.cmake"
+  ],
+  "findings": [
+    "Existing CPU references already use OpenMP ELPA and measured three-thread OpenMP BLIS with validated disjoint three-core rank binding.",
+    "The current optimization changes GPU scheduling, HIP construction/density kernels and GPU solver completion; elpa2 does not select those branches.",
+    "The gpusolver2 ELPA teardown correction affects GPU bridge handles, not ordinary elpa2 CPU solves; the caller thread limit is restored.",
+    "The CPU-only configure probe correction unsets an Intel MPI PMI variable on Slurm systems; it does not disable or rebuild the already validated Open MPI ELPA installation on Sirius.",
+    "Core and host SIMD library hashes exactly match the previous fork CPU build.",
+    "The noncollinear band common path now includes one MPI_Allreduce per SCF step for the MI300A branch decision, plus small state bookkeeping. This small dispatch overhead is acknowledged; no zero CPU effect or byte-identical executable claim is made."
+  ],
+  "limitation": "CPU timings remain historical single measurements with the older CPU executable, not fresh timings of the current GPU binary with OPENMX_GPU=0. L2/L3 have no completed CPU suite and would need new CPU measurements for speedups or matched Sirius CPU numerical comparisons.",
+  "baselines": [
+    {
+      "route": "upstream_cpu",
+      "workload": "S",
+      "jobid": "48495.pbs",
+      "binary_sha256": "dccf49f4d3fcbd68b4cece301c355f7994d86b700bd575d11bfea96eddf32a69",
+      "affinity": {
+        "nodes": {
+          "a05": 32
+        },
+        "ranks": 32,
+        "threads_per_rank": 3,
+        "unique_cores_per_node": 96
+      },
+      "blas_configuration": {
+        "bli_info_get_enable_threading": 1,
+        "bli_info_get_enable_openmp": 1,
+        "bli_info_get_enable_pthreads": 0,
+        "bli_thread_get_num_threads": 3,
+        "omp_get_max_threads": 3,
+        "omp_get_max_active_levels": 1,
+        "dgemm_provider": "/system/apps/rhel/9.6-202602/aocl/5.1.0/aocc/lib_LP64/libblis-mt.so.5.1.0",
+        "openmp_provider": "/opt/rocm-7.2.0/lib/llvm/lib/libomp.so"
+      },
+      "cpu_elpa_thread_log": []
+    },
+    {
+      "route": "upstream_cpu",
+      "workload": "L",
+      "jobid": "48498.pbs",
+      "binary_sha256": "dccf49f4d3fcbd68b4cece301c355f7994d86b700bd575d11bfea96eddf32a69",
+      "affinity": {
+        "nodes": {
+          "a05": 32
+        },
+        "ranks": 32,
+        "threads_per_rank": 3,
+        "unique_cores_per_node": 96
+      },
+      "blas_configuration": {
+        "bli_info_get_enable_threading": 1,
+        "bli_info_get_enable_openmp": 1,
+        "bli_info_get_enable_pthreads": 0,
+        "bli_thread_get_num_threads": 3,
+        "omp_get_max_threads": 3,
+        "omp_get_max_active_levels": 1,
+        "dgemm_provider": "/system/apps/rhel/9.6-202602/aocl/5.1.0/aocc/lib_LP64/libblis-mt.so.5.1.0",
+        "openmp_provider": "/opt/rocm-7.2.0/lib/llvm/lib/libomp.so"
+      },
+      "cpu_elpa_thread_log": []
+    },
+    {
+      "route": "upstream_cpu",
+      "workload": "sidia333_nc_cluster",
+      "jobid": "48407.pbs",
+      "binary_sha256": "dccf49f4d3fcbd68b4cece301c355f7994d86b700bd575d11bfea96eddf32a69",
+      "affinity": {
+        "nodes": {
+          "a01": 32
+        },
+        "ranks": 32,
+        "threads_per_rank": 3,
+        "unique_cores_per_node": 96
+      },
+      "blas_configuration": {
+        "bli_info_get_enable_threading": 1,
+        "bli_info_get_enable_openmp": 1,
+        "bli_info_get_enable_pthreads": 0,
+        "bli_thread_get_num_threads": 3,
+        "omp_get_max_threads": 3,
+        "omp_get_max_active_levels": 1,
+        "dgemm_provider": "/system/apps/rhel/9.6-202602/aocl/5.1.0/aocc/lib_LP64/libblis-mt.so.5.1.0",
+        "openmp_provider": "/opt/rocm-7.2.0/lib/llvm/lib/libomp.so"
+      },
+      "cpu_elpa_thread_log": []
+    },
+    {
+      "route": "upstream_cpu",
+      "workload": "cghelgeo",
+      "jobid": "48407.pbs",
+      "binary_sha256": "dccf49f4d3fcbd68b4cece301c355f7994d86b700bd575d11bfea96eddf32a69",
+      "affinity": {
+        "nodes": {
+          "a01": 32
+        },
+        "ranks": 32,
+        "threads_per_rank": 3,
+        "unique_cores_per_node": 96
+      },
+      "blas_configuration": {
+        "bli_info_get_enable_threading": 1,
+        "bli_info_get_enable_openmp": 1,
+        "bli_info_get_enable_pthreads": 0,
+        "bli_thread_get_num_threads": 3,
+        "omp_get_max_threads": 3,
+        "omp_get_max_active_levels": 1,
+        "dgemm_provider": "/system/apps/rhel/9.6-202602/aocl/5.1.0/aocc/lib_LP64/libblis-mt.so.5.1.0",
+        "openmp_provider": "/opt/rocm-7.2.0/lib/llvm/lib/libomp.so"
+      },
+      "cpu_elpa_thread_log": []
+    },
+    {
+      "route": "fork_cpu",
+      "workload": "S",
+      "jobid": "48495.pbs",
+      "binary_sha256": "5878fedc02e93bd5db526e6bea87112fa8113f737ed964f32c517dce9689bdf9",
+      "affinity": {
+        "nodes": {
+          "a05": 32
+        },
+        "ranks": 32,
+        "threads_per_rank": 3,
+        "unique_cores_per_node": 96
+      },
+      "blas_configuration": {
+        "bli_info_get_enable_threading": 1,
+        "bli_info_get_enable_openmp": 1,
+        "bli_info_get_enable_pthreads": 0,
+        "bli_thread_get_num_threads": 3,
+        "omp_get_max_threads": 3,
+        "omp_get_max_active_levels": 1,
+        "dgemm_provider": "/system/apps/rhel/9.6-202602/aocl/5.1.0/aocc/lib_LP64/libblis-mt.so.5.1.0",
+        "openmp_provider": "/opt/rocm-7.2.0/lib/llvm/lib/libomp.so"
+      },
+      "cpu_elpa_thread_log": [
+        "<ELPA> CPU OpenMP threads: requested=3 configured=3 MPI_thread=2"
+      ]
+    },
+    {
+      "route": "fork_cpu",
+      "workload": "L",
+      "jobid": "48498.pbs",
+      "binary_sha256": "5878fedc02e93bd5db526e6bea87112fa8113f737ed964f32c517dce9689bdf9",
+      "affinity": {
+        "nodes": {
+          "a05": 32
+        },
+        "ranks": 32,
+        "threads_per_rank": 3,
+        "unique_cores_per_node": 96
+      },
+      "blas_configuration": {
+        "bli_info_get_enable_threading": 1,
+        "bli_info_get_enable_openmp": 1,
+        "bli_info_get_enable_pthreads": 0,
+        "bli_thread_get_num_threads": 3,
+        "omp_get_max_threads": 3,
+        "omp_get_max_active_levels": 1,
+        "dgemm_provider": "/system/apps/rhel/9.6-202602/aocl/5.1.0/aocc/lib_LP64/libblis-mt.so.5.1.0",
+        "openmp_provider": "/opt/rocm-7.2.0/lib/llvm/lib/libomp.so"
+      },
+      "cpu_elpa_thread_log": [
+        "<ELPA> CPU OpenMP threads: requested=3 configured=3 MPI_thread=2"
+      ]
+    },
+    {
+      "route": "fork_cpu",
+      "workload": "sidia333_nc_cluster",
+      "jobid": "48479.pbs",
+      "binary_sha256": "5878fedc02e93bd5db526e6bea87112fa8113f737ed964f32c517dce9689bdf9",
+      "affinity": {
+        "nodes": {
+          "a05": 32
+        },
+        "ranks": 32,
+        "threads_per_rank": 3,
+        "unique_cores_per_node": 96
+      },
+      "blas_configuration": {
+        "bli_info_get_enable_threading": 1,
+        "bli_info_get_enable_openmp": 1,
+        "bli_info_get_enable_pthreads": 0,
+        "bli_thread_get_num_threads": 3,
+        "omp_get_max_threads": 3,
+        "omp_get_max_active_levels": 1,
+        "dgemm_provider": "/system/apps/rhel/9.6-202602/aocl/5.1.0/aocc/lib_LP64/libblis-mt.so.5.1.0",
+        "openmp_provider": "/opt/rocm-7.2.0/lib/llvm/lib/libomp.so"
+      },
+      "cpu_elpa_thread_log": [
+        "<ELPA> CPU OpenMP threads: requested=3 configured=3 MPI_thread=2"
+      ]
+    },
+    {
+      "route": "fork_cpu",
+      "workload": "cghelgeo",
+      "jobid": "48479.pbs",
+      "binary_sha256": "5878fedc02e93bd5db526e6bea87112fa8113f737ed964f32c517dce9689bdf9",
+      "affinity": {
+        "nodes": {
+          "a05": 32
+        },
+        "ranks": 32,
+        "threads_per_rank": 3,
+        "unique_cores_per_node": 96
+      },
+      "blas_configuration": {
+        "bli_info_get_enable_threading": 1,
+        "bli_info_get_enable_openmp": 1,
+        "bli_info_get_enable_pthreads": 0,
+        "bli_thread_get_num_threads": 3,
+        "omp_get_max_threads": 3,
+        "omp_get_max_active_levels": 1,
+        "dgemm_provider": "/system/apps/rhel/9.6-202602/aocl/5.1.0/aocc/lib_LP64/libblis-mt.so.5.1.0",
+        "openmp_provider": "/opt/rocm-7.2.0/lib/llvm/lib/libomp.so"
+      },
+      "cpu_elpa_thread_log": [
+        "<ELPA> CPU OpenMP threads: requested=3 configured=3 MPI_thread=2"
+      ]
+    }
+  ]
+}

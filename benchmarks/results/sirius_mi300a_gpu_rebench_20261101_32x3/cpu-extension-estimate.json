@@ -1,0 +1,47 @@
+{
+  "authorization": "Latest user: add CPU L2/L3 only if the project remains at least 130 points.",
+  "scope_assumption": "Both fork CPU and official upstream CPU, continuing the three-route comparison.",
+  "L2": [
+    {
+      "route": "fork_cpu",
+      "prior_C1000_seconds": 2410.018,
+      "prior_Fe1000_completed_iterations": 70,
+      "Fe1000_seconds_per_iteration_estimate": 38.45688571428571,
+      "estimated_non_Fe_seconds": 24584.270515725555,
+      "expected_Fe_iterations": 366,
+      "estimated_full_seconds": 38659.490687154124,
+      "estimated_points": 85.90997930478694,
+      "original_Fe_maxiter": 1000,
+      "maxiter_projection_points": 140.0914582889139
+    },
+    {
+      "route": "upstream_cpu",
+      "prior_C1000_seconds": 2502.681,
+      "prior_Fe1000_completed_iterations": 60,
+      "Fe1000_seconds_per_iteration_estimate": 43.321983333333336,
+      "estimated_non_Fe_seconds": 25529.513355736988,
+      "expected_Fe_iterations": 366,
+      "estimated_full_seconds": 41385.359255736985,
+      "estimated_points": 91.96746501274886,
+      "original_Fe_maxiter": 1000,
+      "maxiter_projection_points": 153.00332597571182
+    }
+  ],
+  "L2_combined_estimated_points": 177.8774443175358,
+  "L2_decision": "User explicitly requested L2 GPU route only after reviewing the incomplete prior CPU measurement. No CPU L2 suite will be added.",
+  "L3": {
+    "routes": [
+      "fork_cpu",
+      "upstream_cpu"
+    ],
+    "nodes": 2,
+    "ranks": 64,
+    "threads": 3,
+    "combined_walltime_cap_seconds": 5400,
+    "reserved_points": 12,
+    "decision": "Submit after the one-node GPU job completes so the combined campaign hard reservation remains below 100 points."
+  },
+  "original_gpu_allowance_points": 100,
+  "combined_campaign_limit_retained_points": 100,
+  "project_floor_points": 130
+}

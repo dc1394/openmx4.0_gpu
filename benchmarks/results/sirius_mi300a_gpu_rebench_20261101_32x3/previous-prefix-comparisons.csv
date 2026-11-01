@@ -1,0 +1,4 @@
+workload,case,baseline,delta_energy_hartree,max_delta_force_hartree_per_bohr,max_delta_position_angstrom,grids_match,atoms_match,passed
+L2,C1000,20261031_completed_prefix_upstream_cpu,2.4647306418046355e-10,4.060000000040073e-10,0.0,True,True,True
+L2,C1000,20261031_completed_prefix_fork_cpu,1.8462742445990443e-10,3.310000000000312e-10,0.0,True,True,True
+L2,C1000,20261031_completed_prefix_fork_gpu,1.7953425412997603e-09,1.0000000095567244e-12,0.0,True,True,True

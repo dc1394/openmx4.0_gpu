@@ -1,0 +1,1703 @@
+{
+  "source_commit": "5925e71a8ddeea57db7f926145e1afc5da15ef7c",
+  "ranks_per_node": 32,
+  "threads": 3,
+  "gpu_solver": "gpusolver",
+  "workloads": {
+    "S": 1,
+    "L": 1,
+    "L2": 2,
+    "L3": 2,
+    "sidia333_nc_cluster": 1,
+    "cghelgeo": 1
+  },
+  "inputs": [
+    {
+      "workload": "S",
+      "name": "Benzene",
+      "source": "work/input_example/Benzene.dat",
+      "raw": "raw/input_example/Benzene.dat",
+      "sha256": "c7f445ef1ed49115a52049f6b81711b0999d074b5be2119f85886fa3209dfc66",
+      "system": "Benzene",
+      "routes": {
+        "upstream_cpu": {
+          "path": "harness_upstream_cpu/work/input_example/Benzene.dat",
+          "sha256": "9c82c47fd7aa3d83158eabc7d7f9852fc63efda8843a04e982748c62e606ef33"
+        },
+        "fork_cpu": {
+          "path": "harness_fork_cpu/work/input_example/Benzene.dat",
+          "sha256": "9c82c47fd7aa3d83158eabc7d7f9852fc63efda8843a04e982748c62e606ef33"
+        },
+        "fork_gpu": {
+          "path": "harness_fork_gpu/work/input_example/Benzene.dat",
+          "sha256": "4f29d2e4d9a41ea5e86c31db75613c81fd3e3aee023f889bb1d615bbd142d325"
+        }
+      },
+      "reference_sha256": "37ed741ff147c48b56ae4f021b0377caac5fb89b4e8bdc78edba989639258b8e"
+    },
+    {
+      "workload": "S",
+      "name": "C60",
+      "source": "work/input_example/C60.dat",
+      "raw": "raw/input_example/C60.dat",
+      "sha256": "7c2bd103986adb335ae2302685be43f0a23545861fa21d7885bd6f663bb6f6f8",
+      "system": "C60",
+      "routes": {
+        "upstream_cpu": {
+          "path": "harness_upstream_cpu/work/input_example/C60.dat",
+          "sha256": "4dbee6d8171a548fc1f94e92caaa753d977dd2f1033d8635251e97e389bc376f"
+        },
+        "fork_cpu": {
+          "path": "harness_fork_cpu/work/input_example/C60.dat",
+          "sha256": "4dbee6d8171a548fc1f94e92caaa753d977dd2f1033d8635251e97e389bc376f"
+        },
+        "fork_gpu": {
+          "path": "harness_fork_gpu/work/input_example/C60.dat",
+          "sha256": "fa744f2d4a8dfa7fa289a1f7421394e085af3b023300b962aeaf47805cfc0dc9"
+        }
+      },
+      "reference_sha256": "568a35d076fe2d266107007949cd565c28fc943588c690973b41386af9090e3a"
+    },
+    {
+      "workload": "S",
+      "name": "CO",
+      "source": "work/input_example/CO.dat",
+      "raw": "raw/input_example/CO.dat",
+      "sha256": "6fea9256df9ce5db091c80b9c644bc93a6dc55187949b61b682012f54566ff05",
+      "system": "CO",
+      "routes": {
+        "upstream_cpu": {
+          "path": "harness_upstream_cpu/work/input_example/CO.dat",
+          "sha256": "d4a16fe0086b7b915ac92d1fa03b849689a042a80023f1392cd2c60b89f9d88e"
+        },
+        "fork_cpu": {
+          "path": "harness_fork_cpu/work/input_example/CO.dat",
+          "sha256": "d4a16fe0086b7b915ac92d1fa03b849689a042a80023f1392cd2c60b89f9d88e"
+        },
+        "fork_gpu": {
+          "path": "harness_fork_gpu/work/input_example/CO.dat",
+          "sha256": "ef954b73a4c8f5dd2a105b4ba9101c4a9376521c6e1457c57e7a05aa54ec0b42"
+        }
+      },
+      "reference_sha256": "65d49e808711572a31e253a4c487449c48b66d9680ad92518d5533ede270f541"
+    },
+    {
+      "workload": "S",
+      "name": "Cr2",
+      "source": "work/input_example/Cr2.dat",
+      "raw": "raw/input_example/Cr2.dat",
+      "sha256": "37ce5beffcf397b8460975e6525ed2783c2be7320941e99d031bb77e2e888e3e",
+      "system": "Cr2",
+      "routes": {
+        "upstream_cpu": {
+          "path": "harness_upstream_cpu/work/input_example/Cr2.dat",
+          "sha256": "0f550f405ba156c5cd19ab5b91657ff8bdacf5c0f148ccffb977d2e20e9c9cf5"
+        },
+        "fork_cpu": {
+          "path": "harness_fork_cpu/work/input_example/Cr2.dat",
+          "sha256": "0f550f405ba156c5cd19ab5b91657ff8bdacf5c0f148ccffb977d2e20e9c9cf5"
+        },
+        "fork_gpu": {
+          "path": "harness_fork_gpu/work/input_example/Cr2.dat",
+          "sha256": "eced50ad14361cf20322fca735b4a153bf9d7faad4c01d2fd3e740aefa2df36f"
+        }
+      },
+      "reference_sha256": "678328a40982ec0533a531921a1c2148ba891da5ed67f1defebb05445c43311b"
+    },
+    {
+      "workload": "S",
+      "name": "Crys-MnO",
+      "source": "work/input_example/Crys-MnO.dat",
+      "raw": "raw/input_example/Crys-MnO.dat",
+      "sha256": "315a3b870e4e57a0edb5ac48f4135593f9dbc63cdcc1f0d344783ac9b4ef9c62",
+      "system": "Crys-MnO",
+      "routes": {
+        "upstream_cpu": {
+          "path": "harness_upstream_cpu/work/input_example/Crys-MnO.dat",
+          "sha256": "927b0edfcc35da8ffb29899b8ac5b6e871b9fd26430bd2905c63ba7197aca87e"
+        },
+        "fork_cpu": {
+          "path": "harness_fork_cpu/work/input_example/Crys-MnO.dat",
+          "sha256": "927b0edfcc35da8ffb29899b8ac5b6e871b9fd26430bd2905c63ba7197aca87e"
+        },
+        "fork_gpu": {
+          "path": "harness_fork_gpu/work/input_example/Crys-MnO.dat",
+          "sha256": "c4ac15857708fc525a13f75cc00d7e2c602ba77cb7d52a08f3c2e632ac01d675"
+        }
+      },
+      "reference_sha256": "d9a9fa9d913f88ce3ca31d5aaf9b3be167d3835a71ee4192a8dac2e63335cd09"
+    },
+    {
+      "workload": "S",
+      "name": "GaAs",
+      "source": "work/input_example/GaAs.dat",
+      "raw": "raw/input_example/GaAs.dat",
+      "sha256": "62c958351460fabc5d1a4f12d1cb51565f56ce10c4570d24131da25637f852c6",
+      "system": "GaAs",
+      "routes": {
+        "upstream_cpu": {
+          "path": "harness_upstream_cpu/work/input_example/GaAs.dat",
+          "sha256": "e44af370aafcee659d893a20c276c91521d5e7e8573a56908fbe8fbfa6181427"
+        },
+        "fork_cpu": {
+          "path": "harness_fork_cpu/work/input_example/GaAs.dat",
+          "sha256": "e44af370aafcee659d893a20c276c91521d5e7e8573a56908fbe8fbfa6181427"
+        },
+        "fork_gpu": {
+          "path": "harness_fork_gpu/work/input_example/GaAs.dat",
+          "sha256": "4794bfc609816fc5bedf60384e54eb96b1e48e8f50546c1a2bcf8d4d58c1769d"
+        }
+      },
+      "reference_sha256": "1517c9ef8fc049daeff98ef41915d7ece94dcb1fef8cb0b01b0e058e0bfe6e4b"
+    },
+    {
+      "workload": "S",
+      "name": "Glycine",
+      "source": "work/input_example/Glycine.dat",
+      "raw": "raw/input_example/Glycine.dat",
+      "sha256": "4781425789fc08433ab49f4934c7c012d7cad0ad87b7f3df737138118afa8bca",
+      "system": "Glycine",
+      "routes": {
+        "upstream_cpu": {
+          "path": "harness_upstream_cpu/work/input_example/Glycine.dat",
+          "sha256": "cf975cd4fb6400afa85ea0839524bf6abeb01a4e21dad012cecb0cd52834d2c3"
+        },
+        "fork_cpu": {
+          "path": "harness_fork_cpu/work/input_example/Glycine.dat",
+          "sha256": "cf975cd4fb6400afa85ea0839524bf6abeb01a4e21dad012cecb0cd52834d2c3"
+        },
+        "fork_gpu": {
+          "path": "harness_fork_gpu/work/input_example/Glycine.dat",
+          "sha256": "44997a0f16615c76352203e005cec3346499fbfc854ec1640feeef2ae54e927e"
+        }
+      },
+      "reference_sha256": "ea51d09a9d07880c152787335c32126b98ff3975f22c13adf1ec74d015631eb8"
+    },
+    {
+      "workload": "S",
+      "name": "Graphite4",
+      "source": "work/input_example/Graphite4.dat",
+      "raw": "raw/input_example/Graphite4.dat",
+      "sha256": "9ed8513b6eaac5ef8dc2343422c88175bd0b1b6b1e101f7bd113f63a9d2ed2f6",
+      "system": "Graphite4",
+      "routes": {
+        "upstream_cpu": {
+          "path": "harness_upstream_cpu/work/input_example/Graphite4.dat",
+          "sha256": "e7c88380d904b96518859b366679bd07b805c5509218658701dde161d3f8ecba"
+        },
+        "fork_cpu": {
+          "path": "harness_fork_cpu/work/input_example/Graphite4.dat",
+          "sha256": "e7c88380d904b96518859b366679bd07b805c5509218658701dde161d3f8ecba"
+        },
+        "fork_gpu": {
+          "path": "harness_fork_gpu/work/input_example/Graphite4.dat",
+          "sha256": "17f1053a2f156d53c84f38deef5fd329c5f3cd77aa8ba3322d6e0cba4876a780"
+        }
+      },
+      "reference_sha256": "deefb59004ab80bffa03179f725f65271b66d6652910de56805e1226e797c64f"
+    },
+    {
+      "workload": "S",
+      "name": "H2O-EF",
+      "source": "work/input_example/H2O-EF.dat",
+      "raw": "raw/input_example/H2O-EF.dat",
+      "sha256": "9f528eb4f5d13f0635772d5dc87635d4e7c99266dc2085a1ef820a19e23f97d9",
+      "system": "H2O-EF",
+      "routes": {
+        "upstream_cpu": {
+          "path": "harness_upstream_cpu/work/input_example/H2O-EF.dat",
+          "sha256": "e201bd83f7f88738c971d78f70b1195ee51d5949fcd34d8f79a42b9cfc94f3a5"
+        },
+        "fork_cpu": {
+          "path": "harness_fork_cpu/work/input_example/H2O-EF.dat",
+          "sha256": "e201bd83f7f88738c971d78f70b1195ee51d5949fcd34d8f79a42b9cfc94f3a5"
+        },
+        "fork_gpu": {
+          "path": "harness_fork_gpu/work/input_example/H2O-EF.dat",
+          "sha256": "584a1f22862bec62446e036ff1e83bb6f50912579a2b9a7f6b912972dd94db3a"
+        }
+      },
+      "reference_sha256": "ea014fc6ff9730d90e5bd90d4aead2fa0413979da5368d6c80600dcae3a15841"
+    },
+    {
+      "workload": "S",
+      "name": "H2O",
+      "source": "work/input_example/H2O.dat",
+      "raw": "raw/input_example/H2O.dat",
+      "sha256": "5e2044197d163bdb97728c78666d3b3dac9e0221bd07aa7b86781fca12770804",
+      "system": "H2O",
+      "routes": {
+        "upstream_cpu": {
+          "path": "harness_upstream_cpu/work/input_example/H2O.dat",
+          "sha256": "d51a02c74f318f45f84b36fe1e2355ed7edcfd165cb563f61af3988bed359e47"
+        },
+        "fork_cpu": {
+          "path": "harness_fork_cpu/work/input_example/H2O.dat",
+          "sha256": "d51a02c74f318f45f84b36fe1e2355ed7edcfd165cb563f61af3988bed359e47"
+        },
+        "fork_gpu": {
+          "path": "harness_fork_gpu/work/input_example/H2O.dat",
+          "sha256": "f4c82b6c2b1eebed1d30b8d75a91cca19152af7b548dc8a4e8cef02263a1aa0f"
+        }
+      },
+      "reference_sha256": "af8101a592a55ffd526df5110764ca239463a3317eb1c52b8e8c5d2e38709fd5"
+    },
+    {
+      "workload": "S",
+      "name": "HMn",
+      "source": "work/input_example/HMn.dat",
+      "raw": "raw/input_example/HMn.dat",
+      "sha256": "d29997cfe87ce73dcea408285c019c25c1573ae0c8d45cedc21c367a00abb703",
+      "system": "HMn",
+      "routes": {
+        "upstream_cpu": {
+          "path": "harness_upstream_cpu/work/input_example/HMn.dat",
+          "sha256": "ffb36e5d4db485ca2be4c0ea952ff7af2d918b8aa37c57480cc7adcd220aea22"
+        },
+        "fork_cpu": {
+          "path": "harness_fork_cpu/work/input_example/HMn.dat",
+          "sha256": "ffb36e5d4db485ca2be4c0ea952ff7af2d918b8aa37c57480cc7adcd220aea22"
+        },
+        "fork_gpu": {
+          "path": "harness_fork_gpu/work/input_example/HMn.dat",
+          "sha256": "00ed5ec1dc5cc82401f602a6b2c34612816e84d3b2dad4f23891f183c5dbd4a1"
+        }
+      },
+      "reference_sha256": "bf122f24053179b50fc320cf36ee153f203fcd46aff20565f621c61fcb258370"
+    },
+    {
+      "workload": "S",
+      "name": "Methane",
+      "source": "work/input_example/Methane.dat",
+      "raw": "raw/input_example/Methane.dat",
+      "sha256": "259179e38dad7c6d8ece6f51ea8b0a1fbc3657a15defc43cb9ad104413a415bb",
+      "system": "Methane",
+      "routes": {
+        "upstream_cpu": {
+          "path": "harness_upstream_cpu/work/input_example/Methane.dat",
+          "sha256": "18fcbc003054f7c340a2b335385bb630038f29d8ed7cde0d91b16c450c47631c"
+        },
+        "fork_cpu": {
+          "path": "harness_fork_cpu/work/input_example/Methane.dat",
+          "sha256": "18fcbc003054f7c340a2b335385bb630038f29d8ed7cde0d91b16c450c47631c"
+        },
+        "fork_gpu": {
+          "path": "harness_fork_gpu/work/input_example/Methane.dat",
+          "sha256": "d6cc3d86585a8e29b29262b29c58166a1c82e42724a9df07f52d93881afd49d6"
+        }
+      },
+      "reference_sha256": "5136f81103237bc249fa405f60d5a656606774079d2a3420116e0adf8b4a416e"
+    },
+    {
+      "workload": "S",
+      "name": "Mol_MnO",
+      "source": "work/input_example/Mol_MnO.dat",
+      "raw": "raw/input_example/Mol_MnO.dat",
+      "sha256": "7294bb18e450cefa7ab169b88c19c64284158a0f702a877324c3bd466c026670",
+      "system": "Mol_MnO",
+      "routes": {
+        "upstream_cpu": {
+          "path": "harness_upstream_cpu/work/input_example/Mol_MnO.dat",
+          "sha256": "584368ec52a49da45799a804afef738fbd5fbd593f6e5123b015269ad4d2981c"
+        },
+        "fork_cpu": {
+          "path": "harness_fork_cpu/work/input_example/Mol_MnO.dat",
+          "sha256": "584368ec52a49da45799a804afef738fbd5fbd593f6e5123b015269ad4d2981c"
+        },
+        "fork_gpu": {
+          "path": "harness_fork_gpu/work/input_example/Mol_MnO.dat",
+          "sha256": "d402acc06092157ebff0d6cd95ba97fb7f073de29d0b706008692b02d44d4b99"
+        }
+      },
+      "reference_sha256": "d7784dfc6822ca6010e1ca5298986136ed26aaef1a8de90cfd06f20de0510ba7"
+    },
+    {
+      "workload": "S",
+      "name": "Ndia2",
+      "source": "work/input_example/Ndia2.dat",
+      "raw": "raw/input_example/Ndia2.dat",
+      "sha256": "68fccb2f50ba4e06d1625446db230a0fbc0981881352c66ae120ad1cefdc19ec",
+      "system": "Ndia2",
+      "routes": {
+        "upstream_cpu": {
+          "path": "harness_upstream_cpu/work/input_example/Ndia2.dat",
+          "sha256": "5a44622336db593da428c166b2fe835bf6fb8a199c41088686149f38ec7fcf79"
+        },
+        "fork_cpu": {
+          "path": "harness_fork_cpu/work/input_example/Ndia2.dat",
+          "sha256": "5a44622336db593da428c166b2fe835bf6fb8a199c41088686149f38ec7fcf79"
+        },
+        "fork_gpu": {
+          "path": "harness_fork_gpu/work/input_example/Ndia2.dat",
+          "sha256": "4805ec57d4050200e9656e1cb331199999b9e4549a9c3da6493e6a0d57baa776"
+        }
+      },
+      "reference_sha256": "e121f0554de81fe56a31528c8e0ad1fdcee8256ec9bc24da8331d4086f187cea"
+    },
+    {
+      "workload": "L",
+      "name": "5_5_13COb2",
+      "source": "work/large_example/5_5_13COb2.dat",
+      "raw": "raw/large_example/5_5_13COb2.dat",
+      "sha256": "927a27a84881266b6b8b530b3924b69a32d0d61c1f0fdfda954e8c6efb13e5d5",
+      "system": "5_5_13COb2",
+      "routes": {
+        "upstream_cpu": {
+          "path": "harness_upstream_cpu/work/large_example/5_5_13COb2.dat",
+          "sha256": "c5a423d6fc83f656cb02a323c13629d1df60bfe6ef5177b120860bf435915bf4"
+        },
+        "fork_cpu": {
+          "path": "harness_fork_cpu/work/large_example/5_5_13COb2.dat",
+          "sha256": "c5a423d6fc83f656cb02a323c13629d1df60bfe6ef5177b120860bf435915bf4"
+        },
+        "fork_gpu": {
+          "path": "harness_fork_gpu/work/large_example/5_5_13COb2.dat",
+          "sha256": "3863c43666305e3e592ef1a357f539f2ef60865cf3cd9039dc2c6b02f3a14ae7"
+        }
+      },
+      "reference_sha256": "325895fdc5b21980ab7255172dd47b22d00b36cf9aa63e0d5553f12311e639e3"
+    },
+    {
+      "workload": "L",
+      "name": "B2C62_Band",
+      "source": "work/large_example/B2C62_Band.dat",
+      "raw": "raw/large_example/B2C62_Band.dat",
+      "sha256": "15abe8dc8eb2f2a7f34a462adbb29f35a5f6684f2a6b89c36e49f9b9d0e5b227",
+      "system": "B2C62_Band",
+      "routes": {
+        "upstream_cpu": {
+          "path": "harness_upstream_cpu/work/large_example/B2C62_Band.dat",
+          "sha256": "d886dcb091cff1af438e0eaa61956e81f8370eae834d361a84ad354e9b066056"
+        },
+        "fork_cpu": {
+          "path": "harness_fork_cpu/work/large_example/B2C62_Band.dat",
+          "sha256": "d886dcb091cff1af438e0eaa61956e81f8370eae834d361a84ad354e9b066056"
+        },
+        "fork_gpu": {
+          "path": "harness_fork_gpu/work/large_example/B2C62_Band.dat",
+          "sha256": "0647fed3d4702b1c6d1980b853d1971ab9cce59ca911bb050f7a3a67d6d6e6b0"
+        }
+      },
+      "reference_sha256": "29b45e14e9803f6820956f112ffaf7ddf315de80c63365ec59ae71829f25a76f"
+    },
+    {
+      "workload": "L",
+      "name": "CG15c-DC-LNO",
+      "source": "work/large_example/CG15c-DC-LNO.dat",
+      "raw": "raw/large_example/CG15c-DC-LNO.dat",
+      "sha256": "f8a256ea70df08d1100d4aa8887656ba83c2964a3a99b3ee435f9b17c7bcfd9f",
+      "system": "CG15c-DC-LNO",
+      "routes": {
+        "upstream_cpu": {
+          "path": "harness_upstream_cpu/work/large_example/CG15c-DC-LNO.dat",
+          "sha256": "ab0b912c077ce168d164a55ee9ae126f0ab9c05a609386c7312f73fc85736fd9"
+        },
+        "fork_cpu": {
+          "path": "harness_fork_cpu/work/large_example/CG15c-DC-LNO.dat",
+          "sha256": "ab0b912c077ce168d164a55ee9ae126f0ab9c05a609386c7312f73fc85736fd9"
+        },
+        "fork_gpu": {
+          "path": "harness_fork_gpu/work/large_example/CG15c-DC-LNO.dat",
+          "sha256": "ccae4f8684029bfb09c05061cc3613a117d72b3a2536818bb7f330288d1cd093"
+        }
+      },
+      "reference_sha256": "14a482b799180a811cdb250180fd117c6a4c829ae23b1d7f9a897c52365dc003"
+    },
+    {
+      "workload": "L",
+      "name": "DIA512-1",
+      "source": "work/large_example/DIA512-1.dat",
+      "raw": "raw/large_example/DIA512-1.dat",
+      "sha256": "c35000c6260b808cc10e5947fc108f65c146472d3b44a9fd8ef301e732844151",
+      "system": "DIA512-1",
+      "routes": {
+        "upstream_cpu": {
+          "path": "harness_upstream_cpu/work/large_example/DIA512-1.dat",
+          "sha256": "deb1b98a977e7936f2acd722761e21add590507dd229be9016bea73599f8f914"
+        },
+        "fork_cpu": {
+          "path": "harness_fork_cpu/work/large_example/DIA512-1.dat",
+          "sha256": "deb1b98a977e7936f2acd722761e21add590507dd229be9016bea73599f8f914"
+        },
+        "fork_gpu": {
+          "path": "harness_fork_gpu/work/large_example/DIA512-1.dat",
+          "sha256": "65058c0a3baa3880b37cd88b74835a7f6e8f0a8adacbd929b27ea3a682b45ec8"
+        }
+      },
+      "reference_sha256": "ef9cff6a8a2a39ca0c8fde4a968d460c6aec37f26c569b3895eb7e24291b9377"
+    },
+    {
+      "workload": "L",
+      "name": "FeBCC",
+      "source": "work/large_example/FeBCC.dat",
+      "raw": "raw/large_example/FeBCC.dat",
+      "sha256": "7181dbb66708c4ec41b32f2b0b5be3a4a7a067c9a26029d9b78e66abeadd366a",
+      "system": "FeBCC",
+      "routes": {
+        "upstream_cpu": {
+          "path": "harness_upstream_cpu/work/large_example/FeBCC.dat",
+          "sha256": "499a8859ed0e4e137cb7333a825eed9ab4208251e5db247718df7cab7885546b"
+        },
+        "fork_cpu": {
+          "path": "harness_fork_cpu/work/large_example/FeBCC.dat",
+          "sha256": "499a8859ed0e4e137cb7333a825eed9ab4208251e5db247718df7cab7885546b"
+        },
+        "fork_gpu": {
+          "path": "harness_fork_gpu/work/large_example/FeBCC.dat",
+          "sha256": "45f549ae210d6fa69ca3eb38a5a16651da922c3864a4a19b2932dae73d9f8b48"
+        }
+      },
+      "reference_sha256": "8cadef3dd3fe965c7222b65d9307d5705a3df50fb1c9da7540d970e74c1c0c68"
+    },
+    {
+      "workload": "L",
+      "name": "GEL",
+      "source": "work/large_example/GEL.dat",
+      "raw": "raw/large_example/GEL.dat",
+      "sha256": "707143410502e8e25c9958a7f3cc009ec6c7cb327e046997c86e5520512e6b6b",
+      "system": "GEL",
+      "routes": {
+        "upstream_cpu": {
+          "path": "harness_upstream_cpu/work/large_example/GEL.dat",
+          "sha256": "6d94824ace549e3e873113509f8d4e2ade18333c59d97f81b2b5ee24280b1ef9"
+        },
+        "fork_cpu": {
+          "path": "harness_fork_cpu/work/large_example/GEL.dat",
+          "sha256": "6d94824ace549e3e873113509f8d4e2ade18333c59d97f81b2b5ee24280b1ef9"
+        },
+        "fork_gpu": {
+          "path": "harness_fork_gpu/work/large_example/GEL.dat",
+          "sha256": "8f7b9f9c5453ccf2629e4386afeacff7c16ca048fbf5f59d015600cbe245d73f"
+        }
+      },
+      "reference_sha256": "4834ad4b945f9104b3cbead1c0de35693da8113db3a60e8336ad7f39ca489d64"
+    },
+    {
+      "workload": "L",
+      "name": "GFRAG",
+      "source": "work/large_example/GFRAG.dat",
+      "raw": "raw/large_example/GFRAG.dat",
+      "sha256": "8c95ae8d0039d7f2fcf8644ea1d171a26d1cb32e206f3c6757d5cd1c27dca31c",
+      "system": "GFRAG",
+      "routes": {
+        "upstream_cpu": {
+          "path": "harness_upstream_cpu/work/large_example/GFRAG.dat",
+          "sha256": "f237b59069da0921e0abefadee6639358a2b38f7ddd573e7b283f6c6b6da4c7c"
+        },
+        "fork_cpu": {
+          "path": "harness_fork_cpu/work/large_example/GFRAG.dat",
+          "sha256": "f237b59069da0921e0abefadee6639358a2b38f7ddd573e7b283f6c6b6da4c7c"
+        },
+        "fork_gpu": {
+          "path": "harness_fork_gpu/work/large_example/GFRAG.dat",
+          "sha256": "3bf60d400f5a5dfe5d35d5871f1cd251b1cf1c31cd78c3661160af81f57ffce0"
+        }
+      },
+      "reference_sha256": "51a1d084610f0ad2063ec698b56f3c1af54416dbfbb89c93a4aeaa6dfc3713da"
+    },
+    {
+      "workload": "L",
+      "name": "GGFF",
+      "source": "work/large_example/GGFF.dat",
+      "raw": "raw/large_example/GGFF.dat",
+      "sha256": "6a80fcc4f96e97944cc7b6affd20df04f24764cfb4852703f01e105ae3dc701f",
+      "system": "GGFF",
+      "routes": {
+        "upstream_cpu": {
+          "path": "harness_upstream_cpu/work/large_example/GGFF.dat",
+          "sha256": "b61b0d067c1c3e074851fdec4e7fea1ee39effd2d95ff89036ca2d8563999337"
+        },
+        "fork_cpu": {
+          "path": "harness_fork_cpu/work/large_example/GGFF.dat",
+          "sha256": "b61b0d067c1c3e074851fdec4e7fea1ee39effd2d95ff89036ca2d8563999337"
+        },
+        "fork_gpu": {
+          "path": "harness_fork_gpu/work/large_example/GGFF.dat",
+          "sha256": "aca143b7f208444b39d919c602d7943d12168525a9f7cd47c8a3f799f2027f95"
+        }
+      },
+      "reference_sha256": "e41aabe15cf6d5261d0dfd313600743045b2fd16192b330dfdd65501c3932152"
+    },
+    {
+      "workload": "L",
+      "name": "MCCN",
+      "source": "work/large_example/MCCN.dat",
+      "raw": "raw/large_example/MCCN.dat",
+      "sha256": "37f879f006313c05bfc45d8376abc7850854ce2819f796bdfd682b9017026358",
+      "system": "MCCN",
+      "routes": {
+        "upstream_cpu": {
+          "path": "harness_upstream_cpu/work/large_example/MCCN.dat",
+          "sha256": "e279cbad4d3d786d563fa5fe1865bd8e951e73e906691de2201e633f27c3daa5"
+        },
+        "fork_cpu": {
+          "path": "harness_fork_cpu/work/large_example/MCCN.dat",
+          "sha256": "e279cbad4d3d786d563fa5fe1865bd8e951e73e906691de2201e633f27c3daa5"
+        },
+        "fork_gpu": {
+          "path": "harness_fork_gpu/work/large_example/MCCN.dat",
+          "sha256": "d099645333fb50f90e8d28b983497ef0712eff5ca48fba03fcaac0cf9d9fb9bd"
+        }
+      },
+      "reference_sha256": "a2cfacc2a25a5b8dbfd9a95353f8b2630eb412673f8d704b24f886b3140754d9"
+    },
+    {
+      "workload": "L",
+      "name": "Mn12_148_F",
+      "source": "work/large_example/Mn12_148_F.dat",
+      "raw": "raw/large_example/Mn12_148_F.dat",
+      "sha256": "877994aa5ad590d39055d65d3f6835737e1f40bea69001a9c015c1226b7ab0c5",
+      "system": "Mn12_148_F",
+      "routes": {
+        "upstream_cpu": {
+          "path": "harness_upstream_cpu/work/large_example/Mn12_148_F.dat",
+          "sha256": "94f662a6ac719f644f3d185928d6496e7d5c5fdfbfa448eb04c7eb9cfb4bff8d"
+        },
+        "fork_cpu": {
+          "path": "harness_fork_cpu/work/large_example/Mn12_148_F.dat",
+          "sha256": "94f662a6ac719f644f3d185928d6496e7d5c5fdfbfa448eb04c7eb9cfb4bff8d"
+        },
+        "fork_gpu": {
+          "path": "harness_fork_gpu/work/large_example/Mn12_148_F.dat",
+          "sha256": "7b22362f7bfd666dbf2ba5b70ea7bfb074ff71d2e4ac0d441a73a80995af6fe3"
+        }
+      },
+      "reference_sha256": "b19131eca970f2bad27cce5e7670001d64217d856a426d5af2ace0dd7cdf5371"
+    },
+    {
+      "workload": "L",
+      "name": "N1C999",
+      "source": "work/large_example/N1C999.dat",
+      "raw": "raw/large_example/N1C999.dat",
+      "sha256": "236f095357c5c4770f4b11594ab6e1506e37ff65b4d902bae9fd15dfe4f6444f",
+      "system": "N1C999",
+      "routes": {
+        "upstream_cpu": {
+          "path": "harness_upstream_cpu/work/large_example/N1C999.dat",
+          "sha256": "0185ed92983a0135f870837bc1fd11e81429043ef7665ce5c416c5aec1fa9190"
+        },
+        "fork_cpu": {
+          "path": "harness_fork_cpu/work/large_example/N1C999.dat",
+          "sha256": "0185ed92983a0135f870837bc1fd11e81429043ef7665ce5c416c5aec1fa9190"
+        },
+        "fork_gpu": {
+          "path": "harness_fork_gpu/work/large_example/N1C999.dat",
+          "sha256": "85a30c10f52062de621d39c599a7912e2a2ebcdcfb9440b8848ee233a558ce7f"
+        }
+      },
+      "reference_sha256": "778c7ca8124c518a865e630d0091594f5652fda8b87d405ef53972c564db746c"
+    },
+    {
+      "workload": "L",
+      "name": "Ni63-O64",
+      "source": "work/large_example/Ni63-O64.dat",
+      "raw": "raw/large_example/Ni63-O64.dat",
+      "sha256": "54c93baa76a77f149e298cd264fbebc645751dbeb5be1f2d451df6c02cec33e6",
+      "system": "Ni63-O64",
+      "routes": {
+        "upstream_cpu": {
+          "path": "harness_upstream_cpu/work/large_example/Ni63-O64.dat",
+          "sha256": "c0da1dd05c5add32d286142bba7876a8e3274dba76e4f633df55f35060848045"
+        },
+        "fork_cpu": {
+          "path": "harness_fork_cpu/work/large_example/Ni63-O64.dat",
+          "sha256": "c0da1dd05c5add32d286142bba7876a8e3274dba76e4f633df55f35060848045"
+        },
+        "fork_gpu": {
+          "path": "harness_fork_gpu/work/large_example/Ni63-O64.dat",
+          "sha256": "51fdeb8dae26cdacf91a8508d7d4d4ab48a5a6260996a7bde3ce9eebaf130569"
+        }
+      },
+      "reference_sha256": "64c93aa823cde1bbb96c9504d9d88c78bfca81960ddd2bfb5b57ae3a2226f4c9"
+    },
+    {
+      "workload": "L",
+      "name": "Pt63",
+      "source": "work/large_example/Pt63.dat",
+      "raw": "raw/large_example/Pt63.dat",
+      "sha256": "36dc8082db9435af8abf0d059f7935b0855151637b685af81aad52143149ae0d",
+      "system": "Pt63",
+      "routes": {
+        "upstream_cpu": {
+          "path": "harness_upstream_cpu/work/large_example/Pt63.dat",
+          "sha256": "56830d31a80c9bf9547c6fb74ae10369339d3743c62bf363bca8c32762a674ee"
+        },
+        "fork_cpu": {
+          "path": "harness_fork_cpu/work/large_example/Pt63.dat",
+          "sha256": "56830d31a80c9bf9547c6fb74ae10369339d3743c62bf363bca8c32762a674ee"
+        },
+        "fork_gpu": {
+          "path": "harness_fork_gpu/work/large_example/Pt63.dat",
+          "sha256": "5ca2db0454c0ed0353eeadd92435d4c63eebc1d102d285dce845ea33e20590fd"
+        }
+      },
+      "reference_sha256": "4675e51817d5f6dd4300eff9677eb35b202f52e0aadc2574fb640661b0461498"
+    },
+    {
+      "workload": "L",
+      "name": "SialicAcid",
+      "source": "work/large_example/SialicAcid.dat",
+      "raw": "raw/large_example/SialicAcid.dat",
+      "sha256": "9175362d96ce6423e7a3383319a5435e85072f1bbe1095ef5fadeefdfd602df7",
+      "system": "SialicAcid",
+      "routes": {
+        "upstream_cpu": {
+          "path": "harness_upstream_cpu/work/large_example/SialicAcid.dat",
+          "sha256": "ee124f88ec374357f352c87bcd5a2ae4d9b001badd06cb96785e8b9cc7708a1c"
+        },
+        "fork_cpu": {
+          "path": "harness_fork_cpu/work/large_example/SialicAcid.dat",
+          "sha256": "ee124f88ec374357f352c87bcd5a2ae4d9b001badd06cb96785e8b9cc7708a1c"
+        },
+        "fork_gpu": {
+          "path": "harness_fork_gpu/work/large_example/SialicAcid.dat",
+          "sha256": "8c0b86a77202c0fb6ff3c87f284614cbec7b2905238b4221837b4c8ef76556db"
+        }
+      },
+      "reference_sha256": "586dfea0e71b24097a1c5e3ef9abb4cf68b26e2157a3782578723a39770b90dd"
+    },
+    {
+      "workload": "L",
+      "name": "ZrB2_2x2",
+      "source": "work/large_example/ZrB2_2x2.dat",
+      "raw": "raw/large_example/ZrB2_2x2.dat",
+      "sha256": "d31735b20697aa7e7f2d4c02d603fe20e28dc68cbc917ef4938650d54ce73e82",
+      "system": "ZrB2_2x2",
+      "routes": {
+        "upstream_cpu": {
+          "path": "harness_upstream_cpu/work/large_example/ZrB2_2x2.dat",
+          "sha256": "09826e86a073230257c7f7f94e6cbbad7bd55c64ae0912e8861c9ee696407d92"
+        },
+        "fork_cpu": {
+          "path": "harness_fork_cpu/work/large_example/ZrB2_2x2.dat",
+          "sha256": "09826e86a073230257c7f7f94e6cbbad7bd55c64ae0912e8861c9ee696407d92"
+        },
+        "fork_gpu": {
+          "path": "harness_fork_gpu/work/large_example/ZrB2_2x2.dat",
+          "sha256": "654ef52ee5dbaf3fb625ace9e7751f4eca7e46d9ff8b85ade33c65250b98b3dd"
+        }
+      },
+      "reference_sha256": "5d60e2c0869eeb1d2c19c51bf88aedb40e7876d8f38c64afe76b6829f99f1af0"
+    },
+    {
+      "workload": "L",
+      "name": "nsV4Bz5",
+      "source": "work/large_example/nsV4Bz5.dat",
+      "raw": "raw/large_example/nsV4Bz5.dat",
+      "sha256": "0614c3619e1b04916d05649685c94415fc7270ae9fe88a7c33a92bac1dbb84e6",
+      "system": "nsV4Bz5",
+      "routes": {
+        "upstream_cpu": {
+          "path": "harness_upstream_cpu/work/large_example/nsV4Bz5.dat",
+          "sha256": "2438baa4073a904bbe949d765982cdd9cb293c2a9d8e4df9347b8e9b6d4618f3"
+        },
+        "fork_cpu": {
+          "path": "harness_fork_cpu/work/large_example/nsV4Bz5.dat",
+          "sha256": "2438baa4073a904bbe949d765982cdd9cb293c2a9d8e4df9347b8e9b6d4618f3"
+        },
+        "fork_gpu": {
+          "path": "harness_fork_gpu/work/large_example/nsV4Bz5.dat",
+          "sha256": "eb39c03fb67a1232ed9391b6c34006398039edf0be445b7026a79a51a7a5adde"
+        }
+      },
+      "reference_sha256": "7fcf5b011b71d2ec53bf850915379b50e456c96d7825157bf019fdba77f0f1c4"
+    },
+    {
+      "workload": "L2",
+      "name": "C1000",
+      "source": "work/large2_example/C1000.dat",
+      "raw": "raw/large2_example/C1000.dat",
+      "sha256": "debb5b13cae4f0fe5615852cc2c06566ed70361fb1856218494c8148d5ff599b",
+      "system": "C1000",
+      "routes": {
+        "upstream_cpu": {
+          "path": "harness_upstream_cpu/work/large2_example/C1000.dat",
+          "sha256": "c9cb956525d1bbe12cc57f94afedb7bc0fd4903f92a0adff85cb1cf7fea48108"
+        },
+        "fork_cpu": {
+          "path": "harness_fork_cpu/work/large2_example/C1000.dat",
+          "sha256": "c9cb956525d1bbe12cc57f94afedb7bc0fd4903f92a0adff85cb1cf7fea48108"
+        },
+        "fork_gpu": {
+          "path": "harness_fork_gpu/work/large2_example/C1000.dat",
+          "sha256": "9819ffceb5ec7f24a6b4220b1dc602647aed8e73e0b75f4e56e3e77383196b90"
+        }
+      },
+      "reference_sha256": "61cd4dfacc25e7b69741fd811890bb2923c0fd23fbbb0e4e3b4da87ff00f6b25"
+    },
+    {
+      "workload": "L2",
+      "name": "Fe1000",
+      "source": "work/large2_example/Fe1000.dat",
+      "raw": "raw/large2_example/Fe1000.dat",
+      "sha256": "90af28f8fa1a23d9d640d4aa67cb7be186fa37140ac2ec5edaac830ce7f25e08",
+      "system": "Fe1000",
+      "routes": {
+        "upstream_cpu": {
+          "path": "harness_upstream_cpu/work/large2_example/Fe1000.dat",
+          "sha256": "c77703e513715cf557dee843c685eaee6d6c001176d13da2d05045af4541956f"
+        },
+        "fork_cpu": {
+          "path": "harness_fork_cpu/work/large2_example/Fe1000.dat",
+          "sha256": "c77703e513715cf557dee843c685eaee6d6c001176d13da2d05045af4541956f"
+        },
+        "fork_gpu": {
+          "path": "harness_fork_gpu/work/large2_example/Fe1000.dat",
+          "sha256": "e6d08654507992433c4eb34c949244e17164043553a1226e6016998d04330b79"
+        }
+      },
+      "reference_sha256": "3a288685470e92077da71a331d5cb09af8fe44d9e7bcf114b594350faa8ee37b"
+    },
+    {
+      "workload": "L2",
+      "name": "GRA1024",
+      "source": "work/large2_example/GRA1024.dat",
+      "raw": "raw/large2_example/GRA1024.dat",
+      "sha256": "1eee49e075895885064fe1ed7264509dd1da61eb1661aa3a7d9b7cb1b0a22c7f",
+      "system": "GRA1024",
+      "routes": {
+        "upstream_cpu": {
+          "path": "harness_upstream_cpu/work/large2_example/GRA1024.dat",
+          "sha256": "6fc7b0a324c0c555113bd7d376d15684eee29d466ad3895d3e482b3a9c446f69"
+        },
+        "fork_cpu": {
+          "path": "harness_fork_cpu/work/large2_example/GRA1024.dat",
+          "sha256": "6fc7b0a324c0c555113bd7d376d15684eee29d466ad3895d3e482b3a9c446f69"
+        },
+        "fork_gpu": {
+          "path": "harness_fork_gpu/work/large2_example/GRA1024.dat",
+          "sha256": "5b9feaeaf88a9e306674de4af257b0a4625e98b66530fe1f570d4133bc5383d7"
+        }
+      },
+      "reference_sha256": "af4ecf5eb1958bf8754a0916f9e7cb0d76f4322463fc45c284457df7efabee32"
+    },
+    {
+      "workload": "L2",
+      "name": "Ih-Ice1200",
+      "source": "work/large2_example/Ih-Ice1200.dat",
+      "raw": "raw/large2_example/Ih-Ice1200.dat",
+      "sha256": "20334a66c423a8fd72d11e390e4cf4abad350b6430092a6ae84b1ad72f792daa",
+      "system": "Ih-Ice1200",
+      "routes": {
+        "upstream_cpu": {
+          "path": "harness_upstream_cpu/work/large2_example/Ih-Ice1200.dat",
+          "sha256": "fbf6bd323577291e1897f03883c854341987f0d364b4bba990b999b3de6e4ea6"
+        },
+        "fork_cpu": {
+          "path": "harness_fork_cpu/work/large2_example/Ih-Ice1200.dat",
+          "sha256": "fbf6bd323577291e1897f03883c854341987f0d364b4bba990b999b3de6e4ea6"
+        },
+        "fork_gpu": {
+          "path": "harness_fork_gpu/work/large2_example/Ih-Ice1200.dat",
+          "sha256": "e17220e49d4f354e181d4c7549a8c7b0d7a51769ea3ed005010ecc33b380e2ec"
+        }
+      },
+      "reference_sha256": "a17a3f91aafd6aed10128751d652d40b9a75c382e638ca4c9729c1917be9728b"
+    },
+    {
+      "workload": "L2",
+      "name": "Pt500",
+      "source": "work/large2_example/Pt500.dat",
+      "raw": "raw/large2_example/Pt500.dat",
+      "sha256": "c2eb97a82567308a8aa98626e6ab0103a3d8e68cb586061c87ea9e776ea33486",
+      "system": "Pt500",
+      "routes": {
+        "upstream_cpu": {
+          "path": "harness_upstream_cpu/work/large2_example/Pt500.dat",
+          "sha256": "83c3b75bf6dbb182b1b3b9e1a702a0638900cce33cbb24425e33626474d70436"
+        },
+        "fork_cpu": {
+          "path": "harness_fork_cpu/work/large2_example/Pt500.dat",
+          "sha256": "83c3b75bf6dbb182b1b3b9e1a702a0638900cce33cbb24425e33626474d70436"
+        },
+        "fork_gpu": {
+          "path": "harness_fork_gpu/work/large2_example/Pt500.dat",
+          "sha256": "4bc47bb2cea28df38af5c376ec01e6368bd753d5886539b348898eb5bd408774"
+        }
+      },
+      "reference_sha256": "83bf976d66388366e47660e7a51d3525235cce143e3b95c75a10b316180369e8"
+    },
+    {
+      "workload": "L2",
+      "name": "R-TiO2-1050",
+      "source": "work/large2_example/R-TiO2-1050.dat",
+      "raw": "raw/large2_example/R-TiO2-1050.dat",
+      "sha256": "01292f95ab3aedeb0158f17ee402a3425eb9cc6940af273f8d3eae9a735fcb01",
+      "system": "R-TiO2-1050",
+      "routes": {
+        "upstream_cpu": {
+          "path": "harness_upstream_cpu/work/large2_example/R-TiO2-1050.dat",
+          "sha256": "6fc107e0067533874db6501fa7dd63b7bbc9e4db25a6346ed4585bf628be09e0"
+        },
+        "fork_cpu": {
+          "path": "harness_fork_cpu/work/large2_example/R-TiO2-1050.dat",
+          "sha256": "6fc107e0067533874db6501fa7dd63b7bbc9e4db25a6346ed4585bf628be09e0"
+        },
+        "fork_gpu": {
+          "path": "harness_fork_gpu/work/large2_example/R-TiO2-1050.dat",
+          "sha256": "ab29d9ca6cd5185aeef4acb90e1ea6a1f860573f4790f060264c82f37511db3a"
+        }
+      },
+      "reference_sha256": "72deef6b3c702bf4973392f9ef44046c160970096de456732f550515a19898bf"
+    },
+    {
+      "workload": "L2",
+      "name": "Si1000",
+      "source": "work/large2_example/Si1000.dat",
+      "raw": "raw/large2_example/Si1000.dat",
+      "sha256": "01ea852e3785334081e2fbb27ead380be86ea3d50045efb52a7c5d49dc0c8bed",
+      "system": "Si1000",
+      "routes": {
+        "upstream_cpu": {
+          "path": "harness_upstream_cpu/work/large2_example/Si1000.dat",
+          "sha256": "b480f2cfb75df148c3013a8c5eb265c1ba06e26cba856b0b34c6ed893a23291e"
+        },
+        "fork_cpu": {
+          "path": "harness_fork_cpu/work/large2_example/Si1000.dat",
+          "sha256": "b480f2cfb75df148c3013a8c5eb265c1ba06e26cba856b0b34c6ed893a23291e"
+        },
+        "fork_gpu": {
+          "path": "harness_fork_gpu/work/large2_example/Si1000.dat",
+          "sha256": "67e2539b16cdd4e1088cd0e10ce0ed66a4a380df2cf4e2756ac46885537448c6"
+        }
+      },
+      "reference_sha256": "81b230f2740627a4915a11113057cffcd6bba9888dd60d45381cdb474239d9a6"
+    },
+    {
+      "workload": "L3",
+      "name": "5_5_13COb2",
+      "source": "work/large3_example/5_5_13COb2.dat",
+      "raw": "raw/large3_example/5_5_13COb2.dat",
+      "sha256": "e564dad4210e324353a2225bcba15e223330dd63e73f4c61eb578e83c8f22407",
+      "system": "5_5_13COb2",
+      "routes": {
+        "upstream_cpu": {
+          "path": "harness_upstream_cpu/work/large3_example/5_5_13COb2.dat",
+          "sha256": "fd0d73671b85d2f7cd9abca263cf8f4ac9ce7985f78005325b37983abc14390e"
+        },
+        "fork_cpu": {
+          "path": "harness_fork_cpu/work/large3_example/5_5_13COb2.dat",
+          "sha256": "fd0d73671b85d2f7cd9abca263cf8f4ac9ce7985f78005325b37983abc14390e"
+        },
+        "fork_gpu": {
+          "path": "harness_fork_gpu/work/large3_example/5_5_13COb2.dat",
+          "sha256": "836e5bd6256a99d4d2646325d0d66c3c9f810c4fc00b24ccc16a22b6bd3c9fa0"
+        }
+      },
+      "reference_sha256": "e6c61e5346defb2bd88dc28d4055654826a76311d9244adfc74b50b265702ded"
+    },
+    {
+      "workload": "L3",
+      "name": "C1000",
+      "source": "work/large3_example/C1000.dat",
+      "raw": "raw/large3_example/C1000.dat",
+      "sha256": "669ab639c319d3afb8e84aec042b319974a2824731c2f8f5b3f0b1f601b3c36e",
+      "system": "C1000",
+      "routes": {
+        "upstream_cpu": {
+          "path": "harness_upstream_cpu/work/large3_example/C1000.dat",
+          "sha256": "c2c885384fad505be92551e3a2e312c4e3cbed1978e89de837cb511de8f12ff7"
+        },
+        "fork_cpu": {
+          "path": "harness_fork_cpu/work/large3_example/C1000.dat",
+          "sha256": "c2c885384fad505be92551e3a2e312c4e3cbed1978e89de837cb511de8f12ff7"
+        },
+        "fork_gpu": {
+          "path": "harness_fork_gpu/work/large3_example/C1000.dat",
+          "sha256": "dfa0211ed34e4a2806c6194fae98bfb7efc7d36f4e5e2c65ebc2c889d8274ea9"
+        }
+      },
+      "reference_sha256": "d762562b0e5a2fa49868fb629356b0478003cf4b0dda8ef0cbf5c1d16d0df84c"
+    },
+    {
+      "workload": "L3",
+      "name": "C60",
+      "source": "work/large3_example/C60.dat",
+      "raw": "raw/large3_example/C60.dat",
+      "sha256": "b51728c3dbe879c8c38867634c27548a0674740da51e9252eaf9047658cecb9c",
+      "system": "C60",
+      "routes": {
+        "upstream_cpu": {
+          "path": "harness_upstream_cpu/work/large3_example/C60.dat",
+          "sha256": "7765d7bb99298eab7e7306f7b681b9a4a688537432e07330c2446b9ac3523a64"
+        },
+        "fork_cpu": {
+          "path": "harness_fork_cpu/work/large3_example/C60.dat",
+          "sha256": "7765d7bb99298eab7e7306f7b681b9a4a688537432e07330c2446b9ac3523a64"
+        },
+        "fork_gpu": {
+          "path": "harness_fork_gpu/work/large3_example/C60.dat",
+          "sha256": "53a344016b601d9620e714b342b74ce4b919200ad7d8eac07732be25f0f086e5"
+        }
+      },
+      "reference_sha256": "c5b263117034f51231df06b2f24b549add49372d91b247bf4aceddcd9c1cc1d6"
+    },
+    {
+      "workload": "L3",
+      "name": "CG15c",
+      "source": "work/large3_example/CG15c.dat",
+      "raw": "raw/large3_example/CG15c.dat",
+      "sha256": "d4de76b7f7bcb3b15a3c6d26f5cbe136d9be87e0d5c06deec9f4538c0270f738",
+      "system": "CG15c",
+      "routes": {
+        "upstream_cpu": {
+          "path": "harness_upstream_cpu/work/large3_example/CG15c.dat",
+          "sha256": "da31457720cdd26f073897ad922247a58e41f31534da7c9c15694c6888b6203a"
+        },
+        "fork_cpu": {
+          "path": "harness_fork_cpu/work/large3_example/CG15c.dat",
+          "sha256": "da31457720cdd26f073897ad922247a58e41f31534da7c9c15694c6888b6203a"
+        },
+        "fork_gpu": {
+          "path": "harness_fork_gpu/work/large3_example/CG15c.dat",
+          "sha256": "9d99d2536c51f5d7bbf405e89aed8a3aecca99ac615571f9eca76ce0eaaf840b"
+        }
+      },
+      "reference_sha256": "ec4d230b86c6edf0076dfe05ee69a3bff2c76364637272c9714eb60957432076"
+    },
+    {
+      "workload": "L3",
+      "name": "Crys-MnO",
+      "source": "work/large3_example/Crys-MnO.dat",
+      "raw": "raw/large3_example/Crys-MnO.dat",
+      "sha256": "4706c3210857983ba593c307cb6a31ac4d6541921b41103d80699387a9ae7966",
+      "system": "Crys-MnO",
+      "routes": {
+        "upstream_cpu": {
+          "path": "harness_upstream_cpu/work/large3_example/Crys-MnO.dat",
+          "sha256": "949e81d88a762b7470a07ec535434c0ee7b528fe5b715c04a8a27878a36aa962"
+        },
+        "fork_cpu": {
+          "path": "harness_fork_cpu/work/large3_example/Crys-MnO.dat",
+          "sha256": "949e81d88a762b7470a07ec535434c0ee7b528fe5b715c04a8a27878a36aa962"
+        },
+        "fork_gpu": {
+          "path": "harness_fork_gpu/work/large3_example/Crys-MnO.dat",
+          "sha256": "6e8ce48f5697076ad4fc271f91fc8ebc6e7693816b27886da9c3ddb5e91c2b21"
+        }
+      },
+      "reference_sha256": "4f9c6cf97666cd6aa7055b30dbd97cb3d16625e6f7fa2133da9626e4155dcea0"
+    },
+    {
+      "workload": "L3",
+      "name": "DIA512-1",
+      "source": "work/large3_example/DIA512-1.dat",
+      "raw": "raw/large3_example/DIA512-1.dat",
+      "sha256": "075a9fa67b60669b61deafac8920fa18f6e314f2e544e2e4f7f11f38400955f2",
+      "system": "DIA512-1",
+      "routes": {
+        "upstream_cpu": {
+          "path": "harness_upstream_cpu/work/large3_example/DIA512-1.dat",
+          "sha256": "0f56ffbd76fde9698ee56c6f5efad107aa6d8d8450c44c0a3c3c2fad7ab69e2b"
+        },
+        "fork_cpu": {
+          "path": "harness_fork_cpu/work/large3_example/DIA512-1.dat",
+          "sha256": "0f56ffbd76fde9698ee56c6f5efad107aa6d8d8450c44c0a3c3c2fad7ab69e2b"
+        },
+        "fork_gpu": {
+          "path": "harness_fork_gpu/work/large3_example/DIA512-1.dat",
+          "sha256": "2ad7e4b32cf0668c37a4a56532bb3a45889ca2bb7ea20dc45e96d26297ce7a85"
+        }
+      },
+      "reference_sha256": "36646a2e4087b584a96f376cb9aea08b8c2d37a6b18ef494add8e84652fa030a"
+    },
+    {
+      "workload": "L3",
+      "name": "Fe1000",
+      "source": "work/large3_example/Fe1000.dat",
+      "raw": "raw/large3_example/Fe1000.dat",
+      "sha256": "43874930c6fb6024363bd63091c1fadf87b9f7cd9a67c7433d2f23220c8ccf95",
+      "system": "Fe1000",
+      "routes": {
+        "upstream_cpu": {
+          "path": "harness_upstream_cpu/work/large3_example/Fe1000.dat",
+          "sha256": "7f41c8041686850ad10aefa8015c00f94e284f4067251d0b5bc54988b5c37480"
+        },
+        "fork_cpu": {
+          "path": "harness_fork_cpu/work/large3_example/Fe1000.dat",
+          "sha256": "7f41c8041686850ad10aefa8015c00f94e284f4067251d0b5bc54988b5c37480"
+        },
+        "fork_gpu": {
+          "path": "harness_fork_gpu/work/large3_example/Fe1000.dat",
+          "sha256": "a3a70f29e376aa5b22be24294713fbf50d1b9e1734840c07423c663838d1f8ae"
+        }
+      },
+      "reference_sha256": "6b9f4a82acc7ca2cdbc45be2145a0063a367b82442e2da0d10548091d0875b1d"
+    },
+    {
+      "workload": "L3",
+      "name": "GEL",
+      "source": "work/large3_example/GEL.dat",
+      "raw": "raw/large3_example/GEL.dat",
+      "sha256": "29e8740513348e148fbba7bddc7cc6e4b9da855eaaf33b5e3a88eb981e062fb7",
+      "system": "GEL",
+      "routes": {
+        "upstream_cpu": {
+          "path": "harness_upstream_cpu/work/large3_example/GEL.dat",
+          "sha256": "70f29541901a75f8770b583af1340d9297ebc0ca70e918c35a78b038c9c917ca"
+        },
+        "fork_cpu": {
+          "path": "harness_fork_cpu/work/large3_example/GEL.dat",
+          "sha256": "70f29541901a75f8770b583af1340d9297ebc0ca70e918c35a78b038c9c917ca"
+        },
+        "fork_gpu": {
+          "path": "harness_fork_gpu/work/large3_example/GEL.dat",
+          "sha256": "9519b1670a5bb6635cf64bd15a654ea969c10a7b82153d7466e8c0627cd76e3c"
+        }
+      },
+      "reference_sha256": "cffebbaa61f508ab62fe08aca9de73722902e6914c5837ae924c645764e32105"
+    },
+    {
+      "workload": "L3",
+      "name": "GFRAG",
+      "source": "work/large3_example/GFRAG.dat",
+      "raw": "raw/large3_example/GFRAG.dat",
+      "sha256": "5e9f201f483d24f02c55304017226c15f7862dd03285fdbe1052b1b875d44416",
+      "system": "GFRAG",
+      "routes": {
+        "upstream_cpu": {
+          "path": "harness_upstream_cpu/work/large3_example/GFRAG.dat",
+          "sha256": "a08df0998c38cb2ef45f666ccf28fdcb8d99b7bbe2f6ebe135fec602d0eb4db9"
+        },
+        "fork_cpu": {
+          "path": "harness_fork_cpu/work/large3_example/GFRAG.dat",
+          "sha256": "a08df0998c38cb2ef45f666ccf28fdcb8d99b7bbe2f6ebe135fec602d0eb4db9"
+        },
+        "fork_gpu": {
+          "path": "harness_fork_gpu/work/large3_example/GFRAG.dat",
+          "sha256": "e4fece4c55d9129e03d00531c150db7d91dbb8038dbfc4bbfa4e4d8b99125292"
+        }
+      },
+      "reference_sha256": "aa2fde094a89820d35e90dd6b862b8fb2463060863a4d726732bb7e6bf7de88b"
+    },
+    {
+      "workload": "L3",
+      "name": "GGFF",
+      "source": "work/large3_example/GGFF.dat",
+      "raw": "raw/large3_example/GGFF.dat",
+      "sha256": "52749858fd2d504fcfbe77cca8b096502a87a6004d8b5116ef9cc40c119da89a",
+      "system": "GGFF",
+      "routes": {
+        "upstream_cpu": {
+          "path": "harness_upstream_cpu/work/large3_example/GGFF.dat",
+          "sha256": "675250d810d43bbd899f776b228b6af096151f7199d05e5324880875d65a836a"
+        },
+        "fork_cpu": {
+          "path": "harness_fork_cpu/work/large3_example/GGFF.dat",
+          "sha256": "675250d810d43bbd899f776b228b6af096151f7199d05e5324880875d65a836a"
+        },
+        "fork_gpu": {
+          "path": "harness_fork_gpu/work/large3_example/GGFF.dat",
+          "sha256": "fc8d163b7cb287336db15c13c90417a19cc44974fe8ca7de0e904707f07cbe64"
+        }
+      },
+      "reference_sha256": "9ebba58b9e36f1e7a6872ebceef613e49a78e446f402b170514a63619dfbc4b1"
+    },
+    {
+      "workload": "L3",
+      "name": "MCCN",
+      "source": "work/large3_example/MCCN.dat",
+      "raw": "raw/large3_example/MCCN.dat",
+      "sha256": "10bb2e266475a34ff6c74ff771f23ea9f7115c15eac16b085c83beac3cf3480a",
+      "system": "MCCN",
+      "routes": {
+        "upstream_cpu": {
+          "path": "harness_upstream_cpu/work/large3_example/MCCN.dat",
+          "sha256": "888458fea7cfae5bf68d8262d98b33d8e37a1e56428d72ffa46ee2705ccd9fd2"
+        },
+        "fork_cpu": {
+          "path": "harness_fork_cpu/work/large3_example/MCCN.dat",
+          "sha256": "888458fea7cfae5bf68d8262d98b33d8e37a1e56428d72ffa46ee2705ccd9fd2"
+        },
+        "fork_gpu": {
+          "path": "harness_fork_gpu/work/large3_example/MCCN.dat",
+          "sha256": "be83a70a288e4f9d42cf3d9211622bc1fd23d6fe98a92fde9950f50373c495d9"
+        }
+      },
+      "reference_sha256": "67495b34c7dfa6d877e8205d5d93c433aaae0ca2093941f2a3ab0569b5d66ddd"
+    },
+    {
+      "workload": "L3",
+      "name": "Mn12_148_F",
+      "source": "work/large3_example/Mn12_148_F.dat",
+      "raw": "raw/large3_example/Mn12_148_F.dat",
+      "sha256": "bbc0bde986b0acda85fcae9b04bcbc6ec6ac4b325a07dee92bec8966cdd23dfb",
+      "system": "Mn12_148_F",
+      "routes": {
+        "upstream_cpu": {
+          "path": "harness_upstream_cpu/work/large3_example/Mn12_148_F.dat",
+          "sha256": "9a3717b3894d76376cae8b19119cc02e63a71dec46a7c164bf322d3a1188d78e"
+        },
+        "fork_cpu": {
+          "path": "harness_fork_cpu/work/large3_example/Mn12_148_F.dat",
+          "sha256": "9a3717b3894d76376cae8b19119cc02e63a71dec46a7c164bf322d3a1188d78e"
+        },
+        "fork_gpu": {
+          "path": "harness_fork_gpu/work/large3_example/Mn12_148_F.dat",
+          "sha256": "e69a895cebe4d9d5c3f4ce7e335825dbe024c4384f0059ec30fc2c19f475b2a9"
+        }
+      },
+      "reference_sha256": "12db991cd72483a98f04266cfdf4c8721f26672a76caf70574617148afe2417b"
+    },
+    {
+      "workload": "L3",
+      "name": "N1C999",
+      "source": "work/large3_example/N1C999.dat",
+      "raw": "raw/large3_example/N1C999.dat",
+      "sha256": "5cc7f47d4344c3d3bb15afe3028650e09dcd3ed422e6c4e9a333de6b17a8688b",
+      "system": "N1C999",
+      "routes": {
+        "upstream_cpu": {
+          "path": "harness_upstream_cpu/work/large3_example/N1C999.dat",
+          "sha256": "54bd175390c99269c9001bf1f2b8b1f5c609fd2cd7ad93b889a78b4f1ec1f4c6"
+        },
+        "fork_cpu": {
+          "path": "harness_fork_cpu/work/large3_example/N1C999.dat",
+          "sha256": "54bd175390c99269c9001bf1f2b8b1f5c609fd2cd7ad93b889a78b4f1ec1f4c6"
+        },
+        "fork_gpu": {
+          "path": "harness_fork_gpu/work/large3_example/N1C999.dat",
+          "sha256": "c6eb3a26483f45be8cdf70e86621c6b04b6da42ca3021e04d560f40b15fa1c65"
+        }
+      },
+      "reference_sha256": "e0b1177f539dea566584c09ddb3368f7b46a01a2206d3cc0b4ebf1765d908e9e"
+    },
+    {
+      "workload": "L3",
+      "name": "Ni63-O64",
+      "source": "work/large3_example/Ni63-O64.dat",
+      "raw": "raw/large3_example/Ni63-O64.dat",
+      "sha256": "65f5d5f412dfaffc67f37b84de896f8d6999e87abb5a5f960fc8f39694ffd077",
+      "system": "Ni63-O64",
+      "routes": {
+        "upstream_cpu": {
+          "path": "harness_upstream_cpu/work/large3_example/Ni63-O64.dat",
+          "sha256": "86cbdee69e7c1bca72e0960e78477804ca9b04575bc2d577a483a885924f7565"
+        },
+        "fork_cpu": {
+          "path": "harness_fork_cpu/work/large3_example/Ni63-O64.dat",
+          "sha256": "86cbdee69e7c1bca72e0960e78477804ca9b04575bc2d577a483a885924f7565"
+        },
+        "fork_gpu": {
+          "path": "harness_fork_gpu/work/large3_example/Ni63-O64.dat",
+          "sha256": "9102ea21cf29ed8bc750d13304e527d78f70c2511d2a07bd1b1f38601fcffc10"
+        }
+      },
+      "reference_sha256": "341b723d3f523b9d16ed9571e8099e9aa2f9cabb6a16b5110834e473e7a97d4c"
+    },
+    {
+      "workload": "L3",
+      "name": "Pt500",
+      "source": "work/large3_example/Pt500.dat",
+      "raw": "raw/large3_example/Pt500.dat",
+      "sha256": "bb3458a7fa038453dab02fa137fad03c984ea47ca1ed5c0d365da09a2439d32d",
+      "system": "Pt500",
+      "routes": {
+        "upstream_cpu": {
+          "path": "harness_upstream_cpu/work/large3_example/Pt500.dat",
+          "sha256": "7fd4f972e3ffb1badb946d1b15249d50357732e7fb8f8841ab14d2cea94a9410"
+        },
+        "fork_cpu": {
+          "path": "harness_fork_cpu/work/large3_example/Pt500.dat",
+          "sha256": "7fd4f972e3ffb1badb946d1b15249d50357732e7fb8f8841ab14d2cea94a9410"
+        },
+        "fork_gpu": {
+          "path": "harness_fork_gpu/work/large3_example/Pt500.dat",
+          "sha256": "c82787e338eb118006082e9ad8cb1731ef3c4170286e18410f5aac770c8050d7"
+        }
+      },
+      "reference_sha256": "c4b25bb069a327dfe89836b519f3b926f9b90a401702d738958ea7c8f14356bb"
+    },
+    {
+      "workload": "L3",
+      "name": "Pt63",
+      "source": "work/large3_example/Pt63.dat",
+      "raw": "raw/large3_example/Pt63.dat",
+      "sha256": "6dd9c531e08fa822c0d75425dde8d991013abcd486f23e82e541536c740dc730",
+      "system": "Pt63",
+      "routes": {
+        "upstream_cpu": {
+          "path": "harness_upstream_cpu/work/large3_example/Pt63.dat",
+          "sha256": "6f9ee467839c88e39f087f717c6993ae9e72790d9e2c68b704147b6e3940882c"
+        },
+        "fork_cpu": {
+          "path": "harness_fork_cpu/work/large3_example/Pt63.dat",
+          "sha256": "6f9ee467839c88e39f087f717c6993ae9e72790d9e2c68b704147b6e3940882c"
+        },
+        "fork_gpu": {
+          "path": "harness_fork_gpu/work/large3_example/Pt63.dat",
+          "sha256": "8e9d50a9bc0479810a6ddbb572bc059277791d09dabc83b02dc794c2811170dc"
+        }
+      },
+      "reference_sha256": "e925f4e2e9d0455ed132475cccefe15b9b0522300c9ad6eb673aa034c4d31cb1"
+    },
+    {
+      "workload": "L3",
+      "name": "Si1280-LNO",
+      "source": "work/large3_example/Si1280-LNO.dat",
+      "raw": "raw/large3_example/Si1280-LNO.dat",
+      "sha256": "bfefadf1afc2f9fcf882d8f21b2f18b6f7310756b3b10f43d85525d1d73983d7",
+      "system": "Si1280-LNO",
+      "routes": {
+        "upstream_cpu": {
+          "path": "harness_upstream_cpu/work/large3_example/Si1280-LNO.dat",
+          "sha256": "ecd48f75664884a25dcaec8b52fda28479fe4aa2819c83cd9ddbb8a05a3f16cc"
+        },
+        "fork_cpu": {
+          "path": "harness_fork_cpu/work/large3_example/Si1280-LNO.dat",
+          "sha256": "ecd48f75664884a25dcaec8b52fda28479fe4aa2819c83cd9ddbb8a05a3f16cc"
+        },
+        "fork_gpu": {
+          "path": "harness_fork_gpu/work/large3_example/Si1280-LNO.dat",
+          "sha256": "5ed265131b6a5f9c14029b4eceede2f5162eb269b7e6321a9b9285a8d54752bf"
+        }
+      },
+      "reference_sha256": "f7dab82b044cbc91dea874a02f546ad1a5de5e9f0d62fa1d340dbf1d1b4629fc"
+    },
+    {
+      "workload": "L3",
+      "name": "SialicAcid",
+      "source": "work/large3_example/SialicAcid.dat",
+      "raw": "raw/large3_example/SialicAcid.dat",
+      "sha256": "68cf43bf86002cf43c948f75c8637af4b2159213df7c53c42019249cee7ed912",
+      "system": "SialicAcid",
+      "routes": {
+        "upstream_cpu": {
+          "path": "harness_upstream_cpu/work/large3_example/SialicAcid.dat",
+          "sha256": "1a06ca6db5dda269f48017f094ce00a2749dfc57bb16a2b0e6c5007a7e4311ad"
+        },
+        "fork_cpu": {
+          "path": "harness_fork_cpu/work/large3_example/SialicAcid.dat",
+          "sha256": "1a06ca6db5dda269f48017f094ce00a2749dfc57bb16a2b0e6c5007a7e4311ad"
+        },
+        "fork_gpu": {
+          "path": "harness_fork_gpu/work/large3_example/SialicAcid.dat",
+          "sha256": "260d15f49779498c618981055b7e1edfc267c133ebe993ae00d917bffb875b49"
+        }
+      },
+      "reference_sha256": "7c891ee43d3f7e1dc481994874439a42f426cd65da69d035b25b11e7896e684b"
+    },
+    {
+      "workload": "L3",
+      "name": "ZrB2_2x2",
+      "source": "work/large3_example/ZrB2_2x2.dat",
+      "raw": "raw/large3_example/ZrB2_2x2.dat",
+      "sha256": "9f8ed93d036f900bc8d8ac630266f6fd03dd8225fa16e10a67a32661d8102932",
+      "system": "ZrB2_2x2",
+      "routes": {
+        "upstream_cpu": {
+          "path": "harness_upstream_cpu/work/large3_example/ZrB2_2x2.dat",
+          "sha256": "46fe225fba08769b94a1f4bfdda314714380a340bac550840ca376914d6a9ad6"
+        },
+        "fork_cpu": {
+          "path": "harness_fork_cpu/work/large3_example/ZrB2_2x2.dat",
+          "sha256": "46fe225fba08769b94a1f4bfdda314714380a340bac550840ca376914d6a9ad6"
+        },
+        "fork_gpu": {
+          "path": "harness_fork_gpu/work/large3_example/ZrB2_2x2.dat",
+          "sha256": "294b9928d3514f2494e8f02f27251e360f73e34e5bd122d2b90a78a4f38dec12"
+        }
+      },
+      "reference_sha256": "e742620a0b58c6a3cc82366d45f5a3ec41f0bfc905b6530f0e4aca92e95962e1"
+    },
+    {
+      "workload": "L3",
+      "name": "nsV4Bz5",
+      "source": "work/large3_example/nsV4Bz5.dat",
+      "raw": "raw/large3_example/nsV4Bz5.dat",
+      "sha256": "47c29eb4b7523dfc96646db66388522f0f8294a06f12d003135e3026c99e1cf0",
+      "system": "nsV4Bz5",
+      "routes": {
+        "upstream_cpu": {
+          "path": "harness_upstream_cpu/work/large3_example/nsV4Bz5.dat",
+          "sha256": "886076725c43aaaad11dbf44deaeffc2987befb1555bf4f7be20c6b3dbf853c5"
+        },
+        "fork_cpu": {
+          "path": "harness_fork_cpu/work/large3_example/nsV4Bz5.dat",
+          "sha256": "886076725c43aaaad11dbf44deaeffc2987befb1555bf4f7be20c6b3dbf853c5"
+        },
+        "fork_gpu": {
+          "path": "harness_fork_gpu/work/large3_example/nsV4Bz5.dat",
+          "sha256": "cb6cf90c5b29950211f47ebcfc5b35004192f061c31ae2b8797b26ed7616c617"
+        }
+      },
+      "reference_sha256": "21b5158c60fd3ae50c37c53a23b7b42da2d148a68f43a5466f74589acb37d94e"
+    },
+    {
+      "workload": "sidia333_nc_cluster",
+      "name": "sidia333_nc_cluster",
+      "source": "benchmarks/inputs/sidia333_nc_cluster.dat",
+      "raw": "raw/named/sidia333_nc_cluster.dat",
+      "sha256": "9c5466abf560c6481b83ec9a51976f4b218856a1da330e5a209b9041239decd0",
+      "system": "sidia333_nc_cluster",
+      "routes": {
+        "upstream_cpu": {
+          "path": "harness_upstream_cpu/work/named/sidia333_nc_cluster.dat",
+          "sha256": "ae3dd2990988682c3fe4363422d29df79d9ed04ebdfa822a2cd8c73629151062"
+        },
+        "fork_cpu": {
+          "path": "harness_fork_cpu/work/named/sidia333_nc_cluster.dat",
+          "sha256": "ae3dd2990988682c3fe4363422d29df79d9ed04ebdfa822a2cd8c73629151062"
+        },
+        "fork_gpu": {
+          "path": "harness_fork_gpu/work/named/sidia333_nc_cluster.dat",
+          "sha256": "2a85be0b9bd6faa5c93cbde05ff29df17453f96a615d53d40b080e03e19064c7"
+        }
+      }
+    },
+    {
+      "workload": "cghelgeo",
+      "name": "cghelgeo",
+      "source": "benchmarks/inputs/cghelgeo.dat",
+      "raw": "raw/named/cghelgeo.dat",
+      "sha256": "9c3958e470820ab2182af859b4749a0f3375c41d1a56ac013e0f398b441d0ff7",
+      "system": "cghelgeo",
+      "routes": {
+        "upstream_cpu": {
+          "path": "harness_upstream_cpu/work/named/cghelgeo.dat",
+          "sha256": "72eab0cc8b8ee4c6fcffbbad4fccd1f46faae96b7a788305c5dd04eca160e011"
+        },
+        "fork_cpu": {
+          "path": "harness_fork_cpu/work/named/cghelgeo.dat",
+          "sha256": "72eab0cc8b8ee4c6fcffbbad4fccd1f46faae96b7a788305c5dd04eca160e011"
+        },
+        "fork_gpu": {
+          "path": "harness_fork_gpu/work/named/cghelgeo.dat",
+          "sha256": "704bbd4fdd85c6e5aa9c1ef4e641e953d379dd85c0f275f69dbd410fd32703b8"
+        }
+      }
+    }
+  ],
+  "binaries": {
+    "fork_gpu": {
+      "openmx": "d1513fa2539bdac2264b1b346ba8541dfabb6bfbcbf2fb5f3b810abc964651b1",
+      "libopenmx_core.so": "ce99ecfda97573a0991fbc6c3ffed3f3d28da5e24b90b69b4e9d78c53290be94",
+      "libopenmx_host_simd.so": "889b483d8cffd5d00949ff5172dd9b16665b2f019ea614f677a719fe637bf9ca"
+    },
+    "fork_cpu": {
+      "openmx": "d1513fa2539bdac2264b1b346ba8541dfabb6bfbcbf2fb5f3b810abc964651b1",
+      "libopenmx_core.so": "ce99ecfda97573a0991fbc6c3ffed3f3d28da5e24b90b69b4e9d78c53290be94",
+      "libopenmx_host_simd.so": "889b483d8cffd5d00949ff5172dd9b16665b2f019ea614f677a719fe637bf9ca"
+    },
+    "upstream_cpu": {
+      "openmx": "dccf49f4d3fcbd68b4cece301c355f7994d86b700bd575d11bfea96eddf32a69"
+    }
+  },
+  "data": [
+    {
+      "path": "data/PAO/As7.0.pao",
+      "sha256": "5086cbd85771b1a58aa181cd1e4181b7e865c855ef84e0bc7e7fc1cee69eb4b8"
+    },
+    {
+      "path": "data/PAO/B7.0.pao",
+      "sha256": "be54b87052bf5e94f9878a92e2f66692af13168bdbd83f3d4afd1bf1a9c19db7"
+    },
+    {
+      "path": "data/PAO/C5.0.pao",
+      "sha256": "03f7f3843ea89c87106a861cdee4a87d9324a948e1c41f101cc36c4b0e999934"
+    },
+    {
+      "path": "data/PAO/C6.0.pao",
+      "sha256": "1442a834dbc2b9b55e8f11a20734c7b77765fa4e05ca3e1b1f004da46bfaaef4"
+    },
+    {
+      "path": "data/PAO/C7.0.pao",
+      "sha256": "d6e270f980f6ede1d22c31ae60ccd2e900f5d9709caeca4b8918dd8a17910d22"
+    },
+    {
+      "path": "data/PAO/Cr8.0.pao",
+      "sha256": "f2518dc2dee792c62591fbff11a3712ca7e97b28c0d23bd2c95eba788b4cba10"
+    },
+    {
+      "path": "data/PAO/Fe6.0S.pao",
+      "sha256": "e42ab5f418dd9f20ead6204843b9ff7495f43ed94b3566376b6e7ba3c5562b5b"
+    },
+    {
+      "path": "data/PAO/Ga7.0.pao",
+      "sha256": "56c7dd5801872438caec84801813a18c91ebc66f3d66beb2872d32d2252a78ea"
+    },
+    {
+      "path": "data/PAO/H5.0.pao",
+      "sha256": "31b4a1bb098e57fdde6c5158596929362f304909132dc9eeb2cc389c08fbbf46"
+    },
+    {
+      "path": "data/PAO/H6.0.pao",
+      "sha256": "53ad2af2e281eef9320500b17176e612e607b01d7aca23cae644fa03965a1639"
+    },
+    {
+      "path": "data/PAO/H7.0.pao",
+      "sha256": "878ed02256724be95a08e316f1eb567c0c05728cedeef20c8ae474b1bf109d6c"
+    },
+    {
+      "path": "data/PAO/Mn6.0.pao",
+      "sha256": "6f703434c7520d67cd9145de2e40ed98382f4fabfe462c580297998df8907d31"
+    },
+    {
+      "path": "data/PAO/Mn8.0.pao",
+      "sha256": "2b245c47e822a8ca267a66f8f6f35e96f5b9589b746999795cd3f6e88c32efc9"
+    },
+    {
+      "path": "data/PAO/N5.0.pao",
+      "sha256": "d975949f913191dc18e22ccc9b0a5b095369f302ae31316497b8932719437a82"
+    },
+    {
+      "path": "data/PAO/N6.0.pao",
+      "sha256": "063efc7ac0674c36e2ccb2c2ba0bc3aa953c94f39046b0c2acc4cf514c048ff7"
+    },
+    {
+      "path": "data/PAO/N7.0.pao",
+      "sha256": "0661849a5b5d5e3b7aa3d13a7ed609e3d77a2ac21e75454b638938ab8ae431d6"
+    },
+    {
+      "path": "data/PAO/Ni6.0S.pao",
+      "sha256": "7db801d0a65d9b06dfa1de2347cb6da8d9a021ad1886d47f7752ca9c770ad057"
+    },
+    {
+      "path": "data/PAO/O5.0.pao",
+      "sha256": "2d33f5ce0ea9b6ef4230aba6e2d9761194aff800db3b1465cda090c235d0d40f"
+    },
+    {
+      "path": "data/PAO/O6.0.pao",
+      "sha256": "ed4df18367ad3e4229a6028583d3a2ecd103076a634db86fd5e82f7075eb1cf1"
+    },
+    {
+      "path": "data/PAO/O7.0.pao",
+      "sha256": "7411fc9c218ee947234bcc15a1f3ff12f48954eb8c5ce4c617436f8671810ec4"
+    },
+    {
+      "path": "data/PAO/P7.0.pao",
+      "sha256": "9ae4ec8e1cddf035464c2b9cb7d0fccbffb40f118114b225e3106ac5cc8f1314"
+    },
+    {
+      "path": "data/PAO/Pt7.0.pao",
+      "sha256": "6b538646defba7371d1a8ce6e2b60f5d962642fc1c8dfc2442ab69b48fb0c896"
+    },
+    {
+      "path": "data/PAO/Si7.0.pao",
+      "sha256": "24c45d323ad0e4f652776791c0dd9a4c1357d7e63b91333503634401352f843f"
+    },
+    {
+      "path": "data/PAO/Si8.0.pao",
+      "sha256": "7e24de7e8c321706590b7c1da934c6353997db68f3d40e08666f963ec1f330bb"
+    },
+    {
+      "path": "data/PAO/Ti7.0.pao",
+      "sha256": "5ed62c2e31bc8409dd6fdce207698bd90fa492abf719bb415e4ca0b39c23feca"
+    },
+    {
+      "path": "data/PAO/V8.0.pao",
+      "sha256": "41c7e9a897130426ca24b5549eb64589e913ff0e9306b2f12d1f66d3676fa50b"
+    },
+    {
+      "path": "data/PAO/Zr7.0.pao",
+      "sha256": "091bde9d6f0ad151991da731b36d3d41736bf6840ec6f4c9c88d3ed36116eb7f"
+    },
+    {
+      "path": "data/VPS/As_PBE19.vps",
+      "sha256": "82a13ff8563f308440e63ccd551012c7a06eedab6cef6522a20997c9755dd541"
+    },
+    {
+      "path": "data/VPS/B_PBE19.vps",
+      "sha256": "ceda8e581a2bc1d9eae39d7c7af8a23bb2d40009a14e4a8b0c0c8924e1900fde"
+    },
+    {
+      "path": "data/VPS/C_CA19.vps",
+      "sha256": "1bb1fd54ad8171745b44f3a738c2579f251198f20c777e72d5c35fbc00e49200"
+    },
+    {
+      "path": "data/VPS/C_PBE19.vps",
+      "sha256": "4b9c78eb72be25ca46366b8fd39c74ae7172d7db9e77b29782a42f71901b38a7"
+    },
+    {
+      "path": "data/VPS/Cr_CA19.vps",
+      "sha256": "ff8d763cf7b0814e82da82b26031c8383674df17e1ed5db6319c7f2bf140f125"
+    },
+    {
+      "path": "data/VPS/Fe_PBE19S.vps",
+      "sha256": "e136a81b91517301f6e4124a8f347487ac4639427d842b15088c9ff99b0061e7"
+    },
+    {
+      "path": "data/VPS/Ga_PBE19.vps",
+      "sha256": "52825d621c3c4d8ea9ecd773630decc85acfa5b1849cb3b3c2a032d3867a3aec"
+    },
+    {
+      "path": "data/VPS/H_CA19.vps",
+      "sha256": "71b331412a798c98a9a0c9853f37f2715298621bd271aa027a2031938ea93690"
+    },
+    {
+      "path": "data/VPS/H_PBE19.vps",
+      "sha256": "cdb7685cc3f34bd2bf81f809594bb4371728476d1a624dca291c4b9ff361c6fa"
+    },
+    {
+      "path": "data/VPS/Mn_PBE19.vps",
+      "sha256": "5a06a9c926b9b586375647ab08509147339529cb2685ffe364ee1babf3e32867"
+    },
+    {
+      "path": "data/VPS/N_PBE19.vps",
+      "sha256": "904c1c6e59a86448830178681a39cd3c4d14fb2daf9be8f4742673ddfc8e3466"
+    },
+    {
+      "path": "data/VPS/Ni_CA19S.vps",
+      "sha256": "43daac35da9cd0a33c7f670cf4d8fcb1e464f054b7670dab4772508bd8302a35"
+    },
+    {
+      "path": "data/VPS/O_CA19.vps",
+      "sha256": "d5c892ccb655e953da945adf2b8f5fdbc012e7fcab2655a1931ea2e6e3b59af1"
+    },
+    {
+      "path": "data/VPS/O_PBE19.vps",
+      "sha256": "afb469c2da38c80854b1bdf7df1f6da6dc8d7c874a75f0bf7c294a96046410fc"
+    },
+    {
+      "path": "data/VPS/P_PBE19.vps",
+      "sha256": "91a543cf3f29b743133c80ff6442851a9be8adfb215fd571d56a169cf2f740b6"
+    },
+    {
+      "path": "data/VPS/Pt_PBE19.vps",
+      "sha256": "f1fa6e677a2f6f101ade6d728b31486d4720b5aca94fac49b3bf47b24f679ff4"
+    },
+    {
+      "path": "data/VPS/Si_PBE19.vps",
+      "sha256": "9a274b3f50cd247d53e735b8ad1669d491286934b61c295bcd6e8b6ba555d80a"
+    },
+    {
+      "path": "data/VPS/Ti_PBE19.vps",
+      "sha256": "12a68ec05dbae219e99178514311f2bce6fcff6e42eb9b38b1ce6cd2e2b5c570"
+    },
+    {
+      "path": "data/VPS/V_PBE19.vps",
+      "sha256": "6b4b5cf6d2858a9d02c7aa692aeeafc82b8f375ef16c869cf13ea3feb84b45f8"
+    },
+    {
+      "path": "data/VPS/Zr_PBE19.vps",
+      "sha256": "fa1bd0f8c7e304519b6cd4244f20fe1590018013862f627396bccfb2fd5413ba"
+    }
+  ],
+  "runtime": {
+    "UCX_TLS": "self,cma,rc",
+    "UCX_RCACHE_ENABLE": "n",
+    "UCX_MEMTYPE_CACHE": "default",
+    "note": "Explicit per-rank CPU binding, three OpenMP and BLIS threads, GPU rank map block. Numerical code and production binary match the prior validated optimized build.",
+    "HSA_ENABLE_SDMA": "1",
+    "HSA_NO_SCRATCH_RECLAIM": "1",
+    "scratch_note": "Use the same previously validated HSA_NO_SCRATCH_RECLAIM=1 setting.",
+    "BLIS_NUM_THREADS": "3",
+    "OMP_NUM_THREADS": "3",
+    "BLAS_LIBRARY": "/system/apps/rhel/aocl/5.1.0/aocc/lib/libblis-mt.so.5",
+    "blas_note": "BLIS_NUM_THREADS=3 is preserved by the suite helper and checked in every MPI rank plus the actual BLAS provider probe.",
+    "blas_library_sha256": "489b22f5305ff475503986ad932b4553771139376d592d764bca00e0209d30a0",
+    "blas_library_realpath": "/system/apps/rhel/9.6-202602/aocl/5.1.0/aocc/lib_LP64/libblis-mt.so.5.1.0",
+    "elpa": {
+      "upstream_cpu": {
+        "version": "2018.05.001",
+        "openmp": true
+      },
+      "fork": {
+        "version": "2026.02.002",
+        "openmp": true,
+        "cpu_threads": 3,
+        "gpu_host_threads": 1,
+        "mpi_thread_level": "MPI_THREAD_SERIALIZED"
+      }
+    },
+    "blas_build_selection": "AOCL threaded libblis-mt is selected at link time; existing production preloading is retained.",
+    "OPENMX_GPU": "1",
+    "OPENMX_GPU_RANK_MAP": "block",
+    "OPENBLAS_NUM_THREADS": "1",
+    "MAGMA_NUM_THREADS": "1",
+    "HSA_XNACK": "1",
+    "HSA_OVERRIDE_CPU_AFFINITY_DEBUG": "0",
+    "LIBOMPTARGET_MEMORY_MANAGER_THRESHOLD": "0"
+  },
+  "current_checkout": "c6648c294c174e95ef24946360cd49f887d46468",
+  "scope": "Fresh GPU S/L/L2/L3/sidia333/cghelgeo and fresh fork/upstream CPU L3; reuse completed S/L/named CPU measurements. User explicitly deferred CPU L2; L2 is GPU-only.",
+  "runtime_source": "/work/GPU2026/dc1394/openmx4.0_gpu/work/codex_sirius_benchmark_20261031",
+  "compiled_source_manifest": {
+    "base_commit": "08fd12679004e6188944fb39dd30c432100a10db",
+    "files": {
+      "openmx": {
+        "source": "/work/GPU2026/dc1394/openmx4.0_gpu/build/sirius-hip-threaded/openmx",
+        "sha256": "d1513fa2539bdac2264b1b346ba8541dfabb6bfbcbf2fb5f3b810abc964651b1"
+      },
+      "libopenmx_core.so": {
+        "source": "/work/GPU2026/dc1394/openmx4.0_gpu/build/sirius-hip-threaded/core/libopenmx_core.so",
+        "sha256": "ce99ecfda97573a0991fbc6c3ffed3f3d28da5e24b90b69b4e9d78c53290be94"
+      },
+      "libopenmx_host_simd.so": {
+        "source": "/work/GPU2026/dc1394/openmx4.0_gpu/build/sirius-hip-threaded/core/host-simd/lib/libopenmx_host_simd.so",
+        "sha256": "889b483d8cffd5d00949ff5172dd9b16665b2f019ea614f677a719fe637bf9ca"
+      }
+    },
+    "source_files": {
+      "source/backends/hip/tests/run_mi300a_build_cache_cpu.py": "b83c3ca93ed4898ecfda64437cb010e5f466a8185210f5c325837e1653131ffb",
+      "source/backends/hip/tests/run_mi300a_dm_waves_cpu.py": "09187cd577c5c004fef4edfd1bfe88c95f6232eaebb385cfe6ed9e359fee6026",
+      "source/backends/hip/tests/run_mi300a_k_waves_cpu.py": "26e198bd8af6f075c31c122f53d57a4e209ebe4178a329fee02babfdc17e36ac",
+      "source/openmx_gpu_k_waves.h": "c33fd1bc51c901cd917436ef8f847aaf9e5e360771d721004385376c0a957ba6",
+      "CMakeLists.txt": "898303ed06095a2bf2b796594d5ea6f19fa6c050fcd307d2f255d0cfbd11038c",
+      "doc/OpenMX40_GPU_implementation_en.html": "d561f520cdd81747a383d4db99bb15b433ee42d53ed87e9f2defc4c3b2e758d7",
+      "doc/OpenMX40_GPU_implementation_ja.html": "7ea67c8ccd63d0b10289fef3cebd5c9c6581ba5b012902b7b5bba876d0ab7eed",
+      "doc/environment_variables.json": "a8913561589b7883e1443e21184a23c3c86abf4de27a346e093d9096df2f0299",
+      "docs/ENVIRONMENT_VARIABLES.md": "725cc086fad7af4a3dd78c4ee65d158455d5de00e57957bd2604f66e17ad7b26",
+      "source/backends/hip/sources.json": "45b95af6d506708611bd454c79cfa1af7027ace64f7e321be86d70fe7df9589f",
+      "source/backends/hip/src/Band_DFT_NonCol.c": "ce50d410fe5075a5fda268f5de442f5ea3ac6b3e671c262c4c5e4ba936d91ab5",
+      "source/backends/hip/src/Cluster_DFT_NonCol_dm_hip.cu": "d33bed345b7f603796d671e3e200dc8896cc3f29f3ef50e511b24a67b4376a9d",
+      "source/backends/hip/src/magma_openmx.cu": "7719b7d7a704fd730af7dbd32049fa0cb4ace91d8047d968d4f212dd62ee82e1",
+      "source/backends/hip/tests/gpusolver_wrapper_smoke.c": "3df5dd946b7e25e95750495bd3845aa8ac831adb75da3885dcb0fbf628516dc4",
+      "source/backends/hip/tests/run_gpusolver_smoke.sh": "a7a8f4a96cbd9d32a666d76028af054b79b68575aa7e827998bc68275b8f5a0f",
+      "source/openmx_env_registry.h": "3b90d260a29d847b789b233044e75c7427691ba6f08d04b62b27648ac2f4d3ec"
+    },
+    "source_commit": "5925e71a8ddeea57db7f926145e1afc5da15ef7c"
+  },
+  "checkout_commit": "c6648c294c174e95ef24946360cd49f887d46468",
+  "fresh_gpu_measurement": true,
+  "max_reserved_points": 98,
+  "path_resolution": {
+    "raw_inputs_and_data": "relative to runtime_source (frozen previous campaign assets)",
+    "input.routes.fork_gpu.path": "prepared input relative to runtime_source; copied or symlinked into this campaign",
+    "binaries": "relative to this campaign binaries/",
+    "compiled_source_manifest.source_files": "relative to repository root"
+  },
+  "suite_helpers": {
+    "fork_gpu": {
+      "path": "harness/tools/run_gpu_suites.py",
+      "sha256": "142dbe07eb33a607aca96e01af7a28ea25f9510b618706ee7ef28f1e148c6274"
+    }
+  },
+  "cpu_references": {
+    "directory": "work/codex_sirius_benchmark_20261031/runs",
+    "routes": [
+      "upstream_cpu",
+      "fork_cpu"
+    ],
+    "reused_workloads": [
+      "S",
+      "L",
+      "sidia333_nc_cluster",
+      "cghelgeo"
+    ],
+    "new_cpu_measurement": false
+  },
+  "spending_limit_points": 100,
+  "additional_cpu_scope": {
+    "workloads": [
+      "L3"
+    ],
+    "routes": [
+      "fork_cpu",
+      "upstream_cpu"
+    ],
+    "fork_cpu_source_commit": "5925e71a8ddeea57db7f926145e1afc5da15ef7c",
+    "upstream_cpu_source": "official OpenMX 4.0 + official 4.0.1 patches",
+    "L2": "Explicitly deferred by user; GPU route only."
+  },
+  "campaign_status": "completed",
+  "fresh_measurements": {
+    "GPU_workloads": 6,
+    "GPU_cases": 59,
+    "CPU_L3_routes": 2,
+    "CPU_L3_case_instances": 40,
+    "reused_CPU_S_L_named_workloads": 8
+  },
+  "peak_actual_plus_reserved_points": 98.75,
+  "actual_cost_upper_bound_points": 61.47
+}

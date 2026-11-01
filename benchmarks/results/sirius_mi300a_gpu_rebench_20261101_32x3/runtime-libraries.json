@@ -1,0 +1,10 @@
+[
+  {
+    "path": "/opt/rocm-7.2.0/lib/llvm/lib/libomp.so",
+    "sha256": "f6398dcfeb8d7f5e9f73d1e897bddb9073a210bb29ad3b5048a499650837f60c"
+  },
+  {
+    "path": "/system/apps/rhel/9.6-202602/aocl/5.1.0/aocc/lib_LP64/libblis-mt.so.5.1.0",
+    "sha256": "489b22f5305ff475503986ad932b4553771139376d592d764bca00e0209d30a0"
+  }
+]

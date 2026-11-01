@@ -1,0 +1,78 @@
+{
+  "source": "benchmarks/results/pegasus_h100_20261031/accuracy.csv",
+  "note": "Historical NVIDIA evidence only; not matched Sirius CPU tests; does not identify the cause of a new force discrepancy.",
+  "rows": [
+    {
+      "comparison": "cpu-vs-bundled-reference",
+      "benchmark": "L3",
+      "case": "Fe1000",
+      "repeat": "1",
+      "energy_difference_ha": "6.300979293882847e-09",
+      "max_force_difference_ha_bohr": "1.4128000000034231e-08",
+      "max_position_difference": "0.0",
+      "passed": "True",
+      "baseline": "inputs/large3_example/Fe1000.out",
+      "candidate": "runs/L3-cpu-n4-r1/Fe1000.out"
+    },
+    {
+      "comparison": "gpu-vs-paired-cpu",
+      "benchmark": "L3",
+      "case": "Fe1000",
+      "repeat": "1",
+      "energy_difference_ha": "5.0495145842432976e-09",
+      "max_force_difference_ha_bohr": "2.3367600000000525e-07",
+      "max_position_difference": "0.0",
+      "passed": "False",
+      "baseline": "runs/L3-cpu-n4-r1/Fe1000.out",
+      "candidate": "runs/L3-gpu-n4-r1/Fe1000.out"
+    },
+    {
+      "comparison": "gpu-vs-bundled-reference",
+      "benchmark": "L3",
+      "case": "Fe1000",
+      "repeat": "1",
+      "energy_difference_ha": "1.2514647096395493e-09",
+      "max_force_difference_ha_bohr": "2.2362499999999737e-07",
+      "max_position_difference": "0.0",
+      "passed": "False",
+      "baseline": "inputs/large3_example/Fe1000.out",
+      "candidate": "runs/L3-gpu-n4-r1/Fe1000.out"
+    },
+    {
+      "comparison": "cpu-vs-bundled-reference",
+      "benchmark": "L3",
+      "case": "Ni63-O64",
+      "repeat": "1",
+      "energy_difference_ha": "2.724846126511693e-09",
+      "max_force_difference_ha_bohr": "9.41433799999964e-06",
+      "max_position_difference": "0.0",
+      "passed": "False",
+      "baseline": "inputs/large3_example/Ni63-O64.out",
+      "candidate": "runs/L3-cpu-n4-r1/Ni63-O64.out"
+    },
+    {
+      "comparison": "gpu-vs-paired-cpu",
+      "benchmark": "L3",
+      "case": "Ni63-O64",
+      "repeat": "1",
+      "energy_difference_ha": "2.306478563696146e-09",
+      "max_force_difference_ha_bohr": "3.6644709999998637e-06",
+      "max_position_difference": "0.0",
+      "passed": "False",
+      "baseline": "runs/L3-cpu-n4-r1/Ni63-O64.out",
+      "candidate": "runs/L3-gpu-n4-r1/Ni63-O64.out"
+    },
+    {
+      "comparison": "gpu-vs-bundled-reference",
+      "benchmark": "L3",
+      "case": "Ni63-O64",
+      "repeat": "1",
+      "energy_difference_ha": "4.18367562815547e-10",
+      "max_force_difference_ha_bohr": "1.1349496000000094e-05",
+      "max_position_difference": "0.0",
+      "passed": "False",
+      "baseline": "inputs/large3_example/Ni63-O64.out",
+      "candidate": "runs/L3-gpu-n4-r1/Ni63-O64.out"
+    }
+  ]
+}

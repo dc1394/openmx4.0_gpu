@@ -2059,9 +2059,11 @@ remains available separately.
 
 #### Measurement conditions
 
-Every measurement used **one physical node with four MI300A APUs**
-(96 CPU cores and four GPUs), **32 MPI ranks × 3 OpenMP threads**,
-and three disjoint CPU cores per rank. All three configurations used
+The S/L suites and the two named inputs use **one physical node with four
+MI300A APUs** (96 CPU cores and four GPUs), **32 MPI ranks × 3 OpenMP
+threads**. L2/L3 use **two physical nodes and eight APUs**, with **64 MPI
+ranks total and 32 ranks × 3 threads per node**. Every rank uses three
+disjoint CPU cores. All three configurations used
 AMD ROCm 7.2.0 Clang/flang, Open MPI 5.0.10 and AOCL 5.1.0, with the
 OpenMP BLIS provider set to three threads per rank.
 
@@ -2070,34 +2072,46 @@ The upstream CPU executable is official OpenMX 4.0 plus the official
 path uses `OPENMX_GPU=0` and `scf.eigen.lib elpa2`; the HIP GPU path uses
 `OPENMX_GPU=1` and ordinary `scf.eigen.lib gpusolver`. The fork uses
 OpenMP-enabled ELPA 2026.02.002, with three threads for CPU handles.
-The CPU measurements are reused from 2026-10-31: the fork CPU executable
-is frozen at `3e2f5c73`. All four GPU workloads were measured again on
-2026-11-01 using optimized code `5925e71a`, with the same Core/SIMD libraries.
-The lifecycle-test correction `25b45161` changes no numerical code and passes
-all 18 CI jobs. Executable/library/source hashes are in the
-[new manifest](benchmarks/results/sirius_mi300a_ggff_20261101/manifest.json);
-the [previous manifest](benchmarks/results/sirius_mi300a_20261031_32x3/manifest.json)
-retains the earlier `73c4a2c0` GPU measurements for comparison.
+The S/L/named CPU measurements are reused from 2026-10-31: the fork CPU executable
+is frozen at `3e2f5c73`. All six GPU workloads were freshly measured on
+2026-11-01 using optimized numerical code `5925e71a` and checkout
+`c6648c29`, with the same frozen executable and Core/SIMD libraries as
+the earlier optimization validation. The two CPU L3 suites were additionally
+measured on two nodes; the eight S/L/named CPU workloads remain reused.
+Executable/library/source and all 59 input hashes are in the
+[new manifest](benchmarks/results/sirius_mi300a_gpu_rebench_20261101_32x3/manifest.json).
+The [earlier optimized measurement](benchmarks/results/sirius_mi300a_ggff_20261101/manifest.json)
+and [2026-10-31 measurement](benchmarks/results/sirius_mi300a_20261031_32x3/manifest.json)
+remain available for comparison.
+
+The [CPU reuse audit](benchmarks/results/sirius_mi300a_gpu_rebench_20261101_32x3/cpu-reuse-assessment.json)
+confirms the corrected CPU ELPA/BLAS teams and unchanged Core/SIMD hashes.
+The GPU changes do not change ordinary `elpa2` dense solves. The common
+noncollinear band dispatch adds one small MPI reduction per SCF step;
+the historical CPU executable is therefore disclosed explicitly, without
+claiming byte-identical CPU execution or fresh S/L/named CPU timings.
+The fresh fork CPU L3 uses the same optimized executable as the GPU route.
 
 #### Overall results
 
 Suite totals sum native per-case result rows; named inputs use output
 `Elapsed.Time`. Each value is one measurement. Launcher wall times are
-retained separately. L2/L3 are outside the completed scope.
+retained separately. L3 has fresh timings for all three configurations;
+L2 has a fresh GPU total and no completed CPU total.
 
 | Test | Nodes | Upstream CPU (s) | Fork CPU (s) | Fork GPU (s) | Upstream / Fork CPU | Upstream / GPU | Fork CPU / GPU |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| `-runtest` (14 cases) | 1 | 61.970 | 43.580 | 153.200 | 1.422 | 0.405 | 0.284 |
-| `-runtestL` (16 cases) | 1 | 2219.350 | 1533.410 | 2187.490 | 1.447 | 1.015 | 0.701 |
-| `-runtestL2` (7 cases) | — | — | — | — | — | — | — |
-| `-runtestL3` (20 cases) | — | — | — | — | — | — | — |
-| `sidia333_nc_cluster.dat` | 1 | 247.520 | 192.886 | 126.599 | 1.283 | 1.955 | 1.524 |
-| `cghelgeo.dat` | 1 | 860.989 | 792.170 | 332.392 | 1.087 | 2.590 | 2.383 |
+| `-runtest` (14 cases) | 1 | 61.970 | 43.580 | 126.480 | 1.422 | 0.490 | 0.345 |
+| `-runtestL` (16 cases) | 1 | 2219.350 | 1533.410 | 2173.690 | 1.447 | 1.021 | 0.705 |
+| `-runtestL2` (7 cases) | 2 | — | — | 20325.750 | — | — | — |
+| `-runtestL3` (20 cases) | 2 | 2526.620 | 1707.120 | 1602.770 | 1.480 | 1.576 | 1.065 |
+| `sidia333_nc_cluster.dat` | 1 | 247.520 | 192.886 | 120.946 | 1.283 | 2.047 | 1.595 |
+| `cghelgeo.dat` | 1 | 860.989 | 792.170 | 362.277 | 1.087 | 2.377 | 2.187 |
 
 #### MI300A optimization
 
-GGFF completed in **287.725 s**, compared with
-**1161.923 s** previously (**4.04×** faster); both use
+GGFF completed in **268.509 s**, compared with
+**1161.923 s** before optimization (**4.33×** faster); the fresh run uses
 101 SCF iterations. A separate standalone full run took **304.061 s**,
 with energy/force agreement checked against all three previous routes.
 
@@ -2110,12 +2124,12 @@ the original collective recovery path. Radeon keeps its existing policies;
 Radeon validation here covers gfx1200 compilation and policy models, with
 no Radeon hardware timing claim.
 
-| Workload | Previous HIP (s) | Optimized HIP (s) | Speedup |
+| Workload | Previous HIP (s) | Fresh optimized HIP (s) | Speedup |
 | --- | ---: | ---: | ---: |
-| `-runtest` (14 cases) | 140.310 | 153.200 | 0.916 |
-| `-runtestL` (16 cases) | 3032.940 | 2187.490 | 1.386 |
-| `sidia333_nc_cluster.dat` | 133.143 | 126.599 | 1.052 |
-| `cghelgeo.dat` | 344.113 | 332.392 | 1.035 |
+| `-runtest` (14 cases) | 140.310 | 126.480 | 1.109 |
+| `-runtestL` (16 cases) | 3032.940 | 2173.690 | 1.395 |
+| `sidia333_nc_cluster.dat` | 133.143 | 120.946 | 1.101 |
+| `cghelgeo.dat` | 344.113 | 362.277 | 0.950 |
 
 The separate matched S control on node a04 measured old/new/old
 **144.42 / 144.76 / 140.03 s**. The historical S slowdown was not reproduced
@@ -2133,39 +2147,39 @@ variation. Full controls and ablations are in the measurement record below.
 
 | Input | Upstream CPU (s) | Fork CPU (s) | Fork GPU (s) | Upstream / Fork CPU | Upstream / GPU | Fork CPU / GPU |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Benzene | 2.900 | 2.310 | 8.930 | 1.255 | 0.325 | 0.259 |
-| C60 | 5.110 | 4.830 | 8.740 | 1.058 | 0.585 | 0.553 |
-| CO | 6.140 | 5.190 | 55.440 | 1.183 | 0.111 | 0.094 |
-| Cr2 | 4.460 | 3.230 | 6.860 | 1.381 | 0.650 | 0.471 |
-| Crys-MnO | 8.170 | 5.110 | 11.830 | 1.599 | 0.691 | 0.432 |
-| GaAs | 10.980 | 6.720 | 9.100 | 1.634 | 1.207 | 0.738 |
-| Glycine | 2.730 | 2.050 | 6.270 | 1.332 | 0.435 | 0.327 |
-| Graphite4 | 2.300 | 1.090 | 4.020 | 2.110 | 0.572 | 0.271 |
-| H2O | 2.440 | 1.460 | 4.550 | 1.671 | 0.536 | 0.321 |
-| H2O-EF | 2.420 | 1.630 | 4.790 | 1.485 | 0.505 | 0.340 |
-| HMn | 5.810 | 4.450 | 16.390 | 1.306 | 0.354 | 0.272 |
-| Methane | 1.730 | 1.080 | 4.120 | 1.602 | 0.420 | 0.262 |
-| Mol_MnO | 4.320 | 3.100 | 9.820 | 1.394 | 0.440 | 0.316 |
-| Ndia2 | 2.460 | 1.330 | 2.340 | 1.850 | 1.051 | 0.568 |
-| **Total** | **61.970** | **43.580** | **153.200** | **1.422** | **0.405** | **0.284** |
+| Benzene | 2.900 | 2.310 | 7.090 | 1.255 | 0.409 | 0.326 |
+| C60 | 5.110 | 4.830 | 8.470 | 1.058 | 0.603 | 0.570 |
+| CO | 6.140 | 5.190 | 42.600 | 1.183 | 0.144 | 0.122 |
+| Cr2 | 4.460 | 3.230 | 5.350 | 1.381 | 0.834 | 0.604 |
+| Crys-MnO | 8.170 | 5.110 | 9.020 | 1.599 | 0.906 | 0.567 |
+| GaAs | 10.980 | 6.720 | 8.340 | 1.634 | 1.317 | 0.806 |
+| Glycine | 2.730 | 2.050 | 5.500 | 1.332 | 0.496 | 0.373 |
+| Graphite4 | 2.300 | 1.090 | 3.620 | 2.110 | 0.635 | 0.301 |
+| H2O-EF | 2.420 | 1.630 | 3.870 | 1.485 | 0.625 | 0.421 |
+| H2O | 2.440 | 1.460 | 3.830 | 1.671 | 0.637 | 0.381 |
+| HMn | 5.810 | 4.450 | 14.570 | 1.306 | 0.399 | 0.305 |
+| Methane | 1.730 | 1.080 | 3.180 | 1.602 | 0.544 | 0.340 |
+| Mol_MnO | 4.320 | 3.100 | 9.220 | 1.394 | 0.469 | 0.336 |
+| Ndia2 | 2.460 | 1.330 | 1.820 | 1.850 | 1.352 | 0.731 |
+| **Total** | **61.970** | **43.580** | **126.480** | **1.422** | **0.490** | **0.345** |
 
 <details>
 <summary>SCF counts and numerical checks: -runtest (14 cases)</summary>
 
 | Input | SCF steps (upstream / fork CPU / GPU) | Max abs ΔE (Ha) | Max abs ΔF (Ha/bohr) | Check |
 | --- | --- | ---: | ---: | --- |
-| Benzene | 19 / 19 / 19 | 9.948e-13 | 0.000e+00 | PASS |
-| C60 | 27 / 27 / 27 | 2.905e-11 | 1.000e-12 | PASS |
+| Benzene | 19 / 19 / 19 | 0.000e+00 | 0.000e+00 | PASS |
+| C60 | 27 / 27 / 27 | 2.802e-11 | 1.000e-12 | PASS |
 | CO | 182 / 182 / 182 | 0.000e+00 | 1.500e-11 | PASS |
 | Cr2 | 21 / 21 / 21 | 3.013e-12 | 2.010e-10 | PASS |
-| Crys-MnO | 37 / 40 / 38 | 4.780e-10 | 6.480e-10 | PASS |
-| GaAs | 13 / 13 / 13 | 1.600e-11 | 7.000e-12 | PASS |
+| Crys-MnO | 37 / 40 / 39 | 4.700e-10 | 6.470e-10 | PASS |
+| GaAs | 13 / 13 / 13 | 1.600e-11 | 8.000e-12 | PASS |
 | Glycine | 20 / 20 / 20 | 1.002e-12 | 1.000e-12 | PASS |
 | Graphite4 | 14 / 14 / 14 | 2.000e-12 | 1.000e-12 | PASS |
-| H2O | 31 / 31 / 31 | 1.002e-12 | 1.000e-12 | PASS |
 | H2O-EF | 17 / 17 / 17 | 9.983e-13 | 1.000e-12 | PASS |
+| H2O | 31 / 31 / 31 | 1.002e-12 | 1.000e-12 | PASS |
 | HMn | 26 / 26 / 26 | 9.948e-13 | 0.000e+00 | PASS |
-| Methane | 14 / 14 / 14 | 2.540e-10 | 2.800e-11 | PASS |
+| Methane | 14 / 14 / 14 | 1.430e-10 | 1.600e-11 | PASS |
 | Mol_MnO | 26 / 26 / 26 | 9.948e-13 | 1.000e-12 | PASS |
 | Ndia2 | 13 / 13 / 13 | 3.000e-12 | 1.000e-12 | PASS |
 
@@ -2175,45 +2189,112 @@ variation. Full controls and ablations are in the measurement record below.
 
 | Input | Upstream CPU (s) | Fork CPU (s) | Fork GPU (s) | Upstream / Fork CPU | Upstream / GPU | Fork CPU / GPU |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| 5_5_13COb2 | 49.980 | 45.820 | 40.570 | 1.091 | 1.232 | 1.129 |
-| B2C62_Band | 270.330 | 174.900 | 331.520 | 1.546 | 0.815 | 0.528 |
-| CG15c-DC-LNO | 69.520 | 51.520 | 55.840 | 1.349 | 1.245 | 0.923 |
-| DIA512-1 | 43.240 | 30.890 | 136.760 | 1.400 | 0.316 | 0.226 |
-| FeBCC | 70.560 | 51.160 | 73.120 | 1.379 | 0.965 | 0.700 |
-| GEL | 26.580 | 17.780 | 109.930 | 1.495 | 0.242 | 0.162 |
-| GFRAG | 31.140 | 28.660 | 40.470 | 1.087 | 0.769 | 0.708 |
-| GGFF | 457.270 | 336.620 | 287.730 | 1.358 | 1.589 | 1.170 |
-| MCCN | 65.100 | 58.560 | 165.630 | 1.112 | 0.393 | 0.354 |
-| Mn12_148_F | 59.800 | 52.050 | 62.280 | 1.149 | 0.960 | 0.836 |
-| N1C999 | 810.540 | 465.160 | 504.830 | 1.742 | 1.606 | 0.921 |
-| Ni63-O64 | 54.350 | 49.480 | 50.800 | 1.098 | 1.070 | 0.974 |
-| Pt63 | 43.760 | 46.290 | 57.210 | 0.945 | 0.765 | 0.809 |
-| SialicAcid | 10.840 | 8.710 | 20.770 | 1.245 | 0.522 | 0.419 |
-| ZrB2_2x2 | 103.470 | 72.770 | 133.680 | 1.422 | 0.774 | 0.544 |
-| nsV4Bz5 | 52.870 | 43.040 | 116.350 | 1.228 | 0.454 | 0.370 |
-| **Total** | **2219.350** | **1533.410** | **2187.490** | **1.447** | **1.015** | **0.701** |
+| 5_5_13COb2 | 49.980 | 45.820 | 42.590 | 1.091 | 1.174 | 1.076 |
+| B2C62_Band | 270.330 | 174.900 | 382.190 | 1.546 | 0.707 | 0.458 |
+| CG15c-DC-LNO | 69.520 | 51.520 | 56.180 | 1.349 | 1.237 | 0.917 |
+| DIA512-1 | 43.240 | 30.890 | 94.880 | 1.400 | 0.456 | 0.326 |
+| FeBCC | 70.560 | 51.160 | 72.280 | 1.379 | 0.976 | 0.708 |
+| GEL | 26.580 | 17.780 | 106.590 | 1.495 | 0.249 | 0.167 |
+| GFRAG | 31.140 | 28.660 | 39.370 | 1.087 | 0.791 | 0.728 |
+| GGFF | 457.270 | 336.620 | 268.510 | 1.358 | 1.703 | 1.254 |
+| MCCN | 65.100 | 58.560 | 165.640 | 1.112 | 0.393 | 0.354 |
+| Mn12_148_F | 59.800 | 52.050 | 59.280 | 1.149 | 1.009 | 0.878 |
+| N1C999 | 810.540 | 465.160 | 500.610 | 1.742 | 1.619 | 0.929 |
+| Ni63-O64 | 54.350 | 49.480 | 48.910 | 1.098 | 1.111 | 1.012 |
+| Pt63 | 43.760 | 46.290 | 54.940 | 0.945 | 0.797 | 0.843 |
+| SialicAcid | 10.840 | 8.710 | 20.160 | 1.245 | 0.538 | 0.432 |
+| ZrB2_2x2 | 103.470 | 72.770 | 140.570 | 1.422 | 0.736 | 0.518 |
+| nsV4Bz5 | 52.870 | 43.040 | 120.990 | 1.228 | 0.437 | 0.356 |
+| **Total** | **2219.350** | **1533.410** | **2173.690** | **1.447** | **1.021** | **0.705** |
 
 <details>
 <summary>SCF counts and numerical checks: -runtestL (16 cases)</summary>
 
 | Input | SCF steps (upstream / fork CPU / GPU) | Max abs ΔE (Ha) | Max abs ΔF (Ha/bohr) | Check |
 | --- | --- | ---: | ---: | --- |
-| 5_5_13COb2 | 66 / 66 / 66 | 7.299e-10 | 1.330e-10 | PASS |
+| 5_5_13COb2 | 66 / 66 / 67 | 7.360e-10 | 1.330e-10 | PASS |
 | B2C62_Band | 203 / 203 / 203 | 1.410e-10 | 4.720e-08 | PASS |
 | CG15c-DC-LNO | 42 / 42 / 42 | 6.221e-10 | 1.790e-10 | PASS |
-| DIA512-1 | 29 / 29 / 29 | 8.299e-10 | 9.659e-09 | PASS |
-| FeBCC | 62 / 62 / 62 | 1.021e-09 | 6.300e-11 | PASS |
+| DIA512-1 | 29 / 29 / 29 | 7.490e-10 | 9.659e-09 | PASS |
+| FeBCC | 62 / 62 / 62 | 1.036e-09 | 6.900e-11 | PASS |
 | GEL | 58 / 58 / 58 | 2.091e-10 | 4.110e-10 | PASS |
-| GFRAG | 60 / 60 / 60 | 1.650e-10 | 1.776e-09 | PASS |
+| GFRAG | 60 / 60 / 60 | 1.640e-10 | 1.776e-09 | PASS |
 | GGFF | 100 / 98 / 101 | 8.617e-11 | 1.390e-10 | PASS |
-| MCCN | 67 / 67 / 67 | 3.502e-10 | 3.000e-11 | PASS |
-| Mn12_148_F | 61 / 61 / 61 | 2.683e-11 | 2.960e-10 | PASS |
-| N1C999 | 61 / 59 / 59 | 1.568e-09 | 3.100e-11 | PASS |
-| Ni63-O64 | 62 / 69 / 62 | 2.803e-09 | 6.220e-10 | PASS |
-| Pt63 | 67 / 78 / 70 | 6.790e-09 | 2.310e-10 | PASS |
+| MCCN | 67 / 67 / 67 | 3.411e-10 | 3.000e-11 | PASS |
+| Mn12_148_F | 61 / 61 / 61 | 2.910e-11 | 2.960e-10 | PASS |
+| N1C999 | 61 / 59 / 58 | 1.570e-09 | 3.100e-11 | PASS |
+| Ni63-O64 | 62 / 69 / 62 | 2.825e-09 | 6.220e-10 | PASS |
+| Pt63 | 67 / 78 / 70 | 6.790e-09 | 2.320e-10 | PASS |
 | SialicAcid | 29 / 29 / 29 | 3.013e-12 | 1.000e-12 | PASS |
-| ZrB2_2x2 | 49 / 49 / 49 | 1.080e-10 | 3.820e-10 | PASS |
+| ZrB2_2x2 | 49 / 49 / 49 | 1.100e-10 | 3.820e-10 | PASS |
 | nsV4Bz5 | 57 / 57 / 57 | 1.240e-10 | 6.840e-10 | PASS |
+
+</details>
+
+##### `-runtestL2` (7 cases, GPU only, two nodes)
+
+| Input | Fork GPU (s) | SCF steps | SCF converged | Bundled abs ΔE (Ha) | Bundled max abs ΔF (Ha/bohr) | Strict reference check |
+| --- | ---: | ---: | --- | ---: | ---: | --- |
+| C1000 | 1427.720 | 41 | yes | 4.375e-10 | 3.960e-10 | PASS |
+| Fe1000 | 3992.710 | 315 | yes | 3.565e-09 | 1.153e-08 | PASS |
+| GRA1024 | 1032.530 | 48 | yes | 1.945e-09 | 6.580e-10 | PASS |
+| Ih-Ice1200 | 558.470 | 35 | yes | 2.574e-09 | 1.060e-10 | PASS |
+| Pt500 | 10552.200 | 220 | yes | 1.797e-09 | 5.693e-08 | PASS |
+| R-TiO2-1050 | 1526.480 | 39 | yes | 3.132e-09 | 4.140e-10 | PASS |
+| Si1000 | 1235.640 | 41 | yes | 3.056e-10 | 1.010e-10 | PASS |
+| **Total** | **20325.750** | — | — | — | — | — |
+
+##### `-runtestL3` (20 cases, three routes, two nodes)
+
+| Input | Upstream CPU (s) | Fork CPU (s) | Fork GPU (s) | Upstream / Fork CPU | Upstream / GPU | Fork CPU / GPU |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 5_5_13COb2 | 8.970 | 6.920 | 10.780 | 1.296 | 0.832 | 0.642 |
+| C1000 | 269.370 | 242.490 | 140.650 | 1.111 | 1.915 | 1.724 |
+| C60 | 2.360 | 1.500 | 2.720 | 1.573 | 0.868 | 0.551 |
+| CG15c | 52.780 | 30.840 | 59.660 | 1.711 | 0.885 | 0.517 |
+| Crys-MnO | 5.410 | 2.250 | 3.420 | 2.404 | 1.582 | 0.658 |
+| DIA512-1 | 18.200 | 11.670 | 22.840 | 1.560 | 0.797 | 0.511 |
+| Fe1000 | 220.520 | 165.970 | 108.380 | 1.329 | 2.035 | 1.531 |
+| GEL | 10.960 | 6.440 | 15.320 | 1.702 | 0.715 | 0.420 |
+| GFRAG | 6.260 | 4.700 | 5.990 | 1.332 | 1.045 | 0.785 |
+| GGFF | 247.460 | 222.300 | 51.520 | 1.113 | 4.803 | 4.315 |
+| MCCN | 44.510 | 24.540 | 37.660 | 1.814 | 1.182 | 0.652 |
+| Mn12_148_F | 10.960 | 7.400 | 8.410 | 1.481 | 1.303 | 0.880 |
+| N1C999 | 539.250 | 274.890 | 404.970 | 1.962 | 1.332 | 0.679 |
+| Ni63-O64 | 13.150 | 9.620 | 9.580 | 1.367 | 1.373 | 1.004 |
+| Pt500 | 456.030 | 335.360 | 253.450 | 1.360 | 1.799 | 1.323 |
+| Pt63 | 8.620 | 6.520 | 7.590 | 1.322 | 1.136 | 0.859 |
+| Si1280-LNO | 551.560 | 310.740 | 416.520 | 1.775 | 1.324 | 0.746 |
+| SialicAcid | 5.250 | 3.600 | 6.040 | 1.458 | 0.869 | 0.596 |
+| ZrB2_2x2 | 45.040 | 32.480 | 26.620 | 1.387 | 1.692 | 1.220 |
+| nsV4Bz5 | 9.960 | 6.890 | 10.650 | 1.446 | 0.935 | 0.647 |
+| **Total** | **2526.620** | **1707.120** | **1602.770** | **1.480** | **1.576** | **1.065** |
+
+<details>
+<summary>SCF counts and numerical checks: -runtestL3 (20 cases)</summary>
+
+| Input | SCF steps (upstream / fork CPU / GPU) | Max abs ΔE (Ha) | Max abs ΔF (Ha/bohr) | Check |
+| --- | --- | ---: | ---: | --- |
+| 5_5_13COb2 | 3 / 3 / 3 | 8.024e-09 | 3.000e-10 | PASS |
+| C1000 | 3 / 3 / 3 | 3.251e-09 | 1.039e-09 | PASS |
+| C60 | 3 / 3 / 3 | 2.802e-11 | 1.000e-12 | PASS |
+| CG15c | 3 / 3 / 3 | 1.490e-08 | 1.399e-09 | PASS |
+| Crys-MnO | 3 / 3 / 3 | 4.550e-10 | 5.380e-10 | PASS |
+| DIA512-1 | 3 / 3 / 3 | 7.658e-10 | 3.634e-09 | PASS |
+| Fe1000 | 3 / 3 / 3 | 4.293e-09 | 6.124e-07 | MISMATCH |
+| GEL | 3 / 3 / 3 | 2.840e-10 | 2.753e-09 | PASS |
+| GFRAG | 3 / 3 / 3 | 7.170e-10 | 1.782e-09 | PASS |
+| GGFF | 3 / 3 / 3 | 8.004e-11 | 9.500e-11 | PASS |
+| MCCN | 3 / 3 / 3 | 1.098e-09 | 1.279e-09 | PASS |
+| Mn12_148_F | 3 / 3 / 3 | 9.504e-11 | 1.392e-09 | PASS |
+| N1C999 | 3 / 3 / 3 | 1.571e-09 | 1.240e-10 | PASS |
+| Ni63-O64 | 3 / 3 / 3 | 1.597e-07 | 7.288e-06 | MISMATCH |
+| Pt500 | 3 / 3 / 3 | 1.506e-09 | 8.180e-10 | PASS |
+| Pt63 | 3 / 3 / 3 | 2.850e-09 | 4.340e-10 | PASS |
+| Si1280-LNO | 3 / 3 / 3 | 1.383e-08 | 3.390e-10 | PASS |
+| SialicAcid | 3 / 3 / 3 | 2.984e-12 | 1.000e-12 | PASS |
+| ZrB2_2x2 | 3 / 3 / 3 | 7.358e-09 | 1.126e-09 | PASS |
+| nsV4Bz5 | 3 / 3 / 3 | 1.224e-09 | 1.753e-09 | PASS |
 
 </details>
 
@@ -2221,49 +2302,78 @@ variation. Full controls and ablations are in the measurement record below.
 
 | Input | Upstream CPU (s) | Fork CPU (s) | Fork GPU (s) | Upstream / Fork CPU | Upstream / GPU | Fork CPU / GPU |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| `sidia333_nc_cluster.dat` | 247.520 | 192.886 | 126.599 | 1.283 | 1.955 | 1.524 |
-| `cghelgeo.dat` | 860.989 | 792.170 | 332.392 | 1.087 | 2.590 | 2.383 |
+| `sidia333_nc_cluster.dat` | 247.520 | 192.886 | 120.946 | 1.283 | 2.047 | 1.595 |
+| `cghelgeo.dat` | 860.989 | 792.170 | 362.277 | 1.087 | 2.377 | 2.187 |
 
 <details>
 <summary>SCF counts and numerical checks: Named inputs</summary>
 
 | Input | SCF steps (upstream / fork CPU / GPU) | Max abs ΔE (Ha) | Max abs ΔF (Ha/bohr) | Check |
 | --- | --- | ---: | ---: | --- |
-| `sidia333_nc_cluster.dat` | 25 / 25 / 25 | 1.420e-10 | 2.010e-10 | PASS |
-| `cghelgeo.dat` | 59 / 61 / 58 | 5.847e-08 | 2.352e-08 | PASS |
+| `sidia333_nc_cluster.dat` | 25 / 25 / 25 | 1.430e-10 | 2.010e-10 | PASS |
+| `cghelgeo.dat` | 59 / 61 / 60 | 3.850e-08 | 1.293e-08 | PASS |
 
 </details>
 
 #### Accuracy and convergence
 
 The primary three configurations pass **96 pairwise comparisons** over
-the 32 inputs at **1e-7 Ha** for energy and **1e-7 Ha/bohr** for every force
-component. The maximum differences are **5.846505e-08 Ha** and
-**4.720100e-08 Ha/bohr**. The optimized GPU also passes **96 comparisons**
-against all three frozen previous CPU/GPU references. Geometry and grids
-agree. Input physics, basis, SCF/MD limits and convergence thresholds were
-preserved. The original **25-SCF sidia333 remains unconverged**; numerical
-agreement is separate from convergence. All other primary cases report
-SCF convergence. Per-case maxima above cover the current three
-configuration pairs; SCF counts sum every MD step.
+the 32 S/L/named inputs at **1e-7 Ha** for energy and **1e-7 Ha/bohr**
+for every force component. Maximum differences are **3.850437e-08 Ha** and
+**4.720100e-08 Ha/bohr**. The fresh GPU results also pass **128 comparisons**
+against the three 2026-10-31 routes and the previous optimized GPU run.
+Geometry and grids agree. Input physics, basis, SCF/MD limits and
+convergence thresholds were preserved. The original **25-SCF sidia333
+remains unconverged**; numerical agreement is separate from convergence.
+SCF counts sum every MD step.
+
+The GPU L2/L3 results have 27 comparisons with bundled
+reference outputs: **25 within** and **2 outside** the same strict
+energy/force tolerances; the case tables report the actual differences.
+Cases outside tolerance: L3/Fe1000, L3/Ni63-O64.
+These references are separate from the matched Sirius CPU measurements.
+L3 retains the original **3-SCF limit** and is a timing test of incomplete
+SCF calculations. The fresh L3 trio additionally has **55 passing** and
+**5 mismatching** strict pairwise comparisons; its detailed table reports
+all differences. Ni63-O64 also exceeds the strict energy tolerance in
+comparisons involving upstream CPU (maximum **1.597436e-07 Ha**).
+No equivalence claim is made for out-of-tolerance energy or force, or
+from finite output alone. Completed C1000 outputs from all three earlier
+two-node routes are checked separately in the measurement record.
+The historical H100 L3 Fe1000 and Ni63-O64 GPU measurements also exceeded
+the strict force tolerance at three SCF steps; their existing comparison rows are
+retained as context, without treating them as a matched Sirius CPU test
+or identifying the cause of the present difference.
 
 #### Measurement records
 
-The eight CPU measurements were reused; all four optimized GPU workloads
-were measured again. The complete optimization campaign, including probes,
-controls and repaired test/launcher failures, consumed at most
-**6.75 points** of the authorized 40-point allowance, rounding each
-job up to 0.01 points. No campaign GPU job remains.
+All six GPU workloads (59 cases) and both CPU L3 suites (40 case instances)
+were freshly measured. The existing eight CPU measurements for S/L and
+the named inputs were reused. The four fresh PBS jobs consumed at most **61.47 points** of the
+authorized **100-point allowance**, rounding each job up to 0.01 points;
+the maximum of cumulative actual spending plus outstanding hard
+reservations was **98.75 points**. No campaign GPU job remains. No `gpusolver2`/`gpusolver3` timing was run.
 
-[Method, ablations and validation](doc/sirius_mi300a_ggff_optimization_20261101.txt),
-[measurement record](benchmarks/results/sirius_mi300a_ggff_20261101/README.txt),
-[case timings](benchmarks/results/sirius_mi300a_ggff_20261101/cases.csv),
-[current three-route comparisons](benchmarks/results/sirius_mi300a_ggff_20261101/current-three-route-comparisons.csv)
-and [previous-reference checks](benchmarks/results/sirius_mi300a_ggff_20261101/comparisons.csv)
-retain the exact commands, hashes, numerical results and thread/affinity
-records. The [2026-10-31 record](benchmarks/results/sirius_mi300a_20261031_32x3/README.txt)
-retains the earlier GPU data. No separate `gpusolver2`/`gpusolver3` timing
-was run; L2/L3 remain outside this scope.
+[Measurement record](benchmarks/results/sirius_mi300a_gpu_rebench_20261101_32x3/README.txt),
+[GPU case timings](benchmarks/results/sirius_mi300a_gpu_rebench_20261101_32x3/cases.csv),
+[fresh CPU L3 timings](benchmarks/results/sirius_mi300a_gpu_rebench_20261101_32x3/cpu-cases.csv),
+[current three-route checks](benchmarks/results/sirius_mi300a_gpu_rebench_20261101_32x3/current-three-route-comparisons.csv),
+[previous GPU/CPU checks](benchmarks/results/sirius_mi300a_gpu_rebench_20261101_32x3/comparisons.csv),
+[L3 three-route checks](benchmarks/results/sirius_mi300a_gpu_rebench_20261101_32x3/L3-three-route-comparisons.csv)
+and [bundled L2/L3 reference checks](benchmarks/results/sirius_mi300a_gpu_rebench_20261101_32x3/bundled-reference-comparisons.csv)
+retain commands, hashes, numerical results, convergence, thread/affinity
+audits and job accounting. The
+[GPU dispatch traces](benchmarks/results/sirius_mi300a_gpu_rebench_20261101_32x3/gpu-dispatch.json)
+retain actual solver calls and any CPU fallback messages.
+The [optimization method and controls](doc/sirius_mi300a_ggff_optimization_20261101.txt)
+and [previous optimized measurements](benchmarks/results/sirius_mi300a_ggff_20261101/README.txt)
+retain the separate 6.75-point optimization campaign; its cost is excluded
+from this new 100-point allowance.
+
+L2 is GPU-only in the requested scope. The earlier CPU attempt retained
+only a completed C1000 prefix; no full CPU L2 total or speedup is available.
+The [CPU extension estimate](benchmarks/results/sirius_mi300a_gpu_rebench_20261101_32x3/cpu-extension-estimate.json)
+records the additional CPU L3 plan and the deferred CPU L2 scope.
 
 ## Important notes
 Performance depends on the system, solver, hardware and MPI/OpenMP layout.
