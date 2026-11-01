@@ -860,7 +860,7 @@ loads the matching installed libraries. From `work/`, submit with
 `qsub -v OMX_INPUT=input.dat ../tools/sirius_openmx.pbs`.
 The [Sirius threading audit](doc/sirius_threading_validation_20261031.txt)
 records ELPA/BLAS worker checks and the replacement of earlier native suite timings.
-The [one-node 32 MPI x 3 OpenMP benchmark data](benchmarks/results/sirius_mi300a_20261031_32x3/README.txt)
+The [one-node 32 MPI x 3 OpenMP benchmark results](#benchmark-sirius-mi300a)
 compare official CPU, fork CPU and ordinary GPU execution for S14, L16,
 sidia333 and cghelgeo. All 96 energy/force comparisons pass 1e-7; the
 original 25-SCF sidia333 deck is retained and remains unconverged.
@@ -1255,7 +1255,34 @@ settings unchanged and record the actual SCF iterations and convergence
 status along with time, energy and forces; reaching an iteration limit
 does not establish SCF convergence.
 
+All four environments use the same reporting order: measurement conditions,
+overall results, case results, accuracy and convergence, and measurement records.
+Case timings are displayed below in this README; the CSV/JSON links provide
+the underlying records. **Fork GPU** means CUDA on NVIDIA and HIP on AMD.
+All timings are seconds. Ratios above 1 favor the denominator configuration;
+upstream comparisons include compiler, MPI and numerical-library effects.
+Compare routes within each environment: hardware, affinity, input controls
+and timing aggregation are specified for each measurement. SCF counts cover
+all MD steps. Per-case error columns are maxima over that environment's
+recorded comparisons; the accuracy section states their scope.
+A dash means no completed measurement is available. SCF-count lists follow
+repeat order; `25 × 3` means three 25-step runs. `PASS`/`FAIL` describes
+all recorded comparisons for that input, including geometry/grid checks,
+with energy/force tolerances of `1e-7` Ha and `1e-7` Ha/bohr, separately
+from SCF convergence.
+
+| Environment | MPI × OpenMP per node | GPU backend | GPU(s) per node |
+| --- | --- | --- | ---: |
+| [GeForce RTX 5080](#benchmark-rtx5080) | 18 × 2 (SMT siblings) | CUDA + MPS | 1 |
+| [Pegasus H100](#benchmark-pegasus-h100) | 24 × 2 (physical cores) | CUDA + MPS | 1 |
+| [Radeon RX 9060 XT](#benchmark-radeon-rx9060xt) | 16 × 2 (physical cores) | HIP | 1 |
+| [Sirius MI300A](#benchmark-sirius-mi300a) | 32 × 3 (physical cores) | HIP | 4 |
+
+<a id="benchmark-rtx5080"></a>
+
 ### GeForce RTX 5080 / Core i9-10980XE (2026-10-31–2026-11-01)
+
+#### Measurement conditions
 
 `main` at `0681d63e` was pulled, rebuilt with CMake in Release mode and
 installed before this measurement. The host has an Intel Core i9-10980XE
@@ -1306,136 +1333,167 @@ orthogonality and leading-dimension cases per rank at 8 MPI × 2 threads.
 The [threading audit](benchmarks/results/rtx5080_20261031/threading-audit.json)
 is separate from the uninstrumented benchmark timings.
 
-Times below are seconds. Suite times sum the native per-case elapsed times
-in `runtest.result` / `runtestL.result`; individual times are the maximum-rank
-`Total Computational Time`. MPI launch/shutdown overhead is excluded.
-A ratio above one means the denominator configuration was faster.
+#### Overall results
 
-| Test | Upstream CPU | Fork CPU | Fork CUDA + MPS | Upstream / Fork CPU | Upstream / CUDA | Fork CPU / CUDA |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| `-runtest` (14 cases) | 110.13 | 68.86 | 82.64 | 1.60 | 1.33 | 0.83 |
-| `-runtestL` (16 cases) | 7551.80 | 5485.47 | 4354.99 | 1.38 | 1.73 | 1.26 |
-| `sidia333_nc_cluster.dat` | 832.660 | 584.729 | 101.277 | 1.42 | 8.22 | 5.77 |
-| `cghelgeo.dat` | 3214.383 | 3850.342 | 566.828 | 0.83 | 5.67 | 6.79 |
+Suite totals sum native per-case `runtest.result` / `runtestL.result` times.
+Named inputs use the maximum-rank `Total Computational Time`. Each value
+is one measurement. MPI launch/shutdown overhead is excluded.
+
+<details>
+<summary>MPI-job wall times, including the monitor</summary>
 
 The following wall times include the MPI job and the measurement monitor
-(two-second polling interval); they are separate from the native timings above.
+(two-second polling interval); they are reported separately from native calculation times.
 
-| Test | Upstream wall (s) | Fork CPU wall (s) | CUDA wall (s) |
+| Test | Upstream wall (s) | Fork CPU wall (s) | Fork GPU wall (s) |
 | --- | ---: | ---: | ---: |
 | `-runtest` (14 cases) | 112.44 | 71.53 | 87.64 |
 | `-runtestL` (16 cases) | 7558.02 | 5490.24 | 4360.74 |
 | `sidia333_nc_cluster.dat` | 836.13 | 588.08 | 105.01 |
 | `cghelgeo.dat` | 3216.51 | 3853.35 | 571.32 |
 
-Numerical checks compare total energy and **every force component**, using
-`1e-7 Ha` and `1e-7 Ha/bohr` tolerances. Atom identities and FFT grids must
-match; printed coordinates allow `1.000001e-5` for last-digit rounding.
-Each suite was checked against its bundled references and all three
-configuration pairs; the individual cases were checked pairwise. Completion
-of a job is recorded separately from numerical agreement and SCF convergence.
+</details>
 
-Across these checks the largest absolute energy difference was `7.502e-08 Ha` and the largest force component difference was `3.610e-08 Ha/bohr`. All 186 numerical checks passed.
-Of 90 comparisons with bundled suite references, 90 passed.
+| Test | Nodes | Upstream CPU (s) | Fork CPU (s) | Fork GPU (s) | Upstream / Fork CPU | Upstream / GPU | Fork CPU / GPU |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `-runtest` (14 cases) | 1 | 110.130 | 68.860 | 82.640 | 1.599 | 1.333 | 0.833 |
+| `-runtestL` (16 cases) | 1 | 7551.800 | 5485.470 | 4354.990 | 1.377 | 1.734 | 1.260 |
+| `-runtestL2` (7 cases) | — | — | — | — | — | — | — |
+| `-runtestL3` (20 cases) | — | — | — | — | — | — | — |
+| `sidia333_nc_cluster.dat` | 1 | 832.660 | 584.729 | 101.277 | 1.424 | 8.222 | 5.774 |
+| `cghelgeo.dat` | 1 | 3214.383 | 3850.342 | 566.828 | 0.835 | 5.671 | 6.793 |
 
-The sidia333 input requests 25 SCF steps at `scf.criterion=1e-13`
-and one MD step. This is a performance comparison at the iteration limit;
-it does not establish SCF convergence. SCF counts below cover all MD steps;
-different converged iteration counts affect the measured timings.
+#### Case results
 
-| Individual input | SCF steps (upstream / fork CPU / CUDA) | Unconverged MD steps (same order) | Max abs ΔE (Ha) | Max abs ΔF (Ha/bohr) |
-| --- | --- | --- | ---: | ---: |
-| `sidia333_nc_cluster.dat` | 25 / 25 / 25 | 1 / 1 / 1 | 1.950e-10 | 1.840e-10 |
-| `cghelgeo.dat` | 58 / 59 / 58 | 0 / 0 / 0 | 7.502e-08 | 1.260e-08 |
+##### `-runtest` (14 cases)
+
+| Input | Upstream CPU (s) | Fork CPU (s) | Fork GPU (s) | Upstream / Fork CPU | Upstream / GPU | Fork CPU / GPU |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Benzene | 4.240 | 2.540 | 4.200 | 1.669 | 1.010 | 0.605 |
+| C60 | 9.320 | 6.600 | 11.000 | 1.412 | 0.847 | 0.600 |
+| CO | 7.770 | 6.070 | 20.070 | 1.280 | 0.387 | 0.302 |
+| Cr2 | 7.610 | 4.640 | 4.330 | 1.640 | 1.758 | 1.072 |
+| Crys-MnO | 14.450 | 8.210 | 7.290 | 1.760 | 1.982 | 1.126 |
+| GaAs | 25.310 | 15.420 | 11.360 | 1.641 | 2.228 | 1.357 |
+| Glycine | 4.240 | 2.750 | 3.140 | 1.542 | 1.350 | 0.876 |
+| Graphite4 | 3.330 | 1.030 | 1.350 | 3.233 | 2.467 | 0.763 |
+| H2O | 3.520 | 1.400 | 1.920 | 2.514 | 1.833 | 0.729 |
+| H2O-EF | 3.830 | 2.940 | 3.010 | 1.303 | 1.272 | 0.977 |
+| HMn | 12.200 | 9.460 | 7.650 | 1.290 | 1.595 | 1.237 |
+| Methane | 2.820 | 1.260 | 1.710 | 2.238 | 1.649 | 0.737 |
+| Mol_MnO | 7.430 | 4.820 | 4.420 | 1.541 | 1.681 | 1.090 |
+| Ndia2 | 4.060 | 1.720 | 1.190 | 2.360 | 3.412 | 1.445 |
+| **Total** | **110.130** | **68.860** | **82.640** | **1.599** | **1.333** | **0.833** |
 
 <details>
-<summary>`-runtest` (14 cases): per-case timings, SCF counts and numerical checks</summary>
+<summary>SCF counts and numerical checks: -runtest (14 cases)</summary>
 
-| Case | Upstream (s) | Fork CPU (s) | CUDA (s) | Upstream / CUDA | Fork CPU / CUDA |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| Benzene | 4.24 | 2.54 | 4.20 | 1.01 | 0.60 |
-| C60 | 9.32 | 6.60 | 11.00 | 0.85 | 0.60 |
-| CO | 7.77 | 6.07 | 20.07 | 0.39 | 0.30 |
-| Cr2 | 7.61 | 4.64 | 4.33 | 1.76 | 1.07 |
-| Crys-MnO | 14.45 | 8.21 | 7.29 | 1.98 | 1.13 |
-| GaAs | 25.31 | 15.42 | 11.36 | 2.23 | 1.36 |
-| Glycine | 4.24 | 2.75 | 3.14 | 1.35 | 0.88 |
-| Graphite4 | 3.33 | 1.03 | 1.35 | 2.47 | 0.76 |
-| H2O-EF | 3.83 | 2.94 | 3.01 | 1.27 | 0.98 |
-| H2O | 3.52 | 1.40 | 1.92 | 1.83 | 0.73 |
-| HMn | 12.20 | 9.46 | 7.65 | 1.59 | 1.24 |
-| Methane | 2.82 | 1.26 | 1.71 | 1.65 | 0.74 |
-| Mol_MnO | 7.43 | 4.82 | 4.42 | 1.68 | 1.09 |
-| Ndia2 | 4.06 | 1.72 | 1.19 | 3.41 | 1.45 |
-
-| Case | SCF steps (upstream / fork CPU / CUDA) | Unconverged MD steps | Max abs ΔE (Ha) | Max abs ΔF (Ha/bohr) | Check |
-| --- | --- | --- | ---: | ---: | --- |
-| Benzene | 19 / 19 / 19 | 0 / 0 / 0 | 9.948e-13 | 0.000e+00 | PASS |
-| C60 | 27 / 27 / 27 | 0 / 0 / 0 | 5.201e-11 | 8.000e-12 | PASS |
-| CO | 16 / 16 / 16 | 0 / 0 / 0 | 0.000e+00 | 2.100e-11 | PASS |
-| Cr2 | 21 / 21 / 21 | 0 / 0 / 0 | 2.984e-12 | 1.720e-10 | PASS |
-| Crys-MnO | 46 / 42 / 39 | 0 / 0 / 0 | 4.820e-10 | 6.390e-10 | PASS |
-| GaAs | 13 / 13 / 13 | 0 / 0 / 0 | 2.001e-11 | 8.000e-12 | PASS |
-| Glycine | 20 / 20 / 20 | 0 / 0 / 0 | 9.948e-13 | 1.000e-12 | PASS |
-| Graphite4 | 14 / 14 / 14 | 0 / 0 / 0 | 3.002e-12 | 1.000e-12 | PASS |
-| H2O-EF | 17 / 17 / 17 | 0 / 0 / 0 | 9.983e-13 | 1.000e-12 | PASS |
-| H2O | 31 / 31 / 31 | 0 / 0 / 0 | 1.002e-12 | 1.000e-12 | PASS |
-| HMn | 26 / 26 / 26 | 0 / 0 / 0 | 9.948e-13 | 0.000e+00 | PASS |
-| Methane | 14 / 14 / 14 | 0 / 0 / 0 | 1.170e-10 | 1.300e-11 | PASS |
-| Mol_MnO | 26 / 26 / 26 | 0 / 0 / 0 | 9.948e-13 | 1.000e-12 | PASS |
-| Ndia2 | 13 / 13 / 13 | 0 / 0 / 0 | 4.000e-12 | 1.000e-12 | PASS |
+| Input | SCF steps (upstream / fork CPU / GPU) | Max abs ΔE (Ha) | Max abs ΔF (Ha/bohr) | Check |
+| --- | --- | ---: | ---: | --- |
+| Benzene | 19 / 19 / 19 | 9.948e-13 | 0.000e+00 | PASS |
+| C60 | 27 / 27 / 27 | 5.201e-11 | 8.000e-12 | PASS |
+| CO | 16 / 16 / 16 | 0.000e+00 | 2.100e-11 | PASS |
+| Cr2 | 21 / 21 / 21 | 2.984e-12 | 1.720e-10 | PASS |
+| Crys-MnO | 46 / 42 / 39 | 4.820e-10 | 6.390e-10 | PASS |
+| GaAs | 13 / 13 / 13 | 2.001e-11 | 8.000e-12 | PASS |
+| Glycine | 20 / 20 / 20 | 9.948e-13 | 1.000e-12 | PASS |
+| Graphite4 | 14 / 14 / 14 | 3.002e-12 | 1.000e-12 | PASS |
+| H2O | 31 / 31 / 31 | 1.002e-12 | 1.000e-12 | PASS |
+| H2O-EF | 17 / 17 / 17 | 9.983e-13 | 1.000e-12 | PASS |
+| HMn | 26 / 26 / 26 | 9.948e-13 | 0.000e+00 | PASS |
+| Methane | 14 / 14 / 14 | 1.170e-10 | 1.300e-11 | PASS |
+| Mol_MnO | 26 / 26 / 26 | 9.948e-13 | 1.000e-12 | PASS |
+| Ndia2 | 13 / 13 / 13 | 4.000e-12 | 1.000e-12 | PASS |
 
 </details>
 
+##### `-runtestL` (16 cases)
+
+| Input | Upstream CPU (s) | Fork CPU (s) | Fork GPU (s) | Upstream / Fork CPU | Upstream / GPU | Fork CPU / GPU |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 5_5_13COb2 | 101.410 | 89.280 | 55.660 | 1.136 | 1.822 | 1.604 |
+| B2C62_Band | 758.240 | 454.940 | 366.610 | 1.667 | 2.068 | 1.241 |
+| CG15c-DC-LNO | 174.400 | 136.070 | 199.670 | 1.282 | 0.873 | 0.681 |
+| DIA512-1 | 173.090 | 119.960 | 220.500 | 1.443 | 0.785 | 0.544 |
+| FeBCC | 204.730 | 133.670 | 137.490 | 1.532 | 1.489 | 0.972 |
+| GEL | 58.520 | 36.480 | 35.010 | 1.604 | 1.672 | 1.042 |
+| GFRAG | 47.970 | 39.190 | 30.730 | 1.224 | 1.561 | 1.275 |
+| GGFF | 1871.230 | 1743.060 | 552.960 | 1.074 | 3.384 | 3.152 |
+| MCCN | 248.630 | 244.900 | 358.550 | 1.015 | 0.693 | 0.683 |
+| Mn12_148_F | 116.810 | 94.860 | 53.290 | 1.231 | 2.192 | 1.780 |
+| N1C999 | 3153.740 | 1916.450 | 2050.110 | 1.646 | 1.538 | 0.935 |
+| Ni63-O64 | 115.550 | 78.030 | 49.000 | 1.481 | 2.358 | 1.592 |
+| Pt63 | 88.100 | 68.300 | 45.220 | 1.290 | 1.948 | 1.510 |
+| SialicAcid | 24.820 | 19.320 | 14.460 | 1.285 | 1.716 | 1.336 |
+| ZrB2_2x2 | 287.880 | 201.220 | 119.600 | 1.431 | 2.407 | 1.682 |
+| nsV4Bz5 | 126.680 | 109.740 | 66.130 | 1.154 | 1.916 | 1.659 |
+| **Total** | **7551.800** | **5485.470** | **4354.990** | **1.377** | **1.734** | **1.260** |
+
 <details>
-<summary>`-runtestL` (16 cases): per-case timings, SCF counts and numerical checks</summary>
+<summary>SCF counts and numerical checks: -runtestL (16 cases)</summary>
 
-| Case | Upstream (s) | Fork CPU (s) | CUDA (s) | Upstream / CUDA | Fork CPU / CUDA |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| 5_5_13COb2 | 101.41 | 89.28 | 55.66 | 1.82 | 1.60 |
-| B2C62_Band | 758.24 | 454.94 | 366.61 | 2.07 | 1.24 |
-| CG15c-DC-LNO | 174.40 | 136.07 | 199.67 | 0.87 | 0.68 |
-| DIA512-1 | 173.09 | 119.96 | 220.50 | 0.78 | 0.54 |
-| FeBCC | 204.73 | 133.67 | 137.49 | 1.49 | 0.97 |
-| GEL | 58.52 | 36.48 | 35.01 | 1.67 | 1.04 |
-| GFRAG | 47.97 | 39.19 | 30.73 | 1.56 | 1.28 |
-| GGFF | 1871.23 | 1743.06 | 552.96 | 3.38 | 3.15 |
-| MCCN | 248.63 | 244.90 | 358.55 | 0.69 | 0.68 |
-| Mn12_148_F | 116.81 | 94.86 | 53.29 | 2.19 | 1.78 |
-| N1C999 | 3153.74 | 1916.45 | 2050.11 | 1.54 | 0.93 |
-| Ni63-O64 | 115.55 | 78.03 | 49.00 | 2.36 | 1.59 |
-| Pt63 | 88.10 | 68.30 | 45.22 | 1.95 | 1.51 |
-| SialicAcid | 24.82 | 19.32 | 14.46 | 1.72 | 1.34 |
-| ZrB2_2x2 | 287.88 | 201.22 | 119.60 | 2.41 | 1.68 |
-| nsV4Bz5 | 126.68 | 109.74 | 66.13 | 1.92 | 1.66 |
-
-| Case | SCF steps (upstream / fork CPU / CUDA) | Unconverged MD steps | Max abs ΔE (Ha) | Max abs ΔF (Ha/bohr) | Check |
-| --- | --- | --- | ---: | ---: | --- |
-| 5_5_13COb2 | 67 / 66 / 67 | 0 / 0 / 0 | 5.900e-10 | 3.250e-10 | PASS |
-| B2C62_Band | 203 / 203 / 204 | 0 / 0 / 0 | 6.798e-11 | 3.610e-08 | PASS |
-| CG15c-DC-LNO | 40 / 42 / 42 | 0 / 0 / 0 | 1.372e-09 | 1.560e-10 | PASS |
-| DIA512-1 | 29 / 29 / 29 | 0 / 0 / 0 | 7.913e-10 | 8.856e-09 | PASS |
-| FeBCC | 62 / 62 / 62 | 0 / 0 / 0 | 1.114e-09 | 6.800e-11 | PASS |
-| GEL | 58 / 58 / 58 | 0 / 0 / 0 | 2.390e-10 | 3.000e-10 | PASS |
-| GFRAG | 60 / 60 / 60 | 0 / 0 / 0 | 4.130e-10 | 1.884e-09 | PASS |
-| GGFF | 102 / 97 / 101 | 0 / 0 / 0 | 1.301e-10 | 1.290e-10 | PASS |
-| MCCN | 67 / 67 / 67 | 0 / 0 / 0 | 3.811e-10 | 3.600e-11 | PASS |
-| Mn12_148_F | 61 / 61 / 61 | 0 / 0 / 0 | 2.701e-10 | 5.440e-10 | PASS |
-| N1C999 | 64 / 59 / 59 | 0 / 0 / 0 | 1.560e-09 | 3.200e-11 | PASS |
-| Ni63-O64 | 68 / 69 / 62 | 0 / 0 / 0 | 3.471e-09 | 7.860e-10 | PASS |
-| Pt63 | 75 / 70 / 67 | 0 / 0 / 0 | 4.563e-09 | 3.420e-10 | PASS |
-| SialicAcid | 29 / 29 / 29 | 0 / 0 / 0 | 3.140e-10 | 2.150e-10 | PASS |
-| ZrB2_2x2 | 49 / 49 / 49 | 0 / 0 / 0 | 2.019e-10 | 3.390e-10 | PASS |
-| nsV4Bz5 | 57 / 57 / 57 | 0 / 0 / 0 | 2.220e-10 | 1.186e-09 | PASS |
+| Input | SCF steps (upstream / fork CPU / GPU) | Max abs ΔE (Ha) | Max abs ΔF (Ha/bohr) | Check |
+| --- | --- | ---: | ---: | --- |
+| 5_5_13COb2 | 67 / 66 / 67 | 5.900e-10 | 3.250e-10 | PASS |
+| B2C62_Band | 203 / 203 / 204 | 6.798e-11 | 3.610e-08 | PASS |
+| CG15c-DC-LNO | 40 / 42 / 42 | 1.372e-09 | 1.560e-10 | PASS |
+| DIA512-1 | 29 / 29 / 29 | 7.913e-10 | 8.856e-09 | PASS |
+| FeBCC | 62 / 62 / 62 | 1.114e-09 | 6.800e-11 | PASS |
+| GEL | 58 / 58 / 58 | 2.390e-10 | 3.000e-10 | PASS |
+| GFRAG | 60 / 60 / 60 | 4.130e-10 | 1.884e-09 | PASS |
+| GGFF | 102 / 97 / 101 | 1.301e-10 | 1.290e-10 | PASS |
+| MCCN | 67 / 67 / 67 | 3.811e-10 | 3.600e-11 | PASS |
+| Mn12_148_F | 61 / 61 / 61 | 2.701e-10 | 5.440e-10 | PASS |
+| N1C999 | 64 / 59 / 59 | 1.560e-09 | 3.200e-11 | PASS |
+| Ni63-O64 | 68 / 69 / 62 | 3.471e-09 | 7.860e-10 | PASS |
+| Pt63 | 75 / 70 / 67 | 4.563e-09 | 3.420e-10 | PASS |
+| SialicAcid | 29 / 29 / 29 | 3.140e-10 | 2.150e-10 | PASS |
+| ZrB2_2x2 | 49 / 49 / 49 | 2.019e-10 | 3.390e-10 | PASS |
+| nsV4Bz5 | 57 / 57 / 57 | 2.220e-10 | 1.186e-09 | PASS |
 
 </details>
+
+##### Named inputs
+
+| Input | Upstream CPU (s) | Fork CPU (s) | Fork GPU (s) | Upstream / Fork CPU | Upstream / GPU | Fork CPU / GPU |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `sidia333_nc_cluster.dat` | 832.660 | 584.729 | 101.277 | 1.424 | 8.222 | 5.774 |
+| `cghelgeo.dat` | 3214.383 | 3850.342 | 566.828 | 0.835 | 5.671 | 6.793 |
+
+<details>
+<summary>SCF counts and numerical checks: Named inputs</summary>
+
+| Input | SCF steps (upstream / fork CPU / GPU) | Max abs ΔE (Ha) | Max abs ΔF (Ha/bohr) | Check |
+| --- | --- | ---: | ---: | --- |
+| `sidia333_nc_cluster.dat` | 25 / 25 / 25 | 1.950e-10 | 1.840e-10 | PASS |
+| `cghelgeo.dat` | 58 / 59 / 58 | 7.502e-08 | 1.260e-08 | PASS |
+
+</details>
+
+#### Accuracy and convergence
+
+All **186 numerical checks passed**, including all 90 bundled-reference
+comparisons. The largest absolute energy difference was `7.502e-8` Ha and
+the largest force-component difference was `3.610e-8` Ha/bohr. Per-case
+maxima above cover all three configuration pairs and bundled references.
+
+Sidia333 reached its original 25-SCF limit and remains unconverged in all
+three routes. The other inputs converged at every MD step. Named-input
+SCF counts were 25/25/25 for sidia333 and 58/59/58 for cghelgeo
+(upstream / fork CPU / GPU).
+
+#### Measurement records
 
 Versioned [timings, per-case checks and input hashes](benchmarks/results/rtx5080_20261031/manifest.json)
 identify the exact binaries, libraries, controls and source commit.
 The complete local logs, outputs, resource samples and affinity probes are
 under `build/rtx5080-benchmark-20261031-210530/`.
 
+<a id="benchmark-pegasus-h100"></a>
+
 ### Pegasus H100 benchmarks (2026-10-31–2026-11-01)
+
+#### Measurement conditions
 
 All six tests below were rerun from commit `0681d63e` with the same freshly
 built and installed CUDA Release executable for both fork routes. Each node
@@ -1465,19 +1523,19 @@ The upstream CPU column uses the retained **October 29, 2026** measurements
 of OpenMX 4.0 + official patch 4.0.1, built with Intel icx/ifx 2025.3.2,
 Intel MPI 2021.17, threaded MKL 2025.3 and OpenMP ELPA 2018.05.001.
 Those runs used the same 24 MPI × 2 OpenMP layout per node and the same
-node counts as the latest fork runs. Input
-definitions and all 47 used PAO/VPS files match. The retained output hashes,
+node counts as the latest fork runs. Input definitions and all 47 used PAO/VPS files match. The retained output hashes,
 build and measurement dates are recorded in the
 [upstream baseline](benchmarks/results/pegasus_h100_20261031/upstream-baseline.json).
 Upstream `L2` has no completed baseline measurement, so its cells are marked
 with a dash.
 
-Times are the sum of per-case output `Elapsed.Time` for suites and the
-median of three output times for named inputs, including the upstream
-baseline. Ratios above 1 favor the denominator configuration; comparisons
-against upstream include compiler, MPI and math-library effects.
+#### Overall results
 
-| Test | Nodes | Upstream CPU (s) | Fork CPU (s) | Fork CUDA (s) | Upstream / Fork CPU | Upstream / CUDA | Fork CPU / CUDA |
+Suite totals sum per-case output `Elapsed.Time`; named inputs use the
+median of three such times per route. Launcher and MPS preparation time is
+excluded. The upstream baseline uses the same aggregation.
+
+| Test | Nodes | Upstream CPU (s) | Fork CPU (s) | Fork GPU (s) | Upstream / Fork CPU | Upstream / GPU | Fork CPU / GPU |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | `-runtest` (14 cases) | 1 | 75.294 | 43.972 | 73.516 | 1.712 | 1.024 | 0.598 |
 | `-runtestL` (16 cases) | 1 | 2847.609 | 1952.185 | 2049.231 | 1.459 | 1.390 | 0.953 |
@@ -1486,10 +1544,196 @@ against upstream include compiler, MPI and math-library effects.
 | `sidia333_nc_cluster.dat` | 1 | 315.049 | 228.009 | 72.137 | 1.382 | 4.367 | 3.161 |
 | `cghelgeo.dat` | 1 | 1102.810 | 1304.279 | 243.684 | 0.846 | 4.526 | 5.352 |
 
-The [comparison CSV](benchmarks/results/pegasus_h100_20261031/upstream-comparison.csv)
-records these totals and ratios; the
-[per-case comparison](benchmarks/results/pegasus_h100_20261031/upstream-case-comparison.csv)
-includes timings and SCF counts for all 59 input definitions.
+#### Case results
+
+##### `-runtest` (14 cases)
+
+| Input | Upstream CPU (s) | Fork CPU (s) | Fork GPU (s) | Upstream / Fork CPU | Upstream / GPU | Fork CPU / GPU |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Benzene | 6.284 | 2.836 | 5.445 | 2.216 | 1.154 | 0.521 |
+| C60 | 6.160 | 4.419 | 8.715 | 1.394 | 0.707 | 0.507 |
+| CO | 4.908 | 3.158 | 19.889 | 1.554 | 0.247 | 0.159 |
+| Cr2 | 7.081 | 4.261 | 4.704 | 1.662 | 1.505 | 0.906 |
+| Crys-MnO | 7.400 | 5.119 | 5.580 | 1.446 | 1.326 | 0.917 |
+| GaAs | 12.480 | 7.346 | 6.464 | 1.699 | 1.931 | 1.136 |
+| Glycine | 3.196 | 1.911 | 2.961 | 1.672 | 1.079 | 0.645 |
+| Graphite4 | 2.661 | 0.789 | 1.514 | 3.373 | 1.758 | 0.521 |
+| H2O | 2.885 | 1.175 | 1.509 | 2.455 | 1.912 | 0.779 |
+| H2O-EF | 3.151 | 1.648 | 2.491 | 1.912 | 1.265 | 0.662 |
+| HMn | 8.221 | 5.937 | 7.056 | 1.385 | 1.165 | 0.841 |
+| Methane | 2.432 | 1.076 | 1.935 | 2.260 | 1.257 | 0.556 |
+| Mol_MnO | 5.397 | 3.197 | 4.423 | 1.688 | 1.220 | 0.723 |
+| Ndia2 | 3.038 | 1.100 | 0.830 | 2.762 | 3.660 | 1.325 |
+| **Total** | **75.294** | **43.972** | **73.516** | **1.712** | **1.024** | **0.598** |
+
+<details>
+<summary>SCF counts and numerical checks: -runtest (14 cases)</summary>
+
+| Input | SCF steps (upstream / fork CPU / GPU) | Max abs ΔE (Ha) | Max abs ΔF (Ha/bohr) | Check |
+| --- | --- | ---: | ---: | --- |
+| Benzene | 19 / 19 / 19 | 9.948e-13 | 0.000e+00 | PASS |
+| C60 | 27 / 27 / 27 | 3.098e-11 | 1.400e-11 | PASS |
+| CO | 16 / 16 / 16 | 0.000e+00 | 1.300e-11 | PASS |
+| Cr2 | 21 / 21 / 21 | 4.007e-12 | 2.170e-10 | PASS |
+| Crys-MnO | 38 / 44 / 37 | 4.730e-10 | 6.400e-10 | PASS |
+| GaAs | 13 / 13 / 13 | 2.100e-11 | 8.000e-12 | PASS |
+| Glycine | 20 / 20 / 20 | 9.948e-13 | 1.000e-12 | PASS |
+| Graphite4 | 14 / 14 / 14 | 2.000e-12 | 1.000e-12 | PASS |
+| H2O | 31 / 31 / 31 | 1.002e-12 | 1.000e-12 | PASS |
+| H2O-EF | 17 / 17 / 17 | 9.983e-13 | 0.000e+00 | PASS |
+| HMn | 26 / 26 / 26 | 9.948e-13 | 0.000e+00 | PASS |
+| Methane | 14 / 14 / 14 | 5.700e-11 | 6.000e-12 | PASS |
+| Mol_MnO | 26 / 26 / 26 | 9.948e-13 | 1.000e-12 | PASS |
+| Ndia2 | 13 / 13 / 13 | 4.000e-12 | 0.000e+00 | PASS |
+
+</details>
+
+##### `-runtestL` (16 cases)
+
+| Input | Upstream CPU (s) | Fork CPU (s) | Fork GPU (s) | Upstream / Fork CPU | Upstream / GPU | Fork CPU / GPU |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 5_5_13COb2 | 40.022 | 34.512 | 29.411 | 1.160 | 1.361 | 1.173 |
+| B2C62_Band | 311.743 | 205.887 | 182.550 | 1.514 | 1.708 | 1.128 |
+| CG15c-DC-LNO | 91.053 | 57.680 | 123.308 | 1.579 | 0.738 | 0.468 |
+| DIA512-1 | 64.126 | 44.928 | 116.060 | 1.427 | 0.553 | 0.387 |
+| FeBCC | 96.602 | 76.955 | 82.373 | 1.255 | 1.173 | 0.934 |
+| GEL | 26.502 | 18.293 | 18.266 | 1.449 | 1.451 | 1.001 |
+| GFRAG | 17.599 | 16.708 | 14.789 | 1.053 | 1.190 | 1.130 |
+| GGFF | 597.858 | 557.554 | 276.305 | 1.072 | 2.164 | 2.018 |
+| MCCN | 103.045 | 103.568 | 201.110 | 0.995 | 0.512 | 0.515 |
+| Mn12_148_F | 48.396 | 39.704 | 24.848 | 1.219 | 1.948 | 1.598 |
+| N1C999 | 1187.484 | 596.837 | 842.069 | 1.990 | 1.410 | 0.709 |
+| Ni63-O64 | 48.381 | 37.784 | 25.131 | 1.280 | 1.925 | 1.503 |
+| Pt63 | 34.478 | 27.645 | 21.564 | 1.247 | 1.599 | 1.282 |
+| SialicAcid | 11.082 | 8.271 | 9.066 | 1.340 | 1.222 | 0.912 |
+| ZrB2_2x2 | 120.799 | 84.833 | 52.831 | 1.424 | 2.287 | 1.606 |
+| nsV4Bz5 | 48.439 | 41.026 | 29.550 | 1.181 | 1.639 | 1.388 |
+| **Total** | **2847.609** | **1952.185** | **2049.231** | **1.459** | **1.390** | **0.953** |
+
+<details>
+<summary>SCF counts and numerical checks: -runtestL (16 cases)</summary>
+
+| Input | SCF steps (upstream / fork CPU / GPU) | Max abs ΔE (Ha) | Max abs ΔF (Ha/bohr) | Check |
+| --- | --- | ---: | ---: | --- |
+| 5_5_13COb2 | 66 / 67 / 67 | 5.730e-10 | 2.220e-10 | PASS |
+| B2C62_Band | 203 / 203 / 204 | 8.902e-11 | 3.920e-08 | PASS |
+| CG15c-DC-LNO | 49 / 42 / 42 | 1.264e-09 | 1.560e-10 | PASS |
+| DIA512-1 | 29 / 29 / 29 | 7.531e-10 | 5.812e-09 | PASS |
+| FeBCC | 62 / 62 / 62 | 1.115e-09 | 6.700e-11 | PASS |
+| GEL | 58 / 58 / 58 | 2.390e-10 | 2.530e-10 | PASS |
+| GFRAG | 60 / 60 / 60 | 5.770e-10 | 3.673e-09 | PASS |
+| GGFF | 101 / 99 / 101 | 9.800e-11 | 1.370e-10 | PASS |
+| MCCN | 67 / 67 / 67 | 3.638e-10 | 3.700e-11 | PASS |
+| Mn12_148_F | 61 / 61 / 61 | 2.769e-10 | 4.560e-10 | PASS |
+| N1C999 | 66 / 59 / 58 | 1.553e-09 | 3.000e-11 | PASS |
+| Ni63-O64 | 68 / 69 / 62 | 2.748e-09 | 8.480e-10 | PASS |
+| Pt63 | 81 / 70 / 66 | 4.847e-09 | 3.230e-10 | PASS |
+| SialicAcid | 29 / 29 / 29 | 3.100e-10 | 3.680e-10 | PASS |
+| ZrB2_2x2 | 49 / 49 / 49 | 2.060e-10 | 3.290e-10 | PASS |
+| nsV4Bz5 | 57 / 57 / 57 | 2.070e-10 | 8.620e-10 | PASS |
+
+</details>
+
+##### `-runtestL2` (7 cases)
+
+| Input | Upstream CPU (s) | Fork CPU (s) | Fork GPU (s) | Upstream / Fork CPU | Upstream / GPU | Fork CPU / GPU |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| C1000 | — | 583.088 | 530.061 | — | — | 1.100 |
+| Fe1000 | — | 10391.753 | 3195.273 | — | — | 3.252 |
+| GRA1024 | — | 791.450 | 369.214 | — | — | 2.144 |
+| Ih-Ice1200 | — | 247.206 | 217.339 | — | — | 1.137 |
+| Pt500 | — | 2955.237 | 3097.813 | — | — | 0.954 |
+| R-TiO2-1050 | — | 767.323 | 542.767 | — | — | 1.414 |
+| Si1000 | — | 589.229 | 440.413 | — | — | 1.338 |
+| **Total** | — | **16325.286** | **8392.880** | — | — | **1.945** |
+
+<details>
+<summary>SCF counts and numerical checks: -runtestL2 (7 cases)</summary>
+
+| Input | SCF steps (upstream / fork CPU / GPU) | Max abs ΔE (Ha) | Max abs ΔF (Ha/bohr) | Check |
+| --- | --- | ---: | ---: | --- |
+| C1000 | — / 41 / 41 | 7.512e-10 | 6.050e-10 | PASS |
+| Fe1000 | — / 436 / 342 | 3.783e-09 | 5.894e-09 | PASS |
+| GRA1024 | — / 60 / 48 | 3.031e-09 | 8.850e-10 | PASS |
+| Ih-Ice1200 | — / 36 / 35 | 7.857e-09 | 3.840e-10 | PASS |
+| Pt500 | — / 204 / 181 | 1.465e-08 | 9.702e-08 | PASS |
+| R-TiO2-1050 | — / 34 / 39 | 4.056e-09 | 8.800e-10 | PASS |
+| Si1000 | — / 42 / 41 | 2.692e-10 | 1.170e-10 | PASS |
+
+</details>
+
+##### `-runtestL3` (20 cases)
+
+| Input | Upstream CPU (s) | Fork CPU (s) | Fork GPU (s) | Upstream / Fork CPU | Upstream / GPU | Fork CPU / GPU |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 5_5_13COb2 | 7.517 | 3.385 | 8.136 | 2.221 | 0.924 | 0.416 |
+| C1000 | 75.529 | 63.118 | 55.543 | 1.197 | 1.360 | 1.136 |
+| C60 | 2.422 | 1.058 | 1.885 | 2.289 | 1.285 | 0.561 |
+| CG15c | 43.160 | 22.137 | 24.001 | 1.950 | 1.798 | 0.922 |
+| Crys-MnO | 5.273 | 1.363 | 1.396 | 3.869 | 3.777 | 0.976 |
+| DIA512-1 | 12.696 | 6.815 | 9.222 | 1.863 | 1.377 | 0.739 |
+| Fe1000 | 103.523 | 99.759 | 48.726 | 1.038 | 2.125 | 2.047 |
+| GEL | 8.111 | 3.180 | 3.713 | 2.551 | 2.184 | 0.856 |
+| GFRAG | 3.418 | 1.492 | 2.130 | 2.291 | 1.605 | 0.700 |
+| GGFF | 72.409 | 64.476 | 68.840 | 1.123 | 1.052 | 0.937 |
+| MCCN | 40.405 | 19.630 | 25.872 | 2.058 | 1.562 | 0.759 |
+| Mn12_148_F | 7.765 | 3.713 | 3.419 | 2.091 | 2.271 | 1.086 |
+| N1C999 | 402.708 | 236.021 | 114.270 | 1.706 | 3.524 | 2.065 |
+| Ni63-O64 | 7.812 | 3.765 | 4.430 | 2.075 | 1.763 | 0.850 |
+| Pt500 | 142.883 | 101.872 | 110.445 | 1.403 | 1.294 | 0.922 |
+| Pt63 | 5.064 | 2.539 | 3.315 | 1.994 | 1.528 | 0.766 |
+| Si1280-LNO | 431.747 | 282.175 | 164.167 | 1.530 | 2.630 | 1.719 |
+| SialicAcid | 3.855 | 1.588 | 2.466 | 2.428 | 1.563 | 0.644 |
+| ZrB2_2x2 | 17.233 | 9.076 | 8.180 | 1.899 | 2.107 | 1.110 |
+| nsV4Bz5 | 7.419 | 3.691 | 3.751 | 2.010 | 1.978 | 0.984 |
+| **Total** | **1400.949** | **930.853** | **663.907** | **1.505** | **2.110** | **1.402** |
+
+<details>
+<summary>SCF counts and numerical checks: -runtestL3 (20 cases)</summary>
+
+| Input | SCF steps (upstream / fork CPU / GPU) | Max abs ΔE (Ha) | Max abs ΔF (Ha/bohr) | Check |
+| --- | --- | ---: | ---: | --- |
+| 5_5_13COb2 | 3 / 3 / 3 | 1.258e-08 | 5.860e-10 | PASS |
+| C1000 | 3 / 3 / 3 | 4.305e-09 | 1.205e-09 | PASS |
+| C60 | 3 / 3 / 3 | 3.098e-11 | 1.700e-11 | PASS |
+| CG15c | 3 / 3 / 3 | 4.326e-09 | 1.464e-09 | PASS |
+| Crys-MnO | 3 / 3 / 3 | 4.640e-10 | 5.350e-10 | PASS |
+| DIA512-1 | 3 / 3 / 3 | 7.208e-10 | 8.486e-09 | PASS |
+| Fe1000 | 3 / 3 / 3 | 6.301e-09 | 3.021e-07 | FAIL |
+| GEL | 3 / 3 / 3 | 2.350e-10 | 1.973e-09 | PASS |
+| GFRAG | 3 / 3 / 3 | 3.791e-09 | 2.821e-09 | PASS |
+| GGFF | 3 / 3 / 3 | 1.000e-10 | 9.500e-11 | PASS |
+| MCCN | 3 / 3 / 3 | 7.055e-09 | 1.448e-09 | PASS |
+| Mn12_148_F | 3 / 3 / 3 | 5.443e-10 | 2.147e-09 | PASS |
+| N1C999 | 3 / 3 / 3 | 1.586e-09 | 1.790e-10 | PASS |
+| Ni63-O64 | 3 / 3 / 3 | 2.725e-09 | 1.135e-05 | FAIL |
+| Pt500 | 3 / 3 / 3 | 1.111e-08 | 1.302e-09 | PASS |
+| Pt63 | 3 / 3 / 3 | 5.249e-09 | 7.090e-10 | PASS |
+| Si1280-LNO | 3 / 3 / 3 | 2.099e-08 | 2.640e-10 | PASS |
+| SialicAcid | 3 / 3 / 3 | 3.020e-10 | 3.910e-10 | PASS |
+| ZrB2_2x2 | 3 / 3 / 3 | 2.958e-09 | 1.088e-09 | PASS |
+| nsV4Bz5 | 3 / 3 / 3 | 8.090e-10 | 2.851e-09 | PASS |
+
+</details>
+
+##### Named inputs
+
+| Input | Upstream CPU (s) | Fork CPU (s) | Fork GPU (s) | Upstream / Fork CPU | Upstream / GPU | Fork CPU / GPU |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `sidia333_nc_cluster.dat` | 315.049 | 228.009 | 72.137 | 1.382 | 4.367 | 3.161 |
+| `cghelgeo.dat` | 1102.810 | 1304.279 | 243.684 | 0.846 | 4.526 | 5.352 |
+
+<details>
+<summary>SCF counts and numerical checks: Named inputs</summary>
+
+| Input | SCF steps (upstream / fork CPU / GPU) | Max abs ΔE (Ha) | Max abs ΔF (Ha/bohr) | Check |
+| --- | --- | ---: | ---: | --- |
+| `sidia333_nc_cluster.dat` | 25 × 3 / 25 × 3 / 25 × 3 | 2.210e-10 | 2.180e-10 | PASS |
+| `cghelgeo.dat` | 53, 59, 61 / 59, 56, 59 / 60, 53, 60 | 3.191e-07 | 6.983e-08 | FAIL |
+
+</details>
+
+#### Accuracy and convergence
 
 These ratios include differences in SCF iteration counts. For example,
 `L2/Fe1000` used 436 CPU steps and 342 CUDA steps. `cghelgeo` used
@@ -1498,23 +1742,8 @@ Sidia333 reached its original 25-step cap in all six runs, and the `L3`
 inputs use three SCF steps. Assess convergence from the recorded final
 residuals alongside these timings.
 
-<details>
-<summary>-runtestL2: case timings and SCF counts</summary>
-
-| Input | CPU (s) | CUDA (s) | CPU SCF steps | CUDA SCF steps | CPU / CUDA |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| C1000 | 583.088 | 530.061 | 41 | 41 | 1.100 |
-| Fe1000 | 10391.753 | 3195.273 | 436 | 342 | 3.252 |
-| GRA1024 | 791.450 | 369.214 | 60 | 48 | 2.144 |
-| Ih-Ice1200 | 247.206 | 217.339 | 36 | 35 | 1.137 |
-| Pt500 | 2955.237 | 3097.813 | 204 | 181 | 0.954 |
-| R-TiO2-1050 | 767.323 | 542.767 | 34 | 39 | 1.414 |
-| Si1000 | 589.229 | 440.413 | 42 | 41 | 1.338 |
-
-[Whole-run time divided by SCF count](benchmarks/results/pegasus_h100_20261031/L2-iteration-reference.csv)
-is also recorded as a reference; it includes initialization and force work.
-
-</details>
+Per-case maxima above combine paired CPU/GPU, repeat, bundled-reference and
+retained-upstream checks. The comparison sets are summarized separately below.
 
 All 20 CPU/CUDA runs completed normally, producing 126 case observations.
 Paired CPU/CUDA checks compare total energy and every force component,
@@ -1559,6 +1788,8 @@ All 112 comparisons, including input/output hashes, are recorded in
 
 </details>
 
+#### Measurement records
+
 The campaign consumed **32.08 points**, within the 150-point cap. The ten
 allocations totaled 32.072778 node-hours, including preparation and cleanup.
 The [versioned CSV/JSON records](benchmarks/results/pegasus_h100_20261031/manifest.json)
@@ -1567,7 +1798,17 @@ build/input hashes, launch commands and allocation accounting. Full local
 outputs, rank records and MPS logs remain under
 `work/benchmarks_threaded_20261031/`.
 
+The [overall comparison CSV](benchmarks/results/pegasus_h100_20261031/upstream-comparison.csv)
+and [case comparison CSV](benchmarks/results/pegasus_h100_20261031/upstream-case-comparison.csv)
+provide the source values for the inline tables.
+[Whole-run time divided by SCF count](benchmarks/results/pegasus_h100_20261031/L2-iteration-reference.csv)
+is an additional reference that includes initialization and force work.
+
+<a id="benchmark-radeon-rx9060xt"></a>
+
 ### Radeon RX 9060 XT validation (2026-10-31 refresh)
+
+#### Measurement conditions
 
 The fork was pulled, rebuilt and installed from `main` at
 `0681d63e` before this refresh. Its CPU and HIP runs started at
@@ -1596,9 +1837,7 @@ model cases passed before the benchmark.
 Both fork paths explicitly use `BLIS_NUM_THREADS=2`, `OMP_NUM_THREADS=2`,
 `OMP_DYNAMIC=FALSE`, `OMP_PROC_BIND=close`, `OMP_PLACES=cores` and
 `OMP_MAX_ACTIVE_LEVELS=1`. Each job's 16 rank environments and CPU affinity
-were checked. The October 30 fork runs used one BLAS thread per rank;
-those archived timings also precede the ELPA/threading corrections.
-The upstream baseline uses two MKL threads per rank.
+were checked. The upstream baseline uses two MKL threads per rank.
 Upstream/fork ratios also include compiler, MPI and numerical-library differences.
 
 Inputs, basis/pseudopotential data, geometry, grids, SCF/MD limits,
@@ -1610,55 +1849,48 @@ All 44 basis/pseudopotential file hashes match the prior record.
 The HIP run retains the validated `HSA_ENABLE_SDMA=0` runtime workaround;
 NVIDIA MPS does not apply to this Radeon device.
 
-Times are seconds. Suite totals sum native per-case elapsed times from
-`runtest.result` / `runtestL.result`; named inputs use the maximum-rank
-`Total Computational Time`. GPU-path times include CPU fallbacks selected
-by the application; MPI launch/shutdown overhead is excluded.
-`Upstream / HIP` and `Fork CPU / HIP` above 1 indicate
-a faster HIP-path time. `sp` means spin-polarized and `NC` noncollinear.
+#### Overall results
 
-| Test | Upstream CPU (Oct 29) | Fork CPU path | Fork HIP path |
-| --- | ---: | ---: | ---: |
-| `-runtest` (14 cases) | 59.02 | 48.21 | 68.97 |
-| `-runtestL` (16 cases) | 4319.34 | 2827.62 | 3922.23 |
-| `sidia333_nc_cluster.dat` | 483.443 | 352.563 | 195.224 |
-| `cghelgeo.dat` | 1896.871 | 2522.141 | 2538.406 |
+Suite totals sum native per-case `runtest.result` / `runtestL.result` times.
+Named inputs use the maximum-rank `Total Computational Time`. Each value
+is one measurement. MPI launch/shutdown overhead is excluded.
 
-The per-case accuracy maxima below cover both paths against their bundled
-references, each other, the retained upstream CPU output and the prior fork
-output wherever applicable. Checks require finite total energies and every
-atomic force component, matching geometry/grids, absolute ΔE ≤ `1e-7` Ha
-and maximum force-component ΔF ≤ `1e-7` Ha/bohr. Completion markers are
-recorded separately and do not determine numerical acceptance.
-SCF counts sum all MD steps of each input. Counts can differ between paths;
-the timing ratios compare complete input runs rather than a fixed number of
-SCF iterations.
+| Test | Nodes | Upstream CPU (s) | Fork CPU (s) | Fork GPU (s) | Upstream / Fork CPU | Upstream / GPU | Fork CPU / GPU |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `-runtest` (14 cases) | 1 | 59.020 | 48.210 | 68.970 | 1.224 | 0.856 | 0.699 |
+| `-runtestL` (16 cases) | 1 | 4319.340 | 2827.620 | 3922.230 | 1.528 | 1.101 | 0.721 |
+| `-runtestL2` (7 cases) | — | — | — | — | — | — | — |
+| `-runtestL3` (20 cases) | — | — | — | — | — | — | — |
+| `sidia333_nc_cluster.dat` | 1 | 483.443 | 352.563 | 195.224 | 1.371 | 2.476 | 1.806 |
+| `cghelgeo.dat` | 1 | 1896.871 | 2522.141 | 2538.406 | 0.752 | 0.747 | 0.994 |
 
-#### `-runtest`: all 14 cases
+#### Case results
 
-| Input | Atoms | Solver | Upstream CPU (s) | Fork CPU (s) | Fork HIP (s) | Upstream / HIP | Fork CPU / HIP |
-| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: |
-| Benzene | 12 | cluster | 2.39 | 1.80 | 4.00 | 0.60 | 0.45 |
-| C60 | 60 | dc | 4.97 | 5.34 | 8.79 | 0.57 | 0.61 |
-| CO | 2 | cluster | 5.99 | 4.48 | 15.91 | 0.38 | 0.28 |
-| Cr2 | 2 | cluster (NC) | 4.07 | 3.22 | 3.51 | 1.16 | 0.92 |
-| Crys-MnO | 4 | band (sp) | 6.57 | 5.29 | 5.72 | 1.15 | 0.92 |
-| GaAs | 2 | band (NC) | 11.56 | 9.53 | 8.74 | 1.32 | 1.09 |
-| Glycine | 10 | cluster | 2.35 | 1.75 | 3.66 | 0.64 | 0.48 |
-| Graphite4 | 4 | band | 1.62 | 0.92 | 1.85 | 0.88 | 0.50 |
-| H2O-EF | 3 | cluster | 2.15 | 1.55 | 2.15 | 1.00 | 0.72 |
-| H2O | 3 | cluster | 1.88 | 1.09 | 1.83 | 1.03 | 0.60 |
-| HMn | 2 | cluster (sp) | 7.66 | 6.53 | 6.53 | 1.17 | 1.00 |
-| Methane | 5 | cluster | 1.46 | 0.89 | 1.68 | 0.87 | 0.53 |
-| Mol_MnO | 2 | cluster (sp) | 4.09 | 3.50 | 3.45 | 1.19 | 1.01 |
-| Ndia2 | 2 | band | 2.26 | 2.32 | 1.15 | 1.97 | 2.02 |
-| **Total** | | | **59.02** | **48.21** | **68.97** | **0.86** | **0.70** |
+##### `-runtest` (14 cases)
+
+| Input | Upstream CPU (s) | Fork CPU (s) | Fork GPU (s) | Upstream / Fork CPU | Upstream / GPU | Fork CPU / GPU |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Benzene | 2.390 | 1.800 | 4.000 | 1.328 | 0.598 | 0.450 |
+| C60 | 4.970 | 5.340 | 8.790 | 0.931 | 0.565 | 0.608 |
+| CO | 5.990 | 4.480 | 15.910 | 1.337 | 0.376 | 0.282 |
+| Cr2 | 4.070 | 3.220 | 3.510 | 1.264 | 1.160 | 0.917 |
+| Crys-MnO | 6.570 | 5.290 | 5.720 | 1.242 | 1.149 | 0.925 |
+| GaAs | 11.560 | 9.530 | 8.740 | 1.213 | 1.323 | 1.090 |
+| Glycine | 2.350 | 1.750 | 3.660 | 1.343 | 0.642 | 0.478 |
+| Graphite4 | 1.620 | 0.920 | 1.850 | 1.761 | 0.876 | 0.497 |
+| H2O | 1.880 | 1.090 | 1.830 | 1.725 | 1.027 | 0.596 |
+| H2O-EF | 2.150 | 1.550 | 2.150 | 1.387 | 1.000 | 0.721 |
+| HMn | 7.660 | 6.530 | 6.530 | 1.173 | 1.173 | 1.000 |
+| Methane | 1.460 | 0.890 | 1.680 | 1.640 | 0.869 | 0.530 |
+| Mol_MnO | 4.090 | 3.500 | 3.450 | 1.169 | 1.186 | 1.014 |
+| Ndia2 | 2.260 | 2.320 | 1.150 | 0.974 | 1.965 | 2.017 |
+| **Total** | **59.020** | **48.210** | **68.970** | **1.224** | **0.856** | **0.699** |
 
 <details>
-<summary>SCF counts and numerical checks for all 14 cases</summary>
+<summary>SCF counts and numerical checks: -runtest (14 cases)</summary>
 
-| Input | SCF upstream / CPU / HIP | Max abs ΔE (Ha) | Max abs ΔF (Ha/bohr) | Status |
-| --- | ---: | ---: | ---: | --- |
+| Input | SCF steps (upstream / fork CPU / GPU) | Max abs ΔE (Ha) | Max abs ΔF (Ha/bohr) | Check |
+| --- | --- | ---: | ---: | --- |
 | Benzene | 19 / 19 / 19 | 9.948e-13 | 0.000e+00 | PASS |
 | C60 | 27 / 27 / 27 | 3.200e-11 | 1.000e-12 | PASS |
 | CO | 16 / 16 / 16 | 0.000e+00 | 2.100e-11 | PASS |
@@ -1667,8 +1899,8 @@ SCF iterations.
 | GaAs | 13 / 13 / 13 | 2.100e-11 | 8.000e-12 | PASS |
 | Glycine | 20 / 20 / 20 | 9.948e-13 | 1.000e-12 | PASS |
 | Graphite4 | 14 / 14 / 14 | 2.000e-12 | 1.000e-12 | PASS |
-| H2O-EF | 17 / 17 / 17 | 9.983e-13 | 1.000e-12 | PASS |
 | H2O | 31 / 31 / 31 | 1.002e-12 | 1.000e-12 | PASS |
+| H2O-EF | 17 / 17 / 17 | 9.983e-13 | 1.000e-12 | PASS |
 | HMn | 26 / 26 / 26 | 9.948e-13 | 0.000e+00 | PASS |
 | Methane | 14 / 14 / 14 | 6.600e-11 | 8.000e-12 | PASS |
 | Mol_MnO | 26 / 26 / 26 | 9.948e-13 | 1.000e-12 | PASS |
@@ -1676,33 +1908,33 @@ SCF iterations.
 
 </details>
 
-#### `-runtestL`: all 16 cases
+##### `-runtestL` (16 cases)
 
-| Input | Atoms | Solver | Upstream CPU (s) | Fork CPU (s) | Fork HIP (s) | Upstream / HIP | Fork CPU / HIP |
-| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: |
-| 5_5_13COb2 | 155 | band | 63.35 | 58.28 | 66.01 | 0.96 | 0.88 |
-| B2C62_Band | 64 | band | 363.23 | 274.05 | 794.23 | 0.46 | 0.35 |
-| CG15c-DC-LNO | 650 | dc-lno | 137.22 | 92.78 | 112.91 | 1.22 | 0.82 |
-| DIA512-1 | 512 | krylov | 87.11 | 74.78 | 104.47 | 0.83 | 0.72 |
-| FeBCC | 16 | band (sp) | 96.30 | 89.11 | 104.39 | 0.92 | 0.85 |
-| GEL | 40 | band | 27.11 | 22.84 | 102.20 | 0.27 | 0.22 |
-| GFRAG | 54 | cluster | 28.73 | 25.76 | 36.63 | 0.78 | 0.70 |
-| GGFF | 40 | band (NC) | 952.28 | 780.87 | 1040.88 | 0.91 | 0.75 |
-| MCCN | 564 | krylov | 174.76 | 170.29 | 184.11 | 0.95 | 0.92 |
-| Mn12_148_F | 148 | cluster (sp) | 66.39 | 60.50 | 76.69 | 0.87 | 0.79 |
-| N1C999 | 1000 | dc-lno (sp) | 1985.77 | 846.50 | 907.10 | 2.19 | 0.93 |
-| Ni63-O64 | 127 | band (sp) | 58.47 | 44.89 | 72.08 | 0.81 | 0.62 |
-| Pt63 | 63 | cluster | 35.53 | 40.21 | 52.54 | 0.68 | 0.77 |
-| SialicAcid | 40 | cluster | 12.74 | 10.92 | 19.51 | 0.65 | 0.56 |
-| ZrB2_2x2 | 76 | band | 155.01 | 147.93 | 172.46 | 0.90 | 0.86 |
-| nsV4Bz5 | 64 | cluster | 75.34 | 87.91 | 76.02 | 0.99 | 1.16 |
-| **Total** | | | **4319.34** | **2827.62** | **3922.23** | **1.10** | **0.72** |
+| Input | Upstream CPU (s) | Fork CPU (s) | Fork GPU (s) | Upstream / Fork CPU | Upstream / GPU | Fork CPU / GPU |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 5_5_13COb2 | 63.350 | 58.280 | 66.010 | 1.087 | 0.960 | 0.883 |
+| B2C62_Band | 363.230 | 274.050 | 794.230 | 1.325 | 0.457 | 0.345 |
+| CG15c-DC-LNO | 137.220 | 92.780 | 112.910 | 1.479 | 1.215 | 0.822 |
+| DIA512-1 | 87.110 | 74.780 | 104.470 | 1.165 | 0.834 | 0.716 |
+| FeBCC | 96.300 | 89.110 | 104.390 | 1.081 | 0.923 | 0.854 |
+| GEL | 27.110 | 22.840 | 102.200 | 1.187 | 0.265 | 0.223 |
+| GFRAG | 28.730 | 25.760 | 36.630 | 1.115 | 0.784 | 0.703 |
+| GGFF | 952.280 | 780.870 | 1040.880 | 1.220 | 0.915 | 0.750 |
+| MCCN | 174.760 | 170.290 | 184.110 | 1.026 | 0.949 | 0.925 |
+| Mn12_148_F | 66.390 | 60.500 | 76.690 | 1.097 | 0.866 | 0.789 |
+| N1C999 | 1985.770 | 846.500 | 907.100 | 2.346 | 2.189 | 0.933 |
+| Ni63-O64 | 58.470 | 44.890 | 72.080 | 1.303 | 0.811 | 0.623 |
+| Pt63 | 35.530 | 40.210 | 52.540 | 0.884 | 0.676 | 0.765 |
+| SialicAcid | 12.740 | 10.920 | 19.510 | 1.167 | 0.653 | 0.560 |
+| ZrB2_2x2 | 155.010 | 147.930 | 172.460 | 1.048 | 0.899 | 0.858 |
+| nsV4Bz5 | 75.340 | 87.910 | 76.020 | 0.857 | 0.991 | 1.156 |
+| **Total** | **4319.340** | **2827.620** | **3922.230** | **1.528** | **1.101** | **0.721** |
 
 <details>
-<summary>SCF counts and numerical checks for all 16 cases</summary>
+<summary>SCF counts and numerical checks: -runtestL (16 cases)</summary>
 
-| Input | SCF upstream / CPU / HIP | Max abs ΔE (Ha) | Max abs ΔF (Ha/bohr) | Status |
-| --- | ---: | ---: | ---: | --- |
+| Input | SCF steps (upstream / fork CPU / GPU) | Max abs ΔE (Ha) | Max abs ΔF (Ha/bohr) | Check |
+| --- | --- | ---: | ---: | --- |
 | 5_5_13COb2 | 66 / 66 / 67 | 1.480e-09 | 2.550e-10 | PASS |
 | B2C62_Band | 204 / 203 / 203 | 2.010e-10 | 4.367e-08 | PASS |
 | CG15c-DC-LNO | 44 / 42 / 42 | 1.270e-09 | 1.560e-10 | PASS |
@@ -1722,12 +1954,34 @@ SCF iterations.
 
 </details>
 
-#### Named inputs
+##### Named inputs
 
-| Input | Atoms | Solver | SCF upstream / CPU / HIP | Max abs ΔE (Ha) | Max abs ΔF (Ha/bohr) | Status |
-| --- | ---: | --- | ---: | ---: | ---: | --- |
-| `sidia333_nc_cluster.dat` | 216 | cluster (NC) | 25 / 25 / 25 | 1.060e-10 | 1.870e-10 | PASS |
-| `cghelgeo.dat` | 650 | band | 60 / 60 / 60 | 3.186e-08 | 2.469e-08 | PASS |
+| Input | Upstream CPU (s) | Fork CPU (s) | Fork GPU (s) | Upstream / Fork CPU | Upstream / GPU | Fork CPU / GPU |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `sidia333_nc_cluster.dat` | 483.443 | 352.563 | 195.224 | 1.371 | 2.476 | 1.806 |
+| `cghelgeo.dat` | 1896.871 | 2522.141 | 2538.406 | 0.752 | 0.747 | 0.994 |
+
+<details>
+<summary>SCF counts and numerical checks: Named inputs</summary>
+
+| Input | SCF steps (upstream / fork CPU / GPU) | Max abs ΔE (Ha) | Max abs ΔF (Ha/bohr) | Check |
+| --- | --- | ---: | ---: | --- |
+| `sidia333_nc_cluster.dat` | 25 / 25 / 25 | 1.060e-10 | 1.870e-10 | PASS |
+| `cghelgeo.dat` | 60 / 60 / 60 | 3.186e-08 | 2.469e-08 | PASS |
+
+</details>
+
+#### Accuracy and convergence
+
+The per-case accuracy maxima above cover both paths against their bundled
+references, each other, the retained upstream CPU output and the prior fork
+output wherever applicable. Checks require finite total energies and every
+atomic force component, matching geometry/grids, absolute ΔE ≤ `1e-7` Ha
+and maximum force-component ΔF ≤ `1e-7` Ha/bohr. Completion markers are
+recorded separately and do not determine numerical acceptance.
+SCF counts sum all MD steps of each input. Counts can differ between paths;
+the timing ratios compare complete input runs rather than a fixed number of
+SCF iterations.
 
 All **64 new case executions** completed and passed the numerical checks.
 For sidia333, the HIP path was 1.81× faster than the
@@ -1747,16 +2001,11 @@ The single Radeon could not form the cooperative MAGMA multi-GPU pool
 (60 CPU-solve pool messages). Other HIP phases remained enabled.
 The pre-admission GPU banner alone does not establish GPU eigensolver use.
 
-**The initial `-runtestL3` was stopped for host-memory pressure; it was not
-repeated in this refresh.** During upstream
-`Si1280-LNO`, the process-tree RSS sum reached 223.48 GiB and `MemAvailable`
-fell to 31.69 GiB, triggering the 32 GiB reserve at 05:52 JST on October 30.
-The remaining upstream cases and both fork L3 runs were cancelled. Of the
-16 upstream cases completed before the stop, 15 passed the component-wise
-reference comparison; `Ni63-O64` had a maximum force-component difference of
-`1.21338e-5` Ha/bohr (energy difference `3.65e-9` Ha), above the chosen tolerance.
-That discrepancy remains unresolved. No complete L3 timing or CPU/GPU speedup
-is reported.
+`-runtestL2` and `-runtestL3` have no completed three-route measurement.
+The L3 attempt was stopped for host-memory pressure; a complete L3 total
+and speedup are unavailable.
+
+#### Measurement records
 
 The [case-level CSV](benchmarks/results/radeon_rx9060xt_20261031_16x2.csv) records every
 case timing, SCF count, comparison maximum and input hash. The accompanying
@@ -1765,7 +2014,11 @@ build, binary/library hashes, runtime controls, rank audits, dataset hashes,
 validation and all eight jobs. Raw logs are under
 `work/codex_benchmark_20261031_refresh/`.
 
+<a id="benchmark-sirius-mi300a"></a>
+
 ### Sirius MI300A benchmarks (2026-10-31)
+
+#### Measurement conditions
 
 Every measurement used **one physical node with four MI300A APUs**
 (96 CPU cores and four GPUs), **32 MPI ranks × 3 OpenMP threads**,
@@ -1783,71 +2036,48 @@ The fork CPU executable is frozen at `3e2f5c73`; all GPU measurements use
 shared libraries are identical. Exact executable/library hashes are in the
 [manifest](benchmarks/results/sirius_mi300a_20261031_32x3/manifest.json).
 
-Times below are seconds: the sum of native per-case result rows for each
-complete S/L suite, and `Elapsed.Time.` for the named inputs. Each is one
-measurement; launcher wall times are retained separately.
+#### Overall results
 
-| Workload | Upstream CPU (s) | Fork CPU (s) | Fork HIP GPU (s) |
-| --- | ---: | ---: | ---: |
-| `-runtest` (14 cases) | 61.970 | 43.580 | 140.310 |
-| `-runtestL` (16 cases) | 2219.350 | 1533.410 | 3032.940 |
-| `sidia333_nc_cluster.dat` | 247.520 | 192.886 | 133.143 |
-| `cghelgeo.dat` | 860.989 | 792.170 | 344.113 |
+Suite totals sum native per-case result rows; named inputs use output
+`Elapsed.Time`. Each value is one measurement. Launcher wall times are
+retained separately. L2/L3 are outside the completed scope.
 
-The GPU path is faster on the two named inputs and slower on the S/L
-suites. All **96 pairwise comparisons** across the 32 inputs and three
-configurations pass **1e-7 Ha** for energy and **1e-7 Ha/bohr** for every
-force component. The maximum differences are **2.878005e-8 Ha** and
-**4.7201e-8 Ha/bohr**, respectively. Input physics, geometry, grids, basis,
-SCF/MD limits and convergence thresholds were preserved. The original
-**25-SCF sidia333 input remains unconverged on all three routes**;
-numerical agreement is separate from SCF convergence. All other cases
-converged on every route.
+| Test | Nodes | Upstream CPU (s) | Fork CPU (s) | Fork GPU (s) | Upstream / Fork CPU | Upstream / GPU | Fork CPU / GPU |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `-runtest` (14 cases) | 1 | 61.970 | 43.580 | 140.310 | 1.422 | 0.442 | 0.311 |
+| `-runtestL` (16 cases) | 1 | 2219.350 | 1533.410 | 3032.940 | 1.447 | 0.732 | 0.506 |
+| `-runtestL2` (7 cases) | — | — | — | — | — | — | — |
+| `-runtestL3` (20 cases) | — | — | — | — | — | — | — |
+| `sidia333_nc_cluster.dat` | 1 | 247.520 | 192.886 | 133.143 | 1.283 | 1.859 | 1.449 |
+| `cghelgeo.dat` | 1 | 860.989 | 792.170 | 344.113 | 1.087 | 2.502 | 2.302 |
 
-The eight matching CPU measurements and corrected GPU S result were
-reused. Only GPU L, sidia333 and cghelgeo needed another allocation,
-consuming **3.93 points**. Full commands, affinity/thread checks, inputs
-and hashes are described in the
-[measurement record](benchmarks/results/sirius_mi300a_20261031_32x3/README.txt);
-[timings](benchmarks/results/sirius_mi300a_20261031_32x3/timings.csv),
-[per-case results](benchmarks/results/sirius_mi300a_20261031_32x3/cases.csv)
-and [energy/force comparisons](benchmarks/results/sirius_mi300a_20261031_32x3/comparisons.csv)
-are retained as CSV files. No separate `gpusolver2`/`gpusolver3` timing
-was run, and L2/L3 are outside this final scope.
+#### Case results
 
-In the per-case tables, ratios above 1 mean that HIP is faster than the
-respective CPU path. `sp` denotes collinear spin polarization and `NC`
-denotes noncollinear spin. SCF counts are summed over all MD steps;
-different converged iteration counts can affect timings. Error columns
-show the largest absolute difference among the three configuration pairs
-for that input. `PASS` requires all three comparisons to pass the
-energy/force tolerances above and the atom, grid and geometry checks.
+##### `-runtest` (14 cases)
 
-#### `-runtest`: all 14 cases
-
-| Input | Atoms | Solver | Upstream CPU (s) | Fork CPU (s) | Fork HIP (s) | Upstream / HIP | Fork CPU / HIP |
-| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: |
-| Benzene | 12 | cluster | 2.90 | 2.31 | 7.75 | 0.37 | 0.30 |
-| C60 | 60 | dc | 5.11 | 4.83 | 8.47 | 0.60 | 0.57 |
-| CO | 2 | cluster | 6.14 | 5.19 | 48.35 | 0.13 | 0.11 |
-| Cr2 | 2 | cluster (NC) | 4.46 | 3.23 | 5.80 | 0.77 | 0.56 |
-| Crys-MnO | 4 | band (sp) | 8.17 | 5.11 | 10.78 | 0.76 | 0.47 |
-| GaAs | 2 | band (NC) | 10.98 | 6.72 | 8.97 | 1.22 | 0.75 |
-| Glycine | 10 | cluster | 2.73 | 2.05 | 6.19 | 0.44 | 0.33 |
-| Graphite4 | 4 | band | 2.30 | 1.09 | 3.80 | 0.61 | 0.29 |
-| H2O-EF | 3 | cluster | 2.42 | 1.63 | 4.44 | 0.55 | 0.37 |
-| H2O | 3 | cluster | 2.44 | 1.46 | 4.29 | 0.57 | 0.34 |
-| HMn | 2 | cluster (sp) | 5.81 | 4.45 | 15.48 | 0.38 | 0.29 |
-| Methane | 5 | cluster | 1.73 | 1.08 | 3.83 | 0.45 | 0.28 |
-| Mol_MnO | 2 | cluster (sp) | 4.32 | 3.10 | 9.97 | 0.43 | 0.31 |
-| Ndia2 | 2 | band | 2.46 | 1.33 | 2.19 | 1.12 | 0.61 |
-| **Total** | | | **61.97** | **43.58** | **140.31** | **0.44** | **0.31** |
+| Input | Upstream CPU (s) | Fork CPU (s) | Fork GPU (s) | Upstream / Fork CPU | Upstream / GPU | Fork CPU / GPU |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Benzene | 2.900 | 2.310 | 7.750 | 1.255 | 0.374 | 0.298 |
+| C60 | 5.110 | 4.830 | 8.470 | 1.058 | 0.603 | 0.570 |
+| CO | 6.140 | 5.190 | 48.350 | 1.183 | 0.127 | 0.107 |
+| Cr2 | 4.460 | 3.230 | 5.800 | 1.381 | 0.769 | 0.557 |
+| Crys-MnO | 8.170 | 5.110 | 10.780 | 1.599 | 0.758 | 0.474 |
+| GaAs | 10.980 | 6.720 | 8.970 | 1.634 | 1.224 | 0.749 |
+| Glycine | 2.730 | 2.050 | 6.190 | 1.332 | 0.441 | 0.331 |
+| Graphite4 | 2.300 | 1.090 | 3.800 | 2.110 | 0.605 | 0.287 |
+| H2O | 2.440 | 1.460 | 4.290 | 1.671 | 0.569 | 0.340 |
+| H2O-EF | 2.420 | 1.630 | 4.440 | 1.485 | 0.545 | 0.367 |
+| HMn | 5.810 | 4.450 | 15.480 | 1.306 | 0.375 | 0.287 |
+| Methane | 1.730 | 1.080 | 3.830 | 1.602 | 0.452 | 0.282 |
+| Mol_MnO | 4.320 | 3.100 | 9.970 | 1.394 | 0.433 | 0.311 |
+| Ndia2 | 2.460 | 1.330 | 2.190 | 1.850 | 1.123 | 0.607 |
+| **Total** | **61.970** | **43.580** | **140.310** | **1.422** | **0.442** | **0.311** |
 
 <details>
-<summary>SCF counts and numerical checks for all 14 cases</summary>
+<summary>SCF counts and numerical checks: -runtest (14 cases)</summary>
 
-| Input | SCF upstream / CPU / HIP | Max abs ΔE (Ha) | Max abs ΔF (Ha/bohr) | Status |
-| --- | ---: | ---: | ---: | --- |
+| Input | SCF steps (upstream / fork CPU / GPU) | Max abs ΔE (Ha) | Max abs ΔF (Ha/bohr) | Check |
+| --- | --- | ---: | ---: | --- |
 | Benzene | 19 / 19 / 19 | 9.948e-13 | 0.000e+00 | PASS |
 | C60 | 27 / 27 / 27 | 2.802e-11 | 1.000e-12 | PASS |
 | CO | 182 / 182 / 182 | 0.000e+00 | 1.500e-11 | PASS |
@@ -1856,8 +2086,8 @@ energy/force tolerances above and the atom, grid and geometry checks.
 | GaAs | 13 / 13 / 13 | 1.600e-11 | 7.000e-12 | PASS |
 | Glycine | 20 / 20 / 20 | 1.002e-12 | 1.000e-12 | PASS |
 | Graphite4 | 14 / 14 / 14 | 2.000e-12 | 1.000e-12 | PASS |
-| H2O-EF | 17 / 17 / 17 | 9.983e-13 | 1.000e-12 | PASS |
 | H2O | 31 / 31 / 31 | 1.002e-12 | 1.000e-12 | PASS |
+| H2O-EF | 17 / 17 / 17 | 9.983e-13 | 1.000e-12 | PASS |
 | HMn | 26 / 26 / 26 | 9.948e-13 | 0.000e+00 | PASS |
 | Methane | 14 / 14 / 14 | 1.430e-10 | 1.600e-11 | PASS |
 | Mol_MnO | 26 / 26 / 26 | 9.948e-13 | 1.000e-12 | PASS |
@@ -1865,33 +2095,33 @@ energy/force tolerances above and the atom, grid and geometry checks.
 
 </details>
 
-#### `-runtestL`: all 16 cases
+##### `-runtestL` (16 cases)
 
-| Input | Atoms | Solver | Upstream CPU (s) | Fork CPU (s) | Fork HIP (s) | Upstream / HIP | Fork CPU / HIP |
-| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: |
-| 5_5_13COb2 | 155 | band | 49.98 | 45.82 | 41.39 | 1.21 | 1.11 |
-| B2C62_Band | 64 | band | 270.33 | 174.90 | 355.85 | 0.76 | 0.49 |
-| CG15c-DC-LNO | 650 | dc-lno | 69.52 | 51.52 | 55.73 | 1.25 | 0.92 |
-| DIA512-1 | 512 | krylov | 43.24 | 30.89 | 96.98 | 0.45 | 0.32 |
-| FeBCC | 16 | band (sp) | 70.56 | 51.16 | 71.84 | 0.98 | 0.71 |
-| GEL | 40 | band | 26.58 | 17.78 | 101.98 | 0.26 | 0.17 |
-| GFRAG | 54 | cluster | 31.14 | 28.66 | 40.67 | 0.77 | 0.70 |
-| GGFF | 40 | band (NC) | 457.27 | 336.62 | 1161.92 | 0.39 | 0.29 |
-| MCCN | 564 | krylov | 65.10 | 58.56 | 145.83 | 0.45 | 0.40 |
-| Mn12_148_F | 148 | cluster (sp) | 59.80 | 52.05 | 62.38 | 0.96 | 0.83 |
-| N1C999 | 1000 | dc-lno (sp) | 810.54 | 465.16 | 507.02 | 1.60 | 0.92 |
-| Ni63-O64 | 127 | band (sp) | 54.35 | 49.48 | 51.81 | 1.05 | 0.96 |
-| Pt63 | 63 | cluster | 43.76 | 46.29 | 56.78 | 0.77 | 0.82 |
-| SialicAcid | 40 | cluster | 10.84 | 8.71 | 19.90 | 0.54 | 0.44 |
-| ZrB2_2x2 | 76 | band | 103.47 | 72.77 | 140.68 | 0.74 | 0.52 |
-| nsV4Bz5 | 64 | cluster | 52.87 | 43.04 | 122.18 | 0.43 | 0.35 |
-| **Total** | | | **2219.35** | **1533.41** | **3032.94** | **0.73** | **0.51** |
+| Input | Upstream CPU (s) | Fork CPU (s) | Fork GPU (s) | Upstream / Fork CPU | Upstream / GPU | Fork CPU / GPU |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 5_5_13COb2 | 49.980 | 45.820 | 41.390 | 1.091 | 1.208 | 1.107 |
+| B2C62_Band | 270.330 | 174.900 | 355.850 | 1.546 | 0.760 | 0.491 |
+| CG15c-DC-LNO | 69.520 | 51.520 | 55.730 | 1.349 | 1.247 | 0.924 |
+| DIA512-1 | 43.240 | 30.890 | 96.980 | 1.400 | 0.446 | 0.319 |
+| FeBCC | 70.560 | 51.160 | 71.840 | 1.379 | 0.982 | 0.712 |
+| GEL | 26.580 | 17.780 | 101.980 | 1.495 | 0.261 | 0.174 |
+| GFRAG | 31.140 | 28.660 | 40.670 | 1.087 | 0.766 | 0.705 |
+| GGFF | 457.270 | 336.620 | 1161.920 | 1.358 | 0.394 | 0.290 |
+| MCCN | 65.100 | 58.560 | 145.830 | 1.112 | 0.446 | 0.402 |
+| Mn12_148_F | 59.800 | 52.050 | 62.380 | 1.149 | 0.959 | 0.834 |
+| N1C999 | 810.540 | 465.160 | 507.020 | 1.742 | 1.599 | 0.917 |
+| Ni63-O64 | 54.350 | 49.480 | 51.810 | 1.098 | 1.049 | 0.955 |
+| Pt63 | 43.760 | 46.290 | 56.780 | 0.945 | 0.771 | 0.815 |
+| SialicAcid | 10.840 | 8.710 | 19.900 | 1.245 | 0.545 | 0.438 |
+| ZrB2_2x2 | 103.470 | 72.770 | 140.680 | 1.422 | 0.735 | 0.517 |
+| nsV4Bz5 | 52.870 | 43.040 | 122.180 | 1.228 | 0.433 | 0.352 |
+| **Total** | **2219.350** | **1533.410** | **3032.940** | **1.447** | **0.732** | **0.506** |
 
 <details>
-<summary>SCF counts and numerical checks for all 16 cases</summary>
+<summary>SCF counts and numerical checks: -runtestL (16 cases)</summary>
 
-| Input | SCF upstream / CPU / HIP | Max abs ΔE (Ha) | Max abs ΔF (Ha/bohr) | Status |
-| --- | ---: | ---: | ---: | --- |
+| Input | SCF steps (upstream / fork CPU / GPU) | Max abs ΔE (Ha) | Max abs ΔF (Ha/bohr) | Check |
+| --- | --- | ---: | ---: | --- |
 | 5_5_13COb2 | 66 / 66 / 67 | 7.369e-10 | 1.330e-10 | PASS |
 | B2C62_Band | 203 / 203 / 204 | 1.410e-10 | 4.720e-08 | PASS |
 | CG15c-DC-LNO | 42 / 42 / 42 | 6.221e-10 | 1.790e-10 | PASS |
@@ -1910,6 +2140,52 @@ energy/force tolerances above and the atom, grid and geometry checks.
 | nsV4Bz5 | 57 / 57 / 57 | 1.240e-10 | 6.840e-10 | PASS |
 
 </details>
+
+##### Named inputs
+
+| Input | Upstream CPU (s) | Fork CPU (s) | Fork GPU (s) | Upstream / Fork CPU | Upstream / GPU | Fork CPU / GPU |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `sidia333_nc_cluster.dat` | 247.520 | 192.886 | 133.143 | 1.283 | 1.859 | 1.449 |
+| `cghelgeo.dat` | 860.989 | 792.170 | 344.113 | 1.087 | 2.502 | 2.302 |
+
+<details>
+<summary>SCF counts and numerical checks: Named inputs</summary>
+
+| Input | SCF steps (upstream / fork CPU / GPU) | Max abs ΔE (Ha) | Max abs ΔF (Ha/bohr) | Check |
+| --- | --- | ---: | ---: | --- |
+| `sidia333_nc_cluster.dat` | 25 / 25 / 25 | 1.420e-10 | 2.010e-10 | PASS |
+| `cghelgeo.dat` | 59 / 61 / 60 | 2.878e-08 | 1.293e-08 | PASS |
+
+</details>
+
+#### Accuracy and convergence
+
+The GPU path is faster on the two named inputs and slower on the S/L
+suites. All **96 pairwise comparisons** across the 32 inputs and three
+configurations pass **1e-7 Ha** for energy and **1e-7 Ha/bohr** for every
+force component. The maximum differences are **2.878005e-8 Ha** and
+**4.7201e-8 Ha/bohr**, respectively. Input physics, geometry, grids, basis,
+SCF/MD limits and convergence thresholds were preserved. The original
+**25-SCF sidia333 input remains unconverged on all three routes**;
+numerical agreement is separate from SCF convergence. All other cases
+converged on every route.
+
+The per-case maxima above cover all three configuration pairs for each
+input. All other cases converged on every route; SCF counts sum every MD
+step and differences in those counts affect the complete-run timing ratios.
+
+#### Measurement records
+
+The eight matching CPU measurements and corrected GPU S result were
+reused. Only GPU L, sidia333 and cghelgeo needed another allocation,
+consuming **3.93 points**. Full commands, affinity/thread checks, inputs
+and hashes are described in the
+[measurement record](benchmarks/results/sirius_mi300a_20261031_32x3/README.txt);
+[timings](benchmarks/results/sirius_mi300a_20261031_32x3/timings.csv),
+[per-case results](benchmarks/results/sirius_mi300a_20261031_32x3/cases.csv)
+and [energy/force comparisons](benchmarks/results/sirius_mi300a_20261031_32x3/comparisons.csv)
+are retained as CSV files. No separate `gpusolver2`/`gpusolver3` timing
+was run, and L2/L3 are outside this final scope.
 
 ## Important notes
 Performance depends on the system, solver, hardware and MPI/OpenMP layout.
