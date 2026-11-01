@@ -1,0 +1,1549 @@
+[
+  {
+    "suite": "S",
+    "case": "Benzene",
+    "mode": "upstream",
+    "host_rank_counts": {
+      "acc008": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc008": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "S",
+    "case": "Benzene",
+    "mode": "cpu",
+    "host_rank_counts": {
+      "acc008": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc008": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "S",
+    "case": "Benzene",
+    "mode": "gpu",
+    "host_rank_counts": {
+      "acc008": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc008": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": true,
+    "gpus_per_node": 2
+  },
+  {
+    "suite": "S",
+    "case": "C60",
+    "mode": "upstream",
+    "host_rank_counts": {
+      "acc008": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc008": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "S",
+    "case": "C60",
+    "mode": "cpu",
+    "host_rank_counts": {
+      "acc008": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc008": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "S",
+    "case": "C60",
+    "mode": "gpu",
+    "host_rank_counts": {
+      "acc008": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc008": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": true,
+    "gpus_per_node": 2
+  },
+  {
+    "suite": "S",
+    "case": "CO",
+    "mode": "upstream",
+    "host_rank_counts": {
+      "acc008": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc008": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "S",
+    "case": "CO",
+    "mode": "cpu",
+    "host_rank_counts": {
+      "acc008": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc008": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "S",
+    "case": "CO",
+    "mode": "gpu",
+    "host_rank_counts": {
+      "acc008": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc008": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": true,
+    "gpus_per_node": 2
+  },
+  {
+    "suite": "S",
+    "case": "Cr2",
+    "mode": "upstream",
+    "host_rank_counts": {
+      "acc008": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc008": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "S",
+    "case": "Cr2",
+    "mode": "cpu",
+    "host_rank_counts": {
+      "acc008": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc008": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "S",
+    "case": "Cr2",
+    "mode": "gpu",
+    "host_rank_counts": {
+      "acc008": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc008": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": true,
+    "gpus_per_node": 2
+  },
+  {
+    "suite": "S",
+    "case": "Crys-MnO",
+    "mode": "upstream",
+    "host_rank_counts": {
+      "acc008": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc008": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "S",
+    "case": "Crys-MnO",
+    "mode": "cpu",
+    "host_rank_counts": {
+      "acc008": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc008": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "S",
+    "case": "Crys-MnO",
+    "mode": "gpu",
+    "host_rank_counts": {
+      "acc008": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc008": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": true,
+    "gpus_per_node": 2
+  },
+  {
+    "suite": "S",
+    "case": "GaAs",
+    "mode": "upstream",
+    "host_rank_counts": {
+      "acc008": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc008": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "S",
+    "case": "GaAs",
+    "mode": "cpu",
+    "host_rank_counts": {
+      "acc008": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc008": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "S",
+    "case": "GaAs",
+    "mode": "gpu",
+    "host_rank_counts": {
+      "acc008": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc008": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": true,
+    "gpus_per_node": 2
+  },
+  {
+    "suite": "S",
+    "case": "Glycine",
+    "mode": "upstream",
+    "host_rank_counts": {
+      "acc008": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc008": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "S",
+    "case": "Glycine",
+    "mode": "cpu",
+    "host_rank_counts": {
+      "acc008": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc008": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "S",
+    "case": "Glycine",
+    "mode": "gpu",
+    "host_rank_counts": {
+      "acc008": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc008": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": true,
+    "gpus_per_node": 2
+  },
+  {
+    "suite": "S",
+    "case": "Graphite4",
+    "mode": "upstream",
+    "host_rank_counts": {
+      "acc008": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc008": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "S",
+    "case": "Graphite4",
+    "mode": "cpu",
+    "host_rank_counts": {
+      "acc008": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc008": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "S",
+    "case": "Graphite4",
+    "mode": "gpu",
+    "host_rank_counts": {
+      "acc008": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc008": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": true,
+    "gpus_per_node": 2
+  },
+  {
+    "suite": "S",
+    "case": "H2O-EF",
+    "mode": "upstream",
+    "host_rank_counts": {
+      "acc008": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc008": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "S",
+    "case": "H2O-EF",
+    "mode": "cpu",
+    "host_rank_counts": {
+      "acc008": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc008": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "S",
+    "case": "H2O-EF",
+    "mode": "gpu",
+    "host_rank_counts": {
+      "acc008": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc008": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": true,
+    "gpus_per_node": 2
+  },
+  {
+    "suite": "S",
+    "case": "H2O",
+    "mode": "upstream",
+    "host_rank_counts": {
+      "acc008": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc008": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "S",
+    "case": "H2O",
+    "mode": "cpu",
+    "host_rank_counts": {
+      "acc008": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc008": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "S",
+    "case": "H2O",
+    "mode": "gpu",
+    "host_rank_counts": {
+      "acc008": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc008": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": true,
+    "gpus_per_node": 2
+  },
+  {
+    "suite": "S",
+    "case": "HMn",
+    "mode": "upstream",
+    "host_rank_counts": {
+      "acc008": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc008": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "S",
+    "case": "HMn",
+    "mode": "cpu",
+    "host_rank_counts": {
+      "acc008": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc008": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "S",
+    "case": "HMn",
+    "mode": "gpu",
+    "host_rank_counts": {
+      "acc008": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc008": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": true,
+    "gpus_per_node": 2
+  },
+  {
+    "suite": "S",
+    "case": "Methane",
+    "mode": "upstream",
+    "host_rank_counts": {
+      "acc008": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc008": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "S",
+    "case": "Methane",
+    "mode": "cpu",
+    "host_rank_counts": {
+      "acc008": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc008": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "S",
+    "case": "Methane",
+    "mode": "gpu",
+    "host_rank_counts": {
+      "acc008": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc008": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": true,
+    "gpus_per_node": 2
+  },
+  {
+    "suite": "S",
+    "case": "Mol_MnO",
+    "mode": "upstream",
+    "host_rank_counts": {
+      "acc008": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc008": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "S",
+    "case": "Mol_MnO",
+    "mode": "cpu",
+    "host_rank_counts": {
+      "acc008": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc008": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "S",
+    "case": "Mol_MnO",
+    "mode": "gpu",
+    "host_rank_counts": {
+      "acc008": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc008": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": true,
+    "gpus_per_node": 2
+  },
+  {
+    "suite": "S",
+    "case": "Ndia2",
+    "mode": "upstream",
+    "host_rank_counts": {
+      "acc008": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc008": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "S",
+    "case": "Ndia2",
+    "mode": "cpu",
+    "host_rank_counts": {
+      "acc008": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc008": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "S",
+    "case": "Ndia2",
+    "mode": "gpu",
+    "host_rank_counts": {
+      "acc008": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc008": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": true,
+    "gpus_per_node": 2
+  },
+  {
+    "suite": "L",
+    "case": "5_5_13COb2",
+    "mode": "upstream",
+    "host_rank_counts": {
+      "acc006": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc006": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "L",
+    "case": "5_5_13COb2",
+    "mode": "cpu",
+    "host_rank_counts": {
+      "acc006": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc006": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "L",
+    "case": "5_5_13COb2",
+    "mode": "gpu",
+    "host_rank_counts": {
+      "acc006": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc006": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": true,
+    "gpus_per_node": 2
+  },
+  {
+    "suite": "L",
+    "case": "B2C62_Band",
+    "mode": "upstream",
+    "host_rank_counts": {
+      "acc006": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc006": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "L",
+    "case": "B2C62_Band",
+    "mode": "cpu",
+    "host_rank_counts": {
+      "acc006": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc006": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "L",
+    "case": "B2C62_Band",
+    "mode": "gpu",
+    "host_rank_counts": {
+      "acc006": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc006": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": true,
+    "gpus_per_node": 2
+  },
+  {
+    "suite": "L",
+    "case": "CG15c-DC-LNO",
+    "mode": "upstream",
+    "host_rank_counts": {
+      "acc006": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc006": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "L",
+    "case": "CG15c-DC-LNO",
+    "mode": "cpu",
+    "host_rank_counts": {
+      "acc006": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc006": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "L",
+    "case": "CG15c-DC-LNO",
+    "mode": "gpu",
+    "host_rank_counts": {
+      "acc006": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc006": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": true,
+    "gpus_per_node": 2
+  },
+  {
+    "suite": "L",
+    "case": "DIA512-1",
+    "mode": "upstream",
+    "host_rank_counts": {
+      "acc006": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc006": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "L",
+    "case": "DIA512-1",
+    "mode": "cpu",
+    "host_rank_counts": {
+      "acc006": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc006": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "L",
+    "case": "DIA512-1",
+    "mode": "gpu",
+    "host_rank_counts": {
+      "acc006": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc006": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": true,
+    "gpus_per_node": 2
+  },
+  {
+    "suite": "L",
+    "case": "FeBCC",
+    "mode": "upstream",
+    "host_rank_counts": {
+      "acc006": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc006": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "L",
+    "case": "FeBCC",
+    "mode": "cpu",
+    "host_rank_counts": {
+      "acc006": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc006": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "L",
+    "case": "FeBCC",
+    "mode": "gpu",
+    "host_rank_counts": {
+      "acc006": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc006": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": true,
+    "gpus_per_node": 2
+  },
+  {
+    "suite": "L",
+    "case": "GEL",
+    "mode": "upstream",
+    "host_rank_counts": {
+      "acc006": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc006": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "L",
+    "case": "GEL",
+    "mode": "cpu",
+    "host_rank_counts": {
+      "acc006": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc006": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "L",
+    "case": "GEL",
+    "mode": "gpu",
+    "host_rank_counts": {
+      "acc006": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc006": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": true,
+    "gpus_per_node": 2
+  },
+  {
+    "suite": "L",
+    "case": "GFRAG",
+    "mode": "upstream",
+    "host_rank_counts": {
+      "acc006": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc006": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "L",
+    "case": "GFRAG",
+    "mode": "cpu",
+    "host_rank_counts": {
+      "acc006": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc006": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "L",
+    "case": "GFRAG",
+    "mode": "gpu",
+    "host_rank_counts": {
+      "acc006": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc006": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": true,
+    "gpus_per_node": 2
+  },
+  {
+    "suite": "L",
+    "case": "GGFF",
+    "mode": "upstream",
+    "host_rank_counts": {
+      "acc006": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc006": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "L",
+    "case": "GGFF",
+    "mode": "cpu",
+    "host_rank_counts": {
+      "acc006": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc006": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "L",
+    "case": "GGFF",
+    "mode": "gpu",
+    "host_rank_counts": {
+      "acc006": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc006": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": true,
+    "gpus_per_node": 2
+  },
+  {
+    "suite": "L",
+    "case": "MCCN",
+    "mode": "upstream",
+    "host_rank_counts": {
+      "acc006": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc006": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "L",
+    "case": "MCCN",
+    "mode": "cpu",
+    "host_rank_counts": {
+      "acc006": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc006": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "L",
+    "case": "MCCN",
+    "mode": "gpu",
+    "host_rank_counts": {
+      "acc006": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc006": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": true,
+    "gpus_per_node": 2
+  },
+  {
+    "suite": "L",
+    "case": "Mn12_148_F",
+    "mode": "upstream",
+    "host_rank_counts": {
+      "acc006": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc006": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "L",
+    "case": "Mn12_148_F",
+    "mode": "cpu",
+    "host_rank_counts": {
+      "acc006": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc006": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "L",
+    "case": "Mn12_148_F",
+    "mode": "gpu",
+    "host_rank_counts": {
+      "acc006": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc006": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": true,
+    "gpus_per_node": 2
+  },
+  {
+    "suite": "L",
+    "case": "N1C999",
+    "mode": "upstream",
+    "host_rank_counts": {
+      "acc006": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc006": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "L",
+    "case": "N1C999",
+    "mode": "cpu",
+    "host_rank_counts": {
+      "acc006": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc006": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "L",
+    "case": "N1C999",
+    "mode": "gpu",
+    "host_rank_counts": {
+      "acc006": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc006": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": true,
+    "gpus_per_node": 2
+  },
+  {
+    "suite": "L",
+    "case": "Ni63-O64",
+    "mode": "upstream",
+    "host_rank_counts": {
+      "acc006": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc006": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "L",
+    "case": "Ni63-O64",
+    "mode": "cpu",
+    "host_rank_counts": {
+      "acc006": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc006": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "L",
+    "case": "Ni63-O64",
+    "mode": "gpu",
+    "host_rank_counts": {
+      "acc006": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc006": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": true,
+    "gpus_per_node": 2
+  },
+  {
+    "suite": "L",
+    "case": "Pt63",
+    "mode": "upstream",
+    "host_rank_counts": {
+      "acc006": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc006": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "L",
+    "case": "Pt63",
+    "mode": "cpu",
+    "host_rank_counts": {
+      "acc006": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc006": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "L",
+    "case": "Pt63",
+    "mode": "gpu",
+    "host_rank_counts": {
+      "acc006": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc006": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": true,
+    "gpus_per_node": 2
+  },
+  {
+    "suite": "L",
+    "case": "SialicAcid",
+    "mode": "upstream",
+    "host_rank_counts": {
+      "acc006": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc006": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "L",
+    "case": "SialicAcid",
+    "mode": "cpu",
+    "host_rank_counts": {
+      "acc006": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc006": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "L",
+    "case": "SialicAcid",
+    "mode": "gpu",
+    "host_rank_counts": {
+      "acc006": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc006": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": true,
+    "gpus_per_node": 2
+  },
+  {
+    "suite": "L",
+    "case": "ZrB2_2x2",
+    "mode": "upstream",
+    "host_rank_counts": {
+      "acc006": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc006": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "L",
+    "case": "ZrB2_2x2",
+    "mode": "cpu",
+    "host_rank_counts": {
+      "acc006": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc006": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "L",
+    "case": "nsV4Bz5",
+    "mode": "upstream",
+    "host_rank_counts": {
+      "acc006": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc006": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "custom",
+    "case": "sidia333_nc_cluster",
+    "mode": "upstream",
+    "host_rank_counts": {
+      "acc008": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc008": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "custom",
+    "case": "sidia333_nc_cluster",
+    "mode": "cpu",
+    "host_rank_counts": {
+      "acc008": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc008": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "custom",
+    "case": "sidia333_nc_cluster",
+    "mode": "gpu",
+    "host_rank_counts": {
+      "acc008": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc008": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": true,
+    "gpus_per_node": 2
+  },
+  {
+    "suite": "custom",
+    "case": "cghelgeo",
+    "mode": "upstream",
+    "host_rank_counts": {
+      "acc006": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc006": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  }
+]

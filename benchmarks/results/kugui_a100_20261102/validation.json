@@ -1,0 +1,41 @@
+{
+  "snapshot_capture_finished_at": "2026-11-02T08:01:43.199149+09:00",
+  "cases": 59,
+  "expected_fork_runs": 118,
+  "expected_upstream_cases": 59,
+  "counts": {
+    "upstream": {
+      "completed": 32,
+      "pending": 27
+    },
+    "cpu": {
+      "completed": 30,
+      "pending": 29
+    },
+    "gpu": {
+      "completed": 29,
+      "running": 1,
+      "pending": 29
+    }
+  },
+  "completed_execution_audits": 91,
+  "accuracy_counts": {
+    "gpu_vs_cpu": {
+      "passed": 29
+    },
+    "cpu_vs_upstream": {
+      "passed": 30
+    },
+    "gpu_vs_upstream": {
+      "passed": 29
+    }
+  },
+  "tolerances": {
+    "energy_Ha": 1e-07,
+    "force_HaBohr": 1e-07,
+    "position_Ang": 1e-06,
+    "upstream_printed_position_Ang": 1.000001e-05
+  },
+  "incomplete_times_excluded": true,
+  "incomplete_suite_totals_omitted": true
+}

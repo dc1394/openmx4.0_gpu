@@ -1,0 +1,97 @@
+{
+  "snapshot": {
+    "start": "2026-11-02T08:01:40.284650+09:00",
+    "end": "2026-11-02T08:01:43.199149+09:00",
+    "partial": true
+  },
+  "measured_fork_commit": "0681d63ec3e00edc0c75f4b6d7c8f83c0643bbf3",
+  "fork_source_modified": false,
+  "protocol": {
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "gpu_backend": "CUDA",
+    "gpu_eigen_lib": "gpusolver",
+    "cpu_eigen_lib": "elpa2",
+    "mps_on_gpu_path": true,
+    "initial_gpus_per_node": 2,
+    "reserved_gpus_per_node": 4,
+    "nodes": {
+      "S": 1,
+      "L": 1,
+      "L2": 2,
+      "L3": 2,
+      "sidia333_nc_cluster": 1,
+      "cghelgeo": 1
+    },
+    "metric": "Maximum rank native Total Computational Time; sums of separate MPI case invocations.",
+    "repeats": 1,
+    "preserve_physics_and_SCF_MD_limits": true
+  },
+  "counts": {
+    "upstream": {
+      "completed": 32,
+      "pending": 27
+    },
+    "cpu": {
+      "completed": 30,
+      "pending": 29
+    },
+    "gpu": {
+      "completed": 29,
+      "running": 1,
+      "pending": 29
+    }
+  },
+  "expected_cases": 59,
+  "expected_fork_runs": 118,
+  "expected_upstream_cases": 59,
+  "upstream_history": {
+    "reused_cases": 15,
+    "measurement_date": "2026-10-29",
+    "newly_completed_cases": 17,
+    "new_measurement_date": "2026-11-02",
+    "binary_sha256": "5a4745795a2332bed42b470b1caa2d734f0657425cf5a1913f0b2b7fbbe882ac"
+  },
+  "numerical_acceptance": {
+    "energy_Ha": 1e-07,
+    "force_HaBohr": 1e-07,
+    "position_Ang": 1e-06,
+    "upstream_printed_position_Ang": 1.000001e-05
+  },
+  "accuracy_counts": {
+    "gpu_vs_cpu": {
+      "passed": 29
+    },
+    "cpu_vs_upstream": {
+      "passed": 30
+    },
+    "gpu_vs_upstream": {
+      "passed": 29
+    }
+  },
+  "source_capture_sha256": "946579df159aca7f973a5ab9587670c9b902a557bb1bab27c3098fc782a03a8e",
+  "raw_directories": [
+    "work/codex_cpu_gpu_bugfix_20261031",
+    "work/codex_upstream_benchmark_20261031",
+    "work/codex_main_benchmark_20261029"
+  ],
+  "running_and_pending_times_excluded": true,
+  "no_incomplete_suite_totals": true,
+  "files": {
+    "accuracy.csv": "a51533c485139549078adcf8f109b9570e1963180fac97484747249a46060135",
+    "build-manifest.json": "1be7b1657e0b3cf3c01bd924e7a7d62db0a0044aa9d92aba164996dce1d065c2",
+    "case-results.csv": "6da057ee59da9576c2c88c565f97fc2881997b0306ed9789979900056c34d56d",
+    "execution-audit.json": "d31d1640e864252a05a772508a8482d7321953e41e467dc177de97659390a59d",
+    "hardware/fork-acc006.hardware.txt": "7fa33aeb4a0313bd4f02b3789692d8dc20f735a608f56e17f0e022e087385e04",
+    "hardware/fork-acc008.hardware.txt": "c42b6a041c06e434209d9c7ba95de8e17e901ea33efb1bc79275812422b4ab5c",
+    "hardware/upstream-acc006.hardware.txt": "9b447d31bbc5a5059ba5374f99fd555086b22aa3b861f5b1993b0328b8e9106e",
+    "input-audit.json": "027a0d0e1369442e2a681680434961537ae07181fe4e634cc790e4c8fcbf0e36",
+    "input-manifest.json": "0e49c20ef25ed3c65be38c1a749062b83b6b779e30a313e4f4e329d1be7143f5",
+    "job-status.json": "8107847d13c5b3a23ce7d4912a9f053f9857721e0cdb79a2021d12f364d85cc7",
+    "run-results.csv": "9c533ffd6769060d132257b0b2bc53af8dad48b821a37f0f22f1e73e922c241f",
+    "runs.json": "6a37cd8487a480b2a6e5c57b8ebbf8554516906431e5d089be8072e27f1c6166",
+    "timing-summary.csv": "b7d89d866d18ef1c1050d34d898cbd6c482300e4a7db5e5eba2e1765674c79d7",
+    "validation.json": "7c21ab2e00d880d4f06e5dc9a6c9954c1b2cf6dfe5743c0c1f6c9d62c68d6b1e"
+  },
+  "source_capture_path": "work/codex_cpu_gpu_bugfix_20261031/publication_20261102/captured-runs.json"
+}

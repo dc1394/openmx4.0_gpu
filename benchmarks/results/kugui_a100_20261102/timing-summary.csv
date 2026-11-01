@@ -1,0 +1,7 @@
+benchmark,nodes,expected_cases,upstream_completed_cases,upstream_seconds,cpu_completed_cases,cpu_seconds,gpu_completed_cases,gpu_seconds,cpu_over_gpu,upstream_over_gpu,upstream_over_cpu
+S,1,14,14,69.381,14,85.662,14,197.657,0.4333871302306521,0.3510171661008717,0.8099390628283252
+L,1,16,16,2516.886,15,,14,,,,
+L2,2,7,0,,0,,0,,,,
+L3,2,20,0,,0,,0,,,,
+sidia333_nc_cluster,1,1,1,322.622,1,232.044,1,83.834,2.7678984660161747,3.8483431543287927,1.3903483822033753
+cghelgeo,1,1,1,1141.649,0,,0,,,,

@@ -1,0 +1,62 @@
+{
+  "fork_source_commit": "0681d63ec3e00edc0c75f4b6d7c8f83c0643bbf3",
+  "fork_source_modified": false,
+  "toolchain": {
+    "NVHPC": "24.7",
+    "CUDA": "12.5",
+    "GCC": "12.2.0",
+    "OpenMPI": "4.1.6",
+    "makefile": "source/Makefile.kugui"
+  },
+  "host_linalg": {
+    "ELPA": "2026.02.002, --enable-openmp, libelpa_openmp.a",
+    "BLAS": "NVHPC 24.7 OpenBLAS 0.3.23, USE_OPENMP, LP64",
+    "threading": "CPU ELPA and BLAS: 2 threads/rank; GPU ELPA bridge: 1 host thread with caller limit restored; MPI_THREAD_SERIALIZED"
+  },
+  "frozen_dependency": {
+    "GEMMul8": "f8fdf0b2a5eafd4dbbfab6be8489d3356e0da06a"
+  },
+  "fork_artifacts": {
+    "installed/fork/bin/openmx": "2dbe44f648a7dc7267c58f77098fa809f5d739870e94853029076c23e63ab7e7",
+    "installed/fork/lib/libmagma.so": "97ba5a17b0f722ea93002277a0b2c0617602b1a14325fb9a9d0c38897da7c683",
+    "installed/fork/lib/libopenmx_core.so": "8a9ce14e2c38059505098bb1218243cd91d527ca36b4bd4ab2e24cb6c8d6b536",
+    "installed/fork/lib/libopenmx_host_simd.so": "1f3a9dfcb46dcd0ddf04d9bdcea84a08d3ddab136bcd15bb3a40c4614bb81421"
+  },
+  "pre_benchmark_regressions": {
+    "measured_commit": "0681d63ec3e00edc0c75f4b6d7c8f83c0643bbf3",
+    "cpu_elpa": {
+      "ranks": 6,
+      "threads": 2,
+      "abi_cases_per_rank": 24,
+      "workers_observed_per_rank": 2,
+      "log": "elpa-cpu-workers.log",
+      "status": "passed"
+    },
+    "distributed_admission_and_handle_lifecycle": {
+      "cases": 17,
+      "status": "passed",
+      "log": "gs2-memory-lifecycle.log"
+    },
+    "suite_environment": {
+      "cases": 3,
+      "status": "passed",
+      "log": "suite-environment-tests.log"
+    }
+  },
+  "upstream": {
+    "upstream_version": "OpenMX 4.0 + official 4.0.1 patch",
+    "binary_sha256": "5a4745795a2332bed42b470b1caa2d734f0657425cf5a1913f0b2b7fbbe882ac",
+    "compiler": "Intel oneAPI 2025.3 icx/ifx",
+    "mpi": "Intel MPI 2021.17",
+    "blas": "MKL 2025.3",
+    "mpi_ranks_per_node": 32,
+    "omp_threads": 2,
+    "GPU_nodes": true,
+    "gpu_acceleration": false,
+    "MPS": false,
+    "modes": [
+      "upstream"
+    ],
+    "expected_runs": 44
+  }
+}

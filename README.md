@@ -1255,7 +1255,7 @@ settings unchanged and record the actual SCF iterations and convergence
 status along with time, energy and forces; reaching an iteration limit
 does not establish SCF convergence.
 
-All four environments use the same reporting order: measurement conditions,
+All five environments use the same reporting order: measurement conditions,
 overall results, case results, accuracy and convergence, and measurement records.
 Case timings are displayed below in this README; the CSV/JSON links provide
 the underlying records. **Fork GPU** means CUDA on NVIDIA and HIP on AMD.
@@ -1274,6 +1274,7 @@ from SCF convergence.
 | Environment | MPI × OpenMP per node | GPU backend | GPU(s) per node |
 | --- | --- | --- | ---: |
 | [GeForce RTX 5080](#benchmark-rtx5080) | 18 × 2 (SMT siblings) | CUDA + MPS | 1 |
+| [Kugui A100](#benchmark-kugui-a100) | 32 × 2 (physical cores) | CUDA + MPS | 2 (4 reserved) |
 | [Pegasus H100](#benchmark-pegasus-h100) | 24 × 2 (physical cores) | CUDA + MPS | 1 |
 | [Radeon RX 9060 XT](#benchmark-radeon-rx9060xt) | 16 × 2 (physical cores) | HIP | 1 |
 | [Sirius MI300A](#benchmark-sirius-mi300a) | 32 × 3 (physical cores) | HIP | 4 |
@@ -1488,6 +1489,146 @@ Versioned [timings, per-case checks and input hashes](benchmarks/results/rtx5080
 identify the exact binaries, libraries, controls and source commit.
 The complete local logs, outputs, resource samples and affinity probes are
 under `build/rtx5080-benchmark-20261031-210530/`.
+
+<a id="benchmark-kugui-a100"></a>
+
+### Kugui A100 benchmarks (2026-11-02 partial snapshot)
+
+#### Measurement conditions
+
+This is a fixed snapshot captured at **2026-11-02 08:01 JST**, while the
+remaining measurements continued. Both fork routes use the frozen executable
+built from main commit 0681d63e, with NVHPC 24.7, CUDA 12.5, GCC 12.2,
+site Open MPI 4.1.6 and OpenMP ELPA 2026.02.002. The SDK LP64 OpenBLAS
+uses OpenMP. CPU ELPA and host BLAS use two threads per MPI rank.
+Upstream is official OpenMX 4.0 + patch 4.0.1, built with Intel oneAPI
+2025.3 icx/ifx, Intel MPI 2021.17 and threaded MKL 2025.3.
+
+All routes run on A100-SXM4-40GB GPU nodes with a 64-core AMD EPYC 7763.
+**32 MPI ranks × 2 OpenMP threads per node** use 64 distinct CPU cores.
+S/L and the two named inputs use one node; L2/L3 request two nodes,
+64 MPI ranks total. The fork GPU route uses gpusolver and private NVIDIA
+MPS, initially exposing two GPUs per node. Four GPUs per node are reserved
+for capacity retries. The CPU routes use elpa2 with CUDA devices hidden.
+GPU timings include host phases and any automatically selected fallbacks;
+backend messages are retained with the per-run observations.
+
+The 59 inputs and 47 PAO/VPS files are frozen. Coordinates, basis, cutoffs,
+k points, mixing, SCF/MD limits and convergence criteria are preserved.
+Each native suite case starts a **separate MPI invocation**. Times below
+are maximum-rank native Total Computational Time, including application
+initialization. Suite totals sum those independent case times; they are
+not persistent-process whole-suite measurements. External launcher wall
+times and nested phase times are retained in the data. Each is one
+measurement, without statistical uncertainty estimates.
+
+#### Overall results
+
+At the cutoff, fork CPU completed 30 cases and GPU completed 29 cases;
+one GPU case was running. No fork run failed at the cutoff. The remaining
+two-node allocations were queued. Upstream completed all 16 L cases and
+cghelgeo on November 2; its 14 S cases and sidia333 are retained
+input-matched measurements from October 29 using the same upstream binary.
+Running/pending calculations have no published final time. Incomplete
+suite totals and speed ratios are omitted.
+
+| Test | Nodes | Completed cases (upstream / CPU / GPU) | Upstream CPU (s) | Fork CPU (s) | Fork GPU (s) | Upstream / CPU | Upstream / GPU | CPU / GPU |
+| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| runtest | 1 | 14/14 / 14/14 / 14/14 | 69.381 | 85.662 | 197.657 | 0.810 | 0.351 | 0.433 |
+| runtestL | 1 | 16/16 / 15/16 / 14/16 | 2516.886 | — | — | — | — | — |
+| runtestL2 | 2 | 0/7 / 0/7 / 0/7 | — | — | — | — | — | — |
+| runtestL3 | 2 | 0/20 / 0/20 / 0/20 | — | — | — | — | — | — |
+| sidia333_nc_cluster | 1 | 1/1 / 1/1 / 1/1 | 322.622 | 232.044 | 83.834 | 1.390 | 3.848 | 2.768 |
+| cghelgeo | 1 | 1/1 / 0/1 / 0/1 | 1141.649 | — | — | — | — | — |
+
+#### Case results
+
+##### runtest (14 cases)
+
+| Input | Upstream CPU (s) | Fork CPU (s) | Fork GPU (s) | CPU / GPU | SCF steps (upstream / CPU / GPU) | GPU vs CPU |
+| --- | ---: | ---: | ---: | ---: | --- | --- |
+| Benzene | 5.631 | 5.126 | 12.092 | 0.424 | 19 / 19 / 19 | PASS |
+| C60 | 5.313 | 7.063 | 16.671 | 0.424 | 27 / 27 / 27 | PASS |
+| CO | 5.337 | 6.841 | 31.256 | 0.219 | 16 / 16 / 16 | PASS |
+| Cr2 | 5.913 | 6.225 | 12.062 | 0.516 | 21 / 21 / 21 | PASS |
+| Crys-MnO | 7.009 | 7.773 | 15.063 | 0.516 | 37 / 39 / 37 | PASS |
+| GaAs | 11.268 | 10.261 | 15.499 | 0.662 | 13 / 13 / 13 | PASS |
+| Glycine | 3.468 | 5.265 | 12.525 | 0.420 | 20 / 20 / 20 | PASS |
+| Graphite4 | 2.826 | 4.231 | 11.081 | 0.382 | 14 / 14 / 14 | PASS |
+| H2O-EF | 3.006 | 4.763 | 11.432 | 0.417 | 17 / 17 / 17 | PASS |
+| H2O | 3.297 | 4.346 | 10.838 | 0.401 | 31 / 31 / 31 | PASS |
+| HMn | 6.568 | 8.434 | 14.642 | 0.576 | 26 / 26 / 26 | PASS |
+| Methane | 2.327 | 4.325 | 11.098 | 0.390 | 14 / 14 / 14 | PASS |
+| Mol_MnO | 4.730 | 6.359 | 13.340 | 0.477 | 26 / 26 / 26 | PASS |
+| Ndia2 | 2.688 | 4.650 | 10.058 | 0.462 | 13 / 13 / 13 | PASS |
+
+##### runtestL (16 cases)
+
+| Input | Upstream CPU (s) | Fork CPU (s) | Fork GPU (s) | CPU / GPU | SCF steps (upstream / CPU / GPU) | GPU vs CPU |
+| --- | ---: | ---: | ---: | ---: | --- | --- |
+| 5_5_13COb2 | 34.932 | 37.839 | 39.337 | 0.962 | 66 / 66 / 66 | PASS |
+| B2C62_Band | 265.212 | 215.047 | 195.847 | 1.098 | 203 / 203 / 204 | PASS |
+| CG15c-DC-LNO | 81.915 | 62.343 | 97.070 | 0.642 | 43 / 42 / 42 | PASS |
+| DIA512-1 | 53.377 | 48.664 | 90.672 | 0.537 | 29 / 29 / 29 | PASS |
+| FeBCC | 64.699 | 63.506 | 73.200 | 0.868 | 61 / 62 / 62 | PASS |
+| GEL | 24.408 | 24.277 | 29.248 | 0.830 | 58 / 58 / 58 | PASS |
+| GFRAG | 17.689 | 19.794 | 28.258 | 0.700 | 60 / 60 / 60 | PASS |
+| GGFF | 528.454 | 454.949 | 299.271 | 1.520 | 98 / 97 / 101 | PASS |
+| MCCN | 96.975 | 100.896 | 149.114 | 0.677 | 67 / 67 / 67 | PASS |
+| Mn12_148_F | 43.555 | 44.908 | 37.216 | 1.207 | 61 / 61 / 61 | PASS |
+| N1C999 | 1082.719 | 542.644 | 725.564 | 0.748 | 63 / 58 / 59 | PASS |
+| Ni63-O64 | 37.627 | 37.713 | 36.579 | 1.031 | 66 / 64 / 62 | PASS |
+| Pt63 | 26.590 | 34.778 | 34.822 | 0.999 | 72 / 85 / 70 | PASS |
+| SialicAcid | 9.428 | 11.679 | 17.280 | 0.676 | 29 / 29 / 29 | PASS |
+| ZrB2_2x2 | 103.297 | 88.590 | — | — | 49 / 49 / — | — |
+| nsV4Bz5 | 46.009 | — | — | — | 57 / — / — | — |
+
+##### Named inputs
+
+| Input | Upstream CPU (s) | Fork CPU (s) | Fork GPU (s) | CPU / GPU | SCF steps (upstream / CPU / GPU) | GPU vs CPU |
+| --- | ---: | ---: | ---: | ---: | --- | --- |
+| sidia333_nc_cluster | 322.622 | 232.044 | 83.834 | 2.768 | 25 / 25 / 25 | PASS |
+| cghelgeo | 1141.649 | — | — | — | 53 / — / — | — |
+
+L2 (7 cases) and L3 (20 cases) have no completed measurement in this snapshot.
+
+#### Accuracy and convergence
+
+29/29 completed GPU/CPU comparisons pass the energy, force,
+atom, coordinate, input and grid checks. Acceptance limits are absolute
+energy 1e-7 Ha, maximum force-component difference 1e-7 Ha/bohr and
+maximum printed-coordinate difference 1e-6 Å. GPU/CPU maxima are
+2.372e-09 Ha and 3.865e-08 Ha/bohr.
+
+All three completed route pairs are also recorded in accuracy.csv;
+these checks do not include comparisons against bundled reference outputs.
+For upstream comparisons, 12 coordinate checks differ by one last printed
+unit (1e-5 Å) between the Intel and NVHPC output. Both outputs print
+coordinates to five decimal places; the common input hashes match.
+Those comparisons explicitly allow 1.000001e-5 Å for printed-coordinate
+rounding. Their strict 1e-6 result and raw coordinate differences remain
+in accuracy.csv. Energy and force tolerances remain 1e-7 in every pair.
+
+cpu/upstream: 30/30 pass.
+gpu/upstream: 29/29 pass.
+
+Sidia333 reaches its original 25-SCF limit and remains unconverged in all
+three routes. Normal termination and SCF convergence are separate fields.
+SCF counts differ in several other cases; full-run ratios include those
+differences. CG15c-DC-LNO and N1C999 complete on all three routes, and
+their fork GPU/CPU comparisons pass.
+
+#### Measurement records
+
+[Snapshot manifest](benchmarks/results/kugui_a100_20261102/manifest.json),
+[per-case timings](benchmarks/results/kugui_a100_20261102/case-results.csv),
+[per-run records](benchmarks/results/kugui_a100_20261102/run-results.csv),
+[numerical comparisons](benchmarks/results/kugui_a100_20261102/accuracy.csv)
+and [execution audits](benchmarks/results/kugui_a100_20261102/execution-audit.json)
+retain binary/input/output hashes, source identities, SCF counts, affinity
+and MPS checks. Full numerical observations and phase times are in runs.json.
+The raw fork campaign is work/codex_cpu_gpu_bugfix_20261031/;
+the separate upstream campaign is work/codex_upstream_benchmark_20261031/.
 
 <a id="benchmark-pegasus-h100"></a>
 
