@@ -18,16 +18,20 @@ import sys
 
 CSVFILE = sys.argv[1] if len(sys.argv) > 1 else "gemm_micro_h100.csv"
 
-# ---- measured campaign walls (siprod_thesis_result.txt, np48; seconds) ----
+# ---- measured campaign walls (np48; seconds): the means of the five retained
+# runs of each configuration at full precision, from the individual outputs
+# (work/reaggregate/production_runs.csv; a mean of five millisecond times is
+# exact at four decimals).  Until 2026-11-02 these were the two-decimal means
+# of siprod_thesis_result.txt; the paper's Fig. 4 uses the full-precision means.
 # system: (np, total_o, diag_o, total_g, diag_g)
 WALL = {
-    "bcol216": (48, 81.45, 37.08, 81.33, 36.77),
-    "bcol300": (48, 131.37, 83.04, 151.03, 81.65),
-    "bnc216":  (48, 252.14, 153.81, 255.82, 157.21),
-    "ccol216": (48, 51.35, 8.29, 51.90, 8.14),
-    "ccol360": (48, 69.56, 16.01, 69.53, 16.22),
-    "cnc216":  (48, 100.52, 31.10, 99.91, 30.85),
-    "cnc300":  (48, 135.52, 57.03, 135.13, 56.88),
+    "bcol216": (48, 81.4546, 37.0774, 81.3278, 36.7692),
+    "bcol300": (48, 131.367, 83.0376, 151.0346, 81.6544),
+    "bnc216":  (48, 252.141, 153.8086, 255.8168, 157.2112),
+    "ccol216": (48, 51.3468, 8.2918, 51.9024, 8.1402),
+    "ccol360": (48, 69.5634, 16.0054, 69.532, 16.221),
+    "cnc216":  (48, 100.518, 31.1026, 99.912, 30.853),
+    "cnc300":  (48, 135.5192, 57.0272, 135.1304, 56.8828),
 }
 
 # ---- GEMM sites per production run: (csv label, calls, g8_calls_in_g_leg) ----

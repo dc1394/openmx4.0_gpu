@@ -108,3 +108,26 @@ analysis.py amdahl_5080.csv
 prof/prof_bcol216_{o,g}.{dat,stdout,stderr}  (BANDPROF pair, tag binary
   e3e64c35, np18, MPS on, maxIter 5)
 All uncommitted; the campaign tree and binaries are untouched.
+
+=== 2026-11-02 addendum: walls at full precision ===
+analysis.py now takes, for each system, the means of the five retained runs
+of each configuration at full precision from the individual outputs
+(work/reaggregate/production_runs.csv; a mean of five millisecond times is
+exact at four decimals) instead of the two-decimal means of the aggregation
+table, and amdahl_5080.csv was rewritten (cnc128 included since 2026-11-01).
+The table above keeps the values of 2026-08-27.  The rewritten file
+reproduces Table VI of the paper in every column; against the table above it
+changes ccol216 Sp_diag 1.287 -> 1.288 and Sm_diag 1.284 -> 1.283 (the
+"within 1.5 %" count is unchanged), and in the fourth decimal of the CSV
+bcol384 f_diag 0.5847 -> 0.5848.  Rewritten table:
+
+system    T_gemm_cu T_gemm_g8  s_eff f_diag Sp_diag Sm_diag  f_tot Sp_tot Sm_tot
+bcol216      129.27      6.87  18.81  0.549   2.083   2.096  0.367  1.534  1.540
+bcol384      714.58     29.79  23.99  0.585   2.275   2.107  0.497  1.911  1.807
+bnc128       128.22      8.99  14.27  0.465   1.763   1.674  0.337  1.457  1.409
+bnc216       599.59    343.15   1.75  0.475   1.255   1.251  0.404  1.209  1.205
+ccol216        3.40      0.28  12.33  0.243   1.288   1.283  0.026  1.025  1.025
+ccol512       40.47      2.22  18.25  0.365   1.527   1.532  0.102  1.107  1.108
+cnc128         7.56      0.63  11.91  0.222   1.255   1.222  0.055  1.053  1.035
+cnc216        33.72      2.13  15.86  0.255   1.314   1.300  0.100  1.103  1.103
+bnc216*      599.59     27.92  21.48  0.475   1.827     ---   (* zero-fallback hypothetical)

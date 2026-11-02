@@ -18,17 +18,22 @@ import sys
 
 CSVFILE = sys.argv[1] if len(sys.argv) > 1 else "gemm_micro_5080.csv"
 
-# ---- measured campaign walls (v2 aggregate, per-system-best np; seconds) ----
+# ---- measured campaign walls (per-system-best np; seconds): the means of the
+# five retained runs of each configuration at full precision, from the
+# individual outputs (work/reaggregate/production_runs.csv; a mean of five
+# millisecond times is exact at four decimals).  Until 2026-11-02 these were
+# the two-decimal means of s5prod_thesis_result_v2.txt, which moved the third
+# decimal of a few rows; the paper's Table VI uses the full-precision means.
 # system: (np, total_o, diag_o, total_g, diag_g)
 WALL = {
-    "bcol216": (18, 351.80, 235.46, 228.43, 112.36),
-    "bcol384": (16, 1436.85, 1222.03, 795.33, 579.92),
-    "bnc128":  (16, 380.19, 275.61, 269.83, 164.63),
-    "bnc216":  (16, 1482.62, 1262.98, 1230.40, 1009.21),
-    "ccol216": (18, 129.77, 13.98, 126.57, 10.89),
-    "ccol512": (16, 395.40, 110.83, 356.75, 72.32),
-    "cnc128":  (16, 136.87, 34.14, 132.20, 27.95),   # 2026-11-01 addendum: v2 aggregate / paper Table V
-    "cnc216":  (18, 338.61, 132.32, 306.97, 101.80),
+    "bcol216": (18, 351.8004, 235.4556, 228.428, 112.3618),
+    "bcol384": (16, 1436.8526, 1222.0258, 795.3268, 579.9218),
+    "bnc128":  (16, 380.1916, 275.6096, 269.8342, 164.6294),
+    "bnc216":  (16, 1482.6166, 1262.9824, 1230.4022, 1009.2052),
+    "ccol216": (18, 129.767, 13.9784, 126.5716, 10.8934),
+    "ccol512": (16, 395.4022, 110.827, 356.7494, 72.3198),
+    "cnc128":  (16, 136.8702, 34.1424, 132.202, 27.9474),   # cnc128: 2026-11-01 addendum
+    "cnc216":  (18, 338.6114, 132.3176, 306.9654, 101.7986),
 }
 
 # ---- GEMM sites per production run: (csv label, calls, g8_calls_in_g_leg) ----

@@ -41,3 +41,12 @@ f_total = 0.055  S_pred,total = 1.053  S_meas,total = 1.035
 Table VI row:  cnc128 & 0.222 & 11.91 & 1.255 & 1.221 & +2.71
 The prediction overestimates by 2.7 % (between the 1.5 % group and bnc128's 5.3 %); the count
 of systems within 1.5 % stays five, now of eight.
+
+=== 2026-11-02 addendum: walls at full precision ===
+analysis_cnc128.py (and analysis.py, which carries the same row) now use
+the means of the five retained runs at full precision: diag 34.1424 /
+27.9474 s, total 136.8702 / 132.202 s.  amdahl_5080_cnc128.csv/.txt were
+rewritten: S_meas,diag 1.222 (was 1.221), error +2.69 % (was +2.71 %),
+delta 0.0215 (was 0.0216); f, s_eff, S_pred and the total-time values are
+unchanged.  Table VI row: cnc128 & 0.222 & 11.91 & 1.255 & 1.222 & +2.69
+(the M3 section above keeps the values of 2026-11-01).

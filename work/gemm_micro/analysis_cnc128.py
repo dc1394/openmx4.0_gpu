@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """cnc128 row of the Amdahl-type model (same formulas as analysis.py):
    f = sum_j c_j t_j,cuBLAS / T_diag(o);  s_eff = A/B;  S_pred = 1/((1-f)+f/s_eff)
-walls: v2 aggregate / paper Table V (np16, 5-rep means): total_o 136.87, diag_o 34.14, total_g 132.20, diag_g 27.95
+walls: means of the five retained runs at full precision (np16; work/reaggregate/production_runs.csv):
+total_o 136.8702, diag_o 34.1424, total_g 132.202, diag_g 27.9474 (until 2026-11-02 the two-decimal 136.87/34.14/132.20/27.95)
 counts: run manifests s5p_cnc128_g11..g15: d_calls 300 (150 NN + 150 TN), z_calls 25 (24 back + 1 SCF1 back), 0 fallbacks"""
 import csv, sys
 csvfile = sys.argv[1]
 rows = {r["label"]: r for r in csv.DictReader(open(csvfile))}
-np_, total_o, diag_o, total_g, diag_g = 16, 136.87, 34.14, 132.20, 27.95
+np_, total_o, diag_o, total_g, diag_g = 16, 136.8702, 34.1424, 132.202, 27.9474
 sites = [("cnc128_dfwd1", 150, 150), ("cnc128_dfwd2", 150, 150), ("cnc128_zback", 24, 24), ("cnc128_zback1", 1, 1)]
 t_cu = sum(c * float(rows[l]["cublas_ms_med"]) for l, c, _ in sites) / 1000.0
 t_g8 = sum(g * float(rows[l]["g8_ms_med"]) + (c - g) * float(rows[l]["cublas_ms_med"]) for l, c, g in sites) / 1000.0

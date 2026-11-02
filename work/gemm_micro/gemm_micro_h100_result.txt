@@ -121,3 +121,23 @@ prof_h100/prof_bcol300_{o,g}.{dat,stdout,stderr} + .sh/.env/.joblog
                                               no rebuild; bnode004)
 Binaries untouched: work/openmx and libgemmul8.a are the frozen campaign
 artifacts; only bench_gemm was compiled (sm_90).
+
+=== 2026-11-02 addendum: walls at full precision ===
+analysis_h100.py now takes, for each system, the means of the five retained
+runs of each configuration at full precision from the individual outputs
+(work/reaggregate/production_runs.csv) instead of the two-decimal means of
+siprod_thesis_result.txt, and amdahl_h100.csv was rewritten; it reproduces
+the H100 points of Fig. 4 of the paper.  The table above keeps the values
+of 2026-08-27; the rewritten file changes ccol216 Sm_diag 1.018 -> 1.019
+(so the S_meas_diag range quoted above is 0.978-1.019), bcol216 Sm_tot
+1.001 -> 1.002, and in the fourth decimal of the CSV bcol300 f_diag
+0.1186 -> 0.1187 and cnc216 f_diag 0.0260 -> 0.0259.  Rewritten table:
+
+system    T_gemm_cu T_gemm_g8  s_eff f_diag Sp_diag Sm_diag  f_tot Sp_tot Sm_tot
+bcol216        3.04      3.24   0.94  0.082   0.995   1.008  0.037  0.998  1.002
+bcol300        9.85      8.27   1.19  0.119   1.019   1.017  0.075  1.012  0.870
+bnc216        13.47     12.51   1.08  0.088   1.006   0.978  0.053  1.004  0.986
+ccol216        0.07      0.11   0.64  0.008   0.995   1.019  0.001  0.999  0.989
+ccol360        0.33      0.41   0.79  0.020   0.995   0.987  0.005  0.999  1.000
+cnc216         0.81      0.91   0.89  0.026   0.997   1.008  0.008  0.999  1.006
+cnc300         2.18      2.18   1.00  0.038   1.000   1.003  0.016  1.000  1.003
