@@ -83,7 +83,15 @@ L,Pt63,gpu,upstream,1.3387762010097504e-09,1.430000007296428e-10,0.0,True,True,T
 L,SialicAcid,gpu,cpu,4.007461029686965e-12,1.0000004296850662e-12,0.0,True,True,True,True,True,29,29,1e-06,True,False,True
 L,SialicAcid,cpu,upstream,1.9895196601282805e-12,3.0000012890551986e-12,1.0000000000065512e-05,True,True,True,True,True,29,29,1.000001e-05,False,True,True
 L,SialicAcid,gpu,upstream,5.9969806898152456e-12,3.0000012890551986e-12,1.0000000000065512e-05,True,True,True,True,True,29,29,1.000001e-05,False,True,True
+L,ZrB2_2x2,gpu,cpu,7.912603905424476e-11,2.1700000000027253e-10,0.0,True,True,True,True,True,49,49,1e-06,True,False,True
 L,ZrB2_2x2,cpu,upstream,5.7980287238024175e-11,4.160000000047069e-10,0.0,True,True,True,True,True,49,49,1.000001e-05,True,False,True
+L,ZrB2_2x2,gpu,upstream,1.3710632629226893e-10,2.1799999999627673e-10,0.0,True,True,True,True,True,49,49,1.000001e-05,True,False,True
+L,nsV4Bz5,gpu,cpu,1.5700152289355174e-10,5.05e-10,0.0,True,True,True,True,True,57,57,1e-06,True,False,True
+L,nsV4Bz5,cpu,upstream,8.01492205937393e-12,3.889999988793136e-10,0.0,True,True,True,True,True,57,57,1.000001e-05,True,False,True
+L,nsV4Bz5,gpu,upstream,1.6501644495292567e-10,4.04e-10,0.0,True,True,True,True,True,57,57,1.000001e-05,True,False,True
 custom,sidia333_nc_cluster,gpu,cpu,5.093170329928398e-11,1.069999999993537e-10,0.0,True,True,True,True,True,25,25,1e-06,True,False,True
 custom,sidia333_nc_cluster,cpu,upstream,8.29913915367797e-11,1.72e-10,9.999999999621423e-06,True,True,True,True,True,25,25,1.000001e-05,False,True,True
 custom,sidia333_nc_cluster,gpu,upstream,1.3392309483606368e-10,1.3799999999915063e-10,9.999999999621423e-06,True,True,True,True,True,25,25,1.000001e-05,False,True,True
+custom,cghelgeo,gpu,cpu,1.1959855328314006e-09,1.0729999999625761e-08,0.0,True,True,True,True,False,60,59,1e-06,True,False,True
+custom,cghelgeo,cpu,upstream,3.3685591915855184e-07,6.865400000019214e-08,0.0,True,True,True,True,False,59,53,1.000001e-05,True,False,False
+custom,cghelgeo,gpu,upstream,3.3565993362572044e-07,7.449899999982176e-08,0.0,True,True,True,True,False,60,53,1.000001e-05,True,False,False

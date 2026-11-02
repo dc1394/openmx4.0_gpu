@@ -1,5 +1,5 @@
 {
-  "capture_finished_at": "2026-11-02T08:01:43.199149+09:00",
+  "capture_finished_at": "2026-11-02T10:21:22.500876+09:00",
   "jobs": {
     "fork": [
       {
@@ -41,14 +41,14 @@
         "retry": 0,
         "Job_Name": "fix-02-large",
         "resources_used": {
-          "cpupercent": 4140,
-          "cput": "42:47:08",
-          "mem": "52874840kb",
+          "cpupercent": 4449,
+          "cput": "69:32:02",
+          "mem": "70491432kb",
           "ncpus": 64,
-          "vmem": "129804kb",
-          "walltime": "01:02:32"
+          "vmem": "130572kb",
+          "walltime": "01:33:13"
         },
-        "job_state": "R",
+        "job_state": "F",
         "queue": "F1accs",
         "Resource_List": {
           "fs_factor": 1,
@@ -63,7 +63,8 @@
           "walltime": "06:00:00"
         },
         "stime": "Mon Nov  2 06:58:28 2026",
-        "comment": "Job run at Mon Nov 02 at 06:58 on (acc006[2]:mem=62914560kb:ngpus=1:ncpus=16+acc006[1]:mem=62914560kb:ngpus=1:ncpus=16+acc006[3]:mem=62914560kb:ngpus=1:ncpus=16+acc006[0]:mem=62914560kb:ngpus=1:ncpus=16)"
+        "comment": "Job run at Mon Nov 02 at 06:58 on (acc006[2]:mem=62914560kb:ngpus=1:ncpus=16+acc006[1]:mem=62914560kb:ngpus=1:ncpus=16+acc006[3]:mem=62914560kb:ngpus=1:ncpus=16+acc006[0]:mem=62914560kb:ngpus=1:ncpus=16) and finished",
+        "Exit_status": 0
       },
       {
         "job_id": "955294.kugui-pbs",

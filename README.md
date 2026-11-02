@@ -1267,7 +1267,7 @@ all MD steps. Per-case error columns are maxima over that environment's
 recorded comparisons; the accuracy section states their scope.
 A dash means no completed measurement is available. SCF-count lists follow
 repeat order; `25 × 3` means three 25-step runs. `PASS`/`FAIL` describes
-all recorded comparisons for that input, including geometry/grid checks,
+the stated comparison scope for that input, including geometry/grid checks,
 with energy/force tolerances of `1e-7` Ha and `1e-7` Ha/bohr, separately
 from SCF convergence.
 
@@ -1496,7 +1496,7 @@ under `build/rtx5080-benchmark-20261031-210530/`.
 
 #### Measurement conditions
 
-This is a fixed snapshot captured at **2026-11-02 08:01 JST**, while the
+This is a fixed snapshot captured at **2026-11-02 10:21 JST**, while the
 remaining measurements continued. Both fork routes use the frozen executable
 built from main commit 0681d63e, with NVHPC 24.7, CUDA 12.5, GCC 12.2,
 site Open MPI 4.1.6 and OpenMP ELPA 2026.02.002. The SDK LP64 OpenBLAS
@@ -1524,10 +1524,11 @@ measurement, without statistical uncertainty estimates.
 
 #### Overall results
 
-At the cutoff, fork CPU completed 30 cases and GPU completed 29 cases;
-one GPU case was running. No fork run failed at the cutoff. The remaining
-two-node allocations were queued. Upstream completed all 16 L cases and
-cghelgeo on November 2; its 14 S cases and sidia333 are retained
+At the cutoff, fork CPU completed 32 cases and GPU completed 32 cases;
+all 32 one-node cases have completed on each of the three routes.
+No fork run failed. The remaining two-node allocations were queued.
+Upstream completed all 16 L cases and cghelgeo on November 2;
+its 14 S cases and sidia333 are retained
 input-matched measurements from October 29 using the same upstream binary.
 Running/pending calculations have no published final time. Incomplete
 suite totals and speed ratios are omitted.
@@ -1535,11 +1536,11 @@ suite totals and speed ratios are omitted.
 | Test | Nodes | Completed cases (upstream / CPU / GPU) | Upstream CPU (s) | Fork CPU (s) | Fork GPU (s) | Upstream / CPU | Upstream / GPU | CPU / GPU |
 | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | runtest | 1 | 14/14 / 14/14 / 14/14 | 69.381 | 85.662 | 197.657 | 0.810 | 0.351 | 0.433 |
-| runtestL | 1 | 16/16 / 15/16 / 14/16 | 2516.886 | — | — | — | — | — |
+| runtestL | 1 | 16/16 / 16/16 / 16/16 | 2516.886 | 1840.628 | 1961.694 | 1.367 | 1.283 | 0.938 |
 | runtestL2 | 2 | 0/7 / 0/7 / 0/7 | — | — | — | — | — | — |
 | runtestL3 | 2 | 0/20 / 0/20 / 0/20 | — | — | — | — | — | — |
 | sidia333_nc_cluster | 1 | 1/1 / 1/1 / 1/1 | 322.622 | 232.044 | 83.834 | 1.390 | 3.848 | 2.768 |
-| cghelgeo | 1 | 1/1 / 0/1 / 0/1 | 1141.649 | — | — | — | — | — |
+| cghelgeo | 1 | 1/1 / 1/1 / 1/1 | 1141.649 | 1413.557 | 228.790 | 0.808 | 4.990 | 6.178 |
 
 #### Case results
 
@@ -1580,21 +1581,21 @@ suite totals and speed ratios are omitted.
 | Ni63-O64 | 37.627 | 37.713 | 36.579 | 1.031 | 66 / 64 / 62 | PASS |
 | Pt63 | 26.590 | 34.778 | 34.822 | 0.999 | 72 / 85 / 70 | PASS |
 | SialicAcid | 9.428 | 11.679 | 17.280 | 0.676 | 29 / 29 / 29 | PASS |
-| ZrB2_2x2 | 103.297 | 88.590 | — | — | 49 / 49 / — | — |
-| nsV4Bz5 | 46.009 | — | — | — | 57 / — / — | — |
+| ZrB2_2x2 | 103.297 | 88.590 | 69.668 | 1.272 | 49 / 49 / 49 | PASS |
+| nsV4Bz5 | 46.009 | 53.001 | 38.548 | 1.375 | 57 / 57 / 57 | PASS |
 
 ##### Named inputs
 
 | Input | Upstream CPU (s) | Fork CPU (s) | Fork GPU (s) | CPU / GPU | SCF steps (upstream / CPU / GPU) | GPU vs CPU |
 | --- | ---: | ---: | ---: | ---: | --- | --- |
 | sidia333_nc_cluster | 322.622 | 232.044 | 83.834 | 2.768 | 25 / 25 / 25 | PASS |
-| cghelgeo | 1141.649 | — | — | — | 53 / — / — | — |
+| cghelgeo | 1141.649 | 1413.557 | 228.790 | 6.178 | 53 / 59 / 60 | PASS |
 
 L2 (7 cases) and L3 (20 cases) have no completed measurement in this snapshot.
 
 #### Accuracy and convergence
 
-29/29 completed GPU/CPU comparisons pass the energy, force,
+32/32 completed GPU/CPU comparisons pass the energy, force,
 atom, coordinate, input and grid checks. Acceptance limits are absolute
 energy 1e-7 Ha, maximum force-component difference 1e-7 Ha/bohr and
 maximum printed-coordinate difference 1e-6 Å. GPU/CPU maxima are
@@ -1609,14 +1610,22 @@ Those comparisons explicitly allow 1.000001e-5 Å for printed-coordinate
 rounding. Their strict 1e-6 result and raw coordinate differences remain
 in accuracy.csv. Energy and force tolerances remain 1e-7 in every pair.
 
-cpu/upstream: 30/30 pass.
-gpu/upstream: 29/29 pass.
+cpu/upstream: 31/32 pass.
+Requires review: custom/cghelgeo, cpu/upstream; absolute energy 3.369e-07 Ha, maximum force difference 6.865e-08 Ha/bohr.
+gpu/upstream: 31/32 pass.
+Requires review: custom/cghelgeo, gpu/upstream; absolute energy 3.357e-07 Ha, maximum force difference 7.45e-08 Ha/bohr.
 
 Sidia333 reaches its original 25-SCF limit and remains unconverged in all
 three routes. Normal termination and SCF convergence are separate fields.
 SCF counts differ in several other cases; full-run ratios include those
 differences. CG15c-DC-LNO and N1C999 complete on all three routes, and
 their fork GPU/CPU comparisons pass.
+
+The cghelgeo GPU/CPU comparison passes (absolute energy difference
+1.196e-9 Ha, maximum force difference 1.073e-8 Ha/bohr). Both fork
+routes differ from upstream by about 3.37e-7 Ha, above the 1e-7 Ha
+comparison threshold; these two upstream energy checks remain FAIL.
+SCF counts are 53 / 59 / 60 for upstream / fork CPU / GPU.
 
 #### Measurement records
 

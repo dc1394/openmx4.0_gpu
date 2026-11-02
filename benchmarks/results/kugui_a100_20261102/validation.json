@@ -1,5 +1,5 @@
 {
-  "snapshot_capture_finished_at": "2026-11-02T08:01:43.199149+09:00",
+  "snapshot_capture_finished_at": "2026-11-02T10:21:22.500876+09:00",
   "cases": 59,
   "expected_fork_runs": 118,
   "expected_upstream_cases": 59,
@@ -9,25 +9,26 @@
       "pending": 27
     },
     "cpu": {
-      "completed": 30,
-      "pending": 29
+      "completed": 32,
+      "pending": 27
     },
     "gpu": {
-      "completed": 29,
-      "running": 1,
-      "pending": 29
+      "completed": 32,
+      "pending": 27
     }
   },
-  "completed_execution_audits": 91,
+  "completed_execution_audits": 96,
   "accuracy_counts": {
     "gpu_vs_cpu": {
-      "passed": 29
+      "passed": 32
     },
     "cpu_vs_upstream": {
-      "passed": 30
+      "passed": 31,
+      "failed": 1
     },
     "gpu_vs_upstream": {
-      "passed": 29
+      "passed": 31,
+      "failed": 1
     }
   },
   "tolerances": {

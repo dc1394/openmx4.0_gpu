@@ -1463,6 +1463,23 @@
   },
   {
     "suite": "L",
+    "case": "ZrB2_2x2",
+    "mode": "gpu",
+    "host_rank_counts": {
+      "acc006": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc006": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": true,
+    "gpus_per_node": 2
+  },
+  {
+    "suite": "L",
     "case": "nsV4Bz5",
     "mode": "upstream",
     "host_rank_counts": {
@@ -1477,6 +1494,40 @@
     "gpu_visibility_and_mps_ok": true,
     "mps_required": false,
     "gpus_per_node": 0
+  },
+  {
+    "suite": "L",
+    "case": "nsV4Bz5",
+    "mode": "cpu",
+    "host_rank_counts": {
+      "acc006": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc006": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "L",
+    "case": "nsV4Bz5",
+    "mode": "gpu",
+    "host_rank_counts": {
+      "acc006": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc006": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": true,
+    "gpus_per_node": 2
   },
   {
     "suite": "custom",
@@ -1545,5 +1596,39 @@
     "gpu_visibility_and_mps_ok": true,
     "mps_required": false,
     "gpus_per_node": 0
+  },
+  {
+    "suite": "custom",
+    "case": "cghelgeo",
+    "mode": "cpu",
+    "host_rank_counts": {
+      "acc006": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc006": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": false,
+    "gpus_per_node": 0
+  },
+  {
+    "suite": "custom",
+    "case": "cghelgeo",
+    "mode": "gpu",
+    "host_rank_counts": {
+      "acc006": 32
+    },
+    "ranks_per_node": 32,
+    "threads_per_rank": 2,
+    "allocated_unique_cpu_ids": {
+      "acc006": 64
+    },
+    "affinity_ok": true,
+    "gpu_visibility_and_mps_ok": true,
+    "mps_required": true,
+    "gpus_per_node": 2
   }
 ]

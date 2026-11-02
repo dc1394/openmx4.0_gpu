@@ -1,7 +1,7 @@
 {
   "snapshot": {
-    "start": "2026-11-02T08:01:40.284650+09:00",
-    "end": "2026-11-02T08:01:43.199149+09:00",
+    "start": "2026-11-02T10:21:19.260607+09:00",
+    "end": "2026-11-02T10:21:22.500876+09:00",
     "partial": true
   },
   "measured_fork_commit": "0681d63ec3e00edc0c75f4b6d7c8f83c0643bbf3",
@@ -33,13 +33,12 @@
       "pending": 27
     },
     "cpu": {
-      "completed": 30,
-      "pending": 29
+      "completed": 32,
+      "pending": 27
     },
     "gpu": {
-      "completed": 29,
-      "running": 1,
-      "pending": 29
+      "completed": 32,
+      "pending": 27
     }
   },
   "expected_cases": 59,
@@ -60,16 +59,19 @@
   },
   "accuracy_counts": {
     "gpu_vs_cpu": {
-      "passed": 29
+      "passed": 32
     },
     "cpu_vs_upstream": {
-      "passed": 30
+      "passed": 31,
+      "failed": 1
     },
     "gpu_vs_upstream": {
-      "passed": 29
+      "passed": 31,
+      "failed": 1
     }
   },
-  "source_capture_sha256": "946579df159aca7f973a5ab9587670c9b902a557bb1bab27c3098fc782a03a8e",
+  "source_capture_sha256": "5a37891af566f79c193d9ee30fa4848dd87860dd807dcc8c5421d984f5e778d8",
+  "source_capture_path": "work/codex_cpu_gpu_bugfix_20261031/publication_20261102_1020/captured-runs.json",
   "raw_directories": [
     "work/codex_cpu_gpu_bugfix_20261031",
     "work/codex_upstream_benchmark_20261031",
@@ -78,20 +80,19 @@
   "running_and_pending_times_excluded": true,
   "no_incomplete_suite_totals": true,
   "files": {
-    "accuracy.csv": "a51533c485139549078adcf8f109b9570e1963180fac97484747249a46060135",
+    "accuracy.csv": "2cf6fab73e0296f9a5ef68212e4e0c41c04f0a1459fb9f00fae5eab9aade0e12",
     "build-manifest.json": "1be7b1657e0b3cf3c01bd924e7a7d62db0a0044aa9d92aba164996dce1d065c2",
-    "case-results.csv": "6da057ee59da9576c2c88c565f97fc2881997b0306ed9789979900056c34d56d",
-    "execution-audit.json": "d31d1640e864252a05a772508a8482d7321953e41e467dc177de97659390a59d",
+    "case-results.csv": "f259f9496dbde40629f2e375bfac5f18ee09a230b7a8c238ea1256c572c9bb70",
+    "execution-audit.json": "f792f599c072d064a6f39ef83877535f6cd0683e818daf3261bf79cf38949716",
     "hardware/fork-acc006.hardware.txt": "7fa33aeb4a0313bd4f02b3789692d8dc20f735a608f56e17f0e022e087385e04",
     "hardware/fork-acc008.hardware.txt": "c42b6a041c06e434209d9c7ba95de8e17e901ea33efb1bc79275812422b4ab5c",
     "hardware/upstream-acc006.hardware.txt": "9b447d31bbc5a5059ba5374f99fd555086b22aa3b861f5b1993b0328b8e9106e",
     "input-audit.json": "027a0d0e1369442e2a681680434961537ae07181fe4e634cc790e4c8fcbf0e36",
     "input-manifest.json": "0e49c20ef25ed3c65be38c1a749062b83b6b779e30a313e4f4e329d1be7143f5",
-    "job-status.json": "8107847d13c5b3a23ce7d4912a9f053f9857721e0cdb79a2021d12f364d85cc7",
-    "run-results.csv": "9c533ffd6769060d132257b0b2bc53af8dad48b821a37f0f22f1e73e922c241f",
-    "runs.json": "6a37cd8487a480b2a6e5c57b8ebbf8554516906431e5d089be8072e27f1c6166",
-    "timing-summary.csv": "b7d89d866d18ef1c1050d34d898cbd6c482300e4a7db5e5eba2e1765674c79d7",
-    "validation.json": "7c21ab2e00d880d4f06e5dc9a6c9954c1b2cf6dfe5743c0c1f6c9d62c68d6b1e"
-  },
-  "source_capture_path": "work/codex_cpu_gpu_bugfix_20261031/publication_20261102/captured-runs.json"
+    "job-status.json": "64c3cfd1be6fdc09825cee1632b3fd33f8d6025f0a67ce7bb9155c275db3444e",
+    "run-results.csv": "3b7d9f9eee0877e21e8bfc98a66913682918b95e7ecfd2583aab1773b904a18f",
+    "runs.json": "4b6d953099e70be02aa7c7d163cd5d1f1dc77e962bbddf61f37a17ed31e46553",
+    "timing-summary.csv": "b634d36f31344ac05d00a5fd2b29d6a504d62d021fcbcd66323182d5c23d5fc9",
+    "validation.json": "6c22a9db24823aaa23ebcd8072ee8742c8a72943a8557f23ceb0d065ed9305df"
+  }
 }
