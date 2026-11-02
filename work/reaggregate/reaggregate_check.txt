@@ -1,0 +1,57 @@
+archive root: /tmp/claude-1000/-home-dc1394-openmx4-0-gpu/0d80a7d7-9464-4584-992f-dcf0552434cb/scratchpad/rev5/openmx40gpu_v2.0_thesis_measurements_20261102
+runs: production 395 (retained 296, paper_final 221), accuracy 88 (retained 52), strong-scaling 140 (retained 90), distributed 99 (retained 81), supplementary 288
+amdahl sites: 53; accuracy pairs: 77; files hashed: 4403
+timing cross-check (.out Max_Time vs joblog TIMING vs manifest walls): 0 discrepancies
+
+production_summary rows with paper_final=1:
+  H100     bcol216  c48   np 48 n=3 total 240.478+-0.750 diag 170.159+-0.154 S_cpu(tot/diag) / S_cuB(tot/diag) / MPSoff/on /
+  H100     bcol216  g     np 48 n=5 total 81.328+-1.766 diag 36.769+-1.543 S_cpu(tot/diag) 2.9569/4.6278 S_cuB(tot/diag) 1.0016/1.0084 MPSoff/on /
+  H100     bcol216  o     np 48 n=5 total 81.455+-0.869 diag 37.077+-0.719 S_cpu(tot/diag) 2.9523/4.5893 S_cuB(tot/diag) / MPSoff/on /
+  H100     bcol300  c48   np 48 n=3 total 489.475+-1.532 diag 408.919+-1.189 S_cpu(tot/diag) / S_cuB(tot/diag) / MPSoff/on /
+  H100     bcol300  g     np 48 n=5 total 151.035+-6.394 diag 81.654+-2.037 S_cpu(tot/diag) 3.2408/5.0079 S_cuB(tot/diag) 0.8698/1.0169 MPSoff/on /
+  H100     bcol300  o     np 48 n=5 total 131.367+-1.762 diag 83.038+-1.392 S_cpu(tot/diag) 3.7260/4.9245 S_cuB(tot/diag) / MPSoff/on /
+  H100     bnc216   c48   np 48 n=3 total 945.845+-2.705 diag 817.497+-2.424 S_cpu(tot/diag) / S_cuB(tot/diag) / MPSoff/on /
+  H100     bnc216   g     np 48 n=5 total 255.817+-1.638 diag 157.211+-1.213 S_cpu(tot/diag) 3.6974/5.2000 S_cuB(tot/diag) 0.9856/0.9784 MPSoff/on /
+  H100     bnc216   o     np 48 n=5 total 252.141+-1.456 diag 153.809+-0.909 S_cpu(tot/diag) 3.7513/5.3150 S_cuB(tot/diag) / MPSoff/on /
+  H100     bnc216   om    np 48 n=3 total 423.215+-2.758 diag 196.063+-1.632 S_cpu(tot/diag) / S_cuB(tot/diag) / MPSoff/on 1.6785/1.2747
+  H100     ccol216  c48   np 48 n=3 total 87.448+-0.547 diag 17.454+-0.544 S_cpu(tot/diag) / S_cuB(tot/diag) / MPSoff/on /
+  H100     ccol216  g     np 48 n=5 total 51.902+-0.726 diag 8.140+-0.483 S_cpu(tot/diag) 1.6849/2.1442 S_cuB(tot/diag) 0.9893/1.0187 MPSoff/on /
+  H100     ccol216  o     np 48 n=5 total 51.347+-1.282 diag 8.292+-1.149 S_cpu(tot/diag) 1.7031/2.1049 S_cuB(tot/diag) / MPSoff/on /
+  H100     ccol360  c48   np 48 n=3 total 139.971+-0.535 diag 46.782+-0.133 S_cpu(tot/diag) / S_cuB(tot/diag) / MPSoff/on /
+  H100     ccol360  g     np 48 n=5 total 69.532+-0.307 diag 16.221+-0.222 S_cpu(tot/diag) 2.0130/2.8840 S_cuB(tot/diag) 1.0004/0.9867 MPSoff/on /
+  H100     ccol360  o     np 48 n=5 total 69.563+-0.831 diag 16.005+-0.309 S_cpu(tot/diag) 2.0121/2.9230 S_cuB(tot/diag) / MPSoff/on /
+  H100     cnc216   c48   np 48 n=3 total 321.987+-3.768 diag 193.678+-3.504 S_cpu(tot/diag) / S_cuB(tot/diag) / MPSoff/on /
+  H100     cnc216   g     np 48 n=5 total 99.912+-0.772 diag 30.853+-0.221 S_cpu(tot/diag) 3.2227/6.2774 S_cuB(tot/diag) 1.0061/1.0081 MPSoff/on /
+  H100     cnc216   o     np 48 n=5 total 100.518+-3.108 diag 31.103+-1.580 S_cpu(tot/diag) 3.2033/6.2270 S_cuB(tot/diag) / MPSoff/on /
+  H100     cnc216   om    np 48 n=3 total 228.817+-0.659 diag 31.411+-0.794 S_cpu(tot/diag) / S_cuB(tot/diag) / MPSoff/on 2.2764/1.0099
+  H100     cnc300   c48   np 48 n=3 total 563.804+-6.601 diag 420.674+-4.756 S_cpu(tot/diag) / S_cuB(tot/diag) / MPSoff/on /
+  H100     cnc300   g     np 48 n=5 total 135.130+-1.516 diag 56.883+-0.756 S_cpu(tot/diag) 4.1723/7.3954 S_cuB(tot/diag) 1.0029/1.0025 MPSoff/on /
+  H100     cnc300   o     np 48 n=5 total 135.519+-0.711 diag 57.027+-0.489 S_cpu(tot/diag) 4.1603/7.3768 S_cuB(tot/diag) / MPSoff/on /
+  RTX5080  bcol216  c18   np 18 n=3 total 600.948+-0.737 diag 469.966+-0.756 S_cpu(tot/diag) / S_cuB(tot/diag) / MPSoff/on /
+  RTX5080  bcol216  g18   np 18 n=5 total 228.428+-0.274 diag 112.362+-0.133 S_cpu(tot/diag) 2.6308/4.1826 S_cuB(tot/diag) 1.5401/2.0955 MPSoff/on /
+  RTX5080  bcol216  o18   np 18 n=5 total 351.800+-1.088 diag 235.456+-0.070 S_cpu(tot/diag) 1.7082/1.9960 S_cuB(tot/diag) / MPSoff/on /
+  RTX5080  bcol384  c16   np 16 n=3 total 2522.940+-2.396 diag 2270.783+-0.791 S_cpu(tot/diag) / S_cuB(tot/diag) / MPSoff/on /
+  RTX5080  bcol384  g     np 16 n=5 total 795.327+-1.080 diag 579.922+-0.369 S_cpu(tot/diag) 3.1722/3.9157 S_cuB(tot/diag) 1.8066/2.1072 MPSoff/on /
+  RTX5080  bcol384  o     np 16 n=5 total 1436.853+-2.251 diag 1222.026+-1.728 S_cpu(tot/diag) 1.7559/1.8582 S_cuB(tot/diag) / MPSoff/on /
+  RTX5080  bnc128   g     np 16 n=5 total 269.834+-1.405 diag 164.629+-0.211 S_cpu(tot/diag) / S_cuB(tot/diag) 1.4090/1.6741 MPSoff/on /
+  RTX5080  bnc128   o     np 16 n=5 total 380.192+-1.029 diag 275.610+-0.965 S_cpu(tot/diag) / S_cuB(tot/diag) / MPSoff/on /
+  RTX5080  bnc216   c16   np 16 n=3 total 4839.446+-1.734 diag 4534.670+-2.588 S_cpu(tot/diag) / S_cuB(tot/diag) / MPSoff/on /
+  RTX5080  bnc216   g     np 16 n=5 total 1230.402+-4.752 diag 1009.205+-0.858 S_cpu(tot/diag) 3.9332/4.4933 S_cuB(tot/diag) 1.2050/1.2515 MPSoff/on /
+  RTX5080  bnc216   o     np 16 n=5 total 1482.617+-3.775 diag 1262.982+-1.063 S_cpu(tot/diag) 3.2641/3.5904 S_cuB(tot/diag) / MPSoff/on /
+  RTX5080  bnc216   om    np 16 n=3 total 1502.706+-2.214 diag 1273.889+-3.148 S_cpu(tot/diag) / S_cuB(tot/diag) / MPSoff/on 1.0135/1.0086
+  RTX5080  bnc64    g     np 16 n=5 total 89.213+-0.300 diag 32.817+-0.096 S_cpu(tot/diag) / S_cuB(tot/diag) 0.9650/1.1335 MPSoff/on /
+  RTX5080  bnc64    o     np 16 n=5 total 86.094+-0.404 diag 37.197+-0.095 S_cpu(tot/diag) / S_cuB(tot/diag) / MPSoff/on /
+  RTX5080  ccol216  c18   np 18 n=3 total 166.819+-1.461 diag 35.518+-0.103 S_cpu(tot/diag) / S_cuB(tot/diag) / MPSoff/on /
+  RTX5080  ccol216  g18   np 18 n=5 total 126.572+-0.229 diag 10.893+-0.031 S_cpu(tot/diag) 1.3180/3.2606 S_cuB(tot/diag) 1.0252/1.2832 MPSoff/on /
+  RTX5080  ccol216  o18   np 18 n=5 total 129.767+-0.369 diag 13.978+-0.041 S_cpu(tot/diag) 1.2855/2.5410 S_cuB(tot/diag) / MPSoff/on /
+  RTX5080  ccol512  g     np 16 n=5 total 356.749+-0.805 diag 72.320+-0.057 S_cpu(tot/diag) / S_cuB(tot/diag) 1.1083/1.5325 MPSoff/on /
+  RTX5080  ccol512  o     np 16 n=5 total 395.402+-0.504 diag 110.827+-0.041 S_cpu(tot/diag) / S_cuB(tot/diag) / MPSoff/on /
+  RTX5080  cnc128   g     np 16 n=5 total 132.202+-2.099 diag 27.947+-0.033 S_cpu(tot/diag) / S_cuB(tot/diag) 1.0353/1.2217 MPSoff/on /
+  RTX5080  cnc128   o     np 16 n=5 total 136.870+-0.702 diag 34.142+-0.040 S_cpu(tot/diag) / S_cuB(tot/diag) / MPSoff/on /
+  RTX5080  cnc216   c18   np 18 n=3 total 767.310+-3.631 diag 486.393+-0.349 S_cpu(tot/diag) / S_cuB(tot/diag) / MPSoff/on /
+  RTX5080  cnc216   g18   np 18 n=5 total 306.965+-2.035 diag 101.799+-0.091 S_cpu(tot/diag) 2.4997/4.7780 S_cuB(tot/diag) 1.1031/1.2998 MPSoff/on /
+  RTX5080  cnc216   gm18  np 18 n=3 total 314.219+-0.300 diag 101.802+-0.032 S_cpu(tot/diag) / S_cuB(tot/diag) / MPSoff/on 1.0236/1.0000
+  RTX5080  cnc216   o18   np 18 n=5 total 338.611+-2.222 diag 132.318+-0.030 S_cpu(tot/diag) 2.2661/3.6759 S_cuB(tot/diag) / MPSoff/on /
+  RTX5080  cnc216   om18  np 18 n=3 total 343.560+-1.620 diag 132.378+-0.106 S_cpu(tot/diag) / S_cuB(tot/diag) / MPSoff/on 1.0146/1.0005
+  RTX5080  cnc64    g     np 16 n=5 total 63.498+-0.432 diag 7.501+-0.051 S_cpu(tot/diag) / S_cuB(tot/diag) 0.9220/0.9729 MPSoff/on /
+  RTX5080  cnc64    o     np 16 n=5 total 58.548+-0.197 diag 7.298+-0.017 S_cpu(tot/diag) / S_cuB(tot/diag) / MPSoff/on /
