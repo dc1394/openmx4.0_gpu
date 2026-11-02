@@ -179,5 +179,298 @@
    "all_24_logical_cpus_used_once": true
   }
  },
- "recorded": "2026-11-02, after the campaign, with the campaign launch commands and environment from runner.py (binding was also probed before the campaign on 2026-11-01)"
+ "recorded": "2026-11-02, after the campaign, with the campaign launch commands and environment from runner.py (binding was also probed before the campaign on 2026-11-01)",
+ "intel_mpi_pin_domain_check": {
+  "recorded": "2026-11-02T17:03:40+0900",
+  "launcher": [
+   "/opt/intel/oneapi/mpi/2021.19/bin/mpiexec",
+   "-n",
+   "12"
+  ],
+  "variants": {
+   "A campaign list [3,c,...]": "[3,c,30,c0,300,c00,3000,c000,30000,c0000,300000,c00000]",
+   "B I_MPI_PIN_DOMAIN unset": null,
+   "C swapped list [c,3,...]": "[c,3,30,c0,300,c00,3000,c000,30000,c0000,300000,c00000]",
+   "D 0x list [0x3,0xc,...]": "[0x3,0xc,0x30,0xc0,0x300,0xc00,0x3000,0xc000,0x30000,0xc0000,0x300000,0xc00000]",
+   "E 0x swapped [0xc,0x3,...]": "[0xc,0x3,0x30,0xc0,0x300,0xc00,0x3000,0xc000,0x30000,0xc0000,0x300000,0xc00000]"
+  },
+  "results": {
+   "A campaign list [3,c,...]": {
+    "exit": 0,
+    "errors": [
+     "IPL2 Error: IPL2I_parameters_parse_affinity_list (../../../../../src/pm/i_hydra/libhydra/ipl2/src/ipl2_parameters.c:234): Error parsing I_MPI_PIN_DOMAIN = 3. Expected hexadecimal bit-mask.!"
+    ],
+    "rank_cpus": {
+     "0": [
+      0,
+      1
+     ],
+     "1": [
+      2,
+      3
+     ],
+     "2": [
+      4,
+      5
+     ],
+     "3": [
+      6,
+      7
+     ],
+     "4": [
+      8,
+      9
+     ],
+     "5": [
+      10,
+      11
+     ],
+     "6": [
+      12,
+      13
+     ],
+     "7": [
+      14,
+      15
+     ],
+     "8": [
+      16,
+      17
+     ],
+     "9": [
+      18,
+      19
+     ],
+     "10": [
+      20,
+      21
+     ],
+     "11": [
+      22,
+      23
+     ]
+    }
+   },
+   "B I_MPI_PIN_DOMAIN unset": {
+    "exit": 0,
+    "errors": [],
+    "rank_cpus": {
+     "0": [
+      0,
+      1
+     ],
+     "1": [
+      2,
+      3
+     ],
+     "2": [
+      4,
+      5
+     ],
+     "3": [
+      6,
+      7
+     ],
+     "4": [
+      8,
+      9
+     ],
+     "5": [
+      10,
+      11
+     ],
+     "6": [
+      12,
+      13
+     ],
+     "7": [
+      14,
+      15
+     ],
+     "8": [
+      16,
+      17
+     ],
+     "9": [
+      18,
+      19
+     ],
+     "10": [
+      20,
+      21
+     ],
+     "11": [
+      22,
+      23
+     ]
+    }
+   },
+   "C swapped list [c,3,...]": {
+    "exit": 0,
+    "errors": [
+     "IPL2 Error: IPL2I_parameters_parse_affinity_list (../../../../../src/pm/i_hydra/libhydra/ipl2/src/ipl2_parameters.c:234): Error parsing I_MPI_PIN_DOMAIN = c. Expected hexadecimal bit-mask.!"
+    ],
+    "rank_cpus": {
+     "0": [
+      0,
+      1
+     ],
+     "1": [
+      2,
+      3
+     ],
+     "2": [
+      4,
+      5
+     ],
+     "3": [
+      6,
+      7
+     ],
+     "4": [
+      8,
+      9
+     ],
+     "5": [
+      10,
+      11
+     ],
+     "6": [
+      12,
+      13
+     ],
+     "7": [
+      14,
+      15
+     ],
+     "8": [
+      16,
+      17
+     ],
+     "9": [
+      18,
+      19
+     ],
+     "10": [
+      20,
+      21
+     ],
+     "11": [
+      22,
+      23
+     ]
+    }
+   },
+   "D 0x list [0x3,0xc,...]": {
+    "exit": 0,
+    "errors": [],
+    "rank_cpus": {
+     "0": [
+      0,
+      1
+     ],
+     "1": [
+      2,
+      3
+     ],
+     "2": [
+      4,
+      5
+     ],
+     "3": [
+      6,
+      7
+     ],
+     "4": [
+      8,
+      9
+     ],
+     "5": [
+      10,
+      11
+     ],
+     "6": [
+      12,
+      13
+     ],
+     "7": [
+      14,
+      15
+     ],
+     "8": [
+      16,
+      17
+     ],
+     "9": [
+      18,
+      19
+     ],
+     "10": [
+      20,
+      21
+     ],
+     "11": [
+      22,
+      23
+     ]
+    }
+   },
+   "E 0x swapped [0xc,0x3,...]": {
+    "exit": 0,
+    "errors": [],
+    "rank_cpus": {
+     "0": [
+      2,
+      3
+     ],
+     "1": [
+      0,
+      1
+     ],
+     "2": [
+      4,
+      5
+     ],
+     "3": [
+      6,
+      7
+     ],
+     "4": [
+      8,
+      9
+     ],
+     "5": [
+      10,
+      11
+     ],
+     "6": [
+      12,
+      13
+     ],
+     "7": [
+      14,
+      15
+     ],
+     "8": [
+      16,
+      17
+     ],
+     "9": [
+      18,
+      19
+     ],
+     "10": [
+      20,
+      21
+     ],
+     "11": [
+      22,
+      23
+     ]
+    }
+   }
+  },
+  "conclusion": "Intel MPI 2021.19 rejects an I_MPI_PIN_DOMAIN list of bare hex masks (\"Error parsing I_MPI_PIN_DOMAIN = 3. Expected hexadecimal bit-mask\", printed at the start of every upstream run.log) and falls back to its default domain pinning, which gives the same rank i -> CPUs 2i, 2i+1 layout; a probe with two masks swapped kept the default order, while 0x-prefixed masks are applied.",
+  "running_job_observation": "2026-11-02 14:48 +0900, upstream -runtestL job: /proc/<pid>/task/*/status Cpus_allowed_list of the 12 ranks was {0},{1}; {2},{3}; ... {22},{23} (one thread per logical CPU, rank i on 2i and 2i+1)"
+ }
 }

@@ -1282,7 +1282,7 @@ from SCF convergence.
 
 <a id="benchmark-rtx4070ti"></a>
 
-### GeForce RTX 4070 Ti / Core i9-13900K, WSL2 (2026-11-01 partial snapshot)
+### GeForce RTX 4070 Ti / Core i9-13900K, WSL2 (2026-11-01–2026-11-02)
 
 #### Measurement conditions
 
@@ -1317,8 +1317,10 @@ and their kernels were serialized by context switching (see
 [NVIDIA MPS](#nvidia-mps-recommended-whenever-several-ranks-share-a-gpu)),
 unlike the MPS measurements in the other NVIDIA environments. Each suite ran
 as one native `-runtest*` MPI job, retaining the normal cache and cleanup
-behavior between cases. A fork CPU cghelgeo job interrupted by a pause of
-the campaign was discarded and rerun from the start.
+behavior between cases. Two interrupted jobs were discarded and rerun from
+the start: fork CPU cghelgeo after a short pause, and upstream `-runtestL`,
+which was stopped overnight after 7 of its 16 cases and rerun on November 2
+after a WSL2 restart.
 
 The three configurations used the same 32 input definitions and 44 PAO/VPS
 files. Only `DATA.PATH` (an absolute shared path) and `scf.eigen.lib` (ELPA2
@@ -1328,18 +1330,23 @@ SCF/MD limits, mixing and convergence criteria were preserved. OpenMP used
 `OMP_MAX_ACTIVE_LEVELS=1` and a 64 MiB thread stack. The numerical-library
 controls were `MKL_NUM_THREADS=2`, `MKL_DYNAMIC=FALSE`,
 `OPENBLAS_NUM_THREADS=2` and `BLIS_NUM_THREADS=2`.
-Open MPI used `--use-hwthread-cpus --map-by slot:PE=2 --bind-to hwthread`;
-Intel MPI used the equivalent explicit CPU masks. Installed binaries and
-matching libraries were frozen for the campaign; the Core/SIMD copies were
-preloaded to keep their versions fixed.
+Open MPI used `--use-hwthread-cpus --map-by slot:PE=2 --bind-to hwthread`.
+Intel MPI was given the equivalent CPU masks without a `0x` prefix; version
+2021.19 rejects such a list (`Error parsing I_MPI_PIN_DOMAIN`) and falls back
+to its default domain pinning, which gives the same layout. A probe with two
+masks swapped confirmed that the list was ignored, and the running upstream
+`-runtestL` ranks had their two threads bound to CPUs `2i` and `2i+1`.
+Installed binaries and matching libraries were frozen for the campaign; the
+Core/SIMD copies were preloaded to keep their versions fixed.
 
 The WSL2 guest clocks drifted. A logger compared them every 30 s with the
-HTTPS `Date` header of an external server from 15:12 to 22:40 JST. The guest
-`CLOCK_MONOTONIC` advanced about 10% too slowly (1.111 external seconds per
-guest second); `CLOCK_REALTIME` was stepped to host time about every 30 s
-and matched the external clock to 5e-5 over the 7.5-hour log. OpenMX times
-come from `omp_get_wtime()`, which follows the stepped clock here: every MPI
-job covered by the log took 1.4–7.6 s longer on the external clock than its
+HTTPS `Date` header of an external server (15:12–22:40 JST on November 1 and
+14:47–16:59 on November 2). The guest `CLOCK_MONOTONIC` advanced 8–10% too
+slowly (1.111 and 1.091 external seconds per guest second); `CLOCK_REALTIME`
+was stepped to host time about every 30 s and matched the external clock to
+within 1.5e-4 over each logged period. OpenMX times come from
+`omp_get_wtime()`, which follows the stepped clock here: every MPI job
+covered by the log took 1.4–7.6 s longer on the external clock than its
 native time, which excludes start-up, shutdown and the work between suite
 cases. Native times are therefore used below. Between steps the real-time
 clock runs as slowly as the monotonic one, so a case of only a few seconds
@@ -1350,24 +1357,20 @@ can read up to about 10% short, or up to about 3.6 s long if it spans a step.
 Suite totals sum native per-case `runtest.result` / `runtestL.result` times.
 Named inputs use the maximum-rank `Total Computational Time`. Each value
 is one measurement. MPI launch/shutdown overhead is excluded.
-Eleven of the twelve planned runs completed. The campaign was paused at
-22:40 JST on November 1 while upstream `-runtestL` was running; that job had
-finished 7 of its 16 cases, is not published and will be rerun from the
-start. Its total and ratios are therefore dashes.
 
 <details>
 <summary>MPI-job wall times, including the monitor</summary>
 
 The following wall times include the MPI job and the measurement monitor
 (two-second polling interval); they are reported separately from native calculation times.
-They were measured with the guest `CLOCK_MONOTONIC`, which ran about 10% slow;
+They were measured with the guest `CLOCK_MONOTONIC`, which ran 8–10% slow;
 values in parentheses place the same job on the external clock where the
-clock log (from 15:12 JST) covers it.
+clock log covers it (from 15:12 JST on November 1).
 
 | Test | Upstream wall (s) | Fork CPU wall (s) | Fork GPU wall (s) |
 | --- | ---: | ---: | ---: |
 | `-runtest` (14 cases) | 61.92 | 58.47 | 88.79 |
-| `-runtestL` (16 cases) | — | 6356.73 (7064.3) | 5151.23 (5723.9) |
+| `-runtestL` (16 cases) | 7207.80 (7862.3) | 6356.73 (7064.3) | 5151.23 (5723.9) |
 | `sidia333_nc_cluster.dat` | 767.79 (856.4) | 659.68 | 173.04 |
 | `cghelgeo.dat` | 3461.36 (3843.9) | 4254.16 (4725.6) | 972.78 (1078.0) |
 
@@ -1376,7 +1379,7 @@ clock log (from 15:12 JST) covers it.
 | Test | Nodes | Upstream CPU (s) | Fork CPU (s) | Fork GPU (s) | Upstream / Fork CPU | Upstream / GPU | Fork CPU / GPU |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | `-runtest` (14 cases) | 1 | 68.510 | 60.910 | 94.220 | 1.125 | 0.727 | 0.646 |
-| `-runtestL` (16 cases) | 1 | — | 7056.730 | 5717.450 | — | — | 1.234 |
+| `-runtestL` (16 cases) | 1 | 7856.330 | 7056.730 | 5717.450 | 1.113 | 1.374 | 1.234 |
 | `-runtestL2` (7 cases) | — | — | — | — | — | — | — |
 | `-runtestL3` (20 cases) | — | — | — | — | — | — | — |
 | `sidia333_nc_cluster.dat` | 1 | 852.013 | 725.097 | 185.991 | 1.175 | 4.581 | 3.899 |
@@ -1430,45 +1433,45 @@ clock log (from 15:12 JST) covers it.
 
 | Input | Upstream CPU (s) | Fork CPU (s) | Fork GPU (s) | Upstream / Fork CPU | Upstream / GPU | Fork CPU / GPU |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| 5_5_13COb2 | — | 102.920 | 79.000 | — | — | 1.303 |
-| B2C62_Band | — | 1379.030 | 648.090 | — | — | 2.128 |
-| CG15c-DC-LNO | — | 164.280 | 231.320 | — | — | 0.710 |
-| DIA512-1 | — | 129.510 | 259.970 | — | — | 0.498 |
-| FeBCC | — | 203.980 | 219.820 | — | — | 0.928 |
-| GEL | — | 103.770 | 117.660 | — | — | 0.882 |
-| GFRAG | — | 46.740 | 40.730 | — | — | 1.148 |
-| GGFF | — | 1969.550 | 822.690 | — | — | 2.394 |
-| MCCN | — | 289.140 | 451.420 | — | — | 0.641 |
-| Mn12_148_F | — | 109.740 | 82.620 | — | — | 1.328 |
-| N1C999 | — | 2002.580 | 2330.700 | — | — | 0.859 |
-| Ni63-O64 | — | 96.800 | 75.440 | — | — | 1.283 |
-| Pt63 | — | 74.930 | 59.000 | — | — | 1.270 |
-| SialicAcid | — | 19.250 | 22.370 | — | — | 0.861 |
-| ZrB2_2x2 | — | 240.880 | 176.660 | — | — | 1.364 |
-| nsV4Bz5 | — | 123.630 | 99.960 | — | — | 1.237 |
-| **Total** | **—** | **7056.730** | **5717.450** | **—** | **—** | **1.234** |
+| 5_5_13COb2 | 89.020 | 102.920 | 79.000 | 0.865 | 1.127 | 1.303 |
+| B2C62_Band | 1371.280 | 1379.030 | 648.090 | 0.994 | 2.116 | 2.128 |
+| CG15c-DC-LNO | 221.920 | 164.280 | 231.320 | 1.351 | 0.959 | 0.710 |
+| DIA512-1 | 159.430 | 129.510 | 259.970 | 1.231 | 0.613 | 0.498 |
+| FeBCC | 195.280 | 203.980 | 219.820 | 0.957 | 0.888 | 0.928 |
+| GEL | 105.510 | 103.770 | 117.660 | 1.017 | 0.897 | 0.882 |
+| GFRAG | 49.090 | 46.740 | 40.730 | 1.050 | 1.205 | 1.148 |
+| GGFF | 1640.310 | 1969.550 | 822.690 | 0.833 | 1.994 | 2.394 |
+| MCCN | 270.560 | 289.140 | 451.420 | 0.936 | 0.599 | 0.641 |
+| Mn12_148_F | 110.520 | 109.740 | 82.620 | 1.007 | 1.338 | 1.328 |
+| N1C999 | 3049.060 | 2002.580 | 2330.700 | 1.523 | 1.308 | 0.859 |
+| Ni63-O64 | 106.390 | 96.800 | 75.440 | 1.099 | 1.410 | 1.283 |
+| Pt63 | 76.380 | 74.930 | 59.000 | 1.019 | 1.295 | 1.270 |
+| SialicAcid | 20.950 | 19.250 | 22.370 | 1.088 | 0.937 | 0.861 |
+| ZrB2_2x2 | 270.690 | 240.880 | 176.660 | 1.124 | 1.532 | 1.364 |
+| nsV4Bz5 | 119.940 | 123.630 | 99.960 | 0.970 | 1.200 | 1.237 |
+| **Total** | **7856.330** | **7056.730** | **5717.450** | **1.113** | **1.374** | **1.234** |
 
 <details>
 <summary>SCF counts and numerical checks: -runtestL (16 cases)</summary>
 
 | Input | SCF steps (upstream / fork CPU / GPU) | Max abs ΔE (Ha) | Max abs ΔF (Ha/bohr) | Check |
 | --- | --- | ---: | ---: | --- |
-| 5_5_13COb2 | — / 66 / 67 | 5.721e-10 | 2.540e-10 | PASS |
-| B2C62_Band | — / 204 / 204 | 6.798e-11 | 4.152e-08 | PASS |
-| CG15c-DC-LNO | — / 42 / 42 | 1.269e-09 | 1.560e-10 | PASS |
-| DIA512-1 | — / 29 / 29 | 7.872e-10 | 5.548e-09 | PASS |
-| FeBCC | — / 62 / 62 | 1.008e-09 | 6.500e-11 | PASS |
-| GEL | — / 58 / 58 | 2.400e-10 | 2.810e-10 | PASS |
-| GFRAG | — / 60 / 60 | 5.930e-10 | 2.700e-09 | PASS |
-| GGFF | — / 99 / 101 | 9.800e-11 | 1.370e-10 | PASS |
-| MCCN | — / 67 / 67 | 3.502e-10 | 3.700e-11 | PASS |
-| Mn12_148_F | — / 61 / 61 | 2.638e-10 | 5.520e-10 | PASS |
-| N1C999 | — / 58 / 58 | 1.771e-09 | 2.800e-11 | PASS |
-| Ni63-O64 | — / 69 / 62 | 2.779e-09 | 7.870e-10 | PASS |
-| Pt63 | — / 74 / 64 | 4.147e-09 | 3.020e-10 | PASS |
-| SialicAcid | — / 29 / 29 | 3.110e-10 | 3.420e-10 | PASS |
-| ZrB2_2x2 | — / 49 / 49 | 2.090e-10 | 2.700e-10 | PASS |
-| nsV4Bz5 | — / 57 / 57 | 9.902e-11 | 8.920e-10 | PASS |
+| 5_5_13COb2 | 66 / 66 / 67 | 5.721e-10 | 2.540e-10 | PASS |
+| B2C62_Band | 204 / 204 / 204 | 6.798e-11 | 4.152e-08 | PASS |
+| CG15c-DC-LNO | 51 / 42 / 42 | 1.269e-09 | 1.570e-10 | PASS |
+| DIA512-1 | 29 / 29 / 29 | 7.872e-10 | 5.548e-09 | PASS |
+| FeBCC | 61 / 62 / 62 | 1.008e-09 | 6.500e-11 | PASS |
+| GEL | 58 / 58 / 58 | 2.400e-10 | 3.150e-10 | PASS |
+| GFRAG | 60 / 60 / 60 | 5.930e-10 | 2.700e-09 | PASS |
+| GGFF | 94 / 99 / 101 | 9.800e-11 | 1.590e-10 | PASS |
+| MCCN | 67 / 67 / 67 | 3.502e-10 | 3.700e-11 | PASS |
+| Mn12_148_F | 61 / 61 / 61 | 2.638e-10 | 5.540e-10 | PASS |
+| N1C999 | 61 / 58 / 58 | 1.771e-09 | 3.500e-11 | PASS |
+| Ni63-O64 | 66 / 69 / 62 | 3.150e-09 | 8.160e-10 | PASS |
+| Pt63 | 69 / 74 / 64 | 4.767e-09 | 3.050e-10 | PASS |
+| SialicAcid | 29 / 29 / 29 | 3.130e-10 | 3.440e-10 | PASS |
+| ZrB2_2x2 | 49 / 49 / 49 | 2.090e-10 | 3.470e-10 | PASS |
+| nsV4Bz5 | 57 / 57 / 57 | 1.430e-10 | 1.047e-09 | PASS |
 
 </details>
 
@@ -1491,14 +1494,15 @@ clock log (from 15:12 JST) covers it.
 
 #### Accuracy and convergence
 
-**137 of 138 numerical checks passed**, including all 74 bundled-reference
-comparisons; upstream `-runtestL` has no comparisons yet. The largest passing
-differences were `9.232e-8` Ha (cghelgeo, upstream vs fork CPU) and
-`4.152e-8` Ha/bohr (B2C62_Band, fork CPU vs GPU). Per-case maxima above cover
-all available configuration pairs and bundled references. Twelve comparisons
-of single-point inputs (Glycine, sidia333, GEL, GGFF and SialicAcid) differ
-by one printed coordinate unit (`1e-5` Å); the coordinate check allows
-`1.000001e-5` Å for this print rounding.
+**185 of 186 numerical checks passed**, including all 90 bundled-reference
+comparisons. The largest passing differences were `9.232e-8` Ha (cghelgeo,
+upstream vs fork CPU) and `4.152e-8` Ha/bohr (B2C62_Band, fork CPU vs GPU).
+Per-case maxima above cover all three configuration pairs and bundled
+references. Twenty-three comparisons of six inputs whose geometry is not
+updated before printing (Glycine, sidia333, GEL, GGFF, Mn12_148_F and
+SialicAcid) differ by one printed coordinate unit (`1e-5` Å), for example
+10.18312 vs 10.18313 Å for a coordinate of 10.183125 Å; the coordinate check
+allows `1.000001e-5` Å for this print rounding.
 
 The failing check is cghelgeo, fork CPU vs GPU: the energies differ by
 `1.104e-7` Ha, just above the `1e-7` Ha tolerance, while the forces agree to
@@ -1507,18 +1511,19 @@ upstream energy lies between them (`9.232e-8` Ha from fork CPU and
 `1.807e-8` Ha from GPU), so both upstream comparisons pass.
 
 Sidia333 reached its original 25-SCF limit and remains unconverged in all
-three routes. In every completed run, the other inputs converged at every MD
-step. Named-input SCF counts were 25/25/25 for sidia333 and 59/57/60 for
-cghelgeo (upstream / fork CPU / GPU).
+three routes. The other inputs converged at every MD step. Named-input
+SCF counts were 25/25/25 for sidia333 and 59/57/60 for cghelgeo
+(upstream / fork CPU / GPU).
 
 #### Measurement records
 
 Versioned [timings, per-case checks and input hashes](benchmarks/results/rtx4070ti_20261101/manifest.json)
 identify the exact binaries, libraries, controls and source commit; the
 [clock log](benchmarks/results/rtx4070ti_20261101/clock-log.csv) and the
-[affinity audit](benchmarks/results/rtx4070ti_20261101/affinity-audit.json)
-are included. The complete local logs, outputs and resource samples are
-under `build/rtx4070ti-benchmark-20261101-145924/`.
+[affinity audit](benchmarks/results/rtx4070ti_20261101/affinity-audit.json),
+including the Intel MPI mask check, are included. The complete local logs,
+outputs and resource samples, including the discarded first upstream
+`-runtestL` attempt, are under `build/rtx4070ti-benchmark-20261101-145924/`.
 
 <a id="benchmark-rtx5080"></a>
 

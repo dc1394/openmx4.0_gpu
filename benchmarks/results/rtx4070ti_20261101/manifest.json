@@ -24,7 +24,7 @@
   "binding": {
    "mapping": "rank i uses logical CPUs 2i and 2i+1, the two SMT siblings of WSL core i",
    "fork": "--use-hwthread-cpus --map-by slot:PE=2 --bind-to hwthread",
-   "upstream": "I_MPI_PIN=1, I_MPI_PIN_DOMAIN with the explicit masks below",
+   "upstream": "I_MPI_PIN=1 and I_MPI_PIN_DOMAIN set to the bare hex mask list below. Intel MPI 2021.19 rejects an I_MPI_PIN_DOMAIN list of bare hex masks (\"Error parsing I_MPI_PIN_DOMAIN = 3. Expected hexadecimal bit-mask\", printed at the start of every upstream run.log) and falls back to its default domain pinning, which gives the same rank i -> CPUs 2i, 2i+1 layout; a probe with two masks swapped kept the default order, while 0x-prefixed masks are applied.",
    "verified_by": "affinity-audit.json"
   },
   "intel_mpi_pin_masks": [
@@ -42,7 +42,7 @@
    "c00000"
   ],
   "repetitions": 1,
-  "order": "S, sidia333_nc_cluster, cghelgeo, L; GPU then fork CPU then upstream for each",
+  "order": "S, sidia333_nc_cluster, cghelgeo, L; GPU then fork CPU then upstream for each; upstream L was rerun on 2026-11-02 after the overnight stop",
   "GPU_MPS": false,
   "GPU_MPS_reason": "NVIDIA MPS is supported on Linux and QNX only. Under WSL2 the GPU is driven by the Windows driver through /dev/dxg; its WSL libcuda has no MPS client and nvidia-cuda-mps-control exits with status 33 on start, while the native Linux 595.99.02 user-space driver cannot open /dev/nvidiactl (ENXIO).",
   "numeric_tolerances": {
@@ -73,27 +73,43 @@
   },
   "ELPA": "bundled OpenMP ELPA 2026.02.002; AVX2 kernels at run time (AVX-512 kernels are built but this CPU has no AVX-512)",
   "core_libraries_preloaded": true,
-  "wall_metric": "guest CLOCK_MONOTONIC duration of the MPI job including the 2 s monitor polling; the guest monotonic clock ran about 10% slow (1.111 external s per guest s), so external_wall_seconds maps start/end through clock-log.csv where the log covers them"
+  "wall_metric": "guest CLOCK_MONOTONIC duration of the MPI job including the 2 s monitor polling; the guest monotonic clock ran 8-10% slow (1.111 and 1.091 external s per guest s in the two logged periods), so external_wall_seconds maps start/end through clock-log.csv where the log covers them",
+  "intel_mpi_pin_masks_note": "as given to Intel MPI (bare hex, ignored); the effective layout is the default domain pinning"
  },
  "clock": {
-  "finding": "The WSL2 guest CLOCK_MONOTONIC advanced 10% less than an external HTTPS Date reference; CLOCK_REALTIME, which omp_get_wtime and therefore OpenMX dtime/Total Computational Time use, is stepped to the host time about every 30 s.",
+  "finding": "The WSL2 guest CLOCK_MONOTONIC advanced 8-10% less than an external HTTPS Date reference; CLOCK_REALTIME, which omp_get_wtime and therefore OpenMX dtime/Total Computational Time follow here, is stepped to the host time about every 30 s.",
   "log": "clock-log.csv: external (HTTPS Date, 1 s resolution, sampled at a second boundary), guest monotonic, guest realtime, load",
-  "log_span_hours": 7.46,
-  "external_over_monotonic": 1.111,
-  "external_over_realtime": 0.99995,
-  "consequence": "native OpenMX times (omp_get_wtime) agree with the external clock: every MPI job covered by the log ran 1.4-7.6 s longer externally than its native time (start-up, shutdown, work between suite cases). Between steps the realtime clock runs as slowly as the monotonic clock, so a case of a few seconds can read up to about 10% short, or up to about 3.6 s long when it spans a step."
+  "consequence": "native OpenMX times (omp_get_wtime) agree with the external clock: every MPI job covered by the log ran 1.4-7.6 s longer externally than its native time (start-up, shutdown, work between suite cases). Between steps the realtime clock runs as slowly as the monotonic clock, so a case of a few seconds can read up to about 10% short, or up to about 3.6 s long when it spans a step.",
+  "segments": [
+   {
+    "period": "2026-11-01 15:12:23 - 22:40:04 +0900",
+    "hours": 7.46,
+    "external_over_monotonic": 1.111,
+    "external_over_realtime": 0.99995
+   },
+   {
+    "period": "2026-11-02 14:47:46 - 16:59:29 +0900",
+    "hours": 2.2,
+    "external_over_monotonic": 1.0907,
+    "external_over_realtime": 1.00015,
+    "note": "after a WSL2 restart; guest CLOCK_MONOTONIC restarts at boot, so the monotonic column is not continuous across the gap"
+   }
+  ]
  },
  "status": {
-  "completed_runs": 11,
+  "completed_runs": 12,
   "planned_runs": 12,
-  "not_measured": [
-   "upstream L (-runtestL): stopped at the user request on 2026-11-01 22:40:21 +0900 after 7 of 16 cases; a native suite job is published only when complete, so no upstream L value is reported"
+  "discarded_attempts": [
+   "fork_cpu cghelgeo, killed by the 2026-11-01 ~15:52 pause and rerun from scratch",
+   "upstream L, stopped 2026-11-01 22:40:21 +0900 after 7 of 16 cases; kept locally as runs/upstream/L.stopped-20261101 and not used; rerun from scratch 2026-11-02 14:47:45-16:58:46 +0900 after a WSL2 restart"
   ]
  },
  "notes": [
   "first launch at 14:59:35 failed before any calculation (relative campaign path); runner fixed and relaunched",
   "paused 2026-11-01 ~15:52 at the user's request to investigate NVIDIA MPS on WSL2 (not possible: WSL libcuda has no MPS client and nvidia-cuda-mps-control exits 33; the Linux 595.99.02 libcuda cannot open /dev/nvidiactl, ENXIO). gpu:cghelgeo had completed at 15:51:51; the just-started fork_cpu:cghelgeo was killed and is rerun from scratch. All GPU runs are without MPS.",
-  "stopped 2026-11-01 22:40:21 +0900 at the user's request (to be continued the next day): 11 of 12 runs complete; upstream:L (started 21:51:02) was killed and has no result.json, so a resumed runner reruns it from scratch. clock logger stopped via clock-log.stop."
+  "stopped 2026-11-01 22:40:21 +0900 at the user's request (to be continued the next day): 11 of 12 runs complete; upstream:L (started 21:51:02) was killed and has no result.json, so a resumed runner reruns it from scratch. clock logger stopped via clock-log.stop.",
+  "resumed 2026-11-02 14:47:45 +0900 at the user's request after a WSL2 restart (guest up ~2 min, load 0, no GPU compute apps): the stopped upstream:L directory (7 of 16 cases finished) was moved to runs/upstream/L.stopped-20261101 instead of being deleted, so upstream:L reruns from scratch; clock-log.stop was renamed clock-log.stop.20261101 and the clock logger restarted (appends to clock-log.csv; guest CLOCK_MONOTONIC restarts at boot, so monotonic values are not continuous across the gap).",
+  "2026-11-02T17:03:40+0900: campaign finished; upstream:L ran 2026-11-02 14:47:45-16:58:46 +0900 (exit 0, 16 cases, native 7856.33 s); clock logger stopped via clock-log.stop. Intel MPI 2021.19 rejects an I_MPI_PIN_DOMAIN list of bare hex masks (\"Error parsing I_MPI_PIN_DOMAIN = 3. Expected hexadecimal bit-mask\", printed at the start of every upstream run.log) and falls back to its default domain pinning, which gives the same rank i -> CPUs 2i, 2i+1 layout; a probe with two masks swapped kept the default order, while 0x-prefixed masks are applied."
  ],
  "toolchains": {
   "nvc": {
@@ -184,6 +200,6 @@
  "runner_sha256": "5aea3e48b37ee658647265ef277f8a2deff15d8d8ccb8e64e4129892e5df2de1",
  "local_evidence": "build/rtx4070ti-benchmark-20261101-145924",
  "start_time": "2026-11-01 15:00:20 +0900",
- "end_time": "2026-11-01 21:51:02 +0900 (last completed run); campaign stopped 22:40:21 +0900",
- "recorded": "2026-11-02T10:36:59+0900"
+ "end_time": "2026-11-02 16:58:46 +0900 (last run); clock logger stopped about 16:59:30 +0900",
+ "recorded": "2026-11-02T17:03:40+0900"
 }
