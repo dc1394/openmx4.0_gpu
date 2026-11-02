@@ -358,9 +358,13 @@ def main():
             ri = retained_in(name)
             row["retained"] = int(bool(ri))
             row["retained_in"] = "; ".join(ri)
-            mi = int(row["maxiter"] or row["scf_maxiter_input"] or 0)
-            si = int(row["scf_iters_out"] or 0)
-            row["converged_by_criterion"] = int(0 < si < mi) if mi else ""
+            # the program's own verdict, wall.scf_converged of the manifest:
+            # the stopping test passed, possibly at the scf.maxIter-th
+            # iteration itself (s5a_bcol_c1611 converges at 60 of 60).  The
+            # same flag marks the runs of the paper's accuracy table.  Empty
+            # for the preliminary runs that have no manifest.
+            sc = row["scf_converged_manifest"]
+            row["converged_by_criterion"] = "" if sc in ("", None) else int(bool(sc))
             acc.append(row)
             continue
         m = SCAL.match(name)
@@ -532,7 +536,7 @@ def main():
         for p in sorted(SHA):
             f.write(f"{SHA[p]}  {os.path.relpath(p, root)}\n")
     with open(out / "reaggregate_check.txt", "w") as f:
-        f.write(f"archive root: {root}\n")
+        f.write(f"archive root: {root.name}\n")
         f.write(f"runs: production {len(prod)} (retained {sum(r['retained'] for r in prod)}, paper_final {sum(r['paper_final'] for r in prod)}), "
                 f"accuracy {len(acc)} (retained {sum(r['retained'] for r in acc)}), strong-scaling {len(scal)} (retained {sum(r['retained'] for r in scal)}), "
                 f"distributed {len(dist)} (retained {sum(r['retained'] for r in dist)}), supplementary {len(supp)}\n")

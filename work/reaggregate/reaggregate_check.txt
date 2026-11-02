@@ -1,4 +1,4 @@
-archive root: /tmp/claude-1000/-home-dc1394-openmx4-0-gpu/0d80a7d7-9464-4584-992f-dcf0552434cb/scratchpad/rev5/openmx40gpu_v2.0_thesis_measurements_20261102
+archive root: openmx40gpu_v2.0_thesis_measurements_20261102
 runs: production 395 (retained 296, paper_final 221), accuracy 88 (retained 52), strong-scaling 140 (retained 90), distributed 99 (retained 81), supplementary 288
 amdahl sites: 53; accuracy pairs: 77; files hashed: 4403
 timing cross-check (.out Max_Time vs joblog TIMING vs manifest walls): 0 discrepancies
