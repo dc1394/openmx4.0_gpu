@@ -1,9 +1,9 @@
 openmx40gpu_v2.0_thesis_measurements_20261102.zip -- split for GitHub
 =====================================================================
-Revision 6 of the measurement-distribution zip (same filename as
-revision 5, which it supersedes; revision 4,
+Revision 7 of the measurement-distribution zip (same filename as
+revisions 5 and 6, which it supersedes; revision 4,
 openmx40gpu_v2.0_thesis_measurements_20260908.zip, sits alongside).  The
-single file is 299839779 bytes (285 MiB), which exceeds GitHub's 100 MB per-file
+single file is 299841857 bytes (285 MiB), which exceeds GitHub's 100 MB per-file
 limit, so it is stored on this branch as four split(1) parts.  Reassemble
 it byte-identically with:
 
@@ -11,33 +11,34 @@ it byte-identically with:
       > openmx40gpu_v2.0_thesis_measurements_20261102.zip
 
 md5 checksums:
-  c4f90e97cae437fcbc4314ba02d55489  openmx40gpu_v2.0_thesis_measurements_20261102.zip  (reassembled)
-  77f35b689340cc292104c64a77bd5159  openmx40gpu_v2.0_thesis_measurements_20261102.zip.part00
-  dadcd64a16642ca8be3aa4ea2ce249c0  openmx40gpu_v2.0_thesis_measurements_20261102.zip.part01
-  121c4e2d88c566dae7987eff2399b071  openmx40gpu_v2.0_thesis_measurements_20261102.zip.part02
-  5fbc84946e85e84df61f20c134eb7065  openmx40gpu_v2.0_thesis_measurements_20261102.zip.part03
+  177742116d2fc0a329f199cff3a2de19  openmx40gpu_v2.0_thesis_measurements_20261102.zip  (reassembled)
+  ecd08142411ef1fd2db5e2dd75b0193d  openmx40gpu_v2.0_thesis_measurements_20261102.zip.part00
+  50f1165c3f202c6f615edbe0b9e6fb43  openmx40gpu_v2.0_thesis_measurements_20261102.zip.part01
+  c4b93ae7030d4600ab03bbb84356565f  openmx40gpu_v2.0_thesis_measurements_20261102.zip.part02
+  883d179a7af0a4aec2c0cb432e3f9857  openmx40gpu_v2.0_thesis_measurements_20261102.zip.part03
 
 Contents (see PACKING_NOTE.txt inside the zip for the full itemization):
-tracked payload = git archive of this branch @ 0df3a6a8 (the full commit
+tracked payload = git archive of this branch @ cd66fd37 (the full commit
 hash is stored as the zip's archive comment), pathspecs `work/` and
 `README.md`, symbolic links stored as links as in revision 4 -- the
-revision-4 payload (e6f4c9f4) plus commit 773b098f (the four cnc128
-stand-alone GEMM shapes measured 2026-11-01), commit d4a3df72
-(work/reaggregate/: the CSV files the paper's provenance appendix names,
-the script that writes them, reaggregate_sha256.txt with the SHA-256 of
-the 4403 files it reads) and commit 0df3a6a8 (converged_by_criterion of
-accuracy_runs.csv now repeats the manifests' scf_converged flag, the flag
-of the paper's accuracy table).  On top of the tracked payload the same
-appended untracked evidence as revision 4 (EXTRAS_FILELIST.txt, 1580
-files).  20485 zip entries (revision 4 plus 20 files and one
-directory), unzip -t clean.
+revision-4 payload (e6f4c9f4) plus commits 773b098f (the four cnc128
+stand-alone GEMM shapes measured 2026-11-01), d4a3df72 (work/reaggregate/:
+the CSV files the paper's provenance appendix names, the script that writes
+them, the SHA-256 list of its 4403 inputs), 0df3a6a8 (converged_by_criterion
+of accuracy_runs.csv repeats the manifests' scf_converged flag, the flag of
+the paper's accuracy table) and cd66fd37 (amdahl_5080.csv, amdahl_h100.csv
+and the cnc128 addendum computed from the full-precision means of the
+retained runs, reproducing Table VI and Fig. 4 of the paper).  On top of the
+tracked payload the same appended untracked evidence as revision 4
+(EXTRAS_FILELIST.txt, 1580 files).  20485 zip entries (revision 4 plus 20
+files and one directory), unzip -t clean.
 
-Revision 5 of this filename (parts committed as 00653762, md5
-2912698d7b6476c5651d4b83beeea440, 20859 entries) differed in the CSV flag
-above and had been zipped without -y: it stored the twelve example-deck
-links of the work/rtb_* directories as copies and left out the seven
-openmx links and work/DFT_DATA19.  Revision 6 corrects both.
+Earlier revisions of this filename: revision 5 (parts 00653762, md5
+2912698d7b6476c5651d4b83beeea440) zipped without -y, storing twelve
+example-deck links as copies and missing eight links; revision 6 (parts
+cb3b7611, md5 c4f90e97cae437fcbc4314ba02d55489) still had the two-decimal
+Amdahl tables.
 
-The 24 files that revisions 5 and 6 add to or change in revision 4 are
-also committed alone, beside these parts, as
+The 28 files that revisions 5 to 7 add to or change in revision 4 are also
+committed alone, beside these parts, as
 cnc128_and_reaggregation_supplement_20261102.zip.
