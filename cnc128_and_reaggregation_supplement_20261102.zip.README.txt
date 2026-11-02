@@ -1,23 +1,24 @@
 cnc128_and_reaggregation_supplement_20261102.zip
 ================================================
-The 24 files that revisions 5 and 6 of
+The 28 files that revisions 5 to 7 of
 openmx40gpu_v2.0_thesis_measurements_20261102.zip add to or change in
 revision 4 (openmx40gpu_v2.0_thesis_measurements_20260908.zip), at their
 archive-relative paths, plus SUPPLEMENT_NOTE.txt.  Unpacking it over
-revision 4 gives the tracked payload of revision 6 (commit 0df3a6a8, the
+revision 4 gives the tracked payload of revision 7 (commit cd66fd37, the
 payload whose split parts are committed beside this file).  It is meant for
 an archival deposit that keeps revision 4 and adds the post-freeze
-material separately; revision 6 alone already contains everything.
+material separately; revision 7 alone already contains everything.
 
   work/gemm_micro/   the cnc128 stand-alone GEMM measurements of
-                     2026-11-01 (8 files) and the four campaign files that
-                     took the cnc128 rows
+                     2026-11-01 (8 files), the two campaign files that took
+                     the cnc128 rows, and the Amdahl tables of both GPUs
+                     recomputed from the full-precision means (2 scripts,
+                     2 CSV files, 2 result notes with dated addenda)
   work/reaggregate/  the CSV files named in the paper's provenance
                      appendix, the script that writes them, the SHA-256
                      list of its 4403 inputs and its check report
 
-md5  12695126544cc21c2a27063eeed2dda5  (292,560 bytes, 25 files)
-An earlier copy made the same day for revision 5 (md5
-f0164a113ad8925c4179d573a6b02561) differed only in five files of
-work/reaggregate/ (the convergence flag of accuracy_runs.csv and what
-follows from it).
+md5  193c54ea927ab2255b8a5185413ae12e  (304540 bytes, 29 files)
+Earlier copies made the same day: for revision 5 (md5
+f0164a113ad8925c4179d573a6b02561) and for revision 6 (md5
+12695126544cc21c2a27063eeed2dda5), each with 24 files.
