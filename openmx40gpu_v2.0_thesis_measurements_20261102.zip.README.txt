@@ -1,0 +1,36 @@
+openmx40gpu_v2.0_thesis_measurements_20261102.zip -- split for GitHub
+=====================================================================
+Revision 5 of the measurement-distribution zip (supersedes revision 4,
+openmx40gpu_v2.0_thesis_measurements_20260908.zip, whose parts sit
+alongside).  The single file is 307520019 bytes (294 MB), which
+exceeds GitHub's 100 MB per-file limit, so it is stored on this branch
+as four split(1) parts.  Reassemble it byte-identically with:
+
+  cat openmx40gpu_v2.0_thesis_measurements_20261102.zip.part?? \
+      > openmx40gpu_v2.0_thesis_measurements_20261102.zip
+
+md5 checksums:
+  2912698d7b6476c5651d4b83beeea440  openmx40gpu_v2.0_thesis_measurements_20261102.zip  (reassembled)
+  f99e4d66aafeba45a9d50f344747dba6  openmx40gpu_v2.0_thesis_measurements_20261102.zip.part00
+  698eb430a3f593a2051b1a6aa63350c5  openmx40gpu_v2.0_thesis_measurements_20261102.zip.part01
+  063ca19636766f2c320869db639be3d8  openmx40gpu_v2.0_thesis_measurements_20261102.zip.part02
+  4835aa2cd1cb066bfaa867e1089f4a5a  openmx40gpu_v2.0_thesis_measurements_20261102.zip.part03
+
+Contents (see PACKING_NOTE.txt inside the zip for the full itemization):
+tracked payload = git archive of this branch @ d4a3df72 (the full commit
+hash is stored as the zip's archive comment), pathspecs `work/` and
+`README.md` -- the revision-4 payload (e6f4c9f4) plus commit 773b098f
+(the four cnc128 stand-alone GEMM shapes measured 2026-11-01 with the
+campaign's bench_gemm against GEMMul8 833e5761 built from a fresh
+checkout of tag v2.0_thesis, merged into gemm_micro_5080.csv /
+shapes_campaign.txt / analysis.py / amdahl_5080.csv and recorded in
+work/gemm_micro/*cnc128*) and commit d4a3df72 (work/reaggregate/: the
+CSV files the paper's provenance appendix names -- production_runs.csv,
+production_summary.csv, amdahl_sites.csv, accuracy_runs.csv,
+accuracy_comparison.csv, strong_scaling_runs.csv,
+distributed_solver_runs.csv, supplementary_series_runs.csv -- the
+script that re-aggregates them from the individual outputs,
+reaggregate_sha256.txt with the SHA-256 of the 4403 files it reads, and
+reaggregate_check.txt).  On top of the tracked payload the same appended
+untracked evidence as revision 4 (EXTRAS_FILELIST.txt, 1580 files).
+20859 zip entries, unzip -t clean.
