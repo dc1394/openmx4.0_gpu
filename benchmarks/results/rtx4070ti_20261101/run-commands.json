@@ -1,0 +1,374 @@
+[
+ {
+  "working_directory": "/home/dc1394/openmx4.0_gpu/build/rtx4070ti-benchmark-20261101-145924/runs/upstream/S",
+  "variant": "upstream",
+  "test": "S",
+  "command": [
+   "/opt/intel/oneapi/mpi/2021.19/bin/mpiexec",
+   "-n",
+   "12",
+   "/home/dc1394/openmx4.0_gpu/build/rtx4070ti-benchmark-20261101-145924/binaries/upstream/openmx",
+   "-runtest",
+   "-nt",
+   "2"
+  ],
+  "controls": {
+   "OMP_NUM_THREADS": "2",
+   "OMP_DYNAMIC": "FALSE",
+   "OMP_PLACES": "threads",
+   "OMP_PROC_BIND": "close",
+   "OMP_MAX_ACTIVE_LEVELS": "1",
+   "OMP_STACKSIZE": "64M",
+   "MKL_NUM_THREADS": "2",
+   "MKL_DYNAMIC": "FALSE",
+   "OPENBLAS_NUM_THREADS": "2",
+   "BLIS_NUM_THREADS": "2",
+   "CUDA_VISIBLE_DEVICES": "0"
+  }
+ },
+ {
+  "working_directory": "/home/dc1394/openmx4.0_gpu/build/rtx4070ti-benchmark-20261101-145924/runs/fork_cpu/S",
+  "variant": "fork_cpu",
+  "test": "S",
+  "command": [
+   "/opt/nvidia/hpc_sdk/Linux_x86_64/26.9/comm_libs/mpi/bin/mpirun",
+   "--use-hwthread-cpus",
+   "--map-by",
+   "slot:PE=2",
+   "--bind-to",
+   "hwthread",
+   "--report-bindings",
+   "-np",
+   "12",
+   "/home/dc1394/openmx4.0_gpu/build/rtx4070ti-benchmark-20261101-145924/binaries/fork/openmx",
+   "-runtest",
+   "-nt",
+   "2"
+  ],
+  "controls": {
+   "OMP_NUM_THREADS": "2",
+   "OMP_DYNAMIC": "FALSE",
+   "OMP_PLACES": "threads",
+   "OMP_PROC_BIND": "close",
+   "OMP_MAX_ACTIVE_LEVELS": "1",
+   "OMP_STACKSIZE": "64M",
+   "MKL_NUM_THREADS": "2",
+   "MKL_DYNAMIC": "FALSE",
+   "OPENBLAS_NUM_THREADS": "2",
+   "BLIS_NUM_THREADS": "2",
+   "CUDA_VISIBLE_DEVICES": "0"
+  }
+ },
+ {
+  "working_directory": "/home/dc1394/openmx4.0_gpu/build/rtx4070ti-benchmark-20261101-145924/runs/gpu/S",
+  "variant": "fork_gpu",
+  "test": "S",
+  "command": [
+   "/opt/nvidia/hpc_sdk/Linux_x86_64/26.9/comm_libs/mpi/bin/mpirun",
+   "--use-hwthread-cpus",
+   "--map-by",
+   "slot:PE=2",
+   "--bind-to",
+   "hwthread",
+   "--report-bindings",
+   "-np",
+   "12",
+   "/home/dc1394/openmx4.0_gpu/build/rtx4070ti-benchmark-20261101-145924/binaries/fork/openmx",
+   "-runtest",
+   "-nt",
+   "2"
+  ],
+  "controls": {
+   "OMP_NUM_THREADS": "2",
+   "OMP_DYNAMIC": "FALSE",
+   "OMP_PLACES": "threads",
+   "OMP_PROC_BIND": "close",
+   "OMP_MAX_ACTIVE_LEVELS": "1",
+   "OMP_STACKSIZE": "64M",
+   "MKL_NUM_THREADS": "2",
+   "MKL_DYNAMIC": "FALSE",
+   "OPENBLAS_NUM_THREADS": "2",
+   "BLIS_NUM_THREADS": "2",
+   "CUDA_VISIBLE_DEVICES": "0"
+  }
+ },
+ {
+  "working_directory": "/home/dc1394/openmx4.0_gpu/build/rtx4070ti-benchmark-20261101-145924/runs/upstream/sidia333_nc_cluster",
+  "variant": "upstream",
+  "test": "sidia333_nc_cluster",
+  "command": [
+   "/opt/intel/oneapi/mpi/2021.19/bin/mpiexec",
+   "-n",
+   "12",
+   "/home/dc1394/openmx4.0_gpu/build/rtx4070ti-benchmark-20261101-145924/binaries/upstream/openmx",
+   "input.dat",
+   "-nt",
+   "2"
+  ],
+  "controls": {
+   "OMP_NUM_THREADS": "2",
+   "OMP_DYNAMIC": "FALSE",
+   "OMP_PLACES": "threads",
+   "OMP_PROC_BIND": "close",
+   "OMP_MAX_ACTIVE_LEVELS": "1",
+   "OMP_STACKSIZE": "64M",
+   "MKL_NUM_THREADS": "2",
+   "MKL_DYNAMIC": "FALSE",
+   "OPENBLAS_NUM_THREADS": "2",
+   "BLIS_NUM_THREADS": "2",
+   "CUDA_VISIBLE_DEVICES": "0"
+  }
+ },
+ {
+  "working_directory": "/home/dc1394/openmx4.0_gpu/build/rtx4070ti-benchmark-20261101-145924/runs/fork_cpu/sidia333_nc_cluster",
+  "variant": "fork_cpu",
+  "test": "sidia333_nc_cluster",
+  "command": [
+   "/opt/nvidia/hpc_sdk/Linux_x86_64/26.9/comm_libs/mpi/bin/mpirun",
+   "--use-hwthread-cpus",
+   "--map-by",
+   "slot:PE=2",
+   "--bind-to",
+   "hwthread",
+   "--report-bindings",
+   "-np",
+   "12",
+   "/home/dc1394/openmx4.0_gpu/build/rtx4070ti-benchmark-20261101-145924/binaries/fork/openmx",
+   "input.dat",
+   "-nt",
+   "2"
+  ],
+  "controls": {
+   "OMP_NUM_THREADS": "2",
+   "OMP_DYNAMIC": "FALSE",
+   "OMP_PLACES": "threads",
+   "OMP_PROC_BIND": "close",
+   "OMP_MAX_ACTIVE_LEVELS": "1",
+   "OMP_STACKSIZE": "64M",
+   "MKL_NUM_THREADS": "2",
+   "MKL_DYNAMIC": "FALSE",
+   "OPENBLAS_NUM_THREADS": "2",
+   "BLIS_NUM_THREADS": "2",
+   "CUDA_VISIBLE_DEVICES": "0"
+  }
+ },
+ {
+  "working_directory": "/home/dc1394/openmx4.0_gpu/build/rtx4070ti-benchmark-20261101-145924/runs/gpu/sidia333_nc_cluster",
+  "variant": "fork_gpu",
+  "test": "sidia333_nc_cluster",
+  "command": [
+   "/opt/nvidia/hpc_sdk/Linux_x86_64/26.9/comm_libs/mpi/bin/mpirun",
+   "--use-hwthread-cpus",
+   "--map-by",
+   "slot:PE=2",
+   "--bind-to",
+   "hwthread",
+   "--report-bindings",
+   "-np",
+   "12",
+   "/home/dc1394/openmx4.0_gpu/build/rtx4070ti-benchmark-20261101-145924/binaries/fork/openmx",
+   "input.dat",
+   "-nt",
+   "2"
+  ],
+  "controls": {
+   "OMP_NUM_THREADS": "2",
+   "OMP_DYNAMIC": "FALSE",
+   "OMP_PLACES": "threads",
+   "OMP_PROC_BIND": "close",
+   "OMP_MAX_ACTIVE_LEVELS": "1",
+   "OMP_STACKSIZE": "64M",
+   "MKL_NUM_THREADS": "2",
+   "MKL_DYNAMIC": "FALSE",
+   "OPENBLAS_NUM_THREADS": "2",
+   "BLIS_NUM_THREADS": "2",
+   "CUDA_VISIBLE_DEVICES": "0"
+  }
+ },
+ {
+  "working_directory": "/home/dc1394/openmx4.0_gpu/build/rtx4070ti-benchmark-20261101-145924/runs/upstream/cghelgeo",
+  "variant": "upstream",
+  "test": "cghelgeo",
+  "command": [
+   "/opt/intel/oneapi/mpi/2021.19/bin/mpiexec",
+   "-n",
+   "12",
+   "/home/dc1394/openmx4.0_gpu/build/rtx4070ti-benchmark-20261101-145924/binaries/upstream/openmx",
+   "input.dat",
+   "-nt",
+   "2"
+  ],
+  "controls": {
+   "OMP_NUM_THREADS": "2",
+   "OMP_DYNAMIC": "FALSE",
+   "OMP_PLACES": "threads",
+   "OMP_PROC_BIND": "close",
+   "OMP_MAX_ACTIVE_LEVELS": "1",
+   "OMP_STACKSIZE": "64M",
+   "MKL_NUM_THREADS": "2",
+   "MKL_DYNAMIC": "FALSE",
+   "OPENBLAS_NUM_THREADS": "2",
+   "BLIS_NUM_THREADS": "2",
+   "CUDA_VISIBLE_DEVICES": "0"
+  }
+ },
+ {
+  "working_directory": "/home/dc1394/openmx4.0_gpu/build/rtx4070ti-benchmark-20261101-145924/runs/fork_cpu/cghelgeo",
+  "variant": "fork_cpu",
+  "test": "cghelgeo",
+  "command": [
+   "/opt/nvidia/hpc_sdk/Linux_x86_64/26.9/comm_libs/mpi/bin/mpirun",
+   "--use-hwthread-cpus",
+   "--map-by",
+   "slot:PE=2",
+   "--bind-to",
+   "hwthread",
+   "--report-bindings",
+   "-np",
+   "12",
+   "/home/dc1394/openmx4.0_gpu/build/rtx4070ti-benchmark-20261101-145924/binaries/fork/openmx",
+   "input.dat",
+   "-nt",
+   "2"
+  ],
+  "controls": {
+   "OMP_NUM_THREADS": "2",
+   "OMP_DYNAMIC": "FALSE",
+   "OMP_PLACES": "threads",
+   "OMP_PROC_BIND": "close",
+   "OMP_MAX_ACTIVE_LEVELS": "1",
+   "OMP_STACKSIZE": "64M",
+   "MKL_NUM_THREADS": "2",
+   "MKL_DYNAMIC": "FALSE",
+   "OPENBLAS_NUM_THREADS": "2",
+   "BLIS_NUM_THREADS": "2",
+   "CUDA_VISIBLE_DEVICES": "0"
+  }
+ },
+ {
+  "working_directory": "/home/dc1394/openmx4.0_gpu/build/rtx4070ti-benchmark-20261101-145924/runs/gpu/cghelgeo",
+  "variant": "fork_gpu",
+  "test": "cghelgeo",
+  "command": [
+   "/opt/nvidia/hpc_sdk/Linux_x86_64/26.9/comm_libs/mpi/bin/mpirun",
+   "--use-hwthread-cpus",
+   "--map-by",
+   "slot:PE=2",
+   "--bind-to",
+   "hwthread",
+   "--report-bindings",
+   "-np",
+   "12",
+   "/home/dc1394/openmx4.0_gpu/build/rtx4070ti-benchmark-20261101-145924/binaries/fork/openmx",
+   "input.dat",
+   "-nt",
+   "2"
+  ],
+  "controls": {
+   "OMP_NUM_THREADS": "2",
+   "OMP_DYNAMIC": "FALSE",
+   "OMP_PLACES": "threads",
+   "OMP_PROC_BIND": "close",
+   "OMP_MAX_ACTIVE_LEVELS": "1",
+   "OMP_STACKSIZE": "64M",
+   "MKL_NUM_THREADS": "2",
+   "MKL_DYNAMIC": "FALSE",
+   "OPENBLAS_NUM_THREADS": "2",
+   "BLIS_NUM_THREADS": "2",
+   "CUDA_VISIBLE_DEVICES": "0"
+  }
+ },
+ {
+  "working_directory": "/home/dc1394/openmx4.0_gpu/build/rtx4070ti-benchmark-20261101-145924/runs/upstream/L",
+  "variant": "upstream",
+  "test": "L",
+  "command": [
+   "/opt/intel/oneapi/mpi/2021.19/bin/mpiexec",
+   "-n",
+   "12",
+   "/home/dc1394/openmx4.0_gpu/build/rtx4070ti-benchmark-20261101-145924/binaries/upstream/openmx",
+   "-runtestL",
+   "-nt",
+   "2"
+  ],
+  "controls": {
+   "OMP_NUM_THREADS": "2",
+   "OMP_DYNAMIC": "FALSE",
+   "OMP_PLACES": "threads",
+   "OMP_PROC_BIND": "close",
+   "OMP_MAX_ACTIVE_LEVELS": "1",
+   "OMP_STACKSIZE": "64M",
+   "MKL_NUM_THREADS": "2",
+   "MKL_DYNAMIC": "FALSE",
+   "OPENBLAS_NUM_THREADS": "2",
+   "BLIS_NUM_THREADS": "2",
+   "CUDA_VISIBLE_DEVICES": "0"
+  }
+ },
+ {
+  "working_directory": "/home/dc1394/openmx4.0_gpu/build/rtx4070ti-benchmark-20261101-145924/runs/fork_cpu/L",
+  "variant": "fork_cpu",
+  "test": "L",
+  "command": [
+   "/opt/nvidia/hpc_sdk/Linux_x86_64/26.9/comm_libs/mpi/bin/mpirun",
+   "--use-hwthread-cpus",
+   "--map-by",
+   "slot:PE=2",
+   "--bind-to",
+   "hwthread",
+   "--report-bindings",
+   "-np",
+   "12",
+   "/home/dc1394/openmx4.0_gpu/build/rtx4070ti-benchmark-20261101-145924/binaries/fork/openmx",
+   "-runtestL",
+   "-nt",
+   "2"
+  ],
+  "controls": {
+   "OMP_NUM_THREADS": "2",
+   "OMP_DYNAMIC": "FALSE",
+   "OMP_PLACES": "threads",
+   "OMP_PROC_BIND": "close",
+   "OMP_MAX_ACTIVE_LEVELS": "1",
+   "OMP_STACKSIZE": "64M",
+   "MKL_NUM_THREADS": "2",
+   "MKL_DYNAMIC": "FALSE",
+   "OPENBLAS_NUM_THREADS": "2",
+   "BLIS_NUM_THREADS": "2",
+   "CUDA_VISIBLE_DEVICES": "0"
+  }
+ },
+ {
+  "working_directory": "/home/dc1394/openmx4.0_gpu/build/rtx4070ti-benchmark-20261101-145924/runs/gpu/L",
+  "variant": "fork_gpu",
+  "test": "L",
+  "command": [
+   "/opt/nvidia/hpc_sdk/Linux_x86_64/26.9/comm_libs/mpi/bin/mpirun",
+   "--use-hwthread-cpus",
+   "--map-by",
+   "slot:PE=2",
+   "--bind-to",
+   "hwthread",
+   "--report-bindings",
+   "-np",
+   "12",
+   "/home/dc1394/openmx4.0_gpu/build/rtx4070ti-benchmark-20261101-145924/binaries/fork/openmx",
+   "-runtestL",
+   "-nt",
+   "2"
+  ],
+  "controls": {
+   "OMP_NUM_THREADS": "2",
+   "OMP_DYNAMIC": "FALSE",
+   "OMP_PLACES": "threads",
+   "OMP_PROC_BIND": "close",
+   "OMP_MAX_ACTIVE_LEVELS": "1",
+   "OMP_STACKSIZE": "64M",
+   "MKL_NUM_THREADS": "2",
+   "MKL_DYNAMIC": "FALSE",
+   "OPENBLAS_NUM_THREADS": "2",
+   "BLIS_NUM_THREADS": "2",
+   "CUDA_VISIBLE_DEVICES": "0"
+  }
+ }
+]

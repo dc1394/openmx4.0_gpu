@@ -1,0 +1,189 @@
+{
+ "source_commit": "c6648c294c174e95ef24946360cd49f887d46468",
+ "os": "Ubuntu 22.04.5 LTS under WSL2, kernel 5.15.167.4-microsoft-standard-WSL2, Windows host",
+ "hardware": {
+  "cpu": "13th Gen Intel Core i9-13900K",
+  "wsl_view": "12 cores x 2 SMT threads = 24 logical CPUs (siblings 2k, 2k+1)",
+  "ram_bytes_visible_to_wsl": 105477791744,
+  "gpu": "NVIDIA GeForce RTX 4070 Ti, compute capability 8.9, 12282 MiB",
+  "gpu_driver": "Windows driver 617.14 (KMD); nvidia-smi 615.78.02; CUDA UMD 13.4",
+  "wslconfig": "processors=24, memory=100GB, swap=0",
+  "host_cpu_topology": "8 performance cores (SMT) + 16 efficient cores, 32 logical CPUs; the Windows host schedules the 24 WSL2 vCPUs"
+ },
+ "binaries": {
+  "fork": "869d5fa81dbbb377ef31201bb902e51f8eac433bb4b399ed1358af1e9841b07e",
+  "upstream": "2c1dc3e45c3e86f0c13bc7e3f1dee620294760a68f83296f301d318d6fdb72fa"
+ },
+ "libraries": {
+  "libopenmx_core.so": "ab5ba7aab63deaf80cfc531154d2634415c729843af62498d28c3e69e2f4ca2c",
+  "libopenmx_host_simd.so": "8b4eab59153c3d6ce45f7249311ea5f9df81f71f8638d73b87b58031791cc279"
+ },
+ "protocol": {
+  "mpi_ranks": 12,
+  "openmp_threads_per_rank": 2,
+  "binding": {
+   "mapping": "rank i uses logical CPUs 2i and 2i+1, the two SMT siblings of WSL core i",
+   "fork": "--use-hwthread-cpus --map-by slot:PE=2 --bind-to hwthread",
+   "upstream": "I_MPI_PIN=1, I_MPI_PIN_DOMAIN with the explicit masks below",
+   "verified_by": "affinity-audit.json"
+  },
+  "intel_mpi_pin_masks": [
+   "3",
+   "c",
+   "30",
+   "c0",
+   "300",
+   "c00",
+   "3000",
+   "c000",
+   "30000",
+   "c0000",
+   "300000",
+   "c00000"
+  ],
+  "repetitions": 1,
+  "order": "S, sidia333_nc_cluster, cghelgeo, L; GPU then fork CPU then upstream for each",
+  "GPU_MPS": false,
+  "GPU_MPS_reason": "NVIDIA MPS is supported on Linux and QNX only. Under WSL2 the GPU is driven by the Windows driver through /dev/dxg; its WSL libcuda has no MPS client and nvidia-cuda-mps-control exits with status 33 on start, while the native Linux 595.99.02 user-space driver cannot open /dev/nvidiactl (ENXIO).",
+  "numeric_tolerances": {
+   "energy_hartree": 1e-07,
+   "max_force_component_hartree_per_bohr": 1e-07,
+   "printed_coordinate_tolerance": 1.000001e-05
+  },
+  "case_time_metric": "max-rank Total Computational Time",
+  "suite_time_metric": "sum of native per-case runtest*.result elapsed times (one native -runtest* job per route)",
+  "input_changes": [
+   "absolute DATA.PATH",
+   "scf.eigen.lib=elpa2 on both CPU configurations"
+  ],
+  "data_source": "same fork DFT_DATA19 files for all three configurations (32 inputs, 25 PAO + 19 VPS files)",
+  "openmp_controls": {
+   "OMP_NUM_THREADS": 2,
+   "OMP_DYNAMIC": "FALSE",
+   "OMP_PLACES": "threads",
+   "OMP_PROC_BIND": "close",
+   "OMP_MAX_ACTIVE_LEVELS": 1,
+   "OMP_STACKSIZE": "64M"
+  },
+  "blas_controls": {
+   "OPENBLAS_NUM_THREADS": 2,
+   "BLIS_NUM_THREADS": 2,
+   "MKL_NUM_THREADS": 2,
+   "MKL_DYNAMIC": "FALSE"
+  },
+  "ELPA": "bundled OpenMP ELPA 2026.02.002; AVX2 kernels at run time (AVX-512 kernels are built but this CPU has no AVX-512)",
+  "core_libraries_preloaded": true,
+  "wall_metric": "guest CLOCK_MONOTONIC duration of the MPI job including the 2 s monitor polling; the guest monotonic clock ran about 10% slow (1.111 external s per guest s), so external_wall_seconds maps start/end through clock-log.csv where the log covers them"
+ },
+ "clock": {
+  "finding": "The WSL2 guest CLOCK_MONOTONIC advanced 10% less than an external HTTPS Date reference; CLOCK_REALTIME, which omp_get_wtime and therefore OpenMX dtime/Total Computational Time use, is stepped to the host time about every 30 s.",
+  "log": "clock-log.csv: external (HTTPS Date, 1 s resolution, sampled at a second boundary), guest monotonic, guest realtime, load",
+  "log_span_hours": 7.46,
+  "external_over_monotonic": 1.111,
+  "external_over_realtime": 0.99995,
+  "consequence": "native OpenMX times (omp_get_wtime) agree with the external clock: every MPI job covered by the log ran 1.4-7.6 s longer externally than its native time (start-up, shutdown, work between suite cases). Between steps the realtime clock runs as slowly as the monotonic clock, so a case of a few seconds can read up to about 10% short, or up to about 3.6 s long when it spans a step."
+ },
+ "status": {
+  "completed_runs": 11,
+  "planned_runs": 12,
+  "not_measured": [
+   "upstream L (-runtestL): stopped at the user request on 2026-11-01 22:40:21 +0900 after 7 of 16 cases; a native suite job is published only when complete, so no upstream L value is reported"
+  ]
+ },
+ "notes": [
+  "first launch at 14:59:35 failed before any calculation (relative campaign path); runner fixed and relaunched",
+  "paused 2026-11-01 ~15:52 at the user's request to investigate NVIDIA MPS on WSL2 (not possible: WSL libcuda has no MPS client and nvidia-cuda-mps-control exits 33; the Linux 595.99.02 libcuda cannot open /dev/nvidiactl, ENXIO). gpu:cghelgeo had completed at 15:51:51; the just-started fork_cpu:cghelgeo was killed and is rerun from scratch. All GPU runs are without MPS.",
+  "stopped 2026-11-01 22:40:21 +0900 at the user's request (to be continued the next day): 11 of 12 runs complete; upstream:L (started 21:51:02) was killed and has no result.json, so a resumed runner reruns it from scratch. clock logger stopped via clock-log.stop."
+ ],
+ "toolchains": {
+  "nvc": {
+   "command": [
+    "/opt/nvidia/hpc_sdk/Linux_x86_64/26.9/compilers/bin/nvc",
+    "--version"
+   ],
+   "returncode": 0,
+   "stdout": "nvc 26.9-0 64-bit target on x86-64 Linux -tp alderlake \nNVIDIA Compilers and Tools\nCopyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.  All rights reserved."
+  },
+  "nvfortran": {
+   "command": [
+    "/opt/nvidia/hpc_sdk/Linux_x86_64/26.9/compilers/bin/nvfortran",
+    "--version"
+   ],
+   "returncode": 0,
+   "stdout": "nvfortran 26.9-0 64-bit target on x86-64 Linux -tp alderlake \nNVIDIA Compilers and Tools\nCopyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.  All rights reserved."
+  },
+  "nvcc": {
+   "command": [
+    "/usr/local/cuda-13.4/bin/nvcc",
+    "--version"
+   ],
+   "returncode": 0,
+   "stdout": "nvcc: NVIDIA (R) Cuda compiler driver\nCopyright (c) 2005-2026 NVIDIA Corporation\nBuilt on Tue_Sep_01_08:45:21_PDT_2026\nCuda compilation tools, release 13.4, V13.4.92\nBuild cuda_13.4.r13.4/compiler.38855100_0"
+  },
+  "gcc": {
+   "command": [
+    "/usr/bin/c++",
+    "--version"
+   ],
+   "returncode": 0,
+   "stdout": "c++ (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0\nCopyright (C) 2021 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+  },
+  "cmake": {
+   "command": [
+    "cmake",
+    "--version"
+   ],
+   "returncode": 0,
+   "stdout": "cmake version 4.4.4\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake)."
+  },
+  "openmpi": {
+   "command": [
+    "/opt/nvidia/hpc_sdk/Linux_x86_64/26.9/comm_libs/mpi/bin/mpirun",
+    "--version"
+   ],
+   "returncode": 0,
+   "stdout": "mpirun (Open MPI) 5.0.10rc2\n\nReport bugs to https://www.open-mpi.org/community/help/"
+  },
+  "intelmpi": {
+   "command": [
+    "/opt/intel/oneapi/mpi/2021.19/bin/mpiexec",
+    "--version"
+   ],
+   "returncode": 0,
+   "stdout": "Intel(R) MPI Library for Linux* OS, Version 2021.19.0 Build 20260929 (id: 1821d9b)\nCopyright 2003-2026, Intel Corporation."
+  },
+  "upstream_build": "Existing ~/openmx4.0/work/openmx (OpenMX Ver. 4.0, 26/April/2026), Intel oneAPI icx/ifx 2026.2.0, Intel MPI 2021.19, threaded LP64 oneMKL 2026.2 (libmkl_intel_thread)"
+ },
+ "build": {
+  "environment": "env -i with HOME, LANG and a system PATH (keeps the oneAPI CPATH/CPLUS_INCLUDE_PATH/LIBRARY_PATH/CMAKE_PREFIX_PATH out of the C++ core)",
+  "configure": [
+   "cmake",
+   "-S",
+   ".",
+   "-B",
+   "build/cuda",
+   "-DOPENMX_GPU_BACKEND=CUDA",
+   "-DOPENMX_GPU_ARCH=sm_89",
+   "-DCMAKE_BUILD_TYPE=Release",
+   "-DOPENMX_BUILD_JOBS=16"
+  ],
+  "build": [
+   "cmake",
+   "--build",
+   "build/cuda",
+   "--parallel",
+   "16"
+  ],
+  "install": [
+   "cmake",
+   "--install",
+   "build/cuda"
+  ],
+  "dependencies": "GEMMul8 v3.5.4 (f8fdf0b2), Kokkos 5.2.2 (SERIAL), ELPA 2026.02.002 with OpenMP, COSMA 2.8.4, FFTW 3.3.11; NVHPC 26.9, CUDA 13.4.2, GCC 11.4 C++20 core"
+ },
+ "runner_sha256": "5aea3e48b37ee658647265ef277f8a2deff15d8d8ccb8e64e4129892e5df2de1",
+ "local_evidence": "build/rtx4070ti-benchmark-20261101-145924",
+ "start_time": "2026-11-01 15:00:20 +0900",
+ "end_time": "2026-11-01 21:51:02 +0900 (last completed run); campaign stopped 22:40:21 +0900",
+ "recorded": "2026-11-02T10:36:59+0900"
+}

@@ -1,0 +1,1122 @@
+[
+ {
+  "variant": "fork_cpu",
+  "test": "cghelgeo",
+  "case": "cghelgeo",
+  "source": "benchmarks/inputs/cghelgeo.dat",
+  "original_sha256": "9c3958e470820ab2182af859b4749a0f3375c41d1a56ac013e0f398b441d0ff7",
+  "measured_input_sha256": "06565faf63c5170c291f030ebff92582f947e98a34f7b68683d33e31c0b8700c",
+  "changes": {
+   "DATA.PATH": "replaced",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "fork_cpu",
+  "test": "S",
+  "case": "Benzene",
+  "source": "work/input_example/Benzene.dat",
+  "original_sha256": "c7f445ef1ed49115a52049f6b81711b0999d074b5be2119f85886fa3209dfc66",
+  "measured_input_sha256": "292ca0c71d6438eb0e109199e89736209dd47152b5d43936f74052a5968bde26",
+  "changes": {
+   "DATA.PATH": "appended",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "fork_cpu",
+  "test": "S",
+  "case": "C60",
+  "source": "work/input_example/C60.dat",
+  "original_sha256": "7c2bd103986adb335ae2302685be43f0a23545861fa21d7885bd6f663bb6f6f8",
+  "measured_input_sha256": "9cfca30eb9716d60f214a5f8463a355d6b14590835c2b98c4a857b24895b0994",
+  "changes": {
+   "DATA.PATH": "appended",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "fork_cpu",
+  "test": "S",
+  "case": "CO",
+  "source": "work/input_example/CO.dat",
+  "original_sha256": "6fea9256df9ce5db091c80b9c644bc93a6dc55187949b61b682012f54566ff05",
+  "measured_input_sha256": "cdd3eaad36353c752948caaecc3900bd7841ed38e88ab3e349d15c5ac976dae9",
+  "changes": {
+   "DATA.PATH": "appended",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "fork_cpu",
+  "test": "S",
+  "case": "Cr2",
+  "source": "work/input_example/Cr2.dat",
+  "original_sha256": "37ce5beffcf397b8460975e6525ed2783c2be7320941e99d031bb77e2e888e3e",
+  "measured_input_sha256": "5fc460dc0f98b3b36658bcd5ff1155058845bf711dc5ee796ee03698b3b6d394",
+  "changes": {
+   "DATA.PATH": "appended",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "fork_cpu",
+  "test": "S",
+  "case": "Crys-MnO",
+  "source": "work/input_example/Crys-MnO.dat",
+  "original_sha256": "315a3b870e4e57a0edb5ac48f4135593f9dbc63cdcc1f0d344783ac9b4ef9c62",
+  "measured_input_sha256": "4d590b77d31d16ec0c9cace4cd99789043a2b36eda37f7443a086e4693997e2e",
+  "changes": {
+   "DATA.PATH": "appended",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "fork_cpu",
+  "test": "S",
+  "case": "GaAs",
+  "source": "work/input_example/GaAs.dat",
+  "original_sha256": "62c958351460fabc5d1a4f12d1cb51565f56ce10c4570d24131da25637f852c6",
+  "measured_input_sha256": "f184be18a19b4fc67834b32ce0652fdd15628a8eba9281a86e77a60f8d9690bb",
+  "changes": {
+   "DATA.PATH": "appended",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "fork_cpu",
+  "test": "S",
+  "case": "Glycine",
+  "source": "work/input_example/Glycine.dat",
+  "original_sha256": "4781425789fc08433ab49f4934c7c012d7cad0ad87b7f3df737138118afa8bca",
+  "measured_input_sha256": "19056ff2dcdbb874afe2f6febc4630bb2f161f06ea4368358abff41b458f4119",
+  "changes": {
+   "DATA.PATH": "appended",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "fork_cpu",
+  "test": "S",
+  "case": "Graphite4",
+  "source": "work/input_example/Graphite4.dat",
+  "original_sha256": "9ed8513b6eaac5ef8dc2343422c88175bd0b1b6b1e101f7bd113f63a9d2ed2f6",
+  "measured_input_sha256": "68b0e95368c2d0803120b8ac1cd15688f357822fcd060bdb1fd7d8f2526f7be9",
+  "changes": {
+   "DATA.PATH": "appended",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "fork_cpu",
+  "test": "S",
+  "case": "H2O-EF",
+  "source": "work/input_example/H2O-EF.dat",
+  "original_sha256": "9f528eb4f5d13f0635772d5dc87635d4e7c99266dc2085a1ef820a19e23f97d9",
+  "measured_input_sha256": "06aaebbd3ef0d531df02867a96771a53f2846d60758a46551b0f90a2bf3852f0",
+  "changes": {
+   "DATA.PATH": "appended",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "fork_cpu",
+  "test": "S",
+  "case": "H2O",
+  "source": "work/input_example/H2O.dat",
+  "original_sha256": "5e2044197d163bdb97728c78666d3b3dac9e0221bd07aa7b86781fca12770804",
+  "measured_input_sha256": "fa6e8afa2ed3d01b32bd84b029f88ea486e0f1929478389cb67ca25567f9792b",
+  "changes": {
+   "DATA.PATH": "appended",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "fork_cpu",
+  "test": "S",
+  "case": "HMn",
+  "source": "work/input_example/HMn.dat",
+  "original_sha256": "d29997cfe87ce73dcea408285c019c25c1573ae0c8d45cedc21c367a00abb703",
+  "measured_input_sha256": "466bbd14f2773f0a486b53ccb5edb6a375e7fe9a84fba82852f8b36aa705f580",
+  "changes": {
+   "DATA.PATH": "appended",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "fork_cpu",
+  "test": "S",
+  "case": "Methane",
+  "source": "work/input_example/Methane.dat",
+  "original_sha256": "259179e38dad7c6d8ece6f51ea8b0a1fbc3657a15defc43cb9ad104413a415bb",
+  "measured_input_sha256": "b83b5fae66107b917d65fb9a601a27cec33d73f8623decece3817f12a7940e85",
+  "changes": {
+   "DATA.PATH": "appended",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "fork_cpu",
+  "test": "S",
+  "case": "Mol_MnO",
+  "source": "work/input_example/Mol_MnO.dat",
+  "original_sha256": "7294bb18e450cefa7ab169b88c19c64284158a0f702a877324c3bd466c026670",
+  "measured_input_sha256": "eb4ba40cad43c790a1b22ffa6146e5c9e63c77c1ea7e31fdbbe34773e5c59590",
+  "changes": {
+   "DATA.PATH": "appended",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "fork_cpu",
+  "test": "S",
+  "case": "Ndia2",
+  "source": "work/input_example/Ndia2.dat",
+  "original_sha256": "68fccb2f50ba4e06d1625446db230a0fbc0981881352c66ae120ad1cefdc19ec",
+  "measured_input_sha256": "c104de33ae4411220025bff81992375fd659fd8f5a6a77e599232b756591a1af",
+  "changes": {
+   "DATA.PATH": "appended",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "fork_cpu",
+  "test": "L",
+  "case": "5_5_13COb2",
+  "source": "work/large_example/5_5_13COb2.dat",
+  "original_sha256": "927a27a84881266b6b8b530b3924b69a32d0d61c1f0fdfda954e8c6efb13e5d5",
+  "measured_input_sha256": "46c1a44628c65ba7078b4d0dbefacdd73cb733165476cf3dc00b635f4ee83819",
+  "changes": {
+   "DATA.PATH": "appended",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "fork_cpu",
+  "test": "L",
+  "case": "B2C62_Band",
+  "source": "work/large_example/B2C62_Band.dat",
+  "original_sha256": "15abe8dc8eb2f2a7f34a462adbb29f35a5f6684f2a6b89c36e49f9b9d0e5b227",
+  "measured_input_sha256": "473e8ca856dbae066925d1b19ddf74c263bc93ffa14fc37bf0f5b17e457a525d",
+  "changes": {
+   "DATA.PATH": "appended",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "fork_cpu",
+  "test": "L",
+  "case": "CG15c-DC-LNO",
+  "source": "work/large_example/CG15c-DC-LNO.dat",
+  "original_sha256": "f8a256ea70df08d1100d4aa8887656ba83c2964a3a99b3ee435f9b17c7bcfd9f",
+  "measured_input_sha256": "5de000928ea24a8354aa3937dd12a3534e01639716de7840ac5164633b782faa",
+  "changes": {
+   "DATA.PATH": "appended",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "fork_cpu",
+  "test": "L",
+  "case": "DIA512-1",
+  "source": "work/large_example/DIA512-1.dat",
+  "original_sha256": "c35000c6260b808cc10e5947fc108f65c146472d3b44a9fd8ef301e732844151",
+  "measured_input_sha256": "2465c0585e29a215defc08a101d68a4597b1d40177e01e493ddd09fa6b777dff",
+  "changes": {
+   "DATA.PATH": "appended",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "fork_cpu",
+  "test": "L",
+  "case": "FeBCC",
+  "source": "work/large_example/FeBCC.dat",
+  "original_sha256": "7181dbb66708c4ec41b32f2b0b5be3a4a7a067c9a26029d9b78e66abeadd366a",
+  "measured_input_sha256": "b2f3b6cbd5dbce38cedc0286f0500440b29adfe6435b60569a96fe5df6aaf6f0",
+  "changes": {
+   "DATA.PATH": "appended",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "fork_cpu",
+  "test": "L",
+  "case": "GEL",
+  "source": "work/large_example/GEL.dat",
+  "original_sha256": "707143410502e8e25c9958a7f3cc009ec6c7cb327e046997c86e5520512e6b6b",
+  "measured_input_sha256": "21fedebbb57e3b794e8f0f2e1efe368b87ead0eae32a5bae3588e141e82b6b35",
+  "changes": {
+   "DATA.PATH": "appended",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "fork_cpu",
+  "test": "L",
+  "case": "GFRAG",
+  "source": "work/large_example/GFRAG.dat",
+  "original_sha256": "8c95ae8d0039d7f2fcf8644ea1d171a26d1cb32e206f3c6757d5cd1c27dca31c",
+  "measured_input_sha256": "0e187369aa32835c1f635771850d668ae89e09f12fd331a38aff575496d30d16",
+  "changes": {
+   "DATA.PATH": "appended",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "fork_cpu",
+  "test": "L",
+  "case": "GGFF",
+  "source": "work/large_example/GGFF.dat",
+  "original_sha256": "6a80fcc4f96e97944cc7b6affd20df04f24764cfb4852703f01e105ae3dc701f",
+  "measured_input_sha256": "6ab546ef498e1ee2ab40aa9c03ceaa4b7d7356092253f5e15314f87850a77259",
+  "changes": {
+   "DATA.PATH": "appended",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "fork_cpu",
+  "test": "L",
+  "case": "MCCN",
+  "source": "work/large_example/MCCN.dat",
+  "original_sha256": "37f879f006313c05bfc45d8376abc7850854ce2819f796bdfd682b9017026358",
+  "measured_input_sha256": "bff0076a99a630b8472d54f2985d2f487f5d8dff49b8691baecd91c9b25fa018",
+  "changes": {
+   "DATA.PATH": "appended",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "fork_cpu",
+  "test": "L",
+  "case": "Mn12_148_F",
+  "source": "work/large_example/Mn12_148_F.dat",
+  "original_sha256": "877994aa5ad590d39055d65d3f6835737e1f40bea69001a9c015c1226b7ab0c5",
+  "measured_input_sha256": "f546c26f0b77c82ff0381db37292eec25e5cbe32412f63a943d170aa7a161b03",
+  "changes": {
+   "DATA.PATH": "appended",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "fork_cpu",
+  "test": "L",
+  "case": "N1C999",
+  "source": "work/large_example/N1C999.dat",
+  "original_sha256": "236f095357c5c4770f4b11594ab6e1506e37ff65b4d902bae9fd15dfe4f6444f",
+  "measured_input_sha256": "9af64c274886ccf2a652e3b5f1a01c3de42023577cfaa8b23b2513a3a4064b38",
+  "changes": {
+   "DATA.PATH": "appended",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "fork_cpu",
+  "test": "L",
+  "case": "Ni63-O64",
+  "source": "work/large_example/Ni63-O64.dat",
+  "original_sha256": "54c93baa76a77f149e298cd264fbebc645751dbeb5be1f2d451df6c02cec33e6",
+  "measured_input_sha256": "73c44fe8e391e46e1c29257914d5c2219808fc85b37a41c6431a08dad23ede1b",
+  "changes": {
+   "DATA.PATH": "appended",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "fork_cpu",
+  "test": "L",
+  "case": "Pt63",
+  "source": "work/large_example/Pt63.dat",
+  "original_sha256": "36dc8082db9435af8abf0d059f7935b0855151637b685af81aad52143149ae0d",
+  "measured_input_sha256": "abaaa8d2229e1ea3d290fcf33c40ca45033725f018a8ccc2b87655aa2fa13824",
+  "changes": {
+   "DATA.PATH": "appended",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "fork_cpu",
+  "test": "L",
+  "case": "SialicAcid",
+  "source": "work/large_example/SialicAcid.dat",
+  "original_sha256": "9175362d96ce6423e7a3383319a5435e85072f1bbe1095ef5fadeefdfd602df7",
+  "measured_input_sha256": "82220e05a380fc0d57eaa02725d24d5b8d3acf8221e69328d08c51613ceff7f7",
+  "changes": {
+   "DATA.PATH": "appended",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "fork_cpu",
+  "test": "L",
+  "case": "ZrB2_2x2",
+  "source": "work/large_example/ZrB2_2x2.dat",
+  "original_sha256": "d31735b20697aa7e7f2d4c02d603fe20e28dc68cbc917ef4938650d54ce73e82",
+  "measured_input_sha256": "ac7e090480fd850a9143beda6674bf10a7aaa11f40976b14aa999e63bb15a62d",
+  "changes": {
+   "DATA.PATH": "appended",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "fork_cpu",
+  "test": "L",
+  "case": "nsV4Bz5",
+  "source": "work/large_example/nsV4Bz5.dat",
+  "original_sha256": "0614c3619e1b04916d05649685c94415fc7270ae9fe88a7c33a92bac1dbb84e6",
+  "measured_input_sha256": "44264bbb41919fb9335daebcb636f3a015564c3cc0ed07773c7c5ecbde071524",
+  "changes": {
+   "DATA.PATH": "appended",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "fork_cpu",
+  "test": "sidia333_nc_cluster",
+  "case": "sidia333_nc_cluster",
+  "source": "benchmarks/inputs/sidia333_nc_cluster.dat",
+  "original_sha256": "9c5466abf560c6481b83ec9a51976f4b218856a1da330e5a209b9041239decd0",
+  "measured_input_sha256": "9dcb97c25790f4174a916e95a069d46c9ef3ee5105a826c0f3db57f3109708c6",
+  "changes": {
+   "DATA.PATH": "replaced",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "fork_gpu",
+  "test": "cghelgeo",
+  "case": "cghelgeo",
+  "source": "benchmarks/inputs/cghelgeo.dat",
+  "original_sha256": "9c3958e470820ab2182af859b4749a0f3375c41d1a56ac013e0f398b441d0ff7",
+  "measured_input_sha256": "b07ead853dd78c5fe946b230a1a486b10db09e6c3c5cfeb01541f7ba71d936ca",
+  "changes": {
+   "DATA.PATH": "replaced"
+  }
+ },
+ {
+  "variant": "fork_gpu",
+  "test": "S",
+  "case": "Benzene",
+  "source": "work/input_example/Benzene.dat",
+  "original_sha256": "c7f445ef1ed49115a52049f6b81711b0999d074b5be2119f85886fa3209dfc66",
+  "measured_input_sha256": "991492e316180f058e2293f479928db0daa3ed1436336c658cdd520eaf1f8666",
+  "changes": {
+   "DATA.PATH": "appended"
+  }
+ },
+ {
+  "variant": "fork_gpu",
+  "test": "S",
+  "case": "C60",
+  "source": "work/input_example/C60.dat",
+  "original_sha256": "7c2bd103986adb335ae2302685be43f0a23545861fa21d7885bd6f663bb6f6f8",
+  "measured_input_sha256": "c4134258f5c9f7f4cc993f81c7488c9bf7ef5184aafab2ee3bf25be7ea75af0e",
+  "changes": {
+   "DATA.PATH": "appended"
+  }
+ },
+ {
+  "variant": "fork_gpu",
+  "test": "S",
+  "case": "CO",
+  "source": "work/input_example/CO.dat",
+  "original_sha256": "6fea9256df9ce5db091c80b9c644bc93a6dc55187949b61b682012f54566ff05",
+  "measured_input_sha256": "a1107c0d5e3a4be395e447ec5d16a97200b3ba88030e4b3bd86c2b50c7907f5c",
+  "changes": {
+   "DATA.PATH": "appended"
+  }
+ },
+ {
+  "variant": "fork_gpu",
+  "test": "S",
+  "case": "Cr2",
+  "source": "work/input_example/Cr2.dat",
+  "original_sha256": "37ce5beffcf397b8460975e6525ed2783c2be7320941e99d031bb77e2e888e3e",
+  "measured_input_sha256": "47c9b5969ad594e1e0629d5d495d0ffda1c6270bb1bcc38c51d8cae506cf5e47",
+  "changes": {
+   "DATA.PATH": "appended"
+  }
+ },
+ {
+  "variant": "fork_gpu",
+  "test": "S",
+  "case": "Crys-MnO",
+  "source": "work/input_example/Crys-MnO.dat",
+  "original_sha256": "315a3b870e4e57a0edb5ac48f4135593f9dbc63cdcc1f0d344783ac9b4ef9c62",
+  "measured_input_sha256": "41ad3aa98762bbb19ea5308f36c703d859dcfd854d22a338f8449e48d7e252df",
+  "changes": {
+   "DATA.PATH": "appended"
+  }
+ },
+ {
+  "variant": "fork_gpu",
+  "test": "S",
+  "case": "GaAs",
+  "source": "work/input_example/GaAs.dat",
+  "original_sha256": "62c958351460fabc5d1a4f12d1cb51565f56ce10c4570d24131da25637f852c6",
+  "measured_input_sha256": "cb18bdd55c3b4af948b36146c11324aa87f8ca00c8b16056c6dc7c58c2b7f04a",
+  "changes": {
+   "DATA.PATH": "appended"
+  }
+ },
+ {
+  "variant": "fork_gpu",
+  "test": "S",
+  "case": "Glycine",
+  "source": "work/input_example/Glycine.dat",
+  "original_sha256": "4781425789fc08433ab49f4934c7c012d7cad0ad87b7f3df737138118afa8bca",
+  "measured_input_sha256": "013ee249ba2877f960d0885a44c6aece9fd6ae7c956bfe724b8448f3e50cfbb1",
+  "changes": {
+   "DATA.PATH": "appended"
+  }
+ },
+ {
+  "variant": "fork_gpu",
+  "test": "S",
+  "case": "Graphite4",
+  "source": "work/input_example/Graphite4.dat",
+  "original_sha256": "9ed8513b6eaac5ef8dc2343422c88175bd0b1b6b1e101f7bd113f63a9d2ed2f6",
+  "measured_input_sha256": "0f35551225ca66305422b1859fdc9f1934db0ea070c01df0d3cf188cc24f5404",
+  "changes": {
+   "DATA.PATH": "appended"
+  }
+ },
+ {
+  "variant": "fork_gpu",
+  "test": "S",
+  "case": "H2O-EF",
+  "source": "work/input_example/H2O-EF.dat",
+  "original_sha256": "9f528eb4f5d13f0635772d5dc87635d4e7c99266dc2085a1ef820a19e23f97d9",
+  "measured_input_sha256": "144ed844e6ba423c4c5c3e6e4e33966ac12c340ac5ad015563b86d5485c8bdf3",
+  "changes": {
+   "DATA.PATH": "appended"
+  }
+ },
+ {
+  "variant": "fork_gpu",
+  "test": "S",
+  "case": "H2O",
+  "source": "work/input_example/H2O.dat",
+  "original_sha256": "5e2044197d163bdb97728c78666d3b3dac9e0221bd07aa7b86781fca12770804",
+  "measured_input_sha256": "b025ef036ab42dc70150c9d215917bf4e6d9ac4ecff05711cc7515e7b612e5f5",
+  "changes": {
+   "DATA.PATH": "appended"
+  }
+ },
+ {
+  "variant": "fork_gpu",
+  "test": "S",
+  "case": "HMn",
+  "source": "work/input_example/HMn.dat",
+  "original_sha256": "d29997cfe87ce73dcea408285c019c25c1573ae0c8d45cedc21c367a00abb703",
+  "measured_input_sha256": "67e87c40c5ab98e549534160a2b2e208fa4c16659e9e74a51b9a2298aefe3d96",
+  "changes": {
+   "DATA.PATH": "appended"
+  }
+ },
+ {
+  "variant": "fork_gpu",
+  "test": "S",
+  "case": "Methane",
+  "source": "work/input_example/Methane.dat",
+  "original_sha256": "259179e38dad7c6d8ece6f51ea8b0a1fbc3657a15defc43cb9ad104413a415bb",
+  "measured_input_sha256": "a5e1f518a5f3b28f25ff4899c059883ca1b74fc0962a943b9ca3fc988c0239e4",
+  "changes": {
+   "DATA.PATH": "appended"
+  }
+ },
+ {
+  "variant": "fork_gpu",
+  "test": "S",
+  "case": "Mol_MnO",
+  "source": "work/input_example/Mol_MnO.dat",
+  "original_sha256": "7294bb18e450cefa7ab169b88c19c64284158a0f702a877324c3bd466c026670",
+  "measured_input_sha256": "ecb9101e0b65eafbc32b858ae7450f886d2ccc0144a69c2e4df703d7ebaea5df",
+  "changes": {
+   "DATA.PATH": "appended"
+  }
+ },
+ {
+  "variant": "fork_gpu",
+  "test": "S",
+  "case": "Ndia2",
+  "source": "work/input_example/Ndia2.dat",
+  "original_sha256": "68fccb2f50ba4e06d1625446db230a0fbc0981881352c66ae120ad1cefdc19ec",
+  "measured_input_sha256": "023b13b28f4a9e57cea1af8ecf46db16327d4c7e5478135d611544946298ddb8",
+  "changes": {
+   "DATA.PATH": "appended"
+  }
+ },
+ {
+  "variant": "fork_gpu",
+  "test": "L",
+  "case": "5_5_13COb2",
+  "source": "work/large_example/5_5_13COb2.dat",
+  "original_sha256": "927a27a84881266b6b8b530b3924b69a32d0d61c1f0fdfda954e8c6efb13e5d5",
+  "measured_input_sha256": "bc597ad4a5d8bf7056841b307c5ec28cbbcad7a1768c1aed882820806a34c9bd",
+  "changes": {
+   "DATA.PATH": "appended"
+  }
+ },
+ {
+  "variant": "fork_gpu",
+  "test": "L",
+  "case": "B2C62_Band",
+  "source": "work/large_example/B2C62_Band.dat",
+  "original_sha256": "15abe8dc8eb2f2a7f34a462adbb29f35a5f6684f2a6b89c36e49f9b9d0e5b227",
+  "measured_input_sha256": "944146201d4db9b7356738f7510b669ca262f9c05bd1fc1c1d9f7c4201c60114",
+  "changes": {
+   "DATA.PATH": "appended"
+  }
+ },
+ {
+  "variant": "fork_gpu",
+  "test": "L",
+  "case": "CG15c-DC-LNO",
+  "source": "work/large_example/CG15c-DC-LNO.dat",
+  "original_sha256": "f8a256ea70df08d1100d4aa8887656ba83c2964a3a99b3ee435f9b17c7bcfd9f",
+  "measured_input_sha256": "0c6aafb593c69bfaf2fde51da55fe992186151581af18ba26d9eb6ae93ac55af",
+  "changes": {
+   "DATA.PATH": "appended"
+  }
+ },
+ {
+  "variant": "fork_gpu",
+  "test": "L",
+  "case": "DIA512-1",
+  "source": "work/large_example/DIA512-1.dat",
+  "original_sha256": "c35000c6260b808cc10e5947fc108f65c146472d3b44a9fd8ef301e732844151",
+  "measured_input_sha256": "ba8ad9de8bc1c847f58027e55bb74caead9ab89107f762e6b14073b2607d7c88",
+  "changes": {
+   "DATA.PATH": "appended"
+  }
+ },
+ {
+  "variant": "fork_gpu",
+  "test": "L",
+  "case": "FeBCC",
+  "source": "work/large_example/FeBCC.dat",
+  "original_sha256": "7181dbb66708c4ec41b32f2b0b5be3a4a7a067c9a26029d9b78e66abeadd366a",
+  "measured_input_sha256": "f66a164ba3041f79d06498fc1eeb0fdb1983f103a7170b7fcc8d81aad0d38e06",
+  "changes": {
+   "DATA.PATH": "appended"
+  }
+ },
+ {
+  "variant": "fork_gpu",
+  "test": "L",
+  "case": "GEL",
+  "source": "work/large_example/GEL.dat",
+  "original_sha256": "707143410502e8e25c9958a7f3cc009ec6c7cb327e046997c86e5520512e6b6b",
+  "measured_input_sha256": "43ca44a682caa25d9c8cbf5d11e573bad93840baee7f2fb43349cb65a5439a1f",
+  "changes": {
+   "DATA.PATH": "appended"
+  }
+ },
+ {
+  "variant": "fork_gpu",
+  "test": "L",
+  "case": "GFRAG",
+  "source": "work/large_example/GFRAG.dat",
+  "original_sha256": "8c95ae8d0039d7f2fcf8644ea1d171a26d1cb32e206f3c6757d5cd1c27dca31c",
+  "measured_input_sha256": "047f08752e6b4fcfae2445bdf072552312a8e0e5a7f9ae1e5a0fd78e3a8ca2db",
+  "changes": {
+   "DATA.PATH": "appended"
+  }
+ },
+ {
+  "variant": "fork_gpu",
+  "test": "L",
+  "case": "GGFF",
+  "source": "work/large_example/GGFF.dat",
+  "original_sha256": "6a80fcc4f96e97944cc7b6affd20df04f24764cfb4852703f01e105ae3dc701f",
+  "measured_input_sha256": "927bccf2a2a7d3c06587a74f75407d53d410ae8e96aa35b1b27d611203f95ab8",
+  "changes": {
+   "DATA.PATH": "appended"
+  }
+ },
+ {
+  "variant": "fork_gpu",
+  "test": "L",
+  "case": "MCCN",
+  "source": "work/large_example/MCCN.dat",
+  "original_sha256": "37f879f006313c05bfc45d8376abc7850854ce2819f796bdfd682b9017026358",
+  "measured_input_sha256": "d1afeb1964a37ad6ebfde9be704c72fd48ec28e73da8046ece41b170c6069f9d",
+  "changes": {
+   "DATA.PATH": "appended"
+  }
+ },
+ {
+  "variant": "fork_gpu",
+  "test": "L",
+  "case": "Mn12_148_F",
+  "source": "work/large_example/Mn12_148_F.dat",
+  "original_sha256": "877994aa5ad590d39055d65d3f6835737e1f40bea69001a9c015c1226b7ab0c5",
+  "measured_input_sha256": "739bd95052143bff1a20056ad8f58a64317005bcb47ff75b83e958c196e26b3a",
+  "changes": {
+   "DATA.PATH": "appended"
+  }
+ },
+ {
+  "variant": "fork_gpu",
+  "test": "L",
+  "case": "N1C999",
+  "source": "work/large_example/N1C999.dat",
+  "original_sha256": "236f095357c5c4770f4b11594ab6e1506e37ff65b4d902bae9fd15dfe4f6444f",
+  "measured_input_sha256": "dac442eeb69c1189d2ebd47af26ee708d1c411b62ec53c774ae73e9b6cfb2a3c",
+  "changes": {
+   "DATA.PATH": "appended"
+  }
+ },
+ {
+  "variant": "fork_gpu",
+  "test": "L",
+  "case": "Ni63-O64",
+  "source": "work/large_example/Ni63-O64.dat",
+  "original_sha256": "54c93baa76a77f149e298cd264fbebc645751dbeb5be1f2d451df6c02cec33e6",
+  "measured_input_sha256": "72745639f73768a69e32f746fcfc8aa1df92551c16fb6538b0458e0bd6d139c7",
+  "changes": {
+   "DATA.PATH": "appended"
+  }
+ },
+ {
+  "variant": "fork_gpu",
+  "test": "L",
+  "case": "Pt63",
+  "source": "work/large_example/Pt63.dat",
+  "original_sha256": "36dc8082db9435af8abf0d059f7935b0855151637b685af81aad52143149ae0d",
+  "measured_input_sha256": "6001246e8d2064a65c8782746939061b165ab0fe004a0d3dffc23e80a35a87d7",
+  "changes": {
+   "DATA.PATH": "appended"
+  }
+ },
+ {
+  "variant": "fork_gpu",
+  "test": "L",
+  "case": "SialicAcid",
+  "source": "work/large_example/SialicAcid.dat",
+  "original_sha256": "9175362d96ce6423e7a3383319a5435e85072f1bbe1095ef5fadeefdfd602df7",
+  "measured_input_sha256": "89895c17d01fbbb855b42bfc8e108726fbe8059bd9533f4677a1634de9e66421",
+  "changes": {
+   "DATA.PATH": "appended"
+  }
+ },
+ {
+  "variant": "fork_gpu",
+  "test": "L",
+  "case": "ZrB2_2x2",
+  "source": "work/large_example/ZrB2_2x2.dat",
+  "original_sha256": "d31735b20697aa7e7f2d4c02d603fe20e28dc68cbc917ef4938650d54ce73e82",
+  "measured_input_sha256": "ecd05394045484956c7c0815de9ee9eff92552cae3c76749fcd3683d9c32d2ec",
+  "changes": {
+   "DATA.PATH": "appended"
+  }
+ },
+ {
+  "variant": "fork_gpu",
+  "test": "L",
+  "case": "nsV4Bz5",
+  "source": "work/large_example/nsV4Bz5.dat",
+  "original_sha256": "0614c3619e1b04916d05649685c94415fc7270ae9fe88a7c33a92bac1dbb84e6",
+  "measured_input_sha256": "f8722b2dfde461d9917a005990efbbb4628b82d3a9415aa28d3ff5338e28b8a7",
+  "changes": {
+   "DATA.PATH": "appended"
+  }
+ },
+ {
+  "variant": "fork_gpu",
+  "test": "sidia333_nc_cluster",
+  "case": "sidia333_nc_cluster",
+  "source": "benchmarks/inputs/sidia333_nc_cluster.dat",
+  "original_sha256": "9c5466abf560c6481b83ec9a51976f4b218856a1da330e5a209b9041239decd0",
+  "measured_input_sha256": "b0e493c810d3dd6a5e9610e804e577dc62d1ed597c5a06e573786e686cf85e85",
+  "changes": {
+   "DATA.PATH": "replaced"
+  }
+ },
+ {
+  "variant": "upstream",
+  "test": "cghelgeo",
+  "case": "cghelgeo",
+  "source": "benchmarks/inputs/cghelgeo.dat",
+  "original_sha256": "9c3958e470820ab2182af859b4749a0f3375c41d1a56ac013e0f398b441d0ff7",
+  "measured_input_sha256": "06565faf63c5170c291f030ebff92582f947e98a34f7b68683d33e31c0b8700c",
+  "changes": {
+   "DATA.PATH": "replaced",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "upstream",
+  "test": "S",
+  "case": "Benzene",
+  "source": "work/input_example/Benzene.dat",
+  "original_sha256": "c7f445ef1ed49115a52049f6b81711b0999d074b5be2119f85886fa3209dfc66",
+  "measured_input_sha256": "292ca0c71d6438eb0e109199e89736209dd47152b5d43936f74052a5968bde26",
+  "changes": {
+   "DATA.PATH": "appended",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "upstream",
+  "test": "S",
+  "case": "C60",
+  "source": "work/input_example/C60.dat",
+  "original_sha256": "7c2bd103986adb335ae2302685be43f0a23545861fa21d7885bd6f663bb6f6f8",
+  "measured_input_sha256": "9cfca30eb9716d60f214a5f8463a355d6b14590835c2b98c4a857b24895b0994",
+  "changes": {
+   "DATA.PATH": "appended",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "upstream",
+  "test": "S",
+  "case": "CO",
+  "source": "work/input_example/CO.dat",
+  "original_sha256": "6fea9256df9ce5db091c80b9c644bc93a6dc55187949b61b682012f54566ff05",
+  "measured_input_sha256": "cdd3eaad36353c752948caaecc3900bd7841ed38e88ab3e349d15c5ac976dae9",
+  "changes": {
+   "DATA.PATH": "appended",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "upstream",
+  "test": "S",
+  "case": "Cr2",
+  "source": "work/input_example/Cr2.dat",
+  "original_sha256": "37ce5beffcf397b8460975e6525ed2783c2be7320941e99d031bb77e2e888e3e",
+  "measured_input_sha256": "5fc460dc0f98b3b36658bcd5ff1155058845bf711dc5ee796ee03698b3b6d394",
+  "changes": {
+   "DATA.PATH": "appended",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "upstream",
+  "test": "S",
+  "case": "Crys-MnO",
+  "source": "work/input_example/Crys-MnO.dat",
+  "original_sha256": "315a3b870e4e57a0edb5ac48f4135593f9dbc63cdcc1f0d344783ac9b4ef9c62",
+  "measured_input_sha256": "4d590b77d31d16ec0c9cace4cd99789043a2b36eda37f7443a086e4693997e2e",
+  "changes": {
+   "DATA.PATH": "appended",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "upstream",
+  "test": "S",
+  "case": "GaAs",
+  "source": "work/input_example/GaAs.dat",
+  "original_sha256": "62c958351460fabc5d1a4f12d1cb51565f56ce10c4570d24131da25637f852c6",
+  "measured_input_sha256": "f184be18a19b4fc67834b32ce0652fdd15628a8eba9281a86e77a60f8d9690bb",
+  "changes": {
+   "DATA.PATH": "appended",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "upstream",
+  "test": "S",
+  "case": "Glycine",
+  "source": "work/input_example/Glycine.dat",
+  "original_sha256": "4781425789fc08433ab49f4934c7c012d7cad0ad87b7f3df737138118afa8bca",
+  "measured_input_sha256": "19056ff2dcdbb874afe2f6febc4630bb2f161f06ea4368358abff41b458f4119",
+  "changes": {
+   "DATA.PATH": "appended",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "upstream",
+  "test": "S",
+  "case": "Graphite4",
+  "source": "work/input_example/Graphite4.dat",
+  "original_sha256": "9ed8513b6eaac5ef8dc2343422c88175bd0b1b6b1e101f7bd113f63a9d2ed2f6",
+  "measured_input_sha256": "68b0e95368c2d0803120b8ac1cd15688f357822fcd060bdb1fd7d8f2526f7be9",
+  "changes": {
+   "DATA.PATH": "appended",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "upstream",
+  "test": "S",
+  "case": "H2O-EF",
+  "source": "work/input_example/H2O-EF.dat",
+  "original_sha256": "9f528eb4f5d13f0635772d5dc87635d4e7c99266dc2085a1ef820a19e23f97d9",
+  "measured_input_sha256": "06aaebbd3ef0d531df02867a96771a53f2846d60758a46551b0f90a2bf3852f0",
+  "changes": {
+   "DATA.PATH": "appended",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "upstream",
+  "test": "S",
+  "case": "H2O",
+  "source": "work/input_example/H2O.dat",
+  "original_sha256": "5e2044197d163bdb97728c78666d3b3dac9e0221bd07aa7b86781fca12770804",
+  "measured_input_sha256": "fa6e8afa2ed3d01b32bd84b029f88ea486e0f1929478389cb67ca25567f9792b",
+  "changes": {
+   "DATA.PATH": "appended",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "upstream",
+  "test": "S",
+  "case": "HMn",
+  "source": "work/input_example/HMn.dat",
+  "original_sha256": "d29997cfe87ce73dcea408285c019c25c1573ae0c8d45cedc21c367a00abb703",
+  "measured_input_sha256": "466bbd14f2773f0a486b53ccb5edb6a375e7fe9a84fba82852f8b36aa705f580",
+  "changes": {
+   "DATA.PATH": "appended",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "upstream",
+  "test": "S",
+  "case": "Methane",
+  "source": "work/input_example/Methane.dat",
+  "original_sha256": "259179e38dad7c6d8ece6f51ea8b0a1fbc3657a15defc43cb9ad104413a415bb",
+  "measured_input_sha256": "b83b5fae66107b917d65fb9a601a27cec33d73f8623decece3817f12a7940e85",
+  "changes": {
+   "DATA.PATH": "appended",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "upstream",
+  "test": "S",
+  "case": "Mol_MnO",
+  "source": "work/input_example/Mol_MnO.dat",
+  "original_sha256": "7294bb18e450cefa7ab169b88c19c64284158a0f702a877324c3bd466c026670",
+  "measured_input_sha256": "eb4ba40cad43c790a1b22ffa6146e5c9e63c77c1ea7e31fdbbe34773e5c59590",
+  "changes": {
+   "DATA.PATH": "appended",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "upstream",
+  "test": "S",
+  "case": "Ndia2",
+  "source": "work/input_example/Ndia2.dat",
+  "original_sha256": "68fccb2f50ba4e06d1625446db230a0fbc0981881352c66ae120ad1cefdc19ec",
+  "measured_input_sha256": "c104de33ae4411220025bff81992375fd659fd8f5a6a77e599232b756591a1af",
+  "changes": {
+   "DATA.PATH": "appended",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "upstream",
+  "test": "L",
+  "case": "5_5_13COb2",
+  "source": "work/large_example/5_5_13COb2.dat",
+  "original_sha256": "927a27a84881266b6b8b530b3924b69a32d0d61c1f0fdfda954e8c6efb13e5d5",
+  "measured_input_sha256": "46c1a44628c65ba7078b4d0dbefacdd73cb733165476cf3dc00b635f4ee83819",
+  "changes": {
+   "DATA.PATH": "appended",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "upstream",
+  "test": "L",
+  "case": "B2C62_Band",
+  "source": "work/large_example/B2C62_Band.dat",
+  "original_sha256": "15abe8dc8eb2f2a7f34a462adbb29f35a5f6684f2a6b89c36e49f9b9d0e5b227",
+  "measured_input_sha256": "473e8ca856dbae066925d1b19ddf74c263bc93ffa14fc37bf0f5b17e457a525d",
+  "changes": {
+   "DATA.PATH": "appended",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "upstream",
+  "test": "L",
+  "case": "CG15c-DC-LNO",
+  "source": "work/large_example/CG15c-DC-LNO.dat",
+  "original_sha256": "f8a256ea70df08d1100d4aa8887656ba83c2964a3a99b3ee435f9b17c7bcfd9f",
+  "measured_input_sha256": "5de000928ea24a8354aa3937dd12a3534e01639716de7840ac5164633b782faa",
+  "changes": {
+   "DATA.PATH": "appended",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "upstream",
+  "test": "L",
+  "case": "DIA512-1",
+  "source": "work/large_example/DIA512-1.dat",
+  "original_sha256": "c35000c6260b808cc10e5947fc108f65c146472d3b44a9fd8ef301e732844151",
+  "measured_input_sha256": "2465c0585e29a215defc08a101d68a4597b1d40177e01e493ddd09fa6b777dff",
+  "changes": {
+   "DATA.PATH": "appended",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "upstream",
+  "test": "L",
+  "case": "FeBCC",
+  "source": "work/large_example/FeBCC.dat",
+  "original_sha256": "7181dbb66708c4ec41b32f2b0b5be3a4a7a067c9a26029d9b78e66abeadd366a",
+  "measured_input_sha256": "b2f3b6cbd5dbce38cedc0286f0500440b29adfe6435b60569a96fe5df6aaf6f0",
+  "changes": {
+   "DATA.PATH": "appended",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "upstream",
+  "test": "L",
+  "case": "GEL",
+  "source": "work/large_example/GEL.dat",
+  "original_sha256": "707143410502e8e25c9958a7f3cc009ec6c7cb327e046997c86e5520512e6b6b",
+  "measured_input_sha256": "21fedebbb57e3b794e8f0f2e1efe368b87ead0eae32a5bae3588e141e82b6b35",
+  "changes": {
+   "DATA.PATH": "appended",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "upstream",
+  "test": "L",
+  "case": "GFRAG",
+  "source": "work/large_example/GFRAG.dat",
+  "original_sha256": "8c95ae8d0039d7f2fcf8644ea1d171a26d1cb32e206f3c6757d5cd1c27dca31c",
+  "measured_input_sha256": "0e187369aa32835c1f635771850d668ae89e09f12fd331a38aff575496d30d16",
+  "changes": {
+   "DATA.PATH": "appended",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "upstream",
+  "test": "L",
+  "case": "GGFF",
+  "source": "work/large_example/GGFF.dat",
+  "original_sha256": "6a80fcc4f96e97944cc7b6affd20df04f24764cfb4852703f01e105ae3dc701f",
+  "measured_input_sha256": "6ab546ef498e1ee2ab40aa9c03ceaa4b7d7356092253f5e15314f87850a77259",
+  "changes": {
+   "DATA.PATH": "appended",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "upstream",
+  "test": "L",
+  "case": "MCCN",
+  "source": "work/large_example/MCCN.dat",
+  "original_sha256": "37f879f006313c05bfc45d8376abc7850854ce2819f796bdfd682b9017026358",
+  "measured_input_sha256": "bff0076a99a630b8472d54f2985d2f487f5d8dff49b8691baecd91c9b25fa018",
+  "changes": {
+   "DATA.PATH": "appended",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "upstream",
+  "test": "L",
+  "case": "Mn12_148_F",
+  "source": "work/large_example/Mn12_148_F.dat",
+  "original_sha256": "877994aa5ad590d39055d65d3f6835737e1f40bea69001a9c015c1226b7ab0c5",
+  "measured_input_sha256": "f546c26f0b77c82ff0381db37292eec25e5cbe32412f63a943d170aa7a161b03",
+  "changes": {
+   "DATA.PATH": "appended",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "upstream",
+  "test": "L",
+  "case": "N1C999",
+  "source": "work/large_example/N1C999.dat",
+  "original_sha256": "236f095357c5c4770f4b11594ab6e1506e37ff65b4d902bae9fd15dfe4f6444f",
+  "measured_input_sha256": "9af64c274886ccf2a652e3b5f1a01c3de42023577cfaa8b23b2513a3a4064b38",
+  "changes": {
+   "DATA.PATH": "appended",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "upstream",
+  "test": "L",
+  "case": "Ni63-O64",
+  "source": "work/large_example/Ni63-O64.dat",
+  "original_sha256": "54c93baa76a77f149e298cd264fbebc645751dbeb5be1f2d451df6c02cec33e6",
+  "measured_input_sha256": "73c44fe8e391e46e1c29257914d5c2219808fc85b37a41c6431a08dad23ede1b",
+  "changes": {
+   "DATA.PATH": "appended",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "upstream",
+  "test": "L",
+  "case": "Pt63",
+  "source": "work/large_example/Pt63.dat",
+  "original_sha256": "36dc8082db9435af8abf0d059f7935b0855151637b685af81aad52143149ae0d",
+  "measured_input_sha256": "abaaa8d2229e1ea3d290fcf33c40ca45033725f018a8ccc2b87655aa2fa13824",
+  "changes": {
+   "DATA.PATH": "appended",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "upstream",
+  "test": "L",
+  "case": "SialicAcid",
+  "source": "work/large_example/SialicAcid.dat",
+  "original_sha256": "9175362d96ce6423e7a3383319a5435e85072f1bbe1095ef5fadeefdfd602df7",
+  "measured_input_sha256": "82220e05a380fc0d57eaa02725d24d5b8d3acf8221e69328d08c51613ceff7f7",
+  "changes": {
+   "DATA.PATH": "appended",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "upstream",
+  "test": "L",
+  "case": "ZrB2_2x2",
+  "source": "work/large_example/ZrB2_2x2.dat",
+  "original_sha256": "d31735b20697aa7e7f2d4c02d603fe20e28dc68cbc917ef4938650d54ce73e82",
+  "measured_input_sha256": "ac7e090480fd850a9143beda6674bf10a7aaa11f40976b14aa999e63bb15a62d",
+  "changes": {
+   "DATA.PATH": "appended",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "upstream",
+  "test": "L",
+  "case": "nsV4Bz5",
+  "source": "work/large_example/nsV4Bz5.dat",
+  "original_sha256": "0614c3619e1b04916d05649685c94415fc7270ae9fe88a7c33a92bac1dbb84e6",
+  "measured_input_sha256": "44264bbb41919fb9335daebcb636f3a015564c3cc0ed07773c7c5ecbde071524",
+  "changes": {
+   "DATA.PATH": "appended",
+   "scf.eigen.lib": "replaced"
+  }
+ },
+ {
+  "variant": "upstream",
+  "test": "sidia333_nc_cluster",
+  "case": "sidia333_nc_cluster",
+  "source": "benchmarks/inputs/sidia333_nc_cluster.dat",
+  "original_sha256": "9c5466abf560c6481b83ec9a51976f4b218856a1da330e5a209b9041239decd0",
+  "measured_input_sha256": "9dcb97c25790f4174a916e95a069d46c9ef3ee5105a826c0f3db57f3109708c6",
+  "changes": {
+   "DATA.PATH": "replaced",
+   "scf.eigen.lib": "replaced"
+  }
+ }
+]

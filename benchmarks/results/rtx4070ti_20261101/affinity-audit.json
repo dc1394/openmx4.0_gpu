@@ -1,0 +1,183 @@
+{
+ "probe": "build/bench-runner/affinity_probe.c (gcc -fopenmp): prints sched_getaffinity of the main thread and sched_getcpu of every OpenMP thread, launched with the campaign launcher, binding and OpenMP controls instead of openmx",
+ "note": "The main thread is pinned to the first OpenMP place before main(), so its printed affinity set shows one CPU; the rank domain is the union of its two threads.",
+ "routes": {
+  "fork (Open MPI 5.0.10rc2)": {
+   "launcher": [
+    "/opt/nvidia/hpc_sdk/Linux_x86_64/26.9/comm_libs/mpi/bin/mpirun",
+    "--use-hwthread-cpus",
+    "--map-by",
+    "slot:PE=2",
+    "--bind-to",
+    "hwthread",
+    "--report-bindings",
+    "-np",
+    "12"
+   ],
+   "exit": 0,
+   "thread_lines": [
+    "rank 0 allowed {0,} thread 0/2 on cpu 0",
+    "rank 0 allowed {0,} thread 1/2 on cpu 1",
+    "rank 1 allowed {2,} thread 0/2 on cpu 2",
+    "rank 1 allowed {2,} thread 1/2 on cpu 3",
+    "rank 2 allowed {4,} thread 0/2 on cpu 4",
+    "rank 2 allowed {4,} thread 1/2 on cpu 5",
+    "rank 3 allowed {6,} thread 0/2 on cpu 6",
+    "rank 3 allowed {6,} thread 1/2 on cpu 7",
+    "rank 4 allowed {8,} thread 0/2 on cpu 8",
+    "rank 4 allowed {8,} thread 1/2 on cpu 9",
+    "rank 5 allowed {10,} thread 0/2 on cpu 10",
+    "rank 5 allowed {10,} thread 1/2 on cpu 11",
+    "rank 6 allowed {12,} thread 0/2 on cpu 12",
+    "rank 6 allowed {12,} thread 1/2 on cpu 13",
+    "rank 7 allowed {14,} thread 0/2 on cpu 14",
+    "rank 7 allowed {14,} thread 1/2 on cpu 15",
+    "rank 8 allowed {16,} thread 0/2 on cpu 16",
+    "rank 8 allowed {16,} thread 1/2 on cpu 17",
+    "rank 9 allowed {18,} thread 0/2 on cpu 18",
+    "rank 9 allowed {18,} thread 1/2 on cpu 19",
+    "rank 10 allowed {20,} thread 0/2 on cpu 20",
+    "rank 10 allowed {20,} thread 1/2 on cpu 21",
+    "rank 11 allowed {22,} thread 0/2 on cpu 22",
+    "rank 11 allowed {22,} thread 1/2 on cpu 23"
+   ],
+   "rank_cpus": {
+    "0": [
+     0,
+     1
+    ],
+    "1": [
+     2,
+     3
+    ],
+    "2": [
+     4,
+     5
+    ],
+    "3": [
+     6,
+     7
+    ],
+    "4": [
+     8,
+     9
+    ],
+    "5": [
+     10,
+     11
+    ],
+    "6": [
+     12,
+     13
+    ],
+    "7": [
+     14,
+     15
+    ],
+    "8": [
+     16,
+     17
+    ],
+    "9": [
+     18,
+     19
+    ],
+    "10": [
+     20,
+     21
+    ],
+    "11": [
+     22,
+     23
+    ]
+   },
+   "all_24_logical_cpus_used_once": true
+  },
+  "upstream (Intel MPI 2021.19)": {
+   "launcher": [
+    "/opt/intel/oneapi/mpi/2021.19/bin/mpiexec",
+    "-n",
+    "12"
+   ],
+   "exit": 0,
+   "thread_lines": [
+    "rank 0 allowed {0,} thread 0/2 on cpu 0",
+    "rank 0 allowed {0,} thread 1/2 on cpu 1",
+    "rank 1 allowed {2,} thread 0/2 on cpu 2",
+    "rank 1 allowed {2,} thread 1/2 on cpu 3",
+    "rank 2 allowed {4,} thread 0/2 on cpu 4",
+    "rank 2 allowed {4,} thread 1/2 on cpu 5",
+    "rank 3 allowed {6,} thread 0/2 on cpu 6",
+    "rank 3 allowed {6,} thread 1/2 on cpu 7",
+    "rank 4 allowed {8,} thread 0/2 on cpu 8",
+    "rank 4 allowed {8,} thread 1/2 on cpu 9",
+    "rank 5 allowed {10,} thread 0/2 on cpu 10",
+    "rank 5 allowed {10,} thread 1/2 on cpu 11",
+    "rank 6 allowed {12,} thread 0/2 on cpu 12",
+    "rank 6 allowed {12,} thread 1/2 on cpu 13",
+    "rank 7 allowed {14,} thread 0/2 on cpu 14",
+    "rank 7 allowed {14,} thread 1/2 on cpu 15",
+    "rank 8 allowed {16,} thread 0/2 on cpu 16",
+    "rank 8 allowed {16,} thread 1/2 on cpu 17",
+    "rank 9 allowed {18,} thread 0/2 on cpu 18",
+    "rank 9 allowed {18,} thread 1/2 on cpu 19",
+    "rank 10 allowed {20,} thread 0/2 on cpu 20",
+    "rank 10 allowed {20,} thread 1/2 on cpu 21",
+    "rank 11 allowed {22,} thread 0/2 on cpu 22",
+    "rank 11 allowed {22,} thread 1/2 on cpu 23"
+   ],
+   "rank_cpus": {
+    "0": [
+     0,
+     1
+    ],
+    "1": [
+     2,
+     3
+    ],
+    "2": [
+     4,
+     5
+    ],
+    "3": [
+     6,
+     7
+    ],
+    "4": [
+     8,
+     9
+    ],
+    "5": [
+     10,
+     11
+    ],
+    "6": [
+     12,
+     13
+    ],
+    "7": [
+     14,
+     15
+    ],
+    "8": [
+     16,
+     17
+    ],
+    "9": [
+     18,
+     19
+    ],
+    "10": [
+     20,
+     21
+    ],
+    "11": [
+     22,
+     23
+    ]
+   },
+   "all_24_logical_cpus_used_once": true
+  }
+ },
+ "recorded": "2026-11-02, after the campaign, with the campaign launch commands and environment from runner.py (binding was also probed before the campaign on 2026-11-01)"
+}
