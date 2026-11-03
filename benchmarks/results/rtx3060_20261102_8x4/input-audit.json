@@ -1,0 +1,770 @@
+[
+  {
+    "workload": "S",
+    "case": "Benzene",
+    "route": "fork_gpu",
+    "scientific_input_matches_original": true,
+    "solver": "gpusolver",
+    "input_sha256": "9835cb2e62f2385208b501e3384ba91ab488fba64dfc86281dced8f9dc1bb3a0"
+  },
+  {
+    "workload": "S",
+    "case": "Benzene",
+    "route": "fork_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "408ad1312fe10a6109a32578b57a411fc461a901e45b1ab2d2291c66779802d3"
+  },
+  {
+    "workload": "S",
+    "case": "Benzene",
+    "route": "upstream_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "408ad1312fe10a6109a32578b57a411fc461a901e45b1ab2d2291c66779802d3"
+  },
+  {
+    "workload": "S",
+    "case": "C60",
+    "route": "fork_gpu",
+    "scientific_input_matches_original": true,
+    "solver": "gpusolver",
+    "input_sha256": "9b17075c314a784ddc6669d61ba3759d0cb7aeb9a9be25338824fb5a7dd2cf03"
+  },
+  {
+    "workload": "S",
+    "case": "C60",
+    "route": "fork_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "05514e0de21ece42dc84835ccdb5d980d407e46d354aebb342ffe241c417cbd2"
+  },
+  {
+    "workload": "S",
+    "case": "C60",
+    "route": "upstream_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "05514e0de21ece42dc84835ccdb5d980d407e46d354aebb342ffe241c417cbd2"
+  },
+  {
+    "workload": "S",
+    "case": "CO",
+    "route": "fork_gpu",
+    "scientific_input_matches_original": true,
+    "solver": "gpusolver",
+    "input_sha256": "54f543176741112d529afb44f64e59bd432fbad8d8d73e1edea0b70e865edea7"
+  },
+  {
+    "workload": "S",
+    "case": "CO",
+    "route": "fork_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "e7300b3dfd1412a1a10a58c6c05dbc8de7a47363f828484e926d1e28f3c38b21"
+  },
+  {
+    "workload": "S",
+    "case": "CO",
+    "route": "upstream_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "e7300b3dfd1412a1a10a58c6c05dbc8de7a47363f828484e926d1e28f3c38b21"
+  },
+  {
+    "workload": "S",
+    "case": "Cr2",
+    "route": "fork_gpu",
+    "scientific_input_matches_original": true,
+    "solver": "gpusolver",
+    "input_sha256": "4b67af317a3029846349b294f40c45503dc0836bd8a9757fb5119d70078b401e"
+  },
+  {
+    "workload": "S",
+    "case": "Cr2",
+    "route": "fork_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "7a0dd2b511dc0644e1c4f4b8886579057315a75a6eaac840c4d3bf6b2c200d1c"
+  },
+  {
+    "workload": "S",
+    "case": "Cr2",
+    "route": "upstream_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "7a0dd2b511dc0644e1c4f4b8886579057315a75a6eaac840c4d3bf6b2c200d1c"
+  },
+  {
+    "workload": "S",
+    "case": "Crys-MnO",
+    "route": "fork_gpu",
+    "scientific_input_matches_original": true,
+    "solver": "gpusolver",
+    "input_sha256": "ef0d6ea983281e5d2e92bed5978789f954907481ebf1bd148f6248237dc39e33"
+  },
+  {
+    "workload": "S",
+    "case": "Crys-MnO",
+    "route": "fork_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "ef850128e9e9890868f8c344549a6e009bdb32a5e1ac6850f413ae9614f8e1b4"
+  },
+  {
+    "workload": "S",
+    "case": "Crys-MnO",
+    "route": "upstream_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "ef850128e9e9890868f8c344549a6e009bdb32a5e1ac6850f413ae9614f8e1b4"
+  },
+  {
+    "workload": "S",
+    "case": "GaAs",
+    "route": "fork_gpu",
+    "scientific_input_matches_original": true,
+    "solver": "gpusolver",
+    "input_sha256": "00091d9bf2d8f885e7968f35b228bc8d325a8385620b0cdda89915ea58e0996e"
+  },
+  {
+    "workload": "S",
+    "case": "GaAs",
+    "route": "fork_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "6b801220708796c9e7cfc56ee346bf4b74630042592a7c94bb3a53cd0f7ea1bc"
+  },
+  {
+    "workload": "S",
+    "case": "GaAs",
+    "route": "upstream_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "6b801220708796c9e7cfc56ee346bf4b74630042592a7c94bb3a53cd0f7ea1bc"
+  },
+  {
+    "workload": "S",
+    "case": "Glycine",
+    "route": "fork_gpu",
+    "scientific_input_matches_original": true,
+    "solver": "gpusolver",
+    "input_sha256": "1059387c651f160bdae17be00d36fd3eff37c75bbf964126ff346ce03fdd9e21"
+  },
+  {
+    "workload": "S",
+    "case": "Glycine",
+    "route": "fork_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "3effecaa21938c334a0ce1748770c82d116a9609f9e7306d9d0f916c97650925"
+  },
+  {
+    "workload": "S",
+    "case": "Glycine",
+    "route": "upstream_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "3effecaa21938c334a0ce1748770c82d116a9609f9e7306d9d0f916c97650925"
+  },
+  {
+    "workload": "S",
+    "case": "Graphite4",
+    "route": "fork_gpu",
+    "scientific_input_matches_original": true,
+    "solver": "gpusolver",
+    "input_sha256": "687bd223353613c4fe3e0db53e84822f89dec64d005cd74edf8e4f361feb368c"
+  },
+  {
+    "workload": "S",
+    "case": "Graphite4",
+    "route": "fork_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "9b1042a50dd2b7fc33a0589857fbba22ff0b4ee0da08a34e8827594265582d2e"
+  },
+  {
+    "workload": "S",
+    "case": "Graphite4",
+    "route": "upstream_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "9b1042a50dd2b7fc33a0589857fbba22ff0b4ee0da08a34e8827594265582d2e"
+  },
+  {
+    "workload": "S",
+    "case": "H2O-EF",
+    "route": "fork_gpu",
+    "scientific_input_matches_original": true,
+    "solver": "gpusolver",
+    "input_sha256": "a6446ef4f37f2a1c112a05637b44aec339c3527f38ac6ad24572928e66d74064"
+  },
+  {
+    "workload": "S",
+    "case": "H2O-EF",
+    "route": "fork_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "112f43d731e6ed1c5a721187b6dce6e546e4ad69e3f6fab34dddbf178ed1901f"
+  },
+  {
+    "workload": "S",
+    "case": "H2O-EF",
+    "route": "upstream_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "112f43d731e6ed1c5a721187b6dce6e546e4ad69e3f6fab34dddbf178ed1901f"
+  },
+  {
+    "workload": "S",
+    "case": "H2O",
+    "route": "fork_gpu",
+    "scientific_input_matches_original": true,
+    "solver": "gpusolver",
+    "input_sha256": "8db8938321b339478108b5cef110ccf589c25084051987b341f7e36458396801"
+  },
+  {
+    "workload": "S",
+    "case": "H2O",
+    "route": "fork_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "d876a2ad9e0c03b9db1d2b9fb839caeb61901b938bee1931ed0626975568c1af"
+  },
+  {
+    "workload": "S",
+    "case": "H2O",
+    "route": "upstream_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "d876a2ad9e0c03b9db1d2b9fb839caeb61901b938bee1931ed0626975568c1af"
+  },
+  {
+    "workload": "S",
+    "case": "HMn",
+    "route": "fork_gpu",
+    "scientific_input_matches_original": true,
+    "solver": "gpusolver",
+    "input_sha256": "843f85b28df047ad1abd5778cc4fbbea830795ab85bef7f1f08fe9bb08b4595c"
+  },
+  {
+    "workload": "S",
+    "case": "HMn",
+    "route": "fork_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "af04f7ac6836c07bf0e7ca428fa315e04e8dfa98b669241e1c7ce008b269c258"
+  },
+  {
+    "workload": "S",
+    "case": "HMn",
+    "route": "upstream_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "af04f7ac6836c07bf0e7ca428fa315e04e8dfa98b669241e1c7ce008b269c258"
+  },
+  {
+    "workload": "S",
+    "case": "Methane",
+    "route": "fork_gpu",
+    "scientific_input_matches_original": true,
+    "solver": "gpusolver",
+    "input_sha256": "0b12adecb739b5ba4abbc2de187dd5629b4cbac57485ea537b60f04183fd8462"
+  },
+  {
+    "workload": "S",
+    "case": "Methane",
+    "route": "fork_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "1b7dc66c5065056fb8aa351598ca385c21dc319a632969e5e340418d01efa74c"
+  },
+  {
+    "workload": "S",
+    "case": "Methane",
+    "route": "upstream_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "1b7dc66c5065056fb8aa351598ca385c21dc319a632969e5e340418d01efa74c"
+  },
+  {
+    "workload": "S",
+    "case": "Mol_MnO",
+    "route": "fork_gpu",
+    "scientific_input_matches_original": true,
+    "solver": "gpusolver",
+    "input_sha256": "c08147c168b9802710dba36c24e96b5d5ce0e02d250484bba05714a0214a48ae"
+  },
+  {
+    "workload": "S",
+    "case": "Mol_MnO",
+    "route": "fork_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "7cf3791735c91c9b3e3b682ae81f9d69ae0d9e2cab261d659ffa19d19a8e06b1"
+  },
+  {
+    "workload": "S",
+    "case": "Mol_MnO",
+    "route": "upstream_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "7cf3791735c91c9b3e3b682ae81f9d69ae0d9e2cab261d659ffa19d19a8e06b1"
+  },
+  {
+    "workload": "S",
+    "case": "Ndia2",
+    "route": "fork_gpu",
+    "scientific_input_matches_original": true,
+    "solver": "gpusolver",
+    "input_sha256": "ae16a47d2410078f2df5386e3713d8f4333b0806a9306816063cf3a39e8b5e99"
+  },
+  {
+    "workload": "S",
+    "case": "Ndia2",
+    "route": "fork_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "7946c06e8ebc75766638f1b818462f6f234830f84e9a86feb716dbef2efee887"
+  },
+  {
+    "workload": "S",
+    "case": "Ndia2",
+    "route": "upstream_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "7946c06e8ebc75766638f1b818462f6f234830f84e9a86feb716dbef2efee887"
+  },
+  {
+    "workload": "L",
+    "case": "5_5_13COb2",
+    "route": "fork_gpu",
+    "scientific_input_matches_original": true,
+    "solver": "gpusolver",
+    "input_sha256": "adaa5af4fe8c81d98830605129ee7aab0663bcdfbedf0f2ab930c3fb5c255fba"
+  },
+  {
+    "workload": "L",
+    "case": "5_5_13COb2",
+    "route": "fork_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "96437e60fccc6508af85686d37ed6dc78bb17e449806a1bc6186fabac2ca50bd"
+  },
+  {
+    "workload": "L",
+    "case": "5_5_13COb2",
+    "route": "upstream_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "96437e60fccc6508af85686d37ed6dc78bb17e449806a1bc6186fabac2ca50bd"
+  },
+  {
+    "workload": "L",
+    "case": "B2C62_Band",
+    "route": "fork_gpu",
+    "scientific_input_matches_original": true,
+    "solver": "gpusolver",
+    "input_sha256": "b4f0fbbb2d2afd07b89ea8b5b1c5ed3312e66bd9e241f9f0bb9244d5e0169f5e"
+  },
+  {
+    "workload": "L",
+    "case": "B2C62_Band",
+    "route": "fork_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "f02a0da784ac5eb898df38a5504892779bb306808de7a529b89e732d007ca172"
+  },
+  {
+    "workload": "L",
+    "case": "B2C62_Band",
+    "route": "upstream_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "f02a0da784ac5eb898df38a5504892779bb306808de7a529b89e732d007ca172"
+  },
+  {
+    "workload": "L",
+    "case": "CG15c-DC-LNO",
+    "route": "fork_gpu",
+    "scientific_input_matches_original": true,
+    "solver": "gpusolver",
+    "input_sha256": "42d0c4d9162854d6edb22ac142e80a09d8457b9d9077e7bff764b834cfe645e9"
+  },
+  {
+    "workload": "L",
+    "case": "CG15c-DC-LNO",
+    "route": "fork_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "b1f825c04a7103fb5fced2f933da7f3531682ac296383456cc84002804e19a07"
+  },
+  {
+    "workload": "L",
+    "case": "CG15c-DC-LNO",
+    "route": "upstream_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "b1f825c04a7103fb5fced2f933da7f3531682ac296383456cc84002804e19a07"
+  },
+  {
+    "workload": "L",
+    "case": "DIA512-1",
+    "route": "fork_gpu",
+    "scientific_input_matches_original": true,
+    "solver": "gpusolver",
+    "input_sha256": "726dadadacb19e49b0004a07be7bbf095d723048b983742495d665ac11c9d541"
+  },
+  {
+    "workload": "L",
+    "case": "DIA512-1",
+    "route": "fork_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "1b6a5c8bd42db24c74d28070bbc414e4769a5160d0ca25cfd6158f2bf86899c2"
+  },
+  {
+    "workload": "L",
+    "case": "DIA512-1",
+    "route": "upstream_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "1b6a5c8bd42db24c74d28070bbc414e4769a5160d0ca25cfd6158f2bf86899c2"
+  },
+  {
+    "workload": "L",
+    "case": "FeBCC",
+    "route": "fork_gpu",
+    "scientific_input_matches_original": true,
+    "solver": "gpusolver",
+    "input_sha256": "acdfe90f423212794e60a1126c95da2cc7d8470519d56785634e778a78e53402"
+  },
+  {
+    "workload": "L",
+    "case": "FeBCC",
+    "route": "fork_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "ea7ca7293fe24b7a71d35620fa96cde23f5c4a426513da3e8346e3cb4d7b55c9"
+  },
+  {
+    "workload": "L",
+    "case": "FeBCC",
+    "route": "upstream_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "ea7ca7293fe24b7a71d35620fa96cde23f5c4a426513da3e8346e3cb4d7b55c9"
+  },
+  {
+    "workload": "L",
+    "case": "GEL",
+    "route": "fork_gpu",
+    "scientific_input_matches_original": true,
+    "solver": "gpusolver",
+    "input_sha256": "140afc2291df07a3bb33d56a5fa361f20580409a760eec788293bc0413bfedf7"
+  },
+  {
+    "workload": "L",
+    "case": "GEL",
+    "route": "fork_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "4581e0327a6c401dc83a00e7f76cb3b418505b6ac8c1fb45c86d43bb773c4ce4"
+  },
+  {
+    "workload": "L",
+    "case": "GEL",
+    "route": "upstream_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "4581e0327a6c401dc83a00e7f76cb3b418505b6ac8c1fb45c86d43bb773c4ce4"
+  },
+  {
+    "workload": "L",
+    "case": "GFRAG",
+    "route": "fork_gpu",
+    "scientific_input_matches_original": true,
+    "solver": "gpusolver",
+    "input_sha256": "c92bef6ee1b93bfc4b68e49899f2b5be766415f8ce541d97883ee262855a7302"
+  },
+  {
+    "workload": "L",
+    "case": "GFRAG",
+    "route": "fork_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "82b146c3a87c03de26793b6bfcbb8a51e5fc42d78503f34b59d36eb0840b9bab"
+  },
+  {
+    "workload": "L",
+    "case": "GFRAG",
+    "route": "upstream_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "82b146c3a87c03de26793b6bfcbb8a51e5fc42d78503f34b59d36eb0840b9bab"
+  },
+  {
+    "workload": "L",
+    "case": "GGFF",
+    "route": "fork_gpu",
+    "scientific_input_matches_original": true,
+    "solver": "gpusolver",
+    "input_sha256": "dedfb4457e5a257750c9c913ecf9c6455c3f8ce2ff1676872bc956af215f849f"
+  },
+  {
+    "workload": "L",
+    "case": "GGFF",
+    "route": "fork_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "a41d69bc1d2b5e7b8eb96f827d2cf9e9927a60ebf2922121465f11f5147c0013"
+  },
+  {
+    "workload": "L",
+    "case": "GGFF",
+    "route": "upstream_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "a41d69bc1d2b5e7b8eb96f827d2cf9e9927a60ebf2922121465f11f5147c0013"
+  },
+  {
+    "workload": "L",
+    "case": "MCCN",
+    "route": "fork_gpu",
+    "scientific_input_matches_original": true,
+    "solver": "gpusolver",
+    "input_sha256": "610c473726a97fddc2e59b54952f55a962a6978c35e539eabce480037eb88d93"
+  },
+  {
+    "workload": "L",
+    "case": "MCCN",
+    "route": "fork_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "e9f2412c5c6d68a7437ccc9bf054543482e48a1d6f5db2c6e39100a1ab83fbcb"
+  },
+  {
+    "workload": "L",
+    "case": "MCCN",
+    "route": "upstream_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "e9f2412c5c6d68a7437ccc9bf054543482e48a1d6f5db2c6e39100a1ab83fbcb"
+  },
+  {
+    "workload": "L",
+    "case": "Mn12_148_F",
+    "route": "fork_gpu",
+    "scientific_input_matches_original": true,
+    "solver": "gpusolver",
+    "input_sha256": "27a1f329150ea37fa1a2656db1af13e849cbb1e23ea41d7edf60348c8dead892"
+  },
+  {
+    "workload": "L",
+    "case": "Mn12_148_F",
+    "route": "fork_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "1b804c41ffeb97b1faa75b84c157cb76e6e7c11fc60ad56f866fbc01dc245ca2"
+  },
+  {
+    "workload": "L",
+    "case": "Mn12_148_F",
+    "route": "upstream_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "1b804c41ffeb97b1faa75b84c157cb76e6e7c11fc60ad56f866fbc01dc245ca2"
+  },
+  {
+    "workload": "L",
+    "case": "N1C999",
+    "route": "fork_gpu",
+    "scientific_input_matches_original": true,
+    "solver": "gpusolver",
+    "input_sha256": "deff49e35418630e2eb3d9fe879d01009d1338fb4ef3e3be75e3511207edf051"
+  },
+  {
+    "workload": "L",
+    "case": "N1C999",
+    "route": "fork_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "1322ace9cec382116330109870061f0f9ccf3e5cf06a375e9f596a865c677e51"
+  },
+  {
+    "workload": "L",
+    "case": "N1C999",
+    "route": "upstream_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "1322ace9cec382116330109870061f0f9ccf3e5cf06a375e9f596a865c677e51"
+  },
+  {
+    "workload": "L",
+    "case": "Ni63-O64",
+    "route": "fork_gpu",
+    "scientific_input_matches_original": true,
+    "solver": "gpusolver",
+    "input_sha256": "3a4f3f48dba534a80f817c0088eec0ed2800b6c10dd319aa7e53c542163df23b"
+  },
+  {
+    "workload": "L",
+    "case": "Ni63-O64",
+    "route": "fork_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "72e31475894527e4e907a28e1e3ea843e4c9fc83f036330aa17ef3e11f08ceba"
+  },
+  {
+    "workload": "L",
+    "case": "Ni63-O64",
+    "route": "upstream_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "72e31475894527e4e907a28e1e3ea843e4c9fc83f036330aa17ef3e11f08ceba"
+  },
+  {
+    "workload": "L",
+    "case": "Pt63",
+    "route": "fork_gpu",
+    "scientific_input_matches_original": true,
+    "solver": "gpusolver",
+    "input_sha256": "c93f64160057ed2ef3b81fae2271d95957acd4492fafe195ef12c190f98afa80"
+  },
+  {
+    "workload": "L",
+    "case": "Pt63",
+    "route": "fork_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "d014edec97a381adb6f61db3b2ad8d4aa03cd84d308749e5d0b27630186b974c"
+  },
+  {
+    "workload": "L",
+    "case": "Pt63",
+    "route": "upstream_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "d014edec97a381adb6f61db3b2ad8d4aa03cd84d308749e5d0b27630186b974c"
+  },
+  {
+    "workload": "L",
+    "case": "SialicAcid",
+    "route": "fork_gpu",
+    "scientific_input_matches_original": true,
+    "solver": "gpusolver",
+    "input_sha256": "062cb72548da00f94de6dfb408081ddaead76e38965bff44d67b49264224450e"
+  },
+  {
+    "workload": "L",
+    "case": "SialicAcid",
+    "route": "fork_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "1819f93858a29ca8571b08738deffc19b4b72d118ee6250833c2fbb8d32ddb5b"
+  },
+  {
+    "workload": "L",
+    "case": "SialicAcid",
+    "route": "upstream_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "1819f93858a29ca8571b08738deffc19b4b72d118ee6250833c2fbb8d32ddb5b"
+  },
+  {
+    "workload": "L",
+    "case": "ZrB2_2x2",
+    "route": "fork_gpu",
+    "scientific_input_matches_original": true,
+    "solver": "gpusolver",
+    "input_sha256": "4c9a7faabe714e4f331c624fdb4af137b8e4918eef301041c088886b3bd7d3c1"
+  },
+  {
+    "workload": "L",
+    "case": "ZrB2_2x2",
+    "route": "fork_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "9e4fae90e27e780ef3af763c9b4d415de1ff8015059d50f46bc1b014dfde346a"
+  },
+  {
+    "workload": "L",
+    "case": "ZrB2_2x2",
+    "route": "upstream_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "9e4fae90e27e780ef3af763c9b4d415de1ff8015059d50f46bc1b014dfde346a"
+  },
+  {
+    "workload": "L",
+    "case": "nsV4Bz5",
+    "route": "fork_gpu",
+    "scientific_input_matches_original": true,
+    "solver": "gpusolver",
+    "input_sha256": "cb5c44824e02d706c4e546b010ecc9720dc2bcac7fac7f3d6378a7e44d197a09"
+  },
+  {
+    "workload": "L",
+    "case": "nsV4Bz5",
+    "route": "fork_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "323e220e22d0bad0fb17447c5e60af34a0b887ff4a35d4754fc6c7fdfea1445f"
+  },
+  {
+    "workload": "L",
+    "case": "nsV4Bz5",
+    "route": "upstream_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "323e220e22d0bad0fb17447c5e60af34a0b887ff4a35d4754fc6c7fdfea1445f"
+  },
+  {
+    "workload": "sidia333_nc_cluster",
+    "case": "sidia333_nc_cluster",
+    "route": "fork_gpu",
+    "scientific_input_matches_original": true,
+    "solver": "gpusolver",
+    "input_sha256": "c399f989d14f8ec39a3243759971cfd636299d5f8bdfbeacf25e75aafa1908b4"
+  },
+  {
+    "workload": "sidia333_nc_cluster",
+    "case": "sidia333_nc_cluster",
+    "route": "fork_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "1ada124cd1cded00156a2ff31de4c602addf230afb49da897179c8fc93a44045"
+  },
+  {
+    "workload": "sidia333_nc_cluster",
+    "case": "sidia333_nc_cluster",
+    "route": "upstream_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "1ada124cd1cded00156a2ff31de4c602addf230afb49da897179c8fc93a44045"
+  },
+  {
+    "workload": "cghelgeo",
+    "case": "cghelgeo",
+    "route": "fork_gpu",
+    "scientific_input_matches_original": true,
+    "solver": "gpusolver",
+    "input_sha256": "48369e5d4430257a682ead95acc3d65ab31dbc5c8a8ab407784c9abd7dcbb4a0"
+  },
+  {
+    "workload": "cghelgeo",
+    "case": "cghelgeo",
+    "route": "fork_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "7769953e52b056cc97603f3fea979333d823d52cf5ae97e5eb98ab4391adbb54"
+  },
+  {
+    "workload": "cghelgeo",
+    "case": "cghelgeo",
+    "route": "upstream_cpu",
+    "scientific_input_matches_original": true,
+    "solver": "elpa2",
+    "input_sha256": "7769953e52b056cc97603f3fea979333d823d52cf5ae97e5eb98ab4391adbb54"
+  }
+]

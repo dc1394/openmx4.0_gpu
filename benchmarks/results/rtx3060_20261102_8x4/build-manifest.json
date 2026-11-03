@@ -1,0 +1,18 @@
+{
+  "source_commit": "5afbb9dde927876064a6dcd260d9efc0c2b22533",
+  "command": [
+    "cmake",
+    "--build",
+    "build/cuda",
+    "--parallel",
+    "4"
+  ],
+  "environment": {
+    "NVCOMPILER_CUDA_HOME": "/usr/local/cuda-13.4",
+    "NVCOMPILER_MATH_LIBS_HOME": "/usr/local/cuda-13.4/targets/x86_64-linux",
+    "NVCOMPILER_COMM_LIBS_HOME": "/opt/nvidia/hpc_sdk/Linux_x86_64/26.9/comm_libs/13.3"
+  },
+  "returncode": 0,
+  "complete": true,
+  "log": "work/benchmarks_rtx3060_20261102_8x4/build.log"
+}

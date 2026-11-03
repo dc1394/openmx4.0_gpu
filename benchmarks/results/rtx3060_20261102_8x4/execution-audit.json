@@ -1,0 +1,2402 @@
+[
+  {
+    "workload": "S",
+    "route": "upstream_cpu",
+    "affinity": [
+      {
+        "rank": 0,
+        "size": 8,
+        "pid": 594142,
+        "cpus": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/upstream/openmx",
+          "-runtest",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 1,
+        "size": 8,
+        "pid": 594143,
+        "cpus": [
+          4,
+          5,
+          6,
+          7
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/upstream/openmx",
+          "-runtest",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 2,
+        "size": 8,
+        "pid": 594144,
+        "cpus": [
+          8,
+          9,
+          10,
+          11
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/upstream/openmx",
+          "-runtest",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 3,
+        "size": 8,
+        "pid": 594145,
+        "cpus": [
+          12,
+          13,
+          14,
+          15
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/upstream/openmx",
+          "-runtest",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 4,
+        "size": 8,
+        "pid": 594146,
+        "cpus": [
+          16,
+          17,
+          18,
+          19
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/upstream/openmx",
+          "-runtest",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 5,
+        "size": 8,
+        "pid": 594147,
+        "cpus": [
+          20,
+          21,
+          22,
+          23
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/upstream/openmx",
+          "-runtest",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 6,
+        "size": 8,
+        "pid": 594148,
+        "cpus": [
+          24,
+          25,
+          26,
+          27
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/upstream/openmx",
+          "-runtest",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 7,
+        "size": 8,
+        "pid": 594149,
+        "cpus": [
+          28,
+          29,
+          30,
+          31
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/upstream/openmx",
+          "-runtest",
+          "-nt",
+          "4"
+        ]
+      }
+    ],
+    "command": [
+      "/home/dc1394/spack/opt/spack/linux-zen2/openmpi-5.0.10-4cuu4dmlttelx5svw3oafy6ioljvdqlt/bin/mpirun",
+      "-np",
+      "8",
+      "--map-by",
+      "slot:PE=4",
+      "--bind-to",
+      "core",
+      "--report-bindings",
+      "--mca",
+      "pml",
+      "ob1",
+      "--mca",
+      "btl",
+      "self,sm,tcp",
+      "/usr/bin/python3",
+      "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/rank_exec.py",
+      "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/upstream/openmx",
+      "-runtest",
+      "-nt",
+      "4"
+    ],
+    "environment": {
+      "OMP_NUM_THREADS": "4",
+      "OMP_THREAD_LIMIT": "4",
+      "OMP_DYNAMIC": "FALSE",
+      "OMP_MAX_ACTIVE_LEVELS": "1",
+      "OMP_PROC_BIND": "close",
+      "OMP_PLACES": "cores",
+      "OMP_STACKSIZE": "64M",
+      "OPENBLAS_NUM_THREADS": "4",
+      "BLIS_NUM_THREADS": "4",
+      "MKL_NUM_THREADS": "4",
+      "MKL_DYNAMIC": "FALSE",
+      "MAGMA_NUM_THREADS": "4",
+      "OPENMX_GPU": "0",
+      "UCX_NET_DEVICES": "lo",
+      "CUDA_VISIBLE_DEVICES": "",
+      "NVCOMPILER_CUDA_HOME": "/usr/local/cuda-13.4",
+      "NVCOMPILER_MATH_LIBS_HOME": "/usr/local/cuda-13.4/targets/x86_64-linux",
+      "NVCOMPILER_COMM_LIBS_HOME": "/opt/nvidia/hpc_sdk/Linux_x86_64/26.9/comm_libs/13.3",
+      "BENCH_AFFINITY_DIR": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/S/upstream_cpu/affinity",
+      "LD_LIBRARY_PATH": "/opt/AMD/aocc-compiler-5.2.0/lib:/opt/AMD/aocl/aocl-linux-aocc-5.3.0/aocc/MT/lib:/home/dc1394/spack/opt/spack/linux-zen2/openmpi-5.0.10-4cuu4dmlttelx5svw3oafy6ioljvdqlt/lib",
+      "LD_PRELOAD": "/opt/AMD/aocl/aocl-linux-aocc-5.3.0/aocc/MT/lib/libblis-mt.so.5"
+    },
+    "binary_sha256": "17fc5ea2ac7b7f5711b10a03c4097be8d5cd208ad668bd2cd1f1a5ed3a95d651",
+    "mps_openmx_clients_seen": null
+  },
+  {
+    "workload": "S",
+    "route": "fork_cpu",
+    "affinity": [
+      {
+        "rank": 0,
+        "size": 8,
+        "pid": 593468,
+        "cpus": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "-runtest",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 1,
+        "size": 8,
+        "pid": 593470,
+        "cpus": [
+          4,
+          5,
+          6,
+          7
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "-runtest",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 2,
+        "size": 8,
+        "pid": 593473,
+        "cpus": [
+          8,
+          9,
+          10,
+          11
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "-runtest",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 3,
+        "size": 8,
+        "pid": 593475,
+        "cpus": [
+          12,
+          13,
+          14,
+          15
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "-runtest",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 4,
+        "size": 8,
+        "pid": 593476,
+        "cpus": [
+          16,
+          17,
+          18,
+          19
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "-runtest",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 5,
+        "size": 8,
+        "pid": 593477,
+        "cpus": [
+          20,
+          21,
+          22,
+          23
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "-runtest",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 6,
+        "size": 8,
+        "pid": 593478,
+        "cpus": [
+          24,
+          25,
+          26,
+          27
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "-runtest",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 7,
+        "size": 8,
+        "pid": 593479,
+        "cpus": [
+          28,
+          29,
+          30,
+          31
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "-runtest",
+          "-nt",
+          "4"
+        ]
+      }
+    ],
+    "command": [
+      "/opt/nvidia/hpc_sdk/Linux_x86_64/26.9/comm_libs/mpi/bin/mpirun",
+      "-np",
+      "8",
+      "--map-by",
+      "slot:PE=4",
+      "--bind-to",
+      "core",
+      "--report-bindings",
+      "--mca",
+      "pml",
+      "ob1",
+      "--mca",
+      "btl",
+      "self,sm,tcp",
+      "/usr/bin/python3",
+      "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/rank_exec.py",
+      "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+      "-runtest",
+      "-nt",
+      "4"
+    ],
+    "environment": {
+      "OMP_NUM_THREADS": "4",
+      "OMP_THREAD_LIMIT": "4",
+      "OMP_DYNAMIC": "FALSE",
+      "OMP_MAX_ACTIVE_LEVELS": "1",
+      "OMP_PROC_BIND": "close",
+      "OMP_PLACES": "cores",
+      "OMP_STACKSIZE": "64M",
+      "OPENBLAS_NUM_THREADS": "4",
+      "BLIS_NUM_THREADS": "4",
+      "MKL_NUM_THREADS": "4",
+      "MKL_DYNAMIC": "FALSE",
+      "MAGMA_NUM_THREADS": "4",
+      "OPENMX_GPU": "0",
+      "UCX_NET_DEVICES": "lo",
+      "CUDA_VISIBLE_DEVICES": "",
+      "NVCOMPILER_CUDA_HOME": "/usr/local/cuda-13.4",
+      "NVCOMPILER_MATH_LIBS_HOME": "/usr/local/cuda-13.4/targets/x86_64-linux",
+      "NVCOMPILER_COMM_LIBS_HOME": "/opt/nvidia/hpc_sdk/Linux_x86_64/26.9/comm_libs/13.3",
+      "BENCH_AFFINITY_DIR": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/S/fork_cpu/affinity",
+      "LD_PRELOAD": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/libopenmx_core.so:/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/libopenmx_host_simd.so"
+    },
+    "binary_sha256": "fd67fbad6bd2dda94fd602e42d3d8732a679623b7993ea12bb6b31b685abf4c6",
+    "mps_openmx_clients_seen": null
+  },
+  {
+    "workload": "S",
+    "route": "fork_gpu",
+    "affinity": [
+      {
+        "rank": 0,
+        "size": 8,
+        "pid": 592284,
+        "cpus": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "-runtest",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 1,
+        "size": 8,
+        "pid": 592285,
+        "cpus": [
+          4,
+          5,
+          6,
+          7
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "-runtest",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 2,
+        "size": 8,
+        "pid": 592286,
+        "cpus": [
+          8,
+          9,
+          10,
+          11
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "-runtest",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 3,
+        "size": 8,
+        "pid": 592287,
+        "cpus": [
+          12,
+          13,
+          14,
+          15
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "-runtest",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 4,
+        "size": 8,
+        "pid": 592288,
+        "cpus": [
+          16,
+          17,
+          18,
+          19
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "-runtest",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 5,
+        "size": 8,
+        "pid": 592289,
+        "cpus": [
+          20,
+          21,
+          22,
+          23
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "-runtest",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 6,
+        "size": 8,
+        "pid": 592290,
+        "cpus": [
+          24,
+          25,
+          26,
+          27
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "-runtest",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 7,
+        "size": 8,
+        "pid": 592291,
+        "cpus": [
+          28,
+          29,
+          30,
+          31
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "-runtest",
+          "-nt",
+          "4"
+        ]
+      }
+    ],
+    "command": [
+      "/opt/nvidia/hpc_sdk/Linux_x86_64/26.9/comm_libs/mpi/bin/mpirun",
+      "-np",
+      "8",
+      "--map-by",
+      "slot:PE=4",
+      "--bind-to",
+      "core",
+      "--report-bindings",
+      "--mca",
+      "pml",
+      "ob1",
+      "--mca",
+      "btl",
+      "self,sm,tcp",
+      "/usr/bin/python3",
+      "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/rank_exec.py",
+      "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+      "-runtest",
+      "-nt",
+      "4"
+    ],
+    "environment": {
+      "OMP_NUM_THREADS": "4",
+      "OMP_THREAD_LIMIT": "4",
+      "OMP_DYNAMIC": "FALSE",
+      "OMP_MAX_ACTIVE_LEVELS": "1",
+      "OMP_PROC_BIND": "close",
+      "OMP_PLACES": "cores",
+      "OMP_STACKSIZE": "64M",
+      "OPENBLAS_NUM_THREADS": "4",
+      "BLIS_NUM_THREADS": "4",
+      "MKL_NUM_THREADS": "4",
+      "MKL_DYNAMIC": "FALSE",
+      "MAGMA_NUM_THREADS": "4",
+      "OPENMX_GPU": "1",
+      "UCX_NET_DEVICES": "lo",
+      "CUDA_VISIBLE_DEVICES": "0",
+      "NVCOMPILER_CUDA_HOME": "/usr/local/cuda-13.4",
+      "NVCOMPILER_MATH_LIBS_HOME": "/usr/local/cuda-13.4/targets/x86_64-linux",
+      "NVCOMPILER_COMM_LIBS_HOME": "/opt/nvidia/hpc_sdk/Linux_x86_64/26.9/comm_libs/13.3",
+      "BENCH_AFFINITY_DIR": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/S/fork_gpu/affinity",
+      "LD_PRELOAD": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/libopenmx_core.so:/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/libopenmx_host_simd.so",
+      "CUDA_MPS_PIPE_DIRECTORY": "/tmp/omx-3060-8x4-ni8rq6gy",
+      "CUDA_MPS_LOG_DIRECTORY": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/S/fork_gpu/mps_logs"
+    },
+    "binary_sha256": "fd67fbad6bd2dda94fd602e42d3d8732a679623b7993ea12bb6b31b685abf4c6",
+    "mps_openmx_clients_seen": [
+      592284,
+      592285,
+      592286,
+      592287,
+      592288,
+      592289,
+      592290,
+      592291
+    ]
+  },
+  {
+    "workload": "L",
+    "route": "upstream_cpu",
+    "affinity": [
+      {
+        "rank": 0,
+        "size": 8,
+        "pid": 692542,
+        "cpus": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/upstream/openmx",
+          "-runtestL",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 1,
+        "size": 8,
+        "pid": 692543,
+        "cpus": [
+          4,
+          5,
+          6,
+          7
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/upstream/openmx",
+          "-runtestL",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 2,
+        "size": 8,
+        "pid": 692544,
+        "cpus": [
+          8,
+          9,
+          10,
+          11
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/upstream/openmx",
+          "-runtestL",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 3,
+        "size": 8,
+        "pid": 692545,
+        "cpus": [
+          12,
+          13,
+          14,
+          15
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/upstream/openmx",
+          "-runtestL",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 4,
+        "size": 8,
+        "pid": 692546,
+        "cpus": [
+          16,
+          17,
+          18,
+          19
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/upstream/openmx",
+          "-runtestL",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 5,
+        "size": 8,
+        "pid": 692547,
+        "cpus": [
+          20,
+          21,
+          22,
+          23
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/upstream/openmx",
+          "-runtestL",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 6,
+        "size": 8,
+        "pid": 692548,
+        "cpus": [
+          24,
+          25,
+          26,
+          27
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/upstream/openmx",
+          "-runtestL",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 7,
+        "size": 8,
+        "pid": 692549,
+        "cpus": [
+          28,
+          29,
+          30,
+          31
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/upstream/openmx",
+          "-runtestL",
+          "-nt",
+          "4"
+        ]
+      }
+    ],
+    "command": [
+      "/home/dc1394/spack/opt/spack/linux-zen2/openmpi-5.0.10-4cuu4dmlttelx5svw3oafy6ioljvdqlt/bin/mpirun",
+      "-np",
+      "8",
+      "--map-by",
+      "slot:PE=4",
+      "--bind-to",
+      "core",
+      "--report-bindings",
+      "--mca",
+      "pml",
+      "ob1",
+      "--mca",
+      "btl",
+      "self,sm,tcp",
+      "/usr/bin/python3",
+      "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/rank_exec.py",
+      "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/upstream/openmx",
+      "-runtestL",
+      "-nt",
+      "4"
+    ],
+    "environment": {
+      "OMP_NUM_THREADS": "4",
+      "OMP_THREAD_LIMIT": "4",
+      "OMP_DYNAMIC": "FALSE",
+      "OMP_MAX_ACTIVE_LEVELS": "1",
+      "OMP_PROC_BIND": "close",
+      "OMP_PLACES": "cores",
+      "OMP_STACKSIZE": "64M",
+      "OPENBLAS_NUM_THREADS": "4",
+      "BLIS_NUM_THREADS": "4",
+      "MKL_NUM_THREADS": "4",
+      "MKL_DYNAMIC": "FALSE",
+      "MAGMA_NUM_THREADS": "4",
+      "OPENMX_GPU": "0",
+      "UCX_NET_DEVICES": "lo",
+      "CUDA_VISIBLE_DEVICES": "",
+      "NVCOMPILER_CUDA_HOME": "/usr/local/cuda-13.4",
+      "NVCOMPILER_MATH_LIBS_HOME": "/usr/local/cuda-13.4/targets/x86_64-linux",
+      "NVCOMPILER_COMM_LIBS_HOME": "/opt/nvidia/hpc_sdk/Linux_x86_64/26.9/comm_libs/13.3",
+      "BENCH_AFFINITY_DIR": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/L/upstream_cpu/affinity",
+      "LD_LIBRARY_PATH": "/opt/AMD/aocc-compiler-5.2.0/lib:/opt/AMD/aocl/aocl-linux-aocc-5.3.0/aocc/MT/lib:/home/dc1394/spack/opt/spack/linux-zen2/openmpi-5.0.10-4cuu4dmlttelx5svw3oafy6ioljvdqlt/lib",
+      "LD_PRELOAD": "/opt/AMD/aocl/aocl-linux-aocc-5.3.0/aocc/MT/lib/libblis-mt.so.5"
+    },
+    "binary_sha256": "17fc5ea2ac7b7f5711b10a03c4097be8d5cd208ad668bd2cd1f1a5ed3a95d651",
+    "mps_openmx_clients_seen": null
+  },
+  {
+    "workload": "L",
+    "route": "fork_cpu",
+    "affinity": [
+      {
+        "rank": 0,
+        "size": 8,
+        "pid": 649143,
+        "cpus": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "-runtestL",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 1,
+        "size": 8,
+        "pid": 649144,
+        "cpus": [
+          4,
+          5,
+          6,
+          7
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "-runtestL",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 2,
+        "size": 8,
+        "pid": 649145,
+        "cpus": [
+          8,
+          9,
+          10,
+          11
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "-runtestL",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 3,
+        "size": 8,
+        "pid": 649146,
+        "cpus": [
+          12,
+          13,
+          14,
+          15
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "-runtestL",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 4,
+        "size": 8,
+        "pid": 649147,
+        "cpus": [
+          16,
+          17,
+          18,
+          19
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "-runtestL",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 5,
+        "size": 8,
+        "pid": 649148,
+        "cpus": [
+          20,
+          21,
+          22,
+          23
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "-runtestL",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 6,
+        "size": 8,
+        "pid": 649149,
+        "cpus": [
+          24,
+          25,
+          26,
+          27
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "-runtestL",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 7,
+        "size": 8,
+        "pid": 649150,
+        "cpus": [
+          28,
+          29,
+          30,
+          31
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "-runtestL",
+          "-nt",
+          "4"
+        ]
+      }
+    ],
+    "command": [
+      "/opt/nvidia/hpc_sdk/Linux_x86_64/26.9/comm_libs/mpi/bin/mpirun",
+      "-np",
+      "8",
+      "--map-by",
+      "slot:PE=4",
+      "--bind-to",
+      "core",
+      "--report-bindings",
+      "--mca",
+      "pml",
+      "ob1",
+      "--mca",
+      "btl",
+      "self,sm,tcp",
+      "/usr/bin/python3",
+      "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/rank_exec.py",
+      "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+      "-runtestL",
+      "-nt",
+      "4"
+    ],
+    "environment": {
+      "OMP_NUM_THREADS": "4",
+      "OMP_THREAD_LIMIT": "4",
+      "OMP_DYNAMIC": "FALSE",
+      "OMP_MAX_ACTIVE_LEVELS": "1",
+      "OMP_PROC_BIND": "close",
+      "OMP_PLACES": "cores",
+      "OMP_STACKSIZE": "64M",
+      "OPENBLAS_NUM_THREADS": "4",
+      "BLIS_NUM_THREADS": "4",
+      "MKL_NUM_THREADS": "4",
+      "MKL_DYNAMIC": "FALSE",
+      "MAGMA_NUM_THREADS": "4",
+      "OPENMX_GPU": "0",
+      "UCX_NET_DEVICES": "lo",
+      "CUDA_VISIBLE_DEVICES": "",
+      "NVCOMPILER_CUDA_HOME": "/usr/local/cuda-13.4",
+      "NVCOMPILER_MATH_LIBS_HOME": "/usr/local/cuda-13.4/targets/x86_64-linux",
+      "NVCOMPILER_COMM_LIBS_HOME": "/opt/nvidia/hpc_sdk/Linux_x86_64/26.9/comm_libs/13.3",
+      "BENCH_AFFINITY_DIR": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/L/fork_cpu/affinity",
+      "LD_PRELOAD": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/libopenmx_core.so:/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/libopenmx_host_simd.so"
+    },
+    "binary_sha256": "fd67fbad6bd2dda94fd602e42d3d8732a679623b7993ea12bb6b31b685abf4c6",
+    "mps_openmx_clients_seen": null
+  },
+  {
+    "workload": "L",
+    "route": "fork_gpu",
+    "affinity": [
+      {
+        "rank": 0,
+        "size": 8,
+        "pid": 595041,
+        "cpus": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "-runtestL",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 1,
+        "size": 8,
+        "pid": 595042,
+        "cpus": [
+          4,
+          5,
+          6,
+          7
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "-runtestL",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 2,
+        "size": 8,
+        "pid": 595043,
+        "cpus": [
+          8,
+          9,
+          10,
+          11
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "-runtestL",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 3,
+        "size": 8,
+        "pid": 595044,
+        "cpus": [
+          12,
+          13,
+          14,
+          15
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "-runtestL",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 4,
+        "size": 8,
+        "pid": 595045,
+        "cpus": [
+          16,
+          17,
+          18,
+          19
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "-runtestL",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 5,
+        "size": 8,
+        "pid": 595046,
+        "cpus": [
+          20,
+          21,
+          22,
+          23
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "-runtestL",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 6,
+        "size": 8,
+        "pid": 595047,
+        "cpus": [
+          24,
+          25,
+          26,
+          27
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "-runtestL",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 7,
+        "size": 8,
+        "pid": 595048,
+        "cpus": [
+          28,
+          29,
+          30,
+          31
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "-runtestL",
+          "-nt",
+          "4"
+        ]
+      }
+    ],
+    "command": [
+      "/opt/nvidia/hpc_sdk/Linux_x86_64/26.9/comm_libs/mpi/bin/mpirun",
+      "-np",
+      "8",
+      "--map-by",
+      "slot:PE=4",
+      "--bind-to",
+      "core",
+      "--report-bindings",
+      "--mca",
+      "pml",
+      "ob1",
+      "--mca",
+      "btl",
+      "self,sm,tcp",
+      "/usr/bin/python3",
+      "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/rank_exec.py",
+      "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+      "-runtestL",
+      "-nt",
+      "4"
+    ],
+    "environment": {
+      "OMP_NUM_THREADS": "4",
+      "OMP_THREAD_LIMIT": "4",
+      "OMP_DYNAMIC": "FALSE",
+      "OMP_MAX_ACTIVE_LEVELS": "1",
+      "OMP_PROC_BIND": "close",
+      "OMP_PLACES": "cores",
+      "OMP_STACKSIZE": "64M",
+      "OPENBLAS_NUM_THREADS": "4",
+      "BLIS_NUM_THREADS": "4",
+      "MKL_NUM_THREADS": "4",
+      "MKL_DYNAMIC": "FALSE",
+      "MAGMA_NUM_THREADS": "4",
+      "OPENMX_GPU": "1",
+      "UCX_NET_DEVICES": "lo",
+      "CUDA_VISIBLE_DEVICES": "0",
+      "NVCOMPILER_CUDA_HOME": "/usr/local/cuda-13.4",
+      "NVCOMPILER_MATH_LIBS_HOME": "/usr/local/cuda-13.4/targets/x86_64-linux",
+      "NVCOMPILER_COMM_LIBS_HOME": "/opt/nvidia/hpc_sdk/Linux_x86_64/26.9/comm_libs/13.3",
+      "BENCH_AFFINITY_DIR": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/L/fork_gpu/affinity",
+      "LD_PRELOAD": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/libopenmx_core.so:/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/libopenmx_host_simd.so",
+      "CUDA_MPS_PIPE_DIRECTORY": "/tmp/omx-3060-8x4-_xx0trwu",
+      "CUDA_MPS_LOG_DIRECTORY": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/L/fork_gpu/mps_logs"
+    },
+    "binary_sha256": "fd67fbad6bd2dda94fd602e42d3d8732a679623b7993ea12bb6b31b685abf4c6",
+    "mps_openmx_clients_seen": [
+      595041,
+      595042,
+      595043,
+      595044,
+      595045,
+      595046,
+      595047,
+      595048
+    ]
+  },
+  {
+    "workload": "sidia333_nc_cluster",
+    "route": "upstream_cpu",
+    "affinity": [
+      {
+        "rank": 0,
+        "size": 8,
+        "pid": 709496,
+        "cpus": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/upstream/openmx",
+          "input.dat",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 1,
+        "size": 8,
+        "pid": 709497,
+        "cpus": [
+          4,
+          5,
+          6,
+          7
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/upstream/openmx",
+          "input.dat",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 2,
+        "size": 8,
+        "pid": 709498,
+        "cpus": [
+          8,
+          9,
+          10,
+          11
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/upstream/openmx",
+          "input.dat",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 3,
+        "size": 8,
+        "pid": 709499,
+        "cpus": [
+          12,
+          13,
+          14,
+          15
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/upstream/openmx",
+          "input.dat",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 4,
+        "size": 8,
+        "pid": 709500,
+        "cpus": [
+          16,
+          17,
+          18,
+          19
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/upstream/openmx",
+          "input.dat",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 5,
+        "size": 8,
+        "pid": 709501,
+        "cpus": [
+          20,
+          21,
+          22,
+          23
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/upstream/openmx",
+          "input.dat",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 6,
+        "size": 8,
+        "pid": 709502,
+        "cpus": [
+          24,
+          25,
+          26,
+          27
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/upstream/openmx",
+          "input.dat",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 7,
+        "size": 8,
+        "pid": 709503,
+        "cpus": [
+          28,
+          29,
+          30,
+          31
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/upstream/openmx",
+          "input.dat",
+          "-nt",
+          "4"
+        ]
+      }
+    ],
+    "command": [
+      "/home/dc1394/spack/opt/spack/linux-zen2/openmpi-5.0.10-4cuu4dmlttelx5svw3oafy6ioljvdqlt/bin/mpirun",
+      "-np",
+      "8",
+      "--map-by",
+      "slot:PE=4",
+      "--bind-to",
+      "core",
+      "--report-bindings",
+      "--mca",
+      "pml",
+      "ob1",
+      "--mca",
+      "btl",
+      "self,sm,tcp",
+      "/usr/bin/python3",
+      "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/rank_exec.py",
+      "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/upstream/openmx",
+      "input.dat",
+      "-nt",
+      "4"
+    ],
+    "environment": {
+      "OMP_NUM_THREADS": "4",
+      "OMP_THREAD_LIMIT": "4",
+      "OMP_DYNAMIC": "FALSE",
+      "OMP_MAX_ACTIVE_LEVELS": "1",
+      "OMP_PROC_BIND": "close",
+      "OMP_PLACES": "cores",
+      "OMP_STACKSIZE": "64M",
+      "OPENBLAS_NUM_THREADS": "4",
+      "BLIS_NUM_THREADS": "4",
+      "MKL_NUM_THREADS": "4",
+      "MKL_DYNAMIC": "FALSE",
+      "MAGMA_NUM_THREADS": "4",
+      "OPENMX_GPU": "0",
+      "UCX_NET_DEVICES": "lo",
+      "CUDA_VISIBLE_DEVICES": "",
+      "NVCOMPILER_CUDA_HOME": "/usr/local/cuda-13.4",
+      "NVCOMPILER_MATH_LIBS_HOME": "/usr/local/cuda-13.4/targets/x86_64-linux",
+      "NVCOMPILER_COMM_LIBS_HOME": "/opt/nvidia/hpc_sdk/Linux_x86_64/26.9/comm_libs/13.3",
+      "BENCH_AFFINITY_DIR": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/sidia333_nc_cluster/upstream_cpu/affinity",
+      "LD_LIBRARY_PATH": "/opt/AMD/aocc-compiler-5.2.0/lib:/opt/AMD/aocl/aocl-linux-aocc-5.3.0/aocc/MT/lib:/home/dc1394/spack/opt/spack/linux-zen2/openmpi-5.0.10-4cuu4dmlttelx5svw3oafy6ioljvdqlt/lib",
+      "LD_PRELOAD": "/opt/AMD/aocl/aocl-linux-aocc-5.3.0/aocc/MT/lib/libblis-mt.so.5"
+    },
+    "binary_sha256": "17fc5ea2ac7b7f5711b10a03c4097be8d5cd208ad668bd2cd1f1a5ed3a95d651",
+    "mps_openmx_clients_seen": null
+  },
+  {
+    "workload": "sidia333_nc_cluster",
+    "route": "fork_cpu",
+    "affinity": [
+      {
+        "rank": 0,
+        "size": 8,
+        "pid": 707474,
+        "cpus": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "input.dat",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 1,
+        "size": 8,
+        "pid": 707475,
+        "cpus": [
+          4,
+          5,
+          6,
+          7
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "input.dat",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 2,
+        "size": 8,
+        "pid": 707476,
+        "cpus": [
+          8,
+          9,
+          10,
+          11
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "input.dat",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 3,
+        "size": 8,
+        "pid": 707477,
+        "cpus": [
+          12,
+          13,
+          14,
+          15
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "input.dat",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 4,
+        "size": 8,
+        "pid": 707478,
+        "cpus": [
+          16,
+          17,
+          18,
+          19
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "input.dat",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 5,
+        "size": 8,
+        "pid": 707479,
+        "cpus": [
+          20,
+          21,
+          22,
+          23
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "input.dat",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 6,
+        "size": 8,
+        "pid": 707480,
+        "cpus": [
+          24,
+          25,
+          26,
+          27
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "input.dat",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 7,
+        "size": 8,
+        "pid": 707481,
+        "cpus": [
+          28,
+          29,
+          30,
+          31
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "input.dat",
+          "-nt",
+          "4"
+        ]
+      }
+    ],
+    "command": [
+      "/opt/nvidia/hpc_sdk/Linux_x86_64/26.9/comm_libs/mpi/bin/mpirun",
+      "-np",
+      "8",
+      "--map-by",
+      "slot:PE=4",
+      "--bind-to",
+      "core",
+      "--report-bindings",
+      "--mca",
+      "pml",
+      "ob1",
+      "--mca",
+      "btl",
+      "self,sm,tcp",
+      "/usr/bin/python3",
+      "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/rank_exec.py",
+      "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+      "input.dat",
+      "-nt",
+      "4"
+    ],
+    "environment": {
+      "OMP_NUM_THREADS": "4",
+      "OMP_THREAD_LIMIT": "4",
+      "OMP_DYNAMIC": "FALSE",
+      "OMP_MAX_ACTIVE_LEVELS": "1",
+      "OMP_PROC_BIND": "close",
+      "OMP_PLACES": "cores",
+      "OMP_STACKSIZE": "64M",
+      "OPENBLAS_NUM_THREADS": "4",
+      "BLIS_NUM_THREADS": "4",
+      "MKL_NUM_THREADS": "4",
+      "MKL_DYNAMIC": "FALSE",
+      "MAGMA_NUM_THREADS": "4",
+      "OPENMX_GPU": "0",
+      "UCX_NET_DEVICES": "lo",
+      "CUDA_VISIBLE_DEVICES": "",
+      "NVCOMPILER_CUDA_HOME": "/usr/local/cuda-13.4",
+      "NVCOMPILER_MATH_LIBS_HOME": "/usr/local/cuda-13.4/targets/x86_64-linux",
+      "NVCOMPILER_COMM_LIBS_HOME": "/opt/nvidia/hpc_sdk/Linux_x86_64/26.9/comm_libs/13.3",
+      "BENCH_AFFINITY_DIR": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/sidia333_nc_cluster/fork_cpu/affinity",
+      "LD_PRELOAD": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/libopenmx_core.so:/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/libopenmx_host_simd.so"
+    },
+    "binary_sha256": "fd67fbad6bd2dda94fd602e42d3d8732a679623b7993ea12bb6b31b685abf4c6",
+    "mps_openmx_clients_seen": null
+  },
+  {
+    "workload": "sidia333_nc_cluster",
+    "route": "fork_gpu",
+    "affinity": [
+      {
+        "rank": 0,
+        "size": 8,
+        "pid": 706517,
+        "cpus": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "input.dat",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 1,
+        "size": 8,
+        "pid": 706518,
+        "cpus": [
+          4,
+          5,
+          6,
+          7
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "input.dat",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 2,
+        "size": 8,
+        "pid": 706519,
+        "cpus": [
+          8,
+          9,
+          10,
+          11
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "input.dat",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 3,
+        "size": 8,
+        "pid": 706520,
+        "cpus": [
+          12,
+          13,
+          14,
+          15
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "input.dat",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 4,
+        "size": 8,
+        "pid": 706521,
+        "cpus": [
+          16,
+          17,
+          18,
+          19
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "input.dat",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 5,
+        "size": 8,
+        "pid": 706522,
+        "cpus": [
+          20,
+          21,
+          22,
+          23
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "input.dat",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 6,
+        "size": 8,
+        "pid": 706523,
+        "cpus": [
+          24,
+          25,
+          26,
+          27
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "input.dat",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 7,
+        "size": 8,
+        "pid": 706524,
+        "cpus": [
+          28,
+          29,
+          30,
+          31
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "input.dat",
+          "-nt",
+          "4"
+        ]
+      }
+    ],
+    "command": [
+      "/opt/nvidia/hpc_sdk/Linux_x86_64/26.9/comm_libs/mpi/bin/mpirun",
+      "-np",
+      "8",
+      "--map-by",
+      "slot:PE=4",
+      "--bind-to",
+      "core",
+      "--report-bindings",
+      "--mca",
+      "pml",
+      "ob1",
+      "--mca",
+      "btl",
+      "self,sm,tcp",
+      "/usr/bin/python3",
+      "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/rank_exec.py",
+      "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+      "input.dat",
+      "-nt",
+      "4"
+    ],
+    "environment": {
+      "OMP_NUM_THREADS": "4",
+      "OMP_THREAD_LIMIT": "4",
+      "OMP_DYNAMIC": "FALSE",
+      "OMP_MAX_ACTIVE_LEVELS": "1",
+      "OMP_PROC_BIND": "close",
+      "OMP_PLACES": "cores",
+      "OMP_STACKSIZE": "64M",
+      "OPENBLAS_NUM_THREADS": "4",
+      "BLIS_NUM_THREADS": "4",
+      "MKL_NUM_THREADS": "4",
+      "MKL_DYNAMIC": "FALSE",
+      "MAGMA_NUM_THREADS": "4",
+      "OPENMX_GPU": "1",
+      "UCX_NET_DEVICES": "lo",
+      "CUDA_VISIBLE_DEVICES": "0",
+      "NVCOMPILER_CUDA_HOME": "/usr/local/cuda-13.4",
+      "NVCOMPILER_MATH_LIBS_HOME": "/usr/local/cuda-13.4/targets/x86_64-linux",
+      "NVCOMPILER_COMM_LIBS_HOME": "/opt/nvidia/hpc_sdk/Linux_x86_64/26.9/comm_libs/13.3",
+      "BENCH_AFFINITY_DIR": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/sidia333_nc_cluster/fork_gpu/affinity",
+      "LD_PRELOAD": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/libopenmx_core.so:/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/libopenmx_host_simd.so",
+      "CUDA_MPS_PIPE_DIRECTORY": "/tmp/omx-3060-8x4-p1ni1nrp",
+      "CUDA_MPS_LOG_DIRECTORY": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/sidia333_nc_cluster/fork_gpu/mps_logs"
+    },
+    "binary_sha256": "fd67fbad6bd2dda94fd602e42d3d8732a679623b7993ea12bb6b31b685abf4c6",
+    "mps_openmx_clients_seen": [
+      706517,
+      706518,
+      706519,
+      706520,
+      706521,
+      706522,
+      706523,
+      706524
+    ]
+  },
+  {
+    "workload": "cghelgeo",
+    "route": "upstream_cpu",
+    "affinity": [
+      {
+        "rank": 0,
+        "size": 8,
+        "pid": 739749,
+        "cpus": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/upstream/openmx",
+          "input.dat",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 1,
+        "size": 8,
+        "pid": 739750,
+        "cpus": [
+          4,
+          5,
+          6,
+          7
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/upstream/openmx",
+          "input.dat",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 2,
+        "size": 8,
+        "pid": 739751,
+        "cpus": [
+          8,
+          9,
+          10,
+          11
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/upstream/openmx",
+          "input.dat",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 3,
+        "size": 8,
+        "pid": 739752,
+        "cpus": [
+          12,
+          13,
+          14,
+          15
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/upstream/openmx",
+          "input.dat",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 4,
+        "size": 8,
+        "pid": 739753,
+        "cpus": [
+          16,
+          17,
+          18,
+          19
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/upstream/openmx",
+          "input.dat",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 5,
+        "size": 8,
+        "pid": 739754,
+        "cpus": [
+          20,
+          21,
+          22,
+          23
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/upstream/openmx",
+          "input.dat",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 6,
+        "size": 8,
+        "pid": 739755,
+        "cpus": [
+          24,
+          25,
+          26,
+          27
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/upstream/openmx",
+          "input.dat",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 7,
+        "size": 8,
+        "pid": 739756,
+        "cpus": [
+          28,
+          29,
+          30,
+          31
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/upstream/openmx",
+          "input.dat",
+          "-nt",
+          "4"
+        ]
+      }
+    ],
+    "command": [
+      "/home/dc1394/spack/opt/spack/linux-zen2/openmpi-5.0.10-4cuu4dmlttelx5svw3oafy6ioljvdqlt/bin/mpirun",
+      "-np",
+      "8",
+      "--map-by",
+      "slot:PE=4",
+      "--bind-to",
+      "core",
+      "--report-bindings",
+      "--mca",
+      "pml",
+      "ob1",
+      "--mca",
+      "btl",
+      "self,sm,tcp",
+      "/usr/bin/python3",
+      "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/rank_exec.py",
+      "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/upstream/openmx",
+      "input.dat",
+      "-nt",
+      "4"
+    ],
+    "environment": {
+      "OMP_NUM_THREADS": "4",
+      "OMP_THREAD_LIMIT": "4",
+      "OMP_DYNAMIC": "FALSE",
+      "OMP_MAX_ACTIVE_LEVELS": "1",
+      "OMP_PROC_BIND": "close",
+      "OMP_PLACES": "cores",
+      "OMP_STACKSIZE": "64M",
+      "OPENBLAS_NUM_THREADS": "4",
+      "BLIS_NUM_THREADS": "4",
+      "MKL_NUM_THREADS": "4",
+      "MKL_DYNAMIC": "FALSE",
+      "MAGMA_NUM_THREADS": "4",
+      "OPENMX_GPU": "0",
+      "UCX_NET_DEVICES": "lo",
+      "CUDA_VISIBLE_DEVICES": "",
+      "NVCOMPILER_CUDA_HOME": "/usr/local/cuda-13.4",
+      "NVCOMPILER_MATH_LIBS_HOME": "/usr/local/cuda-13.4/targets/x86_64-linux",
+      "NVCOMPILER_COMM_LIBS_HOME": "/opt/nvidia/hpc_sdk/Linux_x86_64/26.9/comm_libs/13.3",
+      "BENCH_AFFINITY_DIR": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/cghelgeo/upstream_cpu/affinity",
+      "LD_LIBRARY_PATH": "/opt/AMD/aocc-compiler-5.2.0/lib:/opt/AMD/aocl/aocl-linux-aocc-5.3.0/aocc/MT/lib:/home/dc1394/spack/opt/spack/linux-zen2/openmpi-5.0.10-4cuu4dmlttelx5svw3oafy6ioljvdqlt/lib",
+      "LD_PRELOAD": "/opt/AMD/aocl/aocl-linux-aocc-5.3.0/aocc/MT/lib/libblis-mt.so.5"
+    },
+    "binary_sha256": "17fc5ea2ac7b7f5711b10a03c4097be8d5cd208ad668bd2cd1f1a5ed3a95d651",
+    "mps_openmx_clients_seen": null
+  },
+  {
+    "workload": "cghelgeo",
+    "route": "fork_cpu",
+    "affinity": [
+      {
+        "rank": 0,
+        "size": 8,
+        "pid": 716964,
+        "cpus": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "input.dat",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 1,
+        "size": 8,
+        "pid": 716965,
+        "cpus": [
+          4,
+          5,
+          6,
+          7
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "input.dat",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 2,
+        "size": 8,
+        "pid": 716966,
+        "cpus": [
+          8,
+          9,
+          10,
+          11
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "input.dat",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 3,
+        "size": 8,
+        "pid": 716967,
+        "cpus": [
+          12,
+          13,
+          14,
+          15
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "input.dat",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 4,
+        "size": 8,
+        "pid": 716968,
+        "cpus": [
+          16,
+          17,
+          18,
+          19
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "input.dat",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 5,
+        "size": 8,
+        "pid": 716969,
+        "cpus": [
+          20,
+          21,
+          22,
+          23
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "input.dat",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 6,
+        "size": 8,
+        "pid": 716970,
+        "cpus": [
+          24,
+          25,
+          26,
+          27
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "input.dat",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 7,
+        "size": 8,
+        "pid": 716971,
+        "cpus": [
+          28,
+          29,
+          30,
+          31
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "input.dat",
+          "-nt",
+          "4"
+        ]
+      }
+    ],
+    "command": [
+      "/opt/nvidia/hpc_sdk/Linux_x86_64/26.9/comm_libs/mpi/bin/mpirun",
+      "-np",
+      "8",
+      "--map-by",
+      "slot:PE=4",
+      "--bind-to",
+      "core",
+      "--report-bindings",
+      "--mca",
+      "pml",
+      "ob1",
+      "--mca",
+      "btl",
+      "self,sm,tcp",
+      "/usr/bin/python3",
+      "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/rank_exec.py",
+      "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+      "input.dat",
+      "-nt",
+      "4"
+    ],
+    "environment": {
+      "OMP_NUM_THREADS": "4",
+      "OMP_THREAD_LIMIT": "4",
+      "OMP_DYNAMIC": "FALSE",
+      "OMP_MAX_ACTIVE_LEVELS": "1",
+      "OMP_PROC_BIND": "close",
+      "OMP_PLACES": "cores",
+      "OMP_STACKSIZE": "64M",
+      "OPENBLAS_NUM_THREADS": "4",
+      "BLIS_NUM_THREADS": "4",
+      "MKL_NUM_THREADS": "4",
+      "MKL_DYNAMIC": "FALSE",
+      "MAGMA_NUM_THREADS": "4",
+      "OPENMX_GPU": "0",
+      "UCX_NET_DEVICES": "lo",
+      "CUDA_VISIBLE_DEVICES": "",
+      "NVCOMPILER_CUDA_HOME": "/usr/local/cuda-13.4",
+      "NVCOMPILER_MATH_LIBS_HOME": "/usr/local/cuda-13.4/targets/x86_64-linux",
+      "NVCOMPILER_COMM_LIBS_HOME": "/opt/nvidia/hpc_sdk/Linux_x86_64/26.9/comm_libs/13.3",
+      "BENCH_AFFINITY_DIR": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/cghelgeo/fork_cpu/affinity",
+      "LD_PRELOAD": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/libopenmx_core.so:/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/libopenmx_host_simd.so"
+    },
+    "binary_sha256": "fd67fbad6bd2dda94fd602e42d3d8732a679623b7993ea12bb6b31b685abf4c6",
+    "mps_openmx_clients_seen": null
+  },
+  {
+    "workload": "cghelgeo",
+    "route": "fork_gpu",
+    "affinity": [
+      {
+        "rank": 0,
+        "size": 8,
+        "pid": 712183,
+        "cpus": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "input.dat",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 1,
+        "size": 8,
+        "pid": 712184,
+        "cpus": [
+          4,
+          5,
+          6,
+          7
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "input.dat",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 2,
+        "size": 8,
+        "pid": 712185,
+        "cpus": [
+          8,
+          9,
+          10,
+          11
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "input.dat",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 3,
+        "size": 8,
+        "pid": 712186,
+        "cpus": [
+          12,
+          13,
+          14,
+          15
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "input.dat",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 4,
+        "size": 8,
+        "pid": 712187,
+        "cpus": [
+          16,
+          17,
+          18,
+          19
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "input.dat",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 5,
+        "size": 8,
+        "pid": 712188,
+        "cpus": [
+          20,
+          21,
+          22,
+          23
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "input.dat",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 6,
+        "size": 8,
+        "pid": 712189,
+        "cpus": [
+          24,
+          25,
+          26,
+          27
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "input.dat",
+          "-nt",
+          "4"
+        ]
+      },
+      {
+        "rank": 7,
+        "size": 8,
+        "pid": 712190,
+        "cpus": [
+          28,
+          29,
+          30,
+          31
+        ],
+        "omp_threads": 4,
+        "command": [
+          "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+          "input.dat",
+          "-nt",
+          "4"
+        ]
+      }
+    ],
+    "command": [
+      "/opt/nvidia/hpc_sdk/Linux_x86_64/26.9/comm_libs/mpi/bin/mpirun",
+      "-np",
+      "8",
+      "--map-by",
+      "slot:PE=4",
+      "--bind-to",
+      "core",
+      "--report-bindings",
+      "--mca",
+      "pml",
+      "ob1",
+      "--mca",
+      "btl",
+      "self,sm,tcp",
+      "/usr/bin/python3",
+      "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/rank_exec.py",
+      "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+      "input.dat",
+      "-nt",
+      "4"
+    ],
+    "environment": {
+      "OMP_NUM_THREADS": "4",
+      "OMP_THREAD_LIMIT": "4",
+      "OMP_DYNAMIC": "FALSE",
+      "OMP_MAX_ACTIVE_LEVELS": "1",
+      "OMP_PROC_BIND": "close",
+      "OMP_PLACES": "cores",
+      "OMP_STACKSIZE": "64M",
+      "OPENBLAS_NUM_THREADS": "4",
+      "BLIS_NUM_THREADS": "4",
+      "MKL_NUM_THREADS": "4",
+      "MKL_DYNAMIC": "FALSE",
+      "MAGMA_NUM_THREADS": "4",
+      "OPENMX_GPU": "1",
+      "UCX_NET_DEVICES": "lo",
+      "CUDA_VISIBLE_DEVICES": "0",
+      "NVCOMPILER_CUDA_HOME": "/usr/local/cuda-13.4",
+      "NVCOMPILER_MATH_LIBS_HOME": "/usr/local/cuda-13.4/targets/x86_64-linux",
+      "NVCOMPILER_COMM_LIBS_HOME": "/opt/nvidia/hpc_sdk/Linux_x86_64/26.9/comm_libs/13.3",
+      "BENCH_AFFINITY_DIR": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/cghelgeo/fork_gpu/affinity",
+      "LD_PRELOAD": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/libopenmx_core.so:/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/libopenmx_host_simd.so",
+      "CUDA_MPS_PIPE_DIRECTORY": "/tmp/omx-3060-8x4-f3dcqx41",
+      "CUDA_MPS_LOG_DIRECTORY": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/cghelgeo/fork_gpu/mps_logs"
+    },
+    "binary_sha256": "fd67fbad6bd2dda94fd602e42d3d8732a679623b7993ea12bb6b31b685abf4c6",
+    "mps_openmx_clients_seen": [
+      712183,
+      712184,
+      712185,
+      712186,
+      712187,
+      712188,
+      712189,
+      712190
+    ]
+  }
+]

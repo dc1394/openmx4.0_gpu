@@ -1,0 +1,1004 @@
+{
+  "created": "2026-11-02T14:47:37.342553+09:00",
+  "source_commit": "5afbb9dde927876064a6dcd260d9efc0c2b22533",
+  "ranks": 8,
+  "omp_threads": 4,
+  "repetitions": 1,
+  "routes": [
+    "fork_gpu",
+    "fork_cpu",
+    "upstream_cpu"
+  ],
+  "order": [
+    "S",
+    "L",
+    "sidia333_nc_cluster",
+    "cghelgeo"
+  ],
+  "suite_execution": "one native -runtest/-runtestL MPI invocation per route",
+  "scientific_input_changes": [],
+  "runtime_input_changes": [
+    "absolute DATA.PATH",
+    "CPU scf.eigen.lib=elpa2"
+  ],
+  "gpu_mps": true,
+  "gpu_workspace_policy": "unchanged defaults (30%, 256 MiB cap)",
+  "data": [
+    {
+      "source": "/home/dc1394/openmx4.0_gpu/DFT_DATA19/PAO/As7.0.pao",
+      "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/data/PAO/As7.0.pao",
+      "sha256": "5086cbd85771b1a58aa181cd1e4181b7e865c855ef84e0bc7e7fc1cee69eb4b8"
+    },
+    {
+      "source": "/home/dc1394/openmx4.0_gpu/DFT_DATA19/PAO/B7.0.pao",
+      "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/data/PAO/B7.0.pao",
+      "sha256": "be54b87052bf5e94f9878a92e2f66692af13168bdbd83f3d4afd1bf1a9c19db7"
+    },
+    {
+      "source": "/home/dc1394/openmx4.0_gpu/DFT_DATA19/PAO/C5.0.pao",
+      "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/data/PAO/C5.0.pao",
+      "sha256": "03f7f3843ea89c87106a861cdee4a87d9324a948e1c41f101cc36c4b0e999934"
+    },
+    {
+      "source": "/home/dc1394/openmx4.0_gpu/DFT_DATA19/PAO/C6.0.pao",
+      "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/data/PAO/C6.0.pao",
+      "sha256": "1442a834dbc2b9b55e8f11a20734c7b77765fa4e05ca3e1b1f004da46bfaaef4"
+    },
+    {
+      "source": "/home/dc1394/openmx4.0_gpu/DFT_DATA19/PAO/C7.0.pao",
+      "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/data/PAO/C7.0.pao",
+      "sha256": "d6e270f980f6ede1d22c31ae60ccd2e900f5d9709caeca4b8918dd8a17910d22"
+    },
+    {
+      "source": "/home/dc1394/openmx4.0_gpu/DFT_DATA19/PAO/Cr8.0.pao",
+      "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/data/PAO/Cr8.0.pao",
+      "sha256": "f2518dc2dee792c62591fbff11a3712ca7e97b28c0d23bd2c95eba788b4cba10"
+    },
+    {
+      "source": "/home/dc1394/openmx4.0_gpu/DFT_DATA19/PAO/Fe6.0S.pao",
+      "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/data/PAO/Fe6.0S.pao",
+      "sha256": "e42ab5f418dd9f20ead6204843b9ff7495f43ed94b3566376b6e7ba3c5562b5b"
+    },
+    {
+      "source": "/home/dc1394/openmx4.0_gpu/DFT_DATA19/PAO/Ga7.0.pao",
+      "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/data/PAO/Ga7.0.pao",
+      "sha256": "56c7dd5801872438caec84801813a18c91ebc66f3d66beb2872d32d2252a78ea"
+    },
+    {
+      "source": "/home/dc1394/openmx4.0_gpu/DFT_DATA19/PAO/H5.0.pao",
+      "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/data/PAO/H5.0.pao",
+      "sha256": "31b4a1bb098e57fdde6c5158596929362f304909132dc9eeb2cc389c08fbbf46"
+    },
+    {
+      "source": "/home/dc1394/openmx4.0_gpu/DFT_DATA19/PAO/H6.0.pao",
+      "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/data/PAO/H6.0.pao",
+      "sha256": "53ad2af2e281eef9320500b17176e612e607b01d7aca23cae644fa03965a1639"
+    },
+    {
+      "source": "/home/dc1394/openmx4.0_gpu/DFT_DATA19/PAO/H7.0.pao",
+      "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/data/PAO/H7.0.pao",
+      "sha256": "878ed02256724be95a08e316f1eb567c0c05728cedeef20c8ae474b1bf109d6c"
+    },
+    {
+      "source": "/home/dc1394/openmx4.0_gpu/DFT_DATA19/PAO/Mn6.0.pao",
+      "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/data/PAO/Mn6.0.pao",
+      "sha256": "6f703434c7520d67cd9145de2e40ed98382f4fabfe462c580297998df8907d31"
+    },
+    {
+      "source": "/home/dc1394/openmx4.0_gpu/DFT_DATA19/PAO/Mn8.0.pao",
+      "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/data/PAO/Mn8.0.pao",
+      "sha256": "2b245c47e822a8ca267a66f8f6f35e96f5b9589b746999795cd3f6e88c32efc9"
+    },
+    {
+      "source": "/home/dc1394/openmx4.0_gpu/DFT_DATA19/PAO/N5.0.pao",
+      "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/data/PAO/N5.0.pao",
+      "sha256": "d975949f913191dc18e22ccc9b0a5b095369f302ae31316497b8932719437a82"
+    },
+    {
+      "source": "/home/dc1394/openmx4.0_gpu/DFT_DATA19/PAO/N6.0.pao",
+      "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/data/PAO/N6.0.pao",
+      "sha256": "063efc7ac0674c36e2ccb2c2ba0bc3aa953c94f39046b0c2acc4cf514c048ff7"
+    },
+    {
+      "source": "/home/dc1394/openmx4.0_gpu/DFT_DATA19/PAO/N7.0.pao",
+      "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/data/PAO/N7.0.pao",
+      "sha256": "0661849a5b5d5e3b7aa3d13a7ed609e3d77a2ac21e75454b638938ab8ae431d6"
+    },
+    {
+      "source": "/home/dc1394/openmx4.0_gpu/DFT_DATA19/PAO/Ni6.0S.pao",
+      "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/data/PAO/Ni6.0S.pao",
+      "sha256": "7db801d0a65d9b06dfa1de2347cb6da8d9a021ad1886d47f7752ca9c770ad057"
+    },
+    {
+      "source": "/home/dc1394/openmx4.0_gpu/DFT_DATA19/PAO/O5.0.pao",
+      "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/data/PAO/O5.0.pao",
+      "sha256": "2d33f5ce0ea9b6ef4230aba6e2d9761194aff800db3b1465cda090c235d0d40f"
+    },
+    {
+      "source": "/home/dc1394/openmx4.0_gpu/DFT_DATA19/PAO/O6.0.pao",
+      "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/data/PAO/O6.0.pao",
+      "sha256": "ed4df18367ad3e4229a6028583d3a2ecd103076a634db86fd5e82f7075eb1cf1"
+    },
+    {
+      "source": "/home/dc1394/openmx4.0_gpu/DFT_DATA19/PAO/O7.0.pao",
+      "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/data/PAO/O7.0.pao",
+      "sha256": "7411fc9c218ee947234bcc15a1f3ff12f48954eb8c5ce4c617436f8671810ec4"
+    },
+    {
+      "source": "/home/dc1394/openmx4.0_gpu/DFT_DATA19/PAO/P7.0.pao",
+      "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/data/PAO/P7.0.pao",
+      "sha256": "9ae4ec8e1cddf035464c2b9cb7d0fccbffb40f118114b225e3106ac5cc8f1314"
+    },
+    {
+      "source": "/home/dc1394/openmx4.0_gpu/DFT_DATA19/PAO/Pt7.0.pao",
+      "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/data/PAO/Pt7.0.pao",
+      "sha256": "6b538646defba7371d1a8ce6e2b60f5d962642fc1c8dfc2442ab69b48fb0c896"
+    },
+    {
+      "source": "/home/dc1394/openmx4.0_gpu/DFT_DATA19/PAO/Si7.0.pao",
+      "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/data/PAO/Si7.0.pao",
+      "sha256": "24c45d323ad0e4f652776791c0dd9a4c1357d7e63b91333503634401352f843f"
+    },
+    {
+      "source": "/home/dc1394/openmx4.0_gpu/DFT_DATA19/PAO/V8.0.pao",
+      "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/data/PAO/V8.0.pao",
+      "sha256": "41c7e9a897130426ca24b5549eb64589e913ff0e9306b2f12d1f66d3676fa50b"
+    },
+    {
+      "source": "/home/dc1394/openmx4.0_gpu/DFT_DATA19/PAO/Zr7.0.pao",
+      "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/data/PAO/Zr7.0.pao",
+      "sha256": "091bde9d6f0ad151991da731b36d3d41736bf6840ec6f4c9c88d3ed36116eb7f"
+    },
+    {
+      "source": "/home/dc1394/openmx4.0_gpu/DFT_DATA19/VPS/As_PBE19.vps",
+      "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/data/VPS/As_PBE19.vps",
+      "sha256": "82a13ff8563f308440e63ccd551012c7a06eedab6cef6522a20997c9755dd541"
+    },
+    {
+      "source": "/home/dc1394/openmx4.0_gpu/DFT_DATA19/VPS/B_PBE19.vps",
+      "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/data/VPS/B_PBE19.vps",
+      "sha256": "ceda8e581a2bc1d9eae39d7c7af8a23bb2d40009a14e4a8b0c0c8924e1900fde"
+    },
+    {
+      "source": "/home/dc1394/openmx4.0_gpu/DFT_DATA19/VPS/C_CA19.vps",
+      "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/data/VPS/C_CA19.vps",
+      "sha256": "1bb1fd54ad8171745b44f3a738c2579f251198f20c777e72d5c35fbc00e49200"
+    },
+    {
+      "source": "/home/dc1394/openmx4.0_gpu/DFT_DATA19/VPS/C_PBE19.vps",
+      "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/data/VPS/C_PBE19.vps",
+      "sha256": "4b9c78eb72be25ca46366b8fd39c74ae7172d7db9e77b29782a42f71901b38a7"
+    },
+    {
+      "source": "/home/dc1394/openmx4.0_gpu/DFT_DATA19/VPS/Cr_CA19.vps",
+      "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/data/VPS/Cr_CA19.vps",
+      "sha256": "ff8d763cf7b0814e82da82b26031c8383674df17e1ed5db6319c7f2bf140f125"
+    },
+    {
+      "source": "/home/dc1394/openmx4.0_gpu/DFT_DATA19/VPS/Fe_PBE19S.vps",
+      "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/data/VPS/Fe_PBE19S.vps",
+      "sha256": "e136a81b91517301f6e4124a8f347487ac4639427d842b15088c9ff99b0061e7"
+    },
+    {
+      "source": "/home/dc1394/openmx4.0_gpu/DFT_DATA19/VPS/Ga_PBE19.vps",
+      "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/data/VPS/Ga_PBE19.vps",
+      "sha256": "52825d621c3c4d8ea9ecd773630decc85acfa5b1849cb3b3c2a032d3867a3aec"
+    },
+    {
+      "source": "/home/dc1394/openmx4.0_gpu/DFT_DATA19/VPS/H_CA19.vps",
+      "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/data/VPS/H_CA19.vps",
+      "sha256": "71b331412a798c98a9a0c9853f37f2715298621bd271aa027a2031938ea93690"
+    },
+    {
+      "source": "/home/dc1394/openmx4.0_gpu/DFT_DATA19/VPS/H_PBE19.vps",
+      "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/data/VPS/H_PBE19.vps",
+      "sha256": "cdb7685cc3f34bd2bf81f809594bb4371728476d1a624dca291c4b9ff361c6fa"
+    },
+    {
+      "source": "/home/dc1394/openmx4.0_gpu/DFT_DATA19/VPS/Mn_PBE19.vps",
+      "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/data/VPS/Mn_PBE19.vps",
+      "sha256": "5a06a9c926b9b586375647ab08509147339529cb2685ffe364ee1babf3e32867"
+    },
+    {
+      "source": "/home/dc1394/openmx4.0_gpu/DFT_DATA19/VPS/N_PBE19.vps",
+      "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/data/VPS/N_PBE19.vps",
+      "sha256": "904c1c6e59a86448830178681a39cd3c4d14fb2daf9be8f4742673ddfc8e3466"
+    },
+    {
+      "source": "/home/dc1394/openmx4.0_gpu/DFT_DATA19/VPS/Ni_CA19S.vps",
+      "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/data/VPS/Ni_CA19S.vps",
+      "sha256": "43daac35da9cd0a33c7f670cf4d8fcb1e464f054b7670dab4772508bd8302a35"
+    },
+    {
+      "source": "/home/dc1394/openmx4.0_gpu/DFT_DATA19/VPS/O_CA19.vps",
+      "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/data/VPS/O_CA19.vps",
+      "sha256": "d5c892ccb655e953da945adf2b8f5fdbc012e7fcab2655a1931ea2e6e3b59af1"
+    },
+    {
+      "source": "/home/dc1394/openmx4.0_gpu/DFT_DATA19/VPS/O_PBE19.vps",
+      "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/data/VPS/O_PBE19.vps",
+      "sha256": "afb469c2da38c80854b1bdf7df1f6da6dc8d7c874a75f0bf7c294a96046410fc"
+    },
+    {
+      "source": "/home/dc1394/openmx4.0_gpu/DFT_DATA19/VPS/P_PBE19.vps",
+      "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/data/VPS/P_PBE19.vps",
+      "sha256": "91a543cf3f29b743133c80ff6442851a9be8adfb215fd571d56a169cf2f740b6"
+    },
+    {
+      "source": "/home/dc1394/openmx4.0_gpu/DFT_DATA19/VPS/Pt_PBE19.vps",
+      "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/data/VPS/Pt_PBE19.vps",
+      "sha256": "f1fa6e677a2f6f101ade6d728b31486d4720b5aca94fac49b3bf47b24f679ff4"
+    },
+    {
+      "source": "/home/dc1394/openmx4.0_gpu/DFT_DATA19/VPS/Si_PBE19.vps",
+      "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/data/VPS/Si_PBE19.vps",
+      "sha256": "9a274b3f50cd247d53e735b8ad1669d491286934b61c295bcd6e8b6ba555d80a"
+    },
+    {
+      "source": "/home/dc1394/openmx4.0_gpu/DFT_DATA19/VPS/V_PBE19.vps",
+      "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/data/VPS/V_PBE19.vps",
+      "sha256": "6b4b5cf6d2858a9d02c7aa692aeeafc82b8f375ef16c869cf13ea3feb84b45f8"
+    },
+    {
+      "source": "/home/dc1394/openmx4.0_gpu/DFT_DATA19/VPS/Zr_PBE19.vps",
+      "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/data/VPS/Zr_PBE19.vps",
+      "sha256": "fa1bd0f8c7e304519b6cd4244f20fe1590018013862f627396bccfb2fd5413ba"
+    }
+  ],
+  "binaries": {
+    "fork": [
+      {
+        "source": "/home/dc1394/openmx4.0_gpu/build/cuda/openmx",
+        "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/openmx",
+        "sha256": "fd67fbad6bd2dda94fd602e42d3d8732a679623b7993ea12bb6b31b685abf4c6"
+      },
+      {
+        "source": "/home/dc1394/openmx4.0_gpu/build/cuda/core/libopenmx_core.so",
+        "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/libopenmx_core.so",
+        "sha256": "56f397790f093ab8a61f96ee16e2b4cbfeb2b258f892785ef35d1cd3cafc134c"
+      },
+      {
+        "source": "/home/dc1394/openmx4.0_gpu/build/cuda/core/host-simd/lib/libopenmx_host_simd.so",
+        "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/fork/libopenmx_host_simd.so",
+        "sha256": "8b4eab59153c3d6ce45f7249311ea5f9df81f71f8638d73b87b58031791cc279"
+      }
+    ],
+    "upstream": [
+      {
+        "source": "/home/dc1394/openmx4.0/work/openmx",
+        "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/binaries/upstream/openmx",
+        "sha256": "17fc5ea2ac7b7f5711b10a03c4097be8d5cd208ad668bd2cd1f1a5ed3a95d651"
+      }
+    ]
+  },
+  "inputs": {
+    "S": [
+      {
+        "case": "Benzene",
+        "system": "Benzene",
+        "original": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/original_inputs/S/Benzene.dat",
+        "source": "/home/dc1394/openmx4.0_gpu/work/input_example/Benzene.dat",
+        "original_sha256": "c7f445ef1ed49115a52049f6b81711b0999d074b5be2119f85886fa3209dfc66",
+        "routes": {
+          "fork_gpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/S/fork_gpu/input_example/Benzene.dat",
+            "sha256": "9835cb2e62f2385208b501e3384ba91ab488fba64dfc86281dced8f9dc1bb3a0"
+          },
+          "fork_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/S/fork_cpu/input_example/Benzene.dat",
+            "sha256": "408ad1312fe10a6109a32578b57a411fc461a901e45b1ab2d2291c66779802d3"
+          },
+          "upstream_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/S/upstream_cpu/input_example/Benzene.dat",
+            "sha256": "408ad1312fe10a6109a32578b57a411fc461a901e45b1ab2d2291c66779802d3"
+          }
+        },
+        "reference": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/references/S/Benzene.out"
+      },
+      {
+        "case": "C60",
+        "system": "C60",
+        "original": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/original_inputs/S/C60.dat",
+        "source": "/home/dc1394/openmx4.0_gpu/work/input_example/C60.dat",
+        "original_sha256": "7c2bd103986adb335ae2302685be43f0a23545861fa21d7885bd6f663bb6f6f8",
+        "routes": {
+          "fork_gpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/S/fork_gpu/input_example/C60.dat",
+            "sha256": "9b17075c314a784ddc6669d61ba3759d0cb7aeb9a9be25338824fb5a7dd2cf03"
+          },
+          "fork_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/S/fork_cpu/input_example/C60.dat",
+            "sha256": "05514e0de21ece42dc84835ccdb5d980d407e46d354aebb342ffe241c417cbd2"
+          },
+          "upstream_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/S/upstream_cpu/input_example/C60.dat",
+            "sha256": "05514e0de21ece42dc84835ccdb5d980d407e46d354aebb342ffe241c417cbd2"
+          }
+        },
+        "reference": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/references/S/C60.out"
+      },
+      {
+        "case": "CO",
+        "system": "CO",
+        "original": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/original_inputs/S/CO.dat",
+        "source": "/home/dc1394/openmx4.0_gpu/work/input_example/CO.dat",
+        "original_sha256": "6fea9256df9ce5db091c80b9c644bc93a6dc55187949b61b682012f54566ff05",
+        "routes": {
+          "fork_gpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/S/fork_gpu/input_example/CO.dat",
+            "sha256": "54f543176741112d529afb44f64e59bd432fbad8d8d73e1edea0b70e865edea7"
+          },
+          "fork_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/S/fork_cpu/input_example/CO.dat",
+            "sha256": "e7300b3dfd1412a1a10a58c6c05dbc8de7a47363f828484e926d1e28f3c38b21"
+          },
+          "upstream_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/S/upstream_cpu/input_example/CO.dat",
+            "sha256": "e7300b3dfd1412a1a10a58c6c05dbc8de7a47363f828484e926d1e28f3c38b21"
+          }
+        },
+        "reference": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/references/S/CO.out"
+      },
+      {
+        "case": "Cr2",
+        "system": "Cr2",
+        "original": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/original_inputs/S/Cr2.dat",
+        "source": "/home/dc1394/openmx4.0_gpu/work/input_example/Cr2.dat",
+        "original_sha256": "37ce5beffcf397b8460975e6525ed2783c2be7320941e99d031bb77e2e888e3e",
+        "routes": {
+          "fork_gpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/S/fork_gpu/input_example/Cr2.dat",
+            "sha256": "4b67af317a3029846349b294f40c45503dc0836bd8a9757fb5119d70078b401e"
+          },
+          "fork_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/S/fork_cpu/input_example/Cr2.dat",
+            "sha256": "7a0dd2b511dc0644e1c4f4b8886579057315a75a6eaac840c4d3bf6b2c200d1c"
+          },
+          "upstream_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/S/upstream_cpu/input_example/Cr2.dat",
+            "sha256": "7a0dd2b511dc0644e1c4f4b8886579057315a75a6eaac840c4d3bf6b2c200d1c"
+          }
+        },
+        "reference": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/references/S/Cr2.out"
+      },
+      {
+        "case": "Crys-MnO",
+        "system": "Crys-MnO",
+        "original": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/original_inputs/S/Crys-MnO.dat",
+        "source": "/home/dc1394/openmx4.0_gpu/work/input_example/Crys-MnO.dat",
+        "original_sha256": "315a3b870e4e57a0edb5ac48f4135593f9dbc63cdcc1f0d344783ac9b4ef9c62",
+        "routes": {
+          "fork_gpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/S/fork_gpu/input_example/Crys-MnO.dat",
+            "sha256": "ef0d6ea983281e5d2e92bed5978789f954907481ebf1bd148f6248237dc39e33"
+          },
+          "fork_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/S/fork_cpu/input_example/Crys-MnO.dat",
+            "sha256": "ef850128e9e9890868f8c344549a6e009bdb32a5e1ac6850f413ae9614f8e1b4"
+          },
+          "upstream_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/S/upstream_cpu/input_example/Crys-MnO.dat",
+            "sha256": "ef850128e9e9890868f8c344549a6e009bdb32a5e1ac6850f413ae9614f8e1b4"
+          }
+        },
+        "reference": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/references/S/Crys-MnO.out"
+      },
+      {
+        "case": "GaAs",
+        "system": "GaAs",
+        "original": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/original_inputs/S/GaAs.dat",
+        "source": "/home/dc1394/openmx4.0_gpu/work/input_example/GaAs.dat",
+        "original_sha256": "62c958351460fabc5d1a4f12d1cb51565f56ce10c4570d24131da25637f852c6",
+        "routes": {
+          "fork_gpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/S/fork_gpu/input_example/GaAs.dat",
+            "sha256": "00091d9bf2d8f885e7968f35b228bc8d325a8385620b0cdda89915ea58e0996e"
+          },
+          "fork_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/S/fork_cpu/input_example/GaAs.dat",
+            "sha256": "6b801220708796c9e7cfc56ee346bf4b74630042592a7c94bb3a53cd0f7ea1bc"
+          },
+          "upstream_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/S/upstream_cpu/input_example/GaAs.dat",
+            "sha256": "6b801220708796c9e7cfc56ee346bf4b74630042592a7c94bb3a53cd0f7ea1bc"
+          }
+        },
+        "reference": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/references/S/GaAs.out"
+      },
+      {
+        "case": "Glycine",
+        "system": "Glycine",
+        "original": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/original_inputs/S/Glycine.dat",
+        "source": "/home/dc1394/openmx4.0_gpu/work/input_example/Glycine.dat",
+        "original_sha256": "4781425789fc08433ab49f4934c7c012d7cad0ad87b7f3df737138118afa8bca",
+        "routes": {
+          "fork_gpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/S/fork_gpu/input_example/Glycine.dat",
+            "sha256": "1059387c651f160bdae17be00d36fd3eff37c75bbf964126ff346ce03fdd9e21"
+          },
+          "fork_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/S/fork_cpu/input_example/Glycine.dat",
+            "sha256": "3effecaa21938c334a0ce1748770c82d116a9609f9e7306d9d0f916c97650925"
+          },
+          "upstream_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/S/upstream_cpu/input_example/Glycine.dat",
+            "sha256": "3effecaa21938c334a0ce1748770c82d116a9609f9e7306d9d0f916c97650925"
+          }
+        },
+        "reference": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/references/S/Glycine.out"
+      },
+      {
+        "case": "Graphite4",
+        "system": "Graphite4",
+        "original": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/original_inputs/S/Graphite4.dat",
+        "source": "/home/dc1394/openmx4.0_gpu/work/input_example/Graphite4.dat",
+        "original_sha256": "9ed8513b6eaac5ef8dc2343422c88175bd0b1b6b1e101f7bd113f63a9d2ed2f6",
+        "routes": {
+          "fork_gpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/S/fork_gpu/input_example/Graphite4.dat",
+            "sha256": "687bd223353613c4fe3e0db53e84822f89dec64d005cd74edf8e4f361feb368c"
+          },
+          "fork_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/S/fork_cpu/input_example/Graphite4.dat",
+            "sha256": "9b1042a50dd2b7fc33a0589857fbba22ff0b4ee0da08a34e8827594265582d2e"
+          },
+          "upstream_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/S/upstream_cpu/input_example/Graphite4.dat",
+            "sha256": "9b1042a50dd2b7fc33a0589857fbba22ff0b4ee0da08a34e8827594265582d2e"
+          }
+        },
+        "reference": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/references/S/Graphite4.out"
+      },
+      {
+        "case": "H2O-EF",
+        "system": "H2O-EF",
+        "original": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/original_inputs/S/H2O-EF.dat",
+        "source": "/home/dc1394/openmx4.0_gpu/work/input_example/H2O-EF.dat",
+        "original_sha256": "9f528eb4f5d13f0635772d5dc87635d4e7c99266dc2085a1ef820a19e23f97d9",
+        "routes": {
+          "fork_gpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/S/fork_gpu/input_example/H2O-EF.dat",
+            "sha256": "a6446ef4f37f2a1c112a05637b44aec339c3527f38ac6ad24572928e66d74064"
+          },
+          "fork_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/S/fork_cpu/input_example/H2O-EF.dat",
+            "sha256": "112f43d731e6ed1c5a721187b6dce6e546e4ad69e3f6fab34dddbf178ed1901f"
+          },
+          "upstream_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/S/upstream_cpu/input_example/H2O-EF.dat",
+            "sha256": "112f43d731e6ed1c5a721187b6dce6e546e4ad69e3f6fab34dddbf178ed1901f"
+          }
+        },
+        "reference": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/references/S/H2O-EF.out"
+      },
+      {
+        "case": "H2O",
+        "system": "H2O",
+        "original": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/original_inputs/S/H2O.dat",
+        "source": "/home/dc1394/openmx4.0_gpu/work/input_example/H2O.dat",
+        "original_sha256": "5e2044197d163bdb97728c78666d3b3dac9e0221bd07aa7b86781fca12770804",
+        "routes": {
+          "fork_gpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/S/fork_gpu/input_example/H2O.dat",
+            "sha256": "8db8938321b339478108b5cef110ccf589c25084051987b341f7e36458396801"
+          },
+          "fork_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/S/fork_cpu/input_example/H2O.dat",
+            "sha256": "d876a2ad9e0c03b9db1d2b9fb839caeb61901b938bee1931ed0626975568c1af"
+          },
+          "upstream_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/S/upstream_cpu/input_example/H2O.dat",
+            "sha256": "d876a2ad9e0c03b9db1d2b9fb839caeb61901b938bee1931ed0626975568c1af"
+          }
+        },
+        "reference": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/references/S/H2O.out"
+      },
+      {
+        "case": "HMn",
+        "system": "HMn",
+        "original": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/original_inputs/S/HMn.dat",
+        "source": "/home/dc1394/openmx4.0_gpu/work/input_example/HMn.dat",
+        "original_sha256": "d29997cfe87ce73dcea408285c019c25c1573ae0c8d45cedc21c367a00abb703",
+        "routes": {
+          "fork_gpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/S/fork_gpu/input_example/HMn.dat",
+            "sha256": "843f85b28df047ad1abd5778cc4fbbea830795ab85bef7f1f08fe9bb08b4595c"
+          },
+          "fork_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/S/fork_cpu/input_example/HMn.dat",
+            "sha256": "af04f7ac6836c07bf0e7ca428fa315e04e8dfa98b669241e1c7ce008b269c258"
+          },
+          "upstream_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/S/upstream_cpu/input_example/HMn.dat",
+            "sha256": "af04f7ac6836c07bf0e7ca428fa315e04e8dfa98b669241e1c7ce008b269c258"
+          }
+        },
+        "reference": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/references/S/HMn.out"
+      },
+      {
+        "case": "Methane",
+        "system": "Methane",
+        "original": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/original_inputs/S/Methane.dat",
+        "source": "/home/dc1394/openmx4.0_gpu/work/input_example/Methane.dat",
+        "original_sha256": "259179e38dad7c6d8ece6f51ea8b0a1fbc3657a15defc43cb9ad104413a415bb",
+        "routes": {
+          "fork_gpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/S/fork_gpu/input_example/Methane.dat",
+            "sha256": "0b12adecb739b5ba4abbc2de187dd5629b4cbac57485ea537b60f04183fd8462"
+          },
+          "fork_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/S/fork_cpu/input_example/Methane.dat",
+            "sha256": "1b7dc66c5065056fb8aa351598ca385c21dc319a632969e5e340418d01efa74c"
+          },
+          "upstream_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/S/upstream_cpu/input_example/Methane.dat",
+            "sha256": "1b7dc66c5065056fb8aa351598ca385c21dc319a632969e5e340418d01efa74c"
+          }
+        },
+        "reference": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/references/S/Methane.out"
+      },
+      {
+        "case": "Mol_MnO",
+        "system": "Mol_MnO",
+        "original": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/original_inputs/S/Mol_MnO.dat",
+        "source": "/home/dc1394/openmx4.0_gpu/work/input_example/Mol_MnO.dat",
+        "original_sha256": "7294bb18e450cefa7ab169b88c19c64284158a0f702a877324c3bd466c026670",
+        "routes": {
+          "fork_gpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/S/fork_gpu/input_example/Mol_MnO.dat",
+            "sha256": "c08147c168b9802710dba36c24e96b5d5ce0e02d250484bba05714a0214a48ae"
+          },
+          "fork_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/S/fork_cpu/input_example/Mol_MnO.dat",
+            "sha256": "7cf3791735c91c9b3e3b682ae81f9d69ae0d9e2cab261d659ffa19d19a8e06b1"
+          },
+          "upstream_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/S/upstream_cpu/input_example/Mol_MnO.dat",
+            "sha256": "7cf3791735c91c9b3e3b682ae81f9d69ae0d9e2cab261d659ffa19d19a8e06b1"
+          }
+        },
+        "reference": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/references/S/Mol_MnO.out"
+      },
+      {
+        "case": "Ndia2",
+        "system": "Ndia2",
+        "original": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/original_inputs/S/Ndia2.dat",
+        "source": "/home/dc1394/openmx4.0_gpu/work/input_example/Ndia2.dat",
+        "original_sha256": "68fccb2f50ba4e06d1625446db230a0fbc0981881352c66ae120ad1cefdc19ec",
+        "routes": {
+          "fork_gpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/S/fork_gpu/input_example/Ndia2.dat",
+            "sha256": "ae16a47d2410078f2df5386e3713d8f4333b0806a9306816063cf3a39e8b5e99"
+          },
+          "fork_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/S/fork_cpu/input_example/Ndia2.dat",
+            "sha256": "7946c06e8ebc75766638f1b818462f6f234830f84e9a86feb716dbef2efee887"
+          },
+          "upstream_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/S/upstream_cpu/input_example/Ndia2.dat",
+            "sha256": "7946c06e8ebc75766638f1b818462f6f234830f84e9a86feb716dbef2efee887"
+          }
+        },
+        "reference": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/references/S/Ndia2.out"
+      }
+    ],
+    "L": [
+      {
+        "case": "5_5_13COb2",
+        "system": "5_5_13COb2",
+        "original": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/original_inputs/L/5_5_13COb2.dat",
+        "source": "/home/dc1394/openmx4.0_gpu/work/large_example/5_5_13COb2.dat",
+        "original_sha256": "927a27a84881266b6b8b530b3924b69a32d0d61c1f0fdfda954e8c6efb13e5d5",
+        "routes": {
+          "fork_gpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/L/fork_gpu/large_example/5_5_13COb2.dat",
+            "sha256": "adaa5af4fe8c81d98830605129ee7aab0663bcdfbedf0f2ab930c3fb5c255fba"
+          },
+          "fork_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/L/fork_cpu/large_example/5_5_13COb2.dat",
+            "sha256": "96437e60fccc6508af85686d37ed6dc78bb17e449806a1bc6186fabac2ca50bd"
+          },
+          "upstream_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/L/upstream_cpu/large_example/5_5_13COb2.dat",
+            "sha256": "96437e60fccc6508af85686d37ed6dc78bb17e449806a1bc6186fabac2ca50bd"
+          }
+        },
+        "reference": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/references/L/5_5_13COb2.out"
+      },
+      {
+        "case": "B2C62_Band",
+        "system": "B2C62_Band",
+        "original": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/original_inputs/L/B2C62_Band.dat",
+        "source": "/home/dc1394/openmx4.0_gpu/work/large_example/B2C62_Band.dat",
+        "original_sha256": "15abe8dc8eb2f2a7f34a462adbb29f35a5f6684f2a6b89c36e49f9b9d0e5b227",
+        "routes": {
+          "fork_gpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/L/fork_gpu/large_example/B2C62_Band.dat",
+            "sha256": "b4f0fbbb2d2afd07b89ea8b5b1c5ed3312e66bd9e241f9f0bb9244d5e0169f5e"
+          },
+          "fork_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/L/fork_cpu/large_example/B2C62_Band.dat",
+            "sha256": "f02a0da784ac5eb898df38a5504892779bb306808de7a529b89e732d007ca172"
+          },
+          "upstream_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/L/upstream_cpu/large_example/B2C62_Band.dat",
+            "sha256": "f02a0da784ac5eb898df38a5504892779bb306808de7a529b89e732d007ca172"
+          }
+        },
+        "reference": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/references/L/B2C62_Band.out"
+      },
+      {
+        "case": "CG15c-DC-LNO",
+        "system": "CG15c-DC-LNO",
+        "original": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/original_inputs/L/CG15c-DC-LNO.dat",
+        "source": "/home/dc1394/openmx4.0_gpu/work/large_example/CG15c-DC-LNO.dat",
+        "original_sha256": "f8a256ea70df08d1100d4aa8887656ba83c2964a3a99b3ee435f9b17c7bcfd9f",
+        "routes": {
+          "fork_gpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/L/fork_gpu/large_example/CG15c-DC-LNO.dat",
+            "sha256": "42d0c4d9162854d6edb22ac142e80a09d8457b9d9077e7bff764b834cfe645e9"
+          },
+          "fork_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/L/fork_cpu/large_example/CG15c-DC-LNO.dat",
+            "sha256": "b1f825c04a7103fb5fced2f933da7f3531682ac296383456cc84002804e19a07"
+          },
+          "upstream_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/L/upstream_cpu/large_example/CG15c-DC-LNO.dat",
+            "sha256": "b1f825c04a7103fb5fced2f933da7f3531682ac296383456cc84002804e19a07"
+          }
+        },
+        "reference": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/references/L/CG15c-DC-LNO.out"
+      },
+      {
+        "case": "DIA512-1",
+        "system": "DIA512-1",
+        "original": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/original_inputs/L/DIA512-1.dat",
+        "source": "/home/dc1394/openmx4.0_gpu/work/large_example/DIA512-1.dat",
+        "original_sha256": "c35000c6260b808cc10e5947fc108f65c146472d3b44a9fd8ef301e732844151",
+        "routes": {
+          "fork_gpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/L/fork_gpu/large_example/DIA512-1.dat",
+            "sha256": "726dadadacb19e49b0004a07be7bbf095d723048b983742495d665ac11c9d541"
+          },
+          "fork_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/L/fork_cpu/large_example/DIA512-1.dat",
+            "sha256": "1b6a5c8bd42db24c74d28070bbc414e4769a5160d0ca25cfd6158f2bf86899c2"
+          },
+          "upstream_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/L/upstream_cpu/large_example/DIA512-1.dat",
+            "sha256": "1b6a5c8bd42db24c74d28070bbc414e4769a5160d0ca25cfd6158f2bf86899c2"
+          }
+        },
+        "reference": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/references/L/DIA512-1.out"
+      },
+      {
+        "case": "FeBCC",
+        "system": "FeBCC",
+        "original": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/original_inputs/L/FeBCC.dat",
+        "source": "/home/dc1394/openmx4.0_gpu/work/large_example/FeBCC.dat",
+        "original_sha256": "7181dbb66708c4ec41b32f2b0b5be3a4a7a067c9a26029d9b78e66abeadd366a",
+        "routes": {
+          "fork_gpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/L/fork_gpu/large_example/FeBCC.dat",
+            "sha256": "acdfe90f423212794e60a1126c95da2cc7d8470519d56785634e778a78e53402"
+          },
+          "fork_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/L/fork_cpu/large_example/FeBCC.dat",
+            "sha256": "ea7ca7293fe24b7a71d35620fa96cde23f5c4a426513da3e8346e3cb4d7b55c9"
+          },
+          "upstream_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/L/upstream_cpu/large_example/FeBCC.dat",
+            "sha256": "ea7ca7293fe24b7a71d35620fa96cde23f5c4a426513da3e8346e3cb4d7b55c9"
+          }
+        },
+        "reference": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/references/L/FeBCC.out"
+      },
+      {
+        "case": "GEL",
+        "system": "GEL",
+        "original": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/original_inputs/L/GEL.dat",
+        "source": "/home/dc1394/openmx4.0_gpu/work/large_example/GEL.dat",
+        "original_sha256": "707143410502e8e25c9958a7f3cc009ec6c7cb327e046997c86e5520512e6b6b",
+        "routes": {
+          "fork_gpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/L/fork_gpu/large_example/GEL.dat",
+            "sha256": "140afc2291df07a3bb33d56a5fa361f20580409a760eec788293bc0413bfedf7"
+          },
+          "fork_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/L/fork_cpu/large_example/GEL.dat",
+            "sha256": "4581e0327a6c401dc83a00e7f76cb3b418505b6ac8c1fb45c86d43bb773c4ce4"
+          },
+          "upstream_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/L/upstream_cpu/large_example/GEL.dat",
+            "sha256": "4581e0327a6c401dc83a00e7f76cb3b418505b6ac8c1fb45c86d43bb773c4ce4"
+          }
+        },
+        "reference": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/references/L/GEL.out"
+      },
+      {
+        "case": "GFRAG",
+        "system": "GFRAG",
+        "original": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/original_inputs/L/GFRAG.dat",
+        "source": "/home/dc1394/openmx4.0_gpu/work/large_example/GFRAG.dat",
+        "original_sha256": "8c95ae8d0039d7f2fcf8644ea1d171a26d1cb32e206f3c6757d5cd1c27dca31c",
+        "routes": {
+          "fork_gpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/L/fork_gpu/large_example/GFRAG.dat",
+            "sha256": "c92bef6ee1b93bfc4b68e49899f2b5be766415f8ce541d97883ee262855a7302"
+          },
+          "fork_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/L/fork_cpu/large_example/GFRAG.dat",
+            "sha256": "82b146c3a87c03de26793b6bfcbb8a51e5fc42d78503f34b59d36eb0840b9bab"
+          },
+          "upstream_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/L/upstream_cpu/large_example/GFRAG.dat",
+            "sha256": "82b146c3a87c03de26793b6bfcbb8a51e5fc42d78503f34b59d36eb0840b9bab"
+          }
+        },
+        "reference": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/references/L/GFRAG.out"
+      },
+      {
+        "case": "GGFF",
+        "system": "GGFF",
+        "original": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/original_inputs/L/GGFF.dat",
+        "source": "/home/dc1394/openmx4.0_gpu/work/large_example/GGFF.dat",
+        "original_sha256": "6a80fcc4f96e97944cc7b6affd20df04f24764cfb4852703f01e105ae3dc701f",
+        "routes": {
+          "fork_gpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/L/fork_gpu/large_example/GGFF.dat",
+            "sha256": "dedfb4457e5a257750c9c913ecf9c6455c3f8ce2ff1676872bc956af215f849f"
+          },
+          "fork_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/L/fork_cpu/large_example/GGFF.dat",
+            "sha256": "a41d69bc1d2b5e7b8eb96f827d2cf9e9927a60ebf2922121465f11f5147c0013"
+          },
+          "upstream_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/L/upstream_cpu/large_example/GGFF.dat",
+            "sha256": "a41d69bc1d2b5e7b8eb96f827d2cf9e9927a60ebf2922121465f11f5147c0013"
+          }
+        },
+        "reference": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/references/L/GGFF.out"
+      },
+      {
+        "case": "MCCN",
+        "system": "MCCN",
+        "original": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/original_inputs/L/MCCN.dat",
+        "source": "/home/dc1394/openmx4.0_gpu/work/large_example/MCCN.dat",
+        "original_sha256": "37f879f006313c05bfc45d8376abc7850854ce2819f796bdfd682b9017026358",
+        "routes": {
+          "fork_gpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/L/fork_gpu/large_example/MCCN.dat",
+            "sha256": "610c473726a97fddc2e59b54952f55a962a6978c35e539eabce480037eb88d93"
+          },
+          "fork_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/L/fork_cpu/large_example/MCCN.dat",
+            "sha256": "e9f2412c5c6d68a7437ccc9bf054543482e48a1d6f5db2c6e39100a1ab83fbcb"
+          },
+          "upstream_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/L/upstream_cpu/large_example/MCCN.dat",
+            "sha256": "e9f2412c5c6d68a7437ccc9bf054543482e48a1d6f5db2c6e39100a1ab83fbcb"
+          }
+        },
+        "reference": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/references/L/MCCN.out"
+      },
+      {
+        "case": "Mn12_148_F",
+        "system": "Mn12_148_F",
+        "original": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/original_inputs/L/Mn12_148_F.dat",
+        "source": "/home/dc1394/openmx4.0_gpu/work/large_example/Mn12_148_F.dat",
+        "original_sha256": "877994aa5ad590d39055d65d3f6835737e1f40bea69001a9c015c1226b7ab0c5",
+        "routes": {
+          "fork_gpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/L/fork_gpu/large_example/Mn12_148_F.dat",
+            "sha256": "27a1f329150ea37fa1a2656db1af13e849cbb1e23ea41d7edf60348c8dead892"
+          },
+          "fork_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/L/fork_cpu/large_example/Mn12_148_F.dat",
+            "sha256": "1b804c41ffeb97b1faa75b84c157cb76e6e7c11fc60ad56f866fbc01dc245ca2"
+          },
+          "upstream_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/L/upstream_cpu/large_example/Mn12_148_F.dat",
+            "sha256": "1b804c41ffeb97b1faa75b84c157cb76e6e7c11fc60ad56f866fbc01dc245ca2"
+          }
+        },
+        "reference": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/references/L/Mn12_148_F.out"
+      },
+      {
+        "case": "N1C999",
+        "system": "N1C999",
+        "original": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/original_inputs/L/N1C999.dat",
+        "source": "/home/dc1394/openmx4.0_gpu/work/large_example/N1C999.dat",
+        "original_sha256": "236f095357c5c4770f4b11594ab6e1506e37ff65b4d902bae9fd15dfe4f6444f",
+        "routes": {
+          "fork_gpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/L/fork_gpu/large_example/N1C999.dat",
+            "sha256": "deff49e35418630e2eb3d9fe879d01009d1338fb4ef3e3be75e3511207edf051"
+          },
+          "fork_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/L/fork_cpu/large_example/N1C999.dat",
+            "sha256": "1322ace9cec382116330109870061f0f9ccf3e5cf06a375e9f596a865c677e51"
+          },
+          "upstream_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/L/upstream_cpu/large_example/N1C999.dat",
+            "sha256": "1322ace9cec382116330109870061f0f9ccf3e5cf06a375e9f596a865c677e51"
+          }
+        },
+        "reference": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/references/L/N1C999.out"
+      },
+      {
+        "case": "Ni63-O64",
+        "system": "Ni63-O64",
+        "original": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/original_inputs/L/Ni63-O64.dat",
+        "source": "/home/dc1394/openmx4.0_gpu/work/large_example/Ni63-O64.dat",
+        "original_sha256": "54c93baa76a77f149e298cd264fbebc645751dbeb5be1f2d451df6c02cec33e6",
+        "routes": {
+          "fork_gpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/L/fork_gpu/large_example/Ni63-O64.dat",
+            "sha256": "3a4f3f48dba534a80f817c0088eec0ed2800b6c10dd319aa7e53c542163df23b"
+          },
+          "fork_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/L/fork_cpu/large_example/Ni63-O64.dat",
+            "sha256": "72e31475894527e4e907a28e1e3ea843e4c9fc83f036330aa17ef3e11f08ceba"
+          },
+          "upstream_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/L/upstream_cpu/large_example/Ni63-O64.dat",
+            "sha256": "72e31475894527e4e907a28e1e3ea843e4c9fc83f036330aa17ef3e11f08ceba"
+          }
+        },
+        "reference": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/references/L/Ni63-O64.out"
+      },
+      {
+        "case": "Pt63",
+        "system": "Pt63",
+        "original": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/original_inputs/L/Pt63.dat",
+        "source": "/home/dc1394/openmx4.0_gpu/work/large_example/Pt63.dat",
+        "original_sha256": "36dc8082db9435af8abf0d059f7935b0855151637b685af81aad52143149ae0d",
+        "routes": {
+          "fork_gpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/L/fork_gpu/large_example/Pt63.dat",
+            "sha256": "c93f64160057ed2ef3b81fae2271d95957acd4492fafe195ef12c190f98afa80"
+          },
+          "fork_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/L/fork_cpu/large_example/Pt63.dat",
+            "sha256": "d014edec97a381adb6f61db3b2ad8d4aa03cd84d308749e5d0b27630186b974c"
+          },
+          "upstream_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/L/upstream_cpu/large_example/Pt63.dat",
+            "sha256": "d014edec97a381adb6f61db3b2ad8d4aa03cd84d308749e5d0b27630186b974c"
+          }
+        },
+        "reference": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/references/L/Pt63.out"
+      },
+      {
+        "case": "SialicAcid",
+        "system": "SialicAcid",
+        "original": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/original_inputs/L/SialicAcid.dat",
+        "source": "/home/dc1394/openmx4.0_gpu/work/large_example/SialicAcid.dat",
+        "original_sha256": "9175362d96ce6423e7a3383319a5435e85072f1bbe1095ef5fadeefdfd602df7",
+        "routes": {
+          "fork_gpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/L/fork_gpu/large_example/SialicAcid.dat",
+            "sha256": "062cb72548da00f94de6dfb408081ddaead76e38965bff44d67b49264224450e"
+          },
+          "fork_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/L/fork_cpu/large_example/SialicAcid.dat",
+            "sha256": "1819f93858a29ca8571b08738deffc19b4b72d118ee6250833c2fbb8d32ddb5b"
+          },
+          "upstream_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/L/upstream_cpu/large_example/SialicAcid.dat",
+            "sha256": "1819f93858a29ca8571b08738deffc19b4b72d118ee6250833c2fbb8d32ddb5b"
+          }
+        },
+        "reference": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/references/L/SialicAcid.out"
+      },
+      {
+        "case": "ZrB2_2x2",
+        "system": "ZrB2_2x2",
+        "original": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/original_inputs/L/ZrB2_2x2.dat",
+        "source": "/home/dc1394/openmx4.0_gpu/work/large_example/ZrB2_2x2.dat",
+        "original_sha256": "d31735b20697aa7e7f2d4c02d603fe20e28dc68cbc917ef4938650d54ce73e82",
+        "routes": {
+          "fork_gpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/L/fork_gpu/large_example/ZrB2_2x2.dat",
+            "sha256": "4c9a7faabe714e4f331c624fdb4af137b8e4918eef301041c088886b3bd7d3c1"
+          },
+          "fork_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/L/fork_cpu/large_example/ZrB2_2x2.dat",
+            "sha256": "9e4fae90e27e780ef3af763c9b4d415de1ff8015059d50f46bc1b014dfde346a"
+          },
+          "upstream_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/L/upstream_cpu/large_example/ZrB2_2x2.dat",
+            "sha256": "9e4fae90e27e780ef3af763c9b4d415de1ff8015059d50f46bc1b014dfde346a"
+          }
+        },
+        "reference": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/references/L/ZrB2_2x2.out"
+      },
+      {
+        "case": "nsV4Bz5",
+        "system": "nsV4Bz5",
+        "original": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/original_inputs/L/nsV4Bz5.dat",
+        "source": "/home/dc1394/openmx4.0_gpu/work/large_example/nsV4Bz5.dat",
+        "original_sha256": "0614c3619e1b04916d05649685c94415fc7270ae9fe88a7c33a92bac1dbb84e6",
+        "routes": {
+          "fork_gpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/L/fork_gpu/large_example/nsV4Bz5.dat",
+            "sha256": "cb5c44824e02d706c4e546b010ecc9720dc2bcac7fac7f3d6378a7e44d197a09"
+          },
+          "fork_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/L/fork_cpu/large_example/nsV4Bz5.dat",
+            "sha256": "323e220e22d0bad0fb17447c5e60af34a0b887ff4a35d4754fc6c7fdfea1445f"
+          },
+          "upstream_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/L/upstream_cpu/large_example/nsV4Bz5.dat",
+            "sha256": "323e220e22d0bad0fb17447c5e60af34a0b887ff4a35d4754fc6c7fdfea1445f"
+          }
+        },
+        "reference": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/references/L/nsV4Bz5.out"
+      }
+    ],
+    "sidia333_nc_cluster": [
+      {
+        "case": "sidia333_nc_cluster",
+        "system": "sidia333_nc_cluster",
+        "original": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/original_inputs/sidia333_nc_cluster/sidia333_nc_cluster.dat",
+        "source": "/home/dc1394/openmx4.0_gpu/benchmarks/inputs/sidia333_nc_cluster.dat",
+        "original_sha256": "9c5466abf560c6481b83ec9a51976f4b218856a1da330e5a209b9041239decd0",
+        "routes": {
+          "fork_gpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/sidia333_nc_cluster/fork_gpu/input.dat",
+            "sha256": "c399f989d14f8ec39a3243759971cfd636299d5f8bdfbeacf25e75aafa1908b4"
+          },
+          "fork_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/sidia333_nc_cluster/fork_cpu/input.dat",
+            "sha256": "1ada124cd1cded00156a2ff31de4c602addf230afb49da897179c8fc93a44045"
+          },
+          "upstream_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/sidia333_nc_cluster/upstream_cpu/input.dat",
+            "sha256": "1ada124cd1cded00156a2ff31de4c602addf230afb49da897179c8fc93a44045"
+          }
+        }
+      }
+    ],
+    "cghelgeo": [
+      {
+        "case": "cghelgeo",
+        "system": "cghelgeo",
+        "original": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/original_inputs/cghelgeo/cghelgeo.dat",
+        "source": "/home/dc1394/openmx4.0_gpu/benchmarks/inputs/cghelgeo.dat",
+        "original_sha256": "9c3958e470820ab2182af859b4749a0f3375c41d1a56ac013e0f398b441d0ff7",
+        "routes": {
+          "fork_gpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/cghelgeo/fork_gpu/input.dat",
+            "sha256": "48369e5d4430257a682ead95acc3d65ab31dbc5c8a8ab407784c9abd7dcbb4a0"
+          },
+          "fork_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/cghelgeo/fork_cpu/input.dat",
+            "sha256": "7769953e52b056cc97603f3fea979333d823d52cf5ae97e5eb98ab4391adbb54"
+          },
+          "upstream_cpu": {
+            "path": "/home/dc1394/openmx4.0_gpu/work/benchmarks_rtx3060_20261102_8x4/runs/cghelgeo/upstream_cpu/input.dat",
+            "sha256": "7769953e52b056cc97603f3fea979333d823d52cf5ae97e5eb98ab4391adbb54"
+          }
+        }
+      }
+    ]
+  },
+  "working_tree": {
+    "returncode": 0,
+    "output": " M source/third_party/GEMMul8\n ? source/third_party/fftw3\n?? work/benchmarks_cghelgeo_20261101_8x2/\n?? work/benchmarks_cghelgeo_20261102_16x1/\n?? work/benchmarks_rtx3060_20261102_8x4/\n?? work/cghelgeo_dc/\n?? work/cghelgeo_gpu_timing_investigation_20261102/\n?? work/cr2_fixed_production_20261012/\n?? work/cr2_investigation_20261012/\n?? work/cuda134_apt_cr2_cpu_20261012/\n?? work/cuda134_apt_cr2_default_20261012/\n?? work/cuda134_apt_glycine_retry_20261012/\n?? work/cuda134_apt_validation_20261012/\n?? work/lib/\n?? work/runtest.result\n"
+  },
+  "hardware": {
+    "cpu": {
+      "returncode": 0,
+      "output": "Architecture:                            x86_64\nCPU op-mode(s):                          32-bit, 64-bit\nAddress sizes:                           43 bits physical, 48 bits virtual\nByte Order:                              Little Endian\nCPU(s):                                  32\nOn-line CPU(s) list:                     0-31\nVendor ID:                               AuthenticAMD\nModel name:                              AMD Ryzen Threadripper 3970X 32-Core Processor\nCPU family:                              23\nModel:                                   49\nThread(s) per core:                      1\nCore(s) per socket:                      32\nSocket(s):                               1\nStepping:                                0\nFrequency boost:                         enabled\nCPU max MHz:                             4549.1211\nCPU min MHz:                             2200.0000\nBogoMIPS:                                7400.13\nFlags:                                   fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc rep_good nopl nonstop_tsc cpuid extd_apicid aperfmperf rapl pni pclmulqdq monitor ssse3 fma cx16 sse4_1 sse4_2 movbe popcnt aes xsave avx f16c rdrand lahf_lm cmp_legacy svm extapic cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw ibs skinit wdt tce topoext perfctr_core perfctr_nb bpext perfctr_llc mwaitx cpb cat_l3 cdp_l3 hw_pstate ssbd mba ibpb stibp vmmcall fsgsbase bmi1 avx2 smep bmi2 cqm rdt_a rdseed adx smap clflushopt clwb sha_ni xsaveopt xsavec xgetbv1 cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local clzero irperf xsaveerptr rdpru wbnoinvd amd_ppin arat npt lbrv svm_lock nrip_save tsc_scale vmcb_clean flushbyasid decodeassists pausefilter pfthreshold avic v_vmsave_vmload vgif v_spec_ctrl umip rdpid overflow_recov succor smca sev sev_es ibpb_exit_to_user\nVirtualization:                          AMD-V\nL1d cache:                               1 MiB (32 instances)\nL1i cache:                               1 MiB (32 instances)\nL2 cache:                                16 MiB (32 instances)\nL3 cache:                                128 MiB (8 instances)\nNUMA node(s):                            1\nNUMA node0 CPU(s):                       0-31\nVulnerability Gather data sampling:      Not affected\nVulnerability Indirect target selection: Not affected\nVulnerability Itlb multihit:             Not affected\nVulnerability L1tf:                      Not affected\nVulnerability Mds:                       Not affected\nVulnerability Meltdown:                  Not affected\nVulnerability Mmio stale data:           Not affected\nVulnerability Reg file data sampling:    Not affected\nVulnerability Retbleed:                  Mitigation; untrained return thunk; SMT disabled\nVulnerability Spec rstack overflow:      Mitigation; SMT disabled\nVulnerability Spec store bypass:         Mitigation; Speculative Store Bypass disabled via prctl\nVulnerability Spectre v1:                Mitigation; usercopy/swapgs barriers and __user pointer sanitization\nVulnerability Spectre v2:                Mitigation; Retpolines; IBPB conditional; STIBP disabled; RSB filling; PBRSB-eIBRS Not affected; BHI Not affected\nVulnerability Srbds:                     Not affected\nVulnerability Tsa:                       Not affected\nVulnerability Tsx async abort:           Not affected\nVulnerability Vmscape:                   Mitigation; IBPB before exit to userspace\n"
+    },
+    "gpu": {
+      "returncode": 0,
+      "output": "Mon Nov  2 14:47:37 2026       \n+-----------------------------------------------------------------------------------------+\n| NVIDIA-SMI 595.99.02              Driver Version: 595.99.02      CUDA Version: 13.2     |\n+-----------------------------------------+------------------------+----------------------+\n| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |\n| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |\n|                                         |                        |               MIG M. |\n|=========================================+========================+======================|\n|   0  NVIDIA GeForce RTX 3060        Off |   00000000:01:00.0 Off |                  N/A |\n| 40%   26C    P8             13W /  170W |      32MiB /  12288MiB |      0%      Default |\n|                                         |                        |                  N/A |\n+-----------------------------------------+------------------------+----------------------+\n\n+-----------------------------------------------------------------------------------------+\n| Processes:                                                                              |\n|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |\n|        ID   ID                                                               Usage      |\n|=========================================================================================|\n|    0   N/A  N/A            2070      G   /usr/lib/xorg/Xorg                        9MiB |\n|    0   N/A  N/A            2183      G   /usr/bin/gnome-shell                      3MiB |\n+-----------------------------------------------------------------------------------------+\n"
+    },
+    "memory": {
+      "returncode": 0,
+      "output": "               total        used        free      shared  buff/cache   available\nMem:           188Gi       2.8Gi       167Gi       5.0Mi        18Gi       184Gi\nSwap:          2.0Gi          0B       2.0Gi\n"
+    }
+  }
+}

@@ -1,0 +1,123 @@
+{
+  "complete": true,
+  "expected_runs": 12,
+  "completed_runs": 12,
+  "expected_cases": 96,
+  "completed_cases": 96,
+  "expected_three_route_comparisons": 96,
+  "comparison_count": 96,
+  "strict_tolerance_energy_hartree": "1E-7",
+  "strict_tolerance_force_hartree_per_bohr": "1E-7",
+  "coordinate_print_tolerance": "0.00001000001",
+  "primary_pass": 94,
+  "primary_mismatches": [
+    {
+      "workload": "cghelgeo",
+      "case": "cghelgeo",
+      "left": "upstream_cpu",
+      "right": "fork_cpu",
+      "abs_delta_energy_hartree": "1.03513E-7",
+      "max_abs_delta_force_hartree_per_bohr": "9.588E-9",
+      "same_atoms_within_print_precision": true,
+      "same_grid": true,
+      "force_components": 1950,
+      "status": "MISMATCH"
+    },
+    {
+      "workload": "cghelgeo",
+      "case": "cghelgeo",
+      "left": "upstream_cpu",
+      "right": "fork_gpu",
+      "abs_delta_energy_hartree": "1.32241E-7",
+      "max_abs_delta_force_hartree_per_bohr": "2.9922E-8",
+      "same_atoms_within_print_precision": true,
+      "same_grid": true,
+      "force_components": 1950,
+      "status": "MISMATCH"
+    }
+  ],
+  "bundled_reference_pass": 90,
+  "bundled_reference_mismatches": [],
+  "unconverged_cases": [
+    {
+      "workload": "sidia333_nc_cluster",
+      "route": "upstream_cpu",
+      "case": "sidia333_nc_cluster",
+      "unconverged_md_count": 1
+    },
+    {
+      "workload": "sidia333_nc_cluster",
+      "route": "fork_cpu",
+      "case": "sidia333_nc_cluster",
+      "unconverged_md_count": 1
+    },
+    {
+      "workload": "sidia333_nc_cluster",
+      "route": "fork_gpu",
+      "case": "sidia333_nc_cluster",
+      "unconverged_md_count": 1
+    }
+  ],
+  "execution": [
+    {
+      "workload": "S",
+      "route": "upstream_cpu",
+      "status": "completed"
+    },
+    {
+      "workload": "S",
+      "route": "fork_cpu",
+      "status": "completed"
+    },
+    {
+      "workload": "S",
+      "route": "fork_gpu",
+      "status": "completed"
+    },
+    {
+      "workload": "L",
+      "route": "upstream_cpu",
+      "status": "completed"
+    },
+    {
+      "workload": "L",
+      "route": "fork_cpu",
+      "status": "completed"
+    },
+    {
+      "workload": "L",
+      "route": "fork_gpu",
+      "status": "completed"
+    },
+    {
+      "workload": "sidia333_nc_cluster",
+      "route": "upstream_cpu",
+      "status": "completed"
+    },
+    {
+      "workload": "sidia333_nc_cluster",
+      "route": "fork_cpu",
+      "status": "completed"
+    },
+    {
+      "workload": "sidia333_nc_cluster",
+      "route": "fork_gpu",
+      "status": "completed"
+    },
+    {
+      "workload": "cghelgeo",
+      "route": "upstream_cpu",
+      "status": "completed"
+    },
+    {
+      "workload": "cghelgeo",
+      "route": "fork_cpu",
+      "status": "completed"
+    },
+    {
+      "workload": "cghelgeo",
+      "route": "fork_gpu",
+      "status": "completed"
+    }
+  ]
+}

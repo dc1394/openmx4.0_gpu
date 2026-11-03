@@ -1,0 +1,6 @@
+SCF convergence interpretation
+The report records OpenMX convergence messages and actual SCF histories.
+For ordinary DFT, the convergence check uses dUele < SCF_Criterion and additional internal conditions. The displayed NormRD is sqrt(abs(internal_norm)); it cannot be compared directly with the printed input criterion to infer convergence.
+Evidence: upstream /home/dc1394/openmx4.0/source/DFT.c:995 and :1293; fork source/DFT.c:1424.
+Upstream N1C999 declared SCF convergence at 85 steps. Its final energy/forces match both fork routes within 1e-7.
+The result.json/runs.json scf_history field contains [SCF iteration, printed NormRD] pairs, not dUele. An interim commentary incorrectly compared these pairs with upstream dUele at cghelgeo SCF 50; that comparison was withdrawn. Raw logs show dUele at step 50: GPU 0.000264538717 Ha, fork CPU 0.000793909402 Ha, upstream CPU 0.000032427203 Ha. No stored scientific comparison used this interim statement; final comparisons use output Utot and all force components.
