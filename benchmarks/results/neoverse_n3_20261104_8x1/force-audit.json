@@ -1,0 +1,652 @@
+{
+  "status": "matched",
+  "measured_source_commit": "6ad8d53e75db6453e70d7bccf34725c541fbfbae",
+  "reference": "timed-01-scalar",
+  "runs": 8,
+  "atoms_per_run": 216,
+  "components_per_run": 648,
+  "parsed_force_values": 5184,
+  "all_pairs": 28,
+  "cross_mode_pairs": 16,
+  "within_mode_pairs": 12,
+  "timed_only_pairs": 15,
+  "units": "Hartree/Bohr",
+  "decimal_fractional_digits": 12,
+  "printed_quantum_Ha_bohr": "1E-12",
+  "output_format": {
+    "source": "source/MD_pac.c",
+    "force_format": "%15.12f",
+    "values": "-Gxyz[k][17], -Gxyz[k][18], -Gxyz[k][19]"
+  },
+  "all_components_decimal_equal": true,
+  "all_force_blocks_byte_equal": true,
+  "common_force_block_sha256": "25d5ccdf9882778ab2be29da1af91a7c75e6ed60167ce39f84b49a1abe35de8b",
+  "maximum_pairwise_component_difference_Ha_bohr": "0",
+  "maximum_pairwise_rms_difference_Ha_bohr": "0",
+  "maximum_pairwise_atom_vector_difference_Ha_bohr": "0",
+  "reference_magnitudes": {
+    "nonzero_components": 646,
+    "zero_components": 2,
+    "max_abs_component_Ha_bohr": "0.000009206316",
+    "rms_component_Ha_bohr": "5.471676114336E-6",
+    "min_atom_force_norm_Ha_bohr": "2.406241883103E-11",
+    "max_atom_force_norm_Ha_bohr": "1.593541393689E-5",
+    "max_norm_atom": 82,
+    "net_force_Ha_bohr": {
+      "x": "3.93E-10",
+      "y": "-2.26E-10",
+      "z": "3.07E-10"
+    },
+    "net_force_norm_Ha_bohr": "5.475162098057E-10"
+  },
+  "all_scf_converged": false,
+  "limitations": [
+    "Forces of the original 25-SCF unconverged workload only.",
+    "Equality below 1e-12 Ha/bohr output resolution and in-memory bit identity are not established.",
+    "Vector norms and net forces are computed from the rounded printed components."
+  ],
+  "run_records": [
+    {
+      "name": "warmup-01-scalar",
+      "phase": "warmup",
+      "mode": "scalar",
+      "repeat": 1,
+      "block_sha256": "25d5ccdf9882778ab2be29da1af91a7c75e6ed60167ce39f84b49a1abe35de8b",
+      "force_components": 648,
+      "nonzero_components": 646,
+      "negative_zero_tokens": 2,
+      "scf_steps": 25,
+      "scf_converged": false
+    },
+    {
+      "name": "warmup-01-sve128",
+      "phase": "warmup",
+      "mode": "sve128",
+      "repeat": 1,
+      "block_sha256": "25d5ccdf9882778ab2be29da1af91a7c75e6ed60167ce39f84b49a1abe35de8b",
+      "force_components": 648,
+      "nonzero_components": 646,
+      "negative_zero_tokens": 2,
+      "scf_steps": 25,
+      "scf_converged": false
+    },
+    {
+      "name": "timed-01-scalar",
+      "phase": "timed",
+      "mode": "scalar",
+      "repeat": 1,
+      "block_sha256": "25d5ccdf9882778ab2be29da1af91a7c75e6ed60167ce39f84b49a1abe35de8b",
+      "force_components": 648,
+      "nonzero_components": 646,
+      "negative_zero_tokens": 2,
+      "scf_steps": 25,
+      "scf_converged": false
+    },
+    {
+      "name": "timed-01-sve128",
+      "phase": "timed",
+      "mode": "sve128",
+      "repeat": 1,
+      "block_sha256": "25d5ccdf9882778ab2be29da1af91a7c75e6ed60167ce39f84b49a1abe35de8b",
+      "force_components": 648,
+      "nonzero_components": 646,
+      "negative_zero_tokens": 2,
+      "scf_steps": 25,
+      "scf_converged": false
+    },
+    {
+      "name": "timed-02-sve128",
+      "phase": "timed",
+      "mode": "sve128",
+      "repeat": 2,
+      "block_sha256": "25d5ccdf9882778ab2be29da1af91a7c75e6ed60167ce39f84b49a1abe35de8b",
+      "force_components": 648,
+      "nonzero_components": 646,
+      "negative_zero_tokens": 2,
+      "scf_steps": 25,
+      "scf_converged": false
+    },
+    {
+      "name": "timed-02-scalar",
+      "phase": "timed",
+      "mode": "scalar",
+      "repeat": 2,
+      "block_sha256": "25d5ccdf9882778ab2be29da1af91a7c75e6ed60167ce39f84b49a1abe35de8b",
+      "force_components": 648,
+      "nonzero_components": 646,
+      "negative_zero_tokens": 2,
+      "scf_steps": 25,
+      "scf_converged": false
+    },
+    {
+      "name": "timed-03-scalar",
+      "phase": "timed",
+      "mode": "scalar",
+      "repeat": 3,
+      "block_sha256": "25d5ccdf9882778ab2be29da1af91a7c75e6ed60167ce39f84b49a1abe35de8b",
+      "force_components": 648,
+      "nonzero_components": 646,
+      "negative_zero_tokens": 2,
+      "scf_steps": 25,
+      "scf_converged": false
+    },
+    {
+      "name": "timed-03-sve128",
+      "phase": "timed",
+      "mode": "sve128",
+      "repeat": 3,
+      "block_sha256": "25d5ccdf9882778ab2be29da1af91a7c75e6ed60167ce39f84b49a1abe35de8b",
+      "force_components": 648,
+      "nonzero_components": 646,
+      "negative_zero_tokens": 2,
+      "scf_steps": 25,
+      "scf_converged": false
+    }
+  ],
+  "pairwise": [
+    {
+      "left": "warmup-01-scalar",
+      "right": "warmup-01-sve128",
+      "group": "cross_mode",
+      "both_timed": false,
+      "max_abs_component_difference_Ha_bohr": "0",
+      "rms_component_difference_Ha_bohr": "0",
+      "max_atom_vector_difference_Ha_bohr": "0",
+      "differing_components": 0,
+      "differing_atoms": 0,
+      "differing_printed_tokens": 0,
+      "force_block_bytes_equal": true,
+      "per_axis_max_abs_difference_Ha_bohr": {
+        "x": "0",
+        "y": "0",
+        "z": "0"
+      }
+    },
+    {
+      "left": "warmup-01-scalar",
+      "right": "timed-01-scalar",
+      "group": "scalar_repeat",
+      "both_timed": false,
+      "max_abs_component_difference_Ha_bohr": "0",
+      "rms_component_difference_Ha_bohr": "0",
+      "max_atom_vector_difference_Ha_bohr": "0",
+      "differing_components": 0,
+      "differing_atoms": 0,
+      "differing_printed_tokens": 0,
+      "force_block_bytes_equal": true,
+      "per_axis_max_abs_difference_Ha_bohr": {
+        "x": "0",
+        "y": "0",
+        "z": "0"
+      }
+    },
+    {
+      "left": "warmup-01-scalar",
+      "right": "timed-01-sve128",
+      "group": "cross_mode",
+      "both_timed": false,
+      "max_abs_component_difference_Ha_bohr": "0",
+      "rms_component_difference_Ha_bohr": "0",
+      "max_atom_vector_difference_Ha_bohr": "0",
+      "differing_components": 0,
+      "differing_atoms": 0,
+      "differing_printed_tokens": 0,
+      "force_block_bytes_equal": true,
+      "per_axis_max_abs_difference_Ha_bohr": {
+        "x": "0",
+        "y": "0",
+        "z": "0"
+      }
+    },
+    {
+      "left": "warmup-01-scalar",
+      "right": "timed-02-sve128",
+      "group": "cross_mode",
+      "both_timed": false,
+      "max_abs_component_difference_Ha_bohr": "0",
+      "rms_component_difference_Ha_bohr": "0",
+      "max_atom_vector_difference_Ha_bohr": "0",
+      "differing_components": 0,
+      "differing_atoms": 0,
+      "differing_printed_tokens": 0,
+      "force_block_bytes_equal": true,
+      "per_axis_max_abs_difference_Ha_bohr": {
+        "x": "0",
+        "y": "0",
+        "z": "0"
+      }
+    },
+    {
+      "left": "warmup-01-scalar",
+      "right": "timed-02-scalar",
+      "group": "scalar_repeat",
+      "both_timed": false,
+      "max_abs_component_difference_Ha_bohr": "0",
+      "rms_component_difference_Ha_bohr": "0",
+      "max_atom_vector_difference_Ha_bohr": "0",
+      "differing_components": 0,
+      "differing_atoms": 0,
+      "differing_printed_tokens": 0,
+      "force_block_bytes_equal": true,
+      "per_axis_max_abs_difference_Ha_bohr": {
+        "x": "0",
+        "y": "0",
+        "z": "0"
+      }
+    },
+    {
+      "left": "warmup-01-scalar",
+      "right": "timed-03-scalar",
+      "group": "scalar_repeat",
+      "both_timed": false,
+      "max_abs_component_difference_Ha_bohr": "0",
+      "rms_component_difference_Ha_bohr": "0",
+      "max_atom_vector_difference_Ha_bohr": "0",
+      "differing_components": 0,
+      "differing_atoms": 0,
+      "differing_printed_tokens": 0,
+      "force_block_bytes_equal": true,
+      "per_axis_max_abs_difference_Ha_bohr": {
+        "x": "0",
+        "y": "0",
+        "z": "0"
+      }
+    },
+    {
+      "left": "warmup-01-scalar",
+      "right": "timed-03-sve128",
+      "group": "cross_mode",
+      "both_timed": false,
+      "max_abs_component_difference_Ha_bohr": "0",
+      "rms_component_difference_Ha_bohr": "0",
+      "max_atom_vector_difference_Ha_bohr": "0",
+      "differing_components": 0,
+      "differing_atoms": 0,
+      "differing_printed_tokens": 0,
+      "force_block_bytes_equal": true,
+      "per_axis_max_abs_difference_Ha_bohr": {
+        "x": "0",
+        "y": "0",
+        "z": "0"
+      }
+    },
+    {
+      "left": "warmup-01-sve128",
+      "right": "timed-01-scalar",
+      "group": "cross_mode",
+      "both_timed": false,
+      "max_abs_component_difference_Ha_bohr": "0",
+      "rms_component_difference_Ha_bohr": "0",
+      "max_atom_vector_difference_Ha_bohr": "0",
+      "differing_components": 0,
+      "differing_atoms": 0,
+      "differing_printed_tokens": 0,
+      "force_block_bytes_equal": true,
+      "per_axis_max_abs_difference_Ha_bohr": {
+        "x": "0",
+        "y": "0",
+        "z": "0"
+      }
+    },
+    {
+      "left": "warmup-01-sve128",
+      "right": "timed-01-sve128",
+      "group": "sve128_repeat",
+      "both_timed": false,
+      "max_abs_component_difference_Ha_bohr": "0",
+      "rms_component_difference_Ha_bohr": "0",
+      "max_atom_vector_difference_Ha_bohr": "0",
+      "differing_components": 0,
+      "differing_atoms": 0,
+      "differing_printed_tokens": 0,
+      "force_block_bytes_equal": true,
+      "per_axis_max_abs_difference_Ha_bohr": {
+        "x": "0",
+        "y": "0",
+        "z": "0"
+      }
+    },
+    {
+      "left": "warmup-01-sve128",
+      "right": "timed-02-sve128",
+      "group": "sve128_repeat",
+      "both_timed": false,
+      "max_abs_component_difference_Ha_bohr": "0",
+      "rms_component_difference_Ha_bohr": "0",
+      "max_atom_vector_difference_Ha_bohr": "0",
+      "differing_components": 0,
+      "differing_atoms": 0,
+      "differing_printed_tokens": 0,
+      "force_block_bytes_equal": true,
+      "per_axis_max_abs_difference_Ha_bohr": {
+        "x": "0",
+        "y": "0",
+        "z": "0"
+      }
+    },
+    {
+      "left": "warmup-01-sve128",
+      "right": "timed-02-scalar",
+      "group": "cross_mode",
+      "both_timed": false,
+      "max_abs_component_difference_Ha_bohr": "0",
+      "rms_component_difference_Ha_bohr": "0",
+      "max_atom_vector_difference_Ha_bohr": "0",
+      "differing_components": 0,
+      "differing_atoms": 0,
+      "differing_printed_tokens": 0,
+      "force_block_bytes_equal": true,
+      "per_axis_max_abs_difference_Ha_bohr": {
+        "x": "0",
+        "y": "0",
+        "z": "0"
+      }
+    },
+    {
+      "left": "warmup-01-sve128",
+      "right": "timed-03-scalar",
+      "group": "cross_mode",
+      "both_timed": false,
+      "max_abs_component_difference_Ha_bohr": "0",
+      "rms_component_difference_Ha_bohr": "0",
+      "max_atom_vector_difference_Ha_bohr": "0",
+      "differing_components": 0,
+      "differing_atoms": 0,
+      "differing_printed_tokens": 0,
+      "force_block_bytes_equal": true,
+      "per_axis_max_abs_difference_Ha_bohr": {
+        "x": "0",
+        "y": "0",
+        "z": "0"
+      }
+    },
+    {
+      "left": "warmup-01-sve128",
+      "right": "timed-03-sve128",
+      "group": "sve128_repeat",
+      "both_timed": false,
+      "max_abs_component_difference_Ha_bohr": "0",
+      "rms_component_difference_Ha_bohr": "0",
+      "max_atom_vector_difference_Ha_bohr": "0",
+      "differing_components": 0,
+      "differing_atoms": 0,
+      "differing_printed_tokens": 0,
+      "force_block_bytes_equal": true,
+      "per_axis_max_abs_difference_Ha_bohr": {
+        "x": "0",
+        "y": "0",
+        "z": "0"
+      }
+    },
+    {
+      "left": "timed-01-scalar",
+      "right": "timed-01-sve128",
+      "group": "cross_mode",
+      "both_timed": true,
+      "max_abs_component_difference_Ha_bohr": "0",
+      "rms_component_difference_Ha_bohr": "0",
+      "max_atom_vector_difference_Ha_bohr": "0",
+      "differing_components": 0,
+      "differing_atoms": 0,
+      "differing_printed_tokens": 0,
+      "force_block_bytes_equal": true,
+      "per_axis_max_abs_difference_Ha_bohr": {
+        "x": "0",
+        "y": "0",
+        "z": "0"
+      }
+    },
+    {
+      "left": "timed-01-scalar",
+      "right": "timed-02-sve128",
+      "group": "cross_mode",
+      "both_timed": true,
+      "max_abs_component_difference_Ha_bohr": "0",
+      "rms_component_difference_Ha_bohr": "0",
+      "max_atom_vector_difference_Ha_bohr": "0",
+      "differing_components": 0,
+      "differing_atoms": 0,
+      "differing_printed_tokens": 0,
+      "force_block_bytes_equal": true,
+      "per_axis_max_abs_difference_Ha_bohr": {
+        "x": "0",
+        "y": "0",
+        "z": "0"
+      }
+    },
+    {
+      "left": "timed-01-scalar",
+      "right": "timed-02-scalar",
+      "group": "scalar_repeat",
+      "both_timed": true,
+      "max_abs_component_difference_Ha_bohr": "0",
+      "rms_component_difference_Ha_bohr": "0",
+      "max_atom_vector_difference_Ha_bohr": "0",
+      "differing_components": 0,
+      "differing_atoms": 0,
+      "differing_printed_tokens": 0,
+      "force_block_bytes_equal": true,
+      "per_axis_max_abs_difference_Ha_bohr": {
+        "x": "0",
+        "y": "0",
+        "z": "0"
+      }
+    },
+    {
+      "left": "timed-01-scalar",
+      "right": "timed-03-scalar",
+      "group": "scalar_repeat",
+      "both_timed": true,
+      "max_abs_component_difference_Ha_bohr": "0",
+      "rms_component_difference_Ha_bohr": "0",
+      "max_atom_vector_difference_Ha_bohr": "0",
+      "differing_components": 0,
+      "differing_atoms": 0,
+      "differing_printed_tokens": 0,
+      "force_block_bytes_equal": true,
+      "per_axis_max_abs_difference_Ha_bohr": {
+        "x": "0",
+        "y": "0",
+        "z": "0"
+      }
+    },
+    {
+      "left": "timed-01-scalar",
+      "right": "timed-03-sve128",
+      "group": "cross_mode",
+      "both_timed": true,
+      "max_abs_component_difference_Ha_bohr": "0",
+      "rms_component_difference_Ha_bohr": "0",
+      "max_atom_vector_difference_Ha_bohr": "0",
+      "differing_components": 0,
+      "differing_atoms": 0,
+      "differing_printed_tokens": 0,
+      "force_block_bytes_equal": true,
+      "per_axis_max_abs_difference_Ha_bohr": {
+        "x": "0",
+        "y": "0",
+        "z": "0"
+      }
+    },
+    {
+      "left": "timed-01-sve128",
+      "right": "timed-02-sve128",
+      "group": "sve128_repeat",
+      "both_timed": true,
+      "max_abs_component_difference_Ha_bohr": "0",
+      "rms_component_difference_Ha_bohr": "0",
+      "max_atom_vector_difference_Ha_bohr": "0",
+      "differing_components": 0,
+      "differing_atoms": 0,
+      "differing_printed_tokens": 0,
+      "force_block_bytes_equal": true,
+      "per_axis_max_abs_difference_Ha_bohr": {
+        "x": "0",
+        "y": "0",
+        "z": "0"
+      }
+    },
+    {
+      "left": "timed-01-sve128",
+      "right": "timed-02-scalar",
+      "group": "cross_mode",
+      "both_timed": true,
+      "max_abs_component_difference_Ha_bohr": "0",
+      "rms_component_difference_Ha_bohr": "0",
+      "max_atom_vector_difference_Ha_bohr": "0",
+      "differing_components": 0,
+      "differing_atoms": 0,
+      "differing_printed_tokens": 0,
+      "force_block_bytes_equal": true,
+      "per_axis_max_abs_difference_Ha_bohr": {
+        "x": "0",
+        "y": "0",
+        "z": "0"
+      }
+    },
+    {
+      "left": "timed-01-sve128",
+      "right": "timed-03-scalar",
+      "group": "cross_mode",
+      "both_timed": true,
+      "max_abs_component_difference_Ha_bohr": "0",
+      "rms_component_difference_Ha_bohr": "0",
+      "max_atom_vector_difference_Ha_bohr": "0",
+      "differing_components": 0,
+      "differing_atoms": 0,
+      "differing_printed_tokens": 0,
+      "force_block_bytes_equal": true,
+      "per_axis_max_abs_difference_Ha_bohr": {
+        "x": "0",
+        "y": "0",
+        "z": "0"
+      }
+    },
+    {
+      "left": "timed-01-sve128",
+      "right": "timed-03-sve128",
+      "group": "sve128_repeat",
+      "both_timed": true,
+      "max_abs_component_difference_Ha_bohr": "0",
+      "rms_component_difference_Ha_bohr": "0",
+      "max_atom_vector_difference_Ha_bohr": "0",
+      "differing_components": 0,
+      "differing_atoms": 0,
+      "differing_printed_tokens": 0,
+      "force_block_bytes_equal": true,
+      "per_axis_max_abs_difference_Ha_bohr": {
+        "x": "0",
+        "y": "0",
+        "z": "0"
+      }
+    },
+    {
+      "left": "timed-02-sve128",
+      "right": "timed-02-scalar",
+      "group": "cross_mode",
+      "both_timed": true,
+      "max_abs_component_difference_Ha_bohr": "0",
+      "rms_component_difference_Ha_bohr": "0",
+      "max_atom_vector_difference_Ha_bohr": "0",
+      "differing_components": 0,
+      "differing_atoms": 0,
+      "differing_printed_tokens": 0,
+      "force_block_bytes_equal": true,
+      "per_axis_max_abs_difference_Ha_bohr": {
+        "x": "0",
+        "y": "0",
+        "z": "0"
+      }
+    },
+    {
+      "left": "timed-02-sve128",
+      "right": "timed-03-scalar",
+      "group": "cross_mode",
+      "both_timed": true,
+      "max_abs_component_difference_Ha_bohr": "0",
+      "rms_component_difference_Ha_bohr": "0",
+      "max_atom_vector_difference_Ha_bohr": "0",
+      "differing_components": 0,
+      "differing_atoms": 0,
+      "differing_printed_tokens": 0,
+      "force_block_bytes_equal": true,
+      "per_axis_max_abs_difference_Ha_bohr": {
+        "x": "0",
+        "y": "0",
+        "z": "0"
+      }
+    },
+    {
+      "left": "timed-02-sve128",
+      "right": "timed-03-sve128",
+      "group": "sve128_repeat",
+      "both_timed": true,
+      "max_abs_component_difference_Ha_bohr": "0",
+      "rms_component_difference_Ha_bohr": "0",
+      "max_atom_vector_difference_Ha_bohr": "0",
+      "differing_components": 0,
+      "differing_atoms": 0,
+      "differing_printed_tokens": 0,
+      "force_block_bytes_equal": true,
+      "per_axis_max_abs_difference_Ha_bohr": {
+        "x": "0",
+        "y": "0",
+        "z": "0"
+      }
+    },
+    {
+      "left": "timed-02-scalar",
+      "right": "timed-03-scalar",
+      "group": "scalar_repeat",
+      "both_timed": true,
+      "max_abs_component_difference_Ha_bohr": "0",
+      "rms_component_difference_Ha_bohr": "0",
+      "max_atom_vector_difference_Ha_bohr": "0",
+      "differing_components": 0,
+      "differing_atoms": 0,
+      "differing_printed_tokens": 0,
+      "force_block_bytes_equal": true,
+      "per_axis_max_abs_difference_Ha_bohr": {
+        "x": "0",
+        "y": "0",
+        "z": "0"
+      }
+    },
+    {
+      "left": "timed-02-scalar",
+      "right": "timed-03-sve128",
+      "group": "cross_mode",
+      "both_timed": true,
+      "max_abs_component_difference_Ha_bohr": "0",
+      "rms_component_difference_Ha_bohr": "0",
+      "max_atom_vector_difference_Ha_bohr": "0",
+      "differing_components": 0,
+      "differing_atoms": 0,
+      "differing_printed_tokens": 0,
+      "force_block_bytes_equal": true,
+      "per_axis_max_abs_difference_Ha_bohr": {
+        "x": "0",
+        "y": "0",
+        "z": "0"
+      }
+    },
+    {
+      "left": "timed-03-scalar",
+      "right": "timed-03-sve128",
+      "group": "cross_mode",
+      "both_timed": true,
+      "max_abs_component_difference_Ha_bohr": "0",
+      "rms_component_difference_Ha_bohr": "0",
+      "max_atom_vector_difference_Ha_bohr": "0",
+      "differing_components": 0,
+      "differing_atoms": 0,
+      "differing_printed_tokens": 0,
+      "force_block_bytes_equal": true,
+      "per_axis_max_abs_difference_Ha_bohr": {
+        "x": "0",
+        "y": "0",
+        "z": "0"
+      }
+    }
+  ]
+}

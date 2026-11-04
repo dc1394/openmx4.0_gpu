@@ -62,6 +62,32 @@ input-overrides.json lists the path/output/solver/restart changes. Input and
 binary/data hashes are retained in manifest.json and results.json.gz.
 cpu-numerical-toolchain and core-host-sve-abi CTest checks both passed.
 
+Independent force-component audit
+---------------------------------
+The original result.out files were re-read and checked against their recorded
+SHA256 hashes. The complete coordinates.forces block was extracted from each
+file independently of the earlier binary-float parser. Decimal comparisons
+retain all 12 printed fractional digits, and token/byte comparisons also
+retain the two negative-zero components.
+
+All 28 pairs of the eight runs agree: 16 scalar/SVE128 pairs and 12 same-mode
+repeat pairs (15 pairs when considering only the six timed runs). Maximum
+absolute component difference, component RMS difference, and maximum atom
+force-vector difference are all 0 Ha/bohr. All 648-component tables are
+byte-identical, including atom identities, printed coordinates and signed
+zeros. Their common block SHA256 is:
+25d5ccdf9882778ab2be29da1af91a7c75e6ed60167ce39f84b49a1abe35de8b
+
+This is a nontrivial comparison: 646/648 reference components are nonzero;
+the largest absolute component is 9.206316e-6 Ha/bohr. The largest atomic
+force norm is 1.593541393689e-5 Ha/bohr (atom 82). Norms and net forces in
+force-audit.json are calculated from the rounded printed components.
+
+source/MD_pac.c prints -Gxyz[k][17], -Gxyz[k][18], -Gxyz[k][19] with %15.12f
+in Hartree/Bohr, giving a printed quantum of 1e-12 Ha/bohr. Sub-quantum
+differences or in-memory bitwise equality cannot be inferred. These remain
+forces from the unconverged 25-SCF workload, not validated converged forces.
+
 Files and reproduction
 ----------------------
 results.json.gz: full original parsed records, including all forces, SCF
@@ -73,12 +99,31 @@ input.dat.gz: exact common runtime input, including original whitespace
   (absolute DATA.PATH is machine-specific; decompress with gzip -dc).
 environment.txt, manifest.json: toolchain, configuration and provenance.
 analysis.json, analysis.txt: independent analysis and verification summary.
+force-blocks.json.gz: exact extracted force blocks from all eight original
+  outputs, their block hashes and full-output provenance hashes.
+force-audit.json, force-audit.txt: detailed force magnitudes and all 28
+  component/vector/RMS comparisons, including repeatability checks.
+force-components.csv: all 648 reference components and their ranges across
+  eight runs; force-pairs.csv: pairwise difference statistics.
+audit_forces.py: independent Decimal extraction/audit and reproducibility
+  check. test_audit_forces.py tests one-quantum errors, cancelling errors,
+  signed zeros, coordinate changes, missing/duplicate rows and nonfinite data.
 reproduce.sh: corrected script used for this completed campaign. Run as an
   ordinary user; sudo is used only for apt dependencies. A new invocation
   creates a fresh output directory and does not reuse the published timings.
 
 From the repository root, validate the published records without running MPI:
   python3 benchmarks/results/neoverse_n3_20261104_8x1/validate.py
+
+Verify only the force audit from the committed blocks and numerical archive:
+  python3 benchmarks/results/neoverse_n3_20261104_8x1/audit_forces.py
+
+Run its parser/comparison regression checks (no MPI calculations):
+  python3 benchmarks/results/neoverse_n3_20261104_8x1/test_audit_forces.py -v
+
+To re-extract the force audit from the original local campaign outputs:
+  python3 benchmarks/results/neoverse_n3_20261104_8x1/audit_forces.py --collect /path/to/campaign
+This verifies the full original output hashes before extracting the blocks.
 
 To reproduce the complete build and measurements on Debian 12 AArch64:
   bash benchmarks/results/neoverse_n3_20261104_8x1/reproduce.sh

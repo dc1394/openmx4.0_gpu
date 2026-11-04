@@ -8,6 +8,8 @@ from pathlib import Path
 import re
 import statistics
 
+import audit_forces
+
 
 def main():
     root = Path(__file__).resolve().parent
@@ -59,6 +61,7 @@ def main():
         assert median == report['timings'][mode]['native_median_seconds']
         assert median == analysis[mode + '_median_seconds']
     assert analysis['speedup'] == analysis['scalar_median_seconds'] / analysis['sve128_median_seconds']
+    audit_forces.verify(root)
     print('PASS: file hashes, 8 runs, rank audits, energies, 648 forces, SCF histories, native times and medians.')
     print('SCF did not converge in any run; agreement concerns the original 25-iteration workload.')
 

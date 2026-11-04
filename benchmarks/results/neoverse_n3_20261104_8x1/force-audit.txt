@@ -1,0 +1,19 @@
+Force agreement audit: Neoverse N3, 8 MPI x 1 OpenMP
+Status: matched; 216 atoms x 3 components x 8 runs = 5184 force values.
+All 28 run pairs: 16 scalar/SVE128 pairs and 12 same-mode repeat pairs.
+There are 15 pairs among the six timed runs; warmups are included in the full audit.
+Maximum component difference: 0 Ha/bohr
+Maximum RMS component difference: 0 Ha/bohr
+Maximum atom-vector difference: 0 Ha/bohr
+All force blocks byte-identical, including signed zeros: True
+Common block SHA256: 25d5ccdf9882778ab2be29da1af91a7c75e6ed60167ce39f84b49a1abe35de8b
+Reference: 646 nonzero force components, 2 zero components.
+Largest absolute component: 0.000009206316 Ha/bohr
+Largest atom-force norm: 1.593541393689E-5 Ha/bohr (atom 82)
+These are nonzero forces, not a trivial all-zero match.
+source/MD_pac.c writes -Gxyz[k][17], -Gxyz[k][18], -Gxyz[k][19]
+using %15.12f in Hartree/Bohr.
+Decimal comparisons preserve all 12 fractional digits and signed-zero tokens.
+Differences below the 1e-12 Ha/bohr output resolution cannot be excluded.
+This audit does not establish in-memory bit identity or converged-force accuracy.
+All eight calculations reached the original 25-SCF limit without convergence.

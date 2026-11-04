@@ -392,7 +392,10 @@ On Neoverse N3 with 8 MPI ranks and one OpenMP thread per rank, the
 host scalar kernels and **1550.631 s** with SVE128: **1.121x** speedup,
 or **10.8%** less time (medians of three runs after one warmup per mode).
 Total energies, all 648 force components and printed SCF histories agreed
-exactly in all eight runs. All runs reached the original **25-SCF limit
+exactly in all eight runs. An independent Decimal force audit checked all
+28 run pairs: the maximum component, RMS and atom-vector differences were
+zero at the **1e-12 Ha/bohr** output resolution; the complete force blocks,
+including signed zeros, were byte-identical. All runs reached the original **25-SCF limit
 without convergence**; these timings describe that fixed workload, not a
 converged result. BLAS/ELPA optimizations were shared between modes.
 [Results, phase timings, logs and reproduction script](benchmarks/results/neoverse_n3_20261104_8x1/README.txt)
