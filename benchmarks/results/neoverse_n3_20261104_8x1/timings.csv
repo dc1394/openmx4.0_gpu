@@ -1,0 +1,9 @@
+phase,repeat,mode,status,native_seconds,wall_seconds,energy_Ha,scf_steps,scf_converged,directory,error
+warmup,1,scalar,completed,1733.697,1734.1125351580013,-887.30960736914,25,False,/home/dc1394/openmx-benchmarks/20261104T061716Z-43730/warmup-01-scalar,
+warmup,1,sve128,completed,1553.799,1554.1999029069993,-887.30960736914,25,False,/home/dc1394/openmx-benchmarks/20261104T061716Z-43730/warmup-01-sve128,
+timed,1,scalar,completed,1739.999,1740.3998698340001,-887.30960736914,25,False,/home/dc1394/openmx-benchmarks/20261104T061716Z-43730/timed-01-scalar,
+timed,1,sve128,completed,1553.806,1554.1949869700002,-887.30960736914,25,False,/home/dc1394/openmx-benchmarks/20261104T061716Z-43730/timed-01-sve128,
+timed,2,sve128,completed,1550.315,1550.6946741989996,-887.30960736914,25,False,/home/dc1394/openmx-benchmarks/20261104T061716Z-43730/timed-02-sve128,
+timed,2,scalar,completed,1738.314,1738.6898317889973,-887.30960736914,25,False,/home/dc1394/openmx-benchmarks/20261104T061716Z-43730/timed-02-scalar,
+timed,3,scalar,completed,1737.031,1737.418789751002,-887.30960736914,25,False,/home/dc1394/openmx-benchmarks/20261104T061716Z-43730/timed-03-scalar,
+timed,3,sve128,completed,1550.631,1551.0040880239976,-887.30960736914,25,False,/home/dc1394/openmx-benchmarks/20261104T061716Z-43730/timed-03-sve128,

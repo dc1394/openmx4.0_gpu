@@ -1,0 +1,96 @@
+{
+  "measured_source_commit": "6ad8d53e75db6453e70d7bccf34725c541fbfbae",
+  "measurement_directory": "/home/dc1394/openmx-benchmarks/20261104T061716Z-43730",
+  "cpu": "Neoverse-N3",
+  "gpu_present": false,
+  "mpi_ranks": 8,
+  "openmp_threads_per_rank": 1,
+  "warmups_per_mode": 1,
+  "timed_runs_per_mode": 3,
+  "runtime_switches": {
+    "scalar": "OPENMX_HOST_SIMD=scalar",
+    "sve128": "OPENMX_HOST_SIMD=sve128"
+  },
+  "comparison_scope": "OpenMX host kernels; compiler/BLAS/ELPA optimizations shared",
+  "cmake_configuration": {
+    "CMAKE_BUILD_TYPE": "Release",
+    "CMAKE_CXX_COMPILER": "/usr/bin/g++",
+    "CMAKE_CXX_FLAGS": "",
+    "CMAKE_CXX_FLAGS_RELEASE": "-O3 -DNDEBUG",
+    "CMAKE_C_COMPILER": "/usr/bin/gcc",
+    "CMAKE_C_FLAGS": "",
+    "CMAKE_C_FLAGS_RELEASE": "-O3 -DNDEBUG",
+    "CMAKE_Fortran_COMPILER": "/usr/bin/gfortran",
+    "CMAKE_Fortran_FLAGS": "",
+    "CMAKE_Fortran_FLAGS_RELEASE": "-O3",
+    "OPENMX_BUILD_JOBS": "4",
+    "OPENMX_CORE_BACKEND": "SERIAL",
+    "OPENMX_CORE_HOST_SIMD": "ON",
+    "OPENMX_CORE_HOST_SVE": "ON",
+    "OPENMX_CPU_COMPILER": "GCC",
+    "OPENMX_CPU_ELPA_KERNELS": "auto",
+    "OPENMX_CPU_LINALG": "OPENBLAS",
+    "OPENMX_CPU_MPI": "OPENMPI",
+    "OPENMX_GPU_BACKEND": "CPU"
+  },
+  "original_cache_sha256": "cd94f5ba079b279a8967e45fb37effc26cb90d9252ccbaf8edf7594eabf0a5d8",
+  "sha256_recorded_artifacts": {
+    "/home/dc1394/.local/opt/openmx4.0-cpu/bin/openmx": "22d9b2ab48745a7c5b8b737d726c535489d2a1c6dc80a9c98761c8cefba51d94",
+    "/home/dc1394/.local/opt/openmx4.0-cpu/lib/libopenmx_core.so": "144c40e16f87ca7d54007c46d88c865dde078820f36e795af52bd98fab2c5a96",
+    "/home/dc1394/.local/opt/openmx4.0-cpu/lib/libopenmx_host_simd.so": "190ea137268acc0ee45a2425a06b94e68df6d2a3cf7a54e6bae85c3df9334727",
+    "/home/dc1394/openmx4.0_gpu/benchmarks/inputs/sidia333_nc_cluster.dat": "9c5466abf560c6481b83ec9a51976f4b218856a1da330e5a209b9041239decd0",
+    "/home/dc1394/openmx4.0_gpu/DFT_DATA19/PAO/Si7.0.pao": "24c45d323ad0e4f652776791c0dd9a4c1357d7e63b91333503634401352f843f",
+    "/home/dc1394/openmx4.0_gpu/DFT_DATA19/VPS/Si_PBE19.vps": "9a274b3f50cd247d53e735b8ad1669d491286934b61c295bcd6e8b6ba555d80a"
+  },
+  "runs": [
+    {
+      "name": "warmup-01-scalar",
+      "output_sha256": "54b840596f43bd2ea79c99841506c12d19e464488adb2b993c2b90edf1c30759",
+      "input_sha256": "1c627569e34f479dbc41f16f75e467453c1f91b5834e1beb89e89749d41e2ccf",
+      "stdout_sha256": "a02d390a191921a5a753cef757604957246d463443c910d022d9f7af3eeab4ce"
+    },
+    {
+      "name": "warmup-01-sve128",
+      "output_sha256": "9a2129dd65fee7ac6e5a7c6678eb2f5e6c3dafde6bb3bea54403da9a0b079f86",
+      "input_sha256": "1c627569e34f479dbc41f16f75e467453c1f91b5834e1beb89e89749d41e2ccf",
+      "stdout_sha256": "1aecbb03372c02de65d89dd3a76b79fada75061ab570f6416785d270c061f1ab"
+    },
+    {
+      "name": "timed-01-scalar",
+      "output_sha256": "08d43790fdcd2038e74fcb10ee2c3f0a822a4484f385d36719d8a6a326a24cfa",
+      "input_sha256": "1c627569e34f479dbc41f16f75e467453c1f91b5834e1beb89e89749d41e2ccf",
+      "stdout_sha256": "4ee177efd7839f923e6472ff4b4b77f12fd1d98fb2bf415efed0855cb1a3739c"
+    },
+    {
+      "name": "timed-01-sve128",
+      "output_sha256": "89dc7a91af13eea4feb5e3739644a7092454d694c910ee36072a3bfbb5154d2f",
+      "input_sha256": "1c627569e34f479dbc41f16f75e467453c1f91b5834e1beb89e89749d41e2ccf",
+      "stdout_sha256": "d3e99a37def9f716f767b2c4247083b4db03c9005a3308b2f39bb22c0524d283"
+    },
+    {
+      "name": "timed-02-sve128",
+      "output_sha256": "6f2195fcc1d85b1b6cc9ce0f0d532c7aad44b021dab404c799263ef116dcc040",
+      "input_sha256": "1c627569e34f479dbc41f16f75e467453c1f91b5834e1beb89e89749d41e2ccf",
+      "stdout_sha256": "104214b289b199167a5671665d27eb199ae0dd213993dee29af82b167e82a1d2"
+    },
+    {
+      "name": "timed-02-scalar",
+      "output_sha256": "fdfdf56ecfef4d044a069e11d162079e7f53b12775e0a604f7c91c7627ba46c2",
+      "input_sha256": "1c627569e34f479dbc41f16f75e467453c1f91b5834e1beb89e89749d41e2ccf",
+      "stdout_sha256": "54f1d16e72628b97c7be12989cc6e94b0e4301f7a505d8b9ffdf8352034b9362"
+    },
+    {
+      "name": "timed-03-scalar",
+      "output_sha256": "38b314cc9a440966bf3e89c8d5e59f7a109257be20f92f67be599d1adf353dc3",
+      "input_sha256": "1c627569e34f479dbc41f16f75e467453c1f91b5834e1beb89e89749d41e2ccf",
+      "stdout_sha256": "e584323eddf4389f954a41294d17c929e61052fe2127a04cfbc048526c145dbd"
+    },
+    {
+      "name": "timed-03-sve128",
+      "output_sha256": "52f33fd2a52028b3adc05ccb2bd4829be5db18a5c0f033b34b5378858318dca8",
+      "input_sha256": "1c627569e34f479dbc41f16f75e467453c1f91b5834e1beb89e89749d41e2ccf",
+      "stdout_sha256": "21d1000fa80056042cc47ac7f8aafc2b947a9cad0586e7386b722ffeaa37b104"
+    }
+  ],
+  "raw_output_storage": "Raw result.out files remain in measurement_directory. Full parsed coordinates, forces, SCF histories, rank audits, commands, and timings are retained in results.json.gz."
+}

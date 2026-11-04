@@ -1,0 +1,193 @@
+{
+  "input": "sidia333_nc_cluster.dat",
+  "mpi_ranks": 8,
+  "omp_threads_per_rank": 1,
+  "cpu": "Neoverse-N3",
+  "git_head": "6ad8d53e75db6453e70d7bccf34725c541fbfbae",
+  "timed_repetitions_per_mode": 3,
+  "warmups_per_mode": 1,
+  "scalar_median_seconds": 1738.314,
+  "sve128_median_seconds": 1550.631,
+  "speedup": 1.1210365328695222,
+  "wall_time_reduction_percent": 10.796841077043617,
+  "saving_seconds": 187.683,
+  "all_eight_runs_normally_completed": true,
+  "all_eight_rank_audits_verified": true,
+  "recorded_outputs_independently_reparsed": true,
+  "artifact_hashes_verified": true,
+  "energy_Ha": -887.30960736914,
+  "energy_force_scf_history_identical_at_printed_precision": true,
+  "atom_count": 216,
+  "force_components": 648,
+  "grid": [
+    140,
+    140,
+    140
+  ],
+  "scf_iterations": 25,
+  "scf_converged": false,
+  "comparison_scope": "Host scalar kernels vs host SVE128, same binary and BLAS/ELPA; not all-code SIMD disablement",
+  "phases": [
+    {
+      "phase": "Total Computational Time",
+      "scalar_median_seconds": 1738.314,
+      "sve128_median_seconds": 1550.631,
+      "saving_seconds": 187.683,
+      "speedup": 1.1210365328695222
+    },
+    {
+      "phase": "readfile",
+      "scalar_median_seconds": 0.152,
+      "sve128_median_seconds": 0.152,
+      "saving_seconds": 0.0,
+      "speedup": 1.0
+    },
+    {
+      "phase": "truncation",
+      "scalar_median_seconds": 1.793,
+      "sve128_median_seconds": 1.875,
+      "saving_seconds": -0.08200000000000007,
+      "speedup": 0.9562666666666666
+    },
+    {
+      "phase": "MD_pac",
+      "scalar_median_seconds": 0.004,
+      "sve128_median_seconds": 0.004,
+      "saving_seconds": 0.0,
+      "speedup": 1.0
+    },
+    {
+      "phase": "OutData",
+      "scalar_median_seconds": 8.685,
+      "sve128_median_seconds": 8.684,
+      "saving_seconds": 0.0010000000000012221,
+      "speedup": 1.0001151543067712
+    },
+    {
+      "phase": "HWF",
+      "scalar_median_seconds": 0.0,
+      "sve128_median_seconds": 0.0,
+      "saving_seconds": 0.0,
+      "speedup": null
+    },
+    {
+      "phase": "DFT",
+      "scalar_median_seconds": 1727.769,
+      "sve128_median_seconds": 1539.838,
+      "saving_seconds": 187.93100000000004,
+      "speedup": 1.1220459554836288
+    },
+    {
+      "phase": "Set_OLP_Kin",
+      "scalar_median_seconds": 0.908,
+      "sve128_median_seconds": 0.686,
+      "saving_seconds": 0.22199999999999998,
+      "speedup": 1.3236151603498543
+    },
+    {
+      "phase": "Set_Nonlocal",
+      "scalar_median_seconds": 1.209,
+      "sve128_median_seconds": 1.084,
+      "saving_seconds": 0.125,
+      "speedup": 1.1153136531365313
+    },
+    {
+      "phase": "Set_ProExpn_VNA",
+      "scalar_median_seconds": 22.736,
+      "sve128_median_seconds": 16.478,
+      "saving_seconds": 6.257999999999999,
+      "speedup": 1.3797790994052674
+    },
+    {
+      "phase": "Set_Hamiltonian",
+      "scalar_median_seconds": 239.281,
+      "sve128_median_seconds": 178.921,
+      "saving_seconds": 60.360000000000014,
+      "speedup": 1.3373555926917466
+    },
+    {
+      "phase": "Poisson",
+      "scalar_median_seconds": 0.321,
+      "sve128_median_seconds": 0.323,
+      "saving_seconds": -0.0020000000000000018,
+      "speedup": 0.9938080495356038
+    },
+    {
+      "phase": "Diagonalization",
+      "scalar_median_seconds": 1111.65,
+      "sve128_median_seconds": 1080.086,
+      "saving_seconds": 31.564000000000078,
+      "speedup": 1.029223598861572
+    },
+    {
+      "phase": "Mixing_DM",
+      "scalar_median_seconds": 2.708,
+      "sve128_median_seconds": 2.758,
+      "saving_seconds": -0.04999999999999982,
+      "speedup": 0.9818709209572154
+    },
+    {
+      "phase": "Force",
+      "scalar_median_seconds": 79.462,
+      "sve128_median_seconds": 71.388,
+      "saving_seconds": 8.073999999999998,
+      "speedup": 1.113100240936852
+    },
+    {
+      "phase": "Total_Energy",
+      "scalar_median_seconds": 11.47,
+      "sve128_median_seconds": 11.17,
+      "saving_seconds": 0.3000000000000007,
+      "speedup": 1.0268576544315131
+    },
+    {
+      "phase": "Set_Aden_Grid",
+      "scalar_median_seconds": 0.431,
+      "sve128_median_seconds": 0.358,
+      "saving_seconds": 0.07300000000000001,
+      "speedup": 1.2039106145251397
+    },
+    {
+      "phase": "Set_Orbitals_Grid",
+      "scalar_median_seconds": 2.723,
+      "sve128_median_seconds": 2.253,
+      "saving_seconds": 0.46999999999999975,
+      "speedup": 1.2086107412339102
+    },
+    {
+      "phase": "Set_Density_Grid",
+      "scalar_median_seconds": 251.606,
+      "sve128_median_seconds": 172.185,
+      "saving_seconds": 79.42099999999999,
+      "speedup": 1.4612538839039404
+    },
+    {
+      "phase": "RestartFileDFT",
+      "scalar_median_seconds": 0.045,
+      "sve128_median_seconds": 0.05,
+      "saving_seconds": -0.0050000000000000044,
+      "speedup": 0.8999999999999999
+    },
+    {
+      "phase": "Mulliken_Charge",
+      "scalar_median_seconds": 0.182,
+      "sve128_median_seconds": 0.183,
+      "saving_seconds": -0.0010000000000000009,
+      "speedup": 0.994535519125683
+    },
+    {
+      "phase": "FFT(2D)_Density",
+      "scalar_median_seconds": 0.87,
+      "sve128_median_seconds": 0.886,
+      "saving_seconds": -0.016000000000000014,
+      "speedup": 0.9819413092550789
+    },
+    {
+      "phase": "Others",
+      "scalar_median_seconds": 3.042,
+      "sve128_median_seconds": 2.949,
+      "saving_seconds": 0.09299999999999997,
+      "speedup": 1.0315361139369277
+    }
+  ]
+}

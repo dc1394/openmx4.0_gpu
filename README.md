@@ -386,6 +386,18 @@ NEON FP64-to-FP32 conversion follows ordinary scalar rounding, including
 ties, instead of the round-to-odd conversion in Kokkos 5.2.2.
 For ARM numerical validation with real MPI calculations, see
 [the CPU validation instructions](docs/GPU_BACKENDS.md#armneonsve-の検証).
+
+On Neoverse N3 with 8 MPI ranks and one OpenMP thread per rank, the
+216-atom `sidia333_nc_cluster.dat` CPU calculation took **1738.314 s** with
+host scalar kernels and **1550.631 s** with SVE128: **1.121x** speedup,
+or **10.8%** less time (medians of three runs after one warmup per mode).
+Total energies, all 648 force components and printed SCF histories agreed
+exactly in all eight runs. All runs reached the original **25-SCF limit
+without convergence**; these timings describe that fixed workload, not a
+converged result. BLAS/ELPA optimizations were shared between modes.
+[Results, phase timings, logs and reproduction script](benchmarks/results/neoverse_n3_20261104_8x1/README.txt)
+record the measured source commit and toolchain.
+
 The optional `openmx_grid_benchmark` target, enabled with
 `-DOPENMX_CORE_BUILD_BENCHMARKS=ON`, compares the CPU quadratures including
 their packing and worker overhead; see [the performance checks](docs/PERFORMANCE_REGRESSION.md).

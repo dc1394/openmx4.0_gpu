@@ -1,0 +1,32 @@
+OpenMX 4.0 GPU CPU benchmark analysis
+Input: sidia333_nc_cluster.dat (216 atoms)
+CPU: Neoverse-N3; 8 MPI ranks x 1 OpenMP thread; ELPA2 CPU solver
+Source commit: 6ad8d53e75db6453e70d7bccf34725c541fbfbae
+Each mode: 1 warmup + 3 timed runs. Statistics exclude warmups.
+
+Scalar median: 1738.314 s
+SVE128 median: 1550.631 s
+Speedup: 1.121037x
+Time saved: 187.683 s (10.7968%)
+
+All 8 runs ended normally. Each run's 8 rank audits confirm distinct CPU
+bindings, 1 OpenMP thread per rank, VL=128 and the requested host SIMD mode.
+Recorded output data were independently reparsed and all artifact hashes match.
+Final total energy: -887.30960736914 Ha
+All energies, 648 force components and all printed SCF history values are
+identical across the 8 runs. This establishes equality at printed precision,
+not a comparison of unprinted in-memory floating-point bits.
+All runs stop at 25 SCF iterations WITHOUT convergence, as explicitly reported
+by OpenMX. The comparison concerns the original 25-iteration workload; it does
+not establish a converged ground-state result.
+
+Phase times below are medians of the reported maximum MPI-rank times.
+Separate medians/maxima need not add to the total.
+Set_Hamiltonian: scalar 239.281 s, SVE128 178.921 s, 1.3374x
+Set_Density_Grid: scalar 251.606 s, SVE128 172.185 s, 1.4613x
+Set_ProExpn_VNA: scalar 22.736 s, SVE128 16.478 s, 1.3798x
+Force: scalar 79.462 s, SVE128 71.388 s, 1.1131x
+Diagonalization: scalar 1111.650 s, SVE128 1080.086 s, 1.0292x
+
+Diagonalization occupies 69.7% of SVE128 total time.
+The SIMD switch selects OpenMX host kernels; BLAS/ELPA optimizations are shared.

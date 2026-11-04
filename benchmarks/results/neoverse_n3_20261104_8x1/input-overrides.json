@@ -1,0 +1,9 @@
+{
+  "System.CurrrentDirectory": "./",
+  "System.Name": "result",
+  "DATA.PATH": "/home/dc1394/openmx4.0_gpu/DFT_DATA19",
+  "level.of.stdout": "1",
+  "level.of.fileout": "1",
+  "scf.eigen.lib": "elpa2",
+  "scf.restart": "off"
+}

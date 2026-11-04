@@ -1,0 +1,18 @@
+Internal ctest changing into directory: /home/dc1394/openmx4.0_gpu/build/cpu-benchmark
+Test project /home/dc1394/openmx4.0_gpu/build/cpu-benchmark
+    Start  1: cpu-numerical-toolchain
+1/2 Test  #1: cpu-numerical-toolchain ..........   Passed    0.09 sec
+    Start 64: core-host-sve-abi
+2/2 Test #64: core-host-sve-abi ................   Passed    0.00 sec
+
+100% tests passed, 0 tests failed out of 2
+
+Label Time Summary:
+core           =   0.00 sec*proc (1 test)
+cpu            =   0.17 sec*proc (1 test)
+host-simd      =   0.00 sec*proc (1 test)
+integration    =   0.17 sec*proc (1 test)
+mpi            =   0.17 sec*proc (1 test)
+unit           =   0.00 sec*proc (1 test)
+
+Total Test time (real) =   0.10 sec
