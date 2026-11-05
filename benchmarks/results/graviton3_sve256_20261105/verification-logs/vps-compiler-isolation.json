@@ -1,0 +1,38 @@
+[
+  {
+    "name": "scalable",
+    "flags": [
+      "-msve-vector-bits=scalable"
+    ],
+    "status": 0,
+    "stdout": "PASS VPS adapter contents\n",
+    "stderr": ""
+  },
+  {
+    "name": "no-slp",
+    "flags": [
+      "-fno-tree-slp-vectorize"
+    ],
+    "status": 0,
+    "stdout": "PASS VPS adapter contents\n",
+    "stderr": ""
+  },
+  {
+    "name": "no-loop",
+    "flags": [
+      "-fno-tree-loop-vectorize"
+    ],
+    "status": 1,
+    "stdout": "",
+    "stderr": "VPS bridge metadata changed\n"
+  },
+  {
+    "name": "no-sve",
+    "flags": [
+      "-mcpu=neoverse-v1+nosve"
+    ],
+    "status": 0,
+    "stdout": "PASS VPS adapter contents\n",
+    "stderr": ""
+  }
+]

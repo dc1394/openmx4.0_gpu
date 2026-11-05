@@ -1,0 +1,4 @@
+ELPA 6 ranks x 1 threads: PASS
+ELPA 6 ranks x 2 threads: PASS
+ELPA 8 ranks x 1 threads: PASS
+ELPA 8 ranks x 2 threads: PASS

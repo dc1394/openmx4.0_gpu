@@ -1,0 +1,10 @@
+{
+  "purpose": "Numerical validation only; overlapped installation, compilation and ELPA tests. Timing excluded.",
+  "baseline": "baseline-01",
+  "candidate": "validate-openblas-25",
+  "energy_difference_Ha": 3.7971403799019754e-11,
+  "max_force_difference_Ha_bohr": 1.1700000000005326e-10,
+  "same_atoms": true,
+  "same_grid": true,
+  "steps": 25
+}

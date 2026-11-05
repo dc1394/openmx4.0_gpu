@@ -1,0 +1,48 @@
+{
+  "command": [
+    "/usr/lib64/openmpi/bin/mpirun",
+    "-np",
+    "32",
+    "--bind-to",
+    "core",
+    "--map-by",
+    "slot:PE=1",
+    "/usr/bin/python3",
+    "/home/ec2-user/openmx4.0_gpu/tools/bench_sve256_local.py",
+    "--rank",
+    "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx"
+  ],
+  "overrides": {
+    "DATA.PATH": "/home/ec2-user/openmx4.0_gpu/DFT_DATA19",
+    "level.of.fileout": "1",
+    "scf.eigen.lib": "elpa2",
+    "scf.restart": "off",
+    "scf.maxIter": "3"
+  },
+  "original_sha256": "9c5466abf560c6481b83ec9a51976f4b218856a1da330e5a209b9041239decd0",
+  "effective_sha256": "6d794a8471d654b6e34fa54b010be7b87f117a6a8636bfa4e636750ac2ebd9bf",
+  "binary_sha256": "1389b786e269155c4bb00e2269ae8c23c52fe55846b8e1c4bf2bd931318b4057",
+  "libraries": {
+    "libopenmx_host_simd.so": "1511a69bb3d19d4c887c3b789f043e59aa91bda93cc1f351be3e7e60cfc5826a",
+    "libopenmx_core.so": "53dd64fd8bc6a4c0c54fd3fbd7023bd174528518949999e35bbb947be5f4a783"
+  },
+  "ranks": 32,
+  "threads": 1,
+  "openblas_threads_environment": 1,
+  "steps": 3,
+  "mode": "sve256",
+  "environment": {
+    "OPENMX_HOST_SIMD": "sve256",
+    "OPENMX_GPU": "0",
+    "OMP_NUM_THREADS": "1",
+    "OMP_DYNAMIC": "FALSE",
+    "OMP_MAX_ACTIVE_LEVELS": "1",
+    "OMP_PROC_BIND": "close",
+    "OMP_PLACES": "cores",
+    "OPENBLAS_NUM_THREADS": "1",
+    "GOTO_NUM_THREADS": "1"
+  },
+  "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+  "blas_sha256": "e1cc7061791a17634b397a4f735e94d8c346f0a3a0cdba9e611806ca06728d49",
+  "purpose": "pilot"
+}

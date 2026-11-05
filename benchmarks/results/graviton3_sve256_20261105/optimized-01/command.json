@@ -1,0 +1,65 @@
+{
+  "command": [
+    "/usr/lib64/openmpi/bin/mpirun",
+    "-np",
+    "32",
+    "--bind-to",
+    "core",
+    "--map-by",
+    "slot:PE=1",
+    "/usr/bin/python3",
+    "/home/ec2-user/openmx4.0_gpu/tools/bench_sve256_local.py",
+    "--rank",
+    "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/optimized-install/bin/openmx"
+  ],
+  "overrides": {
+    "DATA.PATH": "/home/ec2-user/openmx4.0_gpu/DFT_DATA19",
+    "level.of.fileout": "1",
+    "scf.eigen.lib": "elpa2",
+    "scf.restart": "off"
+  },
+  "original_sha256": "9c5466abf560c6481b83ec9a51976f4b218856a1da330e5a209b9041239decd0",
+  "effective_sha256": "bad11210eae89a265b36ebc73f150489ce55aff9367c4847b01f38d3853b9cf7",
+  "binary_sha256": "12ee844072356e8e7920bc0b3aff9050700696c1ba6631cb1f32b28b9caded5a",
+  "harness_sha256": "4df5a3f421752e2fc490be588ad7b8aabf0fa9a53fbb0fffcef7d6ac85f1a34a",
+  "libraries": {
+    "libopenmx_host_simd.so": "1511a69bb3d19d4c887c3b789f043e59aa91bda93cc1f351be3e7e60cfc5826a",
+    "libopenmx_core.so": "53dd64fd8bc6a4c0c54fd3fbd7023bd174528518949999e35bbb947be5f4a783"
+  },
+  "ranks": 32,
+  "threads": 1,
+  "openblas_threads_environment": 1,
+  "steps": 25,
+  "mode": "sve256",
+  "purpose": "benchmark",
+  "started_utc": "2026-11-05T04:39:40.525622+00:00",
+  "expected_blas_core": "NEOVERSEV1",
+  "environment": {
+    "OPENMX_HOST_SIMD": "sve256",
+    "OPENMX_GPU": "0",
+    "OMP_NUM_THREADS": "1",
+    "OMP_DYNAMIC": "FALSE",
+    "OMP_MAX_ACTIVE_LEVELS": "1",
+    "OMP_PROC_BIND": "close",
+    "OMP_PLACES": "cores",
+    "OPENBLAS_NUM_THREADS": "1",
+    "GOTO_NUM_THREADS": "1"
+  },
+  "build": {
+    "source_commit": "3871b1f0fb880aa1ee3b3201e7f51d6bdf6c6e96",
+    "source_diff_sha256": "d6904c66fd0bd8efb23e8ee283ca41d4cbff106a5c8fe138ef6d138973b47b8f",
+    "scalapack_block_size": 32,
+    "elpa_real_kernel": "SVE256_BLOCK2",
+    "elpa_complex_kernel": "SVE256_BLOCK2",
+    "blas": "OpenBLAS 0.3.34, NEOVERSEV1, OpenMP",
+    "cpu": "Neoverse V1",
+    "sve_bits": 256,
+    "auto_vectorization": "scalable",
+    "explicit_kernel_vector_bits": 256,
+    "flags": "-mcpu=neoverse-v1 -msve-vector-bits=scalable -fno-fast-math -ffp-contract=off",
+    "elpa_fortran_flags": "-O2 -fPIC"
+  },
+  "blas_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+  "blas_sha256": "dda311fbc5327f0a691e8cd5b90de33c082b73d51d69490a5abba45bf3972e20",
+  "blas_kind": "OpenBLAS"
+}

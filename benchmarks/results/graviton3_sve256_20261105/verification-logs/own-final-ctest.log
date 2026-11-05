@@ -1,0 +1,1335 @@
+Internal ctest changing into directory: /home/ec2-user/openmx4.0_gpu/build/cpu-sve256
+Test project /home/ec2-user/openmx4.0_gpu/build/cpu-sve256
+        Start  42: mgpu-gemm
+        Start 616: stress-nonlocal
+        Start 145: basis-package-consumer
+        Start  23: nc-block-indices
+        Start  49: hubbard-force-views
+        Start 614: stress-halo
+        Start  27: core-hole-force-views
+        Start  51: dense-kernel-indexing
+  1/627 Test  #51: dense-kernel-indexing .............................   Passed   16.61 sec
+        Start 615: stress-vna
+  2/627 Test #614: stress-halo .......................................   Passed   21.06 sec
+        Start 589: hamiltonian-packing-calculation-state-lifecycle
+  3/627 Test  #27: core-hole-force-views .............................   Passed   21.13 sec
+        Start  17: gpu-worker-resource-lifecycle
+  4/627 Test  #49: hubbard-force-views ...............................   Passed   21.82 sec
+        Start  37: cmake-driver
+  5/627 Test  #23: nc-block-indices ..................................   Passed   22.75 sec
+        Start  44: orbital-evaluation
+  6/627 Test #615: stress-vna ........................................   Passed   14.67 sec
+        Start  21: environment-registry
+  7/627 Test #145: basis-package-consumer ............................   Passed   34.79 sec
+        Start  30: force-hnl-gpu-batches
+  8/627 Test  #17: gpu-worker-resource-lifecycle .....................   Passed   13.84 sec
+        Start 613: stress-grid
+  9/627 Test #589: hamiltonian-packing-calculation-state-lifecycle ...   Passed   14.08 sec
+        Start  28: projector-force-views
+ 10/627 Test  #37: cmake-driver ......................................   Passed   13.88 sec
+        Start 588: orbital-calculation-state-lifecycle
+ 11/627 Test  #44: orbital-evaluation ................................   Passed   12.96 sec
+        Start 620: neutral-pair
+ 12/627 Test  #21: environment-registry ..............................   Passed   11.21 sec
+        Start  31: force-vna-gpu-resources
+ 13/627 Test #613: stress-grid .......................................   Passed    9.18 sec
+        Start  15: gemmul8-cache-resource-lifecycle
+ 14/627 Test  #28: projector-force-views .............................   Passed    9.10 sec
+        Start 593: mixing-h-calculation-state-lifecycle
+ 15/627 Test #588: orbital-calculation-state-lifecycle ...............   Passed    9.03 sec
+        Start  58: hvna-workspace-integrals
+ 16/627 Test #620: neutral-pair ......................................   Passed    9.07 sec
+        Start 587: hamiltonian-gpu-calculation-state-lifecycle
+ 17/627 Test  #30: force-hnl-gpu-batches .............................   Passed    9.99 sec
+        Start 605: cwf-band-helpers
+ 18/627 Test  #31: force-vna-gpu-resources ...........................   Passed    8.11 sec
+        Start 608: total-energy-coulomb
+ 19/627 Test #605: cwf-band-helpers ..................................   Passed    6.63 sec
+        Start 617: stress-neutral
+ 20/627 Test #587: hamiltonian-gpu-calculation-state-lifecycle .......   Passed    7.00 sec
+        Start 612: stress-xc
+ 21/627 Test #593: mixing-h-calculation-state-lifecycle ..............   Passed    7.67 sec
+        Start 609: total-energy-xc
+ 22/627 Test  #58: hvna-workspace-integrals ..........................   Passed    7.35 sec
+        Start  35: projector-capacity-recovery
+ 23/627 Test  #15: gemmul8-cache-resource-lifecycle ..................   Passed    7.96 sec
+        Start  25: force3-points-threading
+ 24/627 Test #616: stress-nonlocal ...................................   Passed   53.81 sec
+        Start 598: mixing-history-native
+ 25/627 Test  #25: force3-points-threading ...........................   Passed    4.89 sec
+        Start 607: total-energy-workspace
+ 26/627 Test #608: total-energy-coulomb ..............................   Passed    6.60 sec
+        Start  29: force-hnl-gpu-archives
+ 27/627 Test #617: stress-neutral ....................................   Passed    5.95 sec
+        Start 600: band-noncol-calculation-state-lifecycle
+ 28/627 Test  #35: projector-capacity-recovery .......................   Passed    5.41 sec
+        Start 160: io-package-consumer
+ 29/627 Test #612: stress-xc .........................................   Passed    5.92 sec
+        Start  41: mgpu-runtime
+ 30/627 Test #609: total-energy-xc ...................................   Passed    5.86 sec
+        Start 610: total-energy-dispersion
+ 31/627 Test #598: mixing-history-native .............................   Passed    4.93 sec
+        Start 599: band-col-calculation-state-lifecycle
+ 32/627 Test #160: io-package-consumer ...............................   Passed    4.17 sec
+        Start  56: dsvna-workspace-integrals
+ 33/627 Test #600: band-noncol-calculation-state-lifecycle ...........   Passed    4.39 sec
+        Start 601: cluster-col-calculation-state-lifecycle
+ 34/627 Test #610: total-energy-dispersion ...........................   Passed    3.99 sec
+        Start 359: core-grid-assembly-layouts
+ 35/627 Test  #41: mgpu-runtime ......................................   Passed    4.09 sec
+        Start 602: cluster-noncol-calculation-state-lifecycle
+ 36/627 Test #607: total-energy-workspace ............................   Passed    4.82 sec
+        Start  89: basis-lebedev-moments
+ 37/627 Test  #29: force-hnl-gpu-archives ............................   Passed    4.65 sec
+        Start  14: gpu-task-resource-lifecycle
+ 38/627 Test #599: band-col-calculation-state-lifecycle ..............   Passed    3.96 sec
+        Start  13: gpu-vector-resource-lifecycle
+ 39/627 Test  #14: gpu-task-resource-lifecycle .......................   Passed    2.94 sec
+        Start  18: gpu-view-resource-lifecycle
+ 40/627 Test  #89: basis-lebedev-moments .............................   Passed    2.98 sec
+        Start 597: mixing-v-workspace-lifecycle
+ 41/627 Test #602: cluster-noncol-calculation-state-lifecycle ........   Passed    3.37 sec
+        Start   3: host-simd-hamiltonian-capacity-CUDA
+ 42/627 Test #359: core-grid-assembly-layouts ........................   Passed    3.54 sec
+        Start   4: host-simd-hamiltonian-capacity-HIP
+ 43/627 Test  #56: dsvna-workspace-integrals .........................   Passed    3.83 sec
+        Start 102: basis-bessel-values
+ 44/627 Test #601: cluster-col-calculation-state-lifecycle ...........   Passed    3.74 sec
+        Start 591: dclno-calculation-state-lifecycle
+ 45/627 Test  #13: gpu-vector-resource-lifecycle .....................   Passed    2.86 sec
+        Start 351: core-grid-assembly-hamiltonian-double
+ 46/627 Test #597: mixing-v-workspace-lifecycle ......................   Passed    2.86 sec
+        Start 348: core-grid-assembly-density-double
+ 47/627 Test  #18: gpu-view-resource-lifecycle .......................   Passed    2.88 sec
+        Start 350: core-grid-assembly-hamiltonian-float
+ 48/627 Test   #3: host-simd-hamiltonian-capacity-CUDA ...............   Passed    2.83 sec
+        Start 347: core-grid-assembly-density-float
+ 49/627 Test #102: basis-bessel-values ...............................   Passed    2.50 sec
+        Start 621: neutral-grid-metadata-native
+ 50/627 Test #591: dclno-calculation-state-lifecycle .................   Passed    2.49 sec
+        Start 592: krylov-calculation-state-lifecycle
+ 51/627 Test #351: core-grid-assembly-hamiltonian-double .............   Passed    2.48 sec
+        Start  26: force-spin-trace-calls
+ 52/627 Test   #4: host-simd-hamiltonian-capacity-HIP ................   Passed    2.80 sec
+        Start 590: dc-calculation-state-lifecycle
+ 53/627 Test #348: core-grid-assembly-density-double .................   Passed    2.46 sec
+        Start  19: eigen-refine-resource-lifecycle
+ 54/627 Test #350: core-grid-assembly-hamiltonian-float ..............   Passed    2.45 sec
+        Start 349: core-grid-assembly-density-split
+ 55/627 Test #590: dc-calculation-state-lifecycle ....................   Passed    2.14 sec
+        Start  40: force-recovery-failures
+ 56/627 Test #592: krylov-calculation-state-lifecycle ................   Passed    2.28 sec
+        Start   5: radial-interpolation-endpoints
+ 57/627 Test #621: neutral-grid-metadata-native ......................   Passed    2.29 sec
+        Start 586: density-calculation-state-lifecycle
+ 58/627 Test  #26: force-spin-trace-calls ............................   Passed    2.23 sec
+        Start 595: mixing-rhok-workspace-lifecycle
+ 59/627 Test #347: core-grid-assembly-density-float ..................   Passed    2.42 sec
+        Start  12: gpu-vector-capacity-recovery
+ 60/627 Test #586: density-calculation-state-lifecycle ...............   Passed    1.73 sec
+        Start  46: angular-momentum
+ 61/627 Test #595: mixing-rhok-workspace-lifecycle ...................   Passed    1.73 sec
+        Start 611: stress-workspace
+ 62/627 Test  #12: gpu-vector-capacity-recovery ......................   Passed    1.68 sec
+        Start 603: solver-noncollinear-energy-output
+ 63/627 Test   #5: radial-interpolation-endpoints ....................   Passed    1.90 sec
+        Start  10: gpu-task-packet-resource-lifecycle
+ 64/627 Test #349: core-grid-assembly-density-split ..................   Passed    2.06 sec
+        Start   8: cusolver-refinement-architecture-policy
+ 65/627 Test  #19: eigen-refine-resource-lifecycle ...................   Passed    2.14 sec
+        Start 594: mixing-rhok-calculation-state-lifecycle
+ 66/627 Test  #40: force-recovery-failures ...........................   Passed    2.03 sec
+        Start 604: cwf-noncollinear-projection
+ 67/627 Test #611: stress-workspace ..................................   Passed    1.62 sec
+        Start 151: xc-package-consumer
+ 68/627 Test #603: solver-noncollinear-energy-output .................   Passed    1.57 sec
+        Start 622: neutral-grid-native
+ 69/627 Test   #8: cusolver-refinement-architecture-policy ...........   Passed    1.50 sec
+        Start  34: force-vna-case1_turns-packing
+ 70/627 Test  #46: angular-momentum ..................................   Passed    1.68 sec
+        Start  33: force-vna-case1-packing
+ 71/627 Test  #10: gpu-task-packet-resource-lifecycle ................   Passed    1.53 sec
+        Start 618: stress-overlap
+ 72/627 Test #604: cwf-noncollinear-projection .......................   Passed    1.46 sec
+        Start  11: gpu-task-cpu-resource-lifecycle
+ 73/627 Test #594: mixing-rhok-calculation-state-lifecycle ...........   Passed    1.47 sec
+        Start 585: olg-cache-native
+ 74/627 Test #585: olg-cache-native ..................................   Passed    1.24 sec
+        Start 619: projector-scope
+ 75/627 Test #622: neutral-grid-native ...............................   Passed    1.37 sec
+        Start  54: vna-workspace-integrals
+ 76/627 Test #151: xc-package-consumer ...............................   Passed    1.39 sec
+        Start 596: mixing-dm-workspace-lifecycle
+ 77/627 Test #618: stress-overlap ....................................   Passed    1.34 sec
+        Start  16: gemmul8-architecture-policy
+ 78/627 Test  #34: force-vna-case1_turns-packing .....................   Passed    1.36 sec
+        Start  47: local-basis-contraction
+ 79/627 Test  #33: force-vna-case1-packing ...........................   Passed    1.36 sec
+        Start  22: gpu-suite-environment
+ 80/627 Test  #11: gpu-task-cpu-resource-lifecycle ...................   Passed    1.33 sec
+        Start   9: gpu-vector-packet-resource-lifecycle
+ 81/627 Test   #9: gpu-vector-packet-resource-lifecycle ..............   Passed    0.95 sec
+        Start  32: force-vna-stream-packing
+ 82/627 Test  #22: gpu-suite-environment .............................   Passed    0.98 sec
+        Start  55: vna-preparation
+ 83/627 Test  #47: local-basis-contraction ...........................   Passed    1.05 sec
+        Start  52: gpu-worker-admission
+ 84/627 Test #619: projector-scope ...................................   Passed    1.15 sec
+        Start  45: gaunt-coefficients
+ 85/627 Test  #16: gemmul8-architecture-policy .......................   Passed    1.10 sec
+        Start  53: integral-threading
+ 86/627 Test #596: mixing-dm-workspace-lifecycle .....................   Passed    1.11 sec
+        Start 606: linear-algebra-link-boundary
+ 87/627 Test  #54: vna-workspace-integrals ...........................   Passed    1.13 sec
+        Start 467: core-radial-execution
+ 88/627 Test #467: core-radial-execution .............................   Passed    0.45 sec
+        Start  24: force-invocation-lifetime
+ 89/627 Test #606: linear-algebra-link-boundary ......................   Passed    0.53 sec
+        Start 361: core-host-olg-unsorted
+ 90/627 Test  #53: integral-threading ................................   Passed    0.57 sec
+        Start 374: core-host-force-vna
+ 91/627 Test  #52: gpu-worker-admission ..............................   Passed    0.68 sec
+        Start  83: basis-real-harmonics-unitarity
+ 92/627 Test  #45: gaunt-coefficients ................................   Passed    0.65 sec
+        Start   7: cluster-col-cpu-density
+ 93/627 Test  #55: vna-preparation ...................................   Passed    0.85 sec
+        Start  43: atomic-hartree-interpolation
+ 94/627 Test  #32: force-vna-stream-packing ..........................   Passed    0.89 sec
+        Start  57: vna-stage-status
+ 95/627 Test  #24: force-invocation-lifetime .........................   Passed    0.37 sec
+        Start 357: core-grid-assembly-simd-equivalence
+ 96/627 Test #361: core-host-olg-unsorted ............................   Passed    0.31 sec
+        Start  36: nonlocal-invocation-lifetime
+ 97/627 Test #374: core-host-force-vna ...............................   Passed    0.28 sec
+        Start   2: cpu-build-accelerator-boundary
+ 98/627 Test   #7: cluster-col-cpu-density ...........................   Passed    0.26 sec
+        Start  39: gpu-error-boundary
+ 99/627 Test  #83: basis-real-harmonics-unitarity ....................   Passed    0.29 sec
+        Start 146: xc-legacy
+100/627 Test  #43: atomic-hartree-interpolation ......................   Passed    0.25 sec
+        Start   6: cluster-noncol-dense-index
+101/627 Test  #57: vna-stage-status ..................................   Passed    0.25 sec
+        Start 339: core-two-center-overlap
+102/627 Test #357: core-grid-assembly-simd-equivalence ...............   Passed    0.24 sec
+        Start 360: core-host-olg-equivalence
+103/627 Test   #2: cpu-build-accelerator-boundary ....................   Passed    0.24 sec
+        Start 384: core-host-energy-nc
+104/627 Test  #36: nonlocal-invocation-lifetime ......................   Passed    0.25 sec
+        Start 489: core-product-execution
+105/627 Test  #39: gpu-error-boundary ................................   Passed    0.23 sec
+        Start 488: core-product-host
+106/627 Test   #6: cluster-noncol-dense-index ........................   Passed    0.15 sec
+        Start  50: dftd3-interpolation
+107/627 Test #146: xc-legacy .........................................   Passed    0.23 sec
+        Start 371: core-host-vna-overlap
+108/627 Test #339: core-two-center-overlap ...........................   Passed    0.14 sec
+        Start 372: core-host-vna-nonlocal
+109/627 Test #360: core-host-olg-equivalence .........................   Passed    0.13 sec
+        Start 480: core-vps-host
+110/627 Test #384: core-host-energy-nc ...............................   Passed    0.13 sec
+        Start 481: core-vps-execution
+111/627 Test #489: core-product-execution ............................   Passed    0.13 sec
+        Start  95: basis-harmonics-values
+112/627 Test #372: core-host-vna-nonlocal ............................   Passed    0.10 sec
+        Start 476: core-table-execution
+113/627 Test #371: core-host-vna-overlap .............................   Passed    0.11 sec
+        Start 475: core-table-host
+114/627 Test #488: core-product-host .................................   Passed    0.13 sec
+        Start 391: core-host-orbitals-dequivalence
+115/627 Test  #50: dftd3-interpolation ...............................   Passed    0.12 sec
+        Start 366: core-host-vna-bessel
+116/627 Test #480: core-vps-host .....................................   Passed    0.07 sec
+        Start  38: arm-cpu-validation
+117/627 Test  #95: basis-harmonics-values ............................   Passed    0.07 sec
+        Start  48: suite-output
+118/627 Test #481: core-vps-execution ................................   Passed    0.07 sec
+        Start 376: core-host-force-grid
+119/627 Test #366: core-host-vna-bessel ..............................   Passed    0.05 sec
+        Start 365: core-host-vna-contract
+120/627 Test #475: core-table-host ...................................   Passed    0.06 sec
+        Start  77: basis-gaunt-tables
+121/627 Test #476: core-table-execution ..............................   Passed    0.07 sec
+        Start 477: core-table-c-api
+122/627 Test #391: core-host-orbitals-dequivalence ...................   Passed    0.06 sec
+        Start 369: core-host-vna-angular
+123/627 Test  #38: arm-cpu-validation ................................   Passed    0.05 sec
+        Start 394: core-host-orbitals-dcosines
+124/627 Test #376: core-host-force-grid ..............................   Passed    0.04 sec
+        Start 494: core-neutral-execution
+125/627 Test  #48: suite-output ......................................   Passed    0.05 sec
+        Start 493: core-neutral-host
+126/627 Test #394: core-host-orbitals-dcosines .......................   Passed    0.03 sec
+        Start 386: core-host-orbitals-equivalence
+127/627 Test #477: core-table-c-api ..................................   Passed    0.04 sec
+        Start 459: core-electronic-matrix-allocation
+128/627 Test  #77: basis-gaunt-tables ................................   Passed    0.04 sec
+        Start 382: core-host-energy-xc
+129/627 Test #369: core-host-vna-angular .............................   Passed    0.04 sec
+        Start  74: basis-gaunt-coefficients
+130/627 Test #365: core-host-vna-contract ............................   Passed    0.04 sec
+131/627 Test #494: core-neutral-execution ............................   Passed    0.03 sec
+        Start   1: cpu-numerical-toolchain
+132/627 Test #493: core-neutral-host .................................   Passed    0.03 sec
+        Start 109: basis-quadrature-moments
+133/627 Test #459: core-electronic-matrix-allocation .................   Passed    0.03 sec
+134/627 Test  #74: basis-gaunt-coefficients ..........................   Passed    0.03 sec
+        Start 375: core-host-force-tiled
+        Start 101: basis-harmonics-concurrent
+135/627 Test #386: core-host-orbitals-equivalence ....................   Passed    0.03 sec
+136/627 Test #382: core-host-energy-xc ...............................   Passed    0.03 sec
+137/627 Test #109: basis-quadrature-moments ..........................   Passed    0.02 sec
+        Start 383: core-host-energy-band
+        Start 182: core-quadrature-contents
+        Start 368: core-host-vna-hvna
+138/627 Test #375: core-host-force-tiled .............................   Passed    0.02 sec
+        Start 390: core-host-orbitals-legacy-difference
+139/627 Test #101: basis-harmonics-concurrent ........................   Passed    0.02 sec
+        Start 198: core-vps-file-contents
+140/627 Test #383: core-host-energy-band .............................   Passed    0.02 sec
+141/627 Test #182: core-quadrature-contents ..........................   Passed    0.02 sec
+        Start 380: core-host-energy-neutral
+        Start 378: core-host-force-nl
+142/627 Test #368: core-host-vna-hvna ................................   Passed    0.02 sec
+        Start 434: core-orbopt-gradient
+143/627 Test #198: core-vps-file-contents ............................   Passed    0.02 sec
+        Start 340: core-two-center-nonlocal-vna
+144/627 Test #378: core-host-force-nl ................................   Passed    0.02 sec
+        Start 370: core-host-vna-convert
+145/627 Test #390: core-host-orbitals-legacy-difference ..............   Passed    0.02 sec
+        Start 345: core-two-center-concurrent
+146/627 Test #380: core-host-energy-neutral ..........................   Passed    0.02 sec
+147/627 Test #434: core-orbopt-gradient ..............................   Passed    0.02 sec
+        Start 464: core-bessel
+        Start 395: core-host-orbitals-segments
+148/627 Test #345: core-two-center-concurrent ........................   Passed    0.01 sec
+        Start 341: core-two-center-geometry
+149/627 Test #464: core-bessel .......................................   Passed    0.01 sec
+150/627 Test #395: core-host-orbitals-segments .......................   Passed    0.01 sec
+        Start 377: core-host-force-points
+        Start 367: core-host-vna-quadrature
+151/627 Test #340: core-two-center-nonlocal-vna ......................   Passed    0.02 sec
+        Start 175: core-vna-gaunt-allocation
+152/627 Test #370: core-host-vna-convert .............................   Passed    0.02 sec
+        Start  98: basis-harmonics-orthogonality
+153/627 Test #377: core-host-force-points ............................   Passed    0.01 sec
+        Start  97: basis-harmonics-poles
+154/627 Test #341: core-two-center-geometry ..........................   Passed    0.01 sec
+        Start 387: core-host-orbitals-runs
+155/627 Test #367: core-host-vna-quadrature ..........................   Passed    0.01 sec
+        Start  66: basis-orbital-radial-legacy
+156/627 Test #175: core-vna-gaunt-allocation .........................   Passed    0.01 sec
+        Start  76: basis-gaunt-integration
+157/627 Test  #98: basis-harmonics-orthogonality .....................   Passed    0.01 sec
+        Start  96: basis-harmonics-derivatives
+158/627 Test  #97: basis-harmonics-poles .............................   Passed    0.01 sec
+        Start 358: core-grid-assembly-packed
+159/627 Test #387: core-host-orbitals-runs ...........................   Passed    0.01 sec
+        Start 509: core-vna-layout
+160/627 Test  #66: basis-orbital-radial-legacy .......................   Passed    0.01 sec
+        Start 465: core-radial-host
+161/627 Test  #76: basis-gaunt-integration ...........................   Passed    0.01 sec
+162/627 Test  #96: basis-harmonics-derivatives .......................   Passed    0.01 sec
+        Start 466: core-cpu-request
+        Start 470: core-borrowed-runtime
+163/627 Test #358: core-grid-assembly-packed .........................   Passed    0.01 sec
+        Start 469: core-lifecycle
+164/627 Test #509: core-vna-layout ...................................   Passed    0.01 sec
+        Start 484: core-pao-transform
+165/627 Test #465: core-radial-host ..................................   Passed    0.01 sec
+        Start 504: core-nonlocal-layout
+166/627 Test #466: core-cpu-request ..................................   Passed    0.01 sec
+        Start 176: core-vna-gaunt-concurrent
+167/627 Test #470: core-borrowed-runtime .............................   Passed    0.01 sec
+        Start 557: core-reciprocal-finalized-runtime
+168/627 Test #469: core-lifecycle ....................................   Passed    0.01 sec
+        Start 172: core-vna-gaunt-contents
+169/627 Test #484: core-pao-transform ................................   Passed    0.00 sec
+        Start 495: core-pair-bessel-values
+170/627 Test #504: core-nonlocal-layout ..............................   Passed    0.01 sec
+171/627 Test #176: core-vna-gaunt-concurrent .........................   Passed    0.00 sec
+        Start 454: core-electronic-matrix-modes
+        Start 458: core-electronic-matrix-invalid
+172/627 Test #557: core-reciprocal-finalized-runtime .................   Passed    0.01 sec
+        Start 460: core-electronic-matrix-concurrent
+173/627 Test #172: core-vna-gaunt-contents ...........................   Passed    0.00 sec
+174/627 Test #495: core-pair-bessel-values ...........................   Passed    0.00 sec
+        Start 552: core-vna-matrix-allocation
+        Start 199: core-vps-file-invalid
+175/627 Test #454: core-electronic-matrix-modes ......................   Passed    0.00 sec
+176/627 Test #458: core-electronic-matrix-invalid ....................   Passed    0.00 sec
+        Start 103: basis-bessel-derivatives
+        Start 203: core-pao-file-allocation
+177/627 Test #460: core-electronic-matrix-concurrent .................   Passed    0.00 sec
+        Start 190: core-quadrature-neutral-context
+178/627 Test #552: core-vna-matrix-allocation ........................   Passed    0.00 sec
+179/627 Test #199: core-vps-file-invalid .............................   Passed    0.00 sec
+        Start 556: core-reciprocal-host-runtime
+        Start 392: core-host-orbitals-dedges
+180/627 Test #103: basis-bessel-derivatives ..........................   Passed    0.00 sec
+181/627 Test #203: core-pao-file-allocation ..........................   Passed    0.00 sec
+        Start 563: core-reciprocal-archive-failure
+        Start 201: core-pao-file-contents
+182/627 Test #190: core-quadrature-neutral-context ...................   Passed    0.00 sec
+183/627 Test #556: core-reciprocal-host-runtime ......................   Passed    0.00 sec
+        Start 130: basis-pao-concurrent
+        Start 433: core-orbopt-reference
+184/627 Test #392: core-host-orbitals-dedges .........................   Passed    0.00 sec
+185/627 Test #563: core-reciprocal-archive-failure ...................   Passed    0.00 sec
+        Start 362: core-host-olg-edges
+        Start 194: core-quadrature-independent
+186/627 Test #201: core-pao-file-contents ............................   Passed    0.00 sec
+187/627 Test #130: basis-pao-concurrent ..............................   Passed    0.00 sec
+188/627 Test #433: core-orbopt-reference .............................   Passed    0.00 sec
+        Start 202: core-pao-file-invalid
+        Start 560: core-reciprocal-concurrent
+        Start 430: core-solver-workspace-lifetime
+189/627 Test #362: core-host-olg-edges ...............................   Passed    0.00 sec
+190/627 Test #194: core-quadrature-independent .......................   Passed    0.00 sec
+        Start 124: basis-vps-concurrent
+        Start 543: core-projector-pipeline-allocation
+191/627 Test #202: core-pao-file-invalid .............................   Passed    0.00 sec
+192/627 Test #560: core-reciprocal-concurrent ........................   Passed    0.00 sec
+193/627 Test #430: core-solver-workspace-lifetime ....................   Passed    0.00 sec
+        Start 559: core-reciprocal-allocation
+        Start 180: core-real-harmonics-allocation
+        Start 583: core-orbital-workspace-allocation
+194/627 Test #124: basis-vps-concurrent ..............................   Passed    0.00 sec
+195/627 Test #543: core-projector-pipeline-allocation ................   Passed    0.00 sec
+        Start 174: core-vna-gaunt-lifetime
+        Start 179: core-real-harmonics-lifetime
+196/627 Test #559: core-reciprocal-allocation ........................   Passed    0.00 sec
+197/627 Test #180: core-real-harmonics-allocation ....................   Passed    0.00 sec
+198/627 Test #583: core-orbital-workspace-allocation .................   Passed    0.00 sec
+        Start 243: core-cwf-observables-concurrent
+        Start 264: core-dynamics-reuse
+        Start 100: basis-harmonics-allocation
+199/627 Test #174: core-vna-gaunt-lifetime ...........................   Passed    0.00 sec
+200/627 Test #179: core-real-harmonics-lifetime ......................   Passed    0.00 sec
+201/627 Test #243: core-cwf-observables-concurrent ...................   Passed    0.00 sec
+        Start 338: core-force-concurrent
+        Start 170: core-vna-simd-workspace-allocation
+        Start 270: core-thermodynamic-energy-reuse
+202/627 Test #264: core-dynamics-reuse ...............................   Passed    0.00 sec
+203/627 Test #100: basis-harmonics-allocation ........................   Passed    0.00 sec
+204/627 Test #338: core-force-concurrent .............................   Passed    0.00 sec
+        Start 131: basis-pao-allocation
+        Start 189: core-quadrature-context-allocation
+        Start 500: core-overlap-ownership
+205/627 Test #170: core-vna-simd-workspace-allocation ................   Passed    0.00 sec
+206/627 Test #270: core-thermodynamic-energy-reuse ...................   Passed    0.00 sec
+        Start 451: core-local-basis-allocation
+        Start 287: core-mixing-policy-shift
+207/627 Test #131: basis-pao-allocation ..............................   Passed    0.00 sec
+208/627 Test #189: core-quadrature-context-allocation ................   Passed    0.00 sec
+209/627 Test #500: core-overlap-ownership ............................   Passed    0.00 sec
+        Start  81: basis-gaunt-concurrent
+        Start 173: core-vna-gaunt-invalid
+        Start 544: core-vna-matrix-layout
+210/627 Test #451: core-local-basis-allocation .......................   Passed    0.00 sec
+211/627 Test #287: core-mixing-policy-shift ..........................   Passed    0.00 sec
+        Start 306: core-pivoted-inverse-lifetime
+        Start 527: core-hvna-failure
+212/627 Test  #81: basis-gaunt-concurrent ............................   Passed    0.00 sec
+213/627 Test #173: core-vna-gaunt-invalid ............................   Passed    0.00 sec
+214/627 Test #544: core-vna-matrix-layout ............................   Passed    0.00 sec
+        Start 571: core-species-overflow
+        Start 431: core-solver-workspace-allocation
+        Start 410: core-native-resource-owned-lifecycle
+215/627 Test #306: core-pivoted-inverse-lifetime .....................   Passed    0.00 sec
+216/627 Test #527: core-hvna-failure .................................   Passed    0.00 sec
+217/627 Test #571: core-species-overflow .............................   Passed    0.00 sec
+        Start 529: core-hvna-workspace-layout
+        Start 188: core-quadrature-context-lifetime
+        Start 555: core-reciprocal-lifecycle
+218/627 Test #431: core-solver-workspace-allocation ..................   Passed    0.00 sec
+219/627 Test #410: core-native-resource-owned-lifecycle ..............   Passed    0.00 sec
+220/627 Test #529: core-hvna-workspace-layout ........................   Passed    0.00 sec
+        Start 581: core-orbital-workspace-independent
+        Start 265: core-dynamics-invalid
+        Start 408: core-native-resource-allocation
+221/627 Test #188: core-quadrature-context-lifetime ..................   Passed    0.00 sec
+222/627 Test #555: core-reciprocal-lifecycle .........................   Passed    0.00 sec
+223/627 Test #581: core-orbital-workspace-independent ................   Passed    0.00 sec
+        Start 256: core-cwf-concurrent
+        Start 288: core-mixing-policy-ratio
+        Start 183: core-quadrature-lifetime
+224/627 Test #265: core-dynamics-invalid .............................   Passed    0.00 sec
+225/627 Test #408: core-native-resource-allocation ...................   Passed    0.00 sec
+226/627 Test #256: core-cwf-concurrent ...............................   Passed    0.00 sec
+        Start 324: core-projector-force-allocation
+        Start 548: core-vna-matrix-replacement
+        Start 326: core-core-hole-coefficients
+227/627 Test #288: core-mixing-policy-ratio ..........................   Passed    0.00 sec
+228/627 Test #183: core-quadrature-lifetime ..........................   Passed    0.00 sec
+        Start 192: core-quadrature-neutral-context-lifetime
+        Start 251: core-cwf-ownership
+229/627 Test #324: core-projector-force-allocation ...................   Passed    0.00 sec
+230/627 Test #548: core-vna-matrix-replacement .......................   Passed    0.00 sec
+231/627 Test #326: core-core-hole-coefficients .......................   Passed    0.00 sec
+        Start 152: io-legacy
+        Start 245: core-cwf-workspace-reuse
+        Start 514: core-vna-preparation-layout
+232/627 Test #192: core-quadrature-neutral-context-lifetime ..........   Passed    0.00 sec
+233/627 Test #251: core-cwf-ownership ................................   Passed    0.00 sec
+        Start 461: core-tensor
+        Start 354: core-grid-assembly-invalid
+234/627 Test #152: io-legacy .........................................   Passed    0.00 sec
+235/627 Test #245: core-cwf-workspace-reuse ..........................   Passed    0.00 sec
+236/627 Test #514: core-vna-preparation-layout .......................   Passed    0.00 sec
+        Start 294: core-mixing-policy-concurrent
+        Start 568: core-species-mdspan
+        Start 229: core-angular-grid-lifetime
+237/627 Test #461: core-tensor .......................................   Passed    0.00 sec
+238/627 Test #354: core-grid-assembly-invalid ........................   Passed    0.00 sec
+239/627 Test #294: core-mixing-policy-concurrent .....................   Passed    0.00 sec
+        Start 401: core-native-adapter-acc
+        Start 217: core-neutral-grid-metadata-lifetime
+        Start 126: basis-pao-contents
+240/627 Test #568: core-species-mdspan ...............................   Passed    0.00 sec
+241/627 Test #229: core-angular-grid-lifetime ........................   Passed    0.00 sec
+242/627 Test #401: core-native-adapter-acc ...........................   Passed    0.00 sec
+        Start 472: core-table-interpolation
+        Start 166: core-vna-host-tables-concurrent
+        Start 171: core-vna-simd-workspace-concurrent
+243/627 Test #217: core-neutral-grid-metadata-lifetime ...............   Passed    0.00 sec
+244/627 Test #126: basis-pao-contents ................................   Passed    0.00 sec
+245/627 Test #472: core-table-interpolation ..........................   Passed    0.00 sec
+        Start 457: core-electronic-matrix-lifecycle
+        Start  87: basis-real-harmonics-allocation
+        Start 535: core-projector-pipeline-pairs-ownership
+246/627 Test #166: core-vna-host-tables-concurrent ...................   Passed    0.00 sec
+247/627 Test #171: core-vna-simd-workspace-concurrent ................   Passed    0.00 sec
+        Start 313: core-force-hnl-batch-concurrent
+        Start 255: core-cwf-lifetime
+248/627 Test #457: core-electronic-matrix-lifecycle ..................   Passed    0.00 sec
+249/627 Test  #87: basis-real-harmonics-allocation ...................   Passed    0.00 sec
+250/627 Test #535: core-projector-pipeline-pairs-ownership ...........   Passed    0.00 sec
+        Start 242: core-cwf-observables-lifetime
+        Start 471: core-capabilities
+        Start 204: core-olg-cache-layout
+251/627 Test #313: core-force-hnl-batch-concurrent ...................   Passed    0.00 sec
+252/627 Test #255: core-cwf-lifetime .................................   Passed    0.00 sec
+253/627 Test #242: core-cwf-observables-lifetime .....................   Passed    0.00 sec
+        Start 333: core-force-overlap
+        Start 304: core-pivoted-inverse-callbacks
+        Start 446: core-local-basis-modes
+254/627 Test #471: core-capabilities .................................   Passed    0.00 sec
+255/627 Test #204: core-olg-cache-layout .............................   Passed    0.00 sec
+256/627 Test #333: core-force-overlap ................................   Passed    0.00 sec
+        Start 186: core-quadrature-context
+        Start 398: core-native-adapter-handles
+        Start 200: core-vps-file-allocation
+257/627 Test #304: core-pivoted-inverse-callbacks ....................   Passed    0.00 sec
+258/627 Test #446: core-local-basis-modes ............................   Passed    0.00 sec
+        Start 419: core-solver-resource-concurrent
+        Start 550: core-vna-matrix-overflow
+259/627 Test #186: core-quadrature-context ...........................   Passed    0.00 sec
+260/627 Test #398: core-native-adapter-handles .......................   Passed    0.00 sec
+        Start 381: core-host-energy-endpoints
+        Start 193: core-quadrature-neutral-context-allocation
+261/627 Test #200: core-vps-file-allocation ..........................   Passed    0.00 sec
+262/627 Test #419: core-solver-resource-concurrent ...................   Passed    0.00 sec
+263/627 Test #550: core-vna-matrix-overflow ..........................   Passed    0.00 sec
+        Start 325: core-projector-force-concurrent
+        Start 342: core-two-center-invalid
+        Start 437: core-orbopt-invalid
+264/627 Test #381: core-host-energy-endpoints ........................   Passed    0.00 sec
+265/627 Test #193: core-quadrature-neutral-context-allocation ........   Passed    0.00 sec
+266/627 Test #325: core-projector-force-concurrent ...................   Passed    0.00 sec
+        Start 165: core-vna-host-tables-allocation
+        Start 402: core-native-resource-lifecycle
+        Start 388: core-host-orbitals-edges
+267/627 Test #342: core-two-center-invalid ...........................   Passed    0.00 sec
+268/627 Test #437: core-orbopt-invalid ...............................   Passed    0.00 sec
+269/627 Test #165: core-vna-host-tables-allocation ...................   Passed    0.00 sec
+        Start 212: core-olg-cache-concurrent
+        Start 418: core-solver-resource-allocation
+        Start 506: core-nonlocal-angular-only
+270/627 Test #402: core-native-resource-lifecycle ....................   Passed    0.00 sec
+271/627 Test #388: core-host-orbitals-edges ..........................   Passed    0.00 sec
+272/627 Test #212: core-olg-cache-concurrent .........................   Passed    0.00 sec
+        Start 290: core-mixing-policy-callbacks
+        Start 308: core-force-hnl-batch-layouts
+        Start 268: core-dynamics-concurrent
+273/627 Test #418: core-solver-resource-allocation ...................   Passed    0.00 sec
+274/627 Test #506: core-nonlocal-angular-only ........................   Passed    0.00 sec
+275/627 Test #290: core-mixing-policy-callbacks ......................   Passed    0.00 sec
+        Start 280: core-energy-components-concurrent
+        Start 208: core-olg-cache-failures
+        Start  65: basis-text-numbers
+276/627 Test #308: core-force-hnl-batch-layouts ......................   Passed    0.00 sec
+277/627 Test #268: core-dynamics-concurrent ..........................   Passed    0.00 sec
+278/627 Test #280: core-energy-components-concurrent .................   Passed    0.00 sec
+        Start 209: core-olg-cache-allocator
+        Start 298: core-mixing-history-failures
+        Start 443: core-orbopt-services
+279/627 Test #208: core-olg-cache-failures ...........................   Passed    0.00 sec
+280/627 Test  #65: basis-text-numbers ................................   Passed    0.00 sec
+281/627 Test #209: core-olg-cache-allocator ..........................   Passed    0.00 sec
+        Start 266: core-dynamics-allocation
+        Start 223: core-neutral-grid-lifetime
+        Start 321: core-projector-force-snapshot
+282/627 Test #298: core-mixing-history-failures ......................   Passed    0.00 sec
+283/627 Test #443: core-orbopt-services ..............................   Passed    0.00 sec
+284/627 Test #266: core-dynamics-allocation ..........................   Passed    0.00 sec
+        Start 423: core-solver-workspace-matrix-scratch
+        Start 416: core-solver-resource-invalid
+        Start 317: core-force-recovery-allocation
+285/627 Test #223: core-neutral-grid-lifetime ........................   Passed    0.00 sec
+286/627 Test #321: core-projector-force-snapshot .....................   Passed    0.00 sec
+287/627 Test #423: core-solver-workspace-matrix-scratch ..............   Passed    0.00 sec
+        Start 260: core-chemical-allocation
+        Start 421: core-solver-workspace-overwrite
+        Start 296: core-mixing-history-reuse
+288/627 Test #416: core-solver-resource-invalid ......................   Passed    0.00 sec
+289/627 Test #317: core-force-recovery-allocation ....................   Passed    0.00 sec
+290/627 Test #260: core-chemical-allocation ..........................   Passed    0.00 sec
+        Start 536: core-projector-pipeline-pairs-empty
+        Start 210: core-olg-cache-empty
+        Start 448: core-local-basis-ownership
+291/627 Test #421: core-solver-workspace-overwrite ...................   Passed    0.00 sec
+292/627 Test #296: core-mixing-history-reuse .........................   Passed    0.00 sec
+293/627 Test #536: core-projector-pipeline-pairs-empty ...............   Passed    0.00 sec
+        Start 214: core-neutral-grid-metadata-replace
+        Start 485: core-product-storage
+        Start 191: core-quadrature-neutral-context-invalid
+294/627 Test #210: core-olg-cache-empty ..............................   Passed    0.00 sec
+295/627 Test #448: core-local-basis-ownership ........................   Passed    0.00 sec
+296/627 Test #214: core-neutral-grid-metadata-replace ................   Passed    0.00 sec
+        Start 483: core-pao-lifecycle
+        Start 335: core-force-invalid
+        Start 397: core-native-adapter-device
+297/627 Test #485: core-product-storage ..............................   Passed    0.00 sec
+298/627 Test #191: core-quadrature-neutral-context-invalid ...........   Passed    0.00 sec
+299/627 Test #483: core-pao-lifecycle ................................   Passed    0.00 sec
+        Start 128: basis-pao-invalid
+        Start 578: core-atomic-independent
+        Start 474: core-table-view
+300/627 Test #335: core-force-invalid ................................   Passed    0.00 sec
+301/627 Test #397: core-native-adapter-device ........................   Passed    0.00 sec
+302/627 Test #128: basis-pao-invalid .................................   Passed    0.00 sec
+        Start 551: core-vna-matrix-concurrent
+        Start 530: core-hvna-workspace-ownership
+        Start 519: core-dsvna-layout
+303/627 Test #578: core-atomic-independent ...........................   Passed    0.00 sec
+304/627 Test #474: core-table-view ...................................   Passed    0.00 sec
+        Start 310: core-force-hnl-batch-invalid
+        Start 127: basis-pao-metadata
+305/627 Test #551: core-vna-matrix-concurrent ........................   Passed    0.00 sec
+306/627 Test #530: core-hvna-workspace-ownership .....................   Passed    0.00 sec
+307/627 Test #519: core-dsvna-layout .................................   Passed    0.00 sec
+        Start 244: core-cwf-workspace-layout
+        Start 525: core-hvna-ownership
+        Start 463: core-fft-grid
+308/627 Test #310: core-force-hnl-batch-invalid ......................   Passed    0.00 sec
+309/627 Test #127: basis-pao-metadata ................................   Passed    0.00 sec
+310/627 Test #244: core-cwf-workspace-layout .........................   Passed    0.00 sec
+        Start 517: core-vna-preparation-c-api
+        Start 442: core-orbopt-exchange
+        Start 417: core-solver-resource-partial
+311/627 Test #525: core-hvna-ownership ...............................   Passed    0.00 sec
+312/627 Test #463: core-fft-grid .....................................   Passed    0.00 sec
+313/627 Test #517: core-vna-preparation-c-api ........................   Passed    0.00 sec
+        Start 498: core-pair-bessel-c-api
+        Start 225: core-angular-grid-layout
+        Start 177: core-real-harmonics-contents
+314/627 Test #442: core-orbopt-exchange ..............................   Passed    0.00 sec
+315/627 Test #417: core-solver-resource-partial ......................   Passed    0.00 sec
+316/627 Test #498: core-pair-bessel-c-api ............................   Passed    0.00 sec
+        Start  80: basis-gaunt-allocation
+        Start 570: core-species-invalid
+        Start 238: core-cwf-observables-reuse
+317/627 Test #225: core-angular-grid-layout ..........................   Passed    0.00 sec
+318/627 Test #177: core-real-harmonics-contents ......................   Passed    0.00 sec
+319/627 Test  #80: basis-gaunt-allocation ............................   Passed    0.00 sec
+        Start 522: core-dsvna-c-api
+        Start 422: core-solver-workspace-complex-overwrite
+        Start 584: core-orbital-workspace-concurrent
+320/627 Test #570: core-species-invalid ..............................   Passed    0.00 sec
+321/627 Test #238: core-cwf-observables-reuse ........................   Passed    0.00 sec
+322/627 Test #522: core-dsvna-c-api ..................................   Passed    0.00 sec
+        Start 455: core-electronic-matrix-mdspan
+        Start 404: core-native-resource-domains
+        Start 344: core-two-center-adapters
+323/627 Test #422: core-solver-workspace-complex-overwrite ...........   Passed    0.00 sec
+324/627 Test #584: core-orbital-workspace-concurrent .................   Passed    0.00 sec
+325/627 Test #455: core-electronic-matrix-mdspan .....................   Passed    0.00 sec
+        Start 499: core-overlap-layout
+        Start 293: core-mixing-policy-allocation
+        Start 482: core-pao-storage
+326/627 Test #404: core-native-resource-domains ......................   Passed    0.00 sec
+327/627 Test #344: core-two-center-adapters ..........................   Passed    0.00 sec
+328/627 Test #499: core-overlap-layout ...............................   Passed    0.00 sec
+        Start 526: core-hvna-empty
+        Start 169: core-vna-simd-workspace-lifetime
+        Start 330: core-core-hole-allocation
+329/627 Test #293: core-mixing-policy-allocation .....................   Passed    0.00 sec
+330/627 Test #482: core-pao-storage ..................................   Passed    0.00 sec
+331/627 Test #526: core-hvna-empty ...................................   Passed    0.00 sec
+        Start 447: core-local-basis-mdspan
+        Start 206: core-olg-cache-invalid
+        Start 289: core-mixing-policy-potential
+332/627 Test #169: core-vna-simd-workspace-lifetime ..................   Passed    0.00 sec
+333/627 Test #330: core-core-hole-allocation .........................   Passed    0.00 sec
+334/627 Test #447: core-local-basis-mdspan ...........................   Passed    0.00 sec
+        Start 250: core-cwf-workspace-concurrent
+        Start 473: core-table-reciprocal
+        Start 547: core-vna-matrix-empty
+335/627 Test #206: core-olg-cache-invalid ............................   Passed    0.00 sec
+336/627 Test #289: core-mixing-policy-potential ......................   Passed    0.00 sec
+337/627 Test #250: core-cwf-workspace-concurrent .....................   Passed    0.00 sec
+        Start 320: core-projector-force-layouts
+        Start 569: core-species-lifecycle
+        Start 507: core-nonlocal-failure
+338/627 Test #473: core-table-reciprocal .............................   Passed    0.00 sec
+339/627 Test #547: core-vna-matrix-empty .............................   Passed    0.00 sec
+340/627 Test #320: core-projector-force-layouts ......................   Passed    0.00 sec
+        Start 284: core-band-energy-allocation
+        Start 554: core-reciprocal-products
+        Start 528: core-hvna-allocation
+341/627 Test #569: core-species-lifecycle ............................   Passed    0.00 sec
+342/627 Test #507: core-nonlocal-failure .............................   Passed    0.00 sec
+343/627 Test #284: core-band-energy-allocation .......................   Passed    0.00 sec
+        Start 240: core-cwf-observables-failures
+        Start 562: core-reciprocal-archive-io
+        Start 228: core-angular-grid-failures
+344/627 Test #554: core-reciprocal-products ..........................   Passed    0.00 sec
+345/627 Test #528: core-hvna-allocation ..............................   Passed    0.00 sec
+346/627 Test #240: core-cwf-observables-failures .....................   Passed    0.00 sec
+        Start 237: core-cwf-observables-ownership
+        Start 572: core-species-allocation
+        Start 540: core-projector-pipeline-exchange-ownership
+347/627 Test #562: core-reciprocal-archive-io ........................   Passed    0.00 sec
+348/627 Test #228: core-angular-grid-failures ........................   Passed    0.00 sec
+349/627 Test #237: core-cwf-observables-ownership ....................   Passed    0.00 sec
+        Start 312: core-force-hnl-batch-nested
+        Start 239: core-cwf-observables-invalid
+        Start 385: core-host-energy-invalid
+350/627 Test #572: core-species-allocation ...........................   Passed    0.00 sec
+351/627 Test #540: core-projector-pipeline-exchange-ownership ........   Passed    0.00 sec
+352/627 Test #312: core-force-hnl-batch-nested .......................   Passed    0.00 sec
+        Start 511: core-vna-failure
+        Start 220: core-neutral-grid-replace
+        Start 453: core-electronic-matrix-layout
+353/627 Test #239: core-cwf-observables-invalid ......................   Passed    0.00 sec
+354/627 Test #385: core-host-energy-invalid ..........................   Passed    0.00 sec
+355/627 Test #511: core-vna-failure ..................................   Passed    0.00 sec
+        Start 248: core-cwf-workspace-failures
+        Start 267: core-dynamics-lifetime
+        Start 187: core-quadrature-context-invalid
+356/627 Test #220: core-neutral-grid-replace .........................   Passed    0.00 sec
+357/627 Test #453: core-electronic-matrix-layout .....................   Passed    0.00 sec
+358/627 Test #248: core-cwf-workspace-failures .......................   Passed    0.00 sec
+        Start 566: core-reciprocal-archive-empty
+        Start 299: core-mixing-history-lifetime
+        Start 269: core-thermodynamic-energy-ownership
+359/627 Test #267: core-dynamics-lifetime ............................   Passed    0.00 sec
+360/627 Test #187: core-quadrature-context-invalid ...................   Passed    0.00 sec
+361/627 Test #566: core-reciprocal-archive-empty .....................   Passed    0.00 sec
+        Start 352: core-grid-assembly-reuse
+        Start 579: core-orbital-workspace-layout
+        Start 302: core-pivoted-inverse-reuse
+362/627 Test #299: core-mixing-history-lifetime ......................   Passed    0.00 sec
+363/627 Test #269: core-thermodynamic-energy-ownership ...............   Passed    0.00 sec
+364/627 Test #352: core-grid-assembly-reuse ..........................   Passed    0.00 sec
+        Start 399: core-native-adapter-failures
+        Start 542: core-projector-pipeline-invocation-failure
+        Start 577: core-atomic-allocation
+365/627 Test #579: core-orbital-workspace-layout .....................   Passed    0.00 sec
+366/627 Test #302: core-pivoted-inverse-reuse ........................   Passed    0.00 sec
+367/627 Test #399: core-native-adapter-failures ......................   Passed    0.00 sec
+        Start 549: core-vna-matrix-invalid
+        Start 439: core-orbopt-lifecycle
+        Start 373: core-host-vna-invalid
+368/627 Test #542: core-projector-pipeline-invocation-failure ........   Passed    0.00 sec
+369/627 Test #577: core-atomic-allocation ............................   Passed    0.00 sec
+370/627 Test #549: core-vna-matrix-invalid ...........................   Passed    0.00 sec
+        Start 496: core-pair-bessel-cache
+        Start 541: core-projector-pipeline-invocation-lifetime
+        Start 393: core-host-orbitals-dinvalid
+371/627 Test #439: core-orbopt-lifecycle .............................   Passed    0.00 sec
+372/627 Test #373: core-host-vna-invalid .............................   Passed    0.00 sec
+373/627 Test #496: core-pair-bessel-cache ............................   Passed    0.00 sec
+        Start  88: basis-real-harmonics-concurrent
+        Start 227: core-angular-grid-invalid
+        Start 275: core-energy-components-ownership
+374/627 Test #541: core-projector-pipeline-invocation-lifetime .......   Passed    0.00 sec
+375/627 Test #393: core-host-orbitals-dinvalid .......................   Passed    0.00 sec
+376/627 Test  #88: basis-real-harmonics-concurrent ...................   Passed    0.00 sec
+        Start 396: core-host-orbitals-sinvalid
+        Start 118: basis-density-concurrent
+        Start 462: core-periodic
+377/627 Test #227: core-angular-grid-invalid .........................   Passed    0.00 sec
+378/627 Test #275: core-energy-components-ownership ..................   Passed    0.00 sec
+379/627 Test #396: core-host-orbitals-sinvalid .......................   Passed    0.00 sec
+        Start 521: core-dsvna-empty
+        Start 501: core-overlap-failure
+        Start  94: basis-lebedev-concurrent
+380/627 Test #118: basis-density-concurrent ..........................   Passed    0.00 sec
+381/627 Test #462: core-periodic .....................................   Passed    0.00 sec
+382/627 Test #521: core-dsvna-empty ..................................   Passed    0.00 sec
+        Start 424: core-solver-workspace-unpivoted-inverse
+        Start 364: core-host-olg-modes
+        Start 254: core-cwf-allocation
+383/627 Test #501: core-overlap-failure ..............................   Passed    0.00 sec
+384/627 Test  #94: basis-lebedev-concurrent ..........................   Passed    0.00 sec
+385/627 Test #424: core-solver-workspace-unpivoted-inverse ...........   Passed    0.00 sec
+        Start 440: core-orbopt-concurrent
+        Start  78: basis-gaunt-invalid
+        Start 331: core-core-hole-concurrent
+386/627 Test #364: core-host-olg-modes ...............................   Passed    0.00 sec
+387/627 Test #254: core-cwf-allocation ...............................   Passed    0.00 sec
+388/627 Test #440: core-orbopt-concurrent ............................   Passed    0.00 sec
+        Start 300: core-mixing-history-concurrent
+        Start 221: core-neutral-grid-invalid
+        Start 178: core-real-harmonics-invalid
+389/627 Test  #78: basis-gaunt-invalid ...............................   Passed    0.00 sec
+390/627 Test #331: core-core-hole-concurrent .........................   Passed    0.00 sec
+391/627 Test #300: core-mixing-history-concurrent ....................   Passed    0.00 sec
+        Start 343: core-two-center-lifecycle
+        Start 497: core-pair-bessel-failure
+        Start 216: core-neutral-grid-metadata-failures
+392/627 Test #221: core-neutral-grid-invalid .........................   Passed    0.00 sec
+393/627 Test #178: core-real-harmonics-invalid .......................   Passed    0.00 sec
+394/627 Test #343: core-two-center-lifecycle .........................   Passed    0.00 sec
+        Start 148: xc-derivatives
+        Start 487: core-product-quadrature
+        Start 407: core-native-resource-invalid
+395/627 Test #497: core-pair-bessel-failure ..........................   Passed    0.00 sec
+396/627 Test #216: core-neutral-grid-metadata-failures ...............   Passed    0.00 sec
+397/627 Test #148: xc-derivatives ....................................   Passed    0.00 sec
+        Start 211: core-olg-cache-lifetime
+        Start 314: core-force-recovery-layouts
+        Start 125: basis-vps-allocation
+398/627 Test #487: core-product-quadrature ...........................   Passed    0.00 sec
+399/627 Test #407: core-native-resource-invalid ......................   Passed    0.00 sec
+400/627 Test #211: core-olg-cache-lifetime ...........................   Passed    0.00 sec
+        Start 286: core-band-energy-concurrent
+        Start 307: core-pivoted-inverse-concurrent
+        Start 235: core-dispersion-workspace-lifetime
+401/627 Test #314: core-force-recovery-layouts .......................   Passed    0.00 sec
+402/627 Test #125: basis-vps-allocation ..............................   Passed    0.00 sec
+403/627 Test #286: core-band-energy-concurrent .......................   Passed    0.00 sec
+        Start 168: core-vna-simd-workspace-invalid
+        Start 323: core-projector-force-lifetime
+        Start 261: core-chemical-lifetime
+404/627 Test #307: core-pivoted-inverse-concurrent ...................   Passed    0.00 sec
+405/627 Test #235: core-dispersion-workspace-lifetime ................   Passed    0.00 sec
+406/627 Test #168: core-vna-simd-workspace-invalid ...................   Passed    0.00 sec
+        Start 508: core-nonlocal-allocation
+        Start 207: core-olg-cache-transfer
+        Start 491: core-neutral-expansion
+407/627 Test #323: core-projector-force-lifetime .....................   Passed    0.00 sec
+408/627 Test #261: core-chemical-lifetime ............................   Passed    0.00 sec
+409/627 Test #508: core-nonlocal-allocation ..........................   Passed    0.00 sec
+        Start 224: core-neutral-grid-concurrent
+        Start 353: core-grid-assembly-exchange
+        Start 301: core-pivoted-inverse-views
+410/627 Test #207: core-olg-cache-transfer ...........................   Passed    0.00 sec
+411/627 Test #491: core-neutral-expansion ............................   Passed    0.00 sec
+412/627 Test #224: core-neutral-grid-concurrent ......................   Passed    0.00 sec
+        Start  82: basis-real-harmonics-values
+        Start 532: core-hvna-workspace-c-api
+        Start 233: core-dispersion-workspace-invalid
+413/627 Test #353: core-grid-assembly-exchange .......................   Passed    0.00 sec
+414/627 Test #301: core-pivoted-inverse-views ........................   Passed    0.00 sec
+415/627 Test  #82: basis-real-harmonics-values .......................   Passed    0.00 sec
+        Start 277: core-energy-components-invalid
+        Start 195: core-atomic-density-contents
+        Start 259: core-chemical-invalid
+416/627 Test #532: core-hvna-workspace-c-api .........................   Passed    0.00 sec
+417/627 Test #233: core-dispersion-workspace-invalid .................   Passed    0.00 sec
+418/627 Test #277: core-energy-components-invalid ....................   Passed    0.00 sec
+        Start 185: core-quadrature-allocation
+        Start 274: core-thermodynamic-energy-concurrent
+        Start 279: core-energy-components-lifetime
+419/627 Test #195: core-atomic-density-contents ......................   Passed    0.00 sec
+420/627 Test #259: core-chemical-invalid .............................   Passed    0.00 sec
+421/627 Test #185: core-quadrature-allocation ........................   Passed    0.00 sec
+        Start 281: core-band-energy-ownership
+        Start 510: core-vna-ownership
+        Start 573: core-species-concurrent
+422/627 Test #274: core-thermodynamic-energy-concurrent ..............   Passed    0.00 sec
+423/627 Test #279: core-energy-components-lifetime ...................   Passed    0.00 sec
+424/627 Test #281: core-band-energy-ownership ........................   Passed    0.00 sec
+        Start 249: core-cwf-workspace-lifetime
+        Start 205: core-olg-cache-identity
+        Start  99: basis-harmonics-invalid
+425/627 Test #510: core-vna-ownership ................................   Passed    0.00 sec
+426/627 Test #573: core-species-concurrent ...........................   Passed    0.00 sec
+427/627 Test #249: core-cwf-workspace-lifetime .......................   Passed    0.00 sec
+        Start 580: core-orbital-workspace-c-api
+        Start 537: core-projector-pipeline-pairs-failure
+        Start 513: core-vna-allocation
+428/627 Test #205: core-olg-cache-identity ...........................   Passed    0.00 sec
+429/627 Test  #99: basis-harmonics-invalid ...........................   Passed    0.00 sec
+430/627 Test #580: core-orbital-workspace-c-api ......................   Passed    0.00 sec
+        Start 561: core-reciprocal-archive-layout
+        Start 575: core-atomic-lifecycle
+        Start 162: core-vna-host-tables-empty
+431/627 Test #537: core-projector-pipeline-pairs-failure .............   Passed    0.00 sec
+432/627 Test #513: core-vna-allocation ...............................   Passed    0.00 sec
+433/627 Test #561: core-reciprocal-archive-layout ....................   Passed    0.00 sec
+        Start 197: core-atomic-density-allocation
+        Start  84: basis-real-harmonics-orbitals
+        Start  90: basis-lebedev-coefficients
+434/627 Test #575: core-atomic-lifecycle .............................   Passed    0.00 sec
+435/627 Test #162: core-vna-host-tables-empty ........................   Passed    0.00 sec
+436/627 Test #197: core-atomic-density-allocation ....................   Passed    0.00 sec
+        Start 332: core-force-layouts
+        Start 534: core-projector-pipeline-pairs-layout
+        Start 403: core-native-resource-host
+437/627 Test  #84: basis-real-harmonics-orbitals .....................   Passed    0.00 sec
+438/627 Test  #90: basis-lebedev-coefficients ........................   Passed    0.00 sec
+439/627 Test #332: core-force-layouts ................................   Passed    0.00 sec
+        Start 468: core-c-api
+        Start 271: core-thermodynamic-energy-invalid
+        Start 379: core-host-force-invalid
+440/627 Test #534: core-projector-pipeline-pairs-layout ..............   Passed    0.00 sec
+441/627 Test #403: core-native-resource-host .........................   Passed    0.00 sec
+442/627 Test #468: core-c-api ........................................   Passed    0.00 sec
+        Start 234: core-dispersion-workspace-failures
+        Start 441: core-orbopt-stationary
+        Start 545: core-vna-matrix-mdspan
+443/627 Test #271: core-thermodynamic-energy-invalid .................   Passed    0.00 sec
+444/627 Test #379: core-host-force-invalid ...........................   Passed    0.00 sec
+445/627 Test #234: core-dispersion-workspace-failures ................   Passed    0.00 sec
+        Start 444: core-orbopt-scratch
+        Start 318: core-force-recovery-nested
+        Start 429: core-solver-workspace-invalid
+446/627 Test #441: core-orbopt-stationary ............................   Passed    0.00 sec
+447/627 Test #545: core-vna-matrix-mdspan ............................   Passed    0.00 sec
+448/627 Test #444: core-orbopt-scratch ...............................   Passed    0.00 sec
+        Start 574: core-atomic-layout
+        Start 531: core-hvna-workspace-empty
+        Start 241: core-cwf-observables-empty
+449/627 Test #318: core-force-recovery-nested ........................   Passed    0.00 sec
+450/627 Test #429: core-solver-workspace-invalid .....................   Passed    0.00 sec
+451/627 Test #574: core-atomic-layout ................................   Passed    0.00 sec
+        Start 292: core-mixing-policy-failures
+        Start 263: core-dynamics-ownership
+        Start 230: core-angular-grid-concurrent
+452/627 Test #531: core-hvna-workspace-empty .........................   Passed    0.00 sec
+453/627 Test #241: core-cwf-observables-empty ........................   Passed    0.00 sec
+454/627 Test #292: core-mixing-policy-failures .......................   Passed    0.00 sec
+        Start 533: core-hvna-workspace-allocation
+        Start 405: core-native-resource-ordering
+        Start 213: core-neutral-grid-metadata-layout
+455/627 Test #263: core-dynamics-ownership ...........................   Passed    0.00 sec
+456/627 Test #230: core-angular-grid-concurrent ......................   Passed    0.00 sec
+457/627 Test #533: core-hvna-workspace-allocation ....................   Passed    0.00 sec
+        Start 215: core-neutral-grid-metadata-invalid
+        Start 449: core-local-basis-lifecycle
+        Start 445: core-local-basis-layouts
+458/627 Test #405: core-native-resource-ordering .....................   Passed    0.00 sec
+459/627 Test #213: core-neutral-grid-metadata-layout .................   Passed    0.00 sec
+460/627 Test #215: core-neutral-grid-metadata-invalid ................   Passed    0.00 sec
+        Start 112: basis-quadrature-concurrent
+        Start 311: core-force-hnl-batch-allocation
+        Start 553: core-reciprocal-layout
+461/627 Test #449: core-local-basis-lifecycle ........................   Passed    0.00 sec
+462/627 Test #445: core-local-basis-layouts ..........................   Passed    0.00 sec
+463/627 Test #112: basis-quadrature-concurrent .......................   Passed    0.00 sec
+        Start 276: core-energy-components-reuse
+        Start 413: core-native-resource-owned-unwind
+        Start 426: core-solver-workspace-orbitals
+464/627 Test #311: core-force-hnl-batch-allocation ...................   Passed    0.00 sec
+465/627 Test #553: core-reciprocal-layout ............................   Passed    0.00 sec
+466/627 Test #276: core-energy-components-reuse ......................   Passed    0.00 sec
+        Start 389: core-host-orbitals-invalid
+        Start 415: core-solver-resource-reuse
+        Start 129: basis-pao-lifetime
+467/627 Test #413: core-native-resource-owned-unwind .................   Passed    0.00 sec
+468/627 Test #426: core-solver-workspace-orbitals ....................   Passed    0.00 sec
+469/627 Test #389: core-host-orbitals-invalid ........................   Passed    0.00 sec
+        Start 490: core-neutral-interpolation
+        Start  64: core-host-sve-abi
+        Start 409: core-native-resource-concurrent
+470/627 Test #415: core-solver-resource-reuse ........................   Passed    0.00 sec
+471/627 Test #129: basis-pao-lifetime ................................   Passed    0.00 sec
+472/627 Test #490: core-neutral-interpolation ........................   Passed    0.00 sec
+        Start 486: core-product-lifecycle
+        Start 478: core-vps-storage
+        Start 167: core-vna-simd-workspace-contents
+473/627 Test  #64: core-host-sve-abi .................................   Passed    0.00 sec
+474/627 Test #409: core-native-resource-concurrent ...................   Passed    0.00 sec
+475/627 Test #486: core-product-lifecycle ............................   Passed    0.00 sec
+        Start 219: core-neutral-grid-layout
+        Start 315: core-force-recovery-lifetime
+        Start 432: core-solver-workspace-concurrent
+476/627 Test #478: core-vps-storage ..................................   Passed    0.00 sec
+477/627 Test #167: core-vna-simd-workspace-contents ..................   Passed    0.00 sec
+478/627 Test #219: core-neutral-grid-layout ..........................   Passed    0.00 sec
+        Start 438: core-orbopt-allocation
+        Start 337: core-force-allocation
+        Start 303: core-pivoted-inverse-failures
+479/627 Test #315: core-force-recovery-lifetime ......................   Passed    0.00 sec
+480/627 Test #432: core-solver-workspace-concurrent ..................   Passed    0.00 sec
+481/627 Test #438: core-orbopt-allocation ............................   Passed    0.00 sec
+        Start 262: core-chemical-concurrent
+        Start 273: core-thermodynamic-energy-lifetime
+        Start 329: core-core-hole-lifetime
+482/627 Test #337: core-force-allocation .............................   Passed    0.00 sec
+483/627 Test #303: core-pivoted-inverse-failures .....................   Passed    0.00 sec
+484/627 Test #262: core-chemical-concurrent ..........................   Passed    0.00 sec
+        Start 420: core-solver-workspace-buffers
+        Start 231: core-dispersion-workspace-layout
+        Start 564: core-reciprocal-archive-allocation
+485/627 Test #273: core-thermodynamic-energy-lifetime ................   Passed    0.00 sec
+486/627 Test #329: core-core-hole-lifetime ...........................   Passed    0.00 sec
+487/627 Test #420: core-solver-workspace-buffers .....................   Passed    0.00 sec
+        Start  75: basis-gaunt-physics
+        Start 356: core-grid-assembly-plans
+        Start 184: core-quadrature-invalid
+488/627 Test #231: core-dispersion-workspace-layout ..................   Passed    0.00 sec
+489/627 Test #564: core-reciprocal-archive-allocation ................   Passed    0.00 sec
+490/627 Test  #75: basis-gaunt-physics ...............................   Passed    0.00 sec
+        Start 456: core-electronic-matrix-ownership
+        Start 346: core-host-simd-boundary
+        Start 322: core-projector-force-invalid
+491/627 Test #356: core-grid-assembly-plans ..........................   Passed    0.00 sec
+492/627 Test #184: core-quadrature-invalid ...........................   Passed    0.00 sec
+493/627 Test #456: core-electronic-matrix-ownership ..................   Passed    0.00 sec
+        Start 450: core-local-basis-invalid
+        Start 196: core-atomic-density-invalid
+        Start 558: core-reciprocal-invalid
+494/627 Test #346: core-host-simd-boundary ...........................   Passed    0.00 sec
+495/627 Test #322: core-projector-force-invalid ......................   Passed    0.00 sec
+496/627 Test #450: core-local-basis-invalid ..........................   Passed    0.00 sec
+        Start 479: core-vps-lifecycle
+        Start 336: core-force-lifecycle
+        Start 425: core-solver-workspace-rows
+497/627 Test #196: core-atomic-density-invalid .......................   Passed    0.00 sec
+498/627 Test #558: core-reciprocal-invalid ...........................   Passed    0.00 sec
+499/627 Test #479: core-vps-lifecycle ................................   Passed    0.00 sec
+        Start  73: basis-orbital-radial-concurrent
+        Start 523: core-dsvna-allocation
+        Start 515: core-vna-preparation-ownership
+500/627 Test #336: core-force-lifecycle ..............................   Passed    0.00 sec
+501/627 Test #425: core-solver-workspace-rows ........................   Passed    0.00 sec
+502/627 Test  #73: basis-orbital-radial-concurrent ...................   Passed    0.00 sec
+        Start 285: core-band-energy-lifetime
+        Start 122: basis-vps-invalid
+        Start 120: basis-vps-contents
+503/627 Test #523: core-dsvna-allocation .............................   Passed    0.00 sec
+504/627 Test #515: core-vna-preparation-ownership ....................   Passed    0.00 sec
+505/627 Test #285: core-band-energy-lifetime .........................   Passed    0.00 sec
+        Start 503: core-overlap-allocation
+        Start 305: core-pivoted-inverse-empty
+        Start 427: core-solver-workspace-fields
+506/627 Test #122: basis-vps-invalid .................................   Passed    0.00 sec
+507/627 Test #120: basis-vps-contents ................................   Passed    0.00 sec
+508/627 Test #503: core-overlap-allocation ...........................   Passed    0.00 sec
+        Start 406: core-native-resource-state
+        Start 518: core-vna-preparation-allocation
+        Start 226: core-angular-grid-reuse
+509/627 Test #305: core-pivoted-inverse-empty ........................   Passed    0.00 sec
+510/627 Test #427: core-solver-workspace-fields ......................   Passed    0.00 sec
+511/627 Test #406: core-native-resource-state ........................   Passed    0.00 sec
+        Start 428: core-solver-workspace-residues
+        Start 328: core-core-hole-invalid
+        Start 505: core-nonlocal-ownership
+512/627 Test #518: core-vna-preparation-allocation ...................   Passed    0.00 sec
+513/627 Test #226: core-angular-grid-reuse ...........................   Passed    0.00 sec
+514/627 Test #428: core-solver-workspace-residues ....................   Passed    0.00 sec
+        Start 156: io-atoms
+        Start 327: core-core-hole-snapshot
+        Start 283: core-band-energy-invalid
+515/627 Test #328: core-core-hole-invalid ............................   Passed    0.00 sec
+516/627 Test #505: core-nonlocal-ownership ...........................   Passed    0.00 sec
+517/627 Test #156: io-atoms ..........................................   Passed    0.00 sec
+        Start 257: core-chemical-ownership
+        Start 414: core-solver-resource-lifetime
+        Start 282: core-band-energy-reuse
+518/627 Test #327: core-core-hole-snapshot ...........................   Passed    0.00 sec
+519/627 Test #283: core-band-energy-invalid ..........................   Passed    0.00 sec
+520/627 Test #257: core-chemical-ownership ...........................   Passed    0.00 sec
+        Start 582: core-orbital-workspace-invalid
+        Start 435: core-orbopt-layouts
+        Start 411: core-native-resource-owned-invalid
+521/627 Test #414: core-solver-resource-lifetime .....................   Passed    0.00 sec
+522/627 Test #282: core-band-energy-reuse ............................   Passed    0.00 sec
+523/627 Test #582: core-orbital-workspace-invalid ....................   Passed    0.00 sec
+        Start 155: io-species
+        Start 246: core-cwf-workspace-invalid
+        Start 436: core-orbopt-ownership
+524/627 Test #435: core-orbopt-layouts ...............................   Passed    0.00 sec
+525/627 Test #411: core-native-resource-owned-invalid ................   Passed    0.00 sec
+526/627 Test #155: io-species ........................................   Passed    0.00 sec
+        Start 222: core-neutral-grid-failures
+        Start 400: core-native-adapter-stream-order
+        Start 520: core-dsvna-ownership
+527/627 Test #246: core-cwf-workspace-invalid ........................   Passed    0.00 sec
+528/627 Test #436: core-orbopt-ownership .............................   Passed    0.00 sec
+529/627 Test #222: core-neutral-grid-failures ........................   Passed    0.00 sec
+        Start 153: io-semantics
+        Start 232: core-dispersion-workspace-reuse
+        Start 565: core-reciprocal-archive-lifetime
+530/627 Test #400: core-native-adapter-stream-order ..................   Passed    0.00 sec
+531/627 Test #520: core-dsvna-ownership ..............................   Passed    0.00 sec
+532/627 Test #153: io-semantics ......................................   Passed    0.00 sec
+        Start 154: io-invalid
+        Start 334: core-force-spin-trace
+        Start 538: core-projector-pipeline-exchange-layout
+533/627 Test #232: core-dispersion-workspace-reuse ...................   Passed    0.00 sec
+534/627 Test #565: core-reciprocal-archive-lifetime ..................   Passed    0.00 sec
+535/627 Test #154: io-invalid ........................................   Passed    0.00 sec
+        Start 295: core-mixing-history-ownership
+        Start 539: core-projector-pipeline-exchange-buffers
+        Start 576: core-atomic-invalid
+536/627 Test #334: core-force-spin-trace .............................   Passed    0.00 sec
+537/627 Test #538: core-projector-pipeline-exchange-layout ...........   Passed    0.00 sec
+538/627 Test #295: core-mixing-history-ownership .....................   Passed    0.00 sec
+        Start 546: core-vna-matrix-ownership
+        Start 136: basis-concurrent
+        Start  91: basis-lebedev-invalid
+539/627 Test #539: core-projector-pipeline-exchange-buffers ..........   Passed    0.00 sec
+540/627 Test #576: core-atomic-invalid ...............................   Passed    0.00 sec
+541/627 Test #546: core-vna-matrix-ownership .........................   Passed    0.00 sec
+        Start 218: core-neutral-grid-metadata-concurrent
+        Start 567: core-species-layout
+        Start 181: core-real-harmonics-concurrent
+542/627 Test #136: basis-concurrent ..................................   Passed    0.00 sec
+543/627 Test  #91: basis-lebedev-invalid .............................   Passed    0.00 sec
+544/627 Test #218: core-neutral-grid-metadata-concurrent .............   Passed    0.00 sec
+        Start 108: basis-bessel-concurrent
+        Start 363: core-host-olg-invalid
+        Start  72: basis-orbital-radial-allocation
+545/627 Test #567: core-species-layout ...............................   Passed    0.00 sec
+546/627 Test #181: core-real-harmonics-concurrent ....................   Passed    0.00 sec
+547/627 Test #108: basis-bessel-concurrent ...........................   Passed    0.00 sec
+        Start 161: core-vna-host-tables-contents
+        Start 236: core-dispersion-workspace-concurrent
+        Start 319: core-force-recovery-concurrent
+548/627 Test #363: core-host-olg-invalid .............................   Passed    0.00 sec
+549/627 Test  #72: basis-orbital-radial-allocation ...................   Passed    0.00 sec
+550/627 Test #161: core-vna-host-tables-contents .....................   Passed    0.00 sec
+        Start 512: core-vna-c-api
+        Start 149: xc-invalid
+        Start  92: basis-lebedev-ownership
+551/627 Test #236: core-dispersion-workspace-concurrent ..............   Passed    0.00 sec
+552/627 Test #319: core-force-recovery-concurrent ....................   Passed    0.00 sec
+553/627 Test #512: core-vna-c-api ....................................   Passed    0.00 sec
+554/627 Test #149: xc-invalid ........................................   Passed    0.00 sec
+        Start 625: stress-halo-mpi
+555/627 Test  #92: basis-lebedev-ownership ...........................   Passed    0.00 sec
+        Start  79: basis-gaunt-ownership
+556/627 Test  #79: basis-gaunt-ownership .............................   Passed    0.00 sec
+        Start 452: core-local-basis-concurrent
+557/627 Test #452: core-local-basis-concurrent .......................   Passed    0.00 sec
+        Start 309: core-force-hnl-batch-lifetime
+558/627 Test #309: core-force-hnl-batch-lifetime .....................   Passed    0.00 sec
+        Start 147: xc-analytic
+559/627 Test #147: xc-analytic .......................................   Passed    0.00 sec
+        Start 157: io-settings
+560/627 Test #157: io-settings .......................................   Passed    0.00 sec
+        Start 291: core-mixing-policy-invalid
+561/627 Test #291: core-mixing-policy-invalid ........................   Passed    0.00 sec
+        Start 113: basis-quadrature-allocation
+562/627 Test #113: basis-quadrature-allocation .......................   Passed    0.00 sec
+        Start 111: basis-quadrature-ownership
+563/627 Test #111: basis-quadrature-ownership ........................   Passed    0.00 sec
+        Start 163: core-vna-host-tables-invalid
+564/627 Test #163: core-vna-host-tables-invalid ......................   Passed    0.00 sec
+        Start 107: basis-bessel-allocation
+565/627 Test #107: basis-bessel-allocation ...........................   Passed    0.00 sec
+        Start 297: core-mixing-history-invalid
+566/627 Test #297: core-mixing-history-invalid .......................   Passed    0.00 sec
+        Start 132: basis-radial
+567/627 Test #132: basis-radial ......................................   Passed    0.00 sec
+        Start 164: core-vna-host-tables-lifetime
+568/627 Test #164: core-vna-host-tables-lifetime .....................   Passed    0.00 sec
+        Start 492: core-neutral-failure
+569/627 Test #492: core-neutral-failure ..............................   Passed    0.00 sec
+        Start 272: core-thermodynamic-energy-allocation
+570/627 Test #272: core-thermodynamic-energy-allocation ..............   Passed    0.00 sec
+        Start 253: core-cwf-invalid
+571/627 Test #253: core-cwf-invalid ..................................   Passed    0.00 sec
+        Start 278: core-energy-components-allocation
+572/627 Test #278: core-energy-components-allocation .................   Passed    0.00 sec
+        Start  69: basis-orbital-radial-policy
+573/627 Test  #69: basis-orbital-radial-policy .......................   Passed    0.00 sec
+        Start  85: basis-real-harmonics-invalid
+574/627 Test  #85: basis-real-harmonics-invalid ......................   Passed    0.00 sec
+        Start 247: core-cwf-workspace-overflow
+575/627 Test #247: core-cwf-workspace-overflow .......................   Passed    0.00 sec
+        Start  93: basis-lebedev-allocation
+576/627 Test  #93: basis-lebedev-allocation ..........................   Passed    0.00 sec
+        Start 143: basis-density-c-abi
+577/627 Test #143: basis-density-c-abi ...............................   Passed    0.00 sec
+        Start 412: core-native-resource-owned-allocation
+578/627 Test #412: core-native-resource-owned-allocation .............   Passed    0.00 sec
+        Start 135: basis-invalid
+579/627 Test #135: basis-invalid .....................................   Passed    0.00 sec
+        Start 502: core-overlap-c-api
+580/627 Test #502: core-overlap-c-api ................................   Passed    0.00 sec
+        Start 258: core-chemical-reuse
+581/627 Test #258: core-chemical-reuse ...............................   Passed    0.00 sec
+        Start 252: core-cwf-reuse
+582/627 Test #252: core-cwf-reuse ....................................   Passed    0.00 sec
+        Start 106: basis-bessel-ownership
+583/627 Test #106: basis-bessel-ownership ............................   Passed    0.00 sec
+        Start 516: core-vna-preparation-failure
+584/627 Test #516: core-vna-preparation-failure ......................   Passed    0.00 sec
+        Start 121: basis-vps-metadata
+585/627 Test #121: basis-vps-metadata ................................   Passed    0.00 sec
+        Start 524: core-hvna-layout
+586/627 Test #524: core-hvna-layout ..................................   Passed    0.00 sec
+        Start 355: core-grid-assembly-allocation
+587/627 Test #355: core-grid-assembly-allocation .....................   Passed    0.00 sec
+        Start 110: basis-quadrature-invalid
+588/627 Test #110: basis-quadrature-invalid ..........................   Passed    0.00 sec
+        Start  70: basis-orbital-radial-invalid
+589/627 Test  #70: basis-orbital-radial-invalid ......................   Passed    0.00 sec
+        Start 316: core-force-recovery-invalid
+590/627 Test #316: core-force-recovery-invalid .......................   Passed    0.00 sec
+        Start 119: basis-density-allocation
+591/627 Test #119: basis-density-allocation ..........................   Passed    0.00 sec
+        Start  86: basis-real-harmonics-ownership
+592/627 Test  #86: basis-real-harmonics-ownership ....................   Passed    0.00 sec
+        Start 144: basis-c-api
+593/627 Test #144: basis-c-api .......................................   Passed    0.00 sec
+        Start 150: xc-c-api
+594/627 Test #150: xc-c-api ..........................................   Passed    0.00 sec
+        Start  71: basis-orbital-radial-ownership
+595/627 Test  #71: basis-orbital-radial-ownership ....................   Passed    0.00 sec
+        Start  67: basis-orbital-radial-analytic
+596/627 Test  #67: basis-orbital-radial-analytic .....................   Passed    0.00 sec
+        Start 115: basis-density-hartree
+597/627 Test #115: basis-density-hartree .............................   Passed    0.00 sec
+        Start 142: basis-quadrature-c-abi
+598/627 Test #142: basis-quadrature-c-abi ............................   Passed    0.00 sec
+        Start 133: basis-reciprocal
+599/627 Test #133: basis-reciprocal ..................................   Passed    0.00 sec
+        Start 159: io-c-api
+600/627 Test #159: io-c-api ..........................................   Passed    0.00 sec
+        Start  68: basis-orbital-radial-derivatives
+601/627 Test  #68: basis-orbital-radial-derivatives ..................   Passed    0.00 sec
+        Start 123: basis-vps-lifetime
+602/627 Test #123: basis-vps-lifetime ................................   Passed    0.00 sec
+        Start 114: basis-density-interpolation
+603/627 Test #114: basis-density-interpolation .......................   Passed    0.00 sec
+        Start 105: basis-bessel-invalid
+604/627 Test #105: basis-bessel-invalid ..............................   Passed    0.00 sec
+        Start 116: basis-density-invalid
+605/627 Test #116: basis-density-invalid .............................   Passed    0.00 sec
+        Start 117: basis-density-ownership
+606/627 Test #117: basis-density-ownership ...........................   Passed    0.00 sec
+        Start 104: basis-bessel-cache
+607/627 Test #104: basis-bessel-cache ................................   Passed    0.00 sec
+        Start 134: basis-ownership
+608/627 Test #134: basis-ownership ...................................   Passed    0.00 sec
+        Start 137: basis-allocation
+609/627 Test #137: basis-allocation ..................................   Passed    0.00 sec
+        Start 138: basis-orbital-radial-c-abi
+610/627 Test #138: basis-orbital-radial-c-abi ........................   Passed    0.00 sec
+        Start 158: io-basis-spec
+611/627 Test #158: io-basis-spec .....................................   Passed    0.00 sec
+        Start 139: basis-gaunt-c-abi
+612/627 Test #139: basis-gaunt-c-abi .................................   Passed    0.00 sec
+        Start 141: basis-lebedev-c-abi
+613/627 Test #141: basis-lebedev-c-abi ...............................   Passed    0.00 sec
+        Start 140: basis-real-harmonics-c-abi
+614/627 Test #140: basis-real-harmonics-c-abi ........................   Passed    0.00 sec
+        Start  20: build-backend-isolation
+615/627 Test   #1: cpu-numerical-toolchain ...........................   Passed    1.13 sec
+616/627 Test  #20: build-backend-isolation ...........................***Failed    2.18 sec
+test_backend_selects_production_sources (__main__.UnifiedBuildTest) ... ok
+test_basis_adapters_compile_in_all_projections (__main__.UnifiedBuildTest) ... ok
+test_cpu_projection_has_no_vendor_dependency_builds (__main__.UnifiedBuildTest) ... ok
+test_explicit_cuda_architecture_does_not_query_a_gpu (__main__.UnifiedBuildTest) ... ok
+test_hip_compatibility_headers_do_not_shadow_cuda (__main__.UnifiedBuildTest) ... ok
+test_hip_regression_runners_find_default_input_templates (__main__.UnifiedBuildTest) ... ok
+test_import_manifest_preserves_all_amd_sources (__main__.UnifiedBuildTest) ... test_kugui_core_selects_site_gcc_and_honors_override (__main__.UnifiedBuildTest) ... ok
+test_mutable_dependency_trees_and_artifacts_are_private (__main__.UnifiedBuildTest) ... ok
+test_native_core_uses_callers_cmake_and_honors_override (__main__.UnifiedBuildTest) ... ok
+test_native_object_recipes_preserve_each_backend_toolchain (__main__.UnifiedBuildTest) ... ok
+test_pegasus_uses_shared_core_and_honors_overrides (__main__.UnifiedBuildTest) ... ok
+test_preparation_is_incremental_and_rejects_backend_switch (__main__.UnifiedBuildTest) ... ok
+test_preparation_migrates_removed_hip_overrides (__main__.UnifiedBuildTest) ... ok
+test_registry_ids_invalidate_shared_hip_objects (__main__.UnifiedBuildTest) ... ok
+test_selected_sources_require_only_this_repository (__main__.UnifiedBuildTest) ... ok
+test_shared_inline_headers_invalidate_native_objects (__main__.UnifiedBuildTest) ... ok
+
+======================================================================
+FAIL: test_import_manifest_preserves_all_amd_sources (__main__.UnifiedBuildTest) (source='Cluster_DFT_NonCol_dm_hip.cu')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/ec2-user/openmx4.0_gpu/tests/test_unified_build.py", line 67, in test_import_manifest_preserves_all_amd_sources
+    self.assertEqual(digest(source), expected)
+AssertionError: 'd33bed345b7f603796d671e3e200dc8896cc3f29f3ef50e511b24a67b4376a9d' != '55808ef7573040111ffe04a286e8e93c72ece6bf7bbc91ace07be1ad52d2a91d'
+- d33bed345b7f603796d671e3e200dc8896cc3f29f3ef50e511b24a67b4376a9d
++ 55808ef7573040111ffe04a286e8e93c72ece6bf7bbc91ace07be1ad52d2a91d
+
+
+======================================================================
+FAIL: test_import_manifest_preserves_all_amd_sources (__main__.UnifiedBuildTest) (source='magma_openmx.cu')
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/ec2-user/openmx4.0_gpu/tests/test_unified_build.py", line 67, in test_import_manifest_preserves_all_amd_sources
+    self.assertEqual(digest(source), expected)
+AssertionError: '7719b7d7a704fd730af7dbd32049fa0cb4ace91d8047d968d4f212dd62ee82e1' != 'bf286149daf6a1b401490a65beb7db550e9c82947ff14a7c11f65f0feb10a468'
+- 7719b7d7a704fd730af7dbd32049fa0cb4ace91d8047d968d4f212dd62ee82e1
++ bf286149daf6a1b401490a65beb7db550e9c82947ff14a7c11f65f0feb10a468
+
+
+----------------------------------------------------------------------
+Ran 17 tests in 2.127s
+
+FAILED (failures=2)
+
+617/627 Test  #42: mgpu-gemm .........................................   Passed   80.74 sec
+        Start 623: hamiltonian-packing-calculation-state-mpi
+618/627 Test #625: stress-halo-mpi ...................................   Passed   19.17 sec
+        Start 626: dclno-calculation-state-mpi
+619/627 Test #623: hamiltonian-packing-calculation-state-mpi .........   Passed   17.93 sec
+        Start 627: krylov-calculation-state-mpi
+620/627 Test #626: dclno-calculation-state-mpi .......................   Passed    8.21 sec
+        Start  62: vna-exchange-mpi
+621/627 Test #627: krylov-calculation-state-mpi ......................   Passed    8.02 sec
+        Start 624: stress-overlap-mpi
+622/627 Test #624: stress-overlap-mpi ................................   Passed    4.01 sec
+        Start  63: reciprocal-archive-mpi
+623/627 Test  #62: vna-exchange-mpi ..................................   Passed    5.56 sec
+        Start  61: projector-exchange-mpi
+624/627 Test  #63: reciprocal-archive-mpi ............................   Passed    2.69 sec
+625/627 Test  #61: projector-exchange-mpi ............................   Passed    2.49 sec
+        Start  60: gpu-task-packet-mpi
+626/627 Test  #60: gpu-task-packet-mpi ...............................   Passed    3.13 sec
+        Start  59: gpu-vector-packet-mpi
+627/627 Test  #59: gpu-vector-packet-mpi .............................   Passed    2.27 sec
+
+99% tests passed, 1 tests failed out of 627
+
+Label Time Summary:
+basis               =  41.78 sec*proc (114 tests)
+benchmark           =   0.98 sec*proc (1 test)
+build               =   0.24 sec*proc (1 test)
+chemical            =   0.02 sec*proc (6 tests)
+core                = 490.97 sec*proc (471 tests)
+cpu                 =   2.32 sec*proc (2 tests)
+cwf                 =   0.06 sec*proc (20 tests)
+dynamics            =   0.03 sec*proc (6 tests)
+energy              =   0.15 sec*proc (42 tests)
+force               =  71.64 sec*proc (44 tests)
+gpu                 = 201.84 sec*proc (35 tests)
+grid                =  22.57 sec*proc (26 tests)
+host-simd           =   3.55 sec*proc (50 tests)
+integrals           =   0.44 sec*proc (8 tests)
+integration         =   7.83 sec*proc (3 tests)
+io                  =   4.20 sec*proc (9 tests)
+mixing              =   0.05 sec*proc (14 tests)
+mpi                 = 264.00 sec*proc (8 tests)
+native-state        = 232.89 sec*proc (37 tests)
+native-state-mpi    = 229.33 sec*proc (5 tests)
+orbitals            =  15.68 sec*proc (3 tests)
+package             =  34.79 sec*proc (1 test)
+solver              = 337.45 sec*proc (38 tests)
+unit                = 716.11 sec*proc (605 tests)
+xc                  =   1.62 sec*proc (6 tests)
+
+Total Test time (real) = 118.84 sec
+
+The following tests FAILED:
+	 20 - build-backend-isolation (Failed)
+Errors while running CTest

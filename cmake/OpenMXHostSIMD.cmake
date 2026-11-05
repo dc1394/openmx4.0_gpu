@@ -6,6 +6,7 @@ option(OPENMX_CORE_HOST_SIMD "Build Kokkos host SIMD variants with safe runtime 
 option(OPENMX_CORE_HOST_SVE "Build ARM SVE host SIMD variants when supported by the compiler" ON)
 set(OPENMX_HOST_SIMD_CXX_COMPILER "${CMAKE_CXX_COMPILER}" CACHE FILEPATH
     "Ordinary C++20 compiler for CPU SIMD (not nvcc_wrapper/hipcc)")
+set(OPENMX_HOST_SIMD_TUNE "" CACHE STRING "Optional -mtune CPU for all isolated host SIMD variants; does not change their ISA")
 include(ExternalProject)
 set(_host_build "${CMAKE_CURRENT_BINARY_DIR}/host-simd")
 set(_host_library "${_host_build}/lib/${CMAKE_SHARED_LIBRARY_PREFIX}openmx_host_simd${CMAKE_SHARED_LIBRARY_SUFFIX}")
@@ -16,6 +17,7 @@ set(_host_cmake_args
     "-DOPENMX_KOKKOS_SOURCE_DIR:PATH=${kokkos_SOURCE_DIR}"
     "-DOPENMX_CORE_HOST_SIMD:BOOL=${OPENMX_CORE_HOST_SIMD}"
     "-DOPENMX_CORE_HOST_SVE:BOOL=${OPENMX_CORE_HOST_SVE}"
+    "-DOPENMX_HOST_SIMD_TUNE:STRING=${OPENMX_HOST_SIMD_TUNE}"
     "-DBUILD_TESTING:BOOL=${BUILD_TESTING}"
     "-DOPENMX_CORE_SANITIZERS:BOOL=${OPENMX_CORE_SANITIZERS}")
 foreach(variable CMAKE_TOOLCHAIN_FILE CMAKE_SYSROOT CMAKE_CXX_COMPILER_TARGET

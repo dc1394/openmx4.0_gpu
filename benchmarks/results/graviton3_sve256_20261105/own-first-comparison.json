@@ -1,0 +1,140 @@
+{
+  "baseline": {
+    "samples": [
+      504.7266491639998
+    ],
+    "median": 504.7266491639998,
+    "minimum": 504.7266491639998,
+    "maximum": 504.7266491639998
+  },
+  "optimized": {
+    "samples": [
+      380.5257782330009
+    ],
+    "median": 380.5257782330009,
+    "minimum": 380.5257782330009,
+    "maximum": 380.5257782330009
+  },
+  "speedup": 1.3263927913313383,
+  "complete_blas_audits": false,
+  "reduction_percent": 24.6075516592433,
+  "comparisons": [
+    {
+      "name": "baseline-01",
+      "wall_seconds": 504.7266491639998,
+      "ranks": 32,
+      "threads": 1,
+      "energy_difference_Ha": 0.0,
+      "max_force_difference_Ha_bohr": 0.0,
+      "rms_force_difference_Ha_bohr": 0.0,
+      "max_scf_uele_difference_Ha": 0.0,
+      "scf_not_converged": true
+    },
+    {
+      "name": "own-final-01",
+      "wall_seconds": 380.5257782330009,
+      "ranks": 32,
+      "threads": 1,
+      "energy_difference_Ha": 1.6893864085432142e-10,
+      "max_force_difference_Ha_bohr": 1.740000000009914e-10,
+      "rms_force_difference_Ha_bohr": 5.0881443535895424e-11,
+      "max_scf_uele_difference_Ha": 3.223699991394824e-06,
+      "scf_not_converged": true
+    }
+  ],
+  "phases": {
+    "Total Computational Time": {
+      "baseline_median": 502.518,
+      "optimized_median": 378.244
+    },
+    "readfile": {
+      "baseline_median": 0.18,
+      "optimized_median": 0.179
+    },
+    "truncation": {
+      "baseline_median": 1.081,
+      "optimized_median": 1.155
+    },
+    "MD_pac": {
+      "baseline_median": 0.01,
+      "optimized_median": 0.012
+    },
+    "OutData": {
+      "baseline_median": 12.851,
+      "optimized_median": 12.821
+    },
+    "HWF": {
+      "baseline_median": 0.0,
+      "optimized_median": 0.0
+    },
+    "DFT": {
+      "baseline_median": 488.346,
+      "optimized_median": 364.024
+    },
+    "Set_OLP_Kin": {
+      "baseline_median": 0.264,
+      "optimized_median": 0.269
+    },
+    "Set_Nonlocal": {
+      "baseline_median": 0.491,
+      "optimized_median": 0.496
+    },
+    "Set_ProExpn_VNA": {
+      "baseline_median": 4.735,
+      "optimized_median": 4.755
+    },
+    "Set_Hamiltonian": {
+      "baseline_median": 48.999,
+      "optimized_median": 35.246
+    },
+    "Poisson": {
+      "baseline_median": 0.14,
+      "optimized_median": 0.143
+    },
+    "Diagonalization": {
+      "baseline_median": 367.871,
+      "optimized_median": 267.026
+    },
+    "Mixing_DM": {
+      "baseline_median": 1.773,
+      "optimized_median": 1.844
+    },
+    "Force": {
+      "baseline_median": 20.345,
+      "optimized_median": 14.255
+    },
+    "Total_Energy": {
+      "baseline_median": 2.821,
+      "optimized_median": 2.806
+    },
+    "Set_Aden_Grid": {
+      "baseline_median": 0.264,
+      "optimized_median": 0.269
+    },
+    "Set_Orbitals_Grid": {
+      "baseline_median": 0.648,
+      "optimized_median": 0.656
+    },
+    "Set_Density_Grid": {
+      "baseline_median": 36.679,
+      "optimized_median": 32.833
+    },
+    "RestartFileDFT": {
+      "baseline_median": 0.018,
+      "optimized_median": 0.017
+    },
+    "Mulliken_Charge": {
+      "baseline_median": 0.382,
+      "optimized_median": 0.385
+    },
+    "FFT(2D)_Density": {
+      "baseline_median": 0.414,
+      "optimized_median": 0.418
+    },
+    "Others": {
+      "baseline_median": 2.808,
+      "optimized_median": 2.912
+    }
+  },
+  "all_checks_passed": true
+}

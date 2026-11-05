@@ -1,0 +1,546 @@
+[
+  {
+    "rank": 0,
+    "pid": 252648,
+    "affinity": [
+      0
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2
+  },
+  {
+    "rank": 1,
+    "pid": 252649,
+    "affinity": [
+      1
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2
+  },
+  {
+    "rank": 2,
+    "pid": 252650,
+    "affinity": [
+      2
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2
+  },
+  {
+    "rank": 3,
+    "pid": 252651,
+    "affinity": [
+      3
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2
+  },
+  {
+    "rank": 4,
+    "pid": 252662,
+    "affinity": [
+      4
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2
+  },
+  {
+    "rank": 5,
+    "pid": 252663,
+    "affinity": [
+      5
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2
+  },
+  {
+    "rank": 6,
+    "pid": 252661,
+    "affinity": [
+      6
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2
+  },
+  {
+    "rank": 7,
+    "pid": 252660,
+    "affinity": [
+      7
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2
+  },
+  {
+    "rank": 8,
+    "pid": 252666,
+    "affinity": [
+      8
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2
+  },
+  {
+    "rank": 9,
+    "pid": 252668,
+    "affinity": [
+      9
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2
+  },
+  {
+    "rank": 10,
+    "pid": 252664,
+    "affinity": [
+      10
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2
+  },
+  {
+    "rank": 11,
+    "pid": 252665,
+    "affinity": [
+      11
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2
+  },
+  {
+    "rank": 12,
+    "pid": 252669,
+    "affinity": [
+      12
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2
+  },
+  {
+    "rank": 13,
+    "pid": 252671,
+    "affinity": [
+      13
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2
+  },
+  {
+    "rank": 14,
+    "pid": 252667,
+    "affinity": [
+      14
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2
+  },
+  {
+    "rank": 15,
+    "pid": 252670,
+    "affinity": [
+      15
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2
+  },
+  {
+    "rank": 16,
+    "pid": 252674,
+    "affinity": [
+      16
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2
+  },
+  {
+    "rank": 17,
+    "pid": 252676,
+    "affinity": [
+      17
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2
+  },
+  {
+    "rank": 18,
+    "pid": 252672,
+    "affinity": [
+      18
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2
+  },
+  {
+    "rank": 19,
+    "pid": 252673,
+    "affinity": [
+      19
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2
+  },
+  {
+    "rank": 20,
+    "pid": 252727,
+    "affinity": [
+      20
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2
+  },
+  {
+    "rank": 21,
+    "pid": 252678,
+    "affinity": [
+      21
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2
+  },
+  {
+    "rank": 22,
+    "pid": 252675,
+    "affinity": [
+      22
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2
+  },
+  {
+    "rank": 23,
+    "pid": 252726,
+    "affinity": [
+      23
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2
+  },
+  {
+    "rank": 24,
+    "pid": 252729,
+    "affinity": [
+      24
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2
+  },
+  {
+    "rank": 25,
+    "pid": 252679,
+    "affinity": [
+      25
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2
+  },
+  {
+    "rank": 26,
+    "pid": 252677,
+    "affinity": [
+      26
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2
+  },
+  {
+    "rank": 27,
+    "pid": 252728,
+    "affinity": [
+      27
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2
+  },
+  {
+    "rank": 28,
+    "pid": 252731,
+    "affinity": [
+      28
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2
+  },
+  {
+    "rank": 29,
+    "pid": 252681,
+    "affinity": [
+      29
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2
+  },
+  {
+    "rank": 30,
+    "pid": 252680,
+    "affinity": [
+      30
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2
+  },
+  {
+    "rank": 31,
+    "pid": 252730,
+    "affinity": [
+      31
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2
+  }
+]

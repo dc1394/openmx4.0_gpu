@@ -1,0 +1,770 @@
+[
+  {
+    "rank": 0,
+    "pid": 310193,
+    "affinity": [
+      0
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0,
+    "zgemm_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "affinity_after_blas_probe": [
+      0
+    ],
+    "affinity_before_exec": [
+      0
+    ]
+  },
+  {
+    "rank": 1,
+    "pid": 310194,
+    "affinity": [
+      1
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0,
+    "zgemm_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "affinity_after_blas_probe": [
+      1
+    ],
+    "affinity_before_exec": [
+      1
+    ]
+  },
+  {
+    "rank": 2,
+    "pid": 310195,
+    "affinity": [
+      2
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0,
+    "zgemm_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "affinity_after_blas_probe": [
+      2
+    ],
+    "affinity_before_exec": [
+      2
+    ]
+  },
+  {
+    "rank": 3,
+    "pid": 310196,
+    "affinity": [
+      3
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0,
+    "zgemm_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "affinity_after_blas_probe": [
+      3
+    ],
+    "affinity_before_exec": [
+      3
+    ]
+  },
+  {
+    "rank": 4,
+    "pid": 310207,
+    "affinity": [
+      4
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0,
+    "zgemm_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "affinity_after_blas_probe": [
+      4
+    ],
+    "affinity_before_exec": [
+      4
+    ]
+  },
+  {
+    "rank": 5,
+    "pid": 310208,
+    "affinity": [
+      5
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0,
+    "zgemm_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "affinity_after_blas_probe": [
+      5
+    ],
+    "affinity_before_exec": [
+      5
+    ]
+  },
+  {
+    "rank": 6,
+    "pid": 310206,
+    "affinity": [
+      6
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0,
+    "zgemm_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "affinity_after_blas_probe": [
+      6
+    ],
+    "affinity_before_exec": [
+      6
+    ]
+  },
+  {
+    "rank": 7,
+    "pid": 310205,
+    "affinity": [
+      7
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0,
+    "zgemm_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "affinity_after_blas_probe": [
+      7
+    ],
+    "affinity_before_exec": [
+      7
+    ]
+  },
+  {
+    "rank": 8,
+    "pid": 310211,
+    "affinity": [
+      8
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0,
+    "zgemm_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "affinity_after_blas_probe": [
+      8
+    ],
+    "affinity_before_exec": [
+      8
+    ]
+  },
+  {
+    "rank": 9,
+    "pid": 310212,
+    "affinity": [
+      9
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0,
+    "zgemm_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "affinity_after_blas_probe": [
+      9
+    ],
+    "affinity_before_exec": [
+      9
+    ]
+  },
+  {
+    "rank": 10,
+    "pid": 310209,
+    "affinity": [
+      10
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0,
+    "zgemm_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "affinity_after_blas_probe": [
+      10
+    ],
+    "affinity_before_exec": [
+      10
+    ]
+  },
+  {
+    "rank": 11,
+    "pid": 310210,
+    "affinity": [
+      11
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0,
+    "zgemm_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "affinity_after_blas_probe": [
+      11
+    ],
+    "affinity_before_exec": [
+      11
+    ]
+  },
+  {
+    "rank": 12,
+    "pid": 310214,
+    "affinity": [
+      12
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0,
+    "zgemm_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "affinity_after_blas_probe": [
+      12
+    ],
+    "affinity_before_exec": [
+      12
+    ]
+  },
+  {
+    "rank": 13,
+    "pid": 310216,
+    "affinity": [
+      13
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0,
+    "zgemm_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "affinity_after_blas_probe": [
+      13
+    ],
+    "affinity_before_exec": [
+      13
+    ]
+  },
+  {
+    "rank": 14,
+    "pid": 310213,
+    "affinity": [
+      14
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0,
+    "zgemm_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "affinity_after_blas_probe": [
+      14
+    ],
+    "affinity_before_exec": [
+      14
+    ]
+  },
+  {
+    "rank": 15,
+    "pid": 310215,
+    "affinity": [
+      15
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0,
+    "zgemm_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "affinity_after_blas_probe": [
+      15
+    ],
+    "affinity_before_exec": [
+      15
+    ]
+  },
+  {
+    "rank": 16,
+    "pid": 310218,
+    "affinity": [
+      16
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0,
+    "zgemm_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "affinity_after_blas_probe": [
+      16
+    ],
+    "affinity_before_exec": [
+      16
+    ]
+  },
+  {
+    "rank": 17,
+    "pid": 310249,
+    "affinity": [
+      17
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0,
+    "zgemm_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "affinity_after_blas_probe": [
+      17
+    ],
+    "affinity_before_exec": [
+      17
+    ]
+  },
+  {
+    "rank": 18,
+    "pid": 310217,
+    "affinity": [
+      18
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0,
+    "zgemm_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "affinity_after_blas_probe": [
+      18
+    ],
+    "affinity_before_exec": [
+      18
+    ]
+  },
+  {
+    "rank": 19,
+    "pid": 310250,
+    "affinity": [
+      19
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0,
+    "zgemm_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "affinity_after_blas_probe": [
+      19
+    ],
+    "affinity_before_exec": [
+      19
+    ]
+  },
+  {
+    "rank": 20,
+    "pid": 310247,
+    "affinity": [
+      20
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0,
+    "zgemm_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "affinity_after_blas_probe": [
+      20
+    ],
+    "affinity_before_exec": [
+      20
+    ]
+  },
+  {
+    "rank": 21,
+    "pid": 310253,
+    "affinity": [
+      21
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0,
+    "zgemm_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "affinity_after_blas_probe": [
+      21
+    ],
+    "affinity_before_exec": [
+      21
+    ]
+  },
+  {
+    "rank": 22,
+    "pid": 310248,
+    "affinity": [
+      22
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0,
+    "zgemm_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "affinity_after_blas_probe": [
+      22
+    ],
+    "affinity_before_exec": [
+      22
+    ]
+  },
+  {
+    "rank": 23,
+    "pid": 310254,
+    "affinity": [
+      23
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0,
+    "zgemm_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "affinity_after_blas_probe": [
+      23
+    ],
+    "affinity_before_exec": [
+      23
+    ]
+  },
+  {
+    "rank": 24,
+    "pid": 310251,
+    "affinity": [
+      24
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0,
+    "zgemm_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "affinity_after_blas_probe": [
+      24
+    ],
+    "affinity_before_exec": [
+      24
+    ]
+  },
+  {
+    "rank": 25,
+    "pid": 310257,
+    "affinity": [
+      25
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0,
+    "zgemm_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "affinity_after_blas_probe": [
+      25
+    ],
+    "affinity_before_exec": [
+      25
+    ]
+  },
+  {
+    "rank": 26,
+    "pid": 310252,
+    "affinity": [
+      26
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0,
+    "zgemm_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "affinity_after_blas_probe": [
+      26
+    ],
+    "affinity_before_exec": [
+      26
+    ]
+  },
+  {
+    "rank": 27,
+    "pid": 310258,
+    "affinity": [
+      27
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0,
+    "zgemm_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "affinity_after_blas_probe": [
+      27
+    ],
+    "affinity_before_exec": [
+      27
+    ]
+  },
+  {
+    "rank": 28,
+    "pid": 310256,
+    "affinity": [
+      28
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0,
+    "zgemm_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "affinity_after_blas_probe": [
+      28
+    ],
+    "affinity_before_exec": [
+      28
+    ]
+  },
+  {
+    "rank": 29,
+    "pid": 310259,
+    "affinity": [
+      29
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0,
+    "zgemm_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "affinity_after_blas_probe": [
+      29
+    ],
+    "affinity_before_exec": [
+      29
+    ]
+  },
+  {
+    "rank": 30,
+    "pid": 310255,
+    "affinity": [
+      30
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0,
+    "zgemm_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "affinity_after_blas_probe": [
+      30
+    ],
+    "affinity_before_exec": [
+      30
+    ]
+  },
+  {
+    "rank": 31,
+    "pid": 310260,
+    "affinity": [
+      31
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0,
+    "zgemm_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "affinity_after_blas_probe": [
+      31
+    ],
+    "affinity_before_exec": [
+      31
+    ]
+  }
+]

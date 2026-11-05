@@ -4670,7 +4670,11 @@ extern int flag_unfold_origin;
 
 /* scalapack */
 
+#ifdef OPENMX_CPU_SCALAPACK_BLOCK_SIZE
+static int NBLK=OPENMX_CPU_SCALAPACK_BLOCK_SIZE;
+#else
 static int NBLK=128;
+#endif
 /* for n */
 extern int nblk,np_rows,np_cols,na_rows,na_cols,na_rows_max,na_cols_max;
 extern int my_prow,my_pcol;

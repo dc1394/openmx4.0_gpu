@@ -1,0 +1,12 @@
+{
+  "verified_sha256": {
+    "bin/openmx": "12ee844072356e8e7920bc0b3aff9050700696c1ba6631cb1f32b28b9caded5a",
+    "lib/libopenmx_core.so": "53dd64fd8bc6a4c0c54fd3fbd7023bd174528518949999e35bbb947be5f4a783",
+    "lib/libopenmx_host_simd.so": "9e37ff21d099291aa6f128344a03e22857fe7743e00b51ea04ad7f6522dc5cad"
+  },
+  "links": {
+    "/home/ec2-user/.local/bin/openmx": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "/home/ec2-user/openmx4.0_gpu/work/openmx": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx"
+  },
+  "baseline_alias": "/home/ec2-user/.local/bin/openmx-cpu-baseline"
+}

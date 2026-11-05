@@ -1,0 +1,14 @@
+{
+  "returncode": 1,
+  "wall_seconds": 98.83308596400002,
+  "phases": {},
+  "normal_finish": false,
+  "scf_steps": 3,
+  "scf_not_converged": false,
+  "scf_converged": false,
+  "log_sha256": "cc74c5d1244be04bf99d145443cb678e88b5407088574a783624fc29ef59dcc0",
+  "rank_audit_passed": true,
+  "actual_blas_threads": [
+    1
+  ]
+}

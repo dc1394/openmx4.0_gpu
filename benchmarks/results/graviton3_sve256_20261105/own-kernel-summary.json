@@ -1,0 +1,59 @@
+{
+  "bitwise_case_counts": {
+    "grid-v4": 1332,
+    "VNA-v1": 6000,
+    "VNA-v2": 6000,
+    "force-density": 120
+  },
+  "representative_cases": [
+    {
+      "kernel": "NC density",
+      "before_seconds": 0.0001985065,
+      "after_seconds": 0.0001813075,
+      "speedup": 1.0948609406670986,
+      "shape": "13x13, 2003 grid points, 4 components"
+    },
+    {
+      "kernel": "NC hamiltonian",
+      "before_seconds": 0.0002377934,
+      "after_seconds": 0.000188872,
+      "speedup": 1.2590188063873946,
+      "shape": "13x13, 2003 grid points, 4 components"
+    },
+    {
+      "kernel": "VNA FP32 terms=1 lanes_rows=0",
+      "before_seconds": 0.000174261,
+      "after_seconds": 0.000117352625,
+      "speedup": 1.4849348278319296,
+      "shape": "13x13, 972 projectors"
+    },
+    {
+      "kernel": "VNA FP32 terms=1 lanes_rows=1",
+      "before_seconds": 0.000182730625,
+      "after_seconds": 0.000117604125,
+      "speedup": 1.5537773441195197,
+      "shape": "13x13, 972 projectors"
+    },
+    {
+      "kernel": "VNA FP32 terms=2 lanes_rows=0",
+      "before_seconds": 0.000274027,
+      "after_seconds": 0.000205863375,
+      "speedup": 1.3311109856233534,
+      "shape": "13x13, 972 projectors"
+    },
+    {
+      "kernel": "VNA FP32 terms=2 lanes_rows=1",
+      "before_seconds": 0.000274138,
+      "after_seconds": 0.0002082885,
+      "speedup": 1.316145634540553,
+      "shape": "13x13, 972 projectors"
+    },
+    {
+      "kernel": "force density contraction",
+      "before_seconds": 8.51294e-08,
+      "after_seconds": 2.92356e-08,
+      "speedup": 2.9118403590143527,
+      "shape": "13x13"
+    }
+  ]
+}

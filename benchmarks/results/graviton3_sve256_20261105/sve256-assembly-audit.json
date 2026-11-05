@@ -1,0 +1,72 @@
+[
+  {
+    "kernel": "grid",
+    "object": "build/cpu-sve256/core/host-simd/CMakeFiles/openmx_host_grid_sve256.dir/home/ec2-user/openmx4.0_gpu/core/src/host_grid_simd.cpp.o",
+    "sha256": "b58b79763ba2aa97d74cf57c16b885551ef5e974bd6cf559c9a3907014c001b9",
+    "instruction_counts": {
+      "widening_word_load": 10,
+      "float_to_double": 30,
+      "sve_multiply": 275,
+      "sve_add": 249,
+      "sve_fused_multiply_add": 0
+    },
+    "examples": {
+      "widening_word_load": [
+        "13e0:\ta560bc5e \tld1w\t{z30.d}, p7/z, [x2]",
+        "1480:\ta560bc59 \tld1w\t{z25.d}, p7/z, [x2]",
+        "23f8:\ta560bc71 \tld1w\t{z17.d}, p7/z, [x3]"
+      ],
+      "float_to_double": [
+        "13e8:\t65cbbfde \tfcvt\tz30.d, p7/m, z30.s",
+        "1438:\t65cbbf9c \tfcvt\tz28.d, p7/m, z28.s",
+        "143c:\t65cbbfbd \tfcvt\tz29.d, p7/m, z29.s"
+      ],
+      "sve_multiply": [
+        "38:\t65c20b62 \tfmul\tz2.d, z27.d, z2.d",
+        "3c:\t65c10b61 \tfmul\tz1.d, z27.d, z1.d",
+        "40:\t65c00b60 \tfmul\tz0.d, z27.d, z0.d"
+      ],
+      "sve_add": [
+        "4c:\t65c203ff \tfadd\tz31.d, z31.d, z2.d",
+        "50:\t65c103de \tfadd\tz30.d, z30.d, z1.d",
+        "54:\t65c003bd \tfadd\tz29.d, z29.d, z0.d"
+      ],
+      "sve_fused_multiply_add": []
+    }
+  },
+  {
+    "kernel": "force",
+    "object": "build/cpu-sve256/core/host-simd/CMakeFiles/openmx_host_force_sve256.dir/home/ec2-user/openmx4.0_gpu/core/src/host_force_simd.cpp.o",
+    "sha256": "a23865a7205341ee51e3634a72768f2876bef5e95eec42fc61bdfc712e95d738",
+    "instruction_counts": {
+      "widening_word_load": 64,
+      "float_to_double": 314,
+      "sve_multiply": 446,
+      "sve_add": 277,
+      "sve_fused_multiply_add": 0
+    },
+    "examples": {
+      "widening_word_load": [
+        "bd0:\ta560bc30 \tld1w\t{z16.d}, p7/z, [x1]",
+        "bd4:\ta560bd53 \tld1w\t{z19.d}, p7/z, [x10]",
+        "bec:\ta560bc32 \tld1w\t{z18.d}, p7/z, [x1]"
+      ],
+      "float_to_double": [
+        "c00:\t65cbbdef \tfcvt\tz15.d, p7/m, z15.s",
+        "c0c:\t65cbbdce \tfcvt\tz14.d, p7/m, z14.s",
+        "c38:\t65cbbdef \tfcvt\tz15.d, p7/m, z15.s"
+      ],
+      "sve_multiply": [
+        "1c8:\t65c20b62 \tfmul\tz2.d, z27.d, z2.d",
+        "1cc:\t65c10b61 \tfmul\tz1.d, z27.d, z1.d",
+        "1d0:\t65c00b60 \tfmul\tz0.d, z27.d, z0.d"
+      ],
+      "sve_add": [
+        "1d8:\t65c2039c \tfadd\tz28.d, z28.d, z2.d",
+        "1dc:\t65c103bd \tfadd\tz29.d, z29.d, z1.d",
+        "1e0:\t65c003de \tfadd\tz30.d, z30.d, z0.d"
+      ],
+      "sve_fused_multiply_add": []
+    }
+  }
+]

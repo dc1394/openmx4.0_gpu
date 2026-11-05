@@ -48,7 +48,15 @@ template<class T> [[gnu::always_inline]] inline void copy_row(const OpenMXGridOr
   if(o.transposed){for(int i=0;i<n;++i)dst[i]=double(rows[i][point]);return;}
   const T* row=rows[point];
   int i=0;
-  if constexpr(lanes>1)for(;i+lanes<=n;i+=lanes)store(Vector(simd::simd_unchecked_load<LanesOf<T>>(row+i)),dst+i);
+  if constexpr(lanes>1)for(;i+lanes<=n;i+=lanes) {
+#if defined(OPENMX_HOST_SIMD_SVE) && OPENMX_HOST_SIMD_SVE == 256
+    if constexpr(std::is_same_v<T,float>) {
+      const auto words=svld1uw_u64(Vector::active(),reinterpret_cast<const std::uint32_t*>(row+i));
+      store(Vector(svcvt_f64_f32_x(Vector::active(),svreinterpret_f32(words))),dst+i);
+    }else
+#endif
+    store(Vector(simd::simd_unchecked_load<LanesOf<T>>(row+i)),dst+i);
+  }
   for(;i<n;++i)dst[i]=double(row[i]);
 }
 [[gnu::always_inline]] inline void copy_row(const OpenMXGridOrbitals& o,int point,int n,double* dst) {
@@ -143,6 +151,145 @@ void density(const OpenMXGridPair& p,GridScratch w,double* const* output) {
   }
 }
 
+// Several independent i-rows share each orbital vector and overlap their
+// j-recurrences. Both reductions retain their original ascending order.
+template<int Spins,int Rows>
+[[gnu::always_inline]] inline void density_tile(const OpenMXGridPair& p,GridScratch w,
+    int first,Vector (&sum)[Spins]) {
+  Vector tmp[Rows][Spins];
+  for(auto& row:tmp)for(auto& v:row)v=Vector(0.0);
+  const double* matrix[Rows];
+  for(int r=0;r<Rows;++r)matrix[r]=w.dm+size_t(first+r)*p.columns*Spins;
+  for(int j=0;j<p.columns;++j) {
+    const Vector b=load(w.orb1+size_t(j)*lanes);
+    for(int r=0;r<Rows;++r)for(int s=0;s<Spins;++s)
+      tmp[r][s]+=Vector(matrix[r][size_t(j)*Spins+s])*b;
+  }
+  for(int r=0;r<Rows;++r) {
+    const Vector a=load(w.orb0+size_t(first+r)*lanes);
+    for(int s=0;s<Spins;++s)sum[s]+=a*tmp[r][s];
+  }
+}
+template<int Spins,int Rows>
+void density_tiled(const OpenMXGridPair& p,GridScratch w,double* const* output) {
+  for(int i=0;i<p.rows;++i)for(int j=0;j<p.columns;++j)for(int s=0;s<Spins;++s)
+    w.dm[(size_t(i)*p.columns+j)*Spins+s]=p.matrix[s][i][j];
+  for(int first=0;first<p.points;first+=lanes) {
+    const int count=std::min(lanes,p.points-first);
+    fill_lanes(p.center,p.center_points+first,false,first,count,p.rows,w.orb0);
+    fill_lanes(p.neighbor,p.neighbor_points+first,p.neighbor.overlap_rows!=0,first,count,p.columns,w.orb1);
+    Vector sum[Spins];for(auto& v:sum)v=Vector(0.0);
+    int i=0;
+    for(;i+Rows<=p.rows;i+=Rows)density_tile<Spins,Rows>(p,w,i,sum);
+    for(;i<p.rows;++i)density_tile<Spins,1>(p,w,i,sum);
+    for(int s=0;s<Spins;++s) {
+      double values[lanes];store(sum[s],values);
+      for(int g=0;g<count;++g)output[s][p.center_points[first+g]]+=values[g];
+    }
+  }
+}
+
+#if defined(OPENMX_HOST_SIMD_SVE) && OPENMX_HOST_SIMD_SVE == 256
+// NC has exactly four density components. Put those in the four FP64 lanes
+// and reuse a contiguous density vector across four points. Orbital rows stay
+// contiguous, eliminating their point-to-lane transposition.
+template<int Rows,bool Full>
+[[gnu::always_inline]] inline void density_spin_tile(const OpenMXGridPair& p,GridScratch w,
+    int first,int count,Vector (&sum)[4]) {
+  Vector tmp[Rows][4];
+  for(auto& row:tmp)for(auto& v:row)v=Vector(0.0);
+  for(int j=0;j<p.columns;++j) {
+    Vector matrix[Rows];
+    for(int r=0;r<Rows;++r)matrix[r]=load(w.dm+(size_t(first+r)*p.columns+j)*4);
+    for(int q=0;q<4;++q) {
+      if constexpr(!Full)if(q>=count)break;
+      const Vector orbital(w.orb1[size_t(q)*w.orbitals+j]);
+      for(int r=0;r<Rows;++r)tmp[r][q]+=matrix[r]*orbital;
+    }
+  }
+  for(int r=0;r<Rows;++r)for(int q=0;q<4;++q) {
+    if constexpr(!Full)if(q>=count)break;
+    sum[q]+=Vector(w.orb0[size_t(q)*w.orbitals+first+r])*tmp[r][q];
+  }
+}
+template<int Rows,bool Full>
+void density_spin_points(const OpenMXGridPair& p,GridScratch w,int count,Vector (&sum)[4]) {
+  int i=0;
+  for(;i+Rows<=p.rows;i+=Rows)density_spin_tile<Rows,Full>(p,w,i,count,sum);
+  for(;i<p.rows;++i)density_spin_tile<1,Full>(p,w,i,count,sum);
+}
+template<int Rows>
+void density_spins(const OpenMXGridPair& p,GridScratch w,double* const* output) {
+  for(int i=0;i<p.rows;++i)for(int j=0;j<p.columns;++j)for(int s=0;s<4;++s)
+    w.dm[(size_t(i)*p.columns+j)*4+s]=p.matrix[s][i][j];
+  for(int first=0;first<p.points;first+=4) {
+    const int count=std::min(4,p.points-first);
+    for(int q=0;q<count;++q) {
+      copy_row(p.center,p.center_points[first+q],p.rows,w.orb0+size_t(q)*w.orbitals);
+      const int nh=p.neighbor.overlap_rows?first+q:p.neighbor_points[first+q];
+      copy_row(p.neighbor,nh,p.columns,w.orb1+size_t(q)*w.orbitals);
+    }
+    Vector sum[4];for(auto& v:sum)v=Vector(0.0);
+    if(count==4)density_spin_points<Rows,true>(p,w,count,sum);
+    else density_spin_points<Rows,false>(p,w,count,sum);
+    double values[4][4];for(int q=0;q<count;++q)store(sum[q],values[q]);
+    for(int s=0;s<4;++s)for(int q=0;q<count;++q)
+      output[s][p.center_points[first+q]]+=values[q][s];
+  }
+}
+
+// With NC components in lanes, a 13-column block needs exactly 13 updates,
+// rather than rounding each of its four component matrices up to 16 columns.
+// Every matrix element still accumulates the grid points in ascending order.
+template<int Rows,int Columns>
+[[gnu::always_inline]] inline void hamiltonian_spin_tile(const OpenMXGridPair& p,GridScratch w,
+    int i,int j,const double (&potential)[16][4],int count) {
+  Vector value[Rows][Columns];
+  for(int r=0;r<Rows;++r)for(int c=0;c<Columns;++c)
+    value[r][c]=load(w.h+(size_t(i+r)*p.columns+j+c)*4);
+  for(int g=0;g<count;++g) {
+    const Vector pot=load(potential[g]);
+    Vector a[Rows];
+    for(int r=0;r<Rows;++r)a[r]=pot*Vector(w.orb0[size_t(g)*w.orbitals+i+r]);
+    for(int c=0;c<Columns;++c) {
+      const Vector b(w.orb1[size_t(g)*w.orbitals+j+c]);
+      for(int r=0;r<Rows;++r)value[r][c]+=a[r]*b;
+    }
+  }
+  for(int r=0;r<Rows;++r)for(int c=0;c<Columns;++c)
+    store(value[r][c],w.h+(size_t(i+r)*p.columns+j+c)*4);
+}
+template<int Rows,int Columns>
+void hamiltonian_spin_columns(const OpenMXGridPair& p,GridScratch w,int i,
+    const double (&potential)[16][4],int count) {
+  int j=0;
+  for(;j+Columns<=p.columns;j+=Columns)hamiltonian_spin_tile<Rows,Columns>(p,w,i,j,potential,count);
+  for(;j<p.columns;++j)hamiltonian_spin_tile<Rows,1>(p,w,i,j,potential,count);
+}
+template<int Rows,int Columns>
+void hamiltonian_spins(const OpenMXGridPair& p,GridScratch w) {
+  if(!p.points || !p.rows || !p.columns)return;
+  for(int i=0;i<p.rows;++i)for(int j=0;j<p.columns;++j)for(int s=0;s<4;++s)
+    w.h[(size_t(i)*p.columns+j)*4+s]=p.matrix[s][i][j];
+  for(int first=0;first<p.points;first+=16) {
+    const int count=std::min(16,p.points-first);
+    double potential[16][4];
+    for(int g=0;g<count;++g) {
+      const int nc=p.center_points[first+g];
+      const int nh=p.neighbor.overlap_rows?first+g:p.neighbor_points[first+g];
+      copy_row(p.center,nc,p.rows,w.orb0+size_t(g)*w.orbitals);
+      copy_row(p.neighbor,nh,p.columns,w.orb1+size_t(g)*w.orbitals);
+      for(int s=0;s<4;++s)potential[g][s]=p.volume*p.potential[s][p.potential_index[nc]];
+    }
+    int i=0;
+    for(;i+Rows<=p.rows;i+=Rows)hamiltonian_spin_columns<Rows,Columns>(p,w,i,potential,count);
+    for(;i<p.rows;++i)hamiltonian_spin_columns<1,Columns>(p,w,i,potential,count);
+  }
+  for(int s=0;s<4;++s)for(int i=0;i<p.rows;++i)for(int j=0;j<p.columns;++j)
+    p.matrix[s][i][j]=w.h[(size_t(i)*p.columns+j)*4+s];
+}
+#endif
+
 // SIMD spans independent matrix columns, never the quadrature reduction.
 template<int Chunks>
 void accumulate_tile(double* row,const double* b,size_t stride,const double* a,int count) {
@@ -207,7 +354,8 @@ const GridKernels& committed() noexcept {return OPENMX_HOST_SIMD_FACTORY(grid_co
 // (2000-point pairs; rows 1-19 x columns 1-19, spins 1/2/4; float rows):
 // a shape takes a new kernel only where it was faster, otherwise the
 // committed one. The NEON/SVE128 choices below were measured separately on
-// Neoverse-N3; wider SVE variants retain their existing policy.
+// Neoverse-N3; SVE256 was measured on Neoverse-V1 (see the local Graviton3
+// benchmark's grid-kernels.csv, including bitwise checks of all alternatives).
 enum class DensityKernel {committed,points,rows2,rows4};
 DensityKernel density_kernel(int rows,int columns,int spins) {
 #if defined(OPENMX_HOST_SIMD_AVX512)
@@ -231,6 +379,10 @@ DensityKernel density_kernel(int rows,int columns,int spins) {
   if(rows==1 && columns==1)return DensityKernel::committed;
   if(spins==1 && (rows>=8 || (rows>=4 && columns>=12)))return DensityKernel::rows4;
   return DensityKernel::points;
+#elif defined(OPENMX_HOST_SIMD_SVE) && OPENMX_HOST_SIMD_SVE == 256
+  // The component and row tiles below handle wider shapes; retain the
+  // point kernel for narrow collinear blocks.
+  return DensityKernel::points;
 #else
   // the scalar build gains from interleaved rows (several points per pass)
   if(spins==1)return columns>=2?DensityKernel::rows4:DensityKernel::committed;
@@ -248,9 +400,9 @@ bool hamiltonian_rows(int rows,int columns) {
   return !(columns<=2 || (rows<8 && columns<8));
 #elif defined(OPENMX_HOST_SIMD_AVX2)
   return !((rows<8 && columns<=2) || (rows<=3 && columns<=5));
-#elif defined(OPENMX_HOST_SIMD_NEON) || (defined(OPENMX_HOST_SIMD_SVE) && OPENMX_HOST_SIMD_SVE == 128)
+#elif defined(OPENMX_HOST_SIMD_NEON) || (defined(OPENMX_HOST_SIMD_SVE) && (OPENMX_HOST_SIMD_SVE == 128 || OPENMX_HOST_SIMD_SVE == 256))
   // Whole-vector FP32->FP64 row copies pay for their setup beyond tiny
-  // blocks on Neoverse-N3; retain the element loop for the small cases.
+  // blocks on Neoverse-N3/V1; retain the element loop for the small cases.
   return rows>=4 || columns>=4;
 #else
   // one-lane builds have no vector conversion to gain
@@ -258,6 +410,13 @@ bool hamiltonian_rows(int rows,int columns) {
 #endif
 }
 void density_dispatch(const OpenMXGridPair& p,GridScratch w,double* const* out,int spins) {
+#if defined(OPENMX_HOST_SIMD_SVE) && OPENMX_HOST_SIMD_SVE == 256
+  if(spins==4){density_spins<4>(p,w,out);return;}
+  if(p.rows>=4 && p.columns>=4) {
+    if(spins==1)density_tiled<1,4>(p,w,out);else density_tiled<2,4>(p,w,out);
+    return;
+  }
+#endif
   switch(density_kernel(p.rows,p.columns,spins)) {
     case DensityKernel::rows2:
       if(spins==1)density_rowwise<1,2>(p,w,out);else if(spins==2)density_rowwise<2,2>(p,w,out);
@@ -276,6 +435,9 @@ void density_dispatch(const OpenMXGridPair& p,GridScratch w,double* const* out,i
   }
 }
 void hamiltonian_dispatch(const OpenMXGridPair& p,GridScratch w,int spins) {
+#if defined(OPENMX_HOST_SIMD_SVE) && OPENMX_HOST_SIMD_SVE == 256
+  if(spins==4){hamiltonian_spins<4,4>(p,w);return;}
+#endif
   if(hamiltonian_rows(p.rows,p.columns)) {
     if(spins==1)hamiltonian<1>(p,w);else if(spins==2)hamiltonian<2>(p,w);else hamiltonian<4>(p,w);
     return;

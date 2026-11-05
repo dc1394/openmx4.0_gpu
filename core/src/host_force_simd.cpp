@@ -18,6 +18,27 @@ constexpr int chunk=2;
 #endif
 NarrowFloat loadf(const float* p) { return simd::simd_unchecked_load<NarrowFloat>(p); }
 
+#if defined(OPENMX_HOST_SIMD_SVE) && OPENMX_HOST_SIMD_SVE == 256
+// Keep each FP32 projector in the low word of a 64-bit lane. LD1W performs
+// that placement directly; FCVT then needs no ZIP1 after every product.
+// The b64 predicate also selects only those even FP32 lanes for arithmetic.
+using VnaFloat=typename simd::Impl::OpenMXSVEStorage<float,OPENMX_HOST_SIMD_SVE>::type;
+VnaFloat vna_float(float x) {return svdup_f32(x);}
+VnaFloat load_vna_float(const float* p) {
+  return svreinterpret_f32(svld1uw_u64(Vector::active(),reinterpret_cast<const std::uint32_t*>(p)));
+}
+Vector widen_vna_float(VnaFloat x) {return Vector(svcvt_f64_f32_x(Vector::active(),x));}
+Vector vna_product(VnaFloat a,VnaFloat b) {
+  return widen_vna_float(svmul_f32_x(Vector::active(),a,b));
+}
+#else
+using VnaFloat=NarrowFloat;
+VnaFloat vna_float(float x) {return VnaFloat(x);}
+VnaFloat load_vna_float(const float* p) {return loadf(p);}
+Vector widen_vna_float(VnaFloat x) {return Vector(x);}
+Vector vna_product(VnaFloat a,VnaFloat b) {return Vector(a*b);}
+#endif
+
 // rows[n][l] -> out[l*pad+n], padding lanes zero. Element by element: on
 // AVX-512/AVX2 hosts a masked gather per output row is no faster (measured
 // 9 and 15 us against 8 us for 13 x 972 floats), and Kokkos::simd offers no
@@ -66,6 +87,8 @@ constexpr int tile_rows_one=4,tile_rows_two=2,tile_vectors=2;   // 32 vector reg
 constexpr int tile_rows_one=2,tile_rows_two=1,tile_vectors=2;   // 16 vector registers
 #elif defined(OPENMX_HOST_SIMD_NEON)
 constexpr int tile_rows_one=4,tile_rows_two=2,tile_vectors=2;   // 32 vector registers
+#elif defined(OPENMX_HOST_SIMD_SVE) && OPENMX_HOST_SIMD_SVE == 256
+constexpr int tile_rows_one=4,tile_rows_two=3,tile_vectors=2;
 #else
 constexpr int tile_rows_one=1,tile_rows_two=1,tile_vectors=1;
 #endif
@@ -95,39 +118,39 @@ void vna_tile(const OpenMXForceVnaBlock& b,const float* const planes[4],size_t p
     const size_t at=size_t(l)*pad+at0;
     if constexpr(Fp32) {
       // lane vectors of this l, float: the products round in float
-      NarrowFloat p0[V],p1[V],p2[V],p3[V];
+      VnaFloat p0[V],p1[V],p2[V],p3[V];
       OPENMX_FORCE_UNROLL
       for(int v=0;v<V;++v) {
-        p0[v]=loadf(planes[0]+at+size_t(v)*lanes);
+        p0[v]=load_vna_float(planes[0]+at+size_t(v)*lanes);
         if constexpr(Terms==2 || LanesRows) {
-          p1[v]=loadf(planes[1]+at+size_t(v)*lanes);p2[v]=loadf(planes[2]+at+size_t(v)*lanes);
+          p1[v]=load_vna_float(planes[1]+at+size_t(v)*lanes);p2[v]=load_vna_float(planes[2]+at+size_t(v)*lanes);
         }
-        if constexpr(Terms==2)p3[v]=loadf(planes[3]+at+size_t(v)*lanes);
+        if constexpr(Terms==2)p3[v]=load_vna_float(planes[3]+at+size_t(v)*lanes);
       }
       OPENMX_FORCE_UNROLL
       for(int r=0;r<R;++r) {
         if constexpr(!LanesRows) {
-          const NarrowFloat ax(s0[r][l]),ay(s1[r][l]),az(s2[r][l]);
+          const VnaFloat ax=vna_float(s0[r][l]),ay=vna_float(s1[r][l]),az=vna_float(s2[r][l]);
           if constexpr(Terms==1) {
-            for(int v=0;v<V;++v){acc[r][0][v]+=Vector(ax*p0[v]);acc[r][1][v]+=Vector(ay*p0[v]);acc[r][2][v]+=Vector(az*p0[v]);}
+            for(int v=0;v<V;++v){acc[r][0][v]+=vna_product(ax,p0[v]);acc[r][1][v]+=vna_product(ay,p0[v]);acc[r][2][v]+=vna_product(az,p0[v]);}
           }else {
-            const NarrowFloat h(s3[r][l]);
+            const VnaFloat h=vna_float(s3[r][l]);
             for(int v=0;v<V;++v) {
-              acc[r][0][v]-=Vector(ax*p0[v])+Vector(h*p1[v]);
-              acc[r][1][v]-=Vector(ay*p0[v])+Vector(h*p2[v]);
-              acc[r][2][v]-=Vector(az*p0[v])+Vector(h*p3[v]);
+              acc[r][0][v]-=vna_product(ax,p0[v])+vna_product(h,p1[v]);
+              acc[r][1][v]-=vna_product(ay,p0[v])+vna_product(h,p2[v]);
+              acc[r][2][v]-=vna_product(az,p0[v])+vna_product(h,p3[v]);
             }
           }
         }else {
-          const NarrowFloat q(s0[r][l]);
+          const VnaFloat q=vna_float(s0[r][l]);
           if constexpr(Terms==1) {
-            for(int v=0;v<V;++v){acc[r][0][v]+=Vector(p0[v]*q);acc[r][1][v]+=Vector(p1[v]*q);acc[r][2][v]+=Vector(p2[v]*q);}
+            for(int v=0;v<V;++v){acc[r][0][v]+=vna_product(p0[v],q);acc[r][1][v]+=vna_product(p1[v],q);acc[r][2][v]+=vna_product(p2[v],q);}
           }else {
-            const NarrowFloat qx(s1[r][l]),qy(s2[r][l]),qz(s3[r][l]);
+            const VnaFloat qx=vna_float(s1[r][l]),qy=vna_float(s2[r][l]),qz=vna_float(s3[r][l]);
             for(int v=0;v<V;++v) {
-              acc[r][0][v]-=Vector(p0[v]*q)+Vector(p3[v]*qx);
-              acc[r][1][v]-=Vector(p1[v]*q)+Vector(p3[v]*qy);
-              acc[r][2][v]-=Vector(p2[v]*q)+Vector(p3[v]*qz);
+              acc[r][0][v]-=vna_product(p0[v],q)+vna_product(p3[v],qx);
+              acc[r][1][v]-=vna_product(p1[v],q)+vna_product(p3[v],qy);
+              acc[r][2][v]-=vna_product(p2[v],q)+vna_product(p3[v],qz);
             }
           }
         }
@@ -174,7 +197,11 @@ void vna_tile(const OpenMXForceVnaBlock& b,const float* const planes[4],size_t p
 // The tiles of a vector range [v0, v0+V): row blocks of R, then the rest.
 template<bool Fp32,int Terms,bool LanesRows,int V>
 void vna_rows_v(const OpenMXForceVnaBlock& b,const float* const planes[4],size_t pad,int lane_count,int outer,int v0) {
-  constexpr int R=Terms==1?tile_rows_one:tile_rows_two;
+  constexpr int R=
+#if defined(OPENMX_HOST_SIMD_SVE) && OPENMX_HOST_SIMD_SVE == 256
+      Fp32?(Terms==1?(V==1?2:1):2):
+#endif
+      (Terms==1?tile_rows_one:tile_rows_two);
   int o=0;
   for(;o+R<=outer;o+=R)vna_tile<Fp32,Terms,LanesRows,R,V>(b,planes,pad,lane_count,o,v0);
   for(;o<outer;++o)vna_tile<Fp32,Terms,LanesRows,1,V>(b,planes,pad,lane_count,o,v0);
@@ -182,7 +209,12 @@ void vna_rows_v(const OpenMXForceVnaBlock& b,const float* const planes[4],size_t
 template<bool Fp32,int Terms,bool LanesRows>
 void vna_rows(const OpenMXForceVnaBlock& b,const float* const planes[4],size_t pad) {
   const int outer=LanesRows?b.columns:b.rows,lane_count=LanesRows?b.rows:b.columns;
-  const int vectors=int(pad/lanes);
+  const int vectors=
+#if defined(OPENMX_HOST_SIMD_SVE) && OPENMX_HOST_SIMD_SVE == 256
+      (lane_count+lanes-1)/lanes;
+#else
+      int(pad/lanes);
+#endif
   int v0=0;
   if constexpr(tile_vectors>1)for(;v0+tile_vectors<=vectors;v0+=tile_vectors)vna_rows_v<Fp32,Terms,LanesRows,tile_vectors>(b,planes,pad,lane_count,outer,v0);
   for(;v0<vectors;++v0)vna_rows_v<Fp32,Terms,LanesRows,1>(b,planes,pad,lane_count,outer,v0);
@@ -279,8 +311,28 @@ void vna_block(const OpenMXForceVnaBlock& b,void* scratch) {
 
 // tmp0[i] = sum_j orbitals[j] * dm[j][i] over the density planes of one pair
 // and spin (lanes over i, j ascending), stored for the scalar i-reduction.
+#if defined(OPENMX_HOST_SIMD_SVE) && OPENMX_HOST_SIMD_SVE == 256
+template<int C>
+[[gnu::always_inline]] inline void density_row_tile(const double* dm,int columns,size_t pad,
+    const float* orbitals,double* out,int first) {
+  Vector acc[C];for(auto& v:acc)v=Vector(0.0);
+  for(int j=0;j<columns;++j) {
+    const Vector weight{double(orbitals[j])};
+    for(int c=0;c<C;++c)acc[c]+=weight*load(dm+size_t(j)*pad+size_t(first+c)*lanes);
+  }
+  for(int c=0;c<C;++c)store(acc[c],out+size_t(first+c)*lanes);
+}
+#endif
 void density_rows(const double* dm,int columns,size_t pad,const float* orbitals,double* tmp0) {
   const int vectors=int(pad/lanes);
+#if defined(OPENMX_HOST_SIMD_SVE) && OPENMX_HOST_SIMD_SVE == 256
+  // Fixed register tiles avoid a dynamic inner vector loop and share each
+  // orbital broadcast across sixteen independent rows.
+  int v=0;
+  for(;v+4<=vectors;v+=4)density_row_tile<4>(dm,columns,pad,orbitals,tmp0,v);
+  if(v+2<=vectors){density_row_tile<2>(dm,columns,pad,orbitals,tmp0,v);v+=2;}
+  for(;v<vectors;++v)density_row_tile<1>(dm,columns,pad,orbitals,tmp0,v);
+#else
   for(int v0=0;v0<vectors;v0+=chunk) {
     const int nv=std::min(chunk,vectors-v0);
     Vector acc[chunk];
@@ -292,6 +344,7 @@ void density_rows(const double* dm,int columns,size_t pad,const float* orbitals,
     }
     for(int v=0;v<nv;++v)store(acc[v],tmp0+size_t(v0+v)*lanes);
   }
+#endif
 }
 void grid_pair(const OpenMXForceGridPair& g,double* sums,void* scratch) {
   if(!g.points || !g.rows)return;

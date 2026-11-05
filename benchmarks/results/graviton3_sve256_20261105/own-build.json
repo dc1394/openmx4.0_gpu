@@ -1,0 +1,20 @@
+{
+  "source_commit": "3871b1f0fb880aa1ee3b3201e7f51d6bdf6c6e96",
+  "source_diff_sha256": "2ba2d7cb3b8f9206f74b87295075aab37511d569253c362cc9582f34c27f6ba9",
+  "scalapack_block_size": 32,
+  "elpa_real_kernel": "SVE256_BLOCK2",
+  "elpa_complex_kernel": "SVE256_BLOCK2",
+  "blas": "OpenBLAS 0.3.34, NEOVERSEV1, OpenMP",
+  "cpu": "Neoverse V1",
+  "sve_bits": 256,
+  "auto_vectorization": "scalable",
+  "explicit_kernel_vector_bits": 256,
+  "flags": "-mcpu=neoverse-v1 -msve-vector-bits=scalable -fno-fast-math -ffp-contract=off",
+  "elpa_fortran_flags": "-O2 -fPIC",
+  "nonlibrary_kernels": [
+    "NC density and Hamiltonian: four spin components in SVE256 lanes",
+    "Collinear density: independent row tiles",
+    "VNA forces: widened word loads and register tiles preserving FP32 products",
+    "Force density contraction: fixed four-vector tiles"
+  ]
+}

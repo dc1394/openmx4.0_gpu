@@ -1,0 +1,103 @@
+{
+  "before_run": "tune-openblas-nblk32",
+  "after_run": "own-kernels-pilot",
+  "before_seconds": 96.70256640499974,
+  "after_seconds": 88.64101612999912,
+  "speedup": 1.0909460498870829,
+  "energy_difference_Ha": 0.0,
+  "max_force_difference_Ha_bohr": 0.0,
+  "phases": {
+    "Total Computational Time": {
+      "before": 94.466,
+      "after": 86.448
+    },
+    "readfile": {
+      "before": 0.18,
+      "after": 0.179
+    },
+    "truncation": {
+      "before": 1.163,
+      "after": 1.142
+    },
+    "MD_pac": {
+      "before": 0.009,
+      "after": 0.005
+    },
+    "OutData": {
+      "before": 12.721,
+      "after": 12.743
+    },
+    "HWF": {
+      "before": 0.0,
+      "after": 0.0
+    },
+    "DFT": {
+      "before": 80.357,
+      "after": 72.343
+    },
+    "Set_OLP_Kin": {
+      "before": 0.273,
+      "after": 0.269
+    },
+    "Set_Nonlocal": {
+      "before": 0.505,
+      "after": 0.496
+    },
+    "Set_ProExpn_VNA": {
+      "before": 4.775,
+      "after": 4.76
+    },
+    "Set_Hamiltonian": {
+      "before": 5.694,
+      "after": 4.254
+    },
+    "Poisson": {
+      "before": 0.021,
+      "after": 0.021
+    },
+    "Diagonalization": {
+      "before": 38.644,
+      "after": 38.764
+    },
+    "Mixing_DM": {
+      "before": 0.181,
+      "after": 0.185
+    },
+    "Force": {
+      "before": 20.595,
+      "after": 14.326
+    },
+    "Total_Energy": {
+      "before": 2.802,
+      "after": 2.774
+    },
+    "Set_Aden_Grid": {
+      "before": 0.26,
+      "after": 0.258
+    },
+    "Set_Orbitals_Grid": {
+      "before": 0.656,
+      "after": 0.656
+    },
+    "Set_Density_Grid": {
+      "before": 5.495,
+      "after": 5.112
+    },
+    "RestartFileDFT": {
+      "before": 0.018,
+      "after": 0.018
+    },
+    "Mulliken_Charge": {
+      "before": 0.061,
+      "after": 0.062
+    },
+    "FFT(2D)_Density": {
+      "before": 0.082,
+      "after": 0.085
+    },
+    "Others": {
+      "before": 0.568,
+      "after": 0.573
+    }
+  }
+}

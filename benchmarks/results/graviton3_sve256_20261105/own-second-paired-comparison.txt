@@ -1,0 +1,7 @@
+Baseline: 505.703 s, samples [503.8123729500003, 507.5943311809988]
+Optimized: 380.626 s, samples [380.5257782330009, 380.72578474799957]
+Speedup: 1.3286x; reduction 24.73%
+Maximum energy difference: 1.68939e-10 Ha
+Maximum force-component difference: 1.74e-10 Ha/bohr
+216 atoms, 648 force components, identical coordinates/grid/input and 25 SCF steps verified.
+SCF not converged: True. This is a fixed-iteration benchmark.

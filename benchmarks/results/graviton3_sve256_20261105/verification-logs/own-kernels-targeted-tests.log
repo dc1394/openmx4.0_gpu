@@ -1,0 +1,186 @@
+Internal ctest changing into directory: /home/ec2-user/openmx4.0_gpu/build/cpu-sve256
+Test project /home/ec2-user/openmx4.0_gpu/build/cpu-sve256
+      Start  49: hubbard-force-views
+      Start  27: core-hole-force-views
+      Start  30: force-hnl-gpu-batches
+      Start  28: projector-force-views
+      Start  31: force-vna-gpu-resources
+      Start  29: force-hnl-gpu-archives
+      Start 359: core-grid-assembly-layouts
+      Start 351: core-grid-assembly-hamiltonian-double
+ 1/85 Test #351: core-grid-assembly-hamiltonian-double ...   Passed    2.48 sec
+      Start 348: core-grid-assembly-density-double
+ 2/85 Test #359: core-grid-assembly-layouts ..............   Passed    3.55 sec
+      Start 350: core-grid-assembly-hamiltonian-float
+ 3/85 Test  #29: force-hnl-gpu-archives ..................   Passed    4.67 sec
+      Start 347: core-grid-assembly-density-float
+ 4/85 Test #348: core-grid-assembly-density-double .......   Passed    2.45 sec
+      Start 621: neutral-grid-metadata-native
+ 5/85 Test #350: core-grid-assembly-hamiltonian-float ....   Passed    2.45 sec
+      Start  26: force-spin-trace-calls
+ 6/85 Test #347: core-grid-assembly-density-float ........   Passed    2.42 sec
+      Start 349: core-grid-assembly-density-split
+ 7/85 Test #621: neutral-grid-metadata-native ............   Passed    2.37 sec
+      Start  40: force-recovery-failures
+ 8/85 Test  #26: force-spin-trace-calls ..................   Passed    2.27 sec
+      Start 622: neutral-grid-native
+ 9/85 Test  #31: force-vna-gpu-resources .................   Passed    8.39 sec
+      Start  34: force-vna-case1_turns-packing
+10/85 Test  #28: projector-force-views ...................   Passed    9.05 sec
+      Start  33: force-vna-case1-packing
+11/85 Test #349: core-grid-assembly-density-split ........   Passed    2.06 sec
+      Start  32: force-vna-stream-packing
+12/85 Test  #40: force-recovery-failures .................   Passed    2.07 sec
+      Start  24: force-invocation-lifetime
+13/85 Test #622: neutral-grid-native .....................   Passed    1.36 sec
+      Start 374: core-host-force-vna
+14/85 Test  #34: force-vna-case1_turns-packing ...........   Passed    1.35 sec
+      Start 357: core-grid-assembly-simd-equivalence
+15/85 Test  #24: force-invocation-lifetime ...............   Passed    0.38 sec
+      Start 371: core-host-vna-overlap
+16/85 Test #371: core-host-vna-overlap ...................   Passed    0.11 sec
+      Start 372: core-host-vna-nonlocal
+17/85 Test #374: core-host-force-vna .....................   Passed    0.28 sec
+      Start 366: core-host-vna-bessel
+18/85 Test #372: core-host-vna-nonlocal ..................   Passed    0.11 sec
+      Start 376: core-host-force-grid
+19/85 Test #366: core-host-vna-bessel ....................   Passed    0.05 sec
+      Start 365: core-host-vna-contract
+20/85 Test #357: core-grid-assembly-simd-equivalence .....   Passed    0.24 sec
+      Start 369: core-host-vna-angular
+21/85 Test #365: core-host-vna-contract ..................   Passed    0.04 sec
+      Start 375: core-host-force-tiled
+22/85 Test #376: core-host-force-grid ....................   Passed    0.05 sec
+      Start 368: core-host-vna-hvna
+23/85 Test #369: core-host-vna-angular ...................   Passed    0.04 sec
+      Start 378: core-host-force-nl
+24/85 Test #375: core-host-force-tiled ...................   Passed    0.02 sec
+      Start 370: core-host-vna-convert
+25/85 Test #368: core-host-vna-hvna ......................   Passed    0.02 sec
+      Start 367: core-host-vna-quadrature
+26/85 Test #367: core-host-vna-quadrature ................   Passed    0.01 sec
+      Start 377: core-host-force-points
+27/85 Test  #30: force-hnl-gpu-batches ...................   Passed   10.04 sec
+      Start 358: core-grid-assembly-packed
+28/85 Test #378: core-host-force-nl ......................   Passed    0.02 sec
+29/85 Test #370: core-host-vna-convert ...................   Passed    0.02 sec
+      Start 321: core-projector-force-snapshot
+      Start 325: core-projector-force-concurrent
+30/85 Test #377: core-host-force-points ..................   Passed    0.01 sec
+      Start 333: core-force-overlap
+31/85 Test #321: core-projector-force-snapshot ...........   Passed    0.00 sec
+      Start 338: core-force-concurrent
+32/85 Test #325: core-projector-force-concurrent .........   Passed    0.00 sec
+      Start 308: core-force-hnl-batch-layouts
+33/85 Test #358: core-grid-assembly-packed ...............   Passed    0.01 sec
+34/85 Test #333: core-force-overlap ......................   Passed    0.00 sec
+      Start 354: core-grid-assembly-invalid
+      Start 317: core-force-recovery-allocation
+35/85 Test #338: core-force-concurrent ...................   Passed    0.00 sec
+36/85 Test #308: core-force-hnl-batch-layouts ............   Passed    0.00 sec
+      Start 217: core-neutral-grid-metadata-lifetime
+      Start 324: core-projector-force-allocation
+37/85 Test #354: core-grid-assembly-invalid ..............   Passed    0.00 sec
+38/85 Test #317: core-force-recovery-allocation ..........   Passed    0.00 sec
+      Start 229: core-angular-grid-lifetime
+      Start 335: core-force-invalid
+39/85 Test #217: core-neutral-grid-metadata-lifetime .....   Passed    0.00 sec
+      Start 313: core-force-hnl-batch-concurrent
+40/85 Test #324: core-projector-force-allocation .........   Passed    0.00 sec
+      Start 320: core-projector-force-layouts
+41/85 Test #229: core-angular-grid-lifetime ..............   Passed    0.00 sec
+42/85 Test #335: core-force-invalid ......................   Passed    0.00 sec
+      Start 223: core-neutral-grid-lifetime
+      Start 228: core-angular-grid-failures
+43/85 Test #313: core-force-hnl-batch-concurrent .........   Passed    0.00 sec
+44/85 Test #320: core-projector-force-layouts ............   Passed    0.00 sec
+      Start 214: core-neutral-grid-metadata-replace
+      Start 312: core-force-hnl-batch-nested
+45/85 Test #223: core-neutral-grid-lifetime ..............   Passed    0.00 sec
+46/85 Test #228: core-angular-grid-failures ..............   Passed    0.00 sec
+      Start 310: core-force-hnl-batch-invalid
+      Start 220: core-neutral-grid-replace
+47/85 Test #214: core-neutral-grid-metadata-replace ......   Passed    0.00 sec
+48/85 Test #312: core-force-hnl-batch-nested .............   Passed    0.00 sec
+      Start 225: core-angular-grid-layout
+      Start 323: core-projector-force-lifetime
+49/85 Test #310: core-force-hnl-batch-invalid ............   Passed    0.00 sec
+50/85 Test #220: core-neutral-grid-replace ...............   Passed    0.00 sec
+      Start 352: core-grid-assembly-reuse
+      Start 318: core-force-recovery-nested
+51/85 Test #225: core-angular-grid-layout ................   Passed    0.00 sec
+52/85 Test #323: core-projector-force-lifetime ...........   Passed    0.00 sec
+      Start 373: core-host-vna-invalid
+      Start 332: core-force-layouts
+53/85 Test #352: core-grid-assembly-reuse ................   Passed    0.00 sec
+54/85 Test #318: core-force-recovery-nested ..............   Passed    0.00 sec
+      Start 227: core-angular-grid-invalid
+      Start 213: core-neutral-grid-metadata-layout
+55/85 Test #373: core-host-vna-invalid ...................   Passed    0.00 sec
+56/85 Test #332: core-force-layouts ......................   Passed    0.00 sec
+      Start 216: core-neutral-grid-metadata-failures
+      Start 215: core-neutral-grid-metadata-invalid
+57/85 Test #227: core-angular-grid-invalid ...............   Passed    0.00 sec
+58/85 Test #213: core-neutral-grid-metadata-layout .......   Passed    0.00 sec
+      Start 221: core-neutral-grid-invalid
+      Start 230: core-angular-grid-concurrent
+59/85 Test #216: core-neutral-grid-metadata-failures .....   Passed    0.00 sec
+60/85 Test #215: core-neutral-grid-metadata-invalid ......   Passed    0.00 sec
+      Start 314: core-force-recovery-layouts
+      Start 219: core-neutral-grid-layout
+61/85 Test #221: core-neutral-grid-invalid ...............   Passed    0.00 sec
+62/85 Test #230: core-angular-grid-concurrent ............   Passed    0.00 sec
+      Start 353: core-grid-assembly-exchange
+      Start 337: core-force-allocation
+63/85 Test #314: core-force-recovery-layouts .............   Passed    0.00 sec
+64/85 Test #219: core-neutral-grid-layout ................   Passed    0.00 sec
+      Start 224: core-neutral-grid-concurrent
+      Start 322: core-projector-force-invalid
+65/85 Test #353: core-grid-assembly-exchange .............   Passed    0.00 sec
+66/85 Test #337: core-force-allocation ...................   Passed    0.00 sec
+      Start 379: core-host-force-invalid
+      Start 336: core-force-lifecycle
+67/85 Test #224: core-neutral-grid-concurrent ............   Passed    0.00 sec
+68/85 Test #322: core-projector-force-invalid ............   Passed    0.00 sec
+      Start 311: core-force-hnl-batch-allocation
+      Start 226: core-angular-grid-reuse
+69/85 Test #379: core-host-force-invalid .................   Passed    0.00 sec
+70/85 Test #336: core-force-lifecycle ....................   Passed    0.00 sec
+      Start 315: core-force-recovery-lifetime
+      Start 222: core-neutral-grid-failures
+71/85 Test #311: core-force-hnl-batch-allocation .........   Passed    0.00 sec
+72/85 Test #226: core-angular-grid-reuse .................   Passed    0.00 sec
+      Start 356: core-grid-assembly-plans
+      Start 218: core-neutral-grid-metadata-concurrent
+73/85 Test #315: core-force-recovery-lifetime ............   Passed    0.00 sec
+74/85 Test #222: core-neutral-grid-failures ..............   Passed    0.00 sec
+      Start 334: core-force-spin-trace
+      Start 319: core-force-recovery-concurrent
+75/85 Test #356: core-grid-assembly-plans ................   Passed    0.00 sec
+76/85 Test #218: core-neutral-grid-metadata-concurrent ...   Passed    0.00 sec
+      Start 309: core-force-hnl-batch-lifetime
+      Start 355: core-grid-assembly-allocation
+77/85 Test #334: core-force-spin-trace ...................   Passed    0.00 sec
+78/85 Test #319: core-force-recovery-concurrent ..........   Passed    0.00 sec
+      Start 316: core-force-recovery-invalid
+79/85 Test #309: core-force-hnl-batch-lifetime ...........   Passed    0.00 sec
+80/85 Test #355: core-grid-assembly-allocation ...........   Passed    0.00 sec
+81/85 Test #316: core-force-recovery-invalid .............   Passed    0.00 sec
+82/85 Test  #32: force-vna-stream-packing ................   Passed    0.95 sec
+83/85 Test  #33: force-vna-case1-packing .................   Passed    1.34 sec
+84/85 Test  #27: core-hole-force-views ...................   Passed   20.65 sec
+85/85 Test  #49: hubbard-force-views .....................   Passed   21.35 sec
+
+100% tests passed, 0 tests failed out of 85
+
+Label Time Summary:
+core            =  20.30 sec*proc (73 tests)
+energy          =   0.06 sec*proc (18 tests)
+force           =  61.24 sec*proc (36 tests)
+grid            =  15.66 sec*proc (13 tests)
+host-simd       =   0.78 sec*proc (15 tests)
+native-state    =   3.73 sec*proc (2 tests)
+solver          =   3.73 sec*proc (2 tests)
+unit            = 102.82 sec*proc (85 tests)
+
+Total Test time (real) =  21.37 sec

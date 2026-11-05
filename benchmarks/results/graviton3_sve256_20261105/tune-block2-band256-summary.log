@@ -1,0 +1,45 @@
+{
+  "returncode": 0,
+  "wall_seconds": 114.32789460000004,
+  "phases": {
+    "Total Computational Time": 112.206,
+    "readfile": 0.181,
+    "truncation": 1.131,
+    "MD_pac": 0.009,
+    "OutData": 12.701,
+    "HWF": 0.0,
+    "DFT": 98.15,
+    "Set_OLP_Kin": 0.27,
+    "Set_Nonlocal": 0.494,
+    "Set_ProExpn_VNA": 4.775,
+    "Set_Hamiltonian": 5.685,
+    "Poisson": 0.025,
+    "Diagonalization": 56.375,
+    "Mixing_DM": 0.185,
+    "Force": 20.69,
+    "Total_Energy": 2.773,
+    "Set_Aden_Grid": 0.259,
+    "Set_Orbitals_Grid": 0.667,
+    "Set_Density_Grid": 5.465,
+    "RestartFileDFT": 0.017,
+    "Mulliken_Charge": 0.062,
+    "FFT(2D)_Density": 0.086,
+    "Others": 0.593
+  },
+  "normal_finish": true,
+  "scf_steps": 3,
+  "scf_not_converged": true,
+  "scf_converged": false,
+  "energy": -892.540984007263,
+  "grids": [
+    140,
+    140,
+    140
+  ],
+  "output_sha256": "9872bdc0aa88e0c646b799eaa592fb6aef906982aeee9bca340cf5449cd60092",
+  "log_sha256": "81639dd680f591ae8c60f912184c80ae23d55dee428383391a5ec869267fcc13",
+  "rank_audit_passed": true,
+  "actual_blas_threads": [
+    1
+  ]
+}

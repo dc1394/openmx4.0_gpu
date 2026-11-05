@@ -1,0 +1,53 @@
+{
+  "command": [
+    "/usr/lib64/openmpi/bin/mpirun",
+    "-np",
+    "32",
+    "--bind-to",
+    "core",
+    "--map-by",
+    "slot:PE=1",
+    "/usr/bin/python3",
+    "/home/ec2-user/openmx4.0_gpu/tools/bench_sve256_local.py",
+    "--rank",
+    "/home/ec2-user/.local/opt/openmx-sve256-armpl/bin/openmx"
+  ],
+  "overrides": {
+    "DATA.PATH": "/home/ec2-user/openmx4.0_gpu/DFT_DATA19",
+    "level.of.fileout": "1",
+    "scf.eigen.lib": "elpa2",
+    "scf.restart": "off",
+    "scf.maxIter": "3"
+  },
+  "original_sha256": "9c5466abf560c6481b83ec9a51976f4b218856a1da330e5a209b9041239decd0",
+  "effective_sha256": "6d794a8471d654b6e34fa54b010be7b87f117a6a8636bfa4e636750ac2ebd9bf",
+  "binary_sha256": "5753d810063f399e3d2b9144f9c7de7c776de13cb85cbfc59889d5808372894f",
+  "libraries": {
+    "libopenmx_host_simd.so": "1511a69bb3d19d4c887c3b789f043e59aa91bda93cc1f351be3e7e60cfc5826a",
+    "libopenmx_core.so": "bc0cf5cf53ff2766b614a6bd61062bfd54b078acca348f14d9303e1c595deb37"
+  },
+  "ranks": 32,
+  "threads": 1,
+  "openblas_threads_environment": 1,
+  "steps": 3,
+  "mode": "sve256",
+  "purpose": "pilot",
+  "started_utc": "2026-11-05T04:21:59.908948+00:00",
+  "expected_blas_core": "ARMPL",
+  "environment": {
+    "OPENMX_HOST_SIMD": "sve256",
+    "OPENMX_GPU": "0",
+    "OMP_NUM_THREADS": "1",
+    "OMP_DYNAMIC": "FALSE",
+    "OMP_MAX_ACTIVE_LEVELS": "1",
+    "OMP_PROC_BIND": "close",
+    "OMP_PLACES": "cores",
+    "OPENBLAS_NUM_THREADS": "1",
+    "GOTO_NUM_THREADS": "1",
+    "ELPA_DEFAULT_complex_kernel": "ELPA_2STAGE_COMPLEX_SVE256_BLOCK2"
+  },
+  "blas_library": "/home/ec2-user/.local/opt/armpl-26.07/armpl_26.07_gcc/lib/libarmpl_lp64.so",
+  "blas_sha256": "42ad9482d2eeddb85ceddb127a8a88975def8491a77af254e20f05fd0b388cf9",
+  "blas_kind": "ArmPL",
+  "configured_scalapack_block_size": 128
+}

@@ -1,0 +1,45 @@
+{
+  "command": [
+    "/usr/lib64/openmpi/bin/mpirun",
+    "-np",
+    "32",
+    "--bind-to",
+    "core",
+    "--map-by",
+    "slot:PE=1",
+    "/usr/bin/python3",
+    "/home/ec2-user/openmx4.0_gpu/tools/bench_sve256_local.py",
+    "--rank",
+    "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx"
+  ],
+  "overrides": {
+    "DATA.PATH": "/home/ec2-user/openmx4.0_gpu/DFT_DATA19",
+    "level.of.fileout": "1",
+    "scf.eigen.lib": "elpa2",
+    "scf.restart": "off"
+  },
+  "original_sha256": "9c5466abf560c6481b83ec9a51976f4b218856a1da330e5a209b9041239decd0",
+  "effective_sha256": "bad11210eae89a265b36ebc73f150489ce55aff9367c4847b01f38d3853b9cf7",
+  "binary_sha256": "88278bf780ef8846bbf05149f91eac5c86dcbffc4b2b206867d4ff1fa4972f25",
+  "libraries": {
+    "libopenmx_host_simd.so": "21068d033f8bd7e6b6f83476e0b71f91ea9cfb765762592cb43f2f9bce89b237",
+    "libopenmx_core.so": "0f3b84320c7570d38fbcf46045df041874cf0f5973a877be9a16c797c5944359"
+  },
+  "ranks": 32,
+  "threads": 1,
+  "blas_threads": 1,
+  "steps": 25,
+  "mode": "auto",
+  "environment": {
+    "OPENMX_HOST_SIMD": "auto",
+    "OPENMX_GPU": "0",
+    "OMP_NUM_THREADS": "1",
+    "OMP_DYNAMIC": "FALSE",
+    "OMP_MAX_ACTIVE_LEVELS": "1",
+    "OMP_PROC_BIND": "close",
+    "OMP_PLACES": "cores",
+    "OPENBLAS_NUM_THREADS": "1",
+    "GOTO_NUM_THREADS": "1"
+  },
+  "purpose": "benchmark"
+}

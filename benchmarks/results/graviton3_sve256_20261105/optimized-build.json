@@ -1,0 +1,14 @@
+{
+  "source_commit": "3871b1f0fb880aa1ee3b3201e7f51d6bdf6c6e96",
+  "source_diff_sha256": "d6904c66fd0bd8efb23e8ee283ca41d4cbff106a5c8fe138ef6d138973b47b8f",
+  "scalapack_block_size": 32,
+  "elpa_real_kernel": "SVE256_BLOCK2",
+  "elpa_complex_kernel": "SVE256_BLOCK2",
+  "blas": "OpenBLAS 0.3.34, NEOVERSEV1, OpenMP",
+  "cpu": "Neoverse V1",
+  "sve_bits": 256,
+  "auto_vectorization": "scalable",
+  "explicit_kernel_vector_bits": 256,
+  "flags": "-mcpu=neoverse-v1 -msve-vector-bits=scalable -fno-fast-math -ffp-contract=off",
+  "elpa_fortran_flags": "-O2 -fPIC"
+}

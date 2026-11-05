@@ -210,6 +210,8 @@ macro(openmx_configure_linalg _math_prefix _math_target _math_directory)
         BINARY_DIR "${_host_math_scalapack_build}"
         CMAKE_ARGS "-DCMAKE_C_COMPILER:FILEPATH=${CMAKE_C_COMPILER}"
           "-DCMAKE_Fortran_COMPILER:FILEPATH=${CMAKE_Fortran_COMPILER}"
+          "-DCMAKE_C_FLAGS:STRING=${CMAKE_C_FLAGS}"
+          "-DCMAKE_Fortran_FLAGS:STRING=${CMAKE_Fortran_FLAGS}"
           "-DMPI_C_COMPILER:FILEPATH=${MPI_C_COMPILER}" "-DMPI_Fortran_COMPILER:FILEPATH=${MPI_Fortran_COMPILER}"
           "-DMPIEXEC_EXECUTABLE:FILEPATH=${MPIEXEC_EXECUTABLE}"
           "-DCMAKE_BUILD_TYPE:STRING=Release" "-DCMAKE_POSITION_INDEPENDENT_CODE:BOOL=ON"

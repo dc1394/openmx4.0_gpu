@@ -1,0 +1,546 @@
+[
+  {
+    "rank": 0,
+    "pid": 251867,
+    "affinity": [
+      0
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0
+  },
+  {
+    "rank": 1,
+    "pid": 251868,
+    "affinity": [
+      1
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0
+  },
+  {
+    "rank": 2,
+    "pid": 251869,
+    "affinity": [
+      2
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0
+  },
+  {
+    "rank": 3,
+    "pid": 251870,
+    "affinity": [
+      3
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0
+  },
+  {
+    "rank": 4,
+    "pid": 251871,
+    "affinity": [
+      4
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0
+  },
+  {
+    "rank": 5,
+    "pid": 251872,
+    "affinity": [
+      5
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0
+  },
+  {
+    "rank": 6,
+    "pid": 251873,
+    "affinity": [
+      6
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0
+  },
+  {
+    "rank": 7,
+    "pid": 251874,
+    "affinity": [
+      7
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0
+  },
+  {
+    "rank": 8,
+    "pid": 251891,
+    "affinity": [
+      8
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0
+  },
+  {
+    "rank": 9,
+    "pid": 251892,
+    "affinity": [
+      9
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0
+  },
+  {
+    "rank": 10,
+    "pid": 251893,
+    "affinity": [
+      10
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0
+  },
+  {
+    "rank": 11,
+    "pid": 251894,
+    "affinity": [
+      11
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0
+  },
+  {
+    "rank": 12,
+    "pid": 251896,
+    "affinity": [
+      12
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0
+  },
+  {
+    "rank": 13,
+    "pid": 251895,
+    "affinity": [
+      13
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0
+  },
+  {
+    "rank": 14,
+    "pid": 251898,
+    "affinity": [
+      14
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0
+  },
+  {
+    "rank": 15,
+    "pid": 251897,
+    "affinity": [
+      15
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0
+  },
+  {
+    "rank": 16,
+    "pid": 251900,
+    "affinity": [
+      16
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0
+  },
+  {
+    "rank": 17,
+    "pid": 251899,
+    "affinity": [
+      17
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0
+  },
+  {
+    "rank": 18,
+    "pid": 251902,
+    "affinity": [
+      18
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0
+  },
+  {
+    "rank": 19,
+    "pid": 251901,
+    "affinity": [
+      19
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0
+  },
+  {
+    "rank": 20,
+    "pid": 251904,
+    "affinity": [
+      20
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0
+  },
+  {
+    "rank": 21,
+    "pid": 251903,
+    "affinity": [
+      21
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0
+  },
+  {
+    "rank": 22,
+    "pid": 251906,
+    "affinity": [
+      22
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0
+  },
+  {
+    "rank": 23,
+    "pid": 251905,
+    "affinity": [
+      23
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0
+  },
+  {
+    "rank": 24,
+    "pid": 251909,
+    "affinity": [
+      24
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0
+  },
+  {
+    "rank": 25,
+    "pid": 251907,
+    "affinity": [
+      25
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0
+  },
+  {
+    "rank": 26,
+    "pid": 251911,
+    "affinity": [
+      26
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0
+  },
+  {
+    "rank": 27,
+    "pid": 251908,
+    "affinity": [
+      27
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0
+  },
+  {
+    "rank": 28,
+    "pid": 251912,
+    "affinity": [
+      28
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0
+  },
+  {
+    "rank": 29,
+    "pid": 251910,
+    "affinity": [
+      29
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0
+  },
+  {
+    "rank": 30,
+    "pid": 251914,
+    "affinity": [
+      30
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0
+  },
+  {
+    "rank": 31,
+    "pid": 251913,
+    "affinity": [
+      31
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/.local/opt/openmx-sve256/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/.local/opt/openmx-sve256/bin/openmx",
+    "blas_library": "/usr/lib64/libopenblas-r0.3.18.so",
+    "blas_config": "OpenBLAS 0.3.18 DYNAMIC_ARCH NO_AFFINITY armv8 SINGLE_THREADED",
+    "blas_core": "armv8",
+    "blas_threads": 1,
+    "blas_parallel": 0
+  }
+]

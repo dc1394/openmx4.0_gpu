@@ -26,7 +26,7 @@
 /* The 2-stage kernel.  ELPA_DEFAULT_{real,complex}_kernel in the environment
    is ELPA's own override and is left alone.  Otherwise the fastest kernel
    compiled into the bundled library that this CPU can execute, in ELPA's
-   preference order (AVX-512, AVX2, AVX, SSE, generic): the library checks
+   preference order (x86 SIMD, or matching-width SVE then NEON, generic): the library checks
    the CPU only with --enable-heterogenous-cluster-support, so a kernel the
    CPU lacks would trap inside the solver.  Every rank of a node chooses the
    same kernel; the generic kernels are always built.  No static state and
@@ -63,6 +63,27 @@ static int cpu_isa_available(int level)   /* 4 AVX-512, 3 AVX2+FMA, 2 AVX, 1 SSE
         }
     }
 }
+#elif defined(__aarch64__)
+#if defined(__linux__)
+#include <asm/hwcap.h>
+#include <sys/auxv.h>
+#include <sys/prctl.h>
+#endif
+static int cpu_isa_available(int level)
+{
+    if (level <= 0) return 1;
+    /* AArch64 guarantees Advanced SIMD. Fixed-width SVE kernels require
+       the current thread's exact vector length, not just CPU support. */
+    if (level == 64) return 1;
+#if defined(__linux__) && defined(HWCAP_SVE) && defined(PR_SVE_GET_VL)
+    if ((level == 128 || level == 256 || level == 512) &&
+        (getauxval(AT_HWCAP) & HWCAP_SVE)) {
+        const int vl = prctl(PR_SVE_GET_VL, 0, 0, 0, 0);
+        return vl >= 0 && (vl & PR_SVE_VL_LEN_MASK) * 8 == level;
+    }
+#endif
+    return 0;
+}
 #else
 static int cpu_isa_available(int level)
 {
@@ -73,10 +94,17 @@ static int cpu_isa_available(int level)
 static void cpu_select_kernel(elpa_t handle, int is_complex, MPI_Comm parent, int *error)
 {
     const struct { int level; int real_kernel, complex_kernel; const char *name; } candidates[] = {
+#if defined(__x86_64__) || defined(__i386__)
         { 4, ELPA_2STAGE_REAL_AVX512_BLOCK2, ELPA_2STAGE_COMPLEX_AVX512_BLOCK1, "AVX-512" },
         { 3, ELPA_2STAGE_REAL_AVX2_BLOCK2,   ELPA_2STAGE_COMPLEX_AVX2_BLOCK1,   "AVX2" },
         { 2, ELPA_2STAGE_REAL_AVX_BLOCK2,    ELPA_2STAGE_COMPLEX_AVX_BLOCK1,    "AVX" },
         { 1, ELPA_2STAGE_REAL_SSE_BLOCK2,    ELPA_2STAGE_COMPLEX_SSE_BLOCK1,    "SSE" },
+#elif defined(__aarch64__)
+        { 512, ELPA_2STAGE_REAL_SVE512_BLOCK2, ELPA_2STAGE_COMPLEX_SVE512_BLOCK1, "SVE512" },
+        { 256, ELPA_2STAGE_REAL_SVE256_BLOCK2, ELPA_2STAGE_COMPLEX_SVE256_BLOCK2, "SVE256" },
+        { 128, ELPA_2STAGE_REAL_SVE128_BLOCK2, ELPA_2STAGE_COMPLEX_SVE128_BLOCK1, "SVE128" },
+        { 64, ELPA_2STAGE_REAL_NEON_ARCH64_BLOCK2, ELPA_2STAGE_COMPLEX_NEON_ARCH64_BLOCK1, "NEON" },
+#endif
         { 0, ELPA_2STAGE_REAL_GENERIC,       ELPA_2STAGE_COMPLEX_GENERIC,       "generic" },
     };
     const char *name = is_complex ? "complex_kernel" : "real_kernel";

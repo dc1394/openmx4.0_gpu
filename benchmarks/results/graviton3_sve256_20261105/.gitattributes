@@ -1,0 +1,9 @@
+# Preserve the exact bytes covered by SHA256SUMS on every checkout.
+* -text
+
+# Captured inputs, logs, patches and caches retain their original whitespace.
+input.dat -whitespace
+*.log -whitespace
+*.patch -whitespace
+*-CMakeCache.txt -whitespace
+profile-32x1-report.txt -whitespace

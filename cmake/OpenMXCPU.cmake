@@ -10,6 +10,11 @@ if(OPENMX_MAKE_OPTIONS)
   message(FATAL_ERROR "CPU builds use CMake directly; use CMAKE_C_FLAGS/CMAKE_CXX_FLAGS and OPENMX_CPU_* options instead of OPENMX_MAKE_OPTIONS")
 endif()
 include("${CMAKE_CURRENT_LIST_DIR}/OpenMXCPULinalg.cmake")
+set(OPENMX_CPU_SCALAPACK_BLOCK_SIZE "128" CACHE STRING
+    "Initial CPU ScaLAPACK block size; OpenMX reduces it for small matrices")
+if(NOT OPENMX_CPU_SCALAPACK_BLOCK_SIZE MATCHES "^[1-9][0-9]*$")
+  message(FATAL_ERROR "OPENMX_CPU_SCALAPACK_BLOCK_SIZE must be a positive integer")
+endif()
 
 # The very same bundled modern ELPA release as CUDA/HIP, configured without
 # device kernels or COSMA. An existing matching CPU installation is optional.
@@ -76,7 +81,11 @@ else()
   # built and the application selects the kernel at run time
   # (source/openmx_elpa_cpu.c, overridable with ELPA_DEFAULT_*_kernel).
   set(OPENMX_CPU_ELPA_KERNELS "auto" CACHE STRING
-      "ELPA 2-stage CPU kernels: auto (the build host's SIMD kernels) or generic")
+      "ELPA 2-stage CPU kernels: auto (host x86 SIMD), generic, or sve256 (AArch64)")
+  set_property(CACHE OPENMX_CPU_ELPA_KERNELS PROPERTY STRINGS auto generic sve256)
+  if(NOT OPENMX_CPU_ELPA_KERNELS MATCHES "^(auto|generic|sve256)$")
+    message(FATAL_ERROR "OPENMX_CPU_ELPA_KERNELS must be auto, generic, or sve256")
+  endif()
   set(_cpu_elpa_kernel_options --enable-generic-kernels --disable-sse-assembly-kernels)
   set(_cpu_elpa_simd_flags "")
   set(_cpu_elpa_cpu_flags "")
@@ -99,6 +108,13 @@ else()
     list(APPEND _cpu_elpa_kernel_options --disable-sse-kernels --disable-avx-kernels
          --disable-avx2-kernels --disable-avx512-kernels)
   endif()
+  if(OPENMX_CPU_ELPA_KERNELS STREQUAL "sve256")
+    if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux" OR NOT CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$")
+      message(FATAL_ERROR "ELPA sve256 kernels require Linux AArch64")
+    endif()
+    list(APPEND _cpu_elpa_kernel_options --enable-neon-arch64-kernels --enable-sve256-kernels)
+    string(APPEND _cpu_elpa_simd_flags " -march=armv8-a+sve -msve-vector-bits=256")
+  endif()
   # ELPA's OpenMP configure runs an MPI program directly to check the thread
   # level. Sites that set I_MPI_PMI_LIBRARY to Slurm's PMI2 for srun make
   # that singleton abort in PMI2_Job_GetId, so the check reports no threading.
@@ -112,7 +128,14 @@ else()
     # kernel (identical wrong results, correct eigenvalues) while the generic
     # Fortran kernel was right, and the Fortran side at -O3 was not involved;
     # tests/cpu_numerics.c checks the vectors since then.
-    "CFLAGS=-O2 -fPIC${_cpu_elpa_simd_flags}" "CXXFLAGS=-O2 -fPIC${_cpu_elpa_simd_flags}" "FCFLAGS=-O2 -fPIC" "CPPFLAGS=" "LDFLAGS="
+    # Preserve explicit architecture/tuning flags for the C kernels too.
+    # Keep -O2 after the user's flags for the kernel correctness constraint.
+    "CFLAGS=${CMAKE_C_FLAGS} -O2 -fPIC${_cpu_elpa_simd_flags}"
+    "CXXFLAGS=${CMAKE_CXX_FLAGS} -O2 -fPIC${_cpu_elpa_simd_flags}"
+    # Keep the common Fortran code portable: GCC 14 with Neoverse V1/SVE256
+    # flags failed the n=257 complex ELPA2 eigenpair check, even with generic
+    # backtransform kernels. The explicit SVE C kernels pass with -O2 Fortran.
+    "FCFLAGS=-O2 -fPIC" "CPPFLAGS=" "LDFLAGS="
     "LIBS=${_cpu_linalg_flags}" "CPATH=" "C_INCLUDE_PATH=" "CPLUS_INCLUDE_PATH="
     "LD_LIBRARY_PATH=${_cpu_dependency_path}")
   set(_cpu_elpa_options)
@@ -170,6 +193,8 @@ add_executable(openmx_cpu_application ${_cpu_sources} "${_cpu_adapter}" "${_cpu_
 set_target_properties(openmx_cpu_application PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED ON
   CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON LINKER_LANGUAGE CXX)
 target_compile_definitions(openmx_cpu_application PRIVATE OPENMX_GPU_BACKEND=0)
+target_compile_definitions(openmx_cpu_application PRIVATE
+  OPENMX_CPU_SCALAPACK_BLOCK_SIZE=${OPENMX_CPU_SCALAPACK_BLOCK_SIZE})
 target_include_directories(openmx_cpu_application PRIVATE "${_cpu_backend}/include" "${CMAKE_SOURCE_DIR}/source"
   "${OPENMX_CPU_FFTW_INCLUDE_DIR}" "${OPENMX_CPU_ELPA_INCLUDE_DIR}")
 target_compile_options(openmx_cpu_application PRIVATE
@@ -222,6 +247,22 @@ foreach(library IN LISTS CMAKE_Fortran_IMPLICIT_LINK_LIBRARIES)
   endif()
 endforeach()
 list(REMOVE_DUPLICATES _cpu_runtime_dirs)
+# System compiler runtimes can live beside an older BLAS with the same
+# SONAME. Search selected non-system dependencies before those fallback
+# directories, or a custom OpenBLAS build silently runs the system BLAS.
+set(_cpu_selected_runtime_dirs)
+set(_cpu_system_runtime_dirs)
+foreach(directory IN LISTS _cpu_runtime_dirs)
+  if(directory IN_LIST CMAKE_PLATFORM_IMPLICIT_LINK_DIRECTORIES OR
+     directory MATCHES "^/(usr/)?lib(32|64)?$" OR
+     directory STREQUAL "/usr/lib/${CMAKE_LIBRARY_ARCHITECTURE}" OR
+     directory STREQUAL "/lib/${CMAKE_LIBRARY_ARCHITECTURE}")
+    list(APPEND _cpu_system_runtime_dirs "${directory}")
+  else()
+    list(APPEND _cpu_selected_runtime_dirs "${directory}")
+  endif()
+endforeach()
+set(_cpu_runtime_dirs ${_cpu_selected_runtime_dirs} ${_cpu_system_runtime_dirs})
 if(APPLE)
   set(_cpu_loader "@loader_path")
 else()

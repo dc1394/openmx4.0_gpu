@@ -1,0 +1,15 @@
+# Keep the local measurement installs and executables beside the records.
+/*-install/
+/grid-kernel-probe
+/grid-kernel-probe-v[0-9]
+/force-kernel-probe
+/force-kernel-probe-v[0-9]
+/force-grid-probe
+/*-reproduced
+/*-reproduced.csv
+
+# Publish exact compressed logs/outputs and the consolidated rank audit.
+/*/run.log
+/*/rank-[0-9][0-9].json
+/*/sidia333_nc_cluster.*
+!/*/sidia333_nc_cluster.out.gz

@@ -1,0 +1,386 @@
+[
+  {
+    "rank": 0,
+    "pid": 140674,
+    "affinity": [
+      0
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx"
+  },
+  {
+    "rank": 1,
+    "pid": 140675,
+    "affinity": [
+      1
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx"
+  },
+  {
+    "rank": 2,
+    "pid": 140676,
+    "affinity": [
+      2
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx"
+  },
+  {
+    "rank": 3,
+    "pid": 140677,
+    "affinity": [
+      3
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx"
+  },
+  {
+    "rank": 4,
+    "pid": 140678,
+    "affinity": [
+      4
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx"
+  },
+  {
+    "rank": 5,
+    "pid": 140679,
+    "affinity": [
+      5
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx"
+  },
+  {
+    "rank": 6,
+    "pid": 140681,
+    "affinity": [
+      6
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx"
+  },
+  {
+    "rank": 7,
+    "pid": 140680,
+    "affinity": [
+      7
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx"
+  },
+  {
+    "rank": 8,
+    "pid": 140698,
+    "affinity": [
+      8
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx"
+  },
+  {
+    "rank": 9,
+    "pid": 140699,
+    "affinity": [
+      9
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx"
+  },
+  {
+    "rank": 10,
+    "pid": 140700,
+    "affinity": [
+      10
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx"
+  },
+  {
+    "rank": 11,
+    "pid": 140701,
+    "affinity": [
+      11
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx"
+  },
+  {
+    "rank": 12,
+    "pid": 140702,
+    "affinity": [
+      12
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx"
+  },
+  {
+    "rank": 13,
+    "pid": 140704,
+    "affinity": [
+      13
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx"
+  },
+  {
+    "rank": 14,
+    "pid": 140703,
+    "affinity": [
+      14
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx"
+  },
+  {
+    "rank": 15,
+    "pid": 140706,
+    "affinity": [
+      15
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx"
+  },
+  {
+    "rank": 16,
+    "pid": 140705,
+    "affinity": [
+      16
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx"
+  },
+  {
+    "rank": 17,
+    "pid": 140727,
+    "affinity": [
+      17
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx"
+  },
+  {
+    "rank": 18,
+    "pid": 140728,
+    "affinity": [
+      18
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx"
+  },
+  {
+    "rank": 19,
+    "pid": 140725,
+    "affinity": [
+      19
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx"
+  },
+  {
+    "rank": 20,
+    "pid": 140726,
+    "affinity": [
+      20
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx"
+  },
+  {
+    "rank": 21,
+    "pid": 140731,
+    "affinity": [
+      21
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx"
+  },
+  {
+    "rank": 22,
+    "pid": 140732,
+    "affinity": [
+      22
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx"
+  },
+  {
+    "rank": 23,
+    "pid": 140730,
+    "affinity": [
+      23
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx"
+  },
+  {
+    "rank": 24,
+    "pid": 140729,
+    "affinity": [
+      24
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx"
+  },
+  {
+    "rank": 25,
+    "pid": 140735,
+    "affinity": [
+      25
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx"
+  },
+  {
+    "rank": 26,
+    "pid": 140736,
+    "affinity": [
+      26
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx"
+  },
+  {
+    "rank": 27,
+    "pid": 140734,
+    "affinity": [
+      27
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx"
+  },
+  {
+    "rank": 28,
+    "pid": 140733,
+    "affinity": [
+      28
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx"
+  },
+  {
+    "rank": 29,
+    "pid": 140738,
+    "affinity": [
+      29
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx"
+  },
+  {
+    "rank": 30,
+    "pid": 140739,
+    "affinity": [
+      30
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx"
+  },
+  {
+    "rank": 31,
+    "pid": 140737,
+    "affinity": [
+      31
+    ],
+    "sve_bits": 256,
+    "selected_simd": "SVE256",
+    "threads": "1",
+    "core": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/lib/libopenmx_core.so",
+    "binary": "/home/ec2-user/openmx4.0_gpu/benchmarks/results/graviton3_sve256_20261105/baseline-install/bin/openmx"
+  }
+]

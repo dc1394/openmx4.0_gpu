@@ -1,0 +1,10 @@
+Traceback (most recent call last):
+  File "/home/ec2-user/openmx4.0_gpu/tools/analyze_sve256_local.py", line 82, in <module>
+    main()
+  File "/home/ec2-user/openmx4.0_gpu/tools/analyze_sve256_local.py", line 37, in main
+    baseline=[read(x) for x in args.baseline]
+  File "/home/ec2-user/openmx4.0_gpu/tools/analyze_sve256_local.py", line 37, in <listcomp>
+    baseline=[read(x) for x in args.baseline]
+  File "/home/ec2-user/openmx4.0_gpu/tools/analyze_sve256_local.py", line 22, in read
+    assert result['actual_blas_threads']==[1], name
+KeyError: 'actual_blas_threads'

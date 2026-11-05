@@ -1,0 +1,73 @@
+ELPA accepts 2 OpenMP threads per rank
+<ELPA> CPU OpenMP threads: requested=2 configured=2 MPI_thread=2
+CPU ELPA1 real grid=2x3 n=23 nev=13: eigen=7.11e-15 residual=2.77e-15 orthogonality=1.64e-15
+<ELPA> CPU OpenMP threads: requested=2 configured=2 MPI_thread=2
+CPU ELPA1 real grid=3x2 n=11 nev=11: eigen=4.44e-15 residual=1.6e-15 orthogonality=1.01e-15
+<ELPA> CPU OpenMP threads: requested=2 configured=2 MPI_thread=2
+CPU ELPA1 real grid=3x2 n=3 nev=2: eigen=4.44e-16 residual=1.4e-15 orthogonality=2.92e-16
+<ELPA> CPU OpenMP threads: requested=2 configured=2 MPI_thread=2
+CPU ELPA1 real grid=2x3 n=3 nev=2: eigen=4.44e-16 residual=1.4e-15 orthogonality=2.92e-16
+<ELPA> CPU OpenMP threads: requested=2 configured=2 MPI_thread=2
+CPU ELPA1 real grid=2x3 n=257 nev=31: eigen=1.92e-13 residual=2.26e-14 orthogonality=3.09e-15
+<ELPA> CPU OpenMP threads: requested=2 configured=2 MPI_thread=2
+CPU ELPA1 complex grid=2x3 n=23 nev=13: eigen=5.33e-15 residual=4.55e-15 orthogonality=1.11e-15
+<ELPA> CPU OpenMP threads: requested=2 configured=2 MPI_thread=2
+CPU ELPA1 complex grid=3x2 n=11 nev=11: eigen=2.66e-15 residual=3.99e-15 orthogonality=1.08e-15
+<ELPA> CPU OpenMP threads: requested=2 configured=2 MPI_thread=2
+CPU ELPA1 complex grid=3x2 n=3 nev=2: eigen=4.44e-16 residual=2.77e-16 orthogonality=4.94e-16
+<ELPA> CPU OpenMP threads: requested=2 configured=2 MPI_thread=2
+CPU ELPA1 complex grid=2x3 n=3 nev=2: eigen=4.44e-16 residual=2.77e-16 orthogonality=4.94e-16
+<ELPA> CPU OpenMP threads: requested=2 configured=2 MPI_thread=2
+CPU ELPA1 complex grid=2x3 n=257 nev=31: eigen=1.44e-13 residual=2.88e-14 orthogonality=3.77e-15
+<ELPA> CPU OpenMP threads: requested=2 configured=2 MPI_thread=2
+<ELPA> 2-stage real kernel: SVE256
+CPU ELPA2 real grid=2x3 n=23 nev=13: eigen=3.55e-15 residual=5.56e-15 orthogonality=9.26e-16
+<ELPA> CPU OpenMP threads: requested=2 configured=2 MPI_thread=2
+<ELPA> 2-stage real kernel: SVE256
+CPU ELPA2 real grid=3x2 n=11 nev=11: eigen=6.22e-15 residual=3.29e-15 orthogonality=8.55e-16
+<ELPA> CPU OpenMP threads: requested=2 configured=2 MPI_thread=2
+<ELPA> 2-stage real kernel: SVE256
+CPU ELPA2 real grid=3x2 n=3 nev=2: eigen=1.33e-15 residual=3.74e-16 orthogonality=3.7e-16
+<ELPA> CPU OpenMP threads: requested=2 configured=2 MPI_thread=2
+<ELPA> 2-stage real kernel: SVE256
+CPU ELPA2 real grid=2x3 n=3 nev=2: eigen=1.33e-15 residual=3.74e-16 orthogonality=3.7e-16
+<ELPA> CPU OpenMP threads: requested=2 configured=2 MPI_thread=2
+<ELPA> 2-stage real kernel: SVE256
+CPU ELPA2 real grid=2x3 n=257 nev=31: eigen=1.79e-13 residual=2.98e-14 orthogonality=2.94e-15
+<ELPA> CPU OpenMP threads: requested=2 configured=2 MPI_thread=2
+<ELPA> 2-stage complex kernel: SVE256
+CPU ELPA2 complex grid=2x3 n=23 nev=13: eigen=6.22e-15 residual=2.83e-15 orthogonality=1.11e-15
+<ELPA> CPU OpenMP threads: requested=2 configured=2 MPI_thread=2
+<ELPA> 2-stage complex kernel: SVE256
+CPU ELPA2 complex grid=3x2 n=11 nev=11: eigen=3.55e-15 residual=1.79e-15 orthogonality=7.01e-16
+<ELPA> CPU OpenMP threads: requested=2 configured=2 MPI_thread=2
+<ELPA> 2-stage complex kernel: SVE256
+CPU ELPA2 complex grid=3x2 n=3 nev=2: eigen=4.44e-16 residual=7.11e-16 orthogonality=4.35e-16
+<ELPA> CPU OpenMP threads: requested=2 configured=2 MPI_thread=2
+<ELPA> 2-stage complex kernel: SVE256
+CPU ELPA2 complex grid=2x3 n=3 nev=2: eigen=4.44e-16 residual=7.11e-16 orthogonality=4.35e-16
+<ELPA> CPU OpenMP threads: requested=2 configured=2 MPI_thread=2
+<ELPA> 2-stage complex kernel: SVE256
+CPU ELPA2 complex grid=2x3 n=257 nev=31: eigen=1.3e-13 residual=3.81e-14 orthogonality=4.11e-15
+<ELPA> CPU OpenMP threads: requested=2 configured=2 MPI_thread=2
+<ELPA> CPU OpenMP threads: requested=2 configured=2 MPI_thread=2
+CPU ELPA1 real grid=1x3 n=17 nev=7: eigen=4.88e-15 residual=4.74e-15 orthogonality=1.63e-15
+CPU ELPA1 real grid=3x1 n=19 nev=8: eigen=4.88e-15 residual=4.2e-15 orthogonality=1.47e-15
+<ELPA> CPU OpenMP threads: requested=2 configured=2 MPI_thread=2
+<ELPA> CPU OpenMP threads: requested=2 configured=2 MPI_thread=2
+CPU ELPA1 complex grid=1x3 n=17 nev=7: eigen=1.55e-15 residual=1.68e-15 orthogonality=5.24e-16
+CPU ELPA1 complex grid=3x1 n=19 nev=8: eigen=2.22e-15 residual=3.5e-15 orthogonality=2.22e-15
+<ELPA> CPU OpenMP threads: requested=2 configured=2 MPI_thread=2
+<ELPA> 2-stage real kernel: SVE256
+<ELPA> CPU OpenMP threads: requested=2 configured=2 MPI_thread=2
+<ELPA> 2-stage real kernel: SVE256
+CPU ELPA2 real grid=1x3 n=17 nev=7: eigen=2.66e-15 residual=1.76e-15 orthogonality=1.29e-15
+CPU ELPA2 real grid=3x1 n=19 nev=8: eigen=3.11e-15 residual=5.12e-15 orthogonality=7.08e-16
+<ELPA> CPU OpenMP threads: requested=2 configured=2 MPI_thread=2
+<ELPA> 2-stage complex kernel: SVE256
+<ELPA> CPU OpenMP threads: requested=2 configured=2 MPI_thread=2
+<ELPA> 2-stage complex kernel: SVE256
+CPU ELPA2 complex grid=1x3 n=17 nev=7: eigen=3.55e-15 residual=2e-15 orthogonality=1.02e-15
+PASS: 24 CPU ELPA ABI cases per rank
+CPU ELPA2 complex grid=3x1 n=19 nev=8: eigen=7.99e-15 residual=5.71e-15 orthogonality=1.12e-15
+PASS: ELPA workers observed on every rank: 2 threads
