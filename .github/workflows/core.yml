@@ -18,7 +18,7 @@ jobs:
             cxx: clang++
             cc: clang
             sanitize: "ON"
-          - os: macos-14
+          - os: macos-15
             cxx: clang++
             cc: clang
             sanitize: "OFF"
@@ -49,7 +49,7 @@ jobs:
             cxx: clang++
             cc: clang
             sanitize: "ON"
-          - os: macos-14
+          - os: macos-15
             cxx: clang++
             cc: clang
             sanitize: "OFF"
@@ -80,7 +80,7 @@ jobs:
             cxx: clang++
             cc: clang
             sanitize: "ON"
-          - os: macos-14
+          - os: macos-15
             cxx: clang++
             cc: clang
             sanitize: "OFF"
@@ -141,7 +141,7 @@ jobs:
             backend: SERIAL
             standard: 23
             sanitize: "ON"
-          - os: macos-14
+          - os: macos-15
             backend: SERIAL
             standard: 20
             sanitize: "OFF"
