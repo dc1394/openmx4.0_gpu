@@ -1,4 +1,3 @@
-#include "openmx_gpu_backend.h"
 /**********************************************************************
   Make_InputFile_with_FinalCoord.c:
 
@@ -17,9 +16,7 @@
 #include <time.h>
 #include <ctype.h>
 #include <string.h>
-#if OPENMX_GPU_HIP
 #include <errno.h>
-#endif
 
 /*  stat section */
 #include <sys/types.h>
@@ -33,7 +30,6 @@
 
 void Make_InputFile_with_FinalCoord_Normal(const OpenMXDynamicsState *dynamics, char *file, int MD_iter);
 void Make_InputFile_with_FinalCoord_NEGF(char *file, int MD_iter);
-#if OPENMX_GPU_HIP
 
 static int Open_FinalCoord_Files(const char *file, char *output_path,
                                  size_t output_path_size,
@@ -84,7 +80,6 @@ static int Open_FinalCoord_Files(const char *file, char *output_path,
 
   return 1;
 }
-#endif
 
 
 
@@ -169,17 +164,7 @@ void Make_InputFile_with_FinalCoord_Normal(const OpenMXDynamicsState *dynamics, 
  
     /* the new input file */    
 
-#if OPENMX_GPU_HIP
     if (!Open_FinalCoord_Files(file,fname1,sizeof(fname1),&fp1,&fp2)) return;
-#else
-    sprintf(fname1,"%s%s#",filepath,file);
-    fp1 = fopen(fname1,"w");
-    fseek(fp1,0,SEEK_END);
-
-    /* the original input file */    
-
-    fp2 = fopen(file,"r");
-#endif
 
     if (fp2!=NULL){
 
@@ -702,17 +687,7 @@ void Make_InputFile_with_FinalCoord_NEGF(char *file, int MD_iter)
 
     /* the new input file */    
 
-#if OPENMX_GPU_HIP
     if (!Open_FinalCoord_Files(file,fname1,sizeof(fname1),&fp1,&fp2)) return;
-#else
-    sprintf(fname1,"%s%s#",filepath,file);
-    fp1 = fopen(fname1,"w");
-    fseek(fp1,0,SEEK_END);
-
-    /* the original input file */    
-
-    fp2 = fopen(file,"r");
-#endif
 
     if (fp2!=NULL){
 
