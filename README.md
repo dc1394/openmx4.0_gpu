@@ -1160,15 +1160,40 @@ and [the subsequent GPU tuning measurements](doc/gpu_tuning_20261001.txt).
 ## Docker image
 I have released the OpenMX 4.0 GPU Docker image.
 You can easily try OpenMX 4.0 GPU on computers equipped with NVIDIA GPUs.
+From v4.0 on, image tags name the GPU vendor, so pull the full tag:
+`dc1394/openmx-4.0_gpu-ubuntu24.04:4.0-nvidia`.
 The steps are as follows:
 1. Install [Docker](https://docs.docker.com/get-started/get-docker/).
 2. Install the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).
-3. Run: `docker run --gpus all --shm-size=4gb --rm -it -v /path/to/inputs:/work dc1394/openmx4.0-gpu-ubuntu24.04:1.1.1`. Ensure `/path/to/inputs` is created beforehand.
+3. Run: `docker run --gpus all --shm-size=4gb --rm -it -v /path/to/inputs:/work dc1394/openmx-4.0_gpu-ubuntu24.04:4.0-nvidia`. Ensure `/path/to/inputs` is created beforehand.
 4. Run tests with `cd openmx_work` and `mpirun -np 4 ./openmx -runtest`.
 
 The test suite writes elapsed times and differences from the bundled reference
 results to `runtest.result`. Inspect the output files and compare every force
 component with `tools/compare_gpu_suites.py` as described above.
+
+For your own calculations, keep the input file in `/work`, add
+`DATA.PATH /openmx4.0_gpu/DFT_DATA19` to it, and start it from there with
+`mpirun -np 4 openmx input.dat`.
+
+What the `4.0-nvidia` image contains:
+
+- **Source:** tag `v4.0` with two small fixes. Inputs given with a path no longer
+  crash the final-coordinate output, and `cohp.c` declares its tetrahedron helpers.
+- **Toolchain:** NVIDIA HPC SDK 26.9 with its HPC-X Open MPI, and CUDA Toolkit 13.5.
+- **Solvers:** cuSOLVER, ELPA with GPU kernels, COSMA and MAGMA 2.10.0.
+- **CPU:** generic x86-64-v3 (AVX2 and FMA), so no AVX-512 is needed. BLAS and the
+  host SIMD kernels still select AVX-512 at run time on processors that have it.
+- **GPU:** `sm_80`, `sm_86`, `sm_89`, `sm_90`, `sm_100`, `sm_103` and `sm_120` in one
+  binary. The regression tests were run on an RTX 5080 (`sm_120`, driver 595.99); the
+  other architectures are compiled but have not been run.
+- **MPS:** the container starts the NVIDIA MPS control daemon when a GPU is visible,
+  and MPI ranks connect to it without further setup. Add `-e OPENMX_MPS=0` to the
+  `docker run` command to skip it, for example when more ranks share a GPU than
+  [MPS accepts](#nvidia-mps-recommended-whenever-several-ranks-share-a-gpu).
+- **Shared memory:** keep `--shm-size=4gb`. With Docker's default 64 MB, `MPI_Init`
+  can crash with a segmentation fault at 8 ranks or more, with or without MPS. The
+  container warns at startup when `/dev/shm` is below 1 GB.
 
 ## Extended lanthanide pseudopotentials and PAO
 
