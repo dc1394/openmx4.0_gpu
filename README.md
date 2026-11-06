@@ -728,11 +728,16 @@ echo quit | nvidia-cuda-mps-control    # stop it
 On a multi-node batch job, start one daemon on every node (`/tmp` is usually
 node-local, so per-node `CUDA_MPS_PIPE_DIRECTORY`/`CUDA_MPS_LOG_DIRECTORY`
 paths work well). MPS requires native Linux; it is not available under WSL2.
-An MPS server also accepts at most 48 client processes per GPU. With more
-ranks than that on one GPU the extra ranks find no device, and OpenMX then
-demotes the whole run to the CPU paths (the log reports `GPU initialization
-failed on 16 of 64 MPI ranks; using ELPA2`), so keep at most 48 ranks per GPU
-under MPS; a larger rank count can use the GPU only without MPS.
+An MPS server also accepts a limited number of client processes per GPU, and
+the limit depends on the driver and the GPU. The CUDA 13.0 release raised it
+from 48 to 60 on Ampere (`sm_80`) and later GPUs, and Turing GPUs stay at 48.
+Raising `CUDA_DEVICE_MAX_CONNECTIONS` lowers it. A server that reaches its limit
+logs `Maximum number of clients (60) reached` in `server.log`. With more ranks
+than that on one GPU the extra ranks find no device, and OpenMX then demotes the
+whole run to the CPU paths (with a limit of 48, the log reports `GPU
+initialization failed on 16 of 64 MPI ranks; using ELPA2`), so keep the ranks per
+GPU within the limit under MPS; a larger rank count can use the GPU only without
+MPS.
 
 ## WSL2 and other WDDM platforms
 
