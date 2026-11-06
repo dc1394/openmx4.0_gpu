@@ -221,7 +221,8 @@ double Band_DFT_NonCol_GB(OpenMXChemicalPotentials *chemical, OpenMXBandEnergies
   lumos = (double)(TZ-system_charge)*0.200;
   if (lumos<60.0) lumos = 200.0;
   MaxN = (TZ-system_charge) + (int)lumos;
-  if (n2<MaxN) MaxN = n2;
+  /* n2 includes two padding entries for the one-based arrays. */
+  if (2*n<MaxN) MaxN = 2*n;
 
   /****************************************************
    Allocation
@@ -311,7 +312,8 @@ double Band_DFT_NonCol_GB(OpenMXChemicalPotentials *chemical, OpenMXBandEnergies
               k-points by regular mesh 
   ***********************************************/
 
-  if (way_of_kpoint==1){
+  /* GCenter (3) is the default mesh, including for spin spirals. */
+  if (way_of_kpoint==1 || way_of_kpoint==3){
 
     snum_i = (double)knum_i;
     snum_j = (double)knum_j;
@@ -322,7 +324,9 @@ double Band_DFT_NonCol_GB(OpenMXChemicalPotentials *chemical, OpenMXBandEnergies
 	k1 = 0.0;
       }
       else {
-	k1 = -0.5 + (2.0*(double)i+1.0)/(2.0*snum_i) + Shift_K_Point;
+	k1 = (way_of_kpoint==3 ? (double)i/snum_i
+                             : -0.5 + (2.0*(double)i+1.0)/(2.0*snum_i))
+             + Shift_K_Point;
       }
       KGrids1[i]=k1;
     }
@@ -332,7 +336,9 @@ double Band_DFT_NonCol_GB(OpenMXChemicalPotentials *chemical, OpenMXBandEnergies
 	k1 = 0.0;
       }
       else {
-	k1 = -0.5 + (2.0*(double)i+1.0)/(2.0*snum_j) - Shift_K_Point;
+	k1 = (way_of_kpoint==3 ? (double)i/snum_j
+                             : -0.5 + (2.0*(double)i+1.0)/(2.0*snum_j))
+             - Shift_K_Point;
       }
       KGrids2[i] = k1;
     }
@@ -342,7 +348,9 @@ double Band_DFT_NonCol_GB(OpenMXChemicalPotentials *chemical, OpenMXBandEnergies
 	k1 = 0.0;
       }
       else {
-	k1 = -0.5 + (2.0*(double)i+1.0)/(2.0*snum_k) + 2.0*Shift_K_Point;
+	k1 = (way_of_kpoint==3 ? (double)i/snum_k
+                             : -0.5 + (2.0*(double)i+1.0)/(2.0*snum_k))
+             + 2.0*Shift_K_Point;
       }
       KGrids3[i]=k1;
     }

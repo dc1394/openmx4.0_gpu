@@ -117,6 +117,12 @@ function(openmx_add_native_state_tests)
     cluster-noncol-calculation-state-lifecycle PROPERTIES
       ENVIRONMENT "${_environment}" LABELS "unit;gpu;core;native-state" TIMEOUT 180)
 
+  add_test(NAME band-spin-spiral-setup
+    COMMAND "${Python3_EXECUTABLE}" "${_repo}/tests/run_spin_spiral_setup_cpu.py"
+      --negative-control)
+  set_tests_properties(band-spin-spiral-setup PROPERTIES
+    ENVIRONMENT "${_environment}" LABELS "unit;solver;core;native-state" TIMEOUT 120)
+
   add_test(NAME solver-noncollinear-energy-output
     COMMAND "${Python3_EXECUTABLE}" "${_repo}/tests/run_solver_energy_output_cpu.py"
       --core-library "$<TARGET_FILE:openmx_core>" --negative-control)
