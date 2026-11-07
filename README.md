@@ -1163,11 +1163,20 @@ are recorded in [the CUDA 13.4 validation report](doc/cuda_13_4_validation.txt)
 and [the subsequent GPU tuning measurements](doc/gpu_tuning_20261001.txt).
 
 ## Docker image
-I have released the OpenMX 4.0 GPU Docker image.
-You can easily try OpenMX 4.0 GPU on computers equipped with NVIDIA GPUs.
-From v4.0 on, image tags name the GPU vendor, so pull the full tag:
-`dc1394/openmx-4.0_gpu-ubuntu24.04:4.0-nvidia`.
+
+Images are available on
+[Docker Hub](https://hub.docker.com/r/dc1394/openmx-4.0_gpu-ubuntu24.04).
+From v4.0 on, use the full tag for your GPU vendor:
+
+| GPU vendor | Image | Docker Hub tag |
+| --- | --- | --- |
+| NVIDIA | `dc1394/openmx-4.0_gpu-ubuntu24.04:4.0-nvidia` | [4.0-nvidia](https://hub.docker.com/r/dc1394/openmx-4.0_gpu-ubuntu24.04/tags?name=4.0-nvidia) |
+| AMD | `dc1394/openmx-4.0_gpu-ubuntu24.04:4.0-amd` | [4.0-amd](https://hub.docker.com/r/dc1394/openmx-4.0_gpu-ubuntu24.04/tags?name=4.0-amd) |
+
+### NVIDIA image
+
 The steps are as follows:
+
 1. Install [Docker](https://docs.docker.com/get-started/get-docker/).
 2. Install the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).
 3. Run: `docker run --gpus all --shm-size=4gb --rm -it -v /path/to/inputs:/work dc1394/openmx-4.0_gpu-ubuntu24.04:4.0-nvidia`. Ensure `/path/to/inputs` is created beforehand.
@@ -1197,6 +1206,88 @@ What the `4.0-nvidia` image contains:
 - **Shared memory:** keep `--shm-size=4gb`. With Docker's default 64 MB, `MPI_Init`
   can crash with a segmentation fault at 8 ranks or more, with or without MPS. The
   container warns at startup when `/dev/shm` is below 1 GB.
+
+### AMD image
+
+The `4.0-amd` image is built from release tag `v4.0`, commit
+[`ab8b88b9`](https://github.com/dc1394/openmx4.0_gpu/commit/ab8b88b94ae2b7fd3faa087fc8545871d1b6391b).
+It contains Ubuntu 24.04, ROCm 7.2, Open MPI 4.1.6, OpenBLAS 0.3.26
+(pthread), ScaLAPACK 2.2.1, FFTW 3.3.10, ELPA 2026.02.002, COSMA,
+MAGMA 2.10.0 and GEMMul8. Post-processing tools, including `cohp`, are
+installed alongside `openmx`.
+
+The GPU target is **gfx1200 only**, tested on a Radeon RX 9060 XT (16 GiB).
+Other GPU architectures require a separate build. The CPU baseline is
+x86-64-v3 (AVX2 and FMA); the image was tested on a Threadripper 3970X
+without AVX-512. The host SIMD library selects its additional AVX-512
+variants only when supported by the CPU.
+
+Install Docker and a compatible AMD GPU kernel driver (`amdgpu-dkms`) on
+the host. ROCm user-space libraries are included in the image. This uses
+[ROCm's device passthrough method](https://rocm.docs.amd.com/projects/install-on-linux/en/latest/how-to/docker.html).
+Create the input directory before starting the container:
+
+```sh
+mkdir -p /path/to/inputs
+docker pull dc1394/openmx-4.0_gpu-ubuntu24.04:4.0-amd
+docker run --rm -it \
+  --device /dev/kfd --device /dev/dri \
+  --security-opt seccomp=unconfined --shm-size=4gb \
+  -v /path/to/inputs:/work \
+  dc1394/openmx-4.0_gpu-ubuntu24.04:4.0-amd
+```
+
+Inside the container, check that the GPU is visible and run the regression
+suite with four MPI ranks:
+
+```sh
+rocminfo | grep -E 'Name: +gfx'
+cd /work/openmx_work
+OPENMX_GPU=1 mpirun -np 4 ./openmx -runtest -nt 1
+```
+
+For your own input in `/work`, set
+`DATA.PATH /openmx4.0_gpu/DFT_DATA19` in the input file. When increasing
+`-nt`, set `OPENBLAS_NUM_THREADS` to the same value (its image default is
+1). For example, four MPI ranks with four OpenMP threads per rank:
+
+```sh
+cd /work
+OPENMX_GPU=1 OPENBLAS_NUM_THREADS=4 OMP_NUM_THREADS=4 \
+  mpirun -np 4 --map-by slot:PE=4 --bind-to core openmx input.dat -nt 4
+```
+
+Use `OPENMX_GPU=0` to select the CPU path. The AMD entrypoint sets an
+unlimited stack size and creates `/work/openmx_work` pointing to the
+installed work directory.
+
+Validation on 2026-11-07 compared total energies and **every force
+component** with the bundled references, with tolerances of 1e-7 Ha and
+1e-7 Ha/bohr. Detailed per-case results and image provenance are recorded
+in [the AMD Docker validation data](benchmarks/results/amd_docker_4_0_20261107.json).
+
+| Check | MPI × OpenMP | Result | Max abs ΔE (Ha) | Max abs ΔF (Ha/bohr) |
+| --- | --- | --- | ---: | ---: |
+| CPU `-runtest` | 4 × 1 | 14/14 PASS | 5.9e-11 | 7.8e-11 |
+| HIP `-runtest` | 4 × 1 | 14/14 PASS | 8.0e-11 | 7.9e-11 |
+| Methane and Cr2 with `elpa2`, `gpusolver`, `gpusolver2`, `gpusolver3` | 4 × 4 | 8/8 PASS | 6.9e-11 | 2.07e-10 |
+
+Both `gpusolver3` cases completed forced MAGMA GPU diagonalization. The
+solver checks recorded no dense CPU fallback or GPU initialization
+failure. Input paths containing a subdirectory and the ScN `cohp`
+post-processing check also passed. These checks cover one gfx1200 GPU;
+they do not establish performance equivalence with the AOCL builds
+benchmarked elsewhere in this README.
+
+To pin this published image by digest:
+
+```sh
+docker pull dc1394/openmx-4.0_gpu-ubuntu24.04@sha256:df49138a0d2b4c219c98fc85ea7859e90449429ddac7bf9289f6b14409d90336
+```
+
+The image was pulled using this digest and its HIP `-runtest` suite was
+checked again in one MPI job (4 ranks × 1 thread): all 14 cases passed
+the same energy and full-force tolerances.
 
 ## Extended lanthanide pseudopotentials and PAO
 
