@@ -1183,8 +1183,6 @@ For your own calculations, keep the input file in `/work`, add
 
 What the `4.0-nvidia` image contains:
 
-- **Source:** tag `v4.0` with two small fixes. Inputs given with a path no longer
-  crash the final-coordinate output, and `cohp.c` declares its tetrahedron helpers.
 - **Toolchain:** NVIDIA HPC SDK 26.9 with its HPC-X Open MPI, and CUDA Toolkit 13.5.
 - **Solvers:** cuSOLVER, ELPA with GPU kernels, COSMA and MAGMA 2.10.0.
 - **CPU:** generic x86-64-v3 (AVX2 and FMA), so no AVX-512 is needed. BLAS and the
