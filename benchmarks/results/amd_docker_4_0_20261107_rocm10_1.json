@@ -1,0 +1,703 @@
+{
+  "date_jst": "2026-11-07T18:28:35.771655+09:00",
+  "image": "dc1394/openmx-4.0_gpu-ubuntu24.04:4.0-amd",
+  "image_id": "sha256:dd916e8fa8996bfb5229819c51e9ed2aa86061ec799087d7ca04a2972a51a53a",
+  "source_revision": "f88875eb8294f3d906a4752b86e6b359ba8da8cc",
+  "gpu_architecture": "gfx1200",
+  "rocm_base": "rocm/dev-ubuntu-24.04:10.1.0-full@sha256:5ed1362ea542a928651e4c710b44024ebe98870f74159cb70f0265aec8ef0abe",
+  "suites": {
+    "suite-cpu": {
+      "cases": [
+        {
+          "case": "Benzene",
+          "energy_Ha": -37.747156404158,
+          "delta_energy_Ha": 0.0,
+          "max_delta_force_Ha_bohr": 0.0,
+          "force_components_checked": 36,
+          "output_sha256": "9cda5950ad345f8cbf90cf5ee4a6700572a8553a7e67ae085622ef767903dc55",
+          "pass": true
+        },
+        {
+          "case": "C60",
+          "energy_Ha": -343.847203037018,
+          "delta_energy_Ha": 0.0,
+          "max_delta_force_Ha_bohr": 1.0000056338554941e-12,
+          "force_components_checked": 180,
+          "output_sha256": "d02808e9d3fa4f63a4ae23efed0aec5a7c1372061b21fb5fec5a130f7543be3c",
+          "pass": true
+        },
+        {
+          "case": "CO",
+          "energy_Ha": -21.874167896943,
+          "delta_energy_Ha": 0.0,
+          "max_delta_force_Ha_bohr": 5.000000413701855e-12,
+          "force_components_checked": 6,
+          "output_sha256": "acff6c675b1d626b168c7823987e3f74312b6aee208422e633aba80405c45266",
+          "pass": true
+        },
+        {
+          "case": "Cr2",
+          "energy_Ha": -174.535258909145,
+          "delta_energy_Ha": 0.0,
+          "max_delta_force_Ha_bohr": 7.799999535151869e-11,
+          "force_components_checked": 6,
+          "output_sha256": "649c3b524b99ad655cc44649a364a6f808ac2275fc339c8f2ecf9ae25e0233c7",
+          "pass": true
+        },
+        {
+          "case": "Crys-MnO",
+          "energy_Ha": -242.850530357189,
+          "delta_energy_Ha": 4.007461029686965e-12,
+          "max_delta_force_Ha_bohr": 2.5e-11,
+          "force_components_checked": 12,
+          "output_sha256": "296ebcd7ea17f8f2ea2beb89e20430dbc927f87e11fbf0116e79aff6225fa44a",
+          "pass": true
+        },
+        {
+          "case": "GaAs",
+          "energy_Ha": -182.930867025039,
+          "delta_energy_Ha": 5.9969806898152456e-12,
+          "max_delta_force_Ha_bohr": 4.999999999999983e-12,
+          "force_components_checked": 6,
+          "output_sha256": "81fbc039b1a74f2e76c5c03d9b593e85bea855f7326999bf8cfb85bacd7ed6ab",
+          "pass": true
+        },
+        {
+          "case": "Glycine",
+          "energy_Ha": -56.713059771758,
+          "delta_energy_Ha": 0.0,
+          "max_delta_force_Ha_bohr": 1.0000056338554941e-12,
+          "force_components_checked": 30,
+          "output_sha256": "650ad1a12dbee9bc9679a2a1c39e7a418265c9eab8646ac6be36d71966ad6f2a",
+          "pass": true
+        },
+        {
+          "case": "Graphite4",
+          "energy_Ha": -23.319927716521,
+          "delta_energy_Ha": 0.0,
+          "max_delta_force_Ha_bohr": 9.999999960041972e-13,
+          "force_components_checked": 12,
+          "output_sha256": "65ace5a8bb4120e2892b1e595f2255690f69d2439247f77291c59fd2e84f143e",
+          "pass": true
+        },
+        {
+          "case": "H2O-EF",
+          "energy_Ha": -17.385517150178,
+          "delta_energy_Ha": 0.0,
+          "max_delta_force_Ha_bohr": 0.0,
+          "force_components_checked": 9,
+          "output_sha256": "d98456b5bdc76ece00e80ee435a6635a2d5c47336356d08ec9406ebfe3b91a90",
+          "pass": true
+        },
+        {
+          "case": "H2O",
+          "energy_Ha": -17.334876933494,
+          "delta_energy_Ha": 0.0,
+          "max_delta_force_Ha_bohr": 1.000000000000003e-12,
+          "force_components_checked": 9,
+          "output_sha256": "0f1dd5b1c6abd543b6b386d3040651975bfce1cc728a8a3ca52d4eedd500cd78",
+          "pass": true
+        },
+        {
+          "case": "HMn",
+          "energy_Ha": -105.382856447558,
+          "delta_energy_Ha": 0.0,
+          "max_delta_force_Ha_bohr": 0.0,
+          "force_components_checked": 6,
+          "output_sha256": "373d77b0ea280c908347b26c497086e52d5d9894faefd7573587598e789a3b5f",
+          "pass": true
+        },
+        {
+          "case": "Methane",
+          "energy_Ha": -8.033540953053,
+          "delta_energy_Ha": 5.899991606383992e-11,
+          "max_delta_force_Ha_bohr": 6.000006047557349e-12,
+          "force_components_checked": 15,
+          "output_sha256": "192560ee43a5ef0ed46a17c2f119f5b64634617ed45d1bb7e1896f0a43dd7034",
+          "pass": true
+        },
+        {
+          "case": "Mol_MnO",
+          "energy_Ha": -121.101364665547,
+          "delta_energy_Ha": 0.0,
+          "max_delta_force_Ha_bohr": 0.0,
+          "force_components_checked": 6,
+          "output_sha256": "934950d688afcda8d65560362cd2ece584c7ecc33f5726673f235f7478f82974",
+          "pass": true
+        },
+        {
+          "case": "Ndia2",
+          "energy_Ha": -11.571668609583,
+          "delta_energy_Ha": 0.0,
+          "max_delta_force_Ha_bohr": 0.0,
+          "force_components_checked": 6,
+          "output_sha256": "98a6c1181b793180e2a5ac9e749d147cac075a332ab85f9b316092108141d220",
+          "pass": true
+        }
+      ],
+      "passed": 14,
+      "max_delta_energy_Ha": 5.899991606383992e-11,
+      "max_delta_force_Ha_bohr": 7.799999535151869e-11
+    },
+    "suite-hip": {
+      "cases": [
+        {
+          "case": "Benzene",
+          "energy_Ha": -37.747156404157,
+          "delta_energy_Ha": 9.947598300641403e-13,
+          "max_delta_force_Ha_bohr": 0.0,
+          "force_components_checked": 36,
+          "output_sha256": "844cb54d5263f6db46309e5eb979155484287583d7418d0536715ff3771e588c",
+          "pass": true
+        },
+        {
+          "case": "C60",
+          "energy_Ha": -343.84720303699,
+          "delta_energy_Ha": 2.802380549837835e-11,
+          "max_delta_force_Ha_bohr": 1.0000056338554941e-12,
+          "force_components_checked": 180,
+          "output_sha256": "6577fc0aea4d4541325594e30c0e5342729b9150d2a18eab73168fc3d80ae481",
+          "pass": true
+        },
+        {
+          "case": "CO",
+          "energy_Ha": -21.874167896943,
+          "delta_energy_Ha": 0.0,
+          "max_delta_force_Ha_bohr": 2.0000008593701324e-12,
+          "force_components_checked": 6,
+          "output_sha256": "0b46c66c0f2db52bcbff5cfec354087bbd3015c6f1a3df1519bb9a16d4ad670c",
+          "pass": true
+        },
+        {
+          "case": "Cr2",
+          "energy_Ha": -174.535258909143,
+          "delta_energy_Ha": 1.9895196601282805e-12,
+          "max_delta_force_Ha_bohr": 1.5900000000163613e-10,
+          "force_components_checked": 6,
+          "output_sha256": "3f1f96ee6f0d1c219a57568271da76746838002d74f8660c48b4d6da2842bda3",
+          "pass": true
+        },
+        {
+          "case": "Crys-MnO",
+          "energy_Ha": -242.850530357208,
+          "delta_energy_Ha": 1.4978240869822912e-11,
+          "max_delta_force_Ha_bohr": 1.2e-11,
+          "force_components_checked": 12,
+          "output_sha256": "1465f0fe07ca1a4da208b56a5660e18a11a51c7f30a1305df58f0ff4f0f50604",
+          "pass": true
+        },
+        {
+          "case": "GaAs",
+          "energy_Ha": -182.930867025055,
+          "delta_energy_Ha": 2.1998403099132702e-11,
+          "max_delta_force_Ha_bohr": 2.0000000000006135e-12,
+          "force_components_checked": 6,
+          "output_sha256": "2f455796ec01cbbde5ca5b5f1418ee60cdd811bbc231439be27aaf09ebc74547",
+          "pass": true
+        },
+        {
+          "case": "Glycine",
+          "energy_Ha": -56.713059771758,
+          "delta_energy_Ha": 0.0,
+          "max_delta_force_Ha_bohr": 1.0000056338554941e-12,
+          "force_components_checked": 30,
+          "output_sha256": "ee99193b44a25471c56ca94b35b3b7a70d271a1fbb4de7a78779e11ce9e327dd",
+          "pass": true
+        },
+        {
+          "case": "Graphite4",
+          "energy_Ha": -23.319927716519,
+          "delta_energy_Ha": 2.000177801164682e-12,
+          "max_delta_force_Ha_bohr": 0.0,
+          "force_components_checked": 12,
+          "output_sha256": "8f0b915f93a511f1fb8fba273106e3325194028db0bca023f725d61938185be9",
+          "pass": true
+        },
+        {
+          "case": "H2O-EF",
+          "energy_Ha": -17.385517150178,
+          "delta_energy_Ha": 0.0,
+          "max_delta_force_Ha_bohr": 0.0,
+          "force_components_checked": 9,
+          "output_sha256": "bc27397eff49961106ad6c959a31a717de55e7202f771fab42d58ac16d345e77",
+          "pass": true
+        },
+        {
+          "case": "H2O",
+          "energy_Ha": -17.334876933493,
+          "delta_energy_Ha": 1.0018652574217413e-12,
+          "max_delta_force_Ha_bohr": 1.000000000000003e-12,
+          "force_components_checked": 9,
+          "output_sha256": "78b5963a57221eb2756b6a88a0ab5673ff0f94e2be1bf38ed88c6a90f72304d6",
+          "pass": true
+        },
+        {
+          "case": "HMn",
+          "energy_Ha": -105.382856447557,
+          "delta_energy_Ha": 9.947598300641403e-13,
+          "max_delta_force_Ha_bohr": 0.0,
+          "force_components_checked": 6,
+          "output_sha256": "ba35426aa32e6a023258f06f3664c9705d66baaba8afd1ae8f2ba702f555f35c",
+          "pass": true
+        },
+        {
+          "case": "Methane",
+          "energy_Ha": -8.033540953256,
+          "delta_energy_Ha": 1.440003671859813e-10,
+          "max_delta_force_Ha_bohr": 1.599999299717325e-11,
+          "force_components_checked": 15,
+          "output_sha256": "ca58040fa712ab28c6158b127aaa6e799008b521f2196192638367e330dc30f4",
+          "pass": true
+        },
+        {
+          "case": "Mol_MnO",
+          "energy_Ha": -121.101364665546,
+          "delta_energy_Ha": 9.947598300641403e-13,
+          "max_delta_force_Ha_bohr": 0.0,
+          "force_components_checked": 6,
+          "output_sha256": "4d441fdb53d3bbbc22a34b94b875e84288630035687aaff79f7cd024df44bf73",
+          "pass": true
+        },
+        {
+          "case": "Ndia2",
+          "energy_Ha": -11.571668609579,
+          "delta_energy_Ha": 4.000355602329364e-12,
+          "max_delta_force_Ha_bohr": 0.0,
+          "force_components_checked": 6,
+          "output_sha256": "413d843b3068dc3b2002be15bbbe69cd27346c754c68e59c7faf72a4f30d457e",
+          "pass": true
+        }
+      ],
+      "passed": 14,
+      "max_delta_energy_Ha": 1.440003671859813e-10,
+      "max_delta_force_Ha_bohr": 1.5900000000163613e-10
+    }
+  },
+  "solver_cases": [
+    {
+      "case": "Methane",
+      "solver": "elpa2",
+      "returncode": 0,
+      "energy_Ha": -8.033540953066,
+      "delta_energy_Ha": 4.6000536713108886e-11,
+      "max_delta_force_Ha_bohr": 5.000000413701855e-12,
+      "dense_cpu_fallback_count": 0,
+      "pass": true,
+      "force_components_checked": 15,
+      "output_sha256": "9257d9752981d36f9c11efa97c78683d2f495c4b211a4aca2cb8843624a8664c"
+    },
+    {
+      "case": "Cr2",
+      "solver": "elpa2",
+      "returncode": 0,
+      "energy_Ha": -174.535258909146,
+      "delta_energy_Ha": 9.947598300641403e-13,
+      "max_delta_force_Ha_bohr": 1.7600000000147012e-10,
+      "dense_cpu_fallback_count": 0,
+      "pass": true,
+      "force_components_checked": 6,
+      "output_sha256": "0efb95f66daeefdf4211d3b6f9771be10c27de1df0e33bacd246b5210ceabc96"
+    },
+    {
+      "case": "Methane",
+      "solver": "gpusolver",
+      "returncode": 0,
+      "energy_Ha": -8.033540953134,
+      "delta_energy_Ha": 2.2000179455972102e-11,
+      "max_delta_force_Ha_bohr": 3.0000030237786746e-12,
+      "dense_cpu_fallback_count": 0,
+      "pass": true,
+      "force_components_checked": 15,
+      "output_sha256": "23bb020da022d58f159bb7392ed1d2426589195b064850efd06dacad4eedc3ac"
+    },
+    {
+      "case": "Cr2",
+      "solver": "gpusolver",
+      "returncode": 0,
+      "energy_Ha": -174.535258909143,
+      "delta_energy_Ha": 1.9895196601282805e-12,
+      "max_delta_force_Ha_bohr": 1.670000000001629e-10,
+      "dense_cpu_fallback_count": 0,
+      "pass": true,
+      "force_components_checked": 6,
+      "output_sha256": "493c2b527646137f71750a462869bb89bd000ae2e9ffaa017b4df50db1828a1a"
+    },
+    {
+      "case": "Methane",
+      "solver": "gpusolver2",
+      "returncode": 0,
+      "energy_Ha": -8.033540952981,
+      "delta_energy_Ha": 1.3100098783525027e-10,
+      "max_delta_force_Ha_bohr": 1.4000009485037879e-11,
+      "dense_cpu_fallback_count": 0,
+      "pass": true,
+      "force_components_checked": 15,
+      "output_sha256": "384c6caef2c562b7fe400907f55f45967ade8f94e77217a0ca93d75063f9de26"
+    },
+    {
+      "case": "Cr2",
+      "solver": "gpusolver2",
+      "returncode": 0,
+      "energy_Ha": -174.535258909142,
+      "delta_energy_Ha": 3.0127011996228248e-12,
+      "max_delta_force_Ha_bohr": 1.650000000000018e-10,
+      "dense_cpu_fallback_count": 0,
+      "pass": true,
+      "force_components_checked": 6,
+      "output_sha256": "9110d623f3553af8e1121e440ea13f7ae024e74d2c3ffcf3ffef26c3e1a76d94"
+    },
+    {
+      "case": "Methane",
+      "solver": "gpusolver3",
+      "returncode": 0,
+      "energy_Ha": -8.033540953055,
+      "delta_energy_Ha": 5.699973826267524e-11,
+      "max_delta_force_Ha_bohr": 6.000006047557349e-12,
+      "dense_cpu_fallback_count": 0,
+      "pass": true,
+      "force_components_checked": 15,
+      "output_sha256": "e1d0f88b6dc490e22585a34792f4f8db97295f5e9117010cee804e012edabe74"
+    },
+    {
+      "case": "Cr2",
+      "solver": "gpusolver3",
+      "returncode": 0,
+      "energy_Ha": -174.535258909143,
+      "delta_energy_Ha": 1.9895196601282805e-12,
+      "max_delta_force_Ha_bohr": 1.6600000000077057e-10,
+      "dense_cpu_fallback_count": 0,
+      "pass": true,
+      "force_components_checked": 6,
+      "output_sha256": "e5fc6372dab8973362e382963ee3dafd5e64aa35fcbffe1495ca660ddc6cb965"
+    }
+  ],
+  "path_input": {
+    "energy_Ha": -8.033540953083,
+    "delta_energy_Ha": 2.900080176004849e-11,
+    "max_delta_force_Ha_bohr": 3.0000030237786746e-12,
+    "force_components_checked": 15,
+    "output_sha256": "b07ce04945b8ada23847a9333cbbec54aba454264ebb49edaaa9d4f54aca0aa8",
+    "pass": true
+  },
+  "ScN_energy_Ha": -57.580646364759,
+  "cohp_last_value": 145.74322965952626,
+  "cpu_instruction_scan": [
+    {
+      "target": "application objects (342 files)",
+      "EVEX_count": 0
+    },
+    {
+      "target": "native/source/third_party/gpusolver2-install/lib/libTiled-MM.a",
+      "EVEX_count": 0
+    },
+    {
+      "target": "native/source/third_party/gpusolver2-install/lib/libcosma.a",
+      "EVEX_count": 0
+    },
+    {
+      "target": "native/source/third_party/gpusolver2-install/lib/libcosma_prefixed_pxgemm.a",
+      "EVEX_count": 0
+    },
+    {
+      "target": "native/source/third_party/gpusolver2-install/lib/libcosma_pxgemm_cpp.a",
+      "EVEX_count": 0
+    },
+    {
+      "target": "native/source/third_party/gpusolver2-install/lib/libcosta.a",
+      "EVEX_count": 0
+    },
+    {
+      "target": "native/source/third_party/gpusolver2-install/lib/libcosta_prefixed_scalapack.a",
+      "EVEX_count": 0
+    },
+    {
+      "target": "native/source/third_party/gpusolver2-install/lib/libcosta_scalapack.a",
+      "EVEX_count": 0
+    },
+    {
+      "target": "native/source/third_party/gpusolver2-install/lib/libelpa_openmp.a",
+      "EVEX_count": 0
+    },
+    {
+      "target": "native/source/third_party/magma/lib/libmagma.a",
+      "EVEX_count": 0
+    },
+    {
+      "target": "native/source/third_party/GEMMul8/lib/libgemmul8.a",
+      "EVEX_count": 0
+    },
+    {
+      "target": "core/libopenmx_core.so",
+      "EVEX_count": 0
+    },
+    {
+      "target": "core/host-simd/lib/libopenmx_host_simd.so",
+      "EVEX_count": 16538
+    },
+    {
+      "target": "/openmx4.0_gpu/work/openmx",
+      "EVEX_count": 0
+    },
+    {
+      "target": "/openmx4.0_gpu/work/cohp",
+      "EVEX_count": 0
+    }
+  ],
+  "gpu_utilization": {
+    "verification_returncode": 0,
+    "samples": 239,
+    "peak_gpu_busy_percent": {
+      "/sys/class/drm/card0/device/gpu_busy_percent": 100
+    },
+    "finished_jst": "2026-11-07T18:27:13.746223+09:00"
+  },
+  "instruction_scan_method": "ROCm LLVM objdump for all 342 application objects, libraries, openmx and cohp. Raw instruction-byte EVEX checks; SIMD library serves as a positive control.",
+  "reference_sha256": {
+    "work/input_example/Benzene.dat": "c7f445ef1ed49115a52049f6b81711b0999d074b5be2119f85886fa3209dfc66",
+    "work/input_example/Benzene.out": "37ed741ff147c48b56ae4f021b0377caac5fb89b4e8bdc78edba989639258b8e",
+    "work/input_example/C60.dat": "7c2bd103986adb335ae2302685be43f0a23545861fa21d7885bd6f663bb6f6f8",
+    "work/input_example/C60.out": "568a35d076fe2d266107007949cd565c28fc943588c690973b41386af9090e3a",
+    "work/input_example/CO.dat": "6fea9256df9ce5db091c80b9c644bc93a6dc55187949b61b682012f54566ff05",
+    "work/input_example/CO.out": "65d49e808711572a31e253a4c487449c48b66d9680ad92518d5533ede270f541",
+    "work/input_example/Cr2.dat": "37ce5beffcf397b8460975e6525ed2783c2be7320941e99d031bb77e2e888e3e",
+    "work/input_example/Cr2.out": "678328a40982ec0533a531921a1c2148ba891da5ed67f1defebb05445c43311b",
+    "work/input_example/Crys-MnO.dat": "315a3b870e4e57a0edb5ac48f4135593f9dbc63cdcc1f0d344783ac9b4ef9c62",
+    "work/input_example/Crys-MnO.out": "d9a9fa9d913f88ce3ca31d5aaf9b3be167d3835a71ee4192a8dac2e63335cd09",
+    "work/input_example/GaAs.dat": "62c958351460fabc5d1a4f12d1cb51565f56ce10c4570d24131da25637f852c6",
+    "work/input_example/GaAs.out": "1517c9ef8fc049daeff98ef41915d7ece94dcb1fef8cb0b01b0e058e0bfe6e4b",
+    "work/input_example/Glycine.dat": "4781425789fc08433ab49f4934c7c012d7cad0ad87b7f3df737138118afa8bca",
+    "work/input_example/Glycine.out": "ea51d09a9d07880c152787335c32126b98ff3975f22c13adf1ec74d015631eb8",
+    "work/input_example/Graphite4.dat": "9ed8513b6eaac5ef8dc2343422c88175bd0b1b6b1e101f7bd113f63a9d2ed2f6",
+    "work/input_example/Graphite4.out": "deefb59004ab80bffa03179f725f65271b66d6652910de56805e1226e797c64f",
+    "work/input_example/H2O-EF.dat": "9f528eb4f5d13f0635772d5dc87635d4e7c99266dc2085a1ef820a19e23f97d9",
+    "work/input_example/H2O-EF.out": "ea014fc6ff9730d90e5bd90d4aead2fa0413979da5368d6c80600dcae3a15841",
+    "work/input_example/H2O.dat": "5e2044197d163bdb97728c78666d3b3dac9e0221bd07aa7b86781fca12770804",
+    "work/input_example/H2O.out": "af8101a592a55ffd526df5110764ca239463a3317eb1c52b8e8c5d2e38709fd5",
+    "work/input_example/HMn.dat": "d29997cfe87ce73dcea408285c019c25c1573ae0c8d45cedc21c367a00abb703",
+    "work/input_example/HMn.out": "bf122f24053179b50fc320cf36ee153f203fcd46aff20565f621c61fcb258370",
+    "work/input_example/Methane.dat": "259179e38dad7c6d8ece6f51ea8b0a1fbc3657a15defc43cb9ad104413a415bb",
+    "work/input_example/Methane.out": "5136f81103237bc249fa405f60d5a656606774079d2a3420116e0adf8b4a416e",
+    "work/input_example/Mol_MnO.dat": "7294bb18e450cefa7ab169b88c19c64284158a0f702a877324c3bd466c026670",
+    "work/input_example/Mol_MnO.out": "d7784dfc6822ca6010e1ca5298986136ed26aaef1a8de90cfd06f20de0510ba7",
+    "work/input_example/Ndia2.dat": "68fccb2f50ba4e06d1625446db230a0fbc0981881352c66ae120ad1cefdc19ec",
+    "work/input_example/Ndia2.out": "e121f0554de81fe56a31528c8e0ad1fdcee8256ec9bc24da8331d4086f187cea"
+  },
+  "force_components_checked": 777,
+  "runtime_validation_passed": true,
+  "published": true,
+  "notes": [
+    "Fresh complete CPU/HIP suites, solver, path and post-processing checks against the moved v4.0 source tag.",
+    "The host SIMD library deliberately includes AVX-512 variants behind runtime CPU dispatch. Tests ran on an AVX2 Threadripper 3970X.",
+    "Only gfx1200 and one Radeon RX 9060 XT were tested."
+  ],
+  "platform": "linux/amd64",
+  "host_cpu": "AMD Ryzen Threadripper 3970X (AVX2, no AVX-512)",
+  "host_gpu": "AMD Radeon RX 9060 XT, 16 GiB",
+  "cpu_baseline": "x86-64-v3",
+  "test_configuration": {
+    "suites_mpi_ranks": 4,
+    "suites_openmp_threads": 1,
+    "solvers_mpi_ranks": 4,
+    "solvers_openmp_threads": 4,
+    "energy_tolerance_Ha": 1e-07,
+    "force_tolerance_Ha_bohr": 1e-07
+  },
+  "docker_hub_url": "https://hub.docker.com/r/dc1394/openmx-4.0_gpu-ubuntu24.04/tags?name=4.0-amd",
+  "source_tag": "v4.0",
+  "source_url": "https://github.com/dc1394/openmx4.0_gpu/commit/f88875eb8294f3d906a4752b86e6b359ba8da8cc",
+  "build_image": "openmx-amd-rebuild:20261107-rocm10.1.0",
+  "replaces_digest": "sha256:df49138a0d2b4c219c98fc85ea7859e90449429ddac7bf9289f6b14409d90336",
+  "libraries": {
+    "ubuntu": "24.04",
+    "rocm": "10.1.0",
+    "openmpi": "4.1.6",
+    "openblas": "0.3.26 (pthread)",
+    "scalapack": "2.2.1",
+    "fftw": "3.3.10",
+    "elpa": "2026.02.002",
+    "magma": "2.10.0"
+  },
+  "actual_library_packages": [
+    "libfftw3-double3:amd64\t3.3.10-1ubuntu3",
+    "libopenblas0-pthread:amd64\t0.3.26+ds-1ubuntu0.1",
+    "libscalapack-openmpi2.2:amd64\t2.2.1-3.1ubuntu1"
+  ],
+  "hipcc_version": "HIP version: 7.16.26385-0000000\nAMD clang version 24.0.0git (https://github.com/ROCm/llvm-project.git d6f6cb691863e9258034ab48c1dfce21689d5606)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/core-10.1/lib/llvm/bin\nConfiguration file: /opt/rocm/core-10.1/lib/llvm/bin/clang++.cfg\n",
+  "clang_version": "AMD clang version 24.0.0git (https://github.com/ROCm/llvm-project.git d6f6cb691863e9258034ab48c1dfce21689d5606)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/core-10.1/lib/llvm/bin\nConfiguration file: /opt/rocm/core-10.1/lib/llvm/bin/clang.cfg\n",
+  "dataset_check": "Updated Tb dataset layout verified.",
+  "build_recipe_sha256": {
+    "Dockerfile.amd": "a9eebc4e7fc60f85524186562ef6b9ce65afa28688d37adbff72f7a1df7daaec",
+    "entrypoint-amd.sh": "bfaba4ce98d08f6b426b49d1bd071f862fa5abaf6a8b1a82e52d07a32bd00c03",
+    "build-amd.sh": "eb62a45c4a980575142c759c7f15ec90b6565cb6b95200c4100b3bba0d5ffd27"
+  },
+  "manifest_digest": "sha256:dd916e8fa8996bfb5229819c51e9ed2aa86061ec799087d7ca04a2972a51a53a",
+  "publication": {
+    "published": true,
+    "verified_at_jst": "2026-11-07T18:47:13.879487+09:00",
+    "image": "dc1394/openmx-4.0_gpu-ubuntu24.04:4.0-amd",
+    "digest": "sha256:dd916e8fa8996bfb5229819c51e9ed2aa86061ec799087d7ca04a2972a51a53a",
+    "image_reference": "dc1394/openmx-4.0_gpu-ubuntu24.04@sha256:dd916e8fa8996bfb5229819c51e9ed2aa86061ec799087d7ca04a2972a51a53a",
+    "previous_tag_digests_unchanged": {
+      "latest": "sha256:b0398be144bcb1dfe96bcd30a1d041db1c66c6df73d44912888fdc46fd1e3db3",
+      "4.0-nvidia": "sha256:bbe1fb7dbaa6b4475eec87311d692243cc9cb5a149a0483e6b163e7dd6022a58",
+      "1.1.1": "sha256:b0398be144bcb1dfe96bcd30a1d041db1c66c6df73d44912888fdc46fd1e3db3",
+      "1.1": "sha256:ebb09d7da05f9186db6f20a09073837c38cc1c95d48579327126625a617b1fff",
+      "1.0": "sha256:ee08871e5f62068a7251876dafbec38dce277440f2ce9dafd1ff5d13fcba490d",
+      "0.1": "sha256:571112909ec59828ab946f07470d3662cedb023f5ce5a290b8f8354a3f5916c7"
+    },
+    "pull_by_digest_verified": true,
+    "post_pull_hip_suite": {
+      "mpi_ranks": 4,
+      "openmp_threads": 1,
+      "native_runtest_single_job": true,
+      "passed": 14,
+      "cases": [
+        {
+          "case": "Benzene",
+          "returncode": 0,
+          "pass": true,
+          "energy_Ha": -37.747156404157,
+          "delta_energy_Ha": 9.947598300641403e-13,
+          "max_delta_force_Ha_bohr": 0.0,
+          "force_components_checked": 36,
+          "output_sha256": "94beb8080a57bea80238c6bff112c9e80a27d72e41059568320f3e1d333b3144"
+        },
+        {
+          "case": "C60",
+          "returncode": 0,
+          "pass": true,
+          "energy_Ha": -343.847203036989,
+          "delta_energy_Ha": 2.8990143619012088e-11,
+          "max_delta_force_Ha_bohr": 1.0000021644085422e-12,
+          "force_components_checked": 180,
+          "output_sha256": "3466f67c5bf2dc16a0a392695c5671b5c23255240aa677ed784c4d51d5ce4a90"
+        },
+        {
+          "case": "CO",
+          "returncode": 0,
+          "pass": true,
+          "energy_Ha": -21.874167896943,
+          "delta_energy_Ha": 0.0,
+          "max_delta_force_Ha_bohr": 1.9999999999999996e-12,
+          "force_components_checked": 6,
+          "output_sha256": "50ff466f75a1c60a33eb5d7d3e4933d6d144f75fb641c720337ae9ef6c5b30b1"
+        },
+        {
+          "case": "Cr2",
+          "returncode": 0,
+          "pass": true,
+          "energy_Ha": -174.535258909142,
+          "delta_energy_Ha": 3.0127011996228248e-12,
+          "max_delta_force_Ha_bohr": 7.799999535151869e-11,
+          "force_components_checked": 6,
+          "output_sha256": "ba50786a92ab0dfc57177d44f728e3504f2977f8d28ff0c37da533199f30c3db"
+        },
+        {
+          "case": "Crys-MnO",
+          "returncode": 0,
+          "pass": true,
+          "energy_Ha": -242.850530357208,
+          "delta_energy_Ha": 1.4978240869822912e-11,
+          "max_delta_force_Ha_bohr": 1.6e-11,
+          "force_components_checked": 12,
+          "output_sha256": "89902058f767884e2a27a5c35228d2583c01f370d34a1a79e12b04c0965cc582"
+        },
+        {
+          "case": "GaAs",
+          "returncode": 0,
+          "pass": true,
+          "energy_Ha": -182.930867025055,
+          "delta_energy_Ha": 2.1998403099132702e-11,
+          "max_delta_force_Ha_bohr": 2.0000000000006135e-12,
+          "force_components_checked": 6,
+          "output_sha256": "81e8a405e87d45e4b997999d960924a070d92815c79029e66f766da1a799de05"
+        },
+        {
+          "case": "Glycine",
+          "returncode": 0,
+          "pass": true,
+          "energy_Ha": -56.713059771757,
+          "delta_energy_Ha": 9.947598300641403e-13,
+          "max_delta_force_Ha_bohr": 1.0000056338554941e-12,
+          "force_components_checked": 30,
+          "output_sha256": "b936bc701ad1a4d402d34f303a71c86f7587be49ecf07260e97cc536a3753e9a"
+        },
+        {
+          "case": "Graphite4",
+          "returncode": 0,
+          "pass": true,
+          "energy_Ha": -23.319927716519,
+          "delta_energy_Ha": 2.000177801164682e-12,
+          "max_delta_force_Ha_bohr": 9.999999960041972e-13,
+          "force_components_checked": 12,
+          "output_sha256": "b01d7ecfa4d3fae80fd379089ef88c1979bf6c7b83894ea2fccc00f36c44b786"
+        },
+        {
+          "case": "H2O-EF",
+          "returncode": 0,
+          "pass": true,
+          "energy_Ha": -17.385517150177,
+          "delta_energy_Ha": 9.983125437429408e-13,
+          "max_delta_force_Ha_bohr": 0.0,
+          "force_components_checked": 9,
+          "output_sha256": "cbbbf07469ec41bda9ba876a6489db34f91bccf6c50e0748fbe39f833a5f0e95"
+        },
+        {
+          "case": "H2O",
+          "returncode": 0,
+          "pass": true,
+          "energy_Ha": -17.334876933493,
+          "delta_energy_Ha": 1.0018652574217413e-12,
+          "max_delta_force_Ha_bohr": 0.0,
+          "force_components_checked": 9,
+          "output_sha256": "58ab1a78751c0a043170cba9492a3f44e4cc36878b4772a965aa6f5f2f4c7f26"
+        },
+        {
+          "case": "HMn",
+          "returncode": 0,
+          "pass": true,
+          "energy_Ha": -105.382856447557,
+          "delta_energy_Ha": 9.947598300641403e-13,
+          "max_delta_force_Ha_bohr": 0.0,
+          "force_components_checked": 6,
+          "output_sha256": "519edb25720c047c6541e2ae5e397fa9e1e000e4d78f7163538c670b21597f86"
+        },
+        {
+          "case": "Methane",
+          "returncode": 0,
+          "pass": true,
+          "energy_Ha": -8.033540953127,
+          "delta_energy_Ha": 1.4999557151895715e-11,
+          "max_delta_force_Ha_bohr": 1.9999973899231804e-12,
+          "force_components_checked": 15,
+          "output_sha256": "6a7d6d9f4b38e536ac397532a3b1066aebece5d7afa2608f104bfefd8e1b0a69"
+        },
+        {
+          "case": "Mol_MnO",
+          "returncode": 0,
+          "pass": true,
+          "energy_Ha": -121.101364665546,
+          "delta_energy_Ha": 9.947598300641403e-13,
+          "max_delta_force_Ha_bohr": 0.0,
+          "force_components_checked": 6,
+          "output_sha256": "6025e9f32f393353737a0ad33079f4c901df8858ee635114b5e6c10173eef8a4"
+        },
+        {
+          "case": "Ndia2",
+          "returncode": 0,
+          "pass": true,
+          "energy_Ha": -11.571668609579,
+          "delta_energy_Ha": 4.000355602329364e-12,
+          "max_delta_force_Ha_bohr": 0.0,
+          "force_components_checked": 6,
+          "output_sha256": "9cda6fa0124ace79635a337737677217fbedce8ee9b988971d6cfffcdf87daa1"
+        }
+      ],
+      "max_delta_energy_Ha": 2.8990143619012088e-11,
+      "max_delta_force_Ha_bohr": 7.799999535151869e-11,
+      "force_components_checked": 339,
+      "gpu_initialization_failure_count": 0,
+      "dense_cpu_fallback_count": 0
+    }
+  }
+}

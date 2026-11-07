@@ -1209,10 +1209,12 @@ What the `4.0-nvidia` image contains:
 
 ### AMD image
 
-The `4.0-amd` image is built from release tag `v4.0`, commit
-[`ab8b88b9`](https://github.com/dc1394/openmx4.0_gpu/commit/ab8b88b94ae2b7fd3faa087fc8545871d1b6391b).
-It contains Ubuntu 24.04, ROCm 7.2, Open MPI 4.1.6, OpenBLAS 0.3.26
-(pthread), ScaLAPACK 2.2.1, FFTW 3.3.10, ELPA 2026.02.002, COSMA,
+The `4.0-amd` image was rebuilt with ROCm 10.1.0 from the updated release
+tag `v4.0`, commit
+[`f88875eb`](https://github.com/dc1394/openmx4.0_gpu/commit/f88875eb8294f3d906a4752b86e6b359ba8da8cc).
+It contains Ubuntu 24.04, ROCm Core SDK 10.1.0 (HIP 7.16, Clang 24),
+Open MPI 4.1.6, OpenBLAS 0.3.26 (pthread), ScaLAPACK 2.2.1, FFTW 3.3.10,
+ELPA 2026.02.002, COSMA,
 MAGMA 2.10.0 and GEMMul8. Post-processing tools, including `cohp`, are
 installed alongside `openmx`.
 
@@ -1264,13 +1266,13 @@ installed work directory.
 Validation on 2026-11-07 compared total energies and **every force
 component** with the bundled references, with tolerances of 1e-7 Ha and
 1e-7 Ha/bohr. Detailed per-case results and image provenance are recorded
-in [the AMD Docker validation data](benchmarks/results/amd_docker_4_0_20261107.json).
+in [the AMD Docker validation data](benchmarks/results/amd_docker_4_0_20261107_rocm10_1.json).
 
 | Check | MPI × OpenMP | Result | Max abs ΔE (Ha) | Max abs ΔF (Ha/bohr) |
 | --- | --- | --- | ---: | ---: |
 | CPU `-runtest` | 4 × 1 | 14/14 PASS | 5.9e-11 | 7.8e-11 |
-| HIP `-runtest` | 4 × 1 | 14/14 PASS | 8.0e-11 | 7.9e-11 |
-| Methane and Cr2 with `elpa2`, `gpusolver`, `gpusolver2`, `gpusolver3` | 4 × 4 | 8/8 PASS | 6.9e-11 | 2.07e-10 |
+| HIP `-runtest` | 4 × 1 | 14/14 PASS | 1.4e-10 | 1.6e-10 |
+| Methane and Cr2 with `elpa2`, `gpusolver`, `gpusolver2`, `gpusolver3` | 4 × 4 | 8/8 PASS | 1.3e-10 | 1.76e-10 |
 
 Both `gpusolver3` cases completed forced MAGMA GPU diagonalization. The
 solver checks recorded no dense CPU fallback or GPU initialization
@@ -1282,7 +1284,7 @@ benchmarked elsewhere in this README.
 To pin this published image by digest:
 
 ```sh
-docker pull dc1394/openmx-4.0_gpu-ubuntu24.04@sha256:df49138a0d2b4c219c98fc85ea7859e90449429ddac7bf9289f6b14409d90336
+docker pull dc1394/openmx-4.0_gpu-ubuntu24.04@sha256:dd916e8fa8996bfb5229819c51e9ed2aa86061ec799087d7ca04a2972a51a53a
 ```
 
 The image was pulled using this digest and its HIP `-runtest` suite was
