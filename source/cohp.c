@@ -26,6 +26,9 @@
 
 typedef struct DCOMPLEX{double r,i;} dcomplex;  
 
+void OrderE0(double *e, int n);
+void ATM_Dos(double *et, double *e, double *dos);
+
 void tetrahedron(char *mode, char basename[YOUSO10], int SpinP_switch, double ChemP, int NumES,
                  double *****ko, double ********COHP, 
                  int COHP_num_pairs,  
