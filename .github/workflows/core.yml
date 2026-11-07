@@ -114,7 +114,7 @@ jobs:
           cmake -S . -B build/cpu -DOPENMX_GPU_BACKEND=CPU -DOPENMX_CPU_COMPILER=${{ matrix.compiler }} -DOPENMX_CPU_MPI=OPENMPI -DOPENMX_CPU_LINALG=OPENBLAS -DOPENMX_COPY_TO_WORK=OFF -DOPENMX_BUILD_JOBS=2
           cmake --build build/cpu --target openmx openmx_cpu_numerics openmx_grid_assembly_tests openmx_host_simd_boundary_tests --parallel 2
       - name: Check CPU kernels and accelerator boundaries
-        run: ctest --test-dir build/cpu -R '^(core-(grid-assembly|host-simd-boundary)|cpu-build-accelerator-boundary|cpu-numerical-toolchain|environment-registry)' --output-on-failure
+        run: ctest --test-dir build/cpu -R '^(core-(grid-assembly|host-simd-boundary)|build-backend-isolation|cpu-build-accelerator-boundary|cpu-numerical-toolchain|environment-registry)' --output-on-failure
       - name: Reject GPU runtime dependencies
         run: |
           ldd build/cpu/openmx > build/cpu/runtime-libraries.txt
