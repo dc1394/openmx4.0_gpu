@@ -294,14 +294,12 @@
   ],
   "overrides": {
     "Cluster_DFT_Col_dm_hip.cu": "src/Cluster_DFT_Col_dm_hip.cu",
-    "Cluster_DFT_NonCol_dm_hip.cu": "src/Cluster_DFT_NonCol_dm_hip.cu",
     "Set_XC_Grid.c": "src/Set_XC_Grid.c",
     "cuda_fp8.h": "include/cuda_fp8.h",
     "cusolverDn.h": "include/cusolverDn.h",
     "gemmul8_openmx.cu": "src/gemmul8_openmx.cu",
     "gpusolver_Syevd.c": "src/gpusolver_Syevd.c",
     "gpusolver_Syevdx.c": "src/gpusolver_Syevdx.c",
-    "magma_openmx.cu": "src/magma_openmx.cu",
     "openmx_gpu_arch_policy.h": "include/openmx_gpu_arch_policy.h",
     "openmx_magma_lock.h": "include/openmx_magma_lock.h",
     "openmx_target.h": "include/openmx_target.h",
@@ -464,7 +462,6 @@
     "Circular_Search.c": "86ec8320dd7f6fed7a15db88ea25742886b979b9b91efed6a170b4cfe834e407",
     "Circular_Search.h": "bd807213e7528950bed607928a0a3617e44f4485a8608cd827e0e900209a7ae4",
     "Cluster_DFT_Col_dm_hip.cu": "f2459d807d83e87de17cf85bab40a9719f274aa2381fb8956702b9fac0323308",
-    "Cluster_DFT_NonCol_dm_hip.cu": "55808ef7573040111ffe04a286e8e93c72ece6bf7bbc91ace07be1ad52d2a91d",
     "Cluster_DFT_OptOrb.c": "0e1d4a756ecc245d36a80f27ff072df38af5cae20830b8624371b5965ba904fb",
     "DFTD3vdW_init.c": "098b834ff204d2dd267f8385586ff4d2d56d8711ec565b617ac517981ff47153",
     "DFTDvdW_init.c": "5a48e3d00cb5fdc68f702a3b4811f29b9542131e6e60a6584ba53b451a03c46b",
@@ -690,7 +687,6 @@
     "leakdetect.c": "4297206769e9c57e7a8325e5157c4fef8c43c178a9bca3d8fee608b4831d54bc",
     "leakdetect.h": "9e089b06060b03dfeda1622cd6ace60e9754df7743f49ae74ecdb25f51660131",
     "lebedev_euler_xyz.c": "f42035a00902f03a6b5b89d5bf3ae87ed120183029a93502a54678c105d7c928",
-    "magma_openmx.cu": "bf286149daf6a1b401490a65beb7db550e9c82947ff14a7c11f65f0feb10a468",
     "malloc_multidimarray.c": "2d814433d3ff729220383ac4cc424abc5611bfe496bc9f0ecf94c3ba68b6ad99",
     "md2axsf.c": "ddf8cfab2e9eb2798af7d84556c32a6506429e2388752b9091d97330e8574c5a",
     "mimic_read_scfout.h": "9dea4fba13a29bac91bdfca0b2cc867f6bd62510d1dbc5480bb6e2b58df91433",
@@ -1140,6 +1136,8 @@
     "eigen_refine_hooks.h": "include/eigen_refine_hooks.h",
     "orbs_otf_state_hip.h": "include/orbs_otf_state_hip.h",
     "orbs_otf_hip.cu": "src/orbs_otf_hip.cu",
-    "orbs_otf_hip.h": "include/orbs_otf_hip.h"
+    "orbs_otf_hip.h": "include/orbs_otf_hip.h",
+    "Cluster_DFT_NonCol_dm_hip.cu": "src/Cluster_DFT_NonCol_dm_hip.cu",
+    "magma_openmx.cu": "src/magma_openmx.cu"
   }
 }
