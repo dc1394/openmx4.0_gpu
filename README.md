@@ -1310,7 +1310,8 @@ open-core treatment of the 4f states.
 | --- | --- | --- |
 | Eu, Gd, Er | CA26/PBE26 VPS and PAO | CA26/PBE26_OC VPS and PAO |
 | Tm | — | CA26/PBE26_OC VPS and PAO |
-| Tb, Yb | Updated CA26/PBE26 VPS and PAO | Updated CA26/PBE26_OC VPS and PAO |
+| Tb | — | Updated CA26/PBE26_OC VPS and PAO |
+| Yb | Updated CA26/PBE26 VPS and PAO | Updated CA26/PBE26_OC VPS and PAO |
 | Ho | Existing 2019 data | CA26/PBE26_OC VPS and PAO |
 | Dy | Existing 2019 data | Updated CA26/PBE26_OC VPS and replaced PAO |
 | Sm | Existing 2019 data | Updated CA26/PBE26_OC VPS with the existing PAO |
@@ -1321,8 +1322,8 @@ The Ho open-core data are
 
 For Tb open-core calculations, use the supplied `Tb_CA26_OC.vps` or
 `Tb_PBE26_OC.vps` with `Tb8.0_OC.pao`, `Tb10.0_OC.pao` or `Tb12.0_OC.pao`.
-These form the versioned open-core set; the names without `_OC` select
-the separate 4f-in-valence data.
+Only open-core Tb datasets are included; the incomplete 4f-in-valence VPS
+and PAO files have been removed.
 
 PAO files use confinement radii of 8.0, 10.0 and 12.0 bohr. For example,
 `Yb8.0.pao` pairs with `Yb_PBE26.vps` for explicit 4f valence states, while
