@@ -113,3 +113,4 @@ __pycache__/
 /work/include/
 /work/lib64/
 /work/share/
+!/docs/CGHELGEO_STRICT_SCF.md

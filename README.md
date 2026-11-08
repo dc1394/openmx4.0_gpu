@@ -2826,6 +2826,16 @@ rather than a new arithmetic difference in this path. The SCF stop test
 uses a band-energy change and mixing residual; it does not bound the final
 total-energy difference against another run.
 
+A [strict 8 MPI × 2-thread SCF comparison](docs/CGHELGEO_STRICT_SCF.md)
+uses `scf.criterion=1e-12` and checks all 1,950 force components.
+Across upstream CPU, CPU AVX2, HIP with native FP64 grid/orbital/GEMM
+arithmetic and the default HIP policy, with inherited product rounding retained,
+the maximum pairwise differences are 9.37e-11 Ha in
+energy and 4.08e-10 Ha/bohr in force components.
+The broader `scf.fp32.enable=off` control also promotes inherited VNA/force
+float products: its upstream differences are 1.63e-07 Ha and
+3.51e-08 Ha/bohr. These are separate from the earlier 16×2 timings.
+
 **The cghelgeo GPU timing includes CPU dense diagonalization.** There were
 61 dense-memory rejections across 61 SCF steps. The first verdict was:
 
