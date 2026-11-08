@@ -638,6 +638,70 @@ GEMMul8 and cuSOLVER's FP64 fixed-point emulation remain governed by their
 own settings. The existing float storage of orbital and VNA projector
 tables is unchanged; this keyword controls arithmetic precision.
 
+### Strict cghelgeo precision checks (RTX 5080, 2026-11-08)
+
+The 650-atom `benchmarks/inputs/cghelgeo.dat` was checked with
+**18 MPI ranks × 2 OpenMP/BLAS threads**, one RTX 5080 with MPS for GPU
+execution, and **`scf.criterion=1e-10`** (1,000 times tighter than the
+original input). Geometry, PAO/VPS, cutoff, k mesh and mixing settings were
+held fixed. All runs in this table reached the SCF stop condition and
+finished normally. Force differences cover all **1,950 Cartesian components**.
+
+| Route | Final SCF steps | Total energy (Ha) | abs ΔE to upstream (Ha) | max abs ΔF to upstream (Ha/bohr) |
+| --- | ---: | ---: | ---: | ---: |
+| Upstream OpenMX 4.0 CPU (Intel/MKL) | 2 (restart) | -4153.148190613880 | 0 | 0 |
+| Fork CPU, AVX-512 | 95 | -4153.148190613648 | 2.320e-10 | 3.570e-10 |
+| GPU native FP64, inherited projector products retained | 2 (restart) | -4153.148190613762 | 1.180e-10 | 1.363e-09 |
+| GPU default emulation policy | 82 | -4153.148190613619 | 2.610e-10 | 6.150e-10 |
+| GPU full FP64 arithmetic, inherited products promoted | 83 | -4153.148190776506 | 1.62626e-07 | 3.5031e-08 |
+| GPU full FP64 arithmetic, matched-seed control | 60 (restart) | -4153.148190776526 | 1.62646e-07 | 3.5051e-08 |
+
+With inherited projector-product rounding retained, all six pairwise
+comparisons of upstream CPU, CPU AVX-512, native FP64 GPU and default GPU
+pass the unchanged `1e-7` Ha energy and `1e-7` Ha/bohr force-component
+gates, including printed-rounding bounds. The largest printed pairwise
+differences are **`2.61e-10` Ha** and **`1.805e-9` Ha/bohr**.
+
+The native-FP64 control retains `scf.fp32.enable on` for those inherited
+products, with `scf.gemmul8.enable off`, `OPENMX_CUSOLVER_EMULATION=0`,
+`OPENMX_EIGEN_REFINE=0`, `OPENMX_GRID_PRECISION=fp64` and
+`OPENMX_ORBS_EVAL_PRECISION=fp64`. Thus dense eigensolvers/GEMMs and
+grid/orbital evaluation use FP64 while the original projector-product
+rounding remains fixed. The default GPU row leaves the arithmetic controls
+unset, retaining GEMMul8, FP32 refinement, double-float policies and
+automatic cuSOLVER FP64 emulation.
+
+**`scf.fp32.enable off` also changes the inherited VNA/force products.**
+The full-FP64 row therefore has a small, separate arithmetic-policy offset:
+its energy difference **fails the retained `1e-7` Ha gate**, while its force
+difference passes. This result remains recorded as a failure of that energy
+check; the tolerance has not been relaxed. The
+[Radeon strict comparison](docs/CGHELGEO_STRICT_SCF.md) independently records
+an offset of the same size for this broader switch.
+
+The paired native-FP64 controls use byte-identical default-GPU restart files
+and the same numerical environment; only `scf.fp32.enable` changes.
+Promoting the inherited products reproduces an energy shift of
+`1.62764e-7` Ha and a maximum force shift of `3.4909e-8` Ha/bohr.
+The fresh and restarted full-FP64 runs agree within `2.0e-11` Ha and
+`4.38e-10` Ha/bohr. These controls separate the inherited product-rounding
+effect from SCF history and FP64 emulation. All 15 pairwise comparisons,
+including the full-FP64 energy-gate failures, are retained in the records.
+
+The upstream reference was initialized from its own 200-step `1e-12` probe,
+which exited normally without SCF convergence, then converged in two steps
+at the common `1e-10` criterion. The three original fork runs started fresh;
+both additional native-FP64 controls used the converged default-GPU density
+at the same geometry. These are accuracy checks with different initialization,
+so their timings are excluded from the performance tables.
+
+The [measurement records](benchmarks/results/rtx5080_cghelgeo_strict_20261108/)
+retain exact inputs, full compressed stdout/output, force vectors, hashes,
+rank/thread placement, runtime-library paths and every comparison. Actual
+cuSOLVER calls at dimension 6,670 and math-mode queries verify the native
+and emulated paths; AVX-512 selection, GEMMul8/cuBLAS calls and private MPS
+startup/shutdown are also checked.
+
 ### A100 execution policy
 
 On A100, on-the-fly orbital evaluation and grid quadrature use native FP64
@@ -697,10 +761,19 @@ More GPUs do not guarantee a speedup when the problem already fits on one
 GPU: MAGMA's transfers and CPU work can outweigh the parallel GPU work.
 
 ## MPI vs. hybrid (MPI/OpenMP) parallelization
-Use flat MPI while every core you want to use can hold an MPI rank: the device phases (the eigensolvers, the grid integrals, the force batches) are shared by all the ranks of a node and gain nothing from threads. When device memory limits the number of ranks below the core count, give each rank several cores and as many OpenMP threads (`-nt`). Since 2026-10-13 the host-side phases of the GPU build run threaded: the Bessel-table cache of Set_OLP_Kin is kept per thread, the received-atom products of Set_Nonlocal and the CPU fallback of the cluster density matrix are threaded over the atoms, and the OpenMP regions of the original code (truncation, Set_ProExpn_VNA, Set_Orbitals_Grid, Force, Total_Energy, the CPU fallbacks) work as they do in the CPU build. Two changes of the same date pay at any thread count: every rank of the collinear cluster solver now accumulates its slice of the density matrix on the device (before, only the rank that owns the dense solve did, and the others spent longer on one core than the owner spent in the solve), and the final density of an MD step takes the GPU tables instead of the one-rank service.
+The optimal combination of MPI processes and OpenMP threads depends on the
+system being calculated and the machine. Compare flat MPI with several hybrid
+configurations for your input, accounting for CPU/GPU resources, memory use,
+the numerical libraries and process/thread placement.
+
+The host-side phases of the GPU build support OpenMP: the Bessel-table cache of
+Set_OLP_Kin is kept per thread, the received-atom products of Set_Nonlocal and
+the CPU fallback of the cluster density matrix are threaded over atoms, and
+the OpenMP regions in truncation, Set_ProExpn_VNA, Set_Orbitals_Grid, Force,
+Total_Energy and other CPU fallbacks also use the requested threads.
 
 ```sh
-# 6 ranks x 3 threads on an 18-core node: every rank bound to 3 cores, its threads inside them
+# Example: 6 ranks x 3 threads on an 18-core node, each rank bound to 3 cores
 mpirun --map-by ppr:6:node:PE=3 --bind-to core -np 6 \
        -x OMP_NUM_THREADS=3 -x OMP_PROC_BIND=close -x OMP_PLACES=cores \
        ./openmx input.dat -nt 3

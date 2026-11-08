@@ -1,0 +1,47 @@
+[
+  {
+    "command": [
+      "/opt/nvidia/hpc_sdk/Linux_x86_64/26.9/compilers/bin/nvc",
+      "--version"
+    ],
+    "returncode": 0,
+    "stdout": "\nnvc 26.9-0 64-bit target on x86-64 Linux -tp cascadelake \nNVIDIA Compilers and Tools\nCopyright (c) 2026, NVIDIA CORPORATION & AFFILIATES.  All rights reserved.\n",
+    "stderr": ""
+  },
+  {
+    "command": [
+      "g++",
+      "--version"
+    ],
+    "returncode": 0,
+    "stdout": "g++ (Ubuntu 14.2.0-4ubuntu2~24.04.1) 14.2.0\nCopyright (C) 2024 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.\n\n",
+    "stderr": ""
+  },
+  {
+    "command": [
+      "/usr/local/cuda-13.4/bin/nvcc",
+      "--version"
+    ],
+    "returncode": 0,
+    "stdout": "nvcc: NVIDIA (R) Cuda compiler driver\nCopyright (c) 2005-2026 NVIDIA Corporation\nBuilt on Tue_Sep_01_08:45:21_PDT_2026\nCuda compilation tools, release 13.4, V13.4.92\nBuild cuda_13.4.r13.4/compiler.38855100_0\n",
+    "stderr": ""
+  },
+  {
+    "command": [
+      "/opt/nvidia/hpc_sdk/Linux_x86_64/26.9/comm_libs/mpi/bin/mpirun",
+      "--version"
+    ],
+    "returncode": 0,
+    "stdout": "mpirun (Open MPI) 5.0.10rc2\n\nReport bugs to https://www.open-mpi.org/community/help/\n\n",
+    "stderr": ""
+  },
+  {
+    "command": [
+      "/home/dc1394/intel/oneapi/mpi/2021.18/bin/mpiexec",
+      "--version"
+    ],
+    "returncode": 0,
+    "stdout": "Intel(R) MPI Library for Linux* OS, Version 2021.18.0 Build 20260327 (id: 821f207)\nCopyright 2003-2026, Intel Corporation.\n",
+    "stderr": ""
+  }
+]

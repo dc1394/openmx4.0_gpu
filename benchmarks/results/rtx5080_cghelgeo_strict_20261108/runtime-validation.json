@@ -1,0 +1,71 @@
+{
+  "passed": true,
+  "variants": [
+    {
+      "variant": "upstream",
+      "all_18_rank_placements_verified": true,
+      "all_18_runtime_maps_verified": true,
+      "all_18_main_and_pinned_thread_masks_verified": true,
+      "same_geometry_restart_verified": true
+    },
+    {
+      "variant": "cpu_avx512",
+      "all_18_rank_placements_verified": true,
+      "all_18_runtime_maps_verified": true,
+      "all_18_main_and_pinned_thread_masks_verified": true,
+      "AVX512_runtime_report_verified": true
+    },
+    {
+      "variant": "gpu_native_fp64",
+      "all_18_rank_placements_verified": true,
+      "all_18_runtime_maps_verified": true,
+      "all_18_main_and_pinned_thread_masks_verified": true,
+      "cusolver_records": 338,
+      "emulated_mode_successes": 0,
+      "cusolver_solves": 168,
+      "emulated_fp64_solves": 0,
+      "largest_eigensystem": 6670,
+      "solver_arithmetic": [
+        "complex_fp64"
+      ],
+      "native_modes": [
+        1
+      ],
+      "emulated_modes": [
+        4
+      ],
+      "gemmul8_calls": 0,
+      "native_cublas_calls": 498
+    },
+    {
+      "variant": "gpu_default",
+      "all_18_rank_placements_verified": true,
+      "all_18_runtime_maps_verified": true,
+      "all_18_main_and_pinned_thread_masks_verified": true,
+      "cusolver_records": 1014,
+      "emulated_mode_successes": 342,
+      "cusolver_solves": 330,
+      "emulated_fp64_solves": 6,
+      "largest_eigensystem": 6670,
+      "solver_arithmetic": [
+        "complex_fp32",
+        "complex_fp64"
+      ],
+      "native_modes": [
+        1
+      ],
+      "emulated_modes": [
+        4
+      ],
+      "gemmul8_calls": 5360,
+      "native_cublas_calls": 0
+    }
+  ],
+  "MPS_server_observed": true,
+  "MPS_cleaned_up": true,
+  "source_and_snapshot_data_hashes_verified": true,
+  "frozen_libraries_verified": true,
+  "comparison_criterion": 1e-10,
+  "preliminary_1e_minus12_probe_converged": false,
+  "restart_seed_hashes_verified": true
+}

@@ -1,0 +1,3492 @@
+{
+  "status": "normal_exit_unconverged",
+  "criterion": 1e-12,
+  "SCF_steps": 200,
+  "normal_finish": true,
+  "converged": false,
+  "energy_hartree": -4153.14819061388,
+  "final_Uele": "<DFT>  Uele   =-1123.628957239138  dUele     =   0.000000000274",
+  "final_NormRD": "<DFT>  NormRD =    0.000000000220  Criterion =   0.000000000001",
+  "reason": "The original input limit of 200 SCF steps was reached without convergence at 1e-12.",
+  "subsequent_criterion": 1e-10,
+  "subsequent_initialization": "Same geometry and binary; reuse this calculation's saved density/Hamiltonian with scf.restart on.",
+  "input_sha256": "868f18d00a822b1c0d6a80cac575bdf43e9e54028be947f0af05451c5715d96e",
+  "output_sha256": "4966412d5cb8b5bdc75676569ea4a27ee37f3a729d2d6fd258daf91846aad1db",
+  "restart_files": [
+    {
+      "path": "cghelgeo.adrst0",
+      "sha256": "e2cc3bd08efd5678185bba5ef494961133d82b525ebd686d26c10180612e99fa",
+      "bytes": 4900000
+    },
+    {
+      "path": "cghelgeo.adrst1",
+      "sha256": "53260f6dd62594a62b0043730fe87f08c92c672bf02653f83fd1872134600dc5",
+      "bytes": 4900000
+    },
+    {
+      "path": "cghelgeo.adrst10",
+      "sha256": "131ba54c28d2afe5386875bfbc9c39b709d0829ab0b8c72e13f312fb5f83fa84",
+      "bytes": 4900000
+    },
+    {
+      "path": "cghelgeo.adrst11",
+      "sha256": "b84a9344c67673322814d1a5112964e44ef2a7975e09a2f02b027c9ffbd95de5",
+      "bytes": 4900000
+    },
+    {
+      "path": "cghelgeo.adrst12",
+      "sha256": "3d596a3e0949bca58a96d9f0c8fcd3ed3b67bad0eb848828078dd882954f50c1",
+      "bytes": 4900000
+    },
+    {
+      "path": "cghelgeo.adrst13",
+      "sha256": "a273185750e46f794126e1cde81c0fc3a2e7e99aa5cefad90553949fcfa70855",
+      "bytes": 4900000
+    },
+    {
+      "path": "cghelgeo.adrst14",
+      "sha256": "a349d672df143ca34818365bde632a78395a1f47f234b7d8b5bc394ebfb9151a",
+      "bytes": 4900000
+    },
+    {
+      "path": "cghelgeo.adrst15",
+      "sha256": "cbf3e6ef93012f90ae5c8822f3e097149bf69199b12f9e8ff5d1ba7a4300a3c7",
+      "bytes": 4900000
+    },
+    {
+      "path": "cghelgeo.adrst16",
+      "sha256": "9722111e11abddb0577da5e967abd3504807b2dc2d8fd4b68c501b56b4c0c839",
+      "bytes": 4900000
+    },
+    {
+      "path": "cghelgeo.adrst17",
+      "sha256": "754172f3cff369ff28965ed085313fd624bac54f1dd5cfca599860aa8ab2f128",
+      "bytes": 4900000
+    },
+    {
+      "path": "cghelgeo.adrst2",
+      "sha256": "c46670901bbaa0ce99c774a3a187ed2b52095e20c90e34db0ce5fdb0809aa634",
+      "bytes": 4900000
+    },
+    {
+      "path": "cghelgeo.adrst3",
+      "sha256": "900eb352619b0d40ddb38cd8bcd6783782f368bd58da2f2e2f17343650b72e30",
+      "bytes": 4900000
+    },
+    {
+      "path": "cghelgeo.adrst4",
+      "sha256": "142347eb60749ae12474654d43370a1fb28031a838b189c0b517927e0a96e13d",
+      "bytes": 4900000
+    },
+    {
+      "path": "cghelgeo.adrst5",
+      "sha256": "c77dafea690c7071d1e280ee81bbb2304ca958346ddbfc3a3e28ca13ade379be",
+      "bytes": 4900000
+    },
+    {
+      "path": "cghelgeo.adrst6",
+      "sha256": "edea42942a30fd42487df901bf7a94ef0221cc8bce7015bfbc1b243be1fef55d",
+      "bytes": 4900000
+    },
+    {
+      "path": "cghelgeo.adrst7",
+      "sha256": "42e51c16224e005480182666a209a807a748d4e4c34084047e6e6502855ea5eb",
+      "bytes": 4900000
+    },
+    {
+      "path": "cghelgeo.adrst8",
+      "sha256": "481c878ffc7165e1d93ce619782a850572c76701e4db3e8a83d0b2ade6204294",
+      "bytes": 4900000
+    },
+    {
+      "path": "cghelgeo.adrst9",
+      "sha256": "7082a9043f5f5bb0e8866576904aa28c2aa306cf924cb97d1ad21069f3aa5290",
+      "bytes": 4900000
+    },
+    {
+      "path": "cghelgeo.cc",
+      "sha256": "4fb42f581170e02f2728f600f2a75048e79bb9c71d7ced4522439a62431c72f3",
+      "bytes": 5208
+    },
+    {
+      "path": "cghelgeo.crst0_0_0",
+      "sha256": "1258d6656658040b3703e341bdecf3a57b9ce153316b09a3e0f65ceb708ea80f",
+      "bytes": 4900000
+    },
+    {
+      "path": "cghelgeo.crst0_10_0",
+      "sha256": "561d476d81960d4ae42e683dc979cd54fcd5f6b389ed0e310197153dd8e842c8",
+      "bytes": 4900000
+    },
+    {
+      "path": "cghelgeo.crst0_11_0",
+      "sha256": "e8735139d5b23488525a007403261da1d7139ecd649b036857eeec55b9a366ad",
+      "bytes": 4900000
+    },
+    {
+      "path": "cghelgeo.crst0_12_0",
+      "sha256": "561a7d36ec7bc6bc3f60a31666d2692e71bfa12765ae5e00c2c7b9202acfc37d",
+      "bytes": 4900000
+    },
+    {
+      "path": "cghelgeo.crst0_13_0",
+      "sha256": "e1dfd6e54b9b073efec3551a3b167c4fd1f82055a57e15930546b46fcb6a8da1",
+      "bytes": 4900000
+    },
+    {
+      "path": "cghelgeo.crst0_14_0",
+      "sha256": "f5a09942c28bba9cb18bfedfba5ad0a745f36428c3a1112b802a392446a30e27",
+      "bytes": 4900000
+    },
+    {
+      "path": "cghelgeo.crst0_15_0",
+      "sha256": "33b9b022615941ea22599673108d251bdcc5e97c60d91dfe53e752170ea2d241",
+      "bytes": 4900000
+    },
+    {
+      "path": "cghelgeo.crst0_16_0",
+      "sha256": "99d7296b6864a7fbcd501385d45fa5ae79a63e71976e33585e3c41094eccd697",
+      "bytes": 4900000
+    },
+    {
+      "path": "cghelgeo.crst0_17_0",
+      "sha256": "ce34e43379c1f280486f89ffdc519c53efa451bf31a12ee54594fb278f2af0b7",
+      "bytes": 4900000
+    },
+    {
+      "path": "cghelgeo.crst0_1_0",
+      "sha256": "e21e1eed454866e7b859be1b78ed412495d83e8570f86e90329c80053cd0b11c",
+      "bytes": 4900000
+    },
+    {
+      "path": "cghelgeo.crst0_2_0",
+      "sha256": "e4695df3da2397b1301bc7cb9d851e5fee6fcfb070f206f481795fec06ee008c",
+      "bytes": 4900000
+    },
+    {
+      "path": "cghelgeo.crst0_3_0",
+      "sha256": "642f568567fa7c07e0a8520d988dbc81a0f037a1e5a349930cd2ec54367f73e2",
+      "bytes": 4900000
+    },
+    {
+      "path": "cghelgeo.crst0_4_0",
+      "sha256": "51f055ab33d7b516c0627067b1ab272abff09a725bec524cdc935738bf6b039d",
+      "bytes": 4900000
+    },
+    {
+      "path": "cghelgeo.crst0_5_0",
+      "sha256": "98e443abb5c79bbeebc66b3de8bebc5ddb2c0e83f714418fdb00bb22793dcdf6",
+      "bytes": 4900000
+    },
+    {
+      "path": "cghelgeo.crst0_6_0",
+      "sha256": "053f3d4bf32b6ea19179700b86ff5c105fdb3941f8ad538c176ab2cc4f781fd6",
+      "bytes": 4900000
+    },
+    {
+      "path": "cghelgeo.crst0_7_0",
+      "sha256": "f9622d8e0556dfbc5533b98da2f919e46bbbbf35cb86115671597b6550e50923",
+      "bytes": 4900000
+    },
+    {
+      "path": "cghelgeo.crst0_8_0",
+      "sha256": "da5c855edc52dd7eeff9068cecb2513c7aead07a0ec1d400d7053af6c383d0cc",
+      "bytes": 4900000
+    },
+    {
+      "path": "cghelgeo.crst0_9_0",
+      "sha256": "0a0745ec9217b7c2b0d860b5a4d055074b050b09d3b0b81e64159c286b59c083",
+      "bytes": 4900000
+    },
+    {
+      "path": "cghelgeo.crst_check",
+      "sha256": "d3b2952811194ab1081988927dae02b5fd16473a8b0f1a01579ec573f79c35d6",
+      "bytes": 16
+    },
+    {
+      "path": "cghelgeo.ftCvna",
+      "sha256": "27f6c93d06e2650c4f704b790809f461a797f6f43560070140b3c6283f53ca14",
+      "bytes": 12000
+    },
+    {
+      "path": "cghelgeo.ftPEvna",
+      "sha256": "c6dacb1bc7773e997fc5441b26ec35650253ebe8ddc3b269109ff6b8ed07828f",
+      "bytes": 1440000
+    },
+    {
+      "path": "cghelgeo.ftProPAO",
+      "sha256": "c6ea16ccdef7127afcee8a21f0350e70137456437b014a4e40c015ddc7917875",
+      "bytes": 640800
+    },
+    {
+      "path": "cghelgeo.ftnlp",
+      "sha256": "bd2d7d71dba8e665be28f08a526bdbd3122742e18aef20a4c7b29ffb423be7b7",
+      "bytes": 310288
+    },
+    {
+      "path": "cghelgeo.ftpao",
+      "sha256": "59a71e130a93d48744baf1a4eeec1d738ebabc90b5124ffddbac879bce18db41",
+      "bytes": 173184
+    },
+    {
+      "path": "cghelgeo.rst1",
+      "sha256": "57f4612fd50b7db6f3060611f6bdd969e49ad1cb0acfdaca7440539e0a542618",
+      "bytes": 184064
+    },
+    {
+      "path": "cghelgeo.rst10",
+      "sha256": "172e7cb678cbd34705c3acad24293db3ad6dc395867d45a92a41c9a2649070a7",
+      "bytes": 129568
+    },
+    {
+      "path": "cghelgeo.rst100",
+      "sha256": "5ab670f0a56d0e881c8c8d5834ca66e5e098a62b5e2bb456c538c94261e35ed1",
+      "bytes": 129568
+    },
+    {
+      "path": "cghelgeo.rst101",
+      "sha256": "fc76bbf232179588270dc21f8f3215d00c1f5d9614c228859fb1b38e2b621ddb",
+      "bytes": 199160
+    },
+    {
+      "path": "cghelgeo.rst102",
+      "sha256": "6cf5e9af2d43ec2acaf17a593fd815224ca90a3b5a059b9288ea98800b6c87c0",
+      "bytes": 164848
+    },
+    {
+      "path": "cghelgeo.rst103",
+      "sha256": "d5b99f653026409c8780eac5a46a7a53f46ec89301f751c1c06ba699fe03e34b",
+      "bytes": 186328
+    },
+    {
+      "path": "cghelgeo.rst104",
+      "sha256": "d129df3509985c6552ee88e96b081a5e23cac3b526f66538caf1218deef4f3b5",
+      "bytes": 198512
+    },
+    {
+      "path": "cghelgeo.rst105",
+      "sha256": "1fffa906044c368f774d02ede7cf92f2fbe202312e36805e963bcb9ce8d0a87b",
+      "bytes": 211136
+    },
+    {
+      "path": "cghelgeo.rst106",
+      "sha256": "639620fbfd0380dd84d1ef7ca4578fde3b6f5495f9157013d133b7005e8034a6",
+      "bytes": 254184
+    },
+    {
+      "path": "cghelgeo.rst107",
+      "sha256": "df08c22f8c2f3e191ad78452b01862d66986255c82a45a438fb222deb97e6974",
+      "bytes": 189912
+    },
+    {
+      "path": "cghelgeo.rst108",
+      "sha256": "cfae9e6e9a94e0e812c6f6325188861e5f5c199893eb37933815e01af2e10cdd",
+      "bytes": 185520
+    },
+    {
+      "path": "cghelgeo.rst109",
+      "sha256": "acac7b4924b2d5588e4c56fd03fe873f3490a5aaef37fd03b70caeb7869e8074",
+      "bytes": 174352
+    },
+    {
+      "path": "cghelgeo.rst11",
+      "sha256": "ae91526b2193a7159ae677ec7dca467f56f2e79bfdf2b0abe9658c9b0c0f48c7",
+      "bytes": 199160
+    },
+    {
+      "path": "cghelgeo.rst110",
+      "sha256": "0e0f845d40a469824f1d26af40c664243e03bdce0fb807b6d532452194d4e5c2",
+      "bytes": 53056
+    },
+    {
+      "path": "cghelgeo.rst111",
+      "sha256": "a01846466b52a80ea19681d8d6fa8545e2bcd4bde5e33f2300388c715bc5ebc9",
+      "bytes": 47320
+    },
+    {
+      "path": "cghelgeo.rst112",
+      "sha256": "8b95279cdf509c032f08a9747da61b948aab0a28eb5772577a749071efa78d51",
+      "bytes": 47744
+    },
+    {
+      "path": "cghelgeo.rst113",
+      "sha256": "ba9e8519a465dfcd92cba0e95e94e1a46e39186f194948ed1cf66c86534cad41",
+      "bytes": 33488
+    },
+    {
+      "path": "cghelgeo.rst114",
+      "sha256": "01fbb0793cec1852094eb19c24592d5cde98b8b190c92e3b66167e2fffe0f306",
+      "bytes": 32856
+    },
+    {
+      "path": "cghelgeo.rst115",
+      "sha256": "1c8b88e0f08b25889b9cf575244d57034c3e434c089af51f378ef231ea39035e",
+      "bytes": 47744
+    },
+    {
+      "path": "cghelgeo.rst116",
+      "sha256": "f74f3e364ea0c89e1631e1b555c2f5283704aedfcf6ef962aa438b7fd81bbe2c",
+      "bytes": 33280
+    },
+    {
+      "path": "cghelgeo.rst117",
+      "sha256": "b2c745c31d589a8fc96df69df7d4f9460353d19d254fcb1127123c0a2487b9a7",
+      "bytes": 38968
+    },
+    {
+      "path": "cghelgeo.rst118",
+      "sha256": "3cdee0bfc57b2ca52b4f0060941fed4475cd3f549076a00218022bbfb630bc96",
+      "bytes": 51312
+    },
+    {
+      "path": "cghelgeo.rst119",
+      "sha256": "71afd1cfae360345be75b6498c471bcdba8825b8dcacf34bc6b01a7a6f8b1cfd",
+      "bytes": 52632
+    },
+    {
+      "path": "cghelgeo.rst12",
+      "sha256": "3d60557777470b1ded140b3be10ece5a0b12256e68d4c885a3436a777a9e025b",
+      "bytes": 164848
+    },
+    {
+      "path": "cghelgeo.rst120",
+      "sha256": "59ff991cbb456fe00d01a0e3ea4127238d140ad2a06127a040b725896dff2f21",
+      "bytes": 48248
+    },
+    {
+      "path": "cghelgeo.rst121",
+      "sha256": "9e2718459db0ba5e2e790324f5b051be9a8bc9252eddfae8753032af035cf3b8",
+      "bytes": 184064
+    },
+    {
+      "path": "cghelgeo.rst122",
+      "sha256": "eee8efabadf76f3c9e993ed90f5e0701f29996fd7e2dea3ef8e5aab5139c2bd9",
+      "bytes": 98032
+    },
+    {
+      "path": "cghelgeo.rst123",
+      "sha256": "8ad6ce7035708e373e1b8d587d4e16548f8e5e01c17f192d31626c6505c3c549",
+      "bytes": 125568
+    },
+    {
+      "path": "cghelgeo.rst124",
+      "sha256": "6c5eda1642bf18705049822a9e775314fdae69fffbb1b290c5cc228534bec0a3",
+      "bytes": 148920
+    },
+    {
+      "path": "cghelgeo.rst125",
+      "sha256": "f617375abe902e5abd9643183d22e8af524f35e4d37b7ca736b39ae612b5bb6e",
+      "bytes": 117592
+    },
+    {
+      "path": "cghelgeo.rst126",
+      "sha256": "3ed3197ac9068c6a98578670032761d25d31139a3743b89abdf5ccd0e22467a7",
+      "bytes": 166560
+    },
+    {
+      "path": "cghelgeo.rst127",
+      "sha256": "c22bc45dd89aafef462bf2d8754572f5798545d0ef0e7e73a540b207494e0b7a",
+      "bytes": 147000
+    },
+    {
+      "path": "cghelgeo.rst128",
+      "sha256": "ac24f86ed9ef25c266cab54874524db91b7a3060d45475088da5087b90fff4f4",
+      "bytes": 121984
+    },
+    {
+      "path": "cghelgeo.rst129",
+      "sha256": "ac02b16f47a6592c2043a510bc942acfbbac3d67ad9c95184d5a9942471abcc0",
+      "bytes": 124112
+    },
+    {
+      "path": "cghelgeo.rst13",
+      "sha256": "3065726ff0f87888c018dbab3e6c643cd83b78ec78afa5c209f2dc1e10cb64e8",
+      "bytes": 186328
+    },
+    {
+      "path": "cghelgeo.rst130",
+      "sha256": "23b3ec519733f36c8f47ee8ee427fb9b3a061d9c1a050375c61f88ec45e57d79",
+      "bytes": 129568
+    },
+    {
+      "path": "cghelgeo.rst131",
+      "sha256": "cb59cfe85b19851d428870c8fca1adafcc62b4588bf5e7f213b4d34c5b120fd2",
+      "bytes": 199160
+    },
+    {
+      "path": "cghelgeo.rst132",
+      "sha256": "eb2c8034c234beca5acd374f87fbd52ef42da58ba45c39da10cadff3c647d2ef",
+      "bytes": 164848
+    },
+    {
+      "path": "cghelgeo.rst133",
+      "sha256": "065731f5acd0340a0baca12a94586294c1a8ae2787a901feb62f4cf7943da90a",
+      "bytes": 186328
+    },
+    {
+      "path": "cghelgeo.rst134",
+      "sha256": "8e293e1fe862eb2a0a37c59d6ebb921f35ded3bc0c7ddda1719f66aa48819cb1",
+      "bytes": 198512
+    },
+    {
+      "path": "cghelgeo.rst135",
+      "sha256": "3105abaaeb6d926b70e32caaa2f67bb16b8308b16a28e574ce75ddd03afef754",
+      "bytes": 211136
+    },
+    {
+      "path": "cghelgeo.rst136",
+      "sha256": "571cbaae090500802b63f582244922836d2100b75ec7a8bd8c629dcb146d01e4",
+      "bytes": 254184
+    },
+    {
+      "path": "cghelgeo.rst137",
+      "sha256": "3796c93f82fe78a4318fb75abdd4983c9e4d772b77f3c65d30d174b2d56a9482",
+      "bytes": 189912
+    },
+    {
+      "path": "cghelgeo.rst138",
+      "sha256": "2838d2ba037534024cfb5013f2f9fd0c8ada23f2568d0eb667cecb378a9388c8",
+      "bytes": 185520
+    },
+    {
+      "path": "cghelgeo.rst139",
+      "sha256": "2d0bebd5aeb382d036c7c39a1e186a6312ee7f0dd52e10280042fb1d477df65d",
+      "bytes": 174352
+    },
+    {
+      "path": "cghelgeo.rst14",
+      "sha256": "f1be2895e2bb155d6f1ae03c4536a8fad4445674ec47b6fef07cfcef7ed50058",
+      "bytes": 198512
+    },
+    {
+      "path": "cghelgeo.rst140",
+      "sha256": "9d7ba56d861cb164b9cf4e7c97ffe17ba9db76f859a325cfdb474f5967752215",
+      "bytes": 53056
+    },
+    {
+      "path": "cghelgeo.rst141",
+      "sha256": "908569e9f2f426e57479f6719e7ccbb5c64b4457bb3328a19a9894eefeabcff9",
+      "bytes": 47320
+    },
+    {
+      "path": "cghelgeo.rst142",
+      "sha256": "7b67329da54b90a5e62808709e78ac12345b77e747af8b61dadc98026c03f53d",
+      "bytes": 47744
+    },
+    {
+      "path": "cghelgeo.rst143",
+      "sha256": "98e3330d6048602e8354e86221c7eb560f94fe11828a2a40355f217d848c6b65",
+      "bytes": 33488
+    },
+    {
+      "path": "cghelgeo.rst144",
+      "sha256": "1fa8811ddb200fc87239a463954816380cc3b02af099cb0aceb1784763ec13d1",
+      "bytes": 32856
+    },
+    {
+      "path": "cghelgeo.rst145",
+      "sha256": "26c353fbc42b4b607c75c4a095590b530107dffccdb35206c93961562bff5f6b",
+      "bytes": 47744
+    },
+    {
+      "path": "cghelgeo.rst146",
+      "sha256": "9f458848a033cdb7a3eb6ae083eb1925288d3f5de52b8b6c57b9f11a66ebdee6",
+      "bytes": 33280
+    },
+    {
+      "path": "cghelgeo.rst147",
+      "sha256": "510ae811b1989d749348ab443be62a036ee0ca6c6959897abed46c7d6502eca7",
+      "bytes": 38968
+    },
+    {
+      "path": "cghelgeo.rst148",
+      "sha256": "c76fffee1befdb941921af4f60a6a19a71b31d9a8ecf8275127a530ec6d7d77d",
+      "bytes": 51312
+    },
+    {
+      "path": "cghelgeo.rst149",
+      "sha256": "37950ee07e7aaf357c4fec7f693713ca4ee27d73569d7c3719aefd46a6cb9eb3",
+      "bytes": 52632
+    },
+    {
+      "path": "cghelgeo.rst15",
+      "sha256": "636043db09bcd8c074ddc4734dc7c931d33890ea5e543a11d6f14de08bda26c9",
+      "bytes": 212200
+    },
+    {
+      "path": "cghelgeo.rst150",
+      "sha256": "74c34aebcb24858640dcbfd34b5645928f8a629f2af4c33c5828e5d54f31b6e9",
+      "bytes": 48248
+    },
+    {
+      "path": "cghelgeo.rst151",
+      "sha256": "3eafce7bd7915191b4bea278c007b54e170f11bc008bbd974aee98126c787c06",
+      "bytes": 184064
+    },
+    {
+      "path": "cghelgeo.rst152",
+      "sha256": "69068e858d08622277d1ceafcc946254a223d1d8ec7ebb4fa5c468b6b058a7fd",
+      "bytes": 98032
+    },
+    {
+      "path": "cghelgeo.rst153",
+      "sha256": "5d1a89a73af993c6bc7d46dc5575616cba7ffab588b4ba113e44eeccbbd566e8",
+      "bytes": 125568
+    },
+    {
+      "path": "cghelgeo.rst154",
+      "sha256": "ef96f44f2ec00199f4f885c3f669d56dc3bfefde2c0b494d39cd627d6bd609ef",
+      "bytes": 148920
+    },
+    {
+      "path": "cghelgeo.rst155",
+      "sha256": "3f603ee5989cfc97383f048810f3c1d26fa4cd4d2dc22e34586c11cd748f7610",
+      "bytes": 117592
+    },
+    {
+      "path": "cghelgeo.rst156",
+      "sha256": "60187e3787e0c7a265abfeb749096ef2a240d9df2f1497179d4d3bb891375398",
+      "bytes": 166560
+    },
+    {
+      "path": "cghelgeo.rst157",
+      "sha256": "17c5fb94cab82da6d288447781abe9ce65f755fff6e54fdbf282b010a4bb6d42",
+      "bytes": 147000
+    },
+    {
+      "path": "cghelgeo.rst158",
+      "sha256": "be9e1f937bd17856d593b0cbcbe2cb7fa4085cd9d59ba01b5035d80a4496a43d",
+      "bytes": 121984
+    },
+    {
+      "path": "cghelgeo.rst159",
+      "sha256": "03299993cbd0a69b880805d1abfee3812c8f7fce07480820c1478158a0f9f3fb",
+      "bytes": 124112
+    },
+    {
+      "path": "cghelgeo.rst16",
+      "sha256": "3122af1645f65f4fc5d2950290154a18eda12ce128b66cae5f4371983a4688cb",
+      "bytes": 255248
+    },
+    {
+      "path": "cghelgeo.rst160",
+      "sha256": "62c45a750539054923c9ba199e07da80a386a20f2244387c5974ce08048e9024",
+      "bytes": 129568
+    },
+    {
+      "path": "cghelgeo.rst161",
+      "sha256": "641d1ac3e02a2eb1b8fd47ae35d080611dd677aa92660469e7e8c5b2918bc799",
+      "bytes": 199160
+    },
+    {
+      "path": "cghelgeo.rst162",
+      "sha256": "d9c95a1cb1a4ad70e2719c047f58901a2ec53487c4e6b437140a12fc2f1c5225",
+      "bytes": 164848
+    },
+    {
+      "path": "cghelgeo.rst163",
+      "sha256": "7a0ecbafe851962e725733e9870702871a049e24f4aac7ffadd5d3befdf985d5",
+      "bytes": 186328
+    },
+    {
+      "path": "cghelgeo.rst164",
+      "sha256": "0c357205a9d99e3fc60f1e43fc068c3959f2bcd28b05e63f1fccf5f1d9da046f",
+      "bytes": 198512
+    },
+    {
+      "path": "cghelgeo.rst165",
+      "sha256": "80648577e6d5a53ca97adbc022fbae707ed2d0bfb2120838f3e6d35f64f61e51",
+      "bytes": 211136
+    },
+    {
+      "path": "cghelgeo.rst166",
+      "sha256": "f263c63eebf0d68245f20c00e0d62db3d8aa1089e327c636e18ffe171dd29145",
+      "bytes": 254184
+    },
+    {
+      "path": "cghelgeo.rst167",
+      "sha256": "3395dae29a1795b61ea123ade12ad333b2dd996055115a3ece09861eb4cd5bfd",
+      "bytes": 189912
+    },
+    {
+      "path": "cghelgeo.rst168",
+      "sha256": "d405699dfa270db4959b3ad99292d4f5d3da8b4ceeaf80256da871ed029d7554",
+      "bytes": 184456
+    },
+    {
+      "path": "cghelgeo.rst169",
+      "sha256": "586eb68932c2648209e98a11c6bd0ffafafd29286552ff89496ec0e656d02eab",
+      "bytes": 174352
+    },
+    {
+      "path": "cghelgeo.rst17",
+      "sha256": "64393679a85f5288d958436ceeed6d2e78f050106d1072264da367a46017c235",
+      "bytes": 189912
+    },
+    {
+      "path": "cghelgeo.rst170",
+      "sha256": "48db5c04087a03915fd5678f073ade34c7d3cd3348d8d726898c0911684bfafc",
+      "bytes": 53056
+    },
+    {
+      "path": "cghelgeo.rst171",
+      "sha256": "723ed9782a550226ad1275c2d26337413ea7995ed5d6bfd851c1e149405726bd",
+      "bytes": 47320
+    },
+    {
+      "path": "cghelgeo.rst172",
+      "sha256": "b3bd2e422ccd31f44a074db215c59a87baab6448eaee72594fdb80e5e69b567c",
+      "bytes": 47744
+    },
+    {
+      "path": "cghelgeo.rst173",
+      "sha256": "87ebcf52740c587f505760a0b155ad9783fdf5013f5287f6de19f0e7a16823c7",
+      "bytes": 33488
+    },
+    {
+      "path": "cghelgeo.rst174",
+      "sha256": "de053b49dc8a7bb9d81d25d27223a4de09f6d6a7ce9ca68537ec0e5bd9d0cec4",
+      "bytes": 32856
+    },
+    {
+      "path": "cghelgeo.rst175",
+      "sha256": "5db5619dce06e51df413ee87040da74a4542ee11408cab65f74f3bfcbd655fe3",
+      "bytes": 47744
+    },
+    {
+      "path": "cghelgeo.rst176",
+      "sha256": "e7284364b2e6fb529f3d776be6d102d52b11f0eff1031b569ab8b8cf6aa0283b",
+      "bytes": 33280
+    },
+    {
+      "path": "cghelgeo.rst177",
+      "sha256": "7f7f5b7f62cccdf02e67d485f6a73fa0ade14bdb96bf08fbfa9522523383fa46",
+      "bytes": 38968
+    },
+    {
+      "path": "cghelgeo.rst178",
+      "sha256": "2c9646c4652f9ca0f852c45911cd3ffa3a6281ac95224f1d3f5d6e7120ef476a",
+      "bytes": 51312
+    },
+    {
+      "path": "cghelgeo.rst179",
+      "sha256": "4de52a799c6a3a771a7e01a9c43ad4dadd5000a0794922d662fd4d66cfed9e80",
+      "bytes": 52208
+    },
+    {
+      "path": "cghelgeo.rst18",
+      "sha256": "8d1d6a7ef17238e25a490ea742f2f421fa3422e1f5092cd710c56b750253b2cf",
+      "bytes": 185520
+    },
+    {
+      "path": "cghelgeo.rst180",
+      "sha256": "7e5f209f37a238f9fcddcaafe63ae995c489a6c7335b3d97af8d7d0e01a1892c",
+      "bytes": 48248
+    },
+    {
+      "path": "cghelgeo.rst181",
+      "sha256": "d55301c1808987b80a49570d4e965c7857e0f12ae856f45946b8c730a4e80626",
+      "bytes": 186624
+    },
+    {
+      "path": "cghelgeo.rst182",
+      "sha256": "6cf608482d0f41c6830c2c77f982e9606efa5bbd02bb3f46c21d5b0f28627a69",
+      "bytes": 96968
+    },
+    {
+      "path": "cghelgeo.rst183",
+      "sha256": "5aa104c62d6b18dea3fafa867f5079f4c9df84e8c94ae1e82b966b8b7c7c62d9",
+      "bytes": 124504
+    },
+    {
+      "path": "cghelgeo.rst184",
+      "sha256": "49e139795f453665461b63f7f8053fe76f81f1ea9f20c4a5199985f0a30544d7",
+      "bytes": 147856
+    },
+    {
+      "path": "cghelgeo.rst185",
+      "sha256": "8c5f908edbe4d1eac55f30e9280c9124f32e4748d80f4c3912d6aaf9321be953",
+      "bytes": 117592
+    },
+    {
+      "path": "cghelgeo.rst186",
+      "sha256": "08a325f4a126d1905a853bcced9a3206b670c4a5002ce32309b19636e7cccb4d",
+      "bytes": 166560
+    },
+    {
+      "path": "cghelgeo.rst187",
+      "sha256": "e47269015a487c65267d386814bee573ff904c23dfe1a061a7f38497d75a6821",
+      "bytes": 147000
+    },
+    {
+      "path": "cghelgeo.rst188",
+      "sha256": "e8ce5316cfb7a071e1cbcd8648876e37021f05c766ec601dc92d99e3dd740889",
+      "bytes": 121984
+    },
+    {
+      "path": "cghelgeo.rst189",
+      "sha256": "f86835890de8f0a6c6379cc8ded1388d057e93d44765fa4a6353b9eff675bfee",
+      "bytes": 124112
+    },
+    {
+      "path": "cghelgeo.rst19",
+      "sha256": "2ad8e8944865ffa60bfb392d491704777a3675f0859f748e8f75291634c90065",
+      "bytes": 175416
+    },
+    {
+      "path": "cghelgeo.rst190",
+      "sha256": "9fd97ee14e11ff12ff10d1bc2d1c0134215c53912eaa0b2db75a1162401bd989",
+      "bytes": 128504
+    },
+    {
+      "path": "cghelgeo.rst191",
+      "sha256": "046ad300c1fedc2e2efc080368723964a9c7e3887c6f188944b41db1ba6dc11d",
+      "bytes": 199160
+    },
+    {
+      "path": "cghelgeo.rst192",
+      "sha256": "aaee942c18d4ebc679216b5edff38380b8b613944e22d489a324a143b8f4e6a3",
+      "bytes": 164848
+    },
+    {
+      "path": "cghelgeo.rst193",
+      "sha256": "849f7572b835f780209c2b95fcffaa00fd1daaf08ed077b245265dc854e922b1",
+      "bytes": 186328
+    },
+    {
+      "path": "cghelgeo.rst194",
+      "sha256": "9ed8481d6c067ca45e78edea38517b4ceda309313568d91abdea31fdbf896868",
+      "bytes": 198512
+    },
+    {
+      "path": "cghelgeo.rst195",
+      "sha256": "16f58b7231d5dfb5f6548f1bccb6469cfd656e848b5477b2f47f6427c9fb287a",
+      "bytes": 211136
+    },
+    {
+      "path": "cghelgeo.rst196",
+      "sha256": "4f77e10b7860d56bf7a450214b42d5f03d466692bb14024c8110a14738819e1c",
+      "bytes": 254184
+    },
+    {
+      "path": "cghelgeo.rst197",
+      "sha256": "4b70167d2f6d62c28c5b6cb00f44781ae6e1b28e28f591acfe1359a81d5a6e68",
+      "bytes": 188848
+    },
+    {
+      "path": "cghelgeo.rst198",
+      "sha256": "a3c78280ea25c177495ccb94628fff3ac7a21c20a8a0a10612bebc4206fc232e",
+      "bytes": 184456
+    },
+    {
+      "path": "cghelgeo.rst199",
+      "sha256": "8a60621441405ecbbb9785dbd624e183006d8957adbf78942d75bc3d55c8673f",
+      "bytes": 174352
+    },
+    {
+      "path": "cghelgeo.rst2",
+      "sha256": "84ff38f3d9bf62c630364ad6ed764c7a1beab100d13e2582b288ac0351b61d52",
+      "bytes": 98032
+    },
+    {
+      "path": "cghelgeo.rst20",
+      "sha256": "fb5a3181b29a7734c79f4cff577cd414f6ecf87951d9be2c10b7c843720b862d",
+      "bytes": 53056
+    },
+    {
+      "path": "cghelgeo.rst200",
+      "sha256": "21573297e8de927888f28acc82efdd52f926876137c6a0bf9d859e8e8c1c06fd",
+      "bytes": 52632
+    },
+    {
+      "path": "cghelgeo.rst201",
+      "sha256": "551924402d584d839fb5e34cd8af18add25524b1c8d182ae90bdf0d1e83afdec",
+      "bytes": 47320
+    },
+    {
+      "path": "cghelgeo.rst202",
+      "sha256": "33c998e3297c1c1596e84d6e973496e659ba87cc04c495cb4408025538506023",
+      "bytes": 47320
+    },
+    {
+      "path": "cghelgeo.rst203",
+      "sha256": "832e9ec6144cd7749a782734f5a4e176ebfbadf85ae50e20fd748f084cff04d8",
+      "bytes": 33488
+    },
+    {
+      "path": "cghelgeo.rst204",
+      "sha256": "bcc17a6dac4d75d3b60cd8b8713ad3e5fe7a9dd8e072c4b4c8a6af8fe0d2a01d",
+      "bytes": 32432
+    },
+    {
+      "path": "cghelgeo.rst205",
+      "sha256": "50d04291ab0feea17135417da36601e41d22bd0e21537ca55a1735df5ba8ab18",
+      "bytes": 47744
+    },
+    {
+      "path": "cghelgeo.rst206",
+      "sha256": "35220170d70f6d68c562d4fdaaff600d30be8c4fbf7342c588f8b03e806b18d2",
+      "bytes": 34344
+    },
+    {
+      "path": "cghelgeo.rst207",
+      "sha256": "7d84457ea40bee66da09d1a9a608ad65bcc719f96687067df71bb7538eca4a34",
+      "bytes": 38968
+    },
+    {
+      "path": "cghelgeo.rst208",
+      "sha256": "23651e80ab943a0addc6a59f74b7775ab64d9977ec41b0a9865cb51b49773452",
+      "bytes": 51312
+    },
+    {
+      "path": "cghelgeo.rst209",
+      "sha256": "6443be1d11689d842aaae14b518346daff09dbfcddbff2154abd69c8a3403c77",
+      "bytes": 52208
+    },
+    {
+      "path": "cghelgeo.rst21",
+      "sha256": "20010653191b27a5300b8eea239d0109ba419491cb7d06944bc3cd6b49e75c32",
+      "bytes": 47320
+    },
+    {
+      "path": "cghelgeo.rst210",
+      "sha256": "b96eb3f8176a23547aeb3065d7135093fe23c6994cb8a4d4a2d689cec2e26aab",
+      "bytes": 48248
+    },
+    {
+      "path": "cghelgeo.rst211",
+      "sha256": "aa106f46a06e234f78ff22ccc2c5869f03ec967d812cd12415c3cb7a78723a30",
+      "bytes": 182440
+    },
+    {
+      "path": "cghelgeo.rst212",
+      "sha256": "b882e17e9119e1be248fd21d2389fe726e71616026d091b9f71582c77c681ff9",
+      "bytes": 102216
+    },
+    {
+      "path": "cghelgeo.rst213",
+      "sha256": "58e2729710790c5a2e4f1d6cd0bff8d2a31e04f0c1102e6905dde4ebd47cec90",
+      "bytes": 124504
+    },
+    {
+      "path": "cghelgeo.rst214",
+      "sha256": "98d8de0553cac610c95ee34dd1c998ad3ca338b7317d230c9ea7d87f088ba627",
+      "bytes": 148920
+    },
+    {
+      "path": "cghelgeo.rst215",
+      "sha256": "94ca9f947b65a5e7f4c02a43e19c3dcabe2c165b737d8258fe5e63f8f5c861be",
+      "bytes": 118656
+    },
+    {
+      "path": "cghelgeo.rst216",
+      "sha256": "ea6f4a9a6d796e6aeafe8c86bad838b5c5709b7cf1e85376fa3f2e1b6bbf6779",
+      "bytes": 166560
+    },
+    {
+      "path": "cghelgeo.rst217",
+      "sha256": "303f1d056fddb7294fcc1104284f307421a60115ca284dcea8a42500fe1a4d59",
+      "bytes": 147000
+    },
+    {
+      "path": "cghelgeo.rst218",
+      "sha256": "3ef082b0cf73cdca837d010b37ce7160c2f9d36ff2756867577072970f2d5584",
+      "bytes": 121984
+    },
+    {
+      "path": "cghelgeo.rst219",
+      "sha256": "bbef871b43c28f22e537068da04dfdecb7e25d0d04c2f933586a846db2853a9d",
+      "bytes": 124112
+    },
+    {
+      "path": "cghelgeo.rst22",
+      "sha256": "813eedbcd1e6907e0c1fc26b0f42a3e80da917c2cf41e1ff9dd0536561a5f2ea",
+      "bytes": 47744
+    },
+    {
+      "path": "cghelgeo.rst220",
+      "sha256": "a67d41154b6a6c3357a710e79895e0b35c3ea2104e4a8d243a20e4675e83d2cc",
+      "bytes": 128504
+    },
+    {
+      "path": "cghelgeo.rst221",
+      "sha256": "499e3bbec20964a89b7492771150882efb762842c2518f3bbd941b1c18152a8c",
+      "bytes": 199160
+    },
+    {
+      "path": "cghelgeo.rst222",
+      "sha256": "23876d4755cfc27d8cd13453d73ee31d36771497aaf0b3bd4733e00305905fcb",
+      "bytes": 164848
+    },
+    {
+      "path": "cghelgeo.rst223",
+      "sha256": "213e21406fb451a1a6e8760332b548acb348caf56cbe921898452820e18d3ce7",
+      "bytes": 186328
+    },
+    {
+      "path": "cghelgeo.rst224",
+      "sha256": "b2b05bd538be55fe54f45eae7658d6c30da99434cf47cdba037af544e9a9ca3f",
+      "bytes": 198512
+    },
+    {
+      "path": "cghelgeo.rst225",
+      "sha256": "1a81e18153336def7580db35d62268e8940eda631233bf4a0ecd27d784c34e8b",
+      "bytes": 211136
+    },
+    {
+      "path": "cghelgeo.rst226",
+      "sha256": "0b3c0b64f3484f2c7c98f7d7c19368cf0c973d4d5fd3f4f84925d7c908607105",
+      "bytes": 255248
+    },
+    {
+      "path": "cghelgeo.rst227",
+      "sha256": "6792f0d91dba222039c3c93470bc9c9770503a8e243d4bf039246058f783cd56",
+      "bytes": 189912
+    },
+    {
+      "path": "cghelgeo.rst228",
+      "sha256": "81d88c72cd1980726743176fedf130753adf37d27d5f66e4425ad7c6ffac300a",
+      "bytes": 184456
+    },
+    {
+      "path": "cghelgeo.rst229",
+      "sha256": "dca8ad300ea4438caf711882f2c9555479e7fb2e36d43711a20fd25635104796",
+      "bytes": 173288
+    },
+    {
+      "path": "cghelgeo.rst23",
+      "sha256": "268b00b9bd0c509401fbe367c2bf9e53581a2c33e28094c060d1f87c90a17691",
+      "bytes": 33488
+    },
+    {
+      "path": "cghelgeo.rst230",
+      "sha256": "b4317b9d6450c0ed3535b55119a1bbf3872e51ae1835a0e994b156e6dab26049",
+      "bytes": 53056
+    },
+    {
+      "path": "cghelgeo.rst231",
+      "sha256": "f775a3fc0f86867b99748358edc56a0e3b0298f9a368c5482987fb1eab928fa0",
+      "bytes": 47320
+    },
+    {
+      "path": "cghelgeo.rst232",
+      "sha256": "3ddf8c6c679542d8f99a552c84d86e5877029e34da714c1c143189100139e68b",
+      "bytes": 47744
+    },
+    {
+      "path": "cghelgeo.rst233",
+      "sha256": "84fb852ef7872536cca4aa3c12a58c52393dfaa825777bc92846cb22cd6d479d",
+      "bytes": 33488
+    },
+    {
+      "path": "cghelgeo.rst234",
+      "sha256": "b446a0bb3f3d40b80593eae1ec026cba08a2ef1a93bf874377294e9e6ab8139e",
+      "bytes": 32432
+    },
+    {
+      "path": "cghelgeo.rst235",
+      "sha256": "7ac0d4ad79513959a7269a3544cbe13dbfd3e9fa12cceb2e24177c2a47caa333",
+      "bytes": 47744
+    },
+    {
+      "path": "cghelgeo.rst236",
+      "sha256": "661ee4f0387e73bddf7badd35b80e56dbbce35ce3f4d15b0ced9e8aedf31b36d",
+      "bytes": 33280
+    },
+    {
+      "path": "cghelgeo.rst237",
+      "sha256": "70f07cbe0052b8b15392fa7304dd12339e5e4c9741a98b94532b8d748bdb7d68",
+      "bytes": 38968
+    },
+    {
+      "path": "cghelgeo.rst238",
+      "sha256": "3bcfc36e9975d557fc881d8a98d7a7bc7844dd7722c6103cb6fb60a5c05b5bb4",
+      "bytes": 51312
+    },
+    {
+      "path": "cghelgeo.rst239",
+      "sha256": "69b22ce9b96b60150eb2dff797525864531c43cf3f9e089639a4b37d9ffbb7d5",
+      "bytes": 52208
+    },
+    {
+      "path": "cghelgeo.rst24",
+      "sha256": "4b177895224eb0ba737addb1e6ec9ee1cd1c04a2e758d76affa1845e89240d02",
+      "bytes": 32856
+    },
+    {
+      "path": "cghelgeo.rst240",
+      "sha256": "0ed267ca87a6b2e32108fc7ffc88c887d73a9293ac988116e39882f4eeea8aa3",
+      "bytes": 47824
+    },
+    {
+      "path": "cghelgeo.rst241",
+      "sha256": "70328b68a3a06e5f23bf6d20a435ec4919ac5798cb33294fdb0d0c2d2d55dcd2",
+      "bytes": 184064
+    },
+    {
+      "path": "cghelgeo.rst242",
+      "sha256": "f1e00dff605a57edcbbaa8f5439cf852e48b4a9786121a616d94fcaea91a0c33",
+      "bytes": 98032
+    },
+    {
+      "path": "cghelgeo.rst243",
+      "sha256": "d8d574b23c86585ee37a610caaecf9a8fc9d2e2f106b46e1bfd3e2eba1bf0dbf",
+      "bytes": 126632
+    },
+    {
+      "path": "cghelgeo.rst244",
+      "sha256": "774e1091595c52d66199c8a84bb04a5ca2ce8d88a54b73dff74169adcc3dfa29",
+      "bytes": 148920
+    },
+    {
+      "path": "cghelgeo.rst245",
+      "sha256": "d99e0ecb58e96c1c8c062ffbd955c6b71c8cdbe4609fe3bc734022bbd0d8d364",
+      "bytes": 118656
+    },
+    {
+      "path": "cghelgeo.rst246",
+      "sha256": "0bc14b391cff8d7d02d5b71377c189e959bfb1270e2bd26e77e4e679710a760a",
+      "bytes": 167624
+    },
+    {
+      "path": "cghelgeo.rst247",
+      "sha256": "03fcf34623b6172606e557888439236c57877e984cba8eb644d0a8172bcc63aa",
+      "bytes": 147000
+    },
+    {
+      "path": "cghelgeo.rst248",
+      "sha256": "5fe7deca48129596c2073c1a1e72a66005c2d204186f66be1e27bce8e676078b",
+      "bytes": 121984
+    },
+    {
+      "path": "cghelgeo.rst249",
+      "sha256": "06fc2d4f715973fbddfebc5393cfb2fd15f8f8711e0e88d8379c1d9e29a4663e",
+      "bytes": 124112
+    },
+    {
+      "path": "cghelgeo.rst25",
+      "sha256": "5b95841ccc8d0999cbc34d9a474b379c6ac8c7929505de7a14ed818e8e727bf6",
+      "bytes": 47744
+    },
+    {
+      "path": "cghelgeo.rst250",
+      "sha256": "c79252e7a9a2e70444693ed83414814cc58f85f88c31ba21c242d6ab0f23698d",
+      "bytes": 129568
+    },
+    {
+      "path": "cghelgeo.rst251",
+      "sha256": "328261ba22b5693d83351d36d5d4180780daaa3d301c12c7ade875f642462245",
+      "bytes": 199160
+    },
+    {
+      "path": "cghelgeo.rst252",
+      "sha256": "4be1bd464862bd6a3d584d040b7f7b51f6a0f4e4367e97f326f1c6c7d86e13a3",
+      "bytes": 164848
+    },
+    {
+      "path": "cghelgeo.rst253",
+      "sha256": "6c0be2368cd3f4d16945fdf2a26840854cd378726cd1c6caa162422e95080b2e",
+      "bytes": 186328
+    },
+    {
+      "path": "cghelgeo.rst254",
+      "sha256": "f7b4197fd86364e5c562f56c6aa981fb6436e7405f8da3fcb0529b9cb7cf3fec",
+      "bytes": 198512
+    },
+    {
+      "path": "cghelgeo.rst255",
+      "sha256": "675c437c3e5b5da7081b9fdf0db9680967e371641005b704413084a03404b77a",
+      "bytes": 211136
+    },
+    {
+      "path": "cghelgeo.rst256",
+      "sha256": "c2ac7edbc0c53cfd09dec86a214af4c7b663125990118518d362fa2f65d2e7a9",
+      "bytes": 254184
+    },
+    {
+      "path": "cghelgeo.rst257",
+      "sha256": "b3c5e43d9a4b14d783a403e9bfbd5b58cf1f7cf3bd4b8e7fd41a67c2e4b61ea2",
+      "bytes": 190976
+    },
+    {
+      "path": "cghelgeo.rst258",
+      "sha256": "848ce4fb10fe0ebddb802cafb612cf7a7d2e023b70f300f89d177a6b8cc8ae5c",
+      "bytes": 185520
+    },
+    {
+      "path": "cghelgeo.rst259",
+      "sha256": "57454c6fc9b19b52a2e90a23c5c249828bb53fdae051bc95aaabc9a9483b4789",
+      "bytes": 174352
+    },
+    {
+      "path": "cghelgeo.rst26",
+      "sha256": "4aa1685365520b215195b19a9a8b4d9098296a823b56369e53472dcf6ffd8b7b",
+      "bytes": 33280
+    },
+    {
+      "path": "cghelgeo.rst260",
+      "sha256": "d9c8e35b536b1bd2b19a440b7c416d1684b28656b5d0cc7123f821008bd644ea",
+      "bytes": 53056
+    },
+    {
+      "path": "cghelgeo.rst261",
+      "sha256": "2d665d069219b44fe21c6eef9d8d065132ea8dc1238eb2562e8fe2af9cec0239",
+      "bytes": 47744
+    },
+    {
+      "path": "cghelgeo.rst262",
+      "sha256": "8590d96fd52ab49ac75fb7cf54da2b8754a83a05839a11c76658b52ccc8fa79e",
+      "bytes": 47744
+    },
+    {
+      "path": "cghelgeo.rst263",
+      "sha256": "44bff228cd22fc35edc059117b496a9a4cbfc16da983ab6f578dd7db32844c2e",
+      "bytes": 33488
+    },
+    {
+      "path": "cghelgeo.rst264",
+      "sha256": "0ffc18847dff31fd6b9a58b0ae65c29780036c16475151ec907a3e4370eefd86",
+      "bytes": 32856
+    },
+    {
+      "path": "cghelgeo.rst265",
+      "sha256": "38e2b1d576dee4e924d6bf63a6ad03d11d08f2a39d90547aef929a8acb456f09",
+      "bytes": 47744
+    },
+    {
+      "path": "cghelgeo.rst266",
+      "sha256": "1b1d70bf82c65f76232f4253a83e25d077b6fe2e0c0c5877c4e1276f5c2cf25f",
+      "bytes": 33280
+    },
+    {
+      "path": "cghelgeo.rst267",
+      "sha256": "34843c71902c78b4939ddcba43dbee36d609d44a5d48b0bbb3b1a13f7966730d",
+      "bytes": 38968
+    },
+    {
+      "path": "cghelgeo.rst268",
+      "sha256": "66adf41a17cd433c5b22518ea9b6045de00fc54f6f8764a9ca6936a4b9d9182c",
+      "bytes": 51312
+    },
+    {
+      "path": "cghelgeo.rst269",
+      "sha256": "0db3a4409f312c9ea4dab346956a8cecac88c15b2a822dc40ed0c15d934215d5",
+      "bytes": 52632
+    },
+    {
+      "path": "cghelgeo.rst27",
+      "sha256": "814661911584d2fe9927eed821ec150c181c89518e552eea47b737fa5a1ee55a",
+      "bytes": 38968
+    },
+    {
+      "path": "cghelgeo.rst270",
+      "sha256": "66250eb2ab6b2541a7b07a439720bd6042cc2a6887de58e70062ce1f7e53a0c9",
+      "bytes": 48248
+    },
+    {
+      "path": "cghelgeo.rst271",
+      "sha256": "4e5e61eb1bcf03f62e94091792ca9dfca2d6b639f51f0a042cd11d0d715205c7",
+      "bytes": 184064
+    },
+    {
+      "path": "cghelgeo.rst272",
+      "sha256": "5469f7302d21488548ed8fa2399e9f4d9ba954353617efaeb53e840896db3b89",
+      "bytes": 98032
+    },
+    {
+      "path": "cghelgeo.rst273",
+      "sha256": "d86b66bc90e9ae9d4f6a61c3b58a71eefbec28cac1a6f46863463f63963cde91",
+      "bytes": 126632
+    },
+    {
+      "path": "cghelgeo.rst274",
+      "sha256": "7b16552fd8d39c938a130727955b1b9cf067ba928006e9c081a2d7d144a76fcf",
+      "bytes": 148920
+    },
+    {
+      "path": "cghelgeo.rst275",
+      "sha256": "9671f70bc5c12d2e942a966d6d5170335fbe93edc3e7800fe9756c475bb0e57d",
+      "bytes": 117592
+    },
+    {
+      "path": "cghelgeo.rst276",
+      "sha256": "319b5b19ce064f3e8548cc53578955b47a29dc25b29fb615907ef31b89f16173",
+      "bytes": 166560
+    },
+    {
+      "path": "cghelgeo.rst277",
+      "sha256": "4f6ef23d52372a0504c84bf7daebb150b95ae3fafa4b523e53a4e84d0c06c1fa",
+      "bytes": 147000
+    },
+    {
+      "path": "cghelgeo.rst278",
+      "sha256": "115e0bb703963a9cab0042f4a03e4f4e38deaa9d1af2d8282b0d9b7dc2b89c09",
+      "bytes": 121984
+    },
+    {
+      "path": "cghelgeo.rst279",
+      "sha256": "e4c980b395eb4dea278c2e2c5917efc0dfa6f8630a9cd4c6c12be646e25e39c3",
+      "bytes": 124112
+    },
+    {
+      "path": "cghelgeo.rst28",
+      "sha256": "f59b4871b50069904929396594958ebc6191be68e83111ccb8d66cbdada3f9c0",
+      "bytes": 51312
+    },
+    {
+      "path": "cghelgeo.rst280",
+      "sha256": "86df78d349ae763aee1e2b5d0b1d2470aacc9534629165b95db6fe23abb5b0b9",
+      "bytes": 129568
+    },
+    {
+      "path": "cghelgeo.rst281",
+      "sha256": "56c6fec352dd6e4c889694c2e94eb696b0135402f4f08e3f1ff391d5171fab1a",
+      "bytes": 199160
+    },
+    {
+      "path": "cghelgeo.rst282",
+      "sha256": "24a6bb2e6a78e6e20673e424abed5a878cd8c39832c8f66f84d1f9f5b0ff1f88",
+      "bytes": 164848
+    },
+    {
+      "path": "cghelgeo.rst283",
+      "sha256": "09a0d272e61240aab8344128953a0e753347c9ca7771958cfef78b0aea08585f",
+      "bytes": 186328
+    },
+    {
+      "path": "cghelgeo.rst284",
+      "sha256": "196437a4d22b741ee9002bad50234b4431697d62775ad5705445d1e4d42cd363",
+      "bytes": 198512
+    },
+    {
+      "path": "cghelgeo.rst285",
+      "sha256": "f0557ba4231d89fac58f4168a20c34caf8ecab2f08af59c1ed3b27ad605bf690",
+      "bytes": 211136
+    },
+    {
+      "path": "cghelgeo.rst286",
+      "sha256": "e30af5941df35ccc244072137cd08ef6ddd23aeae2e21e7fedd277a1436b3b0d",
+      "bytes": 254184
+    },
+    {
+      "path": "cghelgeo.rst287",
+      "sha256": "6d8350803d6f734a0d8a01692175424786b494c5492e0d2c8cf73f327014a46d",
+      "bytes": 189912
+    },
+    {
+      "path": "cghelgeo.rst288",
+      "sha256": "daa6d8fb4b8fca06059d1a3e99cbe945cd264a20e495235fa182258c92241caa",
+      "bytes": 185520
+    },
+    {
+      "path": "cghelgeo.rst289",
+      "sha256": "27c68c98b54ded3242c8e4a3bf4f5163cb69b3fee3e88b75e1b47d2cb89c02a5",
+      "bytes": 174352
+    },
+    {
+      "path": "cghelgeo.rst29",
+      "sha256": "f8cdc3c85076d500e69ae012245f378010b39da5d7ae15fb93bd85335723f34f",
+      "bytes": 52632
+    },
+    {
+      "path": "cghelgeo.rst290",
+      "sha256": "5461daf44903d732c36bb809aefa24bafc2b34ad57cdebfd097071eb41bf17c8",
+      "bytes": 53056
+    },
+    {
+      "path": "cghelgeo.rst291",
+      "sha256": "fa86abb57629429fb1461d587f36b9b59e766d95efbda2492a46c45c723e57bd",
+      "bytes": 47320
+    },
+    {
+      "path": "cghelgeo.rst292",
+      "sha256": "2878e805556c8f03ff11c4a4e81e75e6f95fc9af3382f3dec190da1b901029b2",
+      "bytes": 47744
+    },
+    {
+      "path": "cghelgeo.rst293",
+      "sha256": "bb132a653a5dd2ca3cc923a2678ee104b3c64b1828eac40aa72cdd2b4269867e",
+      "bytes": 33488
+    },
+    {
+      "path": "cghelgeo.rst294",
+      "sha256": "fe72de5c730f3f66602b78639ac4b58b17a2a746fe2c86445b59395ada3584fa",
+      "bytes": 32856
+    },
+    {
+      "path": "cghelgeo.rst295",
+      "sha256": "93f9e7403e2131fb3ea0920838e97cc5b44b34c9783dac9c919376e936be0bdf",
+      "bytes": 47744
+    },
+    {
+      "path": "cghelgeo.rst296",
+      "sha256": "61cb620aca21e0e6afaeb2111d189d3cdc0ebff570e298fc274c10ad455c9d8b",
+      "bytes": 33280
+    },
+    {
+      "path": "cghelgeo.rst297",
+      "sha256": "9a51a53e48afa9f83a41d346ecd12aef3e611cde0224e6c0326c658214706e43",
+      "bytes": 38968
+    },
+    {
+      "path": "cghelgeo.rst298",
+      "sha256": "3c6b2a19984010c9e308743524c8965b933ccdbf41e1450b9e4f31d6df7f14f5",
+      "bytes": 51312
+    },
+    {
+      "path": "cghelgeo.rst299",
+      "sha256": "ffc8fba1090e350e2b38c82567aa8bc24379c1a969526646d6ec566daed9fe09",
+      "bytes": 52208
+    },
+    {
+      "path": "cghelgeo.rst3",
+      "sha256": "fc988c8c1c2a1fbd46d5a8f71036d0a5957daf3425198e94b8454486175385ed",
+      "bytes": 125568
+    },
+    {
+      "path": "cghelgeo.rst30",
+      "sha256": "b96ee77b7037d6d4f5c328c46155817b90c2d7e43f0bbe0f907163e6d9d1ce83",
+      "bytes": 48248
+    },
+    {
+      "path": "cghelgeo.rst300",
+      "sha256": "b052e98a2913ef40fd81f72fab65880a1229750f531e613ce928fc4445ff04dc",
+      "bytes": 48248
+    },
+    {
+      "path": "cghelgeo.rst301",
+      "sha256": "14ae0aab5870227f76046294fd19f427173c11b2174989f06e16fbc3100b9eb0",
+      "bytes": 178256
+    },
+    {
+      "path": "cghelgeo.rst302",
+      "sha256": "e1ebb2bd71d71330b95d199adf4c95f3e4ed6dea137f9a5eedd83fc39e905593",
+      "bytes": 93176
+    },
+    {
+      "path": "cghelgeo.rst303",
+      "sha256": "03c5b001ea62a1961c1ee812233c448ebc3bfbb367aefffeb355f6707ce9d25a",
+      "bytes": 117984
+    },
+    {
+      "path": "cghelgeo.rst304",
+      "sha256": "0bdaaad29e1d21054996bdb4eeff3954d1df322f869139c2ec8170f4ab067b5e",
+      "bytes": 146792
+    },
+    {
+      "path": "cghelgeo.rst305",
+      "sha256": "dc009bebdd300dba2b76010883e743004f6f60aaf5404480c6f69de17e857617",
+      "bytes": 120320
+    },
+    {
+      "path": "cghelgeo.rst306",
+      "sha256": "a5654d5acc95cecc54a649e51d747bdeabc9c889915d0f78179809bd4bc2d843",
+      "bytes": 165032
+    },
+    {
+      "path": "cghelgeo.rst307",
+      "sha256": "dbc73951c79adfcc3e9d8e82bc0774fd55e5b0813dba9ca0144ab9165aa8606b",
+      "bytes": 147600
+    },
+    {
+      "path": "cghelgeo.rst308",
+      "sha256": "1eefe31a43fddfb0bdcb096a4a748ae9bbae1b74cd939e96ba9b2eb2859fb2c2",
+      "bytes": 119256
+    },
+    {
+      "path": "cghelgeo.rst309",
+      "sha256": "a9e2d2ca39b4a269ea75f77e53c9824a4b96fa2fad0a136062e6686ac10d3bad",
+      "bytes": 120920
+    },
+    {
+      "path": "cghelgeo.rst31",
+      "sha256": "71353fdc53107c01990d235cc846f78944d334c14befb845096d844652fdae69",
+      "bytes": 184064
+    },
+    {
+      "path": "cghelgeo.rst310",
+      "sha256": "15462c99999f41b8f90631faab3302aa6548d1f656d0a871c58c402116341bc5",
+      "bytes": 121984
+    },
+    {
+      "path": "cghelgeo.rst311",
+      "sha256": "1b91318cd89a016581986f67f33eda634e70e3591af6f1018826a721bf579133",
+      "bytes": 193240
+    },
+    {
+      "path": "cghelgeo.rst312",
+      "sha256": "0f8e57a1102b849739b14216eb9d12eda1d2960683d4835ec718addf54673218",
+      "bytes": 216080
+    },
+    {
+      "path": "cghelgeo.rst313",
+      "sha256": "fa90bca95db82a67ccc99fff8c3cd54cafb1adcd910c62a51a055dc38ac216c2",
+      "bytes": 195920
+    },
+    {
+      "path": "cghelgeo.rst314",
+      "sha256": "856fc70d966c1ab1f7832eef7215ecf85887e74a0ae0605c599f268ff16fcbe1",
+      "bytes": 176360
+    },
+    {
+      "path": "cghelgeo.rst315",
+      "sha256": "5c9fa32e5f77081e0826d054919d021833e8b017671bed238d7d42c710c6dbb5",
+      "bytes": 195112
+    },
+    {
+      "path": "cghelgeo.rst316",
+      "sha256": "22b35c71356d836dc43fe21ebb7d0d995ebe760020dc6ae20abecddaaf2b2556",
+      "bytes": 166904
+    },
+    {
+      "path": "cghelgeo.rst317",
+      "sha256": "6318f21cce09cbab9f9b2893ef4b5d13b98fdb4daca80b82d18ba3d180941e48",
+      "bytes": 168824
+    },
+    {
+      "path": "cghelgeo.rst318",
+      "sha256": "ac435f0ee57e6c2d776580f8eda90b04ba3b315362c48e59572c8117d775ab67",
+      "bytes": 184592
+    },
+    {
+      "path": "cghelgeo.rst319",
+      "sha256": "e931db22e0b3cfe9524d9dce7121a333f8363b1dff02afaeb84963a5c8427955",
+      "bytes": 198232
+    },
+    {
+      "path": "cghelgeo.rst32",
+      "sha256": "c5c57386dde10559cc2286808fa121f6999264b347ebf88529d9673d9a59457d",
+      "bytes": 98032
+    },
+    {
+      "path": "cghelgeo.rst320",
+      "sha256": "2e17a187fabfb57facb32bacad35f71fdef4aa368b588cfee5839416ad28323a",
+      "bytes": 196776
+    },
+    {
+      "path": "cghelgeo.rst321",
+      "sha256": "9fff4afb435652b8f34837a741fa1a9ed8544a56c82ed8d559f61dd1b92c2f8a",
+      "bytes": 192128
+    },
+    {
+      "path": "cghelgeo.rst322",
+      "sha256": "6eb2508b75f2788d0c7203ab37706586e704848a10336a7cec4865fd424d5421",
+      "bytes": 192728
+    },
+    {
+      "path": "cghelgeo.rst323",
+      "sha256": "ad4a6470b87a0e687273cf08a36f9086224eeded9c7c94eb817de2a1ecfcc997",
+      "bytes": 54976
+    },
+    {
+      "path": "cghelgeo.rst324",
+      "sha256": "8bb3b244f7b2287a8ac06ca29b323295e6e4bbc95dc0f22af654a580d70400ed",
+      "bytes": 43280
+    },
+    {
+      "path": "cghelgeo.rst325",
+      "sha256": "6b16bd021c64506680d26df71c9de9208a4d75fbcc870b664b335d4490c96fc8",
+      "bytes": 43920
+    },
+    {
+      "path": "cghelgeo.rst326",
+      "sha256": "ff896d3eda2f12879d50fde00dc37fec2ba6f057a2ec754cea201a0f10e0ccc0",
+      "bytes": 30936
+    },
+    {
+      "path": "cghelgeo.rst327",
+      "sha256": "4f769777ef978d78a7b92c39371a993f7c03abe18cf5364a490a5cb62abe4348",
+      "bytes": 33920
+    },
+    {
+      "path": "cghelgeo.rst328",
+      "sha256": "3351f437cc1980a3944b95ea852db8d52cc97f9d448303998ea2cd417e5457d2",
+      "bytes": 46256
+    },
+    {
+      "path": "cghelgeo.rst329",
+      "sha256": "db3490d42c9e9067dab1f44f7723c3c0aabefd8b761ce39cde8462d77bc7f14f",
+      "bytes": 32216
+    },
+    {
+      "path": "cghelgeo.rst33",
+      "sha256": "dd421a58fd92f1cbfd13408e6691ea9732e5bca28769c345c403573564f035dc",
+      "bytes": 125568
+    },
+    {
+      "path": "cghelgeo.rst330",
+      "sha256": "3d4b6548260e3998881b88dfefcfc1444fe69ffe222d2307525ef257a060ea22",
+      "bytes": 61096
+    },
+    {
+      "path": "cghelgeo.rst331",
+      "sha256": "196be1702cbc58ebe2cc86d2d1dcae9ce4f423cf2e212afcf56958afb66e4538",
+      "bytes": 65352
+    },
+    {
+      "path": "cghelgeo.rst332",
+      "sha256": "cf5af075cb16d2089dabdc68df7d7eae6999d61ffaec0af2efad4c406bf1ca1b",
+      "bytes": 54344
+    },
+    {
+      "path": "cghelgeo.rst333",
+      "sha256": "f7d3020bcdb744809b1c35955f06445ebe8efbd1b5f194d68814846448c7d5f8",
+      "bytes": 65352
+    },
+    {
+      "path": "cghelgeo.rst334",
+      "sha256": "f043a307b47126b09f86738f430443b5cf7ce67a3de4d6a0cf278707770eb257",
+      "bytes": 178256
+    },
+    {
+      "path": "cghelgeo.rst335",
+      "sha256": "1b5f81b61cd981e2107b2819e3caff858adbe7a3eaf9cc9728b1b02883fcbd93",
+      "bytes": 94240
+    },
+    {
+      "path": "cghelgeo.rst336",
+      "sha256": "55510f956c2264b012f116b75a64843e5aaaa324f032ff812966c964a9eb00d9",
+      "bytes": 117984
+    },
+    {
+      "path": "cghelgeo.rst337",
+      "sha256": "05bc37561a07a6d016f81639a2b8fb209ebd16b1644b3547da65a1234a63bd5e",
+      "bytes": 147856
+    },
+    {
+      "path": "cghelgeo.rst338",
+      "sha256": "3e63563a60cd2b54a928bcb55a043774334e3d766d9b928ce0b2b87e94b0be8f",
+      "bytes": 121384
+    },
+    {
+      "path": "cghelgeo.rst339",
+      "sha256": "b9dc7a23713cc6f1b8094760b45070df1368048fe775c8703b673f4599d000ca",
+      "bytes": 165032
+    },
+    {
+      "path": "cghelgeo.rst34",
+      "sha256": "09c661057062aa91d05f3d5f56ba635e7d87957bc9390bc321fd9e517c18fde6",
+      "bytes": 148920
+    },
+    {
+      "path": "cghelgeo.rst340",
+      "sha256": "8dfe47759488d634ee41171ac83b619657bd09e414dc4e6cd9116868c8abd885",
+      "bytes": 147600
+    },
+    {
+      "path": "cghelgeo.rst341",
+      "sha256": "c15ad60d36a4f50f5e7d43e251b145c096221acf64aa9e49e1e8146a91852f5d",
+      "bytes": 119256
+    },
+    {
+      "path": "cghelgeo.rst342",
+      "sha256": "ce8e248f099129ad33cf03110b505b51f198e8854dc8c8c9b9c91495f752c006",
+      "bytes": 120920
+    },
+    {
+      "path": "cghelgeo.rst343",
+      "sha256": "182ec0fd10b500cb9e2cd995eeb62863a3a68f8dc8d68e9c0385ef1cb5369a67",
+      "bytes": 123048
+    },
+    {
+      "path": "cghelgeo.rst344",
+      "sha256": "52ac6157a55afd72cd6be6690c716ec237084ca80721067aceb5344ddb365efc",
+      "bytes": 193240
+    },
+    {
+      "path": "cghelgeo.rst345",
+      "sha256": "01a9a7d0b6f8423bc5a0c9c24056ac23e9c6d5af3b2641dc867e1e9e25785714",
+      "bytes": 216080
+    },
+    {
+      "path": "cghelgeo.rst346",
+      "sha256": "ca53b76bddd0bd0bf5bcb37743d8d00de73b9afcfbd8756d4e6f98656c2a015f",
+      "bytes": 195920
+    },
+    {
+      "path": "cghelgeo.rst347",
+      "sha256": "175e71e876725dd6eb9244940c280549ed6c4f1a7b1fbe6057427b0bcfadab27",
+      "bytes": 176360
+    },
+    {
+      "path": "cghelgeo.rst348",
+      "sha256": "c2c9a736237bc68122db5105e6ba493ad3f6067e57b52a4411f705cc07089e4c",
+      "bytes": 194048
+    },
+    {
+      "path": "cghelgeo.rst349",
+      "sha256": "78848e42d1c5eb0bc6944676f20c011df1c6dc9e4da257c07bdc73d6a1a02f7d",
+      "bytes": 165840
+    },
+    {
+      "path": "cghelgeo.rst35",
+      "sha256": "f96587572a5d20eab5b6c2e7c054835921485f8bed108af8dd389cff30110126",
+      "bytes": 117592
+    },
+    {
+      "path": "cghelgeo.rst350",
+      "sha256": "def571986a044054af4b0703507652dd26cca35a0c0f4d79c00e0c9cc25d2866",
+      "bytes": 167760
+    },
+    {
+      "path": "cghelgeo.rst351",
+      "sha256": "737c368403045adc0ce18f9a02d0728c8e824657fc29eea79e2274c11d28870a",
+      "bytes": 184592
+    },
+    {
+      "path": "cghelgeo.rst352",
+      "sha256": "ce4881cfc30879b8729f8c4cde57d27d7179122ae809e6e62c33bf7cf2198cf1",
+      "bytes": 198232
+    },
+    {
+      "path": "cghelgeo.rst353",
+      "sha256": "91ca8843854874edf7805ad6474f48964ff56b1e824d4fa91cea04a3019aa396",
+      "bytes": 196776
+    },
+    {
+      "path": "cghelgeo.rst354",
+      "sha256": "2020f09a74865ab2210784af79e44ba9d67e188d2698b6963f09e3fd00712bc4",
+      "bytes": 192128
+    },
+    {
+      "path": "cghelgeo.rst355",
+      "sha256": "dec50cce3560ce1e90bf366c49100c9166ec16dc2d1820728d7ffa4ed85778fe",
+      "bytes": 192728
+    },
+    {
+      "path": "cghelgeo.rst356",
+      "sha256": "ee734217195e7089add0f7cb107af14102a383057871a7eb24545fdd92693e6d",
+      "bytes": 55400
+    },
+    {
+      "path": "cghelgeo.rst357",
+      "sha256": "a52931e43c565ed112e87bb98d8fff6b39d5a037ad03418e836ecd11f6f2f03f",
+      "bytes": 43280
+    },
+    {
+      "path": "cghelgeo.rst358",
+      "sha256": "7c3cffb4aef3d9aa29da12a06d8105bf706cbe3fe83949b04f639efa96cb4dd5",
+      "bytes": 44344
+    },
+    {
+      "path": "cghelgeo.rst359",
+      "sha256": "3ddbd1355a2ebf1951ef7573b4ca00f9379c221aae693df45b25a521f2ffa64c",
+      "bytes": 30936
+    },
+    {
+      "path": "cghelgeo.rst36",
+      "sha256": "eaeea670f765781214a74037916f0e9bcbb8c1dd8cc3dbe0acee64a205348b63",
+      "bytes": 167624
+    },
+    {
+      "path": "cghelgeo.rst360",
+      "sha256": "3f66a75060befab9d5071627908634c15d9ea0988d8c7c4e1fb245f000a2f457",
+      "bytes": 34768
+    },
+    {
+      "path": "cghelgeo.rst361",
+      "sha256": "b10bcad110fc18f15626d75842f32e8a07eeba69714c294c0f18a30389a682f3",
+      "bytes": 46256
+    },
+    {
+      "path": "cghelgeo.rst362",
+      "sha256": "16d90792e5fa92ee18ab9e2cedade3a235d00de15cd078a0972221c949063ebf",
+      "bytes": 32216
+    },
+    {
+      "path": "cghelgeo.rst363",
+      "sha256": "c1ba851147a809c673e7833deccf6618e8af43aab05659b0f0b06b394625cfe8",
+      "bytes": 61096
+    },
+    {
+      "path": "cghelgeo.rst364",
+      "sha256": "f223a25e7b96f4e1e3d72cfa52cf4e4528883e53860936509237c6a9128b94bf",
+      "bytes": 65352
+    },
+    {
+      "path": "cghelgeo.rst365",
+      "sha256": "e1d2e0bf47ed18bee70e74ab3ab676ce7f221c4efa7730c0af75f447b10147f9",
+      "bytes": 53920
+    },
+    {
+      "path": "cghelgeo.rst366",
+      "sha256": "21bcf71955446c5654ec02234c2ca596c19c34606fef6f67225453f1bd2ab4f2",
+      "bytes": 65352
+    },
+    {
+      "path": "cghelgeo.rst367",
+      "sha256": "6ba8b0e092265e237c9fdfbce01e0a09f9345f6359d036b7ffd2df7878e0489f",
+      "bytes": 178256
+    },
+    {
+      "path": "cghelgeo.rst368",
+      "sha256": "ee84f17cdff5804a854fba46449f29cde5f794eaf30049fa6cdd445a77869de8",
+      "bytes": 93176
+    },
+    {
+      "path": "cghelgeo.rst369",
+      "sha256": "2c481147595a3eb02f724db06b5cd75c757006b2dae4d929b2818753b157f9f9",
+      "bytes": 117984
+    },
+    {
+      "path": "cghelgeo.rst37",
+      "sha256": "95440f078993765e642e652cf337ee3f1939bf79465f6c14486e1ee7c047b92d",
+      "bytes": 147000
+    },
+    {
+      "path": "cghelgeo.rst370",
+      "sha256": "a2c1c26b504347acfd441af53f568abfcd127a23c1e96ad1a5e8ccb2b1551ab1",
+      "bytes": 146792
+    },
+    {
+      "path": "cghelgeo.rst371",
+      "sha256": "595d4f197e3f305c8e1b942c9e7ece3ae09ab49afc5d2ed32b4af9ce8d8e1021",
+      "bytes": 120320
+    },
+    {
+      "path": "cghelgeo.rst372",
+      "sha256": "261b96be379a2ec6e18492cd8bc89891834aa631ed94e8752538a41b71c8172b",
+      "bytes": 163968
+    },
+    {
+      "path": "cghelgeo.rst373",
+      "sha256": "951c7fd0a35c46d87ab2662d332c6c452e7853ebb0fbd8eb779bea1f064060f1",
+      "bytes": 147600
+    },
+    {
+      "path": "cghelgeo.rst374",
+      "sha256": "3596a78d339f1dd3403d057fcf2a65ba3ba745e57b9fce30c3f5b8bbc4189716",
+      "bytes": 119256
+    },
+    {
+      "path": "cghelgeo.rst375",
+      "sha256": "ef15355e9a48d21c1ed563c94dd224a6feb219ec27326fc059ba34b690983c2a",
+      "bytes": 120920
+    },
+    {
+      "path": "cghelgeo.rst376",
+      "sha256": "1aaba35754bd6e9939e96cce2e3ddf1dc0d147f2452f97115cac8dc7f9deba05",
+      "bytes": 121984
+    },
+    {
+      "path": "cghelgeo.rst377",
+      "sha256": "d2e56d388ac72c982d8f8f42835d844279c71e9743d3a84123db172922ff6695",
+      "bytes": 193240
+    },
+    {
+      "path": "cghelgeo.rst378",
+      "sha256": "08b28a7520a7afff532c82166dda9278cc57b0f652c6f18abb8931e9eb412772",
+      "bytes": 216080
+    },
+    {
+      "path": "cghelgeo.rst379",
+      "sha256": "38625a564ea28d3b64cc4e3a0e479b3b5b76b15e1bf69f623300f1d737fb676e",
+      "bytes": 195920
+    },
+    {
+      "path": "cghelgeo.rst38",
+      "sha256": "7cb41a8894330a2751893398af7b40f4377c0046103ea463bff566c9cb7a81fc",
+      "bytes": 121984
+    },
+    {
+      "path": "cghelgeo.rst380",
+      "sha256": "27e4410f7d3a46185b0a2eae8b585629435dd5df9892c875f59de2bc703fc749",
+      "bytes": 176360
+    },
+    {
+      "path": "cghelgeo.rst381",
+      "sha256": "66b7287e30a61b53fe41b1fb211874b796e829c4247ce11c1f7d8410b84906c2",
+      "bytes": 194048
+    },
+    {
+      "path": "cghelgeo.rst382",
+      "sha256": "dcb3ee91f310eff4f8b50c162af7c98504790d5b5a62956c5d83c4ce21c032d2",
+      "bytes": 166904
+    },
+    {
+      "path": "cghelgeo.rst383",
+      "sha256": "64c672c14b68616510f93402e6f63a2c78dcc3f21a93830618e3f5743e156f32",
+      "bytes": 168824
+    },
+    {
+      "path": "cghelgeo.rst384",
+      "sha256": "bef989103ce6ae5688912341205f1f1f5e971d8a4dc23e555b2729d36be432db",
+      "bytes": 183528
+    },
+    {
+      "path": "cghelgeo.rst385",
+      "sha256": "8ed3eecb3475296bbc437ff49f0c6b08d536385780671dddeabb0953db41104d",
+      "bytes": 198232
+    },
+    {
+      "path": "cghelgeo.rst386",
+      "sha256": "97f270a3a580c5409a5aa74aef8cefa4b3e4c62eec49b4cca7e54665ffcb5b77",
+      "bytes": 196776
+    },
+    {
+      "path": "cghelgeo.rst387",
+      "sha256": "8ecd7026ee2c25e7bf23adc27b33c6cd465f5ae848d0977848e31c2cdd4d320b",
+      "bytes": 192128
+    },
+    {
+      "path": "cghelgeo.rst388",
+      "sha256": "f99b875dca5bbe84d14d7ecd0893276f432cf48327313540a7bf9d5c146da47d",
+      "bytes": 192728
+    },
+    {
+      "path": "cghelgeo.rst389",
+      "sha256": "565b39bb8dd1a78e888cf55e18c4615d4a6c473b38184dcbfcedfc714680f584",
+      "bytes": 54976
+    },
+    {
+      "path": "cghelgeo.rst39",
+      "sha256": "187cac25ad157b658bf01dec5733e6b80f76a23ce443961cb932e831142162ff",
+      "bytes": 124112
+    },
+    {
+      "path": "cghelgeo.rst390",
+      "sha256": "c0ae9e375fe0dd00e8f3e71bb9192f50e9f05e08311f4ebb788069847d1afe72",
+      "bytes": 43280
+    },
+    {
+      "path": "cghelgeo.rst391",
+      "sha256": "8a392c4d085083f9fb0f562b93a039f1ae6791e90f5bc1fd75265317cf11b3c2",
+      "bytes": 43920
+    },
+    {
+      "path": "cghelgeo.rst392",
+      "sha256": "19742049aa99e7a344a5847b2d089b665ab1debaec3dd3afb6dfe01162bf2ca9",
+      "bytes": 30936
+    },
+    {
+      "path": "cghelgeo.rst393",
+      "sha256": "227d677c20ae76bda96282e69731cc9b529befd5129a19242e2b139baacdf527",
+      "bytes": 33920
+    },
+    {
+      "path": "cghelgeo.rst394",
+      "sha256": "4b204089a81cc05a3fc3ed0bd19cd91efa71d48250b11da737c3b47c07e2b828",
+      "bytes": 46256
+    },
+    {
+      "path": "cghelgeo.rst395",
+      "sha256": "2c950c3186ace12bbfdaec445e85c1f6eb964f0df149c56ef387596e246baa37",
+      "bytes": 32216
+    },
+    {
+      "path": "cghelgeo.rst396",
+      "sha256": "13d2f2c30a647a5d6c67fc862eab91629e2a3610e2ade9940b3fe2ab36e84e13",
+      "bytes": 61096
+    },
+    {
+      "path": "cghelgeo.rst397",
+      "sha256": "6edd6d55b43f32fe58184f10f44e5455f20b208d4b247e33789d1fd22dd50b6c",
+      "bytes": 65352
+    },
+    {
+      "path": "cghelgeo.rst398",
+      "sha256": "35704cc25a0e7cb84073c0297ffd41d01889081b7020451df4a5d900986cd99d",
+      "bytes": 54344
+    },
+    {
+      "path": "cghelgeo.rst399",
+      "sha256": "239b3e59c8e9be805a11350236d28e2c93948d51b9fcd179af0c47e6571f48cd",
+      "bytes": 65352
+    },
+    {
+      "path": "cghelgeo.rst4",
+      "sha256": "09cae6b8dfe8e2f4b9d7c06482052d70577dd85a8e5c6ad937c9de48145e3f05",
+      "bytes": 148920
+    },
+    {
+      "path": "cghelgeo.rst40",
+      "sha256": "48a6c01af664126c2f0afc208f518996105a388f88de1950d52ce5b9c1c452f3",
+      "bytes": 129568
+    },
+    {
+      "path": "cghelgeo.rst400",
+      "sha256": "c097da885b7c840c429c4a319eafe9811a7a3a656e739f7ce99b35e37c9f7c11",
+      "bytes": 178256
+    },
+    {
+      "path": "cghelgeo.rst401",
+      "sha256": "e360386c6e4f77591daaebb33431c2504a4563561c50dce39a9b1a49819b2023",
+      "bytes": 94240
+    },
+    {
+      "path": "cghelgeo.rst402",
+      "sha256": "dbfb0eb44344b31057f42dabd468f62c0342119d08c5d97d6ae08c90c7d1d543",
+      "bytes": 117984
+    },
+    {
+      "path": "cghelgeo.rst403",
+      "sha256": "80a137f5ed4a148b6050189b0061e3ce6929c8398f909771c063f586c96056f6",
+      "bytes": 147856
+    },
+    {
+      "path": "cghelgeo.rst404",
+      "sha256": "62043ac3a057c8898ada53746cb6d3205011aa6bbc79ee22ab21bbbc69fd9821",
+      "bytes": 121384
+    },
+    {
+      "path": "cghelgeo.rst405",
+      "sha256": "366c753ac17ac270625779cda67a90a5ee847d8b46dec7f3a6b17c4905be21b3",
+      "bytes": 165032
+    },
+    {
+      "path": "cghelgeo.rst406",
+      "sha256": "0df5c691ff2fe191a38f22fff7837d4438e9c49682deccd09f365627312b3e30",
+      "bytes": 147600
+    },
+    {
+      "path": "cghelgeo.rst407",
+      "sha256": "4a293d0ad820439618a3a9311caf6bea49237caee3c84f6577faae1e9d14e46d",
+      "bytes": 119256
+    },
+    {
+      "path": "cghelgeo.rst408",
+      "sha256": "af39d6b82bf1659d6b602e6c702ea5ddfbcc31ebd7fef563c7e784144f29d8cd",
+      "bytes": 120920
+    },
+    {
+      "path": "cghelgeo.rst409",
+      "sha256": "d2e6027f5bfe19e13323e8d5ff2aea89d22d01936bfca032ce801d4a21ad136c",
+      "bytes": 123048
+    },
+    {
+      "path": "cghelgeo.rst41",
+      "sha256": "3aafff41c49611be351b392300664b36020cd63b05099fc9c6b0715e03b63f20",
+      "bytes": 199160
+    },
+    {
+      "path": "cghelgeo.rst410",
+      "sha256": "df5f80e9ea4f5956ec3f64d4d7760f1d95187f9ab49eaa5546d8eb7b9ae49fe3",
+      "bytes": 193240
+    },
+    {
+      "path": "cghelgeo.rst411",
+      "sha256": "bc2ab9154b7cb06b9ca09d88990a96fb08bff519ade5d75d6a8ffb273d9dc0d9",
+      "bytes": 216080
+    },
+    {
+      "path": "cghelgeo.rst412",
+      "sha256": "41c9d4d5d6175be49d0a538699c029827e9e19fba82ec2d6142e77f8bd91185a",
+      "bytes": 195920
+    },
+    {
+      "path": "cghelgeo.rst413",
+      "sha256": "055e63da07f3afdd7d8ee1084be97efcf20ca4bde7de603984d7324015e94cdb",
+      "bytes": 176360
+    },
+    {
+      "path": "cghelgeo.rst414",
+      "sha256": "9e8bf518225e8ea8a65260763ad693c229fcf9ab0673925a3bde519ee661ff87",
+      "bytes": 194048
+    },
+    {
+      "path": "cghelgeo.rst415",
+      "sha256": "6ed289098fa514b999329013a7c50cf0f768784e5fe0b9f59753705b1def0132",
+      "bytes": 165840
+    },
+    {
+      "path": "cghelgeo.rst416",
+      "sha256": "eaf24978b3f7df8762328c16c9b2e53028714ad7e49e0318b296a8c48d788835",
+      "bytes": 167760
+    },
+    {
+      "path": "cghelgeo.rst417",
+      "sha256": "58db65ff3267cc6f4e71c7056dd0f3afc464695f0fa61c89a9b053eb5798d392",
+      "bytes": 184592
+    },
+    {
+      "path": "cghelgeo.rst418",
+      "sha256": "10aca44dfb69b828da388ffb9a50bd79f688575d099b1a66a1719e8e3b994a6d",
+      "bytes": 198232
+    },
+    {
+      "path": "cghelgeo.rst419",
+      "sha256": "0ca206af508c8903546a8c18fb9768b76444d879fc71eefd2c4be675e25e8094",
+      "bytes": 196776
+    },
+    {
+      "path": "cghelgeo.rst42",
+      "sha256": "1e187d871e205d6390e94edb8e7812723d3bef5986debb5c333306995bdd01aa",
+      "bytes": 164848
+    },
+    {
+      "path": "cghelgeo.rst420",
+      "sha256": "0c9e6c0f53042f6a0eb8b0329c57b388d93cae07184cae22e7b559d15e989ba9",
+      "bytes": 192128
+    },
+    {
+      "path": "cghelgeo.rst421",
+      "sha256": "38954404d80f34977795c1a8ae518b7c467731e520f9e1c48a6b5e8d68002811",
+      "bytes": 192728
+    },
+    {
+      "path": "cghelgeo.rst422",
+      "sha256": "642c845826efeaaaa76f812f86582157f51bce3210d2c171f223d770d66b6766",
+      "bytes": 55400
+    },
+    {
+      "path": "cghelgeo.rst423",
+      "sha256": "1ffcb5c275950bb6e97457a5c6ce568b58617d66378f2ac693bbc94387fc3a87",
+      "bytes": 43280
+    },
+    {
+      "path": "cghelgeo.rst424",
+      "sha256": "efc88c6a044e93372d11ab102bc37505bd5590d127080fd90e963bd9e08e3e4c",
+      "bytes": 44344
+    },
+    {
+      "path": "cghelgeo.rst425",
+      "sha256": "c8b11d3b6f0aac0790e8e894c5649b50d4624e453cc0e16eb82bc240cdcdcac2",
+      "bytes": 30936
+    },
+    {
+      "path": "cghelgeo.rst426",
+      "sha256": "1b8487226f84f063401e42ddbf5e7a6d95b70912c4b0c8e72c8886d3b894efd3",
+      "bytes": 34768
+    },
+    {
+      "path": "cghelgeo.rst427",
+      "sha256": "44e2d0a57073a89dabc606921a4398f5b7d1d1df6700d36f21fba97bc0fa8145",
+      "bytes": 46256
+    },
+    {
+      "path": "cghelgeo.rst428",
+      "sha256": "834ffc2a9a24f66c711baa151f57ee9e4f5d1233655c7fe46aeecedf06f4b044",
+      "bytes": 32216
+    },
+    {
+      "path": "cghelgeo.rst429",
+      "sha256": "d50725379010ad9d8b4555cfca94eae53d1b024e28cc981bdd95b175ebc090e5",
+      "bytes": 61096
+    },
+    {
+      "path": "cghelgeo.rst43",
+      "sha256": "a55b7e60835956aa54ef0a2efa58bc5d7dc28bae86415f8e03ef8c5b4cd6330f",
+      "bytes": 187392
+    },
+    {
+      "path": "cghelgeo.rst430",
+      "sha256": "5441d34b60faf8aebdcf2648039f0e2606dc56b12fbd9a72ef925d6b4229198b",
+      "bytes": 65352
+    },
+    {
+      "path": "cghelgeo.rst431",
+      "sha256": "bf5797fb756f7fa3e303c913337f9cdb432dc55985bb62f792fa86a769284021",
+      "bytes": 54344
+    },
+    {
+      "path": "cghelgeo.rst432",
+      "sha256": "30a304defec9ff6aec07240f12d9c44314a04e79d08ce9c7656506a69d26cc6f",
+      "bytes": 65352
+    },
+    {
+      "path": "cghelgeo.rst433",
+      "sha256": "5fbfaf96bd6b23c66fc2fa2304f99daa41ed45fcfceda0d39f0aeb00dc437243",
+      "bytes": 178256
+    },
+    {
+      "path": "cghelgeo.rst434",
+      "sha256": "61045da3ae43e4fc75c7e654935236e61b4dffd080b710a202b82ce1d3698f8f",
+      "bytes": 93176
+    },
+    {
+      "path": "cghelgeo.rst435",
+      "sha256": "26a84b95c3f4d121cb4597a4abc65c130efe81410175fa5f84ba0fb54d3df553",
+      "bytes": 117984
+    },
+    {
+      "path": "cghelgeo.rst436",
+      "sha256": "f240f967b00175b1c5c12b08a2d1538a4c07be7547a7139cb13cb20b5b0b2f15",
+      "bytes": 146792
+    },
+    {
+      "path": "cghelgeo.rst437",
+      "sha256": "a15951f26386a966d3903abc853113f55adfe61f59c6a50e222c99330160d41e",
+      "bytes": 120320
+    },
+    {
+      "path": "cghelgeo.rst438",
+      "sha256": "b1ac2e98ddb4097b0cb57161354f8394f38893fe94116e2453af5b910033e16e",
+      "bytes": 163968
+    },
+    {
+      "path": "cghelgeo.rst439",
+      "sha256": "e70def19b85814cf97b004c7324ee034479c45ad9733106470ef8df55f4abba4",
+      "bytes": 147600
+    },
+    {
+      "path": "cghelgeo.rst44",
+      "sha256": "4a5e89d5b5c85319d3fd992dde45a8638504a7a10b120377f3753288c6a766af",
+      "bytes": 198512
+    },
+    {
+      "path": "cghelgeo.rst440",
+      "sha256": "b6a2b90e6230724bac82ffc65cc63935d99274ea9e33b32ef61365e4f89576b0",
+      "bytes": 119256
+    },
+    {
+      "path": "cghelgeo.rst441",
+      "sha256": "beb2fba46b26d8913681062dee9ca07ef0c597dcc84c410722fac0e2c7c83999",
+      "bytes": 120920
+    },
+    {
+      "path": "cghelgeo.rst442",
+      "sha256": "b3fdbc554ff9ae809d5723ce9ccfd1e1a189cca245365b6a2247e612ae46af8c",
+      "bytes": 121984
+    },
+    {
+      "path": "cghelgeo.rst443",
+      "sha256": "567e499e9617eac286e81a04ec1a08890513d5947c9280a9c584c1ae61b9ad84",
+      "bytes": 193240
+    },
+    {
+      "path": "cghelgeo.rst444",
+      "sha256": "0fbf2eba17ebebe2298edf1897260b280d6fc8c0c8a84ebb320f1101b3131fc9",
+      "bytes": 216080
+    },
+    {
+      "path": "cghelgeo.rst445",
+      "sha256": "b7db1fbd7c3daef86faf329622bccd5f6de84f25140c78e2a8ec98ab9433b145",
+      "bytes": 195920
+    },
+    {
+      "path": "cghelgeo.rst446",
+      "sha256": "e594c126982c95996e333da52121b5676b8ad86f2bfc732f1bfc9985e2178ba5",
+      "bytes": 176360
+    },
+    {
+      "path": "cghelgeo.rst447",
+      "sha256": "f7a537ae333a8a498a73c25a532c3aac83e25eb9cfb6822da0736e92b3441625",
+      "bytes": 194048
+    },
+    {
+      "path": "cghelgeo.rst448",
+      "sha256": "0f294667987cd72d9afe154215f8c41cb9aa78be8bab4977fe7186ca5a6c5b9e",
+      "bytes": 166904
+    },
+    {
+      "path": "cghelgeo.rst449",
+      "sha256": "5ce2ebeb20a6becbb7894811befb85b6139fa0933d13d15e08284acae6d03d28",
+      "bytes": 168824
+    },
+    {
+      "path": "cghelgeo.rst45",
+      "sha256": "6677fa748431539e8348a802be29cc8493a6b302ac054d9449a2c663f980b4f2",
+      "bytes": 212200
+    },
+    {
+      "path": "cghelgeo.rst450",
+      "sha256": "8c2e45c5522a18c6f766c7413c72061dc8fa16ddb7bae98aa3b9eafc2deb4245",
+      "bytes": 183528
+    },
+    {
+      "path": "cghelgeo.rst451",
+      "sha256": "3802b115f0f26769e64c5dbe2f3195adeb80514c3c0de51768aaa5e718147ee0",
+      "bytes": 198232
+    },
+    {
+      "path": "cghelgeo.rst452",
+      "sha256": "3a9a6589cc693e52d37b4821fd2bbb3322d1d78857d72ea1434bd83021a284b8",
+      "bytes": 196776
+    },
+    {
+      "path": "cghelgeo.rst453",
+      "sha256": "8e31067c10e5f9ce48e7f60e53bceb0158291b66ba6488f2c389605c72283c38",
+      "bytes": 192128
+    },
+    {
+      "path": "cghelgeo.rst454",
+      "sha256": "e36681c2b3ff3e4507ba87ae640859506d0a384ad7b8eeb4e879f79ea9fa606c",
+      "bytes": 192728
+    },
+    {
+      "path": "cghelgeo.rst455",
+      "sha256": "39ca0c1fbbd8d50e9245541f40e26f1fe71c7571450354561d803211fc22eccd",
+      "bytes": 54976
+    },
+    {
+      "path": "cghelgeo.rst456",
+      "sha256": "144f088180f1e517081b8b8fd24bb9dd98212024d10dfd59f8cf63108db27cab",
+      "bytes": 43280
+    },
+    {
+      "path": "cghelgeo.rst457",
+      "sha256": "94b0c5b102054eb5ab924f734cfad393386fc9aa67a3cb04cbd1b2805fa820c5",
+      "bytes": 43920
+    },
+    {
+      "path": "cghelgeo.rst458",
+      "sha256": "9466a18267543d83255ba985841f1be1c1c6a3add21cb22a3434063169d9f928",
+      "bytes": 30936
+    },
+    {
+      "path": "cghelgeo.rst459",
+      "sha256": "80f54b444070442a3933eda6f9091f695321ab2a51d6e5a38c997cca15ed702d",
+      "bytes": 33920
+    },
+    {
+      "path": "cghelgeo.rst46",
+      "sha256": "89065c631d8649184c0b275f8d9b13b2895de40a226874d736608892dae059b5",
+      "bytes": 255248
+    },
+    {
+      "path": "cghelgeo.rst460",
+      "sha256": "d92ad3b8b469469c88f4743d4ef774449ab92b57a4f842e177bc0736874653e2",
+      "bytes": 46256
+    },
+    {
+      "path": "cghelgeo.rst461",
+      "sha256": "962e5ec74be512e0c606d9183f5740dc8a702a11aeccb7e698807148a2423fe0",
+      "bytes": 32216
+    },
+    {
+      "path": "cghelgeo.rst462",
+      "sha256": "aeb3e1c9bf12ad68eddf364c5a4c9c78404181a27e74268b511ca3d26ddc6f66",
+      "bytes": 61096
+    },
+    {
+      "path": "cghelgeo.rst463",
+      "sha256": "c75eb8bab00b1d5aa5af703804021e2166e55d4090fbc544c09ef6a8165c3685",
+      "bytes": 65352
+    },
+    {
+      "path": "cghelgeo.rst464",
+      "sha256": "a378cad4936b535bb80691b2a36757a4540e90556945282113664d8749b4fcbb",
+      "bytes": 54344
+    },
+    {
+      "path": "cghelgeo.rst465",
+      "sha256": "111b6bc78e17ba17072b848cfefc1af10de8cef9c153d9582501811519f0f5c3",
+      "bytes": 65352
+    },
+    {
+      "path": "cghelgeo.rst466",
+      "sha256": "5871ea3b045780482eaf92451093420d2b57fc356eac34620487a4eb0e5c0871",
+      "bytes": 176632
+    },
+    {
+      "path": "cghelgeo.rst467",
+      "sha256": "bc74ef3e6830a26d042c3d1b2828fb75e4b53cb953e6e495a143512ed842d759",
+      "bytes": 93176
+    },
+    {
+      "path": "cghelgeo.rst468",
+      "sha256": "7d98cd5c990cc465ab23bc532f49ab10dafbe68605c2840c7b64dbde8279816c",
+      "bytes": 116920
+    },
+    {
+      "path": "cghelgeo.rst469",
+      "sha256": "ca1dd8c7153c4cae0a80da8b7099c0fd2d65ae1dd5a644400a107355db4bf289",
+      "bytes": 146792
+    },
+    {
+      "path": "cghelgeo.rst47",
+      "sha256": "0d61746d514e09f7af61aeb5ab61e1693cf61503b26eaebca237e0f9a85430c3",
+      "bytes": 190976
+    },
+    {
+      "path": "cghelgeo.rst470",
+      "sha256": "c64709548ab9b036dc007db5b71d80790b15c3d1595f01ccc7c88fc20e025af2",
+      "bytes": 121384
+    },
+    {
+      "path": "cghelgeo.rst471",
+      "sha256": "a79c2a7e879abb9535d77a31c942b775a4db80d2dc83101a4e4c94bd9d7746b6",
+      "bytes": 163968
+    },
+    {
+      "path": "cghelgeo.rst472",
+      "sha256": "0d1b31176cfa3cf90c38cd5018acd453235ab08fbaca8b40975a3d2aa6835b4b",
+      "bytes": 147600
+    },
+    {
+      "path": "cghelgeo.rst473",
+      "sha256": "a895fc628e7e2f7a1a741e503f1cf909dd8aa70cbf09d88e27ce71512df0e301",
+      "bytes": 119256
+    },
+    {
+      "path": "cghelgeo.rst474",
+      "sha256": "fa683a728d822eed032be77e384306d9a6b217ff09d7b7df99541d18918617e2",
+      "bytes": 120920
+    },
+    {
+      "path": "cghelgeo.rst475",
+      "sha256": "b435bc6fc717d3c1001715f6ade51eca42ab2456022ee8bac877138d851fc550",
+      "bytes": 121984
+    },
+    {
+      "path": "cghelgeo.rst476",
+      "sha256": "dd57c7af7e298b8f9268be0cde296a65bf29ebdf57281f806aea2f381f639f32",
+      "bytes": 193240
+    },
+    {
+      "path": "cghelgeo.rst477",
+      "sha256": "671d72d246b5df6f1f7c84944702631c6f8dcebc6bbd7cfb344b3f22541bc71f",
+      "bytes": 216080
+    },
+    {
+      "path": "cghelgeo.rst478",
+      "sha256": "1064fc4e6c1a1b98a6675eafe7b46deba1b4032c7cc4424ce0724391b020bd41",
+      "bytes": 195920
+    },
+    {
+      "path": "cghelgeo.rst479",
+      "sha256": "d3fca8f0b94469b4ed2e7f63965a2b75c35ce2cf82c13ddde4cf1b5ee0dbe32a",
+      "bytes": 176360
+    },
+    {
+      "path": "cghelgeo.rst48",
+      "sha256": "d1df6e1ef38a4634b44c3661a26792ad491a6cbe66adf129f8afa2a2aef1f572",
+      "bytes": 185520
+    },
+    {
+      "path": "cghelgeo.rst480",
+      "sha256": "9ac446fff13e78b7dcb1df8c331fddbcd98ed19af02e3c6b68072d949cb59fc9",
+      "bytes": 194048
+    },
+    {
+      "path": "cghelgeo.rst481",
+      "sha256": "e626e4cb2379abee19d16b1aecf0d80a6ea9ed4cb8aa76e978d49fff168c8a2b",
+      "bytes": 165840
+    },
+    {
+      "path": "cghelgeo.rst482",
+      "sha256": "40c73910c2d19e087d5060972e8a13b1d4caac69bb30fbd78b3b6af5af98857b",
+      "bytes": 167760
+    },
+    {
+      "path": "cghelgeo.rst483",
+      "sha256": "9a25a7586ba164336b32f3b67d7bdc3e019343d696c30052f5cc4df843498661",
+      "bytes": 183528
+    },
+    {
+      "path": "cghelgeo.rst484",
+      "sha256": "7b3e12058ff560a627c7ecfad01d490f634ca04ceeca64d7dd7d5068db41cfc2",
+      "bytes": 198232
+    },
+    {
+      "path": "cghelgeo.rst485",
+      "sha256": "7151584310cf9371c4504970ab8aaea4934cfdd56fa3f020d59d28511a2e8a17",
+      "bytes": 196776
+    },
+    {
+      "path": "cghelgeo.rst486",
+      "sha256": "6d3ed1987fc192664bdb9f4437c64d048d426b1723753ca1f6d3e625e794128e",
+      "bytes": 192128
+    },
+    {
+      "path": "cghelgeo.rst487",
+      "sha256": "fe9b2109bd95a1ae713c38a1bb87aa55d8922e0fb600c323573ddf148c5ead58",
+      "bytes": 192728
+    },
+    {
+      "path": "cghelgeo.rst488",
+      "sha256": "ac1dae9fcc5b21ce18100000299a8c102eb256c510e0ad1c12a247132ecf28d1",
+      "bytes": 54976
+    },
+    {
+      "path": "cghelgeo.rst489",
+      "sha256": "b0f6da8dd5748a1d28fcdf7b7af35e81fdabf0ac29bf116233472f045c342dcb",
+      "bytes": 43280
+    },
+    {
+      "path": "cghelgeo.rst49",
+      "sha256": "09d4ce165c2e81dad0aafb5800fcd090c75f76ad3433157ef20bc0b9c945e1ac",
+      "bytes": 175416
+    },
+    {
+      "path": "cghelgeo.rst490",
+      "sha256": "56b7703f1cada2d3534008edbfc729da9dc274318e0a875e080a80412e178b17",
+      "bytes": 43920
+    },
+    {
+      "path": "cghelgeo.rst491",
+      "sha256": "6f4268724da8c0c4b002eba3903a7bb6a6eb8b87f99589191584681bfc8563ab",
+      "bytes": 30936
+    },
+    {
+      "path": "cghelgeo.rst492",
+      "sha256": "db07ef25835cdd7e2c0752a34b17e30fd01f1c7461dbe719baf2864cd6a046e5",
+      "bytes": 34344
+    },
+    {
+      "path": "cghelgeo.rst493",
+      "sha256": "e234011f67f1d94b12acb940f78380101f8c85a9551210b6a5d10fcc7bcb5389",
+      "bytes": 46256
+    },
+    {
+      "path": "cghelgeo.rst494",
+      "sha256": "60af62817bc4f6ffe3e375ff802648d4aece306d7abf53fc041c3715a044aac2",
+      "bytes": 32216
+    },
+    {
+      "path": "cghelgeo.rst495",
+      "sha256": "878fa0476577f4851b03171b30bb6c2e9b3c83b9ef3747965769575af9f4b33d",
+      "bytes": 61096
+    },
+    {
+      "path": "cghelgeo.rst496",
+      "sha256": "8ecc18c7a98553622e6378fa607a4d6cfcc603527f48d789e3b3604b9980158f",
+      "bytes": 65352
+    },
+    {
+      "path": "cghelgeo.rst497",
+      "sha256": "3dab246ab42173aa1569af258422f0ac05415f21bd41e49f78795643edbad88d",
+      "bytes": 53920
+    },
+    {
+      "path": "cghelgeo.rst498",
+      "sha256": "af646fa75126cc009a4bc0258223c241c2380084a01364e7fccbbc355637324e",
+      "bytes": 65352
+    },
+    {
+      "path": "cghelgeo.rst499",
+      "sha256": "a0c5ce9156a01f8db5406ab710aace831173f21aae36cf78c397ee1b25d0288a",
+      "bytes": 178256
+    },
+    {
+      "path": "cghelgeo.rst4gopt",
+      "sha256": "d57e386ff64ae83aec4b23423cbea91e6b3b8cc806c11d1d313a7c2f175de39d",
+      "bytes": 213456
+    },
+    {
+      "path": "cghelgeo.rst4gopt.SD1",
+      "sha256": "65946eeab09a2462436db5a278a51862b18edb3da164d90afc05a9d0a7202294",
+      "bytes": 100
+    },
+    {
+      "path": "cghelgeo.rst5",
+      "sha256": "5d7ded1d19fce69934f8f820081f7fe7a1f93e17ad4cfd0cf54590a33fde7dd6",
+      "bytes": 117592
+    },
+    {
+      "path": "cghelgeo.rst50",
+      "sha256": "8a59c7e2caf2a84bb17083530b75f047fa88e4f2a1eadf603d0e3255cf7173bb",
+      "bytes": 53056
+    },
+    {
+      "path": "cghelgeo.rst500",
+      "sha256": "33d61138bb3ec7a3296c93652abf7e6df97a31a9a1b2ca2e0fa94b3faa703ab0",
+      "bytes": 93176
+    },
+    {
+      "path": "cghelgeo.rst501",
+      "sha256": "7ff742a3990325a3a24ca578bad2709603492ed3b2974489f9132d14b0e6173a",
+      "bytes": 117984
+    },
+    {
+      "path": "cghelgeo.rst502",
+      "sha256": "3f850f0117a937fe778455b64051e58ee4cb7c518b64f2bdadb7e352b0fa0628",
+      "bytes": 146792
+    },
+    {
+      "path": "cghelgeo.rst503",
+      "sha256": "64858f3bc90eeaf83a099b0e382de57fa765d6a1403c3d24534e4482553113a1",
+      "bytes": 121384
+    },
+    {
+      "path": "cghelgeo.rst504",
+      "sha256": "12d4e5e62483ff5d4b78b2b02baface550634b661d61284024c8eb15059010d2",
+      "bytes": 163968
+    },
+    {
+      "path": "cghelgeo.rst505",
+      "sha256": "d14ea0e60adf5cf4e19407fb5fd4dc3264ff405394903f2c99a1090cd83e2afd",
+      "bytes": 147600
+    },
+    {
+      "path": "cghelgeo.rst506",
+      "sha256": "269203d19c286b22c393432af97fbbb674095624628c8ecfe54127d03745c1eb",
+      "bytes": 119256
+    },
+    {
+      "path": "cghelgeo.rst507",
+      "sha256": "ca1b7c8b7e85b7e4f2820b278473523305241bbde7149a9dded69f6f6eea8360",
+      "bytes": 120920
+    },
+    {
+      "path": "cghelgeo.rst508",
+      "sha256": "49085132af3916d598de3f363b0e0e4dd5d8b8b801b93d68762caaee9b8d7695",
+      "bytes": 121984
+    },
+    {
+      "path": "cghelgeo.rst509",
+      "sha256": "b2f5dda08ab98fe9f46b8d866b2d1566a295f6df29cad40c0ee5c6ea9e465995",
+      "bytes": 193240
+    },
+    {
+      "path": "cghelgeo.rst51",
+      "sha256": "38055be1f7404119256ed5b3f05dd8660c924193a20c19ebdc4dc5ca18e8bbc6",
+      "bytes": 47320
+    },
+    {
+      "path": "cghelgeo.rst510",
+      "sha256": "ec3e78d3492c0bb2794055affe59186ffce1e4d231d1aa1da40889760a75ad3c",
+      "bytes": 216080
+    },
+    {
+      "path": "cghelgeo.rst511",
+      "sha256": "d9ebcb954ca4bf54245c075806e4f18e33edbfefb15ef508c017e9d953e94f7d",
+      "bytes": 195920
+    },
+    {
+      "path": "cghelgeo.rst512",
+      "sha256": "e2ef56a47f3f99f8b668824605f974133458173a2563a7173325a220eff6bc5a",
+      "bytes": 176360
+    },
+    {
+      "path": "cghelgeo.rst513",
+      "sha256": "3bfe4a5e52d84baba9d7997e7ff8a9caca30c21d42424abc16f543370c847273",
+      "bytes": 194048
+    },
+    {
+      "path": "cghelgeo.rst514",
+      "sha256": "27273fc6d50600ec0002fba9ef0d64c99d1fe49e8936463c006460d1e9f7c5fd",
+      "bytes": 165840
+    },
+    {
+      "path": "cghelgeo.rst515",
+      "sha256": "0de84750ee8001aa5200623153cbe3be22f70a2549711f930226a584676bd241",
+      "bytes": 167760
+    },
+    {
+      "path": "cghelgeo.rst516",
+      "sha256": "0e65a4c40f855f905d4c079b1be124afee1600857ed07cd215d9346b7d4995c5",
+      "bytes": 183528
+    },
+    {
+      "path": "cghelgeo.rst517",
+      "sha256": "762aff3089cc86179b10c35f8d15c0b2bc1b394d3269fce8cc555ffdbf06fd80",
+      "bytes": 198232
+    },
+    {
+      "path": "cghelgeo.rst518",
+      "sha256": "2eea62fddb7bada6b225c77878e8f569cc351f97c05264655a3ec4a16f58f1c2",
+      "bytes": 196776
+    },
+    {
+      "path": "cghelgeo.rst519",
+      "sha256": "da1d31482dbf4a7b5f5c19a9d5a963e9f908e5d4c8028fb47dd5d2b7dd9c12e5",
+      "bytes": 192128
+    },
+    {
+      "path": "cghelgeo.rst52",
+      "sha256": "76753c3af56e08be8a93e26fd1d69d70cd3b47c4b8129b81a32b3913a920d352",
+      "bytes": 47744
+    },
+    {
+      "path": "cghelgeo.rst520",
+      "sha256": "f644422c3d23ffd7be17506f39264eeffcab2f2c7f5aec8edc6d1b8ddbed2c01",
+      "bytes": 192728
+    },
+    {
+      "path": "cghelgeo.rst521",
+      "sha256": "bcbe14771246b170e7ceb3baeb3d7dad7fe0dc61e714d17d60856db5103dbb2e",
+      "bytes": 54976
+    },
+    {
+      "path": "cghelgeo.rst522",
+      "sha256": "727b4bdc9593990f14e261f3f65508bf96b6188c750380d080e7407de3de800e",
+      "bytes": 43280
+    },
+    {
+      "path": "cghelgeo.rst523",
+      "sha256": "79a2804dd20546a76a5ed623b7cbbaf431a8d9f4a7f8841d2b8df191160a9851",
+      "bytes": 43920
+    },
+    {
+      "path": "cghelgeo.rst524",
+      "sha256": "19acb07e9e51c601e3d28c4383748152423fdb74c2b24599168114586755d514",
+      "bytes": 30936
+    },
+    {
+      "path": "cghelgeo.rst525",
+      "sha256": "42e4e524b86ceb8d7ae5fe4409f024bb9f1d05a3e7bb805967e73e716820cfa9",
+      "bytes": 34344
+    },
+    {
+      "path": "cghelgeo.rst526",
+      "sha256": "c831516b633ed240e2d4639ef4bd1206d920df4144597eac16b9132191bb02be",
+      "bytes": 46256
+    },
+    {
+      "path": "cghelgeo.rst527",
+      "sha256": "c3cec33857c3264b766fece2c83293589cf35bfb04ed8ec8e5ef74318313bd37",
+      "bytes": 32216
+    },
+    {
+      "path": "cghelgeo.rst528",
+      "sha256": "1ff6e9bdac76d261a60a9d82165a57f2cc5bb7f8f10269801b8ae38f0fcd597e",
+      "bytes": 61096
+    },
+    {
+      "path": "cghelgeo.rst529",
+      "sha256": "1c7e7737dcb9e97e740f003a49844256cb0eb455512cc4ad6edd72ea2ea789de",
+      "bytes": 65352
+    },
+    {
+      "path": "cghelgeo.rst53",
+      "sha256": "86af317fa5598d56d5e716a86c56ae5510ed21c570fa231b4ad6f3163bfe09c1",
+      "bytes": 33488
+    },
+    {
+      "path": "cghelgeo.rst530",
+      "sha256": "e267ce8bd5af60ddf2628b15e22bac3d8e754e5e231562290b04d0e8632c2dbe",
+      "bytes": 54344
+    },
+    {
+      "path": "cghelgeo.rst531",
+      "sha256": "dd0aae20f1bc0095092a3a431ca4431f39f0d62e9729f079fc330cbc42b9e877",
+      "bytes": 65352
+    },
+    {
+      "path": "cghelgeo.rst532",
+      "sha256": "12bc6c5735a6a327b7bcd774bd16096991539d12a186dda0701c3ff259a6b7d0",
+      "bytes": 178256
+    },
+    {
+      "path": "cghelgeo.rst533",
+      "sha256": "cf1e9563db0a2d09a41dd00372f5d550ed4a92922f831553de1ce62e012714d0",
+      "bytes": 93176
+    },
+    {
+      "path": "cghelgeo.rst534",
+      "sha256": "7d733591bbff39ae69cfa99b297d762a9cfce5986b7fd6240c468d71438a33f3",
+      "bytes": 117984
+    },
+    {
+      "path": "cghelgeo.rst535",
+      "sha256": "686607919d9dcee3757a2e4af5a9d9132343e951c3c012ae09435e029f2294ea",
+      "bytes": 146792
+    },
+    {
+      "path": "cghelgeo.rst536",
+      "sha256": "be4461d10281d16a41105da98d9c5d00884970ecb78838432be5de90b35341aa",
+      "bytes": 121384
+    },
+    {
+      "path": "cghelgeo.rst537",
+      "sha256": "96d2477f20de8a7aa3d2042c430ad0da26bc055d18feb91dea2ab6d0959a9359",
+      "bytes": 163968
+    },
+    {
+      "path": "cghelgeo.rst538",
+      "sha256": "834888d14c64d008d6e310b906780b8c989144bb47211238f6039c40b023b64d",
+      "bytes": 147600
+    },
+    {
+      "path": "cghelgeo.rst539",
+      "sha256": "2033ff80e906a042e1550bc999f8d31b4a979aa08e53f0a0dca0cbc6e697c0d9",
+      "bytes": 119256
+    },
+    {
+      "path": "cghelgeo.rst54",
+      "sha256": "720f50078789e991b19b7b0c364c81158af635d106ff46d2216ba8f3d3d94016",
+      "bytes": 32856
+    },
+    {
+      "path": "cghelgeo.rst540",
+      "sha256": "6ea7b19a64d5366192bf10f28a7ecb158c26ca0599d4216ab16a07bc328c8eda",
+      "bytes": 120920
+    },
+    {
+      "path": "cghelgeo.rst541",
+      "sha256": "449e21bc470f87b0612deb484f0d4808bbaf1a8493549de2d10e03b9a4650e1a",
+      "bytes": 121984
+    },
+    {
+      "path": "cghelgeo.rst542",
+      "sha256": "3e1fe714e9a7e8312cb302fba574633f76637d3c64294ca3ad25d5da44fdefea",
+      "bytes": 193240
+    },
+    {
+      "path": "cghelgeo.rst543",
+      "sha256": "c568591bb15bd3e5d69b3c2b9f8bcdfff824cfb66c13b639192d658c6843e845",
+      "bytes": 216080
+    },
+    {
+      "path": "cghelgeo.rst544",
+      "sha256": "5c8a1cb3a06a8986f5a8602e94ddff229374418f1554916aabaf00748539bef3",
+      "bytes": 195920
+    },
+    {
+      "path": "cghelgeo.rst545",
+      "sha256": "f63f209cb3eccdc740a40163f6be7928d6fb315ff6c74b60a79331e70ecee6cf",
+      "bytes": 176360
+    },
+    {
+      "path": "cghelgeo.rst546",
+      "sha256": "770127389894bc7e16f94d338c2d27fab426cbbf91cc0e43f98878058d8c03f7",
+      "bytes": 194048
+    },
+    {
+      "path": "cghelgeo.rst547",
+      "sha256": "58bc6562dbc426b6938486184b6eab8e74657694a4f026def9c99c87b5e028f9",
+      "bytes": 165840
+    },
+    {
+      "path": "cghelgeo.rst548",
+      "sha256": "4111a547b8812c84a30663efe527d7497ec5ea3d3556b85b7c5e4495a6719429",
+      "bytes": 167760
+    },
+    {
+      "path": "cghelgeo.rst549",
+      "sha256": "33ace54206537d61d89c825471c582453efb1e8223bbd12154d0e0f530d7f815",
+      "bytes": 183528
+    },
+    {
+      "path": "cghelgeo.rst55",
+      "sha256": "08b4a67ac3d13a33724b6a98342a2ecb4d5a762821bf459e5e7bba8cada469b0",
+      "bytes": 47744
+    },
+    {
+      "path": "cghelgeo.rst550",
+      "sha256": "96656bdf9864ebaab9aeaeff63548c939f51175e81f7afd09162985ec74056c3",
+      "bytes": 198232
+    },
+    {
+      "path": "cghelgeo.rst551",
+      "sha256": "4841f304edf6e5aad96e2758b15023f374d88bd412739197057625e79a0d0771",
+      "bytes": 196776
+    },
+    {
+      "path": "cghelgeo.rst552",
+      "sha256": "cc13605ffa206a13eaa9886322e936b79c9915a694c00663660fa8b7070dde39",
+      "bytes": 192128
+    },
+    {
+      "path": "cghelgeo.rst553",
+      "sha256": "526043ab77f38a11a861768941f00cc7b510a0660ca8893a231408a236ddc03f",
+      "bytes": 192728
+    },
+    {
+      "path": "cghelgeo.rst554",
+      "sha256": "aa3f61de2bd7d3eac698c3cdb4588722148bd9859f8de40862be1cfc7cb09d5c",
+      "bytes": 54976
+    },
+    {
+      "path": "cghelgeo.rst555",
+      "sha256": "547a5e05db9066686b93e191771fb5e4a89507e4e1de2e492a84eb206160c073",
+      "bytes": 43280
+    },
+    {
+      "path": "cghelgeo.rst556",
+      "sha256": "4910e93272c8c68b241315398e0849d520367cef68ff55e7a8292a583470007e",
+      "bytes": 43920
+    },
+    {
+      "path": "cghelgeo.rst557",
+      "sha256": "d5dd11c277832d90fc2f2eaa78f10c31d46d8f9c31f20dee87f82842a398b9f3",
+      "bytes": 30936
+    },
+    {
+      "path": "cghelgeo.rst558",
+      "sha256": "27d9353fdf970bf23a314199710a27ddae6f84aeba61f09e8072ddd53cf158dd",
+      "bytes": 34344
+    },
+    {
+      "path": "cghelgeo.rst559",
+      "sha256": "239430f4f917378b0eed8f03bde00501731c9e5db446f6cfca96b21c9fffc670",
+      "bytes": 46256
+    },
+    {
+      "path": "cghelgeo.rst56",
+      "sha256": "f4ae61711993af06e92a964f2259a3e3025263aeaf09735a18800695ed7b701a",
+      "bytes": 33280
+    },
+    {
+      "path": "cghelgeo.rst560",
+      "sha256": "c80a485658b5a13e062193305b7eef65cdc1ce996e72530525fd8e763d6ce28e",
+      "bytes": 32216
+    },
+    {
+      "path": "cghelgeo.rst561",
+      "sha256": "5d11c39b32ce6d2a38c3c7adc9d46ea200297bfcc44b282b253bcff2c9b5482c",
+      "bytes": 61096
+    },
+    {
+      "path": "cghelgeo.rst562",
+      "sha256": "041e70333e788922f20e34b677dadf5941def42453f0283745b31fb392d9134e",
+      "bytes": 65352
+    },
+    {
+      "path": "cghelgeo.rst563",
+      "sha256": "46bfcb47fd39b8b5a47fe6b30b66f0cb853c35b705ff68096a9f3923f53f1984",
+      "bytes": 53920
+    },
+    {
+      "path": "cghelgeo.rst564",
+      "sha256": "355f5af786e4b50a55f141d321c94e17a6859c3ae873605ad5fdbe54da587e51",
+      "bytes": 65352
+    },
+    {
+      "path": "cghelgeo.rst565",
+      "sha256": "e6b4a036f61412e6fa5f8dc4528640855e8e77193d31eecadbcf805c22df1641",
+      "bytes": 176632
+    },
+    {
+      "path": "cghelgeo.rst566",
+      "sha256": "fa168309a5d5f766d4152574ad886c88743e1831990302610b536a9a0ef3eec1",
+      "bytes": 93176
+    },
+    {
+      "path": "cghelgeo.rst567",
+      "sha256": "dc3336add90ef5e1c191432e1e3b775aa514cdc4e7876715538370789aa1a935",
+      "bytes": 117984
+    },
+    {
+      "path": "cghelgeo.rst568",
+      "sha256": "dc882def938f7944b5dd202663d8b805aab38f2f32806eb2e34402f5b820ce2b",
+      "bytes": 146792
+    },
+    {
+      "path": "cghelgeo.rst569",
+      "sha256": "c4ef27086ccff68fc11b2e9f539d75c1db29c673dc6ecfcb48bf355119b1f714",
+      "bytes": 121384
+    },
+    {
+      "path": "cghelgeo.rst57",
+      "sha256": "961c84dd08ae87fbce8232e7609b72a2eeb5fbdf70a94c19260777a30ccf4601",
+      "bytes": 38968
+    },
+    {
+      "path": "cghelgeo.rst570",
+      "sha256": "063df1d7c6bb4a0edb53ae77389bdb026a4a286fad3f5bf0d053ff1e7c5fca2b",
+      "bytes": 163968
+    },
+    {
+      "path": "cghelgeo.rst571",
+      "sha256": "d56489eab74eef4da16943e42600bbfa2289701098e46f8b5517fa842e29e2b7",
+      "bytes": 147600
+    },
+    {
+      "path": "cghelgeo.rst572",
+      "sha256": "7bc5529e026bb73e4395b6b5afa8236c41da15e45664133bec56140a241d97d1",
+      "bytes": 119256
+    },
+    {
+      "path": "cghelgeo.rst573",
+      "sha256": "ae2dd326a1b116bb48c977ea50f65a7e80ce7a6ac33bffd2bbd14dd3f3573154",
+      "bytes": 120920
+    },
+    {
+      "path": "cghelgeo.rst574",
+      "sha256": "103056ebaba63ec850ed000c08a564635d8e1621235123855e067faf4d6a9186",
+      "bytes": 121984
+    },
+    {
+      "path": "cghelgeo.rst575",
+      "sha256": "d092891d1d02d885a17f3505d89ef09c1896a535a26b6aab025a51a6d7254420",
+      "bytes": 193240
+    },
+    {
+      "path": "cghelgeo.rst576",
+      "sha256": "659f21ec93ed331c8cb6bdd0893f105a21d130addc559681aabf07a57c1345d5",
+      "bytes": 216080
+    },
+    {
+      "path": "cghelgeo.rst577",
+      "sha256": "67089df15dc450615adfe13764e484a9ed7918f2523f1aa30319f4df3cfd3579",
+      "bytes": 195920
+    },
+    {
+      "path": "cghelgeo.rst578",
+      "sha256": "3ec060f4e45dc47b534aea52b9788f4a51c27b0e873cee6c16438bf0ed04d288",
+      "bytes": 176360
+    },
+    {
+      "path": "cghelgeo.rst579",
+      "sha256": "600413fafe642f9f5e2c66ce913bc845d396789c41c2bbbb28f17b1ccdd1fc34",
+      "bytes": 194048
+    },
+    {
+      "path": "cghelgeo.rst58",
+      "sha256": "92a6c5dd402e15bcea0130d1512c157beb84c0aaefa0b7fc0ff0aa2436ac3547",
+      "bytes": 51312
+    },
+    {
+      "path": "cghelgeo.rst580",
+      "sha256": "5b94c6d5e6922baf8ce22c371888b8667867562135da15e4ff88c3bd45fe0ca7",
+      "bytes": 165840
+    },
+    {
+      "path": "cghelgeo.rst581",
+      "sha256": "a72ea2095c15bcb8c53a03bae3fd19a89f21973af46884ab676229459e8e146d",
+      "bytes": 167760
+    },
+    {
+      "path": "cghelgeo.rst582",
+      "sha256": "fa7a4a75ea1b932a4602a93ff18cfbd516aac136f5f2405cc78b5d30856a5f8f",
+      "bytes": 183528
+    },
+    {
+      "path": "cghelgeo.rst583",
+      "sha256": "592fe1f4dcf3c21e28a2293e8f151df76b3e4ad2491c2372fc3e643596967fd6",
+      "bytes": 198232
+    },
+    {
+      "path": "cghelgeo.rst584",
+      "sha256": "8b4757a4e0fb1eccb5b6ce67db89cc08a4c985f0ee0e2143f5c677869b319d4a",
+      "bytes": 196776
+    },
+    {
+      "path": "cghelgeo.rst585",
+      "sha256": "a6b27519326ba1075ef44b8fb11c646dfd85034ed290519488785ce9f19742f7",
+      "bytes": 192128
+    },
+    {
+      "path": "cghelgeo.rst586",
+      "sha256": "6ff4603c41ce83b02459417a3286eed3604be0e506cf2e7bff5b503195e78611",
+      "bytes": 192728
+    },
+    {
+      "path": "cghelgeo.rst587",
+      "sha256": "9d8eae206272781e21dbcdde994486353043c8b1676002be12f68ba730423886",
+      "bytes": 54976
+    },
+    {
+      "path": "cghelgeo.rst588",
+      "sha256": "2f0b1caa3434737e3fe726e463a2f35f075c9ffccceb479a020ee70ed2fa9e0f",
+      "bytes": 43280
+    },
+    {
+      "path": "cghelgeo.rst589",
+      "sha256": "628d12c1f48a0d2367f6bfcd76ed626dee89719bf5e304e52cd4f87c3d3fcfc3",
+      "bytes": 43920
+    },
+    {
+      "path": "cghelgeo.rst59",
+      "sha256": "db29f02dd9c824bbede2ec8599147745d6b1ebfd6009ff45161ca844597997e0",
+      "bytes": 52632
+    },
+    {
+      "path": "cghelgeo.rst590",
+      "sha256": "8caaddf1e77d7f7bd505a5462952faf614d24f61b71944e53d82c75b1674e174",
+      "bytes": 30936
+    },
+    {
+      "path": "cghelgeo.rst591",
+      "sha256": "4eeee256181bdeeab7fad604016b1680d6ae621d7f39c73d1cad299d75e1edb9",
+      "bytes": 34344
+    },
+    {
+      "path": "cghelgeo.rst592",
+      "sha256": "430ede258448131273d8152576157e460674e10913899bce3aa07f02d0c54ade",
+      "bytes": 46256
+    },
+    {
+      "path": "cghelgeo.rst593",
+      "sha256": "af604ac67d72b14ea4ae4b4e014c92013fcdb0db6a633dd3715e9272872c33eb",
+      "bytes": 32216
+    },
+    {
+      "path": "cghelgeo.rst594",
+      "sha256": "62e7e489b1781bfd8a6eb4473c2e2bcc94f39374a8c574f44d8c964135b6110b",
+      "bytes": 61096
+    },
+    {
+      "path": "cghelgeo.rst595",
+      "sha256": "0c44eb53d0852fe08cf47b55d62f54c3d6923364556df63ca8e16e0b2dbd8b18",
+      "bytes": 65352
+    },
+    {
+      "path": "cghelgeo.rst596",
+      "sha256": "5e44fa9900b5f408c3633e20feff579d21ce8e9cc721a334e40dc0568e7d6b21",
+      "bytes": 53920
+    },
+    {
+      "path": "cghelgeo.rst597",
+      "sha256": "d5195ac5d635fabd28ba59554fbc7e90a7493d944ea3e91572d1317ba0ef91a0",
+      "bytes": 65352
+    },
+    {
+      "path": "cghelgeo.rst598",
+      "sha256": "4c1677019b0bb8fa37139b1a430d3f7d5783b43804612b2fe81b408f71baad09",
+      "bytes": 179880
+    },
+    {
+      "path": "cghelgeo.rst599",
+      "sha256": "717f0e0c525ae51968c855a62cb409bc0fa9ffb7de0af3af4b829b5eb4be0e1b",
+      "bytes": 94240
+    },
+    {
+      "path": "cghelgeo.rst6",
+      "sha256": "ec0489d888af37d49a39accdb91a6793c0bd527b26ff02d9badb20f10f331342",
+      "bytes": 166560
+    },
+    {
+      "path": "cghelgeo.rst60",
+      "sha256": "bf3adbd3211729b468a7c20751826c052e1e7a917c9c2c0e3a3cdf7848a496cf",
+      "bytes": 48248
+    },
+    {
+      "path": "cghelgeo.rst600",
+      "sha256": "4ac438ac656d5743c84d26866c0251dfcd6770a0e4765f18ebc814291dc1e450",
+      "bytes": 119048
+    },
+    {
+      "path": "cghelgeo.rst601",
+      "sha256": "750e230044df9129ddf4f1fadd27579ada1970a47e8a2af8003fd515e0532b37",
+      "bytes": 147856
+    },
+    {
+      "path": "cghelgeo.rst602",
+      "sha256": "15b59e61fecc83c9ba0bc394111896c5037fa7b3f24c3dc813350ced82e4b595",
+      "bytes": 121384
+    },
+    {
+      "path": "cghelgeo.rst603",
+      "sha256": "7c5fd7ebef7fc64f5c8b36b7e22123d1132c600028aeac345935300fb4244951",
+      "bytes": 165032
+    },
+    {
+      "path": "cghelgeo.rst604",
+      "sha256": "04076b681b4db8b8c197329d346eb9d26f48d3fae0f9d35dbfc007b3dbe034ef",
+      "bytes": 147600
+    },
+    {
+      "path": "cghelgeo.rst605",
+      "sha256": "ce5b744b3d8b94f8748862d107b663b0d0d885af9b5d584ea5454fbc76ee5867",
+      "bytes": 119256
+    },
+    {
+      "path": "cghelgeo.rst606",
+      "sha256": "fced53c5263bd9a997bdfd37cd0b91fe97a9c45d279d4dd883ef406cf01e1aa6",
+      "bytes": 120920
+    },
+    {
+      "path": "cghelgeo.rst607",
+      "sha256": "2f449f4ad48d5a362e5600cc750f671e0577a85719aa1aa3dfee8722da2046ac",
+      "bytes": 123048
+    },
+    {
+      "path": "cghelgeo.rst608",
+      "sha256": "57037ab8f2476d61d758e4f1864f362a21cc270befa204ca5d24fef53c15b0f7",
+      "bytes": 193240
+    },
+    {
+      "path": "cghelgeo.rst609",
+      "sha256": "b806854a420bc9569f6be95d31088c84f47b90a906138e8de0f336a086a34a94",
+      "bytes": 216080
+    },
+    {
+      "path": "cghelgeo.rst61",
+      "sha256": "b1d927901adfc7ef4524bb58b5eedb87db6ecea03a85adf677dd114527141fd4",
+      "bytes": 184064
+    },
+    {
+      "path": "cghelgeo.rst610",
+      "sha256": "26f3799f3316dc9feb906721fa47d134fc9b8617308085c5a0e893a6228ed5f9",
+      "bytes": 195920
+    },
+    {
+      "path": "cghelgeo.rst611",
+      "sha256": "0db6a2153ae6c47f620ace36a72d66a45c9babb4a74f76703d7610f3183d5781",
+      "bytes": 176360
+    },
+    {
+      "path": "cghelgeo.rst612",
+      "sha256": "3683274ef93cea3807fab07483c1d6c65100361796e08594161b216e9e0036db",
+      "bytes": 194048
+    },
+    {
+      "path": "cghelgeo.rst613",
+      "sha256": "3c83e101880165d20f6ddbeb03f3c110f5b3a52c5aa2f3e2f5fd49bcffe44562",
+      "bytes": 165840
+    },
+    {
+      "path": "cghelgeo.rst614",
+      "sha256": "97eee1b31274dc0700838b5f6fa6c499df510c827cdeca9aa92ffb3569cd17e9",
+      "bytes": 168824
+    },
+    {
+      "path": "cghelgeo.rst615",
+      "sha256": "756af0800c1ecdb53cca572641094d10f3ca5525aabf8cba7f844d81ce8100c1",
+      "bytes": 184592
+    },
+    {
+      "path": "cghelgeo.rst616",
+      "sha256": "ba333d6607c0d76faba7aad721d6f92ebf960be8f6c4bbba2481cd95263a2c87",
+      "bytes": 199296
+    },
+    {
+      "path": "cghelgeo.rst617",
+      "sha256": "fc2e2ba41293e9af754650dd23b0e65a1e325c4aa060c853900bc44f71100532",
+      "bytes": 197840
+    },
+    {
+      "path": "cghelgeo.rst618",
+      "sha256": "a475ff3585bd6990a6643701035ccab0af8f7aabd96a995d645d2daf5a0ccaa9",
+      "bytes": 192128
+    },
+    {
+      "path": "cghelgeo.rst619",
+      "sha256": "4e63e531e6a7a073282d6bf4a673f200267786e4452e797e6949de09920a8614",
+      "bytes": 192728
+    },
+    {
+      "path": "cghelgeo.rst62",
+      "sha256": "63d25367b63440f57f87aaf49dd0ffbb5ec20794ed19eb47fdb37f5c8363d90f",
+      "bytes": 98032
+    },
+    {
+      "path": "cghelgeo.rst620",
+      "sha256": "a6d857051d279e02fdf45c827edf6c1481486b83274970ebb507b03b633f89f4",
+      "bytes": 55400
+    },
+    {
+      "path": "cghelgeo.rst621",
+      "sha256": "ab5e139ad91d4bf368e951de4cfe0db401ab9967f570872daf03e1d2397c4bdc",
+      "bytes": 43280
+    },
+    {
+      "path": "cghelgeo.rst622",
+      "sha256": "0ec412be8dc8987f345898dcd364403599ab99b181ce874294c0ea34e2960b2f",
+      "bytes": 44344
+    },
+    {
+      "path": "cghelgeo.rst623",
+      "sha256": "5b5c19b638ef01c7df0ecd0ea8ec129b06eb4544ec624b5cc842a4c63915ce2a",
+      "bytes": 30936
+    },
+    {
+      "path": "cghelgeo.rst624",
+      "sha256": "406d19d0e6b17e85cb027e9bbce4dd471f552fb2e9b2d1ae91a2ff1a561ff084",
+      "bytes": 34768
+    },
+    {
+      "path": "cghelgeo.rst625",
+      "sha256": "e934249dd261e1afc235c093cb2c6aa58f557d649a8ec04cb8fd806d3687d3f8",
+      "bytes": 46256
+    },
+    {
+      "path": "cghelgeo.rst626",
+      "sha256": "485b8f07ad814562a998f400c3a400abe66d03d7c3d69559183cf33d46b07f00",
+      "bytes": 32216
+    },
+    {
+      "path": "cghelgeo.rst627",
+      "sha256": "e84b64e1985ee73e16dfd8104af078d1f71dee27f57c7982aa46c5a334a9438b",
+      "bytes": 61096
+    },
+    {
+      "path": "cghelgeo.rst628",
+      "sha256": "a4f7cdf82ec89aa782bfe370a2c3713ecaf7e494d66a4855f176ecafbb9c2f77",
+      "bytes": 65352
+    },
+    {
+      "path": "cghelgeo.rst629",
+      "sha256": "3684540e15f01d1b817c9c016f96f3e790c729fae2d6d1e89666125f67d0c620",
+      "bytes": 54344
+    },
+    {
+      "path": "cghelgeo.rst63",
+      "sha256": "5c67219b91c27a5fec5b8a2133b94d9725e6a8303ff4fde2695ff53c1cb2b640",
+      "bytes": 125568
+    },
+    {
+      "path": "cghelgeo.rst630",
+      "sha256": "7c0760849436af7d4455c9c2ed75dad57b3b02d14eb07e15564c6f7b50f71a8d",
+      "bytes": 65352
+    },
+    {
+      "path": "cghelgeo.rst631",
+      "sha256": "db11c3911bccb5fda0c252c1407a5ed7b5d799f726ccde620b35114fe7582ea9",
+      "bytes": 31792
+    },
+    {
+      "path": "cghelgeo.rst632",
+      "sha256": "ccc91bf548832761f8a08aa29e8a568a523f785d625dfb9be3a9767fb7141d6e",
+      "bytes": 38600
+    },
+    {
+      "path": "cghelgeo.rst633",
+      "sha256": "c04d9a37d877f574c8b5bfda75dbc6eedd9272961ccd07543fcf3b2658181c0b",
+      "bytes": 38600
+    },
+    {
+      "path": "cghelgeo.rst634",
+      "sha256": "2612dd8cb13dcc5b9c165106db9e653daa83d4a80429705308a9e8ace4adc1b6",
+      "bytes": 32216
+    },
+    {
+      "path": "cghelgeo.rst635",
+      "sha256": "b01555bd7b87091ab3f86ffb6efba2a1c072af5fca6e1d9a8d3c78a96b909791",
+      "bytes": 32216
+    },
+    {
+      "path": "cghelgeo.rst636",
+      "sha256": "0807757a95f499ccab4a136914852260d24de59db41b20b709afb03e1f038126",
+      "bytes": 32216
+    },
+    {
+      "path": "cghelgeo.rst637",
+      "sha256": "2164c149502ce4a441b202082dc74767af6682b5958092deee17aa7e9cd420e9",
+      "bytes": 30728
+    },
+    {
+      "path": "cghelgeo.rst638",
+      "sha256": "394cc7ba6f59058cf5c4bd96987e32b0b54505a4031da806bad39e7bf41d24fe",
+      "bytes": 23152
+    },
+    {
+      "path": "cghelgeo.rst639",
+      "sha256": "d3f146a020e83338ee9a39b87a89b23592ec1360c1c7916745abf6cd41b0135a",
+      "bytes": 31232
+    },
+    {
+      "path": "cghelgeo.rst64",
+      "sha256": "4393ab5603c966a0454cf4c0b83e485b5c9a56927c39b5b347379310978aabcc",
+      "bytes": 148920
+    },
+    {
+      "path": "cghelgeo.rst640",
+      "sha256": "2688f6bb46d674536fe92d9603bf4da68f7b1edd98fd09769617fb9443d5670f",
+      "bytes": 32216
+    },
+    {
+      "path": "cghelgeo.rst641",
+      "sha256": "891fb442f17c8e6536a6c30a1265e310e86af77df96a21736f89dd291476ad14",
+      "bytes": 37112
+    },
+    {
+      "path": "cghelgeo.rst642",
+      "sha256": "ea3cc4d2bcf52ca5a37c45b63e9b8b434a062ef9cd5c41ccb4b8592292602ec0",
+      "bytes": 30728
+    },
+    {
+      "path": "cghelgeo.rst643",
+      "sha256": "932a7ee9b7ad812d92c854ed1e029c166148fa0606dc8ef7a29af9ae0a57452e",
+      "bytes": 30728
+    },
+    {
+      "path": "cghelgeo.rst644",
+      "sha256": "2e8ab1266f1766d229617165e79ff1cf57fb454b02d76fad2dcfe2020b4139d9",
+      "bytes": 21024
+    },
+    {
+      "path": "cghelgeo.rst645",
+      "sha256": "52d60b0fe2160310be5ab9d7056369a389019a0d8bcb9b4844e58f271437953d",
+      "bytes": 23072
+    },
+    {
+      "path": "cghelgeo.rst646",
+      "sha256": "f86df50ada0539d49abd76e7236fb7910b1c31c56ff7179ddb0c33253a4d1dbd",
+      "bytes": 22648
+    },
+    {
+      "path": "cghelgeo.rst647",
+      "sha256": "f08797461fbf81ad2ab1d4196b11b65330020ee6ddae066517bddac30c9313dd",
+      "bytes": 23496
+    },
+    {
+      "path": "cghelgeo.rst648",
+      "sha256": "ff628de17110f76eaf41b94ce28fb4adf1f93528b442b5539f3f178163526d00",
+      "bytes": 23072
+    },
+    {
+      "path": "cghelgeo.rst649",
+      "sha256": "7bd19cc59820d263d8d4d3f23f10b53f445dcb393c236b266d4eb7e9f5314a56",
+      "bytes": 22648
+    },
+    {
+      "path": "cghelgeo.rst65",
+      "sha256": "d350fa343e5b982e51693ee633f2ac319dfaaa634e982d9237d2c2c10aeac12f",
+      "bytes": 117592
+    },
+    {
+      "path": "cghelgeo.rst650",
+      "sha256": "2e9223a4ea706bc616ffff8a3b6cefde9f6c5644e4464cb9f24a38f72a26a235",
+      "bytes": 22648
+    },
+    {
+      "path": "cghelgeo.rst66",
+      "sha256": "2d9c2ea7eab882838cf9b6c05f1413913b2f8a00c8002356677f3a911c9715e9",
+      "bytes": 167624
+    },
+    {
+      "path": "cghelgeo.rst67",
+      "sha256": "90a093ea45c8b5d5333b234fe1c4011a4155c9d340381986182148f13e807ef0",
+      "bytes": 147000
+    },
+    {
+      "path": "cghelgeo.rst68",
+      "sha256": "569c692cf804244ac7b75917e1a5720fbc5e4327b950b801f1ee370465040ac7",
+      "bytes": 121984
+    },
+    {
+      "path": "cghelgeo.rst69",
+      "sha256": "1fede4855320f718aff65c8b59392bc0df4c0a6a6b68b9f38b2f1a3cd997f5dd",
+      "bytes": 124112
+    },
+    {
+      "path": "cghelgeo.rst7",
+      "sha256": "033ef0b66f2350450954e89bfe283b45157a5e93d9950ed8f68bbbaa3dc882f5",
+      "bytes": 147000
+    },
+    {
+      "path": "cghelgeo.rst70",
+      "sha256": "e6fec8a16b018903e287b06aece73fcf19616bf55d3d1e3c52a15ec7d708a26f",
+      "bytes": 129568
+    },
+    {
+      "path": "cghelgeo.rst71",
+      "sha256": "92bb21cdf3167251fc8eeb37fe1dfb20dc18b53ff3673303374f02d4c198f514",
+      "bytes": 199160
+    },
+    {
+      "path": "cghelgeo.rst72",
+      "sha256": "5d3ea39d5d32203b9027f253c301358cff7661daf4866cc3e1c3cca8480f45ca",
+      "bytes": 164848
+    },
+    {
+      "path": "cghelgeo.rst73",
+      "sha256": "54b22098ad4f5efc76c686d74258e74636c0c6df4b54d06821f40d7c9bb28801",
+      "bytes": 187392
+    },
+    {
+      "path": "cghelgeo.rst74",
+      "sha256": "71d23ab04d576fc08a5c3e22b8263f42f8405fc64d20bb0f81c9ee85d39a55a9",
+      "bytes": 198512
+    },
+    {
+      "path": "cghelgeo.rst75",
+      "sha256": "ff7974f64105f5163714eb871b38679b568c182757640ac88172243618979e12",
+      "bytes": 211136
+    },
+    {
+      "path": "cghelgeo.rst76",
+      "sha256": "6f57e3ce6f4443e5a19867263b5d718fd95b3dc2fb8edaa939e655ef8b963315",
+      "bytes": 254184
+    },
+    {
+      "path": "cghelgeo.rst77",
+      "sha256": "b6a1f9f459c1e6aaa9f5d4a44bfebc88b26c71fb9d5544c53775a79c0bbfde6e",
+      "bytes": 190976
+    },
+    {
+      "path": "cghelgeo.rst78",
+      "sha256": "47f646e862f04728b91a1da6fcff2b89e721fc72955d826d5d882158ca6a5d7f",
+      "bytes": 185520
+    },
+    {
+      "path": "cghelgeo.rst79",
+      "sha256": "f627b8efbd9f9729a16c666382afa10fb42f44ac0103ad067dab874bb7aa0ead",
+      "bytes": 174352
+    },
+    {
+      "path": "cghelgeo.rst8",
+      "sha256": "2f0bf639718c37f59a22adb72f970613d29c3d3c435fca21f231dc381e17f52d",
+      "bytes": 121984
+    },
+    {
+      "path": "cghelgeo.rst80",
+      "sha256": "181c368984c361f565859c66967bc9aaa76a62d52880de2324cd36dfd1882f19",
+      "bytes": 53056
+    },
+    {
+      "path": "cghelgeo.rst81",
+      "sha256": "92d6e62d5458eea51669a4ee7627efe67030569f7895df175f971afa2225fe8b",
+      "bytes": 47320
+    },
+    {
+      "path": "cghelgeo.rst82",
+      "sha256": "f46bdcb823d7effcf9fb58947ca8f50a658e6a18a1f67a025f63554e9e37b980",
+      "bytes": 47744
+    },
+    {
+      "path": "cghelgeo.rst83",
+      "sha256": "14a8e4dab34cbc6d64f5533256fa308a221586977b392063e5591fb5ad9fb68d",
+      "bytes": 33488
+    },
+    {
+      "path": "cghelgeo.rst84",
+      "sha256": "3bf2fa84bb82676f3c2d895db2bdbb0f902eb92ec87655f354d1e256715c249d",
+      "bytes": 32856
+    },
+    {
+      "path": "cghelgeo.rst85",
+      "sha256": "0c8541980c9a992427eb4de0e4cc1bd2bf1bcf1f71d996e8b2576a9a1936ab09",
+      "bytes": 47744
+    },
+    {
+      "path": "cghelgeo.rst86",
+      "sha256": "231093f9ec09446dd346c786ae7bccead7895ec8d7435a1e7a271aca03a3b961",
+      "bytes": 33280
+    },
+    {
+      "path": "cghelgeo.rst87",
+      "sha256": "79220ef091cebbbf87c22e6feff2757e22d186a2de6d98d674e27c6fca7714cd",
+      "bytes": 38968
+    },
+    {
+      "path": "cghelgeo.rst88",
+      "sha256": "bdbfc33197102c242bbfc7c14684b3c0f112dcd0003b8a9b85e1ac03553ffe05",
+      "bytes": 51312
+    },
+    {
+      "path": "cghelgeo.rst89",
+      "sha256": "963f47ba518b7158f9d83e3efb3e7d0f8e8a9c854dfb64eeaef703a884925e5e",
+      "bytes": 52632
+    },
+    {
+      "path": "cghelgeo.rst9",
+      "sha256": "b3bf6f9d539f63e634c28ba036094303f4024363830687ca422ba4d68e615a0e",
+      "bytes": 124112
+    },
+    {
+      "path": "cghelgeo.rst90",
+      "sha256": "c11fbc141f9dd0fb6804db289d8a9ce7b1ba6faf65480c17e5fdc7d7110d0f39",
+      "bytes": 48248
+    },
+    {
+      "path": "cghelgeo.rst91",
+      "sha256": "3bfb6a34f1d13e9daaa9168070936fa30bcfd29f2a14ef0005479b9821bd404b",
+      "bytes": 184064
+    },
+    {
+      "path": "cghelgeo.rst92",
+      "sha256": "10d2deafbe9e5b6fca63bb6162f45e662dff97899479bd69f2e6e18217be9efe",
+      "bytes": 98032
+    },
+    {
+      "path": "cghelgeo.rst93",
+      "sha256": "3bf9886f364feefd2a52bb70ee0d2ced4966dff89807ff32d59960396dc2d46f",
+      "bytes": 125568
+    },
+    {
+      "path": "cghelgeo.rst94",
+      "sha256": "fec4e746eb7c6b75ec64cd9522468b7846d9cbb79e6da5a1638bca7ef5ebd85d",
+      "bytes": 148920
+    },
+    {
+      "path": "cghelgeo.rst95",
+      "sha256": "500073c0fcf10f879023bffe4217c2e82e24c5af70747a9f9fca925524264f96",
+      "bytes": 117592
+    },
+    {
+      "path": "cghelgeo.rst96",
+      "sha256": "ecf5373fe196cf699fbc6aa35449a41ff7de686d0f293dfe314315ca115cbcc7",
+      "bytes": 166560
+    },
+    {
+      "path": "cghelgeo.rst97",
+      "sha256": "3ccacec93299c2d15771c084300ebed3b51562af84075c05529e9b349209a746",
+      "bytes": 147000
+    },
+    {
+      "path": "cghelgeo.rst98",
+      "sha256": "b0404d292599ceb07bfd7f456aced27bc7050024d2e7f61d85a1ce2c39401fe8",
+      "bytes": 121984
+    },
+    {
+      "path": "cghelgeo.rst99",
+      "sha256": "8626ec4bfd2ee0b17e4fde4b033d6e97eff068b75bb6c76c2df3088bafe95a5f",
+      "bytes": 124112
+    }
+  ]
+}

@@ -1,0 +1,93 @@
+{
+  "source_commit": "5ab5f1edf7f8e322bad5cc230ba2ec0451504c37",
+  "input": "benchmarks/inputs/cghelgeo.dat",
+  "MPI_processes": 18,
+  "OpenMP_threads_per_process": 2,
+  "BLAS_threads": 2,
+  "criterion": 1e-10,
+  "all_other_physical_input_parameters_preserved": true,
+  "MD_steps": 1,
+  "SCF_iteration_limit_per_invocation": 200,
+  "atom_count": 650,
+  "force_components_compared": 1950,
+  "original_campaign_runs": 4,
+  "additional_matched_seed_controls": 2,
+  "pairwise_comparisons": 15,
+  "all_converged": true,
+  "original_four_accuracy_checks_passed": false,
+  "all_accuracy_checks_passed": false,
+  "controlled_legacy_product_comparisons": 6,
+  "all_controlled_legacy_product_checks_passed": true,
+  "timings": "Diagnostic accuracy runs with different initialization for reference/controls; not a performance comparison.",
+  "upstream": "Existing Intel CPU executable from ~/openmx4.0/work/openmx, copied unchanged.",
+  "initialization": "Upstream restarts from its same-geometry 200-SCF 1e-12 probe. Three original fork cases start fresh. Both added controls restart from exactly the same converged default-GPU files.",
+  "preliminary": "Original CPU at 1e-12: normal exit after 200 SCF steps, not converged. Preserved in preliminary/.",
+  "fork": "One CUDA Release executable in all five fork configurations; only snapshot RPATH order changed.",
+  "CPU": "OPENMX_GPU=0; scf.eigen.lib elpa2; OPENMX_HOST_SIMD=avx512; other arithmetic defaults retained.",
+  "GPU_native": "scf.fp32.enable off; scf.gemmul8.enable off; OPENMX_CUSOLVER_EMULATION=0.",
+  "GPU_native_legacy_products": "scf.fp32.enable on; scf.gemmul8.enable off; OPENMX_CUSOLVER_EMULATION=0; OPENMX_EIGEN_REFINE=0; OPENMX_GRID_PRECISION=fp64; OPENMX_ORBS_EVAL_PRECISION=fp64. Retains inherited FP32 projector-product rounding.",
+  "matched_full_FP64_control": "Same seed, executable and numerical environment as the legacy-product control; only scf.fp32.enable changes to off.",
+  "GPU_default": "Default arithmetic controls unchanged: GEMMul8, FP32 refinement and double-float policies remain automatic; cuSOLVER emulation mode queried successfully.",
+  "GPU_MPS": true,
+  "cuSOLVER_audit": "A forwarding LD_PRELOAD shim records successful math-mode changes/queries and actual Xsyevd/Xsyevdx calls, sizes and arithmetic types; it does not change arguments or results.",
+  "force_comparison": "All components from the printed coordinates.forces block; decimal differences and rounding bounds.",
+  "energy_tolerance_hartree": 1e-07,
+  "force_component_tolerance_hartree_per_bohr": 1e-07,
+  "runs": [
+    {
+      "variant": "upstream",
+      "SCF_steps": 2,
+      "preparatory_SCF_steps": 200,
+      "seed_SCF_steps": 0,
+      "initialization": "same-geometry 200-SCF 1e-12 probe restart",
+      "energy_hartree": -4153.14819061388,
+      "converged": true
+    },
+    {
+      "variant": "cpu_avx512",
+      "SCF_steps": 95,
+      "preparatory_SCF_steps": 0,
+      "seed_SCF_steps": 0,
+      "initialization": "fresh; no restart",
+      "energy_hartree": -4153.148190613648,
+      "converged": true
+    },
+    {
+      "variant": "gpu_native_fp64",
+      "SCF_steps": 83,
+      "preparatory_SCF_steps": 0,
+      "seed_SCF_steps": 0,
+      "initialization": "fresh; no restart",
+      "energy_hartree": -4153.148190776506,
+      "converged": true
+    },
+    {
+      "variant": "gpu_default",
+      "SCF_steps": 82,
+      "preparatory_SCF_steps": 0,
+      "seed_SCF_steps": 0,
+      "initialization": "fresh; no restart",
+      "energy_hartree": -4153.148190613619,
+      "converged": true
+    },
+    {
+      "variant": "gpu_native_legacy_products",
+      "SCF_steps": 2,
+      "preparatory_SCF_steps": 0,
+      "seed_SCF_steps": 82,
+      "initialization": "same-geometry converged default-GPU density/Hamiltonian; scf.restart on",
+      "energy_hartree": -4153.148190613762,
+      "converged": true
+    },
+    {
+      "variant": "gpu_full_fp64_same_seed",
+      "SCF_steps": 60,
+      "preparatory_SCF_steps": 0,
+      "seed_SCF_steps": 82,
+      "initialization": "same-geometry converged default-GPU density/Hamiltonian; scf.restart on",
+      "energy_hartree": -4153.148190776526,
+      "converged": true
+    }
+  ],
+  "raw_workspace": "/home/dc1394/openmx4.0_gpu/build/cghelgeo-precision-20261108-163534"
+}

@@ -1,0 +1,420 @@
+{
+  "ranks": [
+    {
+      "rank": 0,
+      "pid": 1541453,
+      "cpus": [
+        0,
+        18
+      ],
+      "requested_cpus": [
+        0,
+        18
+      ],
+      "executable": "/home/dc1394/openmx4.0_gpu/build/cghelgeo-precision-20261108-163534/reference/openmx"
+    },
+    {
+      "rank": 1,
+      "pid": 1541454,
+      "cpus": [
+        1,
+        19
+      ],
+      "requested_cpus": [
+        1,
+        19
+      ],
+      "executable": "/home/dc1394/openmx4.0_gpu/build/cghelgeo-precision-20261108-163534/reference/openmx"
+    },
+    {
+      "rank": 2,
+      "pid": 1541455,
+      "cpus": [
+        2,
+        20
+      ],
+      "requested_cpus": [
+        2,
+        20
+      ],
+      "executable": "/home/dc1394/openmx4.0_gpu/build/cghelgeo-precision-20261108-163534/reference/openmx"
+    },
+    {
+      "rank": 3,
+      "pid": 1541456,
+      "cpus": [
+        3,
+        21
+      ],
+      "requested_cpus": [
+        3,
+        21
+      ],
+      "executable": "/home/dc1394/openmx4.0_gpu/build/cghelgeo-precision-20261108-163534/reference/openmx"
+    },
+    {
+      "rank": 4,
+      "pid": 1541457,
+      "cpus": [
+        4,
+        22
+      ],
+      "requested_cpus": [
+        4,
+        22
+      ],
+      "executable": "/home/dc1394/openmx4.0_gpu/build/cghelgeo-precision-20261108-163534/reference/openmx"
+    },
+    {
+      "rank": 5,
+      "pid": 1541458,
+      "cpus": [
+        5,
+        23
+      ],
+      "requested_cpus": [
+        5,
+        23
+      ],
+      "executable": "/home/dc1394/openmx4.0_gpu/build/cghelgeo-precision-20261108-163534/reference/openmx"
+    },
+    {
+      "rank": 6,
+      "pid": 1541459,
+      "cpus": [
+        6,
+        24
+      ],
+      "requested_cpus": [
+        6,
+        24
+      ],
+      "executable": "/home/dc1394/openmx4.0_gpu/build/cghelgeo-precision-20261108-163534/reference/openmx"
+    },
+    {
+      "rank": 7,
+      "pid": 1541460,
+      "cpus": [
+        7,
+        25
+      ],
+      "requested_cpus": [
+        7,
+        25
+      ],
+      "executable": "/home/dc1394/openmx4.0_gpu/build/cghelgeo-precision-20261108-163534/reference/openmx"
+    },
+    {
+      "rank": 8,
+      "pid": 1541461,
+      "cpus": [
+        8,
+        26
+      ],
+      "requested_cpus": [
+        8,
+        26
+      ],
+      "executable": "/home/dc1394/openmx4.0_gpu/build/cghelgeo-precision-20261108-163534/reference/openmx"
+    },
+    {
+      "rank": 9,
+      "pid": 1541462,
+      "cpus": [
+        9,
+        27
+      ],
+      "requested_cpus": [
+        9,
+        27
+      ],
+      "executable": "/home/dc1394/openmx4.0_gpu/build/cghelgeo-precision-20261108-163534/reference/openmx"
+    },
+    {
+      "rank": 10,
+      "pid": 1541463,
+      "cpus": [
+        10,
+        28
+      ],
+      "requested_cpus": [
+        10,
+        28
+      ],
+      "executable": "/home/dc1394/openmx4.0_gpu/build/cghelgeo-precision-20261108-163534/reference/openmx"
+    },
+    {
+      "rank": 11,
+      "pid": 1541464,
+      "cpus": [
+        11,
+        29
+      ],
+      "requested_cpus": [
+        11,
+        29
+      ],
+      "executable": "/home/dc1394/openmx4.0_gpu/build/cghelgeo-precision-20261108-163534/reference/openmx"
+    },
+    {
+      "rank": 12,
+      "pid": 1541465,
+      "cpus": [
+        12,
+        30
+      ],
+      "requested_cpus": [
+        12,
+        30
+      ],
+      "executable": "/home/dc1394/openmx4.0_gpu/build/cghelgeo-precision-20261108-163534/reference/openmx"
+    },
+    {
+      "rank": 13,
+      "pid": 1541466,
+      "cpus": [
+        13,
+        31
+      ],
+      "requested_cpus": [
+        13,
+        31
+      ],
+      "executable": "/home/dc1394/openmx4.0_gpu/build/cghelgeo-precision-20261108-163534/reference/openmx"
+    },
+    {
+      "rank": 14,
+      "pid": 1541467,
+      "cpus": [
+        14,
+        32
+      ],
+      "requested_cpus": [
+        14,
+        32
+      ],
+      "executable": "/home/dc1394/openmx4.0_gpu/build/cghelgeo-precision-20261108-163534/reference/openmx"
+    },
+    {
+      "rank": 15,
+      "pid": 1541468,
+      "cpus": [
+        15,
+        33
+      ],
+      "requested_cpus": [
+        15,
+        33
+      ],
+      "executable": "/home/dc1394/openmx4.0_gpu/build/cghelgeo-precision-20261108-163534/reference/openmx"
+    },
+    {
+      "rank": 16,
+      "pid": 1541469,
+      "cpus": [
+        16,
+        34
+      ],
+      "requested_cpus": [
+        16,
+        34
+      ],
+      "executable": "/home/dc1394/openmx4.0_gpu/build/cghelgeo-precision-20261108-163534/reference/openmx"
+    },
+    {
+      "rank": 17,
+      "pid": 1541470,
+      "cpus": [
+        17,
+        35
+      ],
+      "requested_cpus": [
+        17,
+        35
+      ],
+      "executable": "/home/dc1394/openmx4.0_gpu/build/cghelgeo-precision-20261108-163534/reference/openmx"
+    }
+  ],
+  "threads": {
+    "rank-00-threads": [
+      {
+        "tid": 1541453,
+        "cpus": "0"
+      },
+      {
+        "tid": 1541471,
+        "cpus": "18"
+      }
+    ],
+    "rank-01-threads": [
+      {
+        "tid": 1541454,
+        "cpus": "1"
+      },
+      {
+        "tid": 1541482,
+        "cpus": "19"
+      }
+    ],
+    "rank-02-threads": [
+      {
+        "tid": 1541455,
+        "cpus": "2"
+      },
+      {
+        "tid": 1541479,
+        "cpus": "20"
+      }
+    ],
+    "rank-03-threads": [
+      {
+        "tid": 1541456,
+        "cpus": "3"
+      },
+      {
+        "tid": 1541486,
+        "cpus": "21"
+      }
+    ],
+    "rank-04-threads": [
+      {
+        "tid": 1541457,
+        "cpus": "4"
+      },
+      {
+        "tid": 1541476,
+        "cpus": "22"
+      }
+    ],
+    "rank-05-threads": [
+      {
+        "tid": 1541458,
+        "cpus": "5"
+      },
+      {
+        "tid": 1541472,
+        "cpus": "23"
+      }
+    ],
+    "rank-06-threads": [
+      {
+        "tid": 1541459,
+        "cpus": "6"
+      },
+      {
+        "tid": 1541477,
+        "cpus": "24"
+      }
+    ],
+    "rank-07-threads": [
+      {
+        "tid": 1541460,
+        "cpus": "7"
+      },
+      {
+        "tid": 1541478,
+        "cpus": "25"
+      }
+    ],
+    "rank-08-threads": [
+      {
+        "tid": 1541461,
+        "cpus": "8"
+      },
+      {
+        "tid": 1541487,
+        "cpus": "26"
+      }
+    ],
+    "rank-09-threads": [
+      {
+        "tid": 1541462,
+        "cpus": "9"
+      },
+      {
+        "tid": 1541481,
+        "cpus": "27"
+      }
+    ],
+    "rank-10-threads": [
+      {
+        "tid": 1541463,
+        "cpus": "10"
+      },
+      {
+        "tid": 1541488,
+        "cpus": "28"
+      }
+    ],
+    "rank-11-threads": [
+      {
+        "tid": 1541464,
+        "cpus": "11"
+      },
+      {
+        "tid": 1541473,
+        "cpus": "29"
+      }
+    ],
+    "rank-12-threads": [
+      {
+        "tid": 1541465,
+        "cpus": "12"
+      },
+      {
+        "tid": 1541484,
+        "cpus": "30"
+      }
+    ],
+    "rank-13-threads": [
+      {
+        "tid": 1541466,
+        "cpus": "13"
+      },
+      {
+        "tid": 1541485,
+        "cpus": "31"
+      }
+    ],
+    "rank-14-threads": [
+      {
+        "tid": 1541467,
+        "cpus": "14"
+      },
+      {
+        "tid": 1541474,
+        "cpus": "32"
+      }
+    ],
+    "rank-15-threads": [
+      {
+        "tid": 1541468,
+        "cpus": "15"
+      },
+      {
+        "tid": 1541480,
+        "cpus": "33"
+      }
+    ],
+    "rank-16-threads": [
+      {
+        "tid": 1541469,
+        "cpus": "16"
+      },
+      {
+        "tid": 1541475,
+        "cpus": "34"
+      }
+    ],
+    "rank-17-threads": [
+      {
+        "tid": 1541470,
+        "cpus": "17"
+      },
+      {
+        "tid": 1541483,
+        "cpus": "35"
+      }
+    ]
+  }
+}

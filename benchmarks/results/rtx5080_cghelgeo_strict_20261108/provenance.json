@@ -1,0 +1,100 @@
+{
+  "artifact": "/home/dc1394/openmx4.0_gpu/build/cghelgeo-precision-20261108-163534",
+  "source_commit": "5ab5f1edf7f8e322bad5cc230ba2ec0451504c37",
+  "criterion": 1e-10,
+  "MPI_ranks": 18,
+  "OMP_threads": 2,
+  "input_sha256": "9c3958e470820ab2182af859b4749a0f3375c41d1a56ac013e0f398b441d0ff7",
+  "datasets": [
+    {
+      "path": "DFT_DATA19/PAO/H5.0.pao",
+      "sha256": "31b4a1bb098e57fdde6c5158596929362f304909132dc9eeb2cc389c08fbbf46"
+    },
+    {
+      "path": "DFT_DATA19/VPS/H_PBE19.vps",
+      "sha256": "cdb7685cc3f34bd2bf81f809594bb4371728476d1a624dca291c4b9ff361c6fa"
+    },
+    {
+      "path": "DFT_DATA19/PAO/C6.0.pao",
+      "sha256": "1442a834dbc2b9b55e8f11a20734c7b77765fa4e05ca3e1b1f004da46bfaaef4"
+    },
+    {
+      "path": "DFT_DATA19/VPS/C_PBE19.vps",
+      "sha256": "4b9c78eb72be25ca46366b8fd39c74ae7172d7db9e77b29782a42f71901b38a7"
+    },
+    {
+      "path": "DFT_DATA19/PAO/N6.0.pao",
+      "sha256": "063efc7ac0674c36e2ccb2c2ba0bc3aa953c94f39046b0c2acc4cf514c048ff7"
+    },
+    {
+      "path": "DFT_DATA19/VPS/N_PBE19.vps",
+      "sha256": "904c1c6e59a86448830178681a39cd3c4d14fb2daf9be8f4742673ddfc8e3466"
+    },
+    {
+      "path": "DFT_DATA19/PAO/O7.0.pao",
+      "sha256": "7411fc9c218ee947234bcc15a1f3ff12f48954eb8c5ce4c617436f8671810ec4"
+    },
+    {
+      "path": "DFT_DATA19/VPS/O_PBE19.vps",
+      "sha256": "afb469c2da38c80854b1bdf7df1f6da6dc8d7c874a75f0bf7c294a96046410fc"
+    },
+    {
+      "path": "DFT_DATA19/PAO/P7.0.pao",
+      "sha256": "9ae4ec8e1cddf035464c2b9cb7d0fccbffb40f118114b225e3106ac5cc8f1314"
+    },
+    {
+      "path": "DFT_DATA19/VPS/P_PBE19.vps",
+      "sha256": "91a543cf3f29b743133c80ff6442851a9be8adfb215fd571d56a169cf2f740b6"
+    }
+  ],
+  "binaries": {
+    "fork_built_sha256": "e960a0556344c2f6b1a4bc32c0758d894c44a30e6013b738a25e84f78146e410",
+    "fork_snapshot_sha256": "4624369d0a9b9dd6d2034656286d7e415eeca525fd07d2f0d3e7ccd6589b765f",
+    "upstream_sha256": "59b23d044be0ef14cd678793abb80bdd6d9bd464debdbf9f395fb32a586f4ce0"
+  },
+  "libraries": {
+    "libopenmx_host_simd.so": "ab19fb8d12b8e20f59b6348bc9122e951758cea1e6c5f7b1d8841f0868c72511",
+    "libopenmx_core.so": "c668308721e9e96a909f00f090034d48e9fe89d0b1e4d5ac7c2760f892eda73b"
+  },
+  "snapshot_rpath": {
+    "old": "/opt/nvidia/hpc_sdk/Linux_x86_64/26.9/comm_libs/13.3/hpcx/hpcx-2.50/ompi5/lib:/usr/local/cuda-13.4/targets/x86_64-linux/lib:/home/dc1394/openmx4.0_gpu/build/cuda/core/:$ORIGIN/lib:$ORIGIN/../lib:/opt/nvidia/hpc_sdk/Linux_x86_64/26.9/compilers/lib:/usr/local/cuda-13.4/lib64:/usr/local/cuda-13.4/targets/x86_64-linux/lib64",
+    "new": "$ORIGIN/lib:$ORIGIN/../lib:/opt/nvidia/hpc_sdk/Linux_x86_64/26.9/comm_libs/13.3/hpcx/hpcx-2.50/ompi5/lib:/usr/local/cuda-13.4/targets/x86_64-linux/lib:/home/dc1394/openmx4.0_gpu/build/cuda/core/:/opt/nvidia/hpc_sdk/Linux_x86_64/26.9/compilers/lib:/usr/local/cuda-13.4/lib64:/usr/local/cuda-13.4/targets/x86_64-linux/lib64",
+    "change": "Only reorder the existing, equal-length dynamic string to prefer frozen core libraries."
+  },
+  "initial_probe": "preliminary/diagnostic.json: original CPU, 1e-12, 200 steps, normal exit but unconverged.",
+  "initialization": "Upstream reuses the same-geometry probe density; the three fork modes start fresh.",
+  "cuSOLVER_audit": {
+    "compiler": "g++ (Ubuntu 14.2.0-4ubuntu2~24.04.1) 14.2.0",
+    "library_sha256": "06b4dd2835dc418fe960e1a21aea1373108414f9091cd36cb06cf3de44f09cef",
+    "source_sha256": "e0abf339063ee90123b710eea76986c4a1a879074876eae309c8bc439796b23f",
+    "compile": "g++ -std=c++17 -shared -fPIC -O2 -I/usr/local/cuda-13.4/include cusolver_audit.cpp -ldl -o cusolver_audit.so",
+    "probe_compile": "g++ -std=c++17 -O2 -I/usr/local/cuda-13.4/include audit_solver_probe.cpp -L/usr/local/cuda-13.4/lib64 -Wl,-rpath,/usr/local/cuda-13.4/lib64 -lcusolver -lcudart -o audit_solver_probe",
+    "probe_results": "audit-solver-probe-results.json",
+    "scope": "Only GPU OpenMX children; forwards unchanged calls and records handle mode plus actual Xsyevd/Xsyevdx sizes/types. No production source changes."
+  },
+  "documentation_sync": {
+    "commit": "d6870f66ebbeb8f75a6f483d0cbcea39a0518e0d",
+    "numerical_sources_unchanged": true,
+    "changed_paths": [
+      ".gitignore",
+      "README.md",
+      "benchmarks/results/radeon_cghelgeo_strict_20261108_8x2.csv",
+      "benchmarks/results/radeon_cghelgeo_strict_20261108_8x2.json",
+      "docs/CGHELGEO_STRICT_SCF.md"
+    ]
+  },
+  "supplementary_controls": {
+    "variants": [
+      "gpu_native_legacy_products",
+      "gpu_full_fp64_same_seed"
+    ],
+    "same_restart_source": "gpu_default",
+    "same_seed_hashes_verified": true,
+    "same_numerical_environment_verified": true,
+    "only_input_difference": "scf.fp32.enable on versus off",
+    "projector_rounding_energy_shift_hartree": 1.62764e-07,
+    "projector_rounding_max_force_shift_hartree_per_bohr": 3.4909e-08,
+    "fresh_vs_restarted_full_FP64_energy_difference_hartree": 2e-11,
+    "fresh_vs_restarted_full_FP64_max_force_difference_hartree_per_bohr": 4.38e-10
+  }
+}

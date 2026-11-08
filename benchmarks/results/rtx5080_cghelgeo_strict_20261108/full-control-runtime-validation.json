@@ -1,0 +1,18 @@
+{
+  "passed": true,
+  "variant": "gpu_full_fp64_same_seed",
+  "all_18_rank_runtime_and_pinned_thread_checks_passed": true,
+  "same_geometry_default_gpu_restart_verified": true,
+  "restart_seed_hashes_verified": true,
+  "MPS_observed_and_stopped": true,
+  "native_FP64_eigensolver_calls": 122,
+  "largest_eigensystem": 6670,
+  "solver_arithmetic": [
+    "complex_fp64"
+  ],
+  "GEMMul8_calls": 0,
+  "native_cuBLAS_calls": 360,
+  "grid_precision_request": "fp64",
+  "orbital_precision_request": "fp64",
+  "inherited_FP32_projector_product_rounding_retained": false
+}

@@ -1,0 +1,109 @@
+[
+  {
+    "name": "native",
+    "returncode": 0,
+    "stdout": "api=Xsyevdx info=0 eigenvalues=2,3,4\napi=Xsyevd info=0 eigenvalues=2,3,4\n",
+    "stderr": "",
+    "records": [
+      {
+        "pid": 1557772,
+        "event": "create",
+        "handle": "0x60debbe98ea0",
+        "requested": -1,
+        "mode": 1,
+        "status": 0,
+        "read_status": 0,
+        "native_mode": 1,
+        "emulated_mode": 4,
+        "arithmetic": "none",
+        "n": 0
+      },
+      {
+        "pid": 1557772,
+        "event": "Xsyevdx",
+        "handle": "0x60debbe98ea0",
+        "requested": -1,
+        "mode": 1,
+        "status": 0,
+        "read_status": 0,
+        "native_mode": 1,
+        "emulated_mode": 4,
+        "arithmetic": "complex_fp64",
+        "n": 3
+      },
+      {
+        "pid": 1557772,
+        "event": "Xsyevd",
+        "handle": "0x60debbe98ea0",
+        "requested": -1,
+        "mode": 1,
+        "status": 0,
+        "read_status": 0,
+        "native_mode": 1,
+        "emulated_mode": 4,
+        "arithmetic": "complex_fp64",
+        "n": 3
+      }
+    ]
+  },
+  {
+    "name": "emulated",
+    "returncode": 0,
+    "stdout": "api=Xsyevdx info=0 eigenvalues=2,3,4\napi=Xsyevd info=0 eigenvalues=2,3,4\n",
+    "stderr": "",
+    "records": [
+      {
+        "pid": 1557834,
+        "event": "create",
+        "handle": "0x55c3d6f7bea0",
+        "requested": -1,
+        "mode": 1,
+        "status": 0,
+        "read_status": 0,
+        "native_mode": 1,
+        "emulated_mode": 4,
+        "arithmetic": "none",
+        "n": 0
+      },
+      {
+        "pid": 1557834,
+        "event": "set",
+        "handle": "0x55c3d6f7bea0",
+        "requested": 4,
+        "mode": 4,
+        "status": 0,
+        "read_status": 0,
+        "native_mode": 1,
+        "emulated_mode": 4,
+        "arithmetic": "none",
+        "n": 0
+      },
+      {
+        "pid": 1557834,
+        "event": "Xsyevdx",
+        "handle": "0x55c3d6f7bea0",
+        "requested": -1,
+        "mode": 4,
+        "status": 0,
+        "read_status": 0,
+        "native_mode": 1,
+        "emulated_mode": 4,
+        "arithmetic": "complex_fp64",
+        "n": 3
+      },
+      {
+        "pid": 1557834,
+        "event": "Xsyevd",
+        "handle": "0x55c3d6f7bea0",
+        "requested": -1,
+        "mode": 4,
+        "status": 0,
+        "read_status": 0,
+        "native_mode": 1,
+        "emulated_mode": 4,
+        "arithmetic": "complex_fp64",
+        "n": 3
+      }
+    ]
+  }
+]

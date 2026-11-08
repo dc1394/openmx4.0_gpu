@@ -1,0 +1,14 @@
+[
+  {
+    "mode": "native",
+    "returncode": 0,
+    "stdout": "mode=1 native=1 emulated=4\n",
+    "stderr": ""
+  },
+  {
+    "mode": "emulated",
+    "returncode": 0,
+    "stdout": "mode=4 native=1 emulated=4\n",
+    "stderr": ""
+  }
+]

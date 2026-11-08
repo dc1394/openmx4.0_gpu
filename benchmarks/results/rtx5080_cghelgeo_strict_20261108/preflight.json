@@ -1,0 +1,7 @@
+{
+  "AVX512_available": true,
+  "selected_name": "AVX-512",
+  "criterion": 1e-10,
+  "MPI_ranks": 18,
+  "OMP_threads": 2
+}

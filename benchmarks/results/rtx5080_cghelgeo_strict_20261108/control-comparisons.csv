@@ -1,0 +1,16 @@
+baseline,candidate,energy_difference_hartree,max_force_component_difference_hartree_per_bohr,energy_difference_rounding_upper_bound,force_difference_rounding_upper_bound,max_force_atom,max_force_axis,max_coordinate_difference,energy_passed,force_passed,passed,inherited_projector_products_held_fixed
+upstream,cpu_avx512,2.32e-10,3.57e-10,2.33e-10,3.58e-10,314,x,0.0,True,True,True,True
+upstream,gpu_native_fp64,1.62626e-07,3.5031e-08,1.62627e-07,3.5032e-08,121,x,0.0,False,True,False,False
+upstream,gpu_default,2.61e-10,6.15e-10,2.62e-10,6.16e-10,314,x,0.0,True,True,True,True
+upstream,gpu_native_legacy_products,1.18e-10,1.363e-09,1.19e-10,1.364e-09,479,x,0.0,True,True,True,True
+upstream,gpu_full_fp64_same_seed,1.62646e-07,3.5051e-08,1.62647e-07,3.5052e-08,121,x,0.0,False,True,False,False
+cpu_avx512,gpu_native_fp64,1.62858e-07,3.502e-08,1.62859e-07,3.5021e-08,121,x,0.0,False,True,False,False
+cpu_avx512,gpu_default,2.9e-11,4.66e-10,3e-11,4.67e-10,212,x,0.0,True,True,True,True
+cpu_avx512,gpu_native_legacy_products,1.14e-10,1.676e-09,1.15e-10,1.677e-09,479,x,0.0,True,True,True,True
+cpu_avx512,gpu_full_fp64_same_seed,1.62878e-07,3.504e-08,1.62879e-07,3.5041e-08,121,x,0.0,False,True,False,False
+gpu_native_fp64,gpu_default,1.62887e-07,3.4903e-08,1.62888e-07,3.4904e-08,121,x,0.0,False,True,False,False
+gpu_native_fp64,gpu_native_legacy_products,1.62744e-07,3.4889e-08,1.62745e-07,3.489e-08,121,x,0.0,False,True,False,False
+gpu_native_fp64,gpu_full_fp64_same_seed,2e-11,4.38e-10,2.1e-11,4.39e-10,545,y,0.0,True,True,True,False
+gpu_default,gpu_native_legacy_products,1.43e-10,1.805e-09,1.44e-10,1.806e-09,545,y,0.0,True,True,True,True
+gpu_default,gpu_full_fp64_same_seed,1.62907e-07,3.4923e-08,1.62908e-07,3.4924e-08,121,x,0.0,False,True,False,False
+gpu_native_legacy_products,gpu_full_fp64_same_seed,1.62764e-07,3.4909e-08,1.62765e-07,3.491e-08,121,x,0.0,False,True,False,False

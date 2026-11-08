@@ -1,0 +1,924 @@
+{
+  "ranks": [
+    {
+      "rank": 0,
+      "pid": 1787418,
+      "cpus": [
+        0,
+        18
+      ],
+      "requested_cpus": [
+        0,
+        18
+      ],
+      "executable": "/home/dc1394/openmx4.0_gpu/build/cghelgeo-precision-20261108-163534/bin/openmx"
+    },
+    {
+      "rank": 1,
+      "pid": 1787419,
+      "cpus": [
+        1,
+        19
+      ],
+      "requested_cpus": [
+        1,
+        19
+      ],
+      "executable": "/home/dc1394/openmx4.0_gpu/build/cghelgeo-precision-20261108-163534/bin/openmx"
+    },
+    {
+      "rank": 2,
+      "pid": 1787420,
+      "cpus": [
+        2,
+        20
+      ],
+      "requested_cpus": [
+        2,
+        20
+      ],
+      "executable": "/home/dc1394/openmx4.0_gpu/build/cghelgeo-precision-20261108-163534/bin/openmx"
+    },
+    {
+      "rank": 3,
+      "pid": 1787421,
+      "cpus": [
+        3,
+        21
+      ],
+      "requested_cpus": [
+        3,
+        21
+      ],
+      "executable": "/home/dc1394/openmx4.0_gpu/build/cghelgeo-precision-20261108-163534/bin/openmx"
+    },
+    {
+      "rank": 4,
+      "pid": 1787422,
+      "cpus": [
+        4,
+        22
+      ],
+      "requested_cpus": [
+        4,
+        22
+      ],
+      "executable": "/home/dc1394/openmx4.0_gpu/build/cghelgeo-precision-20261108-163534/bin/openmx"
+    },
+    {
+      "rank": 5,
+      "pid": 1787423,
+      "cpus": [
+        5,
+        23
+      ],
+      "requested_cpus": [
+        5,
+        23
+      ],
+      "executable": "/home/dc1394/openmx4.0_gpu/build/cghelgeo-precision-20261108-163534/bin/openmx"
+    },
+    {
+      "rank": 6,
+      "pid": 1787424,
+      "cpus": [
+        6,
+        24
+      ],
+      "requested_cpus": [
+        6,
+        24
+      ],
+      "executable": "/home/dc1394/openmx4.0_gpu/build/cghelgeo-precision-20261108-163534/bin/openmx"
+    },
+    {
+      "rank": 7,
+      "pid": 1787425,
+      "cpus": [
+        7,
+        25
+      ],
+      "requested_cpus": [
+        7,
+        25
+      ],
+      "executable": "/home/dc1394/openmx4.0_gpu/build/cghelgeo-precision-20261108-163534/bin/openmx"
+    },
+    {
+      "rank": 8,
+      "pid": 1787426,
+      "cpus": [
+        8,
+        26
+      ],
+      "requested_cpus": [
+        8,
+        26
+      ],
+      "executable": "/home/dc1394/openmx4.0_gpu/build/cghelgeo-precision-20261108-163534/bin/openmx"
+    },
+    {
+      "rank": 9,
+      "pid": 1787427,
+      "cpus": [
+        9,
+        27
+      ],
+      "requested_cpus": [
+        9,
+        27
+      ],
+      "executable": "/home/dc1394/openmx4.0_gpu/build/cghelgeo-precision-20261108-163534/bin/openmx"
+    },
+    {
+      "rank": 10,
+      "pid": 1787428,
+      "cpus": [
+        10,
+        28
+      ],
+      "requested_cpus": [
+        10,
+        28
+      ],
+      "executable": "/home/dc1394/openmx4.0_gpu/build/cghelgeo-precision-20261108-163534/bin/openmx"
+    },
+    {
+      "rank": 11,
+      "pid": 1787429,
+      "cpus": [
+        11,
+        29
+      ],
+      "requested_cpus": [
+        11,
+        29
+      ],
+      "executable": "/home/dc1394/openmx4.0_gpu/build/cghelgeo-precision-20261108-163534/bin/openmx"
+    },
+    {
+      "rank": 12,
+      "pid": 1787430,
+      "cpus": [
+        12,
+        30
+      ],
+      "requested_cpus": [
+        12,
+        30
+      ],
+      "executable": "/home/dc1394/openmx4.0_gpu/build/cghelgeo-precision-20261108-163534/bin/openmx"
+    },
+    {
+      "rank": 13,
+      "pid": 1787431,
+      "cpus": [
+        13,
+        31
+      ],
+      "requested_cpus": [
+        13,
+        31
+      ],
+      "executable": "/home/dc1394/openmx4.0_gpu/build/cghelgeo-precision-20261108-163534/bin/openmx"
+    },
+    {
+      "rank": 14,
+      "pid": 1787432,
+      "cpus": [
+        14,
+        32
+      ],
+      "requested_cpus": [
+        14,
+        32
+      ],
+      "executable": "/home/dc1394/openmx4.0_gpu/build/cghelgeo-precision-20261108-163534/bin/openmx"
+    },
+    {
+      "rank": 15,
+      "pid": 1787433,
+      "cpus": [
+        15,
+        33
+      ],
+      "requested_cpus": [
+        15,
+        33
+      ],
+      "executable": "/home/dc1394/openmx4.0_gpu/build/cghelgeo-precision-20261108-163534/bin/openmx"
+    },
+    {
+      "rank": 16,
+      "pid": 1787434,
+      "cpus": [
+        16,
+        34
+      ],
+      "requested_cpus": [
+        16,
+        34
+      ],
+      "executable": "/home/dc1394/openmx4.0_gpu/build/cghelgeo-precision-20261108-163534/bin/openmx"
+    },
+    {
+      "rank": 17,
+      "pid": 1787435,
+      "cpus": [
+        17,
+        35
+      ],
+      "requested_cpus": [
+        17,
+        35
+      ],
+      "executable": "/home/dc1394/openmx4.0_gpu/build/cghelgeo-precision-20261108-163534/bin/openmx"
+    }
+  ],
+  "threads": {
+    "rank-00-threads": [
+      {
+        "tid": 1787418,
+        "cpus": "0"
+      },
+      {
+        "tid": 1787437,
+        "cpus": "0-35"
+      },
+      {
+        "tid": 1787461,
+        "cpus": "0"
+      },
+      {
+        "tid": 1787479,
+        "cpus": "0"
+      },
+      {
+        "tid": 1787528,
+        "cpus": "0"
+      },
+      {
+        "tid": 1787617,
+        "cpus": "18"
+      },
+      {
+        "tid": 1787678,
+        "cpus": "0"
+      },
+      {
+        "tid": 1787679,
+        "cpus": "0"
+      },
+      {
+        "tid": 1787743,
+        "cpus": "0"
+      }
+    ],
+    "rank-01-threads": [
+      {
+        "tid": 1787419,
+        "cpus": "1"
+      },
+      {
+        "tid": 1787443,
+        "cpus": "0-35"
+      },
+      {
+        "tid": 1787458,
+        "cpus": "1"
+      },
+      {
+        "tid": 1787473,
+        "cpus": "1"
+      },
+      {
+        "tid": 1787517,
+        "cpus": "1"
+      },
+      {
+        "tid": 1787618,
+        "cpus": "19"
+      },
+      {
+        "tid": 1787659,
+        "cpus": "1"
+      },
+      {
+        "tid": 1787660,
+        "cpus": "1"
+      },
+      {
+        "tid": 1787764,
+        "cpus": "1"
+      }
+    ],
+    "rank-02-threads": [
+      {
+        "tid": 1787420,
+        "cpus": "2"
+      },
+      {
+        "tid": 1787436,
+        "cpus": "0-35"
+      },
+      {
+        "tid": 1787463,
+        "cpus": "2"
+      },
+      {
+        "tid": 1787483,
+        "cpus": "2"
+      },
+      {
+        "tid": 1787524,
+        "cpus": "2"
+      },
+      {
+        "tid": 1787615,
+        "cpus": "20"
+      },
+      {
+        "tid": 1787653,
+        "cpus": "2"
+      },
+      {
+        "tid": 1787654,
+        "cpus": "2"
+      },
+      {
+        "tid": 1787755,
+        "cpus": "2"
+      }
+    ],
+    "rank-03-threads": [
+      {
+        "tid": 1787421,
+        "cpus": "3"
+      },
+      {
+        "tid": 1787442,
+        "cpus": "0-35"
+      },
+      {
+        "tid": 1787455,
+        "cpus": "3"
+      },
+      {
+        "tid": 1787489,
+        "cpus": "3"
+      },
+      {
+        "tid": 1787518,
+        "cpus": "3"
+      },
+      {
+        "tid": 1787621,
+        "cpus": "21"
+      },
+      {
+        "tid": 1787672,
+        "cpus": "3"
+      },
+      {
+        "tid": 1787673,
+        "cpus": "3"
+      },
+      {
+        "tid": 1787769,
+        "cpus": "3"
+      }
+    ],
+    "rank-04-threads": [
+      {
+        "tid": 1787422,
+        "cpus": "4"
+      },
+      {
+        "tid": 1787440,
+        "cpus": "0-35"
+      },
+      {
+        "tid": 1787456,
+        "cpus": "4"
+      },
+      {
+        "tid": 1787471,
+        "cpus": "4"
+      },
+      {
+        "tid": 1787522,
+        "cpus": "4"
+      },
+      {
+        "tid": 1787614,
+        "cpus": "22"
+      },
+      {
+        "tid": 1787689,
+        "cpus": "4"
+      },
+      {
+        "tid": 1787690,
+        "cpus": "4"
+      },
+      {
+        "tid": 1787760,
+        "cpus": "4"
+      }
+    ],
+    "rank-05-threads": [
+      {
+        "tid": 1787423,
+        "cpus": "5"
+      },
+      {
+        "tid": 1787438,
+        "cpus": "0-35"
+      },
+      {
+        "tid": 1787462,
+        "cpus": "5"
+      },
+      {
+        "tid": 1787491,
+        "cpus": "5"
+      },
+      {
+        "tid": 1787532,
+        "cpus": "5"
+      },
+      {
+        "tid": 1787609,
+        "cpus": "23"
+      },
+      {
+        "tid": 1787685,
+        "cpus": "5"
+      },
+      {
+        "tid": 1787686,
+        "cpus": "5"
+      },
+      {
+        "tid": 1787758,
+        "cpus": "5"
+      }
+    ],
+    "rank-06-threads": [
+      {
+        "tid": 1787424,
+        "cpus": "6"
+      },
+      {
+        "tid": 1787445,
+        "cpus": "0-35"
+      },
+      {
+        "tid": 1787460,
+        "cpus": "6"
+      },
+      {
+        "tid": 1787470,
+        "cpus": "6"
+      },
+      {
+        "tid": 1787520,
+        "cpus": "6"
+      },
+      {
+        "tid": 1787612,
+        "cpus": "24"
+      },
+      {
+        "tid": 1787665,
+        "cpus": "6"
+      },
+      {
+        "tid": 1787666,
+        "cpus": "6"
+      },
+      {
+        "tid": 1787761,
+        "cpus": "6"
+      }
+    ],
+    "rank-07-threads": [
+      {
+        "tid": 1787425,
+        "cpus": "7"
+      },
+      {
+        "tid": 1787439,
+        "cpus": "0-35"
+      },
+      {
+        "tid": 1787454,
+        "cpus": "7"
+      },
+      {
+        "tid": 1787474,
+        "cpus": "7"
+      },
+      {
+        "tid": 1787515,
+        "cpus": "7"
+      },
+      {
+        "tid": 1787608,
+        "cpus": "25"
+      },
+      {
+        "tid": 1787650,
+        "cpus": "7"
+      },
+      {
+        "tid": 1787651,
+        "cpus": "7"
+      },
+      {
+        "tid": 1787759,
+        "cpus": "7"
+      }
+    ],
+    "rank-08-threads": [
+      {
+        "tid": 1787426,
+        "cpus": "8"
+      },
+      {
+        "tid": 1787441,
+        "cpus": "0-35"
+      },
+      {
+        "tid": 1787457,
+        "cpus": "8"
+      },
+      {
+        "tid": 1787475,
+        "cpus": "8"
+      },
+      {
+        "tid": 1787516,
+        "cpus": "8"
+      },
+      {
+        "tid": 1787606,
+        "cpus": "26"
+      },
+      {
+        "tid": 1787662,
+        "cpus": "8"
+      },
+      {
+        "tid": 1787663,
+        "cpus": "8"
+      },
+      {
+        "tid": 1787757,
+        "cpus": "8"
+      }
+    ],
+    "rank-09-threads": [
+      {
+        "tid": 1787427,
+        "cpus": "9"
+      },
+      {
+        "tid": 1787444,
+        "cpus": "0-35"
+      },
+      {
+        "tid": 1787464,
+        "cpus": "9"
+      },
+      {
+        "tid": 1787490,
+        "cpus": "9"
+      },
+      {
+        "tid": 1787529,
+        "cpus": "9"
+      },
+      {
+        "tid": 1787619,
+        "cpus": "27"
+      },
+      {
+        "tid": 1787647,
+        "cpus": "9"
+      },
+      {
+        "tid": 1787648,
+        "cpus": "9"
+      },
+      {
+        "tid": 1787762,
+        "cpus": "9"
+      }
+    ],
+    "rank-10-threads": [
+      {
+        "tid": 1787428,
+        "cpus": "10"
+      },
+      {
+        "tid": 1787446,
+        "cpus": "0-35"
+      },
+      {
+        "tid": 1787467,
+        "cpus": "10"
+      },
+      {
+        "tid": 1787480,
+        "cpus": "10"
+      },
+      {
+        "tid": 1787523,
+        "cpus": "10"
+      },
+      {
+        "tid": 1787622,
+        "cpus": "28"
+      },
+      {
+        "tid": 1787656,
+        "cpus": "10"
+      },
+      {
+        "tid": 1787657,
+        "cpus": "10"
+      },
+      {
+        "tid": 1787768,
+        "cpus": "10"
+      }
+    ],
+    "rank-11-threads": [
+      {
+        "tid": 1787429,
+        "cpus": "11"
+      },
+      {
+        "tid": 1787450,
+        "cpus": "0-35"
+      },
+      {
+        "tid": 1787465,
+        "cpus": "11"
+      },
+      {
+        "tid": 1787477,
+        "cpus": "11"
+      },
+      {
+        "tid": 1787521,
+        "cpus": "11"
+      },
+      {
+        "tid": 1787610,
+        "cpus": "29"
+      },
+      {
+        "tid": 1787638,
+        "cpus": "11"
+      },
+      {
+        "tid": 1787639,
+        "cpus": "11"
+      },
+      {
+        "tid": 1787722,
+        "cpus": "11"
+      }
+    ],
+    "rank-12-threads": [
+      {
+        "tid": 1787430,
+        "cpus": "12"
+      },
+      {
+        "tid": 1787449,
+        "cpus": "0-35"
+      },
+      {
+        "tid": 1787469,
+        "cpus": "12"
+      },
+      {
+        "tid": 1787482,
+        "cpus": "12"
+      },
+      {
+        "tid": 1787526,
+        "cpus": "12"
+      },
+      {
+        "tid": 1787623,
+        "cpus": "30"
+      },
+      {
+        "tid": 1787692,
+        "cpus": "12"
+      },
+      {
+        "tid": 1787693,
+        "cpus": "12"
+      },
+      {
+        "tid": 1787763,
+        "cpus": "12"
+      }
+    ],
+    "rank-13-threads": [
+      {
+        "tid": 1787431,
+        "cpus": "13"
+      },
+      {
+        "tid": 1787451,
+        "cpus": "0-35"
+      },
+      {
+        "tid": 1787466,
+        "cpus": "13"
+      },
+      {
+        "tid": 1787478,
+        "cpus": "13"
+      },
+      {
+        "tid": 1787530,
+        "cpus": "13"
+      },
+      {
+        "tid": 1787613,
+        "cpus": "31"
+      },
+      {
+        "tid": 1787668,
+        "cpus": "13"
+      },
+      {
+        "tid": 1787670,
+        "cpus": "13"
+      },
+      {
+        "tid": 1787723,
+        "cpus": "13"
+      }
+    ],
+    "rank-14-threads": [
+      {
+        "tid": 1787432,
+        "cpus": "14"
+      },
+      {
+        "tid": 1787453,
+        "cpus": "0-35"
+      },
+      {
+        "tid": 1787484,
+        "cpus": "14"
+      },
+      {
+        "tid": 1787486,
+        "cpus": "14"
+      },
+      {
+        "tid": 1787531,
+        "cpus": "14"
+      },
+      {
+        "tid": 1787616,
+        "cpus": "32"
+      },
+      {
+        "tid": 1787675,
+        "cpus": "14"
+      },
+      {
+        "tid": 1787676,
+        "cpus": "14"
+      },
+      {
+        "tid": 1787765,
+        "cpus": "14"
+      }
+    ],
+    "rank-15-threads": [
+      {
+        "tid": 1787433,
+        "cpus": "15"
+      },
+      {
+        "tid": 1787452,
+        "cpus": "0-35"
+      },
+      {
+        "tid": 1787485,
+        "cpus": "15"
+      },
+      {
+        "tid": 1787487,
+        "cpus": "15"
+      },
+      {
+        "tid": 1787527,
+        "cpus": "15"
+      },
+      {
+        "tid": 1787620,
+        "cpus": "33"
+      },
+      {
+        "tid": 1787681,
+        "cpus": "15"
+      },
+      {
+        "tid": 1787682,
+        "cpus": "15"
+      },
+      {
+        "tid": 1787767,
+        "cpus": "15"
+      }
+    ],
+    "rank-16-threads": [
+      {
+        "tid": 1787434,
+        "cpus": "16"
+      },
+      {
+        "tid": 1787448,
+        "cpus": "0-35"
+      },
+      {
+        "tid": 1787459,
+        "cpus": "16"
+      },
+      {
+        "tid": 1787472,
+        "cpus": "16"
+      },
+      {
+        "tid": 1787525,
+        "cpus": "16"
+      },
+      {
+        "tid": 1787607,
+        "cpus": "34"
+      },
+      {
+        "tid": 1787644,
+        "cpus": "16"
+      },
+      {
+        "tid": 1787645,
+        "cpus": "16"
+      },
+      {
+        "tid": 1787766,
+        "cpus": "16"
+      }
+    ],
+    "rank-17-threads": [
+      {
+        "tid": 1787435,
+        "cpus": "17"
+      },
+      {
+        "tid": 1787447,
+        "cpus": "0-35"
+      },
+      {
+        "tid": 1787468,
+        "cpus": "17"
+      },
+      {
+        "tid": 1787492,
+        "cpus": "17"
+      },
+      {
+        "tid": 1787519,
+        "cpus": "17"
+      },
+      {
+        "tid": 1787611,
+        "cpus": "35"
+      },
+      {
+        "tid": 1787641,
+        "cpus": "17"
+      },
+      {
+        "tid": 1787642,
+        "cpus": "17"
+      },
+      {
+        "tid": 1787756,
+        "cpus": "17"
+      }
+    ]
+  }
+}
