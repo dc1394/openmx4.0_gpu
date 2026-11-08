@@ -2,8 +2,8 @@
 """Run the production VNA/force contraction loops on host test arrays.
 
 OpenACC pragmas are ignored by the host compiler.  Each test compares the
-actual loop against a long-double reference and exercises both legacy FP32
-product rounding and FP64 products, including local/halo rows and batches.
+actual loop against the upstream float-product reference under both settings
+of scf.fp32.enable, including local/halo rows and batches.
 """
 import os
 from pathlib import Path
@@ -36,6 +36,7 @@ functions = "\n".join(
 )
 start = vna.index("static int SetPro_HVNA_GpuRun_Part(")
 start = vna.index("for (int pp=0; pp<nitems_c; pp++)", start)
+vna_policy = re.search(r"const int fp32\s*=\s*[^;]+;", vna).group(0)
 functions += r"""
 static void vna_kernel(int nitems_c, int num_proj, int num_rvna,
     const int *item_koff, const int *item_kn,
@@ -44,8 +45,8 @@ static void vna_kernel(int nitems_c, int num_proj, int num_rvna,
     const size_t *krowB, const int *krow_halo, const int *krow_ene,
     const double *ene, const int *l2p1, double *out)
 {
-    const int fp32 = openmx_fp32_enabled();
-""" + block(vna, start) + "\n}\n"
+    /* VNA_POLICY */
+""".replace("/* VNA_POLICY */", vna_policy) + block(vna, start) + "\n}\n"
 
 HARNESS = r"""
 #define P 9
@@ -150,23 +151,26 @@ int main(void)
     }
     for (int i = 0; i < 2 * P; ++i) halo[i] = (float)(cos(i * 0.17) * 0.3);
     assert(openmx_fp32_enabled());
-    for (int legacy = 1; legacy >= 0; --legacy) {
-        openmx_set_fp32_enabled(legacy);
-        case1(legacy, results[legacy][0]);
-        case2(legacy, results[legacy][1]);
-        vna_test(legacy, results[legacy][2]);
+    for (int enabled = 1; enabled >= 0; --enabled) {
+        openmx_set_fp32_enabled(enabled);
+        assert(openmx_fp32_enabled() == enabled);
+        case1(1, results[enabled][0]);
+        case2(1, results[enabled][1]);
+        vna_test(1, results[enabled][2]);
     }
-    for (int kernel = 0; kernel < 3; ++kernel) {
-        int different = 0;
+    for (int kernel = 0; kernel < 3; ++kernel)
         for (int i = 0; i < 6; ++i)
-            different |= fabs(results[0][kernel][i] - results[1][kernel][i]) > 1e-10;
-        assert(different); /* Inputs must actually detect FP32 products. */
-    }
+            assert(results[0][kernel][i] == results[1][kernel][i]);
+    /* A promoted multiply must differ, so the fixture detects the regression. */
+    int different = 0;
+    for (int i = 0; i < 4 * P * ROWS; ++i)
+        different |= product(flat[i], c2[i], 0) != product(flat[i], c2[i], 1);
+    assert(different);
     openmx_set_fp32_enabled(1);
     double repeat[6];
     case1(1, repeat);
     for (int i = 0; i < 6; ++i) assert(repeat[i] == results[1][0][i]);
-    puts("PASS: projector/force FP64 products, legacy rounding and policy reset");
+    puts("PASS: projector/force upstream float products with scf.fp32.enable on/off and policy reset");
     return 0;
 }
 """

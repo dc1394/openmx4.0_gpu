@@ -23,7 +23,6 @@
 #include "openmx_core_neutral_grid_metadata.h"
 #include "openmx_orbitals.h"
 #include "openmx_core_vna_matrix.h"
-#include "openmx_precision.h"
 #include "mpi.h"
 #include "openmx_projector_exchange.h"
 #include <omp.h>
@@ -5307,7 +5306,7 @@ void dHVNA(const OpenMXVnaMatrixViews *vna, int where_flag, int Mc_AN, int h_AN,
            const OpenMXSolverRealTensor *Hx,const OpenMXSolverRealTensor *Hy,
            const OpenMXSolverRealTensor *Hz,const OpenMXSolverRealTensor *H_sts)
 {
-  const int fp32 = openmx_fp32_enabled();
+  const int fp32 = 1 /* Preserve upstream float projector products. */;
   int i,j,k,m,n,l,kg,kan,so,deri_kind;
   int ig,ian,jg,jan,kl,kl1,kl2,Rni,Rnj,Rnk;
   int wakg,l1,l2,l3,Gc_AN,Mi_AN,Mj_AN,Mj_AN2,num_projectors;

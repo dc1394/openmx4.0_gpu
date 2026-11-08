@@ -114,3 +114,4 @@ __pycache__/
 /work/lib64/
 /work/share/
 !/docs/CGHELGEO_STRICT_SCF.md
+!/docs/CGHELGEO_COLDSTART.md

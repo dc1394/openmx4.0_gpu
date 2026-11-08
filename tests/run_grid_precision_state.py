@@ -143,7 +143,8 @@ def main():
                        ["-std=c99", "-O2", "-Wall", "-Wextra", "-Werror",
                         "-I" + tmp, "-I" + str(ROOT / "source"),
                         str(ROOT / "source/grid_precision.c"),
-                        str(ROOT / "source/openmx_precision.c"), str(temp / "main.c"),
+                        str(ROOT / "source/openmx_precision.c"),
+                        str(ROOT / "source/openmx_env.c"), str(temp / "main.c"),
                         "-lm", "-o", str(binary)], check=True)
         for extra, active, kernel, reset in cases:
             subprocess.run([str(binary), str(active), str(kernel), str(reset)],

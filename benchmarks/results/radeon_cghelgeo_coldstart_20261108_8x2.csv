@@ -1,0 +1,5 @@
+name,SCF_steps,energy_Ha,signed_delta_energy_to_upstream_Ha,abs_delta_energy_to_upstream_Ha,max_abs_delta_force_to_upstream_Ha_bohr,rms_delta_force_to_upstream_Ha_bohr,comparison_passed,restart_found,dense_cpu_fallback_count,gpu_initialization_failure_count
+upstream-cpu,78,-4153.1481906138,0.0,0.0,0.0,0.0,True,False,0,0
+fork-cpu-avx2,77,-4153.148190613826,-2.637534635141492e-11,2.637534635141492e-11,1.9499999878713759e-10,4.417665004350189e-11,True,False,0,0
+hip-native-fp64,78,-4153.148190613756,4.3655745685100555e-11,4.3655745685100555e-11,4.079999949002655e-10,5.921141171780882e-11,True,False,0,0
+hip-default,78,-4153.14819061373,7.003109203651547e-11,7.003109203651547e-11,4.079999949002655e-10,5.921576363933573e-11,True,False,0,0

@@ -1,5 +1,7 @@
 # cghelgeo strict SCF comparison (Radeon, 2026-11-08)
 
+**Historical precision semantics:** these measurements predate the correction that preserves upstream VNA/force float products with `scf.fp32.enable=off`. Their original values and continuation protocol are retained below. The corrected implementation and four independent cold starts are documented in [CGHELGEO_COLDSTART.md](CGHELGEO_COLDSTART.md).
+
 The upstream CPU, CPU AVX2, HIP with FP64 grid/orbital/GEMM arithmetic and the default Radeon precision policy agree within the predeclared energy/force tolerances when inherited VNA/force product rounding is retained.
 
 The full `scf.fp32.enable=off` calculation is a broader arithmetic comparison: it also promotes VNA/force float products inherited from the CPU implementation, including their GPU implementations. Its numerical differences are shown separately in the tables; it must not be conflated with switching only grid/orbital/GEMM arithmetic to native FP64.

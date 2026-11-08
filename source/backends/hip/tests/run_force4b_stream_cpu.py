@@ -80,6 +80,8 @@ static int level_stdout=3;
 #include <stdint.h>
 #include <limits.h>
 #include "openmx_precision.h"
+#include "openmx_core_host_simd.h"
+#include "openmx_core_force_vna_simd.h"
 
 typedef float Type_DS_VNA;
 typedef int MPI_Comm;
@@ -178,6 +180,15 @@ static double dampingF(double cutoff, double distance)
 /* alloc_fail_countdown >= 0 fails the host allocation after that many
    successes (every calloc of the extracted functions is counted) */
 static int alloc_fail_countdown = -1;
+/* The fused traces take an optional host SIMD context. These fixtures pass
+   none (NULL): the legacy loops they compare against run, and the Core's
+   projector kernel, which is not linked here, must never be reached. */
+int openmx_core_force_vna_block(const OpenMXForceVnaBlock* block, void* scratch, size_t bytes, int mode)
+{
+    (void)block; (void)scratch; (void)bytes; (void)mode;
+    fprintf(stderr, "FAIL: a legacy fixture reached the host SIMD projector kernel\n");
+    exit(EXIT_FAILURE);
+}
 static void* test_calloc(size_t count, size_t size)
 {
     if (host_allocation_fail || alloc_fail_countdown == 0) return NULL;
@@ -353,7 +364,7 @@ int main(void)
                         for (j = Solver == 3 ? i : 0; j < NEIGHBORS; j++) {
                             if (!j || i == j || RMI1[mc][i][j] < 0) continue;
                             Force4B_case2_trace_fused(mc, mc, i, j, cdm, ds,
-                                &expected[0], &expected[1], &expected[2]);
+                                &expected[0], &expected[1], &expected[2], NULL);
                         }
                     }
                     for (i = 0; i < 3; i++) Gxyz[mc][41 + i] = 0.37;
@@ -443,8 +454,8 @@ int main(void)
 
 
 def make_harness(source: str) -> str:
-    parts = [STUBS, extract_struct(source, "Force4BGpuItem")]
-    for name in ("Force_gpu_node_reserve", "Force_gpu_arena_off",
+    parts = [STUBS, extract_struct(source, "Force4BGpuItem"), extract_struct(source, "Force4BSimd")]
+    for name in ("Force_gpu_node_reserve", "Force_gpu_arena_off", "Force4B_simd_block", "Force4B_simd_trace",
                  "Force4B_GpuOrderNLegacy", "Force4B_case2_trace_fused", "Force4B_GpuCase2Kernel"):
         parts.append(extract_function(source, name+"_Single" if name in ("Force4B_GpuCase1Kernel","Force4B_GpuCase2Kernel") else name).replace(name+"_Single",name))
     parts.extend(extract_struct(source, name) for name in ("Force4BCase2Plan", "Force4BCase2Stream"))

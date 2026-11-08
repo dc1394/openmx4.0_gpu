@@ -58,6 +58,8 @@ STUBS = r'''
 #include <cstring>
 #include "openmx_stdout_level.h"
 #include "openmx_precision.h"
+#include "openmx_env.h"
+#include <climits>
 #ifdef TEST_STDOUT_DEFINED
 int level_stdout = 3;
 #endif
@@ -171,7 +173,7 @@ def main():
             flags = ["-DTEST_STDOUT_DEFINED"] if defined else []
             subprocess.run(shlex.split(args.cxx) + ["-std=c++17", "-O1", "-Wall", "-Wextra", "-Werror",
                             "-I", str(ROOT / "source"), *flags, str(cfile),
-                            str(ROOT / "source/openmx_precision.c"), "-o", str(binary)], check=True)
+                            str(ROOT / "source/openmx_precision.c"), str(ROOT / "source/openmx_env.c"), "-o", str(binary)], check=True)
             for level in ((0, 1, 2, 3) if defined else (3,)):
                 for extra, expect_df, expect_out in CASES:
                     run = subprocess.run([str(binary), str(expect_df)],

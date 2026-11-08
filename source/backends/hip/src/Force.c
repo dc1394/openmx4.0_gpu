@@ -26,7 +26,6 @@
 #include "openmx_gpu_task.h"
 #include "openmx_gpu_bilinear.h"
 #include "openmx_host_memory.h"
-#include "openmx_precision.h"
 #include "openmx_host_simd.h"
 #include "openmx_core_force_simd.h"
 #include "openmx_core_orbitals_simd.h"
@@ -2231,8 +2230,8 @@ static void Force3_capacity_cpu(int Mc_AN,int myid,double ***dChi0,double **Vpot
     Gxyz[Gc_AN][17]+=sumx*GridVol;Gxyz[Gc_AN][18]+=sumy*GridVol;Gxyz[Gc_AN][19]+=sumz*GridVol;
 }
 
-/* Keep the established float tables.  The precision switch controls whether
-   their products round in FP32 or promote both operands before multiplying. */
+/* Preserve the upstream float tables and float-product rounding, including
+   with scf.fp32.enable=off; that option controls optional accelerated paths. */
 /* The late route of Force3 on the host SIMD path: a rank whose batched trace
    failed after part 1 takes its atoms back. The grid potentials (and, with
    on-device derivatives, the displacements) come back from the device copies
@@ -2310,13 +2309,13 @@ static void Force3_late_host(const OpenMXAtomicViews *atomic, const OpenMXElectr
     Force3_dpoints_destroy(&dp);
 }
 
-/* Keep the established float tables.  The precision switch controls whether
-   their products round in FP32 or promote both operands before multiplying. */
+/* Preserve the upstream float tables and float-product rounding, including
+   with scf.fp32.enable=off; that option controls optional accelerated paths. */
 /* Host SIMD (OPENMX_HOST_SIMD) evaluation of the fused Force4B traces, the
    per-block form of the CUDA translation unit (its cache-tiled orders are not
    ported: the HIP Force4B lifetimes differ). The Core's projector kernel forms
    H_c[m][n] of one block with the legacy per-element arithmetic (lanes across
-   n, float products under scf.fp32.enable) and the trace keeps the legacy m/n
+   n, upstream float products) and the trace keeps the legacy m/n
    order; legacy mode, no context (NULL) or a refused block keeps the loops.
    One instance per thread; legacy mode leaves every buffer NULL. */
 typedef struct {
@@ -2355,7 +2354,7 @@ static int Force4B_simd_block(const Force4BSimd *simd, int terms, int rows, int 
     b.columns = columns;
     b.projectors = simd->projectors;
     b.terms = terms;
-    b.fp32 = openmx_fp32_enabled();
+    b.fp32 = 1 /* Preserve upstream float projector products. */;
     b.lanes_rows = 0;
     b.derivative[0] = (const float *const *)dx;
     b.derivative[1] = (const float *const *)dy;
@@ -2396,7 +2395,7 @@ static void Force4B_case2_trace_fused(int Mc_AN, int Gc_AN,
     int h_AN, int q_AN, double***** CDM0, Type_DS_VNA***** DS_VNA,
     double* dEx, double* dEy, double* dEz, const Force4BSimd *simd)
 {
-    const int fp32 = openmx_fp32_enabled();
+    const int fp32 = 1 /* Preserve upstream float projector products. */;
     int m, n, l;
     const int Gh_AN = natn[Gc_AN][h_AN];
     const int Gq_AN = natn[Gc_AN][q_AN];
@@ -2472,7 +2471,7 @@ static void Force4B_case1_trace_fused_rows(const OpenMXVnaMatrixViews *vna, int 
     const Type_DS_VNA* cached_q,
     double* dEx, double* dEy, double* dEz, const Force4BSimd *simd)
 {
-    const int fp32 = openmx_fp32_enabled();
+    const int fp32 = 1 /* Preserve upstream float projector products. */;
     int k, m, n, l;
     const int center_atom = natn[Gc_AN][0];
     const int q_atom = natn[Gc_AN][q_AN];
@@ -7354,7 +7353,7 @@ static void Force4B_GpuCase1Kernel_Single(int num_proj, float* flat, float* halo
     const size_t* krowA, const size_t* krowB, const int* krow_halo,
     const double* cdm_pref, double* item_f)
 {
-    const int fp32 = openmx_fp32_enabled();
+    const int fp32 = 1 /* Preserve upstream float projector products. */;
 #pragma omp target teams distribute thread_limit(128) firstprivate(fp32) is_device_ptr(flat, halo, items, krowA, krowB, krow_halo, cdm_pref, item_f)
     for (int pp = 0; pp < nitems_c; pp++) {
         const int ian = items[pp].ian;
@@ -8589,7 +8588,7 @@ static void Force4B_GpuCase2Kernel_Single(int num_proj, float* c2,
     const size_t* pair_h_off, const size_t* pair_q_off,
     const double* cdm_scale, double* item_f)
 {
-    const int fp32 = openmx_fp32_enabled();
+    const int fp32 = 1 /* Preserve upstream float projector products. */;
 #pragma omp target teams distribute thread_limit(128) firstprivate(fp32) is_device_ptr(c2, items, pair_h_off, pair_q_off, cdm_scale, item_f)
     for (int pp = 0; pp < nitems_c; pp++) {
         const int ian = items[pp].ian;
@@ -10583,7 +10582,7 @@ void dHVNA(const OpenMXVnaMatrixViews *vna, int where_flag, int Mc_AN, int h_AN,
     double***** TmpHVNA2, double***** TmpHVNA3,
     double** Hx, double** Hy, double** Hz)
 {
-    const int fp32 = openmx_fp32_enabled();
+    const int fp32 = 1 /* Preserve upstream float projector products. */;
     int i, j, k, m, n, l, kg, kan, so, deri_kind;
     int ig, ian, jg, jan, kl, kl1, kl2, Rni, Rnj;
     int wakg, l1, l2, l3, Gc_AN, Mi_AN, Mj_AN, Mj_AN2, num_projectors;

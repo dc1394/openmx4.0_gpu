@@ -1,6 +1,7 @@
 /* Arithmetic precision requested by the current OpenMX input.
    scf.fp32.enable defaults to on.  Off overrides FP32/DF kernel and
-   eigensolver choices, but leaves GEMMul8 and storage formats independent. */
+   eigensolver choices. GEMMul8, storage formats and the upstream float
+   products in VNA/force/stress contractions remain independent. */
 #ifndef OPENMX_PRECISION_H
 #define OPENMX_PRECISION_H
 

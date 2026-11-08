@@ -32,7 +32,6 @@
 #include "openmx_host_simd.h"
 #include "openmx_mgpu_runtime.h"
 #include "openmx_host_memory.h"
-#include "openmx_precision.h"
 #include "openmx_vna_gpu_context.h"
 #include "openmx_vna_preparation.h"
 #include "set_cuda_default_device_from_local_rank.h"
@@ -61,8 +60,8 @@ static inline void Spherical_Bessel2( double x, int lmax, double *sb, double *ds
    is the same energy-weighted projector contraction as the
    Force4B/Force_HNL first-case traces.  The kernel keeps the exact CPU
    accumulation order (k outermost, then the radial groups, then the
-   2*L+1 members; products retain legacy FP32 rounding when enabled and
-   promote their float operands to double when scf.fp32.enable is off), so the
+   2*L+1 members; products retain upstream float rounding independently
+   of scf.fp32.enable), so the
    final float rounding of DS_VNA itself limits the agreement.  The MPI
    pipeline is untouched: received halo blocks are archived and one
    batched kernel runs after the loops.                                */
@@ -452,7 +451,7 @@ static void SetPro_HVNA_GpuArchiveHalo(SetProGpuContext *g, Type_DS_VNA *****DS_
 /* the unified batch over every (local atom, neighbour) pair */
 static int SetPro_HVNA_GpuRun_Part(int first,int last,SetProGpuContext *g,double ****HVNA)
 {
-  const int fp32 = openmx_fp32_enabled();
+  const int fp32 = 1 /* Preserve upstream float projector products. */;
   const int num_proj = g->num_proj;
   const int num_rvna = g->num_rvna;
   int Mc_AN,j,k;
@@ -775,7 +774,7 @@ static int SetPro_HVNA_GpuRun(SetProGpuContext *g, double ****HVNA)
                           : SetPro_HVNA_GpuRun_Part(1,Matomnum+1,g,HVNA);
   if (OpenMX_HostSimdMode()!=OPENMX_HOST_SIMD_LEGACY) return done;
   int mc=done?Matomnum+1:1,j=0;size_t row=0;
-  SetProHVNACapacityParameters p={g->num_proj,g->num_rvna,openmx_fp32_enabled()};
+  SetProHVNACapacityParameters p={g->num_proj,g->num_rvna,1 /* Preserve upstream float projector products. */};
   /* Only recovery duplicates projector rows, and at most one bounded tile.
      Device archives can be read row-wise after a late transient OOM. */
   for(;;){
@@ -2537,7 +2536,7 @@ static void SetPro_VNA23_GpuRun(double *****matrix,int mirror,int count,const in
    Rank-local: no collectives. */
 static void SetPro_HVNA_HostArchives(SetProGpuContext *g,double ****HVNA)
 {
-  const int fp32=openmx_fp32_enabled(),num_proj=g->num_proj;
+  const int fp32=1 /* Preserve upstream float projector products. */,num_proj=g->num_proj;
   const float *flat=g->flat_host,*halo=g->halo_host;
   float *flat_copy=NULL,*halo_copy=NULL;
   int max_orbitals=1,max_blocks=1;

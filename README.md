@@ -622,7 +622,7 @@ and complex products separately. An input-file `off` always takes precedence;
 an input-file `on` still honors environment disables.
 
 The input keyword `scf.fp32.enable` defaults to `on`, preserving the existing
-precision policies. To force FP64 arithmetic while retaining GEMMul8:
+precision policies. To select FP64 for optional accelerated paths while retaining GEMMul8:
 
 ```text
 scf.fp32.enable     off
@@ -630,15 +630,22 @@ scf.gemmul8.enable  on
 ```
 
 `off` disables FP32 eigenvector refinement, FP32 and double-float grid
-integrals, and double-float orbital evaluation. It also promotes the
-legacy float products in VNA matrix, force and stress contractions to FP64.
+integrals, and double-float orbital evaluation. VNA matrix, force and stress
+contractions retain the float products inherited from upstream OpenMX,
+including their original rounding, with either setting.
 It overrides `OPENMX_EIGEN_REFINE`, `OPENMX_GRID_FP32`,
 `OPENMX_GRID_PRECISION` and `OPENMX_ORBS_EVAL_PRECISION` requests for FP32/DF.
 GEMMul8 and cuSOLVER's FP64 fixed-point emulation remain governed by their
 own settings. The existing float storage of orbital and VNA projector
-tables is unchanged; this keyword controls arithmetic precision.
+tables is unchanged; this keyword controls optional accelerated arithmetic.
 
 ### Strict cghelgeo precision checks (RTX 5080, 2026-11-08)
+
+These archived measurements predate the correction that retains inherited
+VNA/force float-product rounding with `scf.fp32.enable off`. The promoted-product
+rows below record the earlier semantics; current behavior is described above.
+The [Radeon cold-start checks](docs/CGHELGEO_COLDSTART.md) verify the corrected
+option independently from atomic initial densities.
 
 The 650-atom `benchmarks/inputs/cghelgeo.dat` was checked with
 **18 MPI ranks × 2 OpenMP/BLAS threads**, one RTX 5080 with MPS for GPU
@@ -671,7 +678,7 @@ rounding remains fixed. The default GPU row leaves the arithmetic controls
 unset, retaining GEMMul8, FP32 refinement, double-float policies and
 automatic cuSOLVER FP64 emulation.
 
-**`scf.fp32.enable off` also changes the inherited VNA/force products.**
+**In these measurements, `scf.fp32.enable off` also changed the inherited VNA/force products.**
 The full-FP64 row therefore has a small, separate arithmetic-policy offset:
 its energy difference **fails the retained `1e-7` Ha gate**, while its force
 difference passes. This result remains recorded as a failure of that energy
@@ -2905,9 +2912,19 @@ Across upstream CPU, CPU AVX2, HIP with native FP64 grid/orbital/GEMM
 arithmetic and the default HIP policy, with inherited product rounding retained,
 the maximum pairwise differences are 9.37e-11 Ha in
 energy and 4.08e-10 Ha/bohr in force components.
-The broader `scf.fp32.enable=off` control also promotes inherited VNA/force
-float products: its upstream differences are 1.63e-07 Ha and
-3.51e-08 Ha/bohr. These are separate from the earlier 16×2 timings.
+In that historical comparison, `scf.fp32.enable=off` also promoted inherited
+VNA/force float products: its upstream differences were 1.63e-07 Ha and
+3.51e-08 Ha/bohr. The option now retains upstream float-product rounding;
+those recorded measurements predate this correction. They are separate
+from the earlier 16×2 timings.
+
+The [corrected precision option and independent cold starts](docs/CGHELGEO_COLDSTART.md)
+verify all four routes at `scf.criterion=1e-12`, 8 MPI × 2 threads,
+with `scf.restart=off` and no supplied density or mixing history.
+The common SCF schedule uses history 8, then fixed 0.3 Hamiltonian mixing
+from approximately SCF65, with the stopping threshold unchanged.
+The maximum pairwise differences are 9.641e-11 Ha
+and 4.080e-10 Ha/bohr across all 1,950 force components.
 
 **The cghelgeo GPU timing includes CPU dense diagonalization.** There were
 61 dense-memory rejections across 61 SCF steps. The first verdict was:

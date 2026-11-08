@@ -83,7 +83,7 @@ static double SetPro_Separable(const OpenMXVnaMatrixViews *matrices,const OpenMX
   const OpenMXVnaPreparation *preparation_owner=invocation->preparation_owner;
   const OpenMXAtomPairBuffers *pairs=&invocation->pairs;
   double *wavevectors=invocation->wavevectors;
-  const int components=preparation.projector_components,fp32=openmx_fp32_enabled();
+  const int components=preparation.projector_components,fp32=1 /* Preserve upstream float projector products. */;
   SetPro_PrepareRadials(reciprocal, &preparation,wavevectors,tables->weights,
       tables->maximum_wavevector-tables->minimum_wavevector);
   SetProGpu2Context gpu2={0};

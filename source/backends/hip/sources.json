@@ -259,7 +259,6 @@
     "openmx_gpusolver_dense_utils.h",
     "openmx_host_memory.h",
     "openmx_precision.c",
-    "openmx_precision.h",
     "openmx_stdout_level.h",
     "pdb2pao.c",
     "polB.c",
@@ -705,7 +704,6 @@
     "openmx_host_memory.h": "760690998f03ac96917faffa55216b2d658340f1a66a7397f4d61aaee440dd02",
     "openmx_magma_lock.h": "22a03909ed591c70460bc0c55db006b99ec656521466310318d8a53b8cde74e2",
     "openmx_precision.c": "2206f15c9e9c4dd087b97d9f9b262df8ad8120bfd91c982282778b0acab1ff7a",
-    "openmx_precision.h": "63c8f163fd4be012b43a856c1c6ad29f6a64cf037d128839155dd21d1a9ecc19",
     "openmx_stdout_level.h": "1d82a6ecdddd8c2ec50076cf3ec412997f25b158c6f2b75cb0ec3130c999035a",
     "openmx_target.h": "8157c34297ed4193729966f9e130b5b9edbd6e92e9585d79c06e413777262fa4",
     "pdb2pao.c": "59cd03a564cb340c6a0829cf890156c04e84ea79cada439dcbd10a1caa456bb4",
@@ -1100,7 +1098,8 @@
     "openmx_core_radial_views.h",
     "openmx_core_vna_host_tables.h",
     "openmx_basis_orbital_radial.h",
-    "cif2omx.c"
+    "cif2omx.c",
+    "openmx_precision.h"
   ],
   "integrated_overrides": {
     "set_hamiltonian_hip.cu": "src/set_hamiltonian_hip.cu",

@@ -87,7 +87,7 @@ static void Force4B_capacity_rows(const float *base,int rows,int np,const float 
 static void Force4B_capacity_host(int kind,Force4BGpuContext *g,int nitems,const Force4BGpuItem *items,
     const size_t *a,const size_t *b,const int *halo,const double *cdm,double *output)
 {
-    const int np=g->num_proj,fp32=openmx_fp32_enabled(),mode=OpenMX_HostSimdMode();
+    const int np=g->num_proj,fp32=1 /* Preserve upstream float projector products. */,mode=OpenMX_HostSimdMode();
     int max_rows=1,p;
     for(p=0;p<nitems;p++){
         if(max_rows<items[p].ian)max_rows=items[p].ian;
@@ -181,7 +181,7 @@ static void Force4B_capacity(int kind,Force4BGpuContext *g,int nitems,Force4BGpu
         return;
     }
     size_t first=done?(size_t)nitems:0;
-    ForceVnaRecoveryWork work={kind,g,first,items,a,b,halo,cdm,output,mpi_comm_level1,{kind,g->num_proj,openmx_fp32_enabled()}};
+    ForceVnaRecoveryWork work={kind,g,first,items,a,b,halo,cdm,output,mpi_comm_level1,{kind,g->num_proj,1 /* Preserve upstream float projector products. */}};
     for(;;){
         int remaining=first<(size_t)nitems,any;
         MPI_Allreduce(&remaining,&any,1,MPI_INT,MPI_MAX,mpi_comm_level1);if(!any)break;

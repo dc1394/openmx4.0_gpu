@@ -2,8 +2,8 @@
 """Run the production VNA/force contraction loops on host test arrays.
 
 OpenMP target pragmas are ignored by the host compiler.  Each test compares the
-actual loop against a long-double reference and exercises both legacy FP32
-product rounding and FP64 products, including local/halo rows and batches.
+actual loop against the upstream float-product reference under both settings
+of scf.fp32.enable, including local/halo rows and batches.
 """
 import os
 from pathlib import Path
@@ -36,6 +36,7 @@ functions = "\n".join(
     for name in ("Force4B_GpuCase1Kernel", "Force4B_GpuCase2Kernel")
 )
 functions += "\n" + block(vna, vna.index("static double SetPro_HVNA_element("))
+vna_policy = re.search(r"const int fp32\s*=\s*[^;]+;", vna).group(0)
 functions += r"""
 static void vna_kernel(int nitems_c, int num_proj, int num_rvna,
     const int *item_koff, const int *item_kn,
@@ -45,7 +46,7 @@ static void vna_kernel(int nitems_c, int num_proj, int num_rvna,
     const double *ene, const int *l2p1, double *out)
 {
     int out_item[6];
-    const int fp32 = openmx_fp32_enabled();
+    /* VNA_POLICY */
     for (int p = 0; p < nitems_c; p++)
         for (int i = 0; i < item_tnoC[p] * item_tnoH[p]; i++)
             out_item[item_out[p] + i] = p;
@@ -55,14 +56,16 @@ static void vna_kernel(int nitems_c, int num_proj, int num_rvna,
             krow_halo, krow_ene, ene, l2p1, fp32);
 }
 """
+functions = functions.replace("/* VNA_POLICY */", vna_policy)
 
 # Exercise the actual local/halo derivative contractions in both the force
 # and stress implementations; their surrounding atom lookup does not affect
-# the FP32/FP64 product policy.
+# the inherited float-product rounding.
 derivative_calls = []
 for filename in ("Force.c", "Stress.c"):
     source = (ROOT / "source" / filename).read_text()
     source = block(source, source.index("\nvoid dHVNA(") + 1)
+    derivative_policy = re.search(r"const int fp32\s*=\s*[^;]+;", source).group(0)
     loops = []
     for match in re.finditer(r"for\s*\(l\s*=\s*0;\s*l\s*<\s*num_projectors;\s*l\+\+\)\s*\{", source):
         loop = block(source, match.start())
@@ -72,12 +75,13 @@ for filename in ("Force.c", "Stress.c"):
     for index, loop in enumerate(loops):
         name = filename.removesuffix(".c").lower() + f"_dot_{index}"
         functions += f"\nstatic void {name}(float DS_VNA1[4][4][3][2][9], double out[3]) {{\n" + r"""
-    const int fp32 = openmx_fp32_enabled(), num_projectors = 9;
+    /* DERIVATIVE_POLICY */
+    const int num_projectors = 9;
     const int Mc_AN = 1, Mj_AN2 = 2, Matomnum = 2, k = 2, kl = 1, kl1 = 1, kl2 = 2, m = 0, n = 1;
     int l;
     double sumx = 0.0, sumy = 0.0, sumz = 0.0;
     (void)Mc_AN; (void)Mj_AN2; (void)Matomnum; (void)k; (void)kl; (void)kl1; (void)kl2;
-""" + loop + "\n    out[0] = sumx; out[1] = sumy; out[2] = sumz;\n}\n"
+""".replace("/* DERIVATIVE_POLICY */", derivative_policy) + loop + "\n    out[0] = sumx; out[1] = sumy; out[2] = sumz;\n}\n"
         derivative_calls.append(f"    {name}(data, result); derivative_check({index}, legacy, data, result);")
 
 HARNESS = r"""
@@ -208,24 +212,27 @@ int main(void)
     }
     for (int i = 0; i < 2 * P; ++i) halo[i] = (float)(cos(i * 0.17) * 0.3);
     assert(openmx_fp32_enabled());
-    for (int legacy = 1; legacy >= 0; --legacy) {
-        openmx_set_fp32_enabled(legacy);
-        case1(legacy, results[legacy][0]);
-        case2(legacy, results[legacy][1]);
-        vna_test(legacy, results[legacy][2]);
-        derivatives(legacy);
+    for (int enabled = 1; enabled >= 0; --enabled) {
+        openmx_set_fp32_enabled(enabled);
+        assert(openmx_fp32_enabled() == enabled);
+        case1(1, results[enabled][0]);
+        case2(1, results[enabled][1]);
+        vna_test(1, results[enabled][2]);
+        derivatives(1);
     }
-    for (int kernel = 0; kernel < 3; ++kernel) {
-        int different = 0;
+    for (int kernel = 0; kernel < 3; ++kernel)
         for (int i = 0; i < 6; ++i)
-            different |= fabs(results[0][kernel][i] - results[1][kernel][i]) > 1e-10;
-        assert(different); /* Inputs must actually detect FP32 products. */
-    }
+            assert(results[0][kernel][i] == results[1][kernel][i]);
+    /* A promoted multiply must differ, so the fixture detects the regression. */
+    int different = 0;
+    for (int i = 0; i < 4 * P * ROWS; ++i)
+        different |= product(flat[i], c2[i], 0) != product(flat[i], c2[i], 1);
+    assert(different);
     openmx_set_fp32_enabled(1);
     double repeat[6];
     case1(1, repeat);
     for (int i = 0; i < 6; ++i) assert(repeat[i] == results[1][0][i]);
-    puts("PASS: projector/force kernels and local/halo force/stress derivatives, FP64 products, legacy rounding and policy reset");
+    puts("PASS: projector/force kernels and local/halo force/stress derivatives retain upstream float products with scf.fp32.enable on/off");
     return 0;
 }
 """
