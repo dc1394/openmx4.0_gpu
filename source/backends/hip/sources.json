@@ -154,7 +154,6 @@
     "calB.c",
     "check_lead.c",
     "chi_symmetry.c",
-    "cif2omx.c",
     "cif2omx.h",
     "cube2xsf.c",
     "dampingF.c",
@@ -594,7 +593,6 @@
     "calB.c": "265aa96dd0c55b1237cbaf8bca7e4fb87e29ee144dbf5ee83000b20867faa2f9",
     "check_lead.c": "33e08848043fc4897cc2e7636150401f850a181567b090e92aba89bbc203db66",
     "chi_symmetry.c": "f3f3445a6e570beb99d5a87968538fcb5848f6464c4ddd19f498c60bb0b2701d",
-    "cif2omx.c": "02eb5448b087e541b0986affcf1e5a81f74ecf3e119c62195d8da53f1d8a092a",
     "cif2omx.h": "ef3741a66d210e9fb58b80f0b375784c45a86d397346a0060fc7868e9d9e976c",
     "cube2xsf.c": "4af10850af565fc530ce873ea90782bd4fe5b3b06af65103fa413bdf6071fe8b",
     "cuda_fp8.h": "7c3818f64816675ca2596fc994729cdaaa072a00dbddc8cfa65c557df8f56552",
@@ -1101,7 +1099,8 @@
     "openmx_core_vna_simd_workspace.h",
     "openmx_core_radial_views.h",
     "openmx_core_vna_host_tables.h",
-    "openmx_basis_orbital_radial.h"
+    "openmx_basis_orbital_radial.h",
+    "cif2omx.c"
   ],
   "integrated_overrides": {
     "set_hamiltonian_hip.cu": "src/set_hamiltonian_hip.cu",

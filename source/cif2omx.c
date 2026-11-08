@@ -3012,20 +3012,26 @@ static void set_PAO_VPS_standard(char PAO[104][32], char VPS[104][32], double Ne
   strcpy(PAO[54], "Xe11.0-s3p2d2"); strcpy(VPS[54], "Xe_PBE19"); Nele[54]=8.0;
   strcpy(PAO[55], "Cs12.0-s3p2d2"); strcpy(VPS[55], "Cs_PBE19"); Nele[55]=9.0;
   strcpy(PAO[56], "Ba10.0-s3p2d2"); strcpy(VPS[56], "Ba_PBE19"); Nele[56]=10.0;
+  /* Lanthanides: DFT_DATA19 has no _PBE19 data for Eu, Gd, Tb, Er, Tm and Yb,
+     so they use this repository's _PBE26 data (README, "Extended lanthanide
+     pseudopotentials and PAO"). Tb and Tm have open-core data only, with the 4f
+     states in the core and 11 valence electrons. DFT_DATA19 has no Pr or Pm data
+     at all; their lines keep the names of the official database. Both cases are
+     reported at conversion time by report_dataset_choice(). */
   strcpy(PAO[57], "La8.0-s3p2d2f1"); strcpy(VPS[57], "La_PBE19"); Nele[57]=11.0;
   strcpy(PAO[58], "Ce8.0-s3p2d2f1"); strcpy(VPS[58], "Ce_PBE19"); Nele[58]=12.0;
   strcpy(PAO[59], "Pr8.0-s3p2d2f1"); strcpy(VPS[59], "Pr_PBE19"); Nele[59]=13.0;
   strcpy(PAO[60], "Nd8.0-s3p2d2f1"); strcpy(VPS[60], "Nd_PBE19"); Nele[60]=14.0;
   strcpy(PAO[61], "Pm8.0-s3p2d2f1"); strcpy(VPS[61], "Pm_PBE19"); Nele[61]=15.0;
   strcpy(PAO[62], "Sm8.0-s3p2d2f1"); strcpy(VPS[62], "Sm_PBE19"); Nele[62]=16.0;
-  strcpy(PAO[63], "Eu8.0-s3p2d2f1"); strcpy(VPS[63], "Eu_PBE19"); Nele[63]=17.0;
-  strcpy(PAO[64], "Gd8.0-s3p2d2f1"); strcpy(VPS[64], "Gd_PBE19"); Nele[64]=18.0;
-  strcpy(PAO[65], "Tb8.0-s3p2d2f1"); strcpy(VPS[65], "Tb_PBE19"); Nele[65]=19.0;
+  strcpy(PAO[63], "Eu8.0-s3p2d2f1"); strcpy(VPS[63], "Eu_PBE26"); Nele[63]=17.0;
+  strcpy(PAO[64], "Gd8.0-s3p2d2f1"); strcpy(VPS[64], "Gd_PBE26"); Nele[64]=18.0;
+  strcpy(PAO[65], "Tb8.0_OC-s3p2d2f1"); strcpy(VPS[65], "Tb_PBE26_OC"); Nele[65]=11.0;
   strcpy(PAO[66], "Dy8.0-s3p2d2f1"); strcpy(VPS[66], "Dy_PBE19"); Nele[66]=20.0;
   strcpy(PAO[67], "Ho8.0-s3p2d2f1"); strcpy(VPS[67], "Ho_PBE19"); Nele[67]=21.0;
-  strcpy(PAO[68], "Er8.0-s3p2d2f1"); strcpy(VPS[68], "Er_PBE19"); Nele[68]=22.0;
-  strcpy(PAO[69], "Tm8.0-s3p2d2f1"); strcpy(VPS[69], "Tm_PBE19"); Nele[69]=23.0;
-  strcpy(PAO[70], "Yb8.0-s3p2d2f1"); strcpy(VPS[70], "Yb_PBE19"); Nele[70]=24.0;
+  strcpy(PAO[68], "Er8.0-s3p2d2f1"); strcpy(VPS[68], "Er_PBE26"); Nele[68]=22.0;
+  strcpy(PAO[69], "Tm8.0_OC-s3p2d2f1"); strcpy(VPS[69], "Tm_PBE26_OC"); Nele[69]=11.0;
+  strcpy(PAO[70], "Yb8.0-s3p2d2f1"); strcpy(VPS[70], "Yb_PBE26"); Nele[70]=24.0;
   strcpy(PAO[71], "Lu8.0-s3p2d2f1"); strcpy(VPS[71], "Lu_PBE19"); Nele[71]=11.0;
   strcpy(PAO[72], "Hf9.0-s3p2d2f1"); strcpy(VPS[72], "Hf_PBE19"); Nele[72]=12.0;
   strcpy(PAO[73], "Ta7.0-s3p2d2f1"); strcpy(VPS[73], "Ta_PBE19"); Nele[73]=13.0;
@@ -3039,6 +3045,27 @@ static void set_PAO_VPS_standard(char PAO[104][32], char VPS[104][32], double Ne
   strcpy(PAO[81], "Tl8.0-s3p2d2f1"); strcpy(VPS[81], "Tl_PBE19"); Nele[81]=19.0;
   strcpy(PAO[82], "Pb8.0-s3p2d2f1"); strcpy(VPS[82], "Pb_PBE19"); Nele[82]=14.0;
   strcpy(PAO[83], "Bi8.0-s3p2d2f1"); strcpy(VPS[83], "Bi_PBE19"); Nele[83]=15.0;
+}
+
+/* Reports the defaults of set_PAO_VPS_standard() that the user has to act on or
+   should know about: data missing from DFT_DATA19, and the open-core datasets
+   chosen where no 4f-in-valence dataset exists. */
+static void report_dataset_choice(int z, const char *symbol, const char *vps){
+  switch (z){
+    case 59: /* Pr */
+    case 61: /* Pm */
+      fprintf(stderr, "Warning: the bundled DFT_DATA19 has no %s dataset. Add %s.vps and its PAO files"
+                      " from https://www.openmx-square.org/vps_pao2019/ or change %s in"
+                      " Definition.of.Atomic.Species.\n", symbol, vps, symbol);
+      break;
+    case 65: /* Tb */
+    case 69: /* Tm */
+      fprintf(stderr, "Note: %s uses the open-core dataset %s (4f in the core);"
+                      " the bundled DFT_DATA19 has no 4f-in-valence dataset for %s.\n", symbol, vps, symbol);
+      break;
+    default:
+      break;
+  }
 }
 
 
@@ -4736,6 +4763,7 @@ for (int i=0;i<ns;i++){
   }
 
   fprintf(out, "  %s   %s   %s\n", species[i], pao, vps);
+  report_dataset_choice(z, species[i], vps);
 }
 fprintf(out, "Definition.of.Atomic.Species>\n\n");
 
