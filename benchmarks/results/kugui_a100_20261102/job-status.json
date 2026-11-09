@@ -1,5 +1,5 @@
 {
-  "capture_finished_at": "2026-11-02T10:21:22.500876+09:00",
+  "capture_finished_at": "2026-11-09T13:42:11.078740+09:00",
   "jobs": {
     "fork": [
       {
@@ -72,7 +72,15 @@
         "nodes": 2,
         "retry": 0,
         "Job_Name": "fix-03-large3",
-        "job_state": "Q",
+        "resources_used": {
+          "cpupercent": 24724,
+          "cput": "69:06:27",
+          "mem": "189148300kb",
+          "ncpus": 128,
+          "vmem": "144932kb",
+          "walltime": "00:50:24"
+        },
+        "job_state": "F",
         "queue": "F2acc",
         "Resource_List": {
           "fs_factor": 1,
@@ -86,7 +94,9 @@
           "select": "2:ncpus=64:mpiprocs=32:ompthreads=2:ngpus=0:mem=240gb",
           "walltime": "06:00:00"
         },
-        "comment": "Not Running: Placement set KEY=CLARGE has too few free resources"
+        "stime": "Sun Nov  8 03:39:58 2026",
+        "comment": "Job run at Sun Nov 08 at 03:39 on (acc003:ncpus=64:ngpus=0:mem=251658240kb)+(acc004:ncpus=64:ngpus=0:mem=251658240kb) and finished",
+        "Exit_status": 0
       },
       {
         "job_id": "955295.kugui-pbs",
@@ -570,7 +580,15 @@
         "nodes": 2,
         "retry": 1,
         "Job_Name": "up-02-large3-re",
-        "job_state": "Q",
+        "resources_used": {
+          "cpupercent": 37906,
+          "cput": "93:52:27",
+          "mem": "165958356kb",
+          "ncpus": 128,
+          "vmem": "140364kb",
+          "walltime": "00:48:14"
+        },
+        "job_state": "F",
         "queue": "F2acc",
         "Resource_List": {
           "fs_factor": 1,
@@ -584,7 +602,9 @@
           "select": "2:ncpus=64:mpiprocs=32:ompthreads=2:ngpus=0:mem=240gb",
           "walltime": "04:00:00"
         },
-        "comment": "Not Running: Placement set KEY=CLARGE has too few free resources"
+        "stime": "Tue Nov  3 13:52:49 2026",
+        "comment": "Job run at Tue Nov 03 at 13:52 on (acc002:ncpus=64:ngpus=0:mem=251658240kb)+(acc004:ncpus=64:ngpus=0:mem=251658240kb) and finished",
+        "Exit_status": 0
       },
       {
         "job_id": "954991.kugui-pbs",
@@ -592,7 +612,15 @@
         "nodes": 2,
         "retry": 1,
         "Job_Name": "up-03-L2-C1000-",
-        "job_state": "Q",
+        "resources_used": {
+          "cpupercent": 18221,
+          "cput": "21:15:52",
+          "mem": "131019240kb",
+          "ncpus": 128,
+          "vmem": "137372kb",
+          "walltime": "00:12:03"
+        },
+        "job_state": "F",
         "queue": "F2acc",
         "Resource_List": {
           "fs_factor": 1,
@@ -606,7 +634,9 @@
           "select": "2:ncpus=64:mpiprocs=32:ompthreads=2:ngpus=0:mem=240gb",
           "walltime": "08:00:00"
         },
-        "comment": "Not Running: Placement set KEY=CLARGE has too few free resources"
+        "stime": "Wed Nov  4 09:04:18 2026",
+        "comment": "Job run at Wed Nov 04 at 09:04 on (acc003:ncpus=64:ngpus=0:mem=251658240kb)+(acc004:ncpus=64:ngpus=0:mem=251658240kb) and finished",
+        "Exit_status": 0
       },
       {
         "job_id": "954992.kugui-pbs",
@@ -614,7 +644,15 @@
         "nodes": 2,
         "retry": 1,
         "Job_Name": "up-04-L2-Fe1000",
-        "job_state": "Q",
+        "resources_used": {
+          "cpupercent": 5810,
+          "cput": "170:09:09",
+          "mem": "132422780kb",
+          "ncpus": 128,
+          "vmem": "137372kb",
+          "walltime": "03:00:06"
+        },
+        "job_state": "F",
         "queue": "F2acc",
         "Resource_List": {
           "fs_factor": 1,
@@ -628,7 +666,9 @@
           "select": "2:ncpus=64:mpiprocs=32:ompthreads=2:ngpus=0:mem=240gb",
           "walltime": "08:00:00"
         },
-        "comment": "Not Running: Placement set KEY=CLARGE has too few free resources"
+        "stime": "Wed Nov  4 09:16:37 2026",
+        "comment": "Job run at Wed Nov 04 at 09:16 on (acc003:ncpus=64:ngpus=0:mem=251658240kb)+(acc004:ncpus=64:ngpus=0:mem=251658240kb) and failed",
+        "Exit_status": 1
       },
       {
         "job_id": "954993.kugui-pbs",
@@ -636,7 +676,15 @@
         "nodes": 2,
         "retry": 1,
         "Job_Name": "up-05-L2-GRA102",
-        "job_state": "Q",
+        "resources_used": {
+          "cpupercent": 22502,
+          "cput": "29:01:10",
+          "mem": "108682108kb",
+          "ncpus": 128,
+          "vmem": "137372kb",
+          "walltime": "00:15:52"
+        },
+        "job_state": "F",
         "queue": "F2acc",
         "Resource_List": {
           "fs_factor": 1,
@@ -650,7 +698,9 @@
           "select": "2:ncpus=64:mpiprocs=32:ompthreads=2:ngpus=0:mem=240gb",
           "walltime": "08:00:00"
         },
-        "comment": "Not Running: Placement set KEY=CLARGE has too few free resources"
+        "stime": "Fri Nov  6 14:10:18 2026",
+        "comment": "Job run at Fri Nov 06 at 14:10 on (acc003:ncpus=64:ngpus=0:mem=251658240kb)+(acc004:ncpus=64:ngpus=0:mem=251658240kb) and finished",
+        "Exit_status": 0
       },
       {
         "job_id": "954994.kugui-pbs",
@@ -658,7 +708,15 @@
         "nodes": 2,
         "retry": 1,
         "Job_Name": "up-06-L2-Ih-Ice",
-        "job_state": "Q",
+        "resources_used": {
+          "cpupercent": 11212,
+          "cput": "10:57:42",
+          "mem": "125867296kb",
+          "ncpus": 128,
+          "vmem": "137396kb",
+          "walltime": "00:06:21"
+        },
+        "job_state": "F",
         "queue": "F2acc",
         "Resource_List": {
           "fs_factor": 1,
@@ -672,7 +730,9 @@
           "select": "2:ncpus=64:mpiprocs=32:ompthreads=2:ngpus=0:mem=240gb",
           "walltime": "08:00:00"
         },
-        "comment": "Not Running: Placement set KEY=CLARGE has too few free resources"
+        "stime": "Sat Nov  7 02:07:27 2026",
+        "comment": "Job run at Sat Nov 07 at 02:07 on (acc003:ncpus=64:ngpus=0:mem=251658240kb)+(acc004:ncpus=64:ngpus=0:mem=251658240kb) and finished",
+        "Exit_status": 0
       },
       {
         "job_id": "954995.kugui-pbs",
@@ -680,7 +740,15 @@
         "nodes": 2,
         "retry": 1,
         "Job_Name": "up-07-L2-Pt500-",
-        "job_state": "Q",
+        "resources_used": {
+          "cpupercent": 58877,
+          "cput": "96:36:36",
+          "mem": "179539088kb",
+          "ncpus": 128,
+          "vmem": "137308kb",
+          "walltime": "00:54:11"
+        },
+        "job_state": "F",
         "queue": "F2acc",
         "Resource_List": {
           "fs_factor": 1,
@@ -694,7 +762,9 @@
           "select": "2:ncpus=64:mpiprocs=32:ompthreads=2:ngpus=0:mem=240gb",
           "walltime": "08:00:00"
         },
-        "comment": "Not Running: Placement set KEY=CLARGE has too few free resources"
+        "stime": "Sat Nov  7 02:14:00 2026",
+        "comment": "Job run at Sat Nov 07 at 02:14 on (acc003:ncpus=64:ngpus=0:mem=251658240kb)+(acc004:ncpus=64:ngpus=0:mem=251658240kb) and finished",
+        "Exit_status": 0
       },
       {
         "job_id": "954996.kugui-pbs",
@@ -702,7 +772,15 @@
         "nodes": 2,
         "retry": 1,
         "Job_Name": "up-08-L2-R-TiO2",
-        "job_state": "Q",
+        "resources_used": {
+          "cpupercent": 23985,
+          "cput": "31:31:45",
+          "mem": "127948920kb",
+          "ncpus": 128,
+          "vmem": "137376kb",
+          "walltime": "00:17:21"
+        },
+        "job_state": "F",
         "queue": "F2acc",
         "Resource_List": {
           "fs_factor": 1,
@@ -716,7 +794,9 @@
           "select": "2:ncpus=64:mpiprocs=32:ompthreads=2:ngpus=0:mem=240gb",
           "walltime": "08:00:00"
         },
-        "comment": "Not Running: Placement set KEY=CLARGE has too few free resources"
+        "stime": "Sat Nov  7 03:08:23 2026",
+        "comment": "Job run at Sat Nov 07 at 03:08 on (acc003:ncpus=64:ngpus=0:mem=251658240kb)+(acc004:ncpus=64:ngpus=0:mem=251658240kb) and finished",
+        "Exit_status": 0
       },
       {
         "job_id": "954997.kugui-pbs",
@@ -724,7 +804,15 @@
         "nodes": 2,
         "retry": 1,
         "Job_Name": "up-09-L2-Si1000",
-        "job_state": "Q",
+        "resources_used": {
+          "cpupercent": 19410,
+          "cput": "23:26:39",
+          "mem": "157225212kb",
+          "ncpus": 128,
+          "vmem": "137372kb",
+          "walltime": "00:12:59"
+        },
+        "job_state": "F",
         "queue": "F2acc",
         "Resource_List": {
           "fs_factor": 1,
@@ -738,7 +826,9 @@
           "select": "2:ncpus=64:mpiprocs=32:ompthreads=2:ngpus=0:mem=240gb",
           "walltime": "08:00:00"
         },
-        "comment": "Not Running: Placement set KEY=CLARGE has too few free resources"
+        "stime": "Sun Nov  8 03:26:42 2026",
+        "comment": "Job run at Sun Nov 08 at 03:26 on (acc003:ncpus=64:ngpus=0:mem=251658240kb)+(acc004:ncpus=64:ngpus=0:mem=251658240kb) and finished",
+        "Exit_status": 0
       },
       {
         "job_id": "955020.kugui-pbs",
@@ -803,6 +893,28 @@
         "stime": "Mon Nov  2 05:56:24 2026",
         "comment": "Job run at Mon Nov 02 at 05:56 on (acc006[2]:mem=62914560kb:ngpus=1:ncpus=16+acc006[1]:mem=62914560kb:ngpus=1:ncpus=16+acc006[3]:mem=62914560kb:ngpus=1:ncpus=16+acc006[0]:mem=62914560kb:ngpus=1:ncpus=16) and finished",
         "Exit_status": 0
+      },
+      {
+        "job_id": "958164.kugui-pbs",
+        "name": "up-04-L2-Fe1000",
+        "nodes": 2,
+        "retry": 2,
+        "Job_Name": "up-04-L2-Fe1000",
+        "job_state": "Q",
+        "queue": "F2acc",
+        "Resource_List": {
+          "fs_factor": 1,
+          "mem": "480gb",
+          "mpiprocs": 64,
+          "ncpus": 128,
+          "nodect": 2,
+          "ompthreads": 1,
+          "place": "scatter:exclhost",
+          "Qlist": "F2acc",
+          "select": "2:ncpus=64:mpiprocs=32:ompthreads=2:ngpus=0:mem=240gb",
+          "walltime": "16:00:00"
+        },
+        "comment": "Not Running: Placement set KEY=CLARGE has too few free resources"
       }
     ]
   }

@@ -1,9 +1,10 @@
 {
   "snapshot": {
-    "start": "2026-11-02T10:21:19.260607+09:00",
-    "end": "2026-11-02T10:21:22.500876+09:00",
+    "start": "2026-11-09T13:42:03.437115+09:00",
+    "end": "2026-11-09T13:42:11.078740+09:00",
     "partial": true
   },
+  "campaign_first_publication": "2026-11-02",
   "measured_fork_commit": "0681d63ec3e00edc0c75f4b6d7c8f83c0643bbf3",
   "fork_source_modified": false,
   "protocol": {
@@ -29,16 +30,16 @@
   },
   "counts": {
     "upstream": {
-      "completed": 32,
-      "pending": 27
+      "completed": 58,
+      "pending": 1
     },
     "cpu": {
-      "completed": 32,
-      "pending": 27
+      "completed": 52,
+      "pending": 7
     },
     "gpu": {
-      "completed": 32,
-      "pending": 27
+      "completed": 52,
+      "pending": 7
     }
   },
   "expected_cases": 59,
@@ -47,8 +48,15 @@
   "upstream_history": {
     "reused_cases": 15,
     "measurement_date": "2026-10-29",
-    "newly_completed_cases": 17,
-    "new_measurement_date": "2026-11-02",
+    "newly_completed_cases": 43,
+    "new_measurement_dates": [
+      "2026-11-02",
+      "2026-11-03",
+      "2026-11-04",
+      "2026-11-06",
+      "2026-11-07",
+      "2026-11-08"
+    ],
     "binary_sha256": "5a4745795a2332bed42b470b1caa2d734f0657425cf5a1913f0b2b7fbbe882ac"
   },
   "numerical_acceptance": {
@@ -59,19 +67,20 @@
   },
   "accuracy_counts": {
     "gpu_vs_cpu": {
-      "passed": 32
+      "passed": 50,
+      "failed": 2
     },
     "cpu_vs_upstream": {
-      "passed": 31,
-      "failed": 1
+      "passed": 50,
+      "failed": 2
     },
     "gpu_vs_upstream": {
-      "passed": 31,
-      "failed": 1
+      "passed": 49,
+      "failed": 3
     }
   },
-  "source_capture_sha256": "5a37891af566f79c193d9ee30fa4848dd87860dd807dcc8c5421d984f5e778d8",
-  "source_capture_path": "work/codex_cpu_gpu_bugfix_20261031/publication_20261102_1020/captured-runs.json",
+  "source_capture_sha256": "3f7b139df7c7eb3ff9447f4bd1c20c42fe33f998d94cbc3862950411f71a2176",
+  "source_capture_path": "work/codex_cpu_gpu_bugfix_20261031/publication_20261109_1340/captured-runs.json",
   "raw_directories": [
     "work/codex_cpu_gpu_bugfix_20261031",
     "work/codex_upstream_benchmark_20261031",
@@ -80,19 +89,29 @@
   "running_and_pending_times_excluded": true,
   "no_incomplete_suite_totals": true,
   "files": {
-    "accuracy.csv": "2cf6fab73e0296f9a5ef68212e4e0c41c04f0a1459fb9f00fae5eab9aade0e12",
+    "accuracy.csv": "a49bf36e1f2676b25fb69cb3391ff1c499a77f223277aa4de6ced6d7a0cbcd55",
+    "attempt-history.json": "ebde201067bb2b21a3db3167b25b1ea33fdcfb0c7e7cb8531b9236dad57f10fe",
     "build-manifest.json": "1be7b1657e0b3cf3c01bd924e7a7d62db0a0044aa9d92aba164996dce1d065c2",
-    "case-results.csv": "f259f9496dbde40629f2e375bfac5f18ee09a230b7a8c238ea1256c572c9bb70",
-    "execution-audit.json": "f792f599c072d064a6f39ef83877535f6cd0683e818daf3261bf79cf38949716",
+    "case-results.csv": "74431ecc7d8b3066ea3a90a63d15a11a3411c84ffbb7af2e89f8b87fcc94266b",
+    "execution-audit.json": "77e3e4064f38e16465eb7a81ae55d45f36deee560991348d5c8b9f5be6d80aec",
+    "hardware/fork-955294-acc003.hardware.txt": "731a7c4805c17383f2509266dbe0e3f2f2e5d30fe2b55efa50e4cee51bf7b2f8",
+    "hardware/fork-955294-acc004.hardware.txt": "50b1c393d425b62065b104ee11d9ebfd6753125e9fca3ab0284a5dd449a0bcea",
     "hardware/fork-acc006.hardware.txt": "7fa33aeb4a0313bd4f02b3789692d8dc20f735a608f56e17f0e022e087385e04",
     "hardware/fork-acc008.hardware.txt": "c42b6a041c06e434209d9c7ba95de8e17e901ea33efb1bc79275812422b4ab5c",
+    "hardware/upstream-954990-acc002.hardware.txt": "c657b00e2ce002e25ce174089a850c1c2315e44a64824fa056f77a3b278c23ee",
+    "hardware/upstream-954991-acc003.hardware.txt": "d7abede8a18d5b701c90a3a25290604c96b75f16b1f06440851d876e3871921f",
+    "hardware/upstream-954993-acc003.hardware.txt": "2878ac2cc312fb55d88ea24058d16d6bf4fca75533cac9cc5d32756b46db854c",
+    "hardware/upstream-954994-acc003.hardware.txt": "d7abede8a18d5b701c90a3a25290604c96b75f16b1f06440851d876e3871921f",
+    "hardware/upstream-954995-acc003.hardware.txt": "d7abede8a18d5b701c90a3a25290604c96b75f16b1f06440851d876e3871921f",
+    "hardware/upstream-954996-acc003.hardware.txt": "d7abede8a18d5b701c90a3a25290604c96b75f16b1f06440851d876e3871921f",
+    "hardware/upstream-954997-acc003.hardware.txt": "d7abede8a18d5b701c90a3a25290604c96b75f16b1f06440851d876e3871921f",
     "hardware/upstream-acc006.hardware.txt": "9b447d31bbc5a5059ba5374f99fd555086b22aa3b861f5b1993b0328b8e9106e",
     "input-audit.json": "027a0d0e1369442e2a681680434961537ae07181fe4e634cc790e4c8fcbf0e36",
     "input-manifest.json": "0e49c20ef25ed3c65be38c1a749062b83b6b779e30a313e4f4e329d1be7143f5",
-    "job-status.json": "64c3cfd1be6fdc09825cee1632b3fd33f8d6025f0a67ce7bb9155c275db3444e",
-    "run-results.csv": "3b7d9f9eee0877e21e8bfc98a66913682918b95e7ecfd2583aab1773b904a18f",
-    "runs.json": "4b6d953099e70be02aa7c7d163cd5d1f1dc77e962bbddf61f37a17ed31e46553",
-    "timing-summary.csv": "b634d36f31344ac05d00a5fd2b29d6a504d62d021fcbcd66323182d5c23d5fc9",
-    "validation.json": "6c22a9db24823aaa23ebcd8072ee8742c8a72943a8557f23ceb0d065ed9305df"
+    "job-status.json": "6a245250c1b21d8d02b2e8c6a9fe8e7eaeddb044440aea6a0e3c69bdcd6fd427",
+    "run-results.csv": "8c5b4f2ce5d28495ec3f546976db5582e976befea80f0111d67f49d0b35f7d19",
+    "runs.json": "7a3a61bd616296c6782e64dd8cbb91b3d0bb2aab63f8fe096c6b72a319fc2091",
+    "timing-summary.csv": "758a76b4aa04e498f4b482bc2e0fdec36d95e844f988689c1b216f1f35c7bd48",
+    "validation.json": "34cf015b63491394514740fd634183285feddeca2177e39e0e762d65ef5f5a1a"
   }
 }

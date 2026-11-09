@@ -1,0 +1,54 @@
+2026-11-08T03:40:09+09:00
+acc004
+index, name, uuid, memory.total [MiB], driver_version
+0, NVIDIA A100-SXM4-40GB, GPU-49cee0ca-34e4-d6cc-eaf2-73ccb3a50b83, 40960 MiB, 560.35.03
+1, NVIDIA A100-SXM4-40GB, GPU-581ad2b0-091b-773c-ebfb-93875a0e3ce8, 40960 MiB, 560.35.03
+2, NVIDIA A100-SXM4-40GB, GPU-1900ad00-86a4-38b5-e051-c647725e2386, 40960 MiB, 560.35.03
+3, NVIDIA A100-SXM4-40GB, GPU-c3d99509-a434-4348-7fdc-b91396704f22, 40960 MiB, 560.35.03
+	[4mGPU0	GPU1	GPU2	GPU3	NIC0	CPU Affinity	NUMA Affinity	GPU NUMA ID[0m
+GPU0	 X 	NV4	NV4	NV4	SYS	48-63	3		N/A
+GPU1	NV4	 X 	NV4	NV4	SYS	32-47	2		N/A
+GPU2	NV4	NV4	 X 	NV4	PHB	16-31	1		N/A
+GPU3	NV4	NV4	NV4	 X 	SYS	0-15	0		N/A
+NIC0	SYS	SYS	PHB	SYS	 X
+
+Legend:
+
+  X    = Self
+  SYS  = Connection traversing PCIe as well as the SMP interconnect between NUMA nodes (e.g., QPI/UPI)
+  NODE = Connection traversing PCIe as well as the interconnect between PCIe Host Bridges within a NUMA node
+  PHB  = Connection traversing PCIe as well as a PCIe Host Bridge (typically the CPU)
+  PXB  = Connection traversing multiple PCIe bridges (without traversing the PCIe Host Bridge)
+  PIX  = Connection traversing at most a single PCIe bridge
+  NV#  = Connection traversing a bonded set of # NVLinks
+
+NIC Legend:
+
+  NIC0: mlx5_0
+
+Architecture:        x86_64
+CPU op-mode(s):      32-bit, 64-bit
+Byte Order:          Little Endian
+CPU(s):              64
+On-line CPU(s) list: 0-63
+Thread(s) per core:  1
+Core(s) per socket:  64
+Socket(s):           1
+NUMA node(s):        4
+Vendor ID:           AuthenticAMD
+CPU family:          25
+Model:               1
+Model name:          AMD EPYC 7763 64-Core Processor
+Stepping:            1
+CPU MHz:             2445.474
+BogoMIPS:            4890.94
+Virtualization:      AMD-V
+L1d cache:           32K
+L1i cache:           32K
+L2 cache:            512K
+L3 cache:            32768K
+NUMA node0 CPU(s):   0-15
+NUMA node1 CPU(s):   16-31
+NUMA node2 CPU(s):   32-47
+NUMA node3 CPU(s):   48-63
+Flags:               fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc rep_good nopl nonstop_tsc cpuid extd_apicid aperfmperf pni pclmulqdq monitor ssse3 fma cx16 pcid sse4_1 sse4_2 movbe popcnt aes xsave avx f16c rdrand lahf_lm cmp_legacy svm extapic cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw ibs skinit wdt tce topoext perfctr_core perfctr_nb bpext perfctr_llc mwaitx cpb cat_l3 cdp_l3 invpcid_single hw_pstate ssbd mba ibrs ibpb stibp vmmcall fsgsbase bmi1 avx2 smep bmi2 erms invpcid cqm rdt_a rdseed adx smap clflushopt clwb sha_ni xsaveopt xsavec xgetbv1 xsaves cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local clzero irperf xsaveerptr wbnoinvd amd_ppin brs arat npt lbrv svm_lock nrip_save tsc_scale vmcb_clean flushbyasid decodeassists pausefilter pfthreshold v_vmsave_vmload vgif v_spec_ctrl umip pku ospke vaes vpclmulqdq rdpid overflow_recov succor smca fsrm
