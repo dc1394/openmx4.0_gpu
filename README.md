@@ -658,6 +658,54 @@ they add no cold-start or performance measurements. The
 [verification records](benchmarks/results/rtx5080_projector_rounding_20261109/)
 retain full outputs, inputs, comparisons, convergence traces and runtime checks.
 
+<a id="precision-radeon-coldstart"></a>
+
+### Corrected precision option: AMD cold-start verification (Radeon RX 9060 XT, 2026-11-08–09)
+
+The 650-atom `benchmarks/inputs/cghelgeo.dat` was independently converged
+on all four routes with **8 MPI ranks × 2 OpenMP/BLAS threads** (16 physical
+cores), one Radeon RX 9060 XT (16 GiB, `gfx1200`) for HIP execution, and
+**`scf.criterion=1e-12` from the first SCF step**. Each run starts from atomic
+densities in a fresh directory with `scf.restart=off`: no common restart,
+density, Hamiltonian or mixing history is supplied.
+
+| Route | SCF steps | Total energy (Ha) | abs ΔE to upstream (Ha) | max abs ΔF to upstream (Ha/bohr) |
+| --- | ---: | ---: | ---: | ---: |
+| Upstream OpenMX 4.0 CPU (Intel/MKL) | 78 | -4153.148190613800 | 0.000e+00 | 0.000e+00 |
+| Fork CPU, AVX2 | 77 | -4153.148190613826 | 2.638e-11 | 1.950e-10 |
+| HIP native FP64 accelerated paths | 78 | -4153.148190613756 | 4.366e-11 | 4.080e-10 |
+| HIP default FP64 emulation policy | 78 | -4153.148190613730 | 7.003e-11 | 4.080e-10 |
+
+All six pairwise comparisons pass the unchanged `1e-7` Ha energy and
+`1e-7` Ha/bohr force-component gates. The largest differences are
+**`9.641e-11` Ha** and **`4.080e-10` Ha/bohr** across all **1,950 force
+components**. All four runs meet the SCF stop condition and finish before
+the common 400-step cap; completion markers alone do not determine acceptance.
+
+For stable convergence, all four cold starts use RMM-DIISH history 8,
+initial/minimum weight .001, maximum weight .1 and Pulay start 23. After 63
+completed steps, the same mixing-only SCF control file sets minimum/maximum
+weights .3 and Pulay start 401; all four first report fixed .3 Hamiltonian
+mixing at SCF65. This continues each independent run without a restart or
+any change to the `1e-12` stopping threshold. The exploratory history-50
+trial stopped after 93 steps is archived separately and is not a passing run.
+
+The native HIP route disables GEMMul8 and optional FP32/double-float paths
+with `scf.fp32.enable off` and FP64 grid/orbital controls. The default HIP
+route leaves precision controls unset. Both retain the upstream float-product
+rounding in VNA, force and stress contractions. Both GPU runs use MAGMA for
+all 78 SCF steps, with no dense CPU fallback or GPU solver failure; recorded
+Radeon activity corroborates GPU execution.
+
+The upstream executable uses Intel oneAPI 2026.0 / Intel MPI 2021.18 /
+MKL 2026.0; the fork uses ROCm Core SDK 10.1 / Clang-Flang 24 /
+OpenMPI 5.0.9 / AOCL 5.2 OpenMP. These are cold-start accuracy checks,
+separate from the earlier timing benchmarks and NVIDIA restart continuations.
+The [method and pairwise results](docs/CGHELGEO_COLDSTART.md),
+[CSV](benchmarks/results/radeon_cghelgeo_coldstart_20261108_8x2.csv) and
+[JSON](benchmarks/results/radeon_cghelgeo_coldstart_20261108_8x2.json)
+retain SCF traces, full force vectors, controls, hashes and runtime checks.
+
 ### Strict cghelgeo precision checks (RTX 5080, 2026-11-08)
 
 The 650-atom `benchmarks/inputs/cghelgeo.dat` was checked with
@@ -2908,13 +2956,10 @@ the maximum pairwise differences are 9.37e-11 Ha in
 energy and 4.08e-10 Ha/bohr in force components.
 These accuracy checks are separate from the earlier 16×2 timings.
 
-The [corrected precision option and independent cold starts](docs/CGHELGEO_COLDSTART.md)
-verify all four routes at `scf.criterion=1e-12`, 8 MPI × 2 threads,
-with `scf.restart=off` and no supplied density or mixing history.
-The common SCF schedule uses history 8, then fixed 0.3 Hamiltonian mixing
-from approximately SCF65, with the stopping threshold unchanged.
-The maximum pairwise differences are 9.641e-11 Ha
-and 4.080e-10 Ha/bohr across all 1,950 force components.
+The [AMD cold-start precision results](#precision-radeon-coldstart)
+independently converge all four routes at 8 MPI × 2 threads and
+`scf.criterion=1e-12`, without supplied restart data. The comparison table,
+mixing schedule and record links are included there.
 
 **The cghelgeo GPU timing includes CPU dense diagonalization.** There were
 61 dense-memory rejections across 61 SCF steps. The first verdict was:
