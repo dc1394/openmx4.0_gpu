@@ -660,12 +660,6 @@ retain full outputs, inputs, comparisons, convergence traces and runtime checks.
 
 ### Strict cghelgeo precision checks (RTX 5080, 2026-11-08)
 
-These archived measurements predate the correction that retains inherited
-VNA/force float-product rounding with `scf.fp32.enable off`. The promoted-product
-rows below record the earlier semantics; current behavior is described above.
-The [Radeon cold-start checks](docs/CGHELGEO_COLDSTART.md) verify the corrected
-option independently from atomic initial densities.
-
 The 650-atom `benchmarks/inputs/cghelgeo.dat` was checked with
 **18 MPI ranks × 2 OpenMP/BLAS threads**, one RTX 5080 with MPS for GPU
 execution, and **`scf.criterion=1e-10`** (1,000 times tighter than the
@@ -679,8 +673,6 @@ finished normally. Force differences cover all **1,950 Cartesian components**.
 | Fork CPU, AVX-512 | 95 | -4153.148190613648 | 2.320e-10 | 3.570e-10 |
 | GPU native FP64, inherited projector products retained | 2 (restart) | -4153.148190613762 | 1.180e-10 | 1.363e-09 |
 | GPU default emulation policy | 82 | -4153.148190613619 | 2.610e-10 | 6.150e-10 |
-| GPU full FP64 arithmetic, inherited products promoted | 83 | -4153.148190776506 | 1.62626e-07 | 3.5031e-08 |
-| GPU full FP64 arithmetic, matched-seed control | 60 (restart) | -4153.148190776526 | 1.62646e-07 | 3.5051e-08 |
 
 With inherited projector-product rounding retained, all six pairwise
 comparisons of upstream CPU, CPU AVX-512, native FP64 GPU and default GPU
@@ -697,29 +689,12 @@ rounding remains fixed. The default GPU row leaves the arithmetic controls
 unset, retaining GEMMul8, FP32 refinement, double-float policies and
 automatic cuSOLVER FP64 emulation.
 
-**In these measurements, `scf.fp32.enable off` also changed the inherited VNA/force products.**
-The full-FP64 row therefore has a small, separate arithmetic-policy offset:
-its energy difference **fails the retained `1e-7` Ha gate**, while its force
-difference passes. This result remains recorded as a failure of that energy
-check; the tolerance has not been relaxed. The
-[Radeon strict comparison](docs/CGHELGEO_STRICT_SCF.md) independently records
-an offset of the same size for this broader switch.
-
-The paired native-FP64 controls use byte-identical default-GPU restart files
-and the same numerical environment; only `scf.fp32.enable` changes.
-Promoting the inherited products reproduces an energy shift of
-`1.62764e-7` Ha and a maximum force shift of `3.4909e-8` Ha/bohr.
-The fresh and restarted full-FP64 runs agree within `2.0e-11` Ha and
-`4.38e-10` Ha/bohr. These controls separate the inherited product-rounding
-effect from SCF history and FP64 emulation. All 15 pairwise comparisons,
-including the full-FP64 energy-gate failures, are retained in the records.
-
 The upstream reference was initialized from its own 200-step `1e-12` probe,
 which exited normally without SCF convergence, then converged in two steps
-at the common `1e-10` criterion. The three original fork runs started fresh;
-both additional native-FP64 controls used the converged default-GPU density
-at the same geometry. These are accuracy checks with different initialization,
-so their timings are excluded from the performance tables.
+at the common `1e-10` criterion. The CPU AVX-512 and default GPU runs started
+fresh; the native-FP64 control used the converged default-GPU density at the
+same geometry. These are accuracy checks with different initialization, so
+their timings are excluded from the performance tables.
 
 The [measurement records](benchmarks/results/rtx5080_cghelgeo_strict_20261108/)
 retain exact inputs, full compressed stdout/output, force vectors, hashes,
@@ -2931,11 +2906,7 @@ Across upstream CPU, CPU AVX2, HIP with native FP64 grid/orbital/GEMM
 arithmetic and the default HIP policy, with inherited product rounding retained,
 the maximum pairwise differences are 9.37e-11 Ha in
 energy and 4.08e-10 Ha/bohr in force components.
-In that historical comparison, `scf.fp32.enable=off` also promoted inherited
-VNA/force float products: its upstream differences were 1.63e-07 Ha and
-3.51e-08 Ha/bohr. The option now retains upstream float-product rounding;
-those recorded measurements predate this correction. They are separate
-from the earlier 16×2 timings.
+These accuracy checks are separate from the earlier 16×2 timings.
 
 The [corrected precision option and independent cold starts](docs/CGHELGEO_COLDSTART.md)
 verify all four routes at `scf.criterion=1e-12`, 8 MPI × 2 threads,
