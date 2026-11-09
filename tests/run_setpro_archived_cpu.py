@@ -148,7 +148,8 @@ int main(void){
  archive_a=local;archive_b=halo;
  int cases=0;
  for(fp32=0;fp32<=1;fp32++){
-  /* Independent scalar reference over atom, neighbour and projector channels. */
+  /* Upstream float products are retained for both precision settings.
+     Widen only after multiplication; accumulation remains double. */
   for(int a=0;a<3;a++)for(int j=0;j<3;j++)for(int m=0;m<3;m++)for(int n=0;n<3;n++)expected[a][j][m][n]=-999;
   for(int a=1;a<=2;a++)for(int j=0;j<=FNAN[a];j++){
    int b=natn[a][j],na=Spe_Total_NO[WhatSpecies[a]],nb=Spe_Total_NO[WhatSpecies[b]];
@@ -160,7 +161,7 @@ int main(void){
      const float *y=b<=2?local+off[base[b]+kl]+n*NP:halo+hoff[kl]+n*NP;
      double sum=0;int l=0;
      for(int r=0;r<NR;r++){
-      double term=0;for(int z=0;z<length[r];z++,l++)term+=fp32?(double)(x[l]*y[l]):(double)x[l]*(double)y[l];
+      double term=0;for(int z=0;z<length[r];z++,l++)term+=(double)(x[l]*y[l]);
       sum+=energy[WhatSpecies[natn[a][k]]*NR+r]*term;
      }
      total+=sum;

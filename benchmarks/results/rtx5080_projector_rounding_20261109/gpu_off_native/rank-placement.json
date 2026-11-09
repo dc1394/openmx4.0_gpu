@@ -1,0 +1,236 @@
+[
+  {
+    "rank": 0,
+    "pid": 2833698,
+    "cpus": [
+      0,
+      18
+    ],
+    "requested_cpus": [
+      0,
+      18
+    ],
+    "executable": "/home/dc1394/openmx4.0_gpu/build/cuda-fp32-legacy-validation-20261109-092916/bin/openmx"
+  },
+  {
+    "rank": 1,
+    "pid": 2833699,
+    "cpus": [
+      1,
+      19
+    ],
+    "requested_cpus": [
+      1,
+      19
+    ],
+    "executable": "/home/dc1394/openmx4.0_gpu/build/cuda-fp32-legacy-validation-20261109-092916/bin/openmx"
+  },
+  {
+    "rank": 2,
+    "pid": 2833700,
+    "cpus": [
+      2,
+      20
+    ],
+    "requested_cpus": [
+      2,
+      20
+    ],
+    "executable": "/home/dc1394/openmx4.0_gpu/build/cuda-fp32-legacy-validation-20261109-092916/bin/openmx"
+  },
+  {
+    "rank": 3,
+    "pid": 2833701,
+    "cpus": [
+      3,
+      21
+    ],
+    "requested_cpus": [
+      3,
+      21
+    ],
+    "executable": "/home/dc1394/openmx4.0_gpu/build/cuda-fp32-legacy-validation-20261109-092916/bin/openmx"
+  },
+  {
+    "rank": 4,
+    "pid": 2833702,
+    "cpus": [
+      4,
+      22
+    ],
+    "requested_cpus": [
+      4,
+      22
+    ],
+    "executable": "/home/dc1394/openmx4.0_gpu/build/cuda-fp32-legacy-validation-20261109-092916/bin/openmx"
+  },
+  {
+    "rank": 5,
+    "pid": 2833703,
+    "cpus": [
+      5,
+      23
+    ],
+    "requested_cpus": [
+      5,
+      23
+    ],
+    "executable": "/home/dc1394/openmx4.0_gpu/build/cuda-fp32-legacy-validation-20261109-092916/bin/openmx"
+  },
+  {
+    "rank": 6,
+    "pid": 2833704,
+    "cpus": [
+      6,
+      24
+    ],
+    "requested_cpus": [
+      6,
+      24
+    ],
+    "executable": "/home/dc1394/openmx4.0_gpu/build/cuda-fp32-legacy-validation-20261109-092916/bin/openmx"
+  },
+  {
+    "rank": 7,
+    "pid": 2833705,
+    "cpus": [
+      7,
+      25
+    ],
+    "requested_cpus": [
+      7,
+      25
+    ],
+    "executable": "/home/dc1394/openmx4.0_gpu/build/cuda-fp32-legacy-validation-20261109-092916/bin/openmx"
+  },
+  {
+    "rank": 8,
+    "pid": 2833706,
+    "cpus": [
+      8,
+      26
+    ],
+    "requested_cpus": [
+      8,
+      26
+    ],
+    "executable": "/home/dc1394/openmx4.0_gpu/build/cuda-fp32-legacy-validation-20261109-092916/bin/openmx"
+  },
+  {
+    "rank": 9,
+    "pid": 2833707,
+    "cpus": [
+      9,
+      27
+    ],
+    "requested_cpus": [
+      9,
+      27
+    ],
+    "executable": "/home/dc1394/openmx4.0_gpu/build/cuda-fp32-legacy-validation-20261109-092916/bin/openmx"
+  },
+  {
+    "rank": 10,
+    "pid": 2833708,
+    "cpus": [
+      10,
+      28
+    ],
+    "requested_cpus": [
+      10,
+      28
+    ],
+    "executable": "/home/dc1394/openmx4.0_gpu/build/cuda-fp32-legacy-validation-20261109-092916/bin/openmx"
+  },
+  {
+    "rank": 11,
+    "pid": 2833709,
+    "cpus": [
+      11,
+      29
+    ],
+    "requested_cpus": [
+      11,
+      29
+    ],
+    "executable": "/home/dc1394/openmx4.0_gpu/build/cuda-fp32-legacy-validation-20261109-092916/bin/openmx"
+  },
+  {
+    "rank": 12,
+    "pid": 2833710,
+    "cpus": [
+      12,
+      30
+    ],
+    "requested_cpus": [
+      12,
+      30
+    ],
+    "executable": "/home/dc1394/openmx4.0_gpu/build/cuda-fp32-legacy-validation-20261109-092916/bin/openmx"
+  },
+  {
+    "rank": 13,
+    "pid": 2833711,
+    "cpus": [
+      13,
+      31
+    ],
+    "requested_cpus": [
+      13,
+      31
+    ],
+    "executable": "/home/dc1394/openmx4.0_gpu/build/cuda-fp32-legacy-validation-20261109-092916/bin/openmx"
+  },
+  {
+    "rank": 14,
+    "pid": 2833712,
+    "cpus": [
+      14,
+      32
+    ],
+    "requested_cpus": [
+      14,
+      32
+    ],
+    "executable": "/home/dc1394/openmx4.0_gpu/build/cuda-fp32-legacy-validation-20261109-092916/bin/openmx"
+  },
+  {
+    "rank": 15,
+    "pid": 2833713,
+    "cpus": [
+      15,
+      33
+    ],
+    "requested_cpus": [
+      15,
+      33
+    ],
+    "executable": "/home/dc1394/openmx4.0_gpu/build/cuda-fp32-legacy-validation-20261109-092916/bin/openmx"
+  },
+  {
+    "rank": 16,
+    "pid": 2833714,
+    "cpus": [
+      16,
+      34
+    ],
+    "requested_cpus": [
+      16,
+      34
+    ],
+    "executable": "/home/dc1394/openmx4.0_gpu/build/cuda-fp32-legacy-validation-20261109-092916/bin/openmx"
+  },
+  {
+    "rank": 17,
+    "pid": 2833715,
+    "cpus": [
+      17,
+      35
+    ],
+    "requested_cpus": [
+      17,
+      35
+    ],
+    "executable": "/home/dc1394/openmx4.0_gpu/build/cuda-fp32-legacy-validation-20261109-092916/bin/openmx"
+  }
+]

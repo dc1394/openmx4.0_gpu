@@ -1,0 +1,35 @@
+Test project /home/dc1394/openmx4.0_gpu/build/cuda
+      Start  30: force-vna-gpu-resources
+      Start 620: stress-vna
+      Start  34: projector-capacity-recovery
+ 1/11 Test  #34: projector-capacity-recovery ...............   Passed    4.45 sec
+      Start  39: force-recovery-failures
+ 2/11 Test  #39: force-recovery-failures ...................   Passed    1.87 sec
+      Start   7: cusolver-refinement-architecture-policy
+ 3/11 Test  #30: force-vna-gpu-resources ...................   Passed    6.59 sec
+      Start  66: force-archive-recovery
+ 4/11 Test   #7: cusolver-refinement-architecture-policy ...   Passed    1.37 sec
+      Start  33: force-vna-case1_turns-packing
+ 5/11 Test  #66: force-archive-recovery ....................   Passed    1.49 sec
+      Start 623: stress-overlap
+ 6/11 Test  #33: force-vna-case1_turns-packing .............   Passed    1.22 sec
+      Start  32: force-vna-case1-packing
+ 7/11 Test #623: stress-overlap ............................   Passed    1.21 sec
+      Start  31: force-vna-stream-packing
+ 8/11 Test #620: stress-vna ................................   Passed    9.88 sec
+      Start  67: vna-archive-recovery
+ 9/11 Test  #32: force-vna-case1-packing ...................   Passed    1.16 sec
+10/11 Test  #31: force-vna-stream-packing ..................   Passed    0.82 sec
+11/11 Test  #67: vna-archive-recovery ......................   Passed    1.34 sec
+
+100% tests passed out of 11
+
+Label Time Summary:
+core            =  11.08 sec*proc (2 tests)
+force           =  17.60 sec*proc (7 tests)
+gpu             =   1.37 sec*proc (1 test)
+native-state    =  11.08 sec*proc (2 tests)
+solver          =  11.08 sec*proc (2 tests)
+unit            =  30.05 sec*proc (10 tests)
+
+Total Test time (real) =  11.23 sec

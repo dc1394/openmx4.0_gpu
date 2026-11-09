@@ -639,6 +639,25 @@ GEMMul8 and cuSOLVER's FP64 fixed-point emulation remain governed by their
 own settings. The existing float storage of orbital and VNA projector
 tables is unchanged; this keyword controls optional accelerated arithmetic.
 
+### Corrected precision option: NVIDIA verification (RTX 5080, 2026-11-09)
+
+The corrected `scf.fp32.enable off` was verified with **18 MPI ranks × 2
+OpenMP/BLAS threads**, MPS and `scf.criterion=1e-10`. GPU native FP64
+(GEMMul8 and cuSOLVER emulation disabled), GPU FP32-off with default FP64
+emulation, GPU default precision, and CPU AVX-512 with FP32 off each converged
+in two SCF steps from byte-identical copies of the same converged restart.
+Including the retained upstream CPU reference, all ten pairwise comparisons
+pass the unchanged `1e-7` Ha / `1e-7` Ha/bohr gates. The maximum differences
+are **`1.36e-10` Ha** and **`1.363e-9` Ha/bohr** across all 1,950 force components.
+
+Actual cuSOLVER calls and GEMMul8/cuBLAS counters verify the selected native,
+emulated and optional FP32 routes. All 11 targeted CTest cases, three precision
+policy tests and the NVIDIA VNA archive fixture's 46 cases pass. These are
+**continuation accuracy checks**, with the earlier upstream result reused;
+they add no cold-start or performance measurements. The
+[verification records](benchmarks/results/rtx5080_projector_rounding_20261109/)
+retain full outputs, inputs, comparisons, convergence traces and runtime checks.
+
 ### Strict cghelgeo precision checks (RTX 5080, 2026-11-08)
 
 These archived measurements predate the correction that retains inherited

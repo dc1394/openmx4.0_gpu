@@ -1,0 +1,77 @@
+{
+  "passed": true,
+  "variants": [
+    {
+      "variant": "gpu_off_native",
+      "all_18_ranks_verified": true,
+      "all_18_runtime_maps_verified": true,
+      "main_and_OpenMP_affinity_verified": true,
+      "restart_found": true,
+      "cusolver_records": 14,
+      "cusolver_solves": 6,
+      "emulated_fp64_solves": 0,
+      "largest_eigensystem": 6670,
+      "solver_arithmetic": [
+        "complex_fp64"
+      ],
+      "observed_math_modes": [
+        1
+      ],
+      "gemmul8_calls": 0,
+      "native_cublas_calls": 12
+    },
+    {
+      "variant": "gpu_off_emulated",
+      "all_18_ranks_verified": true,
+      "all_18_runtime_maps_verified": true,
+      "main_and_OpenMP_affinity_verified": true,
+      "restart_found": true,
+      "cusolver_records": 42,
+      "cusolver_solves": 6,
+      "emulated_fp64_solves": 6,
+      "largest_eigensystem": 6670,
+      "solver_arithmetic": [
+        "complex_fp64"
+      ],
+      "observed_math_modes": [
+        4
+      ],
+      "gemmul8_calls": 10,
+      "native_cublas_calls": 2
+    },
+    {
+      "variant": "gpu_default",
+      "all_18_ranks_verified": true,
+      "all_18_runtime_maps_verified": true,
+      "main_and_OpenMP_affinity_verified": true,
+      "restart_found": true,
+      "cusolver_records": 54,
+      "cusolver_solves": 10,
+      "emulated_fp64_solves": 6,
+      "largest_eigensystem": 6670,
+      "solver_arithmetic": [
+        "complex_fp32",
+        "complex_fp64"
+      ],
+      "observed_math_modes": [
+        4
+      ],
+      "gemmul8_calls": 78,
+      "native_cublas_calls": 0
+    },
+    {
+      "variant": "cpu_avx512_off",
+      "all_18_ranks_verified": true,
+      "all_18_runtime_maps_verified": true,
+      "main_and_OpenMP_affinity_verified": true,
+      "restart_found": true,
+      "AVX512_runtime_selected": true,
+      "GPU_disabled": true
+    }
+  ],
+  "frozen_binary_and_library_hashes_verified": true,
+  "common_seed_hashes_verified": true,
+  "dataset_hashes_verified": true,
+  "MPS_observed": true,
+  "private_MPS_stopped": true
+}

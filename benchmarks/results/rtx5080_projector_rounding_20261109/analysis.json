@@ -1,0 +1,161 @@
+{
+  "all_passed": true,
+  "comparison": [
+    {
+      "baseline": "upstream",
+      "candidate": "gpu_off_native",
+      "energy_difference_hartree": 1.22e-10,
+      "max_force_component_difference_hartree_per_bohr": 1.363e-09,
+      "energy_difference_rounding_upper_bound": 1.23e-10,
+      "force_difference_rounding_upper_bound": 1.364e-09,
+      "max_force_atom": 479,
+      "max_force_axis": "x",
+      "max_coordinate_difference": 0.0,
+      "passed": true
+    },
+    {
+      "baseline": "upstream",
+      "candidate": "gpu_off_emulated",
+      "energy_difference_hartree": 1.26e-10,
+      "max_force_component_difference_hartree_per_bohr": 1.363e-09,
+      "energy_difference_rounding_upper_bound": 1.27e-10,
+      "force_difference_rounding_upper_bound": 1.364e-09,
+      "max_force_atom": 479,
+      "max_force_axis": "x",
+      "max_coordinate_difference": 0.0,
+      "passed": true
+    },
+    {
+      "baseline": "upstream",
+      "candidate": "gpu_default",
+      "energy_difference_hartree": 1.36e-10,
+      "max_force_component_difference_hartree_per_bohr": 1.363e-09,
+      "energy_difference_rounding_upper_bound": 1.37e-10,
+      "force_difference_rounding_upper_bound": 1.364e-09,
+      "max_force_atom": 479,
+      "max_force_axis": "x",
+      "max_coordinate_difference": 0.0,
+      "passed": true
+    },
+    {
+      "baseline": "upstream",
+      "candidate": "cpu_avx512_off",
+      "energy_difference_hartree": 1.15e-10,
+      "max_force_component_difference_hartree_per_bohr": 1.281e-09,
+      "energy_difference_rounding_upper_bound": 1.16e-10,
+      "force_difference_rounding_upper_bound": 1.282e-09,
+      "max_force_atom": 611,
+      "max_force_axis": "x",
+      "max_coordinate_difference": 0.0,
+      "passed": true
+    },
+    {
+      "baseline": "gpu_off_native",
+      "candidate": "gpu_off_emulated",
+      "energy_difference_hartree": 4e-12,
+      "max_force_component_difference_hartree_per_bohr": 1e-12,
+      "energy_difference_rounding_upper_bound": 5e-12,
+      "force_difference_rounding_upper_bound": 2e-12,
+      "max_force_atom": 6,
+      "max_force_axis": "z",
+      "max_coordinate_difference": 0.0,
+      "passed": true
+    },
+    {
+      "baseline": "gpu_off_native",
+      "candidate": "gpu_default",
+      "energy_difference_hartree": 1.4e-11,
+      "max_force_component_difference_hartree_per_bohr": 4e-12,
+      "energy_difference_rounding_upper_bound": 1.5e-11,
+      "force_difference_rounding_upper_bound": 5e-12,
+      "max_force_atom": 42,
+      "max_force_axis": "x",
+      "max_coordinate_difference": 0.0,
+      "passed": true
+    },
+    {
+      "baseline": "gpu_off_native",
+      "candidate": "cpu_avx512_off",
+      "energy_difference_hartree": 7e-12,
+      "max_force_component_difference_hartree_per_bohr": 4.61e-10,
+      "energy_difference_rounding_upper_bound": 8e-12,
+      "force_difference_rounding_upper_bound": 4.62e-10,
+      "max_force_atom": 466,
+      "max_force_axis": "x",
+      "max_coordinate_difference": 0.0,
+      "passed": true
+    },
+    {
+      "baseline": "gpu_off_emulated",
+      "candidate": "gpu_default",
+      "energy_difference_hartree": 1e-11,
+      "max_force_component_difference_hartree_per_bohr": 4e-12,
+      "energy_difference_rounding_upper_bound": 1.1e-11,
+      "force_difference_rounding_upper_bound": 5e-12,
+      "max_force_atom": 42,
+      "max_force_axis": "x",
+      "max_coordinate_difference": 0.0,
+      "passed": true
+    },
+    {
+      "baseline": "gpu_off_emulated",
+      "candidate": "cpu_avx512_off",
+      "energy_difference_hartree": 1.1e-11,
+      "max_force_component_difference_hartree_per_bohr": 4.61e-10,
+      "energy_difference_rounding_upper_bound": 1.2e-11,
+      "force_difference_rounding_upper_bound": 4.62e-10,
+      "max_force_atom": 466,
+      "max_force_axis": "x",
+      "max_coordinate_difference": 0.0,
+      "passed": true
+    },
+    {
+      "baseline": "gpu_default",
+      "candidate": "cpu_avx512_off",
+      "energy_difference_hartree": 2.1e-11,
+      "max_force_component_difference_hartree_per_bohr": 4.61e-10,
+      "energy_difference_rounding_upper_bound": 2.2e-11,
+      "force_difference_rounding_upper_bound": 4.62e-10,
+      "max_force_atom": 466,
+      "max_force_axis": "x",
+      "max_coordinate_difference": 0.0,
+      "passed": true
+    }
+  ],
+  "criterion": 1e-10,
+  "inherited_float_products_retained": true,
+  "tolerance": {
+    "energy_hartree": 1e-07,
+    "force_component_hartree_per_bohr": 1e-07
+  },
+  "printed_rounding_included": true,
+  "protocol": "Same-seed continuation regression; not cold-start timing.",
+  "upstream_reference_reused": true,
+  "runs": [
+    {
+      "variant": "upstream",
+      "energy_hartree": -4153.14819061388,
+      "SCF_steps": 2
+    },
+    {
+      "variant": "gpu_off_native",
+      "energy_hartree": -4153.148190613758,
+      "SCF_steps": 2
+    },
+    {
+      "variant": "gpu_off_emulated",
+      "energy_hartree": -4153.148190613754,
+      "SCF_steps": 2
+    },
+    {
+      "variant": "gpu_default",
+      "energy_hartree": -4153.148190613744,
+      "SCF_steps": 2
+    },
+    {
+      "variant": "cpu_avx512_off",
+      "energy_hartree": -4153.148190613765,
+      "SCF_steps": 2
+    }
+  ]
+}

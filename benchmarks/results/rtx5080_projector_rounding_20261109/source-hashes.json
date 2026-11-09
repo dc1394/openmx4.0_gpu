@@ -1,0 +1,46 @@
+[
+  {
+    "path": "source/Force.c",
+    "sha256": "fcbb13e402a4802a55fb89e2bdb86dfd15ebd962f62b7346a9558a75b595af0c"
+  },
+  {
+    "path": "source/Set_ProExpn_VNA.c",
+    "sha256": "4a5ac596aa7d7d65c028c0afc9f834546eae6f6cc76a64e60c7a1a91562232b2"
+  },
+  {
+    "path": "source/Stress.c",
+    "sha256": "080e8217e18c56ec9b0c55827610a1399af83f7fccad8db97b2d16bedd543c4e"
+  },
+  {
+    "path": "source/openmx_force_recovery.h",
+    "sha256": "2cbc58ce87ac83ee383e57f1e8c57cc5a44097a913e294a42ecbadc91584b808"
+  },
+  {
+    "path": "source/openmx_vna_assembly.h",
+    "sha256": "b6d6711619fe32c4ca0d127cf5a9ff0536d25b2d28251532131ff332465dc218"
+  },
+  {
+    "path": "source/Input_std.c",
+    "sha256": "c8680fc233cf57364c5df274af9eba9577f2d428131e7c62b5f3875b30e50195"
+  },
+  {
+    "path": "source/openmx_precision.h",
+    "sha256": "8956213522d37db01649c8edcecb29e9096ee8859da03a5fad098708f79a7c2a"
+  },
+  {
+    "path": "tests/run_setpro_archived_cpu.py",
+    "sha256": "d544be7353891256df54290362f809fddb9f3f92b230465174b597aa0628b096"
+  },
+  {
+    "path": "tests/run_projector_precision_cpu.py",
+    "sha256": "2ea746f2046b5e0a116d7fa934d124379d274ba58d3f7851a54a93750406564e"
+  },
+  {
+    "path": "tests/run_grid_precision_state.py",
+    "sha256": "2a186bdcb7a4b8d60930868c805e4ea7becafcb801db50aeb89cdb1cf98a4ab9"
+  },
+  {
+    "path": "tests/run_orbs_precision_policy_cpu.py",
+    "sha256": "4f7f639d9460121d60b2e2d21096ede23a4495889965210559ee30420b30e29a"
+  }
+]

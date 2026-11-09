@@ -1,0 +1,7 @@
+"/tmp/openmx-vna-archive-1rz6d71p/check.c", line 25: warning: function "openmx_fp32_enabled" was declared but never referenced [declared_but_not_referenced]
+  static int openmx_fp32_enabled(void){return fp32;}
+             ^
+
+Remark: individual warnings can be suppressed with "--diag_suppress <warning-name>"
+
+PASS: 46 archive/contraction cases, empty rank, empty halo, cleanup and fallback

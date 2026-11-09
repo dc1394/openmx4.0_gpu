@@ -1,0 +1,11 @@
+baseline,candidate,energy_difference_hartree,max_force_component_difference_hartree_per_bohr,energy_difference_rounding_upper_bound,force_difference_rounding_upper_bound,max_force_atom,max_force_axis,max_coordinate_difference,passed
+upstream,gpu_off_native,1.22e-10,1.363e-09,1.23e-10,1.364e-09,479,x,0.0,True
+upstream,gpu_off_emulated,1.26e-10,1.363e-09,1.27e-10,1.364e-09,479,x,0.0,True
+upstream,gpu_default,1.36e-10,1.363e-09,1.37e-10,1.364e-09,479,x,0.0,True
+upstream,cpu_avx512_off,1.15e-10,1.281e-09,1.16e-10,1.282e-09,611,x,0.0,True
+gpu_off_native,gpu_off_emulated,4e-12,1e-12,5e-12,2e-12,6,z,0.0,True
+gpu_off_native,gpu_default,1.4e-11,4e-12,1.5e-11,5e-12,42,x,0.0,True
+gpu_off_native,cpu_avx512_off,7e-12,4.61e-10,8e-12,4.62e-10,466,x,0.0,True
+gpu_off_emulated,gpu_default,1e-11,4e-12,1.1e-11,5e-12,42,x,0.0,True
+gpu_off_emulated,cpu_avx512_off,1.1e-11,4.61e-10,1.2e-11,4.62e-10,466,x,0.0,True
+gpu_default,cpu_avx512_off,2.1e-11,4.61e-10,2.2e-11,4.62e-10,466,x,0.0,True

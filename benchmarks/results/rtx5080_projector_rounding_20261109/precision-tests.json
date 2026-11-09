@@ -1,0 +1,23 @@
+[
+  {
+    "script": "tests/run_projector_precision_cpu.py",
+    "returncode": 0,
+    "seconds": 0.33402684004977345,
+    "stdout": "PASS: projector/force upstream float products with scf.fp32.enable on/off and policy reset\n",
+    "stderr": ""
+  },
+  {
+    "script": "tests/run_grid_precision_state.py",
+    "returncode": 0,
+    "seconds": 0.5932551260339096,
+    "stdout": "PASS: 10 grid precision configurations and SCF state transitions\n",
+    "stderr": ""
+  },
+  {
+    "script": "tests/run_orbs_precision_policy_cpu.py",
+    "returncode": 0,
+    "seconds": 0.42108979797922075,
+    "stdout": "PASS: orbital precision defaults, CUDA probe failures, environment and input overrides\n",
+    "stderr": ""
+  }
+]

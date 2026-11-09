@@ -1,0 +1,18 @@
+[
+  {
+    "SCF_step": 1,
+    "mixing_weight": 0.001,
+    "band_energy_hartree": -1123.628957230326,
+    "band_energy_change_hartree": 1.0,
+    "displayed_sqrt_NormRD": 1.0,
+    "criterion": 1e-10
+  },
+  {
+    "SCF_step": 2,
+    "mixing_weight": 0.001,
+    "band_energy_hartree": -1123.62895723042,
+    "band_energy_change_hartree": 9.5e-11,
+    "displayed_sqrt_NormRD": 2.726e-09,
+    "criterion": 1e-10
+  }
+]

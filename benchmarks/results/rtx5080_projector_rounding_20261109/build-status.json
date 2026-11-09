@@ -1,0 +1,6 @@
+{
+  "returncode": 0,
+  "target": "openmx",
+  "build_dir": "build/cuda",
+  "parallel": 6
+}

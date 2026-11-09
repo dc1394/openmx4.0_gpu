@@ -1,0 +1,47 @@
+{
+  "build": {
+    "command": "cmake --build build/cuda --target openmx --parallel 6",
+    "returncode": 0
+  },
+  "precision_policy_tests": [
+    {
+      "script": "tests/run_projector_precision_cpu.py",
+      "returncode": 0,
+      "seconds": 0.33402684004977345,
+      "stdout": "PASS: projector/force upstream float products with scf.fp32.enable on/off and policy reset\n",
+      "stderr": ""
+    },
+    {
+      "script": "tests/run_grid_precision_state.py",
+      "returncode": 0,
+      "seconds": 0.5932551260339096,
+      "stdout": "PASS: 10 grid precision configurations and SCF state transitions\n",
+      "stderr": ""
+    },
+    {
+      "script": "tests/run_orbs_precision_policy_cpu.py",
+      "returncode": 0,
+      "seconds": 0.42108979797922075,
+      "stdout": "PASS: orbital precision defaults, CUDA probe failures, environment and input overrides\n",
+      "stderr": ""
+    }
+  ],
+  "targeted_ctest": {
+    "returncode": 0,
+    "tests_passed": 11,
+    "command": "env -u LD_LIBRARY_PATH ctest --test-dir build/cuda --output-on-failure --parallel 3 -R '^(cusolver-refinement-architecture-policy|force-vna-gpu-resources|force-vna-stream-packing|force-vna-case1-packing|force-vna-case1_turns-packing|projector-capacity-recovery|force-recovery-failures|force-archive-recovery|vna-archive-recovery|stress-vna|stress-overlap)$'",
+    "log": "ctest-clean.log"
+  },
+  "actual_gpu_archive_regression": {
+    "returncode": 0,
+    "archive_cases": 46,
+    "command": "env CC=/opt/nvidia/hpc_sdk/Linux_x86_64/26.9/compilers/bin/nvc OPENMX_TEST_GPU=1 NVHPC_CUDA_HOME=/usr/local/cuda-13.4 NVCOMPILER_CUDA_HOME=/usr/local/cuda-13.4 python3 tests/run_setpro_archived_cpu.py",
+    "log": "vna-device-regression.log"
+  },
+  "test_fixture_correction": "The VNA recovery reference now rounds the float product before double accumulation in both precision settings; its 1e-12 comparison tolerance is unchanged.",
+  "initial_ctest_failures": [
+    "vna-archive-recovery still expected promoted products when off; corrected the reference to match the upstream-product contract.",
+    "force-vna-gpu-resources failed GCC ASan thread teardown with the inherited library path. NVHPC compilers/lib/libgomp.so.1 resolves to libnvomp.so. The unchanged sanitizer fixture passes when LD_LIBRARY_PATH is removed for the test child."
+  ],
+  "scope": "Targeted regressions and four matched-seed cghelgeo continuations. No full runtest/runtestL or new cold-start campaign."
+}
