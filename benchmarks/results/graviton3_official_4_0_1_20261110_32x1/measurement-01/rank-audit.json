@@ -1,0 +1,514 @@
+[
+  {
+    "rank": 0,
+    "pid": 89881,
+    "affinity": [
+      0
+    ],
+    "sve_bits": 256,
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2,
+    "zgemm_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "affinity_before_exec": [
+      0
+    ]
+  },
+  {
+    "rank": 1,
+    "pid": 89882,
+    "affinity": [
+      1
+    ],
+    "sve_bits": 256,
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2,
+    "zgemm_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "affinity_before_exec": [
+      1
+    ]
+  },
+  {
+    "rank": 2,
+    "pid": 89883,
+    "affinity": [
+      2
+    ],
+    "sve_bits": 256,
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2,
+    "zgemm_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "affinity_before_exec": [
+      2
+    ]
+  },
+  {
+    "rank": 3,
+    "pid": 89884,
+    "affinity": [
+      3
+    ],
+    "sve_bits": 256,
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2,
+    "zgemm_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "affinity_before_exec": [
+      3
+    ]
+  },
+  {
+    "rank": 4,
+    "pid": 89886,
+    "affinity": [
+      4
+    ],
+    "sve_bits": 256,
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2,
+    "zgemm_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "affinity_before_exec": [
+      4
+    ]
+  },
+  {
+    "rank": 5,
+    "pid": 89885,
+    "affinity": [
+      5
+    ],
+    "sve_bits": 256,
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2,
+    "zgemm_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "affinity_before_exec": [
+      5
+    ]
+  },
+  {
+    "rank": 6,
+    "pid": 89902,
+    "affinity": [
+      6
+    ],
+    "sve_bits": 256,
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2,
+    "zgemm_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "affinity_before_exec": [
+      6
+    ]
+  },
+  {
+    "rank": 7,
+    "pid": 89901,
+    "affinity": [
+      7
+    ],
+    "sve_bits": 256,
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2,
+    "zgemm_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "affinity_before_exec": [
+      7
+    ]
+  },
+  {
+    "rank": 8,
+    "pid": 89899,
+    "affinity": [
+      8
+    ],
+    "sve_bits": 256,
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2,
+    "zgemm_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "affinity_before_exec": [
+      8
+    ]
+  },
+  {
+    "rank": 9,
+    "pid": 89900,
+    "affinity": [
+      9
+    ],
+    "sve_bits": 256,
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2,
+    "zgemm_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "affinity_before_exec": [
+      9
+    ]
+  },
+  {
+    "rank": 10,
+    "pid": 89906,
+    "affinity": [
+      10
+    ],
+    "sve_bits": 256,
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2,
+    "zgemm_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "affinity_before_exec": [
+      10
+    ]
+  },
+  {
+    "rank": 11,
+    "pid": 89905,
+    "affinity": [
+      11
+    ],
+    "sve_bits": 256,
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2,
+    "zgemm_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "affinity_before_exec": [
+      11
+    ]
+  },
+  {
+    "rank": 12,
+    "pid": 89903,
+    "affinity": [
+      12
+    ],
+    "sve_bits": 256,
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2,
+    "zgemm_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "affinity_before_exec": [
+      12
+    ]
+  },
+  {
+    "rank": 13,
+    "pid": 89904,
+    "affinity": [
+      13
+    ],
+    "sve_bits": 256,
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2,
+    "zgemm_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "affinity_before_exec": [
+      13
+    ]
+  },
+  {
+    "rank": 14,
+    "pid": 89910,
+    "affinity": [
+      14
+    ],
+    "sve_bits": 256,
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2,
+    "zgemm_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "affinity_before_exec": [
+      14
+    ]
+  },
+  {
+    "rank": 15,
+    "pid": 89909,
+    "affinity": [
+      15
+    ],
+    "sve_bits": 256,
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2,
+    "zgemm_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "affinity_before_exec": [
+      15
+    ]
+  },
+  {
+    "rank": 16,
+    "pid": 89907,
+    "affinity": [
+      16
+    ],
+    "sve_bits": 256,
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2,
+    "zgemm_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "affinity_before_exec": [
+      16
+    ]
+  },
+  {
+    "rank": 17,
+    "pid": 89908,
+    "affinity": [
+      17
+    ],
+    "sve_bits": 256,
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2,
+    "zgemm_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "affinity_before_exec": [
+      17
+    ]
+  },
+  {
+    "rank": 18,
+    "pid": 89914,
+    "affinity": [
+      18
+    ],
+    "sve_bits": 256,
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2,
+    "zgemm_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "affinity_before_exec": [
+      18
+    ]
+  },
+  {
+    "rank": 19,
+    "pid": 89913,
+    "affinity": [
+      19
+    ],
+    "sve_bits": 256,
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2,
+    "zgemm_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "affinity_before_exec": [
+      19
+    ]
+  },
+  {
+    "rank": 20,
+    "pid": 89911,
+    "affinity": [
+      20
+    ],
+    "sve_bits": 256,
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2,
+    "zgemm_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "affinity_before_exec": [
+      20
+    ]
+  },
+  {
+    "rank": 21,
+    "pid": 89912,
+    "affinity": [
+      21
+    ],
+    "sve_bits": 256,
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2,
+    "zgemm_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "affinity_before_exec": [
+      21
+    ]
+  },
+  {
+    "rank": 22,
+    "pid": 89918,
+    "affinity": [
+      22
+    ],
+    "sve_bits": 256,
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2,
+    "zgemm_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "affinity_before_exec": [
+      22
+    ]
+  },
+  {
+    "rank": 23,
+    "pid": 89917,
+    "affinity": [
+      23
+    ],
+    "sve_bits": 256,
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2,
+    "zgemm_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "affinity_before_exec": [
+      23
+    ]
+  },
+  {
+    "rank": 24,
+    "pid": 89915,
+    "affinity": [
+      24
+    ],
+    "sve_bits": 256,
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2,
+    "zgemm_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "affinity_before_exec": [
+      24
+    ]
+  },
+  {
+    "rank": 25,
+    "pid": 89916,
+    "affinity": [
+      25
+    ],
+    "sve_bits": 256,
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2,
+    "zgemm_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "affinity_before_exec": [
+      25
+    ]
+  },
+  {
+    "rank": 26,
+    "pid": 89922,
+    "affinity": [
+      26
+    ],
+    "sve_bits": 256,
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2,
+    "zgemm_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "affinity_before_exec": [
+      26
+    ]
+  },
+  {
+    "rank": 27,
+    "pid": 89921,
+    "affinity": [
+      27
+    ],
+    "sve_bits": 256,
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2,
+    "zgemm_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "affinity_before_exec": [
+      27
+    ]
+  },
+  {
+    "rank": 28,
+    "pid": 89920,
+    "affinity": [
+      28
+    ],
+    "sve_bits": 256,
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2,
+    "zgemm_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "affinity_before_exec": [
+      28
+    ]
+  },
+  {
+    "rank": 29,
+    "pid": 89919,
+    "affinity": [
+      29
+    ],
+    "sve_bits": 256,
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2,
+    "zgemm_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "affinity_before_exec": [
+      29
+    ]
+  },
+  {
+    "rank": 30,
+    "pid": 89924,
+    "affinity": [
+      30
+    ],
+    "sve_bits": 256,
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2,
+    "zgemm_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "affinity_before_exec": [
+      30
+    ]
+  },
+  {
+    "rank": 31,
+    "pid": 89923,
+    "affinity": [
+      31
+    ],
+    "sve_bits": 256,
+    "blas_config": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+    "blas_core": "NEOVERSEV1",
+    "blas_threads": 1,
+    "blas_parallel": 2,
+    "zgemm_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+    "affinity_before_exec": [
+      31
+    ]
+  }
+]

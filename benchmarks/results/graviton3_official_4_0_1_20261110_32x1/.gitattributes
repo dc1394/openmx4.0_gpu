@@ -1,0 +1,4 @@
+* -text
+*.dat -whitespace
+*.patch -whitespace
+official-patch-README.txt -whitespace

@@ -1,0 +1,34 @@
+OpenMX 4.0 + patch4.0.1: sidia333_nc_cluster.dat
+32 MPI x 1 OpenMP; one full warmup, one full measurement; 25 SCF iterations each.
+Warmup: 555.832 seconds
+Measurement: 555.248 seconds
+Elapsed time includes MPI startup and output. Each run used a fresh directory, restart off.
+Fixed 25-step SCF, criterion 1e-13, Si 216 atoms, NC PBE, 200 Ry, 140 x 140 x 140 grid.
+ELPA2; each rank pinned to a separate core; SVE256 and one-thread NEOVERSEV1 BLAS audited.
+The interrupted validation is excluded. No numerical regression tests were run in this series.
+The reference repository contains additional application SIMD implementations absent from official OpenMX.
+
+Measured phase times (maximum over ranks, seconds; not additive):
+Total Computational Time: 552.644
+readfile: 1.552
+truncation: 3.870
+MD_pac: 0.007
+OutData: 12.878
+HWF: 0.000
+DFT: 534.352
+Set_OLP_Kin: 4.292
+Set_Nonlocal: 5.024
+Set_ProExpn_VNA: 14.374
+Set_Hamiltonian: 116.494
+Poisson: 0.145
+Diagonalization: 283.217
+Mixing_DM: 1.809
+Force: 21.730
+Total_Energy: 3.806
+Set_Aden_Grid: 0.597
+Set_Orbitals_Grid: 1.694
+Set_Density_Grid: 78.622
+RestartFileDFT: 0.017
+Mulliken_Charge: 0.416
+FFT(2D)_Density: 0.411
+Others: 3.200

@@ -1,0 +1,70 @@
+{
+  "packaged_utc": "2026-11-10T02:32:02.371951+00:00",
+  "source_campaign_directory": "/home/ec2-user/openmx-build/benchmarks/sidia333_nc_cluster_32mpi_1thread_20261110",
+  "recorded_binary": "/home/ec2-user/.local/opt/openmx-4.0.1-sve256/bin/openmx",
+  "reference": "https://github.com/dc1394/openmx4.0_gpu/tree/main/benchmarks/results/graviton3_sve256_20261105",
+  "reference_snapshot_commit": "b218d3748fbc6450d1e3b40fd1cbfaf289efa8bc",
+  "original_input_sha256": "9c5466abf560c6481b83ec9a51976f4b218856a1da330e5a209b9041239decd0",
+  "input_effective_sha256": "ce5aaf8f5c93cdb74915ecd5b2186e889c30e1a6359cfb578e4834ac59147a70",
+  "original_records_preserved": [
+    "summary.json",
+    "summary.txt",
+    "*/command.json",
+    "*/result.json",
+    "*/input.dat",
+    "*/rank-audit.json",
+    "*/linked-libraries.txt"
+  ],
+  "compressed_evidence": [
+    {
+      "archive": "original.dat.gz",
+      "uncompressed_bytes": 15996,
+      "uncompressed_sha256": "9c5466abf560c6481b83ec9a51976f4b218856a1da330e5a209b9041239decd0"
+    },
+    {
+      "archive": "warmup-01/run.log.gz",
+      "uncompressed_bytes": 114274,
+      "uncompressed_sha256": "b0be3f63ad7f4b778dabd88864684388063a2fb1238ebacd0ee247c3a695e3c5",
+      "run": "warmup-01"
+    },
+    {
+      "archive": "warmup-01/sidia333_nc_cluster.out.gz",
+      "uncompressed_bytes": 806076,
+      "uncompressed_sha256": "6a49b2abd0e849294bc7e2d243c24757c592b6626c58d7be979b7ca8bd05afc7",
+      "run": "warmup-01"
+    },
+    {
+      "archive": "measurement-01/run.log.gz",
+      "uncompressed_bytes": 114274,
+      "uncompressed_sha256": "36bcdaef209e1e30d0aebdc07f87aeed5627e7e55cca657740b335a044a542a6",
+      "run": "measurement-01"
+    },
+    {
+      "archive": "measurement-01/sidia333_nc_cluster.out.gz",
+      "uncompressed_bytes": 806076,
+      "uncompressed_sha256": "6f39d963751e48525f28e2f1389a2f6ece87b4d5c41f4980590a407195a79a43",
+      "run": "measurement-01"
+    }
+  ],
+  "archive_policy": "Selected completed-run evidence only. Logs and outputs are losslessly gzip-compressed. Large restart/density/visualization artifacts and installed binaries remain on the measurement host.",
+  "stopped_validation_excluded": true,
+  "numerical_comparison_after_stop_request": false,
+  "timings": [
+    [
+      "warmup-01",
+      "warmup",
+      555.8323866359999,
+      553.275,
+      25,
+      0
+    ],
+    [
+      "measurement-01",
+      "measurement",
+      555.2481550079997,
+      552.644,
+      25,
+      0
+    ]
+  ]
+}

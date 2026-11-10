@@ -1,0 +1,3 @@
+run,purpose,launcher_wall_seconds,native_elapsed_seconds,scf_iterations,returncode
+warmup-01,warmup,555.8323866359999,553.275,25,0
+measurement-01,measurement,555.2481550079997,552.644,25,0

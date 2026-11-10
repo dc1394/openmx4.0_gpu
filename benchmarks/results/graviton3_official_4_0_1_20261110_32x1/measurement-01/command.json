@@ -1,0 +1,115 @@
+{
+  "command": [
+    "/usr/lib64/openmpi/bin/mpirun",
+    "-np",
+    "32",
+    "--bind-to",
+    "core",
+    "--map-by",
+    "slot:PE=1",
+    "/usr/bin/python3",
+    "/home/ec2-user/openmx-build/scripts/benchmark-official.py",
+    "--rank"
+  ],
+  "purpose": "measurement",
+  "started_utc": "2026-11-10T02:13:02.789826+00:00",
+  "environment": {
+    "OMP_NUM_THREADS": "1",
+    "OMP_DYNAMIC": "FALSE",
+    "OMP_MAX_ACTIVE_LEVELS": "1",
+    "OMP_PROC_BIND": "close",
+    "OMP_PLACES": "cores",
+    "OPENBLAS_NUM_THREADS": "1",
+    "GOTO_NUM_THREADS": "1"
+  },
+  "input_original_sha256": "9c5466abf560c6481b83ec9a51976f4b218856a1da330e5a209b9041239decd0",
+  "input_effective_sha256": "ce5aaf8f5c93cdb74915ecd5b2186e889c30e1a6359cfb578e4834ac59147a70",
+  "overrides": {
+    "DATA.PATH": "/home/ec2-user/.local/opt/openmx-4.0.1-sve256/share/openmx/DFT_DATA19",
+    "level.of.fileout": "1",
+    "scf.eigen.lib": "elpa2",
+    "scf.restart": "off"
+  },
+  "ranks": 32,
+  "openmp_threads": 1,
+  "scf_steps": 25,
+  "binary": "/home/ec2-user/.local/opt/openmx-4.0.1-sve256/bin/openmx",
+  "binary_sha256": "7830b2282d593fffa7bafa5b96c52c8a157a7526de34b12fb2a7314536114fd1",
+  "blas_library": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+  "blas_sha256": "dda311fbc5327f0a691e8cd5b90de33c082b73d51d69490a5abba45bf3972e20",
+  "build": {
+    "recorded_utc": "2026-11-10T01:58:21.471072+00:00",
+    "official_source": "https://www.openmx-square.org/openmx4.0.tar.gz",
+    "official_patch": "https://www.openmx-square.org/bugfixed/26May08/patch4.0.1.tar.gz",
+    "source_directory": "/home/ec2-user/openmx4.0",
+    "install_prefix": "/home/ec2-user/.local/opt/openmx-4.0.1-sve256",
+    "reference": "https://github.com/dc1394/openmx4.0_gpu/tree/main/benchmarks/results/graviton3_sve256_20261105",
+    "reference_main_commit_at_fetch": "b218d3748fbc6450d1e3b40fd1cbfaf289efa8bc",
+    "reference_implementation_base_commit": "3871b1f0fb880aa1ee3b3201e7f51d6bdf6c6e96",
+    "system": "Linux ip-172-31-26-204.ap-southeast-2.compute.internal 6.18.56-126.188.amzn2023.aarch64 #2 SMP Tue Nov  3 13:25:04 UTC 2026 aarch64 aarch64 aarch64 GNU/Linux",
+    "os_release": "NAME=\"Amazon Linux\"\nVERSION=\"2023\"\nID=\"amzn\"\nID_LIKE=\"fedora\"\nVERSION_ID=\"2023\"\nPLATFORM_ID=\"platform:al2023\"\nPRETTY_NAME=\"Amazon Linux 2023.12.20261109\"\nANSI_COLOR=\"0;33\"\nCPE_NAME=\"cpe:2.3:o:amazon:amazon_linux:2023\"\nHOME_URL=\"https://aws.amazon.com/linux/amazon-linux-2023/\"\nDOCUMENTATION_URL=\"https://docs.aws.amazon.com/linux/\"\nSUPPORT_URL=\"https://aws.amazon.com/premiumsupport/\"\nBUG_REPORT_URL=\"https://github.com/amazonlinux/amazon-linux-2023\"\nVENDOR_NAME=\"AWS\"\nVENDOR_URL=\"https://aws.amazon.com/\"\nSUPPORT_END=\"2029-06-30\"\n",
+    "cpu_midr": "0x00000000411fd401",
+    "cpu_count": 32,
+    "sve_bits": 256,
+    "compiler": "gcc14-gcc (GCC) 14.2.1 20250110 (Red Hat 14.2.1-7)",
+    "fortran": "GNU Fortran (GCC) 14.2.1 20250110 (Red Hat 14.2.1-7)",
+    "mpi": "mpirun (Open MPI) 4.1.2",
+    "package_versions": [
+      "gcc14-14.2.1-7.amzn2023.0.2.aarch64",
+      "gcc14-c++-14.2.1-7.amzn2023.0.2.aarch64",
+      "gcc14-gfortran-14.2.1-7.amzn2023.0.2.aarch64",
+      "openmpi-4.1.2-3.amzn2023.0.4.aarch64",
+      "openmpi-devel-4.1.2-3.amzn2023.0.4.aarch64",
+      "fftw-devel-3.3.8-10.amzn2023.0.2.aarch64"
+    ],
+    "openblas": {
+      "version": "0.3.34",
+      "commit": "e0166008be8e466242aa76b2ff75ce3f0fbf574a",
+      "options": "TARGET=NEOVERSEV1 DYNAMIC_ARCH=0 USE_THREAD=1 USE_OPENMP=1 NUM_THREADS=32 NO_AFFINITY=1",
+      "configuration": "OpenBLAS 0.3.34 NO_AFFINITY USE_OPENMP NEOVERSEV1 MAX_THREADS=32",
+      "core": "NEOVERSEV1",
+      "threads": 1,
+      "parallel": 2,
+      "path": "/home/ec2-user/.local/opt/openblas-0.3.34-sve256/lib/libopenblas_neoversev1p-r0.3.34.so",
+      "sha256": "dda311fbc5327f0a691e8cd5b90de33c082b73d51d69490a5abba45bf3972e20"
+    },
+    "scalapack_version": "2.2.3",
+    "elpa_version": "2026.02.002",
+    "elpa_real_kernel": "SVE256_BLOCK2",
+    "elpa_complex_kernel": "SVE256_BLOCK2",
+    "elpa_fortran_flags": "-O2 -fPIC",
+    "elpa_c_flags": "-mcpu=neoverse-v1 -msve-vector-bits=scalable -fno-fast-math -ffp-contract=off -O2 -fPIC -march=armv8-a+sve -msve-vector-bits=256",
+    "openmx_c_flags": "-O3 -mcpu=neoverse-v1 -msve-vector-bits=scalable -fno-fast-math -ffp-contract=off -std=gnu11 -Dnosse -fopenmp -fcommon -Wno-implicit-function-declaration",
+    "scalapack_block_size": 32,
+    "patch_file_checks": {
+      "Band_DFT_Dosout.c": "f328851a91154b90398d38e33d263d414659dad5259ba799d0b8c248d98d7c3e",
+      "Mulliken_Charge.c": "8795dee2aa939778f2344c2e0264375f0c69c4e30fb025353802f6c9c3cbc3da",
+      "GaAs.dat": "b2571de088368e512c9967f770273aa6682563eb4bf77db5973b6d604bea1141"
+    },
+    "downloads_sha256": {
+      "autoconf-2.72.tar.gz": "afb181a76e1ee72832f6581c0eddf8df032b83e2e0239ef79ebedc4467d92d6e",
+      "cmake-3.31.12-linux-aarch64.tar.gz": "83f8fd91d2038a56556e1400390fcfe42f79602940c494f6c6f1cdae7f9e7f40",
+      "elpa-new_release_2026_02_002.zip": "14c05257b2d10a80c7c825eca278c4787ef34bd7c8a6343c2fd4686ad56f22d5",
+      "openmx4.0.tar.gz": "8d5338faf70885f276352bbd2826cdfed2ffd08f33eca58752666d79a7d0c3bf",
+      "patch4.0.1-README.txt": "71c036c161a8ad13db02c0dd2e52bd7da2c66a0882c61600167e32fc75b962e2",
+      "patch4.0.1.tar.gz": "c5312eeee13e17e0123beeb4eb2379bcf7c7cafa1815b1dcf6846452f9620bef",
+      "scalapack-2.2.3.tar.gz": "5d93701eca663925e98010dd8d0f45fd79b2191d74e5afa5711d587370a8b9dd"
+    },
+    "integration_sha256": "c8fb5fe624cb76dc33ca89aaf44bbd4d84a689ede1c83620697b2616ee8d4866",
+    "data_sha256": {
+      "DFT_DATA19/PAO/Si7.0.pao": "24c45d323ad0e4f652776791c0dd9a4c1357d7e63b91333503634401352f843f",
+      "DFT_DATA19/VPS/Si_PBE19.vps": "9a274b3f50cd247d53e735b8ad1669d491286934b61c295bcd6e8b6ba555d80a"
+    },
+    "binary_sha256": "7830b2282d593fffa7bafa5b96c52c8a157a7526de34b12fb2a7314536114fd1",
+    "differences_from_reference": [
+      "Application is official OpenMX 4.0 with official patch4.0.1, rather than the GPU repository CPU refactor.",
+      "The reference host_grid_simd.cpp and host_force_simd.cpp custom application kernels are not in the official source distribution.",
+      "GCC/MPI/FFTW versions, OpenBLAS source/options, ScaLAPACK version/flags, ELPA version/kernels/flags and block size match the final reference configuration.",
+      "Compatibility adapter from the reference is integrated with official stdout settings and direct ELPA environment overrides.",
+      "Official nosse portability option is enabled on AArch64; MPI initialization requests MPI_THREAD_SERIALIZED.",
+      "Default DATA.PATH points at installed DFT_DATA19; explicit input DATA.PATH continues to override it.",
+      "Amazon Linux 2023 kernel/package release differs from the November 5 host. No identical performance is asserted."
+    ]
+  },
+  "timer": "time.monotonic; mpirun start through exit; includes rank audit, MPI startup and output"
+}
