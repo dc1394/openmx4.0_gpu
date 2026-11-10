@@ -1,0 +1,67 @@
+{
+  "passed": true,
+  "measurements_reexecuted": false,
+  "source_commit": "9cb605dbbc892ea8c5d828c93c03a9d9be1d4147",
+  "archived_files_checked": 69,
+  "measurements": [
+    {
+      "case": "sidia333_nc_cluster",
+      "variant": "intel",
+      "total_seconds": 632.439,
+      "wall_seconds": 634.7899722839993,
+      "SCF_steps": 25,
+      "SCF_converged": false
+    },
+    {
+      "case": "sidia333_nc_cluster",
+      "variant": "upstream",
+      "total_seconds": 882.152,
+      "wall_seconds": 886.3166767450002,
+      "SCF_steps": 25,
+      "SCF_converged": false
+    },
+    {
+      "case": "cghelgeo",
+      "variant": "intel",
+      "total_seconds": 3105.124,
+      "wall_seconds": 3106.3997385029998,
+      "SCF_steps": 59,
+      "SCF_converged": true
+    },
+    {
+      "case": "cghelgeo",
+      "variant": "upstream",
+      "total_seconds": 3361.253,
+      "wall_seconds": 3365.3484074900007,
+      "SCF_steps": 58,
+      "SCF_converged": true
+    }
+  ],
+  "raw_output_comparisons": [
+    {
+      "case": "sidia333_nc_cluster",
+      "passed": true,
+      "energy_difference_hartree": 4.5e-11,
+      "max_force_component_difference_hartree_per_bohr": 1.71e-10,
+      "energy_difference_rounding_upper_bound": 4.6e-11,
+      "force_difference_rounding_upper_bound": 1.72e-10,
+      "max_coordinate_difference": 1e-05,
+      "force_components": 648
+    },
+    {
+      "case": "cghelgeo",
+      "passed": true,
+      "energy_difference_hartree": 5.4114e-08,
+      "max_force_component_difference_hartree_per_bohr": 9.378e-09,
+      "energy_difference_rounding_upper_bound": 5.4115e-08,
+      "force_difference_rounding_upper_bound": 9.379e-09,
+      "max_coordinate_difference": 0.0,
+      "force_components": 1950
+    }
+  ],
+  "tolerance": {
+    "energy_hartree": 1e-07,
+    "force_component_hartree_per_bohr": 1e-07
+  },
+  "printed_rounding_included": true
+}

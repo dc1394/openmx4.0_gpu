@@ -1,0 +1,9 @@
+# Keep historical evidence byte-for-byte across checkouts.
+* -text
+# Inputs and generated evidence retain the original whitespace.
+inputs/** -whitespace
+runs/** -whitespace
+build-evidence/** -whitespace
+probes/** -whitespace
+procedure/** -whitespace
+*.csv whitespace=cr-at-eol

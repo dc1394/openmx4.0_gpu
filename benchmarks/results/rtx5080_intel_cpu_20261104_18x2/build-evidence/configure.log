@@ -1,0 +1,58 @@
+-- The C compiler identification is IntelLLVM 2026.0.0
+-- The CXX compiler identification is IntelLLVM 2026.0.0
+-- The Fortran compiler identification is IntelLLVM 2026.0.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /home/dc1394/intel/oneapi/compiler/2026.0/bin/icx - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /home/dc1394/intel/oneapi/compiler/2026.0/bin/icpx - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Detecting Fortran compiler ABI info
+-- Detecting Fortran compiler ABI info - done
+-- Check for working Fortran compiler: /home/dc1394/intel/oneapi/compiler/2026.0/bin/ifx - skipped
+-- Found MPI_C: /home/dc1394/intel/oneapi/mpi/2021.18/lib/libmpifort.so (found version "4.1")
+-- Found MPI_CXX: /home/dc1394/intel/oneapi/mpi/2021.18/lib/libmpicxx.so (found version "4.1")
+-- Found MPI_Fortran: /home/dc1394/intel/oneapi/mpi/2021.18/lib/libmpifort.so (found version "4.1")
+-- Found MPI: TRUE (found version "4.1") found components: C CXX Fortran
+-- Performing Test OPENMX_CPU_MPI_IS_OPENMPI
+-- Performing Test OPENMX_CPU_MPI_IS_OPENMPI - Failed
+-- Performing Test OPENMX_CPU_MPI_IS_INTEL
+-- Performing Test OPENMX_CPU_MPI_IS_INTEL - Success
+-- CPU toolchain: IntelLLVM / IntelLLVM, Fortran IntelLLVM, MPI INTEL
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success
+-- Found Threads: TRUE
+-- Performing Test OPENMX_CORE_HAS_STD_MDSPAN
+-- Performing Test OPENMX_CORE_HAS_STD_MDSPAN - Failed
+-- Setting default Kokkos CXX standard to 20
+-- Kokkos version: 5.2.2
+-- The project name is: Kokkos
+-- Kokkos is configured for CMake languages CXX compilation (using IntelLLVM version 2026.0.0)
+-- Using -std=c++20 for C++20 standard as feature
+-- Built-in Execution Spaces:
+--     Device Parallel: NoTypeDefined
+--     Host Parallel: NoTypeDefined
+--       Host Serial: SERIAL
+-- 
+-- Architectures:
+-- Using bundled desul_atomics copy (desul/desul@83d26f34db50b4fefe30ed4db38b10e04c7a9384)
+-- Performing Test KOKKOS_LINK_OPTIONS_CHECK
+-- Performing Test KOKKOS_LINK_OPTIONS_CHECK - Success
+-- Using bundled mdspan copy (kokkos/mdspan@5d4eb209c77f4744980c0b0c2af44636cc81b08b)
+-- Found INTEL_SVML
+-- Kokkos Backends: SERIAL
+-- Found Python3: /home/dc1394/uv-envs/py314/bin/python3.14 (found suitable version "3.14.6", minimum required is "3.8") found components: Interpreter
+-- Found OpenMP_C: -fiopenmp (found version "5.1")
+-- Found OpenMP_CXX: -fiopenmp (found version "5.1")
+-- Found OpenMP: TRUE (found version "5.1") found components: C CXX
+-- Host numerical libraries: MKL (LP64), MPI INTEL
+-- Full CPU application: 292 shared source units; no GPU SDK
+-- OpenMX backend: CPU; native build: /home/dc1394/openmx4.0_gpu_intel_benchmark_20261104-072751/build/native/source
+-- Native make options: 
+-- Configuring done (13.5s)
+-- Generating done (0.4s)
+-- Build files have been written to: /home/dc1394/openmx4.0_gpu_intel_benchmark_20261104-072751/build

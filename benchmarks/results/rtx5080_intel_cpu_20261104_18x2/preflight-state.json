@@ -1,0 +1,9 @@
+{
+  "status": "completed",
+  "cpu_numerical_test": true,
+  "hybrid_numerical_test_2x2": true,
+  "affinity_18x2": true,
+  "MKL_NThr2_all_18_ranks": true,
+  "native_ELPA_threads2": true,
+  "initial_C60_attempt": "Added C5.0/C_CA19 missing from the benchmark-only data snapshot; C60 originally selects DC, so the untimed thread check explicitly selects Cluster to exercise ELPA."
+}

@@ -1,0 +1,12 @@
+[
+  {
+    "source": "/home/dc1394/openmx4.0_gpu/DFT_DATA19/PAO/C5.0.pao",
+    "snapshot": "/home/dc1394/openmx4.0_gpu_intel_benchmark_20261104-072751/DFT_DATA19/PAO/C5.0.pao",
+    "sha256": "03f7f3843ea89c87106a861cdee4a87d9324a948e1c41f101cc36c4b0e999934"
+  },
+  {
+    "source": "/home/dc1394/openmx4.0_gpu/DFT_DATA19/VPS/C_CA19.vps",
+    "snapshot": "/home/dc1394/openmx4.0_gpu_intel_benchmark_20261104-072751/DFT_DATA19/VPS/C_CA19.vps",
+    "sha256": "1bb1fd54ad8171745b44f3a738c2579f251198f20c777e72d5c35fbc00e49200"
+  }
+]

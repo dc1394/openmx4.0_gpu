@@ -1,0 +1,21 @@
+{
+  "status": "completed",
+  "phases": [
+    {
+      "name": "configure",
+      "returncode": 0,
+      "elapsed_seconds": 13.972832340000423
+    },
+    {
+      "name": "build",
+      "returncode": 0,
+      "elapsed_seconds": 264.86433892199966
+    },
+    {
+      "name": "install",
+      "returncode": 0,
+      "elapsed_seconds": 0.25564224800018565
+    }
+  ],
+  "active_phase": null
+}

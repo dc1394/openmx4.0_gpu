@@ -1548,6 +1548,7 @@ from SCF convergence.
 | [GeForce RTX 3060](#benchmark-rtx3060) | 8 × 4 (physical cores) | CUDA + MPS | 1 |
 | [GeForce RTX 4070 Ti](#benchmark-rtx4070ti) | 12 × 2 (SMT siblings, WSL2) | CUDA, no MPS (WSL2) | 1 |
 | [GeForce RTX 5080](#benchmark-rtx5080) | 18 × 2 (SMT siblings) | CUDA + MPS | 1 |
+| [Core i9-10980XE, Intel CPU build](#benchmark-rtx5080-intel-cpu) | 18 × 2 (SMT siblings) | CPU only | 0 used |
 | [Kugui A100](#benchmark-kugui-a100) | 32 × 2 (physical cores) | CUDA + MPS | 2 (4 reserved) |
 | [Pegasus H100](#benchmark-pegasus-h100) | 24 × 2 (physical cores) | CUDA + MPS | 1 |
 | [Radeon RX 9060 XT](#benchmark-radeon-rx9060xt) | 16 × 2 (physical cores) | HIP | 1 |
@@ -2269,6 +2270,77 @@ Versioned [timings, per-case checks and input hashes](benchmarks/results/rtx5080
 identify the exact binaries, libraries, controls and source commit.
 The complete local logs, outputs, resource samples and affinity probes are
 under `build/rtx5080-benchmark-20261031-210530/`.
+
+<a id="benchmark-rtx5080-intel-cpu"></a>
+
+### Intel CPU-only build / Core i9-10980XE (2026-11-04)
+
+#### Measurement conditions
+
+Commit `9cb605db` was built in a separate directory with **Intel oneAPI
+2026.0 (icx/icpx/ifx), Intel MPI 2021.18 and threaded LP64 MKL 2026.0**,
+matching the existing upstream executable's toolchain. The CPU-only Release
+build used `OPENMX_GPU_BACKEND=CPU`, `OPENMX_CPU_MKL_THREADING=INTEL`,
+`-O3 -xHost`, Kokkos Serial and Intel-compiled host SIMD. FFTW calls used
+MKL's compatible API. The original NVIDIA installation was preserved.
+The fork uses ELPA 2026.02.002 and upstream uses ELPA 2018; implementation,
+linkage and precision policies also differ between them.
+
+The host was the same Core i9-10980XE computer with 256 GiB RAM. Both
+implementations used **18 MPI ranks × 2 OpenMP threads**, two MKL threads
+and `OPENMX_GPU=0`. Rank i used SMT siblings i and i+18 on one physical
+core, with `OMP_PROC_BIND=close`, `OMP_PLACES=threads` and both OpenMP/MKL
+dynamic threading disabled. Separate probes verified all 18 rank placements,
+MKL `NThr:2` on every rank and native CPU ELPA's configured two threads.
+
+After the build and untimed numerical/threading checks, each input was
+measured once per implementation in a fresh directory, sequentially:
+fork Intel then upstream for sidia333, then the same order for cghelgeo.
+Both implementations used identical prepared inputs and PAO/VPS data.
+Only the absolute `DATA.PATH` and `scf.eigen.lib=elpa2` were adapted;
+geometry, grids, mixing, SCF/MD limits and criteria were preserved.
+These are historical single measurements at the stated source revision.
+
+#### Case results
+
+Times are maximum-rank native `Total Computational Time` in seconds,
+excluding MPI startup/shutdown. Wall times are retained separately in the
+records; they include up to one two-second monitoring interval.
+
+| Input | Upstream Intel CPU (s) | Fork Intel CPU (s) | Upstream / fork | SCF steps (upstream / fork) |
+| --- | ---: | ---: | ---: | ---: |
+| `sidia333_nc_cluster.dat` | 882.152 | **632.439** | 1.395 | 25 / 25 |
+| `cghelgeo.dat` | 3361.253 | **3105.124** | 1.082 | 58 / 59 |
+
+The upstream baseline here was measured on **November 4**, together with
+the Intel fork comparison. The earlier RTX 5080 table's **832.660 s**
+baseline was measured on October 31. Each ratio uses the paired baseline
+from its own campaign. Different dates, fork revisions and toolchains
+prevent these tables from isolating the compiler's effect on performance.
+
+#### Accuracy and convergence
+
+Both sidia333 runs reached the original **25-SCF cap without convergence**
+at `scf.criterion=1e-13`. Both cghelgeo runs converged at its original
+`scf.criterion=1e-7`. All four processes completed normally.
+
+The archived outputs pass the unchanged `1e-7` Ha energy and `1e-7` Ha/bohr
+force-component gates, with atom identities, coordinates and FFT grids
+checked. An independent archive check parses all printed force components
+and includes printed-rounding bounds.
+
+| Input | Force components | Abs ΔE (Ha) | Max abs ΔF (Ha/bohr) | Check |
+| --- | ---: | ---: | ---: | --- |
+| `sidia333_nc_cluster.dat` | 648 | 4.500e-11 | 1.710e-10 | PASS |
+| `cghelgeo.dat` | 1950 | 5.4114e-8 | 9.378e-9 | PASS |
+
+#### Measurement records
+
+The [Intel CPU records](benchmarks/results/rtx5080_intel_cpu_20261104_18x2/README.md)
+include exact inputs, full compressed stdout/native outputs, force vectors,
+build configuration, runtime-library and threading evidence, original
+analysis, hashes and a standalone archive verifier. They were published
+from the preserved November 4 files without rerunning the calculations.
 
 <a id="benchmark-kugui-a100"></a>
 

@@ -1,0 +1,76 @@
+{
+  "completed_runs": 4,
+  "expected_runs": 4,
+  "comparison": [
+    {
+      "case": "sidia333_nc_cluster",
+      "upstream_seconds": 882.152,
+      "current_Intel_seconds": 632.439,
+      "upstream_over_current": 1.39484124160591,
+      "upstream_wall_seconds": 886.3166767450002,
+      "current_Intel_wall_seconds": 634.7899722839993,
+      "upstream_SCF_steps": 25,
+      "current_Intel_SCF_steps": 25,
+      "upstream_unconverged_MD": 1,
+      "current_Intel_unconverged_MD": 1,
+      "upstream_diagonalization_seconds": 586.878,
+      "current_Intel_diagonalization_seconds": 423.617,
+      "energy_difference_hartree": 4.501998773775995e-11,
+      "max_force_component_difference_hartree_per_bohr": 1.710000000002733e-10,
+      "atom_ids_match": true,
+      "FFT_grids_match": true,
+      "max_coordinate_difference": 9.999999999621423e-06,
+      "passed": true
+    },
+    {
+      "case": "cghelgeo",
+      "upstream_seconds": 3361.253,
+      "current_Intel_seconds": 3105.124,
+      "upstream_over_current": 1.0824859168265102,
+      "upstream_wall_seconds": 3365.3484074900007,
+      "current_Intel_wall_seconds": 3106.3997385029998,
+      "upstream_SCF_steps": 58,
+      "current_Intel_SCF_steps": 59,
+      "upstream_unconverged_MD": 0,
+      "current_Intel_unconverged_MD": 0,
+      "upstream_diagonalization_seconds": 2883.819,
+      "current_Intel_diagonalization_seconds": 2718.529,
+      "energy_difference_hartree": 5.411402526078746e-08,
+      "max_force_component_difference_hartree_per_bohr": 9.37800000155864e-09,
+      "atom_ids_match": true,
+      "FFT_grids_match": true,
+      "max_coordinate_difference": 0.0,
+      "passed": true
+    }
+  ],
+  "accuracy_checks": [
+    {
+      "case": "sidia333_nc_cluster",
+      "energy_difference_hartree": 4.501998773775995e-11,
+      "max_force_component_difference_hartree_per_bohr": 1.710000000002733e-10,
+      "atom_ids_match": true,
+      "FFT_grids_match": true,
+      "max_coordinate_difference": 9.999999999621423e-06,
+      "passed": true
+    },
+    {
+      "case": "cghelgeo",
+      "energy_difference_hartree": 5.411402526078746e-08,
+      "max_force_component_difference_hartree_per_bohr": 9.37800000155864e-09,
+      "atom_ids_match": true,
+      "FFT_grids_match": true,
+      "max_coordinate_difference": 0.0,
+      "passed": true
+    }
+  ],
+  "accuracy_failures": [],
+  "protocol": {
+    "MPI_processes": 18,
+    "OMP_threads_per_process": 2,
+    "MKL_threads": 2,
+    "repetitions": 1,
+    "all_inputs_and_convergence_limits_preserved": true,
+    "primary_metric": "Maximum-rank Total Computational Time, seconds",
+    "wall_metric": "MPI-job wall time including startup/shutdown and up to one two-second polling interval"
+  }
+}

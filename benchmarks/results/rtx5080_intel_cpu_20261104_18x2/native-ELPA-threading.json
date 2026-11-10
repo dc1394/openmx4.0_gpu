@@ -1,0 +1,16 @@
+{
+  "input": "C60, Cluster solver, one SCF, stdout 3, untimed",
+  "reports": [
+    [
+      "2",
+      "2",
+      "2"
+    ],
+    [
+      "2",
+      "2",
+      "2"
+    ]
+  ],
+  "log": "native-thread-check-cluster.log"
+}

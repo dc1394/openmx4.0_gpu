@@ -1,0 +1,332 @@
+{
+  "ranks": 18,
+  "threads": 2,
+  "all_36_logical_CPUs_used_once": true,
+  "mapping": "rank i uses SMT siblings i and i+18",
+  "observations": [
+    {
+      "rank": 11,
+      "thread": 0,
+      "team": 2,
+      "cpu": 11,
+      "allowed": [
+        11
+      ]
+    },
+    {
+      "rank": 11,
+      "thread": 1,
+      "team": 2,
+      "cpu": 29,
+      "allowed": [
+        29
+      ]
+    },
+    {
+      "rank": 3,
+      "thread": 0,
+      "team": 2,
+      "cpu": 3,
+      "allowed": [
+        3
+      ]
+    },
+    {
+      "rank": 3,
+      "thread": 1,
+      "team": 2,
+      "cpu": 21,
+      "allowed": [
+        21
+      ]
+    },
+    {
+      "rank": 15,
+      "thread": 1,
+      "team": 2,
+      "cpu": 33,
+      "allowed": [
+        33
+      ]
+    },
+    {
+      "rank": 15,
+      "thread": 0,
+      "team": 2,
+      "cpu": 15,
+      "allowed": [
+        15
+      ]
+    },
+    {
+      "rank": 2,
+      "thread": 0,
+      "team": 2,
+      "cpu": 2,
+      "allowed": [
+        2
+      ]
+    },
+    {
+      "rank": 2,
+      "thread": 1,
+      "team": 2,
+      "cpu": 20,
+      "allowed": [
+        20
+      ]
+    },
+    {
+      "rank": 14,
+      "thread": 0,
+      "team": 2,
+      "cpu": 14,
+      "allowed": [
+        14
+      ]
+    },
+    {
+      "rank": 14,
+      "thread": 1,
+      "team": 2,
+      "cpu": 32,
+      "allowed": [
+        32
+      ]
+    },
+    {
+      "rank": 13,
+      "thread": 0,
+      "team": 2,
+      "cpu": 13,
+      "allowed": [
+        13
+      ]
+    },
+    {
+      "rank": 13,
+      "thread": 1,
+      "team": 2,
+      "cpu": 31,
+      "allowed": [
+        31
+      ]
+    },
+    {
+      "rank": 10,
+      "thread": 0,
+      "team": 2,
+      "cpu": 10,
+      "allowed": [
+        10
+      ]
+    },
+    {
+      "rank": 10,
+      "thread": 1,
+      "team": 2,
+      "cpu": 28,
+      "allowed": [
+        28
+      ]
+    },
+    {
+      "rank": 5,
+      "thread": 0,
+      "team": 2,
+      "cpu": 5,
+      "allowed": [
+        5
+      ]
+    },
+    {
+      "rank": 5,
+      "thread": 1,
+      "team": 2,
+      "cpu": 23,
+      "allowed": [
+        23
+      ]
+    },
+    {
+      "rank": 17,
+      "thread": 1,
+      "team": 2,
+      "cpu": 35,
+      "allowed": [
+        35
+      ]
+    },
+    {
+      "rank": 17,
+      "thread": 0,
+      "team": 2,
+      "cpu": 17,
+      "allowed": [
+        17
+      ]
+    },
+    {
+      "rank": 9,
+      "thread": 0,
+      "team": 2,
+      "cpu": 9,
+      "allowed": [
+        9
+      ]
+    },
+    {
+      "rank": 9,
+      "thread": 1,
+      "team": 2,
+      "cpu": 27,
+      "allowed": [
+        27
+      ]
+    },
+    {
+      "rank": 1,
+      "thread": 0,
+      "team": 2,
+      "cpu": 1,
+      "allowed": [
+        1
+      ]
+    },
+    {
+      "rank": 1,
+      "thread": 1,
+      "team": 2,
+      "cpu": 19,
+      "allowed": [
+        19
+      ]
+    },
+    {
+      "rank": 6,
+      "thread": 0,
+      "team": 2,
+      "cpu": 6,
+      "allowed": [
+        6
+      ]
+    },
+    {
+      "rank": 6,
+      "thread": 1,
+      "team": 2,
+      "cpu": 24,
+      "allowed": [
+        24
+      ]
+    },
+    {
+      "rank": 16,
+      "thread": 0,
+      "team": 2,
+      "cpu": 16,
+      "allowed": [
+        16
+      ]
+    },
+    {
+      "rank": 16,
+      "thread": 1,
+      "team": 2,
+      "cpu": 34,
+      "allowed": [
+        34
+      ]
+    },
+    {
+      "rank": 7,
+      "thread": 0,
+      "team": 2,
+      "cpu": 7,
+      "allowed": [
+        7
+      ]
+    },
+    {
+      "rank": 4,
+      "thread": 0,
+      "team": 2,
+      "cpu": 4,
+      "allowed": [
+        4
+      ]
+    },
+    {
+      "rank": 4,
+      "thread": 1,
+      "team": 2,
+      "cpu": 22,
+      "allowed": [
+        22
+      ]
+    },
+    {
+      "rank": 7,
+      "thread": 1,
+      "team": 2,
+      "cpu": 25,
+      "allowed": [
+        25
+      ]
+    },
+    {
+      "rank": 12,
+      "thread": 0,
+      "team": 2,
+      "cpu": 12,
+      "allowed": [
+        12
+      ]
+    },
+    {
+      "rank": 12,
+      "thread": 1,
+      "team": 2,
+      "cpu": 30,
+      "allowed": [
+        30
+      ]
+    },
+    {
+      "rank": 8,
+      "thread": 0,
+      "team": 2,
+      "cpu": 8,
+      "allowed": [
+        8
+      ]
+    },
+    {
+      "rank": 8,
+      "thread": 1,
+      "team": 2,
+      "cpu": 26,
+      "allowed": [
+        26
+      ]
+    },
+    {
+      "rank": 0,
+      "thread": 0,
+      "team": 2,
+      "cpu": 0,
+      "allowed": [
+        0
+      ]
+    },
+    {
+      "rank": 0,
+      "thread": 1,
+      "team": 2,
+      "cpu": 18,
+      "allowed": [
+        18
+      ]
+    }
+  ]
+}

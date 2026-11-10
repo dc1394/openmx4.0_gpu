@@ -1,0 +1,76 @@
+{
+  "inputs": [
+    {
+      "case": "sidia333_nc_cluster",
+      "source": "/home/dc1394/openmx4.0_gpu/benchmarks/inputs/sidia333_nc_cluster.dat",
+      "sha256": "9c5466abf560c6481b83ec9a51976f4b218856a1da330e5a209b9041239decd0"
+    },
+    {
+      "case": "cghelgeo",
+      "source": "/home/dc1394/openmx4.0_gpu/benchmarks/inputs/cghelgeo.dat",
+      "sha256": "9c3958e470820ab2182af859b4749a0f3375c41d1a56ac013e0f398b441d0ff7"
+    }
+  ],
+  "datasets": [
+    {
+      "source": "/home/dc1394/openmx4.0_gpu/DFT_DATA19/PAO/C6.0.pao",
+      "snapshot": "/home/dc1394/openmx4.0_gpu_intel_benchmark_20261104-072751/DFT_DATA19/PAO/C6.0.pao",
+      "sha256": "1442a834dbc2b9b55e8f11a20734c7b77765fa4e05ca3e1b1f004da46bfaaef4"
+    },
+    {
+      "source": "/home/dc1394/openmx4.0_gpu/DFT_DATA19/PAO/H5.0.pao",
+      "snapshot": "/home/dc1394/openmx4.0_gpu_intel_benchmark_20261104-072751/DFT_DATA19/PAO/H5.0.pao",
+      "sha256": "31b4a1bb098e57fdde6c5158596929362f304909132dc9eeb2cc389c08fbbf46"
+    },
+    {
+      "source": "/home/dc1394/openmx4.0_gpu/DFT_DATA19/PAO/N6.0.pao",
+      "snapshot": "/home/dc1394/openmx4.0_gpu_intel_benchmark_20261104-072751/DFT_DATA19/PAO/N6.0.pao",
+      "sha256": "063efc7ac0674c36e2ccb2c2ba0bc3aa953c94f39046b0c2acc4cf514c048ff7"
+    },
+    {
+      "source": "/home/dc1394/openmx4.0_gpu/DFT_DATA19/PAO/O7.0.pao",
+      "snapshot": "/home/dc1394/openmx4.0_gpu_intel_benchmark_20261104-072751/DFT_DATA19/PAO/O7.0.pao",
+      "sha256": "7411fc9c218ee947234bcc15a1f3ff12f48954eb8c5ce4c617436f8671810ec4"
+    },
+    {
+      "source": "/home/dc1394/openmx4.0_gpu/DFT_DATA19/PAO/P7.0.pao",
+      "snapshot": "/home/dc1394/openmx4.0_gpu_intel_benchmark_20261104-072751/DFT_DATA19/PAO/P7.0.pao",
+      "sha256": "9ae4ec8e1cddf035464c2b9cb7d0fccbffb40f118114b225e3106ac5cc8f1314"
+    },
+    {
+      "source": "/home/dc1394/openmx4.0_gpu/DFT_DATA19/PAO/Si7.0.pao",
+      "snapshot": "/home/dc1394/openmx4.0_gpu_intel_benchmark_20261104-072751/DFT_DATA19/PAO/Si7.0.pao",
+      "sha256": "24c45d323ad0e4f652776791c0dd9a4c1357d7e63b91333503634401352f843f"
+    },
+    {
+      "source": "/home/dc1394/openmx4.0_gpu/DFT_DATA19/VPS/C_PBE19.vps",
+      "snapshot": "/home/dc1394/openmx4.0_gpu_intel_benchmark_20261104-072751/DFT_DATA19/VPS/C_PBE19.vps",
+      "sha256": "4b9c78eb72be25ca46366b8fd39c74ae7172d7db9e77b29782a42f71901b38a7"
+    },
+    {
+      "source": "/home/dc1394/openmx4.0_gpu/DFT_DATA19/VPS/H_PBE19.vps",
+      "snapshot": "/home/dc1394/openmx4.0_gpu_intel_benchmark_20261104-072751/DFT_DATA19/VPS/H_PBE19.vps",
+      "sha256": "cdb7685cc3f34bd2bf81f809594bb4371728476d1a624dca291c4b9ff361c6fa"
+    },
+    {
+      "source": "/home/dc1394/openmx4.0_gpu/DFT_DATA19/VPS/N_PBE19.vps",
+      "snapshot": "/home/dc1394/openmx4.0_gpu_intel_benchmark_20261104-072751/DFT_DATA19/VPS/N_PBE19.vps",
+      "sha256": "904c1c6e59a86448830178681a39cd3c4d14fb2daf9be8f4742673ddfc8e3466"
+    },
+    {
+      "source": "/home/dc1394/openmx4.0_gpu/DFT_DATA19/VPS/O_PBE19.vps",
+      "snapshot": "/home/dc1394/openmx4.0_gpu_intel_benchmark_20261104-072751/DFT_DATA19/VPS/O_PBE19.vps",
+      "sha256": "afb469c2da38c80854b1bdf7df1f6da6dc8d7c874a75f0bf7c294a96046410fc"
+    },
+    {
+      "source": "/home/dc1394/openmx4.0_gpu/DFT_DATA19/VPS/P_PBE19.vps",
+      "snapshot": "/home/dc1394/openmx4.0_gpu_intel_benchmark_20261104-072751/DFT_DATA19/VPS/P_PBE19.vps",
+      "sha256": "91a543cf3f29b743133c80ff6442851a9be8adfb215fd571d56a169cf2f740b6"
+    },
+    {
+      "source": "/home/dc1394/openmx4.0_gpu/DFT_DATA19/VPS/Si_PBE19.vps",
+      "snapshot": "/home/dc1394/openmx4.0_gpu_intel_benchmark_20261104-072751/DFT_DATA19/VPS/Si_PBE19.vps",
+      "sha256": "9a274b3f50cd247d53e735b8ad1669d491286934b61c295bcd6e8b6ba555d80a"
+    }
+  ]
+}

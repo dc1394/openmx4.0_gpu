@@ -1,0 +1,42 @@
+{
+  "icx": {
+    "command": [
+      "/home/dc1394/intel/oneapi/compiler/2026.0/bin/icx",
+      "--version"
+    ],
+    "returncode": 0,
+    "output": "Intel(R) oneAPI DPC++/C++ Compiler 2026.0.0 (2026.0.0.20260331)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/dc1394/intel/oneapi/compiler/2026.0/bin/compiler\nConfiguration file: /home/dc1394/intel/oneapi/compiler/2026.0/bin/compiler/../icx.cfg\n"
+  },
+  "icpx": {
+    "command": [
+      "/home/dc1394/intel/oneapi/compiler/2026.0/bin/icpx",
+      "--version"
+    ],
+    "returncode": 0,
+    "output": "Intel(R) oneAPI DPC++/C++ Compiler 2026.0.0 (2026.0.0.20260331)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/dc1394/intel/oneapi/compiler/2026.0/bin/compiler\nConfiguration file: /home/dc1394/intel/oneapi/compiler/2026.0/bin/compiler/../icpx.cfg\n"
+  },
+  "ifx": {
+    "command": [
+      "/home/dc1394/intel/oneapi/compiler/2026.0/bin/ifx",
+      "--version"
+    ],
+    "returncode": 0,
+    "output": "ifx (IFX) 2026.0.0 20260331\nCopyright (C) 1985-2026 Intel Corporation. All rights reserved.\n\n"
+  },
+  "Intel_MPI": {
+    "command": [
+      "/home/dc1394/intel/oneapi/mpi/2021.18/bin/mpiexec",
+      "--version"
+    ],
+    "returncode": 0,
+    "output": "Intel(R) MPI Library for Linux* OS, Version 2021.18.0 Build 20260327 (id: 821f207)\nCopyright 2003-2026, Intel Corporation.\n"
+  },
+  "cmake": {
+    "command": [
+      "/home/dc1394/bin/cmake",
+      "--version"
+    ],
+    "returncode": 0,
+    "output": "cmake version 4.4.5\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n"
+  }
+}

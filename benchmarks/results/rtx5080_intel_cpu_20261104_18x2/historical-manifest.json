@@ -1,0 +1,280 @@
+{
+  "source": {
+    "artifacts": "/home/dc1394/openmx4.0_gpu_intel_benchmark_20261104-072751",
+    "source_root": "/home/dc1394/openmx4.0_gpu",
+    "source_commit": "9cb605dbbc892ea8c5d828c93c03a9d9be1d4147",
+    "source_tracked_clean": true,
+    "upstream_source": "/home/dc1394/openmx4.0/work/openmx",
+    "upstream_sha256": "59b23d044be0ef14cd678793abb80bdd6d9bd464debdbf9f395fb32a586f4ce0",
+    "existing_work_binary_sha256": "5eea8378ee39c901406346e934e3656eb5cb62673ba50dc5b0805c2c2d99a1c4"
+  },
+  "build": {
+    "status": "completed",
+    "phases": [
+      {
+        "name": "configure",
+        "returncode": 0,
+        "elapsed_seconds": 13.972832340000423
+      },
+      {
+        "name": "build",
+        "returncode": 0,
+        "elapsed_seconds": 264.86433892199966
+      },
+      {
+        "name": "install",
+        "returncode": 0,
+        "elapsed_seconds": 0.25564224800018565
+      }
+    ],
+    "active_phase": null
+  },
+  "build_commands": {
+    "commands": {
+      "configure": [
+        "/home/dc1394/bin/cmake",
+        "-S",
+        "/home/dc1394/openmx4.0_gpu",
+        "-B",
+        "/home/dc1394/openmx4.0_gpu_intel_benchmark_20261104-072751/build",
+        "-DOPENMX_GPU_BACKEND=CPU",
+        "-DOPENMX_CPU_COMPILER=ICX",
+        "-DOPENMX_CPU_MPI=INTEL",
+        "-DOPENMX_CPU_LINALG=MKL",
+        "-DOPENMX_CPU_MKL_THREADING=INTEL",
+        "-DOPENMX_CPU_MPI_ROOT=/home/dc1394/intel/oneapi/mpi/2021.18",
+        "-DOPENMX_CPU_MKL_ROOT=/home/dc1394/intel/oneapi/mkl/2026.0",
+        "-DCMAKE_C_COMPILER=/home/dc1394/intel/oneapi/compiler/2026.0/bin/icx",
+        "-DCMAKE_CXX_COMPILER=/home/dc1394/intel/oneapi/compiler/2026.0/bin/icpx",
+        "-DCMAKE_Fortran_COMPILER=/home/dc1394/intel/oneapi/compiler/2026.0/bin/ifx",
+        "-DOPENMX_HOST_SIMD_CXX_COMPILER=/home/dc1394/intel/oneapi/compiler/2026.0/bin/icpx",
+        "-DOPENMX_CPU_FFTW_INCLUDE_DIR=/home/dc1394/intel/oneapi/mkl/2026.0/include/fftw",
+        "-DOPENMX_CPU_FFTW_LIBRARY=/home/dc1394/intel/oneapi/mkl/2026.0/lib/libmkl_intel_lp64.so",
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DCMAKE_C_FLAGS_RELEASE=-O3 -DNDEBUG -xHost",
+        "-DCMAKE_CXX_FLAGS_RELEASE=-O3 -DNDEBUG -xHost",
+        "-DCMAKE_Fortran_FLAGS_RELEASE=-O3 -DNDEBUG -xHost",
+        "-DOPENMX_CORE_BACKEND=SERIAL",
+        "-DOPENMX_CORE_HOST_SIMD=ON",
+        "-DOPENMX_COPY_TO_WORK=OFF",
+        "-DOPENMX_BUILD_JOBS=8",
+        "-DBUILD_TESTING=ON",
+        "-DFETCHCONTENT_SOURCE_DIR_KOKKOS=/home/dc1394/openmx4.0_gpu_intel_benchmark_20261104-072751/kokkos-src",
+        "-DCMAKE_INSTALL_PREFIX=/home/dc1394/openmx4.0_gpu_intel_benchmark_20261104-072751/install",
+        "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+      ],
+      "build": [
+        "/home/dc1394/bin/cmake",
+        "--build",
+        "/home/dc1394/openmx4.0_gpu_intel_benchmark_20261104-072751/build",
+        "--target",
+        "openmx",
+        "openmx_cpu_numerics",
+        "--parallel",
+        "8"
+      ],
+      "install": [
+        "/home/dc1394/bin/cmake",
+        "--install",
+        "/home/dc1394/openmx4.0_gpu_intel_benchmark_20261104-072751/build"
+      ]
+    },
+    "environment": {
+      "PATH": "/home/dc1394/intel/oneapi/compiler/2026.0/bin:/home/dc1394/intel/oneapi/mpi/2021.18/bin:/home/dc1394/.codex/packages/app-server-daemon/releases/0.166.0-x86_64-unknown-linux-musl/codex-path:/home/dc1394/bin:/home/dc1394/.codex/tmp/arg0-linux/codex-arg0MG2W2M:/home/dc1394/.codex/packages/app-server-daemon/releases/0.166.0-x86_64-unknown-linux-musl/codex-path:/home/dc1394/.codex/tmp/arg0-linux/codex-arg07ngAIW:/home/dc1394/.nvm/versions/node/v24.14.0/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/codex-path:/home/dc1394/.nvm/versions/node/v24.14.0/bin:/home/dc1394/uv-envs/py314/bin:/home/dc1394/.rbenv/shims:/home/dc1394/anaconda3/:/home/dc1394/wannier90-3.1.0/:/home/dc1394/.cargo/bin:/home/dc1394/.local/bin:/home/dc1394/VESTA-gtk3:/usr/local/cuda/bin:/home/dc1394/.rbenv/bin:/home/dc1394/bin:/opt/nvidia/hpc_sdk/Linux_x86_64/26.9/comm_libs/mpi/bin:/opt/nvidia/hpc_sdk/Linux_x86_64/26.9/compilers/bin:/home/dc1394/intel/oneapi/vtune/2026.0/bin64:/home/dc1394/intel/oneapi/mpi/2021.18/bin:/home/dc1394/intel/oneapi/mkl/2026.0/bin:/home/dc1394/intel/oneapi/ishmem/1.5/bin:/home/dc1394/intel/oneapi/dpcpp-ct/2025.3/bin:/home/dc1394/intel/oneapi/dev-utilities/2026.0/bin:/home/dc1394/intel/oneapi/debugger/2026.0/opt/debugger/bin:/home/dc1394/intel/oneapi/compiler/2026.0/bin:/home/dc1394/intel/oneapi/advisor/2025.4/bin64:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:./:/home/dc1394/CRYSTAL23/bin/Linux-ifort_i64:/home/dc1394/CRYSTAL23/utils23",
+      "LD_LIBRARY_PATH": "/home/dc1394/intel/oneapi/compiler/2026.0/lib:/home/dc1394/intel/oneapi/mpi/2021.18/lib:/home/dc1394/intel/oneapi/mkl/2026.0/lib",
+      "I_MPI_ROOT": "/home/dc1394/intel/oneapi/mpi/2021.18",
+      "MKLROOT": "/home/dc1394/intel/oneapi/mkl/2026.0",
+      "I_MPI_CC": "/home/dc1394/intel/oneapi/compiler/2026.0/bin/icx",
+      "I_MPI_CXX": "/home/dc1394/intel/oneapi/compiler/2026.0/bin/icpx",
+      "I_MPI_F90": "/home/dc1394/intel/oneapi/compiler/2026.0/bin/ifx"
+    }
+  },
+  "versions": {
+    "icx": {
+      "command": [
+        "/home/dc1394/intel/oneapi/compiler/2026.0/bin/icx",
+        "--version"
+      ],
+      "returncode": 0,
+      "output": "Intel(R) oneAPI DPC++/C++ Compiler 2026.0.0 (2026.0.0.20260331)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/dc1394/intel/oneapi/compiler/2026.0/bin/compiler\nConfiguration file: /home/dc1394/intel/oneapi/compiler/2026.0/bin/compiler/../icx.cfg\n"
+    },
+    "icpx": {
+      "command": [
+        "/home/dc1394/intel/oneapi/compiler/2026.0/bin/icpx",
+        "--version"
+      ],
+      "returncode": 0,
+      "output": "Intel(R) oneAPI DPC++/C++ Compiler 2026.0.0 (2026.0.0.20260331)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/dc1394/intel/oneapi/compiler/2026.0/bin/compiler\nConfiguration file: /home/dc1394/intel/oneapi/compiler/2026.0/bin/compiler/../icpx.cfg\n"
+    },
+    "ifx": {
+      "command": [
+        "/home/dc1394/intel/oneapi/compiler/2026.0/bin/ifx",
+        "--version"
+      ],
+      "returncode": 0,
+      "output": "ifx (IFX) 2026.0.0 20260331\nCopyright (C) 1985-2026 Intel Corporation. All rights reserved.\n\n"
+    },
+    "Intel_MPI": {
+      "command": [
+        "/home/dc1394/intel/oneapi/mpi/2021.18/bin/mpiexec",
+        "--version"
+      ],
+      "returncode": 0,
+      "output": "Intel(R) MPI Library for Linux* OS, Version 2021.18.0 Build 20260327 (id: 821f207)\nCopyright 2003-2026, Intel Corporation.\n"
+    },
+    "cmake": {
+      "command": [
+        "/home/dc1394/bin/cmake",
+        "--version"
+      ],
+      "returncode": 0,
+      "output": "cmake version 4.4.5\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).\n"
+    }
+  },
+  "preflight": {
+    "status": "completed",
+    "cpu_numerical_test": true,
+    "hybrid_numerical_test_2x2": true,
+    "affinity_18x2": true,
+    "MKL_NThr2_all_18_ranks": true,
+    "native_ELPA_threads2": true,
+    "initial_C60_attempt": "Added C5.0/C_CA19 missing from the benchmark-only data snapshot; C60 originally selects DC, so the untimed thread check explicitly selects Cluster to exercise ELPA."
+  },
+  "ELPA_OpenMP_flags": {
+    "OPENMP_CFLAGS": "-fopenmp",
+    "OPENMP_FCFLAGS": "-fopenmp"
+  },
+  "binary_sha256": {
+    "intel": "17092d0c8b99423a2d774dc1ac861add8b79749cb87a670ef63e17d836281de0",
+    "upstream": "59b23d044be0ef14cd678793abb80bdd6d9bd464debdbf9f395fb32a586f4ce0"
+  },
+  "installed_library_sha256": {
+    "libopenmx_host_simd.so": "67d98bc96dafc6807259ce52aa738177c488304cf20d9b71e822bfda18e68a0e",
+    "libopenmx_core.so": "230edce4f4a3a146cf9e48291447b178a94563a1918d4d77286860e9cec13e44"
+  },
+  "ELPA_archive_sha256": "24771170811cc779f9c3aeb9cd1c9a7cf0d9de895a1c60eb90ee9b2d8f0c5d6b",
+  "runtime_maps_verified": [
+    {
+      "case": "sidia333_nc_cluster",
+      "variant": "intel",
+      "actual_rank_runtime_verified": true
+    },
+    {
+      "case": "sidia333_nc_cluster",
+      "variant": "upstream",
+      "actual_rank_runtime_verified": true
+    },
+    {
+      "case": "cghelgeo",
+      "variant": "intel",
+      "actual_rank_runtime_verified": true
+    },
+    {
+      "case": "cghelgeo",
+      "variant": "upstream",
+      "actual_rank_runtime_verified": true
+    }
+  ],
+  "protocol": {
+    "MPI_processes": 18,
+    "OMP_threads_per_process": 2,
+    "MKL_threads": 2,
+    "repetitions": 1,
+    "all_inputs_and_convergence_limits_preserved": true,
+    "primary_metric": "Maximum-rank Total Computational Time, seconds",
+    "wall_metric": "MPI-job wall time including startup/shutdown and up to one two-second polling interval"
+  },
+  "comparison": [
+    {
+      "case": "sidia333_nc_cluster",
+      "upstream_seconds": 882.152,
+      "current_Intel_seconds": 632.439,
+      "upstream_over_current": 1.39484124160591,
+      "upstream_wall_seconds": 886.3166767450002,
+      "current_Intel_wall_seconds": 634.7899722839993,
+      "upstream_SCF_steps": 25,
+      "current_Intel_SCF_steps": 25,
+      "upstream_unconverged_MD": 1,
+      "current_Intel_unconverged_MD": 1,
+      "upstream_diagonalization_seconds": 586.878,
+      "current_Intel_diagonalization_seconds": 423.617,
+      "energy_difference_hartree": 4.501998773775995e-11,
+      "max_force_component_difference_hartree_per_bohr": 1.710000000002733e-10,
+      "atom_ids_match": true,
+      "FFT_grids_match": true,
+      "max_coordinate_difference": 9.999999999621423e-06,
+      "passed": true
+    },
+    {
+      "case": "cghelgeo",
+      "upstream_seconds": 3361.253,
+      "current_Intel_seconds": 3105.124,
+      "upstream_over_current": 1.0824859168265102,
+      "upstream_wall_seconds": 3365.3484074900007,
+      "current_Intel_wall_seconds": 3106.3997385029998,
+      "upstream_SCF_steps": 58,
+      "current_Intel_SCF_steps": 59,
+      "upstream_unconverged_MD": 0,
+      "current_Intel_unconverged_MD": 0,
+      "upstream_diagonalization_seconds": 2883.819,
+      "current_Intel_diagonalization_seconds": 2718.529,
+      "energy_difference_hartree": 5.411402526078746e-08,
+      "max_force_component_difference_hartree_per_bohr": 9.37800000155864e-09,
+      "atom_ids_match": true,
+      "FFT_grids_match": true,
+      "max_coordinate_difference": 0.0,
+      "passed": true
+    }
+  ],
+  "start_time": "2026-11-04 07:39:38 +0900",
+  "end_time": "2026-11-04 09:52:51 +0900",
+  "FFTW_provider": "oneMKL FFTW-compatible API in libmkl_intel_lp64.so, using MKL FFTW headers",
+  "core_backend": "SERIAL Kokkos 5.2.2 with Intel-compiled host SIMD",
+  "upstream": "Existing original OpenMX executable, copied unchanged; no upstream rebuild",
+  "limits": [
+    "One measurement per input and configuration; no repeated-run averages.",
+    "Both sidia333 cases retain the 25-SCF limit and are unconverged.",
+    "New ELPA 2026.02.002 and upstream ELPA 2018, C/C++ implementation, link type and inherited precision settings differ.",
+    "Native maximum-rank computational time is the primary metric; MPI wall time is reported separately."
+  ],
+  "original_GPU_work_binary_preserved": true,
+  "tracked_worktree_clean": true,
+  "files": {
+    "comparison.csv": {
+      "sha256": "5408dbab9be24e63d6cfb3850a96364cd1ce5a359f8a0357a823a72a0757e41d",
+      "bytes": 790
+    },
+    "analysis.json": {
+      "sha256": "843005d56c3a105ce543df8a7da8c3da75427ceae776254ace2f9cba9c6db11e",
+      "bytes": 2709
+    },
+    "results.json": {
+      "sha256": "ec9a89bba65702475e4517bba448b8ef4d5586e888df450564eb1f83f5183878",
+      "bytes": 283371
+    },
+    "input-data-audit.json": {
+      "sha256": "046961fca6dbe368d42dbcd3319836df7c6d0669250ba7a23986dcf726d0f410",
+      "bytes": 3741
+    },
+    "affinity-verified.json": {
+      "sha256": "d3c7ab6aebb42edcf3829c6b1929cadb66c356866d952b66f1a7a3c54953104b",
+      "bytes": 4503
+    },
+    "mkl-threading-verified.json": {
+      "sha256": "3e61b62bec823b5b8d746aecde51a332e41ff3ea22890f59be76d0dcc84a6450",
+      "bytes": 2515
+    },
+    "native-ELPA-threading.json": {
+      "sha256": "547ff977eb3d7e236f0951f9ee58e775ab59fd801e98eb46ffa09b9a2da7954f",
+      "bytes": 218
+    },
+    "versions.json": {
+      "sha256": "81ac401fdf07c36b8c08777975ec82ea71fc33e0d0547b0c1e16c6b404474172",
+      "bytes": 1630
+    },
+    "build-commands.json": {
+      "sha256": "bb5b4ce9d293b36e8f4c241c071e9bc7f2ad474ae093d288344e9e4d720dfd37",
+      "bytes": 4132
+    }
+  }
+}

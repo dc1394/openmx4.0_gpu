@@ -1,0 +1,152 @@
+{
+  "ranks": 18,
+  "OMP_threads": 2,
+  "MKL_threads": 2,
+  "verbose_NThr2_reports": 18,
+  "observations": [
+    {
+      "rank": 14,
+      "omp_team": 2,
+      "omp_limit": 2,
+      "mkl_limit": 2,
+      "mpi_thread": 2,
+      "bad": 0
+    },
+    {
+      "rank": 16,
+      "omp_team": 2,
+      "omp_limit": 2,
+      "mkl_limit": 2,
+      "mpi_thread": 2,
+      "bad": 0
+    },
+    {
+      "rank": 1,
+      "omp_team": 2,
+      "omp_limit": 2,
+      "mkl_limit": 2,
+      "mpi_thread": 2,
+      "bad": 0
+    },
+    {
+      "rank": 13,
+      "omp_team": 2,
+      "omp_limit": 2,
+      "mkl_limit": 2,
+      "mpi_thread": 2,
+      "bad": 0
+    },
+    {
+      "rank": 15,
+      "omp_team": 2,
+      "omp_limit": 2,
+      "mkl_limit": 2,
+      "mpi_thread": 2,
+      "bad": 0
+    },
+    {
+      "rank": 17,
+      "omp_team": 2,
+      "omp_limit": 2,
+      "mkl_limit": 2,
+      "mpi_thread": 2,
+      "bad": 0
+    },
+    {
+      "rank": 9,
+      "omp_team": 2,
+      "omp_limit": 2,
+      "mkl_limit": 2,
+      "mpi_thread": 2,
+      "bad": 0
+    },
+    {
+      "rank": 6,
+      "omp_team": 2,
+      "omp_limit": 2,
+      "mkl_limit": 2,
+      "mpi_thread": 2,
+      "bad": 0
+    },
+    {
+      "rank": 7,
+      "omp_team": 2,
+      "omp_limit": 2,
+      "mkl_limit": 2,
+      "mpi_thread": 2,
+      "bad": 0
+    },
+    {
+      "rank": 2,
+      "omp_team": 2,
+      "omp_limit": 2,
+      "mkl_limit": 2,
+      "mpi_thread": 2,
+      "bad": 0
+    },
+    {
+      "rank": 12,
+      "omp_team": 2,
+      "omp_limit": 2,
+      "mkl_limit": 2,
+      "mpi_thread": 2,
+      "bad": 0
+    },
+    {
+      "rank": 11,
+      "omp_team": 2,
+      "omp_limit": 2,
+      "mkl_limit": 2,
+      "mpi_thread": 2,
+      "bad": 0
+    },
+    {
+      "rank": 8,
+      "omp_team": 2,
+      "omp_limit": 2,
+      "mkl_limit": 2,
+      "mpi_thread": 2,
+      "bad": 0
+    },
+    {
+      "rank": 0,
+      "omp_team": 2,
+      "omp_limit": 2,
+      "mkl_limit": 2,
+      "mpi_thread": 2,
+      "bad": 0
+    },
+    {
+      "rank": 3,
+      "omp_team": 2,
+      "omp_limit": 2,
+      "mkl_limit": 2,
+      "mpi_thread": 2,
+      "bad": 0
+    },
+    {
+      "rank": 5,
+      "omp_team": 2,
+      "omp_limit": 2,
+      "mkl_limit": 2,
+      "mpi_thread": 2,
+      "bad": 0
+    },
+    {
+      "rank": 4,
+      "omp_team": 2,
+      "omp_limit": 2,
+      "mkl_limit": 2,
+      "mpi_thread": 2,
+      "bad": 0
+    },
+    {
+      "rank": 10,
+      "omp_team": 2,
+      "omp_limit": 2,
+      "mkl_limit": 2,
+      "mpi_thread": 2,
+      "bad": 0
+    }
+  ]
+}

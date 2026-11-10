@@ -1,0 +1,60 @@
+{
+  "commands": {
+    "configure": [
+      "/home/dc1394/bin/cmake",
+      "-S",
+      "/home/dc1394/openmx4.0_gpu",
+      "-B",
+      "/home/dc1394/openmx4.0_gpu_intel_benchmark_20261104-072751/build",
+      "-DOPENMX_GPU_BACKEND=CPU",
+      "-DOPENMX_CPU_COMPILER=ICX",
+      "-DOPENMX_CPU_MPI=INTEL",
+      "-DOPENMX_CPU_LINALG=MKL",
+      "-DOPENMX_CPU_MKL_THREADING=INTEL",
+      "-DOPENMX_CPU_MPI_ROOT=/home/dc1394/intel/oneapi/mpi/2021.18",
+      "-DOPENMX_CPU_MKL_ROOT=/home/dc1394/intel/oneapi/mkl/2026.0",
+      "-DCMAKE_C_COMPILER=/home/dc1394/intel/oneapi/compiler/2026.0/bin/icx",
+      "-DCMAKE_CXX_COMPILER=/home/dc1394/intel/oneapi/compiler/2026.0/bin/icpx",
+      "-DCMAKE_Fortran_COMPILER=/home/dc1394/intel/oneapi/compiler/2026.0/bin/ifx",
+      "-DOPENMX_HOST_SIMD_CXX_COMPILER=/home/dc1394/intel/oneapi/compiler/2026.0/bin/icpx",
+      "-DOPENMX_CPU_FFTW_INCLUDE_DIR=/home/dc1394/intel/oneapi/mkl/2026.0/include/fftw",
+      "-DOPENMX_CPU_FFTW_LIBRARY=/home/dc1394/intel/oneapi/mkl/2026.0/lib/libmkl_intel_lp64.so",
+      "-DCMAKE_BUILD_TYPE=Release",
+      "-DCMAKE_C_FLAGS_RELEASE=-O3 -DNDEBUG -xHost",
+      "-DCMAKE_CXX_FLAGS_RELEASE=-O3 -DNDEBUG -xHost",
+      "-DCMAKE_Fortran_FLAGS_RELEASE=-O3 -DNDEBUG -xHost",
+      "-DOPENMX_CORE_BACKEND=SERIAL",
+      "-DOPENMX_CORE_HOST_SIMD=ON",
+      "-DOPENMX_COPY_TO_WORK=OFF",
+      "-DOPENMX_BUILD_JOBS=8",
+      "-DBUILD_TESTING=ON",
+      "-DFETCHCONTENT_SOURCE_DIR_KOKKOS=/home/dc1394/openmx4.0_gpu_intel_benchmark_20261104-072751/kokkos-src",
+      "-DCMAKE_INSTALL_PREFIX=/home/dc1394/openmx4.0_gpu_intel_benchmark_20261104-072751/install",
+      "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+    ],
+    "build": [
+      "/home/dc1394/bin/cmake",
+      "--build",
+      "/home/dc1394/openmx4.0_gpu_intel_benchmark_20261104-072751/build",
+      "--target",
+      "openmx",
+      "openmx_cpu_numerics",
+      "--parallel",
+      "8"
+    ],
+    "install": [
+      "/home/dc1394/bin/cmake",
+      "--install",
+      "/home/dc1394/openmx4.0_gpu_intel_benchmark_20261104-072751/build"
+    ]
+  },
+  "environment": {
+    "PATH": "/home/dc1394/intel/oneapi/compiler/2026.0/bin:/home/dc1394/intel/oneapi/mpi/2021.18/bin:/home/dc1394/.codex/packages/app-server-daemon/releases/0.166.0-x86_64-unknown-linux-musl/codex-path:/home/dc1394/bin:/home/dc1394/.codex/tmp/arg0-linux/codex-arg0MG2W2M:/home/dc1394/.codex/packages/app-server-daemon/releases/0.166.0-x86_64-unknown-linux-musl/codex-path:/home/dc1394/.codex/tmp/arg0-linux/codex-arg07ngAIW:/home/dc1394/.nvm/versions/node/v24.14.0/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/codex-path:/home/dc1394/.nvm/versions/node/v24.14.0/bin:/home/dc1394/uv-envs/py314/bin:/home/dc1394/.rbenv/shims:/home/dc1394/anaconda3/:/home/dc1394/wannier90-3.1.0/:/home/dc1394/.cargo/bin:/home/dc1394/.local/bin:/home/dc1394/VESTA-gtk3:/usr/local/cuda/bin:/home/dc1394/.rbenv/bin:/home/dc1394/bin:/opt/nvidia/hpc_sdk/Linux_x86_64/26.9/comm_libs/mpi/bin:/opt/nvidia/hpc_sdk/Linux_x86_64/26.9/compilers/bin:/home/dc1394/intel/oneapi/vtune/2026.0/bin64:/home/dc1394/intel/oneapi/mpi/2021.18/bin:/home/dc1394/intel/oneapi/mkl/2026.0/bin:/home/dc1394/intel/oneapi/ishmem/1.5/bin:/home/dc1394/intel/oneapi/dpcpp-ct/2025.3/bin:/home/dc1394/intel/oneapi/dev-utilities/2026.0/bin:/home/dc1394/intel/oneapi/debugger/2026.0/opt/debugger/bin:/home/dc1394/intel/oneapi/compiler/2026.0/bin:/home/dc1394/intel/oneapi/advisor/2025.4/bin64:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:./:/home/dc1394/CRYSTAL23/bin/Linux-ifort_i64:/home/dc1394/CRYSTAL23/utils23",
+    "LD_LIBRARY_PATH": "/home/dc1394/intel/oneapi/compiler/2026.0/lib:/home/dc1394/intel/oneapi/mpi/2021.18/lib:/home/dc1394/intel/oneapi/mkl/2026.0/lib",
+    "I_MPI_ROOT": "/home/dc1394/intel/oneapi/mpi/2021.18",
+    "MKLROOT": "/home/dc1394/intel/oneapi/mkl/2026.0",
+    "I_MPI_CC": "/home/dc1394/intel/oneapi/compiler/2026.0/bin/icx",
+    "I_MPI_CXX": "/home/dc1394/intel/oneapi/compiler/2026.0/bin/icpx",
+    "I_MPI_F90": "/home/dc1394/intel/oneapi/compiler/2026.0/bin/ifx"
+  }
+}

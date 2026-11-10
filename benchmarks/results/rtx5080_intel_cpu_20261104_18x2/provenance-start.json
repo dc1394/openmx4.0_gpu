@@ -1,0 +1,9 @@
+{
+  "artifacts": "/home/dc1394/openmx4.0_gpu_intel_benchmark_20261104-072751",
+  "source_root": "/home/dc1394/openmx4.0_gpu",
+  "source_commit": "9cb605dbbc892ea8c5d828c93c03a9d9be1d4147",
+  "source_tracked_clean": true,
+  "upstream_source": "/home/dc1394/openmx4.0/work/openmx",
+  "upstream_sha256": "59b23d044be0ef14cd678793abb80bdd6d9bd464debdbf9f395fb32a586f4ce0",
+  "existing_work_binary_sha256": "5eea8378ee39c901406346e934e3656eb5cb62673ba50dc5b0805c2c2d99a1c4"
+}
