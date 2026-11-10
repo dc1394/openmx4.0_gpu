@@ -1,0 +1,5 @@
+reference,candidate,abs_energy_error_ha,max_abs_force_error_ha_bohr,atoms_match,grid_matches,passed
+warmup,measured,6.605205271625891e-11,1.4499999999997913e-10,True,True,True
+official_repeat1,measured,2.900151230278425e-10,1.6499999999968417e-10,True,True,True
+official_repeat2,measured,3.694822225952521e-11,1.6899999999979459e-10,True,True,True
+official_repeat3,measured,8.697043085703626e-11,1.610000000004208e-10,True,True,True

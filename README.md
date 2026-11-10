@@ -2473,12 +2473,13 @@ the separate upstream campaign is work/codex_upstream_benchmark_20261031/.
 
 <a id="benchmark-pegasus-h100"></a>
 
-### Pegasus H100 benchmarks (2026-10-31–2026-11-01)
+### Pegasus H100 benchmarks (2026-10-31–2026-11-10)
 
 #### Measurement conditions
 
-All six tests below were rerun from commit `0681d63e` with the same freshly
-built and installed CUDA Release executable for both fork routes. Each node
+All six tests in the October 31–November 1 campaign were rerun from commit
+`0681d63e` with the same freshly built and installed CUDA Release executable
+for both fork routes. Each node
 had one Intel Xeon Platinum 8468, 48 allocated physical cores (SMT disabled),
 about 124.5 GiB host memory and one H100 PCIe 80 GB. Every node used
 **24 MPI ranks × 2 OpenMP threads**, bound to two cores per rank. `L2` and
@@ -2510,6 +2511,10 @@ build and measurement dates are recorded in the
 [upstream baseline](benchmarks/results/pegasus_h100_20261031/upstream-baseline.json).
 Upstream `L2` has no completed baseline measurement, so its cells are marked
 with a dash.
+
+The additional [November 10 Intel CPU-only sidia333 measurement](#pegasus-intel-cpu-sidia333)
+used commit `08d0521b` and the upstream compiler/MPI/MKL versions. Its
+warmup and single measured run are reported separately below.
 
 #### Overall results
 
@@ -2714,6 +2719,66 @@ excluded. The upstream baseline uses the same aggregation.
 | `cghelgeo.dat` | 53, 59, 61 / 59, 56, 59 / 60, 53, 60 | 3.191e-07 | 6.983e-08 | FAIL |
 
 </details>
+
+<a id="pegasus-intel-cpu-sidia333"></a>
+
+##### Intel CPU-only sidia333 measurement (2026-11-10)
+
+A CPU-only Release build of commit `08d0521b` used **icx/icpx/ifx 2025.3.2,
+Intel MPI 2021.17 and threaded MKL 2025.3 LP64**, matching the retained
+upstream toolchain. It was installed in a separate prefix with
+`OPENMX_GPU_BACKEND=CPU`, `OPENMX_CPU_MKL_THREADING=INTEL` and
+`OPENMX_COPY_TO_WORK=OFF`. The application used `-O3 -xHost -ipo` and its
+production floating-point settings. The linked libraries include
+`mkl_intel_thread`, `mkl_blacs_intelmpi_lp64` and `libiomp5`.
+
+The allocation used one Xeon Platinum 8468 node, 48 physical cores with SMT
+disabled, about 124.5 GiB RAM, and **24 MPI ranks × 2 OpenMP threads**.
+Each rank was bound to two distinct cores with `I_MPI_PIN_DOMAIN=2`,
+`I_MPI_PIN_ORDER=compact`, `OMP_PROC_BIND=close` and `OMP_PLACES=cores`.
+`OMP_NUM_THREADS` and `MKL_NUM_THREADS` were 2; both dynamic thread controls
+were disabled. The prepared input is byte-identical to the retained
+upstream input, and both used Si PAO/VPS hashes match. `scf.eigen.lib=elpa2`,
+the original 25-SCF cap and `scf.criterion=1e-13` were preserved.
+
+One warmup was followed by one measured run in a fresh directory in the
+same allocation. The warmup additionally enabled the CPU bridge's thread
+diagnostic, confirming ELPA `requested=2`, `configured=2`, `MPI_thread=2`;
+that diagnostic was disabled for the measured run. Both builds have
+OpenMP ELPA enabled; the fork uses ELPA 2026.02.002 and upstream uses
+2018.05.001. The existing real/complex ScaLAPACK and ELPA numerical test
+also passed with its supported 2 MPI × 1 thread setup.
+
+| Implementation / phase | Elapsed.Time (s) | SCF steps | Timing protocol |
+| --- | ---: | ---: | --- |
+| Fork Intel CPU / warmup | 252.540 | 25 | One run, excluded from the measured result |
+| Fork Intel CPU / measured | **252.807** | 25 | One run after warmup |
+| Upstream CPU / retained baseline | 315.049 | 25 in each run | Median of 316.872, 315.049 and 312.199 s, measured October 29 |
+
+The retained upstream median divided by the fork measurement is
+**1.246×**, a **19.76% reduction** in elapsed time. All runs reached the
+25-SCF cap without convergence. The measured node was `bnode080`; the
+upstream runs used `bnode078` with the same CPU model, core allocation,
+SMT setting and maximum clock. The upstream result was reused unchanged.
+The CUDA campaign above uses a different source revision and toolchain;
+these measurements do not isolate the compiler's effect on performance.
+No earlier matching Intel sidia333 measurement was found in the inspected
+local Pegasus fork records.
+
+The following comparisons use the new measured output, all 216 atoms and
+all 648 force components. Energy and force tolerances are both `1e-7`;
+atom identities, coordinates and FFT grids also match.
+
+| Reference output | abs ΔE (Ha) | Max abs ΔF (Ha/bohr) | Check |
+| --- | ---: | ---: | --- |
+| Fork Intel CPU warmup | 6.605e-11 | 1.450e-10 | PASS |
+| Upstream independent measurement 1 | 2.900e-10 | 1.650e-10 | PASS |
+| Upstream independent measurement 2 | 3.695e-11 | 1.690e-10 | PASS |
+| Upstream independent measurement 3 | 8.697e-11 | 1.610e-10 | PASS |
+
+The [versioned Intel CPU records](benchmarks/results/pegasus_h100_intel_cpu_20261110/manifest.json)
+include the build configuration, installed-library audit, input/data hashes,
+per-rank placement, native outputs, timings and numerical comparisons.
 
 #### Accuracy and convergence
 

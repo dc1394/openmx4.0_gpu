@@ -1,0 +1,36 @@
+{
+  "scope": "Saved local Pegasus H100 sidia333 benchmark records inspected before this run",
+  "prior_matching_fork_intel_measurement_found": false,
+  "prior_fork_build": {
+    "source_commit": "0681d63ec3e00edc0c75f4b6d7c8f83c0643bbf3",
+    "compiler": "NVHPC 26.5",
+    "mpi": "SDK HPC-X 2.50 / OpenMPI",
+    "host_math": "NVHPC SDK static OpenBLAS OpenMP LP64"
+  },
+  "prior_upstream_build": {
+    "version": "OpenMX 4.0 + official patch 4.0.1 (2026-05-08)",
+    "binary_sha256": "b4ec4e2f4d896c4eaed9d6ec5f3f7adce14f622a1ce34abfdc88a72c50f81a49",
+    "compiler": "Intel icx/ifx 2025.3.2",
+    "mpi": "Intel MPI 2021.17",
+    "mkl": "2025.3",
+    "archive_sha256": {
+      "patch4.0.1.tar.gz": "c5312eeee13e17e0123beeb4eb2379bcf7c7cafa1815b1dcf6846452f9620bef",
+      "patch-README.txt": "71c036c161a8ad13db02c0dd2e52bd7da2c66a0882c61600167e32fc75b962e2",
+      "openmx4.0.tar.gz": "8d5338faf70885f276352bbd2826cdfed2ffd08f33eca58752666d79a7d0c3bf"
+    },
+    "patch_file_sha256": {
+      "Band_DFT_Dosout.c": "f328851a91154b90398d38e33d263d414659dad5259ba799d0b8c248d98d7c3e",
+      "Mulliken_Charge.c": "8795dee2aa939778f2344c2e0264375f0c69c4e30fb025353802f6c9c3cbc3da",
+      "GaAs.dat": "b2571de088368e512c9967f770273aa6682563eb4bf77db5973b6d604bea1141"
+    },
+    "elpa_version": "2018.05.001",
+    "elpa_openmp_enabled": true,
+    "mkl_threading_library": "libmkl_intel_thread.so.2",
+    "openmp_runtime": "libiomp5.so"
+  },
+  "source_records": [
+    "benchmarks/results/pegasus_h100_20261031/build-manifest.json",
+    "benchmarks/results/pegasus_h100_20261031/upstream-baseline.json"
+  ],
+  "note": "README Intel CPU benchmarks for EPYC use other inputs; Arm benchmarks use a different architecture. This is not a claim about measurements on uninspected computers."
+}

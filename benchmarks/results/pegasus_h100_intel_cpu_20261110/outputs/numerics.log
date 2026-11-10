@@ -1,0 +1,7 @@
+<ELPA> CPU OpenMP threads: requested=1 configured=1 MPI_thread=0
+<ELPA> CPU OpenMP threads: requested=1 configured=1 MPI_thread=0
+<ELPA> CPU OpenMP threads: requested=1 configured=1 MPI_thread=0
+<ELPA> 2-stage real kernel: AVX-512
+<ELPA> CPU OpenMP threads: requested=1 configured=1 MPI_thread=0
+<ELPA> 2-stage complex kernel: AVX-512
+MPI/BLACS and LP64 real/complex numerical libraries: PASS

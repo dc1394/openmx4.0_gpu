@@ -1,0 +1,40 @@
+-- The C compiler identification is IntelLLVM 2025.3.2
+-- The CXX compiler identification is IntelLLVM 2025.3.2
+-- The Fortran compiler identification is IntelLLVM 2025.3.2
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /system/apps/ubuntu/22.04-202604/oneapi/2025.3.1/compiler/2025.3/bin/icx - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /system/apps/ubuntu/22.04-202604/oneapi/2025.3.1/compiler/2025.3/bin/icpx - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Detecting Fortran compiler ABI info
+-- Detecting Fortran compiler ABI info - done
+-- Check for working Fortran compiler: /system/apps/ubuntu/22.04-202604/oneapi/2025.3.1/compiler/2025.3/bin/ifx - skipped
+-- CPU toolchain: IntelLLVM / IntelLLVM, Fortran IntelLLVM, MPI INTEL
+-- Setting default Kokkos CXX standard to 20
+-- Kokkos version: 5.2.2
+-- The project name is: Kokkos
+-- Kokkos is configured for CMake languages CXX compilation (using IntelLLVM version 2025.3.2)
+-- Using -std=c++20 for C++20 standard as feature
+-- Built-in Execution Spaces:
+--     Device Parallel: NoTypeDefined
+--     Host Parallel: NoTypeDefined
+--       Host Serial: SERIAL
+-- 
+-- Architectures:
+-- Using bundled desul_atomics copy (desul/desul@83d26f34db50b4fefe30ed4db38b10e04c7a9384)
+-- Performing Test KOKKOS_LINK_OPTIONS_CHECK
+-- Performing Test KOKKOS_LINK_OPTIONS_CHECK - Success
+-- Using bundled mdspan copy (kokkos/mdspan@5d4eb209c77f4744980c0b0c2af44636cc81b08b)
+-- Kokkos Backends: SERIAL
+-- Host numerical libraries: MKL (LP64), MPI INTEL
+-- Full CPU application: 292 shared source units; no GPU SDK
+-- OpenMX backend: CPU; native build: ${CHECKOUT}/build/pegasus-intel-cpu-08d0521b/native/source
+-- Native make options: 
+-- Configuring done (6.3s)
+-- Generating done (2.5s)
+-- Build files have been written to: ${CHECKOUT}/build/pegasus-intel-cpu-08d0521b

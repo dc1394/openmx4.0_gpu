@@ -1,0 +1,44 @@
+Pegasus: sidia333_nc_cluster.dat / Intel CPU専用ビルドの測定結果
+ソース: main 08d0521bb32b688c064e3fe83495ab42529fbc56
+インストール: ${CHECKOUT}/work/benchmarks_intel_cpu_20261110/install/cpu/bin/openmx
+実行ジョブ: 0:230486.nqsv、ノード: bnode080
+
+保存済みのPegasus記録には、改良版sidia333をIntel一式で測った過去結果は見つからなかった。
+以前の改良版Pegasus結果はNVHPC 26.5 + SDK OpenMPI/OpenBLAS。本家の既存結果はIntel構成。
+
+共通条件:
+  Intel oneAPI icx/icpx/ifx 2025.3.2、Intel MPI 2021.17、MKL 2025.3 LP64 Intelスレッド版。
+  1ノード、Xeon Platinum 8468、48物理コア、SMT無効。24 MPI ranks × 2 OpenMP threads。
+  OMP_NUM_THREADS=2、MKL_NUM_THREADS=2、OMP_DYNAMIC=FALSE、MKL_DYNAMIC=FALSE。
+  OMP_PROC_BIND=close、OMP_PLACES=cores、I_MPI_PIN_DOMAIN=2、I_MPI_PIN_ORDER=compact。
+  本家測定時のinput.datとバイト単位で一致。使用するSiのPAO/VPSのSHA256も保存済み記録と一致。
+  scf.eigen.lib=elpa2、scf.maxIter=25、scf.criterion=1e-13、MD.maxIter=1。
+
+結果（出力ファイルのElapsed.Time、秒）:
+  改良版CPU・ウォームアップ1回: 252.540（本測定から除外）
+  改良版CPU・本測定1回:         252.807
+  本家4.0.1・既存測定3回:      316.872, 315.049, 312.199
+  本家4.0.1・既存中央値:       315.049
+  本家中央値 / 改良版本測定:    1.2462倍
+
+精度（本測定との比較、全216原子・648力成分）:
+  ウォームアップ: |ΔE|=6.605205272e-11 Ha、max|ΔF|=1.45e-10 Ha/bohr、PASS
+  本家repeat1: |ΔE|=2.90015123e-10 Ha、max|ΔF|=1.65e-10 Ha/bohr、PASS
+  本家repeat2: |ΔE|=3.694822226e-11 Ha、max|ΔF|=1.69e-10 Ha/bohr、PASS
+  本家repeat3: |ΔE|=8.697043086e-11 Ha、max|ΔF|=1.61e-10 Ha/bohr、PASS
+  許容値: エネルギー・力とも1e-7。座標とFFTグリッドも照合。
+
+検証と比較上の留意点:
+  CPU数値テスト（2 MPI × 1 thread）PASS。実ジョブ24 ranksの各2コア固定・重複なしを確認。
+  ウォームアップ実行時のELPAはrequested=2、configured=2、MPI_thread=2。
+  インストール済みバイナリはIntel MPI + mkl_intel_thread + libiomp5にリンクし、GPUライブラリへの依存なし。
+  アプリケーションは-O3 -xHost -ipo。本体ソースに指定された浮動小数点設定を保持。
+  ELPAは改良版2026.02.002、本家2018.05.001。両者OpenMP有効。
+  どの測定もSCF上限25回のベンチマークであり、SCF収束した計算としては扱わない。
+  改良版はウォームアップ後の1回、本家は2026-10-29の保存済み3回中央値との比較。本家は再測定していない。
+  ノード個体は今回bnode080、本家bnode078。CPU型番・物理コア数・SMT・割り当て・配置は一致。
+  CPU専用の別プレフィックスにインストール。既存work/openmxのSHA256は変化していない。
+  本体コードの変更なし。Intel LTOに合わせたアーカイブツール・ELPAリンク設定の調整をbuild-plan.json等に保存。
+
+証跡: result-summary.json、install-audit.json、execution-audit.json、hardware.json、
+      timing.csv、accuracy.csv、build-plan.json、elpa-build-commands.json、logs/、runs/。

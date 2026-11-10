@@ -1,0 +1,23 @@
+{
+  "original": {
+    "path": "benchmarks/inputs/sidia333_nc_cluster.dat",
+    "sha256": "9c5466abf560c6481b83ec9a51976f4b218856a1da330e5a209b9041239decd0"
+  },
+  "prepared": {
+    "path": "prepared-input.dat",
+    "sha256": "3bcd8030526fdc72a4d42bfbad30d5886af6b0278c1615029b04d5588afdd393"
+  },
+  "preparation": "Exact bytes of the retained upstream repeat 3 input.dat, including deployment DATA.PATH.",
+  "data_files": [
+    {
+      "path": "${CHECKOUT}/DFT_DATA19/PAO/Si7.0.pao",
+      "sha256": "24c45d323ad0e4f652776791c0dd9a4c1357d7e63b91333503634401352f843f",
+      "baseline_sha256": "24c45d323ad0e4f652776791c0dd9a4c1357d7e63b91333503634401352f843f"
+    },
+    {
+      "path": "${CHECKOUT}/DFT_DATA19/VPS/Si_PBE19.vps",
+      "sha256": "9a274b3f50cd247d53e735b8ad1669d491286934b61c295bcd6e8b6ba555d80a",
+      "baseline_sha256": "9a274b3f50cd247d53e735b8ad1669d491286934b61c295bcd6e8b6ba555d80a"
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+[
+  [
+    "/usr/bin/make",
+    "-j8",
+    "FCLD=${CHECKOUT}/build/pegasus-intel-cpu-08d0521b/cpu-mpi/Fortran -ipo"
+  ],
+  [
+    "/usr/bin/make",
+    "-j8",
+    "FCLD=${CHECKOUT}/build/pegasus-intel-cpu-08d0521b/cpu-mpi/Fortran -ipo",
+    "install"
+  ]
+]

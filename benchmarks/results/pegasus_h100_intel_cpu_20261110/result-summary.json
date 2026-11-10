@@ -1,0 +1,78 @@
+{
+  "status": "completed",
+  "source_commit": "08d0521bb32b688c064e3fe83495ab42529fbc56",
+  "cpu_only": true,
+  "binary_sha256": "3fd3e307d59fa747967d392768db904d6d3acf276dc4ceb010d88883942e8c13",
+  "install_prefix": "${CHECKOUT}/work/benchmarks_intel_cpu_20261110/install/cpu",
+  "job_id": "0:230486.nqsv",
+  "host": "bnode080",
+  "ranks": 24,
+  "threads": 2,
+  "nodes": 1,
+  "warmup_runs": 1,
+  "measured_runs": 1,
+  "warmup_elapsed_seconds": 252.54,
+  "measured_elapsed_seconds": 252.807,
+  "upstream_elapsed_seconds": [
+    316.872,
+    315.049,
+    312.199
+  ],
+  "upstream_median_seconds": 315.049,
+  "upstream_over_measured_ratio": 1.2462036256907443,
+  "warmup_vs_measured": {
+    "energy_difference_ha": 6.605205271625891e-11,
+    "max_force_difference_ha_bohr": 1.4499999999997913e-10,
+    "atoms_match": true,
+    "grid_matches": true,
+    "passed": true
+  },
+  "upstream_vs_measured": [
+    {
+      "reference_directory": "work/benchmarks_main_20261029/runs/sidia333_nc_cluster-upstream-n1-r1",
+      "reference_repeat": 1,
+      "reference_elapsed_seconds": 316.872,
+      "reference_output_sha256": "bf969a109ae275ee33a7005aa4c36d2f10e872619022a907a7461051da867dfa",
+      "energy_difference_ha": 2.900151230278425e-10,
+      "max_force_difference_ha_bohr": 1.6499999999968417e-10,
+      "atoms_match": true,
+      "grid_matches": true,
+      "passed": true
+    },
+    {
+      "reference_directory": "work/benchmarks_main_20261029/runs/sidia333_nc_cluster-upstream-n1-r2",
+      "reference_repeat": 2,
+      "reference_elapsed_seconds": 315.049,
+      "reference_output_sha256": "4c621a1614bb38f7f4cb603b44664fbfd8eb947695ac9de292b1fb92f7fac71c",
+      "energy_difference_ha": 3.694822225952521e-11,
+      "max_force_difference_ha_bohr": 1.6899999999979459e-10,
+      "atoms_match": true,
+      "grid_matches": true,
+      "passed": true
+    },
+    {
+      "reference_directory": "work/benchmarks_main_20261029/runs/sidia333_nc_cluster-upstream-n1-r3",
+      "reference_repeat": 3,
+      "reference_elapsed_seconds": 312.199,
+      "reference_output_sha256": "55783aeb4462e8031e594a55fff27b73639353135d2c51630bb274376c047742",
+      "energy_difference_ha": 8.697043085703626e-11,
+      "max_force_difference_ha_bohr": 1.610000000004208e-10,
+      "atoms_match": true,
+      "grid_matches": true,
+      "passed": true
+    }
+  ],
+  "scf_iterations": 25,
+  "scf_converged": false,
+  "environment_matches_upstream": true,
+  "input_matches_upstream_byte_for_byte": true,
+  "used_PAO_VPS_hashes_match": true,
+  "energy_tolerance_ha": 1e-07,
+  "force_tolerance_ha_bohr": 1e-07,
+  "timing_protocol": "New CPU build: one warmup plus one measured run; retained upstream: median of three runs, not remeasured.",
+  "elpa_versions": {
+    "cpu_build": "2026.02.002",
+    "upstream": "2018.05.001"
+  },
+  "finished": 1794283243.4209487
+}

@@ -1,0 +1,7 @@
+# Preserve the SHA256 evidence byte-for-byte on every checkout.
+* -text
+# Native input/output and generated build evidence retain their whitespace.
+prepared-input.dat -whitespace
+outputs/** -whitespace
+build-evidence/** -whitespace
+*.csv whitespace=cr-at-eol

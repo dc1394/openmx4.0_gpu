@@ -1,0 +1,27 @@
+{
+  "source_commit": "08d0521bb32b688c064e3fe83495ab42529fbc56",
+  "cpu_only": true,
+  "binary": "${CHECKOUT}/work/benchmarks_intel_cpu_20261110/install/cpu/bin/openmx",
+  "binary_sha256": "3fd3e307d59fa747967d392768db904d6d3acf276dc4ceb010d88883942e8c13",
+  "hashes": {
+    "installed_binary": "3fd3e307d59fa747967d392768db904d6d3acf276dc4ceb010d88883942e8c13",
+    "build_binary": "3fd3e307d59fa747967d392768db904d6d3acf276dc4ceb010d88883942e8c13",
+    "elpa_static_archive": "bc352145f0f4f74f8ccc720ef220761f94ecbf48fe325b1ca7603d443f1ffae7"
+  },
+  "compiler_versions": {
+    "CC": "Intel(R) oneAPI DPC++/C++ Compiler 2025.3.2 (2025.3.2.20260112)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /system/apps/ubuntu/22.04-202604/oneapi/2025.3.1/compiler/2025.3/bin/compiler\nConfiguration file: /system/apps/ubuntu/22.04-202604/oneapi/2025.3.1/compiler/2025.3/bin/compiler/../icx.cfg\n",
+    "CXX": "Intel(R) oneAPI DPC++/C++ Compiler 2025.3.2 (2025.3.2.20260112)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /system/apps/ubuntu/22.04-202604/oneapi/2025.3.1/compiler/2025.3/bin/compiler\nConfiguration file: /system/apps/ubuntu/22.04-202604/oneapi/2025.3.1/compiler/2025.3/bin/compiler/../icpx.cfg\n",
+    "FC": "ifx (IFX) 2025.3.2 20260112\nCopyright (C) 1985-2026 Intel Corporation. All rights reserved.\n\n"
+  },
+  "ldd": "\tlinux-vdso.so.1 (0x00007ffc70d7b000)\n\tlibopenmx_core.so => ${CHECKOUT}/work/benchmarks_intel_cpu_20261110/install/cpu/bin/../lib/libopenmx_core.so (0x00007f9df2f4f000)\n\tlibmkl_intel_lp64.so.2 => /system/apps/ubuntu/22.04-202604/oneapi/2025.3.1/mkl/2025.3/lib/libmkl_intel_lp64.so.2 (0x00007f9df1f4e000)\n\tlibmkl_scalapack_lp64.so.2 => /system/apps/ubuntu/22.04-202604/oneapi/2025.3.1/mkl/2025.3/lib/libmkl_scalapack_lp64.so.2 (0x00007f9df183f000)\n\tlibmkl_intel_thread.so.2 => /system/apps/ubuntu/22.04-202604/oneapi/2025.3.1/mkl/2025.3/lib/libmkl_intel_thread.so.2 (0x00007f9def1cf000)\n\tlibmkl_core.so.2 => /system/apps/ubuntu/22.04-202604/oneapi/2025.3.1/mkl/2025.3/lib/libmkl_core.so.2 (0x00007f9deb0da000)\n\tlibmkl_blacs_intelmpi_lp64.so.2 => /system/apps/ubuntu/22.04-202604/oneapi/2025.3.1/mkl/2025.3/lib/libmkl_blacs_intelmpi_lp64.so.2 (0x00007f9deb099000)\n\tlibiomp5.so => /system/apps/ubuntu/22.04-202604/oneapi/2025.3.1/compiler/2025.3/lib/libiomp5.so (0x00007f9deac00000)\n\tlibm.so.6 => /usr/lib/x86_64-linux-gnu/libm.so.6 (0x00007f9deab19000)\n\tlibmpicxx.so.12 => /system/apps/ubuntu/22.04-202604/oneapi/2025.3.1/mpi/2021.17/lib/libmpicxx.so.12 (0x00007f9dea800000)\n\tlibmpifort.so.12 => /system/apps/ubuntu/22.04-202604/oneapi/2025.3.1/mpi/2021.17/lib/libmpifort.so.12 (0x00007f9dea400000)\n\tlibmpi.so.12 => /system/apps/ubuntu/22.04-202604/oneapi/2025.3.1/mpi/2021.17/lib/libmpi.so.12 (0x00007f9de0200000)\n\tlibifport.so.5 => /system/apps/ubuntu/22.04-202604/oneapi/2025.3.1/compiler/2025.3/lib/libifport.so.5 (0x00007f9deaaef000)\n\tlibifcoremt.so.5 => /system/apps/ubuntu/22.04-202604/oneapi/2025.3.1/compiler/2025.3/lib/libifcoremt.so.5 (0x00007f9de008f000)\n\tlibstdc++.so.6 => /usr/lib/x86_64-linux-gnu/libstdc++.so.6 (0x00007f9ddfded000)\n\tlibgcc_s.so.1 => /usr/lib/x86_64-linux-gnu/libgcc_s.so.1 (0x00007f9deaac1000)\n\tlibc.so.6 => /usr/lib/x86_64-linux-gnu/libc.so.6 (0x00007f9ddfbc4000)\n\tlibopenmx_host_simd.so => ${CHECKOUT}/work/benchmarks_intel_cpu_20261110/install/cpu/bin/../lib/libopenmx_host_simd.so (0x00007f9ddfa68000)\n\tlibsvml.so => /system/apps/ubuntu/22.04-202604/oneapi/2025.3.1/compiler/2025.3/lib/libsvml.so (0x00007f9dde548000)\n\tlibirng.so => /system/apps/ubuntu/22.04-202604/oneapi/2025.3.1/compiler/2025.3/lib/libirng.so (0x00007f9dea307000)\n\tlibimf.so => /system/apps/ubuntu/22.04-202604/oneapi/2025.3.1/compiler/2025.3/lib/libimf.so (0x00007f9dde123000)\n\tlibintlc.so.5 => /system/apps/ubuntu/22.04-202604/oneapi/2025.3.1/compiler/2025.3/lib/libintlc.so.5 (0x00007f9deaa5e000)\n\t/lib64/ld-linux-x86-64.so.2 (0x00007f9df3140000)\n\tlibdl.so.2 => /usr/lib/x86_64-linux-gnu/libdl.so.2 (0x00007f9deaa59000)\n\tlibpthread.so.0 => /usr/lib/x86_64-linux-gnu/libpthread.so.0 (0x00007f9deaa54000)\n\tlibrt.so.1 => /usr/lib/x86_64-linux-gnu/librt.so.1 (0x00007f9deaa4f000)\n",
+  "elpa_version": "2026.02.002",
+  "elpa_openmp_enabled": true,
+  "elpa_gpu_kernels_enabled": false,
+  "mkl_threading": "INTEL",
+  "openmp_runtime": "libiomp5",
+  "mpi": "Intel MPI 2021.17",
+  "app_flags": "-O3 -xHost -ipo; production precise floating point settings retained",
+  "elpa_flags": "C/C++: application flags followed by -O2 -fPIC and x86 SIMD flags; Fortran: -O2 -fPIC",
+  "independent_install": true,
+  "passed": true
+}

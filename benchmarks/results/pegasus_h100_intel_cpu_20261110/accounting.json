@@ -1,0 +1,14 @@
+{
+  "job_id": "0:230486.nqsv",
+  "nodes": 1,
+  "elapsed_seconds": 522,
+  "node_hours": 0.145,
+  "estimated_points": 0.145,
+  "maximum_reserved_points": 0.5,
+  "budget_snapshot": "===========================================\nGROUP          REMAIN   ESTIMATE    INITIAL\n===========================================\nGPU2026        188.88       0.50     500.00\nCP24I024         0.00       0.00       0.00\n",
+  "noted_at": "2026-11-10T04:01:48.880848+00:00",
+  "budget_before": "===========================================\nGROUP          REMAIN   ESTIMATE    INITIAL\n===========================================\nGPU2026        188.88       0.00     500.00\nCP24I024         0.00       0.00       0.00\n",
+  "budget_after_publication": "===========================================\nGROUP          REMAIN   ESTIMATE    INITIAL\n===========================================\nGPU2026        188.74       0.00     500.00\nCP24I024         0.00       0.00       0.00\n",
+  "observed_group_balance_change_points": 0.14,
+  "accounting_note": "The group balance fell from 188.88 to 188.74 points; reservation is now zero. The job footer reports 522 s on one node (0.145 node-hours)."
+}

@@ -1,0 +1,6 @@
+implementation,phase,elapsed_seconds,scf_iterations,nodes,ranks_per_node,threads_per_rank
+OpenMX 4.0 GPU / CPU-only Intel build,warmup,252.54,25,1,24,2
+OpenMX 4.0 GPU / CPU-only Intel build,measured,252.807,25,1,24,2
+Official OpenMX 4.0.1 (retained 2026-10-29),repeat1,316.872,25,1,24,2
+Official OpenMX 4.0.1 (retained 2026-10-29),repeat2,315.049,25,1,24,2
+Official OpenMX 4.0.1 (retained 2026-10-29),repeat3,312.199,25,1,24,2

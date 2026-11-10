@@ -1,0 +1,34 @@
+{
+  "source_commit": "08d0521bb32b688c064e3fe83495ab42529fbc56",
+  "binary_sha256": "3fd3e307d59fa747967d392768db904d6d3acf276dc4ceb010d88883942e8c13",
+  "cpu_only": true,
+  "numerical_test_passed": true,
+  "installed_threaded_mkl_intel_mpi_verified": true,
+  "elpa_openmp_enabled": true,
+  "elpa_warmup_requested_and_configured_threads": 2,
+  "execution_files_unchanged": true,
+  "deployment_inputs_identical": true,
+  "used_PAO_VPS_match_retained_upstream": true,
+  "original_default_binary_unchanged": true,
+  "tracked_source_unchanged": true,
+  "affinity": [
+    {
+      "ranks": 24,
+      "host": "bnode080",
+      "cores_per_rank": 2,
+      "distinct_cores": 48,
+      "controls_verified": true,
+      "passed": true
+    },
+    {
+      "ranks": 24,
+      "host": "bnode080",
+      "cores_per_rank": 2,
+      "distinct_cores": 48,
+      "controls_verified": true,
+      "passed": true
+    }
+  ],
+  "passed": true,
+  "retained_upstream_outputs_match_versioned_sha256": true
+}

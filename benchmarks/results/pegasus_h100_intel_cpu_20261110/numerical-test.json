@@ -1,0 +1,16 @@
+{
+  "command": [
+    "/system/apps/ubuntu/22.04-202604/oneapi/2025.3.1/mpi/2021.17/bin/mpirun",
+    "-machinefile",
+    "${CHECKOUT}/work/benchmarks_intel_cpu_20261110/runs/numerics/hosts.txt",
+    "-np",
+    "2",
+    "-ppn",
+    "2",
+    "${CHECKOUT}/build/pegasus-intel-cpu-08d0521b/openmx_cpu_numerics"
+  ],
+  "returncode": 0,
+  "threads": 1,
+  "ranks": 2,
+  "passed": true
+}

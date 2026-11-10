@@ -1,0 +1,158 @@
+{
+  "recorded": "2026-11-10T04:20:01.192687+00:00",
+  "source_commit": "08d0521bb32b688c064e3fe83495ab42529fbc56",
+  "cpu_only": true,
+  "binary_sha256": "3fd3e307d59fa747967d392768db904d6d3acf276dc4ceb010d88883942e8c13",
+  "job_id": "0:230486.nqsv",
+  "protocol": {
+    "input": "sidia333_nc_cluster.dat",
+    "nodes": 1,
+    "ranks_per_node": 24,
+    "threads_per_rank": 2,
+    "warmup_runs": 1,
+    "measured_runs": 1,
+    "timing": "Native output Elapsed.Time; warmup excluded; upstream retained median of three.",
+    "warmup_diagnostic": "OPENMX_GPU_VERBOSE=1 reports CPU ELPA threads; absent during measurement.",
+    "scf_limit": 25,
+    "scf_converged": false
+  },
+  "path_normalization": "${CHECKOUT} denotes the original measurement checkout. Raw output and prepared-input bytes are preserved.",
+  "raw_local_artifacts": "${CHECKOUT}/work/benchmarks_intel_cpu_20261110",
+  "files": [
+    {
+      "path": ".gitattributes",
+      "bytes": 259,
+      "sha256": "82ffa03542d232bbcca8f7aaec38a927a5d84dbd400601e9904209190953548a"
+    },
+    {
+      "path": "accounting.json",
+      "bytes": 1176,
+      "sha256": "ed90ec373e3a41e82ce38accd90d0f3778c238a02b6d10e94cc1fa4c73482469"
+    },
+    {
+      "path": "accuracy.csv",
+      "bytes": 438,
+      "sha256": "3031acdede6ade311b9feb8fa0a32397c9eabff5c5b45cc8a073935e4d311502"
+    },
+    {
+      "path": "build-evidence/application-link.txt",
+      "bytes": 21906,
+      "sha256": "6521d1d0e8502cf0775cdf1b966718fe4a1c6fa6e9d97d5233ea6f27df9fb60f"
+    },
+    {
+      "path": "build-evidence/configure.txt",
+      "bytes": 2055,
+      "sha256": "7b6c25f00f042e0e07065fb19ad23470ae8e595e8c48c87e0644754bff21a303"
+    },
+    {
+      "path": "build-evidence/elpa-config-f90.h",
+      "bytes": 3269,
+      "sha256": "d59846c3bdca50529bfaf033a4e347b7f97a0082d7383061d2072f40caed576f"
+    },
+    {
+      "path": "build-evidence/ldd-installed.txt",
+      "bytes": 2784,
+      "sha256": "4b84918ad0b68e67eb01d55797a5a7c3ed61bc14c779ebf58b7fa6550996da5f"
+    },
+    {
+      "path": "build-plan.json",
+      "bytes": 4796,
+      "sha256": "2f0e10b651b632e3ff4e04d76a009199672cc2117802a41f941370c80b127bcd"
+    },
+    {
+      "path": "elpa-build-commands.json",
+      "bytes": 254,
+      "sha256": "34ad3198ec0a3badab522ad2bfddeba656be7377ded7b2ea02e90d581c32e802"
+    },
+    {
+      "path": "execution-audit.json",
+      "bytes": 980,
+      "sha256": "5e983c6826691a7baed69c10c3b8ef01764168237cca7328ccee3cf844753624"
+    },
+    {
+      "path": "hardware.json",
+      "bytes": 5692,
+      "sha256": "f3cc00c94d09ca7bf45430129252f61cfcef0042c4414cd80ec1f5d6f921937b"
+    },
+    {
+      "path": "input-manifest.json",
+      "bytes": 918,
+      "sha256": "1da1234077b305f3e66bbc8da6f431242918c8efcfcdf048e8ed89bc94a6dfd0"
+    },
+    {
+      "path": "install-audit.json",
+      "bytes": 4647,
+      "sha256": "97519533547ac2bd97b7f740df116c000e38f61ec10d41117b0459d7515d55cc"
+    },
+    {
+      "path": "numerical-test.json",
+      "bytes": 379,
+      "sha256": "0dfb2f8dc0c1c7abd28f0c750ea9801be3443b2c9f0bfa545d6d309800a6cf8d"
+    },
+    {
+      "path": "outputs/measured.log",
+      "bytes": 113766,
+      "sha256": "c03086e786d82b306512553617d78593673895a7c01c6f89ac8d62b77b437be8"
+    },
+    {
+      "path": "outputs/measured.out.txt",
+      "bytes": 806092,
+      "sha256": "4ec3be7a04bcbb6dac45a30f6639893e408953b177b9467e4389c8fab55d319b"
+    },
+    {
+      "path": "outputs/numerics.log",
+      "bytes": 393,
+      "sha256": "c075dcf4da207d295e2b6c50ef58be30583698c796d74354ac1329cd6d0556aa"
+    },
+    {
+      "path": "outputs/warmup.log",
+      "bytes": 115456,
+      "sha256": "16321208107c3d612763274299d87688d52934d4a7fd54372123d74508ff0ea5"
+    },
+    {
+      "path": "outputs/warmup.out.txt",
+      "bytes": 806090,
+      "sha256": "c26963de8ce3d7875f856c8c6ca7b2e60cc165f058c6069319d402a5d0fde10e"
+    },
+    {
+      "path": "prepared-input.dat",
+      "bytes": 16001,
+      "sha256": "3bcd8030526fdc72a4d42bfbad30d5886af6b0278c1615029b04d5588afdd393"
+    },
+    {
+      "path": "prior-measurement-audit.json",
+      "bytes": 1779,
+      "sha256": "1e7095b1f385f7c4b305da209e13c2da9468ba33e158eb951e0ccd394fd1cce2"
+    },
+    {
+      "path": "report-ja.txt",
+      "bytes": 3312,
+      "sha256": "d7f7f8c5e3a9a9b3bf5f713a76217e06e6f787a46d2a107b69f2b7f22d58a552"
+    },
+    {
+      "path": "result-summary.json",
+      "bytes": 2838,
+      "sha256": "9f404854fdc9145985d6f48dbb1e476f0348ec9a9be91351a0bf46c44cf8fe07"
+    },
+    {
+      "path": "run-metadata.json",
+      "bytes": 49684,
+      "sha256": "7b201eef0fa97338612ceb3a5689f19e667983a6b3318e05471117ed78206c26"
+    },
+    {
+      "path": "runs.json",
+      "bytes": 70904,
+      "sha256": "7ccc5a6e6f24407d7b3bef3a3fb029c6444a399a72573902fad32166f6b5c4ff"
+    },
+    {
+      "path": "timing.csv",
+      "bytes": 433,
+      "sha256": "55f50f54c33c8a6aa4a86d0c7672f1542eb068f86b9f633b2b534f05a1fc7834"
+    },
+    {
+      "path": "upstream-reference.json",
+      "bytes": 18106,
+      "sha256": "4e4c45c65db0ca3301a0488b9ed9ba49ab342c5772a52987f58241412162bb35"
+    }
+  ]
+}
