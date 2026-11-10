@@ -1,0 +1,10 @@
+{
+  "checked_original_files": 1785,
+  "changed_files": [
+    "openmx4.0/work/GaAs.dat",
+    "openmx4.0/source/Mulliken_Charge.c",
+    "openmx4.0/source/Band_DFT_Dosout.c",
+    "openmx4.0/source/makefile"
+  ],
+  "other_original_files_unchanged": true
+}

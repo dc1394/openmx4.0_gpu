@@ -1,0 +1,54 @@
+{
+  "source": "official OpenMX 4.0 + patch4.0.1 (2026-05-08), not the GitHub fork",
+  "source_url": "https://www.openmx-square.org/openmx4.0.tar.gz",
+  "source_sha256": "8d5338faf70885f276352bbd2826cdfed2ffd08f33eca58752666d79a7d0c3bf",
+  "patch_url": "https://www.openmx-square.org/bugfixed/26May08/patch4.0.1.tar.gz",
+  "patch_sha256": "c5312eeee13e17e0123beeb4eb2379bcf7c7cafa1815b1dcf6846452f9620bef",
+  "campaign_directory": "/home/dc1394/openmx-benchmarks/20261110-official4.0.1-8x1",
+  "binary": "/home/dc1394/openmx4.0/work/openmx",
+  "binary_sha256": "8078b965731105a364264447ba6886967d67773830313cc5f3bc0399712c0860",
+  "original_input_sha256": "9c5466abf560c6481b83ec9a51976f4b218856a1da330e5a209b9041239decd0",
+  "runtime_input_sha256": "35c258ddec0bc117f3a55ad43e93ced8cb99c8d5366ced9c1c643090e48a95a4",
+  "recorded_hashes": {
+    "/home/dc1394/openmx4.0/work/openmx": "8078b965731105a364264447ba6886967d67773830313cc5f3bc0399712c0860",
+    "/home/dc1394/openmx4.0/DFT_DATA19/PAO/Si7.0.pao": "24c45d323ad0e4f652776791c0dd9a4c1357d7e63b91333503634401352f843f",
+    "/home/dc1394/openmx4.0/DFT_DATA19/VPS/Si_PBE19.vps": "9a274b3f50cd247d53e735b8ad1669d491286934b61c295bcd6e8b6ba555d80a",
+    "/home/dc1394/openmx4.0/source/makefile": "91d33109c33fca2cd58ef45e3505dc7a417d284953c4f7e73fa973d5529a2746",
+    "/home/dc1394/.local/bin/openmx-8x1": "d6e8a6a61741b00b95d7f4217fe91dc265f41d347a61df2cba6c5fcbb4376603",
+    "/home/dc1394/openmx-install/rank-exec.py": "af05d8a42f27c0d3cbf4a9730b245a5e3849363591d0d0c2e2e0c0d6b0a48746"
+  },
+  "build": {
+    "CC": "mpicc -O3 -DNDEBUG -Dnosse -fopenmp -fcommon -Wno-implicit-function-declaration -I./elpa-2018.05.001",
+    "FC": "mpifort -O3 -fopenmp -fallow-argument-mismatch -I./elpa-2018.05.001",
+    "LIB": "-lscalapack-openmpi -lopenblas -lfftw3 -lmpi_mpifh -lgfortran -lpthread -lm -ldl",
+    "ELPA": "2018.05.001, bundled official implementation, generic kernels",
+    "Fortran_modules": "compiled serially in upstream object order before make -j4 openmx; make install"
+  },
+  "reference_directory": "neoverse_n3_20261104_8x1",
+  "reference_measured_source_commit": "6ad8d53e75db6453e70d7bccf34725c541fbfbae",
+  "reference_analysis_sha256": "25a460a4979c666e5024d299d267beda19e86c2eebb409f5b7aa9cd3403dcf8e",
+  "reference_force_components_sha256": "3a89911379cf303f71668bcebbfc42fe0b60ce3830bc6bf9767ab2a94b5bf805",
+  "mpi_ranks": 8,
+  "openmp_threads_per_rank": 1,
+  "blas_thread_controls": 1,
+  "sve_vector_length_bits": 128,
+  "warmups": 1,
+  "timed_runs": 1,
+  "scope": "Single official-CPU timed run after one warmup. Published fork values are three-run medians with different software versions.",
+  "runs": [
+    {
+      "name": "warmup-01",
+      "input_sha256": "35c258ddec0bc117f3a55ad43e93ced8cb99c8d5366ced9c1c643090e48a95a4",
+      "stdout_sha256": "30515e503432adb4be3742ca99db37d3a34fae20771a25b7f79ea9cf6bcccbff",
+      "output_sha256": "45b2e505c73df484f3d8adcb3d0203548c0c039f75424bdfdfdbd39249c8aa57"
+    },
+    {
+      "name": "timed-01",
+      "input_sha256": "35c258ddec0bc117f3a55ad43e93ced8cb99c8d5366ced9c1c643090e48a95a4",
+      "stdout_sha256": "4cd1a5d90894c0a4114630a342833a5b65cb92188dcb9f1054a0b3a28908f43c",
+      "output_sha256": "72c585ca017471f7214fbd3432d363a6f56ddf514e3933d9bdae04b44e3ecbc0"
+    }
+  ],
+  "archive_policy": "Raw stdout/stderr and result.out are gzip-compressed without changes. Generated restart/density/visualization files were removed after timing; parsed records and their removed-file names remain in results.json.gz.",
+  "plan": "One warmup and one timed run. Originally planned additional timed runs were cancelled before MPI launch; local driver bookkeeping is not part of the published numerical data."
+}

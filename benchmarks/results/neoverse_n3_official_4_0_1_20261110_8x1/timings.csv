@@ -1,0 +1,3 @@
+name,native_seconds,wall_seconds,scf_steps,scf_converged,energy_Ha
+warmup-01,1714.709,1715.884261972,25,False,-887.309607369157
+timed-01,1721.589,1722.7227186609998,25,False,-887.309607369157

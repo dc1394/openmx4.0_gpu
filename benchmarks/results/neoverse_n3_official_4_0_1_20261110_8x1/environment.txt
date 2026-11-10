@@ -1,0 +1,88 @@
+Linux instance-20261110-000136 6.12.116+deb13-cloud-arm64 #1 SMP Debian 6.12.116-1 (2026-11-07) aarch64 GNU/Linux
+Architecture:                            aarch64
+CPU op-mode(s):                          64-bit
+Byte Order:                              Little Endian
+CPU(s):                                  8
+On-line CPU(s) list:                     0-7
+Vendor ID:                               ARM
+Model name:                              Neoverse-N3
+Model:                                   0
+Thread(s) per core:                      1
+Core(s) per socket:                      8
+Socket(s):                               1
+Stepping:                                r0p0
+BogoMIPS:                                2000.00
+Flags:                                   fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics fphp asimdhp cpuid asimdrdm jscvt fcma lrcpc dcpop sha3 sm3 sm4 asimddp sha512 sve asimdfhm dit uscat ilrcpc flagm sb paca pacg dcpodp sve2 sveaes svepmull svebitperm svesha3 svesm4 flagm2 frint svei8mm svebf16 i8mm bf16 dgh rng bti ecv afp wfxt
+L1d cache:                               512 KiB (8 instances)
+L1i cache:                               512 KiB (8 instances)
+L2 cache:                                16 MiB (8 instances)
+L3 cache:                                112 MiB (1 instance)
+NUMA node(s):                            1
+NUMA node0 CPU(s):                       0-7
+Vulnerability Gather data sampling:      Not affected
+Vulnerability Indirect target selection: Not affected
+Vulnerability Itlb multihit:             Not affected
+Vulnerability L1tf:                      Not affected
+Vulnerability Mds:                       Not affected
+Vulnerability Meltdown:                  Not affected
+Vulnerability Mmio stale data:           Not affected
+Vulnerability Reg file data sampling:    Not affected
+Vulnerability Retbleed:                  Not affected
+Vulnerability Spec rstack overflow:      Not affected
+Vulnerability Spec store bypass:         Mitigation; Speculative Store Bypass disabled via prctl
+Vulnerability Spectre v1:                Mitigation; __user pointer sanitization
+Vulnerability Spectre v2:                Mitigation; CSV2, BHB
+Vulnerability Srbds:                     Not affected
+Vulnerability Tsa:                       Not affected
+Vulnerability Tsx async abort:           Not affected
+Vulnerability Vmscape:                   Not affected
+               total        used        free      shared  buff/cache   available
+Mem:            62Gi        30Gi        29Gi       1.8Mi       3.5Gi        32Gi
+Swap:             0B          0B          0B
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/nvme0n1p1  9.7G  4.9G  4.3G  54% /
+gcc (Debian 14.2.0-19) 14.2.0
+Copyright (C) 2024 Free Software Foundation, Inc.
+This is free software; see the source for copying conditions.  There is NO
+warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+GNU Fortran (Debian 14.2.0-19) 14.2.0
+Copyright (C) 2024 Free Software Foundation, Inc.
+This is free software; see the source for copying conditions.  There is NO
+warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+mpirun (Open MPI) 5.0.7
+
+Report bugs to https://www.open-mpi.org/community/help/
+	linux-vdso.so.1 (0x0000ffff9528f000)
+	libscalapack-openmpi.so.2.2 => /lib/aarch64-linux-gnu/libscalapack-openmpi.so.2.2 (0x0000ffff94780000)
+	libopenblas.so.0 => /lib/aarch64-linux-gnu/libopenblas.so.0 (0x0000ffff93520000)
+	libfftw3.so.3 => /lib/aarch64-linux-gnu/libfftw3.so.3 (0x0000ffff93440000)
+	libmpi_mpifh.so.40 => /lib/aarch64-linux-gnu/libmpi_mpifh.so.40 (0x0000ffff933b0000)
+	libgfortran.so.5 => /lib/aarch64-linux-gnu/libgfortran.so.5 (0x0000ffff93220000)
+	libm.so.6 => /lib/aarch64-linux-gnu/libm.so.6 (0x0000ffff93170000)
+	libmpi.so.40 => /lib/aarch64-linux-gnu/libmpi.so.40 (0x0000ffff92de0000)
+	libgomp.so.1 => /lib/aarch64-linux-gnu/libgomp.so.1 (0x0000ffff92d70000)
+	libc.so.6 => /lib/aarch64-linux-gnu/libc.so.6 (0x0000ffff92bb0000)
+	liblapack.so.3 => /lib/aarch64-linux-gnu/liblapack.so.3 (0x0000ffff92610000)
+	libblas.so.3 => /lib/aarch64-linux-gnu/libblas.so.3 (0x0000ffff92570000)
+	libgcc_s.so.1 => /lib/aarch64-linux-gnu/libgcc_s.so.1 (0x0000ffff92530000)
+	/lib/ld-linux-aarch64.so.1 (0x0000ffff95240000)
+	libopen-pal.so.80 => /lib/aarch64-linux-gnu/libopen-pal.so.80 (0x0000ffff923c0000)
+	libfabric.so.1 => /lib/aarch64-linux-gnu/libfabric.so.1 (0x0000ffff92230000)
+	libucp.so.0 => /lib/aarch64-linux-gnu/libucp.so.0 (0x0000ffff920b0000)
+	libucs.so.0 => /lib/aarch64-linux-gnu/libucs.so.0 (0x0000ffff92020000)
+	libevent_core-2.1.so.7 => /lib/aarch64-linux-gnu/libevent_core-2.1.so.7 (0x0000ffff91fc0000)
+	libevent_pthreads-2.1.so.7 => /lib/aarch64-linux-gnu/libevent_pthreads-2.1.so.7 (0x0000ffff91f90000)
+	libhwloc.so.15 => /lib/aarch64-linux-gnu/libhwloc.so.15 (0x0000ffff91f10000)
+	libpmix.so.2 => /lib/aarch64-linux-gnu/libpmix.so.2 (0x0000ffff91ce0000)
+	libucm.so.0 => /lib/aarch64-linux-gnu/libucm.so.0 (0x0000ffff91ca0000)
+	libuct.so.0 => /lib/aarch64-linux-gnu/libuct.so.0 (0x0000ffff91c30000)
+	libnl-3.so.200 => /lib/aarch64-linux-gnu/libnl-3.so.200 (0x0000ffff91be0000)
+	librdmacm.so.1 => /lib/aarch64-linux-gnu/librdmacm.so.1 (0x0000ffff91ba0000)
+	libefa.so.1 => /lib/aarch64-linux-gnu/libefa.so.1 (0x0000ffff91b70000)
+	libibverbs.so.1 => /lib/aarch64-linux-gnu/libibverbs.so.1 (0x0000ffff91b30000)
+	libudev.so.1 => /lib/aarch64-linux-gnu/libudev.so.1 (0x0000ffff91ad0000)
+	libmunge.so.2 => /lib/aarch64-linux-gnu/libmunge.so.2 (0x0000ffff91aa0000)
+	libnl-route-3.so.200 => /lib/aarch64-linux-gnu/libnl-route-3.so.200 (0x0000ffff919f0000)
+	libcap.so.2 => /lib/aarch64-linux-gnu/libcap.so.2 (0x0000ffff919c0000)

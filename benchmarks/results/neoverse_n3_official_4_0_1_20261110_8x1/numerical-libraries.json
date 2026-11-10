@@ -1,0 +1,17 @@
+{
+  "openblas_configuration": "OpenBLAS 0.3.29 NO_LAPACKE DYNAMIC_ARCH NO_AFFINITY armv8sve MAX_THREADS=128",
+  "openblas_library": "/usr/lib/aarch64-linux-gnu/openblas-pthread/libopenblasp-r0.3.29.so",
+  "lapack_library": "/usr/lib/aarch64-linux-gnu/openblas-pthread/liblapack.so.3",
+  "blas_library": "/usr/lib/aarch64-linux-gnu/openblas-pthread/libblas.so.3",
+  "observer_affinity": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7
+  ],
+  "thread_counts_scope": "OpenMP and BLAS controls are 1; MPI helper threads may exist."
+}

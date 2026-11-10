@@ -1,0 +1,23 @@
+{
+  "timed_repetitions": 1,
+  "native_seconds": 1721.589,
+  "wall_seconds": 1722.7227186609998,
+  "median_native_seconds": 1721.589,
+  "median_wall_seconds": 1722.7227186609998,
+  "timed_native_seconds": [
+    1721.589
+  ],
+  "min_native_seconds": 1721.589,
+  "max_native_seconds": 1721.589,
+  "sample_stdev_native_seconds": null,
+  "published_scalar_median_seconds": 1738.314,
+  "published_sve128_median_seconds": 1550.631,
+  "published_scalar_time_over_official": 1.0097148622580652,
+  "published_sve128_time_over_official": 0.900697553248772,
+  "all_repetitions_within_numerical_tolerance": true,
+  "all_runs_scf_converged": false,
+  "max_delta_energy_vs_published_Ha": 1.693933882052079e-11,
+  "max_delta_force_vs_published_Ha_bohr": 1.1300000000078988e-10,
+  "all_runs_match_published_energy_forces": true,
+  "output_hashes_verified": true
+}

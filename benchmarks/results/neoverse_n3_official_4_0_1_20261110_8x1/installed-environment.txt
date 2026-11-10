@@ -1,0 +1,61 @@
+Tue Nov 10 00:17:51 UTC 2026
+Linux instance-20261110-000136 6.12.116+deb13-cloud-arm64 #1 SMP Debian 6.12.116-1 (2026-11-07) aarch64 GNU/Linux
+gcc (Debian 14.2.0-19) 14.2.0
+Copyright (C) 2024 Free Software Foundation, Inc.
+This is free software; see the source for copying conditions.  There is NO
+warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+GNU Fortran (Debian 14.2.0-19) 14.2.0
+Copyright (C) 2024 Free Software Foundation, Inc.
+This is free software; see the source for copying conditions.  There is NO
+warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+mpirun (Open MPI) 5.0.7
+
+Report bugs to https://www.open-mpi.org/community/help/
+gcc	4:14.2.0-1
+gfortran	4:14.2.0-1
+libfftw3-dev:arm64	3.3.10-2+b1
+libopenblas-pthread-dev:arm64	0.3.29+ds-3
+libopenmpi-dev:arm64	5.0.7-1
+libscalapack-openmpi-dev:arm64	2.2.2-1
+openmpi-bin	5.0.7-1
+	linux-vdso.so.1 (0x0000ffff87a3c000)
+	libscalapack-openmpi.so.2.2 => /lib/aarch64-linux-gnu/libscalapack-openmpi.so.2.2 (0x0000ffff86f30000)
+	libopenblas.so.0 => /lib/aarch64-linux-gnu/libopenblas.so.0 (0x0000ffff85cd0000)
+	libfftw3.so.3 => /lib/aarch64-linux-gnu/libfftw3.so.3 (0x0000ffff85bf0000)
+	libmpi_mpifh.so.40 => /lib/aarch64-linux-gnu/libmpi_mpifh.so.40 (0x0000ffff85b60000)
+	libgfortran.so.5 => /lib/aarch64-linux-gnu/libgfortran.so.5 (0x0000ffff859d0000)
+	libm.so.6 => /lib/aarch64-linux-gnu/libm.so.6 (0x0000ffff85920000)
+	libmpi.so.40 => /lib/aarch64-linux-gnu/libmpi.so.40 (0x0000ffff85590000)
+	libgomp.so.1 => /lib/aarch64-linux-gnu/libgomp.so.1 (0x0000ffff85520000)
+	libc.so.6 => /lib/aarch64-linux-gnu/libc.so.6 (0x0000ffff85360000)
+	liblapack.so.3 => /lib/aarch64-linux-gnu/liblapack.so.3 (0x0000ffff84dc0000)
+	libblas.so.3 => /lib/aarch64-linux-gnu/libblas.so.3 (0x0000ffff84d20000)
+	libgcc_s.so.1 => /lib/aarch64-linux-gnu/libgcc_s.so.1 (0x0000ffff84ce0000)
+	/lib/ld-linux-aarch64.so.1 (0x0000ffff879f0000)
+	libopen-pal.so.80 => /lib/aarch64-linux-gnu/libopen-pal.so.80 (0x0000ffff84b70000)
+	libfabric.so.1 => /lib/aarch64-linux-gnu/libfabric.so.1 (0x0000ffff849e0000)
+	libucp.so.0 => /lib/aarch64-linux-gnu/libucp.so.0 (0x0000ffff84860000)
+	libucs.so.0 => /lib/aarch64-linux-gnu/libucs.so.0 (0x0000ffff847d0000)
+	libevent_core-2.1.so.7 => /lib/aarch64-linux-gnu/libevent_core-2.1.so.7 (0x0000ffff84770000)
+	libevent_pthreads-2.1.so.7 => /lib/aarch64-linux-gnu/libevent_pthreads-2.1.so.7 (0x0000ffff84740000)
+	libhwloc.so.15 => /lib/aarch64-linux-gnu/libhwloc.so.15 (0x0000ffff846c0000)
+	libpmix.so.2 => /lib/aarch64-linux-gnu/libpmix.so.2 (0x0000ffff84490000)
+	libucm.so.0 => /lib/aarch64-linux-gnu/libucm.so.0 (0x0000ffff84450000)
+	libuct.so.0 => /lib/aarch64-linux-gnu/libuct.so.0 (0x0000ffff843e0000)
+	libnl-3.so.200 => /lib/aarch64-linux-gnu/libnl-3.so.200 (0x0000ffff84390000)
+	librdmacm.so.1 => /lib/aarch64-linux-gnu/librdmacm.so.1 (0x0000ffff84350000)
+	libefa.so.1 => /lib/aarch64-linux-gnu/libefa.so.1 (0x0000ffff84320000)
+	libibverbs.so.1 => /lib/aarch64-linux-gnu/libibverbs.so.1 (0x0000ffff842e0000)
+	libudev.so.1 => /lib/aarch64-linux-gnu/libudev.so.1 (0x0000ffff84280000)
+	libmunge.so.2 => /lib/aarch64-linux-gnu/libmunge.so.2 (0x0000ffff84250000)
+	libnl-route-3.so.200 => /lib/aarch64-linux-gnu/libnl-route-3.so.200 (0x0000ffff841a0000)
+	libcap.so.2 => /lib/aarch64-linux-gnu/libcap.so.2 (0x0000ffff84170000)
+8078b965731105a364264447ba6886967d67773830313cc5f3bc0399712c0860  ../work/openmx
+91d33109c33fca2cd58ef45e3505dc7a417d284953c4f7e73fa973d5529a2746  makefile
+f328851a91154b90398d38e33d263d414659dad5259ba799d0b8c248d98d7c3e  Band_DFT_Dosout.c
+8795dee2aa939778f2344c2e0264375f0c69c4e30fb025353802f6c9c3cbc3da  Mulliken_Charge.c
+b2571de088368e512c9967f770273aa6682563eb4bf77db5973b6d604bea1141  ../work/GaAs.dat
+24c45d323ad0e4f652776791c0dd9a4c1357d7e63b91333503634401352f843f  ../DFT_DATA19/PAO/Si7.0.pao
+9a274b3f50cd247d53e735b8ad1669d491286934b61c295bcd6e8b6ba555d80a  ../DFT_DATA19/VPS/Si_PBE19.vps

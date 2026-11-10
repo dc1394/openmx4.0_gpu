@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Reference launch conditions: 8 MPI ranks, one core/rank, one thread,
+# inherited SVE vector length 128. Set DATA.PATH explicitly in the input.
+set -euo pipefail
+if (( $# != 1 )); then
+  echo 'Usage: openmx-8x1 INPUT.dat' >&2
+  exit 2
+fi
+export OMP_NUM_THREADS=1 OMP_THREAD_LIMIT=1 OMP_DYNAMIC=FALSE
+export OMP_MAX_ACTIVE_LEVELS=1 OMP_PROC_BIND=TRUE OMP_PLACES=cores
+export OPENBLAS_NUM_THREADS=1 GOTO_NUM_THREADS=1 MKL_NUM_THREADS=1
+export BLIS_NUM_THREADS=1 VECLIB_MAXIMUM_THREADS=1 MKL_DYNAMIC=FALSE
+exec mpirun -np 8 --map-by core --bind-to core \
+  python3 /home/dc1394/openmx-install/rank-exec.py "$1"
