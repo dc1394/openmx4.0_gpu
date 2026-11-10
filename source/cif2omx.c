@@ -3014,8 +3014,8 @@ static void set_PAO_VPS_standard(char PAO[104][32], char VPS[104][32], double Ne
   strcpy(PAO[56], "Ba10.0-s3p2d2"); strcpy(VPS[56], "Ba_PBE19"); Nele[56]=10.0;
   /* Lanthanides: DFT_DATA19 has no _PBE19 data for Eu, Gd, Tb, Er, Tm and Yb,
      so they use this repository's _PBE26 data (README, "Extended lanthanide
-     pseudopotentials and PAO"). Tb and Tm have open-core data only, with the 4f
-     states in the core and 11 valence electrons. DFT_DATA19 has no Pr or Pm data
+     pseudopotentials and PAO"). Tb, Er and Tm have open-core data only, with the
+     4f states in the core and 11 valence electrons. DFT_DATA19 has no Pr or Pm data
      at all; their lines keep the names of the official database. Both cases are
      reported at conversion time by report_dataset_choice(). */
   strcpy(PAO[57], "La8.0-s3p2d2f1"); strcpy(VPS[57], "La_PBE19"); Nele[57]=11.0;
@@ -3029,7 +3029,7 @@ static void set_PAO_VPS_standard(char PAO[104][32], char VPS[104][32], double Ne
   strcpy(PAO[65], "Tb8.0_OC-s3p2d2f1"); strcpy(VPS[65], "Tb_PBE26_OC"); Nele[65]=11.0;
   strcpy(PAO[66], "Dy8.0-s3p2d2f1"); strcpy(VPS[66], "Dy_PBE19"); Nele[66]=20.0;
   strcpy(PAO[67], "Ho8.0-s3p2d2f1"); strcpy(VPS[67], "Ho_PBE19"); Nele[67]=21.0;
-  strcpy(PAO[68], "Er8.0-s3p2d2f1"); strcpy(VPS[68], "Er_PBE26"); Nele[68]=22.0;
+  strcpy(PAO[68], "Er8.0_OC-s3p2d2f1"); strcpy(VPS[68], "Er_PBE26_OC"); Nele[68]=11.0;
   strcpy(PAO[69], "Tm8.0_OC-s3p2d2f1"); strcpy(VPS[69], "Tm_PBE26_OC"); Nele[69]=11.0;
   strcpy(PAO[70], "Yb8.0-s3p2d2f1"); strcpy(VPS[70], "Yb_PBE26"); Nele[70]=24.0;
   strcpy(PAO[71], "Lu8.0-s3p2d2f1"); strcpy(VPS[71], "Lu_PBE19"); Nele[71]=11.0;
@@ -3059,6 +3059,7 @@ static void report_dataset_choice(int z, const char *symbol, const char *vps){
                       " Definition.of.Atomic.Species.\n", symbol, vps, symbol);
       break;
     case 65: /* Tb */
+    case 68: /* Er */
     case 69: /* Tm */
       fprintf(stderr, "Note: %s uses the open-core dataset %s (4f in the core);"
                       " the bundled DFT_DATA19 has no 4f-in-valence dataset for %s.\n", symbol, vps, symbol);

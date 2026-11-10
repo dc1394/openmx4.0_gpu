@@ -1403,10 +1403,13 @@ post-processing check also passed. These checks cover one gfx1200 GPU;
 they do not establish performance equivalence with the AOCL builds
 benchmarked elsewhere in this README.
 
-The installed `cif2omx` converter passed eight lanthanide checks: Eu,
-Gd, Er and Yb select their bundled PBE26 datasets; Tb and Tm select the
-open-core datasets with 11 valence electrons and print an explanatory
-note; Pr and Pm warn that their datasets are not bundled.
+At image publication, the installed `cif2omx` converter passed eight
+lanthanide checks: Eu, Gd, Er and Yb selected their bundled PBE26 datasets;
+Tb and Tm selected the open-core datasets with 11 valence electrons and
+printed an explanatory note; Pr and Pm warned that their datasets were not
+bundled. The defective Er 4f-in-valence data have since been removed from
+this repository. The current converter selects Er's open-core dataset
+with 11 valence electrons and reports that choice.
 
 To pin this published image by digest:
 
@@ -1424,11 +1427,11 @@ the same energy and full-force tolerances.
 this fork's additional and updated lanthanide datasets, versioned together
 with the code. The reference for the original OpenMX 4.0 data is the
 [official VPS/PAO database (2019)](https://www.openmx-square.org/vps_pao2019/).
-This fork adds Eu, Gd and Er datasets with both explicit 4f valence states
-and open-core treatment, and Tm open-core datasets; these elements have no
-downloadable entries in that official database. It also adds Ho open-core
-data and revises datasets for elements already present upstream, including
-Yb with 4f in valence, Yb open core and Dy open core.
+This fork adds Eu and Gd datasets with both explicit 4f valence states
+and open-core treatment, and Er and Tm open-core datasets; these elements
+have no downloadable entries in that official database. It also adds Ho
+open-core data and revises datasets for elements already present upstream,
+including Yb with 4f in valence, Yb open core and Dy open core.
 
 The extension includes the following combinations. `CA26` and `PBE26` are
 the filenames of this fork's LDA and GGA-PBE VPS datasets, respectively;
@@ -1437,8 +1440,8 @@ open-core treatment of the 4f states.
 
 | Element(s) | 4f in valence | Open core |
 | --- | --- | --- |
-| Eu, Gd, Er | CA26/PBE26 VPS and PAO | CA26/PBE26_OC VPS and PAO |
-| Tm | — | CA26/PBE26_OC VPS and PAO |
+| Eu, Gd | CA26/PBE26 VPS and PAO | CA26/PBE26_OC VPS and PAO |
+| Er, Tm | — | CA26/PBE26_OC VPS and PAO |
 | Tb | — | Updated CA26/PBE26_OC VPS and PAO |
 | Yb | Updated CA26/PBE26 VPS and PAO | Updated CA26/PBE26_OC VPS and PAO |
 | Ho | Existing 2019 data | CA26/PBE26_OC VPS and PAO |
@@ -1448,6 +1451,11 @@ open-core treatment of the 4f states.
 The Ho open-core data are
 `Ho_CA26_OC.vps` / `Ho_PBE26_OC.vps` and `Ho8.0_OC.pao`, `Ho10.0_OC.pao`,
 `Ho12.0_OC.pao`.
+
+For Er open-core calculations, use `Er_CA26_OC.vps` or `Er_PBE26_OC.vps`
+with `Er8.0_OC.pao`, `Er10.0_OC.pao` or `Er12.0_OC.pao`. Only open-core Er
+datasets are included; the defective 4f-in-valence VPS and PAO files have
+been removed.
 
 For Tb open-core calculations, use the supplied `Tb_CA26_OC.vps` or
 `Tb_PBE26_OC.vps` with `Tb8.0_OC.pao`, `Tb10.0_OC.pao` or `Tb12.0_OC.pao`.
