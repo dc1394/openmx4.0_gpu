@@ -2,6 +2,19 @@ name: C++ core
 on:
   push:
   pull_request:
+  workflow_dispatch:
+    inputs:
+      macos_runner:
+        description: "macOS runner (macos-15 selects Apple Silicon)"
+        type: choice
+        required: true
+        default: macos-15-intel
+        options:
+          - macos-15-intel
+          - macos-15
+
+# macos-15 ARM64 capacity shortages can cancel jobs before a runner starts.
+# Use Intel for push/PR checks; manual runs can select the same tests on ARM64.
 
 jobs:
   basis:
@@ -18,7 +31,7 @@ jobs:
             cxx: clang++
             cc: clang
             sanitize: "ON"
-          - os: macos-15
+          - os: ${{ inputs.macos_runner || 'macos-15-intel' }}
             cxx: clang++
             cc: clang
             sanitize: "OFF"
@@ -49,7 +62,7 @@ jobs:
             cxx: clang++
             cc: clang
             sanitize: "ON"
-          - os: macos-15
+          - os: ${{ inputs.macos_runner || 'macos-15-intel' }}
             cxx: clang++
             cc: clang
             sanitize: "OFF"
@@ -80,7 +93,7 @@ jobs:
             cxx: clang++
             cc: clang
             sanitize: "ON"
-          - os: macos-15
+          - os: ${{ inputs.macos_runner || 'macos-15-intel' }}
             cxx: clang++
             cc: clang
             sanitize: "OFF"
@@ -141,7 +154,7 @@ jobs:
             backend: SERIAL
             standard: 23
             sanitize: "ON"
-          - os: macos-15
+          - os: ${{ inputs.macos_runner || 'macos-15-intel' }}
             backend: SERIAL
             standard: 20
             sanitize: "OFF"
