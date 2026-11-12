@@ -1,0 +1,146 @@
+{
+  "date": "2026-11-12",
+  "image": "dc1394/openmx-4.0_gpu-ubuntu24.04:4.0-amd",
+  "published_manifest": "sha256:bfd91ae6213a3c06f2c39540be7486a029480b51684dd090a76da2ca0635fe84",
+  "published_image_id": "sha256:3e4c12dac3e13523343bae5b39c8d314f92e13d7daa3abceb3e71fcb16eba5f1",
+  "openmx_source_revision_from_image_label": "6c6b394354a316729114f246e2e98fcbe11af80b",
+  "base_manifest": "sha256:aa372642fcde4455b8dd4a493d61845f2e084ef75948f67210676cff602e0415",
+  "base_image_id": "sha256:32c1d1d262b4fa08b72009dbdb8ba6091a90ab03219532310310088869be79ae",
+  "change": "Replace only /entrypoint.sh and add its fix label; reuse the installed work link on repeated starts and replace stale symlinks without following them.",
+  "entrypoint_sha256": "be51dd04ccfc95ea687f210a58e93f0dc4b2e1e2f25ef16a7fb18e1cc1764e1a",
+  "new_filesystem_layers": 1,
+  "runtime_configuration_preserved": true,
+  "application_and_core_libraries_unchanged": true,
+  "binaries_sha256": {
+    "/openmx4.0_gpu/work/openmx": "0455e235d97371323927f36e832879916bc42d526c36def63fd9322e24ccb8e9",
+    "/openmx4.0_gpu/build/hip/core/libopenmx_core.so": "67d2e27abfb53aa7d75b49649d302726c5f79651f823607ca55cf2e2d2b2a0a8",
+    "/openmx4.0_gpu/build/hip/core/host-simd/lib/libopenmx_host_simd.so": "43f9990854b83bf7504d9b7f2789c02fe8dcf99a9042b7e478e1b2d9314328ee"
+  },
+  "before_fix": {
+    "bug_reproduced": true,
+    "uid": 1000,
+    "cases": [
+      {
+        "case": "nonroot-first-start",
+        "returncode": 0,
+        "stderr": ""
+      },
+      {
+        "case": "nonroot-second-start",
+        "returncode": 1,
+        "stderr": "ln: failed to create symbolic link '/work/openmx_work/work': Permission denied\n"
+      }
+    ]
+  },
+  "published_digest_pulled_and_image_id_verified": true,
+  "published_digest_regression": {
+    "passed": true,
+    "uid": 1000,
+    "gid": 1000,
+    "correct_symlink_inode_preserved": true,
+    "cases": [
+      {
+        "case": "nonroot-first-start",
+        "returncode": 0,
+        "expected_returncode": 0
+      },
+      {
+        "case": "nonroot-second-start",
+        "returncode": 0,
+        "expected_returncode": 0
+      },
+      {
+        "case": "nonroot-third-start",
+        "returncode": 0,
+        "expected_returncode": 0
+      },
+      {
+        "case": "correct-link-readonly-mount",
+        "returncode": 0,
+        "expected_returncode": 0
+      },
+      {
+        "case": "correct-link-readonly-root-and-mount",
+        "returncode": 0,
+        "expected_returncode": 0
+      },
+      {
+        "case": "command-exit-status-preserved",
+        "returncode": 37,
+        "expected_returncode": 37
+      },
+      {
+        "case": "root-first-start",
+        "returncode": 0,
+        "expected_returncode": 0
+      },
+      {
+        "case": "nonroot-after-root",
+        "returncode": 0,
+        "expected_returncode": 0
+      },
+      {
+        "case": "stale-link",
+        "returncode": 0,
+        "expected_returncode": 0
+      },
+      {
+        "case": "stale-link-restart",
+        "returncode": 0,
+        "expected_returncode": 0
+      },
+      {
+        "case": "dangling-link",
+        "returncode": 0,
+        "expected_returncode": 0
+      },
+      {
+        "case": "dangling-link-restart",
+        "returncode": 0,
+        "expected_returncode": 0
+      },
+      {
+        "case": "stale-link-to-user-directory",
+        "returncode": 0,
+        "expected_returncode": 0
+      },
+      {
+        "case": "existing-user-directory-preserved",
+        "returncode": 0,
+        "expected_returncode": 0
+      },
+      {
+        "case": "existing-user-file-preserved",
+        "returncode": 0,
+        "expected_returncode": 0
+      }
+    ]
+  },
+  "nvidia_existing_image_restart_check": {
+    "image": "dc1394/openmx-4.0_gpu-ubuntu24.04:4.0-nvidia",
+    "passed": true,
+    "cases": [
+      {
+        "case": "nonroot-first-start",
+        "returncode": 0
+      },
+      {
+        "case": "nonroot-second-start",
+        "returncode": 0
+      }
+    ]
+  },
+  "other_tags_unchanged": true,
+  "unchanged_tags": {
+    "latest": "sha256:6b29de7e6c606bc94c531b598285f3e7f216cdfea41bbc01e9fd5e19354b968d",
+    "4.0-nvidia": "sha256:6b29de7e6c606bc94c531b598285f3e7f216cdfea41bbc01e9fd5e19354b968d",
+    "1.1.1": "sha256:b0398be144bcb1dfe96bcd30a1d041db1c66c6df73d44912888fdc46fd1e3db3",
+    "1.1": "sha256:ebb09d7da05f9186db6f20a09073837c38cc1c95d48579327126625a617b1fff",
+    "1.0": "sha256:ee08871e5f62068a7251876dafbec38dce277440f2ce9dafd1ff5d13fcba490d",
+    "0.1": "sha256:571112909ec59828ab946f07470d3662cedb023f5ce5a290b8f8354a3f5916c7"
+  },
+  "registry_verified_at": "2026-11-12T18:06:18.828842+09:00",
+  "gpu_calculation_retested": false,
+  "validation_scope": "Container startup and artifact preservation; no AMD GPU numerical calculation was rerun on this NVIDIA host.",
+  "reproduction_script": "docker/tests/check_entrypoint.py"
+}

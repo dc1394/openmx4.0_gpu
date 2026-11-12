@@ -1,0 +1,5 @@
+# Keep the published ROCm/OpenMX environment and binaries unchanged.
+FROM dc1394/openmx-4.0_gpu-ubuntu24.04@sha256:aa372642fcde4455b8dd4a493d61845f2e084ef75948f67210676cff602e0415
+
+COPY --chmod=755 entrypoint-amd.sh /entrypoint.sh
+LABEL org.openmx.container.entrypoint="idempotent-work-link-20261112"

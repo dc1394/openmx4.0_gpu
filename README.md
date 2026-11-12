@@ -1331,9 +1331,10 @@ What the `4.0-nvidia` image contains:
 
 ### AMD image
 
-The `4.0-amd` image was rebuilt with ROCm 10.1.0 from the updated release
-tag `v4.0`, commit
-[`98019945`](https://github.com/dc1394/openmx4.0_gpu/commit/9801994563fff342568bceb445700781cf1f9588).
+The `4.0-amd` image contains ROCm 10.1.0 and OpenMX built from commit
+[`6c6b3943`](https://github.com/dc1394/openmx4.0_gpu/commit/6c6b394354a316729114f246e2e98fcbe11af80b).
+It was republished on 2026-11-12 with an entrypoint fix for repeated starts
+as a non-root user in the same bind-mounted working directory.
 It contains Ubuntu 24.04, ROCm Core SDK 10.1.0 (HIP 7.16, Clang 24),
 Open MPI 4.1.6, OpenBLAS 0.3.26 (pthread), ScaLAPACK 2.2.1, FFTW 3.3.10,
 ELPA 2026.02.002, COSMA,
@@ -1383,9 +1384,13 @@ OPENMX_GPU=1 OPENBLAS_NUM_THREADS=4 OMP_NUM_THREADS=4 \
 
 Use `OPENMX_GPU=0` to select the CPU path. The AMD entrypoint sets an
 unlimited stack size and creates `/work/openmx_work` pointing to the
-installed work directory.
+installed work directory. A correct existing link is reused without
+modification; stale links are replaced without following them. Existing
+user files and directories named `openmx_work` are preserved. The fix and
+its startup regression test are available in [the container sources](docker/amd/README.md).
 
-Validation on 2026-11-08 compared total energies and **every force
+Validation of the earlier image built from `98019945` on 2026-11-08
+compared total energies and **every force
 component** with the bundled references, with tolerances of 1e-7 Ha and
 1e-7 Ha/bohr. Detailed per-case results and image provenance are recorded
 in [the AMD Docker validation data](benchmarks/results/amd_docker_4_0_20261108_rocm10_1.json).
@@ -1403,7 +1408,7 @@ post-processing check also passed. These checks cover one gfx1200 GPU;
 they do not establish performance equivalence with the AOCL builds
 benchmarked elsewhere in this README.
 
-At image publication, the installed `cif2omx` converter passed eight
+At that earlier image publication, the installed `cif2omx` converter passed eight
 lanthanide checks: Eu, Gd, Er and Yb selected their bundled PBE26 datasets;
 Tb and Tm selected the open-core datasets with 11 valence electrons and
 printed an explanatory note; Pr and Pm warned that their datasets were not
@@ -1414,12 +1419,15 @@ with 11 valence electrons and reports that choice.
 To pin this published image by digest:
 
 ```sh
-docker pull dc1394/openmx-4.0_gpu-ubuntu24.04@sha256:706e8512f03caa95664564bb26de69dbd56d93df1cb99deed2792d18b1c71de0
+docker pull dc1394/openmx-4.0_gpu-ubuntu24.04@sha256:bfd91ae6213a3c06f2c39540be7486a029480b51684dd090a76da2ca0635fe84
 ```
 
-The image was pulled using this digest and its HIP `-runtest` suite was
-checked again in one MPI job (4 ranks × 1 thread): all 14 cases passed
-the same energy and full-force tolerances.
+The image was pulled using this digest and passed all 15 startup
+regression cases, including repeated non-root starts, root-to-user reuse,
+read-only mounts, stale links and preservation of user files. The
+entrypoint fix preserves the OpenMX executable, core libraries and runtime
+configuration from the preceding image; AMD GPU numerical calculations
+were not rerun for this fix. See [the publication and verification record](benchmarks/results/amd_docker_entrypoint_fix_20261112.json).
 
 ## Extended lanthanide pseudopotentials and PAO
 
