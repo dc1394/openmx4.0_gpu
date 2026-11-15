@@ -1,3 +1,6 @@
+Historical partial snapshot; matching CSV/JSON data are preserved at
+commit 4dda26c8. Final results: doc/kugui_a100_benchmark_20261115.txt.
+
 ### Kugui A100 benchmarks (2026-11-09 partial snapshot)
 
 #### Measurement conditions

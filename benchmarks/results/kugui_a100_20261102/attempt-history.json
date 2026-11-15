@@ -1,7 +1,9 @@
 {
   "excluded_from_completed_counts": true,
   "reason": "The original upstream L2/Fe1000 attempt reached its 10800-second per-case timeout during SCF 365.",
-  "retry_pending_at_snapshot": true,
+  "retry_pending_at_snapshot": false,
+  "successful_retry_seconds": 13225.614,
+  "successful_retry_scf_iterations": 448,
   "audit": {
     "at": "2026-11-04T13:12:54.466248+09:00",
     "previous_job_id": "954992.kugui-pbs",
@@ -90,5 +92,6 @@
     "wall_seconds": 10801.554101648275
   },
   "failed_result_sha256": "9487083a73f302d99fe9901350b46d21f8d13504049c251e1dccf8c210e694b2",
-  "failed_log_sha256": "dd37dc24d384c7a40df63976dccde5fcbd914a75f86c5354b0df7775b25e0dc1"
+  "failed_log_sha256": "dd37dc24d384c7a40df63976dccde5fcbd914a75f86c5354b0df7775b25e0dc1",
+  "successful_retry_result": "results/L2/Fe1000/upstream/result.json"
 }

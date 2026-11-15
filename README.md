@@ -2352,12 +2352,12 @@ from the preserved November 4 files without rerunning the calculations.
 
 <a id="benchmark-kugui-a100"></a>
 
-### Kugui A100 benchmarks (2026-11-09 partial snapshot)
+### Kugui A100 benchmarks (2026-11-15 final results)
 
 #### Measurement conditions
 
-This is a fixed snapshot captured at **2026-11-09 13:42 JST**, while the
-remaining measurements continued. Both fork routes use the frozen executable
+This final snapshot was captured at **2026-11-15 13:47 JST**, after all
+planned measurements completed. Both fork routes use the frozen executable
 built from main commit 0681d63e, with NVHPC 24.7, CUDA 12.5, GCC 12.2,
 site Open MPI 4.1.6 and OpenMP ELPA 2026.02.002. The SDK LP64 OpenBLAS
 uses OpenMP. CPU ELPA and host BLAS use two threads per MPI rank.
@@ -2384,23 +2384,22 @@ measurement, without statistical uncertainty estimates.
 
 #### Overall results
 
-At the cutoff, fork CPU completed 52 cases and GPU completed 52 cases;
-upstream completed 58 of the 59 cases, including 15 input-matched
+At the cutoff, fork CPU completed 59 cases and GPU completed 59 cases;
+upstream completed 59 of the 59 cases, including 15 input-matched
 S/sidia333 measurements retained from October 29 with the same binary.
-All 32 one-node cases and all 20 two-node L3 cases have completed on
-each route. All 104 completed fork runs terminated normally; numerical
-comparison failures are reported separately below. The seven fork L2
-allocations and the upstream L2/Fe1000 retry were queued at the cutoff.
+All 177 planned observations terminated normally: 118 fork CPU/GPU runs
+and 59 upstream observations, including the 15 retained measurements.
+No benchmark jobs remain queued or running. Automatic monitoring on the
+login node remains disabled at the user request; this final aggregation
+was run once manually. Numerical comparison failures are listed below.
 The L3 timing totals include the two GPU/CPU force checks that exceed
 tolerance. L3 uses the original three-SCF limit and remains unconverged.
-Running/pending calculations have no published final time. Incomplete
-suite totals and speed ratios are omitted.
 
 | Test | Nodes | Completed cases (upstream / CPU / GPU) | Upstream CPU (s) | Fork CPU (s) | Fork GPU (s) | Upstream / CPU | Upstream / GPU | CPU / GPU |
 | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | runtest | 1 | 14/14 / 14/14 / 14/14 | 69.381 | 85.662 | 197.657 | 0.810 | 0.351 | 0.433 |
 | runtestL | 1 | 16/16 / 16/16 / 16/16 | 2516.886 | 1840.628 | 1961.694 | 1.367 | 1.283 | 0.938 |
-| runtestL2 | 2 | 6/7 / 0/7 / 0/7 | — | — | — | — | — | — |
+| runtestL2 | 2 | 7/7 / 7/7 / 7/7 | 20231.809 | 22585.945 | 10598.889 | 0.896 | 1.909 | 2.131 |
 | runtestL3 | 2 | 20/20 / 20/20 / 20/20 | 2799.004 | 1768.359 | 1060.789 | 1.583 | 2.639 | 1.667 |
 | sidia333_nc_cluster | 1 | 1/1 / 1/1 / 1/1 | 322.622 | 232.044 | 83.834 | 1.390 | 3.848 | 2.768 |
 | cghelgeo | 1 | 1/1 / 1/1 / 1/1 | 1141.649 | 1413.557 | 228.790 | 0.808 | 4.990 | 6.178 |
@@ -2451,13 +2450,13 @@ suite totals and speed ratios are omitted.
 
 | Input | Upstream CPU (s) | Fork CPU (s) | Fork GPU (s) | CPU / GPU | SCF steps (upstream / CPU / GPU) | GPU vs CPU |
 | --- | ---: | ---: | ---: | ---: | --- | --- |
-| C1000 | 704.730 | — | — | — | 41 / — / — | — |
-| Fe1000 | — | — | — | — | — / — / — | — |
-| GRA1024 | 933.566 | — | — | — | 58 / — / — | — |
-| Ih-Ice1200 | 360.478 | — | — | — | 36 / — / — | — |
-| Pt500 | 3231.524 | — | — | — | 188 / — / — | — |
-| R-TiO2-1050 | 1018.956 | — | — | — | 39 / — / — | — |
-| Si1000 | 756.941 | — | — | — | 42 / — / — | — |
+| C1000 | 704.730 | 889.819 | 509.513 | 1.746 | 41 / 41 / 37 | PASS |
+| Fe1000 | 13225.614 | 13525.408 | 4934.625 | 2.741 | 448 / 295 / 482 | PASS |
+| GRA1024 | 933.566 | 1319.330 | 491.722 | 2.683 | 58 / 63 / 49 | PASS |
+| Ih-Ice1200 | 360.478 | 345.114 | 289.340 | 1.193 | 36 / 36 / 36 | PASS |
+| Pt500 | 3231.524 | 4259.672 | 3245.805 | 1.312 | 188 / 185 / 195 | PASS |
+| R-TiO2-1050 | 1018.956 | 1311.124 | 607.337 | 2.159 | 39 / 36 / 39 | PASS |
+| Si1000 | 756.941 | 935.478 | 520.547 | 1.797 | 42 / 42 / 41 | PASS |
 
 ##### runtestL3 (20 cases, two nodes)
 
@@ -2491,12 +2490,12 @@ suite totals and speed ratios are omitted.
 | sidia333_nc_cluster | 322.622 | 232.044 | 83.834 | 2.768 | 25 / 25 / 25 | PASS |
 | cghelgeo | 1141.649 | 1413.557 | 228.790 | 6.178 | 53 / 59 / 60 | PASS |
 
-Six upstream L2 cases are complete. The fork L2 runs and upstream
-L2/Fe1000 retry have no completed timing in this snapshot.
+All seven L2 cases are complete on all three routes. Every fork GPU
+case used two visible GPUs per node with private MPS.
 
 #### Accuracy and convergence
 
-50/52 completed GPU/CPU comparisons pass the energy, force,
+57/59 completed GPU/CPU comparisons pass the energy, force,
 atom, coordinate, input and grid checks. Acceptance limits are absolute
 energy 1e-7 Ha, maximum force-component difference 1e-7 Ha/bohr and
 maximum printed-coordinate difference 1e-6 Å. GPU/CPU maxima are
@@ -2511,13 +2510,13 @@ Those comparisons explicitly allow 1.000001e-5 Å for printed-coordinate
 rounding. Their strict 1e-6 result and raw coordinate differences remain
 in accuracy.csv. Energy and force tolerances remain 1e-7 in every pair.
 
-gpu/cpu: 50/52 pass.
+gpu/cpu: 57/59 pass.
 Requires review: L3/Fe1000, gpu/cpu; absolute energy 3.594e-09 Ha, maximum force difference 4.742e-07 Ha/bohr.
 Requires review: L3/Ni63-O64, gpu/cpu; absolute energy 1.462e-09 Ha, maximum force difference 2.316e-06 Ha/bohr.
-cpu/upstream: 50/52 pass.
+cpu/upstream: 57/59 pass.
 Requires review: L3/Ni63-O64, cpu/upstream; absolute energy 7.276e-11 Ha, maximum force difference 5.617e-06 Ha/bohr.
 Requires review: custom/cghelgeo, cpu/upstream; absolute energy 3.369e-07 Ha, maximum force difference 6.865e-08 Ha/bohr.
-gpu/upstream: 49/52 pass.
+gpu/upstream: 56/59 pass.
 Requires review: L3/Fe1000, gpu/upstream; absolute energy 3.216e-09 Ha, maximum force difference 5.224e-07 Ha/bohr.
 Requires review: L3/Ni63-O64, gpu/upstream; absolute energy 1.535e-09 Ha, maximum force difference 6.295e-06 Ha/bohr.
 Requires review: custom/cghelgeo, gpu/upstream; absolute energy 3.357e-07 Ha, maximum force difference 7.45e-08 Ha/bohr.
@@ -2541,10 +2540,11 @@ remain recorded in accuracy.csv.
 
 The original upstream L2/Fe1000 attempt hit the three-hour per-case
 timeout during SCF 365. Its failed record and log hashes remain in
-attempt-history.json. Retry 958164.kugui-pbs has a ten-hour per-case
+attempt-history.json. Retry 958164.kugui-pbs had a ten-hour per-case
 limit and a sixteen-hour allocation, with the same input, binary,
-two-node placement and 32 MPI ranks x 2 threads per node. It is still
-pending and contributes no completed time or numerical comparison.
+two-node placement and 32 MPI ranks x 2 threads per node. It finished
+normally on November 13 in 13225.614 native seconds after 448 SCF
+iterations and is the upstream L2/Fe1000 value in this report.
 
 #### Measurement records
 

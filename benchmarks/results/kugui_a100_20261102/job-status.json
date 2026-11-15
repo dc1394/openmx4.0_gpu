@@ -1,5 +1,5 @@
 {
-  "capture_finished_at": "2026-11-09T13:42:11.078740+09:00",
+  "capture_finished_at": "2026-11-15T13:47:15.807607+09:00",
   "jobs": {
     "fork": [
       {
@@ -7,64 +7,78 @@
         "name": "01-small",
         "nodes": 1,
         "retry": 0,
-        "Job_Name": "fix-01-small",
-        "resources_used": {
-          "cpupercent": 2614,
-          "cput": "05:57:10",
-          "mem": "95566520kb",
-          "ncpus": 64,
-          "vmem": "127808kb",
-          "walltime": "00:12:14"
-        },
-        "job_state": "F",
-        "queue": "i1accs",
-        "Resource_List": {
-          "fs_factor": 1,
-          "mem": "240gb",
-          "mpiprocs": 32,
-          "ncpus": 64,
-          "nodect": 1,
-          "ompthreads": 1,
-          "place": "scatter",
-          "Qlist": "i1accs",
-          "select": "1:ncpus=64:mpiprocs=32:ompthreads=2:ngpus=4:mem=240gb",
-          "walltime": "00:30:00"
-        },
-        "stime": "Sat Oct 31 20:46:56 2026",
-        "comment": "Job run at Sat Oct 31 at 20:46 on (acc008[3]:mem=62914560kb:ngpus=1:ncpus=16+acc008[2]:mem=62914560kb:ngpus=1:ncpus=16+acc008[0]:mem=62914560kb:ngpus=1:ncpus=16+acc008[1]:mem=62914560kb:ngpus=1:ncpus=16) and finished",
-        "Exit_status": 0
+        "job_state": "history_unavailable",
+        "last_published_record": {
+          "job_id": "955292.kugui-pbs",
+          "name": "01-small",
+          "nodes": 1,
+          "retry": 0,
+          "Job_Name": "fix-01-small",
+          "resources_used": {
+            "cpupercent": 2614,
+            "cput": "05:57:10",
+            "mem": "95566520kb",
+            "ncpus": 64,
+            "vmem": "127808kb",
+            "walltime": "00:12:14"
+          },
+          "job_state": "F",
+          "queue": "i1accs",
+          "Resource_List": {
+            "fs_factor": 1,
+            "mem": "240gb",
+            "mpiprocs": 32,
+            "ncpus": 64,
+            "nodect": 1,
+            "ompthreads": 1,
+            "place": "scatter",
+            "Qlist": "i1accs",
+            "select": "1:ncpus=64:mpiprocs=32:ompthreads=2:ngpus=4:mem=240gb",
+            "walltime": "00:30:00"
+          },
+          "stime": "Sat Oct 31 20:46:56 2026",
+          "comment": "Job run at Sat Oct 31 at 20:46 on (acc008[3]:mem=62914560kb:ngpus=1:ncpus=16+acc008[2]:mem=62914560kb:ngpus=1:ncpus=16+acc008[0]:mem=62914560kb:ngpus=1:ncpus=16+acc008[1]:mem=62914560kb:ngpus=1:ncpus=16) and finished",
+          "Exit_status": 0
+        }
       },
       {
         "job_id": "955293.kugui-pbs",
         "name": "02-large",
         "nodes": 1,
         "retry": 0,
-        "Job_Name": "fix-02-large",
-        "resources_used": {
-          "cpupercent": 4449,
-          "cput": "69:32:02",
-          "mem": "70491432kb",
-          "ncpus": 64,
-          "vmem": "130572kb",
-          "walltime": "01:33:13"
-        },
-        "job_state": "F",
-        "queue": "F1accs",
-        "Resource_List": {
-          "fs_factor": 1,
-          "mem": "240gb",
-          "mpiprocs": 32,
-          "ncpus": 64,
-          "nodect": 1,
-          "ompthreads": 1,
-          "place": "scatter",
-          "Qlist": "F1accs",
-          "select": "1:ncpus=64:mpiprocs=32:ompthreads=2:ngpus=4:mem=240gb",
-          "walltime": "06:00:00"
-        },
-        "stime": "Mon Nov  2 06:58:28 2026",
-        "comment": "Job run at Mon Nov 02 at 06:58 on (acc006[2]:mem=62914560kb:ngpus=1:ncpus=16+acc006[1]:mem=62914560kb:ngpus=1:ncpus=16+acc006[3]:mem=62914560kb:ngpus=1:ncpus=16+acc006[0]:mem=62914560kb:ngpus=1:ncpus=16) and finished",
-        "Exit_status": 0
+        "job_state": "history_unavailable",
+        "last_published_record": {
+          "job_id": "955293.kugui-pbs",
+          "name": "02-large",
+          "nodes": 1,
+          "retry": 0,
+          "Job_Name": "fix-02-large",
+          "resources_used": {
+            "cpupercent": 4449,
+            "cput": "69:32:02",
+            "mem": "70491432kb",
+            "ncpus": 64,
+            "vmem": "130572kb",
+            "walltime": "01:33:13"
+          },
+          "job_state": "F",
+          "queue": "F1accs",
+          "Resource_List": {
+            "fs_factor": 1,
+            "mem": "240gb",
+            "mpiprocs": 32,
+            "ncpus": 64,
+            "nodect": 1,
+            "ompthreads": 1,
+            "place": "scatter",
+            "Qlist": "F1accs",
+            "select": "1:ncpus=64:mpiprocs=32:ompthreads=2:ngpus=4:mem=240gb",
+            "walltime": "06:00:00"
+          },
+          "stime": "Mon Nov  2 06:58:28 2026",
+          "comment": "Job run at Mon Nov 02 at 06:58 on (acc006[2]:mem=62914560kb:ngpus=1:ncpus=16+acc006[1]:mem=62914560kb:ngpus=1:ncpus=16+acc006[3]:mem=62914560kb:ngpus=1:ncpus=16+acc006[0]:mem=62914560kb:ngpus=1:ncpus=16) and finished",
+          "Exit_status": 0
+        }
       },
       {
         "job_id": "955294.kugui-pbs",
@@ -104,7 +118,15 @@
         "nodes": 2,
         "retry": 0,
         "Job_Name": "fix-04-L2-C1000",
-        "job_state": "Q",
+        "resources_used": {
+          "cpupercent": 22570,
+          "cput": "34:29:41",
+          "mem": "159369796kb",
+          "ncpus": 128,
+          "vmem": "137888kb",
+          "walltime": "00:23:56"
+        },
+        "job_state": "F",
         "queue": "F2acc",
         "Resource_List": {
           "fs_factor": 1,
@@ -118,7 +140,9 @@
           "select": "2:ncpus=64:mpiprocs=32:ompthreads=2:ngpus=0:mem=240gb",
           "walltime": "08:00:00"
         },
-        "comment": "Not Running: Placement set KEY=CLARGE has too few free resources"
+        "stime": "Wed Nov 11 16:21:33 2026",
+        "comment": "Job run at Wed Nov 11 at 16:21 on (acc001:ncpus=64:ngpus=0:mem=251658240kb)+(acc004:ncpus=64:ngpus=0:mem=251658240kb) and finished",
+        "Exit_status": 0
       },
       {
         "job_id": "955296.kugui-pbs",
@@ -126,7 +150,15 @@
         "nodes": 2,
         "retry": 0,
         "Job_Name": "fix-05-L2-Fe100",
-        "job_state": "Q",
+        "resources_used": {
+          "cpupercent": 61528,
+          "cput": "506:07:18",
+          "mem": "90669584kb",
+          "ncpus": 128,
+          "vmem": "138172kb",
+          "walltime": "05:08:33"
+        },
+        "job_state": "F",
         "queue": "F2acc",
         "Resource_List": {
           "fs_factor": 1,
@@ -140,7 +172,9 @@
           "select": "2:ncpus=64:mpiprocs=32:ompthreads=2:ngpus=0:mem=240gb",
           "walltime": "16:00:00"
         },
-        "comment": "Not Running: Placement set KEY=CLARGE has too few free resources"
+        "stime": "Wed Nov 11 16:45:48 2026",
+        "comment": "Job run at Wed Nov 11 at 16:45 on (acc001:ncpus=64:ngpus=0:mem=251658240kb)+(acc004:ncpus=64:ngpus=0:mem=251658240kb) and finished",
+        "Exit_status": 0
       },
       {
         "job_id": "955297.kugui-pbs",
@@ -148,7 +182,15 @@
         "nodes": 2,
         "retry": 0,
         "Job_Name": "fix-06-L2-GRA10",
-        "job_state": "Q",
+        "resources_used": {
+          "cpupercent": 28287,
+          "cput": "48:30:51",
+          "mem": "124653760kb",
+          "ncpus": 128,
+          "vmem": "138144kb",
+          "walltime": "00:30:45"
+        },
+        "job_state": "F",
         "queue": "F2acc",
         "Resource_List": {
           "fs_factor": 1,
@@ -162,7 +204,9 @@
           "select": "2:ncpus=64:mpiprocs=32:ompthreads=2:ngpus=0:mem=240gb",
           "walltime": "08:00:00"
         },
-        "comment": "Not Running: Placement set KEY=CLARGE has too few free resources"
+        "stime": "Thu Nov 12 22:48:40 2026",
+        "comment": "Job run at Thu Nov 12 at 22:48 on (acc001:ncpus=64:ngpus=0:mem=251658240kb)+(acc004:ncpus=64:ngpus=0:mem=251658240kb) and finished",
+        "Exit_status": 0
       },
       {
         "job_id": "955298.kugui-pbs",
@@ -170,7 +214,15 @@
         "nodes": 2,
         "retry": 0,
         "Job_Name": "fix-07-L2-Ih-Ic",
-        "job_state": "Q",
+        "resources_used": {
+          "cpupercent": 11892,
+          "cput": "14:48:18",
+          "mem": "144905040kb",
+          "ncpus": 128,
+          "vmem": "138180kb",
+          "walltime": "00:11:07"
+        },
+        "job_state": "F",
         "queue": "F2acc",
         "Resource_List": {
           "fs_factor": 1,
@@ -184,7 +236,9 @@
           "select": "2:ncpus=64:mpiprocs=32:ompthreads=2:ngpus=0:mem=240gb",
           "walltime": "08:00:00"
         },
-        "comment": "Not Running: Placement set KEY=CLARGE has too few free resources"
+        "stime": "Thu Nov 12 23:19:45 2026",
+        "comment": "Job run at Thu Nov 12 at 23:19 on (acc001:ncpus=64:ngpus=0:mem=251658240kb)+(acc004:ncpus=64:ngpus=0:mem=251658240kb) and finished",
+        "Exit_status": 0
       },
       {
         "job_id": "955299.kugui-pbs",
@@ -192,7 +246,15 @@
         "nodes": 2,
         "retry": 0,
         "Job_Name": "fix-08-L2-Pt500",
-        "job_state": "Q",
+        "resources_used": {
+          "cpupercent": 46271,
+          "cput": "173:22:00",
+          "mem": "187786440kb",
+          "ncpus": 128,
+          "vmem": "137720kb",
+          "walltime": "02:05:50"
+        },
+        "job_state": "F",
         "queue": "F2acc",
         "Resource_List": {
           "fs_factor": 1,
@@ -206,7 +268,9 @@
           "select": "2:ncpus=64:mpiprocs=32:ompthreads=2:ngpus=0:mem=240gb",
           "walltime": "08:00:00"
         },
-        "comment": "Not Running: Placement set KEY=CLARGE has too few free resources"
+        "stime": "Thu Nov 12 23:31:06 2026",
+        "comment": "Job run at Thu Nov 12 at 23:31 on (acc001:ncpus=64:ngpus=0:mem=251658240kb)+(acc004:ncpus=64:ngpus=0:mem=251658240kb) and finished",
+        "Exit_status": 0
       },
       {
         "job_id": "955300.kugui-pbs",
@@ -214,7 +278,15 @@
         "nodes": 2,
         "retry": 0,
         "Job_Name": "fix-09-L2-R-TiO",
-        "job_state": "Q",
+        "resources_used": {
+          "cpupercent": 28937,
+          "cput": "49:31:49",
+          "mem": "98571472kb",
+          "ncpus": 128,
+          "vmem": "138152kb",
+          "walltime": "00:32:35"
+        },
+        "job_state": "F",
         "queue": "F2acc",
         "Resource_List": {
           "fs_factor": 1,
@@ -228,7 +300,9 @@
           "select": "2:ncpus=64:mpiprocs=32:ompthreads=2:ngpus=0:mem=240gb",
           "walltime": "08:00:00"
         },
-        "comment": "Not Running: Placement set KEY=CLARGE has too few free resources"
+        "stime": "Fri Nov 13 16:44:04 2026",
+        "comment": "Job run at Fri Nov 13 at 16:44 on (acc001:ncpus=64:ngpus=0:mem=251658240kb)+(acc004:ncpus=64:ngpus=0:mem=251658240kb) and finished",
+        "Exit_status": 0
       },
       {
         "job_id": "955301.kugui-pbs",
@@ -236,7 +310,15 @@
         "nodes": 2,
         "retry": 0,
         "Job_Name": "fix-10-L2-Si100",
-        "job_state": "Q",
+        "resources_used": {
+          "cpupercent": 23624,
+          "cput": "36:33:46",
+          "mem": "190387260kb",
+          "ncpus": 128,
+          "vmem": "138172kb",
+          "walltime": "00:24:52"
+        },
+        "job_state": "F",
         "queue": "F2acc",
         "Resource_List": {
           "fs_factor": 1,
@@ -250,7 +332,9 @@
           "select": "2:ncpus=64:mpiprocs=32:ompthreads=2:ngpus=0:mem=240gb",
           "walltime": "08:00:00"
         },
-        "comment": "Not Running: Placement set KEY=CLARGE has too few free resources"
+        "stime": "Fri Nov 13 17:17:05 2026",
+        "comment": "Job run at Fri Nov 13 at 17:17 on (acc001:ncpus=64:ngpus=0:mem=251658240kb)+(acc004:ncpus=64:ngpus=0:mem=251658240kb) and finished",
+        "Exit_status": 0
       }
     ],
     "upstream": [
@@ -259,416 +343,507 @@
         "name": "up-01-large",
         "nodes": 1,
         "retry": 0,
-        "Job_Name": "up-01-large",
-        "resources_used": {
-          "cpupercent": 0,
-          "cput": "00:00:01",
-          "mem": "35056kb",
-          "ncpus": 64,
-          "vmem": "23132kb",
-          "walltime": "00:00:02"
-        },
-        "job_state": "F",
-        "queue": "F1accs",
-        "Resource_List": {
-          "fs_factor": 1,
-          "mem": "240gb",
-          "mpiprocs": 32,
-          "ncpus": 64,
-          "nodect": 1,
-          "ompthreads": 1,
-          "place": "scatter",
-          "Qlist": "F1accs",
-          "select": "1:ncpus=64:mpiprocs=32:ompthreads=2:ngpus=4:mem=240gb",
-          "walltime": "06:00:00"
-        },
-        "stime": "Sat Oct 31 10:39:38 2026",
-        "comment": "Job run at Sat Oct 31 at 10:39 on (acc006[2]:mem=62914560kb:ngpus=1:ncpus=16+acc006[1]:mem=62914560kb:ngpus=1:ncpus=16+acc006[3]:mem=62914560kb:ngpus=1:ncpus=16+acc006[0]:mem=62914560kb:ngpus=1:ncpus=16) and failed",
-        "Exit_status": 2
+        "job_state": "history_unavailable",
+        "last_published_record": {
+          "job_id": "954864.kugui-pbs",
+          "name": "up-01-large",
+          "nodes": 1,
+          "retry": 0,
+          "Job_Name": "up-01-large",
+          "resources_used": {
+            "cpupercent": 0,
+            "cput": "00:00:01",
+            "mem": "35056kb",
+            "ncpus": 64,
+            "vmem": "23132kb",
+            "walltime": "00:00:02"
+          },
+          "job_state": "F",
+          "queue": "F1accs",
+          "Resource_List": {
+            "fs_factor": 1,
+            "mem": "240gb",
+            "mpiprocs": 32,
+            "ncpus": 64,
+            "nodect": 1,
+            "ompthreads": 1,
+            "place": "scatter",
+            "Qlist": "F1accs",
+            "select": "1:ncpus=64:mpiprocs=32:ompthreads=2:ngpus=4:mem=240gb",
+            "walltime": "06:00:00"
+          },
+          "stime": "Sat Oct 31 10:39:38 2026",
+          "comment": "Job run at Sat Oct 31 at 10:39 on (acc006[2]:mem=62914560kb:ngpus=1:ncpus=16+acc006[1]:mem=62914560kb:ngpus=1:ncpus=16+acc006[3]:mem=62914560kb:ngpus=1:ncpus=16+acc006[0]:mem=62914560kb:ngpus=1:ncpus=16) and failed",
+          "Exit_status": 2
+        }
       },
       {
         "job_id": "954865.kugui-pbs",
         "name": "up-02-large3",
         "nodes": 2,
         "retry": 0,
-        "Job_Name": "up-02-large3",
-        "resources_used": {
-          "cpupercent": 100,
-          "cput": "00:00:01",
-          "mem": "3884kb",
-          "ncpus": 128,
-          "vmem": "34032kb",
-          "walltime": "00:00:03"
-        },
-        "job_state": "F",
-        "queue": "F2acc",
-        "Resource_List": {
-          "fs_factor": 1,
-          "mem": "480gb",
-          "mpiprocs": 64,
-          "ncpus": 128,
-          "nodect": 2,
-          "ompthreads": 1,
-          "place": "scatter:exclhost",
-          "Qlist": "F2acc",
-          "select": "2:ncpus=64:mpiprocs=32:ompthreads=2:ngpus=0:mem=240gb",
-          "walltime": "04:00:00"
-        },
-        "stime": "Sat Oct 31 11:15:09 2026",
-        "comment": "Job run at Sat Oct 31 at 11:15 on (acc002:ncpus=64:ngpus=0:mem=251658240kb)+(acc004:ncpus=64:ngpus=0:mem=251658240kb) and failed",
-        "Exit_status": 2
+        "job_state": "history_unavailable",
+        "last_published_record": {
+          "job_id": "954865.kugui-pbs",
+          "name": "up-02-large3",
+          "nodes": 2,
+          "retry": 0,
+          "Job_Name": "up-02-large3",
+          "resources_used": {
+            "cpupercent": 100,
+            "cput": "00:00:01",
+            "mem": "3884kb",
+            "ncpus": 128,
+            "vmem": "34032kb",
+            "walltime": "00:00:03"
+          },
+          "job_state": "F",
+          "queue": "F2acc",
+          "Resource_List": {
+            "fs_factor": 1,
+            "mem": "480gb",
+            "mpiprocs": 64,
+            "ncpus": 128,
+            "nodect": 2,
+            "ompthreads": 1,
+            "place": "scatter:exclhost",
+            "Qlist": "F2acc",
+            "select": "2:ncpus=64:mpiprocs=32:ompthreads=2:ngpus=0:mem=240gb",
+            "walltime": "04:00:00"
+          },
+          "stime": "Sat Oct 31 11:15:09 2026",
+          "comment": "Job run at Sat Oct 31 at 11:15 on (acc002:ncpus=64:ngpus=0:mem=251658240kb)+(acc004:ncpus=64:ngpus=0:mem=251658240kb) and failed",
+          "Exit_status": 2
+        }
       },
       {
         "job_id": "954866.kugui-pbs",
         "name": "up-03-L2-C1000",
         "nodes": 2,
         "retry": 0,
-        "Job_Name": "up-03-L2-C1000",
-        "resources_used": {
-          "cpupercent": 100,
-          "cput": "00:00:01",
-          "mem": "3980kb",
-          "ncpus": 128,
-          "vmem": "34032kb",
-          "walltime": "00:00:02"
-        },
-        "job_state": "F",
-        "queue": "F2acc",
-        "Resource_List": {
-          "fs_factor": 1,
-          "mem": "480gb",
-          "mpiprocs": 64,
-          "ncpus": 128,
-          "nodect": 2,
-          "ompthreads": 1,
-          "place": "scatter:exclhost",
-          "Qlist": "F2acc",
-          "select": "2:ncpus=64:mpiprocs=32:ompthreads=2:ngpus=0:mem=240gb",
-          "walltime": "08:00:00"
-        },
-        "stime": "Sat Oct 31 11:15:28 2026",
-        "comment": "Job run at Sat Oct 31 at 11:15 on (acc002:ncpus=64:ngpus=0:mem=251658240kb)+(acc004:ncpus=64:ngpus=0:mem=251658240kb) and failed",
-        "Exit_status": 2
+        "job_state": "history_unavailable",
+        "last_published_record": {
+          "job_id": "954866.kugui-pbs",
+          "name": "up-03-L2-C1000",
+          "nodes": 2,
+          "retry": 0,
+          "Job_Name": "up-03-L2-C1000",
+          "resources_used": {
+            "cpupercent": 100,
+            "cput": "00:00:01",
+            "mem": "3980kb",
+            "ncpus": 128,
+            "vmem": "34032kb",
+            "walltime": "00:00:02"
+          },
+          "job_state": "F",
+          "queue": "F2acc",
+          "Resource_List": {
+            "fs_factor": 1,
+            "mem": "480gb",
+            "mpiprocs": 64,
+            "ncpus": 128,
+            "nodect": 2,
+            "ompthreads": 1,
+            "place": "scatter:exclhost",
+            "Qlist": "F2acc",
+            "select": "2:ncpus=64:mpiprocs=32:ompthreads=2:ngpus=0:mem=240gb",
+            "walltime": "08:00:00"
+          },
+          "stime": "Sat Oct 31 11:15:28 2026",
+          "comment": "Job run at Sat Oct 31 at 11:15 on (acc002:ncpus=64:ngpus=0:mem=251658240kb)+(acc004:ncpus=64:ngpus=0:mem=251658240kb) and failed",
+          "Exit_status": 2
+        }
       },
       {
         "job_id": "954867.kugui-pbs",
         "name": "up-04-L2-Fe1000",
         "nodes": 2,
         "retry": 0,
-        "Job_Name": "up-04-L2-Fe1000",
-        "resources_used": {
-          "cpupercent": 100,
-          "cput": "00:00:01",
-          "mem": "3836kb",
-          "ncpus": 128,
-          "vmem": "34032kb",
-          "walltime": "00:00:02"
-        },
-        "job_state": "F",
-        "queue": "F2acc",
-        "Resource_List": {
-          "fs_factor": 1,
-          "mem": "480gb",
-          "mpiprocs": 64,
-          "ncpus": 128,
-          "nodect": 2,
-          "ompthreads": 1,
-          "place": "scatter:exclhost",
-          "Qlist": "F2acc",
-          "select": "2:ncpus=64:mpiprocs=32:ompthreads=2:ngpus=0:mem=240gb",
-          "walltime": "08:00:00"
-        },
-        "stime": "Sat Oct 31 11:15:42 2026",
-        "comment": "Job run at Sat Oct 31 at 11:15 on (acc002:ncpus=64:ngpus=0:mem=251658240kb)+(acc004:ncpus=64:ngpus=0:mem=251658240kb) and failed",
-        "Exit_status": 2
+        "job_state": "history_unavailable",
+        "last_published_record": {
+          "job_id": "954867.kugui-pbs",
+          "name": "up-04-L2-Fe1000",
+          "nodes": 2,
+          "retry": 0,
+          "Job_Name": "up-04-L2-Fe1000",
+          "resources_used": {
+            "cpupercent": 100,
+            "cput": "00:00:01",
+            "mem": "3836kb",
+            "ncpus": 128,
+            "vmem": "34032kb",
+            "walltime": "00:00:02"
+          },
+          "job_state": "F",
+          "queue": "F2acc",
+          "Resource_List": {
+            "fs_factor": 1,
+            "mem": "480gb",
+            "mpiprocs": 64,
+            "ncpus": 128,
+            "nodect": 2,
+            "ompthreads": 1,
+            "place": "scatter:exclhost",
+            "Qlist": "F2acc",
+            "select": "2:ncpus=64:mpiprocs=32:ompthreads=2:ngpus=0:mem=240gb",
+            "walltime": "08:00:00"
+          },
+          "stime": "Sat Oct 31 11:15:42 2026",
+          "comment": "Job run at Sat Oct 31 at 11:15 on (acc002:ncpus=64:ngpus=0:mem=251658240kb)+(acc004:ncpus=64:ngpus=0:mem=251658240kb) and failed",
+          "Exit_status": 2
+        }
       },
       {
         "job_id": "954868.kugui-pbs",
         "name": "up-05-L2-GRA1024",
         "nodes": 2,
         "retry": 0,
-        "Job_Name": "up-05-L2-GRA102",
-        "resources_used": {
-          "cpupercent": 100,
-          "cput": "00:00:01",
-          "mem": "3804kb",
-          "ncpus": 128,
-          "vmem": "34032kb",
-          "walltime": "00:00:02"
-        },
-        "job_state": "F",
-        "queue": "F2acc",
-        "Resource_List": {
-          "fs_factor": 1,
-          "mem": "480gb",
-          "mpiprocs": 64,
-          "ncpus": 128,
-          "nodect": 2,
-          "ompthreads": 1,
-          "place": "scatter:exclhost",
-          "Qlist": "F2acc",
-          "select": "2:ncpus=64:mpiprocs=32:ompthreads=2:ngpus=0:mem=240gb",
-          "walltime": "08:00:00"
-        },
-        "stime": "Sat Oct 31 11:15:56 2026",
-        "comment": "Job run at Sat Oct 31 at 11:15 on (acc002:ncpus=64:ngpus=0:mem=251658240kb)+(acc004:ncpus=64:ngpus=0:mem=251658240kb) and failed",
-        "Exit_status": 2
+        "job_state": "history_unavailable",
+        "last_published_record": {
+          "job_id": "954868.kugui-pbs",
+          "name": "up-05-L2-GRA1024",
+          "nodes": 2,
+          "retry": 0,
+          "Job_Name": "up-05-L2-GRA102",
+          "resources_used": {
+            "cpupercent": 100,
+            "cput": "00:00:01",
+            "mem": "3804kb",
+            "ncpus": 128,
+            "vmem": "34032kb",
+            "walltime": "00:00:02"
+          },
+          "job_state": "F",
+          "queue": "F2acc",
+          "Resource_List": {
+            "fs_factor": 1,
+            "mem": "480gb",
+            "mpiprocs": 64,
+            "ncpus": 128,
+            "nodect": 2,
+            "ompthreads": 1,
+            "place": "scatter:exclhost",
+            "Qlist": "F2acc",
+            "select": "2:ncpus=64:mpiprocs=32:ompthreads=2:ngpus=0:mem=240gb",
+            "walltime": "08:00:00"
+          },
+          "stime": "Sat Oct 31 11:15:56 2026",
+          "comment": "Job run at Sat Oct 31 at 11:15 on (acc002:ncpus=64:ngpus=0:mem=251658240kb)+(acc004:ncpus=64:ngpus=0:mem=251658240kb) and failed",
+          "Exit_status": 2
+        }
       },
       {
         "job_id": "954869.kugui-pbs",
         "name": "up-06-L2-Ih-Ice1200",
         "nodes": 2,
         "retry": 0,
-        "Job_Name": "up-06-L2-Ih-Ice",
-        "resources_used": {
-          "cpupercent": 100,
-          "cput": "00:00:01",
-          "mem": "4024kb",
-          "ncpus": 128,
-          "vmem": "34032kb",
-          "walltime": "00:00:02"
-        },
-        "job_state": "F",
-        "queue": "F2acc",
-        "Resource_List": {
-          "fs_factor": 1,
-          "mem": "480gb",
-          "mpiprocs": 64,
-          "ncpus": 128,
-          "nodect": 2,
-          "ompthreads": 1,
-          "place": "scatter:exclhost",
-          "Qlist": "F2acc",
-          "select": "2:ncpus=64:mpiprocs=32:ompthreads=2:ngpus=0:mem=240gb",
-          "walltime": "08:00:00"
-        },
-        "stime": "Sat Oct 31 11:16:10 2026",
-        "comment": "Job run at Sat Oct 31 at 11:16 on (acc002:ncpus=64:ngpus=0:mem=251658240kb)+(acc004:ncpus=64:ngpus=0:mem=251658240kb) and failed",
-        "Exit_status": 2
+        "job_state": "history_unavailable",
+        "last_published_record": {
+          "job_id": "954869.kugui-pbs",
+          "name": "up-06-L2-Ih-Ice1200",
+          "nodes": 2,
+          "retry": 0,
+          "Job_Name": "up-06-L2-Ih-Ice",
+          "resources_used": {
+            "cpupercent": 100,
+            "cput": "00:00:01",
+            "mem": "4024kb",
+            "ncpus": 128,
+            "vmem": "34032kb",
+            "walltime": "00:00:02"
+          },
+          "job_state": "F",
+          "queue": "F2acc",
+          "Resource_List": {
+            "fs_factor": 1,
+            "mem": "480gb",
+            "mpiprocs": 64,
+            "ncpus": 128,
+            "nodect": 2,
+            "ompthreads": 1,
+            "place": "scatter:exclhost",
+            "Qlist": "F2acc",
+            "select": "2:ncpus=64:mpiprocs=32:ompthreads=2:ngpus=0:mem=240gb",
+            "walltime": "08:00:00"
+          },
+          "stime": "Sat Oct 31 11:16:10 2026",
+          "comment": "Job run at Sat Oct 31 at 11:16 on (acc002:ncpus=64:ngpus=0:mem=251658240kb)+(acc004:ncpus=64:ngpus=0:mem=251658240kb) and failed",
+          "Exit_status": 2
+        }
       },
       {
         "job_id": "954870.kugui-pbs",
         "name": "up-07-L2-Pt500",
         "nodes": 2,
         "retry": 0,
-        "Job_Name": "up-07-L2-Pt500",
-        "resources_used": {
-          "cpupercent": 100,
-          "cput": "00:00:01",
-          "mem": "4092kb",
-          "ncpus": 128,
-          "vmem": "57164kb",
-          "walltime": "00:00:02"
-        },
-        "job_state": "F",
-        "queue": "F2acc",
-        "Resource_List": {
-          "fs_factor": 1,
-          "mem": "480gb",
-          "mpiprocs": 64,
-          "ncpus": 128,
-          "nodect": 2,
-          "ompthreads": 1,
-          "place": "scatter:exclhost",
-          "Qlist": "F2acc",
-          "select": "2:ncpus=64:mpiprocs=32:ompthreads=2:ngpus=0:mem=240gb",
-          "walltime": "08:00:00"
-        },
-        "stime": "Sat Oct 31 11:16:24 2026",
-        "comment": "Job run at Sat Oct 31 at 11:16 on (acc002:ncpus=64:ngpus=0:mem=251658240kb)+(acc004:ncpus=64:ngpus=0:mem=251658240kb) and failed",
-        "Exit_status": 2
+        "job_state": "history_unavailable",
+        "last_published_record": {
+          "job_id": "954870.kugui-pbs",
+          "name": "up-07-L2-Pt500",
+          "nodes": 2,
+          "retry": 0,
+          "Job_Name": "up-07-L2-Pt500",
+          "resources_used": {
+            "cpupercent": 100,
+            "cput": "00:00:01",
+            "mem": "4092kb",
+            "ncpus": 128,
+            "vmem": "57164kb",
+            "walltime": "00:00:02"
+          },
+          "job_state": "F",
+          "queue": "F2acc",
+          "Resource_List": {
+            "fs_factor": 1,
+            "mem": "480gb",
+            "mpiprocs": 64,
+            "ncpus": 128,
+            "nodect": 2,
+            "ompthreads": 1,
+            "place": "scatter:exclhost",
+            "Qlist": "F2acc",
+            "select": "2:ncpus=64:mpiprocs=32:ompthreads=2:ngpus=0:mem=240gb",
+            "walltime": "08:00:00"
+          },
+          "stime": "Sat Oct 31 11:16:24 2026",
+          "comment": "Job run at Sat Oct 31 at 11:16 on (acc002:ncpus=64:ngpus=0:mem=251658240kb)+(acc004:ncpus=64:ngpus=0:mem=251658240kb) and failed",
+          "Exit_status": 2
+        }
       },
       {
         "job_id": "954871.kugui-pbs",
         "name": "up-08-L2-R-TiO2-1050",
         "nodes": 2,
         "retry": 0,
-        "Job_Name": "up-08-L2-R-TiO2",
-        "resources_used": {
-          "cpupercent": 100,
-          "cput": "00:00:01",
-          "mem": "3884kb",
-          "ncpus": 128,
-          "vmem": "34032kb",
-          "walltime": "00:00:02"
-        },
-        "job_state": "F",
-        "queue": "F2acc",
-        "Resource_List": {
-          "fs_factor": 1,
-          "mem": "480gb",
-          "mpiprocs": 64,
-          "ncpus": 128,
-          "nodect": 2,
-          "ompthreads": 1,
-          "place": "scatter:exclhost",
-          "Qlist": "F2acc",
-          "select": "2:ncpus=64:mpiprocs=32:ompthreads=2:ngpus=0:mem=240gb",
-          "walltime": "08:00:00"
-        },
-        "stime": "Sat Oct 31 11:16:38 2026",
-        "comment": "Job run at Sat Oct 31 at 11:16 on (acc002:ncpus=64:ngpus=0:mem=251658240kb)+(acc004:ncpus=64:ngpus=0:mem=251658240kb) and failed",
-        "Exit_status": 2
+        "job_state": "history_unavailable",
+        "last_published_record": {
+          "job_id": "954871.kugui-pbs",
+          "name": "up-08-L2-R-TiO2-1050",
+          "nodes": 2,
+          "retry": 0,
+          "Job_Name": "up-08-L2-R-TiO2",
+          "resources_used": {
+            "cpupercent": 100,
+            "cput": "00:00:01",
+            "mem": "3884kb",
+            "ncpus": 128,
+            "vmem": "34032kb",
+            "walltime": "00:00:02"
+          },
+          "job_state": "F",
+          "queue": "F2acc",
+          "Resource_List": {
+            "fs_factor": 1,
+            "mem": "480gb",
+            "mpiprocs": 64,
+            "ncpus": 128,
+            "nodect": 2,
+            "ompthreads": 1,
+            "place": "scatter:exclhost",
+            "Qlist": "F2acc",
+            "select": "2:ncpus=64:mpiprocs=32:ompthreads=2:ngpus=0:mem=240gb",
+            "walltime": "08:00:00"
+          },
+          "stime": "Sat Oct 31 11:16:38 2026",
+          "comment": "Job run at Sat Oct 31 at 11:16 on (acc002:ncpus=64:ngpus=0:mem=251658240kb)+(acc004:ncpus=64:ngpus=0:mem=251658240kb) and failed",
+          "Exit_status": 2
+        }
       },
       {
         "job_id": "954872.kugui-pbs",
         "name": "up-09-L2-Si1000",
         "nodes": 2,
         "retry": 0,
-        "Job_Name": "up-09-L2-Si1000",
-        "resources_used": {
-          "cpupercent": 100,
-          "cput": "00:00:01",
-          "mem": "3888kb",
-          "ncpus": 128,
-          "vmem": "34032kb",
-          "walltime": "00:00:02"
-        },
-        "job_state": "F",
-        "queue": "F2acc",
-        "Resource_List": {
-          "fs_factor": 1,
-          "mem": "480gb",
-          "mpiprocs": 64,
-          "ncpus": 128,
-          "nodect": 2,
-          "ompthreads": 1,
-          "place": "scatter:exclhost",
-          "Qlist": "F2acc",
-          "select": "2:ncpus=64:mpiprocs=32:ompthreads=2:ngpus=0:mem=240gb",
-          "walltime": "08:00:00"
-        },
-        "stime": "Sat Oct 31 11:16:52 2026",
-        "comment": "Job run at Sat Oct 31 at 11:16 on (acc002:ncpus=64:ngpus=0:mem=251658240kb)+(acc004:ncpus=64:ngpus=0:mem=251658240kb) and failed",
-        "Exit_status": 2
+        "job_state": "history_unavailable",
+        "last_published_record": {
+          "job_id": "954872.kugui-pbs",
+          "name": "up-09-L2-Si1000",
+          "nodes": 2,
+          "retry": 0,
+          "Job_Name": "up-09-L2-Si1000",
+          "resources_used": {
+            "cpupercent": 100,
+            "cput": "00:00:01",
+            "mem": "3888kb",
+            "ncpus": 128,
+            "vmem": "34032kb",
+            "walltime": "00:00:02"
+          },
+          "job_state": "F",
+          "queue": "F2acc",
+          "Resource_List": {
+            "fs_factor": 1,
+            "mem": "480gb",
+            "mpiprocs": 64,
+            "ncpus": 128,
+            "nodect": 2,
+            "ompthreads": 1,
+            "place": "scatter:exclhost",
+            "Qlist": "F2acc",
+            "select": "2:ncpus=64:mpiprocs=32:ompthreads=2:ngpus=0:mem=240gb",
+            "walltime": "08:00:00"
+          },
+          "stime": "Sat Oct 31 11:16:52 2026",
+          "comment": "Job run at Sat Oct 31 at 11:16 on (acc002:ncpus=64:ngpus=0:mem=251658240kb)+(acc004:ncpus=64:ngpus=0:mem=251658240kb) and failed",
+          "Exit_status": 2
+        }
       },
       {
         "job_id": "954957.kugui-pbs",
         "name": "up-01-large",
         "nodes": 1,
         "retry": 1,
-        "Job_Name": "up-01-large-res",
-        "resources_used": {
-          "cpupercent": 0,
-          "cput": "00:00:01",
-          "mem": "37624kb",
-          "ncpus": 64,
-          "vmem": "23132kb",
-          "walltime": "00:00:02"
-        },
-        "job_state": "F",
-        "queue": "F1accs",
-        "Resource_List": {
-          "fs_factor": 1,
-          "mem": "240gb",
-          "mpiprocs": 32,
-          "ncpus": 64,
-          "nodect": 1,
-          "ompthreads": 1,
-          "place": "scatter",
-          "Qlist": "F1accs",
-          "select": "1:ncpus=64:mpiprocs=32:ompthreads=2:ngpus=4:mem=240gb",
-          "walltime": "06:00:00"
-        },
-        "stime": "Sat Oct 31 12:13:37 2026",
-        "comment": "Job run at Sat Oct 31 at 12:13 on (acc006[2]:mem=62914560kb:ngpus=1:ncpus=16+acc006[1]:mem=62914560kb:ngpus=1:ncpus=16+acc006[3]:mem=62914560kb:ngpus=1:ncpus=16+acc006[0]:mem=62914560kb:ngpus=1:ncpus=16) and failed",
-        "Exit_status": 2
+        "job_state": "history_unavailable",
+        "last_published_record": {
+          "job_id": "954957.kugui-pbs",
+          "name": "up-01-large",
+          "nodes": 1,
+          "retry": 1,
+          "Job_Name": "up-01-large-res",
+          "resources_used": {
+            "cpupercent": 0,
+            "cput": "00:00:01",
+            "mem": "37624kb",
+            "ncpus": 64,
+            "vmem": "23132kb",
+            "walltime": "00:00:02"
+          },
+          "job_state": "F",
+          "queue": "F1accs",
+          "Resource_List": {
+            "fs_factor": 1,
+            "mem": "240gb",
+            "mpiprocs": 32,
+            "ncpus": 64,
+            "nodect": 1,
+            "ompthreads": 1,
+            "place": "scatter",
+            "Qlist": "F1accs",
+            "select": "1:ncpus=64:mpiprocs=32:ompthreads=2:ngpus=4:mem=240gb",
+            "walltime": "06:00:00"
+          },
+          "stime": "Sat Oct 31 12:13:37 2026",
+          "comment": "Job run at Sat Oct 31 at 12:13 on (acc006[2]:mem=62914560kb:ngpus=1:ncpus=16+acc006[1]:mem=62914560kb:ngpus=1:ncpus=16+acc006[3]:mem=62914560kb:ngpus=1:ncpus=16+acc006[0]:mem=62914560kb:ngpus=1:ncpus=16) and failed",
+          "Exit_status": 2
+        }
       },
       {
         "job_id": "954990.kugui-pbs",
         "name": "up-02-large3",
         "nodes": 2,
         "retry": 1,
-        "Job_Name": "up-02-large3-re",
-        "resources_used": {
-          "cpupercent": 37906,
-          "cput": "93:52:27",
-          "mem": "165958356kb",
-          "ncpus": 128,
-          "vmem": "140364kb",
-          "walltime": "00:48:14"
-        },
-        "job_state": "F",
-        "queue": "F2acc",
-        "Resource_List": {
-          "fs_factor": 1,
-          "mem": "480gb",
-          "mpiprocs": 64,
-          "ncpus": 128,
-          "nodect": 2,
-          "ompthreads": 1,
-          "place": "scatter:exclhost",
-          "Qlist": "F2acc",
-          "select": "2:ncpus=64:mpiprocs=32:ompthreads=2:ngpus=0:mem=240gb",
-          "walltime": "04:00:00"
-        },
-        "stime": "Tue Nov  3 13:52:49 2026",
-        "comment": "Job run at Tue Nov 03 at 13:52 on (acc002:ncpus=64:ngpus=0:mem=251658240kb)+(acc004:ncpus=64:ngpus=0:mem=251658240kb) and finished",
-        "Exit_status": 0
+        "job_state": "history_unavailable",
+        "last_published_record": {
+          "job_id": "954990.kugui-pbs",
+          "name": "up-02-large3",
+          "nodes": 2,
+          "retry": 1,
+          "Job_Name": "up-02-large3-re",
+          "resources_used": {
+            "cpupercent": 37906,
+            "cput": "93:52:27",
+            "mem": "165958356kb",
+            "ncpus": 128,
+            "vmem": "140364kb",
+            "walltime": "00:48:14"
+          },
+          "job_state": "F",
+          "queue": "F2acc",
+          "Resource_List": {
+            "fs_factor": 1,
+            "mem": "480gb",
+            "mpiprocs": 64,
+            "ncpus": 128,
+            "nodect": 2,
+            "ompthreads": 1,
+            "place": "scatter:exclhost",
+            "Qlist": "F2acc",
+            "select": "2:ncpus=64:mpiprocs=32:ompthreads=2:ngpus=0:mem=240gb",
+            "walltime": "04:00:00"
+          },
+          "stime": "Tue Nov  3 13:52:49 2026",
+          "comment": "Job run at Tue Nov 03 at 13:52 on (acc002:ncpus=64:ngpus=0:mem=251658240kb)+(acc004:ncpus=64:ngpus=0:mem=251658240kb) and finished",
+          "Exit_status": 0
+        }
       },
       {
         "job_id": "954991.kugui-pbs",
         "name": "up-03-L2-C1000",
         "nodes": 2,
         "retry": 1,
-        "Job_Name": "up-03-L2-C1000-",
-        "resources_used": {
-          "cpupercent": 18221,
-          "cput": "21:15:52",
-          "mem": "131019240kb",
-          "ncpus": 128,
-          "vmem": "137372kb",
-          "walltime": "00:12:03"
-        },
-        "job_state": "F",
-        "queue": "F2acc",
-        "Resource_List": {
-          "fs_factor": 1,
-          "mem": "480gb",
-          "mpiprocs": 64,
-          "ncpus": 128,
-          "nodect": 2,
-          "ompthreads": 1,
-          "place": "scatter:exclhost",
-          "Qlist": "F2acc",
-          "select": "2:ncpus=64:mpiprocs=32:ompthreads=2:ngpus=0:mem=240gb",
-          "walltime": "08:00:00"
-        },
-        "stime": "Wed Nov  4 09:04:18 2026",
-        "comment": "Job run at Wed Nov 04 at 09:04 on (acc003:ncpus=64:ngpus=0:mem=251658240kb)+(acc004:ncpus=64:ngpus=0:mem=251658240kb) and finished",
-        "Exit_status": 0
+        "job_state": "history_unavailable",
+        "last_published_record": {
+          "job_id": "954991.kugui-pbs",
+          "name": "up-03-L2-C1000",
+          "nodes": 2,
+          "retry": 1,
+          "Job_Name": "up-03-L2-C1000-",
+          "resources_used": {
+            "cpupercent": 18221,
+            "cput": "21:15:52",
+            "mem": "131019240kb",
+            "ncpus": 128,
+            "vmem": "137372kb",
+            "walltime": "00:12:03"
+          },
+          "job_state": "F",
+          "queue": "F2acc",
+          "Resource_List": {
+            "fs_factor": 1,
+            "mem": "480gb",
+            "mpiprocs": 64,
+            "ncpus": 128,
+            "nodect": 2,
+            "ompthreads": 1,
+            "place": "scatter:exclhost",
+            "Qlist": "F2acc",
+            "select": "2:ncpus=64:mpiprocs=32:ompthreads=2:ngpus=0:mem=240gb",
+            "walltime": "08:00:00"
+          },
+          "stime": "Wed Nov  4 09:04:18 2026",
+          "comment": "Job run at Wed Nov 04 at 09:04 on (acc003:ncpus=64:ngpus=0:mem=251658240kb)+(acc004:ncpus=64:ngpus=0:mem=251658240kb) and finished",
+          "Exit_status": 0
+        }
       },
       {
         "job_id": "954992.kugui-pbs",
         "name": "up-04-L2-Fe1000",
         "nodes": 2,
         "retry": 1,
-        "Job_Name": "up-04-L2-Fe1000",
-        "resources_used": {
-          "cpupercent": 5810,
-          "cput": "170:09:09",
-          "mem": "132422780kb",
-          "ncpus": 128,
-          "vmem": "137372kb",
-          "walltime": "03:00:06"
-        },
-        "job_state": "F",
-        "queue": "F2acc",
-        "Resource_List": {
-          "fs_factor": 1,
-          "mem": "480gb",
-          "mpiprocs": 64,
-          "ncpus": 128,
-          "nodect": 2,
-          "ompthreads": 1,
-          "place": "scatter:exclhost",
-          "Qlist": "F2acc",
-          "select": "2:ncpus=64:mpiprocs=32:ompthreads=2:ngpus=0:mem=240gb",
-          "walltime": "08:00:00"
-        },
-        "stime": "Wed Nov  4 09:16:37 2026",
-        "comment": "Job run at Wed Nov 04 at 09:16 on (acc003:ncpus=64:ngpus=0:mem=251658240kb)+(acc004:ncpus=64:ngpus=0:mem=251658240kb) and failed",
-        "Exit_status": 1
+        "job_state": "history_unavailable",
+        "last_published_record": {
+          "job_id": "954992.kugui-pbs",
+          "name": "up-04-L2-Fe1000",
+          "nodes": 2,
+          "retry": 1,
+          "Job_Name": "up-04-L2-Fe1000",
+          "resources_used": {
+            "cpupercent": 5810,
+            "cput": "170:09:09",
+            "mem": "132422780kb",
+            "ncpus": 128,
+            "vmem": "137372kb",
+            "walltime": "03:00:06"
+          },
+          "job_state": "F",
+          "queue": "F2acc",
+          "Resource_List": {
+            "fs_factor": 1,
+            "mem": "480gb",
+            "mpiprocs": 64,
+            "ncpus": 128,
+            "nodect": 2,
+            "ompthreads": 1,
+            "place": "scatter:exclhost",
+            "Qlist": "F2acc",
+            "select": "2:ncpus=64:mpiprocs=32:ompthreads=2:ngpus=0:mem=240gb",
+            "walltime": "08:00:00"
+          },
+          "stime": "Wed Nov  4 09:16:37 2026",
+          "comment": "Job run at Wed Nov 04 at 09:16 on (acc003:ncpus=64:ngpus=0:mem=251658240kb)+(acc004:ncpus=64:ngpus=0:mem=251658240kb) and failed",
+          "Exit_status": 1
+        }
       },
       {
         "job_id": "954993.kugui-pbs",
@@ -698,7 +873,6 @@
           "select": "2:ncpus=64:mpiprocs=32:ompthreads=2:ngpus=0:mem=240gb",
           "walltime": "08:00:00"
         },
-        "stime": "Fri Nov  6 14:10:18 2026",
         "comment": "Job run at Fri Nov 06 at 14:10 on (acc003:ncpus=64:ngpus=0:mem=251658240kb)+(acc004:ncpus=64:ngpus=0:mem=251658240kb) and finished",
         "Exit_status": 0
       },
@@ -835,64 +1009,78 @@
         "name": "up-01-large",
         "nodes": 1,
         "retry": 2,
-        "Job_Name": "up-01-large-res",
-        "resources_used": {
-          "cpupercent": 0,
-          "cput": "00:00:01",
-          "mem": "35572kb",
-          "ncpus": 64,
-          "vmem": "23132kb",
-          "walltime": "00:00:02"
-        },
-        "job_state": "F",
-        "queue": "F1accs",
-        "Resource_List": {
-          "fs_factor": 1,
-          "mem": "240gb",
-          "mpiprocs": 32,
-          "ncpus": 64,
-          "nodect": 1,
-          "ompthreads": 1,
-          "place": "scatter",
-          "Qlist": "F1accs",
-          "select": "1:ncpus=64:mpiprocs=32:ompthreads=2:ngpus=4:mem=240gb",
-          "walltime": "06:00:00"
-        },
-        "stime": "Sat Oct 31 14:15:05 2026",
-        "comment": "Job run at Sat Oct 31 at 14:15 on (acc006[2]:mem=62914560kb:ngpus=1:ncpus=16+acc006[1]:mem=62914560kb:ngpus=1:ncpus=16+acc006[3]:mem=62914560kb:ngpus=1:ncpus=16+acc006[0]:mem=62914560kb:ngpus=1:ncpus=16) and failed",
-        "Exit_status": 2
+        "job_state": "history_unavailable",
+        "last_published_record": {
+          "job_id": "955020.kugui-pbs",
+          "name": "up-01-large",
+          "nodes": 1,
+          "retry": 2,
+          "Job_Name": "up-01-large-res",
+          "resources_used": {
+            "cpupercent": 0,
+            "cput": "00:00:01",
+            "mem": "35572kb",
+            "ncpus": 64,
+            "vmem": "23132kb",
+            "walltime": "00:00:02"
+          },
+          "job_state": "F",
+          "queue": "F1accs",
+          "Resource_List": {
+            "fs_factor": 1,
+            "mem": "240gb",
+            "mpiprocs": 32,
+            "ncpus": 64,
+            "nodect": 1,
+            "ompthreads": 1,
+            "place": "scatter",
+            "Qlist": "F1accs",
+            "select": "1:ncpus=64:mpiprocs=32:ompthreads=2:ngpus=4:mem=240gb",
+            "walltime": "06:00:00"
+          },
+          "stime": "Sat Oct 31 14:15:05 2026",
+          "comment": "Job run at Sat Oct 31 at 14:15 on (acc006[2]:mem=62914560kb:ngpus=1:ncpus=16+acc006[1]:mem=62914560kb:ngpus=1:ncpus=16+acc006[3]:mem=62914560kb:ngpus=1:ncpus=16+acc006[0]:mem=62914560kb:ngpus=1:ncpus=16) and failed",
+          "Exit_status": 2
+        }
       },
       {
         "job_id": "955159.kugui-pbs",
         "name": "up-01-large",
         "nodes": 1,
         "retry": 3,
-        "Job_Name": "up-01-large-res",
-        "resources_used": {
-          "cpupercent": 5941,
-          "cput": "62:25:37",
-          "mem": "67112020kb",
-          "ncpus": 64,
-          "vmem": "128236kb",
-          "walltime": "01:01:59"
-        },
-        "job_state": "F",
-        "queue": "F1accs",
-        "Resource_List": {
-          "fs_factor": 1,
-          "mem": "240gb",
-          "mpiprocs": 32,
-          "ncpus": 64,
-          "nodect": 1,
-          "ompthreads": 1,
-          "place": "scatter",
-          "Qlist": "F1accs",
-          "select": "1:ncpus=64:mpiprocs=32:ompthreads=2:ngpus=4:mem=240gb",
-          "walltime": "06:00:00"
-        },
-        "stime": "Mon Nov  2 05:56:24 2026",
-        "comment": "Job run at Mon Nov 02 at 05:56 on (acc006[2]:mem=62914560kb:ngpus=1:ncpus=16+acc006[1]:mem=62914560kb:ngpus=1:ncpus=16+acc006[3]:mem=62914560kb:ngpus=1:ncpus=16+acc006[0]:mem=62914560kb:ngpus=1:ncpus=16) and finished",
-        "Exit_status": 0
+        "job_state": "history_unavailable",
+        "last_published_record": {
+          "job_id": "955159.kugui-pbs",
+          "name": "up-01-large",
+          "nodes": 1,
+          "retry": 3,
+          "Job_Name": "up-01-large-res",
+          "resources_used": {
+            "cpupercent": 5941,
+            "cput": "62:25:37",
+            "mem": "67112020kb",
+            "ncpus": 64,
+            "vmem": "128236kb",
+            "walltime": "01:01:59"
+          },
+          "job_state": "F",
+          "queue": "F1accs",
+          "Resource_List": {
+            "fs_factor": 1,
+            "mem": "240gb",
+            "mpiprocs": 32,
+            "ncpus": 64,
+            "nodect": 1,
+            "ompthreads": 1,
+            "place": "scatter",
+            "Qlist": "F1accs",
+            "select": "1:ncpus=64:mpiprocs=32:ompthreads=2:ngpus=4:mem=240gb",
+            "walltime": "06:00:00"
+          },
+          "stime": "Mon Nov  2 05:56:24 2026",
+          "comment": "Job run at Mon Nov 02 at 05:56 on (acc006[2]:mem=62914560kb:ngpus=1:ncpus=16+acc006[1]:mem=62914560kb:ngpus=1:ncpus=16+acc006[3]:mem=62914560kb:ngpus=1:ncpus=16+acc006[0]:mem=62914560kb:ngpus=1:ncpus=16) and finished",
+          "Exit_status": 0
+        }
       },
       {
         "job_id": "958164.kugui-pbs",
@@ -900,7 +1088,15 @@
         "nodes": 2,
         "retry": 2,
         "Job_Name": "up-04-L2-Fe1000",
-        "job_state": "Q",
+        "resources_used": {
+          "cpupercent": 230211,
+          "cput": "414:36:46",
+          "mem": "134950460kb",
+          "ncpus": 128,
+          "vmem": "137376kb",
+          "walltime": "03:40:45"
+        },
+        "job_state": "F",
         "queue": "F2acc",
         "Resource_List": {
           "fs_factor": 1,
@@ -914,7 +1110,9 @@
           "select": "2:ncpus=64:mpiprocs=32:ompthreads=2:ngpus=0:mem=240gb",
           "walltime": "16:00:00"
         },
-        "comment": "Not Running: Placement set KEY=CLARGE has too few free resources"
+        "stime": "Fri Nov 13 17:42:19 2026",
+        "comment": "Job run at Fri Nov 13 at 17:42 on (acc001:ncpus=64:ngpus=0:mem=251658240kb)+(acc004:ncpus=64:ngpus=0:mem=251658240kb) and finished",
+        "Exit_status": 0
       }
     ]
   }

@@ -1,9 +1,12 @@
 {
   "snapshot": {
-    "start": "2026-11-09T13:42:03.437115+09:00",
-    "end": "2026-11-09T13:42:11.078740+09:00",
-    "partial": true
+    "start": "2026-11-15T13:47:10.124501+09:00",
+    "end": "2026-11-15T13:47:15.807607+09:00",
+    "partial": false
   },
+  "all_planned_observations_completed": true,
+  "automatic_monitoring": false,
+  "report_path": "doc/kugui_a100_benchmark_20261115.txt",
   "campaign_first_publication": "2026-11-02",
   "measured_fork_commit": "0681d63ec3e00edc0c75f4b6d7c8f83c0643bbf3",
   "fork_source_modified": false,
@@ -30,16 +33,13 @@
   },
   "counts": {
     "upstream": {
-      "completed": 58,
-      "pending": 1
+      "completed": 59
     },
     "cpu": {
-      "completed": 52,
-      "pending": 7
+      "completed": 59
     },
     "gpu": {
-      "completed": 52,
-      "pending": 7
+      "completed": 59
     }
   },
   "expected_cases": 59,
@@ -48,14 +48,15 @@
   "upstream_history": {
     "reused_cases": 15,
     "measurement_date": "2026-10-29",
-    "newly_completed_cases": 43,
+    "newly_completed_cases": 44,
     "new_measurement_dates": [
       "2026-11-02",
       "2026-11-03",
       "2026-11-04",
       "2026-11-06",
       "2026-11-07",
-      "2026-11-08"
+      "2026-11-08",
+      "2026-11-13"
     ],
     "binary_sha256": "5a4745795a2332bed42b470b1caa2d734f0657425cf5a1913f0b2b7fbbe882ac"
   },
@@ -67,20 +68,20 @@
   },
   "accuracy_counts": {
     "gpu_vs_cpu": {
-      "passed": 50,
+      "passed": 57,
       "failed": 2
     },
     "cpu_vs_upstream": {
-      "passed": 50,
+      "passed": 57,
       "failed": 2
     },
     "gpu_vs_upstream": {
-      "passed": 49,
+      "passed": 56,
       "failed": 3
     }
   },
-  "source_capture_sha256": "3f7b139df7c7eb3ff9447f4bd1c20c42fe33f998d94cbc3862950411f71a2176",
-  "source_capture_path": "work/codex_cpu_gpu_bugfix_20261031/publication_20261109_1340/captured-runs.json",
+  "source_capture_sha256": "00cea978ef9c3bee4fb897d264c51221be0d990900864d46dc541ddbc9afdb82",
+  "source_capture_path": "work/codex_cpu_gpu_bugfix_20261031/publication_20261115_final/captured-runs.json",
   "raw_directories": [
     "work/codex_cpu_gpu_bugfix_20261031",
     "work/codex_upstream_benchmark_20261031",
@@ -89,13 +90,27 @@
   "running_and_pending_times_excluded": true,
   "no_incomplete_suite_totals": true,
   "files": {
-    "accuracy.csv": "a49bf36e1f2676b25fb69cb3391ff1c499a77f223277aa4de6ced6d7a0cbcd55",
-    "attempt-history.json": "ebde201067bb2b21a3db3167b25b1ea33fdcfb0c7e7cb8531b9236dad57f10fe",
+    "accuracy.csv": "ac1ed397d2255268318941432347eb012fcd90aac70b62bdf691ff70db66145e",
+    "attempt-history.json": "0936d02d99b781ca3614eb5b9d9a8db7e5debcf53ebc9d203163a1b541203c16",
     "build-manifest.json": "1be7b1657e0b3cf3c01bd924e7a7d62db0a0044aa9d92aba164996dce1d065c2",
-    "case-results.csv": "74431ecc7d8b3066ea3a90a63d15a11a3411c84ffbb7af2e89f8b87fcc94266b",
-    "execution-audit.json": "77e3e4064f38e16465eb7a81ae55d45f36deee560991348d5c8b9f5be6d80aec",
+    "case-results.csv": "875bfbec5d976c68aa255bdcb8eaa370854806ff6b5ff69cd9c910352e448562",
+    "execution-audit.json": "ac575f408464dc8dfe9b2e83e9697234945f15b6a27275f7b20408357d7a2c8f",
     "hardware/fork-955294-acc003.hardware.txt": "731a7c4805c17383f2509266dbe0e3f2f2e5d30fe2b55efa50e4cee51bf7b2f8",
     "hardware/fork-955294-acc004.hardware.txt": "50b1c393d425b62065b104ee11d9ebfd6753125e9fca3ab0284a5dd449a0bcea",
+    "hardware/fork-955295-acc001.hardware.txt": "54c5461460302512157a53463e0dcb8fb69f8bb3e639d9c5b55e37057323f2f0",
+    "hardware/fork-955295-acc004.hardware.txt": "e5a0e2c535b7fd5fbb7c98ce9f715b4fdb0639880f551278ee625348d397ac56",
+    "hardware/fork-955296-acc001.hardware.txt": "8f2fe0294b4f955a4124c82c7c396e7117af9b093b3568d3b4e3fcf17c83ef51",
+    "hardware/fork-955296-acc004.hardware.txt": "12ca2a302d6a155e21fe71f6f04f081bc0c87e9783879c1059d45e47fa57a2ff",
+    "hardware/fork-955297-acc001.hardware.txt": "650d3a48ce63cde2612e95717d37e8349eb56810fe111104f7187a1d1f8f7faf",
+    "hardware/fork-955297-acc004.hardware.txt": "be16b6bfd0ea1910ae1d56fbd89ac0919d376fa7f5f437f0a73940327845c1aa",
+    "hardware/fork-955298-acc001.hardware.txt": "16bdfc6c4bd1e995795f11fb95672324e3485a99f624332db70c03bc39f61152",
+    "hardware/fork-955298-acc004.hardware.txt": "80dc2aae0a0fb5eae32130a0a9b5856f9946bf4e84e70af3140c2e1d90b37946",
+    "hardware/fork-955299-acc001.hardware.txt": "385b9748ab3d1209d771d5b765ce0e608632eba1d9336917d3bcf2b3ec54dd6e",
+    "hardware/fork-955299-acc004.hardware.txt": "6c1e98fe61d42853d196097a9f2d7695c4151ff1707b5dcb8ff75311642b575a",
+    "hardware/fork-955300-acc001.hardware.txt": "c7b5a3d1196d6ccdae1ac421fe591bac1cc1a2020f5f0b523d10d6afba6048bb",
+    "hardware/fork-955300-acc004.hardware.txt": "6b754ec6afb3aec53cf23a3fc98cf15ca1902745b570d1124b03bef3894b45e7",
+    "hardware/fork-955301-acc001.hardware.txt": "2b5aeded51c1ca2abcce9aa20477c1fa9b31e669f0b18cf8b12638aa00bd9700",
+    "hardware/fork-955301-acc004.hardware.txt": "2c367c0ce45dd091d8528f1759d096f7d71c09ccdce60ec2c9692eba4672c7a5",
     "hardware/fork-acc006.hardware.txt": "7fa33aeb4a0313bd4f02b3789692d8dc20f735a608f56e17f0e022e087385e04",
     "hardware/fork-acc008.hardware.txt": "c42b6a041c06e434209d9c7ba95de8e17e901ea33efb1bc79275812422b4ab5c",
     "hardware/upstream-954990-acc002.hardware.txt": "c657b00e2ce002e25ce174089a850c1c2315e44a64824fa056f77a3b278c23ee",
@@ -105,13 +120,14 @@
     "hardware/upstream-954995-acc003.hardware.txt": "d7abede8a18d5b701c90a3a25290604c96b75f16b1f06440851d876e3871921f",
     "hardware/upstream-954996-acc003.hardware.txt": "d7abede8a18d5b701c90a3a25290604c96b75f16b1f06440851d876e3871921f",
     "hardware/upstream-954997-acc003.hardware.txt": "d7abede8a18d5b701c90a3a25290604c96b75f16b1f06440851d876e3871921f",
+    "hardware/upstream-958164-acc001.hardware.txt": "9f65c0ba8ede1b3189f12e967f994950df76011a729fe07368cba0d2a7923bb1",
     "hardware/upstream-acc006.hardware.txt": "9b447d31bbc5a5059ba5374f99fd555086b22aa3b861f5b1993b0328b8e9106e",
     "input-audit.json": "027a0d0e1369442e2a681680434961537ae07181fe4e634cc790e4c8fcbf0e36",
     "input-manifest.json": "0e49c20ef25ed3c65be38c1a749062b83b6b779e30a313e4f4e329d1be7143f5",
-    "job-status.json": "6a245250c1b21d8d02b2e8c6a9fe8e7eaeddb044440aea6a0e3c69bdcd6fd427",
-    "run-results.csv": "8c5b4f2ce5d28495ec3f546976db5582e976befea80f0111d67f49d0b35f7d19",
-    "runs.json": "7a3a61bd616296c6782e64dd8cbb91b3d0bb2aab63f8fe096c6b72a319fc2091",
-    "timing-summary.csv": "758a76b4aa04e498f4b482bc2e0fdec36d95e844f988689c1b216f1f35c7bd48",
-    "validation.json": "34cf015b63491394514740fd634183285feddeca2177e39e0e762d65ef5f5a1a"
+    "job-status.json": "e7a0dde8d512d96bbde944a3ccd36992db13aa3abf8c8e6eb38b65bdd2cfbf48",
+    "run-results.csv": "5ea085f6417f0e1decc8c0fc77a4e1e8678c45a82c223aca70f979d9f2d201f5",
+    "runs.json": "ff2d523ceb81dc3abc7b484d93eee15c009d251a3b31d9f8688731fc7fea45c8",
+    "timing-summary.csv": "70247d56078722c7ce1ad24ec94df30978ce64e4251ea3cf348b57fdf152bc0d",
+    "validation.json": "8c7b99eec7c6d016b1d129efb1215a3afb488e75f34fcdca895ef53dd20dc57b"
   }
 }
