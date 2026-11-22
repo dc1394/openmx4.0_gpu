@@ -145,7 +145,6 @@ static void Unfolding_Bands_Col(const OpenMXChemicalPotentials *chemical,
   double kRn,si,co;
   double TStime,TEtime,SiloopTime,EiloopTime;
   char *Name_Angular[Supported_MaxL+1][2*(Supported_MaxL+1)+1];
-  char *Name_Multiple[20];
   char file_EV[YOUSO10];
   FILE *fp_EV;
   FILE *fp_EV1;
@@ -401,13 +400,6 @@ static void Unfolding_Bands_Col(const OpenMXChemicalPotentials *chemical,
   Name_Angular[4][7] = "g8         ";
   Name_Angular[4][8] = "g9         ";
 
-  Name_Multiple[0] = "0";
-  Name_Multiple[1] = "1";
-  Name_Multiple[2] = "2";
-  Name_Multiple[3] = "3";
-  Name_Multiple[4] = "4";
-  Name_Multiple[5] = "5";
-
   if (myid==Host_ID){
     strcpy(file_EV,".EV");
     fnjoint(filepath,filename,file_EV);
@@ -435,11 +427,11 @@ static void Unfolding_Bands_Col(const OpenMXChemicalPotentials *chemical,
             for (m=0; m<(2*l+1); m++){
               fprintf(fp_EV,"  %4d ",i1);
               if (l==0 && mul==0 && m==0)
-                fprintf(fp_EV,"%4d %3s %s %s",
-                        Gc_AN,SpeName[wan1],Name_Multiple[mul],Name_Angular[l][m]);
+                fprintf(fp_EV,"%4d %3s %d %s",
+                        Gc_AN,SpeName[wan1],mul,Name_Angular[l][m]);
               else
-                fprintf(fp_EV,"         %s %s",
-                        Name_Multiple[mul],Name_Angular[l][m]);
+                fprintf(fp_EV,"         %d %s",
+                        mul,Name_Angular[l][m]);
               fprintf(fp_EV,"\n");
               i1++;
             }
@@ -1356,7 +1348,6 @@ static void Unfolding_Bands_NonCol(const OpenMXChemicalPotentials *chemical,
   double TStime,TEtime,SiloopTime,EiloopTime;
 
   char *Name_Angular[Supported_MaxL+1][2*(Supported_MaxL+1)+1];
-  char *Name_Multiple[20];
   char file_EV[YOUSO10];
   FILE *fp_EV;
   FILE *fp_EV1;
@@ -1658,13 +1649,6 @@ static void Unfolding_Bands_NonCol(const OpenMXChemicalPotentials *chemical,
   Name_Angular[4][7] = "g8         ";
   Name_Angular[4][8] = "g9         ";
 
-  Name_Multiple[0] = "0";
-  Name_Multiple[1] = "1";
-  Name_Multiple[2] = "2";
-  Name_Multiple[3] = "3";
-  Name_Multiple[4] = "4";
-  Name_Multiple[5] = "5";
-
   if (myid==Host_ID){
     strcpy(file_EV,".EV");
     fnjoint(filepath,filename,file_EV);
@@ -1693,11 +1677,11 @@ static void Unfolding_Bands_NonCol(const OpenMXChemicalPotentials *chemical,
             for (m=0; m<(2*l+1); m++){
               fprintf(fp_EV,"  %4d ",i1);
               if (l==0 && mul==0 && m==0)
-                fprintf(fp_EV,"%4d %3s %s %s",
-                        Gc_AN,SpeName[wan1],Name_Multiple[mul],Name_Angular[l][m]);
+                fprintf(fp_EV,"%4d %3s %d %s",
+                        Gc_AN,SpeName[wan1],mul,Name_Angular[l][m]);
               else
-                fprintf(fp_EV,"         %s %s",
-                        Name_Multiple[mul],Name_Angular[l][m]);
+                fprintf(fp_EV,"         %d %s",
+                        mul,Name_Angular[l][m]);
               fprintf(fp_EV,"\n");
               i1++;
             }

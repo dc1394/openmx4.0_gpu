@@ -272,6 +272,13 @@ void SCF2File(const OpenMXChemicalPotentials *chemical, const OpenMXAtomicViews 
 
 
 
+/* Version 3 stores one padding value followed by the three coordinates.
+   Slot zero of the in-memory vector is not part of the calculation. */
+static void write_scfout_vector(FILE *fp, const double xyz[4])
+{
+  const double row[4] = {0.0, xyz[1], xyz[2], xyz[3]};
+  fwrite(row,sizeof(double),4,fp);
+}
 
 void Output(const OpenMXChemicalPotentials *chemical,  FILE *fp, char *inputfile, double ******OLPpo, double *****OLPmo , const OpenMXElectronicViews *electronic)
 {
@@ -344,7 +351,7 @@ void Output(const OpenMXChemicalPotentials *chemical,  FILE *fp, char *inputfile
     ****************************************************/
 
     for (Rn=0; Rn<=TCpyCell; Rn++){
-      fwrite(atv[Rn],sizeof(double),4,fp);
+      write_scfout_vector(fp,atv[Rn]);
     }
 
     /****************************************************
@@ -352,7 +359,8 @@ void Output(const OpenMXChemicalPotentials *chemical,  FILE *fp, char *inputfile
     ****************************************************/
 
     for (Rn=0; Rn<=TCpyCell; Rn++){
-      fwrite(atv_ijk[Rn],sizeof(int),4,fp);
+      const int row[4] = {0, atv_ijk[Rn][1], atv_ijk[Rn][2], atv_ijk[Rn][3]};
+      fwrite(row,sizeof(int),4,fp);
     }
 
     /****************************************************
@@ -404,18 +412,14 @@ void Output(const OpenMXChemicalPotentials *chemical,  FILE *fp, char *inputfile
       unit cell vectors in Bohr
     ****************************************************/
 
-    fwrite(tv[1],sizeof(double),4,fp);
-    fwrite(tv[2],sizeof(double),4,fp);
-    fwrite(tv[3],sizeof(double),4,fp);
+    for (i=1; i<=3; i++) write_scfout_vector(fp,tv[i]);
 
     /****************************************************
       rtv[4][4]:
       reciprocal unit cell vectors in Bohr^{-1}
     ****************************************************/
 
-    fwrite(rtv[1],sizeof(double),4,fp);
-    fwrite(rtv[2],sizeof(double),4,fp);
-    fwrite(rtv[3],sizeof(double),4,fp);
+    for (i=1; i<=3; i++) write_scfout_vector(fp,rtv[i]);
 
     /****************************************************
       Gxyz[][1-3]:
@@ -423,7 +427,7 @@ void Output(const OpenMXChemicalPotentials *chemical,  FILE *fp, char *inputfile
     ****************************************************/
 
     for (ct_AN=1; ct_AN<=atomnum; ct_AN++){
-      fwrite(Gxyz[ct_AN],sizeof(double),4,fp);
+      write_scfout_vector(fp,Gxyz[ct_AN]);
     }
 
   } /* if (myid==Host_ID) */
@@ -867,9 +871,11 @@ void Output(const OpenMXChemicalPotentials *chemical,  FILE *fp, char *inputfile
       i_vec[0] = count;
       fwrite(i_vec, sizeof(int), 1, fp);
 
-      /* fgets gets a carriage return */
-      while( fgets(strg, MAX_LINE_SIZE, fp_inp ) != NULL ){
-	fwrite(strg, sizeof(char), MAX_LINE_SIZE, fp);
+      /* Pad each fixed-size input record all the way to its end. */
+      for (;;){
+        memset(strg,0,sizeof(strg));
+        if (fgets(strg,sizeof(strg),fp_inp)==NULL) break;
+        fwrite(strg,sizeof(strg),1,fp);
       }
 
       fclose(fp_inp);
