@@ -1,0 +1,812 @@
+[
+  {
+    "test": "S",
+    "variant": "upstream-cpu",
+    "case": "Benzene",
+    "pass": true,
+    "delta_energy_Ha": 0.0,
+    "max_delta_force_Ha_bohr": 0.0,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "S",
+    "variant": "upstream-cpu",
+    "case": "C60",
+    "pass": true,
+    "delta_energy_Ha": 5.9685589803848416e-12,
+    "max_delta_force_Ha_bohr": 1.0000021644085422e-12,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "S",
+    "variant": "upstream-cpu",
+    "case": "CO",
+    "pass": true,
+    "delta_energy_Ha": 0.0,
+    "max_delta_force_Ha_bohr": 1.09999995223653e-11,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "S",
+    "variant": "upstream-cpu",
+    "case": "Cr2",
+    "pass": true,
+    "delta_energy_Ha": 0.0,
+    "max_delta_force_Ha_bohr": 7.799999535151869e-11,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "S",
+    "variant": "upstream-cpu",
+    "case": "Crys-MnO",
+    "pass": true,
+    "delta_energy_Ha": 5.9969806898152456e-12,
+    "max_delta_force_Ha_bohr": 2.4e-11,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "S",
+    "variant": "upstream-cpu",
+    "case": "GaAs",
+    "pass": true,
+    "delta_energy_Ha": 1.1993961379630491e-11,
+    "max_delta_force_Ha_bohr": 1.0000000000003067e-12,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "S",
+    "variant": "upstream-cpu",
+    "case": "Glycine",
+    "pass": true,
+    "delta_energy_Ha": 0.0,
+    "max_delta_force_Ha_bohr": 9.999986949615902e-13,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "S",
+    "variant": "upstream-cpu",
+    "case": "Graphite4",
+    "pass": true,
+    "delta_energy_Ha": 9.983125437429408e-13,
+    "max_delta_force_Ha_bohr": 1.000000000001134e-12,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "S",
+    "variant": "upstream-cpu",
+    "case": "H2O-EF",
+    "pass": true,
+    "delta_energy_Ha": 0.0,
+    "max_delta_force_Ha_bohr": 1.0000056338554941e-12,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "S",
+    "variant": "upstream-cpu",
+    "case": "H2O",
+    "pass": true,
+    "delta_energy_Ha": 0.0,
+    "max_delta_force_Ha_bohr": 1.000000000000003e-12,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "S",
+    "variant": "upstream-cpu",
+    "case": "HMn",
+    "pass": true,
+    "delta_energy_Ha": 0.0,
+    "max_delta_force_Ha_bohr": 0.0,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "S",
+    "variant": "upstream-cpu",
+    "case": "Methane",
+    "pass": true,
+    "delta_energy_Ha": 3.100097956121317e-11,
+    "max_delta_force_Ha_bohr": 3.0000030237786746e-12,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "S",
+    "variant": "upstream-cpu",
+    "case": "Mol_MnO",
+    "pass": true,
+    "delta_energy_Ha": 0.0,
+    "max_delta_force_Ha_bohr": 0.0,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "S",
+    "variant": "upstream-cpu",
+    "case": "Ndia2",
+    "pass": true,
+    "delta_energy_Ha": 1.000088900582341e-12,
+    "max_delta_force_Ha_bohr": 9.999999960041972e-13,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "S",
+    "variant": "fork-cpu",
+    "case": "Benzene",
+    "pass": true,
+    "delta_energy_Ha": 0.0,
+    "max_delta_force_Ha_bohr": 0.0,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "S",
+    "variant": "fork-cpu",
+    "case": "C60",
+    "pass": true,
+    "delta_energy_Ha": 6.991740519879386e-12,
+    "max_delta_force_Ha_bohr": 1.0000021644085422e-12,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "S",
+    "variant": "fork-cpu",
+    "case": "CO",
+    "pass": true,
+    "delta_energy_Ha": 0.0,
+    "max_delta_force_Ha_bohr": 5.999999108663445e-12,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "S",
+    "variant": "fork-cpu",
+    "case": "Cr2",
+    "pass": true,
+    "delta_energy_Ha": 9.947598300641403e-13,
+    "max_delta_force_Ha_bohr": 1.8200000000004755e-10,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "S",
+    "variant": "fork-cpu",
+    "case": "Crys-MnO",
+    "pass": true,
+    "delta_energy_Ha": 4.729940883407835e-10,
+    "max_delta_force_Ha_bohr": 6.380000000000001e-10,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "S",
+    "variant": "fork-cpu",
+    "case": "GaAs",
+    "pass": true,
+    "delta_energy_Ha": 1.1993961379630491e-11,
+    "max_delta_force_Ha_bohr": 4.999999999999983e-12,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "S",
+    "variant": "fork-cpu",
+    "case": "Glycine",
+    "pass": true,
+    "delta_energy_Ha": 0.0,
+    "max_delta_force_Ha_bohr": 1.0000056338554941e-12,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "S",
+    "variant": "fork-cpu",
+    "case": "Graphite4",
+    "pass": true,
+    "delta_energy_Ha": 9.983125437429408e-13,
+    "max_delta_force_Ha_bohr": 9.999999960041972e-13,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "S",
+    "variant": "fork-cpu",
+    "case": "H2O-EF",
+    "pass": true,
+    "delta_energy_Ha": 0.0,
+    "max_delta_force_Ha_bohr": 0.0,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "S",
+    "variant": "fork-cpu",
+    "case": "H2O",
+    "pass": true,
+    "delta_energy_Ha": 0.0,
+    "max_delta_force_Ha_bohr": 1.000000000000003e-12,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "S",
+    "variant": "fork-cpu",
+    "case": "HMn",
+    "pass": true,
+    "delta_energy_Ha": 0.0,
+    "max_delta_force_Ha_bohr": 0.0,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "S",
+    "variant": "fork-cpu",
+    "case": "Methane",
+    "pass": true,
+    "delta_energy_Ha": 3.4999558806703135e-11,
+    "max_delta_force_Ha_bohr": 3.999994779846361e-12,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "S",
+    "variant": "fork-cpu",
+    "case": "Mol_MnO",
+    "pass": true,
+    "delta_energy_Ha": 9.947598300641403e-13,
+    "max_delta_force_Ha_bohr": 9.999986949615902e-13,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "S",
+    "variant": "fork-cpu",
+    "case": "Ndia2",
+    "pass": true,
+    "delta_energy_Ha": 1.000088900582341e-12,
+    "max_delta_force_Ha_bohr": 0.0,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "S",
+    "variant": "fork-gpu",
+    "case": "Benzene",
+    "pass": true,
+    "delta_energy_Ha": 9.947598300641403e-13,
+    "max_delta_force_Ha_bohr": 0.0,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "S",
+    "variant": "fork-gpu",
+    "case": "C60",
+    "pass": true,
+    "delta_energy_Ha": 2.1032064978498966e-11,
+    "max_delta_force_Ha_bohr": 1.0000021644085422e-12,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "S",
+    "variant": "fork-gpu",
+    "case": "CO",
+    "pass": true,
+    "delta_energy_Ha": 0.0,
+    "max_delta_force_Ha_bohr": 1.000000082740371e-11,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "S",
+    "variant": "fork-gpu",
+    "case": "Cr2",
+    "pass": true,
+    "delta_energy_Ha": 1.9895196601282805e-12,
+    "max_delta_force_Ha_bohr": 1.8299999999996928e-10,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "S",
+    "variant": "fork-gpu",
+    "case": "Crys-MnO",
+    "pass": true,
+    "delta_energy_Ha": 4.710045686806552e-10,
+    "max_delta_force_Ha_bohr": 6.380000000000001e-10,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "S",
+    "variant": "fork-gpu",
+    "case": "GaAs",
+    "pass": true,
+    "delta_energy_Ha": 4.007461029686965e-12,
+    "max_delta_force_Ha_bohr": 3.000000000000093e-12,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "S",
+    "variant": "fork-gpu",
+    "case": "Glycine",
+    "pass": true,
+    "delta_energy_Ha": 0.0,
+    "max_delta_force_Ha_bohr": 1.0000056338554941e-12,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "S",
+    "variant": "fork-gpu",
+    "case": "Graphite4",
+    "pass": true,
+    "delta_energy_Ha": 1.0018652574217413e-12,
+    "max_delta_force_Ha_bohr": 0.0,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "S",
+    "variant": "fork-gpu",
+    "case": "H2O-EF",
+    "pass": true,
+    "delta_energy_Ha": 9.983125437429408e-13,
+    "max_delta_force_Ha_bohr": 0.0,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "S",
+    "variant": "fork-gpu",
+    "case": "H2O",
+    "pass": true,
+    "delta_energy_Ha": 1.0018652574217413e-12,
+    "max_delta_force_Ha_bohr": 1.000000000000003e-12,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "S",
+    "variant": "fork-gpu",
+    "case": "HMn",
+    "pass": true,
+    "delta_energy_Ha": 9.947598300641403e-13,
+    "max_delta_force_Ha_bohr": 0.0,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "S",
+    "variant": "fork-gpu",
+    "case": "Methane",
+    "pass": true,
+    "delta_energy_Ha": 2.6998847602044407e-11,
+    "max_delta_force_Ha_bohr": 3.0000030237786746e-12,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "S",
+    "variant": "fork-gpu",
+    "case": "Mol_MnO",
+    "pass": true,
+    "delta_energy_Ha": 9.947598300641403e-13,
+    "max_delta_force_Ha_bohr": 0.0,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "S",
+    "variant": "fork-gpu",
+    "case": "Ndia2",
+    "pass": true,
+    "delta_energy_Ha": 3.000266701747023e-12,
+    "max_delta_force_Ha_bohr": 0.0,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "L",
+    "variant": "upstream-cpu",
+    "case": "5_5_13COb2",
+    "pass": true,
+    "delta_energy_Ha": 2.419255906715989e-10,
+    "max_delta_force_Ha_bohr": 2.239999999723019e-10,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "L",
+    "variant": "upstream-cpu",
+    "case": "B2C62_Band",
+    "pass": true,
+    "delta_energy_Ha": 7.003109203651547e-11,
+    "max_delta_force_Ha_bohr": 3.040600000000033e-08,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "L",
+    "variant": "upstream-cpu",
+    "case": "CG15c-DC-LNO",
+    "pass": true,
+    "delta_energy_Ha": 4.092726157978177e-11,
+    "max_delta_force_Ha_bohr": 9.400000222647975e-11,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "L",
+    "variant": "upstream-cpu",
+    "case": "DIA512-1",
+    "pass": true,
+    "delta_energy_Ha": 2.9695002012886107e-10,
+    "max_delta_force_Ha_bohr": 4.355000000162354e-09,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "L",
+    "variant": "upstream-cpu",
+    "case": "FeBCC",
+    "pass": true,
+    "delta_energy_Ha": 1.3596945791505277e-10,
+    "max_delta_force_Ha_bohr": 1.0000000000699553e-11,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "L",
+    "variant": "upstream-cpu",
+    "case": "GEL",
+    "pass": true,
+    "delta_energy_Ha": 1.8985701899509877e-11,
+    "max_delta_force_Ha_bohr": 6.799999994512584e-11,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "L",
+    "variant": "upstream-cpu",
+    "case": "GFRAG",
+    "pass": true,
+    "delta_energy_Ha": 5.359765964385588e-10,
+    "max_delta_force_Ha_bohr": 2.332000000222767e-09,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "L",
+    "variant": "upstream-cpu",
+    "case": "GGFF",
+    "pass": true,
+    "delta_energy_Ha": 1.2050804798491299e-11,
+    "max_delta_force_Ha_bohr": 1.5000000373743827e-11,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "L",
+    "variant": "upstream-cpu",
+    "case": "MCCN",
+    "pass": true,
+    "delta_energy_Ha": 6.093614501878619e-11,
+    "max_delta_force_Ha_bohr": 1.1999999952050366e-11,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "L",
+    "variant": "upstream-cpu",
+    "case": "Mn12_148_F",
+    "pass": true,
+    "delta_energy_Ha": 2.560227585490793e-10,
+    "max_delta_force_Ha_bohr": 5.74000000091654e-10,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "L",
+    "variant": "upstream-cpu",
+    "case": "N1C999",
+    "pass": true,
+    "delta_energy_Ha": 3.965396899729967e-10,
+    "max_delta_force_Ha_bohr": 3.3000000301819377e-11,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "L",
+    "variant": "upstream-cpu",
+    "case": "Ni63-O64",
+    "pass": true,
+    "delta_energy_Ha": 3.4269760362803936e-09,
+    "max_delta_force_Ha_bohr": 7.429999999584644e-10,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "L",
+    "variant": "upstream-cpu",
+    "case": "Pt63",
+    "pass": true,
+    "delta_energy_Ha": 2.3510438040830195e-09,
+    "max_delta_force_Ha_bohr": 3.12e-10,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "L",
+    "variant": "upstream-cpu",
+    "case": "SialicAcid",
+    "pass": true,
+    "delta_energy_Ha": 3.1400304578710347e-10,
+    "max_delta_force_Ha_bohr": 2.8399999973255374e-10,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "L",
+    "variant": "upstream-cpu",
+    "case": "ZrB2_2x2",
+    "pass": true,
+    "delta_energy_Ha": 1.4483703125733882e-10,
+    "max_delta_force_Ha_bohr": 3.0600000000378805e-10,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "L",
+    "variant": "upstream-cpu",
+    "case": "nsV4Bz5",
+    "pass": true,
+    "delta_energy_Ha": 3.001332515850663e-11,
+    "max_delta_force_Ha_bohr": 9.54e-10,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "L",
+    "variant": "fork-cpu",
+    "case": "5_5_13COb2",
+    "pass": true,
+    "delta_energy_Ha": 2.5488589017186314e-10,
+    "max_delta_force_Ha_bohr": 2.329999999363397e-10,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "L",
+    "variant": "fork-cpu",
+    "case": "B2C62_Band",
+    "pass": true,
+    "delta_energy_Ha": 4.899902705801651e-11,
+    "max_delta_force_Ha_bohr": 3.1075000000000376e-08,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "L",
+    "variant": "fork-cpu",
+    "case": "CG15c-DC-LNO",
+    "pass": true,
+    "delta_energy_Ha": 1.2851160136051476e-09,
+    "max_delta_force_Ha_bohr": 1.56000018458613e-10,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "L",
+    "variant": "fork-cpu",
+    "case": "DIA512-1",
+    "pass": true,
+    "delta_energy_Ha": 1.5188561519607902e-10,
+    "max_delta_force_Ha_bohr": 4.67999999994792e-09,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "L",
+    "variant": "fork-cpu",
+    "case": "FeBCC",
+    "pass": true,
+    "delta_energy_Ha": 9.829363989410922e-10,
+    "max_delta_force_Ha_bohr": 6.8e-11,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "L",
+    "variant": "fork-cpu",
+    "case": "GEL",
+    "pass": true,
+    "delta_energy_Ha": 2.339675120310858e-10,
+    "max_delta_force_Ha_bohr": 2.810000000003451e-10,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "L",
+    "variant": "fork-cpu",
+    "case": "GFRAG",
+    "pass": true,
+    "delta_energy_Ha": 5.529727786779404e-10,
+    "max_delta_force_Ha_bohr": 2.332000000222767e-09,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "L",
+    "variant": "fork-cpu",
+    "case": "GGFF",
+    "pass": true,
+    "delta_energy_Ha": 3.296918293926865e-11,
+    "max_delta_force_Ha_bohr": 2.9999999880125916e-11,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "L",
+    "variant": "fork-cpu",
+    "case": "MCCN",
+    "pass": true,
+    "delta_energy_Ha": 1.0095391189679503e-10,
+    "max_delta_force_Ha_bohr": 3.699999941847443e-11,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "L",
+    "variant": "fork-cpu",
+    "case": "Mn12_148_F",
+    "pass": true,
+    "delta_energy_Ha": 2.6784618967212737e-10,
+    "max_delta_force_Ha_bohr": 5.730000000956498e-10,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "L",
+    "variant": "fork-cpu",
+    "case": "N1C999",
+    "pass": true,
+    "delta_energy_Ha": 4.0472514228895307e-10,
+    "max_delta_force_Ha_bohr": 2.799999999653774e-11,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "L",
+    "variant": "fork-cpu",
+    "case": "Ni63-O64",
+    "pass": true,
+    "delta_energy_Ha": 3.3105607144534588e-09,
+    "max_delta_force_Ha_bohr": 7.909999999835063e-10,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "L",
+    "variant": "fork-cpu",
+    "case": "Pt63",
+    "pass": true,
+    "delta_energy_Ha": 3.6034180084243417e-09,
+    "max_delta_force_Ha_bohr": 3.13e-10,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "L",
+    "variant": "fork-cpu",
+    "case": "SialicAcid",
+    "pass": true,
+    "delta_energy_Ha": 3.119851044175448e-10,
+    "max_delta_force_Ha_bohr": 2.8199999974054535e-10,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "L",
+    "variant": "fork-cpu",
+    "case": "ZrB2_2x2",
+    "pass": true,
+    "delta_energy_Ha": 8.799361239653081e-11,
+    "max_delta_force_Ha_bohr": 2.709999999979515e-10,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "L",
+    "variant": "fork-cpu",
+    "case": "nsV4Bz5",
+    "pass": true,
+    "delta_energy_Ha": 1.4102852219366468e-10,
+    "max_delta_force_Ha_bohr": 1.078e-09,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "L",
+    "variant": "fork-gpu",
+    "case": "5_5_13COb2",
+    "pass": true,
+    "delta_energy_Ha": 3.560671757441014e-10,
+    "max_delta_force_Ha_bohr": 1.770000005937855e-10,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "L",
+    "variant": "fork-gpu",
+    "case": "B2C62_Band",
+    "pass": true,
+    "delta_energy_Ha": 3.89945853385143e-11,
+    "max_delta_force_Ha_bohr": 2.9984000000000965e-08,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "L",
+    "variant": "fork-gpu",
+    "case": "CG15c-DC-LNO",
+    "pass": true,
+    "delta_energy_Ha": 1.1104930308647454e-09,
+    "max_delta_force_Ha_bohr": 1.56000018458613e-10,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "L",
+    "variant": "fork-gpu",
+    "case": "DIA512-1",
+    "pass": true,
+    "delta_energy_Ha": 4.3519321479834616e-10,
+    "max_delta_force_Ha_bohr": 3.401999999850386e-09,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "L",
+    "variant": "fork-gpu",
+    "case": "FeBCC",
+    "pass": true,
+    "delta_energy_Ha": 1.072976374416612e-09,
+    "max_delta_force_Ha_bohr": 7.5e-11,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "L",
+    "variant": "fork-gpu",
+    "case": "GEL",
+    "pass": true,
+    "delta_energy_Ha": 1.4995293895481154e-10,
+    "max_delta_force_Ha_bohr": 4.089999999987962e-10,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "L",
+    "variant": "fork-gpu",
+    "case": "GFRAG",
+    "pass": true,
+    "delta_energy_Ha": 4.150138011027593e-10,
+    "max_delta_force_Ha_bohr": 1.8970000006598986e-09,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "L",
+    "variant": "fork-gpu",
+    "case": "GGFF",
+    "pass": true,
+    "delta_energy_Ha": 9.185896487906575e-11,
+    "max_delta_force_Ha_bohr": 1.359999998902517e-10,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "L",
+    "variant": "fork-gpu",
+    "case": "MCCN",
+    "pass": true,
+    "delta_energy_Ha": 2.3919710656628013e-10,
+    "max_delta_force_Ha_bohr": 3.699999941847443e-11,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "L",
+    "variant": "fork-gpu",
+    "case": "Mn12_148_F",
+    "pass": true,
+    "delta_energy_Ha": 2.4920154828578234e-10,
+    "max_delta_force_Ha_bohr": 2.8599999798983866e-10,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "L",
+    "variant": "fork-gpu",
+    "case": "N1C999",
+    "pass": true,
+    "delta_energy_Ha": 1.0250005288980901e-09,
+    "max_delta_force_Ha_bohr": 2.799999999653774e-11,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "L",
+    "variant": "fork-gpu",
+    "case": "Ni63-O64",
+    "pass": true,
+    "delta_energy_Ha": 6.748450687155128e-10,
+    "max_delta_force_Ha_bohr": 3.3900000000067557e-10,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "L",
+    "variant": "fork-gpu",
+    "case": "Pt63",
+    "pass": true,
+    "delta_energy_Ha": 2.749402483459562e-09,
+    "max_delta_force_Ha_bohr": 2.2299999997629771e-10,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "L",
+    "variant": "fork-gpu",
+    "case": "SialicAcid",
+    "pass": true,
+    "delta_energy_Ha": 3.0900082492735237e-10,
+    "max_delta_force_Ha_bohr": 2.8199999974054535e-10,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "L",
+    "variant": "fork-gpu",
+    "case": "ZrB2_2x2",
+    "pass": true,
+    "delta_energy_Ha": 2.389697328908369e-10,
+    "max_delta_force_Ha_bohr": 2.259999999998857e-10,
+    "same_geometry_and_grids": true
+  },
+  {
+    "test": "L",
+    "variant": "fork-gpu",
+    "case": "nsV4Bz5",
+    "pass": true,
+    "delta_energy_Ha": 1.0197709343628958e-10,
+    "max_delta_force_Ha_bohr": 7.96e-10,
+    "same_geometry_and_grids": true
+  }
+]

@@ -1559,7 +1559,7 @@ from SCF convergence.
 | [Core i9-10980XE, Intel CPU build](#benchmark-rtx5080-intel-cpu) | 18 × 2 (SMT siblings) | CPU only | 0 used |
 | [Kugui A100](#benchmark-kugui-a100) | 32 × 2 (physical cores) | CUDA + MPS | 2 (4 reserved) |
 | [Pegasus H100](#benchmark-pegasus-h100) | 24 × 2 (physical cores) | CUDA + MPS | 1 |
-| [Radeon RX 9060 XT](#benchmark-radeon-rx9060xt) | 16 × 2 (physical cores) | HIP | 1 |
+| [Radeon RX 9060 XT](#benchmark-radeon-rx9060xt) | 8 × 4 (physical cores) | HIP | 1 |
 | [Sirius MI300A](#benchmark-sirius-mi300a) | 32 × 3 (physical cores) | HIP | 4 |
 
 <a id="benchmark-rtx3060"></a>
@@ -2941,265 +2941,176 @@ is an additional reference that includes initialization and force work.
 
 <a id="benchmark-radeon-rx9060xt"></a>
 
-### Radeon RX 9060 XT validation (2026-11-01 refresh)
+### Radeon RX 9060 XT / Ryzen Threadripper 3970X (2026-11-21)
 
 #### Measurement conditions
 
-After pulling `main`, the fork was rebuilt and installed from production
-revision `c6648c29`. Both CPU and HIP paths were remeasured from
-2026-11-01 13:45 to 2026-11-01 17:48 JST.
-The October 29 upstream CPU measurement is reused unchanged.
-The host was a Ryzen Threadripper 3970X (32 physical cores, SMT disabled),
-256 GB RAM, and one Radeon RX 9060 XT with 16 GiB VRAM (`gfx1200`).
-Every measurement used **16 MPI ranks × 2 OpenMP threads**, bound to 32 cores.
-Jobs ran sequentially in CPU/HIP pairs for S, sidia333, cghelgeo and L.
-After the cghelgeo CPU comparison failed, the queue was paused for the
-separate controls below, then resumed for the remaining jobs. The failed
-timed input was preserved and was not repeated to select a passing result.
+All three routes were measured on 2026-11-21, from 13:14 to 18:53 JST,
+at fork revision `456731c912093299b6756ae081c55533e433b0cf`.
+Each test used **8 MPI ranks × 4 OpenMP threads** on one host with a
+Ryzen Threadripper 3970X (32 physical cores, SMT disabled), 256 GB RAM,
+and one Radeon RX 9060 XT with 16 GiB VRAM (`gfx1200`).
+Jobs ran sequentially, once per route and test. Every job's eight ranks
+were audited for four disjoint physical cores per rank, four OpenMP
+threads, and the matching runtime libraries.
 
-| Path | Build and runtime |
+| Route | Build and runtime |
 | --- | --- |
-| Upstream CPU | OpenMX 4.0 + [official patch 4.0.1](https://www.openmx-square.org/bugfixed/26May08/README.txt), Intel icx/ifx 2026.0, Intel MPI 2021.18, threaded LP64 MKL; `scf.eigen.lib elpa2` |
-| Fork CPU | Release HIP build, ROCm SDK `core-10.1` Clang/Flang, OpenMPI 5.0.9, AOCL 5.2, OpenMP ELPA 2026.02.002; `OPENMX_GPU=0`, `scf.eigen.lib elpa2` |
-| Fork GPU | Same installed executable and Core/SIMD libraries; `OPENMX_GPU=1`, `scf.eigen.lib gpusolver`, `HSA_ENABLE_SDMA=0` |
+| Upstream CPU | OpenMX 4.0 + official 4.0.1 patch; Intel icx/ifx 2026.0, Intel MPI 2021.18, threaded LP64 MKL, original ELPA 2018.05.001; `scf.eigen.lib elpa2`. The retained executable was remeasured and its hash verified. |
+| Fork CPU | Release HIP build; ROCm SDK `core-10.1` Clang/Flang, Open MPI 5.0.9, AOCL 5.2 OpenMP, OpenMP ELPA 2026.02.002; `OPENMX_GPU=0`, `scf.eigen.lib elpa2`. Host SIMD selects AVX2. |
+| Fork GPU | Same frozen executable and Core/SIMD libraries; `OPENMX_GPU=1`, `scf.eigen.lib gpusolver`, `HSA_ENABLE_SDMA=0`. |
 
-The pulled MI300A optimization also edits common HIP noncollinear band
-control flow and state lifetime, so Radeon was remeasured. MI300A owner
-waves, construction caches, cached density waves and batched solver
-completion remain architecture-gated off on gfx1200. Radeon retains its
-existing k-turn policy, streaming constructor and blocking completion.
-Architecture-policy checks, 12,001 owner schedules, cache/density failure
-models, band lifecycle checks and the ELPA/GPU-handle regressions passed.
-Three new test scripts needed source-path fixes in the CMake-generated
-native tree; all three now pass both there and from the source tree.
-These test-only edits do not change the measured application code.
+Both fork routes use `OMP_NUM_THREADS=4`, `BLIS_NUM_THREADS=4`,
+`MAGMA_NUM_THREADS=4`, `OMP_DYNAMIC=FALSE`, `OMP_PROC_BIND=close`,
+`OMP_PLACES=cores`, and `OMP_MAX_ACTIVE_LEVELS=1`.
+Upstream uses four MKL threads per rank. Its ratios also include compiler,
+MPI, and numerical-library differences.
+`LIBOMPTARGET_HEAP_SIZE=67108864` and `HSA_OVERRIDE_CPU_AFFINITY_DEBUG=0`
+are retained for the fork. NVIDIA MPS does not apply to Radeon.
 
-Both fork paths use `OMP_NUM_THREADS=2`, `BLIS_NUM_THREADS=2`,
-`OMP_DYNAMIC=FALSE`, `OMP_PROC_BIND=close`, `OMP_PLACES=cores` and
-`OMP_MAX_ACTIVE_LEVELS=1`, matching the previous fork campaign. All 16 rank
-environments and CPU affinities were checked for every job. A separate
-8×2 CPU ELPA numerical check observed two ELPA workers on every rank.
-The upstream baseline uses two MKL threads per rank; its ratios also
-include compiler, MPI and numerical-library differences.
-
-Inputs, geometry, grids, SCF/MD limits, convergence thresholds, stdout
-levels and arithmetic policy are unchanged. Only `DATA.PATH` and
-`scf.eigen.lib` are set in the measurement copies. All 44 basis and
-pseudopotential hashes match the previous record.
-`LIBOMPTARGET_HEAP_SIZE=67108864` avoids heap re-execution and
-`HSA_OVERRIDE_CPU_AFFINITY_DEBUG=0` retains rank CPU affinity for HSA helpers.
-The HIP path retains `HSA_ENABLE_SDMA=0`; NVIDIA MPS does not apply to Radeon.
+Original geometry, grids, precision options, stdout levels, SCF/MD limits,
+and convergence criteria are unchanged. Only `DATA.PATH` and
+`scf.eigen.lib` differ in the measurement copies. Every route starts in a
+fresh directory without supplied restart data. All 44 basis and
+pseudopotential hashes remained unchanged.
 
 #### Overall results
 
-Suite totals sum native per-case `runtest.result` / `runtestL.result` times.
-Named inputs use the maximum-rank `Total Computational Time`. Each value
-is one measurement. MPI launch/shutdown overhead is excluded. GPU-path
-times include CPU fallbacks selected by the application.
+Suite totals sum the native per-case `runtest.result` / `runtestL.result`
+times. Named inputs use the maximum-rank `Total Computational Time`.
+MPI launch/shutdown is excluded; job wall times are recorded separately.
+GPU-route times include CPU work and any automatic CPU fallback.
 
-| Test | Nodes | Upstream CPU (s) | Fork CPU (s) | Fork GPU (s) | Upstream / Fork CPU | Upstream / GPU | Fork CPU / GPU |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| `-runtest` (14 cases) | 1 | 59.020 | 46.890 | 67.470 | 1.259 | 0.875 | 0.695 |
-| `-runtestL` (16 cases) | 1 | 4319.340 | 2839.930 | 3944.630 | 1.521 | 1.095 | 0.720 |
-| `-runtestL2` (7 cases) | — | — | — | — | — | — | — |
-| `-runtestL3` (20 cases) | — | — | — | — | — | — | — |
-| `sidia333_nc_cluster.dat` | 1 | 483.443 | 352.627 | 193.664 | 1.371 | 2.496 | 1.821 |
-| `cghelgeo.dat` | 1 | 1896.871 | 2483.295 | 2587.862 | 0.764 | 0.733 | 0.960 |
+| Test | Upstream CPU (s) | Fork CPU (s) | Fork GPU (s) | Upstream / CPU | Upstream / GPU | CPU / GPU |
+|---|---:|---:|---:|---:|---:|---:|
+| `-runtest` (14 cases) | 54.220 | 52.190 | 63.070 | 1.039 | 0.860 | 0.827 |
+| `-runtestL` (16 cases) | 5662.590 | 3710.610 | 4025.250 | 1.526 | 1.407 | 0.922 |
+| `cghelgeo.dat` | 2057.865 | 2392.246 | 1121.985 | 0.860 | 1.834 | 2.132 |
+| `sidia333_nc_cluster.dat` | 514.484 | 370.987 | 181.548 | 1.387 | 2.834 | 2.043 |
+
+Ratios above one favor the denominator route. All timings are single
+measurements, and differing SCF/MD counts can affect whole-input times.
+The HIP route is **2.132× faster for cghelgeo** and **2.043× faster for
+sidia333** than the fork CPU route, while both S/L suite totals favor CPU.
+`-runtestL2` and `-runtestL3` were outside this campaign; no timing or
+speedup is reported for them.
 
 #### Case results
 
+The tables include every input. SCF counts sum all actual MD steps;
+`SCF [MD]` lists the total SCF steps and actual MD steps for each route.
+Error columns are maxima across the three route-pair comparisons for that
+input. `Agreement` uses the tolerances defined below, independently of
+SCF convergence.
+
 ##### `-runtest` (14 cases)
 
-| Input | Upstream CPU (s) | Fork CPU (s) | Fork GPU (s) | Upstream / Fork CPU | Upstream / GPU | Fork CPU / GPU |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Benzene | 2.390 | 1.790 | 3.720 | 1.335 | 0.642 | 0.481 |
-| C60 | 4.970 | 5.710 | 8.720 | 0.870 | 0.570 | 0.655 |
-| CO | 5.990 | 3.690 | 16.790 | 1.623 | 0.357 | 0.220 |
-| Cr2 | 4.070 | 3.190 | 3.140 | 1.276 | 1.296 | 1.016 |
-| Crys-MnO | 6.570 | 5.140 | 5.350 | 1.278 | 1.228 | 0.961 |
-| GaAs | 11.560 | 9.410 | 8.540 | 1.228 | 1.354 | 1.102 |
-| Glycine | 2.350 | 1.760 | 3.620 | 1.335 | 0.649 | 0.486 |
-| Graphite4 | 1.620 | 1.070 | 1.540 | 1.514 | 1.052 | 0.695 |
-| H2O | 1.880 | 1.080 | 1.700 | 1.741 | 1.106 | 0.635 |
-| H2O-EF | 2.150 | 1.540 | 2.110 | 1.396 | 1.019 | 0.730 |
-| HMn | 7.660 | 6.930 | 5.830 | 1.105 | 1.314 | 1.189 |
-| Methane | 1.460 | 0.930 | 1.680 | 1.570 | 0.869 | 0.554 |
-| Mol_MnO | 4.090 | 3.320 | 3.740 | 1.232 | 1.094 | 0.888 |
-| Ndia2 | 2.260 | 1.330 | 0.990 | 1.699 | 2.283 | 1.343 |
-| **Total** | **59.020** | **46.890** | **67.470** | **1.259** | **0.875** | **0.695** |
-
-<details>
-<summary>SCF counts and numerical checks: -runtest (14 cases)</summary>
-
-| Input | SCF steps (upstream / fork CPU / GPU) | Max abs ΔE (Ha) | Max abs ΔF (Ha/bohr) | Check |
-| --- | --- | ---: | ---: | --- |
-| Benzene | 19 / 19 / 19 | 9.948e-13 | 0.000e+00 | PASS |
-| C60 | 27 / 27 / 27 | 3.200e-11 | 1.000e-12 | PASS |
-| CO | 16 / 16 / 16 | 0.000e+00 | 2.200e-11 | PASS |
-| Cr2 | 21 / 21 / 21 | 2.984e-12 | 2.170e-10 | PASS |
-| Crys-MnO | 40 / 37 / 37 | 4.750e-10 | 6.410e-10 | PASS |
-| GaAs | 13 / 13 / 13 | 1.998e-11 | 8.000e-12 | PASS |
-| Glycine | 20 / 20 / 20 | 9.948e-13 | 1.000e-12 | PASS |
-| Graphite4 | 14 / 14 / 14 | 2.000e-12 | 1.000e-12 | PASS |
-| H2O | 31 / 31 / 31 | 1.002e-12 | 1.000e-12 | PASS |
-| H2O-EF | 17 / 17 / 17 | 9.983e-13 | 1.000e-12 | PASS |
-| HMn | 26 / 26 / 26 | 9.948e-13 | 0.000e+00 | PASS |
-| Methane | 14 / 14 / 14 | 5.600e-11 | 6.000e-12 | PASS |
-| Mol_MnO | 26 / 26 / 26 | 9.948e-13 | 1.000e-12 | PASS |
-| Ndia2 | 13 / 13 / 13 | 4.000e-12 | 1.000e-12 | PASS |
-
-</details>
+| Input | Upstream CPU (s) | Fork CPU (s) | Fork GPU (s) | CPU / GPU | SCF [MD] steps (upstream / CPU / GPU) | Max pairwise ΔE (Ha) | Max pairwise ΔF (Ha/bohr) | Agreement |
+|---|---:|---:|---:|---:|---|---:|---:|---|
+| Benzene | 2.280 | 3.080 | 2.900 | 1.062 | 19 [1] / 19 [1] / 19 [1] | 9.948e-13 | 0.000e+00 | PASS |
+| C60 | 4.910 | 7.770 | 8.790 | 0.884 | 27 [1] / 27 [1] / 27 [1] | 2.802e-11 | 1.000e-12 | PASS |
+| CO | 3.470 | 2.770 | 11.470 | 0.241 | 16 [1] / 16 [1] / 16 [1] | 0.000e+00 | 2.100e-11 | PASS |
+| Cr2 | 3.850 | 3.080 | 3.020 | 1.020 | 21 [1] / 21 [1] / 21 [1] | 2.984e-12 | 1.880e-10 | PASS |
+| Crys-MnO | 7.140 | 5.870 | 6.680 | 0.879 | 37 [1] / 39 [1] / 37 [1] | 4.790e-10 | 6.400e-10 | PASS |
+| GaAs | 12.810 | 12.290 | 11.490 | 1.070 | 13 [1] / 13 [1] / 13 [1] | 1.600e-11 | 8.000e-12 | PASS |
+| Glycine | 2.140 | 1.770 | 2.850 | 0.621 | 20 [1] / 20 [1] / 20 [1] | 0.000e+00 | 1.000e-12 | PASS |
+| Graphite4 | 1.250 | 0.860 | 1.150 | 0.748 | 14 [1] / 14 [1] / 14 [1] | 2.000e-12 | 1.000e-12 | PASS |
+| H2O | 1.730 | 1.130 | 1.480 | 0.764 | 31 [2] / 31 [2] / 31 [2] | 1.002e-12 | 1.000e-12 | PASS |
+| H2O-EF | 1.840 | 1.470 | 1.750 | 0.840 | 17 [1] / 17 [1] / 17 [1] | 9.983e-13 | 1.000e-12 | PASS |
+| HMn | 6.310 | 6.310 | 6.300 | 1.002 | 26 [1] / 26 [1] / 26 [1] | 9.948e-13 | 0.000e+00 | PASS |
+| Methane | 1.240 | 0.900 | 1.320 | 0.682 | 14 [1] / 14 [1] / 14 [1] | 6.200e-11 | 7.000e-12 | PASS |
+| Mol_MnO | 3.630 | 3.660 | 2.790 | 1.312 | 26 [1] / 26 [1] / 26 [1] | 9.948e-13 | 1.000e-12 | PASS |
+| Ndia2 | 1.620 | 1.230 | 1.080 | 1.139 | 13 [1] / 13 [1] / 13 [1] | 4.000e-12 | 1.000e-12 | PASS |
 
 ##### `-runtestL` (16 cases)
 
-| Input | Upstream CPU (s) | Fork CPU (s) | Fork GPU (s) | Upstream / Fork CPU | Upstream / GPU | Fork CPU / GPU |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| 5_5_13COb2 | 63.350 | 58.650 | 64.770 | 1.080 | 0.978 | 0.906 |
-| B2C62_Band | 363.230 | 276.170 | 796.290 | 1.315 | 0.456 | 0.347 |
-| CG15c-DC-LNO | 137.220 | 93.590 | 113.100 | 1.466 | 1.213 | 0.827 |
-| DIA512-1 | 87.110 | 75.080 | 104.790 | 1.160 | 0.831 | 0.716 |
-| FeBCC | 96.300 | 90.900 | 105.930 | 1.059 | 0.909 | 0.858 |
-| GEL | 27.110 | 22.940 | 103.250 | 1.182 | 0.263 | 0.222 |
-| GFRAG | 28.730 | 25.870 | 36.650 | 1.111 | 0.784 | 0.706 |
-| GGFF | 952.280 | 784.610 | 1053.170 | 1.214 | 0.904 | 0.745 |
-| MCCN | 174.760 | 170.770 | 185.390 | 1.023 | 0.943 | 0.921 |
-| Mn12_148_F | 66.390 | 60.710 | 76.790 | 1.094 | 0.865 | 0.791 |
-| N1C999 | 1985.770 | 845.210 | 908.460 | 2.349 | 2.186 | 0.930 |
-| Ni63-O64 | 58.470 | 54.520 | 66.920 | 1.072 | 0.874 | 0.815 |
-| Pt63 | 35.530 | 33.640 | 58.360 | 1.056 | 0.609 | 0.576 |
-| SialicAcid | 12.740 | 10.710 | 19.410 | 1.190 | 0.656 | 0.552 |
-| ZrB2_2x2 | 155.010 | 148.290 | 174.490 | 1.045 | 0.888 | 0.850 |
-| nsV4Bz5 | 75.340 | 88.270 | 76.860 | 0.854 | 0.980 | 1.148 |
-| **Total** | **4319.340** | **2839.930** | **3944.630** | **1.521** | **1.095** | **0.720** |
-
-<details>
-<summary>SCF counts and numerical checks: -runtestL (16 cases)</summary>
-
-| Input | SCF steps (upstream / fork CPU / GPU) | Max abs ΔE (Ha) | Max abs ΔF (Ha/bohr) | Check |
-| --- | --- | ---: | ---: | --- |
-| 5_5_13COb2 | 66 / 66 / 66 | 6.260e-10 | 3.200e-10 | PASS |
-| B2C62_Band | 204 / 204 / 204 | 1.270e-10 | 3.517e-08 | PASS |
-| CG15c-DC-LNO | 44 / 42 / 42 | 1.268e-09 | 1.560e-10 | PASS |
-| DIA512-1 | 29 / 29 / 29 | 7.731e-10 | 6.133e-09 | PASS |
-| FeBCC | 62 / 62 / 62 | 1.100e-09 | 7.300e-11 | PASS |
-| GEL | 58 / 58 / 58 | 2.369e-10 | 4.410e-10 | PASS |
-| GFRAG | 60 / 60 / 60 | 5.660e-10 | 1.916e-09 | PASS |
-| GGFF | 102 / 98 / 101 | 5.200e-10 | 5.900e-11 | PASS |
-| MCCN | 67 / 67 / 67 | 3.620e-10 | 3.700e-11 | PASS |
-| Mn12_148_F | 61 / 61 / 61 | 2.510e-10 | 5.570e-10 | PASS |
-| N1C999 | 79 / 59 / 59 | 1.545e-09 | 3.100e-11 | PASS |
-| Ni63-O64 | 69 / 69 / 62 | 2.907e-09 | 8.010e-10 | PASS |
-| Pt63 | 58 / 59 / 69 | 1.701e-08 | 4.596e-09 | PASS |
-| SialicAcid | 29 / 29 / 29 | 3.120e-10 | 4.190e-10 | PASS |
-| ZrB2_2x2 | 49 / 49 / 49 | 8.708e-11 | 5.120e-10 | PASS |
-| nsV4Bz5 | 57 / 57 / 57 | 9.999e-11 | 1.161e-09 | PASS |
-
-</details>
+| Input | Upstream CPU (s) | Fork CPU (s) | Fork GPU (s) | CPU / GPU | SCF [MD] steps (upstream / CPU / GPU) | Max pairwise ΔE (Ha) | Max pairwise ΔF (Ha/bohr) | Agreement |
+|---|---:|---:|---:|---:|---|---:|---:|---|
+| 5_5_13COb2 | 63.720 | 59.700 | 58.790 | 1.015 | 66 [1] / 67 [1] / 66 [1] | 6.110e-10 | 1.570e-10 | PASS |
+| B2C62_Band | 785.290 | 581.610 | 626.130 | 0.929 | 203 [11] / 203 [11] / 203 [11] | 1.190e-10 | 4.488e-08 | PASS |
+| CG15c-DC-LNO | 151.680 | 107.380 | 116.910 | 0.918 | 42 [1] / 42 [1] / 42 [1] | 1.326e-09 | 1.560e-10 | PASS |
+| DIA512-1 | 88.730 | 74.720 | 97.660 | 0.765 | 29 [1] / 29 [1] / 29 [1] | 7.321e-10 | 7.322e-09 | PASS |
+| FeBCC | 141.710 | 130.790 | 136.280 | 0.960 | 62 [1] / 62 [1] / 62 [1] | 9.370e-10 | 7.400e-11 | PASS |
+| GEL | 60.270 | 49.120 | 45.100 | 1.089 | 58 [1] / 58 [1] / 58 [1] | 2.150e-10 | 4.410e-10 | PASS |
+| GFRAG | 27.990 | 25.370 | 27.410 | 0.926 | 60 [1] / 60 [1] / 60 [1] | 1.380e-10 | 6.930e-10 | PASS |
+| GGFF | 1351.160 | 976.110 | 869.400 | 1.123 | 101 [1] / 100 [1] / 101 [1] | 7.981e-11 | 1.390e-10 | PASS |
+| MCCN | 168.450 | 166.830 | 471.950 | 0.353 | 67 [1] / 67 [1] / 67 [1] | 3.402e-10 | 3.700e-11 | PASS |
+| Mn12_148_F | 62.780 | 59.530 | 52.480 | 1.134 | 61 [1] / 61 [1] / 61 [1] | 1.864e-11 | 4.530e-10 | PASS |
+| N1C999 | 2419.340 | 1159.360 | 1192.430 | 0.972 | 66 [1] / 58 [1] / 58 [1] | 1.430e-09 | 3.300e-11 | PASS |
+| Ni63-O64 | 61.170 | 50.050 | 51.040 | 0.981 | 69 [1] / 62 [1] / 62 [1] | 2.752e-09 | 5.260e-10 | PASS |
+| Pt63 | 43.400 | 38.940 | 40.240 | 0.968 | 73 [1] / 74 [1] / 67 [1] | 1.252e-09 | 1.620e-10 | PASS |
+| SialicAcid | 11.940 | 10.660 | 12.880 | 0.828 | 29 [1] / 29 [1] / 29 [1] | 5.002e-12 | 4.000e-12 | PASS |
+| ZrB2_2x2 | 154.380 | 137.760 | 170.520 | 0.808 | 49 [1] / 49 [1] / 49 [1] | 1.510e-10 | 3.870e-10 | PASS |
+| nsV4Bz5 | 70.580 | 82.680 | 56.030 | 1.476 | 57 [1] / 57 [1] / 57 [1] | 1.110e-10 | 5.290e-10 | PASS |
 
 ##### Named inputs
 
-| Input | Upstream CPU (s) | Fork CPU (s) | Fork GPU (s) | Upstream / Fork CPU | Upstream / GPU | Fork CPU / GPU |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| `cghelgeo.dat` | 1896.871 | 2483.295 | 2587.862 | 0.764 | 0.733 | 0.960 |
-| `sidia333_nc_cluster.dat` | 483.443 | 352.627 | 193.664 | 1.371 | 2.496 | 1.821 |
-
-<details>
-<summary>SCF counts and numerical checks: Named inputs</summary>
-
-| Input | SCF steps (upstream / fork CPU / GPU) | Max abs ΔE (Ha) | Max abs ΔF (Ha/bohr) | Check |
-| --- | --- | ---: | ---: | --- |
-| `cghelgeo.dat` | 60 / 59 / 61 | 2.615e-07 | 4.598e-08 | FAIL |
-| `sidia333_nc_cluster.dat` | 25 / 25 / 25 | 2.000e-10 | 1.450e-10 | PASS |
-
-</details>
+| Input | Upstream CPU (s) | Fork CPU (s) | Fork GPU (s) | CPU / GPU | SCF [MD] steps (upstream / CPU / GPU) | Max pairwise ΔE (Ha) | Max pairwise ΔF (Ha/bohr) | Agreement |
+|---|---:|---:|---:|---:|---|---:|---:|---|
+| cghelgeo | 2057.865 | 2392.246 | 1121.985 | 2.132 | 60 [1] / 57 [1] / 58 [1] | 1.318e-07 | 5.428e-08 | FAIL |
+| sidia333_nc_cluster | 514.484 | 370.987 | 181.548 | 2.043 | 25 [1] / 25 [1] / 25 [1] | 2.290e-10 | 1.640e-10 | PASS |
 
 #### Accuracy and convergence
 
-All **64 new case executions** completed with finite total energies and
-all 27,552 force components and matching geometry/grids.
-The unchanged strict comparison requires absolute energy differences ≤
-`1e-7` Ha and maximum force-component differences ≤ `1e-7` Ha/bohr.
-**62/64 executions pass all applicable comparisons; 2 fail.**
-Against the retained upstream alone, 63/64 outputs pass
-(CPU 31/32; HIP 32/32).
-The failed original measurements remain in the tables and records.
-Per-case maxima cover both fork paths against bundled references, each
-other, retained upstream CPU and the previous fork output where applicable.
-Completion markers alone never determine acceptance. SCF counts sum all
-MD steps; ratios compare whole inputs rather than fixed iteration counts.
+All **96 completed case outputs** contain finite total energies and all
+**41,328 force components**, with matching geometry/grids.
+The bundled S/L reference comparisons pass **90/90**.
+The three route-pair comparisons for each of the 32 inputs pass
+**95/96**. A comparison requires absolute total-energy difference
+≤ `1e-7` Ha and maximum force-component difference ≤ `1e-7` Ha/bohr.
+Completion markers alone do not determine PASS.
 
-The sidia333 input retains its 25-SCF limit; these timings do not establish
-SCF convergence. All reported benchmark times are single measurements.
+The only failed comparison is **cghelgeo, fork CPU versus fork GPU**:
+absolute energy difference **1.317639544e-7 Ha** exceeds the energy
+threshold; maximum force-component difference **5.4283e-8 Ha/bohr** passes.
+Both fork routes pass their individual comparisons against upstream CPU.
+This failed CPU/GPU comparison remains in the tables and records.
+The original cghelgeo criterion remains `1e-7`; sidia333 retains criterion
+`1e-13` and its **25-SCF cap**, so its capped timing does not establish
+convergence.
 
-The original cghelgeo CPU run failed the strict total-energy comparison.
+Separate [strict SCF checks](docs/CGHELGEO_STRICT_SCF.md) and
+[AMD cold-start precision verification](#precision-radeon-coldstart)
+compare four arithmetic routes at 8 MPI × 2 threads with tighter SCF
+settings. They are separate accuracy studies, excluded from these timings.
 
-- `cghelgeo` / `fork-cpu`: previous-fork-cpu: abs ΔE=2.136e-07 Ha, max abs ΔF=3.911e-08 Ha/bohr, upstream-intel-previous: abs ΔE=2.214e-07 Ha, max abs ΔF=3.850e-08 Ha/bohr.
-- `cghelgeo` / `fork-gpu`: fork-cpu: abs ΔE=2.615e-07 Ha, max abs ΔF=4.598e-08 Ha/bohr.
-
-The cghelgeo HIP output passes the upstream and previous-HIP checks; its
-strict execution flag fails on the comparison against the current CPU output.
-
-Identical-restart CPU controls used `scf.restart=on`, `scf.criterion=1e-10`
-and at most 20 SCF steps for both the current and previous frozen binaries.
-They are separate diagnostics, excluded from every benchmark timing.
-
-| Control | SCF steps | Total energy (Ha) | Final band-energy change (Ha) | Input stop test met |
-| --- | ---: | ---: | ---: | --- |
-| current | 20 | -4153.148190614701 | 9.955e-09 | False |
-| previous | 20 | -4153.148190614704 | 9.953e-09 | False |
-
-Both controls reached their diagnostic iteration cap without meeting
-the tighter stop test; they do not establish SCF convergence.
-
-The control pair differs by 2.728e-12 Ha in total energy
-and 1.000e-12 Ha/bohr in force components.
-Both controls are also within `1e-7` Ha and `1e-7` Ha/bohr of the retained
-upstream output (maximum differences: 7.004e-8 Ha and 7.921e-8 Ha/bohr).
-These controls do not retroactively make the original strict comparison pass.
-The identical-state agreement suggests SCF trajectory/stopping sensitivity
-rather than a new arithmetic difference in this path. The SCF stop test
-uses a band-energy change and mixing residual; it does not bound the final
-total-energy difference against another run.
-
-A [strict 8 MPI × 2-thread SCF comparison](docs/CGHELGEO_STRICT_SCF.md)
-uses `scf.criterion=1e-12` and checks all 1,950 force components.
-Across upstream CPU, CPU AVX2, HIP with native FP64 grid/orbital/GEMM
-arithmetic and the default HIP policy, with inherited product rounding retained,
-the maximum pairwise differences are 9.37e-11 Ha in
-energy and 4.08e-10 Ha/bohr in force components.
-These accuracy checks are separate from the earlier 16×2 timings.
-
-The [AMD cold-start precision results](#precision-radeon-coldstart)
-independently converge all four routes at 8 MPI × 2 threads and
-`scf.criterion=1e-12`, without supplied restart data. The comparison table,
-mixing schedule and record links are included there.
-
-**The cghelgeo GPU timing includes CPU dense diagonalization.** There were
-61 dense-memory rejections across 61 SCF steps. The first verdict was:
-
-```text
-Band_DFT_Col: GPU device is shared by 16 rank(s), has 12794.000 MiB free (16304.000 MiB total), but 16004.569 MiB is required for the dense GPU diagonalization (512.000 MiB library reserve per rank); switching to CPU path.
-```
-
-The single Radeon could not form the cooperative MAGMA multi-GPU pool
-(61 CPU-solve messages); other HIP phases remained enabled.
-The pre-admission GPU banner alone does not establish GPU eigensolver use.
-
-`-runtestL2` and `-runtestL3` have no completed three-route measurement.
-L3 was not repeated after the earlier host-memory guard stopped that
-campaign at the 32 GiB available-memory reserve. No complete L3 timing or
-speedup is reported.
+For cghelgeo, the HIP log records 58 MAGMA GPU eigensolver calls across
+58 SCF steps; sidia333 records 25 across 25 steps. No global dense
+CPU-diagonalization fallback was logged in this campaign. Matrix
+construction and local DC/DC-LNO/Krylov CPU work are separate from a
+global dense-solver fallback; a GPU dispatch banner alone does not show
+that every stage executes on the GPU.
 
 #### Measurement records
 
-The [case-level CSV](benchmarks/results/radeon_rx9060xt_20261101_16x2.csv) records every
-case timing, SCF count, comparison maximum and input hash. The accompanying
-[provenance JSON](benchmarks/results/radeon_rx9060xt_20261101_16x2.json) records the measured
-revision, build, frozen executable/library hashes, runtime controls, rank
-audits, dataset hashes, source review, test fixes and all eight jobs.
-Raw logs are under `work/codex_benchmark_20261101_mi300a_guard/`.
-The [previous Radeon record](benchmarks/results/radeon_rx9060xt_20261031_16x2.json)
-remains available separately.
+The first upstream cghelgeo attempt crashed in its first eigensolve with
+SIGSEGV at the default **8 MiB process-stack limit**, without a completed
+output. The recorded retry used **unlimited process stack and
+`OMP_STACKSIZE=256M`**, with the same binary, scientific input, and 8×4
+rank/thread binding; it completed in 2057.865 seconds. Only this completed
+retry contributes to the timing. Future primary launches after the
+recorded stack adjustment inherited unlimited process stack; earlier
+successful jobs were retained. Failed logs and the workaround are
+preserved in the [attempt history](benchmarks/results/radeon_rx9060xt_20261121_8x4/attempt-history.json)
+and [stack-limit adjustment](benchmarks/results/radeon_rx9060xt_20261121_8x4/stack-limit-adjustment.json).
+
+The [complete measurement report](benchmarks/results/radeon_rx9060xt_20261121_8x4/README.md)
+links this campaign's conditions and results. The supporting records are:
+
+- [Case timings, SCF counts, and energies](benchmarks/results/radeon_rx9060xt_20261121_8x4/case-results.csv),
+  [job times and memory use](benchmarks/results/radeon_rx9060xt_20261121_8x4/run-results.csv),
+  and [final validation](benchmarks/results/radeon_rx9060xt_20261121_8x4/validation.json).
+- [Route-pair comparisons](benchmarks/results/radeon_rx9060xt_20261121_8x4/comparisons.csv)
+  and [bundled-reference comparisons](benchmarks/results/radeon_rx9060xt_20261121_8x4/bundled-reference-comparisons.json).
+- [Build, binary hashes, and runtime settings](benchmarks/results/radeon_rx9060xt_20261121_8x4/manifest.json),
+  [input audit](benchmarks/results/radeon_rx9060xt_20261121_8x4/input-audit.json),
+  and [rank/library audit](benchmarks/results/radeon_rx9060xt_20261121_8x4/execution-audit.json).
+- [GPU-path audit](benchmarks/results/radeon_rx9060xt_20261121_8x4/gpu-path-audit.json),
+  [compressed logs and final outputs](benchmarks/results/radeon_rx9060xt_20261121_8x4/logs),
+  and [preserved failed attempt](benchmarks/results/radeon_rx9060xt_20261121_8x4/failed-attempts).
+
+Full raw calculations, restart files, frozen binaries, and CPU/memory
+samples remain under `work/codex_benchmark_20261121_8x4/`.
 
 <a id="benchmark-sirius-mi300a"></a>
 

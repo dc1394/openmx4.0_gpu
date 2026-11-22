@@ -1,0 +1,207 @@
+{
+  "command": [
+    "/opt/intel/oneapi/mpi/2021.18/bin/mpiexec",
+    "-np",
+    "8",
+    "/home/kawai/openmx4.0_gpu/work/codex_benchmark_20261121_8x4/frozen/upstream/openmx",
+    "-runtestL",
+    "-nt",
+    "4"
+  ],
+  "controls": {
+    "OMP_NUM_THREADS": "4",
+    "OMP_DYNAMIC": "FALSE",
+    "OMP_PROC_BIND": "close",
+    "OMP_PLACES": "cores",
+    "OMP_MAX_ACTIVE_LEVELS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "BLIS_NUM_THREADS": "1",
+    "OPENMX_GPU": "0",
+    "MKL_NUM_THREADS": "4",
+    "MKL_DYNAMIC": "FALSE",
+    "I_MPI_PIN": "1",
+    "I_MPI_PIN_DOMAIN": "omp",
+    "I_MPI_PIN_ORDER": "compact",
+    "I_MPI_FABRICS": "shm",
+    "LD_LIBRARY_PATH": "/opt/intel/oneapi/compiler/2026.0/lib:/opt/intel/oneapi/mpi/2021.18/lib:/opt/intel/oneapi/mkl/latest/lib"
+  },
+  "inputs": [
+    {
+      "case": "5_5_13COb2",
+      "system": "5_5_13COb2",
+      "source": "/home/kawai/openmx4.0/work/large_example/5_5_13COb2.dat",
+      "original_sha256": "9b017828abfd9d30635f3dd46af549427bd05f1af48484bce7405bcd77cdae2b",
+      "input_sha256": "4eb1db197745e0474c18d7e8f00950f69e15e06e2dda1205f19fd802bd12ccc0",
+      "scf_criterion": "1.0e-10",
+      "scf_maxIter": "300",
+      "MD_maxIter": "1500",
+      "status": "pending"
+    },
+    {
+      "case": "B2C62_Band",
+      "system": "B2C62_Band",
+      "source": "/home/kawai/openmx4.0/work/large_example/B2C62_Band.dat",
+      "original_sha256": "880b8bc61e5220c991aa145c032b2a22b3f277c2e36c558bb4e5f113c6510a12",
+      "input_sha256": "916e9131bcd577da5b72ce0d8ebc1b89b22a139997cc9f54cd5706358f063e62",
+      "scf_criterion": "1.0e-10",
+      "scf_maxIter": "100",
+      "MD_maxIter": "100",
+      "status": "pending"
+    },
+    {
+      "case": "CG15c-DC-LNO",
+      "system": "CG15c-DC-LNO",
+      "source": "/home/kawai/openmx4.0/work/large_example/CG15c-DC-LNO.dat",
+      "original_sha256": "0b6857ccb981b5b840e0fb03eecc8a7e22706b62bea8bb136f6559c937e47978",
+      "input_sha256": "3221c9fc1022d1dbde2b523fd7a54097e303a751287afbbccba180c493729d9f",
+      "scf_criterion": "1.0e-10",
+      "scf_maxIter": "100",
+      "MD_maxIter": "1",
+      "status": "pending"
+    },
+    {
+      "case": "DIA512-1",
+      "system": "DIA512-1",
+      "source": "/home/kawai/openmx4.0/work/large_example/DIA512-1.dat",
+      "original_sha256": "b667a8aed1b04b6e7468c279ce22c002ba402614894564fe3bd34501bd6cc02f",
+      "input_sha256": "101ecf5ea62b88d37cb5e868dfce01b0181bfaef6a3845fd1a1f54c339049ca0",
+      "scf_criterion": "1.0e-10",
+      "scf_maxIter": "150",
+      "MD_maxIter": "1",
+      "status": "pending"
+    },
+    {
+      "case": "FeBCC",
+      "system": "FeBCC",
+      "source": "/home/kawai/openmx4.0/work/large_example/FeBCC.dat",
+      "original_sha256": "2d56ddf2c8a0a62408730f2e35b19f61b14b47441d7f06975dbbea741ba93e76",
+      "input_sha256": "97bd56d494df18eba6b2851c751ee0dfbf2ece7393eeaf060614ec9e609d3339",
+      "scf_criterion": "1.0e-10",
+      "scf_maxIter": "180",
+      "MD_maxIter": "1",
+      "status": "pending"
+    },
+    {
+      "case": "GEL",
+      "system": "GEL",
+      "source": "/home/kawai/openmx4.0/work/large_example/GEL.dat",
+      "original_sha256": "991bdd261adcea7f26f173075a557b372397116560c4d2d15e254b80322ef053",
+      "input_sha256": "9f7bb534d09f68805044f29173c0cf9b3eecb147144b857d6b1860a6038c2aca",
+      "scf_criterion": "1.0e-10",
+      "scf_maxIter": "200",
+      "MD_maxIter": "250",
+      "status": "pending"
+    },
+    {
+      "case": "GFRAG",
+      "system": "GFRAG",
+      "source": "/home/kawai/openmx4.0/work/large_example/GFRAG.dat",
+      "original_sha256": "7c9241d390850f5f2b57c5e9d0e6bdcf3b2739fff3d067f630ab02117294cd9a",
+      "input_sha256": "008189f7abfdde60042d78b115d026a5e0ada550f2baa9be44319c97e6c157c4",
+      "scf_criterion": "1.0e-10",
+      "scf_maxIter": "300",
+      "MD_maxIter": "1",
+      "status": "pending"
+    },
+    {
+      "case": "GGFF",
+      "system": "GGFF",
+      "source": "/home/kawai/openmx4.0/work/large_example/GGFF.dat",
+      "original_sha256": "6d06805e04e83ada2a3069c0b8ade2c3fcfbf300f7901af00caeefb7a0dca6e8",
+      "input_sha256": "468169d9bf72d6e71a81549f15ee3e09e1e5c38045b348e147026f9670a31db9",
+      "scf_criterion": "1.0e-10",
+      "scf_maxIter": "300",
+      "MD_maxIter": "1",
+      "status": "pending"
+    },
+    {
+      "case": "MCCN",
+      "system": "MCCN",
+      "source": "/home/kawai/openmx4.0/work/large_example/MCCN.dat",
+      "original_sha256": "6c0fd22cb34c148df27963f5ac7f913091d9ccadbafbfcaba4e064f26c2db476",
+      "input_sha256": "595f823ee6d6070def90db6c29f66195798f3c4aaf6fdf9e91bd55f8a188e6b7",
+      "scf_criterion": "1.0e-10",
+      "scf_maxIter": "300",
+      "MD_maxIter": "1",
+      "status": "pending"
+    },
+    {
+      "case": "Mn12_148_F",
+      "system": "Mn12_148_F",
+      "source": "/home/kawai/openmx4.0/work/large_example/Mn12_148_F.dat",
+      "original_sha256": "b4df5faef6821dbe262ef826fa206ffa5024679068cef845dc19ef0f8d576c8a",
+      "input_sha256": "cab4c04be7843f664c78aa809ca8152498690d5586999282f2a82e91b154fb4d",
+      "scf_criterion": "1.0e-10",
+      "scf_maxIter": "200",
+      "MD_maxIter": "1",
+      "status": "pending"
+    },
+    {
+      "case": "N1C999",
+      "system": "N1C999",
+      "source": "/home/kawai/openmx4.0/work/large_example/N1C999.dat",
+      "original_sha256": "96744e60f7cb48cb57880ab2ba10523c45b01a89e350ea8629754d99e8fc0493",
+      "input_sha256": "4150be2e43fd6824710e6706b5a0dd5a6210130521cd22afecdae0c45c1da81d",
+      "scf_criterion": "1.0e-11",
+      "scf_maxIter": "300",
+      "MD_maxIter": "1",
+      "status": "pending"
+    },
+    {
+      "case": "Ni63-O64",
+      "system": "Ni63-O64",
+      "source": "/home/kawai/openmx4.0/work/large_example/Ni63-O64.dat",
+      "original_sha256": "b6e4a166250fc81b2ee98b28bfac9cc8fa7ad494ac0874d879152ad687124bcf",
+      "input_sha256": "9a64e0ac2975ba914e601a79894f54bc7649d70ae1490c7c69f7d67429fcc5d1",
+      "scf_criterion": "1.0e-10",
+      "scf_maxIter": "300",
+      "MD_maxIter": "1",
+      "status": "pending"
+    },
+    {
+      "case": "Pt63",
+      "system": "Pt63",
+      "source": "/home/kawai/openmx4.0/work/large_example/Pt63.dat",
+      "original_sha256": "96c76aa83163e8d3db6feed5f4668520ea86aecf6d2abf70229286095aea06ec",
+      "input_sha256": "400ae6c07f3b2fd62b6664024326f9d82f03a4165db9149938e93756b74a091f",
+      "scf_criterion": "1.0e-9",
+      "scf_maxIter": "200",
+      "MD_maxIter": "1",
+      "status": "pending"
+    },
+    {
+      "case": "SialicAcid",
+      "system": "SialicAcid",
+      "source": "/home/kawai/openmx4.0/work/large_example/SialicAcid.dat",
+      "original_sha256": "2be602e61ba4761bd772f7e14c8b6f57497b30a7d278062a496300bfe3d5074c",
+      "input_sha256": "d75a4a873cf2b501d4b235b3a17c14091e0cbe16a5129ea7a59c8cb7e066cb0c",
+      "scf_criterion": "1.0e-10",
+      "scf_maxIter": "100",
+      "MD_maxIter": "1",
+      "status": "pending"
+    },
+    {
+      "case": "ZrB2_2x2",
+      "system": "ZrB2_2x2",
+      "source": "/home/kawai/openmx4.0/work/large_example/ZrB2_2x2.dat",
+      "original_sha256": "6269cb09d553251bed54f475d3e0790c4554a0a40cc0e125d218399786996a77",
+      "input_sha256": "bec5269640f73d71c32d2f047682e198213d1a8158a9725e0efeaa39f41030b8",
+      "scf_criterion": "1.0e-9",
+      "scf_maxIter": "300",
+      "MD_maxIter": "500",
+      "status": "pending"
+    },
+    {
+      "case": "nsV4Bz5",
+      "system": "nsV4Bz5",
+      "source": "/home/kawai/openmx4.0/work/large_example/nsV4Bz5.dat",
+      "original_sha256": "bba6c1f8ad15574e0d938101a1f1e9541e6f8bf5d7ac146d98d6f803d5a80c9e",
+      "input_sha256": "03ed331c2bbac36293fac90288589bcaa3a3e369d3689795312e3c3801911743",
+      "scf_criterion": "1.0e-10",
+      "scf_maxIter": "180",
+      "MD_maxIter": "200",
+      "status": "pending"
+    }
+  ],
+  "binary_sha256": "e1bd6ef267206c93de8ef8f4f4b27e92840505473f4da0ccd51348c715bd9ddd"
+}

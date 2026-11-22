@@ -1,0 +1,58 @@
+[
+  {
+    "test": "S",
+    "gpu_accelerated_markers": 545,
+    "dense_cpu_fallback_message_count": 0,
+    "matrix_or_gemm_cpu_fallback_lines": [],
+    "gpu_fp64_fallback_lines": [],
+    "dense_cpu_fallback_lines": [],
+    "gpu_eigensolver_messages": [],
+    "gpu_eigensolver_message_count": 0,
+    "fallback_messages": [
+      "<DC>  Solving the eigenvalue problem (GPU dispatch enabled; local CPU fallback may apply)..."
+    ]
+  },
+  {
+    "test": "sidia333_nc_cluster",
+    "gpu_accelerated_markers": 30,
+    "dense_cpu_fallback_message_count": 0,
+    "matrix_or_gemm_cpu_fallback_lines": [],
+    "gpu_fp64_fallback_lines": [],
+    "dense_cpu_fallback_lines": [],
+    "gpu_eigensolver_messages": [
+      "<Cluster>  Solving the eigenvalue problem (GPU-accelerated, MAGMA)..."
+    ],
+    "gpu_eigensolver_message_count": 25,
+    "fallback_messages": []
+  },
+  {
+    "test": "cghelgeo",
+    "gpu_accelerated_markers": 63,
+    "dense_cpu_fallback_message_count": 0,
+    "matrix_or_gemm_cpu_fallback_lines": [],
+    "gpu_fp64_fallback_lines": [],
+    "dense_cpu_fallback_lines": [],
+    "gpu_eigensolver_messages": [
+      "<Band>  Solving the eigenvalue problem (GPU-accelerated, MAGMA)..."
+    ],
+    "gpu_eigensolver_message_count": 58,
+    "fallback_messages": []
+  },
+  {
+    "test": "L",
+    "gpu_accelerated_markers": 1201,
+    "dense_cpu_fallback_message_count": 0,
+    "matrix_or_gemm_cpu_fallback_lines": [],
+    "gpu_fp64_fallback_lines": [],
+    "dense_cpu_fallback_lines": [],
+    "gpu_eigensolver_messages": [
+      "<Band>  Solving the eigenvalue problem (GPU-accelerated, MAGMA)...",
+      "<Cluster>  Solving the eigenvalue problem (GPU-accelerated, MAGMA)..."
+    ],
+    "gpu_eigensolver_message_count": 784,
+    "fallback_messages": [
+      "<DC-LNO>  Solving the eigenvalue problem (GPU dispatch enabled; local CPU fallback may apply)...",
+      "<Krylov>  Solving the eigenvalue problem (GPU dispatch enabled; local CPU fallback may apply)..."
+    ]
+  }
+]

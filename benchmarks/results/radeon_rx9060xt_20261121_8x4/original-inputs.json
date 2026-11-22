@@ -1,0 +1,162 @@
+[
+  {
+    "case": "Benzene",
+    "source": "/home/kawai/openmx4.0/work/input_example/Benzene.dat",
+    "sha256": "645c48443afeb170aadaaa600d08fcc36bed316feac489cd6ce663477012a7cb"
+  },
+  {
+    "case": "C60",
+    "source": "/home/kawai/openmx4.0/work/input_example/C60.dat",
+    "sha256": "ad3d1da5f946909fa7f312c0687287e44d809819ad2f0525bb33e20acaa81f85"
+  },
+  {
+    "case": "CO",
+    "source": "/home/kawai/openmx4.0/work/input_example/CO.dat",
+    "sha256": "628d43217254933e9ee2a4c43d5265066d4ac7f2628d18d17ff10f07df235857"
+  },
+  {
+    "case": "Cr2",
+    "source": "/home/kawai/openmx4.0/work/input_example/Cr2.dat",
+    "sha256": "aae6bbdbec74e0dca7f97c2c592dd7170f7ee4edce50390a865d53073555e6fb"
+  },
+  {
+    "case": "Crys-MnO",
+    "source": "/home/kawai/openmx4.0/work/input_example/Crys-MnO.dat",
+    "sha256": "85756c40cc324e35764dacc68788f16d23d93fd34d7a10a57cbafbaeaa8e1175"
+  },
+  {
+    "case": "GaAs",
+    "source": "/home/kawai/openmx4.0/work/input_example/GaAs.dat",
+    "sha256": "b2571de088368e512c9967f770273aa6682563eb4bf77db5973b6d604bea1141"
+  },
+  {
+    "case": "Glycine",
+    "source": "/home/kawai/openmx4.0/work/input_example/Glycine.dat",
+    "sha256": "f849e0cb5f880d55df52d168e6b811e81fd4bbdf267b8af9d3a9bcb0dd648b3f"
+  },
+  {
+    "case": "Graphite4",
+    "source": "/home/kawai/openmx4.0/work/input_example/Graphite4.dat",
+    "sha256": "8e1b494fe68a87cd27e1ff663b28daad965589d05ee6744465fa6a859043a68d"
+  },
+  {
+    "case": "H2O-EF",
+    "source": "/home/kawai/openmx4.0/work/input_example/H2O-EF.dat",
+    "sha256": "a296c2fc62e4b9d7e4a7bb80cb97086b9df35030f98392b7fef3961784292d80"
+  },
+  {
+    "case": "H2O",
+    "source": "/home/kawai/openmx4.0/work/input_example/H2O.dat",
+    "sha256": "0a423e482edaca4fbce88366bd6ee56ccf0f9546fd211e49653f4a6597e87dd9"
+  },
+  {
+    "case": "HMn",
+    "source": "/home/kawai/openmx4.0/work/input_example/HMn.dat",
+    "sha256": "7eb9c80d6b672b2ef8fca78f1c4f6158d65fe31cbfe96daa58d9d54e12cf3f75"
+  },
+  {
+    "case": "Methane",
+    "source": "/home/kawai/openmx4.0/work/input_example/Methane.dat",
+    "sha256": "33bfd31ece53aece5c1f98bcc4d5cd3c3e5f65ca0eeb84b31df3528623d24fc8"
+  },
+  {
+    "case": "Mol_MnO",
+    "source": "/home/kawai/openmx4.0/work/input_example/Mol_MnO.dat",
+    "sha256": "e5149431f1ac555a80f7f3c62e158d6baae9209ba129f7b353382a7489c65b39"
+  },
+  {
+    "case": "Ndia2",
+    "source": "/home/kawai/openmx4.0/work/input_example/Ndia2.dat",
+    "sha256": "c7a1a3d42891934cc8a72fe8b71588f4a5f6f33c4201c0e5937cffc5418665d0"
+  },
+  {
+    "case": "5_5_13COb2",
+    "source": "/home/kawai/openmx4.0/work/large_example/5_5_13COb2.dat",
+    "sha256": "9b017828abfd9d30635f3dd46af549427bd05f1af48484bce7405bcd77cdae2b"
+  },
+  {
+    "case": "B2C62_Band",
+    "source": "/home/kawai/openmx4.0/work/large_example/B2C62_Band.dat",
+    "sha256": "880b8bc61e5220c991aa145c032b2a22b3f277c2e36c558bb4e5f113c6510a12"
+  },
+  {
+    "case": "CG15c-DC-LNO",
+    "source": "/home/kawai/openmx4.0/work/large_example/CG15c-DC-LNO.dat",
+    "sha256": "0b6857ccb981b5b840e0fb03eecc8a7e22706b62bea8bb136f6559c937e47978"
+  },
+  {
+    "case": "DIA512-1",
+    "source": "/home/kawai/openmx4.0/work/large_example/DIA512-1.dat",
+    "sha256": "b667a8aed1b04b6e7468c279ce22c002ba402614894564fe3bd34501bd6cc02f"
+  },
+  {
+    "case": "FeBCC",
+    "source": "/home/kawai/openmx4.0/work/large_example/FeBCC.dat",
+    "sha256": "2d56ddf2c8a0a62408730f2e35b19f61b14b47441d7f06975dbbea741ba93e76"
+  },
+  {
+    "case": "GEL",
+    "source": "/home/kawai/openmx4.0/work/large_example/GEL.dat",
+    "sha256": "991bdd261adcea7f26f173075a557b372397116560c4d2d15e254b80322ef053"
+  },
+  {
+    "case": "GFRAG",
+    "source": "/home/kawai/openmx4.0/work/large_example/GFRAG.dat",
+    "sha256": "7c9241d390850f5f2b57c5e9d0e6bdcf3b2739fff3d067f630ab02117294cd9a"
+  },
+  {
+    "case": "GGFF",
+    "source": "/home/kawai/openmx4.0/work/large_example/GGFF.dat",
+    "sha256": "6d06805e04e83ada2a3069c0b8ade2c3fcfbf300f7901af00caeefb7a0dca6e8"
+  },
+  {
+    "case": "MCCN",
+    "source": "/home/kawai/openmx4.0/work/large_example/MCCN.dat",
+    "sha256": "6c0fd22cb34c148df27963f5ac7f913091d9ccadbafbfcaba4e064f26c2db476"
+  },
+  {
+    "case": "Mn12_148_F",
+    "source": "/home/kawai/openmx4.0/work/large_example/Mn12_148_F.dat",
+    "sha256": "b4df5faef6821dbe262ef826fa206ffa5024679068cef845dc19ef0f8d576c8a"
+  },
+  {
+    "case": "N1C999",
+    "source": "/home/kawai/openmx4.0/work/large_example/N1C999.dat",
+    "sha256": "96744e60f7cb48cb57880ab2ba10523c45b01a89e350ea8629754d99e8fc0493"
+  },
+  {
+    "case": "Ni63-O64",
+    "source": "/home/kawai/openmx4.0/work/large_example/Ni63-O64.dat",
+    "sha256": "b6e4a166250fc81b2ee98b28bfac9cc8fa7ad494ac0874d879152ad687124bcf"
+  },
+  {
+    "case": "Pt63",
+    "source": "/home/kawai/openmx4.0/work/large_example/Pt63.dat",
+    "sha256": "96c76aa83163e8d3db6feed5f4668520ea86aecf6d2abf70229286095aea06ec"
+  },
+  {
+    "case": "SialicAcid",
+    "source": "/home/kawai/openmx4.0/work/large_example/SialicAcid.dat",
+    "sha256": "2be602e61ba4761bd772f7e14c8b6f57497b30a7d278062a496300bfe3d5074c"
+  },
+  {
+    "case": "ZrB2_2x2",
+    "source": "/home/kawai/openmx4.0/work/large_example/ZrB2_2x2.dat",
+    "sha256": "6269cb09d553251bed54f475d3e0790c4554a0a40cc0e125d218399786996a77"
+  },
+  {
+    "case": "nsV4Bz5",
+    "source": "/home/kawai/openmx4.0/work/large_example/nsV4Bz5.dat",
+    "sha256": "bba6c1f8ad15574e0d938101a1f1e9541e6f8bf5d7ac146d98d6f803d5a80c9e"
+  },
+  {
+    "case": "cghelgeo",
+    "source": "/home/kawai/openmx4.0_gpu/benchmarks/inputs/cghelgeo.dat",
+    "sha256": "9c3958e470820ab2182af859b4749a0f3375c41d1a56ac013e0f398b441d0ff7"
+  },
+  {
+    "case": "sidia333_nc_cluster",
+    "source": "/home/kawai/openmx4.0_gpu/benchmarks/inputs/sidia333_nc_cluster.dat",
+    "sha256": "9c5466abf560c6481b83ec9a51976f4b218856a1da330e5a209b9041239decd0"
+  }
+]

@@ -1,0 +1,93 @@
+{
+  "started": "2026-11-21T13:14:55.505344+09:00",
+  "pid": 3486046,
+  "revision": "456731c912093299b6756ae081c55533e433b0cf",
+  "ranks": 8,
+  "threads": 4,
+  "physical_cores": 32,
+  "host_memory_reserve_gib": 32,
+  "measurements_per_route_and_test": 1,
+  "input_policy": "Original geometry, SCF/MD limits, criterion, stdout and precision; only DATA.PATH and scf.eigen.lib changed.",
+  "timing_policy": "Suite totals sum native case times; named inputs use maximum-rank Total Computational Time. Wall time saved separately.",
+  "comparison_policy": "Finite energy and complete finite forces; geometry/grid agreement; abs energy <=1e-7 Ha and max force component <=1e-7 Ha/bohr. Completion alone is not PASS.",
+  "nvidia_mps": "Not applicable: AMD Radeon HIP.",
+  "restart_policy": "Independent fresh working directory for every route; no copied restart.",
+  "working_diff_sha256": "7e9348f432e03ee04e0d43a22ed59fa208608fb12158d8487661f68e8536d970",
+  "binaries": {
+    "upstream/openmx": "e1bd6ef267206c93de8ef8f4f4b27e92840505473f4da0ccd51348c715bd9ddd",
+    "fork/openmx": "b5c5ae5a45ba8803a9205f1283a0efb6868253aa5cad51587e55bf97f6516bb4",
+    "fork/lib/libopenmx_host_simd.so": "d9c2a984550ecc79de80107625839f260c869ea6148acdcf47d027f7d7cc19c2",
+    "fork/lib/libopenmx_core.so": "440b6e3bf5098f24c26202c3738b28b781d674ef32f3b6f52acb630f40503f78"
+  },
+  "build": {
+    "revision": "456731c912093299b6756ae081c55533e433b0cf",
+    "build": "/home/kawai/openmx4.0_gpu/build/hip-application-20261025/openmpi-aocl",
+    "command": [
+      "cmake",
+      "--build",
+      "/home/kawai/openmx4.0_gpu/build/hip-application-20261025/openmpi-aocl",
+      "--target",
+      "openmx",
+      "-j16"
+    ],
+    "finished": "2026-11-21T13:11:45.680461+09:00",
+    "returncode": 0,
+    "wall_s": 0.5258149718865752
+  },
+  "variant_environment": {
+    "upstream-cpu": {
+      "OMP_NUM_THREADS": "4",
+      "OMP_DYNAMIC": "FALSE",
+      "OMP_PROC_BIND": "close",
+      "OMP_PLACES": "cores",
+      "OMP_MAX_ACTIVE_LEVELS": "1",
+      "OPENBLAS_NUM_THREADS": "1",
+      "BLIS_NUM_THREADS": "1",
+      "OPENMX_GPU": "0",
+      "MKL_NUM_THREADS": "4",
+      "MKL_DYNAMIC": "FALSE",
+      "I_MPI_PIN": "1",
+      "I_MPI_PIN_DOMAIN": "omp",
+      "I_MPI_PIN_ORDER": "compact",
+      "I_MPI_FABRICS": "shm",
+      "LD_LIBRARY_PATH": "/opt/intel/oneapi/compiler/2026.0/lib:/opt/intel/oneapi/mpi/2021.18/lib:/opt/intel/oneapi/mkl/latest/lib"
+    },
+    "fork-cpu": {
+      "OMP_NUM_THREADS": "4",
+      "OMP_DYNAMIC": "FALSE",
+      "OMP_PROC_BIND": "close",
+      "OMP_PLACES": "cores",
+      "OMP_MAX_ACTIVE_LEVELS": "1",
+      "OPENBLAS_NUM_THREADS": "1",
+      "BLIS_NUM_THREADS": "4",
+      "MAGMA_NUM_THREADS": "4",
+      "MKL_NUM_THREADS": "1",
+      "LIBOMPTARGET_HEAP_SIZE": "67108864",
+      "HSA_OVERRIDE_CPU_AFFINITY_DEBUG": "0",
+      "HIP_VISIBLE_DEVICES": "0",
+      "ROCR_VISIBLE_DEVICES": "0",
+      "LD_LIBRARY_PATH": "/home/kawai/openmx4.0_gpu/work/codex_rocm_upgrade_20261025/sdk/opt/rocm/core-10.1/llvm/lib:/home/kawai/openmx4.0_gpu/work/codex_rocm_upgrade_20261025/sdk/opt/rocm/core-10.1/lib:/home/kawai/opt/openmpi-rocmclang/lib:/opt/AMD/aocl/aocl-linux-aocc-5.2.0/aocc/lib:/opt/AMD/aocc-compiler-5.1.0/lib",
+      "BENCH_PRELOAD": "/home/kawai/openmx4.0_gpu/work/codex_benchmark_20261121_8x4/frozen/fork/lib/libopenmx_core.so:/home/kawai/openmx4.0_gpu/work/codex_benchmark_20261121_8x4/frozen/fork/lib/libopenmx_host_simd.so",
+      "OPENMX_GPU": "0"
+    },
+    "fork-gpu": {
+      "OMP_NUM_THREADS": "4",
+      "OMP_DYNAMIC": "FALSE",
+      "OMP_PROC_BIND": "close",
+      "OMP_PLACES": "cores",
+      "OMP_MAX_ACTIVE_LEVELS": "1",
+      "OPENBLAS_NUM_THREADS": "1",
+      "BLIS_NUM_THREADS": "4",
+      "MAGMA_NUM_THREADS": "4",
+      "MKL_NUM_THREADS": "1",
+      "LIBOMPTARGET_HEAP_SIZE": "67108864",
+      "HSA_OVERRIDE_CPU_AFFINITY_DEBUG": "0",
+      "HIP_VISIBLE_DEVICES": "0",
+      "ROCR_VISIBLE_DEVICES": "0",
+      "LD_LIBRARY_PATH": "/home/kawai/openmx4.0_gpu/work/codex_rocm_upgrade_20261025/sdk/opt/rocm/core-10.1/llvm/lib:/home/kawai/openmx4.0_gpu/work/codex_rocm_upgrade_20261025/sdk/opt/rocm/core-10.1/lib:/home/kawai/opt/openmpi-rocmclang/lib:/opt/AMD/aocl/aocl-linux-aocc-5.2.0/aocc/lib:/opt/AMD/aocc-compiler-5.1.0/lib",
+      "BENCH_PRELOAD": "/home/kawai/openmx4.0_gpu/work/codex_benchmark_20261121_8x4/frozen/fork/lib/libopenmx_core.so:/home/kawai/openmx4.0_gpu/work/codex_benchmark_20261121_8x4/frozen/fork/lib/libopenmx_host_simd.so",
+      "OPENMX_GPU": "1",
+      "HSA_ENABLE_SDMA": "0"
+    }
+  }
+}

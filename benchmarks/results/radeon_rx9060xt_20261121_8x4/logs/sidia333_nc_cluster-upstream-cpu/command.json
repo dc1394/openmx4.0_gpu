@@ -1,0 +1,42 @@
+{
+  "command": [
+    "/opt/intel/oneapi/mpi/2021.18/bin/mpiexec",
+    "-np",
+    "8",
+    "/home/kawai/openmx4.0_gpu/work/codex_benchmark_20261121_8x4/frozen/upstream/openmx",
+    "input.dat",
+    "-nt",
+    "4"
+  ],
+  "controls": {
+    "OMP_NUM_THREADS": "4",
+    "OMP_DYNAMIC": "FALSE",
+    "OMP_PROC_BIND": "close",
+    "OMP_PLACES": "cores",
+    "OMP_MAX_ACTIVE_LEVELS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "BLIS_NUM_THREADS": "1",
+    "OPENMX_GPU": "0",
+    "MKL_NUM_THREADS": "4",
+    "MKL_DYNAMIC": "FALSE",
+    "I_MPI_PIN": "1",
+    "I_MPI_PIN_DOMAIN": "omp",
+    "I_MPI_PIN_ORDER": "compact",
+    "I_MPI_FABRICS": "shm",
+    "LD_LIBRARY_PATH": "/opt/intel/oneapi/compiler/2026.0/lib:/opt/intel/oneapi/mpi/2021.18/lib:/opt/intel/oneapi/mkl/latest/lib"
+  },
+  "inputs": [
+    {
+      "case": "sidia333_nc_cluster",
+      "system": "sidia333_nc_cluster",
+      "source": "/home/kawai/openmx4.0_gpu/benchmarks/inputs/sidia333_nc_cluster.dat",
+      "original_sha256": "9c5466abf560c6481b83ec9a51976f4b218856a1da330e5a209b9041239decd0",
+      "input_sha256": "d9578dddb6e1239013653b846d6b148e644ac7cba62d6ceacf53c31c2d5feb60",
+      "scf_criterion": "1.0e-13",
+      "scf_maxIter": "25",
+      "MD_maxIter": "1",
+      "status": "pending"
+    }
+  ],
+  "binary_sha256": "e1bd6ef267206c93de8ef8f4f4b27e92840505473f4da0ccd51348c715bd9ddd"
+}

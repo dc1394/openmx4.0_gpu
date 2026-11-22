@@ -1,0 +1,48 @@
+{
+  "command": [
+    "/home/kawai/opt/openmpi-rocmclang/bin/mpirun",
+    "-np",
+    "8",
+    "--map-by",
+    "slot:PE=4",
+    "--bind-to",
+    "core",
+    "/home/kawai/openmx4.0_gpu/work/codex_benchmark_20261121_8x4/run-fork-rank.sh",
+    "/home/kawai/openmx4.0_gpu/work/codex_benchmark_20261121_8x4/frozen/fork/openmx",
+    "input.dat",
+    "-nt",
+    "4"
+  ],
+  "controls": {
+    "OMP_NUM_THREADS": "4",
+    "OMP_DYNAMIC": "FALSE",
+    "OMP_PROC_BIND": "close",
+    "OMP_PLACES": "cores",
+    "OMP_MAX_ACTIVE_LEVELS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "BLIS_NUM_THREADS": "4",
+    "MAGMA_NUM_THREADS": "4",
+    "MKL_NUM_THREADS": "1",
+    "LIBOMPTARGET_HEAP_SIZE": "67108864",
+    "HSA_OVERRIDE_CPU_AFFINITY_DEBUG": "0",
+    "HIP_VISIBLE_DEVICES": "0",
+    "ROCR_VISIBLE_DEVICES": "0",
+    "LD_LIBRARY_PATH": "/home/kawai/openmx4.0_gpu/work/codex_rocm_upgrade_20261025/sdk/opt/rocm/core-10.1/llvm/lib:/home/kawai/openmx4.0_gpu/work/codex_rocm_upgrade_20261025/sdk/opt/rocm/core-10.1/lib:/home/kawai/opt/openmpi-rocmclang/lib:/opt/AMD/aocl/aocl-linux-aocc-5.2.0/aocc/lib:/opt/AMD/aocc-compiler-5.1.0/lib",
+    "BENCH_PRELOAD": "/home/kawai/openmx4.0_gpu/work/codex_benchmark_20261121_8x4/frozen/fork/lib/libopenmx_core.so:/home/kawai/openmx4.0_gpu/work/codex_benchmark_20261121_8x4/frozen/fork/lib/libopenmx_host_simd.so",
+    "OPENMX_GPU": "0"
+  },
+  "inputs": [
+    {
+      "case": "cghelgeo",
+      "system": "cghelgeo",
+      "source": "/home/kawai/openmx4.0_gpu/benchmarks/inputs/cghelgeo.dat",
+      "original_sha256": "9c3958e470820ab2182af859b4749a0f3375c41d1a56ac013e0f398b441d0ff7",
+      "input_sha256": "17e0b1c59e4825ba024a017c52bcf3173b27697bafdb5753267fa02a4b46066f",
+      "scf_criterion": "1.0e-7",
+      "scf_maxIter": "200",
+      "MD_maxIter": "1",
+      "status": "pending"
+    }
+  ],
+  "binary_sha256": "b5c5ae5a45ba8803a9205f1283a0efb6868253aa5cad51587e55bf97f6516bb4"
+}

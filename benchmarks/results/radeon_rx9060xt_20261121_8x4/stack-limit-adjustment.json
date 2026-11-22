@@ -1,0 +1,14 @@
+{
+  "time": "2026-11-21T13:39:04.396094+09:00",
+  "controller_pid": 3486046,
+  "old_process_stack_bytes": [
+    8388608,
+    -1
+  ],
+  "new_process_stack_bytes": [
+    -1,
+    -1
+  ],
+  "scope": "Future MPI launches inherit unlimited main-thread stack; running calculation ranks are unchanged.",
+  "reason": "Same upstream cghelgeo SIGSEGV at default 8 MiB stack documented previously in docs/CGHELGEO_STRICT_SCF.md; preserve failed attempt and retry upstream cghelgeo with known stack workaround after primary queue."
+}

@@ -1,0 +1,44 @@
+{
+  "command": [
+    "/opt/intel/oneapi/mpi/2021.18/bin/mpiexec",
+    "-np",
+    "8",
+    "/home/kawai/openmx4.0_gpu/work/codex_benchmark_20261121_8x4/frozen/upstream/openmx",
+    "input.dat",
+    "-nt",
+    "4"
+  ],
+  "controls": {
+    "OMP_NUM_THREADS": "4",
+    "OMP_DYNAMIC": "FALSE",
+    "OMP_PROC_BIND": "close",
+    "OMP_PLACES": "cores",
+    "OMP_MAX_ACTIVE_LEVELS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "BLIS_NUM_THREADS": "1",
+    "OPENMX_GPU": "0",
+    "MKL_NUM_THREADS": "4",
+    "MKL_DYNAMIC": "FALSE",
+    "I_MPI_PIN": "1",
+    "I_MPI_PIN_DOMAIN": "omp",
+    "I_MPI_PIN_ORDER": "compact",
+    "I_MPI_FABRICS": "shm",
+    "LD_LIBRARY_PATH": "/opt/intel/oneapi/compiler/2026.0/lib:/opt/intel/oneapi/mpi/2021.18/lib:/opt/intel/oneapi/mkl/latest/lib",
+    "OMP_STACKSIZE": "256M"
+  },
+  "inputs": [
+    {
+      "case": "cghelgeo",
+      "system": "cghelgeo",
+      "source": "/home/kawai/openmx4.0_gpu/benchmarks/inputs/cghelgeo.dat",
+      "original_sha256": "9c3958e470820ab2182af859b4749a0f3375c41d1a56ac013e0f398b441d0ff7",
+      "input_sha256": "17e0b1c59e4825ba024a017c52bcf3173b27697bafdb5753267fa02a4b46066f",
+      "scf_criterion": "1.0e-7",
+      "scf_maxIter": "200",
+      "MD_maxIter": "1",
+      "status": "pending"
+    }
+  ],
+  "binary_sha256": "e1bd6ef267206c93de8ef8f4f4b27e92840505473f4da0ccd51348c715bd9ddd",
+  "process_stack_limit_bytes": "unlimited"
+}

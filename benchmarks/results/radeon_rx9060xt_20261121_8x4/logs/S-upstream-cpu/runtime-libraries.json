@@ -1,0 +1,19 @@
+[
+  "/opt/intel/oneapi/compiler/2026.0/lib/libarcher.so",
+  "/opt/intel/oneapi/compiler/2026.0/lib/libifcore.so.5",
+  "/opt/intel/oneapi/compiler/2026.0/lib/libimf.so",
+  "/opt/intel/oneapi/compiler/2026.0/lib/libintlc.so.5",
+  "/opt/intel/oneapi/compiler/2026.0/lib/libiomp5.so",
+  "/opt/intel/oneapi/compiler/2026.0/lib/libirng.so",
+  "/opt/intel/oneapi/compiler/2026.0/lib/libsvml.so",
+  "/opt/intel/oneapi/mpi/2021.18/lib/libmpi.so.12.0.0",
+  "/opt/intel/oneapi/mpi/2021.18/lib/libmpifort.so.12.0.0",
+  "/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2",
+  "/usr/lib/x86_64-linux-gnu/libc.so.6",
+  "/usr/lib/x86_64-linux-gnu/libdl.so.2",
+  "/usr/lib/x86_64-linux-gnu/libgcc_s.so.1",
+  "/usr/lib/x86_64-linux-gnu/libm.so.6",
+  "/usr/lib/x86_64-linux-gnu/libnuma.so.1.0.0",
+  "/usr/lib/x86_64-linux-gnu/libpthread.so.0",
+  "/usr/lib/x86_64-linux-gnu/librt.so.1"
+]

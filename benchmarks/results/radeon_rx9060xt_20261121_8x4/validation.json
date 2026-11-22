@@ -1,0 +1,28 @@
+{
+  "all_jobs_completed": true,
+  "completed_outputs": 96,
+  "expected_outputs": 96,
+  "comparison_passes": 95,
+  "comparisons": 96,
+  "failed_comparisons": [
+    {
+      "test": "cghelgeo",
+      "case": "cghelgeo",
+      "left": "fork-cpu",
+      "right": "fork-gpu",
+      "pass": false,
+      "delta_energy_Ha": 1.3176395441405475e-07,
+      "max_delta_force_Ha_bohr": 5.428299999776787e-08,
+      "same_geometry_and_grids": true
+    }
+  ],
+  "frozen_binaries_unchanged": true,
+  "finished": "2026-11-21T18:53:09.382784+09:00",
+  "final_audit_finished": "2026-11-21T18:53:14.336876+09:00",
+  "input_audit_pass": true,
+  "rank_and_library_audit_pass": true,
+  "unchanged_data_files": 44,
+  "finite_force_components": 41328,
+  "bundled_reference_passes": 90,
+  "bundled_reference_comparisons": 90
+}

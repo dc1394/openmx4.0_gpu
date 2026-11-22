@@ -1,0 +1,21 @@
+[
+  {
+    "test": "cghelgeo",
+    "variant": "upstream-cpu",
+    "status": "invalid_run",
+    "started": "2026-11-21T13:35:40.604507+09:00",
+    "directory": "/home/kawai/openmx4.0_gpu/work/codex_benchmark_20261121_8x4/archives/cghelgeo-upstream-cpu-default-stack",
+    "ended": "2026-11-21T13:36:42.052429+09:00",
+    "returncode": 255,
+    "wall_seconds": 61.44760522991419,
+    "peak_rss_gib": 39.827049255371094,
+    "min_available_gib": 205.86588287353516,
+    "completed": 0,
+    "expected": 1,
+    "normal_finish_markers": 0,
+    "rank_environment_verified": true,
+    "seconds": 0,
+    "gpu_accelerated_markers": 0,
+    "dense_cpu_fallback_lines": []
+  }
+]

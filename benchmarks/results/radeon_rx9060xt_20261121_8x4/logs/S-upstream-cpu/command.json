@@ -1,0 +1,185 @@
+{
+  "command": [
+    "/opt/intel/oneapi/mpi/2021.18/bin/mpiexec",
+    "-np",
+    "8",
+    "/home/kawai/openmx4.0_gpu/work/codex_benchmark_20261121_8x4/frozen/upstream/openmx",
+    "-runtest",
+    "-nt",
+    "4"
+  ],
+  "controls": {
+    "OMP_NUM_THREADS": "4",
+    "OMP_DYNAMIC": "FALSE",
+    "OMP_PROC_BIND": "close",
+    "OMP_PLACES": "cores",
+    "OMP_MAX_ACTIVE_LEVELS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "BLIS_NUM_THREADS": "1",
+    "OPENMX_GPU": "0",
+    "MKL_NUM_THREADS": "4",
+    "MKL_DYNAMIC": "FALSE",
+    "I_MPI_PIN": "1",
+    "I_MPI_PIN_DOMAIN": "omp",
+    "I_MPI_PIN_ORDER": "compact",
+    "I_MPI_FABRICS": "shm",
+    "LD_LIBRARY_PATH": "/opt/intel/oneapi/compiler/2026.0/lib:/opt/intel/oneapi/mpi/2021.18/lib:/opt/intel/oneapi/mkl/latest/lib"
+  },
+  "inputs": [
+    {
+      "case": "Benzene",
+      "system": "Benzene",
+      "source": "/home/kawai/openmx4.0/work/input_example/Benzene.dat",
+      "original_sha256": "645c48443afeb170aadaaa600d08fcc36bed316feac489cd6ce663477012a7cb",
+      "input_sha256": "ba37f96c262b42bcf244c4dcb1312402f0556f05a4fef921dc425db77116e9c6",
+      "scf_criterion": "1.0e-9",
+      "scf_maxIter": "100",
+      "MD_maxIter": "1",
+      "status": "pending"
+    },
+    {
+      "case": "C60",
+      "system": "C60",
+      "source": "/home/kawai/openmx4.0/work/input_example/C60.dat",
+      "original_sha256": "ad3d1da5f946909fa7f312c0687287e44d809819ad2f0525bb33e20acaa81f85",
+      "input_sha256": "9687b198f3d0c1d8683ff319fecba17e0661e4fe373eb0c01a3b80a19e4bc1ff",
+      "scf_criterion": "1.0e-9",
+      "scf_maxIter": "100",
+      "MD_maxIter": "1",
+      "status": "pending"
+    },
+    {
+      "case": "CO",
+      "system": "CO",
+      "source": "/home/kawai/openmx4.0/work/input_example/CO.dat",
+      "original_sha256": "628d43217254933e9ee2a4c43d5265066d4ac7f2628d18d17ff10f07df235857",
+      "input_sha256": "06984c20f4e481e06c717182e76673a4e2ff5e4e0f828edab7c7767a44e38dda",
+      "scf_criterion": "1.0e-9",
+      "scf_maxIter": "50",
+      "MD_maxIter": "3",
+      "status": "pending"
+    },
+    {
+      "case": "Cr2",
+      "system": "Cr2",
+      "source": "/home/kawai/openmx4.0/work/input_example/Cr2.dat",
+      "original_sha256": "aae6bbdbec74e0dca7f97c2c592dd7170f7ee4edce50390a865d53073555e6fb",
+      "input_sha256": "7a5d4c25aad2bc2e11d2629ea8c12371aebe6167867a26235249c68530d9124e",
+      "scf_criterion": "1.0e-10",
+      "scf_maxIter": "100",
+      "MD_maxIter": "1",
+      "status": "pending"
+    },
+    {
+      "case": "Crys-MnO",
+      "system": "Crys-MnO",
+      "source": "/home/kawai/openmx4.0/work/input_example/Crys-MnO.dat",
+      "original_sha256": "85756c40cc324e35764dacc68788f16d23d93fd34d7a10a57cbafbaeaa8e1175",
+      "input_sha256": "effa165c45dc4c1af920ff9ca339bb8b793aa8efd96d59cc35bb3be9e8572f9f",
+      "scf_criterion": "1.0e-10",
+      "scf_maxIter": "80",
+      "MD_maxIter": "1",
+      "status": "pending"
+    },
+    {
+      "case": "GaAs",
+      "system": "GaAs",
+      "source": "/home/kawai/openmx4.0/work/input_example/GaAs.dat",
+      "original_sha256": "b2571de088368e512c9967f770273aa6682563eb4bf77db5973b6d604bea1141",
+      "input_sha256": "9c8fedc789cbca678bd9c0ac63caf2405f6e5384a66f52fa789d4fc6d22bb0c5",
+      "scf_criterion": "1.0e-10",
+      "scf_maxIter": "100",
+      "MD_maxIter": "1",
+      "status": "pending"
+    },
+    {
+      "case": "Glycine",
+      "system": "Glycine",
+      "source": "/home/kawai/openmx4.0/work/input_example/Glycine.dat",
+      "original_sha256": "f849e0cb5f880d55df52d168e6b811e81fd4bbdf267b8af9d3a9bcb0dd648b3f",
+      "input_sha256": "b0be3aa932bdbf33352f9af97647c4248b62bbfeab1a8e9c492f3547a4cacc0e",
+      "scf_criterion": "1.0e-10",
+      "scf_maxIter": "40",
+      "MD_maxIter": "1",
+      "status": "pending"
+    },
+    {
+      "case": "Graphite4",
+      "system": "Graphite4",
+      "source": "/home/kawai/openmx4.0/work/input_example/Graphite4.dat",
+      "original_sha256": "8e1b494fe68a87cd27e1ff663b28daad965589d05ee6744465fa6a859043a68d",
+      "input_sha256": "f797234e1ed7c9ae4e127a9b47c0a03a1d5d482011061f60b8ae6c5e8f223140",
+      "scf_criterion": "1.0e-9",
+      "scf_maxIter": "100",
+      "MD_maxIter": "1",
+      "status": "pending"
+    },
+    {
+      "case": "H2O-EF",
+      "system": "H2O-EF",
+      "source": "/home/kawai/openmx4.0/work/input_example/H2O-EF.dat",
+      "original_sha256": "a296c2fc62e4b9d7e4a7bb80cb97086b9df35030f98392b7fef3961784292d80",
+      "input_sha256": "065453d4157aa0154ccf6d3a29f56075c2c82218ce66a0e860b1e7ed34798423",
+      "scf_criterion": "1.0e-10",
+      "scf_maxIter": "100",
+      "MD_maxIter": "1",
+      "status": "pending"
+    },
+    {
+      "case": "H2O",
+      "system": "H2O",
+      "source": "/home/kawai/openmx4.0/work/input_example/H2O.dat",
+      "original_sha256": "0a423e482edaca4fbce88366bd6ee56ccf0f9546fd211e49653f4a6597e87dd9",
+      "input_sha256": "931671f7d03f113ad56bc039598b643d9b99e06c2792c5b13d19639d84d78688",
+      "scf_criterion": "1.0e-10",
+      "scf_maxIter": "100",
+      "MD_maxIter": "2",
+      "status": "pending"
+    },
+    {
+      "case": "HMn",
+      "system": "HMn",
+      "source": "/home/kawai/openmx4.0/work/input_example/HMn.dat",
+      "original_sha256": "7eb9c80d6b672b2ef8fca78f1c4f6158d65fe31cbfe96daa58d9d54e12cf3f75",
+      "input_sha256": "c709ab5fbaded99b77765970dc5f5647e36420962cb35351fb57ffe4e1cab18e",
+      "scf_criterion": "1.0e-10",
+      "scf_maxIter": "150",
+      "MD_maxIter": "1",
+      "status": "pending"
+    },
+    {
+      "case": "Methane",
+      "system": "Methane",
+      "source": "/home/kawai/openmx4.0/work/input_example/Methane.dat",
+      "original_sha256": "33bfd31ece53aece5c1f98bcc4d5cd3c3e5f65ca0eeb84b31df3528623d24fc8",
+      "input_sha256": "a117614fb432c82bf87ff87149ab70dcde715447c448b6085c282d7c49e3cd05",
+      "scf_criterion": "1.0e-10",
+      "scf_maxIter": "100",
+      "MD_maxIter": "1",
+      "status": "pending"
+    },
+    {
+      "case": "Mol_MnO",
+      "system": "Mol_MnO",
+      "source": "/home/kawai/openmx4.0/work/input_example/Mol_MnO.dat",
+      "original_sha256": "e5149431f1ac555a80f7f3c62e158d6baae9209ba129f7b353382a7489c65b39",
+      "input_sha256": "2f35c206186d535d23c54f4b6804ea2adcc99986e8e3d75bea83a5675f0e68e0",
+      "scf_criterion": "1.0e-10",
+      "scf_maxIter": "80",
+      "MD_maxIter": "1",
+      "status": "pending"
+    },
+    {
+      "case": "Ndia2",
+      "system": "Ndia2",
+      "source": "/home/kawai/openmx4.0/work/input_example/Ndia2.dat",
+      "original_sha256": "c7a1a3d42891934cc8a72fe8b71588f4a5f6f33c4201c0e5937cffc5418665d0",
+      "input_sha256": "06ed0cfed7522bc7292115c8655061e69164d001748f5f3f17936bdefd5e5141",
+      "scf_criterion": "1.0e-10",
+      "scf_maxIter": "100",
+      "MD_maxIter": "1",
+      "status": "pending"
+    }
+  ],
+  "binary_sha256": "e1bd6ef267206c93de8ef8f4f4b27e92840505473f4da0ccd51348c715bd9ddd"
+}
