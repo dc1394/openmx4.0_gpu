@@ -5,6 +5,7 @@
 //   exx-exchange-gamma     the Gamma form against the sum over R of the blocks
 //                          of the site form and against the definition with
 //                          dense matrices
+//   exx-exchange-gradient  equations (16) and (17) against central differences
 //   exx-exchange-backend   the same results with a table of matrix products
 //   exx-exchange-system    T and V blocks made from PAOs: isolated atoms
 //                          against a formula without T blocks, and a periodic
@@ -386,6 +387,112 @@ void exchange_gamma(const std::string& path)
           "a rejected call changes the exchange matrix");
 }
 
+void exchange_gradient(const std::string& path)
+{
+  const KbuildFixture fixture = read_kbuild_fixture(path);
+  const System& system = fixture.system;
+  const std::size_t atoms = system.orbital_count.size(), n = orbital_total(system);
+  const double alpha = fixture.alpha;
+  Numbers random;
+  const std::vector<double> d = dense_matrix(n,true,random);
+  const auto energy = [&](const System& s) { return exchange_energy_gamma(d,exchange_gamma(s,d,alpha)); };
+
+  const ExchangeGradient gradient = exchange_gradient_gamma(system,d,alpha);
+  require(gradient.t.size() == atoms && gradient.v.size() == atoms,"the gradient has the wrong number of atoms");
+  for (std::size_t a = 0; a < atoms; ++a) {
+    require(gradient.t[a].size() == system.t[a].size() && gradient.v[a].size() == system.v[a].size(),
+            "the gradient of an atom has the wrong size");
+    for (std::size_t i = 0; i < system.v[a].size(); ++i)
+      require(gradient.v[a][i].size() == system.v[a][i].size(),"the gradient of a V block has the wrong size");
+  }
+
+  // E_x is quadratic in the T blocks and linear in the V blocks, so a central
+  // difference has no truncation error and the step can be large.
+  const double h = 1.0e-3;
+  double largest_t = 0.0, largest_v = 0.0;
+  for (std::size_t a = 0; a < atoms; ++a) {
+    largest_t = std::max(largest_t,largest(gradient.t[a]));
+    for (const std::vector<double>& block : gradient.v[a]) largest_v = std::max(largest_v,largest(block));
+  }
+  require(largest_t > 0.1 && largest_v > 0.1,"the gradient of the fixture is expected to be of order one");
+
+  // Every stored element on its own.
+  System work = system;
+  Worst each_t("equation (16), every element of T, against central differences",1e-7);
+  for (std::size_t a = 0; a < atoms; ++a)
+    for (std::size_t e = 0; e < system.t[a].size(); ++e) {
+      work.t[a][e] = system.t[a][e]+h;
+      const double plus = energy(work);
+      work.t[a][e] = system.t[a][e]-h;
+      const double minus = energy(work);
+      work.t[a][e] = system.t[a][e];
+      each_t.add(std::fabs(gradient.t[a][e]-(plus-minus)/(2.0*h))/largest_t);
+    }
+  each_t.finish();
+  Worst each_v("equation (17), every element of V, against central differences",1e-7);
+  for (std::size_t a = 0; a < atoms; ++a)
+    for (std::size_t i = 0; i < system.v[a].size(); ++i)
+      for (std::size_t e = 0; e < system.v[a][i].size(); ++e) {
+        work.v[a][i][e] = system.v[a][i][e]+h;
+        const double plus = energy(work);
+        work.v[a][i][e] = system.v[a][i][e]-h;
+        const double minus = energy(work);
+        work.v[a][i][e] = system.v[a][i][e];
+        each_v.add(std::fabs(gradient.v[a][i][e]-(plus-minus)/(2.0*h))/largest_v);
+      }
+  each_v.finish();
+
+  // All elements at once, as test T6 of the reference implementation does.
+  {
+    System plus = system, minus = system;
+    double analytic = 0.0;
+    for (std::size_t a = 0; a < atoms; ++a)
+      for (std::size_t e = 0; e < system.t[a].size(); ++e) {
+        const double direction = random.next();
+        analytic += gradient.t[a][e]*direction;
+        plus.t[a][e] += h*direction;
+        minus.t[a][e] -= h*direction;
+      }
+    Worst all("equation (16), a change of all T blocks (relative)",1e-7);
+    all.relative(analytic,(energy(plus)-energy(minus))/(2.0*h));
+    all.finish();
+  }
+  {
+    System plus = system, minus = system;
+    double analytic = 0.0;
+    for (std::size_t a = 0; a < atoms; ++a)
+      for (std::size_t i = 0; i < system.v[a].size(); ++i)
+        for (std::size_t e = 0; e < system.v[a][i].size(); ++e) {
+          const double direction = random.next();
+          analytic += gradient.v[a][i][e]*direction;
+          plus.v[a][i][e] += h*direction;
+          minus.v[a][i][e] -= h*direction;
+        }
+    Worst all("equation (17), a change of all V blocks (relative)",1e-7);
+    all.relative(analytic,(energy(plus)-energy(minus))/(2.0*h));
+    all.finish();
+  }
+
+  // Euler's theorem for the two degrees of homogeneity.
+  {
+    double t_sum = 0.0, v_sum = 0.0;
+    for (std::size_t a = 0; a < atoms; ++a) {
+      for (std::size_t e = 0; e < system.t[a].size(); ++e) t_sum += system.t[a][e]*gradient.t[a][e];
+      for (std::size_t i = 0; i < system.v[a].size(); ++i)
+        for (std::size_t e = 0; e < system.v[a][i].size(); ++e) v_sum += system.v[a][i][e]*gradient.v[a][i][e];
+    }
+    const double e_x = energy(system);
+    Worst euler("sum T dE/dT = 2 E_x and sum V dE/dV = E_x (relative)",1e-12);
+    euler.relative(t_sum,2.0*e_x);
+    euler.relative(v_sum,e_x);
+    euler.finish();
+  }
+
+  expect_invalid("a density matrix of the wrong size",[&] {
+    (void)exchange_gradient_gamma(system,std::span<const double>(d).first(n),alpha);
+  });
+}
+
 void exchange_backend(const std::string& path)
 {
   const KbuildFixture fixture = read_kbuild_fixture(path);
@@ -423,6 +530,19 @@ void exchange_backend(const std::string& path)
     for (std::size_t e = 0; e < n*n; ++e) worst.absolute(plain[e],through[e]);
     worst.finish();
   }
+  {
+    calls = 0;
+    const ExchangeGradient plain = exchange_gradient_gamma(system,d,alpha);
+    const ExchangeGradient through = exchange_gradient_gamma(system,d,alpha,products);
+    require(calls > 0,"the gradient does not use the table");
+    Worst worst("gradient: table of the tests against the built-in loops",1e-12);
+    for (std::size_t a = 0; a < atoms; ++a) {
+      for (std::size_t e = 0; e < plain.t[a].size(); ++e) worst.absolute(plain.t[a][e],through.t[a][e]);
+      for (std::size_t i = 0; i < plain.v[a].size(); ++i)
+        for (std::size_t e = 0; e < plain.v[a][i].size(); ++e) worst.absolute(plain.v[a][i][e],through.v[a][i][e]);
+    }
+    worst.finish();
+  }
   std::printf("products per build of the fixture: %ld\n",expected);
 
   // A table that fails stops the build.
@@ -431,6 +551,7 @@ void exchange_backend(const std::string& path)
     const DenseBackend broken(&failing);
     expect_runtime_error("a failing table in the site form",[&] { (void)exchange_blocks(system,density,alpha,broken); });
     expect_runtime_error("a failing table in the Gamma form",[&] { (void)exchange_gamma(system,d,alpha,broken); });
+    expect_runtime_error("a failing table in the gradient",[&] { (void)exchange_gradient_gamma(system,d,alpha,broken); });
   }
 }
 

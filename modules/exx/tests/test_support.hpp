@@ -75,6 +75,7 @@ void system_blocks(const std::string& fixture);
 void dense_backend();
 void exchange_fixture(const std::string& fixture);
 void exchange_gamma(const std::string& fixture);
+void exchange_gradient(const std::string& fixture);
 void exchange_backend(const std::string& fixture);
 void exchange_system(const std::string& fixture);
 

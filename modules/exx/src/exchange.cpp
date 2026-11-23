@@ -474,4 +474,104 @@ double exchange_change_gamma(std::span<const double> density, std::span<const do
   return total;
 }
 
+ExchangeGradient exchange_gradient_gamma(const System& system, std::span<const double> density, double alpha,
+                                         const DenseBackend& backend)
+{
+  check(system);
+  const std::size_t atoms = system.orbital_count.size();
+  const std::vector<std::size_t> offset = orbital_offsets(system);
+  const std::size_t n = offset.back();
+  check_dense(n,density.size(),"the density matrix is not N x N");
+  std::vector<std::vector<std::size_t>> folded(atoms);
+  for (std::size_t a = 0; a < atoms; ++a) folded[a] = folded_columns(system,offset,a);
+
+  // G_P = T_P D[loc(A), .] for every atom, [(P,mu), column].
+  std::vector<std::vector<double>> g(atoms);
+  for (std::size_t a = 0; a < atoms; ++a) {
+    const std::size_t rows = system.abf_count[a]*system.orbital_count[a];
+    g[a].resize(rows*n);
+    backend.multiply(rows,n,folded[a].size(),1.0,system.t[a].data(),gathered_rows(density,n,folded[a]).data(),0.0,
+                     g[a].data());
+  }
+
+  ExchangeGradient gradient;
+  gradient.t.resize(atoms);
+  gradient.v.resize(atoms);
+  std::vector<double> w, h1, h2, bracket, columns_of_density;
+  for (std::size_t a = 0; a < atoms; ++a) {
+    const std::size_t np = system.abf_count[a], ua = system.orbital_count[a], la = folded[a].size();
+    const std::size_t rows = np*ua;
+    const double* ta = system.t[a].data();
+    bracket.assign(rows*n,0.0);                                        // R_P + R'_P of equation (16)
+    gradient.v[a].resize(system.v_neighbours[a].size());
+    for (std::size_t ib = 0; ib < system.v_neighbours[a].size(); ++ib) {
+      const std::size_t b = static_cast<std::size_t>(system.v_neighbours[a][ib].atom);
+      const std::size_t nq = system.abf_count[b], ub = system.orbital_count[b], lb = folded[b].size();
+      const double* tb = system.t[b].data();
+      const std::vector<std::size_t>& cb = folded[b];
+      const std::vector<std::size_t>& ca = folded[a];
+
+      w.resize(np*ub*lb);                                              // W [(P,nu), l]
+      backend.multiply(np,ub*lb,nq,1.0,system.v[a][ib].data(),tb,0.0,w.data());
+      for (std::size_t p = 0; p < np; ++p)
+        for (std::size_t mu = 0; mu < ua; ++mu) {
+          const double* row = density.data()+(offset[a]+mu)*n;         // D[A, .]
+          double* target = bracket.data()+(p*ua+mu)*n;
+          for (std::size_t nu = 0; nu < ub; ++nu) {
+            const double* source = w.data()+(p*ub+nu)*lb;
+            const double d = row[offset[b]+nu];
+            double sum = 0.0;
+            for (std::size_t l = 0; l < lb; ++l) {
+              target[cb[l]] += d*source[l];                            // R_P[., loc(B)] += D[A,B] W_P
+              sum += row[cb[l]]*source[l];
+            }
+            target[offset[b]+nu] += sum;                               // R'_P[., B] += D[A,loc(B)] W_P^T
+          }
+        }
+
+      // Gamma_PQ = Tr[D C^P D C^Q], three sums.
+      // H1 [P, j, l] = sum_i D[B_j, A_i] G_P[i, loc(B)_l]
+      h1.assign(np*ub*lb,0.0);
+      for (std::size_t p = 0; p < np; ++p)
+        for (std::size_t j = 0; j < ub; ++j)
+          for (std::size_t i = 0; i < ua; ++i) {
+            const double d = density[(offset[b]+j)*n+offset[a]+i];
+            const double* source = g[a].data()+(p*ua+i)*n;
+            double* target = h1.data()+(p*ub+j)*lb;
+            for (std::size_t l = 0; l < lb; ++l) target[l] += d*source[cb[l]];
+          }
+      // H2 [Q, i, l] = sum_j D[A_i, B_j] G_Q[j, loc(A)_l]
+      h2.assign(nq*ua*la,0.0);
+      for (std::size_t q = 0; q < nq; ++q)
+        for (std::size_t i = 0; i < ua; ++i)
+          for (std::size_t j = 0; j < ub; ++j) {
+            const double d = density[(offset[a]+i)*n+offset[b]+j];
+            const double* source = g[b].data()+(q*ub+j)*n;
+            double* target = h2.data()+(q*ua+i)*la;
+            for (std::size_t l = 0; l < la; ++l) target[l] += d*source[ca[l]];
+          }
+      std::vector<double>& dv = gradient.v[a][ib];
+      dv.assign(np*nq,0.0);
+      for (std::size_t p = 0; p < np; ++p)
+        for (std::size_t q = 0; q < nq; ++q) {
+          double sum = 0.0;
+          for (std::size_t e = 0; e < ub*lb; ++e) sum += tb[q*ub*lb+e]*h1[p*ub*lb+e];
+          for (std::size_t e = 0; e < ua*la; ++e) sum += ta[p*ua*la+e]*h2[q*ua*la+e];
+          for (std::size_t i = 0; i < ua; ++i)
+            for (std::size_t j = 0; j < ub; ++j)
+              sum += 2.0*g[a][(p*ua+i)*n+offset[b]+j]*g[b][(q*ub+j)*n+offset[a]+i];
+          dv[p*nq+q] = -0.5*alpha*sum;
+        }
+    }
+
+    // F^P = (R_P + R'_P) D[., loc(A)], and dE/dT = -2 alpha F^P.
+    columns_of_density.resize(n*la);
+    for (std::size_t row = 0; row < n; ++row)
+      for (std::size_t l = 0; l < la; ++l) columns_of_density[row*la+l] = density[row*n+folded[a][l]];
+    gradient.t[a].assign(rows*la,0.0);
+    backend.multiply(rows,la,n,-2.0*alpha,bracket.data(),columns_of_density.data(),0.0,gradient.t[a].data());
+  }
+  return gradient;
+}
+
 } // namespace openmx::exx

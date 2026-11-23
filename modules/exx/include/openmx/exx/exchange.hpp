@@ -13,8 +13,8 @@
 
 // The exchange matrix from the T and V blocks of a structure and a density
 // matrix: sections 5.5 and 6.4 of the implementation guide, with equations
-// (4) and (15).  All functions treat one spin channel; the density matrix
-// has occupations between 0 and 1.
+// (4), (15), (16) and (17).  All functions treat one spin channel; the
+// density matrix has occupations between 0 and 1.
 //
 // Two forms are provided.  The site form works with blocks M_xy(R) between
 // the orbitals of atom x in the cell at the origin and those of atom y in the
@@ -107,5 +107,17 @@ double exchange_energy_gamma(std::span<const double> density, std::span<const do
 // Equation (15) for one spin channel: sum_ij D_ij (K_ij - K'_ij).
 double exchange_change_gamma(std::span<const double> density, std::span<const double> k,
                              std::span<const double> k_previous);
+
+// Derivatives of E_x = (1/2) sum_ij D_ij K_ij at a fixed symmetric density
+// matrix, equations (16) and (17).  t and v have the layout of System::t and
+// System::v, and every stored element counts as an independent variable: the
+// two V blocks of a pair of sites, which are transposes of each other, get a
+// derivative each.
+struct ExchangeGradient {
+  std::vector<std::vector<double>> t;
+  std::vector<std::vector<std::vector<double>>> v;
+};
+ExchangeGradient exchange_gradient_gamma(const System& system, std::span<const double> density, double alpha,
+                                         const DenseBackend& backend = DenseBackend());
 
 } // namespace openmx::exx
