@@ -5024,21 +5024,6 @@ void Input_std(char *file, OpenMXCoreContext *core)
   if (SpinP_switch==3 && xanes_calc==1) xmcd_calc = 1;
   input_logical("XMCD.calc",&xmcd_calc,0); // S. An
 
-  /****************************************************
-    Hybrid functionals
-    by the efficient exchange operator method
-  ****************************************************/
-
-  if (XC_switch==5){
-    
-    input_double("scf.xmin.Rec.Coulomb",&xmin_Rec_Coulomb,-14.0);
-    input_double("scf.xmax.Rec.Coulomb",&xmax_Rec_Coulomb, 14.0);
-    input_int("scf.Ng1.Rec.Coulomb",&Ng1_Rec_Coulomb,11); 
-    input_int("scf.Nrank.Rec.Coulomb",&Nrank_Rec_Coulomb,900);
-
-    Allocate_Arrays(15);
-  }
-
   /*************************************************************
     polarization calculation by Analytic Berry Connection (ABC)
   *************************************************************/

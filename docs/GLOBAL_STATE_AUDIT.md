@@ -349,15 +349,15 @@ CWF分解値・hoppingの再現性と以前のDIIS反復数差は解決済みと
 
 | 分類 | 個数 | 意味と、所有権の行き先 |
 | --- | ---: | --- |
-| input-configuration | 298 | 入力解析（`Input_std.c` / `Inputtools.c`）だけが書く。読み取り専用の設定オブジェクトにできる |
+| input-configuration | 294 | 入力解析（`Input_std.c` / `Inputtools.c`）だけが書く。読み取り専用の設定オブジェクトにできる |
 | allocated-array/contents-fixed | 278 | 確保側（`Allocate_Arrays.c`、`truncation.c` など）だけが書き、中身も確保側と入力解析しか書かない。構造表（原子・近接・分配）の不変オブジェクト |
 | allocated-array/contents-mutable | 95 | 確保は確保側だが、中身を他のモジュールが書く（`Gxyz`、`FNAN`、`time_per_atom` など）。計算状態オブジェクト |
 | shared-mutable | 153 | 複数の翻訳単位が書く。個別に判断が要る。`filename` / `filepath`（60 翻訳単位から `sprintf` される作業バッファ）、`List_YOUSO`、`Matomnum` など |
 | single-writer:*.c | 1 翻訳単位だけが書く。その翻訳単位の所有物にできる（`DFTD3vdW_init.c` 16、`DFT.c` 5 …） |
-| read-only | 12 | 解析対象の C からは書かれない。C++/CUDA 側か定数 |
-| unused | 6 | C の関数から参照されない。`T` / `W`（1 文字名で検索できず保留）、HIP 版 `DFT.c` だけが使う `UH2` / `Uxc` / `command`、`exx` 用の `g_exx` |
+| read-only | 13 | 解析対象の C からは書かれない。C++/CUDA 側か定数 |
+| unused | 9 | C の関数から参照されない。`T` / `W`（1 文字名で検索できず保留）、HIP 版 `DFT.c` だけが使う `UH2` / `Uxc` / `command`、`exx` 用の `g_exx`、試作用のハイブリッド入力の削除で参照がなくなった `xmin_Rec_Coulomb` / `xmax_Rec_Coulomb` / `Nrank_Rec_Coulomb` |
 
-上位 2 分類（576 個、61%）は書き手が限定されており、消費側を「const なビューを受け取る」形に
+上位 2 分類（572 個、61%）は書き手が限定されており、消費側を「const なビューを受け取る」形に
 変えるだけで共通ヘッダーから外せます。移行作業の順序としては、この 2 分類を
 設定オブジェクトと構造表オブジェクトへ一括で移すのが、関数ごとの改修より少ない手数で
 最大の削減になります。
@@ -966,3 +966,20 @@ python3 tools/audit_global_usage.py --output build/globals-usage.json \
     --markdown docs/GLOBAL_STATE_INVENTORY.md --baseline-output docs/global-usage-baseline.json \
     --make-arg GPUSOLVER2_PREFIX=$PWD/build/cuda/native/source/third_party/gpusolver2-install
 ```
+
+## 試作用のハイブリッド入力の削除（2026-11-23）
+
+`Input_std()` から、`scf.XcType HSE`（`XC_switch==5`）のときだけ読んでいた 4 つのキーワード
+（`scf.xmin.Rec.Coulomb`、`scf.xmax.Rec.Coulomb`、`scf.Ng1.Rec.Coulomb`、`scf.Nrank.Rec.Coulomb`）と、
+`Allocate_Arrays(15)` の呼び出しを削除しました。`HSE` と `NLX` は入力の時点で拒否するようになったので
+（`71f7561c`）、この部分には到達しません。
+
+参照組は 12,377 → 12,373（`Input_std` の 4 組）、どこかの関数が参照するオブジェクトは 929 → 926 です。
+分類は input-configuration が 298 → 294、read-only が 12 → 13（`Ng1_Rec_Coulomb`）、unused が 6 → 9
+（`xmin_Rec_Coulomb`、`xmax_Rec_Coulomb`、`Nrank_Rec_Coulomb`）になりました。関数数 3,444、
+file-scope / 関数内 static 296 / 277、環境変数名 259、getenv の直接呼び出し 0 は変わりません。
+基準とインベントリを再生成しました。
+
+次のものは旧い厳密交換のコードの残りで、今回は削除していません。上の 4 個の変数の定義、
+`Allocate_Arrays()` の `case 15`、`Free_Arrays.c` の 4 つの解放、ビルドに入っていない
+`Expand_ReCoulomb_Kernel.c` です。
