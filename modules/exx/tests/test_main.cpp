@@ -22,6 +22,7 @@ int main(int argc, char** argv)
     else if (name == "system-blocks") exx_test::system_blocks(fixture);
     else if (name == "dense-backend") exx_test::dense_backend();
     else if (name == "exchange-fixture") exx_test::exchange_fixture(fixture);
+    else if (name == "exchange-layout") exx_test::exchange_layout(fixture);
     else if (name == "exchange-gamma") exx_test::exchange_gamma(fixture);
     else if (name == "exchange-gradient") exx_test::exchange_gradient(fixture);
     else if (name == "exchange-backend") exx_test::exchange_backend(fixture);

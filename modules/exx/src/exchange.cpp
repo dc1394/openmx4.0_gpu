@@ -1,7 +1,9 @@
 #include <openmx/exx/exchange.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
+#include <set>
 #include <stdexcept>
 #include <utility>
 
@@ -176,21 +178,37 @@ std::array<int,3> difference(const std::array<int,3>& a, const std::array<int,3>
   return {a[0]-b[0],a[1]-b[1],a[2]-b[2]};
 }
 
+std::array<int,4> site_key(const Site& site)
+{
+  return {site.atom,site.cell[0],site.cell[1],site.cell[2]};
+}
+
+// S(A) of the centre atom a: the sites of loc(B) for all V neighbours B, in
+// the order of their first appearance.
+std::vector<Site> column_sites(const System& system, std::size_t a)
+{
+  std::vector<Site> sites;
+  std::set<std::array<int,4>> seen;
+  for (const Site& b : system.v_neighbours[a])
+    for (const Site& c : system.c_neighbours[static_cast<std::size_t>(b.atom)]) {
+      const Site site{c.atom,sum(b.cell,c.cell)};
+      if (seen.insert(site_key(site)).second) sites.push_back(site);
+    }
+  return sites;
+}
+
+// Blocks is the store of the blocks of K: at(key) gives the block of a key,
+// u_row x u_column elements.
+template <class Blocks>
 class SiteSink {
  public:
-  SiteSink(const System& system, std::size_t a, double factor, BlockMatrix& k)
-      : system_(system), a_(a), factor_(factor), k_(k), offset_(1,0)
+  SiteSink(const System& system, std::size_t a, double factor, Blocks& k)
+      : system_(system), a_(a), factor_(factor), k_(k), sites_(column_sites(system,a)), offset_(1,0)
   {
-    // S: the sites of loc(B) for all V neighbours B, in the order of their
-    // first appearance.
-    for (const Site& b : system.v_neighbours[a])
-      for (const Site& c : system.c_neighbours[static_cast<std::size_t>(b.atom)]) {
-        const Site site{c.atom,sum(b.cell,c.cell)};
-        if (index_.emplace(key(site),sites_.size()).second) {
-          sites_.push_back(site);
-          offset_.push_back(offset_.back()+system.orbital_count[static_cast<std::size_t>(c.atom)]);
-        }
-      }
+    for (const Site& site : sites_) {
+      index_.emplace(site_key(site),offset_.size()-1);
+      offset_.push_back(offset_.back()+system.orbital_count[static_cast<std::size_t>(site.atom)]);
+    }
   }
 
   std::size_t size() const noexcept { return offset_.back(); }
@@ -227,7 +245,7 @@ class SiteSink {
     const Site& b = system_.v_neighbours[a_][ib];
     columns_.clear();
     for (const Site& c : system_.c_neighbours[static_cast<std::size_t>(b.atom)]) {
-      const std::size_t j = index_.at(key(Site{c.atom,sum(b.cell,c.cell)}));
+      const std::size_t j = index_.at(site_key(Site{c.atom,sum(b.cell,c.cell)}));
       for (std::size_t column = offset_[j]; column < offset_[j+1]; ++column) columns_.push_back(column);
     }
     return columns_;
@@ -271,17 +289,72 @@ class SiteSink {
   }
 
  private:
-  static std::array<int,4> key(const Site& site) { return {site.atom,site.cell[0],site.cell[1],site.cell[2]}; }
-
   const System& system_;
   std::size_t a_;
   double factor_;
-  BlockMatrix& k_;
-  std::vector<Site> sites_;
+  Blocks& k_;
+  std::vector<Site> sites_;                         // S
   std::vector<std::size_t> offset_;                 // first column of every site of S
   std::map<std::array<int,4>,std::size_t> index_;   // position of a site in S
   std::vector<std::size_t> columns_;
 };
+
+// ---- site form in one array --------------------------------------------------
+
+// A layout must fit the system: the atoms of its keys exist, and every block
+// has the size that the orbitals of its two atoms give.
+void check(const System& system, const BlockLayout& layout)
+{
+  const std::size_t atoms = system.orbital_count.size(), blocks = layout.keys.size();
+  if (layout.offset.size() != blocks+1 || layout.offset.front() != 0)
+    throw std::invalid_argument("the offsets of a layout do not match its keys");
+  for (std::size_t i = 0; i < blocks; ++i) {
+    const BlockKey& key = layout.keys[i];
+    if (key.row < 0 || key.column < 0 || static_cast<std::size_t>(key.row) >= atoms ||
+        static_cast<std::size_t>(key.column) >= atoms)
+      throw std::invalid_argument("an atom of a block of the layout does not exist");
+    const std::size_t size = system.orbital_count[static_cast<std::size_t>(key.row)]*
+                             system.orbital_count[static_cast<std::size_t>(key.column)];
+    if (layout.offset[i+1] < layout.offset[i] || layout.offset[i+1]-layout.offset[i] != size)
+      throw std::invalid_argument("a block of the layout does not match the orbitals of its atoms");
+  }
+}
+
+// The blocks of an array in a layout.
+class LayoutBlocks {
+ public:
+  LayoutBlocks(const BlockLayout& layout, std::span<double> values) : layout_(layout), values_(values) {}
+
+  std::span<double> at(const BlockKey& key) const
+  {
+    const std::size_t i = layout_.find(key);
+    if (i == layout_.keys.size()) throw std::invalid_argument("the layout lacks a block of the exchange matrix");
+    return values_.subspan(layout_.offset[i],layout_.offset[i+1]-layout_.offset[i]);
+  }
+
+ private:
+  const BlockLayout& layout_;
+  std::span<double> values_;
+};
+
+// Calls visit(e, f) once for every two elements e and f of an array in the
+// layout that are equal in a matrix with M_xy(R) = M_yx(-R)^T.
+template <class Visit>
+void for_mirrored(const System& system, const BlockLayout& layout, Visit visit)
+{
+  check(system,layout);
+  for (std::size_t i = 0; i < layout.keys.size(); ++i) {
+    const BlockKey& key = layout.keys[i];
+    const std::size_t j = layout.find(BlockKey{key.column,key.row,{-key.cell[0],-key.cell[1],-key.cell[2]}});
+    if (j == layout.keys.size()) throw std::invalid_argument("the layout lacks the mirror image of a block");
+    if (j < i) continue;                               // visited from the other block
+    const std::size_t rows = system.orbital_count[static_cast<std::size_t>(key.row)];
+    const std::size_t columns = system.orbital_count[static_cast<std::size_t>(key.column)];
+    for (std::size_t r = 0; r < rows; ++r)
+      for (std::size_t c = (i == j ? r+1 : 0); c < columns; ++c)
+        visit(layout.offset[i]+r*columns+c,layout.offset[j]+c*rows+r);
+  }
+}
 
 // ---- Gamma form ------------------------------------------------------------
 
@@ -463,7 +536,7 @@ void add_exchange_blocks(const System& system, std::size_t atom, double factor, 
   if (!density) throw std::invalid_argument("the exchange matrix needs a density matrix");
   if (!std::ranges::equal(k.orbital_count(),system.orbital_count))
     throw std::invalid_argument("the blocks of K do not belong to this system");
-  SiteSink sink(system,atom,factor,k);
+  SiteSink<BlockMatrix> sink(system,atom,factor,k);
   centre_contribution(system,atom,sink.size(),sink.density(density),sink,backend);
 }
 
@@ -508,6 +581,122 @@ double exchange_change(const DensityBlocks& density, const BlockMatrix& k, const
     for (std::size_t e = 0; e < values.size(); ++e) total -= block[e]*values[e];
   }
   return total;
+}
+
+// ---- site form in one array --------------------------------------------------
+
+std::size_t BlockLayout::find(const BlockKey& key) const noexcept
+{
+  const auto found = std::lower_bound(keys.begin(),keys.end(),key);
+  return found != keys.end() && *found == key ? static_cast<std::size_t>(found-keys.begin()) : keys.size();
+}
+
+BlockLayout exchange_layout(const System& system)
+{
+  check(system);
+  const std::size_t atoms = system.orbital_count.size();
+
+  // S(A) of every centre atom, and the range of the cells of its sites.
+  struct Columns {
+    std::vector<Site> sites;
+    std::array<int,3> low{}, high{};
+  };
+  std::vector<Columns> columns(atoms);
+  for (std::size_t a = 0; a < atoms; ++a) {
+    Columns& s = columns[a];
+    s.sites = column_sites(system,a);                 // begins with A itself, in the cell at the origin
+    for (const Site& site : s.sites)
+      for (std::size_t x = 0; x < 3; ++x) {
+        s.low[x] = std::min(s.low[x],site.cell[x]);
+        s.high[x] = std::max(s.high[x],site.cell[x]);
+      }
+  }
+
+  // The rows of the blocks of a centre atom are its C neighbours.  For every
+  // atom x: the centres that have an image of x as a row site, with the cell
+  // of that image.
+  struct Row {
+    std::size_t centre;
+    std::array<int,3> cell;
+  };
+  std::vector<std::vector<Row>> rows(atoms);
+  for (std::size_t a = 0; a < atoms; ++a)
+    for (const Site& site : system.c_neighbours[a]) rows[static_cast<std::size_t>(site.atom)].push_back({a,site.cell});
+
+  // The keys of row atom x are (x, y, R_y - R_x) for the row sites (x, R_x)
+  // and the column sites (y, R_y) of one centre.  They are marked in a table
+  // over y and the cells in range and read off in the order of the keys.
+  BlockLayout layout;
+  layout.offset.push_back(0);
+  std::vector<unsigned char> seen;
+  for (std::size_t x = 0; x < atoms; ++x) {
+    std::array<int,3> low{}, high{};                  // the row site (x, 0) of centre x gives the cell 0
+    for (const Row& row : rows[x])
+      for (std::size_t i = 0; i < 3; ++i) {
+        low[i] = std::min(low[i],columns[row.centre].low[i]-row.cell[i]);
+        high[i] = std::max(high[i],columns[row.centre].high[i]-row.cell[i]);
+      }
+    std::array<std::size_t,3> extent{};
+    for (std::size_t i = 0; i < 3; ++i) extent[i] = static_cast<std::size_t>(high[i]-low[i])+1;
+    seen.assign(atoms*extent[0]*extent[1]*extent[2],0);
+    for (const Row& row : rows[x])
+      for (const Site& site : columns[row.centre].sites) {
+        std::size_t index = static_cast<std::size_t>(site.atom);
+        for (std::size_t i = 0; i < 3; ++i)
+          index = index*extent[i]+static_cast<std::size_t>(site.cell[i]-row.cell[i]-low[i]);
+        seen[index] = 1;
+      }
+    std::size_t index = 0;
+    for (std::size_t y = 0; y < atoms; ++y) {
+      const std::size_t size = system.orbital_count[x]*system.orbital_count[y];
+      for (int c0 = low[0]; c0 <= high[0]; ++c0)
+        for (int c1 = low[1]; c1 <= high[1]; ++c1)
+          for (int c2 = low[2]; c2 <= high[2]; ++c2, ++index) {
+            if (!seen[index]) continue;
+            layout.keys.push_back(BlockKey{static_cast<int>(x),static_cast<int>(y),{c0,c1,c2}});
+            layout.offset.push_back(layout.offset.back()+size);
+          }
+    }
+  }
+  return layout;
+}
+
+void add_exchange_blocks(const System& system, const BlockLayout& layout, std::size_t atom, double factor,
+                         std::span<const double> density, std::span<double> k, const DenseBackend& backend)
+{
+  check(system);
+  if (atom >= system.orbital_count.size()) throw std::out_of_range("the centre atom does not exist");
+  check(system,layout);
+  if (density.size() != layout.elements()) throw std::invalid_argument("the density matrix does not have the size of the layout");
+  if (k.size() != layout.elements()) throw std::invalid_argument("the exchange matrix does not have the size of the layout");
+  const DensityBlocks blocks = [&layout,density](const BlockKey& key, std::span<double> block) {
+    const std::size_t i = layout.find(key);
+    if (i == layout.keys.size()) throw std::invalid_argument("the layout lacks a block of the density matrix");
+    std::copy_n(density.begin()+static_cast<std::ptrdiff_t>(layout.offset[i]),block.size(),block.begin());
+  };
+  LayoutBlocks store(layout,k);
+  SiteSink<LayoutBlocks> sink(system,atom,factor,store);
+  centre_contribution(system,atom,sink.size(),sink.density(blocks),sink,backend);
+}
+
+double block_asymmetry(const System& system, const BlockLayout& layout, std::span<const double> values)
+{
+  if (values.size() != layout.elements()) throw std::invalid_argument("the array does not have the size of the layout");
+  double largest = 0.0;
+  for_mirrored(system,layout,[&](std::size_t e, std::size_t f) {
+    largest = std::max(largest,std::fabs(values[e]-values[f]));
+  });
+  return largest;
+}
+
+void symmetrize_blocks(const System& system, const BlockLayout& layout, std::span<double> values)
+{
+  if (values.size() != layout.elements()) throw std::invalid_argument("the array does not have the size of the layout");
+  for_mirrored(system,layout,[&](std::size_t e, std::size_t f) {
+    const double mean = 0.5*(values[e]+values[f]);
+    values[e] = mean;
+    values[f] = mean;
+  });
 }
 
 // ---- Gamma form ------------------------------------------------------------

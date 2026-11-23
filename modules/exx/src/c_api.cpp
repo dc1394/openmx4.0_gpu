@@ -44,6 +44,7 @@ struct OpenMXExxState {
   std::optional<Tables> tables;
   std::optional<System> system;
   std::vector<std::size_t> offset;   // first orbital of every atom, and N
+  std::optional<BlockLayout> layout; // of the site form; made on request
 };
 
 namespace {
@@ -147,6 +148,19 @@ const System* prepared(const OpenMXExxState* state) noexcept
   return state != nullptr && state->system.has_value() ? &*state->system : nullptr;
 }
 
+const BlockLayout* layout_of(const OpenMXExxState* state) noexcept
+{
+  return prepared(state) != nullptr && state->layout.has_value() ? &*state->layout : nullptr;
+}
+
+// The system and the layout of a call that works on arrays of the site form.
+const BlockLayout& required_layout(const OpenMXExxState* state)
+{
+  if (prepared(state) == nullptr) throw std::invalid_argument("the site form needs a prepared structure");
+  if (!state->layout.has_value()) throw std::invalid_argument("the site form needs openmx_exx_prepare_blocks");
+  return *state->layout;
+}
+
 int atom_value(const OpenMXExxState* state, int atom, const std::vector<std::size_t> System::*member) noexcept
 {
   const System* system = prepared(state);
@@ -212,6 +226,7 @@ int openmx_exx_prepare(OpenMXExxState* state, const OpenMXExxOptions* options, c
     if (made.has_value()) state->tables = std::move(made);
     state->system = std::move(system);
     state->offset = std::move(offset);
+    state->layout.reset();
   });
 }
 
@@ -273,6 +288,79 @@ int openmx_exx_add_gamma(const OpenMXExxState* state, int first_atom, int last_a
     for (int atom = first_atom; atom < last_atom; ++atom)
       add_exchange_gamma(*system,static_cast<std::size_t>(atom),factor,std::span<const double>(density,n*n),
                          std::span<double>(k,n*n),products);
+  });
+}
+
+int openmx_exx_prepare_blocks(OpenMXExxState* state, char* error, size_t capacity)
+{
+  return guarded(error,capacity,[&] {
+    if (prepared(state) == nullptr) throw std::invalid_argument("the site form needs a prepared structure");
+    if (!state->layout.has_value()) state->layout = exchange_layout(*state->system);
+  });
+}
+
+long openmx_exx_block_count(const OpenMXExxState* state)
+{
+  const BlockLayout* layout = layout_of(state);
+  return layout != nullptr ? static_cast<long>(layout->keys.size()) : -1;
+}
+
+size_t openmx_exx_block_elements(const OpenMXExxState* state)
+{
+  const BlockLayout* layout = layout_of(state);
+  return layout != nullptr ? layout->elements() : 0;
+}
+
+int openmx_exx_block(const OpenMXExxState* state, long index, int* row_atom, int* column_atom, int cell[3],
+                     size_t* offset)
+{
+  const BlockLayout* layout = layout_of(state);
+  if (layout == nullptr || index < 0 || static_cast<std::size_t>(index) >= layout->keys.size()) return 1;
+  const BlockKey& key = layout->keys[static_cast<std::size_t>(index)];
+  if (row_atom != nullptr) *row_atom = key.row;
+  if (column_atom != nullptr) *column_atom = key.column;
+  if (cell != nullptr) std::copy(key.cell.begin(),key.cell.end(),cell);
+  if (offset != nullptr) *offset = layout->offset[static_cast<std::size_t>(index)];
+  return 0;
+}
+
+long openmx_exx_find_block(const OpenMXExxState* state, int row_atom, int column_atom, const int cell[3])
+{
+  const BlockLayout* layout = layout_of(state);
+  if (layout == nullptr || cell == nullptr) return -1;
+  const std::size_t index = layout->find(BlockKey{row_atom,column_atom,{cell[0],cell[1],cell[2]}});
+  return index < layout->keys.size() ? static_cast<long>(index) : -1;
+}
+
+int openmx_exx_add_blocks(const OpenMXExxState* state, int first_atom, int last_atom, double factor,
+                          const double* density, double* k, const OpenMXExxDenseBackend* backend, char* error,
+                          size_t capacity)
+{
+  return guarded(error,capacity,[&] {
+    const BlockLayout& layout = required_layout(state);
+    const System& system = *state->system;
+    if (density == nullptr || k == nullptr) throw std::invalid_argument("the exchange matrix needs a density matrix and an output");
+    const int atoms = static_cast<int>(system.orbital_count.size());
+    if (first_atom < 0 || last_atom < first_atom || last_atom > atoms)
+      throw std::out_of_range("the range of centre atoms is not inside the unit cell");
+    const std::size_t elements = layout.elements();
+    const DenseBackend products(backend);
+    for (int atom = first_atom; atom < last_atom; ++atom)
+      add_exchange_blocks(system,layout,static_cast<std::size_t>(atom),factor,std::span<const double>(density,elements),
+                          std::span<double>(k,elements),products);
+  });
+}
+
+int openmx_exx_symmetrize_blocks(const OpenMXExxState* state, double* values, double* asymmetry, char* error,
+                                 size_t capacity)
+{
+  return guarded(error,capacity,[&] {
+    const BlockLayout& layout = required_layout(state);
+    if (values == nullptr) throw std::invalid_argument("no array to make symmetric");
+    const std::span<double> array(values,layout.elements());
+    const double before = block_asymmetry(*state->system,layout,array);
+    symmetrize_blocks(*state->system,layout,array);
+    if (asymmetry != nullptr) *asymmetry = before;
   });
 }
 

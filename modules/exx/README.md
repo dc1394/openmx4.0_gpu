@@ -15,7 +15,7 @@
 | `openmx/exx/system.hpp` | site、近傍リスト、T ブロックと V ブロック |
 | `openmx/exx/exchange.hpp` | 交換行列の構築（6.4 節）。site の形式と Γ 点の形式、 $E_x$ （式 (4)）、外側反復の判定に使う量（式 (15)）、 $E_x$ の T ブロックと V ブロックについての導関数（式 (16)、(17)） |
 | `openmx/exx/dense_backend.hpp` | 行列積の関数表（7.2 節）を包むクラス。表を渡さなければ、ライブラリーの中のループで計算します |
-| `openmx/exx/exx.h` | C の入口。関数表の型、構造の準備、Γ 点の形式の構築、式 (4) と (15) |
+| `openmx/exx/exx.h` | C の入口。関数表の型、構造の準備、Γ 点の形式と site の形式の構築、式 (4) と (15) |
 
 依存するのは `OpenMX::basis`（球ベッセル関数、Gaunt 係数、PAO の補間）だけです。
 MPI、BLAS、LAPACK、GPU SDK、OpenMX の実行ファイルは要りません。
@@ -37,6 +37,7 @@ CMake 3.25.2 以上、C++20 のコンパイラー、C のコンパイラーで�
 - V ブロックは `v[a][i][P*n_b + Q]` の形で持ちます。近傍リストの 0 番目は原子自身で、残りは原子の番号、セルの 3 つの整数の順に並びます。
 - 密度行列と交換行列は、1 スピン分です。密度行列の占有数は 0 から 1 です。スピン分極のない計算では、呼び出し側が $E_x$ を 2 倍します。
 - site の形式のブロック $M_{xy}(\mathbf R)$ は、行が原点のセルの原子 $x$ 、列がセル $\mathbf R$ の原子 $y$ です。Γ 点の形式は $N\times N$ の配列で、軌道は原子の順に並びます。
+- site の形式には、ブロックを 1 本の配列に並べた形もあります。並べる順は `BlockLayout` が持ちます。キーは $(x,y,\mathbf R)$ の昇順で、`offset[i]` が i 番目のブロックの最初の要素です。一覧に入るのは、ある中心の原子 $A$ について、行の site が $\mathrm{loc}(A)$ 、列の site が $S(A)$ に属するブロックです。構築が読む $D$ と書く $K$ は、どちらもこの一覧に収まります。一覧は近傍リストだけで決まるので、同じ構造を準備したプロセスは同じ配列を持ち、要素ごとに足し合わせられます。
 - 配列は行優先です。関数表の `dgemm` だけは、BLAS と同じ列優先で受け取ります。
 
 ## 使い方
@@ -87,7 +88,7 @@ const std::vector<double> k_blas = exchange_gamma(system, density, 0.25, DenseBa
 Γ 点の形式は、同じ原子の周期像を行列積の前にまとめます。V ブロックは周期像について足し合わせ、T ブロックの列は同じ軌道に属するものを足し合わせます。
 このため、Γ 点の形式で数える V 近傍は、site ではなく原子です。セルが近傍の範囲より小さくても、行列積は増えません。
 
-C からは `exx.h` を使います。扱えるのは Γ 点の形式です。site の形式の入口は、k 点の計算を本体に組み込むときに加えます。
+C からは `exx.h` を使います。Γ 点の形式と、1 本の配列に並べた site の形式を扱えます。
 
 ```c
 #include <openmx/exx/exx.h>
@@ -103,6 +104,25 @@ openmx_exx_add_gamma(state, 0, openmx_exx_atom_count(state), -0.25, density, k, 
 const double e_x = openmx_exx_energy_gamma((size_t)n*n, density, k);
 openmx_exx_destroy(state);
 ```
+
+site の形式は、ブロックの一覧を作ってから使います。k 点の計算では、呼び出し側が式 (5) で $D_{xy}(\mathbf R)$ を配列に入れ、できた $K_{xy}(\mathbf R)$ から式 (14) で $K(\mathbf k)$ を作ります。
+
+```c
+openmx_exx_prepare_blocks(state, message, sizeof message);      /* 一覧を作る。準備をやり直すと消える */
+const long blocks = openmx_exx_block_count(state);
+const size_t elements = openmx_exx_block_elements(state);       /* 配列の要素数 */
+for (long b = 0; b < blocks; ++b) {
+  int x, y, cell[3];
+  size_t offset;
+  openmx_exx_block(state, b, &x, &y, cell, &offset);            /* density[offset ...] に D_xy(R) を行優先で入れる */
+}
+openmx_exx_add_blocks(state, 0, openmx_exx_atom_count(state), -0.25, density, k, NULL, message, sizeof message);
+double asymmetry;                                               /* K_xy(R) と K_yx(-R) の転置の差の最大値 */
+openmx_exx_symmetrize_blocks(state, k, &asymmetry, message, sizeof message);
+const double e_x = openmx_exx_energy_gamma(elements, density, k);
+```
+
+`openmx_exx_find_block()` は、原子の対とセルからブロックの番号を返します。式 (4) と式 (15) は配列の要素についての和なので、Γ 点の形式と同じ関数を使います。
 
 `openmx_exx_prepare()` は、元素ごとの表を状態に残します。作り直すのは、PAO、格子、しきい値のどれかが変わったときだけです。
 失敗した呼び出しは、状態を変えません。関数は例外を外に出さず、0 以外の返り値とメッセージで知らせます。
@@ -178,11 +198,12 @@ $K$ のブロックは 5,723 個（7.1 MB）で、 $\sum_{\mathbf R}K(\mathbf R)
 - `exx-system-blocks`: T ブロックと V ブロックの 2 通りの見方の一致、結晶の記述を変えたときの一致、展開した積の電荷と重なり行列の比較。
 - `exx-dense-backend`: 行列積を、総和を書き下した値と比べます（1e-13）。DGEMM が拒否する引数、試験用の関数表、失敗を返す関数表も確かめます。
 - `exx-exchange-fixture`: site の形式の $K$ のブロックと $E_x$ を、参照実装のフィクスチャー（`tests/fixtures/kbuild_reference.txt`）と比べます。絶対 1e-12。
+- `exx-exchange-layout`: 1 本の配列に並べた site の形式を確かめます。ブロックの一覧はフィクスチャーの $K$ のキーと同じで、 $K$ はブロックの表を使う構築とビット単位で同じです。 $K_{xy}(\mathbf R)$ と $K_{yx}(-\mathbf R)$ の転置の差は 1e-12 以下で、平均を取った後は 0 です。
 - `exx-exchange-gamma`: Γ 点の形式を、site の形式の $\sum_{\mathbf R}K(\mathbf R)$ と、密行列で書いた定義（式 (8)、(9)）の両方と比べます。1e-12。
 - `exx-exchange-gradient`: 式 (16) と (17) を、T ブロックと V ブロックの全ての要素の中心差分と比べます。相対 1e-7。
 - `exx-exchange-backend`: 試験用の関数表を渡した結果を、渡さない結果と比べます（1e-12）。行列積の回数も確かめます。
-- `exx-exchange-system`: PAO から作った T ブロックと V ブロックで $K$ を確かめます。孤立した原子では T ブロックを使わない式と、周期構造と大きいセルでは定義と比べます（相対 1e-12）。C の入口の結果が C++ の入口とビット単位で同じことも確かめます。
-- `exx-c-api`: C99 のプログラムから C の入口を呼びます。
+- `exx-exchange-system`: PAO から作った T ブロックと V ブロックで $K$ を確かめます。孤立した原子では T ブロックを使わない式と、周期構造と大きいセルでは定義と比べます（相対 1e-12）。C の入口の結果が C++ の入口とビット単位で同じことも、2 つの形式で確かめます。site の形式の $\sum_{\mathbf R}K(\mathbf R)$ は Γ 点の形式と比べます（相対 1e-12）。
+- `exx-c-api`: C99 のプログラムから C の入口を呼びます。2 つの形式の構築、ブロックの一覧、準備をやり直した後の状態を確かめます。
 - `exx-package-consumer`: インストールしたパッケージから、2 つの例題と C の入口の試験をビルドします。
 
 ## フィクスチャーの作り直し

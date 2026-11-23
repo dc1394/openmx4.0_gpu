@@ -131,6 +131,55 @@ double openmx_exx_energy_gamma(size_t count, const double *density, const double
    is NULL. */
 double openmx_exx_change_gamma(size_t count, const double *density, const double *k, const double *k_previous);
 
+/* ---- exchange matrix, site form for any k mesh (sections 6.3, 6.4) ------ */
+
+/* The site form works with the blocks M_xy(R): rows on the orbitals of atom
+   x in the cell at the origin, columns on those of atom y in the cell
+   R = cell[0] a1 + cell[1] a2 + cell[2] a3, u_x x u_y elements, row-major.
+   The blocks that a build reads from the density matrix and writes to the
+   exchange matrix are those with a row site in loc(A) and a column site in
+   S(A) for a centre atom A.  The state lists them once, ordered by x, y and
+   the three components of the cell, and gives every block an offset in one
+   array.  The order depends on the structure and the cutoffs only: all
+   processes that prepare a structure get the same arrays.  K_xy(R) is zero
+   for a block that is not listed.
+
+   openmx_exx_prepare_blocks makes this list for the prepared structure; a
+   new preparation discards it.  It does nothing when the list exists. */
+int openmx_exx_prepare_blocks(OpenMXExxState *state, char *error, size_t capacity);
+
+/* The number of blocks, -1 without a list, and the number of elements of an
+   array that holds them all, 0 without a list. */
+long openmx_exx_block_count(const OpenMXExxState *state);
+size_t openmx_exx_block_elements(const OpenMXExxState *state);
+
+/* Atoms, cell and offset of the block "index".  An output may be NULL.
+   Returns 1 without a list or for an index out of range. */
+int openmx_exx_block(const OpenMXExxState *state, long index, int *row_atom, int *column_atom, int cell[3],
+                     size_t *offset);
+
+/* The index of a block, or -1 when the list does not hold it. */
+long openmx_exx_find_block(const OpenMXExxState *state, int row_atom, int column_atom, const int cell[3]);
+
+/* openmx_exx_add_gamma for arrays of blocks: density holds the blocks
+   D_xy(R) of one spin channel, and factor times the contributions of the
+   centre atoms first_atom <= a < last_atom is added to k.  With k = 0 on
+   entry, all atoms and factor = -alpha, k becomes K(R) of that spin channel.
+   K_xy(R) is then the transpose of K_yx(-R), up to rounding, when the density
+   matrix has that property.  Equations (4) and (15) are
+   openmx_exx_energy_gamma and openmx_exx_change_gamma over the
+   openmx_exx_block_elements() elements of the arrays. */
+int openmx_exx_add_blocks(const OpenMXExxState *state, int first_atom, int last_atom, double factor,
+                          const double *density, double *k, const OpenMXExxDenseBackend *backend,
+                          char *error, size_t capacity);
+
+/* Replaces every element of M_xy(R) and the element of M_yx(-R) that equals
+   it in a matrix with M_xy(R) = M_yx(-R)^T by their mean.  The largest
+   difference of such a pair before the call is written to asymmetry, which
+   may be NULL. */
+int openmx_exx_symmetrize_blocks(const OpenMXExxState *state, double *values, double *asymmetry,
+                                 char *error, size_t capacity);
+
 #ifdef __cplusplus
 }
 #endif

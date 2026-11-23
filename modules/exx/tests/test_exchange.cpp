@@ -2,6 +2,9 @@
 //   exx-exchange-fixture   the blocks of K and E_x of the site form against
 //                          the fixture of the reference implementation
 //                          (tools/exx_reference.py), and equation (15)
+//   exx-exchange-layout    the site form with all blocks in one array: the
+//                          list of the blocks, K against the site form with a
+//                          map of blocks, and the symmetry K_xy(R) = K_yx(-R)^T
 //   exx-exchange-gamma     the Gamma form against the sum over R of the blocks
 //                          of the site form and against the definition with
 //                          dense matrices
@@ -131,6 +134,24 @@ void compare_blocks(const BlockMatrix& a, const BlockMatrix& b, Worst& worst)
     require(other.size() == values.size(),"a block is missing from one of two matrices");
     for (std::size_t e = 0; e < values.size(); ++e) worst.absolute(values[e],other[e]);
   }
+}
+
+// The blocks of a matrix in one array of a layout.
+std::vector<double> layout_values(const BlockLayout& layout, const DensityBlocks& blocks)
+{
+  std::vector<double> values(layout.elements(),0.0);
+  for (std::size_t i = 0; i < layout.keys.size(); ++i)
+    blocks(layout.keys[i],std::span<double>(values).subspan(layout.offset[i],layout.offset[i+1]-layout.offset[i]));
+  return values;
+}
+
+// K of all atoms in one array of a layout.
+std::vector<double> layout_exchange(const System& system, const BlockLayout& layout, const std::vector<double>& density,
+                                    double alpha)
+{
+  std::vector<double> k(layout.elements(),0.0);
+  for (std::size_t a = 0; a < system.orbital_count.size(); ++a) add_exchange_blocks(system,layout,a,-alpha,density,k);
+  return k;
 }
 
 // K of the Gamma form from the definition, equations (8) and (9), with dense
@@ -302,6 +323,161 @@ void exchange_fixture(const std::string& path)
     broken.abf_count.pop_back();
     expect_invalid("arrays for different numbers of atoms",[&] { (void)exchange_blocks(broken,density,0.25); });
   }
+}
+
+void exchange_layout(const std::string& path)
+{
+  const KbuildFixture fixture = read_kbuild_fixture(path);
+  const System& system = fixture.system;
+  const std::size_t atoms = system.orbital_count.size();
+  const double alpha = fixture.alpha;
+  const DensityBlocks density = fixture_density(fixture);
+  const BlockLayout layout = exchange_layout(system);
+  const std::size_t blocks = layout.keys.size();
+
+  // The layout lists the blocks of K of the fixture in the order of their
+  // keys, and the build reads the same blocks of D.
+  require(blocks == fixture.k.size() && layout.offset.size() == blocks+1,"the layout does not list the blocks of K of the fixture");
+  {
+    std::size_t position = 0, elements = 0;
+    for (const auto& [key, values] : fixture.k) {
+      require(layout.keys[position] == key,"a key of the layout differs from the fixture");
+      require(layout.offset[position] == elements,"a block of the layout does not follow the block before");
+      require(layout.find(key) == position,"the layout does not find one of its keys");
+      elements += values.size();
+      ++position;
+    }
+    require(layout.elements() == elements,"the layout has a wrong number of elements");
+    require(fixture.density.size() == blocks,"the fixture is expected to hold D for the blocks of K");
+    for (const auto& [key, values] : fixture.density)
+      require(layout.find(key) < blocks,"the layout lacks a block of D of the fixture");
+    require(layout.find(BlockKey{0,0,{99,0,0}}) == blocks && layout.find(BlockKey{-1,0,{0,0,0}}) == blocks &&
+            layout.find(BlockKey{static_cast<int>(atoms),0,{0,0,0}}) == blocks,"the layout finds a key that it does not hold");
+    require(BlockLayout().elements() == 0 && BlockLayout().find(BlockKey{}) == 0,"an empty layout is not empty");
+  }
+  std::printf("%zu blocks with %zu elements\n",blocks,layout.elements());
+
+  // The same numbers, added in the same order, as with a map of blocks.
+  const std::vector<double> d = layout_values(layout,density);
+  const std::vector<double> k = layout_exchange(system,layout,d,alpha);
+  {
+    const BlockMatrix reference = exchange_blocks(system,density,alpha);
+    Worst same("K in one array against K in a map of blocks",0.0);
+    Worst fixed("K in one array against the reference implementation",1e-12);
+    for (std::size_t i = 0; i < blocks; ++i) {
+      const std::span<const double> mine = std::span<const double>(k).subspan(layout.offset[i],layout.offset[i+1]-layout.offset[i]);
+      const std::span<const double> other = reference.find(layout.keys[i]);
+      const std::vector<double>& stored = fixture.k.at(layout.keys[i]);
+      require(other.size() == mine.size() && stored.size() == mine.size(),"a block has the wrong size");
+      for (std::size_t e = 0; e < mine.size(); ++e) {
+        same.absolute(mine[e],other[e]);
+        fixed.absolute(mine[e],stored[e]);
+      }
+    }
+    same.finish();
+    fixed.finish();
+  }
+
+  // Equations (4) and (15) are sums over the elements of the arrays.
+  {
+    Worst energy("E_x of the arrays against the reference implementation",1e-12);
+    energy.absolute(exchange_energy_gamma(d,k),fixture.energy);
+    const std::vector<double> zero(k.size(),0.0);
+    energy.absolute(exchange_change_gamma(d,k,zero),2.0*fixture.energy);
+    energy.finish();
+  }
+
+  // K_xy(R) is the transpose of K_yx(-R) for the density matrix of the
+  // fixture.  The mean of the two keeps K within the rounding errors.
+  {
+    const double asymmetry = block_asymmetry(system,layout,k);
+    std::printf("K_xy(R) against the transpose of K_yx(-R): largest difference %.3e\n",asymmetry);
+    require(asymmetry <= 1e-12,"K of a symmetric density matrix is not symmetric");
+    std::vector<double> symmetric = k;
+    symmetrize_blocks(system,layout,symmetric);
+    require(block_asymmetry(system,layout,symmetric) == 0.0,"the mean of two blocks is not symmetric");
+    Worst moved("K after taking the means against K before",1e-12);
+    for (std::size_t e = 0; e < k.size(); ++e) moved.absolute(symmetric[e],k[e]);
+    moved.finish();
+  }
+
+  // An array without the symmetry: every element becomes the mean of itself
+  // and its mirror image.
+  {
+    Numbers random;
+    std::vector<double> m(layout.elements());
+    for (double& value : m) value = random.next();
+    require(block_asymmetry(system,layout,m) > 0.5,"numbers without a pattern are expected to lack the symmetry");
+    std::vector<double> symmetric = m;
+    symmetrize_blocks(system,layout,symmetric);
+    require(block_asymmetry(system,layout,symmetric) == 0.0,"the mean of two blocks is not symmetric");
+    Worst mean("the means against (M_xy(R) + M_yx(-R)^T)/2",0.0);
+    for (std::size_t i = 0; i < blocks; ++i) {
+      const BlockKey& key = layout.keys[i];
+      const std::size_t j = layout.find(BlockKey{key.column,key.row,{-key.cell[0],-key.cell[1],-key.cell[2]}});
+      require(j < blocks,"the layout lacks the mirror image of a block");
+      const std::size_t rows = system.orbital_count[static_cast<std::size_t>(key.row)];
+      const std::size_t columns = system.orbital_count[static_cast<std::size_t>(key.column)];
+      for (std::size_t r = 0; r < rows; ++r)
+        for (std::size_t c = 0; c < columns; ++c)
+          mean.absolute(symmetric[layout.offset[i]+r*columns+c],
+                        0.5*(m[layout.offset[i]+r*columns+c]+m[layout.offset[j]+c*rows+r]));
+    }
+    mean.finish();
+  }
+
+  // The atoms one by one in reverse order with the factor at the end, as
+  // several processes add their parts.
+  {
+    std::vector<double> reversed(layout.elements(),0.0);
+    for (std::size_t a = atoms; a-- > 0;) add_exchange_blocks(system,layout,a,1.0,d,reversed);
+    Worst order("atoms in reverse order, factor applied at the end",1e-12);
+    for (std::size_t e = 0; e < k.size(); ++e) order.absolute(-alpha*reversed[e],k[e]);
+    order.finish();
+  }
+
+  // Invalid arguments.
+  std::vector<double> target(layout.elements(),0.0);
+  expect_invalid("a centre atom that does not exist",[&] { add_exchange_blocks(system,layout,atoms,1.0,d,target); });
+  expect_invalid("a density matrix of the wrong size",[&] {
+    add_exchange_blocks(system,layout,0,1.0,std::span<const double>(d).first(d.size()-1),target);
+  });
+  expect_invalid("an exchange matrix of the wrong size",[&] {
+    add_exchange_blocks(system,layout,0,1.0,d,std::span<double>(target).first(target.size()-1));
+  });
+  expect_invalid("an array of the wrong size for the symmetry",[&] {
+    (void)block_asymmetry(system,layout,std::span<const double>(d).first(d.size()-1));
+  });
+  expect_invalid("an array of the wrong size for the means",[&] {
+    symmetrize_blocks(system,layout,std::span<double>(target).first(target.size()-1));
+  });
+  {
+    // A layout without its last block: the array is shorter, and the build
+    // and the symmetry miss a block.
+    BlockLayout shorter = layout;
+    shorter.keys.pop_back();
+    shorter.offset.pop_back();
+    std::vector<double> few(shorter.elements(),0.0), out(shorter.elements(),0.0);
+    bool missed = false;
+    for (std::size_t a = 0; a < atoms && !missed; ++a) {
+      try { add_exchange_blocks(system,shorter,a,1.0,few,out); } catch (const std::invalid_argument&) { missed = true; }
+    }
+    require(missed,"no exception for a layout that lacks a block");
+    expect_invalid("the symmetry of a layout that lacks a block",[&] { (void)block_asymmetry(system,shorter,few); });
+
+    BlockLayout broken = layout;
+    broken.offset.back() += 1;
+    std::vector<double> more(broken.elements(),0.0), more_out(broken.elements(),0.0);
+    expect_invalid("a block of the wrong size",[&] { add_exchange_blocks(system,broken,0,1.0,more,more_out); });
+    broken = layout;
+    broken.keys.front().column = static_cast<int>(atoms);
+    expect_invalid("a key with an atom that does not exist",[&] { add_exchange_blocks(system,broken,0,1.0,d,target); });
+    broken = layout;
+    broken.offset.pop_back();
+    expect_invalid("offsets that do not match the keys",[&] { add_exchange_blocks(system,broken,0,1.0,d,target); });
+  }
+  require(std::all_of(target.begin(),target.end(),[](double value) { return value == 0.0; }),
+          "a rejected call changes the exchange matrix");
 }
 
 void exchange_gamma(const std::string& path)
@@ -643,8 +819,10 @@ std::vector<double> c_exchange(const OpenMXExxState* state, const std::vector<do
 // The C interface must describe the same system as the C++ interface and give
 // the same exchange matrix, bit for bit: it runs the same code on the same
 // numbers.
-void compare_with_c(const OpenMXExxState* state, const System& system, const std::vector<double>& density, double alpha,
-                    const std::string& what)
+// "listed" tells whether the state holds the list of blocks of its structure
+// already: a preparation discards the list, a preparation that fails keeps it.
+void compare_with_c(OpenMXExxState* state, const System& system, const std::vector<double>& density, double alpha,
+                    const std::string& what, bool listed = false)
 {
   const std::size_t atoms = system.orbital_count.size();
   require(openmx_exx_atom_count(state) == static_cast<int>(atoms) &&
@@ -668,6 +846,102 @@ void compare_with_c(const OpenMXExxState* state, const System& system, const std
   worst.finish();
   require(openmx_exx_energy_gamma(k.size(),density.data(),through.data()) == exchange_energy_gamma(density,k),
           what+": the two interfaces give different energies");
+
+  // The site form.  A preparation discards the list of blocks of the
+  // structure before; the new list is that of the C++ interface.
+  const BlockLayout layout = exchange_layout(system);
+  const long blocks = static_cast<long>(layout.keys.size());
+  const int none[3] = {99,0,0};
+  char message[200] = "untouched";
+  if (!listed) {
+    require(openmx_exx_block_count(state) == -1 && openmx_exx_block_elements(state) == 0 &&
+            openmx_exx_block(state,0,nullptr,nullptr,nullptr,nullptr) != 0 && openmx_exx_find_block(state,0,0,none) == -1,
+            what+": a list of blocks exists before it is made");
+    std::vector<double> nothing(1,0.0);
+    require(openmx_exx_add_blocks(state,0,1,-alpha,nothing.data(),nothing.data(),nullptr,message,sizeof message) != 0 &&
+            message[0] != '\0' && nothing[0] == 0.0,what+": a build without a list of blocks is accepted");
+    require(openmx_exx_symmetrize_blocks(state,nothing.data(),nullptr,message,sizeof message) != 0 && message[0] != '\0',
+            what+": means without a list of blocks are accepted");
+  }
+  else
+    require(openmx_exx_block_count(state) == blocks,what+": a preparation that fails discards the list of blocks");
+  require(openmx_exx_prepare_blocks(state,message,sizeof message) == 0 && message[0] == '\0',
+          what+": the list of blocks cannot be made");
+  require(openmx_exx_prepare_blocks(state,nullptr,0) == 0,what+": the list of blocks cannot be asked for twice");
+  require(openmx_exx_block_count(state) == blocks && openmx_exx_block_elements(state) == layout.elements(),
+          what+": wrong size of the list of blocks");
+  for (long i = 0; i < blocks; ++i) {
+    const BlockKey& key = layout.keys[static_cast<std::size_t>(i)];
+    int row = -1, column = -1, cell[3] = {0,0,0};
+    std::size_t offset = 0;
+    require(openmx_exx_block(state,i,&row,&column,cell,&offset) == 0 && row == key.row && column == key.column &&
+            cell[0] == key.cell[0] && cell[1] == key.cell[1] && cell[2] == key.cell[2] &&
+            offset == layout.offset[static_cast<std::size_t>(i)] && openmx_exx_find_block(state,row,column,cell) == i &&
+            openmx_exx_block(state,i,nullptr,nullptr,nullptr,nullptr) == 0,what+": a block of the C state differs");
+  }
+  require(openmx_exx_block(state,blocks,nullptr,nullptr,nullptr,nullptr) != 0 &&
+          openmx_exx_block(state,-1,nullptr,nullptr,nullptr,nullptr) != 0 && openmx_exx_find_block(state,0,0,none) == -1 &&
+          openmx_exx_find_block(state,0,0,nullptr) == -1,what+": a block that does not exist is found");
+
+  // D_xy(R) = D_xy for every R: the sum over R of the blocks of K is K of the
+  // Gamma form.
+  const std::vector<double> blocks_of_d = layout_values(layout,gamma_density(system,density));
+  const std::vector<double> site = layout_exchange(system,layout,blocks_of_d,alpha);
+  std::vector<double> site_through(layout.elements(),0.0);
+  const int atom_count = static_cast<int>(atoms);
+  for (int atom = 0; atom < atom_count; ++atom)
+    require(openmx_exx_add_blocks(state,atom,atom+1,-alpha,blocks_of_d.data(),site_through.data(),nullptr,message,
+                                  sizeof message) == 0 && message[0] == '\0',
+            what+": the build of the site form through the C interface fails: "+message);
+  Worst same(what+": site form, C interface against C++",0.0);
+  for (std::size_t e = 0; e < site.size(); ++e) same.absolute(site_through[e],site[e]);
+  same.finish();
+  {
+    const std::vector<std::size_t> offset = offsets(system);
+    const std::size_t n = offset.back();
+    std::vector<double> sum(n*n,0.0);
+    for (std::size_t i = 0; i < layout.keys.size(); ++i) {
+      const std::size_t x = static_cast<std::size_t>(layout.keys[i].row), y = static_cast<std::size_t>(layout.keys[i].column);
+      const std::size_t rows = system.orbital_count[x], columns = system.orbital_count[y];
+      for (std::size_t r = 0; r < rows; ++r)
+        for (std::size_t c = 0; c < columns; ++c)
+          sum[(offset[x]+r)*n+offset[y]+c] += site_through[layout.offset[i]+r*columns+c];
+    }
+    const double scale = largest(k);
+    Worst folded_sum(what+": sum_R K(R) against the Gamma form (relative)",1e-12);
+    for (std::size_t e = 0; e < n*n; ++e) folded_sum.add(std::fabs(sum[e]-k[e])/scale);
+    folded_sum.finish();
+  }
+  require(openmx_exx_energy_gamma(site.size(),blocks_of_d.data(),site_through.data()) == exchange_energy_gamma(blocks_of_d,site),
+          what+": the two interfaces give different energies of the site form");
+
+  // The means of the mirror images.
+  {
+    std::vector<double> mine = site, theirs = site_through;
+    const double expected = block_asymmetry(system,layout,site);
+    double asymmetry = -1.0;
+    symmetrize_blocks(system,layout,mine);
+    require(openmx_exx_symmetrize_blocks(state,theirs.data(),&asymmetry,message,sizeof message) == 0 && message[0] == '\0',
+            what+": the means through the C interface fail");
+    require(asymmetry == expected && asymmetry <= 1e-12*largest(site) && mine == theirs,
+            what+": the means of the two interfaces differ");
+    require(openmx_exx_symmetrize_blocks(state,theirs.data(),nullptr,nullptr,0) == 0 && mine == theirs,
+            what+": the means change a symmetric array");
+    require(openmx_exx_symmetrize_blocks(state,nullptr,&asymmetry,message,sizeof message) != 0 && message[0] != '\0',
+            what+": means without an array are accepted");
+  }
+
+  // Rejected builds add nothing.
+  {
+    std::vector<double> untouched = site_through;
+    require(openmx_exx_add_blocks(state,-1,atom_count,-alpha,blocks_of_d.data(),untouched.data(),nullptr,message,
+                                  sizeof message) != 0 &&
+            openmx_exx_add_blocks(state,0,atom_count+1,-alpha,blocks_of_d.data(),untouched.data(),nullptr,message,
+                                  sizeof message) != 0 &&
+            openmx_exx_add_blocks(state,0,atom_count,-alpha,nullptr,untouched.data(),nullptr,message,sizeof message) != 0 &&
+            openmx_exx_add_blocks(state,0,atom_count,-alpha,blocks_of_d.data(),nullptr,nullptr,message,sizeof message) != 0 &&
+            untouched == site_through,what+": a rejected build of the site form changes the matrix");
+  }
 }
 
 } // namespace
@@ -890,7 +1164,7 @@ void exchange_system(const std::string& path)
     wrong.reciprocal_intervals = 0;
     require(openmx_exx_prepare(state,&wrong,&moved_geometry.geometry,message,sizeof message) != 0 && message[0] != '\0',
             "a reciprocal grid without intervals is accepted");
-    compare_with_c(state,prepare_system(moved,coarse,reciprocal,truncated),d,alpha,"after two failures");
+    compare_with_c(state,prepare_system(moved,coarse,reciprocal,truncated),d,alpha,"after two failures",true);
   }
 }
 
