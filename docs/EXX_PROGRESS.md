@@ -33,6 +33,7 @@ M1 の結果です。「書き直しの後」は、短距離部分を Quantum ES
 | M1（書き直しの後） | `xc-hybrid` | 合格（比較は 14,112 個）。混合比 0 の出力は PBE の関数とビット単位で同じ。混合比 0.25、1、−0.5 の出力は「PBE − 混合比 × 短距離部分」と同じ | 2026-11-23 | 同上 |
 | M1（書き直しの後） | 既存の xc の試験（`xc-legacy` など 6 件） | 合格。上の 3 件と合わせて、xc の 9 件が全て合格 | 2026-11-23 | 同上 |
 | M1（書き直しの後） | `libxc` の語の検索（`grep -rniw libxc modules source tools`） | 該当なし | 2026-11-23 | クラウドのコンテナ |
+| M1（書き直しの後） | CI の `host` ジョブの試験 `total-energy-workspace` と `stress-grid` | 修正（`19e874b9`）の前は 2 件ともコンパイルエラーで失敗し、後は 2 件とも合格。失敗は `Set_XC_Grid` の引数の追加（`5215d212`）から続いていた（GitHub Actions の実行 `45110318332`） | 2026-11-23 | クラウドのコンテナ。`host` ジョブと同じ構成（`OPENMX_BUILD_APPLICATION=OFF`、OpenMP、Debug、GCC 13.3.0）。実行したのはこの 2 件だけ |
 | M1（書き直す前） | ハイブリッド汎関数を指定しない計算（`Set_XC_Grid` の変更の前後） | 6 つの入力（`Methane`、`Mol_MnO`、`Crys-MnO`、`GaAs`、`Graphite4`、`H2O`）で全エネルギーが一致。出力の差は日付と時間の行だけ。`Methane.dat` は `Utot = -8.033540953477` Hartree のまま | 2026-11-23 | コンテナ。1 ランク、1 スレッド |
 | M1（書き直す前） | 指示書の `ctest` の 18 件と xc の 9 件 | 27 件が全て合格 | 2026-11-23 | コンテナ |
 | M1（書き直す前） | 大域状態のゲート | 合格。報告は変更の前と同じ | 2026-11-23 | ホスト |
@@ -119,6 +120,15 @@ Quantum ESPRESSO のソースは、リポジトリーに入れません。照合
 
 クラウドのコンテナ（Ubuntu 24.04.5、GCC 13.3.0、Clang 18.1.3、CMake 3.28.3）で同じ手順を実行するときは、`gfortran` と `libclang-rt-18-dev` を apt で入れます。後者がないと、サニタイザーを付けた Clang の構成がリンクで失敗します。書き直しの後の結果は、この環境で `modules/xc` だけをビルドして得たものです。
 
+CI の `host` ジョブの試験（ラベル `native-state`）は、本体なしの構成で実行します。MPI も BLAS も要りません。`openmx_core` のビルドは、4 並列で約 1 分 20 秒でした。`Set_XC_Grid` の代役を使う 2 件は、次のコマンドで実行できます。
+
+```sh
+cmake -S . -B build/exx-core -DOPENMX_BUILD_APPLICATION=OFF -DOPENMX_CORE_BACKEND=OPENMP -DCMAKE_CXX_STANDARD=20 \
+  -DOPENMX_CORE_SANITIZERS=OFF -DOPENMX_TEST_REQUIRE_OPENMP=ON -DCMAKE_BUILD_TYPE=Debug
+cmake --build build/exx-core --target openmx_core --parallel 4
+ctest --test-dir build/exx-core -R '^(total-energy-workspace|stress-grid)$' --output-on-failure
+```
+
 変更の前後を比べるときは、前のコミットを `git archive` で `build/` の下に書き出し、そこで CPU 版をビルドします。書き出した先には `DFT_DATA19` へのシンボリックリンクが要ります（ないと構成が失敗します）。
 
 ## 決めたこと
@@ -156,6 +166,8 @@ Quantum ESPRESSO のソースは、リポジトリーに入れません。照合
 - （2026-11-23、M1 の書き直し）フィクスチャーの還元勾配の 16 個を取り直した（0.08 と 8.3 の両側、15、40 を含む）。点の数は 160 のままで、形式の版を 2 にした。
 - （2026-11-23、M1 の書き直し）`xc-wpbeh-fixture` を定義に合わせて変えた。フィクスチャーが式の切り替えの両側を含むことを、チャンネルの数（ $s\le0.08$ が 60、還元勾配が 8.3 を超えるものが 80、 $w>14$ が 32）で確かめる。差分商との比較の点は、切り替えの両側に取り直した。 $\omega=0$ の一様電子ガスの極限では、増強因子と 1 の差が 4.7e-9 から 4.9e-9 の間にあることを確かめる。「還元勾配が 15 を超えると、勾配についての導関数が 0 になる」という以前の検査は、新しい定義では成り立たないので外した。
 - （2026-11-23、利用者の指示）コミットとプッシュは `feature/exx` に直接行う。別のブランチや PR は作らない。
+- （2026-11-23）試験用のコード `tests/energy_workspace_harness.c` と `tests/stress_grid_harness.c` にある `Set_XC_Grid` の代役に、`exx_alpha` と `exx_omega` を加えた（`19e874b9`）。代役は、どちらにも 0 が渡ることを確かめる。M4 で呼び出し側の値を変えるときは、代役も変える（指示書の 13 節の 16）。
+- （2026-11-23）プッシュの後は、GitHub Actions の結果を確かめる。M1 の受け入れ試験（指示書の `ctest` の 18 件）は `host` ジョブの試験を含まず、上の 2 件の失敗を見落とした。
 
 ## 未解決の問題
 
