@@ -59,16 +59,26 @@ foreach(_case exchange-fixture exchange-gamma exchange-gradient exchange-backend
   set_tests_properties(exx-${_case} PROPERTIES LABELS "unit;exx" TIMEOUT 300)
 endforeach()
 
-# The exchange matrix with T and V blocks of the PAOs of the overlap fixture.
+# The exchange matrix with T and V blocks of the PAOs of the overlap fixture,
+# and the C interface against the C++ interface.
 add_test(NAME exx-exchange-system COMMAND openmx_exx_tests exchange-system
   "${_exx_fixtures}/overlap_reference.txt")
 set_tests_properties(exx-exchange-system PROPERTIES LABELS "unit;exx" TIMEOUT 600)
+
+# The C interface from a program compiled as C.
+add_executable(openmx_exx_c_tests test_c.c)
+target_link_libraries(openmx_exx_c_tests PRIVATE OpenMX::exx $<$<PLATFORM_ID:Linux>:m>)
+target_compile_options(openmx_exx_c_tests PRIVATE
+  "$<$<C_COMPILER_ID:GNU,Clang,AppleClang>:-Wall;-Wextra;-Wpedantic;-ffp-contract=off>")
+set_target_properties(openmx_exx_c_tests PROPERTIES LINKER_LANGUAGE CXX)
+add_test(NAME exx-c-api COMMAND openmx_exx_c_tests)
+set_tests_properties(exx-c-api PROPERTIES LABELS "unit;exx" TIMEOUT 120)
 
 add_test(NAME exx-package-consumer COMMAND "${CMAKE_COMMAND}"
   "-DEXX_SOURCE=${CMAKE_CURRENT_SOURCE_DIR}/.."
   "-DBASIS_SOURCE=${_exx_basis_source}"
   "-DBASIS_PACKAGE_DIR=${_exx_basis_package_dir}"
   "-DTEST_ROOT=${CMAKE_CURRENT_BINARY_DIR}/package-consumer"
-  "-DCXX=${CMAKE_CXX_COMPILER}"
+  "-DCXX=${CMAKE_CXX_COMPILER}" "-DCC=${CMAKE_C_COMPILER}"
   -P "${CMAKE_CURRENT_SOURCE_DIR}/package_consumer.cmake")
 set_tests_properties(exx-package-consumer PROPERTIES LABELS "integration;exx" TIMEOUT 900)

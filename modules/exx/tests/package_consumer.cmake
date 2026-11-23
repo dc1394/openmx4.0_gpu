@@ -32,7 +32,7 @@ endif()
 
 file(COPY "${EXX_SOURCE}/" DESTINATION "${TEST_ROOT}/source")
 run("${CMAKE_COMMAND}" -S "${TEST_ROOT}/source" -B "${TEST_ROOT}/build"
-  "-DCMAKE_CXX_COMPILER=${CXX}" -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
+  "-DCMAKE_CXX_COMPILER=${CXX}" "-DCMAKE_C_COMPILER=${CC}" -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
   "-DCMAKE_INSTALL_PREFIX=${TEST_ROOT}/prefix" -DCMAKE_INSTALL_LIBDIR=lib
   "-DCMAKE_PREFIX_PATH=${TEST_ROOT}/prefix" ${basis_arguments})
 run("${CMAKE_COMMAND}" --build "${TEST_ROOT}/build" --config Release --parallel 2)
@@ -43,13 +43,18 @@ file(RENAME "${TEST_ROOT}/build" "${TEST_ROOT}/hidden-build")
 
 # The examples are the consumers.  The second one reads .pao files with the
 # basis package itself; no such file belongs to this package, so the test
-# only asks for its usage.
+# only asks for its usage.  The test of the C interface is built next to the
+# first example, from the installed header and library.
+file(COPY "${EXX_SOURCE}/tests/test_c.c" DESTINATION "${TEST_ROOT}/consumer-kernel")
+set(kernel_arguments "-DCMAKE_C_COMPILER=${CC}" -DOPENMX_EXX_EXAMPLE_C_TEST=ON)
+set(lri_arguments "")
 foreach(example kernel lri)
   file(COPY "${EXX_SOURCE}/examples/${example}/" DESTINATION "${TEST_ROOT}/consumer-${example}")
   run("${CMAKE_COMMAND}" -S "${TEST_ROOT}/consumer-${example}" -B "${TEST_ROOT}/consumer-${example}-build"
     "-DCMAKE_CXX_COMPILER=${CXX}" -DCMAKE_BUILD_TYPE=Release
-    "-DCMAKE_PREFIX_PATH=${TEST_ROOT}/relocated" ${basis_arguments})
+    "-DCMAKE_PREFIX_PATH=${TEST_ROOT}/relocated" ${${example}_arguments} ${basis_arguments})
   run("${CMAKE_COMMAND}" --build "${TEST_ROOT}/consumer-${example}-build" --config Release --parallel 2)
 endforeach()
 run("${TEST_ROOT}/consumer-kernel-build/kernel_example")
+run("${TEST_ROOT}/consumer-kernel-build/c_consumer")
 run("${TEST_ROOT}/consumer-lri-build/lri_example" --help)

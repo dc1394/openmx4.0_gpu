@@ -8,8 +8,9 @@
 //   exx-exchange-gradient  equations (16) and (17) against central differences
 //   exx-exchange-backend   the same results with a table of matrix products
 //   exx-exchange-system    T and V blocks made from PAOs: isolated atoms
-//                          against a formula without T blocks, and a periodic
-//                          structure against the definition
+//                          against a formula without T blocks, a periodic
+//                          structure against the definition, and the C
+//                          interface against the C++ interface
 #include <openmx/exx/abf.hpp>
 #include <openmx/exx/exchange.hpp>
 #include <openmx/exx/exx.h>
@@ -593,6 +594,74 @@ std::vector<SpeciesTable> tables_of(const std::vector<Shells>& species, int inte
   return tables;
 }
 
+// The same preparation through the C interface.
+struct CGeometry {
+  std::vector<OpenMXExxSpecies> species;
+  std::vector<double> positions;
+  OpenMXExxGeometry geometry{};
+  CGeometry(const Structure& structure, const std::vector<Shells>& shells)
+  {
+    for (const Shells& item : shells)
+      species.push_back({item.cutoff,static_cast<int>(item.radii.size()),item.radii.data(),
+                         static_cast<int>(item.angular.size()),item.angular.data(),item.values.data()});
+    for (const std::array<double,3>& position : structure.positions)
+      positions.insert(positions.end(),position.begin(),position.end());
+    for (std::size_t i = 0; i < 3; ++i)
+      for (std::size_t x = 0; x < 3; ++x) geometry.lattice[i][x] = structure.lattice[i][x];
+    geometry.atom_count = static_cast<int>(structure.positions.size());
+    geometry.positions = positions.data();
+    geometry.species = structure.species.data();
+    geometry.species_count = static_cast<int>(species.size());
+    geometry.species_data = species.data();
+  }
+  CGeometry(const CGeometry&) = delete;
+  CGeometry& operator=(const CGeometry&) = delete;
+};
+
+// K of all atoms through the C interface.
+std::vector<double> c_exchange(const OpenMXExxState* state, const std::vector<double>& density, double alpha)
+{
+  const int n = openmx_exx_orbital_count(state);
+  require(n > 0 && density.size() == static_cast<std::size_t>(n)*static_cast<std::size_t>(n),
+          "the C interface reports a wrong number of orbitals");
+  std::vector<double> k(density.size(),0.0);
+  char message[200] = "untouched";
+  require(openmx_exx_add_gamma(state,0,openmx_exx_atom_count(state),-alpha,density.data(),k.data(),nullptr,message,
+                               sizeof message) == 0,std::string("the build through the C interface fails: ")+message);
+  require(message[0] == '\0',"a successful call leaves a message");
+  return k;
+}
+
+// The C interface must describe the same system as the C++ interface and give
+// the same exchange matrix, bit for bit: it runs the same code on the same
+// numbers.
+void compare_with_c(const OpenMXExxState* state, const System& system, const std::vector<double>& density, double alpha,
+                    const std::string& what)
+{
+  const std::size_t atoms = system.orbital_count.size();
+  require(openmx_exx_atom_count(state) == static_cast<int>(atoms) &&
+          openmx_exx_orbital_count(state) == static_cast<int>(orbital_total(system)),what+": wrong sizes of the C state");
+  for (std::size_t a = 0; a < atoms; ++a) {
+    const int atom = static_cast<int>(a);
+    require(openmx_exx_atom_orbitals(state,atom) == static_cast<int>(system.orbital_count[a]) &&
+            openmx_exx_atom_abfs(state,atom) == static_cast<int>(system.abf_count[a]) &&
+            openmx_exx_c_neighbours(state,atom) == static_cast<int>(system.c_neighbours[a].size()) &&
+            openmx_exx_v_neighbours(state,atom) == static_cast<int>(system.v_neighbours[a].size()),
+            what+": wrong sizes of an atom of the C state");
+  }
+  OpenMXExxReport report{};
+  require(openmx_exx_report(state,&report) == 0 && report.systems == system.report.systems &&
+          report.eigen_decompositions == system.report.eigen_decompositions && report.dropped == system.report.dropped &&
+          report.smallest_pivot == system.report.smallest_pivot,what+": wrong report of the C state");
+
+  const std::vector<double> k = exchange_gamma(system,density,alpha), through = c_exchange(state,density,alpha);
+  Worst worst(what+": C interface against the C++ interface",0.0);
+  for (std::size_t e = 0; e < k.size(); ++e) worst.absolute(through[e],k[e]);
+  worst.finish();
+  require(openmx_exx_energy_gamma(k.size(),density.data(),through.data()) == exchange_energy_gamma(density,k),
+          what+": the two interfaces give different energies");
+}
+
 } // namespace
 
 void exchange_system(const std::string& path)
@@ -712,6 +781,81 @@ void exchange_system(const std::string& path)
     Worst energy("periodic structure: E_x of the two forms (relative)",1e-12);
     energy.relative(exchange_energy(blocks,site),exchange_energy_gamma(d,k));
     energy.finish();
+  }
+
+  // 3. The C interface, with the same species, grids and structure.
+  {
+    OpenMXExxOptions c_options;
+    openmx_exx_default_options(&c_options);
+    require(c_options.kernel == OPENMX_EXX_KERNEL_SHORT_RANGE && c_options.kernel_parameter == 0.11 &&
+            c_options.abf_threshold == 1.0e-4 && c_options.v_cutoff == 8.0 && c_options.radial_intervals == 900 &&
+            c_options.reciprocal_maximum == 60.0 && c_options.reciprocal_intervals == 900,
+            "the default options are not those of the keywords");
+    c_options.abf_threshold = threshold;
+    c_options.v_cutoff = options.v_cutoff;
+    c_options.radial_intervals = intervals;
+    c_options.reciprocal_maximum = maximum;
+    c_options.reciprocal_intervals = reciprocal_intervals;
+
+    OpenMXExxState* state = openmx_exx_create();
+    require(state != nullptr,"no state of the C interface");
+    struct Guard {
+      OpenMXExxState* state;
+      ~Guard() { openmx_exx_destroy(state); }
+    } guard{state};
+    char message[200] = "";
+    const CGeometry geometry(structure,few);
+    require(openmx_exx_prepare(state,&c_options,&geometry.geometry,message,sizeof message) == 0,
+            std::string("the preparation through the C interface fails: ")+message);
+    compare_with_c(state,system,d,alpha,"HSE06 kernel");
+
+    // Another kernel with the same species: the tables of the species are kept
+    // and the blocks are made again.
+    c_options.kernel = OPENMX_EXX_KERNEL_TRUNCATED_COULOMB;
+    c_options.kernel_parameter = 12.0;
+    require(openmx_exx_prepare(state,&c_options,&geometry.geometry,message,sizeof message) == 0,
+            std::string("the second preparation fails: ")+message);
+    SystemOptions truncated = options;
+    truncated.interaction = truncated_coulomb_kernel(12.0);
+    compare_with_c(state,prepare_system(structure,tables,reciprocal,truncated),d,alpha,"truncated Coulomb kernel");
+
+    // Another structure.
+    Structure moved = structure;
+    moved.positions[1][0] += 0.4;
+    moved.positions[2][2] -= 0.3;
+    const CGeometry moved_geometry(moved,few);
+    require(openmx_exx_prepare(state,&c_options,&moved_geometry.geometry,message,sizeof message) == 0,
+            std::string("the preparation of a moved structure fails: ")+message);
+    compare_with_c(state,prepare_system(moved,tables,reciprocal,truncated),d,alpha,"moved atoms");
+
+    // Another threshold: the tables of the species are made again.
+    c_options.abf_threshold = 1.0e-2;
+    require(openmx_exx_prepare(state,&c_options,&moved_geometry.geometry,message,sizeof message) == 0,
+            std::string("the preparation with another threshold fails: ")+message);
+    const std::vector<SpeciesTable> coarse = tables_of(few,intervals,reciprocal,1.0e-2);
+    {
+      // The call above is told apart from one that kept the old tables only
+      // if the threshold changes the number of ABFs.
+      std::size_t fine_count = 0, coarse_count = 0;
+      for (std::size_t s = 0; s < tables.size(); ++s) {
+        fine_count += tables[s].abf_count();
+        coarse_count += coarse[s].abf_count();
+      }
+      std::printf("ABFs of the three species: %zu with the threshold %.0e, %zu with 1e-02\n",fine_count,threshold,coarse_count);
+      require(coarse_count < fine_count,"the coarser threshold is expected to drop ABFs");
+    }
+    compare_with_c(state,prepare_system(moved,coarse,reciprocal,truncated),d,alpha,"another threshold");
+
+    // A failure leaves the state as it was.
+    OpenMXExxOptions wrong = c_options;
+    wrong.kernel = 99;
+    require(openmx_exx_prepare(state,&wrong,&moved_geometry.geometry,message,sizeof message) != 0 && message[0] != '\0',
+            "an unknown kernel is accepted");
+    wrong = c_options;
+    wrong.reciprocal_intervals = 0;
+    require(openmx_exx_prepare(state,&wrong,&moved_geometry.geometry,message,sizeof message) != 0 && message[0] != '\0',
+            "a reciprocal grid without intervals is accepted");
+    compare_with_c(state,prepare_system(moved,coarse,reciprocal,truncated),d,alpha,"after two failures");
   }
 }
 

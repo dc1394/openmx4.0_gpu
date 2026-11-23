@@ -87,22 +87,25 @@ jobs:
         include:
           - os: ubuntu-24.04
             cxx: g++
+            cc: gcc
             sanitize: "OFF"
           - os: ubuntu-24.04
             cxx: clang++
+            cc: clang
             sanitize: "ON"
           - os: ${{ inputs.macos_runner || 'macos-15-intel' }}
             cxx: clang++
+            cc: clang
             sanitize: "OFF"
     steps:
       - uses: actions/checkout@v4
       - name: Build only the exact-exchange package and its basis dependency (no SDK or numerical stack)
         run: >-
           cmake -S modules/exx -B build/exx
-          -DCMAKE_CXX_COMPILER=${{ matrix.cxx }}
+          -DCMAKE_CXX_COMPILER=${{ matrix.cxx }} -DCMAKE_C_COMPILER=${{ matrix.cc }}
           -DOPENMX_EXX_SANITIZERS=${{ matrix.sanitize }}
       - run: cmake --build build/exx --parallel 2
-      - name: Analytic, symmetry, legacy-agreement and external consumer tests
+      - name: Analytic, symmetry, legacy-agreement, exchange-matrix, C interface and external consumer tests
         run: |
           ulimit -s 8192
           ctest --test-dir build/exx --output-on-failure
