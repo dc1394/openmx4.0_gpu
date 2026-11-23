@@ -1458,7 +1458,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
        energies of two steps and passes as well when the mixing has hardly
        moved the density (docs/EXX_IMPLEMENTATION_GUIDE.md, section 6.6). */
     if (Cnt_switch==0 && Exact_Exchange_Active(exact_exchange)
-        && !Exact_Exchange_Inner_Stop_Allowed(exact_exchange, SCF_iter-exx_inner_start,
+        && !Exact_Exchange_Inner_Stop_Allowed(exact_exchange, Mixing_switch, SCF_iter-exx_inner_start,
                                               sqrt(fabs(mixing_history->norm[0])), SCF_Criterion)) po = 0;
 
 

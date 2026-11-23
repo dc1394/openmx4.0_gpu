@@ -567,9 +567,15 @@ int Exact_Exchange_Mixing_Offset(int mixing_type, int start_pulay, int local_ste
   return 0<=offset ? offset : -1;
 }
 
-int Exact_Exchange_Inner_Stop_Allowed(OpenMXExactExchangeState *state, int step, double residual_norm,
-    double criterion)
+int Exact_Exchange_Inner_Stop_Allowed(OpenMXExactExchangeState *state, int mixing_type, int step,
+    double residual_norm, double criterion)
 {
+  /* Simple and Kerker mixing take their weight from the policy
+     OPENMX_MIXING_DENSITY_RATIO (core/src/mixing_policy.cpp). It divides by
+     the change of the squared residual norm and bounds that change from
+     below by 1e-9, so a squared norm under 1e-9 can only reduce the weight,
+     down to the lower limit of the input. */
+  const double plain_mixing_floor = sqrt(1.0e-9);
   double bound;
   if (!Exact_Exchange_Active(state)) return 1;
   if (step<2) return 0;
@@ -579,6 +585,7 @@ int Exact_Exchange_Inner_Stop_Allowed(OpenMXExactExchangeState *state, int step,
   }
   bound = 0.1*state->residual_reference;
   if (bound<criterion) bound = criterion;
+  if ((mixing_type==0 || mixing_type==3) && bound<plain_mixing_floor) bound = plain_mixing_floor;
   return residual_norm<=bound;
 }
 

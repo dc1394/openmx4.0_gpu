@@ -159,10 +159,19 @@ int Exact_Exchange_Mixing_Offset(int mixing_type, int start_pulay, int local_ste
    residual measured with the matrix; it is kept as the reference. A later
    step may stop when the norm has fallen to a tenth of the reference, or
    below criterion (scf.criterion), the level under which the matrix has not
-   disturbed the density. To be called at every step. Returns 1 without an
-   exchange matrix. NULL is allowed. */
-int Exact_Exchange_Inner_Stop_Allowed(OpenMXExactExchangeState *state, int step, double residual_norm,
-    double criterion);
+   disturbed the density.
+
+   Simple and Kerker mixing (mixing_type 0 and 3 in the coding of
+   Exact_Exchange_Mixing_Offset) have a third level, sqrt(1e-9). Under it
+   their rule for the mixing weight only reduces the weight, and the
+   residual stands still, with or without an exchange matrix: the SCF of
+   the semilocal functional ends in this state as well. A tenth of the
+   reference can lie below what these two mixers reach.
+
+   To be called at every step. Returns 1 without an exchange matrix. NULL
+   is allowed. */
+int Exact_Exchange_Inner_Stop_Allowed(OpenMXExactExchangeState *state, int mixing_type, int step,
+    double residual_norm, double criterion);
 
 /* ---- addition to the Hamiltonian (section 6.5) --------------------------- */
 
