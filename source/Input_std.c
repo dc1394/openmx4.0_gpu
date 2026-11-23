@@ -23,6 +23,9 @@
 #include <omp.h>
 #include "flpq_dm.h"
 #include "tran_prototypes.h"
+#if !OPENMX_GPU_HIP
+#include "openmx_exact_exchange.h"
+#endif
 
 #define MAXBUF 4096
 #define Max_Num_WF_Projs 15
@@ -80,6 +83,14 @@ void Input_std(char *file, OpenMXCoreContext *core)
     abort();
   }
   OpenMXElectronicViews electronic_storage;
+#if !OPENMX_GPU_HIP
+  /* the exact exchange of the hybrid functionals gets the values of its
+     keywords before the input file is closed */
+  OpenMXExactExchangeState *exact_exchange=Exact_Exchange_Bind_Resources(core);
+#endif
+  int hybrid_functional=0;  /* scf.XcType: 0 no hybrid functional, 1 HSE06 */
+  double exx_alpha,exx_omega,exx_abf_pca,exx_v_cutoff,exx_outer_criterion;
+  int exx_outer_maxiter;
 
   FILE *fp,*fp_check,*fp1;
   int i,j,k,itmp;
@@ -988,8 +999,10 @@ void Input_std(char *file, OpenMXCoreContext *core)
   ****************************************************/
 
   s_vec[0]="LDA"; s_vec[1]="LSDA-CA"; s_vec[2]="LSDA-PW"; s_vec[3]="GGA-PBE"; s_vec[4]="HSE"; s_vec[5]="NLX";
+  s_vec[6]="HSE06"; s_vec[7]="PBE0";
   i_vec[0]=1; i_vec[1]=2; i_vec[2]= 3; i_vec[3]= 4; i_vec[4]=5; i_vec[5]=6;
-  input_string2int("scf.XcType", &XC_switch, 6, s_vec,i_vec);
+  i_vec[6]=7; i_vec[7]=8;
+  input_string2int("scf.XcType", &XC_switch, 8, s_vec,i_vec);
 
   if (XC_switch==5 || XC_switch==6){
     if (myid==Host_ID){
@@ -997,6 +1010,65 @@ void Input_std(char *file, OpenMXCoreContext *core)
     }
     MPI_Finalize();
     exit(0);
+  }
+
+  /* hybrid functionals (docs/EXX_IMPLEMENTATION_GUIDE.md): the semilocal
+     part is GGA-PBE with the parameters of the screened exchange, so
+     XC_switch becomes 4. The exact exchange is set up at the end of this
+     routine. */
+
+  if (XC_switch==8){
+    if (myid==Host_ID){
+      printf("scf.XcType=PBE0 is not implemented.\n");
+    }
+    MPI_Finalize();
+    exit(0);
+  }
+
+  if (XC_switch==7){
+#if OPENMX_GPU_HIP
+    if (myid==Host_ID){
+      printf("scf.XcType=HSE06 is not available in the HIP build.\n");
+    }
+    MPI_Finalize();
+    exit(0);
+#endif
+    hybrid_functional = 1;
+    XC_switch = 4;
+  }
+
+  /* parameters of the exact exchange: the mixing ratio, the screening
+     parameter (1/bohr), the threshold of the auxiliary basis functions
+     (a ratio to the largest eigenvalue), the distance added to the larger
+     radius of the auxiliary functions of two atoms to find the pairs of
+     the Coulomb matrix (bohr), and the limits of the outer iteration
+     (a number of builds and Hartree) */
+
+  input_double("scf.exx.alpha",&exx_alpha,(double)0.25);
+  input_double("scf.exx.omega",&exx_omega,(double)0.11);
+  input_double("scf.exx.abf.pca",&exx_abf_pca,(double)1.0e-4);
+  input_double("scf.exx.v.cutoff",&exx_v_cutoff,(double)8.0);
+  input_int("scf.exx.outer.maxIter",&exx_outer_maxiter,30);
+  input_double("scf.exx.outer.criterion",&exx_outer_criterion,(double)1.0e-6);
+
+  if (hybrid_functional!=0){
+
+    const char *message = NULL;
+
+    if      (!(0.0<=exx_alpha && exx_alpha<=1.0))     message = "scf.exx.alpha should be in the range of 0.0 to 1.0.";
+    else if (!(0.0<exx_omega))                        message = "scf.exx.omega should be positive.";
+    else if (!(0.0<exx_abf_pca && exx_abf_pca<1.0))   message = "scf.exx.abf.pca should be larger than 0.0 and smaller than 1.0.";
+    else if (!(0.0<=exx_v_cutoff))                    message = "scf.exx.v.cutoff should not be negative.";
+    else if (exx_outer_maxiter<1)                     message = "scf.exx.outer.maxIter should be 1 or larger.";
+    else if (!(0.0<exx_outer_criterion))              message = "scf.exx.outer.criterion should be positive.";
+
+    if (message!=NULL){
+      if (myid==Host_ID){
+        printf("%s\n",message);
+      }
+      MPI_Finalize();
+      exit(0);
+    }
   }
 
   s_vec[0]="Off"; s_vec[1]="On"; s_vec[2]="NC";
@@ -5036,6 +5108,83 @@ void Input_std(char *file, OpenMXCoreContext *core)
   *************************************************************/
 
   input_logical("calc.ABC.flag",&Calc_ABC_flag,0); /* default=off */
+
+  /****************************************************
+    hybrid functionals: settings that the present
+    implementation does not cover end the run here
+    (docs/EXX_IMPLEMENTATION_GUIDE.md, section 2.2)
+  ****************************************************/
+
+  if (hybrid_functional!=0){
+
+    const char *conflict[32];
+    int conflicts = 0;
+
+    /* the exchange matrix is built and added by the collinear cluster
+       solver only; the forces and the stress do not contain it */
+    if (Solver!=2)                    conflict[conflicts++] = "scf.EigenvalueSolver other than Cluster";
+    if (SpinP_switch==3)              conflict[conflicts++] = "scf.SpinPolarization=NC";
+    if (MD_switch!=0)                 conflict[conflicts++] = "MD.Type other than Nomd";
+    if (scf_stress_flag!=0)           conflict[conflicts++] = "scf.stress.tensor";
+    /* these solve the Hamiltonian of the neighbour list again, which has
+       no exchange matrix, or decompose an energy without the exact exchange */
+    if (Band_disp_switch!=0)          conflict[conflicts++] = "Band.dispersion";
+    if (Dos_fileout!=0)               conflict[conflicts++] = "Dos.fileout";
+    if (DosGauss_fileout!=0)          conflict[conflicts++] = "DosGauss.fileout";
+    if (HS_fileout!=0)                conflict[conflicts++] = "HS.fileout";
+    if (MO_fileout!=0)                conflict[conflicts++] = "MO.fileout";
+    if (Wannier_Func_Calc!=0)         conflict[conflicts++] = "Wannier.Func.Calc";
+    if (unfold_electronic_band!=0)    conflict[conflicts++] = "Unfolding.Electronic.Band";
+    if (Polarization_ABC_flag!=0)     conflict[conflicts++] = "scf.Polarization.ABC";
+    if (CWF_Calc!=0)                  conflict[conflicts++] = "CWF.Calc";
+    if (Energy_Decomposition_flag!=0) conflict[conflicts++] = "Energy.Decomposition";
+    /* not examined together with the exact exchange */
+    if (CDDF_on!=0)                   conflict[conflicts++] = "CDDF.start";
+    if (NBO_switch!=0)                conflict[conflicts++] = "NBO.switch";
+    if (Hub_U_switch!=0)              conflict[conflicts++] = "scf.Hubbard.U";
+    if (orbitalopt!=0)                conflict[conflicts++] = "orbitalOpt.Method";
+    if (core_hole_state_flag!=0)      conflict[conflicts++] = "scf.core.hole";
+    if (ESM_switch!=0)                conflict[conflicts++] = "ESM.switch";
+    if (E_Field_switch!=0)            conflict[conflicts++] = "scf.Electric.Field";
+
+    if (0<conflicts){
+      if (myid==Host_ID){
+        printf("scf.XcType=HSE06 does not support\n");
+        for (i=0; i<conflicts; i++) printf("  %s\n",conflict[i]);
+      }
+      MPI_Finalize();
+      exit(0);
+    }
+
+    if (myid==Host_ID && 0<level_stdout){
+      printf("<Input_std>  HSE06: exact exchange with alpha=%6.4f and omega=%6.4f (1/bohr)\n",exx_alpha,exx_omega);
+    }
+  }
+
+#if !OPENMX_GPU_HIP
+  {
+    OpenMXExactExchangeInput exx_input;
+    exx_input.functional = (hybrid_functional==1) ? OPENMX_EXACT_EXCHANGE_HSE06 : OPENMX_EXACT_EXCHANGE_NONE;
+    exx_input.alpha = exx_alpha;
+    exx_input.omega = exx_omega;
+    exx_input.abf_threshold = exx_abf_pca;
+    exx_input.v_cutoff = exx_v_cutoff;
+    exx_input.outer_max_iterations = exx_outer_maxiter;
+    exx_input.outer_criterion = exx_outer_criterion;
+    exx_input.radial_intervals = OneD_Grid;   /* 1DFFT.NumGridR */
+    exx_input.reciprocal_maximum = PAO_Nkmax; /* square root of 1DFFT.EnergyCutoff */
+    Exact_Exchange_Configure(exact_exchange,&exx_input);
+
+    /* the arrays of the structure, which this function has filled: every
+       preparation of the exact exchange reads them as they are then */
+    OpenMXExactExchangeStructure exx_structure;
+    exx_structure.atom_count = atomnum;
+    exx_structure.species_of_atom = WhatSpecies;
+    exx_structure.positions = Gxyz;
+    exx_structure.lattice = tv;
+    Exact_Exchange_Bind_Structure(exact_exchange,&exx_structure);
+  }
+#endif
 
   /****************************************************
                        input_close

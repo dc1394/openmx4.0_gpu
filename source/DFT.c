@@ -539,6 +539,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   double tmp,tmp0;
   int Cnt_kind,Calc_CntOrbital_ON,spin,spinmax,m;
   int SCF_iter,SCF_iter_shift,SCF_MAX;
+  int exx_inner_start = 0;  /* SCF_iter at which the present inner SCF of a hybrid functional began */
   int i,j,k,fft_charge_flag,M1N;
   int orbitalOpt_iter,LSCF_iter,OrbOpt_end; 
   int wanA,ETemp_controller;
@@ -664,6 +665,17 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
       fflush(stdout);
     }
     time12 = Set_ProExpn_VNA(&atomic->real_harmonics,&radial,vna,reciprocal);
+  }
+
+  /* exact exchange of a hybrid functional: the quantities that the
+     structure fixes (docs/EXX_IMPLEMENTATION_GUIDE.md, section 6.2).
+     The SCF below starts with the semilocal functional. */
+  if (Exact_Exchange_Enabled(exact_exchange)){
+    if (MYID_MPI_COMM_WORLD==Host_ID && 0<level_stdout){
+      printf("<MD=%2d>  Preparation of the exact exchange\n",MD_iter);
+      fflush(stdout);
+    }
+    Exact_Exchange_Prepare(exact_exchange, atomic, mpi_comm_level1, level_stdout);
   }
 
   /* SCF loop */
@@ -1402,6 +1414,10 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
     energies->is[0] = Eele1[0];
     energies->is[1] = Eele1[1];
     energies->band = energies->is[0] + energies->is[1];
+    /* with the exchange matrix of a hybrid functional the band energy is the
+       sum of the occupied eigenvalues: Eele1 is the trace with the Hamiltonian
+       of the neighbour list, which does not hold the exchange matrix */
+    if (Exact_Exchange_Active(exact_exchange)) energies->band = energies->os[0] + energies->os[1];
 
     /*****************************************************
                    Orbital magnetic moment 
@@ -1554,6 +1570,90 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 				  rHs11_Re,rHs12_Re,rHs22_Re,iHs11_Re,iHs12_Re,iHs22_Re,
 				  Ss2_Cx,Hs2_Cx,Cs2_Cx,
 				  CDM1,size_H1,EVec1_NonCol,Work1, electronic);
+    }
+
+    /*****************************************************
+      outer iteration of a hybrid functional
+      (docs/EXX_IMPLEMENTATION_GUIDE.md, sections 6.1, 6.6)
+
+      The inner SCF, with a fixed exchange matrix K, has
+      stopped. The Hamiltonian of this step is solved once
+      more to collect the density matrices, and K is built
+      from them. Unless the change of the exchange energy
+      is below scf.exx.outer.criterion, the SCF goes on
+      with the new K. The first inner SCF is the one of
+      the semilocal functional.
+    *****************************************************/
+
+    /* An inner SCF with an exchange matrix does not stop before the mixing
+       has extrapolated once since its restart. Until then the steps mix
+       simply, with a weight that the earlier steps may have reduced to its
+       minimum, and the density hardly moves: the stop test, which compares
+       the band energies of two steps, would pass on a density that has not
+       answered the new K. The first step that solves an extrapolated
+       density has the step count Pulay_SCF+2. */
+    if (po==1 && Cnt_switch==0 && Exact_Exchange_Active(exact_exchange)
+        && (LSCF_iter-SCF_iter_shift)<(Pulay_SCF+2)) po = 0;
+
+    if (po==1 && Cnt_switch==0 && Solver==2 && SpinP_switch<=1 && Exact_Exchange_Enabled(exact_exchange)){
+
+      double deviation;
+
+      Exact_Exchange_Collect_Begin(exact_exchange, SpinP_switch+1, mpi_comm_level1);
+      time5 += Cluster_DFT_Col(solver_states.cluster_col, atomic, "scf",LSCF_iter,SpinP_switch,
+			       ko_col,H,OLP[0],DM[0],EDM,
+			       Eele0,Eele1,
+			       myworld1,NPROCS_ID1,Comm_World1,NPROCS_WD1,
+			       Comm_World_StartID1,MPI_CommWD1,MP,is2,ie2,
+			       Ss_Re,Cs_Re,Hs_Re,
+			       CDM1,EDM1,PDM1,size_H1,SP_NZeros,SP_Atoms,EVec1_Re,Work1, electronic);
+      Exact_Exchange_Collect_End(exact_exchange, mpi_comm_level1);
+      energies->os[0] = Eele0[0];
+      energies->os[1] = Eele0[1];
+      energies->is[0] = Eele1[0];
+      energies->is[1] = Eele1[1];
+      energies->band = energies->is[0] + energies->is[1];
+      if (Exact_Exchange_Active(exact_exchange)) energies->band = energies->os[0] + energies->os[1];
+
+      /* the collected matrices hold the density matrix of the solver on the
+         elements of the neighbour list; a larger difference means that the
+         solver handed over other vectors than the ones it used */
+      deviation = Exact_Exchange_Density_Deviation(exact_exchange, SpinP_switch+1, Matomnum, M2G, FNAN, natn,
+                                                   WhatSpecies, atomic->species.contracted_orbitals, MP,
+                                                   DM[0], mpi_comm_level1);
+      if (MYID_MPI_COMM_WORLD==Host_ID && 2<=level_stdout){
+        printf("<EXX>  density matrices collected: largest deviation from the solver %.3e\n",deviation);
+        fflush(stdout);
+      }
+      if (!(deviation<1.0e-8)){
+        if (MYID_MPI_COMM_WORLD==Host_ID){
+          printf("<EXX>  the collected density matrices differ from those of the solver by %.3e\n",deviation);
+          fflush(stdout);
+        }
+        MPI_Abort(mpi_comm_level1, 1);
+      }
+
+      Exact_Exchange_Build(exact_exchange, mpi_comm_level1, level_stdout);
+
+      if (MYID_MPI_COMM_WORLD==Host_ID && 0<level_stdout){
+        printf("<EXX>  outer iteration %2d at SCF=%4d  Uexx=%18.12f  delta=%11.3e (Hartree)\n",
+               Exact_Exchange_Outer_Iterations(exact_exchange),SCF_iter,
+               Exact_Exchange_Energy(exact_exchange),Exact_Exchange_Change(exact_exchange));
+        fflush(stdout);
+      }
+
+      if (Exact_Exchange_Outer_Continue(exact_exchange)){
+        /* a new inner SCF. The mixing starts again through SCF_iter_shift,
+           as after the change of the precision stage at the top of the loop:
+           the mixing of this step, with the step count Pulay_SCF-2, finds
+           the converged density; the next step mixes simply, and the step
+           after it starts the Pulay history from the steps that have the
+           new K. scf.maxIter counts the steps of each inner SCF. */
+        int shift = LSCF_iter - Pulay_SCF + 2;
+        if (0<=shift && shift<LSCF_iter) SCF_iter_shift = shift;
+        exx_inner_start = SCF_iter;
+        po = 0;
+      }
     }
 
     /*****************************************************
@@ -1905,13 +2005,46 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
     **************************************************************/
 
     Read_SCF_keywords();
-    if (Cnt_switch==0) SCF_MAX = DFTSCF_loop;
+    if (Cnt_switch==0) SCF_MAX = DFTSCF_loop + exx_inner_start;
 
     /************************************************************************
                               end of SCF calculation
     ************************************************************************/
 
   } while (po==0 && SCF_iter<SCF_MAX);  if (po==0) scf_convergence_flag = 0; else scf_convergence_flag = 1;
+
+  /* hybrid functional: how the outer iteration ended. The forces that
+     follow do not contain the exact exchange. */
+  if (Cnt_switch==0 && Exact_Exchange_Enabled(exact_exchange)){
+    const int builds = Exact_Exchange_Outer_Iterations(exact_exchange);
+    double exx_times[4];
+
+    if (!Exact_Exchange_Outer_Converged(exact_exchange)) scf_convergence_flag = 0;
+
+    if (MYID_MPI_COMM_WORLD==Host_ID && 0<level_stdout){
+      if (builds==0){
+        printf("<EXX>  WARNING: the SCF of GGA-PBE did not converge within scf.maxIter=%d steps.\n",DFTSCF_loop);
+        printf("<EXX>  No exchange matrix was built: the energies below are those of GGA-PBE.\n");
+      }
+      else if (po==0){
+        printf("<EXX>  WARNING: the SCF with the exchange matrix of the outer iteration %d\n",builds);
+        printf("<EXX>  did not converge within scf.maxIter=%d steps.\n",DFTSCF_loop);
+      }
+      else if (!Exact_Exchange_Outer_Converged(exact_exchange)){
+        printf("<EXX>  WARNING: the outer iteration did not converge in %d builds of the exchange matrix\n",builds);
+        printf("<EXX>  (scf.exx.outer.maxIter): delta=%.3e Hartree.\n",Exact_Exchange_Change(exact_exchange));
+      }
+      else{
+        printf("<EXX>  The outer iteration converged with %d builds of the exchange matrix: delta=%.3e Hartree.\n",
+               builds,Exact_Exchange_Change(exact_exchange));
+      }
+      Exact_Exchange_Times(exact_exchange, exx_times);
+      printf("<EXX>  time (s): preparation %.2f, density matrices %.2f, exchange matrix %.2f, addition %.2f\n",
+             exx_times[0],exx_times[1],exx_times[2],exx_times[3]);
+      printf("<EXX>  The forces do not contain the exact exchange.\n");
+      fflush(stdout);
+    }
+  }
 
   /* an SCF cut by scf.maxIter (changed through the _SCF_keywords file) on a
      refined FP32 eigensolve: the same FP64 re-solve as at a stop */
