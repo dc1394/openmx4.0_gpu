@@ -1,7 +1,7 @@
 # One executable holds the unit tests; the first argument selects the case and
 # the second one names a fixture when the case reads one.
 add_executable(openmx_exx_tests test_main.cpp test_kernel.cpp test_two_center.cpp test_overlap.cpp
-  test_abf.cpp test_lri.cpp overlap_fixture.cpp)
+  test_abf.cpp test_lri.cpp test_system.cpp overlap_fixture.cpp)
 target_link_libraries(openmx_exx_tests PRIVATE OpenMX::exx OpenMX::basis $<$<PLATFORM_ID:Linux>:m>)
 target_compile_options(openmx_exx_tests PRIVATE
   "$<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wall;-Wextra;-Wpedantic;-ffp-contract=off>")
@@ -36,6 +36,13 @@ set_tests_properties(exx-three-center-gaussian PROPERTIES LABELS "unit;exx" TIME
 
 # The local RI with the PAOs of the overlap fixture.
 foreach(_case lri-identity lri-convergence)
+  add_test(NAME exx-${_case} COMMAND openmx_exx_tests ${_case} "${_exx_fixtures}/overlap_reference.txt")
+  set_tests_properties(exx-${_case} PROPERTIES LABELS "unit;exx" TIMEOUT 600)
+endforeach()
+
+# Neighbour lists and the T and V blocks of the structure of the overlap
+# fixture.
+foreach(_case system-neighbours system-blocks)
   add_test(NAME exx-${_case} COMMAND openmx_exx_tests ${_case} "${_exx_fixtures}/overlap_reference.txt")
   set_tests_properties(exx-${_case} PROPERTIES LABELS "unit;exx" TIMEOUT 600)
 endforeach()

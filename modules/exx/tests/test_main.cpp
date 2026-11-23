@@ -18,6 +18,8 @@ int main(int argc, char** argv)
     else if (name == "three-center-gaussian") exx_test::three_center_gaussian();
     else if (name == "lri-identity") exx_test::lri_identity(fixture);
     else if (name == "lri-convergence") exx_test::lri_convergence(fixture);
+    else if (name == "system-neighbours") exx_test::system_neighbours(fixture);
+    else if (name == "system-blocks") exx_test::system_blocks(fixture);
     else throw std::runtime_error("unknown exx test case: "+name);
     return 0;
   } catch (const std::exception& e) {
