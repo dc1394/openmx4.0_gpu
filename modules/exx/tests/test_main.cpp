@@ -21,6 +21,10 @@ int main(int argc, char** argv)
     else if (name == "system-neighbours") exx_test::system_neighbours(fixture);
     else if (name == "system-blocks") exx_test::system_blocks(fixture);
     else if (name == "dense-backend") exx_test::dense_backend();
+    else if (name == "exchange-fixture") exx_test::exchange_fixture(fixture);
+    else if (name == "exchange-gamma") exx_test::exchange_gamma(fixture);
+    else if (name == "exchange-backend") exx_test::exchange_backend(fixture);
+    else if (name == "exchange-system") exx_test::exchange_system(fixture);
     else throw std::runtime_error("unknown exx test case: "+name);
     return 0;
   } catch (const std::exception& e) {
