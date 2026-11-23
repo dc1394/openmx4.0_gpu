@@ -5120,9 +5120,9 @@ void Input_std(char *file, OpenMXCoreContext *core)
     const char *conflict[32];
     int conflicts = 0;
 
-    /* the exchange matrix is built and added by the collinear cluster
-       solver only; the forces and the stress do not contain it */
-    if (Solver!=2)                    conflict[conflicts++] = "scf.EigenvalueSolver other than Cluster";
+    /* the exchange matrix is built and added by the collinear cluster and
+       band solvers only; the forces and the stress do not contain it */
+    if (Solver!=2 && Solver!=3)       conflict[conflicts++] = "scf.EigenvalueSolver other than Cluster and Band";
     if (SpinP_switch==3)              conflict[conflicts++] = "scf.SpinPolarization=NC";
     if (MD_switch!=0)                 conflict[conflicts++] = "MD.Type other than Nomd";
     if (scf_stress_flag!=0)           conflict[conflicts++] = "scf.stress.tensor";

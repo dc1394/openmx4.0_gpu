@@ -27,6 +27,7 @@
 #include "openmx_precision.h"
 #include "openmx_host_simd.h"
 #include "openmx_core_energy_simd.h"
+#include "openmx_exact_exchange.h"
 #include <accel.h>
 #include <limits.h>
 #include <math.h>
@@ -217,6 +218,7 @@ struct OpenMXBandColState {
   OpenMXBandEnergies *energies; /* borrowed from this calculation */
   OpenMXNativeResources *resources; /* borrowed from this calculation */
   OpenMXHamiltonianCache *hamiltonian_cache; /* borrowed from this calculation */
+  struct OpenMXExactExchangeState *exact_exchange; /* borrowed from this calculation; NULL without a hybrid functional */
   int initialized;
   int gpu_dense_verdict;
   int last_construct_on_device;
@@ -511,6 +513,11 @@ int Band_DFT_Col_RefineLastRefined(BandColState *state)
 void Band_DFT_Col_RefineForceFP64(BandColState *state, int on)
 {
     state->refine.force_fp64 = on;
+}
+
+void Band_DFT_Col_ExactExchange(BandColState *state, struct OpenMXExactExchangeState *exact_exchange)
+{
+    state->exact_exchange = exact_exchange;
 }
 
 /* the end of an SCF cycle: the warm-start bases go (the device one and the
@@ -3624,7 +3631,10 @@ static double Band_DFT_Col_owned(BandColState *state, int SCF_iter, int knum_i, 
         if (max_tno < tnoA)
             max_tno = tnoA;
     }
-    use_gpusolver_dense = (scf_eigen_lib_flag == GPUSOLVER && (openmx_mgpu_host_required() || Band_DFT_Col_GpuSwitchNum() <= n));
+    /* with a hybrid functional the exchange matrix is added to the host
+       matrix Hs below: the dense paths on the device are not taken */
+    use_gpusolver_dense = (state->exact_exchange == NULL && scf_eigen_lib_flag == GPUSOLVER &&
+                           (openmx_mgpu_host_required() || Band_DFT_Col_GpuSwitchNum() <= n));
 
     /* the refined eigensolver: its switch (collective, once), and no
        refined solve until this call's first halves say so */
@@ -4696,6 +4706,10 @@ diagonalize1:
                                     use_setham_packed_cache ? setham_H1 : H1, k1, k2, k3, Cs, Hs, n,
                                     owns_global_dense_rank);
 
+                /* the exchange matrix of a hybrid functional at this k point */
+                Exact_Exchange_Add_Band_Hs(state->exact_exchange, spin, k1, k2, k3, n, (double *)Hs, na_rows, na_cols,
+                                           nblk, np_rows, np_cols, my_prow, my_pcol);
+
                 if (measure_time) {
                     dtime(&endtime);
                     part1 += endtime - starttime;
@@ -5580,6 +5594,14 @@ diagonalize1:
                 dtime(&Stime0);
             }
 
+            /* a hybrid functional collects the density matrix of this k point
+               from the states of this process, which carry their weights */
+            if (state->exact_exchange != NULL && kmin <= kmax) {
+                Exact_Exchange_Collect_K(state->exact_exchange, spin, k1, k2, k3, sum_weights, n, kmax - kmin + 1,
+                                         ie2[myid2] - is2[myid2] + 1,
+                                         (const double *)&EVec1[spin][(size_t)(kmin - is2[myid2])], NULL);
+            }
+
             int gpu_dm_done = 0;
 
             /* the vote and the device attempt of every rank; a rank whose
@@ -6170,6 +6192,10 @@ diagonalize1:
                                     use_setham_packed_cache ? setham_H1 : H1, k1, k2, k3, Cs, Hs, n,
                                     owns_global_dense_rank);
 
+                /* the exchange matrix of a hybrid functional at this k point */
+                Exact_Exchange_Add_Band_Hs(state->exact_exchange, spin, k1, k2, k3, n, (double *)Hs, na_rows, na_cols,
+                                           nblk, np_rows, np_cols, my_prow, my_pcol);
+
                 // #pragma acc update device(Hs[0 : na_rows * na_cols], Cs[0 : na_rows * na_cols])
 
                 /* diagonalize S */
@@ -6362,6 +6388,13 @@ diagonalize1:
                     dtime(&Etime1);
                     time11A += Etime1 - Stime1;
                     dtime(&Stime1);
+                }
+
+                /* a hybrid functional collects the density matrix of this k
+                   point from the same vectors and weights */
+                if (state->exact_exchange != NULL) {
+                    Exact_Exchange_Collect_K(state->exact_exchange, spin, k1, k2, k3, sum_weights, n, MaxN, na_rows,
+                                             (const double *)Hs, occ_weight);
                 }
 
                 {
@@ -6830,7 +6863,8 @@ void Construct_Band_CsHs(BandColState *state, int SCF_iter, int all_knum, int * 
 {
     const int need_s = (SCF_iter == 1 || all_knum != 1);
     const int use_gpusolver_dense =
-        (scf_eigen_lib_flag == GPUSOLVER && (openmx_mgpu_host_required() || Band_DFT_Col_GpuSwitchNum() <= n) && state->gpu_dense_verdict);
+        (state->exact_exchange == NULL && scf_eigen_lib_flag == GPUSOLVER &&
+         (openmx_mgpu_host_required() || Band_DFT_Col_GpuSwitchNum() <= n) && state->gpu_dense_verdict);
     const int dense_gpusolver_owner =
         (use_gpusolver_dense &&
          ((all_knum == 1 && owns_global_dense_rank) ||

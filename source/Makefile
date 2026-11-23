@@ -1764,7 +1764,7 @@ DFT.o Set_Hamiltonian.o Set_Density_Grid.o Free_Arrays.o: openmx_grid_assembly.h
 Set_Hamiltonian.o: openmx_host_simd.h
 
 DFT.o Cluster_DFT_Col.o: openmx_cluster_col_state.h
-DFT.o Cluster_DFT_Col.o Input_std.o: openmx_exact_exchange.h
+DFT.o Cluster_DFT_Col.o Band_DFT_Col.o Input_std.o: openmx_exact_exchange.h
 
 DFT.o Cluster_DFT_NonCol.o: openmx_cluster_noncol_state.h
 

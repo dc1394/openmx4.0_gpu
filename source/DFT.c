@@ -492,9 +492,10 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   OpenMXMixingDMState *mixing_dm=Mixing_DM_Bind_Resources(core);
   OpenMXMixingVState *mixing_v=Mixing_V_Bind_Resources(core);
   OpenMXExactExchangeState *exact_exchange=Exact_Exchange_Bind_Resources(core);
-  /* the collinear cluster solver adds the exchange matrix of a hybrid
-     functional to its Hamiltonian and collects the density matrices */
+  /* the collinear cluster and band solvers add the exchange matrix of a
+     hybrid functional to their Hamiltonians and collect the density matrices */
   Cluster_DFT_Col_ExactExchange(solver_states.cluster_col, Exact_Exchange_Enabled(exact_exchange) ? exact_exchange : NULL);
+  Band_DFT_Col_ExactExchange(solver_states.band_col, Exact_Exchange_Enabled(exact_exchange) ? exact_exchange : NULL);
   OpenMXMixingHistory *mixing_history=NULL;
   char mixing_history_error[256];
   if(!openmx_core_mixing_history(core,&mixing_history,mixing_history_error,sizeof(mixing_history_error))) {
@@ -675,7 +676,9 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
       printf("<MD=%2d>  Preparation of the exact exchange\n",MD_iter);
       fflush(stdout);
     }
-    Exact_Exchange_Prepare(exact_exchange, atomic, mpi_comm_level1, level_stdout);
+    /* the band solver takes the blocks K(R) of the site form, the cluster
+       solver the matrix of the Gamma point */
+    Exact_Exchange_Prepare(exact_exchange, atomic, Solver==3, mpi_comm_level1, level_stdout);
   }
 
   /* SCF loop */
@@ -1593,18 +1596,28 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
       the semilocal functional.
     *****************************************************/
 
-    if (po==1 && Cnt_switch==0 && Solver==2 && SpinP_switch<=1 && Exact_Exchange_Enabled(exact_exchange)){
+    if (po==1 && Cnt_switch==0 && (Solver==2 || Solver==3) && SpinP_switch<=1 && Exact_Exchange_Enabled(exact_exchange)){
 
       double deviation;
 
       Exact_Exchange_Collect_Begin(exact_exchange, SpinP_switch+1, mpi_comm_level1);
-      time5 += Cluster_DFT_Col(solver_states.cluster_col, atomic, "scf",LSCF_iter,SpinP_switch,
-			       ko_col,H,OLP[0],DM[0],EDM,
-			       Eele0,Eele1,
-			       myworld1,NPROCS_ID1,Comm_World1,NPROCS_WD1,
-			       Comm_World_StartID1,MPI_CommWD1,MP,is2,ie2,
-			       Ss_Re,Cs_Re,Hs_Re,
-			       CDM1,EDM1,PDM1,size_H1,SP_NZeros,SP_Atoms,EVec1_Re,Work1, electronic);
+      if (Solver==2){
+        time5 += Cluster_DFT_Col(solver_states.cluster_col, atomic, "scf",LSCF_iter,SpinP_switch,
+                                 ko_col,H,OLP[0],DM[0],EDM,
+                                 Eele0,Eele1,
+                                 myworld1,NPROCS_ID1,Comm_World1,NPROCS_WD1,
+                                 Comm_World_StartID1,MPI_CommWD1,MP,is2,ie2,
+                                 Ss_Re,Cs_Re,Hs_Re,
+                                 CDM1,EDM1,PDM1,size_H1,SP_NZeros,SP_Atoms,EVec1_Re,Work1, electronic);
+      }
+      else{
+        time5 += Band_DFT_Col(solver_states.band_col, LSCF_iter,Kspace_grid1,Kspace_grid2,Kspace_grid3,SpinP_switch,0,
+                              H,iHNL,OLP[0],DM[0],EDM,Eele0,Eele1,MP,order_GA,ko,koS,EIGEN_Band,H1,S1,
+                              CDM1,EDM1,EVec1_Cx,Ss_Cx,Cs_Cx,Hs_Cx,k_op,T_k_op,T_k_ID,
+                              T_KGrids1,T_KGrids2,T_KGrids3,myworld1,NPROCS_ID1,Comm_World1,NPROCS_WD1,
+                              Comm_World_StartID1,MPI_CommWD1,myworld2,NPROCS_ID2,NPROCS_WD2,Comm_World2,
+                              Comm_World_StartID2,MPI_CommWD2, electronic);
+      }
       Exact_Exchange_Collect_End(exact_exchange, mpi_comm_level1);
       energies->os[0] = Eele0[0];
       energies->os[1] = Eele0[1];
@@ -1617,6 +1630,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
          elements of the neighbour list; a larger difference means that the
          solver handed over other vectors than the ones it used */
       deviation = Exact_Exchange_Density_Deviation(exact_exchange, SpinP_switch+1, Matomnum, M2G, FNAN, natn,
+                                                   ncn, atv_ijk,
                                                    WhatSpecies, atomic->species.contracted_orbitals, MP,
                                                    DM[0], mpi_comm_level1);
       if (MYID_MPI_COMM_WORLD==Host_ID && 2<=level_stdout){

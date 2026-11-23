@@ -15,9 +15,16 @@ extern "C" {
    functions take every input as an argument and read no global variable.
    MPI is used in this layer only: modules/exx works within one process.
 
-   Matrices of orbitals are N x N, N the number of orbitals of the unit cell.
-   The orbitals are ordered by atom and, within an atom, as in the solvers:
-   orbital i of atom A (both counted from 1) has the index MP[A]-1+i.
+   The orbitals of the unit cell, N in number, are ordered by atom and,
+   within an atom, as in the solvers: orbital i of atom A (both counted from
+   1) has the index MP[A]-1+i.
+
+   The density and exchange matrices have one of two forms, chosen at the
+   preparation of a structure. The Gamma form serves the cluster solver: N x N
+   matrices, with all lattice images of an orbital folded onto it. The site
+   form serves the band solver and any k mesh: the blocks M_xy(R) between the
+   orbitals of atom x in the cell at the origin and those of atom y in the
+   cell R, for the list of blocks that modules/exx gives (exx.h).
 
    Borrowed calculation state. Bind, clear and finish require quiescent
    users; clear and finish invalidate the view. */
@@ -64,12 +71,15 @@ int Exact_Exchange_Enabled(const OpenMXExactExchangeState *state);
 /* ---- one structure (section 6.2) ---------------------------------------- */
 
 /* ABFs, neighbour lists, T blocks and V blocks of the bound structure as it
-   is at the call, on every process. The exchange matrix of an earlier
-   structure is dropped: the SCF of the new structure starts with the
-   semilocal functional. Does nothing unless a hybrid functional is enabled.
-   A failure ends the run through MPI_Abort. verbosity is level.of.stdout. */
+   is at the call, on every process. sites selects the form of the density
+   and exchange matrices of this structure: 0 for the Gamma form, 1 for the
+   site form, which also gets its list of blocks here. The exchange matrix
+   of an earlier structure is dropped: the SCF of the new structure starts
+   with the semilocal functional. Does nothing unless a hybrid functional is
+   enabled. A failure ends the run through MPI_Abort. verbosity is
+   level.of.stdout. */
 void Exact_Exchange_Prepare(OpenMXExactExchangeState *state, const OpenMXAtomicViews *atomic,
-    MPI_Comm comm, int verbosity);
+    int sites, MPI_Comm comm, int verbosity);
 
 /* ---- semilocal part ------------------------------------------------------ */
 
@@ -79,20 +89,40 @@ void Exact_Exchange_Prepare(OpenMXExactExchangeState *state, const OpenMXAtomicV
 double Exact_Exchange_Semilocal_Alpha(const OpenMXExactExchangeState *state);
 double Exact_Exchange_Semilocal_Omega(const OpenMXExactExchangeState *state);
 
-/* ---- density matrix of the Gamma point (section 6.3) --------------------- */
+/* ---- density matrix (section 6.3) ----------------------------------------- */
 
 /* Starts a collection: the next solution of the eigenvalue problem hands its
    vectors and occupations over. spin_channels is 1 without and 2 with spin
    polarization. */
 void Exact_Exchange_Collect_Begin(OpenMXExactExchangeState *state, int spin_channels, MPI_Comm comm);
 
-/* Adds sum_s occupation[s] c_s c_s^T of the states that this process holds
-   to the density matrix of one spin channel. vectors[basis*state_count + s]
-   is the component of state s on the orbital basis (the layout of EVec1 of
-   the cluster solver); occupations are those of one spin channel, between 0
-   and 1. Does nothing outside a collection. */
+/* Gamma form. Adds sum_s occupation[s] c_s c_s^T of the states that this
+   process holds to the density matrix of one spin channel.
+   vectors[basis*state_count + s] is the component of state s on the orbital
+   basis (the layout of EVec1 of the cluster solver); occupations are those
+   of one spin channel, between 0 and 1. Does nothing outside a collection. */
 void Exact_Exchange_Collect_Gamma(OpenMXExactExchangeState *state, int spin, int basis_count,
     int state_count, const double *occupation, const double *vectors);
+
+/* Site form, equation (5). Adds the contribution of the states that this
+   process holds at one k point to the blocks of one spin channel:
+
+     D_{mu nu}(R) += Re[ e^{2 pi i k.R} sum_s a_s^2 conj(c_{mu s}) c_{nu s} ] / weight_sum
+
+   k1, k2, k3 are the coordinates of the k point in units of the reciprocal
+   lattice vectors, and weight_sum is the sum of the weights of all k points
+   of the mesh. vectors holds complex numbers as pairs of a real and an
+   imaginary part: the pair at 2*(basis*stride + s) is the component of state
+   s on the orbital basis (the transposed vectors of the band solver).
+   amplitude[s]^2 is the weight of the k point times the occupation of the
+   state in one spin channel (the occupation is between 0 and 1); NULL means
+   that the vectors are multiplied by their amplitudes already. A k point
+   that the solver treats in place of the pair k and -k carries twice the
+   weight: the real part is the contribution of both. Does nothing outside a
+   collection. */
+void Exact_Exchange_Collect_K(OpenMXExactExchangeState *state, int spin, double k1, double k2, double k3,
+    double weight_sum, int basis_count, int state_count, int stride, const double *vectors,
+    const double *amplitude);
 
 /* Ends the collection: sums the contributions of the processes, after which
    every process holds the same density matrices. */
@@ -102,9 +132,13 @@ void Exact_Exchange_Collect_End(OpenMXExactExchangeState *state, MPI_Comm comm);
    matrix of the solver, over the elements that the solver stores:
    density[spin][MA][LB][i][j] for the atoms 1 .. local_atoms of this process
    and their neighbours 0 .. neighbour_count[GA]. first_orbital is MP. The
+   site form compares the block of the two atoms and the cell of the
+   neighbour, cell_index[neighbour_cell[GA][LB]][1..3] (ncn and atv_ijk of
+   the main program); the Gamma form does not read these two arguments. The
    result is the maximum over the processes. */
 double Exact_Exchange_Density_Deviation(const OpenMXExactExchangeState *state, int spin_channels,
     int local_atoms, const int *local_to_global, const int *neighbour_count, int *const *neighbour_atom,
+    int *const *neighbour_cell, int *const *cell_index,
     const int *species_of_atom, const int *orbitals_of_species, const int *first_orbital,
     double *****density, MPI_Comm comm);
 
@@ -126,6 +160,11 @@ int Exact_Exchange_Outer_Iterations(const OpenMXExactExchangeState *state); /* b
 int Exact_Exchange_Outer_Converged(const OpenMXExactExchangeState *state);  /* the criterion was met */
 double Exact_Exchange_Energy(const OpenMXExactExchangeState *state);        /* E_x of the last build, Hartree */
 double Exact_Exchange_Change(const OpenMXExactExchangeState *state);        /* delta of the last build, Hartree */
+/* The largest difference between an element of K and the element that
+   equals it by symmetry, K_ij and K_ji or K_xy(R) and K_yx(-R)^T, in the last
+   build before the two were replaced by their mean. K(k) is Hermitian when
+   it vanishes. */
+double Exact_Exchange_Asymmetry(const OpenMXExactExchangeState *state);
 
 /* ---- inner SCF with an exchange matrix (section 6.6) --------------------- */
 
@@ -178,13 +217,22 @@ int Exact_Exchange_Inner_Stop_Allowed(OpenMXExactExchangeState *state, int mixin
 /* 1 when an exchange matrix exists and has to be added. NULL is allowed. */
 int Exact_Exchange_Active(const OpenMXExactExchangeState *state);
 
-/* Adds K of one spin channel to the dense Hamiltonian of the cluster solver
-   in its block-cyclic distribution: Hs[j*na_rows+i] is the local element
-   (i,j) of the n x n matrix, and the remaining arguments are the values of
-   the BLACS grid that the solver uses. Does nothing without an exchange
-   matrix. */
+/* Gamma form. Adds K of one spin channel to the dense Hamiltonian of the
+   cluster solver in its block-cyclic distribution: Hs[j*na_rows+i] is the
+   local element (i,j) of the n x n matrix, and the remaining arguments are
+   the values of the BLACS grid that the solver uses. Does nothing without
+   an exchange matrix. */
 void Exact_Exchange_Add_Cluster_Hs(OpenMXExactExchangeState *state, int spin, int n, double *Hs,
     int na_rows, int na_cols, int nblk, int np_rows, int np_cols, int my_prow, int my_pcol);
+
+/* Site form, equation (14). Adds K(k) = sum_R e^{2 pi i k.R} K(R) of one
+   spin channel to the dense complex Hamiltonian of the band solver at the k
+   point (k1, k2, k3): the pair of doubles at 2*(j*na_rows+i) is the local
+   element (i,j) of the n x n matrix in the block-cyclic distribution of the
+   solver. The phase is the one with which the solver builds H(k) from the
+   elements of the neighbour list. Does nothing without an exchange matrix. */
+void Exact_Exchange_Add_Band_Hs(OpenMXExactExchangeState *state, int spin, double k1, double k2, double k3,
+    int n, double *Hs, int na_rows, int na_cols, int nblk, int np_rows, int np_cols, int my_prow, int my_pcol);
 
 /* ---- times --------------------------------------------------------------- */
 
