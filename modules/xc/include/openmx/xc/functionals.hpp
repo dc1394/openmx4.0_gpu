@@ -74,6 +74,13 @@ struct PbeResult {
 };
 PbeResult pbe(SpinDensity density, const SpinGradient& gradient, bool symmetrize_spins) noexcept;
 
+// ---- Special functions of the short-range exchange ----
+// exp(x) E1(x) with the exponential integral E1 (infinite at x = 0, NaN for
+// negative x), and erfcx(x) = exp(x^2) erfc(x).  The relative error is below
+// 1e-14 for 1e-30 <= x <= 1e8.
+double e1_scaled(double x) noexcept;
+double erfcx(double x) noexcept;
+
 }  // namespace openmx::xc
 
 #endif

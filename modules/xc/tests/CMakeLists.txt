@@ -14,6 +14,18 @@ foreach(_case legacy analytic derivatives invalid)
   set_tests_properties(xc-${_case} PROPERTIES LABELS "unit;xc" TIMEOUT 60)
 endforeach()
 
+# The short-range omega-PBE exchange against multi-precision references
+# (text fixtures written by tools/wpbeh_special_reference.py).  The test also
+# reads the library's internal header for the derivatives.
+add_executable(openmx_xc_wpbeh_tests test_wpbeh.cpp)
+target_include_directories(openmx_xc_wpbeh_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../src")
+target_link_libraries(openmx_xc_wpbeh_tests PRIVATE OpenMX::xc $<$<PLATFORM_ID:Linux>:m>)
+target_compile_options(openmx_xc_wpbeh_tests PRIVATE
+  "$<$<COMPILE_LANG_AND_ID:CXX,GNU,Clang,AppleClang>:-ffp-contract=off>")
+add_test(NAME xc-wpbeh-special COMMAND openmx_xc_wpbeh_tests wpbeh-special
+  "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/wpbeh_special_reference.txt")
+set_tests_properties(xc-wpbeh-special PROPERTIES LABELS "unit;xc" TIMEOUT 60)
+
 add_executable(openmx_xc_c_tests test_c.c)
 target_link_libraries(openmx_xc_c_tests PRIVATE OpenMX::xc $<$<PLATFORM_ID:Linux>:m>)
 # The test inlines kernels.h and compares it bitwise with the library, which

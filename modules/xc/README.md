@@ -51,4 +51,7 @@ C++ からは `openmx/xc/functionals.hpp`（`openmx::xc::pbe` など）、C か�
 - `xc-derivatives`: ポテンシャルと導関数を中心差分と比較（密度微分、スピンごとの微分、
   PBE の勾配微分）。
 - `xc-invalid`: 境界条件（下限以下の密度、不明な量の指定、NULL）。
+- `xc-wpbeh-special`: 短距離交換で使う特殊関数 `e1_scaled`（exp(x) E1(x)）と `erfcx`（exp(x²) erfc(x)）を、
+  50 桁で評価した参照値（`tests/fixtures/wpbeh_special_reference.txt`。`tools/wpbeh_special_reference.py` で作成）と
+  1e-30 から 1e8 の範囲で比較（値は相対 1e-14、導関数は 1e-13）。
 - `xc-c-api`、`xc-package-consumer`: C からの利用と、インストールしたパッケージからの利用。
