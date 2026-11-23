@@ -70,6 +70,7 @@ def main():
     else:
         # The exact exchange of the hybrid functionals is not part of the HIP build yet.
         jobs.append((cc, "Exact_Exchange.c"))
+        jobs.append((cc, "Exact_Exchange_Device.c"))
 
     def compile_unit(job):
         command, name = job
