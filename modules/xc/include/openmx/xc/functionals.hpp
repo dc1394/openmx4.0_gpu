@@ -74,6 +74,28 @@ struct PbeResult {
 };
 PbeResult pbe(SpinDensity density, const SpinGradient& gradient, bool symmetrize_spins) noexcept;
 
+// ---- Short-range omega-PBE exchange (wPBEh), spin-resolved ----
+// The exchange energy of the screened interaction erfc(omega r)/r in the
+// model of Heyd, Scuseria and Ernzerhof: the semilocal short-range exchange
+// of HSE06, with the definition of the functional GGA_X_WPBEH of libxc 7.1.2.
+// omega is in 1/bohr.  The outputs follow the conventions of the exchange
+// part of pbe(), including its density floor, its treatment of a vanishing
+// gradient and `symmetrize_spins`.
+//
+// The rounding error grows with w = omega/kF, kF = (6 pi^2 rho_s)^(1/3),
+// because terms cancel: about 1e-15 for w <= 1, 1e-10 at w = 4, 1e-6 at
+// w = 10 and 3e-5 just below w = 14; above 14 the definition changes form and
+// the error is about 1e-12.  With omega = 0.11, w = 4 is a spin density of
+// 3.5e-7 bohr^-3 and w = 14 one of 8e-9 bohr^-3.
+struct ShortRangeExchangeResult {
+  double exchange_energy_density;     // epsilon_x^SR
+  double dexchange_ddensity[2];       // per spin
+  double dexchange_dgradient[3][2];   // [direction][spin]
+  SpinDensity density_used;           // the input floored at 0.5e-14 per spin
+};
+ShortRangeExchangeResult wpbeh_short_range_exchange(SpinDensity density, const SpinGradient& gradient,
+                                                    double omega, bool symmetrize_spins) noexcept;
+
 // ---- Special functions of the short-range exchange ----
 // exp(x) E1(x) with the exponential integral E1 (infinite at x = 0, NaN for
 // negative x), and erfcx(x) = exp(x^2) erfc(x).  The relative error is below

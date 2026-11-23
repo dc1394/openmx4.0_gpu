@@ -25,6 +25,9 @@ target_compile_options(openmx_xc_wpbeh_tests PRIVATE
 add_test(NAME xc-wpbeh-special COMMAND openmx_xc_wpbeh_tests wpbeh-special
   "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/wpbeh_special_reference.txt")
 set_tests_properties(xc-wpbeh-special PROPERTIES LABELS "unit;xc" TIMEOUT 60)
+add_test(NAME xc-wpbeh-fixture COMMAND openmx_xc_wpbeh_tests wpbeh-fixture
+  "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/wpbeh_reference.txt")
+set_tests_properties(xc-wpbeh-fixture PROPERTIES LABELS "unit;xc" TIMEOUT 60)
 
 add_executable(openmx_xc_c_tests test_c.c)
 target_link_libraries(openmx_xc_c_tests PRIVATE OpenMX::xc $<$<PLATFORM_ID:Linux>:m>)

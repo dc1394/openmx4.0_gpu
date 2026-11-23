@@ -42,6 +42,24 @@ extern "C" int openmx_xc_lda_exchange(double density, double ex[1], double vx[1]
   return 1;
 }
 
+extern "C" int openmx_xc_wpbeh_short_range(double dens[2], double gdens[3][2], int symmetrize_spins, double omega,
+                                           double ex[1], double dexdd[2], double dexdgd[3][2])
+{
+  if (!dens || !gdens || !ex || !dexdd || !dexdgd) return 0;
+  openmx::xc::SpinGradient g;
+  for (int d = 0; d < 3; ++d) for (int s = 0; s < 2; ++s) g.component[d][s] = gdens[d][s];
+  const openmx::xc::ShortRangeExchangeResult r =
+      openmx::xc::wpbeh_short_range_exchange({dens[0], dens[1]}, g, omega, symmetrize_spins != 0);
+  dens[0] = r.density_used.up;
+  dens[1] = r.density_used.down;
+  ex[0] = r.exchange_energy_density;
+  for (int s = 0; s < 2; ++s) {
+    dexdd[s] = r.dexchange_ddensity[s];
+    for (int d = 0; d < 3; ++d) dexdgd[d][s] = r.dexchange_dgradient[d][s];
+  }
+  return 1;
+}
+
 extern "C" int openmx_xc_pbe(double dens[2], double gdens[3][2], int symmetrize_spins,
                              double exc[2], double dexdd[2], double decdd[2],
                              double dexdgd[3][2], double decdgd[3][2])

@@ -1,6 +1,10 @@
 #include <openmx/xc/functionals.hpp>
 #include <openmx/xc/kernels.h>
 
+#include "wpbeh_kernel.hpp"
+
+#include <cmath>
+
 // The arithmetic lives in kernels.h, shared with C callers and with the
 // application's GPU device code; these are the owning C++ views of it.
 
@@ -46,6 +50,48 @@ PbeResult pbe(SpinDensity density, const SpinGradient& gradient, bool symmetrize
                        r.dexchange_dgradient, r.dcorrelation_dgradient);
   r.exchange_energy_density = exc[0];
   r.correlation_energy_density = exc[1];
+  r.density_used = {dens[0], dens[1]};
+  return r;
+}
+
+ShortRangeExchangeResult wpbeh_short_range_exchange(SpinDensity density, const SpinGradient& gradient,
+                                                    double omega, bool symmetrize_spins) noexcept
+{
+  // The floors and the symmetrization are those of the exchange part of
+  // openmx_xc_kernel_pbe: each spin density is at least 0.5e-14, the norm of
+  // each spin gradient at least 0.5e-14, and the derivative with respect to
+  // the gradient vector points along the unfloored components.
+  const double den_min = 1.0e-14, gd_min = 1.0e-14;
+  const double dens[2] = {openmx_xc_kernel_largest(0.5*den_min, density.up),
+                          openmx_xc_kernel_largest(0.5*den_min, density.down)};
+  double D[2], GD[3][2];
+  if (symmetrize_spins) {
+    D[0] = (dens[0] + dens[1])/2.0;
+    D[1] = (dens[0] + dens[1])/2.0;
+  } else {
+    D[0] = dens[0];
+    D[1] = dens[1];
+  }
+  for (int d = 0; d < 3; ++d) {
+    if (symmetrize_spins) {
+      GD[d][0] = (gradient.component[d][0] + gradient.component[d][1])/2.0;
+      GD[d][1] = (gradient.component[d][0] + gradient.component[d][1])/2.0;
+    } else {
+      GD[d][0] = gradient.component[d][0];
+      GD[d][1] = gradient.component[d][1];
+    }
+  }
+  ShortRangeExchangeResult r;
+  double energy = 0.0;
+  for (int s = 0; s < 2; ++s) {
+    const double norm = std::sqrt(GD[0][s]*GD[0][s] + GD[1][s]*GD[1][s] + GD[2][s]*GD[2][s]);
+    const double floored_norm = openmx_xc_kernel_largest(0.5*gd_min, norm);
+    const detail::ChannelEnergy channel = detail::wpbeh_channel_energy(D[s], floored_norm, omega);
+    energy += channel.energy;
+    r.dexchange_ddensity[s] = channel.denergy_ddensity;
+    for (int d = 0; d < 3; ++d) r.dexchange_dgradient[d][s] = channel.denergy_dgradient*(GD[d][s]/floored_norm);
+  }
+  r.exchange_energy_density = energy/(dens[0] + dens[1]);
   r.density_used = {dens[0], dens[1]};
   return r;
 }
