@@ -2992,6 +2992,7 @@ void Set_Vpot(OpenMXMixingVState *mixing_v,const OpenMXAtomicViews *atomic, int 
               int TRAN_Poisson_flag2,
               int XC_P_switch);
 void Set_XC_Grid(int SCF_iter, int XC_P_switch, int XC_switch, 
+                 double exx_alpha, double exx_omega,
                  double *Den0, double *Den1, 
                  double *Den2, double *Den3,
                  double *Vxc0, double *Vxc1,

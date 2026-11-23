@@ -576,6 +576,7 @@ static int Set_XC_Grid_GPU(int XC_P_switch,
  * This was added so that spin-density XC energy is ignored
  * for SCF_iter>=2 when cFLL or cAMF LDA+U scheme is used. */
 void Set_XC_Grid(int SCF_iter, int XC_P_switch, int XC_switch, 
+                 double exx_alpha, double exx_omega,
                  double *Den0, double *Den1, 
                  double *Den2, double *Den3,
                  double *Vxc0, double *Vxc1,
@@ -584,6 +585,13 @@ void Set_XC_Grid(int SCF_iter, int XC_P_switch, int XC_switch,
                  double ***dDen_Grid)
 {
   /***********************************************************************************************
+   exx_alpha, exx_omega:
+      semilocal part of a screened hybrid functional (HSE06) for XC_switch 4:
+      exx_alpha times the short-range omega-PBE exchange with the screening
+      parameter exx_omega (1/bohr) is removed from the PBE exchange.
+      exx_alpha = 0 is GGA-PBE.  The device path evaluates GGA-PBE only, so
+      a nonzero exx_alpha uses the host loop.
+
    XC_P_switch:
       0  \epsilon_XC (XC energy density)  
       1  \mu_XC      (XC potential)  
@@ -651,7 +659,7 @@ void Set_XC_Grid(int SCF_iter, int XC_P_switch, int XC_switch,
                  allocation of arrays
   ****************************************************/
 
-  if (XC_switch==4 && Set_XC_Grid_GPU(XC_P_switch, Den0, Den1, Den2, Den3, Vxc0, Vxc1, Vxc2, Vxc3, dDen_Grid, dEXC_dGD)) return;
+  if (XC_switch==4 && exx_alpha==0.0 && Set_XC_Grid_GPU(XC_P_switch, Den0, Den1, Den2, Den3, Vxc0, Vxc1, Vxc2, Vxc3, dDen_Grid, dEXC_dGD)) return;
 
   dDen_Grid_NULL_flag = 0;
 
@@ -1003,7 +1011,7 @@ void Set_XC_Grid(int SCF_iter, int XC_P_switch, int XC_switch,
    loop MN
   ****************************************************/
 
-#pragma omp parallel shared(dDen_Grid,dEXC_dGD,den_min,Vxc0,Vxc1,Vxc2,Vxc3,My_NumGridD,XC_P_switch,XC_switch,Den0,Den1,Den2,Den3,PCC_switch,PCCDensity_Grid_D) private(OMPID,Nthrds,MN,tot_den,tmp0,tmp1,ED,Exc,Ec_unif,Vc_unif,Vxc,Ex_unif,Vx_unif,GDENS,DEXDD,DECDD,DEXDGD,DECDGD)
+#pragma omp parallel shared(dDen_Grid,dEXC_dGD,den_min,Vxc0,Vxc1,Vxc2,Vxc3,My_NumGridD,XC_P_switch,XC_switch,exx_alpha,exx_omega,Den0,Den1,Den2,Den3,PCC_switch,PCCDensity_Grid_D) private(OMPID,Nthrds,MN,tot_den,tmp0,tmp1,ED,Exc,Ec_unif,Vc_unif,Vxc,Ex_unif,Vx_unif,GDENS,DEXDD,DECDD,DEXDGD,DECDGD)
   {
 
     OMPID = omp_get_thread_num();
@@ -1271,7 +1279,9 @@ void Set_XC_Grid(int SCF_iter, int XC_P_switch, int XC_switch,
 	    ED[1] += PCCDensity_Grid_D[1][MN];
 	  }
 
-	  openmx_xc_pbe(ED, GDENS, symmetrize_spins, Exc, DEXDD, DECDD, DEXDGD, DECDGD);
+	  /* GGA-PBE; with exx_alpha != 0 minus exx_alpha times its short-range exchange */
+	  openmx_xc_pbe_screened_hybrid(ED, GDENS, symmetrize_spins, exx_alpha, exx_omega,
+	                                Exc, DEXDD, DECDD, DEXDGD, DECDGD);
 
 	  /* XC energy density */
 	  if      (XC_P_switch==0){

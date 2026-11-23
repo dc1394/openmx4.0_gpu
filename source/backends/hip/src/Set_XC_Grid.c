@@ -656,6 +656,7 @@ static int Set_XC_Grid_GPU(int XC_P_switch,
  * This was added so that spin-density XC energy is ignored
  * for SCF_iter>=2 when cFLL or cAMF LDA+U scheme is used. */
 void Set_XC_Grid(int SCF_iter, int XC_P_switch, int XC_switch, 
+                 double exx_alpha, double exx_omega,
                  double *Den0, double *Den1, 
                  double *Den2, double *Den3,
                  double *Vxc0, double *Vxc1,
@@ -663,6 +664,11 @@ void Set_XC_Grid(int SCF_iter, int XC_P_switch, int XC_switch,
                  double ***dEXC_dGD, 
                  double ***dDen_Grid)
 {
+  /* exx_alpha, exx_omega: arguments of the shared prototype for the screened
+     hybrid functional.  The HIP build does not implement it yet and
+     evaluates GGA-PBE whatever their values are. */
+  (void)exx_alpha;
+  (void)exx_omega;
   /***********************************************************************************************
    XC_P_switch:
       0  \epsilon_XC (XC energy density)  

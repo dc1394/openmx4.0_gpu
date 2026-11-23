@@ -1834,6 +1834,7 @@ void Calc_Edc(double ECE[])
   XC_P_switch = 1;
 
   Set_XC_Grid(2, XC_P_switch,XC_switch,
+	      0.0, 0.0,  /* exx_alpha, exx_omega: no hybrid functional yet */
 	      Density_Grid_D[0],Density_Grid_D[1],
 	      Density_Grid_D[2],Density_Grid_D[3],
 	      Vxc_Grid_D[0], Vxc_Grid_D[1],
@@ -1991,6 +1992,7 @@ void Calc_EXC_EH1(OpenMXSolverInvocation *scratch, const OpenMXAtomicViews *atom
 
   dtime(&time0);
   Set_XC_Grid(2, XC_P_switch,XC_switch,
+	      0.0, 0.0,  /* exx_alpha, exx_omega: no hybrid functional yet */
 	      Density_Grid_D[0],Density_Grid_D[1],
 	      Density_Grid_D[2],Density_Grid_D[3],
 	      Vxc_Grid_D[0], Vxc_Grid_D[1],
@@ -4442,6 +4444,7 @@ void Energy_Decomposition_CWF(OpenMXSolverInvocation *scratch, const OpenMXCWFOb
   XC_P_switch = 1;
 
   Set_XC_Grid(2, XC_P_switch,XC_switch,
+	      0.0, 0.0,  /* exx_alpha, exx_omega: no hybrid functional yet */
 	      Density_Grid_D[0],Density_Grid_D[1],
 	      Density_Grid_D[2],Density_Grid_D[3],
 	      Vxc_Grid_D[0], Vxc_Grid_D[1],
