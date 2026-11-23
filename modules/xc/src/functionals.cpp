@@ -96,4 +96,18 @@ ShortRangeExchangeResult wpbeh_short_range_exchange(SpinDensity density, const S
   return r;
 }
 
+PbeResult pbe_screened_hybrid(SpinDensity density, const SpinGradient& gradient, bool symmetrize_spins,
+                              double exchange_fraction, double omega) noexcept
+{
+  PbeResult r = pbe(density, gradient, symmetrize_spins);
+  if (exchange_fraction == 0.0) return r;
+  const ShortRangeExchangeResult sr = wpbeh_short_range_exchange(density, gradient, omega, symmetrize_spins);
+  r.exchange_energy_density -= exchange_fraction*sr.exchange_energy_density;
+  for (int s = 0; s < 2; ++s) {
+    r.dexchange_ddensity[s] -= exchange_fraction*sr.dexchange_ddensity[s];
+    for (int d = 0; d < 3; ++d) r.dexchange_dgradient[d][s] -= exchange_fraction*sr.dexchange_dgradient[d][s];
+  }
+  return r;
+}
+
 }  // namespace openmx::xc

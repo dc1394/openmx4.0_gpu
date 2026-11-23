@@ -263,6 +263,111 @@ void fixture(const std::string& path) {
   }
   std::printf("PASS xc wpbeh-fixture (%zu points, omega %.3g; largest deviation / allowed %.3g)\n", table.rows.size(), omega, worst);
 }
+
+bool same_pbe_bits(const PbeResult& a, const PbeResult& b, bool exchange_too) {
+  bool same = same_bits(a.correlation_energy_density, b.correlation_energy_density)
+              && same_bits(a.density_used.up, b.density_used.up) && same_bits(a.density_used.down, b.density_used.down);
+  if (exchange_too) same = same && same_bits(a.exchange_energy_density, b.exchange_energy_density);
+  for (int s = 0; s < 2; ++s) {
+    same = same && same_bits(a.dcorrelation_ddensity[s], b.dcorrelation_ddensity[s]);
+    if (exchange_too) same = same && same_bits(a.dexchange_ddensity[s], b.dexchange_ddensity[s]);
+    for (int d = 0; d < 3; ++d) {
+      same = same && same_bits(a.dcorrelation_dgradient[d][s], b.dcorrelation_dgradient[d][s]);
+      if (exchange_too) same = same && same_bits(a.dexchange_dgradient[d][s], b.dexchange_dgradient[d][s]);
+    }
+  }
+  return same;
+}
+
+// a - fraction * b as the library computes it; one unit in the last place is allowed for a
+// compiler that contracts the product and the difference in this file.
+bool is_difference(double value, double a, double fraction, double b) {
+  const double expected = a - fraction * b;
+  return same_bits(value, expected) || relative_difference(value, expected) <= 4.5e-16;
+}
+
+// The semilocal part of the screened hybrid: bit for bit pbe() at the fraction 0, and pbe()
+// minus the fraction times the short-range exchange otherwise.
+void hybrid() {
+  const double densities[] = {-1e-13, 0.0, 4e-15, 5e-15, 1e-14, 1e-9, 4.4e-8, 1e-6, 1e-4, 2.5e-3, 0.0331, 0.2387, 1.0, 7.0};
+  const double directions[][3] = {{0.0, 0.0, 0.0}, {0.6, -0.48, 0.64}, {-0.28, 0.96, 0.0}};
+  const double reduced_gradients[] = {0.0, 0.05, 0.9, 1.7, 9.0, 20.0};
+  const double fractions[] = {0.25, 1.0, -0.5};
+  const double kf_factor = 2.0 * std::cbrt(6.0 * pi * pi);
+  long checks = 0;
+  for (double up : densities) for (double down : densities) {
+    for (std::size_t i = 0; i < sizeof(reduced_gradients) / sizeof(reduced_gradients[0]); ++i) {
+      const double s_up = reduced_gradients[i], s_down = reduced_gradients[(2 * i + 1) % 6];
+      const double g_up = s_up * kf_factor * std::pow(std::fabs(up), 4.0 / 3.0), g_down = s_down * kf_factor * std::pow(std::fabs(down), 4.0 / 3.0);
+      const double* du = directions[(i + 1) % 3];
+      const double* dd = directions[i % 3];
+      const double gu[3] = {g_up * du[0], g_up * du[1], g_up * du[2]}, gd[3] = {g_down * dd[0], g_down * dd[1], g_down * dd[2]};
+      const SpinDensity density{up, down};
+      const SpinGradient gradient = gradient_of(gu, gd);
+      for (bool symmetrize : {false, true}) {
+        const PbeResult p = pbe(density, gradient, symmetrize);
+        // fraction 0: every output of pbe(), whatever omega is
+        for (double omega : {0.11, 0.0, 3.0}) {
+          require(same_pbe_bits(pbe_screened_hybrid(density, gradient, symmetrize, 0.0, omega), p, true), "fraction 0 differs from pbe()");
+          ++checks;
+        }
+        double dens[2] = {up, down}, gdens[3][2], exc[2], dexdd[2], decdd[2], dexdgd[3][2], decdgd[3][2];
+        double dens_p[2] = {up, down}, exc_p[2], dexdd_p[2], decdd_p[2], dexdgd_p[3][2], decdgd_p[3][2];
+        for (int d = 0; d < 3; ++d) { gdens[d][0] = gu[d]; gdens[d][1] = gd[d]; }
+        require(openmx_xc_pbe_screened_hybrid(dens, gdens, symmetrize ? 1 : 0, 0.0, 0.11, exc, dexdd, decdd, dexdgd, decdgd) == 1
+                && openmx_xc_pbe(dens_p, gdens, symmetrize ? 1 : 0, exc_p, dexdd_p, decdd_p, dexdgd_p, decdgd_p) == 1, "C entries failed");
+        require(std::memcmp(dens, dens_p, sizeof dens) == 0 && std::memcmp(exc, exc_p, sizeof exc) == 0
+                && std::memcmp(dexdd, dexdd_p, sizeof dexdd) == 0 && std::memcmp(decdd, decdd_p, sizeof decdd) == 0
+                && std::memcmp(dexdgd, dexdgd_p, sizeof dexdgd) == 0 && std::memcmp(decdgd, decdgd_p, sizeof decdgd) == 0,
+                "C entry at fraction 0 differs from openmx_xc_pbe");
+
+        // other fractions: the exchange outputs are pbe() minus the fraction times the short-range exchange
+        const double omega = 0.11;
+        const ShortRangeExchangeResult sr = wpbeh_short_range_exchange(density, gradient, omega, symmetrize);
+        for (double fraction : fractions) {
+          const PbeResult h = pbe_screened_hybrid(density, gradient, symmetrize, fraction, omega);
+          require(same_pbe_bits(h, p, false), "the hybrid changed the correlation or the floored density");
+          bool ok = is_difference(h.exchange_energy_density, p.exchange_energy_density, fraction, sr.exchange_energy_density);
+          for (int s = 0; s < 2; ++s) {
+            ok = ok && is_difference(h.dexchange_ddensity[s], p.dexchange_ddensity[s], fraction, sr.dexchange_ddensity[s]);
+            for (int d = 0; d < 3; ++d) {
+              ok = ok && is_difference(h.dexchange_dgradient[d][s], p.dexchange_dgradient[d][s], fraction, sr.dexchange_dgradient[d][s]);
+            }
+          }
+          require(ok, "the hybrid is not pbe() minus the fraction times the short-range exchange");
+          require(std::isfinite(h.exchange_energy_density) && std::isfinite(h.dexchange_ddensity[0]) && std::isfinite(h.dexchange_ddensity[1]),
+                  "the hybrid is not finite");
+          ++checks;
+        }
+        double dens_h[2] = {up, down};
+        require(openmx_xc_pbe_screened_hybrid(dens_h, gdens, symmetrize ? 1 : 0, 0.25, omega, exc, dexdd, decdd, dexdgd, decdgd) == 1, "C hybrid failed");
+        const PbeResult h = pbe_screened_hybrid(density, gradient, symmetrize, 0.25, omega);
+        bool same = same_bits(exc[0], h.exchange_energy_density) && same_bits(exc[1], h.correlation_energy_density)
+                    && same_bits(dens_h[0], h.density_used.up) && same_bits(dens_h[1], h.density_used.down);
+        for (int s = 0; s < 2; ++s) {
+          same = same && same_bits(dexdd[s], h.dexchange_ddensity[s]) && same_bits(decdd[s], h.dcorrelation_ddensity[s]);
+          for (int d = 0; d < 3; ++d) {
+            same = same && same_bits(dexdgd[d][s], h.dexchange_dgradient[d][s]) && same_bits(decdgd[d][s], h.dcorrelation_dgradient[d][s]);
+          }
+        }
+        require(same, "C and C++ hybrid differ");
+      }
+    }
+  }
+  // HSE06 at a valence density: a quarter of the short-range exchange is removed, so the
+  // exchange energy is less negative than that of PBE, by less than a quarter of it.
+  {
+    const double gu[3] = {0.05, -0.02, 0.01}, gd[3] = {0.03, 0.01, -0.04};
+    const PbeResult p = pbe({0.2, 0.15}, gradient_of(gu, gd), false);
+    const PbeResult h = pbe_screened_hybrid({0.2, 0.15}, gradient_of(gu, gd), false, 0.25, 0.11);
+    require(h.exchange_energy_density > p.exchange_energy_density
+            && h.exchange_energy_density < 0.75 * p.exchange_energy_density, "HSE06 exchange outside its bounds");
+  }
+  double dens[2] = {0.1, 0.1}, gdens[3][2] = {{0, 0}, {0, 0}, {0, 0}}, exc[2], dexdd[2], decdd[2], dexdgd[3][2], decdgd[3][2];
+  require(openmx_xc_pbe_screened_hybrid(nullptr, gdens, 0, 0.25, 0.11, exc, dexdd, decdd, dexdgd, decdgd) == 0
+          && openmx_xc_pbe_screened_hybrid(dens, gdens, 0, 0.25, 0.11, exc, dexdd, decdd, nullptr, decdgd) == 0, "hybrid without an array accepted");
+  std::printf("PASS xc hybrid (%ld comparisons)\n", checks);
+}
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -271,6 +376,7 @@ int main(int argc, char** argv) {
     const std::string fixture = argc > 2 ? argv[2] : "";
     if (name == "wpbeh-special") special(fixture);
     else if (name == "wpbeh-fixture") ::fixture(fixture);
+    else if (name == "hybrid") hybrid();
     else throw std::runtime_error("unknown wpbeh test case");
     return 0;
   } catch (const std::exception& e) {

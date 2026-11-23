@@ -96,6 +96,16 @@ struct ShortRangeExchangeResult {
 ShortRangeExchangeResult wpbeh_short_range_exchange(SpinDensity density, const SpinGradient& gradient,
                                                     double omega, bool symmetrize_spins) noexcept;
 
+// ---- Semilocal part of a screened hybrid functional (HSE06) ----
+// GGA-PBE with `exchange_fraction` times the short-range omega-PBE exchange
+// removed: the exchange outputs of pbe() (energy density and both
+// derivatives) minus that fraction of wpbeh_short_range_exchange(); the
+// correlation outputs are those of pbe().  HSE06 uses the fraction 0.25 and
+// omega = 0.11 bohr^-1.  A fraction of exactly 0 returns pbe() bit for bit
+// without evaluating the short-range part.
+PbeResult pbe_screened_hybrid(SpinDensity density, const SpinGradient& gradient, bool symmetrize_spins,
+                              double exchange_fraction, double omega) noexcept;
+
 // ---- Special functions of the short-range exchange ----
 // exp(x) E1(x) with the exponential integral E1 (infinite at x = 0, NaN for
 // negative x), and erfcx(x) = exp(x^2) erfc(x).  The relative error is below

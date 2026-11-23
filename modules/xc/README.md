@@ -6,6 +6,8 @@ C++20 ライブラリです。公開範囲は Ceperley–Alder LDA（Perdew–Zu
 Slater 交換、スピン分解した GGA-PBE（エネルギー密度と、密度・密度勾配についての導関数）です。
 HSE06 の準局所部分に使う ωPBE の短距離交換（`wpbeh_short_range_exchange`）も持ちます。
 定義は libxc 7.1.2 の `GGA_X_WPBEH` に合わせてあり、出力の規約と密度の下限は PBE の交換と同じです。
+`pbe_screened_hybrid`（C では `openmx_xc_pbe_screened_hybrid`）は、PBE の交換の出力から短距離交換の
+混合比倍を引いた値を返します。混合比が 0 のときの出力は、PBE の関数と bit 一致します。
 本体（`Set_XC_Grid.c`、`Force.c`、`Stress.c`、`Total_Energy.c` の CPU 経路）もこの実装を使用します。
 GPU 側の OpenACC カーネル（`Set_XC_Grid.c` の `SXG_` 関数）は本体に残っています。
 
@@ -61,4 +63,6 @@ C++ からは `openmx/xc/functionals.hpp`（`openmx::xc::pbe` など）、C か�
   `tools/wpbeh_reference.py` で作成。libxc 7.1.2 の出力とも照合済み）と比較。許容差は点ごとにフィクスチャーが持ち、
   ω/kF が 4 から 14 の低密度の領域では丸め誤差に合わせて広げてあります。密度の下限、勾配が 0 の点、対称化、
   中心差分との一致、ω = 0 での一様電子ガスの極限も確かめます。
+- `xc-hybrid`: `pbe_screened_hybrid` が、混合比 0 では `pbe` と bit 一致し、それ以外では `pbe` から短距離交換の
+  混合比倍を引いた値になること（密度の下限、対称化の有無、C の入口を含む格子）。
 - `xc-c-api`、`xc-package-consumer`: C からの利用と、インストールしたパッケージからの利用。

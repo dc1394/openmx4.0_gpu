@@ -46,6 +46,15 @@ int openmx_xc_pbe(double dens[2], double gdens[3][2], int symmetrize_spins,
 int openmx_xc_wpbeh_short_range(double dens[2], double gdens[3][2], int symmetrize_spins, double omega,
                                 double ex[1], double dexdd[2], double dexdgd[3][2]);
 
+/* Semilocal part of a screened hybrid functional: openmx_xc_pbe with
+   exchange_fraction times the short-range exchange above removed from
+   exc[0], dexdd and dexdgd.  A fraction of exactly 0 gives the outputs of
+   openmx_xc_pbe bit for bit.  Arguments and return value as openmx_xc_pbe. */
+int openmx_xc_pbe_screened_hybrid(double dens[2], double gdens[3][2], int symmetrize_spins,
+                                  double exchange_fraction, double omega,
+                                  double exc[2], double dexdd[2], double decdd[2],
+                                  double dexdgd[3][2], double decdgd[3][2]);
+
 #ifdef __cplusplus
 }
 #endif
