@@ -1,7 +1,7 @@
 # One executable holds the unit tests; the first argument selects the case and
 # the second one names a fixture when the case reads one.
 add_executable(openmx_exx_tests test_main.cpp test_kernel.cpp test_two_center.cpp test_overlap.cpp
-  overlap_fixture.cpp)
+  test_abf.cpp overlap_fixture.cpp)
 target_link_libraries(openmx_exx_tests PRIVATE OpenMX::exx OpenMX::basis $<$<PLATFORM_ID:Linux>:m>)
 target_compile_options(openmx_exx_tests PRIVATE
   "$<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wall;-Wextra;-Wpedantic;-ffp-contract=off>")
@@ -24,6 +24,10 @@ endforeach()
 add_test(NAME exx-two-center-overlap COMMAND openmx_exx_tests two-center-overlap
   "${_exx_fixtures}/overlap_reference.txt")
 set_tests_properties(exx-two-center-overlap PROPERTIES LABELS "unit;exx" TIMEOUT 600)
+
+# The auxiliary basis of the PAOs of the overlap fixture.
+add_test(NAME exx-abf-pca COMMAND openmx_exx_tests abf-pca "${_exx_fixtures}/overlap_reference.txt")
+set_tests_properties(exx-abf-pca PROPERTIES LABELS "unit;exx" TIMEOUT 300)
 
 add_test(NAME exx-package-consumer COMMAND "${CMAKE_COMMAND}"
   "-DEXX_SOURCE=${CMAKE_CURRENT_SOURCE_DIR}/.."
