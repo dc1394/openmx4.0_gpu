@@ -1,7 +1,7 @@
 # One executable holds the unit tests; the first argument selects the case and
 # the second one names a fixture when the case reads one.
 add_executable(openmx_exx_tests test_main.cpp test_kernel.cpp test_two_center.cpp test_overlap.cpp
-  test_abf.cpp test_lri.cpp test_system.cpp overlap_fixture.cpp)
+  test_abf.cpp test_lri.cpp test_system.cpp test_dense_backend.cpp overlap_fixture.cpp)
 target_link_libraries(openmx_exx_tests PRIVATE OpenMX::exx OpenMX::basis $<$<PLATFORM_ID:Linux>:m>)
 target_compile_options(openmx_exx_tests PRIVATE
   "$<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wall;-Wextra;-Wpedantic;-ffp-contract=off>")
@@ -46,6 +46,10 @@ foreach(_case system-neighbours system-blocks)
   add_test(NAME exx-${_case} COMMAND openmx_exx_tests ${_case} "${_exx_fixtures}/overlap_reference.txt")
   set_tests_properties(exx-${_case} PROPERTIES LABELS "unit;exx" TIMEOUT 600)
 endforeach()
+
+# The matrix products of the function table (section 7.2 of the guide).
+add_test(NAME exx-dense-backend COMMAND openmx_exx_tests dense-backend)
+set_tests_properties(exx-dense-backend PROPERTIES LABELS "unit;exx" TIMEOUT 60)
 
 add_test(NAME exx-package-consumer COMMAND "${CMAKE_COMMAND}"
   "-DEXX_SOURCE=${CMAKE_CURRENT_SOURCE_DIR}/.."

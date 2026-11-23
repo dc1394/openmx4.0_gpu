@@ -48,6 +48,19 @@ class Worst {
   long count_ = 0;
 };
 
+// Deterministic numbers in (-1, 1) without a pattern: the same sequence on
+// every machine.
+class Numbers {
+ public:
+  double next()
+  {
+    state_ = state_*6364136223846793005ULL+1442695040888963407ULL;
+    return static_cast<double>(state_>>11)/9007199254740992.0*2.0-1.0;
+  }
+ private:
+  unsigned long long state_ = 0x9E3779B97F4A7C15ULL;
+};
+
 // The cases, by file.
 void kernel_analytic(const std::string& fixture);
 void two_center_gaussian();
@@ -59,5 +72,6 @@ void lri_identity(const std::string& fixture);
 void lri_convergence(const std::string& fixture);
 void system_neighbours(const std::string& fixture);
 void system_blocks(const std::string& fixture);
+void dense_backend();
 
 } // namespace exx_test

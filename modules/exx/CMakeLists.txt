@@ -33,7 +33,8 @@ if(NOT TARGET OpenMX::basis)
   add_subdirectory("${OPENMX_EXX_BASIS_SOURCE}" "${CMAKE_CURRENT_BINARY_DIR}/basis")
 endif()
 
-add_library(openmx_exx STATIC src/abf.cpp src/kernel.cpp src/lri.cpp src/system.cpp src/two_center.cpp)
+add_library(openmx_exx STATIC src/abf.cpp src/dense_backend.cpp src/kernel.cpp src/lri.cpp src/system.cpp
+  src/two_center.cpp)
 add_library(OpenMX::exx ALIAS openmx_exx)
 set_target_properties(openmx_exx PROPERTIES
   EXPORT_NAME exx POSITION_INDEPENDENT_CODE ON CXX_EXTENSIONS OFF)
