@@ -492,6 +492,9 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   OpenMXMixingDMState *mixing_dm=Mixing_DM_Bind_Resources(core);
   OpenMXMixingVState *mixing_v=Mixing_V_Bind_Resources(core);
   OpenMXExactExchangeState *exact_exchange=Exact_Exchange_Bind_Resources(core);
+  /* the collinear cluster solver adds the exchange matrix of a hybrid
+     functional to its Hamiltonian and collects the density matrices */
+  Cluster_DFT_Col_ExactExchange(solver_states.cluster_col, Exact_Exchange_Enabled(exact_exchange) ? exact_exchange : NULL);
   OpenMXMixingHistory *mixing_history=NULL;
   char mixing_history_error[256];
   if(!openmx_core_mixing_history(core,&mixing_history,mixing_history_error,sizeof(mixing_history_error))) {

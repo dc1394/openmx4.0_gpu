@@ -19,6 +19,7 @@
 #include "openmx_gpu_dm_collective.h"
 #include "openmx_gpu_workers.h"
 #include "openmx_host_simd.h"
+#include "openmx_exact_exchange.h"
 
 #include "lapack_prototypes.h"
 #include "set_cuda_default_device_from_local_rank.h"
@@ -123,6 +124,7 @@ struct OpenMXClusterColState {
   OpenMXNativeResources *resources; /* borrowed from this calculation */
   OpenMXHamiltonianGpuState *hamiltonian_state; /* borrowed from this calculation */
   OpenMXHamiltonianCache *hamiltonian_cache; /* borrowed from this calculation */
+  struct OpenMXExactExchangeState *exact_exchange; /* borrowed from this calculation; NULL without a hybrid functional */
   int initialized;
   int mgpu_host_dense;
   int gs2_fallback_n;
@@ -423,6 +425,13 @@ int Cluster_DFT_Col_RefineLastRefined(ClusterColState *state)
 void Cluster_DFT_Col_RefineForceFP64(ClusterColState *state, int on)
 {
     state->refine.force_fp64 = on;
+}
+
+/* DFT.c, before the solves of an SCF cycle: the exact exchange of a hybrid
+   functional, or NULL (openmx_cluster_col_state.h) */
+void Cluster_DFT_Col_ExactExchange(ClusterColState *state, struct OpenMXExactExchangeState *exact_exchange)
+{
+    state->exact_exchange = exact_exchange;
 }
 
 /* DFT.c, after the mixing of an SCF step that goes on: normrd is the printed
@@ -2841,7 +2850,10 @@ static double Cluster_DFT_Col_owned(ClusterColState *state, const OpenMXAtomicVi
        are refined */
     state->refine.last_refined = 0;
     state->refine.scf_mode = (strcasecmp(mode,"scf")==0);
-    if (scf_eigen_lib_flag==GPUSOLVER && gpusolver2_flag==0 && (openmx_mgpu_host_required() || Cluster_DFT_Col_GpuSwitchNum()<=n)){
+    /* with a hybrid functional the exchange matrix is added to the host
+       matrix Hs below: the dense paths on the device are not taken */
+    if (state->exact_exchange==NULL &&
+        scf_eigen_lib_flag==GPUSOLVER && gpusolver2_flag==0 && (openmx_mgpu_host_required() || Cluster_DFT_Col_GpuSwitchNum()<=n)){
       gpu_diag_mode = ClusterCol_GpuDiagFits(state, SCF_iter,n,myworld1,myid1,numprocs0);
     }
     if (gpu_diag_mode!=0){
@@ -2855,7 +2867,7 @@ static double Cluster_DFT_Col_owned(ClusterColState *state, const OpenMXAtomicVi
     }
     /* the distributed capacity fallback of a spin-polarized run: both spins
        on the grid over all ranks (see ClusterCol_UnionGrid_Ensure) */
-    if (!gpusolver2_flag && SpinP_switch==1 && numprocs0>1 &&
+    if (state->exact_exchange==NULL && !gpusolver2_flag && SpinP_switch==1 && numprocs0>1 &&
         state->gs2_fallback_n==n && state->ugrid.n==n){
       ClusterCol_SetMaxNAndPartitions(SCF_iter,mode,TZ,n,numprocs1, &MaxN,is2,ie2);
       state->firsttime = 0;
@@ -2878,11 +2890,14 @@ static double Cluster_DFT_Col_owned(ClusterColState *state, const OpenMXAtomicVi
 
   if (SpinP_switch==1 && numprocs0==1){
     Hamiltonian_Cluster_Hs(nh[0],Hs,MP,0,0);
+    Exact_Exchange_Add_Cluster_Hs(state->exact_exchange,0,n,Hs,na_rows,na_cols,nblk,np_rows,np_cols,my_prow,my_pcol);
   }
   else{
     for (spin=0; spin<=SpinP_switch; spin++){
       Hamiltonian_Cluster_Hs(nh[spin],Hs,MP,spin,myworld1);
     } 
+    /* Hs holds the spin channel of this process's world */
+    Exact_Exchange_Add_Cluster_Hs(state->exact_exchange,myworld1,n,Hs,na_rows,na_cols,nblk,np_rows,np_cols,my_prow,my_pcol);
   }
 
   if (state->cpu_overlap_n!=n){
@@ -3273,6 +3288,7 @@ static double Cluster_DFT_Col_owned(ClusterColState *state, const OpenMXAtomicVi
   if (SpinP_switch==1 && numprocs0==1 && spin==0){
     spin++;
     Hamiltonian_Cluster_Hs(nh[spin],Hs,MP,spin,spin);
+    Exact_Exchange_Add_Cluster_Hs(state->exact_exchange,spin,n,Hs,na_rows,na_cols,nblk,np_rows,np_cols,my_prow,my_pcol);
     goto diagonalize; 
   }
 
@@ -4273,6 +4289,12 @@ double Calc_DM_Cluster_collinear(ClusterColState *state,
       diffF = fabs(FermiF-FermiF2);
       dFF[k] = diffF;
     }
+  }
+
+  /* the vectors and occupations of this process for the exact exchange of
+     a hybrid functional; nothing happens outside a collection */
+  if (state->exact_exchange!=NULL && kmin<=kmax){
+    Exact_Exchange_Collect_Gamma(state->exact_exchange,spin,n,kmax-kmin+1,FF+kmin,EVec1[spin]);
   }
 
   /* calculation of DM1 */
