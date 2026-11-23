@@ -3,8 +3,8 @@
 ハイブリッド汎関数（HSE06 と PBE0）の厳密交換を、局所 RI（LRI）で計算するための C++20 ライブラリーです。
 大域変数も状態も持ちません。libxc は使いません。
 
-いま入っているのは、構造ごとの準備までです（`docs/EXX_IMPLEMENTATION_GUIDE.md` の 6.2 節）。
-交換行列の構築（6.4 節）と C の入口は、まだありません。式の番号は、この指示書のものです。
+いま入っているのは、構造ごとの準備（`docs/EXX_IMPLEMENTATION_GUIDE.md` の 6.2 節）、交換行列の構築（6.4 節）、C の入口です。
+密度行列の収集、ハミルトニアンへの加算、MPI での分担は、本体に組み込むときに加えます。式の番号は、この指示書のものです。
 
 | ヘッダー | 内容 |
 |---|---|
@@ -13,11 +13,16 @@
 | `openmx/exx/abf.hpp` | PAO の動径関数を等間隔の格子に移す関数と、補助基底関数（ABF）の生成 |
 | `openmx/exx/lri.hpp` | 元素ごとの表、三中心積分（5.7 節）、式 (7) の解 |
 | `openmx/exx/system.hpp` | site、近傍リスト、T ブロックと V ブロック |
+| `openmx/exx/exchange.hpp` | 交換行列の構築（6.4 節）。site の形式と Γ 点の形式、 $E_x$ （式 (4)）、外側反復の判定に使う量（式 (15)）、 $E_x$ の T ブロックと V ブロックについての導関数（式 (16)、(17)） |
+| `openmx/exx/dense_backend.hpp` | 行列積の関数表（7.2 節）を包むクラス。表を渡さなければ、ライブラリーの中のループで計算します |
+| `openmx/exx/exx.h` | C の入口。関数表の型、構造の準備、Γ 点の形式の構築、式 (4) と (15) |
 
 依存するのは `OpenMX::basis`（球ベッセル関数、Gaunt 係数、PAO の補間）だけです。
 MPI、BLAS、LAPACK、GPU SDK、OpenMX の実行ファイルは要りません。
 式 (7) のコレスキー分解と、小さい対称行列の固有値分解は、ライブラリーの中に実装してあります。
-CMake 3.25.2 以上と、C++20 のコンパイラーでビルドできます。ライセンスは OpenMX と同じ GNU General Public License です。
+交換行列の構築に使う行列積は、呼び出し側が関数表で渡せます（BLAS の DGEMM など）。
+CMake 3.25.2 以上、C++20 のコンパイラー、C のコンパイラーでビルドします。C のコンパイラーは、C の入口を C のプログラムから呼ぶ試験に使います。
+ライセンスは OpenMX と同じ GNU General Public License です。
 
 ## 規約
 
@@ -30,6 +35,9 @@ CMake 3.25.2 以上と、C++20 のコンパイラーでビルドできます。�
 - ABF の半径は、PAO のカットオフ半径と同じです。
 - T ブロックは、原子ごとに C 近傍の順に横に並べた 1 つの配列で持ちます。要素は `t[a][(P*u_a + mu)*ell_a + c_offset[a][i] + lambda]` です。`c_offset[a][i]` は i 番目の C 近傍の最初の列、`ell_a` は列の総数（C 近傍の PAO の数の和）です。`t_block(system, a, i)` は 1 個のブロックを取り出します。
 - V ブロックは `v[a][i][P*n_b + Q]` の形で持ちます。近傍リストの 0 番目は原子自身で、残りは原子の番号、セルの 3 つの整数の順に並びます。
+- 密度行列と交換行列は、1 スピン分です。密度行列の占有数は 0 から 1 です。スピン分極のない計算では、呼び出し側が $E_x$ を 2 倍します。
+- site の形式のブロック $M_{xy}(\mathbf R)$ は、行が原点のセルの原子 $x$ 、列がセル $\mathbf R$ の原子 $y$ です。Γ 点の形式は $N\times N$ の配列で、軌道は原子の順に並びます。
+- 配列は行優先です。関数表の `dgemm` だけは、BLAS と同じ列優先で受け取ります。
 
 ## 使い方
 
@@ -53,6 +61,51 @@ const System system = prepare_system(structure, species, reciprocal, options);
 ```
 
 `prepare_system()` は、単位胞の全ての原子を 1 回の呼び出しで処理します。MPI での分担は、本体に組み込むときに加えます。
+
+交換行列は、準備した `System` と密度行列から作ります。
+
+```cpp
+#include <openmx/exx/exchange.hpp>
+
+// Γ 点だけの計算：N x N の密度行列（1 スピン分）から K と E_x を作る
+const std::vector<double> k = exchange_gamma(system, density, 0.25);   // 混合比 α = 0.25
+const double e_x = exchange_energy_gamma(density, k);                  // 式 (4)
+
+// 原子 1 個の寄与だけを足す（係数は -α）。原子をランクに配るときに使う
+add_exchange_gamma(system, atom, -0.25, density, k_part);
+
+// k 点のある計算：ブロック D_xy(R) を書く関数を渡し、ブロック K_xy(R) を受け取る
+const DensityBlocks blocks = [&](const BlockKey& key, std::span<double> block) { /* D_xy(R) を書く */ };
+const BlockMatrix k_blocks = exchange_blocks(system, blocks, 0.25);
+
+// 行列積を BLAS に任せる
+const OpenMXExxDenseBackend table{&my_dgemm, nullptr};
+const std::vector<double> k_blas = exchange_gamma(system, density, 0.25, DenseBackend(&table));
+```
+
+行列積の回数は、中心の原子 1 個につき 2 回と、V 近傍 1 個につき 5 回です。
+Γ 点の形式は、同じ原子の周期像を行列積の前にまとめます。V ブロックは周期像について足し合わせ、T ブロックの列は同じ軌道に属するものを足し合わせます。
+このため、Γ 点の形式で数える V 近傍は、site ではなく原子です。セルが近傍の範囲より小さくても、行列積は増えません。
+
+C からは `exx.h` を使います。扱えるのは Γ 点の形式です。site の形式の入口は、k 点の計算を本体に組み込むときに加えます。
+
+```c
+#include <openmx/exx/exx.h>
+
+OpenMXExxOptions options;
+openmx_exx_default_options(&options);           /* HSE06。キーワードの既定値 */
+OpenMXExxState *state = openmx_exx_create();
+char message[256];
+if (openmx_exx_prepare(state, &options, &geometry, message, sizeof message) != 0) { /* message に理由 */ }
+const int n = openmx_exx_orbital_count(state);
+/* k を 0 で埋めてから、全ての原子の寄与を係数 -α で足す */
+openmx_exx_add_gamma(state, 0, openmx_exx_atom_count(state), -0.25, density, k, NULL, message, sizeof message);
+const double e_x = openmx_exx_energy_gamma((size_t)n*n, density, k);
+openmx_exx_destroy(state);
+```
+
+`openmx_exx_prepare()` は、元素ごとの表を状態に残します。作り直すのは、PAO、格子、しきい値のどれかが変わったときだけです。
+失敗した呼び出しは、状態を変えません。関数は例外を外に出さず、0 以外の返り値とメッセージで知らせます。
 
 ## ビルドと外部利用
 
@@ -94,6 +147,23 @@ build/exx-lri/lri_example DFT_DATA19/PAO/C6.0.pao s2p2d1 DFT_DATA19/PAO/H6.0.pao
 - コレスキー分解の枢軸が `LriOptions::pivot_tolerance`（既定値 1e-7）以下になると、固有値分解に切り替えます。上の元素の組では、切り替えは起きませんでした。
 - 動径の格子を 4 倍に細かくしても、2 原子の和は相対 1e-8 しか変わりません。波数の上限を 2 倍にしても、12 桁まで変わりません。
 
+## 構築の時間の目安
+
+重なり行列のフィクスチャーのセルで、構築 1 回を測りました。
+セルは 3 原子（Si7.0-s2p2d1f1、C6.0-s2p2d1、H6.0-s2p1）で、軌道は 38 個、ABF は 140、69、15 個、C 近傍は合計 227 site、V 近傍は合計 335 site です。
+しきい値と打ち切りは既定値、計算機はクラウドのコンテナの 1 コア、コンパイラーは GCC 13.3.0 の `-O2` です。
+
+| 形式 | 行列積 | 回数 | 時間 |
+|---|---|---|---|
+| Γ 点の形式 | OpenBLAS 0.3.26（1 スレッド）を関数表で渡す | 51 | 0.03 秒 |
+| Γ 点の形式 | ライブラリーの中のループ | 51 | 0.04 秒 |
+| site の形式 | OpenBLAS 0.3.26（1 スレッド）を関数表で渡す | 1,681 | 12.6 秒 |
+
+site の形式には、同じ密度行列を全てのセルのブロックとして渡しました。Γ 点だけの計算に当たる条件です。
+$K$ のブロックは 5,723 個（7.1 MB）で、 $\sum_{\mathbf R}K(\mathbf R)$ は Γ 点の形式の $K$ と 2.0e-15 まで一致しました。
+Γ 点の形式も、周期像を行列積の前にまとめない形では、行列積が 1,681 回で 6.9 秒（ライブラリーの中のループでは 33 秒）でした。
+大きい系では測っていません。
+
 ## テスト
 
 - `exx-kernel-analytic`: 4 つのカーネルの値と $\kappa\to0$ の極限を、50 桁で評価した参照値（`tests/fixtures/kernel_reference.txt`）と比べます。相対 1e-13。
@@ -106,9 +176,17 @@ build/exx-lri/lri_example DFT_DATA19/PAO/C6.0.pao s2p2d1 DFT_DATA19/PAO/H6.0.pao
 - `exx-lri-convergence`: ABF を増やしたときの自己相互作用の和を記録します。和が減らないことを確かめます。
 - `exx-system-neighbours`: 近傍リストを、セルの総当たりの探索と比べます。
 - `exx-system-blocks`: T ブロックと V ブロックの 2 通りの見方の一致、結晶の記述を変えたときの一致、展開した積の電荷と重なり行列の比較。
-- `exx-package-consumer`: インストールしたパッケージから 2 つの例題をビルドします。
+- `exx-dense-backend`: 行列積を、総和を書き下した値と比べます（1e-13）。DGEMM が拒否する引数、試験用の関数表、失敗を返す関数表も確かめます。
+- `exx-exchange-fixture`: site の形式の $K$ のブロックと $E_x$ を、参照実装のフィクスチャー（`tests/fixtures/kbuild_reference.txt`）と比べます。絶対 1e-12。
+- `exx-exchange-gamma`: Γ 点の形式を、site の形式の $\sum_{\mathbf R}K(\mathbf R)$ と、密行列で書いた定義（式 (8)、(9)）の両方と比べます。1e-12。
+- `exx-exchange-gradient`: 式 (16) と (17) を、T ブロックと V ブロックの全ての要素の中心差分と比べます。相対 1e-7。
+- `exx-exchange-backend`: 試験用の関数表を渡した結果を、渡さない結果と比べます（1e-12）。行列積の回数も確かめます。
+- `exx-exchange-system`: PAO から作った T ブロックと V ブロックで $K$ を確かめます。孤立した原子では T ブロックを使わない式と、周期構造と大きいセルでは定義と比べます（相対 1e-12）。C の入口の結果が C++ の入口とビット単位で同じことも確かめます。
+- `exx-c-api`: C99 のプログラムから C の入口を呼びます。
+- `exx-package-consumer`: インストールしたパッケージから、2 つの例題と C の入口の試験をビルドします。
 
 ## フィクスチャーの作り直し
 
+- `tests/fixtures/kbuild_reference.txt` は `python3 tools/exx_reference.py --dump modules/exx/tests/fixtures/kbuild_reference.txt` が書きます（NumPy が要ります）。試験は保存したファイルを読みます。
 - `tests/fixtures/kernel_reference.txt` は `python3 tools/exx_reference.py --kernels modules/exx/tests/fixtures/kernel_reference.txt` が書きます（mpmath が要ります）。
 - `tests/fixtures/overlap_reference.txt` は、CPU 版の本体で `tests/fixtures/overlap_reference.dat` を実行し、できた `.scfout` を `tools/exx_overlap_fixture.py` に渡して作ります。手順はスクリプトの冒頭にあります。
