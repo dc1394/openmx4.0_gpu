@@ -370,11 +370,17 @@ void lri_identity(const std::string& path)
 
     Worst recovered("density recovered from G c, two atoms (Coulomb norm)",1e-10);
     Worst elementwise("coefficients recovered from G c, two atoms",1e-8);
+    Worst separated("coefficients recovered from G c, distant atoms",1e-10);
     Worst swapped("the pair solved from the other atom",1e-10);
     Worst rotated("self-interaction of the fit after a rotation (relative)",1e-10);
     Worst symmetric("symmetry of the metric of a pair",1e-14);
-    struct Case { std::size_t a, c; Vec d; };
-    const std::vector<Case> cases{{0,1,{1.9,-1.2,2.6}},{1,2,{-0.9,1.5,1.0}},{0,0,{2.5,2.6,-2.4}},{2,2,{0.3,-1.2,0.6}}};
+    // Four pairs at bond distances and two pairs whose functions barely
+    // overlap.  The metric of the distant pairs is as well conditioned as that
+    // of one atom, so their coefficients must come back to 1e-10 one by one.
+    struct Case { std::size_t a, c; Vec d; bool distant; };
+    const std::vector<Case> cases{{0,1,{1.9,-1.2,2.6},false},{1,2,{-0.9,1.5,1.0},false},
+                                  {0,0,{2.5,2.6,-2.4},false},{2,2,{0.3,-1.2,0.6},false},
+                                  {0,1,{5.9,-4.2,5.6},true},{1,2,{-4.9,5.5,3.0},true}};
     // A rotation by 0.83 rad about (1,2,-2)/3.
     const Vec axis{1.0/3.0,2.0/3.0,-2.0/3.0};
     const double angle = 0.83, cosine = std::cos(angle), sine = std::sin(angle);
@@ -418,7 +424,7 @@ void lri_identity(const std::string& path)
         double norm = 0.0;
         for (std::size_t i = 0; i < n; ++i) {
           const double di = b[i*m+k]-coefficient[i*m+k];
-          elementwise.add(std::fabs(di)*std::sqrt(g[i*n+i]));
+          (item.distant ? separated : elementwise).add(std::fabs(di)*std::sqrt(g[i*n+i]));
           for (std::size_t j = 0; j < n; ++j) norm += di*g[i*n+j]*(b[j*m+k]-coefficient[j*m+k]);
         }
         recovered.add(std::sqrt(std::fabs(norm)));
@@ -446,6 +452,7 @@ void lri_identity(const std::string& path)
     }
     recovered.finish();
     elementwise.finish();
+    separated.finish();
     swapped.finish();
     rotated.finish();
     symmetric.finish();
