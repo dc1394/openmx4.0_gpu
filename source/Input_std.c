@@ -991,6 +991,14 @@ void Input_std(char *file, OpenMXCoreContext *core)
   i_vec[0]=1; i_vec[1]=2; i_vec[2]= 3; i_vec[3]= 4; i_vec[4]=5; i_vec[5]=6;
   input_string2int("scf.XcType", &XC_switch, 6, s_vec,i_vec);
 
+  if (XC_switch==5 || XC_switch==6){
+    if (myid==Host_ID){
+      printf("scf.XcType=%s is not implemented.\n", (XC_switch==5) ? "HSE" : "NLX");
+    }
+    MPI_Finalize();
+    exit(0);
+  }
+
   s_vec[0]="Off"; s_vec[1]="On"; s_vec[2]="NC";
   i_vec[0]=0    ; i_vec[1]=1   ; i_vec[2]=3;
   input_string2int("scf.SpinPolarization", &SpinP_switch, 3, s_vec,i_vec);
