@@ -67,6 +67,9 @@ def main():
 
     if args.backend == "HIP":
         jobs.append((cxx, "orbs_otf_hip.cu"))
+    else:
+        # The exact exchange of the hybrid functionals is not part of the HIP build yet.
+        jobs.append((cc, "Exact_Exchange.c"))
 
     def compile_unit(job):
         command, name = job
