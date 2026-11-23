@@ -14,11 +14,13 @@ Contents
   energy_gradient_gamma   dE_x/dT and dE_x/dV at fixed density matrix, eqs. (16) and (17) (input of the forces)
   write_fixture       plain-text fixture for unit tests of the C++ implementation
   integral_checks     two-/three-centre integral formulas, eqs. (11)-(13), against analytic Gaussians (SciPy)
+  write_kernel_fixture    the four kernels of section 5.6 in reciprocal space, evaluated with 50 digits (mpmath)
 
 Usage
   python3 exx_reference.py                # self-test of the algebra (NumPy only)
   python3 exx_reference.py --integrals    # integral formulas (needs SciPy)
   python3 exx_reference.py --dump FILE    # write a fixture for the C++ unit tests
+  python3 exx_reference.py --kernels FILE # write the kernel fixture of the C++ unit tests (needs mpmath)
 
 Conventions (identical to the guide)
   site            (atom, R), R an integer triple; position tau_atom + R . lattice
@@ -696,13 +698,75 @@ def integral_checks():
     return ok
 
 
+# ----------------------------------------------------------------------------
+# kernels in reciprocal space (mpmath)
+# ----------------------------------------------------------------------------
+def write_kernel_fixture(path):
+    """v~(kappa) and kappa^2 v~(kappa) of the four kernels of section 5.6, evaluated with
+       50 digits and rounded to the nearest double.  The parameters and the points are the
+       doubles that the C++ test reads back, so the reference is the exact function of the
+       same arguments.
+
+       The truncated Coulomb kernel is 8 pi sin(kappa Rc / 2)^2 / kappa^2.  Its relative
+       condition number is 2 y cot(y) - 2 with y = kappa Rc / 2, so the points keep away
+       from the zeros of the sine: |y cot(y)| stays below 100 in this table."""
+    import mpmath as mp
+
+    mp.mp.dps = 50
+    pi = mp.pi
+
+    def value(kind, par, k):
+        if kind == 'overlap':
+            return mp.mpf(1)
+        if kind == 'coulomb':
+            return 4 * pi / k ** 2
+        if kind == 'short_range':
+            return 4 * pi * (1 - mp.exp(-k ** 2 / (4 * par ** 2))) / k ** 2
+        return 4 * pi * (1 - mp.cos(k * par)) / k ** 2
+
+    def limit(kind, par):
+        if kind == 'overlap':
+            return mp.mpf(1)
+        if kind == 'short_range':
+            return pi / par ** 2
+        return 2 * pi * par ** 2
+
+    points = [1e-12, 1e-8, 1e-5, 1e-3, 0.01, 0.1, 0.3, 1.0, 2.5, 7.0, 20.0, 60.0]
+    cases = [('overlap', 0.0, points), ('coulomb', 0.0, points)]
+    cases += [('short_range', om, points) for om in (0.11, 0.106, 0.3)]
+    more = points + [0.03, 0.2, 0.45, 0.7, 1.6, 3.9, 11.0, 33.0]
+    well = lambda par, k: abs(mp.mpf(k) * par / 2 * mp.cot(mp.mpf(k) * par / 2)) < 100
+    cases += [('truncated_coulomb', rc, sorted(k for k in more if well(rc, k))) for rc in (3.0, 12.5, 31.7)]
+    out = ['exx_kernel_fixture 1',
+           '# written by tools/exx_reference.py --kernels (mpmath %s, %d digits)' % (mp.__version__, mp.mp.dps),
+           '# limit <kernel> <parameter> <v~ at kappa = 0>',
+           '# point <kernel> <parameter> <kappa> <v~(kappa)> <kappa^2 v~(kappa)>']
+    count = 0
+    for kind, par, ks in cases:
+        p = mp.mpf(par)
+        if kind != 'coulomb':
+            out.append('limit %s %r %r' % (kind, par, float(limit(kind, p))))
+        for k in ks:
+            kk = mp.mpf(k)
+            v = value(kind, p, kk)
+            out.append('point %s %r %r %r %r' % (kind, par, k, float(v), float(kk * kk * v)))
+            count += 1
+    with open(path, 'w') as f:
+        f.write('\n'.join(out) + '\n')
+    return count
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--integrals', action='store_true', help='check the integral formulas (needs SciPy)')
     ap.add_argument('--dump', metavar='FILE', help='write a fixture for the C++ unit tests')
+    ap.add_argument('--kernels', metavar='FILE', help='write the kernel fixture for the C++ unit tests (needs mpmath)')
     args = ap.parse_args()
     if args.integrals:
         return 0 if integral_checks() else 1
+    if args.kernels:
+        print('wrote', args.kernels, 'with', write_kernel_fixture(args.kernels), 'points')
+        return 0
     if args.dump:
         m = default_model()
         D = RandomDensity(m, seed=5)

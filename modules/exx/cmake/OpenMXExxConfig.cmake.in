@@ -1,0 +1,8 @@
+@PACKAGE_INIT@
+
+# OpenMX::exx is a static library that links OpenMX::basis.
+include(CMakeFindDependencyMacro)
+find_dependency(OpenMXBasis 0.1 CONFIG)
+
+include("${CMAKE_CURRENT_LIST_DIR}/OpenMXExxTargets.cmake")
+check_required_components(OpenMXExx)

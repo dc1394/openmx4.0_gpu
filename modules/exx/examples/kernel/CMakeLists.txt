@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.25.2)
+project(OpenMXExxExample LANGUAGES CXX)
+find_package(OpenMXExx 0.1 CONFIG REQUIRED)
+add_executable(kernel_example main.cpp)
+target_link_libraries(kernel_example PRIVATE OpenMX::exx)

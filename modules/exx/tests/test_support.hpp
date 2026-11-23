@@ -1,0 +1,54 @@
+// Shared helpers of the exx unit tests.  Every case is a function that throws
+// std::runtime_error on failure; main() in test_main.cpp selects the case.
+#pragma once
+
+#include <cmath>
+#include <cstdio>
+#include <stdexcept>
+#include <string>
+
+namespace exx_test {
+
+inline void require(bool ok, const std::string& what)
+{
+  if (!ok) throw std::runtime_error(what);
+}
+
+inline double relative_difference(double value, double reference)
+{
+  if (value == reference) return 0.0;
+  return std::fabs(value-reference)/std::fabs(reference);
+}
+
+// Collects the largest deviation of a group of comparisons, prints it, and
+// fails when it exceeds the tolerance.  NaN counts as a failure.
+class Worst {
+ public:
+  Worst(std::string name, double tolerance) : name_(std::move(name)), tolerance_(tolerance) {}
+  void absolute(double value, double reference) { add(std::fabs(value-reference)); }
+  void relative(double value, double reference) { add(relative_difference(value,reference)); }
+  void add(double deviation)
+  {
+    ++count_;
+    if (!(deviation <= worst_)) worst_ = deviation; // keeps NaN
+  }
+  double worst() const { return worst_; }
+  long count() const { return count_; }
+  void finish() const
+  {
+    std::printf("%-58s %7ld comparisons, largest deviation %.3e (limit %.1e)\n",
+                name_.c_str(),count_,worst_,tolerance_);
+    require(count_ > 0,name_+": nothing was compared");
+    require(worst_ <= tolerance_,name_+": the deviation exceeds the limit");
+  }
+ private:
+  std::string name_;
+  double tolerance_;
+  double worst_ = 0.0;
+  long count_ = 0;
+};
+
+// The cases, by file.
+void kernel_analytic(const std::string& fixture);
+
+} // namespace exx_test
