@@ -939,3 +939,30 @@ COSMA の Tiled-MM の倍精度・複素倍精度タイル積は、スタック�
 （`OPENMX_GS2_GEMMUL8`、既定 1）。計測用の `OPENMX_GS2_FP32_PROBE`（ELPA の単精度解法の計時）も加わりました。
 関数数は 3,441 → 3,442（計測プローブ）、参照組 12,377、file-scope / 関数内 static は 296 / 277 のまま、
 環境変数名は 257 → 259（上記 2 件）、getenv の直接呼び出しは 0 です。基準とインベントリを再生成しました。
+
+## 基準の再生成（2026-11-23、`4e0ee247` までの差の取り込み）
+
+2026-10-28 の再生成の後に `main` へ入った変更で、ゲートは `4e0ee247` の時点で失敗していました。
+基準にない組は 16 個ありましたが、大域状態の新しい利用は 1 個だけです。
+
+| 組 | 個数 | 内容 | コミット |
+| --- | ---: | --- | --- |
+| `Unfolding_Bands_Col.omp_outlined.*`、`Unfolding_Bands_NonCol.omp_outlined.*` | 14 | 並列領域から切り出される関数の番号が `.73` → `.67`、`.115` → `.109` にずれただけです。読むオブジェクトは同じ 7 個ずつです。 | `4e0ee247` |
+| `Open_FinalCoord_Files` → `filepath` | 1 | `Make_InputFile_with_FinalCoord_Normal` と `_NEGF` の 2 組が、共通化した関数の 1 組に置き換わりました。 | `3266dcdd` |
+| `cpu_eigenvectors`（`openmx_elpa_cpu.c`）→ `level_stdout` | 1 | スレッド数を報告する条件（`OPENMX_STDOUT_LEVEL(3)`）です。同じ箇所が、登録済みの `OPENMX_GPU_VERBOSE` も読みます。 | `3e2f5c73` |
+
+基準からは同じ数の 16 組が消え、参照組は 12,377 のままです。関数数は 3,442 → 3,444、
+file-scope / 関数内 static は 296 / 277、環境変数名は 259、getenv の直接呼び出しは 0 です。
+環境レジストリの表（`openmx_env.c` の `registry`）は 337 → 342 項目になり、基準では型の記述だけが変わりました。
+基準とインベントリを再生成しました。
+
+この計算機の `source/third_party/gpusolver2-install` には、OpenMP 版 ELPA のヘッダー
+（`include/elpa_openmp-2026.02.002`）がありません。既定の設定のままでは `elpa_cosma_bridge.c` と
+`openmx_elpa_cpu.c` が「not analysed」になり、この 2 単位の分（今回は参照組 6、file-scope static 10、
+関数内 static 1）が基準から落ちます。今回は CMake の CUDA ステージのスタックを指定して、286 単位を全て解析しました。
+
+```sh
+python3 tools/audit_global_usage.py --output build/globals-usage.json \
+    --markdown docs/GLOBAL_STATE_INVENTORY.md --baseline-output docs/global-usage-baseline.json \
+    --make-arg GPUSOLVER2_PREFIX=$PWD/build/cuda/native/source/third_party/gpusolver2-install
+```
