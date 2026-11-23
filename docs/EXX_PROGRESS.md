@@ -17,7 +17,8 @@
 | M0 | 指示書の `ctest`（正規表現で選んだ 18 件） | 変更の前後とも 18 件が全て合格 | 2026-11-23 | 同上 |
 | M0 | `scf.XcType HSE` の入力（`Methane.dat` の 1 行だけを変えたもの） | `scf.XcType=HSE is not implemented.` を表示して終了。出力ファイルは作られない。`NLX` も同じ | 2026-11-23 | 同上。1 ランク |
 | M0 | `work/input_example/Methane.dat` の全エネルギー | 変更の前後とも `Utot = -8.033540953477` Hartree。SCF は 14 回。`.out` と標準出力の差は日付と時間の行だけで、ほかの出力（`.ene`、cube、`.xyz`、再開ファイルなど）はバイト単位で一致 | 2026-11-23 | 同上。1 ランク、`OMP_NUM_THREADS=1`、`OPENBLAS_NUM_THREADS=1` |
-| M0 | 大域状態のゲート（`tools/audit_global_usage.py --check-no-new`） | 変更の前後で報告が同じ。M0 の変更で増えた組はない。ゲート自体は基準コミットの時点で失敗する（「未解決の問題」） | 2026-11-23 | ホスト。clang 21.1.8、NVHPC 26.9 |
+| M0 | 大域状態のゲート（`tools/audit_global_usage.py --check-no-new`） | `scf.XcType` の拒否（`71f7561c`）の前後で報告が同じで、増えた組はない。ベースラインの更新（`bab89d8e`）の後は合格。286 単位を全て解析 | 2026-11-23 | ホスト。clang 21.1.8、NVHPC 26.9 |
+| M0 | 試作用のハイブリッド入力の削除（`bcf52225`）の後の再確認 | `Methane.dat` は `Utot = -8.033540953477` Hartree のままで、出力の差は日付と時間の行だけ。`scf.XcType HSE` は同じメッセージで終了。`ctest` の 18 件とゲートは合格 | 2026-11-23 | コンテナ（`ctest` と実行）、ホスト（ゲート） |
 
 試験の入力、標準出力、ログは `build/exx-m0/` にあります（git の管理外）。
 
@@ -40,25 +41,32 @@ $D -w $PWD/build/exx-m0/run_after $IMG mpirun -np 1 ../../exx-cpu/openmx Methane
 
 初回のビルドは 12 並列で約 5 分です。
 
+大域状態のゲートはホストで実行します。この計算機の `source/third_party/gpusolver2-install` には OpenMP 版 ELPA のヘッダーがないので、CMake の CUDA ステージのスタックを指定します。指定しないと `elpa_cosma_bridge.c` と `openmx_elpa_cpu.c` が解析されません。
+
+```sh
+python3 tools/audit_global_usage.py --output build/exx-m0/globals-usage.json \
+  --baseline docs/global-usage-baseline.json --check-no-new \
+  --make-arg GPUSOLVER2_PREFIX=$PWD/build/cuda/native/source/third_party/gpusolver2-install
+```
+
 ## 決めたこと
 
-- （2026-11-23）CPU 版は上のコンテナの中でビルドして実行する。指示書の `sudo apt-get install` は実行していない。
+- （2026-11-23）CPU 版は上のコンテナの中でビルドして実行する。指示書の `sudo apt-get install` は実行していない。利用者の了承済み。
 - （2026-11-23）ビルドディレクトリーは `build/exx-cpu` にした。指示書の `build/cpu` には 2026-10-28 の別の構成（MKL）のビルドが残っていて、構成を変えた再利用を CMake が拒否する。
 - （2026-11-23）`-DOPENMX_COPY_TO_WORK=OFF` を付ける（CI と同じ指定）。この作業ツリーの `work/openmx` は GPU 版の実行ファイルなので、CPU 版で上書きしない。実行には `build/exx-cpu/openmx` を直接使う。
 - （2026-11-23）試験は `build/exx-m0/` の中で実行し、`work/` に出力を作らない。
 - （2026-11-23）`HSE` と `NLX` の拒否は、`scf.XcType` を読んだ直後に置いた。書き方は既存の入力エラーと同じ（ホストのランクが表示、`MPI_Finalize()`、`exit(0)`）なので、終了コードは 0 になる。
 - （2026-11-23）指示書、参照実装、フィクスチャーは、指示書の冒頭の表の場所に置いた。フィクスチャーの置き場所 `modules/exx/tests/fixtures/` には、まだこのファイルしかない（モジュール本体は M2 で作る）。
 - （2026-11-23）`.gitignore` の `*.md`（MD の出力用の規則）が Markdown の文書にも当たるので、新しい文書は `git add -f` で追加した。既存の `docs/*.md` と同じ扱い。
+- （2026-11-23、利用者の指示）試作用のハイブリッド入力（`scf.xmin.Rec.Coulomb` など 4 つのキーワードと `Allocate_Arrays(15)` の呼び出し）を `Input_std.c` から削除した（`bcf52225`）。
+- （2026-11-23、利用者の指示）大域状態のベースラインを更新した（`bab89d8e`）。ベースラインになかった 16 組は `main` の変更によるもので、内訳は `docs/GLOBAL_STATE_AUDIT.md` の末尾に書いた。試作用入力の削除で減った 4 組も `bcf52225` で反映した。以後は `--check-no-new` の合否で確認する。
+- （2026-11-23）ベースラインの更新と入力の削除は別のコミットにした。`bab89d8e` は EXX の変更に依存しないので、`main` に単独で取り込める。
 
 ## 未解決の問題
 
-- （2026-11-23）大域状態のゲートは、基準コミット `4e0ee247` の時点で失敗する。ベースライン `docs/global-usage-baseline.json`（最後の更新は `8161ec64`）にない組が 15 個ある。内訳は `Open_FinalCoord_Files`→`filepath` の 1 個と、`Unfolding_Bands_Col`／`Unfolding_Bands_NonCol` の OpenMP 領域の 14 個で、コミット `3266dcdd` と `4e0ee247` で入った。EXX の変更による増加ではない。ベースラインを更新するまで、ゲートは変更の前後の報告の差で確認する。
-- （2026-11-23）同じゲートで、`source/elpa_cosma_bridge.c` と `source/openmx_elpa_cpu.c` の 2 つが解析されない（`elpa/elpa.h` が見つからない）。基準コミットでも同じ。
-- （2026-11-23）`source/Input_std.c:5032-5040` の試作用のハイブリッド入力（`if (XC_switch==5)` の中）と、`source/Band_DFT_Col_NEGF.c:743` の `if (5==XC_switch)` は、M0 の変更で到達しなくなった。コードは残してある。
+- （2026-11-23）旧い厳密交換のコードが残っている。試作用入力が書いていた 4 個の変数の定義（`xmin_Rec_Coulomb`、`xmax_Rec_Coulomb`、`Ng1_Rec_Coulomb`、`Nrank_Rec_Coulomb`）、`Allocate_Arrays()` の `case 15`、`Free_Arrays.c` の 4 つの解放、ビルドに入っていない `Expand_ReCoulomb_Kernel.c`、到達しない `Band_DFT_Col_NEGF.c:743` の `if (5==XC_switch)`、`source/exx*` である。どれも動作には影響しない。削除するときは利用者に確認する（指示書の 1.3 節）。
 - （2026-11-23）M1 で使う libxc の値を作る手段が、まだない。ホストには libxc も `pylibxc` も `pyscf` も入っていない。`uv` はあるので、仮想環境に入れる方法を M1 の最初に試す。
 
 ## 利用者への確認待ち
 
-- 試作用のハイブリッド入力（`scf.xmin.Rec.Coulomb`、`scf.xmax.Rec.Coulomb`、`scf.Ng1.Rec.Coulomb`、`scf.Nrank.Rec.Coulomb` と `Allocate_Arrays(15)`）を削除するか（指示書の 8 節と 1.3 節）。
-- 大域状態のベースラインを、基準コミットの状態（EXX と関係のない 15 組を含む）に更新するか（1.3 節）。
-- CPU 版をコンテナの中でビルドして実行する方針でよいか。ホストでビルドする場合は、上の 6 つの apt パッケージを入れる必要がある。
+- なし。2026-11-23 の 3 件（試作用入力の削除、ベースラインの更新、コンテナでのビルド）は回答を受けて対応した（「決めたこと」）。
