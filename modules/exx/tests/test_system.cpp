@@ -232,13 +232,16 @@ void system_blocks(const std::string& path)
   for (std::size_t a = 0; a < atoms; ++a) {
     require(system.orbital_count[a] == table_of(a).orbital_count() && system.abf_count[a] == table_of(a).abf_count(),
             "wrong counts of an atom");
-    require(system.t[a].size() == system.c_neighbours[a].size() && system.v[a].size() == system.v_neighbours[a].size(),
-            "wrong number of blocks of an atom");
-    for (std::size_t i = 0; i < system.t[a].size(); ++i) {
+    require(system.c_offset[a].size() == system.c_neighbours[a].size()+1 && system.c_offset[a][0] == 0 &&
+            system.v[a].size() == system.v_neighbours[a].size(),"wrong number of blocks of an atom");
+    for (std::size_t i = 0; i < system.c_neighbours[a].size(); ++i) {
       const std::size_t c = static_cast<std::size_t>(system.c_neighbours[a][i].atom);
-      require(system.t[a][i].size() == system.abf_count[a]*system.orbital_count[a]*system.orbital_count[c],
+      require(system.c_offset[a][i+1]-system.c_offset[a][i] == system.orbital_count[c],"a T block has the wrong width");
+      require(t_block(system,a,i).size() == system.abf_count[a]*system.orbital_count[a]*system.orbital_count[c],
               "a T block has the wrong size");
     }
+    require(system.t[a].size() == system.abf_count[a]*system.orbital_count[a]*system.c_offset[a].back(),
+            "the T blocks of an atom have the wrong size");
     for (std::size_t i = 0; i < system.v[a].size(); ++i) {
       const std::size_t b = static_cast<std::size_t>(system.v_neighbours[a][i].atom);
       require(system.v[a][i].size() == system.abf_count[a]*system.abf_count[b],"a V block has the wrong size");
@@ -252,7 +255,7 @@ void system_blocks(const std::string& path)
 
   // The block of the atom itself is half of the solution for the atom alone.
   for (std::size_t a = 0; a < atoms; ++a)
-    require(system.t[a][0] == solver.onsite(table_of(a)),"the T block of an atom with itself differs from the solver");
+    require(t_block(system,a,0) == solver.onsite(table_of(a)),"the T block of an atom with itself differs from the solver");
 
   // Each pair of sites is solved once.  A sample of the T blocks: the block is
   // bit for bit a part of the solution of its pair as seen from one of the two
@@ -271,15 +274,16 @@ void system_blocks(const std::string& path)
       require(j < system.c_neighbours[c].size(),"a C neighbour has no counterpart");
       const PairCoefficients forward = solver.pair(table_of(a),table_of(c),displacement(structure,static_cast<int>(a),site));
       const PairCoefficients backward = solver.pair(table_of(c),table_of(a),displacement(structure,site.atom,back));
-      if (system.t[a][i] == forward.first) {
-        require(system.t[c][j] == forward.second,"the two T blocks of a pair come from different solutions");
+      const std::vector<double> mine = t_block(system,a,i), theirs = t_block(system,c,j);
+      if (mine == forward.first) {
+        require(theirs == forward.second,"the two T blocks of a pair come from different solutions");
         ++own;
-        for (std::size_t k = 0; k < backward.second.size(); ++k) rounding.absolute(system.t[a][i][k],backward.second[k]);
+        for (std::size_t k = 0; k < backward.second.size(); ++k) rounding.absolute(mine[k],backward.second[k]);
       } else {
-        require(system.t[a][i] == backward.second,"a T block is not a solution of its pair");
-        require(system.t[c][j] == backward.first,"the two T blocks of a pair come from different solutions");
+        require(mine == backward.second,"a T block is not a solution of its pair");
+        require(theirs == backward.first,"the two T blocks of a pair come from different solutions");
         ++taken;
-        for (std::size_t k = 0; k < forward.first.size(); ++k) rounding.absolute(system.t[a][i][k],forward.first[k]);
+        for (std::size_t k = 0; k < forward.first.size(); ++k) rounding.absolute(mine[k],forward.first[k]);
       }
     }
   rounding.finish();
@@ -342,7 +346,9 @@ void system_blocks(const std::string& path)
       for (std::size_t i = 0; i < system.c_neighbours[a].size(); ++i) {
         const std::size_t k = find_site(other.c_neighbours[a],translate(a,system.c_neighbours[a][i]));
         require(k < other.c_neighbours[a].size(),"a C neighbour is missing after a translation");
-        for (std::size_t e = 0; e < system.t[a][i].size(); ++e) t_moved.absolute(other.t[a][k][e],system.t[a][i][e]);
+        const std::vector<double> before = t_block(system,a,i), after = t_block(other,a,k);
+        require(before.size() == after.size(),"a translation changed the size of a T block");
+        for (std::size_t e = 0; e < before.size(); ++e) t_moved.absolute(after[e],before[e]);
       }
       for (std::size_t i = 0; i < system.v_neighbours[a].size(); ++i) {
         const std::size_t k = find_site(other.v_neighbours[a],translate(a,system.v_neighbours[a][i]));
@@ -379,15 +385,19 @@ void system_blocks(const std::string& path)
       const std::size_t i = find_site(system.c_neighbours[a],Site{pair.b,pair.cell});
       const std::size_t j = find_site(system.c_neighbours[c],Site{pair.a,{-pair.cell[0],-pair.cell[1],-pair.cell[2]}});
       require(i < system.c_neighbours[a].size() && j < system.c_neighbours[c].size(),"a pair of the fixture is not a C neighbour");
+      // The stacked T blocks are indexed directly here, which checks the
+      // layout that the exchange matrix uses.
+      const std::size_t la = system.c_offset[a].back(), lc = system.c_offset[c].back();
+      const std::size_t oa = system.c_offset[a][i], oc = system.c_offset[c][j];
       for (std::size_t mu = 0; mu < ua; ++mu)
         for (std::size_t lambda = 0; lambda < uc; ++lambda) {
           double sum = 0.0;
           // Equation (8): the ABFs of the first site, then those of the second
           // one.  For the atom itself the two terms are the same block.
           for (std::size_t p = 0; p < charges[sa].size(); ++p)
-            sum += charges[sa][p]*system.t[a][i][(p*ua+mu)*uc+lambda];
+            sum += charges[sa][p]*system.t[a][(p*ua+mu)*la+oa+lambda];
           for (std::size_t q = 0; q < charges[sc].size(); ++q)
-            sum += charges[sc][q]*system.t[c][j][(q*uc+lambda)*ua+mu];
+            sum += charges[sc][q]*system.t[c][(q*uc+lambda)*lc+oc+mu];
           charge.absolute(sum,pair.values[mu*static_cast<std::size_t>(pair.columns)+lambda]);
         }
       if (i != 0) ++offsite;
@@ -401,6 +411,8 @@ void system_blocks(const std::string& path)
     SystemOptions bad = options;
     bad.v_cutoff = -1.0;
     expect_invalid("a negative cutoff of the V blocks",[&] { prepare_system(structure,tables,reciprocal,bad); });
+    expect_invalid("a T block of an atom that does not exist",[&] { t_block(system,atoms,0); });
+    expect_invalid("a T block beyond the C neighbours",[&] { t_block(system,0,system.c_neighbours[0].size()); });
     expect_invalid("fewer species tables than species",
                    [&] { prepare_system(structure,std::span<const SpeciesTable>(tables).first(2),reciprocal,options); });
     const ReciprocalGrid other = ReciprocalGrid::uniform(24.0,120);

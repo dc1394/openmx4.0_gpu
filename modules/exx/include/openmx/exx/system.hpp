@@ -66,14 +66,24 @@ struct System {
   // to the sum of the two PAO radii).  V neighbours: the sites whose V block
   // is kept.  Both lists start with the atom itself.
   std::vector<std::vector<Site>> c_neighbours, v_neighbours;
-  // t[a][i][(P*u_a + mu)*u_c + lambda] = C^(1)P_{mu lambda}: P and mu on atom
-  // a, lambda on its i-th C neighbour (atom c).  t[a][0] holds half of the
-  // solution of equation (7) for the atom alone.
-  std::vector<std::vector<std::vector<double>>> t;
+  // The T blocks of an atom are stored side by side, as section 6.4 uses
+  // them: c_offset[a][i] is the first column of the i-th C neighbour of atom a,
+  // and c_offset[a].back() is the number of columns ell_a, the number of
+  // orbitals on all C neighbours.
+  std::vector<std::vector<std::size_t>> c_offset;
+  // t[a][(P*u_a + mu)*ell_a + c_offset[a][i] + lambda] = C^(1)P_{mu lambda}:
+  // P and mu on atom a, lambda on its i-th C neighbour.  The columns of the
+  // atom itself (i = 0) hold half of the solution of equation (7) for the
+  // atom alone.
+  std::vector<std::vector<double>> t;
   // v[a][i][P*n_b + Q] = (P|v|Q): P on atom a, Q on its i-th V neighbour (atom b).
   std::vector<std::vector<std::vector<double>>> v;
   LriReport report;
 };
+
+// The T block of an atom and one of its C neighbours as a separate array,
+// block[(P*u_a + mu)*u_c + lambda].
+std::vector<double> t_block(const System& system, std::size_t atom, std::size_t neighbour);
 
 // Section 6.2 for one structure.  species[s] is the table of species s; all
 // tables must have been made on "reciprocal".  The ABF radius of a species is

@@ -130,6 +130,20 @@ std::size_t find_site(std::span<const Site> list, const Site& site)
   return found != list.end() && *found == site ? static_cast<std::size_t>(found-list.begin()) : list.size();
 }
 
+std::vector<double> t_block(const System& system, std::size_t atom, std::size_t neighbour)
+{
+  if (atom >= system.t.size() || atom >= system.c_offset.size() || neighbour+1 >= system.c_offset[atom].size())
+    throw std::out_of_range("a T block of a system does not exist");
+  const std::size_t rows = system.abf_count[atom]*system.orbital_count[atom];
+  const std::size_t first = system.c_offset[atom][neighbour], width = system.c_offset[atom][neighbour+1]-first;
+  const std::size_t columns = system.c_offset[atom].back();
+  std::vector<double> block(rows*width);
+  for (std::size_t row = 0; row < rows; ++row)
+    std::copy_n(system.t[atom].begin()+static_cast<std::ptrdiff_t>(row*columns+first),width,
+                block.begin()+static_cast<std::ptrdiff_t>(row*width));
+  return block;
+}
+
 System prepare_system(const Structure& structure, std::span<const SpeciesTable> species,
                       const ReciprocalGrid& reciprocal, const SystemOptions& options)
 {
@@ -160,25 +174,43 @@ System prepare_system(const Structure& structure, std::span<const SpeciesTable> 
   system.c_neighbours = neighbour_lists(structure,c_cutoff,count);
   system.v_neighbours = neighbour_lists(structure,v_cutoff,count);
 
-  // T blocks: equation (7) once for every pair of sites.
+  // T blocks: equation (7) once for every pair of sites.  The blocks of an
+  // atom lie side by side.
+  system.c_offset.resize(atoms);
+  system.t.resize(atoms);
+  for (std::size_t a = 0; a < atoms; ++a) {
+    std::vector<std::size_t>& offset = system.c_offset[a];
+    offset.assign(1,0);
+    for (const Site& site : system.c_neighbours[a])
+      offset.push_back(offset.back()+system.orbital_count[static_cast<std::size_t>(site.atom)]);
+    system.t[a].assign(system.abf_count[a]*system.orbital_count[a]*offset.back(),0.0);
+  }
+  // Copies block[(P*u + mu)*width + lambda] into the columns of neighbour i.
+  const auto store = [&system](std::size_t a, std::size_t i, const std::vector<double>& block) {
+    const std::size_t rows = system.abf_count[a]*system.orbital_count[a];
+    const std::size_t first = system.c_offset[a][i], width = system.c_offset[a][i+1]-first;
+    const std::size_t columns = system.c_offset[a].back();
+    if (block.size() != rows*width) throw std::logic_error("a T block has the wrong size");
+    for (std::size_t row = 0; row < rows; ++row)
+      std::copy_n(block.begin()+static_cast<std::ptrdiff_t>(row*width),width,
+                  system.t[a].begin()+static_cast<std::ptrdiff_t>(row*columns+first));
+  };
   const LriSolver solver(reciprocal,maximum_orbital,maximum_abf,options.lri);
   std::vector<std::vector<double>> onsite_t(count);
-  system.t.resize(atoms);
-  for (std::size_t a = 0; a < atoms; ++a) system.t[a].resize(system.c_neighbours[a].size());
   for (std::size_t a = 0; a < atoms; ++a) {
     const std::size_t sa = static_cast<std::size_t>(structure.species[a]);
     if (onsite_t[sa].empty()) onsite_t[sa] = solver.onsite(species[sa],&system.report);
-    system.t[a][0] = onsite_t[sa];
+    store(a,0,onsite_t[sa]);
     for (std::size_t i = 1; i < system.c_neighbours[a].size(); ++i) {
       const Site& site = system.c_neighbours[a][i];
       if (!computed_here(static_cast<int>(a),site)) continue;
       const std::size_t b = static_cast<std::size_t>(site.atom);
       const std::size_t j = find_site(system.c_neighbours[b],reversed(static_cast<int>(a),site));
       if (j == system.c_neighbours[b].size()) throw std::logic_error("a C neighbour has no counterpart");
-      PairCoefficients pair = solver.pair(species[sa],species[static_cast<std::size_t>(structure.species[b])],
-                                          displacement(structure,static_cast<int>(a),site),&system.report);
-      system.t[a][i] = std::move(pair.first);
-      system.t[b][j] = std::move(pair.second);
+      const PairCoefficients pair = solver.pair(species[sa],species[static_cast<std::size_t>(structure.species[b])],
+                                                displacement(structure,static_cast<int>(a),site),&system.report);
+      store(a,i,pair.first);
+      store(b,j,pair.second);
     }
   }
 
