@@ -508,9 +508,17 @@ void exchange_backend(const std::string& path)
   const OpenMXExxDenseBackend table{&counting_dgemm,&calls};
   const DenseBackend products(&table);
   // One centre atom takes two products of its own and five for every V
-  // neighbour: every sum over the ABFs is one product.
-  long expected = 0;
-  for (std::size_t a = 0; a < atoms; ++a) expected += 2+5*static_cast<long>(system.v_neighbours[a].size());
+  // neighbour: every sum over the ABFs is one product.  The Gamma form adds
+  // up the V blocks of the images of an atom first, so it counts the atoms
+  // among the V neighbours.
+  long expected = 0, expected_gamma = 0;
+  for (std::size_t a = 0; a < atoms; ++a) {
+    std::set<int> distinct;
+    for (const Site& site : system.v_neighbours[a]) distinct.insert(site.atom);
+    expected += 2+5*static_cast<long>(system.v_neighbours[a].size());
+    expected_gamma += 2+5*static_cast<long>(distinct.size());
+  }
+  require(expected_gamma < expected,"the fixture is expected to list images of one atom as V neighbours");
 
   // The acceptance test of milestone M3: the same results with a table.
   {
@@ -526,7 +534,7 @@ void exchange_backend(const std::string& path)
     calls = 0;
     const std::vector<double> plain = exchange_gamma(system,d,alpha);
     const std::vector<double> through = exchange_gamma(system,d,alpha,products);
-    require(calls == expected,"the Gamma form does not take the expected number of products from the table");
+    require(calls == expected_gamma,"the Gamma form does not take the expected number of products from the table");
     Worst worst("Gamma form: table of the tests against the built-in loops",1e-12);
     for (std::size_t e = 0; e < n*n; ++e) worst.absolute(plain[e],through[e]);
     worst.finish();
@@ -544,7 +552,7 @@ void exchange_backend(const std::string& path)
     }
     worst.finish();
   }
-  std::printf("products per build of the fixture: %ld\n",expected);
+  std::printf("products per build of the fixture: %ld in the site form, %ld in the Gamma form\n",expected,expected_gamma);
 
   // A table that fails stops the build.
   {
@@ -752,6 +760,29 @@ void exchange_system(const std::string& path)
   const System system = prepare_system(structure,tables,reciprocal,options);
   const std::size_t n = orbital_total(system);
   const std::vector<double> d = dense_matrix(n,true,random);
+  // The Gamma form against the definition and against the site form.
+  const auto compare_forms = [&](const System& prepared, const std::string& name) {
+    const std::vector<double> k = exchange_gamma(prepared,d,alpha);
+    const std::vector<double> direct = definition_gamma(prepared,d,alpha);
+    const double scale = largest(direct);
+    require(scale > 1.0e-3,"the exchange matrix of the "+name+" is expected to be of order one");
+    Worst definition(name+": Gamma form against the definition (relative)",1e-12);
+    for (std::size_t e = 0; e < n*n; ++e) definition.add(std::fabs(k[e]-direct[e])/scale);
+    definition.finish();
+
+    const DensityBlocks blocks = gamma_density(prepared,d);
+    const BlockMatrix site = exchange_blocks(prepared,blocks,alpha);
+    const std::vector<double> sum = folded(prepared,site);
+    Worst form(name+": Gamma form against sum_R K(R) (relative)",1e-12);
+    for (std::size_t e = 0; e < n*n; ++e) form.add(std::fabs(k[e]-sum[e])/scale);
+    form.finish();
+    std::printf("%s, site form: %zu blocks of K, largest element of sum_R K(R) %.3e\n",name.c_str(),
+                site.blocks().size(),scale);
+
+    Worst energy(name+": E_x of the two forms (relative)",1e-12);
+    energy.relative(exchange_energy(blocks,site),exchange_energy_gamma(d,k));
+    energy.finish();
+  };
   {
     std::size_t c_sites = 0, v_sites = 0;
     for (std::size_t a = 0; a < system.orbital_count.size(); ++a) {
@@ -761,26 +792,30 @@ void exchange_system(const std::string& path)
     std::printf("periodic structure: %zu orbitals, %zu + %zu + %zu ABFs, %zu C sites, %zu V sites\n",n,
                 system.abf_count[0],system.abf_count[1],system.abf_count[2],c_sites,v_sites);
     require(c_sites > 50 && v_sites > 50,"the structure is expected to have many images among its neighbours");
+    compare_forms(system,"periodic structure");
+  }
 
-    const std::vector<double> k = exchange_gamma(system,d,alpha);
-    const std::vector<double> direct = definition_gamma(system,d,alpha);
-    const double scale = largest(direct);
-    require(scale > 1.0e-3,"the exchange matrix of the structure is expected to be of order one");
-    Worst definition("periodic structure: Gamma form against the definition (relative)",1e-12);
-    for (std::size_t e = 0; e < n*n; ++e) definition.add(std::fabs(k[e]-direct[e])/scale);
-    definition.finish();
-
-    const DensityBlocks blocks = gamma_density(system,d);
-    const BlockMatrix site = exchange_blocks(system,blocks,alpha);
-    const std::vector<double> sum = folded(system,site);
-    Worst form("periodic structure: Gamma form against sum_R K(R) (relative)",1e-12);
-    for (std::size_t e = 0; e < n*n; ++e) form.add(std::fabs(k[e]-sum[e])/scale);
-    form.finish();
-    std::printf("site form: %zu blocks of K, largest element of sum_R K(R) %.3e\n",site.blocks().size(),scale);
-
-    Worst energy("periodic structure: E_x of the two forms (relative)",1e-12);
-    energy.relative(exchange_energy(blocks,site),exchange_energy_gamma(d,k));
-    energy.finish();
+  // The same atoms in a large cell.  No neighbour list holds two images of
+  // one atom, so the Gamma form has nothing to fold and works with the
+  // blocks as they are stored.
+  {
+    Structure apart = structure;
+    apart.lattice = {std::array<double,3>{40.0,0.0,0.0},std::array<double,3>{0.0,40.0,0.0},std::array<double,3>{0.0,0.0,40.0}};
+    const System molecule = prepare_system(apart,tables,reciprocal,options);
+    std::size_t c_sites = 0, v_sites = 0;
+    for (std::size_t a = 0; a < molecule.orbital_count.size(); ++a) {
+      std::set<int> c, v;
+      for (const Site& site : molecule.c_neighbours[a]) c.insert(site.atom);
+      for (const Site& site : molecule.v_neighbours[a]) v.insert(site.atom);
+      require(c.size() == molecule.c_neighbours[a].size() && v.size() == molecule.v_neighbours[a].size(),
+              "the large cell is expected to have no images among the neighbours");
+      c_sites += c.size();
+      v_sites += v.size();
+    }
+    std::printf("atoms in a large cell: %zu C sites, %zu V sites\n",c_sites,v_sites);
+    require(c_sites > molecule.orbital_count.size() && v_sites > molecule.orbital_count.size(),
+            "the atoms in the large cell are expected to be neighbours of each other");
+    compare_forms(molecule,"atoms in a large cell");
   }
 
   // 3. The C interface, with the same species, grids and structure.

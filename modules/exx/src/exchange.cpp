@@ -67,12 +67,19 @@ std::vector<std::size_t> folded_columns(const System& system, const std::vector<
 // The contribution of the centre atom a, section 6.4.  The columns of the
 // density matrix are numbered 0..s-1 by the caller: the orbitals of the sites
 // of S in the site form, the orbitals of the unit cell in the Gamma form.
-// dloc is D[loc(A), columns], ell_a x s; its first u_a rows belong to A.
+// dloc is D[loc(A), columns], width(a) x s; its first u_a rows belong to A.
 //
-// The sink tells which columns the orbitals of loc(B) have (the first u_b of
-// them belong to B itself) and receives the three results:
-//   first(ib, t1)   rows A,      columns B        term (i)
-//   second(ib, t2)  rows A,      columns loc(B)   term (ii)
+// The sink hands out the blocks and receives the results.  Its groups are
+// the V neighbours of the centre: one site each in the site form, all images
+// of one atom together in the Gamma form.
+//   groups()        the number of groups
+//   atom(g)         the atom b of group g
+//   v(g)            its V block [P, Q]
+//   t(x), width(x)  the T blocks of atom x, [(P,mu), l] with width(x) columns
+//   columns(g)      the column of the density matrix of every column l of
+//                   t(atom(g)); the first u_b of them belong to B itself
+//   first(g, t1)    rows A,      columns B        term (i)
+//   second(g, t2)   rows A,      columns loc(B)   term (ii)
 //   last(t4)        rows loc(A), all columns      terms (iii) and (iv)
 // Term (iii) is added to the bracket of term (iv) at the columns of B, so one
 // product with the T blocks transforms both.
@@ -84,23 +91,23 @@ template <class Sink>
 void centre_contribution(const System& system, std::size_t a, std::size_t s, const std::vector<double>& dloc,
                          Sink& sink, const DenseBackend& backend)
 {
-  const std::size_t np = system.abf_count[a], ua = system.orbital_count[a], ell = system.c_offset[a].back();
+  const std::size_t np = system.abf_count[a], ua = system.orbital_count[a], ell = sink.width(a);
   const std::size_t rows = np*ua;
-  const double* tst = system.t[a].data();
+  const double* tst = sink.t(a);
   const double* da = dloc.data();
 
   std::vector<double> g(rows*s), bracket(rows*s,0.0);
   backend.multiply(rows,s,ell,1.0,tst,dloc.data(),0.0,g.data());      // G = T D[loc(A), .]
 
   std::vector<double> w, wt, gathered, density, product;
-  for (std::size_t ib = 0; ib < system.v_neighbours[a].size(); ++ib) {
-    const std::size_t b = static_cast<std::size_t>(system.v_neighbours[a][ib].atom);
-    const std::size_t nq = system.abf_count[b], ub = system.orbital_count[b], lb = system.c_offset[b].back();
+  for (std::size_t ib = 0; ib < sink.groups(); ++ib) {
+    const std::size_t b = sink.atom(ib);
+    const std::size_t nq = system.abf_count[b], ub = system.orbital_count[b], lb = sink.width(b);
     const std::vector<std::size_t>& column = sink.columns(ib);         // lb entries
 
     // W_{P,B} = sum_Q V_PQ T_Q, equation (10), and its copy with l before nu.
     w.resize(np*ub*lb);
-    backend.multiply(np,ub*lb,nq,1.0,system.v[a][ib].data(),system.t[b].data(),0.0,w.data());
+    backend.multiply(np,ub*lb,nq,1.0,sink.v(ib),sink.t(b),0.0,w.data());
     wt.resize(np*lb*ub);
     for (std::size_t p = 0; p < np; ++p)
       for (std::size_t nu = 0; nu < ub; ++nu)
@@ -188,6 +195,13 @@ class SiteSink {
 
   std::size_t size() const noexcept { return offset_.back(); }
 
+  // Every V neighbour is a group of its own, with the blocks as they are stored.
+  std::size_t groups() const noexcept { return system_.v_neighbours[a_].size(); }
+  std::size_t atom(std::size_t ib) const { return static_cast<std::size_t>(system_.v_neighbours[a_][ib].atom); }
+  const double* v(std::size_t ib) const { return system_.v[a_][ib].data(); }
+  const double* t(std::size_t atom) const { return system_.t[atom].data(); }
+  std::size_t width(std::size_t atom) const { return system_.c_offset[atom].back(); }
+
   // D[loc(A), S]
   std::vector<double> density(const DensityBlocks& blocks) const
   {
@@ -271,29 +285,62 @@ class SiteSink {
 
 // ---- Gamma form ------------------------------------------------------------
 
-// The sites fold onto the atoms of the unit cell.  Several columns of the T
-// blocks of an atom can belong to one orbital, so everything is accumulated.
+// The sites fold onto the atoms of the unit cell: all images of an atom
+// address the same orbitals.  The contribution of a centre is linear in the
+// V block of a neighbour and in the columns of the T blocks, so the folding
+// is done before the products.  The V blocks of the images of an atom are
+// added up, and so are the columns of the T blocks that belong to one
+// orbital.  A cell that is smaller than the cutoffs then costs five products
+// for every atom among the V neighbours instead of five for every image, and
+// no array has more than N columns.
 class GammaSink {
  public:
   GammaSink(const System& system, std::size_t a, double factor, std::span<double> k,
             const std::vector<std::size_t>& offset)
       : system_(system), a_(a), factor_(factor), k_(k), offset_(offset), n_(offset.back()),
-        folded_(system.orbital_count.size()) {}
+        folded_(system.orbital_count.size())
+  {
+    // The groups: the atoms among the V neighbours, in the order of their
+    // first appearance.
+    std::vector<std::size_t> group(system.orbital_count.size(),none);
+    for (std::size_t ib = 0; ib < system.v_neighbours[a].size(); ++ib) {
+      const std::size_t b = static_cast<std::size_t>(system.v_neighbours[a][ib].atom);
+      const std::vector<double>& block = system.v[a][ib];
+      if (group[b] == none) {
+        group[b] = atoms_.size();
+        atoms_.push_back(b);
+        v_.push_back(block);
+      } else {
+        std::vector<double>& sum = v_[group[b]];
+        for (std::size_t e = 0; e < block.size(); ++e) sum[e] += block[e];
+      }
+    }
+  }
+
+  std::size_t groups() const noexcept { return atoms_.size(); }
+  std::size_t atom(std::size_t g) const { return atoms_[g]; }
+  const double* v(std::size_t g) const { return v_[g].data(); }
+  const double* t(std::size_t atom)
+  {
+    const Folded& f = folded(atom);
+    return f.t.empty() ? system_.t[atom].data() : f.t.data();
+  }
+  std::size_t width(std::size_t atom) { return folded(atom).column.size(); }
 
   // The orbitals of loc(A): the rows of D[loc(A), .] and of the last result.
-  const std::vector<std::size_t>& rows() { return folded(a_); }
-  const std::vector<std::size_t>& columns(std::size_t ib) { return folded(neighbour(ib)); }
+  const std::vector<std::size_t>& rows() { return folded(a_).column; }
+  const std::vector<std::size_t>& columns(std::size_t g) { return folded(atoms_[g]).column; }
 
-  void first(std::size_t ib, const double* values)
+  void first(std::size_t g, const double* values)
   {
-    const std::size_t b = neighbour(ib), ua = system_.orbital_count[a_], ub = system_.orbital_count[b];
+    const std::size_t b = atoms_[g], ua = system_.orbital_count[a_], ub = system_.orbital_count[b];
     for (std::size_t mu = 0; mu < ua; ++mu)
       for (std::size_t nu = 0; nu < ub; ++nu) k_[(offset_[a_]+mu)*n_+offset_[b]+nu] += factor_*values[mu*ub+nu];
   }
 
-  void second(std::size_t ib, const double* values)
+  void second(std::size_t g, const double* values)
   {
-    const std::vector<std::size_t>& column = folded(neighbour(ib));
+    const std::vector<std::size_t>& column = folded(atoms_[g]).column;
     const std::size_t ua = system_.orbital_count[a_], lb = column.size();
     for (std::size_t mu = 0; mu < ua; ++mu)
       for (std::size_t l = 0; l < lb; ++l) k_[(offset_[a_]+mu)*n_+column[l]] += factor_*values[mu*lb+l];
@@ -301,19 +348,55 @@ class GammaSink {
 
   void last(const double* values)
   {
-    const std::vector<std::size_t>& row = folded(a_);
+    const std::vector<std::size_t>& row = folded(a_).column;
     for (std::size_t lambda = 0; lambda < row.size(); ++lambda)
       for (std::size_t column = 0; column < n_; ++column) k_[row[lambda]*n_+column] += factor_*values[lambda*n_+column];
   }
 
  private:
-  std::size_t neighbour(std::size_t ib) const { return static_cast<std::size_t>(system_.v_neighbours[a_][ib].atom); }
+  static constexpr std::size_t none = static_cast<std::size_t>(-1);
 
-  // Made on first use: one centre needs the columns of its V neighbours only.
-  const std::vector<std::size_t>& folded(std::size_t b)
+  // The T blocks of an atom with one column for every orbital of loc(atom).
+  struct Folded {
+    std::vector<std::size_t> column;   // the orbital of every column
+    std::vector<double> t;             // empty if no two C neighbours are images of one atom:
+                                       // the stored T blocks have these columns already
+  };
+
+  // Made on first use: one centre needs its own blocks and those of its V
+  // neighbours only.
+  const Folded& folded(std::size_t x)
   {
-    if (folded_[b].empty()) folded_[b] = folded_columns(system_,offset_,b);
-    return folded_[b];
+    Folded& f = folded_[x];
+    if (!f.column.empty()) return f;
+    const std::vector<Site>& loc = system_.c_neighbours[x];
+    std::vector<std::size_t> begin(system_.orbital_count.size(),none);   // first column of every atom
+    bool images = false;
+    for (const Site& site : loc) {
+      const std::size_t c = static_cast<std::size_t>(site.atom);
+      if (begin[c] != none) {
+        images = true;
+        continue;
+      }
+      begin[c] = f.column.size();
+      for (std::size_t lambda = 0; lambda < system_.orbital_count[c]; ++lambda) f.column.push_back(offset_[c]+lambda);
+    }
+    if (images) {
+      const std::size_t rows = system_.abf_count[x]*system_.orbital_count[x];
+      const std::size_t ell = system_.c_offset[x].back(), width = f.column.size();
+      f.t.assign(rows*width,0.0);
+      for (std::size_t row = 0; row < rows; ++row) {
+        const double* source = system_.t[x].data()+row*ell;
+        double* target = f.t.data()+row*width;
+        for (std::size_t i = 0; i < loc.size(); ++i) {
+          const std::size_t c = static_cast<std::size_t>(loc[i].atom);
+          const std::size_t from = system_.c_offset[x][i];
+          for (std::size_t lambda = 0; lambda < system_.orbital_count[c]; ++lambda)
+            target[begin[c]+lambda] += source[from+lambda];
+        }
+      }
+    }
+    return f;
   }
 
   const System& system_;
@@ -322,7 +405,9 @@ class GammaSink {
   std::span<double> k_;
   const std::vector<std::size_t>& offset_;
   std::size_t n_;
-  std::vector<std::vector<std::size_t>> folded_;
+  std::vector<std::size_t> atoms_;         // the atom of every group
+  std::vector<std::vector<double>> v_;     // sum of the V blocks of the images of that atom
+  std::vector<Folded> folded_;
 };
 
 // D[loc(A), .] of a dense matrix: the rows of the orbitals of loc(A).

@@ -89,10 +89,13 @@ double exchange_change(const DensityBlocks& density, const BlockMatrix& k, const
 std::size_t orbital_total(const System& system) noexcept;
 
 // Adds factor times the contribution of one centre atom to k.  density and k
-// are N x N.  Lattice images of an atom fold onto the same orbitals, so an
-// entry of k accumulates several terms.  The build assumes no symmetry of
-// the density matrix; the sum over all atoms is symmetric when the density
-// matrix is.
+// are N x N.  Lattice images of an atom fold onto the same orbitals.  The
+// folding is done before the matrix products: the V blocks of the images of
+// an atom are added up, and so are the columns of the T blocks that belong
+// to one orbital.  A cell smaller than the cutoffs therefore takes five
+// products for every atom among the V neighbours of the centre, not five
+// for every image.  The build assumes no symmetry of the density matrix;
+// the sum over all atoms is symmetric when the density matrix is.
 void add_exchange_gamma(const System& system, std::size_t atom, double factor, std::span<const double> density,
                         std::span<double> k, const DenseBackend& backend = DenseBackend());
 
