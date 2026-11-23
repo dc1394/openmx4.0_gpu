@@ -714,7 +714,7 @@ Unfolding_Bands.o: Unfolding_Bands.c openmx_common.h
 	$(CC) -c Unfolding_Bands.c
 Band_DFT_Dosout.o: Band_DFT_Dosout.c openmx_common.h
 	$(CC) -c Band_DFT_Dosout.c
-Exact_Exchange.o: Exact_Exchange.c openmx_exact_exchange.h openmx_exx.h ../modules/exx/include/openmx/exx/exx.h
+Exact_Exchange.o: Exact_Exchange.c openmx_exact_exchange.h openmx_exact_exchange_device.h openmx_exx.h ../modules/exx/include/openmx/exx/exx.h
 	$(CC) -c Exact_Exchange.c
 Exact_Exchange_Device.o: Exact_Exchange_Device.c openmx_exact_exchange_device.h
 	$(CC) -c Exact_Exchange_Device.c

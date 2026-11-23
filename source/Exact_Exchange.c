@@ -19,6 +19,7 @@
 #include "openmx_core_native_resources.h"
 #include "openmx_core_radial_views.h"
 #include "openmx_exact_exchange.h"
+#include "openmx_exact_exchange_device.h"
 #include "openmx_exx.h"
 #include "lapack_prototypes.h"
 
@@ -53,6 +54,8 @@ struct OpenMXExactExchangeState {
   double asymmetry;                 /* largest difference of K from its transpose in the last build, before the means */
   double residual_reference;        /* residual norm of the first step with the K of the last build; negative: not seen yet */
   double time_prepare,time_collect,time_build,time_add; /* seconds on this process */
+  OpenMXExactExchangeDevice device; /* matrix products of the build on the device of this process */
+  double time_device;               /* seconds in them, with the transfers; part of time_build */
 };
 
 static void ExactExchange_Reset(OpenMXNativeResources *owner, void *metadata)
@@ -63,6 +66,7 @@ static void ExactExchange_Reset(OpenMXNativeResources *owner, void *metadata)
      which releases them. */
   if (state->module!=NULL) openmx_exx_destroy(state->module);
   state->module = NULL;
+  Exact_Exchange_Device_Release(&state->device);
 }
 
 OpenMXExactExchangeState *Exact_Exchange_Bind_Resources(OpenMXCoreContext *core)
@@ -78,6 +82,7 @@ OpenMXExactExchangeState *Exact_Exchange_Bind_Resources(OpenMXCoreContext *core)
   OpenMXExactExchangeState *state=(OpenMXExactExchangeState*)metadata;
   if (!state->initialized) {
     state->resources = owner;
+    Exact_Exchange_Device_Initialize(&state->device);
     state->initialized = 1;
   }
   return state;
@@ -86,6 +91,9 @@ OpenMXExactExchangeState *Exact_Exchange_Bind_Resources(OpenMXCoreContext *core)
 void Exact_Exchange_Configure(OpenMXExactExchangeState *state, const OpenMXExactExchangeInput *input)
 {
   state->input = *input;
+  /* The fault injection of the GPU paths: no matrix product fits. The device
+     is still asked for its free memory, and every product goes to the host. */
+  if (input->device_capacity_test) state->device.reserve_bytes = (size_t)-1;
 }
 
 void Exact_Exchange_Bind_Structure(OpenMXExactExchangeState *state, const OpenMXExactExchangeStructure *structure)
@@ -144,6 +152,16 @@ void Exact_Exchange_Times(const OpenMXExactExchangeState *state, double times[4]
   times[1] = state->time_collect;
   times[2] = state->time_build;
   times[3] = state->time_add;
+}
+
+void Exact_Exchange_Device_Use(const OpenMXExactExchangeState *state, MPI_Comm comm, long long use[4],
+                               double *seconds)
+{
+  long long mine[4]={state->device.device_products,state->device.declined_products,
+                     0<state->device.device_products ? 1 : 0,state->device.disabled ? 1 : 0};
+  double longest=state->time_device;
+  MPI_Allreduce(mine,use,4,MPI_LONG_LONG,MPI_SUM,comm);
+  MPI_Allreduce(&longest,seconds,1,MPI_DOUBLE,MPI_MAX,comm);
 }
 
 /* Ends the run of every process: the state of the SCF cannot be continued. */
@@ -212,12 +230,36 @@ static double ExactExchange_Symmetrize_Channel(const OpenMXExactExchangeState *s
   return largest;
 }
 
-/* The matrix products of modules/exx go to the BLAS of the main program. */
+/* What the table of functions carries to the matrix products of one build. */
+typedef struct {
+  OpenMXExactExchangeDevice *device;
+  double device_seconds; /* in the products that the device took, with the transfers */
+  long long count;       /* products of the build on this process */
+  double largest_work;   /* the most multiplications m*n*k that one of them has */
+  int largest[3];        /* m, n and k of that product */
+} ExactExchangeProducts;
+
+/* The matrix products of modules/exx. The device of this process takes the
+   large ones when it can (openmx_exact_exchange_device.h); the others, and
+   all of them in the CPU build, go to the BLAS of the main program. */
 static int ExactExchange_Dgemm(void *context, char transa, char transb, int m, int n, int k, double alpha,
                                const double *a, int lda, const double *b, int ldb, double beta, double *c,
                                int ldc)
 {
-  (void)context;
+  ExactExchangeProducts *products=(ExactExchangeProducts*)context;
+  const double work=(double)m*(double)n*(double)k;
+  products->count++;
+  if (products->largest_work<work) {
+    products->largest_work = work;
+    products->largest[0] = m;
+    products->largest[1] = n;
+    products->largest[2] = k;
+  }
+  const double start=MPI_Wtime();
+  if (Exact_Exchange_Device_Dgemm(products->device,transa,transb,m,n,k,alpha,a,lda,b,ldb,beta,c,ldc)) {
+    products->device_seconds += MPI_Wtime()-start;
+    return 0;
+  }
   F77_NAME(dgemm,DGEMM)(&transa,&transb,&m,&n,&k,&alpha,(double*)a,&lda,(double*)b,&ldb,&beta,c,&ldc);
   return 0;
 }
@@ -644,7 +686,11 @@ void Exact_Exchange_Build(OpenMXExactExchangeState *state, MPI_Comm comm, int ve
     if (first==atoms) last = atoms;
   }
 
-  const OpenMXExxDenseBackend backend={ExactExchange_Dgemm,NULL};
+  ExactExchangeProducts products={&state->device,0.0,0,0.0,{0,0,0}};
+  const OpenMXExxDenseBackend backend={ExactExchange_Dgemm,&products};
+  const long long device_before=state->device.device_products;
+  const long long declined_before=state->device.declined_products;
+  const int disabled_before=state->device.disabled;
   state->asymmetry = 0.0;
   for (int spin=0; spin<state->spin_channels; spin++) {
     /* The matrix of the build before stays for delta; without one it is 0. */
@@ -691,6 +737,24 @@ void Exact_Exchange_Build(OpenMXExactExchangeState *state, MPI_Comm comm, int ve
   state->outer_converged = 0;
   state->residual_reference = -1.0;
   state->time_build += MPI_Wtime()-start;
+  state->time_device += products.device_seconds;
+
+  /* A device call failed in this build: the process says so once. The host
+     has computed the product that failed and computes all later ones. */
+  if (state->device.disabled && !disabled_before && 1<=verbosity) {
+    printf("<EXX>  WARNING: process %d: %s failed with status %d.\n",rank,
+           Exact_Exchange_Device_Failure_Name(state->device.failure),state->device.failure_status);
+    printf("<EXX>  The host computes the matrix products of the exchange matrix from here on.\n");
+    fflush(stdout);
+  }
+  if (rank==0 && 2<=verbosity && 0<products.count) {
+    printf("<EXX>  matrix products of process 0: %lld, the largest %d x %d with inner dimension %d\n",
+           products.count,products.largest[0],products.largest[1],products.largest[2]);
+    if (device_before<state->device.device_products || declined_before<state->device.declined_products)
+      printf("<EXX>  on the device: %lld in %.2f s, at most %.1f MB for one product; left to the host for lack of device memory: %lld\n",
+             state->device.device_products-device_before,products.device_seconds,
+             (double)state->device.largest_bytes/1048576.0,state->device.declined_products-declined_before);
+  }
 
   if (rank==0 && 2<=verbosity) {
     if (first<last) {

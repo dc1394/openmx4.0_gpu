@@ -35,7 +35,7 @@ OpenMXExactExchangeState *Exact_Exchange_Bind_Resources(OpenMXCoreContext *core)
 #define OPENMX_EXACT_EXCHANGE_HSE06 1
 #define OPENMX_EXACT_EXCHANGE_PBE0 2
 
-/* The values of the input keywords. */
+/* The values of the input keywords, and the fault injection of the GPU paths. */
 typedef struct {
   int functional;            /* OPENMX_EXACT_EXCHANGE_... */
   double alpha;              /* scf.exx.alpha */
@@ -46,6 +46,8 @@ typedef struct {
   double outer_criterion;    /* scf.exx.outer.criterion, Hartree */
   int radial_intervals;      /* 1DFFT.NumGridR */
   double reciprocal_maximum; /* square root of 1DFFT.EnergyCutoff, 1/bohr */
+  int device_capacity_test;  /* OPENMX_GPU_CAPACITY_TEST_RECOVERY: the GPU leaves every matrix
+                                product of the builds to the host, as when its memory is short */
 } OpenMXExactExchangeInput;
 
 void Exact_Exchange_Configure(OpenMXExactExchangeState *state, const OpenMXExactExchangeInput *input);
@@ -239,6 +241,17 @@ void Exact_Exchange_Add_Band_Hs(OpenMXExactExchangeState *state, int spin, doubl
 /* Seconds spent on this process since the binding: preparation, collection
    of the density matrices, builds, additions to the Hamiltonian. */
 void Exact_Exchange_Times(const OpenMXExactExchangeState *state, double times[4]);
+
+/* How the builds used the GPUs (openmx_exact_exchange_device.h), over the
+   processes of comm: use[0] is the number of matrix products computed on a
+   device, use[1] the number left to the host because a device had no room
+   for them, use[2] the number of processes with at least one product on
+   their device, and use[3] the number of processes whose device was
+   switched off after a failed call. seconds is the longest time that one
+   process spent in its products on the device, transfers included; it is a
+   part of the time of the builds. All are 0 in the CPU build. Collective. */
+void Exact_Exchange_Device_Use(const OpenMXExactExchangeState *state, MPI_Comm comm, long long use[4],
+    double *seconds);
 
 #ifdef __cplusplus
 }

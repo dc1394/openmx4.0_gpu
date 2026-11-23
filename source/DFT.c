@@ -2028,8 +2028,11 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   if (Cnt_switch==0 && Exact_Exchange_Enabled(exact_exchange)){
     const int builds = Exact_Exchange_Outer_Iterations(exact_exchange);
     double exx_times[4];
+    long long exx_device_use[4];
+    double exx_device_seconds;
 
     if (!Exact_Exchange_Outer_Converged(exact_exchange)) scf_convergence_flag = 0;
+    Exact_Exchange_Device_Use(exact_exchange, mpi_comm_level1, exx_device_use, &exx_device_seconds);
 
     if (MYID_MPI_COMM_WORLD==Host_ID && 0<level_stdout){
       if (builds==0){
@@ -2051,6 +2054,16 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
       Exact_Exchange_Times(exact_exchange, exx_times);
       printf("<EXX>  time (s): preparation %.2f, density matrices %.2f, exchange matrix %.2f, addition %.2f\n",
              exx_times[0],exx_times[1],exx_times[2],exx_times[3]);
+      if (0<exx_device_use[0] || 0<exx_device_use[1] || 0<exx_device_use[3]){
+        printf("<EXX>  GPU: %lld matrix products of the exchange matrix on the device, in %lld processes\n",
+               exx_device_use[0],exx_device_use[2]);
+        printf("<EXX>  (at most %.2f s in one process); %lld left to the host for lack of device memory.\n",
+               exx_device_seconds,exx_device_use[1]);
+      }
+      if (0<exx_device_use[3]){
+        printf("<EXX>  WARNING: %lld processes stopped using their device for the exchange matrix after a failed call.\n",
+               exx_device_use[3]);
+      }
       printf("<EXX>  The forces do not contain the exact exchange.\n");
       fflush(stdout);
     }

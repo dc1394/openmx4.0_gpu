@@ -5181,6 +5181,7 @@ void Input_std(char *file, OpenMXCoreContext *core)
     exx_input.outer_criterion = exx_outer_criterion;
     exx_input.radial_intervals = OneD_Grid;   /* 1DFFT.NumGridR */
     exx_input.reciprocal_maximum = PAO_Nkmax; /* square root of 1DFFT.EnergyCutoff */
+    exx_input.device_capacity_test = openmx_gpu_capacity_test_recovery();
     Exact_Exchange_Configure(exact_exchange,&exx_input);
 
     /* the arrays of the structure, which this function has filled: every

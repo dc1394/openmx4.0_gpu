@@ -2322,7 +2322,7 @@ input_int("scf.Gpu.Num", &amp;SCF_Gpu_Num, 30);</code></pre>
 <tr><td><code>OPENMX_GPU_WORKER_COPY</code></td><td>0</td><td><b>1</b> でワーカー間のピアビューを無効化する（すべてコピーで転送。テスト用）。</td></tr>
 <tr><td><code>OPENMX_GPU_LOCK_DIR</code> / <code>_TIMEOUT_MS</code></td><td>/tmp / 300000</td><td>プロセス間でデバイスの受け入れを直列化するノードローカルなロックファイルのディレクトリ（ノード内のランクが共有する絶対パス）と、受け入れを諦めるまでロックを待つ時間（ms）。</td></tr>
 <tr><td><code>OPENMX_MGPU_VERBOSE</code></td><td>0</td><td>マルチ GPU ランタイムと各ワーカー実行の報告（名前、ワーカー数、項目数、デバイス）。<code>level.of.stdout 2</code> でランタイム部分は有効になる。</td></tr>
-<tr><td><code>OPENMX_GPU_CAPACITY_TEST_RECOVERY</code></td><td>0</td><td>回帰テスト用の故障注入: 従来の常駐高速経路を飛ばし、通常の容量プランナーを実際の GPU メモリで動かす。</td></tr>
+<tr><td><code>OPENMX_GPU_CAPACITY_TEST_RECOVERY</code></td><td>0</td><td>回帰テスト用の故障注入: 従来の常駐高速経路を飛ばし、通常の容量プランナーを実際の GPU メモリで動かす。厳密交換(HSE06)の行列積は、デバイスに空きがない場合と同じくホストで計算する。</td></tr>
 <tr><td colspan="3" style="background:#f0f4fa;"><b>MAGMA ホスト常駐ソルバー（openmx_magma_mgpu.cpp）</b></td></tr>
 <tr><td><code>OPENMX_MAGMA_FP32</code> / <code>_COMPLEX_MAX_N</code></td><td>0 / 0</td><td>ホスト常駐の MAGMA 分解を GEMMul8 で補正した FP32 で行う（ハードウェア条件あり。FP32 精密化積が必要）。<code>_COMPLEX_MAX_N</code> を超える複素行列はネイティブ FP64 のまま（0 で上限なし）。</td></tr>
 <tr><td><code>OPENMX_MAGMA_REFINE_STEPS</code> / <code>OPENMX_MAGMA_RR_GPU_MIN</code></td><td>2 / 1024</td><td>FP32 MAGMA 経路の補正回数（2〜5）と、Rayleigh-Ritz 段を CPU LAPACK ではなく受け入れ済み GPU 群で解くクラスターの大きさの下限。</td></tr>

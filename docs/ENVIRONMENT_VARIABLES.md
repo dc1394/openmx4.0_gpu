@@ -255,7 +255,7 @@ and `off`/`no`/`false`; `auto`, an empty value and an unset variable select the 
 | `OPENMX_GPU_WORKER_COPY` | 0 | **1** disables peer views between workers (every transfer becomes a copy; for testing). |
 | `OPENMX_GPU_LOCK_DIR` / `_TIMEOUT_MS` | /tmp / 300000 | Directory of the node-local lock files that serialize device admission between processes (an absolute path shared by the node's ranks) and the time a process waits for the lock before giving up the admission. |
 | `OPENMX_MGPU_VERBOSE` | 0 | Reports of the multi-GPU runtime and of every worker run (name, workers, items, devices); `level.of.stdout 2` implies the runtime part. |
-| `OPENMX_GPU_CAPACITY_TEST_RECOVERY` | 0 | Fault injection for the regression tests: skip the legacy resident fast paths so the ordinary capacity planner runs with real GPU memory. |
+| `OPENMX_GPU_CAPACITY_TEST_RECOVERY` | 0 | Fault injection for the regression tests: skip the legacy resident fast paths so the ordinary capacity planner runs with real GPU memory. The matrix products of the exact exchange (HSE06) stay on the host, as they do when the device has no room for them. |
 
 ## MAGMA host-backed solver (openmx_magma_mgpu.cpp)
 
