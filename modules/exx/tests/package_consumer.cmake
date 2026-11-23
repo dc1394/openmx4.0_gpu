@@ -41,9 +41,15 @@ file(RENAME "${TEST_ROOT}/prefix" "${TEST_ROOT}/relocated")
 file(RENAME "${TEST_ROOT}/source" "${TEST_ROOT}/hidden-source")
 file(RENAME "${TEST_ROOT}/build" "${TEST_ROOT}/hidden-build")
 
-file(COPY "${EXX_SOURCE}/examples/kernel/" DESTINATION "${TEST_ROOT}/consumer")
-run("${CMAKE_COMMAND}" -S "${TEST_ROOT}/consumer" -B "${TEST_ROOT}/consumer-build"
-  "-DCMAKE_CXX_COMPILER=${CXX}" -DCMAKE_BUILD_TYPE=Release
-  "-DCMAKE_PREFIX_PATH=${TEST_ROOT}/relocated" ${basis_arguments})
-run("${CMAKE_COMMAND}" --build "${TEST_ROOT}/consumer-build" --config Release --parallel 2)
-run("${TEST_ROOT}/consumer-build/kernel_example")
+# The examples are the consumers.  The second one reads .pao files with the
+# basis package itself; no such file belongs to this package, so the test
+# only asks for its usage.
+foreach(example kernel lri)
+  file(COPY "${EXX_SOURCE}/examples/${example}/" DESTINATION "${TEST_ROOT}/consumer-${example}")
+  run("${CMAKE_COMMAND}" -S "${TEST_ROOT}/consumer-${example}" -B "${TEST_ROOT}/consumer-${example}-build"
+    "-DCMAKE_CXX_COMPILER=${CXX}" -DCMAKE_BUILD_TYPE=Release
+    "-DCMAKE_PREFIX_PATH=${TEST_ROOT}/relocated" ${basis_arguments})
+  run("${CMAKE_COMMAND}" --build "${TEST_ROOT}/consumer-${example}-build" --config Release --parallel 2)
+endforeach()
+run("${TEST_ROOT}/consumer-kernel-build/kernel_example")
+run("${TEST_ROOT}/consumer-lri-build/lri_example" --help)
