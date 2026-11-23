@@ -50,5 +50,7 @@ class Worst {
 
 // The cases, by file.
 void kernel_analytic(const std::string& fixture);
+void two_center_gaussian();
+void two_center_symmetry();
 
 } // namespace exx_test

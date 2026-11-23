@@ -11,6 +11,8 @@ int main(int argc, char** argv)
     const std::string name = argc > 1 ? argv[1] : "";
     const std::string fixture = argc > 2 ? argv[2] : "";
     if (name == "kernel-analytic") exx_test::kernel_analytic(fixture);
+    else if (name == "two-center-gaussian") exx_test::two_center_gaussian();
+    else if (name == "two-center-symmetry") exx_test::two_center_symmetry();
     else throw std::runtime_error("unknown exx test case: "+name);
     return 0;
   } catch (const std::exception& e) {
