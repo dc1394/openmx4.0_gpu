@@ -5138,7 +5138,15 @@ void Input_std(char *file, OpenMXCoreContext *core)
     if (Polarization_ABC_flag!=0)     conflict[conflicts++] = "scf.Polarization.ABC";
     if (CWF_Calc!=0)                  conflict[conflicts++] = "CWF.Calc";
     if (Energy_Decomposition_flag!=0) conflict[conflicts++] = "Energy.Decomposition";
-    /* not examined together with the exact exchange */
+    if (flag_export_DM!=0 && flag_energy_range_DM!=0)
+                                      conflict[conflicts++] = "DM.specify.energy.range";
+    /* the file of an electrode holds the Hamiltonian of the neighbour list */
+    if (output_hks!=0)                conflict[conflicts++] = "NEGF.Output_HKS";
+    /* not examined together with the exact exchange; the XANES branch calls
+       the cluster solver also for a k mesh, which has no matrix of the Gamma
+       point then */
+    if (xanes_gs_fileout!=0)          conflict[conflicts++] = "XANES.gs.fileout";
+    if (xanes_calc!=0)                conflict[conflicts++] = "XANES.calc";
     if (CDDF_on!=0)                   conflict[conflicts++] = "CDDF.start";
     if (NBO_switch!=0)                conflict[conflicts++] = "NBO.switch";
     if (Hub_U_switch!=0)              conflict[conflicts++] = "scf.Hubbard.U";
