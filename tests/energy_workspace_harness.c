@@ -34,9 +34,11 @@ int MPI_Allreduce(const void *send,void *receive,int n,int type,int op,MPI_Comm 
   if(send!=MPI_IN_PLACE)memcpy(receive,send,(size_t)n*sizeof(double));
   return 0;
 }
-static void Set_XC_Grid(int mode,int derivative,int xc,double *d0,double *d1,double *d2,double *d3,
+static void Set_XC_Grid(int mode,int derivative,int xc,double exx_alpha,double exx_omega,
+    double *d0,double *d1,double *d2,double *d3,
     double *v0,double *v1,double *v2,double *v3,void *a,void *b){
   CHECK(mode==2 && derivative==1 && xc==XC_switch && !a && !b);
+  CHECK(exx_alpha==0.0 && exx_omega==0.0); /* No hybrid functional is selected. */
   CHECK(d0==Density_Grid_D[0] && d1==Density_Grid_D[1] && d2==Density_Grid_D[2] && d3==Density_Grid_D[3]);
   CHECK(v0==Vxc_Grid_D[0] && v1==Vxc_Grid_D[1] && v2==Vxc_Grid_D[2] && v3==Vxc_Grid_D[3]);
   ++xc_calls; /* Prescribed XC potential, independent of the real XC library. */
