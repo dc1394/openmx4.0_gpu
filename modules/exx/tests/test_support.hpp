@@ -54,5 +54,8 @@ void two_center_gaussian();
 void two_center_symmetry();
 void two_center_overlap(const std::string& fixture);
 void abf_pca(const std::string& fixture);
+void three_center_gaussian();
+void lri_identity(const std::string& fixture);
+void lri_convergence(const std::string& fixture);
 
 } // namespace exx_test

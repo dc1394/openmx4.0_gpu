@@ -384,4 +384,30 @@ void TwoCenterIntegrator::Pair::block(const ReciprocalFunction& p, const Recipro
   }
 }
 
+std::vector<double> two_center_matrix(const TwoCenterIntegrator::Pair& pair,
+    std::span<const ReciprocalFunction> left, std::span<const ReciprocalFunction> right)
+{
+  std::size_t rows = 0, columns = 0;
+  for (const ReciprocalFunction& f : left) rows += static_cast<std::size_t>(2*f.angular+1);
+  for (const ReciprocalFunction& f : right) columns += static_cast<std::size_t>(2*f.angular+1);
+  std::vector<double> matrix(rows*columns);
+  std::vector<double> block;
+  std::size_t row = 0;
+  for (const ReciprocalFunction& p : left) {
+    const std::size_t block_rows = static_cast<std::size_t>(2*p.angular+1);
+    std::size_t column = 0;
+    for (const ReciprocalFunction& q : right) {
+      const std::size_t block_columns = static_cast<std::size_t>(2*q.angular+1);
+      block.resize(block_rows*block_columns);
+      pair.block(p,q,block);
+      for (std::size_t i = 0; i < block_rows; ++i)
+        for (std::size_t j = 0; j < block_columns; ++j)
+          matrix[(row+i)*columns+column+j] = block[i*block_columns+j];
+      column += block_columns;
+    }
+    row += block_rows;
+  }
+  return matrix;
+}
+
 } // namespace openmx::exx

@@ -185,4 +185,10 @@ class TwoCenterIntegrator {
   RealGauntTable gaunt_;
 };
 
+// The blocks of all pairs of two lists of functions as one matrix.  The rows
+// are the components of "left" in their order (2l+1 for every function), the
+// columns those of "right": out[row*columns + column].
+std::vector<double> two_center_matrix(const TwoCenterIntegrator::Pair& pair,
+    std::span<const ReciprocalFunction> left, std::span<const ReciprocalFunction> right);
+
 } // namespace openmx::exx
