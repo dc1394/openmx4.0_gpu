@@ -27,7 +27,9 @@ int openmx_core_band_energies(OpenMXCoreContext*, OpenMXBandEnergies **out,
    output. Preserve the native terms separately, including double counting
    terms used by the Harris functional. No summation or solver policy is
    imposed here. This value does not contain Utot, ionic kinetic energy or
-   pressure times volume. */
+   pressure times volume. exact_exchange is the exact exchange energy of a
+   hybrid functional, mixing ratio included; it stays 0 otherwise, and xc
+   then holds the whole exchange-correlation energy. */
 typedef struct {
   double kinetic;
   double hartree[2];
@@ -45,6 +47,7 @@ typedef struct {
   double hartree_double_counting;
   double xc_double_counting[2];
   double atomic_reference;
+  double exact_exchange;
 } OpenMXEnergyComponents;
 
 /* Borrow the calculation's zero-initialized components without allocating.

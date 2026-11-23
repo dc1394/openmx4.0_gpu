@@ -94,6 +94,7 @@ void seed_components(OpenMXEnergyComponents* e,double base){
   e->zeeman_spin=base+11;e->zeeman_orbital=base+12;e->electric_field=base+13;
   e->vdw=base+14;e->core_hole=base+15;e->hartree_double_counting=base+16;
   e->xc_double_counting[0]=base+17;e->xc_double_counting[1]=base+18;e->atomic_reference=base+19;
+  e->exact_exchange=base+20;
 }
 // Fixed test topology: 4 spin slots, 2 atom slots, one neighbor/row and 2
 // columns. Only atom=1/column=0 is active; the other values are canaries.
@@ -244,7 +245,8 @@ void component_output(char* path){
   auto* a=components(first.get());auto* b=components(second.get());
   seed_components(a,100);seed_components(b,-200);
   *totals(first.get())={42.5,.125,3.25};*totals(second.get())={-42.5,.25,-3.25};
-  for(int mode:{2,3})for(int owner=0;owner<3;++owner){
+  // Mode 5 is the report of a hybrid functional: mode 2 with the exact exchange.
+  for(int mode:{2,3,5})for(int owner=0;owner<3;++owner){
     const auto c=owner==1?second.get():first.get();
     if(owner==2)openmx_core_native_resources_clear(c);
     auto* values=components(c);auto* band=energies(c);band->band=owner==1?-7.5:9.25;
@@ -254,7 +256,7 @@ void component_output(char* path){
     while(std::getline(file,line)){
       std::istringstream in(line);std::string label,separator;double value;
       if(!(in>>label))continue;
-      if(mode==2 && ((!label.empty() && label.back()=='.') || label=="Enpy")){
+      if(mode!=3 && ((!label.empty() && label.back()=='.') || label=="Enpy")){
         if(label.back()=='.')label.pop_back();if(in>>value)actual[label]=value;
       }else if(mode==3 && (in>>separator) && separator=="=" && (in>>value))actual[label]=value;
     }
@@ -268,7 +270,9 @@ void component_output(char* path){
       require(actual.count(term.first),"energy component output label missing");
       equal(actual.at(term.first),owner==2?0:base+term.second);
     }};
-    if(mode==2)check(standard);else check(harris);
+    if(mode==3)check(harris);else check(standard);
+    require(actual.count("Uexx")==(mode==5?1u:0u),"exact exchange belongs to the hybrid energy report only");
+    if(mode==5)equal(actual.at("Uexx"),owner==2?0:base+20);
     equal(actual.at("Utot"),owner==2?0:owner==1?-42.5:42.5);
     equal(actual.at("UpV"),owner==2?0:owner==1?-3.25:3.25);
     equal(actual.at("Enpy"),owner==2?0:owner==1?-45.75:45.75);equal(actual.at("Uele"),band->band);

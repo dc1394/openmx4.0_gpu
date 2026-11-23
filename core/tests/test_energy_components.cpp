@@ -20,19 +20,19 @@ OpenMXEnergyComponents* values(OpenMXCoreContext* c) {
   char error[160];OpenMXEnergyComponents* out=nullptr;
   require(openmx_core_energy_components(c,&out,error,sizeof(error)) && !*error,error);return out;
 }
-std::array<double*,19> fields(OpenMXEnergyComponents* e) {
+std::array<double*,20> fields(OpenMXEnergyComponents* e) {
   return {&e->kinetic,&e->hartree[0],&e->hartree[1],&e->neutral_atom,&e->nonlocal,
     &e->xc[0],&e->xc[1],&e->core,&e->hubbard,&e->spin_constraint,&e->zeeman_spin,
     &e->zeeman_orbital,&e->electric_field,&e->vdw,&e->core_hole,
     &e->hartree_double_counting,&e->xc_double_counting[0],&e->xc_double_counting[1],
-    &e->atomic_reference};
+    &e->atomic_reference,&e->exact_exchange};
 }
-std::array<double,19> snapshot(const OpenMXEnergyComponents* e) {
+std::array<double,20> snapshot(const OpenMXEnergyComponents* e) {
   return {e->kinetic,e->hartree[0],e->hartree[1],e->neutral_atom,e->nonlocal,
     e->xc[0],e->xc[1],e->core,e->hubbard,e->spin_constraint,e->zeeman_spin,
     e->zeeman_orbital,e->electric_field,e->vdw,e->core_hole,
     e->hartree_double_counting,e->xc_double_counting[0],e->xc_double_counting[1],
-    e->atomic_reference};
+    e->atomic_reference,e->exact_exchange};
 }
 void seed(OpenMXEnergyComponents* e,int n) {
   int i=0;for(auto* value:fields(e))*value=100*n+(i++)+.125;

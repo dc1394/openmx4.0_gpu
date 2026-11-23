@@ -2848,9 +2848,16 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   components->xc_double_counting[0]= ECE[16];
   components->xc_double_counting[1]= ECE[17];
 
+  /* the exact exchange of a hybrid functional: E_x of the last exchange
+     matrix (equation (4) of docs/EXX_IMPLEMENTATION_GUIDE.md). xc[] is then
+     the semilocal part. */
+  const int hybrid_functional = Exact_Exchange_Enabled(exact_exchange);
+  components->exact_exchange = hybrid_functional ? Exact_Exchange_Energy(exact_exchange) : 0.0;
+
   if ( Solver!=12 ){
     thermo->total = components->core + components->hartree[0] + components->kinetic + components->neutral_atom + components->nonlocal + components->hartree[1] + components->xc[0] + components->xc[1] + components->hubbard + components->spin_constraint + components->zeeman_spin + components->zeeman_orbital + components->electric_field + components->vdw + components->core_hole;
-    outputfile1(chemical, thermo, mixing_history, energies, components,2,MD_iter,0,0,SCF_iter,file_DFTSCF,ChemP_e0,orbital_norm);
+    if (hybrid_functional) thermo->total += components->exact_exchange;
+    outputfile1(chemical, thermo, mixing_history, energies, components,hybrid_functional ? 5 : 2,MD_iter,0,0,SCF_iter,file_DFTSCF,ChemP_e0,orbital_norm);
   }
   else if ( Solver==12 ){
     thermo->total = energies->band + components->hartree[1] + components->hartree_double_counting + components->xc[0] + components->xc[1] + components->xc_double_counting[0] + components->xc_double_counting[1] + components->core + components->hartree[0];
@@ -2875,6 +2882,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
     printf("  Unl   = %20.12f\n",components->nonlocal);
     printf("  Uxc0  = %20.12f\n",components->xc[0]);
     printf("  Uxc1  = %20.12f\n",components->xc[1]);
+    if (hybrid_functional) printf("  Uexx  = %20.12f\n",components->exact_exchange);
     printf("  Ucore = %20.12f\n",components->core);
     printf("  Uhub  = %20.12f\n",components->hubbard);
     printf("  Ucs   = %20.12f\n",components->spin_constraint);
@@ -2896,6 +2904,10 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
     printf("  Unl:    non-local potential energy\n");
     printf("  Uxc0:   exchange-correlation energy for alpha spin\n");
     printf("  Uxc1:   exchange-correlation energy for beta spin\n");
+    if (hybrid_functional){
+      printf("  Uexx:   exact exchange energy of the hybrid functional\n");
+      printf("          (Uxc0 and Uxc1 are the semilocal part)\n");
+    }
     printf("  Ucore:  core-core Coulomb energy\n");
     printf("  Uhub:   LDA+U energy\n");
     printf("  Ucs:    constraint energy for spin orientation\n");
