@@ -79,6 +79,34 @@ jobs:
           ulimit -s 8192
           ctest --test-dir build/xc --output-on-failure
 
+  exx:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            cxx: g++
+            sanitize: "OFF"
+          - os: ubuntu-24.04
+            cxx: clang++
+            sanitize: "ON"
+          - os: ${{ inputs.macos_runner || 'macos-15-intel' }}
+            cxx: clang++
+            sanitize: "OFF"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build only the exact-exchange package and its basis dependency (no SDK or numerical stack)
+        run: >-
+          cmake -S modules/exx -B build/exx
+          -DCMAKE_CXX_COMPILER=${{ matrix.cxx }}
+          -DOPENMX_EXX_SANITIZERS=${{ matrix.sanitize }}
+      - run: cmake --build build/exx --parallel 2
+      - name: Analytic, symmetry, legacy-agreement and external consumer tests
+        run: |
+          ulimit -s 8192
+          ctest --test-dir build/exx --output-on-failure
+
   io:
     runs-on: ${{ matrix.os }}
     strategy:
