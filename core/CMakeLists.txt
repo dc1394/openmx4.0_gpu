@@ -94,6 +94,11 @@ add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../modules/xc" "modules/xc")
 # The keyword-file reader (io) is bundled the same way for the legacy
 # application and its post-processing tools.
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../modules/io" "modules/io")
+# The exact exchange of the hybrid functionals (exx) is bundled the same way.
+# Its tests belong to the package's standalone build: compiling them again
+# in every core configuration would only repeat that build.
+option(OPENMX_EXX_BUILD_TESTING "Build the independent exx tests" OFF)
+add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../modules/exx" "modules/exx")
 
 set(_core_sources src/radial.cpp src/radial_table.cpp src/pao_storage.cpp src/pao_file_api.cpp src/vps_storage.cpp src/vps_file_api.cpp src/atomic_density_api.cpp src/quadrature_api.cpp src/real_harmonics_api.cpp
   src/product_storage.cpp src/neutral_projectors.cpp src/pair_bessel.cpp
@@ -106,12 +111,12 @@ set(_core_sources src/radial.cpp src/radial_table.cpp src/pao_storage.cpp src/pa
   src/electronic_matrices.cpp src/electronic_matrix_api.cpp
   src/local_basis_state.cpp src/local_basis_api.cpp
   src/orbital_optimization.cpp src/orbital_optimization_api.cpp src/solver_workspace.cpp src/native_resources.cpp src/grid_assembly.cpp src/host_simd_api.cpp src/olg_api.cpp src/olg_cache_api.cpp src/energy_simd_api.cpp src/orbitals_simd_api.cpp src/force_simd_api.cpp src/vna_simd_api.cpp src/c_api.cpp)
-add_library(openmx_core SHARED ${_core_sources} $<TARGET_OBJECTS:openmx_xc> $<TARGET_OBJECTS:openmx_io>)
+add_library(openmx_core SHARED ${_core_sources} $<TARGET_OBJECTS:openmx_xc> $<TARGET_OBJECTS:openmx_io> $<TARGET_OBJECTS:openmx_exx>)
 include("${CMAKE_CURRENT_SOURCE_DIR}/../cmake/OpenMXCompilerRuntime.cmake")
 add_library(OpenMX::core ALIAS openmx_core)
 target_include_directories(openmx_core PUBLIC
   "${CMAKE_CURRENT_SOURCE_DIR}/include")
-target_link_libraries(openmx_core PUBLIC OpenMX::basis OpenMX::xc OpenMX::io Kokkos::kokkos Threads::Threads)
+target_link_libraries(openmx_core PUBLIC OpenMX::basis OpenMX::xc OpenMX::io OpenMX::exx Kokkos::kokkos Threads::Threads)
 install(FILES "${kokkos_SOURCE_DIR}/LICENSE" DESTINATION share/licenses/openmx_core RENAME Kokkos-LICENSE)
 target_compile_features(openmx_core PUBLIC cxx_std_20)
 if(OPENMX_CORE_FORCE_KOKKOS_MDSPAN)
