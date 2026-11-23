@@ -1453,6 +1453,14 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 	 (dUele<SCF_Criterion && Cnt_switch==1 && Cnt_Now==1 && OrbOpt_end==1))
 	) po = 1;
 
+    /* hybrid functional: an inner SCF with an exchange matrix stops only when
+       its density has answered the matrix. The test above compares the band
+       energies of two steps and passes as well when the mixing has hardly
+       moved the density (docs/EXX_IMPLEMENTATION_GUIDE.md, section 6.6). */
+    if (Cnt_switch==0 && Exact_Exchange_Active(exact_exchange)
+        && !Exact_Exchange_Inner_Stop_Allowed(exact_exchange, SCF_iter-exx_inner_start,
+                                              sqrt(fabs(mixing_history->norm[0])), SCF_Criterion)) po = 0;
+
 
     /* the refined FP32 eigensolver (OPENMX_EIGEN_REFINE) of the collinear
        cluster solver: an SCF that stops on a refined step has the step's
@@ -1585,16 +1593,6 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
       the semilocal functional.
     *****************************************************/
 
-    /* An inner SCF with an exchange matrix does not stop before the mixing
-       has extrapolated once since its restart. Until then the steps mix
-       simply, with a weight that the earlier steps may have reduced to its
-       minimum, and the density hardly moves: the stop test, which compares
-       the band energies of two steps, would pass on a density that has not
-       answered the new K. The first step that solves an extrapolated
-       density has the step count Pulay_SCF+2. */
-    if (po==1 && Cnt_switch==0 && Exact_Exchange_Active(exact_exchange)
-        && (LSCF_iter-SCF_iter_shift)<(Pulay_SCF+2)) po = 0;
-
     if (po==1 && Cnt_switch==0 && Solver==2 && SpinP_switch<=1 && Exact_Exchange_Enabled(exact_exchange)){
 
       double deviation;
@@ -1644,13 +1642,11 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
       if (Exact_Exchange_Outer_Continue(exact_exchange)){
         /* a new inner SCF. The mixing starts again through SCF_iter_shift,
-           as after the change of the precision stage at the top of the loop:
-           the mixing of this step, with the step count Pulay_SCF-2, finds
-           the converged density; the next step mixes simply, and the step
-           after it starts the Pulay history from the steps that have the
-           new K. scf.maxIter counts the steps of each inner SCF. */
-        int shift = LSCF_iter - Pulay_SCF + 2;
-        if (0<=shift && shift<LSCF_iter) SCF_iter_shift = shift;
+           so that no extrapolation takes a residual that was measured with
+           the exchange matrix before; the offset depends on the mixer.
+           scf.maxIter counts the steps of each inner SCF. */
+        int shift = Exact_Exchange_Mixing_Offset(Mixing_switch, Pulay_SCF, LSCF_iter);
+        if (0<=shift) SCF_iter_shift = shift;
         exx_inner_start = SCF_iter;
         po = 0;
       }

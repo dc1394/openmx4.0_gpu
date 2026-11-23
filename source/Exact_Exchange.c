@@ -44,6 +44,7 @@ struct OpenMXExactExchangeState {
   int outer_converged;              /* the last build met scf.exx.outer.criterion */
   double energy;                    /* E_x of the last build, Hartree */
   double change;                    /* delta of the last build, Hartree */
+  double residual_reference;        /* residual norm of the first step with the K of the last build; negative: not seen yet */
   double time_prepare,time_collect,time_build,time_add; /* seconds on this process */
 };
 
@@ -238,6 +239,7 @@ void Exact_Exchange_Prepare(OpenMXExactExchangeState *state, const OpenMXAtomicV
   state->exchange_ready = 0;
   state->outer_iterations = 0;
   state->outer_converged = 0;
+  state->residual_reference = -1.0;
   state->energy = 0.0;
   state->change = 0.0;
 
@@ -511,6 +513,7 @@ void Exact_Exchange_Build(OpenMXExactExchangeState *state, MPI_Comm comm, int ve
   state->exchange_ready = 1;
   state->outer_iterations++;
   state->outer_converged = 0;
+  state->residual_reference = -1.0;
   state->time_build += MPI_Wtime()-start;
 
   if (rank==0 && 2<=verbosity) {
@@ -527,6 +530,56 @@ int Exact_Exchange_Outer_Continue(OpenMXExactExchangeState *state)
     return 0;
   }
   return state->outer_iterations<state->input.outer_max_iterations;
+}
+
+int Exact_Exchange_Mixing_Offset(int mixing_type, int start_pulay, int local_step)
+{
+  int first;  /* step count of the first mixing after the build */
+  int before; /* 1 when the mixing of a step comes before its solution */
+  int offset;
+
+  switch (mixing_type) {
+  case 1: /* RMM-DIIS, */
+  case 2: /* GR-Pulay, */
+  case 6: /* RMM-ADIIS: the history starts at the count start_pulay */
+    first = start_pulay-2;
+    before = 0;
+    break;
+  case 4: /* RMM-DIISK: from the count 7 on, the extrapolation at the count
+             start_pulay takes two residuals; before that it takes every
+             residual since the count 2 */
+    first = 7<=start_pulay ? start_pulay-2 : 1;
+    before = 0;
+    break;
+  case 7: /* RMM-DIISV: the counts of RMM-DIISK */
+    first = 7<=start_pulay ? start_pulay-2 : 1;
+    before = 1;
+    break;
+  case 5: /* RMM-DIISH: every residual since the count 2 */
+    first = 1;
+    before = 1;
+    break;
+  default: /* Simple, Kerker: no history of residuals */
+    return -1;
+  }
+  if (first<1) return -1;
+  offset = local_step+before-first;
+  return 0<=offset ? offset : -1;
+}
+
+int Exact_Exchange_Inner_Stop_Allowed(OpenMXExactExchangeState *state, int step, double residual_norm,
+    double criterion)
+{
+  double bound;
+  if (!Exact_Exchange_Active(state)) return 1;
+  if (step<2) return 0;
+  if (step==2 || state->residual_reference<0.0) {
+    state->residual_reference = residual_norm;
+    return 0;
+  }
+  bound = 0.1*state->residual_reference;
+  if (bound<criterion) bound = criterion;
+  return residual_norm<=bound;
 }
 
 void Exact_Exchange_Add_Cluster_Hs(OpenMXExactExchangeState *state, int spin, int n, double *Hs,

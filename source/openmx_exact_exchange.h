@@ -127,6 +127,43 @@ int Exact_Exchange_Outer_Converged(const OpenMXExactExchangeState *state);  /* t
 double Exact_Exchange_Energy(const OpenMXExactExchangeState *state);        /* E_x of the last build, Hartree */
 double Exact_Exchange_Change(const OpenMXExactExchangeState *state);        /* delta of the last build, Hartree */
 
+/* ---- inner SCF with an exchange matrix (section 6.6) --------------------- */
+
+/* A build changes the problem that the inner SCF solves. The mixers that
+   extrapolate keep the residuals of earlier steps, and a residual measured
+   with the exchange matrix before reports the converged density of that
+   matrix as the solution: it must not enter an extrapolation. The mixers
+   choose their action from a step count, so the count is set back.
+
+   Returns the offset to subtract from the step count of the mixing
+   (SCF_iter_shift of DFT()), or -1 when the count stays as it is.
+   mixing_type is scf.Mixing.Type as the main program codes it (0 Simple,
+   1 RMM-DIIS, 2 GR-Pulay, 3 Kerker, 4 RMM-DIISK, 5 RMM-DIISH, 6 RMM-ADIIS,
+   7 RMM-DIISV), start_pulay is scf.Mixing.StartPulay, and local_step is the
+   count of the step of the build.
+
+   The first mixing after the build still sees the residual of the old
+   matrix: it is the mixing at the end of the step of the build for the
+   mixers of the density (1, 2, 4, 6), and the one before the solution of
+   the next step for those of the Hamiltonian and of the potential (5, 7).
+   The offset gives it the count from which the extrapolations of the
+   mixer never reach back to it. */
+int Exact_Exchange_Mixing_Offset(int mixing_type, int start_pulay, int local_step);
+
+/* Whether the inner SCF may stop at a step. The stop test of the main
+   program compares the band energies of two steps, and passes as well when
+   the mixing has hardly moved the density, which then has not answered the
+   exchange matrix. step counts the steps since the build (1: the first
+   solution with the matrix), and residual_norm is the residual norm that
+   the stop test of the step sees (NormRD). At step 2 this is the first
+   residual measured with the matrix; it is kept as the reference. A later
+   step may stop when the norm has fallen to a tenth of the reference, or
+   below criterion (scf.criterion), the level under which the matrix has not
+   disturbed the density. To be called at every step. Returns 1 without an
+   exchange matrix. NULL is allowed. */
+int Exact_Exchange_Inner_Stop_Allowed(OpenMXExactExchangeState *state, int step, double residual_norm,
+    double criterion);
+
 /* ---- addition to the Hamiltonian (section 6.5) --------------------------- */
 
 /* 1 when an exchange matrix exists and has to be added. NULL is allowed. */
