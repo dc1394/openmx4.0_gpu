@@ -101,7 +101,7 @@ build/exx-lri/lri_example DFT_DATA19/PAO/C6.0.pao s2p2d1 DFT_DATA19/PAO/H6.0.pao
 - `exx-two-center-overlap`: PAO の重なり積分を、本体が書き出した重なり行列（`tests/fixtures/overlap_reference.txt`）と比べます。本体と同じ離散化で 1e-8。
 - `exx-abf-pca`: ABF の正規直交性（1e-12）、射影の残差と捨てた固有値の一致（相対 1e-8）、軌道の順序と符号を変えたときの再現性。
 - `exx-three-center-gaussian`: ガウス関数の三中心積分を解析値と比べます。1e-8。
-- `exx-lri-identity`: ABF の線形結合で作った関数の係数が再現されること。1e-10（2 原子ではクーロンノルム）。
+- `exx-lri-identity`: ABF の線形結合で作った関数の係数が再現されること。1 原子と離れた 2 原子では係数ごとに 1e-10、結合距離の 2 原子ではクーロンノルムで 1e-10。
 - `exx-lri-convergence`: ABF を増やしたときの自己相互作用の和を記録します。和が減らないことを確かめます。
 - `exx-system-neighbours`: 近傍リストを、セルの総当たりの探索と比べます。
 - `exx-system-blocks`: T ブロックと V ブロックの 2 通りの見方の一致、結晶の記述を変えたときの一致、展開した積の電荷と重なり行列の比較。
