@@ -2886,7 +2886,8 @@ double Set_Hamiltonian(OpenMXHamiltonianGpuState *hamiltonian_state, OpenMXGridW
                        double *****H0,
                        double *****HNL,
                        double *****CDM,
-		       double *****H, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
+		       double *****H, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis,
+                       double exx_alpha, double exx_omega);
 #if OPENMX_GPU_HIP
 void Set_Hamiltonian_Set_OpenMP_Rank_Selected(int selected);
 int Set_Hamiltonian_OpenMP_Rank_Is_Selected(void);
@@ -2968,7 +2969,8 @@ void Set_Hamiltonian_GpuSolver_SetMP(int *MP);
 #endif
 
 
-double Total_Energy(OpenMXCoreContext *core, const OpenMXBandEnergies *energies, const OpenMXCWFObservables *cwf_values, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, int MD_iter, double ECE[], const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
+double Total_Energy(OpenMXCoreContext *core, const OpenMXBandEnergies *energies, const OpenMXCWFObservables *cwf_values, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, int MD_iter, double ECE[], const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis,
+                    double exx_alpha, double exx_omega);
 double Force(OpenMXHamiltonianGpuState *hamiltonian_state, OpenMXDensityGpuState *density_state, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna,const OpenMXReciprocalViews *reciprocal, double *****H0,
 	     double ******DS_NL, 
 	     double *****OLP,
@@ -2990,7 +2992,8 @@ void Set_Vpot(OpenMXMixingVState *mixing_v,const OpenMXAtomicViews *atomic, int 
               int SCF_iter, 
               int SCF_iter0,
               int TRAN_Poisson_flag2,
-              int XC_P_switch);
+              int XC_P_switch,
+              double exx_alpha, double exx_omega);
 void Set_XC_Grid(int SCF_iter, int XC_P_switch, int XC_switch, 
                  double exx_alpha, double exx_omega,
                  double *Den0, double *Den1, 

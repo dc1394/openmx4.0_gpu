@@ -28,6 +28,7 @@
 #include "openmx_reciprocal.h"
 #include "openmx_quadrature.h"
 #include "openmx_vna_matrix.h"
+#include "openmx_exact_exchange.h"
 #include "grid_precision.h"
 #include "Inputtools.h"
 #include "mpi.h"
@@ -490,6 +491,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   OpenMXMixingRhokState *mixing_rhok=Mixing_Rhok_Bind_Resources(core);
   OpenMXMixingDMState *mixing_dm=Mixing_DM_Bind_Resources(core);
   OpenMXMixingVState *mixing_v=Mixing_V_Bind_Resources(core);
+  OpenMXExactExchangeState *exact_exchange=Exact_Exchange_Bind_Resources(core);
   OpenMXMixingHistory *mixing_history=NULL;
   char mixing_history_error[256];
   if(!openmx_core_mixing_history(core,&mixing_history,mixing_history_error,sizeof(mixing_history_error))) {
@@ -918,7 +920,9 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
                                     LSCF_iter-SCF_iter_shift,
                                     SCF_iter-SCF_iter_shift,
 				    TRAN_Poisson_flag2,
-                                    SucceedReadingDMfile,Cnt_kind,H0,HNL,DM[0],H, electronic, local_basis);
+                                    SucceedReadingDMfile,Cnt_kind,H0,HNL,DM[0],H, electronic, local_basis,
+                                    Exact_Exchange_Semilocal_Alpha(exact_exchange),
+                                    Exact_Exchange_Semilocal_Omega(exact_exchange));
 
 	}
 	
@@ -942,7 +946,9 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
                                   LSCF_iter-SCF_iter_shift,
                                   SCF_iter-SCF_iter_shift,
                                   TRAN_Poisson_flag2,
-                                  SucceedReadingDMfile,Cnt_kind,H0,HNL,DM[0],H, electronic, local_basis);
+                                  SucceedReadingDMfile,Cnt_kind,H0,HNL,DM[0],H, electronic, local_basis,
+                                  Exact_Exchange_Semilocal_Alpha(exact_exchange),
+                                  Exact_Exchange_Semilocal_Omega(exact_exchange));
       }  
 
       if (Cnt_switch==1 && Cnt_Now==1){
@@ -1001,7 +1007,9 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
                                 LSCF_iter-SCF_iter_shift,
                                 SCF_iter-SCF_iter_shift,
                                 TRAN_Poisson_flag2,
-                                SucceedReadingDMfile,Cnt_kind,H0,HNL,DM[0],H, electronic, local_basis);
+                                SucceedReadingDMfile,Cnt_kind,H0,HNL,DM[0],H, electronic, local_basis,
+                                Exact_Exchange_Semilocal_Alpha(exact_exchange),
+                                Exact_Exchange_Semilocal_Omega(exact_exchange));
 
       if (Cnt_switch==1 && Cnt_Now==1){
 	Contract_Hamiltonian(H,CntH,OLP,CntOLP, local_basis);
@@ -2816,7 +2824,9 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
     printf("<MD=%2d>  Total Energy\n",MD_iter);fflush(stdout);
   }
 
-  if (!orbitalOpt_Force_Skip) time8 += Total_Energy(core,energies, cwf_values, atomic, vna, MD_iter,ECE, electronic, local_basis);
+  if (!orbitalOpt_Force_Skip) time8 += Total_Energy(core,energies, cwf_values, atomic, vna, MD_iter,ECE, electronic, local_basis,
+                                                    Exact_Exchange_Semilocal_Alpha(exact_exchange),
+                                                    Exact_Exchange_Semilocal_Omega(exact_exchange));
 
   components->atomic_reference  = 0.0;
   components->core  = ECE[0];
