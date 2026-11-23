@@ -38,8 +38,8 @@ int openmx_xc_pbe(double dens[2], double gdens[3][2], int symmetrize_spins,
                   double exc[2], double dexdd[2], double decdd[2],
                   double dexdgd[3][2], double decdgd[3][2]);
 
-/* Short-range omega-PBE exchange (wPBEh, the definition of GGA_X_WPBEH of
-   libxc 7.1.2); omega in 1/bohr.  dens is read and rewritten to the floored
+/* Short-range omega-PBE exchange (wPBEh, with the definition of Quantum
+   ESPRESSO 7.6); omega in 1/bohr.  dens is read and rewritten to the floored
    values as in openmx_xc_pbe.  ex[0] receives the energy density, dexdd the
    derivatives per spin, dexdgd [direction][spin].  Returns 0 without an
    input or output array. */

@@ -2,9 +2,9 @@
 #define OPENMX_XC_SRC_WPBEH_KERNEL_HPP
 
 // Internal to the xc library: the short-range omega-PBE exchange of one spin
-// channel.  The arithmetic is in wpbeh_kernel.cpp, which carries its own
-// licence notice (MPL 2.0); functionals.cpp adds the density floors and the
-// output conventions of the PBE kernel.
+// channel.  The arithmetic is in wpbeh_kernel.cpp, which states the source of
+// the definition (Quantum ESPRESSO 7.6); functionals.cpp adds the density
+// floors and the output conventions of the PBE kernel.
 
 namespace openmx::xc::detail {
 

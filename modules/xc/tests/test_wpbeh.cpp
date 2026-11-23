@@ -132,7 +132,8 @@ void fixture(const std::string& path) {
   const Table table = read_table(path, 27);
   require(table.rows.size() == 160, "unexpected number of fixture points");
   double worst = 0.0;
-  std::size_t zero_gradient_derivatives = 0;
+  // channels on the far side of each change of the formula: s <= 0.08, s_raw > 8.3, w > 14
+  std::size_t polynomial_channels = 0, rescaled_channels = 0, gaussian_channels = 0;
   for (std::size_t n = 0; n < table.rows.size(); ++n) {
     const std::vector<double>& row = table.rows[n];
     const SpinDensity density{row[0], row[1]};
@@ -156,13 +157,14 @@ void fixture(const std::string& path) {
       const double gradient_norm = std::sqrt(g[0] * g[0] + g[1] * g[1] + g[2] * g[2]);
       const double reference_norm = std::sqrt(reference[0] * reference[0] + reference[1] * reference[1] + reference[2] * reference[2]);
       const double scale = std::fmax(reference_norm, 1e-6 * std::fabs(e_s) / gradient_norm);
-      if (reference_norm == 0.0) ++zero_gradient_derivatives;
       for (int d = 0; d < 3; ++d) {
         const double d_gradient = std::fabs(r.dexchange_dgradient[d][s] - reference[d]) / (10.0 * tol * scale);
         if (d_gradient > ratio) { ratio = d_gradient; what = "dexdgd"; }
-        // above s_raw = 15 the rescaled gradient is constant: the derivative vanishes exactly
-        if (reference_norm == 0.0) require(r.dexchange_dgradient[d][s] == 0.0, "dexdgd not zero where the reference is");
       }
+      const double s_raw = gradient_norm / (2.0 * std::cbrt(6.0 * pi * pi) * std::pow(row[s], 4.0 / 3.0));
+      if (row[22 + 2 * s] <= 0.08) ++polynomial_channels;
+      if (s_raw > 8.3) ++rescaled_channels;
+      if (row[21 + 2 * s] > 14.0) ++gaussian_channels;
     }
     if (!(ratio <= 1.0)) {
       std::fprintf(stderr, "fixture point %zu: %s deviates by %.3g of the allowed difference\n", n, what, ratio);
@@ -181,7 +183,8 @@ void fixture(const std::string& path) {
     }
     require(same, "C and C++ short-range exchange differ");
   }
-  require(zero_gradient_derivatives == 20, "the fixture should contain 20 channels above s_raw = 15");
+  require(polynomial_channels == 60 && rescaled_channels == 80 && gaussian_channels == 32,
+          "the fixture should cover both sides of the three changes of the formula");
 
   // Floors, the vanishing gradient and the symmetrization follow the exchange part of pbe().
   {
@@ -217,15 +220,17 @@ void fixture(const std::string& path) {
   }
 
   // Independent of the fixture: the derivatives against central differences of the energy per
-  // volume, on both sides of the changes of the rescaling (s_raw = 1 and 15) and above w = 14, and
-  // the uniform-gas limit of the unscreened functional, f(w = 0, s -> 0) = 1 within 1e-9.
+  // volume, on both sides of the changes of the formula (s = 0.08 and s_raw = 8.3) and above
+  // w = 14, and the uniform-gas limit of the unscreened functional.
   // Between w = 4 and w = 14 the rounding error of the energy is too large for a difference
   // quotient, and above w = 14 the energy depends too weakly on the gradient for one; the fixture
-  // covers both.  Each case is (rho_up, rho_dn, s_raw of the up channel).
+  // covers both.  Each case is (rho_up, rho_dn, s_raw of the up channel); the down channel has
+  // half that reduced gradient.
   {
     const double rho_at_w14 = std::pow(omega / 14.0, 3) / (6.0 * pi * pi);
-    const double cases[][3] = {{0.31, 0.07, 0.4}, {0.02, 0.5, 0.95}, {0.02, 0.5, 1.05}, {1e-3, 2e-3, 7.0}, {1e-3, 2e-3, 14.5},
-                               {1e-3, 2e-3, 20.0}, {rho_at_w14 * 0.9, rho_at_w14 * 0.5, 0.6}, {2e-6, 3e-6, 2.5}};
+    const double cases[][3] = {{0.31, 0.07, 0.4}, {0.31, 0.07, 0.06}, {0.02, 0.5, 0.15}, {0.02, 0.5, 1.2}, {1e-3, 2e-3, 7.0},
+                               {1e-3, 2e-3, 9.5}, {1e-3, 2e-3, 17.0}, {1e-3, 2e-3, 40.0},
+                               {rho_at_w14 * 0.9, rho_at_w14 * 0.5, 0.6}, {2e-6, 3e-6, 2.5}};
     for (const double* c : cases) {
       // gradients of reduced size c[2] in the up channel, half of it in the down channel
       const double kf_factor = 2.0 * std::cbrt(6.0 * pi * pi);
@@ -259,7 +264,9 @@ void fixture(const std::string& path) {
     const double rho = 0.4;
     const ShortRangeExchangeResult uniform = wpbeh_short_range_exchange({rho / 2.0, rho / 2.0}, gradient_of(zero, zero), 0.0, false);
     const double lda = -0.75 * std::cbrt(3.0 / pi) * std::cbrt(rho);
-    require(relative_difference(uniform.exchange_energy_density, lda) <= 1e-9, "uniform-gas limit of the unscreened functional");
+    // f(w = 0, s -> 0) = 1 - 4.8e-9: the published constants of the exchange hole are rounded
+    const double missing = 1.0 - uniform.exchange_energy_density / lda;
+    require(missing >= 4.7e-9 && missing <= 4.9e-9, "uniform-gas limit of the unscreened functional");
   }
   std::printf("PASS xc wpbeh-fixture (%zu points, omega %.3g; largest deviation / allowed %.3g)\n", table.rows.size(), omega, worst);
 }

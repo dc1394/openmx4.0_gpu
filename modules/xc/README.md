@@ -5,7 +5,8 @@ C++20 ライブラリです。公開範囲は Ceperley–Alder LDA（Perdew–Zu
 ポテンシャル・その差・密度微分）、同じ形の LSDA、Perdew–Wang 92 相関、一様電子ガスの
 Slater 交換、スピン分解した GGA-PBE（エネルギー密度と、密度・密度勾配についての導関数）です。
 HSE06 の準局所部分に使う ωPBE の短距離交換（`wpbeh_short_range_exchange`）も持ちます。
-定義は libxc 7.1.2 の `GGA_X_WPBEH` に合わせてあり、出力の規約と密度の下限は PBE の交換と同じです。
+定義は Quantum ESPRESSO 7.6 の `pbexsr` と同じで（論文の丸めた定数、s ≤ 0.08 での多項式、換算勾配が 8.3 を
+超えたときの付け替え）、出力の規約と密度の下限は PBE の交換と同じです。導関数はこのエネルギーの導関数です。
 `pbe_screened_hybrid`（C では `openmx_xc_pbe_screened_hybrid`）は、PBE の交換の出力から短距離交換の
 混合比倍を引いた値を返します。混合比が 0 のときの出力は、PBE の関数と bit 一致します。
 本体（`Set_XC_Grid.c`、`Force.c`、`Stress.c`、`Total_Energy.c` の CPU 経路）もこの実装を使用します。
@@ -20,8 +21,9 @@ bit 一致します。元の大域変数 `dc_Type`（LDA+U の cFLL 規則: 両�
 CMake 3.25.2 以上と C++20 のコンパイラ・標準ライブラリでビルドできます。
 このディレクトリだけを取り出して利用でき、MPI、BLAS、Kokkos、GPU SDK、
 OpenMX の実行ファイル・大域変数ヘッダー、ネットワーク接続を必要としません。
-コードのライセンスは元の OpenMX と同じです。ただし、短距離交換の計算核 `src/wpbeh_kernel.cpp` は
-libxc の定義を元に書いたファイルなので、Mozilla Public License 2.0 です（表示と出典はファイルの冒頭にあります）。
+コードのライセンスは元の OpenMX と同じです（GNU General Public License）。短距離交換の計算核
+`src/wpbeh_kernel.cpp` は、式と定数を Quantum ESPRESSO 7.6（GNU General Public License）の
+`XClib/qe_funct_exch_gga.f90` から書き写した新しい実装で、出典はファイルの冒頭にあります。
 
 ## ビルドと外部利用
 
@@ -60,9 +62,10 @@ C++ からは `openmx/xc/functionals.hpp`（`openmx::xc::pbe` など）、C か�
   50 桁で評価した参照値（`tests/fixtures/wpbeh_special_reference.txt`。`tools/wpbeh_special_reference.py` で作成）と
   1e-30 から 1e8 の範囲で比較（値は相対 1e-14、導関数は 1e-13）。
 - `xc-wpbeh-fixture`: 短距離交換を、定義を 50 桁で評価した 160 点の参照値（`tests/fixtures/wpbeh_reference.txt`。
-  `tools/wpbeh_reference.py` で作成。libxc 7.1.2 の出力とも照合済み）と比較。許容差は点ごとにフィクスチャーが持ち、
-  ω/kF が 4 から 14 の低密度の領域では丸め誤差に合わせて広げてあります。密度の下限、勾配が 0 の点、対称化、
-  中心差分との一致、ω = 0 での一様電子ガスの極限も確かめます。
+  `tools/wpbeh_reference.py` で作成。Quantum ESPRESSO 7.6 のルーチンをコンパイルした出力とも照合済み）と比較。
+  許容差は点ごとにフィクスチャーが持ち、ω/kF が 4 から 14 の低密度の領域では丸め誤差に合わせて広げてあります。
+  式が切り替わる 3 か所（s = 0.08、換算勾配 8.3、ω/kF = 14）の両側の点を含みます。密度の下限、勾配が 0 の点、
+  対称化、中心差分との一致、ω = 0 での一様電子ガスの極限も確かめます。
 - `xc-hybrid`: `pbe_screened_hybrid` が、混合比 0 では `pbe` と bit 一致し、それ以外では `pbe` から短距離交換の
   混合比倍を引いた値になること（密度の下限、対称化の有無、C の入口を含む格子）。
 - `xc-c-api`、`xc-package-consumer`: C からの利用と、インストールしたパッケージからの利用。

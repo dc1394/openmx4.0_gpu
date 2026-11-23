@@ -77,10 +77,12 @@ PbeResult pbe(SpinDensity density, const SpinGradient& gradient, bool symmetrize
 // ---- Short-range omega-PBE exchange (wPBEh), spin-resolved ----
 // The exchange energy of the screened interaction erfc(omega r)/r in the
 // model of Heyd, Scuseria and Ernzerhof: the semilocal short-range exchange
-// of HSE06, with the definition of the functional GGA_X_WPBEH of libxc 7.1.2.
-// omega is in 1/bohr.  The outputs follow the conventions of the exchange
-// part of pbe(), including its density floor, its treatment of a vanishing
-// gradient and `symmetrize_spins`.
+// of HSE06.  The definition is that of Quantum ESPRESSO 7.6 (published
+// constants, the polynomial for the hole function below s = 0.08, the
+// rescaling of the reduced gradient above 8.3); the derivatives are those of
+// this energy.  omega is in 1/bohr.  The outputs follow the conventions of
+// the exchange part of pbe(), including its density floor, its treatment of
+// a vanishing gradient and `symmetrize_spins`.
 //
 // The rounding error grows with w = omega/kF, kF = (6 pi^2 rho_s)^(1/3),
 // because terms cancel: about 1e-15 for w <= 1, 1e-10 at w = 4, 1e-6 at
