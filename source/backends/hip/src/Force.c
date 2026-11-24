@@ -2687,30 +2687,34 @@ typedef struct {
     double *****H0,******DS_NL,*****OLP,*****CDM,*****EDM;
     const OpenMXElectronicViews *electronic;
     const OpenMXLocalBasisViews *local_basis;
+    const double *exact_exchange_gradient;
 } ForceArguments;
 static double Force_Impl(OpenMXHamiltonianGpuState *hamiltonian_state, OpenMXDensityGpuState *density_state, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double***** H0,
     double****** DS_NL,
     double***** OLP,
     double***** CDM,
-    double***** EDM, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis, const OpenMXForceWorkspace *force_work);
+    double***** EDM, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis,
+    const double *exact_exchange_gradient, const OpenMXForceWorkspace *force_work);
 static int Force_Operation(const OpenMXForceWorkspace *work,void *opaque,double *result)
 {
     const ForceArguments *a=opaque;
     *result=Force_Impl(a->hamiltonian_state, a->density_state,a->atomic,a->vna,a->reciprocal,a->H0,a->DS_NL,a->OLP,a->CDM,a->EDM,
-        a->electronic,a->local_basis,work);
+        a->electronic,a->local_basis,a->exact_exchange_gradient,work);
     return 1;
 }
 double Force(OpenMXHamiltonianGpuState *hamiltonian_state, OpenMXDensityGpuState *density_state, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double***** H0,
     double****** DS_NL,
     double***** OLP,
     double***** CDM,
-    double***** EDM, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
+    double***** EDM, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis,
+    const double *exact_exchange_gradient)
 {
     const int imaginary=(SO_switch==1 || (Hub_U_switch==1 && F_U_flag==1 && SpinP_switch==3)
         || Constraint_NCS_switch>=1 || Zeeman_NCS_switch==1 || Zeeman_NCO_switch==1);
     const OpenMXForceInput input={atomnum,Matomnum,MatomnumF,SpeciesNum,SpinP_switch,imaginary,
         F_M2G,WhatSpecies,atomic->species.contracted_orbitals,FNAN,natn};
-    ForceArguments args={hamiltonian_state,density_state,atomic,vna,reciprocal,H0,DS_NL,OLP,CDM,EDM,electronic,local_basis};
+    ForceArguments args={hamiltonian_state,density_state,atomic,vna,reciprocal,H0,DS_NL,OLP,CDM,EDM,electronic,local_basis,
+        exact_exchange_gradient};
     double begin,end;
     dtime(&begin);
     (void)OpenMX_ForceRun(&input,Force_Operation,&args);
@@ -2722,9 +2726,12 @@ static double Force_Impl(OpenMXHamiltonianGpuState *hamiltonian_state, OpenMXDen
     double****** DS_NL,
     double***** OLP,
     double***** CDM,
-    double***** EDM, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis, const OpenMXForceWorkspace *force_work)
+    double***** EDM, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis,
+    const double *exact_exchange_gradient, const OpenMXForceWorkspace *force_work)
 {
     OpenMXSolverInvocation *scratch=force_work->scratch;
+    /* The HIP build has no hybrid functional (Input_std.c): DFT passes NULL. */
+    (void)exact_exchange_gradient;
 
   double *****CntH0=electronic->CntH0;
   double *****CntOLP=electronic->CntOLP;

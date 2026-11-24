@@ -62,6 +62,8 @@ struct OpenMXExactExchangeState {
   double time_device;               /* seconds in the products, with the transfers; part of time_build */
   double time_device_calls;         /* seconds in the calls that the device computed; part of time_build */
   long long device_additions;       /* dense Hamiltonians of a solver on its device that K was added to */
+  double *gradient;                 /* dE_x/dtau of the last call of Exact_Exchange_Gradient, 3 per atom */
+  int gradient_atoms;               /* atoms that gradient has room for */
 };
 
 static void ExactExchange_Reset(OpenMXNativeResources *owner, void *metadata)
@@ -705,6 +707,39 @@ double Exact_Exchange_Density_Deviation(const OpenMXExactExchangeState *state, i
   return largest;
 }
 
+/* The centre atoms of this process: a contiguous range first <= a < last,
+   chosen so that the ranges carry about the same number of ABFs times V
+   neighbours. A process with none gets first = last = the number of atoms.
+   The builds and the derivative with respect to the positions use the same
+   range. */
+static void ExactExchange_Centres(const OpenMXExactExchangeState *state, MPI_Comm comm, int *first_atom,
+                                  int *last_atom)
+{
+  const int atoms=openmx_exx_atom_count(state->module);
+  int rank=0,processes=1;
+  MPI_Comm_rank(comm,&rank);
+  MPI_Comm_size(comm,&processes);
+  double total=0.0;
+  for (int a=0; a<atoms; a++)
+    total += (double)openmx_exx_atom_abfs(state->module,a)*(double)openmx_exx_v_neighbours(state->module,a);
+  int first=atoms,last=atoms;
+  const double lower=total*(double)rank/(double)processes;
+  const double upper=total*(double)(rank+1)/(double)processes;
+  double before=0.0;
+  for (int a=0; a<atoms; a++) {
+    const double middle=before+0.5*(double)openmx_exx_atom_abfs(state->module,a)
+                                   *(double)openmx_exx_v_neighbours(state->module,a);
+    if (lower<=middle && middle<upper) {
+      if (first==atoms) first = a;
+      last = a+1;
+    }
+    before += (double)openmx_exx_atom_abfs(state->module,a)*(double)openmx_exx_v_neighbours(state->module,a);
+  }
+  if (first==atoms) last = atoms;
+  *first_atom = first;
+  *last_atom = last;
+}
+
 void Exact_Exchange_Build(OpenMXExactExchangeState *state, MPI_Comm comm, int verbosity)
 {
   if (!Exact_Exchange_Enabled(state)) return;
@@ -714,31 +749,11 @@ void Exact_Exchange_Build(OpenMXExactExchangeState *state, MPI_Comm comm, int ve
   const double start=MPI_Wtime();
   const int n=state->orbitals;
   const int atoms=openmx_exx_atom_count(state->module);
-  int rank=0,processes=1;
+  int rank=0;
   MPI_Comm_rank(comm,&rank);
-  MPI_Comm_size(comm,&processes);
 
-  /* The centre atoms of this process: a contiguous range, chosen so that
-     the ranges carry about the same number of ABFs times V neighbours. */
-  double total=0.0;
-  for (int a=0; a<atoms; a++)
-    total += (double)openmx_exx_atom_abfs(state->module,a)*(double)openmx_exx_v_neighbours(state->module,a);
-  int first=atoms,last=atoms;
-  {
-    const double lower=total*(double)rank/(double)processes;
-    const double upper=total*(double)(rank+1)/(double)processes;
-    double before=0.0;
-    for (int a=0; a<atoms; a++) {
-      const double middle=before+0.5*(double)openmx_exx_atom_abfs(state->module,a)
-                                     *(double)openmx_exx_v_neighbours(state->module,a);
-      if (lower<=middle && middle<upper) {
-        if (first==atoms) first = a;
-        last = a+1;
-      }
-      before += (double)openmx_exx_atom_abfs(state->module,a)*(double)openmx_exx_v_neighbours(state->module,a);
-    }
-    if (first==atoms) last = atoms;
-  }
+  int first,last;
+  ExactExchange_Centres(state,comm,&first,&last);
 
   /* The threads of the main program (-nt) run the loops of the build and
      share its large products. A BLAS with threads of its own computes on
@@ -855,6 +870,72 @@ void Exact_Exchange_Build(OpenMXExactExchangeState *state, MPI_Comm comm, int ve
     printf("<EXX>  largest difference of the exchange matrix from its transpose %.3e\n",state->asymmetry);
     fflush(stdout);
   }
+}
+
+const double *Exact_Exchange_Gradient(OpenMXExactExchangeState *state, MPI_Comm comm, int verbosity)
+{
+  if (!Exact_Exchange_Active(state) || !state->prepared || state->spin_channels<1 || state->collecting)
+    return NULL;
+
+  const double start=MPI_Wtime();
+  const int atoms=openmx_exx_atom_count(state->module);
+  int rank=0;
+  MPI_Comm_rank(comm,&rank);
+  if (state->gradient_atoms!=atoms) {
+    openmx_core_native_free(state->resources,state->gradient);
+    state->gradient = (double*)ExactExchange_Allocate(state,3*(size_t)atoms,sizeof(double),comm,"forces");
+    state->gradient_atoms = atoms;
+  }
+  memset(state->gradient,0,sizeof(double)*3*(size_t)atoms);
+
+  if (state->input.alpha!=0.0) {
+    int first,last;
+    ExactExchange_Centres(state,comm,&first,&last);
+    int threads=1;
+#ifdef _OPENMP
+    threads = omp_get_max_threads();
+#endif
+    const int blas_threads=1<threads ? Exact_Exchange_Host_Blas_Single() : 0;
+    /* The host only: no device for the products and no table for whole
+       calls, so the counts of the device are those of the builds. */
+    ExactExchangeProducts products={NULL,0.0,{0,0.0,{0,0,0},threads,NULL,0}};
+    if (1<threads)
+      products.host.loop = (OpenMXExactExchangeLoopProducts*)ExactExchange_Allocate(
+          state,(size_t)threads,sizeof(OpenMXExactExchangeLoopProducts),comm,"forces");
+    const OpenMXExxDenseBackend backend={ExactExchange_Dgemm,&products,1<threads ? ExactExchange_Parallel_For : NULL,
+                                         threads,NULL};
+    /* E_x has the degeneracy of the spin channels as a factor (one channel
+       stands for both without spin polarization), and so has its
+       derivative. */
+    const double degeneracy=state->spin_channels==1 ? 2.0 : 1.0;
+    for (int spin=0; spin<state->spin_channels && first<last; spin++) {
+      char error[512];
+      const int failed=state->sites
+        ? openmx_exx_add_position_gradient_blocks(state->module,first,last,-state->input.alpha*degeneracy,
+                                                  state->density[spin],state->gradient,&backend,error,sizeof(error))
+        : openmx_exx_add_position_gradient_gamma(state->module,first,last,-state->input.alpha*degeneracy,
+                                                 state->density[spin],state->gradient,&backend,error,sizeof(error));
+      if (failed!=0) ExactExchange_Abort(comm,"forces",error);
+    }
+    openmx_core_native_free(state->resources,products.host.loop);
+    Exact_Exchange_Host_Blas_Restore(blas_threads);
+    ExactExchange_Sum(state->gradient,3*(size_t)atoms,comm);
+  }
+  if (rank==0 && 1<=verbosity) {
+    /* the forces are the negative of the derivative; their sum vanishes */
+    double largest=0.0,sum[3]={0.0,0.0,0.0};
+    for (int a=0; a<atoms; a++) {
+      for (int x=0; x<3; x++) {
+        const double value=state->gradient[3*(size_t)a+(size_t)x];
+        if (largest<fabs(value)) largest = fabs(value);
+        sum[x] -= value;
+      }
+    }
+    printf("<EXX>  forces of the exact exchange in %.2f s: largest component %.3e, sum %.1e %.1e %.1e (Hartree/bohr)\n",
+           MPI_Wtime()-start,largest,sum[0],sum[1],sum[2]);
+    fflush(stdout);
+  }
+  return state->gradient;
 }
 
 int Exact_Exchange_Outer_Continue(OpenMXExactExchangeState *state)

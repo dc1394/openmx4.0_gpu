@@ -2975,7 +2975,8 @@ double Force(OpenMXHamiltonianGpuState *hamiltonian_state, OpenMXDensityGpuState
 	     double ******DS_NL, 
 	     double *****OLP,
 	     double *****CDM, 
-	     double *****EDM, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
+	     double *****EDM, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis,
+	     const double *exact_exchange_gradient);
 double Stress(OpenMXCoreContext *core,OpenMXThermodynamicEnergies *thermo, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna,const OpenMXReciprocalViews *reciprocal, double *****H0,
 	      double ******DS_NL,
 	      double *****OLP,

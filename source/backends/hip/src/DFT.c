@@ -2887,7 +2887,8 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   openmx_magma_release_fp32_workspace();
   (void)openmx_hipsolver_release_workspace();
   openmx_gpusolver_cache_release();
-  if (!orbitalOpt_Force_Skip) time7 += Force(hamiltonian_state, density_state, atomic, vna,reciprocal, H0,DS_NL,OLP,DM[0],EDM, electronic, local_basis);
+  if (!orbitalOpt_Force_Skip) time7 += Force(hamiltonian_state, density_state, atomic, vna,reciprocal, H0,DS_NL,OLP,DM[0],EDM, electronic, local_basis,
+                                             NULL);
   
   if (scf_stress_flag){
     Stress(core,thermo, atomic, vna,reciprocal, H0,DS_NL,OLP,DM[0],EDM, electronic, local_basis);

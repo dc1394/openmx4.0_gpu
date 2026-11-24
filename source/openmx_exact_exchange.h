@@ -175,6 +175,24 @@ double Exact_Exchange_Change(const OpenMXExactExchangeState *state);        /* d
    it vanishes. */
 double Exact_Exchange_Asymmetry(const OpenMXExactExchangeState *state);
 
+/* ---- forces (section 5.9) ------------------------------------------------- */
+
+/* The derivative of E_x of the last build with respect to the positions of
+   the atoms, with the collected density matrices fixed: gradient[3*a + x] is
+   dE_x/dtau along the Cartesian axis x (0, 1, 2) of atom a (counted from 0),
+   in Hartree/bohr, as the main program keeps dE/dtau of its total energy
+   (Gxyz[a+1][17+x]). The force of the exact exchange is its negative. The
+   response of the orbitals is not in it: the Pulay term of the main program
+   has it, with the energy density matrix of the Hamiltonian that contains
+   K. The centre atoms are distributed over the processes as in the build,
+   and every process gets the sum. The matrix products of this derivative
+   are computed by the BLAS of the host only, so the counts of the device
+   stay those of the builds. The array belongs to the state and holds until
+   the next call or preparation. Returns NULL without an exchange matrix (no
+   hybrid functional, or no build for the present structure). A failure
+   ends the run through MPI_Abort. verbosity is level.of.stdout. */
+const double *Exact_Exchange_Gradient(OpenMXExactExchangeState *state, MPI_Comm comm, int verbosity);
+
 /* ---- inner SCF with an exchange matrix (section 6.6) --------------------- */
 
 /* A build changes the problem that the inner SCF solves. The mixers that

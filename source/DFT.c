@@ -2023,8 +2023,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
   } while (po==0 && SCF_iter<SCF_MAX);  if (po==0) scf_convergence_flag = 0; else scf_convergence_flag = 1;
 
-  /* hybrid functional: how the outer iteration ended. The forces that
-     follow do not contain the exact exchange. */
+  /* hybrid functional: how the outer iteration ended */
   if (Cnt_switch==0 && Exact_Exchange_Enabled(exact_exchange)){
     const int builds = Exact_Exchange_Outer_Iterations(exact_exchange);
     double exx_times[4];
@@ -2088,7 +2087,6 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
         printf("<EXX>  GPU: the exchange matrix was added to %lld dense Hamiltonians on the device.\n",
                exx_device_additions);
       }
-      printf("<EXX>  The forces do not contain the exact exchange.\n");
       fflush(stdout);
     }
   }
@@ -2966,7 +2964,18 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   openmx_gemmul8ReleaseWorkspaces();
   openmx_gemmul8ReleasePrepared();
 
-  if (!orbitalOpt_Force_Skip) time7 += Force(hamiltonian_state, density_state, atomic, vna,reciprocal, H0,DS_NL,OLP,DM[0],EDM, electronic, local_basis);
+  if (!orbitalOpt_Force_Skip){
+    /* hybrid functional: dE_x/dtau of the last exchange matrix, which Force
+       adds to the derivative of the total energy; NULL without one */
+    double exx_begin, exx_end;
+    const double *exx_gradient;
+    dtime(&exx_begin);
+    exx_gradient = Exact_Exchange_Gradient(exact_exchange, mpi_comm_level1, level_stdout);
+    dtime(&exx_end);
+    time7 += exx_end - exx_begin;
+    time7 += Force(hamiltonian_state, density_state, atomic, vna,reciprocal, H0,DS_NL,OLP,DM[0],EDM, electronic, local_basis,
+                   exx_gradient);
+  }
 
   if (scf_stress_flag){
     Stress(core,thermo, atomic, vna,reciprocal, H0,DS_NL,OLP,DM[0],EDM, electronic, local_basis);
