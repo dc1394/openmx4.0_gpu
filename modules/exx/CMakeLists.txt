@@ -14,6 +14,18 @@ if(PROJECT_IS_TOP_LEVEL AND NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYP
 endif()
 
 option(OPENMX_EXX_SANITIZERS "Instrument the exx library and its tests" OFF)
+# ThreadSanitizer, for the tests that run the pieces of the exchange build on
+# threads ("ctest -L threads"). It cannot share a program with the address
+# sanitizer of the option above, of the core project or of the basis package:
+# the options of an instrumented basis library reach this library and its
+# tests through OpenMX::basis.
+option(OPENMX_EXX_THREAD_SANITIZER "Instrument the exx library and its tests with ThreadSanitizer" OFF)
+if(OPENMX_EXX_THREAD_SANITIZER AND
+   (OPENMX_EXX_SANITIZERS OR OPENMX_CORE_SANITIZERS OR OPENMX_BASIS_SANITIZERS))
+  message(FATAL_ERROR "OPENMX_EXX_THREAD_SANITIZER cannot be combined with OPENMX_EXX_SANITIZERS, "
+    "OPENMX_CORE_SANITIZERS or OPENMX_BASIS_SANITIZERS: ThreadSanitizer and AddressSanitizer do not work in "
+    "one program. Configure a build directory of its own for each of them.")
+endif()
 
 if(NOT TARGET OpenMX::basis)
   find_package(OpenMXBasis 0.1 CONFIG QUIET)
@@ -54,6 +66,12 @@ if(OPENMX_EXX_SANITIZERS OR OPENMX_CORE_SANITIZERS)
   target_compile_options(openmx_exx PUBLIC
     -fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=all)
   target_link_options(openmx_exx PUBLIC -fsanitize=address,undefined)
+endif()
+# The basis package stays without instrumentation: it starts no thread, and
+# the pieces of the exchange build do not call it.
+if(OPENMX_EXX_THREAD_SANITIZER)
+  target_compile_options(openmx_exx PUBLIC -fsanitize=thread -g -fno-omit-frame-pointer)
+  target_link_options(openmx_exx PUBLIC -fsanitize=thread)
 endif()
 
 install(TARGETS openmx_exx EXPORT OpenMXExxTargets

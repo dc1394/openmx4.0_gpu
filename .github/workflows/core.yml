@@ -97,18 +97,31 @@ jobs:
             cxx: clang++
             cc: clang
             sanitize: "OFF"
+          # ThreadSanitizer for the tests that run the pieces of the exchange build on threads.
+          - os: ubuntu-24.04
+            cxx: clang++
+            cc: clang
+            sanitize: "OFF"
+            thread_sanitize: "ON"
+            ctest: "-L threads --no-tests=error"
     steps:
       - uses: actions/checkout@v4
+      - name: Address-space randomization that ThreadSanitizer can map (actions/runner-images#9491)
+        if: matrix.thread_sanitize == 'ON'
+        run: |
+          sysctl vm.mmap_rnd_bits
+          sudo sysctl vm.mmap_rnd_bits=28
       - name: Build only the exact-exchange package and its basis dependency (no SDK or numerical stack)
         run: >-
           cmake -S modules/exx -B build/exx
           -DCMAKE_CXX_COMPILER=${{ matrix.cxx }} -DCMAKE_C_COMPILER=${{ matrix.cc }}
           -DOPENMX_EXX_SANITIZERS=${{ matrix.sanitize }}
+          -DOPENMX_EXX_THREAD_SANITIZER=${{ matrix.thread_sanitize || 'OFF' }}
       - run: cmake --build build/exx --parallel 2
       - name: Analytic, symmetry, legacy-agreement, exchange-matrix, C interface and external consumer tests
         run: |
           ulimit -s 8192
-          ctest --test-dir build/exx --output-on-failure
+          ctest --test-dir build/exx --output-on-failure ${{ matrix.ctest }}
 
   io:
     runs-on: ${{ matrix.os }}

@@ -3,8 +3,12 @@
 //                      every transposition, padded arrays and special
 //                      factors; the three row-major products with and
 //                      without a table; failures of a table; the loop of a
-//                      table, on one thread and on several, and loops that
-//                      break the contract
+//                      table, on one thread and on several, the number of
+//                      calls that it is asked for, and loops that break the
+//                      contract; the loops of the tests themselves when a
+//                      thread cannot be created and when a loop is called
+//                      from a body or from a thread that does not own its
+//                      context
 #include <openmx/exx/dense_backend.hpp>
 
 #include "test_dgemm.hpp"
@@ -20,6 +24,7 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace exx_test {
@@ -172,8 +177,15 @@ void check_loops(Numbers& random)
   {
     const DenseBackend backend = with(&reversed_loop,2);
     require(backend.pieces() == 2 && backend.built_in(),"wrong report of a table with a loop only");
+    require(with(&in_order_loop,7).pieces() == 7 && with(&threaded_loop,64).pieces() == 64,
+            "the pieces of a table are not its threads");
     require(order_of(backend,5) == backward && calls.loops == 1,"the loop of the table does not make the calls");
     require(order_of(with(&in_order_loop,7),5) == forward && calls.loops == 2,"wrong calls of a loop in order");
+    // The count that the two loops were asked for.  A loop of the tests makes
+    // the calls that it is asked for, so another count already ends one of
+    // the two lines above, with the exception of the library for a call that
+    // is missing or does not exist; this line names the count itself.
+    require(calls.counts == Counts({{5,2}}),"the loop of the table is not asked for the calls of the caller");
     // Nothing to divide: no loop of the table.
     require(order_of(backend,0).empty() && order_of(backend,1) == std::vector<std::size_t>{0} && calls.loops == 2,
             "a loop with fewer than two calls reaches the table");
@@ -183,21 +195,26 @@ void check_loops(Numbers& random)
   }
 
   // An exception of a call: the other calls of a loop of the table still
-  // run, and the exception of the lowest index is thrown again.  On the
-  // calling thread the loop ends at once.
-  for (const Loop loop : {&in_order_loop,&reversed_loop,&threaded_loop}) {
-    const DenseBackend backend = with(loop,3);
-    std::array<std::atomic<int>,5> ran{};
-    expect<std::invalid_argument>("a call that throws",[&] {
-      backend.parallel_for(5,[&ran](std::size_t index) {
-        ++ran[index];
-        if (index == 1) throw std::invalid_argument("the second call");
-        if (index == 3) throw std::out_of_range("the fourth call");
+  // run, and the exception of the lowest index is thrown again.  The lowest
+  // call that throws is the first call of the loop, the second or the last,
+  // and every call after it throws an exception of another type; with the
+  // reversed loop those are the first exceptions in time.  On the calling
+  // thread the loop ends at once.
+  for (const std::size_t lowest : {std::size_t{0},std::size_t{1},std::size_t{4}})
+    for (const Loop loop : {&in_order_loop,&reversed_loop,&threaded_loop}) {
+      const DenseBackend backend = with(loop,3);
+      std::array<std::atomic<int>,5> ran{};
+      expect<std::invalid_argument>("a call that throws",[&] {
+        backend.parallel_for(5,[&ran,lowest](std::size_t index) {
+          ++ran[index];
+          if (index == lowest) throw std::invalid_argument("the lowest call that throws");
+          if (index > lowest)
+            throw std::out_of_range("a loop throws the exception of a later call, not that of the lowest index");
+        });
       });
-    });
-    require(std::all_of(ran.begin(),ran.end(),[](const std::atomic<int>& count) { return count == 1; }),
-            "an exception of one call keeps another call from running");
-  }
+      require(std::all_of(ran.begin(),ran.end(),[](const std::atomic<int>& count) { return count == 1; }),
+              "an exception of one call keeps another call from running");
+    }
   {
     std::vector<std::size_t> ran;
     expect<std::out_of_range>("a call that throws on the calling thread",[&] {
@@ -210,15 +227,54 @@ void check_loops(Numbers& random)
   }
 
   // Loops that break the contract.  A call made twice, or with an index that
-  // does not exist, does not reach the body.
-  for (const Loop loop : {&failing_loop,&skipping_loop,&repeating_loop,&stray_loop}) {
+  // does not exist, does not reach the body.  The loop that cannot create the
+  // thread of its last call reports a failure after the other calls have run
+  // on their threads; it joins them, or the program would end here.
+  for (const Loop loop : {&failing_loop,&skipping_loop,&repeating_loop,&stray_loop,&starved_loop}) {
     const DenseBackend backend = with(loop,2);
     std::array<int,5> ran{};
     expect<std::runtime_error>("a loop that breaks the contract",[&] {
       backend.parallel_for(5,[&ran](std::size_t index) { ++ran.at(index); });
     });
-    const int last = loop == &skipping_loop ? 0 : 1;
+    const int last = loop == &skipping_loop || loop == &starved_loop ? 0 : 1;
     require(ran == std::array<int,5>({1,1,1,1,last}),"a loop that breaks the contract runs a call twice or a wrong one");
+  }
+  // The loop that cannot create a thread reports that itself.  The check
+  // above does not show it: the library ends a loop that leaves out a call
+  // with the same exception, whatever the loop reports.
+  {
+    std::atomic<int> ran{0};
+    const auto body = [](void* counted, int) { ++*static_cast<std::atomic<int>*>(counted); };
+    require(starved_loop(nullptr,5,body,&ran) != 0 && ran == 4,
+            "a loop that cannot create a thread reports no failure, or does not run the other calls");
+  }
+  // The library promises not to call a loop from a body (exx.h), and the
+  // loops of the tests hold it to that: a loop that is called from one of
+  // their calls makes no call and reports a failure.
+  for (const Loop loop : {&in_order_loop,&reversed_loop,&threaded_loop}) {
+    struct Nested {
+      Loop loop;
+      std::atomic<int> refused{0}, ran{0};
+    } nested{loop};
+    const int status = loop(nullptr,3,[](void* argument, int) {
+      Nested& outer = *static_cast<Nested*>(argument);
+      const int inner = outer.loop(nullptr,2,[](void* counted, int) { ++static_cast<Nested*>(counted)->ran; },&outer);
+      if (inner != 0) ++outer.refused;
+    },&nested);
+    require(status == 0 && nested.refused == 3 && nested.ran == 0,"a loop of the tests accepts a call from a body");
+  }
+  // The same for a loop that is called from another thread than the one
+  // that made its context: the counts of the context have no lock.
+  for (const Loop loop : {&in_order_loop,&reversed_loop,&threaded_loop}) {
+    Calls mine;
+    std::atomic<int> ran{0};
+    int status = 0;
+    const auto body = [](void* counted, int) { ++*static_cast<std::atomic<int>*>(counted); };
+    std::thread([&] { status = loop(&mine,2,body,&ran); }).join();
+    require(status != 0 && ran == 0 && mine.loops == 0 && mine.counts.empty(),
+            "a loop of the tests accepts a call from a thread that does not own its context");
+    require(loop(&mine,2,body,&ran) == 0 && ran == 2 && mine.counts == Counts({{2,1}}),
+            "a loop of the tests refuses the thread that owns its context");
   }
   {
     // The exception of a call comes before the failure of the loop.
@@ -247,7 +303,9 @@ void check_loops(Numbers& random)
       backend.multiply(m,n,k,1.0,a.data()+index*m*k,b.data()+index*k*n,0.0,c.data()+index*m*n);
     });
     require(c == expected,"products on several threads differ from the same products on one thread");
-    require(calls.products-before == (table ? static_cast<long>(count) : 0),"wrong number of products on several threads");
+    // Only a table with a product counts products.
+    if (table)
+      require(calls.products-before == static_cast<long>(count),"wrong number of products on several threads");
   }
 }
 

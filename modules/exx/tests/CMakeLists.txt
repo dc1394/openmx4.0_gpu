@@ -73,6 +73,11 @@ foreach(_case exchange-system exchange-forces)
   set_tests_properties(exx-${_case} PROPERTIES LABELS "unit;exx" TIMEOUT 600)
 endforeach()
 
+# The tests whose loops start threads have the label "threads" as well:
+# "ctest -L threads" selects them, for example in a build with
+# OPENMX_EXX_THREAD_SANITIZER.
+set_property(TEST exx-dense-backend exx-exchange-backend exx-exchange-system APPEND PROPERTY LABELS threads)
+
 # The C interface from a program compiled as C.
 add_executable(openmx_exx_c_tests test_c.c)
 target_link_libraries(openmx_exx_c_tests PRIVATE OpenMX::exx $<$<PLATFORM_ID:Linux>:m>)

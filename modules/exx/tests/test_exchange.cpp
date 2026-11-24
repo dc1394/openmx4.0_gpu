@@ -13,12 +13,18 @@
 //                          centre atom, in the Gamma form and in the site form
 //   exx-exchange-backend   the same results with a table of matrix products,
 //                          and with a table whose loop runs the ABFs of a
-//                          centre atom in pieces
+//                          centre atom in pieces: the number of pieces, their
+//                          order and their threads, sums that are shorter
+//                          than the number of pieces, a product that fails
+//                          inside a piece, and the derivatives, which are
+//                          not divided
 //   exx-exchange-system    T and V blocks made from PAOs: isolated atoms
 //                          against a formula without T blocks, a periodic
 //                          structure against the definition, the pieces of
-//                          the ABFs on threads, and the C interface against
-//                          the C++ interface
+//                          the ABFs on threads with and without a product of
+//                          the table, and the C interface against the C++
+//                          interface, also with pieces on threads and with a
+//                          product that fails inside a piece
 //   exx-exchange-forces    forces.hpp: the derivative of E_x with respect to
 //                          the positions of the atoms against central
 //                          differences of E_x of structures with moved atoms
@@ -153,6 +159,17 @@ bool same_values(std::span<const double> a, std::span<const double> b)
   return a.size() == b.size() && (a.empty() || std::memcmp(a.data(),b.data(),a.size()*sizeof(double)) == 0);
 }
 
+// The same for arrays of arrays, as the derivatives with respect to the
+// blocks come.
+template <class Inner>
+bool same_values(const std::vector<std::vector<Inner>>& a, const std::vector<std::vector<Inner>>& b)
+{
+  if (a.size() != b.size()) return false;
+  for (std::size_t i = 0; i < a.size(); ++i)
+    if (!same_values(a[i],b[i])) return false;
+  return true;
+}
+
 // The same keys, and the same numbers bit for bit.  find() gives nothing for
 // a block that does not exist, so a block without elements is not accepted.
 bool same_blocks(const BlockMatrix& a, const BlockMatrix& b)
@@ -174,11 +191,93 @@ std::vector<double> layout_values(const BlockLayout& layout, const DensityBlocks
 
 // K of all atoms in one array of a layout.
 std::vector<double> layout_exchange(const System& system, const BlockLayout& layout, const std::vector<double>& density,
-                                    double alpha)
+                                    double alpha, const DenseBackend& backend = DenseBackend())
 {
   std::vector<double> k(layout.elements(),0.0);
-  for (std::size_t a = 0; a < system.orbital_count.size(); ++a) add_exchange_blocks(system,layout,a,-alpha,density,k);
+  for (std::size_t a = 0; a < system.orbital_count.size(); ++a)
+    add_exchange_blocks(system,layout,a,-alpha,density,k,backend);
   return k;
+}
+
+// An array of a layout holds the blocks of a matrix, bit for bit, and the
+// matrix has no other block.
+bool same_as_blocks(const BlockLayout& layout, std::span<const double> array, const BlockMatrix& matrix)
+{
+  if (array.size() != layout.elements() || layout.keys.size() != matrix.blocks().size()) return false;
+  for (std::size_t i = 0; i < layout.keys.size(); ++i) {
+    const std::span<const double> block = array.subspan(layout.offset[i],layout.offset[i+1]-layout.offset[i]);
+    if (block.empty() || !same_values(block,matrix.find(layout.keys[i]))) return false;
+  }
+  return true;
+}
+
+// The loops that one build of K hands to the loop of a table, as the loops
+// of the tests record them: the number of loops for every count of calls.
+// centre_contribution() of exchange.cpp divides the ABFs of a centre atom
+// into min(threads, n_P) pieces.  With more than one piece it hands over
+// four kinds of loops, each with one call for every piece: one that turns G,
+// two for every group of V neighbours (the four terms, and the sums of the
+// second term) and one that turns the bracket.  That is 2 + 2 groups loops
+// for the atom.  With one piece all of this runs on the calling thread, and
+// the loop of the table is not called.  The groups are the V neighbours in
+// the site form and the atoms among the V neighbours in the Gamma form.
+Counts loops_of(const System& system, int threads, bool gamma)
+{
+  Counts counts;
+  for (std::size_t a = 0; a < system.orbital_count.size(); ++a) {
+    const std::size_t pieces = std::min(static_cast<std::size_t>(threads),system.abf_count[a]);
+    if (pieces < 2) continue;
+    std::set<int> atoms;
+    for (const Site& site : system.v_neighbours[a]) atoms.insert(site.atom);
+    const std::size_t groups = gamma ? atoms.size() : system.v_neighbours[a].size();
+    counts[static_cast<int>(pieces)] += 2+2*static_cast<long>(groups);
+  }
+  return counts;
+}
+
+// l_b, the number of columns of the T blocks of atom b in a build: the
+// orbitals of its C neighbours in the site form, and those of the atoms among
+// them in the Gamma form, where the images of an atom share their columns.
+std::size_t column_count(const System& system, std::size_t b, bool gamma)
+{
+  if (!gamma) return system.c_offset[b].back();
+  std::set<int> atoms;
+  std::size_t columns = 0;
+  for (const Site& site : system.c_neighbours[b])
+    if (atoms.insert(site.atom).second) columns += system.orbital_count[static_cast<std::size_t>(site.atom)];
+  return columns;
+}
+
+// A system of three atoms with few orbitals and more ABFs, for the sums of
+// the pieces in exchange_backend().  The T and V blocks hold numbers without
+// a pattern.  The neighbour lists belong to no structure, and the build
+// needs none; the second atom has two images of the first atom in both
+// lists.
+System narrow_system(Numbers& random)
+{
+  System system;
+  system.orbital_count = {1,1,2};
+  system.abf_count = {5,4,3};
+  const auto site = [](int atom, int cell = 0) { return Site{atom,{cell,0,0}}; };
+  system.c_neighbours = {{site(0)},{site(1),site(0),site(0,1)},{site(2),site(0),site(1)}};
+  system.v_neighbours = {{site(0),site(1),site(2)},{site(1),site(0,-1),site(0)},{site(2),site(0)}};
+  const std::size_t atoms = system.orbital_count.size();
+  system.c_offset.resize(atoms);
+  system.t.resize(atoms);
+  system.v.resize(atoms);
+  for (std::size_t a = 0; a < atoms; ++a) {
+    std::vector<std::size_t>& offset = system.c_offset[a];
+    offset.assign(1,0);
+    for (const Site& c : system.c_neighbours[a])
+      offset.push_back(offset.back()+system.orbital_count[static_cast<std::size_t>(c.atom)]);
+    system.t[a].resize(system.abf_count[a]*system.orbital_count[a]*offset.back());
+    for (double& value : system.t[a]) value = random.next();
+    for (const Site& b : system.v_neighbours[a]) {
+      system.v[a].emplace_back(system.abf_count[a]*system.abf_count[static_cast<std::size_t>(b.atom)]);
+      for (double& value : system.v[a].back()) value = random.next();
+    }
+  }
+  return system;
 }
 
 // K of the Gamma form from the definition, equations (8) and (9), with dense
@@ -910,53 +1009,103 @@ void exchange_backend(const std::string& path)
   // The loop of a table: the ABFs of a centre atom in pieces.  The loops of
   // the tests make the calls in order, from the last to the first, and on
   // threads of their own.  For one number of threads the three give the same
-  // numbers bit for bit; the numbers of one piece agree within rounding.  The
-  // atoms of the fixture have 2 and 3 ABFs, so 64 threads give one piece for
-  // every ABF.
+  // numbers bit for bit; the numbers of one piece agree within rounding.
   {
-    const BlockMatrix one_site = exchange_blocks(system,density,alpha);
-    const std::vector<double> one_gamma = exchange_gamma(system,d,alpha);
+    const BlockMatrix plain_site = exchange_blocks(system,density,alpha);
+    const std::vector<double> plain_gamma = exchange_gamma(system,d,alpha);
+    const BlockLayout layout = exchange_layout(system);
+    const std::vector<double> blocks_of_d = layout_values(layout,density);
     Calls shared;
     const auto with = [&shared](bool product, Loop loop, int threads) {
       const OpenMXExxDenseBackend pieces{product ? &shared_dgemm : nullptr,&shared,loop,threads};
       return DenseBackend(&pieces);
     };
+
+    // The number of pieces is the smaller of the threads and the ABFs of the
+    // centre atom, and every loop of an atom is asked for one call for each
+    // piece.  The atoms of the fixture have 2 and 3 ABFs: two threads give
+    // two pieces for both atoms, three threads and 64 threads one piece for
+    // every ABF.  Each atom has 9 V neighbours, images of both atoms, so a
+    // build makes 2 + 2*9 loops for an atom in the site form and 2 + 2*2 in
+    // the Gamma form (the rule is at loops_of()).
+    //
+    // The two atoms mirror each other: the first has 3 orbitals and 2 ABFs,
+    // the second 2 orbitals and 3 ABFs.  The loops of a whole build are
+    // therefore the same for pieces that follow the orbitals in place of the
+    // ABFs, and the checks below also count the loops of every atom alone.
+    const int abfs[] = {2,3};
+    require(system.orbital_count == std::vector<std::size_t>({3,2}) &&
+            system.abf_count == std::vector<std::size_t>({2,3}) &&
+            loops_of(system,2,false) == Counts({{2,40}}) && loops_of(system,2,true) == Counts({{2,12}}) &&
+            loops_of(system,3,false) == Counts({{2,20},{3,20}}) && loops_of(system,3,true) == Counts({{2,6},{3,6}}) &&
+            loops_of(system,64,false) == loops_of(system,3,false) &&
+            loops_of(system,64,true) == loops_of(system,3,true),
+            "the fixture is expected to have atoms with 3 and 2 orbitals, 2 and 3 ABFs and 9 V neighbours each, images "
+            "of both atoms");
+
     Worst rounding("pieces of the ABFs against one piece",1e-12);
-    for (const int threads : {2,3,64})
-      for (const bool product : {false,true}) {
+    for (const bool product : {false,true}) {
+      // One piece with the same products: the limit then measures the order
+      // of the sums over the ABFs and nothing else.
+      const DenseBackend whole = with(product,nullptr,0);
+      const BlockMatrix one_site = exchange_blocks(system,density,alpha,whole);
+      const std::vector<double> one_gamma = exchange_gamma(system,d,alpha,whole);
+      if (!product)
+        require(same_blocks(plain_site,one_site) && same_values(plain_gamma,one_gamma),
+                "a table without a product and without a loop changes the build");
+      for (const int threads : {2,3,64}) {
         const DenseBackend ordered = with(product,&in_order_loop,threads);
-        shared.products = 0;
-        shared.loops = 0;
+        shared.reset();
         const BlockMatrix site = exchange_blocks(system,density,alpha,ordered);
-        require(shared.loops > 0,"the site form does not use the loop of the table");
-        require(shared.products == (product ? expected : 0),"the pieces change the number of products of the site form");
-        shared.products = 0;
-        shared.loops = 0;
+        require(shared.counts == loops_of(system,threads,false),
+                "the site form does not hand the expected loops and pieces to the table");
+        // Only a table with a product counts products.
+        if (product) require(shared.products == expected,"the pieces change the number of products of the site form");
+        shared.reset();
         const std::vector<double> gamma = exchange_gamma(system,d,alpha,ordered);
-        require(shared.loops > 0,"the Gamma form does not use the loop of the table");
-        require(shared.products == (product ? expected_gamma : 0),
-                "the pieces change the number of products of the Gamma form");
+        require(shared.counts == loops_of(system,threads,true),
+                "the Gamma form does not hand the expected loops and pieces to the table");
+        if (product)
+          require(shared.products == expected_gamma,"the pieces change the number of products of the Gamma form");
+        // The atoms one by one: every loop of an atom is asked for as many
+        // calls as the atom has ABFs, or as the table has threads.
+        for (std::size_t a = 0; a < atoms; ++a) {
+          const int pieces = std::min(threads,abfs[a]);
+          shared.reset();
+          BlockMatrix part(system.orbital_count);
+          add_exchange_blocks(system,a,-alpha,density,part,ordered);
+          require(shared.counts == Counts({{pieces,2+2*9}}),
+                  "the site form does not divide the ABFs of a centre atom into the expected pieces");
+          shared.reset();
+          std::vector<double> part_gamma(n*n,0.0);
+          add_exchange_gamma(system,a,-alpha,d,part_gamma,ordered);
+          require(shared.counts == Counts({{pieces,2+2*2}}),
+                  "the Gamma form does not divide the ABFs of a centre atom into the expected pieces");
+        }
         for (const Loop loop : {&reversed_loop,&threaded_loop}) {
           const DenseBackend other = with(product,loop,threads);
           require(same_blocks(site,exchange_blocks(system,density,alpha,other)),
                   "the site form depends on the order in which the pieces run");
           require(same_values(gamma,exchange_gamma(system,d,alpha,other)),
                   "the Gamma form depends on the order in which the pieces run");
+          // The site form in one array of a layout, as the C interface
+          // builds it: the same numbers, added in the same order.
+          require(same_as_blocks(layout,layout_exchange(system,layout,blocks_of_d,alpha,other),site),
+                  "the pieces of the site form in one array differ from those in a map of blocks");
         }
-        if (!product) {
-          compare_blocks(one_site,site,rounding);
-          for (std::size_t e = 0; e < n*n; ++e) rounding.absolute(one_gamma[e],gamma[e]);
-        }
+        compare_blocks(one_site,site,rounding);
+        for (std::size_t e = 0; e < n*n; ++e) rounding.absolute(one_gamma[e],gamma[e]);
       }
+    }
     rounding.finish();
 
     // With one thread the loop of the table is not called, and the numbers
     // are those without a table.
     {
       const DenseBackend single = with(false,&reversed_loop,1);
-      shared.loops = 0;
-      require(same_blocks(one_site,exchange_blocks(system,density,alpha,single)) &&
-              same_values(one_gamma,exchange_gamma(system,d,alpha,single)) && shared.loops == 0,
+      shared.reset();
+      require(same_blocks(plain_site,exchange_blocks(system,density,alpha,single)) &&
+              same_values(plain_gamma,exchange_gamma(system,d,alpha,single)) && shared.loops == 0,
               "a table with one thread changes the build");
     }
     // A loop that fails, or leaves out a piece, stops the build.
@@ -964,6 +1113,166 @@ void exchange_backend(const std::string& path)
       const DenseBackend broken = with(false,loop,2);
       expect_runtime_error("a broken loop in the site form",[&] { (void)exchange_blocks(system,density,alpha,broken); });
       expect_runtime_error("a broken loop in the Gamma form",[&] { (void)exchange_gamma(system,d,alpha,broken); });
+    }
+
+    // A product that fails inside one piece while the other pieces run.  The
+    // product knows the piece from the index that the loops of the tests keep
+    // for every thread, so nothing here depends on timing.
+    //
+    // The second atom has three ABFs, one for each of three pieces, and every
+    // piece is the failing one in turn: the first, whose arrays take the sums
+    // of the others, the second and the last.  The build of the atom makes
+    // two products before its first loop with products.  In that loop the
+    // other two pieces make their four products each, and the failing piece
+    // ends with its first product.  The build ends after this loop, the
+    // second one that it hands to the table.  The three forms of the build
+    // go through this: the blocks in a map, the Gamma form, and the site form
+    // in one array of a layout, which is the one that the C interface calls.
+    //
+    // A whole build ends in the same way at its first atom, which has two
+    // ABFs: one piece fails and one runs, and either piece is the failing one
+    // in turn.
+    {
+      Calls failing;
+      for (const Loop loop : {&in_order_loop,&reversed_loop,&threaded_loop}) {
+        const OpenMXExxDenseBackend table{&piece_failing_dgemm,&failing,loop,3};
+        const DenseBackend broken(&table);
+        for (const int piece : {0,1,2}) {
+          failing.failing = piece;
+          failing.reset();
+          expect_runtime_error("a product that fails inside a piece of the site form",[&] {
+            BlockMatrix k(system.orbital_count);
+            add_exchange_blocks(system,1,-alpha,density,k,broken);
+          });
+          require(failing.products == 2+4*2+1 && failing.counts == Counts({{3,2}}),
+                  "the site form does not run the other pieces, or goes on after the loop in which a product fails");
+          failing.reset();
+          expect_runtime_error("a product that fails inside a piece of the Gamma form",[&] {
+            std::vector<double> k(n*n,0.0);
+            add_exchange_gamma(system,1,-alpha,d,k,broken);
+          });
+          require(failing.products == 2+4*2+1 && failing.counts == Counts({{3,2}}),
+                  "the Gamma form does not run the other pieces, or goes on after the loop in which a product fails");
+          failing.reset();
+          expect_runtime_error("a product that fails inside a piece of the site form in one array",[&] {
+            std::vector<double> k(layout.elements(),0.0);
+            add_exchange_blocks(system,layout,1,-alpha,blocks_of_d,k,broken);
+          });
+          require(failing.products == 2+4*2+1 && failing.counts == Counts({{3,2}}),
+                  "the site form in one array does not run the other pieces, or goes on after the loop in which a "
+                  "product fails");
+        }
+        for (const int piece : {0,1}) {
+          failing.failing = piece;
+          failing.reset();
+          expect_runtime_error("a product that fails inside a piece of a build of the site form",
+                               [&] { (void)exchange_blocks(system,density,alpha,broken); });
+          require(failing.products == 2+4*1+1 && failing.counts == Counts({{2,2}}),
+                  "a build of the site form goes on after a product has failed inside a piece");
+          failing.reset();
+          expect_runtime_error("a product that fails inside a piece of a build of the Gamma form",
+                               [&] { (void)exchange_gamma(system,d,alpha,broken); });
+          require(failing.products == 2+4*1+1 && failing.counts == Counts({{2,2}}),
+                  "a build of the Gamma form goes on after a product has failed inside a piece");
+        }
+      }
+    }
+
+    // The derivatives do not divide their work: with a table that has a loop
+    // they give the bits of the same table without the loop, and the loop is
+    // not called.
+    for (const bool product : {false,true}) {
+      const DenseBackend whole = with(product,nullptr,0), pieces = with(product,&threaded_loop,3);
+      shared.reset();
+      const ExchangeGradient all = exchange_gradient_gamma(system,d,alpha,whole);
+      const ExchangeGradient again = exchange_gradient_gamma(system,d,alpha,pieces);
+      bool same = same_values(all.t,again.t) && same_values(all.v,again.v);
+      for (std::size_t a = 0; a < atoms; ++a) {
+        const CentreGradient gamma = centre_gradient_gamma(system,a,-alpha,d,whole);
+        const CentreGradient gamma_again = centre_gradient_gamma(system,a,-alpha,d,pieces);
+        const CentreGradient site = centre_gradient_blocks(system,layout,a,-alpha,blocks_of_d,whole);
+        const CentreGradient site_again = centre_gradient_blocks(system,layout,a,-alpha,blocks_of_d,pieces);
+        same = same && same_values(gamma.t,gamma_again.t) && same_values(gamma.v,gamma_again.v) &&
+               same_values(site.t,site_again.t) && same_values(site.v,site_again.v);
+      }
+      require(same,"a table with a loop changes the derivatives");
+      require(shared.loops == 0,"the derivatives call the loop of the table");
+    }
+
+    // Sums that are shorter than the number of pieces.  The sums of the
+    // second term of a V neighbour have u_a l_b elements, and the build adds
+    // those of the pieces in a loop that gives every call a share of the
+    // elements (exchange.cpp, "The sums of the pieces").  With fewer elements
+    // than pieces some calls get no element.  The fixture does not reach
+    // that: its sums have 10 elements or more for at most 3 pieces.  A
+    // calculation reaches it with a centre atom of few orbitals and many
+    // ABFs on many threads.  In the system below every atom has such a V
+    // neighbour with as many threads as the first atom has ABFs, and the
+    // third atom has one whose sums are longer.
+    {
+      const System narrow = narrow_system(random);
+      const std::size_t count = orbital_total(narrow);
+      const int threads = 5;
+      for (const bool gamma : {false,true}) {
+        std::size_t shorter = 0, longer = 0;
+        for (std::size_t a = 0; a < narrow.orbital_count.size(); ++a) {
+          const std::size_t pieces = std::min(static_cast<std::size_t>(threads),narrow.abf_count[a]);
+          bool found = false;
+          for (const Site& b : narrow.v_neighbours[a]) {
+            const std::size_t columns = column_count(narrow,static_cast<std::size_t>(b.atom),gamma);
+            const bool few = narrow.orbital_count[a]*columns < pieces;
+            found = found || few;
+            if (!few) ++longer;
+          }
+          if (found) ++shorter;
+        }
+        require(shorter == narrow.orbital_count.size() && longer > 0,
+                "the small system is expected to have sums that are shorter than the number of pieces");
+      }
+      const std::vector<double> dn = dense_matrix(count,true,random);
+      const DensityBlocks blocks = gamma_density(narrow,dn);
+      const std::vector<double> one_gamma = exchange_gamma(narrow,dn,alpha);
+      const BlockMatrix one_site = exchange_blocks(narrow,blocks,alpha);
+      const double scale = largest(one_gamma);
+      require(scale > 1.0e-3,"the exchange matrix of the small system is expected to be of order one");
+      {
+        // The system is made by hand: the definition with dense matrices and
+        // the sum over the cells show that the numbers of one piece are K.
+        const std::vector<double> direct = definition_gamma(narrow,dn,alpha), sum = folded(narrow,one_site);
+        Worst definition("small system: one piece against the definition and sum_R K(R) (relative)",1e-12);
+        for (std::size_t e = 0; e < count*count; ++e) {
+          definition.add(std::fabs(one_gamma[e]-direct[e])/scale);
+          definition.add(std::fabs(one_gamma[e]-sum[e])/scale);
+        }
+        definition.finish();
+      }
+      // The loops in literal numbers, from the lists of narrow_system().  The
+      // atoms have 5, 4 and 3 ABFs, with five threads one piece for each, and
+      // 3, 3 and 2 V neighbours, which are 3, 2 and 2 atoms: an atom hands
+      // the table 2 + 2*3 or 2 + 2*2 loops.
+      shared.reset();
+      const BlockMatrix site = exchange_blocks(narrow,blocks,alpha,with(false,&in_order_loop,threads));
+      require(shared.counts == Counts({{5,2+2*3},{4,2+2*3},{3,2+2*2}}),
+              "the site form of the small system does not hand the expected loops and pieces to the table");
+      shared.reset();
+      const std::vector<double> gamma = exchange_gamma(narrow,dn,alpha,with(false,&in_order_loop,threads));
+      require(shared.counts == Counts({{5,2+2*3},{4,2+2*2},{3,2+2*2}}),
+              "the Gamma form of the small system does not hand the expected loops and pieces to the table");
+      for (const Loop loop : {&reversed_loop,&threaded_loop}) {
+        require(same_blocks(site,exchange_blocks(narrow,blocks,alpha,with(false,loop,threads))),
+                "the site form of the small system depends on the order in which the pieces run");
+        require(same_values(gamma,exchange_gamma(narrow,dn,alpha,with(false,loop,threads))),
+                "the Gamma form of the small system depends on the order in which the pieces run");
+      }
+      Worst sums("small system: sums shorter than the number of pieces against one piece (relative)",1e-12);
+      require(site.blocks().size() == one_site.blocks().size(),"the pieces change the number of blocks of K");
+      for (const auto& [key, values] : one_site.blocks()) {
+        const std::span<const double> other = site.find(key);
+        require(other.size() == values.size(),"the pieces change the blocks of K");
+        for (std::size_t e = 0; e < values.size(); ++e) sums.add(std::fabs(values[e]-other[e])/scale);
+      }
+      for (std::size_t e = 0; e < count*count; ++e) sums.add(std::fabs(one_gamma[e]-gamma[e])/scale);
+      sums.finish();
     }
   }
 }
@@ -1304,29 +1613,76 @@ void exchange_system(const std::string& path)
     compare_forms(system,"periodic structure");
   }
 
-  // The ABFs of the centre atoms in pieces, every piece on a thread of its
-  // own: the same bits as the pieces one after the other, and the numbers of
-  // one piece within rounding.
+  // The ABFs of the centre atoms in pieces.  The pieces one after the other,
+  // from the last to the first and on threads of their own give the same
+  // bits, and the numbers of one piece agree within rounding.
+  //
+  // The atoms have 10, 15 and 1 ABFs.  With 2, 4 and 7 threads every loop of
+  // the first two atoms is asked for as many calls as there are threads, and
+  // the pieces are uneven (10 ABFs in 4 and in 7 pieces, 15 in 2, 4 and 7).
+  // With 64 threads the ABFs are the limit: the loops are asked for 10 and
+  // for 15 calls.  The third atom is one piece and does not reach the loop of
+  // the table.  The number of loops follows the rule at loops_of().
   {
-    const std::vector<double> one = exchange_gamma(system,d,alpha);
+    require(system.abf_count == std::vector<std::size_t>({10,15,1}),
+            "the test is written for atoms with 10, 15 and 1 ABFs");
     const DensityBlocks blocks = gamma_density(system,d);
-    const BlockMatrix one_site = exchange_blocks(system,blocks,alpha);
-    const double scale = largest(one);
+    Calls shared;
+    const auto pieces = [&shared] {
+      std::set<int> counts;
+      for (const auto& entry : shared.counts) counts.insert(entry.first);
+      return counts;
+    };
     Worst rounding("periodic structure: pieces of the ABFs against one piece",1e-12);
-    for (const int threads : {2,4,7}) {
-      const OpenMXExxDenseBackend ordered{nullptr,nullptr,&in_order_loop,threads};
-      const OpenMXExxDenseBackend threaded{nullptr,nullptr,&threaded_loop,threads};
-      const std::vector<double> k = exchange_gamma(system,d,alpha,DenseBackend(&ordered));
-      require(same_values(k,exchange_gamma(system,d,alpha,DenseBackend(&threaded))),
-              "the Gamma form on threads differs from the pieces in order");
-      const BlockMatrix site = exchange_blocks(system,blocks,alpha,DenseBackend(&ordered));
-      require(same_blocks(site,exchange_blocks(system,blocks,alpha,DenseBackend(&threaded))),
-              "the site form on threads differs from the pieces in order");
-      for (std::size_t e = 0; e < n*n; ++e) rounding.add(std::fabs(k[e]-one[e])/scale);
-      for (const auto& [key, values] : one_site.blocks()) {
-        const std::span<const double> other = site.find(key);
-        require(other.size() == values.size(),"the pieces change the blocks of K");
-        for (std::size_t e = 0; e < values.size(); ++e) rounding.add(std::fabs(values[e]-other[e])/scale);
+    for (const bool product : {false,true}) {
+      const auto with = [&shared,product](Loop loop, int threads) {
+        const OpenMXExxDenseBackend table{product ? &shared_dgemm : nullptr,&shared,loop,threads};
+        return DenseBackend(&table);
+      };
+      // One piece with the same products: the limit then measures the order
+      // of the sums over the ABFs and nothing else.
+      shared.reset();
+      const std::vector<double> one = exchange_gamma(system,d,alpha,with(nullptr,0));
+      const long products_gamma = shared.products;
+      shared.reset();
+      const BlockMatrix one_site = exchange_blocks(system,blocks,alpha,with(nullptr,0));
+      const long products_site = shared.products;
+      const double scale = largest(one);
+      // The table with a product of its own runs with seven pieces only.
+      for (const int threads : product ? std::vector<int>{7} : std::vector<int>{2,4,7,64}) {
+        // The counts in literal numbers.  The comparisons with loops_of()
+        // below contain them: they are written out because loops_of()
+        // restates the rule of the library, and a mistake that the two share
+        // would pass without them.
+        const std::set<int> expected = threads < 64 ? std::set<int>{threads} : std::set<int>{10,15};
+        shared.reset();
+        const std::vector<double> k = exchange_gamma(system,d,alpha,with(&in_order_loop,threads));
+        require(pieces() == expected && shared.counts == loops_of(system,threads,true),
+                "the Gamma form does not hand the expected loops and pieces to the table");
+        // Only a table with a product counts products.
+        if (product)
+          require(products_gamma > 0 && shared.products == products_gamma,
+                  "the pieces change the number of products of the Gamma form");
+        shared.reset();
+        const BlockMatrix site = exchange_blocks(system,blocks,alpha,with(&in_order_loop,threads));
+        require(pieces() == expected && shared.counts == loops_of(system,threads,false),
+                "the site form does not hand the expected loops and pieces to the table");
+        if (product)
+          require(products_site > products_gamma && shared.products == products_site,
+                  "the pieces change the number of products of the site form");
+        for (const Loop loop : {&reversed_loop,&threaded_loop}) {
+          require(same_values(k,exchange_gamma(system,d,alpha,with(loop,threads))),
+                  "the Gamma form depends on the order or the threads of the pieces");
+          require(same_blocks(site,exchange_blocks(system,blocks,alpha,with(loop,threads))),
+                  "the site form depends on the order or the threads of the pieces");
+        }
+        for (std::size_t e = 0; e < n*n; ++e) rounding.add(std::fabs(k[e]-one[e])/scale);
+        require(site.blocks().size() == one_site.blocks().size(),"the pieces change the number of blocks of K");
+        for (const auto& [key, values] : one_site.blocks()) {
+          const std::span<const double> other = site.find(key);
+          require(other.size() == values.size(),"the pieces change the blocks of K");
+          for (std::size_t e = 0; e < values.size(); ++e) rounding.add(std::fabs(values[e]-other[e])/scale);
+        }
       }
     }
     rounding.finish();
@@ -1380,6 +1736,79 @@ void exchange_system(const std::string& path)
     int prepared = openmx_exx_prepare(state,&c_options,&geometry.geometry,message,sizeof message);
     require(prepared == 0,std::string("the preparation through the C interface fails: ")+message);
     compare_with_c(state,system,d,alpha,"HSE06 kernel");
+
+    // A table with a product and a loop, the pieces on threads of their own:
+    // the C interface runs the same code on the same numbers as the C++
+    // interface in both forms, and the site form agrees within rounding with
+    // the numbers of the same products in one piece.
+    {
+      Calls shared;
+      const OpenMXExxDenseBackend table{&shared_dgemm,&shared,&threaded_loop,4};
+      const OpenMXExxDenseBackend whole{&shared_dgemm,&shared,nullptr,0};
+      const int atom_count = openmx_exx_atom_count(state);
+      std::vector<double> through(n*n,0.0);
+      // The calls are statements of their own: the text of a failure holds
+      // the message that the call writes, and a compiler may build that text
+      // before it makes a call in the same list of arguments.
+      int status = openmx_exx_add_gamma(state,0,atom_count,-alpha,d.data(),through.data(),&table,message,
+                                        sizeof message);
+      require(status == 0 && message[0] == '\0',
+              std::string("the Gamma form with pieces through the C interface fails: ")+message);
+      require(shared.counts == loops_of(system,4,true),
+              "the Gamma form through the C interface does not hand the expected loops and pieces to the table");
+      require(same_values(through,exchange_gamma(system,d,alpha,DenseBackend(&table))),
+              "the pieces of the Gamma form through the C interface differ from those of the C++ interface");
+
+      const BlockLayout layout = exchange_layout(system);
+      const std::vector<double> blocks_of_d = layout_values(layout,gamma_density(system,d));
+      std::vector<double> site_through(layout.elements(),0.0);
+      shared.reset();
+      status = openmx_exx_add_blocks(state,0,atom_count,-alpha,blocks_of_d.data(),site_through.data(),&table,message,
+                                     sizeof message);
+      require(status == 0 && message[0] == '\0',
+              std::string("the site form with pieces through the C interface fails: ")+message);
+      require(shared.counts == loops_of(system,4,false),
+              "the site form through the C interface does not hand the expected loops and pieces to the table");
+      require(same_values(site_through,layout_exchange(system,layout,blocks_of_d,alpha,DenseBackend(&table))),
+              "the pieces of the site form through the C interface differ from those of the C++ interface");
+      const std::vector<double> one = layout_exchange(system,layout,blocks_of_d,alpha,DenseBackend(&whole));
+      const double scale = largest(one);
+      Worst rounding("C interface, site form: pieces on threads against one piece (relative)",1e-12);
+      for (std::size_t e = 0; e < one.size(); ++e) rounding.add(std::fabs(site_through[e]-one[e])/scale);
+      rounding.finish();
+
+      // A product that fails inside a piece, on a thread of its own: the C
+      // interface ends the build with a status and a message in both forms.
+      // The first atom has 10 ABFs, in four pieces of 2, 3, 2 and 3.  Every
+      // piece is the failing one in turn; it ends with its first product
+      // while the others make four products for each of their ABFs.  Two
+      // products come before this loop, which is the second loop of the
+      // build, and the build ends after it.
+      Calls failing;
+      const OpenMXExxDenseBackend broken{&piece_failing_dgemm,&failing,&threaded_loop,4};
+      const long sizes[] = {2,3,2,3};
+      // What a build that fails has added to its output is not looked at.
+      std::vector<double> output(std::max(n*n,layout.elements()),0.0);
+      for (int piece = 0; piece < 4; ++piece) {
+        const long products = 2+4*(10-sizes[piece])+1;
+        failing.failing = piece;
+        failing.reset();
+        message[0] = '\0';
+        status = openmx_exx_add_gamma(state,0,atom_count,-alpha,d.data(),output.data(),&broken,message,sizeof message);
+        require(status != 0 && message[0] != '\0',
+                "the Gamma form of the C interface accepts a product that fails inside a piece");
+        require(failing.products == products && failing.counts == Counts({{4,2}}),
+                "the Gamma form of the C interface does not run the other pieces, or goes on after a failed loop");
+        failing.reset();
+        message[0] = '\0';
+        status = openmx_exx_add_blocks(state,0,atom_count,-alpha,blocks_of_d.data(),output.data(),&broken,message,
+                                       sizeof message);
+        require(status != 0 && message[0] != '\0',
+                "the site form of the C interface accepts a product that fails inside a piece");
+        require(failing.products == products && failing.counts == Counts({{4,2}}),
+                "the site form of the C interface does not run the other pieces, or goes on after a failed loop");
+      }
+    }
 
     // Another kernel with the same species: the tables of the species are kept
     // and the blocks are made again.
