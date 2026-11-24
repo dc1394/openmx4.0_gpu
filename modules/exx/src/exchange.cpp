@@ -209,6 +209,95 @@ void centre_contribution(const System& system, std::size_t a, std::size_t s, con
   sink.last(last.get());
 }
 
+// The derivatives of E_x = (1/2) sum D K with respect to the blocks of the
+// centre atom a, for K = factor times the sum of the contributions of all
+// centres and a symmetric density matrix: equations (16) and (17) with the
+// arrays of centre_contribution().  The sink is used for its blocks and
+// columns only.
+//
+// The contribution of the centre to E_x is factor times the sum over P, mu
+// and the columns of G_P times the bracket of terms (iii) and (iv).
+//   dt [(P,mu), lambda] = 2 factor sum_column bracket_P[column, mu] D[loc(A)_lambda, column]
+// The T blocks of the centre enter this sum through G and the sums of other
+// centres through W; the two parts are equal, hence the factor 2.
+//   dv[g] [P, Q] = factor sum_{nu l} T_Q[nu, l] H_P[nu, l],
+//   H_P = D[B, A] G_P[., loc(B)] + G_P[B, .] D[A, loc(B)]
+// The V block of group g enters the sum of this centre only.
+template <class Sink>
+void centre_derivatives(const System& system, std::size_t a, std::size_t s, const std::vector<double>& dloc,
+                        Sink& sink, double factor, const DenseBackend& backend, std::vector<double>& dt,
+                        std::vector<std::vector<double>>& dv)
+{
+  const std::size_t np = system.abf_count[a], ua = system.orbital_count[a], ell = sink.width(a);
+  const std::size_t rows = np*ua, part = s*ua;
+  const double* tst = sink.t(a);
+  const double* da = dloc.data();
+
+  const std::unique_ptr<double[]> g(new double[rows*s]);
+  std::vector<double> bracket(rows*s,0.0), scratch;
+  backend.multiply(rows,s,ell,1.0,tst,dloc.data(),0.0,g.get());       // G = T D[loc(A), .]
+  for (std::size_t p = 0; p < np; ++p) transpose_in_place(g.get()+p*part,ua,s,scratch);
+
+  std::vector<Run> runs;
+  std::vector<double> w, dl, dba, gathered, h, x3, x4;
+  dv.resize(sink.groups());
+  for (std::size_t ib = 0; ib < sink.groups(); ++ib) {
+    const std::size_t b = sink.atom(ib);
+    const std::size_t nq = system.abf_count[b], ub = system.orbital_count[b], lb = sink.width(b);
+    const std::vector<std::size_t>& column = sink.columns(ib);         // lb entries
+    find_runs(column,runs);
+
+    w.resize(np*ub*lb);                                                // W_{P,B} = sum_Q V_PQ T_Q
+    backend.multiply(np,ub*lb,nq,1.0,sink.v(ib),sink.t(b),0.0,w.data());
+
+    dl.resize(ua*lb);                                                  // D[A, loc(B)] as [mu, l]
+    for (std::size_t mu = 0; mu < ua; ++mu)
+      for (std::size_t l = 0; l < lb; ++l) dl[mu*lb+l] = da[mu*s+column[l]];
+    dba.resize(ub*ua);                                                 // D[A, B] as [nu, mu]
+    for (std::size_t nu = 0; nu < ub; ++nu)
+      for (std::size_t mu = 0; mu < ua; ++mu) dba[nu*ua+mu] = da[mu*s+column[nu]];
+
+    gathered.resize(lb*ua);
+    x3.resize(ub*ua);
+    x4.resize(lb*ua);
+    h.resize(np*ub*lb);
+    for (std::size_t p = 0; p < np; ++p) {
+      const double* wp = w.data()+p*ub*lb;                             // W_P [nu, l]
+      const double* gp = g.get()+p*part;                               // G_P [column, mu]
+      double* bp = bracket.data()+p*part;                              // bracket_P [column, mu]
+      double* hp = h.data()+p*ub*lb;                                   // H_P [nu, l]
+
+      // G_P[loc(B), .] as [l, mu]; its first u_b rows are G_P[B, .]
+      for (const Run& run : runs) std::copy_n(gp+run.column*ua,run.count*ua,gathered.data()+run.first*ua);
+
+      // (iii)  bracket_P[B, .] += W_P D[A, loc(B)]^T
+      backend.multiply_transposed(ub,ua,lb,1.0,wp,dl.data(),0.0,x3.data());
+      for (std::size_t nu = 0; nu < ub; ++nu) {
+        double* target = bp+column[nu]*ua;
+        for (std::size_t mu = 0; mu < ua; ++mu) target[mu] += x3[nu*ua+mu];
+      }
+
+      // (iv)  bracket_P[loc(B), .] += W_P^T D[A, B]^T
+      backend.transposed_multiply(lb,ua,ub,1.0,wp,dba.data(),0.0,x4.data());
+      for (const Run& run : runs) {
+        double* target = bp+run.column*ua;
+        const double* source = x4.data()+run.first*ua;
+        for (std::size_t e = 0; e < run.count*ua; ++e) target[e] += source[e];
+      }
+
+      // H_P = D[B, A] G_P[., loc(B)] + G_P[B, .] D[A, loc(B)]
+      backend.multiply_transposed(ub,lb,ua,1.0,dba.data(),gathered.data(),0.0,hp);
+      backend.multiply(ub,lb,ua,1.0,gathered.data(),dl.data(),1.0,hp);
+    }
+    dv[ib].resize(np*nq);
+    backend.multiply_transposed(np,nq,ub*lb,factor,h.data(),sink.t(b),0.0,dv[ib].data());
+  }
+
+  for (std::size_t p = 0; p < np; ++p) transpose_in_place(bracket.data()+p*part,s,ua,scratch);
+  dt.resize(rows*ell);
+  backend.multiply_transposed(rows,ell,s,2.0*factor,bracket.data(),dloc.data(),0.0,dt.data());
+}
+
 // ---- site form -------------------------------------------------------------
 
 std::array<int,3> sum(const std::array<int,3>& a, const std::array<int,3>& b)
@@ -888,6 +977,60 @@ ExchangeGradient exchange_gradient_gamma(const System& system, std::span<const d
     gradient.t[a].assign(rows*la,0.0);
     backend.multiply(rows,la,n,-2.0*alpha,bracket.data(),columns_of_density.data(),0.0,gradient.t[a].data());
   }
+  return gradient;
+}
+
+CentreGradient centre_gradient_blocks(const System& system, const BlockLayout& layout, std::size_t atom, double factor,
+                                      std::span<const double> density, const DenseBackend& backend)
+{
+  check(system);
+  if (atom >= system.orbital_count.size()) throw std::out_of_range("the centre atom does not exist");
+  check(system,layout);
+  if (density.size() != layout.elements()) throw std::invalid_argument("the density matrix does not have the size of the layout");
+  const DensityBlocks blocks = [&layout,density](const BlockKey& key, std::span<double> block) {
+    const std::size_t i = layout.find(key);
+    if (i == layout.keys.size()) throw std::invalid_argument("the layout lacks a block of the density matrix");
+    std::copy_n(density.begin()+static_cast<std::ptrdiff_t>(layout.offset[i]),block.size(),block.begin());
+  };
+  // The sink gives the blocks and the columns; nothing is written to K.
+  LayoutBlocks store(layout,std::span<double>());
+  SiteSink<LayoutBlocks> sink(system,atom,factor,store);
+  CentreGradient gradient;
+  centre_derivatives(system,atom,sink.size(),sink.density(blocks),sink,factor,backend,gradient.t,gradient.v);
+  return gradient;
+}
+
+CentreGradient centre_gradient_gamma(const System& system, std::size_t atom, double factor,
+                                     std::span<const double> density, const DenseBackend& backend)
+{
+  check(system);
+  if (atom >= system.orbital_count.size()) throw std::out_of_range("the centre atom does not exist");
+  const std::vector<std::size_t> offset = orbital_offsets(system);
+  const std::size_t n = offset.back();
+  check_dense(n,density.size(),"the density matrix is not N x N");
+  GammaSink sink(system,atom,factor,std::span<double>(),offset);
+  std::vector<double> folded_t;
+  std::vector<std::vector<double>> grouped_v;
+  const std::vector<std::size_t> row = sink.rows();
+  centre_derivatives(system,atom,n,gathered_rows(density,n,row),sink,factor,backend,folded_t,grouped_v);
+
+  // The stored blocks: the images of an atom among the C neighbours share a
+  // column of the folded T blocks, the images among the V neighbours a group.
+  CentreGradient gradient;
+  const std::size_t rows = system.abf_count[atom]*system.orbital_count[atom];
+  const std::size_t ell = system.c_offset[atom].back(), width = row.size();
+  std::vector<std::size_t> position(n,0);
+  for (std::size_t l = 0; l < width; ++l) position[row[l]] = l;
+  const std::vector<std::size_t> stored = folded_columns(system,offset,atom);
+  gradient.t.resize(rows*ell);
+  for (std::size_t r = 0; r < rows; ++r)
+    for (std::size_t l = 0; l < ell; ++l) gradient.t[r*ell+l] = folded_t[r*width+position[stored[l]]];
+  std::vector<std::size_t> group(system.orbital_count.size(),0);
+  for (std::size_t g = 0; g < sink.groups(); ++g) group[sink.atom(g)] = g;
+  const std::vector<Site>& neighbours = system.v_neighbours[atom];
+  gradient.v.resize(neighbours.size());
+  for (std::size_t ib = 0; ib < neighbours.size(); ++ib)
+    gradient.v[ib] = grouped_v[group[static_cast<std::size_t>(neighbours[ib].atom)]];
   return gradient;
 }
 

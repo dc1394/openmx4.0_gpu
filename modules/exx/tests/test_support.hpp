@@ -79,6 +79,7 @@ void exchange_fixture(const std::string& fixture);
 void exchange_layout(const std::string& fixture);
 void exchange_gamma(const std::string& fixture);
 void exchange_gradient(const std::string& fixture);
+void exchange_centre_gradient(const std::string& fixture);
 void exchange_backend(const std::string& fixture);
 void exchange_system(const std::string& fixture);
 

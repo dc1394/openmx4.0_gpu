@@ -9,6 +9,8 @@
 //                          of the site form and against the definition with
 //                          dense matrices
 //   exx-exchange-gradient  equations (16) and (17) against central differences
+//   exx-exchange-centre-gradient  the same derivatives from the arrays of one
+//                          centre atom, in the Gamma form and in the site form
 //   exx-exchange-backend   the same results with a table of matrix products
 //   exx-exchange-system    T and V blocks made from PAOs: isolated atoms
 //                          against a formula without T blocks, a periodic
@@ -667,6 +669,145 @@ void exchange_gradient(const std::string& path)
 
   expect_invalid("a density matrix of the wrong size",[&] {
     (void)exchange_gradient_gamma(system,std::span<const double>(d).first(n),alpha);
+  });
+}
+
+void exchange_centre_gradient(const std::string& path)
+{
+  const KbuildFixture fixture = read_kbuild_fixture(path);
+  const System& system = fixture.system;
+  const std::size_t atoms = system.orbital_count.size(), n = orbital_total(system);
+  const double alpha = fixture.alpha;
+  Numbers random;
+  const std::vector<double> d = dense_matrix(n,true,random);
+  const BlockLayout layout = exchange_layout(system);
+
+  // 1. The Gamma form against exchange_gradient_gamma(), which uses the
+  //    arrays of both atoms of a pair, and the site form with the same density
+  //    matrix in every block against the Gamma form.
+  const ExchangeGradient reference = exchange_gradient_gamma(system,d,alpha);
+  double largest_t = 0.0, largest_v = 0.0;
+  for (std::size_t a = 0; a < atoms; ++a) {
+    largest_t = std::max(largest_t,largest(reference.t[a]));
+    for (const std::vector<double>& block : reference.v[a]) largest_v = std::max(largest_v,largest(block));
+  }
+  require(largest_t > 0.1 && largest_v > 0.1,"the gradient of the fixture is expected to be of order one");
+  {
+    const std::vector<double> blocks = layout_values(layout,gamma_density(system,d));
+    Worst gamma_t("dE/dT of one centre, Gamma form, against equation (16)",1e-12);
+    Worst gamma_v("dE/dV of one centre, Gamma form, against equation (17)",1e-12);
+    Worst site_t("dE/dT of one centre, site form against Gamma form",1e-12);
+    Worst site_v("dE/dV of one centre, site form against Gamma form",1e-12);
+    for (std::size_t a = 0; a < atoms; ++a) {
+      const CentreGradient gamma = centre_gradient_gamma(system,a,-alpha,d);
+      const CentreGradient site = centre_gradient_blocks(system,layout,a,-alpha,blocks);
+      require(gamma.t.size() == system.t[a].size() && gamma.v.size() == system.v[a].size() &&
+              site.t.size() == system.t[a].size() && site.v.size() == system.v[a].size(),
+              "the gradient of a centre has the wrong size");
+      for (std::size_t e = 0; e < gamma.t.size(); ++e) {
+        gamma_t.add(std::fabs(gamma.t[e]-reference.t[a][e])/largest_t);
+        site_t.add(std::fabs(site.t[e]-gamma.t[e])/largest_t);
+      }
+      for (std::size_t i = 0; i < gamma.v.size(); ++i) {
+        require(gamma.v[i].size() == system.v[a][i].size() && site.v[i].size() == system.v[a][i].size(),
+                "the gradient of a V block has the wrong size");
+        for (std::size_t e = 0; e < gamma.v[i].size(); ++e) {
+          gamma_v.add(std::fabs(gamma.v[i][e]-reference.v[a][i][e])/largest_v);
+          site_v.add(std::fabs(site.v[i][e]-gamma.v[i][e])/largest_v);
+        }
+      }
+    }
+    gamma_t.finish();
+    gamma_v.finish();
+    site_t.finish();
+    site_v.finish();
+  }
+
+  // 2. The site form with the blocks of D of the fixture, which differ from
+  //    cell to cell: every stored element against a central difference of
+  //    E_x = (1/2) sum D K over the arrays.  E_x is quadratic in the T blocks
+  //    and linear in the V blocks, so the step can be large.
+  {
+    const std::vector<double> blocks = layout_values(layout,fixture_density(fixture));
+    const auto energy = [&](const System& s) {
+      return exchange_energy_gamma(blocks,layout_exchange(s,layout,blocks,alpha));
+    };
+    std::vector<CentreGradient> gradient;
+    double scale_t = 0.0, scale_v = 0.0;
+    for (std::size_t a = 0; a < atoms; ++a) {
+      gradient.push_back(centre_gradient_blocks(system,layout,a,-alpha,blocks));
+      scale_t = std::max(scale_t,largest(gradient.back().t));
+      for (const std::vector<double>& block : gradient.back().v) scale_v = std::max(scale_v,largest(block));
+    }
+    require(scale_t > 0.1 && scale_v > 0.1,"the gradient of the fixture is expected to be of order one");
+    const double h = 1.0e-3;
+    System work = system;
+    Worst each_t("dE/dT of one centre, site form, against central differences",1e-9);
+    for (std::size_t a = 0; a < atoms; ++a)
+      for (std::size_t e = 0; e < system.t[a].size(); ++e) {
+        work.t[a][e] = system.t[a][e]+h;
+        const double plus = energy(work);
+        work.t[a][e] = system.t[a][e]-h;
+        const double minus = energy(work);
+        work.t[a][e] = system.t[a][e];
+        each_t.add(std::fabs(gradient[a].t[e]-(plus-minus)/(2.0*h))/scale_t);
+      }
+    each_t.finish();
+    Worst each_v("dE/dV of one centre, site form, against central differences",1e-9);
+    for (std::size_t a = 0; a < atoms; ++a)
+      for (std::size_t i = 0; i < system.v[a].size(); ++i)
+        for (std::size_t e = 0; e < system.v[a][i].size(); ++e) {
+          work.v[a][i][e] = system.v[a][i][e]+h;
+          const double plus = energy(work);
+          work.v[a][i][e] = system.v[a][i][e]-h;
+          const double minus = energy(work);
+          work.v[a][i][e] = system.v[a][i][e];
+          each_v.add(std::fabs(gradient[a].v[i][e]-(plus-minus)/(2.0*h))/scale_v);
+        }
+    each_v.finish();
+
+    // Euler's theorem for the two degrees of homogeneity.
+    double t_sum = 0.0, v_sum = 0.0;
+    for (std::size_t a = 0; a < atoms; ++a) {
+      for (std::size_t e = 0; e < system.t[a].size(); ++e) t_sum += system.t[a][e]*gradient[a].t[e];
+      for (std::size_t i = 0; i < system.v[a].size(); ++i)
+        for (std::size_t e = 0; e < system.v[a][i].size(); ++e) v_sum += system.v[a][i][e]*gradient[a].v[i][e];
+    }
+    Worst euler("sum T dE/dT = 2 E_x and sum V dE/dV = E_x, site form (relative)",1e-12);
+    euler.relative(t_sum,2.0*fixture.energy);
+    euler.relative(v_sum,fixture.energy);
+    euler.finish();
+
+    // The same numbers with a table of matrix products.
+    long calls = 0;
+    const OpenMXExxDenseBackend table{&counting_dgemm,&calls};
+    const DenseBackend backend(&table);
+    Worst product("the derivatives of one centre with a table of products",1e-12);
+    for (std::size_t a = 0; a < atoms; ++a) {
+      const CentreGradient site = centre_gradient_blocks(system,layout,a,-alpha,blocks,backend);
+      for (std::size_t e = 0; e < site.t.size(); ++e) product.add(std::fabs(site.t[e]-gradient[a].t[e])/scale_t);
+      for (std::size_t i = 0; i < site.v.size(); ++i)
+        for (std::size_t e = 0; e < site.v[i].size(); ++e)
+          product.add(std::fabs(site.v[i][e]-gradient[a].v[i][e])/scale_v);
+    }
+    product.finish();
+    // Two products for the centre, and for every V neighbour two and four for
+    // every ABF of the centre.
+    long expected = 0;
+    for (std::size_t a = 0; a < atoms; ++a)
+      expected += 2+static_cast<long>(system.v_neighbours[a].size())*(2+4*static_cast<long>(system.abf_count[a]));
+    require(calls == expected,"unexpected number of matrix products of the derivatives");
+
+    expect_invalid("a centre atom that does not exist",[&] {
+      (void)centre_gradient_blocks(system,layout,atoms,-alpha,blocks);
+    });
+    expect_invalid("a density array of the wrong size",[&] {
+      (void)centre_gradient_blocks(system,layout,0,-alpha,std::span<const double>(blocks).first(blocks.size()-1));
+    });
+  }
+  expect_invalid("a centre atom that does not exist",[&] { (void)centre_gradient_gamma(system,atoms,-alpha,d); });
+  expect_invalid("a density matrix of the wrong size",[&] {
+    (void)centre_gradient_gamma(system,0,-alpha,std::span<const double>(d).first(n));
   });
 }
 

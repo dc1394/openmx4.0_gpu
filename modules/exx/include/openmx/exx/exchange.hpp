@@ -163,4 +163,35 @@ struct ExchangeGradient {
 ExchangeGradient exchange_gradient_gamma(const System& system, std::span<const double> density, double alpha,
                                          const DenseBackend& backend = DenseBackend());
 
+// The same derivatives for the blocks of one centre atom, from the arrays of
+// its own contribution to K: the site form of equations (16) and (17).  K is
+// factor times the sum of the contributions of all centre atoms (-alpha for
+// the exchange matrix), E_x = (1/2) sum D K, and the density matrix is
+// symmetric, D_xy(R) = D_yx(-R)^T.
+//   t  the derivative of E_x with respect to the T blocks of the atom, in the
+//      layout of System::t[atom].  The T blocks also enter the contributions
+//      of the centres that have the atom as a V neighbour; that part equals
+//      the part of the atom's own contribution and is included.  It relies on
+//      V blocks as prepare_system() stores them, V_ab(R) = V_ba(-R)^T.
+//   v  v[i] is the derivative with respect to the V block of the i-th V
+//      neighbour, in the layout of System::v[atom][i].  Every stored block is
+//      an independent variable, as in ExchangeGradient.
+// A change of all stored blocks changes E_x by the sum over the atoms of
+// t o dT and of v[i] o dV[i].  One call takes two matrix products of the
+// size of those of the build and, for every V neighbour, two products of the
+// size of W and four small ones for every ABF of the centre.
+struct CentreGradient {
+  std::vector<double> t;
+  std::vector<std::vector<double>> v;
+};
+
+// density is an array in the layout, as for add_exchange_blocks().
+CentreGradient centre_gradient_blocks(const System& system, const BlockLayout& layout, std::size_t atom, double factor,
+                                      std::span<const double> density, const DenseBackend& backend = DenseBackend());
+
+// density is N x N.  The images of an atom share the folded arrays, so the
+// stored blocks of all images of an atom get the same derivative.
+CentreGradient centre_gradient_gamma(const System& system, std::size_t atom, double factor,
+                                     std::span<const double> density, const DenseBackend& backend = DenseBackend());
+
 } // namespace openmx::exx

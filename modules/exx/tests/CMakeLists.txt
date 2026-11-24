@@ -56,7 +56,8 @@ set_tests_properties(exx-dense-backend PROPERTIES LABELS "unit;exx" TIMEOUT 60)
 
 # The exchange matrix of the model of tools/exx_reference.py --dump: the
 # acceptance tests of milestone M3.
-foreach(_case exchange-fixture exchange-layout exchange-gamma exchange-gradient exchange-backend)
+foreach(_case exchange-fixture exchange-layout exchange-gamma exchange-gradient exchange-centre-gradient
+    exchange-backend)
   add_test(NAME exx-${_case} COMMAND openmx_exx_tests ${_case} "${_exx_fixtures}/kbuild_reference.txt")
   set_tests_properties(exx-${_case} PROPERTIES LABELS "unit;exx" TIMEOUT 300)
 endforeach()
