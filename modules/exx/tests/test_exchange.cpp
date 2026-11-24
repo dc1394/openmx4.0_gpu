@@ -1038,8 +1038,13 @@ std::vector<double> c_exchange(const OpenMXExxState* state, const std::vector<do
           "the C interface reports a wrong number of orbitals");
   std::vector<double> k(density.size(),0.0);
   char message[200] = "untouched";
-  require(openmx_exx_add_gamma(state,0,openmx_exx_atom_count(state),-alpha,density.data(),k.data(),nullptr,message,
-                               sizeof message) == 0,std::string("the build through the C interface fails: ")+message);
+  // The call is a statement of its own, here and wherever the text of a
+  // failure holds the message of a call: a compiler may build the second
+  // argument of require() before it makes a call in the first one, and the
+  // text then holds what the message was before the call.
+  const int status = openmx_exx_add_gamma(state,0,openmx_exx_atom_count(state),-alpha,density.data(),k.data(),nullptr,
+                                          message,sizeof message);
+  require(status == 0,std::string("the build through the C interface fails: ")+message);
   require(message[0] == '\0',"a successful call leaves a message");
   return k;
 }
@@ -1117,10 +1122,12 @@ void compare_with_c(OpenMXExxState* state, const System& system, const std::vect
   const std::vector<double> site = layout_exchange(system,layout,blocks_of_d,alpha);
   std::vector<double> site_through(layout.elements(),0.0);
   const int atom_count = static_cast<int>(atoms);
-  for (int atom = 0; atom < atom_count; ++atom)
-    require(openmx_exx_add_blocks(state,atom,atom+1,-alpha,blocks_of_d.data(),site_through.data(),nullptr,message,
-                                  sizeof message) == 0 && message[0] == '\0',
+  for (int atom = 0; atom < atom_count; ++atom) {
+    const int status = openmx_exx_add_blocks(state,atom,atom+1,-alpha,blocks_of_d.data(),site_through.data(),nullptr,
+                                             message,sizeof message);
+    require(status == 0 && message[0] == '\0',
             what+": the build of the site form through the C interface fails: "+message);
+  }
   Worst same(what+": site form, C interface against C++",0.0);
   for (std::size_t e = 0; e < site.size(); ++e) same.absolute(site_through[e],site[e]);
   same.finish();
@@ -1370,16 +1377,16 @@ void exchange_system(const std::string& path)
     } guard{state};
     char message[200] = "";
     const CGeometry geometry(structure,few);
-    require(openmx_exx_prepare(state,&c_options,&geometry.geometry,message,sizeof message) == 0,
-            std::string("the preparation through the C interface fails: ")+message);
+    int prepared = openmx_exx_prepare(state,&c_options,&geometry.geometry,message,sizeof message);
+    require(prepared == 0,std::string("the preparation through the C interface fails: ")+message);
     compare_with_c(state,system,d,alpha,"HSE06 kernel");
 
     // Another kernel with the same species: the tables of the species are kept
     // and the blocks are made again.
     c_options.kernel = OPENMX_EXX_KERNEL_TRUNCATED_COULOMB;
     c_options.kernel_parameter = 12.0;
-    require(openmx_exx_prepare(state,&c_options,&geometry.geometry,message,sizeof message) == 0,
-            std::string("the second preparation fails: ")+message);
+    prepared = openmx_exx_prepare(state,&c_options,&geometry.geometry,message,sizeof message);
+    require(prepared == 0,std::string("the second preparation fails: ")+message);
     SystemOptions truncated = options;
     truncated.interaction = truncated_coulomb_kernel(12.0);
     compare_with_c(state,prepare_system(structure,tables,reciprocal,truncated),d,alpha,"truncated Coulomb kernel");
@@ -1389,14 +1396,14 @@ void exchange_system(const std::string& path)
     moved.positions[1][0] += 0.4;
     moved.positions[2][2] -= 0.3;
     const CGeometry moved_geometry(moved,few);
-    require(openmx_exx_prepare(state,&c_options,&moved_geometry.geometry,message,sizeof message) == 0,
-            std::string("the preparation of a moved structure fails: ")+message);
+    prepared = openmx_exx_prepare(state,&c_options,&moved_geometry.geometry,message,sizeof message);
+    require(prepared == 0,std::string("the preparation of a moved structure fails: ")+message);
     compare_with_c(state,prepare_system(moved,tables,reciprocal,truncated),d,alpha,"moved atoms");
 
     // Another threshold: the tables of the species are made again.
     c_options.abf_threshold = 1.0e-2;
-    require(openmx_exx_prepare(state,&c_options,&moved_geometry.geometry,message,sizeof message) == 0,
-            std::string("the preparation with another threshold fails: ")+message);
+    prepared = openmx_exx_prepare(state,&c_options,&moved_geometry.geometry,message,sizeof message);
+    require(prepared == 0,std::string("the preparation with another threshold fails: ")+message);
     const std::vector<SpeciesTable> coarse = tables_of(few,intervals,reciprocal,1.0e-2);
     {
       // The call above is told apart from one that kept the old tables only
@@ -1650,8 +1657,11 @@ void exchange_forces(const std::string& path)
                                                    sizeof message) != 0 && message[0] != '\0',
             "a derivative without a prepared structure is accepted");
     const CGeometry geometry(structure,few);
-    require(openmx_exx_prepare(state,&c_options,&geometry.geometry,message,sizeof message) == 0,
-            std::string("the preparation through the C interface fails: ")+message);
+    // The calls are statements of their own where the text of a failure
+    // holds their message: a compiler may build that text before it makes a
+    // call in the same list of arguments.
+    const int prepared = openmx_exx_prepare(state,&c_options,&geometry.geometry,message,sizeof message);
+    require(prepared == 0,std::string("the preparation through the C interface fails: ")+message);
     require(openmx_exx_add_position_gradient_blocks(state,0,1,-alpha,periodic.blocks.data(),site.data(),nullptr,message,
                                                     sizeof message) != 0 && message[0] != '\0',
             "a derivative of the site form without a list of blocks is accepted");
@@ -1660,16 +1670,18 @@ void exchange_forces(const std::string& path)
 
     // The centre atoms in two calls, as two processes would share them.
     const int count = static_cast<int>(atoms);
-    require(openmx_exx_add_position_gradient_gamma(state,0,1,-alpha,periodic.density.data(),gamma.data(),nullptr,message,
-                                                   sizeof message) == 0 && message[0] == '\0' &&
-            openmx_exx_add_position_gradient_gamma(state,1,count,-alpha,periodic.density.data(),gamma.data(),nullptr,
-                                                   message,sizeof message) == 0,
-            std::string("the derivative of the Gamma form through the C interface fails: ")+message);
-    require(openmx_exx_add_position_gradient_blocks(state,0,2,-alpha,periodic.blocks.data(),site.data(),nullptr,message,
-                                                    sizeof message) == 0 && message[0] == '\0' &&
-            openmx_exx_add_position_gradient_blocks(state,2,count,-alpha,periodic.blocks.data(),site.data(),nullptr,
-                                                    message,sizeof message) == 0,
-            std::string("the derivative of the site form through the C interface fails: ")+message);
+    bool done =
+        openmx_exx_add_position_gradient_gamma(state,0,1,-alpha,periodic.density.data(),gamma.data(),nullptr,message,
+                                               sizeof message) == 0 && message[0] == '\0' &&
+        openmx_exx_add_position_gradient_gamma(state,1,count,-alpha,periodic.density.data(),gamma.data(),nullptr,
+                                               message,sizeof message) == 0;
+    require(done,std::string("the derivative of the Gamma form through the C interface fails: ")+message);
+    done =
+        openmx_exx_add_position_gradient_blocks(state,0,2,-alpha,periodic.blocks.data(),site.data(),nullptr,message,
+                                                sizeof message) == 0 && message[0] == '\0' &&
+        openmx_exx_add_position_gradient_blocks(state,2,count,-alpha,periodic.blocks.data(),site.data(),nullptr,
+                                                message,sizeof message) == 0;
+    require(done,std::string("the derivative of the site form through the C interface fails: ")+message);
     Worst same("C interface against the C++ interface (relative)",1e-13);
     for (std::size_t e = 0; e < 3*atoms; ++e) {
       same.add(std::fabs(gamma[e]-periodic.gamma[e])/largest(periodic.gamma));
