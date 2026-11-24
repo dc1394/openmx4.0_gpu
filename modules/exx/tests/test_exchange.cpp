@@ -683,16 +683,18 @@ void exchange_backend(const std::string& path)
   long calls = 0;
   const OpenMXExxDenseBackend table{&counting_dgemm,&calls};
   const DenseBackend products(&table);
-  // One centre atom takes two products of its own and five for every V
-  // neighbour: every sum over the ABFs is one product.  The Gamma form adds
-  // up the V blocks of the images of an atom first, so it counts the atoms
-  // among the V neighbours.
+  // One centre atom takes two products of its own.  Every V neighbour adds
+  // one product for W and four for every ABF of the centre: the four terms
+  // are computed for one ABF at a time.  The Gamma form adds up the V blocks
+  // of the images of an atom first, so it counts the atoms among the V
+  // neighbours.
   long expected = 0, expected_gamma = 0;
   for (std::size_t a = 0; a < atoms; ++a) {
     std::set<int> distinct;
     for (const Site& site : system.v_neighbours[a]) distinct.insert(site.atom);
-    expected += 2+5*static_cast<long>(system.v_neighbours[a].size());
-    expected_gamma += 2+5*static_cast<long>(distinct.size());
+    const long each = 1+4*static_cast<long>(system.abf_count[a]);
+    expected += 2+each*static_cast<long>(system.v_neighbours[a].size());
+    expected_gamma += 2+each*static_cast<long>(distinct.size());
   }
   require(expected_gamma < expected,"the fixture is expected to list images of one atom as V neighbours");
 

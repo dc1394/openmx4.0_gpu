@@ -44,8 +44,8 @@ The guide asks for three things, and the table has a block for each:
 The device takes a matrix product of the exchange build only when the product
 is large (source/openmx_exact_exchange_device.h): the systems marked "device"
 below have such products, the others run the same code with every product on
-the host.  Counted with the CPU build, one build of siz-p444 has 994 matrix
-products and one of diaz-p222 has 2934; in both, 4 are large enough for the
+the host.  Counted with the CPU build, one build of siz-p444 has 54850 matrix
+products and one of diaz-p222 has 162326; in both, 4 are large enough for the
 device, two for each centre atom, and they hold 58% and 53% of the
 multiplications.  The table expects exactly these products on the device, or
 left to the host for lack of device memory.

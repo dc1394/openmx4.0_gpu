@@ -24,9 +24,10 @@ extern "C" {
 
 /* dgemm computes C = alpha op(A) op(B) + beta C for column-major arrays with
    the arguments of DGEMM of the BLAS (transa, transb: 'N' or 'T'), and
-   returns 0 on success.  Whether it runs on the host or on a device is its
-   own business; the arrays it receives are host memory.  context is passed
-   through unchanged. */
+   returns 0 on success.  As DGEMM, it does not read C when beta is zero: the
+   library passes arrays there that it has not set.  Whether it runs on the
+   host or on a device is its own business; the arrays it receives are host
+   memory.  context is passed through unchanged. */
 typedef struct {
   int (*dgemm)(void *context, char transa, char transb, int m, int n, int k, double alpha,
                const double *a, int lda, const double *b, int ldb, double beta, double *c, int ldc);

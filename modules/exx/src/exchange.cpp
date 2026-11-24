@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <memory>
 #include <set>
 #include <stdexcept>
 #include <utility>
@@ -66,6 +67,31 @@ std::vector<std::size_t> folded_columns(const System& system, const std::vector<
   return folded;
 }
 
+// The transpose of the rows x columns array of block, written over it.
+void transpose_in_place(double* block, std::size_t rows, std::size_t columns, std::vector<double>& scratch)
+{
+  scratch.assign(block,block+rows*columns);
+  for (std::size_t c = 0; c < columns; ++c)
+    for (std::size_t r = 0; r < rows; ++r) block[c*rows+r] = scratch[r*columns+c];
+}
+
+// A run of neighbouring columns in a list of columns: the entries first to
+// first+count-1 of the list are the columns column to column+count-1.
+struct Run {
+  std::size_t first, column, count;
+};
+
+void find_runs(const std::vector<std::size_t>& column, std::vector<Run>& runs)
+{
+  runs.clear();
+  for (std::size_t l = 0; l < column.size();) {
+    std::size_t count = 1;
+    while (l+count < column.size() && column[l+count] == column[l]+count) ++count;
+    runs.push_back(Run{l,column[l],count});
+    l += count;
+  }
+}
+
 // The contribution of the centre atom a, section 6.4.  The columns of the
 // density matrix are numbered 0..s-1 by the caller: the orbitals of the sites
 // of S in the site form, the orbitals of the unit cell in the Gamma form.
@@ -87,83 +113,100 @@ std::vector<std::size_t> folded_columns(const System& system, const std::vector<
 // product with the T blocks transforms both.
 //
 // Layouts, with P and mu on A, Q and nu on B, l a column of loc(B):
-//   T_a [(P,mu), lambda]   G [(P,mu), column]   W [(P,nu), l]   Wt [(P,l), nu]
-// Every sum over P together with another index is one matrix product.
+//   T_a [(P,mu), lambda]   W [(P,nu), l]   G and the bracket [(P,column), mu]
+// The two products with the T blocks of the centre give and take G and the
+// bracket as [(P,mu), column]; the arrays are turned in between.  The part of
+// one P is then one piece of memory, and the entries of one column lie
+// together in it.
+//
+// The four terms of a V neighbour are computed for one P at a time.  W_P is a
+// matrix [nu, l] that a product takes as it is or transposed.  One product
+// over all P needs a second copy of W with l before nu and the columns of
+// loc(B) of all of G in a new order; that form took 1.5 to 1.8 times as long
+// (section 12 of the implementation guide).
 template <class Sink>
 void centre_contribution(const System& system, std::size_t a, std::size_t s, const std::vector<double>& dloc,
                          Sink& sink, const DenseBackend& backend)
 {
   const std::size_t np = system.abf_count[a], ua = system.orbital_count[a], ell = sink.width(a);
-  const std::size_t rows = np*ua;
+  const std::size_t rows = np*ua, part = s*ua;
   const double* tst = sink.t(a);
   const double* da = dloc.data();
 
-  std::vector<double> g(rows*s), bracket(rows*s,0.0);
-  backend.multiply(rows,s,ell,1.0,tst,dloc.data(),0.0,g.data());      // G = T D[loc(A), .]
+  // The products write every element of G and of the last result: the two
+  // arrays are not set to zero first.
+  const std::unique_ptr<double[]> g(new double[rows*s]);
+  std::vector<double> bracket(rows*s,0.0), scratch;
+  backend.multiply(rows,s,ell,1.0,tst,dloc.data(),0.0,g.get());       // G = T D[loc(A), .]
+  for (std::size_t p = 0; p < np; ++p) transpose_in_place(g.get()+p*part,ua,s,scratch);
 
-  std::vector<double> w, wt, gathered, density, product;
+  std::vector<Run> runs;
+  std::vector<double> w, dl, dba, gathered, k1, first, second, x3, x4;
   for (std::size_t ib = 0; ib < sink.groups(); ++ib) {
     const std::size_t b = sink.atom(ib);
     const std::size_t nq = system.abf_count[b], ub = system.orbital_count[b], lb = sink.width(b);
     const std::vector<std::size_t>& column = sink.columns(ib);         // lb entries
+    find_runs(column,runs);
 
-    // W_{P,B} = sum_Q V_PQ T_Q, equation (10), and its copy with l before nu.
+    // W_{P,B} = sum_Q V_PQ T_Q, equation (10)
     w.resize(np*ub*lb);
     backend.multiply(np,ub*lb,nq,1.0,sink.v(ib),sink.t(b),0.0,w.data());
-    wt.resize(np*lb*ub);
-    for (std::size_t p = 0; p < np; ++p)
-      for (std::size_t nu = 0; nu < ub; ++nu)
-        for (std::size_t l = 0; l < lb; ++l) wt[(p*lb+l)*ub+nu] = w[(p*ub+nu)*lb+l];
 
-    // (i)  sum_P G_P[., loc(B)] W_P^T:  [mu,(P,l)] [(P,l),nu]
-    gathered.resize(ua*np*lb);
+    // D[A, loc(B)] as [mu, l] and D[A, B] as [nu, mu]
+    dl.resize(ua*lb);
     for (std::size_t mu = 0; mu < ua; ++mu)
-      for (std::size_t p = 0; p < np; ++p) {
-        const double* source = g.data()+(p*ua+mu)*s;
-        double* target = gathered.data()+(mu*np+p)*lb;
-        for (std::size_t l = 0; l < lb; ++l) target[l] = source[column[l]];
+      for (std::size_t l = 0; l < lb; ++l) dl[mu*lb+l] = da[mu*s+column[l]];
+    dba.resize(ub*ua);
+    for (std::size_t nu = 0; nu < ub; ++nu)
+      for (std::size_t mu = 0; mu < ua; ++mu) dba[nu*ua+mu] = da[mu*s+column[nu]];
+
+    gathered.resize(lb*ua);
+    x3.resize(ub*ua);
+    x4.resize(lb*ua);
+    k1.assign(ub*ua,0.0);                                              // term (i) as [nu, mu]
+    second.assign(ua*lb,0.0);
+    for (std::size_t p = 0; p < np; ++p) {
+      const double* wp = w.data()+p*ub*lb;                             // W_P [nu, l]
+      const double* gp = g.get()+p*part;                               // G_P [column, mu]
+      double* bp = bracket.data()+p*part;                              // bracket_P [column, mu]
+
+      // G_P[loc(B), .] as [l, mu]; its first u_b rows are G_P[B, .]
+      for (const Run& run : runs) std::copy_n(gp+run.column*ua,run.count*ua,gathered.data()+run.first*ua);
+
+      // (i)  sum_l W_P[., l] G_P[loc(B), .]
+      backend.multiply(ub,ua,lb,1.0,wp,gathered.data(),1.0,k1.data());
+
+      // (ii)  sum_nu G_P[B, .]^T W_P
+      backend.transposed_multiply(ua,lb,ub,1.0,gathered.data(),wp,1.0,second.data());
+
+      // (iii)  bracket_P[B, .] += W_P D[A, loc(B)]^T
+      backend.multiply_transposed(ub,ua,lb,1.0,wp,dl.data(),0.0,x3.data());
+      for (std::size_t nu = 0; nu < ub; ++nu) {
+        double* target = bp+column[nu]*ua;
+        for (std::size_t mu = 0; mu < ua; ++mu) target[mu] += x3[nu*ua+mu];
       }
-    product.resize(ua*ub);
-    backend.multiply(ua,ub,np*lb,1.0,gathered.data(),wt.data(),0.0,product.data());
-    sink.first(ib,product.data());
 
-    // (ii)  sum_P G_P[., B] W_P:  [mu,(P,nu)] [(P,nu),l]
-    gathered.resize(ua*np*ub);
-    for (std::size_t mu = 0; mu < ua; ++mu)
-      for (std::size_t p = 0; p < np; ++p) {
-        const double* source = g.data()+(p*ua+mu)*s;
-        double* target = gathered.data()+(mu*np+p)*ub;
-        for (std::size_t nu = 0; nu < ub; ++nu) target[nu] = source[column[nu]];
+      // (iv)  bracket_P[loc(B), .] += W_P^T D[A, B]^T
+      backend.transposed_multiply(lb,ua,ub,1.0,wp,dba.data(),0.0,x4.data());
+      for (const Run& run : runs) {
+        double* target = bp+run.column*ua;
+        const double* source = x4.data()+run.first*ua;
+        for (std::size_t e = 0; e < run.count*ua; ++e) target[e] += source[e];
       }
-    product.resize(ua*lb);
-    backend.multiply(ua,lb,np*ub,1.0,gathered.data(),w.data(),0.0,product.data());
-    sink.second(ib,product.data());
+    }
 
-    // (iii)  bracket[., B] += D[A, loc(B)] W_P^T:  [(P,nu),l] [mu,l]^T
-    density.resize(ua*lb);
+    first.resize(ua*ub);
     for (std::size_t mu = 0; mu < ua; ++mu)
-      for (std::size_t l = 0; l < lb; ++l) density[mu*lb+l] = da[mu*s+column[l]];
-    product.resize(np*ub*ua);
-    backend.multiply_transposed(np*ub,ua,lb,1.0,w.data(),density.data(),0.0,product.data());
-    for (std::size_t p = 0; p < np; ++p)
-      for (std::size_t nu = 0; nu < ub; ++nu)
-        for (std::size_t mu = 0; mu < ua; ++mu) bracket[(p*ua+mu)*s+column[nu]] += product[(p*ub+nu)*ua+mu];
-
-    // (iv)  bracket[., loc(B)] += D[A, B] W_P:  [(P,l),nu] [mu,nu]^T
-    density.resize(ua*ub);
-    for (std::size_t mu = 0; mu < ua; ++mu)
-      for (std::size_t nu = 0; nu < ub; ++nu) density[mu*ub+nu] = da[mu*s+column[nu]];
-    product.resize(np*lb*ua);
-    backend.multiply_transposed(np*lb,ua,ub,1.0,wt.data(),density.data(),0.0,product.data());
-    for (std::size_t p = 0; p < np; ++p)
-      for (std::size_t l = 0; l < lb; ++l)
-        for (std::size_t mu = 0; mu < ua; ++mu) bracket[(p*ua+mu)*s+column[l]] += product[(p*lb+l)*ua+mu];
+      for (std::size_t nu = 0; nu < ub; ++nu) first[mu*ub+nu] = k1[nu*ua+mu];
+    sink.first(ib,first.data());
+    sink.second(ib,second.data());
   }
 
   // rows loc(A):  sum_P T_P^T bracket_P
-  product.resize(ell*s);
-  backend.transposed_multiply(ell,s,rows,1.0,tst,bracket.data(),0.0,product.data());
-  sink.last(product.data());
+  for (std::size_t p = 0; p < np; ++p) transpose_in_place(bracket.data()+p*part,s,ua,scratch);
+  const std::unique_ptr<double[]> last(new double[ell*s]);
+  backend.transposed_multiply(ell,s,rows,1.0,tst,bracket.data(),0.0,last.get());
+  sink.last(last.get());
 }
 
 // ---- site form -------------------------------------------------------------
@@ -363,9 +406,9 @@ void for_mirrored(const System& system, const BlockLayout& layout, Visit visit)
 // V block of a neighbour and in the columns of the T blocks, so the folding
 // is done before the products.  The V blocks of the images of an atom are
 // added up, and so are the columns of the T blocks that belong to one
-// orbital.  A cell that is smaller than the cutoffs then costs five products
-// for every atom among the V neighbours instead of five for every image, and
-// no array has more than N columns.
+// orbital.  A cell that is smaller than the cutoffs then costs the products
+// of a V neighbour once for every atom among the V neighbours instead of
+// once for every image, and no array has more than N columns.
 class GammaSink {
  public:
   GammaSink(const System& system, std::size_t a, double factor, std::span<double> k,
