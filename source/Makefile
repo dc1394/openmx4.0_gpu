@@ -313,7 +313,7 @@ OBJS    = openmx_grid_assembly.o openmx.o openmx_common.o Input_std.o Inputtools
           Set_ContMat_Cluster_LNO.o Hamiltonian_Band.o Matrix_Band_LNO.o Overlap_Band.o Hamiltonian_Cluster_NC.o \
           Hamiltonian_Band_NC.o Hamiltonian_Cluster_SO.o Get_OneD_HS_Col.o \
           SetPara_DFT.o \
-          DFT.o Exact_Exchange.o Exact_Exchange_Device.o Mixing_DM.o Mixing_H.o Mixing_V.o Force.o Stress.o Poisson.o Poisson_ESM.o \
+          DFT.o Exact_Exchange.o Exact_Exchange_Device.o Exact_Exchange_Host.o Mixing_DM.o Mixing_H.o Mixing_V.o Force.o Stress.o Poisson.o Poisson_ESM.o \
           Cluster_DFT_Col.o Cluster_DFT_NonCol.o Cluster_DFT_Dosout.o Cluster_DFT_ON2.o Cluster_DFT_Col_LNO.o \
           Band_DFT_Col.o Band_DFT_NonCol.o Band_DFT_NonCol_GB.o Band_DFT_kpath.o Band_DFT_kpath_LNO.o Band_DFT_MO.o \
           Cluster_DFT_Col_CWF.o Cluster_DFT_NonCol_CWF.o Band_DFT_Col_CWF.o Band_DFT_NonCol_CWF.o \
@@ -714,10 +714,12 @@ Unfolding_Bands.o: Unfolding_Bands.c openmx_common.h
 	$(CC) -c Unfolding_Bands.c
 Band_DFT_Dosout.o: Band_DFT_Dosout.c openmx_common.h
 	$(CC) -c Band_DFT_Dosout.c
-Exact_Exchange.o: Exact_Exchange.c openmx_exact_exchange.h openmx_exact_exchange_device.h openmx_exx.h ../modules/exx/include/openmx/exx/exx.h
+Exact_Exchange.o: Exact_Exchange.c openmx_exact_exchange.h openmx_exact_exchange_device.h openmx_exact_exchange_host.h openmx_exx.h ../modules/exx/include/openmx/exx/exx.h
 	$(CC) -c Exact_Exchange.c
 Exact_Exchange_Device.o: Exact_Exchange_Device.c openmx_exact_exchange_device.h
 	$(CC) -c Exact_Exchange_Device.c
+Exact_Exchange_Host.o: Exact_Exchange_Host.c openmx_exact_exchange_host.h
+	$(CC) -c Exact_Exchange_Host.c
 Mixing_DM.o: Mixing_DM.c openmx_common.h
 	$(CC) -c Mixing_DM.c
 Mixing_H.o: Mixing_H.c openmx_common.h openmx_mixing_policy.h openmx_core_mixing.h
