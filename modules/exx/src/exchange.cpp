@@ -6,6 +6,7 @@
 #include <memory>
 #include <set>
 #include <stdexcept>
+#include <type_traits>
 #include <utility>
 
 namespace openmx::exx {
@@ -98,6 +99,14 @@ struct PieceWork {
   std::vector<double> scratch, gathered, x3, x4, k1, second;
 };
 
+// The number of pieces of the work of the centre atom a: the threads of the
+// backend, or the ABFs of the atom when they are fewer.  Every loop of the
+// build of the atom is asked for one call for each piece.
+std::size_t piece_count(const System& system, std::size_t a, const DenseBackend& backend)
+{
+  return std::max<std::size_t>(1,std::min(backend.pieces(),system.abf_count[a]));
+}
+
 // The contribution of the centre atom a, section 6.4.  The columns of the
 // density matrix are numbered 0..s-1 by the caller: the orbitals of the sites
 // of S in the site form, the orbitals of the unit cell in the Gamma form.
@@ -114,9 +123,11 @@ struct PieceWork {
 //                   t(atom(g)); the first u_b of them belong to B itself
 //   first(g, t1)    rows A,      columns B        term (i)
 //   second(g, t2)   rows A,      columns loc(B)   term (ii)
-//   last(t4)        rows loc(A), all columns      terms (iii) and (iv)
+//   last(t4, backend, pieces)
+//                   rows loc(A), all columns      terms (iii) and (iv)
 // Term (iii) is added to the bracket of term (iv) at the columns of B, so one
-// product with the T blocks transforms both.
+// product with the T blocks transforms both.  A sink may add the last result
+// in a loop of the backend with one call for each piece.
 //
 // Layouts, with P and mu on A, Q and nu on B, l a column of loc(B):
 //   T_a [(P,mu), lambda]   W [(P,nu), l]   G and the bracket [(P,column), mu]
@@ -137,17 +148,19 @@ struct PieceWork {
 // bracket of different P are different memory.  Terms (i) and (ii) are sums
 // over P: every piece adds up its own P in arrays of its own, and the sums of
 // the pieces are added in the order of the pieces.  With one piece the
-// operations and their order are those of a loop over all P.
+// operations and their order are those of a loop over all P.  The number of
+// pieces is piece_count(); the callers that gather dloc in pieces use the
+// same number.
 template <class Sink>
-void centre_contribution(const System& system, std::size_t a, std::size_t s, const std::vector<double>& dloc,
-                         Sink& sink, const DenseBackend& backend)
+void centre_contribution(const System& system, std::size_t a, std::size_t s, const double* dloc, Sink& sink,
+                         const DenseBackend& backend)
 {
   const std::size_t np = system.abf_count[a], ua = system.orbital_count[a], ell = sink.width(a);
   const std::size_t rows = np*ua, part = s*ua;
   const double* tst = sink.t(a);
-  const double* da = dloc.data();
+  const double* da = dloc;
 
-  const std::size_t pieces = std::max<std::size_t>(1,std::min(backend.pieces(),np));
+  const std::size_t pieces = piece_count(system,a,backend);
   const auto begin = [np,pieces](std::size_t c) { return c*np/pieces; };
   std::vector<PieceWork> work(pieces);
 
@@ -155,7 +168,7 @@ void centre_contribution(const System& system, std::size_t a, std::size_t s, con
   // arrays are not set to zero first.  The bracket is set to zero by the
   // pieces that fill it.
   const std::unique_ptr<double[]> g(new double[rows*s]), bracket(new double[rows*s]);
-  backend.multiply(rows,s,ell,1.0,tst,dloc.data(),0.0,g.get());       // G = T D[loc(A), .]
+  backend.multiply(rows,s,ell,1.0,tst,dloc,0.0,g.get());               // G = T D[loc(A), .]
   backend.parallel_for(pieces,[&](std::size_t c) {
     for (std::size_t p = begin(c); p < begin(c+1); ++p) {
       transpose_in_place(g.get()+p*part,ua,s,work[c].scratch);
@@ -251,7 +264,7 @@ void centre_contribution(const System& system, std::size_t a, std::size_t s, con
   });
   const std::unique_ptr<double[]> last(new double[ell*s]);
   backend.transposed_multiply(ell,s,rows,1.0,tst,bracket.get(),0.0,last.get());
-  sink.last(last.get());
+  sink.last(last.get(),backend,pieces);
 }
 
 // The derivatives of E_x = (1/2) sum D K with respect to the blocks of the
@@ -374,8 +387,11 @@ std::vector<Site> column_sites(const System& system, std::size_t a)
   return sites;
 }
 
+class LayoutBlocks;
+
 // Blocks is the store of the blocks of K: at(key) gives the block of a key,
-// u_row x u_column elements.
+// u_row x u_column elements.  With the store of an array in a layout
+// (LayoutBlocks) the sink also gathers D and adds the last result in pieces.
 template <class Blocks>
 class SiteSink {
  public:
@@ -417,6 +433,36 @@ class SiteSink {
     return dloc;
   }
 
+  // D[loc(A), S] from an array of D in the layout of the store of K.  The
+  // sites of loc(A) are divided into pieces, and the pieces copy the rows of
+  // their sites; a loop of the backend may run them at the same time.  The
+  // blocks of the pairs of sites cover the array, so every element is
+  // written.  The index of the block of every pair is kept for last().
+  std::unique_ptr<double[]> density(std::span<const double> values, const DenseBackend& backend, std::size_t pieces)
+  {
+    static_assert(std::is_same_v<Blocks,LayoutBlocks>,"only a store in a layout gathers D in pieces");
+    const BlockLayout& layout = k_.layout();
+    const std::vector<Site>& loc = system_.c_neighbours[a_];
+    const std::vector<std::size_t>& first = system_.c_offset[a_];      // the first row of every site of loc(A)
+    const std::size_t s = size(), count = sites_.size();
+    std::unique_ptr<double[]> dloc(new double[first.back()*s]);
+    block_.resize(loc.size()*count);
+    backend.parallel_for(pieces,[&](std::size_t c) {
+      for (std::size_t i = c*loc.size()/pieces; i < (c+1)*loc.size()/pieces; ++i) {
+        const std::size_t rows = first[i+1]-first[i];
+        for (std::size_t j = 0; j < count; ++j) {
+          const std::size_t b = layout.find(BlockKey{loc[i].atom,sites_[j].atom,difference(sites_[j].cell,loc[i].cell)});
+          if (b == layout.keys.size()) throw std::invalid_argument("the layout lacks a block of the density matrix");
+          block_[i*count+j] = b;
+          const std::size_t columns = offset_[j+1]-offset_[j];
+          const double* source = values.data()+layout.offset[b];
+          for (std::size_t r = 0; r < rows; ++r) std::copy_n(source+r*columns,columns,dloc.get()+(first[i]+r)*s+offset_[j]);
+        }
+      }
+    });
+    return dloc;
+  }
+
   const std::vector<std::size_t>& columns(std::size_t ib)
   {
     const Site& b = system_.v_neighbours[a_][ib];
@@ -450,17 +496,45 @@ class SiteSink {
     }
   }
 
-  void last(const double* values)
+  // K[loc(A), S] += factor values.  The store of a layout takes the blocks
+  // that density() found, in pieces of the blocks: piece c adds to the
+  // blocks whose index in the layout leaves the remainder c when divided by
+  // the number of pieces.  Two pairs of sites share a block of K when loc(A)
+  // holds two images of one atom.  Every piece goes through the pairs in the
+  // order of the loop on one thread, so every element receives its additions
+  // in the same order.  Another store, such as the map of a BlockMatrix,
+  // takes the blocks on the calling thread.
+  void last(const double* values, const DenseBackend& backend, std::size_t pieces)
   {
     const std::vector<Site>& loc = system_.c_neighbours[a_];
-    const std::size_t s = size();
-    for (std::size_t i = 0; i < loc.size(); ++i) {
-      const std::size_t begin = system_.c_offset[a_][i], rows = system_.c_offset[a_][i+1]-begin;
-      for (std::size_t j = 0; j < sites_.size(); ++j) {
-        const std::size_t columns = offset_[j+1]-offset_[j];
-        const std::span<double> block = k_.at(BlockKey{loc[i].atom,sites_[j].atom,difference(sites_[j].cell,loc[i].cell)});
-        for (std::size_t r = 0; r < rows; ++r)
-          for (std::size_t c = 0; c < columns; ++c) block[r*columns+c] += factor_*values[(begin+r)*s+offset_[j]+c];
+    const std::size_t s = size(), count = sites_.size();
+    if constexpr (std::is_same_v<Blocks,LayoutBlocks>) {
+      if (block_.size() != loc.size()*count)
+        throw std::logic_error("the blocks of the exchange matrix are added before they are found");
+      backend.parallel_for(pieces,[&](std::size_t piece) {
+        for (std::size_t i = 0; i < loc.size(); ++i) {
+          const std::size_t begin = system_.c_offset[a_][i], rows = system_.c_offset[a_][i+1]-begin;
+          for (std::size_t j = 0; j < count; ++j) {
+            const std::size_t b = block_[i*count+j];
+            if (b%pieces != piece) continue;
+            const std::size_t columns = offset_[j+1]-offset_[j];
+            const std::span<double> block = k_.block(b);
+            for (std::size_t r = 0; r < rows; ++r)
+              for (std::size_t c = 0; c < columns; ++c) block[r*columns+c] += factor_*values[(begin+r)*s+offset_[j]+c];
+          }
+        }
+      });
+    } else {
+      (void)backend;
+      (void)pieces;
+      for (std::size_t i = 0; i < loc.size(); ++i) {
+        const std::size_t begin = system_.c_offset[a_][i], rows = system_.c_offset[a_][i+1]-begin;
+        for (std::size_t j = 0; j < count; ++j) {
+          const std::size_t columns = offset_[j+1]-offset_[j];
+          const std::span<double> block = k_.at(BlockKey{loc[i].atom,sites_[j].atom,difference(sites_[j].cell,loc[i].cell)});
+          for (std::size_t r = 0; r < rows; ++r)
+            for (std::size_t c = 0; c < columns; ++c) block[r*columns+c] += factor_*values[(begin+r)*s+offset_[j]+c];
+        }
       }
     }
   }
@@ -474,6 +548,8 @@ class SiteSink {
   std::vector<std::size_t> offset_;                 // first column of every site of S
   std::map<std::array<int,4>,std::size_t> index_;   // position of a site in S
   std::vector<std::size_t> columns_;
+  std::vector<std::size_t> block_;                  // the block in the layout of every pair (i, j) of a site of
+                                                    // loc(A) and a site of S, at i |S| + j; from density()
 };
 
 // ---- site form in one array --------------------------------------------------
@@ -506,8 +582,16 @@ class LayoutBlocks {
   {
     const std::size_t i = layout_.find(key);
     if (i == layout_.keys.size()) throw std::invalid_argument("the layout lacks a block of the exchange matrix");
+    return block(i);
+  }
+
+  // The block of index i in the layout.
+  std::span<double> block(std::size_t i) const
+  {
     return values_.subspan(layout_.offset[i],layout_.offset[i+1]-layout_.offset[i]);
   }
+
+  const BlockLayout& layout() const noexcept { return layout_; }
 
  private:
   const BlockLayout& layout_;
@@ -596,11 +680,15 @@ class GammaSink {
       for (std::size_t l = 0; l < lb; ++l) k_[(offset_[a_]+mu)*n_+column[l]] += factor_*values[mu*lb+l];
   }
 
-  void last(const double* values)
+  // The orbitals of loc(A) are different rows of K: the pieces of the rows
+  // add to different memory, and every element receives one addition.
+  void last(const double* values, const DenseBackend& backend, std::size_t pieces)
   {
     const std::vector<std::size_t>& row = folded(a_).column;
-    for (std::size_t lambda = 0; lambda < row.size(); ++lambda)
-      for (std::size_t column = 0; column < n_; ++column) k_[row[lambda]*n_+column] += factor_*values[lambda*n_+column];
+    backend.parallel_for(pieces,[&](std::size_t c) {
+      for (std::size_t lambda = c*row.size()/pieces; lambda < (c+1)*row.size()/pieces; ++lambda)
+        for (std::size_t column = 0; column < n_; ++column) k_[row[lambda]*n_+column] += factor_*values[lambda*n_+column];
+    });
   }
 
  private:
@@ -670,6 +758,20 @@ std::vector<double> gathered_rows(std::span<const double> density, std::size_t n
   return dloc;
 }
 
+// The same rows in pieces, which a loop of the backend may run at the same
+// time.  Every row is copied whole, so every element is written.
+std::unique_ptr<double[]> gathered_rows(std::span<const double> density, std::size_t n,
+                                        const std::vector<std::size_t>& row, const DenseBackend& backend,
+                                        std::size_t pieces)
+{
+  std::unique_ptr<double[]> dloc(new double[row.size()*n]);
+  backend.parallel_for(pieces,[&](std::size_t c) {
+    for (std::size_t lambda = c*row.size()/pieces; lambda < (c+1)*row.size()/pieces; ++lambda)
+      std::copy_n(density.data()+row[lambda]*n,n,dloc.get()+lambda*n);
+  });
+  return dloc;
+}
+
 void check_dense(std::size_t n, std::size_t size, const char* what)
 {
   if (size != n*n) throw std::invalid_argument(what);
@@ -714,7 +816,7 @@ void add_exchange_blocks(const System& system, std::size_t atom, double factor, 
   if (!std::ranges::equal(k.orbital_count(),system.orbital_count))
     throw std::invalid_argument("the blocks of K do not belong to this system");
   SiteSink<BlockMatrix> sink(system,atom,factor,k);
-  centre_contribution(system,atom,sink.size(),sink.density(density),sink,backend);
+  centre_contribution(system,atom,sink.size(),sink.density(density).data(),sink,backend);
 }
 
 BlockMatrix exchange_blocks(const System& system, const DensityBlocks& density, double alpha,
@@ -846,14 +948,10 @@ void add_exchange_blocks(const System& system, const BlockLayout& layout, std::s
   check(system,layout);
   if (density.size() != layout.elements()) throw std::invalid_argument("the density matrix does not have the size of the layout");
   if (k.size() != layout.elements()) throw std::invalid_argument("the exchange matrix does not have the size of the layout");
-  const DensityBlocks blocks = [&layout,density](const BlockKey& key, std::span<double> block) {
-    const std::size_t i = layout.find(key);
-    if (i == layout.keys.size()) throw std::invalid_argument("the layout lacks a block of the density matrix");
-    std::copy_n(density.begin()+static_cast<std::ptrdiff_t>(layout.offset[i]),block.size(),block.begin());
-  };
   LayoutBlocks store(layout,k);
   SiteSink<LayoutBlocks> sink(system,atom,factor,store);
-  centre_contribution(system,atom,sink.size(),sink.density(blocks),sink,backend);
+  const std::unique_ptr<double[]> dloc = sink.density(density,backend,piece_count(system,atom,backend));
+  centre_contribution(system,atom,sink.size(),dloc.get(),sink,backend);
 }
 
 double block_asymmetry(const System& system, const BlockLayout& layout, std::span<const double> values)
@@ -895,7 +993,8 @@ void add_exchange_gamma(const System& system, std::size_t atom, double factor, s
   check_dense(n,density.size(),"the density matrix is not N x N");
   check_dense(n,k.size(),"the exchange matrix is not N x N");
   GammaSink sink(system,atom,factor,k,offset);
-  centre_contribution(system,atom,n,gathered_rows(density,n,sink.rows()),sink,backend);
+  const std::unique_ptr<double[]> dloc = gathered_rows(density,n,sink.rows(),backend,piece_count(system,atom,backend));
+  centre_contribution(system,atom,n,dloc.get(),sink,backend);
 }
 
 std::vector<double> exchange_gamma(const System& system, std::span<const double> density, double alpha,

@@ -50,11 +50,16 @@ extern "C" {
 
    The exchange build divides the ABFs of a centre atom into pieces, as many
    as threads or, with fewer ABFs, one for every ABF, and adds the sums over
-   the ABFs piece by piece.  For one value of threads and a dgemm that gives
-   the same result for the same arguments on every thread, the results do
-   not depend on the order or the timing of the calls.  They can differ by
-   rounding from the results for another value of threads; with one piece
-   they are those of the loop on the calling thread. */
+   the ABFs piece by piece.  openmx_exx_add_gamma and openmx_exx_add_blocks
+   also gather the rows of the density matrix that a centre atom needs, and
+   add the last part of its contribution to k, in loops with as many pieces.
+   These two steps give the same bits in pieces as on the calling thread:
+   every element of k receives the same additions in the same order.  For
+   one value of threads and a dgemm that gives the same result for the same
+   arguments on every thread, the results do not depend on the order or the
+   timing of the calls.  They can differ by rounding from the results for
+   another value of threads; with one piece they are those of the loop on
+   the calling thread. */
 typedef struct {
   int (*dgemm)(void *context, char transa, char transb, int m, int n, int k, double alpha,
                const double *a, int lda, const double *b, int ldb, double beta, double *c, int ldc);

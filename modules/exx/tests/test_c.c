@@ -265,11 +265,12 @@ int main(void)
      asked for one call for every piece.  The first atom has more than three
      ABFs and fewer than 64: 2 and 3 threads give 2 and 3 pieces, 64 threads
      one piece for every ABF.  The other two atoms have one ABF; they are one
-     piece, and the loop is not called for them.  A build hands the table two
-     loops for the first atom and two for every group of its V neighbours.
-     The Gamma form has one group for every atom among them, and these are
-     all three: the atoms are closer to the first one than the cutoff of its
-     V neighbours (4.2 + 2.5 bohr).
+     piece, and the loop is not called for them.  A build hands the table
+     four loops for the first atom and two for every group of its V
+     neighbours.  The four gather the rows of the density matrix, turn two
+     arrays and add the last result to K.  The Gamma form has one group for
+     every atom among them, and these are all three: the atoms are closer to
+     the first one than the cutoff of its V neighbours (4.2 + 2.5 bohr).
 
      The sums over the ABFs are added in another order than without pieces,
      so the numbers agree within rounding.  For one number of threads they
@@ -288,7 +289,7 @@ int main(void)
     forget_loops(&calls);
     memset(pieced, 0, sizeof pieced);
     CHECK(openmx_exx_add_gamma(state, 0, ATOMS, -0.25, d, pieced, &table, message, sizeof message) == 0);
-    CHECK(calls.loops == 2 + 2 * ATOMS && calls.smallest == pieces && calls.largest == pieces);
+    CHECK(calls.loops == 4 + 2 * ATOMS && calls.smallest == pieces && calls.largest == pieces);
     for (j = 0; j < N * N; ++j) CHECK(fabs(pieced[j] - k[j]) <= 1.0e-12 * scale);
     table.parallel_for = reversed_loop;
     memset(other, 0, sizeof other);
@@ -299,7 +300,7 @@ int main(void)
     forget_loops(&calls);
     memset(other, 0, sizeof other);
     CHECK(openmx_exx_add_gamma(state, 0, ATOMS, -0.25, d, other, &table, message, sizeof message) == 0);
-    CHECK(calls.products - before == products && calls.loops == 2 + 2 * ATOMS);
+    CHECK(calls.products - before == products && calls.loops == 4 + 2 * ATOMS);
     CHECK(calls.smallest == pieces && calls.largest == pieces && memcmp(pieced, other, sizeof pieced) == 0);
   }
   /* With one thread the loop is not called, and the numbers are those
@@ -390,7 +391,7 @@ int main(void)
   table.threads = 3;
   forget_loops(&calls);
   CHECK(openmx_exx_add_blocks(state, 0, ATOMS, -0.25, site_d, site_pieced, &table, message, sizeof message) == 0);
-  CHECK(calls.loops == 2 + 2 * groups && calls.smallest == 3 && calls.largest == 3);
+  CHECK(calls.loops == 4 + 2 * groups && calls.smallest == 3 && calls.largest == 3);
   for (element = 0; element < elements; ++element)
     CHECK(fabs(site_pieced[element] - site_k[element]) <= 1.0e-12 * scale);
   table.dgemm = counting_dgemm;
@@ -399,7 +400,7 @@ int main(void)
   forget_loops(&calls);
   memset(site_other, 0, elements * sizeof *site_other);
   CHECK(openmx_exx_add_blocks(state, 0, ATOMS, -0.25, site_d, site_other, &table, message, sizeof message) == 0);
-  CHECK(calls.products - before == site_products && calls.loops == 2 + 2 * groups);
+  CHECK(calls.products - before == site_products && calls.loops == 4 + 2 * groups);
   CHECK(calls.smallest == 3 && calls.largest == 3);
   CHECK(memcmp(site_pieced, site_other, elements * sizeof *site_pieced) == 0);
   table.parallel_for = NULL;

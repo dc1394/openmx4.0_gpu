@@ -211,6 +211,11 @@ bool same_as_blocks(const BlockLayout& layout, std::span<const double> array, co
   return true;
 }
 
+// The three forms of the build hand different loops to the table: the site
+// form with the blocks in a map (BlockMatrix), the site form in one array of
+// a layout, which the C interface uses, and the Gamma form.
+enum class Form { map, layout, gamma };
+
 // The loops that one build of K hands to the loop of a table, as the loops
 // of the tests record them: the number of loops for every count of calls.
 // centre_contribution() of exchange.cpp divides the ABFs of a centre atom
@@ -218,10 +223,14 @@ bool same_as_blocks(const BlockLayout& layout, std::span<const double> array, co
 // four kinds of loops, each with one call for every piece: one that turns G,
 // two for every group of V neighbours (the four terms, and the sums of the
 // second term) and one that turns the bracket.  That is 2 + 2 groups loops
-// for the atom.  With one piece all of this runs on the calling thread, and
-// the loop of the table is not called.  The groups are the V neighbours in
-// the site form and the atoms among the V neighbours in the Gamma form.
-Counts loops_of(const System& system, int threads, bool gamma)
+// for the atom.  The site form in one array and the Gamma form also gather
+// the rows of D[loc(A), .] and add the last result to K in a loop each, with
+// as many calls: 4 + 2 groups loops.  The site form with a map does these
+// two steps on the calling thread.  With one piece all of this runs on the
+// calling thread, and the loop of the table is not called.  The groups are
+// the V neighbours in the site form and the atoms among the V neighbours in
+// the Gamma form.
+Counts loops_of(const System& system, int threads, Form form)
 {
   Counts counts;
   for (std::size_t a = 0; a < system.orbital_count.size(); ++a) {
@@ -229,10 +238,35 @@ Counts loops_of(const System& system, int threads, bool gamma)
     if (pieces < 2) continue;
     std::set<int> atoms;
     for (const Site& site : system.v_neighbours[a]) atoms.insert(site.atom);
-    const std::size_t groups = gamma ? atoms.size() : system.v_neighbours[a].size();
-    counts[static_cast<int>(pieces)] += 2+2*static_cast<long>(groups);
+    const std::size_t groups = form == Form::gamma ? atoms.size() : system.v_neighbours[a].size();
+    counts[static_cast<int>(pieces)] += (form == Form::map ? 2 : 4)+2*static_cast<long>(groups);
   }
   return counts;
+}
+
+// The pairs of a site of loc(A) and a site of S(A) of the centre atoms whose
+// block of K another pair of the same centre also receives, as the site form
+// adds the last result.  Such pairs need two images of one atom in loc(A).
+std::size_t shared_pairs(const System& system)
+{
+  std::size_t shared = 0;
+  for (std::size_t a = 0; a < system.orbital_count.size(); ++a) {
+    std::set<std::array<int,4>> seen;
+    std::vector<Site> sites;
+    for (const Site& b : system.v_neighbours[a])
+      for (const Site& c : system.c_neighbours[static_cast<std::size_t>(b.atom)]) {
+        const Site site{c.atom,{b.cell[0]+c.cell[0],b.cell[1]+c.cell[1],b.cell[2]+c.cell[2]}};
+        if (seen.insert({site.atom,site.cell[0],site.cell[1],site.cell[2]}).second) sites.push_back(site);
+      }
+    std::map<BlockKey,std::size_t> pairs;
+    for (const Site& row : system.c_neighbours[a])
+      for (const Site& column : sites)
+        ++pairs[BlockKey{row.atom,column.atom,{column.cell[0]-row.cell[0],column.cell[1]-row.cell[1],
+                                                column.cell[2]-row.cell[2]}}];
+    for (const auto& [key, count] : pairs)
+      if (count > 1) shared += count;
+  }
+  return shared;
 }
 
 // l_b, the number of columns of the T blocks of atom b in a build: the
@@ -589,6 +623,19 @@ void exchange_layout(const std::string& path)
       try { add_exchange_blocks(system,shorter,a,1.0,few,out); } catch (const std::invalid_argument&) { missed = true; }
     }
     require(missed,"no exception for a layout that lacks a block");
+    // The same when the rows of D are gathered in pieces on threads of their
+    // own: the exception of a piece reaches the caller.  The atoms of the
+    // fixture have two and three ABFs, so both are divided into pieces.
+    const OpenMXExxDenseBackend threaded{nullptr,nullptr,&threaded_loop,3};
+    bool missed_in_pieces = false;
+    for (std::size_t a = 0; a < atoms && !missed_in_pieces; ++a) {
+      try {
+        add_exchange_blocks(system,shorter,a,1.0,few,out,DenseBackend(&threaded));
+      } catch (const std::invalid_argument&) {
+        missed_in_pieces = true;
+      }
+    }
+    require(missed_in_pieces,"no exception for a layout that lacks a block when the rows of D are gathered in pieces");
     expect_invalid("the symmetry of a layout that lacks a block",[&] { (void)block_asymmetry(system,shorter,few); });
 
     BlockLayout broken = layout;
@@ -1026,22 +1073,33 @@ void exchange_backend(const std::string& path)
     // piece.  The atoms of the fixture have 2 and 3 ABFs: two threads give
     // two pieces for both atoms, three threads and 64 threads one piece for
     // every ABF.  Each atom has 9 V neighbours, images of both atoms, so a
-    // build makes 2 + 2*9 loops for an atom in the site form and 2 + 2*2 in
-    // the Gamma form (the rule is at loops_of()).
+    // build makes 2 + 2*9 loops for an atom in the site form with a map,
+    // 4 + 2*9 in the site form in one array and 4 + 2*2 in the Gamma form
+    // (the rule is at loops_of()).
     //
     // The two atoms mirror each other: the first has 3 orbitals and 2 ABFs,
     // the second 2 orbitals and 3 ABFs.  The loops of a whole build are
     // therefore the same for pieces that follow the orbitals in place of the
     // ABFs, and the checks below also count the loops of every atom alone.
+    //
+    // The C neighbours of the atoms hold images of one atom, so pairs of
+    // sites share blocks of K when the site form in one array adds the last
+    // result in pieces of the blocks.  The comparisons with the map below
+    // then also check the order of the additions to those blocks.
     const int abfs[] = {2,3};
     require(system.orbital_count == std::vector<std::size_t>({3,2}) &&
             system.abf_count == std::vector<std::size_t>({2,3}) &&
-            loops_of(system,2,false) == Counts({{2,40}}) && loops_of(system,2,true) == Counts({{2,12}}) &&
-            loops_of(system,3,false) == Counts({{2,20},{3,20}}) && loops_of(system,3,true) == Counts({{2,6},{3,6}}) &&
-            loops_of(system,64,false) == loops_of(system,3,false) &&
-            loops_of(system,64,true) == loops_of(system,3,true),
+            loops_of(system,2,Form::map) == Counts({{2,40}}) && loops_of(system,2,Form::layout) == Counts({{2,44}}) &&
+            loops_of(system,2,Form::gamma) == Counts({{2,16}}) &&
+            loops_of(system,3,Form::map) == Counts({{2,20},{3,20}}) &&
+            loops_of(system,3,Form::layout) == Counts({{2,22},{3,22}}) &&
+            loops_of(system,3,Form::gamma) == Counts({{2,8},{3,8}}) &&
+            loops_of(system,64,Form::map) == loops_of(system,3,Form::map) &&
+            loops_of(system,64,Form::layout) == loops_of(system,3,Form::layout) &&
+            loops_of(system,64,Form::gamma) == loops_of(system,3,Form::gamma),
             "the fixture is expected to have atoms with 3 and 2 orbitals, 2 and 3 ABFs and 9 V neighbours each, images "
             "of both atoms");
+    require(shared_pairs(system) > 0,"the fixture is expected to have pairs of sites that share a block of K");
 
     Worst rounding("pieces of the ABFs against one piece",1e-12);
     for (const bool product : {false,true}) {
@@ -1057,13 +1115,21 @@ void exchange_backend(const std::string& path)
         const DenseBackend ordered = with(product,&in_order_loop,threads);
         shared.reset();
         const BlockMatrix site = exchange_blocks(system,density,alpha,ordered);
-        require(shared.counts == loops_of(system,threads,false),
+        require(shared.counts == loops_of(system,threads,Form::map),
                 "the site form does not hand the expected loops and pieces to the table");
         // Only a table with a product counts products.
         if (product) require(shared.products == expected,"the pieces change the number of products of the site form");
         shared.reset();
+        const std::vector<double> in_array = layout_exchange(system,layout,blocks_of_d,alpha,ordered);
+        require(shared.counts == loops_of(system,threads,Form::layout),
+                "the site form in one array does not hand the expected loops and pieces to the table");
+        if (product)
+          require(shared.products == expected,"the pieces change the number of products of the site form in one array");
+        require(same_as_blocks(layout,in_array,site),
+                "the pieces of the site form in one array differ from those in a map of blocks");
+        shared.reset();
         const std::vector<double> gamma = exchange_gamma(system,d,alpha,ordered);
-        require(shared.counts == loops_of(system,threads,true),
+        require(shared.counts == loops_of(system,threads,Form::gamma),
                 "the Gamma form does not hand the expected loops and pieces to the table");
         if (product)
           require(shared.products == expected_gamma,"the pieces change the number of products of the Gamma form");
@@ -1077,10 +1143,15 @@ void exchange_backend(const std::string& path)
           require(shared.counts == Counts({{pieces,2+2*9}}),
                   "the site form does not divide the ABFs of a centre atom into the expected pieces");
           shared.reset();
+          std::vector<double> part_array(layout.elements(),0.0);
+          add_exchange_blocks(system,layout,a,-alpha,blocks_of_d,part_array,ordered);
+          require(shared.counts == Counts({{pieces,4+2*9}}),
+                  "the site form in one array does not divide the work of a centre atom into the expected pieces");
+          shared.reset();
           std::vector<double> part_gamma(n*n,0.0);
           add_exchange_gamma(system,a,-alpha,d,part_gamma,ordered);
-          require(shared.counts == Counts({{pieces,2+2*2}}),
-                  "the Gamma form does not divide the ABFs of a centre atom into the expected pieces");
+          require(shared.counts == Counts({{pieces,4+2*2}}),
+                  "the Gamma form does not divide the work of a centre atom into the expected pieces");
         }
         for (const Loop loop : {&reversed_loop,&threaded_loop}) {
           const DenseBackend other = with(product,loop,threads);
@@ -1124,10 +1195,12 @@ void exchange_backend(const std::string& path)
     // of the others, the second and the last.  The build of the atom makes
     // two products before its first loop with products.  In that loop the
     // other two pieces make their four products each, and the failing piece
-    // ends with its first product.  The build ends after this loop, the
-    // second one that it hands to the table.  The three forms of the build
-    // go through this: the blocks in a map, the Gamma form, and the site form
-    // in one array of a layout, which is the one that the C interface calls.
+    // ends with its first product.  The build ends after this loop.  It is
+    // the second loop that the site form with a map hands to the table, and
+    // the third of the Gamma form and of the site form in one array, whose
+    // first loop gathers the rows of D.  The three forms of the build go
+    // through this: the blocks in a map, the Gamma form, and the site form in
+    // one array of a layout, which is the one that the C interface calls.
     //
     // A whole build ends in the same way at its first atom, which has two
     // ABFs: one piece fails and one runs, and either piece is the failing one
@@ -1151,14 +1224,14 @@ void exchange_backend(const std::string& path)
             std::vector<double> k(n*n,0.0);
             add_exchange_gamma(system,1,-alpha,d,k,broken);
           });
-          require(failing.products == 2+4*2+1 && failing.counts == Counts({{3,2}}),
+          require(failing.products == 2+4*2+1 && failing.counts == Counts({{3,3}}),
                   "the Gamma form does not run the other pieces, or goes on after the loop in which a product fails");
           failing.reset();
           expect_runtime_error("a product that fails inside a piece of the site form in one array",[&] {
             std::vector<double> k(layout.elements(),0.0);
             add_exchange_blocks(system,layout,1,-alpha,blocks_of_d,k,broken);
           });
-          require(failing.products == 2+4*2+1 && failing.counts == Counts({{3,2}}),
+          require(failing.products == 2+4*2+1 && failing.counts == Counts({{3,3}}),
                   "the site form in one array does not run the other pieces, or goes on after the loop in which a "
                   "product fails");
         }
@@ -1170,9 +1243,14 @@ void exchange_backend(const std::string& path)
           require(failing.products == 2+4*1+1 && failing.counts == Counts({{2,2}}),
                   "a build of the site form goes on after a product has failed inside a piece");
           failing.reset();
+          expect_runtime_error("a product that fails inside a piece of a build of the site form in one array",
+                               [&] { (void)layout_exchange(system,layout,blocks_of_d,alpha,broken); });
+          require(failing.products == 2+4*1+1 && failing.counts == Counts({{2,3}}),
+                  "a build of the site form in one array goes on after a product has failed inside a piece");
+          failing.reset();
           expect_runtime_error("a product that fails inside a piece of a build of the Gamma form",
                                [&] { (void)exchange_gamma(system,d,alpha,broken); });
-          require(failing.products == 2+4*1+1 && failing.counts == Counts({{2,2}}),
+          require(failing.products == 2+4*1+1 && failing.counts == Counts({{2,3}}),
                   "a build of the Gamma form goes on after a product has failed inside a piece");
         }
       }
@@ -1249,18 +1327,39 @@ void exchange_backend(const std::string& path)
       // The loops in literal numbers, from the lists of narrow_system().  The
       // atoms have 5, 4 and 3 ABFs, with five threads one piece for each, and
       // 3, 3 and 2 V neighbours, which are 3, 2 and 2 atoms: an atom hands
-      // the table 2 + 2*3 or 2 + 2*2 loops.
+      // the table 2 + 2*3 or 2 + 2*2 loops in the site form with a map, and
+      // two loops more in the other two forms.
+      //
+      // The rows of D are gathered in as many pieces.  The first atom has one
+      // C neighbour, one orbital and five pieces: four pieces of the gather
+      // in the site form in one array, and of the gather and of the last
+      // additions in the Gamma form, have no row.  The second atom holds two
+      // images of the first atom among its C neighbours, so pairs of sites
+      // share blocks of K.
+      require(shared_pairs(narrow) > 0,"the small system is expected to have pairs of sites that share a block of K");
+      const BlockLayout narrow_layout = exchange_layout(narrow);
+      const std::vector<double> narrow_d = layout_values(narrow_layout,blocks);
       shared.reset();
       const BlockMatrix site = exchange_blocks(narrow,blocks,alpha,with(false,&in_order_loop,threads));
       require(shared.counts == Counts({{5,2+2*3},{4,2+2*3},{3,2+2*2}}),
               "the site form of the small system does not hand the expected loops and pieces to the table");
       shared.reset();
+      const std::vector<double> in_array =
+          layout_exchange(narrow,narrow_layout,narrow_d,alpha,with(false,&in_order_loop,threads));
+      require(shared.counts == Counts({{5,4+2*3},{4,4+2*3},{3,4+2*2}}),
+              "the site form in one array of the small system does not hand the expected loops and pieces to the "
+              "table");
+      require(same_as_blocks(narrow_layout,in_array,site),
+              "the site form in one array of the small system differs from the site form with a map");
+      shared.reset();
       const std::vector<double> gamma = exchange_gamma(narrow,dn,alpha,with(false,&in_order_loop,threads));
-      require(shared.counts == Counts({{5,2+2*3},{4,2+2*2},{3,2+2*2}}),
+      require(shared.counts == Counts({{5,4+2*3},{4,4+2*2},{3,4+2*2}}),
               "the Gamma form of the small system does not hand the expected loops and pieces to the table");
       for (const Loop loop : {&reversed_loop,&threaded_loop}) {
         require(same_blocks(site,exchange_blocks(narrow,blocks,alpha,with(false,loop,threads))),
                 "the site form of the small system depends on the order in which the pieces run");
+        require(same_values(in_array,layout_exchange(narrow,narrow_layout,narrow_d,alpha,with(false,loop,threads))),
+                "the site form in one array of the small system depends on the order in which the pieces run");
         require(same_values(gamma,exchange_gamma(narrow,dn,alpha,with(false,loop,threads))),
                 "the Gamma form of the small system depends on the order in which the pieces run");
       }
@@ -1622,11 +1721,16 @@ void exchange_system(const std::string& path)
   // the pieces are uneven (10 ABFs in 4 and in 7 pieces, 15 in 2, 4 and 7).
   // With 64 threads the ABFs are the limit: the loops are asked for 10 and
   // for 15 calls.  The third atom is one piece and does not reach the loop of
-  // the table.  The number of loops follows the rule at loops_of().
+  // the table.  The number of loops follows the rule at loops_of().  The
+  // site form in one array gives the bits of the site form with a map: many
+  // pairs of sites share a block of K here.
   {
     require(system.abf_count == std::vector<std::size_t>({10,15,1}),
             "the test is written for atoms with 10, 15 and 1 ABFs");
+    require(shared_pairs(system) > 0,"the structure is expected to have pairs of sites that share a block of K");
     const DensityBlocks blocks = gamma_density(system,d);
+    const BlockLayout layout = exchange_layout(system);
+    const std::vector<double> blocks_of_d = layout_values(layout,blocks);
     Calls shared;
     const auto pieces = [&shared] {
       std::set<int> counts;
@@ -1657,7 +1761,7 @@ void exchange_system(const std::string& path)
         const std::set<int> expected = threads < 64 ? std::set<int>{threads} : std::set<int>{10,15};
         shared.reset();
         const std::vector<double> k = exchange_gamma(system,d,alpha,with(&in_order_loop,threads));
-        require(pieces() == expected && shared.counts == loops_of(system,threads,true),
+        require(pieces() == expected && shared.counts == loops_of(system,threads,Form::gamma),
                 "the Gamma form does not hand the expected loops and pieces to the table");
         // Only a table with a product counts products.
         if (product)
@@ -1665,16 +1769,26 @@ void exchange_system(const std::string& path)
                   "the pieces change the number of products of the Gamma form");
         shared.reset();
         const BlockMatrix site = exchange_blocks(system,blocks,alpha,with(&in_order_loop,threads));
-        require(pieces() == expected && shared.counts == loops_of(system,threads,false),
+        require(pieces() == expected && shared.counts == loops_of(system,threads,Form::map),
                 "the site form does not hand the expected loops and pieces to the table");
         if (product)
           require(products_site > products_gamma && shared.products == products_site,
                   "the pieces change the number of products of the site form");
+        shared.reset();
+        const std::vector<double> in_array = layout_exchange(system,layout,blocks_of_d,alpha,with(&in_order_loop,threads));
+        require(pieces() == expected && shared.counts == loops_of(system,threads,Form::layout),
+                "the site form in one array does not hand the expected loops and pieces to the table");
+        if (product)
+          require(shared.products == products_site,"the pieces change the number of products of the site form in one array");
+        require(same_as_blocks(layout,in_array,site),
+                "the pieces of the site form in one array differ from those in a map of blocks");
         for (const Loop loop : {&reversed_loop,&threaded_loop}) {
           require(same_values(k,exchange_gamma(system,d,alpha,with(loop,threads))),
                   "the Gamma form depends on the order or the threads of the pieces");
           require(same_blocks(site,exchange_blocks(system,blocks,alpha,with(loop,threads))),
                   "the site form depends on the order or the threads of the pieces");
+          require(same_values(in_array,layout_exchange(system,layout,blocks_of_d,alpha,with(loop,threads))),
+                  "the site form in one array depends on the order or the threads of the pieces");
         }
         for (std::size_t e = 0; e < n*n; ++e) rounding.add(std::fabs(k[e]-one[e])/scale);
         require(site.blocks().size() == one_site.blocks().size(),"the pieces change the number of blocks of K");
@@ -1754,7 +1868,7 @@ void exchange_system(const std::string& path)
                                         sizeof message);
       require(status == 0 && message[0] == '\0',
               std::string("the Gamma form with pieces through the C interface fails: ")+message);
-      require(shared.counts == loops_of(system,4,true),
+      require(shared.counts == loops_of(system,4,Form::gamma),
               "the Gamma form through the C interface does not hand the expected loops and pieces to the table");
       require(same_values(through,exchange_gamma(system,d,alpha,DenseBackend(&table))),
               "the pieces of the Gamma form through the C interface differ from those of the C++ interface");
@@ -1767,7 +1881,7 @@ void exchange_system(const std::string& path)
                                      sizeof message);
       require(status == 0 && message[0] == '\0',
               std::string("the site form with pieces through the C interface fails: ")+message);
-      require(shared.counts == loops_of(system,4,false),
+      require(shared.counts == loops_of(system,4,Form::layout),
               "the site form through the C interface does not hand the expected loops and pieces to the table");
       require(same_values(site_through,layout_exchange(system,layout,blocks_of_d,alpha,DenseBackend(&table))),
               "the pieces of the site form through the C interface differ from those of the C++ interface");
@@ -1782,8 +1896,8 @@ void exchange_system(const std::string& path)
       // The first atom has 10 ABFs, in four pieces of 2, 3, 2 and 3.  Every
       // piece is the failing one in turn; it ends with its first product
       // while the others make four products for each of their ABFs.  Two
-      // products come before this loop, which is the second loop of the
-      // build, and the build ends after it.
+      // products come before this loop, which is the third loop of the build
+      // after the rows of D and the turn of G, and the build ends after it.
       Calls failing;
       const OpenMXExxDenseBackend broken{&piece_failing_dgemm,&failing,&threaded_loop,4};
       const long sizes[] = {2,3,2,3};
@@ -1797,7 +1911,7 @@ void exchange_system(const std::string& path)
         status = openmx_exx_add_gamma(state,0,atom_count,-alpha,d.data(),output.data(),&broken,message,sizeof message);
         require(status != 0 && message[0] != '\0',
                 "the Gamma form of the C interface accepts a product that fails inside a piece");
-        require(failing.products == products && failing.counts == Counts({{4,2}}),
+        require(failing.products == products && failing.counts == Counts({{4,3}}),
                 "the Gamma form of the C interface does not run the other pieces, or goes on after a failed loop");
         failing.reset();
         message[0] = '\0';
@@ -1805,7 +1919,7 @@ void exchange_system(const std::string& path)
                                        sizeof message);
         require(status != 0 && message[0] != '\0',
                 "the site form of the C interface accepts a product that fails inside a piece");
-        require(failing.products == products && failing.counts == Counts({{4,2}}),
+        require(failing.products == products && failing.counts == Counts({{4,3}}),
                 "the site form of the C interface does not run the other pieces, or goes on after a failed loop");
       }
     }
