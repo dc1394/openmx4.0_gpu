@@ -24,6 +24,11 @@ run of a bounded comparison did not converge; a run that is only recorded and
 does not converge is listed and leaves the status at 0.  Only the standard
 library is used; the parser of the output is the one of tools/exx_scf_checks.py.
 
+Threads.  Every run uses one OpenMP thread: the program takes that number
+from the option -nt, not from OMP_NUM_THREADS, and the runs pass -nt 1.
+"threads" in results.json is the value of OPENBLAS_NUM_THREADS: 2 in the runs
+with one MPI process and in diaz-p222-hse-np2, 1 in the others.
+
 The two members of a pair take the same path through the SCF.  For that the
 real-space grid is given (scf.Ngrid and scf.fixed.grid), so that its points
 are the same in both cells, and the two stop criteria, which OpenMX applies to
@@ -366,8 +371,10 @@ def execute(args, name):
     (run_dir / "input.dat").write_text(spec["text"].replace("@DATA_PATH@", str(args.data_path)))
     env = dict(os.environ, OMP_NUM_THREADS=str(spec["threads"]), OPENBLAS_NUM_THREADS=str(spec["threads"]))
     start = time.time()
+    # one OpenMP thread, said in so many words: the program reads -nt and not the environment
     done = subprocess.run([sys.executable, "-c", WRAPPER, "std.txt", *shlex.split(args.mpirun), "-np", str(spec["ranks"]),
-                           str(args.openmx.resolve()), "input.dat"], cwd=run_dir, env=env, capture_output=True, text=True)
+                           str(args.openmx.resolve()), "input.dat", "-nt", "1"], cwd=run_dir, env=env, capture_output=True,
+                          text=True)
     result = parse(run_dir, system)
     std = (run_dir / "std.txt").read_text(errors="replace")
     asymmetry = [float(v) for v in re.findall(r"exchange matrix from its transpose (\S+)", std)]

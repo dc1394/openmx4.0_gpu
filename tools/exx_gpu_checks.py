@@ -15,7 +15,7 @@ compares the total energies:
               memory of the device is short
 
   python3 tools/exx_gpu_checks.py list
-  python3 tools/exx_gpu_checks.py run --cpu build/exx-cpu/openmx --gpu build/cuda/openmx --out build/exx-m6 [NAME ...]
+  python3 tools/exx_gpu_checks.py run --cpu build/exx-cpu/openmx --gpu build/exx-cuda/openmx --out build/exx-m6 [NAME ...]
   python3 tools/exx_gpu_checks.py table --out build/exx-m6
 
 "run" without a name executes every run that results.json does not hold yet;
@@ -24,6 +24,12 @@ when a difference exceeds its limit, a run failed, did not converge or is
 missing, or the device was not used as the row expects.  Only the standard
 library is used; the inputs and the parser are those of
 tools/exx_kpoint_checks.py and tools/exx_scf_checks.py.
+
+Threads.  A run uses one thread unless --threads asks for more.  The number
+goes to the program with -nt (the program does not read OMP_NUM_THREADS) and
+to OPENBLAS_NUM_THREADS.  The table prints the number that the program
+reports.  A launcher may bind a single process to one core;
+--mpirun "mpirun --bind-to none" lifts that for timings with more threads.
 
 The guide asks for three things, and the table has a block for each:
   1. the total energies of the CPU build and of the CUDA build agree within
@@ -144,10 +150,10 @@ INPUT_LINES = {"g8": "scf.gemmul8.enable        on\n"}
 SYSTEMS = {}
 
 
-def add(name, text, ranks=1, threads=2, large=0, base=VARIANTS, dense=("dense",)):
+def add(name, text, ranks=1, large=0, base=VARIANTS, dense=("dense",)):
     """A system: its input, the number of matrix products of one build that are large enough for the device, and its runs."""
     # only a system with products on the device can compare GEMMul8 with FP64 in them
-    SYSTEMS[name] = dict(text=text, ranks=ranks, threads=threads, large=large, device=0 < large,
+    SYSTEMS[name] = dict(text=text, ranks=ranks, large=large, device=0 < large,
                          variants=tuple(base) + tuple(dense) + (("g8",) if 0 < large else ()))
 
 
@@ -162,14 +168,14 @@ add("diaz-p222", kpoint.make_input("diaz_p222", "diaz", (1, 1, 1), (2, 2, 2), "H
 # the systems of the dense eigensolver only.  The cluster solver: processes without the dense matrix, and the
 # spin channels on one process and on two.  The band solver: a process for each spin channel, a process for
 # each k point, and processes that share a k point.
-add("ch4-np4", gamma.RUNS["ch4-hse-np4"]["text"], ranks=4, threads=1, base=("cpu", "gpu"))
+add("ch4-np4", gamma.RUNS["ch4-hse-np4"]["text"], ranks=4, base=("cpu", "gpu"))
 add("o2", gamma.RUNS["o2-hse"]["text"], base=("cpu", "gpu"))
 add("o2-np2", gamma.RUNS["o2-hse-np2"]["text"], ranks=2, base=("cpu", "gpu"), dense=("dense", "dser"))
 add("dia-p222-spin-np2", kpoint.make_input("dia_p222_spin_np2", "dia", (1, 1, 1), (2, 2, 2), "HSE06", spin="on"),
     ranks=2, base=("cpu", "gpu"))
 add("dia-k211-np2", kpoint.make_input("dia_k211_np2", "dia", (1, 1, 1), (2, 1, 1), "HSE06"), ranks=2,
     base=("cpu", "gpu"), dense=("dense", "dpers", "dfall"))
-add("dia-k211-np4", kpoint.make_input("dia_k211_np4", "dia", (1, 1, 1), (2, 1, 1), "HSE06"), ranks=4, threads=1,
+add("dia-k211-np4", kpoint.make_input("dia_k211_np4", "dia", (1, 1, 1), (2, 1, 1), "HSE06"), ranks=4,
     base=("cpu", "gpu"))
 
 RUNS = [f"{system}-{variant}" for system, spec in SYSTEMS.items() for variant in spec["variants"]]
@@ -217,7 +223,8 @@ def execute(args, run):
     title = re.search(r"System.Name\s+(\S+)", spec["text"]).group(1)
     (run_dir / "input.dat").write_text(spec["text"].replace("@DATA_PATH@", str(args.data_path))
                                        + INPUT_LINES.get(variant, ""))
-    threads = str(args.threads or spec["threads"])
+    # one thread unless asked: the numbers of a run are then the same every time on one machine
+    threads = str(args.threads or 1)
     env = dict(os.environ, OMP_NUM_THREADS=threads, OPENBLAS_NUM_THREADS=threads)
     for key in STEERING:
         env.pop(key, None)
@@ -225,12 +232,17 @@ def execute(args, run):
     executable = args.cpu if variant == "cpu" else args.gpu
     start = time.time()
     with open(run_dir / "std.txt", "w") as handle:
+        # the program takes its number of OpenMP threads from -nt, not from the environment
         status = subprocess.run([*shlex.split(args.mpirun), "-np", str(spec["ranks"]), str(executable.resolve()),
-                                 "input.dat"], cwd=run_dir, stdout=handle, stderr=subprocess.STDOUT,
+                                 "input.dat", "-nt", threads], cwd=run_dir, stdout=handle, stderr=subprocess.STDOUT,
                                 env=env).returncode
     result = gamma.parse(run_dir, title)
-    result["device"] = device_use((run_dir / "std.txt").read_text(errors="replace"))
-    result.update(status=status, wall=round(time.time() - start, 2), ranks=spec["ranks"], threads=int(threads))
+    std = (run_dir / "std.txt").read_text(errors="replace")
+    result["device"] = device_use(std)
+    # the number that the program reports; the table prints this one
+    reported = re.search(r"The number of threads in each node for OpenMP parallelization is (\d+)\.", std)
+    result.update(status=status, wall=round(time.time() - start, 2), ranks=spec["ranks"],
+                  threads=int(reported.group(1)) if reported else None, threads_asked=int(threads))
     return result
 
 
@@ -306,6 +318,12 @@ def table(args):
                   f"processes {r['ranks']} x {r['threads']} threads")
             for failure in d["failures"]:
                 print(f"       device failure: {failure}")
+        # a run of a version before -nt was passed has no threads_asked: its number is the one that was asked for
+        wrong = [f"{v} {results[f'{system}-{v}']['threads']} of {results[f'{system}-{v}']['threads_asked']}"
+                 for v in present if "threads_asked" in results[f"{system}-{v}"]
+                 and results[f"{system}-{v}"]["threads"] != results[f"{system}-{v}"]["threads_asked"]]
+        if wrong:
+            expect("OpenMP threads as asked", False, "the program reports " + ", ".join(wrong))
         if "cpu" in present:
             for variant, label in (("gpu", "CUDA build minus CPU build"), ("host", "CUDA build, products on the host, minus CPU")):
                 if variant not in present:
@@ -434,7 +452,8 @@ def main():
     runner.add_argument("--out", type=Path, required=True, help="directory of the runs and of results.json")
     runner.add_argument("--mpirun", default="mpirun", help="launcher with its options (default: mpirun)")
     runner.add_argument("--data-path", type=Path, default=REPO / "DFT_DATA19", help="DATA.PATH of the inputs")
-    runner.add_argument("--threads", type=int, default=0, help="OpenMP threads of a process (default: 2)")
+    runner.add_argument("--threads", type=int, default=0,
+                        help="threads of a process: passed to the program with -nt and to the BLAS (default: 1)")
     runner.add_argument("names", nargs="*", help="systems or runs to execute (default: every run not done yet)")
     summary = commands.add_parser("table", help="print the acceptance table from results.json")
     summary.add_argument("--out", type=Path, required=True)

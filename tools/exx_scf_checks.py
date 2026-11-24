@@ -22,6 +22,13 @@ one that does not converge is listed, and the status stays 0.  The energies
 of the runs with the default scf.criterion are listed without a limit.  Only
 the standard library is used.
 
+Threads.  Every run uses one OpenMP thread: the program takes that number
+from the option -nt, not from OMP_NUM_THREADS, and the runs pass -nt 1.  The
+runs with one MPI process set OPENBLAS_NUM_THREADS to 2, the others to 1; that
+is the number "threads" in results.json.  With one OpenMP thread a run gives
+the same numbers every time on the machine of the progress file, which is
+what the comparison of two executables needs.
+
 The systems
   ch4, h2o       the molecules of work/input_example/Methane.dat and H2O.dat with the
                  basis sets of those files, in a cubic cell of 10 Angstrom
@@ -272,8 +279,9 @@ def execute(args, name):
     env = dict(os.environ, OMP_NUM_THREADS=str(spec["threads"]), OPENBLAS_NUM_THREADS=str(spec["threads"]))
     start = time.time()
     with open(run_dir / "std.txt", "w") as handle:
+        # one OpenMP thread, said in so many words: the program reads -nt and not the environment
         status = subprocess.run([*shlex.split(args.mpirun), "-np", str(spec["ranks"]), str(args.openmx.resolve()),
-                                 "input.dat"], cwd=run_dir, stdout=handle, stderr=subprocess.STDOUT,
+                                 "input.dat", "-nt", "1"], cwd=run_dir, stdout=handle, stderr=subprocess.STDOUT,
                                 env=env).returncode
     result = parse(run_dir, system)
     result.update(status=status, wall=round(time.time() - start, 2), ranks=spec["ranks"], threads=spec["threads"])
