@@ -292,10 +292,8 @@ int openmx_exx_add_gamma(const OpenMXExxState* state, int first_atom, int last_a
     if (first_atom < 0 || last_atom < first_atom || last_atom > atoms)
       throw std::out_of_range("the range of centre atoms is not inside the unit cell");
     const std::size_t n = state->offset.back();
-    const DenseBackend products(backend);
-    for (int atom = first_atom; atom < last_atom; ++atom)
-      add_exchange_gamma(*system,static_cast<std::size_t>(atom),factor,std::span<const double>(density,n*n),
-                         std::span<double>(k,n*n),products);
+    add_exchange_gamma_range(*system,static_cast<std::size_t>(first_atom),static_cast<std::size_t>(last_atom),factor,
+                             std::span<const double>(density,n*n),std::span<double>(k,n*n),DenseBackend(backend));
   });
 }
 
@@ -352,10 +350,9 @@ int openmx_exx_add_blocks(const OpenMXExxState* state, int first_atom, int last_
     if (first_atom < 0 || last_atom < first_atom || last_atom > atoms)
       throw std::out_of_range("the range of centre atoms is not inside the unit cell");
     const std::size_t elements = layout.elements();
-    const DenseBackend products(backend);
-    for (int atom = first_atom; atom < last_atom; ++atom)
-      add_exchange_blocks(system,layout,static_cast<std::size_t>(atom),factor,std::span<const double>(density,elements),
-                          std::span<double>(k,elements),products);
+    add_exchange_blocks_range(system,layout,static_cast<std::size_t>(first_atom),static_cast<std::size_t>(last_atom),
+                              factor,std::span<const double>(density,elements),std::span<double>(k,elements),
+                              DenseBackend(backend));
   });
 }
 

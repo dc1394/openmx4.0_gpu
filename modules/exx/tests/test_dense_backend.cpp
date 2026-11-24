@@ -154,7 +154,7 @@ void check_loops(Numbers& random)
   Calls calls;
   // The backend keeps a copy of the table.
   const auto with = [&calls](Loop loop, int threads) {
-    const OpenMXExxDenseBackend table{nullptr,&calls,loop,threads};
+    const OpenMXExxDenseBackend table{nullptr,&calls,loop,threads,nullptr};
     return DenseBackend(&table);
   };
 
@@ -290,7 +290,7 @@ void check_loops(Numbers& random)
   // Calls on threads of their own, each with products of its own: the
   // built-in loops and a product of a table.
   for (const bool table : {false,true}) {
-    const OpenMXExxDenseBackend threaded{table ? &shared_dgemm : nullptr,&calls,&threaded_loop,8};
+    const OpenMXExxDenseBackend threaded{table ? &shared_dgemm : nullptr,&calls,&threaded_loop,8,nullptr};
     const DenseBackend backend(&threaded);
     const std::size_t m = 5, n = 4, k = 6, count = 8;
     std::vector<double> a(count*m*k), b(count*k*n), c(count*m*n,0.0), expected(count*m*n,0.0);
@@ -383,12 +383,12 @@ void dense_backend()
 
   // The row-major products, with the built-in loops and with a table.
   long calls = 0;
-  const OpenMXExxDenseBackend table{&counting_dgemm,&calls,nullptr,0};
+  const OpenMXExxDenseBackend table{&counting_dgemm,&calls,nullptr,0,nullptr};
   const DenseBackend built_in, with_table(&table);
   require(built_in.built_in() && !with_table.built_in(),"wrong report of where the products come from");
   require(DenseBackend(nullptr).built_in(),"a missing table does not select the built-in loops");
   {
-    const OpenMXExxDenseBackend without_function{nullptr,&calls,nullptr,0};
+    const OpenMXExxDenseBackend without_function{nullptr,&calls,nullptr,0,nullptr};
     require(DenseBackend(&without_function).built_in(),"a table without a function does not select the built-in loops");
   }
   for (const DenseBackend* backend : {&built_in,&with_table}) {
@@ -413,7 +413,7 @@ void dense_backend()
 
   // A table that fails, and sizes beyond the int of the table.
   {
-    const OpenMXExxDenseBackend failing{&failing_dgemm,nullptr,nullptr,0};
+    const OpenMXExxDenseBackend failing{&failing_dgemm,nullptr,nullptr,0,nullptr};
     const DenseBackend backend(&failing);
     const double a = 1.0, b = 2.0;
     double c = 0.0;

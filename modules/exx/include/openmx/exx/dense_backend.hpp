@@ -8,7 +8,8 @@
 // implementation guide.  The caller may pass a table with its own product
 // (BLAS, cuBLAS, GEMMul8); without one the library uses plain loops.  The
 // table can also bring a loop that runs the pieces of the work of one atom on
-// several threads.
+// several threads, and a device on which the build of several atoms runs
+// (section 11).
 namespace openmx::exx {
 
 class DenseBackend {
@@ -22,6 +23,9 @@ class DenseBackend {
   explicit DenseBackend(const OpenMXExxDenseBackend* table) noexcept;
 
   bool built_in() const noexcept { return table_.dgemm == nullptr; }
+
+  // The device of the table, nullptr without one (exx.h).
+  const OpenMXExxDevice* device() const noexcept { return table_.device; }
 
   // C = alpha op(A) op(B) + beta C with column-major arrays, as DGEMM of the
   // BLAS: op(A) is m x k, op(B) is k x n, C is m x n; transa and transb are
@@ -66,7 +70,7 @@ class DenseBackend {
  private:
   void run(std::size_t count, void (*call)(void*, std::size_t), void* callable) const;
 
-  OpenMXExxDenseBackend table_{nullptr,nullptr,nullptr,0};
+  OpenMXExxDenseBackend table_{nullptr,nullptr,nullptr,0,nullptr};
 };
 
 } // namespace openmx::exx

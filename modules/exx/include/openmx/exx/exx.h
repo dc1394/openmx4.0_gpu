@@ -20,6 +20,75 @@
 extern "C" {
 #endif
 
+/* ---- the device of the exchange build (section 11 of the guide) --------- */
+
+/* One side of a move on the device: element (r, c) lies at the offset of row
+   r, r*stride or rows[r], plus the offset of column c, c*step or columns[c].
+   rows and columns are NULL or arrays in device memory.  Offsets count
+   doubles. */
+typedef struct {
+  long long stride;
+  const long long *rows;
+  long long step;
+  const long long *columns;
+} OpenMXExxDeviceIndex;
+
+/* A device on which openmx_exx_add_blocks and openmx_exx_add_gamma compute
+   the contributions of all their centre atoms: the density matrix, the
+   exchange matrix, the T and V blocks and the arrays of one centre atom stay
+   in device memory, and the four terms of a V neighbour are one product each
+   for all ABFs of the centre (section 11).  The host then makes no product
+   of the call.  The functions are called from the thread that called the
+   library, in this order of their use:
+
+   accept is called first and once for a call with centre atoms: whether
+     the device takes a call whose largest product has `multiplications`
+     multiplications and whose arrays take `bytes` bytes of device memory,
+     the sum of the allocations that follow.  1 takes it, 0 leaves the call
+     to the dense backend on the host.
+   allocate gives `bytes` bytes of device memory, NULL when there is no room
+     or the device failed.  release gives them back; it is called once for
+     every block from allocate, when no work is pending.
+   upload and download copy `bytes` bytes between host and device memory and
+     return when the copy is done.  The library calls them, as release, only
+     when no work that it gave the device is pending: before its first
+     dgemm or move, or after finish.
+   dgemm is the product of the dense backend (above) on device memory.
+   move sets, for r = 0 .. rows-1 and c = 0 .. (lengths ? lengths[r] :
+     columns)-1, the element of target at the index t of (r, c) to
+     alpha source[s(r, c)] (add 0) or adds that to it (add 1), in this
+     order: the product first, then the sum.  lengths is NULL or an array in
+     device memory, and no length exceeds columns.  The library never gives
+     two pairs (r, c) of one call the same target element, and the target
+     does not overlap the source.
+   finish waits until all work given to the device is done.
+   dgemm and move may return before their work is done: the device does the
+   work in the order it was given.
+
+   Every function except accept, allocate and release returns 0 on success.
+   After a failure, or an allocation that gave NULL, the library stops using
+   the device for the call: it calls finish if it gave the device work after
+   the last finish, releases what it allocated, and computes the whole call
+   with the dense backend from the unchanged k.  The library writes k only
+   after the last download.  The results differ from those of the dense
+   backend by the rounding of the products: the sums over the ABFs run in
+   other orders.  Every element of k receives the parts of the centre atoms
+   and of their V neighbours in the order of the host. */
+typedef struct {
+  void *context;
+  int (*accept)(void *context, double multiplications, size_t bytes);
+  void *(*allocate)(void *context, size_t bytes);
+  void (*release)(void *context, void *pointer);
+  int (*upload)(void *context, void *target, const void *source, size_t bytes);
+  int (*download)(void *context, void *target, const void *source, size_t bytes);
+  int (*dgemm)(void *context, char transa, char transb, int m, int n, int k, double alpha, const double *a, int lda,
+               const double *b, int ldb, double beta, double *c, int ldc);
+  int (*move)(void *context, int rows, int columns, const int *lengths, double alpha, int add, double *target,
+              const OpenMXExxDeviceIndex *target_index, const double *source,
+              const OpenMXExxDeviceIndex *source_index);
+  int (*finish)(void *context);
+} OpenMXExxDevice;
+
 /* ---- matrix products (section 7.2 of the guide) ------------------------- */
 
 /* dgemm computes C = alpha op(A) op(B) + beta C for column-major arrays with
@@ -31,10 +100,10 @@ extern "C" {
    (NULL) selects the loops of the library.
 
    parallel_for and threads are optional (NULL and 0: the library runs its
-   loops on the calling thread).  The library reads all four members of a
-   table, so a table is set as a whole, for example with
-   "OpenMXExxDenseBackend table = {0};" before its members are assigned: a
-   member that was never set is not NULL or 0.
+   loops on the calling thread), and so is device (NULL: no device).  The
+   library reads all five members of a table, so a table is set as a whole,
+   for example with "OpenMXExxDenseBackend table = {0};" before its members
+   are assigned: a member that was never set is not NULL or 0.
 
    parallel_for calls body(argument, index) once for every index from 0 to
    count-1, returns when all calls have returned, and returns 0 on success.
@@ -59,13 +128,18 @@ extern "C" {
    arguments on every thread, the results do not depend on the order or the
    timing of the calls.  They can differ by rounding from the results for
    another value of threads; with one piece they are those of the loop on
-   the calling thread. */
+   the calling thread.
+
+   With a device (above) that accepts a call of openmx_exx_add_blocks or
+   openmx_exx_add_gamma, the device computes the call, and dgemm and
+   parallel_for are not used for it. */
 typedef struct {
   int (*dgemm)(void *context, char transa, char transb, int m, int n, int k, double alpha,
                const double *a, int lda, const double *b, int ldb, double beta, double *c, int ldc);
   void *context;
   int (*parallel_for)(void *context, int count, void (*body)(void *argument, int index), void *argument);
   int threads;
+  const OpenMXExxDevice *device;
 } OpenMXExxDenseBackend;
 
 /* The product that the library uses when no table is given: plain loops.

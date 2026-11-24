@@ -28,6 +28,17 @@
 //   exx-exchange-forces    forces.hpp: the derivative of E_x with respect to
 //                          the positions of the atoms against central
 //                          differences of E_x of structures with moved atoms
+//   exx-exchange-device    the device of exx.h (OpenMXExxDevice) in both
+//                          forms, with a device in host memory that holds
+//                          the library to the contract (test_device.hpp):
+//                          the device against the dense backend, the centre
+//                          atoms in two calls, a device that declines or
+//                          lacks a function, and every call of the device
+//                          failing in turn; the fixture and the system of
+//                          three atoms of exx-exchange-backend
+//   exx-exchange-device-system  the same for the periodic structure of
+//                          exx-exchange-system, with a selection of the
+//                          failures
 #include <openmx/exx/abf.hpp>
 #include <openmx/exx/exchange.hpp>
 #include <openmx/exx/exx.h>
@@ -36,6 +47,7 @@
 
 #include "kbuild_fixture.hpp"
 #include "overlap_fixture.hpp"
+#include "test_device.hpp"
 #include "test_dgemm.hpp"
 #include "test_parallel.hpp"
 #include "test_support.hpp"
@@ -46,6 +58,7 @@
 #include <cstddef>
 #include <cstdio>
 #include <cstring>
+#include <functional>
 #include <map>
 #include <set>
 #include <span>
@@ -626,7 +639,7 @@ void exchange_layout(const std::string& path)
     // The same when the rows of D are gathered in pieces on threads of their
     // own: the exception of a piece reaches the caller.  The atoms of the
     // fixture have two and three ABFs, so both are divided into pieces.
-    const OpenMXExxDenseBackend threaded{nullptr,nullptr,&threaded_loop,3};
+    const OpenMXExxDenseBackend threaded{nullptr,nullptr,&threaded_loop,3,nullptr};
     bool missed_in_pieces = false;
     for (std::size_t a = 0; a < atoms && !missed_in_pieces; ++a) {
       try {
@@ -951,7 +964,7 @@ void exchange_centre_gradient(const std::string& path)
 
     // The same numbers with a table of matrix products.
     long calls = 0;
-    const OpenMXExxDenseBackend table{&counting_dgemm,&calls,nullptr,0};
+    const OpenMXExxDenseBackend table{&counting_dgemm,&calls,nullptr,0,nullptr};
     const DenseBackend backend(&table);
     Worst product("the derivatives of one centre with a table of products",1e-12);
     for (std::size_t a = 0; a < atoms; ++a) {
@@ -993,7 +1006,7 @@ void exchange_backend(const std::string& path)
   const std::vector<double> d = dense_matrix(n,true,random);
 
   long calls = 0;
-  const OpenMXExxDenseBackend table{&counting_dgemm,&calls,nullptr,0};
+  const OpenMXExxDenseBackend table{&counting_dgemm,&calls,nullptr,0,nullptr};
   const DenseBackend products(&table);
   // One centre atom takes two products of its own.  Every V neighbour adds
   // one product for W and four for every ABF of the centre: the four terms
@@ -1046,7 +1059,7 @@ void exchange_backend(const std::string& path)
 
   // A table that fails stops the build.
   {
-    const OpenMXExxDenseBackend failing{&failing_dgemm,nullptr,nullptr,0};
+    const OpenMXExxDenseBackend failing{&failing_dgemm,nullptr,nullptr,0,nullptr};
     const DenseBackend broken(&failing);
     expect_runtime_error("a failing table in the site form",[&] { (void)exchange_blocks(system,density,alpha,broken); });
     expect_runtime_error("a failing table in the Gamma form",[&] { (void)exchange_gamma(system,d,alpha,broken); });
@@ -1064,7 +1077,7 @@ void exchange_backend(const std::string& path)
     const std::vector<double> blocks_of_d = layout_values(layout,density);
     Calls shared;
     const auto with = [&shared](bool product, Loop loop, int threads) {
-      const OpenMXExxDenseBackend pieces{product ? &shared_dgemm : nullptr,&shared,loop,threads};
+      const OpenMXExxDenseBackend pieces{product ? &shared_dgemm : nullptr,&shared,loop,threads,nullptr};
       return DenseBackend(&pieces);
     };
 
@@ -1208,7 +1221,7 @@ void exchange_backend(const std::string& path)
     {
       Calls failing;
       for (const Loop loop : {&in_order_loop,&reversed_loop,&threaded_loop}) {
-        const OpenMXExxDenseBackend table{&piece_failing_dgemm,&failing,loop,3};
+        const OpenMXExxDenseBackend table{&piece_failing_dgemm,&failing,loop,3,nullptr};
         const DenseBackend broken(&table);
         for (const int piece : {0,1,2}) {
           failing.failing = piece;
@@ -1740,7 +1753,7 @@ void exchange_system(const std::string& path)
     Worst rounding("periodic structure: pieces of the ABFs against one piece",1e-12);
     for (const bool product : {false,true}) {
       const auto with = [&shared,product](Loop loop, int threads) {
-        const OpenMXExxDenseBackend table{product ? &shared_dgemm : nullptr,&shared,loop,threads};
+        const OpenMXExxDenseBackend table{product ? &shared_dgemm : nullptr,&shared,loop,threads,nullptr};
         return DenseBackend(&table);
       };
       // One piece with the same products: the limit then measures the order
@@ -1857,8 +1870,8 @@ void exchange_system(const std::string& path)
     // the numbers of the same products in one piece.
     {
       Calls shared;
-      const OpenMXExxDenseBackend table{&shared_dgemm,&shared,&threaded_loop,4};
-      const OpenMXExxDenseBackend whole{&shared_dgemm,&shared,nullptr,0};
+      const OpenMXExxDenseBackend table{&shared_dgemm,&shared,&threaded_loop,4,nullptr};
+      const OpenMXExxDenseBackend whole{&shared_dgemm,&shared,nullptr,0,nullptr};
       const int atom_count = openmx_exx_atom_count(state);
       std::vector<double> through(n*n,0.0);
       // The calls are statements of their own: the text of a failure holds
@@ -1899,7 +1912,7 @@ void exchange_system(const std::string& path)
       // products come before this loop, which is the third loop of the build
       // after the rows of D and the turn of G, and the build ends after it.
       Calls failing;
-      const OpenMXExxDenseBackend broken{&piece_failing_dgemm,&failing,&threaded_loop,4};
+      const OpenMXExxDenseBackend broken{&piece_failing_dgemm,&failing,&threaded_loop,4,nullptr};
       const long sizes[] = {2,3,2,3};
       // What a build that fails has added to its output is not looked at.
       std::vector<double> output(std::max(n*n,layout.elements()),0.0);
@@ -2145,7 +2158,7 @@ void exchange_forces(const std::string& path)
   {
     const PositionGradient derivative(structure,tables,reciprocal,options,periodic.system);
     long calls = 0;
-    const OpenMXExxDenseBackend table{&counting_dgemm,&calls,nullptr,0};
+    const OpenMXExxDenseBackend table{&counting_dgemm,&calls,nullptr,0,nullptr};
     const DenseBackend products(&table);
     std::vector<double> gamma(3*atoms,0.0), site(3*atoms,0.0);
     for (std::size_t a = 0; a < atoms; ++a) {
@@ -2235,7 +2248,7 @@ void exchange_forces(const std::string& path)
     // An empty range adds nothing; rejected calls and a product that fails
     // leave the output as it was.
     const std::vector<double> before_gamma = gamma, before_site = site;
-    const OpenMXExxDenseBackend failing{&failing_dgemm,nullptr,nullptr,0};
+    const OpenMXExxDenseBackend failing{&failing_dgemm,nullptr,nullptr,0,nullptr};
     require(openmx_exx_add_position_gradient_gamma(state,1,1,-alpha,periodic.density.data(),gamma.data(),nullptr,message,
                                                    sizeof message) == 0 && gamma == before_gamma,
             "an empty range of centre atoms changes the derivative");
@@ -2262,6 +2275,243 @@ void exchange_forces(const std::string& path)
                                                     message,sizeof message) != 0 && message[0] != '\0' &&
             site == before_site,"a rejected derivative of the site form changes the output");
   }
+}
+
+namespace {
+
+// ---- the device (section 11 of the guide) ------------------------------------
+
+// One form of the build for the device tests: build(first, last, k, backend)
+// adds the contributions of the centre atoms first to last-1 to k, an array
+// of "size" elements, and returns whether the device computed them.
+struct DeviceForm {
+  std::string name;
+  std::size_t size = 0;
+  std::function<bool(std::size_t, std::size_t, std::span<double>, const DenseBackend&)> build;
+};
+
+// The calls of the device that are made to fail in turn: all, or for a large
+// system the first and the last call of every kind and about forty more,
+// evenly spaced.
+std::vector<long> failures(const std::vector<FakeDevice::Kind>& sequence, bool every)
+{
+  std::set<long> chosen;
+  const long total = static_cast<long>(sequence.size());
+  if (every || total <= 64) {
+    for (long i = 0; i < total; ++i) chosen.insert(i);
+  } else {
+    std::map<FakeDevice::Kind,std::pair<long,long>> range;
+    for (long i = 0; i < total; ++i) {
+      const auto found = range.find(sequence[static_cast<std::size_t>(i)]);
+      if (found == range.end()) range.emplace(sequence[static_cast<std::size_t>(i)],std::pair<long,long>(i,i));
+      else found->second.second = i;
+    }
+    for (const auto& [kind, ends] : range) {
+      chosen.insert(ends.first);
+      chosen.insert(ends.second);
+    }
+    for (long i = 0; i < total; i += std::max(1L,total/40)) chosen.insert(i);
+  }
+  return std::vector<long>(chosen.begin(),chosen.end());
+}
+
+// The device of one form against the dense backend on the host.  The table
+// has a product and a loop of four pieces, which the dense backend uses when
+// the device does not compute the call.  k holds numbers of the size of the
+// contributions on entry: the build adds to it.
+void check_device(const System& system, const DeviceForm& form, Numbers& random, bool every)
+{
+  const std::size_t atoms = system.orbital_count.size();
+  FakeDevice device;
+  Calls calls;
+  const OpenMXExxDenseBackend host_table{&shared_dgemm,&calls,&in_order_loop,4,nullptr};
+  const OpenMXExxDenseBackend device_table{&shared_dgemm,&calls,&in_order_loop,4,&device.table()};
+  const DenseBackend host(&host_table), with_device(&device_table);
+  const std::string& name = form.name;
+
+  std::vector<double> alone(form.size,0.0);
+  require(!form.build(0,atoms,alone,host),name+": the dense backend reports a device");
+  const double scale = largest(alone);
+  require(scale > 1.0e-6,name+": the contributions are expected to be of order one");
+  std::vector<double> start(form.size);
+  for (double& value : start) value = scale*random.next();
+  std::vector<double> reference = start;
+  form.build(0,atoms,reference,host);
+
+  // A call with the device; the record of the device must end clean.
+  const auto run = [&](const DenseBackend& backend, std::size_t first, std::size_t last, std::vector<double>& k) {
+    device.reset();
+    calls.reset();
+    const bool computed = form.build(first,last,k,backend);
+    const std::string ending = device.ending();
+    require(ending.empty(),name+": "+ending);
+    return computed;
+  };
+
+  // The device computes the call: the product and the loop of the table are
+  // not used, accept is told the bytes that the allocations take and the
+  // size of the largest product, and k agrees with the host within rounding.
+  std::vector<double> k = start;
+  require(run(with_device,0,atoms,k),name+": the device does not compute the call");
+  require(calls.products == 0 && calls.loops == 0,name+": the product or the loop of the table is used with a device");
+  require(device.accepted == 1 && device.count[FakeDevice::allocate_call] > 0 &&
+          device.count[FakeDevice::allocate_call] == device.count[FakeDevice::release_call] &&
+          device.count[FakeDevice::download_call] == 1,name+": wrong calls of the device");
+  require(device.bytes == device.allocated,name+": accept is told other bytes than the allocations take");
+  require(device.multiplications == device.largest_product,
+          name+": accept is told another size of the largest product than the device computes");
+  Worst worst(name+": device against the dense backend (relative)",1e-12);
+  for (std::size_t e = 0; e < k.size(); ++e) worst.add(std::fabs(k[e]-reference[e])/scale);
+  worst.finish();
+  const std::vector<FakeDevice::Kind> sequence = device.sequence;
+  std::printf("%s: %ld calls of the device, %.0f bytes, largest product %.3e multiplications\n",name.c_str(),
+              static_cast<long>(sequence.size()),static_cast<double>(device.bytes),device.multiplications);
+
+  // The same bits again.  The centre atoms in two calls give the bits of one
+  // call: every centre makes its arrays anew, and only k carries over.  With
+  // the products of this device the same arguments give the same bits.
+  {
+    std::vector<double> again = start;
+    require(run(with_device,0,atoms,again) && same_values(again,k),name+": the device gives other bits the second time");
+    for (std::size_t middle = 1; middle < atoms; ++middle) {
+      std::vector<double> split = start;
+      require(run(with_device,0,middle,split) && run(with_device,middle,atoms,split) && same_values(split,k),
+              name+": the centre atoms in two calls give other bits than in one call");
+    }
+  }
+
+  // A call without centre atoms does not ask the device and adds nothing.
+  {
+    std::vector<double> none = start;
+    require(!run(with_device,atoms,atoms,none) && device.accepted == 0 && same_values(none,start),
+            name+": a call without centre atoms uses the device or changes k");
+  }
+
+  // The device declines: the dense backend computes the call with the
+  // product and the loop of the table.
+  {
+    device.answer = 0;
+    std::vector<double> declined = start;
+    require(!run(with_device,0,atoms,declined) && device.accepted == 1 && device.calls == 0 &&
+            device.count[FakeDevice::release_call] == 0 && calls.products > 0 && calls.loops > 0 &&
+            same_values(declined,reference),name+": a device that declines is used, or the host gives other bits");
+    device.answer = 1;
+  }
+
+  // A table that lacks a function is not asked.
+  for (int member = 0; member < 8; ++member) {
+    OpenMXExxDevice partial = device.table();
+    switch (member) {
+      case 0: partial.accept = nullptr; break;
+      case 1: partial.allocate = nullptr; break;
+      case 2: partial.release = nullptr; break;
+      case 3: partial.upload = nullptr; break;
+      case 4: partial.download = nullptr; break;
+      case 5: partial.dgemm = nullptr; break;
+      case 6: partial.move = nullptr; break;
+      default: partial.finish = nullptr; break;
+    }
+    const OpenMXExxDenseBackend table{&shared_dgemm,&calls,&in_order_loop,4,&partial};
+    std::vector<double> without = start;
+    require(!run(DenseBackend(&table),0,atoms,without) && device.accepted == 0 && same_values(without,reference),
+            name+": a device without one of its functions is used");
+  }
+
+  // Every call of the device fails in turn: the library stops using it,
+  // finishes the work it gave, releases every block, and the dense backend
+  // computes the call from the unchanged k.  run() checks the first three.
+  const std::vector<long> chosen = failures(sequence,every);
+  for (const long index : chosen) {
+    device.failing = index;
+    std::vector<double> failed = start;
+    require(!run(with_device,0,atoms,failed) && device.failed && device.calls > index,
+            name+": a failure of the device is not noticed");
+    require(calls.products > 0 && same_values(failed,reference),
+            name+": after a failure of the device the host does not give its own bits");
+  }
+  device.failing = -1;
+  std::printf("%s: %zu failures of the device, each one followed by the bits of the host\n",name.c_str(),chosen.size());
+}
+
+// Both forms of a system with a density matrix of numbers without a
+// pattern, not symmetric: a transposed block does not pass unnoticed.  The
+// blocks of the site form are numbers of their own, not those of one dense
+// matrix: blocks of different cells differ.
+void check_device_forms(const System& system, const std::string& name, Numbers& random, bool every)
+{
+  const double alpha = 0.25;
+  const std::size_t n = orbital_total(system);
+  const std::vector<double> dense = dense_matrix(n,false,random);
+  const BlockLayout layout = exchange_layout(system);
+  std::vector<double> blocks(layout.elements());
+  for (double& value : blocks) value = random.next();
+
+  DeviceForm gamma{name+", Gamma form",n*n,
+                   [&](std::size_t first, std::size_t last, std::span<double> k, const DenseBackend& backend) {
+                     return add_exchange_gamma_range(system,first,last,-alpha,dense,k,backend);
+                   }};
+  DeviceForm site{name+", site form",layout.elements(),
+                  [&](std::size_t first, std::size_t last, std::span<double> k, const DenseBackend& backend) {
+                    return add_exchange_blocks_range(system,layout,first,last,-alpha,blocks,k,backend);
+                  }};
+  check_device(system,gamma,random,every);
+  check_device(system,site,random,every);
+
+  // Arguments that the library rejects are rejected before the device is
+  // asked; the derivatives do not use the device.
+  FakeDevice device;
+  const OpenMXExxDenseBackend table{nullptr,nullptr,nullptr,0,&device.table()};
+  const DenseBackend backend(&table);
+  const std::size_t atoms = system.orbital_count.size();
+  std::vector<double> k(n*n,0.0), wrong(n*n+1,0.0), site_k(layout.elements(),0.0);
+  device.reset();
+  expect_invalid("a range of centre atoms beyond the cell, with a device",
+                 [&] { add_exchange_gamma_range(system,0,atoms+1,-alpha,dense,k,backend); });
+  expect_invalid("a range of centre atoms that ends before it begins, with a device",
+                 [&] { add_exchange_blocks_range(system,layout,1,0,-alpha,blocks,site_k,backend); });
+  expect_invalid("an exchange matrix of the wrong size, with a device",
+                 [&] { add_exchange_gamma_range(system,0,atoms,-alpha,dense,wrong,backend); });
+  expect_invalid("a density matrix of the wrong size, with a device",
+                 [&] { add_exchange_blocks_range(system,layout,0,atoms,-alpha,wrong,site_k,backend); });
+  (void)centre_gradient_gamma(system,0,-alpha,dense,backend);
+  (void)centre_gradient_blocks(system,layout,0,-alpha,blocks,backend);
+  require(device.accepted == 0 && device.calls == 0 && device.ending().empty(),
+          name+": the device is asked for a call that is rejected, or for a derivative");
+}
+
+} // namespace
+
+void exchange_device(const std::string& path)
+{
+  const KbuildFixture fixture = read_kbuild_fixture(path);
+  Numbers random;
+  check_device_forms(fixture.system,"fixture",random,true);
+  check_device_forms(narrow_system(random),"narrow system",random,true);
+}
+
+void exchange_device_system(const std::string& path)
+{
+  const OverlapFixture fixture = read_overlap_fixture(path);
+  require(fixture.species.size() == 3 && fixture.positions.size() == 3,"the test is written for the three species of the fixture");
+  // The periodic structure of exx-exchange-system: the atoms have 10, 15 and
+  // 1 ABFs, the cell is smaller than the cutoffs, and pairs of sites share
+  // blocks of K.
+  const int intervals = 300;
+  const ReciprocalGrid reciprocal = ReciprocalGrid::uniform(24.0,240);
+  SystemOptions options;
+  options.interaction = short_range_kernel(0.11);
+  options.v_cutoff = 3.0;
+  const std::vector<Shells> few{select(fixture.species[0],{0,2}),select(fixture.species[1],{0,1,2}),
+                                select(fixture.species[2],{0})};
+  Structure structure;
+  structure.lattice = fixture.lattice;
+  structure.positions = fixture.positions;
+  structure.species = fixture.atom_species;
+  const System system = prepare_system(structure,tables_of(few,intervals,reciprocal,1.0e-3),reciprocal,options);
+  require(system.abf_count == std::vector<std::size_t>({10,15,1}),"the test is written for atoms with 10, 15 and 1 ABFs");
+  require(shared_pairs(system) > 0,"the structure is expected to have pairs of sites that share a block of K");
+  Numbers random;
+  check_device_forms(system,"periodic structure",random,false);
 }
 
 } // namespace exx_test

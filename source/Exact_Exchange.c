@@ -741,7 +741,7 @@ void Exact_Exchange_Build(OpenMXExactExchangeState *state, MPI_Comm comm, int ve
     products.host.loop = (OpenMXExactExchangeLoopProducts*)ExactExchange_Allocate(
         state,(size_t)threads,sizeof(OpenMXExactExchangeLoopProducts),comm,"exchange matrix");
   const OpenMXExxDenseBackend backend={ExactExchange_Dgemm,&products,1<threads ? ExactExchange_Parallel_For : NULL,
-                                       threads};
+                                       threads,NULL};
   const long long device_before=state->device.device_products;
   const long long declined_before=state->device.declined_products;
   const int disabled_before=state->device.disabled;

@@ -115,6 +115,15 @@ void add_exchange_blocks(const System& system, const BlockLayout& layout, std::s
                          std::span<const double> density, std::span<double> k,
                          const DenseBackend& backend = DenseBackend());
 
+// The same for the centre atoms first to last-1, one after the other.  With
+// a device in the backend that accepts the work, the device computes all of
+// them (section 11 of the implementation guide); otherwise, and after a
+// failure of the device, the backend does, atom by atom.  Returns true when
+// the device computed them.
+bool add_exchange_blocks_range(const System& system, const BlockLayout& layout, std::size_t first, std::size_t last,
+                               double factor, std::span<const double> density, std::span<double> k,
+                               const DenseBackend& backend = DenseBackend());
+
 // The largest difference between an element of M_xy(R) and the element of
 // M_yx(-R) that equals it in a matrix with M_xy(R) = M_yx(-R)^T.
 double block_asymmetry(const System& system, const BlockLayout& layout, std::span<const double> values);
@@ -138,6 +147,11 @@ std::size_t orbital_total(const System& system) noexcept;
 // matrix is.
 void add_exchange_gamma(const System& system, std::size_t atom, double factor, std::span<const double> density,
                         std::span<double> k, const DenseBackend& backend = DenseBackend());
+
+// The same for the centre atoms first to last-1, as add_exchange_blocks_range().
+bool add_exchange_gamma_range(const System& system, std::size_t first, std::size_t last, double factor,
+                              std::span<const double> density, std::span<double> k,
+                              const DenseBackend& backend = DenseBackend());
 
 // K of one spin channel: all atoms, factor -alpha.  It equals the sum over R
 // of the blocks K(R) that the site form gives for D_xy(R) = D_xy.

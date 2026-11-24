@@ -73,6 +73,15 @@ foreach(_case exchange-system exchange-forces)
   set_tests_properties(exx-${_case} PROPERTIES LABELS "unit;exx" TIMEOUT 600)
 endforeach()
 
+# The device of the exchange build (section 11 of the guide) with a device in
+# host memory: in the model of tools/exx_reference.py --dump and a system of
+# three atoms, and in the periodic structure of exx-exchange-system.
+add_test(NAME exx-exchange-device COMMAND openmx_exx_tests exchange-device "${_exx_fixtures}/kbuild_reference.txt")
+set_tests_properties(exx-exchange-device PROPERTIES LABELS "unit;exx" TIMEOUT 300)
+add_test(NAME exx-exchange-device-system COMMAND openmx_exx_tests exchange-device-system
+  "${_exx_fixtures}/overlap_reference.txt")
+set_tests_properties(exx-exchange-device-system PROPERTIES LABELS "unit;exx" TIMEOUT 600)
+
 # The tests whose loops start threads have the label "threads" as well:
 # "ctest -L threads" selects them, for example in a build with
 # OPENMX_EXX_THREAD_SANITIZER.

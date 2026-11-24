@@ -1,8 +1,8 @@
 /* Test of the C interface, compiled as C: the header must be valid C, and a C
    program must be able to prepare a structure, build the exchange matrix of
    the Gamma point and that of the site form, take the derivative of E_x with
-   respect to the positions of the atoms, and pass its own matrix product and
-   its own loop for the pieces of the build.  That the numbers are those of
+   respect to the positions of the atoms, and pass its own matrix product,
+   its own loop for the pieces of the build and its own device.  That the numbers are those of
    the C++ interface is checked by exx-exchange-system and
    exx-exchange-forces. */
 #include <openmx/exx/exx.h>
@@ -90,6 +90,94 @@ static int failing_loop(void *context, int count, void (*body)(void *argument, i
   return 2;
 }
 
+/* A device of the caller in host memory (OpenMXExxDevice): the blocks come
+   from malloc, dgemm is the product of the library, and move follows exx.h.
+   It counts its calls and lets one of them fail: the call "failing", counted
+   from 0 after accept, release not counted, or none for -1. */
+typedef struct {
+  int answer;              /* of accept */
+  long failing;
+  long accepted, calls, allocations, releases;
+} Device;
+
+static void forget_device(Device *device, int answer, long failing)
+{
+  device->answer = answer;
+  device->failing = failing;
+  device->accepted = 0;
+  device->calls = 0;
+  device->allocations = 0;
+  device->releases = 0;
+}
+
+static int device_fails(void *context)
+{
+  Device *device = (Device *)context;
+  return device->calls++ == device->failing;
+}
+
+static int device_accept(void *context, double multiplications, size_t bytes)
+{
+  Device *device = (Device *)context;
+  ++device->accepted;
+  return multiplications > 0.0 && bytes > 0 ? device->answer : 0;
+}
+
+static void *device_allocate(void *context, size_t bytes)
+{
+  void *pointer;
+  if (device_fails(context)) return NULL;
+  pointer = malloc(bytes > 0 ? bytes : 1);
+  if (pointer != NULL) ++((Device *)context)->allocations;
+  return pointer;
+}
+
+static void device_release(void *context, void *pointer)
+{
+  ++((Device *)context)->releases;
+  free(pointer);
+}
+
+static int device_copy(void *context, void *target, const void *source, size_t bytes)
+{
+  if (device_fails(context)) return 1;
+  memcpy(target, source, bytes);
+  return 0;
+}
+
+static int device_dgemm(void *context, char transa, char transb, int m, int n, int k, double alpha,
+                        const double *a, int lda, const double *b, int ldb, double beta, double *c, int ldc)
+{
+  if (device_fails(context)) return 1;
+  return openmx_exx_reference_dgemm(NULL, transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc);
+}
+
+static long long device_offset(const OpenMXExxDeviceIndex *index, int r, int c)
+{
+  return (index->rows != NULL ? index->rows[r] : r * index->stride) +
+         (index->columns != NULL ? index->columns[c] : c * index->step);
+}
+
+static int device_move(void *context, int rows, int columns, const int *lengths, double alpha, int add,
+                       double *target, const OpenMXExxDeviceIndex *target_index, const double *source,
+                       const OpenMXExxDeviceIndex *source_index)
+{
+  int r, c;
+  if (device_fails(context)) return 1;
+  for (r = 0; r < rows; ++r)
+    for (c = 0; c < (lengths != NULL ? lengths[r] : columns); ++c) {
+      double *element = target + device_offset(target_index, r, c);
+      const double value = alpha * source[device_offset(source_index, r, c)];
+      *element = add ? *element + value : value;
+    }
+  return 0;
+}
+
+static int device_finish(void *context)
+{
+  return device_fails(context) ? 1 : 0;
+}
+
 /* A radial mesh like that of a .pao file, dense near the nucleus, and smooth
    functions that vanish at the cutoff radius: the test needs no file. */
 static void radial_mesh(double cutoff, double *mesh)
@@ -125,6 +213,8 @@ int main(void)
   OpenMXExxSpecies species[2];
   OpenMXExxReport report;
   OpenMXExxDenseBackend table;
+  Device device;
+  OpenMXExxDevice device_table;
   static double mesh_a[POINTS], mesh_b[POINTS], values_a[3 * POINTS], values_b[POINTS];
   const int angular_a[3] = {0, 0, 1}, angular_b[1] = {0};
   const double cutoff_a = 4.2, cutoff_b = 3.6;
@@ -145,7 +235,8 @@ int main(void)
   Calls calls = {0, 0, 0, 0};
   long before, products, site_products, blocks = 0, block;
   size_t elements = 0, offset, element;
-  int i, j, a, row, column, cell[3], abfs, threads, pieces, groups;
+  int i, j, a, row, column, cell[3], abfs, threads, pieces, groups, form;
+  long device_calls, failing;
 
   /* NULL is harmless where the header says so. */
   openmx_exx_destroy(NULL);
@@ -251,6 +342,7 @@ int main(void)
   table.context = &calls;
   table.parallel_for = NULL;
   table.threads = 0;
+  table.device = NULL;
   memset(other, 0, sizeof other);
   CHECK(openmx_exx_add_gamma(state, 0, ATOMS, -0.25, d, other, &table, message, sizeof message) == 0);
   products = calls.products;
@@ -429,6 +521,47 @@ int main(void)
   CHECK(openmx_exx_add_blocks(state, 0, ATOMS, -0.25, site_d, site_other, &table, message, sizeof message) != 0);
   CHECK(strlen(message) > 0);
   table.dgemm = counting_dgemm;
+  memcpy(site_other, site_k, elements * sizeof *site_k);
+
+  /* The device of the caller computes both forms within rounding, and the
+     product of the table is not used.  When it declines, or one of its calls
+     fails, the library computes the call with the table on the host: the
+     product of the caller is that of the library, so the bits are those
+     without a table.  In every case the device gets back all its memory. */
+  device_table.context = &device;
+  device_table.accept = device_accept;
+  device_table.allocate = device_allocate;
+  device_table.release = device_release;
+  device_table.upload = device_copy;
+  device_table.download = device_copy;
+  device_table.dgemm = device_dgemm;
+  device_table.move = device_move;
+  device_table.finish = device_finish;
+  table.device = &device_table;
+  for (form = 0; form < 2; ++form) {
+    double *output = form == 0 ? other : site_other;
+    const double *reference = form == 0 ? k : site_k;
+    const size_t count = form == 0 ? (size_t)(N * N) : elements;
+    forget_device(&device, 1, -1);
+    before = calls.products;
+    memset(output, 0, count * sizeof *output);
+    if (form == 0) CHECK(openmx_exx_add_gamma(state, 0, ATOMS, -0.25, d, output, &table, message, sizeof message) == 0);
+    else CHECK(openmx_exx_add_blocks(state, 0, ATOMS, -0.25, site_d, output, &table, message, sizeof message) == 0);
+    CHECK(message[0] == '\0' && calls.products == before);
+    CHECK(device.accepted == 1 && device.allocations > 0 && device.releases == device.allocations);
+    for (element = 0; element < count; ++element) CHECK(fabs(output[element] - reference[element]) <= 1.0e-12 * scale);
+    device_calls = device.calls;
+    for (failing = -1; failing < device_calls; ++failing) {
+      forget_device(&device, failing < 0 ? 0 : 1, failing);
+      memset(output, 0, count * sizeof *output);
+      if (form == 0) CHECK(openmx_exx_add_gamma(state, 0, ATOMS, -0.25, d, output, &table, message, sizeof message) == 0);
+      else CHECK(openmx_exx_add_blocks(state, 0, ATOMS, -0.25, site_d, output, &table, message, sizeof message) == 0);
+      CHECK(message[0] == '\0' && device.accepted == 1 && device.releases == device.allocations);
+      CHECK(failing < 0 ? device.calls == 0 : device.calls > failing);
+      CHECK(memcmp(output, reference, count * sizeof *output) == 0);
+    }
+  }
+  table.device = NULL;
   memcpy(site_other, site_k, elements * sizeof *site_k);
 
   /* Rejected calls add nothing. */

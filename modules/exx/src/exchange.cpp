@@ -1,9 +1,11 @@
 #include <openmx/exx/exchange.hpp>
 
 #include <algorithm>
+#include <climits>
 #include <cmath>
 #include <cstddef>
 #include <memory>
+#include <optional>
 #include <set>
 #include <stdexcept>
 #include <type_traits>
@@ -463,6 +465,68 @@ class SiteSink {
     return dloc;
   }
 
+  // For the device (section 11): every row of every pair of a site i of
+  // loc(A) and a site j of S, in the order of density(), with its offset in
+  // D[loc(A), S] (local), the offset of the same row of the block in the
+  // layout (stored) and its length.  The rows of site i begin at begin[i].
+  // Two rows of one site of loc(A) never lie in the same block of the
+  // layout, so the rows of one site can be added to K at the same time.
+  void device_rows(std::vector<long long>& local, std::vector<long long>& stored, std::vector<int>& length,
+                   std::vector<std::size_t>& begin) const
+  {
+    static_assert(std::is_same_v<Blocks,LayoutBlocks>,"only a store in a layout gives the rows for the device");
+    const BlockLayout& layout = k_.layout();
+    const std::vector<Site>& loc = system_.c_neighbours[a_];
+    const std::vector<std::size_t>& first = system_.c_offset[a_];
+    const std::size_t s = size();
+    begin.assign(1,local.size());
+    for (std::size_t i = 0; i < loc.size(); ++i) {
+      for (std::size_t j = 0; j < sites_.size(); ++j) {
+        const std::size_t b = layout.find(BlockKey{loc[i].atom,sites_[j].atom,difference(sites_[j].cell,loc[i].cell)});
+        if (b == layout.keys.size()) throw std::invalid_argument("the layout lacks a block of the density matrix");
+        const std::size_t columns = offset_[j+1]-offset_[j];
+        for (std::size_t r = first[i]; r < first[i+1]; ++r) {
+          local.push_back(static_cast<long long>(r*s+offset_[j]));
+          stored.push_back(static_cast<long long>(layout.offset[b]+(r-first[i])*columns));
+          length.push_back(static_cast<int>(columns));
+        }
+      }
+      begin.push_back(local.size());
+    }
+  }
+
+  // The offset in the layout of the block of K of term (i) of group ib.
+  long long device_first(std::size_t ib) const
+  {
+    const Site& b = system_.v_neighbours[a_][ib];
+    return block_offset(BlockKey{static_cast<int>(a_),b.atom,b.cell});
+  }
+
+  // The rows of term (ii) of group ib: for every site of loc(B) and every
+  // orbital mu of A the offset of the row in the layout (stored), the offset
+  // in the array of the term, u_a x l_B (local), and the length.  The sites
+  // of loc(B) are different blocks.
+  void device_second(std::size_t ib, std::vector<long long>& stored, std::vector<long long>& local,
+                     std::vector<int>& length) const
+  {
+    const Site& b = system_.v_neighbours[a_][ib];
+    const std::size_t atom = static_cast<std::size_t>(b.atom);
+    const std::size_t ua = system_.orbital_count[a_], lb = system_.c_offset[atom].back();
+    const std::vector<Site>& loc = system_.c_neighbours[atom];
+    for (std::size_t j = 0; j < loc.size(); ++j) {
+      const std::size_t begin = system_.c_offset[atom][j], width = system_.c_offset[atom][j+1]-begin;
+      const long long block = block_offset(BlockKey{static_cast<int>(a_),loc[j].atom,sum(b.cell,loc[j].cell)});
+      for (std::size_t mu = 0; mu < ua; ++mu) {
+        stored.push_back(block+static_cast<long long>(mu*width));
+        local.push_back(static_cast<long long>(mu*lb+begin));
+        length.push_back(static_cast<int>(width));
+      }
+    }
+  }
+
+  // The number of sites of S.
+  std::size_t site_count() const noexcept { return sites_.size(); }
+
   const std::vector<std::size_t>& columns(std::size_t ib)
   {
     const Site& b = system_.v_neighbours[a_][ib];
@@ -540,6 +604,15 @@ class SiteSink {
   }
 
  private:
+  long long block_offset(const BlockKey& key) const
+  {
+    static_assert(std::is_same_v<Blocks,LayoutBlocks>,"only a store in a layout gives offsets for the device");
+    const BlockLayout& layout = k_.layout();
+    const std::size_t i = layout.find(key);
+    if (i == layout.keys.size()) throw std::invalid_argument("the layout lacks a block of the exchange matrix");
+    return static_cast<long long>(layout.offset[i]);
+  }
+
   const System& system_;
   std::size_t a_;
   double factor_;
@@ -777,6 +850,530 @@ void check_dense(std::size_t n, std::size_t size, const char* what)
   if (size != n*n) throw std::invalid_argument(what);
 }
 
+// ---- the device (section 11) ------------------------------------------------
+//
+// One call of the library builds the contributions of its centre atoms on the
+// device.  D, K, the T blocks of all atoms and a zero stay there for the
+// call; the arrays of one centre are made for the largest centre and used by
+// every centre in turn.  The device has the arrays of centre_contribution()
+// in other layouts, so that no array is turned:
+//   G and the bracket   [P][mu][column]   (the result of G = T D as it is)
+//   W                   [P][nu][l]        (the result of W = V T as it is)
+//   Wn                  [nu][P][l]        (a copy of W)
+//   Gg                  [mu][P][l] = G[P][mu][column_l]
+//   GBp                 [mu][P][nu] = Gg[mu][P][nu], nu < u_b
+// and the four terms of a V neighbour are one product each for all ABFs:
+//   (i)   first [mu][nu]      = sum_(P,l)  Gg[mu][(P,l)] Wn[nu][(P,l)]
+//   (ii)  second [mu][l]      = sum_(P,nu) GBp[mu][(P,nu)] W[(P,nu)][l]
+//   (iii) X3 [(nu,P)][mu]     = sum_l Wn[(nu,P)][l] D[A, loc(B)][mu][l]
+//   (iv)  X4 [mu][(P,l)]      = sum_nu D[A, B][nu][mu] Wn[nu][(P,l)]
+// X3 is added to the bracket at the columns of B and then X4 at the columns
+// of loc(B), the order of the host.  K receives term (i), term (ii) and the
+// last product in the order of the host as well.
+
+// A function of the device failed or found no room: the call goes back to
+// the host.
+struct DeviceStop {};
+
+// The work of one call on the device.  The memory goes back when the object
+// ends; work that may still run on it is finished first.
+class DeviceWork {
+ public:
+  explicit DeviceWork(const OpenMXExxDevice& device) noexcept : device_(device) {}
+  DeviceWork(const DeviceWork&) = delete;
+  DeviceWork& operator=(const DeviceWork&) = delete;
+  ~DeviceWork()
+  {
+    if (pending_) (void)device_.finish(device_.context);
+    for (void* pointer : blocks_) device_.release(device_.context,pointer);
+  }
+
+  template <class T>
+  T* allocate(std::size_t count)
+  {
+    blocks_.reserve(blocks_.size()+1);   // push_back below does not throw
+    void* pointer = device_.allocate(device_.context,std::max<std::size_t>(count,1)*sizeof(T));
+    if (pointer == nullptr) throw DeviceStop();
+    blocks_.push_back(pointer);
+    return static_cast<T*>(pointer);
+  }
+
+  // The copies are made when no work is pending: the caller finishes first.
+  void upload(void* target, const void* source, std::size_t bytes)
+  {
+    if (bytes > 0 && device_.upload(device_.context,target,source,bytes) != 0) throw DeviceStop();
+  }
+  void download(void* target, const void* source, std::size_t bytes)
+  {
+    if (bytes > 0 && device_.download(device_.context,target,source,bytes) != 0) throw DeviceStop();
+  }
+  // finish waits for the work also when it reports a failure: it is called
+  // once.
+  void finish()
+  {
+    pending_ = false;
+    if (device_.finish(device_.context) != 0) throw DeviceStop();
+  }
+
+  // C = A B, A B^T and A^T B of row-major arrays without padding, as the
+  // products of DenseBackend.
+  void multiply(std::size_t m, std::size_t n, std::size_t k, const double* a, const double* b, double* c)
+  {
+    gemm('N','N',n,m,k,b,n,a,k,c,n);
+  }
+  void multiply_transposed(std::size_t m, std::size_t n, std::size_t k, const double* a, const double* b, double* c)
+  {
+    gemm('T','N',n,m,k,b,k,a,k,c,n);
+  }
+  void transposed_multiply(std::size_t m, std::size_t n, std::size_t k, const double* a, const double* b, double* c)
+  {
+    gemm('N','T',n,m,k,b,n,a,m,c,n);
+  }
+
+  // One side of a move: the offset of row r is r stride or rows[r], that of
+  // column c is c step or columns[c]; the lists are in device memory.
+  struct Side {
+    long long stride = 0;
+    const long long* rows = nullptr;
+    long long step = 1;
+    const long long* columns = nullptr;
+  };
+
+  // target(r, c) = alpha source(r, c), or += with add, for r < rows and c <
+  // length[r] (columns without lengths; columns is the largest length).
+  void move(std::size_t rows, std::size_t columns, const int* length, double alpha, bool add, double* target,
+            const Side& to, const double* source, const Side& from)
+  {
+    if (rows == 0 || columns == 0) return;
+    if (rows > static_cast<std::size_t>(INT_MAX) || columns > static_cast<std::size_t>(INT_MAX)) throw DeviceStop();
+    const OpenMXExxDeviceIndex t{to.stride,to.rows,to.step,to.columns};
+    const OpenMXExxDeviceIndex s{from.stride,from.rows,from.step,from.columns};
+    pending_ = true;
+    if (device_.move(device_.context,static_cast<int>(rows),static_cast<int>(columns),length,alpha,add ? 1 : 0,target,
+                     &t,source,&s) != 0)
+      throw DeviceStop();
+  }
+
+ private:
+  void gemm(char transa, char transb, std::size_t m, std::size_t n, std::size_t k, const double* a, std::size_t lda,
+            const double* b, std::size_t ldb, double* c, std::size_t ldc)
+  {
+    if (m == 0 || n == 0) return;
+    const std::size_t limit = static_cast<std::size_t>(INT_MAX);
+    if (m > limit || n > limit || k > limit || lda > limit || ldb > limit || ldc > limit) throw DeviceStop();
+    const auto narrow = [](std::size_t value) { return static_cast<int>(std::max<std::size_t>(value,1)); };
+    pending_ = true;
+    if (device_.dgemm(device_.context,transa,transb,static_cast<int>(m),static_cast<int>(n),static_cast<int>(k),1.0,
+                      a,narrow(lda),b,narrow(ldb),0.0,c,narrow(ldc)) != 0)
+      throw DeviceStop();
+  }
+
+  const OpenMXExxDevice& device_;
+  std::vector<void*> blocks_;
+  bool pending_ = false;
+};
+
+// A V neighbour of a centre atom on the device: group g of the sink.
+struct DeviceGroup {
+  std::size_t atom = 0;                    // B
+  const double* v = nullptr;               // its V block on the host, n_P x n_Q
+  std::vector<long long> column;           // the column of D of every column l of the T blocks of B
+  long long first = 0, first_stride = 0;   // term (i): row mu of K at first + mu first_stride
+  // Term (ii): rows (site of loc(B), mu) with lists in the site form, or row
+  // mu at second + mu second_stride and the columns `column` in the Gamma form.
+  std::vector<long long> second_stored, second_local;
+  std::vector<int> second_length;
+  std::size_t second_longest = 0;          // the largest of second_length
+  long long second = 0, second_stride = 0;
+};
+
+// What one centre atom needs on the device, from the sink.
+struct DeviceCentre {
+  std::size_t s = 0;                      // columns of D[loc(A), .]
+  // Site form: the rows of D[loc(A), S] with lists (SiteSink::device_rows()).
+  std::vector<long long> local, stored;
+  std::vector<int> length;
+  std::vector<std::size_t> begin;
+  std::size_t longest = 0;                // the largest of length
+  // Gamma form: the offset in D and K of the row of every row of D[loc(A), .].
+  std::vector<long long> row;
+  std::vector<DeviceGroup> groups;
+};
+
+// The sizes of the arrays of one centre atom on the device.
+struct DeviceSizes {
+  std::size_t g = 0, dloc = 0, w = 0, gg = 0, gbp = 0, dl = 0, dba = 0, first = 0, second = 0, x3 = 0;
+  std::size_t v = 0, list = 0, length = 0;
+  double multiplications = 0.0;           // of the largest product of the centre
+
+  void widen(const DeviceSizes& other)
+  {
+    g = std::max(g,other.g);
+    dloc = std::max(dloc,other.dloc);
+    w = std::max(w,other.w);
+    gg = std::max(gg,other.gg);
+    gbp = std::max(gbp,other.gbp);
+    dl = std::max(dl,other.dl);
+    dba = std::max(dba,other.dba);
+    first = std::max(first,other.first);
+    second = std::max(second,other.second);
+    x3 = std::max(x3,other.x3);
+    v = std::max(v,other.v);
+    list = std::max(list,other.list);
+    length = std::max(length,other.length);
+    multiplications = std::max(multiplications,other.multiplications);
+  }
+};
+
+// The sizes of centre a with the columns s, the width ell of loc(A), the
+// groups (atom, width of loc(B), sites of loc(B)) and the rows of the
+// gathered D (site form; 0 in the Gamma form).
+DeviceSizes device_sizes(const System& system, std::size_t a, std::size_t s, std::size_t ell,
+                         const std::vector<std::array<std::size_t,3>>& groups, std::size_t gathered_rows, bool site)
+{
+  const std::size_t np = system.abf_count[a], ua = system.orbital_count[a];
+  const auto product = [](std::size_t m, std::size_t n, std::size_t k) {
+    return static_cast<double>(m)*static_cast<double>(n)*static_cast<double>(k);
+  };
+  DeviceSizes z;
+  z.g = np*ua*s;
+  z.dloc = ell*s;
+  z.multiplications = product(np*ua,s,ell);         // G = T D and the last product
+  z.list = site ? 2*gathered_rows : ell;
+  z.length = site ? gathered_rows : 0;
+  z.list += ua*np;                                  // the rows of G in the order (mu, P)
+  for (const std::array<std::size_t,3>& group : groups) {
+    const std::size_t b = group[0], lb = group[1], sites = group[2];
+    const std::size_t nq = system.abf_count[b], ub = system.orbital_count[b];
+    // W = V T_B, and the four terms, which have the same size.
+    z.multiplications = std::max({z.multiplications,product(np,ub*lb,nq),product(ua,ub,np*lb)});
+    z.w = std::max(z.w,np*ub*lb);
+    z.gg = std::max(z.gg,ua*np*lb);
+    z.gbp = std::max(z.gbp,ua*np*ub);
+    z.dl = std::max(z.dl,ua*lb);
+    z.dba = std::max(z.dba,ub*ua);
+    z.first = std::max(z.first,ua*ub);
+    z.second = std::max(z.second,ua*lb);
+    z.x3 = std::max(z.x3,ub*np*ua);
+    z.v += np*nq;
+    z.list += lb+ub*np+(site ? 2*sites*ua : 0);
+    z.length += site ? sites*ua : 0;
+  }
+  return z;
+}
+
+// The arrays of a call on the device.
+struct DeviceArrays {
+  double *density = nullptr, *k = nullptr, *t = nullptr, *zero = nullptr, *v = nullptr;
+  double *g = nullptr, *bracket = nullptr, *dloc = nullptr, *w = nullptr, *wn = nullptr, *gg = nullptr, *x4 = nullptr;
+  double *gbp = nullptr, *dl = nullptr, *dba = nullptr, *first = nullptr, *second = nullptr, *x3 = nullptr;
+  long long* list = nullptr;
+  int* length = nullptr;
+  std::vector<std::size_t> t_offset;      // of the T blocks of every atom in t
+  DeviceSizes capacity;                   // of the arrays of one centre
+
+  DeviceArrays(DeviceWork& work, const DeviceSizes& z, std::size_t elements, const std::vector<std::size_t>& t_size)
+      : capacity(z)
+  {
+    t_offset.assign(1,0);
+    for (const std::size_t size : t_size) t_offset.push_back(t_offset.back()+size);
+    density = work.allocate<double>(elements);
+    k = work.allocate<double>(elements);
+    t = work.allocate<double>(t_offset.back());
+    zero = work.allocate<double>(1);
+    v = work.allocate<double>(z.v);
+    g = work.allocate<double>(z.g);
+    bracket = work.allocate<double>(z.g);
+    dloc = work.allocate<double>(z.dloc);
+    w = work.allocate<double>(z.w);
+    wn = work.allocate<double>(z.w);
+    gg = work.allocate<double>(z.gg);
+    x4 = work.allocate<double>(z.gg);
+    gbp = work.allocate<double>(z.gbp);
+    dl = work.allocate<double>(z.dl);
+    dba = work.allocate<double>(z.dba);
+    first = work.allocate<double>(z.first);
+    second = work.allocate<double>(z.second);
+    x3 = work.allocate<double>(z.x3);
+    list = work.allocate<long long>(z.list);
+    length = work.allocate<int>(z.length);
+  }
+
+  // The device memory of these arrays, in bytes, as the allocations count it.
+  static std::size_t bytes(const DeviceSizes& z, std::size_t elements, std::size_t t_total)
+  {
+    const auto one = [](std::size_t count) { return std::max<std::size_t>(count,1); };
+    const std::size_t doubles = 2*one(elements)+one(t_total)+1+one(z.v)+2*one(z.g)+one(z.dloc)+2*one(z.w)+
+                                2*one(z.gg)+one(z.gbp)+one(z.dl)+one(z.dba)+one(z.first)+one(z.second)+one(z.x3);
+    return doubles*sizeof(double)+one(z.list)*sizeof(long long)+one(z.length)*sizeof(int);
+  }
+};
+
+// The contribution of one centre atom on the device, factor times it added
+// to K there.  The lists and the V blocks of the centre are uploaded first:
+// the work of the centre before has finished.  The work of this centre is
+// finished at the end.
+void device_centre(const System& system, std::size_t a, double factor, const DeviceCentre& c, DeviceArrays& d,
+                   DeviceWork& work)
+{
+  const std::size_t np = system.abf_count[a], ua = system.orbital_count[a], s = c.s;
+  const std::size_t rows = np*ua;
+  const bool site = c.row.empty();
+  const std::size_t ell = site ? system.c_offset[a].back() : c.row.size();
+
+  // The lists, in one array: append() gives the offset of a list in it.
+  std::vector<long long> list;
+  std::vector<int> length;
+  const auto append = [&list](const std::vector<long long>& values) {
+    const std::size_t at = list.size();
+    list.insert(list.end(),values.begin(),values.end());
+    return at;
+  };
+  const auto append_length = [&length](const std::vector<int>& values) {
+    const std::size_t at = length.size();
+    length.insert(length.end(),values.begin(),values.end());
+    return at;
+  };
+  std::size_t local = 0, stored = 0, gathered = 0, row = 0;
+  if (site) {
+    local = append(c.local);
+    stored = append(c.stored);
+    gathered = append_length(c.length);
+  } else {
+    row = append(c.row);
+  }
+  std::vector<long long> order(ua*np);             // the row of G of every row (mu, P) of Gg
+  for (std::size_t mu = 0; mu < ua; ++mu)
+    for (std::size_t p = 0; p < np; ++p) order[mu*np+p] = static_cast<long long>((p*ua+mu)*s);
+  const std::size_t g_rows = append(order);
+  struct GroupLists {
+    std::size_t column, w_rows, second_stored, second_local, second_length;
+  };
+  std::vector<GroupLists> at(c.groups.size());
+  std::vector<double> v;
+  std::vector<std::size_t> v_offset;
+  for (std::size_t ib = 0; ib < c.groups.size(); ++ib) {
+    const DeviceGroup& group = c.groups[ib];
+    const std::size_t b = group.atom, ub = system.orbital_count[b], lb = group.column.size();
+    at[ib].column = append(group.column);
+    std::vector<long long> w_rows(ub*np);            // the row of W of every row (nu, P) of Wn
+    for (std::size_t nu = 0; nu < ub; ++nu)
+      for (std::size_t p = 0; p < np; ++p) w_rows[nu*np+p] = static_cast<long long>((p*ub+nu)*lb);
+    at[ib].w_rows = append(w_rows);
+    at[ib].second_stored = append(group.second_stored);
+    at[ib].second_local = append(group.second_local);
+    at[ib].second_length = append_length(group.second_length);
+    v_offset.push_back(v.size());
+    v.insert(v.end(),group.v,group.v+np*system.abf_count[b]);
+  }
+  if (list.size() > d.capacity.list || length.size() > d.capacity.length || v.size() > d.capacity.v)
+    throw std::logic_error("the lists of a centre atom do not fit their arrays on the device");
+  work.upload(d.list,list.data(),list.size()*sizeof(long long));
+  work.upload(d.length,length.data(),length.size()*sizeof(int));
+  work.upload(d.v,v.data(),v.size()*sizeof(double));
+
+  using Side = DeviceWork::Side;
+  const Side zero{0,nullptr,0,nullptr};              // every element reads d.zero[0]
+  const double* ta = d.t+d.t_offset[a];
+  if (site)                                          // D[loc(A), S] from the layout
+    work.move(c.local.size(),c.longest,d.length+gathered,1.0,false,d.dloc,Side{0,d.list+local,1,nullptr},d.density,
+              Side{0,d.list+stored,1,nullptr});
+  else                                               // D[loc(A), .] from the rows of D
+    work.move(ell,s,nullptr,1.0,false,d.dloc,Side{static_cast<long long>(s),nullptr,1,nullptr},d.density,
+              Side{0,d.list+row,1,nullptr});
+  work.multiply(rows,s,ell,ta,d.dloc,d.g);                            // G = T D[loc(A), .]
+  work.move(rows,s,nullptr,1.0,false,d.bracket,Side{static_cast<long long>(s),nullptr,1,nullptr},d.zero,zero);
+
+  const auto signed_size = [](std::size_t value) { return static_cast<long long>(value); };
+  for (std::size_t ib = 0; ib < c.groups.size(); ++ib) {
+    const DeviceGroup& group = c.groups[ib];
+    const std::size_t b = group.atom, nq = system.abf_count[b], ub = system.orbital_count[b], lb = group.column.size();
+    const long long* column = d.list+at[ib].column;
+    work.multiply(np,ub*lb,nq,d.v+v_offset[ib],d.t+d.t_offset[b],d.w);                    // W = V T_B
+    work.move(ub*np,lb,nullptr,1.0,false,d.wn,Side{signed_size(lb),nullptr,1,nullptr},d.w,
+              Side{0,d.list+at[ib].w_rows,1,nullptr});                                      // Wn
+    work.move(ua*np,lb,nullptr,1.0,false,d.gg,Side{signed_size(lb),nullptr,1,nullptr},d.g,
+              Side{0,d.list+g_rows,1,column});                                              // Gg
+    work.move(ua*np,ub,nullptr,1.0,false,d.gbp,Side{signed_size(ub),nullptr,1,nullptr},d.gg,
+              Side{signed_size(lb),nullptr,1,nullptr});                                     // GBp
+    work.move(ua,lb,nullptr,1.0,false,d.dl,Side{signed_size(lb),nullptr,1,nullptr},d.dloc,
+              Side{signed_size(s),nullptr,1,column});                                       // D[A, loc(B)]
+    work.move(ub,ua,nullptr,1.0,false,d.dba,Side{signed_size(ua),nullptr,1,nullptr},d.dloc,
+              Side{0,column,signed_size(s),nullptr});                                       // D[A, B] as [nu][mu]
+    work.multiply_transposed(ua,ub,np*lb,d.gg,d.wn,d.first);                                // (i)
+    work.multiply(ua,lb,np*ub,d.gbp,d.w,d.second);                                          // (ii)
+    work.multiply_transposed(ub*np,ua,lb,d.wn,d.dl,d.x3);                                   // (iii)
+    work.transposed_multiply(ua,np*lb,ub,d.dba,d.wn,d.x4);                                  // (iv)
+    work.move(ub,np*ua,nullptr,1.0,true,d.bracket,Side{0,column,signed_size(s),nullptr},d.x3,
+              Side{signed_size(np*ua),nullptr,1,nullptr});                                  // bracket[., B] += X3
+    work.move(ua*np,lb,nullptr,1.0,true,d.bracket,Side{0,d.list+g_rows,1,column},d.x4,
+              Side{signed_size(lb),nullptr,1,nullptr});                                     // bracket[., loc(B)] += X4
+    work.move(ua,ub,nullptr,factor,true,d.k+group.first,Side{group.first_stride,nullptr,1,nullptr},d.first,
+              Side{signed_size(ub),nullptr,1,nullptr});                                     // K += (i)
+    if (site)
+      work.move(group.second_length.size(),group.second_longest,d.length+at[ib].second_length,factor,true,d.k,
+                Side{0,d.list+at[ib].second_stored,1,nullptr},d.second,Side{0,d.list+at[ib].second_local,1,nullptr});
+    else
+      work.move(ua,lb,nullptr,factor,true,d.k+group.second,Side{group.second_stride,nullptr,1,column},d.second,
+                Side{signed_size(lb),nullptr,1,nullptr});                                   // K += (ii)
+  }
+
+  work.transposed_multiply(ell,s,rows,ta,d.bracket,d.dloc);           // the last result, over D[loc(A), .]
+  if (site)
+    // The rows of one site of loc(A) lie in different blocks; two sites can
+    // add to one block, so the sites go one after the other, as on the host.
+    for (std::size_t i = 0; i+1 < c.begin.size(); ++i) {
+      const std::size_t first = c.begin[i], count = c.begin[i+1]-first;
+      work.move(count,c.longest,d.length+gathered+first,factor,true,d.k,Side{0,d.list+stored+first,1,nullptr},d.dloc,
+                Side{0,d.list+local+first,1,nullptr});
+    }
+  else
+    work.move(ell,s,nullptr,factor,true,d.k,Side{0,d.list+row,1,nullptr},d.dloc,
+              Side{signed_size(s),nullptr,1,nullptr});
+  work.finish();
+}
+
+// The centre atoms first to last-1 on the device; false when the device does
+// not take them or stops.  Form gives the sizes and the plan of a centre and
+// the T blocks of an atom.  k is written at the end only.
+template <class Form>
+bool device_range(const System& system, std::size_t first, std::size_t last, double factor,
+                  std::span<const double> density, std::span<double> k, const OpenMXExxDevice& device, Form& form)
+{
+  if (device.accept == nullptr || device.allocate == nullptr || device.release == nullptr ||
+      device.upload == nullptr || device.download == nullptr || device.dgemm == nullptr || device.move == nullptr ||
+      device.finish == nullptr || first >= last)
+    return false;
+  const std::size_t atoms = system.orbital_count.size();
+  DeviceSizes z;
+  for (std::size_t a = first; a < last; ++a) z.widen(form.sizes(a));
+  std::vector<std::size_t> t_size(atoms);
+  std::size_t t_total = 0;
+  for (std::size_t x = 0; x < atoms; ++x) t_total += t_size[x] = form.t_size(x);
+  if (device.accept(device.context,z.multiplications,DeviceArrays::bytes(z,k.size(),t_total)) != 1) return false;
+
+  std::vector<double> result(k.size());
+  try {
+    DeviceWork work(device);
+    DeviceArrays d(work,z,k.size(),t_size);
+    work.upload(d.density,density.data(),density.size()*sizeof(double));
+    work.upload(d.k,k.data(),k.size()*sizeof(double));
+    for (std::size_t x = 0; x < atoms; ++x) work.upload(d.t+d.t_offset[x],form.t(x),t_size[x]*sizeof(double));
+    const double nothing = 0.0;
+    work.upload(d.zero,&nothing,sizeof(double));
+    for (std::size_t a = first; a < last; ++a) device_centre(system,a,factor,form.plan(a),d,work);
+    work.download(result.data(),d.k,result.size()*sizeof(double));
+  } catch (const DeviceStop&) {
+    return false;
+  }
+  std::copy(result.begin(),result.end(),k.begin());
+  return true;
+}
+
+// The site form in one array for the device.
+class DeviceBlocks {
+ public:
+  DeviceBlocks(const System& system, const BlockLayout& layout, double factor)
+      : system_(system), factor_(factor), store_(layout,std::span<double>())
+  {
+  }
+
+  DeviceSizes sizes(std::size_t a)
+  {
+    const SiteSink<LayoutBlocks> sink(system_,a,factor_,store_);
+    std::vector<std::array<std::size_t,3>> groups;
+    for (const Site& b : system_.v_neighbours[a]) {
+      const std::size_t atom = static_cast<std::size_t>(b.atom);
+      groups.push_back({atom,system_.c_offset[atom].back(),system_.c_neighbours[atom].size()});
+    }
+    const std::size_t ell = system_.c_offset[a].back();
+    return device_sizes(system_,a,sink.size(),ell,groups,ell*sink.site_count(),true);
+  }
+
+  std::size_t t_size(std::size_t x) const { return system_.t[x].size(); }
+  const double* t(std::size_t x) const { return system_.t[x].data(); }
+
+  DeviceCentre plan(std::size_t a)
+  {
+    SiteSink<LayoutBlocks> sink(system_,a,factor_,store_);
+    DeviceCentre c;
+    c.s = sink.size();
+    sink.device_rows(c.local,c.stored,c.length,c.begin);
+    for (const int length : c.length) c.longest = std::max(c.longest,static_cast<std::size_t>(length));
+    for (std::size_t ib = 0; ib < sink.groups(); ++ib) {
+      DeviceGroup group;
+      group.atom = sink.atom(ib);
+      group.v = sink.v(ib);
+      for (const std::size_t column : sink.columns(ib)) group.column.push_back(static_cast<long long>(column));
+      group.first = sink.device_first(ib);
+      group.first_stride = static_cast<long long>(system_.orbital_count[group.atom]);
+      sink.device_second(ib,group.second_stored,group.second_local,group.second_length);
+      for (const int length : group.second_length)
+        group.second_longest = std::max(group.second_longest,static_cast<std::size_t>(length));
+      c.groups.push_back(std::move(group));
+    }
+    return c;
+  }
+
+ private:
+  const System& system_;
+  double factor_;
+  LayoutBlocks store_;                     // the layout, for the offsets of the blocks; nothing is written to it
+};
+
+// The Gamma form for the device.  The T blocks are folded as GammaSink folds
+// them; folding depends on the atom only.
+class DeviceGamma {
+ public:
+  DeviceGamma(const System& system, double factor, const std::vector<std::size_t>& offset)
+      : system_(system), factor_(factor), offset_(offset), folding_(system,0,factor,std::span<double>(),offset)
+  {
+  }
+
+  DeviceSizes sizes(std::size_t a)
+  {
+    GammaSink sink(system_,a,factor_,std::span<double>(),offset_);
+    std::vector<std::array<std::size_t,3>> groups;
+    for (std::size_t g = 0; g < sink.groups(); ++g) groups.push_back({sink.atom(g),sink.width(sink.atom(g)),0});
+    return device_sizes(system_,a,offset_.back(),sink.width(a),groups,0,false);
+  }
+
+  std::size_t t_size(std::size_t x)
+  {
+    return system_.abf_count[x]*system_.orbital_count[x]*folding_.width(x);
+  }
+  const double* t(std::size_t x) { return folding_.t(x); }
+
+  DeviceCentre plan(std::size_t a)
+  {
+    sink_.emplace(system_,a,factor_,std::span<double>(),offset_);  // the V blocks of the groups live in it
+    GammaSink& sink = *sink_;
+    const std::size_t n = offset_.back();
+    DeviceCentre c;
+    c.s = n;
+    for (const std::size_t r : sink.rows()) c.row.push_back(static_cast<long long>(r*n));
+    for (std::size_t g = 0; g < sink.groups(); ++g) {
+      DeviceGroup group;
+      group.atom = sink.atom(g);
+      group.v = sink.v(g);
+      for (const std::size_t column : sink.columns(g)) group.column.push_back(static_cast<long long>(column));
+      group.first = static_cast<long long>(offset_[a]*n+offset_[group.atom]);
+      group.first_stride = static_cast<long long>(n);
+      group.second = static_cast<long long>(offset_[a]*n);
+      group.second_stride = static_cast<long long>(n);
+      c.groups.push_back(std::move(group));
+    }
+    return c;
+  }
+
+ private:
+  const System& system_;
+  double factor_;
+  const std::vector<std::size_t>& offset_;
+  GammaSink folding_;                      // the folded T blocks of all atoms
+  std::optional<GammaSink> sink_;          // the sink of the centre of the last plan
+};
+
 } // namespace
 
 // ---- site form -------------------------------------------------------------
@@ -954,6 +1551,24 @@ void add_exchange_blocks(const System& system, const BlockLayout& layout, std::s
   centre_contribution(system,atom,sink.size(),dloc.get(),sink,backend);
 }
 
+bool add_exchange_blocks_range(const System& system, const BlockLayout& layout, std::size_t first, std::size_t last,
+                               double factor, std::span<const double> density, std::span<double> k,
+                               const DenseBackend& backend)
+{
+  if (first > last || last > system.orbital_count.size())
+    throw std::out_of_range("the range of centre atoms is not inside the unit cell");
+  if (const OpenMXExxDevice* device = backend.device(); device != nullptr && first < last) {
+    check(system);
+    check(system,layout);
+    if (density.size() != layout.elements()) throw std::invalid_argument("the density matrix does not have the size of the layout");
+    if (k.size() != layout.elements()) throw std::invalid_argument("the exchange matrix does not have the size of the layout");
+    DeviceBlocks form(system,layout,factor);
+    if (device_range(system,first,last,factor,density,k,*device,form)) return true;
+  }
+  for (std::size_t atom = first; atom < last; ++atom) add_exchange_blocks(system,layout,atom,factor,density,k,backend);
+  return false;
+}
+
 double block_asymmetry(const System& system, const BlockLayout& layout, std::span<const double> values)
 {
   if (values.size() != layout.elements()) throw std::invalid_argument("the array does not have the size of the layout");
@@ -997,12 +1612,30 @@ void add_exchange_gamma(const System& system, std::size_t atom, double factor, s
   centre_contribution(system,atom,n,dloc.get(),sink,backend);
 }
 
+bool add_exchange_gamma_range(const System& system, std::size_t first, std::size_t last, double factor,
+                              std::span<const double> density, std::span<double> k, const DenseBackend& backend)
+{
+  if (first > last || last > system.orbital_count.size())
+    throw std::out_of_range("the range of centre atoms is not inside the unit cell");
+  if (const OpenMXExxDevice* device = backend.device(); device != nullptr && first < last) {
+    check(system);
+    const std::vector<std::size_t> offset = orbital_offsets(system);
+    const std::size_t n = offset.back();
+    check_dense(n,density.size(),"the density matrix is not N x N");
+    check_dense(n,k.size(),"the exchange matrix is not N x N");
+    DeviceGamma form(system,factor,offset);
+    if (device_range(system,first,last,factor,density,k,*device,form)) return true;
+  }
+  for (std::size_t atom = first; atom < last; ++atom) add_exchange_gamma(system,atom,factor,density,k,backend);
+  return false;
+}
+
 std::vector<double> exchange_gamma(const System& system, std::span<const double> density, double alpha,
                                    const DenseBackend& backend)
 {
   const std::size_t n = orbital_total(system);
   std::vector<double> k(n*n,0.0);
-  for (std::size_t a = 0; a < system.orbital_count.size(); ++a) add_exchange_gamma(system,a,-alpha,density,k,backend);
+  add_exchange_gamma_range(system,0,system.orbital_count.size(),-alpha,density,k,backend);
   return k;
 }
 
