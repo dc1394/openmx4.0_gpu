@@ -42,8 +42,9 @@ class DenseBackend {
   void transposed_multiply(std::size_t m, std::size_t n, std::size_t k, double alpha, const double* a,
                            const double* b, double beta, double* c) const;
 
-  // The number of pieces into which a caller divides a loop for
-  // parallel_for(): the threads of the table, 1 without a parallel loop.
+  // The largest number of pieces into which a caller divides a loop for
+  // parallel_for(): the threads of the table, 1 without a parallel loop.  A
+  // loop over fewer items has fewer pieces.
   std::size_t pieces() const noexcept;
 
   // Calls body(index) for index = 0..count-1 and returns when all calls have
@@ -52,9 +53,10 @@ class DenseBackend {
   // different memory, and the products above may be called from all of them.
   // An exception of a call does not stop the other calls; the one of the
   // lowest index is thrown again afterwards.  Throws std::runtime_error when
-  // the loop of the table fails or does not call every index once.  Without a
-  // parallel loop the calls run in order on the calling thread, and an
-  // exception ends the loop at once.
+  // the loop of the table fails or does not call every index once, and
+  // std::length_error when count does not fit the int of the table.  Without
+  // a parallel loop the calls run in order on the calling thread, and an
+  // exception ends the loop at once.  A body must not call parallel_for().
   template <class Body>
   void parallel_for(std::size_t count, Body body) const
   {

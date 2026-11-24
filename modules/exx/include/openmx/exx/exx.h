@@ -31,21 +31,30 @@ extern "C" {
    (NULL) selects the loops of the library.
 
    parallel_for and threads are optional (NULL and 0: the library runs its
-   loops on the calling thread).  parallel_for calls body(argument, index)
-   once for every index from 0 to count-1, returns when all calls have
-   returned, and returns 0 on success.  The calls may run at the same time on
-   different threads.  The library hands it loops whose pieces write to
-   different memory; dgemm is then called from those threads at the same time
-   and must allow that.  threads is the number of pieces into which the
-   library divides such a loop: the number of threads of parallel_for.  With
-   threads below 2 the library does not call parallel_for.
+   loops on the calling thread).  The library reads all four members of a
+   table, so a table is set as a whole, for example with
+   "OpenMXExxDenseBackend table = {0};" before its members are assigned: a
+   member that was never set is not NULL or 0.
 
-   The exchange build divides the ABFs of a centre atom into pieces and adds
-   the sums over the ABFs piece by piece.  For one value of threads and a
-   dgemm that gives the same result for the same arguments on every thread,
-   the results do not depend on the order or the timing of the calls.  They
-   can differ by rounding from the results for another value of threads; with
-   one piece they are those of the loop on the calling thread. */
+   parallel_for calls body(argument, index) once for every index from 0 to
+   count-1, returns when all calls have returned, and returns 0 on success.
+   The calls may run at the same time on different threads.  The library
+   hands it loops whose pieces write to different memory; dgemm is then
+   called from those threads at the same time and must allow that.  threads
+   is the largest number of pieces into which the library divides such a
+   loop, the number of threads of parallel_for: count is at most threads,
+   and smaller for a loop over fewer items.  With threads below 2 the
+   library does not call parallel_for.  The library calls parallel_for from
+   the thread that called the library, one loop at a time, and never from a
+   body.
+
+   The exchange build divides the ABFs of a centre atom into pieces, as many
+   as threads or, with fewer ABFs, one for every ABF, and adds the sums over
+   the ABFs piece by piece.  For one value of threads and a dgemm that gives
+   the same result for the same arguments on every thread, the results do
+   not depend on the order or the timing of the calls.  They can differ by
+   rounding from the results for another value of threads; with one piece
+   they are those of the loop on the calling thread. */
 typedef struct {
   int (*dgemm)(void *context, char transa, char transb, int m, int n, int k, double alpha,
                const double *a, int lda, const double *b, int ldb, double beta, double *c, int ldc);

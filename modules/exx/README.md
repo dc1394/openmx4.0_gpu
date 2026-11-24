@@ -93,10 +93,12 @@ const std::vector<double> k_threads = exchange_gamma(system, density, 0.25, Dens
 V 近傍ごとの 4 つの項は、中心の原子の ABF を 1 個ずつ計算します。
 
 関数表の `parallel_for` と `threads` は省略できます（`nullptr` と 0）。
+ライブラリーは関数表の 4 つのメンバーを全て読むので、関数表は全体を初期化してください（C では `OpenMXExxDenseBackend table = {0};` のあとで代入します）。設定していないメンバーは、`nullptr` や 0 になりません。
 `parallel_for` は、0 から `count-1` までの番号ごとに `body(argument, index)` を 1 回ずつ呼び、全部が終わってから 0 を返す関数です。
 呼び出しは、別々のスレッドで同時に実行してかまいません。OpenMP なら `#pragma omp parallel for` のループ 1 個で書けます。
-ライブラリーは、中心の原子の ABF を `threads` 個の区間に分け、区間ごとの計算をこの関数に渡します。
+ライブラリーは、中心の原子の ABF を最大で `threads` 個の区間に分け、区間ごとの計算をこの関数に渡します。ABF が `threads` 個より少ない原子では、区間は ABF の個数になり、`count` は `threads` より小さくなります。
 このとき関数表の `dgemm` は、複数のスレッドから同時に呼ばれます。ライブラリー自身はスレッドを作りません。
+`parallel_for` を呼ぶのは、ライブラリーを呼んだスレッドだけです。ループは 1 個ずつ渡し、区間の中から `parallel_for` を呼ぶことはありません。
 ABF についての和は、区間ごとに足し、その結果を区間の順に足し合わせます。
 このため、`threads` が同じなら、区間を実行する順序やスレッドの割り当てが変わっても結果は変わりません（`dgemm` が同じ引数に同じ結果を返す場合）。
 `threads` を変えると、結果は丸めの範囲で変わります。
