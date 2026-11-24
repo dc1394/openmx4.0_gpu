@@ -71,6 +71,7 @@ void abf_pca(const std::string& fixture);
 void three_center_gaussian();
 void lri_identity(const std::string& fixture);
 void lri_convergence(const std::string& fixture);
+void lri_gradient(const std::string& fixture);
 void system_neighbours(const std::string& fixture);
 void system_blocks(const std::string& fixture);
 void dense_backend();

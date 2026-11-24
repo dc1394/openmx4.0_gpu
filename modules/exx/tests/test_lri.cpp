@@ -5,6 +5,9 @@
 //                              expanded with their own coefficients
 //   exx-lri-convergence        the self-interaction of the expanded products
 //                              as the auxiliary basis grows (a record)
+//   exx-lri-gradient           the derivative of the coefficients with respect
+//                              to the displacement of a pair (equation (18))
+//                              against central differences
 #include <openmx/exx/abf.hpp>
 #include <openmx/exx/lri.hpp>
 
@@ -674,6 +677,271 @@ void lri_convergence(const std::string& path)
     require(fits.back()-fits[fits.size()-2] <= fits[1]-fits[0],"the self-interaction of a pair does not converge");
   }
   require(increases >= 20,"too few comparisons in the record");
+}
+
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Central difference of fourth order of f at zero.
+double central(const std::function<double(double)>& f, double h)
+{
+  return (f(-2.0*h)-8.0*f(-h)+8.0*f(h)-f(2.0*h))/(12.0*h);
+}
+
+} // namespace
+
+void lri_gradient(const std::string& path)
+{
+  // 1. The derivative of F o X for the solution X of G X = B, by both ways of
+  //    solving the system.  dG is symmetric with a diagonal of zero.
+  {
+    const std::size_t n = 12, m = 5;
+    std::vector<double> root(n*n), b(n*m), f(n*m), db(n*m), dg(n*n,0.0);
+    for (std::size_t i = 0; i < root.size(); ++i) root[i] = pseudo(i+5);
+    for (std::size_t i = 0; i < n*m; ++i) {
+      b[i] = pseudo(i+300);
+      f[i] = pseudo(i+700);
+      db[i] = pseudo(i+1100);
+    }
+    for (std::size_t i = 0; i < n; ++i)
+      for (std::size_t j = 0; j < i; ++j) dg[i*n+j] = dg[j*n+i] = pseudo(i*n+j+1500)/static_cast<double>(n);
+
+    // An orthogonal matrix from the rows of "root" (Gram-Schmidt).
+    std::vector<double> q = root;
+    for (std::size_t i = 0; i < n; ++i) {
+      for (std::size_t k = 0; k < i; ++k) {
+        double overlap = 0.0;
+        for (std::size_t x = 0; x < n; ++x) overlap += q[i*n+x]*q[k*n+x];
+        for (std::size_t x = 0; x < n; ++x) q[i*n+x] -= overlap*q[k*n+x];
+      }
+      double norm = 0.0;
+      for (std::size_t x = 0; x < n; ++x) norm += q[i*n+x]*q[i*n+x];
+      for (std::size_t x = 0; x < n; ++x) q[i*n+x] /= std::sqrt(norm);
+    }
+    // G = D Q^T diag(values) Q D with a diagonal D that is not the unit matrix.
+    const auto matrix = [&](const std::vector<double>& values) {
+      std::vector<double> g(n*n,0.0);
+      for (std::size_t i = 0; i < n; ++i)
+        for (std::size_t j = 0; j < n; ++j) {
+          for (std::size_t k = 0; k < n; ++k) g[i*n+j] += q[k*n+i]*values[k]*q[k*n+j];
+          g[i*n+j] *= (1.0+0.05*static_cast<double>(i))*(1.0+0.05*static_cast<double>(j));
+        }
+      return g;
+    };
+    const auto check = [&](const std::string& name, const std::vector<double>& g, const LriOptions& options,
+                           bool cholesky, long dropped, double step, double limit) {
+      const MetricFactorization factorization(g,n,options);
+      require(factorization.cholesky() == cholesky && factorization.report().dropped == dropped &&
+              factorization.eigenvalues().size() == (cholesky ? 0 : n),"unexpected factorization: "+name);
+      std::vector<double> z = f, weights(n*n);
+      factorization.solve(z);
+      factorization.metric_weights(b,f,weights);
+      double analytic = dot(z,db);
+      for (std::size_t i = 0; i < n*n; ++i) analytic += weights[i]*dg[i];
+      const auto energy = [&](double t) {
+        std::vector<double> moved = g, x = b;
+        for (std::size_t i = 0; i < n*n; ++i) moved[i] += t*dg[i];
+        for (std::size_t i = 0; i < n*m; ++i) x[i] += t*db[i];
+        const MetricFactorization shifted(moved,n,options);
+        require(shifted.cholesky() == cholesky && shifted.report().dropped == dropped,
+                "the factorization changed along the difference: "+name);
+        shifted.solve(x);
+        return dot(f,x);
+      };
+      Worst worst(name,limit);
+      worst.relative(analytic,central(energy,step));
+      worst.finish();
+      require(std::fabs(analytic) > 1e-2,"the derivative is too small to be a check: "+name);
+      // solve() is solve_metric().
+      std::vector<double> x1 = b, x2 = b;
+      factorization.solve(x1);
+      solve_metric(g,n,x2,options);
+      for (std::size_t i = 0; i < n*m; ++i) require(x1[i] == x2[i],"MetricFactorization::solve differs from solve_metric");
+    };
+
+    std::vector<double> values(n);
+    for (std::size_t k = 0; k < n; ++k) values[k] = 0.6+0.2*static_cast<double>(k);
+    const std::vector<double> regular = matrix(values);
+    check("derivative of F o X, Cholesky",regular,{},true,0,1e-3,1e-9);
+    check("derivative of F o X, all eigenvectors kept",regular,LriOptions{0.999999,0.0},false,0,1e-3,1e-9);
+    // Four eigenvalues far below the threshold: their eigenvectors are left
+    // out, and the right-hand sides have components along them.
+    for (std::size_t k = 0; k < 4; ++k) values[3*k] = 1e-7*static_cast<double>(k+1);
+    const std::vector<double> deficient = matrix(values);
+    check("derivative of F o X, four eigenvectors left out",deficient,LriOptions{1e-3,1e-3},false,4,1e-4,1e-8);
+
+    const MetricFactorization factorization(regular,n);
+    std::vector<double> weights(n*n);
+    expect_throw("right-hand sides of the wrong size",[&] { factorization.metric_weights(std::span<const double>(b).first(n*m-1),f,weights); });
+    expect_throw("weights of another size",[&] { factorization.metric_weights(b,std::span<const double>(f).first(n*(m-1)),weights); });
+    expect_throw("an output of the wrong size",[&] { factorization.metric_weights(b,f,std::span<double>(weights).first(n)); });
+  }
+
+  // 2. Pairs of atoms with the PAOs and the ABFs of the fixture, on the
+  //    coarser grids of exx-lri-identity.
+  const OverlapFixture fixture = read_overlap_fixture(path);
+  const int intervals = 300;
+  const ReciprocalGrid reciprocal = ReciprocalGrid::uniform(24.0,240);
+  std::vector<SpeciesTable> tables;
+  int maximum_orbital = 0, maximum_abf = 0;
+  for (const FixtureSpecies& species : fixture.species) {
+    const RadialGrid grid{0.0,species.cutoff/intervals,intervals};
+    const std::vector<RadialFunction> orbitals = sample_shells(species,grid);
+    const AuxiliaryBasis basis = make_auxiliary_basis(grid,orbitals,1e-4);
+    tables.emplace_back(grid,orbitals,basis.functions,reciprocal);
+    maximum_orbital = std::max(maximum_orbital,tables.back().maximum_orbital_angular());
+    maximum_abf = std::max(maximum_abf,tables.back().maximum_abf_angular());
+  }
+  const LriSolver solver(reciprocal,maximum_orbital,maximum_abf);
+  struct Case { std::size_t a, c; Vec d; };
+  const std::vector<Case> cases{{0,1,{1.9,-1.2,2.6}},{1,2,{-0.9,1.5,1.0}},{0,0,{2.5,2.6,-2.4}},{2,2,{0.3,-1.2,0.6}},
+                                {2,1,{0.0,0.0,2.1}},{1,0,{-3.4,0.0,0.0}}};
+  const double step = 2e-3;
+  const auto shifted = [](const Vec& d, std::size_t axis, double t) {
+    Vec moved = d;
+    moved[axis] += t;
+    return moved;
+  };
+  const auto weighted = [](const std::vector<double>& weights, const std::vector<double>& values, std::size_t offset) {
+    double sum = 0.0;
+    for (std::size_t i = 0; i < weights.size(); ++i) sum += weights[i]*values[offset+i];
+    return sum;
+  };
+
+  Worst metric("derivative of the metric of a pair",1e-8), rhs("derivative of the right-hand side of a pair",1e-8);
+  Worst random("derivative through the coefficients, random weights",1e-5);
+  Worst smooth("derivative through the coefficients, weights G R",1e-8);
+  Worst reversed("the pair seen from the second atom",1e-9);
+  Worst projected("derivative through the coefficients, eigenvectors left out",1e-8);
+  long left_out = 0;
+  for (std::size_t item = 0; item < cases.size(); ++item) {
+    const SpeciesTable& a = tables[cases[item].a];
+    const SpeciesTable& c = tables[cases[item].c];
+    const Vec& d = cases[item].d;
+    const std::size_t na = a.abf_count(), nc = c.abf_count(), n = na+nc;
+    const std::size_t ua = a.orbital_count(), uc = c.orbital_count(), m = ua*uc;
+
+    // The two parts of the system.
+    std::vector<double> wg(na*nc), wb(n*m);
+    for (std::size_t i = 0; i < wg.size(); ++i) wg[i] = pseudo(i+31*item);
+    for (std::size_t i = 0; i < wb.size(); ++i) wb[i] = pseudo(i+77*item+5);
+    const std::array<double,3> dmetric = solver.metric_gradient(a,c,d,wg);
+    const std::array<double,3> drhs = solver.right_hand_side_gradient(a,c,d,wb);
+    double scale_metric = 0.0, scale_rhs = 0.0;
+    for (std::size_t axis = 0; axis < 3; ++axis) {
+      scale_metric = std::fmax(scale_metric,std::fabs(dmetric[axis]));
+      scale_rhs = std::fmax(scale_rhs,std::fabs(drhs[axis]));
+    }
+    require(scale_metric > 1e-3 && scale_rhs > 1e-3,"the derivatives of a pair are too small to be a check");
+    for (std::size_t axis = 0; axis < 3; ++axis) {
+      const double numeric_metric = central([&](double t) {
+        const std::vector<double> g = solver.metric(a,c,shifted(d,axis,t));
+        double sum = 0.0;
+        for (std::size_t i = 0; i < na; ++i)
+          for (std::size_t j = 0; j < nc; ++j) sum += wg[i*nc+j]*g[i*n+na+j];
+        return sum;
+      },step);
+      metric.add(std::fabs(dmetric[axis]-numeric_metric)/scale_metric);
+      const double numeric_rhs =
+          central([&](double t) { return weighted(wb,solver.right_hand_side(a,c,shifted(d,axis,t)),0); },step);
+      rhs.add(std::fabs(drhs[axis]-numeric_rhs)/scale_rhs);
+    }
+
+    // The energy sum_first w1 X + sum_second w2 X with fixed weights.
+    const PairCoefficients x = solver.pair(a,c,d);
+    const auto energy = [&](const LriSolver& method, const PairCoefficients& w, const Vec& at) {
+      const PairCoefficients moved = method.pair(a,c,at);
+      return weighted(w.first,moved.first,0)+weighted(w.second,moved.second,0);
+    };
+    const auto compare = [&](Worst& worst, const LriSolver& method, const PairCoefficients& solution,
+                             const PairCoefficients& w) {
+      const std::array<double,3> analytic = method.pair_gradient(a,c,d,solution,w);
+      double scale = 0.0;
+      for (std::size_t axis = 0; axis < 3; ++axis) scale = std::fmax(scale,std::fabs(analytic[axis]));
+      require(scale > 1e-4,"the derivative through the coefficients is too small to be a check");
+      for (std::size_t axis = 0; axis < 3; ++axis)
+        worst.add(std::fabs(analytic[axis]-central([&](double t) { return energy(method,w,shifted(d,axis,t)); },step))/
+                  scale);
+      return analytic;
+    };
+    // Random weights excite the directions in which the metric is nearly
+    // singular; the differences of the coefficients then lose digits.
+    PairCoefficients w;
+    w.first.resize(na*m);
+    w.second.resize(nc*m);
+    for (std::size_t i = 0; i < w.first.size(); ++i) w.first[i] = pseudo(i+13*item+900);
+    for (std::size_t i = 0; i < w.second.size(); ++i) w.second[i] = pseudo(i+17*item+1900);
+    compare(random,solver,x,w);
+    // Weights G R with random R, as the derivatives of an energy that is a
+    // function of the fitted densities.
+    const std::vector<double> g = solver.metric(a,c,d);
+    std::vector<double> r(n*m), gr(n*m,0.0);
+    for (std::size_t i = 0; i < r.size(); ++i) r[i] = pseudo(i+19*item+2900);
+    for (std::size_t i = 0; i < n; ++i)
+      for (std::size_t j = 0; j < n; ++j)
+        for (std::size_t k = 0; k < m; ++k) gr[i*m+k] += g[i*n+j]*r[j*m+k];
+    PairCoefficients ws;
+    ws.first.assign(gr.begin(),gr.begin()+static_cast<std::ptrdiff_t>(na*m));
+    ws.second.resize(nc*m);
+    for (std::size_t q = 0; q < nc; ++q)
+      for (std::size_t mu = 0; mu < ua; ++mu)
+        for (std::size_t lambda = 0; lambda < uc; ++lambda) ws.second[(q*uc+lambda)*ua+mu] = gr[((na+q)*ua+mu)*uc+lambda];
+    const std::array<double,3> forward = compare(smooth,solver,x,ws);
+
+    // The same pair from the second atom: the two parts change places and
+    // the displacement changes its sign.
+    const Vec minus{-d[0],-d[1],-d[2]};
+    const std::array<double,3> backward =
+        solver.pair_gradient(c,a,minus,PairCoefficients{x.second,x.first},PairCoefficients{ws.second,ws.first});
+    double scale = 0.0;
+    for (std::size_t axis = 0; axis < 3; ++axis) scale = std::fmax(scale,std::fabs(forward[axis]));
+    for (std::size_t axis = 0; axis < 3; ++axis) reversed.add(std::fabs(forward[axis]+backward[axis])/scale);
+
+    // The eigen-decomposition with a threshold inside the widest gap of the
+    // lower half of the spectrum of the scaled metric.
+    const MetricFactorization spectrum(g,n,LriOptions{0.999999,0.0});
+    std::vector<double> values(spectrum.eigenvalues().begin(),spectrum.eigenvalues().end());
+    std::sort(values.begin(),values.end());
+    std::size_t gap = 1;
+    for (std::size_t k = 1; k < n/2; ++k)
+      if (values[k]/values[k-1] > values[gap]/values[gap-1]) gap = k;
+    const double threshold = std::sqrt(values[gap]*values[gap-1]);
+    std::printf("pair %zu: %zu ABFs, eigenvalues of the scaled metric from %.2e; %zu left out below %.2e (gap %.1f)\n",
+                item,n,values[0],gap,threshold,values[gap]/values[gap-1]);
+    if (values[gap]/values[gap-1] < 2.0 || threshold >= 0.5) continue;
+    const LriSolver projecting(reciprocal,maximum_orbital,maximum_abf,LriOptions{0.999999,threshold});
+    bool stable = true;
+    for (std::size_t axis = 0; axis < 3 && stable; ++axis)
+      for (const double t : {-2.0*step,-step,step,2.0*step}) {
+        const MetricFactorization moved(solver.metric(a,c,shifted(d,axis,t)),n,projecting.options());
+        stable = stable && moved.report().dropped == static_cast<long>(gap);
+      }
+    if (!stable) continue;
+    LriReport report;
+    const PairCoefficients xp = projecting.pair(a,c,d,&report);
+    require(report.eigen_decompositions == 1 && report.dropped == static_cast<long>(gap),
+            "the eigen-decomposition of a pair left out an unexpected number of eigenvectors");
+    compare(projected,projecting,xp,ws);
+    left_out += report.dropped;
+  }
+  metric.finish();
+  rhs.finish();
+  random.finish();
+  smooth.finish();
+  reversed.finish();
+  projected.finish();
+  require(left_out > 0,"no pair of the test left eigenvectors out");
+
+  const SpeciesTable& a = tables[0];
+  const SpeciesTable& c = tables[1];
+  const PairCoefficients x = solver.pair(a,c,cases[0].d);
+  expect_throw("coinciding sites",[&] { solver.pair_gradient(a,c,{0.0,0.0,0.0},x,x); });
+  expect_throw("coefficients of another pair",[&] { solver.pair_gradient(c,a,cases[0].d,x,x); });
+  expect_throw("weights of the metric of the wrong size",
+               [&] { solver.metric_gradient(a,c,cases[0].d,std::vector<double>(a.abf_count()*c.abf_count()+1)); });
+  expect_throw("weights of the right-hand side of the wrong size",
+               [&] { solver.right_hand_side_gradient(a,c,cases[0].d,std::vector<double>(3)); });
 }
 
 } // namespace exx_test

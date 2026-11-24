@@ -119,6 +119,57 @@ struct LriReport {
 void solve_metric(std::span<const double> matrix, std::size_t n, std::span<double> right_hand_sides,
                   const LriOptions& options = {}, LriReport* report = nullptr);
 
+// The factorization that solve_metric() makes, kept for several solves and
+// for the derivative of the solution (equation (18)).  With the scaling
+// S = diag(G)^(-1/2) and g = S G S the solution is
+//   X = S g^+ S B,
+// where g^+ is the inverse of g (Cholesky) or its inverse on the eigenvectors
+// that are kept.
+class MetricFactorization {
+ public:
+  // Throws as solve_metric().
+  MetricFactorization(std::span<const double> matrix, std::size_t n, const LriOptions& options = {});
+
+  std::size_t size() const noexcept { return n_; }
+  // False when a pivot fell to the tolerance and the scaled matrix was
+  // diagonalized.
+  bool cholesky() const noexcept { return positive_; }
+  // The report of this one system.
+  const LriReport& report() const noexcept { return report_; }
+  // The eigenvalues of the scaled matrix in the order of the diagonalization;
+  // empty after a Cholesky factorization.
+  std::span<const double> eigenvalues() const noexcept { return values_; }
+
+  // X replaces B, with the operations of solve_metric().
+  void solve(std::span<double> right_hand_sides) const;
+
+  // The derivative of an energy E through the solution X of G X = B, for the
+  // weights F = dE/dX (F[i*m + k] as B).  A change dB of the right-hand sides
+  // and a symmetric change dG of the matrix that leaves the diagonal alone
+  // change the energy by
+  //   dE = sum_ik Z[i*m + k] dB[i*m + k] + sum_ij out[i*n + j] dG[i*n + j],
+  // where Z = solve(F).  This function fills out (n x n): -Z X^T after a
+  // Cholesky factorization.  After a diagonalization the eigenvectors that
+  // are left out contribute as well, as long as no eigenvalue crosses the
+  // threshold; out is then S V (Phi o (A C^T)) V^T S with A = V^T S F,
+  // C = V^T S B and
+  //   Phi_kl = -1/(lambda_k lambda_l)                  both kept,
+  //            1/(lambda_k (lambda_k - lambda_l))      k kept, l left out,
+  //            0                                       both left out.
+  // Only the symmetric part of out matters.
+  void metric_weights(std::span<const double> right_hand_sides, std::span<const double> weights,
+                      std::span<double> out) const;
+
+ private:
+  std::size_t n_ = 0;
+  double threshold_ = 0.0;
+  bool positive_ = true;
+  LriReport report_;
+  std::vector<double> scale_;
+  std::vector<double> factor_;           // Cholesky factor of g, lower triangle, row-major
+  std::vector<double> values_, vectors_; // eigenvalues and eigenvectors of g otherwise
+};
+
 // Coefficients of one pair of sites.
 struct PairCoefficients {
   // first[(P*u_a + mu)*u_c + lambda]: the coefficient of ABF P of the first
@@ -156,6 +207,28 @@ class LriSolver {
                              const std::array<double,3>& displacement) const;
   std::vector<double> right_hand_side(const SpeciesTable& a, const SpeciesTable& c,
                                       const std::array<double,3>& displacement) const;
+
+  // The derivatives of these parts with respect to the displacement, summed
+  // with weights.  metric_gradient: sum_PQ weights[P*n_c + Q] dG_PQ/dd with P
+  // over the ABFs of the first site and Q over those of the second; the other
+  // elements of the metric do not depend on the displacement.
+  // right_hand_side_gradient: sum weights[(P*u_a + mu)*u_c + lambda] db/dd in
+  // the layout of right_hand_side().
+  std::array<double,3> metric_gradient(const SpeciesTable& a, const SpeciesTable& c,
+                                       const std::array<double,3>& displacement,
+                                       std::span<const double> weights) const;
+  std::array<double,3> right_hand_side_gradient(const SpeciesTable& a, const SpeciesTable& c,
+                                                const std::array<double,3>& displacement,
+                                                std::span<const double> weights) const;
+
+  // Equation (18): the derivative with respect to the displacement of an
+  // energy that depends on the coefficients of pair().  weights holds the
+  // derivatives of the energy with respect to the coefficients in the layout
+  // of PairCoefficients; coefficients is the result of pair() for the same
+  // arguments.  The system is factorized again as pair() does it.
+  std::array<double,3> pair_gradient(const SpeciesTable& a, const SpeciesTable& c,
+                                     const std::array<double,3>& displacement, const PairCoefficients& coefficients,
+                                     const PairCoefficients& weights) const;
 
  private:
   void check(const SpeciesTable& table) const;

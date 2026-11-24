@@ -188,100 +188,111 @@ void LriReport::merge(const LriReport& other) noexcept
   smallest_pivot = std::min(smallest_pivot,other.smallest_pivot);
 }
 
-void solve_metric(std::span<const double> matrix, std::size_t n, std::span<double> right_hand_sides,
-                  const LriOptions& options, LriReport* report)
+MetricFactorization::MetricFactorization(std::span<const double> matrix, std::size_t n, const LriOptions& options)
+  : n_(n), threshold_(options.eigenvalue_threshold)
 {
-  if (n == 0 || matrix.size() != n*n || right_hand_sides.size()%n != 0)
+  if (n == 0 || matrix.size() != n*n)
     throw std::invalid_argument("the metric and the right-hand sides of the local RI do not match");
   if (!(options.pivot_tolerance >= 0.0 && options.pivot_tolerance < 1.0) ||
       !(options.eigenvalue_threshold >= 0.0 && options.eigenvalue_threshold < 1.0))
     throw std::invalid_argument("the tolerances of the local RI must be in [0,1)");
-  const std::size_t m = right_hand_sides.size()/n;
-  double* b = right_hand_sides.data();
 
   // Scale to a unit diagonal.
-  std::vector<double> scale(n);
+  scale_.resize(n);
   for (std::size_t i = 0; i < n; ++i) {
     const double diagonal = matrix[i*n+i];
     if (!(diagonal > 0.0) || !std::isfinite(diagonal))
       throw std::runtime_error("the metric of the local RI has a diagonal element that is not positive");
-    scale[i] = 1.0/std::sqrt(diagonal);
+    scale_[i] = 1.0/std::sqrt(diagonal);
   }
   std::vector<double> g(n*n);
   for (std::size_t i = 0; i < n; ++i)
     for (std::size_t j = 0; j <= i; ++j) {
-      const double value = 0.5*(matrix[i*n+j]+matrix[j*n+i])*scale[i]*scale[j];
+      const double value = 0.5*(matrix[i*n+j]+matrix[j*n+i])*scale_[i]*scale_[j];
       g[i*n+j] = value;
       g[j*n+i] = value;
     }
-  for (std::size_t i = 0; i < n; ++i)
-    for (std::size_t k = 0; k < m; ++k) b[i*m+k] *= scale[i];
 
   // Cholesky factorization row by row: g = L L^T.
-  std::vector<double> factor(n*n,0.0);
-  bool positive = true;
+  factor_.assign(n*n,0.0);
   double smallest = 1.0;
-  for (std::size_t i = 0; i < n && positive; ++i) {
-    const double* row_i = factor.data()+i*n;
+  for (std::size_t i = 0; i < n && positive_; ++i) {
+    const double* row_i = factor_.data()+i*n;
     for (std::size_t j = 0; j <= i; ++j) {
-      const double* row_j = factor.data()+j*n;
+      const double* row_j = factor_.data()+j*n;
       double sum = g[i*n+j];
       for (std::size_t k = 0; k < j; ++k) sum -= row_i[k]*row_j[k];
       if (j < i) {
-        factor[i*n+j] = sum/row_j[j];
+        factor_[i*n+j] = sum/row_j[j];
       } else {
-        if (!(sum > options.pivot_tolerance)) { positive = false; break; }
+        if (!(sum > options.pivot_tolerance)) { positive_ = false; break; }
         smallest = std::min(smallest,sum);
-        factor[i*n+i] = std::sqrt(sum);
+        factor_[i*n+i] = std::sqrt(sum);
       }
     }
   }
 
-  LriReport local;
-  local.systems = 1;
-  if (positive) {
-    local.smallest_pivot = smallest;
+  report_.systems = 1;
+  if (positive_) {
+    report_.smallest_pivot = smallest;
+  } else {
+    report_.eigen_decompositions = 1;
+    factor_.clear();
+    diagonalize(g,n,values_,vectors_);
+    for (std::size_t k = 0; k < n; ++k)
+      if (!(values_[k] > threshold_)) ++report_.dropped;
+  }
+}
+
+void MetricFactorization::solve(std::span<double> right_hand_sides) const
+{
+  const std::size_t n = n_;
+  if (right_hand_sides.size()%n != 0)
+    throw std::invalid_argument("the metric and the right-hand sides of the local RI do not match");
+  const std::size_t m = right_hand_sides.size()/n;
+  double* b = right_hand_sides.data();
+  for (std::size_t i = 0; i < n; ++i)
+    for (std::size_t k = 0; k < m; ++k) b[i*m+k] *= scale_[i];
+
+  if (positive_) {
     // L Y = B, then L^T X = Y; a row of B holds all right-hand sides.
     for (std::size_t i = 0; i < n; ++i) {
       double* row = b+i*m;
       for (std::size_t k = 0; k < i; ++k) {
-        const double l = factor[i*n+k];
+        const double l = factor_[i*n+k];
         if (l == 0.0) continue;
         const double* other = b+k*m;
         for (std::size_t r = 0; r < m; ++r) row[r] -= l*other[r];
       }
-      const double inverse = 1.0/factor[i*n+i];
+      const double inverse = 1.0/factor_[i*n+i];
       for (std::size_t r = 0; r < m; ++r) row[r] *= inverse;
     }
     for (std::size_t i = n; i-- > 0;) {
       double* row = b+i*m;
       for (std::size_t k = i+1; k < n; ++k) {
-        const double l = factor[k*n+i];
+        const double l = factor_[k*n+i];
         if (l == 0.0) continue;
         const double* other = b+k*m;
         for (std::size_t r = 0; r < m; ++r) row[r] -= l*other[r];
       }
-      const double inverse = 1.0/factor[i*n+i];
+      const double inverse = 1.0/factor_[i*n+i];
       for (std::size_t r = 0; r < m; ++r) row[r] *= inverse;
     }
   } else {
     // X = sum_k v_k (v_k^T B)/lambda_k over the eigenvectors that are kept.
-    local.eigen_decompositions = 1;
-    std::vector<double> values, vectors;
-    diagonalize(g,n,values,vectors);
     std::vector<double> projected(n*m,0.0);
     for (std::size_t i = 0; i < n; ++i) {
       const double* row = b+i*m;
       for (std::size_t k = 0; k < n; ++k) {
-        if (!(values[k] > options.eigenvalue_threshold)) continue;
-        const double v = vectors[i*n+k];
+        if (!(values_[k] > threshold_)) continue;
+        const double v = vectors_[i*n+k];
         double* target = projected.data()+k*m;
         for (std::size_t r = 0; r < m; ++r) target[r] += v*row[r];
       }
     }
     for (std::size_t k = 0; k < n; ++k) {
-      if (!(values[k] > options.eigenvalue_threshold)) { ++local.dropped; continue; }
-      const double inverse = 1.0/values[k];
+      if (!(values_[k] > threshold_)) continue;
+      const double inverse = 1.0/values_[k];
       double* target = projected.data()+k*m;
       for (std::size_t r = 0; r < m; ++r) target[r] *= inverse;
     }
@@ -289,16 +300,100 @@ void solve_metric(std::span<const double> matrix, std::size_t n, std::span<doubl
       double* row = b+i*m;
       std::fill(row,row+m,0.0);
       for (std::size_t k = 0; k < n; ++k) {
-        if (!(values[k] > options.eigenvalue_threshold)) continue;
-        const double v = vectors[i*n+k];
+        if (!(values_[k] > threshold_)) continue;
+        const double v = vectors_[i*n+k];
         const double* source = projected.data()+k*m;
         for (std::size_t r = 0; r < m; ++r) row[r] += v*source[r];
       }
     }
   }
   for (std::size_t i = 0; i < n; ++i)
-    for (std::size_t k = 0; k < m; ++k) b[i*m+k] *= scale[i];
-  if (report) report->merge(local);
+    for (std::size_t k = 0; k < m; ++k) b[i*m+k] *= scale_[i];
+}
+
+void MetricFactorization::metric_weights(std::span<const double> right_hand_sides, std::span<const double> weights,
+                                         std::span<double> out) const
+{
+  const std::size_t n = n_;
+  if (right_hand_sides.size()%n != 0 || weights.size() != right_hand_sides.size() || out.size() != n*n)
+    throw std::invalid_argument("the arrays of the derivative of the local RI do not match the metric");
+  const std::size_t m = right_hand_sides.size()/n;
+  if (positive_) {
+    std::vector<double> x(right_hand_sides.begin(),right_hand_sides.end()), z(weights.begin(),weights.end());
+    solve(x);
+    solve(z);
+    for (std::size_t i = 0; i < n; ++i)
+      for (std::size_t j = 0; j < n; ++j) {
+        const double* zi = z.data()+i*m;
+        const double* xj = x.data()+j*m;
+        double sum = 0.0;
+        for (std::size_t r = 0; r < m; ++r) sum += zi[r]*xj[r];
+        out[i*n+j] = -sum;
+      }
+    return;
+  }
+
+  // A = V^T S F and C = V^T S B, one row for every eigenvector.
+  std::vector<double> a(n*m,0.0), c(n*m,0.0);
+  for (std::size_t i = 0; i < n; ++i) {
+    const double* f = weights.data()+i*m;
+    const double* b = right_hand_sides.data()+i*m;
+    for (std::size_t k = 0; k < n; ++k) {
+      const double v = vectors_[i*n+k]*scale_[i];
+      double* ak = a.data()+k*m;
+      double* ck = c.data()+k*m;
+      for (std::size_t r = 0; r < m; ++r) {
+        ak[r] += v*f[r];
+        ck[r] += v*b[r];
+      }
+    }
+  }
+  // Y = Phi o (A C^T).
+  std::vector<double> y(n*n);
+  for (std::size_t k = 0; k < n; ++k) {
+    const bool kept_k = values_[k] > threshold_;
+    for (std::size_t l = 0; l < n; ++l) {
+      const bool kept_l = values_[l] > threshold_;
+      double phi = 0.0;
+      if (kept_k && kept_l) phi = -1.0/(values_[k]*values_[l]);
+      else if (kept_k) phi = 1.0/(values_[k]*(values_[k]-values_[l]));
+      else if (kept_l) phi = 1.0/(values_[l]*(values_[l]-values_[k]));
+      double sum = 0.0;
+      if (phi != 0.0) {
+        const double* ak = a.data()+k*m;
+        const double* cl = c.data()+l*m;
+        for (std::size_t r = 0; r < m; ++r) sum += ak[r]*cl[r];
+      }
+      y[k*n+l] = phi*sum;
+    }
+  }
+  // out = S V Y V^T S.
+  std::vector<double> half(n*n,0.0);
+  for (std::size_t i = 0; i < n; ++i)
+    for (std::size_t k = 0; k < n; ++k) {
+      const double v = vectors_[i*n+k];
+      const double* yk = y.data()+k*n;
+      double* target = half.data()+i*n;
+      for (std::size_t l = 0; l < n; ++l) target[l] += v*yk[l];
+    }
+  for (std::size_t i = 0; i < n; ++i)
+    for (std::size_t j = 0; j < n; ++j) {
+      const double* hi = half.data()+i*n;
+      const double* vj = vectors_.data()+j*n;
+      double sum = 0.0;
+      for (std::size_t l = 0; l < n; ++l) sum += hi[l]*vj[l];
+      out[i*n+j] = scale_[i]*scale_[j]*sum;
+    }
+}
+
+void solve_metric(std::span<const double> matrix, std::size_t n, std::span<double> right_hand_sides,
+                  const LriOptions& options, LriReport* report)
+{
+  if (n == 0 || matrix.size() != n*n || right_hand_sides.size()%n != 0)
+    throw std::invalid_argument("the metric and the right-hand sides of the local RI do not match");
+  const MetricFactorization factorization(matrix,n,options);
+  factorization.solve(right_hand_sides);
+  if (report) report->merge(factorization.report());
 }
 
 LriSolver::LriSolver(const ReciprocalGrid& reciprocal, int maximum_orbital, int maximum_abf,
@@ -436,6 +531,164 @@ PairCoefficients LriSolver::pair(const SpeciesTable& a, const SpeciesTable& c,
       for (std::size_t lambda = 0; lambda < uc; ++lambda)
         result.second[(q*uc+lambda)*ua+mu] = b[((na+q)*ua+mu)*uc+lambda];
   return result;
+}
+
+std::array<double,3> LriSolver::metric_gradient(const SpeciesTable& a, const SpeciesTable& c,
+    const std::array<double,3>& displacement, std::span<const double> weights) const
+{
+  check(a);
+  check(c);
+  const std::size_t na = a.abf_count(), nc = c.abf_count();
+  if (weights.size() != na*nc)
+    throw std::invalid_argument("the weights of the derivative of the metric have the wrong size");
+  const std::vector<double> off =
+      two_center_gradient_matrix(coulomb_.gradient_pair(displacement),a.abf_transforms(),c.abf_transforms());
+  std::array<double,3> gradient{};
+  for (std::size_t axis = 0; axis < 3; ++axis) {
+    const double* block = off.data()+axis*na*nc;
+    double sum = 0.0;
+    for (std::size_t i = 0; i < na*nc; ++i) sum += weights[i]*block[i];
+    gradient[axis] = sum;
+  }
+  return gradient;
+}
+
+std::array<double,3> LriSolver::right_hand_side_gradient(const SpeciesTable& a, const SpeciesTable& c,
+    const std::array<double,3>& displacement, std::span<const double> weights) const
+{
+  check(a);
+  check(c);
+  const std::size_t na = a.abf_count(), nc = c.abf_count(), ua = a.orbital_count(), uc = c.orbital_count();
+  if (weights.size() != (na+nc)*ua*uc)
+    throw std::invalid_argument("the weights of the derivative of the right-hand side have the wrong size");
+  std::array<double,3> gradient{};
+  std::vector<double> block, folded;
+
+  // P on the first site, as in right_hand_side().  The weights are summed
+  // with the Gaunt coefficients first: folded[r1*(2*lq+1) + rq].
+  const TwoCenterIntegrator::GradientPair forward = overlap_.gradient_pair(displacement);
+  for (const SpeciesTable::Product& product : a.products()) {
+    const int lk = a.orbitals()[product.orbital].angular, lp = a.abfs()[product.abf].angular;
+    const int order = product.transform.angular;
+    const std::span<const double> theta = gaunt_.block(lk,lp,order);
+    const std::size_t mu0 = a.orbital_offsets()[product.orbital], p0 = a.abf_offsets()[product.abf];
+    for (std::size_t q = 0; q < c.orbitals().size(); ++q) {
+      const int lq = c.orbitals()[q].angular;
+      const std::size_t lambda0 = c.orbital_offsets()[q];
+      const std::size_t size = static_cast<std::size_t>((2*order+1)*(2*lq+1));
+      folded.assign(size,0.0);
+      for (int rk = 0; rk <= 2*lk; ++rk)
+        for (int rp = 0; rp <= 2*lp; ++rp) {
+          const double* source =
+              weights.data()+((p0+static_cast<std::size_t>(rp))*ua+mu0+static_cast<std::size_t>(rk))*uc+lambda0;
+          const double* t = theta.data()+static_cast<std::size_t>((rk*(2*lp+1)+rp)*(2*order+1));
+          for (int r1 = 0; r1 <= 2*order; ++r1) {
+            if (t[r1] == 0.0) continue;
+            double* target = folded.data()+static_cast<std::size_t>(r1*(2*lq+1));
+            for (int rq = 0; rq <= 2*lq; ++rq) target[rq] += t[r1]*source[rq];
+          }
+        }
+      block.resize(3*size);
+      forward.block(product.transform,c.orbital_transforms()[q],block);
+      for (std::size_t axis = 0; axis < 3; ++axis) {
+        const double* values = block.data()+axis*size;
+        double sum = 0.0;
+        for (std::size_t i = 0; i < size; ++i) sum += folded[i]*values[i];
+        gradient[axis] += sum;
+      }
+    }
+  }
+
+  // Q on the second site: the integrals are taken at the reversed
+  // displacement, so their derivative enters with the opposite sign.
+  const TwoCenterIntegrator::GradientPair backward =
+      overlap_.gradient_pair({-displacement[0],-displacement[1],-displacement[2]});
+  for (const SpeciesTable::Product& product : c.products()) {
+    const int lk = c.orbitals()[product.orbital].angular, lq = c.abfs()[product.abf].angular;
+    const int order = product.transform.angular;
+    const std::span<const double> theta = gaunt_.block(lk,lq,order);
+    const std::size_t lambda0 = c.orbital_offsets()[product.orbital], q0 = na+c.abf_offsets()[product.abf];
+    for (std::size_t p = 0; p < a.orbitals().size(); ++p) {
+      const int lp = a.orbitals()[p].angular;
+      const std::size_t mu0 = a.orbital_offsets()[p];
+      const std::size_t size = static_cast<std::size_t>((2*order+1)*(2*lp+1));
+      folded.assign(size,0.0);
+      for (int rk = 0; rk <= 2*lk; ++rk)
+        for (int rq = 0; rq <= 2*lq; ++rq) {
+          const double* t = theta.data()+static_cast<std::size_t>((rk*(2*lq+1)+rq)*(2*order+1));
+          for (int r1 = 0; r1 <= 2*order; ++r1) {
+            if (t[r1] == 0.0) continue;
+            double* target = folded.data()+static_cast<std::size_t>(r1*(2*lp+1));
+            for (int rp = 0; rp <= 2*lp; ++rp)
+              target[rp] += t[r1]*weights[((q0+static_cast<std::size_t>(rq))*ua+mu0+static_cast<std::size_t>(rp))*uc+
+                                          lambda0+static_cast<std::size_t>(rk)];
+          }
+        }
+      block.resize(3*size);
+      backward.block(product.transform,a.orbital_transforms()[p],block);
+      for (std::size_t axis = 0; axis < 3; ++axis) {
+        const double* values = block.data()+axis*size;
+        double sum = 0.0;
+        for (std::size_t i = 0; i < size; ++i) sum += folded[i]*values[i];
+        gradient[axis] -= sum;
+      }
+    }
+  }
+  return gradient;
+}
+
+std::array<double,3> LriSolver::pair_gradient(const SpeciesTable& a, const SpeciesTable& c,
+    const std::array<double,3>& displacement, const PairCoefficients& coefficients,
+    const PairCoefficients& weights) const
+{
+  if (displacement[0] == 0.0 && displacement[1] == 0.0 && displacement[2] == 0.0)
+    throw std::invalid_argument("the two sites of a pair of the local RI coincide");
+  const std::size_t na = a.abf_count(), nc = c.abf_count(), ua = a.orbital_count(), uc = c.orbital_count();
+  const std::size_t n = na+nc, m = ua*uc;
+  if (coefficients.first.size() != na*m || coefficients.second.size() != nc*m ||
+      weights.first.size() != na*m || weights.second.size() != nc*m)
+    throw std::invalid_argument("the coefficients of a pair of the local RI have the wrong size");
+
+  // The rows of the second site in the layout of the right-hand side.
+  const auto join = [&](const PairCoefficients& parts) {
+    std::vector<double> joined(n*m);
+    std::copy(parts.first.begin(),parts.first.end(),joined.begin());
+    for (std::size_t q = 0; q < nc; ++q)
+      for (std::size_t mu = 0; mu < ua; ++mu)
+        for (std::size_t lambda = 0; lambda < uc; ++lambda)
+          joined[((na+q)*ua+mu)*uc+lambda] = parts.second[(q*uc+lambda)*ua+mu];
+    return joined;
+  };
+
+  const std::vector<double> g = metric(a,c,displacement);
+  const MetricFactorization factorization(g,n,options_);
+  std::vector<double> z = join(weights);
+  // The weights of the block of the metric between the two sites, which
+  // appears twice in the matrix.
+  std::vector<double> between(na*nc);
+  if (factorization.cholesky()) {
+    factorization.solve(z);
+    const std::vector<double> x = join(coefficients);
+    for (std::size_t i = 0; i < na; ++i)
+      for (std::size_t j = 0; j < nc; ++j) {
+        const double *zi = z.data()+i*m, *zj = z.data()+(na+j)*m;
+        const double *xi = x.data()+i*m, *xj = x.data()+(na+j)*m;
+        double sum = 0.0;
+        for (std::size_t r = 0; r < m; ++r) sum += zi[r]*xj[r]+zj[r]*xi[r];
+        between[i*nc+j] = -sum;
+      }
+  } else {
+    const std::vector<double> b = right_hand_side(a,c,displacement);
+    std::vector<double> full(n*n);
+    factorization.metric_weights(b,z,full);
+    for (std::size_t i = 0; i < na; ++i)
+      for (std::size_t j = 0; j < nc; ++j) between[i*nc+j] = full[i*n+na+j]+full[(na+j)*n+i];
+    factorization.solve(z);
+  }
+  std::array<double,3> gradient = right_hand_side_gradient(a,c,displacement,z);
+  const std::array<double,3> from_metric = metric_gradient(a,c,displacement,between);
+  for (std::size_t axis = 0; axis < 3; ++axis) gradient[axis] += from_metric[axis];
+  return gradient;
 }
 
 } // namespace openmx::exx

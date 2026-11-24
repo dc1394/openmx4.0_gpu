@@ -36,8 +36,9 @@ set_tests_properties(exx-abf-pca PROPERTIES LABELS "unit;exx" TIMEOUT 300)
 add_test(NAME exx-three-center-gaussian COMMAND openmx_exx_tests three-center-gaussian)
 set_tests_properties(exx-three-center-gaussian PROPERTIES LABELS "unit;exx" TIMEOUT 300)
 
-# The local RI with the PAOs of the overlap fixture.
-foreach(_case lri-identity lri-convergence)
+# The local RI with the PAOs of the overlap fixture, and the derivative of
+# its coefficients with respect to the displacement of a pair.
+foreach(_case lri-identity lri-convergence lri-gradient)
   add_test(NAME exx-${_case} COMMAND openmx_exx_tests ${_case} "${_exx_fixtures}/overlap_reference.txt")
   set_tests_properties(exx-${_case} PROPERTIES LABELS "unit;exx" TIMEOUT 600)
 endforeach()
