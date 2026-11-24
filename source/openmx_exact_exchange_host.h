@@ -32,13 +32,16 @@
    inside a parallel region, as a library on the OpenMP runtime of the
    program does while nested regions are off.
 
-   Only OpenBLAS is recognized, and only when the program has its functions
-   openblas_get_parallel, openblas_get_num_threads and
-   openblas_set_num_threads. The references to them are weak, so a library
-   that is linked statically gives them only when something else in the
-   program uses them. Any other BLAS with threads of its own keeps them.
-   The builds of this repository link MKL and AOCL as sequential libraries
-   or on the threads of OpenMP (cmake/OpenMXHostLinalg.cmake). */
+   Only OpenBLAS is recognized, by its functions openblas_get_parallel,
+   openblas_get_num_threads and openblas_set_num_threads. The CPU build
+   that has chosen OpenBLAS itself (OPENMX_CPU_LINALG of OPENBLAS, or AUTO
+   that found it) compiles the unit with OPENMX_EXX_HOST_BLAS_OPENBLAS and
+   so finds a shared and a static library. Every other build looks for the
+   functions through weak references: it finds a shared OpenBLAS, and not a
+   static one, in which the linker leaves openblas_get_parallel out. Any
+   other BLAS with threads of its own keeps them. The builds of this
+   repository link MKL and AOCL as sequential libraries or on the threads of
+   OpenMP (cmake/OpenMXHostLinalg.cmake). */
 
 #ifdef __cplusplus
 extern "C" {

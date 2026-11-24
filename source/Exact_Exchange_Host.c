@@ -24,20 +24,43 @@ int F77_NAME(dgemm,DGEMM)(char *transa, char *transb, int *m, int *n, int *k, do
                           double *b, int *ldb, double *beta, double *c, int *ldc);
 
 /* The functions of OpenBLAS that tell how it was built and set its number
-   of threads. A weak reference is null in a program without them. */
-#if defined(__GNUC__) || defined(__clang__) || defined(__NVCOMPILER) || defined(__PGI)
+   of threads. OPENMX_EXX_HOST_OPENBLAS() tells whether the program has
+   them.
+
+   A build that knows its BLAS to be OpenBLAS defines
+   OPENMX_EXX_HOST_BLAS_OPENBLAS. The functions are then referenced as any
+   other function, and the linker takes them from a static library as well.
+
+   Every other build asks the linker with weak references: such a reference
+   is null in a program without the functions. Two limits follow.
+   - The null tests are right in position-independent code only. In other
+     code the linker settles them when it finds the functions in a shared
+     library, and a program that later runs with another library of that
+     name would call a null pointer. The builds compile this file with
+     -fPIC.
+   - A static OpenBLAS is not recognized: openblas_get_parallel is alone in
+     its member of the archive, and a weak reference does not bring a
+     member into the program.
+   Mach-O wants a weak reference to be found when the program is linked, so
+   on macOS only the first form is used. */
+#if defined(OPENMX_EXX_HOST_BLAS_OPENBLAS)
+int openblas_get_parallel(void);
+int openblas_get_num_threads(void);
+void openblas_set_num_threads(int);
+#define OPENMX_EXX_HOST_OPENBLAS() 1
+#elif !defined(__APPLE__) && (defined(__GNUC__) || defined(__clang__) || defined(__NVCOMPILER) || defined(__PGI))
 extern int openblas_get_parallel(void) __attribute__((weak));
 extern int openblas_get_num_threads(void) __attribute__((weak));
 extern void openblas_set_num_threads(int) __attribute__((weak));
-#define OPENMX_EXX_OPENBLAS_FUNCTIONS 1
+#define OPENMX_EXX_HOST_OPENBLAS() \
+  (openblas_get_parallel!=NULL && openblas_get_num_threads!=NULL && openblas_set_num_threads!=NULL)
 #endif
 
 int Exact_Exchange_Host_Blas_Single(void)
 {
-#ifdef OPENMX_EXX_OPENBLAS_FUNCTIONS
+#ifdef OPENMX_EXX_HOST_OPENBLAS
   /* openblas_get_parallel: 0 one thread, 1 threads of its own, 2 OpenMP */
-  if (openblas_get_parallel!=NULL && openblas_get_num_threads!=NULL && openblas_set_num_threads!=NULL
-      && openblas_get_parallel()==1) {
+  if (OPENMX_EXX_HOST_OPENBLAS() && openblas_get_parallel()==1) {
     const int threads=openblas_get_num_threads();
     if (1<threads) {
       openblas_set_num_threads(1);
@@ -50,8 +73,8 @@ int Exact_Exchange_Host_Blas_Single(void)
 
 void Exact_Exchange_Host_Blas_Restore(int threads)
 {
-#ifdef OPENMX_EXX_OPENBLAS_FUNCTIONS
-  if (0<threads && openblas_set_num_threads!=NULL) openblas_set_num_threads(threads);
+#ifdef OPENMX_EXX_HOST_OPENBLAS
+  if (0<threads && OPENMX_EXX_HOST_OPENBLAS()) openblas_set_num_threads(threads);
 #else
   (void)threads;
 #endif

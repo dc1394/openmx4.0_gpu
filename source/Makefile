@@ -718,8 +718,10 @@ Exact_Exchange.o: Exact_Exchange.c openmx_exact_exchange.h openmx_exact_exchange
 	$(CC) -c Exact_Exchange.c
 Exact_Exchange_Device.o: Exact_Exchange_Device.c openmx_exact_exchange_device.h
 	$(CC) -c Exact_Exchange_Device.c
+# Position-independent code: the unit tests weak references to the functions
+# of OpenBLAS (openmx_exact_exchange_host.h).
 Exact_Exchange_Host.o: Exact_Exchange_Host.c openmx_exact_exchange_host.h
-	$(CC) -c Exact_Exchange_Host.c
+	$(CC) -fPIC -c Exact_Exchange_Host.c
 Mixing_DM.o: Mixing_DM.c openmx_common.h
 	$(CC) -c Mixing_DM.c
 Mixing_H.o: Mixing_H.c openmx_common.h openmx_mixing_policy.h openmx_core_mixing.h

@@ -31,8 +31,18 @@
    memory, and the blocks and addresses of the calls are compared with the
    division of the header.
 
-   Compiled with OPENMX_TEST_WITHOUT_OPENBLAS, the program has no functions
-   of OpenBLAS, as one linked with another BLAS. */
+   The functions of OpenBLAS come in four forms. As the program is compiled
+   by default it has all three, as one that is linked with a shared
+   OpenBLAS. With OPENMX_TEST_WITHOUT_OPENBLAS it has none, as one linked
+   with another BLAS. With OPENMX_TEST_WITHOUT_OPENBLAS_PARALLEL it lacks
+   openblas_get_parallel only, as one linked with a static OpenBLAS. With
+   OPENMX_EXX_HOST_BLAS_OPENBLAS, which the unit reads as well, the unit
+   refers to the three functions directly, as in a build that has chosen
+   OpenBLAS itself.
+
+   On macOS the unit looks for the functions in the last form only. In the
+   other forms it leaves the BLAS of the program as it is, and the test
+   expects that. */
 
 #include <limits.h>
 #include <math.h>
@@ -52,6 +62,13 @@
 #endif
 #include "f77func.h"
 #include "openmx_exact_exchange_host.h"
+
+/* The unit finds the functions of OpenBLAS in this program: it has all
+   three, and the unit looks for them. */
+#if !defined(OPENMX_TEST_WITHOUT_OPENBLAS) && !defined(OPENMX_TEST_WITHOUT_OPENBLAS_PARALLEL) \
+    && (defined(OPENMX_EXX_HOST_BLAS_OPENBLAS) || !defined(__APPLE__))
+#define OPENMX_TEST_OPENBLAS_FOUND 1
+#endif
 
 int F77_NAME(dgemm,DGEMM)(char *transa, char *transb, int *m, int *n, int *k, double *alpha, double *a, int *lda,
                           double *b, int *ldb, double *beta, double *c, int *ldc);
@@ -194,10 +211,12 @@ int openblas_get_parallel(void);
 int openblas_get_num_threads(void);
 void openblas_set_num_threads(int threads);
 
+#ifndef OPENMX_TEST_WITHOUT_OPENBLAS_PARALLEL
 int openblas_get_parallel(void)
 {
   return blas.parallel;
 }
+#endif
 
 int openblas_get_num_threads(void)
 {
@@ -410,7 +429,23 @@ static void products_are_divided(void)
 
 static void blas_threads_are_set_and_given_back(void)
 {
-#ifndef OPENMX_TEST_WITHOUT_OPENBLAS
+#if !defined(OPENMX_TEST_WITHOUT_OPENBLAS) && !defined(OPENMX_TEST_OPENBLAS_FOUND)
+  /* A static OpenBLAS: the linker brings the two functions of the threads
+     into the program and leaves out the one that tells how the library was
+     built. The unit cannot know that the library has threads of its own and
+     leaves it as it is. The same holds for every OpenBLAS on macOS that the
+     build has not named. */
+  memset(&blas,0,sizeof(blas));
+  blas.parallel = 1;
+  blas.threads = 8;
+  check(Exact_Exchange_Host_Blas_Single()==0 && blas.sets==0 && blas.threads==8,
+        "a BLAS that does not tell how it was built is changed");
+  Exact_Exchange_Host_Blas_Restore(0);
+  Exact_Exchange_Host_Blas_Restore(7);
+  check(blas.sets==0 && blas.threads==8,"a BLAS that does not tell how it was built is given threads");
+  check(product(4,'N','T',90,160,70,0,0,0,1.0,0.0)==4 && blas.sets==0,
+        "a product changes a BLAS that does not tell how it was built");
+#elif !defined(OPENMX_TEST_WITHOUT_OPENBLAS)
   /* A library with threads of its own computes on the calling thread until
      the threads are given back. */
   memset(&blas,0,sizeof(blas));
@@ -874,6 +909,12 @@ int main(void)
 #endif
 #if defined(OPENMX_TEST_WITHOUT_OPENBLAS)
          "no functions of OpenBLAS",
+#elif defined(OPENMX_TEST_WITHOUT_OPENBLAS_PARALLEL)
+         "OpenBLAS without openblas_get_parallel",
+#elif defined(OPENMX_EXX_HOST_BLAS_OPENBLAS)
+         "OpenBLAS named by the build",
+#elif !defined(OPENMX_TEST_OPENBLAS_FOUND)
+         "functions of OpenBLAS that the unit does not look for",
 #else
          "functions of OpenBLAS",
 #endif

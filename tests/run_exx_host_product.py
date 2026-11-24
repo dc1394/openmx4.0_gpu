@@ -3,11 +3,13 @@
 
 source/Exact_Exchange_Host.c is linked with
 tests/exx_host_product_harness.c, which defines DGEMM and the functions of
-OpenBLAS that set its number of threads. The pair is compiled three times:
-with OpenMP, without OpenMP, and with OpenMP but without the functions of
-OpenBLAS, as in a program linked with another BLAS. The first program runs a
-second time with a limit of two threads, so that the teams are smaller than
-the unit asks for. No BLAS and no MPI are needed.
+OpenBLAS that set its number of threads. The pair is compiled five times:
+with OpenMP, without OpenMP, and with OpenMP in three further forms of the
+functions of OpenBLAS: none, as in a program linked with another BLAS;
+without openblas_get_parallel, as with a static OpenBLAS; and referred to
+directly, as in a build that has chosen OpenBLAS itself. The first program
+runs a second time with a limit of two threads, so that the teams are
+smaller than the unit asks for. No BLAS and no MPI are needed.
 
 With --thread-sanitizer the pair is compiled once, with OpenMP and with
 ThreadSanitizer in place of the other sanitizers, and run with Archer, the
@@ -34,6 +36,8 @@ VARIANTS = (
     (['-fopenmp'], ({}, {'OMP_THREAD_LIMIT': '2', 'KMP_WARNINGS': '0'})),
     ([], ({},)),
     (['-fopenmp', '-DOPENMX_TEST_WITHOUT_OPENBLAS'], ({},)),
+    (['-fopenmp', '-DOPENMX_TEST_WITHOUT_OPENBLAS_PARALLEL'], ({},)),
+    (['-fopenmp', '-DOPENMX_EXX_HOST_BLAS_OPENBLAS'], ({},)),
 )
 
 parser = argparse.ArgumentParser(description=__doc__.split('\n', 1)[0])
