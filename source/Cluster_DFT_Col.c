@@ -392,10 +392,11 @@ static void ClusterCol_RefineBeginSolve(ClusterColState *state, int SCF_iter, in
     st->persistent = 0;
     /* the occupations of the refinement are the plain Fermi function of
        one chemical potential: XANES and emptied orbitals or states keep
-       the FP64 eigensolver */
+       the FP64 eigensolver. So does a hybrid functional: the vectors that
+       build its exchange matrix come from an FP64 solve. */
     st->last_refined = (st->scf_mode && 0 < ClusterCol_RefineIterations(state) && !st->final_stage && !st->force_fp64 &&
                         Cnt_switch == 0 && SCF_iter < DFTSCF_loop && spin_mode != 2 && xanes_calc == 0 &&
-                        empty_occupation_flag == 0 && empty_states_flag == 0);
+                        empty_occupation_flag == 0 && empty_states_flag == 0 && state->exact_exchange == NULL);
 }
 
 /* every rank, at the end of the root dense path: the solves of the owners
@@ -1700,7 +1701,24 @@ host_capacity:
         /* rank 0 (the announce rank) plans node-local MAGMA and, in a
            multi-node run, falls back to the distributed gpusolver2 path;
            the choice is broadcast before any rank commits to a path */
-        const int capacity = openmx_cluster_capacity_select(mpi_comm_level1,n,0,"Cluster collinear");
+        int capacity;
+        if (state->exact_exchange!=NULL){
+            /* a hybrid functional: the exchange matrix is added on the dense
+               path of one device above and on the host path of the CPU
+               eigensolver, not on the MAGMA and gpusolver2 tiers. Every rank
+               takes this branch alike. */
+            capacity = OPENMX_CLUSTER_CAPACITY_CPU;
+            if (announce && (SCF_iter==1 || state->diag_verdict_n!=n || !openmx_mgpu_host_required())){
+                printf("<EXX>  Cluster collinear n=%d: %s; the hybrid functional uses the CPU eigensolver"
+                       " within the existing MPI layout.\n",n,
+                       openmx_mgpu_host_required() ? "MAGMA does not take the exchange matrix"
+                                                   : "the device cannot hold the dense matrices");
+                fflush(stdout);
+            }
+        }
+        else{
+            capacity = openmx_cluster_capacity_select(mpi_comm_level1,n,0,"Cluster collinear");
+        }
         state->mgpu_host_dense=0;
         state->gs2_fallback_n=0;
         state->diag_verdict=0;
@@ -2173,6 +2191,47 @@ static void ClusterCol_MagmaRootDensePath(ClusterColState *state, int SpinP_swit
     openmx_core_native_free(state->resources,s); openmx_core_native_free(state->resources,h); openmx_core_native_free(state->resources,tmp); openmx_core_native_free(state->resources,c);
 }
 
+/* The exchange matrix of a hybrid functional, added to the dense Hamiltonian
+   of one spin channel that the dense owner has just built in d_H
+   (docs/EXX_IMPLEMENTATION_GUIDE.md, section 6.5). The host fills its copy of
+   the matrix, and the device adds it. The copy goes to d_tmp: between the
+   construction of H and its solve that buffer holds nothing that is read
+   later. Does nothing without an exchange matrix. */
+static void ClusterCol_DenseAddExactExchange(ClusterColState *state, int spin, int n)
+{
+    ClusterColGpuSolverCtx *ctx = &state->gpusolver_ctx;
+    size_t nn, bytes;
+    double *exchange, *d_H, *d_K;
+    double start;
+
+    if (!Exact_Exchange_Active(state->exact_exchange)) return;
+
+    nn = ClusterCol_CheckedMulCount((size_t)n,(size_t)n,"exchange matrix");
+    bytes = ClusterCol_CheckedMulCount(nn,sizeof(double),"exchange matrix bytes");
+    d_H = ctx->d_H;
+    d_K = ctx->d_tmp;
+    if (d_H==NULL || d_K==NULL){
+        ClusterCol_AbortWithMessage("The dense matrices of the exact exchange are not on the device in Cluster_DFT_Col.c.");
+    }
+
+    exchange = (double*)ClusterCol_MallocArray(state, nn,sizeof(double),"exchange matrix of the dense path");
+    memset(exchange,0,bytes);
+    /* one process holds the whole matrix: a 1 x 1 grid with one block of n */
+    Exact_Exchange_Add_Cluster_Hs(state->exact_exchange,spin,n,exchange,n,n,n,1,1,0,0);
+
+    start = MPI_Wtime();
+    wait_cudafunc(cudaMemcpyAsync(d_K,exchange,bytes,cudaMemcpyHostToDevice,ctx->stream));
+    wait_cudafunc(cudaStreamSynchronize(ctx->stream));
+    openmx_core_native_free(state->resources,exchange);
+
+#pragma acc parallel loop deviceptr(d_H, d_K)
+    for (size_t p=0; p<nn; p++){
+        d_H[p] += d_K[p];
+    }
+#pragma acc wait
+    Exact_Exchange_Device_Addition(state->exact_exchange,MPI_Wtime()-start);
+}
+
 static void ClusterCol_GpuSolverRootDensePath(ClusterColState *state, int SCF_iter, int SpinP_switch, double **ko,
                                              double *****nh, double ****CntOLP,
                                              int numprocs0, int myid0, int myworld1,
@@ -2300,6 +2359,7 @@ static void ClusterCol_GpuSolverRootDensePath(ClusterColState *state, int SCF_it
                                            owns_dense ? state->gpusolver_ctx.d_H : NULL);
             }
             if (owns_dense){
+                ClusterCol_DenseAddExactExchange(state, spin,n);
                 ClusterCol_SampleHamiltonian(state, SCF_iter,spin,n);
                 ClusterCol_GpuSolver_SolveHamiltonianDevice(state, n,MaxN,ko[spin],C,spin);
                 ClusterCol_StashDeviceEvec(state, spin,n,MaxN);
@@ -2351,6 +2411,7 @@ static void ClusterCol_GpuSolverRootDensePath(ClusterColState *state, int SCF_it
                     }
                     dense_index = ClusterCol_DenseIndexCache_Get(state, cache_order_GA,MP,n,tnum);
                     ClusterCol_BuildDeviceDenseFromPacked(cache_H,dense_index,tnum,n,state->gpusolver_ctx.d_H);
+                    ClusterCol_DenseAddExactExchange(state, spin,n);
                     ClusterCol_SampleHamiltonian(state, SCF_iter,spin,n);
                     ClusterCol_GpuSolver_SolveHamiltonianDevice(state, n,MaxN,ko[spin],C,-1);
 
@@ -2850,10 +2911,11 @@ static double Cluster_DFT_Col_owned(ClusterColState *state, const OpenMXAtomicVi
        are refined */
     state->refine.last_refined = 0;
     state->refine.scf_mode = (strcasecmp(mode,"scf")==0);
-    /* with a hybrid functional the exchange matrix is added to the host
-       matrix Hs below: the dense paths on the device are not taken */
-    if (state->exact_exchange==NULL &&
-        scf_eigen_lib_flag==GPUSOLVER && gpusolver2_flag==0 && (openmx_mgpu_host_required() || Cluster_DFT_Col_GpuSwitchNum()<=n)){
+    /* with a hybrid functional the dense path of one device adds the
+       exchange matrix to d_H (ClusterCol_DenseAddExactExchange); when the
+       device has no room, or MAGMA is requested, ClusterCol_GpuDiagFits
+       returns 0 and the exchange matrix is added to the host matrix Hs below */
+    if (scf_eigen_lib_flag==GPUSOLVER && gpusolver2_flag==0 && (openmx_mgpu_host_required() || Cluster_DFT_Col_GpuSwitchNum()<=n)){
       gpu_diag_mode = ClusterCol_GpuDiagFits(state, SCF_iter,n,myworld1,myid1,numprocs0);
     }
     if (gpu_diag_mode!=0){
