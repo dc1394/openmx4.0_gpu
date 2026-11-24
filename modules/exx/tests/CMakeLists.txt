@@ -1,9 +1,12 @@
 # One executable holds the unit tests; the first argument selects the case and
-# the second one names a fixture when the case reads one.
+# the second one names a fixture when the case reads one.  The tests of the
+# loop of the function table start threads; the library itself does not.
+find_package(Threads REQUIRED)
 add_executable(openmx_exx_tests test_main.cpp test_kernel.cpp test_two_center.cpp test_overlap.cpp
   test_abf.cpp test_lri.cpp test_system.cpp test_dense_backend.cpp test_exchange.cpp overlap_fixture.cpp
   kbuild_fixture.cpp)
-target_link_libraries(openmx_exx_tests PRIVATE OpenMX::exx OpenMX::basis $<$<PLATFORM_ID:Linux>:m>)
+target_link_libraries(openmx_exx_tests PRIVATE OpenMX::exx OpenMX::basis Threads::Threads
+  $<$<PLATFORM_ID:Linux>:m>)
 target_compile_options(openmx_exx_tests PRIVATE
   "$<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wall;-Wextra;-Wpedantic;-ffp-contract=off>")
 

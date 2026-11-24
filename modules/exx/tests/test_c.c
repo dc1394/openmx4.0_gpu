@@ -40,6 +40,22 @@ static int failing_dgemm(void *context, char transa, char transb, int m, int n, 
   return 3;
 }
 
+/* The loop of the caller: it counts its calls in the context and runs the
+   pieces from the last to the first on the calling thread. */
+static int reversed_loop(void *context, int count, void (*body)(void *argument, int index), void *argument)
+{
+  int index;
+  ++*(long *)context;
+  for (index = count - 1; index >= 0; --index) body(argument, index);
+  return 0;
+}
+
+static int failing_loop(void *context, int count, void (*body)(void *argument, int index), void *argument)
+{
+  reversed_loop(context, count, body, argument);
+  return 2;
+}
+
 /* A radial mesh like that of a .pao file, dense near the nucleus, and smooth
    functions that vanish at the cutoff radius: the test needs no file. */
 static void radial_mesh(double cutoff, double *mesh)
@@ -91,7 +107,7 @@ int main(void)
   int c_count[ATOMS], v_count[ATOMS];
   char message[160], tiny[4];
   double sum, scale, asymmetry, steepest, numeric;
-  long calls = 0, before, blocks = 0, block;
+  long calls = 0, loops = 0, before, blocks = 0, block;
   size_t elements = 0, offset, element;
   int i, j, a, row, column, cell[3];
 
@@ -193,9 +209,12 @@ int main(void)
   CHECK(openmx_exx_add_gamma(state, 2, 2, -0.25, d, other, NULL, NULL, 0) == 0);
   CHECK(memcmp(k, other, sizeof k) == 0);
 
-  /* The product of the caller. */
+  /* The product of the caller.  The table has no loop: the ABFs of a centre
+     atom are computed one after the other. */
   table.dgemm = counting_dgemm;
   table.context = &calls;
+  table.parallel_for = NULL;
+  table.threads = 0;
   memset(other, 0, sizeof other);
   CHECK(openmx_exx_add_gamma(state, 0, ATOMS, -0.25, d, other, &table, message, sizeof message) == 0);
   CHECK(calls > 0 && memcmp(k, other, sizeof k) == 0);
@@ -203,6 +222,30 @@ int main(void)
   table.context = NULL;
   CHECK(openmx_exx_add_gamma(state, 0, ATOMS, -0.25, d, other, &table, message, sizeof message) != 0);
   CHECK(strlen(message) > 0);
+
+  /* The loop of the caller, with the products of the library: the ABFs of a
+     centre atom in two pieces.  The sums over the ABFs are added in another
+     order, so the numbers agree within rounding.  With one thread the loop
+     is not called. */
+  table.dgemm = NULL;
+  table.context = &loops;
+  table.parallel_for = reversed_loop;
+  table.threads = 2;
+  memset(other, 0, sizeof other);
+  CHECK(openmx_exx_add_gamma(state, 0, ATOMS, -0.25, d, other, &table, message, sizeof message) == 0);
+  CHECK(loops > 0);
+  for (i = 0; i < N * N; ++i) CHECK(fabs(other[i] - k[i]) <= 1.0e-12 * scale);
+  before = loops;
+  table.threads = 1;
+  memset(other, 0, sizeof other);
+  CHECK(openmx_exx_add_gamma(state, 0, ATOMS, -0.25, d, other, &table, message, sizeof message) == 0);
+  CHECK(loops == before && memcmp(k, other, sizeof k) == 0);
+  table.threads = 2;
+  table.parallel_for = failing_loop;
+  CHECK(openmx_exx_add_gamma(state, 0, ATOMS, -0.25, d, other, &table, message, sizeof message) != 0);
+  CHECK(strlen(message) > 0);
+  table.parallel_for = NULL;
+  table.threads = 0;
 
   /* Equations (4) and (15).  The exchange energy of occupied orbitals is
      negative. */

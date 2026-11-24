@@ -27,11 +27,31 @@ extern "C" {
    returns 0 on success.  As DGEMM, it does not read C when beta is zero: the
    library passes arrays there that it has not set.  Whether it runs on the
    host or on a device is its own business; the arrays it receives are host
-   memory.  context is passed through unchanged. */
+   memory.  context is passed through unchanged.  A table without dgemm
+   (NULL) selects the loops of the library.
+
+   parallel_for and threads are optional (NULL and 0: the library runs its
+   loops on the calling thread).  parallel_for calls body(argument, index)
+   once for every index from 0 to count-1, returns when all calls have
+   returned, and returns 0 on success.  The calls may run at the same time on
+   different threads.  The library hands it loops whose pieces write to
+   different memory; dgemm is then called from those threads at the same time
+   and must allow that.  threads is the number of pieces into which the
+   library divides such a loop: the number of threads of parallel_for.  With
+   threads below 2 the library does not call parallel_for.
+
+   The exchange build divides the ABFs of a centre atom into pieces and adds
+   the sums over the ABFs piece by piece.  For one value of threads and a
+   dgemm that gives the same result for the same arguments on every thread,
+   the results do not depend on the order or the timing of the calls.  They
+   can differ by rounding from the results for another value of threads; with
+   one piece they are those of the loop on the calling thread. */
 typedef struct {
   int (*dgemm)(void *context, char transa, char transb, int m, int n, int k, double alpha,
                const double *a, int lda, const double *b, int ldb, double beta, double *c, int ldc);
   void *context;
+  int (*parallel_for)(void *context, int count, void (*body)(void *argument, int index), void *argument);
+  int threads;
 } OpenMXExxDenseBackend;
 
 /* The product that the library uses when no table is given: plain loops.

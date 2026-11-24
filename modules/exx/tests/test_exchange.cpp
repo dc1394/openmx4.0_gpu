@@ -11,11 +11,14 @@
 //   exx-exchange-gradient  equations (16) and (17) against central differences
 //   exx-exchange-centre-gradient  the same derivatives from the arrays of one
 //                          centre atom, in the Gamma form and in the site form
-//   exx-exchange-backend   the same results with a table of matrix products
+//   exx-exchange-backend   the same results with a table of matrix products,
+//                          and with a table whose loop runs the ABFs of a
+//                          centre atom in pieces
 //   exx-exchange-system    T and V blocks made from PAOs: isolated atoms
 //                          against a formula without T blocks, a periodic
-//                          structure against the definition, and the C
-//                          interface against the C++ interface
+//                          structure against the definition, the pieces of
+//                          the ABFs on threads, and the C interface against
+//                          the C++ interface
 //   exx-exchange-forces    forces.hpp: the derivative of E_x with respect to
 //                          the positions of the atoms against central
 //                          differences of E_x of structures with moved atoms
@@ -28,6 +31,7 @@
 #include "kbuild_fixture.hpp"
 #include "overlap_fixture.hpp"
 #include "test_dgemm.hpp"
+#include "test_parallel.hpp"
 #include "test_support.hpp"
 
 #include <algorithm>
@@ -35,6 +39,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdio>
+#include <cstring>
 #include <map>
 #include <set>
 #include <span>
@@ -140,6 +145,22 @@ void compare_blocks(const BlockMatrix& a, const BlockMatrix& b, Worst& worst)
     require(other.size() == values.size(),"a block is missing from one of two matrices");
     for (std::size_t e = 0; e < values.size(); ++e) worst.absolute(values[e],other[e]);
   }
+}
+
+// The same numbers bit for bit.
+bool same_values(std::span<const double> a, std::span<const double> b)
+{
+  return a.size() == b.size() && (a.empty() || std::memcmp(a.data(),b.data(),a.size()*sizeof(double)) == 0);
+}
+
+// The same keys, and the same numbers bit for bit.  find() gives nothing for
+// a block that does not exist, so a block without elements is not accepted.
+bool same_blocks(const BlockMatrix& a, const BlockMatrix& b)
+{
+  if (a.blocks().size() != b.blocks().size()) return false;
+  for (const auto& [key, values] : a.blocks())
+    if (values.empty() || !same_values(values,b.find(key))) return false;
+  return true;
 }
 
 // The blocks of a matrix in one array of a layout.
@@ -784,7 +805,7 @@ void exchange_centre_gradient(const std::string& path)
 
     // The same numbers with a table of matrix products.
     long calls = 0;
-    const OpenMXExxDenseBackend table{&counting_dgemm,&calls};
+    const OpenMXExxDenseBackend table{&counting_dgemm,&calls,nullptr,0};
     const DenseBackend backend(&table);
     Worst product("the derivatives of one centre with a table of products",1e-12);
     for (std::size_t a = 0; a < atoms; ++a) {
@@ -826,7 +847,7 @@ void exchange_backend(const std::string& path)
   const std::vector<double> d = dense_matrix(n,true,random);
 
   long calls = 0;
-  const OpenMXExxDenseBackend table{&counting_dgemm,&calls};
+  const OpenMXExxDenseBackend table{&counting_dgemm,&calls,nullptr,0};
   const DenseBackend products(&table);
   // One centre atom takes two products of its own.  Every V neighbour adds
   // one product for W and four for every ABF of the centre: the four terms
@@ -879,11 +900,71 @@ void exchange_backend(const std::string& path)
 
   // A table that fails stops the build.
   {
-    const OpenMXExxDenseBackend failing{&failing_dgemm,nullptr};
+    const OpenMXExxDenseBackend failing{&failing_dgemm,nullptr,nullptr,0};
     const DenseBackend broken(&failing);
     expect_runtime_error("a failing table in the site form",[&] { (void)exchange_blocks(system,density,alpha,broken); });
     expect_runtime_error("a failing table in the Gamma form",[&] { (void)exchange_gamma(system,d,alpha,broken); });
     expect_runtime_error("a failing table in the gradient",[&] { (void)exchange_gradient_gamma(system,d,alpha,broken); });
+  }
+
+  // The loop of a table: the ABFs of a centre atom in pieces.  The loops of
+  // the tests make the calls in order, from the last to the first, and on
+  // threads of their own.  For one number of threads the three give the same
+  // numbers bit for bit; the numbers of one piece agree within rounding.  The
+  // atoms of the fixture have 2 and 3 ABFs, so 64 threads give one piece for
+  // every ABF.
+  {
+    const BlockMatrix one_site = exchange_blocks(system,density,alpha);
+    const std::vector<double> one_gamma = exchange_gamma(system,d,alpha);
+    Calls shared;
+    const auto with = [&shared](bool product, Loop loop, int threads) {
+      const OpenMXExxDenseBackend pieces{product ? &shared_dgemm : nullptr,&shared,loop,threads};
+      return DenseBackend(&pieces);
+    };
+    Worst rounding("pieces of the ABFs against one piece",1e-12);
+    for (const int threads : {2,3,64})
+      for (const bool product : {false,true}) {
+        const DenseBackend ordered = with(product,&in_order_loop,threads);
+        shared.products = 0;
+        shared.loops = 0;
+        const BlockMatrix site = exchange_blocks(system,density,alpha,ordered);
+        require(shared.loops > 0,"the site form does not use the loop of the table");
+        require(shared.products == (product ? expected : 0),"the pieces change the number of products of the site form");
+        shared.products = 0;
+        shared.loops = 0;
+        const std::vector<double> gamma = exchange_gamma(system,d,alpha,ordered);
+        require(shared.loops > 0,"the Gamma form does not use the loop of the table");
+        require(shared.products == (product ? expected_gamma : 0),
+                "the pieces change the number of products of the Gamma form");
+        for (const Loop loop : {&reversed_loop,&threaded_loop}) {
+          const DenseBackend other = with(product,loop,threads);
+          require(same_blocks(site,exchange_blocks(system,density,alpha,other)),
+                  "the site form depends on the order in which the pieces run");
+          require(same_values(gamma,exchange_gamma(system,d,alpha,other)),
+                  "the Gamma form depends on the order in which the pieces run");
+        }
+        if (!product) {
+          compare_blocks(one_site,site,rounding);
+          for (std::size_t e = 0; e < n*n; ++e) rounding.absolute(one_gamma[e],gamma[e]);
+        }
+      }
+    rounding.finish();
+
+    // With one thread the loop of the table is not called, and the numbers
+    // are those without a table.
+    {
+      const DenseBackend single = with(false,&reversed_loop,1);
+      shared.loops = 0;
+      require(same_blocks(one_site,exchange_blocks(system,density,alpha,single)) &&
+              same_values(one_gamma,exchange_gamma(system,d,alpha,single)) && shared.loops == 0,
+              "a table with one thread changes the build");
+    }
+    // A loop that fails, or leaves out a piece, stops the build.
+    for (const Loop loop : {&failing_loop,&skipping_loop,&repeating_loop,&stray_loop}) {
+      const DenseBackend broken = with(false,loop,2);
+      expect_runtime_error("a broken loop in the site form",[&] { (void)exchange_blocks(system,density,alpha,broken); });
+      expect_runtime_error("a broken loop in the Gamma form",[&] { (void)exchange_gamma(system,d,alpha,broken); });
+    }
   }
 }
 
@@ -1216,6 +1297,34 @@ void exchange_system(const std::string& path)
     compare_forms(system,"periodic structure");
   }
 
+  // The ABFs of the centre atoms in pieces, every piece on a thread of its
+  // own: the same bits as the pieces one after the other, and the numbers of
+  // one piece within rounding.
+  {
+    const std::vector<double> one = exchange_gamma(system,d,alpha);
+    const DensityBlocks blocks = gamma_density(system,d);
+    const BlockMatrix one_site = exchange_blocks(system,blocks,alpha);
+    const double scale = largest(one);
+    Worst rounding("periodic structure: pieces of the ABFs against one piece",1e-12);
+    for (const int threads : {2,4,7}) {
+      const OpenMXExxDenseBackend ordered{nullptr,nullptr,&in_order_loop,threads};
+      const OpenMXExxDenseBackend threaded{nullptr,nullptr,&threaded_loop,threads};
+      const std::vector<double> k = exchange_gamma(system,d,alpha,DenseBackend(&ordered));
+      require(same_values(k,exchange_gamma(system,d,alpha,DenseBackend(&threaded))),
+              "the Gamma form on threads differs from the pieces in order");
+      const BlockMatrix site = exchange_blocks(system,blocks,alpha,DenseBackend(&ordered));
+      require(same_blocks(site,exchange_blocks(system,blocks,alpha,DenseBackend(&threaded))),
+              "the site form on threads differs from the pieces in order");
+      for (std::size_t e = 0; e < n*n; ++e) rounding.add(std::fabs(k[e]-one[e])/scale);
+      for (const auto& [key, values] : one_site.blocks()) {
+        const std::span<const double> other = site.find(key);
+        require(other.size() == values.size(),"the pieces change the blocks of K");
+        for (std::size_t e = 0; e < values.size(); ++e) rounding.add(std::fabs(values[e]-other[e])/scale);
+      }
+    }
+    rounding.finish();
+  }
+
   // The same atoms in a large cell.  No neighbour list holds two images of
   // one atom, so the Gamma form has nothing to fold and works with the
   // blocks as they are stored.
@@ -1486,7 +1595,7 @@ void exchange_forces(const std::string& path)
   {
     const PositionGradient derivative(structure,tables,reciprocal,options,periodic.system);
     long calls = 0;
-    const OpenMXExxDenseBackend table{&counting_dgemm,&calls};
+    const OpenMXExxDenseBackend table{&counting_dgemm,&calls,nullptr,0};
     const DenseBackend products(&table);
     std::vector<double> gamma(3*atoms,0.0), site(3*atoms,0.0);
     for (std::size_t a = 0; a < atoms; ++a) {
@@ -1571,7 +1680,7 @@ void exchange_forces(const std::string& path)
     // An empty range adds nothing; rejected calls and a product that fails
     // leave the output as it was.
     const std::vector<double> before_gamma = gamma, before_site = site;
-    const OpenMXExxDenseBackend failing{&failing_dgemm,nullptr};
+    const OpenMXExxDenseBackend failing{&failing_dgemm,nullptr,nullptr,0};
     require(openmx_exx_add_position_gradient_gamma(state,1,1,-alpha,periodic.density.data(),gamma.data(),nullptr,message,
                                                    sizeof message) == 0 && gamma == before_gamma,
             "an empty range of centre atoms changes the derivative");

@@ -2,14 +2,18 @@
 //   exx-dense-backend  the built-in product against sums written out, for
 //                      every transposition, padded arrays and special
 //                      factors; the three row-major products with and
-//                      without a table; failures of a table
+//                      without a table; failures of a table; the loop of a
+//                      table, on one thread and on several, and loops that
+//                      break the contract
 #include <openmx/exx/dense_backend.hpp>
 
 #include "test_dgemm.hpp"
+#include "test_parallel.hpp"
 #include "test_support.hpp"
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <climits>
 #include <cstddef>
 #include <cstring>
@@ -130,6 +134,123 @@ void expect(const std::string& what, Call call)
   require(thrown,"no exception for "+what);
 }
 
+// The indices in the order in which a loop on one thread calls them.
+std::vector<std::size_t> order_of(const DenseBackend& backend, std::size_t count)
+{
+  std::vector<std::size_t> order;
+  backend.parallel_for(count,[&order](std::size_t index) { order.push_back(index); });
+  return order;
+}
+
+// DenseBackend::parallel_for() with the loops of test_parallel.hpp.
+void check_loops(Numbers& random)
+{
+  const std::vector<std::size_t> forward{0,1,2,3,4}, backward{4,3,2,1,0};
+  Calls calls;
+  // The backend keeps a copy of the table.
+  const auto with = [&calls](Loop loop, int threads) {
+    const OpenMXExxDenseBackend table{nullptr,&calls,loop,threads};
+    return DenseBackend(&table);
+  };
+
+  // Without a loop, and with fewer than two threads, the calls run in order
+  // on the calling thread.
+  require(DenseBackend().pieces() == 1 && order_of(DenseBackend(),5) == forward,"wrong loop without a table");
+  for (const int threads : {1,0,-3}) {
+    const DenseBackend backend = with(&reversed_loop,threads);
+    require(backend.pieces() == 1 && order_of(backend,5) == forward,"a table with fewer than two threads runs its loop");
+  }
+  {
+    const DenseBackend backend = with(nullptr,4);
+    require(backend.pieces() == 1 && order_of(backend,5) == forward,"threads without a loop change the loop");
+  }
+  require(calls.loops == 0,"a loop of a table was called without need");
+
+  // The loop of the table makes the calls; the number of calls is the
+  // caller's, not the number of threads.  A table without dgemm keeps the
+  // built-in products.
+  {
+    const DenseBackend backend = with(&reversed_loop,2);
+    require(backend.pieces() == 2 && backend.built_in(),"wrong report of a table with a loop only");
+    require(order_of(backend,5) == backward && calls.loops == 1,"the loop of the table does not make the calls");
+    require(order_of(with(&in_order_loop,7),5) == forward && calls.loops == 2,"wrong calls of a loop in order");
+    // Nothing to divide: no loop of the table.
+    require(order_of(backend,0).empty() && order_of(backend,1) == std::vector<std::size_t>{0} && calls.loops == 2,
+            "a loop with fewer than two calls reaches the table");
+    Worst worst("row-major products, table with a loop only",1e-13);
+    check_row_major(backend,3,4,5,0.7,0.3,random,worst);
+    worst.finish();
+  }
+
+  // An exception of a call: the other calls of a loop of the table still
+  // run, and the exception of the lowest index is thrown again.  On the
+  // calling thread the loop ends at once.
+  for (const Loop loop : {&in_order_loop,&reversed_loop,&threaded_loop}) {
+    const DenseBackend backend = with(loop,3);
+    std::array<std::atomic<int>,5> ran{};
+    expect<std::invalid_argument>("a call that throws",[&] {
+      backend.parallel_for(5,[&ran](std::size_t index) {
+        ++ran[index];
+        if (index == 1) throw std::invalid_argument("the second call");
+        if (index == 3) throw std::out_of_range("the fourth call");
+      });
+    });
+    require(std::all_of(ran.begin(),ran.end(),[](const std::atomic<int>& count) { return count == 1; }),
+            "an exception of one call keeps another call from running");
+  }
+  {
+    std::vector<std::size_t> ran;
+    expect<std::out_of_range>("a call that throws on the calling thread",[&] {
+      DenseBackend().parallel_for(5,[&ran](std::size_t index) {
+        ran.push_back(index);
+        if (index == 1) throw std::out_of_range("the second call");
+      });
+    });
+    require(ran == std::vector<std::size_t>({0,1}),"the loop on the calling thread goes on after an exception");
+  }
+
+  // Loops that break the contract.  A call made twice, or with an index that
+  // does not exist, does not reach the body.
+  for (const Loop loop : {&failing_loop,&skipping_loop,&repeating_loop,&stray_loop}) {
+    const DenseBackend backend = with(loop,2);
+    std::array<int,5> ran{};
+    expect<std::runtime_error>("a loop that breaks the contract",[&] {
+      backend.parallel_for(5,[&ran](std::size_t index) { ++ran.at(index); });
+    });
+    const int last = loop == &skipping_loop ? 0 : 1;
+    require(ran == std::array<int,5>({1,1,1,1,last}),"a loop that breaks the contract runs a call twice or a wrong one");
+  }
+  {
+    // The exception of a call comes before the failure of the loop.
+    const DenseBackend backend = with(&failing_loop,2);
+    expect<std::invalid_argument>("a call that throws in a loop that fails",[&] {
+      backend.parallel_for(3,[](std::size_t index) { if (index == 2) throw std::invalid_argument("the last call"); });
+    });
+    expect<std::length_error>("a loop with more calls than the int of the table",[&] {
+      backend.parallel_for(static_cast<std::size_t>(INT_MAX)+1,[](std::size_t) {});
+    });
+  }
+
+  // Calls on threads of their own, each with products of its own: the
+  // built-in loops and a product of a table.
+  for (const bool table : {false,true}) {
+    const OpenMXExxDenseBackend threaded{table ? &shared_dgemm : nullptr,&calls,&threaded_loop,8};
+    const DenseBackend backend(&threaded);
+    const std::size_t m = 5, n = 4, k = 6, count = 8;
+    std::vector<double> a(count*m*k), b(count*k*n), c(count*m*n,0.0), expected(count*m*n,0.0);
+    for (double& value : a) value = random.next();
+    for (double& value : b) value = random.next();
+    for (std::size_t index = 0; index < count; ++index)
+      backend.multiply(m,n,k,1.0,a.data()+index*m*k,b.data()+index*k*n,0.0,expected.data()+index*m*n);
+    const long before = calls.products;
+    backend.parallel_for(count,[&](std::size_t index) {
+      backend.multiply(m,n,k,1.0,a.data()+index*m*k,b.data()+index*k*n,0.0,c.data()+index*m*n);
+    });
+    require(c == expected,"products on several threads differ from the same products on one thread");
+    require(calls.products-before == (table ? static_cast<long>(count) : 0),"wrong number of products on several threads");
+  }
+}
+
 } // namespace
 
 void dense_backend()
@@ -204,12 +325,12 @@ void dense_backend()
 
   // The row-major products, with the built-in loops and with a table.
   long calls = 0;
-  const OpenMXExxDenseBackend table{&counting_dgemm,&calls};
+  const OpenMXExxDenseBackend table{&counting_dgemm,&calls,nullptr,0};
   const DenseBackend built_in, with_table(&table);
   require(built_in.built_in() && !with_table.built_in(),"wrong report of where the products come from");
   require(DenseBackend(nullptr).built_in(),"a missing table does not select the built-in loops");
   {
-    const OpenMXExxDenseBackend without_function{nullptr,&calls};
+    const OpenMXExxDenseBackend without_function{nullptr,&calls,nullptr,0};
     require(DenseBackend(&without_function).built_in(),"a table without a function does not select the built-in loops");
   }
   for (const DenseBackend* backend : {&built_in,&with_table}) {
@@ -234,7 +355,7 @@ void dense_backend()
 
   // A table that fails, and sizes beyond the int of the table.
   {
-    const OpenMXExxDenseBackend failing{&failing_dgemm,nullptr};
+    const OpenMXExxDenseBackend failing{&failing_dgemm,nullptr,nullptr,0};
     const DenseBackend backend(&failing);
     const double a = 1.0, b = 2.0;
     double c = 0.0;
@@ -245,6 +366,8 @@ void dense_backend()
     expect<std::length_error>("a matrix with too many columns",[&] { with_table.gemm('N','N',1,huge,1,1.0,&a,1,&b,1,0.0,&c,1); });
     require(calls == 3*5*6,"a product that is too large reaches the table");
   }
+
+  check_loops(random);
 }
 
 } // namespace exx_test

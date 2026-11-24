@@ -81,12 +81,27 @@ const DensityBlocks blocks = [&](const BlockKey& key, std::span<double> block) {
 const BlockMatrix k_blocks = exchange_blocks(system, blocks, 0.25);
 
 // 行列積を BLAS に任せる
-const OpenMXExxDenseBackend table{&my_dgemm, nullptr};
+const OpenMXExxDenseBackend table{&my_dgemm, nullptr, nullptr, 0};
 const std::vector<double> k_blas = exchange_gamma(system, density, 0.25, DenseBackend(&table));
+
+// ABF ごとの計算を、呼び出し側の 8 本のスレッドにも分ける
+const OpenMXExxDenseBackend threaded{&my_dgemm, nullptr, &my_parallel_for, 8};
+const std::vector<double> k_threads = exchange_gamma(system, density, 0.25, DenseBackend(&threaded));
 ```
 
 行列積の回数は、中心の原子 1 個につき 2 回と、V 近傍 1 個につき 1 + 4n 回です（n は中心の原子の ABF の個数）。
 V 近傍ごとの 4 つの項は、中心の原子の ABF を 1 個ずつ計算します。
+
+関数表の `parallel_for` と `threads` は省略できます（`nullptr` と 0）。
+`parallel_for` は、0 から `count-1` までの番号ごとに `body(argument, index)` を 1 回ずつ呼び、全部が終わってから 0 を返す関数です。
+呼び出しは、別々のスレッドで同時に実行してかまいません。OpenMP なら `#pragma omp parallel for` のループ 1 個で書けます。
+ライブラリーは、中心の原子の ABF を `threads` 個の区間に分け、区間ごとの計算をこの関数に渡します。
+このとき関数表の `dgemm` は、複数のスレッドから同時に呼ばれます。ライブラリー自身はスレッドを作りません。
+ABF についての和は、区間ごとに足し、その結果を区間の順に足し合わせます。
+このため、`threads` が同じなら、区間を実行する順序やスレッドの割り当てが変わっても結果は変わりません（`dgemm` が同じ引数に同じ結果を返す場合）。
+`threads` を変えると、結果は丸めの範囲で変わります。
+`parallel_for` がないとき、または `threads` が 2 より小さいときは、ABF を 1 個ずつ順に計算した結果と一致します。
+行列積の回数は、区間の数によりません。
 関数表の `dgemm` は、β が 0 のとき結果の行列を読みません（BLAS の DGEMM と同じ約束です）。ライブラリーは、β が 0 の積に、確保したままの配列を渡します。
 Γ 点の形式は、同じ原子の周期像を行列積の前にまとめます。V ブロックは周期像について足し合わせ、T ブロックの列は同じ軌道に属するものを足し合わせます。
 このため、Γ 点の形式で数える V 近傍は、site ではなく原子です。セルが近傍の範囲より小さくても、行列積は増えません。

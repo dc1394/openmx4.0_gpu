@@ -1,9 +1,23 @@
 #include <openmx/exx/dense_backend.hpp>
 
+#include <atomic>
 #include <climits>
+#include <exception>
 #include <stdexcept>
+#include <vector>
 
 namespace {
+
+// What the calls of one loop of DenseBackend::parallel_for() share.  Every
+// index has its own entry in failure and in called.
+struct Loop {
+  void (*call)(void*, std::size_t);
+  void* callable;
+  std::size_t count;
+  std::exception_ptr* failure;
+  std::atomic<unsigned char>* called;
+  std::atomic<bool> wrong;   // an index outside the loop, or one index twice
+};
 
 // 0: no transposition, 1: transposition, -1: not a valid letter.  For real
 // matrices 'C' means 'T'.
@@ -17,6 +31,32 @@ int transposition(char letter)
 }
 
 } // namespace
+
+extern "C" {
+
+// One call of a loop, as the loop of a table makes it.  No exception leaves
+// the function: the frames of the caller need not be C++.  An index runs
+// once; a call that the loop must not make is noted and does nothing.
+static void openmx_exx_loop_call(void* argument, int index) noexcept
+{
+  Loop& loop = *static_cast<Loop*>(argument);
+  if (index < 0 || static_cast<std::size_t>(index) >= loop.count) {
+    loop.wrong.store(true);
+    return;
+  }
+  const std::size_t i = static_cast<std::size_t>(index);
+  if (loop.called[i].exchange(1) != 0) {
+    loop.wrong.store(true);
+    return;
+  }
+  try {
+    loop.call(loop.callable,i);
+  } catch (...) {
+    loop.failure[i] = std::current_exception();
+  }
+}
+
+} // extern "C"
 
 extern "C" int openmx_exx_reference_dgemm(void*, char transa, char transb, int m, int n, int k, double alpha,
                                           const double* a, int lda, const double* b, int ldb, double beta,
@@ -77,7 +117,33 @@ namespace openmx::exx {
 
 DenseBackend::DenseBackend(const OpenMXExxDenseBackend* table) noexcept
 {
-  if (table != nullptr && table->dgemm != nullptr) table_ = *table;
+  if (table != nullptr) table_ = *table;
+}
+
+std::size_t DenseBackend::pieces() const noexcept
+{
+  return table_.parallel_for != nullptr && table_.threads > 1 ? static_cast<std::size_t>(table_.threads) : 1;
+}
+
+void DenseBackend::run(std::size_t count, void (*call)(void*, std::size_t), void* callable) const
+{
+  if (count < 2 || pieces() < 2) {
+    for (std::size_t index = 0; index < count; ++index) call(callable,index);
+    return;
+  }
+  if (count > static_cast<std::size_t>(INT_MAX))
+    throw std::length_error("a loop of the exchange build has too many pieces for the dense backend");
+  std::vector<std::exception_ptr> failure(count);
+  std::vector<std::atomic<unsigned char>> called(count);
+  for (std::atomic<unsigned char>& flag : called) flag.store(0);
+  Loop loop{call,callable,count,failure.data(),called.data(),{false}};
+  const int status = table_.parallel_for(table_.context,static_cast<int>(count),&openmx_exx_loop_call,&loop);
+  for (const std::exception_ptr& thrown : failure)
+    if (thrown) std::rethrow_exception(thrown);
+  if (status != 0) throw std::runtime_error("the parallel loop of the dense backend failed");
+  bool complete = !loop.wrong.load();
+  for (const std::atomic<unsigned char>& flag : called) complete = complete && flag.load() == 1;
+  if (!complete) throw std::runtime_error("the parallel loop of the dense backend did not make every call once");
 }
 
 void DenseBackend::gemm(char transa, char transb, std::size_t m, std::size_t n, std::size_t k, double alpha,

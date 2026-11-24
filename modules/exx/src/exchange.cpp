@@ -92,6 +92,12 @@ void find_runs(const std::vector<std::size_t>& column, std::vector<Run>& runs)
   }
 }
 
+// The arrays of one piece of the ABFs of a centre atom: the pieces of
+// centre_contribution() can run at the same time.
+struct PieceWork {
+  std::vector<double> scratch, gathered, x3, x4, k1, second;
+};
+
 // The contribution of the centre atom a, section 6.4.  The columns of the
 // density matrix are numbered 0..s-1 by the caller: the orbitals of the sites
 // of S in the site form, the orbitals of the unit cell in the Gamma form.
@@ -124,6 +130,14 @@ void find_runs(const std::vector<std::size_t>& column, std::vector<Run>& runs)
 // over all P needs a second copy of W with l before nu and the columns of
 // loc(B) of all of G in a new order; that form took 1.5 to 1.8 times as long
 // (section 12 of the implementation guide).
+//
+// The work of the single P runs in pieces: the loop of the backend may give
+// every piece to another thread.  Piece c holds the ABFs c np/pieces to
+// (c+1) np/pieces - 1, with integer divisions.  The parts of G and of the
+// bracket of different P are different memory.  Terms (i) and (ii) are sums
+// over P: every piece adds up its own P in arrays of its own, and the sums of
+// the pieces are added in the order of the pieces.  With one piece the
+// operations and their order are those of a loop over all P.
 template <class Sink>
 void centre_contribution(const System& system, std::size_t a, std::size_t s, const std::vector<double>& dloc,
                          Sink& sink, const DenseBackend& backend)
@@ -133,15 +147,24 @@ void centre_contribution(const System& system, std::size_t a, std::size_t s, con
   const double* tst = sink.t(a);
   const double* da = dloc.data();
 
+  const std::size_t pieces = std::max<std::size_t>(1,std::min(backend.pieces(),np));
+  const auto begin = [np,pieces](std::size_t c) { return c*np/pieces; };
+  std::vector<PieceWork> work(pieces);
+
   // The products write every element of G and of the last result: the two
-  // arrays are not set to zero first.
-  const std::unique_ptr<double[]> g(new double[rows*s]);
-  std::vector<double> bracket(rows*s,0.0), scratch;
+  // arrays are not set to zero first.  The bracket is set to zero by the
+  // pieces that fill it.
+  const std::unique_ptr<double[]> g(new double[rows*s]), bracket(new double[rows*s]);
   backend.multiply(rows,s,ell,1.0,tst,dloc.data(),0.0,g.get());       // G = T D[loc(A), .]
-  for (std::size_t p = 0; p < np; ++p) transpose_in_place(g.get()+p*part,ua,s,scratch);
+  backend.parallel_for(pieces,[&](std::size_t c) {
+    for (std::size_t p = begin(c); p < begin(c+1); ++p) {
+      transpose_in_place(g.get()+p*part,ua,s,work[c].scratch);
+      std::fill_n(bracket.get()+p*part,part,0.0);
+    }
+  });
 
   std::vector<Run> runs;
-  std::vector<double> w, dl, dba, gathered, k1, first, second, x3, x4;
+  std::vector<double> w, dl, dba, first;
   for (std::size_t ib = 0; ib < sink.groups(); ++ib) {
     const std::size_t b = sink.atom(ib);
     const std::size_t nq = system.abf_count[b], ub = system.orbital_count[b], lb = sink.width(b);
@@ -160,40 +183,59 @@ void centre_contribution(const System& system, std::size_t a, std::size_t s, con
     for (std::size_t nu = 0; nu < ub; ++nu)
       for (std::size_t mu = 0; mu < ua; ++mu) dba[nu*ua+mu] = da[mu*s+column[nu]];
 
-    gathered.resize(lb*ua);
-    x3.resize(ub*ua);
-    x4.resize(lb*ua);
-    k1.assign(ub*ua,0.0);                                              // term (i) as [nu, mu]
-    second.assign(ua*lb,0.0);
-    for (std::size_t p = 0; p < np; ++p) {
-      const double* wp = w.data()+p*ub*lb;                             // W_P [nu, l]
-      const double* gp = g.get()+p*part;                               // G_P [column, mu]
-      double* bp = bracket.data()+p*part;                              // bracket_P [column, mu]
+    backend.parallel_for(pieces,[&](std::size_t c) {
+      PieceWork& mine = work[c];
+      mine.gathered.resize(lb*ua);
+      mine.x3.resize(ub*ua);
+      mine.x4.resize(lb*ua);
+      mine.k1.assign(ub*ua,0.0);                                         // term (i) as [nu, mu]
+      mine.second.assign(ua*lb,0.0);
+      for (std::size_t p = begin(c); p < begin(c+1); ++p) {
+        const double* wp = w.data()+p*ub*lb;                             // W_P [nu, l]
+        const double* gp = g.get()+p*part;                               // G_P [column, mu]
+        double* bp = bracket.get()+p*part;                               // bracket_P [column, mu]
 
-      // G_P[loc(B), .] as [l, mu]; its first u_b rows are G_P[B, .]
-      for (const Run& run : runs) std::copy_n(gp+run.column*ua,run.count*ua,gathered.data()+run.first*ua);
+        // G_P[loc(B), .] as [l, mu]; its first u_b rows are G_P[B, .]
+        for (const Run& run : runs) std::copy_n(gp+run.column*ua,run.count*ua,mine.gathered.data()+run.first*ua);
 
-      // (i)  sum_l W_P[., l] G_P[loc(B), .]
-      backend.multiply(ub,ua,lb,1.0,wp,gathered.data(),1.0,k1.data());
+        // (i)  sum_l W_P[., l] G_P[loc(B), .]
+        backend.multiply(ub,ua,lb,1.0,wp,mine.gathered.data(),1.0,mine.k1.data());
 
-      // (ii)  sum_nu G_P[B, .]^T W_P
-      backend.transposed_multiply(ua,lb,ub,1.0,gathered.data(),wp,1.0,second.data());
+        // (ii)  sum_nu G_P[B, .]^T W_P
+        backend.transposed_multiply(ua,lb,ub,1.0,mine.gathered.data(),wp,1.0,mine.second.data());
 
-      // (iii)  bracket_P[B, .] += W_P D[A, loc(B)]^T
-      backend.multiply_transposed(ub,ua,lb,1.0,wp,dl.data(),0.0,x3.data());
-      for (std::size_t nu = 0; nu < ub; ++nu) {
-        double* target = bp+column[nu]*ua;
-        for (std::size_t mu = 0; mu < ua; ++mu) target[mu] += x3[nu*ua+mu];
+        // (iii)  bracket_P[B, .] += W_P D[A, loc(B)]^T
+        backend.multiply_transposed(ub,ua,lb,1.0,wp,dl.data(),0.0,mine.x3.data());
+        for (std::size_t nu = 0; nu < ub; ++nu) {
+          double* target = bp+column[nu]*ua;
+          for (std::size_t mu = 0; mu < ua; ++mu) target[mu] += mine.x3[nu*ua+mu];
+        }
+
+        // (iv)  bracket_P[loc(B), .] += W_P^T D[A, B]^T
+        backend.transposed_multiply(lb,ua,ub,1.0,wp,dba.data(),0.0,mine.x4.data());
+        for (const Run& run : runs) {
+          double* target = bp+run.column*ua;
+          const double* source = mine.x4.data()+run.first*ua;
+          for (std::size_t e = 0; e < run.count*ua; ++e) target[e] += source[e];
+        }
       }
+    });
 
-      // (iv)  bracket_P[loc(B), .] += W_P^T D[A, B]^T
-      backend.transposed_multiply(lb,ua,ub,1.0,wp,dba.data(),0.0,x4.data());
-      for (const Run& run : runs) {
-        double* target = bp+run.column*ua;
-        const double* source = x4.data()+run.first*ua;
-        for (std::size_t e = 0; e < run.count*ua; ++e) target[e] += source[e];
-      }
-    }
+    // The sums of the pieces, added to those of the first piece in the order
+    // of the pieces.  The second array is long: its elements are divided
+    // among the calls of a loop, and every element is added up by one call.
+    std::vector<double>& k1 = work[0].k1;
+    std::vector<double>& second = work[0].second;
+    for (std::size_t c = 1; c < pieces; ++c)
+      for (std::size_t e = 0; e < ub*ua; ++e) k1[e] += work[c].k1[e];
+    if (pieces > 1)
+      backend.parallel_for(pieces,[&](std::size_t share) {
+        const std::size_t from = share*(ua*lb)/pieces, to = (share+1)*(ua*lb)/pieces;
+        for (std::size_t c = 1; c < pieces; ++c) {
+          const double* source = work[c].second.data();
+          for (std::size_t e = from; e < to; ++e) second[e] += source[e];
+        }
+      });
 
     first.resize(ua*ub);
     for (std::size_t mu = 0; mu < ua; ++mu)
@@ -203,9 +245,12 @@ void centre_contribution(const System& system, std::size_t a, std::size_t s, con
   }
 
   // rows loc(A):  sum_P T_P^T bracket_P
-  for (std::size_t p = 0; p < np; ++p) transpose_in_place(bracket.data()+p*part,s,ua,scratch);
+  backend.parallel_for(pieces,[&](std::size_t c) {
+    for (std::size_t p = begin(c); p < begin(c+1); ++p)
+      transpose_in_place(bracket.get()+p*part,s,ua,work[c].scratch);
+  });
   const std::unique_ptr<double[]> last(new double[ell*s]);
-  backend.transposed_multiply(ell,s,rows,1.0,tst,bracket.data(),0.0,last.get());
+  backend.transposed_multiply(ell,s,rows,1.0,tst,bracket.get(),0.0,last.get());
   sink.last(last.get());
 }
 
