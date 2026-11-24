@@ -87,6 +87,19 @@ Hamiltonian on the device:
 Each of them has to agree with NAME-cpu within 1e-7 Hartree.  The standard
 output says to how many dense Hamiltonians the exchange matrix was added on
 the device: the number has to be positive, and 0 in NAME-dfall.
+
+GEMMul8 in the matrix products of the exchange build (section 11 of the
+guide).  The device computes them in FP64 of cuBLAS unless the input says
+scf.gemmul8.enable on.  The systems marked "device" have one more run:
+
+  NAME-g8     the CUDA executable, and the input gets the line
+              scf.gemmul8.enable on: the large products go through the
+              GEMMul8 bridge
+
+It has to agree with NAME-cpu within 1e-7 Hartree, and the standard output
+has to say that GEMMul8 computed every product on the device; the table
+also prints its difference from NAME-gpu, the same products in FP64.  No
+other run may report GEMMul8 in these products.
 """
 import argparse
 import json
@@ -122,17 +135,20 @@ STEERED_LABEL = {
     "dser": "dense path, both spins on one process",
     "dfp64": "dense path, products in FP64 of cuBLAS",
 }
-ENVIRONMENT = {"cpu": {}, "gpu": {}, "host": {"OPENMX_GPU_CAPACITY_TEST_RECOVERY": "1"}, **STEERED}
+ENVIRONMENT = {"cpu": {}, "gpu": {}, "host": {"OPENMX_GPU_CAPACITY_TEST_RECOVERY": "1"}, "g8": {}, **STEERED}
 # no run inherits one of these from the caller
 STEERING = sorted({key for variables in ENVIRONMENT.values() for key in variables})
+# lines that a run adds to the input of its system
+INPUT_LINES = {"g8": "scf.gemmul8.enable        on\n"}
 
 SYSTEMS = {}
 
 
 def add(name, text, ranks=1, threads=2, large=0, base=VARIANTS, dense=("dense",)):
     """A system: its input, the number of matrix products of one build that are large enough for the device, and its runs."""
+    # only a system with products on the device can compare GEMMul8 with FP64 in them
     SYSTEMS[name] = dict(text=text, ranks=ranks, threads=threads, large=large, device=0 < large,
-                         variants=tuple(base) + tuple(dense))
+                         variants=tuple(base) + tuple(dense) + (("g8",) if 0 < large else ()))
 
 
 add("ch4", gamma.RUNS["ch4-hse"]["text"], dense=("dense", "dfall", "dfp64"))
@@ -179,7 +195,11 @@ def device_use(std):
     added = re.search(r"<EXX>  GPU: the exchange matrix was added to (\d+) dense Hamiltonians on the device\.", std)
     declined = ("GPU dense memory admission declined" in std
                 or bool(re.search(r"<EXX>  Cluster collinear n=\d+: the device cannot hold the dense matrices", std)))
+    # the products on the device that GEMMul8 computed and those that the bridge computed in FP64; None without the line
+    bridge = re.search(r"<EXX>  GPU: GEMMul8 computed (\d+) of the matrix products on the device, FP64 the other (\d+) "
+                       r"\(scf\.gemmul8\.enable on\)\.", std)
     return dict(additions=int(added.group(1)) if added else 0, dense_declined=declined,
+                gemmul8=int(bridge.group(1)) if bridge else None, gemmul8_fp64=int(bridge.group(2)) if bridge else None,
                 serial="solves both spins serially on the GPU" in std,
                 products=int(use.group(1)) if use else 0, processes=int(use.group(2)) if use else 0,
                 seconds=float(use.group(3)) if use else 0.0, declined=int(use.group(4)) if use else 0,
@@ -195,7 +215,8 @@ def execute(args, run):
     run_dir = args.out / run
     run_dir.mkdir(parents=True, exist_ok=True)
     title = re.search(r"System.Name\s+(\S+)", spec["text"]).group(1)
-    (run_dir / "input.dat").write_text(spec["text"].replace("@DATA_PATH@", str(args.data_path)))
+    (run_dir / "input.dat").write_text(spec["text"].replace("@DATA_PATH@", str(args.data_path))
+                                       + INPUT_LINES.get(variant, ""))
     threads = str(args.threads or spec["threads"])
     env = dict(os.environ, OMP_NUM_THREADS=threads, OPENBLAS_NUM_THREADS=threads)
     for key in STEERING:
@@ -242,7 +263,8 @@ def run(args):
         d = r["device"]
         print(f"{name:24s} exit {r['status']} {r['wall']:7.1f}s Utot {r['Utot']} Uexx {r['Uexx']} builds {r['builds']} "
               f"converged {r['achieved']} device products {d['products']} declined {d['declined']} "
-              f"dense additions {d['additions']}", flush=True)
+              f"dense additions {d['additions']}"
+              + ("" if d["gemmul8"] is None else f" GEMMul8 {d['gemmul8']} FP64 {d['gemmul8_fp64']}"), flush=True)
     return 0
 
 # ---- table ----------------------------------------------------------------
@@ -326,6 +348,35 @@ def table(args):
             d = results[f"{system}-cpu"]["device"]
             expect("CPU build: no device", d["products"] == 0 and d["declined"] == 0 and d["switched_off"] == 0
                    and d.get("additions", 0) == 0, f"{d['products']} on the device, {d['declined']} left to the host")
+        # GEMMul8 in the matrix products on the device: only where the input asks for it
+        others = [v for v in present if v != "g8" and results[f"{system}-{v}"]["device"].get("gemmul8") is not None]
+        if spec["device"] and [v for v in present if v != "g8"]:
+            expect("without scf.gemmul8.enable: products in FP64", not others,
+                   "GEMMul8 reported by " + (" ".join(others) if others else "no run"))
+        if "g8" in present:
+            name, label = f"{system}-g8", "GEMMul8 in the products"
+            r = results[name]
+            d = r["device"]
+            large = spec["large"] * (r["builds"] or 0)
+            if "cpu" in present:
+                if converged(name) and converged(f"{system}-cpu"):
+                    value = difference(system, "g8")
+                    expect(f"{label}: Utot minus CPU", abs(value) <= LIMIT, f"{value:+.3e}  limit {LIMIT:.0e}")
+                    print(f"  {label + ': Uexx minus CPU':50s} {difference(system, 'g8', 'Uexx'):+.3e}")
+                else:
+                    expect(f"{label}: Utot minus CPU", False, "a run failed or did not converge")
+            if "gpu" in present and converged(name) and converged(f"{system}-gpu"):
+                # the same products in FP64 of cuBLAS: a number to record, without a limit of its own
+                fp64 = results[f"{system}-gpu"]
+                print(f"  {label + ': Utot minus the FP64 run':50s} {r['Utot'] - fp64['Utot']:+.3e}")
+                print(f"  {label + ': Uexx minus the FP64 run':50s} {r['Uexx'] - fp64['Uexx']:+.3e}")
+                print(f"  {label + ': seconds on the device':50s} {d['seconds']:.2f}  (FP64: {fp64['device']['seconds']:.2f})")
+            counted = ("no line about GEMMul8 in the standard output" if d.get("gemmul8") is None
+                       else f"{d['gemmul8']} by GEMMul8 and {d['gemmul8_fp64']} in FP64")
+            detail = (f"{counted}; {d['products']} on the device, {d['declined']} left to the host, "
+                      f"{d['switched_off']} processes switched off; large products in {r['builds']} builds: {large}")
+            expect(f"{label}: every product by GEMMul8", 0 < d["products"] and d.get("gemmul8") == d["products"]
+                   and d["switched_off"] == 0 and d["products"] + d["declined"] == large, detail)
         # the dense eigensolver of the device, and where the exchange matrix was added to the Hamiltonian
         for variant in ("gpu", "host"):
             if variant in present:
