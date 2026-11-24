@@ -2029,10 +2029,12 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
     const int builds = Exact_Exchange_Outer_Iterations(exact_exchange);
     double exx_times[4];
     long long exx_device_use[4];
+    long long exx_device_additions;
     double exx_device_seconds;
 
     if (!Exact_Exchange_Outer_Converged(exact_exchange)) scf_convergence_flag = 0;
     Exact_Exchange_Device_Use(exact_exchange, mpi_comm_level1, exx_device_use, &exx_device_seconds);
+    exx_device_additions = Exact_Exchange_Device_Additions(exact_exchange, mpi_comm_level1);
 
     if (MYID_MPI_COMM_WORLD==Host_ID && 0<level_stdout){
       if (builds==0){
@@ -2063,6 +2065,10 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
       if (0<exx_device_use[3]){
         printf("<EXX>  WARNING: %lld processes stopped using their device for the exchange matrix after a failed call.\n",
                exx_device_use[3]);
+      }
+      if (0<exx_device_additions){
+        printf("<EXX>  GPU: the exchange matrix was added to %lld dense Hamiltonians on the device.\n",
+               exx_device_additions);
       }
       printf("<EXX>  The forces do not contain the exact exchange.\n");
       fflush(stdout);

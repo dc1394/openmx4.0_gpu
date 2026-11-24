@@ -56,6 +56,7 @@ struct OpenMXExactExchangeState {
   double time_prepare,time_collect,time_build,time_add; /* seconds on this process */
   OpenMXExactExchangeDevice device; /* matrix products of the build on the device of this process */
   double time_device;               /* seconds in them, with the transfers; part of time_build */
+  long long device_additions;       /* dense Hamiltonians of a solver on its device that K was added to */
 };
 
 static void ExactExchange_Reset(OpenMXNativeResources *owner, void *metadata)
@@ -162,6 +163,20 @@ void Exact_Exchange_Device_Use(const OpenMXExactExchangeState *state, MPI_Comm c
   double longest=state->time_device;
   MPI_Allreduce(mine,use,4,MPI_LONG_LONG,MPI_SUM,comm);
   MPI_Allreduce(&longest,seconds,1,MPI_DOUBLE,MPI_MAX,comm);
+}
+
+void Exact_Exchange_Device_Addition(OpenMXExactExchangeState *state, double seconds)
+{
+  if (state==NULL) return;
+  state->device_additions++;
+  state->time_add += seconds;
+}
+
+long long Exact_Exchange_Device_Additions(const OpenMXExactExchangeState *state, MPI_Comm comm)
+{
+  long long mine=state->device_additions,all=0;
+  MPI_Allreduce(&mine,&all,1,MPI_LONG_LONG,MPI_SUM,comm);
+  return all;
 }
 
 /* Ends the run of every process: the state of the SCF cannot be continued. */
@@ -486,6 +501,11 @@ void Exact_Exchange_Collect_Begin(OpenMXExactExchangeState *state, int spin_chan
   state->comm = comm;
   state->spin_channels = spin_channels;
   state->collecting = 1;
+}
+
+int Exact_Exchange_Collecting(const OpenMXExactExchangeState *state)
+{
+  return state!=NULL && state->collecting;
 }
 
 void Exact_Exchange_Collect_Gamma(OpenMXExactExchangeState *state, int spin, int basis_count,

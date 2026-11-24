@@ -98,6 +98,11 @@ double Exact_Exchange_Semilocal_Omega(const OpenMXExactExchangeState *state);
    polarization. */
 void Exact_Exchange_Collect_Begin(OpenMXExactExchangeState *state, int spin_channels, MPI_Comm comm);
 
+/* 1 between Exact_Exchange_Collect_Begin and Exact_Exchange_Collect_End: a
+   solver that has to fetch its vectors from a device asks before it does.
+   NULL is allowed. */
+int Exact_Exchange_Collecting(const OpenMXExactExchangeState *state);
+
 /* Gamma form. Adds sum_s occupation[s] c_s c_s^T of the states that this
    process holds to the density matrix of one spin channel.
    vectors[basis*state_count + s] is the component of state s on the orbital
@@ -235,6 +240,17 @@ void Exact_Exchange_Add_Cluster_Hs(OpenMXExactExchangeState *state, int spin, in
    elements of the neighbour list. Does nothing without an exchange matrix. */
 void Exact_Exchange_Add_Band_Hs(OpenMXExactExchangeState *state, int spin, double k1, double k2, double k3,
     int n, double *Hs, int na_rows, int na_cols, int nblk, int np_rows, int np_cols, int my_prow, int my_pcol);
+
+/* A solver that keeps its dense Hamiltonian on a device builds the matrix
+   to add with the two functions above in a buffer of the host (one process
+   holds the whole matrix: a 1 x 1 grid with one block of n), copies it to
+   the device and adds it there. It then reports the addition here, with the
+   seconds of the copy and of the addition on the device. NULL is allowed. */
+void Exact_Exchange_Device_Addition(OpenMXExactExchangeState *state, double seconds);
+
+/* The number of such additions since the binding, over the processes of
+   comm. 0 in the CPU build. Collective. */
+long long Exact_Exchange_Device_Additions(const OpenMXExactExchangeState *state, MPI_Comm comm);
 
 /* ---- times --------------------------------------------------------------- */
 
