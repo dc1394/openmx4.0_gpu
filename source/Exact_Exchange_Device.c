@@ -6,9 +6,10 @@
      See docs/EXX_IMPLEMENTATION_GUIDE.md, section 11, and
      openmx_exact_exchange_device.h for the interface. One product
      allocates its three matrices on the device, copies the two factors,
-     calls the FP64 product of the device BLAS and copies the result
-     back. Nothing stays on the device between two products except the
-     handle of the BLAS.
+     calls the FP64 product of the device BLAS, or the GEMMul8 bridge when
+     the caller asked for it, and copies the result back. Nothing stays on
+     the device between two products except the handle of the BLAS and the
+     workspace that the bridge keeps for its callers.
 
      A product that does not fit is left to the host and the device stays
      in use; so is one for which the device runs out of memory after the
@@ -28,6 +29,15 @@
 #include "openmx_gpu_device.h"
 #include "openmx_exact_exchange_device.h"
 
+/* The GEMMul8 bridge of the device BLAS (gemmul8_bridge.cu). It computes a
+   product with GEMMul8, or in FP64 when it has no room for its workspace or
+   the environment switches GEMMul8 off, and counts the calls that ran in
+   FP64. */
+OpenMXBlasStatus openmx_gemmul8Dgemm(OpenMXBlasHandle handle, OpenMXBlasOperation transa, OpenMXBlasOperation transb,
+                                     int m, int n, int k, const double *alpha, const double *A, int lda,
+                                     const double *B, int ldb, const double *beta, double *C, int ldc);
+long long openmx_gemmul8NativeCalls(int is_complex);
+
 void Exact_Exchange_Device_Initialize(OpenMXExactExchangeDevice *device)
 {
   device->blas = NULL;
@@ -41,7 +51,9 @@ void Exact_Exchange_Device_Initialize(OpenMXExactExchangeDevice *device)
      run over all columns to the device. */
   device->minimum_work = 1.0e9;
   device->reserve_bytes = (size_t)512*1024*1024;
+  device->gemmul8 = 0;
   device->device_products = 0;
+  device->gemmul8_products = 0;
   device->declined_products = 0;
   device->largest_bytes = 0;
 }
@@ -181,8 +193,14 @@ int Exact_Exchange_Device_Dgemm(OpenMXExactExchangeDevice *device, char transa, 
 
   const OpenMXBlasOperation operation_a=transa=='N' ? OPENMX_BLAS_OP_N : OPENMX_BLAS_OP_T;
   const OpenMXBlasOperation operation_b=transb=='N' ? OPENMX_BLAS_OP_N : OPENMX_BLAS_OP_T;
-  const OpenMXBlasStatus multiplied=OpenMXBlasDgemm((OpenMXBlasHandle)device->blas,operation_a,operation_b,m,n,k,
-                                                    &alpha,da,lda,db,ldb,&beta,dc,ldc);
+  /* The bridge says only through its count whether a call ran in FP64. */
+  const long long native_before=device->gemmul8 ? openmx_gemmul8NativeCalls(0) : 0;
+  const OpenMXBlasStatus multiplied=device->gemmul8
+    ? openmx_gemmul8Dgemm((OpenMXBlasHandle)device->blas,operation_a,operation_b,m,n,k,&alpha,da,lda,db,ldb,&beta,
+                          dc,ldc)
+    : OpenMXBlasDgemm((OpenMXBlasHandle)device->blas,operation_a,operation_b,m,n,k,&alpha,da,lda,db,ldb,&beta,dc,
+                      ldc);
+  const int by_gemmul8=device->gemmul8 && openmx_gemmul8NativeCalls(0)==native_before;
   if (multiplied==OPENMX_BLAS_ALLOC_FAILED) return ExactExchange_Device_Decline(device,da,db,dc);
   if (multiplied!=OPENMX_BLAS_SUCCESS)
     return ExactExchange_Device_Fail(device,OPENMX_EXACT_EXCHANGE_DEVICE_PRODUCT,(int)multiplied,da,db,dc);
@@ -199,6 +217,7 @@ int Exact_Exchange_Device_Dgemm(OpenMXExactExchangeDevice *device, char transa, 
   (void)OpenMXGpuFree(db);
   (void)OpenMXGpuFree(dc);
   device->device_products++;
+  if (by_gemmul8) device->gemmul8_products++;
   if (device->largest_bytes<bytes) device->largest_bytes = bytes;
   return 1;
 }

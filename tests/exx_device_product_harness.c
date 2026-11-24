@@ -8,12 +8,19 @@
    device pointer belongs, a copy past the end of an allocation, a handle
    used or given back on another device than its own).
 
-   The test asks four things of the unit: a product on the device equals the
+   The test asks five things of the unit: a product on the device equals the
    product of the host, a product that the device does not take leaves every
    array and the device untouched, a device without room for a product gives
-   all device memory back and stays in use, and a device call that fails for
+   all device memory back and stays in use, a device call that fails for
    another reason gives all device memory back, clears the error of the
-   runtime and keeps the device out of the rest of the run. */
+   runtime and keeps the device out of the rest of the run, and a device
+   that was asked for GEMMul8 sends its products through the bridge and
+   counts the ones that the bridge did not compute in FP64.
+
+   The model of the bridge (openmx_gemmul8Dgemm) computes the same product
+   as the model of the BLAS. It counts its calls that ran in FP64, as the
+   bridge of the main program does, and a case chooses which calls those
+   are. */
 
 #include <math.h>
 #include <stdio.h>
@@ -27,7 +34,7 @@
 
 enum {
   CALL_GET_DEVICE, CALL_SET_DEVICE, CALL_CREATE, CALL_DESTROY, CALL_QUERY, CALL_MALLOC, CALL_FREE, CALL_COPY,
-  CALL_DGEMM, CALL_SYNCHRONIZE, CALL_LAST_ERROR, CALL_KINDS
+  CALL_DGEMM, CALL_SYNCHRONIZE, CALL_LAST_ERROR, CALL_BRIDGE, CALL_KINDS
 };
 
 enum { LIVE_SLOTS = 8 };
@@ -50,6 +57,8 @@ typedef struct {
   int live_count;
   size_t live_total,peak_total;
   int handles;                /* handles alive */
+  int bridge_native;          /* the bridge computes its products in FP64 */
+  long long native_calls;     /* calls of the bridge that ran in FP64 */
   int wrong;                  /* calls that broke the rules of the model */
 } Model;
 
@@ -257,9 +266,12 @@ static void reference_dgemm(int transposed_a, int transposed_b, int m, int n, in
   }
 }
 
-cublasStatus_t cublasDgemm(cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb, int m, int n,
-                           int k, const double *alpha, const double *a, int lda, const double *b, int ldb,
-                           const double *beta, double *c, int ldc)
+/* A product of the device BLAS (CALL_DGEMM) or of the bridge (CALL_BRIDGE):
+   both take a handle of the current device and three matrices on it. */
+static cublasStatus_t model_product(int kind, cublasHandle_t handle, cublasOperation_t transa,
+                                    cublasOperation_t transb, int m, int n, int k, const double *alpha,
+                                    const double *a, int lda, const double *b, int ldb, const double *beta,
+                                    double *c, int ldc)
 {
   const int rows_a=transa==CUBLAS_OP_N ? m : k,columns_a=transa==CUBLAS_OP_N ? k : m;
   const int rows_b=transb==CUBLAS_OP_N ? k : n,columns_b=transb==CUBLAS_OP_N ? n : k;
@@ -270,14 +282,45 @@ cublasStatus_t cublasDgemm(cublasHandle_t handle, cublasOperation_t transa, cubl
       || model.live_bytes[slot_a]<sizeof(double)*(size_t)lda*(size_t)columns_a
       || model.live_bytes[slot_b]<sizeof(double)*(size_t)ldb*(size_t)columns_b
       || model.live_bytes[slot_c]<sizeof(double)*(size_t)ldc*(size_t)n) {
-    model.count[CALL_DGEMM]++;
+    model.count[kind]++;
     model.wrong++;
     return CUBLAS_STATUS_INVALID_VALUE;
   }
-  const int failed=model_fails(CALL_DGEMM,CUBLAS_STATUS_EXECUTION_FAILED);
+  const int failed=model_fails(kind,CUBLAS_STATUS_EXECUTION_FAILED);
   if (failed) return failed;
   reference_dgemm(transa==CUBLAS_OP_T,transb==CUBLAS_OP_T,m,n,k,*alpha,a,lda,b,ldb,*beta,c,ldc);
   return CUBLAS_STATUS_SUCCESS;
+}
+
+cublasStatus_t cublasDgemm(cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb, int m, int n,
+                           int k, const double *alpha, const double *a, int lda, const double *b, int ldb,
+                           const double *beta, double *c, int ldc)
+{
+  return model_product(CALL_DGEMM,handle,transa,transb,m,n,k,alpha,a,lda,b,ldb,beta,c,ldc);
+}
+
+/* The bridge of the main program, declared in source/Exact_Exchange_Device.c.
+   A call that the bridge computes in FP64 is counted; a call that fails is
+   not. */
+cublasStatus_t openmx_gemmul8Dgemm(cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb, int m,
+                                   int n, int k, const double *alpha, const double *a, int lda, const double *b,
+                                   int ldb, const double *beta, double *c, int ldc);
+long long openmx_gemmul8NativeCalls(int is_complex);
+
+cublasStatus_t openmx_gemmul8Dgemm(cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb, int m,
+                                   int n, int k, const double *alpha, const double *a, int lda, const double *b,
+                                   int ldb, const double *beta, double *c, int ldc)
+{
+  const cublasStatus_t status=model_product(CALL_BRIDGE,handle,transa,transb,m,n,k,alpha,a,lda,b,ldb,beta,c,ldc);
+  if (status==CUBLAS_STATUS_SUCCESS && model.bridge_native) model.native_calls++;
+  return status;
+}
+
+long long openmx_gemmul8NativeCalls(int is_complex)
+{
+  /* the products of the exchange build are real */
+  if (is_complex) model.wrong++;
+  return model.native_calls;
 }
 
 /* ---- the cases -------------------------------------------------------- */
@@ -365,7 +408,8 @@ static void device_make(OpenMXExactExchangeDevice *device)
   Exact_Exchange_Device_Initialize(device);
   check(device->blas==NULL && !device->disabled && device->failure==OPENMX_EXACT_EXCHANGE_DEVICE_OK
         && 0.0<device->minimum_work && 0<device->reserve_bytes && device->device_products==0
-        && device->declined_products==0 && device->largest_bytes==0,
+        && device->declined_products==0 && device->largest_bytes==0 && !device->gemmul8
+        && device->gemmul8_products==0,
         "a new device does not have the values of a new calculation");
   /* the matrices of the test are small */
   device->minimum_work = 1.0;
@@ -395,6 +439,8 @@ static void products_on_the_device(void)
   check(model.count[CALL_CREATE]==1 && model.handles==1,"the handle of the BLAS was not kept between the products");
   check(device.device_products==4 && device.declined_products==0 && device.largest_bytes==largest
         && !device.disabled,"the counters of four products are wrong");
+  check(model.count[CALL_BRIDGE]==0 && device.gemmul8_products==0,
+        "a device that was not asked for GEMMul8 used the bridge");
 
   check(model.count[CALL_SET_DEVICE]==0,"a process that stays on its device changed the binding");
 
@@ -674,12 +720,111 @@ static void device_calls_that_fail(void)
             "two failures have the same name");
 }
 
+/* A device that was asked for GEMMul8: every product goes through the
+   bridge with the same handle, matrices and transfers, and the unit counts
+   the products that the bridge did not compute in FP64. */
+static void products_through_the_bridge(void)
+{
+  const char modes[4][2]={{'N','N'},{'T','N'},{'N','T'},{'T','T'}};
+  OpenMXExactExchangeDevice device;
+  size_t largest=0;
+  model_reset();
+  device_make(&device);
+  device.gemmul8 = 1;
+  for (int i=0; i<4; i++) {
+    Product p;
+    product_make(&p,modes[i][0],modes[i][1],5+i,3+2*i,4+i,41u+(unsigned)i);
+    check(product_run(&device,&p,0.0)==1 && product_matches(&p),"a product through the bridge is wrong");
+    check(model.live_count==0 && model.wrong==0 && !model.latched,
+          "a product through the bridge left device memory or broke the model");
+    check(model.count[CALL_MALLOC]==3*(i+1) && model.count[CALL_COPY]==3*(i+1) && model.count[CALL_BRIDGE]==i+1
+          && model.count[CALL_DGEMM]==0,"a product through the bridge did not make one call of the bridge");
+    check(model.peak_total==(largest<product_bytes(&p) ? product_bytes(&p) : largest),
+          "a product through the bridge took more device memory than its three matrices");
+    if (largest<product_bytes(&p)) largest = product_bytes(&p);
+    product_free(&p);
+  }
+  check(model.count[CALL_CREATE]==1 && model.handles==1,"the bridge did not get the handle that the unit keeps");
+  check(device.device_products==4 && device.gemmul8_products==4 && device.declined_products==0 && !device.disabled,
+        "the counters of four products through the bridge are wrong");
+
+  /* the bridge has no room for its workspace, or the environment switched
+     GEMMul8 off: it computes in FP64, and the unit counts the difference */
+  {
+    Product p;
+    product_make(&p,'N','T',6,5,4,47u);
+    model.bridge_native = 1;
+    check(product_run(&device,&p,0.0)==1 && product_matches(&p),"a product that the bridge computed in FP64 is wrong");
+    check(device.device_products==5 && device.gemmul8_products==4 && model.native_calls==1
+          && model.count[CALL_BRIDGE]==5 && model.count[CALL_DGEMM]==0 && model.wrong==0,
+          "a product that the bridge computed in FP64 was counted as one of GEMMul8");
+    model.bridge_native = 0;
+    check(product_run(&device,&p,0.0)==1 && product_matches(&p) && device.device_products==6
+          && device.gemmul8_products==5,"the count of GEMMul8 did not go on after a product in FP64");
+    product_free(&p);
+  }
+
+  /* the bridge cannot get memory for a product: the host computes it, and
+     the device stays in use */
+  {
+    Product p;
+    product_make(&p,'T','N',6,5,4,53u);
+    model.fail_kind = CALL_BRIDGE;
+    model.fail_at = model.count[CALL_BRIDGE]+1;
+    model.fail_status = CUBLAS_STATUS_ALLOC_FAILED;
+    check(product_run(&device,&p,0.0)==0 && product_untouched(&p),"a product was taken without memory for the bridge");
+    check(device.declined_products==1 && device.device_products==6 && device.gemmul8_products==5 && !device.disabled
+          && device.failure==OPENMX_EXACT_EXCHANGE_DEVICE_OK && model.live_count==0 && model.wrong==0
+          && !model.latched,"a bridge without memory was not treated as a product without room");
+    check(product_run(&device,&p,0.0)==1 && product_matches(&p) && device.device_products==7
+          && device.gemmul8_products==6,"the device did not take the product after the bridge had run out of memory");
+    product_free(&p);
+  }
+
+  /* the unit goes back to the BLAS when the request is taken away */
+  {
+    Product p;
+    const int bridge_calls=model.count[CALL_BRIDGE];
+    product_make(&p,'N','N',5,4,6,59u);
+    device.gemmul8 = 0;
+    check(product_run(&device,&p,0.0)==1 && product_matches(&p),"a product after the request for GEMMul8 is wrong");
+    check(model.count[CALL_BRIDGE]==bridge_calls && model.count[CALL_DGEMM]==1 && device.device_products==8
+          && device.gemmul8_products==6,"a device without the request for GEMMul8 used the bridge");
+    device.gemmul8 = 1;
+    product_free(&p);
+  }
+
+  /* the bridge fails for another reason than memory: the device takes no
+     further product */
+  {
+    Product p;
+    const int bridge_calls=model.count[CALL_BRIDGE];
+    product_make(&p,'T','T',6,5,4,61u);
+    model.fail_kind = CALL_BRIDGE;
+    model.fail_at = bridge_calls+1;
+    model.fail_status = 0;
+    check(product_run(&device,&p,0.0)==0 && product_untouched(&p),"a product was reported although the bridge failed");
+    check(device.disabled && device.failure==OPENMX_EXACT_EXCHANGE_DEVICE_PRODUCT
+          && device.failure_status==model.failed_status && device.failure_status!=0,
+          "the failed call of the bridge is not recorded as it happened");
+    check(model.live_count==0 && model.wrong==0 && !model.latched && device.device_products==8
+          && device.gemmul8_products==6,"a product that failed in the bridge left device memory or was counted");
+    check(product_run(&device,&p,0.0)==0 && model.count[CALL_BRIDGE]==bridge_calls+1,
+          "a device that failed in the bridge was asked again");
+    product_free(&p);
+  }
+
+  Exact_Exchange_Device_Release(&device);
+  check(model.handles==0 && model.wrong==0 && !model.latched,"the release after the bridge kept a handle or an error");
+}
+
 int main(void)
 {
   products_on_the_device();
   products_left_to_the_host();
   products_without_room();
   device_calls_that_fail();
+  products_through_the_bridge();
   model_reset();
   printf("exx device product: ok\n");
   return 0;

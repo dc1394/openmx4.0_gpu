@@ -19,8 +19,11 @@
    reason switches the device off: the host computes that product and every
    later one, and the caller reports the failure once.
 
-   The arithmetic is FP64 (cuBLAS). GEMMul8 is not used here: section 1.2
-   of the guide asks for the measured difference first. */
+   The arithmetic is FP64 (cuBLAS) unless the caller sets gemmul8. The
+   product then goes through the bridge openmx_gemmul8Dgemm, as the products
+   of the eigensolvers do: GEMMul8 computes it, or FP64 when the bridge has
+   no room for its workspace or the environment switches GEMMul8 off. The
+   bridge keeps its workspace between two calls, bounded by its own cap. */
 
 #include <stddef.h>
 
@@ -47,13 +50,15 @@ typedef struct {
   int failure_status;          /* status that call returned */
   double minimum_work;         /* products with fewer multiplications m*n*k stay on the host */
   size_t reserve_bytes;        /* device memory that a product leaves free */
+  int gemmul8;                 /* products go through the GEMMul8 bridge of the device BLAS */
   long long device_products;   /* products computed on the device */
+  long long gemmul8_products;  /* those of them that GEMMul8 computed */
   long long declined_products; /* large enough, but the device had no room for the matrices */
   size_t largest_bytes;        /* most device memory one product took */
 } OpenMXExactExchangeDevice;
 
 /* The values of a new calculation: nothing on the device, the default
-   limits. Does not touch the device. */
+   limits, FP64. Does not touch the device. */
 void Exact_Exchange_Device_Initialize(OpenMXExactExchangeDevice *device);
 
 /* c = alpha*op(a)*op(b), column-major, with the arguments of DGEMM.

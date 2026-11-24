@@ -95,6 +95,8 @@ void Exact_Exchange_Configure(OpenMXExactExchangeState *state, const OpenMXExact
   /* The fault injection of the GPU paths: no matrix product fits. The device
      is still asked for its free memory, and every product goes to the host. */
   if (input->device_capacity_test) state->device.reserve_bytes = (size_t)-1;
+  /* GEMMul8 only where the input asks for it: the default is FP64. */
+  state->device.gemmul8 = input->gemmul8 ? 1 : 0;
 }
 
 void Exact_Exchange_Bind_Structure(OpenMXExactExchangeState *state, const OpenMXExactExchangeStructure *structure)
@@ -155,14 +157,20 @@ void Exact_Exchange_Times(const OpenMXExactExchangeState *state, double times[4]
   times[3] = state->time_add;
 }
 
-void Exact_Exchange_Device_Use(const OpenMXExactExchangeState *state, MPI_Comm comm, long long use[4],
+void Exact_Exchange_Device_Use(const OpenMXExactExchangeState *state, MPI_Comm comm, long long use[5],
                                double *seconds)
 {
-  long long mine[4]={state->device.device_products,state->device.declined_products,
-                     0<state->device.device_products ? 1 : 0,state->device.disabled ? 1 : 0};
+  long long mine[5]={state->device.device_products,state->device.declined_products,
+                     0<state->device.device_products ? 1 : 0,state->device.disabled ? 1 : 0,
+                     state->device.gemmul8_products};
   double longest=state->time_device;
-  MPI_Allreduce(mine,use,4,MPI_LONG_LONG,MPI_SUM,comm);
+  MPI_Allreduce(mine,use,5,MPI_LONG_LONG,MPI_SUM,comm);
   MPI_Allreduce(&longest,seconds,1,MPI_DOUBLE,MPI_MAX,comm);
+}
+
+int Exact_Exchange_Device_Gemmul8(const OpenMXExactExchangeState *state)
+{
+  return state->input.gemmul8 ? 1 : 0;
 }
 
 void Exact_Exchange_Device_Addition(OpenMXExactExchangeState *state, double seconds)

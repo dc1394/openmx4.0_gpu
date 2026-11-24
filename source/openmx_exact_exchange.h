@@ -48,6 +48,8 @@ typedef struct {
   double reciprocal_maximum; /* square root of 1DFFT.EnergyCutoff, 1/bohr */
   int device_capacity_test;  /* OPENMX_GPU_CAPACITY_TEST_RECOVERY: the GPU leaves every matrix
                                 product of the builds to the host, as when its memory is short */
+  int gemmul8;               /* scf.gemmul8.enable on: the GPU computes its matrix products of the
+                                builds through the GEMMul8 bridge; otherwise in FP64 */
 } OpenMXExactExchangeInput;
 
 void Exact_Exchange_Configure(OpenMXExactExchangeState *state, const OpenMXExactExchangeInput *input);
@@ -262,12 +264,18 @@ void Exact_Exchange_Times(const OpenMXExactExchangeState *state, double times[4]
    processes of comm: use[0] is the number of matrix products computed on a
    device, use[1] the number left to the host because a device had no room
    for them, use[2] the number of processes with at least one product on
-   their device, and use[3] the number of processes whose device was
-   switched off after a failed call. seconds is the longest time that one
-   process spent in its products on the device, transfers included; it is a
-   part of the time of the builds. All are 0 in the CPU build. Collective. */
-void Exact_Exchange_Device_Use(const OpenMXExactExchangeState *state, MPI_Comm comm, long long use[4],
+   their device, use[3] the number of processes whose device was switched
+   off after a failed call, and use[4] the number of the products on a
+   device that GEMMul8 computed (the bridge computes the others in FP64).
+   seconds is the longest time that one process spent in its products on
+   the device, transfers included; it is a part of the time of the builds.
+   All are 0 in the CPU build. Collective. */
+void Exact_Exchange_Device_Use(const OpenMXExactExchangeState *state, MPI_Comm comm, long long use[5],
     double *seconds);
+
+/* 1 when the input asked for GEMMul8 in the matrix products of the builds
+   on a device (scf.gemmul8.enable on). */
+int Exact_Exchange_Device_Gemmul8(const OpenMXExactExchangeState *state);
 
 #ifdef __cplusplus
 }

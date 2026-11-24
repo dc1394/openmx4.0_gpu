@@ -91,6 +91,7 @@ void Input_std(char *file, OpenMXCoreContext *core)
   int hybrid_functional=0;  /* scf.XcType: 0 no hybrid functional, 1 HSE06 */
   double exx_alpha,exx_omega,exx_abf_pca,exx_v_cutoff,exx_outer_criterion;
   int exx_outer_maxiter;
+  int exx_gemmul8=0;        /* scf.gemmul8.enable: 1 when the input says on */
 
   FILE *fp,*fp_check,*fp1;
   int i,j,k,itmp;
@@ -927,6 +928,10 @@ void Input_std(char *file, OpenMXCoreContext *core)
 
     input_logical("scf.gemmul8.enable", &gemmul8_enable, -1);
     openmx_gemmul8SetEnabled(gemmul8_enable);
+    /* The matrix products of the exact exchange take GEMMul8 only on an
+       explicit on: without the keyword they stay in FP64 on every device
+       (docs/EXX_IMPLEMENTATION_GUIDE.md, section 11). */
+    exx_gemmul8 = (gemmul8_enable==1);
     if (gemmul8_enable==0 && myid==Host_ID && 2<=level_stdout){
 #if OPENMX_GPU_HIP
       printf("<Input_std> scf.gemmul8.enable=off: GPU dense GEMMs use plain hipBLAS instead of GEMMul8.\n");
@@ -5182,6 +5187,7 @@ void Input_std(char *file, OpenMXCoreContext *core)
     exx_input.radial_intervals = OneD_Grid;   /* 1DFFT.NumGridR */
     exx_input.reciprocal_maximum = PAO_Nkmax; /* square root of 1DFFT.EnergyCutoff */
     exx_input.device_capacity_test = openmx_gpu_capacity_test_recovery();
+    exx_input.gemmul8 = exx_gemmul8;
     Exact_Exchange_Configure(exact_exchange,&exx_input);
 
     /* the arrays of the structure, which this function has filled: every

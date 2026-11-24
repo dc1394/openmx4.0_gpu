@@ -2028,7 +2028,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   if (Cnt_switch==0 && Exact_Exchange_Enabled(exact_exchange)){
     const int builds = Exact_Exchange_Outer_Iterations(exact_exchange);
     double exx_times[4];
-    long long exx_device_use[4];
+    long long exx_device_use[5];
     long long exx_device_additions;
     double exx_device_seconds;
 
@@ -2061,6 +2061,10 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
                exx_device_use[0],exx_device_use[2]);
         printf("<EXX>  (at most %.2f s in one process); %lld left to the host for lack of device memory.\n",
                exx_device_seconds,exx_device_use[1]);
+        if (Exact_Exchange_Device_Gemmul8(exact_exchange) && 0<exx_device_use[0]){
+          printf("<EXX>  GPU: GEMMul8 computed %lld of the matrix products on the device, FP64 the other %lld"
+                 " (scf.gemmul8.enable on).\n",exx_device_use[4],exx_device_use[0]-exx_device_use[4]);
+        }
       }
       if (0<exx_device_use[3]){
         printf("<EXX>  WARNING: %lld processes stopped using their device for the exchange matrix after a failed call.\n",
