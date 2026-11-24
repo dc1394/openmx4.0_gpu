@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <initializer_list>
 #include <numbers>
 #include <stdexcept>
 #include <utility>
@@ -320,6 +321,11 @@ TwoCenterIntegrator::TwoCenterIntegrator(ReciprocalGrid grid, const Kernel& kern
 {
   for (std::size_t i = 0; i < grid_.size(); ++i)
     weights_[i] = grid_.weights()[i]*kernel_weight(kernel,grid_.nodes()[i]);
+  const int maximum = maximum_left+maximum_right;
+  if (maximum < maximum_angular_sum) {
+    gradient_harmonics_.emplace(maximum+1);
+    gradient_gaunt_.emplace(1,maximum);
+  }
 }
 
 TwoCenterIntegrator::Pair TwoCenterIntegrator::pair(const std::array<double,3>& displacement) const
@@ -384,6 +390,102 @@ void TwoCenterIntegrator::Pair::block(const ReciprocalFunction& p, const Recipro
   }
 }
 
+TwoCenterIntegrator::GradientPair TwoCenterIntegrator::gradient_pair(const std::array<double,3>& displacement) const
+{
+  if (!gradient_harmonics_ || !gradient_gaunt_)
+    throw std::invalid_argument("the derivative of a two-centre integral needs angular momenta with a sum of 18 at most");
+  GradientPair result;
+  result.owner_ = this;
+  result.distance_ = std::hypot(displacement[0],displacement[1],displacement[2]);
+  if (!std::isfinite(result.distance_))
+    throw std::invalid_argument("the displacement of a two-centre integral must be finite");
+  const int maximum = harmonics_.maximum_degree();
+  const std::size_t nodes = grid_.size();
+  result.bessel_.resize(static_cast<std::size_t>(maximum+2)*nodes);
+  for (std::size_t i = 0; i < nodes; ++i) {
+    const basis::SphericalBesselSample sample(grid_.nodes()[i]*result.distance_,maximum+1);
+    const std::span<const double> values = sample.values();
+    const double weight = weights_[i]*grid_.nodes()[i];
+    for (int L = 0; L <= maximum+1; ++L)
+      result.bessel_[static_cast<std::size_t>(L)*nodes+i] = weight*values[static_cast<std::size_t>(L)];
+  }
+
+  std::vector<double> y(static_cast<std::size_t>((maximum+2)*(maximum+2)));
+  gradient_harmonics_->evaluate(displacement,y);
+  // d^_axis = sqrt(4 pi/3) Y_{1,axis}: the rows of degree 1 are x, y, z.
+  const double scale = std::sqrt(4.0*std::numbers::pi/3.0);
+  const std::size_t count = static_cast<std::size_t>((maximum+1)*(maximum+1));
+  result.raise_.assign(3*count,0.0);
+  result.lower_.assign(3*count,0.0);
+  for (int L = 0; L <= maximum; ++L)
+    for (int neighbour : {L-1,L+1}) {
+      if (neighbour < 0) continue;
+      const std::span<const double> theta = gradient_gaunt_->block(1,L,neighbour);
+      const double* source = y.data()+static_cast<std::size_t>(neighbour*neighbour);
+      std::vector<double>& target = neighbour > L ? result.raise_ : result.lower_;
+      const int width = 2*neighbour+1;
+      for (int axis = 0; axis < 3; ++axis)
+        for (int row = 0; row <= 2*L; ++row) {
+          const double* t = theta.data()+static_cast<std::size_t>((axis*(2*L+1)+row)*width);
+          double sum = 0.0;
+          for (int R = 0; R < width; ++R) sum += t[R]*source[R];
+          target[static_cast<std::size_t>(axis)*count+static_cast<std::size_t>(L*L+row)] = scale*sum;
+        }
+    }
+  return result;
+}
+
+double TwoCenterIntegrator::GradientPair::radial(const ReciprocalFunction& p, const ReciprocalFunction& q,
+    int order) const
+{
+  if (!owner_) throw std::logic_error("an empty two-centre pair cannot be evaluated");
+  const std::size_t nodes = owner_->grid_.size();
+  if (p.values.size() != nodes || q.values.size() != nodes)
+    throw std::invalid_argument("a reciprocal function does not match the grid of the integrator");
+  if (order < 0 || order > owner_->harmonics_.maximum_degree()+1)
+    throw std::out_of_range("the order of a radial two-centre integral is out of range");
+  const double* table = bessel_.data()+static_cast<std::size_t>(order)*nodes;
+  double sum = 0.0;
+  for (std::size_t i = 0; i < nodes; ++i) sum += table[i]*p.values[i]*q.values[i];
+  return sum;
+}
+
+void TwoCenterIntegrator::GradientPair::block(const ReciprocalFunction& p, const ReciprocalFunction& q,
+    std::span<double> out) const
+{
+  if (!owner_) throw std::logic_error("an empty two-centre pair cannot be evaluated");
+  const int lp = p.angular, lq = q.angular;
+  if (lp < 0 || lp > owner_->gaunt_.maximum_left() || lq < 0 || lq > owner_->gaunt_.maximum_right())
+    throw std::out_of_range("the angular momentum of a function exceeds the bound of the integrator");
+  const int rows = 2*lp+1, columns = 2*lq+1;
+  if (out.size() != static_cast<std::size_t>(3*rows*columns))
+    throw std::invalid_argument("the output of the derivative of a two-centre block has the wrong size");
+  std::fill(out.begin(),out.end(),0.0);
+  const int maximum = owner_->harmonics_.maximum_degree();
+  const std::size_t total = static_cast<std::size_t>((maximum+1)*(maximum+1));
+  double y[2*maximum_angular_sum+1];
+  for (int L = std::abs(lp-lq); L <= lp+lq; L += 2) {
+    // i^(lp-lq-L) is real because lp-lq-L is even.
+    const double sign = odd((lp-lq-L)/2) ? -8.0 : 8.0;
+    const double up = sign*radial(p,q,L+1), down = L > 0 ? sign*radial(p,q,L-1) : 0.0;
+    const std::span<const double> theta = owner_->gaunt_.block(lp,lq,L);
+    const int count = 2*L+1;
+    for (int axis = 0; axis < 3; ++axis) {
+      const double* raise = raise_.data()+static_cast<std::size_t>(axis)*total+static_cast<std::size_t>(L*L);
+      const double* lower = lower_.data()+static_cast<std::size_t>(axis)*total+static_cast<std::size_t>(L*L);
+      for (int R = 0; R < count; ++R) y[R] = down*lower[R]-up*raise[R];
+      double* target = out.data()+static_cast<std::size_t>(axis*rows*columns);
+      for (int rp = 0; rp < rows; ++rp)
+        for (int rq = 0; rq < columns; ++rq) {
+          const double* t = theta.data()+static_cast<std::size_t>((rp*columns+rq)*count);
+          double sum = 0.0;
+          for (int R = 0; R < count; ++R) sum += t[R]*y[R];
+          target[static_cast<std::size_t>(rp*columns+rq)] += sum;
+        }
+    }
+  }
+}
+
 std::vector<double> two_center_matrix(const TwoCenterIntegrator::Pair& pair,
     std::span<const ReciprocalFunction> left, std::span<const ReciprocalFunction> right)
 {
@@ -403,6 +505,33 @@ std::vector<double> two_center_matrix(const TwoCenterIntegrator::Pair& pair,
       for (std::size_t i = 0; i < block_rows; ++i)
         for (std::size_t j = 0; j < block_columns; ++j)
           matrix[(row+i)*columns+column+j] = block[i*block_columns+j];
+      column += block_columns;
+    }
+    row += block_rows;
+  }
+  return matrix;
+}
+
+std::vector<double> two_center_gradient_matrix(const TwoCenterIntegrator::GradientPair& pair,
+    std::span<const ReciprocalFunction> left, std::span<const ReciprocalFunction> right)
+{
+  std::size_t rows = 0, columns = 0;
+  for (const ReciprocalFunction& f : left) rows += static_cast<std::size_t>(2*f.angular+1);
+  for (const ReciprocalFunction& f : right) columns += static_cast<std::size_t>(2*f.angular+1);
+  std::vector<double> matrix(3*rows*columns);
+  std::vector<double> block;
+  std::size_t row = 0;
+  for (const ReciprocalFunction& p : left) {
+    const std::size_t block_rows = static_cast<std::size_t>(2*p.angular+1);
+    std::size_t column = 0;
+    for (const ReciprocalFunction& q : right) {
+      const std::size_t block_columns = static_cast<std::size_t>(2*q.angular+1);
+      block.resize(3*block_rows*block_columns);
+      pair.block(p,q,block);
+      for (std::size_t axis = 0; axis < 3; ++axis)
+        for (std::size_t i = 0; i < block_rows; ++i)
+          for (std::size_t j = 0; j < block_columns; ++j)
+            matrix[(axis*rows+row+i)*columns+column+j] = block[(axis*block_rows+i)*block_columns+j];
       column += block_columns;
     }
     row += block_rows;

@@ -14,9 +14,10 @@ add_test(NAME exx-kernel-analytic COMMAND openmx_exx_tests kernel-analytic
   "${_exx_fixtures}/kernel_reference.txt")
 set_tests_properties(exx-kernel-analytic PROPERTIES LABELS "unit;exx" TIMEOUT 60)
 
-# Equations (11) and (12) against analytic values for Gaussian functions, and
-# the symmetries of the two-centre blocks.
-foreach(_case two-center-gaussian two-center-symmetry)
+# Equations (11) and (12) against analytic values for Gaussian functions, the
+# symmetries of the two-centre blocks, and their derivative with respect to
+# the displacement against central differences.
+foreach(_case two-center-gaussian two-center-symmetry two-center-gradient)
   add_test(NAME exx-${_case} COMMAND openmx_exx_tests ${_case})
   set_tests_properties(exx-${_case} PROPERTIES LABELS "unit;exx" TIMEOUT 300)
 endforeach()

@@ -9,7 +9,7 @@
 | ヘッダー | 内容 |
 |---|---|
 | `openmx/exx/kernel.hpp` | 相互作用のカーネル $\tilde v(\kappa)$ 。重なり、クーロン、短距離（HSE06）、打ち切りクーロン（PBE0）の 4 つ |
-| `openmx/exx/two_center.hpp` | 動径関数の球ベッセル変換（式 (11)）、二中心積分（式 (12)）、クーロンポテンシャルの動径部分（式 (13)） |
+| `openmx/exx/two_center.hpp` | 動径関数の球ベッセル変換（式 (11)）、二中心積分（式 (12)）と変位についてのその微分、クーロンポテンシャルの動径部分（式 (13)） |
 | `openmx/exx/abf.hpp` | PAO の動径関数を等間隔の格子に移す関数と、補助基底関数（ABF）の生成 |
 | `openmx/exx/lri.hpp` | 元素ごとの表、三中心積分（5.7 節）、式 (7) の解 |
 | `openmx/exx/system.hpp` | site、近傍リスト、T ブロックと V ブロック |
@@ -191,6 +191,7 @@ $K$ のブロックは 5,723 個（7.1 MB）で、 $\sum_{\mathbf R}K(\mathbf R)
 - `exx-kernel-analytic`: 4 つのカーネルの値と $\kappa\to0$ の極限を、50 桁で評価した参照値（`tests/fixtures/kernel_reference.txt`）と比べます。相対 1e-13。
 - `exx-two-center-gaussian`: ガウス関数の二中心積分を解析値と比べます。s 同士は 1e-10、p を含む組は 1e-6。
 - `exx-two-center-symmetry`: 対を逆から見た積分の転置と、座標系の回転に対する不変性。1e-10。
+- `exx-two-center-gradient`: 二中心積分の変位についての微分を、値の 4 次の中心差分（刻み 0.002 bohr）と比べます。4 つのカーネル、l が 6 と 4 までの全ての組、座標軸の上の変位、変位 0 で確かめます。差の上限は、最大の成分の 1e-9 倍です。s のガウス関数は閉じた式と比べます（1e-10）。
 - `exx-two-center-overlap`: PAO の重なり積分を、本体が書き出した重なり行列（`tests/fixtures/overlap_reference.txt`）と比べます。本体と同じ離散化で 1e-8。
 - `exx-abf-pca`: ABF の正規直交性（1e-12）、射影の残差と捨てた固有値の一致（相対 1e-8）、軌道の順序と符号を変えたときの再現性。
 - `exx-three-center-gaussian`: ガウス関数の三中心積分を解析値と比べます。1e-8。

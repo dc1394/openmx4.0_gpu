@@ -1,6 +1,7 @@
-// exx-two-center-gaussian and exx-two-center-symmetry: equations (11) and (12)
-// against analytic values for Gaussian functions, and the symmetries of the
-// two-centre blocks.
+// exx-two-center-gaussian, exx-two-center-symmetry and
+// exx-two-center-gradient: equations (11) and (12) against analytic values for
+// Gaussian functions, the symmetries of the two-centre blocks, and the
+// derivative of the blocks with respect to the displacement.
 #include <openmx/exx/two_center.hpp>
 
 #include <openmx/basis/quadrature.hpp>
@@ -12,6 +13,7 @@
 #include <cstdio>
 #include <initializer_list>
 #include <numbers>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -399,6 +401,128 @@ void two_center_symmetry()
   thrown = false;
   try { (void)bessel_transform(RadialGrid{0.0,0.1,2},radial[0],reciprocal); } catch (const std::invalid_argument&) { thrown = true; }
   require(thrown,"a radial grid with fewer than three intervals must be rejected");
+}
+
+void two_center_gradient()
+{
+  const std::vector<Kernel> kernels = {overlap_kernel(),coulomb_kernel(),short_range_kernel(0.11),
+                                       truncated_coulomb_kernel(5.0)};
+  const char* const names[] = {"overlap","Coulomb","short-range","truncated Coulomb"};
+
+  // s Gaussians: the derivative of the pair function is known in closed form.
+  {
+    const RadialGrid grid{0.0,0.02,500};
+    const ReciprocalGrid reciprocal = ReciprocalGrid::uniform(16.0,800);
+    const double a = 0.9, b = 0.6, mu = a*b/(a+b), prefactor = std::pow(pi*pi/(a*b),1.5);
+    const std::vector<RadialFunction> radial = {gaussian(grid,0,a),gaussian(grid,0,b)};
+    const std::vector<ReciprocalFunction> f = bessel_transform(grid,radial,reciprocal);
+    Worst analytic("derivative for two s Gaussians against the closed form",1e-10);
+    for (const Vector& d : {Vector{0.7,-0.4,1.3},Vector{-1.1,0.3,0.2},Vector{0.0,0.0,2.4},Vector{1.9,0.0,0.0}}) {
+      const double dist = length(d);
+      double block[3];
+      {
+        const TwoCenterIntegrator integrator(reciprocal,overlap_kernel(),0,0);
+        integrator.gradient_pair(d).block(f[0],f[1],block);
+        const double s0 = std::pow(pi/(a+b),1.5)*std::exp(-mu*dist*dist)/(4.0*pi);
+        for (int i = 0; i < 3; ++i) analytic.absolute(block[i],-2.0*mu*d[i]*s0);
+      }
+      for (const Kernel& kernel : {coulomb_kernel(),short_range_kernel(0.11),truncated_coulomb_kernel(3.0)}) {
+        const TwoCenterIntegrator integrator(reciprocal,kernel,0,0);
+        integrator.gradient_pair(d).block(f[0],f[1],block);
+        const Radial F = pair_function(kernel,mu,dist);
+        for (int i = 0; i < 3; ++i) analytic.absolute(block[i],prefactor/(4.0*pi)*F.d1*d[i]/dist);
+      }
+    }
+    analytic.finish();
+  }
+
+  // Model functions with compact support: every block against the central
+  // difference of fourth order of the values, relative to the largest
+  // derivative of the kernel and displacement.  The displacements include the
+  // axes, where the azimuth of the harmonics is not defined, a short one and
+  // zero.
+  const RadialGrid grid{0.0,0.01,500};
+  const ReciprocalGrid reciprocal = ReciprocalGrid::uniform(40.0,1000);
+  const int left = 6, right = 4;
+  std::vector<RadialFunction> radial;
+  for (int l = 0; l <= left; ++l) radial.push_back(model(grid,l,4.6,l%3));
+  for (int l = 0; l <= right; ++l) radial.push_back(model(grid,l,3.9,(l+1)%3));
+  const std::vector<ReciprocalFunction> f = bessel_transform(grid,radial,reciprocal);
+  const std::span<const ReciprocalFunction> p(f.data(),static_cast<std::size_t>(left+1));
+  const std::span<const ReciprocalFunction> q(f.data()+left+1,static_cast<std::size_t>(right+1));
+  const std::vector<Vector> displacements = {{1.7,-2.3,0.9},{-0.8,0.5,-3.1},{0.0,0.0,2.4},{0.0,0.0,-1.6},
+                                             {1.9,0.0,0.0},{0.0,-2.2,0.0},{0.02,-0.01,0.03},{0.0,0.0,0.0}};
+  const double step = 2e-3;
+  std::size_t rows = 0, columns = 0;
+  for (const ReciprocalFunction& g : p) rows += static_cast<std::size_t>(2*g.angular+1);
+  for (const ReciprocalFunction& g : q) columns += static_cast<std::size_t>(2*g.angular+1);
+  Worst transpose("d V_ab(R) = -(d V_ba(-R))^T",1e-10);
+  for (std::size_t k = 0; k < kernels.size(); ++k) {
+    const TwoCenterIntegrator integrator(reciprocal,kernels[k],left,right), mirror(reciprocal,kernels[k],right,left);
+    Worst difference(std::string("derivative against central differences, ")+names[k],1e-9);
+    double largest = 0.0;
+    for (const Vector& d : displacements) {
+      const std::vector<double> gradient = two_center_gradient_matrix(integrator.gradient_pair(d),p,q);
+      require(gradient.size() == 3*rows*columns,"the derivative of a two-centre matrix has the wrong size");
+      double scale = 0.0;
+      for (double value : gradient) scale = std::fmax(scale,std::fabs(value));
+      largest = std::fmax(largest,scale);
+      for (std::size_t axis = 0; axis < 3; ++axis) {
+        std::vector<std::vector<double>> shifted;
+        for (int point : {-2,-1,1,2}) {
+          Vector moved = d;
+          moved[axis] += point*step;
+          shifted.push_back(two_center_matrix(integrator.pair(moved),p,q));
+        }
+        for (std::size_t i = 0; i < rows*columns; ++i) {
+          const double numeric = (shifted[0][i]-8.0*shifted[1][i]+8.0*shifted[2][i]-shifted[3][i])/(12.0*step);
+          difference.add(std::fabs(gradient[axis*rows*columns+i]-numeric)/scale);
+        }
+      }
+      // The blocks of single functions give the same numbers as the matrix.
+      std::vector<double> block(3*static_cast<std::size_t>((2*left+1)*(2*right+1)));
+      integrator.gradient_pair(d).block(p.back(),q.back(),block);
+      for (std::size_t axis = 0; axis < 3; ++axis)
+        for (std::size_t i = 0; i < static_cast<std::size_t>(2*left+1); ++i)
+          for (std::size_t j = 0; j < static_cast<std::size_t>(2*right+1); ++j)
+            require(block[(axis*static_cast<std::size_t>(2*left+1)+i)*static_cast<std::size_t>(2*right+1)+j] ==
+                    gradient[(axis*rows+rows-static_cast<std::size_t>(2*left+1)+i)*columns+
+                             columns-static_cast<std::size_t>(2*right+1)+j],
+                    "the derivative of a block differs from the same block of the matrix");
+      const Vector minus = {-d[0],-d[1],-d[2]};
+      const std::vector<double> backward = two_center_gradient_matrix(mirror.gradient_pair(minus),q,p);
+      for (std::size_t axis = 0; axis < 3; ++axis)
+        for (std::size_t i = 0; i < rows; ++i)
+          for (std::size_t j = 0; j < columns; ++j)
+            transpose.add(std::fabs(gradient[(axis*rows+i)*columns+j]+backward[(axis*columns+j)*rows+i])/scale);
+    }
+    difference.finish();
+    std::printf("largest derivative of the %s kernel: %.3f\n",names[k],largest);
+    require(largest > 0.05,"the derivatives of the test are too small to be meaningful");
+  }
+  transpose.finish();
+
+  // The derivative needs harmonics of one more degree than the value.
+  {
+    const TwoCenterIntegrator integrator(reciprocal,overlap_kernel(),19,0);
+    (void)integrator.pair({0.3,0.2,0.1});
+    bool thrown = false;
+    try { (void)integrator.gradient_pair({0.3,0.2,0.1}); } catch (const std::invalid_argument&) { thrown = true; }
+    require(thrown,"the derivative with angular momenta that sum to 19 must be rejected");
+    const TwoCenterIntegrator small(reciprocal,overlap_kernel(),1,1);
+    thrown = false;
+    try {
+      double block[3];
+      small.gradient_pair({0.3,0.2,0.1}).block(f[2],f[0],block);
+    } catch (const std::out_of_range&) { thrown = true; }
+    require(thrown,"a function beyond the bound of the integrator must be rejected");
+    thrown = false;
+    try {
+      double block[9];
+      small.gradient_pair({0.3,0.2,0.1}).block(f[1],f[0],{block,3});
+    } catch (const std::invalid_argument&) { thrown = true; }
+    require(thrown,"an output of the wrong size must be rejected");
+  }
 }
 
 } // namespace exx_test

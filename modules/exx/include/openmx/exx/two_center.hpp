@@ -5,6 +5,7 @@
 #include <array>
 #include <complex>
 #include <cstddef>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -16,6 +17,15 @@
 //                       int_0^inf kappa^2 f~_P f~_Q v~(kappa) j_L(kappa d) dkappa
 //   (13)  the radial part of the Coulomb potential of P.
 // d points from the centre of P to the centre of Q.  Lengths are in bohr.
+//
+// The derivative of (12) with respect to d uses
+//   grad [ j_L(kappa d) Y_LM(d^) ]
+//     = kappa ( j_{L-1}(kappa d) [d^ Y_LM]_{L-1} - j_{L+1}(kappa d) [d^ Y_LM]_{L+1} ),
+// where [d^ Y_LM]_{L'} is the part of degree L' of the product of the unit
+// vector with the harmonic,
+//   d^_i Y_LM = sqrt(4 pi/3) sum_{L'M'} Theta(1 i, LM, L'M') Y_L'M',  L' = L-1, L+1.
+// No term is divided by d.  The quadrature in kappa is the one of the value,
+// so the result is the derivative of the discretized integral.
 //
 // Real spherical harmonics use the order of the OpenMX orbitals: s; p = (x,
 // y, z); d = (z2, x2-y2, xy, xz, yz); for l >= 3: m = 0, cos(phi), sin(phi),
@@ -178,17 +188,52 @@ class TwoCenterIntegrator {
 
   Pair pair(const std::array<double,3>& displacement) const;
 
+  // The quantities that the derivative with respect to the displacement
+  // needs: j_L(kappa_i d) up to the order maximum_left + maximum_right + 1
+  // with the weights of a Pair and one more power of kappa, and the two parts
+  // of d^_axis Y_LM at d^.  A GradientPair must not outlive its integrator.
+  class GradientPair {
+   public:
+    // int kappa^3 p~ q~ v~ j_L(kappa d) dkappa.
+    double radial(const ReciprocalFunction& p, const ReciprocalFunction& q, int order) const;
+    // d(P|v|Q)_d / d d_axis for all components and the axes x, y, z:
+    // out[(axis*(2*l_P+1) + row_P)*(2*l_Q+1) + row_Q].
+    void block(const ReciprocalFunction& p, const ReciprocalFunction& q, std::span<double> out) const;
+    double distance() const noexcept { return distance_; }
+
+   private:
+    friend class TwoCenterIntegrator;
+    const TwoCenterIntegrator* owner_ = nullptr;
+    double distance_ = 0.0;
+    std::vector<double> bessel_; // [order][node], weights and kappa included
+    std::vector<double> raise_;  // [axis][L*L + row]: the part of degree L+1 of d^_axis Y_{L,row}
+    std::vector<double> lower_;  // [axis][L*L + row]: the part of degree L-1
+  };
+
+  // Throws std::invalid_argument when maximum_left + maximum_right is 19: the
+  // derivative needs harmonics of one more degree.
+  GradientPair gradient_pair(const std::array<double,3>& displacement) const;
+
  private:
   ReciprocalGrid grid_;
   std::vector<double> weights_; // quadrature weight times kappa^2 v~(kappa)
   RealHarmonics harmonics_;
   RealGauntTable gaunt_;
+  // For the derivative: harmonics up to maximum_left + maximum_right + 1 and
+  // the coefficients Theta(1 i, LM, L'M').  Empty when the sum is 19.
+  std::optional<RealHarmonics> gradient_harmonics_;
+  std::optional<RealGauntTable> gradient_gaunt_;
 };
 
 // The blocks of all pairs of two lists of functions as one matrix.  The rows
 // are the components of "left" in their order (2l+1 for every function), the
 // columns those of "right": out[row*columns + column].
 std::vector<double> two_center_matrix(const TwoCenterIntegrator::Pair& pair,
+    std::span<const ReciprocalFunction> left, std::span<const ReciprocalFunction> right);
+
+// The derivative of that matrix with respect to the displacement:
+// out[(axis*rows + row)*columns + column].
+std::vector<double> two_center_gradient_matrix(const TwoCenterIntegrator::GradientPair& pair,
     std::span<const ReciprocalFunction> left, std::span<const ReciprocalFunction> right);
 
 } // namespace openmx::exx

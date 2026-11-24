@@ -13,6 +13,7 @@ int main(int argc, char** argv)
     if (name == "kernel-analytic") exx_test::kernel_analytic(fixture);
     else if (name == "two-center-gaussian") exx_test::two_center_gaussian();
     else if (name == "two-center-symmetry") exx_test::two_center_symmetry();
+    else if (name == "two-center-gradient") exx_test::two_center_gradient();
     else if (name == "two-center-overlap") exx_test::two_center_overlap(fixture);
     else if (name == "abf-pca") exx_test::abf_pca(fixture);
     else if (name == "three-center-gaussian") exx_test::three_center_gaussian();
