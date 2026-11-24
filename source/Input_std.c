@@ -5126,10 +5126,12 @@ void Input_std(char *file, OpenMXCoreContext *core)
     int conflicts = 0;
 
     /* the exchange matrix is built and added by the collinear cluster and
-       band solvers only; the forces and the stress do not contain it */
+       band solvers only. The forces contain it, the stress does not: the
+       types of MD.Type that optimize the cell or hold the pressure need the
+       stress. EvsLC and DF scale the cell and need the energy only. */
     if (Solver!=2 && Solver!=3)       conflict[conflicts++] = "scf.EigenvalueSolver other than Cluster and Band";
     if (SpinP_switch==3)              conflict[conflicts++] = "scf.SpinPolarization=NC";
-    if (MD_switch!=0)                 conflict[conflicts++] = "MD.Type other than Nomd";
+    if (MD_cellopt_flag!=0)           conflict[conflicts++] = "MD.Type that needs the stress (OptC, RFC, NPT)";
     if (scf_stress_flag!=0)           conflict[conflicts++] = "scf.stress.tensor";
     /* these solve the Hamiltonian of the neighbour list again, which has
        no exchange matrix, or decompose an energy without the exact exchange */
