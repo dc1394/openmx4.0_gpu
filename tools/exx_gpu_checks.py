@@ -36,19 +36,28 @@ The guide asks for three things, and the table has a block for each:
      1e-7 Hartree;
   2. with too little device memory the CPU path takes over and gives the same
      result: the runs NAME-host, within 1e-7 Hartree of NAME-cpu, with no
-     matrix product on the device;
+     matrix product and no call on the device;
   3. the time of every stage is recorded: the four stages of the exact
-     exchange on process 0, the time in the matrix products on the device,
-     and the whole calculation.
+     exchange on process 0, the time on the device, and the whole
+     calculation.
 
-The device takes a matrix product of the exchange build only when the product
-is large (source/openmx_exact_exchange_device.h): the systems marked "device"
-below have such products, the others run the same code with every product on
-the host.  Counted with the CPU build, one build of siz-p444 has 54850 matrix
+Where the build runs (source/openmx_exact_exchange_device.h).  A process
+computes the contributions of its centre atoms with one call of modules/exx
+for every spin channel.  The CUDA build offers the device the whole call
+first: the device takes a call whose largest matrix product is large, and
+computes all products of the call there, with the arrays in device memory.  A
+call that the device does not take for lack of memory goes to the host, and
+the device then takes the large products of that call one at a time, as it
+did before whole calls existed.  The systems marked "device" below have large
+products, the others run the same code with every call and product on the
+host.  Counted with the CPU build, one build of siz-p444 has 54850 matrix
 products and one of diaz-p222 has 162326; in both, 4 are large enough for the
 device, two for each centre atom, and they hold 58% and 53% of the
-multiplications.  The table expects exactly these products on the device, or
-left to the host for lack of device memory.
+multiplications.  A call on the device makes 2 products for each centre atom
+and 5 for each of its V neighbours, the same 2 of them large.  The table
+expects one call for each spin channel, process and build, every call on the
+device or left to the host for lack of device memory, and the large products
+of the calls left to the host on the device, or left to the host as well.
 
 The systems
   ch4                methane, the cluster solver, the matrix of the Gamma point
@@ -103,7 +112,8 @@ scf.gemmul8.enable on.  The systems marked "device" have one more run:
               GEMMul8 bridge
 
 It has to agree with NAME-cpu within 1e-7 Hartree, and the standard output
-has to say that GEMMul8 computed every product on the device; the table
+has to say that GEMMul8 computed every large product on the device, in the
+calls and one at a time; the other products of a call are FP64.  The table
 also prints its difference from NAME-gpu, the same products in FP64.  No
 other run may report GEMMul8 in these products.
 """
@@ -150,21 +160,25 @@ INPUT_LINES = {"g8": "scf.gemmul8.enable        on\n"}
 SYSTEMS = {}
 
 
-def add(name, text, ranks=1, large=0, base=VARIANTS, dense=("dense",)):
-    """A system: its input, the number of matrix products of one build that are large enough for the device, and its runs."""
+def add(name, text, ranks=1, large=0, calls=0, base=VARIANTS, dense=("dense",)):
+    """A system: its input, the numbers of matrix products and of calls of one build that are large enough for the
+    device, and its runs."""
     # only a system with products on the device can compare GEMMul8 with FP64 in them
-    SYSTEMS[name] = dict(text=text, ranks=ranks, large=large, device=0 < large,
+    SYSTEMS[name] = dict(text=text, ranks=ranks, large=large, calls=calls, device=0 < large,
                          variants=tuple(base) + tuple(dense) + (("g8",) if 0 < large else ()))
 
 
 add("ch4", gamma.RUNS["ch4-hse"]["text"], dense=("dense", "dfall", "dfp64"))
 add("dia-p222", kpoint.make_input("dia_p222", "dia", (1, 1, 1), (2, 2, 2), "HSE06"))
-# two large products for each of the 2 centre atoms, and as many again for the second spin channel
-add("siz-p444", kpoint.make_input("siz_p444", "siz", (1, 1, 1), (4, 4, 4), "HSE06"), large=4,
+# two large products for each of the 2 centre atoms, and as many again for the second spin channel; one call for
+# each spin channel and process
+add("siz-p444", kpoint.make_input("siz_p444", "siz", (1, 1, 1), (4, 4, 4), "HSE06"), large=4, calls=1,
     dense=("dense", "dfall", "dfp64"))
-add("siz-p444-spin", kpoint.make_input("siz_p444_spin", "siz", (1, 1, 1), (4, 4, 4), "HSE06", spin="on"), large=8)
-add("siz-p444-np2", kpoint.make_input("siz_p444_np2", "siz", (1, 1, 1), (4, 4, 4), "HSE06"), ranks=2, large=4)
-add("diaz-p222", kpoint.make_input("diaz_p222", "diaz", (1, 1, 1), (2, 2, 2), "HSE06"), large=4)
+add("siz-p444-spin", kpoint.make_input("siz_p444_spin", "siz", (1, 1, 1), (4, 4, 4), "HSE06", spin="on"), large=8,
+    calls=2)
+add("siz-p444-np2", kpoint.make_input("siz_p444_np2", "siz", (1, 1, 1), (4, 4, 4), "HSE06"), ranks=2, large=4,
+    calls=2)
+add("diaz-p222", kpoint.make_input("diaz_p222", "diaz", (1, 1, 1), (2, 2, 2), "HSE06"), large=4, calls=1)
 # the systems of the dense eigensolver only.  The cluster solver: processes without the dense matrix, and the
 # spin channels on one process and on two.  The band solver: a process for each spin channel, a process for
 # each k point, and processes that share a k point.
@@ -204,11 +218,28 @@ def device_use(std):
     # the products on the device that GEMMul8 computed and those that the bridge computed in FP64; None without the line
     bridge = re.search(r"<EXX>  GPU: GEMMul8 computed (\d+) of the matrix products on the device, FP64 the other (\d+) "
                        r"\(scf\.gemmul8\.enable on\)\.", std)
+    # the whole calls of modules/exx on the device: the calls, the processes, the matrix products in them, the longest
+    # time of a process, the calls left to the host; GEMMul8 in the large products of the calls; the most memory of one
+    # call on process 0
+    calls = re.search(r"<EXX>  GPU: (\d+) calls of the exchange build on the device, in (\d+) processes, with (\d+) "
+                      r"matrix products, (\d+) of them large\n<EXX>  \(at most (\S+) s in one process\); (\d+) calls left "
+                      r"to the host for lack of device memory\.", std)
+    call_bridge = re.search(r"<EXX>  GPU: GEMMul8 computed (\d+) of the (\d+) large matrix products of these calls, FP64 "
+                            r"the other (\d+) products \(scf\.gemmul8\.enable on\)\.", std)
+    call_memory = [float(mb) for mb in re.findall(
+        r"<EXX>  device calls of process 0: \d+ in \S+ s with \d+ matrix products, at most (\S+) MB for one call", std)]
     return dict(additions=int(added.group(1)) if added else 0, dense_declined=declined,
                 gemmul8=int(bridge.group(1)) if bridge else None, gemmul8_fp64=int(bridge.group(2)) if bridge else None,
                 serial="solves both spins serially on the GPU" in std,
                 products=int(use.group(1)) if use else 0, processes=int(use.group(2)) if use else 0,
                 seconds=float(use.group(3)) if use else 0.0, declined=int(use.group(4)) if use else 0,
+                calls=int(calls.group(1)) if calls else 0, call_processes=int(calls.group(2)) if calls else 0,
+                call_products=int(calls.group(3)) if calls else 0, call_large=int(calls.group(4)) if calls else 0,
+                call_seconds=float(calls.group(5)) if calls else 0.0,
+                declined_calls=int(calls.group(6)) if calls else 0,
+                call_gemmul8=int(call_bridge.group(1)) if call_bridge else None,
+                call_gemmul8_large=int(call_bridge.group(2)) if call_bridge else None,
+                call_megabytes=max(call_memory, default=0.0),
                 switched_off=int(off.group(1)) if off else 0,
                 build=[int(v) for v in build.groups()] if build else None, megabytes=max(memory, default=0.0),
                 failures=[f"process {p}: {what} (status {status})" for p, what, status in re.findall(
@@ -274,9 +305,12 @@ def run(args):
         store.write_text(json.dumps(results, indent=1))
         d = r["device"]
         print(f"{name:24s} exit {r['status']} {r['wall']:7.1f}s Utot {r['Utot']} Uexx {r['Uexx']} builds {r['builds']} "
-              f"converged {r['achieved']} device products {d['products']} declined {d['declined']} "
-              f"dense additions {d['additions']}"
-              + ("" if d["gemmul8"] is None else f" GEMMul8 {d['gemmul8']} FP64 {d['gemmul8_fp64']}"), flush=True)
+              f"converged {r['achieved']} device calls {d['calls']} declined {d['declined_calls']} "
+              f"device products {d['products']} declined {d['declined']} dense additions {d['additions']}"
+              + ("" if d["gemmul8"] is None else f" GEMMul8 {d['gemmul8']} FP64 {d['gemmul8_fp64']}")
+              + ("" if d["call_gemmul8"] is None
+                 else f" GEMMul8 in calls {d['call_gemmul8']} of {d['call_gemmul8_large']}"),
+              flush=True)
     return 0
 
 # ---- table ----------------------------------------------------------------
@@ -298,6 +332,30 @@ def table(args):
     def difference(system, variant, key="Utot"):
         a, b = results[f"{system}-{variant}"][key], results[f"{system}-cpu"][key]
         return None if a is None or b is None else a - b
+
+    def use(r):
+        """Where the builds of a run ran, with 0 for the numbers that a run of an older version did not record."""
+        d = dict(calls=0, call_processes=0, call_products=0, call_large=0, call_seconds=0.0, declined_calls=0,
+                 call_gemmul8=None, call_gemmul8_large=None, call_megabytes=0.0)
+        d.update(r["device"])
+        return d
+
+    def where(r, spec):
+        """The text of a row about the device: what the run did and what its builds call for."""
+        d, builds = use(r), r["builds"] or 0
+        return (f"calls: {d['calls']} on the device in {d['call_processes']} processes with {d['call_products']} "
+                f"products, {d['call_large']} of them large, {d['declined_calls']} left to the host; products: "
+                f"{d['products']} on the device, {d['declined']} left to the host; {d['switched_off']} processes "
+                f"switched off; in {builds} builds: {spec['calls'] * builds} calls, {spec['large'] * builds} large "
+                f"products")
+
+    def calls_add_up(r, spec):
+        """Every call on the device or left to the host, the 2 large products of a centre atom in the calls on the
+        device, and those of the calls left to the host on the device or left to the host one at a time."""
+        d, builds = use(r), r["builds"] or 0
+        return (d["switched_off"] == 0 and d["calls"] + d["declined_calls"] == spec["calls"] * builds
+                and d["call_large"] * spec["calls"] == spec["large"] * d["calls"]
+                and (d["products"] + d["declined"]) * spec["calls"] == spec["large"] * d["declined_calls"])
 
     print("devices:", "; ".join(results.get("_machine") or ["not recorded (nvidia-smi gave nothing)"]))
     untouched = []
@@ -342,40 +400,40 @@ def table(args):
                   f"with inner dimension {build[3]}")
         if "gpu" in present:
             r = results[f"{system}-gpu"]
-            d = r["device"]
-            large = spec["large"] * (r["builds"] or 0)
-            detail = (f"{d['products']} on the device in {d['processes']} processes, {d['declined']} left to the host, "
-                      f"{d['switched_off']} processes switched off; large products in {r['builds']} builds: {large}")
+            d = use(r)
+            if d["call_megabytes"]:
+                print(f"  CUDA build: at most {d['call_megabytes']:.1f} MB of device memory for one call on process 0")
             if d.get("megabytes"):
                 print(f"  CUDA build: at most {d['megabytes']:.1f} MB of device memory for one product on process 0")
             if spec["device"]:
-                expect("CUDA build: products on the device", 0 < d["products"] and d["switched_off"] == 0
-                       and d["processes"] == r["ranks"] and d["products"] + d["declined"] == large, detail)
+                expect("CUDA build: calls on the device", 0 < d["calls"] and d["call_processes"] == r["ranks"]
+                       and calls_add_up(r, spec), where(r, spec))
             else:
-                expect("CUDA build: no device failure", d["switched_off"] == 0 and d["products"] + d["declined"] == 0,
-                       detail)
+                expect("CUDA build: no device failure", d["switched_off"] == 0 and d["products"] + d["declined"] == 0
+                       and d["calls"] + d["declined_calls"] == 0, where(r, spec))
         if "host" in present:
             r = results[f"{system}-host"]
-            d = r["device"]
-            large = spec["large"] * (r["builds"] or 0)
-            detail = (f"{d['products']} on the device, {d['declined']} left to the host, "
-                      f"{d['switched_off']} processes switched off; large products in {r['builds']} builds: {large}")
-            expect("fault injection: no product on the device", d["products"] == 0 and d["switched_off"] == 0
-                   and d["declined"] == large, detail)
+            d = use(r)
+            builds = r["builds"] or 0
+            expect("fault injection: nothing on the device", d["calls"] == 0 and d["products"] == 0
+                   and d["switched_off"] == 0 and d["declined_calls"] == spec["calls"] * builds
+                   and d["declined"] == spec["large"] * builds, where(r, spec))
         if "cpu" in present:
-            d = results[f"{system}-cpu"]["device"]
+            d = use(results[f"{system}-cpu"])
             expect("CPU build: no device", d["products"] == 0 and d["declined"] == 0 and d["switched_off"] == 0
-                   and d.get("additions", 0) == 0, f"{d['products']} on the device, {d['declined']} left to the host")
+                   and d["calls"] == 0 and d["declined_calls"] == 0 and d.get("additions", 0) == 0,
+                   f"{d['calls']} calls and {d['products']} products on the device, {d['declined_calls']} calls and "
+                   f"{d['declined']} products left to the host")
         # GEMMul8 in the matrix products on the device: only where the input asks for it
-        others = [v for v in present if v != "g8" and results[f"{system}-{v}"]["device"].get("gemmul8") is not None]
+        others = [v for v in present if v != "g8" and (use(results[f"{system}-{v}"])["gemmul8"] is not None
+                                                       or use(results[f"{system}-{v}"])["call_gemmul8"] is not None)]
         if spec["device"] and [v for v in present if v != "g8"]:
             expect("without scf.gemmul8.enable: products in FP64", not others,
                    "GEMMul8 reported by " + (" ".join(others) if others else "no run"))
         if "g8" in present:
             name, label = f"{system}-g8", "GEMMul8 in the products"
             r = results[name]
-            d = r["device"]
-            large = spec["large"] * (r["builds"] or 0)
+            d = use(r)
             if "cpu" in present:
                 if converged(name) and converged(f"{system}-cpu"):
                     value = difference(system, "g8")
@@ -388,13 +446,20 @@ def table(args):
                 fp64 = results[f"{system}-gpu"]
                 print(f"  {label + ': Utot minus the FP64 run':50s} {r['Utot'] - fp64['Utot']:+.3e}")
                 print(f"  {label + ': Uexx minus the FP64 run':50s} {r['Uexx'] - fp64['Uexx']:+.3e}")
-                print(f"  {label + ': seconds on the device':50s} {d['seconds']:.2f}  (FP64: {fp64['device']['seconds']:.2f})")
-            counted = ("no line about GEMMul8 in the standard output" if d.get("gemmul8") is None
-                       else f"{d['gemmul8']} by GEMMul8 and {d['gemmul8_fp64']} in FP64")
-            detail = (f"{counted}; {d['products']} on the device, {d['declined']} left to the host, "
-                      f"{d['switched_off']} processes switched off; large products in {r['builds']} builds: {large}")
-            expect(f"{label}: every product by GEMMul8", 0 < d["products"] and d.get("gemmul8") == d["products"]
-                   and d["switched_off"] == 0 and d["products"] + d["declined"] == large, detail)
+                fp64_use = use(fp64)
+                print(f"  {label + ': seconds on the device':50s} {d['seconds'] + d['call_seconds']:.2f}  "
+                      f"(FP64: {fp64_use['seconds'] + fp64_use['call_seconds']:.2f})")
+            counted = ("no line about GEMMul8 in the calls" if d["call_gemmul8"] is None
+                       else f"{d['call_gemmul8']} of the {d['call_gemmul8_large']} large products of the calls by "
+                            f"GEMMul8")
+            if d["products"]:
+                counted += ("; no line about GEMMul8 in the products" if d.get("gemmul8") is None
+                            else f"; {d['gemmul8']} by GEMMul8 and {d['gemmul8_fp64']} in FP64 of the products")
+            # the large products of the calls, and those of the calls left to the host on the device
+            expect(f"{label}: every large product by GEMMul8", 0 < d["calls"] and calls_add_up(r, spec)
+                   and d["call_gemmul8"] == d["call_large"] and d["call_gemmul8_large"] == d["call_large"]
+                   and (d["products"] == 0 or d.get("gemmul8") == d["products"]),
+                   counted + "; " + where(r, spec))
         # the dense eigensolver of the device, and where the exchange matrix was added to the Hamiltonian
         for variant in ("gpu", "host"):
             if variant in present:
@@ -432,8 +497,10 @@ def table(args):
         for variant in present:
             r = results[f"{system}-{variant}"]
             t = r.get("exx_times") or [float("nan")] * 4
-            print(f"  {variant:8s}  {t[0]:11.2f}  {t[1]:16.2f}  {t[2]:15.2f}  {r['device']['seconds']:19.2f}  {t[3]:8.2f}  "
-                  f"{r.get('dft_time') or float('nan'):12.2f}  {r['wall']:.1f}")
+            d = use(r)
+            on_device = d["seconds"] + d["call_seconds"]
+            print(f"  {variant:8s}  {t[0]:11.2f}  {t[1]:16.2f}  {t[2]:15.2f}  {on_device:19.2f}  "
+                  f"{t[3]:8.2f}  {r.get('dft_time') or float('nan'):12.2f}  {r['wall']:.1f}")
     bad = [n for n in results if not n.startswith("_") and not converged(n)]
     print("runs that failed or did not converge:", bad if bad else "none")
     print("runs of a listed system that are missing:", missing if missing else "none")
