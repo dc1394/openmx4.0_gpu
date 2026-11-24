@@ -16,9 +16,13 @@
 //                          against a formula without T blocks, a periodic
 //                          structure against the definition, and the C
 //                          interface against the C++ interface
+//   exx-exchange-forces    forces.hpp: the derivative of E_x with respect to
+//                          the positions of the atoms against central
+//                          differences of E_x of structures with moved atoms
 #include <openmx/exx/abf.hpp>
 #include <openmx/exx/exchange.hpp>
 #include <openmx/exx/exx.h>
+#include <openmx/exx/forces.hpp>
 #include <openmx/exx/system.hpp>
 
 #include "kbuild_fixture.hpp"
@@ -1308,6 +1312,291 @@ void exchange_system(const std::string& path)
     require(openmx_exx_prepare(state,&wrong,&moved_geometry.geometry,message,sizeof message) != 0 && message[0] != '\0',
             "a reciprocal grid without intervals is accepted");
     compare_with_c(state,prepare_system(moved,coarse,reciprocal,truncated),d,alpha,"after two failures",true);
+  }
+}
+
+namespace {
+
+// The derivative of E_x with respect to the positions of one structure, in
+// both forms, and what the comparisons of exchange_forces() need again.
+struct Forces {
+  System system;
+  BlockLayout layout;
+  std::vector<double> density;        // N x N, symmetric
+  std::vector<double> blocks;         // in the layout, D_xy(R) = D_yx(-R)^T, different from cell to cell
+  std::vector<double> gamma, site;    // dE_x/dtau, [3*atom + axis]
+};
+
+// Compares the derivatives of both forms with central differences of fourth
+// order of E_x: every atom is moved along every axis, and the system is
+// prepared again for each of the four structures.  The density matrices stay
+// as they are.  The derivative holds for fixed neighbour lists, so the moved
+// structures must have the lists of the structure itself.
+Forces check_forces(const std::string& name, const Structure& structure, const std::vector<SpeciesTable>& tables,
+                    const ReciprocalGrid& reciprocal, const SystemOptions& options, double alpha, Numbers& random,
+                    double limit)
+{
+  Forces result{prepare_system(structure,tables,reciprocal,options),{},{},{},{},{}};
+  const System& system = result.system;
+  const std::size_t atoms = structure.positions.size(), n = orbital_total(system);
+  result.layout = exchange_layout(system);
+  const BlockLayout& layout = result.layout;
+  result.density = dense_matrix(n,true,random);
+  result.blocks.resize(layout.elements());
+  for (double& value : result.blocks) value = random.next();
+  symmetrize_blocks(system,layout,result.blocks);
+  require(block_asymmetry(system,layout,result.blocks) == 0.0,name+": the blocks of D are not symmetric");
+  const std::vector<double>& d = result.density;
+  const std::vector<double>& blocks = result.blocks;
+
+  const PositionGradient derivative(structure,tables,reciprocal,options,system);
+  result.gamma.assign(3*atoms,0.0);
+  result.site.assign(3*atoms,0.0);
+  for (std::size_t a = 0; a < atoms; ++a) {
+    derivative.add_gamma(a,-alpha,d,result.gamma);
+    derivative.add_blocks(layout,a,-alpha,blocks,result.site);
+  }
+
+  // E_x of both forms for a moved structure.
+  const auto energies = [&](std::size_t atom, std::size_t axis, double shift) {
+    Structure moved = structure;
+    moved.positions[atom][axis] += shift;
+    const System other = prepare_system(moved,tables,reciprocal,options);
+    require(other.c_neighbours == system.c_neighbours && other.v_neighbours == system.v_neighbours,
+            name+": a moved atom changes the neighbour lists");
+    require(other.report.systems == system.report.systems &&
+            other.report.eigen_decompositions == system.report.eigen_decompositions &&
+            other.report.dropped == system.report.dropped,name+": a moved atom changes the way equation (7) is solved");
+    return std::array<double,2>{exchange_energy_gamma(d,exchange_gamma(other,d,alpha)),
+                                exchange_energy_gamma(blocks,layout_exchange(other,layout,blocks,alpha))};
+  };
+  const double step = 2.0e-3;
+  std::vector<double> numeric_gamma(3*atoms), numeric_site(3*atoms);
+  for (std::size_t a = 0; a < atoms; ++a)
+    for (std::size_t x = 0; x < 3; ++x) {
+      const std::array<double,2> p1 = energies(a,x,step), m1 = energies(a,x,-step);
+      const std::array<double,2> p2 = energies(a,x,2.0*step), m2 = energies(a,x,-2.0*step);
+      numeric_gamma[3*a+x] = (8.0*(p1[0]-m1[0])-(p2[0]-m2[0]))/(12.0*step);
+      numeric_site[3*a+x] = (8.0*(p1[1]-m1[1])-(p2[1]-m2[1]))/(12.0*step);
+    }
+  const double scale_gamma = largest(numeric_gamma), scale_site = largest(numeric_site);
+  require(scale_gamma > 1.0e-5 && scale_site > 1.0e-5,name+": the derivatives are expected to be far from zero");
+  Worst gamma(name+": Gamma form against central differences",limit);
+  Worst site(name+": site form against central differences",limit);
+  for (std::size_t e = 0; e < 3*atoms; ++e) {
+    gamma.add(std::fabs(result.gamma[e]-numeric_gamma[e])/scale_gamma);
+    site.add(std::fabs(result.site[e]-numeric_site[e])/scale_site);
+  }
+  gamma.finish();
+  site.finish();
+
+  // Every pair adds a vector to one atom and subtracts it from the other.
+  Worst total(name+": sum of the derivatives over the atoms",1e-12);
+  for (std::size_t x = 0; x < 3; ++x) {
+    double sum_gamma = 0.0, sum_site = 0.0;
+    for (std::size_t a = 0; a < atoms; ++a) {
+      sum_gamma += result.gamma[3*a+x];
+      sum_site += result.site[3*a+x];
+    }
+    total.add(std::fabs(sum_gamma)/scale_gamma);
+    total.add(std::fabs(sum_site)/scale_site);
+  }
+  total.finish();
+
+  // D_xy(R) = D_xy for every R: the site form gives the derivative of the
+  // Gamma form.
+  {
+    const std::vector<double> same = layout_values(layout,gamma_density(system,d));
+    std::vector<double> through(3*atoms,0.0);
+    for (std::size_t a = 0; a < atoms; ++a) derivative.add_blocks(layout,a,-alpha,same,through);
+    Worst forms(name+": site form with D(R) = D against the Gamma form",1e-12);
+    for (std::size_t e = 0; e < 3*atoms; ++e) forms.add(std::fabs(through[e]-result.gamma[e])/scale_gamma);
+    forms.finish();
+  }
+  std::printf("%s: %ld systems of equation (7), %ld by eigen-decomposition, %ld eigenvectors left out; "
+              "largest derivative %.3e (Gamma form), %.3e (site form)\n",name.c_str(),system.report.systems,
+              system.report.eigen_decompositions,system.report.dropped,scale_gamma,scale_site);
+  return result;
+}
+
+} // namespace
+
+void exchange_forces(const std::string& path)
+{
+  const OverlapFixture fixture = read_overlap_fixture(path);
+  require(fixture.species.size() == 3 && fixture.positions.size() == 3,"the test is written for the three species of the fixture");
+  const double alpha = 0.25;
+  Numbers random;
+
+  // The grids and the shells of exx-exchange-system: the derivative is that
+  // of the discretized integrals, so the checks do not depend on the accuracy
+  // of the quadrature.  With the cutoff 3.1 no pair of sites of the fixture
+  // is closer than 0.019 bohr to a cutoff of the two lists, so the moves of
+  // the central differences (up to 0.004 bohr) leave the lists as they are;
+  // with 3.0 a pair of sites lies 0.0005 bohr outside the V list.
+  const int intervals = 300;
+  const double maximum = 24.0;
+  const int reciprocal_intervals = 240;
+  const double threshold = 1.0e-3;
+  const ReciprocalGrid reciprocal = ReciprocalGrid::uniform(maximum,reciprocal_intervals);
+  SystemOptions options;
+  options.interaction = short_range_kernel(0.11);
+  options.v_cutoff = 3.1;
+  const std::vector<Shells> few{select(fixture.species[0],{0,2}),select(fixture.species[1],{0,1,2}),
+                                select(fixture.species[2],{0})};
+  const std::vector<SpeciesTable> tables = tables_of(few,intervals,reciprocal,threshold);
+  Structure structure;
+  structure.lattice = fixture.lattice;
+  structure.positions = fixture.positions;
+  structure.species = fixture.atom_species;
+  const std::size_t atoms = structure.positions.size();
+
+  // 1. The periodic structure: the cell is smaller than the cutoffs, so the
+  // lists hold many images of every atom, the atom itself among them.
+  const Forces periodic = check_forces("periodic structure",structure,tables,reciprocal,options,alpha,random,1e-6);
+  require(periodic.system.report.eigen_decompositions == 0,"the periodic structure is expected to need no eigen-decomposition");
+
+  // 2. The same atoms in a large cell, with the truncated Coulomb kernel.
+  Structure apart = structure;
+  apart.lattice = {std::array<double,3>{40.0,0.0,0.0},std::array<double,3>{0.0,40.0,0.0},std::array<double,3>{0.0,0.0,40.0}};
+  SystemOptions truncated = options;
+  truncated.interaction = truncated_coulomb_kernel(12.0);
+  check_forces("atoms in a large cell",apart,tables,reciprocal,truncated,alpha,random,1e-6);
+
+  // 3. Equation (7) by eigen-decomposition: with all eigenvectors, and with
+  // the eigenvectors below a threshold left out.
+  {
+    SystemOptions decomposed = options;
+    decomposed.lri = LriOptions{0.999999,0.0};
+    const Forces all = check_forces("eigen-decomposition",apart,tables,reciprocal,decomposed,alpha,random,1e-6);
+    // The species with a single ABF has a system of one equation, whose pivot
+    // is one.
+    require(tables[2].abf_count() == 1 && all.system.report.eigen_decompositions == all.system.report.systems-1 &&
+            all.system.report.dropped == 0,
+            "all systems but one are expected to be solved by eigen-decomposition with all eigenvectors");
+    // The scaled metrics of this structure have four eigenvalues between
+    // 0.037 and 0.045, one of an atom and three of two pairs, and none
+    // between 0.045 and 0.082.
+    decomposed.lri = LriOptions{0.999999,6.0e-2};
+    const Forces some = check_forces("eigenvectors left out",apart,tables,reciprocal,decomposed,alpha,random,1e-6);
+    require(some.system.report.dropped == 4,"the threshold is expected to leave four eigenvectors out");
+  }
+
+  // 4. A table of matrix products gives the same derivative up to rounding.
+  {
+    const PositionGradient derivative(structure,tables,reciprocal,options,periodic.system);
+    long calls = 0;
+    const OpenMXExxDenseBackend table{&counting_dgemm,&calls};
+    const DenseBackend products(&table);
+    std::vector<double> gamma(3*atoms,0.0), site(3*atoms,0.0);
+    for (std::size_t a = 0; a < atoms; ++a) {
+      derivative.add_gamma(a,-alpha,periodic.density,gamma,products);
+      derivative.add_blocks(periodic.layout,a,-alpha,periodic.blocks,site,products);
+    }
+    require(calls > 0,"the table of matrix products is not used");
+    Worst worst("periodic structure: a table of matrix products (relative)",1e-12);
+    for (std::size_t e = 0; e < 3*atoms; ++e) {
+      worst.add(std::fabs(gamma[e]-periodic.gamma[e])/largest(periodic.gamma));
+      worst.add(std::fabs(site[e]-periodic.site[e])/largest(periodic.site));
+    }
+    worst.finish();
+
+    // Arguments that do not fit the system.
+    std::vector<double> scratch(3*atoms,0.0);
+    const CentreGradient weights = centre_gradient_gamma(periodic.system,0,-alpha,periodic.density);
+    expect_invalid("a centre atom outside the cell",[&] { derivative.add(atoms,weights,scratch); });
+    expect_invalid("a derivative of the wrong size",
+                   [&] { derivative.add(0,weights,std::span<double>(scratch).first(3*atoms-1)); });
+    expect_invalid("weights of another atom",[&] { derivative.add(1,weights,scratch); });
+    require(largest(scratch) == 0.0,"a rejected call changes the derivative");
+    Structure fewer = structure;
+    fewer.positions.pop_back();
+    fewer.species.pop_back();
+    expect_invalid("a system of another structure",
+                   [&] { const PositionGradient wrong(fewer,tables,reciprocal,options,periodic.system); });
+    Structure other = structure;
+    std::swap(other.species[0],other.species[1]);
+    expect_invalid("a system of other species",
+                   [&] { const PositionGradient wrong(other,tables,reciprocal,options,periodic.system); });
+  }
+
+  // 5. The C interface: the same code on the same numbers.
+  {
+    OpenMXExxOptions c_options;
+    openmx_exx_default_options(&c_options);
+    c_options.abf_threshold = threshold;
+    c_options.v_cutoff = options.v_cutoff;
+    c_options.radial_intervals = intervals;
+    c_options.reciprocal_maximum = maximum;
+    c_options.reciprocal_intervals = reciprocal_intervals;
+    OpenMXExxState* state = openmx_exx_create();
+    require(state != nullptr,"no state of the C interface");
+    struct Guard {
+      OpenMXExxState* state;
+      ~Guard() { openmx_exx_destroy(state); }
+    } guard{state};
+    char message[200] = "untouched";
+    std::vector<double> gamma(3*atoms,0.0), site(3*atoms,0.0);
+    require(openmx_exx_add_position_gradient_gamma(state,0,1,-alpha,periodic.density.data(),gamma.data(),nullptr,message,
+                                                   sizeof message) != 0 && message[0] != '\0',
+            "a derivative without a prepared structure is accepted");
+    const CGeometry geometry(structure,few);
+    require(openmx_exx_prepare(state,&c_options,&geometry.geometry,message,sizeof message) == 0,
+            std::string("the preparation through the C interface fails: ")+message);
+    require(openmx_exx_add_position_gradient_blocks(state,0,1,-alpha,periodic.blocks.data(),site.data(),nullptr,message,
+                                                    sizeof message) != 0 && message[0] != '\0',
+            "a derivative of the site form without a list of blocks is accepted");
+    require(openmx_exx_prepare_blocks(state,message,sizeof message) == 0 &&
+            openmx_exx_block_elements(state) == periodic.layout.elements(),"the list of blocks cannot be made");
+
+    // The centre atoms in two calls, as two processes would share them.
+    const int count = static_cast<int>(atoms);
+    require(openmx_exx_add_position_gradient_gamma(state,0,1,-alpha,periodic.density.data(),gamma.data(),nullptr,message,
+                                                   sizeof message) == 0 && message[0] == '\0' &&
+            openmx_exx_add_position_gradient_gamma(state,1,count,-alpha,periodic.density.data(),gamma.data(),nullptr,
+                                                   message,sizeof message) == 0,
+            std::string("the derivative of the Gamma form through the C interface fails: ")+message);
+    require(openmx_exx_add_position_gradient_blocks(state,0,2,-alpha,periodic.blocks.data(),site.data(),nullptr,message,
+                                                    sizeof message) == 0 && message[0] == '\0' &&
+            openmx_exx_add_position_gradient_blocks(state,2,count,-alpha,periodic.blocks.data(),site.data(),nullptr,
+                                                    message,sizeof message) == 0,
+            std::string("the derivative of the site form through the C interface fails: ")+message);
+    Worst same("C interface against the C++ interface (relative)",1e-13);
+    for (std::size_t e = 0; e < 3*atoms; ++e) {
+      same.add(std::fabs(gamma[e]-periodic.gamma[e])/largest(periodic.gamma));
+      same.add(std::fabs(site[e]-periodic.site[e])/largest(periodic.site));
+    }
+    same.finish();
+
+    // An empty range adds nothing; rejected calls and a product that fails
+    // leave the output as it was.
+    const std::vector<double> before_gamma = gamma, before_site = site;
+    const OpenMXExxDenseBackend failing{&failing_dgemm,nullptr};
+    require(openmx_exx_add_position_gradient_gamma(state,1,1,-alpha,periodic.density.data(),gamma.data(),nullptr,message,
+                                                   sizeof message) == 0 && gamma == before_gamma,
+            "an empty range of centre atoms changes the derivative");
+    require(openmx_exx_add_position_gradient_gamma(state,-1,count,-alpha,periodic.density.data(),gamma.data(),nullptr,
+                                                   message,sizeof message) != 0 &&
+            openmx_exx_add_position_gradient_gamma(state,0,count+1,-alpha,periodic.density.data(),gamma.data(),nullptr,
+                                                   message,sizeof message) != 0 &&
+            openmx_exx_add_position_gradient_gamma(state,0,count,-alpha,nullptr,gamma.data(),nullptr,message,
+                                                   sizeof message) != 0 &&
+            openmx_exx_add_position_gradient_gamma(state,0,count,-alpha,periodic.density.data(),nullptr,nullptr,message,
+                                                   sizeof message) != 0 &&
+            openmx_exx_add_position_gradient_gamma(state,0,count,-alpha,periodic.density.data(),gamma.data(),&failing,
+                                                   message,sizeof message) != 0 && message[0] != '\0' &&
+            gamma == before_gamma,"a rejected derivative of the Gamma form changes the output");
+    require(openmx_exx_add_position_gradient_blocks(state,-1,count,-alpha,periodic.blocks.data(),site.data(),nullptr,
+                                                    message,sizeof message) != 0 &&
+            openmx_exx_add_position_gradient_blocks(state,0,count+1,-alpha,periodic.blocks.data(),site.data(),nullptr,
+                                                    message,sizeof message) != 0 &&
+            openmx_exx_add_position_gradient_blocks(state,0,count,-alpha,nullptr,site.data(),nullptr,message,
+                                                    sizeof message) != 0 &&
+            openmx_exx_add_position_gradient_blocks(state,0,count,-alpha,periodic.blocks.data(),nullptr,nullptr,message,
+                                                    sizeof message) != 0 &&
+            openmx_exx_add_position_gradient_blocks(state,0,count,-alpha,periodic.blocks.data(),site.data(),&failing,
+                                                    message,sizeof message) != 0 && message[0] != '\0' &&
+            site == before_site,"a rejected derivative of the site form changes the output");
   }
 }
 

@@ -1,8 +1,9 @@
 /* Test of the C interface, compiled as C: the header must be valid C, and a C
    program must be able to prepare a structure, build the exchange matrix of
-   the Gamma point and that of the site form, and pass its own matrix product.
+   the Gamma point and that of the site form, take the derivative of E_x with
+   respect to the positions of the atoms, and pass its own matrix product.
    That the numbers are those of the C++ interface is checked by
-   exx-exchange-system. */
+   exx-exchange-system and exx-exchange-forces. */
 #include <openmx/exx/exx.h>
 
 #include <math.h>
@@ -85,8 +86,11 @@ int main(void)
   const int far_cell[3] = {99, 0, 0};
   double d[N * N], k[N * N], other[N * N], truncated[N * N], zero[N * N];
   double *site_d = NULL, *site_k = NULL, *site_other = NULL;
+  double gradient[3 * ATOMS], site_gradient[3 * ATOMS], moved[3 * ATOMS], energy[4];
+  const double step = 2.0e-3;
+  int c_count[ATOMS], v_count[ATOMS];
   char message[160], tiny[4];
-  double sum, scale, asymmetry;
+  double sum, scale, asymmetry, steepest, numeric;
   long calls = 0, before, blocks = 0, block;
   size_t elements = 0, offset, element;
   int i, j, a, row, column, cell[3];
@@ -323,6 +327,70 @@ int main(void)
   CHECK(openmx_exx_add_blocks(state, 0, ATOMS, -0.25, site_d, site_other, NULL, message, sizeof message) == 0);
   CHECK(memcmp(site_k, site_other, elements * sizeof *site_k) == 0);
 
+  /* The derivative of E_x with respect to the positions of the atoms.  Its
+     sum over the atoms vanishes, the two forms agree for the density matrix
+     of the Gamma point, and the atoms one by one give what one call gives. */
+  memset(gradient, 0, sizeof gradient);
+  CHECK(openmx_exx_add_position_gradient_gamma(state, 0, ATOMS, -0.25, d, gradient, NULL, message, sizeof message) == 0);
+  CHECK(message[0] == '\0');
+  steepest = largest(gradient, 3 * ATOMS);
+  CHECK(steepest > 1.0e-6);
+  for (j = 0; j < 3; ++j) {
+    sum = 0.0;
+    for (a = 0; a < ATOMS; ++a) sum += gradient[3 * a + j];
+    CHECK(fabs(sum) <= 1.0e-12 * steepest);
+  }
+  memset(site_gradient, 0, sizeof site_gradient);
+  before = calls;
+  for (a = 0; a < ATOMS; ++a)
+    CHECK(openmx_exx_add_position_gradient_blocks(state, a, a + 1, -0.25, site_d, site_gradient, &table, NULL, 0) == 0);
+  CHECK(calls > before);
+  for (i = 0; i < 3 * ATOMS; ++i) CHECK(fabs(site_gradient[i] - gradient[i]) <= 1.0e-11 * steepest);
+  /* Rejected calls and a product that fails add nothing. */
+  memcpy(site_gradient, gradient, sizeof gradient);
+  CHECK(openmx_exx_add_position_gradient_gamma(NULL, 0, ATOMS, -0.25, d, site_gradient, NULL, message, sizeof message) != 0);
+  CHECK(openmx_exx_add_position_gradient_gamma(state, 0, ATOMS + 1, -0.25, d, site_gradient, NULL, message, sizeof message) != 0);
+  CHECK(openmx_exx_add_position_gradient_gamma(state, 0, ATOMS, -0.25, NULL, site_gradient, NULL, message, sizeof message) != 0);
+  CHECK(openmx_exx_add_position_gradient_gamma(state, 0, ATOMS, -0.25, d, NULL, NULL, message, sizeof message) != 0);
+  CHECK(openmx_exx_add_position_gradient_blocks(NULL, 0, ATOMS, -0.25, site_d, site_gradient, NULL, message, sizeof message) != 0);
+  CHECK(openmx_exx_add_position_gradient_blocks(state, 2, 1, -0.25, site_d, site_gradient, NULL, message, sizeof message) != 0);
+  CHECK(openmx_exx_add_position_gradient_blocks(state, 0, ATOMS, -0.25, NULL, site_gradient, NULL, message, sizeof message) != 0);
+  CHECK(openmx_exx_add_position_gradient_blocks(state, 0, ATOMS, -0.25, site_d, NULL, NULL, message, sizeof message) != 0);
+  table.dgemm = failing_dgemm;
+  CHECK(openmx_exx_add_position_gradient_gamma(state, 0, ATOMS, -0.25, d, site_gradient, &table, message, sizeof message) != 0);
+  CHECK(strlen(message) > 0);
+  CHECK(openmx_exx_add_position_gradient_blocks(state, 0, ATOMS, -0.25, site_d, site_gradient, &table, message, sizeof message) != 0);
+  CHECK(strlen(message) > 0);
+  table.dgemm = counting_dgemm;
+  CHECK(memcmp(site_gradient, gradient, sizeof gradient) == 0);
+
+  /* A central difference of fourth order of E_x for the second atom moved
+     along the y axis, with the density matrix as it is.  No pair of sites of
+     this structure is closer than 0.017 bohr to a cutoff of the neighbour
+     lists, so the moves leave the lists as they are. */
+  for (a = 0; a < ATOMS; ++a) {
+    c_count[a] = openmx_exx_c_neighbours(state, a);
+    v_count[a] = openmx_exx_v_neighbours(state, a);
+  }
+  geometry.positions = moved;
+  for (i = 0; i < 4; ++i) {
+    memcpy(moved, positions, sizeof moved);
+    moved[3 * 1 + 1] += (i < 2 ? i - 2 : i - 1) * step;
+    CHECK(openmx_exx_prepare(state, &options, &geometry, message, sizeof message) == 0);
+    for (a = 0; a < ATOMS; ++a)
+      CHECK(openmx_exx_c_neighbours(state, a) == c_count[a] && openmx_exx_v_neighbours(state, a) == v_count[a]);
+    memset(other, 0, sizeof other);
+    CHECK(openmx_exx_add_gamma(state, 0, ATOMS, -0.25, d, other, NULL, message, sizeof message) == 0);
+    energy[i] = openmx_exx_energy_gamma(N * N, d, other);
+  }
+  geometry.positions = positions;
+  numeric = (8.0 * (energy[2] - energy[1]) - (energy[3] - energy[0])) / (12.0 * step);
+  CHECK(fabs(numeric - gradient[3 * 1 + 1]) <= 1.0e-6 * steepest);
+  /* The structure itself again, with the list of its blocks. */
+  CHECK(openmx_exx_prepare(state, &options, &geometry, message, sizeof message) == 0);
+  CHECK(openmx_exx_prepare_blocks(state, message, sizeof message) == 0);
+  CHECK(openmx_exx_block_count(state) == blocks && openmx_exx_block_elements(state) == elements);
+
   /* The kernel of PBE0 gives another matrix for the same structure. */
   options.kernel = OPENMX_EXX_KERNEL_TRUNCATED_COULOMB;
   options.kernel_parameter = 10.0;
@@ -341,6 +409,7 @@ int main(void)
   openmx_exx_destroy(state);
   free(site_d);
   printf("C interface of the exact exchange: %d orbitals, largest element of K %.3e (HSE06 kernel), %ld blocks, "
-         "%ld products\n", N, scale, blocks, calls);
+         "%ld products, largest derivative of E_x %.3e (central difference: deviation %.1e)\n", N, scale, blocks,
+         calls, steepest, fabs(numeric - gradient[3 * 1 + 1]) / steepest);
   return 0;
 }

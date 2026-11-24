@@ -2,6 +2,7 @@
 
 #include <openmx/exx/abf.hpp>
 #include <openmx/exx/exchange.hpp>
+#include <openmx/exx/forces.hpp>
 #include <openmx/exx/system.hpp>
 
 #include <algorithm>
@@ -42,6 +43,10 @@ struct OpenMXExxState {
     std::vector<SpeciesTable> species;
   };
   std::optional<Tables> tables;
+  // The structure and the options of the last preparation: the derivative
+  // with respect to the positions evaluates the integrals of the pairs again.
+  Structure structure;
+  SystemOptions options;
   std::optional<System> system;
   std::vector<std::size_t> offset;   // first orbital of every atom, and N
   std::optional<BlockLayout> layout; // of the site form; made on request
@@ -219,11 +224,14 @@ int openmx_exx_prepare(OpenMXExxState* state, const OpenMXExxOptions* options, c
     SystemOptions system_options;
     system_options.interaction = interaction(*options);
     system_options.v_cutoff = options->v_cutoff;
-    System system = prepare_system(copy_structure(*geometry),tables.species,tables.reciprocal,system_options);
+    Structure structure = copy_structure(*geometry);
+    System system = prepare_system(structure,tables.species,tables.reciprocal,system_options);
     std::vector<std::size_t> offset(1,0);
     for (const std::size_t u : system.orbital_count) offset.push_back(offset.back()+u);
 
     if (made.has_value()) state->tables = std::move(made);
+    state->structure = std::move(structure);
+    state->options = std::move(system_options);
     state->system = std::move(system);
     state->offset = std::move(offset);
     state->layout.reset();
@@ -348,6 +356,53 @@ int openmx_exx_add_blocks(const OpenMXExxState* state, int first_atom, int last_
     for (int atom = first_atom; atom < last_atom; ++atom)
       add_exchange_blocks(system,layout,static_cast<std::size_t>(atom),factor,std::span<const double>(density,elements),
                           std::span<double>(k,elements),products);
+  });
+}
+
+int openmx_exx_add_position_gradient_gamma(const OpenMXExxState* state, int first_atom, int last_atom, double factor,
+                                           const double* density, double* gradient,
+                                           const OpenMXExxDenseBackend* backend, char* error, size_t capacity)
+{
+  return guarded(error,capacity,[&] {
+    const System* system = prepared(state);
+    if (system == nullptr) throw std::invalid_argument("the derivative with respect to the positions needs a prepared structure");
+    if (density == nullptr || gradient == nullptr)
+      throw std::invalid_argument("the derivative with respect to the positions needs a density matrix and an output");
+    const std::size_t atoms = system->orbital_count.size();
+    if (first_atom < 0 || last_atom < first_atom || last_atom > static_cast<int>(atoms))
+      throw std::out_of_range("the range of centre atoms is not inside the unit cell");
+    const std::size_t n = state->offset.back();
+    const DenseBackend products(backend);
+    const PositionGradient derivative(state->structure,state->tables->species,state->tables->reciprocal,state->options,
+                                      *system);
+    // Summed aside, so that a failure adds nothing.
+    std::vector<double> sum(3*atoms,0.0);
+    for (int atom = first_atom; atom < last_atom; ++atom)
+      derivative.add_gamma(static_cast<std::size_t>(atom),factor,std::span<const double>(density,n*n),sum,products);
+    for (std::size_t e = 0; e < sum.size(); ++e) gradient[e] += sum[e];
+  });
+}
+
+int openmx_exx_add_position_gradient_blocks(const OpenMXExxState* state, int first_atom, int last_atom, double factor,
+                                            const double* density, double* gradient,
+                                            const OpenMXExxDenseBackend* backend, char* error, size_t capacity)
+{
+  return guarded(error,capacity,[&] {
+    const BlockLayout& layout = required_layout(state);
+    const System& system = *state->system;
+    if (density == nullptr || gradient == nullptr)
+      throw std::invalid_argument("the derivative with respect to the positions needs a density matrix and an output");
+    const std::size_t atoms = system.orbital_count.size();
+    if (first_atom < 0 || last_atom < first_atom || last_atom > static_cast<int>(atoms))
+      throw std::out_of_range("the range of centre atoms is not inside the unit cell");
+    const DenseBackend products(backend);
+    const PositionGradient derivative(state->structure,state->tables->species,state->tables->reciprocal,state->options,
+                                      system);
+    std::vector<double> sum(3*atoms,0.0);
+    for (int atom = first_atom; atom < last_atom; ++atom)
+      derivative.add_blocks(layout,static_cast<std::size_t>(atom),factor,
+                            std::span<const double>(density,layout.elements()),sum,products);
+    for (std::size_t e = 0; e < sum.size(); ++e) gradient[e] += sum[e];
   });
 }
 

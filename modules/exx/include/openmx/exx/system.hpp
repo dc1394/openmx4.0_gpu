@@ -47,6 +47,18 @@ std::vector<std::vector<Site>> neighbour_lists(const Structure& structure, std::
 // if it is absent.
 std::size_t find_site(std::span<const Site> list, const Site& site);
 
+// A pair of sites has two descriptions: the site (b, R) seen from atom a, and
+// the site (a, -R) seen from atom b.  reversed_site() returns the second one
+// for the first.
+Site reversed_site(int atom, const Site& site) noexcept;
+
+// prepare_system() computes the blocks of a pair from one of its two
+// descriptions and derives the blocks of the other atom from them.  True for
+// the description that is computed: the smaller atom first, and for two
+// images of one atom the cell that is larger than its negative.  Exactly one
+// of the two descriptions of a pair of different sites gives true.
+bool pair_computed_from(int atom, const Site& site) noexcept;
+
 struct SystemOptions {
   // The interaction v of the exchange: short_range_kernel(omega) for HSE06
   // (the default, with omega = 0.11/bohr), truncated_coulomb_kernel(R_c) for

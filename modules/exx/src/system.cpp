@@ -35,21 +35,18 @@ void check(const Structure& structure, std::size_t species_count)
   if (!(std::fabs(volume) > 0.0)) throw std::invalid_argument("the lattice vectors do not span a volume");
 }
 
-Site reversed(int atom, const Site& site)
+} // namespace
+
+Site reversed_site(int atom, const Site& site) noexcept
 {
   return {atom,{-site.cell[0],-site.cell[1],-site.cell[2]}};
 }
 
-// Of the two descriptions of one pair, (a; b, R) and (b; a, -R), the one that
-// is computed: the smaller atom first, and for one atom the cell that is
-// larger than its negative.
-bool computed_here(int atom, const Site& site)
+bool pair_computed_from(int atom, const Site& site) noexcept
 {
   if (site.atom != atom) return atom < site.atom;
-  return site.cell > reversed(atom,site).cell;
+  return site.cell > reversed_site(atom,site).cell;
 }
-
-} // namespace
 
 std::array<double,3> displacement(const Structure& structure, int atom, const Site& site)
 {
@@ -203,9 +200,9 @@ System prepare_system(const Structure& structure, std::span<const SpeciesTable> 
     store(a,0,onsite_t[sa]);
     for (std::size_t i = 1; i < system.c_neighbours[a].size(); ++i) {
       const Site& site = system.c_neighbours[a][i];
-      if (!computed_here(static_cast<int>(a),site)) continue;
+      if (!pair_computed_from(static_cast<int>(a),site)) continue;
       const std::size_t b = static_cast<std::size_t>(site.atom);
-      const std::size_t j = find_site(system.c_neighbours[b],reversed(static_cast<int>(a),site));
+      const std::size_t j = find_site(system.c_neighbours[b],reversed_site(static_cast<int>(a),site));
       if (j == system.c_neighbours[b].size()) throw std::logic_error("a C neighbour has no counterpart");
       const PairCoefficients pair = solver.pair(species[sa],species[static_cast<std::size_t>(structure.species[b])],
                                                 displacement(structure,static_cast<int>(a),site),&system.report);
@@ -233,9 +230,9 @@ System prepare_system(const Structure& structure, std::span<const SpeciesTable> 
     system.v[a][0] = onsite_v[sa];
     for (std::size_t i = 1; i < system.v_neighbours[a].size(); ++i) {
       const Site& site = system.v_neighbours[a][i];
-      if (!computed_here(static_cast<int>(a),site)) continue;
+      if (!pair_computed_from(static_cast<int>(a),site)) continue;
       const std::size_t b = static_cast<std::size_t>(site.atom);
-      const std::size_t j = find_site(system.v_neighbours[b],reversed(static_cast<int>(a),site));
+      const std::size_t j = find_site(system.v_neighbours[b],reversed_site(static_cast<int>(a),site));
       if (j == system.v_neighbours[b].size()) throw std::logic_error("a V neighbour has no counterpart");
       const std::size_t nb = system.abf_count[b];
       std::vector<double> block =

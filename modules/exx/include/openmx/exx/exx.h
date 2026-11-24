@@ -181,6 +181,32 @@ int openmx_exx_add_blocks(const OpenMXExxState *state, int first_atom, int last_
 int openmx_exx_symmetrize_blocks(const OpenMXExxState *state, double *values, double *asymmetry,
                                  char *error, size_t capacity);
 
+/* ---- derivative with respect to the positions (section 5.9) ------------- */
+
+/* Adds to gradient[3*b + x] the part of the derivative of E_x with respect to
+   the position of atom b along the axis x that goes through the T and V
+   blocks of the centre atoms first_atom <= a < last_atom; gradient has three
+   entries for every atom of the unit cell.  The density matrix is fixed and
+   symmetric, K is factor times the contributions of all centre atoms
+   (factor = -alpha for the exchange matrix), and E_x = (1/2) sum_ij D_ij K_ij
+   for one spin channel.  With all atoms the entries are dE_x/dtau; the force
+   of the exact exchange is their negative, and their sum over the atoms
+   vanishes.  The parts of different centre atoms may be computed by
+   different processes and added afterwards.  The neighbour lists of the
+   prepared structure count as fixed, and the response of the orbitals is not
+   included.  density is N x N, row-major, as for openmx_exx_add_gamma.  After
+   a failure gradient is unchanged. */
+int openmx_exx_add_position_gradient_gamma(const OpenMXExxState *state, int first_atom, int last_atom,
+                                           double factor, const double *density, double *gradient,
+                                           const OpenMXExxDenseBackend *backend, char *error, size_t capacity);
+
+/* The same for arrays of blocks: density holds the blocks D_xy(R) of one
+   spin channel with D_xy(R) = D_yx(-R)^T, as for openmx_exx_add_blocks, and
+   E_x is openmx_exx_energy_gamma over the arrays of blocks. */
+int openmx_exx_add_position_gradient_blocks(const OpenMXExxState *state, int first_atom, int last_atom,
+                                            double factor, const double *density, double *gradient,
+                                            const OpenMXExxDenseBackend *backend, char *error, size_t capacity);
+
 #ifdef __cplusplus
 }
 #endif

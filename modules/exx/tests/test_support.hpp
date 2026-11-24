@@ -82,5 +82,6 @@ void exchange_gradient(const std::string& fixture);
 void exchange_centre_gradient(const std::string& fixture);
 void exchange_backend(const std::string& fixture);
 void exchange_system(const std::string& fixture);
+void exchange_forces(const std::string& fixture);
 
 } // namespace exx_test
