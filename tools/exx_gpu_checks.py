@@ -4,7 +4,7 @@ exx_gpu_checks.py -- the runs of the acceptance table of milestone M6
 (docs/EXX_IMPLEMENTATION_GUIDE.md, section 9): HSE06 in the CUDA build.
 
 The script needs a machine with a GPU and two executables of the same commit,
-the CPU build and the CUDA build.  It runs every system three times and
+the CPU build and the CUDA build.  It runs a system three times and
 compares the total energies:
 
   NAME-cpu    the CPU executable
@@ -19,11 +19,11 @@ compares the total energies:
   python3 tools/exx_gpu_checks.py table --out build/exx-m6
 
 "run" without a name executes every run that results.json does not hold yet;
-a name is a system (its three runs) or one run.  "table" ends with status 1
-when a difference exceeds its limit, a run failed or did not converge, or the
-device was not used as the row expects.  Only the standard library is used;
-the inputs and the parser are those of tools/exx_kpoint_checks.py and
-tools/exx_scf_checks.py.
+a name is a system (all its runs) or one run.  "table" ends with status 1
+when a difference exceeds its limit, a run failed, did not converge or is
+missing, or the device was not used as the row expects.  Only the standard
+library is used; the inputs and the parser are those of
+tools/exx_kpoint_checks.py and tools/exx_scf_checks.py.
 
 The guide asks for three things, and the table has a block for each:
   1. the total energies of the CPU build and of the CUDA build agree within
@@ -45,13 +45,48 @@ multiplications.  The table expects exactly these products on the device, or
 left to the host for lack of device memory.
 
 The systems
-  ch4             methane, the cluster solver, the matrix of the Gamma point
-  dia-p222        diamond, C5.0-s1p1, 2 x 2 x 2 mesh, the band solver
-  siz-p444        silicon, Si7.0-s2p2d1, 4 x 4 x 4 mesh              (device)
-  siz-p444-spin   the same with scf.SpinPolarization on             (device)
-  siz-p444-np2    the same with 2 MPI processes on the device       (device)
-  diaz-p222       diamond, C6.0-s2p2d1, 2 x 2 x 2 mesh: the largest matrices,
-                  0.5 GB on the device for one product               (device)
+  ch4                methane, the cluster solver, the matrix of the Gamma point
+  dia-p222           diamond, C5.0-s1p1, 2 x 2 x 2 mesh, the band solver
+  siz-p444           silicon, Si7.0-s2p2d1, 4 x 4 x 4 mesh              (device)
+  siz-p444-spin      the same with scf.SpinPolarization on             (device)
+  siz-p444-np2       the same with 2 MPI processes on the device       (device)
+  diaz-p222          diamond, C6.0-s2p2d1, 2 x 2 x 2 mesh: the largest matrices,
+                     0.5 GB on the device for one product               (device)
+  ch4-np4            methane with 4 MPI processes: one of them holds the dense
+                     matrix, all of them get their share of the vectors
+  o2                 the triplet of O2, the cluster solver, one process for both spins
+  o2-np2             the same with 2 MPI processes, one for each spin
+  dia-p222-spin-np2  diamond, C5.0-s1p1, 2 x 2 x 2 mesh, scf.SpinPolarization on,
+                     2 MPI processes: one for each spin, with all its k points
+  dia-k211-np2       diamond, C5.0-s1p1, 2 x 1 x 1 mesh, 2 MPI processes: one k point
+                     for each process
+  dia-k211-np4       the same with 4 MPI processes: two share a k point, and one
+                     of the two holds its dense matrix
+The last six exist for the dense eigensolver below: they have no run
+NAME-host, and none of their matrix products is large enough for the device.
+
+The dense eigensolver of the device (section 6.5 of the guide).  The CUDA
+build solves a matrix on the device when its dimension reaches a threshold
+(800 in the band solver, 400 in the cluster solver).  The systems above are
+far smaller, so the runs NAME-gpu and NAME-host solve on the host.  The runs
+below lower the threshold to 1 with OPENMX_BAND_GPU_SWITCH_NUM and
+OPENMX_CLUSTER_GPU_SWITCH_NUM, and the exchange matrix is then added to the
+Hamiltonian on the device:
+
+  NAME-dense  the dense path of the device
+  NAME-dfall  the same, and the memory admission of the dense path is made to
+              fail (OPENMX_BAND_GPU_RESERVE_MB, OPENMX_CLUSTER_GPU_DIAG_RESERVE_MB):
+              the eigensolver of the host takes over
+  NAME-dpers  the dense path with OPENMX_BAND_GPU_PERSISTENT=1: the vectors of a
+              process with one k point stay on the device
+  NAME-dser   the dense path with OPENMX_CLUSTER_GPU_DIAG_SERIAL=2: one process
+              solves both spins of the cluster solver in turn
+  NAME-dfp64  the dense path with OPENMX_GEMMUL8_DISABLE=1: the matrix products
+              of the eigensolver in FP64 of cuBLAS instead of GEMMul8
+
+Each of them has to agree with NAME-cpu within 1e-7 Hartree.  The standard
+output says to how many dense Hamiltonians the exchange matrix was added on
+the device: the number has to be positive, and 0 in NAME-dfall.
 """
 import argparse
 import json
@@ -71,23 +106,57 @@ REPO = Path(__file__).resolve().parents[1]
 LIMIT = 1.0e-7  # Hartree, section 9 of the guide
 VARIANTS = ("cpu", "gpu", "host")
 
+# The runs of the dense eigensolver of the device: the variables that steer the CUDA build.
+DENSE = {"OPENMX_BAND_GPU_SWITCH_NUM": "1", "OPENMX_CLUSTER_GPU_SWITCH_NUM": "1"}
+STEERED = {
+    "dense": DENSE,
+    "dfall": dict(DENSE, OPENMX_BAND_GPU_RESERVE_MB="1000000", OPENMX_CLUSTER_GPU_DIAG_RESERVE_MB="1000000"),
+    "dpers": dict(DENSE, OPENMX_BAND_GPU_PERSISTENT="1"),
+    "dser": dict(DENSE, OPENMX_CLUSTER_GPU_DIAG_SERIAL="2"),
+    "dfp64": dict(DENSE, OPENMX_GEMMUL8_DISABLE="1"),
+}
+STEERED_LABEL = {
+    "dense": "dense path of the device",
+    "dfall": "dense path, memory admission declined",
+    "dpers": "dense path, vectors kept on the device",
+    "dser": "dense path, both spins on one process",
+    "dfp64": "dense path, products in FP64 of cuBLAS",
+}
+ENVIRONMENT = {"cpu": {}, "gpu": {}, "host": {"OPENMX_GPU_CAPACITY_TEST_RECOVERY": "1"}, **STEERED}
+# no run inherits one of these from the caller
+STEERING = sorted({key for variables in ENVIRONMENT.values() for key in variables})
+
 SYSTEMS = {}
 
 
-def add(name, text, ranks=1, threads=2, large=0):
-    """A system: its input, and the number of matrix products of one build that are large enough for the device."""
-    SYSTEMS[name] = dict(text=text, ranks=ranks, threads=threads, large=large, device=0 < large)
+def add(name, text, ranks=1, threads=2, large=0, base=VARIANTS, dense=("dense",)):
+    """A system: its input, the number of matrix products of one build that are large enough for the device, and its runs."""
+    SYSTEMS[name] = dict(text=text, ranks=ranks, threads=threads, large=large, device=0 < large,
+                         variants=tuple(base) + tuple(dense))
 
 
-add("ch4", gamma.RUNS["ch4-hse"]["text"])
+add("ch4", gamma.RUNS["ch4-hse"]["text"], dense=("dense", "dfall", "dfp64"))
 add("dia-p222", kpoint.make_input("dia_p222", "dia", (1, 1, 1), (2, 2, 2), "HSE06"))
 # two large products for each of the 2 centre atoms, and as many again for the second spin channel
-add("siz-p444", kpoint.make_input("siz_p444", "siz", (1, 1, 1), (4, 4, 4), "HSE06"), large=4)
+add("siz-p444", kpoint.make_input("siz_p444", "siz", (1, 1, 1), (4, 4, 4), "HSE06"), large=4,
+    dense=("dense", "dfall", "dfp64"))
 add("siz-p444-spin", kpoint.make_input("siz_p444_spin", "siz", (1, 1, 1), (4, 4, 4), "HSE06", spin="on"), large=8)
 add("siz-p444-np2", kpoint.make_input("siz_p444_np2", "siz", (1, 1, 1), (4, 4, 4), "HSE06"), ranks=2, large=4)
 add("diaz-p222", kpoint.make_input("diaz_p222", "diaz", (1, 1, 1), (2, 2, 2), "HSE06"), large=4)
+# the systems of the dense eigensolver only.  The cluster solver: processes without the dense matrix, and the
+# spin channels on one process and on two.  The band solver: a process for each spin channel, a process for
+# each k point, and processes that share a k point.
+add("ch4-np4", gamma.RUNS["ch4-hse-np4"]["text"], ranks=4, threads=1, base=("cpu", "gpu"))
+add("o2", gamma.RUNS["o2-hse"]["text"], base=("cpu", "gpu"))
+add("o2-np2", gamma.RUNS["o2-hse-np2"]["text"], ranks=2, base=("cpu", "gpu"), dense=("dense", "dser"))
+add("dia-p222-spin-np2", kpoint.make_input("dia_p222_spin_np2", "dia", (1, 1, 1), (2, 2, 2), "HSE06", spin="on"),
+    ranks=2, base=("cpu", "gpu"))
+add("dia-k211-np2", kpoint.make_input("dia_k211_np2", "dia", (1, 1, 1), (2, 1, 1), "HSE06"), ranks=2,
+    base=("cpu", "gpu"), dense=("dense", "dpers", "dfall"))
+add("dia-k211-np4", kpoint.make_input("dia_k211_np4", "dia", (1, 1, 1), (2, 1, 1), "HSE06"), ranks=4, threads=1,
+    base=("cpu", "gpu"))
 
-RUNS = [f"{system}-{variant}" for system in SYSTEMS for variant in VARIANTS]
+RUNS = [f"{system}-{variant}" for system, spec in SYSTEMS.items() for variant in spec["variants"]]
 
 
 def split(run):
@@ -105,7 +174,14 @@ def device_use(std):
     build = re.search(r"<EXX>  matrix products of process 0: (\d+), the largest (\d+) x (\d+) with inner dimension (\d+)",
                       std)
     memory = [float(mb) for mb in re.findall(r"<EXX>  on the device: \d+ in \S+ s, at most (\S+) MB for one product", std)]
-    return dict(products=int(use.group(1)) if use else 0, processes=int(use.group(2)) if use else 0,
+    # the dense eigensolver of the device: the Hamiltonians that got the exchange matrix there, whether the memory
+    # admission of the dense path was declined, and whether one process solved both spins of the cluster solver
+    added = re.search(r"<EXX>  GPU: the exchange matrix was added to (\d+) dense Hamiltonians on the device\.", std)
+    declined = ("GPU dense memory admission declined" in std
+                or bool(re.search(r"<EXX>  Cluster collinear n=\d+: the device cannot hold the dense matrices", std)))
+    return dict(additions=int(added.group(1)) if added else 0, dense_declined=declined,
+                serial="solves both spins serially on the GPU" in std,
+                products=int(use.group(1)) if use else 0, processes=int(use.group(2)) if use else 0,
                 seconds=float(use.group(3)) if use else 0.0, declined=int(use.group(4)) if use else 0,
                 switched_off=int(off.group(1)) if off else 0,
                 build=[int(v) for v in build.groups()] if build else None, megabytes=max(memory, default=0.0),
@@ -122,9 +198,9 @@ def execute(args, run):
     (run_dir / "input.dat").write_text(spec["text"].replace("@DATA_PATH@", str(args.data_path)))
     threads = str(args.threads or spec["threads"])
     env = dict(os.environ, OMP_NUM_THREADS=threads, OPENBLAS_NUM_THREADS=threads)
-    env.pop("OPENMX_GPU_CAPACITY_TEST_RECOVERY", None)
-    if variant == "host":
-        env["OPENMX_GPU_CAPACITY_TEST_RECOVERY"] = "1"
+    for key in STEERING:
+        env.pop(key, None)
+    env.update(ENVIRONMENT[variant])
     executable = args.cpu if variant == "cpu" else args.gpu
     start = time.time()
     with open(run_dir / "std.txt", "w") as handle:
@@ -154,7 +230,7 @@ def run(args):
     names = []
     for name in args.names:
         if name in SYSTEMS:
-            names += [f"{name}-{variant}" for variant in VARIANTS]
+            names += [f"{name}-{variant}" for variant in SYSTEMS[name]["variants"]]
         elif name in RUNS:
             names.append(name)
         else:
@@ -164,8 +240,9 @@ def run(args):
         r = results[name] = execute(args, name)
         store.write_text(json.dumps(results, indent=1))
         d = r["device"]
-        print(f"{name:20s} exit {r['status']} {r['wall']:7.1f}s Utot {r['Utot']} Uexx {r['Uexx']} builds {r['builds']} "
-              f"converged {r['achieved']} device products {d['products']} declined {d['declined']}", flush=True)
+        print(f"{name:24s} exit {r['status']} {r['wall']:7.1f}s Utot {r['Utot']} Uexx {r['Uexx']} builds {r['builds']} "
+              f"converged {r['achieved']} device products {d['products']} declined {d['declined']} "
+              f"dense additions {d['additions']}", flush=True)
     return 0
 
 # ---- table ----------------------------------------------------------------
@@ -182,26 +259,28 @@ def table(args):
     def expect(label, ok, detail):
         print(f"  {label:50s} {detail}  {'ok' if ok else 'FAIL'}")
         if not ok:
-            failures.append(label)
+            failures.append(f"{system}: {label}")
 
     def difference(system, variant, key="Utot"):
         a, b = results[f"{system}-{variant}"][key], results[f"{system}-cpu"][key]
         return None if a is None or b is None else a - b
 
     print("devices:", "; ".join(results.get("_machine") or ["not recorded (nvidia-smi gave nothing)"]))
+    untouched = []
     for system, spec in SYSTEMS.items():
-        present = [v for v in VARIANTS if f"{system}-{v}" in results]
+        present = [v for v in spec["variants"] if f"{system}-{v}" in results]
         if not present:
+            untouched.append(system)
             continue
         print(f"== {system}" + ("  (device)" if spec["device"] else ""))
-        absent = [f"{system}-{v}" for v in VARIANTS if v not in present]
+        absent = [f"{system}-{v}" for v in spec["variants"] if v not in present]
         if absent:
             missing += absent
             print("  not run: " + " ".join(absent))
         for variant in present:
             r = results[f"{system}-{variant}"]
             d = r["device"]
-            print(f"  {variant:4s} Utot {r['Utot']}  Uexx {r['Uexx']}  builds {r['builds']}  SCF steps {r['scf_steps']}  "
+            print(f"  {variant:5s} Utot {r['Utot']}  Uexx {r['Uexx']}  builds {r['builds']}  SCF steps {r['scf_steps']}  "
                   f"processes {r['ranks']} x {r['threads']} threads")
             for failure in d["failures"]:
                 print(f"       device failure: {failure}")
@@ -245,8 +324,40 @@ def table(args):
                    and d["declined"] == large, detail)
         if "cpu" in present:
             d = results[f"{system}-cpu"]["device"]
-            expect("CPU build: no device", d["products"] == 0 and d["declined"] == 0 and d["switched_off"] == 0,
-                   f"{d['products']} on the device, {d['declined']} left to the host")
+            expect("CPU build: no device", d["products"] == 0 and d["declined"] == 0 and d["switched_off"] == 0
+                   and d.get("additions", 0) == 0, f"{d['products']} on the device, {d['declined']} left to the host")
+        # the dense eigensolver of the device, and where the exchange matrix was added to the Hamiltonian
+        for variant in ("gpu", "host"):
+            if variant in present:
+                additions = results[f"{system}-{variant}"]["device"].get("additions", 0)
+                expect(f"{variant}: the eigensolver of the host", additions == 0,
+                       f"exchange matrix added to {additions} Hamiltonians on the device")
+        for variant in [v for v in present if v in STEERED]:
+            name, label = f"{system}-{variant}", STEERED_LABEL[variant]
+            r = results[name]
+            d = r["device"]
+            if "cpu" in present:
+                if converged(name) and converged(f"{system}-cpu"):
+                    value = difference(system, variant)
+                    expect(f"{label}: Utot minus CPU", abs(value) <= LIMIT, f"{value:+.3e}  limit {LIMIT:.0e}")
+                    print(f"  {label + ': Uexx minus CPU':50s} {difference(system, variant, 'Uexx'):+.3e}")
+                    first, reference = r["outer"], results[f"{system}-cpu"]["outer"]
+                    if first and reference:
+                        # the first build takes the density matrix of GGA-PBE: no exchange matrix was added yet
+                        print(f"  {label + ': Uexx of build 1 minus CPU':50s} {first[0][2] - reference[0][2]:+.3e}")
+                else:
+                    expect(f"{label}: Utot minus CPU", False, "a run failed or did not converge")
+            detail = (f"exchange matrix added to {d.get('additions', 0)} Hamiltonians on the device; admission declined: "
+                      f"{'yes' if d.get('dense_declined') else 'no'}; largest deviation of the collected density "
+                      f"matrices {r.get('dm_deviation')}")
+            if variant == "dfall":
+                expect(f"{label}: host eigensolver", d.get("additions", 0) == 0 and bool(d.get("dense_declined")), detail)
+            else:
+                expect(f"{label}: addition on the device", 0 < d.get("additions", 0) and not d.get("dense_declined"),
+                       detail)
+            if variant == "dser":
+                expect(f"{label}: serialized mode", bool(d.get("serial")),
+                       "the message of the serialized mode " + ("is" if d.get("serial") else "is not") + " in the output")
         # the times of the stages
         print("  time (s)  preparation  density matrices  exchange matrix  of it on the device  addition  DFT in total  wall")
         for variant in present:
@@ -257,8 +368,9 @@ def table(args):
     bad = [n for n in results if not n.startswith("_") and not converged(n)]
     print("runs that failed or did not converge:", bad if bad else "none")
     print("runs of a listed system that are missing:", missing if missing else "none")
+    print("systems without a run:", untouched if untouched else "none")
     print("rows that failed:", failures if failures else "none")
-    return 1 if bad or missing or failures else 0
+    return 1 if bad or missing or untouched or failures else 0
 
 
 def main():
