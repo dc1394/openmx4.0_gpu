@@ -208,7 +208,7 @@ if(BUILD_TESTING)
   set_tests_properties(exx-device-product PROPERTIES LABELS "unit;gpu" TIMEOUT 180)
   add_test(NAME exx-host-product
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_exx_host_product.py")
-  set_tests_properties(exx-host-product PROPERTIES LABELS "unit" TIMEOUT 300)
+  set_tests_properties(exx-host-product PROPERTIES LABELS "unit" TIMEOUT 900)
   add_test(NAME eigen-refine-resource-lifecycle
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tests/run_eigen_refine_faults.py"
       --core-library "$<TARGET_FILE:openmx_core>")

@@ -257,38 +257,12 @@ static double ExactExchange_Symmetrize_Channel(const OpenMXExactExchangeState *s
   return largest;
 }
 
-/* The matrix products that one thread computes in a loop of the build. The
-   padding keeps the numbers of two threads in different cache lines. */
-typedef struct {
-  long long count;
-  double largest_work;
-  int largest[3];
-  char padding[128-sizeof(long long)-sizeof(double)-3*sizeof(int)];
-} ExactExchangeLoopProducts;
-
 /* What the table of functions carries to the matrix products of one build. */
 typedef struct {
   OpenMXExactExchangeDevice *device;
   double device_seconds; /* in the products that the device took, with the transfers */
-  long long count;       /* products of the build on this process */
-  double largest_work;   /* the most multiplications m*n*k that one of them has */
-  int largest[3];        /* m, n and k of that product */
-  int threads;           /* threads of the loops of the build; below 2: no loops */
-  ExactExchangeLoopProducts *loop; /* the products of every thread in the loop that runs; threads entries */
-  int in_loop;           /* a loop runs: its products are counted by thread and stay on the host */
+  OpenMXExactExchangeHostProducts host; /* the counts of the products, and the loops of the build */
 } ExactExchangeProducts;
-
-static void ExactExchange_Note_Product(long long *count, double *largest_work, int *largest, int m, int n, int k)
-{
-  const double work=(double)m*(double)n*(double)k;
-  (*count)++;
-  if (*largest_work<work) {
-    *largest_work = work;
-    largest[0] = m;
-    largest[1] = n;
-    largest[2] = k;
-  }
-}
 
 /* The matrix products of modules/exx. The device of this process takes the
    large ones when it can (openmx_exact_exchange_device.h); the others, and
@@ -303,56 +277,28 @@ static int ExactExchange_Dgemm(void *context, char transa, char transb, int m, i
                                int ldc)
 {
   ExactExchangeProducts *products=(ExactExchangeProducts*)context;
-  if (products->in_loop) {
-    int thread=0;
-#ifdef _OPENMP
-    thread = omp_get_thread_num();
-#endif
-    ExactExchangeLoopProducts *mine=&products->loop[thread];
-    ExactExchange_Note_Product(&mine->count,&mine->largest_work,mine->largest,m,n,k);
-    F77_NAME(dgemm,DGEMM)(&transa,&transb,&m,&n,&k,&alpha,(double*)a,&lda,(double*)b,&ldb,&beta,c,&ldc);
+  if (products->host.in_loop) {
+    Exact_Exchange_Host_Loop_Dgemm(&products->host,transa,transb,m,n,k,alpha,a,lda,b,ldb,beta,c,ldc);
     return 0;
   }
-  ExactExchange_Note_Product(&products->count,&products->largest_work,products->largest,m,n,k);
+  Exact_Exchange_Host_Note_Product(&products->host,m,n,k);
   const double start=MPI_Wtime();
   if (Exact_Exchange_Device_Dgemm(products->device,transa,transb,m,n,k,alpha,a,lda,b,ldb,beta,c,ldc)) {
     products->device_seconds += MPI_Wtime()-start;
     return 0;
   }
-  Exact_Exchange_Host_Dgemm(products->threads,transa,transb,m,n,k,alpha,a,lda,b,ldb,beta,c,ldc);
+  Exact_Exchange_Host_Dgemm(products->host.threads,transa,transb,m,n,k,alpha,a,lda,b,ldb,beta,c,ldc);
   return 0;
 }
 
-/* The loop of the table of functions: the calls body(argument,0) to
-   body(argument,count-1) on the threads of OpenMP, one call after the other
-   on each thread. modules/exx hands over the work of the ABFs of a centre
-   atom in as many pieces as the table has threads. The products of the
-   threads are counted apart and added to those of the build afterwards; of
-   two products with the same number of multiplications the one of the lower
-   thread is kept as the largest. */
+/* The loop of the table of functions: the threads of OpenMP of the main
+   program run the pieces into which modules/exx divides the ABFs of a
+   centre atom (openmx_exact_exchange_host.h). */
 static int ExactExchange_Parallel_For(void *context, int count, void (*body)(void *argument, int index),
                                       void *argument)
 {
   ExactExchangeProducts *products=(ExactExchangeProducts*)context;
-  for (int thread=0; thread<products->threads; thread++) {
-    products->loop[thread].count = 0;
-    products->loop[thread].largest_work = products->largest_work;
-  }
-  products->in_loop = 1;
-#ifdef _OPENMP
-#pragma omp parallel for schedule(static,1) num_threads(products->threads)
-#endif
-  for (int index=0; index<count; index++) body(argument,index);
-  products->in_loop = 0;
-  for (int thread=0; thread<products->threads; thread++) {
-    const ExactExchangeLoopProducts *part=&products->loop[thread];
-    products->count += part->count;
-    if (products->largest_work<part->largest_work) {
-      products->largest_work = part->largest_work;
-      memcpy(products->largest,part->largest,sizeof(products->largest));
-    }
-  }
-  return 0;
+  return Exact_Exchange_Host_Parallel_For(&products->host,count,body,argument);
 }
 
 /* The list of the blocks of the site form, as the module gives it for the
@@ -790,11 +736,10 @@ void Exact_Exchange_Build(OpenMXExactExchangeState *state, MPI_Comm comm, int ve
   threads = omp_get_max_threads();
 #endif
   const int blas_threads=1<threads ? Exact_Exchange_Host_Blas_Single() : 0;
-  ExactExchangeProducts products={&state->device,0.0,0,0.0,{0,0,0},threads,NULL,0};
+  ExactExchangeProducts products={&state->device,0.0,{0,0.0,{0,0,0},threads,NULL,0}};
   if (1<threads)
-    products.loop = (ExactExchangeLoopProducts*)ExactExchange_Allocate(state,(size_t)threads,
-                                                                       sizeof(ExactExchangeLoopProducts),comm,
-                                                                       "exchange matrix");
+    products.host.loop = (OpenMXExactExchangeLoopProducts*)ExactExchange_Allocate(
+        state,(size_t)threads,sizeof(OpenMXExactExchangeLoopProducts),comm,"exchange matrix");
   const OpenMXExxDenseBackend backend={ExactExchange_Dgemm,&products,1<threads ? ExactExchange_Parallel_For : NULL,
                                        threads};
   const long long device_before=state->device.device_products;
@@ -827,7 +772,7 @@ void Exact_Exchange_Build(OpenMXExactExchangeState *state, MPI_Comm comm, int ve
       if (state->asymmetry<asymmetry) state->asymmetry = asymmetry;
     }
   }
-  openmx_core_native_free(state->resources,products.loop);
+  openmx_core_native_free(state->resources,products.host.loop);
   Exact_Exchange_Host_Blas_Restore(blas_threads);
 
   /* One spin channel stands for both without spin polarization. Process 0
@@ -858,9 +803,9 @@ void Exact_Exchange_Build(OpenMXExactExchangeState *state, MPI_Comm comm, int ve
     printf("<EXX>  The host computes the matrix products of the exchange matrix from here on.\n");
     fflush(stdout);
   }
-  if (rank==0 && 2<=verbosity && 0<products.count) {
+  if (rank==0 && 2<=verbosity && 0<products.host.count) {
     printf("<EXX>  matrix products of process 0: %lld, the largest %d x %d with inner dimension %d\n",
-           products.count,products.largest[0],products.largest[1],products.largest[2]);
+           products.host.count,products.host.largest[0],products.host.largest[1],products.host.largest[2]);
     if (device_before<state->device.device_products || declined_before<state->device.declined_products)
       printf("<EXX>  on the device: %lld in %.2f s, at most %.1f MB for one product; left to the host for lack of device memory: %lld\n",
              state->device.device_products-device_before,products.device_seconds,
