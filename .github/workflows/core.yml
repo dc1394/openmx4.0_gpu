@@ -287,7 +287,7 @@ jobs:
           python3 source/backends/hip/tests/run_mi300a_k_waves_cpu.py
           python3 source/backends/hip/tests/run_mi300a_build_cache_cpu.py
           python3 source/backends/hip/tests/run_mi300a_dm_waves_cpu.py
-      - name: Host products of the exact exchange with Clang, the OpenMP runtime of LLVM and ThreadSanitizer
+      - name: Products of the exact exchange with Clang, the OpenMP runtime of LLVM and ThreadSanitizer
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends clang libomp-dev
@@ -296,5 +296,6 @@ jobs:
           sudo sysctl vm.mmap_rnd_bits
           sudo sysctl vm.mmap_rnd_bits=28
           ulimit -s 8192
+          CC=clang python3 tests/run_exx_device_product.py
           CC=clang python3 tests/run_exx_host_product.py
           CC=clang python3 tests/run_exx_host_product.py --thread-sanitizer

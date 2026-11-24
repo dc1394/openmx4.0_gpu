@@ -4,7 +4,9 @@
 source/Exact_Exchange_Device.c is compiled as in the CUDA build, with the
 headers of tests/fixtures/exx_device_sdk in place of the SDK, and linked with
 tests/exx_device_product_harness.c, which defines the calls of the model.
-No GPU and no SDK are needed.
+No GPU and no SDK are needed. OPENMX_EXACT_EXCHANGE_DEVICE_HOST_MOVES runs
+the moves of the whole calls, a loop of OpenACC in the CUDA build, on the
+host; without fused multiply-adds, as in the CUDA build (-gpu=nofma).
 """
 from pathlib import Path
 import os
@@ -19,7 +21,7 @@ with tempfile.TemporaryDirectory(prefix='openmx-exx-device-') as directory:
     command = shlex.split(os.environ.get('CC', 'cc')) + [
         '-std=gnu11', '-O1', '-g', '-Wall', '-Wextra', '-Werror',
         '-fsanitize=address,undefined', '-fno-sanitize-recover=all',
-        '-DOPENMX_GPU_BACKEND=1',
+        '-ffp-contract=off', '-DOPENMX_GPU_BACKEND=1', '-DOPENMX_EXACT_EXCHANGE_DEVICE_HOST_MOVES',
         '-I'+str(ROOT/'tests/fixtures/exx_device_sdk'), '-I'+str(ROOT/'source'),
         str(ROOT/'source/Exact_Exchange_Device.c'), str(ROOT/'tests/exx_device_product_harness.c'),
         '-lm', '-o', str(binary)]

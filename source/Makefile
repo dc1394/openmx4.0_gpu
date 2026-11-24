@@ -716,8 +716,10 @@ Band_DFT_Dosout.o: Band_DFT_Dosout.c openmx_common.h
 	$(CC) -c Band_DFT_Dosout.c
 Exact_Exchange.o: Exact_Exchange.c openmx_exact_exchange.h openmx_exact_exchange_device.h openmx_exact_exchange_host.h openmx_exx.h ../modules/exx/include/openmx/exx/exx.h
 	$(CC) -c Exact_Exchange.c
-Exact_Exchange_Device.o: Exact_Exchange_Device.c openmx_exact_exchange_device.h
-	$(CC) -c Exact_Exchange_Device.c
+# The moves of the whole calls (a loop of OpenACC) form the product first and
+# then the sum, as the host does: no fused multiply-adds in the device code.
+Exact_Exchange_Device.o: Exact_Exchange_Device.c openmx_exact_exchange_device.h openmx_exx.h ../modules/exx/include/openmx/exx/exx.h
+	$(CC) -gpu=nofma -c Exact_Exchange_Device.c
 # Position-independent code: the unit tests weak references to the functions
 # of OpenBLAS (openmx_exact_exchange_host.h).
 Exact_Exchange_Host.o: Exact_Exchange_Host.c openmx_exact_exchange_host.h

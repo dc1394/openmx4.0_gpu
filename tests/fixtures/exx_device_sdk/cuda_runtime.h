@@ -8,6 +8,8 @@
 #include <stddef.h>
 
 typedef int cudaError_t;
+/* a stream of the model: the queue of OpenACC has one (openacc.h) */
+typedef struct OpenMXTestStream *cudaStream_t;
 enum {
   cudaSuccess = 0,
   cudaErrorInvalidValue = 1,

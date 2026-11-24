@@ -2029,11 +2029,14 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
     const int builds = Exact_Exchange_Outer_Iterations(exact_exchange);
     double exx_times[4];
     long long exx_device_use[5];
+    long long exx_device_calls[6];
     long long exx_device_additions;
     double exx_device_seconds;
+    double exx_call_seconds;
 
     if (!Exact_Exchange_Outer_Converged(exact_exchange)) scf_convergence_flag = 0;
     Exact_Exchange_Device_Use(exact_exchange, mpi_comm_level1, exx_device_use, &exx_device_seconds);
+    Exact_Exchange_Device_Calls(exact_exchange, mpi_comm_level1, exx_device_calls, &exx_call_seconds);
     exx_device_additions = Exact_Exchange_Device_Additions(exact_exchange, mpi_comm_level1);
 
     if (MYID_MPI_COMM_WORLD==Host_ID && 0<level_stdout){
@@ -2064,6 +2067,17 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
         if (Exact_Exchange_Device_Gemmul8(exact_exchange) && 0<exx_device_use[0]){
           printf("<EXX>  GPU: GEMMul8 computed %lld of the matrix products on the device, FP64 the other %lld"
                  " (scf.gemmul8.enable on).\n",exx_device_use[4],exx_device_use[0]-exx_device_use[4]);
+        }
+      }
+      if (0<exx_device_calls[0] || 0<exx_device_calls[1]){
+        printf("<EXX>  GPU: %lld calls of the exchange build on the device, in %lld processes, with %lld matrix products,"
+               " %lld of them large\n",exx_device_calls[0],exx_device_calls[2],exx_device_calls[3],exx_device_calls[4]);
+        printf("<EXX>  (at most %.2f s in one process); %lld calls left to the host for lack of device memory.\n",
+               exx_call_seconds,exx_device_calls[1]);
+        if (Exact_Exchange_Device_Gemmul8(exact_exchange) && 0<exx_device_calls[0]){
+          printf("<EXX>  GPU: GEMMul8 computed %lld of the %lld large matrix products of these calls, FP64 the other"
+                 " %lld products (scf.gemmul8.enable on).\n",exx_device_calls[5],exx_device_calls[4],
+                 exx_device_calls[3]-exx_device_calls[5]);
         }
       }
       if (0<exx_device_use[3]){

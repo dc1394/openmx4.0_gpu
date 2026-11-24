@@ -70,7 +70,8 @@ def main():
     else:
         # The exact exchange of the hybrid functionals is not part of the HIP build yet.
         jobs.append((cc, "Exact_Exchange.c"))
-        jobs.append((cc, "Exact_Exchange_Device.c"))
+        # without fused multiply-adds in the device code, as in source/Makefile
+        jobs.append((cc+["-gpu=nofma"], "Exact_Exchange_Device.c"))
         jobs.append((cc, "Exact_Exchange_Host.c"))
         # The native build compiles with OpenMP (source/Makefile), and the
         # exchange build runs on its threads: compile the two units that use

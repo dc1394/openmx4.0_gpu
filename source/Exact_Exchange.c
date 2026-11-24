@@ -58,8 +58,9 @@ struct OpenMXExactExchangeState {
   double asymmetry;                 /* largest difference of K from its transpose in the last build, before the means */
   double residual_reference;        /* residual norm of the first step with the K of the last build; negative: not seen yet */
   double time_prepare,time_collect,time_build,time_add; /* seconds on this process */
-  OpenMXExactExchangeDevice device; /* matrix products of the build on the device of this process */
-  double time_device;               /* seconds in them, with the transfers; part of time_build */
+  OpenMXExactExchangeDevice device; /* matrix products and whole calls of the build on the device of this process */
+  double time_device;               /* seconds in the products, with the transfers; part of time_build */
+  double time_device_calls;         /* seconds in the calls that the device computed; part of time_build */
   long long device_additions;       /* dense Hamiltonians of a solver on its device that K was added to */
 };
 
@@ -169,6 +170,17 @@ void Exact_Exchange_Device_Use(const OpenMXExactExchangeState *state, MPI_Comm c
                      state->device.gemmul8_products};
   double longest=state->time_device;
   MPI_Allreduce(mine,use,5,MPI_LONG_LONG,MPI_SUM,comm);
+  MPI_Allreduce(&longest,seconds,1,MPI_DOUBLE,MPI_MAX,comm);
+}
+
+void Exact_Exchange_Device_Calls(const OpenMXExactExchangeState *state, MPI_Comm comm, long long calls[6],
+                                 double *seconds)
+{
+  long long mine[6]={state->device.device_calls,state->device.declined_calls,0<state->device.device_calls ? 1 : 0,
+                     state->device.call_products,state->device.call_large_products,
+                     state->device.call_gemmul8_products};
+  double longest=state->time_device_calls;
+  MPI_Allreduce(mine,calls,6,MPI_LONG_LONG,MPI_SUM,comm);
   MPI_Allreduce(&longest,seconds,1,MPI_DOUBLE,MPI_MAX,comm);
 }
 
@@ -740,11 +752,20 @@ void Exact_Exchange_Build(OpenMXExactExchangeState *state, MPI_Comm comm, int ve
   if (1<threads)
     products.host.loop = (OpenMXExactExchangeLoopProducts*)ExactExchange_Allocate(
         state,(size_t)threads,sizeof(OpenMXExactExchangeLoopProducts),comm,"exchange matrix");
+  /* The CUDA build offers the device for whole calls as well
+     (openmx_exact_exchange_device.h): a call that it takes does not reach
+     the products above. The table is NULL in the other builds. */
+  OpenMXExxDevice device_table;
+  const OpenMXExxDevice *device_calls=Exact_Exchange_Device_Table(&state->device,&device_table);
   const OpenMXExxDenseBackend backend={ExactExchange_Dgemm,&products,1<threads ? ExactExchange_Parallel_For : NULL,
-                                       threads,NULL};
+                                       threads,device_calls};
   const long long device_before=state->device.device_products;
   const long long declined_before=state->device.declined_products;
+  const long long calls_before=state->device.device_calls;
+  const long long declined_calls_before=state->device.declined_calls;
+  const long long call_products_before=state->device.call_products;
   const int disabled_before=state->device.disabled;
+  double call_seconds=0.0;
   state->asymmetry = 0.0;
   for (int spin=0; spin<state->spin_channels; spin++) {
     /* The matrix of the build before stays for delta; without one it is 0. */
@@ -757,11 +778,13 @@ void Exact_Exchange_Build(OpenMXExactExchangeState *state, MPI_Comm comm, int ve
     if (state->input.alpha!=0.0) {
       char error[512];
       if (first<last) {
+        const double call_start=MPI_Wtime();
         const int failed=state->sites
           ? openmx_exx_add_blocks(state->module,first,last,-state->input.alpha,state->density[spin],
                                   state->exchange[spin],&backend,error,sizeof(error))
           : openmx_exx_add_gamma(state->module,first,last,-state->input.alpha,state->density[spin],
                                  state->exchange[spin],&backend,error,sizeof(error));
+        if (Exact_Exchange_Device_Call_End(&state->device)) call_seconds += MPI_Wtime()-call_start;
         if (failed!=0) ExactExchange_Abort(comm,"exchange matrix",error);
       }
       ExactExchange_Sum(state->exchange[spin],state->elements,comm);
@@ -794,15 +817,22 @@ void Exact_Exchange_Build(OpenMXExactExchangeState *state, MPI_Comm comm, int ve
   state->residual_reference = -1.0;
   state->time_build += MPI_Wtime()-start;
   state->time_device += products.device_seconds;
+  state->time_device_calls += call_seconds;
 
   /* A device call failed in this build: the process says so once. The host
-     has computed the product that failed and computes all later ones. */
+     has computed the product or the call that failed and computes all later
+     ones. */
   if (state->device.disabled && !disabled_before && 1<=verbosity) {
     printf("<EXX>  WARNING: process %d: %s failed with status %d.\n",rank,
            Exact_Exchange_Device_Failure_Name(state->device.failure),state->device.failure_status);
-    printf("<EXX>  The host computes the matrix products of the exchange matrix from here on.\n");
+    printf("<EXX>  The host computes the exchange matrix and its matrix products from here on.\n");
     fflush(stdout);
   }
+  if (rank==0 && 2<=verbosity
+      && (calls_before<state->device.device_calls || declined_calls_before<state->device.declined_calls))
+    printf("<EXX>  device calls of process 0: %lld in %.2f s with %lld matrix products, at most %.1f MB for one call; left to the host for lack of device memory: %lld\n",
+           state->device.device_calls-calls_before,call_seconds,state->device.call_products-call_products_before,
+           (double)state->device.largest_call_bytes/1048576.0,state->device.declined_calls-declined_calls_before);
   if (rank==0 && 2<=verbosity && 0<products.host.count) {
     printf("<EXX>  matrix products of process 0: %lld, the largest %d x %d with inner dimension %d\n",
            products.host.count,products.host.largest[0],products.host.largest[1],products.host.largest[2]);

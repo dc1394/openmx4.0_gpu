@@ -273,6 +273,21 @@ void Exact_Exchange_Times(const OpenMXExactExchangeState *state, double times[4]
 void Exact_Exchange_Device_Use(const OpenMXExactExchangeState *state, MPI_Comm comm, long long use[5],
     double *seconds);
 
+/* The whole calls of modules/exx that the builds gave the GPUs
+   (openmx_exact_exchange_device.h), over the processes of comm: calls[0] is
+   the number of calls that a device computed, calls[1] the number left to
+   the host because a device had no room for them, calls[2] the number of
+   processes with at least one call on their device, calls[3] the number of
+   matrix products in the calls on a device, calls[4] the number of those
+   with at least the smallest size of a product on the device, and calls[5]
+   the number of those large ones that GEMMul8 computed. A call left to the
+   host gives its large products to Exact_Exchange_Device_Use. seconds is the
+   longest time that one process spent in calls on its device, transfers
+   included; it is a part of the time of the builds. All are 0 in the CPU
+   build. Collective. */
+void Exact_Exchange_Device_Calls(const OpenMXExactExchangeState *state, MPI_Comm comm, long long calls[6],
+    double *seconds);
+
 /* 1 when the input asked for GEMMul8 in the matrix products of the builds
    on a device (scf.gemmul8.enable on). */
 int Exact_Exchange_Device_Gemmul8(const OpenMXExactExchangeState *state);
