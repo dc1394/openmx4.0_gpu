@@ -453,6 +453,10 @@ static size_t BandCol_RefineBasisBytes(BandColState *state, int n)
 static void BandCol_RefineBeginStep(BandColState *state, int SCF_iter, int possible, int possible_kdense, int possible_staged)
 {
     if (state->mgpu_host_dense) possible=possible_kdense=possible_staged=0;
+    /* a hybrid functional keeps the FP64 eigensolver: the vectors that build
+       its exchange matrix come from an FP64 solve, and the passes of the
+       refined solves do not add the exchange matrix */
+    if (state->exact_exchange != NULL) possible=possible_kdense=possible_staged=0;
     BandColRefineState *st = &state->refine;
 
     BandCol_RefineConfigure(state);
@@ -1005,6 +1009,19 @@ static int BandCol_GpuDenseFits(BandColState *state, int SCF_iter, int n, int ma
         state->gpu_dense_verdict=0; return 0;
     }
     if (SCF_iter==1 || state->GpuDenseFits_verdict_n!=n) state->mgpu_host_dense=0;
+    if (state->exact_exchange != NULL && openmx_mgpu_host_required()) {
+        /* a hybrid functional: the exchange matrix is added on the dense path
+           of one device and on the block-cyclic path of the CPU eigensolver,
+           not on the host-backed MAGMA tier */
+        if (myid0==Host_ID && (SCF_iter==1 || state->GpuDenseFits_verdict_n!=n)) {
+            printf("<EXX>  Band collinear n=%d: MAGMA does not take the exchange matrix; the hybrid functional uses"
+                   " the CPU eigensolver.\n", n);
+            fflush(stdout);
+        }
+        state->mgpu_host_dense=0;
+        state->GpuDenseFits_verdict=0; state->GpuDenseFits_verdict_n=n; state->gpu_dense_verdict=0;
+        return 0;
+    }
     if (openmx_mgpu_host_required()) goto host_capacity;
 
     if (state->GpuDenseFits_verdict != -1 && state->GpuDenseFits_verdict_n == n && 1 < SCF_iter) {
@@ -1054,7 +1071,9 @@ static int BandCol_GpuDenseFits(BandColState *state, int SCF_iter, int n, int ma
     MPI_Allreduce(&my_required, &req_max, 1, MPI_UNSIGNED_LONG_LONG, MPI_MAX, mpi_comm_level1);
     MPI_Allreduce(&my_free, &free_min, 1, MPI_UNSIGNED_LONG_LONG, MPI_MIN, mpi_comm_level1);
 
-    if (!fit && gpusolver2_flag) {
+    /* gpusolver2, and a hybrid functional (the MAGMA tier below does not add
+       its exchange matrix) */
+    if (!fit && (gpusolver2_flag || state->exact_exchange != NULL)) {
         if (myid0==Host_ID) printf("<BandCol> GPU dense memory admission declined; falling back to ELPA/ScaLAPACK.\n");
         state->GpuDenseFits_verdict=0; state->GpuDenseFits_verdict_n=n; state->gpu_dense_verdict=0;
         return 0;
@@ -3381,6 +3400,76 @@ static void BandCol_ConstructDenseCsHs_OpenACC(BandColState *state, int need_s, 
     state->last_construct_on_device = 1;
 }
 
+/* The exchange matrix of a hybrid functional at one k point, added to the
+   dense Hamiltonian that Construct_Band_CsHs has just built on the device
+   (docs/EXX_IMPLEMENTATION_GUIDE.md, section 6.5). The host fills K(k), and
+   the device adds it. The copy goes to d_tmp: between the construction of H
+   and its solve that buffer holds nothing that is read later. Does nothing
+   without an exchange matrix. */
+static void BandCol_DenseAddExactExchange(BandColState *state, int spin, double k1, double k2, double k3, int n)
+{
+    BandColGpuSolverCtx *ctx = &state->gpusolver_ctx;
+    const long long matrix_count = (long long)n * (long long)n;
+    dcomplex *exchange, *d_H, *d_K;
+    double start;
+
+    if (!Exact_Exchange_Active(state->exact_exchange)) return;
+
+    d_H = ctx->d_H;
+    d_K = ctx->d_tmp;
+    if (!state->last_construct_on_device || d_H == NULL || d_K == NULL) {
+        BandCol_AbortWithMessage("The dense Hamiltonian of the exact exchange is not on the device in Band_DFT_Col.c.");
+    }
+
+    exchange = (dcomplex *)BandCol_MallocArray(state, (size_t)matrix_count, sizeof(dcomplex), "exchange matrix of a k point");
+    BandCol_ZeroComplex(exchange, (size_t)matrix_count);
+    /* one process holds the whole matrix: a 1 x 1 grid with one block of n */
+    Exact_Exchange_Add_Band_Hs(state->exact_exchange, spin, k1, k2, k3, n, (double *)exchange, n, n, n, 1, 1, 0, 0);
+
+    start = MPI_Wtime();
+    wait_cudafunc(cudaMemcpy(d_K, exchange, sizeof(dcomplex) * (size_t)matrix_count, cudaMemcpyHostToDevice));
+    openmx_core_native_free(state->resources, exchange);
+
+#pragma acc parallel loop deviceptr(d_H, d_K)
+    for (long long idx = 0; idx < matrix_count; ++idx) {
+        d_H[idx].r += d_K[idx].r;
+        d_H[idx].i += d_K[idx].i;
+    }
+#pragma acc wait
+    Exact_Exchange_Device_Addition(state->exact_exchange, MPI_Wtime() - start);
+}
+
+/* The density matrix of a hybrid functional from the vectors of one k point
+   on the dense path of the device (docs/EXX_IMPLEMENTATION_GUIDE.md, section
+   6.3). evec is the panel of the first maxn states, basis-major with the
+   leading dimension stride, on the host (host_vectors) or on the device; a
+   panel of the device is copied to the host. occ_weight[s]^2 is the weight
+   of the k point times the occupation of state s. Does nothing outside a
+   collection. */
+static void BandCol_DenseCollectExactExchange(BandColState *state, int n, int maxn, int spin, double k1, double k2,
+                                              double k3, double weight_sum, const dcomplex *evec, int stride,
+                                              int host_vectors, const double *occ_weight)
+{
+    dcomplex *panel = NULL;
+
+    if (!Exact_Exchange_Collecting(state->exact_exchange)) return;
+
+    if (evec == NULL || maxn <= 0 || stride < maxn) {
+        BandCol_AbortWithMessage("The dense eigenvectors of the exact exchange are not available in Band_DFT_Col.c.");
+    }
+    if (!host_vectors) {
+        panel = (dcomplex *)BandCol_MallocArray(state, (size_t)n * (size_t)maxn, sizeof(dcomplex),
+                                                "eigenvector panel of the exact exchange");
+        wait_cudafunc(cudaMemcpy2D(panel, sizeof(dcomplex) * (size_t)maxn, evec, sizeof(dcomplex) * (size_t)stride,
+                                   sizeof(dcomplex) * (size_t)maxn, (size_t)n, cudaMemcpyDeviceToHost));
+        evec = panel;
+        stride = maxn;
+    }
+    Exact_Exchange_Collect_K(state->exact_exchange, spin, k1, k2, k3, weight_sum, n, maxn, stride, (const double *)evec,
+                             occ_weight);
+    openmx_core_native_free(state->resources, panel);
+}
+
 typedef struct {
   BandColState *state;
   int SCF_iter;
@@ -3631,9 +3720,11 @@ static double Band_DFT_Col_owned(BandColState *state, int SCF_iter, int knum_i, 
         if (max_tno < tnoA)
             max_tno = tnoA;
     }
-    /* with a hybrid functional the exchange matrix is added to the host
-       matrix Hs below: the dense paths on the device are not taken */
-    use_gpusolver_dense = (state->exact_exchange == NULL && scf_eigen_lib_flag == GPUSOLVER &&
+    /* with a hybrid functional the dense path of one device adds the
+       exchange matrix to d_H (BandCol_DenseAddExactExchange); when the device
+       has no room, or MAGMA is requested, BandCol_GpuDenseFits returns 0 and
+       the exchange matrix is added to the host matrix Hs below */
+    use_gpusolver_dense = (scf_eigen_lib_flag == GPUSOLVER &&
                            (openmx_mgpu_host_required() || Band_DFT_Col_GpuSwitchNum() <= n));
 
     /* the refined eigensolver: its switch (collective, once), and no
@@ -4452,6 +4543,9 @@ diagonalize1:
                                     owns_global_dense_rank);
                 construct_on_device = BandCol_LastConstructOnDevice(state);
 
+                /* the exchange matrix of a hybrid functional at this k point */
+                BandCol_DenseAddExactExchange(state, spin, k1, k2, k3, n);
+
                 /* for blas */
 
                 /* diagonalize S */
@@ -4594,6 +4688,9 @@ diagonalize1:
                                             use_setham_packed_cache ? setham_H1 : H1, k1, k2, k3, Ss, Hs,
                                             n, owns_global_dense_rank);
                         const int construct_on_device = BandCol_LastConstructOnDevice(state);
+
+                        /* the exchange matrix of a hybrid functional at this k point */
+                        BandCol_DenseAddExactExchange(state, spin, k1, k2, k3, n);
 
                         if (measure_time) {
                             dtime(&endtimesh);
@@ -5495,6 +5592,21 @@ diagonalize1:
                         const int dense_dm_host = BandCol_DMVote("Band_DFT_Col density matrix (dense)",
                             dm_owner ? size_H1 : 0, dm_owner ? MaxN : 0,
                             dm_persistent ? 0 : (size_t)n * (size_t)MaxN * sizeof(dcomplex));
+                        /* a hybrid functional collects the density matrix of
+                           this k point from the same vectors and weights:
+                           the panel that stayed on the device, or the one
+                           that went to the host after the solve */
+                        if (dm_owner) {
+                            if (dm_persistent)
+                                BandCol_DenseCollectExactExchange(state, n, MaxN, spin, k1, k2, k3, sum_weights,
+                                                                  BandCol_GpuSolver_DeviceEigenvectors(state), n, 0,
+                                                                  state->dm_workspace.OccWeight);
+                            else
+                                BandCol_DenseCollectExactExchange(state, n, MaxN, spin, k1, k2, k3, sum_weights,
+                                                                  state->gpusolver_ctx.h_evec,
+                                                                  state->gpusolver_ctx.h_evec_cols, 1,
+                                                                  state->dm_workspace.OccWeight);
+                        }
                         if(dm_owner && !dense_dm_host){
 
                         if (BandCol_GpuPersistentDecide(state)) {
@@ -6005,6 +6117,9 @@ diagonalize1:
                                             owns_global_dense_rank);
                         construct_on_device = BandCol_LastConstructOnDevice(state);
 
+                        /* the exchange matrix of a hybrid functional at this k point */
+                        BandCol_DenseAddExactExchange(state, spin, k1, k2, k3, n);
+
                         /* diagonalize S */
 
                         if (measure_time)
@@ -6116,6 +6231,11 @@ diagonalize1:
                         time11A += Etime1 - Stime1;
                         dtime(&Stime1);
                     }
+
+                    /* a hybrid functional collects the density matrix of this
+                       k point from the same vectors and weights */
+                    BandCol_DenseCollectExactExchange(state, n, MaxN, spin, k1, k2, k3, sum_weights, evec_device,
+                                                      evec_stride, state->mgpu_host_dense, occ_weight);
 
                     }
                     {
@@ -6863,7 +6983,7 @@ void Construct_Band_CsHs(BandColState *state, int SCF_iter, int all_knum, int * 
 {
     const int need_s = (SCF_iter == 1 || all_knum != 1);
     const int use_gpusolver_dense =
-        (state->exact_exchange == NULL && scf_eigen_lib_flag == GPUSOLVER &&
+        (scf_eigen_lib_flag == GPUSOLVER &&
          (openmx_mgpu_host_required() || Band_DFT_Col_GpuSwitchNum() <= n) && state->gpu_dense_verdict);
     const int dense_gpusolver_owner =
         (use_gpusolver_dense &&
