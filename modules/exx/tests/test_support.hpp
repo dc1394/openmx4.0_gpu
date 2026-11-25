@@ -66,6 +66,7 @@ void kernel_analytic(const std::string& fixture);
 void two_center_gaussian();
 void two_center_symmetry();
 void two_center_gradient();
+void two_center_truncated();
 void two_center_overlap(const std::string& fixture);
 void abf_pca(const std::string& fixture);
 void three_center_gaussian();

@@ -1,13 +1,16 @@
-// exx-two-center-gaussian, exx-two-center-symmetry and
-// exx-two-center-gradient: equations (11) and (12) against analytic values for
-// Gaussian functions, the symmetries of the two-centre blocks, and the
-// derivative of the blocks with respect to the displacement.
+// exx-two-center-gaussian, exx-two-center-symmetry, exx-two-center-gradient
+// and exx-two-center-truncated: equations (11) and (12) against analytic
+// values for Gaussian functions, the symmetries of the two-centre blocks, the
+// derivative of the blocks with respect to the displacement, and the truncated
+// Coulomb kernel with the radii of PBE0 on the reciprocal grid of the main
+// program.
 #include <openmx/exx/two_center.hpp>
 
 #include <openmx/basis/quadrature.hpp>
 
 #include "test_support.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdio>
@@ -15,6 +18,7 @@
 #include <numbers>
 #include <span>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace exx_test {
@@ -522,6 +526,124 @@ void two_center_gradient()
       small.gradient_pair({0.3,0.2,0.1}).block(f[1],f[0],{block,3});
     } catch (const std::invalid_argument&) { thrown = true; }
     require(thrown,"an output of the wrong size must be rejected");
+  }
+}
+
+// The truncated Coulomb kernel with the radii R_c of PBE0 on the reciprocal
+// grid of the main program: kappa up to 60/bohr (1DFFT.EnergyCutoff 3600 Ry)
+// in 900 intervals (1DFFT.NumGridR).  For functions of radii r_P and r_Q at
+// the distance d, the integrand of equation (12) is even in kappa and an
+// entire function of exponential type r_P + r_Q + R_c + d.  Its Fourier
+// transform vanishes beyond that length (Paley-Wiener), so by the Poisson
+// summation formula the trapezoid rule is exact, up to the part beyond the
+// largest kappa, while r_P + r_Q + R_c + d < 2 pi/(step of kappa).  That
+// length is 94.2 bohr on the grid of the main program (section 13, item 19 of
+// the guide).
+void two_center_truncated()
+{
+  const Vector u = {0.36,-0.48,0.8};
+
+  // Gaussians against the analytic pair function: R_c 8, 16 and 24 on the
+  // grid of the main program, R_c 32, 40 and 48 on a grid with half its step.
+  // The distances reach R_c + 24 bohr, where the pair function has fallen
+  // below 1e-16 of its largest value.
+  {
+    const RadialGrid grid{0.0,0.02,500};
+    const double a = 0.9, b = 0.6, mu = a*b/(a+b), prefactor = std::pow(pi*pi/(a*b),1.5);
+    const std::vector<RadialFunction> radial = {gaussian(grid,0,a),gaussian(grid,1,a),gaussian(grid,0,b),
+                                                gaussian(grid,1,b)};
+    Worst values("truncated kernel, R_c 8 to 48, Gaussians up to p",1e-12);
+    Worst slopes("truncated kernel, R_c 8 to 48, derivative for s Gaussians",1e-12);
+    const std::pair<int,std::array<double,3>> cases[] = {{900,{8.0,16.0,24.0}},{1800,{32.0,40.0,48.0}}};
+    for (const auto& [intervals,cutoffs] : cases) {
+      const ReciprocalGrid reciprocal = ReciprocalGrid::uniform(60.0,intervals);
+      const std::vector<ReciprocalFunction> f = bessel_transform(grid,radial,reciprocal);
+      const ReciprocalFunction &sa = f[0], &pa = f[1], &sb = f[2], &pb = f[3];
+      for (const double rc : cutoffs) {
+        const Kernel kernel = truncated_coulomb_kernel(rc);
+        const TwoCenterIntegrator integrator(reciprocal,kernel,1,1);
+        for (double dist = 0.5; dist <= rc+24.0; dist += 0.5) {
+          const Vector d = {u[0]*dist,u[1]*dist,u[2]*dist};
+          const auto pair = integrator.pair(d);
+          const Radial F = pair_function(kernel,mu,dist);
+          double block[9];
+          pair.block(sa,sb,{block,1});
+          values.absolute(block[0],prefactor*F.f/(4.0*pi));
+          pair.block(pa,sb,{block,3});
+          for (int i = 0; i < 3; ++i)
+            values.absolute(block[i],std::sqrt(3.0)/(4.0*pi)*prefactor/(2.0*a)*(-d[i]/dist)*F.d1);
+          pair.block(sa,pb,{block,3});
+          for (int i = 0; i < 3; ++i)
+            values.absolute(block[i],std::sqrt(3.0)/(4.0*pi)*prefactor/(2.0*b)*(d[i]/dist)*F.d1);
+          pair.block(pa,pb,{block,9});
+          for (int i = 0; i < 3; ++i)
+            for (int j = 0; j < 3; ++j) {
+              const double hessian = (F.d2-F.d1/dist)*d[i]*d[j]/(dist*dist)+(i == j ? F.d1/dist : 0.0);
+              values.absolute(block[3*i+j],3.0/(4.0*pi)*prefactor/(4.0*a*b)*(-hessian));
+            }
+          integrator.gradient_pair(d).block(sa,sb,{block,3});
+          for (int i = 0; i < 3; ++i) slopes.absolute(block[i],prefactor/(4.0*pi)*F.d1*d[i]/dist);
+        }
+      }
+    }
+    values.finish();
+    slopes.finish();
+  }
+
+  // Functions that vanish beyond 6 bohr (l = 0, 1, 2), on the grid of the
+  // main program against a grid with a quarter of its step, relative to the
+  // largest block of each R_c.  Where 2 r + R_c + d < 94.2 bohr the two agree,
+  // and beyond the reach 2 r + R_c the blocks vanish.  Where the condition
+  // fails at R_c 36 and 40, the blocks on the grid of the main program are off
+  // by more than 1e-4, so the condition is the one that matters.
+  {
+    const double radius = 6.0, length = 2.0*pi*900/60.0;
+    const RadialGrid grid{0.0,radius/600,600};
+    std::vector<RadialFunction> radial;
+    for (int l = 0; l <= 2; ++l) radial.push_back(model(grid,l,radius,l));
+    const ReciprocalGrid coarse = ReciprocalGrid::uniform(60.0,900), fine = ReciprocalGrid::uniform(60.0,3600);
+    const std::vector<ReciprocalFunction> fc = bessel_transform(grid,radial,coarse),
+                                          ff = bessel_transform(grid,radial,fine);
+    Worst exact("truncated kernel, radius 6, where 2 r + R_c + d < 2 pi/step",1e-13);
+    Worst beyond("truncated kernel, radius 6, beyond the reach 2 r + R_c",1e-14);
+    for (const double rc : {16.0,24.0,32.0,36.0,40.0}) {
+      const Kernel kernel = truncated_coulomb_kernel(rc);
+      const TwoCenterIntegrator on_coarse(coarse,kernel,2,2), on_fine(fine,kernel,2,2);
+      struct Entry { double distance, coarse, fine; };
+      std::vector<Entry> entries;
+      double largest = 0.0;
+      for (double dist = 0.5; dist <= rc+2.0*radius+8.0; dist += 1.0) {
+        const Vector d = {u[0]*dist,u[1]*dist,u[2]*dist};
+        const auto pc = on_coarse.pair(d), pf = on_fine.pair(d);
+        for (int p = 0; p < 3; ++p)
+          for (int q = 0; q < 3; ++q) {
+            std::vector<double> bc(static_cast<std::size_t>((2*p+1)*(2*q+1))), bf(bc.size());
+            pc.block(fc[static_cast<std::size_t>(p)],fc[static_cast<std::size_t>(q)],bc);
+            pf.block(ff[static_cast<std::size_t>(p)],ff[static_cast<std::size_t>(q)],bf);
+            for (std::size_t i = 0; i < bc.size(); ++i) {
+              entries.push_back({dist,bc[i],bf[i]});
+              largest = std::max(largest,std::fabs(bf[i]));
+            }
+          }
+      }
+      double aliased = 0.0;
+      for (const Entry& e : entries) {
+        const bool holds = 2.0*radius+rc+e.distance < length;
+        if (holds) exact.add(std::fabs(e.coarse-e.fine)/largest);
+        else aliased = std::max(aliased,std::fabs(e.coarse-e.fine)/largest);
+        if (e.distance > 2.0*radius+rc) {
+          beyond.add(std::fabs(e.fine)/largest);
+          if (holds) beyond.add(std::fabs(e.coarse)/largest);
+        }
+      }
+      if (rc >= 36.0) {
+        std::printf("truncated kernel, radius 6, R_c %.0f: largest deviation where the condition fails %.3e\n",rc,
+                    aliased);
+        require(aliased > 1e-4,"the grid of the main program must alias where 2 r + R_c + d exceeds 2 pi/step");
+      }
+    }
+    exact.finish();
+    beyond.finish();
   }
 }
 
