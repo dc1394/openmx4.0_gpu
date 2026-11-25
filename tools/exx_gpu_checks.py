@@ -42,9 +42,11 @@ The guide asks for three things, and the table has a block for each:
      calculation.
 
 Where the build runs (source/openmx_exact_exchange_device.h).  A process
-computes the contributions of its centre atoms with one call of modules/exx
-for every spin channel.  The CUDA build offers the device the whole call
-first: the device takes a call whose largest matrix product is large, and
+computes the contributions of its share of the centre atoms, a range of their
+ABFs, with one call of modules/exx for every spin channel.  In the systems
+below with products on the device a share is one or all of the atoms.  The
+CUDA build offers the device the whole call first:
+the device takes a call whose largest matrix product is large, and
 computes all products of the call there, with the arrays in device memory.  A
 call that the device does not take for lack of memory goes to the host, and
 the device then takes the large products of that call one at a time, as it
