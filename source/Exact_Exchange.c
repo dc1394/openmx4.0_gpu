@@ -66,7 +66,6 @@ struct OpenMXExactExchangeState {
   int outer_converged;              /* the last build met scf.exx.outer.criterion */
   double energy;                    /* E_x of the last build, Hartree */
   double change;                    /* delta of the last build, Hartree */
-  double asymmetry;                 /* largest difference of K from its transpose in the last build, before the means */
   double residual_reference;        /* residual norm of the first step with the K of the last build; negative: not seen yet */
   double time_prepare,time_collect,time_build,time_add; /* seconds on this process */
   OpenMXExactExchangeDevice device; /* matrix products and whole calls of the build on the device of this process */
@@ -167,11 +166,6 @@ double Exact_Exchange_Energy(const OpenMXExactExchangeState *state)
 double Exact_Exchange_Change(const OpenMXExactExchangeState *state)
 {
   return state->change;
-}
-
-double Exact_Exchange_Asymmetry(const OpenMXExactExchangeState *state)
-{
-  return state->asymmetry;
 }
 
 void Exact_Exchange_Times(const OpenMXExactExchangeState *state, double times[4])
@@ -293,6 +287,18 @@ static double ExactExchange_Symmetrize_Channel(const OpenMXExactExchangeState *s
   }
   else largest = ExactExchange_Symmetrize(matrix,state->orbitals);
   return largest;
+}
+
+/* X + X^T in place for one spin channel in the form of the state: the half
+   build gives X (section 6.4), and K = X + X^T is symmetric to the last bit,
+   K_xy(R) = K_yx(-R)^T in the site form. */
+static void ExactExchange_Mirror_Channel(const OpenMXExactExchangeState *state, double *matrix, MPI_Comm comm,
+                                         const char *where)
+{
+  char error[512];
+  const int failed=state->sites ? openmx_exx_mirror_blocks(state->module,matrix,error,sizeof(error))
+                                : openmx_exx_mirror_gamma(state->module,matrix,error,sizeof(error));
+  if (failed!=0) ExactExchange_Abort(comm,where,error);
 }
 
 /* What the table of functions carries to the matrix products of one build. */
@@ -537,7 +543,6 @@ void Exact_Exchange_Prepare(OpenMXExactExchangeState *state, const OpenMXAtomicV
   state->residual_reference = -1.0;
   state->energy = 0.0;
   state->change = 0.0;
-  state->asymmetry = 0.0;
   ExactExchange_Release_Blocks(state);
 
   if (state->module==NULL) {
@@ -898,15 +903,19 @@ double Exact_Exchange_Density_Deviation(const OpenMXExactExchangeState *state, i
    The ranges carry about the same number of multiplications by the estimate
    of modules/exx: an ABF belongs to the process whose part of the total
    holds its middle. A process without work gets first = last. Every process
-   computes the same division from the same numbers. */
-static void ExactExchange_Abfs(OpenMXExactExchangeState *state, MPI_Comm comm, long *first_abf, long *last_abf)
+   computes the same division from the same numbers. The build weighs the
+   ABFs with the estimate of the half build (half), the forces with that of
+   the whole build. */
+static void ExactExchange_Abfs(OpenMXExactExchangeState *state, MPI_Comm comm, int half, long *first_abf,
+                               long *last_abf)
 {
   const int atoms=openmx_exx_atom_count(state->module);
   int rank=0,processes=1;
   MPI_Comm_rank(comm,&rank);
   MPI_Comm_size(comm,&processes);
   double *cost=(double*)ExactExchange_Allocate(state,(size_t)atoms,sizeof(double),comm,"exchange matrix");
-  if (openmx_exx_abf_costs(state->module,state->sites,cost)!=0)
+  if ((half ? openmx_exx_half_abf_costs(state->module,state->sites,cost)
+            : openmx_exx_abf_costs(state->module,state->sites,cost))!=0)
     ExactExchange_Abort(comm,"exchange matrix","the work of the ABFs cannot be estimated");
   double total=0.0;
   for (int a=0; a<atoms; a++) total += cost[a]*(double)openmx_exx_atom_abfs(state->module,a);
@@ -945,7 +954,7 @@ void Exact_Exchange_Build(OpenMXExactExchangeState *state, MPI_Comm comm, int ve
   MPI_Comm_size(comm,&processes);
 
   long first,last;
-  ExactExchange_Abfs(state,comm,&first,&last);
+  ExactExchange_Abfs(state,comm,1,&first,&last);
 
   /* The threads of the main program (-nt) run the loops of the build and
      share its large products. A BLAS with threads of its own computes on
@@ -973,7 +982,6 @@ void Exact_Exchange_Build(OpenMXExactExchangeState *state, MPI_Comm comm, int ve
   const long long call_products_before=state->device.call_products;
   const int disabled_before=state->device.disabled;
   double call_seconds=0.0,share_seconds=0.0;
-  state->asymmetry = 0.0;
   ExactExchange_Forget_Band_Matrices(state);
   for (int spin=0; spin<state->spin_channels; spin++) {
     /* The matrix of the build before stays for delta; without one it is 0. */
@@ -988,20 +996,18 @@ void Exact_Exchange_Build(OpenMXExactExchangeState *state, MPI_Comm comm, int ve
       if (first<last) {
         const double call_start=MPI_Wtime();
         const int failed=state->sites
-          ? openmx_exx_add_blocks_abfs(state->module,first,last,-state->input.alpha,state->density[spin],
-                                       state->exchange[spin],&backend,error,sizeof(error))
-          : openmx_exx_add_gamma_abfs(state->module,first,last,-state->input.alpha,state->density[spin],
-                                      state->exchange[spin],&backend,error,sizeof(error));
+          ? openmx_exx_add_blocks_half_abfs(state->module,first,last,-state->input.alpha,state->density[spin],
+                                            state->exchange[spin],&backend,error,sizeof(error))
+          : openmx_exx_add_gamma_half_abfs(state->module,first,last,-state->input.alpha,state->density[spin],
+                                           state->exchange[spin],&backend,error,sizeof(error));
         if (Exact_Exchange_Device_Call_End(&state->device)) call_seconds += MPI_Wtime()-call_start;
         share_seconds += MPI_Wtime()-call_start;
         if (failed!=0) ExactExchange_Abort(comm,"exchange matrix",error);
       }
       ExactExchange_Sum(state->exchange[spin],state->elements,comm);
-      /* K is symmetric, K_xy(R) = K_yx(-R)^T, up to rounding: the sum over
-         the ABFs of all centre atoms restores what a part of them does not
-         have. The means make K(k) Hermitian to the last bit. */
-      const double asymmetry=ExactExchange_Symmetrize_Channel(state,state->exchange[spin],comm,"exchange matrix");
-      if (state->asymmetry<asymmetry) state->asymmetry = asymmetry;
+      /* The sum over the ABFs of all processes is X of the half build, and
+         K = X + X^T: K(k) is Hermitian to the last bit. */
+      ExactExchange_Mirror_Channel(state,state->exchange[spin],comm,"exchange matrix");
     }
   }
   openmx_core_native_free(state->resources,products.host.loop);
@@ -1070,7 +1076,6 @@ void Exact_Exchange_Build(OpenMXExactExchangeState *state, MPI_Comm comm, int ve
     if (1<processes) {
       printf("<EXX>  shares of the %d processes in the build: %.2f s to %.2f s\n",processes,-extremes[1],extremes[0]);
     }
-    printf("<EXX>  largest difference of the exchange matrix from its transpose %.3e\n",state->asymmetry);
     fflush(stdout);
   }
 }
@@ -1102,11 +1107,11 @@ const double *Exact_Exchange_Gradient(OpenMXExactExchangeState *state, MPI_Comm 
        weights of the blocks, the derivatives of E_x with respect to their
        elements, from the density matrices. The weights are separate for
        every ABF of the centre atoms, as the contributions to K are: every
-       process computes those of its ABFs, the share that it has of a build,
-       and the arrays are added up. An element comes from one process, so
+       process computes those of its ABFs, its share of a whole build, and
+       the arrays are added up. An element comes from one process, so
        the sum has no rounding. */
     long first_abf=0,last_abf=0;
-    ExactExchange_Abfs(state,comm,&first_abf,&last_abf);
+    ExactExchange_Abfs(state,comm,0,&first_abf,&last_abf);
     double **weights=(double**)ExactExchange_Allocate(state,(size_t)atoms,sizeof(double*),comm,"forces");
     for (int a=0; a<atoms; a++)
       weights[a] = (double*)ExactExchange_Allocate(state,openmx_exx_atom_table_elements(state->module,a),

@@ -175,9 +175,12 @@ double Exact_Exchange_Density_Deviation(const OpenMXExactExchangeState *state, i
 /* Builds the exchange matrix K of every spin channel from the collected
    density matrices: the ABFs of the centre atoms are distributed over the
    processes, which may share an atom (section 6.7), and the contributions
-   summed. Keeps the matrix of the build before, and
-   computes E_x (equation (4)) and delta (equation (15)). From here on K is
-   added to the Hamiltonian and the semilocal part is the hybrid one. */
+   summed. The build is the half build of section 6.4, which goes through
+   one of the two V neighbours of every mirror pair: its sum X gives
+   K = X + X^T, symmetric to the last bit. Keeps the matrix of the build
+   before, and computes E_x (equation (4)) and delta (equation (15)). From
+   here on K is added to the Hamiltonian and the semilocal part is the hybrid
+   one. */
 void Exact_Exchange_Build(OpenMXExactExchangeState *state, MPI_Comm comm, int verbosity);
 
 /* After a build: 1 when the outer iteration goes on with a new inner SCF, 0
@@ -189,11 +192,6 @@ int Exact_Exchange_Outer_Iterations(const OpenMXExactExchangeState *state); /* b
 int Exact_Exchange_Outer_Converged(const OpenMXExactExchangeState *state);  /* the criterion was met */
 double Exact_Exchange_Energy(const OpenMXExactExchangeState *state);        /* E_x of the last build, Hartree */
 double Exact_Exchange_Change(const OpenMXExactExchangeState *state);        /* delta of the last build, Hartree */
-/* The largest difference between an element of K and the element that
-   equals it by symmetry, K_ij and K_ji or K_xy(R) and K_yx(-R)^T, in the last
-   build before the two were replaced by their mean. K(k) is Hermitian when
-   it vanishes. */
-double Exact_Exchange_Asymmetry(const OpenMXExactExchangeState *state);
 
 /* ---- forces (section 5.9) ------------------------------------------------- */
 
