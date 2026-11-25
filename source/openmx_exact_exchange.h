@@ -279,9 +279,21 @@ void Exact_Exchange_Add_Cluster_Hs(OpenMXExactExchangeState *state, int spin, in
    point (k1, k2, k3): the pair of doubles at 2*(j*na_rows+i) is the local
    element (i,j) of the n x n matrix in the block-cyclic distribution of the
    solver. The phase is the one with which the solver builds H(k) from the
-   elements of the neighbour list. Does nothing without an exchange matrix. */
+   elements of the neighbour list. Does nothing without an exchange matrix.
+   K(k) is summed once for every spin channel, k point and local array
+   until the next build, and kept while the kept matrices of this process
+   take no more memory than K and the K of the build before; the later
+   additions add the kept K(k). Without room the sum goes to an array that
+   is dropped afterwards, so every k point has the same rounding: the sum
+   is formed first and then added to Hs. Only when the memory for that
+   array is short do the terms go to Hs one at a time. */
 void Exact_Exchange_Add_Band_Hs(OpenMXExactExchangeState *state, int spin, double k1, double k2, double k3,
     int n, double *Hs, int na_rows, int na_cols, int nblk, int np_rows, int np_cols, int my_prow, int my_pcol);
+
+/* counts[0]: the sums of equation (14) since the binding, over the
+   processes of comm; counts[1]: the additions that took a kept K(k)
+   instead. Collective. */
+void Exact_Exchange_Band_Sums(const OpenMXExactExchangeState *state, MPI_Comm comm, long long counts[2]);
 
 /* A solver that keeps its dense Hamiltonian on a device builds the matrix
    to add with the two functions above in a buffer of the host (one process

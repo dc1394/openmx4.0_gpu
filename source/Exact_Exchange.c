@@ -27,6 +27,17 @@
 #include <omp.h>
 #endif
 
+/* K(k) of one spin channel and k point in the local array of a solver
+   (Exact_Exchange_Add_Band_Hs): the sum of equation (14), kept from the
+   first addition until K changes. The layout of the local array belongs to
+   the key: the solvers on a device pass the whole matrix (a 1 x 1 grid),
+   the others their block-cyclic part. */
+typedef struct {
+  int spin,n,na_rows,na_cols,nblk,np_rows,np_cols,my_prow,my_pcol;
+  double k[3];
+  dcomplex *values;                 /* na_rows x na_cols, in the order of the local array */
+} ExactExchangeBandMatrix;
+
 /* Persistent metadata belongs to the explicit calculation owner. */
 struct OpenMXExactExchangeState {
   OpenMXNativeResources *resources; /* borrowed from this calculation */
@@ -62,6 +73,12 @@ struct OpenMXExactExchangeState {
   double time_device;               /* seconds in the products, with the transfers; part of time_build */
   double time_device_calls;         /* seconds in the calls that the device computed; part of time_build */
   long long device_additions;       /* dense Hamiltonians of a solver on its device that K was added to */
+  ExactExchangeBandMatrix *band_matrices; /* K(k) of the additions since the last build */
+  int band_matrix_count;            /* entries of band_matrices in use */
+  int band_matrix_room;             /* entries that band_matrices has room for */
+  size_t band_matrix_bytes;         /* bytes of the values of the entries in use */
+  long long band_sums;              /* sums of equation (14) since the binding */
+  long long band_reuses;            /* additions since the binding that took K(k) from an entry */
   double *gradient;                 /* dE_x/dtau of the last call of Exact_Exchange_Gradient, 3 per atom */
   int gradient_atoms;               /* atoms that gradient has room for */
 };
@@ -204,6 +221,12 @@ long long Exact_Exchange_Device_Additions(const OpenMXExactExchangeState *state,
   long long mine=state->device_additions,all=0;
   MPI_Allreduce(&mine,&all,1,MPI_LONG_LONG,MPI_SUM,comm);
   return all;
+}
+
+void Exact_Exchange_Band_Sums(const OpenMXExactExchangeState *state, MPI_Comm comm, long long counts[2])
+{
+  long long mine[2]={state->band_sums,state->band_reuses};
+  MPI_Allreduce(mine,counts,2,MPI_LONG_LONG,MPI_SUM,comm);
 }
 
 /* Ends the run of every process: the state of the SCF cannot be continued. */
@@ -351,6 +374,18 @@ static void ExactExchange_Device_Counts_Back(OpenMXExactExchangeDevice *device, 
   device->largest_call_bytes = counts->largest_call_bytes;
 }
 
+/* K is about to change, or the structure: the K(k) kept for the additions
+   are dropped, and the next addition at every k point sums again. */
+static void ExactExchange_Forget_Band_Matrices(OpenMXExactExchangeState *state)
+{
+  for (int e=0; e<state->band_matrix_count; e++) {
+    openmx_core_native_free(state->resources,state->band_matrices[e].values);
+    state->band_matrices[e].values = NULL;
+  }
+  state->band_matrix_count = 0;
+  state->band_matrix_bytes = 0;
+}
+
 /* The list of the blocks of the site form, as the module gives it for the
    prepared structure. */
 static void ExactExchange_Release_Blocks(OpenMXExactExchangeState *state)
@@ -496,6 +531,7 @@ void Exact_Exchange_Prepare(OpenMXExactExchangeState *state, const OpenMXAtomicV
   state->spin_channels = 0;
   state->collecting = 0;
   state->exchange_ready = 0;
+  ExactExchange_Forget_Band_Matrices(state);
   state->outer_iterations = 0;
   state->outer_converged = 0;
   state->residual_reference = -1.0;
@@ -938,6 +974,7 @@ void Exact_Exchange_Build(OpenMXExactExchangeState *state, MPI_Comm comm, int ve
   const int disabled_before=state->device.disabled;
   double call_seconds=0.0,share_seconds=0.0;
   state->asymmetry = 0.0;
+  ExactExchange_Forget_Band_Matrices(state);
   for (int spin=0; spin<state->spin_channels; spin++) {
     /* The matrix of the build before stays for delta; without one it is 0. */
     double *swap=state->previous[spin];
@@ -1261,6 +1298,99 @@ void Exact_Exchange_Add_Cluster_Hs(OpenMXExactExchangeState *state, int spin, in
   state->time_add += MPI_Wtime()-start;
 }
 
+/* Equation (14): adds K(k) = sum_R e^{2 pi i k.R} K(R) of one spin channel
+   to the local elements of target, with the rows on the orbitals of the
+   cell at the origin, as the solver builds H(k). local_row and
+   local_column give the local row and column of every orbital, -1 for
+   those of other processes; a block of an atom pair without a local row or
+   column adds nothing and is skipped. Every element receives its terms in
+   the order of the blocks. */
+static void ExactExchange_Band_Sum(const OpenMXExactExchangeState *state, int spin, double k1, double k2,
+    double k3, const int *local_row, const int *local_column, const char *row_atoms, const char *column_atoms,
+    int na_rows, dcomplex *target)
+{
+  const double two_pi=6.283185307179586476925286766559;
+  const double *exchange=state->exchange[spin];
+  for (long block=0; block<state->block_count; block++) {
+    const int x=state->block_atoms[2*block],y=state->block_atoms[2*block+1];
+    if (!row_atoms[x] || !column_atoms[y]) continue;
+    const int *cell=&state->block_cell[3*block];
+    const double phase=two_pi*(k1*(double)cell[0]+k2*(double)cell[1]+k3*(double)cell[2]);
+    const double co=cos(phase),si=sin(phase);
+    const int row0=state->first_orbital[x];
+    const int column0=state->first_orbital[y];
+    const int rows=state->first_orbital[x+1]-row0;
+    const int columns=state->first_orbital[y+1]-column0;
+    const double *source=exchange+state->block_offset[block];
+    for (int j=0; j<columns; j++) {
+      const int column=local_column[column0+j];
+      if (column<0) continue;
+      dcomplex *values=target+(size_t)column*(size_t)na_rows;
+      for (int i=0; i<rows; i++) {
+        const int row=local_row[row0+i];
+        if (row<0) continue;
+        const double value=source[(size_t)i*columns+j];
+        values[row].r += value*co;
+        values[row].i += value*si;
+      }
+    }
+  }
+}
+
+/* The entry of K(k) for this spin channel, k point and local array, or NULL. */
+static ExactExchangeBandMatrix *ExactExchange_Band_Kept(OpenMXExactExchangeState *state, int spin, double k1,
+    double k2, double k3, int n, int na_rows, int na_cols, int nblk, int np_rows, int np_cols, int my_prow,
+    int my_pcol)
+{
+  for (int e=0; e<state->band_matrix_count; e++) {
+    ExactExchangeBandMatrix *entry=&state->band_matrices[e];
+    if (entry->spin==spin && entry->k[0]==k1 && entry->k[1]==k2 && entry->k[2]==k3 && entry->n==n
+        && entry->na_rows==na_rows && entry->na_cols==na_cols && entry->nblk==nblk && entry->np_rows==np_rows
+        && entry->np_cols==np_cols && entry->my_prow==my_prow && entry->my_pcol==my_pcol)
+      return entry;
+  }
+  return NULL;
+}
+
+/* A new entry with zeros in its values, or NULL when the entries would
+   hold more than the two exchange matrices of every spin channel (K and the
+   K of the build before) or the memory is short. */
+static ExactExchangeBandMatrix *ExactExchange_Band_Keep(OpenMXExactExchangeState *state, int spin, double k1,
+    double k2, double k3, int n, int na_rows, int na_cols, int nblk, int np_rows, int np_cols, int my_prow,
+    int my_pcol)
+{
+  const size_t bytes=(size_t)na_rows*(size_t)na_cols*sizeof(dcomplex);
+  const size_t limit=2*(size_t)state->spin_channels*state->elements*sizeof(double);
+  if (limit<state->band_matrix_bytes || limit-state->band_matrix_bytes<bytes) return NULL;
+  if (state->band_matrix_count==state->band_matrix_room) {
+    const int room=state->band_matrix_room<8 ? 8 : 2*state->band_matrix_room;
+    ExactExchangeBandMatrix *grown=(ExactExchangeBandMatrix*)openmx_core_native_realloc(
+        state->resources,state->band_matrices,(size_t)room*sizeof(ExactExchangeBandMatrix));
+    if (grown==NULL) return NULL;
+    state->band_matrices = grown;
+    state->band_matrix_room = room;
+  }
+  dcomplex *values=(dcomplex*)openmx_core_native_malloc(state->resources,(size_t)na_rows*(size_t)na_cols,
+                                                        sizeof(dcomplex),1);
+  if (values==NULL) return NULL;
+  ExactExchangeBandMatrix *entry=&state->band_matrices[state->band_matrix_count++];
+  entry->spin = spin;
+  entry->n = n;
+  entry->na_rows = na_rows;
+  entry->na_cols = na_cols;
+  entry->nblk = nblk;
+  entry->np_rows = np_rows;
+  entry->np_cols = np_cols;
+  entry->my_prow = my_prow;
+  entry->my_pcol = my_pcol;
+  entry->k[0] = k1;
+  entry->k[1] = k2;
+  entry->k[2] = k3;
+  entry->values = values;
+  state->band_matrix_bytes += bytes;
+  return entry;
+}
+
 void Exact_Exchange_Add_Band_Hs(OpenMXExactExchangeState *state, int spin, double k1, double k2, double k3,
     int n, double *Hs, int na_rows, int na_cols, int nblk, int np_rows, int np_cols, int my_prow, int my_pcol)
 {
@@ -1270,49 +1400,78 @@ void Exact_Exchange_Add_Band_Hs(OpenMXExactExchangeState *state, int spin, doubl
     ExactExchange_Abort(state->comm,"Hamiltonian","the matrix of the solver has an unexpected size or spin");
 
   const double start=MPI_Wtime();
-
-  /* Where the rows and columns of the n x n matrix are in the local array
-     of this process; -1 for those of other processes. */
-  int *local=(int*)openmx_core_native_malloc(state->resources,2*(size_t)n,sizeof(int),0);
-  if (local==NULL) ExactExchange_Abort(state->comm,"Hamiltonian","out of memory");
-  int *local_row=local,*local_column=local+n;
-  for (int g=0; g<2*n; g++) local[g] = -1;
-  for (int i=0; i<na_rows; i++) {
-    const int row=np_rows*nblk*(i/nblk)+i%nblk+((np_rows+my_prow)%np_rows)*nblk;
-    if (row<n) local_row[row] = i;
-  }
-  for (int j=0; j<na_cols; j++) {
-    const int column=np_cols*nblk*(j/nblk)+j%nblk+((np_cols+my_pcol)%np_cols)*nblk;
-    if (column<n) local_column[column] = j;
-  }
-
-  /* Equation (14): K(k) = sum_R e^{2 pi i k.R} K(R), with the rows on the
-     orbitals of the cell at the origin, as the solver builds H(k). */
-  const double two_pi=6.283185307179586476925286766559;
-  const double *exchange=state->exchange[spin];
   dcomplex *matrix=(dcomplex*)Hs;
-  for (long block=0; block<state->block_count; block++) {
-    const int *cell=&state->block_cell[3*block];
-    const double phase=two_pi*(k1*(double)cell[0]+k2*(double)cell[1]+k3*(double)cell[2]);
-    const double co=cos(phase),si=sin(phase);
-    const int row0=state->first_orbital[state->block_atoms[2*block]];
-    const int column0=state->first_orbital[state->block_atoms[2*block+1]];
-    const int rows=state->first_orbital[state->block_atoms[2*block]+1]-row0;
-    const int columns=state->first_orbital[state->block_atoms[2*block+1]+1]-column0;
-    const double *source=exchange+state->block_offset[block];
+
+  /* The local rows and columns of the n x n matrix come first in the local
+     array: the row of the matrix grows with the local row. */
+  int rows=0,columns=0;
+  for (int i=0; i<na_rows; i++)
+    if (np_rows*nblk*(i/nblk)+i%nblk+((np_rows+my_prow)%np_rows)*nblk<n) rows = i+1;
+  for (int j=0; j<na_cols; j++)
+    if (np_cols*nblk*(j/nblk)+j%nblk+((np_cols+my_pcol)%np_cols)*nblk<n) columns = j+1;
+
+  /* K is the same until the next build, and so is K(k): the first addition
+     at a k point sums equation (14) into an entry, and the later ones add
+     the entry. Without room for an entry the sum goes to an array that is
+     dropped afterwards, so that K(k) has the same rounding at every k
+     point. */
+  const dcomplex *values=NULL;
+  dcomplex *scratch=NULL;
+  ExactExchangeBandMatrix *entry=ExactExchange_Band_Kept(state,spin,k1,k2,k3,n,na_rows,na_cols,nblk,np_rows,
+                                                         np_cols,my_prow,my_pcol);
+  if (entry!=NULL) {
+    values = entry->values;
+    state->band_reuses++;
+  }
+  else {
+    /* Where the rows and columns of the n x n matrix are in the local array
+       of this process, -1 for those of other processes, and the atoms with
+       a local row or column. */
+    const int atoms=openmx_exx_atom_count(state->module);
+    int *local=(int*)openmx_core_native_malloc(state->resources,2*(size_t)n,sizeof(int),0);
+    char *reached=(char*)openmx_core_native_malloc(state->resources,2*(size_t)atoms,sizeof(char),1);
+    if (local==NULL || reached==NULL) ExactExchange_Abort(state->comm,"Hamiltonian","out of memory");
+    int *local_row=local,*local_column=local+n;
+    char *row_atoms=reached,*column_atoms=reached+atoms;
+    for (int g=0; g<2*n; g++) local[g] = -1;
+    for (int i=0; i<na_rows; i++) {
+      const int row=np_rows*nblk*(i/nblk)+i%nblk+((np_rows+my_prow)%np_rows)*nblk;
+      if (row<n) local_row[row] = i;
+    }
+    for (int j=0; j<na_cols; j++) {
+      const int column=np_cols*nblk*(j/nblk)+j%nblk+((np_cols+my_pcol)%np_cols)*nblk;
+      if (column<n) local_column[column] = j;
+    }
+    for (int a=0; a<atoms; a++)
+      for (int g=state->first_orbital[a]; g<state->first_orbital[a+1]; g++) {
+        if (0<=local_row[g]) row_atoms[a] = 1;
+        if (0<=local_column[g]) column_atoms[a] = 1;
+      }
+
+    entry = ExactExchange_Band_Keep(state,spin,k1,k2,k3,n,na_rows,na_cols,nblk,np_rows,np_cols,my_prow,my_pcol);
+    dcomplex *target=entry!=NULL ? entry->values : NULL;
+    if (target==NULL)
+      target = scratch = (dcomplex*)openmx_core_native_malloc(state->resources,(size_t)na_rows*(size_t)na_cols,
+                                                              sizeof(dcomplex),1);
+    /* Without memory for that array the terms go to Hs one by one. */
+    ExactExchange_Band_Sum(state,spin,k1,k2,k3,local_row,local_column,row_atoms,column_atoms,na_rows,
+                           target!=NULL ? target : matrix);
+    values = target;
+    state->band_sums++;
+    openmx_core_native_free(state->resources,reached);
+    openmx_core_native_free(state->resources,local);
+  }
+
+  if (values!=NULL) {
     for (int j=0; j<columns; j++) {
-      const int column=local_column[column0+j];
-      if (column<0) continue;
-      dcomplex *target=matrix+(size_t)column*(size_t)na_rows;
+      dcomplex *to=matrix+(size_t)j*(size_t)na_rows;
+      const dcomplex *from=values+(size_t)j*(size_t)na_rows;
       for (int i=0; i<rows; i++) {
-        const int row=local_row[row0+i];
-        if (row<0) continue;
-        const double value=source[(size_t)i*columns+j];
-        target[row].r += value*co;
-        target[row].i += value*si;
+        to[i].r += from[i].r;
+        to[i].i += from[i].i;
       }
     }
   }
-  openmx_core_native_free(state->resources,local);
+  openmx_core_native_free(state->resources,scratch);
   state->time_add += MPI_Wtime()-start;
 }

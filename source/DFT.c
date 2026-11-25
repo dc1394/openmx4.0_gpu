@@ -2030,6 +2030,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
     long long exx_device_use[5];
     long long exx_device_calls[6];
     long long exx_device_additions;
+    long long exx_band_sums[2];
     double exx_device_seconds;
     double exx_call_seconds;
 
@@ -2037,6 +2038,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
     Exact_Exchange_Device_Use(exact_exchange, mpi_comm_level1, exx_device_use, &exx_device_seconds);
     Exact_Exchange_Device_Calls(exact_exchange, mpi_comm_level1, exx_device_calls, &exx_call_seconds);
     exx_device_additions = Exact_Exchange_Device_Additions(exact_exchange, mpi_comm_level1);
+    Exact_Exchange_Band_Sums(exact_exchange, mpi_comm_level1, exx_band_sums);
 
     if (MYID_MPI_COMM_WORLD==Host_ID && 0<level_stdout){
       if (builds==0){
@@ -2058,6 +2060,10 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
       Exact_Exchange_Times(exact_exchange, exx_times);
       printf("<EXX>  time (s): preparation %.2f, density matrices %.2f, exchange matrix %.2f, addition %.2f\n",
              exx_times[0],exx_times[1],exx_times[2],exx_times[3]);
+      if (2<=level_stdout && (0<exx_band_sums[0] || 0<exx_band_sums[1])){
+        printf("<EXX>  K(k) of the k points: %lld sums over the blocks of K, and %lld additions of a sum"
+               " kept since the same build (all processes)\n",exx_band_sums[0],exx_band_sums[1]);
+      }
       if (0<exx_device_use[0] || 0<exx_device_use[1] || 0<exx_device_use[3]){
         printf("<EXX>  GPU: %lld matrix products of the exchange matrix on the device, in %lld processes\n",
                exx_device_use[0],exx_device_use[2]);
