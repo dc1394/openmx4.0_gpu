@@ -78,7 +78,9 @@ void Exact_Exchange_Device_Initialize(OpenMXExactExchangeDevice *device)
   /* The two limits are first values and not measured on a device yet
      (guide, section 14). 1e9 multiplications keep the products of one V
      neighbour on the host and send the two products per centre atom that
-     run over all columns to the device. */
+     run over all columns to the device. A whole call takes the device when
+     its products have 1e9 multiplications in all: with the V neighbours
+     and the columns folded, a call may have no product that large. */
   device->minimum_work = 1.0e9;
   device->reserve_bytes = (size_t)512*1024*1024;
   device->gemmul8 = 0;
@@ -312,8 +314,10 @@ static int ExactExchange_Device_Call_Fail(OpenMXExactExchangeDevice *device, int
   return 1;
 }
 
-/* Room for the arrays of the call first, as for a product; then the handle
-   of the BLAS, set to the stream of the queue on which the moves run. */
+/* multiplications is the sum of m*n*k over the products of the call: a call
+   with fewer than minimum_work stays on the host. Then room for the arrays
+   of the call, as for a product, and the handle of the BLAS, set to the
+   stream of the queue on which the moves run. */
 static int ExactExchange_Device_Accept(void *context, double multiplications, size_t bytes)
 {
   OpenMXExactExchangeDevice *device=(OpenMXExactExchangeDevice*)context;

@@ -42,10 +42,10 @@ typedef struct {
    library, in this order of their use:
 
    accept is called first and once for a call with centre atoms: whether
-     the device takes a call whose largest product has `multiplications`
-     multiplications and whose arrays take `bytes` bytes of device memory,
-     the sum of the allocations that follow.  1 takes it, 0 leaves the call
-     to the dense backend on the host.
+     the device takes a call whose matrix products have `multiplications`
+     multiplications m n k in all and whose arrays take `bytes` bytes of
+     device memory, the sum of the allocations that follow.  1 takes it, 0
+     leaves the call to the dense backend on the host.
    allocate gives `bytes` bytes of device memory, NULL when there is no room
      or the device failed.  release gives them back; it is called once for
      every block from allocate, when no work is pending.

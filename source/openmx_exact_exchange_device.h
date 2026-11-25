@@ -29,16 +29,17 @@
    calls of openmx_exx_add_blocks and openmx_exx_add_gamma
    (Exact_Exchange_Device_Table, OpenMXExxDevice in exx.h): the device then
    computes the contributions of all centre atoms of the call, with the
-   arrays in device memory for the call. It takes a call whose largest
-   product reaches minimum_work and whose arrays fit into the free device
-   memory with the reserve left over; the other calls go to the products
-   above. A call without room is counted and the device stays in use; a
-   device call that fails for another reason switches the device off for
-   the calls and for the products, as above. The products of a call and the
-   loops that move its elements run in order on one stream, that of the
-   OpenACC queue OPENMX_EXACT_EXCHANGE_DEVICE_QUEUE. Products with at least
-   minimum_work multiplications go through the GEMMul8 bridge when the
-   caller sets gemmul8; the others are FP64. */
+   arrays in device memory for the call. It takes a call whose products
+   have at least minimum_work multiplications in all and whose arrays fit
+   into the free device memory with the reserve left over; the other calls
+   go to the products above. A call without room is counted and the device
+   stays in use; a device call that fails for another reason switches the
+   device off for the calls and for the products, as above. The products
+   of a call and the loops that move its elements run in order on one
+   stream, that of the OpenACC queue OPENMX_EXACT_EXCHANGE_DEVICE_QUEUE.
+   Products with at least minimum_work multiplications go through the
+   GEMMul8 bridge when the caller sets gemmul8; the others are FP64, and a
+   call on the device may have none of the first kind. */
 
 #include <stddef.h>
 #include "openmx_exx.h"
@@ -69,7 +70,7 @@ typedef struct {
   int disabled;                /* a device call failed: the host computes every later product */
   int failure;                 /* OPENMX_EXACT_EXCHANGE_DEVICE_..., the call that failed */
   int failure_status;          /* status that call returned */
-  double minimum_work;         /* products with fewer multiplications m*n*k stay on the host */
+  double minimum_work;         /* products with fewer multiplications m*n*k stay on the host, calls with fewer in all */
   size_t reserve_bytes;        /* device memory that a product leaves free */
   int gemmul8;                 /* products go through the GEMMul8 bridge of the device BLAS */
   long long device_products;   /* products computed on the device */

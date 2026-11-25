@@ -63,6 +63,7 @@ class FakeDevice {
     bytes = 0;
     allocated = 0;
     largest_product = 0.0;
+    all_products = 0.0;
     std::fill(std::begin(count),std::end(count),0L);
     calls = 0;
     sequence.clear();
@@ -78,6 +79,7 @@ class FakeDevice {
   std::size_t bytes = 0;
   std::size_t allocated = 0;         // bytes of all allocations
   double largest_product = 0.0;      // the largest m n k of a dgemm
+  double all_products = 0.0;         // the sum of m n k over the dgemm calls
   long count[kinds] = {};            // calls of every kind
   long calls = 0;                    // calls that can fail
   std::vector<Kind> sequence;        // their kinds, in order
@@ -228,6 +230,7 @@ class FakeDevice {
       return 2;
     }
     d.largest_product = std::max(d.largest_product,static_cast<double>(m)*static_cast<double>(n)*static_cast<double>(k));
+    d.all_products += static_cast<double>(m)*static_cast<double>(n)*static_cast<double>(k);
     const std::size_t a_size = extent(a_rows,a_columns,lda), b_size = extent(b_rows,b_columns,ldb);
     const std::size_t c_size = extent(m,n,ldc);
     if ((a_size > 0 && !d.inside(a,a_size*sizeof(double),"the array A of a product")) ||

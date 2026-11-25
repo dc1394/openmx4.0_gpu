@@ -3184,7 +3184,8 @@ void check_device(const System& system, const DeviceForm& form, Numbers& random,
 
   // The device computes the call: the product and the loop of the table are
   // not used, accept is told the bytes that the allocations take and the
-  // size of the largest product, and k agrees with the host within rounding.
+  // multiplications of all products, and k agrees with the host within
+  // rounding.
   std::vector<double> k = start;
   require(run(with_device,0,atoms,k),name+": the device does not compute the call");
   require(calls.products == 0 && calls.loops == 0,name+": the product or the loop of the table is used with a device");
@@ -3192,14 +3193,15 @@ void check_device(const System& system, const DeviceForm& form, Numbers& random,
           device.count[FakeDevice::allocate_call] == device.count[FakeDevice::release_call] &&
           device.count[FakeDevice::download_call] == 1,name+": wrong calls of the device");
   require(device.bytes == device.allocated,name+": accept is told other bytes than the allocations take");
-  require(device.multiplications == device.largest_product,
-          name+": accept is told another size of the largest product than the device computes");
+  require(device.multiplications == device.all_products,
+          name+": accept is told other multiplications than the products of the device have in all");
   Worst worst(name+": device against the dense backend (relative)",1e-12);
   for (std::size_t e = 0; e < k.size(); ++e) worst.add(std::fabs(k[e]-reference[e])/scale);
   worst.finish();
   const std::vector<FakeDevice::Kind> sequence = device.sequence;
-  std::printf("%s: %ld calls of the device, %.0f bytes, largest product %.3e multiplications\n",name.c_str(),
-              static_cast<long>(sequence.size()),static_cast<double>(device.bytes),device.multiplications);
+  std::printf("%s: %ld calls of the device, %.0f bytes, %.3e multiplications in all, the largest product %.3e\n",
+              name.c_str(),static_cast<long>(sequence.size()),static_cast<double>(device.bytes),device.multiplications,
+              device.largest_product);
 
   // The same bits again.  The centre atoms in two calls give the bits of one
   // call: every centre makes its arrays anew, and only k carries over.  With
@@ -3359,7 +3361,8 @@ void check_division(const System& system, const std::string& name)
 // of whole atoms gives the bits of these atoms as a range of centre atoms.
 // Ranges that divide the ABFs add up to K within rounding wherever they are
 // cut: in two at every ABF, and in ranges of 1, 2, 3, ... ABFs.  The device
-// is told the bytes and the largest product of the range that it computes.
+// is told the bytes and the multiplications of the products of the range
+// that it computes.
 // An empty range adds nothing.  With "every" the cut is made at every ABF;
 // otherwise at about a dozen of them, and at the first and the last one.
 // The division of the ABFs among processes is check_division().
@@ -3432,7 +3435,7 @@ void check_abf_ranges(const System& system, const std::string& name, Numbers& ra
         require(computed == (on_device && first < last),what+": the wrong side computes a range");
         if (computed)
           require(device.accepted == 1 && device.bytes == device.allocated &&
-                  device.multiplications == device.largest_product && device.count[FakeDevice::download_call] == 1,
+                  device.multiplications == device.all_products && device.count[FakeDevice::download_call] == 1,
                   what+": accept is told other sizes than the range takes, or K is not fetched once");
         ++builds;
       };
@@ -3604,7 +3607,7 @@ void check_half_build(const System& system, const std::string& name, Numbers& ra
         require(computed == (on_device && first < last),what+": the wrong side computes a range of the half build");
         if (computed)
           require(device.accepted == 1 && device.bytes == device.allocated &&
-                  device.multiplications == device.largest_product && device.count[FakeDevice::download_call] == 1,
+                  device.multiplications == device.all_products && device.count[FakeDevice::download_call] == 1,
                   what+": accept is told other sizes than the half build takes, or K is not fetched once");
         ++builds;
       };
@@ -3782,13 +3785,13 @@ void check_device_gradients(const System& system, const std::string& name, Numbe
     for (std::size_t a = 0; a < atoms; ++a) parts += first_abf[a] < first_abf[a+1] ? 1 : 0;
 
     // The device computes every part: the table of the host is not used,
-    // accept is told the bytes and the largest product, and every part
+    // accept is told the bytes and the multiplications of all products, and every part
     // brings back two arrays.
     BlockWeights device_weights(system);
     run(0,total,device_weights);
     require(calls.products == 0 && calls.loops == 0,what+": the product or the loop of the table is used with a device");
     require(device.accepted == 1 && device.bytes == device.allocated &&
-            device.multiplications == device.largest_product &&
+            device.multiplications == device.all_products &&
             device.count[FakeDevice::download_call] == static_cast<long>(2*parts) &&
             device.count[FakeDevice::allocate_call] == device.count[FakeDevice::release_call],
             what+": accept is told other sizes than the call takes, or wrong calls of the device");
@@ -3988,14 +3991,14 @@ void check_device_half_gradients(const System& system, const std::string& name, 
     for (std::size_t a = 0; a < atoms; ++a) parts += first_abf[a] < first_abf[a+1] ? 1 : 0;
 
     // The device computes every part: the table of the host is not used,
-    // accept is told the bytes and the largest product, and every part
+    // accept is told the bytes and the multiplications of all products, and every part
     // brings back three arrays.
     BlockWeights device_weights(system);
     run(0,total,device_weights);
     const std::vector<FakeDevice::Kind> sequence = device.sequence;
     require(calls.products == 0 && calls.loops == 0,what+": the product or the loop of the table is used with a device");
     require(device.accepted == 1 && device.bytes == device.allocated &&
-            device.multiplications == device.largest_product &&
+            device.multiplications == device.all_products &&
             device.count[FakeDevice::download_call] == static_cast<long>(3*parts) &&
             device.count[FakeDevice::allocate_call] == device.count[FakeDevice::release_call],
             what+": accept is told other sizes than the call takes, or wrong calls of the device");

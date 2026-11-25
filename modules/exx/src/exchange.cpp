@@ -1363,15 +1363,22 @@ std::vector<DeviceGroup::Moved> column_moves(const GroupColumns& columns)
   return moved;
 }
 
-// The sizes of the arrays of one centre atom on the device.  dt is the
-// derivative with respect to the T blocks of the centre (the forces only),
-// wq the largest T block of a group, n_Q u_b l_B (the half form only).
+// The sizes of the arrays of one centre atom on the device, and the
+// multiplications m n k of its matrix products.  dt is the derivative with
+// respect to the T blocks of the centre (the forces only), wq the largest T
+// block of a group, n_Q u_b l_B (the half form only).  products counts G =
+// T D, the last product and the four terms of every group, which a build
+// and the derivatives share; v_products counts one product of the size of
+// W = V T_B for every group, of which a build has one, the derivatives two
+// (W and dv) and the half form of the derivatives three (and V^T H).
 struct DeviceSizes {
   std::size_t g = 0, dloc = 0, w = 0, gg = 0, gbp = 0, dl = 0, dba = 0, first = 0, second = 0, x3 = 0, dt = 0;
   std::size_t wq = 0;
   std::size_t v = 0, list = 0, length = 0;
-  double multiplications = 0.0;           // of the largest product of the centre
+  double products = 0.0, v_products = 0.0;
 
+  // The sizes of a call with the centres of both: the arrays take the larger
+  // size, and the multiplications add up.
   void widen(const DeviceSizes& other)
   {
     g = std::max(g,other.g);
@@ -1389,7 +1396,8 @@ struct DeviceSizes {
     v = std::max(v,other.v);
     list = std::max(list,other.list);
     length = std::max(length,other.length);
-    multiplications = std::max(multiplications,other.multiplications);
+    products += other.products;
+    v_products += other.v_products;
   }
 };
 
@@ -1408,7 +1416,7 @@ DeviceSizes device_sizes(const System& system, std::size_t a, std::size_t np, st
   z.g = np*ua*s;
   z.dloc = ell*s;
   z.dt = np*ua*ell;
-  z.multiplications = product(np*ua,s,ell);         // G = T D and the last product
+  z.products = 2.0*product(np*ua,s,ell);            // G = T D and the last product (dt for the derivatives)
   z.list = site ? 2*gathered_rows : ell;
   z.length = site ? gathered_rows : 0;
   z.list += ua*np;                                  // the rows of G in the order (mu, P)
@@ -1416,7 +1424,8 @@ DeviceSizes device_sizes(const System& system, std::size_t a, std::size_t np, st
     const std::size_t b = group[0], lb = group[1], sites = group[2];
     const std::size_t nq = system.abf_count[b], ub = system.orbital_count[b];
     // W = V T_B, and the four terms, which have the same size.
-    z.multiplications = std::max({z.multiplications,product(np,ub*lb,nq),product(ua,ub,np*lb)});
+    z.products += 4.0*product(ua,ub,np*lb);
+    z.v_products += product(np,ub*lb,nq);
     z.w = std::max(z.w,np*ub*lb);
     z.gg = std::max(z.gg,ua*np*lb);
     z.gbp = std::max(z.gbp,ua*np*ub);
@@ -1437,6 +1446,14 @@ DeviceSizes device_sizes(const System& system, std::size_t a, std::size_t np, st
 // the derivatives of E_x with respect to the blocks (the forces), in the
 // whole form or in the half form.
 enum class DeviceUse { build, derivatives, half_derivatives };
+
+// The multiplications of all matrix products of a call with the sizes z,
+// which the device is asked to take (OpenMXExxDevice::accept).
+double device_multiplications(const DeviceSizes& z, DeviceUse use)
+{
+  const double v_count = use == DeviceUse::build ? 1.0 : use == DeviceUse::derivatives ? 2.0 : 3.0;
+  return z.products+v_count*z.v_products;
+}
 
 // The arrays of a call on the device.  A build has K and the terms (i) and
 // (ii); the derivatives have H, a second array for its first part, dt and
@@ -1790,7 +1807,9 @@ bool device_range(const System& system, const std::vector<CentrePart>& parts, do
   std::vector<std::size_t> t_size(atoms);
   std::size_t t_total = 0;
   for (std::size_t x = 0; x < atoms; ++x) t_total += t_size[x] = form.t_size(x);
-  if (device.accept(device.context,z.multiplications,DeviceArrays::bytes(z,k.size(),t_total)) != 1) return false;
+  if (device.accept(device.context,device_multiplications(z,DeviceUse::build),DeviceArrays::bytes(z,k.size(),t_total))
+      != 1)
+    return false;
 
   std::vector<double> result(k.size());
   try {
@@ -1832,7 +1851,8 @@ std::size_t device_gradient_range(const System& system, const std::vector<Centre
   std::size_t t_total = 0;
   for (std::size_t x = 0; x < atoms; ++x) t_total += t_size[x] = form.t_size(x);
   const DeviceUse use = half ? DeviceUse::half_derivatives : DeviceUse::derivatives;
-  if (device.accept(device.context,z.multiplications,DeviceArrays::bytes(z,density.size(),t_total,use)) != 1)
+  if (device.accept(device.context,device_multiplications(z,use),DeviceArrays::bytes(z,density.size(),t_total,use))
+      != 1)
     return 0;
 
   std::size_t done = 0;

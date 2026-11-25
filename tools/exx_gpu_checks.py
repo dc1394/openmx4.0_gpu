@@ -54,25 +54,32 @@ siz-p444-pbe0-moved do not.
 Where the build runs (source/openmx_exact_exchange_device.h).  A process
 computes the contributions of its share of the centre atoms, a range of their
 ABFs, with one call of modules/exx for every spin channel.  In the systems
-below with products on the device a share is one or all of the atoms, except
-in siz-p444-np4: there the 4 processes take about half an atom each (34 or 35
-of its 69 ABFs, section 6.7 of the guide), and the device gets the range of a
-part of an atom.  The CUDA build offers the device the whole call first:
-the device takes a call whose largest matrix product is large, and
-computes all products of the call there, with the arrays in device memory.  A
-call that the device does not take for lack of memory goes to the host, and
-the device then takes the large products of that call one at a time, as it
-did before whole calls existed.  The systems marked "device" below have large
-products, the others run the same code with every call and product on the
-host.  Counted with the CPU build of d768793, one build of siz-p444 has 27704
-matrix products and one of diaz-p222 has 81442 (54850 and 162326 before the
-half build of section 6.4 of the guide); in both, 4 are large enough for the
-device, two for each centre atom.  A call on the device makes 2 products for
-each centre atom and 5 for each of its V neighbours, the same 2 of them
-large.  The table expects one call for each spin channel, process and build,
-every call on the device or left to the host for lack of device memory, and
-the large products of the calls left to the host on the device, or left to
-the host as well.
+below with calls on the device a share is one or all of the atoms, except in
+siz-p444-np4: there the 4 processes take about half an atom each (section 6.7
+of the guide), and the device gets the range of a part of an atom.  The CUDA
+build offers the device the whole call first: the device takes a call whose
+matrix products have at least 1e9 multiplications m n k in all, and computes
+all products of the call there, with the arrays in device memory.  A call
+that the device does not take for lack of memory goes to the host, and the
+device then takes the large products of that call one at a time, as it did
+before whole calls existed; a product is large when it has 1e9
+multiplications by itself.  The systems marked "device" below have calls
+that large, the others run the same code with every call and product on the
+host.  Counted with the CPU build of 51cd508, which folds the V neighbours
+and the columns of D by the period of the k mesh (section 6.4 of the guide),
+one build of siz-p444 has 27704 matrix products, 4 of them large, two for
+each centre atom.  One build of diaz-p222 has 6652, the largest 208 x 897
+with inner dimension 2171, and process 0 of siz-p444-np4 has 7224 with ABFs
+1 to 39 of 138, the largest 1664 x 507 with inner dimension 1131: none of
+their products is large, but a call has 7.3e9 multiplications in diaz-p222
+and 4.2e9 to 5.1e9 in a process of siz-p444-np4 (8.7e9 at most in the
+weights of the forces).  The calls of the other systems have 2.7e7 at most.
+A call on the device makes 2 products for each centre atom and 5 for each of
+its V neighbours; where products are large, the same 2 of them are.  The
+table expects one call for each spin channel, process and build, every call
+on the device or left to the host for lack of device memory, and the large
+products of the calls left to the host on the device, or left to the host as
+well.
 
 The weights of the forces (section 6.7 of the guide) take the device in the
 same way, once at the end of a run: a call of modules/exx for every spin
@@ -89,9 +96,10 @@ The systems
   siz-p444           silicon, Si7.0-s2p2d1, 4 x 4 x 4 mesh              (device)
   siz-p444-spin      the same with scf.SpinPolarization on             (device)
   siz-p444-np2       the same with 2 MPI processes on the device       (device)
-  siz-p444-np4       the same with 4 MPI processes, half an atom each  (device)
-  diaz-p222          diamond, C6.0-s2p2d1, 2 x 2 x 2 mesh: the largest matrices,
-                     0.5 GB on the device for one product               (device)
+  siz-p444-np4       the same with 4 MPI processes, half an atom each: calls on
+                     the device without a large product                 (device)
+  diaz-p222          diamond, C6.0-s2p2d1, 2 x 2 x 2 mesh: calls on the device
+                     without a large product                            (device)
   siz-p444-moved     siz-p444 with the second atom moved by 0.05 Angstrom along
                      x: forces of 1.5e-2 Hartree/bohr                   (device)
   ch4-np4            methane with 4 MPI processes: one of them holds the dense
@@ -105,7 +113,7 @@ The systems
   dia-k211-np4       the same with 4 MPI processes: two share a k point, and one
                      of the two holds its dense matrix
 The last six exist for the dense eigensolver below: they have no run
-NAME-host, and none of their matrix products is large enough for the device.
+NAME-host, and none of their calls is large enough for the device.
 
 PBE0 (M8).  Each system above has a twin with scf.XcType PBE0 and the same
 runs.  Its name has -pbe0 after the system and before the processes and the
@@ -118,16 +126,18 @@ of tools/exx_scf_checks.py; the crystals have the stop criteria of the PBE0
 runs of tools/exx_kpoint_checks.py (scf.criterion 1e-12 and
 scf.exx.outer.criterion 1e-9 per primitive cell).  R_c and the reach of the V
 neighbours are the automatic ones.  The V neighbours reach further than the
-8 bohr of HSE06, so a build has more matrix products, and the two large
-products of a centre atom are larger.  Counted with the CPU build of
-d768793, one build of siz-p444-pbe0 has 235454 matrix products, the largest
-21632 x 897 with inner dimension 1131 (470350 and 31057 x 897 before the half
-build); before the half build, one of diaz-p222-pbe0 had 330742, the largest
-31837 x 897 with inner dimension 2171.  The large products are still two for
-each centre atom or part of one, and the processes of siz-p444-pbe0-np2 and
-siz-p444-pbe0-np4 take the ABFs of siz-p444-np2 and siz-p444-np4.  ch4-pbe0
-and dia-p222-pbe0 have no product large enough for the device (the largest
-of dia-p222-pbe0 is 6092 x 40 with inner dimension 492).
+8 bohr of HSE06, so a build has more matrix products unless they fold.
+Counted with the CPU build of d768793, before the folding, one build of
+siz-p444-pbe0 had 235454 matrix products, the largest 21632 x 897 with inner
+dimension 1131.  With the CPU build of 51cd508 it has 37676, the largest
+1664 x 897 with inner dimension 1131, still two large products for each
+centre atom; diaz-p222-pbe0 has the 6652 products of diaz-p222.  The
+processes take their ABFs by the estimate of section 6.7 of the guide, so
+process 0 of siz-p444-pbe0-np4 has ABFs 1 to 35, 9731 products, the largest
+1664 x 455 with inner dimension 1131.  As in their twins of HSE06, the calls
+of siz-p444-pbe0-np4 and diaz-p222-pbe0 go to the device without a large
+product, and ch4-pbe0 and dia-p222-pbe0 have no call large enough for the
+device.
 
 The dense eigensolver of the device (section 6.5 of the guide).  The CUDA
 build solves a matrix on the device when its dimension reaches a threshold
@@ -154,7 +164,9 @@ the device: the number has to be positive, and 0 in NAME-dfall.
 
 GEMMul8 in the matrix products of the exchange build (section 11 of the
 guide).  The device computes them in FP64 of cuBLAS unless the input says
-scf.gemmul8.enable on.  The systems marked "device" have one more run:
+scf.gemmul8.enable on.  The systems marked "device" with large products
+(all but siz-p444-np4 and diaz-p222, and their twins of PBE0 below) have one
+more run:
 
   NAME-g8     the CUDA executable, and the input gets the line
               scf.gemmul8.enable on: the large products go through the
@@ -212,9 +224,10 @@ SYSTEMS = {}
 
 def add(name, text, ranks=1, large=0, calls=0, base=VARIANTS, dense=("dense",), xc="HSE06"):
     """A system: its input, the numbers of matrix products and of calls of one build that are large enough for the
-    device, its runs and its hybrid functional."""
-    # only a system with products on the device can compare GEMMul8 with FP64 in them
-    SYSTEMS[name] = dict(text=text, ranks=ranks, large=large, calls=calls, device=0 < large, xc=xc,
+    device, its runs and its hybrid functional.  A call is large when its products have 1e9 multiplications in all,
+    a product when it has 1e9 by itself: a call on the device may have no large product."""
+    # only a system with large products can compare GEMMul8 with FP64 in them: GEMMul8 computes the large ones only
+    SYSTEMS[name] = dict(text=text, ranks=ranks, large=large, calls=calls, device=0 < calls, xc=xc,
                          variants=tuple(base) + tuple(dense) + (("g8",) if 0 < large else ()))
 
 
@@ -228,10 +241,13 @@ add("siz-p444-spin", kpoint.make_input("siz_p444_spin", "siz", (1, 1, 1), (4, 4,
     calls=2)
 add("siz-p444-np2", kpoint.make_input("siz_p444_np2", "siz", (1, 1, 1), (4, 4, 4), "HSE06"), ranks=2, large=4,
     calls=2)
-# a part of an atom for each process: ABFs 1 to 34 of 138 on process 0, two large products in each of the 4 calls
-add("siz-p444-np4", kpoint.make_input("siz_p444_np4", "siz", (1, 1, 1), (4, 4, 4), "HSE06"), ranks=4, large=8,
-    calls=4, dense=())
-add("diaz-p222", kpoint.make_input("diaz_p222", "diaz", (1, 1, 1), (2, 2, 2), "HSE06"), large=4, calls=1)
+# a part of an atom for each process: ABFs 1 to 39 of 138 on process 0.  With the columns folded (51cd508) no
+# product of a process is large, and each of the 4 calls has 4.2e9 to 5.1e9 multiplications in all: the calls go to
+# the device, and GEMMul8 has nothing to compute
+add("siz-p444-np4", kpoint.make_input("siz_p444_np4", "siz", (1, 1, 1), (4, 4, 4), "HSE06"), ranks=4, calls=4,
+    dense=())
+# no large product either: one call of 7.3e9 multiplications, the largest product 208 x 897 with inner dimension 2171
+add("diaz-p222", kpoint.make_input("diaz_p222", "diaz", (1, 1, 1), (2, 2, 2), "HSE06"), calls=1)
 # the systems of the dense eigensolver only.  The cluster solver: processes without the dense matrix, and the
 # spin channels on one process and on two.  The band solver: a process for each spin channel, a process for
 # each k point, and processes that share a k point.
@@ -275,9 +291,8 @@ add("siz-p444-pbe0", pbe0_band("siz_p444_pbe0", "siz", (4, 4, 4)), large=4, call
     xc="PBE0")
 add("siz-p444-pbe0-spin", pbe0_band("siz_p444_pbe0_spin", "siz", (4, 4, 4), spin="on"), large=8, calls=2, xc="PBE0")
 add("siz-p444-pbe0-np2", pbe0_band("siz_p444_pbe0_np2", "siz", (4, 4, 4)), ranks=2, large=4, calls=2, xc="PBE0")
-add("siz-p444-pbe0-np4", pbe0_band("siz_p444_pbe0_np4", "siz", (4, 4, 4)), ranks=4, large=8, calls=4, dense=(),
-    xc="PBE0")
-add("diaz-p222-pbe0", pbe0_band("diaz_p222_pbe0", "diaz", (2, 2, 2)), large=4, calls=1, xc="PBE0")
+add("siz-p444-pbe0-np4", pbe0_band("siz_p444_pbe0_np4", "siz", (4, 4, 4)), ranks=4, calls=4, dense=(), xc="PBE0")
+add("diaz-p222-pbe0", pbe0_band("diaz_p222_pbe0", "diaz", (2, 2, 2)), calls=1, xc="PBE0")
 add("siz-p444-pbe0-moved", moved(pbe0_band("siz_p444_pbe0_moved", "siz", (4, 4, 4))), large=4, calls=1, dense=(),
     xc="PBE0")
 add("ch4-pbe0-np4", gamma.RUNS["ch4-pbe0-np4"]["text"], ranks=4, base=("cpu", "gpu"), xc="PBE0")
