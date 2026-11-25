@@ -400,6 +400,16 @@ int openmx_exx_fold_v_neighbours(OpenMXExxState* state, const int period[3], cha
   });
 }
 
+int openmx_exx_fold_columns(OpenMXExxState* state, const int antiperiodic[3], char* error, size_t capacity)
+{
+  return guarded(error,capacity,[&] {
+    if (antiperiodic == nullptr) throw std::invalid_argument("the folding of the columns needs its antiperiodic directions");
+    complete(state,"the folding of the columns needs a prepared structure");
+    // The call changes nothing when it fails; the layout does not depend on it.
+    fold_columns(*state->system,{antiperiodic[0] != 0,antiperiodic[1] != 0,antiperiodic[2] != 0});
+  });
+}
+
 int openmx_exx_report(const OpenMXExxState* state, OpenMXExxReport* report)
 {
   const System* system = prepared(state);

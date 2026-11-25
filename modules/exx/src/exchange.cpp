@@ -78,21 +78,103 @@ void transpose_in_place(double* block, std::size_t rows, std::size_t columns, st
     for (std::size_t r = 0; r < rows; ++r) block[c*rows+r] = scratch[r*columns+c];
 }
 
-// A run of neighbouring columns in a list of columns: the entries first to
-// first+count-1 of the list are the columns column to column+count-1.
-struct Run {
-  std::size_t first, column, count;
+// The columns of D[loc(A), .] of the columns l of the T blocks of a group:
+// column[l], and negative[l] != 0 where D[., l] is minus that column, for a
+// site of a class of folded columns (fold_columns()).  negative is empty
+// when no column is negative.  The first u_b columns belong to B itself and
+// have one sign.
+struct GroupColumns {
+  std::vector<std::size_t> column;
+  std::vector<char> negative;
 };
 
-void find_runs(const std::vector<std::size_t>& column, std::vector<Run>& runs)
+// A run of neighbouring columns in a list of columns: the entries first to
+// first+count-1 of the list are the columns column to column+count-1, all
+// with the same sign.
+struct Run {
+  std::size_t first, column, count;
+  bool negative;
+};
+
+void find_runs(const GroupColumns& columns, std::vector<Run>& runs)
 {
+  const std::vector<std::size_t>& column = columns.column;
+  const auto negative = [&columns](std::size_t l) { return !columns.negative.empty() && columns.negative[l] != 0; };
   runs.clear();
   for (std::size_t l = 0; l < column.size();) {
     std::size_t count = 1;
-    while (l+count < column.size() && column[l+count] == column[l]+count) ++count;
-    runs.push_back(Run{l,column[l],count});
+    while (l+count < column.size() && column[l+count] == column[l]+count && negative(l+count) == negative(l)) ++count;
+    runs.push_back(Run{l,column[l],count,negative(l)});
     l += count;
   }
+}
+
+// G_P[loc(B), .] as [l, mu] from G_P [column, mu], ua values per column,
+// with the signs of the runs.  Its first u_b rows are G_P[B, .].
+void gather_runs(const std::vector<Run>& runs, const double* gp, std::size_t ua, double* gathered)
+{
+  for (const Run& run : runs) {
+    const double* source = gp+run.column*ua;
+    double* target = gathered+run.first*ua;
+    if (!run.negative) {
+      std::copy_n(source,run.count*ua,target);
+    } else {
+      for (std::size_t e = 0; e < run.count*ua; ++e) target[e] = -source[e];
+    }
+  }
+}
+
+// bracket_P[loc(B), .] += X4 [l, mu] with the signs of the runs.  Two runs
+// may add to one column: their additions follow the order of l.
+void scatter_runs(const std::vector<Run>& runs, const double* x4, std::size_t ua, double* bp)
+{
+  for (const Run& run : runs) {
+    double* target = bp+run.column*ua;
+    const double* source = x4+run.first*ua;
+    if (!run.negative) {
+      for (std::size_t e = 0; e < run.count*ua; ++e) target[e] += source[e];
+    } else {
+      for (std::size_t e = 0; e < run.count*ua; ++e) target[e] -= source[e];
+    }
+  }
+}
+
+// bracket_P[B, .] += X3 [nu, mu] at the columns of B, with their sign.
+void scatter_centre(const GroupColumns& columns, std::size_t ub, const double* x3, std::size_t ua, double* bp)
+{
+  const bool negative = !columns.negative.empty() && columns.negative[0] != 0;
+  for (std::size_t nu = 0; nu < ub; ++nu) {
+    double* target = bp+columns.column[nu]*ua;
+    const double* source = x3+nu*ua;
+    if (!negative) {
+      for (std::size_t mu = 0; mu < ua; ++mu) target[mu] += source[mu];
+    } else {
+      for (std::size_t mu = 0; mu < ua; ++mu) target[mu] -= source[mu];
+    }
+  }
+}
+
+// D[A, loc(B)] as [mu, l] and D[A, B] as [nu, mu] from the first u_a rows of
+// D[loc(A), .], s columns wide, with the signs of the columns.
+void density_columns(const double* da, std::size_t s, std::size_t ua, std::size_t ub, const GroupColumns& columns,
+                     std::vector<double>& dl, std::vector<double>& dba)
+{
+  const std::vector<std::size_t>& column = columns.column;
+  const std::size_t lb = column.size();
+  const bool signs = !columns.negative.empty();
+  dl.resize(ua*lb);
+  for (std::size_t mu = 0; mu < ua; ++mu)
+    for (std::size_t l = 0; l < lb; ++l) {
+      const double value = da[mu*s+column[l]];
+      dl[mu*lb+l] = signs && columns.negative[l] != 0 ? -value : value;
+    }
+  const bool negative = signs && columns.negative[0] != 0;
+  dba.resize(ub*ua);
+  for (std::size_t nu = 0; nu < ub; ++nu)
+    for (std::size_t mu = 0; mu < ua; ++mu) {
+      const double value = da[mu*s+column[nu]];
+      dba[nu*ua+mu] = negative ? -value : value;
+    }
 }
 
 // The arrays of one piece of the ABFs of a centre atom: the pieces of
@@ -154,7 +236,8 @@ std::vector<CentrePart> centre_parts(const std::vector<std::size_t>& offset, std
 //   v(g)            its V block [P, Q]
 //   t(x), width(x)  the T blocks of atom x, [(P,mu), l] with width(x) columns
 //   columns(g)      the column of the density matrix of every column l of
-//                   t(atom(g)); the first u_b of them belong to B itself
+//                   t(atom(g)) and its sign (GroupColumns); the first u_b
+//                   of them belong to B itself
 //   first(g, t1)    rows A,      columns B        term (i)
 //   second(g, t2)   rows A,      columns loc(B)   term (ii)
 //   last(t4, backend, pieces)
@@ -215,20 +298,15 @@ void centre_contribution(const System& system, std::size_t a, std::size_t p_firs
   for (std::size_t ib = 0; ib < sink.groups(); ++ib) {
     const std::size_t b = sink.atom(ib);
     const std::size_t nq = system.abf_count[b], ub = system.orbital_count[b], lb = sink.width(b);
-    const std::vector<std::size_t>& column = sink.columns(ib);         // lb entries
-    find_runs(column,runs);
+    const GroupColumns& columns = sink.columns(ib);                    // lb entries
+    find_runs(columns,runs);
 
     // W_{P,B} = sum_Q V_PQ T_Q, equation (10), for the rows P of the part
     w.resize(np*ub*lb);
     backend.multiply(np,ub*lb,nq,1.0,sink.v(ib)+p_first*nq,sink.t(b),0.0,w.data());
 
     // D[A, loc(B)] as [mu, l] and D[A, B] as [nu, mu]
-    dl.resize(ua*lb);
-    for (std::size_t mu = 0; mu < ua; ++mu)
-      for (std::size_t l = 0; l < lb; ++l) dl[mu*lb+l] = da[mu*s+column[l]];
-    dba.resize(ub*ua);
-    for (std::size_t nu = 0; nu < ub; ++nu)
-      for (std::size_t mu = 0; mu < ua; ++mu) dba[nu*ua+mu] = da[mu*s+column[nu]];
+    density_columns(da,s,ua,ub,columns,dl,dba);
 
     backend.parallel_for(pieces,[&](std::size_t c) {
       PieceWork& mine = work[c];
@@ -243,7 +321,7 @@ void centre_contribution(const System& system, std::size_t a, std::size_t p_firs
         double* bp = bracket.get()+p*part;                               // bracket_P [column, mu]
 
         // G_P[loc(B), .] as [l, mu]; its first u_b rows are G_P[B, .]
-        for (const Run& run : runs) std::copy_n(gp+run.column*ua,run.count*ua,mine.gathered.data()+run.first*ua);
+        gather_runs(runs,gp,ua,mine.gathered.data());
 
         // (i)  sum_l W_P[., l] G_P[loc(B), .]
         backend.multiply(ub,ua,lb,1.0,wp,mine.gathered.data(),1.0,mine.k1.data());
@@ -253,18 +331,11 @@ void centre_contribution(const System& system, std::size_t a, std::size_t p_firs
 
         // (iii)  bracket_P[B, .] += W_P D[A, loc(B)]^T
         backend.multiply_transposed(ub,ua,lb,1.0,wp,dl.data(),0.0,mine.x3.data());
-        for (std::size_t nu = 0; nu < ub; ++nu) {
-          double* target = bp+column[nu]*ua;
-          for (std::size_t mu = 0; mu < ua; ++mu) target[mu] += mine.x3[nu*ua+mu];
-        }
+        scatter_centre(columns,ub,mine.x3.data(),ua,bp);
 
         // (iv)  bracket_P[loc(B), .] += W_P^T D[A, B]^T
         backend.transposed_multiply(lb,ua,ub,1.0,wp,dba.data(),0.0,mine.x4.data());
-        for (const Run& run : runs) {
-          double* target = bp+run.column*ua;
-          const double* source = mine.x4.data()+run.first*ua;
-          for (std::size_t e = 0; e < run.count*ua; ++e) target[e] += source[e];
-        }
+        scatter_runs(runs,mine.x4.data(),ua,bp);
       }
     });
 
@@ -370,18 +441,13 @@ void centre_derivatives(const System& system, std::size_t a, std::size_t p_first
   for (std::size_t ib = 0; ib < sink.groups(); ++ib) {
     const std::size_t b = sink.atom(ib);
     const std::size_t nq = system.abf_count[b], ub = system.orbital_count[b], lb = sink.width(b);
-    const std::vector<std::size_t>& column = sink.columns(ib);         // lb entries
-    find_runs(column,runs);
+    const GroupColumns& columns = sink.columns(ib);                    // lb entries
+    find_runs(columns,runs);
 
     w.resize(np*ub*lb);                                                // W_{P,B} = sum_Q V_PQ T_Q
     backend.multiply(np,ub*lb,nq,1.0,sink.v(ib)+p_first*nq,sink.t(b),0.0,w.data());
 
-    dl.resize(ua*lb);                                                  // D[A, loc(B)] as [mu, l]
-    for (std::size_t mu = 0; mu < ua; ++mu)
-      for (std::size_t l = 0; l < lb; ++l) dl[mu*lb+l] = da[mu*s+column[l]];
-    dba.resize(ub*ua);                                                 // D[A, B] as [nu, mu]
-    for (std::size_t nu = 0; nu < ub; ++nu)
-      for (std::size_t mu = 0; mu < ua; ++mu) dba[nu*ua+mu] = da[mu*s+column[nu]];
+    density_columns(da,s,ua,ub,columns,dl,dba);                        // D[A, loc(B)] and D[A, B]
 
     h.resize(np*ub*lb);
     backend.parallel_for(pieces,[&](std::size_t c) {
@@ -396,22 +462,15 @@ void centre_derivatives(const System& system, std::size_t a, std::size_t p_first
         double* hp = h.data()+p*ub*lb;                                 // H_P [nu, l]
 
         // G_P[loc(B), .] as [l, mu]; its first u_b rows are G_P[B, .]
-        for (const Run& run : runs) std::copy_n(gp+run.column*ua,run.count*ua,mine.gathered.data()+run.first*ua);
+        gather_runs(runs,gp,ua,mine.gathered.data());
 
         // (iii)  bracket_P[B, .] += W_P D[A, loc(B)]^T
         backend.multiply_transposed(ub,ua,lb,1.0,wp,dl.data(),0.0,mine.x3.data());
-        for (std::size_t nu = 0; nu < ub; ++nu) {
-          double* target = bp+column[nu]*ua;
-          for (std::size_t mu = 0; mu < ua; ++mu) target[mu] += mine.x3[nu*ua+mu];
-        }
+        scatter_centre(columns,ub,mine.x3.data(),ua,bp);
 
         // (iv)  bracket_P[loc(B), .] += W_P^T D[A, B]^T
         backend.transposed_multiply(lb,ua,ub,1.0,wp,dba.data(),0.0,mine.x4.data());
-        for (const Run& run : runs) {
-          double* target = bp+run.column*ua;
-          const double* source = mine.x4.data()+run.first*ua;
-          for (std::size_t e = 0; e < run.count*ua; ++e) target[e] += source[e];
-        }
+        scatter_runs(runs,mine.x4.data(),ua,bp);
 
         // H_P = D[B, A] G_P[., loc(B)] + G_P[B, .] D[A, loc(B)]
         backend.multiply_transposed(ub,lb,ua,1.0,dba.data(),mine.gathered.data(),0.0,hp);
@@ -506,6 +565,49 @@ std::vector<Site> column_sites(const System& system, std::size_t a)
   return column_sites(system,a,group_neighbours(system,a,false));
 }
 
+// The column of D[loc(A), S] that a site of S(A) reads: the site of S that
+// stands for its class, and whether the column is minus that of the site.
+struct ColumnSite {
+  std::size_t site;
+  bool negative;
+};
+
+// S and the column of every site of S(A).  S is S(A) itself; with the
+// columns of the system folded (fold_columns()) it has one site of every
+// class of sites whose cells agree modulo the period, the first of the class
+// in the order of S(A).  A site at the cell of that site plus nT reads its
+// column times s_T, -1 to the power of the sum of T_i over the antiperiodic
+// directions.
+struct FoldedSites {
+  std::vector<Site> sites;
+  std::map<std::array<int,4>,ColumnSite> index;
+};
+
+FoldedSites folded_sites(const System& system, std::vector<Site> sites)
+{
+  FoldedSites folded;
+  const VFolding& folding = system.folding;
+  if (!folding.columns) {
+    for (std::size_t j = 0; j < sites.size(); ++j) folded.index.emplace(site_key(sites[j]),ColumnSite{j,false});
+    folded.sites = std::move(sites);
+    return folded;
+  }
+  const std::array<int,3>& n = folding.period;
+  std::map<std::array<int,4>,std::size_t> classes;
+  for (const Site& site : sites) {
+    std::array<int,4> key{site.atom,0,0,0};
+    for (std::size_t i = 0; i < 3; ++i) key[i+1] = (site.cell[i]%n[i]+n[i])%n[i];
+    const auto [found, fresh] = classes.emplace(key,folded.sites.size());
+    if (fresh) folded.sites.push_back(site);
+    const Site& first = folded.sites[found->second];
+    int turns = 0;                                    // the sum of T_i over the antiperiodic directions
+    for (std::size_t i = 0; i < 3; ++i)
+      if (folding.antiperiodic[i]) turns += (site.cell[i]-first.cell[i])/n[i];
+    folded.index.emplace(site_key(site),ColumnSite{found->second,turns%2 != 0});
+  }
+  return folded;
+}
+
 class LayoutBlocks;
 
 // Blocks is the store of the blocks of K: at(key) gives the block of a key,
@@ -513,17 +615,20 @@ class LayoutBlocks;
 // (LayoutBlocks) the sink also gathers D and adds the last result in pieces.
 // The sink of the half build (half) goes through the V neighbours of
 // half_pair() and the centre itself, and S(A) has the sites of these only.
+// The columns of D[loc(A), .] are those of the sites of S (folded_sites()):
+// S(A), or one site of every class with the columns of the system folded.
 template <class Blocks>
 class SiteSink {
  public:
   SiteSink(const System& system, std::size_t a, double factor, Blocks& k, bool half = false)
       : system_(system), a_(a), factor_(factor), k_(k), half_(half), neighbours_(group_neighbours(system,a,half)),
-        sites_(column_sites(system,a,neighbours_)), offset_(1,0)
+        offset_(1,0)
   {
-    for (const Site& site : sites_) {
-      index_.emplace(site_key(site),offset_.size()-1);
+    FoldedSites folded = folded_sites(system,column_sites(system,a,neighbours_));
+    sites_ = std::move(folded.sites);
+    index_ = std::move(folded.index);
+    for (const Site& site : sites_)
       offset_.push_back(offset_.back()+system.orbital_count[static_cast<std::size_t>(site.atom)]);
-    }
     if (half) {
       const std::vector<double>& block = system.v[a][0];
       onsite_.resize(block.size());
@@ -658,17 +763,26 @@ class SiteSink {
     }
   }
 
-  // The number of sites of S.
+  // The number of sites of S, and whether S has one site of every class of
+  // folded columns.
   std::size_t site_count() const noexcept { return sites_.size(); }
+  bool folds_columns() const noexcept { return system_.folding.columns; }
 
-  const std::vector<std::size_t>& columns(std::size_t ib)
+  const GroupColumns& columns(std::size_t ib)
   {
     const Site& b = neighbour(ib);
-    columns_.clear();
+    columns_.column.clear();
+    columns_.negative.clear();
+    bool negative = false;
     for (const Site& c : system_.c_neighbours[static_cast<std::size_t>(b.atom)]) {
-      const std::size_t j = index_.at(site_key(Site{c.atom,sum(b.cell,c.cell)}));
-      for (std::size_t column = offset_[j]; column < offset_[j+1]; ++column) columns_.push_back(column);
+      const ColumnSite& site = index_.at(site_key(Site{c.atom,sum(b.cell,c.cell)}));
+      for (std::size_t column = offset_[site.site]; column < offset_[site.site+1]; ++column) {
+        columns_.column.push_back(column);
+        columns_.negative.push_back(site.negative ? 1 : 0);
+      }
+      negative = negative || site.negative;
     }
+    if (!negative) columns_.negative.clear();
     return columns_;
   }
 
@@ -757,10 +871,10 @@ class SiteSink {
   bool half_;
   std::vector<std::size_t> neighbours_;             // the V neighbour of every group
   std::vector<double> onsite_;                      // half the V block of the centre itself (half build)
-  std::vector<Site> sites_;                         // S
   std::vector<std::size_t> offset_;                 // first column of every site of S
-  std::map<std::array<int,4>,std::size_t> index_;   // position of a site in S
-  std::vector<std::size_t> columns_;
+  std::vector<Site> sites_;                         // S
+  std::map<std::array<int,4>,ColumnSite> index_;    // the column of every site of S(A)
+  GroupColumns columns_;
   std::vector<std::size_t> block_;                  // the block in the layout of every pair (i, j) of a site of
                                                     // loc(A) and a site of S, at i |S| + j; from density()
 };
@@ -879,13 +993,13 @@ class GammaSink {
     const Folded& f = folded(atom);
     return f.t.empty() ? system_.t[atom].data() : f.t.data();
   }
-  std::size_t width(std::size_t atom) { return folded(atom).column.size(); }
+  std::size_t width(std::size_t atom) { return folded(atom).columns.column.size(); }
 
   // The orbitals of loc(A): the rows of D[loc(A), .] and of the last result.
-  const std::vector<std::size_t>& rows() { return folded(a_).column; }
-  const std::vector<std::size_t>& columns(std::size_t g) { return folded(atoms_[g]).column; }
+  const std::vector<std::size_t>& rows() { return folded(a_).columns.column; }
+  const GroupColumns& columns(std::size_t g) { return folded(atoms_[g]).columns; }
   // The orbital of every column of the folded T blocks of an atom.
-  const std::vector<std::size_t>& orbitals(std::size_t atom) { return folded(atom).column; }
+  const std::vector<std::size_t>& orbitals(std::size_t atom) { return folded(atom).columns.column; }
 
   void first(std::size_t g, const double* values)
   {
@@ -896,7 +1010,7 @@ class GammaSink {
 
   void second(std::size_t g, const double* values)
   {
-    const std::vector<std::size_t>& column = folded(atoms_[g]).column;
+    const std::vector<std::size_t>& column = folded(atoms_[g]).columns.column;
     const std::size_t ua = system_.orbital_count[a_], lb = column.size();
     for (std::size_t mu = 0; mu < ua; ++mu)
       for (std::size_t l = 0; l < lb; ++l) k_[(offset_[a_]+mu)*n_+column[l]] += factor_*values[mu*lb+l];
@@ -906,7 +1020,7 @@ class GammaSink {
   // add to different memory, and every element receives one addition.
   void last(const double* values, const DenseBackend& backend, std::size_t pieces)
   {
-    const std::vector<std::size_t>& row = folded(a_).column;
+    const std::vector<std::size_t>& row = folded(a_).columns.column;
     backend.parallel_for(pieces,[&](std::size_t c) {
       for (std::size_t lambda = c*row.size()/pieces; lambda < (c+1)*row.size()/pieces; ++lambda)
         for (std::size_t column = 0; column < n_; ++column) k_[row[lambda]*n_+column] += factor_*values[lambda*n_+column];
@@ -918,7 +1032,7 @@ class GammaSink {
 
   // The T blocks of an atom with one column for every orbital of loc(atom).
   struct Folded {
-    std::vector<std::size_t> column;   // the orbital of every column
+    GroupColumns columns;              // the orbital of every column, all positive
     std::vector<double> t;             // empty if no two C neighbours are images of one atom:
                                        // the stored T blocks have these columns already
   };
@@ -928,7 +1042,7 @@ class GammaSink {
   const Folded& folded(std::size_t x)
   {
     Folded& f = folded_[x];
-    if (!f.column.empty()) return f;
+    if (!f.columns.column.empty()) return f;
     const std::vector<Site>& loc = system_.c_neighbours[x];
     std::vector<std::size_t> begin(system_.orbital_count.size(),none);   // first column of every atom
     bool images = false;
@@ -938,12 +1052,12 @@ class GammaSink {
         images = true;
         continue;
       }
-      begin[c] = f.column.size();
-      for (std::size_t lambda = 0; lambda < system_.orbital_count[c]; ++lambda) f.column.push_back(offset_[c]+lambda);
+      begin[c] = f.columns.column.size();
+      for (std::size_t lambda = 0; lambda < system_.orbital_count[c]; ++lambda) f.columns.column.push_back(offset_[c]+lambda);
     }
     if (images) {
       const std::size_t rows = system_.abf_count[x]*system_.orbital_count[x];
-      const std::size_t ell = system_.c_offset[x].back(), width = f.column.size();
+      const std::size_t ell = system_.c_offset[x].back(), width = f.columns.column.size();
       f.t.assign(rows*width,0.0);
       for (std::size_t row = 0; row < rows; ++row) {
         const double* source = system_.t[x].data()+row*ell;
@@ -1186,6 +1300,16 @@ struct DeviceGroup {
   const double* v = nullptr;               // its V block on the host, n_P x n_Q
   double v_scale = 1.0;                    // v over the stored V block (Sink::v_scale())
   std::vector<long long> column;           // the column of D of every column l of the T blocks of B
+  // Folded columns (fold_columns()) with a negative sign, or with a column
+  // of D for two columns l: the gathers of Gg and D[A, loc(B)] and term
+  // (iv) go in moves of lists, each with one sign and different columns of
+  // D, which column_moves() makes.  Empty: one move with `column`.
+  struct Moved {
+    double alpha;
+    std::vector<long long> l, column;
+  };
+  std::vector<Moved> moved;
+  double sign = 1.0;                       // of the columns of B itself
   long long first = 0, first_stride = 0;   // term (i): row mu of K at first + mu first_stride
   // Term (ii): rows (site of loc(B), mu) with lists in the site form, or row
   // mu at second + mu second_stride and the columns `column` in the Gamma form.
@@ -1207,6 +1331,37 @@ struct DeviceCentre {
   std::vector<long long> row;
   std::vector<DeviceGroup> groups;
 };
+
+// The moves of the columns of a group (DeviceGroup::moved): the k-th
+// appearance of a column of D goes to layer k, and a layer to one move for
+// each sign.  A move with add then adds to different columns of D, and the
+// additions to one column follow the order of l, as on the host.  Empty
+// when every sign is positive and no column of D appears twice.
+std::vector<DeviceGroup::Moved> column_moves(const GroupColumns& columns)
+{
+  const std::vector<std::size_t>& column = columns.column;
+  std::map<std::size_t,std::size_t> seen;          // the appearances of every column of D so far
+  std::vector<std::size_t> layer(column.size());
+  std::size_t layers = 0;
+  for (std::size_t l = 0; l < column.size(); ++l) {
+    layer[l] = seen[column[l]]++;
+    layers = std::max(layers,layer[l]+1);
+  }
+  std::vector<DeviceGroup::Moved> moved;
+  if (layers <= 1 && columns.negative.empty()) return moved;
+  for (std::size_t k = 0; k < layers; ++k)
+    for (const bool negative : {false,true}) {
+      DeviceGroup::Moved move{negative ? -1.0 : 1.0,{},{}};
+      for (std::size_t l = 0; l < column.size(); ++l) {
+        const bool minus = !columns.negative.empty() && columns.negative[l] != 0;
+        if (layer[l] != k || minus != negative) continue;
+        move.l.push_back(static_cast<long long>(l));
+        move.column.push_back(static_cast<long long>(column[l]));
+      }
+      if (!move.l.empty()) moved.push_back(std::move(move));
+    }
+  return moved;
+}
 
 // The sizes of the arrays of one centre atom on the device.  dt is the
 // derivative with respect to the T blocks of the centre (the forces only),
@@ -1239,10 +1394,11 @@ struct DeviceSizes {
 };
 
 // The sizes of np ABFs of centre a with the columns s, the width ell of
-// loc(A), the groups (atom, width of loc(B), sites of loc(B)) and the rows of
-// the gathered D (site form; 0 in the Gamma form).
+// loc(A), the groups (atom, width of loc(B), sites of loc(B), and the
+// entries of the lists of DeviceGroup::moved at most) and the rows of the
+// gathered D (site form; 0 in the Gamma form).
 DeviceSizes device_sizes(const System& system, std::size_t a, std::size_t np, std::size_t s, std::size_t ell,
-                         const std::vector<std::array<std::size_t,3>>& groups, std::size_t gathered_rows, bool site)
+                         const std::vector<std::array<std::size_t,4>>& groups, std::size_t gathered_rows, bool site)
 {
   const std::size_t ua = system.orbital_count[a];
   const auto product = [](std::size_t m, std::size_t n, std::size_t k) {
@@ -1256,7 +1412,7 @@ DeviceSizes device_sizes(const System& system, std::size_t a, std::size_t np, st
   z.list = site ? 2*gathered_rows : ell;
   z.length = site ? gathered_rows : 0;
   z.list += ua*np;                                  // the rows of G in the order (mu, P)
-  for (const std::array<std::size_t,3>& group : groups) {
+  for (const std::array<std::size_t,4>& group : groups) {
     const std::size_t b = group[0], lb = group[1], sites = group[2];
     const std::size_t nq = system.abf_count[b], ub = system.orbital_count[b];
     // W = V T_B, and the four terms, which have the same size.
@@ -1271,7 +1427,7 @@ DeviceSizes device_sizes(const System& system, std::size_t a, std::size_t np, st
     z.x3 = std::max(z.x3,ub*np*ua);
     z.wq = std::max(z.wq,nq*ub*lb);
     z.v += np*nq;
-    z.list += lb+ub*np+(site ? 2*sites*ua : 0);
+    z.list += lb+ub*np+(site ? 2*sites*ua : 0)+group[3];
     z.length += site ? sites*ua : 0;
   }
   return z;
@@ -1359,6 +1515,7 @@ struct DeviceLists {
   std::size_t local = 0, stored = 0, gathered = 0, row = 0, g_rows = 0;
   struct Group {
     std::size_t column, w_rows, second_stored, second_local, second_length, v;
+    std::vector<std::array<std::size_t,2>> moved;   // the lists l and column of every move
   };
   std::vector<Group> groups;
 };
@@ -1409,6 +1566,7 @@ DeviceLists upload_lists(const System& system, const CentrePart& share, const De
     at.groups[ib].second_stored = append(group.second_stored);
     at.groups[ib].second_local = append(group.second_local);
     at.groups[ib].second_length = append_length(group.second_length);
+    for (const DeviceGroup::Moved& move : group.moved) at.groups[ib].moved.push_back({append(move.l),append(move.column)});
     at.groups[ib].v = v.size();
     const std::size_t nq = system.abf_count[b];
     v.insert(v.end(),group.v+share.first*nq,group.v+share.last*nq);       // the rows of the ABFs of the part
@@ -1456,16 +1614,25 @@ void device_group(const System& system, const CentrePart& share, const DeviceCen
   using Side = DeviceWork::Side;
   const auto signed_size = [](std::size_t value) { return static_cast<long long>(value); };
   const long long* column = d.list+at.groups[ib].column;
+  const std::vector<std::array<std::size_t,2>>& moved = at.groups[ib].moved;
   work.multiply(np,ub*lb,nq,d.v+at.groups[ib].v,d.t+d.t_offset[b],d.w);                  // W = V T_B
   work.move(ub*np,lb,nullptr,1.0,false,d.wn,Side{signed_size(lb),nullptr,1,nullptr},d.w,
             Side{0,d.list+at.groups[ib].w_rows,1,nullptr});                                // Wn
-  work.move(ua*np,lb,nullptr,1.0,false,d.gg,Side{signed_size(lb),nullptr,1,nullptr},d.g,
-            Side{0,d.list+at.g_rows,1,column});                                            // Gg
+  if (moved.empty())
+    work.move(ua*np,lb,nullptr,1.0,false,d.gg,Side{signed_size(lb),nullptr,1,nullptr},d.g,
+              Side{0,d.list+at.g_rows,1,column});                                          // Gg
+  for (std::size_t m = 0; m < moved.size(); ++m)
+    work.move(ua*np,group.moved[m].l.size(),nullptr,group.moved[m].alpha,false,d.gg,
+              Side{signed_size(lb),nullptr,1,d.list+moved[m][0]},d.g,Side{0,d.list+at.g_rows,1,d.list+moved[m][1]});
   work.move(ua*np,ub,nullptr,1.0,false,d.gbp,Side{signed_size(ub),nullptr,1,nullptr},d.gg,
             Side{signed_size(lb),nullptr,1,nullptr});                                      // GBp
-  work.move(ua,lb,nullptr,1.0,false,d.dl,Side{signed_size(lb),nullptr,1,nullptr},d.dloc,
-            Side{signed_size(s),nullptr,1,column});                                        // D[A, loc(B)]
-  work.move(ub,ua,nullptr,1.0,false,d.dba,Side{signed_size(ua),nullptr,1,nullptr},d.dloc,
+  if (moved.empty())
+    work.move(ua,lb,nullptr,1.0,false,d.dl,Side{signed_size(lb),nullptr,1,nullptr},d.dloc,
+              Side{signed_size(s),nullptr,1,column});                                      // D[A, loc(B)]
+  for (std::size_t m = 0; m < moved.size(); ++m)
+    work.move(ua,group.moved[m].l.size(),nullptr,group.moved[m].alpha,false,d.dl,
+              Side{signed_size(lb),nullptr,1,d.list+moved[m][0]},d.dloc,Side{signed_size(s),nullptr,1,d.list+moved[m][1]});
+  work.move(ub,ua,nullptr,group.sign,false,d.dba,Side{signed_size(ua),nullptr,1,nullptr},d.dloc,
             Side{0,column,signed_size(s),nullptr});                                        // D[A, B] as [nu][mu]
   if (use == DeviceUse::build) {
     work.multiply_transposed(ua,ub,np*lb,d.gg,d.wn,d.first);                               // (i)
@@ -1473,10 +1640,14 @@ void device_group(const System& system, const CentrePart& share, const DeviceCen
   }
   work.multiply_transposed(ub*np,ua,lb,d.wn,d.dl,d.x3);                                    // (iii)
   work.transposed_multiply(ua,np*lb,ub,d.dba,d.wn,d.x4);                                   // (iv)
-  work.move(ub,np*ua,nullptr,1.0,true,d.bracket,Side{0,column,signed_size(s),nullptr},d.x3,
+  work.move(ub,np*ua,nullptr,group.sign,true,d.bracket,Side{0,column,signed_size(s),nullptr},d.x3,
             Side{signed_size(np*ua),nullptr,1,nullptr});                                   // bracket[., B] += X3
-  work.move(ua*np,lb,nullptr,1.0,true,d.bracket,Side{0,d.list+at.g_rows,1,column},d.x4,
-            Side{signed_size(lb),nullptr,1,nullptr});                                      // bracket[., loc(B)] += X4
+  if (moved.empty())
+    work.move(ua*np,lb,nullptr,1.0,true,d.bracket,Side{0,d.list+at.g_rows,1,column},d.x4,
+              Side{signed_size(lb),nullptr,1,nullptr});                                    // bracket[., loc(B)] += X4
+  for (std::size_t m = 0; m < moved.size(); ++m)
+    work.move(ua*np,group.moved[m].l.size(),nullptr,group.moved[m].alpha,true,d.bracket,
+              Side{0,d.list+at.g_rows,1,d.list+moved[m][1]},d.x4,Side{signed_size(lb),nullptr,1,d.list+moved[m][0]});
 }
 
 // The contribution of the ABFs of a part of one centre atom on the device,
@@ -1696,10 +1867,10 @@ class DeviceBlocks {
   DeviceSizes sizes(std::size_t a, std::size_t np)
   {
     const SiteSink<LayoutBlocks> sink(system_,a,factor_,store_,half_);
-    std::vector<std::array<std::size_t,3>> groups;
+    std::vector<std::array<std::size_t,4>> groups;
     for (std::size_t g = 0; g < sink.groups(); ++g) {
-      const std::size_t atom = sink.atom(g);
-      groups.push_back({atom,system_.c_offset[atom].back(),system_.c_neighbours[atom].size()});
+      const std::size_t atom = sink.atom(g), lb = system_.c_offset[atom].back();
+      groups.push_back({atom,lb,system_.c_neighbours[atom].size(),sink.folds_columns() ? 2*lb : 0});
     }
     const std::size_t ell = system_.c_offset[a].back();
     return device_sizes(system_,a,np,sink.size(),ell,groups,ell*sink.site_count(),true);
@@ -1721,7 +1892,10 @@ class DeviceBlocks {
       group.atom = sink.atom(ib);
       group.v = sink.v(ib);
       group.v_scale = sink.v_scale(ib);
-      for (const std::size_t column : sink.columns(ib)) group.column.push_back(static_cast<long long>(column));
+      const GroupColumns& columns = sink.columns(ib);
+      for (const std::size_t column : columns.column) group.column.push_back(static_cast<long long>(column));
+      group.moved = column_moves(columns);
+      group.sign = !columns.negative.empty() && columns.negative[0] != 0 ? -1.0 : 1.0;
       group.first = sink.device_first(ib);
       group.first_stride = static_cast<long long>(system_.orbital_count[group.atom]);
       sink.device_second(ib,group.second_stored,group.second_local,group.second_length);
@@ -1767,8 +1941,8 @@ class DeviceGamma {
   DeviceSizes sizes(std::size_t a, std::size_t np)
   {
     GammaSink sink(system_,a,factor_,std::span<double>(),offset_,half_);
-    std::vector<std::array<std::size_t,3>> groups;
-    for (std::size_t g = 0; g < sink.groups(); ++g) groups.push_back({sink.atom(g),sink.width(sink.atom(g)),0});
+    std::vector<std::array<std::size_t,4>> groups;
+    for (std::size_t g = 0; g < sink.groups(); ++g) groups.push_back({sink.atom(g),sink.width(sink.atom(g)),0,0});
     return device_sizes(system_,a,np,offset_.back(),sink.width(a),groups,0,false);
   }
 
@@ -1791,7 +1965,7 @@ class DeviceGamma {
       group.atom = sink.atom(g);
       group.v = sink.v(g);
       group.v_scale = sink.v_scale(g);
-      for (const std::size_t column : sink.columns(g)) group.column.push_back(static_cast<long long>(column));
+      for (const std::size_t column : sink.columns(g).column) group.column.push_back(static_cast<long long>(column));
       group.first = static_cast<long long>(offset_[a]*n+offset_[group.atom]);
       group.first_stride = static_cast<long long>(n);
       group.second = static_cast<long long>(offset_[a]*n);
@@ -2106,7 +2280,7 @@ BuildCosts build_costs(const System& system, bool sites, bool half)
     std::size_t s = n;                                 // the columns of D[loc(A), .]
     if (sites) {
       s = 0;
-      for (const Site& site : column_sites(system,a,groups))
+      for (const Site& site : folded_sites(system,column_sites(system,a,groups)).sites)
         s += system.orbital_count[static_cast<std::size_t>(site.atom)];
     }
     // G and the last product, and the four terms and W of every group: a V

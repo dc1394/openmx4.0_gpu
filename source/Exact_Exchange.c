@@ -49,6 +49,7 @@ struct OpenMXExactExchangeState {
   MPI_Comm comm;                    /* communicator of the last preparation or collection */
   int orbitals;                     /* N of the present structure */
   int sites;                        /* form of the matrices below: 0 N x N (Gamma point), 1 blocks of the site form */
+  int folded;                       /* the site form is folded by input.fold_period, its V neighbours and columns */
   long block_count;                 /* site form: the blocks M_xy(R) of the list of modules/exx */
   int *block_atoms;                 /* x and y of every block, counted from 0 */
   int *block_cell;                  /* R of every block, three integers */
@@ -534,6 +535,7 @@ void Exact_Exchange_Prepare(OpenMXExactExchangeState *state, const OpenMXAtomicV
   /* The exchange matrix of an earlier structure is not carried over. */
   state->comm = comm;
   state->prepared = 0;
+  state->folded = 0;
   state->spin_channels = 0;
   state->collecting = 0;
   state->exchange_ready = 0;
@@ -684,11 +686,17 @@ void Exact_Exchange_Prepare(OpenMXExactExchangeState *state, const OpenMXAtomicV
      become one site with the sum of their V blocks. K(k) at the points of
      the mesh, E_x and its derivative keep their values within rounding,
      and a build goes through one V neighbour of every class. Every process
-     folds the added blocks in the same way. */
+     folds the added blocks in the same way. The columns of the builds fold
+     by the same period: the columns of D of the sites of one class differ
+     by the sign of the mesh only, and the products with the T blocks of a
+     centre take one site of every class. */
   const int *period=state->input.fold_period;
   const int folded=state->sites && 0<period[0] && 0<period[1] && 0<period[2];
   if (folded && openmx_exx_fold_v_neighbours(state->module,period,error,sizeof(error))!=0)
     ExactExchange_Abort(comm,"preparation",error);
+  if (folded && openmx_exx_fold_columns(state->module,state->input.fold_antiperiodic,error,sizeof(error))!=0)
+    ExactExchange_Abort(comm,"preparation",error);
+  state->folded = folded;
   if (state->sites) ExactExchange_List_Blocks(state,comm);
   state->prepared = 1;
   state->time_prepare += MPI_Wtime()-start;
@@ -718,8 +726,11 @@ void Exact_Exchange_Prepare(OpenMXExactExchangeState *state, const OpenMXAtomicV
     printf("<EXX>  %d atoms, %d orbitals, %ld ABFs, %ld C sites, %ld V sites (%.2f s)\n",
            atom_count,orbitals,abfs,c_sites,v_sites,MPI_Wtime()-start);
     if (folded) {
+      const int *sign=state->input.fold_antiperiodic;
       printf("<EXX>  V sites folded by the period of the k mesh, %d x %d x %d cells: %ld of %ld\n",
              period[0],period[1],period[2],folded_sites,v_sites);
+      printf("<EXX>  columns of D folded by the same period; the sign of D over one period along a1, a2, a3: %c %c %c\n",
+             sign[0] ? '-' : '+',sign[1] ? '-' : '+',sign[2] ? '-' : '+');
     }
     if (state->input.functional==OPENMX_EXACT_EXCHANGE_PBE0) {
       printf("<EXX>  truncated Coulomb interaction: R_c %.6f bohr; V sites up to the larger ABF radius plus %.6f bohr;"
@@ -805,6 +816,18 @@ void Exact_Exchange_Collect_K(OpenMXExactExchangeState *state, int spin, double 
   if (!state->sites) ExactExchange_Abort(state->comm,"density matrix","the solver of a k mesh met the Gamma form");
   if (basis_count!=n || spin<0 || state->spin_channels<=spin || state_count<0 || stride<state_count || !(0.0<weight_sum))
     ExactExchange_Abort(state->comm,"density matrix","the vectors of the solver have an unexpected size or spin");
+
+  /* A folded site form holds for the points of its mesh only: k_i n_i is
+     an integer, or half an integer along an antiperiodic direction, up to
+     the shift of the solver (Shift_K_Point). */
+  if (state->folded) {
+    const double k[3]={k1,k2,k3};
+    for (int i=0; i<3; i++) {
+      const double turns=k[i]*(double)state->input.fold_period[i]-(state->input.fold_antiperiodic[i] ? 0.5 : 0.0);
+      if (1.0e-8<fabs(turns-floor(turns+0.5)))
+        ExactExchange_Abort(state->comm,"density matrix","a k point of the solver is not a point of the folded mesh");
+    }
+  }
 
   /* The states beyond the last one with an amplitude do not contribute. */
   int occupied=state_count;

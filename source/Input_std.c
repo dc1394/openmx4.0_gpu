@@ -5205,6 +5205,12 @@ void Input_std(char *file, OpenMXCoreContext *core)
       exx_input.fold_period[0] = regular ? Kspace_grid1 : 0;
       exx_input.fold_period[1] = regular ? Kspace_grid2 : 0;
       exx_input.fold_period[2] = regular ? Kspace_grid3 : 0;
+      /* REGULAR puts the points at -1/2 + (2i+1)/(2n): with an even n they
+         lie half a point away from Gamma, and D changes its sign over the
+         period */
+      exx_input.fold_antiperiodic[0] = (regular && way_of_kpoint==1 && Kspace_grid1%2==0) ? 1 : 0;
+      exx_input.fold_antiperiodic[1] = (regular && way_of_kpoint==1 && Kspace_grid2%2==0) ? 1 : 0;
+      exx_input.fold_antiperiodic[2] = (regular && way_of_kpoint==1 && Kspace_grid3%2==0) ? 1 : 0;
     }
     /* PBE0 with R_c beyond the radius of the sphere of the volume of the
        cell times the number of k points counts the exchange with the

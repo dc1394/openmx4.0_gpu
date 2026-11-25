@@ -647,26 +647,27 @@ done:
 }
 
 /* The V neighbours folded by the period of a k mesh (section 6.4 of the
-   guide).  state is a prepared structure with the list of its blocks; k and
-   gradient are the matrix and the derivative of the Gamma form for all atoms
-   with the factor -0.25.  With the period 1 the site form of the Gamma
-   point, D_xy(R) = D_xy, gives them again, through the centre atoms and
-   through the pairs of sites with the half weights.  The state is prepared
-   again at the end, with the list of its blocks.  Returns 0 when every check
-   holds and the line of the first one that fails otherwise. */
+   guide), and then the columns as well.  state is a prepared structure with
+   the list of its blocks; k and gradient are the matrix and the derivative
+   of the Gamma form for all atoms with the factor -0.25.  With the period 1
+   the site form of the Gamma point, D_xy(R) = D_xy, gives them again,
+   through the centre atoms and through the pairs of sites with the half
+   weights.  The state is prepared again at the end, with the list of its
+   blocks.  Returns 0 when every check holds and the line of the first one
+   that fails otherwise. */
 static int folded_work(OpenMXExxState *state, const OpenMXExxOptions *options, const OpenMXExxGeometry *geometry,
                        const double *d, const double *k, const double *gradient)
 {
 #define EXPECT(expression) do { if (!(expression)) { \
   fprintf(stderr,"line %d: %s\n",__LINE__,#expression); failed = __LINE__; goto done; } } while (0)
-  const int gamma_period[3] = {1, 1, 1}, zero_period[3] = {1, 0, 1};
+  const int gamma_period[3] = {1, 1, 1}, zero_period[3] = {1, 0, 1}, no_sign[3] = {0, 0, 0};
   const int first[ATOMS] = {0, 5, 6};   /* the first orbital of every atom */
   const double scale = largest(k, N * N), steepest = largest(gradient, 3 * ATOMS);
   double *folded_d = NULL, *folded_k = NULL, *weights[ATOMS] = {NULL, NULL, NULL};
   const double *read[ATOMS];
   double other[N * N], through[3 * ATOMS];
   char message[160];
-  int failed = 0, a, i, j, row, column, prepared_count[ATOMS], prepared_sum = 0, folded_sum = 0;
+  int failed = 0, a, i, j, row, column, prepared_count[ATOMS], prepared_sum = 0, folded_sum = 0, pass;
   long blocks, block, total;
   size_t elements, offset, element;
 
@@ -683,6 +684,8 @@ static int folded_work(OpenMXExxState *state, const OpenMXExxOptions *options, c
   EXPECT(openmx_exx_fold_v_neighbours(NULL, gamma_period, message, sizeof message) != 0 && strlen(message) > 0);
   EXPECT(openmx_exx_fold_v_neighbours(state, NULL, message, sizeof message) != 0 && strlen(message) > 0);
   EXPECT(openmx_exx_fold_v_neighbours(state, zero_period, message, sizeof message) != 0 && strlen(message) > 0);
+  EXPECT(openmx_exx_fold_columns(NULL, no_sign, message, sizeof message) != 0 && strlen(message) > 0);
+  EXPECT(openmx_exx_fold_columns(state, no_sign, message, sizeof message) != 0 && strlen(message) > 0);
   EXPECT(openmx_exx_block_count(state) == blocks);
   for (a = 0; a < ATOMS; ++a) EXPECT(openmx_exx_v_neighbours(state, a) == prepared_count[a]);
   /* With the period 1 an atom keeps one site of every atom at most.  The
@@ -712,40 +715,55 @@ static int folded_work(OpenMXExxState *state, const OpenMXExxOptions *options, c
         folded_d[element++] = d[(first[row] + i) * N + first[column] + j];
   }
   EXPECT(element == elements);
-  EXPECT(openmx_exx_add_blocks(state, 0, ATOMS, -0.25, folded_d, folded_k, NULL, message, sizeof message) == 0);
-  /* The sum over the cells is the matrix of the Gamma form. */
-  memset(other, 0, sizeof other);
-  for (block = 0; block < blocks; ++block) {
-    EXPECT(openmx_exx_block(state, block, &row, &column, NULL, &offset) == 0);
-    for (i = 0; i < openmx_exx_atom_orbitals(state, row); ++i)
-      for (j = 0; j < openmx_exx_atom_orbitals(state, column); ++j)
-        other[(first[row] + i) * N + first[column] + j] += folded_k[offset++];
-  }
-  for (i = 0; i < N * N; ++i) EXPECT(fabs(other[i] - k[i]) <= 1.0e-12 * scale);
-  EXPECT(close_to(openmx_exx_energy_gamma(elements, folded_d, folded_k), openmx_exx_energy_gamma(N * N, d, k),
-                  1.0e-12));
-  /* The derivative through the centre atoms, and through the pairs of sites
-     of the preparation with the half weights of the folded blocks. */
-  memset(through, 0, sizeof through);
-  EXPECT(openmx_exx_add_position_gradient_blocks(state, 0, ATOMS, -0.25, folded_d, through, NULL, message,
-                                                 sizeof message) == 0);
-  for (i = 0; i < 3 * ATOMS; ++i) EXPECT(fabs(through[i] - gradient[i]) <= 1.0e-11 * steepest);
   total = openmx_exx_abf_count(state);
   for (a = 0; a < ATOMS; ++a) {
     weights[a] = (double *)calloc(openmx_exx_atom_table_elements(state, a), sizeof **weights);
     EXPECT(weights[a] != NULL);
     read[a] = weights[a];
   }
-  EXPECT(openmx_exx_add_block_weights_blocks_half_abfs(state, 0, total, -0.25, folded_d, weights, NULL, message,
-                                                       sizeof message) == 0);
-  memset(through, 0, sizeof through);
-  EXPECT(openmx_exx_add_position_gradient_pairs(state, read, 0, 1, through, message, sizeof message) == 0);
-  for (i = 0; i < 3 * ATOMS; ++i) EXPECT(fabs(through[i] - gradient[i]) <= 1.0e-11 * steepest);
-  /* A new preparation discards the folding. */
+  /* The second pass folds the columns as well, by the period 1 without a
+     sign.  The list of the blocks stays, and the columns are not folded
+     again. */
+  for (pass = 0; pass < 2; ++pass) {
+    if (pass == 1) {
+      EXPECT(openmx_exx_fold_columns(state, NULL, message, sizeof message) != 0 && strlen(message) > 0);
+      EXPECT(openmx_exx_fold_columns(state, no_sign, message, sizeof message) == 0 && message[0] == '\0');
+      EXPECT(openmx_exx_block_count(state) == blocks);
+      EXPECT(openmx_exx_fold_columns(state, no_sign, message, sizeof message) != 0 && strlen(message) > 0);
+    }
+    memset(folded_k, 0, elements * sizeof *folded_k);
+    EXPECT(openmx_exx_add_blocks(state, 0, ATOMS, -0.25, folded_d, folded_k, NULL, message, sizeof message) == 0);
+    /* The sum over the cells is the matrix of the Gamma form. */
+    memset(other, 0, sizeof other);
+    for (block = 0; block < blocks; ++block) {
+      EXPECT(openmx_exx_block(state, block, &row, &column, NULL, &offset) == 0);
+      for (i = 0; i < openmx_exx_atom_orbitals(state, row); ++i)
+        for (j = 0; j < openmx_exx_atom_orbitals(state, column); ++j)
+          other[(first[row] + i) * N + first[column] + j] += folded_k[offset++];
+    }
+    for (i = 0; i < N * N; ++i) EXPECT(fabs(other[i] - k[i]) <= 1.0e-12 * scale);
+    EXPECT(close_to(openmx_exx_energy_gamma(elements, folded_d, folded_k), openmx_exx_energy_gamma(N * N, d, k),
+                    1.0e-12));
+    /* The derivative through the centre atoms, and through the pairs of sites
+       of the preparation with the half weights of the folded blocks. */
+    memset(through, 0, sizeof through);
+    EXPECT(openmx_exx_add_position_gradient_blocks(state, 0, ATOMS, -0.25, folded_d, through, NULL, message,
+                                                   sizeof message) == 0);
+    for (i = 0; i < 3 * ATOMS; ++i) EXPECT(fabs(through[i] - gradient[i]) <= 1.0e-11 * steepest);
+    for (a = 0; a < ATOMS; ++a) memset(weights[a], 0, openmx_exx_atom_table_elements(state, a) * sizeof **weights);
+    EXPECT(openmx_exx_add_block_weights_blocks_half_abfs(state, 0, total, -0.25, folded_d, weights, NULL, message,
+                                                         sizeof message) == 0);
+    memset(through, 0, sizeof through);
+    EXPECT(openmx_exx_add_position_gradient_pairs(state, read, 0, 1, through, message, sizeof message) == 0);
+    for (i = 0; i < 3 * ATOMS; ++i) EXPECT(fabs(through[i] - gradient[i]) <= 1.0e-11 * steepest);
+  }
+  /* A new preparation discards the folding of the V neighbours and of the
+     columns: the columns fold again only after the V neighbours. */
   EXPECT(openmx_exx_prepare(state, options, geometry, message, sizeof message) == 0);
   for (a = 0; a < ATOMS; ++a)
     EXPECT(openmx_exx_v_neighbours(state, a) == prepared_count[a] &&
            openmx_exx_prepared_v_neighbours(state, a) == prepared_count[a]);
+  EXPECT(openmx_exx_fold_columns(state, no_sign, message, sizeof message) != 0 && strlen(message) > 0);
   EXPECT(openmx_exx_prepare_blocks(state, message, sizeof message) == 0);
 done:
   for (a = 0; a < ATOMS; ++a) free(weights[a]);

@@ -278,6 +278,22 @@ int openmx_exx_prepared_v_neighbours(const OpenMXExxState *state, int atom);
    that is folded already, and leaves the state as it was. */
 int openmx_exx_fold_v_neighbours(OpenMXExxState *state, const int period[3], char *error, size_t capacity);
 
+/* Folds the columns of the builds of the site form as well, by the period
+   of the folded V neighbours (section 6.4; fold_columns() of system.hpp):
+   the sites of S(A) whose cells agree modulo the period read the column of
+   one site of their class times a sign, and the products with the T blocks
+   of the centre take one site of every class.  For a density matrix of the
+   points of the mesh, K(k) at these points, the energy and the derivatives
+   keep their values within rounding.  antiperiodic[i] is nonzero along
+   a_(i+1) where the points of the mesh lie half a point away from the
+   Gamma point, REGULAR with an even number of points: there the density
+   matrix changes its sign over the period.  A wrong value gives a wrong K.
+   The list of the blocks stays, and a new preparation discards the
+   folding.  Returns 1 for a NULL antiperiodic, a structure whose V
+   neighbours are not folded and one whose columns are folded already, and
+   leaves the state as it was. */
+int openmx_exx_fold_columns(OpenMXExxState *state, const int antiperiodic[3], char *error, size_t capacity);
+
 /* How equation (7) was solved during the last preparation. */
 typedef struct {
   long systems;               /* linear systems solved */

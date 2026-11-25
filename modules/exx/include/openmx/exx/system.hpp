@@ -78,11 +78,16 @@ struct SystemOptions {
 // block of prepared[a][j].  The derivative with respect to the positions
 // goes through the pairs of sites of the preparation.  period is that of the
 // folding, in cells along a_1, a_2 and a_3.  All are empty, and period is 0,
-// for a system that is not folded.
+// for a system that is not folded.  columns tells whether the builds of the
+// site form fold their columns by the period as well (fold_columns()), and
+// antiperiodic gives the directions along which the density matrix of the
+// mesh changes its sign over the period.
 struct VFolding {
   std::array<int,3> period{};
   std::vector<std::vector<Site>> prepared;
   std::vector<std::vector<std::size_t>> index;
+  bool columns = false;
+  std::array<bool,3> antiperiodic{};
 };
 
 // Neighbour lists and blocks of one structure.
@@ -192,6 +197,29 @@ System prepare_system(const Structure& structure, std::span<const SpeciesTable> 
 // (get_tables()) hold the folded blocks afterwards.  Throws for a system
 // that is folded already and for a period below 1.
 void fold_v_neighbours(System& system, const Structure& structure, const std::array<int,3>& period);
+
+// Section 6.4: the columns of the builds of the site form of a system whose
+// V neighbours are folded, folded by the same period.  The columns of
+// D[loc(A), S] of two sites of S(A) whose cells agree modulo the period, a
+// class, differ by the sign s_T only: D_xy(R + nT) = s_T D_xy(R).  A build
+// then takes one site of every class into the products with the T blocks of
+// the centre, G = T D[loc(A), .] and the last product, the first site of
+// the class in the order of S(A), and reads the columns of the others as s_T
+// times those of that site.  The last product adds the contributions of the
+// class, each times its sign, to the blocks of K of that site: the phase of
+// a block at R + nT at a point of the mesh is s_T times that at R, so K(k)
+// at the points of the mesh keeps its value, and so do E_x and the
+// derivatives, within rounding.  Terms (i) and (ii) still add to the blocks
+// of their own sites.  A class of one site gives the bits of the build
+// without the folding.
+//
+// antiperiodic[i] holds along a_i where the points of the mesh lie half a
+// point away from the Gamma point, n_i k_i = 1/2 modulo 1 (REGULAR with an
+// even number of points): s_T is -1 to the power of the sum of T_i over
+// these directions.  A wrong direction gives a wrong K.  Throws for a
+// system whose V neighbours are not folded and for one whose columns are
+// folded already.
+void fold_columns(System& system, const std::array<bool,3>& antiperiodic);
 
 // The T blocks and the V blocks of an atom as one array: System::t[atom]
 // first, then System::v[atom][i] for every V neighbour i.  The processes of a

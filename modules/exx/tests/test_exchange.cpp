@@ -66,7 +66,9 @@
 //                          to the positions by five routes against the
 //                          preparation, the Gamma form, the half build of a
 //                          folded system, and the period 1 against the Gamma
-//                          form
+//                          form; the same with the columns folded as well,
+//                          what that folding rejects, its bits for classes
+//                          of one site, a wrong sign, and the device
 #include <openmx/exx/abf.hpp>
 #include <openmx/exx/exchange.hpp>
 #include <openmx/exx/exx.h>
@@ -4345,6 +4347,51 @@ std::array<std::size_t,2> check_folded_lists(const System& prepared, const Syste
   return counts;
 }
 
+// What the folded columns of a system meet: two C neighbours of one atom
+// whose cells agree modulo the period, which read one column of D (shared),
+// and two sites of S(A) of one class that differ by an odd number of
+// periods along the antiperiodic directions, whose columns differ in sign
+// (negative).
+struct ColumnCases {
+  bool shared = false, negative = false;
+};
+
+ColumnCases column_cases(const System& system)
+{
+  const VFolding& folding = system.folding;
+  const std::array<int,3>& n = folding.period;
+  const auto congruent = [&n](const std::array<int,3>& x, const std::array<int,3>& y) {
+    for (std::size_t i = 0; i < 3; ++i)
+      if ((x[i]-y[i])%n[i] != 0) return false;
+    return true;
+  };
+  const auto odd = [&](const std::array<int,3>& x, const std::array<int,3>& y) {
+    int turns = 0;
+    for (std::size_t i = 0; i < 3; ++i)
+      if (folding.antiperiodic[i]) turns += (x[i]-y[i])/n[i];
+    return turns%2 != 0;
+  };
+  ColumnCases cases;
+  for (std::size_t a = 0; a < system.orbital_count.size(); ++a) {
+    const std::vector<Site>& loc = system.c_neighbours[a];
+    for (std::size_t i = 0; i < loc.size(); ++i)
+      for (std::size_t j = i+1; j < loc.size(); ++j)
+        if (loc[i].atom == loc[j].atom && congruent(loc[i].cell,loc[j].cell)) cases.shared = true;
+    std::vector<Site> sites;                       // S(A)
+    for (const Site& b : system.v_neighbours[a])
+      for (const Site& c : system.c_neighbours[static_cast<std::size_t>(b.atom)])
+        sites.push_back(Site{c.atom,{b.cell[0]+c.cell[0],b.cell[1]+c.cell[1],b.cell[2]+c.cell[2]}});
+    for (std::size_t i = 0; i < sites.size() && !cases.negative; ++i)
+      for (std::size_t j = i+1; j < sites.size(); ++j)
+        if (sites[i].atom == sites[j].atom && congruent(sites[i].cell,sites[j].cell) &&
+            odd(sites[i].cell,sites[j].cell)) {
+          cases.negative = true;
+          break;
+        }
+  }
+  return cases;
+}
+
 // The sum over the atoms of the estimated time of a build.
 double estimated_time(const System& system, const BuildCosts& cost)
 {
@@ -4450,6 +4497,16 @@ void exchange_folding(const std::string& path)
     require(system.v_neighbours == once.v_neighbours && same_values(system.v,once.v) &&
             system.folding.prepared == once.folding.prepared && system.folding.index == once.folding.index,
             "a rejected second folding changes the system");
+    // The columns are folded by the period of folded V neighbours, once.
+    System unfolded = prepared;
+    expect_invalid("a folding of the columns without folded V neighbours",
+                   [&] { fold_columns(unfolded,{false,false,false}); });
+    require(unfolded.folding.prepared.empty() && !unfolded.folding.columns,
+            "a rejected folding of the columns changes the system");
+    fold_columns(system,{true,false,false});
+    expect_invalid("a second folding of the columns",[&] { fold_columns(system,{false,true,false}); });
+    require(system.folding.columns && system.folding.antiperiodic == std::array<bool,3>{true,false,false} &&
+            system.folding.period == once.folding.period,"a rejected second folding of the columns changes the system");
   }
 
   // 2. A period longer than twice the reach of the lists leaves every class
@@ -4466,6 +4523,43 @@ void exchange_folding(const std::string& path)
     check_folded_lists(prepared,system,{period,period,period},"period "+std::to_string(period));
   }
 
+  // 2b. A period longer than twice the reach of S(A) leaves every class of
+  // columns with one site: the builds and the derivatives of a system with
+  // folded columns have the bits of the preparation.
+  {
+    int columns_reach = 0;
+    for (std::size_t a = 0; a < atoms; ++a)
+      for (const Site& b : prepared.v_neighbours[a])
+        for (const Site& c : prepared.c_neighbours[static_cast<std::size_t>(b.atom)])
+          for (std::size_t i = 0; i < 3; ++i) columns_reach = std::max(columns_reach,std::abs(b.cell[i]+c.cell[i]));
+    const int period = 2*columns_reach+1;
+    System system = prepared;
+    fold_v_neighbours(system,structure,{period,period,period});
+    fold_columns(system,{true,true,true});
+    const BlockLayout layout = exchange_layout(system);
+    require(layout.keys == prepared_layout.keys && layout.offset == prepared_layout.offset,
+            "a folding with classes of one member changes the layout");
+    std::vector<double> d(layout.elements());
+    for (double& value : d) value = random.next();
+    symmetrize_blocks(system,layout,d);
+    std::vector<double> half(layout.elements(),0.0), prepared_half(layout.elements(),0.0);
+    add_exchange_blocks_half_abfs(system,layout,0,total,-alpha,d,half);
+    add_exchange_blocks_half_abfs(prepared,prepared_layout,0,total,-alpha,d,prepared_half);
+    require(same_values(layout_exchange(system,layout,d,alpha),layout_exchange(prepared,prepared_layout,d,alpha)) &&
+            same_values(half,prepared_half),"columns folded into classes of one site change the bits of K");
+    for (std::size_t a = 0; a < atoms; ++a) {
+      const CentreGradient folded = half_gradient_blocks(system,layout,a,0,system.abf_count[a],-alpha,d);
+      const CentreGradient plain = half_gradient_blocks(prepared,prepared_layout,a,0,prepared.abf_count[a],-alpha,d);
+      require(same_values(folded.t,plain.t) && same_values(folded.v,plain.v) && same_values(folded.w,plain.w) &&
+              same_values(centre_gradient_blocks(system,layout,a,-alpha,d).t,
+                          centre_gradient_blocks(prepared,prepared_layout,a,-alpha,d).t),
+              "columns folded into classes of one site change the bits of the derivatives");
+    }
+    const BuildCosts folded_cost = build_costs(system,true,true), plain_cost = build_costs(prepared,true,true);
+    require(folded_cost.per_abf == plain_cost.per_abf && folded_cost.per_part == plain_cost.per_part,
+            "columns folded into classes of one site change the estimates of the build");
+  }
+
   // 3. Meshes with and without shifts.  For a density matrix of the points
   // of the mesh the folded system gives K(k) at these points, E_x and its
   // derivative with respect to the positions of the preparation, within
@@ -4479,15 +4573,24 @@ void exchange_folding(const std::string& path)
   const std::vector<double> dense = dense_matrix(n,true,random);
   const std::vector<double> prepared_gamma = exchange_gamma(prepared,dense,alpha);
   bool halves_checked = false;
-  for (const Mesh& mesh : meshes) {
+  std::size_t devices_checked = 0;
+  double v_only = 0.0;                     // the estimated time with the V neighbours of the mesh folded only
+  for (const Mesh& mesh : meshes) for (const bool columns : {false,true}) {
+    const std::array<bool,3> antiperiodic{mesh.shift[0] == 1,mesh.shift[1] == 1,mesh.shift[2] == 1};
     const std::string name = "mesh "+std::to_string(mesh.period[0])+"x"+std::to_string(mesh.period[1])+"x"+
                              std::to_string(mesh.period[2])+" shift "+std::to_string(mesh.shift[0])+
-                             std::to_string(mesh.shift[1])+std::to_string(mesh.shift[2]);
+                             std::to_string(mesh.shift[1])+std::to_string(mesh.shift[2])+
+                             (columns ? ", columns folded" : "");
     System folded = prepared;
     fold_v_neighbours(folded,structure,mesh.period);
+    const BlockLayout layout = exchange_layout(folded);
+    if (columns) {
+      fold_columns(folded,antiperiodic);
+      const BlockLayout same = exchange_layout(folded);
+      require(same.keys == layout.keys && same.offset == layout.offset,name+": the folding of the columns changes the layout");
+    }
     const std::array<std::size_t,2> counts = check_folded_lists(prepared,folded,mesh.period,name);
     require(counts[1] < counts[0],name+": the folding is expected to reduce the V neighbours");
-    const BlockLayout layout = exchange_layout(folded);
 
     const MeshMatrices matrices = mesh_matrices(n,mesh_points(mesh.period,mesh.shift),random);
     const std::vector<double> prepared_d = mesh_blocks(prepared,prepared_layout,matrices);
@@ -4556,12 +4659,41 @@ void exchange_folding(const std::string& path)
     const double before = estimated_time(prepared,build_costs(prepared,true,true));
     const double after = estimated_time(folded,build_costs(folded,true,true));
     require(after < before,name+": the folded system is expected to take less time");
+    require(!columns || after < v_only,name+": the folded columns are expected to take less time");
+    if (!columns) v_only = after;
     std::printf("%s: the half build of the site form takes %.3f of the estimated time of the preparation\n",
                 name.c_str(),after/before);
 
-    if (mesh.period == std::array<int,3>{2,2,2} && !halves_checked) {
+    // The half build of a system with folded columns gives X with other
+    // blocks than the whole build: K(k) at the points above holds.
+    if (!columns && mesh.period == std::array<int,3>{2,2,2} && !halves_checked) {
       check_half_build(folded,name+", folded",random,false);
       halves_checked = true;
+    }
+
+    // The sign of the antiperiodic directions: without it K(k) is wrong.
+    if (columns && mesh.shift != std::array<int,3>{}) {
+      System unsigned_columns = prepared;
+      fold_v_neighbours(unsigned_columns,structure,mesh.period);
+      fold_columns(unsigned_columns,{false,false,false});
+      const std::vector<double> wrong = layout_exchange(unsigned_columns,layout,folded_d,alpha);
+      double difference = 0.0;
+      for (std::size_t p = 0; p < matrices.points.size(); ++p) {
+        const std::vector<double> a = bloch_sum(folded,layout,wrong,matrices.points[p]);
+        for (std::size_t e = 0; e < a.size(); ++e) difference = std::max(difference,std::fabs(a[e]-reference[p][e]));
+      }
+      require(difference > 1.0e-6*scale,name+": the columns folded without their signs are expected to give another K(k)");
+    }
+
+    // The device against the host, with signs and with columns of D that
+    // two columns of the T blocks share (the period 1 along a_1).
+    if (columns && (mesh.period == std::array<int,3>{2,2,2} || mesh.period == std::array<int,3>{1,2,3}) &&
+        mesh.shift != std::array<int,3>{}) {
+      const ColumnCases cases = column_cases(folded);
+      require(cases.negative && (mesh.period[0] != 1 || cases.shared),
+              name+": the device test is expected to meet negative columns, and shared ones with the period 1");
+      check_device_forms(folded,name,random,false);
+      ++devices_checked;
     }
 
     // 4. With the period 1 the site form of the Gamma point, D_xy(R) = D_xy,
@@ -4589,6 +4721,7 @@ void exchange_folding(const std::string& path)
     }
   }
   require(halves_checked,"the half build of a folded system was not checked");
+  require(devices_checked == 2,"the device was not checked with folded columns");
 }
 
 } // namespace exx_test

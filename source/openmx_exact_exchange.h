@@ -45,8 +45,11 @@ typedef struct {
   int kpoint_count;          /* points of the k mesh of the band solver, 1 for the cluster solver */
   int fold_period[3];        /* the numbers of points of a regular k mesh of the band solver along
                                 b_1, b_2 and b_3 (scf.Kgrid with GCenter or REGULAR): the site form
-                                folds its V neighbours by this period in cells (section 6.4 of the
-                                guide). 0 for the cluster solver and other meshes */
+                                folds its V neighbours and its columns by this period in cells
+                                (section 6.4 of the guide). 0 for the cluster solver and other meshes */
+  int fold_antiperiodic[3];  /* 1 along b_i where the points of that mesh lie half a point away from
+                                the Gamma point (REGULAR with an even number of points): the density
+                                matrix changes its sign over the period there. 0 otherwise */
   double abf_threshold;      /* scf.exx.abf.pca */
   double v_cutoff;           /* scf.exx.v.cutoff, bohr. Negative for PBE0 without the keyword: R_c
                                 plus the largest ABF radius, which keeps every V block that the

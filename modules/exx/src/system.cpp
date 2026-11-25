@@ -491,6 +491,15 @@ void fold_v_neighbours(System& system, const Structure& structure, const std::ar
   system.folding = std::move(folding);
 }
 
+void fold_columns(System& system, const std::array<bool,3>& antiperiodic)
+{
+  if (system.folding.prepared.empty())
+    throw std::invalid_argument("the columns are folded by the period of folded V neighbours");
+  if (system.folding.columns) throw std::invalid_argument("the columns of the system are folded already");
+  system.folding.columns = true;
+  system.folding.antiperiodic = antiperiodic;
+}
+
 std::size_t table_elements(const System& system, std::size_t atom)
 {
   if (atom >= system.t.size() || atom >= system.v.size())
