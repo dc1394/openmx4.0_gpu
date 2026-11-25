@@ -1728,6 +1728,7 @@ Total_Energy_GPU.o Force.o Set_Orbitals_Grid.o Set_Hamiltonian.o Set_Nonlocal.o 
 Set_Density_Grid_GPU.o: openmx_gpu_bilinear.h
 Mixing_H.o: openmx_gpu_vector.h openmx_host_memory.h
 Set_XC_Grid.o: openmx_gpu_collective.h
+Set_XC_Grid.o: openmx_xc_hybrid_kernels.h ../modules/xc/include/openmx/xc/hybrid_kernels.h
 openmx_gpu_bilinear_pack.o: openmx_host_memory.h
 
 truncation.o: openmx_gpu_task.h openmx_host_memory.h
