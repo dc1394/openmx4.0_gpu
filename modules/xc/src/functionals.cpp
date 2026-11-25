@@ -1,12 +1,10 @@
 #include <openmx/xc/functionals.hpp>
+#include <openmx/xc/hybrid_kernels.h>
 #include <openmx/xc/kernels.h>
 
-#include "wpbeh_kernel.hpp"
-
-#include <cmath>
-
-// The arithmetic lives in kernels.h, shared with C callers and with the
-// application's GPU device code; these are the owning C++ views of it.
+// The arithmetic lives in kernels.h and hybrid_kernels.h, shared with C
+// callers and with the application's GPU device code; these are the owning
+// C++ views of it.
 
 namespace openmx::xc {
 
@@ -57,50 +55,12 @@ PbeResult pbe(SpinDensity density, const SpinGradient& gradient, bool symmetrize
 ShortRangeExchangeResult wpbeh_short_range_exchange(SpinDensity density, const SpinGradient& gradient,
                                                     double omega, bool symmetrize_spins) noexcept
 {
-  // The floors and the symmetrization are those of the exchange part of
-  // openmx_xc_kernel_pbe: each spin density is at least 0.5e-14, the norm of
-  // each spin gradient at least 0.5e-14, and the derivative with respect to
-  // the gradient vector points along the unfloored components.
-  const double den_min = 1.0e-14, gd_min = 1.0e-14;
-  const double dens[2] = {openmx_xc_kernel_largest(0.5*den_min, density.up),
-                          openmx_xc_kernel_largest(0.5*den_min, density.down)};
-  double D[2], GD[3][2];
-  if (symmetrize_spins) {
-    D[0] = (dens[0] + dens[1])/2.0;
-    D[1] = (dens[0] + dens[1])/2.0;
-  } else {
-    D[0] = dens[0];
-    D[1] = dens[1];
-  }
-  for (int d = 0; d < 3; ++d) {
-    if (symmetrize_spins) {
-      GD[d][0] = (gradient.component[d][0] + gradient.component[d][1])/2.0;
-      GD[d][1] = (gradient.component[d][0] + gradient.component[d][1])/2.0;
-    } else {
-      GD[d][0] = gradient.component[d][0];
-      GD[d][1] = gradient.component[d][1];
-    }
-  }
-  double floored_norm[2];
-  for (int s = 0; s < 2; ++s) {
-    const double norm = std::sqrt(GD[0][s]*GD[0][s] + GD[1][s]*GD[1][s] + GD[2][s]*GD[2][s]);
-    floored_norm[s] = openmx_xc_kernel_largest(0.5*gd_min, norm);
-  }
-  // The kernel depends on the density and the norm of the gradient only.
-  // Without spin polarization, and with the symmetrization, the two channels
-  // have the same ones, and the second channel takes the result of the
-  // first: the bits of a second call, with one call of the kernel.
+  double dens[2] = {density.up, density.down}, gdens[3][2], ex[1];
+  for (int d = 0; d < 3; ++d) for (int s = 0; s < 2; ++s) gdens[d][s] = gradient.component[d][s];
   ShortRangeExchangeResult r;
-  double energy = 0.0;
-  detail::ChannelEnergy channel{};
-  for (int s = 0; s < 2; ++s) {
-    if (s == 0 || D[1] != D[0] || floored_norm[1] != floored_norm[0])
-      channel = detail::wpbeh_channel_energy(D[s], floored_norm[s], omega);
-    energy += channel.energy;
-    r.dexchange_ddensity[s] = channel.denergy_ddensity;
-    for (int d = 0; d < 3; ++d) r.dexchange_dgradient[d][s] = channel.denergy_dgradient*(GD[d][s]/floored_norm[s]);
-  }
-  r.exchange_energy_density = energy/(dens[0] + dens[1]);
+  openmx_xc_kernel_wpbeh_short_range(dens, gdens, symmetrize_spins ? 1 : 0, omega, ex, r.dexchange_ddensity,
+                                     r.dexchange_dgradient);
+  r.exchange_energy_density = ex[0];
   r.density_used = {dens[0], dens[1]};
   return r;
 }
@@ -108,28 +68,30 @@ ShortRangeExchangeResult wpbeh_short_range_exchange(SpinDensity density, const S
 PbeResult pbe_screened_hybrid(SpinDensity density, const SpinGradient& gradient, bool symmetrize_spins,
                               double exchange_fraction, double omega) noexcept
 {
-  PbeResult r = pbe(density, gradient, symmetrize_spins);
-  if (exchange_fraction == 0.0) return r;
-  const ShortRangeExchangeResult sr = wpbeh_short_range_exchange(density, gradient, omega, symmetrize_spins);
-  r.exchange_energy_density -= exchange_fraction*sr.exchange_energy_density;
-  for (int s = 0; s < 2; ++s) {
-    r.dexchange_ddensity[s] -= exchange_fraction*sr.dexchange_ddensity[s];
-    for (int d = 0; d < 3; ++d) r.dexchange_dgradient[d][s] -= exchange_fraction*sr.dexchange_dgradient[d][s];
-  }
+  double dens[2] = {density.up, density.down}, gdens[3][2], exc[2];
+  for (int d = 0; d < 3; ++d) for (int s = 0; s < 2; ++s) gdens[d][s] = gradient.component[d][s];
+  PbeResult r;
+  openmx_xc_kernel_pbe_screened_hybrid(dens, gdens, symmetrize_spins ? 1 : 0, exchange_fraction, omega, exc,
+                                       r.dexchange_ddensity, r.dcorrelation_ddensity, r.dexchange_dgradient,
+                                       r.dcorrelation_dgradient);
+  r.exchange_energy_density = exc[0];
+  r.correlation_energy_density = exc[1];
+  r.density_used = {dens[0], dens[1]};
   return r;
 }
 
 PbeResult pbe_global_hybrid(SpinDensity density, const SpinGradient& gradient, bool symmetrize_spins,
                             double exchange_fraction) noexcept
 {
-  PbeResult r = pbe(density, gradient, symmetrize_spins);
-  if (exchange_fraction == 0.0) return r;
-  const double kept = 1.0 - exchange_fraction;
-  r.exchange_energy_density *= kept;
-  for (int s = 0; s < 2; ++s) {
-    r.dexchange_ddensity[s] *= kept;
-    for (int d = 0; d < 3; ++d) r.dexchange_dgradient[d][s] *= kept;
-  }
+  double dens[2] = {density.up, density.down}, gdens[3][2], exc[2];
+  for (int d = 0; d < 3; ++d) for (int s = 0; s < 2; ++s) gdens[d][s] = gradient.component[d][s];
+  PbeResult r;
+  openmx_xc_kernel_pbe_global_hybrid(dens, gdens, symmetrize_spins ? 1 : 0, exchange_fraction, exc,
+                                     r.dexchange_ddensity, r.dcorrelation_ddensity, r.dexchange_dgradient,
+                                     r.dcorrelation_dgradient);
+  r.exchange_energy_density = exc[0];
+  r.correlation_energy_density = exc[1];
+  r.density_used = {dens[0], dens[1]};
   return r;
 }
 
