@@ -2,7 +2,7 @@
 """
 exx_kpoint_checks.py -- the runs of the acceptance table of milestone M5
 (docs/EXX_IMPLEMENTATION_GUIDE.md, section 9): HSE06 with k points and the
-band solver.
+band solver, and the same table for PBE0 (milestone M8).
 
 A calculation with an n1 x n2 x n3 mesh of k points that contains the Gamma
 point is the calculation of the n1 x n2 x n3 supercell at the Gamma point: the
@@ -35,10 +35,21 @@ are the same in both cells, and the two stop criteria, which OpenMX applies to
 energies of the whole cell, are multiplied by the number of primitive cells
 (scf.criterion 1e-10 and scf.exx.outer.criterion 1e-9 per primitive cell).
 
+PBE0.  The radius of the truncated Coulomb interaction is by default
+R_c = (3 N_k Omega/(4 pi))^(1/3), with N_k the number of k points of the mesh
+and Omega the volume of the cell, so the two members of a pair have the same
+R_c; the table compares the two values.  The PBE0 runs stop at scf.criterion
+1e-12 and scf.exx.outer.criterion 1e-9 per primitive cell (PBE0_CRITERION of
+tools/exx_scf_checks.py).  Where R_c + 3 r_max + (the reach of V) exceeds
+2 pi/(step of kappa), 94.2 bohr with the default 1DFFT settings, the program
+takes more reciprocal intervals for PBE0 (section 13, item 19 of the guide):
+silicon with the 9 x 9 x 9 mesh does.
+
 The systems
   dia   diamond, the primitive cell with 2 atoms and C5.0-s1p1
   diaz  the same with C6.0-s2p2d1
   siz   silicon, the primitive cell with 2 atoms and Si7.0-s2p2d1
+  sim   the same with Si7.0-s1p1
   hfm   a chain of hydrogen atoms, 2.5 Angstrom apart, H5.0-s2p1, with the
         spins aligned: a spin-polarized system whose two spin channels differ
   hmet  the chain with 1.5 Angstrom between the atoms and no spin polarization:
@@ -52,12 +63,16 @@ The names
   SYSTEM-sABCkDEF      the supercell A x B x C with the mesh D x E x F
   -reg                 scf.Generation.Kpoint REGULAR instead of GCenter: the
                        mesh of an even division does not contain the Gamma point
-  -pbe, -hse           GGA-PBE, HSE06
+  -pbe, -hse, -pbe0    GGA-PBE, HSE06, PBE0
+  -pbe-c12             GGA-PBE with scf.criterion 1e-12 per primitive cell, the
+                       partner of -pbe0-alpha0
   -hse-alpha0          scf.exx.alpha 0: has to give the energy of GGA-PBE
   -hse-spin            scf.SpinPolarization on for the closed shell
+  -pbe0-alpha0, -pbe0-spin  the same for PBE0
   -band                scf.EigenvalueSolver band for a supercell at the Gamma point
   -npN                 N MPI processes
-  -vN                  scf.exx.v.cutoff N (bohr) instead of the default 8
+  -vN                  scf.exx.v.cutoff N (bohr) instead of the default: 8
+                       for HSE06, R_c + r_max for PBE0
   -default             the default stop criteria (scf.criterion 1e-6,
                        scf.exx.outer.criterion 1e-6)
   reject-...           an input that the program has to refuse
@@ -102,12 +117,17 @@ SYSTEMS["siz"] = dict(species="Si", basis="Si7.0-s2p2d1", vps="Si_PBE19",
                                (A_SILICON / 2, A_SILICON / 2, 0.0)],
                       atoms=[(0.0, 0.0, 0.0), (A_SILICON / 4, A_SILICON / 4, A_SILICON / 4)],
                       grid=(32, 32, 32), start=(2.0, 2.0), spin="off")
+SYSTEMS["sim"] = dict(SYSTEMS["siz"], basis="Si7.0-s1p1")
 # the primitive cells of these are face-centred cubic and have a gap: their
 # band edges on the mesh are recorded
-FCC_INSULATORS = ("dia", "diaz", "siz")
+FCC_INSULATORS = ("dia", "diaz", "siz", "sim")
+# scf.criterion per primitive cell of the PBE0 runs and of their GGA-PBE partner
+PBE0_INNER = 1.0e-12
+SUFFIX = {"GGA-PBE": "pbe", "HSE06": "hse", "PBE0": "pbe0"}
 
 
-def make_input(name, system, cells, kgrid, xc, spin=None, generation=None, extra=(), criteria=True, solver=None):
+def make_input(name, system, cells, kgrid, xc, spin=None, generation=None, extra=(), criteria=True, solver=None,
+               inner=1.0e-10):
     s = SYSTEMS[system]
     count = cells[0] * cells[1] * cells[2]
     atoms = [tuple(a[x] + i * s["vectors"][0][x] + j * s["vectors"][1][x] + k * s["vectors"][2][x] for x in range(3))
@@ -150,7 +170,7 @@ def make_input(name, system, cells, kgrid, xc, spin=None, generation=None, extra
               "MD.Type                     nomd",
               "MD.maxIter                    1"]
     if criteria:
-        lines += [f"scf.criterion             {1.0e-10 * count:.1e}",
+        lines += [f"scf.criterion             {inner * count:.1e}",
                   f"scf.exx.outer.criterion   {1.0e-9 * count:.1e}"]
     if generation:
         lines.append(f"scf.Generation.Kpoint       {generation}")
@@ -162,6 +182,8 @@ RUNS = {}
 
 
 def add(name, system, cells, kgrid, xc="HSE06", ranks=1, threads=2, **options):
+    if xc == "PBE0":
+        options.setdefault("inner", PBE0_INNER)
     text = make_input(name.replace("-", "_"), system, cells, kgrid, xc, **options)
     RUNS[name] = dict(text=text, ranks=ranks, threads=threads, cells=cells[0] * cells[1] * cells[2],
                       atoms=len(SYSTEMS[system]["atoms"]) * cells[0] * cells[1] * cells[2],
@@ -181,7 +203,7 @@ def pair(system, cells, kgrid, total, xc="HSE06", **options):
     """The cell `cells` with the mesh `kgrid` against the cell `total` with the mesh that samples the same points."""
     rest = tuple(c * k // t for c, k, t in zip(cells, kgrid, total))
     tag = "-reg" if options.get("generation") == "REGULAR" else ""
-    suffix = "-" + xc.replace("GGA-PBE", "pbe").replace("HSE06", "hse")
+    suffix = "-" + SUFFIX[xc]
 
     def name(c, k):
         cell = "p" if c == (1, 1, 1) else "s" + digits(c)
@@ -211,6 +233,16 @@ pair("dia", (1, 1, 1), (4, 1, 1), (2, 1, 1), generation="REGULAR")   # the super
 pair("hfm", (1, 1, 1), (4, 1, 1), (2, 1, 1), generation="REGULAR")
 # a basis set with polarization functions
 pair("diaz", (1, 1, 1), (2, 2, 2), (2, 2, 2))
+# PBE0: the same pairs; R_c is 4.8 to 10.5 bohr for diamond, 8.5 and 10.1 bohr for the chains
+for args, options in ((("dia", (1, 1, 1), (2, 2, 2), (2, 2, 2)), {}),
+                      (("dia", (1, 1, 1), (3, 3, 3), (3, 3, 3)), {}),
+                      (("dia", (1, 1, 1), (3, 2, 1), (3, 2, 1)), {}),
+                      (("hfm", (1, 1, 1), (4, 1, 1), (4, 1, 1)), {}),
+                      (("hmet", (1, 1, 1), (4, 1, 1), (4, 1, 1)), {}),
+                      (("dia", (1, 1, 1), (4, 4, 4), (2, 2, 2)), {}),
+                      (("dia", (1, 1, 1), (4, 4, 4), (2, 2, 2)), {"generation": "REGULAR"}),
+                      (("diaz", (1, 1, 1), (2, 2, 2), (2, 2, 2)), {})):
+    pair(*args, xc="PBE0", **options)
 
 # one run against another: (label, run, base, quantity, limit)
 SINGLE = []
@@ -244,6 +276,19 @@ variant("np4 minus np1, 36 k points", "dia-p444-hse-np4", "dia-p444-hse", "dia",
         ranks=4, threads=1)
 variant("np2 minus np1, 8 k points, s2p2d1", "diaz-p222-hse-np2", "diaz-p222-hse", "diaz", (1, 1, 1), (2, 2, 2), 1e-9,
         ranks=2, threads=2)
+# PBE0
+add("dia-p222-pbe-c12", "dia", (1, 1, 1), (2, 2, 2), xc="GGA-PBE", inner=PBE0_INNER)
+variant("alpha=0 minus PBE", "dia-p222-pbe0-alpha0", "dia-p222-pbe-c12", "dia", (1, 1, 1), (2, 2, 2), 1e-9,
+        xc="PBE0", extra=["scf.exx.alpha 0.0"])
+variant("spin on minus off", "dia-p222-pbe0-spin", "dia-p222-pbe0", "dia", (1, 1, 1), (2, 2, 2), 1e-8, xc="PBE0",
+        spin="on")
+for ranks in (2, 4):
+    variant(f"np{ranks} minus np1, 14 k points", f"dia-p333-pbe0-np{ranks}", "dia-p333-pbe0", "dia", (1, 1, 1),
+            (3, 3, 3), 1e-9, xc="PBE0", ranks=ranks, threads=1)
+    variant(f"np{ranks} minus np1, spin, 3 k points", f"hfm-p411-pbe0-np{ranks}", "hfm-p411-pbe0", "hfm", (1, 1, 1),
+            (4, 1, 1), 1e-9, xc="PBE0", ranks=ranks, threads=1)
+variant("np4 minus np1, 36 k points", "dia-p444-pbe0-np4", "dia-p444-pbe0", "dia", (1, 1, 1), (4, 4, 4), 1e-9,
+        xc="PBE0", ranks=4, threads=1)
 # 48 orbitals at one k point: with 4 processes the matrix has 3 x 3 blocks of 16
 # rows and columns, and two of the blocks in each direction are on one process
 add("dia-s321k211-reg-hse", "dia", (3, 2, 1), (2, 1, 1), generation="REGULAR")
@@ -293,6 +338,23 @@ record("scf.exx.v.cutoff 6, 8, 12 and 16 bohr, silicon, mesh 8 x 8 x 8",
        [("siz-p888-hse-v6", ["scf.exx.v.cutoff 6.0"]), ("siz-p888-hse", []),
         ("siz-p888-hse-v12", ["scf.exx.v.cutoff 12.0"]), ("siz-p888-hse-v16", ["scf.exx.v.cutoff 16.0"])],
        "siz", (1, 1, 1), (8, 8, 8))
+
+# PBE0 on the meshes 2 x 2 x 2 to 8 x 8 x 8: R_c grows with the mesh, from 5.3
+# to 21.1 bohr, and the V list with it.
+for mesh in (6, 8):
+    add(f"dia-p{mesh}{mesh}{mesh}-pbe0", "dia", (1, 1, 1), (mesh, mesh, mesh), xc="PBE0")
+RECORDS.append(("PBE0, meshes 2 x 2 x 2, 3 x 3 x 3, 4 x 4 x 4, 6 x 6 x 6 and 8 x 8 x 8",
+                ["dia-p222-pbe0", "dia-p333-pbe0", "dia-p444-pbe0", "dia-p666-pbe0", "dia-p888-pbe0"]))
+record("PBE0, scf.exx.v.cutoff 8 and 12 bohr against the automatic list (15.5 bohr), mesh 4 x 4 x 4",
+       [("dia-p444-pbe0", []), ("dia-p444-pbe0-v8", ["scf.exx.v.cutoff 8.0"]),
+        ("dia-p444-pbe0-v12", ["scf.exx.v.cutoff 12.0"])], "dia", (1, 1, 1), (4, 4, 4), xc="PBE0")
+# Silicon with the minimal basis: R_c is 32.1 bohr with the mesh 8 x 8 x 8 and
+# 36.1 bohr with 9 x 9 x 9.  2 R_c + 4 r_max is 92.1 and 100.2 bohr, so the
+# second run takes 957 reciprocal intervals instead of 900.
+for mesh in (8, 9):
+    add(f"sim-p{mesh}{mesh}{mesh}-pbe0", "sim", (1, 1, 1), (mesh, mesh, mesh), xc="PBE0")
+RECORDS.append(("PBE0, silicon with Si7.0-s1p1, meshes 8 x 8 x 8 and 9 x 9 x 9",
+                ["sim-p888-pbe0", "sim-p999-pbe0"]))
 
 # Inputs that the program has to refuse with a hybrid functional: the keyword
 # that its message has to name.
@@ -414,9 +476,12 @@ def table(args):
     results = json.loads((args.out / "results.json").read_text())
     failures = []
 
+    def hybrid(name):
+        return "-hse" in name or "-pbe0" in name
+
     def converged(name):
         r = results.get(name)
-        return bool(r) and r["status"] == 0 and r["achieved"] and ("-hse" not in name or r["outer_converged"])
+        return bool(r) and r["status"] == 0 and r["achieved"] and (not hybrid(name) or r["outer_converged"])
 
     def is_refusal(name):
         return name in RUNS and "rejected" in RUNS[name]
@@ -437,6 +502,10 @@ def table(args):
         show(f"Utot per atom ({a['atoms']} and {b['atoms']} atoms)", (a["Utot"] - b["Utot"] / ratio) / a["atoms"], 1e-7)
         if a.get("Uexx") is not None and b.get("Uexx") is not None:
             show(f"Uexx per cell of the first ({a['Uexx']:.9f})", a["Uexx"] - b["Uexx"] / ratio, 1e-9)
+        if a.get("cutoff") is not None or b.get("cutoff") is not None:
+            # both print R_c with six decimals
+            show(f"R_c of the two (bohr; {a.get('cutoff')} and {b.get('cutoff')})",
+                 (a.get("cutoff") or 0.0) - (b.get("cutoff") or 0.0), 1e-6)
 
     print("== one run against another (Hartree)")
     for label, name, base, key, limit in SINGLE:
@@ -446,14 +515,17 @@ def table(args):
             if key == "Utot" and a.get("Uexx") is not None and b.get("Uexx") is not None:
                 show(f"{name}: the same for Uexx", a["Uexx"] - b["Uexx"], limit)
 
-    print("== all runs with HSE06")
-    hybrid = {n: r for n, r in results.items() if "-hse" in n}
-    values = [r["asymmetry"] for r in hybrid.values() if r.get("asymmetry") is not None]
-    if values:
-        show(f"K_xy(R) minus the transpose of K_yx(-R) ({len(values)} runs)", max(values), 1e-12)
-    values = [r["dm_deviation"] for r in hybrid.values() if r.get("dm_deviation") is not None]
-    if values:
-        show(f"density matrices against the solver ({len(values)} runs)", max(values), 1e-10)
+    for title, tag in (("HSE06", "-hse"), ("PBE0", "-pbe0")):
+        family = {n: r for n, r in results.items() if tag in n}
+        if not family:
+            continue
+        print(f"== all runs with {title}")
+        values = [r["asymmetry"] for r in family.values() if r.get("asymmetry") is not None]
+        if values:
+            show(f"K_xy(R) minus the transpose of K_yx(-R) ({len(values)} runs)", max(values), 1e-12)
+        values = [r["dm_deviation"] for r in family.values() if r.get("dm_deviation") is not None]
+        if values:
+            show(f"density matrices against the solver ({len(values)} runs)", max(values), 1e-10)
 
     print("== records (Hartree per cell; no limit)")
     for label, names in RECORDS:
@@ -494,9 +566,11 @@ def table(args):
             continue
         t = r.get("exx_times")
         sizes, blocks = r.get("sizes"), r.get("blocks")
+        truncated = (f"  R_c {r['cutoff']} bohr, V reach {r.get('v_reach')} bohr, reciprocal intervals "
+                     f"{r.get('reciprocal_intervals')}" if r.get("cutoff") is not None else "")
         print(f"  {name:28s} np{r['ranks']} {r['wall']:7.1f} s  peak {r.get('peak_mb')} MB  "
               f"atoms, orbitals, ABFs, C sites, V sites {sizes}  blocks, MB {blocks}  "
-              f"EXX time (preparation, density, build, addition) {t}")
+              f"EXX time (preparation, density, build, addition) {t}{truncated}")
 
     # a run that only a record names may fail to converge: it is listed and leaves the status
     bounded = {n for _, first, second in PAIRS for n in (first, second)} | {n for _, name, base, _, _ in SINGLE

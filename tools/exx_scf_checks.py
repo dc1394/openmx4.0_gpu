@@ -2,7 +2,8 @@
 """
 exx_scf_checks.py -- the runs of the acceptance table of milestone M4
 (docs/EXX_IMPLEMENTATION_GUIDE.md, section 9): HSE06 at the Gamma point with the
-cluster solver.
+cluster solver, and the same table for PBE0 with the truncated Coulomb
+interaction (M8).
 
 The script writes the inputs, runs the main program and collects the numbers of
 the standard output and of the .out file into results.json.  A second command
@@ -18,9 +19,12 @@ As root in a container, pass --mpirun "mpirun --allow-run-as-root --oversubscrib
 "table" ends with status 1 when a bounded difference exceeds its limit or a
 run did not converge.  The runs of the two rows that the guide only records
 (scf.exx.abf.pca and scf.exx.v.cutoff away from their defaults) are exempt:
-one that does not converge is listed, and the status stays 0.  The energies
-of the runs with the default scf.criterion are listed without a limit.  Only
-the standard library is used.
+one that does not converge is listed, and the status stays 0.  The same
+holds for the PBE0 runs that change scf.exx.abf.pca or
+scf.exx.coulomb.cutoff, set scf.exx.v.cutoff to 8 or 12 bohr, or put the
+molecule in the cell of 20 Angstrom; -pbe0-v24 has a limit and is not
+exempt.  The energies of the runs with the default scf.criterion are listed
+without a limit.  Only the standard library is used.
 
 Threads.  Every run uses one OpenMP thread: the program takes that number
 from the option -nt, not from OMP_NUM_THREADS, and the runs pass -nt 1.  The
@@ -56,6 +60,22 @@ The runs of a family
   -pbe-mix-M-c6        GGA-PBE with Simple or Kerker mixing: these two mixers end
                        at a residual of about 1e-5, with and without the exact
                        exchange, and their rows are compared with each other
+The PBE0 runs of a family (M8)
+  -pbe0                PBE0 with the default keywords: R_c from the volume of
+                       the cell (scf.exx.coulomb.cutoff absent) and the V
+                       neighbours up to the reach of the kernel
+                       (scf.exx.v.cutoff absent).  Every PBE0 run has
+                       scf.criterion 1e-12 and scf.exx.outer.criterion 1e-9
+                       (PBE0_CRITERION)
+  -pbe-c12             GGA-PBE with scf.criterion 1e-12, for -pbe0-alpha0
+  -pbe0-alpha0, -pbe0-shift, -pbe0-spin, -pbe0-np2, -pbe0-np4,
+  -pbe0-spin-np2, -pbe0-spin-np4, -pbe0-pca3, 5, 6
+                       as for HSE06
+  -pbe0-v8, -pbe0-v12  scf.exx.v.cutoff 8 and 12 bohr, shorter than the reach
+  -pbe0-v24            scf.exx.v.cutoff 24 bohr, beyond the reach: the blocks
+                       that it adds vanish, so the energy is that of -pbe0
+  -pbe0-rc8, -pbe0-rc16  scf.exx.coulomb.cutoff 8 and 16 bohr
+  -big-pbe0            the molecule in a cell of 20 Angstrom: R_c doubles
 """
 import argparse
 import json
@@ -148,6 +168,21 @@ def make_input(name, atoms, scf, basis, xc="HSE06", spin="off", shift=(0.0, 0.0,
 
 RUNS = {}
 
+# The PBE0 runs stop at tighter thresholds than those of HSE06 (scf.criterion
+# 1e-10 and the default scf.exx.outer.criterion 1e-6).  With those, the PBE0
+# runs of methane ended their last inner SCF at energies 6e-10 Hartree apart,
+# by the number of steps alone: 1 and 2 processes differed by 1.2e-9, beyond
+# the limit 1e-9 of the table, and agreed within 1e-12 with scf.criterion
+# 1e-13 and scf.exx.outer.criterion 1e-10.  With the thresholds below, every
+# bounded row of the PBE0 table stays within 2e-11 Hartree (M8).
+PBE0_CRITERION = "1.0e-12"
+PBE0_OUTER = "scf.exx.outer.criterion 1.0e-9"
+
+
+def pbe0_input(tag, atoms, scf, basis, extra=(), **keywords):
+    return make_input(tag, atoms, scf, basis, xc="PBE0", criterion=PBE0_CRITERION, extra=[PBE0_OUTER, *extra],
+                      **keywords)
+
 
 def add(name, text, ranks=1, threads=2):
     RUNS[name] = dict(text=text, ranks=ranks, threads=threads)
@@ -173,6 +208,30 @@ def molecule(tag, atoms, scf, basis):
     for cut in (6, 8, 12, 16):
         add(f"{tag}-big-hse-v{cut}", make_input(tag, atoms, scf, basis, cell=20.0,
                                                 extra=[f"scf.exx.v.cutoff {cut}.0"]))
+    pbe0(tag, atoms, scf, basis)
+    add(f"{tag}-pbe0-shift", pbe0_input(tag, atoms, scf, basis, shift=(3 * step, 5 * step, -7 * step)))
+    add(f"{tag}-pbe0-spin", pbe0_input(tag, atoms, scf, basis, spin="on"))
+    add(f"{tag}-pbe0-np2", pbe0_input(tag, atoms, scf, basis), ranks=2, threads=1)
+    add(f"{tag}-pbe0-spin-np2", pbe0_input(tag, atoms, scf, basis, spin="on"), ranks=2, threads=1)
+    add(f"{tag}-pbe0-spin-np4", pbe0_input(tag, atoms, scf, basis, spin="on"), ranks=4, threads=1)
+    for cut in (8, 16):
+        add(f"{tag}-pbe0-rc{cut}", pbe0_input(tag, atoms, scf, basis,
+                                              extra=[f"scf.exx.coulomb.cutoff {cut}.0"]))
+    add(f"{tag}-big-pbe0", pbe0_input(tag, atoms, scf, basis, cell=20.0))
+
+
+def pbe0(tag, atoms, scf, basis):
+    """The PBE0 runs that the molecules and the cell of diamond share."""
+    add(f"{tag}-pbe-c12", make_input(tag, atoms, scf, basis, xc="GGA-PBE", criterion=PBE0_CRITERION))
+    add(f"{tag}-pbe0", pbe0_input(tag, atoms, scf, basis))
+    add(f"{tag}-pbe0-alpha0", pbe0_input(tag, atoms, scf, basis, extra=["scf.exx.alpha 0.0"]))
+    add(f"{tag}-pbe0-np4", pbe0_input(tag, atoms, scf, basis), ranks=4, threads=1)
+    for pca in ("1.0e-3", "1.0e-5", "1.0e-6"):
+        add(f"{tag}-pbe0-pca{pca[-1]}", pbe0_input(tag, atoms, scf, basis,
+                                                  extra=[f"scf.exx.abf.pca {pca}"]))
+    for cut in (8, 12, 24):
+        add(f"{tag}-pbe0-v{cut}", pbe0_input(tag, atoms, scf, basis,
+                                             extra=[f"scf.exx.v.cutoff {cut}.0"]))
 
 
 def triplet(tag, basis):
@@ -180,6 +239,9 @@ def triplet(tag, basis):
     add(f"{tag}-hse", make_input(tag, O2_ATOMS, H2O_SCF, basis, spin="on"))
     add(f"{tag}-hse-np2", make_input(tag, O2_ATOMS, H2O_SCF, basis, spin="on"), ranks=2, threads=1)
     add(f"{tag}-hse-np4", make_input(tag, O2_ATOMS, H2O_SCF, basis, spin="on"), ranks=4, threads=1)
+    add(f"{tag}-pbe0", pbe0_input(tag, O2_ATOMS, H2O_SCF, basis, spin="on"))
+    add(f"{tag}-pbe0-np2", pbe0_input(tag, O2_ATOMS, H2O_SCF, basis, spin="on"), ranks=2, threads=1)
+    add(f"{tag}-pbe0-np4", pbe0_input(tag, O2_ATOMS, H2O_SCF, basis, spin="on"), ranks=4, threads=1)
 
 
 def diamond(tag, basis):
@@ -193,6 +255,7 @@ def diamond(tag, basis):
     for cut in (6, 12, 16):
         add(f"{tag}-hse-v{cut}", make_input(tag, DIAMOND_ATOMS, DIAMOND_SCF, basis,
                                             extra=[f"scf.exx.v.cutoff {cut}.0"]))
+    pbe0(tag, DIAMOND_ATOMS, DIAMOND_SCF, basis)
 
 
 # The mixers besides RMM-DIIS. Each of them starts again after a build in its
@@ -256,6 +319,12 @@ def parse(run_dir, system):
     sizes = re.search(r"<EXX>  (\d+) atoms, (\d+) orbitals, (\d+) ABFs, (\d+) C sites, (\d+) V sites", std)
     if sizes:
         result["sizes"] = [int(v) for v in sizes.groups()]
+    truncated = re.search(r"<EXX>  truncated Coulomb interaction: R_c (\S+) bohr; V sites up to the larger ABF "
+                          r"radius plus (\S+) bohr(?:; (\d+) reciprocal intervals)?", std)
+    if truncated:
+        result["cutoff"], result["v_reach"] = float(truncated.group(1)), float(truncated.group(2))
+        if truncated.group(3):
+            result["reciprocal_intervals"] = int(truncated.group(3))
     times = re.search(r"<EXX>  time \(s\): preparation (\S+), density matrices (\S+), exchange matrix (\S+), "
                       r"addition (\S+)", std)
     if times:
@@ -326,15 +395,16 @@ def table(args):
 
     def converged(name):
         r = results.get(name)
-        return bool(r) and r["status"] == 0 and r["achieved"] and ("-hse" not in name or r["outer_converged"])
+        hybrid = "-hse" in name or "-pbe0" in name
+        return bool(r) and r["status"] == 0 and r["achieved"] and (not hybrid or r["outer_converged"])
 
-    def record(label, name, base):
+    def record(label, name, base, key="Utot"):
         """A row that the guide records without a limit: the difference, or what stopped the run."""
         r = results.get(name)
         if r is None:
             return
         if converged(name) and converged(base):
-            show(label, diff(name, base))
+            show(label, diff(name, base, key))
         else:
             print(f"  {label:46s} not converged ({r['builds']} builds, {r['scf_steps']} steps)")
 
@@ -348,7 +418,51 @@ def table(args):
     def size(name, index):
         return results.get(name, {}).get("sizes", [None] * 5)[index]
 
+    def pbe0_rows(tag):
+        """The table of M4 for PBE0 (M8)."""
+        r = results.get(f"{tag}-pbe0")
+        if r is None:
+            return
+        print(f"== {tag}, PBE0")
+        print(f"  atoms, orbitals, ABFs, C sites, V sites: {r.get('sizes')}  R_c {r.get('cutoff')} bohr")
+        print(f"  PBE0 Utot {r['Utot']}  Uexx {r['Uexx']}  builds {r['builds']}  SCF steps {r['scf_steps']}")
+        print("  outer iteration: " + ", ".join(f"{n} at SCF {s} delta {d:.2e}" for n, s, e, d in r["outer"]))
+        g0, g1 = gap(f"{tag}-pbe-c12"), gap(f"{tag}-pbe0")
+        if g0 and g1:
+            print(f"  HOMO, LUMO (Hartree): PBE {g0[0]:.6f} {g0[1]:.6f}  PBE0 {g1[0]:.6f} {g1[1]:.6f}  "
+                  f"gap {HARTREE_EV * (g0[1] - g0[0]):.3f} -> {HARTREE_EV * (g1[1] - g1[0]):.3f} eV")
+        show("PBE0: alpha=0 minus PBE", diff(f"{tag}-pbe0-alpha0", f"{tag}-pbe-c12"), 1e-9)
+        show("PBE0: shift: Utot", diff(f"{tag}-pbe0-shift", f"{tag}-pbe0"), 1e-8)
+        show("PBE0: shift: Uexx", diff(f"{tag}-pbe0-shift", f"{tag}-pbe0", "Uexx"), 1e-8)
+        show("PBE0: spin on minus off", diff(f"{tag}-pbe0-spin", f"{tag}-pbe0"), 1e-8)
+        for n in ("np2", "np4"):
+            show(f"PBE0: {n} minus np1", diff(f"{tag}-pbe0-{n}", f"{tag}-pbe0"), 1e-9)
+            show(f"PBE0: spin {n} minus spin np1", diff(f"{tag}-pbe0-spin-{n}", f"{tag}-pbe0-spin"), 1e-9)
+        show("PBE0: v24 (beyond the reach) minus automatic", diff(f"{tag}-pbe0-v24", f"{tag}-pbe0"), 1e-9)
+        for p in ("pca3", "pca5", "pca6"):
+            record(f"PBE0: {p} minus pca4 (ABFs {size(f'{tag}-pbe0-{p}', 2)})", f"{tag}-pbe0-{p}", f"{tag}-pbe0")
+        for v in ("v8", "v12"):
+            record(f"PBE0: {v} minus automatic (V sites {size(f'{tag}-pbe0-{v}', 4)})", f"{tag}-pbe0-{v}",
+                   f"{tag}-pbe0")
+        for c in ("rc8", "rc16"):
+            record(f"PBE0: {c} minus automatic (V sites {size(f'{tag}-pbe0-{c}', 4)})", f"{tag}-pbe0-{c}",
+                   f"{tag}-pbe0")
+            record(f"PBE0: {c} minus automatic, Uexx", f"{tag}-pbe0-{c}", f"{tag}-pbe0", "Uexx")
+        big = results.get(f"{tag}-big-pbe0")
+        if big:
+            print(f"  20 A cell: R_c {big.get('cutoff')} bohr, V sites {size(f'{tag}-big-pbe0', 4)}")
+            record("PBE0: 20 A cell minus 10 A cell, Uexx", f"{tag}-big-pbe0", f"{tag}-pbe0", "Uexx")
+        family = [x for n, x in results.items() if n.split("-")[0] == tag and "-pbe0" in n]
+        deviations = [x["dm_deviation"] for x in family if x.get("dm_deviation") is not None]
+        if deviations:
+            show(f"PBE0: density matrices against the solver ({len(deviations)} runs)", max(deviations), 1e-10)
+        if r.get("exx_times"):
+            t = r["exx_times"]
+            print(f"  time (s): preparation {t[0]}, density matrices {t[1]}, exchange matrix {t[2]}, addition {t[3]}; "
+                  f"DFT in total {r.get('dft_time')}")
+
     for tag in sorted({n.split("-")[0] for n in results}):
+        pbe0_rows(tag)
         r = results.get(f"{tag}-hse")
         if r is None:
             continue
@@ -392,7 +506,7 @@ def table(args):
             pbe_steps = results.get(f"{tag}-pbe-c6", {}).get("scf_steps")
             print(f"  scf.criterion 1e-6: builds {c6['builds']}  SCF steps {c6['scf_steps']} (PBE alone {pbe_steps})")
             show("scf.criterion 1e-6 minus 1e-10", diff(f"{tag}-hse-c6", f"{tag}-hse"))
-        family = [x for n, x in results.items() if n.split("-")[0] == tag]
+        family = [x for n, x in results.items() if n.split("-")[0] == tag and "-pbe0" not in n]
         deviations = [x["dm_deviation"] for x in family if x.get("dm_deviation") is not None]
         if deviations:
             show(f"density matrices against the solver ({len(deviations)} runs)", max(deviations), 1e-10)
@@ -400,12 +514,14 @@ def table(args):
             t = r["exx_times"]
             print(f"  time (s): preparation {t[0]}, density matrices {t[1]}, exchange matrix {t[2]}, addition {t[3]}; "
                   f"DFT in total {r.get('dft_time')}")
-    recorded = re.compile(r"-hse-(pca\d|v\d+)$")
+    # -pbe0-v24 has a limit, so it is not exempt.
+    recorded = re.compile(r"-(hse-(pca\d|v\d+)|pbe0-(pca\d|v8|v12|rc\d+)|big-pbe0)$")
     bad = [n for n in results if not converged(n)]
     exempt = [n for n in bad if recorded.search(n) and results[n]["status"] == 0]
     bad = [n for n in bad if n not in exempt]
     print("runs that failed or did not converge:", bad if bad else "none")
-    print("recorded rows (scf.exx.abf.pca, scf.exx.v.cutoff) that did not converge:", exempt if exempt else "none")
+    print("recorded rows (scf.exx.abf.pca, scf.exx.v.cutoff, scf.exx.coulomb.cutoff) that did not converge:",
+          exempt if exempt else "none")
     print("bounded differences beyond their limit:", failures if failures else "none")
     return 1 if bad or failures else 0
 

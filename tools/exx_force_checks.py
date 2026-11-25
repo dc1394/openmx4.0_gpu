@@ -2,7 +2,7 @@
 """
 exx_force_checks.py -- the runs of milestone M7 (docs/EXX_IMPLEMENTATION_GUIDE.md,
 section 9): the forces of HSE06 against the central differences of the total
-energy of SCF calculations.
+energy of SCF calculations, and the same for PBE0 (milestone M8).
 
 For every system the script runs the structure and, for a few components of
 the position of an atom, the structures with that component moved by +h and
@@ -28,6 +28,11 @@ The forces of 2 MPI processes must be those of 1 within 1e-6 Hartree/bohr: a
 mistake in the share of the atoms among the processes changes a force by its
 part from the exact exchange (1e-2 here), and 1e-6 is a tenth of the bound of
 condition 2.
+PBE0 takes the same structures, grids and bounds, with the default radius of
+the truncated Coulomb interaction (R_c 11.72 bohr in the box, 5.35 bohr for
+dia) and the default V list, which reaches the larger ABF radius plus R_c plus
+5 bohr.  Every distance stays 0.026 Angstrom or more from the radius of that
+list (0.08 for ch4, 0.16 for ch3); the C lists are those of HSE06.
 
   python3 tools/exx_force_checks.py list
   python3 tools/exx_force_checks.py run --openmx build/exx-cpu/openmx --out build/exx-m7 [NAME ...]
@@ -38,7 +43,10 @@ condition 2.
 (which it adds when results.json does not hold it).  As root in a container,
 pass --mpirun "mpirun --allow-run-as-root --oversubscribe".  "table" ends
 with status 1 when a bounded difference exceeds its limit or a run that a
-bound needs failed or did not converge.  Every run uses one OpenMP thread
+bound needs failed or did not converge.  A hybrid functional without any run
+in results.json is left out of the table (the runs of PBE0 alone, say).
+GGA-PBE is needed as soon as one of the two has a run, on the systems of that
+functional: PBE0 has no 300 Ry systems.  Every run uses one OpenMP thread
 (-nt 1).  Only the standard library is used; the parser of the output is the
 one of tools/exx_scf_checks.py.
 
@@ -57,9 +65,12 @@ The systems
 The stop criteria are scf.criterion 1e-12 and scf.exx.outer.criterion 1e-11:
 the central difference divides the energies by 2h = 0.0019 bohr.
 The names
-  SYSTEM-hse, SYSTEM-pbe   the structure with HSE06 and GGA-PBE
+  SYSTEM-hse, SYSTEM-pbe, SYSTEM-pbe0
+                           the structure with HSE06, GGA-PBE and PBE0 (PBE0
+                           for ch4, ch3 and dia only)
   ...-AX+, ...-AX-         atom A moved along the axis X by +h and -h
-  SYSTEM-hse-np2           the structure with 2 MPI processes
+  SYSTEM-hse-np2, SYSTEM-pbe0-np2
+                           the structure with 2 MPI processes
   ch4-hse-default, ch4-pbe-default
                            the default stop criteria (scf.criterion 1e-6,
                            scf.exx.outer.criterion 1e-6): their forces
@@ -181,7 +192,9 @@ def add(name, system, xc, move=None, ranks=1, criteria=True, base=None):
 
 for system, spec in SYSTEMS.items():
     fixed = any(line.startswith("scf.fixed.grid") for line in spec["solver"])
-    for label, xc in (("hse", "HSE06"), ("pbe", "GGA-PBE")):
+    for label, xc in (("hse", "HSE06"), ("pbe", "GGA-PBE"), ("pbe0", "PBE0")):
+        if label == "pbe0" and not spec["bounded"]:
+            continue
         base = f"{system}-{label}"
         add(base, system, xc)
         for atom, axis in spec["moves"]:
@@ -190,8 +203,9 @@ for system, spec in SYSTEMS.items():
             add(minus, system, xc, (atom, axis, -STEP), base=None if fixed else base)
             COMPARISONS.append((system, label, atom, axis, base, plus, minus))
 for system in ("ch4", "ch3", "dia"):
-    add(f"{system}-hse-np2", system, "HSE06", ranks=2)
-    PROCESSES.append((f"{system}-hse-np2", f"{system}-hse"))
+    for label, xc in (("hse", "HSE06"), ("pbe0", "PBE0")):
+        add(f"{system}-{label}-np2", system, xc, ranks=2)
+        PROCESSES.append((f"{system}-{label}-np2", f"{system}-{label}"))
 for label, xc in (("hse", "HSE06"), ("pbe", "GGA-PBE")):
     add(f"ch4-{label}-default", "ch4", xc, criteria=False)
     CRITERIA.append((f"ch4-{label}-default", f"ch4-{label}"))
@@ -301,7 +315,7 @@ def table(args):
     failures, missing = [], []
 
     def hybrid(name):
-        return name.split("-")[1] == "hse"
+        return name.split("-")[1] in ("hse", "pbe0")
 
     def converged(name):
         r = results.get(name)
@@ -320,9 +334,24 @@ def table(args):
     def largest(a, b):
         return max(abs(x - y) for fa, fb in zip(a, b) for x, y in zip(fa, fb))
 
+    # A hybrid functional that has no run here was not run; GGA-PBE is the
+    # partner of both in condition 2.
+    present = {name.split("-")[1] for name in results}
+    wanted = {label for label in ("hse", "pbe0") if label in present}
+    if wanted:
+        wanted.add("pbe")
+    left_out = sorted({"hse", "pbe0"} - wanted)
+    if left_out:
+        print("functionals without runs here, left out:", left_out)
+    # GGA-PBE only on the systems of those hybrid functionals (PBE0 has no
+    # 300 Ry systems)
+    hybrid_systems = {c[0] for c in COMPARISONS if c[1] in wanted and c[1] != "pbe"}
+
     print(f"== forces against the central differences of Utot (Hartree/bohr; h = {STEP} Angstrom)")
     differences = {}
     for system, label, atom, axis, base, plus, minus in COMPARISONS:
+        if label not in wanted or system not in hybrid_systems:
+            continue
         names = (base, plus, minus)
         bad = [n for n in names if not converged(n)]
         if bad:
@@ -347,15 +376,21 @@ def table(args):
     # of GGA-PBE, whose forces have no exact exchange, is the part that the
     # real-space grid leaves, and it changes with the position of the atoms
     # relative to the points of the grid.
-    print("== condition 2: the difference of HSE06 minus that of GGA-PBE, same structures and grid (Hartree/bohr)")
-    for system, label, atom, axis, base, plus, minus in COMPARISONS:
-        if label != "hse" or not SYSTEMS[system]["bounded"]:
+    for functional, title in (("hse", "HSE06"), ("pbe0", "PBE0")):
+        if functional not in wanted:
             continue
-        hse, pbe = differences.get((system, "hse", atom, axis)), differences.get((system, "pbe", atom, axis))
-        if hse is None or pbe is None:
-            print(f"  {system} atom {atom} {AXES[axis]}: a difference is missing")
-            continue
-        show(f"{system} atom {atom} {AXES[axis]}: {hse:+.2e} minus {pbe:+.2e}", hse - pbe, 1e-5)
+        print(f"== condition 2: the difference of {title} minus that of GGA-PBE, same structures and grid "
+              "(Hartree/bohr)")
+        for system, label, atom, axis, base, plus, minus in COMPARISONS:
+            if label != functional or not SYSTEMS[system]["bounded"]:
+                continue
+            hybrid_difference = differences.get((system, functional, atom, axis))
+            pbe = differences.get((system, "pbe", atom, axis))
+            if hybrid_difference is None or pbe is None:
+                print(f"  {system} atom {atom} {AXES[axis]}: a difference is missing")
+                continue
+            show(f"{system} atom {atom} {AXES[axis]}: {hybrid_difference:+.2e} minus {pbe:+.2e}",
+                 hybrid_difference - pbe, 1e-5)
 
     print("== sums over the atoms of the forces of the exact exchange (Hartree/bohr)")
     for name in RUNS:
@@ -369,6 +404,8 @@ def table(args):
 
     print("== forces of 2 MPI processes against those of 1 (Hartree/bohr)")
     for name, base in PROCESSES:
+        if name.split("-")[1] not in wanted:
+            continue
         if not converged(name) or not converged(base):
             missing += [n for n in (name, base) if not converged(n)]
             print(f"  {name}: runs missing or not converged")
