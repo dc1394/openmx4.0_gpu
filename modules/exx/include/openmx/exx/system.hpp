@@ -11,7 +11,8 @@
 
 // The quantities that depend on the structure, section 6.2 of the
 // implementation guide: sites, the two neighbour lists, and the T and V
-// blocks.  Nothing here uses MPI; one call prepares the whole unit cell.
+// blocks.  Nothing here uses MPI; one call prepares the whole unit cell, or
+// the share of one process in it (PrepareShare).
 namespace openmx::exx {
 
 // An atom of the unit cell together with the lattice vector of its cell,
@@ -97,12 +98,38 @@ struct System {
 // block[(P*u_a + mu)*u_c + lambda].
 std::vector<double> t_block(const System& system, std::size_t atom, std::size_t neighbour);
 
+// The share of one process in a preparation that several processes divide
+// (section 6.7).  prepare_system() goes through the pairs of sites of the T
+// blocks in a fixed order, and through those of the V blocks; a share holds
+// the pairs whose number in that order leaves the remainder "part" when
+// divided by "parts".  The blocks of an atom with itself belong to part 0.
+struct PrepareShare {
+  std::size_t part = 0, parts = 1;
+};
+
 // Section 6.2 for one structure.  species[s] is the table of species s; all
 // tables must have been made on "reciprocal".  The ABF radius of a species is
 // the radius of its table.  Each pair of sites is solved once and its solution
 // goes into the T blocks of both atoms; a V block is computed once and its
 // transpose goes to the other atom.
+//
+// With a share of several parts the call computes the blocks of its share
+// only.  The neighbour lists and the sizes of all blocks are those of the
+// whole preparation, the other blocks hold zeros, and the report counts the
+// systems of the share.  Every element of every block is computed by one
+// part, with the operations of the whole preparation: the sum of the blocks
+// of all parts, element by element, is the system of the whole preparation
+// (get_tables() and set_tables()).
 System prepare_system(const Structure& structure, std::span<const SpeciesTable> species,
-                      const ReciprocalGrid& reciprocal, const SystemOptions& options);
+                      const ReciprocalGrid& reciprocal, const SystemOptions& options, const PrepareShare& share = {});
+
+// The T blocks and the V blocks of an atom as one array: System::t[atom]
+// first, then System::v[atom][i] for every V neighbour i.  The processes of a
+// divided preparation add up these arrays.
+std::size_t table_elements(const System& system, std::size_t atom);
+// Copies the blocks of the atom into values, table_elements() numbers.
+void get_tables(const System& system, std::size_t atom, std::span<double> values);
+// Replaces the blocks of the atom by values.
+void set_tables(System& system, std::size_t atom, std::span<const double> values);
 
 } // namespace openmx::exx

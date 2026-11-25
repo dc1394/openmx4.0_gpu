@@ -101,18 +101,50 @@ struct PieceWork {
   std::vector<double> scratch, gathered, x3, x4, k1, second;
 };
 
-// The number of pieces of the work of the centre atom a: the threads of the
-// backend, or the ABFs of the atom when they are fewer.  Every loop of the
-// build of the atom is asked for one call for each piece.
-std::size_t piece_count(const System& system, std::size_t a, const DenseBackend& backend)
+// The number of pieces of the work of `count` ABFs of a centre atom: the
+// threads of the backend, or the ABFs when they are fewer.  Every loop of the
+// build of these ABFs is asked for one call for each piece.
+std::size_t piece_count(std::size_t count, const DenseBackend& backend)
 {
-  return std::max<std::size_t>(1,std::min(backend.pieces(),system.abf_count[a]));
+  return std::max<std::size_t>(1,std::min(backend.pieces(),count));
+}
+
+// The first ABF of every atom in the count over the ABFs of all atoms, and
+// their number at the end.
+std::vector<std::size_t> abf_offsets(const System& system)
+{
+  std::vector<std::size_t> offset(1,0);
+  for (const std::size_t n : system.abf_count) offset.push_back(offset.back()+n);
+  return offset;
+}
+
+// The ABFs first <= P < last of one centre atom, counted within the atom.
+struct CentrePart {
+  std::size_t atom, first, last;
+};
+
+// The parts of the centre atoms that the ABFs first <= P < last hold, P in
+// the count over all atoms (abf_offsets()), in the order of the atoms.
+std::vector<CentrePart> centre_parts(const std::vector<std::size_t>& offset, std::size_t first, std::size_t last)
+{
+  std::vector<CentrePart> parts;
+  for (std::size_t a = 0; a+1 < offset.size(); ++a) {
+    const std::size_t from = std::max(first,offset[a]), to = std::min(last,offset[a+1]);
+    if (from < to) parts.push_back(CentrePart{a,from-offset[a],to-offset[a]});
+  }
+  return parts;
 }
 
 // The contribution of the centre atom a, section 6.4.  The columns of the
 // density matrix are numbered 0..s-1 by the caller: the orbitals of the sites
 // of S in the site form, the orbitals of the unit cell in the Gamma form.
 // dloc is D[loc(A), columns], width(a) x s; its first u_a rows belong to A.
+//
+// The contribution is a sum over the ABFs P of the centre: G, W, the four
+// terms and the last product are separate for every P.  The call computes
+// the part of the ABFs p_first <= P < p_last, and the parts of an atom add up
+// to its contribution (section 6.7).  Below, np is the number of ABFs of the
+// part, and P counts them from 0.
 //
 // The sink hands out the blocks and receives the results.  Its groups are
 // the V neighbours of the centre: one site each in the site form, all images
@@ -154,15 +186,15 @@ std::size_t piece_count(const System& system, std::size_t a, const DenseBackend&
 // pieces is piece_count(); the callers that gather dloc in pieces use the
 // same number.
 template <class Sink>
-void centre_contribution(const System& system, std::size_t a, std::size_t s, const double* dloc, Sink& sink,
-                         const DenseBackend& backend)
+void centre_contribution(const System& system, std::size_t a, std::size_t p_first, std::size_t p_last, std::size_t s,
+                         const double* dloc, Sink& sink, const DenseBackend& backend)
 {
-  const std::size_t np = system.abf_count[a], ua = system.orbital_count[a], ell = sink.width(a);
+  const std::size_t np = p_last-p_first, ua = system.orbital_count[a], ell = sink.width(a);
   const std::size_t rows = np*ua, part = s*ua;
-  const double* tst = sink.t(a);
+  const double* tst = sink.t(a)+p_first*ua*ell;                        // the rows of the ABFs of the part
   const double* da = dloc;
 
-  const std::size_t pieces = piece_count(system,a,backend);
+  const std::size_t pieces = piece_count(np,backend);
   const auto begin = [np,pieces](std::size_t c) { return c*np/pieces; };
   std::vector<PieceWork> work(pieces);
 
@@ -186,9 +218,9 @@ void centre_contribution(const System& system, std::size_t a, std::size_t s, con
     const std::vector<std::size_t>& column = sink.columns(ib);         // lb entries
     find_runs(column,runs);
 
-    // W_{P,B} = sum_Q V_PQ T_Q, equation (10)
+    // W_{P,B} = sum_Q V_PQ T_Q, equation (10), for the rows P of the part
     w.resize(np*ub*lb);
-    backend.multiply(np,ub*lb,nq,1.0,sink.v(ib),sink.t(b),0.0,w.data());
+    backend.multiply(np,ub*lb,nq,1.0,sink.v(ib)+p_first*nq,sink.t(b),0.0,w.data());
 
     // D[A, loc(B)] as [mu, l] and D[A, B] as [nu, mu]
     dl.resize(ua*lb);
@@ -283,14 +315,18 @@ void centre_contribution(const System& system, std::size_t a, std::size_t s, con
 //   dv[g] [P, Q] = factor sum_{nu l} T_Q[nu, l] H_P[nu, l],
 //   H_P = D[B, A] G_P[., loc(B)] + G_P[B, .] D[A, loc(B)]
 // The V block of group g enters the sum of this centre only.
+//
+// Both derivatives are separate for every ABF P of the centre, and the call
+// computes those of the ABFs p_first <= P < p_last: dt and dv[g] get the
+// rows of these ABFs, np = p_last - p_first of them, and nothing else.
 template <class Sink>
-void centre_derivatives(const System& system, std::size_t a, std::size_t s, const std::vector<double>& dloc,
-                        Sink& sink, double factor, const DenseBackend& backend, std::vector<double>& dt,
-                        std::vector<std::vector<double>>& dv)
+void centre_derivatives(const System& system, std::size_t a, std::size_t p_first, std::size_t p_last, std::size_t s,
+                        const std::vector<double>& dloc, Sink& sink, double factor, const DenseBackend& backend,
+                        std::vector<double>& dt, std::vector<std::vector<double>>& dv)
 {
-  const std::size_t np = system.abf_count[a], ua = system.orbital_count[a], ell = sink.width(a);
+  const std::size_t np = p_last-p_first, ua = system.orbital_count[a], ell = sink.width(a);
   const std::size_t rows = np*ua, part = s*ua;
-  const double* tst = sink.t(a);
+  const double* tst = sink.t(a)+p_first*ua*ell;
   const double* da = dloc.data();
 
   const std::unique_ptr<double[]> g(new double[rows*s]);
@@ -308,7 +344,7 @@ void centre_derivatives(const System& system, std::size_t a, std::size_t s, cons
     find_runs(column,runs);
 
     w.resize(np*ub*lb);                                                // W_{P,B} = sum_Q V_PQ T_Q
-    backend.multiply(np,ub*lb,nq,1.0,sink.v(ib),sink.t(b),0.0,w.data());
+    backend.multiply(np,ub*lb,nq,1.0,sink.v(ib)+p_first*nq,sink.t(b),0.0,w.data());
 
     dl.resize(ua*lb);                                                  // D[A, loc(B)] as [mu, l]
     for (std::size_t mu = 0; mu < ua; ++mu)
@@ -855,8 +891,10 @@ void check_dense(std::size_t n, std::size_t size, const char* what)
 // One call of the library builds the contributions of its centre atoms on the
 // device.  D, K, the T blocks of all atoms and a zero stay there for the
 // call; the arrays of one centre are made for the largest centre and used by
-// every centre in turn.  The device has the arrays of centre_contribution()
-// in other layouts, so that no array is turned:
+// every centre in turn.  A call can hold a part of the ABFs of a centre
+// (CentrePart): the arrays then have the ABFs of the part, as on the host.
+// The device has the arrays of centre_contribution() in other layouts, so
+// that no array is turned:
 //   G and the bracket   [P][mu][column]   (the result of G = T D as it is)
 //   W                   [P][nu][l]        (the result of W = V T as it is)
 //   Wn                  [nu][P][l]        (a copy of W)
@@ -1025,13 +1063,13 @@ struct DeviceSizes {
   }
 };
 
-// The sizes of centre a with the columns s, the width ell of loc(A), the
-// groups (atom, width of loc(B), sites of loc(B)) and the rows of the
-// gathered D (site form; 0 in the Gamma form).
-DeviceSizes device_sizes(const System& system, std::size_t a, std::size_t s, std::size_t ell,
+// The sizes of np ABFs of centre a with the columns s, the width ell of
+// loc(A), the groups (atom, width of loc(B), sites of loc(B)) and the rows of
+// the gathered D (site form; 0 in the Gamma form).
+DeviceSizes device_sizes(const System& system, std::size_t a, std::size_t np, std::size_t s, std::size_t ell,
                          const std::vector<std::array<std::size_t,3>>& groups, std::size_t gathered_rows, bool site)
 {
-  const std::size_t np = system.abf_count[a], ua = system.orbital_count[a];
+  const std::size_t ua = system.orbital_count[a];
   const auto product = [](std::size_t m, std::size_t n, std::size_t k) {
     return static_cast<double>(m)*static_cast<double>(n)*static_cast<double>(k);
   };
@@ -1109,14 +1147,14 @@ struct DeviceArrays {
   }
 };
 
-// The contribution of one centre atom on the device, factor times it added
-// to K there.  The lists and the V blocks of the centre are uploaded first:
-// the work of the centre before has finished.  The work of this centre is
-// finished at the end.
-void device_centre(const System& system, std::size_t a, double factor, const DeviceCentre& c, DeviceArrays& d,
-                   DeviceWork& work)
+// The contribution of the ABFs of a part of one centre atom on the device,
+// factor times it added to K there.  The lists and the V blocks of the
+// centre are uploaded first: the work of the centre before has finished.
+// The work of this centre is finished at the end.
+void device_centre(const System& system, const CentrePart& share, double factor, const DeviceCentre& c,
+                   DeviceArrays& d, DeviceWork& work)
 {
-  const std::size_t np = system.abf_count[a], ua = system.orbital_count[a], s = c.s;
+  const std::size_t a = share.atom, np = share.last-share.first, ua = system.orbital_count[a], s = c.s;
   const std::size_t rows = np*ua;
   const bool site = c.row.empty();
   const std::size_t ell = site ? system.c_offset[a].back() : c.row.size();
@@ -1164,7 +1202,8 @@ void device_centre(const System& system, std::size_t a, double factor, const Dev
     at[ib].second_local = append(group.second_local);
     at[ib].second_length = append_length(group.second_length);
     v_offset.push_back(v.size());
-    v.insert(v.end(),group.v,group.v+np*system.abf_count[b]);
+    const std::size_t nq = system.abf_count[b];
+    v.insert(v.end(),group.v+share.first*nq,group.v+share.last*nq);       // the rows of the ABFs of the part
   }
   if (list.size() > d.capacity.list || length.size() > d.capacity.length || v.size() > d.capacity.v)
     throw std::logic_error("the lists of a centre atom do not fit their arrays on the device");
@@ -1174,7 +1213,7 @@ void device_centre(const System& system, std::size_t a, double factor, const Dev
 
   using Side = DeviceWork::Side;
   const Side zero{0,nullptr,0,nullptr};              // every element reads d.zero[0]
-  const double* ta = d.t+d.t_offset[a];
+  const double* ta = d.t+d.t_offset[a]+share.first*ua*ell;              // the rows of the ABFs of the part
   if (site)                                          // D[loc(A), S] from the layout
     work.move(c.local.size(),c.longest,d.length+gathered,1.0,false,d.dloc,Side{0,d.list+local,1,nullptr},d.density,
               Side{0,d.list+stored,1,nullptr});
@@ -1233,20 +1272,20 @@ void device_centre(const System& system, std::size_t a, double factor, const Dev
   work.finish();
 }
 
-// The centre atoms first to last-1 on the device; false when the device does
+// The parts of the centre atoms on the device; false when the device does
 // not take them or stops.  Form gives the sizes and the plan of a centre and
 // the T blocks of an atom.  k is written at the end only.
 template <class Form>
-bool device_range(const System& system, std::size_t first, std::size_t last, double factor,
+bool device_range(const System& system, const std::vector<CentrePart>& parts, double factor,
                   std::span<const double> density, std::span<double> k, const OpenMXExxDevice& device, Form& form)
 {
   if (device.accept == nullptr || device.allocate == nullptr || device.release == nullptr ||
       device.upload == nullptr || device.download == nullptr || device.dgemm == nullptr || device.move == nullptr ||
-      device.finish == nullptr || first >= last)
+      device.finish == nullptr || parts.empty())
     return false;
   const std::size_t atoms = system.orbital_count.size();
   DeviceSizes z;
-  for (std::size_t a = first; a < last; ++a) z.widen(form.sizes(a));
+  for (const CentrePart& part : parts) z.widen(form.sizes(part.atom,part.last-part.first));
   std::vector<std::size_t> t_size(atoms);
   std::size_t t_total = 0;
   for (std::size_t x = 0; x < atoms; ++x) t_total += t_size[x] = form.t_size(x);
@@ -1261,7 +1300,7 @@ bool device_range(const System& system, std::size_t first, std::size_t last, dou
     for (std::size_t x = 0; x < atoms; ++x) work.upload(d.t+d.t_offset[x],form.t(x),t_size[x]*sizeof(double));
     const double nothing = 0.0;
     work.upload(d.zero,&nothing,sizeof(double));
-    for (std::size_t a = first; a < last; ++a) device_centre(system,a,factor,form.plan(a),d,work);
+    for (const CentrePart& part : parts) device_centre(system,part,factor,form.plan(part.atom),d,work);
     work.download(result.data(),d.k,result.size()*sizeof(double));
   } catch (const DeviceStop&) {
     return false;
@@ -1278,7 +1317,8 @@ class DeviceBlocks {
   {
   }
 
-  DeviceSizes sizes(std::size_t a)
+  // The sizes of np ABFs of centre a.
+  DeviceSizes sizes(std::size_t a, std::size_t np)
   {
     const SiteSink<LayoutBlocks> sink(system_,a,factor_,store_);
     std::vector<std::array<std::size_t,3>> groups;
@@ -1287,7 +1327,7 @@ class DeviceBlocks {
       groups.push_back({atom,system_.c_offset[atom].back(),system_.c_neighbours[atom].size()});
     }
     const std::size_t ell = system_.c_offset[a].back();
-    return device_sizes(system_,a,sink.size(),ell,groups,ell*sink.site_count(),true);
+    return device_sizes(system_,a,np,sink.size(),ell,groups,ell*sink.site_count(),true);
   }
 
   std::size_t t_size(std::size_t x) const { return system_.t[x].size(); }
@@ -1330,12 +1370,13 @@ class DeviceGamma {
   {
   }
 
-  DeviceSizes sizes(std::size_t a)
+  // The sizes of np ABFs of centre a.
+  DeviceSizes sizes(std::size_t a, std::size_t np)
   {
     GammaSink sink(system_,a,factor_,std::span<double>(),offset_);
     std::vector<std::array<std::size_t,3>> groups;
     for (std::size_t g = 0; g < sink.groups(); ++g) groups.push_back({sink.atom(g),sink.width(sink.atom(g)),0});
-    return device_sizes(system_,a,offset_.back(),sink.width(a),groups,0,false);
+    return device_sizes(system_,a,np,offset_.back(),sink.width(a),groups,0,false);
   }
 
   std::size_t t_size(std::size_t x)
@@ -1413,7 +1454,7 @@ void add_exchange_blocks(const System& system, std::size_t atom, double factor, 
   if (!std::ranges::equal(k.orbital_count(),system.orbital_count))
     throw std::invalid_argument("the blocks of K do not belong to this system");
   SiteSink<BlockMatrix> sink(system,atom,factor,k);
-  centre_contribution(system,atom,sink.size(),sink.density(density).data(),sink,backend);
+  centre_contribution(system,atom,0,system.abf_count[atom],sink.size(),sink.density(density).data(),sink,backend);
 }
 
 BlockMatrix exchange_blocks(const System& system, const DensityBlocks& density, double alpha,
@@ -1537,18 +1578,54 @@ BlockLayout exchange_layout(const System& system)
   return layout;
 }
 
+namespace {
+
+void check_arrays(const System& system, const BlockLayout& layout, std::span<const double> density,
+                  std::span<const double> k)
+{
+  check(system);
+  check(system,layout);
+  if (density.size() != layout.elements()) throw std::invalid_argument("the density matrix does not have the size of the layout");
+  if (k.size() != layout.elements()) throw std::invalid_argument("the exchange matrix does not have the size of the layout");
+}
+
+// The part of a centre atom on the host, for arrays that fit the system.
+void add_blocks_part(const System& system, const BlockLayout& layout, const CentrePart& part, double factor,
+                     std::span<const double> density, std::span<double> k, const DenseBackend& backend)
+{
+  LayoutBlocks store(layout,k);
+  SiteSink<LayoutBlocks> sink(system,part.atom,factor,store);
+  const std::unique_ptr<double[]> dloc = sink.density(density,backend,piece_count(part.last-part.first,backend));
+  centre_contribution(system,part.atom,part.first,part.last,sink.size(),dloc.get(),sink,backend);
+}
+
+} // namespace
+
 void add_exchange_blocks(const System& system, const BlockLayout& layout, std::size_t atom, double factor,
                          std::span<const double> density, std::span<double> k, const DenseBackend& backend)
 {
   check(system);
   if (atom >= system.orbital_count.size()) throw std::out_of_range("the centre atom does not exist");
-  check(system,layout);
-  if (density.size() != layout.elements()) throw std::invalid_argument("the density matrix does not have the size of the layout");
-  if (k.size() != layout.elements()) throw std::invalid_argument("the exchange matrix does not have the size of the layout");
-  LayoutBlocks store(layout,k);
-  SiteSink<LayoutBlocks> sink(system,atom,factor,store);
-  const std::unique_ptr<double[]> dloc = sink.density(density,backend,piece_count(system,atom,backend));
-  centre_contribution(system,atom,sink.size(),dloc.get(),sink,backend);
+  check_arrays(system,layout,density,k);
+  add_blocks_part(system,layout,CentrePart{atom,0,system.abf_count[atom]},factor,density,k,backend);
+}
+
+bool add_exchange_blocks_abfs(const System& system, const BlockLayout& layout, std::size_t first, std::size_t last,
+                              double factor, std::span<const double> density, std::span<double> k,
+                              const DenseBackend& backend)
+{
+  check(system);
+  const std::vector<std::size_t> offset = abf_offsets(system);
+  if (first > last || last > offset.back()) throw std::out_of_range("the range of ABFs is not inside the unit cell");
+  if (first == last) return false;
+  check_arrays(system,layout,density,k);
+  const std::vector<CentrePart> parts = centre_parts(offset,first,last);
+  if (const OpenMXExxDevice* device = backend.device(); device != nullptr) {
+    DeviceBlocks form(system,layout,factor);
+    if (device_range(system,parts,factor,density,k,*device,form)) return true;
+  }
+  for (const CentrePart& part : parts) add_blocks_part(system,layout,part,factor,density,k,backend);
+  return false;
 }
 
 bool add_exchange_blocks_range(const System& system, const BlockLayout& layout, std::size_t first, std::size_t last,
@@ -1557,16 +1634,57 @@ bool add_exchange_blocks_range(const System& system, const BlockLayout& layout, 
 {
   if (first > last || last > system.orbital_count.size())
     throw std::out_of_range("the range of centre atoms is not inside the unit cell");
-  if (const OpenMXExxDevice* device = backend.device(); device != nullptr && first < last) {
-    check(system);
-    check(system,layout);
-    if (density.size() != layout.elements()) throw std::invalid_argument("the density matrix does not have the size of the layout");
-    if (k.size() != layout.elements()) throw std::invalid_argument("the exchange matrix does not have the size of the layout");
-    DeviceBlocks form(system,layout,factor);
-    if (device_range(system,first,last,factor,density,k,*device,form)) return true;
+  if (first == last) return false;
+  check(system);
+  const std::vector<std::size_t> offset = abf_offsets(system);
+  return add_exchange_blocks_abfs(system,layout,offset[first],offset[last],factor,density,k,backend);
+}
+
+// ---- the work of a build ------------------------------------------------------
+
+std::vector<double> abf_costs(const System& system, bool sites)
+{
+  check(system);
+  const std::size_t atoms = system.orbital_count.size(), n = orbital_total(system);
+  const auto product = [](std::size_t a, std::size_t b, std::size_t c) {
+    return static_cast<double>(a)*static_cast<double>(b)*static_cast<double>(c);
+  };
+  // The columns of the T blocks of every atom: the orbitals of its C
+  // neighbours, and in the Gamma form those of the atoms among them.
+  std::vector<std::size_t> width(atoms);
+  std::vector<unsigned char> seen;
+  for (std::size_t a = 0; a < atoms; ++a) {
+    width[a] = system.c_offset[a].back();
+    if (sites) continue;
+    seen.assign(atoms,0);
+    width[a] = 0;
+    for (const Site& site : system.c_neighbours[a]) {
+      const std::size_t c = static_cast<std::size_t>(site.atom);
+      if (!seen[c]) width[a] += system.orbital_count[c];
+      seen[c] = 1;
+    }
   }
-  for (std::size_t atom = first; atom < last; ++atom) add_exchange_blocks(system,layout,atom,factor,density,k,backend);
-  return false;
+  std::vector<double> cost(atoms);
+  for (std::size_t a = 0; a < atoms; ++a) {
+    const std::size_t ua = system.orbital_count[a];
+    std::size_t s = n;                                 // the columns of D[loc(A), .]
+    if (sites) {
+      s = 0;
+      for (const Site& site : column_sites(system,a)) s += system.orbital_count[static_cast<std::size_t>(site.atom)];
+    }
+    double total = 2.0*product(ua,s,width[a]);         // G and the last product
+    // W and the four terms of every group: a V neighbour in the site form,
+    // an atom among the V neighbours in the Gamma form.
+    seen.assign(atoms,0);
+    for (const Site& site : system.v_neighbours[a]) {
+      const std::size_t b = static_cast<std::size_t>(site.atom);
+      if (!sites && seen[b]) continue;
+      seen[b] = 1;
+      total += product(system.orbital_count[b],width[b],system.abf_count[b]+4*ua);
+    }
+    cost[a] = total;
+  }
+  return cost;
 }
 
 double block_asymmetry(const System& system, const BlockLayout& layout, std::span<const double> values)
@@ -1598,6 +1716,21 @@ std::size_t orbital_total(const System& system) noexcept
   return total;
 }
 
+namespace {
+
+// The part of a centre atom on the host, for N x N arrays of the system.
+void add_gamma_part(const System& system, const std::vector<std::size_t>& offset, const CentrePart& part, double factor,
+                    std::span<const double> density, std::span<double> k, const DenseBackend& backend)
+{
+  const std::size_t n = offset.back();
+  GammaSink sink(system,part.atom,factor,k,offset);
+  const std::unique_ptr<double[]> dloc =
+      gathered_rows(density,n,sink.rows(),backend,piece_count(part.last-part.first,backend));
+  centre_contribution(system,part.atom,part.first,part.last,n,dloc.get(),sink,backend);
+}
+
+} // namespace
+
 void add_exchange_gamma(const System& system, std::size_t atom, double factor, std::span<const double> density,
                         std::span<double> k, const DenseBackend& backend)
 {
@@ -1607,9 +1740,27 @@ void add_exchange_gamma(const System& system, std::size_t atom, double factor, s
   const std::size_t n = offset.back();
   check_dense(n,density.size(),"the density matrix is not N x N");
   check_dense(n,k.size(),"the exchange matrix is not N x N");
-  GammaSink sink(system,atom,factor,k,offset);
-  const std::unique_ptr<double[]> dloc = gathered_rows(density,n,sink.rows(),backend,piece_count(system,atom,backend));
-  centre_contribution(system,atom,n,dloc.get(),sink,backend);
+  add_gamma_part(system,offset,CentrePart{atom,0,system.abf_count[atom]},factor,density,k,backend);
+}
+
+bool add_exchange_gamma_abfs(const System& system, std::size_t first, std::size_t last, double factor,
+                             std::span<const double> density, std::span<double> k, const DenseBackend& backend)
+{
+  check(system);
+  const std::vector<std::size_t> abfs = abf_offsets(system);
+  if (first > last || last > abfs.back()) throw std::out_of_range("the range of ABFs is not inside the unit cell");
+  if (first == last) return false;
+  const std::vector<std::size_t> offset = orbital_offsets(system);
+  const std::size_t n = offset.back();
+  check_dense(n,density.size(),"the density matrix is not N x N");
+  check_dense(n,k.size(),"the exchange matrix is not N x N");
+  const std::vector<CentrePart> parts = centre_parts(abfs,first,last);
+  if (const OpenMXExxDevice* device = backend.device(); device != nullptr) {
+    DeviceGamma form(system,factor,offset);
+    if (device_range(system,parts,factor,density,k,*device,form)) return true;
+  }
+  for (const CentrePart& part : parts) add_gamma_part(system,offset,part,factor,density,k,backend);
+  return false;
 }
 
 bool add_exchange_gamma_range(const System& system, std::size_t first, std::size_t last, double factor,
@@ -1617,17 +1768,10 @@ bool add_exchange_gamma_range(const System& system, std::size_t first, std::size
 {
   if (first > last || last > system.orbital_count.size())
     throw std::out_of_range("the range of centre atoms is not inside the unit cell");
-  if (const OpenMXExxDevice* device = backend.device(); device != nullptr && first < last) {
-    check(system);
-    const std::vector<std::size_t> offset = orbital_offsets(system);
-    const std::size_t n = offset.back();
-    check_dense(n,density.size(),"the density matrix is not N x N");
-    check_dense(n,k.size(),"the exchange matrix is not N x N");
-    DeviceGamma form(system,factor,offset);
-    if (device_range(system,first,last,factor,density,k,*device,form)) return true;
-  }
-  for (std::size_t atom = first; atom < last; ++atom) add_exchange_gamma(system,atom,factor,density,k,backend);
-  return false;
+  if (first == last) return false;
+  check(system);
+  const std::vector<std::size_t> abfs = abf_offsets(system);
+  return add_exchange_gamma_abfs(system,abfs[first],abfs[last],factor,density,k,backend);
 }
 
 std::vector<double> exchange_gamma(const System& system, std::span<const double> density, double alpha,
@@ -1762,8 +1906,24 @@ CentreGradient centre_gradient_blocks(const System& system, const BlockLayout& l
 {
   check(system);
   if (atom >= system.orbital_count.size()) throw std::out_of_range("the centre atom does not exist");
+  return centre_gradient_blocks(system,layout,atom,0,system.abf_count[atom],factor,density,backend);
+}
+
+CentreGradient centre_gradient_blocks(const System& system, const BlockLayout& layout, std::size_t atom,
+                                      std::size_t first, std::size_t last, double factor,
+                                      std::span<const double> density, const DenseBackend& backend)
+{
+  check(system);
+  if (atom >= system.orbital_count.size()) throw std::out_of_range("the centre atom does not exist");
+  if (first > last || last > system.abf_count[atom])
+    throw std::out_of_range("the range of ABFs is not inside the centre atom");
   check(system,layout);
   if (density.size() != layout.elements()) throw std::invalid_argument("the density matrix does not have the size of the layout");
+  CentreGradient gradient;
+  if (first == last) {
+    gradient.v.resize(system.v_neighbours[atom].size());
+    return gradient;
+  }
   const DensityBlocks blocks = [&layout,density](const BlockKey& key, std::span<double> block) {
     const std::size_t i = layout.find(key);
     if (i == layout.keys.size()) throw std::invalid_argument("the layout lacks a block of the density matrix");
@@ -1772,8 +1932,7 @@ CentreGradient centre_gradient_blocks(const System& system, const BlockLayout& l
   // The sink gives the blocks and the columns; nothing is written to K.
   LayoutBlocks store(layout,std::span<double>());
   SiteSink<LayoutBlocks> sink(system,atom,factor,store);
-  CentreGradient gradient;
-  centre_derivatives(system,atom,sink.size(),sink.density(blocks),sink,factor,backend,gradient.t,gradient.v);
+  centre_derivatives(system,atom,first,last,sink.size(),sink.density(blocks),sink,factor,backend,gradient.t,gradient.v);
   return gradient;
 }
 
@@ -1782,19 +1941,34 @@ CentreGradient centre_gradient_gamma(const System& system, std::size_t atom, dou
 {
   check(system);
   if (atom >= system.orbital_count.size()) throw std::out_of_range("the centre atom does not exist");
+  return centre_gradient_gamma(system,atom,0,system.abf_count[atom],factor,density,backend);
+}
+
+CentreGradient centre_gradient_gamma(const System& system, std::size_t atom, std::size_t first, std::size_t last,
+                                     double factor, std::span<const double> density, const DenseBackend& backend)
+{
+  check(system);
+  if (atom >= system.orbital_count.size()) throw std::out_of_range("the centre atom does not exist");
+  if (first > last || last > system.abf_count[atom])
+    throw std::out_of_range("the range of ABFs is not inside the centre atom");
   const std::vector<std::size_t> offset = orbital_offsets(system);
   const std::size_t n = offset.back();
   check_dense(n,density.size(),"the density matrix is not N x N");
+  CentreGradient gradient;
+  const std::vector<Site>& neighbours = system.v_neighbours[atom];
+  if (first == last) {
+    gradient.v.resize(neighbours.size());
+    return gradient;
+  }
   GammaSink sink(system,atom,factor,std::span<double>(),offset);
   std::vector<double> folded_t;
   std::vector<std::vector<double>> grouped_v;
   const std::vector<std::size_t> row = sink.rows();
-  centre_derivatives(system,atom,n,gathered_rows(density,n,row),sink,factor,backend,folded_t,grouped_v);
+  centre_derivatives(system,atom,first,last,n,gathered_rows(density,n,row),sink,factor,backend,folded_t,grouped_v);
 
   // The stored blocks: the images of an atom among the C neighbours share a
   // column of the folded T blocks, the images among the V neighbours a group.
-  CentreGradient gradient;
-  const std::size_t rows = system.abf_count[atom]*system.orbital_count[atom];
+  const std::size_t rows = (last-first)*system.orbital_count[atom];
   const std::size_t ell = system.c_offset[atom].back(), width = row.size();
   std::vector<std::size_t> position(n,0);
   for (std::size_t l = 0; l < width; ++l) position[row[l]] = l;
@@ -1804,7 +1978,6 @@ CentreGradient centre_gradient_gamma(const System& system, std::size_t atom, dou
     for (std::size_t l = 0; l < ell; ++l) gradient.t[r*ell+l] = folded_t[r*width+position[stored[l]]];
   std::vector<std::size_t> group(system.orbital_count.size(),0);
   for (std::size_t g = 0; g < sink.groups(); ++g) group[sink.atom(g)] = g;
-  const std::vector<Site>& neighbours = system.v_neighbours[atom];
   gradient.v.resize(neighbours.size());
   for (std::size_t ib = 0; ib < neighbours.size(); ++ib)
     gradient.v[ib] = grouped_v[group[static_cast<std::size_t>(neighbours[ib].atom)]];

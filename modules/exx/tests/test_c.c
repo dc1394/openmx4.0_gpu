@@ -2,9 +2,10 @@
    program must be able to prepare a structure, build the exchange matrix of
    the Gamma point and that of the site form, take the derivative of E_x with
    respect to the positions of the atoms, and pass its own matrix product,
-   its own loop for the pieces of the build and its own device.  That the numbers are those of
-   the C++ interface is checked by exx-exchange-system and
-   exx-exchange-forces. */
+   its own loop for the pieces of the build and its own device, and divide
+   the builds, the preparation and the derivative as processes do.  That the
+   numbers are those of the C++ interface is checked by exx-exchange-system
+   and exx-exchange-forces. */
 #include <openmx/exx/exx.h>
 
 #include <math.h>
@@ -203,6 +204,290 @@ static double largest(const double *values, int count)
   int i;
   for (i = 0; i < count; ++i) if (fabs(values[i]) > result) result = fabs(values[i]);
   return result;
+}
+
+/* The entries for processes that divide the work (section 6.7 of the guide):
+   builds over ranges of ABFs, the preparation in shares, and the derivative
+   of E_x by the weights of the blocks and the pairs of sites.  whole is a
+   prepared structure with the list of its blocks; k, site_k and gradient are
+   what the calls for all atoms gave with the factor -0.25.  Returns 0 when
+   every check holds and the line of the first one that fails otherwise. */
+static int divided_work(const OpenMXExxState *whole, const OpenMXExxOptions *options,
+                        const OpenMXExxGeometry *geometry, const double *d, const double *k, const double *site_d,
+                        const double *site_k, size_t elements, const double *gradient)
+{
+#define EXPECT(expression) do { if (!(expression)) { \
+  fprintf(stderr,"line %d: %s\n",__LINE__,#expression); failed = __LINE__; goto done; } } while (0)
+  const int share_counts[3] = {1, 2, 5}, pair_counts[4] = {1, 2, 3, 7};
+  const double scale = largest(k, N * N), site_scale = largest(site_k, (int)elements);
+  const double steepest = largest(gradient, 3 * ATOMS);
+  OpenMXExxState *share = NULL;
+  OpenMXExxReport report, share_report;
+  OpenMXExxDenseBackend table = {0};
+  Calls calls = {0, 0, 0, 0};
+  double *tables[ATOMS] = {NULL, NULL, NULL}, *weights[ATOMS] = {NULL, NULL, NULL};
+  double *sums[ATOMS], *piece[ATOMS], *site_weights[ATOMS], *holed[ATOMS];
+  const double *read[ATOMS], *site_read[ATOMS], *missing[ATOMS];
+  double *site_other = NULL;
+  double other[N * N], costs[ATOMS], site_costs[ATOMS], paired[3 * ATOMS], once[3 * ATOMS], again[3 * ATOMS];
+  size_t size[ATOMS], e;
+  char message[160];
+  long total, count, cut, p, systems, first_abf[ATOMS + 1];
+  int failed = 0, a, i, trial, part, parts;
+
+  /* The ABFs of the unit cell are those of its atoms, and every atom has a
+     cost for one of its ABFs in either form. */
+  total = openmx_exx_abf_count(whole);
+  first_abf[0] = 0;
+  for (a = 0; a < ATOMS; ++a) first_abf[a + 1] = first_abf[a] + openmx_exx_atom_abfs(whole, a);
+  EXPECT(total == first_abf[ATOMS] && total > ATOMS && openmx_exx_abf_count(NULL) == -1);
+  EXPECT(openmx_exx_abf_costs(whole, 0, costs) == 0 && openmx_exx_abf_costs(whole, 1, site_costs) == 0);
+  for (a = 0; a < ATOMS; ++a) EXPECT(costs[a] > 0.0 && site_costs[a] > 0.0);
+  EXPECT(openmx_exx_abf_costs(NULL, 0, costs) != 0 && openmx_exx_abf_costs(whole, 0, NULL) != 0);
+
+  /* The range of all ABFs is the range of all atoms, bit for bit. */
+  site_other = (double *)malloc(elements * sizeof *site_other);
+  EXPECT(site_other != NULL);
+  memset(other, 0, sizeof other);
+  EXPECT(openmx_exx_add_gamma_abfs(whole, 0, total, -0.25, d, other, NULL, message, sizeof message) == 0);
+  EXPECT(message[0] == '\0' && memcmp(other, k, sizeof other) == 0);
+  memset(site_other, 0, elements * sizeof *site_other);
+  EXPECT(openmx_exx_add_blocks_abfs(whole, 0, total, -0.25, site_d, site_other, NULL, message, sizeof message) == 0);
+  EXPECT(message[0] == '\0' && memcmp(site_other, site_k, elements * sizeof *site_other) == 0);
+  /* An empty range adds nothing.  Ranges that are not inside the unit cell
+     and missing arrays are rejected, and add nothing either. */
+  EXPECT(openmx_exx_add_gamma_abfs(whole, 1, 1, -0.25, d, other, NULL, message, sizeof message) == 0);
+  EXPECT(openmx_exx_add_gamma_abfs(whole, total, total, -0.25, d, other, NULL, message, sizeof message) == 0);
+  EXPECT(openmx_exx_add_blocks_abfs(whole, 1, 1, -0.25, site_d, site_other, NULL, message, sizeof message) == 0);
+  EXPECT(message[0] == '\0');
+  EXPECT(openmx_exx_add_gamma_abfs(whole, -1, 2, -0.25, d, other, NULL, message, sizeof message) != 0);
+  EXPECT(strlen(message) > 0);
+  EXPECT(openmx_exx_add_gamma_abfs(whole, 2, 1, -0.25, d, other, NULL, NULL, 0) != 0);
+  EXPECT(openmx_exx_add_gamma_abfs(whole, 0, total + 1, -0.25, d, other, NULL, NULL, 0) != 0);
+  EXPECT(openmx_exx_add_gamma_abfs(NULL, 0, total, -0.25, d, other, NULL, NULL, 0) != 0);
+  EXPECT(openmx_exx_add_gamma_abfs(whole, 0, total, -0.25, NULL, other, NULL, NULL, 0) != 0);
+  EXPECT(openmx_exx_add_gamma_abfs(whole, 0, total, -0.25, d, NULL, NULL, NULL, 0) != 0);
+  EXPECT(openmx_exx_add_blocks_abfs(whole, -1, 2, -0.25, site_d, site_other, NULL, message, sizeof message) != 0);
+  EXPECT(strlen(message) > 0);
+  EXPECT(openmx_exx_add_blocks_abfs(whole, 2, 1, -0.25, site_d, site_other, NULL, NULL, 0) != 0);
+  EXPECT(openmx_exx_add_blocks_abfs(whole, 0, total + 1, -0.25, site_d, site_other, NULL, NULL, 0) != 0);
+  EXPECT(openmx_exx_add_blocks_abfs(NULL, 0, total, -0.25, site_d, site_other, NULL, NULL, 0) != 0);
+  EXPECT(openmx_exx_add_blocks_abfs(whole, 0, total, -0.25, NULL, site_other, NULL, NULL, 0) != 0);
+  EXPECT(openmx_exx_add_blocks_abfs(whole, 0, total, -0.25, site_d, NULL, NULL, NULL, 0) != 0);
+  EXPECT(memcmp(other, k, sizeof other) == 0);
+  EXPECT(memcmp(site_other, site_k, elements * sizeof *site_other) == 0);
+  /* Two ranges that meet anywhere, inside an atom as well, add up to K
+     within rounding. */
+  for (cut = 1; cut < total; ++cut) {
+    memset(other, 0, sizeof other);
+    EXPECT(openmx_exx_add_gamma_abfs(whole, cut, total, -0.25, d, other, NULL, NULL, 0) == 0);
+    EXPECT(openmx_exx_add_gamma_abfs(whole, 0, cut, -0.25, d, other, NULL, NULL, 0) == 0);
+    for (i = 0; i < N * N; ++i) EXPECT(fabs(other[i] - k[i]) <= 1.0e-12 * scale);
+    memset(site_other, 0, elements * sizeof *site_other);
+    EXPECT(openmx_exx_add_blocks_abfs(whole, 0, cut, -0.25, site_d, site_other, NULL, NULL, 0) == 0);
+    EXPECT(openmx_exx_add_blocks_abfs(whole, cut, total, -0.25, site_d, site_other, NULL, NULL, 0) == 0);
+    for (e = 0; e < elements; ++e) EXPECT(fabs(site_other[e] - site_k[e]) <= 1.0e-12 * site_scale);
+  }
+  /* So do the ABFs one by one, with the product of the caller. */
+  table.context = &calls;
+  table.dgemm = counting_dgemm;
+  memset(other, 0, sizeof other);
+  memset(site_other, 0, elements * sizeof *site_other);
+  for (p = 0; p < total; ++p) {
+    EXPECT(openmx_exx_add_gamma_abfs(whole, p, p + 1, -0.25, d, other, &table, NULL, 0) == 0);
+    EXPECT(openmx_exx_add_blocks_abfs(whole, p, p + 1, -0.25, site_d, site_other, &table, NULL, 0) == 0);
+  }
+  EXPECT(calls.products > 0);
+  for (i = 0; i < N * N; ++i) EXPECT(fabs(other[i] - k[i]) <= 1.0e-12 * scale);
+  for (e = 0; e < elements; ++e) EXPECT(fabs(site_other[e] - site_k[e]) <= 1.0e-12 * site_scale);
+
+  /* The preparation in shares.  The T and V blocks of an atom are one array
+     of a size that is known without a share. */
+  share = openmx_exx_create();
+  EXPECT(share != NULL);
+  EXPECT(openmx_exx_atom_table_elements(NULL, 0) == 0 && openmx_exx_atom_table_elements(share, 0) == 0);
+  EXPECT(openmx_exx_atom_table_elements(whole, -1) == 0 && openmx_exx_atom_table_elements(whole, ATOMS) == 0);
+  for (a = 0; a < ATOMS; ++a) {
+    size[a] = openmx_exx_atom_table_elements(whole, a);
+    EXPECT(size[a] > 0);
+    tables[a] = (double *)malloc(3 * size[a] * sizeof **tables);
+    EXPECT(tables[a] != NULL);
+    sums[a] = tables[a] + size[a];
+    piece[a] = sums[a] + size[a];
+    EXPECT(openmx_exx_get_atom_tables(whole, a, tables[a]) == 0);
+  }
+  EXPECT(openmx_exx_get_atom_tables(NULL, 0, piece[0]) != 0 && openmx_exx_get_atom_tables(share, 0, piece[0]) != 0);
+  EXPECT(openmx_exx_get_atom_tables(whole, ATOMS, piece[0]) != 0 && openmx_exx_get_atom_tables(whole, 0, NULL) != 0);
+  EXPECT(openmx_exx_set_atom_tables(NULL, 0, tables[0]) != 0 && openmx_exx_set_atom_tables(share, 0, tables[0]) != 0);
+  EXPECT(openmx_exx_report(whole, &report) == 0);
+  for (trial = 0; trial < 3; ++trial) {
+    parts = share_counts[trial];
+    systems = 0;
+    for (a = 0; a < ATOMS; ++a) memset(sums[a], 0, size[a] * sizeof **sums);
+    for (part = 0; part < parts; ++part) {
+      EXPECT(openmx_exx_prepare_part(share, options, geometry, part, parts, message, sizeof message) == 0);
+      EXPECT(message[0] == '\0');
+      EXPECT(openmx_exx_report(share, &share_report) == 0);
+      systems += share_report.systems;
+      for (a = 0; a < ATOMS; ++a) {
+        EXPECT(openmx_exx_atom_table_elements(share, a) == size[a]);
+        EXPECT(openmx_exx_get_atom_tables(share, a, piece[a]) == 0);
+        for (e = 0; e < size[a]; ++e) sums[a][e] += piece[a][e];
+      }
+    }
+    /* Every pair of atoms belongs to one share, so the sums over the shares
+       are the blocks of the whole preparation, without rounding, and the
+       shares solved its systems between them. */
+    EXPECT(systems == report.systems);
+    for (a = 0; a < ATOMS; ++a)
+      for (e = 0; e < size[a]; ++e) EXPECT(sums[a][e] == tables[a][e]);
+    /* The state of the last share knows the sizes.  With several shares it
+       refuses the builds until the sums of all atoms are stored. */
+    EXPECT(openmx_exx_abf_count(share) == total && openmx_exx_orbital_count(share) == N);
+    for (a = 0; a < ATOMS && parts > 1; ++a) {
+      memcpy(other, k, sizeof other);
+      EXPECT(openmx_exx_add_gamma(share, 0, ATOMS, -0.25, d, other, NULL, message, sizeof message) != 0);
+      EXPECT(strlen(message) > 0);
+      EXPECT(openmx_exx_add_gamma_abfs(share, 0, total, -0.25, d, other, NULL, NULL, 0) != 0);
+      EXPECT(memcmp(other, k, sizeof other) == 0);
+      EXPECT(openmx_exx_set_atom_tables(share, a, sums[a]) == 0);
+    }
+    memset(other, 0, sizeof other);
+    EXPECT(openmx_exx_add_gamma(share, 0, ATOMS, -0.25, d, other, NULL, message, sizeof message) == 0);
+    for (i = 0; i < N * N; ++i) EXPECT(other[i] == k[i]);
+  }
+  /* The site form of the state that holds the sums. */
+  EXPECT(openmx_exx_prepare_blocks(share, message, sizeof message) == 0);
+  memset(site_other, 0, elements * sizeof *site_other);
+  EXPECT(openmx_exx_add_blocks(share, 0, ATOMS, -0.25, site_d, site_other, NULL, message, sizeof message) == 0);
+  for (e = 0; e < elements; ++e) EXPECT(site_other[e] == site_k[e]);
+  /* Shares and arrays that do not exist are rejected, and the state holds
+     what it held. */
+  EXPECT(openmx_exx_prepare_part(share, options, geometry, 2, 2, message, sizeof message) != 0);
+  EXPECT(strlen(message) > 0);
+  EXPECT(openmx_exx_prepare_part(share, options, geometry, -1, 2, NULL, 0) != 0);
+  EXPECT(openmx_exx_prepare_part(share, options, geometry, 0, 0, NULL, 0) != 0);
+  EXPECT(openmx_exx_prepare_part(NULL, options, geometry, 0, 2, NULL, 0) != 0);
+  EXPECT(openmx_exx_set_atom_tables(share, ATOMS, sums[0]) != 0 && openmx_exx_set_atom_tables(share, 0, NULL) != 0);
+  memset(site_other, 0, elements * sizeof *site_other);
+  EXPECT(openmx_exx_add_blocks(share, 0, ATOMS, -0.25, site_d, site_other, NULL, message, sizeof message) == 0);
+  for (e = 0; e < elements; ++e) EXPECT(site_other[e] == site_k[e]);
+
+  /* The derivative of E_x in two steps: the weights of the T and V blocks
+     from the density matrix, for all ABFs here, then the pairs of sites, in
+     one share or in several. */
+  for (a = 0; a < ATOMS; ++a) {
+    weights[a] = (double *)calloc(2 * size[a], sizeof **weights);
+    EXPECT(weights[a] != NULL);
+    site_weights[a] = weights[a] + size[a];
+    read[a] = weights[a];
+    site_read[a] = site_weights[a];
+  }
+  EXPECT(openmx_exx_add_block_weights_gamma_abfs(whole, 0, total, -0.25, d, weights, NULL, message, sizeof message) == 0);
+  EXPECT(message[0] == '\0');
+  for (trial = 0; trial < 4; ++trial) {
+    parts = pair_counts[trial];
+    memset(paired, 0, sizeof paired);
+    for (part = 0; part < parts; ++part)
+      EXPECT(openmx_exx_add_position_gradient_pairs(whole, read, part, parts, paired, message, sizeof message) == 0);
+    EXPECT(message[0] == '\0');
+    for (i = 0; i < 3 * ATOMS; ++i) EXPECT(fabs(paired[i] - gradient[i]) <= 1.0e-11 * steepest);
+    if (parts == 1) memcpy(once, paired, sizeof once);
+  }
+  /* The weights of the site form with the product of the caller, in two
+     ranges of ABFs that meet inside the first atom. */
+  count = calls.products;
+  EXPECT(first_abf[1] > 1);
+  EXPECT(openmx_exx_add_block_weights_blocks_abfs(whole, 1, total, -0.25, site_d, site_weights, &table, NULL, 0) == 0);
+  EXPECT(openmx_exx_add_block_weights_blocks_abfs(whole, 0, 1, -0.25, site_d, site_weights, &table, NULL, 0) == 0);
+  EXPECT(calls.products > count);
+  memset(paired, 0, sizeof paired);
+  EXPECT(openmx_exx_add_position_gradient_pairs(whole, site_read, 0, 1, paired, NULL, 0) == 0);
+  for (i = 0; i < 3 * ATOMS; ++i) EXPECT(fabs(paired[i] - gradient[i]) <= 1.0e-11 * steepest);
+  /* Rejected calls add nothing, neither to the derivative nor to the
+     weights. */
+  for (a = 0; a < ATOMS; ++a) {
+    missing[a] = a == 1 ? NULL : read[a];
+    holed[a] = a == 1 ? NULL : weights[a];
+  }
+  memcpy(paired, once, sizeof paired);
+  EXPECT(openmx_exx_add_position_gradient_pairs(NULL, read, 0, 1, paired, message, sizeof message) != 0);
+  EXPECT(strlen(message) > 0);
+  EXPECT(openmx_exx_add_position_gradient_pairs(whole, NULL, 0, 1, paired, NULL, 0) != 0);
+  EXPECT(openmx_exx_add_position_gradient_pairs(whole, missing, 0, 1, paired, NULL, 0) != 0);
+  EXPECT(openmx_exx_add_position_gradient_pairs(whole, read, 0, 1, NULL, NULL, 0) != 0);
+  EXPECT(openmx_exx_add_position_gradient_pairs(whole, read, 1, 1, paired, NULL, 0) != 0);
+  EXPECT(openmx_exx_add_position_gradient_pairs(whole, read, -1, 2, paired, NULL, 0) != 0);
+  EXPECT(openmx_exx_add_position_gradient_pairs(whole, read, 0, 0, paired, NULL, 0) != 0);
+  EXPECT(memcmp(paired, once, sizeof paired) == 0);
+  EXPECT(openmx_exx_add_block_weights_gamma_abfs(NULL, 0, total, -0.25, d, weights, NULL, message, sizeof message) != 0);
+  EXPECT(strlen(message) > 0);
+  EXPECT(openmx_exx_add_block_weights_gamma_abfs(whole, 0, total + 1, -0.25, d, weights, NULL, NULL, 0) != 0);
+  EXPECT(openmx_exx_add_block_weights_gamma_abfs(whole, -1, 2, -0.25, d, weights, NULL, NULL, 0) != 0);
+  EXPECT(openmx_exx_add_block_weights_gamma_abfs(whole, 2, 1, -0.25, d, weights, NULL, NULL, 0) != 0);
+  EXPECT(openmx_exx_add_block_weights_gamma_abfs(whole, 0, total, -0.25, NULL, weights, NULL, NULL, 0) != 0);
+  EXPECT(openmx_exx_add_block_weights_gamma_abfs(whole, 0, total, -0.25, d, NULL, NULL, NULL, 0) != 0);
+  EXPECT(openmx_exx_add_block_weights_gamma_abfs(whole, 0, total, -0.25, d, holed, NULL, NULL, 0) != 0);
+  EXPECT(openmx_exx_add_block_weights_blocks_abfs(NULL, 0, total, -0.25, site_d, weights, NULL, message, sizeof message) != 0);
+  EXPECT(strlen(message) > 0);
+  EXPECT(openmx_exx_add_block_weights_blocks_abfs(whole, 0, total + 1, -0.25, site_d, weights, NULL, NULL, 0) != 0);
+  EXPECT(openmx_exx_add_block_weights_blocks_abfs(whole, -1, 2, -0.25, site_d, weights, NULL, NULL, 0) != 0);
+  EXPECT(openmx_exx_add_block_weights_blocks_abfs(whole, 2, 1, -0.25, site_d, weights, NULL, NULL, 0) != 0);
+  EXPECT(openmx_exx_add_block_weights_blocks_abfs(whole, 0, total, -0.25, NULL, weights, NULL, NULL, 0) != 0);
+  EXPECT(openmx_exx_add_block_weights_blocks_abfs(whole, 0, total, -0.25, site_d, NULL, NULL, NULL, 0) != 0);
+  EXPECT(openmx_exx_add_block_weights_blocks_abfs(whole, 0, total, -0.25, site_d, holed, NULL, NULL, 0) != 0);
+  /* An empty range adds nothing. */
+  EXPECT(openmx_exx_add_block_weights_gamma_abfs(whole, 1, 1, -0.25, d, weights, NULL, message, sizeof message) == 0);
+  EXPECT(openmx_exx_add_block_weights_blocks_abfs(whole, total, total, -0.25, site_d, weights, NULL, message, sizeof message) == 0);
+  EXPECT(message[0] == '\0');
+  memset(again, 0, sizeof again);
+  EXPECT(openmx_exx_add_position_gradient_pairs(whole, read, 0, 1, again, NULL, 0) == 0);
+  EXPECT(memcmp(again, once, sizeof again) == 0);
+  /* The arrays of the atoms that a range does not touch are not read, and
+     the weights of several calls add up: for every atom two calls with its
+     ABFs and half the factor, as for two spin channels with the same density
+     matrix. */
+  for (a = 0; a < ATOMS; ++a) {
+    memset(site_weights[a], 0, size[a] * sizeof **site_weights);
+    for (i = 0; i < ATOMS; ++i) holed[i] = i == a ? site_weights[i] : NULL;
+    EXPECT(openmx_exx_add_block_weights_gamma_abfs(whole, first_abf[a], first_abf[a + 1], -0.125, d, holed, NULL, NULL,
+                                                   0) == 0);
+    EXPECT(openmx_exx_add_block_weights_gamma_abfs(whole, first_abf[a], first_abf[a + 1], -0.125, d, holed, &table,
+                                                   NULL, 0) == 0);
+  }
+  memset(paired, 0, sizeof paired);
+  EXPECT(openmx_exx_add_position_gradient_pairs(whole, site_read, 0, 1, paired, NULL, 0) == 0);
+  for (i = 0; i < 3 * ATOMS; ++i) EXPECT(fabs(paired[i] - gradient[i]) <= 1.0e-11 * steepest);
+  /* A product that fails. */
+  table.dgemm = failing_dgemm;
+  EXPECT(openmx_exx_add_block_weights_gamma_abfs(whole, 0, total, -0.25, d, site_weights, &table, message,
+                                                 sizeof message) != 0);
+  EXPECT(strlen(message) > 0);
+  EXPECT(openmx_exx_add_block_weights_blocks_abfs(whole, 0, total, -0.25, site_d, site_weights, &table, message,
+                                                  sizeof message) != 0);
+  EXPECT(strlen(message) > 0);
+  /* A share whose blocks have not been added up has no derivative. */
+  EXPECT(openmx_exx_prepare_part(share, options, geometry, 1, 2, message, sizeof message) == 0);
+  EXPECT(openmx_exx_prepare_blocks(share, message, sizeof message) == 0);
+  EXPECT(openmx_exx_add_block_weights_gamma_abfs(share, 0, total, -0.25, d, site_weights, NULL, message,
+                                                 sizeof message) != 0);
+  EXPECT(strlen(message) > 0);
+  EXPECT(openmx_exx_add_block_weights_blocks_abfs(share, 0, total, -0.25, site_d, site_weights, NULL, message,
+                                                  sizeof message) != 0);
+  EXPECT(strlen(message) > 0);
+  memcpy(paired, once, sizeof paired);
+  EXPECT(openmx_exx_add_position_gradient_pairs(share, read, 0, 1, paired, message, sizeof message) != 0);
+  EXPECT(strlen(message) > 0 && memcmp(paired, once, sizeof paired) == 0);
+
+done:
+  openmx_exx_destroy(share);
+  for (a = 0; a < ATOMS; ++a) {
+    free(tables[a]);
+    free(weights[a]);
+  }
+  free(site_other);
+  return failed;
+#undef EXPECT
 }
 
 int main(void)
@@ -682,6 +967,9 @@ int main(void)
   CHECK(openmx_exx_prepare(state, &options, &geometry, message, sizeof message) == 0);
   CHECK(openmx_exx_prepare_blocks(state, message, sizeof message) == 0);
   CHECK(openmx_exx_block_count(state) == blocks && openmx_exx_block_elements(state) == elements);
+
+  /* The entries for processes that divide the work. */
+  CHECK(divided_work(state, &options, &geometry, d, k, site_d, site_k, elements, gradient) == 0);
 
   /* The kernel of PBE0 gives another matrix for the same structure. */
   options.kernel = OPENMX_EXX_KERNEL_TRUNCATED_COULOMB;

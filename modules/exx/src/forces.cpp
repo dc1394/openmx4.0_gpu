@@ -26,6 +26,84 @@ int maximum_abf(std::span<const SpeciesTable> species)
 
 } // namespace
 
+void add_block_weights(const CentreGradient& weights, std::span<double> values)
+{
+  std::size_t elements = weights.t.size();
+  for (const std::vector<double>& block : weights.v) elements += block.size();
+  if (values.size() != elements)
+    throw std::invalid_argument("the array does not have the size of the weights of the blocks of the atom");
+  double* target = values.data();
+  for (const double value : weights.t) *target++ += value;
+  for (const std::vector<double>& block : weights.v)
+    for (const double value : block) *target++ += value;
+}
+
+namespace {
+
+// The ABFs first <= P < last of the unit cell, atom by atom: compute(atom,
+// from, to) gives the derivatives of the ABFs from <= P < to of the atom,
+// counted within the atom, and their rows are added to weights[atom], the
+// array of add_block_weights() for the whole atom.
+template <class Compute>
+void add_weight_rows(const System& system, std::size_t first, std::size_t last,
+                     std::span<const std::span<double>> weights, const Compute& compute)
+{
+  const std::size_t atoms = system.orbital_count.size();
+  if (system.abf_count.size() != atoms || system.c_offset.size() != atoms || system.v_neighbours.size() != atoms)
+    throw std::invalid_argument("the system of the weights of the blocks is not a prepared one");
+  std::vector<std::size_t> offset(1,0);
+  for (const std::size_t count : system.abf_count) offset.push_back(offset.back()+count);
+  if (first > last || last > offset.back()) throw std::out_of_range("the range of ABFs is not inside the unit cell");
+  if (weights.size() != atoms) throw std::invalid_argument("the weights of the blocks need an array for every atom");
+  // The arrays of all atoms of the range are checked before the first one is
+  // changed.
+  for (std::size_t a = 0; a < atoms; ++a)
+    if (std::max(first,offset[a]) < std::min(last,offset[a+1]) && weights[a].size() != table_elements(system,a))
+      throw std::invalid_argument("the array does not have the size of the weights of the blocks of the atom");
+  for (std::size_t a = 0; a < atoms; ++a) {
+    const std::size_t from = std::max(first,offset[a]), to = std::min(last,offset[a+1]);
+    if (from >= to) continue;
+    const std::size_t begin = from-offset[a], count = to-from;
+    const CentreGradient rows = compute(a,begin,begin+count);
+    const std::size_t width = system.orbital_count[a]*system.c_offset[a].back();
+    const std::vector<Site>& neighbours = system.v_neighbours[a];
+    if (rows.t.size() != count*width || rows.v.size() != neighbours.size())
+      throw std::logic_error("the derivatives of a part of the ABFs do not have the size of the part");
+    double* target = weights[a].data()+begin*width;
+    for (const double value : rows.t) *target++ += value;
+    // The V blocks follow the T blocks of all ABFs of the atom.
+    std::size_t block = system.abf_count[a]*width;
+    for (std::size_t i = 0; i < neighbours.size(); ++i) {
+      const std::size_t nq = system.abf_count[static_cast<std::size_t>(neighbours[i].atom)];
+      if (rows.v[i].size() != count*nq)
+        throw std::logic_error("the derivatives of a part of the ABFs do not have the size of the part");
+      target = weights[a].data()+block+begin*nq;
+      for (const double value : rows.v[i]) *target++ += value;
+      block += system.abf_count[a]*nq;
+    }
+  }
+}
+
+} // namespace
+
+void add_block_weights_gamma_abfs(const System& system, std::size_t first, std::size_t last, double factor,
+                                  std::span<const double> density, std::span<const std::span<double>> weights,
+                                  const DenseBackend& backend)
+{
+  add_weight_rows(system,first,last,weights,[&](std::size_t atom, std::size_t from, std::size_t to) {
+    return centre_gradient_gamma(system,atom,from,to,factor,density,backend);
+  });
+}
+
+void add_block_weights_blocks_abfs(const System& system, const BlockLayout& layout, std::size_t first,
+                                   std::size_t last, double factor, std::span<const double> density,
+                                   std::span<const std::span<double>> weights, const DenseBackend& backend)
+{
+  add_weight_rows(system,first,last,weights,[&](std::size_t atom, std::size_t from, std::size_t to) {
+    return centre_gradient_blocks(system,layout,atom,from,to,factor,density,backend);
+  });
+}
+
 PositionGradient::PositionGradient(const Structure& structure, std::span<const SpeciesTable> species,
     const ReciprocalGrid& reciprocal, const SystemOptions& options, const System& system)
   : structure_(&structure),
@@ -145,6 +223,101 @@ void PositionGradient::add(std::size_t atom, const CentreGradient& weights, std:
         g[x] = sum;
       }
       apply(b,atom,g);
+    }
+  }
+}
+
+void PositionGradient::add_pairs(std::span<const std::span<const double>> weights, const PrepareShare& share,
+    std::span<double> gradient) const
+{
+  const System& system = *system_;
+  const std::size_t atoms = system.orbital_count.size();
+  if (gradient.size() != 3*atoms)
+    throw std::invalid_argument("the derivative with respect to the positions needs three entries for every atom");
+  if (share.parts < 1 || share.part >= share.parts)
+    throw std::invalid_argument("the share of a derivative is not one of its parts");
+  if (weights.size() != atoms) throw std::invalid_argument("the weights of the blocks are needed for every atom");
+  // The first element of the weights of every V block of an atom.
+  std::vector<std::vector<std::size_t>> v_offset(atoms);
+  for (std::size_t atom = 0; atom < atoms; ++atom) {
+    std::size_t elements = system.t[atom].size();
+    for (const std::vector<double>& block : system.v[atom]) {
+      v_offset[atom].push_back(elements);
+      elements += block.size();
+    }
+    if (weights[atom].size() != elements)
+      throw std::invalid_argument("the weights of the blocks do not have the layout of their atom");
+  }
+  const auto mine = [&share](std::size_t pair) { return pair%share.parts == share.part; };
+  // g = dE/dd for a displacement that points from atom "from" to atom "to".
+  const auto apply = [&gradient](std::size_t from, std::size_t to, const std::array<double,3>& g) {
+    for (std::size_t x = 0; x < 3; ++x) {
+      gradient[3*to+x] += g[x];
+      gradient[3*from+x] -= g[x];
+    }
+  };
+  // The weights of the T block of an atom and its C neighbour i,
+  // [(P*u + mu)*u_c + lambda].
+  const auto t_weights = [&system,&weights](std::size_t atom, std::size_t i) {
+    const std::size_t rows = system.abf_count[atom]*system.orbital_count[atom];
+    const std::size_t first = system.c_offset[atom][i], width = system.c_offset[atom][i+1]-first;
+    const std::size_t columns = system.c_offset[atom].back();
+    std::vector<double> block(rows*width);
+    for (std::size_t row = 0; row < rows; ++row)
+      std::copy_n(weights[atom].begin()+static_cast<std::ptrdiff_t>(row*columns+first),width,
+                  block.begin()+static_cast<std::ptrdiff_t>(row*width));
+    return block;
+  };
+
+  // T blocks: equation (18) with the weights of the blocks of both atoms.
+  std::size_t t_pair = 0;
+  for (std::size_t atom = 0; atom < atoms; ++atom) {
+    const int a = static_cast<int>(atom);
+    const std::vector<Site>& c_sites = system.c_neighbours[atom];
+    for (std::size_t i = 1; i < c_sites.size(); ++i) {
+      const Site& site = c_sites[i];
+      // Two images of one atom: the displacement is a lattice vector.
+      if (site.atom == a || !pair_computed_from(a,site)) continue;
+      if (!mine(t_pair++)) continue;
+      const std::size_t c = static_cast<std::size_t>(site.atom);
+      const std::size_t j = find_site(system.c_neighbours[c],reversed_site(a,site));
+      if (j == system.c_neighbours[c].size()) throw std::logic_error("a C neighbour has no counterpart");
+      const PairCoefficients coefficients{t_block(system,atom,i),t_block(system,c,j)};
+      const PairCoefficients pair_weights{t_weights(atom,i),t_weights(c,j)};
+      apply(atom,c,solver_.pair_gradient(table(atom),table(c),displacement(*structure_,a,site),coefficients,pair_weights));
+    }
+  }
+
+  // V blocks: the derivative of equation (12).  The block of the other atom
+  // is the transpose, and its weights are added before the sum.
+  std::size_t v_pair = 0;
+  for (std::size_t atom = 0; atom < atoms; ++atom) {
+    const int a = static_cast<int>(atom);
+    const std::size_t na = system.abf_count[atom];
+    const std::vector<Site>& v_sites = system.v_neighbours[atom];
+    for (std::size_t i = 1; i < v_sites.size(); ++i) {
+      const Site& site = v_sites[i];
+      if (site.atom == a || !pair_computed_from(a,site)) continue;
+      if (!mine(v_pair++)) continue;
+      const std::size_t b = static_cast<std::size_t>(site.atom), nb = system.abf_count[b];
+      const std::size_t j = find_site(system.v_neighbours[b],reversed_site(a,site));
+      if (j == system.v_neighbours[b].size()) throw std::logic_error("a V neighbour has no counterpart");
+      if (system.v[atom][i].size() != na*nb || system.v[b][j].size() != nb*na)
+        throw std::invalid_argument("a V block has the wrong size");
+      const double* w = weights[atom].data()+v_offset[atom][i];        // [p*nb + q]
+      const double* back = weights[b].data()+v_offset[b][j];          // [q*na + p]
+      const std::vector<double> derivative =
+          two_center_gradient_matrix(interaction_.gradient_pair(displacement(*structure_,a,site)),
+                                     table(atom).abf_transforms(),table(b).abf_transforms());
+      std::array<double,3> g{};
+      for (std::size_t x = 0; x < 3; ++x) {
+        const double* values = derivative.data()+x*na*nb;
+        double sum = 0.0;
+        for (std::size_t p = 0; p < na; ++p)
+          for (std::size_t q = 0; q < nb; ++q) sum += (w[p*nb+q]+back[q*na+p])*values[p*nb+q];
+        g[x] = sum;
+      }
+      apply(atom,b,g);
     }
   }
 }

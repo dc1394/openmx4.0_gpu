@@ -4,7 +4,9 @@
 //                          program's overlap matrix
 //   exx-system-blocks      the T and V blocks of a small periodic structure:
 //                          the two descriptions of every pair, a translated
-//                          copy, and the charge of the expanded products
+//                          copy, the charge of the expanded products, and
+//                          the preparation in shares, whose blocks add up to
+//                          those of the whole preparation bit for bit
 #include <openmx/exx/abf.hpp>
 #include <openmx/exx/system.hpp>
 
@@ -404,6 +406,89 @@ void system_blocks(const std::string& path)
     }
     charge.finish();
     require(offsite >= 30,"too few pairs of two atoms in the charge check");
+  }
+
+  // The preparation in shares (section 6.7 of the guide).  Every share has
+  // the lists and the sizes of the whole preparation.  A block is computed by
+  // one share and holds zeros in the others, so an element that is not zero
+  // comes from one share only, and the blocks of all shares add up to those
+  // of the whole preparation bit for bit.  The reports add up as well.  With
+  // more shares than pairs of sites some shares compute nothing.
+  {
+    long t_pairs = 0, v_pairs = 0;
+    for (std::size_t a = 0; a < atoms; ++a) {
+      t_pairs += static_cast<long>(system.c_neighbours[a].size())-1;
+      v_pairs += static_cast<long>(system.v_neighbours[a].size())-1;
+    }
+    t_pairs /= 2;
+    v_pairs /= 2;
+    std::vector<std::vector<double>> whole(atoms);
+    for (std::size_t a = 0; a < atoms; ++a) {
+      std::size_t elements = system.t[a].size();
+      for (const std::vector<double>& block : system.v[a]) elements += block.size();
+      require(table_elements(system,a) == elements,"wrong number of elements of the blocks of an atom");
+      whole[a].resize(elements);
+      get_tables(system,a,whole[a]);
+      // System::t first, then the V blocks in the order of the V neighbours.
+      require(std::equal(system.t[a].begin(),system.t[a].end(),whole[a].begin()) &&
+              std::equal(system.v[a].back().begin(),system.v[a].back().end(),
+                         whole[a].end()-static_cast<std::ptrdiff_t>(system.v[a].back().size())),
+              "the blocks of an atom are not copied in their order");
+    }
+    const std::size_t many = static_cast<std::size_t>(t_pairs+v_pairs)+3;
+    for (const std::size_t parts : {std::size_t{1},std::size_t{2},std::size_t{3},std::size_t{5},many}) {
+      std::vector<std::vector<double>> sum(atoms);
+      for (std::size_t a = 0; a < atoms; ++a) sum[a].assign(whole[a].size(),0.0);
+      LriReport report;
+      long idle = 0;
+      for (std::size_t part = 0; part < parts; ++part) {
+        const System share = prepare_system(structure,tables,reciprocal,options,PrepareShare{part,parts});
+        require(share.orbital_count == system.orbital_count && share.abf_count == system.abf_count &&
+                share.c_neighbours == system.c_neighbours && share.v_neighbours == system.v_neighbours &&
+                share.c_offset == system.c_offset,"a share of the preparation has other lists or sizes");
+        bool computed = false;
+        for (std::size_t a = 0; a < atoms; ++a) {
+          require(table_elements(share,a) == whole[a].size(),"a share of the preparation has blocks of another size");
+          std::vector<double> values(whole[a].size());
+          get_tables(share,a,values);
+          for (std::size_t e = 0; e < values.size(); ++e) {
+            if (values[e] == 0.0) continue;
+            require(sum[a][e] == 0.0,"two shares of the preparation compute the same block");
+            sum[a][e] = values[e];
+            computed = true;
+          }
+        }
+        if (!computed) {
+          ++idle;
+          require(share.report.systems == 0,"a share without blocks reports solutions of equation (7)");
+        }
+        report.merge(share.report);
+      }
+      for (std::size_t a = 0; a < atoms; ++a)
+        require(sum[a] == whole[a],"the shares of the preparation do not add up to the whole preparation");
+      require(report.systems == system.report.systems && report.eigen_decompositions == system.report.eigen_decompositions &&
+              report.dropped == system.report.dropped && report.smallest_pivot == system.report.smallest_pivot,
+              "the reports of the shares do not add up to the report of the whole preparation");
+      require(parts < many ? idle == 0 : idle >= 3,"unexpected number of shares that compute nothing");
+      std::printf("preparation in %zu shares: the blocks add up to the whole preparation, %ld shares without blocks\n",
+                  parts,idle);
+    }
+    // The sums stored into a share make it the whole preparation.
+    {
+      System share = prepare_system(structure,tables,reciprocal,options,PrepareShare{1,3});
+      require(share.t != system.t && share.v != system.v,"a share of three is expected to lack blocks");
+      for (std::size_t a = 0; a < atoms; ++a) set_tables(share,a,whole[a]);
+      require(share.t == system.t && share.v == system.v,"the stored sums are not the blocks of the whole preparation");
+      std::vector<double> wrong(whole[0].size()+1,0.0);
+      expect_invalid("an array of the wrong size for the blocks of an atom",[&] { get_tables(system,0,wrong); });
+      expect_invalid("blocks of the wrong size for an atom",[&] { set_tables(share,0,wrong); });
+      expect_invalid("the blocks of an atom that does not exist",[&] { (void)table_elements(system,atoms); });
+      expect_invalid("a copy of the blocks of an atom that does not exist",[&] { get_tables(system,atoms,wrong); });
+    }
+    expect_invalid("a share that is not one of the parts",
+                   [&] { prepare_system(structure,tables,reciprocal,options,PrepareShare{2,2}); });
+    expect_invalid("a preparation in no parts",
+                   [&] { prepare_system(structure,tables,reciprocal,options,PrepareShare{0,0}); });
   }
 
   // Invalid arguments.

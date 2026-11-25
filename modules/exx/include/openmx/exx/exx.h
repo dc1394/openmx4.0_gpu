@@ -200,6 +200,31 @@ void openmx_exx_destroy(OpenMXExxState *state);
 int openmx_exx_prepare(OpenMXExxState *state, const OpenMXExxOptions *options,
                        const OpenMXExxGeometry *geometry, char *error, size_t capacity);
 
+/* The share "part" of "parts" of that preparation, for processes that divide
+   it: the ABFs, the neighbour lists and the sizes are those of
+   openmx_exx_prepare on every process, and the T and V blocks of the pairs of
+   atoms are computed for one share of the pairs and zero for the others.
+   Every pair belongs to exactly one share, so the element-wise sums of the
+   blocks over the shares are the blocks of openmx_exx_prepare.  With several
+   parts the caller adds the blocks of every atom over the shares
+   (openmx_exx_get_atom_tables) and stores the sums in every state
+   (openmx_exx_set_atom_tables); until that is done for all atoms the builds
+   and the derivatives fail.  openmx_exx_report counts the systems of the
+   share.  parts = 1 is openmx_exx_prepare. */
+int openmx_exx_prepare_part(OpenMXExxState *state, const OpenMXExxOptions *options,
+                            const OpenMXExxGeometry *geometry, int part, int parts, char *error,
+                            size_t capacity);
+
+/* The T blocks and the V blocks of one atom as one array: its number of
+   elements (0 without a prepared structure or for an atom out of range), a
+   copy of the elements, and their replacement.  The order of the elements
+   depends on the structure and the cutoffs only.  The last two return 1
+   without a prepared structure, for an atom out of range or for a NULL
+   array. */
+size_t openmx_exx_atom_table_elements(const OpenMXExxState *state, int atom);
+int openmx_exx_get_atom_tables(const OpenMXExxState *state, int atom, double *values);
+int openmx_exx_set_atom_tables(OpenMXExxState *state, int atom, const double *values);
+
 /* Sizes of the prepared structure.  -1 without a prepared structure or for
    an atom out of range. */
 int openmx_exx_atom_count(const OpenMXExxState *state);
@@ -230,6 +255,29 @@ int openmx_exx_report(const OpenMXExxState *state, OpenMXExxReport *report);
 int openmx_exx_add_gamma(const OpenMXExxState *state, int first_atom, int last_atom, double factor,
                          const double *density, double *k, const OpenMXExxDenseBackend *backend,
                          char *error, size_t capacity);
+
+/* The contribution of a centre atom is a sum over its ABFs, and a build may
+   take a part of them.  The ABFs of the unit cell are numbered atom after
+   atom, in the order of the ABFs of every atom: openmx_exx_abf_count is
+   their number (-1 without a prepared structure), and
+   openmx_exx_add_gamma_abfs adds factor times the contributions of the ABFs
+   first_abf <= P < last_abf, which may end inside an atom.  The ranges of a
+   division of all ABFs give K when added, up to rounding; a range of whole
+   atoms gives what openmx_exx_add_gamma gives for those atoms.  An empty
+   range adds nothing. */
+long openmx_exx_abf_count(const OpenMXExxState *state);
+int openmx_exx_add_gamma_abfs(const OpenMXExxState *state, long first_abf, long last_abf, double factor,
+                              const double *density, double *k, const OpenMXExxDenseBackend *backend,
+                              char *error, size_t capacity);
+
+/* An estimate of the multiplications that the build spends on one ABF, for
+   dividing the ABFs among processes.  All ABFs of an atom take the same
+   number, so costs gets openmx_exx_atom_count() numbers: costs[a] is that of
+   one ABF of atom a as the centre, in the site form when sites is not zero
+   and in the Gamma-point form otherwise.  The values depend on the
+   structure and the cutoffs only.  Returns 1 without a prepared structure
+   or for a NULL array. */
+int openmx_exx_abf_costs(const OpenMXExxState *state, int sites, double *costs);
 
 /* Equation (4) for one spin channel: (1/2) sum_ij D_ij K_ij over two arrays
    of count = N*N elements.  Returns 0 when an array is NULL. */
@@ -282,6 +330,11 @@ int openmx_exx_add_blocks(const OpenMXExxState *state, int first_atom, int last_
                           const double *density, double *k, const OpenMXExxDenseBackend *backend,
                           char *error, size_t capacity);
 
+/* openmx_exx_add_gamma_abfs for arrays of blocks. */
+int openmx_exx_add_blocks_abfs(const OpenMXExxState *state, long first_abf, long last_abf, double factor,
+                               const double *density, double *k, const OpenMXExxDenseBackend *backend,
+                               char *error, size_t capacity);
+
 /* Replaces every element of M_xy(R) and the element of M_yx(-R) that equals
    it in a matrix with M_xy(R) = M_yx(-R)^T by their mean.  The largest
    difference of such a pair before the call is written to asymmetry, which
@@ -314,6 +367,43 @@ int openmx_exx_add_position_gradient_gamma(const OpenMXExxState *state, int firs
 int openmx_exx_add_position_gradient_blocks(const OpenMXExxState *state, int first_atom, int last_atom,
                                             double factor, const double *density, double *gradient,
                                             const OpenMXExxDenseBackend *backend, char *error, size_t capacity);
+
+/* ---- the same derivative for processes that divide it (section 6.7) ----- */
+
+/* E_x depends on the positions through the T and V blocks.  The derivative
+   takes two steps.  The first one makes the weights of the blocks, the
+   derivatives of E_x with respect to their elements, from the density
+   matrix.  The weights are separate for every ABF of the centre atoms, as
+   the contributions to K are, and the ABFs are numbered as for
+   openmx_exx_add_gamma_abfs: these calls add the weights of the ABFs
+   first_abf <= P < last_abf to weights[a], which has
+   openmx_exx_atom_table_elements(a) numbers in the order of
+   openmx_exx_get_atom_tables.  A range may end inside an atom; it then fills
+   the rows of its ABFs in the arrays of that atom.  weights has an entry for
+   every atom of the unit cell; the entries of the atoms that the range does
+   not touch are not read.  factor and density are those of the calls above,
+   and the weights of several spin channels add up.  Every number of the
+   arrays comes from one ABF, so processes that divide the ABFs add their
+   arrays up without rounding.  An empty range adds nothing.  A call that
+   fails may have added the weights of some of its atoms. */
+int openmx_exx_add_block_weights_gamma_abfs(const OpenMXExxState *state, long first_abf, long last_abf, double factor,
+                                            const double *density, double *const *weights,
+                                            const OpenMXExxDenseBackend *backend, char *error, size_t capacity);
+int openmx_exx_add_block_weights_blocks_abfs(const OpenMXExxState *state, long first_abf, long last_abf,
+                                             double factor, const double *density, double *const *weights,
+                                             const OpenMXExxDenseBackend *backend, char *error, size_t capacity);
+
+/* The second step goes through the pairs of sites: it adds to gradient the
+   part of dE_x/dtau of the share "part" of "parts" of the pairs, from the
+   weights of all atoms (weights[a] for every atom of the unit cell, complete
+   on the process that calls).  Every pair of two atoms is visited once, and
+   the shares of a division add up to the derivative that
+   openmx_exx_add_position_gradient_gamma or
+   openmx_exx_add_position_gradient_blocks gives for all centre atoms, within
+   rounding.  The density matrix is not needed any more.  After a failure
+   gradient is unchanged. */
+int openmx_exx_add_position_gradient_pairs(const OpenMXExxState *state, const double *const *weights, int part,
+                                           int parts, double *gradient, char *error, size_t capacity);
 
 #ifdef __cplusplus
 }

@@ -124,6 +124,30 @@ bool add_exchange_blocks_range(const System& system, const BlockLayout& layout, 
                                double factor, std::span<const double> density, std::span<double> k,
                                const DenseBackend& backend = DenseBackend());
 
+// The same for a part of the work that need not end at an atom.  The
+// contribution of a centre atom is a sum over its ABFs P: the products with
+// the T blocks, the products with the V blocks and the four terms of every V
+// neighbour are separate for every P.  The ABFs of all atoms are counted in
+// the order of the atoms, atom after atom, from 0 to the sum of abf_count
+// minus 1, and the call adds the terms of the ABFs first <= P < last.  Calls
+// whose ranges divide the ABFs of the structure add up to the exchange
+// matrix: several processes can share one centre atom (section 6.7 of the
+// implementation guide).  A range that holds whole atoms only gives the bits
+// of add_exchange_blocks_range() for these atoms.  Ranges that cut an atom
+// add the sums over its ABFs in another order, so the result differs by
+// rounding.  Every call that touches an atom gathers the rows of D that the
+// atom needs.
+bool add_exchange_blocks_abfs(const System& system, const BlockLayout& layout, std::size_t first, std::size_t last,
+                              double factor, std::span<const double> density, std::span<double> k,
+                              const DenseBackend& backend = DenseBackend());
+
+// For every atom: an estimate of the multiplications that one of its ABFs
+// takes in a build with the atom as the centre, in the site form (sites) or
+// in the Gamma form.  It counts the two products with the T blocks of the
+// centre and, for every V neighbour, the product with its V block and the
+// four terms.  Processes that divide a build weigh the ABFs with it.
+std::vector<double> abf_costs(const System& system, bool sites);
+
 // The largest difference between an element of M_xy(R) and the element of
 // M_yx(-R) that equals it in a matrix with M_xy(R) = M_yx(-R)^T.
 double block_asymmetry(const System& system, const BlockLayout& layout, std::span<const double> values);
@@ -152,6 +176,12 @@ void add_exchange_gamma(const System& system, std::size_t atom, double factor, s
 bool add_exchange_gamma_range(const System& system, std::size_t first, std::size_t last, double factor,
                               std::span<const double> density, std::span<double> k,
                               const DenseBackend& backend = DenseBackend());
+
+// The same for the ABFs first <= P < last in the count over all atoms, as
+// add_exchange_blocks_abfs().
+bool add_exchange_gamma_abfs(const System& system, std::size_t first, std::size_t last, double factor,
+                             std::span<const double> density, std::span<double> k,
+                             const DenseBackend& backend = DenseBackend());
 
 // K of one spin channel: all atoms, factor -alpha.  It equals the sum over R
 // of the blocks K(R) that the site form gives for D_xy(R) = D_xy.
@@ -207,5 +237,24 @@ CentreGradient centre_gradient_blocks(const System& system, const BlockLayout& l
 // stored blocks of all images of an atom get the same derivative.
 CentreGradient centre_gradient_gamma(const System& system, std::size_t atom, double factor,
                                      std::span<const double> density, const DenseBackend& backend = DenseBackend());
+
+// The same derivatives for a part of the ABFs of the centre atom.  They are
+// separate for every ABF P of the centre: the row of P in t (u_a rows of the
+// T blocks) and in every v[i] needs the T blocks and the V blocks of that P
+// only.  These calls compute the ABFs first <= P < last, counted within the
+// atom: t and v[i] hold the rows of these ABFs in the arrays of the calls
+// above, (last - first) u_a ell_A and (last - first) n_Q elements, in the
+// same order.  With first = 0 and last = abf_count[atom] they are the arrays
+// of the calls above, bit for bit.  The rows of a division of the ABFs make
+// up the arrays of the whole atom within rounding, since the products then
+// run over other numbers of rows; several processes can share one centre
+// atom (section 6.7 of the implementation guide).  An empty range gives
+// empty arrays, one for t and one for every V neighbour.
+CentreGradient centre_gradient_blocks(const System& system, const BlockLayout& layout, std::size_t atom,
+                                      std::size_t first, std::size_t last, double factor,
+                                      std::span<const double> density, const DenseBackend& backend = DenseBackend());
+CentreGradient centre_gradient_gamma(const System& system, std::size_t atom, std::size_t first, std::size_t last,
+                                     double factor, std::span<const double> density,
+                                     const DenseBackend& backend = DenseBackend());
 
 } // namespace openmx::exx

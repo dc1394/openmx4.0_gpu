@@ -50,6 +50,11 @@ struct OpenMXExxState {
   std::optional<System> system;
   std::vector<std::size_t> offset;   // first orbital of every atom, and N
   std::optional<BlockLayout> layout; // of the site form; made on request
+  // After openmx_exx_prepare_part with several parts: the atoms whose blocks
+  // openmx_exx_set_atom_tables has not replaced by their sums yet.  The
+  // system serves the builds and the derivatives when none is left.
+  std::vector<unsigned char> partial;
+  std::size_t partial_count = 0;
 };
 
 namespace {
@@ -153,6 +158,20 @@ const System* prepared(const OpenMXExxState* state) noexcept
   return state != nullptr && state->system.has_value() ? &*state->system : nullptr;
 }
 
+// The system of a call that reads the T and V blocks: the blocks of a divided
+// preparation must have been added up.
+const System& complete(const OpenMXExxState* state, const char* missing)
+{
+  const System* system = prepared(state);
+  if (system == nullptr) throw std::invalid_argument(missing);
+  if (state->partial_count != 0)
+    throw std::invalid_argument("the blocks of a divided preparation have not been added up for every atom");
+  return *system;
+}
+
+void prepare(OpenMXExxState* state, const OpenMXExxOptions* options, const OpenMXExxGeometry* geometry,
+             const PrepareShare& share);
+
 const BlockLayout* layout_of(const OpenMXExxState* state) noexcept
 {
   return prepared(state) != nullptr && state->layout.has_value() ? &*state->layout : nullptr;
@@ -161,9 +180,42 @@ const BlockLayout* layout_of(const OpenMXExxState* state) noexcept
 // The system and the layout of a call that works on arrays of the site form.
 const BlockLayout& required_layout(const OpenMXExxState* state)
 {
-  if (prepared(state) == nullptr) throw std::invalid_argument("the site form needs a prepared structure");
+  complete(state,"the site form needs a prepared structure");
   if (!state->layout.has_value()) throw std::invalid_argument("the site form needs openmx_exx_prepare_blocks");
   return *state->layout;
+}
+
+void prepare(OpenMXExxState* state, const OpenMXExxOptions* options, const OpenMXExxGeometry* geometry,
+             const PrepareShare& share)
+{
+  if (state == nullptr || options == nullptr || geometry == nullptr)
+    throw std::invalid_argument("the preparation needs a state, options and a geometry");
+  const OpenMXExxState::Grids grids{options->radial_intervals,options->reciprocal_maximum,
+                                    options->reciprocal_intervals,options->abf_threshold};
+  std::vector<OpenMXExxState::Species> inputs = copy_species(*geometry);
+  // New tables are made aside, so that a failure leaves the state as it was.
+  std::optional<OpenMXExxState::Tables> made;
+  if (!state->tables.has_value() || !(state->tables->grids == grids) || !(state->tables->inputs == inputs))
+    made.emplace(make_tables(grids,std::move(inputs)));
+  const OpenMXExxState::Tables& tables = made.has_value() ? *made : *state->tables;
+
+  SystemOptions system_options;
+  system_options.interaction = interaction(*options);
+  system_options.v_cutoff = options->v_cutoff;
+  Structure structure = copy_structure(*geometry);
+  System system = prepare_system(structure,tables.species,tables.reciprocal,system_options,share);
+  std::vector<std::size_t> offset(1,0);
+  for (const std::size_t u : system.orbital_count) offset.push_back(offset.back()+u);
+  std::vector<unsigned char> partial(share.parts > 1 ? system.orbital_count.size() : 0,1);
+
+  if (made.has_value()) state->tables = std::move(made);
+  state->structure = std::move(structure);
+  state->options = std::move(system_options);
+  state->system = std::move(system);
+  state->offset = std::move(offset);
+  state->layout.reset();
+  state->partial_count = partial.size();
+  state->partial = std::move(partial);
 }
 
 int atom_value(const OpenMXExxState* state, int atom, const std::vector<std::size_t> System::*member) noexcept
@@ -178,6 +230,29 @@ int neighbour_count(const OpenMXExxState* state, int atom, const std::vector<std
   const System* system = prepared(state);
   if (system == nullptr || atom < 0 || static_cast<std::size_t>(atom) >= (system->*member).size()) return -1;
   return static_cast<int>((system->*member)[static_cast<std::size_t>(atom)].size());
+}
+
+// The arrays of the weights of the atoms that a range of ABFs touches, for
+// add_block_weights_*_abfs(); the entries of the other atoms are not read.
+std::vector<std::span<double>> weight_arrays(const System& system, long first_abf, long last_abf,
+                                             const double* density, double* const* weights)
+{
+  if (density == nullptr || weights == nullptr)
+    throw std::invalid_argument("the weights of the blocks need a density matrix and arrays for the atoms");
+  if (first_abf < 0 || last_abf < first_abf) throw std::out_of_range("the range of ABFs is not inside the unit cell");
+  const std::size_t atoms = system.orbital_count.size();
+  const std::size_t first = static_cast<std::size_t>(first_abf), last = static_cast<std::size_t>(last_abf);
+  std::vector<std::span<double>> arrays(atoms);
+  std::size_t offset = 0;
+  for (std::size_t a = 0; a < atoms; ++a) {
+    const std::size_t next = offset+system.abf_count[a];
+    if (std::max(first,offset) < std::min(last,next)) {
+      if (weights[a] == nullptr) throw std::invalid_argument("an atom of the range has no array for its weights");
+      arrays[a] = std::span<double>(weights[a],table_elements(system,a));
+    }
+    offset = next;
+  }
+  return arrays;
 }
 
 } // namespace
@@ -209,33 +284,61 @@ void openmx_exx_destroy(OpenMXExxState* state)
 int openmx_exx_prepare(OpenMXExxState* state, const OpenMXExxOptions* options, const OpenMXExxGeometry* geometry,
                        char* error, size_t capacity)
 {
+  return guarded(error,capacity,[&] { prepare(state,options,geometry,PrepareShare{}); });
+}
+
+int openmx_exx_prepare_part(OpenMXExxState* state, const OpenMXExxOptions* options, const OpenMXExxGeometry* geometry,
+                            int part, int parts, char* error, size_t capacity)
+{
   return guarded(error,capacity,[&] {
-    if (state == nullptr || options == nullptr || geometry == nullptr)
-      throw std::invalid_argument("openmx_exx_prepare needs a state, options and a geometry");
-    const OpenMXExxState::Grids grids{options->radial_intervals,options->reciprocal_maximum,
-                                      options->reciprocal_intervals,options->abf_threshold};
-    std::vector<OpenMXExxState::Species> inputs = copy_species(*geometry);
-    // New tables are made aside, so that a failure leaves the state as it was.
-    std::optional<OpenMXExxState::Tables> made;
-    if (!state->tables.has_value() || !(state->tables->grids == grids) || !(state->tables->inputs == inputs))
-      made.emplace(make_tables(grids,std::move(inputs)));
-    const OpenMXExxState::Tables& tables = made.has_value() ? *made : *state->tables;
-
-    SystemOptions system_options;
-    system_options.interaction = interaction(*options);
-    system_options.v_cutoff = options->v_cutoff;
-    Structure structure = copy_structure(*geometry);
-    System system = prepare_system(structure,tables.species,tables.reciprocal,system_options);
-    std::vector<std::size_t> offset(1,0);
-    for (const std::size_t u : system.orbital_count) offset.push_back(offset.back()+u);
-
-    if (made.has_value()) state->tables = std::move(made);
-    state->structure = std::move(structure);
-    state->options = std::move(system_options);
-    state->system = std::move(system);
-    state->offset = std::move(offset);
-    state->layout.reset();
+    if (parts < 1 || part < 0 || part >= parts)
+      throw std::invalid_argument("the part of a divided preparation is out of range");
+    prepare(state,options,geometry,PrepareShare{static_cast<std::size_t>(part),static_cast<std::size_t>(parts)});
   });
+}
+
+size_t openmx_exx_atom_table_elements(const OpenMXExxState* state, int atom)
+{
+  const System* system = prepared(state);
+  if (system == nullptr || atom < 0 || static_cast<std::size_t>(atom) >= system->orbital_count.size()) return 0;
+  try {
+    return table_elements(*system,static_cast<std::size_t>(atom));
+  } catch (...) {
+    return 0;
+  }
+}
+
+int openmx_exx_get_atom_tables(const OpenMXExxState* state, int atom, double* values)
+{
+  const System* system = prepared(state);
+  if (system == nullptr || values == nullptr || atom < 0 ||
+      static_cast<std::size_t>(atom) >= system->orbital_count.size())
+    return 1;
+  const std::size_t a = static_cast<std::size_t>(atom);
+  try {
+    get_tables(*system,a,std::span<double>(values,table_elements(*system,a)));
+  } catch (...) {
+    return 1;
+  }
+  return 0;
+}
+
+int openmx_exx_set_atom_tables(OpenMXExxState* state, int atom, const double* values)
+{
+  if (prepared(state) == nullptr || values == nullptr || atom < 0 ||
+      static_cast<std::size_t>(atom) >= state->system->orbital_count.size())
+    return 1;
+  const std::size_t a = static_cast<std::size_t>(atom);
+  try {
+    set_tables(*state->system,a,std::span<const double>(values,table_elements(*state->system,a)));
+  } catch (...) {
+    return 1;
+  }
+  if (a < state->partial.size() && state->partial[a]) {
+    state->partial[a] = 0;
+    --state->partial_count;
+  }
+  return 0;
 }
 
 int openmx_exx_atom_count(const OpenMXExxState* state)
@@ -285,15 +388,50 @@ int openmx_exx_add_gamma(const OpenMXExxState* state, int first_atom, int last_a
                          size_t capacity)
 {
   return guarded(error,capacity,[&] {
-    const System* system = prepared(state);
-    if (system == nullptr) throw std::invalid_argument("the exchange matrix needs a prepared structure");
+    const System& system = complete(state,"the exchange matrix needs a prepared structure");
     if (density == nullptr || k == nullptr) throw std::invalid_argument("the exchange matrix needs a density matrix and an output");
-    const int atoms = static_cast<int>(system->orbital_count.size());
+    const int atoms = static_cast<int>(system.orbital_count.size());
     if (first_atom < 0 || last_atom < first_atom || last_atom > atoms)
       throw std::out_of_range("the range of centre atoms is not inside the unit cell");
     const std::size_t n = state->offset.back();
-    add_exchange_gamma_range(*system,static_cast<std::size_t>(first_atom),static_cast<std::size_t>(last_atom),factor,
+    add_exchange_gamma_range(system,static_cast<std::size_t>(first_atom),static_cast<std::size_t>(last_atom),factor,
                              std::span<const double>(density,n*n),std::span<double>(k,n*n),DenseBackend(backend));
+  });
+}
+
+long openmx_exx_abf_count(const OpenMXExxState* state)
+{
+  const System* system = prepared(state);
+  if (system == nullptr) return -1;
+  std::size_t total = 0;
+  for (const std::size_t n : system->abf_count) total += n;
+  return static_cast<long>(total);
+}
+
+int openmx_exx_abf_costs(const OpenMXExxState* state, int sites, double* costs)
+{
+  const System* system = prepared(state);
+  if (system == nullptr || costs == nullptr) return 1;
+  try {
+    const std::vector<double> values = abf_costs(*system,sites != 0);
+    std::copy(values.begin(),values.end(),costs);
+  } catch (...) {
+    return 1;
+  }
+  return 0;
+}
+
+int openmx_exx_add_gamma_abfs(const OpenMXExxState* state, long first_abf, long last_abf, double factor,
+                              const double* density, double* k, const OpenMXExxDenseBackend* backend, char* error,
+                              size_t capacity)
+{
+  return guarded(error,capacity,[&] {
+    const System& system = complete(state,"the exchange matrix needs a prepared structure");
+    if (density == nullptr || k == nullptr) throw std::invalid_argument("the exchange matrix needs a density matrix and an output");
+    if (first_abf < 0 || last_abf < first_abf) throw std::out_of_range("the range of ABFs is not inside the unit cell");
+    const std::size_t n = state->offset.back();
+    add_exchange_gamma_abfs(system,static_cast<std::size_t>(first_abf),static_cast<std::size_t>(last_abf),factor,
+                            std::span<const double>(density,n*n),std::span<double>(k,n*n),DenseBackend(backend));
   });
 }
 
@@ -356,13 +494,28 @@ int openmx_exx_add_blocks(const OpenMXExxState* state, int first_atom, int last_
   });
 }
 
+int openmx_exx_add_blocks_abfs(const OpenMXExxState* state, long first_abf, long last_abf, double factor,
+                               const double* density, double* k, const OpenMXExxDenseBackend* backend, char* error,
+                               size_t capacity)
+{
+  return guarded(error,capacity,[&] {
+    const BlockLayout& layout = required_layout(state);
+    const System& system = *state->system;
+    if (density == nullptr || k == nullptr) throw std::invalid_argument("the exchange matrix needs a density matrix and an output");
+    if (first_abf < 0 || last_abf < first_abf) throw std::out_of_range("the range of ABFs is not inside the unit cell");
+    const std::size_t elements = layout.elements();
+    add_exchange_blocks_abfs(system,layout,static_cast<std::size_t>(first_abf),static_cast<std::size_t>(last_abf),
+                             factor,std::span<const double>(density,elements),std::span<double>(k,elements),
+                             DenseBackend(backend));
+  });
+}
+
 int openmx_exx_add_position_gradient_gamma(const OpenMXExxState* state, int first_atom, int last_atom, double factor,
                                            const double* density, double* gradient,
                                            const OpenMXExxDenseBackend* backend, char* error, size_t capacity)
 {
   return guarded(error,capacity,[&] {
-    const System* system = prepared(state);
-    if (system == nullptr) throw std::invalid_argument("the derivative with respect to the positions needs a prepared structure");
+    const System* system = &complete(state,"the derivative with respect to the positions needs a prepared structure");
     if (density == nullptr || gradient == nullptr)
       throw std::invalid_argument("the derivative with respect to the positions needs a density matrix and an output");
     const std::size_t atoms = system->orbital_count.size();
@@ -399,6 +552,57 @@ int openmx_exx_add_position_gradient_blocks(const OpenMXExxState* state, int fir
     for (int atom = first_atom; atom < last_atom; ++atom)
       derivative.add_blocks(layout,static_cast<std::size_t>(atom),factor,
                             std::span<const double>(density,layout.elements()),sum,products);
+    for (std::size_t e = 0; e < sum.size(); ++e) gradient[e] += sum[e];
+  });
+}
+
+int openmx_exx_add_block_weights_gamma_abfs(const OpenMXExxState* state, long first_abf, long last_abf, double factor,
+                                            const double* density, double* const* weights,
+                                            const OpenMXExxDenseBackend* backend, char* error, size_t capacity)
+{
+  return guarded(error,capacity,[&] {
+    const System& system = complete(state,"the weights of the blocks need a prepared structure");
+    const std::vector<std::span<double>> arrays = weight_arrays(system,first_abf,last_abf,density,weights);
+    const std::size_t n = state->offset.back();
+    add_block_weights_gamma_abfs(system,static_cast<std::size_t>(first_abf),static_cast<std::size_t>(last_abf),factor,
+                                 std::span<const double>(density,n*n),arrays,DenseBackend(backend));
+  });
+}
+
+int openmx_exx_add_block_weights_blocks_abfs(const OpenMXExxState* state, long first_abf, long last_abf, double factor,
+                                             const double* density, double* const* weights,
+                                             const OpenMXExxDenseBackend* backend, char* error, size_t capacity)
+{
+  return guarded(error,capacity,[&] {
+    const BlockLayout& layout = required_layout(state);
+    const System& system = *state->system;
+    const std::vector<std::span<double>> arrays = weight_arrays(system,first_abf,last_abf,density,weights);
+    add_block_weights_blocks_abfs(system,layout,static_cast<std::size_t>(first_abf),static_cast<std::size_t>(last_abf),
+                                  factor,std::span<const double>(density,layout.elements()),arrays,
+                                  DenseBackend(backend));
+  });
+}
+
+int openmx_exx_add_position_gradient_pairs(const OpenMXExxState* state, const double* const* weights, int part,
+                                           int parts, double* gradient, char* error, size_t capacity)
+{
+  return guarded(error,capacity,[&] {
+    const System& system = complete(state,"the derivative with respect to the positions needs a prepared structure");
+    if (weights == nullptr || gradient == nullptr)
+      throw std::invalid_argument("the derivative with respect to the positions needs the weights of the blocks and an output");
+    if (parts < 1 || part < 0 || part >= parts)
+      throw std::invalid_argument("the part of a divided derivative is out of range");
+    const std::size_t atoms = system.orbital_count.size();
+    std::vector<std::span<const double>> arrays(atoms);
+    for (std::size_t a = 0; a < atoms; ++a) {
+      if (weights[a] == nullptr) throw std::invalid_argument("an atom has no array of weights");
+      arrays[a] = std::span<const double>(weights[a],table_elements(system,a));
+    }
+    const PositionGradient derivative(state->structure,state->tables->species,state->tables->reciprocal,state->options,
+                                      system);
+    // Summed aside, so that a failure adds nothing.
+    std::vector<double> sum(3*atoms,0.0);
+    derivative.add_pairs(arrays,PrepareShare{static_cast<std::size_t>(part),static_cast<std::size_t>(parts)},sum);
     for (std::size_t e = 0; e < sum.size(); ++e) gradient[e] += sum[e];
   });
 }

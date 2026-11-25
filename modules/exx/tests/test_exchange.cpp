@@ -24,10 +24,15 @@
 //                          the ABFs on threads with and without a product of
 //                          the table, and the C interface against the C++
 //                          interface, also with pieces on threads and with a
-//                          product that fails inside a piece
+//                          product that fails inside a piece; through the C
+//                          interface the ABFs in ranges and a preparation
+//                          that three states divide (section 6.7)
 //   exx-exchange-forces    forces.hpp: the derivative of E_x with respect to
 //                          the positions of the atoms against central
-//                          differences of E_x of structures with moved atoms
+//                          differences of E_x of structures with moved atoms,
+//                          by the route through the centre atoms and by the
+//                          route through the pairs of sites, which processes
+//                          divide (section 6.7)
 //   exx-exchange-device    the device of exx.h (OpenMXExxDevice) in both
 //                          forms, with a device in host memory that holds
 //                          the library to the contract (test_device.hpp):
@@ -35,7 +40,12 @@
 //                          atoms in two calls, a device that declines or
 //                          lacks a function, and every call of the device
 //                          failing in turn; the fixture and the system of
-//                          three atoms of exx-exchange-backend
+//                          three atoms of exx-exchange-backend.  The ABFs of
+//                          the centre atoms in ranges, as several processes
+//                          share them (section 6.7 of the guide), on the
+//                          host and on the device: whole atoms, every cut of
+//                          the ABFs in two, ranges of growing length, and
+//                          the weights of the ABFs
 //   exx-exchange-device-system  the same for the periodic structure of
 //                          exx-exchange-system, with a selection of the
 //                          failures
@@ -1600,6 +1610,214 @@ void compare_with_c(OpenMXExxState* state, const System& system, const std::vect
   }
 }
 
+// The ABFs in ranges through the C interface (section 6.7): the same bits as
+// the C++ interface for the same ranges in both forms, all ABFs in one range
+// against all centre atoms, and the weights of the ABFs.  The state holds the
+// list of blocks of its structure.
+void compare_ranges_with_c(const OpenMXExxState* state, const System& system, const std::vector<double>& density,
+                           double alpha, const std::string& what)
+{
+  const std::size_t atoms = system.orbital_count.size();
+  std::size_t total = 0;
+  for (const std::size_t count : system.abf_count) total += count;
+  require(openmx_exx_abf_count(state) == static_cast<long>(total) && openmx_exx_abf_count(nullptr) == -1,
+          what+": wrong number of ABFs of the C state");
+  for (const int sites : {0,1}) {
+    std::vector<double> cost(atoms,-1.0);
+    require(openmx_exx_abf_costs(state,sites,cost.data()) == 0 && cost == abf_costs(system,sites != 0),
+            what+": the weights of the ABFs of the two interfaces differ");
+    require(openmx_exx_abf_costs(state,sites,nullptr) != 0 && openmx_exx_abf_costs(nullptr,sites,cost.data()) != 0,
+            what+": weights of the ABFs without a state or without an array are accepted");
+  }
+
+  const long all = static_cast<long>(total), cut = all/3, other = all-2;
+  require(0 < cut && cut < other && other < all,what+": the test of the ranges needs more ABFs");
+  const long ranges[][2] = {{0,cut},{cut,other},{other,all}};
+  char message[200] = "untouched";
+  const BlockLayout layout = exchange_layout(system);
+  const std::vector<double> blocks_of_d = layout_values(layout,gamma_density(system,density));
+  const int atom_count = static_cast<int>(atoms);
+  for (const bool sites : {false,true}) {
+    const std::vector<double>& d = sites ? blocks_of_d : density;
+    const std::string form = what+(sites ? ", site form" : ", Gamma form");
+    std::vector<double> through(d.size(),0.0), direct(d.size(),0.0), whole(d.size(),0.0), centres(d.size(),0.0);
+    const auto add = [&](long first, long last, std::vector<double>& k, const OpenMXExxDenseBackend* table) {
+      return sites ? openmx_exx_add_blocks_abfs(state,first,last,-alpha,d.data(),k.data(),table,message,sizeof message)
+                   : openmx_exx_add_gamma_abfs(state,first,last,-alpha,d.data(),k.data(),table,message,sizeof message);
+    };
+    for (const auto& range : ranges) {
+      const int status = add(range[0],range[1],through,nullptr);
+      require(status == 0 && message[0] == '\0',form+": a range of ABFs through the C interface fails: "+message);
+      const std::size_t first = static_cast<std::size_t>(range[0]), last = static_cast<std::size_t>(range[1]);
+      if (sites) add_exchange_blocks_abfs(system,layout,first,last,-alpha,d,direct);
+      else add_exchange_gamma_abfs(system,first,last,-alpha,d,direct);
+    }
+    require(same_values(through,direct),form+": the ranges of ABFs of the two interfaces give different bits");
+    int status = add(0,all,whole,nullptr);
+    require(status == 0,form+": all ABFs in one range through the C interface fail: "+message);
+    status = sites ? openmx_exx_add_blocks(state,0,atom_count,-alpha,d.data(),centres.data(),nullptr,message,sizeof message)
+                   : openmx_exx_add_gamma(state,0,atom_count,-alpha,d.data(),centres.data(),nullptr,message,sizeof message);
+    require(status == 0 && same_values(whole,centres),form+": all ABFs in one range give other bits than all centre atoms");
+    const double scale = largest(whole);
+    Worst rounding(form+": three ranges of ABFs through C against one (relative)",1e-12);
+    for (std::size_t e = 0; e < whole.size(); ++e) rounding.add(std::fabs(through[e]-whole[e])/scale);
+    rounding.finish();
+
+    // The pieces of a range on threads of their own, as a process with
+    // threads runs its share.
+    {
+      Calls shared;
+      const OpenMXExxDenseBackend table{&shared_dgemm,&shared,&threaded_loop,4,nullptr};
+      std::vector<double> threaded(d.size(),0.0);
+      for (const auto& range : ranges) {
+        status = add(range[0],range[1],threaded,&table);
+        require(status == 0 && message[0] == '\0',form+": a range of ABFs with pieces on threads fails: "+message);
+      }
+      require(shared.loops > 0 && shared.products > 0,form+": the ranges of ABFs do not use the loop and the product of the table");
+      Worst pieces(form+": ranges of ABFs with pieces on threads (relative)",1e-12);
+      for (std::size_t e = 0; e < whole.size(); ++e) pieces.add(std::fabs(threaded[e]-whole[e])/scale);
+      pieces.finish();
+    }
+
+    // An empty range adds nothing; ranges that are rejected add nothing and
+    // leave a message.
+    std::vector<double> untouched = whole;
+    status = add(cut,cut,untouched,nullptr);
+    require(status == 0 && message[0] == '\0' && untouched == whole,form+": an empty range of ABFs fails or changes the matrix");
+    const long rejected[][2] = {{-1,all},{0,all+1},{other,cut}};
+    for (const auto& range : rejected) {
+      message[0] = '\0';
+      status = add(range[0],range[1],untouched,nullptr);
+      require(status != 0 && message[0] != '\0' && untouched == whole,form+": a range of ABFs outside the cell is accepted");
+    }
+    status = sites ? openmx_exx_add_blocks_abfs(state,0,all,-alpha,nullptr,untouched.data(),nullptr,message,sizeof message)
+                   : openmx_exx_add_gamma_abfs(state,0,all,-alpha,nullptr,untouched.data(),nullptr,message,sizeof message);
+    require(status != 0 && untouched == whole,form+": a range of ABFs without a density matrix is accepted");
+    status = sites ? openmx_exx_add_blocks_abfs(nullptr,0,all,-alpha,d.data(),untouched.data(),nullptr,message,sizeof message)
+                   : openmx_exx_add_gamma_abfs(nullptr,0,all,-alpha,d.data(),untouched.data(),nullptr,message,sizeof message);
+    require(status != 0 && untouched == whole,form+": a range of ABFs without a state is accepted");
+  }
+}
+
+// A preparation that "parts" states divide, as the processes of the main
+// program do (section 6.7): every state computes its share of the blocks,
+// the blocks of every atom are added over the states and the sums are stored
+// in every state.  Until that is done for all atoms the builds and the
+// derivative are refused; afterwards every state gives the exchange matrix
+// of the whole preparation, bit for bit.  The reports add up.
+void check_divided_preparation(const OpenMXExxOptions& options, const OpenMXExxGeometry& geometry, const System& system,
+                               const std::vector<double>& density, double alpha, int parts)
+{
+  const std::string what = "preparation in "+std::to_string(parts)+" parts";
+  const int atoms = static_cast<int>(system.orbital_count.size());
+  const std::size_t n = orbital_total(system);
+  struct States {
+    std::vector<OpenMXExxState*> list;
+    ~States()
+    {
+      for (OpenMXExxState* state : list) openmx_exx_destroy(state);
+    }
+  } states;
+  char message[200] = "";
+  for (int part = 0; part < parts; ++part) {
+    states.list.push_back(openmx_exx_create());
+    require(states.list.back() != nullptr,"no state of the C interface");
+    const int status = openmx_exx_prepare_part(states.list.back(),&options,&geometry,part,parts,message,sizeof message);
+    require(status == 0 && message[0] == '\0',what+": a share fails: "+message);
+  }
+
+  // The sizes are those of the whole preparation in every share, and the
+  // reports add up.
+  OpenMXExxReport sum{0,0,0,1.0};
+  for (OpenMXExxState* state : states.list) {
+    require(openmx_exx_atom_count(state) == atoms && openmx_exx_orbital_count(state) == static_cast<int>(n),
+            what+": a share has other sizes");
+    for (int a = 0; a < atoms; ++a)
+      require(openmx_exx_atom_table_elements(state,a) == table_elements(system,static_cast<std::size_t>(a)) &&
+              openmx_exx_atom_abfs(state,a) == static_cast<int>(system.abf_count[static_cast<std::size_t>(a)]),
+              what+": a share has blocks of another size");
+    OpenMXExxReport report{};
+    require(openmx_exx_report(state,&report) == 0,what+": a share has no report");
+    sum.systems += report.systems;
+    sum.eigen_decompositions += report.eigen_decompositions;
+    sum.dropped += report.dropped;
+    sum.smallest_pivot = std::min(sum.smallest_pivot,report.smallest_pivot);
+  }
+  require(sum.systems == system.report.systems && sum.eigen_decompositions == system.report.eigen_decompositions &&
+          sum.dropped == system.report.dropped && sum.smallest_pivot == system.report.smallest_pivot,
+          what+": the reports of the shares do not add up");
+
+  // Refused until the blocks of every atom are added up: the builds of both
+  // forms, their ranges of ABFs, and the derivative.
+  const auto refused = [&](OpenMXExxState* state, const std::string& when) {
+    std::vector<double> k(n*n,0.0), gradient(3*static_cast<std::size_t>(atoms),0.0);
+    message[0] = '\0';
+    int status = openmx_exx_add_gamma(state,0,atoms,-alpha,density.data(),k.data(),nullptr,message,sizeof message);
+    require(status != 0 && message[0] != '\0',what+": a build "+when+" is accepted");
+    status = openmx_exx_add_gamma_abfs(state,0,1,-alpha,density.data(),k.data(),nullptr,message,sizeof message);
+    require(status != 0,what+": a build of a range of ABFs "+when+" is accepted");
+    status = openmx_exx_add_position_gradient_gamma(state,0,atoms,-alpha,density.data(),gradient.data(),nullptr,message,
+                                                    sizeof message);
+    require(status != 0 && message[0] != '\0',what+": a derivative "+when+" is accepted");
+    require(openmx_exx_prepare_blocks(state,message,sizeof message) == 0,what+": the list of blocks cannot be made "+when);
+    std::vector<double> blocks(openmx_exx_block_elements(state),0.0), site_k(blocks.size(),0.0);
+    status = openmx_exx_add_blocks(state,0,atoms,-alpha,blocks.data(),site_k.data(),nullptr,message,sizeof message);
+    require(status != 0,what+": a build of the site form "+when+" is accepted");
+    status = openmx_exx_add_blocks_abfs(state,0,1,-alpha,blocks.data(),site_k.data(),nullptr,message,sizeof message);
+    require(status != 0,what+": a build of a range of ABFs of the site form "+when+" is accepted");
+    status = openmx_exx_add_position_gradient_blocks(state,0,atoms,-alpha,blocks.data(),gradient.data(),nullptr,message,
+                                                     sizeof message);
+    require(status != 0,what+": a derivative of the site form "+when+" is accepted");
+    require(largest(k) == 0.0 && largest(site_k) == 0.0 && largest(gradient) == 0.0,
+            what+": a refused call "+when+" changes its output");
+  };
+  if (parts > 1)
+    for (OpenMXExxState* state : states.list) refused(state,"before the blocks are added up");
+
+  for (int a = 0; a < atoms; ++a) {
+    const std::size_t elements = table_elements(system,static_cast<std::size_t>(a));
+    std::vector<double> total(elements,0.0), mine(elements);
+    for (OpenMXExxState* state : states.list) {
+      require(openmx_exx_get_atom_tables(state,a,mine.data()) == 0,what+": the blocks of an atom cannot be read");
+      for (std::size_t e = 0; e < elements; ++e) total[e] += mine[e];
+    }
+    std::vector<double> whole(elements);
+    get_tables(system,static_cast<std::size_t>(a),whole);
+    require(total == whole,what+": the blocks of the shares do not add up to the whole preparation");
+    for (OpenMXExxState* state : states.list)
+      require(openmx_exx_set_atom_tables(state,a,total.data()) == 0,what+": the sums of the blocks of an atom cannot be stored");
+    if (parts > 1 && a+1 < atoms) refused(states.list.front(),"while the blocks of an atom are missing");
+  }
+
+  const std::vector<double> k = exchange_gamma(system,density,alpha);
+  for (OpenMXExxState* state : states.list) {
+    require(same_values(c_exchange(state,density,alpha),k),
+            what+": a state with the sums gives other bits than the whole preparation");
+    // The sums stored once more change nothing.
+    std::vector<double> mine(table_elements(system,0));
+    require(openmx_exx_get_atom_tables(state,0,mine.data()) == 0 && openmx_exx_set_atom_tables(state,0,mine.data()) == 0 &&
+            same_values(c_exchange(state,density,alpha),k),what+": the blocks stored a second time change the matrix");
+  }
+  std::printf("%s: every state gives the exchange matrix of the whole preparation\n",what.c_str());
+
+  // What the entries reject.
+  OpenMXExxState* state = states.list.front();
+  std::vector<double> values(table_elements(system,0),0.0);
+  require(openmx_exx_atom_table_elements(nullptr,0) == 0 && openmx_exx_atom_table_elements(state,-1) == 0 &&
+          openmx_exx_atom_table_elements(state,atoms) == 0,what+": blocks of an atom that does not exist have a size");
+  require(openmx_exx_get_atom_tables(nullptr,0,values.data()) != 0 && openmx_exx_get_atom_tables(state,atoms,values.data()) != 0 &&
+          openmx_exx_get_atom_tables(state,0,nullptr) != 0 && openmx_exx_set_atom_tables(nullptr,0,values.data()) != 0 &&
+          openmx_exx_set_atom_tables(state,-1,values.data()) != 0 && openmx_exx_set_atom_tables(state,0,nullptr) != 0,
+          what+": blocks of an atom that does not exist, or without an array, are read or stored");
+  for (const auto& wrong : {std::array<int,2>{-1,parts},std::array<int,2>{parts,parts},std::array<int,2>{0,0}}) {
+    message[0] = '\0';
+    const int status = openmx_exx_prepare_part(state,&options,&geometry,wrong[0],wrong[1],message,sizeof message);
+    require(status != 0 && message[0] != '\0',what+": a part that does not exist is accepted");
+  }
+  // The failures left the state as it was.
+  require(same_values(c_exchange(state,density,alpha),k),what+": a preparation that fails changes the state");
+}
+
 } // namespace
 
 void exchange_system(const std::string& path)
@@ -1863,6 +2081,18 @@ void exchange_system(const std::string& path)
     int prepared = openmx_exx_prepare(state,&c_options,&geometry.geometry,message,sizeof message);
     require(prepared == 0,std::string("the preparation through the C interface fails: ")+message);
     compare_with_c(state,system,d,alpha,"HSE06 kernel");
+    compare_ranges_with_c(state,system,d,alpha,"HSE06 kernel");
+
+    // The preparation divided among states (section 6.7).  One part is the
+    // whole preparation; three and seven parts leave blocks to add up, and
+    // with seven parts the three atoms have fewer blocks of their own than
+    // there are parts.
+    {
+      prepared = openmx_exx_prepare_part(state,&c_options,&geometry.geometry,0,1,message,sizeof message);
+      require(prepared == 0,std::string("the preparation in one part fails: ")+message);
+      compare_with_c(state,system,d,alpha,"preparation in one part");
+      for (const int parts : {1,3,7}) check_divided_preparation(c_options,geometry.geometry,system,d,alpha,parts);
+    }
 
     // A table with a product and a loop, the pieces on threads of their own:
     // the C interface runs the same code on the same numbers as the C++
@@ -1999,6 +2229,26 @@ struct Forces {
   std::vector<double> gamma, site;    // dE_x/dtau, [3*atom + axis]
 };
 
+// The weights of the blocks of all atoms, one array for every atom in the
+// order of get_tables(), the view of them that add_pairs() takes, and the
+// arrays as add_block_weights_*_abfs() take them.
+struct BlockWeights {
+  std::vector<std::vector<double>> values;
+  std::vector<std::span<const double>> view;
+  std::vector<std::span<double>> arrays;
+  explicit BlockWeights(const System& system)
+      : values(system.orbital_count.size()), view(values.size()), arrays(values.size())
+  {
+    for (std::size_t a = 0; a < values.size(); ++a) {
+      values[a].assign(table_elements(system,a),0.0);
+      view[a] = values[a];
+      arrays[a] = values[a];
+    }
+  }
+  BlockWeights(const BlockWeights&) = delete;
+  BlockWeights& operator=(const BlockWeights&) = delete;
+};
+
 // Compares the derivatives of both forms with central differences of fourth
 // order of E_x: every atom is moved along every axis, and the system is
 // prepared again for each of the four structures.  The density matrices stay
@@ -2061,6 +2311,134 @@ Forces check_forces(const std::string& name, const Structure& structure, const s
   }
   gamma.finish();
   site.finish();
+
+  // The route through the pairs of sites (section 6.7): the weights of the
+  // blocks of all atoms first, then every pair once.  In one part and in the
+  // parts of a division, taken from the last to the first, it gives the
+  // derivative of the route through the centre atoms within rounding; it is
+  // compared with the central differences as well.
+  {
+    BlockWeights gamma_weights(system), site_weights(system);
+    for (std::size_t a = 0; a < atoms; ++a) {
+      add_block_weights(centre_gradient_gamma(system,a,-alpha,d),gamma_weights.values[a]);
+      add_block_weights(centre_gradient_blocks(system,layout,a,-alpha,blocks),site_weights.values[a]);
+    }
+    Worst routes(name+": pairs of sites against centre atoms (relative)",1e-12);
+    Worst numeric(name+": pairs of sites against central differences",limit);
+    for (const std::size_t parts : {std::size_t{1},std::size_t{2},std::size_t{3},std::size_t{7}}) {
+      std::vector<double> through_gamma(3*atoms,0.0), through_site(3*atoms,0.0);
+      for (std::size_t part = parts; part-- > 0;) {
+        derivative.add_pairs(gamma_weights.view,PrepareShare{part,parts},through_gamma);
+        derivative.add_pairs(site_weights.view,PrepareShare{part,parts},through_site);
+      }
+      for (std::size_t e = 0; e < 3*atoms; ++e) {
+        routes.add(std::fabs(through_gamma[e]-result.gamma[e])/scale_gamma);
+        routes.add(std::fabs(through_site[e]-result.site[e])/scale_site);
+        numeric.add(std::fabs(through_gamma[e]-numeric_gamma[e])/scale_gamma);
+        numeric.add(std::fabs(through_site[e]-numeric_site[e])/scale_site);
+      }
+    }
+    routes.finish();
+    numeric.finish();
+
+    // The weights of ranges of ABFs (section 6.7).  The ABFs of the unit cell
+    // are counted atom after atom, and a range adds the rows of its ABFs to
+    // the arrays of their atoms.  All ABFs in one range give the bits of the
+    // centre atoms.  Two ranges that meet anywhere, inside an atom as well,
+    // fill different elements and make up the weights of the atoms within
+    // rounding; so do ranges of 1, 2, 3, ... ABFs.
+    std::vector<std::size_t> first_abf(1,0);
+    for (const std::size_t count : system.abf_count) first_abf.push_back(first_abf.back()+count);
+    const std::size_t total = first_abf.back();
+    require(total >= 3,name+": the test of the ranges needs three ABFs or more");
+    for (const bool sites : {false,true}) {
+      const std::string form = name+(sites ? ", site form" : ", Gamma form");
+      const BlockWeights& whole = sites ? site_weights : gamma_weights;
+      const auto add = [&](std::size_t first, std::size_t last, BlockWeights& target) {
+        if (sites) add_block_weights_blocks_abfs(system,layout,first,last,-alpha,blocks,target.arrays);
+        else add_block_weights_gamma_abfs(system,first,last,-alpha,d,target.arrays);
+      };
+      double scale = 0.0;
+      for (std::size_t a = 0; a < atoms; ++a) scale = std::max(scale,largest(whole.values[a]));
+      require(scale > 0.0,form+": the weights of the blocks are expected to differ from zero");
+      {
+        BlockWeights all(system);
+        add(0,total,all);
+        require(same_values(all.values,whole.values),form+": all ABFs in one range do not give the bits of the atoms");
+        // An empty range adds nothing, wherever it is.
+        add(0,0,all);
+        add(first_abf[1],first_abf[1],all);
+        add(total,total,all);
+        require(same_values(all.values,whole.values),form+": an empty range of ABFs changes the weights");
+      }
+      Worst cut(form+": the weights of two ranges of ABFs (relative)",1e-12);
+      long cuts = 0, inside = 0;
+      const std::size_t stride = std::max<std::size_t>(1,total/7);
+      for (std::size_t c = 1; c < total; c += stride) {
+        BlockWeights lower(system), upper(system);
+        add(0,c,lower);
+        add(c,total,upper);
+        for (std::size_t a = 0; a < atoms; ++a)
+          for (std::size_t e = 0; e < whole.values[a].size(); ++e) {
+            require(lower.values[a][e] == 0.0 || upper.values[a][e] == 0.0,
+                    form+": two ranges of ABFs give a weight of the same element");
+            cut.add(std::fabs(lower.values[a][e]+upper.values[a][e]-whole.values[a][e])/scale);
+          }
+        ++cuts;
+        if (std::find(first_abf.begin(),first_abf.end(),c) == first_abf.end()) ++inside;
+      }
+      cut.finish();
+      require(inside > 0,form+": no range of the test ends inside an atom");
+      BlockWeights growing(system);
+      for (std::size_t from = 0, width = 1; from < total; from += width, ++width)
+        add(from,std::min(total,from+width),growing);
+      Worst grown(form+": the weights of ranges of 1, 2, 3, ... ABFs (relative)",1e-12);
+      for (std::size_t a = 0; a < atoms; ++a)
+        for (std::size_t e = 0; e < whole.values[a].size(); ++e)
+          grown.add(std::fabs(growing.values[a][e]-whole.values[a][e])/scale);
+      grown.finish();
+      // The arrays of the atoms that a range does not touch are not looked
+      // at: the ABFs of the last atom with empty arrays for the others.
+      {
+        BlockWeights last(system);
+        std::vector<std::span<double>> only(atoms);
+        only[atoms-1] = last.arrays[atoms-1];
+        if (sites) add_block_weights_blocks_abfs(system,layout,first_abf[atoms-1],total,-alpha,blocks,only);
+        else add_block_weights_gamma_abfs(system,first_abf[atoms-1],total,-alpha,d,only);
+        require(same_values(last.values[atoms-1],whole.values[atoms-1]),
+                form+": the ABFs of one atom do not give the weights of that atom");
+        // What is rejected changes nothing.
+        const std::vector<std::vector<double>> before = last.values;
+        expect_invalid("a range of ABFs for the weights that ends before it starts",[&] { add(2,1,last); });
+        expect_invalid("a range of ABFs for the weights beyond the unit cell",[&] { add(0,total+1,last); });
+        expect_invalid("weights of a range of ABFs for fewer atoms",[&] {
+          if (sites) add_block_weights_blocks_abfs(system,layout,0,total,-alpha,blocks,
+                                                   std::span<const std::span<double>>(last.arrays).first(atoms-1));
+          else add_block_weights_gamma_abfs(system,0,total,-alpha,d,
+                                            std::span<const std::span<double>>(last.arrays).first(atoms-1));
+        });
+        expect_invalid("a range of ABFs that touches an atom without an array",[&] {
+          if (sites) add_block_weights_blocks_abfs(system,layout,0,total,-alpha,blocks,only);
+          else add_block_weights_gamma_abfs(system,0,total,-alpha,d,only);
+        });
+        expect_invalid("a part of the ABFs of an atom that ends before it starts",[&] {
+          (void)(sites ? centre_gradient_blocks(system,layout,0,2,1,-alpha,blocks) : centre_gradient_gamma(system,0,2,1,-alpha,d));
+        });
+        expect_invalid("a part of the ABFs beyond those of the atom",[&] {
+          (void)(sites ? centre_gradient_blocks(system,layout,0,0,system.abf_count[0]+1,-alpha,blocks)
+                       : centre_gradient_gamma(system,0,0,system.abf_count[0]+1,-alpha,d));
+        });
+        require(last.values == before,form+": a rejected range of ABFs changes the weights");
+        const CentreGradient none = sites ? centre_gradient_blocks(system,layout,0,1,1,-alpha,blocks)
+                                          : centre_gradient_gamma(system,0,1,1,-alpha,d);
+        require(none.t.empty() && none.v.size() == system.v_neighbours[0].size() &&
+                std::all_of(none.v.begin(),none.v.end(),[](const std::vector<double>& block) { return block.empty(); }),
+                form+": an empty part of the ABFs of an atom does not give empty arrays");
+      }
+      std::printf("%s: the weights of the blocks in ranges of the %zu ABFs, %ld cuts in two, %ld of them inside an atom\n",
+                  form.c_str(),total,cuts,inside);
+    }
+  }
 
   // Every pair adds a vector to one atom and subtracts it from the other.
   Worst total(name+": sum of the derivatives over the atoms",1e-12);
@@ -2181,6 +2559,36 @@ void exchange_forces(const std::string& path)
                    [&] { derivative.add(0,weights,std::span<double>(scratch).first(3*atoms-1)); });
     expect_invalid("weights of another atom",[&] { derivative.add(1,weights,scratch); });
     require(largest(scratch) == 0.0,"a rejected call changes the derivative");
+
+    // The route through the pairs.  The weights of two calls add up.
+    BlockWeights all(periodic.system);
+    for (std::size_t a = 0; a < atoms; ++a) {
+      const CentreGradient half = centre_gradient_gamma(periodic.system,a,-0.5*alpha,periodic.density);
+      add_block_weights(half,all.values[a]);
+      add_block_weights(half,all.values[a]);
+    }
+    {
+      std::vector<double> twice(3*atoms,0.0);
+      derivative.add_pairs(all.view,PrepareShare{},twice);
+      Worst sum("periodic structure: the weights of two calls add up (relative)",1e-12);
+      for (std::size_t e = 0; e < 3*atoms; ++e) sum.add(std::fabs(twice[e]-periodic.gamma[e])/largest(periodic.gamma));
+      sum.finish();
+    }
+    std::vector<double> short_array(all.values[0].size()-1,0.0);
+    expect_invalid("an array of the wrong size for the weights of an atom",[&] { add_block_weights(weights,short_array); });
+    expect_invalid("weights of the pairs for fewer atoms",
+                   [&] { derivative.add_pairs(std::span<const std::span<const double>>(all.view).first(atoms-1),PrepareShare{},scratch); });
+    expect_invalid("a share of the pairs that is not one of the parts",
+                   [&] { derivative.add_pairs(all.view,PrepareShare{3,3},scratch); });
+    expect_invalid("a derivative of the wrong size for the pairs",
+                   [&] { derivative.add_pairs(all.view,PrepareShare{},std::span<double>(scratch).first(3*atoms-1)); });
+    {
+      std::vector<std::span<const double>> wrong = all.view;
+      wrong[1] = wrong[1].first(wrong[1].size()-1);
+      expect_invalid("weights that do not have the layout of their atom",
+                     [&] { derivative.add_pairs(wrong,PrepareShare{},scratch); });
+    }
+    require(largest(scratch) == 0.0,"a rejected call of the pairs changes the derivative");
     Structure fewer = structure;
     fewer.positions.pop_back();
     fewer.species.pop_back();
@@ -2274,6 +2682,114 @@ void exchange_forces(const std::string& path)
             openmx_exx_add_position_gradient_blocks(state,0,count,-alpha,periodic.blocks.data(),site.data(),&failing,
                                                     message,sizeof message) != 0 && message[0] != '\0' &&
             site == before_site,"a rejected derivative of the site form changes the output");
+
+    // The route through the pairs (section 6.7): the weights of the ABFs in
+    // two calls whose ranges meet inside an atom, as two processes would
+    // compute them, and the pairs in three parts.
+    std::vector<long> first_abf(1,0);
+    for (const std::size_t abfs : periodic.system.abf_count) first_abf.push_back(first_abf.back()+static_cast<long>(abfs));
+    const long total = first_abf.back();
+    std::size_t widest = 0;
+    for (std::size_t a = 0; a < atoms; ++a)
+      if (periodic.system.abf_count[a] > periodic.system.abf_count[widest]) widest = a;
+    require(periodic.system.abf_count[widest] >= 2,"the test needs an atom with two ABFs or more");
+    const long cut = first_abf[widest]+static_cast<long>(periodic.system.abf_count[widest]/2);
+    for (const bool sites : {false,true}) {
+      const std::string form = sites ? "site form" : "Gamma form";
+      const std::vector<double>& d = sites ? periodic.blocks : periodic.density;
+      const std::vector<double>& reference = sites ? periodic.site : periodic.gamma;
+      std::vector<std::vector<double>> values(atoms);
+      std::vector<double*> arrays(atoms);
+      for (std::size_t a = 0; a < atoms; ++a) {
+        values[a].assign(openmx_exx_atom_table_elements(state,static_cast<int>(a)),0.0);
+        require(values[a].size() == table_elements(periodic.system,a),"wrong size of the weights of an atom");
+        arrays[a] = values[a].data();
+      }
+      const auto add_weights = [&](long first, long last, const double* density, double* const* target,
+                                   const OpenMXExxDenseBackend* table) {
+        return sites ? openmx_exx_add_block_weights_blocks_abfs(state,first,last,-alpha,density,target,table,message,
+                                                                sizeof message)
+                     : openmx_exx_add_block_weights_gamma_abfs(state,first,last,-alpha,density,target,table,message,
+                                                               sizeof message);
+      };
+      int status = add_weights(0,cut,d.data(),arrays.data(),nullptr);
+      require(status == 0 && message[0] == '\0',form+": the weights through the C interface fail: "+message);
+      status = add_weights(cut,total,d.data(),arrays.data(),nullptr);
+      require(status == 0,form+": the weights of the other ABFs through the C interface fail: "+message);
+      {
+        // The C++ interface gives the same bits for the same ranges, and
+        // the weights of the centre atoms within rounding.
+        BlockWeights direct(periodic.system), whole(periodic.system);
+        for (const std::array<long,2>& range : {std::array<long,2>{0,cut},std::array<long,2>{cut,total}}) {
+          const std::size_t first = static_cast<std::size_t>(range[0]), last = static_cast<std::size_t>(range[1]);
+          if (sites) add_block_weights_blocks_abfs(periodic.system,periodic.layout,first,last,-alpha,d,direct.arrays);
+          else add_block_weights_gamma_abfs(periodic.system,first,last,-alpha,d,direct.arrays);
+        }
+        require(same_values(values,direct.values),form+": the weights of the two interfaces give different bits");
+        double scale = 0.0;
+        for (std::size_t a = 0; a < atoms; ++a) {
+          add_block_weights(sites ? centre_gradient_blocks(periodic.system,periodic.layout,a,-alpha,d)
+                                  : centre_gradient_gamma(periodic.system,a,-alpha,d),whole.values[a]);
+          scale = std::max(scale,largest(whole.values[a]));
+        }
+        Worst atoms_against_ranges("C interface, "+form+": weights of two ranges of ABFs against centre atoms (relative)",
+                                   1e-12);
+        for (std::size_t a = 0; a < atoms; ++a)
+          for (std::size_t e = 0; e < values[a].size(); ++e)
+            atoms_against_ranges.add(std::fabs(values[a][e]-whole.values[a][e])/scale);
+        atoms_against_ranges.finish();
+      }
+      const std::vector<const double*> weights(arrays.begin(),arrays.end());
+      std::vector<double> through(3*atoms,0.0);
+      for (int part = 0; part < 3; ++part) {
+        status = openmx_exx_add_position_gradient_pairs(state,weights.data(),part,3,through.data(),message,sizeof message);
+        require(status == 0 && message[0] == '\0',form+": a share of the pairs through the C interface fails: "+message);
+      }
+      Worst pairs("C interface, "+form+": pairs of sites against centre atoms (relative)",1e-12);
+      for (std::size_t e = 0; e < 3*atoms; ++e) pairs.add(std::fabs(through[e]-reference[e])/largest(reference));
+      pairs.finish();
+
+      // What the entries reject; the outputs stay as they are.
+      const std::vector<double> before = through;
+      const std::vector<std::vector<double>> before_values = values;
+      std::vector<const double*> missing = weights;
+      missing[atoms-1] = nullptr;
+      require(openmx_exx_add_position_gradient_pairs(state,weights.data(),3,3,through.data(),message,sizeof message) != 0 &&
+              openmx_exx_add_position_gradient_pairs(state,weights.data(),-1,3,through.data(),message,sizeof message) != 0 &&
+              openmx_exx_add_position_gradient_pairs(state,weights.data(),0,0,through.data(),message,sizeof message) != 0 &&
+              openmx_exx_add_position_gradient_pairs(state,nullptr,0,1,through.data(),message,sizeof message) != 0 &&
+              openmx_exx_add_position_gradient_pairs(state,weights.data(),0,1,nullptr,message,sizeof message) != 0 &&
+              openmx_exx_add_position_gradient_pairs(state,missing.data(),0,1,through.data(),message,sizeof message) != 0 &&
+              openmx_exx_add_position_gradient_pairs(nullptr,weights.data(),0,1,through.data(),message,sizeof message) != 0 &&
+              message[0] != '\0' && through == before,form+": a rejected call of the pairs changes the derivative");
+      std::vector<double*> lacking = arrays;
+      lacking[0] = nullptr;
+      require(add_weights(-1,total,d.data(),arrays.data(),nullptr) != 0 &&
+              add_weights(0,total+1,d.data(),arrays.data(),nullptr) != 0 &&
+              add_weights(2,1,d.data(),arrays.data(),nullptr) != 0 &&
+              add_weights(0,total,nullptr,arrays.data(),nullptr) != 0 &&
+              add_weights(0,total,d.data(),nullptr,nullptr) != 0 &&
+              add_weights(0,total,d.data(),lacking.data(),nullptr) != 0 && message[0] != '\0' &&
+              values == before_values,form+": rejected weights change the arrays");
+      {
+        // A product that fails; the call may have added the weights of some
+        // of its atoms, so it gets arrays of its own.
+        std::vector<std::vector<double>> scratch = values;
+        std::vector<double*> targets(atoms);
+        for (std::size_t a = 0; a < atoms; ++a) targets[a] = scratch[a].data();
+        require(add_weights(0,total,d.data(),targets.data(),&failing) != 0 && message[0] != '\0',
+                form+": the weights with a product that fails are accepted");
+      }
+      // An empty range adds nothing, and the arrays of the atoms that a range
+      // does not touch are not read.
+      std::vector<double*> only(atoms,nullptr);
+      only[1] = arrays[1];
+      status = add_weights(cut,cut,d.data(),arrays.data(),nullptr);
+      require(status == 0 && values == before_values,form+": an empty range of ABFs changes the weights");
+      status = add_weights(first_abf[1],first_abf[2],d.data(),only.data(),nullptr);
+      require(status == 0 && values[0] == before_values[0] && values[1] != before_values[1],
+              form+": the weights of the ABFs of one atom need the arrays of the other atoms");
+    }
   }
 }
 
@@ -2433,6 +2949,168 @@ void check_device(const System& system, const DeviceForm& form, Numbers& random,
   std::printf("%s: %zu failures of the device, each one followed by the bits of the host\n",name.c_str(),chosen.size());
 }
 
+// The ABFs of the centre atoms in ranges (section 6.7 of the guide), in both
+// forms and with four backends: the built-in loops, a table with a product,
+// a table whose loop runs four pieces, and the device.  A range of the ABFs
+// of whole atoms gives the bits of these atoms as a range of centre atoms.
+// Ranges that divide the ABFs add up to K within rounding wherever they are
+// cut: in two at every ABF, and in ranges of 1, 2, 3, ... ABFs.  The device
+// is told the bytes and the largest product of the range that it computes.
+// An empty range adds nothing.  With "every" the cut is made at every ABF;
+// otherwise at about a dozen of them, and at the first and the last one.
+void check_abf_ranges(const System& system, const std::string& name, Numbers& random, bool every)
+{
+  const double alpha = 0.25;
+  const std::size_t atoms = system.orbital_count.size(), n = orbital_total(system);
+  std::vector<std::size_t> first_abf(1,0);
+  for (const std::size_t count : system.abf_count) first_abf.push_back(first_abf.back()+count);
+  const std::size_t total = first_abf.back();
+  require(total >= 3,name+": the test of the ranges needs three ABFs or more");
+  const std::vector<double> dense = dense_matrix(n,false,random);
+  const BlockLayout layout = exchange_layout(system);
+  std::vector<double> blocks(layout.elements());
+  for (double& value : blocks) value = random.next();
+
+  using Build = std::function<bool(std::size_t, std::size_t, std::span<double>, const DenseBackend&)>;
+  struct RangeForm {
+    std::string name;
+    std::size_t size = 0;
+    Build abfs, centres;
+  };
+  const RangeForm forms[] = {
+      {name+", Gamma form",n*n,
+       [&](std::size_t first, std::size_t last, std::span<double> k, const DenseBackend& backend) {
+         return add_exchange_gamma_abfs(system,first,last,-alpha,dense,k,backend);
+       },
+       [&](std::size_t first, std::size_t last, std::span<double> k, const DenseBackend& backend) {
+         return add_exchange_gamma_range(system,first,last,-alpha,dense,k,backend);
+       }},
+      {name+", site form",layout.elements(),
+       [&](std::size_t first, std::size_t last, std::span<double> k, const DenseBackend& backend) {
+         return add_exchange_blocks_abfs(system,layout,first,last,-alpha,blocks,k,backend);
+       },
+       [&](std::size_t first, std::size_t last, std::span<double> k, const DenseBackend& backend) {
+         return add_exchange_blocks_range(system,layout,first,last,-alpha,blocks,k,backend);
+       }}};
+
+  FakeDevice device;
+  Calls calls;
+  const OpenMXExxDenseBackend product_table{&shared_dgemm,&calls,nullptr,0,nullptr};
+  const OpenMXExxDenseBackend pieces_table{&shared_dgemm,&calls,&reversed_loop,4,nullptr};
+  const OpenMXExxDenseBackend device_table{&shared_dgemm,&calls,&in_order_loop,4,&device.table()};
+  const OpenMXExxDenseBackend* const tables[] = {nullptr,&product_table,&pieces_table,&device_table};
+  const char* const backend_names[] = {"built-in loops","product of the table","four pieces","device"};
+  const std::size_t step = every ? 1 : std::max<std::size_t>(1,total/12);
+
+  for (const RangeForm& form : forms) {
+    std::vector<double> alone(form.size,0.0);
+    form.centres(0,atoms,alone,DenseBackend());
+    const double scale = largest(alone);
+    require(scale > 1.0e-6,form.name+": the contributions are expected to be of order one");
+    // K holds numbers of the size of the contributions on entry: a range adds
+    // to it.
+    std::vector<double> start(form.size);
+    for (double& value : start) value = scale*random.next();
+
+    long builds = 0;
+    for (std::size_t b = 0; b < 4; ++b) {
+      const DenseBackend backend(tables[b]);
+      const bool on_device = b == 3;
+      const std::string what = form.name+", "+backend_names[b];
+      // A call of one range; the record of the device must end clean, and
+      // the device computes every range that is not empty.
+      const auto run = [&](const Build& build, std::size_t first, std::size_t last, std::vector<double>& k) {
+        device.reset();
+        const bool computed = build(first,last,k,backend);
+        const std::string ending = device.ending();
+        require(ending.empty(),what+": "+ending);
+        require(computed == (on_device && first < last),what+": the wrong side computes a range");
+        if (computed)
+          require(device.accepted == 1 && device.bytes == device.allocated &&
+                  device.multiplications == device.largest_product && device.count[FakeDevice::download_call] == 1,
+                  what+": accept is told other sizes than the range takes, or K is not fetched once");
+        ++builds;
+      };
+
+      std::vector<double> reference = start;
+      run(form.centres,0,atoms,reference);
+      {
+        std::vector<double> all = start;
+        run(form.abfs,0,total,all);
+        require(same_values(all,reference),what+": all ABFs in one range give other bits than all centre atoms");
+      }
+      for (std::size_t i = 0; i < atoms; ++i)
+        for (std::size_t j = i+1; j <= atoms; ++j) {
+          if (i == 0 && j == atoms) continue;
+          std::vector<double> by_atoms = start, by_abfs = start;
+          run(form.centres,i,j,by_atoms);
+          run(form.abfs,first_abf[i],first_abf[j],by_abfs);
+          require(same_values(by_abfs,by_atoms),what+": the ABFs of whole atoms give other bits than the atoms");
+        }
+
+      Worst cut(what+": two ranges of ABFs (relative)",1e-12);
+      std::vector<std::size_t> middles;
+      for (std::size_t middle = 1; middle < total; middle += step) middles.push_back(middle);
+      if (middles.back() != total-1) middles.push_back(total-1);
+      for (const std::size_t middle : middles) {
+        std::vector<double> k = start;
+        // The second range first for every other cut: the order of the calls
+        // is that of the processes, which is not fixed.
+        if (middle%2 == 0) {
+          run(form.abfs,0,middle,k);
+          run(form.abfs,middle,total,k);
+        } else {
+          run(form.abfs,middle,total,k);
+          run(form.abfs,0,middle,k);
+        }
+        for (std::size_t e = 0; e < k.size(); ++e) cut.add(std::fabs(k[e]-reference[e])/scale);
+      }
+      cut.finish();
+
+      Worst growing(what+": ranges of 1, 2, 3, ... ABFs (relative)",1e-12);
+      {
+        std::vector<double> k = start;
+        for (std::size_t first = 0, length = 1; first < total; ++length) {
+          const std::size_t last = std::min(total,first+length);
+          run(form.abfs,first,last,k);
+          first = last;
+        }
+        for (std::size_t e = 0; e < k.size(); ++e) growing.add(std::fabs(k[e]-reference[e])/scale);
+      }
+      growing.finish();
+
+      for (const std::size_t at : {std::size_t{0},first_abf[1],total-1,total}) {
+        std::vector<double> none = start;
+        run(form.abfs,at,at,none);
+        require(device.accepted == 0 && same_values(none,start),what+": an empty range of ABFs asks the device or changes K");
+      }
+    }
+    std::printf("%s: %ld builds of ranges of the %zu ABFs\n",form.name.c_str(),builds,total);
+
+    // Ranges that the library rejects add nothing, with a device too.
+    std::vector<double> k(form.size,0.0);
+    device.reset();
+    for (const OpenMXExxDenseBackend* const table : {tables[0],tables[3]}) {
+      const DenseBackend backend(table);
+      expect_invalid("a range of ABFs beyond the cell",[&] { form.abfs(0,total+1,k,backend); });
+      expect_invalid("a range of ABFs that ends before it begins",[&] { form.abfs(2,1,k,backend); });
+      expect_invalid("an exchange matrix of the wrong size for a range of ABFs",
+                     [&] { form.abfs(0,total,std::span<double>(k).first(k.size()-1),backend); });
+    }
+    require(largest(k) == 0.0 && device.accepted == 0 && device.calls == 0,
+            form.name+": a rejected range of ABFs changes K or asks the device");
+  }
+
+  // The weights of the ABFs for a division among processes: one positive
+  // number for every atom in each form, the same for every call.
+  for (const bool sites : {false,true}) {
+    const std::vector<double> cost = abf_costs(system,sites);
+    require(cost.size() == atoms && cost == abf_costs(system,sites),name+": wrong number of weights of the ABFs");
+    for (const double value : cost)
+      require(value >= 1.0 && std::isfinite(value),name+": a weight of the ABFs of an atom is not a count");
+  }
+}
+
 // Both forms of a system with a density matrix of numbers without a
 // pattern, not symmetric: a transposed block does not pass unnoticed.  The
 // blocks of the site form are numbers of their own, not those of one dense
@@ -2456,6 +3134,7 @@ void check_device_forms(const System& system, const std::string& name, Numbers& 
                   }};
   check_device(system,gamma,random,every);
   check_device(system,site,random,every);
+  check_abf_ranges(system,name,random,every);
 
   // Arguments that the library rejects are rejected before the device is
   // asked; the derivatives do not use the device.

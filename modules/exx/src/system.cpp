@@ -142,12 +142,16 @@ std::vector<double> t_block(const System& system, std::size_t atom, std::size_t 
 }
 
 System prepare_system(const Structure& structure, std::span<const SpeciesTable> species,
-                      const ReciprocalGrid& reciprocal, const SystemOptions& options)
+                      const ReciprocalGrid& reciprocal, const SystemOptions& options, const PrepareShare& share)
 {
   const std::size_t count = species.size(), atoms = structure.positions.size();
   check(structure,count);
   if (!(options.v_cutoff >= 0.0) || !std::isfinite(options.v_cutoff))
     throw std::invalid_argument("the cutoff of the V blocks must be finite and nonnegative");
+  if (share.parts < 1 || share.part >= share.parts)
+    throw std::invalid_argument("the share of a preparation is not one of its parts");
+  // The pairs of this share, by their number in the order of the loops below.
+  const auto mine = [&share](std::size_t pair) { return pair%share.parts == share.part; };
 
   int maximum_orbital = 0, maximum_abf = 0;
   std::vector<double> c_cutoff(count*count), v_cutoff(count*count);
@@ -194,13 +198,17 @@ System prepare_system(const Structure& structure, std::span<const SpeciesTable> 
   };
   const LriSolver solver(reciprocal,maximum_orbital,maximum_abf,options.lri);
   std::vector<std::vector<double>> onsite_t(count);
+  std::size_t t_pair = 0;
   for (std::size_t a = 0; a < atoms; ++a) {
     const std::size_t sa = static_cast<std::size_t>(structure.species[a]);
-    if (onsite_t[sa].empty()) onsite_t[sa] = solver.onsite(species[sa],&system.report);
-    store(a,0,onsite_t[sa]);
+    if (share.part == 0) {
+      if (onsite_t[sa].empty()) onsite_t[sa] = solver.onsite(species[sa],&system.report);
+      store(a,0,onsite_t[sa]);
+    }
     for (std::size_t i = 1; i < system.c_neighbours[a].size(); ++i) {
       const Site& site = system.c_neighbours[a][i];
       if (!pair_computed_from(static_cast<int>(a),site)) continue;
+      if (!mine(t_pair++)) continue;
       const std::size_t b = static_cast<std::size_t>(site.atom);
       const std::size_t j = find_site(system.c_neighbours[b],reversed_site(static_cast<int>(a),site));
       if (j == system.c_neighbours[b].size()) throw std::logic_error("a C neighbour has no counterpart");
@@ -216,21 +224,32 @@ System prepare_system(const Structure& structure, std::span<const SpeciesTable> 
   const TwoCenterIntegrator interaction(reciprocal,options.interaction,maximum_abf,maximum_abf);
   std::vector<std::vector<double>> onsite_v(count);
   system.v.resize(atoms);
-  for (std::size_t a = 0; a < atoms; ++a) system.v[a].resize(system.v_neighbours[a].size());
+  for (std::size_t a = 0; a < atoms; ++a) {
+    system.v[a].resize(system.v_neighbours[a].size());
+    // The blocks of the other parts hold zeros.
+    if (share.parts > 1)
+      for (std::size_t i = 0; i < system.v[a].size(); ++i)
+        system.v[a][i].assign(system.abf_count[a]*system.abf_count[static_cast<std::size_t>(system.v_neighbours[a][i].atom)],
+                              0.0);
+  }
+  std::size_t v_pair = 0;
   for (std::size_t a = 0; a < atoms; ++a) {
     const std::size_t sa = static_cast<std::size_t>(structure.species[a]);
     const std::size_t na = system.abf_count[a];
-    if (onsite_v[sa].empty()) {
-      const std::vector<double> block = two_center_matrix(interaction.pair({0.0,0.0,0.0}),
-                                                          species[sa].abf_transforms(),species[sa].abf_transforms());
-      onsite_v[sa].resize(na*na);
-      for (std::size_t p = 0; p < na; ++p)
-        for (std::size_t q = 0; q < na; ++q) onsite_v[sa][p*na+q] = 0.5*(block[p*na+q]+block[q*na+p]);
+    if (share.part == 0) {
+      if (onsite_v[sa].empty()) {
+        const std::vector<double> block = two_center_matrix(interaction.pair({0.0,0.0,0.0}),
+                                                            species[sa].abf_transforms(),species[sa].abf_transforms());
+        onsite_v[sa].resize(na*na);
+        for (std::size_t p = 0; p < na; ++p)
+          for (std::size_t q = 0; q < na; ++q) onsite_v[sa][p*na+q] = 0.5*(block[p*na+q]+block[q*na+p]);
+      }
+      system.v[a][0] = onsite_v[sa];
     }
-    system.v[a][0] = onsite_v[sa];
     for (std::size_t i = 1; i < system.v_neighbours[a].size(); ++i) {
       const Site& site = system.v_neighbours[a][i];
       if (!pair_computed_from(static_cast<int>(a),site)) continue;
+      if (!mine(v_pair++)) continue;
       const std::size_t b = static_cast<std::size_t>(site.atom);
       const std::size_t j = find_site(system.v_neighbours[b],reversed_site(static_cast<int>(a),site));
       if (j == system.v_neighbours[b].size()) throw std::logic_error("a V neighbour has no counterpart");
@@ -247,6 +266,36 @@ System prepare_system(const Structure& structure, std::span<const SpeciesTable> 
     }
   }
   return system;
+}
+
+std::size_t table_elements(const System& system, std::size_t atom)
+{
+  if (atom >= system.t.size() || atom >= system.v.size())
+    throw std::out_of_range("the atom of the blocks of a system does not exist");
+  std::size_t elements = system.t[atom].size();
+  for (const std::vector<double>& block : system.v[atom]) elements += block.size();
+  return elements;
+}
+
+void get_tables(const System& system, std::size_t atom, std::span<double> values)
+{
+  if (values.size() != table_elements(system,atom))
+    throw std::invalid_argument("the array does not have the size of the blocks of the atom");
+  auto target = std::copy(system.t[atom].begin(),system.t[atom].end(),values.begin());
+  for (const std::vector<double>& block : system.v[atom]) target = std::copy(block.begin(),block.end(),target);
+}
+
+void set_tables(System& system, std::size_t atom, std::span<const double> values)
+{
+  if (values.size() != table_elements(system,atom))
+    throw std::invalid_argument("the array does not have the size of the blocks of the atom");
+  auto source = values.begin();
+  std::copy_n(source,system.t[atom].size(),system.t[atom].begin());
+  source += static_cast<std::ptrdiff_t>(system.t[atom].size());
+  for (std::vector<double>& block : system.v[atom]) {
+    std::copy_n(source,block.size(),block.begin());
+    source += static_cast<std::ptrdiff_t>(block.size());
+  }
 }
 
 } // namespace openmx::exx
