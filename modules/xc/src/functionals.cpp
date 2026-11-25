@@ -81,15 +81,24 @@ ShortRangeExchangeResult wpbeh_short_range_exchange(SpinDensity density, const S
       GD[d][1] = gradient.component[d][1];
     }
   }
-  ShortRangeExchangeResult r;
-  double energy = 0.0;
+  double floored_norm[2];
   for (int s = 0; s < 2; ++s) {
     const double norm = std::sqrt(GD[0][s]*GD[0][s] + GD[1][s]*GD[1][s] + GD[2][s]*GD[2][s]);
-    const double floored_norm = openmx_xc_kernel_largest(0.5*gd_min, norm);
-    const detail::ChannelEnergy channel = detail::wpbeh_channel_energy(D[s], floored_norm, omega);
+    floored_norm[s] = openmx_xc_kernel_largest(0.5*gd_min, norm);
+  }
+  // The kernel depends on the density and the norm of the gradient only.
+  // Without spin polarization, and with the symmetrization, the two channels
+  // have the same ones, and the second channel takes the result of the
+  // first: the bits of a second call, with one call of the kernel.
+  ShortRangeExchangeResult r;
+  double energy = 0.0;
+  detail::ChannelEnergy channel{};
+  for (int s = 0; s < 2; ++s) {
+    if (s == 0 || D[1] != D[0] || floored_norm[1] != floored_norm[0])
+      channel = detail::wpbeh_channel_energy(D[s], floored_norm[s], omega);
     energy += channel.energy;
     r.dexchange_ddensity[s] = channel.denergy_ddensity;
-    for (int d = 0; d < 3; ++d) r.dexchange_dgradient[d][s] = channel.denergy_dgradient*(GD[d][s]/floored_norm);
+    for (int d = 0; d < 3; ++d) r.dexchange_dgradient[d][s] = channel.denergy_dgradient*(GD[d][s]/floored_norm[s]);
   }
   r.exchange_energy_density = energy/(dens[0] + dens[1]);
   r.density_used = {dens[0], dens[1]};

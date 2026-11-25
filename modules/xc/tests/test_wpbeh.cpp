@@ -1,9 +1,11 @@
 // Tests of the short-range omega-PBE exchange of the xc package against
 // multi-precision references stored as text fixtures (tools/wpbeh_*.py).
 #include <openmx/xc/functionals.hpp>
+#include <openmx/xc/kernels.h>
 #include <openmx/xc/xc.h>
 
 #include "special_functions.hpp"
+#include "wpbeh_kernel.hpp"
 
 #include <cmath>
 #include <cstdio>
@@ -286,6 +288,46 @@ bool same_pbe_bits(const PbeResult& a, const PbeResult& b, bool exchange_too) {
   return same;
 }
 
+// The short-range exchange with one call of the kernel for each channel, as the library computed
+// it before the second channel took the result of the first when both have the same density and
+// norm of the gradient.  The floors and the symmetrization are those of the library.
+ShortRangeExchangeResult two_kernel_calls(SpinDensity density, const SpinGradient& gradient, double omega,
+                                          bool symmetrize) {
+  const double den_min = 1.0e-14, gd_min = 1.0e-14;
+  const double dens[2] = {openmx_xc_kernel_largest(0.5 * den_min, density.up),
+                          openmx_xc_kernel_largest(0.5 * den_min, density.down)};
+  double D[2], GD[3][2];
+  for (int s = 0; s < 2; ++s) D[s] = symmetrize ? (dens[0] + dens[1]) / 2.0 : dens[s];
+  for (int d = 0; d < 3; ++d) {
+    for (int s = 0; s < 2; ++s) {
+      GD[d][s] = symmetrize ? (gradient.component[d][0] + gradient.component[d][1]) / 2.0 : gradient.component[d][s];
+    }
+  }
+  ShortRangeExchangeResult r;
+  double energy = 0.0;
+  for (int s = 0; s < 2; ++s) {
+    const double norm = std::sqrt(GD[0][s] * GD[0][s] + GD[1][s] * GD[1][s] + GD[2][s] * GD[2][s]);
+    const double floored_norm = openmx_xc_kernel_largest(0.5 * gd_min, norm);
+    const detail::ChannelEnergy channel = detail::wpbeh_channel_energy(D[s], floored_norm, omega);
+    energy += channel.energy;
+    r.dexchange_ddensity[s] = channel.denergy_ddensity;
+    for (int d = 0; d < 3; ++d) r.dexchange_dgradient[d][s] = channel.denergy_dgradient * (GD[d][s] / floored_norm);
+  }
+  r.exchange_energy_density = energy / (dens[0] + dens[1]);
+  r.density_used = {dens[0], dens[1]};
+  return r;
+}
+
+bool same_short_range_bits(const ShortRangeExchangeResult& a, const ShortRangeExchangeResult& b) {
+  bool same = same_bits(a.exchange_energy_density, b.exchange_energy_density)
+              && same_bits(a.density_used.up, b.density_used.up) && same_bits(a.density_used.down, b.density_used.down);
+  for (int s = 0; s < 2; ++s) {
+    same = same && same_bits(a.dexchange_ddensity[s], b.dexchange_ddensity[s]);
+    for (int d = 0; d < 3; ++d) same = same && same_bits(a.dexchange_dgradient[d][s], b.dexchange_dgradient[d][s]);
+  }
+  return same;
+}
+
 // a - fraction * b as the library computes it; one unit in the last place is allowed for a
 // compiler that contracts the product and the difference in this file.
 bool is_difference(double value, double a, double fraction, double b) {
@@ -302,7 +344,7 @@ void hybrid() {
   const double reduced_gradients[] = {0.0, 0.05, 0.9, 1.7, 9.0, 20.0};
   const double fractions[] = {0.25, 1.0, -0.5};
   const double kf_factor = 2.0 * std::cbrt(6.0 * pi * pi);
-  long checks = 0;
+  long checks = 0, same_channels = 0;
   for (double up : densities) for (double down : densities) {
     for (std::size_t i = 0; i < sizeof(reduced_gradients) / sizeof(reduced_gradients[0]); ++i) {
       const double s_up = reduced_gradients[i], s_down = reduced_gradients[(2 * i + 1) % 6];
@@ -332,6 +374,11 @@ void hybrid() {
         // other fractions: the exchange outputs are pbe() minus the fraction times the short-range exchange
         const double omega = 0.11;
         const ShortRangeExchangeResult sr = wpbeh_short_range_exchange(density, gradient, omega, symmetrize);
+        // The symmetrized channels, and the channels of up == down at the density floor, are
+        // the same: the second channel takes the result of the first.
+        require(same_short_range_bits(sr, two_kernel_calls(density, gradient, omega, symmetrize)),
+                "the short-range exchange differs from one call of the kernel for each channel");
+        if (symmetrize) ++same_channels;
         for (double fraction : fractions) {
           const PbeResult h = pbe_screened_hybrid(density, gradient, symmetrize, fraction, omega);
           require(same_pbe_bits(h, p, false), "the hybrid changed the correlation or the floored density");
@@ -419,7 +466,20 @@ void hybrid() {
           && openmx_xc_pbe_screened_hybrid(dens, gdens, 0, 0.25, 0.11, exc, dexdd, decdd, nullptr, decdgd) == 0, "hybrid without an array accepted");
   require(openmx_xc_pbe_global_hybrid(nullptr, gdens, 0, 0.25, exc, dexdd, decdd, dexdgd, decdgd) == 0
           && openmx_xc_pbe_global_hybrid(dens, gdens, 0, 0.25, exc, dexdd, decdd, dexdgd, nullptr) == 0, "global hybrid without an array accepted");
-  std::printf("PASS xc hybrid (%ld comparisons)\n", checks);
+  // Without spin polarization OpenMX gives both channels half the density and the same gradient,
+  // and calls the functional without the symmetrization.
+  for (double rho : densities) for (double s_reduced : reduced_gradients) {
+    const double g = s_reduced * kf_factor * std::pow(std::fabs(rho), 4.0 / 3.0);
+    const double gv[3] = {g * directions[1][0], g * directions[1][1], g * directions[1][2]};
+    const SpinDensity density{rho, rho};
+    const SpinGradient gradient = gradient_of(gv, gv);
+    require(same_short_range_bits(wpbeh_short_range_exchange(density, gradient, 0.11, false),
+                                  two_kernel_calls(density, gradient, 0.11, false)),
+            "the short-range exchange of equal spins differs from one call of the kernel for each channel");
+    ++same_channels;
+  }
+  require(same_channels > 0, "no case with the same channels");
+  std::printf("PASS xc hybrid (%ld comparisons, %ld points with the same channels)\n", checks, same_channels);
 }
 }  // namespace
 
