@@ -18,6 +18,12 @@ static int gpusolver_zheevx_openacc(dcomplex* A, double* W, int N0, int MaxN);
 #endif
 
 
+void EigenBand_lapack_cpu(dcomplex **A, double *W, int N0, int MaxN, int ev_flag)
+{
+  if (Eigen_zheevx(A,W,N0,MaxN,ev_flag)!=0)
+    Eigen_HH(A,W,N0,MaxN,ev_flag);
+}
+
 void EigenBand_lapack(dcomplex **A, double *W, int N0, int MaxN, int ev_flag)
 {
   int info;

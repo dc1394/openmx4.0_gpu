@@ -1,4 +1,5 @@
 #include "openmx_stdout_level.h"
+#include "openmx_band_kpath_gpu.h"
 #include "openmx_env.h"
 #include <magma_v2.h>
 #include "hip_runtime_compat.h"
@@ -822,7 +823,8 @@ int rocsolver_evd_locked(int cplx, int n, int maxn, void *d_A, double *w, int *m
    d_A for the lowest maxn eigenpairs: the vectors in the first maxn columns
    of d_A, the eigenvalues in w (host, n entries of room).  *touched is set
    once d_A may have changed. */
-int magma_evdx_locked(int cplx, int ozaki2, int n, int maxn, void *d_A, double *w, int *mout_out, int *touched)
+int magma_evdx_locked(int cplx, int ozaki2, int n, int maxn, void *d_A, double *w, int *mout_out, int *touched,
+                      magma_vec_t job = MagmaVec)
 {
     magma_int_t mn = static_cast<magma_int_t>(n);
     magma_int_t mmaxn = static_cast<magma_int_t>(maxn);
@@ -849,7 +851,7 @@ int magma_evdx_locked(int cplx, int ozaki2, int n, int maxn, void *d_A, double *
         }
 
         ret = (ozaki2 ? magma_dsyevdx_ozaki2_gpu : magma_dsyevdx_gpu)(
-                                        MagmaVec, range, MagmaLower,
+                                        job, range, MagmaLower,
                                         mn, reinterpret_cast<magmaDouble_ptr>(d_A), mn,
                                         0.0, 0.0, il, iu, &mout, w,
                                         g_host_matrix, mn,
@@ -879,7 +881,7 @@ int magma_evdx_locked(int cplx, int ozaki2, int n, int maxn, void *d_A, double *
         info = 0;
         *touched = 1;
         ret = (ozaki2 ? magma_dsyevdx_ozaki2_gpu : magma_dsyevdx_gpu)(
-                                MagmaVec, range, MagmaLower,
+                                job, range, MagmaLower,
                                 mn, reinterpret_cast<magmaDouble_ptr>(d_A), mn,
                                 0.0, 0.0, il, iu, &mout, w,
                                 g_host_matrix, mn,
@@ -896,7 +898,7 @@ int magma_evdx_locked(int cplx, int ozaki2, int n, int maxn, void *d_A, double *
         }
 
         ret = (ozaki2 ? magma_zheevdx_ozaki2_gpu : magma_zheevdx_gpu)(
-                                        MagmaVec, range, MagmaLower,
+                                        job, range, MagmaLower,
                                         mn, reinterpret_cast<magmaDoubleComplex_ptr>(d_A), mn,
                                         0.0, 0.0, il, iu, &mout, w,
                                         g_z_host_matrix, mn,
@@ -932,7 +934,7 @@ int magma_evdx_locked(int cplx, int ozaki2, int n, int maxn, void *d_A, double *
         info = 0;
         *touched = 1;
         ret = (ozaki2 ? magma_zheevdx_ozaki2_gpu : magma_zheevdx_gpu)(
-                                MagmaVec, range, MagmaLower,
+                                job, range, MagmaLower,
                                 mn, reinterpret_cast<magmaDoubleComplex_ptr>(d_A), mn,
                                 0.0, 0.0, il, iu, &mout, w,
                                 g_z_host_matrix, mn,
@@ -940,7 +942,8 @@ int magma_evdx_locked(int cplx, int ozaki2, int n, int maxn, void *d_A, double *
                                 g_z_rwork, lrwork,
                                 g_z_iwork, liwork, &info);
     }
-    hipDeviceSynchronize();
+    if (hipDeviceSynchronize() != hipSuccess && ret == MAGMA_SUCCESS && info == 0)
+        return MAGMA_ERR_UNKNOWN;
 
     /* for n <= 128 MAGMA solves the whole spectrum with LAPACK dsyevd /
        zheevd and reports mout = n: the first maxn pairs are the request */
@@ -1565,6 +1568,18 @@ extern "C" int openmx_magma_dsyevdx_gpu(int n,int nev,double *a,double *w,int *m
 { return openmx_magma_dense_dispatch(0,n,nev,a,w,mout); }
 extern "C" int openmx_magma_zheevdx_gpu(int n,int nev,void *a,double *w,int *mout)
 { return openmx_magma_dense_dispatch(1,n,nev,a,w,mout); }
+
+/* Only the band energies are needed for .Band output. Skip the
+   eigenvector back-transformation, with the same native/Ozaki-II policy. */
+extern "C" int openmx_magma_zheev_values_gpu(int n, void *d_A, double *w)
+{
+    if (n <= 0 || d_A == nullptr || w == nullptr) return MAGMA_ERR_ILLEGAL_VALUE;
+    std::lock_guard<std::mutex> lock(g_magma_mutex);
+    int found = 0, touched = 0;
+    const int status = magma_evdx_locked(1, use_magma_ozaki2(), n, n, d_A, w, &found,
+                                        &touched, MagmaNoVec);
+    return status == 0 && found != n ? MAGMA_ERR_ILLEGAL_VALUE : status;
+}
 
 /* The MAGMA chain alone (no rocSOLVER first, whatever the size): the retry
    of the generic wrappers' rocSOLVER solves (gpusolver_Syevdx.c). */

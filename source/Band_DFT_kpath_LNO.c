@@ -24,6 +24,13 @@
 #include "mpi.h"
 #include <omp.h>
 
+#if OPENMX_GPU_HIP
+#include "openmx_band_kpath_gpu.h"
+#endif
+
+typedef void (*BandKPathEigen)(dcomplex **, double *, int, int, int);
+extern void EigenBand_lapack_cpu(dcomplex **, double *, int, int, int);
+
 
 static void Band_DFT_kpath_Col(const OpenMXChemicalPotentials *chemical,
                       int nkpath, int *n_perk,
@@ -31,7 +38,7 @@ static void Band_DFT_kpath_Col(const OpenMXChemicalPotentials *chemical,
                       int  SpinP_switch, 
                       double *****nh,
                       double *****ImNL,
-                      double ****CntOLP, const OpenMXLocalBasisViews *local_basis);
+                      double ****CntOLP, const OpenMXLocalBasisViews *local_basis, BandKPathEigen solve);
 
 static void Band_DFT_kpath_NonCol(const OpenMXChemicalPotentials *chemical,
                       int nkpath, int *n_perk,
@@ -50,7 +57,15 @@ void Band_DFT_kpath_LNO(const OpenMXChemicalPotentials *chemical,  int nkpath, i
 {
 
   if (SpinP_switch==0 || SpinP_switch==1){
-    Band_DFT_kpath_Col(chemical, nkpath, n_perk, kpath, kname, SpinP_switch, nh, ImNL, CntOLP, local_basis);
+    BandKPathEigen solve = EigenBand_lapack;
+#if OPENMX_GPU_HIP
+    const int hip_status = openmx_band_kpath_try_hip(chemical,nkpath,n_perk,kpath,kname,
+                              SpinP_switch,nh,ImNL,CntOLP,local_basis);
+    if (hip_status==1) return;
+    if (hip_status<0) solve = EigenBand_lapack_cpu;
+#endif
+    Band_DFT_kpath_Col(chemical, nkpath, n_perk, kpath, kname, SpinP_switch,
+                       nh, ImNL, CntOLP, local_basis, solve);
   }
   else if (SpinP_switch==3){
 
@@ -71,7 +86,7 @@ void Band_DFT_kpath_Col(const OpenMXChemicalPotentials *chemical,  int nkpath, i
                          int  SpinP_switch, 
                          double *****nh,
                          double *****ImNL,
-                         double ****CntOLP, const OpenMXLocalBasisViews *local_basis)
+                         double ****CntOLP, const OpenMXLocalBasisViews *local_basis, BandKPathEigen solve)
 {
   static int firsttime=1;
   int i,j,k,l,n,wan;
@@ -326,7 +341,7 @@ void Band_DFT_kpath_Col(const OpenMXChemicalPotentials *chemical,  int nkpath, i
 
       if (0<=kloop) {
 
-	EigenBand_lapack(S,koS,n,n,1);
+	solve(S,koS,n,n,1);
 
 	if (3<=level_stdout){
 	  printf(" myid=%2d kloop %2d  k1 k2 k3 %10.6f %10.6f %10.6f\n",
@@ -543,7 +558,7 @@ void Band_DFT_kpath_Col(const OpenMXChemicalPotentials *chemical,  int nkpath, i
 	}
 
         /* solve eigenvalue problem */
-        EigenBand_lapack(C,ko[spin],n,n,0);
+        solve(C,ko[spin],n,n,0);
 
 	if (3<=level_stdout){
 	  printf(" myid=%2d kloop %2d  k1 k2 k3 %10.6f %10.6f %10.6f\n",

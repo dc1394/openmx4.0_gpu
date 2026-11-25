@@ -24,13 +24,20 @@
 #include "mpi.h"
 #include <omp.h>
 
+#if OPENMX_GPU_HIP
+#include "openmx_band_kpath_gpu.h"
+#endif
+
+typedef void (*BandKPathEigen)(dcomplex **, double *, int, int, int);
+extern void EigenBand_lapack_cpu(dcomplex **, double *, int, int, int);
+
 static void Band_DFT_kpath_Col(const OpenMXChemicalPotentials *chemical,
                       int nkpath, int *n_perk,
                       double ***kpath, char ***kname, 
                       int  SpinP_switch, 
                       double *****nh,
                       double *****ImNL,
-                      double ****CntOLP);
+                      double ****CntOLP, BandKPathEigen solve);
 
 static void Band_DFT_kpath_NonCol(const OpenMXChemicalPotentials *chemical,
                       int nkpath, int *n_perk,
@@ -38,7 +45,7 @@ static void Band_DFT_kpath_NonCol(const OpenMXChemicalPotentials *chemical,
                       int  SpinP_switch, 
                       double *****nh,
                       double *****ImNL,
-                      double ****CntOLP);
+                      double ****CntOLP, BandKPathEigen solve);
 
 void Band_DFT_kpath(const OpenMXChemicalPotentials *chemical,  int nkpath, int *n_perk,
                      double ***kpath, char ***kname, 
@@ -47,14 +54,33 @@ void Band_DFT_kpath(const OpenMXChemicalPotentials *chemical,  int nkpath, int *
                      double *****ImNL,
                      double ****CntOLP)
 {
+  const double started = MPI_Wtime();
 
-  if (SpinP_switch==0 || SpinP_switch==1){
-    Band_DFT_kpath_Col(chemical, nkpath, n_perk, kpath, kname, SpinP_switch, nh, ImNL, CntOLP);
+  int hip_status = 0;
+#if OPENMX_GPU_HIP
+  if (SpinP_switch==0 || SpinP_switch==1 || SpinP_switch==3)
+    hip_status = openmx_band_kpath_try_hip(chemical,nkpath,n_perk,kpath,kname,
+                                        SpinP_switch,nh,ImNL,CntOLP,NULL);
+#endif
+  BandKPathEigen solve = hip_status < 0 ? EigenBand_lapack_cpu : EigenBand_lapack;
+  if (hip_status!=1 && (SpinP_switch==0 || SpinP_switch==1)){
+    Band_DFT_kpath_Col(chemical, nkpath, n_perk, kpath, kname, SpinP_switch, nh, ImNL, CntOLP, solve);
   }
-  else if (SpinP_switch==3){
-    Band_DFT_kpath_NonCol(chemical, nkpath, n_perk, kpath, kname, SpinP_switch, nh, ImNL, CntOLP);
+  else if (hip_status!=1 && SpinP_switch==3){
+    Band_DFT_kpath_NonCol(chemical, nkpath, n_perk, kpath, kname, SpinP_switch, nh, ImNL, CntOLP, solve);
   }
 
+  if (0<level_stdout){
+    int rank;
+    const double elapsed = MPI_Wtime() - started;
+    double longest = 0.0;
+    MPI_Comm_rank(mpi_comm_level1,&rank);
+    MPI_Reduce(&elapsed,&longest,1,MPI_DOUBLE,MPI_MAX,Host_ID,mpi_comm_level1);
+    if (rank==Host_ID){
+      printf("<Band_DFT_kpath> Band dispersion: %.3f s\n",longest);
+      fflush(stdout);
+    }
+  }
 }
 
 
@@ -66,7 +92,7 @@ void Band_DFT_kpath_Col(const OpenMXChemicalPotentials *chemical,  int nkpath, i
                          int  SpinP_switch, 
                          double *****nh,
                          double *****ImNL,
-                         double ****CntOLP)
+                         double ****CntOLP, BandKPathEigen solve)
 {
   static int firsttime=1;
   int i,j,k,l,n,wan;
@@ -282,7 +308,7 @@ void Band_DFT_kpath_Col(const OpenMXChemicalPotentials *chemical,  int nkpath, i
 
     if (0<=kloop) {
 
-      EigenBand_lapack(S,ko[0],n,n,1);
+      solve(S,ko[0],n,n,1);
 
       if (3<=level_stdout){
 	printf(" myid=%2d kloop %2d  k1 k2 k3 %10.6f %10.6f %10.6f\n",
@@ -507,7 +533,7 @@ void Band_DFT_kpath_Col(const OpenMXChemicalPotentials *chemical,  int nkpath, i
 	}
 
         /* solve eigenvalue problem */
-        EigenBand_lapack(C,ko[spin],n,n,0);
+        solve(C,ko[spin],n,n,0);
 
 	if (3<=level_stdout){
 	  printf(" myid=%2d kloop %2d  k1 k2 k3 %10.6f %10.6f %10.6f\n",
@@ -686,7 +712,7 @@ void Band_DFT_kpath_NonCol(const OpenMXChemicalPotentials *chemical,  int nkpath
                             int  SpinP_switch, 
                             double *****nh,
                             double *****ImNL,
-                            double ****CntOLP)
+                            double ****CntOLP, BandKPathEigen solve)
 {
   int i,j,k,l,n,wan;
   int *MP;
@@ -911,7 +937,7 @@ void Band_DFT_kpath_NonCol(const OpenMXChemicalPotentials *chemical,  int nkpath
 
     if (0<=kloop){
 
-      EigenBand_lapack(S,ko,n,n,1);
+      solve(S,ko,n,n,1);
 
       /* minus eigenvalues to 1.0e-14 */
       for (l=1; l<=n; l++){
@@ -1111,7 +1137,7 @@ void Band_DFT_kpath_NonCol(const OpenMXChemicalPotentials *chemical,  int nkpath
       /* solve eigenvalue problem */
 
       n1 = 2*n;
-      EigenBand_lapack(C,ko,n1,n1,0);
+      solve(C,ko,n1,n1,0);
 
       for (l=1; l<=n1; l++){
         EigenVal[ik][i_perk][l-1] = ko[l];

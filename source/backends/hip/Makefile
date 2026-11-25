@@ -428,6 +428,8 @@ openmx_globals.o: openmx_globals.c openmx_common.h
 include openmx_core.mk
 # These interfaces also reach legacy objects through openmx_common.h.
 # Rebuild consumers when a native API mapping or backend selection changes.
+OBJS += Band_DFT_kpath_gpu.o openmx_band_kpath_hip.o
+
 OPENMX_GPU_INTERFACE_HEADERS = openmx_gpu_backend.h openmx_gpu_runtime.h \
  openmx_gpu_blas.h openmx_gpu_solver.h openmx_gpu_complex.h \
  openmx_gpu_device.h openmx_gpu_error.h openmx_gpu_views.h
@@ -577,7 +579,7 @@ Cluster_DFT_Col.o: Cluster_DFT_Col.c openmx_common.h eigen_refine_gpu.h eigen_re
 	$(CC) -c Cluster_DFT_Col.c
 Cluster_DFT_Col_dm_hip.o: Cluster_DFT_Col_dm_hip.cu
 	$(HIPCC) $(HIPCC_GEMMUL8_FLAGS) -c Cluster_DFT_Col_dm_hip.cu -o Cluster_DFT_Col_dm_hip.o
-magma_openmx.o: magma_openmx.cu openmx_common.h $(MAGMA_LIB) openmx_stdout_level.h openmx_gpu_arch_policy.h openmx_magma_lock.h
+magma_openmx.o: magma_openmx.cu openmx_band_kpath_gpu.h openmx_common.h $(MAGMA_LIB) openmx_stdout_level.h openmx_gpu_arch_policy.h openmx_magma_lock.h
 	$(HIPCC) $(HIPCC_MAGMA_FLAGS) -c magma_openmx.cu -o magma_openmx.o
 Cluster_DFT_NonCol.o: Cluster_DFT_NonCol.c openmx_common.h eigen_refine_gpu.h eigen_refine_hooks.h openmx_precision.h
 	$(CC) -c Cluster_DFT_NonCol.c
@@ -631,10 +633,14 @@ Band_DFT_NonCol.o: Band_DFT_NonCol.c openmx_common.h eigen_refine_gpu.h eigen_re
 	$(CC3) -c Band_DFT_NonCol.c
 Band_DFT_NonCol_GB.o: Band_DFT_NonCol_GB.c openmx_common.h
 	$(CC) -c Band_DFT_NonCol_GB.c
-Band_DFT_kpath.o: Band_DFT_kpath.c openmx_common.h
+Band_DFT_kpath.o: Band_DFT_kpath.c openmx_common.h openmx_band_kpath_gpu.h
 	$(CC) -c Band_DFT_kpath.c
-Band_DFT_kpath_LNO.o: Band_DFT_kpath_LNO.c openmx_common.h
+Band_DFT_kpath_LNO.o: Band_DFT_kpath_LNO.c openmx_common.h openmx_band_kpath_gpu.h
 	$(CC) -c Band_DFT_kpath_LNO.c
+Band_DFT_kpath_gpu.o: Band_DFT_kpath_gpu.c openmx_band_kpath_gpu.h openmx_common.h openmx_mgpu_runtime.h openmx_host_memory.h
+	$(CC_NOACC_O3) -c Band_DFT_kpath_gpu.c
+openmx_band_kpath_hip.o: openmx_band_kpath_hip.cu openmx_band_kpath_gpu.h openmx_gpu_memory.hpp openmx_mgpu_runtime.h
+	$(HIPCC) $(HIPCC_GEMMUL8_FLAGS) -c openmx_band_kpath_hip.cu -o $@
 Band_DFT_MO.o: Band_DFT_MO.c openmx_common.h
 	$(CC) -c Band_DFT_MO.c
 Unfolding_Bands.o: Unfolding_Bands.c openmx_common.h
