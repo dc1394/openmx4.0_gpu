@@ -67,6 +67,15 @@ expects one call for each spin channel, process and build, every call on the
 device or left to the host for lack of device memory, and the large products
 of the calls left to the host on the device, or left to the host as well.
 
+The weights of the forces (section 6.7 of the guide) take the device in the
+same way, once at the end of a run: a call of modules/exx for every spin
+channel and process, with the two large products of a centre atom when the
+call goes to the host.  Process 0 reports its calls.  The table expects them
+on the device in the runs NAME-gpu of the systems marked "device", left to the
+host for lack of device memory with their large products in the runs
+NAME-host, and nothing on the device in the other runs.  The times of the
+forces and of the weights in them are printed with the other stages.
+
 The systems
   ch4                methane, the cluster solver, the matrix of the Gamma point
   dia-p222           diamond, C5.0-s1p1, 2 x 2 x 2 mesh, the band solver
@@ -289,6 +298,15 @@ def device_use(std):
                             r"the other (\d+) products \(scf\.gemmul8\.enable on\)\.", std)
     call_memory = [float(mb) for mb in re.findall(
         r"<EXX>  device calls of process 0: \d+ in \S+ s with \d+ matrix products, at most (\S+) MB for one call", std)]
+    # the forces at the end of the run, and the weights of the T and V blocks in them: the time on process 0, the
+    # whole calls of the weights on the device and those left to the host, and their large products one at a time
+    forces = re.search(r"<EXX>  forces of the exact exchange in (\S+) s:", std)
+    weights = re.search(r"<EXX>  of that, (\S+) s for the weights of the T and V blocks on process 0", std)
+    weight_calls = re.search(r"<EXX>  the weights on the device of process 0: (\d+) calls in (\S+) s with (\d+) matrix "
+                             r"products, at most (\S+) MB for one call; left to the host for lack of device memory: "
+                             r"(\d+)", std)
+    weight_products = re.search(r"<EXX>  matrix products of the weights on the device of process 0: (\d+) in (\S+) s, "
+                                r"at most \S+ MB for one product; left to the host for lack of device memory: (\d+)", std)
     return dict(additions=int(added.group(1)) if added else 0, dense_declined=declined,
                 gemmul8=int(bridge.group(1)) if bridge else None, gemmul8_fp64=int(bridge.group(2)) if bridge else None,
                 serial="solves both spins serially on the GPU" in std,
@@ -301,6 +319,16 @@ def device_use(std):
                 call_gemmul8=int(call_bridge.group(1)) if call_bridge else None,
                 call_gemmul8_large=int(call_bridge.group(2)) if call_bridge else None,
                 call_megabytes=max(call_memory, default=0.0),
+                force_seconds=float(forces.group(1)) if forces else None,
+                weight_seconds=float(weights.group(1)) if weights else None,
+                weight_calls=int(weight_calls.group(1)) if weight_calls else 0,
+                weight_call_seconds=float(weight_calls.group(2)) if weight_calls else 0.0,
+                weight_call_products=int(weight_calls.group(3)) if weight_calls else 0,
+                weight_megabytes=float(weight_calls.group(4)) if weight_calls else 0.0,
+                weight_declined_calls=int(weight_calls.group(5)) if weight_calls else 0,
+                weight_products=int(weight_products.group(1)) if weight_products else 0,
+                weight_product_seconds=float(weight_products.group(2)) if weight_products else 0.0,
+                weight_declined=int(weight_products.group(3)) if weight_products else 0,
                 switched_off=int(off.group(1)) if off else 0,
                 build=[int(v) for v in build.groups()] if build else None, megabytes=max(memory, default=0.0),
                 failures=[f"process {p}: {what} (status {status})" for p, what, status in re.findall(
@@ -400,7 +428,10 @@ def table(args):
     def use(r):
         """Where the builds of a run ran, with 0 for the numbers that a run of an older version did not record."""
         d = dict(calls=0, call_processes=0, call_products=0, call_large=0, call_seconds=0.0, declined_calls=0,
-                 call_gemmul8=None, call_gemmul8_large=None, call_megabytes=0.0)
+                 call_gemmul8=None, call_gemmul8_large=None, call_megabytes=0.0, force_seconds=None,
+                 weight_seconds=None, weight_calls=0, weight_call_seconds=0.0, weight_call_products=0,
+                 weight_megabytes=0.0, weight_declined_calls=0, weight_products=0, weight_product_seconds=0.0,
+                 weight_declined=0)
         d.update(r["device"])
         return d
 
@@ -412,6 +443,13 @@ def table(args):
                 f"{d['products']} on the device, {d['declined']} left to the host; {d['switched_off']} processes "
                 f"switched off; in {builds} builds: {spec['calls'] * builds} calls, {spec['large'] * builds} large "
                 f"products")
+
+    def weighed(r):
+        """The text of a row about the weights of the forces on the device."""
+        d = use(r)
+        return (f"weights: {d['weight_calls']} calls on the device of process 0 with {d['weight_call_products']} "
+                f"products, {d['weight_declined_calls']} left to the host; {d['weight_products']} products on the device "
+                f"one at a time, {d['weight_declined']} left to the host")
 
     def calls_add_up(r, spec):
         """Every call on the device or left to the host, the 2 large products of a centre atom in the calls on the
@@ -481,9 +519,16 @@ def table(args):
             if spec["device"]:
                 expect("CUDA build: calls on the device", 0 < d["calls"] and d["call_processes"] == r["ranks"]
                        and calls_add_up(r, spec), where(r, spec))
+                # the weights of the forces: one call of process 0 for each spin channel, as in a build
+                expect("CUDA build: the weights of the forces on the device",
+                       d["weight_calls"] * r["ranks"] == spec["calls"] and d["weight_declined_calls"] == 0
+                       and d["weight_products"] + d["weight_declined"] == 0, weighed(r))
             else:
                 expect("CUDA build: no device failure", d["switched_off"] == 0 and d["products"] + d["declined"] == 0
                        and d["calls"] + d["declined_calls"] == 0, where(r, spec))
+                expect("CUDA build: the weights of the forces on the host",
+                       d["weight_calls"] + d["weight_declined_calls"] + d["weight_products"] + d["weight_declined"] == 0,
+                       weighed(r))
         if "host" in present:
             r = results[f"{system}-host"]
             d = use(r)
@@ -491,10 +536,15 @@ def table(args):
             expect("fault injection: nothing on the device", d["calls"] == 0 and d["products"] == 0
                    and d["switched_off"] == 0 and d["declined_calls"] == spec["calls"] * builds
                    and d["declined"] == spec["large"] * builds, where(r, spec))
+            # the weights of process 0 as one build: its calls and their large products left to the host
+            expect("fault injection: the weights on the host", d["weight_calls"] == 0 and d["weight_products"] == 0
+                   and d["weight_declined_calls"] * r["ranks"] == spec["calls"]
+                   and d["weight_declined"] * r["ranks"] == spec["large"], weighed(r))
         if "cpu" in present:
             d = use(results[f"{system}-cpu"])
             expect("CPU build: no device", d["products"] == 0 and d["declined"] == 0 and d["switched_off"] == 0
-                   and d["calls"] == 0 and d["declined_calls"] == 0 and d.get("additions", 0) == 0,
+                   and d["calls"] == 0 and d["declined_calls"] == 0 and d.get("additions", 0) == 0
+                   and d["weight_calls"] + d["weight_declined_calls"] + d["weight_products"] + d["weight_declined"] == 0,
                    f"{d['calls']} calls and {d['products']} products on the device, {d['declined_calls']} calls and "
                    f"{d['declined']} products left to the host")
         # GEMMul8 in the matrix products on the device: only where the input asks for it
@@ -566,14 +616,20 @@ def table(args):
                 expect(f"{label}: serialized mode", bool(d.get("serial")),
                        "the message of the serialized mode " + ("is" if d.get("serial") else "is not") + " in the output")
         # the times of the stages
-        print("  time (s)  preparation  density matrices  exchange matrix  of it on the device  addition  DFT in total  wall")
+        print("  time (s)  preparation  density matrices  exchange matrix  of it on the device  addition  forces  "
+              "weights  of them on the device  DFT in total  wall")
         for variant in present:
             r = results[f"{system}-{variant}"]
             t = r.get("exx_times") or [float("nan")] * 4
             d = use(r)
             on_device = d["seconds"] + d["call_seconds"]
+            nan = float("nan")
+            forces = d["force_seconds"] if d["force_seconds"] is not None else nan
+            weights = d["weight_seconds"] if d["weight_seconds"] is not None else nan
             print(f"  {variant:8s}  {t[0]:11.2f}  {t[1]:16.2f}  {t[2]:15.2f}  {on_device:19.2f}  "
-                  f"{t[3]:8.2f}  {r.get('dft_time') or float('nan'):12.2f}  {r['wall']:.1f}")
+                  f"{t[3]:8.2f}  {forces:6.2f}  {weights:7.2f}  "
+                  f"{d['weight_call_seconds'] + d['weight_product_seconds']:22.2f}  "
+                  f"{r.get('dft_time') or nan:12.2f}  {r['wall']:.1f}")
     bad = [n for n in results if not n.startswith("_") and not converged(n)]
     print("runs that failed or did not converge:", bad if bad else "none")
     print("runs of a listed system that are missing:", missing if missing else "none")
