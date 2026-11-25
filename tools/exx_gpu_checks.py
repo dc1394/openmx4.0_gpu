@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 exx_gpu_checks.py -- the runs of the acceptance table of milestone M6
-(docs/EXX_IMPLEMENTATION_GUIDE.md, section 9): HSE06 in the CUDA build.
+(docs/EXX_IMPLEMENTATION_GUIDE.md, section 9): HSE06 in the CUDA build, and
+the same runs for PBE0 with the truncated Coulomb interaction (M8).
 
 The script needs a machine with a GPU and two executables of the same commit,
 the CPU build and the CUDA build.  It runs a system three times and
@@ -17,12 +18,15 @@ compares the total energies:
   python3 tools/exx_gpu_checks.py list
   python3 tools/exx_gpu_checks.py run --cpu build/exx-cpu/openmx --gpu build/exx-cuda/openmx --out build/exx-m6 [NAME ...]
   python3 tools/exx_gpu_checks.py table --out build/exx-m6
+  python3 tools/exx_gpu_checks.py run --cpu build/exx-cpu/openmx --gpu build/exx-cuda/openmx --out build/exx-pbe0 PBE0
 
 "run" without a name executes every run that results.json does not hold yet;
-a name is a system (all its runs) or one run.  "table" ends with status 1
-when a difference exceeds its limit, a run failed, did not converge or is
-missing, or the device was not used as the row expects.  Only the standard
-library is used; the inputs and the parser are those of
+a name is a system (all its runs), one run, or a hybrid functional, HSE06 or
+PBE0: the runs of its systems that results.json does not hold yet.  "table"
+ends with status 1 when a difference exceeds its limit, a run failed, did not
+converge or is missing, or the device was not used as the row expects.  A
+hybrid functional without any run in results.json is left out of the table.
+Only the standard library is used; the inputs and the parser are those of
 tools/exx_kpoint_checks.py and tools/exx_scf_checks.py.
 
 Threads.  A run uses one thread unless --threads asks for more.  The number
@@ -44,8 +48,10 @@ The guide asks for three things, and the table has a block for each:
 Where the build runs (source/openmx_exact_exchange_device.h).  A process
 computes the contributions of its share of the centre atoms, a range of their
 ABFs, with one call of modules/exx for every spin channel.  In the systems
-below with products on the device a share is one or all of the atoms.  The
-CUDA build offers the device the whole call first:
+below with products on the device a share is one or all of the atoms, except
+in siz-p444-np4: there the 4 processes take about half an atom each (34 or 35
+of its 69 ABFs, section 6.7 of the guide), and the device gets the range of a
+part of an atom.  The CUDA build offers the device the whole call first:
 the device takes a call whose largest matrix product is large, and
 computes all products of the call there, with the arrays in device memory.  A
 call that the device does not take for lack of memory goes to the host, and
@@ -67,6 +73,7 @@ The systems
   siz-p444           silicon, Si7.0-s2p2d1, 4 x 4 x 4 mesh              (device)
   siz-p444-spin      the same with scf.SpinPolarization on             (device)
   siz-p444-np2       the same with 2 MPI processes on the device       (device)
+  siz-p444-np4       the same with 4 MPI processes, half an atom each  (device)
   diaz-p222          diamond, C6.0-s2p2d1, 2 x 2 x 2 mesh: the largest matrices,
                      0.5 GB on the device for one product               (device)
   ch4-np4            methane with 4 MPI processes: one of them holds the dense
@@ -81,6 +88,27 @@ The systems
                      of the two holds its dense matrix
 The last six exist for the dense eigensolver below: they have no run
 NAME-host, and none of their matrix products is large enough for the device.
+
+PBE0 (M8).  Each system above has a twin with scf.XcType PBE0 and the same
+runs.  Its name has -pbe0 after the system and before the processes and the
+spin, as in tools/exx_scf_checks.py: ch4-pbe0, dia-p222-pbe0, siz-p444-pbe0,
+siz-p444-pbe0-spin, siz-p444-pbe0-np2, siz-p444-pbe0-np4, diaz-p222-pbe0,
+ch4-pbe0-np4, o2-pbe0, o2-pbe0-np2, dia-p222-pbe0-spin-np2, dia-k211-pbe0-np2
+and dia-k211-pbe0-np4.
+The molecules are the inputs ch4-pbe0, ch4-pbe0-np4, o2-pbe0 and o2-pbe0-np2
+of tools/exx_scf_checks.py; the crystals have the stop criteria of the PBE0
+runs of tools/exx_kpoint_checks.py (scf.criterion 1e-12 and
+scf.exx.outer.criterion 1e-9 per primitive cell).  R_c and the reach of the V
+neighbours are the automatic ones.  The V neighbours reach further than the
+8 bohr of HSE06, so a build has more matrix products, and the two large
+products of a centre atom are larger.  Counted with the CPU build, one build
+of siz-p444-pbe0 has 470350 matrix products, the largest 31057 x 897 with
+inner dimension 1131, and one of diaz-p222-pbe0 has 330742, the largest
+31837 x 897 with inner dimension 2171.  The large products are still two for
+each centre atom or part of one, and the processes of siz-p444-pbe0-np2 and
+siz-p444-pbe0-np4 take the ABFs of siz-p444-np2 and siz-p444-np4.  ch4-pbe0
+and dia-p222-pbe0 have no product large enough for the device (the largest
+of dia-p222-pbe0 is 6092 x 40 with inner dimension 492).
 
 The dense eigensolver of the device (section 6.5 of the guide).  The CUDA
 build solves a matrix on the device when its dimension reaches a threshold
@@ -162,11 +190,11 @@ INPUT_LINES = {"g8": "scf.gemmul8.enable        on\n"}
 SYSTEMS = {}
 
 
-def add(name, text, ranks=1, large=0, calls=0, base=VARIANTS, dense=("dense",)):
+def add(name, text, ranks=1, large=0, calls=0, base=VARIANTS, dense=("dense",), xc="HSE06"):
     """A system: its input, the numbers of matrix products and of calls of one build that are large enough for the
-    device, and its runs."""
+    device, its runs and its hybrid functional."""
     # only a system with products on the device can compare GEMMul8 with FP64 in them
-    SYSTEMS[name] = dict(text=text, ranks=ranks, large=large, calls=calls, device=0 < large,
+    SYSTEMS[name] = dict(text=text, ranks=ranks, large=large, calls=calls, device=0 < large, xc=xc,
                          variants=tuple(base) + tuple(dense) + (("g8",) if 0 < large else ()))
 
 
@@ -180,6 +208,9 @@ add("siz-p444-spin", kpoint.make_input("siz_p444_spin", "siz", (1, 1, 1), (4, 4,
     calls=2)
 add("siz-p444-np2", kpoint.make_input("siz_p444_np2", "siz", (1, 1, 1), (4, 4, 4), "HSE06"), ranks=2, large=4,
     calls=2)
+# a part of an atom for each process: ABFs 1 to 34 of 138 on process 0, two large products in each of the 4 calls
+add("siz-p444-np4", kpoint.make_input("siz_p444_np4", "siz", (1, 1, 1), (4, 4, 4), "HSE06"), ranks=4, large=8,
+    calls=4, dense=())
 add("diaz-p222", kpoint.make_input("diaz_p222", "diaz", (1, 1, 1), (2, 2, 2), "HSE06"), large=4, calls=1)
 # the systems of the dense eigensolver only.  The cluster solver: processes without the dense matrix, and the
 # spin channels on one process and on two.  The band solver: a process for each spin channel, a process for
@@ -194,6 +225,34 @@ add("dia-k211-np2", kpoint.make_input("dia_k211_np2", "dia", (1, 1, 1), (2, 1, 1
 add("dia-k211-np4", kpoint.make_input("dia_k211_np4", "dia", (1, 1, 1), (2, 1, 1), "HSE06"), ranks=4,
     base=("cpu", "gpu"))
 
+
+def pbe0_band(name, system, kgrid, spin=None):
+    """An input of the band solver for PBE0, with the stop criteria of the PBE0 runs of tools/exx_kpoint_checks.py."""
+    return kpoint.make_input(name, system, (1, 1, 1), kgrid, "PBE0", spin=spin, inner=kpoint.PBE0_INNER)
+
+
+# PBE0 with the truncated Coulomb interaction (M8): the systems above, with the inputs and stop criteria of the PBE0
+# runs of tools/exx_scf_checks.py and tools/exx_kpoint_checks.py.  The products on the device are those of HSE06: two
+# for each centre atom, larger because the V neighbours reach further.
+add("ch4-pbe0", gamma.RUNS["ch4-pbe0"]["text"], dense=("dense", "dfall", "dfp64"), xc="PBE0")
+add("dia-p222-pbe0", pbe0_band("dia_p222_pbe0", "dia", (2, 2, 2)), xc="PBE0")
+add("siz-p444-pbe0", pbe0_band("siz_p444_pbe0", "siz", (4, 4, 4)), large=4, calls=1, dense=("dense", "dfall", "dfp64"),
+    xc="PBE0")
+add("siz-p444-pbe0-spin", pbe0_band("siz_p444_pbe0_spin", "siz", (4, 4, 4), spin="on"), large=8, calls=2, xc="PBE0")
+add("siz-p444-pbe0-np2", pbe0_band("siz_p444_pbe0_np2", "siz", (4, 4, 4)), ranks=2, large=4, calls=2, xc="PBE0")
+add("siz-p444-pbe0-np4", pbe0_band("siz_p444_pbe0_np4", "siz", (4, 4, 4)), ranks=4, large=8, calls=4, dense=(),
+    xc="PBE0")
+add("diaz-p222-pbe0", pbe0_band("diaz_p222_pbe0", "diaz", (2, 2, 2)), large=4, calls=1, xc="PBE0")
+add("ch4-pbe0-np4", gamma.RUNS["ch4-pbe0-np4"]["text"], ranks=4, base=("cpu", "gpu"), xc="PBE0")
+add("o2-pbe0", gamma.RUNS["o2-pbe0"]["text"], base=("cpu", "gpu"), xc="PBE0")
+add("o2-pbe0-np2", gamma.RUNS["o2-pbe0-np2"]["text"], ranks=2, base=("cpu", "gpu"), dense=("dense", "dser"), xc="PBE0")
+add("dia-p222-pbe0-spin-np2", pbe0_band("dia_p222_pbe0_spin_np2", "dia", (2, 2, 2), spin="on"), ranks=2,
+    base=("cpu", "gpu"), xc="PBE0")
+add("dia-k211-pbe0-np2", pbe0_band("dia_k211_pbe0_np2", "dia", (2, 1, 1)), ranks=2, base=("cpu", "gpu"),
+    dense=("dense", "dpers", "dfall"), xc="PBE0")
+add("dia-k211-pbe0-np4", pbe0_band("dia_k211_pbe0_np4", "dia", (2, 1, 1)), ranks=4, base=("cpu", "gpu"), xc="PBE0")
+
+FUNCTIONALS = tuple(dict.fromkeys(spec["xc"] for spec in SYSTEMS.values()))
 RUNS = [f"{system}-{variant}" for system, spec in SYSTEMS.items() for variant in spec["variants"]]
 
 
@@ -295,12 +354,15 @@ def run(args):
     results = json.loads(store.read_text()) if store.exists() else {}
     names = []
     for name in args.names:
-        if name in SYSTEMS:
+        if name in FUNCTIONALS:
+            # every run of the systems of a hybrid functional that results.json does not hold yet
+            names += [n for n in RUNS if SYSTEMS[split(n)[0]]["xc"] == name and n not in results and n not in names]
+        elif name in SYSTEMS:
             names += [f"{name}-{variant}" for variant in SYSTEMS[name]["variants"]]
         elif name in RUNS:
             names.append(name)
         else:
-            sys.exit(f"unknown run or system: {name}")
+            sys.exit(f"unknown run, system or functional: {name}")
     results["_machine"] = machine()
     for name in names or [n for n in RUNS if n not in results]:
         r = results[name] = execute(args, name)
@@ -360,13 +422,22 @@ def table(args):
                 and (d["products"] + d["declined"]) * spec["calls"] == spec["large"] * d["declined_calls"])
 
     print("devices:", "; ".join(results.get("_machine") or ["not recorded (nvidia-smi gave nothing)"]))
+    # a hybrid functional without any run in results.json is left out of the table
+    ran = [xc for xc in FUNCTIONALS
+           if any(n in results for n in RUNS if SYSTEMS[split(n)[0]]["xc"] == xc)]
+    left_out = [xc for xc in FUNCTIONALS if xc not in ran]
+    if left_out:
+        print("left out, no run in results.json:", " ".join(left_out))
     untouched = []
     for system, spec in SYSTEMS.items():
+        if spec["xc"] not in ran:
+            continue
         present = [v for v in spec["variants"] if f"{system}-{v}" in results]
         if not present:
             untouched.append(system)
             continue
-        print(f"== {system}" + ("  (device)" if spec["device"] else ""))
+        tags = ("  (device)" if spec["device"] else "") + ("" if spec["xc"] == "HSE06" else f"  {spec['xc']}")
+        print(f"== {system}{tags}")
         absent = [f"{system}-{v}" for v in spec["variants"] if v not in present]
         if absent:
             missing += absent
