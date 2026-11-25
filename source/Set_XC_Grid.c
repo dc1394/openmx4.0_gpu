@@ -586,9 +586,10 @@ void Set_XC_Grid(int SCF_iter, int XC_P_switch, int XC_switch,
 {
   /***********************************************************************************************
    exx_alpha, exx_omega:
-      semilocal part of a screened hybrid functional (HSE06) for XC_switch 4:
-      exx_alpha times the short-range omega-PBE exchange with the screening
-      parameter exx_omega (1/bohr) is removed from the PBE exchange.
+      semilocal part of a hybrid functional for XC_switch 4: exx_alpha
+      times the short-range omega-PBE exchange with the screening parameter
+      exx_omega (1/bohr) is removed from the PBE exchange (HSE06), or
+      exx_alpha times the whole PBE exchange when exx_omega is 0 (PBE0).
       exx_alpha = 0 is GGA-PBE.  The device path evaluates GGA-PBE only, so
       a nonzero exx_alpha uses the host loop.
 
@@ -1279,9 +1280,14 @@ void Set_XC_Grid(int SCF_iter, int XC_P_switch, int XC_switch,
 	    ED[1] += PCCDensity_Grid_D[1][MN];
 	  }
 
-	  /* GGA-PBE; with exx_alpha != 0 minus exx_alpha times its short-range exchange */
-	  openmx_xc_pbe_screened_hybrid(ED, GDENS, symmetrize_spins, exx_alpha, exx_omega,
+	  /* GGA-PBE; with exx_alpha != 0 minus exx_alpha times its short-range
+	     exchange (HSE06), or times its exchange when exx_omega is 0 (PBE0) */
+	  if (exx_omega==0.0)
+	    openmx_xc_pbe_global_hybrid(ED, GDENS, symmetrize_spins, exx_alpha,
 	                                Exc, DEXDD, DECDD, DEXDGD, DECDGD);
+	  else
+	    openmx_xc_pbe_screened_hybrid(ED, GDENS, symmetrize_spins, exx_alpha, exx_omega,
+	                                  Exc, DEXDD, DECDD, DEXDGD, DECDGD);
 
 	  /* XC energy density */
 	  if      (XC_P_switch==0){

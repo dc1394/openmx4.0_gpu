@@ -39,9 +39,14 @@ OpenMXExactExchangeState *Exact_Exchange_Bind_Resources(OpenMXCoreContext *core)
 typedef struct {
   int functional;            /* OPENMX_EXACT_EXCHANGE_... */
   double alpha;              /* scf.exx.alpha */
-  double omega;              /* scf.exx.omega, 1/bohr */
+  double omega;              /* scf.exx.omega, 1/bohr; HSE06 only */
+  double coulomb_cutoff;     /* scf.exx.coulomb.cutoff, bohr; PBE0 only. 0 takes the radius of the
+                                sphere whose volume is kpoint_count times that of the cell */
+  int kpoint_count;          /* points of the k mesh of the band solver, 1 for the cluster solver */
   double abf_threshold;      /* scf.exx.abf.pca */
-  double v_cutoff;           /* scf.exx.v.cutoff, bohr */
+  double v_cutoff;           /* scf.exx.v.cutoff, bohr. Negative for PBE0 without the keyword: R_c
+                                plus the largest ABF radius, which keeps every V block that the
+                                truncated interaction does not make zero */
   int outer_max_iterations;  /* scf.exx.outer.maxIter */
   double outer_criterion;    /* scf.exx.outer.criterion, Hartree */
   int radial_intervals;      /* 1DFFT.NumGridR */
@@ -89,7 +94,9 @@ void Exact_Exchange_Prepare(OpenMXExactExchangeState *state, const OpenMXAtomicV
 
 /* The mixing ratio and the screening parameter that the semilocal exchange
    takes (Set_XC_Grid). The ratio is 0 until the first exchange matrix of
-   the structure exists: the first inner SCF is a PBE one (section 6.1). */
+   the structure exists: the first inner SCF is a PBE one (section 6.1).
+   The screening parameter is 0 for PBE0, whose semilocal exchange is the
+   PBE exchange times 1 - alpha. */
 double Exact_Exchange_Semilocal_Alpha(const OpenMXExactExchangeState *state);
 double Exact_Exchange_Semilocal_Omega(const OpenMXExactExchangeState *state);
 

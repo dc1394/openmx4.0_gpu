@@ -128,7 +128,8 @@ double Exact_Exchange_Semilocal_Alpha(const OpenMXExactExchangeState *state)
 
 double Exact_Exchange_Semilocal_Omega(const OpenMXExactExchangeState *state)
 {
-  return Exact_Exchange_Enabled(state) ? state->input.omega : 0.0;
+  return (Exact_Exchange_Enabled(state) && state->input.functional==OPENMX_EXACT_EXCHANGE_HSE06)
+         ? state->input.omega : 0.0;
 }
 
 int Exact_Exchange_Outer_Iterations(const OpenMXExactExchangeState *state)
@@ -378,6 +379,19 @@ static void ExactExchange_Reserve(OpenMXExactExchangeState *state, int spin_chan
   if (state->allocated_channels<spin_channels) state->allocated_channels = spin_channels;
 }
 
+/* The radius R_c of the truncated Coulomb interaction of PBE0 (bohr): the
+   value of scf.exx.coulomb.cutoff, or else the radius of the sphere whose
+   volume is that of the cell times the number of k points (section 5.6,
+   [13]). The cell is that of the structure at the preparation, so that the
+   radius follows the cell where MD.Type changes it. */
+static double ExactExchange_Truncation_Radius(const OpenMXExactExchangeInput *input, double (*lattice)[4])
+{
+  if (0.0<input->coulomb_cutoff) return input->coulomb_cutoff;
+  const double *a=lattice[1], *b=lattice[2], *c=lattice[3];
+  const double volume=fabs(a[1]*(b[2]*c[3]-b[3]*c[2])+a[2]*(b[3]*c[1]-b[1]*c[3])+a[3]*(b[1]*c[2]-b[2]*c[1]));
+  return cbrt(3.0*(double)input->kpoint_count*volume/(4.0*3.14159265358979323846));
+}
+
 void Exact_Exchange_Prepare(OpenMXExactExchangeState *state, const OpenMXAtomicViews *atomic,
     int sites, MPI_Comm comm, int verbosity)
 {
@@ -466,10 +480,26 @@ void Exact_Exchange_Prepare(OpenMXExactExchangeState *state, const OpenMXAtomicV
 
   OpenMXExxOptions options;
   openmx_exx_default_options(&options);
-  options.kernel = OPENMX_EXX_KERNEL_SHORT_RANGE;
-  options.kernel_parameter = state->input.omega;
+  if (state->input.functional==OPENMX_EXACT_EXCHANGE_PBE0) {
+    options.kernel = OPENMX_EXX_KERNEL_TRUNCATED_COULOMB;
+    options.kernel_parameter = ExactExchange_Truncation_Radius(&state->input,lattice);
+  }
+  else {
+    options.kernel = OPENMX_EXX_KERNEL_SHORT_RANGE;
+    options.kernel_parameter = state->input.omega;
+  }
   options.abf_threshold = state->input.abf_threshold;
   options.v_cutoff = state->input.v_cutoff;
+  if (state->input.functional==OPENMX_EXACT_EXCHANGE_PBE0 && state->input.v_cutoff<0.0) {
+    /* (P|v|Q) of the truncated interaction is 0 beyond r_P + r_Q + R_c, and
+       the V list of two atoms reaches the larger of their ABF radii plus
+       v_cutoff: R_c plus the largest radius keeps every block that is not 0 */
+    double largest=0.0;
+    for (int s=0; s<species_count; s++) {
+      if (largest<species[s].cutoff) largest = species[s].cutoff;
+    }
+    options.v_cutoff = options.kernel_parameter+largest;
+  }
   options.radial_intervals = state->input.radial_intervals;
   options.reciprocal_maximum = state->input.reciprocal_maximum;
   options.reciprocal_intervals = state->input.radial_intervals;
@@ -510,6 +540,10 @@ void Exact_Exchange_Prepare(OpenMXExactExchangeState *state, const OpenMXAtomicV
     }
     printf("<EXX>  %d atoms, %d orbitals, %ld ABFs, %ld C sites, %ld V sites (%.2f s)\n",
            atom_count,orbitals,abfs,c_sites,v_sites,MPI_Wtime()-start);
+    if (state->input.functional==OPENMX_EXACT_EXCHANGE_PBE0) {
+      printf("<EXX>  truncated Coulomb interaction: R_c %.6f bohr; V sites up to the larger ABF radius plus %.6f bohr\n",
+             options.kernel_parameter,options.v_cutoff);
+    }
     if (state->sites) {
       printf("<EXX>  site form: %ld blocks of the density and exchange matrices, %.1f MB each per spin channel\n",
              state->block_count,(double)state->block_offset[state->block_count]*sizeof(double)/1048576.0);

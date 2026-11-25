@@ -88,9 +88,11 @@ void Input_std(char *file, OpenMXCoreContext *core)
      keywords before the input file is closed */
   OpenMXExactExchangeState *exact_exchange=Exact_Exchange_Bind_Resources(core);
 #endif
-  int hybrid_functional=0;  /* scf.XcType: 0 no hybrid functional, 1 HSE06 */
+  int hybrid_functional=0;  /* scf.XcType: 0 no hybrid functional, 1 HSE06, 2 PBE0 */
   double exx_alpha,exx_omega,exx_abf_pca,exx_v_cutoff,exx_outer_criterion;
+  double exx_coulomb_cutoff;
   int exx_outer_maxiter;
+  int exx_v_cutoff_given;   /* 1 when the input has scf.exx.v.cutoff */
   int exx_gemmul8=0;        /* scf.gemmul8.enable: 1 when the input says on */
 
   FILE *fp,*fp_check,*fp1;
@@ -1018,27 +1020,19 @@ void Input_std(char *file, OpenMXCoreContext *core)
   }
 
   /* hybrid functionals (docs/EXX_IMPLEMENTATION_GUIDE.md): the semilocal
-     part is GGA-PBE with the parameters of the screened exchange, so
-     XC_switch becomes 4. The exact exchange is set up at the end of this
-     routine. */
+     part is GGA-PBE with a part of its exchange taken out (the short-range
+     part for HSE06, all of it for PBE0), so XC_switch becomes 4. The exact
+     exchange is set up at the end of this routine. */
 
-  if (XC_switch==8){
-    if (myid==Host_ID){
-      printf("scf.XcType=PBE0 is not implemented.\n");
-    }
-    MPI_Finalize();
-    exit(0);
-  }
-
-  if (XC_switch==7){
+  if (XC_switch==7 || XC_switch==8){
 #if OPENMX_GPU_HIP
     if (myid==Host_ID){
-      printf("scf.XcType=HSE06 is not available in the HIP build.\n");
+      printf("scf.XcType=%s is not available in the HIP build.\n", (XC_switch==7) ? "HSE06" : "PBE0");
     }
     MPI_Finalize();
     exit(0);
 #endif
-    hybrid_functional = 1;
+    hybrid_functional = (XC_switch==7) ? 1 : 2;
     XC_switch = 4;
   }
 
@@ -1046,22 +1040,27 @@ void Input_std(char *file, OpenMXCoreContext *core)
      parameter (1/bohr), the threshold of the auxiliary basis functions
      (a ratio to the largest eigenvalue), the distance added to the larger
      radius of the auxiliary functions of two atoms to find the pairs of
-     the Coulomb matrix (bohr), and the limits of the outer iteration
-     (a number of builds and Hartree) */
+     the Coulomb matrix (bohr), the limits of the outer iteration (a number
+     of builds and Hartree), and the radius of the truncated Coulomb
+     interaction of PBE0 (bohr; 0 takes the radius of the sphere whose
+     volume is that of the cell times the number of k points) */
 
   input_double("scf.exx.alpha",&exx_alpha,(double)0.25);
   input_double("scf.exx.omega",&exx_omega,(double)0.11);
   input_double("scf.exx.abf.pca",&exx_abf_pca,(double)1.0e-4);
-  input_double("scf.exx.v.cutoff",&exx_v_cutoff,(double)8.0);
+  exx_v_cutoff_given = input_double("scf.exx.v.cutoff",&exx_v_cutoff,(double)8.0);
   input_int("scf.exx.outer.maxIter",&exx_outer_maxiter,30);
   input_double("scf.exx.outer.criterion",&exx_outer_criterion,(double)1.0e-6);
+  input_double("scf.exx.coulomb.cutoff",&exx_coulomb_cutoff,(double)0.0);
 
   if (hybrid_functional!=0){
 
     const char *message = NULL;
 
     if      (!(0.0<=exx_alpha && exx_alpha<=1.0))     message = "scf.exx.alpha should be in the range of 0.0 to 1.0.";
-    else if (!(0.0<exx_omega))                        message = "scf.exx.omega should be positive.";
+    else if (hybrid_functional==1 && !(0.0<exx_omega)) message = "scf.exx.omega should be positive.";
+    else if (hybrid_functional==2 && !(0.0<=exx_coulomb_cutoff))
+                                                      message = "scf.exx.coulomb.cutoff should not be negative.";
     else if (!(0.0<exx_abf_pca && exx_abf_pca<1.0))   message = "scf.exx.abf.pca should be larger than 0.0 and smaller than 1.0.";
     else if (!(0.0<=exx_v_cutoff))                    message = "scf.exx.v.cutoff should not be negative.";
     else if (exx_outer_maxiter<1)                     message = "scf.exx.outer.maxIter should be 1 or larger.";
@@ -5164,7 +5163,7 @@ void Input_std(char *file, OpenMXCoreContext *core)
 
     if (0<conflicts){
       if (myid==Host_ID){
-        printf("scf.XcType=HSE06 does not support\n");
+        printf("scf.XcType=%s does not support\n", (hybrid_functional==1) ? "HSE06" : "PBE0");
         for (i=0; i<conflicts; i++) printf("  %s\n",conflict[i]);
       }
       MPI_Finalize();
@@ -5172,18 +5171,35 @@ void Input_std(char *file, OpenMXCoreContext *core)
     }
 
     if (myid==Host_ID && 0<level_stdout){
-      printf("<Input_std>  HSE06: exact exchange with alpha=%6.4f and omega=%6.4f (1/bohr)\n",exx_alpha,exx_omega);
+      if (hybrid_functional==1){
+        printf("<Input_std>  HSE06: exact exchange with alpha=%6.4f and omega=%6.4f (1/bohr)\n",exx_alpha,exx_omega);
+      }
+      else if (0.0<exx_coulomb_cutoff){
+        printf("<Input_std>  PBE0: exact exchange with alpha=%6.4f and the Coulomb interaction truncated at %.4f (bohr)\n",
+               exx_alpha,exx_coulomb_cutoff);
+      }
+      else{
+        printf("<Input_std>  PBE0: exact exchange with alpha=%6.4f and the Coulomb interaction truncated at the radius\n"
+               "             of the sphere of the volume of the cell times the number of k points\n",exx_alpha);
+      }
     }
   }
 
 #if !OPENMX_GPU_HIP
   {
     OpenMXExactExchangeInput exx_input;
-    exx_input.functional = (hybrid_functional==1) ? OPENMX_EXACT_EXCHANGE_HSE06 : OPENMX_EXACT_EXCHANGE_NONE;
+    exx_input.functional = (hybrid_functional==1) ? OPENMX_EXACT_EXCHANGE_HSE06
+                         : (hybrid_functional==2) ? OPENMX_EXACT_EXCHANGE_PBE0 : OPENMX_EXACT_EXCHANGE_NONE;
     exx_input.alpha = exx_alpha;
     exx_input.omega = exx_omega;
+    exx_input.coulomb_cutoff = exx_coulomb_cutoff;
+    /* the cluster solver has the Gamma point only, also for a band input
+       with one k point, which the solver was switched for above */
+    exx_input.kpoint_count = (Solver==3) ? Kspace_grid1*Kspace_grid2*Kspace_grid3 : 1;
     exx_input.abf_threshold = exx_abf_pca;
-    exx_input.v_cutoff = exx_v_cutoff;
+    /* PBE0 without scf.exx.v.cutoff: every V block that the truncated
+       interaction does not make zero (a negative value for the layer) */
+    exx_input.v_cutoff = (hybrid_functional==2 && exx_v_cutoff_given!=1) ? -1.0 : exx_v_cutoff;
     exx_input.outer_max_iterations = exx_outer_maxiter;
     exx_input.outer_criterion = exx_outer_criterion;
     exx_input.radial_intervals = OneD_Grid;   /* 1DFFT.NumGridR */
