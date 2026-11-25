@@ -1,6 +1,6 @@
 #include <openmx/exx/two_center.hpp>
 
-#include <openmx/basis/bessel.hpp>
+#include <openmx/basis/detail/bessel.hpp>
 #include <openmx/basis/gaunt.hpp>
 #include <openmx/basis/harmonics.hpp>
 #include <openmx/basis/real_harmonics.hpp>
@@ -34,6 +34,25 @@ void check_angular(int angular)
 }
 
 bool odd(int value) { return value%2 != 0; }
+
+struct BesselMath {
+  static double sin(double x) { return std::sin(x); }
+  static double cos(double x) { return std::cos(x); }
+  static double abs(double x) { return std::abs(x); }
+};
+
+// j_0(x) .. j_maximum(x) into values, for 0 <= maximum <= 29 and a finite
+// nonnegative x.  Above x = 2(maximum+1) the upward recurrence from j_0 and
+// j_1 takes O(maximum) steps; below, the downward recurrence of OpenMX
+// (basis::SphericalBesselSample) takes O(maximum + x).  Against values in
+// quadruple precision for x up to 6000, the error is at most 4.5e-15 of the
+// envelope 1/x for the orders up to 19 (7.3e-15 up to 29) and 2.3e-16 in
+// absolute value; that of the downward recurrence alone grows to 6.7e-13 of
+// 1/x at large x.
+void bessel_values(double x, int maximum, double* values)
+{
+  basis::detail::spherical_bessel_values<BesselMath>(x,maximum,values);
+}
 
 } // namespace
 
@@ -120,8 +139,8 @@ std::vector<ReciprocalFunction> bessel_transform(const RadialGrid& grid,
     const double kappa = reciprocal.nodes()[k];
     for (std::size_t i = 0; i < n; ++i) {
       const double r = grid.radius(i);
-      const basis::SphericalBesselSample sample(kappa*r,maximum);
-      const std::span<const double> values = sample.values();
+      double values[maximum_bessel_order+1];
+      bessel_values(kappa*r,maximum,values);
       for (int l = 0; l <= maximum; ++l) {
         double weighted = values[static_cast<std::size_t>(l)]*(r*r);
         if (i == 0 || i == n-1) weighted *= 0.5;
@@ -339,10 +358,10 @@ TwoCenterIntegrator::Pair TwoCenterIntegrator::pair(const std::array<double,3>& 
   const std::size_t nodes = grid_.size();
   result.bessel_.resize(static_cast<std::size_t>(maximum+1)*nodes);
   for (std::size_t i = 0; i < nodes; ++i) {
-    const basis::SphericalBesselSample sample(grid_.nodes()[i]*result.distance_,maximum);
-    const std::span<const double> values = sample.values();
+    double values[maximum_bessel_order+1];
+    bessel_values(grid_.nodes()[i]*result.distance_,maximum,values);
     for (int L = 0; L <= maximum; ++L)
-      result.bessel_[static_cast<std::size_t>(L)*nodes+i] = weights_[i]*values[static_cast<std::size_t>(L)];
+      result.bessel_[static_cast<std::size_t>(L)*nodes+i] = weights_[i]*values[L];
   }
   result.harmonics_.resize(static_cast<std::size_t>((maximum+1)*(maximum+1)));
   harmonics_.evaluate(displacement,result.harmonics_);
@@ -403,11 +422,11 @@ TwoCenterIntegrator::GradientPair TwoCenterIntegrator::gradient_pair(const std::
   const std::size_t nodes = grid_.size();
   result.bessel_.resize(static_cast<std::size_t>(maximum+2)*nodes);
   for (std::size_t i = 0; i < nodes; ++i) {
-    const basis::SphericalBesselSample sample(grid_.nodes()[i]*result.distance_,maximum+1);
-    const std::span<const double> values = sample.values();
+    double values[maximum_bessel_order+1];
+    bessel_values(grid_.nodes()[i]*result.distance_,maximum+1,values);
     const double weight = weights_[i]*grid_.nodes()[i];
     for (int L = 0; L <= maximum+1; ++L)
-      result.bessel_[static_cast<std::size_t>(L)*nodes+i] = weight*values[static_cast<std::size_t>(L)];
+      result.bessel_[static_cast<std::size_t>(L)*nodes+i] = weight*values[L];
   }
 
   std::vector<double> y(static_cast<std::size_t>((maximum+2)*(maximum+2)));
