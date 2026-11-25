@@ -408,13 +408,13 @@ long openmx_exx_abf_count(const OpenMXExxState* state)
   return static_cast<long>(total);
 }
 
-int openmx_exx_abf_costs(const OpenMXExxState* state, int sites, double* costs)
+int openmx_exx_divide_abfs(const OpenMXExxState* state, int sites, int half, int processes, long* boundaries)
 {
   const System* system = prepared(state);
-  if (system == nullptr || costs == nullptr) return 1;
+  if (system == nullptr || boundaries == nullptr || processes < 1) return 1;
   try {
-    const std::vector<double> values = abf_costs(*system,sites != 0);
-    std::copy(values.begin(),values.end(),costs);
+    const std::vector<std::size_t> values = divide_abfs(*system,sites != 0,half != 0,static_cast<std::size_t>(processes));
+    for (std::size_t r = 0; r < values.size(); ++r) boundaries[r] = static_cast<long>(values[r]);
   } catch (...) {
     return 1;
   }
@@ -618,19 +618,6 @@ int openmx_exx_symmetrize_blocks(const OpenMXExxState* state, double* values, do
     symmetrize_blocks(*state->system,layout,array);
     if (asymmetry != nullptr) *asymmetry = before;
   });
-}
-
-int openmx_exx_half_abf_costs(const OpenMXExxState* state, int sites, double* costs)
-{
-  const System* system = prepared(state);
-  if (system == nullptr || costs == nullptr) return 1;
-  try {
-    const std::vector<double> values = abf_costs(*system,sites != 0,true);
-    std::copy(values.begin(),values.end(),costs);
-  } catch (...) {
-    return 1;
-  }
-  return 0;
 }
 
 int openmx_exx_add_gamma_half_abfs(const OpenMXExxState* state, long first_abf, long last_abf, double factor,

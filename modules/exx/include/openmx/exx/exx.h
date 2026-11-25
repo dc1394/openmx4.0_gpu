@@ -282,14 +282,19 @@ int openmx_exx_add_gamma_abfs(const OpenMXExxState *state, long first_abf, long 
                               const double *density, double *k, const OpenMXExxDenseBackend *backend,
                               char *error, size_t capacity);
 
-/* An estimate of the multiplications that the build spends on one ABF, for
-   dividing the ABFs among processes.  All ABFs of an atom take the same
-   number, so costs gets openmx_exx_atom_count() numbers: costs[a] is that of
-   one ABF of atom a as the centre, in the site form when sites is not zero
-   and in the Gamma-point form otherwise.  The values depend on the
-   structure and the cutoffs only.  Returns 1 without a prepared structure
-   or for a NULL array. */
-int openmx_exx_abf_costs(const OpenMXExxState *state, int sites, double *costs);
+/* A division of the ABFs among processes: process r takes the ABFs
+   boundaries[r] <= P < boundaries[r+1], counted as for
+   openmx_exx_add_gamma_abfs, and boundaries gets processes + 1 numbers.  Of
+   all divisions into contiguous ranges, it has the smallest largest
+   estimate of the time of a process, in the site form when sites is not
+   zero and in the Gamma-point form otherwise, for the half build (section
+   6.4) when half is not zero.  The estimate weighs the products of every
+   ABF by their speed and adds, for every atom whose ABFs a range holds, the
+   work that each part of a centre atom repeats.  Processes at the end may
+   get empty ranges.  The division depends on the structure and the cutoffs
+   only, so every process computes the same one.  Returns 1 without a
+   prepared structure, for a NULL array or for processes < 1. */
+int openmx_exx_divide_abfs(const OpenMXExxState *state, int sites, int half, int processes, long *boundaries);
 
 /* Equation (4) for one spin channel: (1/2) sum_ij D_ij K_ij over two arrays
    of count = N*N elements.  Returns 0 when an array is NULL. */
@@ -371,9 +376,8 @@ int openmx_exx_symmetrize_blocks(const OpenMXExxState *state, double *values, do
    openmx_exx_mirror_gamma or openmx_exx_mirror_blocks then turns X into
    K = X + X^T, which equals K of the whole build within rounding and is
    symmetric to the last bit.  The density matrix must be symmetric, with
-   D_xy(R) = D_yx(-R)^T in the site form.  openmx_exx_half_abf_costs gives
-   the estimate of openmx_exx_abf_costs for the half build. */
-int openmx_exx_half_abf_costs(const OpenMXExxState *state, int sites, double *costs);
+   D_xy(R) = D_yx(-R)^T in the site form.  openmx_exx_divide_abfs with half
+   divides its ABFs among processes. */
 int openmx_exx_add_gamma_half_abfs(const OpenMXExxState *state, long first_abf, long last_abf, double factor,
                                    const double *density, double *k, const OpenMXExxDenseBackend *backend,
                                    char *error, size_t capacity);

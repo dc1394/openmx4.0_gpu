@@ -195,17 +195,19 @@ openmx_exx_add_position_gradient_gamma(state, 0, openmx_exx_atom_count(state), -
 
 | 計算 | 分ける単位 | C の入口 |
 |---|---|---|
-| 構築 | 単位胞の ABF の、番号が続く範囲 | `openmx_exx_abf_count()`、`openmx_exx_abf_costs()`、`openmx_exx_add_gamma_abfs()`、`openmx_exx_add_blocks_abfs()` |
+| 構築 | 単位胞の ABF の、番号が続く範囲 | `openmx_exx_abf_count()`、`openmx_exx_divide_abfs()`、`openmx_exx_add_gamma_abfs()`、`openmx_exx_add_blocks_abfs()` |
 | 準備 | 原子の対 | `openmx_exx_prepare_part()`、`openmx_exx_atom_table_elements()`、`openmx_exx_get_atom_tables()`、`openmx_exx_set_atom_tables()` |
 | 位置についての微分 | ブロックの重みは ABF の範囲、ブロックの微分は原子の対 | `openmx_exx_add_block_weights_gamma_abfs()`、`openmx_exx_add_block_weights_blocks_abfs()`、`openmx_exx_add_position_gradient_pairs()` |
 
 構築では、単位胞の ABF に、原子の順で通し番号を付けます。範囲は原子の途中で切れます。全ての範囲の寄与を足すと $K$ になります。
 原子の境界で切った範囲は、原子の範囲の呼び出しとビットまで同じ結果を返します。原子の途中で切ると、ABF についての和の順序が変わり、結果は丸めの範囲で違います。
-`openmx_exx_abf_costs()` は、ABF 1 個の乗算の回数の見積もりを、原子ごとに返します。範囲を決める重みに使えます。
+`openmx_exx_divide_abfs()` が、プロセスごとの範囲を決めます。時間の見積もりは、ABF の積を速さで重み付けした和と、原子の一部分ごとに繰り返す仕事の和です。最も長いプロセスの見積もりが最も短くなる分け方を選びます。
 
 ```c
-const long abfs = openmx_exx_abf_count(state);
-/* プロセス p は first[p] <= P < first[p+1] の ABF を受け持つ。k を全てのプロセスで足すと K になる */
+long first[PROCESSES + 1];
+/* Γ点の形の全体の構築を分ける。プロセス p は first[p] <= P < first[p+1] の ABF を受け持つ */
+openmx_exx_divide_abfs(state, 0, 0, PROCESSES, first);
+/* k を全てのプロセスで足すと K になる */
 openmx_exx_add_gamma_abfs(state, first[p], first[p + 1], -0.25, density, k, NULL, message, sizeof message);
 ```
 
@@ -238,7 +240,7 @@ openmx_exx_add_position_gradient_pairs(state, (const double *const *)weights, pa
 
 原子の範囲の呼び出し（`openmx_exx_add_position_gradient_gamma()` など）は、対を両方の原子から 1 回ずつ分解します。対を回る形の分解は、対 1 個に 1 回です。2 つの形の結果は、丸めの範囲で同じです。
 
-C++ では、次の関数が同じ役割を持ちます。`add_exchange_gamma_abfs()`、`add_exchange_blocks_abfs()`、`abf_costs()`、ABF の範囲を取る `centre_gradient_gamma()` と `centre_gradient_blocks()`（`exchange.hpp`）。`prepare_system()` の `PrepareShare`、`table_elements()`、`get_tables()`、`set_tables()`（`system.hpp`）。`add_block_weights()`、`add_block_weights_gamma_abfs()`、`add_block_weights_blocks_abfs()`、`PositionGradient::add_pairs()`（`forces.hpp`）。
+C++ では、次の関数が同じ役割を持ちます。`add_exchange_gamma_abfs()`、`add_exchange_blocks_abfs()`、`build_costs()`、`divide_abfs()`、ABF の範囲を取る `centre_gradient_gamma()` と `centre_gradient_blocks()`（`exchange.hpp`）。`prepare_system()` の `PrepareShare`、`table_elements()`、`get_tables()`、`set_tables()`（`system.hpp`）。`add_block_weights()`、`add_block_weights_gamma_abfs()`、`add_block_weights_blocks_abfs()`、`PositionGradient::add_pairs()`（`forces.hpp`）。
 
 `openmx_exx_prepare()` は、元素ごとの表を状態に残します。作り直すのは、PAO、格子、しきい値のどれかが変わったときだけです。
 失敗した呼び出しは、状態を変えません。関数は例外を外に出さず、0 以外の返り値とメッセージで知らせます。

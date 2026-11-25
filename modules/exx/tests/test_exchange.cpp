@@ -45,7 +45,8 @@
 //                          share them (section 6.7 of the guide), on the
 //                          host and on the device: whole atoms, every cut of
 //                          the ABFs in two, ranges of growing length, and
-//                          the weights of the ABFs
+//                          the division of the ABFs among processes against
+//                          all divisions
 //   exx-exchange-device-system  the same for the periodic structure of
 //                          exx-exchange-system, with a selection of the
 //                          failures; the half build on the device is part of
@@ -1696,12 +1697,30 @@ void compare_ranges_with_c(const OpenMXExxState* state, const System& system, co
   for (const std::size_t count : system.abf_count) total += count;
   require(openmx_exx_abf_count(state) == static_cast<long>(total) && openmx_exx_abf_count(nullptr) == -1,
           what+": wrong number of ABFs of the C state");
+  // The division of the ABFs among processes, in both forms and for the
+  // whole and the half build: the C interface writes the numbers of the C++
+  // interface and no more, and rejects a missing state or array and fewer
+  // than one process.
   for (const int sites : {0,1}) {
-    std::vector<double> cost(atoms,-1.0);
-    require(openmx_exx_abf_costs(state,sites,cost.data()) == 0 && cost == abf_costs(system,sites != 0),
-            what+": the weights of the ABFs of the two interfaces differ");
-    require(openmx_exx_abf_costs(state,sites,nullptr) != 0 && openmx_exx_abf_costs(nullptr,sites,cost.data()) != 0,
-            what+": weights of the ABFs without a state or without an array are accepted");
+    for (const int half : {0,1}) {
+      for (const int processes : {1,2,3,5,static_cast<int>(atoms)+4}) {
+        const std::vector<std::size_t> expected =
+            divide_abfs(system,sites != 0,half != 0,static_cast<std::size_t>(processes));
+        std::vector<long> boundaries(expected.size()+1,-1);
+        require(openmx_exx_divide_abfs(state,sites,half,processes,boundaries.data()) == 0 &&
+                    boundaries.back() == -1 &&
+                    std::equal(expected.begin(),expected.end(),boundaries.begin(),
+                               [](std::size_t x, long y) { return y >= 0 && static_cast<std::size_t>(y) == x; }),
+                what+": the divisions of the ABFs of the two interfaces differ");
+      }
+      std::vector<long> untouched(3,-1);
+      require(openmx_exx_divide_abfs(state,sites,half,2,nullptr) != 0 &&
+                  openmx_exx_divide_abfs(nullptr,sites,half,2,untouched.data()) != 0 &&
+                  openmx_exx_divide_abfs(state,sites,half,0,untouched.data()) != 0 &&
+                  openmx_exx_divide_abfs(state,sites,half,-3,untouched.data()) != 0 &&
+                  untouched == std::vector<long>(3,-1),
+              what+": a division of the ABFs without a state, an array or a process is accepted");
+    }
   }
 
   const long all = static_cast<long>(total), cut = all/3, other = all-2;
@@ -1772,18 +1791,9 @@ void compare_ranges_with_c(const OpenMXExxState* state, const System& system, co
     require(status != 0 && untouched == whole,form+": a range of ABFs without a state is accepted");
   }
 
-  // The half build (section 6.4): the weights of its ABFs, the same bits as
-  // the C++ interface for the same ranges and for the mirror image, and X +
-  // X^T against the whole build made symmetric.  The density matrix is
-  // symmetric.
-  for (const int sites : {0,1}) {
-    std::vector<double> cost(atoms,-1.0);
-    require(openmx_exx_half_abf_costs(state,sites,cost.data()) == 0 && cost == abf_costs(system,sites != 0,true),
-            what+": the weights of the ABFs of the half build of the two interfaces differ");
-    require(openmx_exx_half_abf_costs(state,sites,nullptr) != 0 &&
-            openmx_exx_half_abf_costs(nullptr,sites,cost.data()) != 0,
-            what+": weights of the ABFs of the half build without a state or without an array are accepted");
-  }
+  // The half build (section 6.4): the same bits as the C++ interface for the
+  // same ranges and for the mirror image, and X + X^T against the whole
+  // build made symmetric.  The density matrix is symmetric.
   for (const bool sites : {false,true}) {
     const std::vector<double>& d = sites ? blocks_of_d : density;
     const std::string form = what+(sites ? ", site form, half build" : ", Gamma form, half build");
@@ -3101,6 +3111,92 @@ void check_device(const System& system, const DeviceForm& form, Numbers& random,
   std::printf("%s: %zu failures of the device, each one followed by the bits of the host\n",name.c_str(),chosen.size());
 }
 
+// The estimate of the ABFs first <= P < last by which divide_abfs() divides
+// them: n per_abf + per_part of build_costs() over the atoms whose ABFs the
+// range holds, n of them.
+double range_estimate(const System& system, const BuildCosts& cost, std::size_t first, std::size_t last)
+{
+  double estimate = 0.0;
+  std::size_t begin = 0;
+  for (std::size_t a = 0; a < system.abf_count.size(); ++a) {
+    const std::size_t end = begin+system.abf_count[a], from = std::max(begin,first), to = std::min(end,last);
+    if (from < to) estimate += static_cast<double>(to-from)*cost.per_abf[a]+cost.per_part[a];
+    begin = end;
+  }
+  return estimate;
+}
+
+// The estimates of build_costs() and the division of the ABFs among
+// processes (divide_abfs()), in both forms and for the whole and the half
+// build.  The estimates are positive and the same on every call, and the
+// time of an ABF is no less than its multiplications.  For one to six
+// processes and for more processes than ABFs the ranges are contiguous,
+// cover the ABFs in order and are the same on every call; their largest
+// estimate is the smallest of all divisions into as many contiguous ranges,
+// which a search of all of them by dynamic programming finds.
+void check_division(const System& system, const std::string& name)
+{
+  const std::size_t atoms = system.abf_count.size(), most = 6;
+  std::vector<std::size_t> atom_of;
+  for (std::size_t a = 0; a < atoms; ++a) atom_of.insert(atom_of.end(),system.abf_count[a],a);
+  const std::size_t total = atom_of.size();
+  for (const bool sites : {false,true}) {
+    for (const bool half : {false,true}) {
+      const std::string form = name+(sites ? ", site form" : ", Gamma form")+(half ? ", half build" : ", whole build");
+      const BuildCosts cost = build_costs(system,sites,half), again = build_costs(system,sites,half);
+      require(cost.multiplications.size() == atoms && cost.per_abf.size() == atoms && cost.per_part.size() == atoms &&
+                  cost.multiplications == again.multiplications && cost.per_abf == again.per_abf &&
+                  cost.per_part == again.per_part,
+              form+": the estimates of the ABFs are not one per atom or change between calls");
+      for (std::size_t a = 0; a < atoms; ++a)
+        require(cost.multiplications[a] >= 1.0 && std::isfinite(cost.per_abf[a]) &&
+                    cost.per_abf[a] >= cost.multiplications[a] && cost.per_part[a] > 0.0 &&
+                    std::isfinite(cost.per_part[a]),
+                form+": an estimate of the ABFs of an atom is not a positive count");
+
+      // best[k][j]: the smallest largest estimate of k contiguous ranges,
+      // some of them empty, of the ABFs 0 <= P < j.  The estimate of the ABFs
+      // i <= P < j comes from sums over the ABFs and over the atoms here, and
+      // from range_estimate() for the ranges of divide_abfs().
+      std::vector<double> abfs(1,0.0), parts(1,0.0);
+      for (std::size_t p = 0; p < total; ++p) abfs.push_back(abfs.back()+cost.per_abf[atom_of[p]]);
+      for (std::size_t a = 0; a < atoms; ++a)
+        parts.push_back(parts.back()+(system.abf_count[a] != 0 ? cost.per_part[a] : 0.0));
+      const auto estimate = [&](std::size_t i, std::size_t j) {
+        return i < j ? abfs[j]-abfs[i]+parts[atom_of[j-1]+1]-parts[atom_of[i]] : 0.0;
+      };
+      const double unreached = 1e300;
+      std::vector<std::vector<double>> best(most+1,std::vector<double>(total+1,unreached));
+      best[0][0] = 0.0;
+      for (std::size_t k = 1; k <= most; ++k)
+        for (std::size_t j = 0; j <= total; ++j)
+          for (std::size_t i = 0; i <= j; ++i) best[k][j] = std::min(best[k][j],std::max(best[k-1][i],estimate(i,j)));
+
+      double single = 0.0;
+      for (std::size_t p = 0; p < total; ++p) single = std::max(single,estimate(p,p+1));
+      for (std::size_t processes = 1; processes <= most+1; ++processes) {
+        const std::size_t count = processes <= most ? processes : total+3;
+        const std::vector<std::size_t> boundaries = divide_abfs(system,sites,half,count);
+        require(boundaries.size() == count+1 && boundaries.front() == 0 && boundaries.back() == total &&
+                    std::is_sorted(boundaries.begin(),boundaries.end()) &&
+                    boundaries == divide_abfs(system,sites,half,count),
+                form+": the ranges of the processes do not cover the ABFs in order");
+        double largest = 0.0;
+        for (std::size_t r = 0; r < count; ++r)
+          largest = std::max(largest,range_estimate(system,cost,boundaries[r],boundaries[r+1]));
+        const double smallest = count <= most ? best[count][total] : single;
+        require(std::fabs(largest-smallest) <= 1e-9*smallest,
+                form+": the division of the ABFs among "+std::to_string(count)+" processes is not the best one");
+      }
+      require(divide_abfs(system,sites,half,1) == std::vector<std::size_t>({0,total}),
+              form+": one process does not take all ABFs");
+      std::printf("%s: four processes, the largest estimate %.4f times a quarter of that of one process\n",
+                  form.c_str(),best[4][total]/(0.25*estimate(0,total)));
+    }
+  }
+  expect_invalid("a division of the ABFs among no processes",[&] { divide_abfs(system,false,false,0); });
+}
+
 // The ABFs of the centre atoms in ranges (section 6.7 of the guide), in both
 // forms and with four backends: the built-in loops, a table with a product,
 // a table whose loop runs four pieces, and the device.  A range of the ABFs
@@ -3110,6 +3206,7 @@ void check_device(const System& system, const DeviceForm& form, Numbers& random,
 // is told the bytes and the largest product of the range that it computes.
 // An empty range adds nothing.  With "every" the cut is made at every ABF;
 // otherwise at about a dozen of them, and at the first and the last one.
+// The division of the ABFs among processes is check_division().
 void check_abf_ranges(const System& system, const std::string& name, Numbers& random, bool every)
 {
   const double alpha = 0.25;
@@ -3253,14 +3350,7 @@ void check_abf_ranges(const System& system, const std::string& name, Numbers& ra
             form.name+": a rejected range of ABFs changes K or asks the device");
   }
 
-  // The weights of the ABFs for a division among processes: one positive
-  // number for every atom in each form, the same for every call.
-  for (const bool sites : {false,true}) {
-    const std::vector<double> cost = abf_costs(system,sites);
-    require(cost.size() == atoms && cost == abf_costs(system,sites),name+": wrong number of weights of the ABFs");
-    for (const double value : cost)
-      require(value >= 1.0 && std::isfinite(value),name+": a weight of the ABFs of an atom is not a count");
-  }
+  check_division(system,name);
 }
 
 // The half build (section 6.4 of the guide) against the whole build.  With a
@@ -3271,8 +3361,8 @@ void check_abf_ranges(const System& system, const std::string& name, Numbers& ra
 // threads of their own, and the device.  The ABFs in one range, in two
 // ranges cut at several ABFs in both orders, and in ranges of growing
 // length; X + X^T is symmetric to the last bit.  An empty range adds nothing,
-// and rejected arguments change nothing.  The weights of the ABFs of the half
-// build are smaller than those of the whole build.
+// and rejected arguments change nothing.  The estimates of the ABFs of the
+// half build are smaller than those of the whole build.
 void check_half_build(const System& system, const std::string& name, Numbers& random, bool every)
 {
   const double alpha = 0.25;
@@ -3432,22 +3522,29 @@ void check_half_build(const System& system, const std::string& name, Numbers& ra
             form.name+": a rejected half build changes X or asks the device");
   }
 
-  // The weights of the ABFs of the half build: no more than those of the
-  // whole build for any atom, and fewer in all.
+  // The estimates of the half build: no more than those of the whole build
+  // for any atom, and fewer multiplications and less time in all.
   for (const bool sites : {false,true}) {
-    const std::vector<double> half = abf_costs(system,sites,true), whole = abf_costs(system,sites);
-    require(half.size() == atoms && half == abf_costs(system,sites,true),
-            name+": wrong number of weights of the ABFs of the half build");
-    double half_total = 0.0, whole_total = 0.0;
+    const BuildCosts half = build_costs(system,sites,true), whole = build_costs(system,sites);
+    require(half.multiplications.size() == atoms && half.per_abf.size() == atoms && half.per_part.size() == atoms,
+            name+": wrong number of estimates of the ABFs of the half build");
+    double half_total = 0.0, whole_total = 0.0, half_time = 0.0, whole_time = 0.0;
     for (std::size_t a = 0; a < atoms; ++a) {
-      require(half[a] >= 1.0 && std::isfinite(half[a]) && half[a] <= whole[a],
-              name+": a weight of the ABFs of the half build is not a count below that of the whole build");
-      half_total += half[a]*static_cast<double>(system.abf_count[a]);
-      whole_total += whole[a]*static_cast<double>(system.abf_count[a]);
+      require(half.multiplications[a] >= 1.0 && half.multiplications[a] <= whole.multiplications[a] &&
+                  half.per_abf[a] <= whole.per_abf[a] && half.per_part[a] > 0.0 &&
+                  half.per_part[a] <= whole.per_part[a],
+              name+": an estimate of the ABFs of the half build is not a count below that of the whole build");
+      const double count = static_cast<double>(system.abf_count[a]);
+      half_total += half.multiplications[a]*count;
+      whole_total += whole.multiplications[a]*count;
+      half_time += half.per_abf[a]*count+half.per_part[a];
+      whole_time += whole.per_abf[a]*count+whole.per_part[a];
     }
-    require(half_total < whole_total,name+": the half build is not estimated to take fewer multiplications");
-    std::printf("%s, %s form: the half build has %.3f of the estimated multiplications of the whole build\n",
-                name.c_str(),sites ? "site" : "Gamma",half_total/whole_total);
+    require(half_total < whole_total && half_time < whole_time,
+            name+": the half build is not estimated to take fewer multiplications and less time");
+    std::printf("%s, %s form: the half build has %.3f of the estimated multiplications and %.3f of the estimated "
+                "time of the whole build\n",
+                name.c_str(),sites ? "site" : "Gamma",half_total/whole_total,half_time/whole_time);
   }
 }
 

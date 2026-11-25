@@ -900,45 +900,27 @@ double Exact_Exchange_Density_Deviation(const OpenMXExactExchangeState *state, i
    (openmx_exx_add_gamma_abfs). The contribution of a centre atom is a sum
    over its ABFs, so a range may end inside an atom, and processes share an
    atom when they are more than the atoms or when the atoms differ in size.
-   The ranges carry about the same number of multiplications by the estimate
-   of modules/exx: an ABF belongs to the process whose part of the total
-   holds its middle. A process without work gets first = last. Every process
-   computes the same division from the same numbers. The build weighs the
-   ABFs with the estimate of the half build (half), the forces with that of
-   the whole build. */
+   openmx_exx_divide_abfs makes the ranges. It estimates the time of a range
+   from the products of its ABFs, weighed by their speed, and from what
+   every part of a centre atom repeats: the products with the V blocks read
+   all T blocks of the V neighbours, and the part gathers the density
+   matrix and adds its result. Of all divisions into contiguous ranges, it
+   takes one with the shortest longest estimate. A process without work
+   gets first = last. Every process computes the same division from the
+   same numbers. The build divides the ABFs by the estimate of the half
+   build (half), the forces by that of the whole build. */
 static void ExactExchange_Abfs(OpenMXExactExchangeState *state, MPI_Comm comm, int half, long *first_abf,
                                long *last_abf)
 {
-  const int atoms=openmx_exx_atom_count(state->module);
   int rank=0,processes=1;
   MPI_Comm_rank(comm,&rank);
   MPI_Comm_size(comm,&processes);
-  double *cost=(double*)ExactExchange_Allocate(state,(size_t)atoms,sizeof(double),comm,"exchange matrix");
-  if ((half ? openmx_exx_half_abf_costs(state->module,state->sites,cost)
-            : openmx_exx_abf_costs(state->module,state->sites,cost))!=0)
-    ExactExchange_Abort(comm,"exchange matrix","the work of the ABFs cannot be estimated");
-  double total=0.0;
-  for (int a=0; a<atoms; a++) total += cost[a]*(double)openmx_exx_atom_abfs(state->module,a);
-  const double lower=total*(double)rank/(double)processes;
-  const double upper=total*(double)(rank+1)/(double)processes;
-  long first=-1,last=-1,abf=0;
-  double before=0.0;
-  for (int a=0; a<atoms; a++) {
-    const int count=openmx_exx_atom_abfs(state->module,a);
-    for (int p=0; p<count; p++) {
-      const double middle=before+0.5*cost[a];
-      if (lower<=middle && middle<upper) {
-        if (first<0) first = abf;
-        last = abf+1;
-      }
-      before += cost[a];
-      abf++;
-    }
-  }
-  if (first<0) first = last = abf;
-  openmx_core_native_free(state->resources,cost);
-  *first_abf = first;
-  *last_abf = last;
+  long *boundaries=(long*)ExactExchange_Allocate(state,(size_t)processes+1,sizeof(long),comm,"exchange matrix");
+  if (openmx_exx_divide_abfs(state->module,state->sites,half,processes,boundaries)!=0)
+    ExactExchange_Abort(comm,"exchange matrix","the ABFs cannot be divided among the processes");
+  *first_abf = boundaries[rank];
+  *last_abf = boundaries[rank+1];
+  openmx_core_native_free(state->resources,boundaries);
 }
 
 void Exact_Exchange_Build(OpenMXExactExchangeState *state, MPI_Comm comm, int verbosity)

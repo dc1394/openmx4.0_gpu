@@ -1955,7 +1955,21 @@ bool add_exchange_blocks_range(const System& system, const BlockLayout& layout, 
 
 // ---- the work of a build ------------------------------------------------------
 
-std::vector<double> abf_costs(const System& system, bool sites, bool half)
+namespace {
+
+// The time of the operations of a build relative to one multiplication of
+// the products with the T blocks of the centre (G and the last product),
+// with OpenBLAS on one thread: silicon with HSE06 and PBE0 and diamond with
+// HSE06, the time of every product of the build (section 12 of the guide).
+constexpr double v_product_time = 1.4;    // a multiplication of W = V T
+constexpr double term_time = 3.6;         // a multiplication of the four terms of one ABF and V neighbour
+constexpr double moved_time = 500.0;      // an element of G: its transposition, and the bracket set to zero and turned
+constexpr double read_time = 16.0;        // an element of the T blocks that the product W = V T of a part reads
+constexpr double array_time = 290.0;      // an element of D[loc(A), .] and of the last result, gathered and added
+
+} // namespace
+
+BuildCosts build_costs(const System& system, bool sites, bool half)
 {
   check(system);
   const std::size_t atoms = system.orbital_count.size(), n = orbital_total(system);
@@ -1977,7 +1991,7 @@ std::vector<double> abf_costs(const System& system, bool sites, bool half)
       seen[c] = 1;
     }
   }
-  std::vector<double> cost(atoms);
+  BuildCosts cost{std::vector<double>(atoms),std::vector<double>(atoms),std::vector<double>(atoms)};
   for (std::size_t a = 0; a < atoms; ++a) {
     const std::size_t ua = system.orbital_count[a];
     // The V neighbours of the build; the half build of the Gamma form takes
@@ -1989,19 +2003,82 @@ std::vector<double> abf_costs(const System& system, bool sites, bool half)
       for (const Site& site : column_sites(system,a,groups))
         s += system.orbital_count[static_cast<std::size_t>(site.atom)];
     }
-    double total = 2.0*product(ua,s,width[a]);         // G and the last product
-    // W and the four terms of every group: a V neighbour in the site form,
-    // an atom among the V neighbours in the Gamma form.
+    // G and the last product, and the four terms and W of every group: a V
+    // neighbour in the site form, an atom among the V neighbours in the
+    // Gamma form.
+    double multiplications = 2.0*product(ua,s,width[a]);
+    double time = multiplications+moved_time*product(ua,s,1);
+    double part = array_time*product(width[a],s,1);
     seen.assign(atoms,0);
     for (const std::size_t i : groups) {
       const std::size_t b = static_cast<std::size_t>(system.v_neighbours[a][i].atom);
       if (!sites && (seen[b] || (half && b < a))) continue;
       seen[b] = 1;
-      total += product(system.orbital_count[b],width[b],system.abf_count[b]+4*ua);
+      const std::size_t ub = system.orbital_count[b], nq = system.abf_count[b];
+      multiplications += product(ub,width[b],nq+4*ua);
+      time += v_product_time*product(ub,width[b],nq)+term_time*product(ub,width[b],4*ua);
+      part += read_time*product(ub,width[b],nq);
     }
-    cost[a] = total;
+    cost.multiplications[a] = multiplications;
+    cost.per_abf[a] = time;
+    cost.per_part[a] = part;
   }
   return cost;
+}
+
+std::vector<std::size_t> divide_abfs(const System& system, bool sites, bool half, std::size_t processes)
+{
+  if (processes == 0) throw std::invalid_argument("a division of the ABFs needs a process");
+  const BuildCosts cost = build_costs(system,sites,half);
+  const std::size_t atoms = system.abf_count.size();
+  // The fewest ranges whose estimates stay within the bound, by the greedy
+  // division: a range takes the next ABF while its estimate stays within the
+  // bound.  No division within the bound has fewer ranges, because the
+  // estimate of a range grows when it gains an ABF at either end.  A range
+  // takes its first ABF in any case.
+  std::vector<std::size_t> boundaries;
+  const auto divide = [&](double bound) {
+    boundaries.assign(1,0);
+    double load = 0.0;
+    std::size_t abf = 0;
+    for (std::size_t a = 0; a < atoms; ++a) {
+      bool open = false;                                              // the range holds ABFs of atom a
+      for (std::size_t p = 0; p < system.abf_count[a]; ++p, ++abf) {
+        if (abf > boundaries.back() && bound < load+cost.per_abf[a]+(open ? 0.0 : cost.per_part[a])) {
+          boundaries.push_back(abf);
+          load = 0.0;
+          open = false;
+        }
+        load = load+cost.per_abf[a]+(open ? 0.0 : cost.per_part[a]);
+        open = true;
+      }
+    }
+    boundaries.push_back(abf);
+    return boundaries.size()-1;
+  };
+  // The smallest bound that the processes can keep, by bisection between a
+  // bound that they cannot keep and one that they can: no process does less
+  // than one ABF with its part, and the processes together do no less than
+  // the whole build in one part for each atom.  The whole build is added up
+  // in the order of the greedy division, so that one range keeps it.  Every
+  // process computes the same numbers and gets the same division.
+  double total = 0.0, single = 0.0;
+  for (std::size_t a = 0; a < atoms; ++a) {
+    for (std::size_t p = 0; p < system.abf_count[a]; ++p) total = total+cost.per_abf[a]+(p == 0 ? cost.per_part[a] : 0.0);
+    if (system.abf_count[a] != 0) single = std::max(single,cost.per_abf[a]+cost.per_part[a]);
+  }
+  double lower = std::max(single,total/static_cast<double>(processes)), upper = total;
+  if (divide(lower) > processes) {
+    for (int step = 0; step < 200 && upper-lower > 1e-12*upper; ++step) {
+      const double middle = 0.5*(lower+upper);
+      if (divide(middle) > processes) lower = middle;
+      else upper = middle;
+    }
+    if (divide(upper) > processes) throw std::logic_error("the ABFs do not fit into the ranges of the processes");
+  }
+  // The processes after the last range get empty ranges at the end.
+  boundaries.resize(processes+1,boundaries.back());
+  return boundaries;
 }
 
 void mirror_blocks(const System& system, const BlockLayout& layout, std::span<double> values)

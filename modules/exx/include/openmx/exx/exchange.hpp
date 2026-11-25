@@ -164,13 +164,32 @@ bool add_exchange_blocks_half_abfs(const System& system, const BlockLayout& layo
 // M_yx(-R)^T get their sum, and the diagonal of M_xx(0) is doubled.
 void mirror_blocks(const System& system, const BlockLayout& layout, std::span<double> values);
 
-// For every atom: an estimate of the multiplications that one of its ABFs
-// takes in a build with the atom as the centre, in the site form (sites) or
-// in the Gamma form, for the half build with half.  It counts the two
-// products with the T blocks of the centre and, for every V neighbour of the
-// build, the product with its V block and the four terms.  Processes that
-// divide a build weigh the ABFs with it.
-std::vector<double> abf_costs(const System& system, bool sites, bool half = false);
+// For every atom, the work of a build with the atom as the centre, in the
+// site form (sites) or in the Gamma form, for the half build with half.
+// multiplications counts those of one ABF: the two products with the T
+// blocks of the centre and, for every V neighbour of the build, the product
+// with its V block and the four terms.  per_abf and per_part estimate the
+// time, in that of one multiplication of the products with the T blocks of
+// the centre: a part of n ABFs of the atom takes about n per_abf + per_part.
+// per_abf weighs the multiplications of one ABF by the speed of their
+// products and adds the transpositions of its G and bracket; per_part is
+// what every part of the atom repeats, whatever the number of its ABFs: the
+// products with the V blocks read all T blocks of the V neighbours, and the
+// part gathers D[loc(A), .] and adds the last result.
+struct BuildCosts {
+  std::vector<double> multiplications, per_abf, per_part;
+};
+BuildCosts build_costs(const System& system, bool sites, bool half = false);
+
+// A division of the ABFs of the cell among `processes` processes: process r
+// takes the ABFs boundaries[r] <= P < boundaries[r+1], counted over the
+// atoms in their order, and a range may end inside an atom.  The estimate
+// of a range is the sum of n per_abf + per_part of build_costs() over the
+// atoms whose ABFs it holds, n of them.  Of all divisions into contiguous
+// ranges, the division has the smallest largest estimate, to a relative
+// 1e-12.  Processes at the end may get empty ranges.  The same system gives
+// the same division on every process.
+std::vector<std::size_t> divide_abfs(const System& system, bool sites, bool half, std::size_t processes);
 
 // The largest difference between an element of M_xy(R) and the element of
 // M_yx(-R) that equals it in a matrix with M_xy(R) = M_yx(-R)^T.

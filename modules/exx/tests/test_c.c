@@ -229,22 +229,32 @@ static int divided_work(const OpenMXExxState *whole, const OpenMXExxOptions *opt
   double *sums[ATOMS], *piece[ATOMS], *site_weights[ATOMS], *holed[ATOMS];
   const double *read[ATOMS], *site_read[ATOMS], *missing[ATOMS];
   double *site_other = NULL;
-  double other[N * N], costs[ATOMS], site_costs[ATOMS], paired[3 * ATOMS], once[3 * ATOMS], again[3 * ATOMS];
-  double half_costs[ATOMS], half_site_costs[ATOMS];
+  double other[N * N], paired[3 * ATOMS], once[3 * ATOMS], again[3 * ATOMS];
   size_t size[ATOMS], e;
   char message[160];
-  long total, count, cut, p, systems, first_abf[ATOMS + 1];
+  long total, count, cut, p, systems, first_abf[ATOMS + 1], boundaries[8];
   int failed = 0, a, i, j, trial, part, parts;
 
-  /* The ABFs of the unit cell are those of its atoms, and every atom has a
-     cost for one of its ABFs in either form. */
+  /* The ABFs of the unit cell are those of its atoms.  Up to six processes
+     divide them into contiguous ranges that cover them in order, in either
+     form and for the whole and the half build, and one process takes them
+     all.  The division writes processes + 1 numbers and no more. */
   total = openmx_exx_abf_count(whole);
   first_abf[0] = 0;
   for (a = 0; a < ATOMS; ++a) first_abf[a + 1] = first_abf[a] + openmx_exx_atom_abfs(whole, a);
   EXPECT(total == first_abf[ATOMS] && total > ATOMS && openmx_exx_abf_count(NULL) == -1);
-  EXPECT(openmx_exx_abf_costs(whole, 0, costs) == 0 && openmx_exx_abf_costs(whole, 1, site_costs) == 0);
-  for (a = 0; a < ATOMS; ++a) EXPECT(costs[a] > 0.0 && site_costs[a] > 0.0);
-  EXPECT(openmx_exx_abf_costs(NULL, 0, costs) != 0 && openmx_exx_abf_costs(whole, 0, NULL) != 0);
+  for (i = 0; i < 4; ++i) {
+    for (parts = 1; parts <= 6; ++parts) {
+      for (j = 0; j < 8; ++j) boundaries[j] = -1;
+      EXPECT(openmx_exx_divide_abfs(whole, i & 1, i >> 1, parts, boundaries) == 0);
+      EXPECT(boundaries[0] == 0 && boundaries[parts] == total && boundaries[parts + 1] == -1);
+      for (j = 0; j < parts; ++j) EXPECT(boundaries[j] <= boundaries[j + 1]);
+      if (parts == 1) EXPECT(boundaries[1] == total);
+      if (parts == 2) EXPECT(0 < boundaries[1] && boundaries[1] < total);
+    }
+  }
+  EXPECT(openmx_exx_divide_abfs(NULL, 0, 0, 2, boundaries) != 0 && openmx_exx_divide_abfs(whole, 0, 0, 2, NULL) != 0);
+  EXPECT(openmx_exx_divide_abfs(whole, 0, 0, 0, boundaries) != 0 && openmx_exx_divide_abfs(whole, 1, 1, -1, boundaries) != 0);
 
   /* The range of all ABFs is the range of all atoms, bit for bit. */
   site_other = (double *)malloc(elements * sizeof *site_other);
@@ -304,13 +314,7 @@ static int divided_work(const OpenMXExxState *whole, const OpenMXExxOptions *opt
 
   /* The half build (section 6.4 of the guide): its sum X over two ranges
      gives X + X^T, which is K within rounding and symmetric to the last bit;
-     d and site_d are symmetric.  It is estimated to take no more than the
-     whole build for any atom. */
-  EXPECT(openmx_exx_half_abf_costs(whole, 0, half_costs) == 0 && openmx_exx_half_abf_costs(whole, 1, half_site_costs) == 0);
-  for (a = 0; a < ATOMS; ++a)
-    EXPECT(half_costs[a] > 0.0 && half_costs[a] <= costs[a] && half_site_costs[a] > 0.0 &&
-           half_site_costs[a] <= site_costs[a]);
-  EXPECT(openmx_exx_half_abf_costs(NULL, 0, half_costs) != 0 && openmx_exx_half_abf_costs(whole, 0, NULL) != 0);
+     d and site_d are symmetric. */
   cut = total / 2;
   memset(other, 0, sizeof other);
   EXPECT(openmx_exx_add_gamma_half_abfs(whole, cut, total, -0.25, d, other, NULL, message, sizeof message) == 0);
