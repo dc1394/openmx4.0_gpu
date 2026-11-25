@@ -48,7 +48,14 @@
 //                          the weights of the ABFs
 //   exx-exchange-device-system  the same for the periodic structure of
 //                          exx-exchange-system, with a selection of the
-//                          failures
+//                          failures; the half build on the device is part of
+//                          both
+//   exx-exchange-half      the half build (section 6.4 of the guide): X +
+//                          X^T against the whole build, with the ABFs in
+//                          ranges and with five backends, in a system of
+//                          three atoms with the symmetry of prepare_system()
+//                          and in the periodic structure of
+//                          exx-exchange-system
 #include <openmx/exx/abf.hpp>
 #include <openmx/exx/exchange.hpp>
 #include <openmx/exx/exx.h>
@@ -335,6 +342,73 @@ System narrow_system(Numbers& random)
     }
   }
   return system;
+}
+
+// Three atoms whose V neighbours and V blocks have the symmetry of
+// prepare_system() that the half build needs: (a, -R) is a V neighbour of b
+// with the transpose of the V block of (b, R) of a, and the V block of an
+// atom with itself is symmetric.  Atom 0 has two images of itself and an
+// image of atom 1 among its V neighbours, and the C neighbours of atom 1 hold
+// two images of atom 0.  The half build of atoms 1 and 2 goes through the
+// centre itself only.
+System mirrored_system(Numbers& random)
+{
+  System system;
+  system.orbital_count = {1,1,2};
+  system.abf_count = {5,4,3};
+  const auto site = [](int atom, int cell = 0) { return Site{atom,{cell,0,0}}; };
+  system.c_neighbours = {{site(0)},{site(1),site(0),site(0,1)},{site(2),site(0),site(1)}};
+  system.v_neighbours = {{site(0),site(0,-1),site(0,1),site(1),site(1,1),site(2)},
+                         {site(1),site(0,-1),site(0)},
+                         {site(2),site(0)}};
+  const std::size_t atoms = system.orbital_count.size();
+  system.c_offset.resize(atoms);
+  system.t.resize(atoms);
+  system.v.resize(atoms);
+  for (std::size_t a = 0; a < atoms; ++a) {
+    std::vector<std::size_t>& offset = system.c_offset[a];
+    offset.assign(1,0);
+    for (const Site& c : system.c_neighbours[a])
+      offset.push_back(offset.back()+system.orbital_count[static_cast<std::size_t>(c.atom)]);
+    system.t[a].resize(system.abf_count[a]*system.orbital_count[a]*offset.back());
+    for (double& value : system.t[a]) value = random.next();
+    system.v[a].resize(system.v_neighbours[a].size());
+  }
+  for (std::size_t a = 0; a < atoms; ++a)
+    for (std::size_t i = 0; i < system.v_neighbours[a].size(); ++i) {
+      if (!system.v[a][i].empty()) continue;           // the transpose of a pair before
+      const Site& b = system.v_neighbours[a][i];
+      const std::size_t atom = static_cast<std::size_t>(b.atom);
+      const std::size_t na = system.abf_count[a], nb = system.abf_count[atom];
+      std::vector<double> block(na*nb);
+      for (double& value : block) value = random.next();
+      if (i == 0) {
+        for (std::size_t p = 0; p < na; ++p)
+          for (std::size_t q = 0; q < p; ++q) block[p*na+q] = block[q*na+p] = 0.5*(block[p*na+q]+block[q*na+p]);
+      } else {
+        const Site mirror{static_cast<int>(a),{-b.cell[0],-b.cell[1],-b.cell[2]}};
+        const std::vector<Site>& list = system.v_neighbours[atom];
+        const auto found = std::find(list.begin(),list.end(),mirror);
+        require(found != list.end(),"a V neighbour of the mirrored system has no counterpart");
+        std::vector<double> transposed(nb*na);
+        for (std::size_t p = 0; p < na; ++p)
+          for (std::size_t q = 0; q < nb; ++q) transposed[q*na+p] = block[p*nb+q];
+        system.v[atom][static_cast<std::size_t>(found-list.begin())] = std::move(transposed);
+      }
+      system.v[a][i] = std::move(block);
+    }
+  return system;
+}
+
+// The blocks of a random density matrix of the site form with D_xy(R) =
+// D_yx(-R)^T.
+std::vector<double> symmetric_blocks(const System& system, const BlockLayout& layout, Numbers& random)
+{
+  std::vector<double> blocks(layout.elements());
+  for (double& value : blocks) value = random.next();
+  symmetrize_blocks(system,layout,blocks);
+  require(block_asymmetry(system,layout,blocks) == 0.0,"the blocks of D are not symmetric");
+  return blocks;
 }
 
 // K of the Gamma form from the definition, equations (8) and (9), with dense
@@ -1696,6 +1770,84 @@ void compare_ranges_with_c(const OpenMXExxState* state, const System& system, co
     status = sites ? openmx_exx_add_blocks_abfs(nullptr,0,all,-alpha,d.data(),untouched.data(),nullptr,message,sizeof message)
                    : openmx_exx_add_gamma_abfs(nullptr,0,all,-alpha,d.data(),untouched.data(),nullptr,message,sizeof message);
     require(status != 0 && untouched == whole,form+": a range of ABFs without a state is accepted");
+  }
+
+  // The half build (section 6.4): the weights of its ABFs, the same bits as
+  // the C++ interface for the same ranges and for the mirror image, and X +
+  // X^T against the whole build made symmetric.  The density matrix is
+  // symmetric.
+  for (const int sites : {0,1}) {
+    std::vector<double> cost(atoms,-1.0);
+    require(openmx_exx_half_abf_costs(state,sites,cost.data()) == 0 && cost == abf_costs(system,sites != 0,true),
+            what+": the weights of the ABFs of the half build of the two interfaces differ");
+    require(openmx_exx_half_abf_costs(state,sites,nullptr) != 0 &&
+            openmx_exx_half_abf_costs(nullptr,sites,cost.data()) != 0,
+            what+": weights of the ABFs of the half build without a state or without an array are accepted");
+  }
+  for (const bool sites : {false,true}) {
+    const std::vector<double>& d = sites ? blocks_of_d : density;
+    const std::string form = what+(sites ? ", site form, half build" : ", Gamma form, half build");
+    const auto add = [&](long first, long last, std::vector<double>& k, const double* from) {
+      return sites ? openmx_exx_add_blocks_half_abfs(state,first,last,-alpha,from,k.data(),nullptr,message,sizeof message)
+                   : openmx_exx_add_gamma_half_abfs(state,first,last,-alpha,from,k.data(),nullptr,message,sizeof message);
+    };
+    const auto mirror = [&](double* values) {
+      return sites ? openmx_exx_mirror_blocks(state,values,message,sizeof message)
+                   : openmx_exx_mirror_gamma(state,values,message,sizeof message);
+    };
+    std::vector<double> through(d.size(),0.0), direct(d.size(),0.0);
+    for (const auto& range : ranges) {
+      const int status = add(range[0],range[1],through,d.data());
+      require(status == 0 && message[0] == '\0',form+": a range of ABFs through the C interface fails: "+message);
+      const std::size_t first = static_cast<std::size_t>(range[0]), last = static_cast<std::size_t>(range[1]);
+      if (sites) add_exchange_blocks_half_abfs(system,layout,first,last,-alpha,d,direct);
+      else add_exchange_gamma_half_abfs(system,first,last,-alpha,d,direct);
+    }
+    require(same_values(through,direct),form+": the ranges of ABFs of the two interfaces give different bits");
+    require(mirror(through.data()) == 0 && message[0] == '\0',form+": the mirror image through the C interface fails");
+    if (sites) mirror_blocks(system,layout,direct);
+    else mirror_gamma(system,direct);
+    require(same_values(through,direct),form+": the mirror images of the two interfaces differ");
+
+    std::vector<double> whole(d.size(),0.0);
+    if (sites) {
+      add_exchange_blocks_abfs(system,layout,0,total,-alpha,d,whole);
+      symmetrize_blocks(system,layout,whole);
+      require(block_asymmetry(system,layout,through) == 0.0,form+": X + X^T is not symmetric to the last bit");
+    } else {
+      add_exchange_gamma_abfs(system,0,total,-alpha,d,whole);
+      const std::size_t n = orbital_total(system);
+      for (std::size_t i = 0; i < n; ++i)
+        for (std::size_t j = i+1; j < n; ++j) {
+          whole[i*n+j] = whole[j*n+i] = 0.5*(whole[i*n+j]+whole[j*n+i]);
+          require(through[i*n+j] == through[j*n+i],form+": X + X^T is not symmetric to the last bit");
+        }
+    }
+    const double scale = largest(whole);
+    Worst against(form+": X + X^T through C against the whole build (relative)",1e-12);
+    for (std::size_t e = 0; e < whole.size(); ++e) against.add(std::fabs(through[e]-whole[e])/scale);
+    against.finish();
+
+    // Rejected calls change nothing and leave a message.
+    std::vector<double> untouched = through;
+    const long rejected[][2] = {{-1,all},{0,all+1},{other,cut}};
+    for (const auto& range : rejected) {
+      message[0] = '\0';
+      require(add(range[0],range[1],untouched,d.data()) != 0 && message[0] != '\0' && untouched == through,
+              form+": a range of ABFs outside the cell is accepted");
+    }
+    require(add(0,all,untouched,nullptr) != 0 && untouched == through,
+            form+": a range of ABFs without a density matrix is accepted");
+    require((sites ? openmx_exx_add_blocks_half_abfs(nullptr,0,all,-alpha,d.data(),untouched.data(),nullptr,message,
+                                                     sizeof message)
+                   : openmx_exx_add_gamma_half_abfs(nullptr,0,all,-alpha,d.data(),untouched.data(),nullptr,message,
+                                                    sizeof message)) != 0 &&
+            untouched == through,form+": a range of ABFs without a state is accepted");
+    message[0] = '\0';
+    require(mirror(nullptr) != 0 && message[0] != '\0',form+": a mirror image without an array is accepted");
+    require((sites ? openmx_exx_mirror_blocks(nullptr,untouched.data(),nullptr,0)
+                   : openmx_exx_mirror_gamma(nullptr,untouched.data(),nullptr,0)) != 0 && untouched == through,
+            form+": a mirror image without a state is accepted");
   }
 }
 
@@ -3111,6 +3263,194 @@ void check_abf_ranges(const System& system, const std::string& name, Numbers& ra
   }
 }
 
+// The half build (section 6.4 of the guide) against the whole build.  With a
+// symmetric density matrix and a system with the symmetry of
+// prepare_system(), the sum X of the half build gives K = X + X^T, in both
+// forms and with five backends: the built-in loops, a table with a product,
+// a table whose loop runs four pieces in reverse order, the same pieces on
+// threads of their own, and the device.  The ABFs in one range, in two
+// ranges cut at several ABFs in both orders, and in ranges of growing
+// length; X + X^T is symmetric to the last bit.  An empty range adds nothing,
+// and rejected arguments change nothing.  The weights of the ABFs of the half
+// build are smaller than those of the whole build.
+void check_half_build(const System& system, const std::string& name, Numbers& random, bool every)
+{
+  const double alpha = 0.25;
+  const std::size_t atoms = system.orbital_count.size(), n = orbital_total(system);
+  std::vector<std::size_t> first_abf(1,0);
+  for (const std::size_t count : system.abf_count) first_abf.push_back(first_abf.back()+count);
+  const std::size_t total = first_abf.back();
+  require(total >= 3,name+": the test of the half build needs three ABFs or more");
+  const std::vector<double> dense = dense_matrix(n,true,random);
+  const BlockLayout layout = exchange_layout(system);
+  const std::vector<double> blocks = symmetric_blocks(system,layout,random);
+
+  using Build = std::function<bool(std::size_t, std::size_t, std::span<double>, const DenseBackend&)>;
+  using Change = std::function<void(std::span<double>)>;
+  struct HalfForm {
+    std::string name;
+    std::size_t size = 0;
+    Build whole, half;
+    Change mirror, symmetrize;
+    std::function<bool(std::span<const double>)> symmetric;
+  };
+  const HalfForm forms[] = {
+      {name+", Gamma form",n*n,
+       [&](std::size_t first, std::size_t last, std::span<double> k, const DenseBackend& backend) {
+         return add_exchange_gamma_abfs(system,first,last,-alpha,dense,k,backend);
+       },
+       [&](std::size_t first, std::size_t last, std::span<double> k, const DenseBackend& backend) {
+         return add_exchange_gamma_half_abfs(system,first,last,-alpha,dense,k,backend);
+       },
+       [&](std::span<double> k) { mirror_gamma(system,k); },
+       [&](std::span<double> k) {
+         for (std::size_t i = 0; i < n; ++i)
+           for (std::size_t j = i+1; j < n; ++j) k[i*n+j] = k[j*n+i] = 0.5*(k[i*n+j]+k[j*n+i]);
+       },
+       [&](std::span<const double> k) {
+         for (std::size_t i = 0; i < n; ++i)
+           for (std::size_t j = i+1; j < n; ++j)
+             if (k[i*n+j] != k[j*n+i]) return false;
+         return true;
+       }},
+      {name+", site form",layout.elements(),
+       [&](std::size_t first, std::size_t last, std::span<double> k, const DenseBackend& backend) {
+         return add_exchange_blocks_abfs(system,layout,first,last,-alpha,blocks,k,backend);
+       },
+       [&](std::size_t first, std::size_t last, std::span<double> k, const DenseBackend& backend) {
+         return add_exchange_blocks_half_abfs(system,layout,first,last,-alpha,blocks,k,backend);
+       },
+       [&](std::span<double> k) { mirror_blocks(system,layout,k); },
+       [&](std::span<double> k) { symmetrize_blocks(system,layout,k); },
+       [&](std::span<const double> k) { return block_asymmetry(system,layout,k) == 0.0; }}};
+
+  FakeDevice device;
+  Calls calls;
+  const OpenMXExxDenseBackend product_table{&shared_dgemm,&calls,nullptr,0,nullptr};
+  const OpenMXExxDenseBackend pieces_table{&shared_dgemm,&calls,&reversed_loop,4,nullptr};
+  const OpenMXExxDenseBackend threads_table{&shared_dgemm,&calls,&threaded_loop,4,nullptr};
+  const OpenMXExxDenseBackend device_table{&shared_dgemm,&calls,&in_order_loop,4,&device.table()};
+  const OpenMXExxDenseBackend* const tables[] = {nullptr,&product_table,&pieces_table,&threads_table,&device_table};
+  const char* const backend_names[] = {"built-in loops","product of the table","four pieces",
+                                       "four pieces on threads","device"};
+  const std::size_t step = every ? 1 : std::max<std::size_t>(1,total/12);
+
+  for (const HalfForm& form : forms) {
+    // K of the whole build, made symmetric.
+    std::vector<double> reference(form.size,0.0);
+    form.whole(0,total,reference,DenseBackend());
+    form.symmetrize(reference);
+    const double scale = largest(reference);
+    require(scale > 1.0e-6,form.name+": the contributions are expected to be of order one");
+
+    long builds = 0;
+    for (std::size_t b = 0; b < 5; ++b) {
+      const DenseBackend backend(tables[b]);
+      const bool on_device = b == 4;
+      const std::string what = form.name+", "+backend_names[b];
+      // A call of one range; the record of the device must end clean, and
+      // the device computes every range that is not empty.
+      const auto run = [&](std::size_t first, std::size_t last, std::vector<double>& x) {
+        device.reset();
+        const bool computed = form.half(first,last,x,backend);
+        const std::string ending = device.ending();
+        require(ending.empty(),what+": "+ending);
+        require(computed == (on_device && first < last),what+": the wrong side computes a range of the half build");
+        if (computed)
+          require(device.accepted == 1 && device.bytes == device.allocated &&
+                  device.multiplications == device.largest_product && device.count[FakeDevice::download_call] == 1,
+                  what+": accept is told other sizes than the half build takes, or K is not fetched once");
+        ++builds;
+      };
+      // X + X^T against the reference.
+      const auto compare = [&](std::vector<double>& x, Worst& worst) {
+        form.mirror(x);
+        require(form.symmetric(x),what+": X + X^T is not symmetric to the last bit");
+        for (std::size_t e = 0; e < x.size(); ++e) worst.add(std::fabs(x[e]-reference[e])/scale);
+      };
+
+      Worst one(what+": half build, all ABFs (relative)",1e-12);
+      {
+        std::vector<double> x(form.size,0.0);
+        run(0,total,x);
+        compare(x,one);
+      }
+      one.finish();
+
+      Worst cut(what+": half build in two ranges (relative)",1e-12);
+      std::vector<std::size_t> middles;
+      for (std::size_t middle = 1; middle < total; middle += step) middles.push_back(middle);
+      if (middles.back() != total-1) middles.push_back(total-1);
+      for (const std::size_t middle : middles) {
+        std::vector<double> x(form.size,0.0);
+        if (middle%2 == 0) {
+          run(0,middle,x);
+          run(middle,total,x);
+        } else {
+          run(middle,total,x);
+          run(0,middle,x);
+        }
+        compare(x,cut);
+      }
+      cut.finish();
+
+      Worst growing(what+": half build in ranges of 1, 2, 3, ... ABFs (relative)",1e-12);
+      {
+        std::vector<double> x(form.size,0.0);
+        for (std::size_t first = 0, length = 1; first < total; ++length) {
+          const std::size_t last = std::min(total,first+length);
+          run(first,last,x);
+          first = last;
+        }
+        compare(x,growing);
+      }
+      growing.finish();
+
+      for (const std::size_t at : {std::size_t{0},first_abf[1],total-1,total}) {
+        std::vector<double> none(form.size,0.0);
+        run(at,at,none);
+        require(device.accepted == 0 && largest(none) == 0.0,
+                what+": an empty range of the half build asks the device or changes X");
+      }
+    }
+    std::printf("%s: %ld half builds of ranges of the %zu ABFs\n",form.name.c_str(),builds,total);
+
+    // Arguments that the library rejects change nothing, with a device too.
+    std::vector<double> k(form.size,0.0);
+    device.reset();
+    for (const OpenMXExxDenseBackend* const table : {tables[0],tables[4]}) {
+      const DenseBackend backend(table);
+      expect_invalid("a range of ABFs of the half build beyond the cell",[&] { form.half(0,total+1,k,backend); });
+      expect_invalid("a range of ABFs of the half build that ends before it begins",
+                     [&] { form.half(2,1,k,backend); });
+      expect_invalid("an exchange matrix of the half build of the wrong size",
+                     [&] { form.half(0,total,std::span<double>(k).first(k.size()-1),backend); });
+    }
+    expect_invalid("a mirror image of an array of the wrong size",
+                   [&] { form.mirror(std::span<double>(k).first(k.size()-1)); });
+    require(largest(k) == 0.0 && device.accepted == 0 && device.calls == 0,
+            form.name+": a rejected half build changes X or asks the device");
+  }
+
+  // The weights of the ABFs of the half build: no more than those of the
+  // whole build for any atom, and fewer in all.
+  for (const bool sites : {false,true}) {
+    const std::vector<double> half = abf_costs(system,sites,true), whole = abf_costs(system,sites);
+    require(half.size() == atoms && half == abf_costs(system,sites,true),
+            name+": wrong number of weights of the ABFs of the half build");
+    double half_total = 0.0, whole_total = 0.0;
+    for (std::size_t a = 0; a < atoms; ++a) {
+      require(half[a] >= 1.0 && std::isfinite(half[a]) && half[a] <= whole[a],
+              name+": a weight of the ABFs of the half build is not a count below that of the whole build");
+      half_total += half[a]*static_cast<double>(system.abf_count[a]);
+      whole_total += whole[a]*static_cast<double>(system.abf_count[a]);
+    }
+    require(half_total < whole_total,name+": the half build is not estimated to take fewer multiplications");
+    std::printf("%s, %s form: the half build has %.3f of the estimated multiplications of the whole build\n",
+                name.c_str(),sites ? "site" : "Gamma",half_total/whole_total);
+  }
+}
+
 // The weights of the blocks on the device (device_gradients_gamma() and
 // device_gradients_blocks()), in both forms, against the table of the host
 // with a product and a loop of four pieces.  The density matrices need not
@@ -3349,8 +3689,24 @@ void check_device_forms(const System& system, const std::string& name, Numbers& 
                   [&](std::size_t first, std::size_t last, std::span<double> k, const DenseBackend& backend) {
                     return add_exchange_blocks_range(system,layout,first,last,-alpha,blocks,k,backend);
                   }};
+  // The half build of the centre atoms first to last-1: the device and the
+  // host compute the same sums, which need no symmetry here.
+  std::vector<std::size_t> first_abf(1,0);
+  for (const std::size_t count : system.abf_count) first_abf.push_back(first_abf.back()+count);
+  DeviceForm half_gamma{name+", Gamma form, half build",n*n,
+                        [&](std::size_t first, std::size_t last, std::span<double> k, const DenseBackend& backend) {
+                          return add_exchange_gamma_half_abfs(system,first_abf[first],first_abf[last],-alpha,dense,k,
+                                                              backend);
+                        }};
+  DeviceForm half_site{name+", site form, half build",layout.elements(),
+                       [&](std::size_t first, std::size_t last, std::span<double> k, const DenseBackend& backend) {
+                         return add_exchange_blocks_half_abfs(system,layout,first_abf[first],first_abf[last],-alpha,
+                                                              blocks,k,backend);
+                       }};
   check_device(system,gamma,random,every);
   check_device(system,site,random,every);
+  check_device(system,half_gamma,random,every);
+  check_device(system,half_site,random,every);
   check_abf_ranges(system,name,random,every);
   check_device_gradients(system,name,random,every);
 
@@ -3386,13 +3742,15 @@ void exchange_device(const std::string& path)
   check_device_forms(narrow_system(random),"narrow system",random,true);
 }
 
-void exchange_device_system(const std::string& path)
+namespace {
+
+// The periodic structure of exx-exchange-system: the atoms have 10, 15 and 1
+// ABFs, the cell is smaller than the cutoffs, and pairs of sites share blocks
+// of K.
+System periodic_system(const std::string& path)
 {
   const OverlapFixture fixture = read_overlap_fixture(path);
   require(fixture.species.size() == 3 && fixture.positions.size() == 3,"the test is written for the three species of the fixture");
-  // The periodic structure of exx-exchange-system: the atoms have 10, 15 and
-  // 1 ABFs, the cell is smaller than the cutoffs, and pairs of sites share
-  // blocks of K.
   const int intervals = 300;
   const ReciprocalGrid reciprocal = ReciprocalGrid::uniform(24.0,240);
   SystemOptions options;
@@ -3404,11 +3762,25 @@ void exchange_device_system(const std::string& path)
   structure.lattice = fixture.lattice;
   structure.positions = fixture.positions;
   structure.species = fixture.atom_species;
-  const System system = prepare_system(structure,tables_of(few,intervals,reciprocal,1.0e-3),reciprocal,options);
+  System system = prepare_system(structure,tables_of(few,intervals,reciprocal,1.0e-3),reciprocal,options);
   require(system.abf_count == std::vector<std::size_t>({10,15,1}),"the test is written for atoms with 10, 15 and 1 ABFs");
   require(shared_pairs(system) > 0,"the structure is expected to have pairs of sites that share a block of K");
+  return system;
+}
+
+} // namespace
+
+void exchange_device_system(const std::string& path)
+{
   Numbers random;
-  check_device_forms(system,"periodic structure",random,false);
+  check_device_forms(periodic_system(path),"periodic structure",random,false);
+}
+
+void exchange_half(const std::string& path)
+{
+  Numbers random;
+  check_half_build(mirrored_system(random),"mirrored system",random,true);
+  check_half_build(periodic_system(path),"periodic structure",random,false);
 }
 
 } // namespace exx_test

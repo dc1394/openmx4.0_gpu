@@ -430,18 +430,55 @@ std::array<int,4> site_key(const Site& site)
   return {site.atom,site.cell[0],site.cell[1],site.cell[2]};
 }
 
-// S(A) of the centre atom a: the sites of loc(B) for all V neighbours B, in
-// the order of their first appearance.
-std::vector<Site> column_sites(const System& system, std::size_t a)
+// The half build (section 6.4 of the guide).  The contribution of the centre
+// a through its V neighbour B = (b, R) is the transpose of the contribution
+// of the centre b through its V neighbour (a, -R): the V blocks of the two
+// pairs are each other's transposes, and the density matrix is symmetric.
+// The half build of the site form takes one pair of the two: R > 0 in the
+// order of the components, or R = 0 and b > a.  The centre itself, b = a at
+// R = 0, is its own mirror image and enters with half its V block.  In the
+// Gamma form the images of an atom b are one group, and the group of b for
+// the centre a is the transpose of the group of a for the centre b: the half
+// build takes the groups b > a and half the group of the centre itself
+// (GammaSink).  The sum X over all centres gives K = X + X^T in both forms.
+bool half_pair(std::size_t a, const Site& b)
+{
+  for (const int c : b.cell)
+    if (c != 0) return c > 0;
+  return static_cast<std::size_t>(b.atom) > a;
+}
+
+// The V neighbours of the centre a that a build goes through: all of them,
+// or those of the half build.  The centre itself comes first in both.
+std::vector<std::size_t> group_neighbours(const System& system, std::size_t a, bool half)
+{
+  const std::vector<Site>& v = system.v_neighbours[a];
+  std::vector<std::size_t> list;
+  for (std::size_t i = 0; i < v.size(); ++i)
+    if (!half || i == 0 || half_pair(a,v[i])) list.push_back(i);
+  return list;
+}
+
+// S(A) of the centre atom a for the V neighbours B of the list: the sites of
+// loc(B), in the order of their first appearance.
+std::vector<Site> column_sites(const System& system, std::size_t a, const std::vector<std::size_t>& neighbours)
 {
   std::vector<Site> sites;
   std::set<std::array<int,4>> seen;
-  for (const Site& b : system.v_neighbours[a])
+  for (const std::size_t i : neighbours) {
+    const Site& b = system.v_neighbours[a][i];
     for (const Site& c : system.c_neighbours[static_cast<std::size_t>(b.atom)]) {
       const Site site{c.atom,sum(b.cell,c.cell)};
       if (seen.insert(site_key(site)).second) sites.push_back(site);
     }
+  }
   return sites;
+}
+
+// S(A) for all V neighbours.
+std::vector<Site> column_sites(const System& system, std::size_t a)
+{
+  return column_sites(system,a,group_neighbours(system,a,false));
 }
 
 class LayoutBlocks;
@@ -449,24 +486,37 @@ class LayoutBlocks;
 // Blocks is the store of the blocks of K: at(key) gives the block of a key,
 // u_row x u_column elements.  With the store of an array in a layout
 // (LayoutBlocks) the sink also gathers D and adds the last result in pieces.
+// The sink of the half build (half) goes through the V neighbours of
+// half_pair() and the centre itself, and S(A) has the sites of these only.
 template <class Blocks>
 class SiteSink {
  public:
-  SiteSink(const System& system, std::size_t a, double factor, Blocks& k)
-      : system_(system), a_(a), factor_(factor), k_(k), sites_(column_sites(system,a)), offset_(1,0)
+  SiteSink(const System& system, std::size_t a, double factor, Blocks& k, bool half = false)
+      : system_(system), a_(a), factor_(factor), k_(k), half_(half), neighbours_(group_neighbours(system,a,half)),
+        sites_(column_sites(system,a,neighbours_)), offset_(1,0)
   {
     for (const Site& site : sites_) {
       index_.emplace(site_key(site),offset_.size()-1);
       offset_.push_back(offset_.back()+system.orbital_count[static_cast<std::size_t>(site.atom)]);
     }
+    if (half) {
+      const std::vector<double>& block = system.v[a][0];
+      onsite_.resize(block.size());
+      for (std::size_t e = 0; e < block.size(); ++e) onsite_[e] = 0.5*block[e];
+    }
   }
 
   std::size_t size() const noexcept { return offset_.back(); }
 
-  // Every V neighbour is a group of its own, with the blocks as they are stored.
-  std::size_t groups() const noexcept { return system_.v_neighbours[a_].size(); }
-  std::size_t atom(std::size_t ib) const { return static_cast<std::size_t>(system_.v_neighbours[a_][ib].atom); }
-  const double* v(std::size_t ib) const { return system_.v[a_][ib].data(); }
+  // Every V neighbour of the build is a group of its own, with the blocks as
+  // they are stored; the centre itself has half its V block in the half
+  // build.
+  std::size_t groups() const noexcept { return neighbours_.size(); }
+  std::size_t atom(std::size_t g) const { return static_cast<std::size_t>(neighbour(g).atom); }
+  const double* v(std::size_t g) const
+  {
+    return half_ && neighbours_[g] == 0 ? onsite_.data() : system_.v[a_][neighbours_[g]].data();
+  }
   const double* t(std::size_t atom) const { return system_.t[atom].data(); }
   std::size_t width(std::size_t atom) const { return system_.c_offset[atom].back(); }
 
@@ -553,7 +603,7 @@ class SiteSink {
   // The offset in the layout of the block of K of term (i) of group ib.
   long long device_first(std::size_t ib) const
   {
-    const Site& b = system_.v_neighbours[a_][ib];
+    const Site& b = neighbour(ib);
     return block_offset(BlockKey{static_cast<int>(a_),b.atom,b.cell});
   }
 
@@ -564,7 +614,7 @@ class SiteSink {
   void device_second(std::size_t ib, std::vector<long long>& stored, std::vector<long long>& local,
                      std::vector<int>& length) const
   {
-    const Site& b = system_.v_neighbours[a_][ib];
+    const Site& b = neighbour(ib);
     const std::size_t atom = static_cast<std::size_t>(b.atom);
     const std::size_t ua = system_.orbital_count[a_], lb = system_.c_offset[atom].back();
     const std::vector<Site>& loc = system_.c_neighbours[atom];
@@ -584,7 +634,7 @@ class SiteSink {
 
   const std::vector<std::size_t>& columns(std::size_t ib)
   {
-    const Site& b = system_.v_neighbours[a_][ib];
+    const Site& b = neighbour(ib);
     columns_.clear();
     for (const Site& c : system_.c_neighbours[static_cast<std::size_t>(b.atom)]) {
       const std::size_t j = index_.at(site_key(Site{c.atom,sum(b.cell,c.cell)}));
@@ -595,14 +645,14 @@ class SiteSink {
 
   void first(std::size_t ib, const double* values)
   {
-    const Site& b = system_.v_neighbours[a_][ib];
+    const Site& b = neighbour(ib);
     const std::span<double> block = k_.at(BlockKey{static_cast<int>(a_),b.atom,b.cell});
     for (std::size_t e = 0; e < block.size(); ++e) block[e] += factor_*values[e];
   }
 
   void second(std::size_t ib, const double* values)
   {
-    const Site& b = system_.v_neighbours[a_][ib];
+    const Site& b = neighbour(ib);
     const std::size_t atom = static_cast<std::size_t>(b.atom);
     const std::size_t ua = system_.orbital_count[a_], lb = system_.c_offset[atom].back();
     const std::vector<Site>& loc = system_.c_neighbours[atom];
@@ -668,10 +718,16 @@ class SiteSink {
     return static_cast<long long>(layout.offset[i]);
   }
 
+  // The V neighbour of group g.
+  const Site& neighbour(std::size_t g) const { return system_.v_neighbours[a_][neighbours_[g]]; }
+
   const System& system_;
   std::size_t a_;
   double factor_;
   Blocks& k_;
+  bool half_;
+  std::vector<std::size_t> neighbours_;             // the V neighbour of every group
+  std::vector<double> onsite_;                      // half the V block of the centre itself (half build)
   std::vector<Site> sites_;                         // S
   std::vector<std::size_t> offset_;                 // first column of every site of S
   std::map<std::array<int,4>,std::size_t> index_;   // position of a site in S
@@ -758,15 +814,17 @@ void for_mirrored(const System& system, const BlockLayout& layout, Visit visit)
 class GammaSink {
  public:
   GammaSink(const System& system, std::size_t a, double factor, std::span<double> k,
-            const std::vector<std::size_t>& offset)
+            const std::vector<std::size_t>& offset, bool half = false)
       : system_(system), a_(a), factor_(factor), k_(k), offset_(offset), n_(offset.back()),
         folded_(system.orbital_count.size())
   {
     // The groups: the atoms among the V neighbours, in the order of their
-    // first appearance.
+    // first appearance.  The half build takes the atoms b >= a, and half the
+    // group of the centre itself, which comes first.
     std::vector<std::size_t> group(system.orbital_count.size(),none);
     for (std::size_t ib = 0; ib < system.v_neighbours[a].size(); ++ib) {
       const std::size_t b = static_cast<std::size_t>(system.v_neighbours[a][ib].atom);
+      if (half && b < a) continue;
       const std::vector<double>& block = system.v[a][ib];
       if (group[b] == none) {
         group[b] = atoms_.size();
@@ -777,6 +835,8 @@ class GammaSink {
         for (std::size_t e = 0; e < block.size(); ++e) sum[e] += block[e];
       }
     }
+    if (half)
+      for (double& value : v_.front()) value *= 0.5;
   }
 
   std::size_t groups() const noexcept { return atoms_.size(); }
@@ -1527,21 +1587,21 @@ std::size_t device_gradient_range(const System& system, const std::vector<Centre
   return done;
 }
 
-// The site form in one array for the device.
+// The site form in one array for the device, for the half build with half.
 class DeviceBlocks {
  public:
-  DeviceBlocks(const System& system, const BlockLayout& layout, double factor)
-      : system_(system), factor_(factor), store_(layout,std::span<double>())
+  DeviceBlocks(const System& system, const BlockLayout& layout, double factor, bool half = false)
+      : system_(system), factor_(factor), half_(half), store_(layout,std::span<double>())
   {
   }
 
   // The sizes of np ABFs of centre a.
   DeviceSizes sizes(std::size_t a, std::size_t np)
   {
-    const SiteSink<LayoutBlocks> sink(system_,a,factor_,store_);
+    const SiteSink<LayoutBlocks> sink(system_,a,factor_,store_,half_);
     std::vector<std::array<std::size_t,3>> groups;
-    for (const Site& b : system_.v_neighbours[a]) {
-      const std::size_t atom = static_cast<std::size_t>(b.atom);
+    for (std::size_t g = 0; g < sink.groups(); ++g) {
+      const std::size_t atom = sink.atom(g);
       groups.push_back({atom,system_.c_offset[atom].back(),system_.c_neighbours[atom].size()});
     }
     const std::size_t ell = system_.c_offset[a].back();
@@ -1553,7 +1613,8 @@ class DeviceBlocks {
 
   DeviceCentre plan(std::size_t a)
   {
-    SiteSink<LayoutBlocks> sink(system_,a,factor_,store_);
+    sink_.emplace(system_,a,factor_,store_,half_);     // half the V block of the centre lives in it
+    SiteSink<LayoutBlocks>& sink = *sink_;
     DeviceCentre c;
     c.s = sink.size();
     sink.device_rows(c.local,c.stored,c.length,c.begin);
@@ -1583,22 +1644,25 @@ class DeviceBlocks {
  private:
   const System& system_;
   double factor_;
+  bool half_;
   LayoutBlocks store_;                     // the layout, for the offsets of the blocks; nothing is written to it
+  std::optional<SiteSink<LayoutBlocks>> sink_;   // the sink of the centre of the last plan
 };
 
-// The Gamma form for the device.  The T blocks are folded as GammaSink folds
-// them; folding depends on the atom only.
+// The Gamma form for the device, for the half build with half.  The T blocks
+// are folded as GammaSink folds them; folding depends on the atom only.
 class DeviceGamma {
  public:
-  DeviceGamma(const System& system, double factor, const std::vector<std::size_t>& offset)
-      : system_(system), factor_(factor), offset_(offset), folding_(system,0,factor,std::span<double>(),offset)
+  DeviceGamma(const System& system, double factor, const std::vector<std::size_t>& offset, bool half = false)
+      : system_(system), factor_(factor), half_(half), offset_(offset),
+        folding_(system,0,factor,std::span<double>(),offset)
   {
   }
 
   // The sizes of np ABFs of centre a.
   DeviceSizes sizes(std::size_t a, std::size_t np)
   {
-    GammaSink sink(system_,a,factor_,std::span<double>(),offset_);
+    GammaSink sink(system_,a,factor_,std::span<double>(),offset_,half_);
     std::vector<std::array<std::size_t,3>> groups;
     for (std::size_t g = 0; g < sink.groups(); ++g) groups.push_back({sink.atom(g),sink.width(sink.atom(g)),0});
     return device_sizes(system_,a,np,offset_.back(),sink.width(a),groups,0,false);
@@ -1612,7 +1676,7 @@ class DeviceGamma {
 
   DeviceCentre plan(std::size_t a)
   {
-    sink_.emplace(system_,a,factor_,std::span<double>(),offset_);  // the V blocks of the groups live in it
+    sink_.emplace(system_,a,factor_,std::span<double>(),offset_,half_);  // the V blocks of the groups live in it
     GammaSink& sink = *sink_;
     const std::size_t n = offset_.back();
     DeviceCentre c;
@@ -1642,6 +1706,7 @@ class DeviceGamma {
  private:
   const System& system_;
   double factor_;
+  bool half_;
   const std::vector<std::size_t>& offset_;
   GammaSink folding_;                      // the folded T blocks of all atoms
   std::optional<GammaSink> sink_;          // the sink of the centre of the last plan
@@ -1821,14 +1886,34 @@ void check_arrays(const System& system, const BlockLayout& layout, std::span<con
   if (k.size() != layout.elements()) throw std::invalid_argument("the exchange matrix does not have the size of the layout");
 }
 
-// The part of a centre atom on the host, for arrays that fit the system.
+// The part of a centre atom on the host, for arrays that fit the system; the
+// part of the half build with half.
 void add_blocks_part(const System& system, const BlockLayout& layout, const CentrePart& part, double factor,
-                     std::span<const double> density, std::span<double> k, const DenseBackend& backend)
+                     std::span<const double> density, std::span<double> k, const DenseBackend& backend,
+                     bool half = false)
 {
   LayoutBlocks store(layout,k);
-  SiteSink<LayoutBlocks> sink(system,part.atom,factor,store);
+  SiteSink<LayoutBlocks> sink(system,part.atom,factor,store,half);
   const std::unique_ptr<double[]> dloc = sink.density(density,backend,piece_count(part.last-part.first,backend));
   centre_contribution(system,part.atom,part.first,part.last,sink.size(),dloc.get(),sink,backend);
+}
+
+// add_exchange_blocks_abfs(), and the half build with half.
+bool blocks_abfs(const System& system, const BlockLayout& layout, std::size_t first, std::size_t last, double factor,
+                 std::span<const double> density, std::span<double> k, const DenseBackend& backend, bool half)
+{
+  check(system);
+  const std::vector<std::size_t> offset = abf_offsets(system);
+  if (first > last || last > offset.back()) throw std::out_of_range("the range of ABFs is not inside the unit cell");
+  if (first == last) return false;
+  check_arrays(system,layout,density,k);
+  const std::vector<CentrePart> parts = centre_parts(offset,first,last);
+  if (const OpenMXExxDevice* device = backend.device(); device != nullptr) {
+    DeviceBlocks form(system,layout,factor,half);
+    if (device_range(system,parts,factor,density,k,*device,form)) return true;
+  }
+  for (const CentrePart& part : parts) add_blocks_part(system,layout,part,factor,density,k,backend,half);
+  return false;
 }
 
 } // namespace
@@ -1846,18 +1931,14 @@ bool add_exchange_blocks_abfs(const System& system, const BlockLayout& layout, s
                               double factor, std::span<const double> density, std::span<double> k,
                               const DenseBackend& backend)
 {
-  check(system);
-  const std::vector<std::size_t> offset = abf_offsets(system);
-  if (first > last || last > offset.back()) throw std::out_of_range("the range of ABFs is not inside the unit cell");
-  if (first == last) return false;
-  check_arrays(system,layout,density,k);
-  const std::vector<CentrePart> parts = centre_parts(offset,first,last);
-  if (const OpenMXExxDevice* device = backend.device(); device != nullptr) {
-    DeviceBlocks form(system,layout,factor);
-    if (device_range(system,parts,factor,density,k,*device,form)) return true;
-  }
-  for (const CentrePart& part : parts) add_blocks_part(system,layout,part,factor,density,k,backend);
-  return false;
+  return blocks_abfs(system,layout,first,last,factor,density,k,backend,false);
+}
+
+bool add_exchange_blocks_half_abfs(const System& system, const BlockLayout& layout, std::size_t first,
+                                   std::size_t last, double factor, std::span<const double> density,
+                                   std::span<double> k, const DenseBackend& backend)
+{
+  return blocks_abfs(system,layout,first,last,factor,density,k,backend,true);
 }
 
 bool add_exchange_blocks_range(const System& system, const BlockLayout& layout, std::size_t first, std::size_t last,
@@ -1874,7 +1955,7 @@ bool add_exchange_blocks_range(const System& system, const BlockLayout& layout, 
 
 // ---- the work of a build ------------------------------------------------------
 
-std::vector<double> abf_costs(const System& system, bool sites)
+std::vector<double> abf_costs(const System& system, bool sites, bool half)
 {
   check(system);
   const std::size_t atoms = system.orbital_count.size(), n = orbital_total(system);
@@ -1899,24 +1980,45 @@ std::vector<double> abf_costs(const System& system, bool sites)
   std::vector<double> cost(atoms);
   for (std::size_t a = 0; a < atoms; ++a) {
     const std::size_t ua = system.orbital_count[a];
+    // The V neighbours of the build; the half build of the Gamma form takes
+    // the atoms b >= a below.
+    const std::vector<std::size_t> groups = group_neighbours(system,a,sites && half);
     std::size_t s = n;                                 // the columns of D[loc(A), .]
     if (sites) {
       s = 0;
-      for (const Site& site : column_sites(system,a)) s += system.orbital_count[static_cast<std::size_t>(site.atom)];
+      for (const Site& site : column_sites(system,a,groups))
+        s += system.orbital_count[static_cast<std::size_t>(site.atom)];
     }
     double total = 2.0*product(ua,s,width[a]);         // G and the last product
     // W and the four terms of every group: a V neighbour in the site form,
     // an atom among the V neighbours in the Gamma form.
     seen.assign(atoms,0);
-    for (const Site& site : system.v_neighbours[a]) {
-      const std::size_t b = static_cast<std::size_t>(site.atom);
-      if (!sites && seen[b]) continue;
+    for (const std::size_t i : groups) {
+      const std::size_t b = static_cast<std::size_t>(system.v_neighbours[a][i].atom);
+      if (!sites && (seen[b] || (half && b < a))) continue;
       seen[b] = 1;
       total += product(system.orbital_count[b],width[b],system.abf_count[b]+4*ua);
     }
     cost[a] = total;
   }
   return cost;
+}
+
+void mirror_blocks(const System& system, const BlockLayout& layout, std::span<double> values)
+{
+  if (values.size() != layout.elements()) throw std::invalid_argument("the array does not have the size of the layout");
+  for_mirrored(system,layout,[&](std::size_t e, std::size_t f) {
+    const double sum = values[e]+values[f];
+    values[e] = sum;
+    values[f] = sum;
+  });
+  // The diagonals of the blocks that are their own mirror images, M_xx(0).
+  for (std::size_t i = 0; i < layout.keys.size(); ++i) {
+    const BlockKey& key = layout.keys[i];
+    if (key.row != key.column || key.cell != std::array<int,3>{0,0,0}) continue;
+    const std::size_t u = system.orbital_count[static_cast<std::size_t>(key.row)];
+    for (std::size_t r = 0; r < u; ++r) values[layout.offset[i]+r*u+r] *= 2.0;
+  }
 }
 
 double block_asymmetry(const System& system, const BlockLayout& layout, std::span<const double> values)
@@ -1950,15 +2052,38 @@ std::size_t orbital_total(const System& system) noexcept
 
 namespace {
 
-// The part of a centre atom on the host, for N x N arrays of the system.
+// The part of a centre atom on the host, for N x N arrays of the system; the
+// part of the half build with half.
 void add_gamma_part(const System& system, const std::vector<std::size_t>& offset, const CentrePart& part, double factor,
-                    std::span<const double> density, std::span<double> k, const DenseBackend& backend)
+                    std::span<const double> density, std::span<double> k, const DenseBackend& backend,
+                    bool half = false)
 {
   const std::size_t n = offset.back();
-  GammaSink sink(system,part.atom,factor,k,offset);
+  GammaSink sink(system,part.atom,factor,k,offset,half);
   const std::unique_ptr<double[]> dloc =
       gathered_rows(density,n,sink.rows(),backend,piece_count(part.last-part.first,backend));
   centre_contribution(system,part.atom,part.first,part.last,n,dloc.get(),sink,backend);
+}
+
+// add_exchange_gamma_abfs(), and the half build with half.
+bool gamma_abfs(const System& system, std::size_t first, std::size_t last, double factor,
+                std::span<const double> density, std::span<double> k, const DenseBackend& backend, bool half)
+{
+  check(system);
+  const std::vector<std::size_t> abfs = abf_offsets(system);
+  if (first > last || last > abfs.back()) throw std::out_of_range("the range of ABFs is not inside the unit cell");
+  if (first == last) return false;
+  const std::vector<std::size_t> offset = orbital_offsets(system);
+  const std::size_t n = offset.back();
+  check_dense(n,density.size(),"the density matrix is not N x N");
+  check_dense(n,k.size(),"the exchange matrix is not N x N");
+  const std::vector<CentrePart> parts = centre_parts(abfs,first,last);
+  if (const OpenMXExxDevice* device = backend.device(); device != nullptr) {
+    DeviceGamma form(system,factor,offset,half);
+    if (device_range(system,parts,factor,density,k,*device,form)) return true;
+  }
+  for (const CentrePart& part : parts) add_gamma_part(system,offset,part,factor,density,k,backend,half);
+  return false;
 }
 
 } // namespace
@@ -1978,21 +2103,27 @@ void add_exchange_gamma(const System& system, std::size_t atom, double factor, s
 bool add_exchange_gamma_abfs(const System& system, std::size_t first, std::size_t last, double factor,
                              std::span<const double> density, std::span<double> k, const DenseBackend& backend)
 {
-  check(system);
-  const std::vector<std::size_t> abfs = abf_offsets(system);
-  if (first > last || last > abfs.back()) throw std::out_of_range("the range of ABFs is not inside the unit cell");
-  if (first == last) return false;
-  const std::vector<std::size_t> offset = orbital_offsets(system);
-  const std::size_t n = offset.back();
-  check_dense(n,density.size(),"the density matrix is not N x N");
-  check_dense(n,k.size(),"the exchange matrix is not N x N");
-  const std::vector<CentrePart> parts = centre_parts(abfs,first,last);
-  if (const OpenMXExxDevice* device = backend.device(); device != nullptr) {
-    DeviceGamma form(system,factor,offset);
-    if (device_range(system,parts,factor,density,k,*device,form)) return true;
+  return gamma_abfs(system,first,last,factor,density,k,backend,false);
+}
+
+bool add_exchange_gamma_half_abfs(const System& system, std::size_t first, std::size_t last, double factor,
+                                  std::span<const double> density, std::span<double> k, const DenseBackend& backend)
+{
+  return gamma_abfs(system,first,last,factor,density,k,backend,true);
+}
+
+void mirror_gamma(const System& system, std::span<double> values)
+{
+  const std::size_t n = orbital_total(system);
+  check_dense(n,values.size(),"the matrix is not N x N");
+  for (std::size_t i = 0; i < n; ++i) {
+    values[i*n+i] *= 2.0;
+    for (std::size_t j = i+1; j < n; ++j) {
+      const double sum = values[i*n+j]+values[j*n+i];
+      values[i*n+j] = sum;
+      values[j*n+i] = sum;
+    }
   }
-  for (const CentrePart& part : parts) add_gamma_part(system,offset,part,factor,density,k,backend);
-  return false;
 }
 
 bool add_exchange_gamma_range(const System& system, std::size_t first, std::size_t last, double factor,

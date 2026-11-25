@@ -141,12 +141,36 @@ bool add_exchange_blocks_abfs(const System& system, const BlockLayout& layout, s
                               double factor, std::span<const double> density, std::span<double> k,
                               const DenseBackend& backend = DenseBackend());
 
+// The half build (section 6.4 of the implementation guide).  K is symmetric,
+// K_xy(R) = K_yx(-R)^T, when the density matrix is, and the contribution of
+// a centre a through its V neighbour (b, R) is the transpose of that of the
+// centre b through its V neighbour (a, -R).  The half build takes one pair of
+// the two: R > 0 in the order of the components, or R = 0 and b > a; the
+// centre itself, b = a at R = 0, enters with half its V block.  Every centre
+// then goes through about half its V neighbours, and S(A) holds the sites of
+// these only.  Calls whose ranges divide the ABFs add up to X, and K = X +
+// X^T (mirror_blocks()), within rounding of add_exchange_blocks_abfs().  The
+// density matrix must have D_xy(R) = D_yx(-R)^T, and the system the V
+// neighbours and V blocks of prepare_system(): (a, -R) is a V neighbour of b
+// with the transpose of the V block of (b, R) of a, and the V block of the
+// centre itself is symmetric.  The arguments and the device are those of
+// add_exchange_blocks_abfs().
+bool add_exchange_blocks_half_abfs(const System& system, const BlockLayout& layout, std::size_t first,
+                                   std::size_t last, double factor, std::span<const double> density,
+                                   std::span<double> k, const DenseBackend& backend = DenseBackend());
+
+// M_xy(R) + M_yx(-R)^T for every block of the layout, written over the array:
+// both elements of a pair that are equal in a matrix with M_xy(R) =
+// M_yx(-R)^T get their sum, and the diagonal of M_xx(0) is doubled.
+void mirror_blocks(const System& system, const BlockLayout& layout, std::span<double> values);
+
 // For every atom: an estimate of the multiplications that one of its ABFs
 // takes in a build with the atom as the centre, in the site form (sites) or
-// in the Gamma form.  It counts the two products with the T blocks of the
-// centre and, for every V neighbour, the product with its V block and the
-// four terms.  Processes that divide a build weigh the ABFs with it.
-std::vector<double> abf_costs(const System& system, bool sites);
+// in the Gamma form, for the half build with half.  It counts the two
+// products with the T blocks of the centre and, for every V neighbour of the
+// build, the product with its V block and the four terms.  Processes that
+// divide a build weigh the ABFs with it.
+std::vector<double> abf_costs(const System& system, bool sites, bool half = false);
 
 // The largest difference between an element of M_xy(R) and the element of
 // M_yx(-R) that equals it in a matrix with M_xy(R) = M_yx(-R)^T.
@@ -182,6 +206,20 @@ bool add_exchange_gamma_range(const System& system, std::size_t first, std::size
 bool add_exchange_gamma_abfs(const System& system, std::size_t first, std::size_t last, double factor,
                              std::span<const double> density, std::span<double> k,
                              const DenseBackend& backend = DenseBackend());
+
+// The half build for N x N arrays.  The images of an atom b among the V
+// neighbours of the centre a are one group, and the group of b for the
+// centre a is the transpose of the group of a for the centre b.  The half
+// build takes the groups of the atoms b > a and half the group of the centre
+// itself, so that a cell smaller than the cutoffs saves products as well.
+// The density matrix must be symmetric, the system must have the symmetry
+// of add_exchange_blocks_half_abfs(), and K = X + X^T (mirror_gamma()).
+bool add_exchange_gamma_half_abfs(const System& system, std::size_t first, std::size_t last, double factor,
+                                  std::span<const double> density, std::span<double> k,
+                                  const DenseBackend& backend = DenseBackend());
+
+// M + M^T of an N x N array, written over it.
+void mirror_gamma(const System& system, std::span<double> values);
 
 // K of one spin channel: all atoms, factor -alpha.  It equals the sum over R
 // of the blocks K(R) that the site form gives for D_xy(R) = D_xy.

@@ -230,10 +230,11 @@ static int divided_work(const OpenMXExxState *whole, const OpenMXExxOptions *opt
   const double *read[ATOMS], *site_read[ATOMS], *missing[ATOMS];
   double *site_other = NULL;
   double other[N * N], costs[ATOMS], site_costs[ATOMS], paired[3 * ATOMS], once[3 * ATOMS], again[3 * ATOMS];
+  double half_costs[ATOMS], half_site_costs[ATOMS];
   size_t size[ATOMS], e;
   char message[160];
   long total, count, cut, p, systems, first_abf[ATOMS + 1];
-  int failed = 0, a, i, trial, part, parts;
+  int failed = 0, a, i, j, trial, part, parts;
 
   /* The ABFs of the unit cell are those of its atoms, and every atom has a
      cost for one of its ABFs in either form. */
@@ -300,6 +301,38 @@ static int divided_work(const OpenMXExxState *whole, const OpenMXExxOptions *opt
   EXPECT(calls.products > 0);
   for (i = 0; i < N * N; ++i) EXPECT(fabs(other[i] - k[i]) <= 1.0e-12 * scale);
   for (e = 0; e < elements; ++e) EXPECT(fabs(site_other[e] - site_k[e]) <= 1.0e-12 * site_scale);
+
+  /* The half build (section 6.4 of the guide): its sum X over two ranges
+     gives X + X^T, which is K within rounding and symmetric to the last bit;
+     d and site_d are symmetric.  It is estimated to take no more than the
+     whole build for any atom. */
+  EXPECT(openmx_exx_half_abf_costs(whole, 0, half_costs) == 0 && openmx_exx_half_abf_costs(whole, 1, half_site_costs) == 0);
+  for (a = 0; a < ATOMS; ++a)
+    EXPECT(half_costs[a] > 0.0 && half_costs[a] <= costs[a] && half_site_costs[a] > 0.0 &&
+           half_site_costs[a] <= site_costs[a]);
+  EXPECT(openmx_exx_half_abf_costs(NULL, 0, half_costs) != 0 && openmx_exx_half_abf_costs(whole, 0, NULL) != 0);
+  cut = total / 2;
+  memset(other, 0, sizeof other);
+  EXPECT(openmx_exx_add_gamma_half_abfs(whole, cut, total, -0.25, d, other, NULL, message, sizeof message) == 0);
+  EXPECT(openmx_exx_add_gamma_half_abfs(whole, 0, cut, -0.25, d, other, NULL, message, sizeof message) == 0);
+  EXPECT(openmx_exx_mirror_gamma(whole, other, message, sizeof message) == 0 && message[0] == '\0');
+  for (i = 0; i < N * N; ++i) EXPECT(fabs(other[i] - k[i]) <= 1.0e-12 * scale);
+  for (i = 0; i < N; ++i)
+    for (j = i + 1; j < N; ++j) EXPECT(other[i * N + j] == other[j * N + i]);
+  memset(site_other, 0, elements * sizeof *site_other);
+  EXPECT(openmx_exx_add_blocks_half_abfs(whole, 0, cut, -0.25, site_d, site_other, NULL, message, sizeof message) == 0);
+  EXPECT(openmx_exx_add_blocks_half_abfs(whole, cut, total, -0.25, site_d, site_other, NULL, message, sizeof message) == 0);
+  EXPECT(openmx_exx_mirror_blocks(whole, site_other, message, sizeof message) == 0 && message[0] == '\0');
+  for (e = 0; e < elements; ++e) EXPECT(fabs(site_other[e] - site_k[e]) <= 1.0e-12 * site_scale);
+  /* Rejected calls leave a message. */
+  EXPECT(openmx_exx_add_gamma_half_abfs(whole, 2, 1, -0.25, d, other, NULL, message, sizeof message) != 0);
+  EXPECT(strlen(message) > 0);
+  EXPECT(openmx_exx_add_gamma_half_abfs(NULL, 0, total, -0.25, d, other, NULL, NULL, 0) != 0);
+  EXPECT(openmx_exx_add_blocks_half_abfs(whole, 0, total + 1, -0.25, site_d, site_other, NULL, NULL, 0) != 0);
+  EXPECT(openmx_exx_add_blocks_half_abfs(whole, 0, total, -0.25, NULL, site_other, NULL, NULL, 0) != 0);
+  EXPECT(openmx_exx_mirror_gamma(whole, NULL, message, sizeof message) != 0 && strlen(message) > 0);
+  EXPECT(openmx_exx_mirror_gamma(NULL, other, NULL, 0) != 0 && openmx_exx_mirror_blocks(NULL, site_other, NULL, 0) != 0);
+  EXPECT(openmx_exx_mirror_blocks(whole, NULL, NULL, 0) != 0);
 
   /* The preparation in shares.  The T and V blocks of an atom are one array
      of a size that is known without a share. */

@@ -354,6 +354,38 @@ int openmx_exx_add_blocks_abfs(const OpenMXExxState *state, long first_abf, long
 int openmx_exx_symmetrize_blocks(const OpenMXExxState *state, double *values, double *asymmetry,
                                  char *error, size_t capacity);
 
+/* ---- the half build (section 6.4) ---------------------------------------- */
+
+/* K is symmetric when the density matrix is, and the contribution of a
+   centre atom a through its V neighbour (b, R) is the transpose of that of
+   the centre b through its V neighbour (a, -R).  The half build takes one
+   pair of the two: in the site form the V neighbours with R > 0 in the order
+   of the components, or with R = 0 and b > a, and the centre itself with
+   half its V block; in the Gamma form, where the images of an atom are one
+   group, the atoms b > a and half the group of the centre itself.  It takes
+   about half the products of the V neighbours of a build.
+   openmx_exx_add_gamma_half_abfs and openmx_exx_add_blocks_half_abfs add
+   factor times the half build of the ABFs first_abf <= P < last_abf, with
+   the arguments of openmx_exx_add_gamma_abfs and openmx_exx_add_blocks_abfs.
+   The ranges of a division of all ABFs add up to X, and
+   openmx_exx_mirror_gamma or openmx_exx_mirror_blocks then turns X into
+   K = X + X^T, which equals K of the whole build within rounding and is
+   symmetric to the last bit.  The density matrix must be symmetric, with
+   D_xy(R) = D_yx(-R)^T in the site form.  openmx_exx_half_abf_costs gives
+   the estimate of openmx_exx_abf_costs for the half build. */
+int openmx_exx_half_abf_costs(const OpenMXExxState *state, int sites, double *costs);
+int openmx_exx_add_gamma_half_abfs(const OpenMXExxState *state, long first_abf, long last_abf, double factor,
+                                   const double *density, double *k, const OpenMXExxDenseBackend *backend,
+                                   char *error, size_t capacity);
+int openmx_exx_add_blocks_half_abfs(const OpenMXExxState *state, long first_abf, long last_abf, double factor,
+                                    const double *density, double *k, const OpenMXExxDenseBackend *backend,
+                                    char *error, size_t capacity);
+
+/* M + M^T of an N x N array, and M_xy(R) + M_yx(-R)^T of an array of blocks,
+   written over the array. */
+int openmx_exx_mirror_gamma(const OpenMXExxState *state, double *values, char *error, size_t capacity);
+int openmx_exx_mirror_blocks(const OpenMXExxState *state, double *values, char *error, size_t capacity);
+
 /* ---- derivative with respect to the positions (section 5.9) ------------- */
 
 /* Adds to gradient[3*b + x] the part of the derivative of E_x with respect to

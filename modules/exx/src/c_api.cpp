@@ -620,6 +620,69 @@ int openmx_exx_symmetrize_blocks(const OpenMXExxState* state, double* values, do
   });
 }
 
+int openmx_exx_half_abf_costs(const OpenMXExxState* state, int sites, double* costs)
+{
+  const System* system = prepared(state);
+  if (system == nullptr || costs == nullptr) return 1;
+  try {
+    const std::vector<double> values = abf_costs(*system,sites != 0,true);
+    std::copy(values.begin(),values.end(),costs);
+  } catch (...) {
+    return 1;
+  }
+  return 0;
+}
+
+int openmx_exx_add_gamma_half_abfs(const OpenMXExxState* state, long first_abf, long last_abf, double factor,
+                                   const double* density, double* k, const OpenMXExxDenseBackend* backend,
+                                   char* error, size_t capacity)
+{
+  return guarded(error,capacity,[&] {
+    const System& system = complete(state,"the exchange matrix needs a prepared structure");
+    if (density == nullptr || k == nullptr) throw std::invalid_argument("the exchange matrix needs a density matrix and an output");
+    if (first_abf < 0 || last_abf < first_abf) throw std::out_of_range("the range of ABFs is not inside the unit cell");
+    const std::size_t n = state->offset.back();
+    add_exchange_gamma_half_abfs(system,static_cast<std::size_t>(first_abf),static_cast<std::size_t>(last_abf),
+                                 factor,std::span<const double>(density,n*n),std::span<double>(k,n*n),
+                                 DenseBackend(backend));
+  });
+}
+
+int openmx_exx_add_blocks_half_abfs(const OpenMXExxState* state, long first_abf, long last_abf, double factor,
+                                    const double* density, double* k, const OpenMXExxDenseBackend* backend,
+                                    char* error, size_t capacity)
+{
+  return guarded(error,capacity,[&] {
+    const BlockLayout& layout = required_layout(state);
+    const System& system = *state->system;
+    if (density == nullptr || k == nullptr) throw std::invalid_argument("the exchange matrix needs a density matrix and an output");
+    if (first_abf < 0 || last_abf < first_abf) throw std::out_of_range("the range of ABFs is not inside the unit cell");
+    const std::size_t elements = layout.elements();
+    add_exchange_blocks_half_abfs(system,layout,static_cast<std::size_t>(first_abf),
+                                  static_cast<std::size_t>(last_abf),factor,std::span<const double>(density,elements),
+                                  std::span<double>(k,elements),DenseBackend(backend));
+  });
+}
+
+int openmx_exx_mirror_gamma(const OpenMXExxState* state, double* values, char* error, size_t capacity)
+{
+  return guarded(error,capacity,[&] {
+    const System& system = complete(state,"the mirror image needs a prepared structure");
+    if (values == nullptr) throw std::invalid_argument("no array to add the mirror image to");
+    const std::size_t n = state->offset.back();
+    mirror_gamma(system,std::span<double>(values,n*n));
+  });
+}
+
+int openmx_exx_mirror_blocks(const OpenMXExxState* state, double* values, char* error, size_t capacity)
+{
+  return guarded(error,capacity,[&] {
+    const BlockLayout& layout = required_layout(state);
+    if (values == nullptr) throw std::invalid_argument("no array to add the mirror image to");
+    mirror_blocks(*state->system,layout,std::span<double>(values,layout.elements()));
+  });
+}
+
 double openmx_exx_energy_gamma(size_t count, const double* density, const double* k)
 {
   if (density == nullptr || k == nullptr) return 0.0;

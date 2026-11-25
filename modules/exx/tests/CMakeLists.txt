@@ -83,10 +83,17 @@ add_test(NAME exx-exchange-device-system COMMAND openmx_exx_tests exchange-devic
   "${_exx_fixtures}/overlap_reference.txt")
 set_tests_properties(exx-exchange-device-system PROPERTIES LABELS "unit;exx" TIMEOUT 600)
 
+# The half build (section 6.4 of the guide) against the whole build, in a
+# system of three atoms with the symmetry of prepare_system() and in the
+# periodic structure of exx-exchange-system.
+add_test(NAME exx-exchange-half COMMAND openmx_exx_tests exchange-half "${_exx_fixtures}/overlap_reference.txt")
+set_tests_properties(exx-exchange-half PROPERTIES LABELS "unit;exx" TIMEOUT 600)
+
 # The tests whose loops start threads have the label "threads" as well:
 # "ctest -L threads" selects them, for example in a build with
 # OPENMX_EXX_THREAD_SANITIZER.
-set_property(TEST exx-dense-backend exx-exchange-backend exx-exchange-system APPEND PROPERTY LABELS threads)
+set_property(TEST exx-dense-backend exx-exchange-backend exx-exchange-system exx-exchange-half APPEND PROPERTY LABELS
+  threads)
 
 # The C interface from a program compiled as C.
 add_executable(openmx_exx_c_tests test_c.c)

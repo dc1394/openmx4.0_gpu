@@ -34,6 +34,7 @@ int main(int argc, char** argv)
     else if (name == "exchange-forces") exx_test::exchange_forces(fixture);
     else if (name == "exchange-device") exx_test::exchange_device(fixture);
     else if (name == "exchange-device-system") exx_test::exchange_device_system(fixture);
+    else if (name == "exchange-half") exx_test::exchange_half(fixture);
     else throw std::runtime_error("unknown exx test case: "+name);
     return 0;
   } catch (const std::exception& e) {
