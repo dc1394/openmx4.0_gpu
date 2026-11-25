@@ -80,7 +80,9 @@ int Exact_Exchange_Enabled(const OpenMXExactExchangeState *state);
 /* ---- one structure (section 6.2) ---------------------------------------- */
 
 /* ABFs, neighbour lists, T blocks and V blocks of the bound structure as it
-   is at the call, on every process. sites selects the form of the density
+   is at the call, on every process. The processes of comm divide the pairs
+   of sites of the T and V blocks, and every process gets all blocks
+   (section 6.7). sites selects the form of the density
    and exchange matrices of this structure: 0 for the Gamma form, 1 for the
    site form, which also gets its list of blocks here. The exchange matrix
    of an earlier structure is dropped: the SCF of the new structure starts
@@ -161,8 +163,9 @@ double Exact_Exchange_Density_Deviation(const OpenMXExactExchangeState *state, i
 /* ---- exchange matrix (sections 6.4 and 6.6) ------------------------------ */
 
 /* Builds the exchange matrix K of every spin channel from the collected
-   density matrices: the centre atoms are distributed over the processes and
-   the contributions summed. Keeps the matrix of the build before, and
+   density matrices: the ABFs of the centre atoms are distributed over the
+   processes, which may share an atom (section 6.7), and the contributions
+   summed. Keeps the matrix of the build before, and
    computes E_x (equation (4)) and delta (equation (15)). From here on K is
    added to the Hamiltonian and the semilocal part is the hybrid one. */
 void Exact_Exchange_Build(OpenMXExactExchangeState *state, MPI_Comm comm, int verbosity);
@@ -191,8 +194,10 @@ double Exact_Exchange_Asymmetry(const OpenMXExactExchangeState *state);
    (Gxyz[a+1][17+x]). The force of the exact exchange is its negative. The
    response of the orbitals is not in it: the Pulay term of the main program
    has it, with the energy density matrix of the Hamiltonian that contains
-   K. The centre atoms are distributed over the processes as in the build,
-   and every process gets the sum. The matrix products of this derivative
+   K. The ABFs of the centre atoms are distributed over the processes for
+   the derivatives of E_x with respect to the T and V blocks, as in the
+   build, and the pairs of sites for the derivatives of the blocks (section
+   6.7); every process gets the sum. The matrix products of this derivative
    are computed by the BLAS of the host only, so the counts of the device
    stay those of the builds. The array belongs to the state and holds until
    the next call or preparation. Returns NULL without an exchange matrix (no

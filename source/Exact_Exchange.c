@@ -379,6 +379,32 @@ static void ExactExchange_Reserve(OpenMXExactExchangeState *state, int spin_chan
   if (state->allocated_channels<spin_channels) state->allocated_channels = spin_channels;
 }
 
+/* The T and V blocks after a preparation that the processes divided
+   (section 6.7): every block was computed by one process and holds zeros on
+   the others, so the sum over the processes is the block of the whole
+   preparation, and every process stores it. The blocks of one atom travel
+   at a time. */
+static void ExactExchange_Add_Up_Blocks(OpenMXExactExchangeState *state, MPI_Comm comm)
+{
+  const int atoms=openmx_exx_atom_count(state->module);
+  size_t largest=0;
+  for (int a=0; a<atoms; a++) {
+    const size_t elements=openmx_exx_atom_table_elements(state->module,a);
+    if (largest<elements) largest = elements;
+  }
+  if (largest==0) ExactExchange_Abort(comm,"preparation","the structure has no T and V blocks");
+  double *values=(double*)ExactExchange_Allocate(state,largest,sizeof(double),comm,"preparation");
+  for (int a=0; a<atoms; a++) {
+    const size_t elements=openmx_exx_atom_table_elements(state->module,a);
+    if (openmx_exx_get_atom_tables(state->module,a,values)!=0)
+      ExactExchange_Abort(comm,"preparation","the T and V blocks of an atom cannot be read");
+    ExactExchange_Sum(values,elements,comm);
+    if (openmx_exx_set_atom_tables(state->module,a,values)!=0)
+      ExactExchange_Abort(comm,"preparation","the T and V blocks of an atom cannot be stored");
+  }
+  openmx_core_native_free(state->resources,values);
+}
+
 /* The radius R_c of the truncated Coulomb interaction of PBE0 (bohr): the
    value of scf.exx.coulomb.cutoff, or else the radius of the sphere whose
    volume is that of the cell times the number of k points (section 5.6,
@@ -406,8 +432,9 @@ void Exact_Exchange_Prepare(OpenMXExactExchangeState *state, const OpenMXAtomicV
 
   const double start=MPI_Wtime();
   const int species_count=(int)atomic->species.species;
-  int rank=0;
+  int rank=0,processes=1;
   MPI_Comm_rank(comm,&rank);
+  MPI_Comm_size(comm,&processes);
 
   /* The exchange matrix of an earlier structure is not carried over. */
   state->comm = comm;
@@ -504,8 +531,12 @@ void Exact_Exchange_Prepare(OpenMXExactExchangeState *state, const OpenMXAtomicV
   options.reciprocal_maximum = state->input.reciprocal_maximum;
   options.reciprocal_intervals = state->input.radial_intervals;
 
+  /* Every process makes the tables of the species and the neighbour lists,
+     and the processes divide the pairs of sites of the T and V blocks
+     (section 6.7). One process computes all pairs with the operations and
+     in the order of the undivided preparation. */
   char error[512];
-  if (openmx_exx_prepare(state->module,&options,&geometry,error,sizeof(error))!=0)
+  if (openmx_exx_prepare_part(state->module,&options,&geometry,rank,processes,error,sizeof(error))!=0)
     ExactExchange_Abort(comm,"preparation",error);
 
   openmx_core_native_free(state->resources,kinds);
@@ -526,13 +557,27 @@ void Exact_Exchange_Prepare(OpenMXExactExchangeState *state, const OpenMXAtomicV
     ExactExchange_Abort(comm,"preparation","the orbitals of the structure differ from those of the solver");
   state->orbitals = orbitals;
   state->sites = sites!=0;
+  if (1<processes) ExactExchange_Add_Up_Blocks(state,comm);
   if (state->sites) ExactExchange_List_Blocks(state,comm);
   state->prepared = 1;
   state->time_prepare += MPI_Wtime()-start;
 
+  /* Every process solved the systems of equation (7) of its share. */
+  OpenMXExxReport report={0,0,0,1.0};
+  if (2<=verbosity) {
+    OpenMXExxReport mine;
+    if (openmx_exx_report(state->module,&mine)!=0)
+      ExactExchange_Abort(comm,"preparation","the local RI has no report");
+    long counts[3]={mine.systems,mine.eigen_decompositions,mine.dropped},sums[3]={0,0,0};
+    MPI_Reduce(counts,sums,3,MPI_LONG,MPI_SUM,0,comm);
+    MPI_Reduce(&mine.smallest_pivot,&report.smallest_pivot,1,MPI_DOUBLE,MPI_MIN,0,comm);
+    report.systems = sums[0];
+    report.eigen_decompositions = sums[1];
+    report.dropped = sums[2];
+  }
+
   if (rank==0 && 0<verbosity) {
     long abfs=0,c_sites=0,v_sites=0;
-    OpenMXExxReport report;
     for (int a=0; a<atom_count; a++) {
       abfs += openmx_exx_atom_abfs(state->module,a);
       c_sites += openmx_exx_c_neighbours(state->module,a);
@@ -548,7 +593,7 @@ void Exact_Exchange_Prepare(OpenMXExactExchangeState *state, const OpenMXAtomicV
       printf("<EXX>  site form: %ld blocks of the density and exchange matrices, %.1f MB each per spin channel\n",
              state->block_count,(double)state->block_offset[state->block_count]*sizeof(double)/1048576.0);
     }
-    if (2<=verbosity && openmx_exx_report(state->module,&report)==0) {
+    if (2<=verbosity) {
       printf("<EXX>  local RI: %ld systems, %ld by eigen-decomposition (%ld vectors left out), smallest pivot %.3e\n",
              report.systems,report.eigen_decompositions,report.dropped,report.smallest_pivot);
     }
@@ -741,37 +786,46 @@ double Exact_Exchange_Density_Deviation(const OpenMXExactExchangeState *state, i
   return largest;
 }
 
-/* The centre atoms of this process: a contiguous range first <= a < last,
-   chosen so that the ranges carry about the same number of ABFs times V
-   neighbours. A process with none gets first = last = the number of atoms.
-   The builds and the derivative with respect to the positions use the same
-   range. */
-static void ExactExchange_Centres(const OpenMXExactExchangeState *state, MPI_Comm comm, int *first_atom,
-                                  int *last_atom)
+/* The share of this process in a build (section 6.7): a contiguous range
+   first <= P < last of the ABFs of the unit cell, counted atom after atom
+   (openmx_exx_add_gamma_abfs). The contribution of a centre atom is a sum
+   over its ABFs, so a range may end inside an atom, and processes share an
+   atom when they are more than the atoms or when the atoms differ in size.
+   The ranges carry about the same number of multiplications by the estimate
+   of modules/exx: an ABF belongs to the process whose part of the total
+   holds its middle. A process without work gets first = last. Every process
+   computes the same division from the same numbers. */
+static void ExactExchange_Abfs(OpenMXExactExchangeState *state, MPI_Comm comm, long *first_abf, long *last_abf)
 {
   const int atoms=openmx_exx_atom_count(state->module);
   int rank=0,processes=1;
   MPI_Comm_rank(comm,&rank);
   MPI_Comm_size(comm,&processes);
+  double *cost=(double*)ExactExchange_Allocate(state,(size_t)atoms,sizeof(double),comm,"exchange matrix");
+  if (openmx_exx_abf_costs(state->module,state->sites,cost)!=0)
+    ExactExchange_Abort(comm,"exchange matrix","the work of the ABFs cannot be estimated");
   double total=0.0;
-  for (int a=0; a<atoms; a++)
-    total += (double)openmx_exx_atom_abfs(state->module,a)*(double)openmx_exx_v_neighbours(state->module,a);
-  int first=atoms,last=atoms;
+  for (int a=0; a<atoms; a++) total += cost[a]*(double)openmx_exx_atom_abfs(state->module,a);
   const double lower=total*(double)rank/(double)processes;
   const double upper=total*(double)(rank+1)/(double)processes;
+  long first=-1,last=-1,abf=0;
   double before=0.0;
   for (int a=0; a<atoms; a++) {
-    const double middle=before+0.5*(double)openmx_exx_atom_abfs(state->module,a)
-                                   *(double)openmx_exx_v_neighbours(state->module,a);
-    if (lower<=middle && middle<upper) {
-      if (first==atoms) first = a;
-      last = a+1;
+    const int count=openmx_exx_atom_abfs(state->module,a);
+    for (int p=0; p<count; p++) {
+      const double middle=before+0.5*cost[a];
+      if (lower<=middle && middle<upper) {
+        if (first<0) first = abf;
+        last = abf+1;
+      }
+      before += cost[a];
+      abf++;
     }
-    before += (double)openmx_exx_atom_abfs(state->module,a)*(double)openmx_exx_v_neighbours(state->module,a);
   }
-  if (first==atoms) last = atoms;
-  *first_atom = first;
-  *last_atom = last;
+  if (first<0) first = last = abf;
+  openmx_core_native_free(state->resources,cost);
+  *first_abf = first;
+  *last_abf = last;
 }
 
 void Exact_Exchange_Build(OpenMXExactExchangeState *state, MPI_Comm comm, int verbosity)
@@ -782,12 +836,12 @@ void Exact_Exchange_Build(OpenMXExactExchangeState *state, MPI_Comm comm, int ve
 
   const double start=MPI_Wtime();
   const int n=state->orbitals;
-  const int atoms=openmx_exx_atom_count(state->module);
-  int rank=0;
+  int rank=0,processes=1;
   MPI_Comm_rank(comm,&rank);
+  MPI_Comm_size(comm,&processes);
 
-  int first,last;
-  ExactExchange_Centres(state,comm,&first,&last);
+  long first,last;
+  ExactExchange_Abfs(state,comm,&first,&last);
 
   /* The threads of the main program (-nt) run the loops of the build and
      share its large products. A BLAS with threads of its own computes on
@@ -814,7 +868,7 @@ void Exact_Exchange_Build(OpenMXExactExchangeState *state, MPI_Comm comm, int ve
   const long long declined_calls_before=state->device.declined_calls;
   const long long call_products_before=state->device.call_products;
   const int disabled_before=state->device.disabled;
-  double call_seconds=0.0;
+  double call_seconds=0.0,share_seconds=0.0;
   state->asymmetry = 0.0;
   for (int spin=0; spin<state->spin_channels; spin++) {
     /* The matrix of the build before stays for delta; without one it is 0. */
@@ -829,17 +883,18 @@ void Exact_Exchange_Build(OpenMXExactExchangeState *state, MPI_Comm comm, int ve
       if (first<last) {
         const double call_start=MPI_Wtime();
         const int failed=state->sites
-          ? openmx_exx_add_blocks(state->module,first,last,-state->input.alpha,state->density[spin],
-                                  state->exchange[spin],&backend,error,sizeof(error))
-          : openmx_exx_add_gamma(state->module,first,last,-state->input.alpha,state->density[spin],
-                                 state->exchange[spin],&backend,error,sizeof(error));
+          ? openmx_exx_add_blocks_abfs(state->module,first,last,-state->input.alpha,state->density[spin],
+                                       state->exchange[spin],&backend,error,sizeof(error))
+          : openmx_exx_add_gamma_abfs(state->module,first,last,-state->input.alpha,state->density[spin],
+                                      state->exchange[spin],&backend,error,sizeof(error));
         if (Exact_Exchange_Device_Call_End(&state->device)) call_seconds += MPI_Wtime()-call_start;
+        share_seconds += MPI_Wtime()-call_start;
         if (failed!=0) ExactExchange_Abort(comm,"exchange matrix",error);
       }
       ExactExchange_Sum(state->exchange[spin],state->elements,comm);
       /* K is symmetric, K_xy(R) = K_yx(-R)^T, up to rounding: the sum over
-         the centre atoms restores what one atom alone does not have. The
-         means make K(k) Hermitian to the last bit. */
+         the ABFs of all centre atoms restores what a part of them does not
+         have. The means make K(k) Hermitian to the last bit. */
       const double asymmetry=ExactExchange_Symmetrize_Channel(state,state->exchange[spin],comm,"exchange matrix");
       if (state->asymmetry<asymmetry) state->asymmetry = asymmetry;
     }
@@ -891,15 +946,24 @@ void Exact_Exchange_Build(OpenMXExactExchangeState *state, MPI_Comm comm, int ve
              (double)state->device.largest_bytes/1048576.0,state->device.declined_products-declined_before);
   }
 
+  /* The time that the processes spent on their shares: the division is even
+     when the two numbers are close. */
+  double shares[2]={share_seconds,-share_seconds},extremes[2]={0.0,0.0};
+  if (2<=verbosity && 1<processes) MPI_Reduce(shares,extremes,2,MPI_DOUBLE,MPI_MAX,0,comm);
+
   if (rank==0 && 2<=verbosity) {
+    const long abfs=openmx_exx_abf_count(state->module);
     if (first<last) {
-      printf("<EXX>  exchange matrix of %d orbitals built in %.2f s (centre atoms %d to %d of %d on process 0)\n",
-             n,MPI_Wtime()-start,first+1,last,atoms);
+      printf("<EXX>  exchange matrix of %d orbitals built in %.2f s (ABFs %ld to %ld of %ld on process 0)\n",
+             n,MPI_Wtime()-start,first+1,last,abfs);
     }
     else {
-      /* more processes than centre atoms: this one has none */
-      printf("<EXX>  exchange matrix of %d orbitals built in %.2f s (none of the %d centre atoms on process 0)\n",
-             n,MPI_Wtime()-start,atoms);
+      /* no ABF has its middle in the part of this process */
+      printf("<EXX>  exchange matrix of %d orbitals built in %.2f s (none of the %ld ABFs on process 0)\n",
+             n,MPI_Wtime()-start,abfs);
+    }
+    if (1<processes) {
+      printf("<EXX>  shares of the %d processes in the build: %.2f s to %.2f s\n",processes,-extremes[1],extremes[0]);
     }
     printf("<EXX>  largest difference of the exchange matrix from its transpose %.3e\n",state->asymmetry);
     fflush(stdout);
@@ -913,8 +977,10 @@ const double *Exact_Exchange_Gradient(OpenMXExactExchangeState *state, MPI_Comm 
 
   const double start=MPI_Wtime();
   const int atoms=openmx_exx_atom_count(state->module);
-  int rank=0;
+  int rank=0,processes=1;
   MPI_Comm_rank(comm,&rank);
+  MPI_Comm_size(comm,&processes);
+  double weight_seconds=0.0;
   if (state->gradient_atoms!=atoms) {
     openmx_core_native_free(state->resources,state->gradient);
     state->gradient = (double*)ExactExchange_Allocate(state,3*(size_t)atoms,sizeof(double),comm,"forces");
@@ -923,8 +989,20 @@ const double *Exact_Exchange_Gradient(OpenMXExactExchangeState *state, MPI_Comm 
   memset(state->gradient,0,sizeof(double)*3*(size_t)atoms);
 
   if (state->input.alpha!=0.0) {
-    int first,last;
-    ExactExchange_Centres(state,comm,&first,&last);
+    /* E_x depends on the positions through the T and V blocks, and the
+       derivative takes two steps (section 6.7). The first one makes the
+       weights of the blocks, the derivatives of E_x with respect to their
+       elements, from the density matrices. The weights are separate for
+       every ABF of the centre atoms, as the contributions to K are: every
+       process computes those of its ABFs, the share that it has of a build,
+       and the arrays are added up. An element comes from one process, so
+       the sum has no rounding. */
+    long first_abf=0,last_abf=0;
+    ExactExchange_Abfs(state,comm,&first_abf,&last_abf);
+    double **weights=(double**)ExactExchange_Allocate(state,(size_t)atoms,sizeof(double*),comm,"forces");
+    for (int a=0; a<atoms; a++)
+      weights[a] = (double*)ExactExchange_Allocate(state,openmx_exx_atom_table_elements(state->module,a),
+                                                   sizeof(double),comm,"forces");
     int threads=1;
 #ifdef _OPENMP
     threads = omp_get_max_threads();
@@ -942,17 +1020,31 @@ const double *Exact_Exchange_Gradient(OpenMXExactExchangeState *state, MPI_Comm 
        stands for both without spin polarization), and so has its
        derivative. */
     const double degeneracy=state->spin_channels==1 ? 2.0 : 1.0;
-    for (int spin=0; spin<state->spin_channels && first<last; spin++) {
-      char error[512];
+    char error[512];
+    for (int spin=0; spin<state->spin_channels && first_abf<last_abf; spin++) {
       const int failed=state->sites
-        ? openmx_exx_add_position_gradient_blocks(state->module,first,last,-state->input.alpha*degeneracy,
-                                                  state->density[spin],state->gradient,&backend,error,sizeof(error))
-        : openmx_exx_add_position_gradient_gamma(state->module,first,last,-state->input.alpha*degeneracy,
-                                                 state->density[spin],state->gradient,&backend,error,sizeof(error));
+        ? openmx_exx_add_block_weights_blocks_abfs(state->module,first_abf,last_abf,-state->input.alpha*degeneracy,
+                                                   state->density[spin],weights,&backend,error,sizeof(error))
+        : openmx_exx_add_block_weights_gamma_abfs(state->module,first_abf,last_abf,-state->input.alpha*degeneracy,
+                                                  state->density[spin],weights,&backend,error,sizeof(error));
       if (failed!=0) ExactExchange_Abort(comm,"forces",error);
     }
     openmx_core_native_free(state->resources,products.host.loop);
     Exact_Exchange_Host_Blas_Restore(blas_threads);
+    weight_seconds = MPI_Wtime()-start;
+    if (1<processes) {
+      for (int a=0; a<atoms; a++)
+        ExactExchange_Sum(weights[a],openmx_exx_atom_table_elements(state->module,a),comm);
+    }
+
+    /* The second step goes through the pairs of sites, which the processes
+       divide: a pair is visited once, with the weights of the blocks of
+       both of its atoms. */
+    if (openmx_exx_add_position_gradient_pairs(state->module,(const double *const*)weights,rank,processes,
+                                               state->gradient,error,sizeof(error))!=0)
+      ExactExchange_Abort(comm,"forces",error);
+    for (int a=0; a<atoms; a++) openmx_core_native_free(state->resources,weights[a]);
+    openmx_core_native_free(state->resources,weights);
     ExactExchange_Sum(state->gradient,3*(size_t)atoms,comm);
   }
   if (rank==0 && 1<=verbosity) {
@@ -967,6 +1059,8 @@ const double *Exact_Exchange_Gradient(OpenMXExactExchangeState *state, MPI_Comm 
     }
     printf("<EXX>  forces of the exact exchange in %.2f s: largest component %.3e, sum %.1e %.1e %.1e (Hartree/bohr)\n",
            MPI_Wtime()-start,largest,sum[0],sum[1],sum[2]);
+    if (2<=verbosity)
+      printf("<EXX>  of that, %.2f s for the weights of the T and V blocks on process 0\n",weight_seconds);
     fflush(stdout);
   }
   return state->gradient;
