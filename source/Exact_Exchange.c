@@ -316,6 +316,41 @@ static int ExactExchange_Parallel_For(void *context, int count, void (*body)(voi
   return Exact_Exchange_Host_Parallel_For(&products->host,count,body,argument);
 }
 
+/* The counts of the device that the builds report (Exact_Exchange_Build,
+   Exact_Exchange_Device_Use, Exact_Exchange_Device_Calls). The weights of
+   the forces use the device as well and are counted aside: the counts are
+   taken before the weights, the two largest sizes set to zero, and the
+   counts put back afterwards. */
+typedef struct {
+  long long device_products,gemmul8_products,declined_products;
+  size_t largest_bytes;
+  long long device_calls,declined_calls,call_products,call_large_products,call_gemmul8_products;
+  size_t largest_call_bytes;
+} ExactExchangeDeviceCounts;
+
+static ExactExchangeDeviceCounts ExactExchange_Device_Counts(const OpenMXExactExchangeDevice *device)
+{
+  const ExactExchangeDeviceCounts counts={device->device_products,device->gemmul8_products,
+                                          device->declined_products,device->largest_bytes,device->device_calls,
+                                          device->declined_calls,device->call_products,device->call_large_products,
+                                          device->call_gemmul8_products,device->largest_call_bytes};
+  return counts;
+}
+
+static void ExactExchange_Device_Counts_Back(OpenMXExactExchangeDevice *device, const ExactExchangeDeviceCounts *counts)
+{
+  device->device_products = counts->device_products;
+  device->gemmul8_products = counts->gemmul8_products;
+  device->declined_products = counts->declined_products;
+  device->largest_bytes = counts->largest_bytes;
+  device->device_calls = counts->device_calls;
+  device->declined_calls = counts->declined_calls;
+  device->call_products = counts->call_products;
+  device->call_large_products = counts->call_large_products;
+  device->call_gemmul8_products = counts->call_gemmul8_products;
+  device->largest_call_bytes = counts->largest_call_bytes;
+}
+
 /* The list of the blocks of the site form, as the module gives it for the
    prepared structure. */
 static void ExactExchange_Release_Blocks(OpenMXExactExchangeState *state)
@@ -1013,7 +1048,10 @@ const double *Exact_Exchange_Gradient(OpenMXExactExchangeState *state, MPI_Comm 
   int rank=0,processes=1;
   MPI_Comm_rank(comm,&rank);
   MPI_Comm_size(comm,&processes);
-  double weight_seconds=0.0;
+  double weight_seconds=0.0,call_seconds=0.0,device_seconds=0.0;
+  /* what the weights of process 0 did on the device; zero without */
+  ExactExchangeDeviceCounts weight_use;
+  memset(&weight_use,0,sizeof(weight_use));
   if (state->gradient_atoms!=atoms) {
     openmx_core_native_free(state->resources,state->gradient);
     state->gradient = (double*)ExactExchange_Allocate(state,3*(size_t)atoms,sizeof(double),comm,"forces");
@@ -1041,29 +1079,57 @@ const double *Exact_Exchange_Gradient(OpenMXExactExchangeState *state, MPI_Comm 
     threads = omp_get_max_threads();
 #endif
     const int blas_threads=1<threads ? Exact_Exchange_Host_Blas_Single() : 0;
-    /* The host only: no device for the products and no table for whole
-       calls, so the counts of the device are those of the builds. */
-    ExactExchangeProducts products={NULL,0.0,{0,0.0,{0,0,0},threads,NULL,0}};
+    /* The device of the builds computes the weights too: one whole call for
+       every spin channel in the CUDA build (Exact_Exchange_Device_Table),
+       and the large products one at a time when a call does not fit, as in
+       a build. The counts of the builds stay as they were. */
+    const ExactExchangeDeviceCounts counts=ExactExchange_Device_Counts(&state->device);
+    const int disabled_before=state->device.disabled;
+    state->device.largest_bytes = 0;
+    state->device.largest_call_bytes = 0;
+    ExactExchangeProducts products={&state->device,0.0,{0,0.0,{0,0,0},threads,NULL,0}};
     if (1<threads)
       products.host.loop = (OpenMXExactExchangeLoopProducts*)ExactExchange_Allocate(
           state,(size_t)threads,sizeof(OpenMXExactExchangeLoopProducts),comm,"forces");
+    OpenMXExxDevice device_table;
+    const OpenMXExxDevice *device_calls=Exact_Exchange_Device_Table(&state->device,&device_table);
     const OpenMXExxDenseBackend backend={ExactExchange_Dgemm,&products,1<threads ? ExactExchange_Parallel_For : NULL,
-                                         threads,NULL};
+                                         threads,device_calls};
     /* E_x has the degeneracy of the spin channels as a factor (one channel
        stands for both without spin polarization), and so has its
        derivative. */
     const double degeneracy=state->spin_channels==1 ? 2.0 : 1.0;
     char error[512];
     for (int spin=0; spin<state->spin_channels && first_abf<last_abf; spin++) {
+      const double call_start=MPI_Wtime();
       const int failed=state->sites
         ? openmx_exx_add_block_weights_blocks_abfs(state->module,first_abf,last_abf,-state->input.alpha*degeneracy,
                                                    state->density[spin],weights,&backend,error,sizeof(error))
         : openmx_exx_add_block_weights_gamma_abfs(state->module,first_abf,last_abf,-state->input.alpha*degeneracy,
                                                   state->density[spin],weights,&backend,error,sizeof(error));
+      if (Exact_Exchange_Device_Call_End(&state->device)) call_seconds += MPI_Wtime()-call_start;
       if (failed!=0) ExactExchange_Abort(comm,"forces",error);
     }
     openmx_core_native_free(state->resources,products.host.loop);
     Exact_Exchange_Host_Blas_Restore(blas_threads);
+    device_seconds = products.device_seconds;
+    const ExactExchangeDeviceCounts after=ExactExchange_Device_Counts(&state->device);
+    weight_use.device_products = after.device_products-counts.device_products;
+    weight_use.declined_products = after.declined_products-counts.declined_products;
+    weight_use.largest_bytes = after.largest_bytes;
+    weight_use.device_calls = after.device_calls-counts.device_calls;
+    weight_use.declined_calls = after.declined_calls-counts.declined_calls;
+    weight_use.call_products = after.call_products-counts.call_products;
+    weight_use.largest_call_bytes = after.largest_call_bytes;
+    ExactExchange_Device_Counts_Back(&state->device,&counts);
+    /* A device call failed in the weights: the process says so once, as a
+       build does. */
+    if (state->device.disabled && !disabled_before && 1<=verbosity) {
+      printf("<EXX>  WARNING: process %d: %s failed with status %d.\n",rank,
+             Exact_Exchange_Device_Failure_Name(state->device.failure),state->device.failure_status);
+      printf("<EXX>  The host computes the weights of the forces, the exchange matrix and its matrix products from here on.\n");
+      fflush(stdout);
+    }
     weight_seconds = MPI_Wtime()-start;
     if (1<processes) {
       for (int a=0; a<atoms; a++)
@@ -1092,8 +1158,17 @@ const double *Exact_Exchange_Gradient(OpenMXExactExchangeState *state, MPI_Comm 
     }
     printf("<EXX>  forces of the exact exchange in %.2f s: largest component %.3e, sum %.1e %.1e %.1e (Hartree/bohr)\n",
            MPI_Wtime()-start,largest,sum[0],sum[1],sum[2]);
-    if (2<=verbosity)
+    if (2<=verbosity) {
       printf("<EXX>  of that, %.2f s for the weights of the T and V blocks on process 0\n",weight_seconds);
+      if (0<weight_use.device_calls || 0<weight_use.declined_calls)
+        printf("<EXX>  the weights on the device of process 0: %lld calls in %.2f s with %lld matrix products, at most %.1f MB for one call; left to the host for lack of device memory: %lld\n",
+               weight_use.device_calls,call_seconds,weight_use.call_products,
+               (double)weight_use.largest_call_bytes/1048576.0,weight_use.declined_calls);
+      if (0<weight_use.device_products || 0<weight_use.declined_products)
+        printf("<EXX>  matrix products of the weights on the device of process 0: %lld in %.2f s, at most %.1f MB for one product; left to the host for lack of device memory: %lld\n",
+               weight_use.device_products,device_seconds,(double)weight_use.largest_bytes/1048576.0,
+               weight_use.declined_products);
+    }
     fflush(stdout);
   }
   return state->gradient;
