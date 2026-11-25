@@ -92,8 +92,8 @@ set_tests_properties(exx-exchange-half PROPERTIES LABELS "unit;exx" TIMEOUT 600)
 # The tests whose loops start threads have the label "threads" as well:
 # "ctest -L threads" selects them, for example in a build with
 # OPENMX_EXX_THREAD_SANITIZER.
-set_property(TEST exx-dense-backend exx-exchange-backend exx-exchange-system exx-exchange-half APPEND PROPERTY LABELS
-  threads)
+set_property(TEST exx-system-blocks exx-dense-backend exx-exchange-backend exx-exchange-system exx-exchange-forces
+  exx-exchange-half APPEND PROPERTY LABELS threads)
 
 # The C interface from a program compiled as C.
 add_executable(openmx_exx_c_tests test_c.c)

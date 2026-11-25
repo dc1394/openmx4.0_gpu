@@ -127,8 +127,15 @@ class PositionGradient {
   // share.part when divided by share.parts.  The parts of a division add up
   // to dE_x/dtau, which add() gives when it is called for every atom, within
   // rounding.
+  //
+  // The pairs of the share are divided among the pieces of the backend
+  // (DenseBackend::pieces()), pair k to piece k mod pieces, and the loop of
+  // the backend may run the pieces at the same time.  Every pair keeps its
+  // vector g, and the vectors are added to the gradient in the order of the
+  // pairs afterwards: the result is the same for every number of pieces,
+  // bit for bit.  Only the loop of the backend is used.
   void add_pairs(std::span<const std::span<const double>> weights, const PrepareShare& share,
-                 std::span<double> gradient) const;
+                 std::span<double> gradient, const DenseBackend& backend = DenseBackend()) const;
 
  private:
   const SpeciesTable& table(std::size_t atom) const;

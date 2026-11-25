@@ -642,10 +642,23 @@ void Exact_Exchange_Prepare(OpenMXExactExchangeState *state, const OpenMXAtomicV
   /* Every process makes the tables of the species and the neighbour lists,
      and the processes divide the pairs of sites of the T and V blocks
      (section 6.7). One process computes all pairs with the operations and
-     in the order of the undivided preparation. */
+     in the order of the undivided preparation. The pairs of a process run
+     on the threads of the main program (-nt): a pair writes its own blocks,
+     so the blocks are the same for every number of threads. */
+  int threads=1;
+#ifdef _OPENMP
+  threads = omp_get_max_threads();
+#endif
+  ExactExchangeProducts products={&state->device,0.0,{0,0.0,{0,0,0},threads,NULL,0}};
+  if (1<threads)
+    products.host.loop = (OpenMXExactExchangeLoopProducts*)ExactExchange_Allocate(
+        state,(size_t)threads,sizeof(OpenMXExactExchangeLoopProducts),comm,"preparation");
+  const OpenMXExxDenseBackend pieces={NULL,&products,1<threads ? ExactExchange_Parallel_For : NULL,threads,NULL};
   char error[512];
-  if (openmx_exx_prepare_part(state->module,&options,&geometry,rank,processes,error,sizeof(error))!=0)
+  if (openmx_exx_prepare_part_pieces(state->module,&options,&geometry,rank,processes,&pieces,error,
+                                     sizeof(error))!=0)
     ExactExchange_Abort(comm,"preparation",error);
+  openmx_core_native_free(state->resources,products.host.loop);
 
   openmx_core_native_free(state->resources,kinds);
   openmx_core_native_free(state->resources,coordinates);
@@ -1139,7 +1152,6 @@ const double *Exact_Exchange_Gradient(OpenMXExactExchangeState *state, MPI_Comm 
       if (Exact_Exchange_Device_Call_End(&state->device)) call_seconds += MPI_Wtime()-call_start;
       if (failed!=0) ExactExchange_Abort(comm,"forces",error);
     }
-    openmx_core_native_free(state->resources,products.host.loop);
     Exact_Exchange_Host_Blas_Restore(blas_threads);
     device_seconds = products.device_seconds;
     const ExactExchangeDeviceCounts after=ExactExchange_Device_Counts(&state->device);
@@ -1167,10 +1179,13 @@ const double *Exact_Exchange_Gradient(OpenMXExactExchangeState *state, MPI_Comm 
 
     /* The second step goes through the pairs of sites, which the processes
        divide: a pair is visited once, with the weights of the blocks of
-       both of its atoms. */
-    if (openmx_exx_add_position_gradient_pairs(state->module,(const double *const*)weights,rank,processes,
-                                               state->gradient,error,sizeof(error))!=0)
+       both of its atoms. The pairs of a process run on the threads of the
+       weights; the vectors of the pairs are added in their order, so the
+       derivative is the same for every number of threads. */
+    if (openmx_exx_add_position_gradient_pairs_pieces(state->module,(const double *const*)weights,rank,processes,
+                                                      &backend,state->gradient,error,sizeof(error))!=0)
       ExactExchange_Abort(comm,"forces",error);
+    openmx_core_native_free(state->resources,products.host.loop);
     for (int a=0; a<atoms; a++) openmx_core_native_free(state->resources,weights[a]);
     openmx_core_native_free(state->resources,weights);
     ExactExchange_Sum(state->gradient,3*(size_t)atoms,comm);

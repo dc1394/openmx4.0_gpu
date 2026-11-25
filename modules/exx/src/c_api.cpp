@@ -170,7 +170,7 @@ const System& complete(const OpenMXExxState* state, const char* missing)
 }
 
 void prepare(OpenMXExxState* state, const OpenMXExxOptions* options, const OpenMXExxGeometry* geometry,
-             const PrepareShare& share);
+             const PrepareShare& share, const DenseBackend& backend = DenseBackend());
 
 const BlockLayout* layout_of(const OpenMXExxState* state) noexcept
 {
@@ -186,7 +186,7 @@ const BlockLayout& required_layout(const OpenMXExxState* state)
 }
 
 void prepare(OpenMXExxState* state, const OpenMXExxOptions* options, const OpenMXExxGeometry* geometry,
-             const PrepareShare& share)
+             const PrepareShare& share, const DenseBackend& backend)
 {
   if (state == nullptr || options == nullptr || geometry == nullptr)
     throw std::invalid_argument("the preparation needs a state, options and a geometry");
@@ -203,7 +203,7 @@ void prepare(OpenMXExxState* state, const OpenMXExxOptions* options, const OpenM
   system_options.interaction = interaction(*options);
   system_options.v_cutoff = options->v_cutoff;
   Structure structure = copy_structure(*geometry);
-  System system = prepare_system(structure,tables.species,tables.reciprocal,system_options,share);
+  System system = prepare_system(structure,tables.species,tables.reciprocal,system_options,share,backend);
   std::vector<std::size_t> offset(1,0);
   for (const std::size_t u : system.orbital_count) offset.push_back(offset.back()+u);
   std::vector<unsigned char> partial(share.parts > 1 ? system.orbital_count.size() : 0,1);
@@ -291,10 +291,18 @@ int openmx_exx_prepare(OpenMXExxState* state, const OpenMXExxOptions* options, c
 int openmx_exx_prepare_part(OpenMXExxState* state, const OpenMXExxOptions* options, const OpenMXExxGeometry* geometry,
                             int part, int parts, char* error, size_t capacity)
 {
+  return openmx_exx_prepare_part_pieces(state,options,geometry,part,parts,nullptr,error,capacity);
+}
+
+int openmx_exx_prepare_part_pieces(OpenMXExxState* state, const OpenMXExxOptions* options,
+                                   const OpenMXExxGeometry* geometry, int part, int parts,
+                                   const OpenMXExxDenseBackend* backend, char* error, size_t capacity)
+{
   return guarded(error,capacity,[&] {
     if (parts < 1 || part < 0 || part >= parts)
       throw std::invalid_argument("the part of a divided preparation is out of range");
-    prepare(state,options,geometry,PrepareShare{static_cast<std::size_t>(part),static_cast<std::size_t>(parts)});
+    prepare(state,options,geometry,PrepareShare{static_cast<std::size_t>(part),static_cast<std::size_t>(parts)},
+            DenseBackend(backend));
   });
 }
 
@@ -614,6 +622,13 @@ int openmx_exx_add_block_weights_blocks_half_abfs(const OpenMXExxState* state, l
 int openmx_exx_add_position_gradient_pairs(const OpenMXExxState* state, const double* const* weights, int part,
                                            int parts, double* gradient, char* error, size_t capacity)
 {
+  return openmx_exx_add_position_gradient_pairs_pieces(state,weights,part,parts,nullptr,gradient,error,capacity);
+}
+
+int openmx_exx_add_position_gradient_pairs_pieces(const OpenMXExxState* state, const double* const* weights,
+                                                  int part, int parts, const OpenMXExxDenseBackend* backend,
+                                                  double* gradient, char* error, size_t capacity)
+{
   return guarded(error,capacity,[&] {
     const System& system = complete(state,"the derivative with respect to the positions needs a prepared structure");
     if (weights == nullptr || gradient == nullptr)
@@ -630,7 +645,8 @@ int openmx_exx_add_position_gradient_pairs(const OpenMXExxState* state, const do
                                       system);
     // Summed aside, so that a failure adds nothing.
     std::vector<double> sum(3*atoms,0.0);
-    derivative.add_pairs(arrays,PrepareShare{static_cast<std::size_t>(part),static_cast<std::size_t>(parts)},sum);
+    derivative.add_pairs(arrays,PrepareShare{static_cast<std::size_t>(part),static_cast<std::size_t>(parts)},sum,
+                         DenseBackend(backend));
     for (std::size_t e = 0; e < sum.size(); ++e) gradient[e] += sum[e];
   });
 }

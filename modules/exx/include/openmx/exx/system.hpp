@@ -1,5 +1,6 @@
 #pragma once
 
+#include <openmx/exx/dense_backend.hpp>
 #include <openmx/exx/kernel.hpp>
 #include <openmx/exx/lri.hpp>
 #include <openmx/exx/two_center.hpp>
@@ -120,8 +121,16 @@ struct PrepareShare {
 // part, with the operations of the whole preparation: the sum of the blocks
 // of all parts, element by element, is the system of the whole preparation
 // (get_tables() and set_tables()).
+//
+// The pairs of the share are divided among the pieces of the backend
+// (DenseBackend::pieces()), pair k to piece k mod pieces, and the loop of the
+// backend may run the pieces at the same time.  A pair writes its own
+// blocks, and the reports of the pieces are merged afterwards, so the system
+// is the same for every number of pieces, bit for bit.  Only the loop of the
+// backend is used.
 System prepare_system(const Structure& structure, std::span<const SpeciesTable> species,
-                      const ReciprocalGrid& reciprocal, const SystemOptions& options, const PrepareShare& share = {});
+                      const ReciprocalGrid& reciprocal, const SystemOptions& options, const PrepareShare& share = {},
+                      const DenseBackend& backend = DenseBackend());
 
 // The T blocks and the V blocks of an atom as one array: System::t[atom]
 // first, then System::v[atom][i] for every V neighbour i.  The processes of a

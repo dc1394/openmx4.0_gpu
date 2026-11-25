@@ -227,6 +227,16 @@ int openmx_exx_prepare_part(OpenMXExxState *state, const OpenMXExxOptions *optio
                             const OpenMXExxGeometry *geometry, int part, int parts, char *error,
                             size_t capacity);
 
+/* openmx_exx_prepare_part with the pairs of the share divided among the
+   pieces of backend: as many pieces as its threads when it has a loop, and
+   pair k in piece k mod pieces.  Only the loop of backend is used, not its
+   product or its device.  A pair writes its own blocks, so the blocks and
+   the report are those of openmx_exx_prepare_part, bit for bit, for every
+   number of pieces.  backend NULL is openmx_exx_prepare_part. */
+int openmx_exx_prepare_part_pieces(OpenMXExxState *state, const OpenMXExxOptions *options,
+                                   const OpenMXExxGeometry *geometry, int part, int parts,
+                                   const OpenMXExxDenseBackend *backend, char *error, size_t capacity);
+
 /* The T blocks and the V blocks of one atom as one array: its number of
    elements (0 without a prepared structure or for an atom out of range), a
    copy of the elements, and their replacement.  The order of the elements
@@ -475,6 +485,15 @@ int openmx_exx_add_block_weights_blocks_half_abfs(const OpenMXExxState *state, l
    gradient is unchanged. */
 int openmx_exx_add_position_gradient_pairs(const OpenMXExxState *state, const double *const *weights, int part,
                                            int parts, double *gradient, char *error, size_t capacity);
+
+/* The same with the pairs of the share divided among the pieces of backend,
+   as in openmx_exx_prepare_part_pieces.  The vector of every pair is kept,
+   and the vectors are added in the order of the pairs, so the derivative is
+   that of openmx_exx_add_position_gradient_pairs, bit for bit, for every
+   number of pieces.  backend NULL is openmx_exx_add_position_gradient_pairs. */
+int openmx_exx_add_position_gradient_pairs_pieces(const OpenMXExxState *state, const double *const *weights,
+                                                  int part, int parts, const OpenMXExxDenseBackend *backend,
+                                                  double *gradient, char *error, size_t capacity);
 
 #ifdef __cplusplus
 }

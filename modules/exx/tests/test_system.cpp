@@ -11,6 +11,7 @@
 #include <openmx/exx/system.hpp>
 
 #include "overlap_fixture.hpp"
+#include "test_parallel.hpp"
 #include "test_support.hpp"
 
 #include <algorithm>
@@ -484,6 +485,42 @@ void system_blocks(const std::string& path)
       expect_invalid("blocks of the wrong size for an atom",[&] { set_tables(share,0,wrong); });
       expect_invalid("the blocks of an atom that does not exist",[&] { (void)table_elements(system,atoms); });
       expect_invalid("a copy of the blocks of an atom that does not exist",[&] { get_tables(system,atoms,wrong); });
+    }
+    // The pairs of a share in the pieces of a backend: a pair writes its own
+    // blocks and the reports of the pieces are merged, so every number of
+    // pieces, every order of the pieces and pieces on threads give the bits
+    // and the report of no pieces.  For each kind of block the loop is asked
+    // for min(threads, pairs) calls; a share with fewer than two pairs of a
+    // kind computes them on the calling thread.  The last share of "many"
+    // has no pairs.
+    for (const std::size_t parts : {std::size_t{1},std::size_t{3},many}) {
+      const std::size_t part = parts-1;
+      const System plain = prepare_system(structure,tables,reciprocal,options,PrepareShare{part,parts});
+      for (const exx_test::Loop loop : {&exx_test::in_order_loop,&exx_test::reversed_loop,&exx_test::threaded_loop})
+        for (const int threads : {2,3,64}) {
+          exx_test::Calls calls;
+          const OpenMXExxDenseBackend table{nullptr,&calls,loop,threads,nullptr};
+          const System pieces =
+              prepare_system(structure,tables,reciprocal,options,PrepareShare{part,parts},DenseBackend(&table));
+          require(pieces.t == plain.t && pieces.v == plain.v && pieces.c_neighbours == plain.c_neighbours &&
+                  pieces.v_neighbours == plain.v_neighbours,"the pairs of a preparation in pieces give other blocks");
+          require(pieces.report.systems == plain.report.systems &&
+                  pieces.report.eigen_decompositions == plain.report.eigen_decompositions &&
+                  pieces.report.dropped == plain.report.dropped &&
+                  pieces.report.smallest_pivot == plain.report.smallest_pivot,
+                  "the pairs of a preparation in pieces give another report");
+          exx_test::Counts expected;
+          for (const long count : {t_pairs,v_pairs}) {
+            const std::size_t pairs = static_cast<std::size_t>(count);
+            const std::size_t mine = pairs > part ? (pairs-part-1)/parts+1 : 0;
+            const std::size_t used = std::min<std::size_t>(static_cast<std::size_t>(threads),mine);
+            if (used > 1) ++expected[static_cast<int>(used)];
+          }
+          require(calls.counts == expected && calls.products == 0,
+                  "the pairs of a preparation in pieces do not ask the loop for the expected calls");
+        }
+      std::printf("preparation in pieces, share %zu of %zu: the same blocks and report as without pieces\n",parts,
+                  parts);
     }
     expect_invalid("a share that is not one of the parts",
                    [&] { prepare_system(structure,tables,reciprocal,options,PrepareShare{2,2}); });

@@ -393,6 +393,41 @@ static int divided_work(const OpenMXExxState *whole, const OpenMXExxOptions *opt
     EXPECT(openmx_exx_add_gamma(share, 0, ATOMS, -0.25, d, other, NULL, message, sizeof message) == 0);
     for (i = 0; i < N * N; ++i) EXPECT(other[i] == k[i]);
   }
+  /* The pairs of a share in the pieces of a loop of the caller: the blocks
+     and the report of the share without pieces, bit for bit.  A share that
+     does not exist is rejected.  The sums stored afterwards make the state
+     the whole preparation again. */
+  {
+    Calls loop_calls = {0, 0, 0, 0};
+    OpenMXExxDenseBackend loops = {NULL, NULL, reversed_loop, 3, NULL};
+    OpenMXExxReport plain_report, pieces_report;
+    loops.context = &loop_calls;
+    for (part = 0; part < 2; ++part) {
+      EXPECT(openmx_exx_prepare_part(share, options, geometry, part, 2, NULL, 0) == 0);
+      EXPECT(openmx_exx_report(share, &plain_report) == 0);
+      for (a = 0; a < ATOMS; ++a) EXPECT(openmx_exx_get_atom_tables(share, a, sums[a]) == 0);
+      EXPECT(openmx_exx_prepare_part_pieces(share, options, geometry, part, 2, &loops, message, sizeof message) == 0);
+      EXPECT(message[0] == '\0');
+      EXPECT(openmx_exx_report(share, &pieces_report) == 0);
+      EXPECT(pieces_report.systems == plain_report.systems &&
+             pieces_report.eigen_decompositions == plain_report.eigen_decompositions &&
+             pieces_report.dropped == plain_report.dropped &&
+             pieces_report.smallest_pivot == plain_report.smallest_pivot);
+      for (a = 0; a < ATOMS; ++a) {
+        EXPECT(openmx_exx_get_atom_tables(share, a, piece[a]) == 0);
+        EXPECT(memcmp(piece[a], sums[a], size[a] * sizeof **piece) == 0);
+      }
+    }
+    EXPECT(loop_calls.loops > 0 && loop_calls.largest <= 3);
+    EXPECT(openmx_exx_prepare_part_pieces(share, options, geometry, 2, 2, &loops, message, sizeof message) != 0);
+    EXPECT(strlen(message) > 0);
+    EXPECT(openmx_exx_prepare_part_pieces(share, options, geometry, 0, 1, NULL, message, sizeof message) == 0);
+    EXPECT(message[0] == '\0');
+    for (a = 0; a < ATOMS; ++a) {
+      EXPECT(openmx_exx_get_atom_tables(share, a, piece[a]) == 0);
+      EXPECT(memcmp(piece[a], tables[a], size[a] * sizeof **piece) == 0);
+    }
+  }
   /* The site form of the state that holds the sums. */
   EXPECT(openmx_exx_prepare_blocks(share, message, sizeof message) == 0);
   memset(site_other, 0, elements * sizeof *site_other);
@@ -441,6 +476,27 @@ static int divided_work(const OpenMXExxState *whole, const OpenMXExxOptions *opt
   memset(paired, 0, sizeof paired);
   EXPECT(openmx_exx_add_position_gradient_pairs(whole, site_read, 0, 1, paired, NULL, 0) == 0);
   for (i = 0; i < 3 * ATOMS; ++i) EXPECT(fabs(paired[i] - gradient[i]) <= 1.0e-11 * steepest);
+  /* The pairs in the pieces of a loop of the caller give the bits of no
+     pieces, and a share that does not exist adds nothing. */
+  {
+    Calls loop_calls = {0, 0, 0, 0};
+    OpenMXExxDenseBackend loops = {NULL, NULL, ordered_loop, 2, NULL};
+    loops.context = &loop_calls;
+    memset(paired, 0, sizeof paired);
+    memset(again, 0, sizeof again);
+    for (part = 0; part < 2; ++part) {
+      EXPECT(openmx_exx_add_position_gradient_pairs(whole, site_read, part, 2, paired, NULL, 0) == 0);
+      EXPECT(openmx_exx_add_position_gradient_pairs_pieces(whole, site_read, part, 2, &loops, again, message,
+                                                           sizeof message) == 0);
+      EXPECT(message[0] == '\0');
+    }
+    EXPECT(memcmp(again, paired, sizeof again) == 0);
+    EXPECT(loop_calls.loops > 0 && loop_calls.largest <= 2);
+    EXPECT(openmx_exx_add_position_gradient_pairs_pieces(whole, site_read, 2, 2, &loops, again, message,
+                                                         sizeof message) != 0);
+    EXPECT(strlen(message) > 0);
+    EXPECT(memcmp(again, paired, sizeof again) == 0);
+  }
   /* Rejected calls add nothing, neither to the derivative nor to the
      weights. */
   for (a = 0; a < ATOMS; ++a) {

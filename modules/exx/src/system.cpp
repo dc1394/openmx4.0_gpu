@@ -142,7 +142,8 @@ std::vector<double> t_block(const System& system, std::size_t atom, std::size_t 
 }
 
 System prepare_system(const Structure& structure, std::span<const SpeciesTable> species,
-                      const ReciprocalGrid& reciprocal, const SystemOptions& options, const PrepareShare& share)
+                      const ReciprocalGrid& reciprocal, const SystemOptions& options, const PrepareShare& share,
+                      const DenseBackend& backend)
 {
   const std::size_t count = species.size(), atoms = structure.positions.size();
   check(structure,count);
@@ -196,8 +197,24 @@ System prepare_system(const Structure& structure, std::span<const SpeciesTable> 
       std::copy_n(block.begin()+static_cast<std::ptrdiff_t>(row*width),width,
                   system.t[a].begin()+static_cast<std::ptrdiff_t>(row*columns+first));
   };
+  // The pairs of the share: neighbour i of atom a and its counterpart j
+  // among the neighbours of atom b.
+  struct Pair {
+    std::size_t a, i, b, j;
+  };
+  const auto used_pieces = [&backend](std::size_t pairs) {
+    return std::max<std::size_t>(1,std::min(backend.pieces(),pairs));
+  };
+  // compute(c, pair) for every pair, pair k in piece c = k mod pieces.
+  const auto in_pieces = [&backend,&used_pieces](const std::vector<Pair>& pairs, const auto& compute) {
+    const std::size_t used = used_pieces(pairs.size());
+    backend.parallel_for(used,[&](std::size_t c) {
+      for (std::size_t k = c; k < pairs.size(); k += used) compute(c,pairs[k]);
+    });
+  };
   const LriSolver solver(reciprocal,maximum_orbital,maximum_abf,options.lri);
   std::vector<std::vector<double>> onsite_t(count);
+  std::vector<Pair> pairs;
   std::size_t t_pair = 0;
   for (std::size_t a = 0; a < atoms; ++a) {
     const std::size_t sa = static_cast<std::size_t>(structure.species[a]);
@@ -212,11 +229,21 @@ System prepare_system(const Structure& structure, std::span<const SpeciesTable> 
       const std::size_t b = static_cast<std::size_t>(site.atom);
       const std::size_t j = find_site(system.c_neighbours[b],reversed_site(static_cast<int>(a),site));
       if (j == system.c_neighbours[b].size()) throw std::logic_error("a C neighbour has no counterpart");
-      const PairCoefficients pair = solver.pair(species[sa],species[static_cast<std::size_t>(structure.species[b])],
-                                                displacement(structure,static_cast<int>(a),site),&system.report);
-      store(a,i,pair.first);
-      store(b,j,pair.second);
+      pairs.push_back({a,i,b,j});
     }
+  }
+  {
+    std::vector<LriReport> reports(used_pieces(pairs.size()));
+    in_pieces(pairs,[&](std::size_t c, const Pair& p) {
+      const Site& site = system.c_neighbours[p.a][p.i];
+      const PairCoefficients pair =
+          solver.pair(species[static_cast<std::size_t>(structure.species[p.a])],
+                      species[static_cast<std::size_t>(structure.species[p.b])],
+                      displacement(structure,static_cast<int>(p.a),site),&reports[c]);
+      store(p.a,p.i,pair.first);
+      store(p.b,p.j,pair.second);
+    });
+    for (const LriReport& report : reports) system.report.merge(report);
   }
 
   // V blocks: equation (12) with the interaction of the exchange, once for
@@ -226,12 +253,14 @@ System prepare_system(const Structure& structure, std::span<const SpeciesTable> 
   system.v.resize(atoms);
   for (std::size_t a = 0; a < atoms; ++a) {
     system.v[a].resize(system.v_neighbours[a].size());
-    // The blocks of the other parts hold zeros.
-    if (share.parts > 1)
-      for (std::size_t i = 0; i < system.v[a].size(); ++i)
-        system.v[a][i].assign(system.abf_count[a]*system.abf_count[static_cast<std::size_t>(system.v_neighbours[a][i].atom)],
-                              0.0);
+    // Every block is allocated here, on the calling thread, so that where
+    // the blocks lie in memory does not depend on the threads that compute
+    // them. The blocks of the other parts hold zeros.
+    for (std::size_t i = 0; i < system.v[a].size(); ++i)
+      system.v[a][i].assign(system.abf_count[a]*system.abf_count[static_cast<std::size_t>(system.v_neighbours[a][i].atom)],
+                            0.0);
   }
+  pairs.clear();
   std::size_t v_pair = 0;
   for (std::size_t a = 0; a < atoms; ++a) {
     const std::size_t sa = static_cast<std::size_t>(structure.species[a]);
@@ -253,18 +282,21 @@ System prepare_system(const Structure& structure, std::span<const SpeciesTable> 
       const std::size_t b = static_cast<std::size_t>(site.atom);
       const std::size_t j = find_site(system.v_neighbours[b],reversed_site(static_cast<int>(a),site));
       if (j == system.v_neighbours[b].size()) throw std::logic_error("a V neighbour has no counterpart");
-      const std::size_t nb = system.abf_count[b];
-      std::vector<double> block =
-          two_center_matrix(interaction.pair(displacement(structure,static_cast<int>(a),site)),
-                            species[sa].abf_transforms(),
-                            species[static_cast<std::size_t>(structure.species[b])].abf_transforms());
-      std::vector<double> transposed(nb*na);
-      for (std::size_t p = 0; p < na; ++p)
-        for (std::size_t q = 0; q < nb; ++q) transposed[q*na+p] = block[p*nb+q];
-      system.v[a][i] = std::move(block);
-      system.v[b][j] = std::move(transposed);
+      pairs.push_back({a,i,b,j});
     }
   }
+  in_pieces(pairs,[&](std::size_t, const Pair& p) {
+    const std::size_t na = system.abf_count[p.a], nb = system.abf_count[p.b];
+    const std::vector<double> block =
+        two_center_matrix(interaction.pair(displacement(structure,static_cast<int>(p.a),system.v_neighbours[p.a][p.i])),
+                          species[static_cast<std::size_t>(structure.species[p.a])].abf_transforms(),
+                          species[static_cast<std::size_t>(structure.species[p.b])].abf_transforms());
+    if (block.size() != system.v[p.a][p.i].size()) throw std::logic_error("a V block does not have the ABFs of its atoms");
+    std::copy(block.begin(),block.end(),system.v[p.a][p.i].begin());
+    double* transposed = system.v[p.b][p.j].data();
+    for (std::size_t r = 0; r < na; ++r)
+      for (std::size_t q = 0; q < nb; ++q) transposed[q*na+r] = block[r*nb+q];
+  });
   return system;
 }
 

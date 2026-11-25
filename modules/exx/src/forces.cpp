@@ -296,7 +296,7 @@ void PositionGradient::add(std::size_t atom, const CentreGradient& weights, std:
 }
 
 void PositionGradient::add_pairs(std::span<const std::span<const double>> weights, const PrepareShare& share,
-    std::span<double> gradient) const
+    std::span<double> gradient, const DenseBackend& backend) const
 {
   const System& system = *system_;
   const std::size_t atoms = system.orbital_count.size();
@@ -337,6 +337,23 @@ void PositionGradient::add_pairs(std::span<const std::span<const double>> weight
     return block;
   };
 
+  // The pairs of the share: neighbour i of atom a and its counterpart j
+  // among the neighbours of atom b.  Their vectors g are computed in the
+  // pieces of the backend and added in the order of the pairs.
+  struct Pair {
+    std::size_t a, i, b, j;
+  };
+  std::vector<Pair> pairs;
+  std::vector<std::array<double,3>> vectors;
+  const auto in_pieces = [&](const auto& compute) {
+    vectors.assign(pairs.size(),std::array<double,3>{});
+    const std::size_t used = std::max<std::size_t>(1,std::min(backend.pieces(),pairs.size()));
+    backend.parallel_for(used,[&](std::size_t c) {
+      for (std::size_t k = c; k < pairs.size(); k += used) vectors[k] = compute(pairs[k]);
+    });
+    for (std::size_t k = 0; k < pairs.size(); ++k) apply(pairs[k].a,pairs[k].b,vectors[k]);
+  };
+
   // T blocks: equation (18) with the weights of the blocks of both atoms.
   std::size_t t_pair = 0;
   for (std::size_t atom = 0; atom < atoms; ++atom) {
@@ -350,14 +367,20 @@ void PositionGradient::add_pairs(std::span<const std::span<const double>> weight
       const std::size_t c = static_cast<std::size_t>(site.atom);
       const std::size_t j = find_site(system.c_neighbours[c],reversed_site(a,site));
       if (j == system.c_neighbours[c].size()) throw std::logic_error("a C neighbour has no counterpart");
-      const PairCoefficients coefficients{t_block(system,atom,i),t_block(system,c,j)};
-      const PairCoefficients pair_weights{t_weights(atom,i),t_weights(c,j)};
-      apply(atom,c,solver_.pair_gradient(table(atom),table(c),displacement(*structure_,a,site),coefficients,pair_weights));
+      pairs.push_back({atom,i,c,j});
     }
   }
+  in_pieces([&](const Pair& p) {
+    const PairCoefficients coefficients{t_block(system,p.a,p.i),t_block(system,p.b,p.j)};
+    const PairCoefficients pair_weights{t_weights(p.a,p.i),t_weights(p.b,p.j)};
+    return solver_.pair_gradient(table(p.a),table(p.b),
+                                 displacement(*structure_,static_cast<int>(p.a),system.c_neighbours[p.a][p.i]),
+                                 coefficients,pair_weights);
+  });
 
   // V blocks: the derivative of equation (12).  The block of the other atom
   // is the transpose, and its weights are added before the sum.
+  pairs.clear();
   std::size_t v_pair = 0;
   for (std::size_t atom = 0; atom < atoms; ++atom) {
     const int a = static_cast<int>(atom);
@@ -372,22 +395,26 @@ void PositionGradient::add_pairs(std::span<const std::span<const double>> weight
       if (j == system.v_neighbours[b].size()) throw std::logic_error("a V neighbour has no counterpart");
       if (system.v[atom][i].size() != na*nb || system.v[b][j].size() != nb*na)
         throw std::invalid_argument("a V block has the wrong size");
-      const double* w = weights[atom].data()+v_offset[atom][i];        // [p*nb + q]
-      const double* back = weights[b].data()+v_offset[b][j];          // [q*na + p]
-      const std::vector<double> derivative =
-          two_center_gradient_matrix(interaction_.gradient_pair(displacement(*structure_,a,site)),
-                                     table(atom).abf_transforms(),table(b).abf_transforms());
-      std::array<double,3> g{};
-      for (std::size_t x = 0; x < 3; ++x) {
-        const double* values = derivative.data()+x*na*nb;
-        double sum = 0.0;
-        for (std::size_t p = 0; p < na; ++p)
-          for (std::size_t q = 0; q < nb; ++q) sum += (w[p*nb+q]+back[q*na+p])*values[p*nb+q];
-        g[x] = sum;
-      }
-      apply(atom,b,g);
+      pairs.push_back({atom,i,b,j});
     }
   }
+  in_pieces([&](const Pair& p) {
+    const std::size_t na = system.abf_count[p.a], nb = system.abf_count[p.b];
+    const double* w = weights[p.a].data()+v_offset[p.a][p.i];       // [p*nb + q]
+    const double* back = weights[p.b].data()+v_offset[p.b][p.j];    // [q*na + p]
+    const std::vector<double> derivative = two_center_gradient_matrix(
+        interaction_.gradient_pair(displacement(*structure_,static_cast<int>(p.a),system.v_neighbours[p.a][p.i])),
+        table(p.a).abf_transforms(),table(p.b).abf_transforms());
+    std::array<double,3> g{};
+    for (std::size_t x = 0; x < 3; ++x) {
+      const double* values = derivative.data()+x*na*nb;
+      double sum = 0.0;
+      for (std::size_t r = 0; r < na; ++r)
+        for (std::size_t q = 0; q < nb; ++q) sum += (w[r*nb+q]+back[q*na+r])*values[r*nb+q];
+      g[x] = sum;
+    }
+    return g;
+  });
 }
 
 void PositionGradient::add_gamma(std::size_t atom, double factor, std::span<const double> density,

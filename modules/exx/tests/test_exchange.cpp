@@ -2529,6 +2529,51 @@ Forces check_forces(const std::string& name, const Structure& structure, const s
     routes.finish();
     numeric.finish();
 
+    // The pairs in the pieces of a backend: the vectors of the pairs are
+    // added in the order of the pairs, so every number of pieces, every
+    // order of the pieces and pieces on threads give the bits of no pieces.
+    // For each kind of block the loop is asked for min(threads, pairs) calls;
+    // a share with fewer than two pairs of a kind computes them on the
+    // calling thread.  The pairs are those of two different atoms.
+    {
+      std::size_t t_count = 0, v_count = 0;
+      for (std::size_t a = 0; a < atoms; ++a) {
+        const int atom = static_cast<int>(a);
+        for (std::size_t i = 1; i < system.c_neighbours[a].size(); ++i)
+          t_count += system.c_neighbours[a][i].atom != atom && pair_computed_from(atom,system.c_neighbours[a][i]);
+        for (std::size_t i = 1; i < system.v_neighbours[a].size(); ++i)
+          v_count += system.v_neighbours[a][i].atom != atom && pair_computed_from(atom,system.v_neighbours[a][i]);
+      }
+      long asked = 0;
+      for (const std::size_t parts : {std::size_t{1},std::size_t{3}}) {
+        std::vector<double> plain(3*atoms,0.0);
+        for (std::size_t part = 0; part < parts; ++part)
+          derivative.add_pairs(site_weights.view,PrepareShare{part,parts},plain);
+        for (const Loop loop : {&in_order_loop,&reversed_loop,&threaded_loop})
+          for (const int threads : {2,3,64}) {
+            Calls calls;
+            const OpenMXExxDenseBackend table{nullptr,&calls,loop,threads,nullptr};
+            std::vector<double> pieces(3*atoms,0.0);
+            Counts expected;
+            for (std::size_t part = 0; part < parts; ++part) {
+              derivative.add_pairs(site_weights.view,PrepareShare{part,parts},pieces,DenseBackend(&table));
+              for (const std::size_t count : {t_count,v_count}) {
+                const std::size_t mine = count > part ? (count-part-1)/parts+1 : 0;
+                const std::size_t used = std::min<std::size_t>(static_cast<std::size_t>(threads),mine);
+                if (used > 1) ++expected[static_cast<int>(used)];
+              }
+            }
+            require(same_values(pieces,plain),name+": the pairs in pieces give other bits");
+            require(calls.counts == expected && calls.products == 0,
+                    name+": the pairs in pieces do not ask the loop for the expected calls");
+            asked += calls.loops;
+          }
+      }
+      require(t_count < 2 || v_count < 2 || asked > 0,name+": the pairs in pieces never reach the loop");
+      std::printf("%s: %zu and %zu pairs of the T and V blocks in pieces, the same bits as without pieces\n",
+                  name.c_str(),t_count,v_count);
+    }
+
     // The weights of ranges of ABFs (section 6.7).  The ABFs of the unit cell
     // are counted atom after atom, and a range adds the rows of its ABFs to
     // the arrays of their atoms.  All ABFs in one range give the bits of the
