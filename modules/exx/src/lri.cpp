@@ -41,7 +41,13 @@ int validate(const RadialGrid& grid, std::span<const RadialFunction> functions, 
 
 // Cyclic Jacobi diagonalization of a symmetric matrix (n x n, row-major, both
 // triangles).  The matrix is overwritten; values[k] is an eigenvalue and
-// vectors[i*n + k] component i of its eigenvector.
+// vectors[i*n + k] component i of its eigenvector.  A rotation sets the
+// element that it annihilates to zero and the two diagonal elements to
+// a_pp - t a_pq and a_qq + t a_pq (Rutishauser).  Computed through the rotation
+// itself, the element would keep a rounding error of the order of epsilon
+// times the larger diagonal element, above the criterion when the two
+// diagonal elements differ by more than a factor of about 16, and the
+// iteration could fail to converge.
 void diagonalize(std::vector<double>& a, std::size_t n, std::vector<double>& values, std::vector<double>& vectors)
 {
   vectors.assign(n*n,0.0);
@@ -80,6 +86,9 @@ void diagonalize(std::vector<double>& a, std::size_t n, std::vector<double>& val
           vectors[k*n+p] = c*vkp-s*vkq;
           vectors[k*n+q] = s*vkp+c*vkq;
         }
+        a[p*n+q] = a[q*n+p] = 0.0;
+        a[p*n+p] = app-t*apq;
+        a[q*n+q] = aqq+t*apq;
       }
     if (!rotated) {
       values.resize(n);
