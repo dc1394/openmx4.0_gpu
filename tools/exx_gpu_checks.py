@@ -44,6 +44,12 @@ The guide asks for three things, and the table has a block for each:
   3. the time of every stage is recorded: the four stages of the exact
      exchange on process 0, the time on the device, and the whole
      calculation.
+The forces at the end of every run (the last block <coordinates.forces of
+the .out file) have to agree with those of NAME-cpu within 1e-6
+Hartree/bohr, the limit of the checks of M7 and of the MPI speedup.  The
+table prints the largest component of the forces of NAME-cpu: most systems
+below have forces that vanish by symmetry, siz-p444-moved and
+siz-p444-pbe0-moved do not.
 
 Where the build runs (source/openmx_exact_exchange_device.h).  A process
 computes the contributions of its share of the centre atoms, a range of their
@@ -58,14 +64,15 @@ call that the device does not take for lack of memory goes to the host, and
 the device then takes the large products of that call one at a time, as it
 did before whole calls existed.  The systems marked "device" below have large
 products, the others run the same code with every call and product on the
-host.  Counted with the CPU build, one build of siz-p444 has 54850 matrix
-products and one of diaz-p222 has 162326; in both, 4 are large enough for the
-device, two for each centre atom, and they hold 58% and 53% of the
-multiplications.  A call on the device makes 2 products for each centre atom
-and 5 for each of its V neighbours, the same 2 of them large.  The table
-expects one call for each spin channel, process and build, every call on the
-device or left to the host for lack of device memory, and the large products
-of the calls left to the host on the device, or left to the host as well.
+host.  Counted with the CPU build of d768793, one build of siz-p444 has 27704
+matrix products and one of diaz-p222 has 81442 (54850 and 162326 before the
+half build of section 6.4 of the guide); in both, 4 are large enough for the
+device, two for each centre atom.  A call on the device makes 2 products for
+each centre atom and 5 for each of its V neighbours, the same 2 of them
+large.  The table expects one call for each spin channel, process and build,
+every call on the device or left to the host for lack of device memory, and
+the large products of the calls left to the host on the device, or left to
+the host as well.
 
 The weights of the forces (section 6.7 of the guide) take the device in the
 same way, once at the end of a run: a call of modules/exx for every spin
@@ -85,6 +92,8 @@ The systems
   siz-p444-np4       the same with 4 MPI processes, half an atom each  (device)
   diaz-p222          diamond, C6.0-s2p2d1, 2 x 2 x 2 mesh: the largest matrices,
                      0.5 GB on the device for one product               (device)
+  siz-p444-moved     siz-p444 with the second atom moved by 0.05 Angstrom along
+                     x: forces of 1.5e-2 Hartree/bohr                   (device)
   ch4-np4            methane with 4 MPI processes: one of them holds the dense
                      matrix, all of them get their share of the vectors
   o2                 the triplet of O2, the cluster solver, one process for both spins
@@ -102,17 +111,18 @@ PBE0 (M8).  Each system above has a twin with scf.XcType PBE0 and the same
 runs.  Its name has -pbe0 after the system and before the processes and the
 spin, as in tools/exx_scf_checks.py: ch4-pbe0, dia-p222-pbe0, siz-p444-pbe0,
 siz-p444-pbe0-spin, siz-p444-pbe0-np2, siz-p444-pbe0-np4, diaz-p222-pbe0,
-ch4-pbe0-np4, o2-pbe0, o2-pbe0-np2, dia-p222-pbe0-spin-np2, dia-k211-pbe0-np2
-and dia-k211-pbe0-np4.
+siz-p444-pbe0-moved, ch4-pbe0-np4, o2-pbe0, o2-pbe0-np2,
+dia-p222-pbe0-spin-np2, dia-k211-pbe0-np2 and dia-k211-pbe0-np4.
 The molecules are the inputs ch4-pbe0, ch4-pbe0-np4, o2-pbe0 and o2-pbe0-np2
 of tools/exx_scf_checks.py; the crystals have the stop criteria of the PBE0
 runs of tools/exx_kpoint_checks.py (scf.criterion 1e-12 and
 scf.exx.outer.criterion 1e-9 per primitive cell).  R_c and the reach of the V
 neighbours are the automatic ones.  The V neighbours reach further than the
 8 bohr of HSE06, so a build has more matrix products, and the two large
-products of a centre atom are larger.  Counted with the CPU build, one build
-of siz-p444-pbe0 has 470350 matrix products, the largest 31057 x 897 with
-inner dimension 1131, and one of diaz-p222-pbe0 has 330742, the largest
+products of a centre atom are larger.  Counted with the CPU build of
+d768793, one build of siz-p444-pbe0 has 235454 matrix products, the largest
+21632 x 897 with inner dimension 1131 (470350 and 31057 x 897 before the half
+build); before the half build, one of diaz-p222-pbe0 had 330742, the largest
 31837 x 897 with inner dimension 2171.  The large products are still two for
 each centre atom or part of one, and the processes of siz-p444-pbe0-np2 and
 siz-p444-pbe0-np4 take the ABFs of siz-p444-np2 and siz-p444-np4.  ch4-pbe0
@@ -172,6 +182,7 @@ import exx_scf_checks as gamma      # noqa: E402  (inputs of the cluster solver,
 
 REPO = Path(__file__).resolve().parents[1]
 LIMIT = 1.0e-7  # Hartree, section 9 of the guide
+FORCE_LIMIT = 1.0e-6  # Hartree/bohr, the limit of the forces in the checks of M7 and of the MPI speedup
 VARIANTS = ("cpu", "gpu", "host")
 
 # The runs of the dense eigensolver of the device: the variables that steer the CUDA build.
@@ -240,6 +251,21 @@ def pbe0_band(name, system, kgrid, spin=None):
     return kpoint.make_input(name, system, (1, 1, 1), kgrid, "PBE0", spin=spin, inner=kpoint.PBE0_INNER)
 
 
+def moved(text, shift=0.05):
+    """The input with the second atom moved by shift (Angstrom) along x: forces that do not vanish by symmetry."""
+    text, count = re.subn(r"^( 2  \S+  )(-?\d+\.\d+)", lambda m: f"{m.group(1)}{float(m.group(2)) + shift:.10f}", text,
+                          count=1, flags=re.M)
+    if count != 1:
+        raise ValueError("the input has no second atom to move")
+    return text
+
+
+# silicon as siz-p444 with the second atom moved by 0.05 Angstrom along x: the forces on the atoms do not vanish, so
+# the forces of the CUDA build, with the weights on the device, are compared with numbers that are not zero
+add("siz-p444-moved", moved(kpoint.make_input("siz_p444_moved", "siz", (1, 1, 1), (4, 4, 4), "HSE06")), large=4,
+    calls=1, dense=())
+
+
 # PBE0 with the truncated Coulomb interaction (M8): the systems above, with the inputs and stop criteria of the PBE0
 # runs of tools/exx_scf_checks.py and tools/exx_kpoint_checks.py.  The products on the device are those of HSE06: two
 # for each centre atom, larger because the V neighbours reach further.
@@ -252,6 +278,8 @@ add("siz-p444-pbe0-np2", pbe0_band("siz_p444_pbe0_np2", "siz", (4, 4, 4)), ranks
 add("siz-p444-pbe0-np4", pbe0_band("siz_p444_pbe0_np4", "siz", (4, 4, 4)), ranks=4, large=8, calls=4, dense=(),
     xc="PBE0")
 add("diaz-p222-pbe0", pbe0_band("diaz_p222_pbe0", "diaz", (2, 2, 2)), large=4, calls=1, xc="PBE0")
+add("siz-p444-pbe0-moved", moved(pbe0_band("siz_p444_pbe0_moved", "siz", (4, 4, 4))), large=4, calls=1, dense=(),
+    xc="PBE0")
 add("ch4-pbe0-np4", gamma.RUNS["ch4-pbe0-np4"]["text"], ranks=4, base=("cpu", "gpu"), xc="PBE0")
 add("o2-pbe0", gamma.RUNS["o2-pbe0"]["text"], base=("cpu", "gpu"), xc="PBE0")
 add("o2-pbe0-np2", gamma.RUNS["o2-pbe0-np2"]["text"], ranks=2, base=("cpu", "gpu"), dense=("dense", "dser"), xc="PBE0")
@@ -335,6 +363,22 @@ def device_use(std):
                     r"<EXX>  WARNING: process (\d+): (.+) failed with status (-?\d+)\.", std)])
 
 
+def out_forces(run_dir, title):
+    """The forces of the last block <coordinates.forces of the .out file, three for every atom (Hartree/bohr); None
+    without the block."""
+    path = run_dir / f"{title}.out"
+    text = path.read_text(errors="replace") if path.exists() else ""
+    blocks = list(re.finditer(r"<coordinates\.forces\s*\n\s*(\d+)\s*\n", text))
+    if not blocks:
+        return None
+    count = int(blocks[-1].group(1))
+    try:
+        forces = [float(v) for line in text[blocks[-1].end():].splitlines()[:count] for v in line.split()[5:8]]
+    except ValueError:
+        return None
+    return forces if len(forces) == 3 * count else None
+
+
 def execute(args, run):
     system, variant = split(run)
     spec = SYSTEMS[system]
@@ -359,6 +403,7 @@ def execute(args, run):
     result = gamma.parse(run_dir, title)
     std = (run_dir / "std.txt").read_text(errors="replace")
     result["device"] = device_use(std)
+    result["forces"] = out_forces(run_dir, title)
     # the number that the program reports; the table prints this one
     reported = re.search(r"The number of threads in each node for OpenMP parallelization is (\d+)\.", std)
     result.update(status=status, wall=round(time.time() - start, 2), ranks=spec["ranks"],
@@ -504,6 +549,23 @@ def table(args):
                 value = difference(system, variant)
                 expect(f"{label}: Utot", abs(value) <= LIMIT, f"{value:+.3e}  limit {LIMIT:.0e}")
                 print(f"  {label + ': Uexx':50s} {difference(system, variant, 'Uexx'):+.3e}")
+        # the forces at the end of the runs against those of the CPU build; results of versions before the forces were
+        # read have no entry and no row
+        if "cpu" in present and "forces" in results[f"{system}-cpu"]:
+            reference = results[f"{system}-cpu"]["forces"]
+            if reference:
+                print(f"  {'CPU build: largest component of the forces':50s} {max(abs(f) for f in reference):.3e}")
+            for variant in ("gpu", "host", "g8"):
+                name = f"{system}-{variant}"
+                if variant not in present or "forces" not in results[name]:
+                    continue
+                forces = results[name]["forces"]
+                label = f"{variant} minus CPU build: forces"
+                if not (reference and forces and len(forces) == len(reference)):
+                    expect(label, False, "no forces in the .out file of a run")
+                    continue
+                value = max(abs(a - b) for a, b in zip(forces, reference))
+                expect(label, value <= FORCE_LIMIT, f"{value:.3e}  limit {FORCE_LIMIT:.0e} (Hartree/bohr)")
         # where the matrix products ran
         build = results[f"{system}-{present[0]}"]["device"].get("build")
         if build:
