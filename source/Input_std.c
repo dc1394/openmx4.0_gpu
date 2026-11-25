@@ -1048,19 +1048,17 @@ void Input_std(char *file, OpenMXCoreContext *core)
 
   if (SpinP_switch!=3 && SO_switch==1){
     if (myid==Host_ID){
-      printf("Spin-orbit coupling is not supported for collinear DFT calculations.\n");
+      if (SpinP_switch==0){
+        printf("scf.SpinOrbit.Coupling must be OFF when scf.SpinPolarization=OFF\n");
+      }
+      else{
+        printf("Spin-orbit coupling is not supported for collinear DFT calculations.\n");
+      }
       printf("Check your input file.\n\n");
+      fflush(stdout);
     }
     MPI_Finalize();
-    exit(0);
-  }
-
-  if (SpinP_switch==0 && SO_switch==1){
-    if (myid==Host_ID){
-      printf("scf.SpinOrbit.Coupling must be OFF when scf.SpinPolarization=OFF\n");
-    }
-    MPI_Finalize();
-    exit(0);
+    exit(EXIT_FAILURE);
   }
 
   /* scf.SO.factor */
@@ -3700,9 +3698,10 @@ void Input_std(char *file, OpenMXCoreContext *core)
   if (MO_fileout && Solver==2 && MO_Nkpoint!=1){
     if (myid==Host_ID){
       printf("MO.Nkpoint should be 1 for the cluster calculation.\n");
+      fflush(stdout);
     }
     MPI_Finalize();
-    exit(0);
+    exit(EXIT_FAILURE);
   }
 
   if ( (Solver==2 || Solver==3 || Solver==7) && MO_fileout==1 ){
