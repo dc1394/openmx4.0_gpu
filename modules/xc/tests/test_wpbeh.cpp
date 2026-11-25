@@ -294,7 +294,8 @@ bool is_difference(double value, double a, double fraction, double b) {
 }
 
 // The semilocal part of the screened hybrid: bit for bit pbe() at the fraction 0, and pbe()
-// minus the fraction times the short-range exchange otherwise.
+// minus the fraction times the short-range exchange otherwise.  The global hybrid: pbe() at the
+// fraction 0, and the exchange of pbe() times 1 - fraction otherwise.
 void hybrid() {
   const double densities[] = {-1e-13, 0.0, 4e-15, 5e-15, 1e-14, 1e-9, 4.4e-8, 1e-6, 1e-4, 2.5e-3, 0.0331, 0.2387, 1.0, 7.0};
   const double directions[][3] = {{0.0, 0.0, 0.0}, {0.6, -0.48, 0.64}, {-0.28, 0.96, 0.0}};
@@ -358,6 +359,49 @@ void hybrid() {
           }
         }
         require(same, "C and C++ hybrid differ");
+
+        // the global hybrid (PBE0): pbe() at the fraction 0, and the exchange outputs of pbe()
+        // times 1 - fraction otherwise
+        require(same_pbe_bits(pbe_global_hybrid(density, gradient, symmetrize, 0.0), p, true), "global fraction 0 differs from pbe()");
+        ++checks;
+        for (double fraction : fractions) {
+          const PbeResult g = pbe_global_hybrid(density, gradient, symmetrize, fraction);
+          const double kept = 1.0 - fraction;
+          require(same_pbe_bits(g, p, false), "the global hybrid changed the correlation or the floored density");
+          bool ok = same_bits(g.exchange_energy_density, kept * p.exchange_energy_density);
+          for (int s = 0; s < 2; ++s) {
+            ok = ok && same_bits(g.dexchange_ddensity[s], kept * p.dexchange_ddensity[s]);
+            for (int d = 0; d < 3; ++d) ok = ok && same_bits(g.dexchange_dgradient[d][s], kept * p.dexchange_dgradient[d][s]);
+          }
+          require(ok, "the global hybrid is not 1 - fraction times the exchange of pbe()");
+          if (fraction == 1.0) {
+            bool zero = g.exchange_energy_density == 0.0;
+            for (int s = 0; s < 2; ++s) {
+              zero = zero && g.dexchange_ddensity[s] == 0.0;
+              for (int d = 0; d < 3; ++d) zero = zero && g.dexchange_dgradient[d][s] == 0.0;
+            }
+            require(zero, "the global hybrid with the fraction 1 keeps some exchange");
+          }
+          ++checks;
+        }
+        double dens_g[2] = {up, down};
+        require(openmx_xc_pbe_global_hybrid(dens_g, gdens, symmetrize ? 1 : 0, 0.25, exc, dexdd, decdd, dexdgd, decdgd) == 1, "C global hybrid failed");
+        const PbeResult g = pbe_global_hybrid(density, gradient, symmetrize, 0.25);
+        same = same_bits(exc[0], g.exchange_energy_density) && same_bits(exc[1], g.correlation_energy_density)
+               && same_bits(dens_g[0], g.density_used.up) && same_bits(dens_g[1], g.density_used.down);
+        for (int s = 0; s < 2; ++s) {
+          same = same && same_bits(dexdd[s], g.dexchange_ddensity[s]) && same_bits(decdd[s], g.dcorrelation_ddensity[s]);
+          for (int d = 0; d < 3; ++d) {
+            same = same && same_bits(dexdgd[d][s], g.dexchange_dgradient[d][s]) && same_bits(decdgd[d][s], g.dcorrelation_dgradient[d][s]);
+          }
+        }
+        require(same, "C and C++ global hybrid differ");
+        double dens_g0[2] = {up, down};
+        require(openmx_xc_pbe_global_hybrid(dens_g0, gdens, symmetrize ? 1 : 0, 0.0, exc, dexdd, decdd, dexdgd, decdgd) == 1
+                && std::memcmp(dens_g0, dens_p, sizeof dens_g0) == 0 && std::memcmp(exc, exc_p, sizeof exc) == 0
+                && std::memcmp(dexdd, dexdd_p, sizeof dexdd) == 0 && std::memcmp(decdd, decdd_p, sizeof decdd) == 0
+                && std::memcmp(dexdgd, dexdgd_p, sizeof dexdgd) == 0 && std::memcmp(decdgd, decdgd_p, sizeof decdgd) == 0,
+                "C global hybrid at fraction 0 differs from openmx_xc_pbe");
       }
     }
   }
@@ -373,6 +417,8 @@ void hybrid() {
   double dens[2] = {0.1, 0.1}, gdens[3][2] = {{0, 0}, {0, 0}, {0, 0}}, exc[2], dexdd[2], decdd[2], dexdgd[3][2], decdgd[3][2];
   require(openmx_xc_pbe_screened_hybrid(nullptr, gdens, 0, 0.25, 0.11, exc, dexdd, decdd, dexdgd, decdgd) == 0
           && openmx_xc_pbe_screened_hybrid(dens, gdens, 0, 0.25, 0.11, exc, dexdd, decdd, nullptr, decdgd) == 0, "hybrid without an array accepted");
+  require(openmx_xc_pbe_global_hybrid(nullptr, gdens, 0, 0.25, exc, dexdd, decdd, dexdgd, decdgd) == 0
+          && openmx_xc_pbe_global_hybrid(dens, gdens, 0, 0.25, exc, dexdd, decdd, dexdgd, nullptr) == 0, "global hybrid without an array accepted");
   std::printf("PASS xc hybrid (%ld comparisons)\n", checks);
 }
 }  // namespace

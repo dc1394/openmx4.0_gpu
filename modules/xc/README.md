@@ -8,7 +8,9 @@ HSE06 の準局所部分に使う ωPBE の短距離交換（`wpbeh_short_range_
 定義は Quantum ESPRESSO 7.6 の `pbexsr` と同じで（論文の丸めた定数、s ≤ 0.08 での多項式、換算勾配が 8.3 を
 超えたときの付け替え）、出力の規約と密度の下限は PBE の交換と同じです。導関数はこのエネルギーの導関数です。
 `pbe_screened_hybrid`（C では `openmx_xc_pbe_screened_hybrid`）は、PBE の交換の出力から短距離交換の
-混合比倍を引いた値を返します。混合比が 0 のときの出力は、PBE の関数と bit 一致します。
+混合比倍を引いた値を返します。PBE0 の準局所部分の `pbe_global_hybrid`（C では `openmx_xc_pbe_global_hybrid`）は、
+PBE の交換の出力を（1 − 混合比）倍します。ω = 0 の短距離交換は PBE の交換と一致しないので使いません。
+どちらも、混合比が 0 のときの出力は PBE の関数と bit 一致します。
 本体（`Set_XC_Grid.c`、`Force.c`、`Stress.c`、`Total_Energy.c` の CPU 経路）もこの実装を使用します。
 GPU 側の OpenACC カーネル（`Set_XC_Grid.c` の `SXG_` 関数）は本体に残っています。
 
@@ -67,5 +69,7 @@ C++ からは `openmx/xc/functionals.hpp`（`openmx::xc::pbe` など）、C か�
   式が切り替わる 3 か所（s = 0.08、換算勾配 8.3、ω/kF = 14）の両側の点を含みます。密度の下限、勾配が 0 の点、
   対称化、中心差分との一致、ω = 0 での一様電子ガスの極限も確かめます。
 - `xc-hybrid`: `pbe_screened_hybrid` が、混合比 0 では `pbe` と bit 一致し、それ以外では `pbe` から短距離交換の
-  混合比倍を引いた値になること（密度の下限、対称化の有無、C の入口を含む格子）。
+  混合比倍を引いた値になること。`pbe_global_hybrid` が、混合比 0 では `pbe` と bit 一致し、それ以外では交換の
+  出力が `pbe` の（1 − 混合比）倍と bit 一致すること（混合比 1 では交換が 0）。どちらも、密度の下限、対称化の有無、
+  C の入口を含む格子で確かめます。
 - `xc-c-api`、`xc-package-consumer`: C からの利用と、インストールしたパッケージからの利用。

@@ -110,4 +110,18 @@ PbeResult pbe_screened_hybrid(SpinDensity density, const SpinGradient& gradient,
   return r;
 }
 
+PbeResult pbe_global_hybrid(SpinDensity density, const SpinGradient& gradient, bool symmetrize_spins,
+                            double exchange_fraction) noexcept
+{
+  PbeResult r = pbe(density, gradient, symmetrize_spins);
+  if (exchange_fraction == 0.0) return r;
+  const double kept = 1.0 - exchange_fraction;
+  r.exchange_energy_density *= kept;
+  for (int s = 0; s < 2; ++s) {
+    r.dexchange_ddensity[s] *= kept;
+    for (int d = 0; d < 3; ++d) r.dexchange_dgradient[d][s] *= kept;
+  }
+  return r;
+}
+
 }  // namespace openmx::xc

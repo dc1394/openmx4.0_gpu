@@ -108,6 +108,16 @@ ShortRangeExchangeResult wpbeh_short_range_exchange(SpinDensity density, const S
 PbeResult pbe_screened_hybrid(SpinDensity density, const SpinGradient& gradient, bool symmetrize_spins,
                               double exchange_fraction, double omega) noexcept;
 
+// ---- Semilocal part of a global hybrid functional (PBE0) ----
+// GGA-PBE with `exchange_fraction` of its exchange removed: the exchange
+// outputs of pbe() (energy density and both derivatives) multiplied by
+// 1 - exchange_fraction; the correlation outputs are those of pbe().  PBE0
+// uses the fraction 0.25.  A fraction of exactly 0 returns pbe() bit for bit.
+// The short-range exchange above at omega = 0 is not the PBE exchange (its
+// enhancement factor differs by up to 0.54 %) and is not used here.
+PbeResult pbe_global_hybrid(SpinDensity density, const SpinGradient& gradient, bool symmetrize_spins,
+                            double exchange_fraction) noexcept;
+
 // ---- Special functions of the short-range exchange ----
 // exp(x) E1(x) with the exponential integral E1 (infinite at x = 0, NaN for
 // negative x), and erfcx(x) = exp(x^2) erfc(x).  The relative error is below

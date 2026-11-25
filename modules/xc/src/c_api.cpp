@@ -107,3 +107,28 @@ extern "C" int openmx_xc_pbe_screened_hybrid(double dens[2], double gdens[3][2],
   }
   return 1;
 }
+
+extern "C" int openmx_xc_pbe_global_hybrid(double dens[2], double gdens[3][2], int symmetrize_spins,
+                                           double exchange_fraction,
+                                           double exc[2], double dexdd[2], double decdd[2],
+                                           double dexdgd[3][2], double decdgd[3][2])
+{
+  if (!dens || !gdens || !exc || !dexdd || !decdd || !dexdgd || !decdgd) return 0;
+  openmx::xc::SpinGradient g;
+  for (int d = 0; d < 3; ++d) for (int s = 0; s < 2; ++s) g.component[d][s] = gdens[d][s];
+  const openmx::xc::PbeResult r = openmx::xc::pbe_global_hybrid({dens[0], dens[1]}, g, symmetrize_spins != 0,
+                                                                exchange_fraction);
+  dens[0] = r.density_used.up;
+  dens[1] = r.density_used.down;
+  exc[0] = r.exchange_energy_density;
+  exc[1] = r.correlation_energy_density;
+  for (int s = 0; s < 2; ++s) {
+    dexdd[s] = r.dexchange_ddensity[s];
+    decdd[s] = r.dcorrelation_ddensity[s];
+    for (int d = 0; d < 3; ++d) {
+      dexdgd[d][s] = r.dexchange_dgradient[d][s];
+      decdgd[d][s] = r.dcorrelation_dgradient[d][s];
+    }
+  }
+  return 1;
+}
