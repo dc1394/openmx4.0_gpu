@@ -2641,13 +2641,13 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
       Band_DFT_kpath(chemical,  Band_Nkpath, Band_N_perpath,
                       Band_kpath, Band_kname, 
-                      SpinP_switch,H,iHNL,OLP[0]);
+                      SpinP_switch,H,iHNL,OLP[0],NULL);
     }
     else {
 
       Band_DFT_kpath(chemical,  Band_Nkpath, Band_N_perpath,
                       Band_kpath, Band_kname,
-                      SpinP_switch,CntH,iCntHNL,CntOLP[0]);
+                      SpinP_switch,CntH,iCntHNL,CntOLP[0],NULL);
     }
   }
 
@@ -2709,11 +2709,11 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
       if (Cnt_switch==0){
 
 	Band_DFT_Dosout(chemical,  Dos_Kgrid[0], Dos_Kgrid[1], Dos_Kgrid[2],
-			 SpinP_switch, H, iHNL, OLP[0] , electronic);
+			 SpinP_switch, H, iHNL, OLP[0] , electronic, NULL);
       }
       else {
 	Band_DFT_Dosout(chemical,  Dos_Kgrid[0], Dos_Kgrid[1], Dos_Kgrid[2],
-			 SpinP_switch, CntH, iCntHNL, CntOLP[0] , electronic);
+			 SpinP_switch, CntH, iCntHNL, CntOLP[0] , electronic, NULL);
       }
     }
 

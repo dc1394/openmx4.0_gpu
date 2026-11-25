@@ -5132,11 +5132,22 @@ void Input_std(char *file, OpenMXCoreContext *core)
     if (SpinP_switch==3)              conflict[conflicts++] = "scf.SpinPolarization=NC";
     if (MD_cellopt_flag!=0)           conflict[conflicts++] = "MD.Type that needs the stress (OptC, RFC, NPT)";
     if (scf_stress_flag!=0)           conflict[conflicts++] = "scf.stress.tensor";
+    /* the band dispersion and the DOS of the band solver add K(k) to the
+       Hamiltonian of the neighbour list (docs/EXX_IMPLEMENTATION_GUIDE.md,
+       section 6.5). The cluster solver has K of the Gamma point only: its
+       DOS with Dos.Kgrid 1 1 1 adds K as the SCF does, other k points have
+       none. The bands of the LNOs and COHP take the Hamiltonian of the
+       neighbour list without K. */
+    if (Band_disp_switch!=0 && Solver==2)
+                                      conflict[conflicts++] = "Band.dispersion with the cluster solver";
+    if (Band_disp_switch!=0 && LNO_flag!=0)
+                                      conflict[conflicts++] = "Band.dispersion with LNO.flag";
+    if ((Dos_fileout!=0 || DosGauss_fileout!=0) && Solver==2
+        && !(Dos_Kgrid[0]==1 && Dos_Kgrid[1]==1 && Dos_Kgrid[2]==1))
+                                      conflict[conflicts++] = "Dos.fileout or DosGauss.fileout with the cluster solver and Dos.Kgrid other than 1 1 1";
+    if (COHP_calc_flag!=0)            conflict[conflicts++] = "COHP.calc.flag";
     /* these solve the Hamiltonian of the neighbour list again, which has
        no exchange matrix, or decompose an energy without the exact exchange */
-    if (Band_disp_switch!=0)          conflict[conflicts++] = "Band.dispersion";
-    if (Dos_fileout!=0)               conflict[conflicts++] = "Dos.fileout";
-    if (DosGauss_fileout!=0)          conflict[conflicts++] = "DosGauss.fileout";
     if (HS_fileout!=0)                conflict[conflicts++] = "HS.fileout";
     if (MO_fileout!=0)                conflict[conflicts++] = "MO.fileout";
     if (Wannier_Func_Calc!=0)         conflict[conflicts++] = "Wannier.Func.Calc";

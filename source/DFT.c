@@ -541,6 +541,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   int Cnt_kind,Calc_CntOrbital_ON,spin,spinmax,m;
   int SCF_iter,SCF_iter_shift,SCF_MAX;
   int exx_inner_start = 0;  /* SCF_iter at which the present inner SCF of a hybrid functional began */
+  int exx_outputs = 0;      /* K(R) of a hybrid functional is prepared for the band dispersion and the DOS */
   int i,j,k,fft_charge_flag,M1N;
   int orbitalOpt_iter,LSCF_iter,OrbOpt_end; 
   int wanA,ETemp_controller;
@@ -2707,6 +2708,18 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   */
 
   /*****************************************************
+     the exchange matrix of a hybrid functional for the
+     band dispersion and the DOS of the band solver, which
+     build H(k) from the Hamiltonian of the neighbour list
+     at k points of their own and add K(k) to it
+     (docs/EXX_IMPLEMENTATION_GUIDE.md, section 6.5)
+  *****************************************************/
+
+  exx_outputs = (Solver==3 && Cnt_switch==0 && Exact_Exchange_Active(exact_exchange)
+                 && ((Band_disp_switch==1 && Band_Nkpath>0) || Dos_fileout || DosGauss_fileout));
+  if (exx_outputs) Exact_Exchange_Prepare_Outputs(exact_exchange, atomic, mpi_comm_level1, level_stdout);
+
+  /*****************************************************
                       Band dispersion 
   *****************************************************/
 
@@ -2727,13 +2740,13 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
       Band_DFT_kpath(chemical,  Band_Nkpath, Band_N_perpath,
                       Band_kpath, Band_kname, 
-                      SpinP_switch,H,iHNL,OLP[0]);
+                      SpinP_switch,H,iHNL,OLP[0],exact_exchange);
     }
     else {
 
       Band_DFT_kpath(chemical,  Band_Nkpath, Band_N_perpath,
                       Band_kpath, Band_kname,
-                      SpinP_switch,CntH,iCntHNL,CntOLP[0]);
+                      SpinP_switch,CntH,iCntHNL,CntOLP[0],NULL);
     }
   }
 
@@ -2795,11 +2808,11 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
       if (Cnt_switch==0){
 
 	Band_DFT_Dosout(chemical,  Dos_Kgrid[0], Dos_Kgrid[1], Dos_Kgrid[2],
-			 SpinP_switch, H, iHNL, OLP[0] , electronic);
+			 SpinP_switch, H, iHNL, OLP[0] , electronic, exact_exchange);
       }
       else {
 	Band_DFT_Dosout(chemical,  Dos_Kgrid[0], Dos_Kgrid[1], Dos_Kgrid[2],
-			 SpinP_switch, CntH, iCntHNL, CntOLP[0] , electronic);
+			 SpinP_switch, CntH, iCntHNL, CntOLP[0] , electronic, NULL);
       }
     }
 
@@ -2840,6 +2853,8 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
       }
     }
   }
+
+  if (exx_outputs) Exact_Exchange_Release_Outputs(exact_exchange);
 
   /*****************************************************
        write a restart file if SpinP_switch!=3

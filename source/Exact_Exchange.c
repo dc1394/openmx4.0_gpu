@@ -81,6 +81,17 @@ struct OpenMXExactExchangeState {
   long long band_reuses;            /* additions since the binding that took K(k) from an entry */
   double *gradient;                 /* dE_x/dtau of the last call of Exact_Exchange_Gradient, 3 per atom */
   int gradient_atoms;               /* atoms that gradient has room for */
+  /* K(R) for the outputs after the SCF (Exact_Exchange_Prepare_Outputs):
+     the blocks of the site form without folding, in the arrays of the
+     outputs, or the blocks above when the site form is not folded */
+  int outputs;                      /* the matrices of the outputs exist */
+  int output_owned;                 /* the arrays below are allocations of the outputs */
+  int output_spin_channels;
+  long output_block_count;
+  int *output_block_atoms;          /* x and y of every block, counted from 0 */
+  int *output_block_cell;           /* R of every block, three integers */
+  size_t *output_block_offset;      /* first element of every block; output_block_count+1 entries */
+  double *output_exchange[2];       /* K(R) of every spin channel */
 };
 
 static void ExactExchange_Reset(OpenMXNativeResources *owner, void *metadata)
@@ -408,27 +419,38 @@ static void ExactExchange_Release_Blocks(OpenMXExactExchangeState *state)
   state->block_count = 0;
 }
 
-static void ExactExchange_List_Blocks(OpenMXExactExchangeState *state, MPI_Comm comm)
+/* The list of the blocks of module: atoms, cells and offsets in arrays of
+   the state. Returns the number of blocks. */
+static long ExactExchange_Read_Blocks(OpenMXExactExchangeState *state, OpenMXExxState *module, MPI_Comm comm,
+                                      int **block_atoms, int **block_cell, size_t **block_offset)
 {
   char error[512];
-  if (openmx_exx_prepare_blocks(state->module,error,sizeof(error))!=0) ExactExchange_Abort(comm,"preparation",error);
-  const long blocks=openmx_exx_block_count(state->module);
-  const int atoms=openmx_exx_atom_count(state->module);
+  if (openmx_exx_prepare_blocks(module,error,sizeof(error))!=0) ExactExchange_Abort(comm,"preparation",error);
+  const long blocks=openmx_exx_block_count(module);
   if (blocks<1) ExactExchange_Abort(comm,"preparation","the structure has no block of the exchange matrix");
 
-  state->block_atoms = (int*)ExactExchange_Allocate(state,2*(size_t)blocks,sizeof(int),comm,"preparation");
-  state->block_cell = (int*)ExactExchange_Allocate(state,3*(size_t)blocks,sizeof(int),comm,"preparation");
-  state->block_offset = (size_t*)ExactExchange_Allocate(state,(size_t)blocks+1,sizeof(size_t),comm,"preparation");
-  state->first_orbital = (int*)ExactExchange_Allocate(state,(size_t)atoms+1,sizeof(int),comm,"preparation");
+  int *atoms=(int*)ExactExchange_Allocate(state,2*(size_t)blocks,sizeof(int),comm,"preparation");
+  int *cell=(int*)ExactExchange_Allocate(state,3*(size_t)blocks,sizeof(int),comm,"preparation");
+  size_t *offset=(size_t*)ExactExchange_Allocate(state,(size_t)blocks+1,sizeof(size_t),comm,"preparation");
   for (long block=0; block<blocks; block++) {
-    if (openmx_exx_block(state->module,block,&state->block_atoms[2*block],&state->block_atoms[2*block+1],
-                         &state->block_cell[3*block],&state->block_offset[block])!=0)
+    if (openmx_exx_block(module,block,&atoms[2*block],&atoms[2*block+1],&cell[3*block],&offset[block])!=0)
       ExactExchange_Abort(comm,"preparation","the list of the blocks of the exchange matrix is incomplete");
   }
-  state->block_offset[blocks] = openmx_exx_block_elements(state->module);
+  offset[blocks] = openmx_exx_block_elements(module);
+  *block_atoms = atoms;
+  *block_cell = cell;
+  *block_offset = offset;
+  return blocks;
+}
+
+static void ExactExchange_List_Blocks(OpenMXExactExchangeState *state, MPI_Comm comm)
+{
+  const int atoms=openmx_exx_atom_count(state->module);
+  state->block_count = ExactExchange_Read_Blocks(state,state->module,comm,&state->block_atoms,&state->block_cell,
+                                                 &state->block_offset);
+  state->first_orbital = (int*)ExactExchange_Allocate(state,(size_t)atoms+1,sizeof(int),comm,"preparation");
   state->first_orbital[0] = 0;
   for (int a=0; a<atoms; a++) state->first_orbital[a+1] = state->first_orbital[a]+openmx_exx_atom_orbitals(state->module,a);
-  state->block_count = blocks;
 }
 
 /* Storage of the density and exchange matrices of spin_channels channels. */
@@ -461,22 +483,22 @@ static void ExactExchange_Reserve(OpenMXExactExchangeState *state, int spin_chan
    the others, so the sum over the processes is the block of the whole
    preparation, and every process stores it. The blocks of one atom travel
    at a time. */
-static void ExactExchange_Add_Up_Blocks(OpenMXExactExchangeState *state, MPI_Comm comm)
+static void ExactExchange_Add_Up_Blocks(OpenMXExactExchangeState *state, OpenMXExxState *module, MPI_Comm comm)
 {
-  const int atoms=openmx_exx_atom_count(state->module);
+  const int atoms=openmx_exx_atom_count(module);
   size_t largest=0;
   for (int a=0; a<atoms; a++) {
-    const size_t elements=openmx_exx_atom_table_elements(state->module,a);
+    const size_t elements=openmx_exx_atom_table_elements(module,a);
     if (largest<elements) largest = elements;
   }
   if (largest==0) ExactExchange_Abort(comm,"preparation","the structure has no T and V blocks");
   double *values=(double*)ExactExchange_Allocate(state,largest,sizeof(double),comm,"preparation");
   for (int a=0; a<atoms; a++) {
-    const size_t elements=openmx_exx_atom_table_elements(state->module,a);
-    if (openmx_exx_get_atom_tables(state->module,a,values)!=0)
+    const size_t elements=openmx_exx_atom_table_elements(module,a);
+    if (openmx_exx_get_atom_tables(module,a,values)!=0)
       ExactExchange_Abort(comm,"preparation","the T and V blocks of an atom cannot be read");
     ExactExchange_Sum(values,elements,comm);
-    if (openmx_exx_set_atom_tables(state->module,a,values)!=0)
+    if (openmx_exx_set_atom_tables(module,a,values)!=0)
       ExactExchange_Abort(comm,"preparation","the T and V blocks of an atom cannot be stored");
   }
   openmx_core_native_free(state->resources,values);
@@ -514,43 +536,24 @@ static double ExactExchange_Truncation_Radius(const OpenMXExactExchangeInput *in
   return input->coulomb_cutoff;
 }
 
-void Exact_Exchange_Prepare(OpenMXExactExchangeState *state, const OpenMXAtomicViews *atomic,
-    int sites, MPI_Comm comm, int verbosity)
+/* The ABFs, neighbour lists, T blocks and V blocks of the bound structure as
+   it is at the call, in module (section 6.2). Every process makes the
+   tables of the species and the neighbour lists, and the processes of
+   comm divide the pairs of sites of the T and V blocks and add the blocks
+   up (section 6.7). prepared_options gets the options of the preparation.
+   Returns the number of orbitals of the structure. */
+static int ExactExchange_Prepare_Module(OpenMXExactExchangeState *state, OpenMXExxState *module,
+                                        const OpenMXAtomicViews *atomic, MPI_Comm comm,
+                                        OpenMXExxOptions *prepared_options)
 {
-  if (!Exact_Exchange_Enabled(state)) return;
-
   const int atom_count=state->structure.atom_count;
   const int *species_of_atom=state->structure.species_of_atom;
   double *const *positions=state->structure.positions;
   double (*lattice)[4]=state->structure.lattice;
-  if (atom_count<1 || species_of_atom==NULL || positions==NULL || lattice==NULL)
-    ExactExchange_Abort(comm,"preparation","the structure of the calculation is not bound");
-
-  const double start=MPI_Wtime();
   const int species_count=(int)atomic->species.species;
   int rank=0,processes=1;
   MPI_Comm_rank(comm,&rank);
   MPI_Comm_size(comm,&processes);
-
-  /* The exchange matrix of an earlier structure is not carried over. */
-  state->comm = comm;
-  state->prepared = 0;
-  state->folded = 0;
-  state->spin_channels = 0;
-  state->collecting = 0;
-  state->exchange_ready = 0;
-  ExactExchange_Forget_Band_Matrices(state);
-  state->outer_iterations = 0;
-  state->outer_converged = 0;
-  state->residual_reference = -1.0;
-  state->energy = 0.0;
-  state->change = 0.0;
-  ExactExchange_Release_Blocks(state);
-
-  if (state->module==NULL) {
-    state->module = openmx_exx_create();
-    if (state->module==NULL) ExactExchange_Abort(comm,"preparation","out of memory");
-  }
 
   /* The PAOs of every species: the radial functions in the order of the
      solvers (by angular momentum, then by multiplicity) on the mesh of the
@@ -657,7 +660,7 @@ void Exact_Exchange_Prepare(OpenMXExactExchangeState *state, const OpenMXAtomicV
         state,(size_t)threads,sizeof(OpenMXExactExchangeLoopProducts),comm,"preparation");
   const OpenMXExxDenseBackend pieces={NULL,&products,1<threads ? ExactExchange_Parallel_For : NULL,threads,NULL};
   char error[512];
-  if (openmx_exx_prepare_part_pieces(state->module,&options,&geometry,rank,processes,&pieces,error,
+  if (openmx_exx_prepare_part_pieces(module,&options,&geometry,rank,processes,&pieces,error,
                                      sizeof(error))!=0)
     ExactExchange_Abort(comm,"preparation",error);
   openmx_core_native_free(state->resources,products.host.loop);
@@ -676,11 +679,55 @@ void Exact_Exchange_Prepare(OpenMXExactExchangeState *state, const OpenMXAtomicV
      as the orbital optimization is not combined with a hybrid functional. */
   int orbitals=0;
   for (int a=0; a<atom_count; a++) orbitals += atomic->species.contracted_orbitals[species_of_atom[a+1]];
-  if (openmx_exx_orbital_count(state->module)!=orbitals || openmx_exx_atom_count(state->module)!=atom_count)
+  if (openmx_exx_orbital_count(module)!=orbitals || openmx_exx_atom_count(module)!=atom_count)
     ExactExchange_Abort(comm,"preparation","the orbitals of the structure differ from those of the solver");
+  if (1<processes) ExactExchange_Add_Up_Blocks(state,module,comm);
+  *prepared_options = options;
+  return orbitals;
+}
+
+void Exact_Exchange_Prepare(OpenMXExactExchangeState *state, const OpenMXAtomicViews *atomic,
+    int sites, MPI_Comm comm, int verbosity)
+{
+  if (!Exact_Exchange_Enabled(state)) return;
+
+  const int atom_count=state->structure.atom_count;
+  const int *species_of_atom=state->structure.species_of_atom;
+  double *const *positions=state->structure.positions;
+  double (*lattice)[4]=state->structure.lattice;
+  if (atom_count<1 || species_of_atom==NULL || positions==NULL || lattice==NULL)
+    ExactExchange_Abort(comm,"preparation","the structure of the calculation is not bound");
+
+  const double start=MPI_Wtime();
+  int rank=0,processes=1;
+  MPI_Comm_rank(comm,&rank);
+  MPI_Comm_size(comm,&processes);
+
+  /* The exchange matrix of an earlier structure is not carried over. */
+  state->comm = comm;
+  state->prepared = 0;
+  state->folded = 0;
+  state->spin_channels = 0;
+  state->collecting = 0;
+  state->exchange_ready = 0;
+  ExactExchange_Forget_Band_Matrices(state);
+  state->outer_iterations = 0;
+  state->outer_converged = 0;
+  state->residual_reference = -1.0;
+  state->energy = 0.0;
+  state->change = 0.0;
+  Exact_Exchange_Release_Outputs(state);
+  ExactExchange_Release_Blocks(state);
+
+  if (state->module==NULL) {
+    state->module = openmx_exx_create();
+    if (state->module==NULL) ExactExchange_Abort(comm,"preparation","out of memory");
+  }
+
+  OpenMXExxOptions options;
+  const int orbitals=ExactExchange_Prepare_Module(state,state->module,atomic,comm,&options);
   state->orbitals = orbitals;
   state->sites = sites!=0;
-  if (1<processes) ExactExchange_Add_Up_Blocks(state,comm);
   /* The site form folds the V neighbours by the period of a regular k mesh
      (section 6.4): the V neighbours whose cells agree modulo the period
      become one site with the sum of their V blocks. K(k) at the points of
@@ -692,6 +739,7 @@ void Exact_Exchange_Prepare(OpenMXExactExchangeState *state, const OpenMXAtomicV
      centre take one site of every class. */
   const int *period=state->input.fold_period;
   const int folded=state->sites && 0<period[0] && 0<period[1] && 0<period[2];
+  char error[512];
   if (folded && openmx_exx_fold_v_neighbours(state->module,period,error,sizeof(error))!=0)
     ExactExchange_Abort(comm,"preparation",error);
   if (folded && openmx_exx_fold_columns(state->module,state->input.fold_antiperiodic,error,sizeof(error))!=0)
@@ -961,14 +1009,14 @@ double Exact_Exchange_Density_Deviation(const OpenMXExactExchangeState *state, i
    same numbers. The build and the weights of the forces divide the ABFs
    by the estimate of the half build (half): both go through the same
    groups of V neighbours. */
-static void ExactExchange_Abfs(OpenMXExactExchangeState *state, MPI_Comm comm, int half, long *first_abf,
-                               long *last_abf)
+static void ExactExchange_Abfs(OpenMXExactExchangeState *state, const OpenMXExxState *module, int sites,
+                               MPI_Comm comm, int half, long *first_abf, long *last_abf)
 {
   int rank=0,processes=1;
   MPI_Comm_rank(comm,&rank);
   MPI_Comm_size(comm,&processes);
   long *boundaries=(long*)ExactExchange_Allocate(state,(size_t)processes+1,sizeof(long),comm,"exchange matrix");
-  if (openmx_exx_divide_abfs(state->module,state->sites,half,processes,boundaries)!=0)
+  if (openmx_exx_divide_abfs(module,sites,half,processes,boundaries)!=0)
     ExactExchange_Abort(comm,"exchange matrix","the ABFs cannot be divided among the processes");
   *first_abf = boundaries[rank];
   *last_abf = boundaries[rank+1];
@@ -988,7 +1036,7 @@ void Exact_Exchange_Build(OpenMXExactExchangeState *state, MPI_Comm comm, int ve
   MPI_Comm_size(comm,&processes);
 
   long first,last;
-  ExactExchange_Abfs(state,comm,1,&first,&last);
+  ExactExchange_Abfs(state,state->module,state->sites,comm,1,&first,&last);
 
   /* The threads of the main program (-nt) run the loops of the build and
      share its large products. A BLAS with threads of its own computes on
@@ -1147,7 +1195,7 @@ const double *Exact_Exchange_Gradient(OpenMXExactExchangeState *state, MPI_Comm 
        The W part of a group adds to the T blocks of other atoms, so the
        sum has rounding. */
     long first_abf=0,last_abf=0;
-    ExactExchange_Abfs(state,comm,1,&first_abf,&last_abf);
+    ExactExchange_Abfs(state,state->module,state->sites,comm,1,&first_abf,&last_abf);
     double **weights=(double**)ExactExchange_Allocate(state,(size_t)atoms,sizeof(double*),comm,"forces");
     for (int a=0; a<atoms; a++)
       weights[a] = (double*)ExactExchange_Allocate(state,openmx_exx_atom_table_elements(state->module,a),
@@ -1519,4 +1567,375 @@ void Exact_Exchange_Add_Band_Hs(OpenMXExactExchangeState *state, int spin, doubl
   }
   openmx_core_native_free(state->resources,scratch);
   state->time_add += MPI_Wtime()-start;
+}
+
+/* ---- outputs after the SCF (section 6.5) ---------------------------------- */
+
+/* A block of the folded site form with the class of its cell: key[0] and
+   key[1] are the atoms, key[2] to key[4] the components of the cell
+   modulo the period, from 0 to the period minus 1. */
+typedef struct {
+  int key[5];
+  long block;
+} ExactExchangeFoldedBlock;
+
+static int ExactExchange_Compare_Keys(const int *first, const int *second)
+{
+  for (int i=0; i<5; i++)
+    if (first[i]!=second[i]) return first[i]<second[i] ? -1 : 1;
+  return 0;
+}
+
+static int ExactExchange_Compare_Folded(const void *a, const void *b)
+{
+  const ExactExchangeFoldedBlock *first=(const ExactExchangeFoldedBlock*)a;
+  const ExactExchangeFoldedBlock *second=(const ExactExchangeFoldedBlock*)b;
+  const int order=ExactExchange_Compare_Keys(first->key,second->key);
+  if (order!=0) return order;
+  return first->block<second->block ? -1 : (second->block<first->block ? 1 : 0);
+}
+
+static void ExactExchange_Folded_Key(int x, int y, const int cell[3], const int period[3], int key[5])
+{
+  key[0] = x;
+  key[1] = y;
+  for (int i=0; i<3; i++) {
+    int component=cell[i]%period[i];
+    if (component<0) component += period[i];
+    key[2+i] = component;
+  }
+}
+
+/* The first of the sorted blocks with this key, or -1. */
+static long ExactExchange_Find_Class(const ExactExchangeFoldedBlock *classes, long count, const int key[5])
+{
+  long low=0,high=count;
+  while (low<high) {
+    const long middle=low+(high-low)/2;
+    if (ExactExchange_Compare_Keys(classes[middle].key,key)<0) low = middle+1;
+    else high = middle;
+  }
+  return (low<count && ExactExchange_Compare_Keys(classes[low].key,key)==0) ? low : -1;
+}
+
+/* D of the folded site form on the blocks of the outputs (atoms, cells and
+   offsets of blocks blocks). A block of the folded list keeps its values.
+   Any other block takes those of the first block of its class in the
+   folded list, with the same atoms and a cell that agrees modulo the
+   period, times the sign of the mesh: -1 for every period between the two
+   cells along an antiperiodic direction (section 6.4). D of the points of
+   the mesh repeats in this way up to the rounding of its phases and the
+   phase of the shift of the k points from the mesh (Shift_K_Point, section
+   6.5), 1e-11 of D in the tests. moved gets the number of blocks of the
+   second kind. */
+static void ExactExchange_Unfold_Density(OpenMXExactExchangeState *state, long blocks, const int *atoms,
+                                         const int *cells, const size_t *offsets, double *const *unfolded,
+                                         MPI_Comm comm, long *moved)
+{
+  const int *period=state->input.fold_period;
+  const int *antiperiodic=state->input.fold_antiperiodic;
+  const long folded=state->block_count;
+  ExactExchangeFoldedBlock *classes=(ExactExchangeFoldedBlock*)ExactExchange_Allocate(
+      state,(size_t)folded,sizeof(ExactExchangeFoldedBlock),comm,"outputs");
+  for (long f=0; f<folded; f++) {
+    ExactExchange_Folded_Key(state->block_atoms[2*f],state->block_atoms[2*f+1],&state->block_cell[3*f],period,
+                             classes[f].key);
+    classes[f].block = f;
+  }
+  qsort(classes,(size_t)folded,sizeof(ExactExchangeFoldedBlock),ExactExchange_Compare_Folded);
+  long count=0;
+  for (long b=0; b<blocks; b++) {
+    const int x=atoms[2*b],y=atoms[2*b+1];
+    const int *cell=&cells[3*b];
+    long source=openmx_exx_find_block(state->module,x,y,cell);
+    double sign=1.0;
+    if (source<0) {
+      int key[5];
+      ExactExchange_Folded_Key(x,y,cell,period,key);
+      const long entry=ExactExchange_Find_Class(classes,folded,key);
+      if (entry<0)
+        ExactExchange_Abort(comm,"outputs","a block of the outputs has no block of its class in the folded site form");
+      source = classes[entry].block;
+      const int *from=&state->block_cell[3*source];
+      for (int i=0; i<3; i++)
+        if (antiperiodic[i] && ((cell[i]-from[i])/period[i])%2!=0) sign = -sign;
+      count++;
+    }
+    const size_t elements=offsets[b+1]-offsets[b];
+    if (elements!=state->block_offset[source+1]-state->block_offset[source])
+      ExactExchange_Abort(comm,"outputs","two blocks of the same atoms differ in size");
+    for (int spin=0; spin<state->spin_channels; spin++) {
+      const double *values=state->density[spin]+state->block_offset[source];
+      double *target=unfolded[spin]+offsets[b];
+      for (size_t e=0; e<elements; e++) target[e] = sign*values[e];
+    }
+  }
+  openmx_core_native_free(state->resources,classes);
+  *moved = count;
+}
+
+/* Equation (14) with K(R) of the outputs: adds K(k) of one spin channel to
+   H[1..N][1..N], with the phase of the H(k) of the outputs. Every element
+   receives its terms in the order of the blocks. */
+static void ExactExchange_Output_Sum(const OpenMXExactExchangeState *state, int spin, double k1, double k2,
+                                     double k3, dcomplex **H)
+{
+  const double two_pi=6.283185307179586476925286766559;
+  const double *exchange=state->output_exchange[spin];
+  for (long block=0; block<state->output_block_count; block++) {
+    const int x=state->output_block_atoms[2*block],y=state->output_block_atoms[2*block+1];
+    const int *cell=&state->output_block_cell[3*block];
+    const double phase=two_pi*(k1*(double)cell[0]+k2*(double)cell[1]+k3*(double)cell[2]);
+    const double co=cos(phase),si=sin(phase);
+    const int row0=state->first_orbital[x]+1;
+    const int column0=state->first_orbital[y]+1;
+    const int rows=state->first_orbital[x+1]-state->first_orbital[x];
+    const int columns=state->first_orbital[y+1]-state->first_orbital[y];
+    const double *source=exchange+state->output_block_offset[block];
+    for (int i=0; i<rows; i++) {
+      dcomplex *row=H[row0+i]+column0;
+      const double *values=source+(size_t)i*(size_t)columns;
+      for (int j=0; j<columns; j++) {
+        row[j].r += values[j]*co;
+        row[j].i += values[j]*si;
+      }
+    }
+  }
+}
+
+/* K(k) of the outputs and K(k) of the SCF at the points of the folded
+   mesh, where the two agree up to rounding and the phase of Shift_K_Point
+   (section 6.5), 1e-12 of the largest element in the tests. results[0]
+   gets the largest difference of an element and results[1] the largest
+   element, over all points, spin channels and processes of comm, which
+   divide the points among them. Collective. */
+static void ExactExchange_Check_Outputs(OpenMXExactExchangeState *state, MPI_Comm comm, double results[2])
+{
+  const int n=state->orbitals;
+  const int atoms=openmx_exx_atom_count(state->module);
+  const int *period=state->input.fold_period;
+  const int *antiperiodic=state->input.fold_antiperiodic;
+  int rank=0,processes=1;
+  MPI_Comm_rank(comm,&rank);
+  MPI_Comm_size(comm,&processes);
+
+  /* the whole matrix on this process: every orbital is local */
+  int *local=(int*)ExactExchange_Allocate(state,(size_t)n,sizeof(int),comm,"outputs");
+  char *reached=(char*)ExactExchange_Allocate(state,(size_t)atoms,sizeof(char),comm,"outputs");
+  for (int g=0; g<n; g++) local[g] = g;
+  for (int a=0; a<atoms; a++) reached[a] = 1;
+  const size_t side=(size_t)n+1;
+  dcomplex *scf=(dcomplex*)ExactExchange_Allocate(state,(size_t)n*(size_t)n,sizeof(dcomplex),comm,"outputs");
+  dcomplex *buffer=(dcomplex*)ExactExchange_Allocate(state,side*side,sizeof(dcomplex),comm,"outputs");
+  dcomplex **outputs=(dcomplex**)ExactExchange_Allocate(state,side,sizeof(dcomplex*),comm,"outputs");
+  for (size_t i=0; i<side; i++) outputs[i] = buffer+i*side;
+
+  double mine[2]={0.0,0.0};
+  const long points=(long)period[0]*(long)period[1]*(long)period[2];
+  for (long p=rank; p<points; p+=processes) {
+    const long m[3]={p/((long)period[1]*(long)period[2]),(p/(long)period[2])%(long)period[1],p%(long)period[2]};
+    double k[3];
+    for (int i=0; i<3; i++) k[i] = ((double)m[i]+(antiperiodic[i] ? 0.5 : 0.0))/(double)period[i];
+    for (int spin=0; spin<state->spin_channels; spin++) {
+      memset(scf,0,sizeof(dcomplex)*(size_t)n*(size_t)n);
+      memset(buffer,0,sizeof(dcomplex)*side*side);
+      ExactExchange_Band_Sum(state,spin,k[0],k[1],k[2],local,local,reached,reached,n,scf);
+      ExactExchange_Output_Sum(state,spin,k[0],k[1],k[2],outputs);
+      for (int j=0; j<n; j++) {
+        for (int i=0; i<n; i++) {
+          const dcomplex a=scf[(size_t)j*(size_t)n+(size_t)i],b=outputs[i+1][j+1];
+          const double difference=hypot(a.r-b.r,a.i-b.i),size=hypot(a.r,a.i);
+          if (mine[0]<difference) mine[0] = difference;
+          if (mine[1]<size) mine[1] = size;
+        }
+      }
+    }
+  }
+  MPI_Allreduce(mine,results,2,MPI_DOUBLE,MPI_MAX,comm);
+  openmx_core_native_free(state->resources,outputs);
+  openmx_core_native_free(state->resources,buffer);
+  openmx_core_native_free(state->resources,scf);
+  openmx_core_native_free(state->resources,reached);
+  openmx_core_native_free(state->resources,local);
+}
+
+void Exact_Exchange_Prepare_Outputs(OpenMXExactExchangeState *state, const OpenMXAtomicViews *atomic,
+    MPI_Comm comm, int verbosity)
+{
+  if (!Exact_Exchange_Enabled(state)) return;
+  Exact_Exchange_Release_Outputs(state);
+  if (!Exact_Exchange_Active(state) || !state->sites) return;
+  if (!state->prepared || state->spin_channels<1 || state->collecting)
+    ExactExchange_Abort(comm,"outputs","the SCF left no density and exchange matrices");
+
+  const double start=MPI_Wtime();
+  int rank=0,processes=1;
+  MPI_Comm_rank(comm,&rank);
+  MPI_Comm_size(comm,&processes);
+  /* the K(k) that the solver kept are not used after the SCF */
+  ExactExchange_Forget_Band_Matrices(state);
+
+  if (!state->folded) {
+    /* K(R) of the last build holds at every k point */
+    state->output_owned = 0;
+    state->output_spin_channels = state->spin_channels;
+    state->output_block_count = state->block_count;
+    state->output_block_atoms = state->block_atoms;
+    state->output_block_cell = state->block_cell;
+    state->output_block_offset = state->block_offset;
+    for (int spin=0; spin<state->spin_channels; spin++) state->output_exchange[spin] = state->exchange[spin];
+    state->outputs = 1;
+    if (rank==0 && 0<verbosity) {
+      printf("<EXX>  outputs after the SCF: K(R) of the last build, whose V sites are not folded\n");
+      fflush(stdout);
+    }
+    return;
+  }
+
+  /* K(R) of the folded site form holds at the points of the mesh only. The
+     outputs take the structure again without folding and build K(R) once,
+     from D of the last build, which the folded list holds for every class
+     of cells (section 6.5). The tables of the SCF stay for the forces. */
+  OpenMXExxState *module=openmx_exx_create();
+  if (module==NULL) ExactExchange_Abort(comm,"outputs","out of memory");
+  OpenMXExxOptions options;
+  (void)ExactExchange_Prepare_Module(state,module,atomic,comm,&options);
+  int *block_atoms=NULL,*block_cell=NULL;
+  size_t *block_offset=NULL;
+  const long blocks=ExactExchange_Read_Blocks(state,module,comm,&block_atoms,&block_cell,&block_offset);
+  const size_t elements=block_offset[blocks];
+  long v_sites=0;
+  for (int a=0; a<openmx_exx_atom_count(module); a++) v_sites += openmx_exx_v_neighbours(module,a);
+  const double prepared=MPI_Wtime();
+
+  state->output_owned = 1;
+  state->output_spin_channels = state->spin_channels;
+  state->output_block_count = blocks;
+  state->output_block_atoms = block_atoms;
+  state->output_block_cell = block_cell;
+  state->output_block_offset = block_offset;
+  double *density[2]={NULL,NULL};
+  for (int spin=0; spin<state->spin_channels; spin++) {
+    density[spin] = (double*)ExactExchange_Allocate(state,elements,sizeof(double),comm,"outputs");
+    state->output_exchange[spin] = (double*)ExactExchange_Allocate(state,elements,sizeof(double),comm,"outputs");
+  }
+  long moved=0;
+  ExactExchange_Unfold_Density(state,blocks,block_atoms,block_cell,block_offset,density,comm,&moved);
+  /* the half build needs D_xy(R) = D_yx(-R)^T to the last bit */
+  double asymmetry=0.0;
+  char error[512];
+  for (int spin=0; spin<state->spin_channels; spin++) {
+    double largest=0.0;
+    if (openmx_exx_symmetrize_blocks(module,density[spin],&largest,error,sizeof(error))!=0)
+      ExactExchange_Abort(comm,"outputs",error);
+    if (asymmetry<largest) asymmetry = largest;
+  }
+
+  /* One half build, as in the SCF (Exact_Exchange_Build), on the device of
+     the builds where it takes the work. The counts of the device stay
+     those of the SCF. */
+  long first=0,last=0;
+  ExactExchange_Abfs(state,module,1,comm,1,&first,&last);
+  int threads=1;
+#ifdef _OPENMP
+  threads = omp_get_max_threads();
+#endif
+  const int blas_threads=1<threads ? Exact_Exchange_Host_Blas_Single() : 0;
+  const ExactExchangeDeviceCounts counts=ExactExchange_Device_Counts(&state->device);
+  const int disabled_before=state->device.disabled;
+  state->device.largest_bytes = 0;
+  state->device.largest_call_bytes = 0;
+  ExactExchangeProducts products={&state->device,0.0,{0,0.0,{0,0,0},threads,NULL,0}};
+  if (1<threads)
+    products.host.loop = (OpenMXExactExchangeLoopProducts*)ExactExchange_Allocate(
+        state,(size_t)threads,sizeof(OpenMXExactExchangeLoopProducts),comm,"outputs");
+  OpenMXExxDevice device_table;
+  const OpenMXExxDevice *device_calls=Exact_Exchange_Device_Table(&state->device,&device_table);
+  const OpenMXExxDenseBackend backend={ExactExchange_Dgemm,&products,1<threads ? ExactExchange_Parallel_For : NULL,
+                                       threads,device_calls};
+  double call_seconds=0.0;
+  for (int spin=0; spin<state->spin_channels && state->input.alpha!=0.0; spin++) {
+    double *exchange=state->output_exchange[spin];
+    if (first<last) {
+      const double call_start=MPI_Wtime();
+      const int failed=openmx_exx_add_blocks_half_abfs(module,first,last,-state->input.alpha,density[spin],exchange,
+                                                       &backend,error,sizeof(error));
+      if (Exact_Exchange_Device_Call_End(&state->device)) call_seconds += MPI_Wtime()-call_start;
+      if (failed!=0) ExactExchange_Abort(comm,"outputs",error);
+    }
+    ExactExchange_Sum(exchange,elements,comm);
+    if (openmx_exx_mirror_blocks(module,exchange,error,sizeof(error))!=0) ExactExchange_Abort(comm,"outputs",error);
+  }
+  openmx_core_native_free(state->resources,products.host.loop);
+  Exact_Exchange_Host_Blas_Restore(blas_threads);
+  const ExactExchangeDeviceCounts after=ExactExchange_Device_Counts(&state->device);
+  ExactExchange_Device_Counts_Back(&state->device,&counts);
+  for (int spin=0; spin<state->spin_channels; spin++) openmx_core_native_free(state->resources,density[spin]);
+  openmx_exx_destroy(module);
+  state->outputs = 1;
+  const double built=MPI_Wtime();
+
+  if (state->device.disabled && !disabled_before && 1<=verbosity) {
+    printf("<EXX>  WARNING: process %d: %s failed with status %d.\n",rank,
+           Exact_Exchange_Device_Failure_Name(state->device.failure),state->device.failure_status);
+    printf("<EXX>  The host computes the exchange matrix and its matrix products from here on.\n");
+    fflush(stdout);
+  }
+  double check[2]={0.0,0.0};
+  if (2<=verbosity) ExactExchange_Check_Outputs(state,comm,check);
+
+  if (rank==0 && 0<verbosity) {
+    printf("<EXX>  outputs after the SCF: K(R) without folding from D of the last build, %ld V sites,"
+           " %ld blocks, %.1f MB per spin channel (%.2f s)\n",
+           v_sites,blocks,(double)elements*sizeof(double)/1048576.0,built-start);
+    if (2<=verbosity) {
+      const int *period=state->input.fold_period;
+      printf("<EXX>  outputs: preparation %.2f s, build %.2f s; %ld blocks from another cell of their class,"
+             " largest asymmetry of D %.3e\n",prepared-start,built-prepared,moved,asymmetry);
+      if (0<after.device_calls-counts.device_calls || 0<after.declined_calls-counts.declined_calls)
+        printf("<EXX>  the outputs on the device of process 0: %lld calls in %.2f s, at most %.1f MB for one call;"
+               " left to the host for lack of device memory: %lld\n",
+               after.device_calls-counts.device_calls,call_seconds,(double)after.largest_call_bytes/1048576.0,
+               after.declined_calls-counts.declined_calls);
+      if (0<after.device_products-counts.device_products || 0<after.declined_products-counts.declined_products)
+        printf("<EXX>  matrix products of the outputs on the device of process 0: %lld in %.2f s, at most %.1f MB"
+               " for one product; left to the host for lack of device memory: %lld\n",
+               after.device_products-counts.device_products,products.device_seconds,
+               (double)after.largest_bytes/1048576.0,after.declined_products-counts.declined_products);
+      printf("<EXX>  K(k) of the outputs at the %d points of the mesh: largest difference from K(k) of the SCF %.3e,"
+             " largest element %.3e\n",period[0]*period[1]*period[2],check[0],check[1]);
+    }
+    fflush(stdout);
+  }
+}
+
+void Exact_Exchange_Add_Output_Hk(const OpenMXExactExchangeState *state, int spin, double k1, double k2,
+    double k3, int n, dcomplex **H)
+{
+  if (!Exact_Exchange_Active(state)) return;
+  if (!state->outputs)
+    ExactExchange_Abort(state->comm,"outputs","the exchange matrix of the outputs is not prepared");
+  if (n!=state->orbitals || spin<0 || state->output_spin_channels<=spin)
+    ExactExchange_Abort(state->comm,"outputs","the matrix of the outputs has an unexpected size or spin");
+  ExactExchange_Output_Sum(state,spin,k1,k2,k3,H);
+}
+
+void Exact_Exchange_Release_Outputs(OpenMXExactExchangeState *state)
+{
+  if (state==NULL) return;
+  if (state->output_owned) {
+    openmx_core_native_free(state->resources,state->output_block_atoms);
+    openmx_core_native_free(state->resources,state->output_block_cell);
+    openmx_core_native_free(state->resources,state->output_block_offset);
+    for (int spin=0; spin<2; spin++) openmx_core_native_free(state->resources,state->output_exchange[spin]);
+  }
+  state->outputs = 0;
+  state->output_owned = 0;
+  state->output_spin_channels = 0;
+  state->output_block_count = 0;
+  state->output_block_atoms = NULL;
+  state->output_block_cell = NULL;
+  state->output_block_offset = NULL;
+  state->output_exchange[0] = NULL;
+  state->output_exchange[1] = NULL;
 }

@@ -365,10 +365,8 @@ RECORDS.append(("PBE0, silicon with Si7.0-s1p1, meshes 8 x 8 x 8 and 9 x 9 x 9",
 for name, system, kgrid, extra, keyword in (
         ("reject-dm-range", "dia", (2, 2, 2), ["DM.export on", "DM.specify.energy.range on"], "DM.specify.energy.range"),
         ("reject-hks", "hmet", (4, 1, 1), ["NEGF.Output_HKS on"], "NEGF.Output_HKS"),
-        ("reject-xanes", "dia", (2, 2, 2), ["XANES.gs.fileout on"], "XANES.gs.fileout"),
-        ("reject-dos", "dia", (2, 2, 2), ["Dos.fileout on"], "Dos.fileout"),
-        # the cluster solver stops this keyword by an older check; with the band solver it reaches the list
-        ("reject-dosgauss", "dia", (2, 2, 2), ["DosGauss.fileout on"], "DosGauss.fileout")):
+        # the band dispersion and the DOS of the band solver are outputs of M8 (tools/exx_output_checks.py)
+        ("reject-xanes", "dia", (2, 2, 2), ["XANES.gs.fileout on"], "XANES.gs.fileout")):
     add(name, system, (1, 1, 1), kgrid, extra=extra)
     RUNS[name]["rejected"] = keyword
 

@@ -22,6 +22,9 @@
 #include <time.h>
 #include "openmx_common.h"
 #include "mpi.h"
+#if !OPENMX_GPU_HIP
+#include "openmx_exact_exchange.h"
+#endif
 #include <omp.h>
 
 static void Band_DFT_kpath_Col(const OpenMXChemicalPotentials *chemical,
@@ -30,7 +33,8 @@ static void Band_DFT_kpath_Col(const OpenMXChemicalPotentials *chemical,
                       int  SpinP_switch, 
                       double *****nh,
                       double *****ImNL,
-                      double ****CntOLP);
+                      double ****CntOLP,
+                      struct OpenMXExactExchangeState *exact_exchange);
 
 static void Band_DFT_kpath_NonCol(const OpenMXChemicalPotentials *chemical,
                       int nkpath, int *n_perk,
@@ -45,11 +49,12 @@ void Band_DFT_kpath(const OpenMXChemicalPotentials *chemical,  int nkpath, int *
                      int  SpinP_switch, 
                      double *****nh,
                      double *****ImNL,
-                     double ****CntOLP)
+                     double ****CntOLP,
+                     struct OpenMXExactExchangeState *exact_exchange)
 {
 
   if (SpinP_switch==0 || SpinP_switch==1){
-    Band_DFT_kpath_Col(chemical, nkpath, n_perk, kpath, kname, SpinP_switch, nh, ImNL, CntOLP);
+    Band_DFT_kpath_Col(chemical, nkpath, n_perk, kpath, kname, SpinP_switch, nh, ImNL, CntOLP, exact_exchange);
   }
   else if (SpinP_switch==3){
     Band_DFT_kpath_NonCol(chemical, nkpath, n_perk, kpath, kname, SpinP_switch, nh, ImNL, CntOLP);
@@ -66,7 +71,8 @@ void Band_DFT_kpath_Col(const OpenMXChemicalPotentials *chemical,  int nkpath, i
                          int  SpinP_switch, 
                          double *****nh,
                          double *****ImNL,
-                         double ****CntOLP)
+                         double ****CntOLP,
+                         struct OpenMXExactExchangeState *exact_exchange)
 {
   static int firsttime=1;
   int i,j,k,l,n,wan;
@@ -348,6 +354,11 @@ void Band_DFT_kpath_Col(const OpenMXChemicalPotentials *chemical,  int nkpath, i
 	        H[i1][j1].i = C[i1][j1].i;
 	      } 
 	    } 
+#if !OPENMX_GPU_HIP
+            /* K(k) of a hybrid functional, which the Hamiltonian of the
+               neighbour list does not hold */
+            Exact_Exchange_Add_Output_Hk(exact_exchange, spin, k1, k2, k3, n, H);
+#endif
           } 
 	} /* if (0<=kloop) */
       } /* ID */

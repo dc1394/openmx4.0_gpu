@@ -3618,12 +3618,16 @@ double Band_DFT_NonCol_GB(OpenMXChemicalPotentials *chemical, OpenMXBandEnergies
 void k_inversion(int i,  int j,  int k, 
                  int mi, int mj, int mk, 
                  int *ii, int *ij, int *ik ); 
+/* exact_exchange adds K(k) of a hybrid functional to H(k)
+   (openmx_exact_exchange.h); NULL without one */
+struct OpenMXExactExchangeState;
 void Band_DFT_kpath(const OpenMXChemicalPotentials *chemical,  int nkpath, int *n_perk,
                      double ***kpath, char ***kname,
                      int SpinP_switch,
                      double *****nh,
                      double *****ImNL,
-                     double ****CntOLP);
+                     double ****CntOLP,
+                     struct OpenMXExactExchangeState *exact_exchange);
 
 void Band_DFT_kpath_LNO(const OpenMXChemicalPotentials *chemical,  int nkpath, int *n_perk,
                          double ***kpath, char ***kname, 
@@ -3641,7 +3645,8 @@ double Band_DFT_Dosout(OpenMXChemicalPotentials *chemical,  int knum_i, int knum
                         int SpinP_switch,
                         double *****nh,
                         double *****ImNL,
-                        double ****CntOLP , const OpenMXElectronicViews *electronic);
+                        double ****CntOLP , const OpenMXElectronicViews *electronic,
+                        struct OpenMXExactExchangeState *exact_exchange);
 
 void Unfolding_Bands(const OpenMXChemicalPotentials *chemical,
 		     int SpinP_switch, 

@@ -3,6 +3,7 @@
 #include "mpi.h"
 #include "openmx_core.h"
 #include "openmx_core_atomic.h"
+#include "openmx_complex.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -310,6 +311,35 @@ void Exact_Exchange_Device_Addition(OpenMXExactExchangeState *state, double seco
 /* The number of such additions since the binding, over the processes of
    comm. 0 in the CPU build. Collective. */
 long long Exact_Exchange_Device_Additions(const OpenMXExactExchangeState *state, MPI_Comm comm);
+
+/* ---- outputs after the SCF (section 6.5) ---------------------------------- */
+
+/* The band dispersion and the DOS of the band solver build H(k) from the
+   Hamiltonian of the neighbour list at k points of their own, and add K(k)
+   with the function below. Exact_Exchange_Prepare_Outputs makes K(R) for
+   them after the SCF: K(R) of the last build when the site form is not
+   folded, which holds at every k point. A folded site form holds at the
+   points of its mesh only: the function then prepares the structure again
+   without folding, takes D of the last build for every block of that
+   preparation (a block outside the folded list takes the block of its
+   class times the sign of the mesh), and builds K(R) once, divided among
+   the processes of comm as a build of the SCF is. The tables of the SCF
+   stay. With verbosity 2 or more it compares K(k) of the outputs with K(k)
+   of the SCF at the points of the mesh. Does nothing without an exchange
+   matrix or for the Gamma form. Collective. */
+void Exact_Exchange_Prepare_Outputs(OpenMXExactExchangeState *state, const OpenMXAtomicViews *atomic,
+    MPI_Comm comm, int verbosity);
+
+/* Adds K(k) = sum_R e^{2 pi i k.R} K(R) of the outputs for one spin channel
+   to H[1..n][1..n], the dense H(k) of the outputs at the k point (k1, k2,
+   k3), with the orbitals counted from 1 and the phase of the H(k) that
+   Hamiltonian_Band builds. Does nothing without an exchange matrix; NULL is
+   allowed. Ends the run when K(R) of the outputs is not prepared. */
+void Exact_Exchange_Add_Output_Hk(const OpenMXExactExchangeState *state, int spin, double k1, double k2,
+    double k3, int n, dcomplex **H);
+
+/* Gives the memory of K(R) of the outputs back. NULL is allowed. */
+void Exact_Exchange_Release_Outputs(OpenMXExactExchangeState *state);
 
 /* ---- times --------------------------------------------------------------- */
 

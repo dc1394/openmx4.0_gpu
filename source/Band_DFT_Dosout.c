@@ -19,6 +19,9 @@
 #include <time.h>
 #include "openmx_common.h"
 #include "mpi.h"
+#if !OPENMX_GPU_HIP
+#include "openmx_exact_exchange.h"
+#endif
 #include <omp.h>
 
 #define maxint(a,b) (((a)>(b))?  (a):(b))
@@ -32,14 +35,16 @@ static double Band_DFT_Dosout_Col(OpenMXChemicalPotentials *chemical,
                            int SpinP_switch,
                            double *****nh,
                            double *****ImNL,
-                           double ****CntOLP, const OpenMXElectronicViews *electronic);
+                           double ****CntOLP, const OpenMXElectronicViews *electronic,
+                           struct OpenMXExactExchangeState *exact_exchange);
 
 static double Band_DFT_DosoutGauss_Col(const OpenMXChemicalPotentials *chemical,
                            int knum_i, int knum_j, int knum_k,
                            int SpinP_switch,
                            double *****nh,
                            double *****ImNL,
-                           double ****CntOLP, const OpenMXElectronicViews *electronic);
+                           double ****CntOLP, const OpenMXElectronicViews *electronic,
+                           struct OpenMXExactExchangeState *exact_exchange);
 
 static double Band_DFT_Dosout_NonCol(const OpenMXChemicalPotentials *chemical,
                            int knum_i, int knum_j, int knum_k,
@@ -61,18 +66,21 @@ double Band_DFT_Dosout(OpenMXChemicalPotentials *chemical,  int knum_i, int knum
                         int SpinP_switch,
                         double *****nh,
                         double *****ImNL,
-                        double ****CntOLP, const OpenMXElectronicViews *electronic)
+                        double ****CntOLP, const OpenMXElectronicViews *electronic,
+                        struct OpenMXExactExchangeState *exact_exchange)
 {
   static double time0;
 
   if ( (SpinP_switch==0 || SpinP_switch==1) && Dos_fileout){
 
-    time0 = Band_DFT_Dosout_Col(chemical,  knum_i, knum_j, knum_k, SpinP_switch, nh, ImNL, CntOLP, electronic);
+    time0 = Band_DFT_Dosout_Col(chemical,  knum_i, knum_j, knum_k, SpinP_switch, nh, ImNL, CntOLP, electronic,
+                                exact_exchange);
   }
 
   else if ( (SpinP_switch==0 || SpinP_switch==1) && DosGauss_fileout){
 
-    time0 = Band_DFT_DosoutGauss_Col(chemical,  knum_i, knum_j, knum_k, SpinP_switch, nh, ImNL, CntOLP, electronic);
+    time0 = Band_DFT_DosoutGauss_Col(chemical,  knum_i, knum_j, knum_k, SpinP_switch, nh, ImNL, CntOLP, electronic,
+                                     exact_exchange);
   }
 
   else if (SpinP_switch==3 && Dos_fileout){
@@ -100,7 +108,8 @@ static double Band_DFT_DosoutGauss_Col(const OpenMXChemicalPotentials *chemical,
                            int SpinP_switch,
                            double *****nh,
                            double *****ImNL,
-                           double ****CntOLP, const OpenMXElectronicViews *electronic)
+                           double ****CntOLP, const OpenMXElectronicViews *electronic,
+                           struct OpenMXExactExchangeState *exact_exchange)
 {
   double *****Partial_DM=electronic->Partial_DM;
 
@@ -557,6 +566,11 @@ static double Band_DFT_DosoutGauss_Col(const OpenMXChemicalPotentials *chemical,
 	        H2[spin][i1][j1].i = C[i1][j1].i;
 	      } 
 	    } 
+#if !OPENMX_GPU_HIP
+            /* K(k) of a hybrid functional, which the Hamiltonian of the
+               neighbour list does not hold */
+            Exact_Exchange_Add_Output_Hk(exact_exchange, spin, k1, k2, k3, n, H2[spin]);
+#endif
           } 
 	}
       }
@@ -2795,7 +2809,8 @@ static double Band_DFT_Dosout_Col(OpenMXChemicalPotentials *chemical,
                            int SpinP_switch,
                            double *****nh,
                            double *****ImNL,
-                           double ****CntOLP, const OpenMXElectronicViews *electronic)
+                           double ****CntOLP, const OpenMXElectronicViews *electronic,
+                           struct OpenMXExactExchangeState *exact_exchange)
 {
   double *****Partial_DM=electronic->Partial_DM;
 
@@ -3246,6 +3261,10 @@ static double Band_DFT_Dosout_Col(OpenMXChemicalPotentials *chemical,
 
     if (myid==Host_ID){
 
+#if !OPENMX_GPU_HIP
+      Exact_Exchange_Add_Output_Hk(exact_exchange, spin, k1, k2, k3, n, H2[spin]);
+#endif
+
       /****************************************************
                     M1 * U^t * H * U * M1
       ****************************************************/
@@ -3554,6 +3573,11 @@ static double Band_DFT_Dosout_Col(OpenMXChemicalPotentials *chemical,
 	        H2[spin][i1][j1].i = C[i1][j1].i;
 	      } 
 	    } 
+#if !OPENMX_GPU_HIP
+            /* K(k) of a hybrid functional, which the Hamiltonian of the
+               neighbour list does not hold */
+            Exact_Exchange_Add_Output_Hk(exact_exchange, spin, k1, k2, k3, n, H2[spin]);
+#endif
           } 
 	}
       }
