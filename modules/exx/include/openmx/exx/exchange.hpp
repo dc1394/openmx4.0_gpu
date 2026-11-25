@@ -151,9 +151,9 @@ bool add_exchange_blocks_abfs(const System& system, const BlockLayout& layout, s
 // these only.  Calls whose ranges divide the ABFs add up to X, and K = X +
 // X^T (mirror_blocks()), within rounding of add_exchange_blocks_abfs().  The
 // density matrix must have D_xy(R) = D_yx(-R)^T, and the system the V
-// neighbours and V blocks of prepare_system(): (a, -R) is a V neighbour of b
-// with the transpose of the V block of (b, R) of a, and the V block of the
-// centre itself is symmetric.  The arguments and the device are those of
+// neighbours and V blocks of prepare_system() or fold_v_neighbours(): (a, -R)
+// is a V neighbour of b with the transpose of the V block of (b, R) of a, and
+// the V block of the centre itself is symmetric.  The arguments and the device are those of
 // add_exchange_blocks_abfs().
 bool add_exchange_blocks_half_abfs(const System& system, const BlockLayout& layout, std::size_t first,
                                    std::size_t last, double factor, std::span<const double> density,

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <map>
 #include <stdexcept>
 #include <utility>
 
@@ -298,6 +299,196 @@ System prepare_system(const Structure& structure, std::span<const SpeciesTable> 
       for (std::size_t q = 0; q < nb; ++q) transposed[q*na+r] = block[r*nb+q];
   });
   return system;
+}
+
+namespace {
+
+// x modulo n in 0 .. n-1.
+int floor_mod(int x, int n) noexcept
+{
+  const int r = x%n;
+  return r < 0 ? r+n : r;
+}
+
+// The cells after the cell 0 in the order of half_pair() of the build: the
+// first component that is not 0 is positive.
+bool positive_cell(const std::array<int,3>& cell) noexcept
+{
+  for (const int c : cell)
+    if (c != 0) return c > 0;
+  return false;
+}
+
+} // namespace
+
+void fold_v_neighbours(System& system, const Structure& structure, const std::array<int,3>& period)
+{
+  const std::size_t atoms = system.orbital_count.size();
+  if (!system.folding.prepared.empty()) throw std::invalid_argument("the V neighbours of the system are folded already");
+  for (const int n : period)
+    if (n < 1) throw std::invalid_argument("the period of a folding must be at least one cell");
+  if (atoms == 0 || structure.positions.size() != atoms || system.abf_count.size() != atoms ||
+      system.v_neighbours.size() != atoms || system.v.size() != atoms)
+    throw std::invalid_argument("the system was not prepared for the structure");
+  for (std::size_t a = 0; a < atoms; ++a) {
+    const std::vector<Site>& list = system.v_neighbours[a];
+    if (list.empty() || !(list.front() == Site{static_cast<int>(a),{0,0,0}}) || system.v[a].size() != list.size())
+      throw std::invalid_argument("the V neighbours of an atom do not begin with the atom or lack their blocks");
+    for (std::size_t j = 0; j < list.size(); ++j)
+      if (list[j].atom < 0 || static_cast<std::size_t>(list[j].atom) >= atoms ||
+          system.v[a][j].size() != system.abf_count[a]*system.abf_count[static_cast<std::size_t>(list[j].atom)])
+        throw std::invalid_argument("a V block does not match the ABFs of its V neighbour");
+  }
+
+  // A class: the atom of the sites and their cell modulo the period.
+  using Key = std::array<int,4>;
+  const auto class_of = [&period](int atom, const std::array<int,3>& cell) {
+    return Key{atom,floor_mod(cell[0],period[0]),floor_mod(cell[1],period[1]),floor_mod(cell[2],period[2])};
+  };
+  // The members of every class of every atom, in the order of the list.
+  std::vector<std::map<Key,std::vector<std::size_t>>> classes(atoms);
+  for (std::size_t a = 0; a < atoms; ++a)
+    for (std::size_t j = 0; j < system.v_neighbours[a].size(); ++j) {
+      const Site& site = system.v_neighbours[a][j];
+      classes[a][class_of(site.atom,site.cell)].push_back(j);
+    }
+
+  // The folded V neighbours of every atom, and the folded one of every
+  // prepared V neighbour (as a position in the unsorted list).
+  struct Folded {
+    Site site;
+    std::vector<double> block;
+  };
+  std::vector<std::vector<Folded>> folded(atoms);
+  std::vector<std::vector<std::size_t>> entry(atoms);
+  for (std::size_t a = 0; a < atoms; ++a) entry[a].assign(system.v_neighbours[a].size(),system.v_neighbours[a].size());
+  const auto distance = [&structure](std::size_t a, const Site& site) {
+    const std::array<double,3> d = displacement(structure,static_cast<int>(a),site);
+    return d[0]*d[0]+d[1]*d[1]+d[2]*d[2];
+  };
+  // The member of a class closest to atom a, the larger cell at the same
+  // distance.
+  const auto closest = [&](std::size_t a, const std::vector<std::size_t>& members) {
+    std::size_t best = members.front();
+    double nearest = distance(a,system.v_neighbours[a][best]);
+    for (const std::size_t j : members) {
+      const double d = distance(a,system.v_neighbours[a][j]);
+      if (d < nearest || (d == nearest && system.v_neighbours[a][j].cell > system.v_neighbours[a][best].cell)) {
+        best = j;
+        nearest = d;
+      }
+    }
+    return system.v_neighbours[a][best].cell;
+  };
+  const auto add = [](std::vector<double>& sum, const std::vector<double>& block) {
+    if (sum.empty()) {
+      sum = block;
+      return;
+    }
+    for (std::size_t e = 0; e < sum.size(); ++e) sum[e] += block[e];
+  };
+  const auto transposed = [&system](const std::vector<double>& block, std::size_t a, std::size_t b) {
+    const std::size_t na = system.abf_count[a], nb = system.abf_count[b];
+    std::vector<double> result(block.size());
+    for (std::size_t p = 0; p < na; ++p)
+      for (std::size_t q = 0; q < nb; ++q) result[q*na+p] = block[p*nb+q];
+    return result;
+  };
+  // Places a folded V neighbour of atom a for the members of a class.
+  const auto place = [&](std::size_t a, const Site& site, std::vector<double> block,
+                         const std::vector<std::size_t>& members) {
+    for (const std::size_t j : members) entry[a][j] = folded[a].size();
+    folded[a].push_back(Folded{site,std::move(block)});
+  };
+  const auto negative = [](const std::array<int,3>& cell) { return std::array<int,3>{-cell[0],-cell[1],-cell[2]}; };
+
+  for (std::size_t a = 0; a < atoms; ++a) {
+    for (const auto& [key, members] : classes[a]) {
+      const std::size_t b = static_cast<std::size_t>(key[0]);
+      if (b < a) continue;                                             // folded from the side of b
+      // The class of the reversed sites among the V neighbours of b.
+      const std::array<int,3> start{key[1],key[2],key[3]};
+      const Key mirror = class_of(static_cast<int>(a),negative(start));
+      const auto found = classes[b].find(mirror);
+      if (found == classes[b].end() || found->second.size() != members.size())
+        throw std::logic_error("the V neighbours of two atoms are not each other's reversed sites");
+      const std::vector<std::size_t>& reversed = found->second;
+      if (b > a || key < mirror) {
+        // Two different classes: a site for this class and the reversed
+        // site, with the transpose, for the other.
+        const std::array<int,3> cell = closest(a,members);
+        std::vector<double> sum;
+        for (const std::size_t j : members) add(sum,system.v[a][j]);
+        std::vector<double> back = transposed(sum,a,b);
+        place(a,Site{static_cast<int>(b),cell},std::move(sum),members);
+        place(b,Site{static_cast<int>(a),negative(cell)},std::move(back),reversed);
+      } else if (key == mirror) {
+        if (key == Key{static_cast<int>(a),0,0,0}) {
+          // The class of the atom itself: V(0) + sum over R > 0 of V(R) + V(R)^T.
+          std::vector<double> sum = system.v[a][0];
+          for (const std::size_t j : members)
+            if (positive_cell(system.v_neighbours[a][j].cell)) {
+              const std::vector<double> back = transposed(system.v[a][j],a,a);
+              for (std::size_t e = 0; e < sum.size(); ++e) sum[e] += system.v[a][j][e]+back[e];
+            }
+          place(a,Site{static_cast<int>(a),{0,0,0}},std::move(sum),members);
+        } else {
+          // A class that is its own mirror image: (a, R) with the sum of the
+          // blocks of the members R > 0, and (a, -R) with the transpose.
+          std::vector<std::size_t> up, down;
+          for (const std::size_t j : members) (positive_cell(system.v_neighbours[a][j].cell) ? up : down).push_back(j);
+          if (up.size() != down.size() || up.empty())
+            throw std::logic_error("a class of images of an atom is not made of reversed pairs");
+          const std::array<int,3> cell = closest(a,up);
+          std::vector<double> sum;
+          for (const std::size_t j : up) add(sum,system.v[a][j]);
+          std::vector<double> back = transposed(sum,a,a);
+          place(a,Site{static_cast<int>(a),cell},std::move(sum),up);
+          place(a,Site{static_cast<int>(a),negative(cell)},std::move(back),down);
+        }
+      }
+      // key > mirror for b = a: placed with the mirror class.
+    }
+  }
+
+  // The lists in the order of neighbour_lists(): the atom itself first, then
+  // by atom and cell.
+  VFolding folding;
+  folding.period = period;
+  folding.index.resize(atoms);
+  std::vector<std::vector<Site>> lists(atoms);
+  std::vector<std::vector<std::vector<double>>> blocks(atoms);
+  for (std::size_t a = 0; a < atoms; ++a) {
+    std::vector<Folded>& list = folded[a];
+    std::vector<std::size_t> order(list.size());
+    for (std::size_t i = 0; i < order.size(); ++i) order[i] = i;
+    const Site self{static_cast<int>(a),{0,0,0}};
+    std::sort(order.begin(),order.end(),[&list,&self](std::size_t x, std::size_t y) {
+      const Site& s = list[x].site;
+      const Site& t = list[y].site;
+      if (s == self || t == self) return s == self && !(t == self);
+      return s.atom != t.atom ? s.atom < t.atom : s.cell < t.cell;
+    });
+    if (order.empty() || !(list[order.front()].site == self))
+      throw std::logic_error("the folded V neighbours of an atom do not begin with the atom");
+    std::vector<std::size_t> position(list.size());
+    for (std::size_t i = 0; i < order.size(); ++i) {
+      position[order[i]] = i;
+      if (i > 0 && list[order[i]].site == list[order[i-1]].site)
+        throw std::logic_error("two classes of V neighbours fold onto one site");
+      lists[a].push_back(list[order[i]].site);
+      blocks[a].push_back(std::move(list[order[i]].block));
+    }
+    folding.index[a].resize(entry[a].size());
+    for (std::size_t j = 0; j < entry[a].size(); ++j) {
+      if (entry[a][j] >= list.size()) throw std::logic_error("a V neighbour was left out of the folding");
+      folding.index[a][j] = position[entry[a][j]];
+    }
+  }
+  folding.prepared = std::move(system.v_neighbours);
+  system.v_neighbours = std::move(lists);
+  system.v = std::move(blocks);
+  system.folding = std::move(folding);
 }
 
 std::size_t table_elements(const System& system, std::size_t atom)

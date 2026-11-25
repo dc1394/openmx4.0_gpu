@@ -43,6 +43,10 @@ typedef struct {
   double coulomb_cutoff;     /* scf.exx.coulomb.cutoff, bohr; PBE0 only. 0 takes the radius of the
                                 sphere whose volume is kpoint_count times that of the cell */
   int kpoint_count;          /* points of the k mesh of the band solver, 1 for the cluster solver */
+  int fold_period[3];        /* the numbers of points of a regular k mesh of the band solver along
+                                b_1, b_2 and b_3 (scf.Kgrid with GCenter or REGULAR): the site form
+                                folds its V neighbours by this period in cells (section 6.4 of the
+                                guide). 0 for the cluster solver and other meshes */
   double abf_threshold;      /* scf.exx.abf.pca */
   double v_cutoff;           /* scf.exx.v.cutoff, bohr. Negative for PBE0 without the keyword: R_c
                                 plus the largest ABF radius, which keeps every V block that the

@@ -57,6 +57,16 @@
 //                          three atoms with the symmetry of prepare_system()
 //                          and in the periodic structure of
 //                          exx-exchange-system
+//   exx-exchange-folding   the V neighbours folded by the period of a k mesh
+//                          (section 6.4 of the guide), in the periodic
+//                          structure of exx-exchange-system: the folded lists
+//                          and blocks, what the folding rejects, and for
+//                          meshes with and without shifts K(k) at the points
+//                          of the mesh, E_x and the derivative with respect
+//                          to the positions by five routes against the
+//                          preparation, the Gamma form, the half build of a
+//                          folded system, and the period 1 against the Gamma
+//                          form
 #include <openmx/exx/abf.hpp>
 #include <openmx/exx/exchange.hpp>
 #include <openmx/exx/exx.h>
@@ -4150,6 +4160,435 @@ void exchange_half(const std::string& path)
   Numbers random;
   check_half_build(mirrored_system(random),"mirrored system",random,true);
   check_half_build(periodic_system(path),"periodic structure",random,false);
+}
+
+namespace {
+
+constexpr double two_pi = 6.283185307179586476925286766559;
+
+// The points of a k mesh of period[0] x period[1] x period[2] points in the
+// coordinates of the reciprocal lattice, k_i = (m + shift_i/2)/n_i: a shift
+// of 1 moves the mesh by half a point along b_i, as REGULAR does for an even
+// number of points.
+std::vector<std::array<double,3>> mesh_points(const std::array<int,3>& period, const std::array<int,3>& shift)
+{
+  std::vector<std::array<double,3>> points;
+  for (int m0 = 0; m0 < period[0]; ++m0)
+    for (int m1 = 0; m1 < period[1]; ++m1)
+      for (int m2 = 0; m2 < period[2]; ++m2)
+        points.push_back({(m0+0.5*shift[0])/period[0],(m1+0.5*shift[1])/period[1],(m2+0.5*shift[2])/period[2]});
+  return points;
+}
+
+// Hermitian N x N matrices D(k) without a pattern at the points of a mesh:
+// the real parts are symmetric, the imaginary parts antisymmetric.
+struct MeshMatrices {
+  std::vector<std::array<double,3>> points;
+  std::vector<std::vector<double>> real, imaginary;
+};
+
+MeshMatrices mesh_matrices(std::size_t n, const std::vector<std::array<double,3>>& points, Numbers& random)
+{
+  MeshMatrices mesh{points,{},{}};
+  for (std::size_t p = 0; p < points.size(); ++p) {
+    mesh.real.push_back(dense_matrix(n,true,random));
+    std::vector<double> imaginary(n*n,0.0);
+    for (std::size_t i = 0; i < n; ++i)
+      for (std::size_t j = 0; j < i; ++j) {
+        imaginary[i*n+j] = random.next();
+        imaginary[j*n+i] = -imaginary[i*n+j];
+      }
+    mesh.imaginary.push_back(std::move(imaginary));
+  }
+  return mesh;
+}
+
+// The density matrix of the mesh in the blocks of a layout, equation (5):
+// D_xy(R) = Re (1/N_k) sum_k e^{2 pi i k.R} D_xy(k).  It repeats with the
+// period of the mesh, up to the sign of a shifted direction.
+std::vector<double> mesh_blocks(const System& system, const BlockLayout& layout, const MeshMatrices& mesh)
+{
+  const std::vector<std::size_t> offset = offsets(system);
+  const std::size_t n = offset.back();
+  const double weight = 1.0/static_cast<double>(mesh.points.size());
+  std::vector<double> blocks(layout.elements(),0.0);
+  for (std::size_t b = 0; b < layout.keys.size(); ++b) {
+    const BlockKey& key = layout.keys[b];
+    const std::size_t x = static_cast<std::size_t>(key.row), y = static_cast<std::size_t>(key.column);
+    const std::size_t rows = system.orbital_count[x], columns = system.orbital_count[y];
+    double* target = blocks.data()+layout.offset[b];
+    for (std::size_t p = 0; p < mesh.points.size(); ++p) {
+      const std::array<double,3>& k = mesh.points[p];
+      const double phase = two_pi*(k[0]*key.cell[0]+k[1]*key.cell[1]+k[2]*key.cell[2]);
+      const double co = weight*std::cos(phase), si = weight*std::sin(phase);
+      for (std::size_t r = 0; r < rows; ++r)
+        for (std::size_t c = 0; c < columns; ++c) {
+          const std::size_t e = (offset[x]+r)*n+offset[y]+c;
+          target[r*columns+c] += co*mesh.real[p][e]-si*mesh.imaginary[p][e];
+        }
+    }
+  }
+  symmetrize_blocks(system,layout,blocks);
+  require(block_asymmetry(system,layout,blocks) == 0.0,"the blocks of the density matrix of a mesh are not symmetric");
+  return blocks;
+}
+
+// M(k) = sum_R e^{2 pi i k.R} M(R) of an array in a layout: the N x N real
+// part, then the N x N imaginary part.
+std::vector<double> bloch_sum(const System& system, const BlockLayout& layout, std::span<const double> values,
+                              const std::array<double,3>& k)
+{
+  const std::vector<std::size_t> offset = offsets(system);
+  const std::size_t n = offset.back();
+  std::vector<double> sum(2*n*n,0.0);
+  for (std::size_t b = 0; b < layout.keys.size(); ++b) {
+    const BlockKey& key = layout.keys[b];
+    const std::size_t x = static_cast<std::size_t>(key.row), y = static_cast<std::size_t>(key.column);
+    const std::size_t rows = system.orbital_count[x], columns = system.orbital_count[y];
+    const double phase = two_pi*(k[0]*key.cell[0]+k[1]*key.cell[1]+k[2]*key.cell[2]);
+    const double co = std::cos(phase), si = std::sin(phase);
+    for (std::size_t r = 0; r < rows; ++r)
+      for (std::size_t c = 0; c < columns; ++c) {
+        const double value = values[layout.offset[b]+r*columns+c];
+        const std::size_t e = (offset[x]+r)*n+offset[y]+c;
+        sum[e] += co*value;
+        sum[n*n+e] += si*value;
+      }
+  }
+  return sum;
+}
+
+std::array<int,3> negative_cell(const std::array<int,3>& cell)
+{
+  return {-cell[0],-cell[1],-cell[2]};
+}
+
+// The transpose of an na x nb block.
+std::vector<double> transposed_block(const std::vector<double>& block, std::size_t na, std::size_t nb)
+{
+  std::vector<double> result(block.size());
+  for (std::size_t p = 0; p < na; ++p)
+    for (std::size_t q = 0; q < nb; ++q) result[q*na+p] = block[p*nb+q];
+  return result;
+}
+
+// The V neighbours and V blocks of a folded system against those of the
+// preparation.  Returns the numbers of V neighbours before and after.
+std::array<std::size_t,2> check_folded_lists(const System& prepared, const System& folded,
+                                             const std::array<int,3>& period, const std::string& name)
+{
+  const std::size_t atoms = prepared.orbital_count.size();
+  require(folded.folding.period == period && folded.folding.prepared == prepared.v_neighbours &&
+          folded.folding.index.size() == atoms,name+": the folding does not record the preparation");
+  require(folded.c_neighbours == prepared.c_neighbours && folded.c_offset == prepared.c_offset &&
+          same_values(folded.t,prepared.t) && folded.abf_count == prepared.abf_count,
+          name+": the folding changes the C neighbours or the T blocks");
+  double scale = 0.0;
+  for (std::size_t a = 0; a < atoms; ++a)
+    for (const std::vector<double>& block : prepared.v[a]) scale = std::max(scale,largest(block));
+  const auto congruent = [&period](const std::array<int,3>& x, const std::array<int,3>& y) {
+    for (std::size_t i = 0; i < 3; ++i)
+      if ((x[i]-y[i])%period[i] != 0) return false;
+    return true;
+  };
+  Worst sums(name+": folded V blocks against the sums of their members (relative)",1e-14);
+  std::array<std::size_t,2> counts{};
+  long single = 0;
+  for (std::size_t a = 0; a < atoms; ++a) {
+    const std::vector<Site>& list = folded.v_neighbours[a];
+    const Site self{static_cast<int>(a),{0,0,0}};
+    require(!list.empty() && list.front() == self && folded.v[a].size() == list.size(),
+            name+": a folded list does not begin with the atom or lacks its blocks");
+    for (std::size_t i = 2; i < list.size(); ++i)
+      require(list[i-1].atom < list[i].atom || (list[i-1].atom == list[i].atom && list[i-1].cell < list[i].cell),
+              name+": a folded list is not in the order of neighbour_lists()");
+    const std::vector<std::size_t>& index = folded.folding.index[a];
+    require(index.size() == prepared.v_neighbours[a].size(),name+": the folding lacks a V neighbour");
+    std::vector<std::vector<std::size_t>> members(list.size());
+    for (std::size_t j = 0; j < index.size(); ++j) {
+      require(index[j] < list.size(),name+": a V neighbour folds onto a site that does not exist");
+      const Site& from = prepared.v_neighbours[a][j];
+      const Site& to = list[index[j]];
+      require(from.atom == to.atom && congruent(from.cell,to.cell),
+              name+": a V neighbour folds onto a site of another class");
+      members[index[j]].push_back(j);
+    }
+    for (std::size_t i = 0; i < list.size(); ++i) {
+      require(!members[i].empty(),name+": a folded V neighbour holds no block");
+      require(std::any_of(members[i].begin(),members[i].end(),[&](std::size_t j) { return prepared.v_neighbours[a][j] == list[i]; }),
+              name+": a folded V neighbour is none of the sites that it holds");
+      std::vector<double> sum(folded.v[a][i].size(),0.0);
+      for (const std::size_t j : members[i]) {
+        require(prepared.v[a][j].size() == sum.size(),name+": a folded V block has another size than its members");
+        for (std::size_t e = 0; e < sum.size(); ++e) sum[e] += prepared.v[a][j][e];
+      }
+      for (std::size_t e = 0; e < sum.size(); ++e) sums.add(std::fabs(folded.v[a][i][e]-sum[e])/scale);
+      // A class of one member keeps its block, bit for bit.
+      if (members[i].size() == 1) {
+        require(same_values(folded.v[a][i],prepared.v[a][members[i].front()]),
+                name+": a folded V neighbour of one member changes its block");
+        ++single;
+      }
+      // The reversed site with the transpose, to the last bit.
+      const std::size_t b = static_cast<std::size_t>(list[i].atom);
+      const Site back{static_cast<int>(a),negative_cell(list[i].cell)};
+      const std::size_t j = find_site(folded.v_neighbours[b],back);
+      require(j < folded.v_neighbours[b].size(),name+": a folded V neighbour has no reversed site");
+      require(same_values(folded.v[b][j],transposed_block(folded.v[a][i],folded.abf_count[a],folded.abf_count[b])),
+              name+": the block of a reversed folded site is not the transpose");
+    }
+    counts[0] += prepared.v_neighbours[a].size();
+    counts[1] += list.size();
+  }
+  sums.finish();
+  std::printf("%s: %zu V neighbours fold onto %zu, %ld of them with one member\n",name.c_str(),counts[0],counts[1],single);
+  return counts;
+}
+
+// The sum over the atoms of the estimated time of a build.
+double estimated_time(const System& system, const BuildCosts& cost)
+{
+  double time = 0.0;
+  for (std::size_t a = 0; a < system.abf_count.size(); ++a)
+    time += cost.per_abf[a]*static_cast<double>(system.abf_count[a])+cost.per_part[a];
+  return time;
+}
+
+// The derivative of E_x with respect to the positions by the three routes:
+// through the centre atoms, through the pairs with the weights of the
+// centre atoms, and through the pairs with the half weights.  The pairs are
+// taken in one part and in three.
+std::vector<std::vector<double>> folding_gradients(const PositionGradient& derivative, const System& system,
+                                                   const BlockLayout& layout, const std::vector<double>& density,
+                                                   double alpha)
+{
+  const std::size_t atoms = system.orbital_count.size();
+  std::size_t total = 0;
+  for (const std::size_t count : system.abf_count) total += count;
+  std::vector<std::vector<double>> result;
+  result.emplace_back(3*atoms,0.0);
+  for (std::size_t a = 0; a < atoms; ++a) derivative.add_blocks(layout,a,-alpha,density,result.back());
+  BlockWeights whole(system), half(system);
+  for (std::size_t a = 0; a < atoms; ++a)
+    add_block_weights(centre_gradient_blocks(system,layout,a,-alpha,density),whole.values[a]);
+  add_block_weights_blocks_half_abfs(system,layout,0,total,-alpha,density,half.arrays);
+  for (const BlockWeights* weights : {&whole,&half})
+    for (const std::size_t parts : {std::size_t{1},std::size_t{3}}) {
+      result.emplace_back(3*atoms,0.0);
+      for (std::size_t part = 0; part < parts; ++part)
+        derivative.add_pairs(weights->view,PrepareShare{part,parts},result.back());
+    }
+  return result;
+}
+
+} // namespace
+
+void exchange_folding(const std::string& path)
+{
+  const OverlapFixture fixture = read_overlap_fixture(path);
+  require(fixture.species.size() == 3 && fixture.positions.size() == 3,"the test is written for the three species of the fixture");
+  const double alpha = 0.25;
+  Numbers random;
+
+  // The periodic structure of exx-exchange-system: the cell is smaller than
+  // the cutoffs, so the V neighbours hold many images of every atom.
+  const int intervals = 300;
+  const ReciprocalGrid reciprocal = ReciprocalGrid::uniform(24.0,240);
+  SystemOptions options;
+  options.interaction = short_range_kernel(0.11);
+  options.v_cutoff = 3.0;
+  const std::vector<Shells> few{select(fixture.species[0],{0,2}),select(fixture.species[1],{0,1,2}),
+                                select(fixture.species[2],{0})};
+  const std::vector<SpeciesTable> tables = tables_of(few,intervals,reciprocal,1.0e-3);
+  Structure structure;
+  structure.lattice = fixture.lattice;
+  structure.positions = fixture.positions;
+  structure.species = fixture.atom_species;
+  const System prepared = prepare_system(structure,tables,reciprocal,options);
+  const std::size_t atoms = structure.positions.size(), n = orbital_total(prepared);
+  std::size_t total = 0;
+  for (const std::size_t count : prepared.abf_count) total += count;
+  const PositionGradient prepared_derivative(structure,tables,reciprocal,options,prepared);
+  const BlockLayout prepared_layout = exchange_layout(prepared);
+  int reach = 0;
+  for (const std::vector<Site>& list : prepared.v_neighbours)
+    for (const Site& site : list)
+      for (const int c : site.cell) reach = std::max(reach,std::abs(c));
+  require(reach >= 1,"the V neighbours are expected to reach the neighbouring cells");
+
+  // 1. What the folding rejects leaves the system as it was.
+  {
+    const auto unchanged = [&prepared](const System& system) {
+      return system.v_neighbours == prepared.v_neighbours && same_values(system.v,prepared.v) &&
+             system.folding.prepared.empty() && system.folding.index.empty() &&
+             system.folding.period == std::array<int,3>{};
+    };
+    System system = prepared;
+    expect_invalid("a period of zero cells",[&] { fold_v_neighbours(system,structure,{2,0,2}); });
+    expect_invalid("a negative period",[&] { fold_v_neighbours(system,structure,{1,1,-2}); });
+    Structure fewer = structure;
+    fewer.positions.pop_back();
+    fewer.species.pop_back();
+    expect_invalid("a structure with fewer atoms",[&] { fold_v_neighbours(system,fewer,{2,2,2}); });
+    require(unchanged(system),"a rejected folding changes the system");
+    System shorter = prepared;
+    shorter.v[0][1].pop_back();
+    expect_invalid("a V block of the wrong size",[&] { fold_v_neighbours(shorter,structure,{2,2,2}); });
+    // Lists that are not each other's reversed sites.
+    System lopsided = prepared;
+    lopsided.v_neighbours[0].pop_back();
+    lopsided.v[0].pop_back();
+    const System before = lopsided;
+    bool thrown = false;
+    try { fold_v_neighbours(lopsided,structure,{2,2,2}); } catch (const std::logic_error&) { thrown = true; }
+    require(thrown && lopsided.v_neighbours == before.v_neighbours && same_values(lopsided.v,before.v) &&
+            lopsided.folding.prepared.empty(),"lists without their reversed sites are folded, or the failure changes them");
+    // A folded system is not folded again.
+    fold_v_neighbours(system,structure,{2,2,2});
+    const System once = system;
+    expect_invalid("a folding of a folded system",[&] { fold_v_neighbours(system,structure,{2,2,2}); });
+    require(system.v_neighbours == once.v_neighbours && same_values(system.v,once.v) &&
+            system.folding.prepared == once.folding.prepared && system.folding.index == once.folding.index,
+            "a rejected second folding changes the system");
+  }
+
+  // 2. A period longer than twice the reach of the lists leaves every class
+  // with one member: the system keeps its lists and blocks, bit for bit.
+  {
+    System system = prepared;
+    const int period = 2*reach+1;
+    fold_v_neighbours(system,structure,{period,period,period});
+    require(system.v_neighbours == prepared.v_neighbours && same_values(system.v,prepared.v),
+            "a folding with classes of one member changes the system");
+    for (std::size_t a = 0; a < atoms; ++a)
+      for (std::size_t j = 0; j < system.folding.index[a].size(); ++j)
+        require(system.folding.index[a][j] == j,"a folding with classes of one member moves a block");
+    check_folded_lists(prepared,system,{period,period,period},"period "+std::to_string(period));
+  }
+
+  // 3. Meshes with and without shifts.  For a density matrix of the points
+  // of the mesh the folded system gives K(k) at these points, E_x and its
+  // derivative with respect to the positions of the preparation, within
+  // rounding, in the whole and the half build; K(k) between the points of
+  // the mesh differs.  The Gamma form folds all images anyway and keeps its
+  // matrix.
+  struct Mesh {
+    std::array<int,3> period, shift;
+  };
+  const Mesh meshes[] = {{{2,2,2},{0,0,0}},{{2,2,2},{1,1,1}},{{3,2,1},{0,1,0}},{{1,2,3},{1,0,0}},{{1,1,1},{0,0,0}}};
+  const std::vector<double> dense = dense_matrix(n,true,random);
+  const std::vector<double> prepared_gamma = exchange_gamma(prepared,dense,alpha);
+  bool halves_checked = false;
+  for (const Mesh& mesh : meshes) {
+    const std::string name = "mesh "+std::to_string(mesh.period[0])+"x"+std::to_string(mesh.period[1])+"x"+
+                             std::to_string(mesh.period[2])+" shift "+std::to_string(mesh.shift[0])+
+                             std::to_string(mesh.shift[1])+std::to_string(mesh.shift[2]);
+    System folded = prepared;
+    fold_v_neighbours(folded,structure,mesh.period);
+    const std::array<std::size_t,2> counts = check_folded_lists(prepared,folded,mesh.period,name);
+    require(counts[1] < counts[0],name+": the folding is expected to reduce the V neighbours");
+    const BlockLayout layout = exchange_layout(folded);
+
+    const MeshMatrices matrices = mesh_matrices(n,mesh_points(mesh.period,mesh.shift),random);
+    const std::vector<double> prepared_d = mesh_blocks(prepared,prepared_layout,matrices);
+    const std::vector<double> folded_d = mesh_blocks(folded,layout,matrices);
+    const std::vector<double> prepared_k = layout_exchange(prepared,prepared_layout,prepared_d,alpha);
+    const std::vector<double> folded_k = layout_exchange(folded,layout,folded_d,alpha);
+    std::vector<double> folded_half(layout.elements(),0.0);
+    add_exchange_blocks_half_abfs(folded,layout,0,total,-alpha,folded_d,folded_half);
+    mirror_blocks(folded,layout,folded_half);
+
+    std::vector<std::vector<double>> reference;
+    double scale = 0.0;
+    for (const std::array<double,3>& k : matrices.points) {
+      reference.push_back(bloch_sum(prepared,prepared_layout,prepared_k,k));
+      scale = std::max(scale,largest(reference.back()));
+    }
+    require(scale > 1.0e-6,name+": K(k) is expected to be of order one");
+    Worst whole(name+": K(k) of the whole build at the points (relative)",1e-12);
+    Worst half(name+": K(k) of the half build at the points (relative)",1e-12);
+    for (std::size_t p = 0; p < matrices.points.size(); ++p) {
+      const std::vector<double> a = bloch_sum(folded,layout,folded_k,matrices.points[p]);
+      const std::vector<double> b = bloch_sum(folded,layout,folded_half,matrices.points[p]);
+      for (std::size_t e = 0; e < a.size(); ++e) {
+        whole.add(std::fabs(a[e]-reference[p][e])/scale);
+        half.add(std::fabs(b[e]-reference[p][e])/scale);
+      }
+    }
+    whole.finish();
+    half.finish();
+    // Between the points of the mesh K(k) changes.
+    {
+      const std::array<double,3> between{0.5/mesh.period[0]+0.11,0.5/mesh.period[1]+0.07,0.5/mesh.period[2]+0.13};
+      const std::vector<double> a = bloch_sum(folded,layout,folded_k,between);
+      const std::vector<double> b = bloch_sum(prepared,prepared_layout,prepared_k,between);
+      double difference = 0.0;
+      for (std::size_t e = 0; e < a.size(); ++e) difference = std::max(difference,std::fabs(a[e]-b[e]));
+      require(difference > 1.0e-6*scale,name+": K(k) between the points of the mesh is expected to change");
+    }
+    const double energy = exchange_energy_gamma(prepared_d,prepared_k);
+    require(std::fabs(energy) > 1.0e-6,name+": E_x is expected to differ from zero");
+    Worst energies(name+": E_x of the whole and the half build (relative)",1e-12);
+    energies.relative(exchange_energy_gamma(folded_d,folded_k),energy);
+    energies.relative(exchange_energy_gamma(folded_d,folded_half),energy);
+    energies.finish();
+
+    // The derivative with respect to the positions.
+    const PositionGradient derivative(structure,tables,reciprocal,options,folded);
+    const std::vector<std::vector<double>> exact =
+        folding_gradients(prepared_derivative,prepared,prepared_layout,prepared_d,alpha);
+    const std::vector<std::vector<double>> routes = folding_gradients(derivative,folded,layout,folded_d,alpha);
+    const double steepest = largest(exact.front());
+    require(steepest > 1.0e-6,name+": the derivative is expected to differ from zero");
+    Worst gradients(name+": dE_x/dtau of five routes (relative)",1e-12);
+    for (const std::vector<double>& route : routes)
+      for (std::size_t e = 0; e < 3*atoms; ++e) gradients.add(std::fabs(route[e]-exact.front()[e])/steepest);
+    gradients.finish();
+
+    // The Gamma form of the folded system.
+    Worst gamma(name+": K of the Gamma form (relative)",1e-12);
+    const std::vector<double> folded_gamma = exchange_gamma(folded,dense,alpha);
+    const double gamma_scale = largest(prepared_gamma);
+    for (std::size_t e = 0; e < n*n; ++e) gamma.add(std::fabs(folded_gamma[e]-prepared_gamma[e])/gamma_scale);
+    gamma.finish();
+
+    // The estimated time of the half build of the site form.
+    const double before = estimated_time(prepared,build_costs(prepared,true,true));
+    const double after = estimated_time(folded,build_costs(folded,true,true));
+    require(after < before,name+": the folded system is expected to take less time");
+    std::printf("%s: the half build of the site form takes %.3f of the estimated time of the preparation\n",
+                name.c_str(),after/before);
+
+    if (mesh.period == std::array<int,3>{2,2,2} && !halves_checked) {
+      check_half_build(folded,name+", folded",random,false);
+      halves_checked = true;
+    }
+
+    // 4. With the period 1 the site form of the Gamma point, D_xy(R) = D_xy,
+    // gives the Gamma form of the preparation: the matrix, E_x and the
+    // derivative.
+    if (mesh.period == std::array<int,3>{1,1,1}) {
+      for (std::size_t a = 0; a < atoms; ++a)
+        require(folded.v_neighbours[a].size() <= atoms,name+": the period 1 leaves more than one site of an atom");
+      const std::vector<double> d = layout_values(layout,gamma_density(folded,dense));
+      const std::vector<double> k = layout_exchange(folded,layout,d,alpha);
+      const std::vector<double> at_gamma = bloch_sum(folded,layout,k,{0.0,0.0,0.0});
+      Worst site(name+": site form at Gamma against the Gamma form (relative)",1e-12);
+      for (std::size_t e = 0; e < n*n; ++e) site.add(std::fabs(at_gamma[e]-prepared_gamma[e])/gamma_scale);
+      site.relative(exchange_energy_gamma(d,k),exchange_energy_gamma(dense,prepared_gamma));
+      site.finish();
+      std::vector<double> gamma_gradient(3*atoms,0.0), site_gradient(3*atoms,0.0);
+      for (std::size_t a = 0; a < atoms; ++a) {
+        prepared_derivative.add_gamma(a,-alpha,dense,gamma_gradient);
+        derivative.add_blocks(layout,a,-alpha,d,site_gradient);
+      }
+      const double gamma_steepest = largest(gamma_gradient);
+      Worst forms(name+": derivative of the site form at Gamma against the Gamma form (relative)",1e-12);
+      for (std::size_t e = 0; e < 3*atoms; ++e) forms.add(std::fabs(site_gradient[e]-gamma_gradient[e])/gamma_steepest);
+      forms.finish();
+    }
+  }
+  require(halves_checked,"the half build of a folded system was not checked");
 }
 
 } // namespace exx_test

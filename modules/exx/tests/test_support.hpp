@@ -87,5 +87,6 @@ void exchange_forces(const std::string& fixture);
 void exchange_device(const std::string& fixture);
 void exchange_device_system(const std::string& fixture);
 void exchange_half(const std::string& fixture);
+void exchange_folding(const std::string& fixture);
 
 } // namespace exx_test

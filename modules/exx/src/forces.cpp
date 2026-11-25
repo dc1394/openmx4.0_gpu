@@ -24,6 +24,21 @@ int maximum_abf(std::span<const SpeciesTable> species)
   return maximum;
 }
 
+// The V neighbours whose pairs of sites the derivative goes through: those of
+// the preparation, also in a folded system (System::folding).
+const std::vector<Site>& pair_v_sites(const System& system, std::size_t atom)
+{
+  return system.folding.prepared.empty() ? system.v_neighbours[atom] : system.folding.prepared[atom];
+}
+
+// The V block of the system that holds the block of V neighbour j of the
+// preparation: in a folded system the derivative of E_x with respect to the
+// block of a member of a class is that with respect to the folded block.
+std::size_t held_v_block(const System& system, std::size_t atom, std::size_t j)
+{
+  return system.folding.prepared.empty() ? j : system.folding.index[atom][j];
+}
+
 } // namespace
 
 void add_block_weights(const CentreGradient& weights, std::span<double> values)
@@ -193,6 +208,19 @@ PositionGradient::PositionGradient(const Structure& structure, std::span<const S
     if (item.orbital_count() != system.orbital_count[a] || item.abf_count() != system.abf_count[a])
       throw std::invalid_argument("the system was not prepared with the tables of the species");
   }
+  const VFolding& folding = system.folding;
+  if (!folding.prepared.empty()) {
+    if (folding.prepared.size() != atoms || folding.index.size() != atoms)
+      throw std::invalid_argument("the folding of the V neighbours does not cover every atom");
+    for (std::size_t a = 0; a < atoms; ++a) {
+      if (folding.index[a].size() != folding.prepared[a].size() || folding.prepared[a].empty() ||
+          !(folding.prepared[a].front() == Site{static_cast<int>(a),{0,0,0}}))
+        throw std::invalid_argument("the prepared V neighbours of an atom do not match their folding");
+      for (const std::size_t i : folding.index[a])
+        if (i >= system.v_neighbours[a].size())
+          throw std::invalid_argument("a prepared V neighbour folds onto a V neighbour that does not exist");
+    }
+  }
 }
 
 const SpeciesTable& PositionGradient::table(std::size_t atom) const
@@ -256,12 +284,14 @@ void PositionGradient::add(std::size_t atom, const CentreGradient& weights, std:
   }
 
   // V blocks: the derivative of equation (12) with the interaction of the
-  // exchange.
-  const std::vector<Site>& v_sites = system.v_neighbours[atom];
-  for (std::size_t i = 1; i < v_sites.size(); ++i) {
-    const Site& site = v_sites[i];
+  // exchange, for the pairs of sites of the preparation.  In a folded system
+  // a pair takes the weights of the folded block that holds its block.
+  const std::vector<Site>& v_sites = pair_v_sites(system,atom);
+  for (std::size_t j = 1; j < v_sites.size(); ++j) {
+    const Site& site = v_sites[j];
     if (site.atom == a) continue;
     const std::size_t b = static_cast<std::size_t>(site.atom), nb = system.abf_count[b];
+    const std::size_t i = held_v_block(system,atom,j);
     const std::vector<double>& w = weights.v[i];
     if (w.size() != na*nb || system.v[atom][i].size() != na*nb)
       throw std::invalid_argument("the weights of a V block have the wrong size");
@@ -379,31 +409,35 @@ void PositionGradient::add_pairs(std::span<const std::span<const double>> weight
   });
 
   // V blocks: the derivative of equation (12).  The block of the other atom
-  // is the transpose, and its weights are added before the sum.
+  // is the transpose, and its weights are added before the sum.  The pairs
+  // are those of the preparation; in a folded system a pair takes the
+  // weights of the folded blocks that hold its two blocks.
   pairs.clear();
   std::size_t v_pair = 0;
   for (std::size_t atom = 0; atom < atoms; ++atom) {
     const int a = static_cast<int>(atom);
     const std::size_t na = system.abf_count[atom];
-    const std::vector<Site>& v_sites = system.v_neighbours[atom];
+    const std::vector<Site>& v_sites = pair_v_sites(system,atom);
     for (std::size_t i = 1; i < v_sites.size(); ++i) {
       const Site& site = v_sites[i];
       if (site.atom == a || !pair_computed_from(a,site)) continue;
       if (!mine(v_pair++)) continue;
       const std::size_t b = static_cast<std::size_t>(site.atom), nb = system.abf_count[b];
-      const std::size_t j = find_site(system.v_neighbours[b],reversed_site(a,site));
-      if (j == system.v_neighbours[b].size()) throw std::logic_error("a V neighbour has no counterpart");
-      if (system.v[atom][i].size() != na*nb || system.v[b][j].size() != nb*na)
+      const std::vector<Site>& back_sites = pair_v_sites(system,b);
+      const std::size_t j = find_site(back_sites,reversed_site(a,site));
+      if (j == back_sites.size()) throw std::logic_error("a V neighbour has no counterpart");
+      if (system.v[atom][held_v_block(system,atom,i)].size() != na*nb ||
+          system.v[b][held_v_block(system,b,j)].size() != nb*na)
         throw std::invalid_argument("a V block has the wrong size");
       pairs.push_back({atom,i,b,j});
     }
   }
   in_pieces([&](const Pair& p) {
     const std::size_t na = system.abf_count[p.a], nb = system.abf_count[p.b];
-    const double* w = weights[p.a].data()+v_offset[p.a][p.i];       // [p*nb + q]
-    const double* back = weights[p.b].data()+v_offset[p.b][p.j];    // [q*na + p]
+    const double* w = weights[p.a].data()+v_offset[p.a][held_v_block(system,p.a,p.i)];      // [p*nb + q]
+    const double* back = weights[p.b].data()+v_offset[p.b][held_v_block(system,p.b,p.j)];   // [q*na + p]
     const std::vector<double> derivative = two_center_gradient_matrix(
-        interaction_.gradient_pair(displacement(*structure_,static_cast<int>(p.a),system.v_neighbours[p.a][p.i])),
+        interaction_.gradient_pair(displacement(*structure_,static_cast<int>(p.a),pair_v_sites(system,p.a)[p.i])),
         table(p.a).abf_transforms(),table(p.b).abf_transforms());
     std::array<double,3> g{};
     for (std::size_t x = 0; x < 3; ++x) {

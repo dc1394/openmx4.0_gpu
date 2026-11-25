@@ -5196,6 +5196,16 @@ void Input_std(char *file, OpenMXCoreContext *core)
     /* the cluster solver has the Gamma point only, also for a band input
        with one k point, which the solver was switched for above */
     exx_input.kpoint_count = (Solver==3) ? Kspace_grid1*Kspace_grid2*Kspace_grid3 : 1;
+    /* the density matrix of a regular mesh, GCenter or REGULAR, repeats with
+       the period of the mesh up to a sign, and the site form folds its V
+       neighbours by that period (docs/EXX_IMPLEMENTATION_GUIDE.md, section
+       6.4); the points of the Monkhorst-Pack routine are not folded */
+    {
+      const int regular = (Solver==3 && (way_of_kpoint==1 || way_of_kpoint==3));
+      exx_input.fold_period[0] = regular ? Kspace_grid1 : 0;
+      exx_input.fold_period[1] = regular ? Kspace_grid2 : 0;
+      exx_input.fold_period[2] = regular ? Kspace_grid3 : 0;
+    }
     /* PBE0 with R_c beyond the radius of the sphere of the volume of the
        cell times the number of k points counts the exchange with the
        periodic images of the density matrix (docs/EXX_IMPLEMENTATION_GUIDE.md,

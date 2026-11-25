@@ -679,6 +679,16 @@ void Exact_Exchange_Prepare(OpenMXExactExchangeState *state, const OpenMXAtomicV
   state->orbitals = orbitals;
   state->sites = sites!=0;
   if (1<processes) ExactExchange_Add_Up_Blocks(state,comm);
+  /* The site form folds the V neighbours by the period of a regular k mesh
+     (section 6.4): the V neighbours whose cells agree modulo the period
+     become one site with the sum of their V blocks. K(k) at the points of
+     the mesh, E_x and its derivative keep their values within rounding,
+     and a build goes through one V neighbour of every class. Every process
+     folds the added blocks in the same way. */
+  const int *period=state->input.fold_period;
+  const int folded=state->sites && 0<period[0] && 0<period[1] && 0<period[2];
+  if (folded && openmx_exx_fold_v_neighbours(state->module,period,error,sizeof(error))!=0)
+    ExactExchange_Abort(comm,"preparation",error);
   if (state->sites) ExactExchange_List_Blocks(state,comm);
   state->prepared = 1;
   state->time_prepare += MPI_Wtime()-start;
@@ -698,14 +708,19 @@ void Exact_Exchange_Prepare(OpenMXExactExchangeState *state, const OpenMXAtomicV
   }
 
   if (rank==0 && 0<verbosity) {
-    long abfs=0,c_sites=0,v_sites=0;
+    long abfs=0,c_sites=0,v_sites=0,folded_sites=0;
     for (int a=0; a<atom_count; a++) {
       abfs += openmx_exx_atom_abfs(state->module,a);
       c_sites += openmx_exx_c_neighbours(state->module,a);
-      v_sites += openmx_exx_v_neighbours(state->module,a);
+      v_sites += openmx_exx_prepared_v_neighbours(state->module,a);
+      folded_sites += openmx_exx_v_neighbours(state->module,a);
     }
     printf("<EXX>  %d atoms, %d orbitals, %ld ABFs, %ld C sites, %ld V sites (%.2f s)\n",
            atom_count,orbitals,abfs,c_sites,v_sites,MPI_Wtime()-start);
+    if (folded) {
+      printf("<EXX>  V sites folded by the period of the k mesh, %d x %d x %d cells: %ld of %ld\n",
+             period[0],period[1],period[2],folded_sites,v_sites);
+    }
     if (state->input.functional==OPENMX_EXACT_EXCHANGE_PBE0) {
       printf("<EXX>  truncated Coulomb interaction: R_c %.6f bohr; V sites up to the larger ABF radius plus %.6f bohr;"
              " %d reciprocal intervals up to %.6f/bohr\n",

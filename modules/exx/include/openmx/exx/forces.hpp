@@ -31,6 +31,12 @@
 // its atoms.  add_pairs() takes the weights of all atoms and visits every
 // pair once; processes that hold all weights divide the pairs among them
 // (section 6.7).
+//
+// Both routes go through the pairs of sites of the preparation.  In a system
+// whose V neighbours fold_v_neighbours() folded, the weights have the layout
+// of the folded blocks, and the pair of a V block of the preparation takes
+// the weights of the folded block that holds it (System::folding): E_x
+// depends on the blocks of the members of a class through their sum.
 namespace openmx::exx {
 
 // The derivatives of E_x with respect to the blocks of an atom as one array,

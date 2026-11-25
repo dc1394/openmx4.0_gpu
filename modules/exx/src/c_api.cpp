@@ -381,6 +381,25 @@ int openmx_exx_v_neighbours(const OpenMXExxState* state, int atom)
   return neighbour_count(state,atom,&System::v_neighbours);
 }
 
+int openmx_exx_prepared_v_neighbours(const OpenMXExxState* state, int atom)
+{
+  const System* system = prepared(state);
+  if (system == nullptr || system->folding.prepared.empty()) return neighbour_count(state,atom,&System::v_neighbours);
+  if (atom < 0 || static_cast<std::size_t>(atom) >= system->folding.prepared.size()) return -1;
+  return static_cast<int>(system->folding.prepared[static_cast<std::size_t>(atom)].size());
+}
+
+int openmx_exx_fold_v_neighbours(OpenMXExxState* state, const int period[3], char* error, size_t capacity)
+{
+  return guarded(error,capacity,[&] {
+    if (period == nullptr) throw std::invalid_argument("the folding needs a period");
+    complete(state,"the folding needs a prepared structure");
+    // The call changes nothing when it fails.
+    fold_v_neighbours(*state->system,state->structure,{period[0],period[1],period[2]});
+    state->layout.reset();
+  });
+}
+
 int openmx_exx_report(const OpenMXExxState* state, OpenMXExxReport* report)
 {
   const System* system = prepared(state);

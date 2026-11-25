@@ -89,11 +89,18 @@ set_tests_properties(exx-exchange-device-system PROPERTIES LABELS "unit;exx" TIM
 add_test(NAME exx-exchange-half COMMAND openmx_exx_tests exchange-half "${_exx_fixtures}/overlap_reference.txt")
 set_tests_properties(exx-exchange-half PROPERTIES LABELS "unit;exx" TIMEOUT 600)
 
+# The V neighbours folded by the period of a k mesh (section 6.4 of the
+# guide): K(k) at the points of the mesh, E_x and the derivative with
+# respect to the positions against the preparation, in the periodic
+# structure of exx-exchange-system.
+add_test(NAME exx-exchange-folding COMMAND openmx_exx_tests exchange-folding "${_exx_fixtures}/overlap_reference.txt")
+set_tests_properties(exx-exchange-folding PROPERTIES LABELS "unit;exx" TIMEOUT 600)
+
 # The tests whose loops start threads have the label "threads" as well:
 # "ctest -L threads" selects them, for example in a build with
 # OPENMX_EXX_THREAD_SANITIZER.
 set_property(TEST exx-system-blocks exx-dense-backend exx-exchange-backend exx-exchange-system exx-exchange-forces
-  exx-exchange-half APPEND PROPERTY LABELS threads)
+  exx-exchange-half exx-exchange-folding APPEND PROPERTY LABELS threads)
 
 # The C interface from a program compiled as C.
 add_executable(openmx_exx_c_tests test_c.c)

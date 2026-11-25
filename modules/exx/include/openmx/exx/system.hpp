@@ -72,6 +72,19 @@ struct SystemOptions {
   LriOptions lri;
 };
 
+// The V neighbours of a system that fold_v_neighbours() folded.  prepared[a]
+// is the list of V neighbours of atom a that prepare_system() made, and
+// index[a][j] is the V neighbour of the folded list whose block took the
+// block of prepared[a][j].  The derivative with respect to the positions
+// goes through the pairs of sites of the preparation.  period is that of the
+// folding, in cells along a_1, a_2 and a_3.  All are empty, and period is 0,
+// for a system that is not folded.
+struct VFolding {
+  std::array<int,3> period{};
+  std::vector<std::vector<Site>> prepared;
+  std::vector<std::vector<std::size_t>> index;
+};
+
 // Neighbour lists and blocks of one structure.
 struct System {
   std::vector<std::size_t> orbital_count; // u_a for every atom
@@ -93,6 +106,7 @@ struct System {
   // v[a][i][P*n_b + Q] = (P|v|Q): P on atom a, Q on its i-th V neighbour (atom b).
   std::vector<std::vector<std::vector<double>>> v;
   LriReport report;
+  VFolding folding;
 };
 
 // The T block of an atom and one of its C neighbours as a separate array,
@@ -131,6 +145,53 @@ struct PrepareShare {
 System prepare_system(const Structure& structure, std::span<const SpeciesTable> species,
                       const ReciprocalGrid& reciprocal, const SystemOptions& options, const PrepareShare& share = {},
                       const DenseBackend& backend = DenseBackend());
+
+// Section 6.4 of the implementation guide: the V neighbours of a prepared
+// system, folded by the period of a k mesh of n_1 x n_2 x n_3 points.
+//
+// The density matrix of a regular mesh, D_xy(R) = Re sum_k w_k
+// e^{2 pi i k.R} D_xy(k), repeats with the period n_i cells along a_i:
+// D_xy(R + nT) = s_T D_xy(R), nT = (n_1 T_1, n_2 T_2, n_3 T_3).  The sign
+// s_T is e^{2 pi i k.nT}, the same for every point of the mesh: -1 to the
+// power T_i along a direction where the mesh is shifted by half a point
+// (REGULAR with an even n_i), and 1 otherwise.  The contribution of a
+// centre a through its V neighbour (b, R + nT) reads D at the columns of
+// loc(b, R + nT) and writes K there, and K enters K(k) at the points of the
+// mesh with the phase e^{2 pi i k.(R + nT)}.  The sign of D and the sign of
+// the phase cancel, so at the points of the mesh the contribution equals
+// that through (b, R) with the same V block.  The contribution is linear in
+// the V block.
+//
+// The call therefore replaces the V neighbours of an atom whose cells agree
+// modulo the period, a class, by one site of the class with the sum of
+// their V blocks: a build goes through one V neighbour per class.  K(k) at
+// the points of the mesh, the energy of a density matrix of the mesh and
+// the derivatives with respect to the blocks and the positions keep their
+// values within rounding.  K(R) changes, and so does K(k) away from the
+// points of the mesh: an output that needs them builds K with the system of
+// the preparation.
+//
+// The site of a class of the centre a is the member closest to a, the
+// larger cell among members at the same distance, and the classes of two
+// atoms are chosen together: when a < b gets (b, R) for a class, b gets
+// (a, -R) for the class of the reversed sites, with the transpose of the
+// block.  The classes of images of the atom itself pair up in the same way.
+// The class of the atom itself, R = 0 modulo the period, folds onto the atom
+// with V(0) plus V(R) + V(R)^T for its members R > 0, a symmetric block.  A
+// class of images that is its own mirror image (2R = 0 modulo the period)
+// keeps two sites, (a, R) with the sum of the blocks of its members R > 0
+// and (a, -R) with the transpose.  The folded system thus has the symmetry
+// that the half build requires.  Its lists keep the order of
+// neighbour_lists(): the atom itself first, then by atom and cell.  A class
+// with one member keeps its block, bit for bit, and so does a class of the
+// two images (a, R) and (a, -R): a system without other classes stays as it
+// was.
+//
+// The structure must be that of the preparation, and the blocks of a
+// divided preparation must have been added up.  The tables of the atoms
+// (get_tables()) hold the folded blocks afterwards.  Throws for a system
+// that is folded already and for a period below 1.
+void fold_v_neighbours(System& system, const Structure& structure, const std::array<int,3>& period);
 
 // The T blocks and the V blocks of an atom as one array: System::t[atom]
 // first, then System::v[atom][i] for every V neighbour i.  The processes of a

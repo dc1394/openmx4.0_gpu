@@ -255,6 +255,28 @@ int openmx_exx_atom_orbitals(const OpenMXExxState *state, int atom); /* u_a */
 int openmx_exx_atom_abfs(const OpenMXExxState *state, int atom);     /* n_P,a */
 int openmx_exx_c_neighbours(const OpenMXExxState *state, int atom);
 int openmx_exx_v_neighbours(const OpenMXExxState *state, int atom);
+/* The V neighbours of the preparation: those of openmx_exx_v_neighbours
+   before a folding, and their number before the folding after one. */
+int openmx_exx_prepared_v_neighbours(const OpenMXExxState *state, int atom);
+
+/* Folds the V neighbours of the prepared structure by the period of a k
+   mesh of period[0] x period[1] x period[2] points (section 6.4;
+   fold_v_neighbours() of system.hpp): the V neighbours of an atom whose
+   cells agree modulo the period become one site, with the sum of their V
+   blocks, so that the builds of the site form go through one V neighbour
+   per class.  For a density matrix of the points of a regular mesh of
+   that period, shifted by half a point or not, K(k) at the points of the
+   mesh, the energy and the derivatives keep their values within rounding;
+   the blocks K(R), and K(k) away from the points of the mesh, change.  The
+   blocks of a divided preparation must have been added up first
+   (openmx_exx_set_atom_tables).  The call discards the list of the blocks
+   of the site form (openmx_exx_prepare_blocks makes it again), and the
+   tables of the atoms (openmx_exx_get_atom_tables) hold the folded blocks
+   afterwards.  The derivative with respect to the positions goes through
+   the pairs of sites of the preparation.  A new preparation discards the
+   folding.  Returns 1 for a NULL period, a period below 1 and a structure
+   that is folded already, and leaves the state as it was. */
+int openmx_exx_fold_v_neighbours(OpenMXExxState *state, const int period[3], char *error, size_t capacity);
 
 /* How equation (7) was solved during the last preparation. */
 typedef struct {
