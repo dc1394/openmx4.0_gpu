@@ -517,19 +517,32 @@ void Exact_Exchange_Prepare(OpenMXExactExchangeState *state, const OpenMXAtomicV
   }
   options.abf_threshold = state->input.abf_threshold;
   options.v_cutoff = state->input.v_cutoff;
+  double largest=0.0; /* the largest ABF radius: that of the PAOs */
+  for (int s=0; s<species_count; s++) {
+    if (largest<species[s].cutoff) largest = species[s].cutoff;
+  }
   if (state->input.functional==OPENMX_EXACT_EXCHANGE_PBE0 && state->input.v_cutoff<0.0) {
     /* (P|v|Q) of the truncated interaction is 0 beyond r_P + r_Q + R_c, and
        the V list of two atoms reaches the larger of their ABF radii plus
        v_cutoff: R_c plus the largest radius keeps every block that is not 0 */
-    double largest=0.0;
-    for (int s=0; s<species_count; s++) {
-      if (largest<species[s].cutoff) largest = species[s].cutoff;
-    }
     options.v_cutoff = options.kernel_parameter+largest;
   }
   options.radial_intervals = state->input.radial_intervals;
   options.reciprocal_maximum = state->input.reciprocal_maximum;
   options.reciprocal_intervals = state->input.radial_intervals;
+  if (state->input.functional==OPENMX_EXACT_EXCHANGE_PBE0) {
+    /* The trapezoid rule in kappa gives (P|v|Q)_d of the truncated interaction
+       without aliasing while r_P + r_Q + R_c + d < 2 pi/(step of kappa): the
+       integrand of equation (12) is an entire function of that exponential
+       type (section 13, item 19 of the guide). The V blocks reach d = (the
+       larger ABF radius) + v_cutoff, so PBE0 takes more intervals than
+       1DFFT.NumGridR where R_c + 3 r_max + v_cutoff needs them. */
+    const double length=options.kernel_parameter+3.0*largest+options.v_cutoff;
+    const double needed=floor(options.reciprocal_maximum*length/(2.0*3.14159265358979323846))+1.0;
+    if (!(needed<(double)INT_MAX))
+      ExactExchange_Abort(comm,"preparation","the truncated Coulomb interaction needs too many reciprocal intervals");
+    if ((double)options.reciprocal_intervals<needed) options.reciprocal_intervals = (int)needed;
+  }
 
   /* Every process makes the tables of the species and the neighbour lists,
      and the processes divide the pairs of sites of the T and V blocks
@@ -586,8 +599,9 @@ void Exact_Exchange_Prepare(OpenMXExactExchangeState *state, const OpenMXAtomicV
     printf("<EXX>  %d atoms, %d orbitals, %ld ABFs, %ld C sites, %ld V sites (%.2f s)\n",
            atom_count,orbitals,abfs,c_sites,v_sites,MPI_Wtime()-start);
     if (state->input.functional==OPENMX_EXACT_EXCHANGE_PBE0) {
-      printf("<EXX>  truncated Coulomb interaction: R_c %.6f bohr; V sites up to the larger ABF radius plus %.6f bohr\n",
-             options.kernel_parameter,options.v_cutoff);
+      printf("<EXX>  truncated Coulomb interaction: R_c %.6f bohr; V sites up to the larger ABF radius plus %.6f bohr;"
+             " %d reciprocal intervals up to %.6f/bohr\n",
+             options.kernel_parameter,options.v_cutoff,options.reciprocal_intervals,options.reciprocal_maximum);
     }
     if (state->sites) {
       printf("<EXX>  site form: %ld blocks of the density and exchange matrices, %.1f MB each per spin channel\n",
