@@ -62,6 +62,28 @@ void add_block_weights_blocks_abfs(const System& system, const BlockLayout& layo
                                    std::span<const std::span<double>> weights,
                                    const DenseBackend& backend = DenseBackend());
 
+// The half form of these weights (section 6.7 of the implementation guide):
+// half_gradient_gamma() or half_gradient_blocks() for every part, the form
+// of E_x of the half build.  The V blocks of a pair of sites carry the
+// derivative of the pair once, on the block that the half build goes
+// through, and the T blocks of an atom also get the parts through W of the
+// parts of other atoms.  The derivative through PositionGradient::add_pairs()
+// is that of the calls above within rounding.  A range adds to the arrays
+// of its atoms and of the atoms of their V neighbours, so weights needs an
+// array for every atom of the unit cell unless the range is empty; the
+// ranges of a division add to the same elements, and processes that divide
+// the ABFs add their arrays up with rounding.  The device computes the parts
+// first, as above, and the backend those that the device leaves.  For every
+// V neighbour of the half build a part takes three products of the size of
+// W instead of two, and the half build goes through about half of them.
+void add_block_weights_gamma_half_abfs(const System& system, std::size_t first, std::size_t last, double factor,
+                                       std::span<const double> density, std::span<const std::span<double>> weights,
+                                       const DenseBackend& backend = DenseBackend());
+void add_block_weights_blocks_half_abfs(const System& system, const BlockLayout& layout, std::size_t first,
+                                        std::size_t last, double factor, std::span<const double> density,
+                                        std::span<const std::span<double>> weights,
+                                        const DenseBackend& backend = DenseBackend());
+
 class PositionGradient {
  public:
   // The arguments of prepare_system() and its result.  They are kept by

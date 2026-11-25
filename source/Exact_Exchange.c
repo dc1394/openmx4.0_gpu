@@ -907,8 +907,9 @@ double Exact_Exchange_Density_Deviation(const OpenMXExactExchangeState *state, i
    matrix and adds its result. Of all divisions into contiguous ranges, it
    takes one with the shortest longest estimate. A process without work
    gets first = last. Every process computes the same division from the
-   same numbers. The build divides the ABFs by the estimate of the half
-   build (half), the forces by that of the whole build. */
+   same numbers. The build and the weights of the forces divide the ABFs
+   by the estimate of the half build (half): both go through the same
+   groups of V neighbours. */
 static void ExactExchange_Abfs(OpenMXExactExchangeState *state, MPI_Comm comm, int half, long *first_abf,
                                long *last_abf)
 {
@@ -1087,13 +1088,15 @@ const double *Exact_Exchange_Gradient(OpenMXExactExchangeState *state, MPI_Comm 
     /* E_x depends on the positions through the T and V blocks, and the
        derivative takes two steps (section 6.7). The first one makes the
        weights of the blocks, the derivatives of E_x with respect to their
-       elements, from the density matrices. The weights are separate for
-       every ABF of the centre atoms, as the contributions to K are: every
-       process computes those of its ABFs, its share of a whole build, and
-       the arrays are added up. An element comes from one process, so
-       the sum has no rounding. */
+       elements, from the density matrices. They come in the half form: as
+       in a half build, a centre atom goes through about half of its V
+       neighbours, and a V block that it goes through also stands for the
+       mirrored block of the other atom. Every process computes the weights
+       of its ABFs, its share of a half build, and the arrays are added up.
+       The W part of a group adds to the T blocks of other atoms, so the
+       sum has rounding. */
     long first_abf=0,last_abf=0;
-    ExactExchange_Abfs(state,comm,0,&first_abf,&last_abf);
+    ExactExchange_Abfs(state,comm,1,&first_abf,&last_abf);
     double **weights=(double**)ExactExchange_Allocate(state,(size_t)atoms,sizeof(double*),comm,"forces");
     for (int a=0; a<atoms; a++)
       weights[a] = (double*)ExactExchange_Allocate(state,openmx_exx_atom_table_elements(state->module,a),
@@ -1127,10 +1130,12 @@ const double *Exact_Exchange_Gradient(OpenMXExactExchangeState *state, MPI_Comm 
     for (int spin=0; spin<state->spin_channels && first_abf<last_abf; spin++) {
       const double call_start=MPI_Wtime();
       const int failed=state->sites
-        ? openmx_exx_add_block_weights_blocks_abfs(state->module,first_abf,last_abf,-state->input.alpha*degeneracy,
-                                                   state->density[spin],weights,&backend,error,sizeof(error))
-        : openmx_exx_add_block_weights_gamma_abfs(state->module,first_abf,last_abf,-state->input.alpha*degeneracy,
-                                                  state->density[spin],weights,&backend,error,sizeof(error));
+        ? openmx_exx_add_block_weights_blocks_half_abfs(state->module,first_abf,last_abf,
+                                                        -state->input.alpha*degeneracy,state->density[spin],weights,
+                                                        &backend,error,sizeof(error))
+        : openmx_exx_add_block_weights_gamma_half_abfs(state->module,first_abf,last_abf,
+                                                       -state->input.alpha*degeneracy,state->density[spin],weights,
+                                                       &backend,error,sizeof(error));
       if (Exact_Exchange_Device_Call_End(&state->device)) call_seconds += MPI_Wtime()-call_start;
       if (failed!=0) ExactExchange_Abort(comm,"forces",error);
     }

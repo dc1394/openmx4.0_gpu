@@ -46,10 +46,13 @@ namespace {
 // array of add_block_weights() for the whole atom.  device(visit) offers the
 // parts to the device first (device_gradients_blocks() or
 // device_gradients_gamma()): it hands the parts that the device computed to
-// visit and returns their number, and compute() gives the others.
+// visit and returns their number, and compute() gives the others.  In the
+// half form a part has V blocks only for some V neighbours, and its w adds
+// to all rows of the T blocks of other atoms, so all arrays are needed.
 template <class Compute, class Device>
 void add_weight_rows(const System& system, std::size_t first, std::size_t last,
-                     std::span<const std::span<double>> weights, const Compute& compute, const Device& device)
+                     std::span<const std::span<double>> weights, const Compute& compute, const Device& device,
+                     bool half = false)
 {
   const std::size_t atoms = system.orbital_count.size();
   if (system.abf_count.size() != atoms || system.c_offset.size() != atoms || system.v_neighbours.size() != atoms)
@@ -58,20 +61,28 @@ void add_weight_rows(const System& system, std::size_t first, std::size_t last,
   for (const std::size_t count : system.abf_count) offset.push_back(offset.back()+count);
   if (first > last || last > offset.back()) throw std::out_of_range("the range of ABFs is not inside the unit cell");
   if (weights.size() != atoms) throw std::invalid_argument("the weights of the blocks need an array for every atom");
-  // The arrays of all atoms of the range are checked before the first one is
-  // changed.
-  for (std::size_t a = 0; a < atoms; ++a)
-    if (std::max(first,offset[a]) < std::min(last,offset[a+1]) && weights[a].size() != table_elements(system,a))
+  // The arrays of all atoms of the range (of all atoms in the half form) are
+  // checked before the first one is changed.
+  for (std::size_t a = 0; a < atoms; ++a) {
+    const bool touched = half ? first < last : std::max(first,offset[a]) < std::min(last,offset[a+1]);
+    if (touched && weights[a].size() != table_elements(system,a))
       throw std::invalid_argument("the array does not have the size of the weights of the blocks of the atom");
+  }
   // The rows of the ABFs begin <= P < begin + count of atom a.
-  const auto add = [&system,weights](std::size_t a, std::size_t begin, std::size_t count, const CentreGradient& rows) {
+  const auto add = [&system,weights,half](std::size_t a, std::size_t begin, std::size_t count,
+                                          const CentreGradient& rows) {
     const std::size_t width = system.orbital_count[a]*system.c_offset[a].back();
     const std::vector<Site>& neighbours = system.v_neighbours[a];
-    if (rows.t.size() != count*width || rows.v.size() != neighbours.size())
+    if (rows.t.size() != count*width || rows.v.size() != neighbours.size() ||
+        rows.w.size() != (half ? weights.size() : 0))
       throw std::logic_error("the derivatives of a part of the ABFs do not have the size of the part");
     for (std::size_t i = 0; i < neighbours.size(); ++i)
-      if (rows.v[i].size() != count*system.abf_count[static_cast<std::size_t>(neighbours[i].atom)])
+      if (rows.v[i].size() != count*system.abf_count[static_cast<std::size_t>(neighbours[i].atom)] &&
+          !(half && rows.v[i].empty()))
         throw std::logic_error("the derivatives of a part of the ABFs do not have the size of the part");
+    for (std::size_t x = 0; x < rows.w.size(); ++x)
+      if (!rows.w[x].empty() && rows.w[x].size() != system.abf_count[x]*system.orbital_count[x]*system.c_offset[x].back())
+        throw std::logic_error("the derivatives of a part of the ABFs do not have the size of the T blocks of an atom");
     double* target = weights[a].data()+begin*width;
     for (const double value : rows.t) *target++ += value;
     // The V blocks follow the T blocks of all ABFs of the atom.
@@ -81,6 +92,11 @@ void add_weight_rows(const System& system, std::size_t first, std::size_t last,
       target = weights[a].data()+block+begin*nq;
       for (const double value : rows.v[i]) *target++ += value;
       block += system.abf_count[a]*nq;
+    }
+    // The parts through W of the T blocks of the atoms, all their rows.
+    for (std::size_t x = 0; x < rows.w.size(); ++x) {
+      target = weights[x].data();
+      for (const double value : rows.w[x]) *target++ += value;
     }
   };
   // The parts of the device come in the order of the atoms below.
@@ -124,6 +140,36 @@ void add_block_weights_blocks_abfs(const System& system, const BlockLayout& layo
       [&](const GradientVisit& visit) {
         return device_gradients_blocks(system,layout,first,last,factor,density,backend,visit);
       });
+}
+
+void add_block_weights_gamma_half_abfs(const System& system, std::size_t first, std::size_t last, double factor,
+                                       std::span<const double> density, std::span<const std::span<double>> weights,
+                                       const DenseBackend& backend)
+{
+  add_weight_rows(
+      system,first,last,weights,
+      [&](std::size_t atom, std::size_t from, std::size_t to) {
+        return half_gradient_gamma(system,atom,from,to,factor,density,backend);
+      },
+      [&](const GradientVisit& visit) {
+        return device_gradients_gamma(system,first,last,factor,density,backend,visit,true);
+      },
+      true);
+}
+
+void add_block_weights_blocks_half_abfs(const System& system, const BlockLayout& layout, std::size_t first,
+                                        std::size_t last, double factor, std::span<const double> density,
+                                        std::span<const std::span<double>> weights, const DenseBackend& backend)
+{
+  add_weight_rows(
+      system,first,last,weights,
+      [&](std::size_t atom, std::size_t from, std::size_t to) {
+        return half_gradient_blocks(system,layout,atom,from,to,factor,density,backend);
+      },
+      [&](const GradientVisit& visit) {
+        return device_gradients_blocks(system,layout,first,last,factor,density,backend,visit,true);
+      },
+      true);
 }
 
 PositionGradient::PositionGradient(const Structure& structure, std::span<const SpeciesTable> species,

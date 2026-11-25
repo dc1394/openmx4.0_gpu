@@ -1356,20 +1356,28 @@ void exchange_backend(const std::string& path)
 
     // The derivatives divide the work of the single ABFs into pieces: with a
     // table that has a loop they give the bits of the same table without the
-    // loop, and the loop is called.
+    // loop, and the loop is called.  So does the half form, whose parts
+    // through W are sums over the ABFs of the call.
     for (const bool product : {false,true}) {
       const DenseBackend whole = with(product,nullptr,0), pieces = with(product,&threaded_loop,3);
       shared.reset();
       const ExchangeGradient all = exchange_gradient_gamma(system,d,alpha,whole);
       const ExchangeGradient again = exchange_gradient_gamma(system,d,alpha,pieces);
       bool same = same_values(all.t,again.t) && same_values(all.v,again.v);
+      const auto same_gradient = [](const CentreGradient& x, const CentreGradient& y) {
+        return same_values(x.t,y.t) && same_values(x.v,y.v) && same_values(x.w,y.w);
+      };
       for (std::size_t a = 0; a < atoms; ++a) {
         const CentreGradient gamma = centre_gradient_gamma(system,a,-alpha,d,whole);
         const CentreGradient gamma_again = centre_gradient_gamma(system,a,-alpha,d,pieces);
         const CentreGradient site = centre_gradient_blocks(system,layout,a,-alpha,blocks_of_d,whole);
         const CentreGradient site_again = centre_gradient_blocks(system,layout,a,-alpha,blocks_of_d,pieces);
-        same = same && same_values(gamma.t,gamma_again.t) && same_values(gamma.v,gamma_again.v) &&
-               same_values(site.t,site_again.t) && same_values(site.v,site_again.v);
+        same = same && same_gradient(gamma,gamma_again) && same_gradient(site,site_again);
+        const std::size_t count = system.abf_count[a];
+        same = same && same_gradient(half_gradient_gamma(system,a,0,count,-alpha,d,whole),
+                                     half_gradient_gamma(system,a,0,count,-alpha,d,pieces)) &&
+               same_gradient(half_gradient_blocks(system,layout,a,0,count,-alpha,blocks_of_d,whole),
+                             half_gradient_blocks(system,layout,a,0,count,-alpha,blocks_of_d,pieces));
       }
       require(same,"a table with a loop changes the derivatives");
       require(shared.loops > 0,"the derivatives do not call the loop of the table");
@@ -2411,6 +2419,24 @@ struct BlockWeights {
   BlockWeights& operator=(const BlockWeights&) = delete;
 };
 
+// The weight of the V block of the V neighbour i of centre a in the half form
+// of the weights, in units of its weight in the form of the centre atoms: 2
+// for a V neighbour that the half build goes through, 1 for the centre
+// itself, which enters with half its V block, and 0 for the others.  The
+// Gamma form goes through the atoms above the centre and all images of the
+// centre, the site form through the cells R > 0 (in the order of the
+// components) and through R = 0 with an atom above the centre.
+double half_weight_ratio(const System& system, std::size_t a, std::size_t i, bool sites)
+{
+  const Site& b = system.v_neighbours[a][i];
+  const std::size_t atom = static_cast<std::size_t>(b.atom);
+  if (!sites) return atom > a ? 2.0 : atom == a ? 1.0 : 0.0;
+  if (i == 0) return 1.0;
+  for (const int c : b.cell)
+    if (c != 0) return c > 0 ? 2.0 : 0.0;
+  return atom > a ? 2.0 : 0.0;
+}
+
 // Compares the derivatives of both forms with central differences of fourth
 // order of E_x: every atom is moved along every axis, and the system is
 // prepared again for each of the four structures.  The density matrices stay
@@ -2599,6 +2625,79 @@ Forces check_forces(const std::string& name, const Structure& structure, const s
       }
       std::printf("%s: the weights of the blocks in ranges of the %zu ABFs, %ld cuts in two, %ld of them inside an atom\n",
                   form.c_str(),total,cuts,inside);
+    }
+
+    // The half form of the weights (section 6.7), the E_x of the half build.
+    // Its arrays differ from those of the centre atoms: over all ABFs the T
+    // blocks of every atom are the same within rounding, every V block that
+    // the half build goes through has twice the weight (the centre itself
+    // the same), and the other V blocks have none.  Through the pairs it
+    // gives the derivative of the centre atoms within rounding, in one range,
+    // in two ranges that meet anywhere and in ranges of 1, 2, 3, ... ABFs.
+    for (const bool sites : {false,true}) {
+      const std::string form = name+(sites ? ", site form, half weights" : ", Gamma form, half weights");
+      const BlockWeights& whole = sites ? site_weights : gamma_weights;
+      const std::vector<double>& exact = sites ? result.site : result.gamma;
+      const double scale = sites ? scale_site : scale_gamma;
+      const auto add = [&](std::size_t first, std::size_t last, std::span<const std::span<double>> arrays) {
+        if (sites) add_block_weights_blocks_half_abfs(system,layout,first,last,-alpha,blocks,arrays);
+        else add_block_weights_gamma_half_abfs(system,first,last,-alpha,d,arrays);
+      };
+      Worst paired(form+": through the pairs of sites against the centre atoms (relative)",1e-12);
+      const auto through_pairs = [&](const BlockWeights& w) {
+        for (const std::size_t parts : {std::size_t{1},std::size_t{3}}) {
+          std::vector<double> through(3*atoms,0.0);
+          for (std::size_t part = 0; part < parts; ++part)
+            derivative.add_pairs(w.view,PrepareShare{part,parts},through);
+          for (std::size_t e = 0; e < 3*atoms; ++e) paired.add(std::fabs(through[e]-exact[e])/scale);
+        }
+      };
+      BlockWeights all(system);
+      add(0,total,all.arrays);
+      through_pairs(all);
+      double weight_scale = 0.0;
+      for (std::size_t a = 0; a < atoms; ++a) weight_scale = std::max(weight_scale,largest(whole.values[a]));
+      Worst blocks_worst(form+": T and V blocks against those of the centre atoms (relative)",1e-12);
+      long visited = 0, skipped = 0;
+      for (std::size_t a = 0; a < atoms; ++a) {
+        const std::vector<double>& got = all.values[a];
+        const std::vector<double>& want = whole.values[a];
+        std::size_t e = 0;
+        for (; e < system.t[a].size(); ++e) blocks_worst.add(std::fabs(got[e]-want[e])/weight_scale);
+        for (std::size_t i = 0; i < system.v_neighbours[a].size(); ++i) {
+          const double ratio = half_weight_ratio(system,a,i,sites);
+          (ratio == 0.0 ? skipped : visited) += 1;
+          for (const std::size_t end = e+system.v[a][i].size(); e < end; ++e)
+            blocks_worst.add(std::fabs(got[e]-ratio*want[e])/weight_scale);
+        }
+        require(e == got.size(),form+": the arrays of the weights have another layout");
+      }
+      blocks_worst.finish();
+      require(visited > 0,form+": the half form is expected to keep some V blocks");
+      for (std::size_t c = 1; c < total; c += std::max<std::size_t>(1,total/7)) {
+        BlockWeights cut(system);
+        add(0,c,cut.arrays);
+        add(c,total,cut.arrays);
+        through_pairs(cut);
+      }
+      BlockWeights growing(system);
+      for (std::size_t from = 0, width = 1; from < total; from += width, ++width)
+        add(from,std::min(total,from+width),growing.arrays);
+      through_pairs(growing);
+      paired.finish();
+      // A range that is not empty needs the arrays of all atoms; an empty one
+      // adds nothing and needs none.
+      {
+        BlockWeights last(system);
+        std::vector<std::span<double>> only(atoms);
+        only[atoms-1] = last.arrays[atoms-1];
+        expect_invalid("a half range of ABFs without the arrays of the other atoms",
+                       [&] { add(first_abf[atoms-1],total,only); });
+        add(0,0,only);
+        add(total,total,std::vector<std::span<double>>(atoms));
+        require(largest(last.values[atoms-1]) == 0.0,form+": a rejected or empty half range changes the weights");
+      }
+      std::printf("%s: %ld V blocks with weights, %ld without\n",form.c_str(),visited,skipped);
     }
   }
 
@@ -3765,6 +3864,133 @@ void check_device_gradients(const System& system, const std::string& name, Numbe
   }
 }
 
+// The half form of the weights on the device (device_gradients_gamma() and
+// device_gradients_blocks() with half), in both forms, against the host with
+// the same table.  The density matrices need not be symmetric: both sides
+// compute the same sums.  Every part brings back three arrays: dt, dv and
+// the T blocks through W.  After a failure of the device the host computes
+// the parts that did not come back, and these add to the T blocks of other
+// atoms too, so the arrays are compared within rounding only.
+void check_device_half_gradients(const System& system, const std::string& name, Numbers& random, bool every)
+{
+  const double alpha = 0.25;
+  const std::size_t atoms = system.orbital_count.size(), n = orbital_total(system);
+  std::vector<std::size_t> first_abf(1,0);
+  for (const std::size_t count : system.abf_count) first_abf.push_back(first_abf.back()+count);
+  const std::size_t total = first_abf.back();
+  const std::vector<double> dense = dense_matrix(n,false,random);
+  const BlockLayout layout = exchange_layout(system);
+  std::vector<double> blocks(layout.elements());
+  for (double& value : blocks) value = random.next();
+
+  using Weights = std::function<void(std::size_t, std::size_t, std::span<const std::span<double>>, const DenseBackend&)>;
+  struct HalfForm {
+    std::string name;
+    Weights weights;
+  };
+  const HalfForm forms[] = {
+      {name+", Gamma form, half weights",
+       [&](std::size_t first, std::size_t last, std::span<const std::span<double>> arrays, const DenseBackend& backend) {
+         add_block_weights_gamma_half_abfs(system,first,last,-alpha,dense,arrays,backend);
+       }},
+      {name+", site form, half weights",
+       [&](std::size_t first, std::size_t last, std::span<const std::span<double>> arrays, const DenseBackend& backend) {
+         add_block_weights_blocks_half_abfs(system,layout,first,last,-alpha,blocks,arrays,backend);
+       }}};
+
+  FakeDevice device;
+  Calls calls;
+  const OpenMXExxDenseBackend host_table{&shared_dgemm,&calls,&in_order_loop,4,nullptr};
+  const OpenMXExxDenseBackend device_table{&shared_dgemm,&calls,&in_order_loop,4,&device.table()};
+  const DenseBackend host(&host_table), with_device(&device_table);
+  const auto flat = [](const BlockWeights& w) {
+    std::vector<double> all;
+    for (const std::vector<double>& values : w.values) all.insert(all.end(),values.begin(),values.end());
+    return all;
+  };
+
+  for (const HalfForm& form : forms) {
+    const std::string& what = form.name;
+    BlockWeights reference(system);
+    form.weights(0,total,reference.arrays,host);
+    const std::vector<double> expected = flat(reference);
+    const double scale = largest(expected);
+    require(scale > 1.0e-6,what+": the weights are expected to be of order one");
+    const auto run = [&](std::size_t first, std::size_t last, BlockWeights& w) {
+      device.reset();
+      calls.reset();
+      form.weights(first,last,w.arrays,with_device);
+      const std::string ending = device.ending();
+      require(ending.empty(),what+": "+ending);
+    };
+    const auto compare = [&](const BlockWeights& w, Worst& worst) {
+      const std::vector<double> values = flat(w);
+      for (std::size_t e = 0; e < values.size(); ++e) worst.add(std::fabs(values[e]-expected[e])/scale);
+    };
+    std::size_t parts = 0;                          // the atoms with ABFs
+    for (std::size_t a = 0; a < atoms; ++a) parts += first_abf[a] < first_abf[a+1] ? 1 : 0;
+
+    // The device computes every part: the table of the host is not used,
+    // accept is told the bytes and the largest product, and every part
+    // brings back three arrays.
+    BlockWeights device_weights(system);
+    run(0,total,device_weights);
+    const std::vector<FakeDevice::Kind> sequence = device.sequence;
+    require(calls.products == 0 && calls.loops == 0,what+": the product or the loop of the table is used with a device");
+    require(device.accepted == 1 && device.bytes == device.allocated &&
+            device.multiplications == device.largest_product &&
+            device.count[FakeDevice::download_call] == static_cast<long>(3*parts) &&
+            device.count[FakeDevice::allocate_call] == device.count[FakeDevice::release_call],
+            what+": accept is told other sizes than the call takes, or wrong calls of the device");
+    Worst worst(what+": weights on the device against the host (relative)",1e-12);
+    compare(device_weights,worst);
+    worst.finish();
+    {
+      BlockWeights again(system);
+      run(0,total,again);
+      require(same_values(flat(again),flat(device_weights)),what+": the device gives other bits the second time");
+    }
+
+    // Ranges that divide the ABFs, inside an atom as well.
+    {
+      Worst cut_worst(what+": two ranges of ABFs on the device (relative)",1e-12);
+      for (const std::size_t middle : {std::size_t{1},first_abf[1]/2,first_abf[1],total-1}) {
+        BlockWeights cut(system);
+        run(0,middle,cut);
+        run(middle,total,cut);
+        compare(cut,cut_worst);
+      }
+      cut_worst.finish();
+    }
+
+    // The device declines: the host computes the weights with its own bits.
+    {
+      device.answer = 0;
+      BlockWeights declined(system);
+      run(0,total,declined);
+      require(device.accepted == 1 && device.calls == 0 && calls.products > 0 && same_values(flat(declined),expected),
+              what+": a device that declines is used, or the host gives other bits");
+      device.answer = 1;
+    }
+
+    // Every call of the device fails in turn: the host computes the parts
+    // that the device did not bring back.
+    const std::vector<long> chosen = failures(sequence,every);
+    Worst failed_worst(what+": weights after a failure of the device (relative)",1e-12);
+    for (const long index : chosen) {
+      device.failing = index;
+      BlockWeights failed(system);
+      run(0,total,failed);
+      require(device.failed && device.calls > index && calls.products > 0,what+": a failure of the device is not noticed");
+      compare(failed,failed_worst);
+    }
+    device.failing = -1;
+    failed_worst.finish();
+    std::printf("%s: %ld calls of the device, %zu failures, each one followed by the host\n",what.c_str(),
+                static_cast<long>(sequence.size()),chosen.size());
+  }
+}
+
 // Both forms of a system with a density matrix of numbers without a
 // pattern, not symmetric: a transposed block does not pass unnoticed.  The
 // blocks of the site form are numbers of their own, not those of one dense
@@ -3806,6 +4032,7 @@ void check_device_forms(const System& system, const std::string& name, Numbers& 
   check_device(system,half_site,random,every);
   check_abf_ranges(system,name,random,every);
   check_device_gradients(system,name,random,every);
+  check_device_half_gradients(system,name,random,every);
 
   // Arguments that the library rejects are rejected before the device is
   // asked; the derivatives of one centre atom do not use the device.

@@ -281,9 +281,11 @@ ExchangeGradient exchange_gradient_gamma(const System& system, std::span<const d
 // t o dT and of v[i] o dV[i].  One call takes two matrix products of the
 // size of those of the build and, for every V neighbour, two products of the
 // size of W and four small ones for every ABF of the centre.
+//   w  empty here; the half form below fills it.
 struct CentreGradient {
   std::vector<double> t;
   std::vector<std::vector<double>> v;
+  std::vector<std::vector<double>> w;
 };
 
 // density is an array in the layout, as for add_exchange_blocks().
@@ -314,6 +316,35 @@ CentreGradient centre_gradient_gamma(const System& system, std::size_t atom, std
                                      double factor, std::span<const double> density,
                                      const DenseBackend& backend = DenseBackend());
 
+// The half form of these derivatives (section 6.7 of the implementation
+// guide), for the same part of the ABFs of a centre atom.  It writes E_x as
+// the half build does: the centre goes through the V neighbours of
+// add_exchange_blocks_half_abfs() and add_exchange_gamma_half_abfs() only,
+// the centre itself with half its V block, and K = X + X^T.
+//   t     the rows of the part, as above, through G only: the half that
+//         went through the W of the other centres is in their w.
+//   v     v[i] for a V neighbour i that the half build goes through: twice
+//         the array above, the same for the centre itself.  Empty for the
+//         other V neighbours: their V blocks are the transposes of visited
+//         ones, which carry their derivative.
+//   w     an entry for every atom of the unit cell: w[x] is the derivative
+//         with respect to the T blocks of all ABFs of atom x through the W
+//         of this part, in the layout of System::t[x], or empty when the
+//         part does not reach the atom.
+// The sum over a division of all ABFs gives, through the pairs of sites,
+// the derivative of the calls above within rounding.  The T blocks of an
+// atom get its t and the w of all parts; the V blocks of a pair of sites
+// get the derivative of the pair once.  A call takes, for every V
+// neighbour it goes through, three products of the size of W and the four
+// small ones for every ABF; the two large products of the centre are those
+// of the half build.  The density matrix must be symmetric, as above.
+CentreGradient half_gradient_blocks(const System& system, const BlockLayout& layout, std::size_t atom,
+                                    std::size_t first, std::size_t last, double factor,
+                                    std::span<const double> density, const DenseBackend& backend = DenseBackend());
+CentreGradient half_gradient_gamma(const System& system, std::size_t atom, std::size_t first, std::size_t last,
+                                   double factor, std::span<const double> density,
+                                   const DenseBackend& backend = DenseBackend());
+
 // The same derivatives on the device of the backend (section 11 of the
 // implementation guide), for the parts of the centre atoms that the ABFs
 // first <= P < last hold.  The ABFs are counted over all atoms, as for
@@ -327,13 +358,15 @@ CentreGradient centre_gradient_gamma(const System& system, std::size_t atom, std
 // backend has no device, the device does not take the work or a step on the
 // device fails.  The caller computes the parts after them on the host.  The
 // device adds the products in another order than the host, so the arrays
-// differ from those of the host by rounding.
+// differ from those of the host by rounding.  With half the device
+// computes the half form, and visit receives the arrays of
+// half_gradient_blocks() or half_gradient_gamma().
 using GradientVisit = std::function<void(std::size_t atom, std::size_t from, std::size_t to, CentreGradient&& gradient)>;
 std::size_t device_gradients_blocks(const System& system, const BlockLayout& layout, std::size_t first,
                                     std::size_t last, double factor, std::span<const double> density,
-                                    const DenseBackend& backend, const GradientVisit& visit);
+                                    const DenseBackend& backend, const GradientVisit& visit, bool half = false);
 std::size_t device_gradients_gamma(const System& system, std::size_t first, std::size_t last, double factor,
                                    std::span<const double> density, const DenseBackend& backend,
-                                   const GradientVisit& visit);
+                                   const GradientVisit& visit, bool half = false);
 
 } // namespace openmx::exx

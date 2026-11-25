@@ -324,10 +324,27 @@ void centre_contribution(const System& system, std::size_t a, std::size_t p_firs
 // loop of the backend may give every piece to another thread.  Nothing in
 // that work is a sum over P, so the result is the same for every number of
 // pieces, bit for bit.
+//
+// With through, the half form (section 6.7 of the implementation guide).
+// The sink is that of the half build: its groups are the V neighbours that
+// the half build goes through, the centre itself with half its V block, and
+// E_x = 2 factor sum_g sum_P W_P o H_P.  Then
+//   dt     is the expression above, the part through G of this centre;
+//   dv[g]  = 2 factor s_g sum_{nu l} T_Q[nu, l] H_P[nu, l], with s_g = 1/2
+//          for the halved V block of the centre and 1 for the others: the
+//          derivative with respect to the stored V block;
+//   (*through)[b] [(Q,nu), l] += 2 factor sum_P V_g[P, Q] H_P[nu, l], with
+//          the V block V_g of the group as the sink has it: the part of the
+//          T blocks of atom b = atom(g) that goes through W, in the layout
+//          of sink.t(b).  The array of an atom is made when the first group
+//          of the atom reaches it.
+// These products run over all P of the call on the calling thread, so the
+// result is still the same for every number of pieces.
 template <class Sink>
 void centre_derivatives(const System& system, std::size_t a, std::size_t p_first, std::size_t p_last, std::size_t s,
                         const double* dloc, Sink& sink, double factor, const DenseBackend& backend,
-                        std::vector<double>& dt, std::vector<std::vector<double>>& dv)
+                        std::vector<double>& dt, std::vector<std::vector<double>>& dv,
+                        std::vector<std::vector<double>>* through = nullptr)
 {
   const std::size_t np = p_last-p_first, ua = system.orbital_count[a], ell = sink.width(a);
   const std::size_t rows = np*ua, part = s*ua;
@@ -402,7 +419,15 @@ void centre_derivatives(const System& system, std::size_t a, std::size_t p_first
       }
     });
     dv[ib].resize(np*nq);
-    backend.multiply_transposed(np,nq,ub*lb,factor,h.data(),sink.t(b),0.0,dv[ib].data());
+    const double weight = through == nullptr ? factor : 2.0*factor*sink.v_scale(ib);
+    backend.multiply_transposed(np,nq,ub*lb,weight,h.data(),sink.t(b),0.0,dv[ib].data());
+    if (through != nullptr) {
+      std::vector<double>& target = (*through)[b];
+      const bool fresh = target.empty();
+      if (fresh) target.resize(nq*ub*lb);
+      backend.transposed_multiply(nq,ub*lb,np,2.0*factor,sink.v(ib)+p_first*nq,h.data(),fresh ? 0.0 : 1.0,
+                                  target.data());
+    }
   }
 
   backend.parallel_for(pieces,[&](std::size_t c) {
@@ -517,6 +542,10 @@ class SiteSink {
   {
     return half_ && neighbours_[g] == 0 ? onsite_.data() : system_.v[a_][neighbours_[g]].data();
   }
+  // The ratio of v(g) to the stored V block, and the index of the V
+  // neighbour of group g among those of the centre.
+  double v_scale(std::size_t g) const { return half_ && neighbours_[g] == 0 ? 0.5 : 1.0; }
+  std::size_t neighbour_index(std::size_t g) const { return neighbours_[g]; }
   const double* t(std::size_t atom) const { return system_.t[atom].data(); }
   std::size_t width(std::size_t atom) const { return system_.c_offset[atom].back(); }
 
@@ -815,7 +844,7 @@ class GammaSink {
  public:
   GammaSink(const System& system, std::size_t a, double factor, std::span<double> k,
             const std::vector<std::size_t>& offset, bool half = false)
-      : system_(system), a_(a), factor_(factor), k_(k), offset_(offset), n_(offset.back()),
+      : system_(system), a_(a), factor_(factor), k_(k), offset_(offset), n_(offset.back()), half_(half),
         folded_(system.orbital_count.size())
   {
     // The groups: the atoms among the V neighbours, in the order of their
@@ -842,6 +871,9 @@ class GammaSink {
   std::size_t groups() const noexcept { return atoms_.size(); }
   std::size_t atom(std::size_t g) const { return atoms_[g]; }
   const double* v(std::size_t g) const { return v_[g].data(); }
+  // The ratio of v(g) to the sum of the stored V blocks of the group: the
+  // group of the centre comes first and has half of it in the half build.
+  double v_scale(std::size_t g) const { return half_ && g == 0 ? 0.5 : 1.0; }
   const double* t(std::size_t atom)
   {
     const Folded& f = folded(atom);
@@ -852,6 +884,8 @@ class GammaSink {
   // The orbitals of loc(A): the rows of D[loc(A), .] and of the last result.
   const std::vector<std::size_t>& rows() { return folded(a_).column; }
   const std::vector<std::size_t>& columns(std::size_t g) { return folded(atoms_[g]).column; }
+  // The orbital of every column of the folded T blocks of an atom.
+  const std::vector<std::size_t>& orbitals(std::size_t atom) { return folded(atom).column; }
 
   void first(std::size_t g, const double* values)
   {
@@ -931,6 +965,7 @@ class GammaSink {
   std::span<double> k_;
   const std::vector<std::size_t>& offset_;
   std::size_t n_;
+  bool half_;
   std::vector<std::size_t> atoms_;         // the atom of every group
   std::vector<std::vector<double>> v_;     // sum of the V blocks of the images of that atom
   std::vector<Folded> folded_;
@@ -965,32 +1000,55 @@ void check_dense(std::size_t n, std::size_t size, const char* what)
   if (size != n*n) throw std::invalid_argument(what);
 }
 
+// The derivative with respect to rows of the stored T blocks of atom x, in
+// the layout of System::t[x], from that with respect to the same rows of
+// its folded T blocks (GammaSink), whose columns are the orbitals given:
+// every stored column takes the value of the folded column of its orbital.
+std::vector<double> unfolded_t(const System& system, std::size_t x, const std::vector<std::size_t>& offset,
+                               const std::vector<std::size_t>& orbitals, const double* folded, std::size_t rows)
+{
+  const std::size_t ell = system.c_offset[x].back(), width = orbitals.size();
+  std::vector<std::size_t> position(offset.back(),0);
+  for (std::size_t l = 0; l < width; ++l) position[orbitals[l]] = l;
+  const std::vector<std::size_t> stored = folded_columns(system,offset,x);
+  std::vector<double> t(rows*ell);
+  for (std::size_t r = 0; r < rows; ++r)
+    for (std::size_t l = 0; l < ell; ++l) t[r*ell+l] = folded[r*width+position[stored[l]]];
+  return t;
+}
+
 // The derivatives of the ABFs first <= P < last of a centre atom in the
 // layout of System::t[atom] and System::v[atom], from those of the folded
 // arrays of the Gamma form (centre_derivatives() with a GammaSink): the
 // images of an atom among the C neighbours share a column of the folded T
-// blocks, the images among the V neighbours a group.
+// blocks, the images among the V neighbours a group.  The half form has no
+// group for the atoms below the centre, whose V neighbours get empty
+// arrays, and folded_w, the parts through W in the folded T blocks of the
+// atoms, which become w.
 CentreGradient unfolded_gradient(const System& system, std::size_t atom, std::size_t first, std::size_t last,
                                  GammaSink& sink, const std::vector<std::size_t>& offset,
-                                 const std::vector<double>& folded_t, const std::vector<std::vector<double>>& grouped_v)
+                                 const std::vector<double>& folded_t, const std::vector<std::vector<double>>& grouped_v,
+                                 const std::vector<std::vector<double>>* folded_w = nullptr)
 {
-  const std::size_t n = offset.back();
-  const std::vector<std::size_t>& row = sink.rows();
-  const std::size_t rows = (last-first)*system.orbital_count[atom];
-  const std::size_t ell = system.c_offset[atom].back(), width = row.size();
-  std::vector<std::size_t> position(n,0);
-  for (std::size_t l = 0; l < width; ++l) position[row[l]] = l;
-  const std::vector<std::size_t> stored = folded_columns(system,offset,atom);
+  constexpr std::size_t none = static_cast<std::size_t>(-1);
+  const std::size_t atoms = system.orbital_count.size();
   CentreGradient gradient;
-  gradient.t.resize(rows*ell);
-  for (std::size_t r = 0; r < rows; ++r)
-    for (std::size_t l = 0; l < ell; ++l) gradient.t[r*ell+l] = folded_t[r*width+position[stored[l]]];
-  std::vector<std::size_t> group(system.orbital_count.size(),0);
+  gradient.t = unfolded_t(system,atom,offset,sink.rows(),folded_t.data(),(last-first)*system.orbital_count[atom]);
+  std::vector<std::size_t> group(atoms,none);
   for (std::size_t g = 0; g < sink.groups(); ++g) group[sink.atom(g)] = g;
   const std::vector<Site>& neighbours = system.v_neighbours[atom];
   gradient.v.resize(neighbours.size());
-  for (std::size_t ib = 0; ib < neighbours.size(); ++ib)
-    gradient.v[ib] = grouped_v[group[static_cast<std::size_t>(neighbours[ib].atom)]];
+  for (std::size_t ib = 0; ib < neighbours.size(); ++ib) {
+    const std::size_t g = group[static_cast<std::size_t>(neighbours[ib].atom)];
+    if (g != none) gradient.v[ib] = grouped_v[g];
+  }
+  if (folded_w != nullptr) {
+    gradient.w.resize(atoms);
+    for (std::size_t x = 0; x < atoms; ++x)
+      if (!(*folded_w)[x].empty())
+        gradient.w[x] = unfolded_t(system,x,offset,sink.orbitals(x),(*folded_w)[x].data(),
+                                   system.abf_count[x]*system.orbital_count[x]);
+  }
   return gradient;
 }
 
@@ -1126,6 +1184,7 @@ class DeviceWork {
 struct DeviceGroup {
   std::size_t atom = 0;                    // B
   const double* v = nullptr;               // its V block on the host, n_P x n_Q
+  double v_scale = 1.0;                    // v over the stored V block (Sink::v_scale())
   std::vector<long long> column;           // the column of D of every column l of the T blocks of B
   long long first = 0, first_stride = 0;   // term (i): row mu of K at first + mu first_stride
   // Term (ii): rows (site of loc(B), mu) with lists in the site form, or row
@@ -1150,9 +1209,11 @@ struct DeviceCentre {
 };
 
 // The sizes of the arrays of one centre atom on the device.  dt is the
-// derivative with respect to the T blocks of the centre (the forces only).
+// derivative with respect to the T blocks of the centre (the forces only),
+// wq the largest T block of a group, n_Q u_b l_B (the half form only).
 struct DeviceSizes {
   std::size_t g = 0, dloc = 0, w = 0, gg = 0, gbp = 0, dl = 0, dba = 0, first = 0, second = 0, x3 = 0, dt = 0;
+  std::size_t wq = 0;
   std::size_t v = 0, list = 0, length = 0;
   double multiplications = 0.0;           // of the largest product of the centre
 
@@ -1169,6 +1230,7 @@ struct DeviceSizes {
     second = std::max(second,other.second);
     x3 = std::max(x3,other.x3);
     dt = std::max(dt,other.dt);
+    wq = std::max(wq,other.wq);
     v = std::max(v,other.v);
     list = std::max(list,other.list);
     length = std::max(length,other.length);
@@ -1207,6 +1269,7 @@ DeviceSizes device_sizes(const System& system, std::size_t a, std::size_t np, st
     z.first = std::max(z.first,ua*ub);
     z.second = std::max(z.second,ua*lb);
     z.x3 = std::max(z.x3,ub*np*ua);
+    z.wq = std::max(z.wq,nq*ub*lb);
     z.v += np*nq;
     z.list += lb+ub*np+(site ? 2*sites*ua : 0);
     z.length += site ? sites*ua : 0;
@@ -1215,18 +1278,21 @@ DeviceSizes device_sizes(const System& system, std::size_t a, std::size_t np, st
 }
 
 // What a call on the device computes: the contributions to K (a build) or
-// the derivatives of E_x with respect to the blocks (the forces).
-enum class DeviceUse { build, derivatives };
+// the derivatives of E_x with respect to the blocks (the forces), in the
+// whole form or in the half form.
+enum class DeviceUse { build, derivatives, half_derivatives };
 
 // The arrays of a call on the device.  A build has K and the terms (i) and
 // (ii); the derivatives have H, a second array for its first part, dt and
 // dv (the derivative with respect to the V blocks of the groups, in the
-// layout of v) instead.
+// layout of v) instead.  The half form adds dtw, the parts through W of the
+// T blocks of all atoms in the layout of t, and dtq for the product of one
+// group.
 struct DeviceArrays {
   double *density = nullptr, *k = nullptr, *t = nullptr, *zero = nullptr, *v = nullptr;
   double *g = nullptr, *bracket = nullptr, *dloc = nullptr, *w = nullptr, *wn = nullptr, *gg = nullptr, *x4 = nullptr;
   double *gbp = nullptr, *dl = nullptr, *dba = nullptr, *first = nullptr, *second = nullptr, *x3 = nullptr;
-  double *h = nullptr, *hx = nullptr, *dt = nullptr, *dv = nullptr;
+  double *h = nullptr, *hx = nullptr, *dt = nullptr, *dv = nullptr, *dtw = nullptr, *dtq = nullptr;
   long long* list = nullptr;
   int* length = nullptr;
   std::vector<std::size_t> t_offset;      // of the T blocks of every atom in t
@@ -1265,6 +1331,10 @@ struct DeviceArrays {
       dt = work.allocate<double>(z.dt);
       dv = work.allocate<double>(z.v);
     }
+    if (use == DeviceUse::half_derivatives) {
+      dtw = work.allocate<double>(t_offset.back());
+      dtq = work.allocate<double>(z.wq);
+    }
     list = work.allocate<long long>(z.list);
     length = work.allocate<int>(z.length);
   }
@@ -1278,6 +1348,7 @@ struct DeviceArrays {
                           one(z.gbp)+one(z.dl)+one(z.dba)+one(z.x3);
     if (use == DeviceUse::build) doubles += one(elements)+one(z.first)+one(z.second);
     else doubles += 2*one(z.w)+one(z.dt)+one(z.v);
+    if (use == DeviceUse::half_derivatives) doubles += one(t_total)+one(z.wq);
     return doubles*sizeof(double)+one(z.list)*sizeof(long long)+one(z.length)*sizeof(int);
   }
 };
@@ -1468,8 +1539,16 @@ void device_centre(const System& system, const CentrePart& share, double factor,
 //   dt [(P,mu)][lambda] = 2 factor sum_column bracket[(P,mu)][column] D[loc(A), .][lambda][column]
 // The lists and the V blocks of the centre are uploaded first, and the work
 // is finished before the results come back.
+//
+// With w, the half form of centre_derivatives(): the groups are those of the
+// half build, dv[g] has the weight 2 factor s_g, and every group adds
+//   dtw[B] [(Q,nu)][l] += 2 factor sum_P V[P][Q] H[P][(nu,l)]
+// through dtq; the first group of an atom in the part copies instead of
+// adding.  dtw comes back whole after dt and dv, and w[x] gets the T
+// blocks of the atoms that a group reached, the others stay empty.
 void device_derivatives(const System& system, const CentrePart& share, double factor, const DeviceCentre& c,
-                        DeviceArrays& d, DeviceWork& work, std::vector<double>& dt, std::vector<std::vector<double>>& dv)
+                        DeviceArrays& d, DeviceWork& work, std::vector<double>& dt, std::vector<std::vector<double>>& dv,
+                        std::vector<std::vector<double>>* w = nullptr)
 {
   const std::size_t a = share.atom, np = share.last-share.first, ua = system.orbital_count[a], s = c.s;
   const std::size_t rows = np*ua;
@@ -1480,6 +1559,7 @@ void device_derivatives(const System& system, const CentrePart& share, double fa
 
   using Side = DeviceWork::Side;
   const auto signed_size = [](std::size_t value) { return static_cast<long long>(value); };
+  std::vector<char> touched(w != nullptr ? system.orbital_count.size() : 0,0);
   for (std::size_t ib = 0; ib < c.groups.size(); ++ib) {
     device_group(system,share,c,at,ib,DeviceUse::derivatives,d,work);
     const std::size_t b = c.groups[ib].atom, nq = system.abf_count[b], ub = system.orbital_count[b];
@@ -1488,7 +1568,14 @@ void device_derivatives(const System& system, const CentrePart& share, double fa
     work.transposed_multiply(np*ub,lb,ua,d.gbp,d.dl,d.h);                                 // H
     work.move(ub*np,lb,nullptr,1.0,true,d.h,Side{0,d.list+at.groups[ib].w_rows,1,nullptr},d.hx,
               Side{signed_size(lb),nullptr,1,nullptr});                                   // H += Hx
-    work.multiply_transposed(np,nq,ub*lb,d.h,d.t+d.t_offset[b],d.dv+at.groups[ib].v,factor);  // dv[g]
+    const double weight = w == nullptr ? factor : 2.0*factor*c.groups[ib].v_scale;
+    work.multiply_transposed(np,nq,ub*lb,d.h,d.t+d.t_offset[b],d.dv+at.groups[ib].v,weight);  // dv[g]
+    if (w != nullptr) {
+      work.transposed_multiply(nq,ub*lb,np,d.v+at.groups[ib].v,d.h,d.dtq,2.0*factor);       // V^T H
+      work.move(nq*ub,lb,nullptr,1.0,touched[b] != 0,d.dtw+d.t_offset[b],Side{signed_size(lb),nullptr,1,nullptr},
+                d.dtq,Side{signed_size(lb),nullptr,1,nullptr});                           // dtw[B] (+)= V^T H
+      touched[b] = 1;
+    }
   }
   work.multiply_transposed(rows,ell,s,d.bracket,d.dloc,d.dt,2.0*factor);                  // dt
   work.finish();
@@ -1503,6 +1590,15 @@ void device_derivatives(const System& system, const CentrePart& share, double fa
   for (std::size_t ib = 0; ib < c.groups.size(); ++ib) {
     const auto from = all.begin()+static_cast<std::ptrdiff_t>(at.groups[ib].v);
     dv[ib].assign(from,from+static_cast<std::ptrdiff_t>(np*system.abf_count[c.groups[ib].atom]));
+  }
+  if (w != nullptr) {
+    std::vector<double> blocks(d.t_offset.back());
+    work.download(blocks.data(),d.dtw,blocks.size()*sizeof(double));
+    w->assign(touched.size(),std::vector<double>());
+    for (std::size_t x = 0; x < touched.size(); ++x)
+      if (touched[x] != 0)
+        (*w)[x].assign(blocks.begin()+static_cast<std::ptrdiff_t>(d.t_offset[x]),
+                       blocks.begin()+static_cast<std::ptrdiff_t>(d.t_offset[x+1]));
   }
 }
 
@@ -1548,10 +1644,11 @@ bool device_range(const System& system, const std::vector<CentrePart>& parts, do
 // on the host, in the layout of CentreGradient (Form::gradient()).  Returns
 // the number of parts visited: all of them, or fewer when the device does
 // not take the work or stops; the parts after them are left to the caller.
+// With half the half form, whose form plans the groups of the half build.
 template <class Form, class Visit>
 std::size_t device_gradient_range(const System& system, const std::vector<CentrePart>& parts, double factor,
                                   std::span<const double> density, const OpenMXExxDevice& device, Form& form,
-                                  const Visit& visit)
+                                  const Visit& visit, bool half = false)
 {
   if (device.accept == nullptr || device.allocate == nullptr || device.release == nullptr ||
       device.upload == nullptr || device.download == nullptr || device.dgemm == nullptr || device.move == nullptr ||
@@ -1563,23 +1660,23 @@ std::size_t device_gradient_range(const System& system, const std::vector<Centre
   std::vector<std::size_t> t_size(atoms);
   std::size_t t_total = 0;
   for (std::size_t x = 0; x < atoms; ++x) t_total += t_size[x] = form.t_size(x);
-  if (device.accept(device.context,z.multiplications,
-                    DeviceArrays::bytes(z,density.size(),t_total,DeviceUse::derivatives)) != 1)
+  const DeviceUse use = half ? DeviceUse::half_derivatives : DeviceUse::derivatives;
+  if (device.accept(device.context,z.multiplications,DeviceArrays::bytes(z,density.size(),t_total,use)) != 1)
     return 0;
 
   std::size_t done = 0;
   try {
     DeviceWork work(device);
-    DeviceArrays d(work,z,density.size(),t_size,DeviceUse::derivatives);
+    DeviceArrays d(work,z,density.size(),t_size,use);
     work.upload(d.density,density.data(),density.size()*sizeof(double));
     for (std::size_t x = 0; x < atoms; ++x) work.upload(d.t+d.t_offset[x],form.t(x),t_size[x]*sizeof(double));
     const double nothing = 0.0;
     work.upload(d.zero,&nothing,sizeof(double));
     std::vector<double> dt;
-    std::vector<std::vector<double>> dv;
+    std::vector<std::vector<double>> dv, w;
     for (const CentrePart& part : parts) {
-      device_derivatives(system,part,factor,form.plan(part.atom),d,work,dt,dv);
-      visit(part,form.gradient(part,dt,dv));
+      device_derivatives(system,part,factor,form.plan(part.atom),d,work,dt,dv,half ? &w : nullptr);
+      visit(part,form.gradient(part,dt,dv,half ? &w : nullptr));
       ++done;
     }
   } catch (const DeviceStop&) {
@@ -1623,6 +1720,7 @@ class DeviceBlocks {
       DeviceGroup group;
       group.atom = sink.atom(ib);
       group.v = sink.v(ib);
+      group.v_scale = sink.v_scale(ib);
       for (const std::size_t column : sink.columns(ib)) group.column.push_back(static_cast<long long>(column));
       group.first = sink.device_first(ib);
       group.first_stride = static_cast<long long>(system_.orbital_count[group.atom]);
@@ -1634,11 +1732,17 @@ class DeviceBlocks {
     return c;
   }
 
-  // The derivatives of a part from those of the device: the groups are the
-  // V neighbours, and dt has the columns of System::t.
-  CentreGradient gradient(const CentrePart&, std::vector<double>& dt, std::vector<std::vector<double>>& dv) const
+  // The derivatives of a part from those of the device: dt and w have the
+  // columns of System::t, and the groups are the V neighbours, or those of
+  // the half build with w (the half form).
+  CentreGradient gradient(const CentrePart& part, std::vector<double>& dt, std::vector<std::vector<double>>& dv,
+                          std::vector<std::vector<double>>* w) const
   {
-    return CentreGradient{std::move(dt),std::move(dv)};
+    if (w == nullptr) return CentreGradient{std::move(dt),std::move(dv),{}};
+    CentreGradient gradient{std::move(dt),{},std::move(*w)};
+    gradient.v.resize(system_.v_neighbours[part.atom].size());
+    for (std::size_t ib = 0; ib < dv.size(); ++ib) gradient.v[sink_->neighbour_index(ib)] = std::move(dv[ib]);
+    return gradient;
   }
 
  private:
@@ -1686,6 +1790,7 @@ class DeviceGamma {
       DeviceGroup group;
       group.atom = sink.atom(g);
       group.v = sink.v(g);
+      group.v_scale = sink.v_scale(g);
       for (const std::size_t column : sink.columns(g)) group.column.push_back(static_cast<long long>(column));
       group.first = static_cast<long long>(offset_[a]*n+offset_[group.atom]);
       group.first_stride = static_cast<long long>(n);
@@ -1697,10 +1802,11 @@ class DeviceGamma {
   }
 
   // The derivatives of a part from those of the device in the folded
-  // arrays, with the sink of the plan of the part.
-  CentreGradient gradient(const CentrePart& part, std::vector<double>& dt, std::vector<std::vector<double>>& dv)
+  // arrays, with the sink of the plan of the part; w in the half form.
+  CentreGradient gradient(const CentrePart& part, std::vector<double>& dt, std::vector<std::vector<double>>& dv,
+                          std::vector<std::vector<double>>* w)
   {
-    return unfolded_gradient(system_,part.atom,part.first,part.last,*sink_,offset_,dt,dv);
+    return unfolded_gradient(system_,part.atom,part.first,part.last,*sink_,offset_,dt,dv,w);
   }
 
  private:
@@ -2374,7 +2480,7 @@ CentreGradient centre_gradient_blocks(const System& system, const BlockLayout& l
 
 std::size_t device_gradients_blocks(const System& system, const BlockLayout& layout, std::size_t first,
                                     std::size_t last, double factor, std::span<const double> density,
-                                    const DenseBackend& backend, const GradientVisit& visit)
+                                    const DenseBackend& backend, const GradientVisit& visit, bool half)
 {
   const OpenMXExxDevice* device = backend.device();
   if (device == nullptr) return 0;
@@ -2384,16 +2490,17 @@ std::size_t device_gradients_blocks(const System& system, const BlockLayout& lay
   check(system,layout);
   if (density.size() != layout.elements()) throw std::invalid_argument("the density matrix does not have the size of the layout");
   if (first == last) return 0;
-  DeviceBlocks form(system,layout,factor);
+  DeviceBlocks form(system,layout,factor,half);
   return device_gradient_range(system,centre_parts(offset,first,last),factor,density,*device,form,
                                [&visit](const CentrePart& part, CentreGradient&& gradient) {
                                  visit(part.atom,part.first,part.last,std::move(gradient));
-                               });
+                               },
+                               half);
 }
 
 std::size_t device_gradients_gamma(const System& system, std::size_t first, std::size_t last, double factor,
                                    std::span<const double> density, const DenseBackend& backend,
-                                   const GradientVisit& visit)
+                                   const GradientVisit& visit, bool half)
 {
   const OpenMXExxDevice* device = backend.device();
   if (device == nullptr) return 0;
@@ -2403,11 +2510,12 @@ std::size_t device_gradients_gamma(const System& system, std::size_t first, std:
   const std::vector<std::size_t> offset = orbital_offsets(system);
   check_dense(offset.back(),density.size(),"the density matrix is not N x N");
   if (first == last) return 0;
-  DeviceGamma form(system,factor,offset);
+  DeviceGamma form(system,factor,offset,half);
   return device_gradient_range(system,centre_parts(abfs,first,last),factor,density,*device,form,
                                [&visit](const CentrePart& part, CentreGradient&& gradient) {
                                  visit(part.atom,part.first,part.last,std::move(gradient));
-                               });
+                               },
+                               half);
 }
 
 CentreGradient centre_gradient_gamma(const System& system, std::size_t atom, double factor,
@@ -2440,6 +2548,56 @@ CentreGradient centre_gradient_gamma(const System& system, std::size_t atom, std
   const std::unique_ptr<double[]> dloc = gathered_rows(density,n,sink.rows(),backend,piece_count(last-first,backend));
   centre_derivatives(system,atom,first,last,n,dloc.get(),sink,factor,backend,folded_t,grouped_v);
   return unfolded_gradient(system,atom,first,last,sink,offset,folded_t,grouped_v);
+}
+
+CentreGradient half_gradient_blocks(const System& system, const BlockLayout& layout, std::size_t atom,
+                                    std::size_t first, std::size_t last, double factor,
+                                    std::span<const double> density, const DenseBackend& backend)
+{
+  check(system);
+  if (atom >= system.orbital_count.size()) throw std::out_of_range("the centre atom does not exist");
+  if (first > last || last > system.abf_count[atom])
+    throw std::out_of_range("the range of ABFs is not inside the centre atom");
+  check(system,layout);
+  if (density.size() != layout.elements()) throw std::invalid_argument("the density matrix does not have the size of the layout");
+  CentreGradient gradient;
+  gradient.v.resize(system.v_neighbours[atom].size());
+  gradient.w.resize(system.orbital_count.size());
+  if (first == last) return gradient;
+  // The sink of the half build gives the blocks and the columns; nothing is
+  // written to K.
+  LayoutBlocks store(layout,std::span<double>());
+  SiteSink<LayoutBlocks> sink(system,atom,factor,store,true);
+  const std::unique_ptr<double[]> dloc = sink.density(density,backend,piece_count(last-first,backend));
+  std::vector<std::vector<double>> grouped_v;
+  centre_derivatives(system,atom,first,last,sink.size(),dloc.get(),sink,factor,backend,gradient.t,grouped_v,
+                     &gradient.w);
+  for (std::size_t g = 0; g < sink.groups(); ++g) gradient.v[sink.neighbour_index(g)] = std::move(grouped_v[g]);
+  return gradient;
+}
+
+CentreGradient half_gradient_gamma(const System& system, std::size_t atom, std::size_t first, std::size_t last,
+                                   double factor, std::span<const double> density, const DenseBackend& backend)
+{
+  check(system);
+  if (atom >= system.orbital_count.size()) throw std::out_of_range("the centre atom does not exist");
+  if (first > last || last > system.abf_count[atom])
+    throw std::out_of_range("the range of ABFs is not inside the centre atom");
+  const std::vector<std::size_t> offset = orbital_offsets(system);
+  const std::size_t n = offset.back(), atoms = system.orbital_count.size();
+  check_dense(n,density.size(),"the density matrix is not N x N");
+  if (first == last) {
+    CentreGradient gradient;
+    gradient.v.resize(system.v_neighbours[atom].size());
+    gradient.w.resize(atoms);
+    return gradient;
+  }
+  GammaSink sink(system,atom,factor,std::span<double>(),offset,true);
+  std::vector<double> folded_t;
+  std::vector<std::vector<double>> grouped_v, folded_w(atoms);
+  const std::unique_ptr<double[]> dloc = gathered_rows(density,n,sink.rows(),backend,piece_count(last-first,backend));
+  centre_derivatives(system,atom,first,last,n,dloc.get(),sink,factor,backend,folded_t,grouped_v,&folded_w);
+  return unfolded_gradient(system,atom,first,last,sink,offset,folded_t,grouped_v,&folded_w);
 }
 
 } // namespace openmx::exx

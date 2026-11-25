@@ -235,7 +235,7 @@ int neighbour_count(const OpenMXExxState* state, int atom, const std::vector<std
 // The arrays of the weights of the atoms that a range of ABFs touches, for
 // add_block_weights_*_abfs(); the entries of the other atoms are not read.
 std::vector<std::span<double>> weight_arrays(const System& system, long first_abf, long last_abf,
-                                             const double* density, double* const* weights)
+                                             const double* density, double* const* weights, bool half = false)
 {
   if (density == nullptr || weights == nullptr)
     throw std::invalid_argument("the weights of the blocks need a density matrix and arrays for the atoms");
@@ -246,7 +246,8 @@ std::vector<std::span<double>> weight_arrays(const System& system, long first_ab
   std::size_t offset = 0;
   for (std::size_t a = 0; a < atoms; ++a) {
     const std::size_t next = offset+system.abf_count[a];
-    if (std::max(first,offset) < std::min(last,next)) {
+    // The half form adds to the T blocks of the V neighbours as well.
+    if (half ? first < last : std::max(first,offset) < std::min(last,next)) {
       if (weights[a] == nullptr) throw std::invalid_argument("an atom of the range has no array for its weights");
       arrays[a] = std::span<double>(weights[a],table_elements(system,a));
     }
@@ -580,6 +581,33 @@ int openmx_exx_add_block_weights_blocks_abfs(const OpenMXExxState* state, long f
     add_block_weights_blocks_abfs(system,layout,static_cast<std::size_t>(first_abf),static_cast<std::size_t>(last_abf),
                                   factor,std::span<const double>(density,layout.elements()),arrays,
                                   DenseBackend(backend));
+  });
+}
+
+int openmx_exx_add_block_weights_gamma_half_abfs(const OpenMXExxState* state, long first_abf, long last_abf,
+                                                 double factor, const double* density, double* const* weights,
+                                                 const OpenMXExxDenseBackend* backend, char* error, size_t capacity)
+{
+  return guarded(error,capacity,[&] {
+    const System& system = complete(state,"the weights of the blocks need a prepared structure");
+    const std::vector<std::span<double>> arrays = weight_arrays(system,first_abf,last_abf,density,weights,true);
+    const std::size_t n = state->offset.back();
+    add_block_weights_gamma_half_abfs(system,static_cast<std::size_t>(first_abf),static_cast<std::size_t>(last_abf),
+                                      factor,std::span<const double>(density,n*n),arrays,DenseBackend(backend));
+  });
+}
+
+int openmx_exx_add_block_weights_blocks_half_abfs(const OpenMXExxState* state, long first_abf, long last_abf,
+                                                  double factor, const double* density, double* const* weights,
+                                                  const OpenMXExxDenseBackend* backend, char* error, size_t capacity)
+{
+  return guarded(error,capacity,[&] {
+    const BlockLayout& layout = required_layout(state);
+    const System& system = *state->system;
+    const std::vector<std::span<double>> arrays = weight_arrays(system,first_abf,last_abf,density,weights,true);
+    add_block_weights_blocks_half_abfs(system,layout,static_cast<std::size_t>(first_abf),
+                                       static_cast<std::size_t>(last_abf),factor,
+                                       std::span<const double>(density,layout.elements()),arrays,DenseBackend(backend));
   });
 }
 

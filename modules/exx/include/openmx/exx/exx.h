@@ -443,6 +443,27 @@ int openmx_exx_add_block_weights_blocks_abfs(const OpenMXExxState *state, long f
                                              double factor, const double *density, double *const *weights,
                                              const OpenMXExxDenseBackend *backend, char *error, size_t capacity);
 
+/* The same weights in the form of the half build (section 6.7), for the
+   E_x of openmx_exx_add_gamma_half_abfs and openmx_exx_add_blocks_half_abfs.
+   A centre goes through the V neighbours of the half build only: the V
+   block of a pair of sites gets the derivative of the pair once, and the T
+   blocks of an atom get the part of the derivative that goes through the
+   products with the V blocks of other centres.  The weights of an atom
+   therefore differ from those above, but the derivative of
+   openmx_exx_add_position_gradient_pairs is the same within rounding.  A
+   range adds to the arrays of its atoms and of the atoms of their V
+   neighbours: weights needs an array for every atom of the unit cell unless
+   the range is empty.  Processes that divide the ABFs add their arrays up,
+   now with rounding.  A range takes about 0.6 times the time of the calls
+   above: half of the V neighbours, with three large products each instead
+   of two.  factor, density, the device and the failures are as above. */
+int openmx_exx_add_block_weights_gamma_half_abfs(const OpenMXExxState *state, long first_abf, long last_abf,
+                                                 double factor, const double *density, double *const *weights,
+                                                 const OpenMXExxDenseBackend *backend, char *error, size_t capacity);
+int openmx_exx_add_block_weights_blocks_half_abfs(const OpenMXExxState *state, long first_abf, long last_abf,
+                                                  double factor, const double *density, double *const *weights,
+                                                  const OpenMXExxDenseBackend *backend, char *error, size_t capacity);
+
 /* The second step goes through the pairs of sites: it adds to gradient the
    part of dE_x/dtau of the share "part" of "parts" of the pairs, from the
    weights of all atoms (weights[a] for every atom of the unit cell, complete

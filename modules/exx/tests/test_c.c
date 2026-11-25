@@ -495,6 +495,56 @@ static int divided_work(const OpenMXExxState *whole, const OpenMXExxOptions *opt
   memset(paired, 0, sizeof paired);
   EXPECT(openmx_exx_add_position_gradient_pairs(whole, site_read, 0, 1, paired, NULL, 0) == 0);
   for (i = 0; i < 3 * ATOMS; ++i) EXPECT(fabs(paired[i] - gradient[i]) <= 1.0e-11 * steepest);
+  /* The half form of the weights: other arrays than those above, the same
+     derivative through the pairs. The Gamma form comes in two ranges that
+     meet inside the first atom, one of them with the product of the
+     caller. */
+  for (a = 0; a < ATOMS; ++a) memset(weights[a], 0, 2 * size[a] * sizeof **weights);
+  EXPECT(openmx_exx_add_block_weights_gamma_abfs(whole, 0, total, -0.25, d, site_weights, NULL, NULL, 0) == 0);
+  EXPECT(openmx_exx_add_block_weights_gamma_half_abfs(whole, 0, 1, -0.25, d, weights, NULL, message,
+                                                      sizeof message) == 0);
+  EXPECT(message[0] == '\0');
+  count = calls.products;
+  EXPECT(openmx_exx_add_block_weights_gamma_half_abfs(whole, 1, total, -0.25, d, weights, &table, NULL, 0) == 0);
+  EXPECT(calls.products > count);
+  count = 0;
+  for (a = 0; a < ATOMS; ++a)
+    for (e = 0; e < size[a]; ++e) count += fabs(weights[a][e] - site_weights[a][e]) > 1.0e-6 ? 1 : 0;
+  EXPECT(count > 0);
+  for (a = 0; a < ATOMS; ++a) memset(site_weights[a], 0, size[a] * sizeof **site_weights);
+  EXPECT(openmx_exx_add_block_weights_blocks_half_abfs(whole, 0, total, -0.25, site_d, site_weights, NULL, message,
+                                                       sizeof message) == 0);
+  EXPECT(message[0] == '\0');
+  for (trial = 0; trial < 2; ++trial) {
+    memset(paired, 0, sizeof paired);
+    EXPECT(openmx_exx_add_position_gradient_pairs(whole, trial == 0 ? read : site_read, 0, 1, paired, NULL, 0) == 0);
+    for (i = 0; i < 3 * ATOMS; ++i) EXPECT(fabs(paired[i] - gradient[i]) <= 1.0e-11 * steepest);
+    if (trial == 0) memcpy(again, paired, sizeof again);
+  }
+  /* A range that is not empty needs the arrays of all atoms, also of those
+     whose ABFs it does not hold; an empty range needs none. Rejected calls
+     add nothing. */
+  for (a = 0; a < ATOMS; ++a) holed[a] = a == 0 ? weights[a] : NULL;
+  EXPECT(openmx_exx_add_block_weights_gamma_half_abfs(whole, 0, first_abf[1], -0.25, d, holed, NULL, message,
+                                                      sizeof message) != 0);
+  EXPECT(strlen(message) > 0);
+  EXPECT(openmx_exx_add_block_weights_blocks_half_abfs(whole, 0, first_abf[1], -0.25, site_d, holed, NULL, NULL, 0) != 0);
+  EXPECT(openmx_exx_add_block_weights_gamma_half_abfs(NULL, 0, total, -0.25, d, weights, NULL, NULL, 0) != 0);
+  EXPECT(openmx_exx_add_block_weights_gamma_half_abfs(whole, 0, total + 1, -0.25, d, weights, NULL, NULL, 0) != 0);
+  EXPECT(openmx_exx_add_block_weights_gamma_half_abfs(whole, 0, total, -0.25, NULL, weights, NULL, NULL, 0) != 0);
+  EXPECT(openmx_exx_add_block_weights_gamma_half_abfs(whole, 0, total, -0.25, d, NULL, NULL, NULL, 0) != 0);
+  EXPECT(openmx_exx_add_block_weights_blocks_half_abfs(NULL, 0, total, -0.25, site_d, weights, NULL, NULL, 0) != 0);
+  EXPECT(openmx_exx_add_block_weights_blocks_half_abfs(whole, 2, 1, -0.25, site_d, weights, NULL, NULL, 0) != 0);
+  EXPECT(openmx_exx_add_block_weights_blocks_half_abfs(whole, -1, 2, -0.25, site_d, weights, NULL, NULL, 0) != 0);
+  EXPECT(openmx_exx_add_block_weights_blocks_half_abfs(whole, 0, total, -0.25, NULL, weights, NULL, NULL, 0) != 0);
+  for (a = 0; a < ATOMS; ++a) holed[a] = NULL;
+  EXPECT(openmx_exx_add_block_weights_gamma_half_abfs(whole, 1, 1, -0.25, d, holed, NULL, message, sizeof message) == 0);
+  EXPECT(openmx_exx_add_block_weights_blocks_half_abfs(whole, total, total, -0.25, site_d, holed, NULL, message,
+                                                       sizeof message) == 0);
+  EXPECT(message[0] == '\0');
+  memset(paired, 0, sizeof paired);
+  EXPECT(openmx_exx_add_position_gradient_pairs(whole, read, 0, 1, paired, NULL, 0) == 0);
+  EXPECT(memcmp(paired, again, sizeof paired) == 0);
   /* A product that fails. */
   table.dgemm = failing_dgemm;
   EXPECT(openmx_exx_add_block_weights_gamma_abfs(whole, 0, total, -0.25, d, site_weights, &table, message,
@@ -502,6 +552,12 @@ static int divided_work(const OpenMXExxState *whole, const OpenMXExxOptions *opt
   EXPECT(strlen(message) > 0);
   EXPECT(openmx_exx_add_block_weights_blocks_abfs(whole, 0, total, -0.25, site_d, site_weights, &table, message,
                                                   sizeof message) != 0);
+  EXPECT(strlen(message) > 0);
+  EXPECT(openmx_exx_add_block_weights_gamma_half_abfs(whole, 0, total, -0.25, d, site_weights, &table, message,
+                                                      sizeof message) != 0);
+  EXPECT(strlen(message) > 0);
+  EXPECT(openmx_exx_add_block_weights_blocks_half_abfs(whole, 0, total, -0.25, site_d, site_weights, &table, message,
+                                                       sizeof message) != 0);
   EXPECT(strlen(message) > 0);
   /* A share whose blocks have not been added up has no derivative. */
   EXPECT(openmx_exx_prepare_part(share, options, geometry, 1, 2, message, sizeof message) == 0);
@@ -511,6 +567,12 @@ static int divided_work(const OpenMXExxState *whole, const OpenMXExxOptions *opt
   EXPECT(strlen(message) > 0);
   EXPECT(openmx_exx_add_block_weights_blocks_abfs(share, 0, total, -0.25, site_d, site_weights, NULL, message,
                                                   sizeof message) != 0);
+  EXPECT(strlen(message) > 0);
+  EXPECT(openmx_exx_add_block_weights_gamma_half_abfs(share, 0, total, -0.25, d, site_weights, NULL, message,
+                                                      sizeof message) != 0);
+  EXPECT(strlen(message) > 0);
+  EXPECT(openmx_exx_add_block_weights_blocks_half_abfs(share, 0, total, -0.25, site_d, site_weights, NULL, message,
+                                                       sizeof message) != 0);
   EXPECT(strlen(message) > 0);
   memcpy(paired, once, sizeof paired);
   EXPECT(openmx_exx_add_position_gradient_pairs(share, read, 0, 1, paired, message, sizeof message) != 0);
