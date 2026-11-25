@@ -59,6 +59,16 @@ typedef struct {
 
 void Exact_Exchange_Configure(OpenMXExactExchangeState *state, const OpenMXExactExchangeInput *input);
 
+/* The largest radius R_c of the truncated Coulomb interaction of PBE0 (bohr)
+   for a cell (lattice[i] is a_i, counted from 1, in bohr) and the points of
+   the k mesh: that of the sphere whose volume is kpoint_count times that of
+   the cell. PBE0 takes it without scf.exx.coulomb.cutoff. A larger radius
+   counts the exchange with the periodic images of the density matrix, whose
+   period is the supercell of the k mesh, and ends the run. The tolerance
+   (bohr) admits the radius as printed with six decimals. */
+#define OPENMX_EXACT_EXCHANGE_TRUNCATION_TOLERANCE 1.0e-6
+double Exact_Exchange_Truncation_Limit(int kpoint_count, double (*lattice)[4]);
+
 /* The structure of the calculation, in the arrays of the main program: atoms
    and Cartesian components are counted from 1, lengths are in bohr, and
    lattice[i] is the lattice vector a_i. The layer keeps the pointers and

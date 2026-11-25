@@ -5196,6 +5196,23 @@ void Input_std(char *file, OpenMXCoreContext *core)
     /* the cluster solver has the Gamma point only, also for a band input
        with one k point, which the solver was switched for above */
     exx_input.kpoint_count = (Solver==3) ? Kspace_grid1*Kspace_grid2*Kspace_grid3 : 1;
+    /* PBE0 with R_c beyond the radius of the sphere of the volume of the
+       cell times the number of k points counts the exchange with the
+       periodic images of the density matrix (docs/EXX_IMPLEMENTATION_GUIDE.md,
+       section 13, item 72): such an input ends the run here */
+    if (hybrid_functional==2 && 0.0<exx_coulomb_cutoff){
+      const double limit = Exact_Exchange_Truncation_Limit(exx_input.kpoint_count,tv);
+      if (limit+OPENMX_EXACT_EXCHANGE_TRUNCATION_TOLERANCE<exx_coulomb_cutoff){
+        if (myid==Host_ID){
+          printf("scf.exx.coulomb.cutoff=%.6f (bohr) is larger than %.6f (bohr), the radius of the sphere\n"
+                 "of the volume of the cell times the number of k points. A larger radius counts the exchange\n"
+                 "with the periodic images of the density matrix. Leave out the keyword or give 0 to take\n"
+                 "that radius.\n",exx_coulomb_cutoff,limit);
+        }
+        MPI_Finalize();
+        exit(0);
+      }
+    }
     exx_input.abf_threshold = exx_abf_pca;
     /* PBE0 without scf.exx.v.cutoff: every V block that the truncated
        interaction does not make zero (a negative value for the layer) */

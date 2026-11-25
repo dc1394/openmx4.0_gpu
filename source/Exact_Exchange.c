@@ -405,17 +405,36 @@ static void ExactExchange_Add_Up_Blocks(OpenMXExactExchangeState *state, MPI_Com
   openmx_core_native_free(state->resources,values);
 }
 
-/* The radius R_c of the truncated Coulomb interaction of PBE0 (bohr): the
-   value of scf.exx.coulomb.cutoff, or else the radius of the sphere whose
-   volume is that of the cell times the number of k points (section 5.6,
-   [13]). The cell is that of the structure at the preparation, so that the
-   radius follows the cell where MD.Type changes it. */
-static double ExactExchange_Truncation_Radius(const OpenMXExactExchangeInput *input, double (*lattice)[4])
+/* The radius of the sphere whose volume is that of the cell times the number
+   of k points (section 5.6, [13]). */
+double Exact_Exchange_Truncation_Limit(int kpoint_count, double (*lattice)[4])
 {
-  if (0.0<input->coulomb_cutoff) return input->coulomb_cutoff;
   const double *a=lattice[1], *b=lattice[2], *c=lattice[3];
   const double volume=fabs(a[1]*(b[2]*c[3]-b[3]*c[2])+a[2]*(b[3]*c[1]-b[1]*c[3])+a[3]*(b[1]*c[2]-b[2]*c[1]));
-  return cbrt(3.0*(double)input->kpoint_count*volume/(4.0*3.14159265358979323846));
+  return cbrt(3.0*(double)kpoint_count*volume/(4.0*3.14159265358979323846));
+}
+
+/* The radius R_c of the truncated Coulomb interaction of PBE0 (bohr): the
+   value of scf.exx.coulomb.cutoff, or else the radius of the sphere whose
+   volume is that of the cell times the number of k points. The cell is that
+   of the structure at the preparation, so that the radius follows the cell
+   where MD.Type changes it (EvsLC and DF scale it). A value beyond the
+   radius of the sphere ends the run (section 13, item 72): the function
+   that reads the input refuses it for the cell of the input, and this check
+   for a later cell. */
+static double ExactExchange_Truncation_Radius(const OpenMXExactExchangeInput *input, double (*lattice)[4],
+                                              MPI_Comm comm)
+{
+  const double limit=Exact_Exchange_Truncation_Limit(input->kpoint_count,lattice);
+  if (!(0.0<input->coulomb_cutoff)) return limit;
+  if (limit+OPENMX_EXACT_EXCHANGE_TRUNCATION_TOLERANCE<input->coulomb_cutoff) {
+    char message[256];
+    snprintf(message,sizeof(message),"scf.exx.coulomb.cutoff=%.6f (bohr) is larger than %.6f (bohr), the "
+             "radius of the sphere of the volume of the cell times the number of k points",
+             input->coulomb_cutoff,limit);
+    ExactExchange_Abort(comm,"preparation",message);
+  }
+  return input->coulomb_cutoff;
 }
 
 void Exact_Exchange_Prepare(OpenMXExactExchangeState *state, const OpenMXAtomicViews *atomic,
@@ -509,7 +528,7 @@ void Exact_Exchange_Prepare(OpenMXExactExchangeState *state, const OpenMXAtomicV
   openmx_exx_default_options(&options);
   if (state->input.functional==OPENMX_EXACT_EXCHANGE_PBE0) {
     options.kernel = OPENMX_EXX_KERNEL_TRUNCATED_COULOMB;
-    options.kernel_parameter = ExactExchange_Truncation_Radius(&state->input,lattice);
+    options.kernel_parameter = ExactExchange_Truncation_Radius(&state->input,lattice,comm);
   }
   else {
     options.kernel = OPENMX_EXX_KERNEL_SHORT_RANGE;
