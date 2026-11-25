@@ -50,7 +50,10 @@ void add_block_weights(const CentreGradient& weights, std::span<double> values);
 // division of all ABFs fill the arrays of all atoms, each element from one
 // range, so processes that divide the ABFs add their arrays up without
 // rounding.  K is factor times the contributions of all centre atoms, and
-// the density matrix is symmetric.  An empty range adds nothing.
+// the density matrix is symmetric.  An empty range adds nothing.  With a
+// device in the backend, the device computes the parts first
+// (device_gradients_gamma() or device_gradients_blocks()), and the backend
+// computes the parts that the device leaves.
 void add_block_weights_gamma_abfs(const System& system, std::size_t first, std::size_t last, double factor,
                                   std::span<const double> density, std::span<const std::span<double>> weights,
                                   const DenseBackend& backend = DenseBackend());

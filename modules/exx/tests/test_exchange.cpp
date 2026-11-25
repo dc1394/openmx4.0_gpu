@@ -1279,9 +1279,9 @@ void exchange_backend(const std::string& path)
       }
     }
 
-    // The derivatives do not divide their work: with a table that has a loop
-    // they give the bits of the same table without the loop, and the loop is
-    // not called.
+    // The derivatives divide the work of the single ABFs into pieces: with a
+    // table that has a loop they give the bits of the same table without the
+    // loop, and the loop is called.
     for (const bool product : {false,true}) {
       const DenseBackend whole = with(product,nullptr,0), pieces = with(product,&threaded_loop,3);
       shared.reset();
@@ -1297,7 +1297,7 @@ void exchange_backend(const std::string& path)
                same_values(site.t,site_again.t) && same_values(site.v,site_again.v);
       }
       require(same,"a table with a loop changes the derivatives");
-      require(shared.loops == 0,"the derivatives call the loop of the table");
+      require(shared.loops > 0,"the derivatives do not call the loop of the table");
     }
 
     // Sums that are shorter than the number of pieces.  The sums of the
@@ -3111,6 +3111,223 @@ void check_abf_ranges(const System& system, const std::string& name, Numbers& ra
   }
 }
 
+// The weights of the blocks on the device (device_gradients_gamma() and
+// device_gradients_blocks()), in both forms, against the table of the host
+// with a product and a loop of four pieces.  The density matrices need not
+// be symmetric here: both sides compute the same sums.  With "every" every
+// call of the device fails in turn; otherwise about forty of them do.
+void check_device_gradients(const System& system, const std::string& name, Numbers& random, bool every)
+{
+  const double alpha = 0.25;
+  const std::size_t atoms = system.orbital_count.size(), n = orbital_total(system);
+  std::vector<std::size_t> first_abf(1,0);
+  for (const std::size_t count : system.abf_count) first_abf.push_back(first_abf.back()+count);
+  const std::size_t total = first_abf.back();
+  const std::vector<double> dense = dense_matrix(n,false,random);
+  const BlockLayout layout = exchange_layout(system);
+  std::vector<double> blocks(layout.elements());
+  for (double& value : blocks) value = random.next();
+
+  using Weights = std::function<void(std::size_t, std::size_t, std::span<const std::span<double>>, const DenseBackend&)>;
+  using Direct = std::function<std::size_t(std::size_t, std::size_t, const DenseBackend&, const GradientVisit&)>;
+  using Host = std::function<CentreGradient(std::size_t, std::size_t, std::size_t, const DenseBackend&)>;
+  struct GradientForm {
+    std::string name;
+    Weights weights;
+    Direct direct;
+    Host host;
+  };
+  const GradientForm forms[] = {
+      {name+", Gamma form",
+       [&](std::size_t first, std::size_t last, std::span<const std::span<double>> arrays, const DenseBackend& backend) {
+         add_block_weights_gamma_abfs(system,first,last,-alpha,dense,arrays,backend);
+       },
+       [&](std::size_t first, std::size_t last, const DenseBackend& backend, const GradientVisit& visit) {
+         return device_gradients_gamma(system,first,last,-alpha,dense,backend,visit);
+       },
+       [&](std::size_t atom, std::size_t from, std::size_t to, const DenseBackend& backend) {
+         return centre_gradient_gamma(system,atom,from,to,-alpha,dense,backend);
+       }},
+      {name+", site form",
+       [&](std::size_t first, std::size_t last, std::span<const std::span<double>> arrays, const DenseBackend& backend) {
+         add_block_weights_blocks_abfs(system,layout,first,last,-alpha,blocks,arrays,backend);
+       },
+       [&](std::size_t first, std::size_t last, const DenseBackend& backend, const GradientVisit& visit) {
+         return device_gradients_blocks(system,layout,first,last,-alpha,blocks,backend,visit);
+       },
+       [&](std::size_t atom, std::size_t from, std::size_t to, const DenseBackend& backend) {
+         return centre_gradient_blocks(system,layout,atom,from,to,-alpha,blocks,backend);
+       }}};
+
+  FakeDevice device;
+  Calls calls;
+  const OpenMXExxDenseBackend host_table{&shared_dgemm,&calls,&in_order_loop,4,nullptr};
+  const OpenMXExxDenseBackend device_table{&shared_dgemm,&calls,&in_order_loop,4,&device.table()};
+  const DenseBackend host(&host_table), with_device(&device_table);
+  const auto flat = [](const BlockWeights& w) {
+    std::vector<double> all;
+    for (const std::vector<double>& values : w.values) all.insert(all.end(),values.begin(),values.end());
+    return all;
+  };
+
+  for (const GradientForm& form : forms) {
+    const std::string& what = form.name;
+    // The weights of the range on the host and with the device.
+    BlockWeights reference(system);
+    form.weights(0,total,reference.arrays,host);
+    const std::vector<double> expected = flat(reference);
+    const double scale = largest(expected);
+    require(scale > 1.0e-6,what+": the weights are expected to be of order one");
+    const auto run = [&](std::size_t first, std::size_t last, BlockWeights& w) {
+      device.reset();
+      calls.reset();
+      form.weights(first,last,w.arrays,with_device);
+      const std::string ending = device.ending();
+      require(ending.empty(),what+": "+ending);
+    };
+    std::size_t parts = 0;                          // the atoms with ABFs
+    for (std::size_t a = 0; a < atoms; ++a) parts += first_abf[a] < first_abf[a+1] ? 1 : 0;
+
+    // The device computes every part: the table of the host is not used,
+    // accept is told the bytes and the largest product, and every part
+    // brings back two arrays.
+    BlockWeights device_weights(system);
+    run(0,total,device_weights);
+    require(calls.products == 0 && calls.loops == 0,what+": the product or the loop of the table is used with a device");
+    require(device.accepted == 1 && device.bytes == device.allocated &&
+            device.multiplications == device.largest_product &&
+            device.count[FakeDevice::download_call] == static_cast<long>(2*parts) &&
+            device.count[FakeDevice::allocate_call] == device.count[FakeDevice::release_call],
+            what+": accept is told other sizes than the call takes, or wrong calls of the device");
+    const std::vector<double> computed = flat(device_weights);
+    Worst worst(what+": weights on the device against the host (relative)",1e-12);
+    for (std::size_t e = 0; e < computed.size(); ++e) worst.add(std::fabs(computed[e]-expected[e])/scale);
+    worst.finish();
+    const std::vector<FakeDevice::Kind> sequence = device.sequence;
+    std::printf("%s: %ld calls of the device for the weights, %.0f bytes\n",what.c_str(),
+                static_cast<long>(sequence.size()),static_cast<double>(device.bytes));
+
+    // The same bits again, and the parts directly: in the order of the
+    // atoms, each one the derivatives of the host for that part within
+    // rounding.
+    {
+      BlockWeights again(system);
+      run(0,total,again);
+      require(same_values(flat(again),computed),what+": the device gives other bits the second time");
+      Worst part_worst(what+": parts on the device against the host (relative)",1e-12);
+      for (const std::size_t middle : {first_abf[1]/2,first_abf[1],total-1}) {
+        device.reset();
+        std::vector<std::array<std::size_t,3>> seen;
+        const std::size_t visited = form.direct(middle,total,with_device,
+            [&](std::size_t atom, std::size_t from, std::size_t to, CentreGradient&& gradient) {
+              seen.push_back({atom,from,to});
+              const CentreGradient other = form.host(atom,from,to,host);
+              require(gradient.t.size() == other.t.size() && gradient.v.size() == other.v.size(),
+                      what+": a part on the device has other sizes than on the host");
+              for (std::size_t e = 0; e < other.t.size(); ++e)
+                part_worst.add(std::fabs(gradient.t[e]-other.t[e])/scale);
+              for (std::size_t i = 0; i < other.v.size(); ++i) {
+                require(gradient.v[i].size() == other.v[i].size(),what+": a V block of a part has another size");
+                for (std::size_t e = 0; e < other.v[i].size(); ++e)
+                  part_worst.add(std::fabs(gradient.v[i][e]-other.v[i][e])/scale);
+              }
+            });
+        require(device.ending().empty(),what+": "+device.ending());
+        std::vector<std::array<std::size_t,3>> wanted;
+        for (std::size_t a = 0; a < atoms; ++a) {
+          const std::size_t from = std::max(middle,first_abf[a]), to = std::min(total,first_abf[a+1]);
+          if (from < to) wanted.push_back({a,from-first_abf[a],to-first_abf[a]});
+        }
+        require(visited == wanted.size() && seen == wanted,what+": the device visits other parts than the range holds");
+      }
+      part_worst.finish();
+    }
+
+    // Ranges that divide the ABFs fill the arrays within rounding.
+    {
+      Worst cut_worst(what+": two ranges of ABFs on the device (relative)",1e-12);
+      for (const std::size_t middle : {std::size_t{1},first_abf[1],total-1}) {
+        BlockWeights cut(system);
+        run(0,middle,cut);
+        run(middle,total,cut);
+        const std::vector<double> sum = flat(cut);
+        for (std::size_t e = 0; e < sum.size(); ++e) cut_worst.add(std::fabs(sum[e]-expected[e])/scale);
+      }
+      cut_worst.finish();
+    }
+
+    // An empty range and a backend without a device do not ask the device.
+    {
+      BlockWeights none(system);
+      for (const std::size_t at : {std::size_t{0},first_abf[1],total}) {
+        run(at,at,none);
+        require(device.accepted == 0,what+": an empty range of ABFs asks the device");
+      }
+      require(largest(flat(none)) == 0.0,what+": an empty range of ABFs changes the weights");
+      device.reset();
+      require(form.direct(0,total,host,[](std::size_t, std::size_t, std::size_t, CentreGradient&&) {}) == 0 &&
+              device.accepted == 0,what+": a backend without a device visits parts");
+    }
+
+    // The device declines, or lacks a function: the host computes the
+    // weights with its own bits.
+    {
+      device.answer = 0;
+      BlockWeights declined(system);
+      run(0,total,declined);
+      require(device.accepted == 1 && device.calls == 0 && calls.products > 0 && same_values(flat(declined),expected),
+              what+": a device that declines is used, or the host gives other bits");
+      device.answer = 1;
+      OpenMXExxDevice partial = device.table();
+      partial.move = nullptr;
+      const OpenMXExxDenseBackend table{&shared_dgemm,&calls,&in_order_loop,4,&partial};
+      BlockWeights without(system);
+      device.reset();
+      form.weights(0,total,without.arrays,DenseBackend(&table));
+      require(device.accepted == 0 && same_values(flat(without),expected),what+": a device without one of its functions is used");
+    }
+
+    // Every call of the device fails in turn: the library stops using the
+    // device, releases every block, and the host computes the parts that
+    // the device did not bring back.  Those parts have the bits of the host.
+    const std::vector<long> chosen = failures(sequence,every);
+    Worst failed_worst(what+": weights after a failure of the device (relative)",1e-12);
+    for (const long index : chosen) {
+      device.failing = index;
+      BlockWeights failed(system);
+      run(0,total,failed);
+      require(device.failed && device.calls > index && calls.products > 0,what+": a failure of the device is not noticed");
+      const std::vector<double> mixed = flat(failed);
+      for (std::size_t e = 0; e < mixed.size(); ++e) failed_worst.add(std::fabs(mixed[e]-expected[e])/scale);
+      // The parts of the host: those after the last part that came back.
+      long downloads = 0;
+      for (long i = 0; i < index; ++i) downloads += sequence[static_cast<std::size_t>(i)] == FakeDevice::download_call;
+      const std::size_t back = static_cast<std::size_t>(downloads/2);
+      std::size_t part = 0;
+      for (std::size_t a = 0; a < atoms; ++a) {
+        if (first_abf[a] == first_abf[a+1] || part++ < back) continue;
+        require(same_values(failed.values[a],reference.values[a]),
+                what+": a part that the device did not bring back has other bits than on the host");
+      }
+    }
+    device.failing = -1;
+    failed_worst.finish();
+    std::printf("%s: %zu failures of the device for the weights, each one followed by the host\n",what.c_str(),
+                chosen.size());
+
+    // Arguments that the library rejects are rejected before the device is
+    // asked.
+    device.reset();
+    BlockWeights rejected(system);
+    expect_invalid("a range of ABFs beyond the cell, with a device",
+                   [&] { form.weights(0,total+1,rejected.arrays,with_device); });
+    expect_invalid("a range of ABFs beyond the cell, on the device",
+                   [&] { form.direct(0,total+1,with_device,[](std::size_t, std::size_t, std::size_t, CentreGradient&&) {}); });
+    require(device.accepted == 0 && largest(flat(rejected)) == 0.0,
+            what+": a rejected range asks the device or changes the weights");
+  }
+}
+
 // Both forms of a system with a density matrix of numbers without a
 // pattern, not symmetric: a transposed block does not pass unnoticed.  The
 // blocks of the site form are numbers of their own, not those of one dense
@@ -3135,9 +3352,10 @@ void check_device_forms(const System& system, const std::string& name, Numbers& 
   check_device(system,gamma,random,every);
   check_device(system,site,random,every);
   check_abf_ranges(system,name,random,every);
+  check_device_gradients(system,name,random,every);
 
   // Arguments that the library rejects are rejected before the device is
-  // asked; the derivatives do not use the device.
+  // asked; the derivatives of one centre atom do not use the device.
   FakeDevice device;
   const OpenMXExxDenseBackend table{nullptr,nullptr,nullptr,0,&device.table()};
   const DenseBackend backend(&table);

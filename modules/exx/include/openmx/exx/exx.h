@@ -73,7 +73,15 @@ typedef struct {
    after the last download.  The results differ from those of the dense
    backend by the rounding of the products: the sums over the ABFs run in
    other orders.  Every element of k receives the parts of the centre atoms
-   and of their V neighbours in the order of the host. */
+   and of their V neighbours in the order of the host.
+
+   The weights of the forces (openmx_exx_add_block_weights_gamma_abfs and
+   openmx_exx_add_block_weights_blocks_abfs) use the device in the same way:
+   one accept for the call, and the arrays of all its centre atoms in device
+   memory.  Their weights come back one centre atom (or part of one) at a
+   time, two downloads each, and are added to the arrays of the caller at
+   once.  After a failure the dense backend computes the centre atoms that
+   did not come back; the others keep the weights of the device. */
 typedef struct {
   void *context;
   int (*accept)(void *context, double multiplications, size_t bytes);
@@ -128,11 +136,15 @@ typedef struct {
    arguments on every thread, the results do not depend on the order or the
    timing of the calls.  They can differ by rounding from the results for
    another value of threads; with one piece they are those of the loop on
-   the calling thread.
+   the calling thread.  The weights of the forces
+   (openmx_exx_add_block_weights_gamma_abfs and
+   openmx_exx_add_block_weights_blocks_abfs) divide the ABFs of a centre atom
+   in the same way.  Nothing in them is a sum over the ABFs, so they give the
+   same bits for every value of threads.
 
-   With a device (above) that accepts a call of openmx_exx_add_blocks or
-   openmx_exx_add_gamma, the device computes the call, and dgemm and
-   parallel_for are not used for it. */
+   With a device (above) that accepts a call of openmx_exx_add_blocks,
+   openmx_exx_add_gamma or the weights of the forces, the device computes
+   the call, and dgemm and parallel_for are not used for it. */
 typedef struct {
   int (*dgemm)(void *context, char transa, char transb, int m, int n, int k, double alpha,
                const double *a, int lda, const double *b, int ldb, double beta, double *c, int ldc);
@@ -385,7 +397,9 @@ int openmx_exx_add_position_gradient_blocks(const OpenMXExxState *state, int fir
    and the weights of several spin channels add up.  Every number of the
    arrays comes from one ABF, so processes that divide the ABFs add their
    arrays up without rounding.  An empty range adds nothing.  A call that
-   fails may have added the weights of some of its atoms. */
+   fails may have added the weights of some of its atoms.  A device in the
+   backend computes the call when it accepts it (above); its weights differ
+   from those of the host by rounding. */
 int openmx_exx_add_block_weights_gamma_abfs(const OpenMXExxState *state, long first_abf, long last_abf, double factor,
                                             const double *density, double *const *weights,
                                             const OpenMXExxDenseBackend *backend, char *error, size_t capacity);

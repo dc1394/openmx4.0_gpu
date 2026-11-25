@@ -907,20 +907,22 @@ int main(void)
     CHECK(openmx_exx_add_position_gradient_blocks(state, a, a + 1, -0.25, site_d, site_gradient, &table, NULL, 0) == 0);
   CHECK(calls.products > before);
   for (i = 0; i < 3 * ATOMS; ++i) CHECK(fabs(site_gradient[i] - gradient[i]) <= 1.0e-11 * steepest);
-  /* The derivative is not computed in pieces: with a loop in the table the
-     loop is not called, and the numbers are the same bit for bit.  The
-     product of the caller is that of the library, so the Gamma form gives
-     the bits of the call without a table. */
+  /* The weights of the blocks are computed in pieces of the ABFs: with a
+     loop in the table the loop is called, and the numbers are the same bit
+     for bit, whatever the order of the pieces.  The product of the caller
+     is that of the library, so the Gamma form gives the bits of the call
+     without a table. */
   table.parallel_for = reversed_loop;
   table.threads = 3;
   forget_loops(&calls);
   memset(looped, 0, sizeof looped);
   for (a = 0; a < ATOMS; ++a)
     CHECK(openmx_exx_add_position_gradient_blocks(state, a, a + 1, -0.25, site_d, looped, &table, NULL, 0) == 0);
-  CHECK(calls.loops == 0 && memcmp(looped, site_gradient, sizeof looped) == 0);
+  CHECK(calls.loops > 0 && memcmp(looped, site_gradient, sizeof looped) == 0);
+  forget_loops(&calls);
   memset(looped, 0, sizeof looped);
   CHECK(openmx_exx_add_position_gradient_gamma(state, 0, ATOMS, -0.25, d, looped, &table, NULL, 0) == 0);
-  CHECK(calls.loops == 0 && memcmp(looped, gradient, sizeof looped) == 0);
+  CHECK(calls.loops > 0 && memcmp(looped, gradient, sizeof looped) == 0);
   table.parallel_for = NULL;
   table.threads = 0;
   /* Rejected calls and a product that fails add nothing. */

@@ -257,4 +257,26 @@ CentreGradient centre_gradient_gamma(const System& system, std::size_t atom, std
                                      double factor, std::span<const double> density,
                                      const DenseBackend& backend = DenseBackend());
 
+// The same derivatives on the device of the backend (section 11 of the
+// implementation guide), for the parts of the centre atoms that the ABFs
+// first <= P < last hold.  The ABFs are counted over all atoms, as for
+// add_exchange_blocks_abfs(), and a part is the ABFs from <= P < to of one
+// atom, counted within the atom.  One call of the device computes the parts
+// in the order of the atoms, with D and the T blocks of all atoms on the
+// device for the call.  visit(atom, from, to, gradient) receives the
+// derivatives of a part, the arrays of centre_gradient_blocks() or
+// centre_gradient_gamma() for that part, as soon as they are back on the
+// host.  Returns the number of parts visited: all of them, or fewer when the
+// backend has no device, the device does not take the work or a step on the
+// device fails.  The caller computes the parts after them on the host.  The
+// device adds the products in another order than the host, so the arrays
+// differ from those of the host by rounding.
+using GradientVisit = std::function<void(std::size_t atom, std::size_t from, std::size_t to, CentreGradient&& gradient)>;
+std::size_t device_gradients_blocks(const System& system, const BlockLayout& layout, std::size_t first,
+                                    std::size_t last, double factor, std::span<const double> density,
+                                    const DenseBackend& backend, const GradientVisit& visit);
+std::size_t device_gradients_gamma(const System& system, std::size_t first, std::size_t last, double factor,
+                                   std::span<const double> density, const DenseBackend& backend,
+                                   const GradientVisit& visit);
+
 } // namespace openmx::exx

@@ -319,23 +319,36 @@ void centre_contribution(const System& system, std::size_t a, std::size_t p_firs
 // Both derivatives are separate for every ABF P of the centre, and the call
 // computes those of the ABFs p_first <= P < p_last: dt and dv[g] get the
 // rows of these ABFs, np = p_last - p_first of them, and nothing else.
+//
+// The work of the single P runs in pieces, as in centre_contribution(): the
+// loop of the backend may give every piece to another thread.  Nothing in
+// that work is a sum over P, so the result is the same for every number of
+// pieces, bit for bit.
 template <class Sink>
 void centre_derivatives(const System& system, std::size_t a, std::size_t p_first, std::size_t p_last, std::size_t s,
-                        const std::vector<double>& dloc, Sink& sink, double factor, const DenseBackend& backend,
+                        const double* dloc, Sink& sink, double factor, const DenseBackend& backend,
                         std::vector<double>& dt, std::vector<std::vector<double>>& dv)
 {
   const std::size_t np = p_last-p_first, ua = system.orbital_count[a], ell = sink.width(a);
   const std::size_t rows = np*ua, part = s*ua;
   const double* tst = sink.t(a)+p_first*ua*ell;
-  const double* da = dloc.data();
+  const double* da = dloc;
 
-  const std::unique_ptr<double[]> g(new double[rows*s]);
-  std::vector<double> bracket(rows*s,0.0), scratch;
-  backend.multiply(rows,s,ell,1.0,tst,dloc.data(),0.0,g.get());       // G = T D[loc(A), .]
-  for (std::size_t p = 0; p < np; ++p) transpose_in_place(g.get()+p*part,ua,s,scratch);
+  const std::size_t pieces = piece_count(np,backend);
+  const auto begin = [np,pieces](std::size_t c) { return c*np/pieces; };
+  std::vector<PieceWork> work(pieces);
+
+  const std::unique_ptr<double[]> g(new double[rows*s]), bracket(new double[rows*s]);
+  backend.multiply(rows,s,ell,1.0,tst,dloc,0.0,g.get());               // G = T D[loc(A), .]
+  backend.parallel_for(pieces,[&](std::size_t c) {
+    for (std::size_t p = begin(c); p < begin(c+1); ++p) {
+      transpose_in_place(g.get()+p*part,ua,s,work[c].scratch);
+      std::fill_n(bracket.get()+p*part,part,0.0);
+    }
+  });
 
   std::vector<Run> runs;
-  std::vector<double> w, dl, dba, gathered, h, x3, x4;
+  std::vector<double> w, dl, dba, h;
   dv.resize(sink.groups());
   for (std::size_t ib = 0; ib < sink.groups(); ++ib) {
     const std::size_t b = sink.atom(ib);
@@ -353,45 +366,51 @@ void centre_derivatives(const System& system, std::size_t a, std::size_t p_first
     for (std::size_t nu = 0; nu < ub; ++nu)
       for (std::size_t mu = 0; mu < ua; ++mu) dba[nu*ua+mu] = da[mu*s+column[nu]];
 
-    gathered.resize(lb*ua);
-    x3.resize(ub*ua);
-    x4.resize(lb*ua);
     h.resize(np*ub*lb);
-    for (std::size_t p = 0; p < np; ++p) {
-      const double* wp = w.data()+p*ub*lb;                             // W_P [nu, l]
-      const double* gp = g.get()+p*part;                               // G_P [column, mu]
-      double* bp = bracket.data()+p*part;                              // bracket_P [column, mu]
-      double* hp = h.data()+p*ub*lb;                                   // H_P [nu, l]
+    backend.parallel_for(pieces,[&](std::size_t c) {
+      PieceWork& mine = work[c];
+      mine.gathered.resize(lb*ua);
+      mine.x3.resize(ub*ua);
+      mine.x4.resize(lb*ua);
+      for (std::size_t p = begin(c); p < begin(c+1); ++p) {
+        const double* wp = w.data()+p*ub*lb;                           // W_P [nu, l]
+        const double* gp = g.get()+p*part;                             // G_P [column, mu]
+        double* bp = bracket.get()+p*part;                             // bracket_P [column, mu]
+        double* hp = h.data()+p*ub*lb;                                 // H_P [nu, l]
 
-      // G_P[loc(B), .] as [l, mu]; its first u_b rows are G_P[B, .]
-      for (const Run& run : runs) std::copy_n(gp+run.column*ua,run.count*ua,gathered.data()+run.first*ua);
+        // G_P[loc(B), .] as [l, mu]; its first u_b rows are G_P[B, .]
+        for (const Run& run : runs) std::copy_n(gp+run.column*ua,run.count*ua,mine.gathered.data()+run.first*ua);
 
-      // (iii)  bracket_P[B, .] += W_P D[A, loc(B)]^T
-      backend.multiply_transposed(ub,ua,lb,1.0,wp,dl.data(),0.0,x3.data());
-      for (std::size_t nu = 0; nu < ub; ++nu) {
-        double* target = bp+column[nu]*ua;
-        for (std::size_t mu = 0; mu < ua; ++mu) target[mu] += x3[nu*ua+mu];
+        // (iii)  bracket_P[B, .] += W_P D[A, loc(B)]^T
+        backend.multiply_transposed(ub,ua,lb,1.0,wp,dl.data(),0.0,mine.x3.data());
+        for (std::size_t nu = 0; nu < ub; ++nu) {
+          double* target = bp+column[nu]*ua;
+          for (std::size_t mu = 0; mu < ua; ++mu) target[mu] += mine.x3[nu*ua+mu];
+        }
+
+        // (iv)  bracket_P[loc(B), .] += W_P^T D[A, B]^T
+        backend.transposed_multiply(lb,ua,ub,1.0,wp,dba.data(),0.0,mine.x4.data());
+        for (const Run& run : runs) {
+          double* target = bp+run.column*ua;
+          const double* source = mine.x4.data()+run.first*ua;
+          for (std::size_t e = 0; e < run.count*ua; ++e) target[e] += source[e];
+        }
+
+        // H_P = D[B, A] G_P[., loc(B)] + G_P[B, .] D[A, loc(B)]
+        backend.multiply_transposed(ub,lb,ua,1.0,dba.data(),mine.gathered.data(),0.0,hp);
+        backend.multiply(ub,lb,ua,1.0,mine.gathered.data(),dl.data(),1.0,hp);
       }
-
-      // (iv)  bracket_P[loc(B), .] += W_P^T D[A, B]^T
-      backend.transposed_multiply(lb,ua,ub,1.0,wp,dba.data(),0.0,x4.data());
-      for (const Run& run : runs) {
-        double* target = bp+run.column*ua;
-        const double* source = x4.data()+run.first*ua;
-        for (std::size_t e = 0; e < run.count*ua; ++e) target[e] += source[e];
-      }
-
-      // H_P = D[B, A] G_P[., loc(B)] + G_P[B, .] D[A, loc(B)]
-      backend.multiply_transposed(ub,lb,ua,1.0,dba.data(),gathered.data(),0.0,hp);
-      backend.multiply(ub,lb,ua,1.0,gathered.data(),dl.data(),1.0,hp);
-    }
+    });
     dv[ib].resize(np*nq);
     backend.multiply_transposed(np,nq,ub*lb,factor,h.data(),sink.t(b),0.0,dv[ib].data());
   }
 
-  for (std::size_t p = 0; p < np; ++p) transpose_in_place(bracket.data()+p*part,s,ua,scratch);
+  backend.parallel_for(pieces,[&](std::size_t c) {
+    for (std::size_t p = begin(c); p < begin(c+1); ++p)
+      transpose_in_place(bracket.get()+p*part,s,ua,work[c].scratch);
+  });
   dt.resize(rows*ell);
-  backend.multiply_transposed(rows,ell,s,2.0*factor,bracket.data(),dloc.data(),0.0,dt.data());
+  backend.multiply_transposed(rows,ell,s,2.0*factor,bracket.get(),dloc,0.0,dt.data());
 }
 
 // ---- site form -------------------------------------------------------------
@@ -886,6 +905,35 @@ void check_dense(std::size_t n, std::size_t size, const char* what)
   if (size != n*n) throw std::invalid_argument(what);
 }
 
+// The derivatives of the ABFs first <= P < last of a centre atom in the
+// layout of System::t[atom] and System::v[atom], from those of the folded
+// arrays of the Gamma form (centre_derivatives() with a GammaSink): the
+// images of an atom among the C neighbours share a column of the folded T
+// blocks, the images among the V neighbours a group.
+CentreGradient unfolded_gradient(const System& system, std::size_t atom, std::size_t first, std::size_t last,
+                                 GammaSink& sink, const std::vector<std::size_t>& offset,
+                                 const std::vector<double>& folded_t, const std::vector<std::vector<double>>& grouped_v)
+{
+  const std::size_t n = offset.back();
+  const std::vector<std::size_t>& row = sink.rows();
+  const std::size_t rows = (last-first)*system.orbital_count[atom];
+  const std::size_t ell = system.c_offset[atom].back(), width = row.size();
+  std::vector<std::size_t> position(n,0);
+  for (std::size_t l = 0; l < width; ++l) position[row[l]] = l;
+  const std::vector<std::size_t> stored = folded_columns(system,offset,atom);
+  CentreGradient gradient;
+  gradient.t.resize(rows*ell);
+  for (std::size_t r = 0; r < rows; ++r)
+    for (std::size_t l = 0; l < ell; ++l) gradient.t[r*ell+l] = folded_t[r*width+position[stored[l]]];
+  std::vector<std::size_t> group(system.orbital_count.size(),0);
+  for (std::size_t g = 0; g < sink.groups(); ++g) group[sink.atom(g)] = g;
+  const std::vector<Site>& neighbours = system.v_neighbours[atom];
+  gradient.v.resize(neighbours.size());
+  for (std::size_t ib = 0; ib < neighbours.size(); ++ib)
+    gradient.v[ib] = grouped_v[group[static_cast<std::size_t>(neighbours[ib].atom)]];
+  return gradient;
+}
+
 // ---- the device (section 11) ------------------------------------------------
 //
 // One call of the library builds the contributions of its centre atoms on the
@@ -953,19 +1001,22 @@ class DeviceWork {
     if (device_.finish(device_.context) != 0) throw DeviceStop();
   }
 
-  // C = A B, A B^T and A^T B of row-major arrays without padding, as the
-  // products of DenseBackend.
-  void multiply(std::size_t m, std::size_t n, std::size_t k, const double* a, const double* b, double* c)
+  // C = alpha A B, alpha A B^T and alpha A^T B of row-major arrays without
+  // padding, as the products of DenseBackend with beta = 0.
+  void multiply(std::size_t m, std::size_t n, std::size_t k, const double* a, const double* b, double* c,
+                double alpha = 1.0)
   {
-    gemm('N','N',n,m,k,b,n,a,k,c,n);
+    gemm('N','N',n,m,k,alpha,b,n,a,k,c,n);
   }
-  void multiply_transposed(std::size_t m, std::size_t n, std::size_t k, const double* a, const double* b, double* c)
+  void multiply_transposed(std::size_t m, std::size_t n, std::size_t k, const double* a, const double* b, double* c,
+                           double alpha = 1.0)
   {
-    gemm('T','N',n,m,k,b,k,a,k,c,n);
+    gemm('T','N',n,m,k,alpha,b,k,a,k,c,n);
   }
-  void transposed_multiply(std::size_t m, std::size_t n, std::size_t k, const double* a, const double* b, double* c)
+  void transposed_multiply(std::size_t m, std::size_t n, std::size_t k, const double* a, const double* b, double* c,
+                           double alpha = 1.0)
   {
-    gemm('N','T',n,m,k,b,n,a,m,c,n);
+    gemm('N','T',n,m,k,alpha,b,n,a,m,c,n);
   }
 
   // One side of a move: the offset of row r is r stride or rows[r], that of
@@ -993,15 +1044,15 @@ class DeviceWork {
   }
 
  private:
-  void gemm(char transa, char transb, std::size_t m, std::size_t n, std::size_t k, const double* a, std::size_t lda,
-            const double* b, std::size_t ldb, double* c, std::size_t ldc)
+  void gemm(char transa, char transb, std::size_t m, std::size_t n, std::size_t k, double alpha, const double* a,
+            std::size_t lda, const double* b, std::size_t ldb, double* c, std::size_t ldc)
   {
     if (m == 0 || n == 0) return;
     const std::size_t limit = static_cast<std::size_t>(INT_MAX);
     if (m > limit || n > limit || k > limit || lda > limit || ldb > limit || ldc > limit) throw DeviceStop();
     const auto narrow = [](std::size_t value) { return static_cast<int>(std::max<std::size_t>(value,1)); };
     pending_ = true;
-    if (device_.dgemm(device_.context,transa,transb,static_cast<int>(m),static_cast<int>(n),static_cast<int>(k),1.0,
+    if (device_.dgemm(device_.context,transa,transb,static_cast<int>(m),static_cast<int>(n),static_cast<int>(k),alpha,
                       a,narrow(lda),b,narrow(ldb),0.0,c,narrow(ldc)) != 0)
       throw DeviceStop();
   }
@@ -1038,9 +1089,10 @@ struct DeviceCentre {
   std::vector<DeviceGroup> groups;
 };
 
-// The sizes of the arrays of one centre atom on the device.
+// The sizes of the arrays of one centre atom on the device.  dt is the
+// derivative with respect to the T blocks of the centre (the forces only).
 struct DeviceSizes {
-  std::size_t g = 0, dloc = 0, w = 0, gg = 0, gbp = 0, dl = 0, dba = 0, first = 0, second = 0, x3 = 0;
+  std::size_t g = 0, dloc = 0, w = 0, gg = 0, gbp = 0, dl = 0, dba = 0, first = 0, second = 0, x3 = 0, dt = 0;
   std::size_t v = 0, list = 0, length = 0;
   double multiplications = 0.0;           // of the largest product of the centre
 
@@ -1056,6 +1108,7 @@ struct DeviceSizes {
     first = std::max(first,other.first);
     second = std::max(second,other.second);
     x3 = std::max(x3,other.x3);
+    dt = std::max(dt,other.dt);
     v = std::max(v,other.v);
     list = std::max(list,other.list);
     length = std::max(length,other.length);
@@ -1076,6 +1129,7 @@ DeviceSizes device_sizes(const System& system, std::size_t a, std::size_t np, st
   DeviceSizes z;
   z.g = np*ua*s;
   z.dloc = ell*s;
+  z.dt = np*ua*ell;
   z.multiplications = product(np*ua,s,ell);         // G = T D and the last product
   z.list = site ? 2*gathered_rows : ell;
   z.length = site ? gathered_rows : 0;
@@ -1100,23 +1154,33 @@ DeviceSizes device_sizes(const System& system, std::size_t a, std::size_t np, st
   return z;
 }
 
-// The arrays of a call on the device.
+// What a call on the device computes: the contributions to K (a build) or
+// the derivatives of E_x with respect to the blocks (the forces).
+enum class DeviceUse { build, derivatives };
+
+// The arrays of a call on the device.  A build has K and the terms (i) and
+// (ii); the derivatives have H, a second array for its first part, dt and
+// dv (the derivative with respect to the V blocks of the groups, in the
+// layout of v) instead.
 struct DeviceArrays {
   double *density = nullptr, *k = nullptr, *t = nullptr, *zero = nullptr, *v = nullptr;
   double *g = nullptr, *bracket = nullptr, *dloc = nullptr, *w = nullptr, *wn = nullptr, *gg = nullptr, *x4 = nullptr;
   double *gbp = nullptr, *dl = nullptr, *dba = nullptr, *first = nullptr, *second = nullptr, *x3 = nullptr;
+  double *h = nullptr, *hx = nullptr, *dt = nullptr, *dv = nullptr;
   long long* list = nullptr;
   int* length = nullptr;
   std::vector<std::size_t> t_offset;      // of the T blocks of every atom in t
   DeviceSizes capacity;                   // of the arrays of one centre
 
-  DeviceArrays(DeviceWork& work, const DeviceSizes& z, std::size_t elements, const std::vector<std::size_t>& t_size)
+  DeviceArrays(DeviceWork& work, const DeviceSizes& z, std::size_t elements, const std::vector<std::size_t>& t_size,
+               DeviceUse use = DeviceUse::build)
       : capacity(z)
   {
+    const bool build = use == DeviceUse::build;
     t_offset.assign(1,0);
     for (const std::size_t size : t_size) t_offset.push_back(t_offset.back()+size);
     density = work.allocate<double>(elements);
-    k = work.allocate<double>(elements);
+    if (build) k = work.allocate<double>(elements);
     t = work.allocate<double>(t_offset.back());
     zero = work.allocate<double>(1);
     v = work.allocate<double>(z.v);
@@ -1130,34 +1194,51 @@ struct DeviceArrays {
     gbp = work.allocate<double>(z.gbp);
     dl = work.allocate<double>(z.dl);
     dba = work.allocate<double>(z.dba);
-    first = work.allocate<double>(z.first);
-    second = work.allocate<double>(z.second);
+    if (build) {
+      first = work.allocate<double>(z.first);
+      second = work.allocate<double>(z.second);
+    }
     x3 = work.allocate<double>(z.x3);
+    if (!build) {
+      h = work.allocate<double>(z.w);
+      hx = work.allocate<double>(z.w);
+      dt = work.allocate<double>(z.dt);
+      dv = work.allocate<double>(z.v);
+    }
     list = work.allocate<long long>(z.list);
     length = work.allocate<int>(z.length);
   }
 
   // The device memory of these arrays, in bytes, as the allocations count it.
-  static std::size_t bytes(const DeviceSizes& z, std::size_t elements, std::size_t t_total)
+  static std::size_t bytes(const DeviceSizes& z, std::size_t elements, std::size_t t_total,
+                           DeviceUse use = DeviceUse::build)
   {
     const auto one = [](std::size_t count) { return std::max<std::size_t>(count,1); };
-    const std::size_t doubles = 2*one(elements)+one(t_total)+1+one(z.v)+2*one(z.g)+one(z.dloc)+2*one(z.w)+
-                                2*one(z.gg)+one(z.gbp)+one(z.dl)+one(z.dba)+one(z.first)+one(z.second)+one(z.x3);
+    std::size_t doubles = one(elements)+one(t_total)+1+one(z.v)+2*one(z.g)+one(z.dloc)+2*one(z.w)+2*one(z.gg)+
+                          one(z.gbp)+one(z.dl)+one(z.dba)+one(z.x3);
+    if (use == DeviceUse::build) doubles += one(elements)+one(z.first)+one(z.second);
+    else doubles += 2*one(z.w)+one(z.dt)+one(z.v);
     return doubles*sizeof(double)+one(z.list)*sizeof(long long)+one(z.length)*sizeof(int);
   }
 };
 
-// The contribution of the ABFs of a part of one centre atom on the device,
-// factor times it added to K there.  The lists and the V blocks of the
-// centre are uploaded first: the work of the centre before has finished.
-// The work of this centre is finished at the end.
-void device_centre(const System& system, const CentrePart& share, double factor, const DeviceCentre& c,
-                   DeviceArrays& d, DeviceWork& work)
+// Where the lists of a part of a centre atom lie in d.list and d.length,
+// and the V block of every group in d.v.
+struct DeviceLists {
+  std::size_t local = 0, stored = 0, gathered = 0, row = 0, g_rows = 0;
+  struct Group {
+    std::size_t column, w_rows, second_stored, second_local, second_length, v;
+  };
+  std::vector<Group> groups;
+};
+
+// Uploads the lists and the V blocks of a part of a centre atom: the work of
+// the centre before has finished.
+DeviceLists upload_lists(const System& system, const CentrePart& share, const DeviceCentre& c, DeviceArrays& d,
+                         DeviceWork& work)
 {
-  const std::size_t a = share.atom, np = share.last-share.first, ua = system.orbital_count[a], s = c.s;
-  const std::size_t rows = np*ua;
+  const std::size_t np = share.last-share.first, ua = system.orbital_count[share.atom], s = c.s;
   const bool site = c.row.empty();
-  const std::size_t ell = site ? system.c_offset[a].back() : c.row.size();
 
   // The lists, in one array: append() gives the offset of a list in it.
   std::vector<long long> list;
@@ -1172,36 +1253,32 @@ void device_centre(const System& system, const CentrePart& share, double factor,
     length.insert(length.end(),values.begin(),values.end());
     return at;
   };
-  std::size_t local = 0, stored = 0, gathered = 0, row = 0;
+  DeviceLists at;
   if (site) {
-    local = append(c.local);
-    stored = append(c.stored);
-    gathered = append_length(c.length);
+    at.local = append(c.local);
+    at.stored = append(c.stored);
+    at.gathered = append_length(c.length);
   } else {
-    row = append(c.row);
+    at.row = append(c.row);
   }
   std::vector<long long> order(ua*np);             // the row of G of every row (mu, P) of Gg
   for (std::size_t mu = 0; mu < ua; ++mu)
     for (std::size_t p = 0; p < np; ++p) order[mu*np+p] = static_cast<long long>((p*ua+mu)*s);
-  const std::size_t g_rows = append(order);
-  struct GroupLists {
-    std::size_t column, w_rows, second_stored, second_local, second_length;
-  };
-  std::vector<GroupLists> at(c.groups.size());
+  at.g_rows = append(order);
+  at.groups.resize(c.groups.size());
   std::vector<double> v;
-  std::vector<std::size_t> v_offset;
   for (std::size_t ib = 0; ib < c.groups.size(); ++ib) {
     const DeviceGroup& group = c.groups[ib];
     const std::size_t b = group.atom, ub = system.orbital_count[b], lb = group.column.size();
-    at[ib].column = append(group.column);
+    at.groups[ib].column = append(group.column);
     std::vector<long long> w_rows(ub*np);            // the row of W of every row (nu, P) of Wn
     for (std::size_t nu = 0; nu < ub; ++nu)
       for (std::size_t p = 0; p < np; ++p) w_rows[nu*np+p] = static_cast<long long>((p*ub+nu)*lb);
-    at[ib].w_rows = append(w_rows);
-    at[ib].second_stored = append(group.second_stored);
-    at[ib].second_local = append(group.second_local);
-    at[ib].second_length = append_length(group.second_length);
-    v_offset.push_back(v.size());
+    at.groups[ib].w_rows = append(w_rows);
+    at.groups[ib].second_stored = append(group.second_stored);
+    at.groups[ib].second_local = append(group.second_local);
+    at.groups[ib].second_length = append_length(group.second_length);
+    at.groups[ib].v = v.size();
     const std::size_t nq = system.abf_count[b];
     v.insert(v.end(),group.v+share.first*nq,group.v+share.last*nq);       // the rows of the ABFs of the part
   }
@@ -1210,66 +1287,163 @@ void device_centre(const System& system, const CentrePart& share, double factor,
   work.upload(d.list,list.data(),list.size()*sizeof(long long));
   work.upload(d.length,length.data(),length.size()*sizeof(int));
   work.upload(d.v,v.data(),v.size()*sizeof(double));
+  return at;
+}
 
+// D[loc(A), .] of a part of a centre atom from D on the device, and G =
+// T D[loc(A), .]; the bracket is set to zero.
+void device_start(const System& system, const CentrePart& share, const DeviceCentre& c, const DeviceLists& at,
+                  DeviceArrays& d, DeviceWork& work)
+{
+  const std::size_t a = share.atom, np = share.last-share.first, ua = system.orbital_count[a], s = c.s;
+  const std::size_t rows = np*ua;
+  const bool site = c.row.empty();
+  const std::size_t ell = site ? system.c_offset[a].back() : c.row.size();
   using Side = DeviceWork::Side;
   const Side zero{0,nullptr,0,nullptr};              // every element reads d.zero[0]
   const double* ta = d.t+d.t_offset[a]+share.first*ua*ell;              // the rows of the ABFs of the part
   if (site)                                          // D[loc(A), S] from the layout
-    work.move(c.local.size(),c.longest,d.length+gathered,1.0,false,d.dloc,Side{0,d.list+local,1,nullptr},d.density,
-              Side{0,d.list+stored,1,nullptr});
+    work.move(c.local.size(),c.longest,d.length+at.gathered,1.0,false,d.dloc,Side{0,d.list+at.local,1,nullptr},
+              d.density,Side{0,d.list+at.stored,1,nullptr});
   else                                               // D[loc(A), .] from the rows of D
     work.move(ell,s,nullptr,1.0,false,d.dloc,Side{static_cast<long long>(s),nullptr,1,nullptr},d.density,
-              Side{0,d.list+row,1,nullptr});
+              Side{0,d.list+at.row,1,nullptr});
   work.multiply(rows,s,ell,ta,d.dloc,d.g);                            // G = T D[loc(A), .]
   work.move(rows,s,nullptr,1.0,false,d.bracket,Side{static_cast<long long>(s),nullptr,1,nullptr},d.zero,zero);
+}
 
+// The arrays of group ib that the build and the derivatives share: W = V T_B,
+// Wn, Gg, GBp, D[A, loc(B)] and D[A, B], and terms (iii) and (iv) added to
+// the bracket.  Terms (i) and (ii) are left in d.first and d.second for the
+// build.
+void device_group(const System& system, const CentrePart& share, const DeviceCentre& c, const DeviceLists& at,
+                  std::size_t ib, DeviceUse use, DeviceArrays& d, DeviceWork& work)
+{
+  const std::size_t np = share.last-share.first, ua = system.orbital_count[share.atom], s = c.s;
+  const DeviceGroup& group = c.groups[ib];
+  const std::size_t b = group.atom, nq = system.abf_count[b], ub = system.orbital_count[b], lb = group.column.size();
+  using Side = DeviceWork::Side;
+  const auto signed_size = [](std::size_t value) { return static_cast<long long>(value); };
+  const long long* column = d.list+at.groups[ib].column;
+  work.multiply(np,ub*lb,nq,d.v+at.groups[ib].v,d.t+d.t_offset[b],d.w);                  // W = V T_B
+  work.move(ub*np,lb,nullptr,1.0,false,d.wn,Side{signed_size(lb),nullptr,1,nullptr},d.w,
+            Side{0,d.list+at.groups[ib].w_rows,1,nullptr});                                // Wn
+  work.move(ua*np,lb,nullptr,1.0,false,d.gg,Side{signed_size(lb),nullptr,1,nullptr},d.g,
+            Side{0,d.list+at.g_rows,1,column});                                            // Gg
+  work.move(ua*np,ub,nullptr,1.0,false,d.gbp,Side{signed_size(ub),nullptr,1,nullptr},d.gg,
+            Side{signed_size(lb),nullptr,1,nullptr});                                      // GBp
+  work.move(ua,lb,nullptr,1.0,false,d.dl,Side{signed_size(lb),nullptr,1,nullptr},d.dloc,
+            Side{signed_size(s),nullptr,1,column});                                        // D[A, loc(B)]
+  work.move(ub,ua,nullptr,1.0,false,d.dba,Side{signed_size(ua),nullptr,1,nullptr},d.dloc,
+            Side{0,column,signed_size(s),nullptr});                                        // D[A, B] as [nu][mu]
+  if (use == DeviceUse::build) {
+    work.multiply_transposed(ua,ub,np*lb,d.gg,d.wn,d.first);                               // (i)
+    work.multiply(ua,lb,np*ub,d.gbp,d.w,d.second);                                         // (ii)
+  }
+  work.multiply_transposed(ub*np,ua,lb,d.wn,d.dl,d.x3);                                    // (iii)
+  work.transposed_multiply(ua,np*lb,ub,d.dba,d.wn,d.x4);                                   // (iv)
+  work.move(ub,np*ua,nullptr,1.0,true,d.bracket,Side{0,column,signed_size(s),nullptr},d.x3,
+            Side{signed_size(np*ua),nullptr,1,nullptr});                                   // bracket[., B] += X3
+  work.move(ua*np,lb,nullptr,1.0,true,d.bracket,Side{0,d.list+at.g_rows,1,column},d.x4,
+            Side{signed_size(lb),nullptr,1,nullptr});                                      // bracket[., loc(B)] += X4
+}
+
+// The contribution of the ABFs of a part of one centre atom on the device,
+// factor times it added to K there.  The lists and the V blocks of the
+// centre are uploaded first: the work of the centre before has finished.
+// The work of this centre is finished at the end.
+void device_centre(const System& system, const CentrePart& share, double factor, const DeviceCentre& c,
+                   DeviceArrays& d, DeviceWork& work)
+{
+  const std::size_t a = share.atom, np = share.last-share.first, ua = system.orbital_count[a], s = c.s;
+  const std::size_t rows = np*ua;
+  const bool site = c.row.empty();
+  const std::size_t ell = site ? system.c_offset[a].back() : c.row.size();
+  const DeviceLists at = upload_lists(system,share,c,d,work);
+  device_start(system,share,c,at,d,work);
+
+  using Side = DeviceWork::Side;
   const auto signed_size = [](std::size_t value) { return static_cast<long long>(value); };
   for (std::size_t ib = 0; ib < c.groups.size(); ++ib) {
+    device_group(system,share,c,at,ib,DeviceUse::build,d,work);
     const DeviceGroup& group = c.groups[ib];
-    const std::size_t b = group.atom, nq = system.abf_count[b], ub = system.orbital_count[b], lb = group.column.size();
-    const long long* column = d.list+at[ib].column;
-    work.multiply(np,ub*lb,nq,d.v+v_offset[ib],d.t+d.t_offset[b],d.w);                    // W = V T_B
-    work.move(ub*np,lb,nullptr,1.0,false,d.wn,Side{signed_size(lb),nullptr,1,nullptr},d.w,
-              Side{0,d.list+at[ib].w_rows,1,nullptr});                                      // Wn
-    work.move(ua*np,lb,nullptr,1.0,false,d.gg,Side{signed_size(lb),nullptr,1,nullptr},d.g,
-              Side{0,d.list+g_rows,1,column});                                              // Gg
-    work.move(ua*np,ub,nullptr,1.0,false,d.gbp,Side{signed_size(ub),nullptr,1,nullptr},d.gg,
-              Side{signed_size(lb),nullptr,1,nullptr});                                     // GBp
-    work.move(ua,lb,nullptr,1.0,false,d.dl,Side{signed_size(lb),nullptr,1,nullptr},d.dloc,
-              Side{signed_size(s),nullptr,1,column});                                       // D[A, loc(B)]
-    work.move(ub,ua,nullptr,1.0,false,d.dba,Side{signed_size(ua),nullptr,1,nullptr},d.dloc,
-              Side{0,column,signed_size(s),nullptr});                                       // D[A, B] as [nu][mu]
-    work.multiply_transposed(ua,ub,np*lb,d.gg,d.wn,d.first);                                // (i)
-    work.multiply(ua,lb,np*ub,d.gbp,d.w,d.second);                                          // (ii)
-    work.multiply_transposed(ub*np,ua,lb,d.wn,d.dl,d.x3);                                   // (iii)
-    work.transposed_multiply(ua,np*lb,ub,d.dba,d.wn,d.x4);                                  // (iv)
-    work.move(ub,np*ua,nullptr,1.0,true,d.bracket,Side{0,column,signed_size(s),nullptr},d.x3,
-              Side{signed_size(np*ua),nullptr,1,nullptr});                                  // bracket[., B] += X3
-    work.move(ua*np,lb,nullptr,1.0,true,d.bracket,Side{0,d.list+g_rows,1,column},d.x4,
-              Side{signed_size(lb),nullptr,1,nullptr});                                     // bracket[., loc(B)] += X4
+    const std::size_t ub = system.orbital_count[group.atom], lb = group.column.size();
+    const long long* column = d.list+at.groups[ib].column;
     work.move(ua,ub,nullptr,factor,true,d.k+group.first,Side{group.first_stride,nullptr,1,nullptr},d.first,
               Side{signed_size(ub),nullptr,1,nullptr});                                     // K += (i)
     if (site)
-      work.move(group.second_length.size(),group.second_longest,d.length+at[ib].second_length,factor,true,d.k,
-                Side{0,d.list+at[ib].second_stored,1,nullptr},d.second,Side{0,d.list+at[ib].second_local,1,nullptr});
+      work.move(group.second_length.size(),group.second_longest,d.length+at.groups[ib].second_length,factor,true,d.k,
+                Side{0,d.list+at.groups[ib].second_stored,1,nullptr},d.second,
+                Side{0,d.list+at.groups[ib].second_local,1,nullptr});
     else
       work.move(ua,lb,nullptr,factor,true,d.k+group.second,Side{group.second_stride,nullptr,1,column},d.second,
                 Side{signed_size(lb),nullptr,1,nullptr});                                   // K += (ii)
   }
 
+  const double* ta = d.t+d.t_offset[a]+share.first*ua*ell;              // the rows of the ABFs of the part
   work.transposed_multiply(ell,s,rows,ta,d.bracket,d.dloc);           // the last result, over D[loc(A), .]
   if (site)
     // The rows of one site of loc(A) lie in different blocks; two sites can
     // add to one block, so the sites go one after the other, as on the host.
     for (std::size_t i = 0; i+1 < c.begin.size(); ++i) {
       const std::size_t first = c.begin[i], count = c.begin[i+1]-first;
-      work.move(count,c.longest,d.length+gathered+first,factor,true,d.k,Side{0,d.list+stored+first,1,nullptr},d.dloc,
-                Side{0,d.list+local+first,1,nullptr});
+      work.move(count,c.longest,d.length+at.gathered+first,factor,true,d.k,Side{0,d.list+at.stored+first,1,nullptr},
+                d.dloc,Side{0,d.list+at.local+first,1,nullptr});
     }
   else
-    work.move(ell,s,nullptr,factor,true,d.k,Side{0,d.list+row,1,nullptr},d.dloc,
+    work.move(ell,s,nullptr,factor,true,d.k,Side{0,d.list+at.row,1,nullptr},d.dloc,
               Side{signed_size(s),nullptr,1,nullptr});
   work.finish();
+}
+
+// The derivatives of the ABFs of a part of one centre atom on the device, as
+// centre_derivatives() computes them on the host: dt, rows x ell, and dv[g],
+// n_P x n_Q for every group g, come back to the host.  The arrays of a V
+// neighbour are those of the build, and H of all ABFs takes two products:
+//   Hx [nu][(P,l)]  = sum_mu D[A, B][nu][mu] Gg[mu][(P,l)]       D[B, A] G_P[., loc(B)]
+//   H  [(P,nu)][l]  = sum_mu GBp[mu][(P,nu)] D[A, loc(B)][mu][l] G_P[B, .] D[A, loc(B)]
+// Hx is then added to H, which has the layout of W, and
+//   dv[g] [P][Q]    = factor sum_(nu,l) H[P][(nu,l)] T_B[Q][(nu,l)]
+// After the last group the bracket holds terms (iii) and (iv) of all groups:
+//   dt [(P,mu)][lambda] = 2 factor sum_column bracket[(P,mu)][column] D[loc(A), .][lambda][column]
+// The lists and the V blocks of the centre are uploaded first, and the work
+// is finished before the results come back.
+void device_derivatives(const System& system, const CentrePart& share, double factor, const DeviceCentre& c,
+                        DeviceArrays& d, DeviceWork& work, std::vector<double>& dt, std::vector<std::vector<double>>& dv)
+{
+  const std::size_t a = share.atom, np = share.last-share.first, ua = system.orbital_count[a], s = c.s;
+  const std::size_t rows = np*ua;
+  const bool site = c.row.empty();
+  const std::size_t ell = site ? system.c_offset[a].back() : c.row.size();
+  const DeviceLists at = upload_lists(system,share,c,d,work);
+  device_start(system,share,c,at,d,work);
+
+  using Side = DeviceWork::Side;
+  const auto signed_size = [](std::size_t value) { return static_cast<long long>(value); };
+  for (std::size_t ib = 0; ib < c.groups.size(); ++ib) {
+    device_group(system,share,c,at,ib,DeviceUse::derivatives,d,work);
+    const std::size_t b = c.groups[ib].atom, nq = system.abf_count[b], ub = system.orbital_count[b];
+    const std::size_t lb = c.groups[ib].column.size();
+    work.multiply(ub,np*lb,ua,d.dba,d.gg,d.hx);                                           // Hx
+    work.transposed_multiply(np*ub,lb,ua,d.gbp,d.dl,d.h);                                 // H
+    work.move(ub*np,lb,nullptr,1.0,true,d.h,Side{0,d.list+at.groups[ib].w_rows,1,nullptr},d.hx,
+              Side{signed_size(lb),nullptr,1,nullptr});                                   // H += Hx
+    work.multiply_transposed(np,nq,ub*lb,d.h,d.t+d.t_offset[b],d.dv+at.groups[ib].v,factor);  // dv[g]
+  }
+  work.multiply_transposed(rows,ell,s,d.bracket,d.dloc,d.dt,2.0*factor);                  // dt
+  work.finish();
+
+  dt.resize(rows*ell);
+  work.download(dt.data(),d.dt,dt.size()*sizeof(double));
+  std::size_t total = 0;
+  for (const DeviceGroup& group : c.groups) total += np*system.abf_count[group.atom];
+  std::vector<double> all(total);
+  work.download(all.data(),d.dv,all.size()*sizeof(double));
+  dv.resize(c.groups.size());
+  for (std::size_t ib = 0; ib < c.groups.size(); ++ib) {
+    const auto from = all.begin()+static_cast<std::ptrdiff_t>(at.groups[ib].v);
+    dv[ib].assign(from,from+static_cast<std::ptrdiff_t>(np*system.abf_count[c.groups[ib].atom]));
+  }
 }
 
 // The parts of the centre atoms on the device; false when the device does
@@ -1307,6 +1481,50 @@ bool device_range(const System& system, const std::vector<CentrePart>& parts, do
   }
   std::copy(result.begin(),result.end(),k.begin());
   return true;
+}
+
+// The derivatives of the parts of the centre atoms on the device, part after
+// part: visit(part, gradient) gets those of a part as soon as they are back
+// on the host, in the layout of CentreGradient (Form::gradient()).  Returns
+// the number of parts visited: all of them, or fewer when the device does
+// not take the work or stops; the parts after them are left to the caller.
+template <class Form, class Visit>
+std::size_t device_gradient_range(const System& system, const std::vector<CentrePart>& parts, double factor,
+                                  std::span<const double> density, const OpenMXExxDevice& device, Form& form,
+                                  const Visit& visit)
+{
+  if (device.accept == nullptr || device.allocate == nullptr || device.release == nullptr ||
+      device.upload == nullptr || device.download == nullptr || device.dgemm == nullptr || device.move == nullptr ||
+      device.finish == nullptr || parts.empty())
+    return 0;
+  const std::size_t atoms = system.orbital_count.size();
+  DeviceSizes z;
+  for (const CentrePart& part : parts) z.widen(form.sizes(part.atom,part.last-part.first));
+  std::vector<std::size_t> t_size(atoms);
+  std::size_t t_total = 0;
+  for (std::size_t x = 0; x < atoms; ++x) t_total += t_size[x] = form.t_size(x);
+  if (device.accept(device.context,z.multiplications,
+                    DeviceArrays::bytes(z,density.size(),t_total,DeviceUse::derivatives)) != 1)
+    return 0;
+
+  std::size_t done = 0;
+  try {
+    DeviceWork work(device);
+    DeviceArrays d(work,z,density.size(),t_size,DeviceUse::derivatives);
+    work.upload(d.density,density.data(),density.size()*sizeof(double));
+    for (std::size_t x = 0; x < atoms; ++x) work.upload(d.t+d.t_offset[x],form.t(x),t_size[x]*sizeof(double));
+    const double nothing = 0.0;
+    work.upload(d.zero,&nothing,sizeof(double));
+    std::vector<double> dt;
+    std::vector<std::vector<double>> dv;
+    for (const CentrePart& part : parts) {
+      device_derivatives(system,part,factor,form.plan(part.atom),d,work,dt,dv);
+      visit(part,form.gradient(part,dt,dv));
+      ++done;
+    }
+  } catch (const DeviceStop&) {
+  }
+  return done;
 }
 
 // The site form in one array for the device.
@@ -1353,6 +1571,13 @@ class DeviceBlocks {
       c.groups.push_back(std::move(group));
     }
     return c;
+  }
+
+  // The derivatives of a part from those of the device: the groups are the
+  // V neighbours, and dt has the columns of System::t.
+  CentreGradient gradient(const CentrePart&, std::vector<double>& dt, std::vector<std::vector<double>>& dv) const
+  {
+    return CentreGradient{std::move(dt),std::move(dv)};
   }
 
  private:
@@ -1405,6 +1630,13 @@ class DeviceGamma {
       c.groups.push_back(std::move(group));
     }
     return c;
+  }
+
+  // The derivatives of a part from those of the device in the folded
+  // arrays, with the sink of the plan of the part.
+  CentreGradient gradient(const CentrePart& part, std::vector<double>& dt, std::vector<std::vector<double>>& dv)
+  {
+    return unfolded_gradient(system_,part.atom,part.first,part.last,*sink_,offset_,dt,dv);
   }
 
  private:
@@ -1924,16 +2156,50 @@ CentreGradient centre_gradient_blocks(const System& system, const BlockLayout& l
     gradient.v.resize(system.v_neighbours[atom].size());
     return gradient;
   }
-  const DensityBlocks blocks = [&layout,density](const BlockKey& key, std::span<double> block) {
-    const std::size_t i = layout.find(key);
-    if (i == layout.keys.size()) throw std::invalid_argument("the layout lacks a block of the density matrix");
-    std::copy_n(density.begin()+static_cast<std::ptrdiff_t>(layout.offset[i]),block.size(),block.begin());
-  };
   // The sink gives the blocks and the columns; nothing is written to K.
   LayoutBlocks store(layout,std::span<double>());
   SiteSink<LayoutBlocks> sink(system,atom,factor,store);
-  centre_derivatives(system,atom,first,last,sink.size(),sink.density(blocks),sink,factor,backend,gradient.t,gradient.v);
+  const std::unique_ptr<double[]> dloc = sink.density(density,backend,piece_count(last-first,backend));
+  centre_derivatives(system,atom,first,last,sink.size(),dloc.get(),sink,factor,backend,gradient.t,gradient.v);
   return gradient;
+}
+
+std::size_t device_gradients_blocks(const System& system, const BlockLayout& layout, std::size_t first,
+                                    std::size_t last, double factor, std::span<const double> density,
+                                    const DenseBackend& backend, const GradientVisit& visit)
+{
+  const OpenMXExxDevice* device = backend.device();
+  if (device == nullptr) return 0;
+  check(system);
+  const std::vector<std::size_t> offset = abf_offsets(system);
+  if (first > last || last > offset.back()) throw std::out_of_range("the range of ABFs is not inside the unit cell");
+  check(system,layout);
+  if (density.size() != layout.elements()) throw std::invalid_argument("the density matrix does not have the size of the layout");
+  if (first == last) return 0;
+  DeviceBlocks form(system,layout,factor);
+  return device_gradient_range(system,centre_parts(offset,first,last),factor,density,*device,form,
+                               [&visit](const CentrePart& part, CentreGradient&& gradient) {
+                                 visit(part.atom,part.first,part.last,std::move(gradient));
+                               });
+}
+
+std::size_t device_gradients_gamma(const System& system, std::size_t first, std::size_t last, double factor,
+                                   std::span<const double> density, const DenseBackend& backend,
+                                   const GradientVisit& visit)
+{
+  const OpenMXExxDevice* device = backend.device();
+  if (device == nullptr) return 0;
+  check(system);
+  const std::vector<std::size_t> abfs = abf_offsets(system);
+  if (first > last || last > abfs.back()) throw std::out_of_range("the range of ABFs is not inside the unit cell");
+  const std::vector<std::size_t> offset = orbital_offsets(system);
+  check_dense(offset.back(),density.size(),"the density matrix is not N x N");
+  if (first == last) return 0;
+  DeviceGamma form(system,factor,offset);
+  return device_gradient_range(system,centre_parts(abfs,first,last),factor,density,*device,form,
+                               [&visit](const CentrePart& part, CentreGradient&& gradient) {
+                                 visit(part.atom,part.first,part.last,std::move(gradient));
+                               });
 }
 
 CentreGradient centre_gradient_gamma(const System& system, std::size_t atom, double factor,
@@ -1963,25 +2229,9 @@ CentreGradient centre_gradient_gamma(const System& system, std::size_t atom, std
   GammaSink sink(system,atom,factor,std::span<double>(),offset);
   std::vector<double> folded_t;
   std::vector<std::vector<double>> grouped_v;
-  const std::vector<std::size_t> row = sink.rows();
-  centre_derivatives(system,atom,first,last,n,gathered_rows(density,n,row),sink,factor,backend,folded_t,grouped_v);
-
-  // The stored blocks: the images of an atom among the C neighbours share a
-  // column of the folded T blocks, the images among the V neighbours a group.
-  const std::size_t rows = (last-first)*system.orbital_count[atom];
-  const std::size_t ell = system.c_offset[atom].back(), width = row.size();
-  std::vector<std::size_t> position(n,0);
-  for (std::size_t l = 0; l < width; ++l) position[row[l]] = l;
-  const std::vector<std::size_t> stored = folded_columns(system,offset,atom);
-  gradient.t.resize(rows*ell);
-  for (std::size_t r = 0; r < rows; ++r)
-    for (std::size_t l = 0; l < ell; ++l) gradient.t[r*ell+l] = folded_t[r*width+position[stored[l]]];
-  std::vector<std::size_t> group(system.orbital_count.size(),0);
-  for (std::size_t g = 0; g < sink.groups(); ++g) group[sink.atom(g)] = g;
-  gradient.v.resize(neighbours.size());
-  for (std::size_t ib = 0; ib < neighbours.size(); ++ib)
-    gradient.v[ib] = grouped_v[group[static_cast<std::size_t>(neighbours[ib].atom)]];
-  return gradient;
+  const std::unique_ptr<double[]> dloc = gathered_rows(density,n,sink.rows(),backend,piece_count(last-first,backend));
+  centre_derivatives(system,atom,first,last,n,dloc.get(),sink,factor,backend,folded_t,grouped_v);
+  return unfolded_gradient(system,atom,first,last,sink,offset,folded_t,grouped_v);
 }
 
 } // namespace openmx::exx

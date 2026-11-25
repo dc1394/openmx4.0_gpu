@@ -43,10 +43,13 @@ namespace {
 // The ABFs first <= P < last of the unit cell, atom by atom: compute(atom,
 // from, to) gives the derivatives of the ABFs from <= P < to of the atom,
 // counted within the atom, and their rows are added to weights[atom], the
-// array of add_block_weights() for the whole atom.
-template <class Compute>
+// array of add_block_weights() for the whole atom.  device(visit) offers the
+// parts to the device first (device_gradients_blocks() or
+// device_gradients_gamma()): it hands the parts that the device computed to
+// visit and returns their number, and compute() gives the others.
+template <class Compute, class Device>
 void add_weight_rows(const System& system, std::size_t first, std::size_t last,
-                     std::span<const std::span<double>> weights, const Compute& compute)
+                     std::span<const std::span<double>> weights, const Compute& compute, const Device& device)
 {
   const std::size_t atoms = system.orbital_count.size();
   if (system.abf_count.size() != atoms || system.c_offset.size() != atoms || system.v_neighbours.size() != atoms)
@@ -60,27 +63,36 @@ void add_weight_rows(const System& system, std::size_t first, std::size_t last,
   for (std::size_t a = 0; a < atoms; ++a)
     if (std::max(first,offset[a]) < std::min(last,offset[a+1]) && weights[a].size() != table_elements(system,a))
       throw std::invalid_argument("the array does not have the size of the weights of the blocks of the atom");
-  for (std::size_t a = 0; a < atoms; ++a) {
-    const std::size_t from = std::max(first,offset[a]), to = std::min(last,offset[a+1]);
-    if (from >= to) continue;
-    const std::size_t begin = from-offset[a], count = to-from;
-    const CentreGradient rows = compute(a,begin,begin+count);
+  // The rows of the ABFs begin <= P < begin + count of atom a.
+  const auto add = [&system,weights](std::size_t a, std::size_t begin, std::size_t count, const CentreGradient& rows) {
     const std::size_t width = system.orbital_count[a]*system.c_offset[a].back();
     const std::vector<Site>& neighbours = system.v_neighbours[a];
     if (rows.t.size() != count*width || rows.v.size() != neighbours.size())
       throw std::logic_error("the derivatives of a part of the ABFs do not have the size of the part");
+    for (std::size_t i = 0; i < neighbours.size(); ++i)
+      if (rows.v[i].size() != count*system.abf_count[static_cast<std::size_t>(neighbours[i].atom)])
+        throw std::logic_error("the derivatives of a part of the ABFs do not have the size of the part");
     double* target = weights[a].data()+begin*width;
     for (const double value : rows.t) *target++ += value;
     // The V blocks follow the T blocks of all ABFs of the atom.
     std::size_t block = system.abf_count[a]*width;
     for (std::size_t i = 0; i < neighbours.size(); ++i) {
       const std::size_t nq = system.abf_count[static_cast<std::size_t>(neighbours[i].atom)];
-      if (rows.v[i].size() != count*nq)
-        throw std::logic_error("the derivatives of a part of the ABFs do not have the size of the part");
       target = weights[a].data()+block+begin*nq;
       for (const double value : rows.v[i]) *target++ += value;
       block += system.abf_count[a]*nq;
     }
+  };
+  // The parts of the device come in the order of the atoms below.
+  const std::size_t done = device([&add](std::size_t a, std::size_t from, std::size_t to, CentreGradient&& rows) {
+    add(a,from,to-from,rows);
+  });
+  std::size_t part = 0;
+  for (std::size_t a = 0; a < atoms; ++a) {
+    const std::size_t from = std::max(first,offset[a]), to = std::min(last,offset[a+1]);
+    if (from >= to || part++ < done) continue;
+    const std::size_t begin = from-offset[a], count = to-from;
+    add(a,begin,count,compute(a,begin,begin+count));
   }
 }
 
@@ -90,18 +102,28 @@ void add_block_weights_gamma_abfs(const System& system, std::size_t first, std::
                                   std::span<const double> density, std::span<const std::span<double>> weights,
                                   const DenseBackend& backend)
 {
-  add_weight_rows(system,first,last,weights,[&](std::size_t atom, std::size_t from, std::size_t to) {
-    return centre_gradient_gamma(system,atom,from,to,factor,density,backend);
-  });
+  add_weight_rows(
+      system,first,last,weights,
+      [&](std::size_t atom, std::size_t from, std::size_t to) {
+        return centre_gradient_gamma(system,atom,from,to,factor,density,backend);
+      },
+      [&](const GradientVisit& visit) {
+        return device_gradients_gamma(system,first,last,factor,density,backend,visit);
+      });
 }
 
 void add_block_weights_blocks_abfs(const System& system, const BlockLayout& layout, std::size_t first,
                                    std::size_t last, double factor, std::span<const double> density,
                                    std::span<const std::span<double>> weights, const DenseBackend& backend)
 {
-  add_weight_rows(system,first,last,weights,[&](std::size_t atom, std::size_t from, std::size_t to) {
-    return centre_gradient_blocks(system,layout,atom,from,to,factor,density,backend);
-  });
+  add_weight_rows(
+      system,first,last,weights,
+      [&](std::size_t atom, std::size_t from, std::size_t to) {
+        return centre_gradient_blocks(system,layout,atom,from,to,factor,density,backend);
+      },
+      [&](const GradientVisit& visit) {
+        return device_gradients_blocks(system,layout,first,last,factor,density,backend,visit);
+      });
 }
 
 PositionGradient::PositionGradient(const Structure& structure, std::span<const SpeciesTable> species,
