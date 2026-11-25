@@ -76,6 +76,10 @@ The names
   -default             the default stop criteria (scf.criterion 1e-6,
                        scf.exx.outer.criterion 1e-6)
   reject-...           an input that the program has to refuse
+  reject-rc            PBE0 on diamond with 2 x 2 x 2 k points and R_c 6 bohr,
+                       beyond the radius of the sphere of the volume of the cell
+                       times the 8 k points (5.27 bohr): the message has to give
+                       that radius
 """
 import argparse
 import json
@@ -88,7 +92,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from exx_scf_checks import parse  # noqa: E402  (the numbers of std.txt and of the .out file)
+from exx_scf_checks import parse, truncation_limit  # noqa: E402  (the numbers of std.txt and of the .out file)
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -368,6 +372,12 @@ for name, system, kgrid, extra, keyword in (
     add(name, system, (1, 1, 1), kgrid, extra=extra)
     RUNS[name]["rejected"] = keyword
 
+# PBE0 with R_c beyond the radius of the sphere of the volume of the cell times
+# the k points: the radius in the message has to count the 8 k points.
+add("reject-rc", "dia", (1, 1, 1), (2, 2, 2), xc="PBE0", extra=["scf.exx.coulomb.cutoff 6.0"])
+RUNS["reject-rc"]["rejected"] = "scf.exx.coulomb.cutoff"
+RUNS["reject-rc"]["refused_limit"] = truncation_limit(SYSTEMS["dia"]["vectors"], 8)
+
 
 # ---- runs -----------------------------------------------------------------
 
@@ -555,8 +565,14 @@ def table(args):
         if not is_refusal(name):
             continue
         keyword = RUNS[name]["rejected"]
-        ok = r["status"] == 0 and r["scf_steps"] is None and keyword in (r.get("refused") or [])
-        print(f"  {name:24s} {keyword:28s} message names {r.get('refused')}  {'ok' if ok else 'FAIL'}")
+        if "refused_limit" in RUNS[name]:
+            limit, got = RUNS[name]["refused_limit"], r.get("refused_cutoff")
+            ok = r["status"] == 0 and r["scf_steps"] is None and got is not None and abs(got[1] - limit) <= 1e-6
+            shown = f"R_c {got[0]:.6f}, radius {got[1]:.6f} bohr" if got else "no message"
+            print(f"  {name:24s} {keyword:28s} {shown} (expected radius {limit:.6f})  {'ok' if ok else 'FAIL'}")
+        else:
+            ok = r["status"] == 0 and r["scf_steps"] is None and keyword in (r.get("refused") or [])
+            print(f"  {name:24s} {keyword:28s} message names {r.get('refused')}  {'ok' if ok else 'FAIL'}")
         if not ok:
             failures.append(name)
 

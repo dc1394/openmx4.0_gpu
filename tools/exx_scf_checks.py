@@ -20,11 +20,14 @@ As root in a container, pass --mpirun "mpirun --allow-run-as-root --oversubscrib
 run did not converge.  The runs of the two rows that the guide only records
 (scf.exx.abf.pca and scf.exx.v.cutoff away from their defaults) are exempt:
 one that does not converge is listed, and the status stays 0.  The same
-holds for the PBE0 runs that change scf.exx.abf.pca or
-scf.exx.coulomb.cutoff, set scf.exx.v.cutoff to 8 or 12 bohr, or put the
-molecule in the cell of 20 Angstrom; -pbe0-v24 has a limit and is not
-exempt.  The energies of the runs with the default scf.criterion are listed
-without a limit.  Only the standard library is used.
+holds for the PBE0 runs that change scf.exx.abf.pca, set
+scf.exx.coulomb.cutoff to 8 bohr or scf.exx.v.cutoff to 8 or 12 bohr, or put
+the molecule in the cell of 20 Angstrom; -pbe0-v24 and -pbe0-rclim have a
+limit and are not exempt.  -pbe0-rc16 has to end at the input with the
+message on R_c, and ch4-pbe0-evslc has to stop at the preparation of its
+second step; either fails the table otherwise.  The energies of the runs
+with the default scf.criterion are listed without a limit.  Only the
+standard library is used.
 
 Threads.  Every run uses one OpenMP thread: the program takes that number
 from the option -nt, not from OMP_NUM_THREADS, and the runs pass -nt 1.  The
@@ -74,11 +77,21 @@ The PBE0 runs of a family (M8)
   -pbe0-v8, -pbe0-v12  scf.exx.v.cutoff 8 and 12 bohr, shorter than the reach
   -pbe0-v24            scf.exx.v.cutoff 24 bohr, beyond the reach: the blocks
                        that it adds vanish, so the energy is that of -pbe0
-  -pbe0-rc8, -pbe0-rc16  scf.exx.coulomb.cutoff 8 and 16 bohr
+  -pbe0-rc8            scf.exx.coulomb.cutoff 8 bohr
+  -pbe0-rc16           16 bohr, beyond the radius of the sphere of the volume of
+                       the cell (11.72 bohr for 10 Angstrom): the program has to
+                       refuse the input and print that radius
+  -pbe0-rclim          that radius, rounded up at the sixth decimal: within the
+                       tolerance of 1e-6 bohr, so the energy is that of -pbe0
+  ch4-pbe0-evslc       the R_c of -pbe0-rclim with MD.Type EvsLC, which shrinks
+                       the cell by 0.4 % for the second step: the preparation of
+                       that step has to stop the run with the radius of the
+                       smaller cell
   -big-pbe0            the molecule in a cell of 20 Angstrom: R_c doubles
 """
 import argparse
 import json
+import math
 import os
 import re
 import shlex
@@ -122,7 +135,7 @@ VPS = {"H": "H_PBE19", "C": "C_PBE19", "O": "O_PBE19"}
 
 
 def make_input(name, atoms, scf, basis, xc="HSE06", spin="off", shift=(0.0, 0.0, 0.0), extra=(), cell=None,
-               criterion="1.0e-10", mixing="rmm-diis", pulay=5, steps=100):
+               criterion="1.0e-10", mixing="rmm-diis", pulay=5, steps=100, md="nomd", md_steps=1):
     species = sorted({a[0] for a in atoms})
     cell = scf["cell"] if cell is None else cell
     lines = [
@@ -160,8 +173,8 @@ def make_input(name, atoms, scf, basis, xc="HSE06", spin="off", shift=(0.0, 0.0,
               "scf.Mixing.History          7",
               f"scf.Mixing.StartPulay       {pulay}",
               f"scf.criterion             {criterion}",
-              "MD.Type                     nomd",
-              "MD.maxIter                    1"]
+              f"MD.Type                     {md}",
+              f"MD.maxIter                    {md_steps}"]
     lines += list(extra)
     return "\n".join(lines) + "\n"
 
@@ -177,6 +190,17 @@ RUNS = {}
 # bounded row of the PBE0 table stays within 2e-11 Hartree (M8).
 PBE0_CRITERION = "1.0e-12"
 PBE0_OUTER = "scf.exx.outer.criterion 1.0e-9"
+
+BOHR = 0.529177249  # Angstrom, BohrR of source/openmx_common.h
+
+
+def truncation_limit(vectors, kpoints=1):
+    """The largest R_c of PBE0 that the program accepts (bohr): the radius of the sphere whose volume is
+    kpoints times that of the cell, whose vectors are in Angstrom (Exact_Exchange_Truncation_Limit)."""
+    a, b, c = [[x / BOHR for x in v] for v in vectors]
+    volume = abs(a[0] * (b[1] * c[2] - b[2] * c[1]) + a[1] * (b[2] * c[0] - b[0] * c[2])
+                 + a[2] * (b[0] * c[1] - b[1] * c[0]))
+    return (3.0 * kpoints * volume / (4.0 * math.pi)) ** (1.0 / 3.0)
 
 
 def pbe0_input(tag, atoms, scf, basis, extra=(), **keywords):
@@ -217,6 +241,16 @@ def molecule(tag, atoms, scf, basis):
     for cut in (8, 16):
         add(f"{tag}-pbe0-rc{cut}", pbe0_input(tag, atoms, scf, basis,
                                               extra=[f"scf.exx.coulomb.cutoff {cut}.0"]))
+    cell = scf["cell"]
+    limit = truncation_limit([(cell, 0.0, 0.0), (0.0, cell, 0.0), (0.0, 0.0, cell)])
+    RUNS[f"{tag}-pbe0-rc16"]["refused_limit"] = limit
+    add(f"{tag}-pbe0-rclim", pbe0_input(tag, atoms, scf, basis,
+                                        extra=[f"scf.exx.coulomb.cutoff {math.ceil(limit * 1e6) / 1e6:.6f}"]))
+    if tag == "ch4":
+        add(f"{tag}-pbe0-evslc", pbe0_input(tag, atoms, scf, basis, md="EvsLC", md_steps=2,
+                                            extra=[f"scf.exx.coulomb.cutoff {math.ceil(limit * 1e6) / 1e6:.6f}",
+                                                   "MD.EvsLC.Step 0.4", "MD.EvsLC.flag -1 -1 -1"]))
+        RUNS[f"{tag}-pbe0-evslc"]["stopped_limit"] = limit * (1.0 - 0.4 / 100.0)
     add(f"{tag}-big-pbe0", pbe0_input(tag, atoms, scf, basis, cell=20.0))
 
 
@@ -325,6 +359,13 @@ def parse(run_dir, system):
         result["cutoff"], result["v_reach"] = float(truncated.group(1)), float(truncated.group(2))
         if truncated.group(3):
             result["reciprocal_intervals"] = int(truncated.group(3))
+    refused = re.search(r"^scf\.exx\.coulomb\.cutoff=(\S+) \(bohr\) is larger than (\S+) \(bohr\)", std, flags=re.M)
+    if refused:
+        result["refused_cutoff"] = [float(refused.group(1)), float(refused.group(2))]
+    stopped = re.search(r"^Exact exchange \(preparation\), process \d+: scf\.exx\.coulomb\.cutoff=(\S+) \(bohr\) "
+                        r"is larger than (\S+) \(bohr\)", std, flags=re.M)
+    if stopped:
+        result["stopped_cutoff"] = [float(stopped.group(1)), float(stopped.group(2))]
     times = re.search(r"<EXX>  time \(s\): preparation (\S+), density matrices (\S+), exchange matrix (\S+), "
                       r"addition (\S+)", std)
     if times:
@@ -408,6 +449,20 @@ def table(args):
         else:
             print(f"  {label:46s} not converged ({r['builds']} builds, {r['scf_steps']} steps)")
 
+    def refusal(name):
+        """A run that has to end at the input: R_c beyond the radius of the sphere of the cell."""
+        r = results.get(name)
+        if r is None:
+            return
+        limit = RUNS[name]["refused_limit"]
+        got = r.get("refused_cutoff")
+        ok = r["status"] == 0 and r["scf_steps"] is None and got is not None and abs(got[1] - limit) <= 1e-6
+        shown = f"R_c {got[0]:.6f}, radius {got[1]:.6f} bohr" if got else "no message"
+        print(f"  {'PBE0: ' + name.split('-pbe0-')[1] + ' refused at the input':46s} {shown} "
+              f"(expected radius {limit:.6f})  {'ok' if ok else 'FAIL'}")
+        if not ok:
+            failures.append(name)
+
     def gap(name):
         r = results.get(name)
         if not r or "eigen_up" not in r or r["eigen_up"] != r["eigen_down"]:
@@ -444,10 +499,20 @@ def table(args):
         for v in ("v8", "v12"):
             record(f"PBE0: {v} minus automatic (V sites {size(f'{tag}-pbe0-{v}', 4)})", f"{tag}-pbe0-{v}",
                    f"{tag}-pbe0")
-        for c in ("rc8", "rc16"):
-            record(f"PBE0: {c} minus automatic (V sites {size(f'{tag}-pbe0-{c}', 4)})", f"{tag}-pbe0-{c}",
-                   f"{tag}-pbe0")
-            record(f"PBE0: {c} minus automatic, Uexx", f"{tag}-pbe0-{c}", f"{tag}-pbe0", "Uexx")
+        record(f"PBE0: rc8 minus automatic (V sites {size(f'{tag}-pbe0-rc8', 4)})", f"{tag}-pbe0-rc8",
+               f"{tag}-pbe0")
+        record("PBE0: rc8 minus automatic, Uexx", f"{tag}-pbe0-rc8", f"{tag}-pbe0", "Uexx")
+        refusal(f"{tag}-pbe0-rc16")
+        stop = results.get(f"{tag}-pbe0-evslc")
+        if stop:
+            limit, got = RUNS[f"{tag}-pbe0-evslc"]["stopped_limit"], stop.get("stopped_cutoff")
+            ok = stop["status"] != 0 and stop["achieved"] and got is not None and abs(got[1] - limit) <= 1e-6
+            shown = f"R_c {got[0]:.6f}, radius {got[1]:.6f} bohr" if got else "no message"
+            print(f"  {'PBE0: EvsLC stopped at the second cell':46s} {shown} (expected radius {limit:.6f})  "
+                  f"{'ok' if ok else 'FAIL'}")
+            if not ok:
+                failures.append(f"{tag}-pbe0-evslc")
+        show("PBE0: R_c at the limit minus automatic", diff(f"{tag}-pbe0-rclim", f"{tag}-pbe0"), 1e-9)
         big = results.get(f"{tag}-big-pbe0")
         if big:
             print(f"  20 A cell: R_c {big.get('cutoff')} bohr, V sites {size(f'{tag}-big-pbe0', 4)}")
@@ -515,8 +580,9 @@ def table(args):
             print(f"  time (s): preparation {t[0]}, density matrices {t[1]}, exchange matrix {t[2]}, addition {t[3]}; "
                   f"DFT in total {r.get('dft_time')}")
     # -pbe0-v24 has a limit, so it is not exempt.
-    recorded = re.compile(r"-(hse-(pca\d|v\d+)|pbe0-(pca\d|v8|v12|rc\d+)|big-pbe0)$")
-    bad = [n for n in results if not converged(n)]
+    recorded = re.compile(r"-(hse-(pca\d|v\d+)|pbe0-(pca\d|v8|v12|rc8)|big-pbe0)$")
+    bad = [n for n in results if not converged(n)
+           and "refused_limit" not in RUNS.get(n, {}) and "stopped_limit" not in RUNS.get(n, {})]
     exempt = [n for n in bad if recorded.search(n) and results[n]["status"] == 0]
     bad = [n for n in bad if n not in exempt]
     print("runs that failed or did not converge:", bad if bad else "none")
