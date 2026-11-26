@@ -147,10 +147,15 @@ int operation(OpenMXSolverInvocation *scope,void *opaque,double *result){
     int enabled=0;
     auto begin=[&]{
         if(c.stage==0){
+            const size_t stride=sizeof(values[0])/sizeof(float);
+            const size_t atom_offsets[]{0,1,2,3};
+            const size_t block_offsets[]{0,18,36,stride};
+            const OpenMXFloatBlockMatrix projectors{{3,4,3,stride,4*stride,atom_offsets,block_offsets,nullptr},
+                &values[0][0][0][0][0]};
 #if OPENMX_GPU_HIP
-            enabled=Force4B_GpuBegin(scope,&archive,directions,0,0,0);
+            enabled=Force4B_GpuBegin(scope,&archive,directions,0,0,0,&projectors);
 #else
-            enabled=Force4B_GpuBegin(scope,&archive,directions,0,0);
+            enabled=Force4B_GpuBegin(scope,&archive,directions,0,0,&projectors);
 #endif
             view=archive;if(archive)resources=archive->resources;
         }else if(c.stage==1){enabled=Force4B_GpuCase1StreamBegin(scope,&stream1,0,1);view=stream1;if(stream1)resources=stream1->resources;}

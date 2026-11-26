@@ -104,36 +104,36 @@ static void check_admission(void)
        small fixture archives) fits, the earlier summed bound (+192 MiB)
        does not */
     free_override = 256 * MiB + 100 * MiB;
-    CHECK(Force4B_GpuBegin(ds, 0, 0, 0));
+    CHECK(Force4B_GpuBegin(ds, 0, 0, 0, NULL));
     CHECK(F4B_gpu.flat_dev != NULL && F4B_gpu.halo_dev != NULL && F4B_gpu.c2_dev == NULL);
     Force4B_GpuEnd();
-    CHECK(Force4B_GpuBegin(ds, 0, 0, 1));
+    CHECK(Force4B_GpuBegin(ds, 0, 0, 1, NULL));
     CHECK(F4B_gpu.flat_host && F4B_gpu.halo_host);
     Force4B_GpuEnd();
     CHECK(device_live == 0);
     free_override = 256 * MiB + 60 * MiB;
-    CHECK(Force4B_GpuBegin(ds, 0, 0, 0));
+    CHECK(Force4B_GpuBegin(ds, 0, 0, 0, NULL));
     CHECK(F4B_gpu.flat_host && F4B_gpu.halo_host);
     Force4B_GpuEnd();
     free_override = 256 * MiB + 400 * MiB;
-    CHECK(Force4B_GpuBegin(ds, 0, 0, 1));
+    CHECK(Force4B_GpuBegin(ds, 0, 0, 1, NULL));
     Force4B_GpuEnd();
     free_override = 0;
     /* both cases deferred: no resident context */
-    CHECK(!Force4B_GpuBegin(ds, 1, 1, 0));
+    CHECK(!Force4B_GpuBegin(ds, 1, 1, 0, NULL));
     /* case 1 deferred: no case-1 archives, case 2 resident later */
-    CHECK(Force4B_GpuBegin(ds, 1, 0, 0));
+    CHECK(Force4B_GpuBegin(ds, 1, 0, 0, NULL));
     CHECK(F4B_gpu.flat_dev == NULL && F4B_gpu.halo_dev == NULL && F4B_gpu.c2_dev == NULL);
     CHECK(Force4B_GpuCase2Begin(1));
     CHECK(F4B_gpu.c2_dev != NULL);
     Force4B_GpuEnd();
     /* case 2 forced to stream: Case2Begin(0) only releases case 1 */
-    CHECK(Force4B_GpuBegin(ds, 0, 1, 0));
+    CHECK(Force4B_GpuBegin(ds, 0, 1, 0, NULL));
     CHECK(!Force4B_GpuCase2Begin(0));
     CHECK(F4B_gpu.flat_dev == NULL && F4B_gpu.halo_dev == NULL && F4B_gpu.c2_dev == NULL);
     Force4B_GpuEnd();
     /* a failed case-2 claim is reported and leaves case 2 to the caller */
-    CHECK(Force4B_GpuBegin(ds, 0, 0, 0));
+    CHECK(Force4B_GpuBegin(ds, 0, 0, 0, NULL));
     allocation_fail = 1;
     CHECK(Force4B_GpuCase2Begin(1));
     CHECK(F4B_gpu.c2_host != NULL);
@@ -142,28 +142,28 @@ static void check_admission(void)
     Force4B_GpuEnd();
     /* device allocation failure at Begin: CPU fallback, nothing leaked */
     allocation_fail = 1;
-    CHECK(Force4B_GpuBegin(ds, 0, 0, 0));
+    CHECK(Force4B_GpuBegin(ds, 0, 0, 0, NULL));
     CHECK(F4B_gpu.flat_host && F4B_gpu.halo_host);
     Force4B_GpuEnd();
     allocation_fail = 0;
     /* low memory, umbrella/APU gate and non-GPU solver */
     low_memory = 1;
-    CHECK(Force4B_GpuBegin(ds, 0, 0, 0));
+    CHECK(Force4B_GpuBegin(ds, 0, 0, 0, NULL));
     CHECK(F4B_gpu.flat_host && F4B_gpu.halo_host);
     Force4B_GpuEnd();
     low_memory = 0;
     stage_default = 0;
-    CHECK(!Force4B_GpuBegin(ds, 0, 0, 0));
+    CHECK(!Force4B_GpuBegin(ds, 0, 0, 0, NULL));
     setenv("OPENMX_FORCE4B_GPU", "1", 1);
-    CHECK(Force4B_GpuBegin(ds, 0, 0, 0));
+    CHECK(Force4B_GpuBegin(ds, 0, 0, 0, NULL));
     Force4B_GpuEnd();
     unsetenv("OPENMX_FORCE4B_GPU");
     stage_default = 1;
     setenv("OPENMX_FORCE4B_GPU", "0", 1);
-    CHECK(!Force4B_GpuBegin(ds, 0, 0, 0));
+    CHECK(!Force4B_GpuBegin(ds, 0, 0, 0, NULL));
     unsetenv("OPENMX_FORCE4B_GPU");
     scf_eigen_lib_flag = 0;
-    CHECK(!Force4B_GpuBegin(ds, 0, 0, 0));
+    CHECK(!Force4B_GpuBegin(ds, 0, 0, 0, NULL));
     scf_eigen_lib_flag = GPUSOLVER;
     CHECK(device_live == 0 && pinned_live == 0);
 }
@@ -206,7 +206,7 @@ int main(void)
                 /* resident case 1: archives at Begin, halo rows as received */
                 reset_forces();
                 allocation_fail = failure;
-                CHECK(Force4B_GpuBegin(ds, 0, 0, 0));
+                CHECK(Force4B_GpuBegin(ds, 0, 0, 0, NULL));
                 CHECK(F4B_gpu.c2_dev == NULL);
                 for (source = Matomnum + 1; source <= Matomnum + MatomnumF; source++) {
                     float packed[NEIGHBORS * ORBITALS * PROJECTORS];

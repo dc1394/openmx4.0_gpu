@@ -7116,7 +7116,8 @@ static int Force4B_ArchiveGpuPreferred(int resident)
     return !openmx_gpu_device_weak_fp64(device);
 }
 
-static int Force4B_GpuBegin(OpenMXSolverInvocation *scratch, Force4BGpuContext **output, Type_DS_VNA***** DS_VNA, int stream_case1, int stream_case2)
+static int Force4B_GpuBegin(OpenMXSolverInvocation *scratch, Force4BGpuContext **output, Type_DS_VNA***** DS_VNA, int stream_case1, int stream_case2,
+    const OpenMXFloatBlockMatrix *projectors)
 {
     int Mc_AN, k, node_ranks = 1, node_rank = 0;
     size_t pos = 0, slots = 0, halo_slots = 0, c2pos = 0, maxblk = 0;
@@ -7287,38 +7288,28 @@ static int Force4B_GpuBegin(OpenMXSolverInvocation *scratch, Force4BGpuContext *
     MPI_Allreduce(&allocated,&all_allocated,1,MPI_INT,MPI_MIN,mpi_comm_level1);
     if(!all_allocated){Force4B_GpuEnd(g);return 0;}
 
-    /* upload the (premultiplied) local DS_VNA rows one atom block at a
-       time through the staging buffer */
-
-    if (!stream_case1) {
-        int kk;
-
-        for (kk = 0; kk <= 3; kk++) {
-            for (Mc_AN = 1; Mc_AN <= Matomnum; Mc_AN++) {
-                int Gc_AN = M2G[Mc_AN];
-                int no0 = Spe_Total_CNO[WhatSpecies[Gc_AN]];
-                size_t base = g->mck_off[g->mck_base[Mc_AN]];
-                size_t blk = (size_t)(FNAN[Gc_AN] + 1) * (size_t)no0 * (size_t)g->num_proj;
-                int k2;
-
-#pragma omp parallel for schedule(dynamic)
-                for (k2 = 0; k2 <= FNAN[Gc_AN]; k2++) {
-                    size_t off = g->mck_off[g->mck_base[Mc_AN] + k2] - base;
-                    int i, l;
-
-                    for (i = 0; i < no0; i++) {
-                        const Type_DS_VNA* src = DS_VNA[kk][Mc_AN][k2][i];
-                        float* dst = g->stage + off + (size_t)i * (size_t)g->num_proj;
-
-                        for (l = 0; l < g->num_proj; l++) dst[l] = (float)src[l];
-                    }
-                }
-
-                if (blk != 0) {
-                    if(g->flat_host)memcpy(g->flat_host+(size_t)kk*g->flat_stride+base,g->stage,sizeof(float)*blk);
-                    else acc_memcpy_to_device(g->flat_dev + (size_t)kk * g->flat_stride + base,
-                        g->stage, sizeof(float) * blk);
-                }
+    /* The ordinary projector layout can be uploaded a direction at a time.
+       Contracted rows use the compact staging block when their stride differs. */
+    if (!stream_case1 && g->flat_stride != 0) {
+        const float *local = openmx_force_vna_atom_span(projectors, 1, Matomnum + 1, g->flat_stride);
+        for (int direction = 0; direction < 4; ++direction) {
+            float *target = g->flat_host ? g->flat_host : g->flat_dev;
+            target += (size_t)direction * g->flat_stride;
+            if (local) {
+                const float *source = local + (size_t)direction * projectors->layout.stride;
+                const size_t bytes = g->flat_stride * sizeof(float);
+                if (g->flat_host) memcpy(target, source, bytes);
+                else acc_memcpy_to_device(target, source, bytes);
+                continue;
+            }
+            for (int mc = 1; mc <= Matomnum; ++mc) {
+                const int gc = M2G[mc], no = Spe_Total_CNO[WhatSpecies[gc]];
+                const size_t bytes = ((size_t)FNAN[gc] + 1) * no * g->num_proj * sizeof(float);
+                if (bytes == 0) continue;
+                const size_t base = g->mck_off[g->mck_base[mc]];
+                openmx_force_vna_pack_atom(g->stage, DS_VNA[direction][mc], FNAN[gc], no, g->num_proj);
+                if (g->flat_host) memcpy(target + base, g->stage, bytes);
+                else acc_memcpy_to_device(target + base, g->stage, bytes);
             }
         }
     }
@@ -7974,8 +7965,8 @@ static void Force4B_GpuCase1StreamAccumulate(Force4BCase1Stream *g, const OpenMX
 }
 
 /* A rank turn retains only received direction-0 rows on the host. Local
-   rows remain in DS_VNA and are uploaded once, in atom-sized blocks, when
-   this rank owns its device. All host resources precede the receive loop;
+   rows remain in DS_VNA and are uploaded when this rank owns its device.
+   All host resources precede the receive loop;
    a failed one-shot device allocation can still use the original CPU
    contraction with these cached rows. */
 
@@ -8250,33 +8241,30 @@ static void Force4B_GpuCase1TurnsArchive(Force4BCase1Turns *g, const Type_DS_VNA
     g->seen[halo] = 1;
 }
 
-static int Force4B_GpuCase1TurnsDevice(Force4BCase1Turns *g, Type_DS_VNA***** DS_VNA)
+static int Force4B_GpuCase1TurnsDevice(Force4BCase1Turns *g, Type_DS_VNA***** DS_VNA,
+    const OpenMXFloatBlockMatrix *projectors)
 {
     const Force4BCase1Plan* p = &g->plan;
     char* arena = (char*)ForceGpu_Arena(g->resources,p->bytes);
-    int direction, mc, k, i, l;
     if (arena == NULL) return 0;
-    for (direction = 0; direction < 4; direction++) {
-        for (mc = 1; mc <= Matomnum; mc++) {
+    const float *local = openmx_force_vna_atom_span(projectors, 1, Matomnum + 1, p->flat_stride);
+    for (int direction = 0; direction < 4; ++direction) {
+        char *target = arena + p->flat + (size_t)direction * p->flat_stride * sizeof(float);
+        if (local) {
+            acc_memcpy_to_device(target, local + (size_t)direction * projectors->layout.stride,
+                p->flat_stride * sizeof(float));
+            continue;
+        }
+        for (int mc = 1; mc <= Matomnum; ++mc) {
             const int gc = M2G[mc], no = Spe_Total_CNO[WhatSpecies[gc]];
             const size_t count = Force4B_GpuCase1HaloCount(gc, g->num_proj);
-            for (k = 0; k <= FNAN[gc]; k++)
-                for (i = 0; i < no; i++)
-                    for (l = 0; l < g->num_proj; l++)
-                        g->stage[((size_t)k * (size_t)no + (size_t)i) * (size_t)g->num_proj + (size_t)l]
-                            = (float)DS_VNA[direction][mc][k][i][l];
-            acc_memcpy_to_device(arena + p->flat
-                    + ((size_t)direction * p->flat_stride + g->local_off[mc]) * sizeof(float),
-                g->stage, count * sizeof(float));
+            if (count == 0) continue;
+            openmx_force_vna_pack_atom(g->stage, DS_VNA[direction][mc], FNAN[gc], no, g->num_proj);
+            acc_memcpy_to_device(target + g->local_off[mc] * sizeof(float), g->stage, count * sizeof(float));
         }
     }
-    for (mc = 1; mc <= MatomnumF; mc++) {
-        const size_t count = Force4B_GpuCase1HaloCount(F_M2G[Matomnum + mc], g->num_proj);
-        for (size_t index = 0; index < count; index++)
-            g->stage[index] = (float)g->halo_host[g->halo_off[mc] + index];
-        acc_memcpy_to_device(arena + p->halo + g->halo_off[mc] * sizeof(float),
-            g->stage, count * sizeof(float));
-    }
+    if (p->halo_count != 0)
+        acc_memcpy_to_device(arena + p->halo, g->halo_host, p->halo_count * sizeof(float));
     acc_memcpy_to_device(arena + p->items, g->metadata, p->item_f - p->items);
     Force4B_GpuCase1Kernel(g->num_proj, (float*)(void*)(arena + p->flat),
         (float*)(void*)(arena + p->halo), p->flat_stride, p->nitems,
@@ -8373,7 +8361,7 @@ static void Force4B_GpuCase1TurnsRun(Force4BCase1Turns *g, const OpenMXVnaMatrix
         const int count = g->device_ranks - turn < concurrency
             ? g->device_ranks - turn : concurrency;
         if (g->enabled && g->device_rank >= turn && g->device_rank - turn < count)
-            on_device = Force4B_GpuCase1TurnsDevice(g, DS_VNA);
+            on_device = Force4B_GpuCase1TurnsDevice(g, DS_VNA, &vna->projectors);
         MPI_Barrier(g->device_comm);
         turn += count;
     }
@@ -9384,7 +9372,6 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
     double *****ActiveHVNA2, *****ActiveHVNA3;
     int* VNA_List;
     int* VNA_List2;
-    Type_DS_VNA* tmp_array;
     Type_DS_VNA* tmp_array2;
 
     /* for OpenMP */
@@ -9605,7 +9592,7 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
        loops, and one kernel per case runs afterwards. */
 
     if (use_force4b_fused) {
-        f4b_gpu=Force4B_GpuBegin(scratch, &f4b_context, DS_VNA,0,0);f4b_gpu_case1=f4b_gpu;
+        f4b_gpu=Force4B_GpuBegin(scratch, &f4b_context, DS_VNA,0,0, &vna->projectors);f4b_gpu_case1=f4b_gpu;
     }
 
     /*****************************************}**********************
@@ -9648,17 +9635,10 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
                 tno1 = Spe_Total_NO[WhatSpecies[Gc_AN]];
                 size1 = openmx_force_vna_halo_count(FNAN[Gc_AN], tno1, wire_projectors);
                 if (size1 < 0) Force4B_gpu_abort("Force4B: halo exceeds the MPI count range.");
-                tmp_array = OpenMX_TransferBuffer(&projector_transfer, OPENMX_EXCHANGE_SEND, size1);
-
-                size_t offset = 0;
-                for (h_AN = 0; h_AN <= FNAN[Gc_AN]; h_AN++) {
-                    for (i = 0; i < tno1; i++) {
-                        memcpy(tmp_array + offset, DS_VNA[0][Mc_AN][h_AN][i],
-                               (size_t)wire_projectors * sizeof(*tmp_array));
-                        offset += (size_t)wire_projectors;
-                    }
-                }
-                MPI_Isend(tmp_array, size1, MPI_Type_DS_VNA, IDS, tag, mpi_comm_level1, &request);
+                const float *send = openmx_force_vna_atom_span(&vna->projectors,
+                    Mc_AN, Mc_AN + 1, (size_t)size1);
+                if (!send && size1 != 0) Force4B_gpu_abort("Force4B: invalid local projector span.");
+                MPI_Isend(send, size1, MPI_Type_DS_VNA, IDS, tag, mpi_comm_level1, &request);
             }
 
             /******************************
@@ -9673,7 +9653,16 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
                 tno1 = Spe_Total_NO[WhatSpecies[Gc_AN]];
                 size2 = openmx_force_vna_halo_count(FNAN[Gc_AN], tno1, wire_projectors);
                 if (size2 < 0) Force4B_gpu_abort("Force4B: halo exceeds the MPI count range.");
-                tmp_array2 = OpenMX_TransferBuffer(&projector_transfer, OPENMX_EXCHANGE_RECEIVE, size2);
+                tmp_array2 = NULL;
+                const int halo = Original_Mc_AN - Matomnum;
+                if (size2 != 0 && halo >= 1 && halo <= MatomnumF && tno1 == Spe_Total_CNO[WhatSpecies[Gc_AN]]) {
+                    if (f4b_turns_case1)
+                        tmp_array2 = f4b_case1_turns->halo_host + f4b_case1_turns->halo_off[halo];
+                    else if (f4b_gpu_case1 && f4b_context->halo_host)
+                        tmp_array2 = f4b_context->halo_host + f4b_context->halo_off[f4b_context->halo_base[halo]];
+                }
+                if (!tmp_array2)
+                    tmp_array2 = OpenMX_TransferBuffer(&projector_transfer, OPENMX_EXCHANGE_RECEIVE, size2);
                 MPI_Recv(tmp_array2, size2, MPI_Type_DS_VNA, IDR, tag, mpi_comm_level1, &stat);
                 int received = 0;
                 MPI_Get_count(&stat, MPI_Type_DS_VNA, &received);

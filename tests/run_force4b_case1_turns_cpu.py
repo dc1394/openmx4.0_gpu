@@ -128,11 +128,16 @@ int main(void)
                 CHECK(F4B_turns1.host_bytes < F4B_turns1.plan.bytes);
                 for (source = Matomnum + MatomnumF; source > Matomnum; source--) {
                     float packed[NEIGHBORS * ORBITALS * PROJECTORS];
+                    const int gc = F_M2G[source];
+                    const int halo = source - Matomnum;
+                    float *received = packed;
+                    if ((seed % 2) && Spe_Total_CNO[WhatSpecies[gc]] == ORBITALS)
+                        received = F4B_turns1.halo_host + F4B_turns1.halo_off[halo];
                     for (k = 0; k < NEIGHBORS; k++)
                         for (i = 0; i < ORBITALS; i++)
-                            memcpy(packed + (k * ORBITALS + i) * PROJECTORS,
-                                   true_ds[0][F_M2G[source]][k][i], PROJECTORS * sizeof(float));
-                    Force4B_GpuCase1TurnsArchive(packed, ORBITALS, source);
+                            memcpy(received + (k * ORBITALS + i) * PROJECTORS,
+                                   true_ds[0][gc][k][i], PROJECTORS * sizeof(float));
+                    Force4B_GpuCase1TurnsArchive(received, ORBITALS, source);
                 }
                 /* The receive slot is no longer a usable halo. Both device
                    packing and the allocation-failure path must use the cache. */
