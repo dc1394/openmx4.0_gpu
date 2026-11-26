@@ -46,6 +46,7 @@
 #define OpenMXGpuMemcpy2DAsync hipMemcpy2DAsync
 #define OpenMXGpuMemcpy3DPeerAsync hipMemcpy3DPeerAsync
 #define OpenMXGpuMemcpyAsync hipMemcpyAsync
+#define OpenMXGpuMemsetAsync hipMemsetAsync
 #define OpenMXGpuStreamCreateWithFlags hipStreamCreateWithFlags
 #define OpenMXGpuStreamDestroy hipStreamDestroy
 #define OpenMXGpuStreamIsCapturing hipStreamIsCapturing
@@ -105,6 +106,7 @@
 #define OpenMXGpuMemcpy2DAsync cudaMemcpy2DAsync
 #define OpenMXGpuMemcpy3DPeerAsync cudaMemcpy3DPeerAsync
 #define OpenMXGpuMemcpyAsync cudaMemcpyAsync
+#define OpenMXGpuMemsetAsync cudaMemsetAsync
 #define OpenMXGpuStreamCreateWithFlags cudaStreamCreateWithFlags
 #define OpenMXGpuStreamDestroy cudaStreamDestroy
 #define OpenMXGpuStreamIsCapturing cudaStreamIsCapturing

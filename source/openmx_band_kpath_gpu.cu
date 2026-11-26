@@ -10,6 +10,7 @@
 #include <cstdio>
 #include <limits>
 #include <new>
+#include <tuple>
 #include <vector>
 
 extern "C" {
@@ -33,20 +34,41 @@ using Z = OpenMXGpuComplex;
 using openmx::gpu::DeviceBuffer;
 constexpr int threads = 128;
 constexpr double two_pi = 6.283185307179586476925;
+constexpr size_t device_reserve = size_t{512} << 20;
+constexpr int jacobi_max_order = 32;
+constexpr int min_batched_points = 8;
 
 struct BlockGroup {
     int first, exchange_begin, end;
 };
 
-__global__ void bloch_phases(int count, const OpenMXKPathBlock *blocks, OpenMXKPathPoint point, Z *phases)
+struct LatticeTranslation {
+    int x, y, z;
+    bool operator<(const LatticeTranslation &other) const
+    {
+        return std::tie(x, y, z) < std::tie(other.x, other.y, other.z);
+    }
+    bool operator==(const LatticeTranslation &other) const
+    {
+        return x == other.x && y == other.y && z == other.z;
+    }
+};
+
+struct DeviceBlock {
+    int row, col, rows, cols, value_offset, translation;
+};
+
+__global__ void bloch_phases(int count, const LatticeTranslation *translations, OpenMXKPathPoint point,
+                             const OpenMXKPathPoint *batch, Z *phases)
 {
     const int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < count) {
-        const int *t = blocks[i].translation;
-        const double kr = point.xyz[0] * t[0] + point.xyz[1] * t[1] + point.xyz[2] * t[2];
+        const auto t = translations[i];
+        const auto k = batch ? batch[blockIdx.y] : point;
+        const double kr = k.xyz[0] * t.x + k.xyz[1] * t.y + k.xyz[2] * t.z;
         double sine, cosine;
         sincos(two_pi * kr, &sine, &cosine);
-        phases[i] = OpenMXGpuMakeComplex(cosine, sine);
+        phases[(size_t)blockIdx.y * count + i] = OpenMXGpuMakeComplex(cosine, sine);
     }
 }
 
@@ -60,16 +82,20 @@ __device__ void add_bloch(Z &sum, Z phase, double real, double imag)
    original order, with one thread per orbital pair and no atomic adds. */
 __global__ void assemble(int n, int matrix_order, int width, int spin, int spin_channels, bool lno,
                          bool noncollinear, bool imaginary_diagonals,
-                         const BlockGroup *groups, const OpenMXKPathBlock *blocks,
+                         int translation_count, const BlockGroup *groups, const DeviceBlock *blocks,
                          const double *values, const Z *phases, Z *s, Z *h)
 {
+    phases += (size_t)blockIdx.y * translation_count;
+    h += (size_t)blockIdx.y * matrix_order * matrix_order;
+    if (s) s += (size_t)blockIdx.y * n * n;
     const BlockGroup group = groups[blockIdx.x];
-    const OpenMXKPathBlock pair = blocks[group.first];
+    const DeviceBlock pair = blocks[group.first];
     for (int entry = threadIdx.x; entry < pair.rows * pair.cols; entry += blockDim.x) {
         Z overlap{}, up{}, down{}, mix{};
         for (int image = group.first; image < group.exchange_begin; ++image) {
-            const double *v = values + blocks[image].value_offset + (size_t)entry * width;
-            const Z phase = phases[image];
+            const DeviceBlock block = blocks[image];
+            const double *v = values + block.value_offset + (size_t)entry * width;
+            const Z phase = phases[block.translation];
             if (noncollinear) {
                 add_bloch(overlap, phase, v[0], 0.0);
                 add_bloch(up, phase, v[1], imaginary_diagonals ? v[5] : 0.0);
@@ -81,8 +107,9 @@ __global__ void assemble(int n, int matrix_order, int width, int spin, int spin_
             }
         }
         for (int image = group.exchange_begin; image < group.end; ++image) {
-            const double *v = values + blocks[image].value_offset + (size_t)entry * spin_channels;
-            add_bloch(up, phases[image], v[spin], 0.0);
+            const DeviceBlock block = blocks[image];
+            const double *v = values + block.value_offset + (size_t)entry * spin_channels;
+            add_bloch(up, phases[block.translation], v[spin], 0.0);
         }
 
         const int row = pair.row + entry % pair.rows;
@@ -99,6 +126,8 @@ __global__ void assemble(int n, int matrix_order, int width, int spin, int spin_
 
 __global__ void scale_overlap(int n, Z *vectors, const double *values)
 {
+    vectors += (size_t)blockIdx.y * n * n;
+    values += (size_t)blockIdx.y * n;
     const size_t i = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
     if (i < (size_t)n * n) {
         const double factor = 1.0 / sqrt(values[i / n]);
@@ -113,6 +142,9 @@ __global__ void scale_overlap(int n, Z *vectors, const double *values)
 __global__ void penalty_diagonal(int n, int order, double cutoff, const double *values,
                                  Z *h, unsigned char *discard)
 {
+    values += (size_t)blockIdx.y * n;
+    h += (size_t)blockIdx.y * order * order;
+    discard += (size_t)blockIdx.y * n;
     const int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < n) {
         const size_t stride = (size_t)order + 1;
@@ -125,6 +157,8 @@ __global__ void penalty_diagonal(int n, int order, double cutoff, const double *
 
 __global__ void remove_penalized(int n, int order, const unsigned char *discard, Z *h)
 {
+    discard += (size_t)blockIdx.y * n;
+    h += (size_t)blockIdx.y * order * order;
     const size_t i = (size_t)blockIdx.x * blockDim.x + threadIdx.x;
     if (i < (size_t)order * order) {
         const int row = i % order, col = i / order;
@@ -143,12 +177,107 @@ bool good_spectrum(int n, const double *values)
 #if OPENMX_GPU_HIP
 #define OpenMXKPathZheevdBufferSize hipsolverDnZheevd_bufferSize
 #define OpenMXKPathZheevd hipsolverDnZheevd
+#define OpenMXKPathJacobiCreate hipsolverDnCreateSyevjInfo
+#define OpenMXKPathJacobiDestroy hipsolverDnDestroySyevjInfo
+#define OpenMXKPathJacobiTolerance hipsolverDnXsyevjSetTolerance
+#define OpenMXKPathJacobiSweeps hipsolverDnXsyevjSetMaxSweeps
+#define OpenMXKPathJacobiBufferSize hipsolverDnZheevjBatched_bufferSize
+#define OpenMXKPathJacobiSolve hipsolverDnZheevjBatched
+#define OpenMXKPathBeginCapture hipStreamBeginCapture
+#define OpenMXKPathEndCapture hipStreamEndCapture
+#define OpenMXKPathDestroyGraph hipGraphDestroy
+#define OpenMXKPathDestroyExecutable hipGraphExecDestroy
+#define OpenMXKPathLaunchGraph hipGraphLaunch
+using JacobiInfo = hipsolverSyevjInfo_t;
+using Graph = hipGraph_t;
+using GraphExec = hipGraphExec_t;
+constexpr auto capture_mode = hipStreamCaptureModeThreadLocal;
 constexpr auto no_vectors = HIPSOLVER_EIG_MODE_NOVECTOR;
 #else
 #define OpenMXKPathZheevdBufferSize cusolverDnZheevd_bufferSize
 #define OpenMXKPathZheevd cusolverDnZheevd
+#define OpenMXKPathJacobiCreate cusolverDnCreateSyevjInfo
+#define OpenMXKPathJacobiDestroy cusolverDnDestroySyevjInfo
+#define OpenMXKPathJacobiTolerance cusolverDnXsyevjSetTolerance
+#define OpenMXKPathJacobiSweeps cusolverDnXsyevjSetMaxSweeps
+#define OpenMXKPathJacobiBufferSize cusolverDnZheevjBatched_bufferSize
+#define OpenMXKPathJacobiSolve cusolverDnZheevjBatched
+#define OpenMXKPathBeginCapture cudaStreamBeginCapture
+#define OpenMXKPathEndCapture cudaStreamEndCapture
+#define OpenMXKPathDestroyGraph cudaGraphDestroy
+#define OpenMXKPathDestroyExecutable cudaGraphExecDestroy
+#define OpenMXKPathLaunchGraph cudaGraphLaunch
+using JacobiInfo = syevjInfo_t;
+using Graph = cudaGraph_t;
+using GraphExec = cudaGraphExec_t;
+constexpr auto capture_mode = cudaStreamCaptureModeThreadLocal;
 constexpr auto no_vectors = CUSOLVER_EIG_MODE_NOVECTOR;
 #endif
+
+OpenMXGpuError instantiate_graph(GraphExec *executable, Graph graph)
+{
+#if OPENMX_GPU_HIP
+    return hipGraphInstantiate(executable, graph, nullptr, nullptr, 0);
+#else
+    return cudaGraphInstantiateWithFlags(executable, graph, 0);
+#endif
+}
+
+/* Record on an isolated stream and submit on the stream already used by
+   GEMMul8 and the copies. Only full batches reuse the fixed node arguments. */
+struct BatchCapture {
+    OpenMXGpuStream stream = nullptr;
+
+    explicit BatchCapture(bool enabled)
+    {
+        if (enabled && OpenMXGpuStreamCreateWithFlags(&stream, OPENMX_GPU_STREAM_NONBLOCKING) != OPENMX_GPU_SUCCESS) {
+            stream = nullptr;
+            (void)OpenMXGpuGetLastError();
+        }
+    }
+    ~BatchCapture() { if (stream) (void)OpenMXGpuStreamDestroy(stream); }
+    BatchCapture(const BatchCapture &) = delete;
+    BatchCapture &operator=(const BatchCapture &) = delete;
+};
+
+struct BatchGraph {
+    BatchGraph() = default;
+    ~BatchGraph() { if (executable) (void)OpenMXKPathDestroyExecutable(executable); }
+    BatchGraph(const BatchGraph &) = delete;
+    BatchGraph &operator=(const BatchGraph &) = delete;
+
+    template<class Enqueue>
+    bool submit(OpenMXGpuStream capture, OpenMXSolverHandle solver, const Enqueue &enqueue, int &replays)
+    {
+        if (!capture) return enqueue(nullptr);
+        if (!attempted) {
+            attempted = true;
+            if (OpenMXSolverSetStream(solver, capture) == OPENMX_SOLVER_SUCCESS &&
+                OpenMXKPathBeginCapture(capture, capture_mode) == OPENMX_GPU_SUCCESS) {
+                const bool submitted = enqueue(capture);
+                Graph graph = nullptr;
+                const auto status = OpenMXKPathEndCapture(capture, &graph);
+                if (graph) {
+                    GraphExec ready = nullptr;
+                    if (submitted && status == OPENMX_GPU_SUCCESS &&
+                        instantiate_graph(&ready, graph) == OPENMX_GPU_SUCCESS)
+                        executable = ready;
+                    (void)OpenMXKPathDestroyGraph(graph);
+                }
+            }
+            if (OpenMXSolverSetStream(solver, nullptr) != OPENMX_SOLVER_SUCCESS) return false;
+            if (!executable) (void)OpenMXGpuGetLastError();
+        }
+        if (!executable) return enqueue(nullptr);
+        if (OpenMXKPathLaunchGraph(executable, nullptr) != OPENMX_GPU_SUCCESS) return false;
+        ++replays;
+        return true;
+    }
+
+private:
+    GraphExec executable = nullptr;
+    bool attempted = false;
+};
 
 /* One handle and one scratch space for all k-points. Cache the queries
    separately for the overlap (vectors) and the transformed H (values). */
@@ -198,8 +327,9 @@ struct NativeEigensolver {
 
 /* Native buffers remain resident for all k-points assigned to this GPU. */
 struct Workspace {
-    DeviceBuffer<OpenMXKPathBlock> blocks;
+    DeviceBuffer<DeviceBlock> blocks;
     DeviceBuffer<BlockGroup> groups;
+    DeviceBuffer<LatticeTranslation> translations;
     DeviceBuffer<double> values, overlap_values;
     DeviceBuffer<Z> phases, s, h, product;
     DeviceBuffer<unsigned char> discard;
@@ -218,14 +348,11 @@ struct Workspace {
         if (order2 > std::numeric_limits<int>::max() / 4) return false;
 
         size_t free = 0, total = 0;
-        const size_t data = (size_t)m.value_count * sizeof(double) +
-                            (size_t)m.block_count * (sizeof(OpenMXKPathBlock) + sizeof(BlockGroup) + sizeof(Z));
         const size_t dense = (n2 + 2 * order2) * sizeof(Z);
         const size_t solver_room = 2 * order2 * sizeof(Z);
-        constexpr size_t reserve = size_t{512} << 20;
         if (openmx_gpu_capacity_test_recovery() ||
             OpenMXGpuMemGetInfo(&free, &total) != OPENMX_GPU_SUCCESS ||
-            free < data + dense + solver_room + reserve) return false;
+            free < dense + solver_room + device_reserve) return false;
 
         std::vector<OpenMXKPathBlock> ordered(m.blocks, m.blocks + m.block_count);
         std::sort(ordered.begin(), ordered.end(), [](const auto &a, const auto &b) {
@@ -244,12 +371,31 @@ struct Workspace {
         }
         group_count = (int)spans.size();
 
-        return blocks.allocate(m.block_count) && groups.allocate(group_count) &&
-               values.allocate(m.value_count) && phases.allocate(m.block_count) &&
+        std::vector<LatticeTranslation> shifts;
+        shifts.reserve(ordered.size());
+        for (const auto &block : ordered)
+            shifts.push_back({block.translation[0], block.translation[1], block.translation[2]});
+        std::sort(shifts.begin(), shifts.end());
+        shifts.erase(std::unique(shifts.begin(), shifts.end()), shifts.end());
+        std::vector<DeviceBlock> packed;
+        packed.reserve(ordered.size());
+        for (const auto &block : ordered) {
+            const LatticeTranslation t{block.translation[0], block.translation[1], block.translation[2]};
+            const int shift = (int)(std::lower_bound(shifts.begin(), shifts.end(), t) - shifts.begin());
+            packed.push_back({block.row, block.col, block.rows, block.cols, block.value_offset, shift});
+        }
+        const size_t data = (size_t)m.value_count * sizeof(double) + packed.size() * sizeof(DeviceBlock) +
+                            spans.size() * sizeof(BlockGroup) + shifts.size() * (sizeof(LatticeTranslation) + sizeof(Z));
+        if (free - dense - solver_room - device_reserve < data) return false;
+
+        return blocks.allocate(m.block_count) && groups.allocate(group_count) && translations.allocate(shifts.size()) &&
+               values.allocate(m.value_count) && phases.allocate(shifts.size()) &&
                s.allocate(n2) && h.allocate(order2) && product.allocate(order2) &&
                overlap_values.allocate(m.order) && discard.allocate(m.order) &&
                OpenMXBlasCreate(&blas) == OPENMX_BLAS_SUCCESS &&
-               OpenMXGpuMemcpy(blocks.get(), ordered.data(), blocks.size() * sizeof(ordered[0]),
+               OpenMXGpuMemcpy(blocks.get(), packed.data(), packed.size() * sizeof(packed[0]),
+                               OPENMX_GPU_COPY_HOST_TO_DEVICE) == OPENMX_GPU_SUCCESS &&
+               OpenMXGpuMemcpy(translations.get(), shifts.data(), shifts.size() * sizeof(shifts[0]),
                                OPENMX_GPU_COPY_HOST_TO_DEVICE) == OPENMX_GPU_SUCCESS &&
                OpenMXGpuMemcpy(groups.get(), spans.data(), groups.size() * sizeof(spans[0]),
                                OPENMX_GPU_COPY_HOST_TO_DEVICE) == OPENMX_GPU_SUCCESS &&
@@ -257,16 +403,25 @@ struct Workspace {
                                OPENMX_GPU_COPY_HOST_TO_DEVICE) == OPENMX_GPU_SUCCESS;
     }
 
-    bool construct(const OpenMXKPathMatrices &m, int order, int spin, bool build_overlap)
+    bool phase_rows(OpenMXKPathPoint point, int count, const OpenMXKPathPoint *batch, Z *output,
+                    OpenMXGpuStream stream = nullptr) const
     {
-        if (OpenMXGpuMemset(h.get(), 0, h.size() * sizeof(Z)) != OPENMX_GPU_SUCCESS ||
-            (build_overlap && OpenMXGpuMemset(s.get(), 0, s.size() * sizeof(Z)) != OPENMX_GPU_SUCCESS))
+        const dim3 grid((translations.size() + threads - 1) / threads, count);
+        bloch_phases<<<grid, threads, 0, stream>>>((int)translations.size(), translations.get(), point, batch, output);
+        return OpenMXGpuGetLastError() == OPENMX_GPU_SUCCESS;
+    }
+
+    bool construct(const OpenMXKPathMatrices &m, int order, int spin, int count,
+                   const Z *phase, Z *overlap, Z *hamiltonian, OpenMXGpuStream stream = nullptr) const
+    {
+        if (OpenMXGpuMemsetAsync(hamiltonian, 0, (size_t)count * h.size() * sizeof(Z), stream) != OPENMX_GPU_SUCCESS ||
+            (overlap && OpenMXGpuMemsetAsync(overlap, 0, (size_t)count * s.size() * sizeof(Z), stream) != OPENMX_GPU_SUCCESS))
             return false;
         const int width = m.noncollinear ? (m.imaginary_diagonals ? 7 : 5) :
                           (m.lno ? 2 * m.spin_channels : 1 + m.spin_channels);
-        assemble<<<group_count, threads>>>(m.order, order, width, spin, m.spin_channels, m.lno, m.noncollinear,
-            m.imaginary_diagonals, groups.get(), blocks.get(), values.get(), phases.get(),
-            build_overlap ? s.get() : nullptr, h.get());
+        assemble<<<dim3(group_count, count), threads, 0, stream>>>(m.order, order, width, spin, m.spin_channels,
+            m.lno, m.noncollinear, m.imaginary_diagonals, (int)translations.size(), groups.get(),
+            blocks.get(), values.get(), phase, overlap, hamiltonian);
         return OpenMXGpuGetLastError() == OPENMX_GPU_SUCCESS;
     }
 
@@ -306,7 +461,7 @@ struct Workspace {
         return OpenMXGpuGetLastError() == OPENMX_GPU_SUCCESS;
     }
 
-    bool transform(int n, int order, bool native_precision)
+    bool transform(int n, int order, Z *hamiltonian, const Z *overlap, bool native_precision)
     {
         const auto zgemm = native_precision ? OpenMXBlasZgemm : openmx_gemmul8Zgemm;
         const Z one = OpenMXGpuMakeComplex(1.0, 0.0), zero = OpenMXGpuMakeComplex(0.0, 0.0);
@@ -315,17 +470,183 @@ struct Workspace {
         for (int col = 0; col < order; col += n) {
             const size_t start = (size_t)col * order;
             if (zgemm(blas, OPENMX_BLAS_OP_N, OPENMX_BLAS_OP_N, order, n, n, &one,
-                      h.get() + start, order, s.get(), n, &zero, product.get() + start, order) !=
+                      hamiltonian + start, order, overlap, n, &zero, product.get() + start, order) !=
                 OPENMX_BLAS_SUCCESS) return false;
         }
         for (int row = 0; row < order; row += n) {
             if (zgemm(blas, OPENMX_BLAS_OP_C, OPENMX_BLAS_OP_N, n, order, n, &one,
-                      s.get(), n, product.get() + row, order, &zero, h.get() + row, order) !=
+                      overlap, n, product.get() + row, order, &zero, hamiltonian + row, order) !=
                 OPENMX_BLAS_SUCCESS) return false;
         }
         return true;
     }
 };
+
+bool penalize_overlap(int n, int order, double cutoff, int count, const double *values, Z *h,
+                      unsigned char *discard, OpenMXGpuStream stream = nullptr)
+{
+    penalty_diagonal<<<dim3((n + threads - 1) / threads, count), threads, 0, stream>>>(
+        n, order, cutoff, values, h, discard);
+    if (OpenMXGpuGetLastError() != OPENMX_GPU_SUCCESS) return false;
+    remove_penalized<<<dim3(((size_t)order * order + threads - 1) / threads, count), threads, 0, stream>>>(
+        n, order, discard, h);
+    return OpenMXGpuGetLastError() == OPENMX_GPU_SUCCESS;
+}
+
+/* Small contiguous Hermitian matrices share one FP64 Jacobi submission.
+   Keep this handle and scratch separate from the per-point fallback. */
+struct BatchedEigensolver {
+    OpenMXSolverHandle handle = nullptr;
+    JacobiInfo parameters = nullptr;
+    DeviceBuffer<Z> work;
+    DeviceBuffer<int> info;
+    std::vector<int> statuses;
+
+    ~BatchedEigensolver()
+    {
+        if (parameters) (void)OpenMXKPathJacobiDestroy(parameters);
+        if (handle) (void)OpenMXSolverDestroy(handle);
+    }
+
+    bool prepare(int n, int order, int capacity, const Z *s, const Z *h,
+                 const double *overlap, const double *eigen, size_t remaining_bytes)
+    {
+        if (OpenMXSolverCreate(&handle) != OPENMX_SOLVER_SUCCESS ||
+            OpenMXKPathJacobiCreate(&parameters) != OPENMX_SOLVER_SUCCESS ||
+            OpenMXKPathJacobiTolerance(parameters, 1.0e-14) != OPENMX_SOLVER_SUCCESS ||
+            OpenMXKPathJacobiSweeps(parameters, 100) != OPENMX_SOLVER_SUCCESS)
+            return false;
+
+        int overlap_work = 0, eigen_work = 0;
+        if (OpenMXKPathJacobiBufferSize(handle, OPENMX_SOLVER_EIG_VECTOR, OPENMX_BLAS_FILL_LOWER,
+                n, s, n, overlap, &overlap_work, parameters, capacity) != OPENMX_SOLVER_SUCCESS ||
+            OpenMXKPathJacobiBufferSize(handle, no_vectors, OPENMX_BLAS_FILL_LOWER,
+                order, h, order, eigen, &eigen_work, parameters, capacity) != OPENMX_SOLVER_SUCCESS ||
+            overlap_work < 0 || eigen_work < 0)
+            return false;
+        const size_t required = (size_t)std::max({1, overlap_work, eigen_work});
+        statuses.resize(capacity);
+        return required <= remaining_bytes / sizeof(Z) && work.allocate(required) && info.allocate(capacity);
+    }
+
+    bool enqueue(int order, int count, Z *matrix, double *spectrum, bool vectors, OpenMXGpuStream capture)
+    {
+        // Detect a captured solver that leaves a status from the previous batch.
+        if (capture && OpenMXGpuMemsetAsync(info.get(), 0xff, (size_t)count * sizeof(int), capture) != OPENMX_GPU_SUCCESS)
+            return false;
+        const auto job = vectors ? OPENMX_SOLVER_EIG_VECTOR : no_vectors;
+        return OpenMXKPathJacobiSolve(handle, job, OPENMX_BLAS_FILL_LOWER, order, matrix, order,
+            spectrum, work.get(), (int)work.size(), info.get(), parameters, count) == OPENMX_SOLVER_SUCCESS;
+    }
+
+    bool read(int order, int count, const double *spectrum, double *values)
+    {
+        return OpenMXGpuMemcpy(statuses.data(), info.get(), (size_t)count * sizeof(int),
+                               OPENMX_GPU_COPY_DEVICE_TO_HOST) == OPENMX_GPU_SUCCESS &&
+               std::all_of(statuses.begin(), statuses.begin() + count, [](int i) { return i == 0; }) &&
+               OpenMXGpuMemcpy(values, spectrum, (size_t)count * order * sizeof(double),
+                               OPENMX_GPU_COPY_DEVICE_TO_HOST) == OPENMX_GPU_SUCCESS;
+    }
+};
+
+bool solve_batched(Workspace &w, const OpenMXKPathMatrices &m, int order, int point_count,
+                   const OpenMXKPathPoint *points, double *eigen)
+{
+    constexpr int max_batch = 64;
+    constexpr size_t batch_limit = size_t{32} << 20;
+    constexpr double min_overlap_ratio = 1.0e-5;
+    const int n = m.order;
+    const size_t per_point = (w.phases.size() + w.s.size() + w.h.size()) * sizeof(Z) +
+        (size_t)(n + order) * sizeof(double) + (size_t)n + sizeof(OpenMXKPathPoint) + sizeof(int);
+    size_t free = 0, total = 0;
+    if (OpenMXGpuMemGetInfo(&free, &total) != OPENMX_GPU_SUCCESS || free <= device_reserve)
+        return false;
+    const size_t budget = std::min(batch_limit, free - device_reserve);
+    const int capacity = (int)std::min({(size_t)max_batch, (size_t)point_count, budget / (2 * per_point)});
+    if (capacity < min_batched_points) return false;
+
+    DeviceBuffer<OpenMXKPathPoint> device_points;
+    DeviceBuffer<Z> phases, s, h;
+    DeviceBuffer<double> overlap_values, eigenvalues;
+    DeviceBuffer<unsigned char> discard;
+    BatchedEigensolver solver;
+    std::vector<double> values((size_t)capacity * order);
+    if (!device_points.allocate(capacity) || !phases.allocate((size_t)capacity * w.phases.size()) ||
+        !s.allocate((size_t)capacity * w.s.size()) || !h.allocate((size_t)capacity * w.h.size()) ||
+        !overlap_values.allocate((size_t)capacity * n) || !eigenvalues.allocate((size_t)capacity * order) ||
+        !discard.allocate((size_t)capacity * n) ||
+        !solver.prepare(n, order, capacity, s.get(), h.get(), overlap_values.get(), eigenvalues.get(),
+                        budget - (size_t)capacity * per_point))
+        return false;
+
+    // Amortize capture over several full batches on the same GPU owner.
+    BatchCapture capture(point_count / capacity >= 4);
+    std::vector<BatchGraph> assembly_graphs(m.spin_channels);
+    BatchGraph eigen_graph;
+    // On failure, drain the stream before freeing the graphs and device storage.
+    struct PendingBatch {
+        bool finished = false;
+        ~PendingBatch() { if (!finished) (void)OpenMXGpuStreamSynchronize(nullptr); }
+    } pending;
+    int replays = 0;
+    for (int first = 0; first < point_count;) {
+        const int count = std::min(capacity, point_count - first);
+        // Warm up each solver mode before the first capture.
+        OpenMXGpuStream capture_stream = first > 0 && count == capacity ? capture.stream : nullptr;
+        if (OpenMXGpuMemcpy(device_points.get(), points + first, (size_t)count * sizeof(*points),
+                            OPENMX_GPU_COPY_HOST_TO_DEVICE) != OPENMX_GPU_SUCCESS)
+            return false;
+        for (int spin = 0; spin < m.spin_channels; ++spin) {
+            const bool overlap_needed = spin == 0 || m.lno;
+            const auto assemble_batch = [&](OpenMXGpuStream stream) {
+                return (spin != 0 || w.phase_rows({}, count, device_points.get(), phases.get(), stream)) &&
+                    w.construct(m, order, spin, count, phases.get(), overlap_needed ? s.get() : nullptr, h.get(), stream) &&
+                    (!overlap_needed || solver.enqueue(n, count, s.get(), overlap_values.get(), true, stream));
+            };
+            if (!assembly_graphs[spin].submit(overlap_needed ? capture_stream : nullptr, solver.handle,
+                                               assemble_batch, replays))
+                return false;
+            if (overlap_needed) {
+                if (!solver.read(n, count, overlap_values.get(), values.data())) return false;
+                /* The standard solver applies the overlap penalties. Also use
+                   it when scaling could amplify the Jacobi solver's error. */
+                for (int k = 0; k < count; ++k) {
+                    const double *row = values.data() + (size_t)k * n;
+                    if (!good_spectrum(n, row)) return false;
+                    const double limit = std::max({0.0, m.overlap_cutoff, row[n - 1] * min_overlap_ratio});
+                    if (row[0] <= limit) return false;
+                }
+                scale_overlap<<<dim3((w.s.size() + threads - 1) / threads, count), threads>>>(
+                    n, s.get(), overlap_values.get());
+                if (OpenMXGpuGetLastError() != OPENMX_GPU_SUCCESS) return false;
+            }
+
+            for (int k = 0; k < count; ++k)
+                if (!w.transform(n, order, h.get() + (size_t)k * w.h.size(),
+                                 s.get() + (size_t)k * w.s.size(), false)) return false;
+            const auto solve_hamiltonian = [&](OpenMXGpuStream stream) {
+                return (m.lno || penalize_overlap(n, order, m.overlap_cutoff, count,
+                            overlap_values.get(), h.get(), discard.get(), stream)) &&
+                       solver.enqueue(order, count, h.get(), eigenvalues.get(), false, stream);
+            };
+            if (!eigen_graph.submit(capture_stream, solver.handle, solve_hamiltonian, replays) ||
+                !solver.read(order, count, eigenvalues.get(), values.data())) return false;
+            for (int k = 0; k < count; ++k) {
+                const double *row = values.data() + (size_t)k * order;
+                if (!good_spectrum(order, row)) return false;
+                std::copy_n(row, order, eigen + ((size_t)(first + k) * m.spin_channels + spin) * order);
+            }
+        }
+        first += count;
+    }
+    pending.finished = true;
+    if (OPENMX_STDOUT_LEVEL(2)) {
+        std::printf("<Band_DFT_kpath> FP64 batched eigensolver, up to %d k-points per batch\n", capacity);
+        if (replays > 0)
+            std::printf("<Band_DFT_kpath> %s Graph submissions: %d\n", OPENMX_GPU_RUNTIME_NAME, replays);
+    }
+    return true;
+}
 
 bool solve_points(Workspace &w, const OpenMXKPathMatrices &m, int point_count,
                   const OpenMXKPathPoint *points, double *eigen, const char **stage)
@@ -335,31 +656,34 @@ bool solve_points(Workspace &w, const OpenMXKPathMatrices &m, int point_count,
     *stage = "device workspace allocation";
     if (!w.prepare(m, order)) return false;
 
+    if (order <= jacobi_max_order && point_count >= min_batched_points) {
+        *stage = "batched eigensolve";
+        try {
+            if (solve_batched(w, m, order, point_count, points, eigen)) return true;
+        } catch (const std::bad_alloc &) {
+            // Optional batch buffers are gone before the per-point retry.
+        }
+        if (OpenMXGpuStreamSynchronize(nullptr) != OPENMX_GPU_SUCCESS) return false;
+        (void)OpenMXGpuGetLastError();
+    }
+
     std::vector<double> overlap(n);
     for (int k = 0; k < point_count; ++k) {
         *stage = "Bloch phases";
-        bloch_phases<<<(m.block_count + threads - 1) / threads, threads>>>(
-            m.block_count, w.blocks.get(), points[k], w.phases.get());
-        if (OpenMXGpuGetLastError() != OPENMX_GPU_SUCCESS) return false;
+        if (!w.phase_rows(points[k], 1, nullptr, w.phases.get())) return false;
 
         for (int spin = 0; spin < m.spin_channels; ++spin) {
             const bool overlap_needed = spin == 0 || m.lno;
             *stage = "Bloch matrix assembly";
-            if (!w.construct(m, order, spin, overlap_needed)) return false;
+            if (!w.construct(m, order, spin, 1, w.phases.get(), overlap_needed ? w.s.get() : nullptr, w.h.get())) return false;
             *stage = "overlap eigensolve and scaling";
             if (overlap_needed && !w.orthogonalize(n, overlap.data())) return false;
 
             *stage = "Hamiltonian transformation";
             const bool ill_conditioned = *std::min_element(overlap.begin(), overlap.end()) < m.overlap_cutoff;
-            if (!w.transform(n, order, ill_conditioned)) return false;
-            if (!m.lno) {
-                penalty_diagonal<<<(n + threads - 1) / threads, threads>>>(
-                    n, order, m.overlap_cutoff, w.overlap_values.get(), w.h.get(), w.discard.get());
-                if (OpenMXGpuGetLastError() != OPENMX_GPU_SUCCESS) return false;
-                remove_penalized<<<(w.h.size() + threads - 1) / threads, threads>>>(
-                    n, order, w.discard.get(), w.h.get());
-                if (OpenMXGpuGetLastError() != OPENMX_GPU_SUCCESS) return false;
-            }
+            if (!w.transform(n, order, w.h.get(), w.s.get(), ill_conditioned)) return false;
+            if (!m.lno && !penalize_overlap(n, order, m.overlap_cutoff, 1, w.overlap_values.get(),
+                                           w.h.get(), w.discard.get())) return false;
 
             *stage = "Hamiltonian eigenvalues";
             double *row = eigen + ((size_t)k * m.spin_channels + spin) * order;

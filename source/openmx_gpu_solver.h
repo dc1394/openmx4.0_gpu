@@ -14,6 +14,7 @@
 #define OpenMXSolverStatus hipsolverStatus_t
 #define OpenMXSolverEigMode hipsolverEigMode_t
 #define OpenMXSolverGetStream hipsolverDnGetStream
+#define OpenMXSolverSetStream hipsolverDnSetStream
 #define OPENMX_SOLVER_EIG_VECTOR HIPSOLVER_EIG_MODE_VECTOR
 #define OPENMX_SOLVER_EXECUTION_FAILED HIPSOLVER_STATUS_EXECUTION_FAILED
 #define OPENMX_SOLVER_INVALID_VALUE HIPSOLVER_STATUS_INVALID_VALUE
@@ -27,6 +28,7 @@
 #define OpenMXSolverStatus cusolverStatus_t
 #define OpenMXSolverEigMode cusolverEigMode_t
 #define OpenMXSolverGetStream cusolverDnGetStream
+#define OpenMXSolverSetStream cusolverDnSetStream
 #define OPENMX_SOLVER_EIG_VECTOR CUSOLVER_EIG_MODE_VECTOR
 #define OPENMX_SOLVER_EXECUTION_FAILED CUSOLVER_STATUS_EXECUTION_FAILED
 #define OPENMX_SOLVER_INVALID_VALUE CUSOLVER_STATUS_INVALID_VALUE
