@@ -119,7 +119,7 @@ int main(void)
                     for (q = 1; q <= FNAN[M2G[mc]]; q++) {
                         stage_source(F_G2M[natn[M2G[mc]][q]]);
                         Force4B_case1_trace_fused(vna, mc, M2G[mc], q, cdm, ds,
-                            &expected[mc][0], &expected[mc][1], &expected[mc][2]);
+                            &expected[mc][0], &expected[mc][1], &expected[mc][2], NULL);
                     }
                     for (i = 0; i < 3; i++) Gxyz[M2G[mc]][41 + i] = 0.37;
                 }
@@ -129,8 +129,12 @@ int main(void)
                 CHECK(F4B_turns1.stage_pinned == !pinned_fail);
                 CHECK(F4B_turns1.host_bytes < F4B_turns1.plan.bytes);
                 for (source = Matomnum + MatomnumF; source > Matomnum; source--) {
-                    stage_source(source);
-                    Force4B_GpuCase1TurnsArchive(ds, source);
+                    float packed[NEIGHBORS * ORBITALS * PROJECTORS];
+                    for (k = 0; k < NEIGHBORS; k++)
+                        for (i = 0; i < ORBITALS; i++)
+                            memcpy(packed + (k * ORBITALS + i) * PROJECTORS,
+                                   true_ds[0][F_M2G[source]][k][i], PROJECTORS * sizeof(float));
+                    Force4B_GpuCase1TurnsArchive(packed, ORBITALS, source);
                 }
                 /* The receive slot is no longer a usable halo. Both device
                    packing and the allocation-failure path must use the cache. */
@@ -243,7 +247,8 @@ int main(void)
 
 def make_harness(source: str) -> str:
     # Reuse fixture declarations/helpers, omitting the source-stream test main.
-    parts = [case1.make_harness(source).split("\nint main(void)\n", 1)[0], TURN_STUBS]
+    parts = [case1.make_harness(source).split("\nint main(void)\n", 1)[0], TURN_STUBS,
+             '#include "openmx_force_vna_halo.h"\n']
     for name in ("Force4BCase1Turns", "Force4BCase1Device"):
         parts.append(common.extract_struct(source, name))
     parts.append("static Force4BCase1Turns F4B_turns1 = { .device_comm = MPI_COMM_NULL };\n")

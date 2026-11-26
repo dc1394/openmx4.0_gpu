@@ -16,6 +16,7 @@
 #include "openmx_xc.h"
 #include "openmx_env.h"
 #include "openmx_force_workspace.h"
+#include "openmx_force_vna_halo.h"
 #include "openmx_core_force_recovery.h"
 #include "openmx_orbitals.h"
 #include "openmx_core_vna_matrix.h"
@@ -7587,37 +7588,30 @@ static int Force4B_GpuCase2Begin(Force4BGpuContext *g, int full_batch)
     return 1;
 }
 
-/* archive the direction-0 block of the halo atom just received into the
-   Matomnum+1 slot of the case-1 communication loop */
-static void Force4B_GpuArchiveHalo(Force4BGpuContext *g, Type_DS_VNA***** DS_VNA, int Original_Mc_AN, int Gc_AN)
+/* Store the received direction-zero blocks in the device/host archive.
+   The receive buffer is reused after this synchronous copy. */
+static void Force4B_GpuArchiveHalo(Force4BGpuContext *g, const Type_DS_VNA *received,
+                                    int wire_orbitals, int Original_Mc_AN, int Gc_AN)
 {
-    int no0 = Spe_Total_CNO[WhatSpecies[Gc_AN]];
-    int halo_idx = Original_Mc_AN - Matomnum;
-    size_t base;
-    size_t blk = (size_t)(FNAN[Gc_AN] + 1) * (size_t)no0 * (size_t)g->num_proj;
-    int k;
-
-    if (halo_idx < 1 || MatomnumF < halo_idx) {
-        Force4B_gpu_abort("Force4B GPU: halo index out of range.");
-    }
-    base = g->halo_off[g->halo_base[halo_idx]];
-
-#pragma omp parallel for schedule(dynamic)
-    for (k = 0; k <= FNAN[Gc_AN]; k++) {
-        size_t off = g->halo_off[g->halo_base[halo_idx] + k] - base;
-        int i, l;
-
-        for (i = 0; i < no0; i++) {
-            const Type_DS_VNA* src = DS_VNA[0][Matomnum + 1][k][i];
-            float* dst = g->stage + off + (size_t)i * (size_t)g->num_proj;
-
-            for (l = 0; l < g->num_proj; l++) dst[l] = (float)src[l];
+    const int no = Spe_Total_CNO[WhatSpecies[Gc_AN]];
+    const int halo = Original_Mc_AN - Matomnum;
+    if (halo < 1 || MatomnumF < halo || wire_orbitals < no)
+        Force4B_gpu_abort("Force4B GPU: invalid packed halo.");
+    const size_t base = g->halo_off[g->halo_base[halo]];
+    const size_t neighbours = (size_t)FNAN[Gc_AN] + 1;
+    const size_t active = (size_t)no * g->num_proj;
+    const size_t stride = (size_t)wire_orbitals * g->num_proj;
+    const size_t bytes = neighbours * active * sizeof(float);
+    if (bytes == 0) return;
+    if (g->halo_host) {
+        openmx_force_vna_copy_halo(g->halo_host + base, received, neighbours, stride, active);
+    } else {
+        const float *upload = received;
+        if (stride != active) {
+            openmx_force_vna_copy_halo(g->stage, received, neighbours, stride, active);
+            upload = g->stage;
         }
-    }
-
-    if (blk != 0) {
-        if(g->halo_host)memcpy(g->halo_host+base,g->stage,sizeof(float)*blk);
-        else acc_memcpy_to_device(g->halo_dev + base, g->stage, sizeof(float) * blk);
+        acc_memcpy_to_device(g->halo_dev + base, upload, bytes);
     }
 }
 
@@ -8485,19 +8479,16 @@ finish:
     return g->enabled;
 }
 
-static void Force4B_GpuCase1TurnsArchive(Force4BCase1Turns *g, Type_DS_VNA***** DS_VNA, int source)
+static void Force4B_GpuCase1TurnsArchive(Force4BCase1Turns *g, const Type_DS_VNA *received,
+                                        int wire_orbitals, int source)
 {
     const int halo = source - Matomnum;
-    int gc, no, k, i;
     if (halo < 1 || halo > MatomnumF || g->seen[halo])
         Force4B_gpu_abort("Force4B GPU: invalid or duplicate rank-turn halo.");
-    gc = F_M2G[source];
-    no = Spe_Total_CNO[WhatSpecies[gc]];
-    for (k = 0; k <= FNAN[gc]; k++)
-        for (i = 0; i < no; i++)
-            memcpy(g->halo_host + g->halo_off[halo]
-                    + ((size_t)k * (size_t)no + (size_t)i) * (size_t)g->num_proj,
-                DS_VNA[0][Matomnum + 1][k][i], sizeof(Type_DS_VNA) * (size_t)g->num_proj);
+    const int gc = F_M2G[source], no = Spe_Total_CNO[WhatSpecies[gc]];
+    if (wire_orbitals < no) Force4B_gpu_abort("Force4B GPU: invalid packed rank-turn halo.");
+    openmx_force_vna_copy_halo(g->halo_host + g->halo_off[halo], received, (size_t)FNAN[gc] + 1,
+                               (size_t)wire_orbitals * g->num_proj, (size_t)no * g->num_proj);
     g->seen[halo] = 1;
 }
 
@@ -9639,7 +9630,6 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
     double *****ActiveHVNA2, *****ActiveHVNA3;
     int* VNA_List;
     int* VNA_List2;
-    int *Snd_DS_VNA_Size, *Rcv_DS_VNA_Size;
     int* Indicator;
     Type_DS_VNA* tmp_array;
     Type_DS_VNA* tmp_array2;
@@ -9677,8 +9667,6 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
     S_array = OpenMX_ForceIntMatrix(scratch,"Force4B:S_array",numprocs,3);
     R_array = OpenMX_ForceIntMatrix(scratch,"Force4B:R_array",numprocs,3);
 
-    Snd_DS_VNA_Size = projector_transfer.buffers.send_sizes;
-    Rcv_DS_VNA_Size = projector_transfer.buffers.receive_sizes;
 
     VNA_List = OpenMX_Solver_Int(scratch,"Force4B:VNA_List",(List_YOUSO[34] * (List_YOUSO[35] + 1) + 2));
     VNA_List2 = OpenMX_Solver_Int(scratch,"Force4B:VNA_List2",(List_YOUSO[34] * (List_YOUSO[35] + 1) + 2));
@@ -9896,58 +9884,8 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
         receive_progress[ID] = 0;
     }
 
+    const int wire_projectors = (List_YOUSO[35] + 1) * (List_YOUSO[35] + 1) * List_YOUSO[34];
     do {
-
-        /***********************************
-                set the size of data
-        ************************************/
-
-        for (ID = 0; ID < numprocs; ID++) {
-
-            IDS = (myid + ID) % numprocs;
-            IDR = (myid - ID + numprocs) % numprocs;
-
-            /* find the data size to send the block data */
-
-            if (0 < (F_Snd_Num[IDS] - send_progress[IDS])) {
-
-                size1 = 0;
-                n = send_progress[IDS];
-
-                Mc_AN = Snd_MAN[IDS][n];
-                Gc_AN = Snd_GAN[IDS][n];
-                Cwan = WhatSpecies[Gc_AN];
-                tno1 = Spe_Total_NO[Cwan];
-                for (h_AN = 0; h_AN <= FNAN[Gc_AN]; h_AN++) {
-                    Gh_AN = natn[Gc_AN][h_AN];
-                    Hwan = WhatSpecies[Gh_AN];
-                    tno2 = (List_YOUSO[35] + 1) * (List_YOUSO[35] + 1) * List_YOUSO[34];
-                    size1 += tno1 * tno2;
-                }
-
-                Snd_DS_VNA_Size[IDS] = size1;
-                MPI_Isend(&size1, 1, MPI_INT, IDS, tag, mpi_comm_level1, &request);
-            } else {
-                Snd_DS_VNA_Size[IDS] = 0;
-            }
-
-            /* receiving of the size of the data */
-
-            if (0 < (F_Rcv_Num[IDR] - receive_progress[IDR])) {
-                MPI_Recv(&size2, 1, MPI_INT, IDR, tag, mpi_comm_level1, &stat);
-                Rcv_DS_VNA_Size[IDR] = size2;
-            } else {
-                Rcv_DS_VNA_Size[IDR] = 0;
-            }
-
-            if (0 < (F_Snd_Num[IDS] - send_progress[IDS]))
-                MPI_Wait(&request, &stat);
-
-        } /* ID */
-
-        /***********************************
-                  data transfer
-        ************************************/
 
         for (ID = 0; ID < numprocs; ID++) {
 
@@ -9960,35 +9898,23 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
 
             if (0 < (F_Snd_Num[IDS] - send_progress[IDS])) {
 
-                size1 = Snd_DS_VNA_Size[IDS];
-
-                /* allocation of the array */
-
-                tmp_array = OpenMX_TransferBuffer(&projector_transfer,OPENMX_EXCHANGE_SEND,size1);
-
-                /* multidimentional array to the vector array */
-
-                num = 0;
                 n = send_progress[IDS];
-
                 Mc_AN = Snd_MAN[IDS][n];
                 Gc_AN = Snd_GAN[IDS][n];
-                Cwan = WhatSpecies[Gc_AN];
-                tno1 = Spe_Total_NO[Cwan];
-                for (h_AN = 0; h_AN <= FNAN[Gc_AN]; h_AN++) {
-                    Gh_AN = natn[Gc_AN][h_AN];
-                    Hwan = WhatSpecies[Gh_AN];
-                    tno2 = (List_YOUSO[35] + 1) * (List_YOUSO[35] + 1) * List_YOUSO[34];
+                tno1 = Spe_Total_NO[WhatSpecies[Gc_AN]];
+                size1 = openmx_force_vna_halo_count(FNAN[Gc_AN], tno1, wire_projectors);
+                if (size1 < 0) Force4B_gpu_abort("Force4B: halo exceeds the MPI count range.");
+                tmp_array = OpenMX_TransferBuffer(&projector_transfer, OPENMX_EXCHANGE_SEND, size1);
 
+                size_t offset = 0;
+                for (h_AN = 0; h_AN <= FNAN[Gc_AN]; h_AN++) {
                     for (i = 0; i < tno1; i++) {
-                        for (j = 0; j < tno2; j++) {
-                            tmp_array[num] = DS_VNA[0][Mc_AN][h_AN][i][j];
-                            num++;
-                        }
+                        memcpy(tmp_array + offset, DS_VNA[0][Mc_AN][h_AN][i],
+                               (size_t)wire_projectors * sizeof(*tmp_array));
+                        offset += (size_t)wire_projectors;
                     }
                 }
-
-                MPI_Isend(&tmp_array[0], size1, MPI_Type_DS_VNA, IDS, tag, mpi_comm_level1, &request);
+                MPI_Isend(tmp_array, size1, MPI_Type_DS_VNA, IDS, tag, mpi_comm_level1, &request);
             }
 
             /******************************
@@ -9997,51 +9923,40 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
 
             if (0 < (F_Rcv_Num[IDR] - receive_progress[IDR])) {
 
-                size2 = Rcv_DS_VNA_Size[IDR];
-                tmp_array2 = OpenMX_TransferBuffer(&projector_transfer,OPENMX_EXCHANGE_RECEIVE,size2);
-                MPI_Recv(&tmp_array2[0], size2, MPI_Type_DS_VNA, IDR, tag, mpi_comm_level1, &stat);
-
-                /* store */
-
-                num = 0;
                 n = receive_progress[IDR];
                 Original_Mc_AN = F_TopMAN[IDR] + n;
                 Gc_AN = Rcv_GAN[IDR][n];
-                Cwan = WhatSpecies[Gc_AN];
-                tno1 = Spe_Total_NO[Cwan];
-
-                for (h_AN = 0; h_AN <= FNAN[Gc_AN]; h_AN++) {
-
-                    Gh_AN = natn[Gc_AN][h_AN];
-                    Hwan = WhatSpecies[Gh_AN];
-                    tno2 = (List_YOUSO[35] + 1) * (List_YOUSO[35] + 1) * List_YOUSO[34];
-
-                    for (i = 0; i < tno1; i++) {
-                        for (j = 0; j < tno2; j++) {
-                            DS_VNA[0][Matomnum + 1][h_AN][i][j] = tmp_array2[num];
-                            num++;
-                        }
-                    }
-                }
-
-                /* free tmp_array2 */
+                tno1 = Spe_Total_NO[WhatSpecies[Gc_AN]];
+                size2 = openmx_force_vna_halo_count(FNAN[Gc_AN], tno1, wire_projectors);
+                if (size2 < 0) Force4B_gpu_abort("Force4B: halo exceeds the MPI count range.");
+                tmp_array2 = OpenMX_TransferBuffer(&projector_transfer, OPENMX_EXCHANGE_RECEIVE, size2);
+                MPI_Recv(tmp_array2, size2, MPI_Type_DS_VNA, IDR, tag, mpi_comm_level1, &stat);
+                int received = 0;
+                MPI_Get_count(&stat, MPI_Type_DS_VNA, &received);
+                if (received != size2) Force4B_gpu_abort("Force4B: inconsistent packed halo size.");
 
                 if (f4b_gpu_case1) {
-                    Force4B_GpuArchiveHalo(f4b_context, DS_VNA, Original_Mc_AN, Gc_AN);
+                    Force4B_GpuArchiveHalo(f4b_context, tmp_array2, tno1, Original_Mc_AN, Gc_AN);
                 } else if (f4b_turns_case1) {
-                    Force4B_GpuCase1TurnsArchive(f4b_case1_turns, DS_VNA, Original_Mc_AN);
-                } else if (f4b_stream_case1) {
-                    Force4B_GpuCase1StreamSource(f4b_case1_stream, Original_Mc_AN, CDM0, DS_VNA);
+                    Force4B_GpuCase1TurnsArchive(f4b_case1_turns, tmp_array2, tno1, Original_Mc_AN);
+                } else {
+                    size_t offset = 0;
+                    for (h_AN = 0; h_AN <= FNAN[Gc_AN]; h_AN++) {
+                        for (i = 0; i < tno1; i++) {
+                            memcpy(DS_VNA[0][Matomnum + 1][h_AN][i], tmp_array2 + offset,
+                                   (size_t)wire_projectors * sizeof(*tmp_array2));
+                            offset += (size_t)wire_projectors;
+                        }
+                    }
+                    if (f4b_stream_case1)
+                        Force4B_GpuCase1StreamSource(f4b_case1_stream, Original_Mc_AN, CDM0, DS_VNA);
                 }
 
-                /*****************************************
-                       multiplying overlap integrals
-                *****************************************/
-
-                {
-                Force4BHaloPlan f4b_plan;
-                Force4B_halo_plan_build(&f4b_plan, &f4b_halo_arena, Original_Mc_AN, Rcv_GAN[IDR][receive_progress[IDR]],
-                    use_force4b_fused && !f4b_gpu_case1 && !f4b_stream_case1 && !f4b_turns_case1);
+                /* A remote atom is always a non-self pair. The batch paths
+                   own its contribution, including their CPU recovery. */
+                if (!f4b_gpu_case1 && !f4b_turns_case1 && !f4b_stream_case1) {
+                    Force4BHaloPlan f4b_plan;
+                    Force4B_halo_plan_build(&f4b_plan, &f4b_halo_arena, Original_Mc_AN, Gc_AN, use_force4b_fused);
 #pragma omp parallel shared(use_force4b_fused, List_YOUSO, time_per_atom, Gxyz, CDM0, SpinP_switch, DS_VNA, RMI1, Original_Mc_AN, IDR, Rcv_GAN, receive_progress, Spe_Total_CNO, F_G2M, natn, FNAN, WhatSpecies, M2G, Matomnum, ActiveHVNA2, ActiveHVNA3) private(Stime_atom, Etime_atom, dEx, dEy, dEz, Gc_AN, Mc_AN, Cwan, fan, h_AN, Gh_AN, Mh_AN, Hwan, ian, n, jg, j0, jg0, Mj_AN0, q_AN, Gq_AN, Mq_AN, Qwan, jan, kl, HVNAx, HVNAy, HVNAz, i, j, pref)
                     {
 
@@ -10102,13 +10017,11 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
                                 kl = RMI1[Mc_AN][h_AN][q_AN];
 
                                 if (use_force4b_fused && q_AN != 0) {
-                                    if (!f4b_gpu_case1 && !f4b_stream_case1 && !f4b_turns_case1) {
-                                        if (f4b_plan.valid && !f4b_plan.failed) {
-                                            Force4B_halo_trace(&f4b_plan, vna, Mc_AN, Gc_AN, q_AN, CDM0, &f4b_simd, &dEx, &dEy, &dEz);
-                                        } else {
-                                            Force4B_case1_trace_fused(vna, Mc_AN, Gc_AN, q_AN,
-                                                CDM0, DS_VNA, &dEx, &dEy, &dEz, &f4b_simd);
-                                        }
+                                    if (f4b_plan.valid && !f4b_plan.failed) {
+                                        Force4B_halo_trace(&f4b_plan, vna, Mc_AN, Gc_AN, q_AN, CDM0, &f4b_simd, &dEx, &dEy, &dEz);
+                                    } else {
+                                        Force4B_case1_trace_fused(vna, Mc_AN, Gc_AN, q_AN,
+                                            CDM0, DS_VNA, &dEx, &dEy, &dEz, &f4b_simd);
                                     }
                                     continue;
                                 }
@@ -10172,7 +10085,7 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
                         /* freeing of array */
 
                     } /* #pragma omp parallel */
-                Force4B_halo_plan_free(&f4b_plan);
+                    Force4B_halo_plan_free(&f4b_plan);
                 }
 
                 /********************************************

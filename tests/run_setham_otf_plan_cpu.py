@@ -49,7 +49,7 @@ static int Matomnum=3;
 static int M2G[4]={0,1,2,3}, Spe_Total_NO[4]={0,3,5,7}, WhatSpecies[4]={0,1,2,3};
 static int GridN_Atom[4]={0,31,47,59}, FNAN[4]={0,2,2,2};
 static int natn[4][3], ncn[4][3], NumOLG[4][3], glist[4][3][60], *GListTAtoms1[4][3];
-static int mglist[4][60], *MGridListAtom[4];
+static int mglist[4][60], mgla[3*60];
 static double Gxyz[4][4], atv[3][4];
 static int alloc_count, live_alloc, force_pageable;
 static size_t gpu_free=16ULL*1024*1024*1024;
@@ -64,6 +64,7 @@ static void release(void *p) { if(p) { live_alloc--; free(p); } }
 #define cudaSuccess 0
 static int cudaMallocHost(void **p,size_t n) { if(force_pageable) return 1; *p=alloc(n); return 0; }
 static int cudaFreeHost(void *p) { release(p); return 0; }
+static int cudaFree(void *p) { release(p); return 0; }
 static int cudaGetLastError(void) { return 0; }
 static void acc_free(void *p) { release(p); }
 static void Set_Hamiltonian_abort(const char *a,const char *b,int r) { (void)r; fprintf(stderr,"%s: %s\n",a,b); exit(1); }
@@ -90,7 +91,7 @@ parts = [prefix, typedef("SetHamiltonianOnTheFlyCache"), typedef("SetHOTFBatch")
          "struct OpenMXHamiltonianGpuState { int affinity; SetHamiltonianOnTheFlyCache otf; SetHOTFPlan plans[2]; SetHOTFDensityPlan density_plan; }; static OpenMXHamiltonianGpuState state, *hamiltonian_state=&state;"]
 for name in ["SETH_OTF_DEN_RESERVE_BYTES", "SETH_OTF_DEN_RUNTIME_SLACK", "SETH_OTF_DEN_ALIGNMENT_SLACK", "SETH_OTF_DEN_GROW_QUANTUM"]:
     parts.append(re.search(r"^#define " + name + r"[^\n]*", source, re.M).group(0))
-for name in ["SETH_OTF_PairCost", "SETH_OTF_CompactCost", "SETH_OTF_DensityLimitBytes", "SETH_OTF_DensityFixedBytes", "SETH_OTF_DensityBoundWorkspace", "SETH_OTF_DensityPairBytes", "Set_Hamiltonian_OnTheFly_DensityBudget", "Set_Hamiltonian_OnTheFly_DensityGrow", "SETH_OTF_FreePlan", "SETH_OTF_FreePlans", "SETH_OTF_GetPlan", "Set_Hamiltonian_OTF_Release", "Set_Hamiltonian_Invalidate_OpenACC_MatrixElements_Cache"]:
+for name in ["SETH_OTF_PairCost", "SETH_OTF_CompactCost", "SETH_OTF_DensityLimitBytes", "SETH_OTF_DensityFixedBytes", "SETH_OTF_DensityBoundWorkspace", "SETH_OTF_DensityPairBytes", "Set_Hamiltonian_OnTheFly_DensityBudget", "Set_Hamiltonian_OnTheFly_DensityGrow", "SETH_OTF_FreePlan", "SETH_OTF_FreePlans", "SETH_OTF_GetPlan", "SETH_OTF_ReleaseCentral", "Set_Hamiltonian_OTF_Release", "Set_Hamiltonian_OTF_GridIndices", "Set_Hamiltonian_Invalidate_OpenACC_MatrixElements_Cache"]:
     body = function(name).replace("free(", "release(")
     # Device-release stub already accounts for its allocation.
     body = body.replace("acc_release(", "acc_free(")
@@ -100,8 +101,7 @@ int main(void) {
   unsigned int out_base[4]={0,0,31,78};
   int cases=0;
   for(int a=1;a<=3;a++) {
-    MGridListAtom[a]=mglist[a];
-    for(int k=0;k<GridN_Atom[a];k++) mglist[a][k]=a*100+k;
+    for(int k=0;k<GridN_Atom[a];k++) mgla[(a-1)*60+k]=mglist[a][k]=a*100+k;
     for(int j=1;j<=3;j++) Gxyz[a][j]=0.25*a*j;
     for(int p=0;p<3;p++) {
       natn[a][p]=1+(a+p)%3; ncn[a][p]=p;
@@ -113,7 +113,7 @@ int main(void) {
   for(int spins=1;spins<=4;spins*=2) for(int pageable=0;pageable<2;pageable++) {
     force_pageable=pageable;
     Set_Hamiltonian_OTF.atom_gla_off=alloc(4*sizeof(size_t));
-    Set_Hamiltonian_OTF.atom_gla_off[1]=0; Set_Hamiltonian_OTF.atom_gla_off[2]=31; Set_Hamiltonian_OTF.atom_gla_off[3]=78;
+    Set_Hamiltonian_OTF.atom_gla_off[1]=0; Set_Hamiltonian_OTF.atom_gla_off[2]=60; Set_Hamiltonian_OTF.atom_gla_off[3]=120;
     for(int kind=0;kind<2;kind++) {
       SetHOTFPlan *p=SETH_OTF_GetPlan(kind,0,spins,20000,out_base,0);
       check(p && p->ready && p->batch_count>1,"multibatch plan");
@@ -123,6 +123,9 @@ int main(void) {
         const int *no0=(const int*)(bt->image+bt->off_NO0), *no1=(const int*)(bt->image+bt->off_NO1);
         const size_t *hoff=(const size_t*)(bt->image+bt->off_h_off), *noff=(const size_t*)(bt->image+bt->off_nolg_off);
         const int *nc=(const int*)(bt->image+bt->off_Nc);
+        int mn[9*60];
+        if(!kind) Set_Hamiltonian_OTF_GridIndices(bt->pair_count, (int*)(bt->image+bt->off_NOLG), noff,
+                    (size_t*)(bt->image+bt->off_gla_off), nc, mgla, mn, NULL);
         size_t local=0;
         for(int q=0;q<bt->pair_count;q++) {
           int a=bt->pair_Mc_AN[q], h=bt->pair_h_AN[q], a1=natn[a][h];
@@ -131,7 +134,7 @@ int main(void) {
           if(kind) check(((size_t*)(bt->image+bt->off_out_base))[q]==out_base[a],"output base");
           for(int k=0;k<NumOLG[a][h];k++) {
             check(nc[noff[q]+k]==glist[a][h][k],"point gather");
-            if(!kind) check(((int*)(bt->image+bt->off_MN))[noff[q]+k]==mglist[a][glist[a][h][k]],"potential gather");
+            if(!kind) check(mn[noff[q]+k]==mglist[a][glist[a][h][k]],"potential gather");
           }
           size_t n=(size_t)spins*Spe_Total_NO[a]*Spe_Total_NO[a1]; prefix+=n; local+=n; seen++;
         }
@@ -161,8 +164,8 @@ int main(void) {
     force_pageable=pageable;
     Set_Hamiltonian_OTF.atom_gla_off=alloc(4*sizeof(size_t));
     Set_Hamiltonian_OTF.atom_gla_off[1]=0;
-    Set_Hamiltonian_OTF.atom_gla_off[2]=1691481;
-    Set_Hamiltonian_OTF.atom_gla_off[3]=3382962;
+    Set_Hamiltonian_OTF.atom_gla_off[2]=60;
+    Set_Hamiltonian_OTF.atom_gla_off[3]=120;
     for(int kind=0;kind<2;kind++) {
       SetHOTFPairCost chunkcost;
       SETH_OTF_CompactCost(kind,spins,1,0,13,0,&chunkcost);
@@ -187,16 +190,24 @@ int main(void) {
         check(central->wan==a && central->no==41 && central->gx==Gxyz[a][1] &&
               central->ax==0 && central->ay==0 && central->az==0,"central descriptor");
         if(kind) check(((size_t*)(bt->image+bt->off_out_base))[0]==out_base[a],"absolute density output base");
+        int mn[13], compact_nc[13];
+        if(!kind) Set_Hamiltonian_OTF_GridIndices(bt->pair_count, (int*)(bt->image+bt->off_NOLG),
+                    (size_t*)(bt->image+bt->off_nolg_off), (size_t*)(bt->image+bt->off_gla_off),
+                    nc, mgla, mn, compact_nc);
         for(int k=0;k<n;k++) {
           check(nc[k]==glist[a][h][nextpoint+k],"absolute original overlap gather");
           if(!kind) {
-            check(((int*)(bt->image+bt->off_orb_Nc))[k]==k,"compact orbital gather");
-            check(((int*)(bt->image+bt->off_MN))[k]==mglist[a][nc[k]],"absolute potential gather");
+            check(compact_nc[k]==k,"compact orbital gather");
+            check(mn[k]==mglist[a][nc[k]],"absolute potential gather");
           }
           sums[nextpair]+=(double)(nc[k]+1)*(double)(nextpoint+k+1);
         }
         /* Recreate the arena layout independently of cost estimates. */
         size_t pos=bt->image_bytes;
+        if(!kind) {
+            pos=(pos+511)&~(size_t)511; pos+=sizeof(int)*bt->total_nolg;
+            pos=(pos+511)&~(size_t)511; pos+=sizeof(int)*bt->total_nolg;
+        }
         pos=(pos+511)&~(size_t)511; pos+=sizeof(float)*bt->total_orbs0_tiles;
         pos=(pos+511)&~(size_t)511; pos+=sizeof(float)*bt->total_orbs1;
         if(!kind) { pos=(pos+511)&~(size_t)511; pos+=sizeof(double)*bt->total_h; }

@@ -1,6 +1,7 @@
 #include "openmx_core_solver_workspace.h"
 #include "fixtures/native_resources/sdk_model.hpp"
 #include "openmx_env.h"
+#include "openmx_force_vna_halo.h"
 #include <algorithm>
 #include <climits>
 #include <cstdio>
@@ -122,7 +123,7 @@ void archives(Force4BGpuContext *g){
     for(int d=0;d<4;++d)for(int h=0;h<3;++h)for(int r=0;r<2;++r)for(int p=0;p<3;++p)
         check(flat[d*18+h*6+r*3+p]==values[d][1][h][r][p],"local archive packing changed");
     for(int source=2;source<=3;++source){
-        Force4B_GpuArchiveHalo(g,directions,source,source);
+        Force4B_GpuArchiveHalo(g,&values[0][2][0][0][0],2,source,source);
         const float *halo=g->halo_dev?g->halo_dev:g->halo_host;
         const int orbital=source==2?1:2;const size_t base=source==2?0:9;
         for(int h=0;h<3;++h)for(int r=0;r<orbital;++r)for(int p=0;p<3;++p)

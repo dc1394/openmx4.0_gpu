@@ -60,7 +60,8 @@ def main():
         'Set_Hamiltonian_Invalidate_OpenACC_MatrixElements_Cache',
         'Set_Hamiltonian_Ensure_OpenACC_MatrixElements_Cache', 'Set_Hamiltonian_DW_Push',
         'Set_Hamiltonian_DW_Flush', 'SETH_OTF_StagePotential', 'SETH_OTF_FreePlan',
-        'SETH_OTF_FreePlans', 'SETH_OTF_PairCost', 'SETH_OTF_CompactCost', 'SETH_OTF_GetPlan']
+        'SETH_OTF_FreePlans', 'SETH_OTF_PairCost', 'SETH_OTF_CompactCost', 'SETH_OTF_GetPlan',
+        'SETH_OTF_ReleaseCentral']
     hip = ['Set_Hamiltonian_ME_Associate', 'Set_Hamiltonian_ME_Disassociate',
         'Set_Hamiltonian_Invalidate_OpenMP_MatrixElements_Cache',
         'Set_Hamiltonian_OTF_ReleaseDevice', 'Set_Hamiltonian_OTF_BatchSizes',

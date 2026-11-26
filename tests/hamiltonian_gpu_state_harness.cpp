@@ -112,6 +112,7 @@ static void acc_memcpy_to_device(void *d,const void *s,size_t n){std::memcpy(d,s
 struct SOG_GpuPair { int wan,no,pt0,pad;size_t out;double gx,gy,gz,ax,ay,az; };
 static int SOG_Device_Prepare(OpenMXOrbitalGpuState*,const OpenMXAtomicViews*){return 1;}
 static const void *SOG_Device_Tables(OpenMXOrbitalGpuState*){return reinterpret_cast<void*>(1);}
+[[maybe_unused]] static int openmx_fp32_enabled(){return 1;}
 #endif
 #include "openmx_grid_device_scope.h"
 static int mpi_calls=0,mpi_comm_level1=0;
@@ -198,6 +199,14 @@ static void plans(OpenMXHamiltonianGpuState *s) {
     auto *stage=SETH_OTF_StagePotential(s,1,1024);assert(stage && stage[1023]==1023.25);
     size_t n=host_calls;assert(SETH_OTF_GetPlan(s,0,0,1,20000,nullptr,0)==a && host_calls==n);
     assert(SETH_OTF_StagePotential(s,1,512)==stage);
+    s->otf.atom_orbs0_off=(size_t*)host_calloc(4,sizeof(size_t));
+    void *central=nullptr;
+    assert(cudaMalloc(&central,512)==cudaSuccess);
+    s->otf.d_orbs0=(float*)central;
+    assert(SETH_OTF_GetPlan(s,0,0,1,20000,nullptr,0)->resident_central);
+    assert(Set_Hamiltonian_Yield_Resident_DeviceCache(s));
+    assert(!s->otf.d_orbs0 && !s->otf.atom_orbs0_off && s->otf.central_blocked);
+    assert(!SETH_OTF_GetPlan(s,0,0,1,20000,nullptr,0)->resident_central);
 #endif
 }
 

@@ -37,6 +37,10 @@ static int MPI_Allreduce(const void *a,void *b,int n,int type,int op,MPI_Comm co
 }
 static int gpu_rank_device_usable(void) {return 1;}
 static int openmx_gpu_capacity_test_recovery(void) {return 0;}
+/* Exercise the resident batch and the legacy recovery packets. */
+static int OpenMX_HostSimdMode(void) {return OPENMX_HOST_SIMD_LEGACY;}
+static int OpenMX_HostSimdStageOnHost(const char *name, size_t need, size_t budget)
+{(void)name; (void)need; (void)budget; return 0;}
 static unsigned long long openmx_host_mem_available(void) {return 1ULL<<40;}
 static void openmx_target_wait(void) {}
 static void openmx_target_clear_freelists(void) {}
@@ -195,7 +199,7 @@ int main(void)
                     for (q = 1; q <= FNAN[M2G[mc]]; q++) {
                         stage_source(F_G2M[natn[M2G[mc]][q]]);
                         Force4B_case1_trace_fused(vna, mc, M2G[mc], q, cdm, ds,
-                            &expected1[mc][0], &expected1[mc][1], &expected1[mc][2]);
+                            &expected1[mc][0], &expected1[mc][1], &expected1[mc][2], NULL);
                     }
                 }
 
@@ -205,8 +209,12 @@ int main(void)
                 CHECK(Force4B_GpuBegin(ds, 0, 0, 0));
                 CHECK(F4B_gpu.c2_dev == NULL);
                 for (source = Matomnum + 1; source <= Matomnum + MatomnumF; source++) {
-                    stage_source(source);
-                    Force4B_GpuArchiveHalo(ds, source, F_M2G[source]);
+                    float packed[NEIGHBORS * ORBITALS * PROJECTORS];
+                    for (k = 0; k < NEIGHBORS; k++)
+                        for (i = 0; i < ORBITALS; i++)
+                            memcpy(packed + (k * ORBITALS + i) * PROJECTORS,
+                                   true_ds[0][F_M2G[source]][k][i], PROJECTORS * sizeof(float));
+                    Force4B_GpuArchiveHalo(packed, ORBITALS, source, F_M2G[source]);
                 }
                 last_wait_bytes = 0;
                 Force4B_GpuCase1Run(vna, cdm);
@@ -248,7 +256,7 @@ int main(void)
                         for (j = Solver == 3 ? i : 0; j < NEIGHBORS; j++) {
                             if (!j || i == j || RMI1[mc][i][j] < 0) continue;
                             Force4B_case2_trace_fused(mc, M2G[mc], i, j, cdm, ds,
-                                &expected2[mc][0], &expected2[mc][1], &expected2[mc][2]);
+                                &expected2[mc][0], &expected2[mc][1], &expected2[mc][2], NULL);
                         }
                     }
                     Force4B_GpuArchiveCase2(ds, mc, M2G[mc]);
@@ -309,12 +317,13 @@ def make_harness(source: str) -> str:
                           "static void* Force_gpu_arena_try(size_t n)\n{\n    last_wait_bytes = n;")
     cpu_task = '#include "openmx_gpu_task_cpu.h"\n'
     cpu_task += "\nint openmx_gpu_task_execute(MPI_Comm c,OpenMXGpuTask *t,int e,const char *l) {(void)c;(void)e;(void)l;openmx_gpu_task_cpu(t);return 0;}\n"
-    parts = [stubs, cpu_task, case1.GLOBALS, RESIDENT_STUBS,
+    parts = [stubs, cpu_task, case1.GLOBALS, RESIDENT_STUBS, '#include "openmx_force_vna_halo.h"\n',
              common.extract_struct(source, "Force4BGpuItem"),
+             common.extract_struct(source, "Force4BSimd"),
              common.extract_struct(source, "Force4BGpuContext"),
              "static Force4BGpuContext F4B_gpu = { 0 };\n"]
     for name in (
-        "Force_gpu_node_reserve", "Force_gpu_arena_off",
+        "Force_gpu_node_reserve", "Force_gpu_arena_off", "Force4B_simd_block", "Force4B_simd_trace",
         "Force4B_case2_trace_fused", "Force4B_case1_trace_fused_rows", "Force4B_case1_trace_fused",
         "Force4B_GpuWorkspaceSizes", "Force4B_GpuEnd", "Force4B_GpuBegin", "Force4B_GpuCase2Begin",
         "Force4B_GpuArchiveHalo", "Force4B_GpuArchiveCase2", "Force4B_GpuCase1Kernel",
@@ -328,7 +337,8 @@ def make_harness(source: str) -> str:
                  '#define OPENMX_GPU_COPY_DEVICE_TO_HOST hipMemcpyDeviceToHost\n#define OPENMX_GPU_SUCCESS hipSuccess\n')
     parts.append(common.extract_struct(recovery,"ForceVnaRecoveryWork"))
     parts.append(common.extract_function(source,"Force4B_capacity_kernel"))
-    for name in ("ForceRecovery_Failure","Force4B_capacity_copy","Force4B_RecoveryPacket","Force4B_capacity"):
+    for name in ("ForceRecovery_Failure", "Force4B_capacity_copy", "Force4B_RecoveryPacket",
+                 "Force4B_capacity_rows", "Force4B_capacity_host", "Force4B_capacity"):
         parts.append(common.extract_function(recovery,name))
     for name in ("Force4BCase1Plan", "Force4BCase1Stream"):
         parts.append(common.extract_struct(source, name))

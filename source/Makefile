@@ -735,7 +735,7 @@ Mixing_H.o: Mixing_H.c openmx_common.h openmx_mixing_policy.h openmx_core_mixing
 	$(CC) -c Mixing_H.c
 Mixing_V.o: Mixing_V.c openmx_common.h openmx_mixing_policy.h openmx_core_mixing.h
 	$(CC) -c Mixing_V.c
-Force.o: Force.c openmx_common.h openmx_precision.h
+Force.o: Force.c openmx_common.h openmx_precision.h openmx_force_vna_halo.h
 	$(CC) -c Force.c
 Stress.o: Stress.c openmx_common.h openmx_precision.h
 	$(CC) -c Stress.c
@@ -949,7 +949,7 @@ Set_CoreHoleMatrix.o: Set_CoreHoleMatrix.c openmx_common.h
 	$(CC) -c Set_CoreHoleMatrix.c
 Set_OLP_p.o: Set_OLP_p.c openmx_common.h 
 	$(CC) -c Set_OLP_p.c
-Set_Hamiltonian.o: Set_Hamiltonian.c openmx_common.h grid_precision.h orbs_grid_gpu.h
+Set_Hamiltonian.o: Set_Hamiltonian.c openmx_common.h grid_precision.h orbs_grid_gpu.h openmx_precision.h
 	$(CC) $(NVHPC_EXPLICIT_FMA_FLAGS) -c Set_Hamiltonian.c
 set_hamiltonian_gpu.o: set_hamiltonian_gpu.cu openmx_stdout_level.h
 	$(NVCC_GEMMUL8_ENV) $(NVCC) $(NVCC_GEMMUL8_FLAGS) -c set_hamiltonian_gpu.cu -o set_hamiltonian_gpu.o
