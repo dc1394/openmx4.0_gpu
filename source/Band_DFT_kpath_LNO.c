@@ -21,10 +21,11 @@
 #include <math.h>
 #include <time.h>
 #include "openmx_common.h"
+#include "openmx_band_kpath_points.h"
 #include "mpi.h"
 #include <omp.h>
 
-#if OPENMX_GPU_HIP
+#if OPENMX_GPU_CUDA || OPENMX_GPU_HIP
 #include "openmx_band_kpath_gpu.h"
 #endif
 
@@ -58,11 +59,11 @@ void Band_DFT_kpath_LNO(const OpenMXChemicalPotentials *chemical,  int nkpath, i
 
   if (SpinP_switch==0 || SpinP_switch==1){
     BandKPathEigen solve = EigenBand_lapack;
-#if OPENMX_GPU_HIP
-    const int hip_status = openmx_band_kpath_try_hip(chemical,nkpath,n_perk,kpath,kname,
-                              SpinP_switch,nh,ImNL,CntOLP,local_basis);
-    if (hip_status==1) return;
-    if (hip_status<0) solve = EigenBand_lapack_cpu;
+#if OPENMX_GPU_CUDA || OPENMX_GPU_HIP
+    const int gpu_status = openmx_band_kpath_try_gpu(chemical,nkpath,n_perk,kpath,kname,
+                              SpinP_switch,nh,ImNL,CntOLP,local_basis,NULL);
+    if (gpu_status==1) return;
+    if (gpu_status<0) solve = EigenBand_lapack_cpu;
 #endif
     Band_DFT_kpath_Col(chemical, nkpath, n_perk, kpath, kname, SpinP_switch,
                        nh, ImNL, CntOLP, local_basis, solve);
@@ -295,14 +296,11 @@ void Band_DFT_kpath_Col(const OpenMXChemicalPotentials *chemical,  int nkpath, i
 	  i_perk = i_perk_list[kloop];
 
 	  id=1;
-	  k1 = kpath[ik][1][id]+
-	    (kpath[ik][2][id]-kpath[ik][1][id])*(i_perk-1)/(n_perk[ik]-1);
+	  k1 = openmx_band_kpath_coordinate(kpath[ik],id,i_perk-1,n_perk[ik]);
 	  id=2;
-	  k2 = kpath[ik][1][id]+
-	    (kpath[ik][2][id]-kpath[ik][1][id])*(i_perk-1)/(n_perk[ik]-1);
+	  k2 = openmx_band_kpath_coordinate(kpath[ik],id,i_perk-1,n_perk[ik]);
 	  id=3;
-	  k3 = kpath[ik][1][id]+
-	    (kpath[ik][2][id]-kpath[ik][1][id])*(i_perk-1)/(n_perk[ik]-1);
+	  k3 = openmx_band_kpath_coordinate(kpath[ik],id,i_perk-1,n_perk[ik]);
 
 	  Matrix_Band_LNO(ID,spin,CntOLP,TmpM,MP,k1,k2,k3, local_basis);
 	  n = TmpM[0][0].r;
@@ -386,14 +384,11 @@ void Band_DFT_kpath_Col(const OpenMXChemicalPotentials *chemical,  int nkpath, i
 	  i_perk = i_perk_list[kloop];
 
 	  id=1;
-	  k1 = kpath[ik][1][id]+
-	    (kpath[ik][2][id]-kpath[ik][1][id])*(i_perk-1)/(n_perk[ik]-1);
+	  k1 = openmx_band_kpath_coordinate(kpath[ik],id,i_perk-1,n_perk[ik]);
 	  id=2;
-	  k2 = kpath[ik][1][id]+
-	    (kpath[ik][2][id]-kpath[ik][1][id])*(i_perk-1)/(n_perk[ik]-1);
+	  k2 = openmx_band_kpath_coordinate(kpath[ik],id,i_perk-1,n_perk[ik]);
 	  id=3;
-	  k3 = kpath[ik][1][id]+
-	    (kpath[ik][2][id]-kpath[ik][1][id])*(i_perk-1)/(n_perk[ik]-1);
+	  k3 = openmx_band_kpath_coordinate(kpath[ik],id,i_perk-1,n_perk[ik]);
 
           Matrix_Band_LNO(ID, spin, nh[spin], TmpM, MP, k1, k2, k3, local_basis);
 
@@ -652,14 +647,11 @@ void Band_DFT_kpath_Col(const OpenMXChemicalPotentials *chemical,  int nkpath, i
       for (i_perk=1; i_perk<=n_perk[ik]; i_perk++) {
 
         id=1;
-        k1 = kpath[ik][1][id]+
-          (kpath[ik][2][id]-kpath[ik][1][id])*(i_perk-1)/(n_perk[ik]-1);
+        k1 = openmx_band_kpath_coordinate(kpath[ik],id,i_perk-1,n_perk[ik]);
         id=2;
-        k2 = kpath[ik][1][id]+
-          (kpath[ik][2][id]-kpath[ik][1][id])*(i_perk-1)/(n_perk[ik]-1);
+        k2 = openmx_band_kpath_coordinate(kpath[ik],id,i_perk-1,n_perk[ik]);
         id=3;
-        k3 = kpath[ik][1][id]+
-          (kpath[ik][2][id]-kpath[ik][1][id])*(i_perk-1)/(n_perk[ik]-1);
+        k3 = openmx_band_kpath_coordinate(kpath[ik],id,i_perk-1,n_perk[ik]);
 
         for (spin=0; spin<=SpinP_switch; spin++){
 
@@ -961,14 +953,11 @@ void Band_DFT_kpath_NonCol(const OpenMXChemicalPotentials *chemical,  int nkpath
         i_perk = i_perk_list[kloop];
 
         id=1;
-        k1 = kpath[ik][1][id]+
-          (kpath[ik][2][id]-kpath[ik][1][id])*(i_perk-1)/(n_perk[ik]-1);
+        k1 = openmx_band_kpath_coordinate(kpath[ik],id,i_perk-1,n_perk[ik]);
         id=2;
-        k2 = kpath[ik][1][id]+
-          (kpath[ik][2][id]-kpath[ik][1][id])*(i_perk-1)/(n_perk[ik]-1);
+        k2 = openmx_band_kpath_coordinate(kpath[ik],id,i_perk-1,n_perk[ik]);
         id=3;
-        k3 = kpath[ik][1][id]+
-          (kpath[ik][2][id]-kpath[ik][1][id])*(i_perk-1)/(n_perk[ik]-1);
+        k3 = openmx_band_kpath_coordinate(kpath[ik],id,i_perk-1,n_perk[ik]);
 
         Overlap_Band(ID,CntOLP,TmpM,MP,k1,k2,k3);
         n = TmpM[0][0].r;
@@ -1033,14 +1022,11 @@ void Band_DFT_kpath_NonCol(const OpenMXChemicalPotentials *chemical,  int nkpath
 	i_perk = i_perk_list[kloop];
 
 	id=1;
-	k1 = kpath[ik][1][id]+
-	  (kpath[ik][2][id]-kpath[ik][1][id])*(i_perk-1)/(n_perk[ik]-1);
+	k1 = openmx_band_kpath_coordinate(kpath[ik],id,i_perk-1,n_perk[ik]);
 	id=2;
-	k2 = kpath[ik][1][id]+
-	  (kpath[ik][2][id]-kpath[ik][1][id])*(i_perk-1)/(n_perk[ik]-1);
+	k2 = openmx_band_kpath_coordinate(kpath[ik],id,i_perk-1,n_perk[ik]);
 	id=3;
-	k3 = kpath[ik][1][id]+
-	  (kpath[ik][2][id]-kpath[ik][1][id])*(i_perk-1)/(n_perk[ik]-1);
+	k3 = openmx_band_kpath_coordinate(kpath[ik],id,i_perk-1,n_perk[ik]);
 
         /****************************************************
                    make a full Hamiltonian matrix
@@ -1271,14 +1257,11 @@ void Band_DFT_kpath_NonCol(const OpenMXChemicalPotentials *chemical,  int nkpath
       for (i_perk=1; i_perk<=n_perk[ik]; i_perk++) {
 
         id=1;
-        k1 = kpath[ik][1][id]+
-          (kpath[ik][2][id]-kpath[ik][1][id])*(i_perk-1)/(n_perk[ik]-1);
+        k1 = openmx_band_kpath_coordinate(kpath[ik],id,i_perk-1,n_perk[ik]);
         id=2;
-        k2 = kpath[ik][1][id]+
-          (kpath[ik][2][id]-kpath[ik][1][id])*(i_perk-1)/(n_perk[ik]-1);
+        k2 = openmx_band_kpath_coordinate(kpath[ik],id,i_perk-1,n_perk[ik]);
         id=3;
-        k3 = kpath[ik][1][id]+
-          (kpath[ik][2][id]-kpath[ik][1][id])*(i_perk-1)/(n_perk[ik]-1);
+        k3 = openmx_band_kpath_coordinate(kpath[ik],id,i_perk-1,n_perk[ik]);
 
 	fprintf(fp_Band,"%d %18.15f %18.15f %18.15f\n", 2*n,k1,k2,k3);
 

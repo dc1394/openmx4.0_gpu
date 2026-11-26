@@ -491,6 +491,8 @@ scf.eigen.lib             elpa2         # CPU (ELPA2) paths
 
 A run that finds no usable GPU demotes itself to ELPA2 automatically, so the default is also safe on machines without a GPU supported by the selected backend. The environment variable `OPENMX_GPU=0` forces the same demotion on a machine with a GPU, which is convenient for CPU-vs-GPU comparisons with unmodified input files.
 
+With `Band.dispersion on` and `scf.eigen.lib gpusolver`, CUDA and HIP run the post-SCF band dispersion with one MPI rank per GPU. They solve repeated k-points once and preserve the input path order in `.Band` and `.LNO.Band`. The CUDA path includes exact exchange for collinear HSE06 and PBE0 band calculations. If a GPU cannot complete its work, the ranks recompute the path on the CPU. With host SIMD enabled, `OPENMX_HOST_SIMD_PREFER=Band_DFT_kpath` selects the CPU band calculation while allowing GPU SCF.
+
 The GPU paths follow OpenMX's `level.of.stdout` keyword. At the default (1) they print only errors, a GPU that cannot be used, and a GPU eigensolver given up for lack of device memory; `level.of.stdout 2` adds the device plans, the precision switches and the CPU fallbacks of single stages, and 3 adds the per-step, per-k-point and per-rank details of the refined FP32 eigensolver. Note that OpenMX itself prints per-atom debugging output from level 2 on.
 
 ## New in v2.0: distributed multi-GPU cluster diagonalization (ELPA GPU + COSMA)

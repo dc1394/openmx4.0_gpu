@@ -46,7 +46,7 @@ def main():
         cc += ["-acc", "-gpu=cc"+args.arch, "--diag_error=implicit_func_decl"]
         cxx += ["-arch=sm_"+args.arch]
     jobs = [(cc, n) for n in (
-        "openmx_gpu_error.c", "openmx_gpu_workers.c", "openmx_globals.c", "Band_DFT_Col.c",
+        "openmx_gpu_error.c", "openmx_gpu_workers.c", "openmx_globals.c", "Band_DFT_Col.c", "Band_DFT_kpath_gpu.c",
         "openmx_common.c", "Get_Orbitals.c", "Get_dOrbitals.c", "Get_Cnt_Orbitals.c", "Get_Cnt_dOrbitals.c",
         "Band_DFT_NonCol.c", "Band_DFT_NonCol_GB.c",
         "Divide_Conquer.c", "Divide_Conquer_LNO.c", "Mixing_H.c", "DIIS_Mixing_Rhok.c",
@@ -63,7 +63,7 @@ def main():
             jobs.append((cc, name))
     jobs += [(cxx, n) for n in (
         "openmx_gpu_dm.cu", "openmx_gpu_transform.cu", "openmx_mgpu_gemm.cu",
-        "openmx_mgpu_runtime.cu")]
+        "openmx_mgpu_runtime.cu", "openmx_band_kpath_gpu.cu")]
 
     if args.backend == "HIP":
         jobs.append((cxx, "orbs_otf_hip.cu"))

@@ -45,10 +45,16 @@
 
 extern "C" __attribute__((weak)) OpenMXGpuError OpenMX_GpuMemGetInfo(size_t *, size_t *);
 #if OPENMX_GPU_HIP
+using GpuDeviceProperties = hipDeviceProp_t;
+#else
+using GpuDeviceProperties = cudaDeviceProp;
+#pragma weak openmx_mgpuGemmStagingBegin
+#pragma weak openmx_mgpuGemmStagingEnd
+#endif
 
 extern "C" int openmx_gpu_physical_uuid(int device, unsigned char uuid[16])
 {
-    hipDeviceProp_t properties{};
+    GpuDeviceProperties properties{};
     if (!uuid || OpenMXGpuGetDeviceProperties(&properties, device) != OPENMX_GPU_SUCCESS) {
         (void)OpenMXGpuGetLastError();
         return 0;
@@ -56,10 +62,6 @@ extern "C" int openmx_gpu_physical_uuid(int device, unsigned char uuid[16])
     std::memcpy(uuid, properties.uuid.bytes, 16);
     return 1;
 }
-#else
-#pragma weak openmx_mgpuGemmStagingBegin
-#pragma weak openmx_mgpuGemmStagingEnd
-#endif
 
 namespace {
 using Clock = std::chrono::steady_clock;
@@ -325,15 +327,11 @@ public:
         /* Native calibration and output transfers also touch the caller's
            device, which may be outside the selected k-point worker group. */
         for (int i = 0; i <= count; ++i) {
-#if OPENMX_GPU_HIP
-            hipDeviceProp_t prop;
-#else
-            cudaDeviceProp prop;
-#endif
-            if (OpenMXGpuGetDeviceProperties(&prop,i==count?owner:devices[i]) != OPENMX_GPU_SUCCESS) return;
+            unsigned char uuid[16];
+            if (!openmx_gpu_physical_uuid(i==count?owner:devices[i], uuid)) return;
             char name[128];
             int used = std::snprintf(name,sizeof(name),".openmx-mgpu-%lu-",(unsigned long)getuid());
-            for (unsigned char b : prop.uuid.bytes)
+            for (unsigned char b : uuid)
                 used += std::snprintf(name+used,sizeof(name)-size_t(used),"%02x",unsigned(b));
             names.emplace_back(std::string(directory) + "/" + name);
         }

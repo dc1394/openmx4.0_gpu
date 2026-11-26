@@ -16,10 +16,8 @@ extern "C" {
    Configure collectively obtained topology once per input; this function
    itself never calls MPI and never creates a CUDA context. */
 void openmx_mgpu_configure(int enabled, int gpu_limit, int single_node);
-#if OPENMX_GPU_HIP
-/* C-safe physical identity: no dependency on HIP's C++ device-property ABI. */
+/* Physical device identity shared by worker admission and MPI rank election. */
 int openmx_gpu_physical_uuid(int device, unsigned char uuid[16]);
-#endif
 /* 1 when the configured run spans several nodes (single_node was 0). */
 int openmx_mgpu_multi_node(void);
 /* scf.Gpu.Num as configured (a per-process device cap; 0 or less: none). */

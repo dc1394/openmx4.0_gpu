@@ -19,6 +19,9 @@ typedef struct {
 typedef struct {
     int order, spin_channels, noncollinear, lno, imaginary_diagonals;
     int block_count, value_count;
+    /* Entries below this offset have S and H channels. Entries at and
+       above it carry only the spin channels of the exact exchange. */
+    int exchange_offset;
     double overlap_cutoff;
     const OpenMXKPathBlock *blocks;
     const double *values;
@@ -29,18 +32,18 @@ typedef struct {
     int output_index;
 } OpenMXKPathPoint;
 
-/* MPI adapter. 1: file published, 0: HIP not requested, -1: use CPU. */
-int openmx_band_kpath_try_hip(const OpenMXChemicalPotentials *chemical,
+struct OpenMXExactExchangeState;
+
+/* MPI adapter. 1: file published, 0: fast path disabled, -1: use CPU. */
+int openmx_band_kpath_try_gpu(const OpenMXChemicalPotentials *chemical,
     int path_count, const int *points_per_path, double ***paths, char ***names,
     int spin, double *****hamiltonian, double *****imaginary, double ****overlap,
-    const OpenMXLocalBasisViews *local_basis);
+    const OpenMXLocalBasisViews *local_basis, const struct OpenMXExactExchangeState *exchange);
 
 /* One rank per physical device, called without MPI inside this routine.
    Eigenvalues are point-major, then spin-major and ascending. */
-int openmx_band_kpath_solve_hip(int device, const OpenMXKPathMatrices *matrices,
+int openmx_band_kpath_solve_gpu(int device, const OpenMXKPathMatrices *matrices,
     int point_count, const OpenMXKPathPoint *points, double *eigenvalues);
-
-int openmx_magma_zheev_values_gpu(int order, void *matrix, double *values);
 
 #ifdef __cplusplus
 }

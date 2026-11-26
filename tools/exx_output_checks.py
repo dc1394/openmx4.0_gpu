@@ -66,6 +66,7 @@ The names
 import argparse
 import itertools
 import json
+import math
 import os
 import re
 import shlex
@@ -136,7 +137,7 @@ for system, primitive, supercell, cells, generation, xcs in (
 
 # paths through the points of the mesh 3 x 3 x 3
 MESH_PATHS = [((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), 4), ((0.0, 0.0, 0.0), (1.0, 1.0, 1.0), 4),
-              ((0.0, 0.0, 0.0), (1.0, 2.0, 0.0), 4)]
+              ((0.0, 0.0, 0.0), (1.0, 2.0, 0.0), 4), ((1/3, 0.0, 0.0), (0.2, 0.4, 0.6), 1)]
 MESH = []
 for xc in ("hse", "pbe0"):
     name = f"dia-p333-{xc}-mesh"
@@ -373,6 +374,12 @@ def table(args):
         if not usable(name) or not results[name]["bands"]:
             continue
         r = results[name]
+        single_point = r["bands"][-1][0]
+        count = sum(segment[2] for segment in MESH_PATHS)
+        start_error = None
+        if len(r["bands"]) == count and all(math.isfinite(x) for x in single_point):
+            start_error = max(abs(x - y) for x, y in zip(single_point, MESH_PATHS[-1][0]))
+        show(f"{name}: one-point segment samples its start", start_error, 1e-12)
         largest, compared = 0.0, 0
         for k, values in r["bands"]:
             for q, up, down in r["out_eigenvalues"]:

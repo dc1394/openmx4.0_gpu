@@ -371,6 +371,21 @@ long long Exact_Exchange_Device_Additions(const OpenMXExactExchangeState *state,
 void Exact_Exchange_Prepare_Outputs(OpenMXExactExchangeState *state, const OpenMXAtomicViews *atomic,
     MPI_Comm comm, int verbosity);
 
+/* Read-only view of the post-SCF (unfolded) exchange, valid through
+   Exact_Exchange_Release_Outputs. Atoms and first orbitals are zero-based.
+   Each spin holds row-major blocks at the same offsets, including an
+   end offset after the last block. */
+typedef struct {
+    int atoms, orbitals, spin_channels;
+    long blocks;
+    const int *block_atoms, *block_cell, *first_orbital;
+    const size_t *block_offset;
+    const double *values[2];
+} OpenMXExactExchangeOutputView;
+
+/* 1: view available, 0: no active exchange, -1: outputs not prepared. */
+int Exact_Exchange_Output_Blocks(const OpenMXExactExchangeState *state, OpenMXExactExchangeOutputView *view);
+
 /* Adds K(k) = sum_R e^{2 pi i k.R} K(R) of the outputs for one spin channel
    to H[1..n][1..n], the dense H(k) of the outputs at the k point (k1, k2,
    k3), with the orbitals counted from 1 and the phase of the H(k) that

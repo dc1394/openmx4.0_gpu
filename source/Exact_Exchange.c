@@ -2160,6 +2160,24 @@ void Exact_Exchange_Prepare_Outputs(OpenMXExactExchangeState *state, const OpenM
   }
 }
 
+int Exact_Exchange_Output_Blocks(const OpenMXExactExchangeState *state, OpenMXExactExchangeOutputView *view)
+{
+  if (!Exact_Exchange_Active(state)) return 0;
+  if (!state->outputs) return -1;
+  *view = (OpenMXExactExchangeOutputView){
+    .atoms = openmx_exx_atom_count(state->module),
+    .orbitals = state->orbitals,
+    .spin_channels = state->output_spin_channels,
+    .blocks = state->output_block_count,
+    .block_atoms = state->output_block_atoms,
+    .block_cell = state->output_block_cell,
+    .first_orbital = state->first_orbital,
+    .block_offset = state->output_block_offset,
+    .values = {state->output_exchange[0], state->output_exchange[1]}
+  };
+  return 1;
+}
+
 void Exact_Exchange_Add_Output_Hk(const OpenMXExactExchangeState *state, int spin, double k1, double k2,
     double k3, int n, dcomplex **H)
 {

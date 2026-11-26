@@ -428,7 +428,7 @@ openmx_globals.o: openmx_globals.c openmx_common.h
 include openmx_core.mk
 # These interfaces also reach legacy objects through openmx_common.h.
 # Rebuild consumers when a native API mapping or backend selection changes.
-OBJS += Band_DFT_kpath_gpu.o openmx_band_kpath_hip.o
+OBJS += Band_DFT_kpath_gpu.o openmx_band_kpath_gpu.o
 
 OPENMX_GPU_INTERFACE_HEADERS = openmx_gpu_backend.h openmx_gpu_runtime.h \
  openmx_gpu_blas.h openmx_gpu_solver.h openmx_gpu_complex.h \
@@ -633,14 +633,14 @@ Band_DFT_NonCol.o: Band_DFT_NonCol.c openmx_common.h eigen_refine_gpu.h eigen_re
 	$(CC3) -c Band_DFT_NonCol.c
 Band_DFT_NonCol_GB.o: Band_DFT_NonCol_GB.c openmx_common.h
 	$(CC) -c Band_DFT_NonCol_GB.c
-Band_DFT_kpath.o: Band_DFT_kpath.c openmx_common.h openmx_band_kpath_gpu.h
+Band_DFT_kpath.o: Band_DFT_kpath.c openmx_common.h openmx_band_kpath_gpu.h openmx_band_kpath_points.h
 	$(CC) -c Band_DFT_kpath.c
-Band_DFT_kpath_LNO.o: Band_DFT_kpath_LNO.c openmx_common.h openmx_band_kpath_gpu.h
+Band_DFT_kpath_LNO.o: Band_DFT_kpath_LNO.c openmx_common.h openmx_band_kpath_gpu.h openmx_band_kpath_points.h
 	$(CC) -c Band_DFT_kpath_LNO.c
-Band_DFT_kpath_gpu.o: Band_DFT_kpath_gpu.c openmx_band_kpath_gpu.h openmx_common.h openmx_mgpu_runtime.h openmx_host_memory.h
-	$(CC_NOACC_O3) -c Band_DFT_kpath_gpu.c
-openmx_band_kpath_hip.o: openmx_band_kpath_hip.cu openmx_band_kpath_gpu.h openmx_gpu_memory.hpp openmx_mgpu_runtime.h
-	$(HIPCC) $(HIPCC_GEMMUL8_FLAGS) -c openmx_band_kpath_hip.cu -o $@
+Band_DFT_kpath_gpu.o: Band_DFT_kpath_gpu.c openmx_band_kpath_gpu.h openmx_band_kpath_points.h openmx_common.h openmx_mgpu_runtime.h openmx_host_memory.h openmx_host_simd.h
+	$(CC_NOACC_O3) -c $<
+openmx_band_kpath_gpu.o: openmx_band_kpath_gpu.cu openmx_band_kpath_gpu.h openmx_gpu_memory.hpp openmx_gpu_workers.h openmx_mgpu_runtime.h
+	$(HIPCC) $(HIPCC_GEMMUL8_FLAGS) -c $< -o $@
 Band_DFT_MO.o: Band_DFT_MO.c openmx_common.h
 	$(CC) -c Band_DFT_MO.c
 Unfolding_Bands.o: Unfolding_Bands.c openmx_common.h
