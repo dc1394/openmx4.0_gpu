@@ -117,7 +117,7 @@ int main(){
       reset(0);BatchCase c{kind,0,2,0,0,0,external,1};char error[256];double result;
       check(openmx_core_solver_run(1,batch_operation,&c,&result,error,sizeof(error)),error);check(!live,"empty batch leaked");++comparisons;
     }
-    for(int injection:{-1,-2,-3,-4,-5,-6,1,2,3,4,5,6,7,8,9,10}){
+    for(int injection:{-1,-2,-3,1,2,3,4}){
       reset(0);SpinP_switch=0;F_G2M[2]=2;char error[256];double result=31;batch_copy_failure=0;
       const auto before=openmx::test::live_allocations();
       const int ok=openmx_core_solver_run(1,interrupted_batch,(void*)&injection,&result,error,sizeof(error));
@@ -128,7 +128,7 @@ int main(){
         const int device_frees=int(std::count(events.begin(),events.begin()+event_count,200+(OPENMX_GPU_HIP?1:3)));
         check(device_frees==2,"temporary batch arena was not released exactly once");}
     }
-    std::cout<<"PASS: "<<comparisons<<" native HNL batch force snapshots; 6 allocation/10 transfer failures; backend="<<OPENMX_GPU_HIP<<'\n';
+    std::cout<<"PASS: "<<comparisons<<" native HNL batch force snapshots; 3 allocation/4 transfer failures; backend="<<OPENMX_GPU_HIP<<'\n';
 #endif
     return 0;
   }catch(const std::exception& e){openmx::test::fail_allocation_after(-1);std::cerr<<e.what()<<'\n';return 1;}

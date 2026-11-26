@@ -8832,53 +8832,34 @@ static void Force_HNL_capacity_kernel(size_t first,size_t count,const void *para
 static int Force_HNL_GpuCase1Dispatch(ForceHnlBatchWork *work,const OpenMXForceHnlBatchView *view)
 {
     ForceHNLGpuContext *g=work->g;
-    const int nitems=(int)view->items;
-    const size_t cdm_count=view->density_values;
-    Force4BGpuItem *items=view->item;
-    double *cdm_pref=view->density,*item_f=view->force;
-    const int kslots=(int)view->rows;
-    size_t *krowA=view->a,*krowB=view->b;
-    int *krow_halo=view->row_kind,*krow_ene=view->energy,*krow_nlp=view->projectors;
+    const int nitems_c = (int)view->items;
+    double *item_f = view->force;
 
     const double* flat = g->flat_dev;
     size_t halo_len = (g->halo_count == 0 ? 1 : g->halo_count);
     size_t ene_len = (work->energy_values == 0 ? 1 : work->energy_values);
     size_t flat_stride = g->flat_stride;
-    const int nitems_c = nitems;
-    const size_t kslots_c = (size_t)kslots;
-    const size_t cdm_c = cdm_count;
     size_t asz = 0;
-    const size_t o_items = Force_gpu_arena_off(&asz, sizeof(Force4BGpuItem) * (size_t)nitems_c);
-    const size_t o_krowA = Force_gpu_arena_off(&asz, sizeof(size_t) * kslots_c);
-    const size_t o_krowB = Force_gpu_arena_off(&asz, sizeof(size_t) * kslots_c);
-    const size_t o_khalo = Force_gpu_arena_off(&asz, sizeof(int) * kslots_c);
-    const size_t o_kene = Force_gpu_arena_off(&asz, sizeof(int) * kslots_c);
-    const size_t o_knlp = Force_gpu_arena_off(&asz, sizeof(int) * kslots_c);
-    const size_t o_cdm = Force_gpu_arena_off(&asz, sizeof(double) * cdm_c);
+    const size_t o_input = Force_gpu_arena_off(&asz, view->device_input_bytes);
     const size_t o_halo = Force_gpu_arena_off(&asz, sizeof(double) * halo_len);
     const size_t o_ene = Force_gpu_arena_off(&asz, sizeof(double) * ene_len);
     const size_t o_itemf = Force_gpu_arena_off(&asz, sizeof(double) * 3U * (size_t)nitems_c);
     char* arena = Force_HNL_BatchArena(work,asz);
 
     if(!arena)return 0;
-    openmx_target_upload(arena + o_items, items, sizeof(Force4BGpuItem) * (size_t)nitems_c);
-    openmx_target_upload(arena + o_krowA, krowA, sizeof(size_t) * kslots_c);
-    openmx_target_upload(arena + o_krowB, krowB, sizeof(size_t) * kslots_c);
-    openmx_target_upload(arena + o_khalo, krow_halo, sizeof(int) * kslots_c);
-    openmx_target_upload(arena + o_kene, krow_ene, sizeof(int) * kslots_c);
-    openmx_target_upload(arena + o_knlp, krow_nlp, sizeof(int) * kslots_c);
-    openmx_target_upload(arena + o_cdm, cdm_pref, sizeof(double) * cdm_c);
+    char *device_input = arena + o_input;
+    openmx_target_upload(device_input, view->device_input, view->device_input_bytes);
     openmx_target_upload(arena + o_halo, g->halo, sizeof(double) * halo_len);
     openmx_target_upload(arena + o_ene, g->ene, sizeof(double) * ene_len);
 
     {
-        const Force4BGpuItem* items = (const Force4BGpuItem*)(void*)(arena + o_items);
-        const size_t* krowA = (const size_t*)(void*)(arena + o_krowA);
-        const size_t* krowB = (const size_t*)(void*)(arena + o_krowB);
-        const int* krow_halo = (const int*)(void*)(arena + o_khalo);
-        const int* krow_ene = (const int*)(void*)(arena + o_kene);
-        const int* krow_nlp = (const int*)(void*)(arena + o_knlp);
-        const double* cdm_pref = (const double*)(void*)(arena + o_cdm);
+        const Force4BGpuItem* items = (const Force4BGpuItem*)Force_HNL_BatchDeviceField(view, device_input, view->item);
+        const size_t* krowA = (const size_t*)Force_HNL_BatchDeviceField(view, device_input, view->a);
+        const size_t* krowB = (const size_t*)Force_HNL_BatchDeviceField(view, device_input, view->b);
+        const int* krow_halo = (const int*)Force_HNL_BatchDeviceField(view, device_input, view->row_kind);
+        const int* krow_ene = (const int*)Force_HNL_BatchDeviceField(view, device_input, view->energy);
+        const int* krow_nlp = (const int*)Force_HNL_BatchDeviceField(view, device_input, view->projectors);
+        const double* cdm_pref = (const double*)Force_HNL_BatchDeviceField(view, device_input, view->density);
         const double* halo = (const double*)(void*)(arena + o_halo);
         const double* ene = (const double*)(void*)(arena + o_ene);
         double* item_f = (double*)(void*)(arena + o_itemf);
@@ -8944,51 +8925,34 @@ static int Force_HNL_GpuCase1Dispatch(ForceHnlBatchWork *work,const OpenMXForceH
 static int Force_HNL_GpuCase2Dispatch(ForceHnlBatchWork *work,const OpenMXForceHnlBatchView *view)
 {
     ForceHNLGpuContext *g=work->g;
-    const int nitems=(int)view->items;
-    const size_t cdm_count=view->density_values;
-    Force4BGpuItem *items=view->item;
-    double *cdm_pref=view->density,*item_f=view->force;
-    int *item_h0=view->row_kind,*item_nlp=view->projectors,*item_ene=view->energy;
-    size_t *item_a=view->a,*item_b=view->b;
+    const int nitems_c = (int)view->items;
+    double *item_f = view->force;
 
     const double* flat = g->flat_dev;
     size_t c2_len = (g->c2_stride == 0 ? 4 : 4U * g->c2_stride);
     size_t ene_len = (work->energy_values == 0 ? 1 : work->energy_values);
     size_t c2_stride = g->c2_stride;
-    const int nitems_c = nitems;
-    const size_t cdm_c = cdm_count;
     size_t asz = 0;
-    const size_t o_items = Force_gpu_arena_off(&asz, sizeof(Force4BGpuItem) * (size_t)nitems_c);
-    const size_t o_ih0 = Force_gpu_arena_off(&asz, sizeof(int) * (size_t)nitems_c);
-    const size_t o_inlp = Force_gpu_arena_off(&asz, sizeof(int) * (size_t)nitems_c);
-    const size_t o_iene = Force_gpu_arena_off(&asz, sizeof(int) * (size_t)nitems_c);
-    const size_t o_ia = Force_gpu_arena_off(&asz, sizeof(size_t) * (size_t)nitems_c);
-    const size_t o_ib = Force_gpu_arena_off(&asz, sizeof(size_t) * (size_t)nitems_c);
-    const size_t o_cdm = Force_gpu_arena_off(&asz, sizeof(double) * cdm_c);
+    const size_t o_input = Force_gpu_arena_off(&asz, view->device_input_bytes);
     const size_t o_c2 = Force_gpu_arena_off(&asz, sizeof(double) * c2_len);
     const size_t o_ene = Force_gpu_arena_off(&asz, sizeof(double) * ene_len);
     const size_t o_itemf = Force_gpu_arena_off(&asz, sizeof(double) * 3U * (size_t)nitems_c);
     char* arena = Force_HNL_BatchArena(work,asz);
 
     if(!arena)return 0;
-    openmx_target_upload(arena + o_items, items, sizeof(Force4BGpuItem) * (size_t)nitems_c);
-    openmx_target_upload(arena + o_ih0, item_h0, sizeof(int) * (size_t)nitems_c);
-    openmx_target_upload(arena + o_inlp, item_nlp, sizeof(int) * (size_t)nitems_c);
-    openmx_target_upload(arena + o_iene, item_ene, sizeof(int) * (size_t)nitems_c);
-    openmx_target_upload(arena + o_ia, item_a, sizeof(size_t) * (size_t)nitems_c);
-    openmx_target_upload(arena + o_ib, item_b, sizeof(size_t) * (size_t)nitems_c);
-    openmx_target_upload(arena + o_cdm, cdm_pref, sizeof(double) * cdm_c);
+    char *device_input = arena + o_input;
+    openmx_target_upload(device_input, view->device_input, view->device_input_bytes);
     openmx_target_upload(arena + o_c2, g->c2, sizeof(double) * c2_len);
     openmx_target_upload(arena + o_ene, g->ene, sizeof(double) * ene_len);
 
     {
-        const Force4BGpuItem* items = (const Force4BGpuItem*)(void*)(arena + o_items);
-        const int* item_h0 = (const int*)(void*)(arena + o_ih0);
-        const int* item_nlp = (const int*)(void*)(arena + o_inlp);
-        const int* item_ene = (const int*)(void*)(arena + o_iene);
-        const size_t* item_a = (const size_t*)(void*)(arena + o_ia);
-        const size_t* item_b = (const size_t*)(void*)(arena + o_ib);
-        const double* cdm_pref = (const double*)(void*)(arena + o_cdm);
+        const Force4BGpuItem* items = (const Force4BGpuItem*)Force_HNL_BatchDeviceField(view, device_input, view->item);
+        const int* item_h0 = (const int*)Force_HNL_BatchDeviceField(view, device_input, view->row_kind);
+        const int* item_nlp = (const int*)Force_HNL_BatchDeviceField(view, device_input, view->projectors);
+        const int* item_ene = (const int*)Force_HNL_BatchDeviceField(view, device_input, view->energy);
+        const size_t* item_a = (const size_t*)Force_HNL_BatchDeviceField(view, device_input, view->a);
+        const size_t* item_b = (const size_t*)Force_HNL_BatchDeviceField(view, device_input, view->b);
+        const double* cdm_pref = (const double*)Force_HNL_BatchDeviceField(view, device_input, view->density);
         const double* c2 = (const double*)(void*)(arena + o_c2);
         const double* ene = (const double*)(void*)(arena + o_ene);
         double* item_f = (double*)(void*)(arena + o_itemf);

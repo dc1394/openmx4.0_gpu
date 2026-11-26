@@ -32,6 +32,11 @@ static char *Force_HNL_BatchArena(ForceHnlBatchWork *work,size_t bytes)
     work->arena=(char*)Force_HNL_GpuArena(work->g,bytes);
     return work->arena;
 }
+static const void *Force_HNL_BatchDeviceField(const OpenMXForceHnlBatchView *view,
+    const char *device_input, const void *field)
+{
+    return device_input + ((uintptr_t)field - (uintptr_t)view->device_input);
+}
 static void Force_HNL_BatchRelease(ForceHnlBatchWork *work)
 {
     if(!work->arena)return;

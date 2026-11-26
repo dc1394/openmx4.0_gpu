@@ -74,6 +74,15 @@ void layouts() {
     for(size_t i=0;i<rows;++i)
       require(v.a[i]==11*i && v.b[i]==13*i && v.row_kind[i]==int(i%3) &&
           v.energy[i]==int(i%7) && v.projectors[i]==int(i%5),"row metadata overlaps");
+    const auto begin=reinterpret_cast<uintptr_t>(v.device_input);
+    const auto end=begin+v.device_input_bytes;
+    for(const void* field : {static_cast<const void*>(v.item),static_cast<const void*>(v.a),
+        static_cast<const void*>(v.b),static_cast<const void*>(v.row_kind),static_cast<const void*>(v.energy),
+        static_cast<const void*>(v.projectors),static_cast<const void*>(v.density)}) {
+      const auto address=reinterpret_cast<uintptr_t>(field);
+      require(begin<=address && address<end,"device input is not contiguous");
+    }
+    require(reinterpret_cast<uintptr_t>(v.density)%alignof(double)==0,"density alignment differs");
     require(reinterpret_cast<uintptr_t>(v.item)%alignof(OpenMXForcePairItem)==0,"pair alignment differs");
     openmx::core::ForceHnlBatch other(kind,n,rows,6*n);
     require(other.view().force!=v.force,"independent owners alias");
@@ -110,7 +119,7 @@ void allocation() {
     Probe p;char error[256];openmx::test::fail_allocation_after(10000);
     const int ok=run(kind,p,error,sizeof(error));
     const auto count=10000-openmx::test::remaining_allocations();openmx::test::fail_allocation_after(-1);
-    require(ok && count==6,"six-allocation layout changed");
+    require(ok && count==3,"three-allocation layout changed");
     for(long fail=0;fail<count;++fail){
       p={};const auto live=openmx::test::live_allocations();openmx::test::fail_allocation_after(fail);
       const int accepted=run(kind,p,error,sizeof(error));openmx::test::fail_allocation_after(-1);

@@ -1,6 +1,7 @@
 #include <openmx/core/force_hnl_batch.hpp>
 #include <climits>
 #include <cstdio>
+#include <limits>
 #include <stdexcept>
 
 namespace {
@@ -10,6 +11,17 @@ int validate(int kind,std::size_t items,std::size_t rows) {
   if(items>INT_MAX || rows>INT_MAX)throw std::length_error("nonlocal Force batch exceeds kernel index range");
   if(kind==2 && rows!=items)throw std::invalid_argument("nonlocal Force case 2 requires one row per pair");
   return kind;
+}
+
+template<class T>
+std::size_t append(std::size_t& bytes, std::size_t count, std::size_t components = 1) {
+  constexpr auto limit = static_cast<std::size_t>(std::numeric_limits<std::ptrdiff_t>::max());
+  const auto offset = (bytes+alignof(T)-1) & ~(alignof(T)-1);
+  const auto stride = components*sizeof(T);
+  if (offset > limit || count > (limit-offset)/stride)
+    throw std::length_error("nonlocal Force input buffer is too large");
+  bytes = offset+count*stride;
+  return offset;
 }
 class Finish {
  public:
@@ -23,16 +35,27 @@ class Finish {
 };
 }
 namespace openmx::core {
+ForceHnlBatch::InputLayout::InputLayout(std::size_t items,std::size_t rows,std::size_t values) {
+  append<OpenMXForcePairItem>(bytes,nonempty(items));
+  offsets = append<std::size_t>(bytes,nonempty(rows),2);
+  density = append<double>(bytes,nonempty(values));
+  tags = append<int>(bytes,nonempty(rows),3);
+}
+
 ForceHnlBatch::ForceHnlBatch(int kind,std::size_t items,std::size_t rows,std::size_t density_values)
     :kind_(validate(kind,items,rows)),items_(items),rows_(rows),density_values_(density_values),
-     item_({nonempty(items)}),atoms_({kind==1?2U:3U,nonempty(items)}),
-     tags_({3,nonempty(rows)}),offsets_({2,nonempty(rows)}),
-     density_({nonempty(density_values)}),force_({nonempty(items),3}) {}
+     layout_(items,rows,density_values),input_({layout_.bytes}),
+     atoms_({kind==1?2U:3U,nonempty(items)}),force_({nonempty(items),3}) {}
 OpenMXForceHnlBatchView ForceHnlBatch::view() noexcept {
   const auto n=nonempty(items_),r=nonempty(rows_);
-  return {kind_,items_,rows_,density_values_,item_.data(),atoms_.data(),atoms_.data()+n,
-      kind_==2?atoms_.data()+2*n:nullptr,offsets_.data(),offsets_.data()+r,
-      tags_.data(),tags_.data()+r,tags_.data()+2*r,density_.data(),force_.data()};
+  auto* base = input_.data();
+  auto* items = reinterpret_cast<OpenMXForcePairItem*>(base);
+  auto* offsets = reinterpret_cast<std::size_t*>(base+layout_.offsets);
+  auto* tags = reinterpret_cast<int*>(base+layout_.tags);
+  auto* density = reinterpret_cast<double*>(base+layout_.density);
+  return {kind_,items_,rows_,density_values_,items,atoms_.data(),atoms_.data()+n,
+      kind_==2?atoms_.data()+2*n:nullptr,offsets,offsets+r,
+      tags,tags+r,tags+2*r,density,force_.data(),base,layout_.bytes};
 }
 }
 extern "C" int openmx_core_force_hnl_batch_run(int kind,size_t items,size_t rows,size_t density_values,

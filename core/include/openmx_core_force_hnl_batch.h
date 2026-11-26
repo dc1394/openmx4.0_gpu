@@ -19,6 +19,10 @@ typedef struct {
   size_t *a, *b;
   int *row_kind, *energy, *projectors;
   double *density, *force;
+  /* item, a, b, row_kind, energy, projectors and density share this
+     contiguous, aligned input. Their byte offsets also apply on the device. */
+  const void *device_input;
+  size_t device_input_bytes;
 } OpenMXForceHnlBatchView;
 typedef int (*OpenMXForceHnlBatchOperation)(const OpenMXForceHnlBatchView*, void*);
 /* Called once after an entered operation, including a failed return or C++
