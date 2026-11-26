@@ -1005,6 +1005,7 @@
     "openmx_host_buffer.hpp",
     "openmx_host_memory.c",
     "openmx_hubbard_force.h",
+    "openmx_hubbard_dual_force.h",
     "openmx_hvna_cpu.h",
     "openmx_integral_pairs.h",
     "openmx_krylov_state.h",

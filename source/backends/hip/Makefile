@@ -1587,7 +1587,7 @@ Set_ProExpn_VNA.o: openmx_setpro_host.h openmx_setpro_gaunt.h
 
 # Shared flat orbital optimization and Hubbard force boundaries.
 DFT.o Opt_Contraction.o: openmx_orbital_optimization.h openmx_core_orbital_optimization.h
-Force.o: openmx_hubbard_force.h
+Force.o: openmx_hubbard_force.h openmx_hubbard_dual_force.h
 Force.o: openmx_force_workspace.h openmx_core_force.h openmx_force_stages.h \
          openmx_solver_workspace.h openmx_core_solver_workspace.h \
          openmx_core_orbital_workspace.h openmx_core_local_basis.h

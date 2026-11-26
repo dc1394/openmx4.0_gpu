@@ -45,6 +45,79 @@ static void compare_complex(ComplexOutput* a,ComplexOutput* b) {for(int s=0;s<2;
 
 /* OPENMX_HUBBARD_REFERENCE */
 #include "openmx_hubbard_force.h"
+#include "openmx_hubbard_dual_force.h"
+
+static double test_value(int index) { return sin(.17*index)+.09*cos(.37*index); }
+
+static void check_dual(void) {
+  enum {rows=11,columns=17,extent=rows*rows+columns*columns};
+  size_t offsets[4]={0,0,rows*rows,extent};
+  int shapes[6]={0,0,rows,rows,columns,columns};
+  double real_potential[2*extent];
+  dcomplex complex_potential[4*extent];
+  for(int i=0;i<2*extent;++i)real_potential[i]=test_value(i+5);
+  for(int i=0;i<4*extent;++i)complex_potential[i]=(dcomplex){test_value(i+1),test_value(i+37)};
+  OpenMXLocalBasisViews basis={0};
+  basis.real[OPENMX_LOCAL_POTENTIAL]=(OpenMXLocalRealMatrix){{2,3,extent,2*extent,offsets,shapes},real_potential};
+  basis.complex_values[OPENMX_LOCAL_COMPLEX_POTENTIAL]=(OpenMXLocalComplexMatrix){{4,3,extent,4*extent,offsets,shapes},complex_potential};
+  double derivative[3][rows][columns],result[3][rows][columns];
+  double *derivative_rows[3][rows], *result_rows[3][rows], **output[3];
+  OpenMXHubbardDualMatrices block={0};
+  for(int axis=0;axis<3;++axis) {
+    block.derivative[axis]=derivative_rows[axis];output[axis]=result_rows[axis];
+    for(int i=0;i<rows;++i) {
+      derivative_rows[axis][i]=derivative[axis][i];result_rows[axis][i]=result[axis][i];
+      for(int j=0;j<columns;++j) {derivative[axis][i][j]=test_value(axis*rows*columns+i*columns+j);result[axis][i][j]=NAN;}
+    }
+  }
+  for(int spin=0;spin<2;++spin) {
+    OpenMX_HubbardDualReal(&basis,spin,1,2,rows,columns,block.derivative,output);
+    for(int axis=0;axis<3;++axis)for(int i=0;i<rows;++i)for(int j=0;j<columns;++j) {
+      double scalar=0.0;
+      for(int k=0;k<rows;++k)scalar+=openmx_local_potential_row(&basis,spin,1,i)[k]*derivative[axis][k][j];
+      for(int k=0;k<columns;++k)scalar+=openmx_local_potential_row(&basis,spin,2,k)[j]*derivative[axis][i][k];
+      equal(result[axis][i][j],scalar);
+    }
+  }
+
+  double density[2][6][rows*columns],*density_rows[2][6][columns];
+  for(int direction=0;direction<2;++direction)for(int c=0;c<6;++c) {
+    const int n=direction?columns:rows, width=direction?rows:columns;
+    for(int i=0;i<n;++i)density_rows[direction][c][i]=density[direction][c]+i*width;
+    for(int i=0;i<n*width;++i)density[direction][c][i]=test_value(direction*1000+c*7+i);
+    if(c<4)block.density[direction][c]=density_rows[direction][c];
+    else block.imaginary_density[direction][c-4]=density_rows[direction][c];
+  }
+  double actual[3]={.2,-.08,.9},expected[3]={.2,-.08,.9},*force[3]={actual,actual+1,actual+2};
+  const int spin_rows[3]={0,1,0},spin_cols[3]={0,1,1};
+  for(int i=0;i<rows;++i)for(int j=0;j<columns;++j)for(int direction=0;direction<2;++direction) {
+    const int row=direction?j:i,column=direction?i:j;
+    const size_t index=(size_t)row*(direction?rows:columns)+column;
+    for(int axis=0;axis<3;++axis) {
+      double real[3]={0},imag[3]={0};
+      for(int c=0;c<3;++c) {
+        const int s=spin_rows[c],t=spin_cols[c];
+        for(int term=0;term<2;++term) {
+          const int right=term!=direction;
+          for(int k=0;k<(right?columns:rows);++k) {
+            const int urow=right?(direction?j:k):(direction?k:i);
+            const int ucol=right?(direction?k:j):(direction?i:k);
+            const dcomplex v=openmx_local_complex_potential_row(&basis,s,t,right?2:1,urow)[ucol];
+            const double d=right?derivative[axis][i][k]:derivative[axis][k][j];
+            real[c]+=v.r*d;imag[c]+=v.i*d;
+          }
+        }
+      }
+      const double (*dm)[rows*columns]=density[direction];
+      const double d=real[0]*dm[0][index]+real[1]*dm[1][index]+2.0*real[2]*dm[2][index]
+        -imag[0]*dm[4][index]-imag[1]*dm[5][index]-2.0*imag[2]*dm[3][index];
+      expected[axis]+=.5*d;
+    }
+  }
+  OpenMX_HubbardDualNoncollinear(&basis,1,2,rows,columns,&block,force);
+  OpenMX_HubbardDualNoncollinear(&basis,1,2,0,columns,NULL,force);
+  for(int axis=0;axis<3;++axis)equal(actual[axis],expected[axis]);
+}
 
 int main(void) {
   Overlap overlap;
@@ -110,5 +183,6 @@ int main(void) {
       cases++;
     }
   }
-  printf("PASS: %d Hubbard derivative cases; mixed species, contraction, spin 0/1/3, halo and missing neighbor blocks\n",cases);
+  check_dual();
+  printf("PASS: %d Hubbard derivative cases and both dual-projector orientations; mixed species, contraction, spin 0/1/3 and halo blocks\n",cases);
 }

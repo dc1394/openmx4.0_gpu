@@ -17,6 +17,7 @@
 #include "openmx_xc.h"
 #include "openmx_env.h"
 #include "openmx_force_workspace.h"
+#include "openmx_hubbard_dual_force.h"
 #include "openmx_force_vna_halo.h"
 #include "openmx_force_vna_case2.h"
 #include "openmx_core_force_recovery.h"
@@ -2771,12 +2772,6 @@ static double Force_Impl(OpenMXHamiltonianGpuState *hamiltonian_state, OpenMXDen
     double***** iDM0 = NULL;
     double* tmp_array;
     double* tmp_array2;
-    double Re00x, Re00y, Re00z;
-    double Re11x, Re11y, Re11z;
-    double Re01x, Re01y, Re01z;
-    double Im00x, Im00y, Im00z;
-    double Im11x, Im11y, Im11z;
-    double Im01x, Im01y, Im01z;
     int *Snd_CDM0_Size = NULL, *Rcv_CDM0_Size = NULL;
     int *Snd_iDM0_Size = NULL, *Rcv_iDM0_Size = NULL;
     double TStime, TEtime;
@@ -4150,70 +4145,21 @@ static double Force_Impl(OpenMXHamiltonianGpuState *hamiltonian_state, OpenMXDen
                         Mh_AN = F_G2M[Gh_AN];
                         Hwan = WhatSpecies[Gh_AN];
 
-                        /* non-orbital optimization */
+                        if (Cnt_switch!=0 && Cnt_switch!=1) continue;
+                        const int rows=atomic->species.orbitals[Cwan], columns=atomic->species.orbitals[Hwan];
+                        double **derivative[3]={OLP[1][Mc_AN][h_AN],OLP[2][Mc_AN][h_AN],OLP[3][Mc_AN][h_AN]};
+                        double **hubbard[3]={HUx[0],HUy[0],HUz[0]};
+                        OpenMX_HubbardDualReal(local_basis,spin,Mc_AN,Mh_AN,rows,columns,derivative,hubbard);
 
                         if (Cnt_switch == 0) {
-
-                            for (i = 0; i < atomic->species.orbitals[Cwan]; i++) {
-                                for (j = 0; j < atomic->species.orbitals[Hwan]; j++) {
-
-                                    tmp1 = 0.0;
-                                    tmp2 = 0.0;
-                                    tmp3 = 0.0;
-
-                                    for (k = 0; k < atomic->species.orbitals[Cwan]; k++) {
-                                        tmp1 += openmx_local_potential_row(local_basis, spin, Mc_AN, i)[k] * OLP[1][Mc_AN][h_AN][k][j];
-                                        tmp2 += openmx_local_potential_row(local_basis, spin, Mc_AN, i)[k] * OLP[2][Mc_AN][h_AN][k][j];
-                                        tmp3 += openmx_local_potential_row(local_basis, spin, Mc_AN, i)[k] * OLP[3][Mc_AN][h_AN][k][j];
-                                    }
-
-                                    for (k = 0; k < atomic->species.orbitals[Hwan]; k++) {
-                                        tmp1 += openmx_local_potential_row(local_basis, spin, Mh_AN, k)[j] * OLP[1][Mc_AN][h_AN][i][k];
-                                        tmp2 += openmx_local_potential_row(local_basis, spin, Mh_AN, k)[j] * OLP[2][Mc_AN][h_AN][i][k];
-                                        tmp3 += openmx_local_potential_row(local_basis, spin, Mh_AN, k)[j] * OLP[3][Mc_AN][h_AN][i][k];
-                                    }
-
-                                    dx = tmp1 * dege * CDM[spin][Mc_AN][h_AN][i][j];
-                                    dy = tmp2 * dege * CDM[spin][Mc_AN][h_AN][i][j];
-                                    dz = tmp3 * dege * CDM[spin][Mc_AN][h_AN][i][j];
-
-                                    Fx[Mc_AN] += dx;
-                                    Fy[Mc_AN] += dy;
-                                    Fz[Mc_AN] += dz;
-                                }
+                            for (i = 0; i < rows; i++) for (j = 0; j < columns; j++) {
+                                const double cd = CDM[spin][Mc_AN][h_AN][i][j];
+                                Fx[Mc_AN] += HUx[0][i][j] * dege * cd;
+                                Fy[Mc_AN] += HUy[0][i][j] * dege * cd;
+                                Fz[Mc_AN] += HUz[0][i][j] * dege * cd;
                             }
                         }
-
-                        /* orbital optimization */
-
-                        else if (Cnt_switch == 1) {
-
-                            /* HUx, HUy, HUz for primitive orbital */
-
-                            for (i = 0; i < atomic->species.orbitals[Cwan]; i++) {
-                                for (j = 0; j < atomic->species.orbitals[Hwan]; j++) {
-
-                                    tmp1 = 0.0;
-                                    tmp2 = 0.0;
-                                    tmp3 = 0.0;
-
-                                    for (k = 0; k < atomic->species.orbitals[Cwan]; k++) {
-                                        tmp1 += openmx_local_potential_row(local_basis, spin, Mc_AN, i)[k] * OLP[1][Mc_AN][h_AN][k][j];
-                                        tmp2 += openmx_local_potential_row(local_basis, spin, Mc_AN, i)[k] * OLP[2][Mc_AN][h_AN][k][j];
-                                        tmp3 += openmx_local_potential_row(local_basis, spin, Mc_AN, i)[k] * OLP[3][Mc_AN][h_AN][k][j];
-                                    }
-
-                                    for (k = 0; k < atomic->species.orbitals[Hwan]; k++) {
-                                        tmp1 += openmx_local_potential_row(local_basis, spin, Mh_AN, k)[j] * OLP[1][Mc_AN][h_AN][i][k];
-                                        tmp2 += openmx_local_potential_row(local_basis, spin, Mh_AN, k)[j] * OLP[2][Mc_AN][h_AN][i][k];
-                                        tmp3 += openmx_local_potential_row(local_basis, spin, Mh_AN, k)[j] * OLP[3][Mc_AN][h_AN][i][k];
-                                    }
-
-                                    HUx[0][i][j] = tmp1;
-                                    HUy[0][i][j] = tmp2;
-                                    HUz[0][i][j] = tmp3;
-                                }
-                            }
+                        else {
 
                             /* contract HUx, HUy, HUz */
 
@@ -4275,210 +4221,21 @@ static double Force_Impl(OpenMXHamiltonianGpuState *hamiltonian_state, OpenMXDen
                     Mh_AN = F_G2M[Gh_AN];
                     Hwan = WhatSpecies[Gh_AN];
 
+                    const int rows=atomic->species.orbitals[Cwan], columns=atomic->species.orbitals[Hwan];
+                    if (rows==0 || columns==0) continue;
                     kl = RMI1[Mc_AN][h_AN][0];
-
-                    for (i = 0; i < atomic->species.orbitals[Cwan]; i++) {
-                        for (j = 0; j < atomic->species.orbitals[Hwan]; j++) {
-
-                            Re00x = 0.0;
-                            Re00y = 0.0;
-                            Re00z = 0.0;
-                            Re11x = 0.0;
-                            Re11y = 0.0;
-                            Re11z = 0.0;
-                            Re01x = 0.0;
-                            Re01y = 0.0;
-                            Re01z = 0.0;
-
-                            Im00x = 0.0;
-                            Im00y = 0.0;
-                            Im00z = 0.0;
-                            Im11x = 0.0;
-                            Im11y = 0.0;
-                            Im11z = 0.0;
-                            Im01x = 0.0;
-                            Im01y = 0.0;
-                            Im01z = 0.0;
-
-                            for (k = 0; k < atomic->species.orbitals[Cwan]; k++) {
-
-                                Re00x += openmx_local_complex_potential_row(local_basis, 0, 0, Mc_AN, i)[k].r * OLP[1][Mc_AN][h_AN][k][j];
-                                Re00y += openmx_local_complex_potential_row(local_basis, 0, 0, Mc_AN, i)[k].r * OLP[2][Mc_AN][h_AN][k][j];
-                                Re00z += openmx_local_complex_potential_row(local_basis, 0, 0, Mc_AN, i)[k].r * OLP[3][Mc_AN][h_AN][k][j];
-
-                                Re11x += openmx_local_complex_potential_row(local_basis, 1, 1, Mc_AN, i)[k].r * OLP[1][Mc_AN][h_AN][k][j];
-                                Re11y += openmx_local_complex_potential_row(local_basis, 1, 1, Mc_AN, i)[k].r * OLP[2][Mc_AN][h_AN][k][j];
-                                Re11z += openmx_local_complex_potential_row(local_basis, 1, 1, Mc_AN, i)[k].r * OLP[3][Mc_AN][h_AN][k][j];
-
-                                Re01x += openmx_local_complex_potential_row(local_basis, 0, 1, Mc_AN, i)[k].r * OLP[1][Mc_AN][h_AN][k][j];
-                                Re01y += openmx_local_complex_potential_row(local_basis, 0, 1, Mc_AN, i)[k].r * OLP[2][Mc_AN][h_AN][k][j];
-                                Re01z += openmx_local_complex_potential_row(local_basis, 0, 1, Mc_AN, i)[k].r * OLP[3][Mc_AN][h_AN][k][j];
-
-                                Im00x += openmx_local_complex_potential_row(local_basis, 0, 0, Mc_AN, i)[k].i * OLP[1][Mc_AN][h_AN][k][j];
-                                Im00y += openmx_local_complex_potential_row(local_basis, 0, 0, Mc_AN, i)[k].i * OLP[2][Mc_AN][h_AN][k][j];
-                                Im00z += openmx_local_complex_potential_row(local_basis, 0, 0, Mc_AN, i)[k].i * OLP[3][Mc_AN][h_AN][k][j];
-
-                                Im11x += openmx_local_complex_potential_row(local_basis, 1, 1, Mc_AN, i)[k].i * OLP[1][Mc_AN][h_AN][k][j];
-                                Im11y += openmx_local_complex_potential_row(local_basis, 1, 1, Mc_AN, i)[k].i * OLP[2][Mc_AN][h_AN][k][j];
-                                Im11z += openmx_local_complex_potential_row(local_basis, 1, 1, Mc_AN, i)[k].i * OLP[3][Mc_AN][h_AN][k][j];
-
-                                Im01x += openmx_local_complex_potential_row(local_basis, 0, 1, Mc_AN, i)[k].i * OLP[1][Mc_AN][h_AN][k][j];
-                                Im01y += openmx_local_complex_potential_row(local_basis, 0, 1, Mc_AN, i)[k].i * OLP[2][Mc_AN][h_AN][k][j];
-                                Im01z += openmx_local_complex_potential_row(local_basis, 0, 1, Mc_AN, i)[k].i * OLP[3][Mc_AN][h_AN][k][j];
-                            }
-
-                            for (k = 0; k < atomic->species.orbitals[Hwan]; k++) {
-
-                                Re00x += openmx_local_complex_potential_row(local_basis, 0, 0, Mh_AN, k)[j].r * OLP[1][Mc_AN][h_AN][i][k];
-                                Re00y += openmx_local_complex_potential_row(local_basis, 0, 0, Mh_AN, k)[j].r * OLP[2][Mc_AN][h_AN][i][k];
-                                Re00z += openmx_local_complex_potential_row(local_basis, 0, 0, Mh_AN, k)[j].r * OLP[3][Mc_AN][h_AN][i][k];
-
-                                Re11x += openmx_local_complex_potential_row(local_basis, 1, 1, Mh_AN, k)[j].r * OLP[1][Mc_AN][h_AN][i][k];
-                                Re11y += openmx_local_complex_potential_row(local_basis, 1, 1, Mh_AN, k)[j].r * OLP[2][Mc_AN][h_AN][i][k];
-                                Re11z += openmx_local_complex_potential_row(local_basis, 1, 1, Mh_AN, k)[j].r * OLP[3][Mc_AN][h_AN][i][k];
-
-                                Re01x += openmx_local_complex_potential_row(local_basis, 0, 1, Mh_AN, k)[j].r * OLP[1][Mc_AN][h_AN][i][k];
-                                Re01y += openmx_local_complex_potential_row(local_basis, 0, 1, Mh_AN, k)[j].r * OLP[2][Mc_AN][h_AN][i][k];
-                                Re01z += openmx_local_complex_potential_row(local_basis, 0, 1, Mh_AN, k)[j].r * OLP[3][Mc_AN][h_AN][i][k];
-
-                                Im00x += openmx_local_complex_potential_row(local_basis, 0, 0, Mh_AN, k)[j].i * OLP[1][Mc_AN][h_AN][i][k];
-                                Im00y += openmx_local_complex_potential_row(local_basis, 0, 0, Mh_AN, k)[j].i * OLP[2][Mc_AN][h_AN][i][k];
-                                Im00z += openmx_local_complex_potential_row(local_basis, 0, 0, Mh_AN, k)[j].i * OLP[3][Mc_AN][h_AN][i][k];
-
-                                Im11x += openmx_local_complex_potential_row(local_basis, 1, 1, Mh_AN, k)[j].i * OLP[1][Mc_AN][h_AN][i][k];
-                                Im11y += openmx_local_complex_potential_row(local_basis, 1, 1, Mh_AN, k)[j].i * OLP[2][Mc_AN][h_AN][i][k];
-                                Im11z += openmx_local_complex_potential_row(local_basis, 1, 1, Mh_AN, k)[j].i * OLP[3][Mc_AN][h_AN][i][k];
-
-                                Im01x += openmx_local_complex_potential_row(local_basis, 0, 1, Mh_AN, k)[j].i * OLP[1][Mc_AN][h_AN][i][k];
-                                Im01y += openmx_local_complex_potential_row(local_basis, 0, 1, Mh_AN, k)[j].i * OLP[2][Mc_AN][h_AN][i][k];
-                                Im01z += openmx_local_complex_potential_row(local_basis, 0, 1, Mh_AN, k)[j].i * OLP[3][Mc_AN][h_AN][i][k];
-                            }
-
-                            dx = Re00x * CDM0[0][Mc_AN][h_AN][i][j]
-                                + Re11x * CDM0[1][Mc_AN][h_AN][i][j]
-                                + 2.0 * Re01x * CDM0[2][Mc_AN][h_AN][i][j]
-                                - Im00x * iDM0[0][Mc_AN][h_AN][i][j]
-                                - Im11x * iDM0[1][Mc_AN][h_AN][i][j]
-                                - 2.0 * Im01x * CDM0[3][Mc_AN][h_AN][i][j];
-
-                            dy = Re00y * CDM0[0][Mc_AN][h_AN][i][j]
-                                + Re11y * CDM0[1][Mc_AN][h_AN][i][j]
-                                + 2.0 * Re01y * CDM0[2][Mc_AN][h_AN][i][j]
-                                - Im00y * iDM0[0][Mc_AN][h_AN][i][j]
-                                - Im11y * iDM0[1][Mc_AN][h_AN][i][j]
-                                - 2.0 * Im01y * CDM0[3][Mc_AN][h_AN][i][j];
-
-                            dz = Re00z * CDM0[0][Mc_AN][h_AN][i][j]
-                                + Re11z * CDM0[1][Mc_AN][h_AN][i][j]
-                                + 2.0 * Re01z * CDM0[2][Mc_AN][h_AN][i][j]
-                                - Im00z * iDM0[0][Mc_AN][h_AN][i][j]
-                                - Im11z * iDM0[1][Mc_AN][h_AN][i][j]
-                                - 2.0 * Im01z * CDM0[3][Mc_AN][h_AN][i][j];
-
-                            Fx[Mc_AN] += 0.5 * dx;
-                            Fy[Mc_AN] += 0.5 * dy;
-                            Fz[Mc_AN] += 0.5 * dz;
-
-                            Re00x = 0.0;
-                            Re00y = 0.0;
-                            Re00z = 0.0;
-                            Re11x = 0.0;
-                            Re11y = 0.0;
-                            Re11z = 0.0;
-                            Re01x = 0.0;
-                            Re01y = 0.0;
-                            Re01z = 0.0;
-
-                            Im00x = 0.0;
-                            Im00y = 0.0;
-                            Im00z = 0.0;
-                            Im11x = 0.0;
-                            Im11y = 0.0;
-                            Im11z = 0.0;
-                            Im01x = 0.0;
-                            Im01y = 0.0;
-                            Im01z = 0.0;
-
-                            for (k = 0; k < atomic->species.orbitals[Hwan]; k++) {
-
-                                Re00x += openmx_local_complex_potential_row(local_basis, 0, 0, Mh_AN, j)[k].r * OLP[1][Mc_AN][h_AN][i][k];
-                                Re00y += openmx_local_complex_potential_row(local_basis, 0, 0, Mh_AN, j)[k].r * OLP[2][Mc_AN][h_AN][i][k];
-                                Re00z += openmx_local_complex_potential_row(local_basis, 0, 0, Mh_AN, j)[k].r * OLP[3][Mc_AN][h_AN][i][k];
-
-                                Re11x += openmx_local_complex_potential_row(local_basis, 1, 1, Mh_AN, j)[k].r * OLP[1][Mc_AN][h_AN][i][k];
-                                Re11y += openmx_local_complex_potential_row(local_basis, 1, 1, Mh_AN, j)[k].r * OLP[2][Mc_AN][h_AN][i][k];
-                                Re11z += openmx_local_complex_potential_row(local_basis, 1, 1, Mh_AN, j)[k].r * OLP[3][Mc_AN][h_AN][i][k];
-
-                                Re01x += openmx_local_complex_potential_row(local_basis, 0, 1, Mh_AN, j)[k].r * OLP[1][Mc_AN][h_AN][i][k];
-                                Re01y += openmx_local_complex_potential_row(local_basis, 0, 1, Mh_AN, j)[k].r * OLP[2][Mc_AN][h_AN][i][k];
-                                Re01z += openmx_local_complex_potential_row(local_basis, 0, 1, Mh_AN, j)[k].r * OLP[3][Mc_AN][h_AN][i][k];
-
-                                Im00x += openmx_local_complex_potential_row(local_basis, 0, 0, Mh_AN, j)[k].i * OLP[1][Mc_AN][h_AN][i][k];
-                                Im00y += openmx_local_complex_potential_row(local_basis, 0, 0, Mh_AN, j)[k].i * OLP[2][Mc_AN][h_AN][i][k];
-                                Im00z += openmx_local_complex_potential_row(local_basis, 0, 0, Mh_AN, j)[k].i * OLP[3][Mc_AN][h_AN][i][k];
-
-                                Im11x += openmx_local_complex_potential_row(local_basis, 1, 1, Mh_AN, j)[k].i * OLP[1][Mc_AN][h_AN][i][k];
-                                Im11y += openmx_local_complex_potential_row(local_basis, 1, 1, Mh_AN, j)[k].i * OLP[2][Mc_AN][h_AN][i][k];
-                                Im11z += openmx_local_complex_potential_row(local_basis, 1, 1, Mh_AN, j)[k].i * OLP[3][Mc_AN][h_AN][i][k];
-
-                                Im01x += openmx_local_complex_potential_row(local_basis, 0, 1, Mh_AN, j)[k].i * OLP[1][Mc_AN][h_AN][i][k];
-                                Im01y += openmx_local_complex_potential_row(local_basis, 0, 1, Mh_AN, j)[k].i * OLP[2][Mc_AN][h_AN][i][k];
-                                Im01z += openmx_local_complex_potential_row(local_basis, 0, 1, Mh_AN, j)[k].i * OLP[3][Mc_AN][h_AN][i][k];
-                            }
-
-                            for (k = 0; k < atomic->species.orbitals[Cwan]; k++) {
-
-                                Re00x += openmx_local_complex_potential_row(local_basis, 0, 0, Mc_AN, k)[i].r * OLP[1][Mc_AN][h_AN][k][j];
-                                Re00y += openmx_local_complex_potential_row(local_basis, 0, 0, Mc_AN, k)[i].r * OLP[2][Mc_AN][h_AN][k][j];
-                                Re00z += openmx_local_complex_potential_row(local_basis, 0, 0, Mc_AN, k)[i].r * OLP[3][Mc_AN][h_AN][k][j];
-
-                                Re11x += openmx_local_complex_potential_row(local_basis, 1, 1, Mc_AN, k)[i].r * OLP[1][Mc_AN][h_AN][k][j];
-                                Re11y += openmx_local_complex_potential_row(local_basis, 1, 1, Mc_AN, k)[i].r * OLP[2][Mc_AN][h_AN][k][j];
-                                Re11z += openmx_local_complex_potential_row(local_basis, 1, 1, Mc_AN, k)[i].r * OLP[3][Mc_AN][h_AN][k][j];
-
-                                Re01x += openmx_local_complex_potential_row(local_basis, 0, 1, Mc_AN, k)[i].r * OLP[1][Mc_AN][h_AN][k][j];
-                                Re01y += openmx_local_complex_potential_row(local_basis, 0, 1, Mc_AN, k)[i].r * OLP[2][Mc_AN][h_AN][k][j];
-                                Re01z += openmx_local_complex_potential_row(local_basis, 0, 1, Mc_AN, k)[i].r * OLP[3][Mc_AN][h_AN][k][j];
-
-                                Im00x += openmx_local_complex_potential_row(local_basis, 0, 0, Mc_AN, k)[i].i * OLP[1][Mc_AN][h_AN][k][j];
-                                Im00y += openmx_local_complex_potential_row(local_basis, 0, 0, Mc_AN, k)[i].i * OLP[2][Mc_AN][h_AN][k][j];
-                                Im00z += openmx_local_complex_potential_row(local_basis, 0, 0, Mc_AN, k)[i].i * OLP[3][Mc_AN][h_AN][k][j];
-
-                                Im11x += openmx_local_complex_potential_row(local_basis, 1, 1, Mc_AN, k)[i].i * OLP[1][Mc_AN][h_AN][k][j];
-                                Im11y += openmx_local_complex_potential_row(local_basis, 1, 1, Mc_AN, k)[i].i * OLP[2][Mc_AN][h_AN][k][j];
-                                Im11z += openmx_local_complex_potential_row(local_basis, 1, 1, Mc_AN, k)[i].i * OLP[3][Mc_AN][h_AN][k][j];
-
-                                Im01x += openmx_local_complex_potential_row(local_basis, 0, 1, Mc_AN, k)[i].i * OLP[1][Mc_AN][h_AN][k][j];
-                                Im01y += openmx_local_complex_potential_row(local_basis, 0, 1, Mc_AN, k)[i].i * OLP[2][Mc_AN][h_AN][k][j];
-                                Im01z += openmx_local_complex_potential_row(local_basis, 0, 1, Mc_AN, k)[i].i * OLP[3][Mc_AN][h_AN][k][j];
-                            }
-
-                            dx = Re00x * CDM0[0][Mh_AN][kl][j][i]
-                                + Re11x * CDM0[1][Mh_AN][kl][j][i]
-                                + 2.0 * Re01x * CDM0[2][Mh_AN][kl][j][i]
-                                - Im00x * iDM0[0][Mh_AN][kl][j][i]
-                                - Im11x * iDM0[1][Mh_AN][kl][j][i]
-                                - 2.0 * Im01x * CDM0[3][Mh_AN][kl][j][i];
-
-                            dy = Re00y * CDM0[0][Mh_AN][kl][j][i]
-                                + Re11y * CDM0[1][Mh_AN][kl][j][i]
-                                + 2.0 * Re01y * CDM0[2][Mh_AN][kl][j][i]
-                                - Im00y * iDM0[0][Mh_AN][kl][j][i]
-                                - Im11y * iDM0[1][Mh_AN][kl][j][i]
-                                - 2.0 * Im01y * CDM0[3][Mh_AN][kl][j][i];
-
-                            dz = Re00z * CDM0[0][Mh_AN][kl][j][i]
-                                + Re11z * CDM0[1][Mh_AN][kl][j][i]
-                                + 2.0 * Re01z * CDM0[2][Mh_AN][kl][j][i]
-                                - Im00z * iDM0[0][Mh_AN][kl][j][i]
-                                - Im11z * iDM0[1][Mh_AN][kl][j][i]
-                                - 2.0 * Im01z * CDM0[3][Mh_AN][kl][j][i];
-
-                            Fx[Mc_AN] += 0.5 * dx;
-                            Fy[Mc_AN] += 0.5 * dy;
-                            Fz[Mc_AN] += 0.5 * dz;
-                        }
+                    OpenMXHubbardDualMatrices block;
+                    for (int axis=0;axis<3;++axis) block.derivative[axis]=OLP[axis+1][Mc_AN][h_AN];
+                    for (int s=0;s<4;++s) {
+                        block.density[0][s]=CDM0[s][Mc_AN][h_AN];
+                        block.density[1][s]=CDM0[s][Mh_AN][kl];
                     }
+                    for (int s=0;s<2;++s) {
+                        block.imaginary_density[0][s]=iDM0[s][Mc_AN][h_AN];
+                        block.imaginary_density[1][s]=iDM0[s][Mh_AN][kl];
+                    }
+                    double *force[3]={&Fx[Mc_AN],&Fy[Mc_AN],&Fz[Mc_AN]};
+                    OpenMX_HubbardDualNoncollinear(local_basis,Mc_AN,Mh_AN,rows,columns,&block,force);
                 }
 
                 dtime(&Etime_atom);
