@@ -15,6 +15,9 @@ compares the total energies:
               exchange matrix are left to the host, as they are when the
               memory of the device is short
 
+CUDA variants use scf.exx.gpu.min.work 0 so they exercise GPU work and
+capacity recovery independently of the automatic CPU/GPU threshold.
+
   python3 tools/exx_gpu_checks.py list
   python3 tools/exx_gpu_checks.py run --cpu build/exx-cpu/openmx --gpu build/exx-cuda/openmx --out build/exx-m6 [NAME ...]
   python3 tools/exx_gpu_checks.py table --out build/exx-m6
@@ -401,6 +404,7 @@ def execute(args, run):
     run_dir.mkdir(parents=True, exist_ok=True)
     title = re.search(r"System.Name\s+(\S+)", spec["text"]).group(1)
     (run_dir / "input.dat").write_text(spec["text"].replace("@DATA_PATH@", str(args.data_path))
+                                       + ("scf.exx.gpu.min.work 0\n" if variant != "cpu" else "")
                                        + INPUT_LINES.get(variant, ""))
     # one thread unless asked: the numbers of a run are then the same every time on one machine
     threads = str(args.threads or 1)

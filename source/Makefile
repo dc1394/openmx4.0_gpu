@@ -709,7 +709,7 @@ Band_DFT_kpath.o: Band_DFT_kpath.c openmx_common.h openmx_band_kpath_gpu.h openm
 	$(CC) -c Band_DFT_kpath.c
 Band_DFT_kpath_LNO.o: Band_DFT_kpath_LNO.c openmx_common.h openmx_band_kpath_gpu.h openmx_band_kpath_points.h
 	$(CC) -c Band_DFT_kpath_LNO.c
-Band_DFT_kpath_gpu.o: Band_DFT_kpath_gpu.c openmx_band_kpath_gpu.h openmx_band_kpath_points.h openmx_common.h openmx_mgpu_runtime.h openmx_host_memory.h openmx_host_simd.h openmx_exact_exchange.h
+Band_DFT_kpath_gpu.o: Band_DFT_kpath_gpu.c openmx_band_kpath_gpu.h openmx_band_kpath_points.h openmx_common.h openmx_mgpu_runtime.h openmx_gpu_collective.h openmx_host_memory.h openmx_host_simd.h openmx_exact_exchange.h
 	$(CC_NOACC_O3) -c $<
 openmx_band_kpath_gpu.o: openmx_band_kpath_gpu.cu openmx_band_kpath_gpu.h openmx_gpu_memory.hpp openmx_gpu_workers.h openmx_mgpu_runtime.h
 	$(NVCC_GEMMUL8_ENV) $(NVCC) $(NVCC_GEMMUL8_FLAGS) -c $< -o $@
@@ -719,7 +719,7 @@ Unfolding_Bands.o: Unfolding_Bands.c openmx_common.h
 	$(CC) -c Unfolding_Bands.c
 Band_DFT_Dosout.o: Band_DFT_Dosout.c openmx_common.h
 	$(CC) -c Band_DFT_Dosout.c
-Exact_Exchange.o: Exact_Exchange.c openmx_exact_exchange.h openmx_exact_exchange_device.h openmx_exact_exchange_host.h openmx_exx.h ../modules/exx/include/openmx/exx/exx.h openmx_host_simd.h ../core/include/openmx_core_host_simd.h
+Exact_Exchange.o: Exact_Exchange.c openmx_exact_exchange.h openmx_exact_exchange_device.h openmx_exact_exchange_host.h openmx_exx.h ../modules/exx/include/openmx/exx/exx.h openmx_host_simd.h openmx_gpu_collective.h openmx_gpu_device.h openmx_mgpu_runtime.h ../core/include/openmx_core_host_simd.h
 	$(CC) -c Exact_Exchange.c
 # The moves of the whole calls (a loop of OpenACC) form the product first and
 # then the sum, as the host does: no fused multiply-adds in the device code.

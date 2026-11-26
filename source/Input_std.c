@@ -92,6 +92,7 @@ void Input_std(char *file, OpenMXCoreContext *core)
   double exx_alpha,exx_omega,exx_abf_pca,exx_v_cutoff,exx_outer_criterion;
   double exx_coulomb_cutoff;
   double exx_inner_ratio;   /* scf.exx.inner.criterion.ratio */
+  double exx_gpu_min_work;  /* scf.exx.gpu.min.work */
   int exx_outer_maxiter;
   int exx_outer_extrapolation; /* scf.exx.outer.extrapolation */
   int exx_v_cutoff_given;   /* 1 when the input has scf.exx.v.cutoff */
@@ -1060,6 +1061,7 @@ void Input_std(char *file, OpenMXCoreContext *core)
   input_double("scf.exx.coulomb.cutoff",&exx_coulomb_cutoff,(double)0.0);
   input_int("scf.exx.outer.extrapolation",&exx_outer_extrapolation,0);
   input_double("scf.exx.inner.criterion.ratio",&exx_inner_ratio,(double)0.0);
+  input_double("scf.exx.gpu.min.work",&exx_gpu_min_work,-1.0);
 
   if (hybrid_functional!=0){
 
@@ -1077,6 +1079,8 @@ void Input_std(char *file, OpenMXCoreContext *core)
                                                       message = "scf.exx.outer.extrapolation should be in the range of 0 to 8.";
     else if (!(0.0<=exx_inner_ratio && exx_inner_ratio<=1.0))
                                                       message = "scf.exx.inner.criterion.ratio should be in the range of 0.0 to 1.0.";
+    else if (exx_gpu_min_work!=-1.0 && (!isfinite(exx_gpu_min_work) || exx_gpu_min_work<0.0))
+                                                      message = "scf.exx.gpu.min.work must be -1 (automatic) or a nonnegative finite number.";
 
     if (message!=NULL){
       if (myid==Host_ID){
@@ -5264,6 +5268,7 @@ void Input_std(char *file, OpenMXCoreContext *core)
     exx_input.reciprocal_maximum = PAO_Nkmax; /* square root of 1DFFT.EnergyCutoff */
     exx_input.device_capacity_test = openmx_gpu_capacity_test_recovery();
     exx_input.gemmul8 = exx_gemmul8;
+    exx_input.gpu_min_work = exx_gpu_min_work;
     Exact_Exchange_Configure(exact_exchange,&exx_input);
 
     /* the arrays of the structure, which this function has filled: every

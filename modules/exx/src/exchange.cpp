@@ -172,6 +172,20 @@ struct PieceWork {
   std::vector<double> scratch, gathered, x3, x4, k1, second;
 };
 
+template <class AtomAt>
+std::size_t v_batch_count(std::size_t first, std::size_t groups, std::size_t rows, std::size_t width, AtomAt atom)
+{
+  constexpr std::size_t panel_elements = 16*1024*1024/sizeof(double);
+  constexpr std::size_t panel_rows = 64;
+  const std::size_t elements = rows*width;
+  if (elements == 0) return 1;
+  const std::size_t limit = std::min(panel_elements/elements,(panel_rows+rows-1)/rows);
+  const std::size_t b = atom(first);
+  std::size_t count = 1;
+  while (count < limit && count < groups-first && atom(first+count) == b) ++count;
+  return count;
+}
+
 // Consecutive V images of the same atom multiply the same T table. Stack
 // their V rows for BLAS so a narrow product can reuse T across more rows.
 // The panel is consumed in neighbour order, including the half-weighted V0.
@@ -183,14 +197,9 @@ class HostVProducts {
   {
     const std::size_t elements = np*width;
     if (g >= end_) {
-      constexpr std::size_t panel_elements = 16*1024*1024/sizeof(double);
-      constexpr std::size_t panel_rows = 64;
       const std::size_t b = sink.atom(g);
-      std::size_t count = 1;
-      if (!backend.built_in() && elements != 0) {
-        const std::size_t limit = std::min(panel_elements/elements,(panel_rows+np-1)/np);
-        while (count < limit && g+count < sink.groups() && sink.atom(g+count) == b) ++count;
-      }
+      const std::size_t count = backend.built_in() ? 1 : v_batch_count(g,sink.groups(),np,width,
+        [&sink](std::size_t index) { return sink.atom(index); });
       const double* v = sink.v(g)+p_first*nq;
       if (count > 1) {
         packed_.resize(count*np*nq);
@@ -1240,10 +1249,13 @@ class DeviceWork {
     return static_cast<T*>(pointer);
   }
 
-  // The copies are made when no work is pending: the caller finishes first.
+  // Uploads share the device queue. Borrowed sources and the buffers below
+  // stay alive even when the destructor must drain a failing call.
   void upload(void* target, const void* source, std::size_t bytes)
   {
-    if (bytes > 0 && device_.upload(device_.context,target,source,bytes) != 0) throw DeviceStop();
+    if (bytes == 0) return;
+    pending_ = true;
+    if (device_.upload(device_.context,target,source,bytes) != 0) throw DeviceStop();
   }
   void download(void* target, const void* source, std::size_t bytes)
   {
@@ -1283,6 +1295,12 @@ class DeviceWork {
     long long step = 1;
     const long long* columns = nullptr;
   };
+
+  struct CentreUpload {
+    std::vector<long long> list;
+    std::vector<int> lengths;
+    std::vector<double> v;
+  } centre_upload;
 
   // target(r, c) = alpha source(r, c), or += with add, for r < rows and c <
   // length[r] (columns without lengths; columns is the largest length).
@@ -1393,9 +1411,9 @@ std::vector<DeviceGroup::Moved> column_moves(const GroupColumns& columns, std::v
 // (W and dv) and the half form of the derivatives three (and V^T H).
 struct DeviceSizes {
   std::size_t g = 0, dloc = 0, w = 0, gg = 0, gbp = 0, dl = 0, dba = 0, first = 0, second = 0, x3 = 0, dt = 0;
-  std::size_t wq = 0;
+  std::size_t wq = 0, w_panel = 0;
   std::size_t v = 0, list = 0, length = 0;
-  double products = 0.0, v_products = 0.0;
+  double products = 0.0, v_products = 0.0, largest_product = 0.0;
 
   // The sizes of a call with the centres of both: the arrays take the larger
   // size, and the multiplications add up.
@@ -1404,6 +1422,7 @@ struct DeviceSizes {
     g = std::max(g,other.g);
     dloc = std::max(dloc,other.dloc);
     w = std::max(w,other.w);
+    w_panel = std::max(w_panel,other.w_panel);
     gg = std::max(gg,other.gg);
     gbp = std::max(gbp,other.gbp);
     dl = std::max(dl,other.dl);
@@ -1418,6 +1437,7 @@ struct DeviceSizes {
     length = std::max(length,other.length);
     products += other.products;
     v_products += other.v_products;
+    largest_product = std::max(largest_product,other.largest_product);
   }
 };
 
@@ -1436,16 +1456,28 @@ DeviceSizes device_sizes(const System& system, std::size_t a, std::size_t np, st
   z.g = np*ua*s;
   z.dloc = ell*s;
   z.dt = np*ua*ell;
-  z.products = 2.0*product(np*ua,s,ell);            // G = T D and the last product (dt for the derivatives)
+  z.largest_product = product(np*ua,s,ell);
+  z.products = 2.0*z.largest_product;              // G = T D and the last product (dt for the derivatives)
   z.list = site ? 2*gathered_rows : ell;
   z.length = site ? gathered_rows : 0;
   z.list += ua*np;                                  // the rows of G in the order (mu, P)
-  for (const std::array<std::size_t,4>& group : groups) {
+  std::size_t next_batch = 0;
+  for (std::size_t which = 0; which < groups.size(); ++which) {
+    const auto& group = groups[which];
     const std::size_t b = group[0], lb = group[1], sites = group[2];
     const std::size_t nq = system.abf_count[b], ub = system.orbital_count[b];
     // W = V T_B, and the four terms, which have the same size.
-    z.products += 4.0*product(ua,ub,np*lb);
-    z.v_products += product(np,ub*lb,nq);
+    const double term_product = product(ua,ub,np*lb), w_product = product(np,ub*lb,nq);
+    z.products += 4.0*term_product;
+    z.v_products += w_product;
+    z.largest_product = std::max({z.largest_product,term_product,w_product});
+    if (which == next_batch) {
+      const std::size_t count = v_batch_count(which,groups.size(),np,ub*lb,
+        [&groups](std::size_t index) { return groups[index][0]; });
+      next_batch += count;
+      z.w_panel = std::max(z.w_panel,count*np*ub*lb);
+      z.largest_product = std::max(z.largest_product,w_product*static_cast<double>(count));
+    }
     z.w = std::max(z.w,np*ub*lb);
     z.gg = std::max(z.gg,ua*np*lb);
     z.gbp = std::max(z.gbp,ua*np*ub);
@@ -1506,7 +1538,7 @@ struct DeviceArrays {
     g = work.allocate<double>(z.g);
     bracket = work.allocate<double>(z.g);
     dloc = work.allocate<double>(z.dloc);
-    w = work.allocate<double>(z.w);
+    w = work.allocate<double>(z.w_panel);
     wn = work.allocate<double>(z.w);
     gg = work.allocate<double>(z.gg);
     x4 = work.allocate<double>(z.gg);
@@ -1537,7 +1569,7 @@ struct DeviceArrays {
                            DeviceUse use = DeviceUse::build)
   {
     const auto one = [](std::size_t count) { return std::max<std::size_t>(count,1); };
-    std::size_t doubles = one(elements)+one(t_total)+1+one(z.v)+2*one(z.g)+one(z.dloc)+2*one(z.w)+2*one(z.gg)+
+    std::size_t doubles = one(elements)+one(t_total)+1+one(z.v)+2*one(z.g)+one(z.dloc)+one(z.w_panel)+one(z.w)+2*one(z.gg)+
                           one(z.gbp)+one(z.dl)+one(z.dba)+one(z.x3);
     if (use == DeviceUse::build) doubles += one(elements)+one(z.first)+one(z.second);
     else doubles += 2*one(z.w)+one(z.dt)+one(z.v);
@@ -1566,8 +1598,10 @@ DeviceLists upload_lists(const System& system, const CentrePart& share, const De
   const bool site = c.row.empty();
 
   // The lists, in one array: append() gives the offset of a list in it.
-  std::vector<long long> list;
-  std::vector<int> length;
+  auto& [list,length,v] = work.centre_upload;
+  list.clear();
+  length.clear();
+  v.clear();
   const auto append = [&list](const std::vector<long long>& values) {
     const std::size_t at = list.size();
     list.insert(list.end(),values.begin(),values.end());
@@ -1591,7 +1625,6 @@ DeviceLists upload_lists(const System& system, const CentrePart& share, const De
     for (std::size_t p = 0; p < np; ++p) order[mu*np+p] = static_cast<long long>((p*ua+mu)*s);
   at.g_rows = append(order);
   at.groups.resize(c.groups.size());
-  std::vector<double> v;
   for (std::size_t ib = 0; ib < c.groups.size(); ++ib) {
     const DeviceGroup& group = c.groups[ib];
     const std::size_t b = group.atom, ub = system.orbital_count[b], lb = group.column.size();
@@ -1638,12 +1671,14 @@ void device_start(const System& system, const CentrePart& share, const DeviceCen
   work.move(rows,s,nullptr,1.0,false,d.bracket,Side{static_cast<long long>(s),nullptr,1,nullptr},d.zero,zero);
 }
 
+struct DeviceVBatch { std::size_t first = 0, end = 0; };
+
 // The arrays of group ib that the build and the derivatives share: W = V T_B,
 // Wn, Gg, GBp, D[A, loc(B)] and D[A, B], and terms (iii) and (iv) added to
 // the bracket.  Terms (i) and (ii) are left in d.first and d.second for the
 // build.
 void device_group(const System& system, const CentrePart& share, const DeviceCentre& c, const DeviceLists& at,
-                  std::size_t ib, DeviceUse use, DeviceArrays& d, DeviceWork& work)
+                  std::size_t ib, DeviceUse use, DeviceArrays& d, DeviceWork& work, DeviceVBatch& batch)
 {
   const std::size_t np = share.last-share.first, ua = system.orbital_count[share.atom], s = c.s;
   const DeviceGroup& group = c.groups[ib];
@@ -1652,8 +1687,16 @@ void device_group(const System& system, const CentrePart& share, const DeviceCen
   const auto signed_size = [](std::size_t value) { return static_cast<long long>(value); };
   const long long* column = d.list+at.groups[ib].column;
   const std::vector<std::array<std::size_t,2>>& moved = at.groups[ib].moved;
-  work.multiply(np,ub*lb,nq,d.v+at.groups[ib].v,d.t+d.t_offset[b],d.w);                  // W = V T_B
-  work.move(ub*np,lb,nullptr,1.0,false,d.wn,Side{signed_size(lb),nullptr,1,nullptr},d.w,
+  // V rows are already consecutive in the uploaded panel. Reuse T_B across
+  // the panel GEMM and consume the W slices in the original image order.
+  if (ib == batch.end) {
+    const std::size_t count = v_batch_count(ib,c.groups.size(),np,ub*lb,
+      [&c](std::size_t index) { return c.groups[index].atom; });
+    batch = {ib,ib+count};
+    work.multiply(count*np,ub*lb,nq,d.v+at.groups[ib].v,d.t+d.t_offset[b],d.w);
+  }
+  const double* w = d.w+(ib-batch.first)*np*ub*lb;
+  work.move(ub*np,lb,nullptr,1.0,false,d.wn,Side{signed_size(lb),nullptr,1,nullptr},w,
             Side{0,d.list+at.groups[ib].w_rows,1,nullptr});                                // Wn
   if (moved.empty())
     work.move(ua*np,lb,nullptr,1.0,false,d.gg,Side{signed_size(lb),nullptr,1,nullptr},d.g,
@@ -1673,7 +1716,7 @@ void device_group(const System& system, const CentrePart& share, const DeviceCen
             Side{0,column,signed_size(s),nullptr});                                        // D[A, B] as [nu][mu]
   if (use == DeviceUse::build) {
     work.multiply_transposed(ua,ub,np*lb,d.gg,d.wn,d.first);                               // (i)
-    work.multiply(ua,lb,np*ub,d.gbp,d.w,d.second);                                         // (ii)
+    work.multiply(ua,lb,np*ub,d.gbp,w,d.second);                                           // (ii)
   }
   work.multiply_transposed(ub*np,ua,lb,d.wn,d.dl,d.x3);                                    // (iii)
   work.transposed_multiply(ua,np*lb,ub,d.dba,d.wn,d.x4);                                   // (iv)
@@ -1703,8 +1746,9 @@ void device_centre(const System& system, const CentrePart& share, double factor,
 
   using Side = DeviceWork::Side;
   const auto signed_size = [](std::size_t value) { return static_cast<long long>(value); };
+  DeviceVBatch batch;
   for (std::size_t ib = 0; ib < c.groups.size(); ++ib) {
-    device_group(system,share,c,at,ib,DeviceUse::build,d,work);
+    device_group(system,share,c,at,ib,DeviceUse::build,d,work,batch);
     const DeviceGroup& group = c.groups[ib];
     const std::size_t ub = system.orbital_count[group.atom], lb = group.column.size();
     const long long* column = d.list+at.groups[ib].column;
@@ -1768,8 +1812,9 @@ void device_derivatives(const System& system, const CentrePart& share, double fa
   using Side = DeviceWork::Side;
   const auto signed_size = [](std::size_t value) { return static_cast<long long>(value); };
   std::vector<char> touched(w != nullptr ? system.orbital_count.size() : 0,0);
+  DeviceVBatch batch;
   for (std::size_t ib = 0; ib < c.groups.size(); ++ib) {
-    device_group(system,share,c,at,ib,DeviceUse::derivatives,d,work);
+    device_group(system,share,c,at,ib,DeviceUse::derivatives,d,work,batch);
     const std::size_t b = c.groups[ib].atom, nq = system.abf_count[b], ub = system.orbital_count[b];
     const std::size_t lb = c.groups[ib].column.size();
     work.multiply(ub,np*lb,ua,d.dba,d.gg,d.hx);                                           // Hx
@@ -1848,25 +1893,27 @@ void upload_t_blocks(const DeviceCallShape& shape, Form& form, const DeviceArray
 // the T blocks of an atom.  k is written at the end only.
 template <class Form>
 bool device_range(const System& system, const std::vector<CentrePart>& parts, double factor,
-                  std::span<const double> density, std::span<double> k, const OpenMXExxDevice& device, Form& form)
+                  std::span<const double> density, std::span<double> k, const OpenMXExxDevice& device,
+                  double minimum_work, Form& form)
 {
   if (device.accept == nullptr || device.allocate == nullptr || device.release == nullptr ||
       device.upload == nullptr || device.download == nullptr || device.dgemm == nullptr || device.move == nullptr ||
       device.finish == nullptr || parts.empty())
     return false;
   const DeviceCallShape shape = device_call_shape(system.orbital_count.size(),parts,form);
-  if (device.accept(device.context,device_multiplications(shape.work,DeviceUse::build),
+  if (shape.work.largest_product < minimum_work ||
+      device.accept(device.context,device_multiplications(shape.work,DeviceUse::build),
                    DeviceArrays::bytes(shape.work,k.size(),shape.t_total)) != 1)
     return false;
 
   const auto result = std::make_unique_for_overwrite<double[]>(k.size());
+  const double nothing = 0.0;
   try {
     DeviceWork work(device);
     DeviceArrays d(work,shape.work,k.size(),shape.t_size);
     work.upload(d.density,density.data(),density.size()*sizeof(double));
     work.upload(d.k,k.data(),k.size()*sizeof(double));
     upload_t_blocks(shape,form,d,work);
-    const double nothing = 0.0;
     work.upload(d.zero,&nothing,sizeof(double));
     for (const CentrePart& part : parts) device_centre(system,part,factor,form.plan(part.atom),d,work);
     work.download(result.get(),d.k,k.size()*sizeof(double));
@@ -1885,7 +1932,8 @@ bool device_range(const System& system, const std::vector<CentrePart>& parts, do
 // With half the half form, whose form plans the groups of the half build.
 template <class Form, class Visit>
 std::size_t device_gradient_range(const System& system, const std::vector<CentrePart>& parts, double factor,
-                                  std::span<const double> density, const OpenMXExxDevice& device, Form& form,
+                                  std::span<const double> density, const OpenMXExxDevice& device,
+                                  double minimum_work, Form& form,
                                   const Visit& visit, bool half = false)
 {
   if (device.accept == nullptr || device.allocate == nullptr || device.release == nullptr ||
@@ -1894,17 +1942,18 @@ std::size_t device_gradient_range(const System& system, const std::vector<Centre
     return 0;
   const DeviceCallShape shape = device_call_shape(system.orbital_count.size(),parts,form);
   const DeviceUse use = half ? DeviceUse::half_derivatives : DeviceUse::derivatives;
-  if (device.accept(device.context,device_multiplications(shape.work,use),
+  if (shape.work.largest_product < minimum_work ||
+      device.accept(device.context,device_multiplications(shape.work,use),
                    DeviceArrays::bytes(shape.work,density.size(),shape.t_total,use)) != 1)
     return 0;
 
   std::size_t done = 0;
+  const double nothing = 0.0;
   try {
     DeviceWork work(device);
     DeviceArrays d(work,shape.work,density.size(),shape.t_size,use);
     work.upload(d.density,density.data(),density.size()*sizeof(double));
     upload_t_blocks(shape,form,d,work);
-    const double nothing = 0.0;
     work.upload(d.zero,&nothing,sizeof(double));
     std::vector<double> dt;
     std::vector<std::vector<double>> dv, w;
@@ -2261,7 +2310,7 @@ bool blocks_abfs(const System& system, const BlockLayout& layout, std::size_t fi
   const std::vector<CentrePart> parts = centre_parts(offset,first,last);
   if (const OpenMXExxDevice* device = backend.device(); device != nullptr) {
     DeviceBlocks form(system,layout,factor,half);
-    if (device_range(system,parts,factor,density,k,*device,form)) return true;
+    if (device_range(system,parts,factor,density,k,*device,backend.minimum_device_work(),form)) return true;
   }
   for (const CentrePart& part : parts) add_blocks_part(system,layout,part,factor,density,k,backend,half);
   return false;
@@ -2508,7 +2557,7 @@ bool gamma_abfs(const System& system, std::size_t first, std::size_t last, doubl
   const std::vector<CentrePart> parts = centre_parts(abfs,first,last);
   if (const OpenMXExxDevice* device = backend.device(); device != nullptr) {
     DeviceGamma form(system,factor,offset,half);
-    if (device_range(system,parts,factor,density,k,*device,form)) return true;
+    if (device_range(system,parts,factor,density,k,*device,backend.minimum_device_work(),form)) return true;
   }
   for (const CentrePart& part : parts) add_gamma_part(system,offset,part,factor,density,k,backend,half);
   return false;
@@ -2736,7 +2785,7 @@ std::size_t device_gradients_blocks(const System& system, const BlockLayout& lay
   if (density.size() != layout.elements()) throw std::invalid_argument("the density matrix does not have the size of the layout");
   if (first == last) return 0;
   DeviceBlocks form(system,layout,factor,half);
-  return device_gradient_range(system,centre_parts(offset,first,last),factor,density,*device,form,
+  return device_gradient_range(system,centre_parts(offset,first,last),factor,density,*device,backend.minimum_device_work(),form,
                                [&visit](const CentrePart& part, CentreGradient&& gradient) {
                                  visit(part.atom,part.first,part.last,std::move(gradient));
                                },
@@ -2756,7 +2805,7 @@ std::size_t device_gradients_gamma(const System& system, std::size_t first, std:
   check_dense(offset.back(),density.size(),"the density matrix is not N x N");
   if (first == last) return 0;
   DeviceGamma form(system,factor,offset,half);
-  return device_gradient_range(system,centre_parts(abfs,first,last),factor,density,*device,form,
+  return device_gradient_range(system,centre_parts(abfs,first,last),factor,density,*device,backend.minimum_device_work(),form,
                                [&visit](const CentrePart& part, CentreGradient&& gradient) {
                                  visit(part.atom,part.first,part.last,std::move(gradient));
                                },

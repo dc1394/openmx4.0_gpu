@@ -69,6 +69,7 @@ typedef struct {
                                 product of the builds to the host, as when its memory is short */
   int gemmul8;               /* scf.gemmul8.enable on: the GPU computes its matrix products of the
                                 builds through the GEMMul8 bridge; otherwise in FP64 */
+  double gpu_min_work;       /* scf.exx.gpu.min.work: m*n*k per product, -1 for device-aware selection */
 } OpenMXExactExchangeInput;
 
 void Exact_Exchange_Configure(OpenMXExactExchangeState *state, const OpenMXExactExchangeInput *input);
@@ -312,6 +313,9 @@ double Exact_Exchange_Inner_Criterion(const OpenMXExactExchangeState *state, dou
 
 /* 1 when an exchange matrix exists and has to be added. NULL is allowed. */
 int Exact_Exchange_Active(const OpenMXExactExchangeState *state);
+
+/* Return device resources after a phase that can reuse them has completed. */
+void Exact_Exchange_End_Device_Phase(OpenMXExactExchangeState *state);
 
 /* Gamma form. Adds K of one spin channel to the dense Hamiltonian of the
    cluster solver in its block-cyclic distribution: Hs[j*na_rows+i] is the

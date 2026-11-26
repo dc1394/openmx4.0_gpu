@@ -3,6 +3,7 @@
 #include "openmx_common.h"
 #include "openmx_band_kpath_gpu.h"
 #include "openmx_band_kpath_points.h"
+#include "openmx_gpu_collective.h"
 #include "openmx_gpu_device.h"
 #include "openmx_host_memory.h"
 #include "openmx_host_simd.h"
@@ -35,28 +36,12 @@ static int all_ranks_ok(MPI_Comm comm, int local)
    ordinals for the same card. Prefer the first usable rank on each GPU. */
 static int device_owner(MPI_Comm comm)
 {
-    MPI_Comm node;
-    int rank, size, device = -1;
-    unsigned char identity[17] = {0};
-
-    MPI_Comm_split_type(comm, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, &node);
-    MPI_Comm_rank(node, &rank);
-    MPI_Comm_size(node, &size);
-    unsigned char (*peers)[17] = malloc((size_t)size * sizeof(*peers));
-    int ready = peers != NULL, node_ready;
-    MPI_Allreduce(&ready, &node_ready, 1, MPI_INT, MPI_MIN, node);
-    if (node_ready) {
-        if (gpu_rank_device_usable() && OpenMXGpuGetDevice(&device) == OPENMX_GPU_SUCCESS)
-            identity[0] = openmx_gpu_physical_uuid(device, identity + 1);
-        MPI_Allgather(identity, sizeof(identity), MPI_UNSIGNED_CHAR,
-                      peers, sizeof(identity), MPI_UNSIGNED_CHAR, node);
-        if (!identity[0]) device = -1;
-        for (int i = 0; i < rank && device >= 0; ++i)
-            if (memcmp(identity, peers[i], sizeof(identity)) == 0) device = -1;
-    }
-    free(peers);
-    MPI_Comm_free(&node);
-    return device;
+    unsigned char uuid[16];
+    int device = -1, first;
+    const int usable = gpu_rank_device_usable() && OpenMXGpuGetDevice(&device) == OPENMX_GPU_SUCCESS &&
+                       openmx_gpu_physical_uuid(device, uuid);
+    (void)openmx_gpu_local_sharers(comm, usable ? uuid : NULL, &first);
+    return first ? device : -1;
 }
 
 static void interpolate(double **path, int point, int count, double xyz[3])
@@ -353,9 +338,10 @@ int openmx_band_kpath_try_gpu(const OpenMXChemicalPotentials *chemical,
                                   local_basis, NULL, NULL, local_size))) goto done;
     MPI_Allgather(local_size, 3, MPI_INT, sizes, 3, MPI_INT, comm);
 
-    int owner_count = 0, owner_index = 0;
+    int owner_count = 0, owner_index = 0, input_root = -1;
     for (int i = 0; i < ranks; ++i) {
         if (i == rank) owner_index = owner_count;
+        if (owner_count == 0 && sizes[3 * i + 2]) input_root = i;
         owner_count += sizes[3 * i + 2];
     }
     if (!owner_count) {
@@ -387,30 +373,27 @@ int openmx_band_kpath_try_gpu(const OpenMXChemicalPotentials *chemical,
     (void)exact_exchange;
 #endif
 
-    // Host_ID is first in this communicator even if its GPU is unavailable.
-    const int receiver = owner || rank == Host_ID;
-    MPI_Comm_split(comm, receiver ? 0 : MPI_UNDEFINED,
-                   rank == Host_ID ? 0 : rank + 1, &devices);
+    /* Gather directly to the first GPU owner, even when the output rank
+       does not own a GPU. Only owners need the full matrix payload. */
+    MPI_Comm_split(comm, owner ? 0 : MPI_UNDEFINED, rank, &devices);
     const unsigned long long available = openmx_host_mem_available();
-    const int recv_blocks = owner ? m.block_count : semilocal_blocks;
-    const int recv_values = owner ? m.value_count : value_count;
-    const size_t packed_bytes = (size_t)recv_blocks * sizeof(*blocks) + (size_t)recv_values * sizeof(*values);
+    const size_t packed_bytes = (size_t)m.block_count * sizeof(*blocks) + (size_t)m.value_count * sizeof(*values);
     const size_t local_bytes = local_size[0] + (size_t)local_size[1] * sizeof(*values);
     stage = "host matrix allocation";
     /* A local guard accounts for the copies that can coexist on this node. */
-    if (!all_ranks_ok(comm, !available || (local_bytes + (receiver ? packed_bytes : 0)) <= available / ranks))
+    if (!all_ranks_ok(comm, !available || (local_bytes + (owner ? packed_bytes : 0)) <= available / ranks))
         goto done;
 
     local = malloc(local_size[0] ? (size_t)local_size[0] : sizeof(*local));
     local_values = malloc((local_size[1] ? (size_t)local_size[1] : 1) * sizeof(*local_values));
-    if (receiver) {
-        blocks = malloc((size_t)recv_blocks * sizeof(*blocks));
-        values = malloc((size_t)recv_values * sizeof(*values));
+    if (owner) {
+        blocks = malloc((size_t)m.block_count * sizeof(*blocks));
+        values = malloc((size_t)m.value_count * sizeof(*values));
+        local_eigen = malloc((size_t)(end - first) * bands_per_point * sizeof(*local_eigen));
     }
-    if (owner) local_eigen = malloc((size_t)(end - first) * bands_per_point * sizeof(*local_eigen));
     if (rank == Host_ID) eigen = malloc((size_t)unique_count * bands_per_point * sizeof(*eigen));
-    if (!all_ranks_ok(comm, local && local_values && (!receiver || (blocks && values)) &&
-                      (!owner || local_eigen) && (rank != Host_ID || eigen))) goto done;
+    if (!all_ranks_ok(comm, local && local_values && (!owner || (blocks && values && local_eigen)) &&
+                      (rank != Host_ID || eigen))) goto done;
 
     stage = "real-space matrix packing";
     if (!all_ranks_ok(comm, local_blocks(&m, &basis, offset, hamiltonian, imaginary, overlap,
@@ -419,15 +402,15 @@ int openmx_band_kpath_try_gpu(const OpenMXChemicalPotentials *chemical,
         local[i].value_offset += value_offsets[rank];
 
     MPI_Gatherv(local, local_size[0], MPI_BYTE, blocks, block_sizes, block_offsets, MPI_BYTE,
-                Host_ID, comm);
+                input_root, comm);
     MPI_Gatherv(local_values, local_size[1], MPI_DOUBLE, values, value_sizes, value_offsets, MPI_DOUBLE,
-                Host_ID, comm);
+                input_root, comm);
     free(local);
     free(local_values);
     local = NULL;
     local_values = NULL;
 
-    if (receiver) {
+    if (owner_count > 1 && owner) {
         MPI_Bcast(blocks, block_bytes, MPI_BYTE, 0, devices);
         MPI_Bcast(values, value_count, MPI_DOUBLE, 0, devices);
     }

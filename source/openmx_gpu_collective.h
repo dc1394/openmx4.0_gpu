@@ -3,6 +3,12 @@
 #include <stddef.h>
 #include <mpi.h>
 
+/* Node-local rank count for this physical device, or zero without a UUID
+   or when the exchange cannot be made. All ranks in comm call this.
+   first, when supplied, reports whether this rank has the lowest rank
+   on the device. A rank without a usable device passes NULL for uuid. */
+int openmx_gpu_local_sharers(MPI_Comm comm, const unsigned char uuid[16], int *first);
+
 /* A collective capacity retry for host-backed, independently partitionable
    work. All ranks enter at the same phase boundary, including ranks whose
    original work already succeeded. No MPI occurs inside a GPU callback.

@@ -5,6 +5,41 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+
+int openmx_gpu_local_sharers(MPI_Comm comm, const unsigned char uuid[16], int *first)
+{
+    MPI_Comm node;
+    int rank, size, count = 0;
+    unsigned char identity[17] = {0};
+    if (first) *first = 0;
+    if (uuid) {
+        identity[0] = 1;
+        memcpy(identity + 1, uuid, 16);
+    }
+
+    MPI_Comm_split_type(comm, MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, &node);
+    MPI_Comm_rank(node, &rank);
+    MPI_Comm_size(node, &size);
+    unsigned char (*peers)[17] = malloc((size_t)size * sizeof(*peers));
+    const int local_ready = peers != NULL;
+    int ready;
+    MPI_Allreduce(&local_ready, &ready, 1, MPI_INT, MPI_MIN, node);
+    if (ready) {
+        MPI_Allgather(identity, sizeof(identity), MPI_UNSIGNED_CHAR,
+                      peers, sizeof(identity), MPI_UNSIGNED_CHAR, node);
+        if (uuid) {
+            for (int i = 0; i < size; ++i) {
+                if (memcmp(identity, peers[i], sizeof(identity)) != 0) continue;
+                if (count == 0 && first) *first = i == rank;
+                ++count;
+            }
+        }
+    }
+    free(peers);
+    MPI_Comm_free(&node);
+    return count;
+}
 
 /* Private communicator and bounded messages keep these transfers separate
    from the surrounding SCF traffic, without relying on MPI_THREAD_MULTIPLE. */

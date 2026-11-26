@@ -21,11 +21,13 @@ class DenseBackend {
   // parallel_for, or with fewer than two threads, the loop on the calling
   // thread.
   explicit DenseBackend(const OpenMXExxDenseBackend* table, OpenMXExxAddRows add_rows = nullptr) noexcept;
+  DenseBackend(const OpenMXExxDenseBackend* table, OpenMXExxAddRows add_rows, double minimum_device_work) noexcept;
 
   bool built_in() const noexcept { return table_.dgemm == nullptr; }
 
   // The device of the table, nullptr without one (exx.h).
   const OpenMXExxDevice* device() const noexcept { return table_.device; }
+  double minimum_device_work() const noexcept { return minimum_device_work_; }
 
   // C = alpha op(A) op(B) + beta C with column-major arrays, as DGEMM of the
   // BLAS: op(A) is m x k, op(B) is k x n, C is m x n; transa and transb are
@@ -79,6 +81,7 @@ class DenseBackend {
 
   OpenMXExxDenseBackend table_{nullptr,nullptr,nullptr,0,nullptr};
   OpenMXExxAddRows add_rows_ = nullptr;
+  double minimum_device_work_ = 0.0;
 };
 
 } // namespace openmx::exx

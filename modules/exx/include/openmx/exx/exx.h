@@ -49,10 +49,11 @@ typedef struct {
    allocate gives `bytes` bytes of device memory, NULL when there is no room
      or the device failed.  release gives them back; it is called once for
      every block from allocate, when no work is pending.
-   upload and download copy `bytes` bytes between host and device memory and
-     return when the copy is done.  The library calls them, as release, only
-     when no work that it gave the device is pending: before its first
-     dgemm or move, or after finish.
+   upload queues a copy of `bytes` bytes in the order of device work. The
+     library keeps the source alive and unchanged until finish, including
+     when a later operation fails. Synchronous upload also works.
+   download copies `bytes` bytes to the host and returns when the copy is
+     done. It is called after finish.
    dgemm is the product of the dense backend (above) on device memory.
    move sets, for r = 0 .. rows-1 and c = 0 .. (lengths ? lengths[r] :
      columns)-1, the element of target at the index t of (r, c) to
@@ -62,8 +63,8 @@ typedef struct {
      two pairs (r, c) of one call the same target element, and the target
      does not overlap the source.
    finish waits until all work given to the device is done.
-   dgemm and move may return before their work is done: the device does the
-   work in the order it was given.
+   upload, dgemm and move may return before their work is done: the device
+   does the work in the order it was given.
 
    Every function except accept, allocate and release returns 0 on success.
    After a failure, or an allocation that gave NULL, the library stops using
@@ -207,6 +208,11 @@ typedef struct OpenMXExxState OpenMXExxState;
 typedef void (*OpenMXExxAddRows)(double *dst, size_t dst_stride, const double *src, size_t src_stride,
                                size_t rows, size_t columns, double factor);
 void openmx_exx_set_host_add_rows(OpenMXExxState *state, OpenMXExxAddRows add_rows);
+
+/* A whole call may use the device only if at least one of its matrix
+   products has m*n*k >= minimum. Zero leaves the choice to the device's
+   accept callback. The threshold is retained across preparations. */
+void openmx_exx_set_device_minimum_work(OpenMXExxState *state, double minimum);
 
 /* A state without a structure; NULL when memory is exhausted. */
 OpenMXExxState *openmx_exx_create(void);

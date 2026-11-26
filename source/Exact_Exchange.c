@@ -21,6 +21,12 @@
 #include "openmx_exact_exchange.h"
 #include "openmx_exact_exchange_device.h"
 #include "openmx_exact_exchange_host.h"
+#include "openmx_gpu_backend.h"
+#if OPENMX_GPU_CUDA
+#include "openmx_gpu_collective.h"
+#include "openmx_gpu_device.h"
+#include "openmx_mgpu_runtime.h"
+#endif
 #include "openmx_host_simd.h"
 #include "openmx_exx.h"
 #include "lapack_prototypes.h"
@@ -137,9 +143,53 @@ void Exact_Exchange_Configure(OpenMXExactExchangeState *state, const OpenMXExact
   state->input = *input;
   /* The fault injection of the GPU paths: no matrix product fits. The device
      is still asked for its free memory, and every product goes to the host. */
-  if (input->device_capacity_test) state->device.reserve_bytes = (size_t)-1;
+  state->device.reserve_bytes = input->device_capacity_test ? (size_t)-1 : OPENMX_EXACT_EXCHANGE_DEVICE_RESERVE;
   /* GEMMul8 only where the input asks for it: the default is FP64. */
   state->device.gemmul8 = input->gemmul8 ? 1 : 0;
+}
+
+static void ExactExchange_Configure_Dispatch(OpenMXExactExchangeState *state, MPI_Comm comm,
+                                             int rank, int verbosity)
+{
+  const double configured=state->input.gpu_min_work;
+  /* Batches amortize transfer and launch overhead even when no single
+     product would pay for its own copies. The total-work floor still applies. */
+  state->device.dispatch_work = configured>=0.0 ? configured : 1.0e8;
+  state->device.sharing_ranks = 1;
+  state->device.retain_bytes = 0;
+#if OPENMX_GPU_CUDA
+  unsigned char uuid[16];
+  int device=-1, ratio=0;
+  const int usable=!OpenMX_HostSimdPreferred("EXX") && gpu_rank_device_usable() &&
+                   OpenMXGpuGetDevice(&device)==OPENMX_GPU_SUCCESS &&
+                   openmx_gpu_physical_uuid(device,uuid);
+  const int sharing_ranks=openmx_gpu_local_sharers(comm,usable ? uuid : NULL,NULL);
+  if (!usable) return;
+  if (sharing_ranks>0) state->device.sharing_ranks = sharing_ranks;
+  size_t free_bytes=0,total_bytes=0;
+  /* Cap retained storage across ranks, leaving room for the rest of SCF.
+     Larger requests can still use temporary memory during EXX. */
+  if (OpenMX_GpuMemGetInfo(&free_bytes,&total_bytes)==OPENMX_GPU_SUCCESS)
+    state->device.retain_bytes = total_bytes/3/(size_t)state->device.sharing_ranks;
+  else
+    (void)OpenMXGpuGetLastError();
+  if (configured<0.0) {
+    if (cudaDeviceGetAttribute(&ratio,cudaDevAttrSingleToDoublePrecisionPerfRatio,device)!=cudaSuccess)
+      (void)OpenMXGpuGetLastError();
+    else if (ratio>=8) {
+      /* Batching amortizes launches even on a heavily shared GeForce.
+         Increase the cutoff gradually once more than 16 ranks share it. */
+      state->device.dispatch_work *= fmax(1.0,state->device.sharing_ranks/16.0);
+    }
+  }
+  if (rank==0 && verbosity>=2)
+    printf("<EXX>  GPU dispatch: at least %.3g multiplications in one product (%d ranks on this GPU%s)\n",
+           state->device.dispatch_work,state->device.sharing_ranks,configured<0.0 ? ", automatic" : "");
+#else
+  (void)comm;
+  (void)rank;
+  (void)verbosity;
+#endif
 }
 
 void Exact_Exchange_Bind_Structure(OpenMXExactExchangeState *state, const OpenMXExactExchangeStructure *structure)
@@ -155,6 +205,11 @@ int Exact_Exchange_Enabled(const OpenMXExactExchangeState *state)
 int Exact_Exchange_Active(const OpenMXExactExchangeState *state)
 {
   return Exact_Exchange_Enabled(state) && state->exchange_ready;
+}
+
+void Exact_Exchange_End_Device_Phase(OpenMXExactExchangeState *state)
+{
+  if (state!=NULL) Exact_Exchange_Device_Release(&state->device);
 }
 
 double Exact_Exchange_Semilocal_Alpha(const OpenMXExactExchangeState *state)
@@ -594,6 +649,7 @@ static int ExactExchange_Prepare_Module(OpenMXExactExchangeState *state, OpenMXE
   /* The workers can share an x86 kernel regardless of their thread-local
      state. Fixed-width SVE would need to resolve its width per worker. */
   const int mode=OpenMX_HostSimdMode();
+  openmx_exx_set_device_minimum_work(module,state->device.dispatch_work);
   openmx_exx_set_host_add_rows(module,mode==OPENMX_GRID_AVX2 || mode==OPENMX_GRID_AVX512
                                      ? openmx_core_host_add_rows(mode) : NULL);
 
@@ -746,6 +802,7 @@ void Exact_Exchange_Prepare(OpenMXExactExchangeState *state, const OpenMXAtomicV
   MPI_Comm_size(comm,&processes);
 
   /* The exchange matrix of an earlier structure is not carried over. */
+  ExactExchange_Configure_Dispatch(state,comm,rank,verbosity);
   state->comm = comm;
   state->prepared = 0;
   state->folded = 0;
@@ -1351,6 +1408,7 @@ const double *Exact_Exchange_Gradient(OpenMXExactExchangeState *state, MPI_Comm 
     }
     fflush(stdout);
   }
+  Exact_Exchange_End_Device_Phase(state);
   return state->gradient;
 }
 

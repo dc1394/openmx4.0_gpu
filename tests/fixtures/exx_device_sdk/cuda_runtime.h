@@ -23,13 +23,17 @@ enum cudaMemcpyKind {
   cudaMemcpyDeviceToHost = 2,
   cudaMemcpyDeviceToDevice = 3
 };
+enum { cudaStreamNonBlocking = 1 };
 
 cudaError_t cudaGetDevice(int *device);
 cudaError_t cudaSetDevice(int device);
 cudaError_t cudaMalloc(void **pointer, size_t bytes);
 cudaError_t cudaFree(void *pointer);
-cudaError_t cudaMemcpy(void *destination, const void *source, size_t bytes, enum cudaMemcpyKind kind);
-cudaError_t cudaDeviceSynchronize(void);
+cudaError_t cudaMemcpyAsync(void *destination, const void *source, size_t bytes, enum cudaMemcpyKind kind,
+                            cudaStream_t stream);
+cudaError_t cudaStreamCreateWithFlags(cudaStream_t *stream, unsigned int flags);
+cudaError_t cudaStreamDestroy(cudaStream_t stream);
+cudaError_t cudaStreamSynchronize(cudaStream_t stream);
 cudaError_t cudaGetLastError(void);
 
 #endif

@@ -3213,6 +3213,18 @@ void check_device(const System& system, const DeviceForm& form, Numbers& random,
               name.c_str(),static_cast<long>(sequence.size()),static_cast<double>(device.bytes),device.multiplications,
               device.largest_product);
 
+  {
+    const double largest_work = device.largest_product;
+    require(device.all_products > largest_work,name+": expected several products");
+    std::vector<double> exact = start;
+    require(run(DenseBackend(&device_table,nullptr,largest_work),0,atoms,exact) && same_values(exact,k),
+            name+": a product at the GPU threshold is rejected");
+    const double higher = std::nextafter(largest_work,device.all_products);
+    std::vector<double> small = start;
+    require(!run(DenseBackend(&device_table,nullptr,higher),0,atoms,small) && device.accepted == 0 &&
+            same_values(small,reference),name+": small products do not stay on the host");
+  }
+
   // The same bits again.  The centre atoms in two calls give the bits of one
   // call: every centre makes its arrays anew, and only k carries over.  With
   // the products of this device the same arguments give the same bits.

@@ -51,6 +51,7 @@ struct OpenMXExxState {
   std::vector<std::size_t> offset;   // first orbital of every atom, and N
   std::optional<BlockLayout> layout; // of the site form; made on request
   OpenMXExxAddRows host_add_rows = nullptr;
+  double minimum_device_work = 0.0;
   // After openmx_exx_prepare_part with several parts: the atoms whose blocks
   // openmx_exx_set_atom_tables has not replaced by their sums yet.  The
   // system serves the builds and the derivatives when none is left.
@@ -288,6 +289,11 @@ void openmx_exx_set_host_add_rows(OpenMXExxState* state, OpenMXExxAddRows add_ro
   if (state != nullptr) state->host_add_rows = add_rows;
 }
 
+void openmx_exx_set_device_minimum_work(OpenMXExxState* state, double minimum)
+{
+  if (state != nullptr) state->minimum_device_work = minimum >= 0.0 ? minimum : 0.0;
+}
+
 int openmx_exx_prepare(OpenMXExxState* state, const OpenMXExxOptions* options, const OpenMXExxGeometry* geometry,
                        char* error, size_t capacity)
 {
@@ -439,7 +445,7 @@ int openmx_exx_add_gamma(const OpenMXExxState* state, int first_atom, int last_a
       throw std::out_of_range("the range of centre atoms is not inside the unit cell");
     const std::size_t n = state->offset.back();
     add_exchange_gamma_range(system,static_cast<std::size_t>(first_atom),static_cast<std::size_t>(last_atom),factor,
-                             std::span<const double>(density,n*n),std::span<double>(k,n*n),DenseBackend(backend,state->host_add_rows));
+                             std::span<const double>(density,n*n),std::span<double>(k,n*n),DenseBackend(backend,state->host_add_rows,state->minimum_device_work));
   });
 }
 
@@ -475,7 +481,7 @@ int openmx_exx_add_gamma_abfs(const OpenMXExxState* state, long first_abf, long 
     if (first_abf < 0 || last_abf < first_abf) throw std::out_of_range("the range of ABFs is not inside the unit cell");
     const std::size_t n = state->offset.back();
     add_exchange_gamma_abfs(system,static_cast<std::size_t>(first_abf),static_cast<std::size_t>(last_abf),factor,
-                            std::span<const double>(density,n*n),std::span<double>(k,n*n),DenseBackend(backend,state->host_add_rows));
+                            std::span<const double>(density,n*n),std::span<double>(k,n*n),DenseBackend(backend,state->host_add_rows,state->minimum_device_work));
   });
 }
 
@@ -534,7 +540,7 @@ int openmx_exx_add_blocks(const OpenMXExxState* state, int first_atom, int last_
     const std::size_t elements = layout.elements();
     add_exchange_blocks_range(system,layout,static_cast<std::size_t>(first_atom),static_cast<std::size_t>(last_atom),
                               factor,std::span<const double>(density,elements),std::span<double>(k,elements),
-                              DenseBackend(backend,state->host_add_rows));
+                              DenseBackend(backend,state->host_add_rows,state->minimum_device_work));
   });
 }
 
@@ -550,7 +556,7 @@ int openmx_exx_add_blocks_abfs(const OpenMXExxState* state, long first_abf, long
     const std::size_t elements = layout.elements();
     add_exchange_blocks_abfs(system,layout,static_cast<std::size_t>(first_abf),static_cast<std::size_t>(last_abf),
                              factor,std::span<const double>(density,elements),std::span<double>(k,elements),
-                             DenseBackend(backend,state->host_add_rows));
+                             DenseBackend(backend,state->host_add_rows,state->minimum_device_work));
   });
 }
 
@@ -609,7 +615,7 @@ int openmx_exx_add_block_weights_gamma_abfs(const OpenMXExxState* state, long fi
     const std::vector<std::span<double>> arrays = weight_arrays(system,first_abf,last_abf,density,weights);
     const std::size_t n = state->offset.back();
     add_block_weights_gamma_abfs(system,static_cast<std::size_t>(first_abf),static_cast<std::size_t>(last_abf),factor,
-                                 std::span<const double>(density,n*n),arrays,DenseBackend(backend,state->host_add_rows));
+                                 std::span<const double>(density,n*n),arrays,DenseBackend(backend,state->host_add_rows,state->minimum_device_work));
   });
 }
 
@@ -623,7 +629,7 @@ int openmx_exx_add_block_weights_blocks_abfs(const OpenMXExxState* state, long f
     const std::vector<std::span<double>> arrays = weight_arrays(system,first_abf,last_abf,density,weights);
     add_block_weights_blocks_abfs(system,layout,static_cast<std::size_t>(first_abf),static_cast<std::size_t>(last_abf),
                                   factor,std::span<const double>(density,layout.elements()),arrays,
-                                  DenseBackend(backend,state->host_add_rows));
+                                  DenseBackend(backend,state->host_add_rows,state->minimum_device_work));
   });
 }
 
@@ -636,7 +642,7 @@ int openmx_exx_add_block_weights_gamma_half_abfs(const OpenMXExxState* state, lo
     const std::vector<std::span<double>> arrays = weight_arrays(system,first_abf,last_abf,density,weights,true);
     const std::size_t n = state->offset.back();
     add_block_weights_gamma_half_abfs(system,static_cast<std::size_t>(first_abf),static_cast<std::size_t>(last_abf),
-                                      factor,std::span<const double>(density,n*n),arrays,DenseBackend(backend,state->host_add_rows));
+                                      factor,std::span<const double>(density,n*n),arrays,DenseBackend(backend,state->host_add_rows,state->minimum_device_work));
   });
 }
 
@@ -650,7 +656,7 @@ int openmx_exx_add_block_weights_blocks_half_abfs(const OpenMXExxState* state, l
     const std::vector<std::span<double>> arrays = weight_arrays(system,first_abf,last_abf,density,weights,true);
     add_block_weights_blocks_half_abfs(system,layout,static_cast<std::size_t>(first_abf),
                                        static_cast<std::size_t>(last_abf),factor,
-                                       std::span<const double>(density,layout.elements()),arrays,DenseBackend(backend,state->host_add_rows));
+                                       std::span<const double>(density,layout.elements()),arrays,DenseBackend(backend,state->host_add_rows,state->minimum_device_work));
   });
 }
 
@@ -681,7 +687,7 @@ int openmx_exx_add_position_gradient_pairs_pieces(const OpenMXExxState* state, c
     // Summed aside, so that a failure adds nothing.
     std::vector<double> sum(3*atoms,0.0);
     derivative.add_pairs(arrays,PrepareShare{static_cast<std::size_t>(part),static_cast<std::size_t>(parts)},sum,
-                         DenseBackend(backend,state->host_add_rows));
+                         DenseBackend(backend,state->host_add_rows,state->minimum_device_work));
     for (std::size_t e = 0; e < sum.size(); ++e) gradient[e] += sum[e];
   });
 }
@@ -710,7 +716,7 @@ int openmx_exx_add_gamma_half_abfs(const OpenMXExxState* state, long first_abf, 
     const std::size_t n = state->offset.back();
     add_exchange_gamma_half_abfs(system,static_cast<std::size_t>(first_abf),static_cast<std::size_t>(last_abf),
                                  factor,std::span<const double>(density,n*n),std::span<double>(k,n*n),
-                                 DenseBackend(backend,state->host_add_rows));
+                                 DenseBackend(backend,state->host_add_rows,state->minimum_device_work));
   });
 }
 
@@ -726,7 +732,7 @@ int openmx_exx_add_blocks_half_abfs(const OpenMXExxState* state, long first_abf,
     const std::size_t elements = layout.elements();
     add_exchange_blocks_half_abfs(system,layout,static_cast<std::size_t>(first_abf),
                                   static_cast<std::size_t>(last_abf),factor,std::span<const double>(density,elements),
-                                  std::span<double>(k,elements),DenseBackend(backend,state->host_add_rows));
+                                  std::span<double>(k,elements),DenseBackend(backend,state->host_add_rows,state->minimum_device_work));
   });
 }
 

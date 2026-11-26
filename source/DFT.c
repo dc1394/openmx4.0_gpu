@@ -2738,7 +2738,11 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
   exx_outputs = (Solver==3 && Cnt_switch==0 && Exact_Exchange_Active(exact_exchange)
                  && ((Band_disp_switch==1 && Band_Nkpath>0) || Dos_fileout || DosGauss_fileout));
-  if (exx_outputs) Exact_Exchange_Prepare_Outputs(exact_exchange, atomic, mpi_comm_level1, level_stdout);
+  Exact_Exchange_End_Device_Phase(exact_exchange);
+  if (exx_outputs) {
+    Exact_Exchange_Prepare_Outputs(exact_exchange, atomic, mpi_comm_level1, level_stdout);
+    Exact_Exchange_End_Device_Phase(exact_exchange);
+  }
 
   /*****************************************************
                       Band dispersion 

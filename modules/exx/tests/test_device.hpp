@@ -70,6 +70,7 @@ class FakeDevice {
     failed = false;
     breach.clear();
     pending_ = false;
+    uploads_.clear();
     owner_ = std::this_thread::get_id();
   }
 
@@ -87,7 +88,7 @@ class FakeDevice {
   std::string breach;                // the first breach of the contract, empty without one
 
   std::size_t live() const noexcept { return blocks_.size(); }
-  bool pending() const noexcept { return pending_; }
+  bool pending() const noexcept { return pending_ || !uploads_.empty(); }
 
   // The record after a call of the library: no breach, every block released
   // and no work pending.  Empty when all is well.
@@ -95,11 +96,19 @@ class FakeDevice {
   {
     if (!breach.empty()) return breach;
     if (!blocks_.empty()) return "the library did not release all blocks of device memory";
-    if (pending_) return "the library left work pending on the device";
+    if (pending()) return "the library left work pending on the device";
     return "";
   }
 
  private:
+  struct Upload { void* target; const void* source; std::size_t bytes; };
+
+  void complete_uploads()
+  {
+    for (const Upload& upload : uploads_) std::memcpy(upload.target,upload.source,upload.bytes);
+    uploads_.clear();
+  }
+
   static FakeDevice& self(void* context) { return *static_cast<FakeDevice*>(context); }
 
   void note(const std::string& what)
@@ -175,7 +184,7 @@ class FakeDevice {
   {
     FakeDevice& d = self(context);
     d.enter(release_call);
-    if (d.pending_) d.note("release is called while work is pending");
+    if (d.pending()) d.note("release is called while work is pending");
     const auto found = d.blocks_.find(address(pointer));
     if (found == d.blocks_.end()) {
       d.note("release is called for a pointer that is not a live block");
@@ -191,7 +200,9 @@ class FakeDevice {
     const bool fail = d.enter(upload_call);
     if (d.pending_) d.note("upload is called while work is pending");
     if (!d.inside(target,bytes,"the target of an upload") || source == nullptr || fail) return fail ? 1 : 2;
-    std::memcpy(target,source,bytes);
+    // Retain the address until its first consumer or finish, as an async
+    // runtime may do. This exercises the lifetime of temporary host panels.
+    d.uploads_.push_back({target,source,bytes});
     return 0;
   }
 
@@ -199,7 +210,7 @@ class FakeDevice {
   {
     FakeDevice& d = self(context);
     const bool fail = d.enter(download_call);
-    if (d.pending_) d.note("download is called while work is pending");
+    if (d.pending()) d.note("download is called while work is pending");
     if (!d.inside(source,bytes,"the source of a download") || target == nullptr || fail) return fail ? 1 : 2;
     std::memcpy(target,source,bytes);
     return 0;
@@ -218,6 +229,7 @@ class FakeDevice {
   {
     FakeDevice& d = self(context);
     const bool fail = d.enter(dgemm_call);
+    d.complete_uploads();
     d.pending_ = true;
     const bool ta = transa == 'T', tb = transb == 'T';
     if ((!ta && transa != 'N') || (!tb && transb != 'N') || m < 0 || n < 0 || k < 0) {
@@ -263,6 +275,7 @@ class FakeDevice {
   {
     FakeDevice& d = self(context);
     const bool fail = d.enter(move_call);
+    d.complete_uploads();
     d.pending_ = true;
     if (rows < 0 || columns < 0 || (add != 0 && add != 1) || to == nullptr || from == nullptr) {
       d.note("move is called with invalid arguments");
@@ -323,6 +336,7 @@ class FakeDevice {
   {
     FakeDevice& d = self(context);
     const bool fail = d.enter(finish_call);
+    d.complete_uploads();
     d.pending_ = false;
     return fail ? 1 : 0;
   }
@@ -330,6 +344,7 @@ class FakeDevice {
   OpenMXExxDevice table_;
   std::map<std::uintptr_t,std::size_t> blocks_;   // first byte and size of every live block
   bool pending_ = false;
+  std::vector<Upload> uploads_;
   std::thread::id owner_ = std::this_thread::get_id();
 };
 

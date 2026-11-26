@@ -116,7 +116,12 @@ extern "C" int openmx_exx_reference_dgemm(void*, char transa, char transb, int m
 namespace openmx::exx {
 
 DenseBackend::DenseBackend(const OpenMXExxDenseBackend* table, OpenMXExxAddRows add_rows) noexcept
-  : add_rows_(add_rows)
+  : DenseBackend(table,add_rows,0.0)
+{
+}
+
+DenseBackend::DenseBackend(const OpenMXExxDenseBackend* table, OpenMXExxAddRows add_rows, double minimum_device_work) noexcept
+  : add_rows_(add_rows), minimum_device_work_(minimum_device_work)
 {
   if (table != nullptr) table_ = *table;
 }

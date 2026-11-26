@@ -45,8 +45,8 @@
 
 enum {
   CALL_GET_DEVICE, CALL_SET_DEVICE, CALL_CREATE, CALL_DESTROY, CALL_QUERY, CALL_MALLOC, CALL_FREE, CALL_COPY,
-  CALL_DGEMM, CALL_SYNCHRONIZE, CALL_LAST_ERROR, CALL_BRIDGE, CALL_ACC_STREAM, CALL_ACC_WAIT, CALL_GET_STREAM,
-  CALL_SET_STREAM, CALL_KINDS
+  CALL_DGEMM, CALL_SYNCHRONIZE, CALL_LAST_ERROR, CALL_BRIDGE, CALL_ACC_STREAM, CALL_GET_STREAM,
+  CALL_SET_STREAM, CALL_STREAM_CREATE, CALL_STREAM_DESTROY, CALL_KINDS
 };
 
 enum { LIVE_SLOTS = 32 };
@@ -56,7 +56,7 @@ struct OpenMXTestStream { int queue; };
 
 /* the stream of the queue of the whole calls, and another one that a caller
    may have given the handle */
-static struct OpenMXTestStream queue_stream={OPENMX_EXACT_EXCHANGE_DEVICE_QUEUE},other_stream={7};
+static struct OpenMXTestStream queue_stream={OPENMX_EXACT_EXCHANGE_DEVICE_QUEUE},other_stream={7},product_stream={9};
 
 typedef struct {
   int usable;                 /* answer of gpu_rank_device_usable */
@@ -80,6 +80,8 @@ typedef struct {
   int queue_products;         /* products on the stream of the queue: they may run after the call returned */
   int default_products;       /* products on another stream */
   int pending;                /* a product on the queue that nothing waited for yet */
+  cudaStream_t pending_stream;
+  int streams;
   int wrong;                  /* calls that broke the rules of the model */
 } Model;
 
@@ -95,7 +97,8 @@ static void check(int ok, const char *message)
 
 static void model_reset(void)
 {
-  check(model.live_count==0 && model.handles==0,"the model is reset with device memory or a handle alive");
+  check(model.live_count==0 && model.handles==0 && model.streams==0,
+        "the model is reset with device memory, a handle or a stream alive");
   memset(&model,0,sizeof(model));
   model.usable = 1;
   model.capacity_bytes = (size_t)1<<20;
@@ -205,11 +208,18 @@ cudaError_t cudaFree(void *pointer)
   return cudaSuccess;
 }
 
-cudaError_t cudaMemcpy(void *destination, const void *source, size_t bytes, enum cudaMemcpyKind kind)
+static void model_queue(cudaStream_t stream)
+{
+  if (model.pending && model.pending_stream!=stream) model.wrong++;
+  model.pending = 1;
+  model.pending_stream = stream;
+}
+
+cudaError_t cudaMemcpyAsync(void *destination, const void *source, size_t bytes, enum cudaMemcpyKind kind,
+                            cudaStream_t stream)
 {
   const int to_device=kind==cudaMemcpyHostToDevice;
-  /* the copy runs on another stream than a product on the queue */
-  if (model.pending) model.wrong++;
+  model_queue(stream);
   const int device_slot=model_slot(to_device ? destination : source);
   const int host_slot=model_slot(to_device ? source : destination);
   if ((kind!=cudaMemcpyHostToDevice && kind!=cudaMemcpyDeviceToHost) || device_slot<0 || 0<=host_slot
@@ -229,32 +239,42 @@ cudaError_t cudaMemcpy(void *destination, const void *source, size_t bytes, enum
   return cudaSuccess;
 }
 
-cudaError_t cudaDeviceSynchronize(void)
+cudaError_t cudaStreamCreateWithFlags(cudaStream_t *stream, unsigned int flags)
 {
+  const int failed=model_fails(CALL_STREAM_CREATE,cudaErrorUnknown);
+  if (failed) return failed;
+  if (flags!=cudaStreamNonBlocking || model.streams!=0) model.wrong++;
+  *stream = &product_stream;
+  model.streams++;
+  return cudaSuccess;
+}
+
+cudaError_t cudaStreamDestroy(cudaStream_t stream)
+{
+  model.count[CALL_STREAM_DESTROY]++;
+  if (stream!=&product_stream || !model.streams || model.pending) model.wrong++;
+  model.streams--;
+  return cudaSuccess;
+}
+
+cudaError_t cudaStreamSynchronize(cudaStream_t stream)
+{
+  if (model.pending && model.pending_stream!=stream) model.wrong++;
+  model.pending = 0;
   const int failed=model_fails(CALL_SYNCHRONIZE,cudaErrorUnknown);
   if (failed) {
     model.latched = 1;
     return failed;
   }
-  /* the device is idle: the work of every stream is done */
-  model.pending = 0;
   return cudaSuccess;
 }
 
-/* OpenACC: the stream of a queue, and the wait for the work of a queue. The
-   unit uses one queue only. */
+/* OpenACC: the stream of the queue used by the whole call. */
 void *acc_get_cuda_stream(int async)
 {
   if (model_fails(CALL_ACC_STREAM,1)) return NULL;
   if (async!=OPENMX_EXACT_EXCHANGE_DEVICE_QUEUE) model.wrong++;
   return &queue_stream;
-}
-
-void acc_wait(int wait_arg)
-{
-  model.count[CALL_ACC_WAIT]++;
-  if (wait_arg!=OPENMX_EXACT_EXCHANGE_DEVICE_QUEUE) model.wrong++;
-  else model.pending = 0;
 }
 
 cudaError_t cudaGetLastError(void)
@@ -357,13 +377,11 @@ static cublasStatus_t model_product(int kind, cublasHandle_t handle, cublasOpera
     model.wrong++;
     return CUBLAS_STATUS_INVALID_VALUE;
   }
+  model_queue(handle->stream);
   const int failed=model_fails(kind,CUBLAS_STATUS_EXECUTION_FAILED);
   if (failed) return failed;
   reference_dgemm(transa==CUBLAS_OP_T,transb==CUBLAS_OP_T,m,n,k,*alpha,a,lda,b,ldb,*beta,c,ldc);
-  if (handle->stream==&queue_stream) {
-    model.queue_products++;
-    model.pending = 1;
-  }
+  if (handle->stream==&queue_stream) model.queue_products++;
   else model.default_products++;
   return CUBLAS_STATUS_SUCCESS;
 }
@@ -752,7 +770,10 @@ static void device_calls_that_fail(void)
     {CALL_COPY,1,OPENMX_EXACT_EXCHANGE_DEVICE_UPLOAD,0},
     {CALL_COPY,2,OPENMX_EXACT_EXCHANGE_DEVICE_UPLOAD,0},
     {CALL_DGEMM,1,OPENMX_EXACT_EXCHANGE_DEVICE_PRODUCT,0},
-    {CALL_SYNCHRONIZE,1,OPENMX_EXACT_EXCHANGE_DEVICE_PRODUCT,0},
+    {CALL_SYNCHRONIZE,1,OPENMX_EXACT_EXCHANGE_DEVICE_WAIT,1},
+    {CALL_STREAM_CREATE,1,OPENMX_EXACT_EXCHANGE_DEVICE_STREAM,0},
+    {CALL_SET_STREAM,1,OPENMX_EXACT_EXCHANGE_DEVICE_STREAM,0},
+    {CALL_GET_STREAM,1,OPENMX_EXACT_EXCHANGE_DEVICE_STREAM,0},
     {CALL_COPY,3,OPENMX_EXACT_EXCHANGE_DEVICE_DOWNLOAD,1}};
   for (size_t site=0; site<sizeof(sites)/sizeof(sites[0]); site++) {
     OpenMXExactExchangeDevice device;
@@ -993,6 +1014,7 @@ static int call_run(const OpenMXExxDevice *table, CallData *d, double multiplica
   gather_columns = blocks[7];
   add_rows = blocks[8];
   lengths = blocks[9];
+  pending = 1;
   if (table->upload(context,da,d->a,sizeof(d->a))!=0 || table->upload(context,db,d->b,sizeof(d->b))!=0
       || table->upload(context,dt,d->target,sizeof(d->target))!=0
       || table->upload(context,dz,&nothing,sizeof(nothing))!=0
@@ -1001,7 +1023,6 @@ static int call_run(const OpenMXExxDevice *table, CallData *d, double multiplica
       || table->upload(context,add_rows,d->add_rows,sizeof(d->add_rows))!=0
       || table->upload(context,lengths,d->lengths,sizeof(d->lengths))!=0)
     goto stop;
-  pending = 1;
   if (table->dgemm(context,'N','N',CALL_M,CALL_N,CALL_K,1.0,da,CALL_M,db,CALL_K,0.0,dp,CALL_M)!=0) goto stop;
   if (table->dgemm(context,'T','N',CALL_K,CALL_K,CALL_M,1.0,da,CALL_M,da,CALL_M,0.0,dq,CALL_K)!=0) goto stop;
   {
@@ -1093,8 +1114,8 @@ static void calls_on_the_device(void)
   check(model.count[CALL_MALLOC]==CALL_BLOCKS && model.count[CALL_FREE]==CALL_BLOCKS
         && model.count[CALL_COPY]==CALL_UPLOADS+2 && model.peak_total==d.bytes,
         "a call did not allocate, copy and release its blocks once each");
-  check(model.count[CALL_SYNCHRONIZE]==CALL_UPLOADS+1 && model.count[CALL_ACC_WAIT]==1,
-        "an upload or the finish of a call did not wait for the device");
+  check(model.count[CALL_SYNCHRONIZE]==3,
+        "a call did not wait once for the products and once for each download");
   check(model.count[CALL_ACC_STREAM]==1 && model.count[CALL_GET_STREAM]==1 && model.count[CALL_SET_STREAM]==2
         && model.count[CALL_CREATE]==1 && model.handles==1,"the handle did not get the stream of the queue and back");
 
@@ -1262,21 +1283,22 @@ static void calls_without_room(void)
     model.fail_kind = bridge ? CALL_BRIDGE : CALL_DGEMM;
     model.fail_at = model.count[model.fail_kind]+1;
     model.fail_status = CUBLAS_STATUS_ALLOC_FAILED;
-    check(call_run(t,&d,60.0)==0 && model.count[CALL_ACC_WAIT]==bridge+1,
+    const int waits=model.count[CALL_SYNCHRONIZE];
+    check(call_run(t,&d,60.0)==0 && model.count[CALL_SYNCHRONIZE]==waits+1,
           "a call without memory for a product was not stopped and finished");
     /* The host build can offer individual products to CUDA before it ends
-       the whole call. Their input copies use the default stream. */
+       the whole call. Their copies and products use the private stream. */
     Product p;
     product_make(&p,'N','T',6,5,4,102u+(unsigned)bridge);
     const int queued=model.queue_products,individual=model.default_products;
     check(product_run(&device,&p,0.0)==1 && product_matches(&p),
           "an individual product during the fallback failed");
-    check(model.queue_products==queued && model.default_products==individual+1 && handle_stream(&device)==NULL,
+    check(model.queue_products==queued && model.default_products==individual+1 && handle_stream(&device)==&product_stream,
           "an individual product during the fallback used the whole-call stream");
     product_free(&p);
     check(Exact_Exchange_Device_Call_End(&device)==0 && device.declined_calls==declined+1 && device.device_calls==0,
           "a product without memory was not counted as a call left to the host");
-    call_clean(&device,NULL,"a call without memory for a product left something behind");
+    call_clean(&device,&product_stream,"a call without memory for a product left something behind");
     check(!device.disabled && device.failure==OPENMX_EXACT_EXCHANGE_DEVICE_OK && result_untouched_call(&d),
           "a product without memory switched the device off or wrote the result");
     model.fail_at = 0;
@@ -1287,7 +1309,7 @@ static void calls_without_room(void)
   /* the memory is back: the device takes the call */
   check(call_run(t,&d,60.0)==1 && call_matches(&d) && Exact_Exchange_Device_Call_End(&device)==1,
         "the device did not take a call after the calls without room");
-  call_clean(&device,NULL,"the call after the calls without room left something behind");
+  call_clean(&device,&product_stream,"the call after the calls without room left something behind");
   check(device.device_calls==1 && device.declined_calls==5 && device.call_products==2,
         "the counters after the calls without room are wrong");
   Exact_Exchange_Device_Release(&device);
@@ -1312,10 +1334,10 @@ static void calls_that_fail(void)
     {CALL_MALLOC,CALL_BLOCKS,OPENMX_EXACT_EXCHANGE_DEVICE_ALLOCATION,0},
     {CALL_COPY,1,OPENMX_EXACT_EXCHANGE_DEVICE_UPLOAD,0},
     {CALL_COPY,CALL_UPLOADS,OPENMX_EXACT_EXCHANGE_DEVICE_UPLOAD,0},
-    {CALL_SYNCHRONIZE,1,OPENMX_EXACT_EXCHANGE_DEVICE_UPLOAD,0},
     {CALL_DGEMM,1,OPENMX_EXACT_EXCHANGE_DEVICE_PRODUCT,0},
     {CALL_DGEMM,2,OPENMX_EXACT_EXCHANGE_DEVICE_PRODUCT,0},
-    {CALL_SYNCHRONIZE,CALL_UPLOADS+1,OPENMX_EXACT_EXCHANGE_DEVICE_WAIT,0},
+    {CALL_SYNCHRONIZE,1,OPENMX_EXACT_EXCHANGE_DEVICE_WAIT,0},
+    {CALL_SYNCHRONIZE,2,OPENMX_EXACT_EXCHANGE_DEVICE_DOWNLOAD,0},
     {CALL_COPY,CALL_UPLOADS+1,OPENMX_EXACT_EXCHANGE_DEVICE_DOWNLOAD,0},
     {CALL_COPY,CALL_UPLOADS+2,OPENMX_EXACT_EXCHANGE_DEVICE_DOWNLOAD,0}};
   for (size_t site=0; site<sizeof(sites)/sizeof(sites[0]); site++) {
@@ -1366,9 +1388,9 @@ static void calls_that_fail(void)
     model.fail_kind = CALL_DGEMM;
     model.fail_at = 2;
     model.also_kind = CALL_SYNCHRONIZE;
-    model.also_at = CALL_UPLOADS+1;
+    model.also_at = 1;
     check(call_run(t,&d,60.0)==0,"a call was computed although its product failed");
-    check(model.count[CALL_ACC_WAIT]==1 && model.count[CALL_SYNCHRONIZE]==CALL_UPLOADS+1,
+    check(model.count[CALL_SYNCHRONIZE]==1,
           "the call that failed in a product was not finished once");
     check(device.disabled && device.failure==OPENMX_EXACT_EXCHANGE_DEVICE_PRODUCT
           && device.failure_status==CUBLAS_STATUS_EXECUTION_FAILED,"the failed product is not the failure recorded");
@@ -1396,12 +1418,46 @@ static void calls_that_fail(void)
     {
       Product p;
       product_make(&p,'T','N',5,4,6,127u);
-      check(product_run(&device,&p,0.0)==1 && product_matches(&p) && model.handles==1 && handle_stream(&device)==NULL,
-            "the next product did not get a new handle on the default stream");
+      check(product_run(&device,&p,0.0)==1 && product_matches(&p) && model.handles==1 &&
+            handle_stream(&device)==&product_stream,"the next product did not get its own stream");
       product_free(&p);
     }
     Exact_Exchange_Device_Release(&device);
   }
+}
+
+static void retained_workspaces(void)
+{
+  OpenMXExactExchangeDevice device;
+  OpenMXExxDevice table;
+  CallData d;
+  model_reset();
+  const OpenMXExxDevice *t=call_device(&device,&table);
+  device.retain_bytes = model.capacity_bytes/2;
+
+  for (int i=0; i<2; ++i) {
+    call_make(&d,157u+(unsigned)i);
+    check(call_run(t,&d,60.0)==1 && call_matches(&d) && Exact_Exchange_Device_Call_End(&device)==1,
+          "a call with retained buffers computed the wrong result");
+    check(model.count[CALL_MALLOC]==CALL_BLOCKS && model.live_count==CALL_BLOCKS && !model.pending,
+          "the next call did not reuse the same device buffers");
+  }
+  model.capacity_bytes = model.live_total+device.reserve_bytes-1;
+  check(call_run(t,&d,60.0)==0 && Exact_Exchange_Device_Call_End(&device)==0 &&
+        device.declined_calls==1 && model.live_count==0,"memory pressure did not evict the call's buffers");
+  model.capacity_bytes = (size_t)1<<20;
+
+  for (int i=0; i<2; ++i) {
+    Product p;
+    product_make(&p,'N','T',6,5,4,163u+(unsigned)i);
+    check(product_run(&device,&p,0.0)==1 && product_matches(&p),"a product with retained buffers was incorrect");
+    check(model.count[CALL_MALLOC]==CALL_BLOCKS+3 && model.live_count==3 && !model.pending,
+          "the next product did not reuse the buffers or left work pending");
+    product_free(&p);
+  }
+  Exact_Exchange_Device_Release(&device);
+  check(model.live_count==0 && model.handles==0 && model.streams==0 && model.wrong==0,
+        "the release kept workspace or broke stream ordering");
 }
 
 int main(void)
@@ -1415,6 +1471,7 @@ int main(void)
   calls_left_to_the_host();
   calls_without_room();
   calls_that_fail();
+  retained_workspaces();
   model_reset();
   printf("exx device product: ok\n");
   return 0;

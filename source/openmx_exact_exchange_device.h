@@ -7,8 +7,8 @@
    modules/exx asks for every product through its table of functions
    (section 7.2). The layer source/Exact_Exchange.c offers each product to
    Exact_Exchange_Device_Dgemm first. The device takes it when the process
-   has a usable device, the product is large enough to pay for the two
-   transfers, and the three matrices fit into the free device memory with
+   has a usable device, the product meets the dispatch threshold, and the
+   three matrices fit into the reusable and free device memory with
    the reserve below left over. In every other case the function returns 0
    and the host computes the product: the result does not depend on where a
    product ran beyond the rounding of the two BLAS libraries.
@@ -24,6 +24,7 @@
    of the eigensolvers do: GEMMul8 computes it, or FP64 when the bridge has
    no room for its workspace or the environment switches GEMMul8 off. The
    bridge keeps its workspace between two calls, bounded by its own cap.
+   The application reuses its own buffers within a separate per-rank limit.
 
    Whole calls. The CUDA build also offers modules/exx a device for whole
    calls of openmx_exx_add_blocks and openmx_exx_add_gamma
@@ -34,9 +35,8 @@
    into the free device memory with the reserve left over; the other calls
    go to the products above. A call without room is counted and the device
    stays in use; a device call that fails for another reason switches the
-   device off for the calls and for the products, as above. The products
-   of a call and the loops that move its elements run in order on one
-   stream, that of the OpenACC queue OPENMX_EXACT_EXCHANGE_DEVICE_QUEUE.
+   device off for the calls and for the products, as above. Transfers,
+   products and moves run in order on the OpenACC queue's stream.
    Products with at least minimum_work multiplications go through the
    GEMMul8 bridge when the caller sets gemmul8; the others are FP64, and a
    call on the device may have none of the first kind. */
@@ -50,6 +50,7 @@ extern "C" {
 
 /* The OpenACC queue of the whole calls. */
 #define OPENMX_EXACT_EXCHANGE_DEVICE_QUEUE 1
+#define OPENMX_EXACT_EXCHANGE_DEVICE_RESERVE ((size_t)64*1024*1024)
 
 /* Why the device stopped taking products; 0 while it takes them. */
 enum {
@@ -65,13 +66,27 @@ enum {
 };
 
 typedef struct {
+  void *pointer;
+  size_t bytes;
+} OpenMXExactExchangeBuffer;
+
+/* DeviceArrays in modules/exx uses fewer slots even for force weights. */
+enum { OPENMX_EXACT_EXCHANGE_CALL_BUFFERS = 32 };
+
+typedef struct {
   void *blas;                  /* handle of the BLAS on the device; NULL until the first product */
+  void *product_stream;        /* nonblocking stream for individual products */
   int blas_device;             /* device the handle belongs to */
   int disabled;                /* a device call failed: the host computes every later product */
   int failure;                 /* OPENMX_EXACT_EXCHANGE_DEVICE_..., the call that failed */
   int failure_status;          /* status that call returned */
   double minimum_work;         /* products with fewer multiplications m*n*k stay on the host, calls with fewer in all */
+  double dispatch_work;        /* minimum work of an individual product for GPU dispatch */
+  int sharing_ranks;            /* MPI ranks assigned to the same physical device */
   size_t reserve_bytes;        /* device memory that a product leaves free */
+  size_t retain_bytes;         /* limit for workspace kept between uses */
+  OpenMXExactExchangeBuffer product_buffers[3];
+  OpenMXExactExchangeBuffer call_buffers[OPENMX_EXACT_EXCHANGE_CALL_BUFFERS];
   int gemmul8;                 /* products go through the GEMMul8 bridge of the device BLAS */
   long long device_products;   /* products computed on the device */
   long long gemmul8_products;  /* those of them that GEMMul8 computed */
@@ -90,6 +105,9 @@ typedef struct {
   int call_failed;                 /* a device call failed */
   int call_downloaded;             /* the result came back */
   int call_stream_set;             /* the handle runs on the stream of the queue */
+  void *call_stream;               /* stream of the OpenACC queue, borrowed */
+  int call_cached;                 /* allocate/release borrow from the owned buffers */
+  int call_next_buffer;
   void *call_stream_before;        /* the stream of the handle before */
   size_t call_bytes;               /* of its arrays */
   long long call_products_now,call_large_now,call_gemmul8_now;
@@ -112,7 +130,7 @@ int Exact_Exchange_Device_Dgemm(OpenMXExactExchangeDevice *device, char transa, 
 /* Text for the value of failure, for a message. */
 const char *Exact_Exchange_Device_Failure_Name(int failure);
 
-/* Gives the handle back. The counters stay. */
+/* Gives buffers, the private stream and the handle back. The counters stay. */
 void Exact_Exchange_Device_Release(OpenMXExactExchangeDevice *device);
 
 /* The device for whole calls: fills table, whose context is device, and

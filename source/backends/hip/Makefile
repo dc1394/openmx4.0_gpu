@@ -637,7 +637,7 @@ Band_DFT_kpath.o: Band_DFT_kpath.c openmx_common.h openmx_band_kpath_gpu.h openm
 	$(CC) -c Band_DFT_kpath.c
 Band_DFT_kpath_LNO.o: Band_DFT_kpath_LNO.c openmx_common.h openmx_band_kpath_gpu.h openmx_band_kpath_points.h
 	$(CC) -c Band_DFT_kpath_LNO.c
-Band_DFT_kpath_gpu.o: Band_DFT_kpath_gpu.c openmx_band_kpath_gpu.h openmx_band_kpath_points.h openmx_common.h openmx_mgpu_runtime.h openmx_host_memory.h openmx_host_simd.h
+Band_DFT_kpath_gpu.o: Band_DFT_kpath_gpu.c openmx_band_kpath_gpu.h openmx_band_kpath_points.h openmx_common.h openmx_mgpu_runtime.h openmx_gpu_collective.h openmx_host_memory.h openmx_host_simd.h
 	$(CC_NOACC_O3) -c $<
 openmx_band_kpath_gpu.o: openmx_band_kpath_gpu.cu openmx_band_kpath_gpu.h openmx_gpu_memory.hpp openmx_gpu_workers.h openmx_mgpu_runtime.h
 	$(HIPCC) $(HIPCC_GEMMUL8_FLAGS) -c $< -o $@
