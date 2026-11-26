@@ -634,7 +634,7 @@ __device__ void otf_point_eval_df(const TablesArg &t, int wan, int no, double gx
   }
 }
 
-template <bool DF>
+template <bool DF, bool Gather>
 __global__ __launch_bounds__(kThreads) void otf_eval_kernel(TablesArg t, int count, const OTF_Atom *__restrict__ atoms,
                                                             const int *__restrict__ npts,
                                                             const size_t *__restrict__ idx_off,
@@ -642,7 +642,8 @@ __global__ __launch_bounds__(kThreads) void otf_eval_kernel(TablesArg t, int cou
                                                             const size_t *__restrict__ sph_off,
                                                             const int *__restrict__ idx,
                                                             const int *__restrict__ gla,
-                                                            const int *__restrict__ cla, float *__restrict__ out)
+                                                            const int *__restrict__ cla, float *__restrict__ out,
+                                                            OTF_PotentialGather potential)
 {
   const int p = blockIdx.x;
 
@@ -655,9 +656,16 @@ __global__ __launch_bounds__(kThreads) void otf_eval_kernel(TablesArg t, int cou
 
     for (int k = blockIdx.y * blockDim.x + threadIdx.x; k < np; k += gridDim.y * blockDim.x) {
       const int Nc = (idx != nullptr) ? idx[ioff + (size_t)k] : k;
-      const int GNc = gla[soff + (size_t)Nc], GRc = cla[soff + (size_t)Nc];
+      const size_t sphere = soff + (size_t)Nc;
+      const int GNc = gla[sphere], GRc = cla[sphere];
       float *o = out + ooff + (size_t)k * (size_t)a.no;
 
+      if constexpr (Gather) {
+        const size_t grid_point = (size_t)potential.sphere_to_grid[sphere];
+        for (int spin = 0; spin < potential.spins; ++spin)
+          potential.values[(size_t)spin * potential.overlap_points + ioff + k] =
+              potential.volume * potential.grid[(size_t)spin * potential.grid_points + grid_point];
+      }
       if (DF) otf_point_eval_df(t, a.wan, a.no, a.gx, a.gy, a.gz, a.ax, a.ay, a.az, GNc, GRc, o);
       else otf_point_eval(t, a.wan, a.no, a.gx, a.gy, a.gz, a.ax, a.ay, a.az, GNc, GRc, o);
     }
@@ -672,11 +680,10 @@ size_t arena_off(size_t *pos, size_t bytes)
   return off;
 }
 
-/* the launch of OTF_Orbitals_Eval (double_float: the uploaded precision)
-   and of OTF_Orbitals_Eval_FP64 */
+template <bool Gather>
 int otf_launch(OpenMXOrbitalGpuState *orbital_state, bool double_float, void *stream, int count, int max_npts, const OTF_Atom *atoms, const int *npts,
                const size_t *idx_off, const size_t *out_off, const size_t *sph_off, const int *idx, const int *gla,
-               const int *cla, float *out)
+               const int *cla, float *out, OTF_PotentialGather potential)
 {
   TablesArg t;
   unsigned ychunks;
@@ -720,11 +727,11 @@ int otf_launch(OpenMXOrbitalGpuState *orbital_state, bool double_float, void *st
   /* a failure left behind by an earlier call is not this launch's */
   (void)hipGetLastError();
   if (double_float)
-    hipLaunchKernelGGL(otf_eval_kernel<true>, dim3((unsigned)count, ychunks), dim3(kThreads), 0,
-                       (hipStream_t)stream, t, count, atoms, npts, idx_off, out_off, sph_off, idx, gla, cla, out);
+    hipLaunchKernelGGL((otf_eval_kernel<true, Gather>), dim3((unsigned)count, ychunks), dim3(kThreads), 0,
+                       (hipStream_t)stream, t, count, atoms, npts, idx_off, out_off, sph_off, idx, gla, cla, out, potential);
   else
-    hipLaunchKernelGGL(otf_eval_kernel<false>, dim3((unsigned)count, ychunks), dim3(kThreads), 0,
-                       (hipStream_t)stream, t, count, atoms, npts, idx_off, out_off, sph_off, idx, gla, cla, out);
+    hipLaunchKernelGGL((otf_eval_kernel<false, Gather>), dim3((unsigned)count, ychunks), dim3(kThreads), 0,
+                       (hipStream_t)stream, t, count, atoms, npts, idx_off, out_off, sph_off, idx, gla, cla, out, potential);
   return hipGetLastError() == hipSuccess ? 0 : 2;
 }
 
@@ -904,13 +911,22 @@ extern "C" int OTF_Orbitals_Eval(OpenMXOrbitalGpuState *orbital_state, void *str
                                  const size_t *idx_off, const size_t *out_off, const size_t *sph_off, const int *idx,
                                  const int *gla, const int *cla, float *out)
 {
-  return otf_launch(orbital_state, orbital_state->tables.double_float != 0 && openmx_fp32_enabled(), stream, count, max_npts, atoms, npts, idx_off, out_off, sph_off, idx,
-                    gla, cla, out);
+  return otf_launch<false>(orbital_state, orbital_state->tables.double_float != 0 && openmx_fp32_enabled(), stream, count, max_npts, atoms, npts,
+                           idx_off, out_off, sph_off, idx, gla, cla, out, {});
+}
+
+extern "C" int OTF_Orbitals_Eval_Potential(OpenMXOrbitalGpuState *orbital_state, void *stream, int count, int max_npts,
+    const OTF_Atom *atoms, const int *npts, const size_t *idx_off, const size_t *out_off,
+    const size_t *sph_off, const int *idx, const int *gla, const int *cla, float *out,
+    const OTF_PotentialGather *potential)
+{
+  return otf_launch<true>(orbital_state, orbital_state->tables.double_float != 0 && openmx_fp32_enabled(), stream, count, max_npts, atoms, npts,
+                          idx_off, out_off, sph_off, idx, gla, cla, out, *potential);
 }
 
 extern "C" int OTF_Orbitals_Eval_FP64(OpenMXOrbitalGpuState *orbital_state, void *stream, int count, int max_npts, const OTF_Atom *atoms, const int *npts,
                                       const size_t *idx_off, const size_t *out_off, const size_t *sph_off,
                                       const int *idx, const int *gla, const int *cla, float *out)
 {
-  return otf_launch(orbital_state, false, stream, count, max_npts, atoms, npts, idx_off, out_off, sph_off, idx, gla, cla, out);
+  return otf_launch<false>(orbital_state, false, stream, count, max_npts, atoms, npts, idx_off, out_off, sph_off, idx, gla, cla, out, {});
 }

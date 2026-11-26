@@ -186,6 +186,9 @@ int main(void) {
         const SOG_GpuPair *central=(const SOG_GpuPair*)(bt->image+bt->off_central_pairs);
         check(n<=13 && (n>0 || NumOLG[a][h]==0),"bounded chunk size");
         check(bt->total_orbs0_tiles==(size_t)n*41 && bt->total_orbs1==(size_t)n*41,"compact tile sizes");
+        if(!kind) check(bt->off_h_data%512==0 && bt->off_h_data>=bt->off_Nc+sizeof(int)*bt->total_nolg &&
+                        bt->image_bytes==bt->off_h_data+sizeof(double)*bt->total_h,
+                        "H transfer shares the image without overlapping the index rows");
         check(((size_t*)(bt->image+bt->off_h_off))[0]==(kind?dm_prefix:0),"same DM block across chunks");
         check(central->wan==a && central->no==41 && central->gx==Gxyz[a][1] &&
               central->ax==0 && central->ay==0 && central->az==0,"central descriptor");
@@ -210,7 +213,6 @@ int main(void) {
         }
         pos=(pos+511)&~(size_t)511; pos+=sizeof(float)*bt->total_orbs0_tiles;
         pos=(pos+511)&~(size_t)511; pos+=sizeof(float)*bt->total_orbs1;
-        if(!kind) { pos=(pos+511)&~(size_t)511; pos+=sizeof(double)*bt->total_h; }
         check(pos<=payload,"chunk arena within requested payload");
         nextpoint+=n;
         if(nextpoint==NumOLG[a][h]) {

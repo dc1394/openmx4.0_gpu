@@ -76,6 +76,21 @@ int OTF_Orbitals_Eval(OpenMXOrbitalGpuState *orbital_state, void *stream, int co
                       const size_t *idx_off, const size_t *out_off, const size_t *sph_off, const int *idx,
                       const int *gla, const int *cla, float *out);
 
+typedef struct {
+    const int *sphere_to_grid;
+    const double *grid;
+    double *values;
+    size_t grid_points, overlap_points;
+    double volume;
+    int spins;
+} OTF_PotentialGather;
+
+/* Also gathers the weighted potential into spin-major overlap rows. */
+int OTF_Orbitals_Eval_Potential(OpenMXOrbitalGpuState *orbital_state, void *stream, int count, int max_npts,
+    const OTF_Atom *atoms, const int *npts, const size_t *idx_off, const size_t *out_off,
+    const size_t *sph_off, const int *idx, const int *gla, const int *cla, float *out,
+    const OTF_PotentialGather *potential);
+
 /* the same in FP64 whatever the uploaded precision (the tables
    Orbs_Grid / Orbs_Grid_FNAN of Set_Orbitals_Grid.c) */
 int OTF_Orbitals_Eval_FP64(OpenMXOrbitalGpuState *orbital_state, void *stream, int count, int max_npts, const OTF_Atom *atoms, const int *npts,

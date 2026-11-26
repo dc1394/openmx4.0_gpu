@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Check production compact orbital gathers against the per-point evaluators.
+"""Check production orbital tiles against the per-point evaluators.
 
 Only allocation/transfers are replaced with host operations. ASan/UBSan cover
 valid, repeated sphere indices, signed coordinates, translated neighbors,
-partial chunks and output guards in both FP64 and double-float modes.
+partial chunks, fused potential indices and output guards in both precisions.
 """
 import ctypes
 import os
@@ -35,6 +35,8 @@ prepare = source[source.index("int SOG_Device_Prepare(OpenMXOrbitalGpuState *orb
                  source.index("\nconst char *SOG_Device_EvalPrecisionName")]
 chunk_start = source.index("static void SOG_Device_EvalPairChunk_Part(")
 chunk = source[chunk_start:source.index("\n}\n", chunk_start)+3]
+tiles_start = source.index("static void SOG_Device_EvalPairTiles_Part(")
+tiles = source[tiles_start:source.index("\n}\n", tiles_start)+3]
 code = r'''
 #include <assert.h>
 #include <math.h>
@@ -77,7 +79,7 @@ static void *SOG_arena_try(size_t n) { return malloc(n); }
 static void acc_free(void *p) { free(p); }
 static void acc_memcpy_to_device(void *d,const void *s,size_t n) { memcpy(d,s,n); }
 '''
-code += point + prepare + chunk
+code += point + prepare + chunk + tiles
 code += r'''
 static void oracle(const SOG_GpuPair *p, int gn, int cell, float *out)
 {
@@ -92,6 +94,41 @@ static void oracle(const SOG_GpuPair *p, int gn, int cell, float *out)
     SOG_point_eval(p->wan,p->no,p->gx,p->gy,p->gz,p->ax,p->ay,p->az,gn,cell,
       t->atv,t->rv,t->rwf,t->rvo,t->rwb,t->spm,t->spx,t->spb,GEOMETRY);
 #undef GEOMETRY
+}
+
+static void check_pair_tiles(SOG_GpuPair center,const int *gla,const int *cla,int grid_rows)
+{
+  enum {PAIRS=4,POINTS=2400};
+  const int count[PAIRS]={2083,0,1,171};
+  const size_t noff[PAIRS]={7,3,2100,2119},goff[PAIRS]={0,9,3,8};
+  size_t ooff[PAIRS],out_count=5;
+  SOG_GpuPair pairs[PAIRS];
+  int nc[POINTS],mn[POINTS],expected_mn[POINTS];
+  int *mgla=malloc((size_t)grid_rows*sizeof(*mgla));
+  assert(mgla);
+  for(int i=0;i<grid_rows;i++) mgla[i]=7*i+13;
+  for(int i=0;i<POINTS;i++) { nc[i]=(i*37)% (grid_rows-9); mn[i]=expected_mn[i]=-1; }
+  for(int p=0;p<PAIRS;p++) {
+    pairs[p]=center;
+    pairs[p].ax+=p*0.02;
+    ooff[p]=out_count;
+    out_count+=(size_t)count[p]*center.no+3;
+  }
+  float *got=malloc(out_count*sizeof(*got)),*expected=malloc(out_count*sizeof(*expected));
+  assert(got && expected);
+  for(size_t i=0;i<out_count;i++) got[i]=expected[i]=111.25f;
+  for(int p=0;p<PAIRS;p++)for(int k=0;k<count[p];k++) {
+    const size_t point=noff[p]+k,grid=goff[p]+nc[point];
+    expected_mn[point]=mgla[grid];
+    oracle(&pairs[p],gla[grid],cla[grid],expected+ooff[p]+(size_t)k*center.no);
+  }
+  SOG_Device_EvalPairTiles_Part(&SOG_dev,PAIRS,count[0],pairs,count,noff,ooff,goff,nc,gla,cla,got,mgla,mn);
+  assert(memcmp(mn,expected_mn,sizeof(mn))==0);
+  assert(memcmp(got,expected,out_count*sizeof(*got))==0);
+  for(size_t i=0;i<out_count;i++) got[i]=111.25f;
+  SOG_Device_EvalPairTiles_Part(&SOG_dev,PAIRS,count[0],pairs,count,noff,ooff,goff,nc,gla,cla,got,NULL,NULL);
+  assert(memcmp(got,expected,out_count*sizeof(*got))==0);
+  free(got);free(expected);free(mgla);
 }
 
 int main(void)
@@ -121,6 +158,7 @@ int main(void)
     pair.gx=0.17; pair.gy=-0.23; pair.gz=0.31;
     pair.ax=atv[shift][1]; pair.ay=atv[shift][2]; pair.az=atv[shift][3];
     SOG_dev.eval_df=mode;
+    if(!shift) check_pair_tiles(pair,gla+GPREFIX,cla+GPREFIX,ROWS);
     for(size_t l=0;l<sizeof(lengths)/sizeof(lengths[0]);l++) {
       const int length=lengths[l];
       for(size_t i=0;i<sizeof(actual)/sizeof(actual[0]);i++) actual[i]=expected[i]=111.25f;
@@ -170,7 +208,7 @@ int main(void)
   }
   SOG_Device_Release(&fixture_state);
   printf("PASS: %d FP64/DF compact orbital gathers; signed coordinates, cell/neighbor shifts, "
-         "s/p/d/f orbitals, repeated sphere indices, chunk offsets, empty/unready calls, output guards\n",cases);
+         "s/p/d/f orbitals, chunk offsets, sliced pair tiles and fused potential indices\n",cases);
 }
 '''
 with tempfile.TemporaryDirectory(prefix="openmx-orbs-chunks-") as tmp:

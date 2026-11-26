@@ -573,52 +573,7 @@ cleanup:
     return result;
 }
 
-namespace {
-
-/* the potential at the overlap points of a batch of pairs, from the rank's
-   grid (vgrid, spin_count x vgrid_len): vb[s * batch_nolg + noff[p] + k] =
-   gridvol * vgrid[s][mgla[sph[p] + nc[noff[p] + k]]] */
-__global__ void otf_vpot_gather_kernel(int pair_count, int spin_count, std::size_t batch_nolg,
-                                       const int *__restrict__ nolg, const std::size_t *__restrict__ noff,
-                                       const std::size_t *__restrict__ sph, const int *__restrict__ nc,
-                                       const int *__restrict__ mgla, const double *__restrict__ vgrid,
-                                       std::size_t vgrid_len, double gridvol, double *__restrict__ vb)
-{
-    const int p = blockIdx.x;
-    if (p >= pair_count) return;
-    const int np = nolg[p];
-    const std::size_t off = noff[p], so = sph[p];
-
-    for (int k = blockIdx.y * blockDim.x + threadIdx.x; k < np; k += gridDim.y * blockDim.x) {
-        const int MN = mgla[so + static_cast<std::size_t>(nc[off + k])];
-        for (int s = 0; s < spin_count; ++s)
-            vb[static_cast<std::size_t>(s) * batch_nolg + off + k] =
-                gridvol * vgrid[static_cast<std::size_t>(s) * vgrid_len + static_cast<std::size_t>(MN)];
-    }
-}
-
-} // namespace
-
-/* The on-the-fly batches of Set_Hamiltonian (Set_Hamiltonian.c): the
-   potential gathered at the batch's overlap points ... */
-extern "C" int Set_Hamiltonian_Hip_OTF_VpotGather(int pair_count, int max_nolg, int spin_count,
-                                                  std::size_t batch_nolg, const int *d_nolg,
-                                                  const std::size_t *d_noff, const std::size_t *d_sph,
-                                                  const int *d_nc, const int *d_mgla, const double *d_vgrid,
-                                                  std::size_t vgrid_len, double gridvol, double *d_vb)
-{
-    unsigned ychunks;
-
-    if (pair_count <= 0 || max_nolg <= 0) return 0;
-    ychunks = static_cast<unsigned>((max_nolg + kThreads - 1) / kThreads);
-    if (ychunks > 8u) ychunks = 8u;
-    hipLaunchKernelGGL(otf_vpot_gather_kernel, dim3(static_cast<unsigned>(pair_count), ychunks), dim3(kThreads), 0, 0,
-                       pair_count, spin_count, batch_nolg, d_nolg, d_noff, d_sph, d_nc, d_mgla, d_vgrid, vgrid_len,
-                       gridvol, d_vb);
-    return hipGetLastError() == hipSuccess ? 0 : 2;
-}
-
-/* ... and the matrix elements of the batch, every operand on the device
+/* The matrix elements of an on-the-fly batch, every operand on the device
    (d_h holds the batch's H blocks on entry and on return) */
 extern "C" int Set_Hamiltonian_Hip_MatrixElements_Device(
     int pair_count, int spin_count, int max_output_count, int max_no, int max_nolg, std::size_t total_h,

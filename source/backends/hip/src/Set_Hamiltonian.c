@@ -1052,10 +1052,6 @@ double Set_Hamiltonian(OpenMXHamiltonianGpuState *hamiltonian_state, OpenMXGridW
    arena of OPENMX_SETHAM_ONTHEFLY_MB (default 256).
    OPENMX_SETHAM_ONTHEFLY=0 turns it off.
    --------------------------------------------------------------------- */
-int Set_Hamiltonian_Hip_OTF_VpotGather(int pair_count, int max_nolg, int spin_count, size_t batch_nolg,
-                                       const int *d_nolg, const size_t *d_noff, const size_t *d_sph,
-                                       const int *d_nc, const int *d_mgla, const double *d_vgrid,
-                                       size_t vgrid_len, double gridvol, double *d_vb);
 int Set_Hamiltonian_Hip_MatrixElements_Device(
     int pair_count, int spin_count, int max_output_count, int max_no, int max_nolg, size_t total_h,
     size_t total_nolg,
@@ -1710,20 +1706,17 @@ static int Calc_MatrixElements_dVH_Vxc_VNA_OnTheFly(OpenMXHamiltonianGpuState *h
                               (const size_t *)(void *)(arena + bt->o_a_ooff),
                               (const size_t *)(void *)(arena + bt->o_a_soff), NULL, st->d_gla, st->d_cla,
                               (float *)(void *)(arena + bt->o_o0)) != 0) goto done;
-        if (OTF_Orbitals_Eval(hamiltonian_state->orbital_state, NULL, bt->np, bt->max_nolg, (const OTF_Atom *)(void *)(arena + bt->o_p_items),
+        const OTF_PotentialGather potential={st->d_mgla,d_vgrid,(double *)(void *)(arena + bt->o_vb),
+                                            vgrid_len,bt->bn,GridVol,spin_count};
+        if (OTF_Orbitals_Eval_Potential(hamiltonian_state->orbital_state, NULL, bt->np, bt->max_nolg,
+                              (const OTF_Atom *)(void *)(arena + bt->o_p_items),
                               (const int *)(void *)(arena + bt->o_p_npts),
                               (const size_t *)(void *)(arena + bt->o_p_ioff),
                               (const size_t *)(void *)(arena + bt->o_p_ooff),
                               (const size_t *)(void *)(arena + bt->o_p_soff),
                               (const int *)(void *)(arena + bt->o_nc), st->d_gla, st->d_cla,
-                              (float *)(void *)(arena + bt->o_o1)) != 0) goto done;
+                              (float *)(void *)(arena + bt->o_o1), &potential) != 0) goto done;
         SETH_OTF_TIME(t_eval);
-        if (Set_Hamiltonian_Hip_OTF_VpotGather(bt->np, bt->max_nolg, spin_count, bt->bn,
-                                               (const int *)(void *)(arena + bt->o_p_npts),
-                                               (const size_t *)(void *)(arena + bt->o_p_ioff),
-                                               (const size_t *)(void *)(arena + bt->o_p_soff),
-                                               (const int *)(void *)(arena + bt->o_nc), st->d_mgla, d_vgrid, vgrid_len,
-                                               GridVol, (double *)(void *)(arena + bt->o_vb)) != 0) goto done;
         if (Set_Hamiltonian_Hip_MatrixElements_Device(
                 bt->np, spin_count, bt->max_output, bt->max_no, bt->max_nolg, bt->bh, bt->bn,
                 (const int *)(void *)(arena + bt->o_no0), (const int *)(void *)(arena + bt->o_no1),

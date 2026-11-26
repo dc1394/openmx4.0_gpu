@@ -1612,9 +1612,10 @@ size_t SOG_Device_Bytes(OpenMXOrbitalGpuState *orbital_state)
    nolg_Nc[nolg_off[p] + k] (its global grid index and cell in gla / cla at
    gla_off[p] + that index), and writes no[p] values per point from
    out[out_off[p] + k * no[p]]. */
-static void SOG_Device_EvalPairTiles_Part(const SOG_DeviceTables *t,int pair_count, const SOG_GpuPair *pairs, const int *pair_NOLG,
+static void SOG_Device_EvalPairTiles_Part(const SOG_DeviceTables *t,int pair_count, int max_points, const SOG_GpuPair *pairs, const int *pair_NOLG,
                               const size_t *nolg_off, const size_t *out_off, const size_t *gla_off,
-                              const int *nolg_Nc, const int *gla, const int *cla, float *out)
+                              const int *nolg_Nc, const int *gla, const int *cla, float *out,
+                              const int *mgla, int *MN)
 {
   const double *atvf = t->atv, *rv_all = t->rv, *rwf_all = t->rwf;
   const size_t *rv_off = t->rvo, *rwf_base = t->rwb;
@@ -1624,49 +1625,64 @@ static void SOG_Device_EvalPairTiles_Part(const SOG_DeviceTables *t,int pair_cou
   const double g21 = t->g[1][0], g22 = t->g[1][1], g23 = t->g[1][2];
   const double g31 = t->g[2][0], g32 = t->g[2][1], g33 = t->g[2][2];
   const double org1 = t->org[0], org2 = t->org[1], org3 = t->org[2];
-  int p;
 
   if (!t->ready || pair_count <= 0) return;
+  /* Use more gangs for long overlaps when there are few pairs in the batch.
+     Each slice owns a contiguous span of point rows and writes it once. */
+  const int point_slices = max_points > 0 ? 1 + (max_points - 1) / 1024 : 1;
+  const int pair_slices = 1 + 255 / pair_count;
+  int slices = point_slices < pair_slices ? point_slices : pair_slices;
+  if (slices > 8) slices = 8;
+  const int gather = MN != NULL;
+  int p, slice;
   if (t->eval_df && openmx_fp32_enabled()) {
     const float *rwd_all = t->rwd, *mcd_all = t->mcd, *spl = t->spl;
-#pragma acc parallel loop gang \
-  deviceptr(pairs, pair_NOLG, nolg_off, out_off, gla_off, nolg_Nc, gla, cla, out, \
+#pragma acc parallel loop gang collapse(2) vector_length(128) \
+  deviceptr(pairs, pair_NOLG, nolg_off, out_off, gla_off, nolg_Nc, gla, cla, out, mgla, MN, \
             atvf, rv_all, rwf_all, rwd_all, mcd_all, spl, rv_off, rwf_base, sp_mesh, sp_maxl, sp_nb)
-    for (p = 0; p < pair_count; p++) {
+    for (p = 0; p < pair_count; p++)
+      for (slice = 0; slice < slices; slice++) {
+        const SOG_GpuPair pr = pairs[p];
+        const int nolg = pair_NOLG[p];
+        const size_t noff = nolg_off[p], ooff = out_off[p], goff = gla_off[p];
+        const size_t first = (size_t)nolg * slice / slices;
+        const size_t last = (size_t)nolg * (slice + 1) / slices;
+#pragma acc loop vector
+        for (size_t k = first; k < last; k++) {
+          const size_t point = noff + k;
+          const size_t grid = goff + (size_t)nolg_Nc[point];
+          if (gather) MN[point] = mgla[grid];
+          SOG_point_eval_df(pr.wan, pr.no, pr.gx, pr.gy, pr.gz, pr.ax, pr.ay, pr.az,
+                            gla[grid], cla[grid],
+                            atvf, rv_all, rwf_all, rwd_all, mcd_all, spl, rv_off, rwf_base, sp_mesh, sp_maxl, sp_nb,
+                            ng23, ng3, g11, g12, g13, g21, g22, g23, g31, g32, g33, org1, org2, org3,
+                            out + ooff + k * (size_t)pr.no);
+        }
+      }
+    return;
+  }
+#pragma acc parallel loop gang collapse(2) vector_length(128) \
+  deviceptr(pairs, pair_NOLG, nolg_off, out_off, gla_off, nolg_Nc, gla, cla, out, mgla, MN, \
+            atvf, rv_all, rwf_all, rv_off, rwf_base, sp_mesh, sp_maxl, sp_nb)
+  for (p = 0; p < pair_count; p++)
+    for (slice = 0; slice < slices; slice++) {
       const SOG_GpuPair pr = pairs[p];
       const int nolg = pair_NOLG[p];
       const size_t noff = nolg_off[p], ooff = out_off[p], goff = gla_off[p];
-      int k;
+      const size_t first = (size_t)nolg * slice / slices;
+      const size_t last = (size_t)nolg * (slice + 1) / slices;
 #pragma acc loop vector
-      for (k = 0; k < nolg; k++) {
-        const int Nc = nolg_Nc[noff + (size_t)k];
-        SOG_point_eval_df(pr.wan, pr.no, pr.gx, pr.gy, pr.gz, pr.ax, pr.ay, pr.az,
-                          gla[goff + (size_t)Nc], cla[goff + (size_t)Nc],
-                          atvf, rv_all, rwf_all, rwd_all, mcd_all, spl, rv_off, rwf_base, sp_mesh, sp_maxl, sp_nb,
-                          ng23, ng3, g11, g12, g13, g21, g22, g23, g31, g32, g33, org1, org2, org3,
-                          out + ooff + (size_t)k * (size_t)pr.no);
+      for (size_t k = first; k < last; k++) {
+        const size_t point = noff + k;
+        const size_t grid = goff + (size_t)nolg_Nc[point];
+        if (gather) MN[point] = mgla[grid];
+        SOG_point_eval(pr.wan, pr.no, pr.gx, pr.gy, pr.gz, pr.ax, pr.ay, pr.az,
+                       gla[grid], cla[grid],
+                       atvf, rv_all, rwf_all, rv_off, rwf_base, sp_mesh, sp_maxl, sp_nb,
+                       ng23, ng3, g11, g12, g13, g21, g22, g23, g31, g32, g33, org1, org2, org3,
+                       out + ooff + k * (size_t)pr.no);
       }
     }
-    return;
-  }
-#pragma acc parallel loop gang \
-  deviceptr(pairs, pair_NOLG, nolg_off, out_off, gla_off, nolg_Nc, gla, cla, out, \
-            atvf, rv_all, rwf_all, rv_off, rwf_base, sp_mesh, sp_maxl, sp_nb)
-  for (p = 0; p < pair_count; p++) {
-    const SOG_GpuPair pr = pairs[p];
-    const int nolg = pair_NOLG[p];
-    const size_t noff = nolg_off[p], ooff = out_off[p], goff = gla_off[p];
-    int k;
-#pragma acc loop vector
-    for (k = 0; k < nolg; k++) {
-      const int Nc = nolg_Nc[noff + (size_t)k];
-      SOG_point_eval(pr.wan, pr.no, pr.gx, pr.gy, pr.gz, pr.ax, pr.ay, pr.az,
-                     gla[goff + (size_t)Nc], cla[goff + (size_t)Nc],
-                     atvf, rv_all, rwf_all, rv_off, rwf_base, sp_mesh, sp_maxl, sp_nb,
-                     ng23, ng3, g11, g12, g13, g21, g22, g23, g31, g32, g33, org1, org2, org3,
-                     out + ooff + (size_t)k * (size_t)pr.no);
-    }
-  }
 }
 
 /* The orbitals of one atom (pair: its species, orbital count and position,
@@ -1752,7 +1768,7 @@ static void SOG_Device_EvalPairChunk_Part(const SOG_DeviceTables *t,const SOG_Gp
 typedef struct {
   OpenMXGpuWorkers workers;
   SOG_DeviceTables table;
-  int kind,n;
+  int kind,n,max_points;
   const SOG_GpuPair *pairs;
   SOG_GpuPair pair,*host_pairs;
   const int *count,*nc,*gla,*cla;
@@ -1833,10 +1849,10 @@ static int SOG_tile_worker(void *opaque,int worker,int phase)
   if (phase==OPENMX_GPU_WORKER_EXECUTE) {
     const SOG_DeviceTables *t=&w->device[worker].table;
     OpenMXGpuReadView *v=w->device[worker].view;
-    if (w->kind==0) SOG_Device_EvalPairTiles_Part(t,(int)n,
+    if (w->kind==0) SOG_Device_EvalPairTiles_Part(t,(int)n,w->max_points,
       (const SOG_GpuPair*)v[1].pointer,(const int*)v[2].pointer,(const size_t*)v[3].pointer,
       w->device[worker].ooff,w->device[worker].goff,(const int*)v[4].pointer,
-      (const int*)v[5].pointer,(const int*)v[6].pointer,w->device[worker].out);
+      (const int*)v[5].pointer,(const int*)v[6].pointer,w->device[worker].out,NULL,NULL);
     else if (w->kind==1) SOG_Device_EvalAtomTile_Part(t,&w->pair,(int)n,
       (const int*)v[5].pointer,(const int*)v[6].pointer,w->device[worker].out);
     else SOG_Device_EvalPairChunk_Part(t,&w->pair,(int)n,(const int*)v[4].pointer,
@@ -1903,13 +1919,15 @@ static int SOG_tiles_distribute(OpenMXOrbitalGpuState *orbital_state, SOG_TileWo
   return ok;
 }
 
-void SOG_Device_EvalPairTiles(OpenMXOrbitalGpuState *orbital_state, int n,const SOG_GpuPair *pairs,const int *count,
+int SOG_Device_EvalPairTiles(OpenMXOrbitalGpuState *orbital_state, int n,int max_points,const SOG_GpuPair *pairs,const int *count,
     const size_t *noff,const size_t *ooff,const size_t *goff,const int *nc,
-    const int *gla,const int *cla,float *out)
+    const int *gla,const int *cla,float *out,const int *mgla,int *MN)
 {
-  SOG_TileWork w={0};w.n=n;w.pairs=pairs;w.count=count;w.noff=noff;w.ooff=ooff;w.goff=goff;
+  SOG_TileWork w={0};w.n=n;w.max_points=max_points;w.pairs=pairs;w.count=count;w.noff=noff;w.ooff=ooff;w.goff=goff;
   w.nc=nc;w.gla=gla;w.cla=cla;w.out=out;
-  if (!SOG_tiles_distribute(orbital_state, &w)) SOG_Device_EvalPairTiles_Part(&SOG_dev,n,pairs,count,noff,ooff,goff,nc,gla,cla,out);
+  if (SOG_tiles_distribute(orbital_state, &w)) return 0;
+  SOG_Device_EvalPairTiles_Part(&SOG_dev,n,max_points,pairs,count,noff,ooff,goff,nc,gla,cla,out,mgla,MN);
+  return n>0 && SOG_dev.ready && MN!=NULL;
 }
 
 void SOG_Device_EvalAtomTile(OpenMXOrbitalGpuState *orbital_state, const SOG_GpuPair *pair,int n,const int *gla,const int *cla,float *out)

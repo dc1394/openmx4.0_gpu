@@ -47,9 +47,13 @@ void SOG_Device_ReleaseAll(OpenMXOrbitalGpuState *orbital_state);
 const SOG_DeviceTables *SOG_Device_Tables(OpenMXOrbitalGpuState *orbital_state);
 size_t SOG_Device_Bytes(OpenMXOrbitalGpuState *orbital_state);
 const char *SOG_Device_EvalPrecisionName(OpenMXOrbitalGpuState *orbital_state);
-void SOG_Device_EvalPairTiles(OpenMXOrbitalGpuState *orbital_state, int pair_count, const SOG_GpuPair *pairs, const int *pair_NOLG,
+/* With mgla/MN supplied, returns 1 if the owner kernel also filled MN.
+   Distributed tiles leave the MN gather to their caller. */
+int SOG_Device_EvalPairTiles(OpenMXOrbitalGpuState *orbital_state, int pair_count, int max_points,
+                              const SOG_GpuPair *pairs, const int *pair_NOLG,
                               const size_t *nolg_off, const size_t *out_off, const size_t *gla_off,
-                              const int *nolg_Nc, const int *gla, const int *cla, float *out);
+                              const int *nolg_Nc, const int *gla, const int *cla, float *out,
+                              const int *mgla, int *MN);
 void SOG_Device_EvalAtomTile(OpenMXOrbitalGpuState *orbital_state, const SOG_GpuPair *pair, int npts, const int *gla, const int *cla, float *out);
 
 /* Host descriptor; device overlap indices, sphere indices, and compact output. */

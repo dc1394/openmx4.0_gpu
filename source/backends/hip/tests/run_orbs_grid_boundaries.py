@@ -800,6 +800,31 @@ static int upload_checks(void)
     stub_last_error = hipErrorOutOfMemory;
     CHECK(OTF_Orbitals_Eval(nullptr, 1, 1, &a, &np, &zero, &zero, &zero, nullptr, &gla, &cla, out) == 0);
     CHECK(OTF_Orbitals_Eval(nullptr, 0, 1, &a, &np, &zero, &zero, &zero, nullptr, &gla, &cla, out) == 0);
+    {
+      const int idx[4] = {-1, 2, 0, -1}, sphere[4] = {-1, 3, 2, 1};
+      const int global[4] = {0, 7, 13, 19}, cells[4] = {0, 0, 0, 0};
+      const int points = 2;
+      const size_t first = 1, sphere_offset = 1;
+      double grid[4*5], packed[4*4];
+      const OTF_PotentialGather potential = {sphere,grid,packed,5,4,0.375,4};
+      const int original_precision = openmx_fp32_enabled();
+      for (int i=0;i<4*5;i++) grid[i]=(i-7)*0.125;
+      for (int enabled=0;enabled<2;enabled++) {
+        openmx_set_fp32_enabled(enabled);
+        float fused[128] = {}, reference[128] = {};
+        for (double &value : packed) value = -1.0;
+        CHECK(owned_eval(test_orbital_state,nullptr,1,points,&a,&points,&first,&zero,&sphere_offset,idx,global,cells,reference)==0);
+        CHECK(OTF_Orbitals_Eval_Potential(test_orbital_state,nullptr,1,points,&a,&points,&first,&zero,&sphere_offset,
+                                         idx,global,cells,fused,&potential)==0);
+        CHECK(memcmp(fused,reference,sizeof(fused))==0);
+        for (int spin=0;spin<4;spin++)for (int k=0;k<4;k++) {
+          const double expected = k==1 || k==2 ? potential.volume * grid[spin*5+sphere[sphere_offset+idx[k]]] : -1.0;
+          CHECK(packed[spin*4+k]==expected);
+        }
+        checks++;
+      }
+      openmx_set_fp32_enabled(original_precision);
+    }
     OTF_Orbitals_Release();
     CHECK(!OTF_Orbitals_Ready() && stub_live == 0 && OTF_Orbitals_Bytes() == 0 && !OTF_Orbitals_DoubleFloat());
     CHECK(OTF_Orbitals_Eval(nullptr, 1, 1, &a, &np, &zero, &zero, &zero, nullptr, &gla, &cla, out) == 1);
