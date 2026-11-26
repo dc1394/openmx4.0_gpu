@@ -769,12 +769,10 @@ static int Read_VPS(void *user, const OpenMXVpsFileData *data, char *diagnostic,
   atomic->species.radial_projectors[spe]=count;
   atomic->species.projector_components[spe]=data->projector_components;
   if (List_YOUSO[22]<=points+2) List_YOUSO[22]=points+2;
-  if (List_YOUSO[30]<=data->max_angular) List_YOUSO[30]=data->max_angular+2;
-  if (List_YOUSO[30]==0) List_YOUSO[30]=2;
-  if (List_YOUSO[19]<=count) List_YOUSO[19]=count+2;
-  if (List_YOUSO[19]==0) List_YOUSO[19]=3;
-  if (List_YOUSO[20]<=data->projector_components) List_YOUSO[20]=data->projector_components+2;
-  if (List_YOUSO[20]==0) List_YOUSO[20]=3;
+  /* Compare padded capacities so each limit is independent of species order. */
+  if (List_YOUSO[30]<data->max_angular+2) List_YOUSO[30]=data->max_angular+2;
+  if (List_YOUSO[19]<count+2) List_YOUSO[19]=count+2;
+  if (List_YOUSO[20]<data->projector_components+2) List_YOUSO[20]=data->projector_components+2;
   if (2<=level_stdout) {
     printf("<Read_VPS>  VPS of %s was a format of %s\n",atomic->species.potential_file[spe],
            data->legacy_format ? "ADPACK1.1" : "ADPACK1.7");
