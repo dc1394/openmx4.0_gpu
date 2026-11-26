@@ -6,6 +6,7 @@
 #include <openmx_accelerator.h>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -60,7 +61,7 @@ using Sampler = std::function<double(int angular, int multiplicity, double radiu
 RadialSamples sample_radial(RadialGrid grid, std::span<const int> multiplicities,
                            const Sampler& sample);
 
-enum class HostFallback { none, external_runtime, device_changed, fp64_unavailable };
+enum class HostFallback { none, external_runtime, device_changed, fp64_unavailable, device_memory };
 
 class Context {
  public:
@@ -73,6 +74,7 @@ class Context {
 
   // device < 0 selects a host path that also works without a GPU driver.
   Tensor<double, 2> transform(const RadialSamples& samples, int device = -1);
+  void set_host_simd(int mode) noexcept { host_simd_ = mode; }
   void finish() noexcept { runtime_.reset(); finished_ = true; }
   bool finished() const noexcept { return finished_; }
   HostFallback last_fallback() const noexcept { return last_fallback_; }
@@ -87,6 +89,7 @@ class Context {
   HostFallback last_fallback_ = HostFallback::none;
   unsigned reported_fallbacks_ = 0;
   int device_ = -1;
+  std::optional<int> host_simd_;
   bool finished_ = false;
   const bool host_only_;
 };

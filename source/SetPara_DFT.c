@@ -27,6 +27,7 @@
 #include "openmx_core_vps_file.h"
 #include "openmx_core_atomic_density.h"
 #include "openmx_core_quadrature.h"
+#include "openmx_host_simd.h"
 
 
 static void Set_Atom_Weight();
@@ -180,6 +181,7 @@ void SetPara_DFT(OpenMXCoreContext *core)
   if (core && MSpeciesNum>0 && openmx_core_has_accelerator() &&
       scf_eigen_lib_flag == GPUSOLVER && gpu_rank_device_usable())
     core_device = OpenMXGpuBindRankLocal();
+  openmx_core_set_radial_host_simd(core, OpenMX_HostSimdMode());
   FT_PAO(core,core_device);
   FT_NLP(core,core_device);
 

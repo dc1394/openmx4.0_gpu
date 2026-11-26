@@ -1,5 +1,8 @@
 #include <openmx/core/radial.hpp>
 #include <openmx/core/bessel.hpp>
+#include <openmx_core_host_simd.h>
+#include "host_radial_kernels.hpp"
+#include "radial_weight.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -75,26 +78,27 @@ void validate_samples(const RadialSamples& samples)
       throw std::invalid_argument("non-finite radial sample");
 }
 
-// Both execution paths use this weighting and integrate in ascending radial
-// order. Parallelism is over independent wavevectors/orbitals, not the sum.
-KOKKOS_INLINE_FUNCTION
-double radial_weight(double bessel, double measure, int point, int intervals, RadialWeighting weighting)
+ProductChannel channel_at(const RadialSamples& samples, std::size_t row)
 {
-  if (weighting == RadialWeighting::gauss) return measure*bessel;
-  double weighted = bessel*measure;
-  if (point == 0 || point == intervals) weighted *= 0.5;
-  return weighted;
+  return samples.products.empty() ? ProductChannel{static_cast<int>(row),-1,samples.orbitals[row].angular}
+                                  : samples.products[row];
 }
 
 template<class ExecutionSpace>
 class CompleteBeforeRelease {
  public:
   explicit CompleteBeforeRelease(const ExecutionSpace& execution) : execution_(execution) {}
-  ~CompleteBeforeRelease() { execution_.fence("OpenMX radial scratch lifetime"); }
+  ~CompleteBeforeRelease() { if (pending_) execution_.fence("OpenMX radial scratch lifetime"); }
   CompleteBeforeRelease(const CompleteBeforeRelease&) = delete;
   CompleteBeforeRelease& operator=(const CompleteBeforeRelease&) = delete;
+  void begin() noexcept { pending_ = true; }
+  void finish() {
+    execution_.fence("OpenMX radial transform before host commit");
+    pending_ = false;
+  }
  private:
   const ExecutionSpace& execution_;
+  bool pending_ = false;
 };
 
 template<class ExecutionSpace>
@@ -107,6 +111,10 @@ Tensor<double, 2> transform_kokkos(const RadialSamples& samples)
   using Cube = Kokkos::View<double***, BesselLayout, ExecutionSpace>;
   using Indices = Kokkos::View<int**, Kokkos::LayoutRight, ExecutionSpace>;
   using Vector = Kokkos::View<double*, ExecutionSpace>;
+  using Unmanaged = Kokkos::MemoryTraits<Kokkos::Unmanaged>;
+  using HostInput = Kokkos::View<const double**, Kokkos::LayoutRight, Kokkos::HostSpace, Unmanaged>;
+  using HostVector = Kokkos::View<const double*, Kokkos::HostSpace, Unmanaged>;
+  using HostOutput = Kokkos::View<double**, Kokkos::LayoutRight, Kokkos::HostSpace, Unmanaged>;
   using Policy = Kokkos::RangePolicy<ExecutionSpace, Kokkos::IndexType<std::size_t>>;
   const auto& grid = samples.grid;
   const std::size_t orbital_count = samples.orbitals.size();
@@ -121,17 +129,11 @@ Tensor<double, 2> transform_kokkos(const RadialSamples& samples)
 
   const ExecutionSpace execution;
   Matrix radial(Kokkos::view_alloc(Kokkos::WithoutInitializing, "openmx.radial.samples"), orbital_count, radial_count);
-  auto host_radial = Kokkos::create_mirror_view(Kokkos::WithoutInitializing, radial);
-  const auto input = samples.values.view();
-  for (std::size_t orbital = 0; orbital < orbital_count; ++orbital)
-    for (int i = 0; i < radial_count; ++i)
-      host_radial(orbital, i) = element(input, orbital, i);
+  const HostInput host_radial(samples.values.data(), orbital_count, radial_count);
   Indices channels(Kokkos::view_alloc(Kokkos::WithoutInitializing, "openmx.radial.channels"), channel_count, 3);
   auto host_channels = Kokkos::create_mirror_view(Kokkos::WithoutInitializing, channels);
   for (std::size_t row = 0; row < channel_count; ++row) {
-    const auto product = samples.products.empty()
-      ? ProductChannel{static_cast<int>(row),-1,samples.orbitals[row].angular}
-      : samples.products[row];
+    const auto product = channel_at(samples,row);
     host_channels(row,0) = product.angular;
     host_channels(row,1) = product.left;
     host_channels(row,2) = product.right;
@@ -139,14 +141,9 @@ Tensor<double, 2> transform_kokkos(const RadialSamples& samples)
   Vector radii(Kokkos::view_alloc(Kokkos::WithoutInitializing, "openmx.radial.radii"), radial_count);
   Vector measures(Kokkos::view_alloc(Kokkos::WithoutInitializing, "openmx.radial.measures"), radial_count);
   Vector wavevectors(Kokkos::view_alloc(Kokkos::WithoutInitializing, "openmx.radial.wavevectors"), k_count);
-  auto host_radii = Kokkos::create_mirror_view(Kokkos::WithoutInitializing, radii);
-  auto host_measures = Kokkos::create_mirror_view(Kokkos::WithoutInitializing, measures);
-  auto host_wavevectors = Kokkos::create_mirror_view(Kokkos::WithoutInitializing, wavevectors);
-  for (int i = 0; i < radial_count; ++i) {
-    host_radii(i) = grid.radii[i];
-    host_measures(i) = grid.measures[i];
-  }
-  for (int k = 0; k < k_count; ++k) host_wavevectors(k) = grid.wavevectors[k];
+  const HostVector host_radii(grid.radii.data(), radial_count);
+  const HostVector host_measures(grid.measures.data(), radial_count);
+  const HostVector host_wavevectors(grid.wavevectors.data(), k_count);
 
   // Amortize launches and host synchronization without making scratch grow
   // with the full reciprocal grid. Even a single wavevector may exceed the
@@ -160,14 +157,21 @@ Tensor<double, 2> transform_kokkos(const RadialSamples& samples)
   const int batch_size = static_cast<int>(std::min(static_cast<std::size_t>(k_count), capacity));
   const int batch_capacity = host_execution ? batch_size : static_cast<int>(std::min(capacity,
     ((static_cast<std::size_t>(batch_size)+31)/32)*32));
+  // Keep a bounded result on the device and copy it directly into the
+  // caller's result once. Larger results reuse the original tile buffer.
+  constexpr std::size_t output_budget = 2u*1024u*1024u;
+  const bool copy_all = !host_execution && result.size() <= output_budget/sizeof(double);
   // Device lanes vary over k and read adjacent Bessel values. Host execution
   // retains contiguous radial rows. Both preserve the ascending radial sum.
   Cube bessel(Kokkos::view_alloc(Kokkos::WithoutInitializing, "openmx.radial.bessel"), batch_capacity, lmax+1, radial_count);
-  Matrix output(Kokkos::view_alloc(Kokkos::WithoutInitializing, "openmx.radial.output"), channel_count, batch_capacity);
-  auto host_output = Kokkos::create_mirror_view(Kokkos::WithoutInitializing, output);
+  Matrix output(Kokkos::view_alloc(Kokkos::WithoutInitializing, "openmx.radial.output"),
+    channel_count, copy_all ? k_count : batch_capacity);
+  decltype(Kokkos::create_mirror_view(Kokkos::WithoutInitializing, output)) host_output;
+  if (!copy_all) host_output = Kokkos::create_mirror_view(Kokkos::WithoutInitializing, output);
   // Declared after the Views: even exceptional exits complete outstanding
   // work before their storage is released.
   CompleteBeforeRelease<ExecutionSpace> completion(execution);
+  completion.begin();
   Kokkos::deep_copy(execution, radial, host_radial);
   Kokkos::deep_copy(execution, channels, host_channels);
   Kokkos::deep_copy(execution, radii, host_radii);
@@ -176,6 +180,8 @@ Tensor<double, 2> transform_kokkos(const RadialSamples& samples)
   auto destination = result.view();
   for (int first = 0; first < k_count;) {
     const int count = std::min(batch_size, k_count-first);
+    const int output_first = copy_all ? first : 0;
+    completion.begin();
     Kokkos::parallel_for("openmx.radial.bessel", Policy(execution, 0, static_cast<std::size_t>(count)*radial_count),
       KOKKOS_LAMBDA(std::size_t index) {
         const int k = static_cast<int>(host_execution ? index/radial_count : index%count);
@@ -198,14 +204,21 @@ Tensor<double, 2> transform_kokkos(const RadialSamples& samples)
           if (right >= 0) term *= radial(right,i);
           sum += term;
         }
-        output(orbital,k) = sum*step;
+        output(orbital,output_first+k) = sum*step;
       });
-    Kokkos::deep_copy(execution, host_output, output);
-    execution.fence("OpenMX radial transform before host commit");
-    for (std::size_t orbital = 0; orbital < channel_count; ++orbital)
-      for (int k = 0; k < count; ++k)
-        element(destination, orbital, first+k) = host_output(orbital,k);
+    if (!copy_all) {
+      Kokkos::deep_copy(execution, host_output, output);
+      completion.finish();
+      for (std::size_t orbital = 0; orbital < channel_count; ++orbital)
+        for (int k = 0; k < count; ++k)
+          element(destination, orbital, first+k) = host_output(orbital,k);
+    }
     first += count;
+  }
+  if (copy_all) {
+    const HostOutput host_result(result.data(),channel_count,k_count);
+    Kokkos::deep_copy(execution,host_result,output);
+    completion.finish();
   }
   return result;
 }
@@ -310,15 +323,47 @@ RadialSamples sample_radial(RadialGrid grid, std::span<const int> multiplicities
   return {uniform_quadrature(grid), std::move(orbitals), std::move(values), {}};
 }
 
-Tensor<double,2> transform_host(const RadialSamples& samples)
+namespace {
+
+Tensor<double,2> transform_host_samples(const RadialSamples& samples, int mode)
 {
-  validate_samples(samples);
   const auto& grid = samples.grid;
   const int radial_count = static_cast<int>(grid.radii.size());
   const int k_count = static_cast<int>(grid.wavevectors.size());
   const auto channel_count = samples.products.empty() ? samples.orbitals.size() : samples.products.size();
   Tensor<double,2> result({channel_count,static_cast<std::size_t>(k_count)});
   if (channel_count == 0 || k_count == 0) return result;
+  if (grid.lmax == 0 && channel_count == 1 && samples.products.empty()) {
+    // The neutral potential has one output row. Consume each weight in
+    // place, without building a table that only one contraction reads.
+    for (int k = 0; k < k_count; ++k) {
+      double sum = 0.0;
+      for (int i = 0; i < radial_count; ++i) {
+        double sb;
+        spherical_bessel_values(grid.wavevectors[k]*grid.radii[i],0,&sb);
+        sum += radial_weight(sb,grid.measures[i],i,radial_count-1,grid.weighting)*samples.values.data()[i];
+      }
+      result.data()[k] = sum*grid.step;
+    }
+    return result;
+  }
+  constexpr std::size_t scratch_budget = 8u*1024u*1024u;
+  // With few channels per Bessel order, forming the SIMD weight tiles
+  // costs more than the contractions save. Keep those narrow cases scalar.
+  const std::size_t orders = grid.lmax+1;
+  const auto* kernels = host::openmx_host_radial_kernels(mode);
+  if (channel_count >= 6*orders && kernels && kernels->width > 1 && k_count >= kernels->width &&
+      grid.radii.size() <= scratch_budget/(sizeof(double)*orders*kernels->width)) {
+    std::vector<ProductChannel> channels;
+    if (samples.products.empty()) {
+      channels.reserve(channel_count);
+      for (std::size_t row = 0; row < channel_count; ++row) channels.push_back(channel_at(samples,row));
+    }
+    kernels->transform({grid.lmax,radial_count,k_count,channel_count,grid.weighting,grid.step,
+      grid.radii.data(),grid.measures.data(),grid.wavevectors.data(),samples.values.data(),
+      samples.products.empty() ? channels.data() : samples.products.data(),result.data()});
+    return result;
+  }
   Tensor<double,2> bessel({static_cast<std::size_t>(grid.lmax+1),grid.radii.size()});
   auto work = bessel.view();
   const auto input = samples.values.view();
@@ -331,9 +376,7 @@ Tensor<double,2> transform_host(const RadialSamples& samples)
         element(work,l,i) = radial_weight(sb[l],grid.measures[i],i,radial_count-1,grid.weighting);
     }
     for (std::size_t orbital = 0; orbital < channel_count; ++orbital) {
-      const auto product = samples.products.empty()
-        ? ProductChannel{static_cast<int>(orbital),-1,samples.orbitals[orbital].angular}
-        : samples.products[orbital];
+      const auto product = channel_at(samples,orbital);
       double sum = 0.0;
       for (int i = 0; i < radial_count; ++i) {
         double term = element(work,product.angular,i)*element(input,product.left,i);
@@ -344,6 +387,13 @@ Tensor<double,2> transform_host(const RadialSamples& samples)
     }
   }
   return result;
+}
+} // namespace
+
+Tensor<double,2> transform_host(const RadialSamples& samples)
+{
+  validate_samples(samples);
+  return transform_host_samples(samples,OPENMX_GRID_SCALAR);
 }
 
 bool has_accelerator() noexcept
@@ -392,6 +442,7 @@ void Context::fallback(HostFallback reason)
   if ((reported_fallbacks_ & bit) || !verbose || std::atoi(verbose) == 0) return;
   const char* message = reason == HostFallback::external_runtime ? "Kokkos runtime owned by caller" :
       reason == HostFallback::device_changed ? "requested device differs from context device" :
+      reason == HostFallback::device_memory ? "device workspace allocation failed" :
       "selected device does not support native FP64";
   std::fprintf(stderr, "<OpenMX_Core> radial transform uses CPU: %s\n", message);
   reported_fallbacks_ |= bit;
@@ -402,18 +453,29 @@ Tensor<double,2> Context::transform(const RadialSamples& samples, int device)
   validate_samples(samples);
   if (finished_) throw std::logic_error("OpenMX core context already finished");
   last_fallback_ = HostFallback::none;
+  const auto on_host = [&] {
+    return transform_host_samples(samples,host_simd_ ? *host_simd_ : openmx_core_host_simd_mode(nullptr));
+  };
   // GPU-enabled Kokkos initializes its GPU even for a Serial dispatch. A CPU
   // request must remain usable on machines without a visible accelerator.
-  if (host_only_ || (has_accelerator() && device < 0)) return transform_host(samples);
+  if (host_only_ || (has_accelerator() && device < 0)) return on_host();
   if (!has_accelerator()) device = -1;
   // A later input can change legacy rank/device mapping. Until execution-space
   // instances are migrated, keep that calculation on the host safely.
-  if (!start(device)) return transform_host(samples);
+  if (!start(device)) return on_host();
   if (!openmx_accelerator_can_run_fp64(capabilities_)) {
     fallback(HostFallback::fp64_unavailable);
-    return transform_host(samples);
+    return on_host();
   }
-  return transform_kokkos<Kokkos::DefaultExecutionSpace>(samples);
+  using ExecutionSpace = Kokkos::DefaultExecutionSpace;
+  if constexpr (std::is_same_v<ExecutionSpace,Kokkos::Serial>) return on_host();
+  try {
+    return transform_kokkos<ExecutionSpace>(samples);
+  } catch (const Kokkos::Experimental::BadAlloc& error) {
+    if (!has_accelerator() || error.memory_space_name() != ExecutionSpace::memory_space::name()) throw;
+    fallback(HostFallback::device_memory);
+    return on_host();
+  }
 }
 
 } // namespace openmx::core

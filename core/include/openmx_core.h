@@ -26,6 +26,9 @@ void openmx_core_destroy(OpenMXCoreContext *context);
    MPI_Finalize. Invalidates all borrowed views. Idempotent. */
 void openmx_core_finish(OpenMXCoreContext *context);
 int openmx_core_has_accelerator(void);
+/* Select the radial host kernel using an already resolved OPENMX_GRID_* mode.
+   Applies to CPU requests and capacity recovery within this context. */
+void openmx_core_set_radial_host_simd(OpenMXCoreContext *context, int mode);
 const char *openmx_core_version(void);
 int openmx_core_fft_grid_supported(int size);
 /* sb has lmax+2 entries; derivative has lmax+1 entries. */

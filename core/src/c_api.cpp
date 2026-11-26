@@ -1086,6 +1086,11 @@ extern "C" int openmx_core_has_accelerator(void)
   return openmx::core::has_accelerator();
 }
 
+extern "C" void openmx_core_set_radial_host_simd(OpenMXCoreContext* context, int mode)
+{
+  if (context) context->implementation.set_host_simd(mode);
+}
+
 extern "C" int openmx_core_spherical_bessel(double x, int lmax, double* sb, double* derivative)
 {
   if (!sb || !derivative || !std::isfinite(x) || x < 0 || lmax < 0 || lmax > 29 ||

@@ -272,6 +272,15 @@ void radial_execution_test() {
     const auto result = context.transform(tiled,device());
     for (std::size_t i = 0; i < result.size(); ++i) near(result.data()[i],expected.data()[i],2e-12);
   }
+  // More than 2 MiB of output exercises the bounded result tiles. Repeated
+  // channels allow checking every entry against the smaller transform.
+  const auto small_result = transform_host(tiled);
+  const auto repeated_channel = tiled.products.back();
+  tiled.products.resize(260,repeated_channel);
+  const auto streamed = context.transform(tiled,device());
+  for (std::size_t row = 0; row < streamed.extent(0); ++row)
+    for (std::size_t k = 0; k < streamed.extent(1); ++k)
+      near(element(streamed.view(),row,k),element(small_result.view(),std::min(row,std::size_t{2}),k),2e-12);
   // The analytic zero-order kernel must also cover the origin, small x,
   // sign changes and padding after the final valid wavevector.
   const std::array<int,1> zero_counts{2};
