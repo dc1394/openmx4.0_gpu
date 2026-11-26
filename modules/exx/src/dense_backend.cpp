@@ -115,9 +115,31 @@ extern "C" int openmx_exx_reference_dgemm(void*, char transa, char transb, int m
 
 namespace openmx::exx {
 
-DenseBackend::DenseBackend(const OpenMXExxDenseBackend* table) noexcept
+DenseBackend::DenseBackend(const OpenMXExxDenseBackend* table, OpenMXExxAddRows add_rows) noexcept
+  : add_rows_(add_rows)
 {
   if (table != nullptr) table_ = *table;
+}
+
+void DenseBackend::add_rows(double* dst, std::size_t dst_stride, const double* src, std::size_t src_stride,
+                            std::size_t rows, std::size_t columns, double factor) const
+{
+  if (rows == 0 || columns == 0) return;
+  if (add_rows_ != nullptr) {
+    add_rows_(dst,dst_stride,src,src_stride,rows,columns,factor);
+    return;
+  }
+  for (std::size_t i = 0; i < rows; ++i) {
+    double* target = dst+i*dst_stride;
+    const double* source = src+i*src_stride;
+    if (factor == 1.0) {
+      for (std::size_t j = 0; j < columns; ++j) target[j] += source[j];
+    } else if (factor == -1.0) {
+      for (std::size_t j = 0; j < columns; ++j) target[j] -= source[j];
+    } else {
+      for (std::size_t j = 0; j < columns; ++j) target[j] += factor*source[j];
+    }
+  }
 }
 
 std::size_t DenseBackend::pieces() const noexcept

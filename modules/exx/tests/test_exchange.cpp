@@ -325,6 +325,16 @@ std::size_t column_count(const System& system, std::size_t b, bool gamma)
   return columns;
 }
 
+// In the small fixtures one W product covers each run of V images of the
+// same atom. Both the row and the workspace limit are above the run size.
+long v_product_panels(std::span<const Site> neighbours)
+{
+  long panels = 1;
+  for (std::size_t i = 1; i < neighbours.size(); ++i)
+    if (neighbours[i-1].atom != neighbours[i].atom) ++panels;
+  return panels;
+}
+
 // A system of three atoms with few orbitals and more ABFs, for the sums of
 // the pieces in exchange_backend().  The T and V blocks hold numbers without
 // a pattern.  The neighbour lists belong to no structure, and the build
@@ -1072,11 +1082,12 @@ void exchange_centre_gradient(const std::string& path)
           product.add(std::fabs(site.v[i][e]-gradient[a].v[i][e])/scale_v);
     }
     product.finish();
-    // Two products for the centre, and for every V neighbour two and four for
-    // every ABF of the centre.
+    // Two products for the centre, one per W panel, and for every V
+    // neighbour one for dV and four for every ABF of the centre.
     long expected = 0;
     for (std::size_t a = 0; a < atoms; ++a)
-      expected += 2+static_cast<long>(system.v_neighbours[a].size())*(2+4*static_cast<long>(system.abf_count[a]));
+      expected += 2+v_product_panels(system.v_neighbours[a])+
+                  static_cast<long>(system.v_neighbours[a].size())*(1+4*static_cast<long>(system.abf_count[a]));
     require(calls == expected,"unexpected number of matrix products of the derivatives");
 
     expect_invalid("a centre atom that does not exist",[&] {
@@ -1105,17 +1116,16 @@ void exchange_backend(const std::string& path)
   long calls = 0;
   const OpenMXExxDenseBackend table{&counting_dgemm,&calls,nullptr,0,nullptr};
   const DenseBackend products(&table);
-  // One centre atom takes two products of its own.  Every V neighbour adds
-  // one product for W and four for every ABF of the centre: the four terms
-  // are computed for one ABF at a time.  The Gamma form adds up the V blocks
-  // of the images of an atom first, so it counts the atoms among the V
-  // neighbours.
+  // One centre atom takes two products of its own. Each W panel adds one
+  // product, and every V neighbour still adds four for every ABF of the
+  // centre. In the Gamma form there is one group per distinct atom.
   long expected = 0, expected_gamma = 0;
   for (std::size_t a = 0; a < atoms; ++a) {
     std::set<int> distinct;
     for (const Site& site : system.v_neighbours[a]) distinct.insert(site.atom);
     const long each = 1+4*static_cast<long>(system.abf_count[a]);
-    expected += 2+each*static_cast<long>(system.v_neighbours[a].size());
+    expected += 2+v_product_panels(system.v_neighbours[a])+
+                (each-1)*static_cast<long>(system.v_neighbours[a].size());
     expected_gamma += 2+each*static_cast<long>(distinct.size());
   }
   require(expected_gamma < expected,"the fixture is expected to list images of one atom as V neighbours");

@@ -20,7 +20,7 @@ class DenseBackend {
   // without dgemm, selects the built-in product; a table without
   // parallel_for, or with fewer than two threads, the loop on the calling
   // thread.
-  explicit DenseBackend(const OpenMXExxDenseBackend* table) noexcept;
+  explicit DenseBackend(const OpenMXExxDenseBackend* table, OpenMXExxAddRows add_rows = nullptr) noexcept;
 
   bool built_in() const noexcept { return table_.dgemm == nullptr; }
 
@@ -45,6 +45,13 @@ class DenseBackend {
   // C (m x n) = alpha A^T B, A (k x m), B (k x n), + beta C
   void transposed_multiply(std::size_t m, std::size_t n, std::size_t k, double alpha, const double* a,
                            const double* b, double beta, double* c) const;
+
+  void add_rows(double* dst, std::size_t dst_stride, const double* src, std::size_t src_stride,
+                std::size_t rows, std::size_t columns, double factor) const;
+  void add_row(double* dst, const double* src, std::size_t count, double factor) const
+  {
+    add_rows(dst,count,src,count,1,count,factor);
+  }
 
   // The largest number of pieces into which a caller divides a loop for
   // parallel_for(): the threads of the table, 1 without a parallel loop.  A
@@ -71,6 +78,7 @@ class DenseBackend {
   void run(std::size_t count, void (*call)(void*, std::size_t), void* callable) const;
 
   OpenMXExxDenseBackend table_{nullptr,nullptr,nullptr,0,nullptr};
+  OpenMXExxAddRows add_rows_ = nullptr;
 };
 
 } // namespace openmx::exx

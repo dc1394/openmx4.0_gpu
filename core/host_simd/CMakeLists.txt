@@ -150,6 +150,7 @@ openmx_host_simd_family(orbitals ../src/host_orbitals_simd.cpp)
 openmx_host_simd_family(energy ../src/host_energy_simd.cpp)
 openmx_host_simd_family(force ../src/host_force_simd.cpp)
 openmx_host_simd_family(vna ../src/host_vna_simd.cpp)
+openmx_host_simd_family(add_rows ../src/host_add_rows_simd.cpp)
 
 if(BUILD_TESTING AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$")
   add_executable(openmx_sve_abi_tests ../tests/test_sve_runtime.cpp)

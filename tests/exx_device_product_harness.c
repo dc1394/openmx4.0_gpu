@@ -1264,6 +1264,16 @@ static void calls_without_room(void)
     model.fail_status = CUBLAS_STATUS_ALLOC_FAILED;
     check(call_run(t,&d,60.0)==0 && model.count[CALL_ACC_WAIT]==bridge+1,
           "a call without memory for a product was not stopped and finished");
+    /* The host build can offer individual products to CUDA before it ends
+       the whole call. Their input copies use the default stream. */
+    Product p;
+    product_make(&p,'N','T',6,5,4,102u+(unsigned)bridge);
+    const int queued=model.queue_products,individual=model.default_products;
+    check(product_run(&device,&p,0.0)==1 && product_matches(&p),
+          "an individual product during the fallback failed");
+    check(model.queue_products==queued && model.default_products==individual+1 && handle_stream(&device)==NULL,
+          "an individual product during the fallback used the whole-call stream");
+    product_free(&p);
     check(Exact_Exchange_Device_Call_End(&device)==0 && device.declined_calls==declined+1 && device.device_calls==0,
           "a product without memory was not counted as a call left to the host");
     call_clean(&device,NULL,"a call without memory for a product left something behind");

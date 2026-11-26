@@ -181,6 +181,8 @@ static OpenMXBlasStatus ExactExchange_Device_Handle(OpenMXExactExchangeDevice *d
   return OPENMX_BLAS_SUCCESS;
 }
 
+static void ExactExchange_Device_Stream_Back(OpenMXExactExchangeDevice *device);
+
 int Exact_Exchange_Device_Dgemm(OpenMXExactExchangeDevice *device, char transa, char transb, int m, int n, int k,
                                 double alpha, const double *a, int lda, const double *b, int ldb, double beta,
                                 double *c, int ldc)
@@ -207,6 +209,11 @@ int Exact_Exchange_Device_Dgemm(OpenMXExactExchangeDevice *device, char transa, 
     return ExactExchange_Device_Fail(device,OPENMX_EXACT_EXCHANGE_DEVICE_MEMORY_QUERY,(int)queried,NULL,NULL,NULL);
   if (free_bytes<device->reserve_bytes || free_bytes-device->reserve_bytes<bytes)
     return ExactExchange_Device_Decline(device,NULL,NULL,NULL);
+
+  /* An accepted whole call can run out of memory and fall back here
+     before Call_End. Restore the stream used by these products so that
+     the BLAS sees the factor copies on the default stream. */
+  ExactExchange_Device_Stream_Back(device);
 
   /* The memory can be gone by now: another process that shares the device
      may have taken it since the query. Running out of it at the handle, at

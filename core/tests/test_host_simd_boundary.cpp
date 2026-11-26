@@ -1,8 +1,40 @@
 #include "openmx_core_grid.h"
+#include "openmx_core_host_simd.h"
 #include <Kokkos_SIMD.hpp>
+#include <cstring>
 #include <iostream>
 #include <memory>
 #include <stdexcept>
+#include <vector>
+
+static void check_row_updates()
+{
+  for (int mode = OPENMX_GRID_SCALAR; mode < OPENMX_GRID_MODE_COUNT; ++mode) {
+    if (!openmx_core_host_simd_usable(mode)) continue;
+    const auto update = openmx_core_host_add_rows(mode);
+    if (update == nullptr) throw std::runtime_error("a usable host SIMD mode has no row kernel");
+    update(nullptr,0,nullptr,0,1,0,1.0);
+    for (const size_t columns : {1,3,4,5,7,8,9,13,17,169}) {
+      const size_t rows = 3, dst_stride = columns+2, src_stride = columns+5;
+      // Offset the start and leave no padding behind the last row.
+      std::vector<double> src(1+(rows-1)*src_stride+columns);
+      for (size_t i = 0; i < src.size(); ++i) src[i] = 0.13*static_cast<double>(i)-3.1;
+      for (const double factor : {1.0,-1.0,0.13}) {
+        std::vector<double> dst(1+(rows-1)*dst_stride+columns,-0.3);
+        auto expected = dst;
+        for (size_t i = 0; i < rows; ++i) {
+          for (size_t j = 0; j < columns; ++j) {
+            const volatile double product = factor*src[1+i*src_stride+j];
+            expected[1+i*dst_stride+j] += product;
+          }
+        }
+        update(dst.data()+1,dst_stride,src.data()+1,src_stride,rows,columns,factor);
+        if (std::memcmp(dst.data(),expected.data(),sizeof(double)*dst.size()) != 0)
+          throw std::runtime_error("host SIMD row update differs from the scalar loop");
+      }
+    }
+  }
+}
 
 int main() {
   try {
@@ -36,6 +68,7 @@ int main() {
     for(int i=0;i<7;++i)if(density.atoms[0][0][i]!=2*values[i]*values[i])
       throw std::runtime_error("host SIMD tail failed");
     context.reset();
+    check_row_updates();
     if(Kokkos::is_initialized())throw std::runtime_error("CPU fallback initialized a device runtime");
     std::cout<<"default SIMD width="<<default_width<<"; host SIMD width="<<width<<'\n';
   }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}

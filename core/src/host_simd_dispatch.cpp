@@ -4,6 +4,7 @@
 #include "host_force_kernels.hpp"
 #include "host_orbitals_kernels.hpp"
 #include "host_energy_kernels.hpp"
+#include "host_add_rows_kernels.hpp"
 #if defined(__linux__) && defined(__aarch64__)
 #include <asm/hwcap.h>
 #include <sys/auxv.h>
@@ -52,4 +53,5 @@ OPENMX_HOST_SIMD_DISPATCHER(VnaKernels,vna_v2)
 OPENMX_HOST_SIMD_DISPATCHER(OrbitalsKernels,orbitals)
 OPENMX_HOST_SIMD_DISPATCHER(EnergyKernels,energy)
 OPENMX_HOST_SIMD_DISPATCHER(ForceKernels,force)
+OPENMX_HOST_SIMD_DISPATCHER(OpenMXHostAddRows,add_rows)
 }

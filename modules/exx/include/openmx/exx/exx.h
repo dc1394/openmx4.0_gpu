@@ -200,6 +200,14 @@ typedef struct {
 
 typedef struct OpenMXExxState OpenMXExxState;
 
+/* Optional host kernel for disjoint FP64 rows: dst += factor * src.
+   Strides and extents are in doubles. Calls may run on different threads.
+   The product and sum must be rounded separately. NULL selects the
+   built-in loops. The kernel is retained across structure preparations. */
+typedef void (*OpenMXExxAddRows)(double *dst, size_t dst_stride, const double *src, size_t src_stride,
+                               size_t rows, size_t columns, double factor);
+void openmx_exx_set_host_add_rows(OpenMXExxState *state, OpenMXExxAddRows add_rows);
+
 /* A state without a structure; NULL when memory is exhausted. */
 OpenMXExxState *openmx_exx_create(void);
 /* NULL is allowed. */

@@ -1,4 +1,5 @@
 #include "openmx_core_host_simd.h"
+#include "host_add_rows_kernels.hpp"
 #include "host_simd_runtime.hpp"
 #include <cctype>
 #include <string>
@@ -35,4 +36,8 @@ extern "C" const char* openmx_core_host_simd_name(int mode) {
 }
 extern "C" int openmx_core_host_simd_usable(int mode) {
   return openmx::core::host::openmx_host_simd_usable(mode);
+}
+extern "C" OpenMXHostAddRows openmx_core_host_add_rows(int mode) {
+  const auto* kernel=openmx::core::host::openmx_host_add_rows_kernels(mode);
+  return kernel ? *kernel : nullptr;
 }

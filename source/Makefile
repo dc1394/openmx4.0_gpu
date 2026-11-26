@@ -714,7 +714,7 @@ Unfolding_Bands.o: Unfolding_Bands.c openmx_common.h
 	$(CC) -c Unfolding_Bands.c
 Band_DFT_Dosout.o: Band_DFT_Dosout.c openmx_common.h
 	$(CC) -c Band_DFT_Dosout.c
-Exact_Exchange.o: Exact_Exchange.c openmx_exact_exchange.h openmx_exact_exchange_device.h openmx_exact_exchange_host.h openmx_exx.h ../modules/exx/include/openmx/exx/exx.h
+Exact_Exchange.o: Exact_Exchange.c openmx_exact_exchange.h openmx_exact_exchange_device.h openmx_exact_exchange_host.h openmx_exx.h ../modules/exx/include/openmx/exx/exx.h openmx_host_simd.h ../core/include/openmx_core_host_simd.h
 	$(CC) -c Exact_Exchange.c
 # The moves of the whole calls (a loop of OpenACC) form the product first and
 # then the sum, as the host does: no fused multiply-adds in the device code.

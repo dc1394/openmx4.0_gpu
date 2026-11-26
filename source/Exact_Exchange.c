@@ -21,6 +21,7 @@
 #include "openmx_exact_exchange.h"
 #include "openmx_exact_exchange_device.h"
 #include "openmx_exact_exchange_host.h"
+#include "openmx_host_simd.h"
 #include "openmx_exx.h"
 #include "lapack_prototypes.h"
 #ifdef _OPENMP
@@ -327,6 +328,13 @@ typedef struct {
   OpenMXExactExchangeHostProducts host; /* the counts of the products, and the loops of the build */
 } ExactExchangeProducts;
 
+static ExactExchangeProducts ExactExchange_Products(OpenMXExactExchangeState *state, int threads)
+{
+  OpenMXExactExchangeDevice *device=OpenMX_HostSimdPreferred("EXX") ? NULL : &state->device;
+  const ExactExchangeProducts products={device,0.0,{0,0.0,{0,0,0},threads,NULL,0}};
+  return products;
+}
+
 /* The matrix products of modules/exx. The device of this process takes the
    large ones when it can (openmx_exact_exchange_device.h); the others, and
    all of them in the CPU build, go to the BLAS of the main program, divided
@@ -345,10 +353,12 @@ static int ExactExchange_Dgemm(void *context, char transa, char transb, int m, i
     return 0;
   }
   Exact_Exchange_Host_Note_Product(&products->host,m,n,k);
-  const double start=MPI_Wtime();
-  if (Exact_Exchange_Device_Dgemm(products->device,transa,transb,m,n,k,alpha,a,lda,b,ldb,beta,c,ldc)) {
-    products->device_seconds += MPI_Wtime()-start;
-    return 0;
+  if (products->device!=NULL) {
+    const double start=MPI_Wtime();
+    if (Exact_Exchange_Device_Dgemm(products->device,transa,transb,m,n,k,alpha,a,lda,b,ldb,beta,c,ldc)) {
+      products->device_seconds += MPI_Wtime()-start;
+      return 0;
+    }
   }
   Exact_Exchange_Host_Dgemm(products->host.threads,transa,transb,m,n,k,alpha,a,lda,b,ldb,beta,c,ldc);
   return 0;
@@ -581,6 +591,12 @@ static int ExactExchange_Prepare_Module(OpenMXExactExchangeState *state, OpenMXE
   MPI_Comm_rank(comm,&rank);
   MPI_Comm_size(comm,&processes);
 
+  /* The workers can share an x86 kernel regardless of their thread-local
+     state. Fixed-width SVE would need to resolve its width per worker. */
+  const int mode=OpenMX_HostSimdMode();
+  openmx_exx_set_host_add_rows(module,mode==OPENMX_GRID_AVX2 || mode==OPENMX_GRID_AVX512
+                                     ? openmx_core_host_add_rows(mode) : NULL);
+
   /* The PAOs of every species: the radial functions in the order of the
      solvers (by angular momentum, then by multiplicity) on the mesh of the
      PAO file. */
@@ -680,7 +696,7 @@ static int ExactExchange_Prepare_Module(OpenMXExactExchangeState *state, OpenMXE
 #ifdef _OPENMP
   threads = omp_get_max_threads();
 #endif
-  ExactExchangeProducts products={&state->device,0.0,{0,0.0,{0,0,0},threads,NULL,0}};
+  ExactExchangeProducts products={NULL,0.0,{0,0.0,{0,0,0},threads,NULL,0}};
   if (1<threads)
     products.host.loop = (OpenMXExactExchangeLoopProducts*)ExactExchange_Allocate(
         state,(size_t)threads,sizeof(OpenMXExactExchangeLoopProducts),comm,"preparation");
@@ -800,6 +816,8 @@ void Exact_Exchange_Prepare(OpenMXExactExchangeState *state, const OpenMXAtomicV
     }
     printf("<EXX>  %d atoms, %d orbitals, %ld ABFs, %ld C sites, %ld V sites (%.2f s)\n",
            atom_count,orbitals,abfs,c_sites,v_sites,MPI_Wtime()-start);
+    if (OpenMX_HostSimdPreferred("EXX"))
+      printf("<EXX>  exchange products on the host (OPENMX_HOST_SIMD_PREFER)\n");
     if (folded) {
       const int *sign=state->input.fold_antiperiodic;
       printf("<EXX>  V sites folded by the period of the k mesh, %d x %d x %d cells: %ld of %ld\n",
@@ -1011,7 +1029,8 @@ double Exact_Exchange_Density_Deviation(const OpenMXExactExchangeState *state, i
           for (int j=0; j<columns; j++) {
             const double mine=block!=NULL ? block[(size_t)i*columns+j] : collected[(row0+i)*n+column0+j];
             const double difference=fabs(density[spin][local][neighbour][i][j]-mine);
-            if (deviation<difference) deviation = difference;
+            if (!isfinite(difference)) deviation = INFINITY;
+            else if (deviation<difference) deviation = difference;
           }
         }
       }
@@ -1073,7 +1092,7 @@ void Exact_Exchange_Build(OpenMXExactExchangeState *state, MPI_Comm comm, int ve
   threads = omp_get_max_threads();
 #endif
   const int blas_threads=1<threads ? Exact_Exchange_Host_Blas_Single() : 0;
-  ExactExchangeProducts products={&state->device,0.0,{0,0.0,{0,0,0},threads,NULL,0}};
+  ExactExchangeProducts products=ExactExchange_Products(state,threads);
   if (1<threads)
     products.host.loop = (OpenMXExactExchangeLoopProducts*)ExactExchange_Allocate(
         state,(size_t)threads,sizeof(OpenMXExactExchangeLoopProducts),comm,"exchange matrix");
@@ -1081,7 +1100,7 @@ void Exact_Exchange_Build(OpenMXExactExchangeState *state, MPI_Comm comm, int ve
      (openmx_exact_exchange_device.h): a call that it takes does not reach
      the products above. The table is NULL in the other builds. */
   OpenMXExxDevice device_table;
-  const OpenMXExxDevice *device_calls=Exact_Exchange_Device_Table(&state->device,&device_table);
+  const OpenMXExxDevice *device_calls=Exact_Exchange_Device_Table(products.device,&device_table);
   const OpenMXExxDenseBackend backend={ExactExchange_Dgemm,&products,1<threads ? ExactExchange_Parallel_For : NULL,
                                        threads,device_calls};
   const long long device_before=state->device.device_products;
@@ -1127,10 +1146,14 @@ void Exact_Exchange_Build(OpenMXExactExchangeState *state, MPI_Comm comm, int ve
      differ by a rounding error between the processes. */
   const double degeneracy=state->spin_channels==1 ? 2.0 : 1.0;
   double results[2]={0.0,0.0};
-  for (int spin=0; spin<state->spin_channels; spin++) {
-    results[0] += degeneracy*openmx_exx_energy_gamma(state->elements,state->density[spin],state->exchange[spin]);
-    results[1] += degeneracy*openmx_exx_change_gamma(state->elements,state->density[spin],state->exchange[spin],
-                                                     state->previous[spin]);
+  if (rank==0) {
+    for (int spin=0; spin<state->spin_channels; spin++) {
+      results[0] += degeneracy*openmx_exx_energy_gamma(state->elements,state->density[spin],state->exchange[spin]);
+      results[1] += degeneracy*openmx_exx_change_gamma(state->elements,state->density[spin],state->exchange[spin],
+                                                       state->previous[spin]);
+    }
+    if (!isfinite(results[0]) || !isfinite(results[1]))
+      ExactExchange_Abort(comm,"exchange matrix","nonfinite exchange energy or convergence measure");
   }
   MPI_Bcast(results,2,MPI_DOUBLE,0,comm);
   state->energy = results[0];
@@ -1240,12 +1263,12 @@ const double *Exact_Exchange_Gradient(OpenMXExactExchangeState *state, MPI_Comm 
     const int disabled_before=state->device.disabled;
     state->device.largest_bytes = 0;
     state->device.largest_call_bytes = 0;
-    ExactExchangeProducts products={&state->device,0.0,{0,0.0,{0,0,0},threads,NULL,0}};
+    ExactExchangeProducts products=ExactExchange_Products(state,threads);
     if (1<threads)
       products.host.loop = (OpenMXExactExchangeLoopProducts*)ExactExchange_Allocate(
           state,(size_t)threads,sizeof(OpenMXExactExchangeLoopProducts),comm,"forces");
     OpenMXExxDevice device_table;
-    const OpenMXExxDevice *device_calls=Exact_Exchange_Device_Table(&state->device,&device_table);
+    const OpenMXExxDevice *device_calls=Exact_Exchange_Device_Table(products.device,&device_table);
     const OpenMXExxDenseBackend backend={ExactExchange_Dgemm,&products,1<threads ? ExactExchange_Parallel_For : NULL,
                                          threads,device_calls};
     /* E_x has the degeneracy of the spin channels as a factor (one channel
@@ -2073,12 +2096,12 @@ void Exact_Exchange_Prepare_Outputs(OpenMXExactExchangeState *state, const OpenM
   const int disabled_before=state->device.disabled;
   state->device.largest_bytes = 0;
   state->device.largest_call_bytes = 0;
-  ExactExchangeProducts products={&state->device,0.0,{0,0.0,{0,0,0},threads,NULL,0}};
+  ExactExchangeProducts products=ExactExchange_Products(state,threads);
   if (1<threads)
     products.host.loop = (OpenMXExactExchangeLoopProducts*)ExactExchange_Allocate(
         state,(size_t)threads,sizeof(OpenMXExactExchangeLoopProducts),comm,"outputs");
   OpenMXExxDevice device_table;
-  const OpenMXExxDevice *device_calls=Exact_Exchange_Device_Table(&state->device,&device_table);
+  const OpenMXExxDevice *device_calls=Exact_Exchange_Device_Table(products.device,&device_table);
   const OpenMXExxDenseBackend backend={ExactExchange_Dgemm,&products,1<threads ? ExactExchange_Parallel_For : NULL,
                                        threads,device_calls};
   double call_seconds=0.0;

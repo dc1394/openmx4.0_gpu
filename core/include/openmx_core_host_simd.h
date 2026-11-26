@@ -21,6 +21,14 @@ const char *openmx_core_host_simd_name(int mode);
 /* Compiled into the Core and executable by this processor and OS. */
 int openmx_core_host_simd_usable(int mode);
 
+/* Update disjoint FP64 rows. Strides and extents count doubles. The kernel
+   rounds the multiplication before adding it to the destination. */
+typedef void (*OpenMXHostAddRows)(double *dst, size_t dst_stride, const double *src, size_t src_stride,
+                                 size_t rows, size_t columns, double factor);
+/* NULL when the mode has no row kernel. Resolve on the thread using it
+   for an SVE mode, because fixed-width SVE depends on that thread's VL. */
+OpenMXHostAddRows openmx_core_host_add_rows(int mode);
+
 #ifdef __cplusplus
 }
 #endif

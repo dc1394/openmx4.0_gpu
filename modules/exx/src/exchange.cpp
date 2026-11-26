@@ -126,61 +126,94 @@ void gather_runs(const std::vector<Run>& runs, const double* gp, std::size_t ua,
 
 // bracket_P[loc(B), .] += X4 [l, mu] with the signs of the runs.  Two runs
 // may add to one column: their additions follow the order of l.
-void scatter_runs(const std::vector<Run>& runs, const double* x4, std::size_t ua, double* bp)
+void scatter_runs(const std::vector<Run>& runs, const double* x4, std::size_t ua, double* bp,
+                  const DenseBackend& backend)
 {
   for (const Run& run : runs) {
     double* target = bp+run.column*ua;
     const double* source = x4+run.first*ua;
-    if (!run.negative) {
-      for (std::size_t e = 0; e < run.count*ua; ++e) target[e] += source[e];
-    } else {
-      for (std::size_t e = 0; e < run.count*ua; ++e) target[e] -= source[e];
-    }
+    backend.add_row(target,source,run.count*ua,run.negative ? -1.0 : 1.0);
   }
 }
 
 // bracket_P[B, .] += X3 [nu, mu] at the columns of B, with their sign.
-void scatter_centre(const GroupColumns& columns, std::size_t ub, const double* x3, std::size_t ua, double* bp)
+void scatter_centre(const GroupColumns& columns, std::size_t ub, const double* x3, std::size_t ua, double* bp,
+                    const DenseBackend& backend)
 {
+  if (ub == 0) return;
   const bool negative = !columns.negative.empty() && columns.negative[0] != 0;
-  for (std::size_t nu = 0; nu < ub; ++nu) {
-    double* target = bp+columns.column[nu]*ua;
-    const double* source = x3+nu*ua;
-    if (!negative) {
-      for (std::size_t mu = 0; mu < ua; ++mu) target[mu] += source[mu];
-    } else {
-      for (std::size_t mu = 0; mu < ua; ++mu) target[mu] -= source[mu];
-    }
-  }
+  // All orbitals of B itself occupy one contiguous run with the same sign.
+  backend.add_row(bp+columns.column[0]*ua,x3,ub*ua,negative ? -1.0 : 1.0);
 }
 
 // D[A, loc(B)] as [mu, l] and D[A, B] as [nu, mu] from the first u_a rows of
 // D[loc(A), .], s columns wide, with the signs of the columns.
-void density_columns(const double* da, std::size_t s, std::size_t ua, std::size_t ub, const GroupColumns& columns,
+void density_columns(const double* da, std::size_t s, std::size_t ua, std::size_t ub, std::size_t lb,
+                     const std::vector<Run>& runs,
                      std::vector<double>& dl, std::vector<double>& dba)
 {
-  const std::vector<std::size_t>& column = columns.column;
-  const std::size_t lb = column.size();
-  const bool signs = !columns.negative.empty();
   dl.resize(ua*lb);
   for (std::size_t mu = 0; mu < ua; ++mu)
-    for (std::size_t l = 0; l < lb; ++l) {
-      const double value = da[mu*s+column[l]];
-      dl[mu*lb+l] = signs && columns.negative[l] != 0 ? -value : value;
+    for (const Run& run : runs) {
+      const double* source = da+mu*s+run.column;
+      double* target = dl.data()+mu*lb+run.first;
+      if (!run.negative) std::copy_n(source,run.count,target);
+      else for (std::size_t i = 0; i < run.count; ++i) target[i] = -source[i];
     }
-  const bool negative = signs && columns.negative[0] != 0;
+  // B itself is the first ub columns of the gathered matrix.
   dba.resize(ub*ua);
   for (std::size_t nu = 0; nu < ub; ++nu)
-    for (std::size_t mu = 0; mu < ua; ++mu) {
-      const double value = da[mu*s+column[nu]];
-      dba[nu*ua+mu] = negative ? -value : value;
-    }
+    for (std::size_t mu = 0; mu < ua; ++mu) dba[nu*ua+mu] = dl[mu*lb+nu];
 }
 
 // The arrays of one piece of the ABFs of a centre atom: the pieces of
 // centre_contribution() can run at the same time.
 struct PieceWork {
   std::vector<double> scratch, gathered, x3, x4, k1, second;
+};
+
+// Consecutive V images of the same atom multiply the same T table. Stack
+// their V rows for BLAS so a narrow product can reuse T across more rows.
+// The panel is consumed in neighbour order, including the half-weighted V0.
+class HostVProducts {
+ public:
+  template <class Sink>
+  const double* group(std::size_t g, std::size_t p_first, std::size_t np, std::size_t nq, std::size_t width,
+                       Sink& sink, const DenseBackend& backend)
+  {
+    const std::size_t elements = np*width;
+    if (g >= end_) {
+      constexpr std::size_t panel_elements = 16*1024*1024/sizeof(double);
+      constexpr std::size_t panel_rows = 64;
+      const std::size_t b = sink.atom(g);
+      std::size_t count = 1;
+      if (!backend.built_in() && elements != 0) {
+        const std::size_t limit = std::min(panel_elements/elements,(panel_rows+np-1)/np);
+        while (count < limit && g+count < sink.groups() && sink.atom(g+count) == b) ++count;
+      }
+      const double* v = sink.v(g)+p_first*nq;
+      if (count > 1) {
+        packed_.resize(count*np*nq);
+        for (std::size_t i = 0; i < count; ++i)
+          std::copy_n(sink.v(g+i)+p_first*nq,np*nq,packed_.data()+i*np*nq);
+        v = packed_.data();
+      }
+      const std::size_t needed = std::max<std::size_t>(1,count*elements);
+      if (capacity_ < needed) {
+        w_ = std::make_unique_for_overwrite<double[]>(needed);
+        capacity_ = needed;
+      }
+      backend.multiply(count*np,width,nq,1.0,v,sink.t(b),0.0,w_.get());
+      first_ = g;
+      end_ = g+count;
+    }
+    return w_.get()+(g-first_)*elements;
+  }
+
+ private:
+  std::vector<double> packed_;
+  std::unique_ptr<double[]> w_;
+  std::size_t first_ = 0, end_ = 0, capacity_ = 0;
 };
 
 // The number of pieces of the work of `count` ABFs of a centre atom: the
@@ -238,8 +271,8 @@ std::vector<CentrePart> centre_parts(const std::vector<std::size_t>& offset, std
 //   columns(g)      the column of the density matrix of every column l of
 //                   t(atom(g)) and its sign (GroupColumns); the first u_b
 //                   of them belong to B itself
-//   first(g, t1)    rows A,      columns B        term (i)
-//   second(g, t2)   rows A,      columns loc(B)   term (ii)
+//   first(g, t1, backend)    rows A, columns B        term (i)
+//   second(g, t2, backend)   rows A, columns loc(B)   term (ii)
 //   last(t4, backend, pieces)
 //                   rows loc(A), all columns      terms (iii) and (iv)
 // Term (iii) is added to the bracket of term (iv) at the columns of B, so one
@@ -294,7 +327,8 @@ void centre_contribution(const System& system, std::size_t a, std::size_t p_firs
   });
 
   std::vector<Run> runs;
-  std::vector<double> w, dl, dba, first;
+  HostVProducts v_products;
+  std::vector<double> dl, dba, first;
   for (std::size_t ib = 0; ib < sink.groups(); ++ib) {
     const std::size_t b = sink.atom(ib);
     const std::size_t nq = system.abf_count[b], ub = system.orbital_count[b], lb = sink.width(b);
@@ -302,11 +336,10 @@ void centre_contribution(const System& system, std::size_t a, std::size_t p_firs
     find_runs(columns,runs);
 
     // W_{P,B} = sum_Q V_PQ T_Q, equation (10), for the rows P of the part
-    w.resize(np*ub*lb);
-    backend.multiply(np,ub*lb,nq,1.0,sink.v(ib)+p_first*nq,sink.t(b),0.0,w.data());
+    const double* w = v_products.group(ib,p_first,np,nq,ub*lb,sink,backend);
 
     // D[A, loc(B)] as [mu, l] and D[A, B] as [nu, mu]
-    density_columns(da,s,ua,ub,columns,dl,dba);
+    density_columns(da,s,ua,ub,lb,runs,dl,dba);
 
     backend.parallel_for(pieces,[&](std::size_t c) {
       PieceWork& mine = work[c];
@@ -316,7 +349,7 @@ void centre_contribution(const System& system, std::size_t a, std::size_t p_firs
       mine.k1.assign(ub*ua,0.0);                                         // term (i) as [nu, mu]
       mine.second.assign(ua*lb,0.0);
       for (std::size_t p = begin(c); p < begin(c+1); ++p) {
-        const double* wp = w.data()+p*ub*lb;                             // W_P [nu, l]
+        const double* wp = w+p*ub*lb;                                    // W_P [nu, l]
         const double* gp = g.get()+p*part;                               // G_P [column, mu]
         double* bp = bracket.get()+p*part;                               // bracket_P [column, mu]
 
@@ -331,11 +364,11 @@ void centre_contribution(const System& system, std::size_t a, std::size_t p_firs
 
         // (iii)  bracket_P[B, .] += W_P D[A, loc(B)]^T
         backend.multiply_transposed(ub,ua,lb,1.0,wp,dl.data(),0.0,mine.x3.data());
-        scatter_centre(columns,ub,mine.x3.data(),ua,bp);
+        scatter_centre(columns,ub,mine.x3.data(),ua,bp,backend);
 
         // (iv)  bracket_P[loc(B), .] += W_P^T D[A, B]^T
         backend.transposed_multiply(lb,ua,ub,1.0,wp,dba.data(),0.0,mine.x4.data());
-        scatter_runs(runs,mine.x4.data(),ua,bp);
+        scatter_runs(runs,mine.x4.data(),ua,bp,backend);
       }
     });
 
@@ -344,22 +377,19 @@ void centre_contribution(const System& system, std::size_t a, std::size_t p_firs
     // among the calls of a loop, and every element is added up by one call.
     std::vector<double>& k1 = work[0].k1;
     std::vector<double>& second = work[0].second;
-    for (std::size_t c = 1; c < pieces; ++c)
-      for (std::size_t e = 0; e < ub*ua; ++e) k1[e] += work[c].k1[e];
+    for (std::size_t c = 1; c < pieces; ++c) backend.add_row(k1.data(),work[c].k1.data(),ub*ua,1.0);
     if (pieces > 1)
       backend.parallel_for(pieces,[&](std::size_t share) {
         const std::size_t from = share*(ua*lb)/pieces, to = (share+1)*(ua*lb)/pieces;
-        for (std::size_t c = 1; c < pieces; ++c) {
-          const double* source = work[c].second.data();
-          for (std::size_t e = from; e < to; ++e) second[e] += source[e];
-        }
+        for (std::size_t c = 1; c < pieces; ++c)
+          backend.add_row(second.data()+from,work[c].second.data()+from,to-from,1.0);
       });
 
     first.resize(ua*ub);
     for (std::size_t mu = 0; mu < ua; ++mu)
       for (std::size_t nu = 0; nu < ub; ++nu) first[mu*ub+nu] = k1[nu*ua+mu];
-    sink.first(ib,first.data());
-    sink.second(ib,second.data());
+    sink.first(ib,first.data(),backend);
+    sink.second(ib,second.data(),backend);
   }
 
   // rows loc(A):  sum_P T_P^T bracket_P
@@ -436,7 +466,8 @@ void centre_derivatives(const System& system, std::size_t a, std::size_t p_first
   });
 
   std::vector<Run> runs;
-  std::vector<double> w, dl, dba, h;
+  HostVProducts v_products;
+  std::vector<double> dl, dba, h;
   dv.resize(sink.groups());
   for (std::size_t ib = 0; ib < sink.groups(); ++ib) {
     const std::size_t b = sink.atom(ib);
@@ -444,10 +475,9 @@ void centre_derivatives(const System& system, std::size_t a, std::size_t p_first
     const GroupColumns& columns = sink.columns(ib);                    // lb entries
     find_runs(columns,runs);
 
-    w.resize(np*ub*lb);                                                // W_{P,B} = sum_Q V_PQ T_Q
-    backend.multiply(np,ub*lb,nq,1.0,sink.v(ib)+p_first*nq,sink.t(b),0.0,w.data());
+    const double* w = v_products.group(ib,p_first,np,nq,ub*lb,sink,backend);
 
-    density_columns(da,s,ua,ub,columns,dl,dba);                        // D[A, loc(B)] and D[A, B]
+    density_columns(da,s,ua,ub,lb,runs,dl,dba);                        // D[A, loc(B)] and D[A, B]
 
     h.resize(np*ub*lb);
     backend.parallel_for(pieces,[&](std::size_t c) {
@@ -456,7 +486,7 @@ void centre_derivatives(const System& system, std::size_t a, std::size_t p_first
       mine.x3.resize(ub*ua);
       mine.x4.resize(lb*ua);
       for (std::size_t p = begin(c); p < begin(c+1); ++p) {
-        const double* wp = w.data()+p*ub*lb;                           // W_P [nu, l]
+        const double* wp = w+p*ub*lb;                                  // W_P [nu, l]
         const double* gp = g.get()+p*part;                             // G_P [column, mu]
         double* bp = bracket.get()+p*part;                             // bracket_P [column, mu]
         double* hp = h.data()+p*ub*lb;                                 // H_P [nu, l]
@@ -466,11 +496,11 @@ void centre_derivatives(const System& system, std::size_t a, std::size_t p_first
 
         // (iii)  bracket_P[B, .] += W_P D[A, loc(B)]^T
         backend.multiply_transposed(ub,ua,lb,1.0,wp,dl.data(),0.0,mine.x3.data());
-        scatter_centre(columns,ub,mine.x3.data(),ua,bp);
+        scatter_centre(columns,ub,mine.x3.data(),ua,bp,backend);
 
         // (iv)  bracket_P[loc(B), .] += W_P^T D[A, B]^T
         backend.transposed_multiply(lb,ua,ub,1.0,wp,dba.data(),0.0,mine.x4.data());
-        scatter_runs(runs,mine.x4.data(),ua,bp);
+        scatter_runs(runs,mine.x4.data(),ua,bp,backend);
 
         // H_P = D[B, A] G_P[., loc(B)] + G_P[B, .] D[A, loc(B)]
         backend.multiply_transposed(ub,lb,ua,1.0,dba.data(),mine.gathered.data(),0.0,hp);
@@ -786,14 +816,14 @@ class SiteSink {
     return columns_;
   }
 
-  void first(std::size_t ib, const double* values)
+  void first(std::size_t ib, const double* values, const DenseBackend& backend)
   {
     const Site& b = neighbour(ib);
     const std::span<double> block = k_.at(BlockKey{static_cast<int>(a_),b.atom,b.cell});
-    for (std::size_t e = 0; e < block.size(); ++e) block[e] += factor_*values[e];
+    backend.add_row(block.data(),values,block.size(),factor_);
   }
 
-  void second(std::size_t ib, const double* values)
+  void second(std::size_t ib, const double* values, const DenseBackend& backend)
   {
     const Site& b = neighbour(ib);
     const std::size_t atom = static_cast<std::size_t>(b.atom);
@@ -802,9 +832,7 @@ class SiteSink {
     for (std::size_t j = 0; j < loc.size(); ++j) {
       const std::size_t begin = system_.c_offset[atom][j], width = system_.c_offset[atom][j+1]-begin;
       const std::span<double> block = k_.at(BlockKey{static_cast<int>(a_),loc[j].atom,sum(b.cell,loc[j].cell)});
-      for (std::size_t mu = 0; mu < ua; ++mu)
-        for (std::size_t lambda = 0; lambda < width; ++lambda)
-          block[mu*width+lambda] += factor_*values[mu*lb+begin+lambda];
+      backend.add_rows(block.data(),width,values+begin,lb,ua,width,factor_);
     }
   }
 
@@ -828,24 +856,21 @@ class SiteSink {
           const std::size_t begin = system_.c_offset[a_][i], rows = system_.c_offset[a_][i+1]-begin;
           for (std::size_t j = 0; j < count; ++j) {
             const std::size_t b = block_[i*count+j];
-            if (b%pieces != piece) continue;
+            if (pieces > 1 && b%pieces != piece) continue;
             const std::size_t columns = offset_[j+1]-offset_[j];
             const std::span<double> block = k_.block(b);
-            for (std::size_t r = 0; r < rows; ++r)
-              for (std::size_t c = 0; c < columns; ++c) block[r*columns+c] += factor_*values[(begin+r)*s+offset_[j]+c];
+            backend.add_rows(block.data(),columns,values+begin*s+offset_[j],s,rows,columns,factor_);
           }
         }
       });
     } else {
-      (void)backend;
       (void)pieces;
       for (std::size_t i = 0; i < loc.size(); ++i) {
         const std::size_t begin = system_.c_offset[a_][i], rows = system_.c_offset[a_][i+1]-begin;
         for (std::size_t j = 0; j < count; ++j) {
           const std::size_t columns = offset_[j+1]-offset_[j];
           const std::span<double> block = k_.at(BlockKey{loc[i].atom,sites_[j].atom,difference(sites_[j].cell,loc[i].cell)});
-          for (std::size_t r = 0; r < rows; ++r)
-            for (std::size_t c = 0; c < columns; ++c) block[r*columns+c] += factor_*values[(begin+r)*s+offset_[j]+c];
+          backend.add_rows(block.data(),columns,values+begin*s+offset_[j],s,rows,columns,factor_);
         }
       }
     }
@@ -1001,14 +1026,13 @@ class GammaSink {
   // The orbital of every column of the folded T blocks of an atom.
   const std::vector<std::size_t>& orbitals(std::size_t atom) { return folded(atom).columns.column; }
 
-  void first(std::size_t g, const double* values)
+  void first(std::size_t g, const double* values, const DenseBackend& backend)
   {
     const std::size_t b = atoms_[g], ua = system_.orbital_count[a_], ub = system_.orbital_count[b];
-    for (std::size_t mu = 0; mu < ua; ++mu)
-      for (std::size_t nu = 0; nu < ub; ++nu) k_[(offset_[a_]+mu)*n_+offset_[b]+nu] += factor_*values[mu*ub+nu];
+    backend.add_rows(k_.data()+offset_[a_]*n_+offset_[b],n_,values,ub,ua,ub,factor_);
   }
 
-  void second(std::size_t g, const double* values)
+  void second(std::size_t g, const double* values, const DenseBackend&)
   {
     const std::vector<std::size_t>& column = folded(atoms_[g]).columns.column;
     const std::size_t ua = system_.orbital_count[a_], lb = column.size();
@@ -1023,7 +1047,7 @@ class GammaSink {
     const std::vector<std::size_t>& row = folded(a_).columns.column;
     backend.parallel_for(pieces,[&](std::size_t c) {
       for (std::size_t lambda = c*row.size()/pieces; lambda < (c+1)*row.size()/pieces; ++lambda)
-        for (std::size_t column = 0; column < n_; ++column) k_[row[lambda]*n_+column] += factor_*values[lambda*n_+column];
+        backend.add_row(k_.data()+row[lambda]*n_,values+lambda*n_,n_,factor_);
     });
   }
 
@@ -1337,29 +1361,25 @@ struct DeviceCentre {
 // each sign.  A move with add then adds to different columns of D, and the
 // additions to one column follow the order of l, as on the host.  Empty
 // when every sign is positive and no column of D appears twice.
-std::vector<DeviceGroup::Moved> column_moves(const GroupColumns& columns)
+std::vector<DeviceGroup::Moved> column_moves(const GroupColumns& columns, std::vector<std::size_t>& seen)
 {
   const std::vector<std::size_t>& column = columns.column;
-  std::map<std::size_t,std::size_t> seen;          // the appearances of every column of D so far
-  std::vector<std::size_t> layer(column.size());
   std::size_t layers = 0;
+  for (const std::size_t c : column) layers = std::max(layers,++seen[c]);
+  for (const std::size_t c : column) seen[c] = 0;
+  if (layers <= 1 && columns.negative.empty()) return {};
+
+  std::vector<DeviceGroup::Moved> moved(2*layers);
   for (std::size_t l = 0; l < column.size(); ++l) {
-    layer[l] = seen[column[l]]++;
-    layers = std::max(layers,layer[l]+1);
+    const std::size_t c = column[l], layer = seen[c]++;
+    const bool negative = !columns.negative.empty() && columns.negative[l] != 0;
+    DeviceGroup::Moved& move = moved[2*layer+static_cast<std::size_t>(negative)];
+    move.alpha = negative ? -1.0 : 1.0;
+    move.l.push_back(static_cast<long long>(l));
+    move.column.push_back(static_cast<long long>(c));
   }
-  std::vector<DeviceGroup::Moved> moved;
-  if (layers <= 1 && columns.negative.empty()) return moved;
-  for (std::size_t k = 0; k < layers; ++k)
-    for (const bool negative : {false,true}) {
-      DeviceGroup::Moved move{negative ? -1.0 : 1.0,{},{}};
-      for (std::size_t l = 0; l < column.size(); ++l) {
-        const bool minus = !columns.negative.empty() && columns.negative[l] != 0;
-        if (layer[l] != k || minus != negative) continue;
-        move.l.push_back(static_cast<long long>(l));
-        move.column.push_back(static_cast<long long>(column[l]));
-      }
-      if (!move.l.empty()) moved.push_back(std::move(move));
-    }
+  for (const std::size_t c : column) seen[c] = 0;
+  std::erase_if(moved,[](const DeviceGroup::Moved& move) { return move.l.empty(); });
   return moved;
 }
 
@@ -1780,13 +1800,46 @@ void device_derivatives(const System& system, const CentrePart& share, double fa
     dv[ib].assign(from,from+static_cast<std::ptrdiff_t>(np*system.abf_count[c.groups[ib].atom]));
   }
   if (w != nullptr) {
-    std::vector<double> blocks(d.t_offset.back());
-    work.download(blocks.data(),d.dtw,blocks.size()*sizeof(double));
+    const std::size_t size = d.t_offset.back();
+    const auto blocks = std::make_unique_for_overwrite<double[]>(size);
+    work.download(blocks.get(),d.dtw,size*sizeof(double));
     w->assign(touched.size(),std::vector<double>());
     for (std::size_t x = 0; x < touched.size(); ++x)
       if (touched[x] != 0)
-        (*w)[x].assign(blocks.begin()+static_cast<std::ptrdiff_t>(d.t_offset[x]),
-                       blocks.begin()+static_cast<std::ptrdiff_t>(d.t_offset[x+1]));
+        (*w)[x].assign(blocks.get()+d.t_offset[x],blocks.get()+d.t_offset[x+1]);
+  }
+}
+
+// A rank only needs T for its centre atoms and the V neighbours of those
+// centres. Leave the other entries empty in the packed T and dT arrays.
+struct DeviceCallShape {
+  DeviceSizes work;
+  std::vector<std::size_t> t_size;
+  std::size_t t_total = 0;
+};
+
+template <class Form>
+DeviceCallShape device_call_shape(std::size_t atoms, const std::vector<CentrePart>& parts, Form& form)
+{
+  DeviceCallShape shape;
+  std::vector<unsigned char> used(atoms);
+  for (const CentrePart& part : parts)
+    shape.work.widen(form.sizes(part.atom,part.last-part.first,used));
+  shape.t_size.resize(atoms);
+  for (std::size_t x = 0; x < atoms; ++x) {
+    if (used[x] == 0) continue;
+    shape.t_size[x] = form.t_size(x);
+    shape.t_total += shape.t_size[x];
+  }
+  return shape;
+}
+
+template <class Form>
+void upload_t_blocks(const DeviceCallShape& shape, Form& form, const DeviceArrays& d, DeviceWork& work)
+{
+  for (std::size_t x = 0; x < shape.t_size.size(); ++x) {
+    if (shape.t_size[x] != 0)
+      work.upload(d.t+d.t_offset[x],form.t(x),shape.t_size[x]*sizeof(double));
   }
 }
 
@@ -1801,31 +1854,26 @@ bool device_range(const System& system, const std::vector<CentrePart>& parts, do
       device.upload == nullptr || device.download == nullptr || device.dgemm == nullptr || device.move == nullptr ||
       device.finish == nullptr || parts.empty())
     return false;
-  const std::size_t atoms = system.orbital_count.size();
-  DeviceSizes z;
-  for (const CentrePart& part : parts) z.widen(form.sizes(part.atom,part.last-part.first));
-  std::vector<std::size_t> t_size(atoms);
-  std::size_t t_total = 0;
-  for (std::size_t x = 0; x < atoms; ++x) t_total += t_size[x] = form.t_size(x);
-  if (device.accept(device.context,device_multiplications(z,DeviceUse::build),DeviceArrays::bytes(z,k.size(),t_total))
-      != 1)
+  const DeviceCallShape shape = device_call_shape(system.orbital_count.size(),parts,form);
+  if (device.accept(device.context,device_multiplications(shape.work,DeviceUse::build),
+                   DeviceArrays::bytes(shape.work,k.size(),shape.t_total)) != 1)
     return false;
 
-  std::vector<double> result(k.size());
+  const auto result = std::make_unique_for_overwrite<double[]>(k.size());
   try {
     DeviceWork work(device);
-    DeviceArrays d(work,z,k.size(),t_size);
+    DeviceArrays d(work,shape.work,k.size(),shape.t_size);
     work.upload(d.density,density.data(),density.size()*sizeof(double));
     work.upload(d.k,k.data(),k.size()*sizeof(double));
-    for (std::size_t x = 0; x < atoms; ++x) work.upload(d.t+d.t_offset[x],form.t(x),t_size[x]*sizeof(double));
+    upload_t_blocks(shape,form,d,work);
     const double nothing = 0.0;
     work.upload(d.zero,&nothing,sizeof(double));
     for (const CentrePart& part : parts) device_centre(system,part,factor,form.plan(part.atom),d,work);
-    work.download(result.data(),d.k,result.size()*sizeof(double));
+    work.download(result.get(),d.k,k.size()*sizeof(double));
   } catch (const DeviceStop&) {
     return false;
   }
-  std::copy(result.begin(),result.end(),k.begin());
+  std::copy_n(result.get(),k.size(),k.begin());
   return true;
 }
 
@@ -1844,23 +1892,18 @@ std::size_t device_gradient_range(const System& system, const std::vector<Centre
       device.upload == nullptr || device.download == nullptr || device.dgemm == nullptr || device.move == nullptr ||
       device.finish == nullptr || parts.empty())
     return 0;
-  const std::size_t atoms = system.orbital_count.size();
-  DeviceSizes z;
-  for (const CentrePart& part : parts) z.widen(form.sizes(part.atom,part.last-part.first));
-  std::vector<std::size_t> t_size(atoms);
-  std::size_t t_total = 0;
-  for (std::size_t x = 0; x < atoms; ++x) t_total += t_size[x] = form.t_size(x);
+  const DeviceCallShape shape = device_call_shape(system.orbital_count.size(),parts,form);
   const DeviceUse use = half ? DeviceUse::half_derivatives : DeviceUse::derivatives;
-  if (device.accept(device.context,device_multiplications(z,use),DeviceArrays::bytes(z,density.size(),t_total,use))
-      != 1)
+  if (device.accept(device.context,device_multiplications(shape.work,use),
+                   DeviceArrays::bytes(shape.work,density.size(),shape.t_total,use)) != 1)
     return 0;
 
   std::size_t done = 0;
   try {
     DeviceWork work(device);
-    DeviceArrays d(work,z,density.size(),t_size,use);
+    DeviceArrays d(work,shape.work,density.size(),shape.t_size,use);
     work.upload(d.density,density.data(),density.size()*sizeof(double));
-    for (std::size_t x = 0; x < atoms; ++x) work.upload(d.t+d.t_offset[x],form.t(x),t_size[x]*sizeof(double));
+    upload_t_blocks(shape,form,d,work);
     const double nothing = 0.0;
     work.upload(d.zero,&nothing,sizeof(double));
     std::vector<double> dt;
@@ -1884,12 +1927,14 @@ class DeviceBlocks {
   }
 
   // The sizes of np ABFs of centre a.
-  DeviceSizes sizes(std::size_t a, std::size_t np)
+  DeviceSizes sizes(std::size_t a, std::size_t np, std::span<unsigned char> used)
   {
     const SiteSink<LayoutBlocks> sink(system_,a,factor_,store_,half_);
+    used[a] = 1;
     std::vector<std::array<std::size_t,4>> groups;
     for (std::size_t g = 0; g < sink.groups(); ++g) {
       const std::size_t atom = sink.atom(g), lb = system_.c_offset[atom].back();
+      used[atom] = 1;
       groups.push_back({atom,lb,system_.c_neighbours[atom].size(),sink.folds_columns() ? 2*lb : 0});
     }
     const std::size_t ell = system_.c_offset[a].back();
@@ -1907,6 +1952,7 @@ class DeviceBlocks {
     c.s = sink.size();
     sink.device_rows(c.local,c.stored,c.length,c.begin);
     for (const int length : c.length) c.longest = std::max(c.longest,static_cast<std::size_t>(length));
+    std::vector<std::size_t> seen(sink.folds_columns() ? c.s : 0);
     for (std::size_t ib = 0; ib < sink.groups(); ++ib) {
       DeviceGroup group;
       group.atom = sink.atom(ib);
@@ -1914,7 +1960,7 @@ class DeviceBlocks {
       group.v_scale = sink.v_scale(ib);
       const GroupColumns& columns = sink.columns(ib);
       for (const std::size_t column : columns.column) group.column.push_back(static_cast<long long>(column));
-      group.moved = column_moves(columns);
+      if (sink.folds_columns()) group.moved = column_moves(columns,seen);
       group.sign = !columns.negative.empty() && columns.negative[0] != 0 ? -1.0 : 1.0;
       group.first = sink.device_first(ib);
       group.first_stride = static_cast<long long>(system_.orbital_count[group.atom]);
@@ -1958,11 +2004,16 @@ class DeviceGamma {
   }
 
   // The sizes of np ABFs of centre a.
-  DeviceSizes sizes(std::size_t a, std::size_t np)
+  DeviceSizes sizes(std::size_t a, std::size_t np, std::span<unsigned char> used)
   {
     GammaSink sink(system_,a,factor_,std::span<double>(),offset_,half_);
+    used[a] = 1;
     std::vector<std::array<std::size_t,4>> groups;
-    for (std::size_t g = 0; g < sink.groups(); ++g) groups.push_back({sink.atom(g),sink.width(sink.atom(g)),0,0});
+    for (std::size_t g = 0; g < sink.groups(); ++g) {
+      const std::size_t atom = sink.atom(g);
+      used[atom] = 1;
+      groups.push_back({atom,sink.width(atom),0,0});
+    }
     return device_sizes(system_,a,np,offset_.back(),sink.width(a),groups,0,false);
   }
 
