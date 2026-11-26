@@ -7749,10 +7749,11 @@ static int Force4B_GpuCase1StreamBegin(OpenMXSolverInvocation *scratch, Force4BC
     MPI_Comm_rank(*node_comm, &node_rank);
     MPI_Comm_size(*node_comm, &node_ranks);
     reserve = Force_gpu_node_reserve(node_ranks);
-    Force_gpu_pool_flush();
+    const int device_usable = gpu_rank_device_usable();
+    if (device_usable) Force_gpu_pool_flush();
     MPI_Barrier(*node_comm);
 
-    if (full_batch) goto report;
+    if (full_batch || !device_usable) goto report;
     if (Matomnum < 0 || MatomnumF < 0 || Matomnum >= INT_MAX - MatomnumF) goto report;
     sources = Matomnum + MatomnumF;
     for (mc = 1; mc <= Matomnum; mc++) {
@@ -8159,7 +8160,8 @@ static int Force4B_GpuCase1TurnsBegin(OpenMXSolverInvocation *scratch, Force4BCa
     if (!all_allocated) goto finish;
     {
         struct cudaDeviceProp prop;
-        if (cudaGetDevice(&cuda_device) == cudaSuccess
+        if (gpu_rank_device_usable()
+            && cudaGetDevice(&cuda_device) == cudaSuccess
             && cudaGetDeviceProperties(&prop, cuda_device) == cudaSuccess) {
             local.valid = cuda_ok = 1;
             memcpy(local.uuid, prop.uuid.bytes, sizeof(local.uuid));
@@ -9430,6 +9432,8 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
     int f4b_gpu_case1 = 0;
     int f4b_stream_case1 = 0;
     int f4b_turns_case1 = 0;
+    const int stream_requested = Force4B_GpuCase1StreamMode() == 1;
+    const int turns_requested = !stream_requested && Force4B_GpuCase1TurnsMode() == 1;
     int f4b_stream = 0;
     int f4b_gpu_case2 = 0;
     const int f4b_stream1_mode = 0;
@@ -9556,7 +9560,13 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
        loops, and one kernel per case runs afterwards. */
 
     if (use_force4b_fused) {
-        f4b_gpu=Force4B_GpuBegin(scratch, &f4b_context, DS_VNA,0,0, &vna->projectors);f4b_gpu_case1=f4b_gpu;
+        const int defer_case1 = stream_requested || turns_requested;
+        f4b_gpu = Force4B_GpuBegin(scratch, &f4b_context, DS_VNA, defer_case1, 0, &vna->projectors);
+        f4b_gpu_case1 = f4b_gpu && !defer_case1;
+        if (stream_requested)
+            f4b_stream_case1 = Force4B_GpuCase1StreamBegin(scratch, &f4b_case1_stream, 0, 1);
+        if (turns_requested)
+            f4b_turns_case1 = Force4B_GpuCase1TurnsBegin(scratch, &f4b_case1_turns, 0, 0, 1, CDM0);
     }
 
     /*****************************************}**********************
@@ -9976,9 +9986,10 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
         Force4B_GpuCase1StreamAccumulate(f4b_case1_stream, vna, CDM0);
         Force4B_GpuCase1StreamEnd(f4b_case1_stream);
     }
-    /* Release every concurrent case-1 allocation before admitting a
-       cached-halo rank turn, and keep case 2 out of the turn lifetime. */
-    if(f4b_gpu)f4b_gpu=Force4B_GpuCase2Begin(f4b_context, 1);
+    /* Every participant waits for its wave, including ranks using the CPU.
+       The case-2 device archive starts after the rank turns are finished. */
+    if (turns_requested) Force4B_GpuCase1TurnsRun(f4b_case1_turns, vna, CDM0, DS_VNA);
+    if (f4b_gpu) f4b_gpu = Force4B_GpuCase2Begin(f4b_context, 1);
     int *f4b_run_start = NULL, f4b_run_count = 0;
 
     dtime(&etime);

@@ -180,6 +180,9 @@ int main(void)
     setenv("OPENMX_FORCE4B_GPU", "0", 1);
     check_declined(0, -1, 1);
     unsetenv("OPENMX_FORCE4B_GPU");
+    force_fixture_device_usable = 0;
+    check_declined(0, -1, 1);
+    force_fixture_device_usable = 1;
     host_available = 32 * GiB;
     check_declined(0, -1, 1);
     host_available = 128 * GiB;

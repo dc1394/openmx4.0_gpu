@@ -19,6 +19,8 @@ static void *ForceGpu_State(OpenMXSolverInvocation *scope,const char *name,
     return states[index].data;
 }
 static void *(*force_fixture_calloc)(size_t,size_t)=test_calloc;
+static int force_fixture_device_usable=1;
+static int gpu_rank_device_usable(void) { return force_fixture_device_usable; }
 static void *ForceGpu_Host(OpenMXNativeResources *owner,size_t count,size_t bytes,int zero)
 { (void)owner;return zero?force_fixture_calloc(count,bytes):(host_allocation_fail?NULL:malloc(count*bytes)); }
 static void *ForceGpu_RequiredHost(OpenMXNativeResources *owner,size_t bytes)

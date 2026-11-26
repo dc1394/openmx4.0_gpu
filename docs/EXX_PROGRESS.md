@@ -226,6 +226,18 @@ RTX 5080 の `sidia333_nc_cluster`（18 MPI × 1 OpenMP、MPS、2 SCF 反復）�
 
 両バックエンドの CPU モデルで各 580 件の力を比較し、3 箇所の割り当てと 4 箇所の転送で失敗を注入した。RTX 5080 の C60（4 MPI × 1 OpenMP、6 SCF 反復）では通常実行と回復経路の双方で、変更前後の全エネルギー差は最大 $3.1\times10^{-10}$ Hartree、力の差は最大 $1.3\times10^{-10}$ Hartree/bohr だった。1 MPI の CUDA プロファイルで両方の HNL バッチカーネルの起動を確認した。
 
+### CUDA の VNA 力計算で明示指定した rank-turn とストリーミング
+
+`OPENMX_FORCE4B_CASE1_TURNS=1` または `OPENMX_FORCE4B_CASE1_STREAM=1` を指定すると、CUDA でも該当のバッチを選べる。両方を指定したときはストリーミングを選ぶ。GPU を使えないランクは CPU で処理し、rank-turn は case 2 の GPU アーカイブを配置する前に処理を終える。
+
+RTX 5080 の C60（4 MPI × 1 OpenMP）で両方の経路を実行した。CUDA の既定経路に対して、全エネルギーの最大差は $9.5\times10^{-10}$ Hartree、力は $4.0\times10^{-10}$ Hartree/bohr だった。`OPENMX_GPU=0` で rank-turn を指定した計算は、CPU の既定経路と出力桁で一致した。
+
+同じ GPU の `sidia333_nc_cluster`（18 MPI × 1 OpenMP、MPS、2 SCF 反復）では、18 ランクが rank-turn を実行した。ホスト領域の見積もりはノードあたり 13.37 GiB だった。VNA の力計算は 8.14 秒から 7.22 秒、全エネルギーは出力桁で一致し、力の最大差は $1.0\times10^{-12}$ Hartree/bohr だった。4 MPI の C60 では常駐バッチの方が速く、自動選択は既存の容量判定に従う。
+
+### 統合確認
+
+RTX 5080 の既定 CUDA 経路で `sidia333_nc_cluster` を 18 MPI × 1 OpenMP、MPS 有効で 25 SCF 反復実行した。実時間は 98.19 秒だった。オンデマンド格子の変更を最初に検証した実行（98.18 秒）に対し、全エネルギーは出力桁で一致し、力の最大差は $1.0\times10^{-12}$ Hartree/bohr だった。CPU 専用と CUDA の `-runtest` はそれぞれ 14 件が通り、参照との全エネルギー差はそれぞれ最大 $4.4\times10^{-11}$、$4.9\times10^{-11}$ Hartree だった。
+
 ## 受け入れ試験の結果
 
 | マイルストーン | 試験 | 結果 | 日付 | 条件（計算機、ビルド） |

@@ -1164,15 +1164,17 @@ and falls back to the CPU if one rank cannot fit. Set
 `OPENMX_SETPRO_HVNA_TURNS=0` to disable rank turns, or use the existing
 `OPENMX_SETPRO_GPU=0` to disable the VNA GPU stages.
 
-For VNA forces, `OPENMX_FORCE4B_CASE2_STREAM=auto` (also the unset default)
+For VNA forces on HIP, `OPENMX_FORCE4B_CASE2_STREAM=auto` (also the unset default)
 streams case-2 projector traces one centre at a time when the full GPU batch
 does not fit. Set it to `0` to disable streaming or `1` to request streaming
 even when the full batch fits. Memory admission still applies, with CPU
 fallback if a rank's largest centre does not fit; `OPENMX_FORCE4B_GPU=0`
 disables both the full-batch and streamed GPU paths.
-For case 1, `OPENMX_FORCE4B_CASE1_TURNS=auto` (the unset default) can
-retain received projector rows in host memory and run bounded groups of ranks
-on each physical GPU when concurrent full archives do not fit. Group size
+For case 1, rank turns retain received projector rows in host memory and run
+bounded groups of ranks on each physical GPU. `OPENMX_FORCE4B_CASE1_TURNS=auto`
+on HIP can select this path when concurrent full archives do not fit. CUDA
+uses the full archive and its capacity recovery by default; set
+`OPENMX_FORCE4B_CASE1_TURNS=1` to request rank turns. Group size
 uses the free memory measured after earlier buffers are released, the largest
 rank arena, a reserve of 256 MiB plus 16 MiB per node rank and a 64 MiB
 allowance per active rank.
@@ -1183,8 +1185,9 @@ host allocations must fit both three quarters of available node RAM and
 the amount remaining after reserving 32 GiB. Device allocation failure uses
 the cached halo in the CPU contraction. Set this mode to `0` to disable it
 or `1` to force it; `OPENMX_FORCE4B_CASE1_STREAM=1` takes precedence.
-`OPENMX_FORCE4B_CASE1_STREAM=auto` similarly streams case-1 traces when the
-full archive and rank turns are unavailable. It packs only the projector rows needed for each
+`OPENMX_FORCE4B_CASE1_STREAM=auto` on HIP similarly streams case-1 traces when
+the full archive and rank turns are unavailable. CUDA enables this path with
+`OPENMX_FORCE4B_CASE1_STREAM=1`. It packs only the projector rows needed for each
 received source, then accumulates results in the original atom/pair order.
 `OPENMX_FORCE4B_CASE1_STREAM_MB` caps its per-rank arena at 1024 MiB by default;
 `0` prevents streaming. The case-1 mode also accepts `0` (disabled) and `1`
