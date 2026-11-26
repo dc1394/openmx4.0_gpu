@@ -1,4 +1,5 @@
 #include <openmx/xc/xc.h>
+#include <openmx/xc/hybrid_kernels.h>
 #include <openmx/xc/kernels.h>
 
 #include <math.h>
@@ -73,6 +74,41 @@ int main(void)
     CHECK(memcmp(decdd, kdecdd, sizeof decdd) == 0 && kdens[0] == dens[0]);
     CHECK(openmx_xc_kernel_ceperley_alder(0.01, 1) == openmx_xc_ceperley_alder(0.01, 1));
     CHECK(openmx_xc_kernel_ceperley_alder(0.0, 0) == 0.0 && openmx_xc_kernel_ceperley_alder(0.01, 9) == 0.0);
+  }
+
+  /* the inline hybrid kernels are the library's arithmetic too: HSE06 and
+     PBE0 with two spins, with equal spins, and the short-range exchange */
+  {
+    const double spins[2][2] = {{0.02, 0.005}, {0.0125, 0.0125}};
+    const double equal[3][2] = {{0.01, 0.01}, {-0.003, -0.003}, {0.0, 0.0}};
+    int k, global;
+    for (k = 0; k < 2; k++) {
+      double (*g)[2] = k ? (double (*)[2])equal : gdens;
+      for (global = 0; global < 2; global++) {
+        double ldens[2] = {spins[k][0], spins[k][1]}, kdens[2] = {spins[k][0], spins[k][1]};
+        double kexc[2], kdexdd[2], kdecdd[2], kdexdgd[3][2], kdecdgd[3][2];
+        if (global) {
+          CHECK(openmx_xc_pbe_global_hybrid(ldens, g, 0, 0.25, exc, dexdd, decdd, dexdgd, decdgd));
+          openmx_xc_kernel_pbe_global_hybrid(kdens, g, 0, 0.25, kexc, kdexdd, kdecdd, kdexdgd, kdecdgd);
+        }
+        else {
+          CHECK(openmx_xc_pbe_screened_hybrid(ldens, g, 0, 0.25, 0.106, exc, dexdd, decdd, dexdgd, decdgd));
+          openmx_xc_kernel_pbe_screened_hybrid(kdens, g, 0, 0.25, 0.106, kexc, kdexdd, kdecdd, kdexdgd, kdecdgd);
+        }
+        CHECK(memcmp(exc, kexc, sizeof exc) == 0 && memcmp(dexdd, kdexdd, sizeof dexdd) == 0);
+        CHECK(memcmp(decdd, kdecdd, sizeof decdd) == 0 && memcmp(dexdgd, kdexdgd, sizeof dexdgd) == 0);
+        CHECK(memcmp(decdgd, kdecdgd, sizeof decdgd) == 0 && memcmp(ldens, kdens, sizeof ldens) == 0);
+        CHECK(isfinite(kexc[0]) && kexc[0] != 0.0);
+      }
+      {
+        double ldens[2] = {spins[k][0], spins[k][1]}, kdens[2] = {spins[k][0], spins[k][1]};
+        double kex[1], kdexdd[2], kdexdgd[3][2];
+        CHECK(openmx_xc_wpbeh_short_range(ldens, g, 0, 0.106, ex, dexdd, dexdgd));
+        openmx_xc_kernel_wpbeh_short_range(kdens, g, 0, 0.106, kex, kdexdd, kdexdgd);
+        CHECK(memcmp(ex, kex, sizeof kex) == 0 && memcmp(dexdd, kdexdd, sizeof dexdd) == 0);
+        CHECK(memcmp(dexdgd, kdexdgd, sizeof dexdgd) == 0 && memcmp(ldens, kdens, sizeof ldens) == 0);
+      }
+    }
   }
   printf("PASS xc C interface\n");
   return 0;

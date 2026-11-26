@@ -49,7 +49,8 @@ void outputfile1(const OpenMXChemicalPotentials *chemical, const OpenMXThermodyn
       } 
     }
 
-    else if ( f_switch==2 || f_switch==3 ){
+    /* 5 is 2 for a hybrid functional: the table has the exact exchange */
+    else if ( f_switch==2 || f_switch==3 || f_switch==5 ){
 
       fp = fopen(fname, "a");   
 
@@ -65,7 +66,7 @@ void outputfile1(const OpenMXChemicalPotentials *chemical, const OpenMXThermodyn
         fprintf(fp,"        Total energy (Hartree) at MD =%2d        \n",MD_iter);
         fprintf(fp,"*******************************************************\n\n"); 
 
-        if (f_switch==2){
+        if (f_switch==2 || f_switch==5){
 	
 	  fprintf(fp,"  Uele.    %20.12f\n\n",energies->band);
 	  fprintf(fp,"  Ukin.    %20.12f\n",components->kinetic);
@@ -75,6 +76,7 @@ void outputfile1(const OpenMXChemicalPotentials *chemical, const OpenMXThermodyn
 	  fprintf(fp,"  Unl.     %20.12f\n",components->nonlocal);
 	  fprintf(fp,"  Uxc0.    %20.12f\n",components->xc[0]);
 	  fprintf(fp,"  Uxc1.    %20.12f\n",components->xc[1]);
+	  if (f_switch==5) fprintf(fp,"  Uexx.    %20.12f\n",components->exact_exchange);
 	  fprintf(fp,"  Ucore.   %20.12f\n",components->core);
 	  fprintf(fp,"  Uhub.    %20.12f\n",components->hubbard);
 	  fprintf(fp,"  Ucs.     %20.12f\n",components->spin_constraint);
@@ -88,7 +90,12 @@ void outputfile1(const OpenMXChemicalPotentials *chemical, const OpenMXThermodyn
 	  fprintf(fp,"  Enpy.    %20.12f\n",thermo->total+thermo->pressure_volume);
 
 	  fprintf(fp,"  Note:\n\n");
-	  fprintf(fp,"  Utot = Ukin+UH0+UH1+Una+Unl+Uxc0+Uxc1+Ucore+Uhub+Ucs+Uzs+Uzo+Uef+UvdW+Uch\n\n");
+	  if (f_switch==5){
+	    fprintf(fp,"  Utot = Ukin+UH0+UH1+Una+Unl+Uxc0+Uxc1+Uexx+Ucore+Uhub+Ucs+Uzs+Uzo+Uef+UvdW+Uch\n\n");
+	  }
+	  else{
+	    fprintf(fp,"  Utot = Ukin+UH0+UH1+Una+Unl+Uxc0+Uxc1+Ucore+Uhub+Ucs+Uzs+Uzo+Uef+UvdW+Uch\n\n");
+	  }
 	  fprintf(fp,"  Uele:   band energy\n");
 	  fprintf(fp,"  Ukin:   kinetic energy\n");
 	  fprintf(fp,"  UH0:    electric part of screened Coulomb energy\n");
@@ -97,6 +104,10 @@ void outputfile1(const OpenMXChemicalPotentials *chemical, const OpenMXThermodyn
 	  fprintf(fp,"  Unl:    non-local potential energy\n");
 	  fprintf(fp,"  Uxc0:   exchange-correlation energy for alpha spin\n");
 	  fprintf(fp,"  Uxc1:   exchange-correlation energy for beta spin\n");
+	  if (f_switch==5){
+	    fprintf(fp,"  Uexx:   exact exchange energy of the hybrid functional\n");
+	    fprintf(fp,"          (Uxc0 and Uxc1 are the semilocal part)\n");
+	  }
 	  fprintf(fp,"  Ucore:  core-core Coulomb energy\n");
 	  fprintf(fp,"  Uhub:   LDA+U energy\n");
 	  fprintf(fp,"  Ucs:    constraint energy for spin orientation\n");

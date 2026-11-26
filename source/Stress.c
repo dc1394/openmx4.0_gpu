@@ -2411,6 +2411,7 @@ static void Stress3(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *ato
     XC_P_switch_stress = 3;
     /* first argument in Set_XC_Grid was added by S.Ryee */
     Set_XC_Grid(2,XC_P_switch_stress, XC_switch,
+		0.0, 0.0,  /* exx_alpha, exx_omega: no hybrid functional yet */
 		Density_Grid_D[0], Density_Grid_D[1],
 		Density_Grid_D[2], Density_Grid_D[3],
 		NULL, NULL, NULL, NULL,

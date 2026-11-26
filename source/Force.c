@@ -3021,30 +3021,34 @@ typedef struct {
     double *****H0,******DS_NL,*****OLP,*****CDM,*****EDM;
     const OpenMXElectronicViews *electronic;
     const OpenMXLocalBasisViews *local_basis;
+    const double *exact_exchange_gradient;
 } ForceArguments;
 static double Force_Impl(OpenMXHamiltonianGpuState *hamiltonian_state, OpenMXDensityGpuState *density_state, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double***** H0,
     double****** DS_NL,
     double***** OLP,
     double***** CDM,
-    double***** EDM, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis, const OpenMXForceWorkspace *force_work);
+    double***** EDM, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis,
+    const double *exact_exchange_gradient, const OpenMXForceWorkspace *force_work);
 static int Force_Operation(const OpenMXForceWorkspace *work,void *opaque,double *result)
 {
     const ForceArguments *a=opaque;
     *result=Force_Impl(a->hamiltonian_state, a->density_state,a->atomic,a->vna,a->reciprocal,a->H0,a->DS_NL,a->OLP,a->CDM,a->EDM,
-        a->electronic,a->local_basis,work);
+        a->electronic,a->local_basis,a->exact_exchange_gradient,work);
     return 1;
 }
 double Force(OpenMXHamiltonianGpuState *hamiltonian_state, OpenMXDensityGpuState *density_state, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double***** H0,
     double****** DS_NL,
     double***** OLP,
     double***** CDM,
-    double***** EDM, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
+    double***** EDM, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis,
+    const double *exact_exchange_gradient)
 {
     const int imaginary=(SO_switch==1 || (Hub_U_switch==1 && F_U_flag==1 && SpinP_switch==3)
         || Constraint_NCS_switch>=1 || Zeeman_NCS_switch==1 || Zeeman_NCO_switch==1);
     const OpenMXForceInput input={atomnum,Matomnum,MatomnumF,SpeciesNum,SpinP_switch,imaginary,
         F_M2G,WhatSpecies,atomic->species.contracted_orbitals,FNAN,natn};
-    ForceArguments args={hamiltonian_state,density_state,atomic,vna,reciprocal,H0,DS_NL,OLP,CDM,EDM,electronic,local_basis};
+    ForceArguments args={hamiltonian_state,density_state,atomic,vna,reciprocal,H0,DS_NL,OLP,CDM,EDM,electronic,local_basis,
+        exact_exchange_gradient};
     double begin,end;
     dtime(&begin);
     (void)OpenMX_ForceRun(&input,Force_Operation,&args);
@@ -3056,7 +3060,8 @@ static double Force_Impl(OpenMXHamiltonianGpuState *hamiltonian_state, OpenMXDen
     double****** DS_NL,
     double***** OLP,
     double***** CDM,
-    double***** EDM, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis, const OpenMXForceWorkspace *force_work)
+    double***** EDM, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis,
+    const double *exact_exchange_gradient, const OpenMXForceWorkspace *force_work)
 {
     OpenMXSolverInvocation *scratch=force_work->scratch;
 
@@ -4851,6 +4856,33 @@ static double Force_Impl(OpenMXHamiltonianGpuState *hamiltonian_state, OpenMXDen
 
     if (core_hole_state_flag == 1) {
         OpenMX_ForceCoreHole(atomic,CDM0,iDM0,electronic);
+    }
+
+    /****************************************************
+      Force arising from the exact exchange of a hybrid
+      functional: dE_x/dtau with the density matrix
+      fixed, which Exact_Exchange_Gradient computed for
+      all atoms. The response of the orbitals is in the
+      term of the energy density matrix, whose
+      Hamiltonian contains the exchange matrix.
+    ****************************************************/
+
+    if (exact_exchange_gradient != NULL) {
+        for (Mc_AN = 1; Mc_AN <= Matomnum; Mc_AN++) {
+
+            Gc_AN = M2G[Mc_AN];
+
+            Gxyz[Gc_AN][17] += exact_exchange_gradient[3 * (Gc_AN - 1) + 0];
+            Gxyz[Gc_AN][18] += exact_exchange_gradient[3 * (Gc_AN - 1) + 1];
+            Gxyz[Gc_AN][19] += exact_exchange_gradient[3 * (Gc_AN - 1) + 2];
+
+            if (2 <= level_stdout) {
+                printf("<Force>  force(EXX) myid=%2d  Mc_AN=%2d Gc_AN=%2d  %15.12f %15.12f %15.12f\n",
+                    myid, Mc_AN, Gc_AN, exact_exchange_gradient[3 * (Gc_AN - 1) + 0],
+                    exact_exchange_gradient[3 * (Gc_AN - 1) + 1], exact_exchange_gradient[3 * (Gc_AN - 1) + 2]);
+                fflush(stdout);
+            }
+        }
     }
 
     /****************************************************

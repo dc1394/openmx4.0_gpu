@@ -38,6 +38,32 @@ int openmx_xc_pbe(double dens[2], double gdens[3][2], int symmetrize_spins,
                   double exc[2], double dexdd[2], double decdd[2],
                   double dexdgd[3][2], double decdgd[3][2]);
 
+/* Short-range omega-PBE exchange (wPBEh, with the definition of Quantum
+   ESPRESSO 7.6); omega in 1/bohr.  dens is read and rewritten to the floored
+   values as in openmx_xc_pbe.  ex[0] receives the energy density, dexdd the
+   derivatives per spin, dexdgd [direction][spin].  Returns 0 without an
+   input or output array. */
+int openmx_xc_wpbeh_short_range(double dens[2], double gdens[3][2], int symmetrize_spins, double omega,
+                                double ex[1], double dexdd[2], double dexdgd[3][2]);
+
+/* Semilocal part of a screened hybrid functional: openmx_xc_pbe with
+   exchange_fraction times the short-range exchange above removed from
+   exc[0], dexdd and dexdgd.  A fraction of exactly 0 gives the outputs of
+   openmx_xc_pbe bit for bit.  Arguments and return value as openmx_xc_pbe. */
+int openmx_xc_pbe_screened_hybrid(double dens[2], double gdens[3][2], int symmetrize_spins,
+                                  double exchange_fraction, double omega,
+                                  double exc[2], double dexdd[2], double decdd[2],
+                                  double dexdgd[3][2], double decdgd[3][2]);
+
+/* Semilocal part of a global hybrid functional (PBE0): openmx_xc_pbe with
+   exc[0], dexdd and dexdgd multiplied by 1 - exchange_fraction.  A fraction
+   of exactly 0 gives the outputs of openmx_xc_pbe bit for bit.  Arguments
+   and return value as openmx_xc_pbe. */
+int openmx_xc_pbe_global_hybrid(double dens[2], double gdens[3][2], int symmetrize_spins,
+                                double exchange_fraction,
+                                double exc[2], double dexdd[2], double decdd[2],
+                                double dexdgd[3][2], double decdgd[3][2]);
+
 #ifdef __cplusplus
 }
 #endif

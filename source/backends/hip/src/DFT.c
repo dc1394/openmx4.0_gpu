@@ -901,7 +901,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
                                     LSCF_iter-SCF_iter_shift,
                                     SCF_iter-SCF_iter_shift,
 				    TRAN_Poisson_flag2,
-                                    SucceedReadingDMfile,Cnt_kind,H0,HNL,DM[0],H, electronic, local_basis);
+                                    SucceedReadingDMfile,Cnt_kind,H0,HNL,DM[0],H, electronic, local_basis, 0.0, 0.0);
 
 	}
 	
@@ -934,7 +934,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
                                   LSCF_iter-SCF_iter_shift,
                                   SCF_iter-SCF_iter_shift,
                                   TRAN_Poisson_flag2,
-                                  SucceedReadingDMfile,Cnt_kind,H0,HNL,DM[0],H, electronic, local_basis);
+                                  SucceedReadingDMfile,Cnt_kind,H0,HNL,DM[0],H, electronic, local_basis, 0.0, 0.0);
 
 	{
 	  extern void openmx_gpu_zheevd_selftest(const char *label);
@@ -1002,7 +1002,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
                                 LSCF_iter-SCF_iter_shift,
                                 SCF_iter-SCF_iter_shift,
                                 TRAN_Poisson_flag2,
-                                SucceedReadingDMfile,Cnt_kind,H0,HNL,DM[0],H, electronic, local_basis);
+                                SucceedReadingDMfile,Cnt_kind,H0,HNL,DM[0],H, electronic, local_basis, 0.0, 0.0);
 
       if (Cnt_switch==1 && Cnt_Now==1){
 	Contract_Hamiltonian(H,CntH,OLP,CntOLP, local_basis);
@@ -2641,13 +2641,13 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
       Band_DFT_kpath(chemical,  Band_Nkpath, Band_N_perpath,
                       Band_kpath, Band_kname, 
-                      SpinP_switch,H,iHNL,OLP[0]);
+                      SpinP_switch,H,iHNL,OLP[0],NULL);
     }
     else {
 
       Band_DFT_kpath(chemical,  Band_Nkpath, Band_N_perpath,
                       Band_kpath, Band_kname,
-                      SpinP_switch,CntH,iCntHNL,CntOLP[0]);
+                      SpinP_switch,CntH,iCntHNL,CntOLP[0],NULL);
     }
   }
 
@@ -2709,11 +2709,11 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
       if (Cnt_switch==0){
 
 	Band_DFT_Dosout(chemical,  Dos_Kgrid[0], Dos_Kgrid[1], Dos_Kgrid[2],
-			 SpinP_switch, H, iHNL, OLP[0] , electronic);
+			 SpinP_switch, H, iHNL, OLP[0] , electronic, NULL);
       }
       else {
 	Band_DFT_Dosout(chemical,  Dos_Kgrid[0], Dos_Kgrid[1], Dos_Kgrid[2],
-			 SpinP_switch, CntH, iCntHNL, CntOLP[0] , electronic);
+			 SpinP_switch, CntH, iCntHNL, CntOLP[0] , electronic, NULL);
       }
     }
 
@@ -2887,7 +2887,8 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   openmx_magma_release_fp32_workspace();
   (void)openmx_hipsolver_release_workspace();
   openmx_gpusolver_cache_release();
-  if (!orbitalOpt_Force_Skip) time7 += Force(hamiltonian_state, density_state, atomic, vna,reciprocal, H0,DS_NL,OLP,DM[0],EDM, electronic, local_basis);
+  if (!orbitalOpt_Force_Skip) time7 += Force(hamiltonian_state, density_state, atomic, vna,reciprocal, H0,DS_NL,OLP,DM[0],EDM, electronic, local_basis,
+                                             NULL);
   
   if (scf_stress_flag){
     Stress(core,thermo, atomic, vna,reciprocal, H0,DS_NL,OLP,DM[0],EDM, electronic, local_basis);
@@ -2932,7 +2933,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
     printf("<MD=%2d>  Total Energy\n",MD_iter);fflush(stdout);
   }
 
-  if (!orbitalOpt_Force_Skip) time8 += Total_Energy(core,energies, cwf_values, atomic, vna, MD_iter,ECE, electronic, local_basis);
+  if (!orbitalOpt_Force_Skip) time8 += Total_Energy(core,energies, cwf_values, atomic, vna, MD_iter,ECE, electronic, local_basis, 0.0, 0.0);
 
   components->atomic_reference  = 0.0;
   components->core  = ECE[0];

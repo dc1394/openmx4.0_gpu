@@ -203,6 +203,20 @@ target_compile_options(openmx_cpu_application PRIVATE
   "$<$<COMPILE_LANG_AND_ID:C,GNU,Clang,AppleClang>:-fcommon;-Wno-unknown-pragmas;-Wno-unused-parameter;-ffp-contract=off>"
   "$<$<COMPILE_LANG_AND_ID:C,IntelLLVM>:-fcommon;-Wno-unknown-pragmas;-Wno-unused-parameter;-fp-model=precise;-ffp-contract=off>"
   "$<$<COMPILE_LANG_AND_ID:CXX,GNU,Clang,AppleClang>:-Wno-unused-parameter;-ffp-contract=off>")
+# The unit of the host products of the exact exchange asks whether the
+# program has the thread functions of OpenBLAS. A build that chose OpenBLAS
+# names the library to the unit. Every other build finds the functions through
+# weak references, whose tests are right at run time only in
+# position-independent code (source/openmx_exact_exchange_host.h).
+foreach(_cpu_source IN LISTS _cpu_sources)
+  cmake_path(GET _cpu_source FILENAME _cpu_source_name)
+  if(_cpu_source_name STREQUAL "Exact_Exchange_Host.c")
+    set_property(SOURCE "${_cpu_source}" APPEND PROPERTY COMPILE_OPTIONS ${CMAKE_C_COMPILE_OPTIONS_PIC})
+    if(OPENMX_CPU_LINALG_RESOLVED STREQUAL "OPENBLAS")
+      set_property(SOURCE "${_cpu_source}" APPEND PROPERTY COMPILE_DEFINITIONS OPENMX_EXX_HOST_BLAS_OPENBLAS)
+    endif()
+  endif()
+endforeach()
 target_link_libraries(openmx_cpu_application PRIVATE OpenMX::core MPI::MPI_C MPI::MPI_CXX MPI::MPI_Fortran
   OpenMP::OpenMP_C OpenMP::OpenMP_CXX "${OPENMX_CPU_ELPA_LIBRARY}"
   "${OPENMX_CPU_FFTW_LIBRARY}" ${OPENMX_CPU_LINALG_LIBRARIES} ${CMAKE_DL_LIBS} m)

@@ -59,7 +59,7 @@ def main():
         "Set_OLP_Kin.c", "Set_Nonlocal.c", "Voronoi_Orbital_Moment.c", "Gaunt.c")]
     # Chemical-potential ownership reaches output, CWF and analysis units.
     for name in ('Band_DFT_Col.c', 'Band_DFT_Col_CWF.c', 'Band_DFT_Col_DMmu.c', 'Band_DFT_Col_Optical_ScaLAPACK.c', 'Band_DFT_Dosout.c', 'Band_DFT_MO.c', 'Band_DFT_NonCol.c', 'Band_DFT_NonCol_CWF.c', 'Band_DFT_NonCol_DMmu.c', 'Band_DFT_NonCol_GB.c', 'Band_DFT_NonCol_Optical.c', 'Band_DFT_kpath.c', 'Band_DFT_kpath_LNO.c', 'CWF2W90.c', 'Cluster_DFT_Col.c', 'Cluster_DFT_Col_CWF.c', 'Cluster_DFT_Col_DMmu.c', 'Cluster_DFT_Col_LNO.c', 'Cluster_DFT_Dosout.c', 'Cluster_DFT_NonCol.c', 'Cluster_DFT_NonCol_CWF.c', 'Cluster_DFT_NonCol_DMmu.c', 'Cluster_DFT_ON2.c', 'Cluster_DFT_Optical.c', 'Cluster_DFT_Optical_ScaLAPACK.c', 'DFT.c', 'Divide_Conquer.c', 'Divide_Conquer_Dosout.c', 'Divide_Conquer_LNO.c', 'EGAC_DFT.c', 'Generate_Wannier.c', 'Input_std.c', 'Krylov.c', 'MD_pac.c', 'Mixing_H.c', 'NBO_Krylov.c', 'OutData.c', 'OutData_Binary.c', 'Runtest.c', 'SCF2File.c', 'TRAN_Input_std.c', 'TRAN_Output_HKS.c', 'TRAN_RestartFile.c', 'Unfolding_Bands.c', 'iterout_md.c', 'openmx.c', 'openmx_api.c', 'openmx_globals.c', 'outputfile1.c'):
-        if not any(n == name for _, n in jobs):
+        if not any(job[1] == name for job in jobs):
             jobs.append((cc, name))
     jobs += [(cxx, n) for n in (
         "openmx_gpu_dm.cu", "openmx_gpu_transform.cu", "openmx_mgpu_gemm.cu",
@@ -67,16 +67,33 @@ def main():
 
     if args.backend == "HIP":
         jobs.append((cxx, "orbs_otf_hip.cu"))
+    else:
+        # The exact exchange of the hybrid functionals is not part of the HIP build yet.
+        jobs.append((cc, "Exact_Exchange.c"))
+        # The device loop of the exchange-correlation grid with the semilocal
+        # part of the hybrids (the short-range exchange as OpenACC routines);
+        # the HIP copy keeps the host loop for them.
+        jobs.append((cc, "Set_XC_Grid.c"))
+        # without fused multiply-adds in the device code, as in source/Makefile
+        jobs.append((cc+["-gpu=nofma"], "Exact_Exchange_Device.c"))
+        jobs.append((cc, "Exact_Exchange_Host.c"))
+        # The native build compiles with OpenMP (source/Makefile), and the
+        # exchange build runs on its threads: compile the two units that use
+        # them a second time with the options of that build. A third member
+        # of a job names its output.
+        jobs.append((cc+["-fopenmp"], "Exact_Exchange.c", "Exact_Exchange.openmp.c"))
+        jobs.append((cc+["-fopenmp", "-fPIC"], "Exact_Exchange_Host.c", "Exact_Exchange_Host.openmp.c"))
 
     def compile_unit(job):
-        command, name = job
+        command, name = job[:2]
+        label = job[2] if len(job) > 2 else name
         flags = ["-fno-common"] if name == "openmx_globals.c" and args.backend=="HIP" else []
-        result = subprocess.run(command+flags+["-c", str(source/name), "-o", str(output/(name+".o"))],
+        result = subprocess.run(command+flags+["-c", str(source/name), "-o", str(output/(label+".o"))],
             text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-        (output/(name+".log")).write_text(result.stdout)
+        (output/(label+".log")).write_text(result.stdout)
         if result.returncode:
             print(result.stdout, file=sys.stderr)
-        return name, result.returncode
+        return label, result.returncode
 
     with ThreadPoolExecutor(max_workers=args.jobs) as pool:
         results = list(pool.map(compile_unit, jobs))
@@ -94,6 +111,22 @@ def main():
                  "openmx_mgpu_dispatch_zgemm"):
         if " T "+name+"\n" not in defined:
             raise RuntimeError("runtime symbol must be strong: "+name)
+    if args.backend == "CUDA":
+        # The host products of the exact exchange: the references to the
+        # thread functions of OpenBLAS must stay weak (a program linked with
+        # another BLAS does not have them), and the second compile must have
+        # seen the OpenMP code, which refers to names of the OpenMP runtime
+        # that the first compile does not know.
+        def undefined_symbols(name):
+            listing = subprocess.check_output(["nm", "-u", str(output/(name+".o"))], text=True)
+            return {tuple(line.split()[-2:]) for line in listing.splitlines() if line.strip()}
+        plain = undefined_symbols("Exact_Exchange_Host.c")
+        threaded = undefined_symbols("Exact_Exchange_Host.openmp.c")
+        for name in ("openblas_get_parallel", "openblas_get_num_threads", "openblas_set_num_threads"):
+            if ("w", name) not in plain or ("w", name) not in threaded:
+                raise RuntimeError("Exact_Exchange_Host.c: the reference must be weak: "+name)
+        if not {name for _, name in threaded}-{name for _, name in plain}-{"_GLOBAL_OFFSET_TABLE_"}:
+            raise RuntimeError("Exact_Exchange_Host.c: the compile with OpenMP refers to no runtime of OpenMP")
     # Including the application header must no longer define COMMON/BSS data.
     probe = output/"declarations.c"
     probe.write_text('#include "openmx_common.h"\n')

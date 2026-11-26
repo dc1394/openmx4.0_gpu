@@ -70,9 +70,11 @@ static void xc_derivative(const double g[3],double out[3]){
   const double k[3][3]={{.7,.11,-.08},{.11,.5,.06},{-.08,.06,.9}};
   for(int i=0;i<3;i++){out[i]=0;for(int j=0;j<3;j++)out[i]+=k[i][j]*g[j];}
 }
-static void Set_XC_Grid(int mode,int part,int kind,double *n0,double *n1,double *n2,double *n3,
+static void Set_XC_Grid(int mode,int part,int kind,double exx_alpha,double exx_omega,
+    double *n0,double *n1,double *n2,double *n3,
     double *v0,double *v1,double *v2,double *v3,double ***axc,double ***den){
   CHECK(mode==2&&part==3&&kind==4&&n0&&n1&&n2&&n3&&!v0&&!v1&&!v2&&!v3);++xc_calls;
+  CHECK(exx_alpha==0.0&&exx_omega==0.0); /* No hybrid functional is selected. */
   for(int spin=0;spin<2;spin++)for(int n=0;n<My_NumGridD;n++){
     double g[3],a[3];gradient(spin,n,g);xc_derivative(g,a);
     for(int k=0;k<3;k++){den[spin][k][n]=g[k];axc[spin][k][n]=a[k];}

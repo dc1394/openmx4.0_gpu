@@ -313,7 +313,7 @@ OBJS    = openmx_grid_assembly.o openmx.o openmx_common.o Input_std.o Inputtools
           Set_ContMat_Cluster_LNO.o Hamiltonian_Band.o Matrix_Band_LNO.o Overlap_Band.o Hamiltonian_Cluster_NC.o \
           Hamiltonian_Band_NC.o Hamiltonian_Cluster_SO.o Get_OneD_HS_Col.o \
           SetPara_DFT.o \
-          DFT.o Mixing_DM.o Mixing_H.o Mixing_V.o Force.o Stress.o Poisson.o Poisson_ESM.o \
+          DFT.o Exact_Exchange.o Exact_Exchange_Device.o Exact_Exchange_Host.o Mixing_DM.o Mixing_H.o Mixing_V.o Force.o Stress.o Poisson.o Poisson_ESM.o \
           Cluster_DFT_Col.o Cluster_DFT_NonCol.o Cluster_DFT_Dosout.o Cluster_DFT_ON2.o Cluster_DFT_Col_LNO.o \
           Band_DFT_Col.o Band_DFT_NonCol.o Band_DFT_NonCol_GB.o Band_DFT_kpath.o Band_DFT_kpath_LNO.o Band_DFT_MO.o \
           Cluster_DFT_Col_CWF.o Cluster_DFT_NonCol_CWF.o Band_DFT_Col_CWF.o Band_DFT_NonCol_CWF.o \
@@ -714,6 +714,16 @@ Unfolding_Bands.o: Unfolding_Bands.c openmx_common.h
 	$(CC) -c Unfolding_Bands.c
 Band_DFT_Dosout.o: Band_DFT_Dosout.c openmx_common.h
 	$(CC) -c Band_DFT_Dosout.c
+Exact_Exchange.o: Exact_Exchange.c openmx_exact_exchange.h openmx_exact_exchange_device.h openmx_exact_exchange_host.h openmx_exx.h ../modules/exx/include/openmx/exx/exx.h
+	$(CC) -c Exact_Exchange.c
+# The moves of the whole calls (a loop of OpenACC) form the product first and
+# then the sum, as the host does: no fused multiply-adds in the device code.
+Exact_Exchange_Device.o: Exact_Exchange_Device.c openmx_exact_exchange_device.h openmx_exx.h ../modules/exx/include/openmx/exx/exx.h
+	$(CC) -gpu=nofma -c Exact_Exchange_Device.c
+# Position-independent code: the unit tests weak references to the functions
+# of OpenBLAS (openmx_exact_exchange_host.h).
+Exact_Exchange_Host.o: Exact_Exchange_Host.c openmx_exact_exchange_host.h
+	$(CC) -fPIC -c Exact_Exchange_Host.c
 Mixing_DM.o: Mixing_DM.c openmx_common.h
 	$(CC) -c Mixing_DM.c
 Mixing_H.o: Mixing_H.c openmx_common.h openmx_mixing_policy.h openmx_core_mixing.h
@@ -1718,6 +1728,7 @@ Total_Energy_GPU.o Force.o Set_Orbitals_Grid.o Set_Hamiltonian.o Set_Nonlocal.o 
 Set_Density_Grid_GPU.o: openmx_gpu_bilinear.h
 Mixing_H.o: openmx_gpu_vector.h openmx_host_memory.h
 Set_XC_Grid.o: openmx_gpu_collective.h
+Set_XC_Grid.o: openmx_xc_hybrid_kernels.h ../modules/xc/include/openmx/xc/hybrid_kernels.h
 openmx_gpu_bilinear_pack.o: openmx_host_memory.h
 
 truncation.o: openmx_gpu_task.h openmx_host_memory.h
@@ -1762,6 +1773,7 @@ DFT.o Set_Hamiltonian.o Set_Density_Grid.o Free_Arrays.o: openmx_grid_assembly.h
 Set_Hamiltonian.o: openmx_host_simd.h
 
 DFT.o Cluster_DFT_Col.o: openmx_cluster_col_state.h
+DFT.o Cluster_DFT_Col.o Band_DFT_Col.o Input_std.o Band_DFT_kpath.o Band_DFT_Dosout.o: openmx_exact_exchange.h
 
 DFT.o Cluster_DFT_NonCol.o: openmx_cluster_noncol_state.h
 

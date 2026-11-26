@@ -2886,7 +2886,8 @@ double Set_Hamiltonian(OpenMXHamiltonianGpuState *hamiltonian_state, OpenMXGridW
                        double *****H0,
                        double *****HNL,
                        double *****CDM,
-		       double *****H, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
+		       double *****H, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis,
+                       double exx_alpha, double exx_omega);
 #if OPENMX_GPU_HIP
 void Set_Hamiltonian_Set_OpenMP_Rank_Selected(int selected);
 int Set_Hamiltonian_OpenMP_Rank_Is_Selected(void);
@@ -2968,12 +2969,14 @@ void Set_Hamiltonian_GpuSolver_SetMP(int *MP);
 #endif
 
 
-double Total_Energy(OpenMXCoreContext *core, const OpenMXBandEnergies *energies, const OpenMXCWFObservables *cwf_values, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, int MD_iter, double ECE[], const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
+double Total_Energy(OpenMXCoreContext *core, const OpenMXBandEnergies *energies, const OpenMXCWFObservables *cwf_values, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, int MD_iter, double ECE[], const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis,
+                    double exx_alpha, double exx_omega);
 double Force(OpenMXHamiltonianGpuState *hamiltonian_state, OpenMXDensityGpuState *density_state, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna,const OpenMXReciprocalViews *reciprocal, double *****H0,
 	     double ******DS_NL, 
 	     double *****OLP,
 	     double *****CDM, 
-	     double *****EDM, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
+	     double *****EDM, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis,
+	     const double *exact_exchange_gradient);
 double Stress(OpenMXCoreContext *core,OpenMXThermodynamicEnergies *thermo, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna,const OpenMXReciprocalViews *reciprocal, double *****H0,
 	      double ******DS_NL,
 	      double *****OLP,
@@ -2990,8 +2993,10 @@ void Set_Vpot(OpenMXMixingVState *mixing_v,const OpenMXAtomicViews *atomic, int 
               int SCF_iter, 
               int SCF_iter0,
               int TRAN_Poisson_flag2,
-              int XC_P_switch);
+              int XC_P_switch,
+              double exx_alpha, double exx_omega);
 void Set_XC_Grid(int SCF_iter, int XC_P_switch, int XC_switch, 
+                 double exx_alpha, double exx_omega,
                  double *Den0, double *Den1, 
                  double *Den2, double *Den3,
                  double *Vxc0, double *Vxc1,
@@ -3613,12 +3618,16 @@ double Band_DFT_NonCol_GB(OpenMXChemicalPotentials *chemical, OpenMXBandEnergies
 void k_inversion(int i,  int j,  int k, 
                  int mi, int mj, int mk, 
                  int *ii, int *ij, int *ik ); 
+/* exact_exchange adds K(k) of a hybrid functional to H(k)
+   (openmx_exact_exchange.h); NULL without one */
+struct OpenMXExactExchangeState;
 void Band_DFT_kpath(const OpenMXChemicalPotentials *chemical,  int nkpath, int *n_perk,
                      double ***kpath, char ***kname,
                      int SpinP_switch,
                      double *****nh,
                      double *****ImNL,
-                     double ****CntOLP);
+                     double ****CntOLP,
+                     struct OpenMXExactExchangeState *exact_exchange);
 
 void Band_DFT_kpath_LNO(const OpenMXChemicalPotentials *chemical,  int nkpath, int *n_perk,
                          double ***kpath, char ***kname, 
@@ -3636,7 +3645,8 @@ double Band_DFT_Dosout(OpenMXChemicalPotentials *chemical,  int knum_i, int knum
                         int SpinP_switch,
                         double *****nh,
                         double *****ImNL,
-                        double ****CntOLP , const OpenMXElectronicViews *electronic);
+                        double ****CntOLP , const OpenMXElectronicViews *electronic,
+                        struct OpenMXExactExchangeState *exact_exchange);
 
 void Unfolding_Bands(const OpenMXChemicalPotentials *chemical,
 		     int SpinP_switch, 

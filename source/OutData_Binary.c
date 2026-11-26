@@ -509,6 +509,7 @@ static void out_Vxc(const OpenMXChemicalPotentials *chemical)
   ****************************************************/
 
   Set_XC_Grid(2,1,XC_switch,
+              0.0, 0.0,  /* exx_alpha, exx_omega: no hybrid functional yet */
               Density_Grid_D[0],Density_Grid_D[1],
               Density_Grid_D[2],Density_Grid_D[3],
               Vxc_Grid_D[0], Vxc_Grid_D[1],

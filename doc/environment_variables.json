@@ -1957,8 +1957,8 @@
    "names": [
     "OPENMX_GPU_CAPACITY_TEST_RECOVERY"
    ],
-   "en": "Fault injection for the regression tests: skip the legacy resident fast paths so the ordinary capacity planner runs with real GPU memory.",
-   "ja": "回帰テスト用の故障注入: 従来の常駐高速経路を飛ばし、通常の容量プランナーを実際の GPU メモリで動かす。"
+   "en": "Fault injection for the regression tests: skip the legacy resident fast paths so the ordinary capacity planner runs with real GPU memory. The matrix products of the exact exchange (HSE06) stay on the host, as they do when the device has no room for them.",
+   "ja": "回帰テスト用の故障注入: 従来の常駐高速経路を飛ばし、通常の容量プランナーを実際の GPU メモリで動かす。厳密交換(HSE06)の行列積は、デバイスに空きがない場合と同じくホストで計算する。"
   },
   {
    "group": "magma",

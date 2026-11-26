@@ -1,0 +1,650 @@
+// exx-two-center-gaussian, exx-two-center-symmetry, exx-two-center-gradient
+// and exx-two-center-truncated: equations (11) and (12) against analytic
+// values for Gaussian functions, the symmetries of the two-centre blocks, the
+// derivative of the blocks with respect to the displacement, and the truncated
+// Coulomb kernel with the radii of PBE0 on the reciprocal grid of the main
+// program.
+#include <openmx/exx/two_center.hpp>
+
+#include <openmx/basis/quadrature.hpp>
+
+#include "test_support.hpp"
+
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <cstdio>
+#include <initializer_list>
+#include <numbers>
+#include <span>
+#include <string>
+#include <utility>
+#include <vector>
+
+namespace exx_test {
+namespace {
+using namespace openmx::exx;
+using Vector = std::array<double,3>;
+
+const double pi = std::numbers::pi;
+
+double length(const Vector& v) { return std::hypot(v[0],v[1],v[2]); }
+
+// r^l exp(-exponent r^2) on a grid.
+RadialFunction gaussian(const RadialGrid& grid, int l, double exponent)
+{
+  RadialFunction f{l,std::vector<double>(grid.size())};
+  for (std::size_t i = 0; i < grid.size(); ++i) {
+    const double r = grid.radius(i);
+    f.values[i] = std::pow(r,l)*std::exp(-exponent*r*r);
+  }
+  return f;
+}
+
+// Real spherical harmonics up to l = 2 from their Cartesian formulas, in the
+// OpenMX order.
+std::vector<double> cartesian_harmonics(const Vector& v)
+{
+  const double x = v[0], y = v[1], z = v[2], r2 = x*x+y*y+z*z, r = std::sqrt(r2);
+  const double c1 = std::sqrt(3.0/(4.0*pi)), c2 = std::sqrt(15.0/(4.0*pi));
+  return {0.5/std::sqrt(pi),
+          c1*x/r, c1*y/r, c1*z/r,
+          std::sqrt(5.0/(16.0*pi))*(3.0*z*z-r2)/r2, 0.5*c2*(x*x-y*y)/r2, c2*x*y/r2, c2*x*z/r2, c2*y*z/r2};
+}
+
+// A quadrature on the unit sphere that integrates products of harmonics up to
+// a total degree of 2*points-1 exactly: Gauss-Legendre in cos(theta), uniform
+// in phi.
+struct Sphere {
+  std::vector<Vector> directions;
+  std::vector<double> weights;
+};
+
+Sphere sphere(int points)
+{
+  const openmx::basis::GaussLegendreRule rule(points);
+  const auto view = rule.view();
+  Sphere s;
+  const int azimuthal = 2*points;
+  for (int i = 0; i < points; ++i) {
+    const double c = view.nodes()[static_cast<std::size_t>(i)], sine = std::sqrt(1.0-c*c);
+    for (int j = 0; j < azimuthal; ++j) {
+      const double phi = 2.0*pi*j/azimuthal;
+      s.directions.push_back({sine*std::cos(phi),sine*std::sin(phi),c});
+      s.weights.push_back(view.weights()[static_cast<std::size_t>(i)]*2.0*pi/azimuthal);
+    }
+  }
+  return s;
+}
+
+// The matrix D with Y_l(Q u) = D Y_l(u) for a rotation Q, by quadrature.
+std::vector<double> harmonic_rotation(const RealHarmonics& harmonics, int l, const std::array<Vector,3>& q,
+                                      const Sphere& s)
+{
+  const int count = 2*l+1, total = (harmonics.maximum_degree()+1)*(harmonics.maximum_degree()+1);
+  std::vector<double> d(static_cast<std::size_t>(count*count),0.0), y(static_cast<std::size_t>(total)),
+      rotated(static_cast<std::size_t>(total));
+  for (std::size_t k = 0; k < s.directions.size(); ++k) {
+    const Vector& u = s.directions[k];
+    const Vector v = {q[0][0]*u[0]+q[0][1]*u[1]+q[0][2]*u[2], q[1][0]*u[0]+q[1][1]*u[1]+q[1][2]*u[2],
+                      q[2][0]*u[0]+q[2][1]*u[1]+q[2][2]*u[2]};
+    harmonics.evaluate(u,y);
+    harmonics.evaluate(v,rotated);
+    for (int a = 0; a < count; ++a)
+      for (int b = 0; b < count; ++b)
+        d[static_cast<std::size_t>(a*count+b)] += s.weights[k]*rotated[static_cast<std::size_t>(l*l+a)]*
+                                                  y[static_cast<std::size_t>(l*l+b)];
+  }
+  return d;
+}
+
+// Rotation by "angle" about a unit axis.
+std::array<Vector,3> rotation(Vector axis, double angle)
+{
+  const double n = length(axis);
+  for (double& x : axis) x /= n;
+  const double c = std::cos(angle), s = std::sin(angle), t = 1.0-c;
+  const double x = axis[0], y = axis[1], z = axis[2];
+  return {{{t*x*x+c, t*x*y-s*z, t*x*z+s*y}, {t*x*y+s*z, t*y*y+c, t*y*z-s*x}, {t*x*z-s*y, t*y*z+s*x, t*z*z+c}}};
+}
+
+// A smooth normalized function that vanishes at the cutoff, with the behaviour
+// r^l at the origin; "shape" selects one of several radial dependences.
+RadialFunction model(const RadialGrid& grid, int l, double cutoff, int shape)
+{
+  RadialFunction f{l,std::vector<double>(grid.size(),0.0)};
+  for (std::size_t i = 0; i < grid.size(); ++i) {
+    const double r = grid.radius(i);
+    if (r >= cutoff) continue;
+    const double x = r/cutoff, bump = (1.0-x*x)*(1.0-x*x)*(1.0-x*x);
+    f.values[i] = std::pow(r,l)*bump*(1.0+0.7*shape*std::cos((1.3+shape)*x))*std::exp(-0.4*(1+shape)*x*x);
+  }
+  const double scale = 1.0/std::sqrt(radial_integral(grid,f.values,f.values));
+  for (double& value : f.values) value *= scale;
+  return f;
+}
+
+// F(d) of two s Gaussians for the three long-range kernels, with its first and
+// second derivative: (g_a|v|g_b) = (pi^2/(a b))^(3/2) F(d).
+struct Radial { double f, d1, d2; };
+
+Radial pair_function(const Kernel& kernel, double mu, double d)
+{
+  // N(d) with F = N/d.
+  const auto g = [](double c, double x) { return 2.0*c/std::sqrt(pi)*std::exp(-c*c*x*x); };   // d erf(c x)/dx
+  const auto g1 = [&g](double c, double x) { return -2.0*c*c*x*g(c,x); };
+  const double c = std::sqrt(mu);
+  double n = 0.0, n1 = 0.0, n2 = 0.0;
+  switch (kernel.kind) {
+    case KernelKind::coulomb:
+      n = std::erf(c*d); n1 = g(c,d); n2 = g1(c,d);
+      break;
+    case KernelKind::short_range: {
+      const double omega = kernel.parameter, ce = std::sqrt(mu*omega*omega/(mu+omega*omega));
+      n = std::erf(c*d)-std::erf(ce*d); n1 = g(c,d)-g(ce,d); n2 = g1(c,d)-g1(ce,d);
+      break;
+    }
+    case KernelKind::truncated_coulomb: {
+      const double rc = kernel.parameter;
+      n = std::erf(c*d)+0.5*std::erf(c*(rc-d))-0.5*std::erf(c*(rc+d));
+      n1 = g(c,d)-0.5*g(c,rc-d)-0.5*g(c,rc+d);
+      n2 = g1(c,d)+0.5*g1(c,rc-d)-0.5*g1(c,rc+d);
+      break;
+    }
+    default:
+      throw std::runtime_error("no analytic pair function for this kernel");
+  }
+  return {n/d, n1/d-n/(d*d), n2/d-2.0*n1/(d*d)+2.0*n/(d*d*d)};
+}
+
+} // namespace
+
+void two_center_gaussian()
+{
+  const RadialGrid grid{0.0,0.02,500};
+  const ReciprocalGrid reciprocal = ReciprocalGrid::uniform(16.0,800);
+  const double a = 0.9, b = 0.6;
+
+  // Equation (11): int r^(l+2) exp(-a r^2) j_l(kappa r) dr = sqrt(pi) kappa^l exp(-kappa^2/(4a)) / (2^(l+2) a^(l+3/2)).
+  Worst transform("spherical Bessel transform of r^l exp(-a r^2)",1e-13);
+  for (int l = 0; l <= 4; ++l) {
+    const ReciprocalFunction t = bessel_transform(grid,gaussian(grid,l,a),reciprocal);
+    for (std::size_t k = 0; k < reciprocal.size(); k += 7) {
+      const double kappa = reciprocal.nodes()[k];
+      transform.absolute(t.values[k],std::sqrt(pi)*std::pow(kappa,l)*std::exp(-kappa*kappa/(4.0*a))/
+                                         (std::pow(2.0,l+2)*std::pow(a,l+1.5)));
+    }
+  }
+  transform.finish();
+
+  const std::vector<RadialFunction> radial = {gaussian(grid,0,a),gaussian(grid,1,a),gaussian(grid,0,b),gaussian(grid,1,b)};
+  const std::vector<ReciprocalFunction> f = bessel_transform(grid,radial,reciprocal);
+  const ReciprocalFunction &sa = f[0], &pa = f[1], &sb = f[2], &pb = f[3];
+  const double mu = a*b/(a+b), prefactor = std::pow(pi*pi/(a*b),1.5);
+
+  // The overlap of two Gaussians is elementary: (pi/(a+b))^(3/2) exp(-mu d^2).
+  Worst overlap_s("overlap, s-s",1e-10), overlap_p("overlap, pairs with p",1e-10);
+  Worst ss("Coulomb, short-range and truncated kernel, s-s",1e-10);
+  Worst withp("Coulomb, short-range and truncated kernel, pairs with p",1e-10);
+  for (const Vector& d : {Vector{0.7,-0.4,1.3},Vector{-1.1,0.3,0.2},Vector{0.0,0.0,2.4},Vector{1.9,0.0,0.0}}) {
+    const double dist = length(d);
+    {
+      const TwoCenterIntegrator integrator(reciprocal,overlap_kernel(),1,1);
+      const auto pair = integrator.pair(d);
+      const double s0 = std::pow(pi/(a+b),1.5)*std::exp(-mu*dist*dist);
+      double block[9];
+      pair.block(sa,sb,{block,1});
+      overlap_s.absolute(block[0],s0/(4.0*pi));
+      // p on the first centre: z exp(-a r^2) = (1/(2a)) d/dA_z; d S/d A_i = 2 mu d_i S.
+      pair.block(pa,sb,{block,3});
+      for (int i = 0; i < 3; ++i) overlap_p.absolute(block[i],std::sqrt(3.0)/(4.0*pi)*2.0*mu*d[i]*s0/(2.0*a));
+      pair.block(sa,pb,{block,3});
+      for (int i = 0; i < 3; ++i) overlap_p.absolute(block[i],-std::sqrt(3.0)/(4.0*pi)*2.0*mu*d[i]*s0/(2.0*b));
+      // d^2 S/(dA_i dB_j) = (2 mu delta_ij - 4 mu^2 d_i d_j) S.
+      pair.block(pa,pb,{block,9});
+      for (int i = 0; i < 3; ++i)
+        for (int j = 0; j < 3; ++j)
+          overlap_p.absolute(block[3*i+j],3.0/(4.0*pi)*(2.0*mu*(i == j)-4.0*mu*mu*d[i]*d[j])*s0/(4.0*a*b));
+    }
+    for (const Kernel& kernel : {coulomb_kernel(),short_range_kernel(0.11),truncated_coulomb_kernel(3.0)}) {
+      const TwoCenterIntegrator integrator(reciprocal,kernel,1,1);
+      const auto pair = integrator.pair(d);
+      const Radial F = pair_function(kernel,mu,dist);
+      double block[9];
+      pair.block(sa,sb,{block,1});
+      ss.absolute(block[0],prefactor*F.f/(4.0*pi));
+      // d/dA_i F(|d-A|) = -F' d_i/d and d/dB_i F = +F' d_i/d.
+      pair.block(pa,sb,{block,3});
+      for (int i = 0; i < 3; ++i)
+        withp.absolute(block[i],std::sqrt(3.0)/(4.0*pi)*prefactor/(2.0*a)*(-d[i]/dist)*F.d1);
+      pair.block(sa,pb,{block,3});
+      for (int i = 0; i < 3; ++i)
+        withp.absolute(block[i],std::sqrt(3.0)/(4.0*pi)*prefactor/(2.0*b)*(d[i]/dist)*F.d1);
+      // d^2/(dA_i dB_j) F = -[(F'' - F'/d) d_i d_j/d^2 + delta_ij F'/d].
+      pair.block(pa,pb,{block,9});
+      for (int i = 0; i < 3; ++i)
+        for (int j = 0; j < 3; ++j) {
+          const double hessian = (F.d2-F.d1/dist)*d[i]*d[j]/(dist*dist)+(i == j ? F.d1/dist : 0.0);
+          withp.absolute(block[3*i+j],3.0/(4.0*pi)*prefactor/(4.0*a*b)*(-hessian));
+        }
+    }
+  }
+  overlap_s.finish();
+  overlap_p.finish();
+  ss.finish();
+  withp.finish();
+
+  // Zero displacement: only L = 0 remains, and the block is diagonal.
+  // int r^2 exp(-(a+b) r^2) dr = sqrt(pi)/(4 (a+b)^(3/2)); for p the integrand has r^4.
+  Worst onsite("overlap at zero displacement",1e-12);
+  {
+    const TwoCenterIntegrator integrator(reciprocal,overlap_kernel(),1,1);
+    const auto pair = integrator.pair({0.0,0.0,0.0});
+    double block[9];
+    pair.block(sa,sb,{block,1});
+    onsite.absolute(block[0],std::sqrt(pi)/(4.0*std::pow(a+b,1.5)));
+    pair.block(pa,pb,{block,9});
+    for (int i = 0; i < 3; ++i)
+      for (int j = 0; j < 3; ++j)
+        onsite.absolute(block[3*i+j],i == j ? 3.0*std::sqrt(pi)/(8.0*std::pow(a+b,2.5)) : 0.0);
+    pair.block(pa,sb,{block,3});
+    for (int i = 0; i < 3; ++i) onsite.absolute(block[i],0.0);
+  }
+  onsite.finish();
+}
+
+void two_center_symmetry()
+{
+  // Real harmonics: the Cartesian formulas up to l = 2 fix the order and the
+  // signs; orthonormality on the sphere for all degrees.
+  const int maximum = 8;
+  const RealHarmonics harmonics(maximum);
+  const Sphere s = sphere(12);
+  const int total = (maximum+1)*(maximum+1);
+  std::vector<double> y(static_cast<std::size_t>(total));
+  Worst cartesian("real harmonics against Cartesian formulas, l <= 2",1e-14);
+  for (const Vector& v : {Vector{0.3,-0.5,0.8},Vector{-1.2,0.4,-0.7},Vector{0.0,0.0,2.0},Vector{0.0,0.0,-1.0},
+                          Vector{1.0,0.0,0.0},Vector{0.0,-3.0,0.0},Vector{2.0,1.0,0.0}}) {
+    harmonics.evaluate(v,y);
+    const std::vector<double> reference = cartesian_harmonics(v);
+    for (std::size_t i = 0; i < reference.size(); ++i) cartesian.absolute(y[i],reference[i]);
+  }
+  cartesian.finish();
+  // For l >= 3 the rows are m = 0, cos(phi), sin(phi), cos(2 phi), sin(2 phi), ...
+  // A turn about the z axis mixes the two rows of one m like a plane rotation.
+  // Near the pole both rows carry a positive factor, which fixes the signs.
+  Worst azimuth("azimuthal dependence of the rows, l >= 3",1e-13);
+  {
+    const double phi = 0.37, shift = 0.61;
+    std::vector<double> y0(static_cast<std::size_t>(total));
+    harmonics.evaluate({0.6*std::cos(phi),0.6*std::sin(phi),0.8},y0);
+    harmonics.evaluate({0.6*std::cos(phi+shift),0.6*std::sin(phi+shift),0.8},y);
+    for (int l = 3; l <= maximum; ++l) {
+      azimuth.absolute(y[static_cast<std::size_t>(l*l)],y0[static_cast<std::size_t>(l*l)]);
+      for (int m = 1; m <= l; ++m) {
+        const double c0 = y0[static_cast<std::size_t>(l*l+2*m-1)], s0 = y0[static_cast<std::size_t>(l*l+2*m)];
+        azimuth.absolute(y[static_cast<std::size_t>(l*l+2*m-1)],c0*std::cos(m*shift)-s0*std::sin(m*shift));
+        azimuth.absolute(y[static_cast<std::size_t>(l*l+2*m)],s0*std::cos(m*shift)+c0*std::sin(m*shift));
+      }
+    }
+    const double polar = 0.1;
+    harmonics.evaluate({std::sin(polar)*std::cos(phi),std::sin(polar)*std::sin(phi),std::cos(polar)},y0);
+    for (int l = 3; l <= maximum; ++l) {
+      require(y0[static_cast<std::size_t>(l*l)] > 0.0,"the m = 0 row must be positive near the pole");
+      for (int m = 1; m <= l; ++m)
+        azimuth.absolute(std::atan2(y0[static_cast<std::size_t>(l*l+2*m)],y0[static_cast<std::size_t>(l*l+2*m-1)]),
+                         std::remainder(m*phi,2.0*pi));
+    }
+  }
+  azimuth.finish();
+  Worst orthonormal("orthonormality of the real harmonics",1e-12);
+  {
+    std::vector<double> gram(static_cast<std::size_t>(total*total),0.0);
+    for (std::size_t k = 0; k < s.directions.size(); ++k) {
+      harmonics.evaluate(s.directions[k],y);
+      for (int i = 0; i < total; ++i)
+        for (int j = 0; j < total; ++j)
+          gram[static_cast<std::size_t>(i*total+j)] += s.weights[k]*y[static_cast<std::size_t>(i)]*y[static_cast<std::size_t>(j)];
+    }
+    for (int i = 0; i < total; ++i)
+      for (int j = 0; j < total; ++j) orthonormal.absolute(gram[static_cast<std::size_t>(i*total+j)],i == j ? 1.0 : 0.0);
+  }
+  orthonormal.finish();
+
+  // Real Gaunt coefficients against the quadrature of three real harmonics.
+  const int left = 4, right = 4;
+  const RealGauntTable gaunt(left,right);
+  Worst theta("real Gaunt coefficients against quadrature",1e-12);
+  {
+    std::vector<std::vector<double>> samples(s.directions.size(),std::vector<double>(static_cast<std::size_t>(total)));
+    for (std::size_t k = 0; k < s.directions.size(); ++k) harmonics.evaluate(s.directions[k],samples[k]);
+    for (int l1 = 0; l1 <= left; ++l1)
+      for (int l2 = 0; l2 <= right; ++l2)
+        for (int L = 0; L <= l1+l2; ++L) {
+          const bool stored = L >= std::abs(l1-l2) && (l1+l2+L)%2 == 0;
+          for (int r1 = 0; r1 <= 2*l1; ++r1)
+            for (int r2 = 0; r2 <= 2*l2; ++r2)
+              for (int R = 0; R <= 2*L; ++R) {
+                double sum = 0.0;
+                for (std::size_t k = 0; k < s.directions.size(); ++k)
+                  sum += s.weights[k]*samples[k][static_cast<std::size_t>(l1*l1+r1)]*
+                         samples[k][static_cast<std::size_t>(l2*l2+r2)]*samples[k][static_cast<std::size_t>(L*L+R)];
+                theta.absolute(stored ? gaunt.value(l1,r1,l2,r2,L,R) : 0.0,sum);
+              }
+        }
+  }
+  theta.finish();
+
+  // Two-centre blocks of model functions with compact support.
+  const RadialGrid grid{0.0,0.01,500};
+  const ReciprocalGrid reciprocal = ReciprocalGrid::uniform(40.0,1000);
+  std::vector<RadialFunction> radial;
+  for (int l = 0; l <= 4; ++l) radial.push_back(model(grid,l,4.6,l%3));
+  for (int l = 0; l <= 4; ++l) radial.push_back(model(grid,l,3.9,(l+1)%3));
+  const std::vector<ReciprocalFunction> f = bessel_transform(grid,radial,reciprocal);
+  const Vector d = {1.7,-2.3,0.9};
+  const std::array<Vector,3> q = rotation({0.4,-1.0,0.7},1.234);
+  const Vector qd = {q[0][0]*d[0]+q[0][1]*d[1]+q[0][2]*d[2], q[1][0]*d[0]+q[1][1]*d[1]+q[1][2]*d[2],
+                     q[2][0]*d[0]+q[2][1]*d[1]+q[2][2]*d[2]};
+  const Vector minus = {-d[0],-d[1],-d[2]};
+  std::vector<std::vector<double>> wigner;
+  for (int l = 0; l <= 4; ++l) wigner.push_back(harmonic_rotation(harmonics,l,q,s));
+  Worst unitary("rotation matrices of the real harmonics are orthogonal",1e-12);
+  for (int l = 0; l <= 4; ++l) {
+    const int n = 2*l+1;
+    for (int i = 0; i < n; ++i)
+      for (int j = 0; j < n; ++j) {
+        double sum = 0.0;
+        for (int k = 0; k < n; ++k) sum += wigner[static_cast<std::size_t>(l)][static_cast<std::size_t>(i*n+k)]*
+                                           wigner[static_cast<std::size_t>(l)][static_cast<std::size_t>(j*n+k)];
+        unitary.absolute(sum,i == j ? 1.0 : 0.0);
+      }
+  }
+  unitary.finish();
+
+  Worst transpose("V_ab(R) = V_ba(-R)^T",1e-10), rotated("invariance under a rotation of the coordinate system",1e-10);
+  double largest = 0.0;
+  for (const Kernel& kernel : {overlap_kernel(),coulomb_kernel(),short_range_kernel(0.11),truncated_coulomb_kernel(5.0)}) {
+    const TwoCenterIntegrator integrator(reciprocal,kernel,4,4);
+    const auto forward = integrator.pair(d), backward = integrator.pair(minus), turned = integrator.pair(qd);
+    for (int lp = 0; lp <= 4; ++lp)
+      for (int lq = 0; lq <= 4; ++lq) {
+        const ReciprocalFunction &p = f[static_cast<std::size_t>(lp)], &g = f[static_cast<std::size_t>(5+lq)];
+        const int rows = 2*lp+1, columns = 2*lq+1;
+        std::vector<double> v(static_cast<std::size_t>(rows*columns)), vt(v.size()), vr(v.size());
+        forward.block(p,g,v);
+        backward.block(g,p,vt);
+        turned.block(p,g,vr);
+        for (int i = 0; i < rows; ++i)
+          for (int j = 0; j < columns; ++j) {
+            transpose.absolute(v[static_cast<std::size_t>(i*columns+j)],vt[static_cast<std::size_t>(j*rows+i)]);
+            // V(Q d) = D_lp(Q) V(d) D_lq(Q)^T.
+            double sum = 0.0;
+            for (int k = 0; k < rows; ++k)
+              for (int m = 0; m < columns; ++m)
+                sum += wigner[static_cast<std::size_t>(lp)][static_cast<std::size_t>(i*rows+k)]*
+                       v[static_cast<std::size_t>(k*columns+m)]*
+                       wigner[static_cast<std::size_t>(lq)][static_cast<std::size_t>(j*columns+m)];
+            rotated.absolute(vr[static_cast<std::size_t>(i*columns+j)],sum);
+            largest = std::fmax(largest,std::fabs(v[static_cast<std::size_t>(i*columns+j)]));
+          }
+      }
+  }
+  transpose.finish();
+  rotated.finish();
+  std::printf("largest element of the compared blocks: %.3f\n",largest);
+  require(largest > 0.1,"the blocks of the symmetry test are too small to be meaningful");
+
+  // Invalid arguments.
+  bool thrown = false;
+  try { (void)ReciprocalGrid::uniform(1.0,0); } catch (const std::invalid_argument&) { thrown = true; }
+  require(thrown,"a reciprocal grid without intervals must be rejected");
+  thrown = false;
+  try { (void)RealGauntTable(12,8); } catch (const std::invalid_argument&) { thrown = true; }
+  require(thrown,"a real Gaunt table beyond the supported degrees must be rejected");
+  thrown = false;
+  try { (void)bessel_transform(RadialGrid{0.0,0.1,2},radial[0],reciprocal); } catch (const std::invalid_argument&) { thrown = true; }
+  require(thrown,"a radial grid with fewer than three intervals must be rejected");
+}
+
+void two_center_gradient()
+{
+  const std::vector<Kernel> kernels = {overlap_kernel(),coulomb_kernel(),short_range_kernel(0.11),
+                                       truncated_coulomb_kernel(5.0)};
+  const char* const names[] = {"overlap","Coulomb","short-range","truncated Coulomb"};
+
+  // s Gaussians: the derivative of the pair function is known in closed form.
+  {
+    const RadialGrid grid{0.0,0.02,500};
+    const ReciprocalGrid reciprocal = ReciprocalGrid::uniform(16.0,800);
+    const double a = 0.9, b = 0.6, mu = a*b/(a+b), prefactor = std::pow(pi*pi/(a*b),1.5);
+    const std::vector<RadialFunction> radial = {gaussian(grid,0,a),gaussian(grid,0,b)};
+    const std::vector<ReciprocalFunction> f = bessel_transform(grid,radial,reciprocal);
+    Worst analytic("derivative for two s Gaussians against the closed form",1e-10);
+    for (const Vector& d : {Vector{0.7,-0.4,1.3},Vector{-1.1,0.3,0.2},Vector{0.0,0.0,2.4},Vector{1.9,0.0,0.0}}) {
+      const double dist = length(d);
+      double block[3];
+      {
+        const TwoCenterIntegrator integrator(reciprocal,overlap_kernel(),0,0);
+        integrator.gradient_pair(d).block(f[0],f[1],block);
+        const double s0 = std::pow(pi/(a+b),1.5)*std::exp(-mu*dist*dist)/(4.0*pi);
+        for (int i = 0; i < 3; ++i) analytic.absolute(block[i],-2.0*mu*d[i]*s0);
+      }
+      for (const Kernel& kernel : {coulomb_kernel(),short_range_kernel(0.11),truncated_coulomb_kernel(3.0)}) {
+        const TwoCenterIntegrator integrator(reciprocal,kernel,0,0);
+        integrator.gradient_pair(d).block(f[0],f[1],block);
+        const Radial F = pair_function(kernel,mu,dist);
+        for (int i = 0; i < 3; ++i) analytic.absolute(block[i],prefactor/(4.0*pi)*F.d1*d[i]/dist);
+      }
+    }
+    analytic.finish();
+  }
+
+  // Model functions with compact support: every block against the central
+  // difference of fourth order of the values, relative to the largest
+  // derivative of the kernel and displacement.  The displacements include the
+  // axes, where the azimuth of the harmonics is not defined, a short one and
+  // zero.
+  const RadialGrid grid{0.0,0.01,500};
+  const ReciprocalGrid reciprocal = ReciprocalGrid::uniform(40.0,1000);
+  const int left = 6, right = 4;
+  std::vector<RadialFunction> radial;
+  for (int l = 0; l <= left; ++l) radial.push_back(model(grid,l,4.6,l%3));
+  for (int l = 0; l <= right; ++l) radial.push_back(model(grid,l,3.9,(l+1)%3));
+  const std::vector<ReciprocalFunction> f = bessel_transform(grid,radial,reciprocal);
+  const std::span<const ReciprocalFunction> p(f.data(),static_cast<std::size_t>(left+1));
+  const std::span<const ReciprocalFunction> q(f.data()+left+1,static_cast<std::size_t>(right+1));
+  const std::vector<Vector> displacements = {{1.7,-2.3,0.9},{-0.8,0.5,-3.1},{0.0,0.0,2.4},{0.0,0.0,-1.6},
+                                             {1.9,0.0,0.0},{0.0,-2.2,0.0},{0.02,-0.01,0.03},{0.0,0.0,0.0}};
+  const double step = 2e-3;
+  std::size_t rows = 0, columns = 0;
+  for (const ReciprocalFunction& g : p) rows += static_cast<std::size_t>(2*g.angular+1);
+  for (const ReciprocalFunction& g : q) columns += static_cast<std::size_t>(2*g.angular+1);
+  Worst transpose("d V_ab(R) = -(d V_ba(-R))^T",1e-10);
+  for (std::size_t k = 0; k < kernels.size(); ++k) {
+    const TwoCenterIntegrator integrator(reciprocal,kernels[k],left,right), mirror(reciprocal,kernels[k],right,left);
+    Worst difference(std::string("derivative against central differences, ")+names[k],1e-9);
+    double largest = 0.0;
+    for (const Vector& d : displacements) {
+      const std::vector<double> gradient = two_center_gradient_matrix(integrator.gradient_pair(d),p,q);
+      require(gradient.size() == 3*rows*columns,"the derivative of a two-centre matrix has the wrong size");
+      double scale = 0.0;
+      for (double value : gradient) scale = std::fmax(scale,std::fabs(value));
+      largest = std::fmax(largest,scale);
+      for (std::size_t axis = 0; axis < 3; ++axis) {
+        std::vector<std::vector<double>> shifted;
+        for (int point : {-2,-1,1,2}) {
+          Vector moved = d;
+          moved[axis] += point*step;
+          shifted.push_back(two_center_matrix(integrator.pair(moved),p,q));
+        }
+        for (std::size_t i = 0; i < rows*columns; ++i) {
+          const double numeric = (shifted[0][i]-8.0*shifted[1][i]+8.0*shifted[2][i]-shifted[3][i])/(12.0*step);
+          difference.add(std::fabs(gradient[axis*rows*columns+i]-numeric)/scale);
+        }
+      }
+      // The blocks of single functions give the same numbers as the matrix.
+      std::vector<double> block(3*static_cast<std::size_t>((2*left+1)*(2*right+1)));
+      integrator.gradient_pair(d).block(p.back(),q.back(),block);
+      for (std::size_t axis = 0; axis < 3; ++axis)
+        for (std::size_t i = 0; i < static_cast<std::size_t>(2*left+1); ++i)
+          for (std::size_t j = 0; j < static_cast<std::size_t>(2*right+1); ++j)
+            require(block[(axis*static_cast<std::size_t>(2*left+1)+i)*static_cast<std::size_t>(2*right+1)+j] ==
+                    gradient[(axis*rows+rows-static_cast<std::size_t>(2*left+1)+i)*columns+
+                             columns-static_cast<std::size_t>(2*right+1)+j],
+                    "the derivative of a block differs from the same block of the matrix");
+      const Vector minus = {-d[0],-d[1],-d[2]};
+      const std::vector<double> backward = two_center_gradient_matrix(mirror.gradient_pair(minus),q,p);
+      for (std::size_t axis = 0; axis < 3; ++axis)
+        for (std::size_t i = 0; i < rows; ++i)
+          for (std::size_t j = 0; j < columns; ++j)
+            transpose.add(std::fabs(gradient[(axis*rows+i)*columns+j]+backward[(axis*columns+j)*rows+i])/scale);
+    }
+    difference.finish();
+    std::printf("largest derivative of the %s kernel: %.3f\n",names[k],largest);
+    require(largest > 0.05,"the derivatives of the test are too small to be meaningful");
+  }
+  transpose.finish();
+
+  // The derivative needs harmonics of one more degree than the value.
+  {
+    const TwoCenterIntegrator integrator(reciprocal,overlap_kernel(),19,0);
+    (void)integrator.pair({0.3,0.2,0.1});
+    bool thrown = false;
+    try { (void)integrator.gradient_pair({0.3,0.2,0.1}); } catch (const std::invalid_argument&) { thrown = true; }
+    require(thrown,"the derivative with angular momenta that sum to 19 must be rejected");
+    const TwoCenterIntegrator small(reciprocal,overlap_kernel(),1,1);
+    thrown = false;
+    try {
+      double block[3];
+      small.gradient_pair({0.3,0.2,0.1}).block(f[2],f[0],block);
+    } catch (const std::out_of_range&) { thrown = true; }
+    require(thrown,"a function beyond the bound of the integrator must be rejected");
+    thrown = false;
+    try {
+      double block[9];
+      small.gradient_pair({0.3,0.2,0.1}).block(f[1],f[0],{block,3});
+    } catch (const std::invalid_argument&) { thrown = true; }
+    require(thrown,"an output of the wrong size must be rejected");
+  }
+}
+
+// The truncated Coulomb kernel with the radii R_c of PBE0 on the reciprocal
+// grid of the main program: kappa up to 60/bohr (1DFFT.EnergyCutoff 3600 Ry)
+// in 900 intervals (1DFFT.NumGridR).  For functions of radii r_P and r_Q at
+// the distance d, the integrand of equation (12) is even in kappa and an
+// entire function of exponential type r_P + r_Q + R_c + d.  Its Fourier
+// transform vanishes beyond that length (Paley-Wiener), so by the Poisson
+// summation formula the trapezoid rule is exact, up to the part beyond the
+// largest kappa, while r_P + r_Q + R_c + d < 2 pi/(step of kappa).  That
+// length is 94.2 bohr on the grid of the main program (section 13, item 19 of
+// the guide).
+void two_center_truncated()
+{
+  const Vector u = {0.36,-0.48,0.8};
+
+  // Gaussians against the analytic pair function: R_c 8, 16 and 24 on the
+  // grid of the main program, R_c 32, 40 and 48 on a grid with half its step.
+  // The distances reach R_c + 24 bohr, where the pair function has fallen
+  // below 1e-16 of its largest value.
+  {
+    const RadialGrid grid{0.0,0.02,500};
+    const double a = 0.9, b = 0.6, mu = a*b/(a+b), prefactor = std::pow(pi*pi/(a*b),1.5);
+    const std::vector<RadialFunction> radial = {gaussian(grid,0,a),gaussian(grid,1,a),gaussian(grid,0,b),
+                                                gaussian(grid,1,b)};
+    Worst values("truncated kernel, R_c 8 to 48, Gaussians up to p",1e-12);
+    Worst slopes("truncated kernel, R_c 8 to 48, derivative for s Gaussians",1e-12);
+    const std::pair<int,std::array<double,3>> cases[] = {{900,{8.0,16.0,24.0}},{1800,{32.0,40.0,48.0}}};
+    for (const auto& [intervals,cutoffs] : cases) {
+      const ReciprocalGrid reciprocal = ReciprocalGrid::uniform(60.0,intervals);
+      const std::vector<ReciprocalFunction> f = bessel_transform(grid,radial,reciprocal);
+      const ReciprocalFunction &sa = f[0], &pa = f[1], &sb = f[2], &pb = f[3];
+      for (const double rc : cutoffs) {
+        const Kernel kernel = truncated_coulomb_kernel(rc);
+        const TwoCenterIntegrator integrator(reciprocal,kernel,1,1);
+        for (double dist = 0.5; dist <= rc+24.0; dist += 0.5) {
+          const Vector d = {u[0]*dist,u[1]*dist,u[2]*dist};
+          const auto pair = integrator.pair(d);
+          const Radial F = pair_function(kernel,mu,dist);
+          double block[9];
+          pair.block(sa,sb,{block,1});
+          values.absolute(block[0],prefactor*F.f/(4.0*pi));
+          pair.block(pa,sb,{block,3});
+          for (int i = 0; i < 3; ++i)
+            values.absolute(block[i],std::sqrt(3.0)/(4.0*pi)*prefactor/(2.0*a)*(-d[i]/dist)*F.d1);
+          pair.block(sa,pb,{block,3});
+          for (int i = 0; i < 3; ++i)
+            values.absolute(block[i],std::sqrt(3.0)/(4.0*pi)*prefactor/(2.0*b)*(d[i]/dist)*F.d1);
+          pair.block(pa,pb,{block,9});
+          for (int i = 0; i < 3; ++i)
+            for (int j = 0; j < 3; ++j) {
+              const double hessian = (F.d2-F.d1/dist)*d[i]*d[j]/(dist*dist)+(i == j ? F.d1/dist : 0.0);
+              values.absolute(block[3*i+j],3.0/(4.0*pi)*prefactor/(4.0*a*b)*(-hessian));
+            }
+          integrator.gradient_pair(d).block(sa,sb,{block,3});
+          for (int i = 0; i < 3; ++i) slopes.absolute(block[i],prefactor/(4.0*pi)*F.d1*d[i]/dist);
+        }
+      }
+    }
+    values.finish();
+    slopes.finish();
+  }
+
+  // Functions that vanish beyond 6 bohr (l = 0, 1, 2), on the grid of the
+  // main program against a grid with a quarter of its step, relative to the
+  // largest block of each R_c.  Where 2 r + R_c + d < 94.2 bohr the two agree,
+  // and beyond the reach 2 r + R_c the blocks vanish.  Where the condition
+  // fails at R_c 36 and 40, the blocks on the grid of the main program are off
+  // by more than 1e-4, so the condition is the one that matters.
+  {
+    const double radius = 6.0, length = 2.0*pi*900/60.0;
+    const RadialGrid grid{0.0,radius/600,600};
+    std::vector<RadialFunction> radial;
+    for (int l = 0; l <= 2; ++l) radial.push_back(model(grid,l,radius,l));
+    const ReciprocalGrid coarse = ReciprocalGrid::uniform(60.0,900), fine = ReciprocalGrid::uniform(60.0,3600);
+    const std::vector<ReciprocalFunction> fc = bessel_transform(grid,radial,coarse),
+                                          ff = bessel_transform(grid,radial,fine);
+    Worst exact("truncated kernel, radius 6, where 2 r + R_c + d < 2 pi/step",1e-13);
+    Worst beyond("truncated kernel, radius 6, beyond the reach 2 r + R_c",1e-14);
+    for (const double rc : {16.0,24.0,32.0,36.0,40.0}) {
+      const Kernel kernel = truncated_coulomb_kernel(rc);
+      const TwoCenterIntegrator on_coarse(coarse,kernel,2,2), on_fine(fine,kernel,2,2);
+      struct Entry { double distance, coarse, fine; };
+      std::vector<Entry> entries;
+      double largest = 0.0;
+      for (double dist = 0.5; dist <= rc+2.0*radius+8.0; dist += 1.0) {
+        const Vector d = {u[0]*dist,u[1]*dist,u[2]*dist};
+        const auto pc = on_coarse.pair(d), pf = on_fine.pair(d);
+        for (int p = 0; p < 3; ++p)
+          for (int q = 0; q < 3; ++q) {
+            std::vector<double> bc(static_cast<std::size_t>((2*p+1)*(2*q+1))), bf(bc.size());
+            pc.block(fc[static_cast<std::size_t>(p)],fc[static_cast<std::size_t>(q)],bc);
+            pf.block(ff[static_cast<std::size_t>(p)],ff[static_cast<std::size_t>(q)],bf);
+            for (std::size_t i = 0; i < bc.size(); ++i) {
+              entries.push_back({dist,bc[i],bf[i]});
+              largest = std::max(largest,std::fabs(bf[i]));
+            }
+          }
+      }
+      double aliased = 0.0;
+      for (const Entry& e : entries) {
+        const bool holds = 2.0*radius+rc+e.distance < length;
+        if (holds) exact.add(std::fabs(e.coarse-e.fine)/largest);
+        else aliased = std::max(aliased,std::fabs(e.coarse-e.fine)/largest);
+        if (e.distance > 2.0*radius+rc) {
+          beyond.add(std::fabs(e.fine)/largest);
+          if (holds) beyond.add(std::fabs(e.coarse)/largest);
+        }
+      }
+      if (rc >= 36.0) {
+        std::printf("truncated kernel, radius 6, R_c %.0f: largest deviation where the condition fails %.3e\n",rc,
+                    aliased);
+        require(aliased > 1e-4,"the grid of the main program must alias where 2 r + R_c + d exceeds 2 pi/step");
+      }
+    }
+    exact.finish();
+    beyond.finish();
+  }
+}
+
+} // namespace exx_test

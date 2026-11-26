@@ -1,0 +1,518 @@
+/**********************************************************************
+  Exact_Exchange_Device.c:
+
+     Matrix products of the exchange build on the GPU of this process.
+
+     See docs/EXX_IMPLEMENTATION_GUIDE.md, section 11, and
+     openmx_exact_exchange_device.h for the interface. One product
+     allocates its three matrices on the device, copies the two factors,
+     calls the FP64 product of the device BLAS, or the GEMMul8 bridge when
+     the caller asked for it, and copies the result back. Nothing stays on
+     the device between two products except the handle of the BLAS and the
+     workspace that the bridge keeps for its callers.
+
+     A product that does not fit is left to the host and the device stays
+     in use; so is one for which the device runs out of memory after the
+     check, as it can when several processes share the device. Any other
+     device call that fails switches the device off for the rest of the
+     calculation: the host then computes every product, the failed one
+     included.
+
+     The CUDA build also offers modules/exx the device for whole calls
+     (Exact_Exchange_Device_Table). modules/exx then keeps its arrays on
+     the device for the call and asks for products and moves of elements
+     there. The products and the moves (a loop of OpenACC) run on the
+     stream of one OpenACC queue, in the order in which they were given.
+
+     The functions take every input as an argument and read no global
+     variable.
+***********************************************************************/
+
+#include <stddef.h>
+#include "openmx_gpu_backend.h"
+#include "openmx_gpu_runtime.h"
+#include "openmx_gpu_blas.h"
+#include "openmx_gpu_device.h"
+#include "openmx_exact_exchange_device.h"
+
+/* Whole calls need the moves on the device: a loop of OpenACC. The test of
+   this unit (tests/run_exx_device_product.py) keeps device memory in host
+   memory and runs the loop on the host. */
+#if OPENMX_GPU_CUDA && (defined(_OPENACC) || defined(OPENMX_EXACT_EXCHANGE_DEVICE_HOST_MOVES))
+#define OPENMX_EXACT_EXCHANGE_DEVICE_CALLS 1
+#else
+#define OPENMX_EXACT_EXCHANGE_DEVICE_CALLS 0
+#endif
+
+/* The GEMMul8 bridge of the device BLAS (gemmul8_bridge.cu). It computes a
+   product with GEMMul8, or in FP64 when it has no room for its workspace or
+   the environment switches GEMMul8 off, and counts the calls that ran in
+   FP64. */
+OpenMXBlasStatus openmx_gemmul8Dgemm(OpenMXBlasHandle handle, OpenMXBlasOperation transa, OpenMXBlasOperation transb,
+                                     int m, int n, int k, const double *alpha, const double *A, int lda,
+                                     const double *B, int ldb, const double *beta, double *C, int ldc);
+long long openmx_gemmul8NativeCalls(int is_complex);
+
+/* The state of the call in progress as a new call finds it. */
+static void ExactExchange_Device_Call_Clear(OpenMXExactExchangeDevice *device)
+{
+  device->call_accepted = 0;
+  device->call_without_room = 0;
+  device->call_failed = 0;
+  device->call_downloaded = 0;
+  device->call_stream_set = 0;
+  device->call_stream_before = NULL;
+  device->call_bytes = 0;
+  device->call_products_now = 0;
+  device->call_large_now = 0;
+  device->call_gemmul8_now = 0;
+}
+
+void Exact_Exchange_Device_Initialize(OpenMXExactExchangeDevice *device)
+{
+  device->blas = NULL;
+  device->blas_device = -1;
+  device->disabled = 0;
+  device->failure = OPENMX_EXACT_EXCHANGE_DEVICE_OK;
+  device->failure_status = 0;
+  /* The two limits are first values and not measured on a device yet
+     (guide, section 14). 1e9 multiplications keep the products of one V
+     neighbour on the host and send the two products per centre atom that
+     run over all columns to the device. A whole call takes the device when
+     its products have 1e9 multiplications in all: with the V neighbours
+     and the columns folded, a call may have no product that large. */
+  device->minimum_work = 1.0e9;
+  device->reserve_bytes = (size_t)512*1024*1024;
+  device->gemmul8 = 0;
+  device->device_products = 0;
+  device->gemmul8_products = 0;
+  device->declined_products = 0;
+  device->largest_bytes = 0;
+  device->device_calls = 0;
+  device->declined_calls = 0;
+  device->call_products = 0;
+  device->call_large_products = 0;
+  device->call_gemmul8_products = 0;
+  device->largest_call_bytes = 0;
+  ExactExchange_Device_Call_Clear(device);
+}
+
+const char *Exact_Exchange_Device_Failure_Name(int failure)
+{
+  switch (failure) {
+  case OPENMX_EXACT_EXCHANGE_DEVICE_OK:           return "no failure";
+  case OPENMX_EXACT_EXCHANGE_DEVICE_MEMORY_QUERY: return "the query of the free device memory";
+  case OPENMX_EXACT_EXCHANGE_DEVICE_HANDLE:       return "the handle of the device BLAS";
+  case OPENMX_EXACT_EXCHANGE_DEVICE_ALLOCATION:   return "an allocation on the device";
+  case OPENMX_EXACT_EXCHANGE_DEVICE_UPLOAD:       return "the copy of a factor to the device";
+  case OPENMX_EXACT_EXCHANGE_DEVICE_PRODUCT:      return "the product on the device";
+  case OPENMX_EXACT_EXCHANGE_DEVICE_DOWNLOAD:     return "the copy of the result from the device";
+  case OPENMX_EXACT_EXCHANGE_DEVICE_STREAM:       return "the stream of the device queue";
+  case OPENMX_EXACT_EXCHANGE_DEVICE_WAIT:         return "the wait for the work on the device";
+  default:                                        return "an unknown step";
+  }
+}
+
+void Exact_Exchange_Device_Release(OpenMXExactExchangeDevice *device)
+{
+  if (device->blas!=NULL) {
+    /* A handle goes back on the device that made it. The process is bound
+       to that device unless the binding changed since the last product. */
+    int current=-1;
+    const int moved=OpenMXGpuGetDevice(&current)==OPENMX_GPU_SUCCESS && current!=device->blas_device
+                    && OpenMXGpuSetDevice(device->blas_device)==OPENMX_GPU_SUCCESS;
+    (void)OpenMXBlasDestroy((OpenMXBlasHandle)device->blas);
+    if (moved) (void)OpenMXGpuSetDevice(current);
+    /* a handle that outlived its device leaves an error behind */
+    (void)OpenMXGpuGetLastError();
+  }
+  device->blas = NULL;
+  device->blas_device = -1;
+}
+
+/* The matrices of a product that the device does not finish go back, and
+   the error of the runtime is taken off its latch so that it does not reach
+   the next caller that asks for one. */
+static void ExactExchange_Device_Abandon(double *da, double *db, double *dc)
+{
+  if (da!=NULL) (void)OpenMXGpuFree(da);
+  if (db!=NULL) (void)OpenMXGpuFree(db);
+  if (dc!=NULL) (void)OpenMXGpuFree(dc);
+  (void)OpenMXGpuGetLastError();
+}
+
+/* The device has no room for this product: the host computes it, and the
+   device stays in use. */
+static int ExactExchange_Device_Decline(OpenMXExactExchangeDevice *device, double *da, double *db, double *dc)
+{
+  ExactExchange_Device_Abandon(da,db,dc);
+  device->declined_products++;
+  return 0;
+}
+
+/* A device call failed for another reason than room: the device takes no
+   further product. */
+static int ExactExchange_Device_Fail(OpenMXExactExchangeDevice *device, int failure, int status, double *da,
+                                     double *db, double *dc)
+{
+  ExactExchange_Device_Abandon(da,db,dc);
+  device->disabled = 1;
+  device->failure = failure;
+  device->failure_status = status;
+  return 0;
+}
+
+/* The handle of the device this process is bound to. A handle of another
+   device is given back first. Returns the status of the BLAS, with
+   *runtime the status of the runtime when the binding could not be read. */
+static OpenMXBlasStatus ExactExchange_Device_Handle(OpenMXExactExchangeDevice *device, OpenMXGpuError *runtime)
+{
+  int current=-1;
+  *runtime = OpenMXGpuGetDevice(&current);
+  if (*runtime!=OPENMX_GPU_SUCCESS) return OPENMX_BLAS_SUCCESS;
+  if (device->blas!=NULL && device->blas_device!=current) Exact_Exchange_Device_Release(device);
+  if (device->blas==NULL) {
+    OpenMXBlasHandle created=NULL;
+    const OpenMXBlasStatus made=OpenMXBlasCreate(&created);
+    if (made!=OPENMX_BLAS_SUCCESS) return made;
+    device->blas = (void*)created;
+    device->blas_device = current;
+  }
+  return OPENMX_BLAS_SUCCESS;
+}
+
+int Exact_Exchange_Device_Dgemm(OpenMXExactExchangeDevice *device, char transa, char transb, int m, int n, int k,
+                                double alpha, const double *a, int lda, const double *b, int ldb, double beta,
+                                double *c, int ldc)
+{
+  if (device==NULL || device->disabled) return 0;
+  if (m<1 || n<1 || k<1 || beta!=0.0) return 0;
+  if ((transa!='N' && transa!='T') || (transb!='N' && transb!='T')) return 0;
+  if ((double)m*(double)n*(double)k<device->minimum_work) return 0;
+
+  const int rows_a=transa=='N' ? m : k,columns_a=transa=='N' ? k : m;
+  const int rows_b=transb=='N' ? k : n,columns_b=transb=='N' ? n : k;
+  if (lda!=rows_a || ldb!=rows_b || ldc!=m) return 0;
+  if (!gpu_rank_device_usable()) return 0;
+
+  const size_t bytes_a=sizeof(double)*(size_t)rows_a*(size_t)columns_a;
+  const size_t bytes_b=sizeof(double)*(size_t)rows_b*(size_t)columns_b;
+  const size_t bytes_c=sizeof(double)*(size_t)m*(size_t)n;
+  const size_t bytes=bytes_a+bytes_b+bytes_c;
+
+  /* Room first: a product that does not fit is an ordinary case. */
+  size_t free_bytes=0,total_bytes=0;
+  const OpenMXGpuError queried=OpenMX_GpuMemGetInfo(&free_bytes,&total_bytes);
+  if (queried!=OPENMX_GPU_SUCCESS)
+    return ExactExchange_Device_Fail(device,OPENMX_EXACT_EXCHANGE_DEVICE_MEMORY_QUERY,(int)queried,NULL,NULL,NULL);
+  if (free_bytes<device->reserve_bytes || free_bytes-device->reserve_bytes<bytes)
+    return ExactExchange_Device_Decline(device,NULL,NULL,NULL);
+
+  /* The memory can be gone by now: another process that shares the device
+     may have taken it since the query. Running out of it at the handle, at
+     an allocation or inside the product is the same ordinary case. */
+  OpenMXGpuError done=OPENMX_GPU_SUCCESS;
+  const OpenMXBlasStatus handled=ExactExchange_Device_Handle(device,&done);
+  if (done!=OPENMX_GPU_SUCCESS)
+    return ExactExchange_Device_Fail(device,OPENMX_EXACT_EXCHANGE_DEVICE_HANDLE,(int)done,NULL,NULL,NULL);
+  if (handled==OPENMX_BLAS_ALLOC_FAILED) return ExactExchange_Device_Decline(device,NULL,NULL,NULL);
+  if (handled!=OPENMX_BLAS_SUCCESS)
+    return ExactExchange_Device_Fail(device,OPENMX_EXACT_EXCHANGE_DEVICE_HANDLE,(int)handled,NULL,NULL,NULL);
+
+  double *da=NULL,*db=NULL,*dc=NULL;
+  done = OpenMXGpuMalloc((void**)&da,bytes_a);
+  if (done==OPENMX_GPU_SUCCESS) done = OpenMXGpuMalloc((void**)&db,bytes_b);
+  if (done==OPENMX_GPU_SUCCESS) done = OpenMXGpuMalloc((void**)&dc,bytes_c);
+  if (done==OPENMX_GPU_OUT_OF_MEMORY) return ExactExchange_Device_Decline(device,da,db,dc);
+  if (done!=OPENMX_GPU_SUCCESS)
+    return ExactExchange_Device_Fail(device,OPENMX_EXACT_EXCHANGE_DEVICE_ALLOCATION,(int)done,da,db,dc);
+
+  done = OpenMXGpuMemcpy(da,a,bytes_a,OPENMX_GPU_COPY_HOST_TO_DEVICE);
+  if (done==OPENMX_GPU_SUCCESS) done = OpenMXGpuMemcpy(db,b,bytes_b,OPENMX_GPU_COPY_HOST_TO_DEVICE);
+  if (done!=OPENMX_GPU_SUCCESS)
+    return ExactExchange_Device_Fail(device,OPENMX_EXACT_EXCHANGE_DEVICE_UPLOAD,(int)done,da,db,dc);
+
+  const OpenMXBlasOperation operation_a=transa=='N' ? OPENMX_BLAS_OP_N : OPENMX_BLAS_OP_T;
+  const OpenMXBlasOperation operation_b=transb=='N' ? OPENMX_BLAS_OP_N : OPENMX_BLAS_OP_T;
+  /* The bridge says only through its count whether a call ran in FP64. */
+  const long long native_before=device->gemmul8 ? openmx_gemmul8NativeCalls(0) : 0;
+  const OpenMXBlasStatus multiplied=device->gemmul8
+    ? openmx_gemmul8Dgemm((OpenMXBlasHandle)device->blas,operation_a,operation_b,m,n,k,&alpha,da,lda,db,ldb,&beta,
+                          dc,ldc)
+    : OpenMXBlasDgemm((OpenMXBlasHandle)device->blas,operation_a,operation_b,m,n,k,&alpha,da,lda,db,ldb,&beta,dc,
+                      ldc);
+  const int by_gemmul8=device->gemmul8 && openmx_gemmul8NativeCalls(0)==native_before;
+  if (multiplied==OPENMX_BLAS_ALLOC_FAILED) return ExactExchange_Device_Decline(device,da,db,dc);
+  if (multiplied!=OPENMX_BLAS_SUCCESS)
+    return ExactExchange_Device_Fail(device,OPENMX_EXACT_EXCHANGE_DEVICE_PRODUCT,(int)multiplied,da,db,dc);
+  /* the product runs after the call returned: its errors arrive here */
+  done = OpenMXGpuDeviceSynchronize();
+  if (done!=OPENMX_GPU_SUCCESS)
+    return ExactExchange_Device_Fail(device,OPENMX_EXACT_EXCHANGE_DEVICE_PRODUCT,(int)done,da,db,dc);
+
+  done = OpenMXGpuMemcpy(c,dc,bytes_c,OPENMX_GPU_COPY_DEVICE_TO_HOST);
+  if (done!=OPENMX_GPU_SUCCESS)
+    return ExactExchange_Device_Fail(device,OPENMX_EXACT_EXCHANGE_DEVICE_DOWNLOAD,(int)done,da,db,dc);
+
+  (void)OpenMXGpuFree(da);
+  (void)OpenMXGpuFree(db);
+  (void)OpenMXGpuFree(dc);
+  device->device_products++;
+  if (by_gemmul8) device->gemmul8_products++;
+  if (device->largest_bytes<bytes) device->largest_bytes = bytes;
+  return 1;
+}
+
+/* ---- whole calls of modules/exx ----------------------------------------- */
+
+/* The handle goes back to the stream it had before the call: the products
+   of single calls copy with the default stream and wait for the whole
+   device. A handle that refuses is given back; the next product makes a
+   new one. */
+static void ExactExchange_Device_Stream_Back(OpenMXExactExchangeDevice *device)
+{
+#if OPENMX_EXACT_EXCHANGE_DEVICE_CALLS
+  if (device->call_stream_set && device->blas!=NULL
+      && OpenMXBlasSetStream((OpenMXBlasHandle)device->blas,(OpenMXGpuStream)device->call_stream_before)
+         !=OPENMX_BLAS_SUCCESS)
+    Exact_Exchange_Device_Release(device);
+#endif
+  device->call_stream_set = 0;
+  device->call_stream_before = NULL;
+}
+
+int Exact_Exchange_Device_Call_End(OpenMXExactExchangeDevice *device)
+{
+  int on_device=0;
+  if (device==NULL) return 0;
+  ExactExchange_Device_Stream_Back(device);
+  if (device->call_accepted && !device->call_failed) {
+    if (device->call_without_room) device->declined_calls++;
+    else if (device->call_downloaded) {
+      device->device_calls++;
+      device->call_products += device->call_products_now;
+      device->call_large_products += device->call_large_now;
+      device->call_gemmul8_products += device->call_gemmul8_now;
+      if (device->largest_call_bytes<device->call_bytes) device->largest_call_bytes = device->call_bytes;
+      on_device = 1;
+    }
+  }
+  ExactExchange_Device_Call_Clear(device);
+  return on_device;
+}
+
+#if OPENMX_EXACT_EXCHANGE_DEVICE_CALLS
+
+/* A device call of a whole call failed: the device takes no further call or
+   product, and the first failure is the one that is recorded. Returns the
+   value of a function of the table that failed. */
+static int ExactExchange_Device_Call_Fail(OpenMXExactExchangeDevice *device, int failure, int status)
+{
+  if (!device->disabled) (void)ExactExchange_Device_Fail(device,failure,status,NULL,NULL,NULL);
+  else (void)OpenMXGpuGetLastError();
+  device->call_failed = 1;
+  return 1;
+}
+
+/* multiplications is the sum of m*n*k over the products of the call: a call
+   with fewer than minimum_work stays on the host. Then room for the arrays
+   of the call, as for a product, and the handle of the BLAS, set to the
+   stream of the queue on which the moves run. */
+static int ExactExchange_Device_Accept(void *context, double multiplications, size_t bytes)
+{
+  OpenMXExactExchangeDevice *device=(OpenMXExactExchangeDevice*)context;
+  ExactExchange_Device_Stream_Back(device);
+  ExactExchange_Device_Call_Clear(device);
+  if (device->disabled || multiplications<device->minimum_work) return 0;
+  if (!gpu_rank_device_usable()) return 0;
+
+  size_t free_bytes=0,total_bytes=0;
+  const OpenMXGpuError queried=OpenMX_GpuMemGetInfo(&free_bytes,&total_bytes);
+  if (queried!=OPENMX_GPU_SUCCESS) {
+    (void)ExactExchange_Device_Call_Fail(device,OPENMX_EXACT_EXCHANGE_DEVICE_MEMORY_QUERY,(int)queried);
+    return 0;
+  }
+  if (free_bytes<device->reserve_bytes || free_bytes-device->reserve_bytes<bytes) {
+    device->declined_calls++;
+    return 0;
+  }
+
+  OpenMXGpuError done=OPENMX_GPU_SUCCESS;
+  const OpenMXBlasStatus handled=ExactExchange_Device_Handle(device,&done);
+  if (done!=OPENMX_GPU_SUCCESS) {
+    (void)ExactExchange_Device_Call_Fail(device,OPENMX_EXACT_EXCHANGE_DEVICE_HANDLE,(int)done);
+    return 0;
+  }
+  if (handled==OPENMX_BLAS_ALLOC_FAILED) {
+    (void)OpenMXGpuGetLastError();
+    device->declined_calls++;
+    return 0;
+  }
+  if (handled!=OPENMX_BLAS_SUCCESS) {
+    (void)ExactExchange_Device_Call_Fail(device,OPENMX_EXACT_EXCHANGE_DEVICE_HANDLE,(int)handled);
+    return 0;
+  }
+
+  void *stream=acc_get_cuda_stream(OPENMX_EXACT_EXCHANGE_DEVICE_QUEUE);
+  if (stream==NULL) {
+    (void)ExactExchange_Device_Call_Fail(device,OPENMX_EXACT_EXCHANGE_DEVICE_STREAM,-1);
+    return 0;
+  }
+  OpenMXGpuStream before=NULL;
+  OpenMXBlasStatus streamed=OpenMXBlasGetStream((OpenMXBlasHandle)device->blas,&before);
+  if (streamed==OPENMX_BLAS_SUCCESS)
+    streamed = OpenMXBlasSetStream((OpenMXBlasHandle)device->blas,(OpenMXGpuStream)stream);
+  if (streamed!=OPENMX_BLAS_SUCCESS) {
+    (void)ExactExchange_Device_Call_Fail(device,OPENMX_EXACT_EXCHANGE_DEVICE_STREAM,(int)streamed);
+    return 0;
+  }
+  device->call_stream_set = 1;
+  device->call_stream_before = (void*)before;
+  device->call_accepted = 1;
+  device->call_bytes = bytes;
+  return 1;
+}
+
+/* NULL without room, as when another process took the memory after the
+   query, and after a failure. */
+static void *ExactExchange_Device_Allocate(void *context, size_t bytes)
+{
+  OpenMXExactExchangeDevice *device=(OpenMXExactExchangeDevice*)context;
+  void *pointer=NULL;
+  const OpenMXGpuError done=OpenMXGpuMalloc(&pointer,bytes);
+  if (done==OPENMX_GPU_SUCCESS) return pointer;
+  if (done==OPENMX_GPU_OUT_OF_MEMORY) {
+    (void)OpenMXGpuGetLastError();
+    device->call_without_room = 1;
+  }
+  else (void)ExactExchange_Device_Call_Fail(device,OPENMX_EXACT_EXCHANGE_DEVICE_ALLOCATION,(int)done);
+  return NULL;
+}
+
+static void ExactExchange_Device_Release_Block(void *context, void *pointer)
+{
+  (void)context;
+  if (OpenMXGpuFree(pointer)!=OPENMX_GPU_SUCCESS) (void)OpenMXGpuGetLastError();
+}
+
+/* A copy from pageable memory can return before the device holds the data,
+   and the moves and products that follow run on another stream than the
+   copy: the copy ends with a wait for the device. No work is pending then
+   (exx.h), so the wait costs little. */
+static int ExactExchange_Device_Upload(void *context, void *target, const void *source, size_t bytes)
+{
+  OpenMXExactExchangeDevice *device=(OpenMXExactExchangeDevice*)context;
+  OpenMXGpuError done=OpenMXGpuMemcpy(target,source,bytes,OPENMX_GPU_COPY_HOST_TO_DEVICE);
+  if (done==OPENMX_GPU_SUCCESS) done = OpenMXGpuDeviceSynchronize();
+  if (done!=OPENMX_GPU_SUCCESS)
+    return ExactExchange_Device_Call_Fail(device,OPENMX_EXACT_EXCHANGE_DEVICE_UPLOAD,(int)done);
+  return 0;
+}
+
+static int ExactExchange_Device_Download(void *context, void *target, const void *source, size_t bytes)
+{
+  OpenMXExactExchangeDevice *device=(OpenMXExactExchangeDevice*)context;
+  const OpenMXGpuError done=OpenMXGpuMemcpy(target,source,bytes,OPENMX_GPU_COPY_DEVICE_TO_HOST);
+  if (done!=OPENMX_GPU_SUCCESS)
+    return ExactExchange_Device_Call_Fail(device,OPENMX_EXACT_EXCHANGE_DEVICE_DOWNLOAD,(int)done);
+  device->call_downloaded = 1;
+  return 0;
+}
+
+/* A product on the stream of the queue; it may run after the return. The
+   large ones go through the GEMMul8 bridge when the caller asked for it. */
+static int ExactExchange_Device_Call_Dgemm(void *context, char transa, char transb, int m, int n, int k,
+                                           double alpha, const double *a, int lda, const double *b, int ldb,
+                                           double beta, double *c, int ldc)
+{
+  OpenMXExactExchangeDevice *device=(OpenMXExactExchangeDevice*)context;
+  const OpenMXBlasOperation operation_a=transa=='N' ? OPENMX_BLAS_OP_N : OPENMX_BLAS_OP_T;
+  const OpenMXBlasOperation operation_b=transb=='N' ? OPENMX_BLAS_OP_N : OPENMX_BLAS_OP_T;
+  const int large=device->minimum_work<=(double)m*(double)n*(double)k;
+  const int bridge=device->gemmul8 && large;
+  const long long native_before=bridge ? openmx_gemmul8NativeCalls(0) : 0;
+  const OpenMXBlasStatus multiplied=bridge
+    ? openmx_gemmul8Dgemm((OpenMXBlasHandle)device->blas,operation_a,operation_b,m,n,k,&alpha,a,lda,b,ldb,&beta,c,
+                          ldc)
+    : OpenMXBlasDgemm((OpenMXBlasHandle)device->blas,operation_a,operation_b,m,n,k,&alpha,a,lda,b,ldb,&beta,c,ldc);
+  if (multiplied==OPENMX_BLAS_ALLOC_FAILED) {
+    (void)OpenMXGpuGetLastError();
+    device->call_without_room = 1;
+    return 1;
+  }
+  if (multiplied!=OPENMX_BLAS_SUCCESS)
+    return ExactExchange_Device_Call_Fail(device,OPENMX_EXACT_EXCHANGE_DEVICE_PRODUCT,(int)multiplied);
+  device->call_products_now++;
+  if (large) device->call_large_now++;
+  if (bridge && openmx_gemmul8NativeCalls(0)==native_before) device->call_gemmul8_now++;
+  return 0;
+}
+
+/* The move of exx.h: target(r, c) = alpha source(r, c), or += with add, for
+   r < rows and c < lengths[r] (columns without lengths). The library gives
+   no two pairs (r, c) the same target, so the pairs run in parallel. The
+   product comes first, then the sum: the unit is compiled without fused
+   multiply-adds in device code (source/Makefile). */
+static int ExactExchange_Device_Move(void *context, int rows, int columns, const int *lengths, double alpha, int add,
+                                     double *target, const OpenMXExxDeviceIndex *target_index, const double *source,
+                                     const OpenMXExxDeviceIndex *source_index)
+{
+  (void)context;
+  const long long target_stride=target_index->stride,target_step=target_index->step;
+  const long long *target_rows=target_index->rows,*target_columns=target_index->columns;
+  const long long source_stride=source_index->stride,source_step=source_index->step;
+  const long long *source_rows=source_index->rows,*source_columns=source_index->columns;
+#ifdef _OPENACC
+#pragma acc parallel loop collapse(2) async(OPENMX_EXACT_EXCHANGE_DEVICE_QUEUE) \
+    deviceptr(target,source,lengths,target_rows,target_columns,source_rows,source_columns)
+#endif
+  for (int r=0; r<rows; r++) {
+    for (int c=0; c<columns; c++) {
+      if (lengths==NULL || c<lengths[r]) {
+        const long long t=(target_rows!=NULL ? target_rows[r] : (long long)r*target_stride)
+                         +(target_columns!=NULL ? target_columns[c] : (long long)c*target_step);
+        const long long s=(source_rows!=NULL ? source_rows[r] : (long long)r*source_stride)
+                         +(source_columns!=NULL ? source_columns[c] : (long long)c*source_step);
+        const double value=alpha*source[s];
+        if (add) target[t] += value;
+        else target[t] = value;
+      }
+    }
+  }
+  return 0;
+}
+
+/* The moves of the queue and the products on its stream, and the errors of
+   both. */
+static int ExactExchange_Device_Finish(void *context)
+{
+  OpenMXExactExchangeDevice *device=(OpenMXExactExchangeDevice*)context;
+  acc_wait(OPENMX_EXACT_EXCHANGE_DEVICE_QUEUE);
+  const OpenMXGpuError done=OpenMXGpuDeviceSynchronize();
+  if (done!=OPENMX_GPU_SUCCESS)
+    return ExactExchange_Device_Call_Fail(device,OPENMX_EXACT_EXCHANGE_DEVICE_WAIT,(int)done);
+  return 0;
+}
+
+#endif /* OPENMX_EXACT_EXCHANGE_DEVICE_CALLS */
+
+const OpenMXExxDevice *Exact_Exchange_Device_Table(OpenMXExactExchangeDevice *device, OpenMXExxDevice *table)
+{
+#if OPENMX_EXACT_EXCHANGE_DEVICE_CALLS
+  if (device==NULL || table==NULL) return NULL;
+  table->context = device;
+  table->accept = ExactExchange_Device_Accept;
+  table->allocate = ExactExchange_Device_Allocate;
+  table->release = ExactExchange_Device_Release_Block;
+  table->upload = ExactExchange_Device_Upload;
+  table->download = ExactExchange_Device_Download;
+  table->dgemm = ExactExchange_Device_Call_Dgemm;
+  table->move = ExactExchange_Device_Move;
+  table->finish = ExactExchange_Device_Finish;
+  return table;
+#else
+  (void)device;
+  (void)table;
+  return NULL;
+#endif
+}

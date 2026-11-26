@@ -42,6 +42,7 @@ static const OpenMXAtomicViews *expected_atomic;
 static OpenMXDensityGpuState *expected_density_state;
 static OpenMXHamiltonianGpuState *expected_hamiltonian_state;
 static double *****expected_h0,******expected_ds,*****expected_olp,*****expected_cdm,*****expected_edm;
+static const double *expected_gradient;
 static void dtime(double *out){static double clock;*out=clock++;}
 static void OpenMX_Solver_Failure(const char *error){fprintf(stderr,"%s\n",error);abort();}
 static double OpenMX_ForceRun(const OpenMXForceInput *in,OpenMXForceOperation op,void *args){
@@ -85,6 +86,7 @@ BODY = r'''
   assert(hamiltonian_state==expected_hamiltonian_state && density_state==expected_density_state);
   assert(atomic==expected_atomic && !vna && !reciprocal && !electronic && !local_basis);
   assert(H0==expected_h0 && DS_NL==expected_ds && OLP==expected_olp && CDM==expected_cdm && EDM==expected_edm);
+  assert(exact_exchange_gradient==expected_gradient);
   const OpenMXAtomBlockLayout *l=&force_work->density.layout;
   assert(l->atoms==3 && l->components==(size_t)SpinP_switch+1);
   assert(l->shapes[2*l->atom_offsets[1]]==1 && l->shapes[2*l->atom_offsets[2]]==3);
@@ -118,14 +120,16 @@ int main(void){
   OpenMXAtomicViews atomic={{Spe_Total_CNO}};expected_atomic=&atomic;
   double *addresses[5]={0};expected_h0=(double*****)&addresses[0];expected_ds=(double******)&addresses[1];
   expected_olp=(double*****)&addresses[2];expected_cdm=(double*****)&addresses[3];expected_edm=(double*****)&addresses[4];
+  const double gradient[9]={0};
   omp_set_dynamic(0);
   for(int threads=1;threads<=8;threads*=2){omp_set_num_threads(threads);
+    expected_gradient=threads==2 ? gradient : NULL;
     for(int spin=0;spin<=3;spin+=(spin==1?2:1)){SpinP_switch=spin;
       for(int mode=0;mode<7;++mode){
         SO_switch=mode==1;Hub_U_switch=F_U_flag=mode==2;Constraint_NCS_switch=mode==3;
         Zeeman_NCS_switch=mode==4;Zeeman_NCO_switch=mode==5;
         expected_imaginary=(mode==1 || (mode==2 && spin==3) || (mode>=3 && mode<=5));
-        assert(Force(expected_hamiltonian_state,expected_density_state,&atomic,NULL,NULL,expected_h0,expected_ds,expected_olp,expected_cdm,expected_edm,NULL,NULL)==1);
+        assert(Force(expected_hamiltonian_state,expected_density_state,&atomic,NULL,NULL,expected_h0,expected_ds,expected_olp,expected_cdm,expected_edm,NULL,NULL,expected_gradient)==1);
       }
     }
   }

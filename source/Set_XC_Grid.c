@@ -18,17 +18,19 @@ void Inverse(int n, double **a, double **ia);
 
 /* ---------------------------------------------------------------------
    GPU evaluation of the GGA-PBE branch (XC_switch == 4, XC_P_switch 0,
-   1 or 2, without the LDA+U cFLL rotation): the 27-point gradient
-   stencil, the per-point PBE functional (device transcriptions of
-   XC_PBE, XC_PW92C and XC_EX below), the divergence stencil and the
-   non-collinear rotation run as four OpenACC kernels on the rank's D
-   grid, in FP64 as on the host.  On a GeForce the whole D grid of a
-   rank is a few milliseconds of FP64 work, against 0.36 s per SCF step
-   for the single-threaded host loops (18 ranks, sidia333).  All device
-   memory is one transient acc_malloc arena; a failed allocation or an
-   unsupported case keeps the host path.  OPENMX_XC_GRID_GPU=0 turns
-   it off; the results agree with the host to the last bits except for
-   the transcendental functions of the device library.
+   1 or 2, without the LDA+U cFLL rotation), with the semilocal part of
+   PBE0 or HSE06 when exx_alpha is not 0: the 27-point gradient stencil,
+   the per-point functional (the kernels of the xc package in kernels.h
+   and hybrid_kernels.h, which the host loop calls through the library),
+   the divergence stencil and the non-collinear rotation run as four
+   OpenACC kernels on the rank's D grid, in FP64 as on the host.  On a
+   GeForce the whole D grid of a rank is a few milliseconds of FP64 work,
+   against 0.36 s per SCF step for the single-threaded host loops of
+   GGA-PBE (18 ranks, sidia333).  All device memory is one transient
+   acc_malloc arena; a failed allocation or an unsupported case keeps the
+   host path.  OPENMX_XC_GRID_GPU=0 turns it off; the results agree with
+   the host to the last bits except for the transcendental functions of
+   the device library.
    --------------------------------------------------------------------- */
 #include <openacc.h>
 #include <cuda_runtime.h>
@@ -37,10 +39,11 @@ void Inverse(int n, double **a, double **ia);
 #define SXG_DEN_MIN 1.0e-14
 
 #include "openmx_xc_kernels.h"
+#include "openmx_xc_hybrid_kernels.h"
 
-/* The device-side functionals are the xc package's kernels (kernels.h) with
-   the LDA+U cFLL symmetrization off: SXG_gpu_enabled() keeps the GPU path
-   away from cFLL calculations. */
+/* The device-side functionals are the xc package's kernels (kernels.h and
+   hybrid_kernels.h) with the LDA+U cFLL symmetrization off:
+   Set_XC_Grid_GPU() keeps the GPU path away from cFLL calculations. */
 #pragma acc routine seq
 static void SXG_XC_PW92C(double *dens, double *Ec, double *Vc)
 {
@@ -52,6 +55,21 @@ static void SXG_XC_PBE(double *dens, double GDENS[3][2], double *Exc, double *DE
                        double DEXDGD[3][2], double DECDGD[3][2])
 {
   openmx_xc_kernel_pbe(dens, GDENS, 0, Exc, DEXDD, DECDD, DEXDGD, DECDGD);
+}
+
+/* The semilocal part of the hybrid functionals with the dispatch of the
+   host loop: exx_omega 0 is PBE0, otherwise HSE06 with exx_omega in 1/bohr.
+   The GGA-PBE loop keeps SXG_XC_PBE and does not carry the code of the
+   short-range exchange. */
+#pragma acc routine seq
+static void SXG_XC_PBE_HYBRID(double *dens, double GDENS[3][2], double exx_alpha, double exx_omega,
+                              double *Exc, double *DEXDD, double *DECDD,
+                              double DEXDGD[3][2], double DECDGD[3][2])
+{
+  if (exx_omega == 0.0)
+    openmx_xc_kernel_pbe_global_hybrid(dens, GDENS, 0, exx_alpha, Exc, DEXDD, DECDD, DEXDGD, DECDGD);
+  else
+    openmx_xc_kernel_pbe_screened_hybrid(dens, GDENS, 0, exx_alpha, exx_omega, Exc, DEXDD, DECDD, DEXDGD, DECDGD);
 }
 
 static int SXG_gpu_enabled(void)
@@ -90,6 +108,7 @@ typedef struct {
 typedef struct {
   int XC_P_switch, pcc, rotate;
   int Ng1,Ng2,Ng3,first,last,input_base,output_base;
+  double exx_alpha, exx_omega;
   double *den[4], *vxc[4], *pcc_den[2];
   double ***dden, ***dexc;
   const double *inv;
@@ -108,6 +127,7 @@ static int SXG_slab_worker(void *opaque, int worker, int phase)
   const int eval_begin=slab->eval_begin, eval_end=slab->eval_end;
   const int XC_P_switch=work->XC_P_switch, pcc=work->pcc, rotate=work->rotate;
   const int second=(XC_P_switch==1 || XC_P_switch==2);
+  const double exx_alpha=work->exx_alpha, exx_omega=work->exx_omega;
   const double den_min=SXG_DEN_MIN;
   int MN, i;
   double *d_den0=slab->d_den0;
@@ -242,50 +262,102 @@ static int SXG_slab_worker(void *opaque, int worker, int phase)
     }
   }
 
-  /* 2. the PBE functional at every point */
+  /* 2. the PBE functional at every point; with exx_alpha != 0 the
+     semilocal part of PBE0 or HSE06 in a loop of its own, the same but
+     for the call of the functional */
+  if (exx_alpha == 0.0) {
 #pragma acc parallel loop gang vector vector_length(128) deviceptr(d_den0, d_den1, d_pcc0, d_pcc1, d_dden, d_dexc, d_vxc0, d_vxc1)
-  for (MN = eval_begin; MN < eval_end; MN++) {
-    double ED[2], GDENS[3][2], Exc[2], DEXDD[2], DECDD[2], DEXDGD[3][2], DECDGD[3][2];
-    int dd;
+    for (MN = eval_begin; MN < eval_end; MN++) {
+      double ED[2], GDENS[3][2], Exc[2], DEXDD[2], DECDD[2], DEXDGD[3][2], DECDGD[3][2];
+      int dd;
 
-    ED[0] = d_den0[MN];
-    ED[1] = d_den1[MN];
-    if ((ED[0] + ED[1]) < den_min) {
-      d_vxc0[MN] = 0.0;
-      d_vxc1[MN] = 0.0;
-      if (XC_P_switch != 0) for (dd = 0; dd < 6; dd++) d_dexc[(size_t)dd * n + MN] = 0.0;
-    }
-    else {
-      GDENS[0][0] = d_dden[(size_t)0 * n + MN];
-      GDENS[1][0] = d_dden[(size_t)1 * n + MN];
-      GDENS[2][0] = d_dden[(size_t)2 * n + MN];
-      GDENS[0][1] = d_dden[(size_t)3 * n + MN];
-      GDENS[1][1] = d_dden[(size_t)4 * n + MN];
-      GDENS[2][1] = d_dden[(size_t)5 * n + MN];
-      if (pcc) {
-        ED[0] += d_pcc0[MN];
-        ED[1] += d_pcc1[MN];
-      }
-      SXG_XC_PBE(ED, GDENS, Exc, DEXDD, DECDD, DEXDGD, DECDGD);
-      if (XC_P_switch == 0) {
-        d_vxc0[MN] = Exc[0] + Exc[1];
-        d_vxc1[MN] = Exc[0] + Exc[1];
-      }
-      else if (XC_P_switch == 1) {
-        d_vxc0[MN] = DEXDD[0] + DECDD[0];
-        d_vxc1[MN] = DEXDD[1] + DECDD[1];
+      ED[0] = d_den0[MN];
+      ED[1] = d_den1[MN];
+      if ((ED[0] + ED[1]) < den_min) {
+        d_vxc0[MN] = 0.0;
+        d_vxc1[MN] = 0.0;
+        if (XC_P_switch != 0) for (dd = 0; dd < 6; dd++) d_dexc[(size_t)dd * n + MN] = 0.0;
       }
       else {
-        d_vxc0[MN] = Exc[0] + Exc[1] - DEXDD[0] - DECDD[0];
-        d_vxc1[MN] = Exc[0] + Exc[1] - DEXDD[1] - DECDD[1];
+        GDENS[0][0] = d_dden[(size_t)0 * n + MN];
+        GDENS[1][0] = d_dden[(size_t)1 * n + MN];
+        GDENS[2][0] = d_dden[(size_t)2 * n + MN];
+        GDENS[0][1] = d_dden[(size_t)3 * n + MN];
+        GDENS[1][1] = d_dden[(size_t)4 * n + MN];
+        GDENS[2][1] = d_dden[(size_t)5 * n + MN];
+        if (pcc) {
+          ED[0] += d_pcc0[MN];
+          ED[1] += d_pcc1[MN];
+        }
+        SXG_XC_PBE(ED, GDENS, Exc, DEXDD, DECDD, DEXDGD, DECDGD);
+        if (XC_P_switch == 0) {
+          d_vxc0[MN] = Exc[0] + Exc[1];
+          d_vxc1[MN] = Exc[0] + Exc[1];
+        }
+        else if (XC_P_switch == 1) {
+          d_vxc0[MN] = DEXDD[0] + DECDD[0];
+          d_vxc1[MN] = DEXDD[1] + DECDD[1];
+        }
+        else {
+          d_vxc0[MN] = Exc[0] + Exc[1] - DEXDD[0] - DECDD[0];
+          d_vxc1[MN] = Exc[0] + Exc[1] - DEXDD[1] - DECDD[1];
+        }
+        if (XC_P_switch != 0) {
+          d_dexc[(size_t)0 * n + MN] = DEXDGD[0][0] + DECDGD[0][0];
+          d_dexc[(size_t)1 * n + MN] = DEXDGD[1][0] + DECDGD[1][0];
+          d_dexc[(size_t)2 * n + MN] = DEXDGD[2][0] + DECDGD[2][0];
+          d_dexc[(size_t)3 * n + MN] = DEXDGD[0][1] + DECDGD[0][1];
+          d_dexc[(size_t)4 * n + MN] = DEXDGD[1][1] + DECDGD[1][1];
+          d_dexc[(size_t)5 * n + MN] = DEXDGD[2][1] + DECDGD[2][1];
+        }
       }
-      if (XC_P_switch != 0) {
-        d_dexc[(size_t)0 * n + MN] = DEXDGD[0][0] + DECDGD[0][0];
-        d_dexc[(size_t)1 * n + MN] = DEXDGD[1][0] + DECDGD[1][0];
-        d_dexc[(size_t)2 * n + MN] = DEXDGD[2][0] + DECDGD[2][0];
-        d_dexc[(size_t)3 * n + MN] = DEXDGD[0][1] + DECDGD[0][1];
-        d_dexc[(size_t)4 * n + MN] = DEXDGD[1][1] + DECDGD[1][1];
-        d_dexc[(size_t)5 * n + MN] = DEXDGD[2][1] + DECDGD[2][1];
+    }
+  }
+  else {
+#pragma acc parallel loop gang vector vector_length(128) deviceptr(d_den0, d_den1, d_pcc0, d_pcc1, d_dden, d_dexc, d_vxc0, d_vxc1)
+    for (MN = eval_begin; MN < eval_end; MN++) {
+      double ED[2], GDENS[3][2], Exc[2], DEXDD[2], DECDD[2], DEXDGD[3][2], DECDGD[3][2];
+      int dd;
+
+      ED[0] = d_den0[MN];
+      ED[1] = d_den1[MN];
+      if ((ED[0] + ED[1]) < den_min) {
+        d_vxc0[MN] = 0.0;
+        d_vxc1[MN] = 0.0;
+        if (XC_P_switch != 0) for (dd = 0; dd < 6; dd++) d_dexc[(size_t)dd * n + MN] = 0.0;
+      }
+      else {
+        GDENS[0][0] = d_dden[(size_t)0 * n + MN];
+        GDENS[1][0] = d_dden[(size_t)1 * n + MN];
+        GDENS[2][0] = d_dden[(size_t)2 * n + MN];
+        GDENS[0][1] = d_dden[(size_t)3 * n + MN];
+        GDENS[1][1] = d_dden[(size_t)4 * n + MN];
+        GDENS[2][1] = d_dden[(size_t)5 * n + MN];
+        if (pcc) {
+          ED[0] += d_pcc0[MN];
+          ED[1] += d_pcc1[MN];
+        }
+        SXG_XC_PBE_HYBRID(ED, GDENS, exx_alpha, exx_omega, Exc, DEXDD, DECDD, DEXDGD, DECDGD);
+        if (XC_P_switch == 0) {
+          d_vxc0[MN] = Exc[0] + Exc[1];
+          d_vxc1[MN] = Exc[0] + Exc[1];
+        }
+        else if (XC_P_switch == 1) {
+          d_vxc0[MN] = DEXDD[0] + DECDD[0];
+          d_vxc1[MN] = DEXDD[1] + DECDD[1];
+        }
+        else {
+          d_vxc0[MN] = Exc[0] + Exc[1] - DEXDD[0] - DECDD[0];
+          d_vxc1[MN] = Exc[0] + Exc[1] - DEXDD[1] - DECDD[1];
+        }
+        if (XC_P_switch != 0) {
+          d_dexc[(size_t)0 * n + MN] = DEXDGD[0][0] + DECDGD[0][0];
+          d_dexc[(size_t)1 * n + MN] = DEXDGD[1][0] + DECDGD[1][0];
+          d_dexc[(size_t)2 * n + MN] = DEXDGD[2][0] + DECDGD[2][0];
+          d_dexc[(size_t)3 * n + MN] = DEXDGD[0][1] + DECDGD[0][1];
+          d_dexc[(size_t)4 * n + MN] = DEXDGD[1][1] + DECDGD[1][1];
+          d_dexc[(size_t)5 * n + MN] = DEXDGD[2][1] + DECDGD[2][1];
+        }
       }
     }
   }
@@ -428,6 +500,7 @@ static int SXG_execute(SXG_Work *work)
    scalar geometry. No global rank-local grid pointers cross a process. */
 typedef struct {
   int mode,pcc,rotate,dden,dexc,Ng1,Ng2,Ng3,first,last;
+  double exx_alpha,exx_omega;
   double inv[27*27];
 } SXG_Packet;
 
@@ -445,6 +518,7 @@ static int SXG_pack(void *opaque,size_t first,size_t last,void **packet,size_t *
   p->mode=w->XC_P_switch;p->pcc=w->pcc;p->rotate=w->rotate;
   p->dden=w->dden!=NULL;p->dexc=w->dexc!=NULL && w->XC_P_switch!=0;
   p->Ng1=w->Ng1;p->Ng2=w->Ng2;p->Ng3=w->Ng3;p->first=(int)first;p->last=(int)last;
+  p->exx_alpha=w->exx_alpha;p->exx_omega=w->exx_omega;
   memcpy(p->inv,w->inv,sizeof(p->inv));
   double *data=(double*)(p+1);
   for (int i=0;i<(w->rotate?4:2);i++,data+=n) memcpy(data,w->den[i]+lo*plane,n*sizeof(double));
@@ -469,6 +543,7 @@ static int SXG_remote(void *context,const void *packet,size_t bytes,void **resul
   *result=out;
   SXG_Work w={0};
   w.XC_P_switch=p->mode;w.pcc=p->pcc;w.rotate=p->rotate;w.inv=p->inv;
+  w.exx_alpha=p->exx_alpha;w.exx_omega=p->exx_omega;
   w.Ng1=p->Ng1;w.Ng2=p->Ng2;w.Ng3=p->Ng3;w.first=p->first;w.last=p->last;
   w.input_base=lo*(int)plane;w.output_base=p->first*(int)plane;
   const double *in=(const double*)(p+1);
@@ -503,7 +578,7 @@ static void SXG_commit(void *opaque,size_t first,size_t last,const void *result,
     for (int i=0;i<6;i++,r+=n) memcpy(w->dexc[i/3][i%3]+base,r,n*sizeof(double));
 }
 
-static int Set_XC_Grid_GPU(int XC_P_switch,
+static int Set_XC_Grid_GPU(int XC_P_switch, double exx_alpha, double exx_omega,
                            double *Den0, double *Den1, double *Den2, double *Den3,
                            double *Vxc0, double *Vxc1, double *Vxc2, double *Vxc3,
                            double ***dDen_Grid, double ***dEXC_dGD)
@@ -557,6 +632,7 @@ static int Set_XC_Grid_GPU(int XC_P_switch,
     for (q = 0; q < 27; q++) inv[p * 27 + q] = InvMat[p][q];
 
   work.XC_P_switch=XC_P_switch; work.pcc=pcc; work.rotate=rotate;
+  work.exx_alpha=exx_alpha; work.exx_omega=exx_omega;
   work.den[0]=Den0; work.den[1]=Den1; work.den[2]=Den2; work.den[3]=Den3;
   work.vxc[0]=Vxc0; work.vxc[1]=Vxc1; work.vxc[2]=Vxc2; work.vxc[3]=Vxc3;
   work.pcc_den[0]=PCCDensity_Grid_D[0]; work.pcc_den[1]=PCCDensity_Grid_D[1];
@@ -576,6 +652,7 @@ static int Set_XC_Grid_GPU(int XC_P_switch,
  * This was added so that spin-density XC energy is ignored
  * for SCF_iter>=2 when cFLL or cAMF LDA+U scheme is used. */
 void Set_XC_Grid(int SCF_iter, int XC_P_switch, int XC_switch, 
+                 double exx_alpha, double exx_omega,
                  double *Den0, double *Den1, 
                  double *Den2, double *Den3,
                  double *Vxc0, double *Vxc1,
@@ -584,6 +661,14 @@ void Set_XC_Grid(int SCF_iter, int XC_P_switch, int XC_switch,
                  double ***dDen_Grid)
 {
   /***********************************************************************************************
+   exx_alpha, exx_omega:
+      semilocal part of a hybrid functional for XC_switch 4: exx_alpha
+      times the short-range omega-PBE exchange with the screening parameter
+      exx_omega (1/bohr) is removed from the PBE exchange (HSE06), or
+      exx_alpha times the whole PBE exchange when exx_omega is 0 (PBE0).
+      exx_alpha = 0 is GGA-PBE.  The device path evaluates all three with
+      the kernels that the library's functions call on the host.
+
    XC_P_switch:
       0  \epsilon_XC (XC energy density)  
       1  \mu_XC      (XC potential)  
@@ -651,7 +736,7 @@ void Set_XC_Grid(int SCF_iter, int XC_P_switch, int XC_switch,
                  allocation of arrays
   ****************************************************/
 
-  if (XC_switch==4 && Set_XC_Grid_GPU(XC_P_switch, Den0, Den1, Den2, Den3, Vxc0, Vxc1, Vxc2, Vxc3, dDen_Grid, dEXC_dGD)) return;
+  if (XC_switch==4 && Set_XC_Grid_GPU(XC_P_switch, exx_alpha, exx_omega, Den0, Den1, Den2, Den3, Vxc0, Vxc1, Vxc2, Vxc3, dDen_Grid, dEXC_dGD)) return;
 
   dDen_Grid_NULL_flag = 0;
 
@@ -1003,7 +1088,7 @@ void Set_XC_Grid(int SCF_iter, int XC_P_switch, int XC_switch,
    loop MN
   ****************************************************/
 
-#pragma omp parallel shared(dDen_Grid,dEXC_dGD,den_min,Vxc0,Vxc1,Vxc2,Vxc3,My_NumGridD,XC_P_switch,XC_switch,Den0,Den1,Den2,Den3,PCC_switch,PCCDensity_Grid_D) private(OMPID,Nthrds,MN,tot_den,tmp0,tmp1,ED,Exc,Ec_unif,Vc_unif,Vxc,Ex_unif,Vx_unif,GDENS,DEXDD,DECDD,DEXDGD,DECDGD)
+#pragma omp parallel shared(dDen_Grid,dEXC_dGD,den_min,Vxc0,Vxc1,Vxc2,Vxc3,My_NumGridD,XC_P_switch,XC_switch,exx_alpha,exx_omega,Den0,Den1,Den2,Den3,PCC_switch,PCCDensity_Grid_D) private(OMPID,Nthrds,MN,tot_den,tmp0,tmp1,ED,Exc,Ec_unif,Vc_unif,Vxc,Ex_unif,Vx_unif,GDENS,DEXDD,DECDD,DEXDGD,DECDGD)
   {
 
     OMPID = omp_get_thread_num();
@@ -1271,7 +1356,14 @@ void Set_XC_Grid(int SCF_iter, int XC_P_switch, int XC_switch,
 	    ED[1] += PCCDensity_Grid_D[1][MN];
 	  }
 
-	  openmx_xc_pbe(ED, GDENS, symmetrize_spins, Exc, DEXDD, DECDD, DEXDGD, DECDGD);
+	  /* GGA-PBE; with exx_alpha != 0 minus exx_alpha times its short-range
+	     exchange (HSE06), or times its exchange when exx_omega is 0 (PBE0) */
+	  if (exx_omega==0.0)
+	    openmx_xc_pbe_global_hybrid(ED, GDENS, symmetrize_spins, exx_alpha,
+	                                Exc, DEXDD, DECDD, DEXDGD, DECDGD);
+	  else
+	    openmx_xc_pbe_screened_hybrid(ED, GDENS, symmetrize_spins, exx_alpha, exx_omega,
+	                                  Exc, DEXDD, DECDD, DEXDGD, DECDGD);
 
 	  /* XC energy density */
 	  if      (XC_P_switch==0){

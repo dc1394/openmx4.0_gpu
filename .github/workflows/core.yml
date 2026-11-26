@@ -79,6 +79,51 @@ jobs:
           ulimit -s 8192
           ctest --test-dir build/xc --output-on-failure
 
+  exx:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            cxx: g++
+            cc: gcc
+            sanitize: "OFF"
+          - os: ubuntu-24.04
+            cxx: clang++
+            cc: clang
+            sanitize: "ON"
+          - os: ${{ inputs.macos_runner || 'macos-15-intel' }}
+            cxx: clang++
+            cc: clang
+            sanitize: "OFF"
+          # ThreadSanitizer for the tests that run the pieces of the exchange build on threads.
+          - os: ubuntu-24.04
+            cxx: clang++
+            cc: clang
+            sanitize: "OFF"
+            thread_sanitize: "ON"
+            ctest: "-L threads --no-tests=error"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Address-space randomization that ThreadSanitizer can map (actions/runner-images#9491)
+        if: matrix.thread_sanitize == 'ON'
+        # The key can be read by root only.
+        run: |
+          sudo sysctl vm.mmap_rnd_bits
+          sudo sysctl vm.mmap_rnd_bits=28
+      - name: Build only the exact-exchange package and its basis dependency (no SDK or numerical stack)
+        run: >-
+          cmake -S modules/exx -B build/exx
+          -DCMAKE_CXX_COMPILER=${{ matrix.cxx }} -DCMAKE_C_COMPILER=${{ matrix.cc }}
+          -DOPENMX_EXX_SANITIZERS=${{ matrix.sanitize }}
+          -DOPENMX_EXX_THREAD_SANITIZER=${{ matrix.thread_sanitize || 'OFF' }}
+      - run: cmake --build build/exx --parallel 2
+      - name: Analytic, symmetry, legacy-agreement, exchange-matrix, C interface and external consumer tests
+        run: |
+          ulimit -s 8192
+          ctest --test-dir build/exx --output-on-failure ${{ matrix.ctest }}
+
   io:
     runs-on: ${{ matrix.os }}
     strategy:
@@ -237,6 +282,20 @@ jobs:
           python3 tests/run_mgpu_runtime_cpu.py
           python3 tests/run_mgpu_gemm_cpu.py
           python3 tests/run_gpu_dense_workers_cpu.py
+          python3 tests/run_exx_device_product.py
+          python3 tests/run_exx_host_product.py
           python3 source/backends/hip/tests/run_mi300a_k_waves_cpu.py
           python3 source/backends/hip/tests/run_mi300a_build_cache_cpu.py
           python3 source/backends/hip/tests/run_mi300a_dm_waves_cpu.py
+      - name: Products of the exact exchange with Clang, the OpenMP runtime of LLVM and ThreadSanitizer
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends clang libomp-dev
+          # An address-space randomization that ThreadSanitizer can map (actions/runner-images#9491).
+          # The key can be read by root only.
+          sudo sysctl vm.mmap_rnd_bits
+          sudo sysctl vm.mmap_rnd_bits=28
+          ulimit -s 8192
+          CC=clang python3 tests/run_exx_device_product.py
+          CC=clang python3 tests/run_exx_host_product.py
+          CC=clang python3 tests/run_exx_host_product.py --thread-sanitizer
