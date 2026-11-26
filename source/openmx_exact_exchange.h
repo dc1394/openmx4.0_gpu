@@ -57,6 +57,12 @@ typedef struct {
                                 truncated interaction does not make zero */
   int outer_max_iterations;  /* scf.exx.outer.maxIter */
   double outer_criterion;    /* scf.exx.outer.criterion, Hartree */
+  int outer_extrapolation;   /* scf.exx.outer.extrapolation: the number of earlier builds that
+                                Anderson's method combines with a new one for the next inner SCF
+                                (Exact_Exchange_Extrapolate); 0 takes the new matrix as it is */
+  double inner_ratio;        /* scf.exx.inner.criterion.ratio: an inner SCF after a build stops at
+                                the larger of scf.criterion and this ratio times |delta| of the
+                                build (Exact_Exchange_Inner_Criterion); 0 keeps scf.criterion */
   int radial_intervals;      /* 1DFFT.NumGridR */
   double reciprocal_maximum; /* square root of 1DFFT.EnergyCutoff, 1/bohr */
   int device_capacity_test;  /* OPENMX_GPU_CAPACITY_TEST_RECOVERY: the GPU leaves every matrix
@@ -192,9 +198,29 @@ double Exact_Exchange_Density_Deviation(const OpenMXExactExchangeState *state, i
 void Exact_Exchange_Build(OpenMXExactExchangeState *state, MPI_Comm comm, int verbosity);
 
 /* After a build: 1 when the outer iteration goes on with a new inner SCF, 0
-   when it ends. It ends when |delta| is below scf.exx.outer.criterion (never
-   after the first build) or when scf.exx.outer.maxIter builds are done. */
-int Exact_Exchange_Outer_Continue(OpenMXExactExchangeState *state);
+   when it ends. It ends when |delta| is below scf.exx.outer.criterion or when
+   scf.exx.outer.maxIter builds are done. The criterion does not end it after
+   the first build, nor with loose = 1: the inner SCF of the build stopped on
+   the criterion of Exact_Exchange_Inner_Criterion, larger than scf.criterion,
+   which the step did not meet. */
+int Exact_Exchange_Outer_Continue(OpenMXExactExchangeState *state, int loose);
+
+/* Anderson's method for the outer iteration (scf.exx.outer.extrapolation m,
+   section 6.6 of the guide), after a build that the outer iteration goes on
+   from. Build n makes X_n from the density of the inner SCF that used the
+   matrix Y_{n-1}, and F_n = X_n - Y_{n-1} is its residual. Without the
+   method, the next inner SCF uses Y_n = X_n. With it, Y_n = X_n - sum_j g_j
+   (X_j - X_{j-1}) over the last m differences of the stored builds, where
+   the coefficients g_j minimize |F_n - sum_j g_j (F_j - F_{j-1})| (sums over
+   all elements of all spin channels). The first build is not stored: its
+   inner SCF had no exchange matrix and the semilocal functional without the
+   hybrid part, so its residual belongs to another iteration. E_x and delta
+   stay those of the build, and the outer iteration ends on a built matrix:
+   to be called only when Exact_Exchange_Outer_Continue returned 1. Process
+   0 computes the coefficients for all. Returns 1 when the matrix of the next
+   inner SCF is not X_n. A failure ends the run through MPI_Abort.
+   verbosity is level.of.stdout. */
+int Exact_Exchange_Extrapolate(OpenMXExactExchangeState *state, MPI_Comm comm, int verbosity);
 
 int Exact_Exchange_Outer_Iterations(const OpenMXExactExchangeState *state); /* builds for this structure */
 int Exact_Exchange_Outer_Converged(const OpenMXExactExchangeState *state);  /* the criterion was met */
@@ -241,7 +267,9 @@ const double *Exact_Exchange_Gradient(OpenMXExactExchangeState *state, MPI_Comm 
    mixers of the density (1, 2, 4, 6), and the one before the solution of
    the next step for those of the Hamiltonian and of the potential (5, 7).
    The offset gives it the count from which the extrapolations of the
-   mixer never reach back to it. */
+   mixer never reach back to it: the last count before a new history for
+   RMM-DIIS, GR-Pulay and RMM-ADIIS (start_pulay - 1), whose history then
+   begins with the first residual of the new matrix. */
 int Exact_Exchange_Mixing_Offset(int mixing_type, int start_pulay, int local_step);
 
 /* Whether the inner SCF may stop at a step. The stop test of the main
@@ -266,6 +294,19 @@ int Exact_Exchange_Mixing_Offset(int mixing_type, int start_pulay, int local_ste
    is allowed. */
 int Exact_Exchange_Inner_Stop_Allowed(OpenMXExactExchangeState *state, int mixing_type, int step,
     double residual_norm, double criterion);
+
+/* The criterion of the present inner SCF for the stop test of the main
+   program, in place of scf.criterion (criterion). With
+   scf.exx.inner.criterion.ratio c > 0 and an exchange matrix, it is the
+   larger of criterion and c |delta| of the last build: an inner SCF from a
+   matrix that is still far from its fixed point stops sooner. After a
+   build with |delta| below scf.exx.outer.criterion it is criterion, since
+   the next build may end the outer iteration.
+   Exact_Exchange_Inner_Stop_Allowed keeps scf.criterion, so the residual
+   still has to fall to a tenth of its reference. A step that stops only on
+   the larger value is reported to Exact_Exchange_Outer_Continue. Returns
+   criterion without an exchange matrix or with c = 0. NULL is allowed. */
+double Exact_Exchange_Inner_Criterion(const OpenMXExactExchangeState *state, double criterion);
 
 /* ---- addition to the Hamiltonian (section 6.5) --------------------------- */
 

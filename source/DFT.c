@@ -541,6 +541,8 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   int Cnt_kind,Calc_CntOrbital_ON,spin,spinmax,m;
   int SCF_iter,SCF_iter_shift,SCF_MAX;
   int exx_inner_start = 0;  /* SCF_iter at which the present inner SCF of a hybrid functional began */
+  double exx_criterion = 0.0; /* the criterion of the present inner SCF of a hybrid functional */
+  int exx_loose = 0;        /* the step stops only on exx_criterion, which is larger than scf.criterion */
   int exx_outputs = 0;      /* K(R) of a hybrid functional is prepared for the band dispersion and the DOS */
   int i,j,k,fft_charge_flag,M1N;
   int orbitalOpt_iter,LSCF_iter,OrbOpt_end; 
@@ -1457,6 +1459,19 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 	 (dUele<SCF_Criterion && Cnt_switch==1 && Cnt_Now==1 && OrbOpt_end==1))
 	) po = 1;
 
+    /* hybrid functional: an inner SCF from an exchange matrix that is still
+       far from its fixed point may stop on a larger criterion than
+       scf.criterion (scf.exx.inner.criterion.ratio); exx_criterion is
+       scf.criterion otherwise */
+    exx_criterion = SCF_Criterion;
+    exx_loose = 0;
+    if (Cnt_switch==0) exx_criterion = Exact_Exchange_Inner_Criterion(exact_exchange, SCF_Criterion);
+    if (po==0 && 2<=SCF_iter && Cnt_switch==0 && SCF_Criterion<exx_criterion
+        && dUele<exx_criterion && mixing_history->norm[0]<(10*exx_criterion)){
+      po = 1;
+      exx_loose = 1;
+    }
+
     /* hybrid functional: an inner SCF with an exchange matrix stops only when
        its density has answered the matrix. The test above compares the band
        energies of two steps and passes as well when the mixing has hardly
@@ -1652,10 +1667,16 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
         printf("<EXX>  outer iteration %2d at SCF=%4d  Uexx=%18.12f  delta=%11.3e (Hartree)\n",
                Exact_Exchange_Outer_Iterations(exact_exchange),SCF_iter,
                Exact_Exchange_Energy(exact_exchange),Exact_Exchange_Change(exact_exchange));
+        if (exx_loose)
+          printf("<EXX>  the inner SCF of this build stopped on the criterion %.3e (scf.exx.inner.criterion.ratio)\n",
+                 exx_criterion);
         fflush(stdout);
       }
 
-      if (Exact_Exchange_Outer_Continue(exact_exchange)){
+      if (Exact_Exchange_Outer_Continue(exact_exchange, exx_loose)){
+        /* the exchange matrix of the next inner SCF from the last builds
+           (scf.exx.outer.extrapolation) */
+        Exact_Exchange_Extrapolate(exact_exchange, mpi_comm_level1, level_stdout);
         /* a new inner SCF. The mixing starts again through SCF_iter_shift,
            so that no extrapolation takes a residual that was measured with
            the exchange matrix before; the offset depends on the mixer.

@@ -68,6 +68,13 @@ struct OpenMXExactExchangeState {
   double energy;                    /* E_x of the last build, Hartree */
   double change;                    /* delta of the last build, Hartree */
   double residual_reference;        /* residual norm of the first step with the K of the last build; negative: not seen yet */
+  /* The builds that Anderson's method combines (Exact_Exchange_Extrapolate):
+     room+1 slots of every spin channel, the oldest first; entry 2*slot+spin */
+  int history_room;                 /* scf.exx.outer.extrapolation that the slots were made for; 0: none */
+  int history_channels;             /* spin channels that the slots have room for */
+  int history_count;                /* builds stored in the first slots for the present structure */
+  double **history_built;           /* K of a build as it was built, X */
+  double **history_residual;        /* the residual of that build, F = X - Y */
   double time_prepare,time_collect,time_build,time_add; /* seconds on this process */
   OpenMXExactExchangeDevice device; /* matrix products and whole calls of the build on the device of this process */
   double time_device;               /* seconds in the products, with the transfers; part of time_build */
@@ -453,6 +460,24 @@ static void ExactExchange_List_Blocks(OpenMXExactExchangeState *state, MPI_Comm 
   for (int a=0; a<atoms; a++) state->first_orbital[a+1] = state->first_orbital[a]+openmx_exx_atom_orbitals(state->module,a);
 }
 
+/* The slots of Anderson's method (Exact_Exchange_Extrapolate). */
+static void ExactExchange_Release_History(OpenMXExactExchangeState *state)
+{
+  for (int slot=0; slot<=state->history_room && state->history_built!=NULL; slot++) {
+    for (int spin=0; spin<state->history_channels; spin++) {
+      openmx_core_native_free(state->resources,state->history_built[2*slot+spin]);
+      openmx_core_native_free(state->resources,state->history_residual[2*slot+spin]);
+    }
+  }
+  openmx_core_native_free(state->resources,state->history_built);
+  openmx_core_native_free(state->resources,state->history_residual);
+  state->history_built = NULL;
+  state->history_residual = NULL;
+  state->history_room = 0;
+  state->history_channels = 0;
+  state->history_count = 0;
+}
+
 /* Storage of the density and exchange matrices of spin_channels channels. */
 static void ExactExchange_Reserve(OpenMXExactExchangeState *state, int spin_channels, MPI_Comm comm)
 {
@@ -469,6 +494,7 @@ static void ExactExchange_Reserve(OpenMXExactExchangeState *state, int spin_chan
     }
     state->allocated_channels = 0;
     state->elements = elements;
+    ExactExchange_Release_History(state);
   }
   for (int spin=state->allocated_channels; spin<spin_channels; spin++) {
     state->density[spin] = (double*)ExactExchange_Allocate(state,elements,sizeof(double),comm,"density matrix");
@@ -714,6 +740,7 @@ void Exact_Exchange_Prepare(OpenMXExactExchangeState *state, const OpenMXAtomicV
   state->outer_iterations = 0;
   state->outer_converged = 0;
   state->residual_reference = -1.0;
+  state->history_count = 0;
   state->energy = 0.0;
   state->change = 0.0;
   Exact_Exchange_Release_Outputs(state);
@@ -1304,13 +1331,195 @@ const double *Exact_Exchange_Gradient(OpenMXExactExchangeState *state, MPI_Comm 
   return state->gradient;
 }
 
-int Exact_Exchange_Outer_Continue(OpenMXExactExchangeState *state)
+int Exact_Exchange_Outer_Continue(OpenMXExactExchangeState *state, int loose)
 {
-  if (2<=state->outer_iterations && fabs(state->change)<state->input.outer_criterion) {
+  /* The density of an inner SCF that stopped on a larger criterion than
+     scf.criterion has not answered its matrix within scf.criterion: the
+     outer iteration does not end on it. */
+  if (2<=state->outer_iterations && fabs(state->change)<state->input.outer_criterion && !loose) {
     state->outer_converged = 1;
     return 0;
   }
   return state->outer_iterations<state->input.outer_max_iterations;
+}
+
+/* Room for room+1 builds of every spin channel of the present matrices. */
+static void ExactExchange_Reserve_History(OpenMXExactExchangeState *state, int room, MPI_Comm comm)
+{
+  if (state->history_built!=NULL && state->history_room==room && state->spin_channels<=state->history_channels)
+    return;
+  ExactExchange_Release_History(state);
+  const size_t slots=2*((size_t)room+1);
+  state->history_built = (double**)ExactExchange_Allocate(state,slots,sizeof(double*),comm,"extrapolation");
+  state->history_residual = (double**)ExactExchange_Allocate(state,slots,sizeof(double*),comm,"extrapolation");
+  state->history_room = room;
+  state->history_channels = state->spin_channels;
+  for (int slot=0; slot<=room; slot++) {
+    for (int spin=0; spin<state->spin_channels; spin++) {
+      state->history_built[2*slot+spin] =
+        (double*)ExactExchange_Allocate(state,state->elements,sizeof(double),comm,"extrapolation");
+      state->history_residual[2*slot+spin] =
+        (double*)ExactExchange_Allocate(state,state->elements,sizeof(double),comm,"extrapolation");
+    }
+  }
+}
+
+/* Solves the d x d system a g = b in place by elimination with partial
+   pivoting. Returns 0 when a pivot is not above tiny times the largest
+   diagonal element: the residuals of the builds are then nearly dependent. */
+static int ExactExchange_Solve_Small(int d, double *a, double *b)
+{
+  double largest=0.0;
+  for (int i=0; i<d; i++) if (largest<fabs(a[i*d+i])) largest = fabs(a[i*d+i]);
+  if (!(0.0<largest)) return 0;
+  for (int k=0; k<d; k++) {
+    int pivot=k;
+    for (int i=k+1; i<d; i++) if (fabs(a[pivot*d+k])<fabs(a[i*d+k])) pivot = i;
+    if (!(1.0e-12*largest<fabs(a[pivot*d+k]))) return 0;
+    if (pivot!=k) {
+      for (int j=0; j<d; j++) {
+        const double t=a[k*d+j];
+        a[k*d+j] = a[pivot*d+j];
+        a[pivot*d+j] = t;
+      }
+      const double t=b[k];
+      b[k] = b[pivot];
+      b[pivot] = t;
+    }
+    for (int i=k+1; i<d; i++) {
+      const double f=a[i*d+k]/a[k*d+k];
+      for (int j=k; j<d; j++) a[i*d+j] -= f*a[k*d+j];
+      b[i] -= f*b[k];
+    }
+  }
+  for (int k=d-1; 0<=k; k--) {
+    double sum=b[k];
+    for (int j=k+1; j<d; j++) sum -= a[k*d+j]*b[j];
+    b[k] = sum/a[k*d+k];
+  }
+  for (int k=0; k<d; k++) if (!isfinite(b[k])) return 0;
+  return 1;
+}
+
+int Exact_Exchange_Extrapolate(OpenMXExactExchangeState *state, MPI_Comm comm, int verbosity)
+{
+  const int room=state!=NULL ? state->input.outer_extrapolation : 0;
+  if (!Exact_Exchange_Active(state) || room<=0 || state->outer_iterations<2) return 0;
+  enum { largest_room=8 };          /* the largest value that the input allows */
+  if (!state->prepared || state->spin_channels<1 || state->collecting)
+    ExactExchange_Abort(comm,"extrapolation","no exchange matrix is built");
+  if (largest_room<room) ExactExchange_Abort(comm,"extrapolation","scf.exx.outer.extrapolation is larger than 8");
+
+  const double start=MPI_Wtime();
+  int rank=0;
+  MPI_Comm_rank(comm,&rank);
+  ExactExchange_Reserve_History(state,room,comm);
+  const int channels=state->spin_channels;
+  const size_t elements=state->elements;
+
+  /* The new build in the slot after the stored ones: X_n and F_n = X_n - Y_{n-1}. */
+  const int stored=state->history_count;
+  for (int spin=0; spin<channels; spin++) {
+    double *built=state->history_built[2*stored+spin];
+    double *residual=state->history_residual[2*stored+spin];
+    const double *x=state->exchange[spin],*y=state->previous[spin];
+    memcpy(built,x,sizeof(double)*elements);
+    for (size_t e=0; e<elements; e++) residual[e] = x[e]-y[e];
+  }
+
+  /* The differences between the slots first-1+j and first+j, j = 1..d, with
+     the new build in slot stored. Process 0 forms and solves the normal
+     equations and sends the coefficients; a nearly dependent set loses its
+     oldest difference. */
+  int d=stored<room ? stored : room;
+  double coefficient[largest_room];
+  if (rank==0) {
+    while (0<d) {
+      const int first=stored-d+1;
+      double a[largest_room*largest_room],b[largest_room];
+      for (int j=0; j<d; j++) {
+        b[j] = 0.0;
+        for (int k=0; k<d; k++) a[j*d+k] = 0.0;
+      }
+      for (int spin=0; spin<channels; spin++) {
+        const double *f=state->history_residual[2*stored+spin];
+        for (int j=0; j<d; j++) {
+          const double *fj1=state->history_residual[2*(first+j)+spin];
+          const double *fj0=state->history_residual[2*(first+j-1)+spin];
+          double sum=0.0;
+          for (size_t e=0; e<elements; e++) sum += (fj1[e]-fj0[e])*f[e];
+          b[j] += sum;
+          for (int k=0; k<=j; k++) {
+            const double *fk1=state->history_residual[2*(first+k)+spin];
+            const double *fk0=state->history_residual[2*(first+k-1)+spin];
+            double product=0.0;
+            for (size_t e=0; e<elements; e++) product += (fj1[e]-fj0[e])*(fk1[e]-fk0[e]);
+            a[j*d+k] += product;
+          }
+        }
+      }
+      for (int j=0; j<d; j++)
+        for (int k=j+1; k<d; k++) a[j*d+k] = a[k*d+j];
+      if (ExactExchange_Solve_Small(d,a,b)) {
+        for (int j=0; j<d; j++) coefficient[j] = b[j];
+        break;
+      }
+      d--;
+    }
+  }
+  MPI_Bcast(&d,1,MPI_INT,0,comm);
+  if (0<d) MPI_Bcast(coefficient,d,MPI_DOUBLE,0,comm);
+
+  /* Y_n = X_n - sum_j g_j (X_{first+j} - X_{first+j-1}) */
+  if (0<d) {
+    const int first=stored-d+1;
+    for (int spin=0; spin<channels; spin++) {
+      double *target=state->exchange[spin];
+      for (int j=0; j<d; j++) {
+        const double g=coefficient[j];
+        const double *x1=state->history_built[2*(first+j)+spin];
+        const double *x0=state->history_built[2*(first+j-1)+spin];
+        for (size_t e=0; e<elements; e++) target[e] -= g*(x1[e]-x0[e]);
+      }
+    }
+    /* K(k) of the solvers comes from the new matrix */
+    ExactExchange_Forget_Band_Matrices(state);
+  }
+
+  /* The new build joins the stored ones; with all slots full the oldest
+     leaves, and its arrays take the place after the others. */
+  if (stored<room) {
+    state->history_count = stored+1;
+  }
+  else {
+    for (int spin=0; spin<channels; spin++) {
+      double *built=state->history_built[spin],*residual=state->history_residual[spin];
+      for (int slot=0; slot<room; slot++) {
+        state->history_built[2*slot+spin] = state->history_built[2*(slot+1)+spin];
+        state->history_residual[2*slot+spin] = state->history_residual[2*(slot+1)+spin];
+      }
+      state->history_built[2*room+spin] = built;
+      state->history_residual[2*room+spin] = residual;
+    }
+    state->history_count = room;
+  }
+
+  if (rank==0 && 1<=verbosity) {
+    if (0<d) {
+      printf("<EXX>  the next inner SCF takes K from %d builds (Anderson, scf.exx.outer.extrapolation): coefficients",d+1);
+      for (int j=0; j<d; j++) printf(" %.4f",coefficient[j]);
+      printf("\n");
+    }
+    else if (stored==0) {
+      printf("<EXX>  the next inner SCF takes K of the build: no earlier build for the extrapolation\n");
+    }
+    else {
+      printf("<EXX>  the next inner SCF takes K of the build: the residuals of the builds are nearly dependent\n");
+    }
+    if (2<=verbosity) printf("<EXX>  extrapolation in %.2f s\n",MPI_Wtime()-start);
+    fflush(stdout);
+  }
+  return 0<d;
 }
 
 int Exact_Exchange_Mixing_Offset(int mixing_type, int start_pulay, int local_step)
@@ -1322,8 +1531,14 @@ int Exact_Exchange_Mixing_Offset(int mixing_type, int start_pulay, int local_ste
   switch (mixing_type) {
   case 1: /* RMM-DIIS, */
   case 2: /* GR-Pulay, */
-  case 6: /* RMM-ADIIS: the history starts at the count start_pulay */
-    first = start_pulay-2;
+  case 6: /* RMM-ADIIS: the history starts at the count start_pulay, the
+             first step with the new matrix. The counts before mix simply,
+             with the weight of OPENMX_MIXING_DENSITY_RATIO, which the
+             converged residual of the build (below the bound 1e-9 of that
+             rule) and the large first residual of the new matrix take down
+             to scf.Min.Mixing.Weight: a simple mixing with the new matrix
+             would hardly move the density. */
+    first = start_pulay-1;
     before = 0;
     break;
   case 4: /* RMM-DIISK: from the count 7 on, the extrapolation at the count
@@ -1368,6 +1583,19 @@ int Exact_Exchange_Inner_Stop_Allowed(OpenMXExactExchangeState *state, int mixin
   if (bound<criterion) bound = criterion;
   if ((mixing_type==0 || mixing_type==3) && bound<plain_mixing_floor) bound = plain_mixing_floor;
   return residual_norm<=bound;
+}
+
+double Exact_Exchange_Inner_Criterion(const OpenMXExactExchangeState *state, double criterion)
+{
+  /* After a build that meets scf.exx.outer.criterion, only an inner SCF
+     that stopped on scf.criterion lets the next build end the outer
+     iteration (Exact_Exchange_Outer_Continue): that inner SCF keeps it. */
+  if (Exact_Exchange_Active(state) && 0.0<state->input.inner_ratio
+      && state->input.outer_criterion<=fabs(state->change)) {
+    const double loose=state->input.inner_ratio*fabs(state->change);
+    if (criterion<loose) return loose;
+  }
+  return criterion;
 }
 
 void Exact_Exchange_Add_Cluster_Hs(OpenMXExactExchangeState *state, int spin, int n, double *Hs,

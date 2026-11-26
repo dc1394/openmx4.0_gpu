@@ -91,7 +91,9 @@ void Input_std(char *file, OpenMXCoreContext *core)
   int hybrid_functional=0;  /* scf.XcType: 0 no hybrid functional, 1 HSE06, 2 PBE0 */
   double exx_alpha,exx_omega,exx_abf_pca,exx_v_cutoff,exx_outer_criterion;
   double exx_coulomb_cutoff;
+  double exx_inner_ratio;   /* scf.exx.inner.criterion.ratio */
   int exx_outer_maxiter;
+  int exx_outer_extrapolation; /* scf.exx.outer.extrapolation */
   int exx_v_cutoff_given;   /* 1 when the input has scf.exx.v.cutoff */
   int exx_gemmul8=0;        /* scf.gemmul8.enable: 1 when the input says on */
 
@@ -1043,7 +1045,11 @@ void Input_std(char *file, OpenMXCoreContext *core)
      the Coulomb matrix (bohr), the limits of the outer iteration (a number
      of builds and Hartree), and the radius of the truncated Coulomb
      interaction of PBE0 (bohr; 0 takes the radius of the sphere whose
-     volume is that of the cell times the number of k points) */
+     volume is that of the cell times the number of k points). Two keywords
+     shorten the outer iteration and change its results within its
+     criteria: the number of earlier builds that the extrapolation of the
+     exchange matrix combines (0: none), and the ratio to |delta| of the
+     criterion of an inner SCF (0: scf.criterion) */
 
   input_double("scf.exx.alpha",&exx_alpha,(double)0.25);
   input_double("scf.exx.omega",&exx_omega,(double)0.11);
@@ -1052,6 +1058,8 @@ void Input_std(char *file, OpenMXCoreContext *core)
   input_int("scf.exx.outer.maxIter",&exx_outer_maxiter,30);
   input_double("scf.exx.outer.criterion",&exx_outer_criterion,(double)1.0e-6);
   input_double("scf.exx.coulomb.cutoff",&exx_coulomb_cutoff,(double)0.0);
+  input_int("scf.exx.outer.extrapolation",&exx_outer_extrapolation,0);
+  input_double("scf.exx.inner.criterion.ratio",&exx_inner_ratio,(double)0.0);
 
   if (hybrid_functional!=0){
 
@@ -1065,6 +1073,10 @@ void Input_std(char *file, OpenMXCoreContext *core)
     else if (!(0.0<=exx_v_cutoff))                    message = "scf.exx.v.cutoff should not be negative.";
     else if (exx_outer_maxiter<1)                     message = "scf.exx.outer.maxIter should be 1 or larger.";
     else if (!(0.0<exx_outer_criterion))              message = "scf.exx.outer.criterion should be positive.";
+    else if (exx_outer_extrapolation<0 || 8<exx_outer_extrapolation)
+                                                      message = "scf.exx.outer.extrapolation should be in the range of 0 to 8.";
+    else if (!(0.0<=exx_inner_ratio && exx_inner_ratio<=1.0))
+                                                      message = "scf.exx.inner.criterion.ratio should be in the range of 0.0 to 1.0.";
 
     if (message!=NULL){
       if (myid==Host_ID){
@@ -5246,6 +5258,8 @@ void Input_std(char *file, OpenMXCoreContext *core)
     exx_input.v_cutoff = (hybrid_functional==2 && exx_v_cutoff_given!=1) ? -1.0 : exx_v_cutoff;
     exx_input.outer_max_iterations = exx_outer_maxiter;
     exx_input.outer_criterion = exx_outer_criterion;
+    exx_input.outer_extrapolation = exx_outer_extrapolation;
+    exx_input.inner_ratio = exx_inner_ratio;
     exx_input.radial_intervals = OneD_Grid;   /* 1DFFT.NumGridR */
     exx_input.reciprocal_maximum = PAO_Nkmax; /* square root of 1DFFT.EnergyCutoff */
     exx_input.device_capacity_test = openmx_gpu_capacity_test_recovery();

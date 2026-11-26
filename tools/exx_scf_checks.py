@@ -63,6 +63,10 @@ The runs of a family
   -pbe-mix-M-c6        GGA-PBE with Simple or Kerker mixing: these two mixers end
                        at a residual of about 1e-5, with and without the exact
                        exchange, and their rows are compared with each other
+  -hse-accel           scf.exx.outer.extrapolation 2 and
+                       scf.exx.inner.criterion.ratio 0.1 (ch4, h2o, dia8, o2):
+                       fewer builds and steps to the energy of -hse
+  -hse-accel-np2       -hse-accel with 2 MPI processes
 The PBE0 runs of a family (M8)
   -pbe0                PBE0 with the default keywords: R_c from the volume of
                        the cell (scf.exx.coulomb.cutoff absent) and the V
@@ -315,6 +319,19 @@ def mixing(tag, atoms, scf, basis):
         add(f"{tag}-hse-mix-{m}-c6", make_input(tag, atoms, scf, basis, mixing=m, steps=300, criterion="1.0e-6"))
 
 
+# The two keywords that end the outer iteration in fewer builds (revision 31 of
+# the guide): the Anderson extrapolation of K over the builds and the looser
+# criterion of an inner SCF far from the fixed point.  Their energies are
+# compared with the default runs within the limit of the other mixers, and the
+# coefficients of the extrapolation, which process 0 computes, with 2 processes.
+ACCEL = ["scf.exx.outer.extrapolation 2", "scf.exx.inner.criterion.ratio 0.1"]
+
+
+def accel(tag, atoms, scf, basis, spin="off"):
+    add(f"{tag}-hse-accel", make_input(tag, atoms, scf, basis, spin=spin, extra=ACCEL))
+    add(f"{tag}-hse-accel-np2", make_input(tag, atoms, scf, basis, spin=spin, extra=ACCEL), ranks=2, threads=1)
+
+
 molecule("ch4", CH4_ATOMS, CH4_SCF, "ch4-min")
 molecule("h2o", H2O_ATOMS, H2O_SCF, "h2o-min")
 molecule("ch4dzp", CH4_ATOMS, CH4_SCF, "dzp")
@@ -326,6 +343,10 @@ diamond("dia8dzp", "dzp")
 mixing("ch4", CH4_ATOMS, CH4_SCF, "ch4-min")
 mixing("h2o", H2O_ATOMS, H2O_SCF, "h2o-min")
 mixing("dia8", DIAMOND_ATOMS, DIAMOND_SCF, "ch4-min")
+accel("ch4", CH4_ATOMS, CH4_SCF, "ch4-min")
+accel("h2o", H2O_ATOMS, H2O_SCF, "h2o-min")
+accel("dia8", DIAMOND_ATOMS, DIAMOND_SCF, "ch4-min")
+accel("o2", O2_ATOMS, H2O_SCF, "h2o-min", spin="on")
 
 # ---- running and parsing --------------------------------------------------
 
@@ -566,6 +587,14 @@ def table(args):
                      diff(n, f"{tag}-hse"), 1e-8)
         for n in sorted(x for x in results if x.startswith(f"{tag}-pbe-mix-")):
             record(f"GGA-PBE: mixing {n[len(tag) + 9:]} minus rmm-diis ({results[n]['scf_steps']} steps)", n, f"{tag}-pbe")
+        a = results.get(f"{tag}-hse-accel")
+        if a:
+            show(f"accel minus default ({a['builds']} builds, {a['scf_steps']} steps)",
+                 diff(f"{tag}-hse-accel", f"{tag}-hse"), 1e-8)
+            # The last inner SCF stops on scf.criterion at a step that rounding
+            # can move: O2 stopped at residuals 1.2e-9 and 5.4e-10 and differed
+            # by 2.6e-9; at scf.criterion 1e-12 the two agreed to 1e-12.
+            show("accel np2 minus np1", diff(f"{tag}-hse-accel-np2", f"{tag}-hse-accel"), 1e-8)
         c6 = results.get(f"{tag}-hse-c6")
         if c6:
             pbe_steps = results.get(f"{tag}-pbe-c6", {}).get("scf_steps")
