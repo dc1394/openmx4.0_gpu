@@ -18,6 +18,7 @@
 #include "openmx_env.h"
 #include "openmx_force_workspace.h"
 #include "openmx_force_vna_halo.h"
+#include "openmx_force_vna_case2.h"
 #include "openmx_core_force_recovery.h"
 #include "openmx_orbitals.h"
 #include "openmx_core_vna_matrix.h"
@@ -9357,13 +9358,9 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
     int Mc_AN, Gc_AN, Cwan, i, j, h_AN, q_AN, start_q_AN, Mq_AN;
     int jan, kl, Qwan, Gq_AN, Gh_AN, Mh_AN, Hwan, ian;
     int l1, l2, l3, l, LL, Mul1, Num_RVNA, tno0, ncp;
-    int tno1, tno2, size1, size2, n, kk, num, po, po1, po2;
+    int tno1, tno2, size1, size2, n, kk, po;
     int numprocs, myid, tag = 999, ID, IDS, IDR;
-    int **S_array, **R_array;
-    int S_comm_flag, R_comm_flag;
-    int SA_num, q, Sc_AN, GSc_AN;
-    int Sc_wan, Sh_AN, GSh_AN, Sh_wan;
-    int Sh_AN2, fan, jg, j0, jg0, Mj_AN0;
+    int fan, jg, j0, jg0, Mj_AN0;
     int Original_Mc_AN, max_ODNloop;
 
     double rcutA, rcutB, rcut;
@@ -9373,7 +9370,6 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
     double *****ActiveHVNA2, *****ActiveHVNA3;
     int* VNA_List;
     int* VNA_List2;
-    int* Indicator;
     Type_DS_VNA* tmp_array;
     Type_DS_VNA* tmp_array2;
 
@@ -9386,10 +9382,7 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
     MPI_Status stat;
     MPI_Request request;
 
-    static int counter = 0;
     const int force_profile = openmx_env_flag_at(OPENMX_ENV_FORCE_PROFILE, 0);
-
-    counter++;
 
     /* MPI */
 
@@ -9404,12 +9397,6 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
     /****************************
          allocation of arrays
     *****************************/
-
-    Indicator = OpenMX_Solver_Int(scratch,"Force4B:Indicator",numprocs);
-
-    S_array = OpenMX_ForceIntMatrix(scratch,"Force4B:S_array",numprocs,3);
-    R_array = OpenMX_ForceIntMatrix(scratch,"Force4B:R_array",numprocs,3);
-
 
     VNA_List = OpenMX_Solver_Int(scratch,"Force4B:VNA_List",(List_YOUSO[34] * (List_YOUSO[35] + 1) + 2));
     VNA_List2 = OpenMX_Solver_Int(scratch,"Force4B:VNA_List2",(List_YOUSO[34] * (List_YOUSO[35] + 1) + 2));
@@ -10054,8 +10041,38 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
     MPI_Barrier(mpi_comm_level1);
     dtime(&stime);
 
-    for (ID = 0; ID < numprocs; ID++)
-        Indicator[ID] = 0;
+    OpenMXVnaCase2Exchange case2 = {
+        .topology = {
+            .local_count = Matomnum,
+            .neighbour_capacity = List_YOUSO[8] + 1,
+            .local_atom = M2G,
+            .force_index = F_G2M,
+            .species = WhatSpecies,
+            .orbitals = Spe_Total_CNO,
+            .neighbour_count = FNAN,
+            .neighbours = natn,
+            .sent_atoms = F_Snd_Num,
+            .received_atoms = F_Rcv_Num,
+            .receive_start = F_TopMAN,
+            .sent_local = Snd_MAN,
+            .centre = Pro_Snd_GAtom,
+            .source_atom = Pro_Snd_MAtom,
+            .source_neighbour = Pro_Snd_LAtom,
+            .target_neighbour = Pro_Snd_LAtom2
+        },
+        .transfer = &projector_transfer,
+        .datatype = MPI_Type_DS_VNA,
+        .rank = myid,
+        .peers = numprocs,
+        .tag = tag,
+        .projectors = wire_projectors
+    };
+    OpenMX_VnaCase2Begin(&case2, scratch);
+    double case2_exchange_time = 0.0;
+    if (force_profile) {
+        dtime(&etime1);
+        case2_exchange_time = etime1 - stime;
+    }
 
     max_ODNloop = 1;
     for (Mc_AN = 1; Mc_AN <= Matomnum; Mc_AN++) {
@@ -10084,203 +10101,10 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
         else
             Gc_AN = 0;
 
-        for (ID = 0; ID < numprocs; ID++) {
-
-            IDS = (myid + ID) % numprocs;
-            IDR = (myid - ID + numprocs) % numprocs;
-
-            i = Indicator[IDS];
-            po = 0;
-
-            Gh_AN = Pro_Snd_GAtom[IDS][i];
-
-            if (Gh_AN != 0) {
-
-                /* find the range with the same global atomic number */
-
-                do {
-
-                    i++;
-                    if (Gh_AN != Pro_Snd_GAtom[IDS][i])
-                        po = 1;
-                } while (po == 0);
-
-                i--;
-                SA_num = i - Indicator[IDS] + 1;
-
-                /* find the data size to send the block data */
-
-                size1 = 0;
-                for (q = Indicator[IDS]; q <= (Indicator[IDS] + SA_num - 1); q++) {
-
-                    Sc_AN = Pro_Snd_MAtom[IDS][q];
-                    GSc_AN = F_M2G[Sc_AN];
-                    Sc_wan = WhatSpecies[GSc_AN];
-                    tno1 = Spe_Total_CNO[Sc_wan];
-                    tno2 = (List_YOUSO[35] + 1) * (List_YOUSO[35] + 1) * List_YOUSO[34];
-                    size1 += 4 * tno1 * tno2;
-                    size1 += 3;
-                }
-
-            } /* if (Gh_AN!=0) */
-
-            else {
-                SA_num = 0;
-                size1 = 0;
-            }
-
-            S_array[IDS][0] = Gh_AN;
-            S_array[IDS][1] = SA_num;
-            S_array[IDS][2] = size1;
-
-            if (ID != 0) {
-                MPI_Isend(&S_array[IDS][0], 3, MPI_INT, IDS, tag, mpi_comm_level1, &request);
-                MPI_Recv(&R_array[IDR][0], 3, MPI_INT, IDR, tag, mpi_comm_level1, &stat);
-                MPI_Wait(&request, &stat);
-            } else {
-                R_array[myid][0] = S_array[myid][0];
-                R_array[myid][1] = S_array[myid][1];
-                R_array[myid][2] = S_array[myid][2];
-            }
-
-            if (R_array[IDR][0] == Gc_AN)
-                R_comm_flag = 1;
-            else
-                R_comm_flag = 0;
-
-            if (ID != 0) {
-                MPI_Isend(&R_comm_flag, 1, MPI_INT, IDR, tag, mpi_comm_level1, &request);
-                MPI_Recv(&S_comm_flag, 1, MPI_INT, IDS, tag, mpi_comm_level1, &stat);
-                MPI_Wait(&request, &stat);
-            } else {
-                S_comm_flag = R_comm_flag;
-            }
-
-            /*
-        if (counter==2 && ID==8){
-          printf("QQQ4 myid=%2d\n",myid);fflush(stdout);
-          MPI_Finalize();
-          exit(0);
-        }
-            */
-
-            /*****************************************
-                             send the data
-            *****************************************/
-
-            /* if (S_comm_flag==1) then, send data to IDS */
-
-            if (S_comm_flag == 1) {
-
-                /* allocate tmp_array */
-
-                tmp_array = OpenMX_TransferBuffer(&projector_transfer,OPENMX_EXCHANGE_SEND,size1);
-
-                /* multidimentional array to vector array */
-
-                num = 0;
-
-                for (q = Indicator[IDS]; q <= (Indicator[IDS] + SA_num - 1); q++) {
-
-                    Sc_AN = Pro_Snd_MAtom[IDS][q];
-                    GSc_AN = F_M2G[Sc_AN];
-                    Sc_wan = WhatSpecies[GSc_AN];
-                    tno1 = Spe_Total_CNO[Sc_wan];
-
-                    Sh_AN = Pro_Snd_LAtom[IDS][q];
-                    GSh_AN = natn[GSc_AN][Sh_AN];
-                    Sh_wan = WhatSpecies[GSh_AN];
-                    tno2 = (List_YOUSO[35] + 1) * (List_YOUSO[35] + 1) * List_YOUSO[34];
-
-                    Sh_AN2 = Pro_Snd_LAtom2[IDS][q];
-
-                    tmp_array[num] = (Type_DS_VNA)Sc_AN;
-                    num++;
-                    tmp_array[num] = (Type_DS_VNA)Sh_AN;
-                    num++;
-                    tmp_array[num] = (Type_DS_VNA)Sh_AN2;
-                    num++;
-
-                    for (kk = 0; kk <= 3; kk++) {
-                        for (i = 0; i < tno1; i++) {
-                            for (j = 0; j < tno2; j++) {
-                                tmp_array[num] = DS_VNA[kk][Sc_AN][Sh_AN][i][j];
-                                num++;
-                            }
-                        }
-                    }
-                }
-
-                if (ID != 0) {
-                    MPI_Isend(&tmp_array[0], size1, MPI_Type_DS_VNA, IDS, tag, mpi_comm_level1, &request);
-                }
-
-                /* update Indicator[IDS] */
-
-                Indicator[IDS] += SA_num;
-
-            } /* if (S_comm_flag==1) */
-
-            /*****************************************
-                         receive the data
-            *****************************************/
-
-            /* if (R_comm_flag==1) then, receive the data from IDR */
-
-            if (R_comm_flag == 1) {
-
-                size2 = R_array[IDR][2];
-                tmp_array2 = OpenMX_TransferBuffer(&projector_transfer,OPENMX_EXCHANGE_RECEIVE,size2);
-
-                if (ID != 0) {
-                    MPI_Recv(&tmp_array2[0], size2, MPI_Type_DS_VNA, IDR, tag, mpi_comm_level1, &stat);
-                } else {
-                    for (i = 0; i < size2; i++)
-                        tmp_array2[i] = tmp_array[i];
-                }
-
-                /* store */
-
-                num = 0;
-
-                for (n = 0; n < R_array[IDR][1]; n++) {
-
-                    Sc_AN = (int)tmp_array2[num];
-                    num++;
-                    Sh_AN = (int)tmp_array2[num];
-                    num++;
-                    Sh_AN2 = (int)tmp_array2[num];
-                    num++;
-
-                    GSc_AN = natn[Gc_AN][Sh_AN2];
-                    Sc_wan = WhatSpecies[GSc_AN];
-
-                    tno1 = Spe_Total_CNO[Sc_wan];
-                    tno2 = (List_YOUSO[35] + 1) * (List_YOUSO[35] + 1) * List_YOUSO[34];
-
-                    for (kk = 0; kk <= 3; kk++) {
-                        for (i = 0; i < tno1; i++) {
-                            for (j = 0; j < tno2; j++) {
-                                DS_VNA[kk][Matomnum + 1][Sh_AN2][i][j] = tmp_array2[num];
-                                num++;
-                            }
-                        }
-                    }
-                }
-
-                /* free tmp_array2 */
-
-            } /* if (R_comm_flag==1) */
-
-            if (S_comm_flag == 1) {
-                if (ID != 0)
-                    MPI_Wait(&request, &stat);
-                 /* freeing of array */
-            }
-
-        } /* ID */
+        OpenMX_VnaCase2Stage(&case2, Mc_AN, &vna->projectors);
 
         dtime(&etime1);
+        if (force_profile) case2_exchange_time += etime1 - stime1;
         if (myid == 0 && measure_time) {
             printf("Time for part5A of force#4=%18.5f\n", etime1 - stime1);
             fflush(stdout);
@@ -10468,6 +10292,8 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
     dtime(&etime);
     if (force_profile) {
         Force_profile_report("f4b-case2", etime - stime,
+            mpi_comm_level1, myid, numprocs);
+        Force_profile_report("f4b-case2-x", case2_exchange_time,
             mpi_comm_level1, myid, numprocs);
     }
     if (myid == 0 && measure_time) {

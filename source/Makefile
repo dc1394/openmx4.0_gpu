@@ -735,7 +735,7 @@ Mixing_H.o: Mixing_H.c openmx_common.h openmx_mixing_policy.h openmx_core_mixing
 	$(CC) -c Mixing_H.c
 Mixing_V.o: Mixing_V.c openmx_common.h openmx_mixing_policy.h openmx_core_mixing.h
 	$(CC) -c Mixing_V.c
-Force.o: Force.c openmx_common.h openmx_precision.h openmx_force_vna_halo.h
+Force.o: Force.c openmx_common.h openmx_precision.h openmx_force_vna_halo.h openmx_force_vna_case2.h
 	$(CC) -c Force.c
 Stress.o: Stress.c openmx_common.h openmx_precision.h
 	$(CC) -c Stress.c

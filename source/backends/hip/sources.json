@@ -956,6 +956,7 @@
     "openmx_force_hnl_batch.h",
     "openmx_force_hnl_gpu.h",
     "openmx_force_vna_halo.h",
+    "openmx_force_vna_case2.h",
     "openmx_force_projectors.h",
     "openmx_force_recovery.h",
     "openmx_force_stages.h",

@@ -1595,7 +1595,7 @@ Force.o: openmx_force_projectors.h openmx_core_core_hole.h
 Force.o: openmx_core_projector_force.h
 Force.o: openmx_force_hnl_gpu.h openmx_native_resources.h openmx_core_native_resources.h
 Force.o: openmx_force_gpu_resources.h openmx_force_recovery.h openmx_core_force_recovery.h
-Force.o: openmx_host_simd.h openmx_core_host_simd.h openmx_core_force_simd.h openmx_core_force_vna_simd.h openmx_core_orbitals_simd.h openmx_force_vna_halo.h
+Force.o: openmx_host_simd.h openmx_core_host_simd.h openmx_core_force_simd.h openmx_core_force_vna_simd.h openmx_core_orbitals_simd.h openmx_force_vna_halo.h openmx_force_vna_case2.h
 Band_DFT_Col.o Total_Energy_GPU.o: openmx_host_simd.h openmx_core_host_simd.h openmx_core_energy_simd.h
 Cluster_DFT_Col.o Band_DFT_NonCol.o: openmx_host_simd.h openmx_core_host_simd.h
 Force.o: ../core/include/openmx_core_force_recovery.h
