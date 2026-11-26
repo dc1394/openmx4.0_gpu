@@ -29,10 +29,12 @@ if [ -z "${GEMMUL8_TEST_OBJECT:-}" ]; then
         -I"$gemmul8_root/include" -I"$gemmul8_root/src" -I"$math_root/include" \
         -c "$test_root/source/gemmul8_openmx.cu" -o "$gemmul8_object"
 fi
+"${CC:-cc}" -std=c11 -O2 -I"$test_root/source" \
+    -c "$test_root/source/openmx_env.c" -o "$bin_dir/openmx_env.o"
 "$nvcc" -ccbin "$host_cxx" -std=c++20 -O3 -arch="sm_$gpu_arch" \
     -I"$gemmul8_root/include" -I"$math_root/include" \
     "$test_root/tests/gemmul8_a100_bench.cu" "$test_root/source/gemmul8_bridge.cu" \
-    "$gemmul8_object" -L"$math_root/lib64" -L"$math_root/lib" -L"$cuda_root/lib64" \
+    "$bin_dir/openmx_env.o" "$gemmul8_object" -L"$math_root/lib64" -L"$math_root/lib" -L"$cuda_root/lib64" \
     -lcublas -lcublasLt \
     -Xlinker -rpath -Xlinker "$math_root/lib64" -Xlinker -rpath -Xlinker "$math_root/lib" \
     -Xlinker -rpath -Xlinker "$cuda_root/lib64" \
@@ -43,5 +45,5 @@ unset GEMMUL8_DISABLE OPENMX_GEMMUL8_DISABLE GEMMUL8_DISABLE_D OPENMX_GEMMUL8_DI
 unset GEMMUL8_DISABLE_Z OPENMX_GEMMUL8_DISABLE_Z
 OPENMX_GEMMUL8_TIMING=0 OPENMX_GEMMUL8_NUM_MOD_D=15 OPENMX_GEMMUL8_NUM_MOD_Z=15 \
 OPENMX_GEMMUL8_FASTMODE_D=0 OPENMX_GEMMUL8_FASTMODE_Z=0 \
-OPENMX_GEMMUL8_MAX_WORKSPACE_MB=256 OPENMX_GEMMUL8_LOCAL_RANKS=1 \
+OPENMX_GEMMUL8_LOCAL_RANKS="${OPENMX_GEMMUL8_LOCAL_RANKS:-1}" \
     "$bin_dir/gemmul8_a100_bench" "$@"

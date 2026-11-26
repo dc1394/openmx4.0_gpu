@@ -137,8 +137,47 @@ static void owner_budget() {
     mock_device=1;openmx_gemmul8SetEnabled(-1);fixed(true,"existing GeForce full-scratch budget unchanged");
     openmx_gemmul8ReleaseWorkspaces();std::puts("PASS: dense-owner scratch budget and explicit rank/fraction overrides");
 }
+static void blackwell_workspace(const char *scenario) {
+    const size_t base=256*kMiB,large=1024*kMiB;
+    mock_worksize=2048*kMiB;
+    mock_device=1;mock_major[1]=12;mock_minor[1]=0;
+    mock_free=mock_total=size_t(16)<<30;
+    setenv("OPENMX_GEMMUL8_LOCAL_RANKS","1",1);
+    if (std::strcmp(scenario,"shared-workspace")==0) setenv("OPENMX_GEMMUL8_LOCAL_RANKS","5",1);
+    if (std::strcmp(scenario,"explicit-workspace")==0) {
+        setenv("GEMMUL8_MAX_WORKSPACE_MB","512",1);
+        setenv("OPENMX_GEMMUL8_MAX_WORKSPACE_MB","256",1);
+    }
+    const bool automatic=std::strcmp(scenario,"blackwell-workspace")==0;
+    const size_t expected=automatic?large:base;
+    require(openmx_gemmul8DWorkspaceSize(3072,3072,3072)==expected,"shape/architecture estimate");
+    require(openmx_gemmul8DWorkspaceSize(3071,3071,3071)==base,"small real GEMM uses base cap");
+    require(openmx_gemmul8DWorkspaceSize(3072,3072,3071)==base,"rectangular GEMM uses base cap");
+    require(openmx_gemmul8ZWorkspaceSize(6144,6144,6144)==base,"complex GEMM uses base cap");
+    mock_device=0;
+    require(openmx_gemmul8DWorkspaceSize(6144,6144,6144)==0,"A100 still prefers native");
+    mock_device=1;
+    double a=1,b=2,c=0,one=1,zero=0;
+    const auto run=[&](size_t required) {
+        const int before=mock_ozaki;
+        require(openmx_gemmul8Dgemm(nullptr,CUBLAS_OP_N,CUBLAS_OP_N,4096,4096,4096,
+            &one,&a,4096,&b,4096,&zero,&c,4096)==0 && mock_ozaki==before+1,"GEMMul8 dispatched");
+        require(mock_last_allocation==required && mock_worklimit==required,"device and library agree on cap");
+        openmx_gemmul8ReleaseWorkspaces();
+    };
+    run(expected);
+    if (automatic) {
+        mock_free=2048*kMiB;run(base); // leaves the 1536 MiB reserve only with the smaller buffer
+        mock_free=mock_total;
+        setenv("OPENMX_GEMMUL8_MAX_WORKSPACE_PERCENT","4",1);run(base);
+        unsetenv("OPENMX_GEMMUL8_MAX_WORKSPACE_PERCENT");
+        mock_max_allocation=base;run(base); // allocation races still keep GEMMul8 active
+    }
+    std::puts("PASS: Blackwell workspace estimate, GPU sharing, overrides and retry");
+}
 int main(int argc,char **argv) {
     if(argc>1) {
+        if(std::strstr(argv[1],"-workspace")) {blackwell_workspace(argv[1]);return 0;}
         if(std::strcmp(argv[1],"cooperative-forward")==0) {
             double a[64]={},b[64]={},c[64]={};cuDoubleComplex za[64]={},zb[64]={},zc[64]={};
             clear_env();cooperative_enabled=true;openmx_gemmul8SetEnabled(-1);
@@ -232,5 +271,6 @@ with tempfile.TemporaryDirectory(prefix="openmx-gemmul8-policy-") as tmp:
     environment = {key: value for key, value in os.environ.items()
                    if not key.startswith(("OPENMX_", "GEMMUL8_"))}
     subprocess.run([str(binary)], env=environment, check=True)
-    for case in ("owner-budget", "forward-fp64", "forward-gemmul8", "forward-blocked", "cooperative-forward"):
+    for case in ("owner-budget", "forward-fp64", "forward-gemmul8", "forward-blocked", "cooperative-forward",
+                 "blackwell-workspace", "shared-workspace", "explicit-workspace"):
         subprocess.run([str(binary), case], env=environment, check=True)

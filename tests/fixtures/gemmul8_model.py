@@ -27,6 +27,7 @@ inline int mock_sms[8]={108,128,0,108,132,56,14,108};
 inline int mock_device_error=0, mock_attr_error=0, mock_allocs=0, mock_memqueries=0;
 inline int mock_memerror=0,mock_memfail_at=0,mock_allocerror=0;
 inline size_t mock_free=size_t(40)<<30,mock_total=size_t(40)<<30;
+inline size_t mock_max_allocation=static_cast<size_t>(-1),mock_last_allocation=0;
 inline int cudaGetDevice(int *d) {*d=mock_device;return mock_device_error;}
 inline int cudaSetDevice(int d) {mock_device=d;return 0;}
 inline int cudaDeviceGetAttribute(int *v,int attr,int d) {
@@ -39,8 +40,9 @@ inline const char *cudaGetErrorString(int) {return "mock";}
 inline int cudaMemGetInfo(size_t *f,size_t *t) {
     ++mock_memqueries;*f=mock_free;*t=mock_total;return mock_memerror || mock_memfail_at==mock_memqueries;
 }
-inline int cudaMalloc(void **p,size_t) {
-    ++mock_allocs;*p=mock_allocerror?nullptr:std::malloc(64);return *p?0:1;
+inline int cudaMalloc(void **p,size_t size) {
+    ++mock_allocs;mock_last_allocation=size;
+    *p=mock_allocerror || size>mock_max_allocation ? nullptr : std::malloc(64);return *p?0:cudaErrorMemoryAllocation;
 }
 inline int cudaFree(void *p) {std::free(p);return 0;}
 inline int cudaStreamSynchronize(void *) {return 0;}
@@ -80,11 +82,11 @@ inline cublasStatus_t cublasZgemm(cublasHandle_t,cublasOperation_t ta,cublasOper
 #pragma once
 #include <vector>
 inline int mock_ozaki=0, mock_workqueries=0, mock_workconfig=0,mock_capped=0;
-inline size_t mock_worksize=64;
+inline size_t mock_worksize=64,mock_worklimit=0;
 namespace gemmul8 {
 enum class Backend {INT8};
-inline void set_memory_saving(void *,bool capped) {++mock_workconfig;if(capped)++mock_capped;}
-inline void set_max_worksize(void *,size_t) {++mock_workconfig;}
+inline void set_memory_saving(void *,bool capped) {++mock_workconfig;mock_worklimit=0;if(capped)++mock_capped;}
+inline void set_max_worksize(void *,size_t limit) {++mock_workconfig;mock_worklimit=limit;}
 template<bool,Backend> size_t workSize(size_t,size_t,size_t,int,bool=false,bool=false,
     size_t *a=nullptr,size_t *b=nullptr,bool=false) {
     ++mock_workqueries;if(a)*a=16;if(b)*b=16;return mock_worksize;

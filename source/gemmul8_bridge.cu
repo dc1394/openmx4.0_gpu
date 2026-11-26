@@ -8,6 +8,7 @@
    standalone probe builds (tests/run_gemmul8_smoke.sh and friends) link
    this file without that object and take the plain runtime call. */
 extern "C" __attribute__((weak)) cudaError_t OpenMX_GpuMemGetInfo(size_t *free_bytes, size_t *total_bytes);
+extern "C" __attribute__((weak)) int openmx_gpu_local_size_noncollective(void);
 static inline cudaError_t device_mem_get_info(size_t *free_bytes, size_t *total_bytes)
 {
     return OpenMX_GpuMemGetInfo != nullptr ? OpenMX_GpuMemGetInfo(free_bytes, total_bytes)
@@ -49,6 +50,8 @@ constexpr unsigned kDefaultMaxWorkspacePercent = 30u;
 constexpr size_t   kMiB = 1024u * 1024u;
 constexpr unsigned kDefaultMemorySavingMiB = 256u;
 constexpr size_t   kMinMemorySavingBytes = size_t(256) * kMiB;
+constexpr size_t   kBlackwellLargeGemmCap = size_t(1024) * kMiB;
+constexpr size_t   kBlackwellLargeGemmMinN = 3072;
 constexpr unsigned kDefaultA100ForwardMinN = 6144u;
 
 struct WorkspaceKey {
@@ -223,31 +226,39 @@ bool a100_large_forward_candidate(int m, int n, int k)
 /* Ported from the AMD bridge: keep Ozaki-II enabled for large matrices by
    letting GEMMul8 block within a per-rank workspace cap.  Zero restores the
    uncapped policy.  Smaller nonzero caps are raised to a viable block size. */
-size_t memory_saving_cap_bytes()
+struct WorkspaceCap {
+    size_t bytes;
+    bool automatic;
+};
+
+const WorkspaceCap &memory_saving_cap()
 {
-    static const size_t cap = [] {
-        size_t bytes = env_mib(OPENMX_ENV_GEMMUL8_MAX_WORKSPACE_MB, OPENMX_ENV_EXT_GEMMUL8_MAX_WORKSPACE_MB,
-                               kDefaultMemorySavingMiB);
+    static const WorkspaceCap cap = [] {
+        constexpr unsigned long long unset = static_cast<unsigned long long>(UINT_MAX) + 1;
+        const auto legacy = openmx_env_ulong_at(OPENMX_ENV_EXT_GEMMUL8_MAX_WORKSPACE_MB, unset);
+        const auto value = openmx_env_ulong_at(OPENMX_ENV_GEMMUL8_MAX_WORKSPACE_MB, unset);
+        const bool automatic = value > UINT_MAX && legacy > UINT_MAX;
+        unsigned long long mib = legacy <= UINT_MAX ? legacy : kDefaultMemorySavingMiB;
+        if (value <= UINT_MAX) mib = value;
+        size_t bytes = static_cast<size_t>(mib) * kMiB;
         if (bytes != 0 && bytes < kMinMemorySavingBytes) {
             std::fprintf(stderr,
                          "openmx_gemmul8: workspace cap below %zu MiB; using %zu MiB.\n",
                          kMinMemorySavingBytes / kMiB, kMinMemorySavingBytes / kMiB);
             bytes = kMinMemorySavingBytes;
         }
-        return bytes;
+        return WorkspaceCap{bytes, automatic};
     }();
     return cap;
 }
 
-size_t capped_workspace_size(size_t required)
+size_t capped_workspace_size(size_t required, size_t cap)
 {
-    const size_t cap = memory_saving_cap_bytes();
     return cap != 0 && cap < required ? cap : required;
 }
 
-void apply_memory_saving(cublasHandle_t handle)
+void apply_memory_saving(cublasHandle_t handle, size_t cap)
 {
-    const size_t cap = memory_saving_cap_bytes();
     gemmul8::set_memory_saving(handle, cap != 0);
     if (cap != 0) {
         gemmul8::set_max_worksize(handle, cap);
@@ -256,19 +267,44 @@ void apply_memory_saving(cublasHandle_t handle)
 
 /* Each MPI process owns a workspace.  Budget the aggregate allocation on a
    shared GPU, rounding up for uneven rank placement. */
-unsigned ranks_sharing_gpu()
+struct WorkspaceRanks {
+    unsigned local;
+    unsigned per_device;
+};
+
+const WorkspaceRanks &workspace_ranks()
 {
-    static const unsigned ranks = [] {
+    static const WorkspaceRanks ranks = [] {
         unsigned local_size = env_u32(OPENMX_ENV_GEMMUL8_LOCAL_RANKS, 0u);
+        if (local_size == 0u && openmx_gpu_local_size_noncollective != nullptr) {
+            const int size = openmx_gpu_local_size_noncollective();
+            if (size > 0) local_size = static_cast<unsigned>(size);
+        }
         if (local_size == 0u) local_size = env_u32(OPENMX_ENV_EXT_OMPI_COMM_WORLD_LOCAL_SIZE, 0u);
         if (local_size == 0u) local_size = env_u32(OPENMX_ENV_EXT_SLURM_NTASKS_PER_NODE, 0u);
-        if (local_size == 0u) local_size = 1u;
+        if (local_size <= 1u) return WorkspaceRanks{local_size, 1u};
         int count = 0;
         if (cudaGetDeviceCount(&count) != cudaSuccess || count < 1) count = 1;
         const unsigned devices = static_cast<unsigned>(count);
-        return local_size / devices + (local_size % devices != 0u);
+        return WorkspaceRanks{local_size, local_size / devices + (local_size % devices != 0u)};
     }();
     return ranks;
+}
+
+size_t real_workspace_cap(size_t m, size_t n, size_t k, unsigned num_moduli, bool fastmode, int device = -1)
+{
+    const auto &setting = memory_saving_cap();
+    // Timed on a dedicated RTX 5080 with the default real Ozaki-II arithmetic.
+    if (!setting.automatic || m < kBlackwellLargeGemmMinN || m != n || m != k ||
+        num_moduli != kDefaultNumModuli || fastmode || workspace_ranks().local != 1)
+        return setting.bytes;
+    if (device < 0 && cudaGetDevice(&device) != cudaSuccess) return setting.bytes;
+    int major = 0, minor = 0, ratio = 0;
+    if (cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, device) == cudaSuccess && major == 12 &&
+        cudaDeviceGetAttribute(&minor, cudaDevAttrComputeCapabilityMinor, device) == cudaSuccess && minor == 0 &&
+        cudaDeviceGetAttribute(&ratio, cudaDevAttrSingleToDoublePrecisionPerfRatio, device) == cudaSuccess && ratio >= 8)
+        return kBlackwellLargeGemmCap;
+    return setting.bytes;
 }
 
 unsigned gemmul8_num_moduli(int openmx_env, int gemmul8_env)
@@ -321,13 +357,14 @@ try {
         return CUBLAS_STATUS_INTERNAL_ERROR;
     }
 
-    const size_t required = capped_workspace_size(gemmul8::workSize<is_complex, gemmul8::Backend::INT8>(
-        m, n, k, num_moduli, false, false, nullptr, nullptr, fastmode));
+    const size_t full_size = gemmul8::workSize<is_complex, gemmul8::Backend::INT8>(
+        m, n, k, num_moduli, false, false, nullptr, nullptr, fastmode);
+    const size_t cap = memory_saving_cap().bytes;
+    const size_t preferred = is_complex ? cap : real_workspace_cap(m, n, k, num_moduli, fastmode, device);
     WorkspaceKey key      = {device, stream};
-    const unsigned ranks_per_gpu = ranks_sharing_gpu();
+    const unsigned ranks_per_gpu = workspace_ranks().per_device;
 
     if (report != nullptr) {
-        report->required_bytes = required;
         report->reserve_bytes =
             env_mib(OPENMX_ENV_GEMMUL8_MIN_FREE_AFTER_MB, OPENMX_ENV_EXT_GEMMUL8_MIN_FREE_AFTER_MB, kDefaultMinFreeAfterMiB);
         report->max_workspace_percent = env_percent(OPENMX_ENV_GEMMUL8_MAX_WORKSPACE_PERCENT,
@@ -339,63 +376,57 @@ try {
     std::lock_guard<std::mutex> lock(g_workspace_mutex);
     Workspace                  &workspace = g_workspaces[key];
 
-    size_t free_bytes  = 0;
-    size_t total_bytes = 0;
-    cuda_status        = device_mem_get_info(&free_bytes, &total_bytes);
-    if (cuda_status == cudaSuccess && report != nullptr) {
-        report->free_bytes  = free_bytes;
-        report->total_bytes = total_bytes;
-    }
-
-    if (cuda_status == cudaSuccess &&
-        workspace_exceeds_fraction(required, total_bytes, report != nullptr ? report->max_workspace_percent : 0u,
-                                   ranks_per_gpu)) {
-        if (report != nullptr) {
-            report->reason = "workspace fraction policy";
-        }
-        if (release_workspace(workspace) != cudaSuccess) {
-            return CUBLAS_STATUS_INTERNAL_ERROR;
-        }
-        return CUBLAS_STATUS_ALLOC_FAILED;
-    }
-
-    if (workspace.size() < required) {
-        cuda_status = release_workspace(workspace);
-        if (cuda_status != cudaSuccess) {
-            return CUBLAS_STATUS_INTERNAL_ERROR;
-        }
-
-        cuda_status = device_mem_get_info(&free_bytes, &total_bytes);
-        if (cuda_status == cudaSuccess && report != nullptr) {
-            report->free_bytes  = free_bytes;
+    size_t free_bytes = 0, total_bytes = 0;
+    const auto read_memory = [&] {
+        const auto status = device_mem_get_info(&free_bytes, &total_bytes);
+        if (status == cudaSuccess && report != nullptr) {
+            report->free_bytes = free_bytes;
             report->total_bytes = total_bytes;
         }
-    }
-
-    if (cuda_status == cudaSuccess &&
-        free_after_workspace_is_too_low(free_bytes, workspace.size(), required,
-                                        report != nullptr ? report->reserve_bytes : 0u)) {
-        if (report != nullptr) {
-            report->reason = "free memory reserve policy";
+        return status;
+    };
+    const unsigned percent = report != nullptr ? report->max_workspace_percent : 0u;
+    const size_t reserve = report != nullptr ? report->reserve_bytes : 0u;
+    for (size_t limit = full_size > cap ? preferred : cap;; limit = cap) {
+        const bool elevated = limit != cap;
+        const size_t required = capped_workspace_size(full_size, limit);
+        if (report != nullptr) report->required_bytes = required;
+        cuda_status = read_memory();
+        if (cuda_status != cudaSuccess && elevated) continue;
+        if (cuda_status == cudaSuccess && workspace_exceeds_fraction(required, total_bytes, percent, ranks_per_gpu)) {
+            if (report != nullptr) report->reason = "workspace fraction policy";
+            if (elevated) continue;
+            break;
         }
-        if (release_workspace(workspace) != cudaSuccess) {
-            return CUBLAS_STATUS_INTERNAL_ERROR;
+        if (elevated && free_after_workspace_is_too_low(free_bytes, workspace.size(), required, reserve))
+            continue;
+        if (workspace.size() < required && workspace.size() != 0) {
+            if (release_workspace(workspace) != cudaSuccess) return CUBLAS_STATUS_INTERNAL_ERROR;
+            cuda_status = read_memory();
+            if (cuda_status != cudaSuccess && elevated) continue;
         }
-        return CUBLAS_STATUS_ALLOC_FAILED;
-    }
-
-    if (workspace.size() < required) {
-        cuda_status = workspace.allocate_status(required);
-        if (cuda_status != cudaSuccess) {
-            if (report != nullptr) {
-                report->reason = "cudaMalloc failure";
+        if (cuda_status == cudaSuccess && free_after_workspace_is_too_low(free_bytes, workspace.size(), required, reserve)) {
+            if (report != nullptr) report->reason = "free memory reserve policy";
+            if (elevated) continue;
+            break;
+        }
+        if (workspace.size() < required) {
+            cuda_status = workspace.allocate_status(required);
+            if (cuda_status != cudaSuccess) {
+                if (report != nullptr) report->reason = "cudaMalloc failure";
+                if (!elevated) break;
+                if (cuda_status != cudaErrorMemoryAllocation) return CUBLAS_STATUS_INTERNAL_ERROR;
+                (void)cudaGetLastError();
+                continue;
             }
-            return CUBLAS_STATUS_ALLOC_FAILED;
         }
+        apply_memory_saving(handle, limit);
+        *work = workspace.get();
+        return CUBLAS_STATUS_SUCCESS;
     }
 
-    *work = workspace.get();
-    return CUBLAS_STATUS_SUCCESS;
+    if (release_workspace(workspace) != cudaSuccess) return CUBLAS_STATUS_INTERNAL_ERROR;
+    return CUBLAS_STATUS_ALLOC_FAILED;
 } catch (const std::bad_alloc &) {
     return CUBLAS_STATUS_ALLOC_FAILED;
 }
@@ -484,8 +515,6 @@ cublasStatus_t general_dgemm(cublasHandle_t handle, cublasOperation_t transa, cu
     const bool fastmode = openmx_env_flag_at(OPENMX_ENV_GEMMUL8_FASTMODE_D, openmx_env_flag_at(OPENMX_ENV_EXT_GEMMUL8_FASTMODE_D, false));
     void *work = nullptr;
     WorkspaceReport report;
-    apply_memory_saving(handle);
-
     cublasStatus_t status =
         ensure_workspace<false>(handle, static_cast<size_t>(m), static_cast<size_t>(n), static_cast<size_t>(k),
                                 num_moduli, fastmode, &work, &report);
@@ -567,7 +596,7 @@ extern "C" void openmx_gemmul8ReleaseWorkspaces(void)
    products stays, and without a cap nothing is freed. */
 extern "C" void openmx_gemmul8TrimWorkspaces(void)
 {
-    const size_t                cap = memory_saving_cap_bytes();
+    const size_t                cap = memory_saving_cap().bytes;
     std::lock_guard<std::mutex> lock(g_workspace_mutex);
 
     if (cap == 0) return;
@@ -617,7 +646,7 @@ extern "C" size_t openmx_gemmul8ZWorkspaceSize(int m, int n, int k)
 
     return capped_workspace_size(gemmul8::workSize<true, gemmul8::Backend::INT8>(
         static_cast<size_t>(m), static_cast<size_t>(n), static_cast<size_t>(k), num_moduli,
-        false, false, nullptr, nullptr, fastmode));
+        false, false, nullptr, nullptr, fastmode), memory_saving_cap().bytes);
 }
 
 extern "C" size_t openmx_gemmul8DWorkspaceSize(int m, int n, int k)
@@ -632,7 +661,7 @@ extern "C" size_t openmx_gemmul8DWorkspaceSize(int m, int n, int k)
 
     return capped_workspace_size(gemmul8::workSize<false, gemmul8::Backend::INT8>(
         static_cast<size_t>(m), static_cast<size_t>(n), static_cast<size_t>(k), num_moduli,
-        false, false, nullptr, nullptr, fastmode));
+        false, false, nullptr, nullptr, fastmode), real_workspace_cap(m, n, k, num_moduli, fastmode));
 }
 
 namespace {
@@ -658,8 +687,6 @@ cublasStatus_t general_zgemm(cublasHandle_t handle, cublasOperation_t transa, cu
     const bool fastmode = openmx_env_flag_at(OPENMX_ENV_GEMMUL8_FASTMODE_Z, openmx_env_flag_at(OPENMX_ENV_EXT_GEMMUL8_FASTMODE_Z, false));
     void *work = nullptr;
     WorkspaceReport report;
-    apply_memory_saving(handle);
-
     cublasStatus_t status =
         ensure_workspace<true>(handle, static_cast<size_t>(m), static_cast<size_t>(n), static_cast<size_t>(k),
                                num_moduli, fastmode, &work, &report);
@@ -850,7 +877,7 @@ try {
            the existing full-workspace free/reserve budget by default;
            honor an explicit percentage cap with its existing rank share. */
         if (device_mem_get_info(&free_bytes, &total_bytes) != cudaSuccess || total_bytes == 0 ||
-            (percent != 0 && workspace_exceeds_fraction(required, total_bytes, percent, ranks_sharing_gpu())) ||
+            (percent != 0 && workspace_exceeds_fraction(required, total_bytes, percent, workspace_ranks().per_device)) ||
             free_after_workspace_is_too_low(free_bytes, workspace.size(), required, reserve)) {
             if (release_workspace(workspace) != cudaSuccess) return CUBLAS_STATUS_INTERNAL_ERROR;
             return CUBLAS_STATUS_ALLOC_FAILED;
@@ -1069,7 +1096,6 @@ cublasStatus_t forward_gemm(cublasHandle_t handle, bool x_is_left, cublasOperati
         } else if (!done) {
             WorkspaceReport report;
 
-            apply_memory_saving(handle);
             status = ensure_workspace<is_complex>(handle, sm, sn, sk, num_moduli, fastmode, &work, &report);
             if (status == CUBLAS_STATUS_ALLOC_FAILED) {
                 log_workspace_fallback_once<is_complex>(report);

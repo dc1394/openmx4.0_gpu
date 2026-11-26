@@ -20,6 +20,8 @@
 #include "openmx_stdout_level.h"
 #include "openmx_gpu_arch_policy.h"
 
+extern "C" __attribute__((weak)) int openmx_gpu_local_size_noncollective(void);
+
 namespace {
 
 constexpr unsigned kDefaultNumModuli = 15u;
@@ -201,28 +203,25 @@ unsigned gemmul8_num_moduli(int openmx_env, int gemmul8_env)
 /* Number of MPI ranks sharing this GPU. The workspace budget must be divided by
    this: each rank checks free memory independently, so 32 ranks can each "see"
    room for a 1-GiB workspace and collectively exhaust the device, after which
-   hipBLASLt's lazy initialization inside GEMMul8 dies with out-of-memory. */
+   hipBLASLt's lazy initialization inside GEMMul8 dies with out-of-memory.
+   Round up so an uneven rank placement still leaves enough room. */
 unsigned ranks_sharing_gpu()
 {
-    unsigned local_size = env_u32(OPENMX_ENV_GEMMUL8_LOCAL_RANKS, 0u);
-
-    if (local_size == 0u) {
-        local_size = env_u32(OPENMX_ENV_EXT_OMPI_COMM_WORLD_LOCAL_SIZE, 0u);
-    }
-    if (local_size == 0u) {
-        local_size = env_u32(OPENMX_ENV_EXT_SLURM_NTASKS_PER_NODE, 0u);
-    }
-    if (local_size == 0u) {
-        local_size = 1u;
-    }
-
-    int device_count = 0;
-    if (hipGetDeviceCount(&device_count) != hipSuccess || device_count < 1) {
-        device_count = 1;
-    }
-
-    unsigned ranks = local_size / static_cast<unsigned>(device_count);
-    return (ranks == 0u) ? 1u : ranks;
+    static const unsigned ranks = [] {
+        unsigned local_size = env_u32(OPENMX_ENV_GEMMUL8_LOCAL_RANKS, 0u);
+        if (local_size == 0u && openmx_gpu_local_size_noncollective != nullptr) {
+            const int size = openmx_gpu_local_size_noncollective();
+            if (size > 0) local_size = static_cast<unsigned>(size);
+        }
+        if (local_size == 0u) local_size = env_u32(OPENMX_ENV_EXT_OMPI_COMM_WORLD_LOCAL_SIZE, 0u);
+        if (local_size == 0u) local_size = env_u32(OPENMX_ENV_EXT_SLURM_NTASKS_PER_NODE, 0u);
+        if (local_size <= 1u) return 1u;
+        int count = 0;
+        if (hipGetDeviceCount(&count) != hipSuccess || count < 1) count = 1;
+        const unsigned devices = static_cast<unsigned>(count);
+        return local_size / devices + (local_size % devices != 0u);
+    }();
+    return ranks;
 }
 
 hipError_t release_workspace(Workspace &workspace)

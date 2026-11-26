@@ -798,7 +798,7 @@ recovery without a visible GPU.
 ### Forward transform of the collinear cluster solver
 The two products of the orthogonalization transform, `B = H X` and `X^T B`, have entry points of their own (`openmx_gemmul8DgemmFixed`), because `X` stays fixed during the SCF.
 
-- **Workspace.** When these products select GEMMul8, they take its full workspace whenever the device has room; every other GEMMul8 GEMM keeps the capped, blocked workspace (`OPENMX_GEMMUL8_MAX_WORKSPACE_MB`, 256 MiB). Under the cap each block rescales its operands. The workspace is returned right after the transform, so the eigensolver finds the memory it found before. For an explicit GEMMul8 selection or the GeForce default, a workspace that does not fit falls back to the capped path at the same precision, and `OPENMX_GEMMUL8_FORWARD_UNBLOCKED=0` restores that capped path. Under the A100 automatic policy, both conditions select native FP64 instead. As before, `OPENMX_GEMMUL8_FORWARD_REUSE=1` implies unblocked execution and takes precedence over `OPENMX_GEMMUL8_FORWARD_UNBLOCKED=0`. Below the cap the retained GEMMul8 results are bit-identical to the previous ones.
+- **Workspace.** When these products select GEMMul8, they take its full workspace whenever the device has room. Other GEMMul8 products use the blocked workspace policy described below. Under the cap each block rescales its operands. The workspace is returned right after the transform, so the eigensolver finds the memory it found before. For an explicit GEMMul8 selection or the GeForce default, a workspace that does not fit falls back to the capped path at the same precision, and `OPENMX_GEMMUL8_FORWARD_UNBLOCKED=0` restores that capped path. Under the A100 automatic policy, both conditions select native FP64 instead. As before, `OPENMX_GEMMUL8_FORWARD_REUSE=1` implies unblocked execution and takes precedence over `OPENMX_GEMMUL8_FORWARD_UNBLOCKED=0`. Below the cap the retained GEMMul8 results are bit-identical to the previous ones.
 - **Precision stage**, for measurements: `OPENMX_GEMMUL8_FORWARD=fp64|gemmul8` selects plain cuBLAS FP64 or GEMMul8 with `OPENMX_GEMMUL8_FORWARD_NUM_MOD` moduli and `OPENMX_GEMMUL8_FORWARD_FASTMODE`; `OPENMX_GEMMUL8_FORWARD_REUSE=1` retains the prepared `X` across SCF steps (exact with fast scaling only); `OPENMX_GEMMUL8_FORWARD_TIMING=1` reports calls, preparations, reuses and wall time, and `OPENMX_CLUSTER_PROFILE=1` the phases of each dense solve.
 - **Tools.** `tools/measure_gemm_probe.sh` (matrix-level times, phases and errors against a double-double reference), `tools/run_forward_variants.sh` (the same input under several settings, with a comparison table), and the checks `tests/run_gemmul8_forward_smoke.sh`. `OPENMX_GEMMUL8_TIMING=1` counts and times products through the general GEMM entry points and reports the totals per rank at the end of each SCF. Successful full-workspace fixed transforms, including large automatic A100 transforms, use the separate `OPENMX_GEMMUL8_FORWARD_TIMING=1` counters.
 
@@ -1035,9 +1035,13 @@ GEMMul8 is pinned to upstream **v3.5.4**
 with `git submodule update --init --recursive` after updating the repository.
 The update includes upstream's large-column kernel-launch fixes and FP8
 workspace/reduction improvements; OpenMX continues to instantiate the INT8
-backend for double and complex-double products. The adapter enables memory-saving
-blocking with a 256 MiB default target (`OPENMX_GEMMUL8_MAX_WORKSPACE_MB`),
-and divides the available-memory budget between ranks sharing each GPU.
+backend for double and complex-double products. The adapter divides the
+available-memory budget between ranks sharing each GPU. The blocked workspace
+defaults to 256 MiB. On CUDA sm_120 devices with weak native FP64, a single MPI
+rank per node can use up to 1 GiB for real square products of order 3072 or larger
+with the default Ozaki-II arithmetic. The bridge retries with 256 MiB under
+memory pressure. `OPENMX_GEMMUL8_MAX_WORKSPACE_MB` sets an explicit cap, with
+`0` selecting the full workspace.
 The ordinary CUDA, Pegasus and HIP Makefiles pin the same release; Kugui
 inherits the ordinary CUDA pin. See the [update validation](docs/GEMMUL8_3.5.4_VALIDATION.md)
 for numerical and compiler checks.
