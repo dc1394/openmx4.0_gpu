@@ -358,6 +358,10 @@ if(BUILD_TESTING)
     set_tests_properties(vna-exchange-mpi PROPERTIES
       ENVIRONMENT "OPENMX_CORE_LIBRARY=$<TARGET_FILE:openmx_core>;MPICC=${OPENMX_TEST_MPICC}"
       TIMEOUT 380 PROCESSORS 4)
+    add_test(NAME band-kpath-packing-mpi COMMAND "${Python3_EXECUTABLE}"
+      "${CMAKE_SOURCE_DIR}/tests/run_band_kpath_mpi.py")
+    set_tests_properties(band-kpath-packing-mpi PROPERTIES
+      ENVIRONMENT "MPICC=${OPENMX_TEST_MPICC}" LABELS "unit;mpi" TIMEOUT 90 PROCESSORS 4)
     add_test(NAME reciprocal-archive-mpi COMMAND "${Python3_EXECUTABLE}"
       "${CMAKE_SOURCE_DIR}/tests/run_reciprocal_archive_mpi.py")
     set_tests_properties(reciprocal-archive-mpi PROPERTIES

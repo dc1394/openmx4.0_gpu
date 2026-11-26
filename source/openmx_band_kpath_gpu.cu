@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdio>
+#include <cstring>
 #include <limits>
 #include <new>
 #include <tuple>
@@ -327,15 +328,16 @@ struct NativeEigensolver {
 
 /* Native buffers remain resident for all k-points assigned to this GPU. */
 struct Workspace {
-    DeviceBuffer<DeviceBlock> blocks;
-    DeviceBuffer<BlockGroup> groups;
-    DeviceBuffer<LatticeTranslation> translations;
+    DeviceBuffer<unsigned char> metadata;
+    const DeviceBlock *blocks = nullptr;
+    const BlockGroup *groups = nullptr;
+    const LatticeTranslation *translations = nullptr;
     DeviceBuffer<double> values, overlap_values;
     DeviceBuffer<Z> phases, s, h, product;
     DeviceBuffer<unsigned char> discard;
     OpenMXBlasHandle blas = nullptr;
     NativeEigensolver solver;
-    int group_count = 0;
+    int group_count = 0, translation_count = 0;
 
     ~Workspace()
     {
@@ -384,20 +386,29 @@ struct Workspace {
             const int shift = (int)(std::lower_bound(shifts.begin(), shifts.end(), t) - shifts.begin());
             packed.push_back({block.row, block.col, block.rows, block.cols, block.value_offset, shift});
         }
-        const size_t data = (size_t)m.value_count * sizeof(double) + packed.size() * sizeof(DeviceBlock) +
-                            spans.size() * sizeof(BlockGroup) + shifts.size() * (sizeof(LatticeTranslation) + sizeof(Z));
+        translation_count = (int)shifts.size();
+        const size_t block_bytes = packed.size() * sizeof(DeviceBlock);
+        const size_t group_bytes = spans.size() * sizeof(BlockGroup);
+        const size_t translation_bytes = shifts.size() * sizeof(LatticeTranslation);
+        const size_t metadata_bytes = block_bytes + group_bytes + translation_bytes;
+        const size_t data = (size_t)m.value_count * sizeof(double) + metadata_bytes + shifts.size() * sizeof(Z);
         if (free - dense - solver_room - device_reserve < data) return false;
 
-        return blocks.allocate(m.block_count) && groups.allocate(group_count) && translations.allocate(shifts.size()) &&
-               values.allocate(m.value_count) && phases.allocate(shifts.size()) &&
-               s.allocate(n2) && h.allocate(order2) && product.allocate(order2) &&
-               overlap_values.allocate(m.order) && discard.allocate(m.order) &&
-               OpenMXBlasCreate(&blas) == OPENMX_BLAS_SUCCESS &&
-               OpenMXGpuMemcpy(blocks.get(), packed.data(), packed.size() * sizeof(packed[0]),
-                               OPENMX_GPU_COPY_HOST_TO_DEVICE) == OPENMX_GPU_SUCCESS &&
-               OpenMXGpuMemcpy(translations.get(), shifts.data(), shifts.size() * sizeof(shifts[0]),
-                               OPENMX_GPU_COPY_HOST_TO_DEVICE) == OPENMX_GPU_SUCCESS &&
-               OpenMXGpuMemcpy(groups.get(), spans.data(), groups.size() * sizeof(spans[0]),
+        if (!metadata.allocate(metadata_bytes) || !values.allocate(m.value_count) || !phases.allocate(shifts.size()) ||
+            !s.allocate(n2) || !h.allocate(order2) || !product.allocate(order2) ||
+            !overlap_values.allocate(m.order) || !discard.allocate(m.order) ||
+            OpenMXBlasCreate(&blas) != OPENMX_BLAS_SUCCESS) return false;
+
+        static_assert(alignof(DeviceBlock) == alignof(BlockGroup) && alignof(BlockGroup) == alignof(LatticeTranslation));
+        std::vector<unsigned char> host_metadata(metadata_bytes);
+        std::memcpy(host_metadata.data(), packed.data(), block_bytes);
+        std::memcpy(host_metadata.data() + block_bytes, spans.data(), group_bytes);
+        std::memcpy(host_metadata.data() + block_bytes + group_bytes, shifts.data(), translation_bytes);
+        blocks = reinterpret_cast<const DeviceBlock *>(metadata.get());
+        groups = reinterpret_cast<const BlockGroup *>(metadata.get() + block_bytes);
+        translations = reinterpret_cast<const LatticeTranslation *>(metadata.get() + block_bytes + group_bytes);
+
+        return OpenMXGpuMemcpy(metadata.get(), host_metadata.data(), metadata_bytes,
                                OPENMX_GPU_COPY_HOST_TO_DEVICE) == OPENMX_GPU_SUCCESS &&
                OpenMXGpuMemcpy(values.get(), m.values, values.size() * sizeof(double),
                                OPENMX_GPU_COPY_HOST_TO_DEVICE) == OPENMX_GPU_SUCCESS;
@@ -406,8 +417,8 @@ struct Workspace {
     bool phase_rows(OpenMXKPathPoint point, int count, const OpenMXKPathPoint *batch, Z *output,
                     OpenMXGpuStream stream = nullptr) const
     {
-        const dim3 grid((translations.size() + threads - 1) / threads, count);
-        bloch_phases<<<grid, threads, 0, stream>>>((int)translations.size(), translations.get(), point, batch, output);
+        const dim3 grid(((size_t)translation_count + threads - 1) / threads, count);
+        bloch_phases<<<grid, threads, 0, stream>>>(translation_count, translations, point, batch, output);
         return OpenMXGpuGetLastError() == OPENMX_GPU_SUCCESS;
     }
 
@@ -420,8 +431,8 @@ struct Workspace {
         const int width = m.noncollinear ? (m.imaginary_diagonals ? 7 : 5) :
                           (m.lno ? 2 * m.spin_channels : 1 + m.spin_channels);
         assemble<<<dim3(group_count, count), threads, 0, stream>>>(m.order, order, width, spin, m.spin_channels,
-            m.lno, m.noncollinear, m.imaginary_diagonals, (int)translations.size(), groups.get(),
-            blocks.get(), values.get(), phase, overlap, hamiltonian);
+            m.lno, m.noncollinear, m.imaginary_diagonals, translation_count, groups,
+            blocks, values.get(), phase, overlap, hamiltonian);
         return OpenMXGpuGetLastError() == OPENMX_GPU_SUCCESS;
     }
 

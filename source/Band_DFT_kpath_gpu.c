@@ -15,6 +15,7 @@
 
 #include <limits.h>
 #include <math.h>
+#include <omp.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -24,6 +25,8 @@ typedef struct {
     const int *local_to_global, *global_to_halo, *species, *paos, *lnos, *neighbor_counts;
     int *const *neighbors, *const *cells, *const *translations;
 } KPathBasis;
+
+typedef struct { int blocks, values; } KPathLocalOffset;
 
 static int all_ranks_ok(MPI_Comm comm, int local)
 {
@@ -105,40 +108,60 @@ static void pack_values(const OpenMXKPathMatrices *m, const KPathBasis *basis, i
                         int rows, int cols, double *****h, double *****ih, double ****s,
                         const OpenMXLocalBasisViews *local_basis, double *values)
 {
+    const size_t width = (size_t)values_per_orbital_pair(m);
+    double **overlap = s[atom][neighbor];
     if (m->lno) {
         const int a = basis->local_to_global[atom], b = basis->neighbors[a][neighbor];
         const int local_b = basis->global_to_halo[b];
         const int paos_a = basis->paos[basis->species[a]], paos_b = basis->paos[basis->species[b]];
-        for (int j = 0; j < cols; ++j) {
+        for (int spin = 0; spin < m->spin_channels; ++spin) {
+            const double *left_rows = openmx_local_lno_row(local_basis, spin, atom);
+            const double *right_rows = openmx_local_lno_row(local_basis, spin, local_b);
+            double **block = h[spin][atom][neighbor];
             for (int i = 0; i < rows; ++i) {
-                for (int spin = 0; spin < m->spin_channels; ++spin) {
-                    const double *left = openmx_local_lno_row(local_basis, spin, atom) + i * paos_a;
-                    const double *right = openmx_local_lno_row(local_basis, spin, local_b) + j * paos_b;
-                    *values++ = lno_project(left, s[atom][neighbor], right, paos_a, paos_b);
-                    *values++ = lno_project(left, h[spin][atom][neighbor], right, paos_a, paos_b);
+                const double *left = left_rows + (size_t)i * paos_a;
+                for (int j = 0; j < cols; ++j) {
+                    const double *right = right_rows + (size_t)j * paos_b;
+                    double *v = values + ((size_t)j * rows + i) * width + 2 * spin;
+                    v[0] = lno_project(left, overlap, right, paos_a, paos_b);
+                    v[1] = lno_project(left, block, right, paos_a, paos_b);
                 }
             }
         }
         return;
     }
 
-    for (int j = 0; j < cols; ++j) {
+    double **up = h[0][atom][neighbor];
+    if (!m->noncollinear) {
+        double **down = m->spin_channels == 2 ? h[1][atom][neighbor] : NULL;
         for (int i = 0; i < rows; ++i) {
-            *values++ = s[atom][neighbor][i][j];
-            if (m->noncollinear) {
-                *values++ = h[0][atom][neighbor][i][j];
-                *values++ = h[1][atom][neighbor][i][j];
-                *values++ = h[2][atom][neighbor][i][j];
-                *values++ = h[3][atom][neighbor][i][j] +
-                            (m->imaginary_diagonals ? ih[2][atom][neighbor][i][j] : 0.0);
-                if (m->imaginary_diagonals) {
-                    *values++ = ih[0][atom][neighbor][i][j];
-                    *values++ = ih[1][atom][neighbor][i][j];
-                }
-            } else {
-                for (int spin = 0; spin < m->spin_channels; ++spin)
-                    *values++ = h[spin][atom][neighbor][i][j];
+            const double *sr = overlap[i], *ur = up[i], *dr = down ? down[i] : NULL;
+            for (int j = 0; j < cols; ++j) {
+                double *v = values + ((size_t)j * rows + i) * width;
+                v[0] = sr[j];
+                v[1] = ur[j];
+                if (dr) v[2] = dr[j];
             }
+        }
+        return;
+    }
+
+    double **down = h[1][atom][neighbor], **mix = h[2][atom][neighbor], **imag_mix = h[3][atom][neighbor];
+    double **imag_up = m->imaginary_diagonals ? ih[0][atom][neighbor] : NULL;
+    double **imag_down = m->imaginary_diagonals ? ih[1][atom][neighbor] : NULL;
+    double **imag_extra = m->imaginary_diagonals ? ih[2][atom][neighbor] : NULL;
+    for (int i = 0; i < rows; ++i) {
+        const double *sr = overlap[i], *ur = up[i], *dr = down[i], *mr = mix[i], *ir = imag_mix[i];
+        const double *iu = imag_up ? imag_up[i] : NULL, *id = imag_down ? imag_down[i] : NULL;
+        const double *ie = imag_extra ? imag_extra[i] : NULL;
+        for (int j = 0; j < cols; ++j) {
+            double *v = values + ((size_t)j * rows + i) * width;
+            v[0] = sr[j];
+            v[1] = ur[j];
+            v[2] = dr[j];
+            v[3] = mr[j];
+            v[4] = ir[j] + (ie ? ie[j] : 0.0);
+            if (ie) { v[5] = iu[j]; v[6] = id[j]; }
         }
     }
 }
@@ -154,35 +177,47 @@ static int orbital_offsets(const OpenMXKPathMatrices *m, const KPathBasis *basis
     return offset[basis->atoms + 1];
 }
 
-/* The counting pass uses the same iterator as packing. The real-space
-   payload is sent once per invocation, independent of the number of k-points. */
-static int local_blocks(const OpenMXKPathMatrices *m, const KPathBasis *basis, const int *offset,
-                        double *****h, double *****ih, double ****s,
-                        const OpenMXLocalBasisViews *local_basis,
-                        OpenMXKPathBlock *blocks, double *values, int counts[2])
+/* Per-atom prefixes let threads fill disjoint spans in the original order. */
+static int local_block_offsets(const OpenMXKPathMatrices *m, const KPathBasis *basis, const int *offset,
+                               KPathLocalOffset *prefix)
 {
     int count = 0, value_count = 0, width = values_per_orbital_pair(m);
     for (int atom = 1; atom <= basis->local_atoms; ++atom) {
+        prefix[atom - 1] = (KPathLocalOffset){count, value_count};
         const int a = basis->local_to_global[atom], rows = offset[a + 1] - offset[a];
         for (int neighbor = 0; neighbor <= basis->neighbor_counts[a]; ++neighbor) {
             const int b = basis->neighbors[a][neighbor], cols = offset[b + 1] - offset[b];
             if (rows == 0 || cols == 0) continue;
-            if (count >= INT_MAX / (int)sizeof(*blocks) ||
+            if (count >= INT_MAX / (int)sizeof(OpenMXKPathBlock) ||
                 (size_t)rows * cols > (size_t)(INT_MAX - value_count) / width) return 0;
-            if (blocks) {
-                const int *shift = basis->translations[basis->cells[a][neighbor]];
-                blocks[count] = (OpenMXKPathBlock){
-                    offset[a], offset[b], rows, cols, {shift[1], shift[2], shift[3]}, value_count
-                };
-                pack_values(m, basis, atom, neighbor, rows, cols, h, ih, s, local_basis, values + value_count);
-            }
             ++count;
             value_count += rows * cols * width;
         }
     }
-    counts[0] = count * (int)sizeof(*blocks);
-    counts[1] = value_count;
+    prefix[basis->local_atoms] = (KPathLocalOffset){count, value_count};
     return 1;
+}
+
+static void pack_local_blocks(const OpenMXKPathMatrices *m, const KPathBasis *basis, const int *offset,
+    const KPathLocalOffset *prefix, double *****h, double *****ih, double ****s,
+    const OpenMXLocalBasisViews *local_basis, OpenMXKPathBlock *blocks, double *values, int base_offset)
+{
+    const int width = values_per_orbital_pair(m);
+#pragma omp parallel for schedule(static) if (prefix[basis->local_atoms].values >= 65536 && omp_get_max_threads() > 1)
+    for (int atom = 1; atom <= basis->local_atoms; ++atom) {
+        const int a = basis->local_to_global[atom], rows = offset[a + 1] - offset[a];
+        int block = prefix[atom - 1].blocks, value = prefix[atom - 1].values;
+        for (int neighbor = 0; neighbor <= basis->neighbor_counts[a]; ++neighbor) {
+            const int b = basis->neighbors[a][neighbor], cols = offset[b + 1] - offset[b];
+            if (rows == 0 || cols == 0) continue;
+            const int *shift = basis->translations[basis->cells[a][neighbor]];
+            blocks[block++] = (OpenMXKPathBlock){
+                offset[a], offset[b], rows, cols, {shift[1], shift[2], shift[3]}, base_offset + value
+            };
+            pack_values(m, basis, atom, neighbor, rows, cols, h, ih, s, local_basis, values + value);
+            value += rows * cols * width;
+        }
+    }
 }
 
 #if OPENMX_GPU_CUDA
@@ -207,6 +242,7 @@ static void pack_exchange(const OpenMXExactExchangeOutputView *exchange,
                           OpenMXKPathBlock *blocks, double *values, int base_offset)
 {
     const int spins = exchange->spin_channels;
+#pragma omp parallel for schedule(static) if (exchange->block_offset[exchange->blocks] >= 65536 && omp_get_max_threads() > 1)
     for (long b = 0; b < exchange->blocks; ++b) {
         const int a = exchange->block_atoms[2 * b], c = exchange->block_atoms[2 * b + 1];
         const int row = exchange->first_orbital[a], col = exchange->first_orbital[c];
@@ -216,11 +252,13 @@ static void pack_exchange(const OpenMXExactExchangeOutputView *exchange,
         const size_t source = exchange->block_offset[b];
         const int target = base_offset + (int)(source * spins);
         blocks[b] = (OpenMXKPathBlock){row, col, rows, cols, {cell[0], cell[1], cell[2]}, target};
-        double *v = values + target;
-        for (int j = 0; j < cols; ++j)
+        for (int spin = 0; spin < spins; ++spin) {
+            const double *input = exchange->values[spin] + source;
+            double *output = values + target + spin;
             for (int i = 0; i < rows; ++i)
-                for (int spin = 0; spin < spins; ++spin)
-                    *v++ = exchange->values[spin][source + (size_t)i * cols + j];
+                for (int j = 0; j < cols; ++j)
+                    output[((size_t)j * rows + i) * spins] = input[(size_t)i * cols + j];
+        }
     }
 }
 #endif
@@ -298,6 +336,7 @@ int openmx_band_kpath_try_gpu(const OpenMXChemicalPotentials *chemical,
     MPI_Comm devices = MPI_COMM_NULL;
     OpenMXKPathPoint *points = NULL;
     int *output_to_unique = NULL, *offset = NULL, *sizes = NULL, *counts = NULL;
+    KPathLocalOffset *local_offsets = NULL;
     OpenMXKPathBlock *local = NULL, *blocks = NULL;
     double *local_values = NULL, *values = NULL, *local_eigen = NULL, *eigen = NULL;
     OpenMXKPathMatrices m = {0};
@@ -324,7 +363,8 @@ int openmx_band_kpath_try_gpu(const OpenMXChemicalPotentials *chemical,
     offset = malloc(((size_t)basis.atoms + 2) * sizeof(*offset));
     sizes = malloc((size_t)3 * ranks * sizeof(*sizes));
     counts = malloc((size_t)4 * ranks * sizeof(*counts));
-    if (!all_ranks_ok(comm, points && output_to_unique && offset && sizes && counts)) goto done;
+    local_offsets = malloc(((size_t)basis.local_atoms + 1) * sizeof(*local_offsets));
+    if (!all_ranks_ok(comm, points && output_to_unique && offset && sizes && counts && local_offsets)) goto done;
     const int unique_count = unique_points(path_count, points_per_path, paths, points, output_to_unique, point_count);
     m.order = orbital_offsets(&m, &basis, offset);
     const int multiplicity = m.noncollinear ? 2 : m.spin_channels;
@@ -333,9 +373,9 @@ int openmx_band_kpath_try_gpu(const OpenMXChemicalPotentials *chemical,
     const int bands_per_point = multiplicity * m.order;
 
     stage = "sparse matrix sizing";
-    int local_size[3] = {0, 0, device >= 0};
-    if (!all_ranks_ok(comm, local_blocks(&m, &basis, offset, hamiltonian, imaginary, overlap,
-                                  local_basis, NULL, NULL, local_size))) goto done;
+    if (!all_ranks_ok(comm, local_block_offsets(&m, &basis, offset, local_offsets))) goto done;
+    const KPathLocalOffset end_offset = local_offsets[basis.local_atoms];
+    int local_size[3] = {end_offset.blocks * (int)sizeof(*local), end_offset.values, device >= 0};
     MPI_Allgather(local_size, 3, MPI_INT, sizes, 3, MPI_INT, comm);
 
     int owner_count = 0, owner_index = 0, input_root = -1;
@@ -351,6 +391,7 @@ int openmx_band_kpath_try_gpu(const OpenMXChemicalPotentials *chemical,
     /* If there are more devices than points, only the first ones get work. */
     if (owner_count > unique_count) owner_count = unique_count;
     const int owner = device >= 0 && owner_index < owner_count;
+    const int gather_root = rank == input_root;
     const int first = owner ? (int)((int64_t)owner_index * unique_count / owner_count) : 0;
     const int end = owner ? (int)((int64_t)(owner_index + 1) * unique_count / owner_count) : 0;
 
@@ -381,30 +422,46 @@ int openmx_band_kpath_try_gpu(const OpenMXChemicalPotentials *chemical,
     const size_t local_bytes = local_size[0] + (size_t)local_size[1] * sizeof(*values);
     stage = "host matrix allocation";
     /* A local guard accounts for the copies that can coexist on this node. */
-    if (!all_ranks_ok(comm, !available || (local_bytes + (owner ? packed_bytes : 0)) <= available / ranks))
+    const size_t host_bytes = (gather_root ? 0 : local_bytes) + (owner ? packed_bytes : 0);
+    if (!all_ranks_ok(comm, !available || host_bytes <= available / ranks))
         goto done;
 
-    local = malloc(local_size[0] ? (size_t)local_size[0] : sizeof(*local));
-    local_values = malloc((local_size[1] ? (size_t)local_size[1] : 1) * sizeof(*local_values));
+    if (!gather_root) {
+        local = malloc(local_size[0] ? (size_t)local_size[0] : sizeof(*local));
+        local_values = malloc((local_size[1] ? (size_t)local_size[1] : 1) * sizeof(*local_values));
+    }
     if (owner) {
         blocks = malloc((size_t)m.block_count * sizeof(*blocks));
         values = malloc((size_t)m.value_count * sizeof(*values));
         local_eigen = malloc((size_t)(end - first) * bands_per_point * sizeof(*local_eigen));
     }
     if (rank == Host_ID) eigen = malloc((size_t)unique_count * bands_per_point * sizeof(*eigen));
-    if (!all_ranks_ok(comm, local && local_values && (!owner || (blocks && values && local_eigen)) &&
+    if (!all_ranks_ok(comm, (gather_root || (local && local_values)) && (!owner || (blocks && values && local_eigen)) &&
                       (rank != Host_ID || eigen))) goto done;
 
     stage = "real-space matrix packing";
-    if (!all_ranks_ok(comm, local_blocks(&m, &basis, offset, hamiltonian, imaginary, overlap,
-                                  local_basis, local, local_values, local_size))) goto done;
-    for (int i = 0; i < local_size[0] / (int)sizeof(*local); ++i)
-        local[i].value_offset += value_offsets[rank];
+    OpenMXKPathBlock *local_block_target = gather_root ? blocks + block_offsets[rank] / sizeof(*blocks) : local;
+    double *local_value_target = gather_root ? values + value_offsets[rank] : local_values;
+    pack_local_blocks(&m, &basis, offset, local_offsets, hamiltonian, imaginary, overlap, local_basis,
+                      local_block_target, local_value_target, value_offsets[rank]);
 
-    MPI_Gatherv(local, local_size[0], MPI_BYTE, blocks, block_sizes, block_offsets, MPI_BYTE,
-                input_root, comm);
-    MPI_Gatherv(local_values, local_size[1], MPI_DOUBLE, values, value_sizes, value_offsets, MPI_DOUBLE,
-                input_root, comm);
+    MPI_Request gather[2];
+    if (MPI_Igatherv(gather_root ? MPI_IN_PLACE : local, local_size[0], MPI_BYTE,
+                    blocks, block_sizes, block_offsets, MPI_BYTE, input_root, comm, &gather[0]) != MPI_SUCCESS ||
+        MPI_Igatherv(gather_root ? MPI_IN_PLACE : local_values, local_size[1], MPI_DOUBLE,
+                    values, value_sizes, value_offsets, MPI_DOUBLE, input_root, comm, &gather[1]) != MPI_SUCCESS) {
+        MPI_Abort(comm, EXIT_FAILURE);
+        abort();
+    }
+#if OPENMX_GPU_CUDA
+    /* MPI fills the semilocal prefix while each owner packs its own K(R). */
+    if (owner && exchange_status == 1)
+        pack_exchange(&exchange, blocks + semilocal_blocks, values, m.exchange_offset);
+#endif
+    if (MPI_Waitall(2, gather, MPI_STATUSES_IGNORE) != MPI_SUCCESS) {
+        MPI_Abort(comm, EXIT_FAILURE);
+        abort();
+    }
     free(local);
     free(local_values);
     local = NULL;
@@ -414,10 +471,6 @@ int openmx_band_kpath_try_gpu(const OpenMXChemicalPotentials *chemical,
         MPI_Bcast(blocks, block_bytes, MPI_BYTE, 0, devices);
         MPI_Bcast(values, value_count, MPI_DOUBLE, 0, devices);
     }
-#if OPENMX_GPU_CUDA
-    if (owner && exchange_status == 1)
-        pack_exchange(&exchange, blocks + semilocal_blocks, values, m.exchange_offset);
-#endif
     m.blocks = blocks;
     m.values = values;
 
@@ -460,6 +513,7 @@ done:
     free(blocks);
     free(local_values);
     free(local);
+    free(local_offsets);
     free(counts);
     free(sizes);
     free(offset);
