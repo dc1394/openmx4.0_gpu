@@ -16,26 +16,6 @@ _Static_assert(sizeof(Type_DS_VNA)==sizeof(float),"VNA storage ABI requires floa
    admission, rank turns, capacity recovery and architecture policies local
    to the CUDA/HIP implementations. */
 
-/* One projector block's rows to (pack) or from (unpack) a contiguous
-   message, in the legacy h/i/j element order: a single copy when the rows
-   are contiguous with the component stride, else one copy per row. Either
-   way the same values move as in the element loops, bit for bit. */
-static size_t SetPro_RingRows(Type_DS_VNA *message,Type_DS_VNA **block,int rows,int components,int unpack)
-{
-  const size_t row_values=(size_t)components;
-  int contiguous=1;
-  for (int i=1;i<rows && contiguous;++i) contiguous=block[i]==block[0]+(size_t)i*row_values;
-  if (rows>0 && contiguous) {
-    if (unpack) memcpy(block[0],message,sizeof(Type_DS_VNA)*row_values*(size_t)rows);
-    else memcpy(message,block[0],sizeof(Type_DS_VNA)*row_values*(size_t)rows);
-  }
-  else for (int i=0;i<rows;++i) {
-    if (unpack) memcpy(block[i],message+(size_t)i*row_values,sizeof(Type_DS_VNA)*row_values);
-    else memcpy(message+(size_t)i*row_values,block[i],sizeof(Type_DS_VNA)*row_values);
-  }
-  return row_values*(size_t)(rows>0?rows:0);
-}
-
 /* The pairs [first, count) of a pair list, for the host SIMD assembly of the
    pairs a device batch left unfinished. The CPU kernels read only the per-pair
    arrays; the per-atom CSR offsets do not describe a pair range. */
@@ -52,10 +32,8 @@ static void SetPro_PairTail(const OpenMXAtomPairBuffers *all,int first,OpenMXAto
   tail->offsets=NULL;
 }
 
-/* OPENMX_SETPRO_VERBOSE=1: where the projector ring spends its time (per rank
-   and call). Waiting phases are the size handshake, the blocking receive and
-   the completion of each send; copies are the message pack and unpack. */
-typedef struct { double sizes, pack, send, receive, unpack, halo, wait, bytes; long messages; } SetProRingTimes;
+/* OPENMX_SETPRO_VERBOSE=1: timings per MPI rank and ring invocation. */
+typedef struct { double send, receive, halo, wait, bytes; long messages; } SetProRingTimes;
 static inline void SetPro_RingTick(int on,double *clock,double *phase)
 {
   double now;
@@ -78,7 +56,6 @@ static double SetPro_Separable(const OpenMXVnaMatrixViews *matrices,const OpenMX
   MPI_Comm_rank(mpi_comm_level1,&rank);
   OpenMXProjectorTransfer transfer=OpenMX_TransferBegin(mpi_comm_level1,peers,sizeof(Type_DS_VNA));
   int *sent=transfer.buffers.sent,*received=transfer.buffers.received;
-  int *send_sizes=transfer.buffers.send_sizes,*receive_sizes=transfer.buffers.receive_sizes;
   OpenMXVnaPreparationBuffers preparation=invocation->preparation;
   const OpenMXVnaPreparation *preparation_owner=invocation->preparation_owner;
   const OpenMXAtomPairBuffers *pairs=&invocation->pairs;
@@ -110,7 +87,10 @@ static double SetPro_Separable(const OpenMXVnaMatrixViews *matrices,const OpenMX
   SetPro_RingTick(phases_timed,&phase_clock,&phase_barrier);
   if (measure_time) dtime(&communication_begin);
   SetProHvnaDispatch hvna={0};
-  const int gpu=SetPro_HVNA_DispatchBegin(reciprocal, &hvna,DS_VNA,preparation_owner,preparation.projectors);
+  size_t local_elements;
+  const Type_DS_VNA *local=openmx_projector_atom_span(&projectors_matrix,1,Matomnum+1,&local_elements);
+  const int gpu=SetPro_HVNA_DispatchBegin(reciprocal,&hvna,local,local_elements,preparation_owner,preparation.projectors);
+  const SetProGpuContext *archives=gpu ? SetPro_HVNA_DispatchArchives(&hvna) : NULL;
   const SetProHvnaGeometry hvna_geometry={
       Matomnum,M2G,F_G2M,WhatSpecies,FNAN,natn,RMI1,Spe_Atom_Cut1,Dis,tables->atom_seconds};
   OpenMXHvnaProjectorBuffers projectors;
@@ -132,63 +112,51 @@ static double SetPro_Separable(const OpenMXVnaMatrixViews *matrices,const OpenMX
   memset(&ring,0,sizeof(ring));
   if (ring_timed) dtime(&ring_clock);
 
-  /* Preserve the two-pass ring protocol: announce the next atom's size to
-     every peer, then transfer one atom per peer and consume its halo before
-     reusing the receive slot. Each nonblocking send is waited for before the
-     send buffer is reused. The two directions have independent owners. */
+  /* The local projector plane is already sorted in wire order (h/i/j).
+     Both peers know the shape. Local blocks stay read-only until all sends
+     complete, and each halo is consumed before reusing the receive slot. */
   int pending;
   do {
     for (int id=0;id<peers;++id) {
       const int destination=(rank+id)%peers,source=(rank-id+peers)%peers;
       MPI_Request request;MPI_Status status;
       const int sending=sent[destination]<F_Snd_Num[destination];
-      int count=0;
       if (sending) {
-        const int gc=Snd_GAN[destination][sent[destination]];
-        const int rows=preparation.orbitals[WhatSpecies[gc]];
-        count=OpenMX_TransferCount(&transfer,FNAN[gc]+1,rows,components);
-        MPI_Isend(&count,1,MPI_INT,destination,999,mpi_comm_level1,&request);
-      }
-      send_sizes[destination]=count;
-      receive_sizes[source]=0;
-      if (received[source]<F_Rcv_Num[source])
-        MPI_Recv(receive_sizes+source,1,MPI_INT,source,999,mpi_comm_level1,&status);
-      if (sending) MPI_Wait(&request,&status);
-    }
-    SetPro_RingTick(ring_timed,&ring_clock,&ring.sizes);
-    for (int id=0;id<peers;++id) {
-      const int destination=(rank+id)%peers,source=(rank-id+peers)%peers;
-      MPI_Request request;MPI_Status status;
-      const int sending=sent[destination]<F_Snd_Num[destination];
-      if (sending) {
-        const int mc=Snd_MAN[destination][sent[destination]],gc=Snd_GAN[destination][sent[destination]];
-        const int rows=preparation.orbitals[WhatSpecies[gc]];
-        Type_DS_VNA *buffer=OpenMX_TransferBuffer(&transfer,OPENMX_EXCHANGE_SEND,send_sizes[destination]);
-        size_t offset=0;
-        for (int h=0;h<=FNAN[gc];++h) offset+=SetPro_RingRows(buffer+offset,DS_VNA[0][mc][h],rows,components,0);
-        SetPro_RingTick(ring_timed,&ring_clock,&ring.pack);
-        MPI_Isend(buffer,send_sizes[destination],MPI_Type_DS_VNA,destination,999,mpi_comm_level1,&request);
+        const int mc=Snd_MAN[destination][sent[destination]];
+        size_t count;
+        const Type_DS_VNA *buffer=openmx_projector_atom_span(&projectors_matrix,mc,mc+1,&count);
+        if (count>INT_MAX) OpenMX_TransferFail(mpi_comm_level1,"VNA send exceeds MPI int count");
+        if (MPI_Isend(buffer,(int)count,MPI_Type_DS_VNA,destination,999,mpi_comm_level1,&request)!=MPI_SUCCESS)
+          OpenMX_TransferFail(mpi_comm_level1,"could not send VNA projectors");
         SetPro_RingTick(ring_timed,&ring_clock,&ring.send);
-        ring.messages++;ring.bytes+=(double)send_sizes[destination]*sizeof(Type_DS_VNA);
+        ring.messages++;ring.bytes+=(double)count*sizeof(Type_DS_VNA);
       }
       if (received[source]<F_Rcv_Num[source]) {
         const int gc=Rcv_GAN[source][received[source]],original_mc=F_TopMAN[source]+received[source];
         const int rows=preparation.orbitals[WhatSpecies[gc]];
         const int count=OpenMX_TransferCount(&transfer,FNAN[gc]+1,rows,components);
-        if (receive_sizes[source]!=count) OpenMX_TransferFail(mpi_comm_level1,"inconsistent VNA receive count");
-        Type_DS_VNA *buffer=OpenMX_TransferBuffer(&transfer,OPENMX_EXCHANGE_RECEIVE,count);
-        SetPro_RingTick(ring_timed,&ring_clock,&ring.unpack);
-        MPI_Recv(buffer,count,MPI_Type_DS_VNA,source,999,mpi_comm_level1,&status);
-        SetPro_RingTick(ring_timed,&ring_clock,&ring.receive);
         size_t offset=0;
-        for (int h=0;h<=FNAN[gc];++h) offset+=SetPro_RingRows(buffer+offset,DS_VNA[0][Matomnum+1][h],rows,components,1);
-        SetPro_RingTick(ring_timed,&ring_clock,&ring.unpack);
-        if (gpu) SetPro_HVNA_DispatchArchive(&hvna,DS_VNA,original_mc,gc);
-        else SetPro_HVNA_CPU_Halo(&hvna_geometry,&projectors,&halo_workspace,&projectors_matrix,&matrices->potential,original_mc,gc,fp32,&halo_cache);
+        if (archives && !SetPro_HVNA_HaloSpan(archives,original_mc-Matomnum,(size_t)count,&offset))
+          OpenMX_TransferFail(mpi_comm_level1,"inconsistent VNA halo archive shape");
+        Type_DS_VNA *buffer=archives && archives->halo_host ? archives->halo_host+offset
+            : OpenMX_TransferBuffer(&transfer,OPENMX_EXCHANGE_RECEIVE,count);
+        int actual;
+        if (MPI_Recv(buffer,count,MPI_Type_DS_VNA,source,999,mpi_comm_level1,&status)!=MPI_SUCCESS ||
+            MPI_Get_count(&status,MPI_Type_DS_VNA,&actual)!=MPI_SUCCESS || actual!=count)
+          OpenMX_TransferFail(mpi_comm_level1,"inconsistent VNA receive count");
+        SetPro_RingTick(ring_timed,&ring_clock,&ring.receive);
+        if (!archives)
+          SetPro_HVNA_CPU_Halo(&hvna_geometry,&projectors,&halo_workspace,&projectors_matrix,&matrices->potential,original_mc,gc,buffer,fp32,&halo_cache);
+        else if (archives->halo_dev && count)
+          SetPro_HVNA_Upload(archives->halo_dev+offset,buffer,(size_t)count);
         SetPro_RingTick(ring_timed,&ring_clock,&ring.halo);
         ++received[source];
       }
-      if (sending) { MPI_Wait(&request,&status);++sent[destination]; }
+      if (sending) {
+        if (MPI_Wait(&request,&status)!=MPI_SUCCESS)
+          OpenMX_TransferFail(mpi_comm_level1,"could not complete VNA send");
+        ++sent[destination];
+      }
       SetPro_RingTick(ring_timed,&ring_clock,&ring.wait);
     }
     pending=0;
@@ -199,9 +167,8 @@ static double SetPro_Separable(const OpenMXVnaMatrixViews *matrices,const OpenMX
   SetPro_RingTick(phases_timed,&phase_clock,&phase_ring);
   SetPro_HvnaHost_Free(&halo_cache);
   if (ring_timed)
-    SetPro_note("HVNA ring","size handshake %.3f s, pack %.3f s, send %.3f s, receive wait %.3f s, unpack %.3f s, "
-        "halo %s %.3f s, send wait %.3f s; %ld messages, %.1f MiB sent",
-        ring.sizes,ring.pack,ring.send,ring.receive,ring.unpack,gpu?"archive":"compute",ring.halo,ring.wait,
+    SetPro_note("HVNA ring","send %.3f s, receive %.3f s, halo %s %.3f s, send wait %.3f s; %ld messages, %.1f MiB sent",
+        ring.send,ring.receive,gpu?"archive":"compute",ring.halo,ring.wait,
         ring.messages,ring.bytes/1048576.0);
   if (measure_time) { dtime(&communication_end);time4=communication_end-communication_begin;dtime(&communication_begin); }
   if (gpu) *used_gpu|=SetPro_HVNA_DispatchRun(&hvna,HVNA);

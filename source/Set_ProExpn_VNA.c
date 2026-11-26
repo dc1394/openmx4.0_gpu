@@ -62,9 +62,8 @@ static inline void Spherical_Bessel2( double x, int lmax, double *sb, double *ds
    accumulation order (k outermost, then the radial groups, then the
    2*L+1 members; products retain upstream float rounding independently
    of scf.fp32.enable), so the
-   final float rounding of DS_VNA itself limits the agreement.  The MPI
-   pipeline is untouched: received halo blocks are archived and one
-   batched kernel runs after the loops.                                */
+   final float rounding of DS_VNA itself limits the agreement. The batched
+   kernel runs after the MPI exchange of the halo blocks.             */
 /* ------------------------------------------------------------------ */
 
 
@@ -196,11 +195,17 @@ static int SetPro_BatchAttempt(OpenMXGpuTask *task,const char *label,int *all_do
   return done;
 }
 
-static int SetPro_HVNA_GpuBegin(const OpenMXReciprocalViews *reciprocal, SetProGpuContext *g, Type_DS_VNA *****DS_VNA,
+static void SetPro_HVNA_Upload(float *device,const float *host,size_t count)
+{
+  if (count && cudaMemcpy(device,host,count*sizeof(float),cudaMemcpyHostToDevice)!=cudaSuccess)
+    SetPro_gpu_abort("Set_ProExpn_VNA: cannot upload the projector archive.");
+}
+
+static int SetPro_HVNA_GpuBegin(const OpenMXReciprocalViews *reciprocal, SetProGpuContext *g,
+                                const float *local,size_t local_elements,
                                 const OpenMXVnaPreparation *preparation, int Num_RVNA)
 {
-  int Mc_AN,spe,node_ranks = 1,node_rank = 0;
-  size_t pos = 0;
+  int Mc_AN,node_ranks = 1;
   size_t free_bytes = 0,total_bytes = 0;
   MPI_Comm node_comm = MPI_COMM_NULL;
   int requested = scf_eigen_lib_flag==GPUSOLVER;
@@ -208,28 +213,20 @@ static int SetPro_HVNA_GpuBegin(const OpenMXReciprocalViews *reciprocal, SetProG
   memset(g,0,sizeof(*g));
   g->num_proj = (List_YOUSO[35]+1)*(List_YOUSO[35]+1)*List_YOUSO[34];
   g->num_rvna = Num_RVNA;
+  g->flat_host = local;
+  g->flat_count = local_elements;
 
   MPI_Allreduce(MPI_IN_PLACE,&requested,1,MPI_INT,MPI_MIN,mpi_comm_level1);
   if (!requested || !openmx_env_flag_at(OPENMX_ENV_SETPRO_GPU,1)) return 0;
 
   MPI_Comm_split_type(mpi_comm_level1,MPI_COMM_TYPE_SHARED,0,MPI_INFO_NULL,&node_comm);
   MPI_Comm_size(node_comm,&node_ranks);
-  MPI_Comm_rank(node_comm,&node_rank);
   if (node_ranks<1) node_ranks = 1;
   if (gpu_rank_device_usable()) acc_wait_all();
   if (gpu_rank_device_usable() && cudaDeviceSynchronize()==cudaSuccess){
     acc_clear_freelists();
   }
   MPI_Barrier(node_comm);
-
-  /* sizes of the flat local table and the halo archive */
-
-  for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-    int Gc_AN = M2G[Mc_AN];
-    int tno = Spe_Total_NO[WhatSpecies[Gc_AN]];
-
-    pos += (size_t)(FNAN[Gc_AN]+1)*(size_t)tno*(size_t)g->num_proj;
-  }
 
   for (Mc_AN=Matomnum+1; Mc_AN<=Matomnum+MatomnumF; Mc_AN++){
     int Gc_AN = F_M2G[Mc_AN];
@@ -238,7 +235,8 @@ static int SetPro_HVNA_GpuBegin(const OpenMXReciprocalViews *reciprocal, SetProG
     g->halo_count += (size_t)(FNAN[Gc_AN]+1)*(size_t)tno*(size_t)g->num_proj;
   }
 
-  g->flat_count = pos==0 ? 1 : pos;
+  const size_t flat_capacity=local_elements ? local_elements : 1;
+  const size_t halo_capacity=g->halo_count ? g->halo_count : 1;
   if (OpenMX_GpuMemGetInfo(&free_bytes,&total_bytes)!=cudaSuccess) free_bytes = 0;
   {
     const size_t reserve = (size_t)256*1024*1024;
@@ -261,7 +259,7 @@ static int SetPro_HVNA_GpuBegin(const OpenMXReciprocalViews *reciprocal, SetProG
       }
     }
     if (kslots==0) kslots = 1;
-    need = (g->flat_count + (g->halo_count==0 ? 1 : g->halo_count))*sizeof(float)
+    need = (flat_capacity+halo_capacity)*sizeof(float)
          + items*(4*sizeof(int) + sizeof(size_t)) + outputs*sizeof(double)
          + kslots*(2*sizeof(size_t) + 2*sizeof(int))
          + (size_t)SpeciesNum*Num_RVNA*sizeof(double) + (size_t)Num_RVNA*sizeof(int)
@@ -300,7 +298,7 @@ static int SetPro_HVNA_GpuBegin(const OpenMXReciprocalViews *reciprocal, SetProG
       }
     }
     unsigned long long host_available=openmx_host_mem_available(),min_host,total_need;
-    unsigned long long host_need=g->host_archive?need:0;
+    unsigned long long host_need=g->host_archive ? need-flat_capacity*sizeof(float) : 0;
     MPI_Allreduce(&host_available,&min_host,1,MPI_UNSIGNED_LONG_LONG,MPI_MIN,node_comm);
     MPI_Allreduce(&host_need,&total_need,1,MPI_UNSIGNED_LONG_LONG,MPI_SUM,node_comm);
     fit=!min_host || total_need<=min_host/2;
@@ -318,78 +316,38 @@ static int SetPro_HVNA_GpuBegin(const OpenMXReciprocalViews *reciprocal, SetProG
     SetPro_gpu_abort(layout_error);
   }
 
-  /* Keep the original device-only archive when all ranks fit. Rank turns
-     use host archives with the RAM budget checked above. Rows are staged
-     through one bounce slot sized for the largest (atom,neighbour) block. */
+  /* Borrow the local plane on every path. The halo is the only new host
+     archive, and MPI can receive directly into it. */
   if (g->host_archive){
-    g->flat_host = (float*)malloc(sizeof(float)*g->flat_count);
-    g->halo_host = (float*)malloc(sizeof(float)*(g->halo_count==0 ? 1 : g->halo_count));
+    g->halo_host = (float*)malloc(sizeof(float)*halo_capacity);
   }
   else{
-    g->flat_dev = (float*)acc_malloc(sizeof(float)*g->flat_count);
-    g->halo_dev = (float*)acc_malloc(sizeof(float)*(g->halo_count==0 ? 1 : g->halo_count));
-  }
-  {
-    size_t bounce_count = 1;
-
-    for (spe=0; spe<SpeciesNum; spe++){
-      size_t cnt = (size_t)Spe_Total_NO[spe]*(size_t)g->num_proj;
-      if (bounce_count<cnt) bounce_count = cnt;
-    }
-    g->bounce_count = bounce_count;
-    g->bounce = (float*)SetPro_checked_malloc(sizeof(float)*bounce_count);
+    g->flat_dev = (float*)acc_malloc(sizeof(float)*flat_capacity);
+    g->halo_dev = (float*)acc_malloc(sizeof(float)*halo_capacity);
   }
   {
     if (!g->host_archive && (!g->flat_dev || !g->halo_dev)) {
       if(g->flat_dev)acc_free(g->flat_dev);if(g->halo_dev)acc_free(g->halo_dev);
       g->flat_dev=g->halo_dev=NULL;g->host_archive=1;
       unsigned long long room=openmx_host_mem_available();
-      size_t need=(g->flat_count+(g->halo_count?g->halo_count:1))*sizeof(float);
-      if (!room || need<=room/(2ULL*node_ranks)) {
-        g->flat_host=malloc(g->flat_count*sizeof(float));g->halo_host=malloc((g->halo_count?g->halo_count:1)*sizeof(float));
-      }
+      if (!room || halo_capacity*sizeof(float)<=room/(2ULL*node_ranks))
+        g->halo_host=malloc(halo_capacity*sizeof(float));
     }
-    int allocated = g->host_archive ? g->flat_host && g->halo_host : g->flat_dev && g->halo_dev;
+    int allocated = g->host_archive ? g->halo_host!=NULL : g->flat_dev && g->halo_dev;
     int all_allocated;
     MPI_Allreduce(&allocated,&all_allocated,1,MPI_INT,MPI_MIN,mpi_comm_level1);
     if (!all_allocated){
       if (g->flat_dev!=NULL) acc_free(g->flat_dev);
       if (g->halo_dev!=NULL) acc_free(g->halo_dev);
       acc_clear_freelists();
-      free(g->flat_host);
       free(g->halo_host);
-      free(g->bounce);
       openmx_core_hvna_destroy(g->layout);
       memset(g,0,sizeof(*g));
       return 0;
     }
   }
 
-  {
-    /* flatten the local direction-0 rows straight into the device archive,
-       one (atom,neighbour) block at a time through the bounce slot */
-
-    for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-      int Gc_AN = M2G[Mc_AN];
-      int tno = Spe_Total_NO[WhatSpecies[Gc_AN]];
-      int k2,i;
-
-      for (k2=0; k2<=FNAN[Gc_AN]; k2++){
-        size_t base = g->mck_off[g->mck_base[Mc_AN]+k2];
-
-        for (i=0; i<tno; i++){
-          memcpy(g->bounce + (size_t)i*(size_t)g->num_proj,
-                 DS_VNA[0][Mc_AN][k2][i],
-                 sizeof(float)*(size_t)g->num_proj);
-        }
-        if (g->host_archive)
-          memcpy(g->flat_host + base, g->bounce,sizeof(float)*(size_t)tno*(size_t)g->num_proj);
-        else
-          acc_memcpy_to_device(g->flat_dev + base, g->bounce,
-                               sizeof(float)*(size_t)tno*(size_t)g->num_proj);
-      }
-    }
-  }
+  if (g->flat_dev) SetPro_HVNA_Upload(g->flat_dev,g->flat_host,g->flat_count);
 
   SetPro_note("HVNA GPU archives","local archive %.0f MiB, halo archive %.0f MiB on the %s",
               (double)g->flat_count*sizeof(float)/1048576.0,
@@ -409,43 +367,9 @@ static void SetPro_HVNA_GpuEnd(SetProGpuContext *g)
   if (g->halo_dev!=NULL) acc_free(g->halo_dev);
   acc_clear_freelists();
 
-  free(g->flat_host);
   free(g->halo_host);
-  free(g->bounce);
   openmx_core_hvna_destroy(g->layout);
   memset(g,0,sizeof(*g));
-}
-
-/* archive the direction-0 block of the halo atom just received */
-static void SetPro_HVNA_GpuArchiveHalo(SetProGpuContext *g, Type_DS_VNA *****DS_VNA, int Original_Mc_AN,
-                                       int Gc_AN)
-{
-  int tno = Spe_Total_NO[WhatSpecies[Gc_AN]];
-  int halo_idx = Original_Mc_AN - Matomnum;
-  int k;
-
-  if (halo_idx<1 || MatomnumF<halo_idx){
-    SetPro_gpu_abort("Set_ProExpn_VNA GPU: halo index out of range.");
-  }
-
-  /* serial: the rows go through the shared bounce slot into the device
-     archive, and acc_memcpy_to_device is not called from inside an OpenMP
-     region anywhere else in this file either */
-  for (k=0; k<=FNAN[Gc_AN]; k++){
-    size_t base = g->halo_off[g->halo_base[halo_idx]+k];
-    int i;
-
-    for (i=0; i<tno; i++){
-      memcpy(g->bounce + (size_t)i*(size_t)g->num_proj,
-             DS_VNA[0][Matomnum+1][k][i],
-             sizeof(float)*(size_t)g->num_proj);
-    }
-    if (g->host_archive)
-      memcpy(g->halo_host + base, g->bounce,sizeof(float)*(size_t)tno*(size_t)g->num_proj);
-    else
-      acc_memcpy_to_device(g->halo_dev + base, g->bounce,
-                           sizeof(float)*(size_t)tno*(size_t)g->num_proj);
-  }
 }
 
 /* the unified batch over every (local atom, neighbour) pair */
@@ -745,10 +669,10 @@ static int SetPro_HVNA_GpuRun_Archived(SetProGpuContext *g,double ****HVNA)
       free_bytes<=reserve || g->device_bytes>free_bytes-reserve)
     goto archived_cleanup;
 
-  if (cudaMalloc((void**)&staged.flat_dev,g->flat_count*sizeof(float))!=cudaSuccess ||
+  if (cudaMalloc((void**)&staged.flat_dev,(g->flat_count ? g->flat_count : 1)*sizeof(float))!=cudaSuccess ||
       cudaMalloc((void**)&staged.halo_dev,(g->halo_count ? g->halo_count : 1)*sizeof(float))!=cudaSuccess)
     goto archived_cleanup;
-  if (cudaMemcpy(staged.flat_dev,g->flat_host,g->flat_count*sizeof(float),cudaMemcpyHostToDevice)!=cudaSuccess ||
+  if ((g->flat_count && cudaMemcpy(staged.flat_dev,g->flat_host,g->flat_count*sizeof(float),cudaMemcpyHostToDevice)!=cudaSuccess) ||
       (g->halo_count && cudaMemcpy(staged.halo_dev,g->halo_host,g->halo_count*sizeof(float),cudaMemcpyHostToDevice)!=cudaSuccess))
     goto archived_cleanup;
 
@@ -2537,19 +2461,13 @@ static void SetPro_VNA23_GpuRun(double *****matrix,int mirror,int count,const in
 static void SetPro_HVNA_HostArchives(SetProGpuContext *g,double ****HVNA)
 {
   const int fp32=1 /* Preserve upstream float projector products. */,num_proj=g->num_proj;
-  const float *flat=g->flat_host,*halo=g->halo_host;
-  float *flat_copy=NULL,*halo_copy=NULL;
+  const float empty_halo=0.0f;
+  const float *flat=g->flat_host,*halo=g->halo_host ? g->halo_host : &empty_halo;
+  float *halo_copy=NULL;
   int max_orbitals=1,max_blocks=1;
 
   if (!Matomnum) return;
-  if (!flat) {
-    flat_copy=(float*)malloc(g->flat_count*sizeof(float));
-    if (!flat_copy) SetPro_gpu_abort("Set_ProExpn_VNA: no host memory to recover the local projector archive.");
-    if (cudaMemcpy(flat_copy,g->flat_dev,g->flat_count*sizeof(float),cudaMemcpyDeviceToHost)!=cudaSuccess)
-      SetPro_gpu_abort("Set_ProExpn_VNA: cannot recover an existing projector archive.");
-    flat=flat_copy;
-  }
-  if (!halo && g->halo_count) {
+  if (!g->halo_host && g->halo_count) {
     halo_copy=(float*)malloc(g->halo_count*sizeof(float));
     if (!halo_copy) SetPro_gpu_abort("Set_ProExpn_VNA: no host memory to recover the halo projector archive.");
     if (cudaMemcpy(halo_copy,g->halo_dev,g->halo_count*sizeof(float),cudaMemcpyDeviceToHost)!=cudaSuccess)
@@ -2598,16 +2516,16 @@ static void SetPro_HVNA_HostArchives(SetProGpuContext *g,double ****HVNA)
     free(matrix);
     SetPro_HvnaHost_Free(&host);
   }
-  free(flat_copy);
   free(halo_copy);
 }
 
 typedef SetProGpuContext SetProHvnaDispatch;
-static int SetPro_HVNA_DispatchBegin(const OpenMXReciprocalViews *reciprocal, SetProHvnaDispatch *g,Type_DS_VNA *****v,
+static int SetPro_HVNA_DispatchBegin(const OpenMXReciprocalViews *reciprocal, SetProHvnaDispatch *g,
+    const float *local,size_t local_elements,
     const OpenMXVnaPreparation *preparation,int n)
-{ return SetPro_HVNA_GpuBegin(reciprocal, g,v,preparation,n); }
-static void SetPro_HVNA_DispatchArchive(SetProHvnaDispatch *g,Type_DS_VNA *****v,int m,int global)
-{ SetPro_HVNA_GpuArchiveHalo(g,v,m,global); }
+{ return SetPro_HVNA_GpuBegin(reciprocal,g,local,local_elements,preparation,n); }
+static const SetProGpuContext *SetPro_HVNA_DispatchArchives(const SetProHvnaDispatch *g)
+{ return g; }
 static int SetPro_HVNA_DispatchRun(SetProHvnaDispatch *g,double ****h)
 {
   int done=1;

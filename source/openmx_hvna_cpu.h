@@ -211,7 +211,7 @@ static int SetPro_HVNA_Host_Block(SetProHvnaHost *host,const OpenMXHvnaProjector
 static void SetPro_HVNA_CPU_Pair(const SetProHvnaGeometry *geometry,
     const OpenMXHvnaProjectorBuffers *projectors, const OpenMXHvnaWorkspaceBuffers *workspace,
     const OpenMXProjectorMatrix *ds, const OpenMXDoubleBlockMatrix *hvna,
-    int mc, int j, int partner, int partner_species,
+    int mc, int j, int partner, int partner_species, const Type_DS_VNA *halo,
     int parallel_rows, int fp32, SetProHvnaHost *host)
 {
   const int gc = geometry->local_to_global[mc];
@@ -223,9 +223,11 @@ static void SetPro_HVNA_CPU_Pair(const SetProHvnaGeometry *geometry,
     if (kl<0) continue;
     const int projector_species = geometry->species[geometry->neighbors[gc][k]];
     const Type_DS_VNA *left=openmx_projector_block_row(ds,0,mc,k,0);
-    const Type_DS_VNA *right=openmx_projector_block_row(ds,0,partner,kl,0);
     const size_t left_stride=(size_t)ds->layout.shapes[2*openmx_block_index(&ds->layout,mc,k)+1];
-    const size_t right_stride=(size_t)ds->layout.shapes[2*openmx_block_index(&ds->layout,partner,kl)+1];
+    const size_t right_stride=halo ? (size_t)projectors->components
+        : (size_t)ds->layout.shapes[2*openmx_block_index(&ds->layout,partner,kl)+1];
+    const Type_DS_VNA *right=halo ? halo+(size_t)kl*columns*right_stride
+        : openmx_projector_block_row(ds,0,partner,kl,0);
     if (SetPro_HVNA_Host_Block(host,projectors,workspace,rows,columns,projector_species,
             left,left_stride,k,right,right_stride,kl,!initialized,parallel_rows,fp32)) {
       /* the Core kernel wrote this block's contribution */
@@ -272,9 +274,9 @@ static void SetPro_HVNA_CPU_HaloCache(SetProHvnaHost *host,const SetProHvnaGeome
 static void SetPro_HVNA_CPU_Halo(const SetProHvnaGeometry *geometry,
     const OpenMXHvnaProjectorBuffers *projectors, const OpenMXHvnaWorkspaceBuffers *workspace,
     const OpenMXProjectorMatrix *ds, const OpenMXDoubleBlockMatrix *hvna,
-    int original_mc, int received_global, int fp32, SetProHvnaHost *host)
+    int original_mc, int received_global, const Type_DS_VNA *received, int fp32, SetProHvnaHost *host)
 {
-  /* the received atom's blocks (Matomnum+1, kl) serve every local pair that points at it */
+  /* The compact receive buffer serves every local pair that points to this atom. */
   if (host->ready && geometry->neighbor_counts[received_global]+1>host->blocks) host=NULL;
   else SetPro_HvnaHost_Reset(host,received_global);
   for (int mc=1; mc<=geometry->local_atoms; ++mc) {
@@ -285,7 +287,7 @@ static void SetPro_HVNA_CPU_Halo(const SetProHvnaGeometry *geometry,
       const int global = geometry->neighbors[gc][j];
       if (geometry->global_to_local[global]==original_mc)
         SetPro_HVNA_CPU_Pair(geometry,projectors,workspace,ds,hvna,mc,j,
-            geometry->local_atoms+1,geometry->species[received_global],1,fp32,host);
+            original_mc,geometry->species[received_global],received,1,fp32,host);
     }
     dtime(&end);
     geometry->atom_seconds[gc] += end-begin;
@@ -319,7 +321,7 @@ static void SetPro_HVNA_CPU_Local(const SetProHvnaGeometry *geometry,
         const int partner = geometry->global_to_local[global];
         if (partner<=geometry->local_atoms)
           SetPro_HVNA_CPU_Pair(geometry,projectors,&workspace,ds,hvna,mc,j,
-              partner,geometry->species[global],0,fp32,&host);
+              partner,geometry->species[global],NULL,0,fp32,&host);
       }
       dtime(&end);
       geometry->atom_seconds[gc] += end-begin;

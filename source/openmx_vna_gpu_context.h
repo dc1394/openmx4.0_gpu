@@ -1,14 +1,16 @@
 #ifndef OPENMX_VNA_GPU_CONTEXT_H
 #define OPENMX_VNA_GPU_CONTEXT_H
 #include "openmx_core_hvna.h"
+#include <stdio.h>
 
-/* Local to one Set_ProExpn invocation. Layout owns the six metadata arrays;
-   the backend owns numeric archives and releases them before the layout. */
+/* Local to one Set_ProExpn invocation. Layout owns the six metadata arrays.
+   flat_host borrows the local direction-zero plane from the VNA matrices. */
 typedef struct {
   int enabled, used_gpu, turn, turns, host_archive, num_proj, num_rvna;
-  size_t device_bytes, flat_count, halo_count, bounce_count;
-  float *flat_dev, *flat_host, *halo_dev, *halo_host, *bounce;
-  float *flat, *halo; /* Native HIP host archives, mapped one rank turn at a time. */
+  int halo_atoms;
+  size_t device_bytes, flat_count, halo_count;
+  const float *flat_host;
+  float *flat_dev, *halo_dev, *halo_host;
   size_t *mck_off, *halo_off;
   int *mck_base, *halo_base, *l2p1;
   double *ene;
@@ -22,10 +24,26 @@ static inline int SetPro_HVNA_LayoutCreate(SetProGpuContext *g,
   OpenMXHvnaBuffers views;
   g->layout = openmx_core_hvna_create(preparation,input,&views,error,capacity);
   if (!g->layout) return 0;
+  if (views.local_elements!=g->flat_count || views.halo_elements!=g->halo_count) {
+    snprintf(error,capacity,"Set_ProExpn_VNA: inconsistent projector archive size.");
+    openmx_core_hvna_destroy(g->layout);
+    g->layout=NULL;
+    return 0;
+  }
+  g->halo_atoms = input->halo_atoms;
   g->mck_base = views.local_bases; g->mck_off = views.local_offsets;
   g->halo_base = views.halo_bases; g->halo_off = views.halo_offsets;
   g->l2p1 = views.lengths; g->ene = views.energies;
   return 1;
+}
+
+static inline int SetPro_HVNA_HaloSpan(const SetProGpuContext *g,int halo,size_t count,size_t *offset)
+{
+  if (halo<1 || halo>g->halo_atoms) return 0;
+  const size_t start=g->halo_off[g->halo_base[halo]];
+  const size_t end=halo==g->halo_atoms ? g->halo_count : g->halo_off[g->halo_base[halo+1]];
+  *offset=start;
+  return end-start==count;
 }
 
 /* Invocation-owned VNA batch state, borrowed until synchronous

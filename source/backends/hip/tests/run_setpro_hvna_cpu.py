@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Check the HVNA batch of source/Set_ProExpn_VNA.c without MPI (AMD).
 
-Extracts SetPro_HVNA_GpuBegin/ArchiveHalo/GpuRun/GpuEnd with their helpers
+Extracts SetPro_HVNA_GpuBegin/GpuRun/GpuEnd with their helpers
 and builds them against single-process stubs.  MPI node reductions emulate
 FAKE_NODE identical ranks (SUM multiplies, MIN/MAX copy), so the turn
 admission can be exercised.  Checks:
@@ -195,7 +195,8 @@ MAIN = r'''
 #define PROJ 12       /* (1+1)^2 * 3 */
 #define NRVNA 6       /* 3 radial projectors x L = 0, 1 */
 
-static Type_DS_VNA***** ds;          /* production view: local + receive slot */
+static float local[ATOMS*NB*3*PROJ];
+static size_t local_elements;
 static Type_DS_VNA**** true0;        /* direction-0 rows of every atom */
 static double**** hvna;
 static int VNA_List[NRVNA], VNA_List2[NRVNA];
@@ -261,14 +262,12 @@ static void fixture(void)
             }
         }
     }
-    ds = xcalloc(1, sizeof(Type_DS_VNA****));
-    ds[0] = xcalloc(Matomnum + 2, sizeof(Type_DS_VNA***));
-    for (mc = 1; mc <= Matomnum; mc++) ds[0][mc] = true0[mc];
-    ds[0][Matomnum + 1] = xcalloc(NB, sizeof(Type_DS_VNA**));
-    for (k = 0; k < NB; k++) {
-        ds[0][Matomnum + 1][k] = xcalloc(3, sizeof(Type_DS_VNA*));
-        for (i = 0; i < 3; i++) ds[0][Matomnum + 1][k][i] = xcalloc(PROJ, sizeof(Type_DS_VNA));
-    }
+    for (mc = 1; mc <= Matomnum; mc++)
+        for (k = 0; k < NB; k++)
+            for (i = 0; i < Spe_Total_NO[WhatSpecies[mc]]; i++) {
+                memcpy(local+local_elements,true0[mc][k][i],PROJ*sizeof(*local));
+                local_elements += PROJ;
+            }
     hvna = xcalloc(Matomnum + 1, sizeof(double***));
     for (mc = 1; mc <= Matomnum; mc++) {
         hvna[mc] = xcalloc(NB, sizeof(double**));
@@ -290,11 +289,6 @@ static void free_fixture(void)
         free(hvna[mc]); free(RMI1[mc]);
     }
     free(hvna); free(RMI1);
-    for (k = 0; k < NB; k++) {
-        for (i = 0; i < 3; i++) free(ds[0][Matomnum + 1][k][i]);
-        free(ds[0][Matomnum + 1][k]);
-    }
-    free(ds[0][Matomnum + 1]); free(ds[0]); free(ds);
     for (a = 1; a <= ATOMS; a++) {
         for (k = 0; k < NB; k++) {
             for (i = 0; i < 3; i++) free(true0[a][k][i]);
@@ -339,14 +333,15 @@ static double run_batch(void)
     double max_error = 0.0;
     int source, k, i, mc, j, m, n;
     for (source = Matomnum + 1; source <= Matomnum + MatomnumF; source++) {
+        const int rows=Spe_Total_NO[WhatSpecies[F_M2G[source]]];
+        size_t offset;
+        CHECK(SetPro_HVNA_HaloSpan(&context,source-Matomnum,(size_t)NB*rows*PROJ,&offset));
         for (k = 0; k < NB; k++)
-            for (i = 0; i < Spe_Total_NO[WhatSpecies[source]]; i++)
-                memcpy(ds[0][Matomnum + 1][k][i], true0[source][k][i], sizeof(Type_DS_VNA) * PROJ);
-        SetPro_HVNA_GpuArchiveHalo(&context,ds, source, F_M2G[source]);
+            for (i = 0; i < rows; i++) {
+                memcpy(context.halo_host+offset,true0[source][k][i],PROJ*sizeof(*local));
+                offset += PROJ;
+            }
     }
-    for (k = 0; k < NB; k++)            /* the receive slot is stale now */
-        for (i = 0; i < 3; i++)
-            for (j = 0; j < PROJ; j++) ds[0][Matomnum + 1][k][i][j] = NAN;
     context.used_gpu = 0;
     SetPro_HVNA_GpuRun(&context,hvna);
     CHECK(context.used_gpu == !device_fail);
@@ -371,7 +366,7 @@ static int begin(void) {
     CHECK(preparation);
     const OpenMXReciprocalViews reciprocal={.vps={.neutral_energies=VNA_proj_ene}};
     last_host_vote=-1;
-    int enabled=SetPro_HVNA_GpuBegin(&reciprocal,&context,ds,preparation,NRVNA,&last_host_vote);
+    int enabled=SetPro_HVNA_GpuBegin(&reciprocal,&context,local,local_elements,preparation,NRVNA,&last_host_vote);
     openmx_core_vna_preparation_destroy(preparation);
     return enabled;
 }
@@ -390,7 +385,8 @@ int main(void)
     CHECK(begin());
     SetProGpuContext retained=context;
     memset(&context,0,sizeof(context));
-    CHECK(begin() && context.layout != retained.layout && context.flat != retained.flat);
+    CHECK(begin() && context.layout != retained.layout && context.halo_host != retained.halo_host);
+    CHECK(context.flat_host == local && retained.flat_host == local);
     CHECK(context.mck_off != retained.mck_off && context.ene != retained.ene);
     SetPro_HVNA_GpuEnd(&context);
     context=retained;
@@ -440,13 +436,11 @@ int main(void)
     fake_node_ranks = 1;
     fake_node_rank = 0;
 
-    /* Only numeric archives use C malloc; C++ metadata has separate allocation-failure tests. */
-    for (countdown = 0; countdown < 2; countdown++) {
-        malloc_countdown = countdown;
-        CHECK(!begin());
-        CHECK(context.flat == NULL && context.halo == NULL && context.enabled == 0);
-        malloc_countdown = -1;
-    }
+    /* The halo is the only C malloc. C++ metadata has separate failure tests. */
+    malloc_countdown = 0;
+    CHECK(!begin());
+    CHECK(context.flat_host == NULL && context.halo_host == NULL && context.enabled == 0);
+    malloc_countdown = -1;
 
     /* stage gates */
     setenv("OPENMX_SETPRO_GPU", "0", 1);
@@ -490,7 +484,7 @@ int main(void)
         SetPro_HVNA_GpuEnd(&context);
         free_bytes_stub = 256 * MiB + 60 * MiB;      /* not even one rank */
         CHECK(!begin() && last_host_vote == 1);
-        CHECK(context.flat == NULL && context.halo == NULL && context.enabled == 0);
+        CHECK(context.flat_host == NULL && context.halo_host == NULL && context.enabled == 0);
         fake_node_ranks = 12;
         fake_node_rank = 11;
         free_bytes_stub = 256 * MiB + 70 * MiB;      /* 12 turns: more than 8 pieces */
@@ -522,7 +516,7 @@ def make_harness(source: str, gpu: bool) -> str:
                  "SetPro_gpu_default_enabled", "SetPro_gpu_stage_enabled", "SetPro_verbose",
                  "SetPro_free_mib", "SetPro_note", "SetPro_arena_off", "SetPro_device_try",
                  "SetPro_HVNA_element", "SetPro_HVNA_GpuBegin", "SetPro_HVNA_GpuEnd",
-                 "SetPro_HVNA_GpuArchiveHalo", "SetPro_HVNA_HostArchives", "SetPro_HVNA_GpuRun"):
+                 "SetPro_HVNA_HostArchives", "SetPro_HVNA_GpuRun"):
         if name == "SetPro_HVNA_HostArchives":
             parts.append('#include "openmx_hvna_cpu.h"\n')
         parts.append(extract_function(source, name))

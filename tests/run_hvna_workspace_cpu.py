@@ -141,10 +141,16 @@ static void execute(const SetProHvnaGeometry *geometry,const OpenMXHvnaProjector
   /* One halo cache for the whole ring, as SetPro_Separable keeps it. */
   SetProHvnaHost cache;
   SetPro_HVNA_CPU_HaloCache(&cache,geometry,table,NG,fp32);
+  Type_DS_VNA message[NB*NO*NC];
   for(int remote=NG;remote>Matomnum;--remote){
-    receive(M2G[remote]);
-    SetPro_HVNA_CPU_Halo(geometry,table,work,&ds_matrix,&out_matrix,remote,M2G[remote],fp32,&cache);
-    poison();
+    const int gc=M2G[remote],columns=table->orbitals[WhatSpecies[gc]];
+    size_t count=0;
+    for(int h=0;h<=FNAN[gc];++h)for(int row=0;row<columns;++row){
+      memcpy(message+count,values[gc][h][row],(size_t)table->components*sizeof(*message));
+      count+=table->components;
+    }
+    SetPro_HVNA_CPU_Halo(geometry,table,work,&ds_matrix,&out_matrix,remote,gc,message,fp32,&cache);
+    for(size_t i=0;i<count;++i)message[i]=NAN;
   }
   SetPro_HvnaHost_Free(&cache);
   SetPro_HVNA_CPU_Local(geometry,owner,table,&ds_matrix,&out_matrix,fp32);
