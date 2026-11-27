@@ -16,11 +16,11 @@
      calculation: the host then computes every product, the failed one
      included.
 
-     The CUDA build also offers modules/exx the device for whole calls
+     CUDA and HIP also offer modules/exx the device for whole calls
      (Exact_Exchange_Device_Table). modules/exx then keeps its arrays on
      the device for the call and asks for products and moves of elements
-     there. Transfers, products and moves (a loop of OpenACC) run in order
-     on one OpenACC stream. The calculation owns the reusable allocations
+     there. Transfers, products and moves run in order on one stream per
+     backend. The calculation owns the reusable allocations
      and returns them before other post-SCF stages need the memory.
 
      The functions take every input as an argument and read no global
@@ -34,11 +34,12 @@
 #include "openmx_gpu_blas.h"
 #include "openmx_gpu_device.h"
 #include "openmx_exact_exchange_device.h"
+#if OPENMX_GPU_HIP
+#include "openmx_exact_exchange_hip.h"
+#endif
 
-/* Whole calls need the moves on the device: a loop of OpenACC. The test of
-   this unit (tests/run_exx_device_product.py) keeps device memory in host
-   memory and runs the loop on the host. */
-#if OPENMX_GPU_CUDA && (defined(_OPENACC) || defined(OPENMX_EXACT_EXCHANGE_DEVICE_HOST_MOVES))
+/* Whole calls need device moves. The CUDA model test runs its moves on the host. */
+#if OPENMX_GPU_HIP || (OPENMX_GPU_CUDA && (defined(_OPENACC) || defined(OPENMX_EXACT_EXCHANGE_DEVICE_HOST_MOVES)))
 #define OPENMX_EXACT_EXCHANGE_DEVICE_CALLS 1
 #else
 #define OPENMX_EXACT_EXCHANGE_DEVICE_CALLS 0
@@ -194,6 +195,29 @@ static OpenMXBlasStatus ExactExchange_Device_Handle(OpenMXExactExchangeDevice *d
   return OPENMX_BLAS_SUCCESS;
 }
 
+/* Both the BLAS and copies use this stream. HIP also queues its whole-call
+   moves here. Keep allocation failures recoverable on a shared GPU. */
+enum { EXX_STREAM_FAILED = -1, EXX_STREAM_NO_ROOM, EXX_STREAM_READY };
+
+static int ExactExchange_Device_Private_Stream(OpenMXExactExchangeDevice *device, int *status)
+{
+  if (device->product_stream!=NULL) return EXX_STREAM_READY;
+  OpenMXGpuStream stream=NULL;
+  const OpenMXGpuError created=OpenMXGpuStreamCreateWithFlags(&stream,OPENMX_GPU_STREAM_NONBLOCKING);
+  if (created!=OPENMX_GPU_SUCCESS) {
+    *status = (int)created;
+    return created==OPENMX_GPU_OUT_OF_MEMORY ? EXX_STREAM_NO_ROOM : EXX_STREAM_FAILED;
+  }
+  const OpenMXBlasStatus streamed=OpenMXBlasSetStream((OpenMXBlasHandle)device->blas,stream);
+  if (streamed!=OPENMX_BLAS_SUCCESS) {
+    (void)OpenMXGpuStreamDestroy(stream);
+    *status = (int)streamed;
+    return streamed==OPENMX_BLAS_ALLOC_FAILED ? EXX_STREAM_NO_ROOM : EXX_STREAM_FAILED;
+  }
+  device->product_stream = (void*)stream;
+  return EXX_STREAM_READY;
+}
+
 static int ExactExchange_Device_Fits(size_t requested, size_t cached, size_t free_bytes, size_t reserve)
 {
   const size_t extra=requested>cached ? requested-cached : 0;
@@ -255,20 +279,11 @@ int Exact_Exchange_Device_Dgemm(OpenMXExactExchangeDevice *device, char transa, 
   if (handled!=OPENMX_BLAS_SUCCESS)
     return ExactExchange_Device_Fail(device,OPENMX_EXACT_EXCHANGE_DEVICE_HANDLE,(int)handled);
 
-  if (device->product_stream==NULL) {
-    OpenMXGpuStream stream=NULL;
-    done = OpenMXGpuStreamCreateWithFlags(&stream,OPENMX_GPU_STREAM_NONBLOCKING);
-    if (done==OPENMX_GPU_OUT_OF_MEMORY) return ExactExchange_Device_Decline(device);
-    if (done!=OPENMX_GPU_SUCCESS)
-      return ExactExchange_Device_Fail(device,OPENMX_EXACT_EXCHANGE_DEVICE_STREAM,(int)done);
-    const OpenMXBlasStatus streamed=OpenMXBlasSetStream((OpenMXBlasHandle)device->blas,stream);
-    if (streamed!=OPENMX_BLAS_SUCCESS) {
-      (void)OpenMXGpuStreamDestroy(stream);
-      if (streamed==OPENMX_BLAS_ALLOC_FAILED) return ExactExchange_Device_Decline(device);
-      return ExactExchange_Device_Fail(device,OPENMX_EXACT_EXCHANGE_DEVICE_STREAM,(int)streamed);
-    }
-    device->product_stream = (void*)stream;
-  }
+  int stream_status=0;
+  const int prepared=ExactExchange_Device_Private_Stream(device,&stream_status);
+  if (prepared==EXX_STREAM_NO_ROOM) return ExactExchange_Device_Decline(device);
+  if (prepared!=EXX_STREAM_READY)
+    return ExactExchange_Device_Fail(device,OPENMX_EXACT_EXCHANGE_DEVICE_STREAM,stream_status);
   OpenMXGpuStream stream=NULL;
   const OpenMXBlasStatus streamed=OpenMXBlasGetStream((OpenMXBlasHandle)device->blas,&stream);
   if (streamed!=OPENMX_BLAS_SUCCESS)
@@ -419,6 +434,7 @@ static int ExactExchange_Device_Accept(void *context, double multiplications, si
     return 0;
   }
 
+#if OPENMX_GPU_CUDA
   void *stream=acc_get_cuda_stream(OPENMX_EXACT_EXCHANGE_DEVICE_QUEUE);
   if (stream==NULL) {
     (void)ExactExchange_Device_Call_Fail(device,OPENMX_EXACT_EXCHANGE_DEVICE_STREAM,-1);
@@ -435,6 +451,20 @@ static int ExactExchange_Device_Accept(void *context, double multiplications, si
   device->call_stream_set = 1;
   device->call_stream = stream;
   device->call_stream_before = (void*)before;
+#else
+  int stream_status=0;
+  const int prepared=ExactExchange_Device_Private_Stream(device,&stream_status);
+  if (prepared==EXX_STREAM_NO_ROOM) {
+    (void)OpenMXGpuGetLastError();
+    device->declined_calls++;
+    return 0;
+  }
+  if (prepared!=EXX_STREAM_READY) {
+    (void)ExactExchange_Device_Call_Fail(device,OPENMX_EXACT_EXCHANGE_DEVICE_STREAM,stream_status);
+    return 0;
+  }
+  device->call_stream = device->product_stream;
+#endif
   device->call_accepted = 1;
   device->call_bytes = bytes;
   return 1;
@@ -536,6 +566,14 @@ static int ExactExchange_Device_Move(void *context, int rows, int columns, const
                                      double *target, const OpenMXExxDeviceIndex *target_index, const double *source,
                                      const OpenMXExxDeviceIndex *source_index)
 {
+#if OPENMX_GPU_HIP
+  OpenMXExactExchangeDevice *device=(OpenMXExactExchangeDevice*)context;
+  const OpenMXGpuStream stream=(OpenMXGpuStream)device->call_stream;
+  const OpenMXGpuError moved=Exact_Exchange_HIP_Move(stream,rows,columns,lengths,alpha,add,
+                                                     target,*target_index,source,*source_index);
+  if (moved!=OPENMX_GPU_SUCCESS)
+    return ExactExchange_Device_Call_Fail(device,OPENMX_EXACT_EXCHANGE_DEVICE_PRODUCT,(int)moved);
+#else
   (void)context;
   const long long target_stride=target_index->stride,target_step=target_index->step;
   const long long *target_rows=target_index->rows,*target_columns=target_index->columns;
@@ -558,6 +596,7 @@ static int ExactExchange_Device_Move(void *context, int rows, int columns, const
       }
     }
   }
+#endif
   return 0;
 }
 

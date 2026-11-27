@@ -27,6 +27,8 @@
 
 #if defined(_OPENACC)
 #define OPENMX_XC_KERNEL _Pragma("acc routine seq") static inline
+#elif defined(OPENMX_XC_KERNELS_HIP_DEVICE)
+#define OPENMX_XC_KERNEL static __device__ inline
 #else
 #define OPENMX_XC_KERNEL static inline
 #endif

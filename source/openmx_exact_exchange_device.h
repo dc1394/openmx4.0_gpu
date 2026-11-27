@@ -19,14 +19,14 @@
    reason switches the device off: the host computes that product and every
    later one, and the caller reports the failure once.
 
-   The arithmetic is FP64 (cuBLAS) unless the caller sets gemmul8. The
+   The arithmetic is native FP64 unless the caller sets gemmul8. The
    product then goes through the bridge openmx_gemmul8Dgemm, as the products
    of the eigensolvers do: GEMMul8 computes it, or FP64 when the bridge has
    no room for its workspace or the environment switches GEMMul8 off. The
    bridge keeps its workspace between two calls, bounded by its own cap.
    The application reuses its own buffers within a separate per-rank limit.
 
-   Whole calls. The CUDA build also offers modules/exx a device for whole
+   Whole calls. CUDA and HIP also offer modules/exx a device for whole
    calls of openmx_exx_add_blocks and openmx_exx_add_gamma
    (Exact_Exchange_Device_Table, OpenMXExxDevice in exx.h): the device then
    computes the contributions of all centre atoms of the call, with the
@@ -36,7 +36,8 @@
    go to the products above. A call without room is counted and the device
    stays in use; a device call that fails for another reason switches the
    device off for the calls and for the products, as above. Transfers,
-   products and moves run in order on the OpenACC queue's stream.
+   products and moves run in order on one stream. CUDA borrows the OpenACC
+   queue's stream and HIP uses the device's private stream.
    Products with at least minimum_work multiplications go through the
    GEMMul8 bridge when the caller sets gemmul8; the others are FP64, and a
    call on the device may have none of the first kind. */
@@ -75,7 +76,7 @@ enum { OPENMX_EXACT_EXCHANGE_CALL_BUFFERS = 32 };
 
 typedef struct {
   void *blas;                  /* handle of the BLAS on the device; NULL until the first product */
-  void *product_stream;        /* nonblocking stream for individual products */
+  void *product_stream;        /* owned nonblocking stream for standalone products and HIP calls */
   int blas_device;             /* device the handle belongs to */
   int disabled;                /* a device call failed: the host computes every later product */
   int failure;                 /* OPENMX_EXACT_EXCHANGE_DEVICE_..., the call that failed */
@@ -105,7 +106,7 @@ typedef struct {
   int call_failed;                 /* a device call failed */
   int call_downloaded;             /* the result came back */
   int call_stream_set;             /* the handle runs on the stream of the queue */
-  void *call_stream;               /* stream of the OpenACC queue, borrowed */
+  void *call_stream;               /* stream of the current call */
   int call_cached;                 /* allocate/release borrow from the owned buffers */
   int call_next_buffer;
   void *call_stream_before;        /* the stream of the handle before */
@@ -134,9 +135,8 @@ const char *Exact_Exchange_Device_Failure_Name(int failure);
 void Exact_Exchange_Device_Release(OpenMXExactExchangeDevice *device);
 
 /* The device for whole calls: fills table, whose context is device, and
-   returns it. Returns NULL where whole calls are not offered: the CPU
-   build, and a CUDA build without OpenACC. The table is valid while device
-   and table are. */
+   returns it. CUDA uses OpenACC for its moves and HIP uses native kernels.
+   The table is valid while device and table are. */
 const OpenMXExxDevice *Exact_Exchange_Device_Table(OpenMXExactExchangeDevice *device, OpenMXExxDevice *table);
 
 /* Ends a call of openmx_exx_add_blocks or openmx_exx_add_gamma that got the

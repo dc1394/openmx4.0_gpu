@@ -11,6 +11,8 @@
 
 #include "mpi.h"
 #include "openmx_common.h"
+#include "openmx_exact_exchange.h"
+#include "openmx_exact_exchange_hip.h"
 #include "openmx_env.h"
 #include "openmx_solver_workspace.h"
 #include "openmx_native_resources.h"
@@ -137,6 +139,7 @@ struct OpenMXClusterColState {
   OpenMXHamiltonianGpuState *hamiltonian_state; /* borrowed from this calculation */
   OpenMXHamiltonianCache *hamiltonian_cache; /* borrowed from this calculation */
   OpenMXDensityGpuState *density_state; /* borrowed from the same calculation */
+  OpenMXExactExchangeState *exact_exchange; /* borrowed from this calculation */
   int initialized;
   int mgpu_host_dense;
   int gs2_fallback_n;
@@ -1437,7 +1440,8 @@ static void ClusterCol_RefineBeginSolve(ClusterColState *state, int SCF_iter, in
        final solve with no FP64 re-solve after it */
     st->last_refined = (st->scf_mode && Solver == 2 && 0 < ClusterCol_RefineIterations(state) && !st->final_stage &&
                         !st->force_fp64 && Cnt_switch == 0 && SCF_iter < DFTSCF_loop && spin_mode != 2 &&
-                        xanes_calc == 0 && empty_occupation_flag == 0 && empty_states_flag == 0);
+                        xanes_calc == 0 && empty_occupation_flag == 0 && empty_states_flag == 0 &&
+                        state->exact_exchange == NULL);
 }
 
 /* every rank, at the end of the root dense path: the solves of the owners
@@ -1462,6 +1466,11 @@ static void ClusterCol_RefineEndSolve(ClusterColState *state)
 int Cluster_DFT_Col_RefineLastRefined(ClusterColState *state)
 {
     return state->refine.last_refined;
+}
+
+void Cluster_DFT_Col_ExactExchange(ClusterColState *state, OpenMXExactExchangeState *exact_exchange)
+{
+    state->exact_exchange = exact_exchange;
 }
 
 void Cluster_DFT_Col_RefineForceFP64(ClusterColState *state, int on)
@@ -1953,7 +1962,7 @@ static int ClusterCol_RefineFirstStepStates(ClusterColState *state, const char *
     ClusterCol_RefineConfigure(state);
     if (!(strcasecmp(mode, "scf") != 0 || Solver != 2 || ClusterCol_RefineIterations(state) <= 0 ||
           state->refine.force_fp64 || Cnt_switch != 0 || DFTSCF_loop <= 1 || cal_partial_charge ||
-          xanes_calc != 0 || empty_occupation_flag != 0 || empty_states_flag != 0 || serialized ||
+          xanes_calc != 0 || empty_occupation_flag != 0 || empty_states_flag != 0 || serialized || state->exact_exchange != NULL ||
           (SpinP_switch == 1 && numprocs0 == 1) || !openmx_eigen_refine_size_ok(n) ||
           state->refine.first_all)) {
         if (lumos < 400.0) lumos = 400.0;
@@ -2150,6 +2159,8 @@ static void ClusterCol_CalcOneSpinDMRootDense(ClusterColState *state, int myid0,
         }
 
         nk_occ = ClusterCol_PrecomputeOccupations(state->chemical, spin, 1, MaxN, ko[spin], ws->occ, ws->occ_e, ws->pocc, calc_pdm);
+
+        Exact_Exchange_Collect_Gamma(state->exact_exchange, spin, n, MaxN, ws->occ, dense_evec);
 
         if (0 < nk_occ) {
 
@@ -2502,6 +2513,8 @@ static void ClusterCol_UnionGs2Path(ClusterColState *state, int n, int MaxN, dou
         saved = ClusterCol_EnterUnionGridGlobals(state);
         Hamiltonian_Cluster_Hs(nh[spin], g->Hs, MP, spin, spin);
         ClusterCol_LeaveUnionGridGlobals(saved);
+        Exact_Exchange_Add_Cluster_Hs(state->exact_exchange, spin, n, g->Hs, g->na_rows, g->na_cols,
+                                      g->nblk, g->np_rows, g->np_cols, g->my_prow, g->my_pcol);
 
         /* H X, then X^T (H X) */
         for (i=0; i<g->na_rows_max*g->na_cols_max; i++) g->Cs[i] = 0.0;
@@ -2662,6 +2675,21 @@ static void Patch2Host_Cluster_Owner(ClusterColState *state, double ****RH, int 
   openmx_core_native_free(state->resources,H1);
 }
 
+/* Use the transform scratch for the exchange upload before the Hamiltonian solve. */
+static void ClusterCol_DenseAddExactExchange(ClusterColState *state, int spin, int n)
+{
+    if (!Exact_Exchange_Active(state->exact_exchange)) return;
+    ClusterColGpuSolverCtx *ctx = &state->gpusolver_ctx;
+    const size_t count = ClusterCol_CheckedMulCount((size_t)n, (size_t)n, "dense exchange matrix");
+    double *exchange = ClusterCol_MallocArray(state, count, sizeof(*exchange), "dense exchange matrix");
+    memset(exchange, 0, count * sizeof(*exchange));
+    Exact_Exchange_Add_Cluster_Hs(state->exact_exchange, spin, n, exchange, n,n,n,1,1,0,0);
+    const double start = MPI_Wtime();
+    wait_hipfunc(Exact_Exchange_HIP_Add(ctx->stream, n, n, ctx->d_H, ctx->d_tmp, exchange));
+    openmx_core_native_free(state->resources, exchange);
+    Exact_Exchange_Device_Addition(state->exact_exchange, MPI_Wtime() - start);
+}
+
 static void ClusterCol_MagmaRootDensePath(ClusterColState *state, int SpinP_switch,double **ko,double *****nh,double ****CntOLP,
     int numprocs0,int myid0,int myworld1,int numprocs1,int myid1,MPI_Comm *MPI_CommWD1,
     int *Comm_World_StartID1,int *MP,int *is2,int *ie2,int n,int MaxN,double **EVec1)
@@ -2690,6 +2718,7 @@ static void ClusterCol_MagmaRootDensePath(ClusterColState *state, int SpinP_swit
     for (int spin=0;spin<=SpinP_switch;++spin) {
         Patch2Host_Cluster_Owner(state, nh[spin],MP,root,n,h);
         if (root) {
+            Exact_Exchange_Add_Cluster_Hs(state->exact_exchange, spin, n, h, n,n,n,1,1,0,0);
             if (!openmx_mgpu_host_dgemm(HIPBLAS_OP_N,HIPBLAS_OP_N,n,n,n,h,n,s,n,tmp,n) ||
                 !openmx_mgpu_host_dgemm(HIPBLAS_OP_T,HIPBLAS_OP_N,n,n,n,s,n,tmp,n,h,n) ||
                 !openmx_mgpu_host_solve(n,MaxN,0,h,n,ko[spin]+1) ||
@@ -2839,6 +2868,7 @@ static void ClusterCol_GpuSolverRootDensePath(ClusterColState *state, int SCF_it
                 ClusterCol_BuildDeviceDenseFromPacked(state, cache_H,dense_index,tnum,n,state->gpusolver_ctx.d_H);
                 openmx_core_native_free(state->resources,dense_index);
 
+                ClusterCol_DenseAddExactExchange(state, spin, n);
                 ClusterCol_SampleHamiltonian(state, SCF_iter,spin,n);
                 C = (double*)ClusterCol_MallocArray(state, nmax,sizeof(double),"root dense eigenvectors");
                 ClusterCol_GpuSolver_SolveHamiltonianDevice(state, n,MaxN,ko[spin],C,spin,shared);
@@ -2853,6 +2883,7 @@ static void ClusterCol_GpuSolverRootDensePath(ClusterColState *state, int SCF_it
                 size_t nmax = ClusterCol_CheckedMulCount((size_t)n,(size_t)MaxN,"root dense eigenvectors");
                 double *C = NULL;
 
+                ClusterCol_DenseAddExactExchange(state, spin, n);
                 ClusterCol_SampleHamiltonian(state, SCF_iter,spin,n);
                 C = (double*)ClusterCol_MallocArray(state, nmax,sizeof(double),"root dense eigenvectors");
                 ClusterCol_GpuSolver_SolveHamiltonianDevice(state, n,MaxN,ko[spin],C,spin,shared);
@@ -2996,6 +3027,7 @@ static void ClusterCol_GpuSolverRootDenseSerialPath(ClusterColState *state,
                                                                "serial root eigenvectors");
                     double *evec = (double*)ClusterCol_MallocArray(state, count, sizeof(double),
                                                                   "serial root eigenvectors");
+                    ClusterCol_DenseAddExactExchange(state, spin, n);
                     ClusterCol_GpuSolver_SolveHamiltonianDevice(state, n, MaxN, ko[spin], evec, -1, 0);
                     ClusterCol_StashGpuSolverDenseEVec(state, myid1, spin, n, MaxN, &evec);
                 }
@@ -3526,11 +3558,13 @@ static double Cluster_DFT_Col_owned(ClusterColState *state, const OpenMXAtomicVi
 
   if (SpinP_switch==1 && numprocs0==1){
     Hamiltonian_Cluster_Hs(nh[0],Hs,MP,0,0);
+    Exact_Exchange_Add_Cluster_Hs(state->exact_exchange,0,n,Hs,na_rows,na_cols,nblk,np_rows,np_cols,my_prow,my_pcol);
   }
   else{
     for (spin=0; spin<=SpinP_switch; spin++){
       Hamiltonian_Cluster_Hs(nh[spin],Hs,MP,spin,myworld1);
-    } 
+    }
+    Exact_Exchange_Add_Cluster_Hs(state->exact_exchange,myworld1,n,Hs,na_rows,na_cols,nblk,np_rows,np_cols,my_prow,my_pcol);
   }
 
   if (rebuild_distributed_overlap){
@@ -3923,6 +3957,7 @@ static double Cluster_DFT_Col_owned(ClusterColState *state, const OpenMXAtomicVi
   if (SpinP_switch==1 && numprocs0==1 && spin==0){
     spin++;
     Hamiltonian_Cluster_Hs(nh[spin],Hs,MP,spin,spin);
+    Exact_Exchange_Add_Cluster_Hs(state->exact_exchange,spin,n,Hs,na_rows,na_cols,nblk,np_rows,np_cols,my_prow,my_pcol);
     goto diagonalize; 
   }
 
@@ -4984,6 +5019,9 @@ double Calc_DM_Cluster_collinear(ClusterColState *state,
       dFF[k] = diffF;
     }
   }
+
+  if (kmin <= kmax)
+    Exact_Exchange_Collect_Gamma(state->exact_exchange, spin, n, kmax-kmin+1, FF+kmin, EVec1[spin]);
 
   /* All spin worlds rendezvous; empty state partitions lend their GPUs.
      Keep the optimized root HIP/DGEMM path above, and recover distributed

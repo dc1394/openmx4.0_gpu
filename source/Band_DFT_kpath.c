@@ -28,9 +28,7 @@
 #if OPENMX_GPU_CUDA || OPENMX_GPU_HIP
 #include "openmx_band_kpath_gpu.h"
 #endif
-#if !OPENMX_GPU_HIP
 #include "openmx_exact_exchange.h"
-#endif
 
 typedef void (*BandKPathEigen)(dcomplex **, double *, int, int, int);
 extern void EigenBand_lapack_cpu(dcomplex **, double *, int, int, int);
@@ -376,11 +374,9 @@ void Band_DFT_kpath_Col(const OpenMXChemicalPotentials *chemical,  int nkpath, i
 	        H[i1][j1].i = C[i1][j1].i;
 	      } 
 	    } 
-#if !OPENMX_GPU_HIP
             /* K(k) of a hybrid functional, which the Hamiltonian of the
                neighbour list does not hold */
             Exact_Exchange_Add_Output_Hk(exact_exchange, spin, k1, k2, k3, n, H);
-#endif
           } 
 	} /* if (0<=kloop) */
       } /* ID */

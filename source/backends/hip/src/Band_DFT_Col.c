@@ -13,6 +13,8 @@
 #include "mpi.h"
 #include "lapack_prototypes.h"
 #include "openmx_common.h"
+#include "openmx_exact_exchange.h"
+#include "openmx_exact_exchange_hip.h"
 #include "openmx_env.h"
 #include "openmx_solver_workspace.h"
 #include "openmx_native_resources.h"
@@ -190,6 +192,7 @@ struct OpenMXBandColState {
   OpenMXHamiltonianGpuState *hamiltonian_state; /* borrowed from this calculation */
   OpenMXHamiltonianCache *hamiltonian_cache; /* borrowed from this calculation */
   OpenMXDensityGpuState *density_state; /* borrowed from the same calculation */
+  OpenMXExactExchangeState *exact_exchange; /* borrowed from this calculation */
   int initialized;
   int refine_e0_n;
   double *refine_e0;
@@ -319,7 +322,7 @@ extern hipblasStatus_t openmx_gemmul8ZgemmSolve(hipblasHandle_t handle, hipblasO
                                                 const hipDoubleComplex *B, int ldb, const hipDoubleComplex *beta,
                                                 hipDoubleComplex *C, int ldc);
 
-static void Construct_Band_CsHs(BandColState *state, int SCF_iter, int all_knum, int * order_GA, int * MP, double * S1, double * H1,
+static void Construct_Band_CsHs(BandColState *state, int spin, int SCF_iter, int all_knum, int * order_GA, int * MP, double * S1, double * H1,
                                 double k1, double k2, double k3, dcomplex * Cs, dcomplex * Hs, int n,
                                 int use_gpusolver_dense, int owns_global_dense_rank);
 static int  BandCol_LastConstructOnDevice(BandColState *state);
@@ -2351,7 +2354,8 @@ static int BandCol_RefineFits(BandColState *state, int base, int n, int maxn, in
    the k-dense path */
 static void BandCol_RefineBeginStep(BandColState *state, int SCF_iter, int possible, int possible_kdense, int possible_staged)
 {
-    if (state->mgpu_host_dense) possible=possible_kdense=possible_staged=0;
+    if (state->mgpu_host_dense || state->exact_exchange != NULL)
+        possible=possible_kdense=possible_staged=0;
     BandColRefineState *st = &state->refine;
     int common;
 
@@ -2406,6 +2410,11 @@ static void BandCol_RefineEndStep(BandColState *state)
 int Band_DFT_Col_RefineLastRefined(BandColState *state)
 {
     return state->refine.last_refined;
+}
+
+void Band_DFT_Col_ExactExchange(BandColState *state, OpenMXExactExchangeState *exact_exchange)
+{
+    state->exact_exchange = exact_exchange;
 }
 
 void Band_DFT_Col_RefineForceFP64(BandColState *state, int on)
@@ -3127,6 +3136,27 @@ static void BandCol_ConstructDenseCsHs_HIP(BandColState *state, int need_s, int 
     }
 
     state->last_construct_on_device = 1;
+}
+
+static void BandCol_DenseCollectExactExchange(BandColState *state, int n, int states, int spin,
+    double k1, double k2, double k3, double weight_sum, const dcomplex *evec, int stride,
+    int on_host, const double *occupation)
+{
+    if (!Exact_Exchange_Collecting(state->exact_exchange)) return;
+    dcomplex *panel = NULL;
+    if (evec == NULL || stride < states)
+        BandCol_AbortWithMessage("Missing band eigenvectors for exact exchange.");
+    if (!on_host) {
+        panel = BandCol_MallocArray(state, (size_t)n * states, sizeof(*panel), "exchange eigenvectors");
+        wait_hipfunc(hipMemcpy2D(panel, sizeof(*panel) * (size_t)states,
+                                 evec, sizeof(*panel) * (size_t)stride,
+                                 sizeof(*panel) * (size_t)states, (size_t)n, hipMemcpyDeviceToHost));
+        evec = panel;
+        stride = states;
+    }
+    Exact_Exchange_Collect_K(state->exact_exchange, spin, k1,k2,k3,weight_sum, n,states,stride,
+                             (const double*)evec, occupation);
+    openmx_core_native_free(state->resources, panel);
 }
 
 typedef struct {
@@ -4226,7 +4256,7 @@ diagonalize1:
 
                 /* make S and H */
 
-                Construct_Band_CsHs(state, SCF_iter, all_knum, use_setham_packed_cache ? setham_order_GA : order_GA, MP,
+                Construct_Band_CsHs(state, spin, SCF_iter, all_knum, use_setham_packed_cache ? setham_order_GA : order_GA, MP,
                                     use_setham_packed_cache ? setham_S1 : S1,
                                     use_setham_packed_cache ? setham_H1 : H1, k1, k2, k3, Ss, Hs, n,
                                     use_gpusolver_dense, owns_global_dense_rank);
@@ -4357,7 +4387,7 @@ diagonalize1:
                         const int build_s = (SCF_iter == 1) || (!device_s_ready && !host_s_ready);
                         const int construct_scf_iter = build_s ? 1 : SCF_iter;
 
-                        Construct_Band_CsHs(state, construct_scf_iter, all_knum, use_setham_packed_cache ? setham_order_GA : order_GA, MP,
+                        Construct_Band_CsHs(state, spin, construct_scf_iter, all_knum, use_setham_packed_cache ? setham_order_GA : order_GA, MP,
                                             use_setham_packed_cache ? setham_S1 : S1,
                                             use_setham_packed_cache ? setham_H1 : H1, k1, k2, k3, Ss, Hs,
                                             n, use_gpusolver_dense, owns_global_dense_rank);
@@ -4497,7 +4527,7 @@ diagonalize1:
 
                 /* make S and H */
 
-                Construct_Band_CsHs(state, SCF_iter, all_knum, use_setham_packed_cache ? setham_order_GA : order_GA, MP,
+                Construct_Band_CsHs(state, spin, SCF_iter, all_knum, use_setham_packed_cache ? setham_order_GA : order_GA, MP,
                                     use_setham_packed_cache ? setham_S1 : S1,
                                     use_setham_packed_cache ? setham_H1 : H1, k1, k2, k3, Cs, Hs, n,
                                     use_gpusolver_dense, owns_global_dense_rank);
@@ -4863,7 +4893,7 @@ diagonalize1:
                     k1 = T_KGrids1[my_kloop];
                     k2 = T_KGrids2[my_kloop];
                     k3 = T_KGrids3[my_kloop];
-                    Construct_Band_CsHs(state, build_s ? 1 : SCF_iter, all_knum,
+                    Construct_Band_CsHs(state, spin, build_s ? 1 : SCF_iter, all_knum,
                                         use_setham_packed_cache ? setham_order_GA : order_GA, MP,
                                         use_setham_packed_cache ? setham_S1 : S1,
                                         use_setham_packed_cache ? setham_H1 : H1, k1, k2, k3, Ss, Hs, n,
@@ -5295,6 +5325,10 @@ diagonalize1:
                                                     state->gpusolver_ctx.h_evec, state->gpusolver_ctx.h_evec_stride, 1,
                                                     MP, EIGEN, state->dm_workspace.OccWeight, CDM1, EDM1);
                         }
+                        BandCol_DenseCollectExactExchange(state, n, MaxN, spin, k1,k2,k3, sum_weights,
+                            dm_persistent ? BandCol_GpuSolver_DeviceEigenvectors(state) : state->gpusolver_ctx.h_evec,
+                            dm_persistent ? BandCol_GpuSolver_EigenvectorStride(state) : state->gpusolver_ctx.h_evec_stride,
+                            !dm_persistent || state->mgpu_host_dense, state->dm_workspace.OccWeight);
                         if (!dm_persistent) {
                             BandCol_GpuSolver_ClearHostEigenvectors(state);
                             BandCol_GpuSolver_ReleaseDeviceMemory(state);
@@ -5356,6 +5390,11 @@ diagonalize1:
                 time81 += Etime0 - Stime0;
                 dtime(&Stime0);
             }
+
+            if (kmin <= kmax)
+                Exact_Exchange_Collect_K(state->exact_exchange, spin, k1,k2,k3, sum_weights,
+                    n, kmax-kmin+1, ie2[myid2]-is2[myid2]+1,
+                    (const double*)&EVec1[spin][kmin-is2[myid2]], NULL);
 
             int gpu_dm_done = 0;
 
@@ -5759,7 +5798,7 @@ diagonalize1:
                     } else {
                         /* make S and H */
 
-                        Construct_Band_CsHs(state, SCF_iter, all_knum, use_setham_packed_cache ? setham_order_GA : order_GA, MP,
+                        Construct_Band_CsHs(state, spin, SCF_iter, all_knum, use_setham_packed_cache ? setham_order_GA : order_GA, MP,
                                             use_setham_packed_cache ? setham_S1 : S1,
                                             use_setham_packed_cache ? setham_H1 : H1, k1, k2, k3, Ss, Hs, n,
                                             use_gpusolver_dense, owns_global_dense_rank);
@@ -5881,6 +5920,8 @@ diagonalize1:
                         dtime(&Stime1);
                     }
 
+                    BandCol_DenseCollectExactExchange(state, n, MaxN, spin, k1,k2,k3, sum_weights,
+                        evec_device, BandCol_GpuSolver_EigenvectorStride(state), state->mgpu_host_dense, occ_weight);
                     {
                         /* the owner's DM vote (entries, weights and, in the MAGMA
                            host mode, the panel), then the direct device attempts,
@@ -5942,7 +5983,7 @@ diagonalize1:
 
                 /* make S and H */
 
-                Construct_Band_CsHs(state, SCF_iter, all_knum, use_setham_packed_cache ? setham_order_GA : order_GA, MP,
+                Construct_Band_CsHs(state, spin, SCF_iter, all_knum, use_setham_packed_cache ? setham_order_GA : order_GA, MP,
                                     use_setham_packed_cache ? setham_S1 : S1,
                                     use_setham_packed_cache ? setham_H1 : H1, k1, k2, k3, Cs, Hs, n,
                                     use_gpusolver_dense, owns_global_dense_rank);
@@ -6133,6 +6174,8 @@ diagonalize1:
                     dtime(&Stime1);
                 }
 
+                Exact_Exchange_Collect_K(state->exact_exchange, spin, k1,k2,k3, sum_weights,
+                                         n, MaxN, na_rows, (const double*)Hs, occ_weight);
                 {
                     int gpu_dm_done = 0;
 
@@ -6597,7 +6640,7 @@ diagonalize1:
     return time0;
 }
 
-void Construct_Band_CsHs(BandColState *state, int SCF_iter, int all_knum, int * order_GA, int * MP, double * S1, double * H1, double k1,
+void Construct_Band_CsHs(BandColState *state, int spin, int SCF_iter, int all_knum, int * order_GA, int * MP, double * S1, double * H1, double k1,
                          double k2, double k3, dcomplex * Cs, dcomplex * Hs, int n, int use_gpusolver_dense,
                          int owns_global_dense_rank)
 {
@@ -6646,6 +6689,8 @@ void Construct_Band_CsHs(BandColState *state, int SCF_iter, int all_knum, int * 
                 }
             }
         }
+        Exact_Exchange_Add_Band_Hs(state->exact_exchange, spin, k1,k2,k3,n,
+                                   (double*)Hs,n,n,n,1,1,0,0);
         return;
     }
 
@@ -6653,6 +6698,19 @@ void Construct_Band_CsHs(BandColState *state, int SCF_iter, int all_knum, int * 
 
     if (dense_gpusolver_owner) {
         BandCol_ConstructDenseCsHs_HIP(state, need_s, n, k1, k2, k3, S1, H1);
+        if (Exact_Exchange_Active(state->exact_exchange)) {
+            BandColGpuSolverCtx *ctx = &state->gpusolver_ctx;
+            const size_t count = (size_t)n * n;
+            dcomplex *exchange = BandCol_MallocArray(state, count, sizeof(*exchange), "dense exchange matrix");
+            BandCol_ZeroComplex(exchange, count);
+            Exact_Exchange_Add_Band_Hs(state->exact_exchange, spin, k1,k2,k3,n,
+                                      (double*)exchange,n,n,n,1,1,0,0);
+            const double start = MPI_Wtime();
+            wait_hipfunc(Exact_Exchange_HIP_Add(NULL, 2*n, n, (double*)ctx->d_H,
+                                               (double*)ctx->d_tmp, (const double*)exchange));
+            openmx_core_native_free(state->resources, exchange);
+            Exact_Exchange_Device_Addition(state->exact_exchange, MPI_Wtime() - start);
+        }
         return;
     }
 
@@ -6689,6 +6747,8 @@ void Construct_Band_CsHs(BandColState *state, int SCF_iter, int all_knum, int * 
             Hs[entry->index0].i += H1[h_index] * si;
         }
     }
+    Exact_Exchange_Add_Band_Hs(state->exact_exchange, spin,k1,k2,k3,n,(double*)Hs,
+                               na_rows,na_cols,nblk,np_rows,np_cols,my_prow,my_pcol);
 }
 
 static double get_max_value(double local_value)

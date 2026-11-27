@@ -66,13 +66,12 @@ def main():
         "openmx_mgpu_runtime.cu", "openmx_band_kpath_gpu.cu")]
 
     if args.backend == "HIP":
-        jobs.append((cxx, "orbs_otf_hip.cu"))
+        jobs += [(cxx, name) for name in ("orbs_otf_hip.cu", "exact_exchange_device_hip.cu", "set_xc_grid_hip.cu")]
+        jobs += [(cc, name) for name in ("Exact_Exchange.c", "Exact_Exchange_Device.c", "Exact_Exchange_Host.c", "Set_XC_Grid.c")]
     else:
-        # The exact exchange of the hybrid functionals is not part of the HIP build yet.
         jobs.append((cc, "Exact_Exchange.c"))
         # The device loop of the exchange-correlation grid with the semilocal
-        # part of the hybrids (the short-range exchange as OpenACC routines);
-        # the HIP copy keeps the host loop for them.
+        # part of the hybrids (the short-range exchange as OpenACC routines).
         jobs.append((cc, "Set_XC_Grid.c"))
         # without fused multiply-adds in the device code, as in source/Makefile
         jobs.append((cc+["-gpu=nofma"], "Exact_Exchange_Device.c"))

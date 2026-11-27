@@ -428,7 +428,8 @@ openmx_globals.o: openmx_globals.c openmx_common.h
 include openmx_core.mk
 # These interfaces also reach legacy objects through openmx_common.h.
 # Rebuild consumers when a native API mapping or backend selection changes.
-OBJS += Band_DFT_kpath_gpu.o openmx_band_kpath_gpu.o
+OBJS += Band_DFT_kpath_gpu.o openmx_band_kpath_gpu.o \
+        Exact_Exchange.o Exact_Exchange_Device.o Exact_Exchange_Host.o exact_exchange_device_hip.o
 
 OPENMX_GPU_INTERFACE_HEADERS = openmx_gpu_backend.h openmx_gpu_runtime.h \
  openmx_gpu_blas.h openmx_gpu_solver.h openmx_gpu_complex.h \
@@ -641,6 +642,17 @@ Band_DFT_kpath_gpu.o: Band_DFT_kpath_gpu.c openmx_band_kpath_gpu.h openmx_band_k
 	$(CC_NOACC_O3) -c $<
 openmx_band_kpath_gpu.o: openmx_band_kpath_gpu.cu openmx_band_kpath_gpu.h openmx_gpu_memory.hpp openmx_gpu_workers.h openmx_mgpu_runtime.h
 	$(HIPCC) $(HIPCC_GEMMUL8_FLAGS) -c $< -o $@
+Exact_Exchange.o: Exact_Exchange.c openmx_exact_exchange.h openmx_exact_exchange_device.h openmx_exact_exchange_host.h openmx_exx.h ../modules/exx/include/openmx/exx/exx.h openmx_host_simd.h openmx_gpu_architecture.h openmx_gpu_collective.h openmx_gpu_device.h openmx_mgpu_runtime.h
+	$(CC_NOACC_O3) -c $<
+Exact_Exchange_Device.o: Exact_Exchange_Device.c openmx_exact_exchange_device.h openmx_exact_exchange_hip.h openmx_exx.h ../modules/exx/include/openmx/exx/exx.h
+	$(CC_NOACC_O3) -c $<
+Exact_Exchange_Host.o: Exact_Exchange_Host.c openmx_exact_exchange_host.h
+	$(CC_NOACC_O3) -fPIC -c $<
+exact_exchange_device_hip.o: exact_exchange_device_hip.cu openmx_exact_exchange_hip.h openmx_exx.h ../modules/exx/include/openmx/exx/exx.h
+	$(HIPCC) $(HIPCC_GEMMUL8_FLAGS) -c $< -o $@
+Input_std.o DFT.o Cluster_DFT_Col.o Band_DFT_Col.o Band_DFT_kpath.o Band_DFT_kpath_gpu.o Band_DFT_Dosout.o: openmx_exact_exchange.h
+Cluster_DFT_Col.o Band_DFT_Col.o: openmx_exact_exchange_hip.h
+Set_XC_Grid.o set_xc_grid_hip.o: openmx_xc_hybrid_kernels.h ../modules/xc/include/openmx/xc/hybrid_kernels.h ../modules/xc/include/openmx/xc/kernels.h
 Band_DFT_MO.o: Band_DFT_MO.c openmx_common.h
 	$(CC) -c Band_DFT_MO.c
 Unfolding_Bands.o: Unfolding_Bands.c openmx_common.h

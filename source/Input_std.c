@@ -23,9 +23,7 @@
 #include <omp.h>
 #include "flpq_dm.h"
 #include "tran_prototypes.h"
-#if !OPENMX_GPU_HIP
 #include "openmx_exact_exchange.h"
-#endif
 
 #define MAXBUF 4096
 #define Max_Num_WF_Projs 15
@@ -83,11 +81,8 @@ void Input_std(char *file, OpenMXCoreContext *core)
     abort();
   }
   OpenMXElectronicViews electronic_storage;
-#if !OPENMX_GPU_HIP
-  /* the exact exchange of the hybrid functionals gets the values of its
-     keywords before the input file is closed */
+  /* Bind the exact exchange settings to this calculation. */
   OpenMXExactExchangeState *exact_exchange=Exact_Exchange_Bind_Resources(core);
-#endif
   int hybrid_functional=0;  /* scf.XcType: 0 no hybrid functional, 1 HSE06, 2 PBE0 */
   double exx_alpha,exx_omega,exx_abf_pca,exx_v_cutoff,exx_outer_criterion;
   double exx_coulomb_cutoff;
@@ -1028,13 +1023,6 @@ void Input_std(char *file, OpenMXCoreContext *core)
      exchange is set up at the end of this routine. */
 
   if (XC_switch==7 || XC_switch==8){
-#if OPENMX_GPU_HIP
-    if (myid==Host_ID){
-      printf("scf.XcType=%s is not available in the HIP build.\n", (XC_switch==7) ? "HSE06" : "PBE0");
-    }
-    MPI_Finalize();
-    exit(0);
-#endif
     hybrid_functional = (XC_switch==7) ? 1 : 2;
     XC_switch = 4;
   }
@@ -5212,7 +5200,6 @@ void Input_std(char *file, OpenMXCoreContext *core)
     }
   }
 
-#if !OPENMX_GPU_HIP
   {
     OpenMXExactExchangeInput exx_input;
     exx_input.functional = (hybrid_functional==1) ? OPENMX_EXACT_EXCHANGE_HSE06
@@ -5280,7 +5267,6 @@ void Input_std(char *file, OpenMXCoreContext *core)
     exx_structure.lattice = tv;
     Exact_Exchange_Bind_Structure(exact_exchange,&exx_structure);
   }
-#endif
 
   /****************************************************
                        input_close

@@ -29,6 +29,7 @@
 #include "openmx_quadrature.h"
 #include "openmx_vna_matrix.h"
 #include "openmx_vna_status.h"
+#include "openmx_exact_exchange.h"
 #include "Inputtools.h"
 #include "mpi.h"
 #include "tran_prototypes.h"
@@ -454,6 +455,11 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   OpenMXMixingRhokState *mixing_rhok=Mixing_Rhok_Bind_Resources(core);
   OpenMXMixingDMState *mixing_dm=Mixing_DM_Bind_Resources(core);
   OpenMXMixingVState *mixing_v=Mixing_V_Bind_Resources(core);
+  OpenMXExactExchangeState *exact_exchange=Exact_Exchange_Bind_Resources(core);
+  /* the collinear cluster and band solvers add the exchange matrix of a
+     hybrid functional to their Hamiltonians and collect the density matrices */
+  Cluster_DFT_Col_ExactExchange(solver_states.cluster_col, Exact_Exchange_Enabled(exact_exchange) ? exact_exchange : NULL);
+  Band_DFT_Col_ExactExchange(solver_states.band_col, Exact_Exchange_Enabled(exact_exchange) ? exact_exchange : NULL);
   OpenMXMixingHistory *mixing_history=NULL;
   char mixing_history_error[256];
   if(!openmx_core_mixing_history(core,&mixing_history,mixing_history_error,sizeof(mixing_history_error))) {
@@ -498,6 +504,10 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   double tmp,tmp0;
   int Cnt_kind,Calc_CntOrbital_ON,spin,spinmax,m;
   int SCF_iter,SCF_iter_shift,SCF_MAX;
+  int exx_inner_start = 0;  /* SCF_iter at which the present inner SCF of a hybrid functional began */
+  double exx_criterion = 0.0; /* the criterion of the present inner SCF of a hybrid functional */
+  int exx_loose = 0;        /* the step stops only on exx_criterion, which is larger than scf.criterion */
+  int exx_outputs = 0;      /* K(R) of a hybrid functional is prepared for the band dispersion and the DOS */
   int i,j,k,fft_charge_flag,M1N;
   int orbitalOpt_iter,LSCF_iter,OrbOpt_end; 
   int wanA,ETemp_controller;
@@ -633,6 +643,19 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
         openmx_gpu_zheevd_selftest("post_HVNA");
       }
     }
+  }
+
+  /* exact exchange of a hybrid functional: the quantities that the
+     structure fixes (docs/EXX_IMPLEMENTATION_GUIDE.md, section 6.2).
+     The SCF below starts with the semilocal functional. */
+  if (Exact_Exchange_Enabled(exact_exchange)){
+    if (MYID_MPI_COMM_WORLD==Host_ID && 0<level_stdout){
+      printf("<MD=%2d>  Preparation of the exact exchange\n",MD_iter);
+      fflush(stdout);
+    }
+    /* the band solver takes the blocks K(R) of the site form, the cluster
+       solver the matrix of the Gamma point */
+    Exact_Exchange_Prepare(exact_exchange, atomic, Solver==3, mpi_comm_level1, level_stdout);
   }
 
   /* SCF loop */
@@ -901,7 +924,9 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
                                     LSCF_iter-SCF_iter_shift,
                                     SCF_iter-SCF_iter_shift,
 				    TRAN_Poisson_flag2,
-                                    SucceedReadingDMfile,Cnt_kind,H0,HNL,DM[0],H, electronic, local_basis, 0.0, 0.0);
+                                    SucceedReadingDMfile,Cnt_kind,H0,HNL,DM[0],H, electronic, local_basis,
+                                    Exact_Exchange_Semilocal_Alpha(exact_exchange),
+                                    Exact_Exchange_Semilocal_Omega(exact_exchange));
 
 	}
 	
@@ -934,7 +959,9 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
                                   LSCF_iter-SCF_iter_shift,
                                   SCF_iter-SCF_iter_shift,
                                   TRAN_Poisson_flag2,
-                                  SucceedReadingDMfile,Cnt_kind,H0,HNL,DM[0],H, electronic, local_basis, 0.0, 0.0);
+                                  SucceedReadingDMfile,Cnt_kind,H0,HNL,DM[0],H, electronic, local_basis,
+                                  Exact_Exchange_Semilocal_Alpha(exact_exchange),
+                                  Exact_Exchange_Semilocal_Omega(exact_exchange));
 
 	{
 	  extern void openmx_gpu_zheevd_selftest(const char *label);
@@ -1002,7 +1029,9 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
                                 LSCF_iter-SCF_iter_shift,
                                 SCF_iter-SCF_iter_shift,
                                 TRAN_Poisson_flag2,
-                                SucceedReadingDMfile,Cnt_kind,H0,HNL,DM[0],H, electronic, local_basis, 0.0, 0.0);
+                                SucceedReadingDMfile,Cnt_kind,H0,HNL,DM[0],H, electronic, local_basis,
+                                Exact_Exchange_Semilocal_Alpha(exact_exchange),
+                                Exact_Exchange_Semilocal_Omega(exact_exchange));
 
       if (Cnt_switch==1 && Cnt_Now==1){
 	Contract_Hamiltonian(H,CntH,OLP,CntOLP, local_basis);
@@ -1436,6 +1465,10 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
     energies->is[0] = Eele1[0];
     energies->is[1] = Eele1[1];
     energies->band = energies->is[0] + energies->is[1];
+    /* with the exchange matrix of a hybrid functional the band energy is the
+       sum of the occupied eigenvalues: Eele1 is the trace with the Hamiltonian
+       of the neighbour list, which does not hold the exchange matrix */
+    if (Exact_Exchange_Active(exact_exchange)) energies->band = energies->os[0] + energies->os[1];
 
     /*****************************************************
                    Orbital magnetic moment 
@@ -1470,6 +1503,27 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 	 (dUele<SCF_Criterion && Cnt_switch==1 && Cnt_Now!=1)                     ||
 	 (dUele<SCF_Criterion && Cnt_switch==1 && Cnt_Now==1 && OrbOpt_end==1))
 	) po = 1;
+
+    /* hybrid functional: an inner SCF from an exchange matrix that is still
+       far from its fixed point may stop on a larger criterion than
+       scf.criterion (scf.exx.inner.criterion.ratio); exx_criterion is
+       scf.criterion otherwise */
+    exx_criterion = SCF_Criterion;
+    exx_loose = 0;
+    if (Cnt_switch==0) exx_criterion = Exact_Exchange_Inner_Criterion(exact_exchange, SCF_Criterion);
+    if (po==0 && 2<=SCF_iter && Cnt_switch==0 && SCF_Criterion<exx_criterion
+        && dUele<exx_criterion && mixing_history->norm[0]<(10*exx_criterion)){
+      po = 1;
+      exx_loose = 1;
+    }
+
+    /* hybrid functional: an inner SCF with an exchange matrix stops only when
+       its density has answered the matrix. The test above compares the band
+       energies of two steps and passes as well when the mixing has hardly
+       moved the density (docs/EXX_IMPLEMENTATION_GUIDE.md, section 6.6). */
+    if (Cnt_switch==0 && Exact_Exchange_Active(exact_exchange)
+        && !Exact_Exchange_Inner_Stop_Allowed(exact_exchange, Mixing_switch, SCF_iter-exx_inner_start,
+                                              sqrt(fabs(mixing_history->norm[0])), SCF_Criterion)) po = 0;
 
     /*****************************************************
       the refined FP32 eigensolver (eigen_refine_gpu.h):
@@ -1615,6 +1669,95 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
       energies->is[0] = Eele1[0];
       energies->is[1] = Eele1[1];
       energies->band = energies->is[0] + energies->is[1];
+    }
+
+    /*****************************************************
+      outer iteration of a hybrid functional
+      (docs/EXX_IMPLEMENTATION_GUIDE.md, sections 6.1, 6.6)
+
+      The inner SCF, with a fixed exchange matrix K, has
+      stopped. The Hamiltonian of this step is solved once
+      more to collect the density matrices, and K is built
+      from them. Unless the change of the exchange energy
+      is below scf.exx.outer.criterion, the SCF goes on
+      with the new K. The first inner SCF is the one of
+      the semilocal functional.
+    *****************************************************/
+
+    if (po==1 && Cnt_switch==0 && (Solver==2 || Solver==3) && SpinP_switch<=1 && Exact_Exchange_Enabled(exact_exchange)){
+
+      double deviation;
+
+      Exact_Exchange_Collect_Begin(exact_exchange, SpinP_switch+1, mpi_comm_level1);
+      if (Solver==2){
+        time5 += Cluster_DFT_Col(solver_states.cluster_col, atomic, "scf",LSCF_iter,SpinP_switch,
+                                 ko_col,H,OLP[0],DM[0],EDM,
+                                 Eele0,Eele1,
+                                 myworld1,NPROCS_ID1,Comm_World1,NPROCS_WD1,
+                                 Comm_World_StartID1,MPI_CommWD1,MP,is2,ie2,
+                                 Ss_Re,Cs_Re,Hs_Re,
+                                 CDM1,EDM1,PDM1,size_H1,SP_NZeros,SP_Atoms,EVec1_Re,Work1, electronic);
+      }
+      else{
+        time5 += Band_DFT_Col(solver_states.band_col, LSCF_iter,Kspace_grid1,Kspace_grid2,Kspace_grid3,SpinP_switch,0,
+                              H,iHNL,OLP[0],DM[0],EDM,Eele0,Eele1,MP,order_GA,ko,koS,EIGEN_Band,H1,S1,
+                              CDM1,EDM1,EVec1_Cx,Ss_Cx,Cs_Cx,Hs_Cx,k_op,T_k_op,T_k_ID,
+                              T_KGrids1,T_KGrids2,T_KGrids3,myworld1,NPROCS_ID1,Comm_World1,NPROCS_WD1,
+                              Comm_World_StartID1,MPI_CommWD1,myworld2,NPROCS_ID2,NPROCS_WD2,Comm_World2,
+                              Comm_World_StartID2,MPI_CommWD2, electronic);
+      }
+      Exact_Exchange_Collect_End(exact_exchange, mpi_comm_level1);
+      energies->os[0] = Eele0[0];
+      energies->os[1] = Eele0[1];
+      energies->is[0] = Eele1[0];
+      energies->is[1] = Eele1[1];
+      energies->band = energies->is[0] + energies->is[1];
+      if (Exact_Exchange_Active(exact_exchange)) energies->band = energies->os[0] + energies->os[1];
+
+      /* the collected matrices hold the density matrix of the solver on the
+         elements of the neighbour list; a larger difference means that the
+         solver handed over other vectors than the ones it used */
+      deviation = Exact_Exchange_Density_Deviation(exact_exchange, SpinP_switch+1, Matomnum, M2G, FNAN, natn,
+                                                   ncn, atv_ijk,
+                                                   WhatSpecies, atomic->species.contracted_orbitals, MP,
+                                                   DM[0], mpi_comm_level1);
+      if (MYID_MPI_COMM_WORLD==Host_ID && 2<=level_stdout){
+        printf("<EXX>  density matrices collected: largest deviation from the solver %.3e\n",deviation);
+        fflush(stdout);
+      }
+      if (!(deviation<1.0e-8)){
+        if (MYID_MPI_COMM_WORLD==Host_ID){
+          printf("<EXX>  the collected density matrices differ from those of the solver by %.3e\n",deviation);
+          fflush(stdout);
+        }
+        MPI_Abort(mpi_comm_level1, 1);
+      }
+
+      Exact_Exchange_Build(exact_exchange, mpi_comm_level1, level_stdout);
+
+      if (MYID_MPI_COMM_WORLD==Host_ID && 0<level_stdout){
+        printf("<EXX>  outer iteration %2d at SCF=%4d  Uexx=%18.12f  delta=%11.3e (Hartree)\n",
+               Exact_Exchange_Outer_Iterations(exact_exchange),SCF_iter,
+               Exact_Exchange_Energy(exact_exchange),Exact_Exchange_Change(exact_exchange));
+        if (exx_loose)
+          printf("<EXX>  the inner SCF of this build stopped on the criterion %.3e (scf.exx.inner.criterion.ratio)\n",
+                 exx_criterion);
+        fflush(stdout);
+      }
+
+      if (Exact_Exchange_Outer_Continue(exact_exchange, exx_loose)){
+        /* the exchange matrix of the next inner SCF from the last builds
+           (scf.exx.outer.extrapolation) */
+        Exact_Exchange_Extrapolate(exact_exchange, mpi_comm_level1, level_stdout);
+        /* a new inner SCF. The mixing starts again through SCF_iter_shift,
+           so that no extrapolation takes a residual that was measured with
+           the exchange matrix before; the offset depends on the mixer.
+           scf.maxIter counts the steps of each inner SCF. */
+        int shift = Exact_Exchange_Mixing_Offset(Mixing_switch, Pulay_SCF, LSCF_iter);
+        if (0<=shift) SCF_iter_shift = shift;
+        exx_inner_start = SCF_iter;
+        po = 0;
+      }
     }
 
     /*****************************************************
@@ -1966,7 +2109,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
     **************************************************************/
 
     Read_SCF_keywords();
-    if (Cnt_switch==0) SCF_MAX = DFTSCF_loop;
+    if (Cnt_switch==0) SCF_MAX = DFTSCF_loop + exx_inner_start;
 
     /************************************************************************
                               end of SCF calculation
@@ -1974,10 +2117,82 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
   } while (po==0 && SCF_iter<SCF_MAX);  if (po==0) scf_convergence_flag = 0; else scf_convergence_flag = 1;
 
-  /* an SCF cut on a refined FP32 step (scf.maxIter lowered through the
-     _SCF_keywords file below the step the solvers keep in FP64): the
-     step's Hamiltonian once more in FP64, as after a stop */
+  /* hybrid functional: how the outer iteration ended */
+  if (Cnt_switch==0 && Exact_Exchange_Enabled(exact_exchange)){
+    const int builds = Exact_Exchange_Outer_Iterations(exact_exchange);
+    double exx_times[4];
+    long long exx_device_use[5];
+    long long exx_device_calls[6];
+    long long exx_device_additions;
+    long long exx_band_sums[2];
+    double exx_device_seconds;
+    double exx_call_seconds;
 
+    if (!Exact_Exchange_Outer_Converged(exact_exchange)) scf_convergence_flag = 0;
+    Exact_Exchange_Device_Use(exact_exchange, mpi_comm_level1, exx_device_use, &exx_device_seconds);
+    Exact_Exchange_Device_Calls(exact_exchange, mpi_comm_level1, exx_device_calls, &exx_call_seconds);
+    exx_device_additions = Exact_Exchange_Device_Additions(exact_exchange, mpi_comm_level1);
+    Exact_Exchange_Band_Sums(exact_exchange, mpi_comm_level1, exx_band_sums);
+
+    if (MYID_MPI_COMM_WORLD==Host_ID && 0<level_stdout){
+      if (builds==0){
+        printf("<EXX>  WARNING: the SCF of GGA-PBE did not converge within scf.maxIter=%d steps.\n",DFTSCF_loop);
+        printf("<EXX>  No exchange matrix was built: the energies below are those of GGA-PBE.\n");
+      }
+      else if (po==0){
+        printf("<EXX>  WARNING: the SCF with the exchange matrix of the outer iteration %d\n",builds);
+        printf("<EXX>  did not converge within scf.maxIter=%d steps.\n",DFTSCF_loop);
+      }
+      else if (!Exact_Exchange_Outer_Converged(exact_exchange)){
+        printf("<EXX>  WARNING: the outer iteration did not converge in %d builds of the exchange matrix\n",builds);
+        printf("<EXX>  (scf.exx.outer.maxIter): delta=%.3e Hartree.\n",Exact_Exchange_Change(exact_exchange));
+      }
+      else{
+        printf("<EXX>  The outer iteration converged with %d builds of the exchange matrix: delta=%.3e Hartree.\n",
+               builds,Exact_Exchange_Change(exact_exchange));
+      }
+      Exact_Exchange_Times(exact_exchange, exx_times);
+      printf("<EXX>  time (s): preparation %.2f, density matrices %.2f, exchange matrix %.2f, addition %.2f\n",
+             exx_times[0],exx_times[1],exx_times[2],exx_times[3]);
+      if (2<=level_stdout && (0<exx_band_sums[0] || 0<exx_band_sums[1])){
+        printf("<EXX>  K(k) of the k points: %lld sums over the blocks of K, and %lld additions of a sum"
+               " kept since the same build (all processes)\n",exx_band_sums[0],exx_band_sums[1]);
+      }
+      if (0<exx_device_use[0] || 0<exx_device_use[1] || 0<exx_device_use[3]){
+        printf("<EXX>  GPU: %lld matrix products of the exchange matrix on the device, in %lld processes\n",
+               exx_device_use[0],exx_device_use[2]);
+        printf("<EXX>  (at most %.2f s in one process); %lld left to the host for lack of device memory.\n",
+               exx_device_seconds,exx_device_use[1]);
+        if (Exact_Exchange_Device_Gemmul8(exact_exchange) && 0<exx_device_use[0]){
+          printf("<EXX>  GPU: GEMMul8 computed %lld of the matrix products on the device, FP64 the other %lld"
+                 " (scf.gemmul8.enable on).\n",exx_device_use[4],exx_device_use[0]-exx_device_use[4]);
+        }
+      }
+      if (0<exx_device_calls[0] || 0<exx_device_calls[1]){
+        printf("<EXX>  GPU: %lld calls of the exchange build on the device, in %lld processes, with %lld matrix products,"
+               " %lld of them large\n",exx_device_calls[0],exx_device_calls[2],exx_device_calls[3],exx_device_calls[4]);
+        printf("<EXX>  (at most %.2f s in one process); %lld calls left to the host for lack of device memory.\n",
+               exx_call_seconds,exx_device_calls[1]);
+        if (Exact_Exchange_Device_Gemmul8(exact_exchange) && 0<exx_device_calls[0]){
+          printf("<EXX>  GPU: GEMMul8 computed %lld of the %lld large matrix products of these calls, FP64 the other"
+                 " %lld products (scf.gemmul8.enable on).\n",exx_device_calls[5],exx_device_calls[4],
+                 exx_device_calls[3]-exx_device_calls[5]);
+        }
+      }
+      if (0<exx_device_use[3]){
+        printf("<EXX>  WARNING: %lld processes stopped using their device for the exchange matrix after a failed call.\n",
+               exx_device_use[3]);
+      }
+      if (0<exx_device_additions){
+        printf("<EXX>  GPU: the exchange matrix was added to %lld dense Hamiltonians on the device.\n",
+               exx_device_additions);
+      }
+      fflush(stdout);
+    }
+  }
+
+  /* an SCF cut by scf.maxIter (changed through the _SCF_keywords file) on a
+     refined FP32 eigensolve: the same FP64 re-solve as at a stop */
   if (Cnt_switch==0 && Solver==2 && SpinP_switch<=1 && Cluster_DFT_Col_RefineLastRefined(solver_states.cluster_col)){
     if (myid0==Host_ID && 2<=level_stdout){
       printf("<DFT>  eigensolver: the SCF ended on a refined FP32 step; the Hamiltonian is solved once more in FP64\n");
@@ -2621,6 +2836,22 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   */
 
   /*****************************************************
+     the exchange matrix of a hybrid functional for the
+     band dispersion and the DOS of the band solver, which
+     build H(k) from the Hamiltonian of the neighbour list
+     at k points of their own and add K(k) to it
+     (docs/EXX_IMPLEMENTATION_GUIDE.md, section 6.5)
+  *****************************************************/
+
+  exx_outputs = (Solver==3 && Cnt_switch==0 && Exact_Exchange_Active(exact_exchange)
+                 && ((Band_disp_switch==1 && Band_Nkpath>0) || Dos_fileout || DosGauss_fileout));
+  Exact_Exchange_End_Device_Phase(exact_exchange);
+  if (exx_outputs) {
+    Exact_Exchange_Prepare_Outputs(exact_exchange, atomic, mpi_comm_level1, level_stdout);
+    Exact_Exchange_End_Device_Phase(exact_exchange);
+  }
+
+  /*****************************************************
                       Band dispersion 
   *****************************************************/
 
@@ -2641,7 +2872,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
       Band_DFT_kpath(chemical,  Band_Nkpath, Band_N_perpath,
                       Band_kpath, Band_kname, 
-                      SpinP_switch,H,iHNL,OLP[0],NULL);
+                      SpinP_switch,H,iHNL,OLP[0],exact_exchange);
     }
     else {
 
@@ -2709,7 +2940,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
       if (Cnt_switch==0){
 
 	Band_DFT_Dosout(chemical,  Dos_Kgrid[0], Dos_Kgrid[1], Dos_Kgrid[2],
-			 SpinP_switch, H, iHNL, OLP[0] , electronic, NULL);
+			 SpinP_switch, H, iHNL, OLP[0] , electronic, exact_exchange);
       }
       else {
 	Band_DFT_Dosout(chemical,  Dos_Kgrid[0], Dos_Kgrid[1], Dos_Kgrid[2],
@@ -2754,6 +2985,8 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
       }
     }
   }
+
+  if (exx_outputs) Exact_Exchange_Release_Outputs(exact_exchange);
 
   /*****************************************************
        write a restart file if SpinP_switch!=3
@@ -2887,9 +3120,20 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   openmx_magma_release_fp32_workspace();
   (void)openmx_hipsolver_release_workspace();
   openmx_gpusolver_cache_release();
-  if (!orbitalOpt_Force_Skip) time7 += Force(hamiltonian_state, density_state, atomic, vna,reciprocal, H0,DS_NL,OLP,DM[0],EDM, electronic, local_basis,
-                                             NULL);
-  
+
+  if (!orbitalOpt_Force_Skip){
+    /* hybrid functional: dE_x/dtau of the last exchange matrix, which Force
+       adds to the derivative of the total energy; NULL without one */
+    double exx_begin, exx_end;
+    const double *exx_gradient;
+    dtime(&exx_begin);
+    exx_gradient = Exact_Exchange_Gradient(exact_exchange, mpi_comm_level1, level_stdout);
+    dtime(&exx_end);
+    time7 += exx_end - exx_begin;
+    time7 += Force(hamiltonian_state, density_state, atomic, vna,reciprocal, H0,DS_NL,OLP,DM[0],EDM, electronic, local_basis,
+                   exx_gradient);
+  }
+
   if (scf_stress_flag){
     Stress(core,thermo, atomic, vna,reciprocal, H0,DS_NL,OLP,DM[0],EDM, electronic, local_basis);
   }
@@ -2933,7 +3177,9 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
     printf("<MD=%2d>  Total Energy\n",MD_iter);fflush(stdout);
   }
 
-  if (!orbitalOpt_Force_Skip) time8 += Total_Energy(core,energies, cwf_values, atomic, vna, MD_iter,ECE, electronic, local_basis, 0.0, 0.0);
+  if (!orbitalOpt_Force_Skip) time8 += Total_Energy(core,energies, cwf_values, atomic, vna, MD_iter,ECE, electronic, local_basis,
+                                                    Exact_Exchange_Semilocal_Alpha(exact_exchange),
+                                                    Exact_Exchange_Semilocal_Omega(exact_exchange));
 
   components->atomic_reference  = 0.0;
   components->core  = ECE[0];
@@ -2955,9 +3201,16 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   components->xc_double_counting[0]= ECE[16];
   components->xc_double_counting[1]= ECE[17];
 
+  /* the exact exchange of a hybrid functional: E_x of the last exchange
+     matrix (equation (4) of docs/EXX_IMPLEMENTATION_GUIDE.md). xc[] is then
+     the semilocal part. */
+  const int hybrid_functional = Exact_Exchange_Enabled(exact_exchange);
+  components->exact_exchange = hybrid_functional ? Exact_Exchange_Energy(exact_exchange) : 0.0;
+
   if ( Solver!=12 ){
     thermo->total = components->core + components->hartree[0] + components->kinetic + components->neutral_atom + components->nonlocal + components->hartree[1] + components->xc[0] + components->xc[1] + components->hubbard + components->spin_constraint + components->zeeman_spin + components->zeeman_orbital + components->electric_field + components->vdw + components->core_hole;
-    outputfile1(chemical, thermo, mixing_history, energies, components,2,MD_iter,0,0,SCF_iter,file_DFTSCF,ChemP_e0,orbital_norm);
+    if (hybrid_functional) thermo->total += components->exact_exchange;
+    outputfile1(chemical, thermo, mixing_history, energies, components,hybrid_functional ? 5 : 2,MD_iter,0,0,SCF_iter,file_DFTSCF,ChemP_e0,orbital_norm);
   }
   else if ( Solver==12 ){
     thermo->total = energies->band + components->hartree[1] + components->hartree_double_counting + components->xc[0] + components->xc[1] + components->xc_double_counting[0] + components->xc_double_counting[1] + components->core + components->hartree[0];
@@ -2982,6 +3235,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
     printf("  Unl   = %20.12f\n",components->nonlocal);
     printf("  Uxc0  = %20.12f\n",components->xc[0]);
     printf("  Uxc1  = %20.12f\n",components->xc[1]);
+    if (hybrid_functional) printf("  Uexx  = %20.12f\n",components->exact_exchange);
     printf("  Ucore = %20.12f\n",components->core);
     printf("  Uhub  = %20.12f\n",components->hubbard);
     printf("  Ucs   = %20.12f\n",components->spin_constraint);
@@ -3003,6 +3257,10 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
     printf("  Unl:    non-local potential energy\n");
     printf("  Uxc0:   exchange-correlation energy for alpha spin\n");
     printf("  Uxc1:   exchange-correlation energy for beta spin\n");
+    if (hybrid_functional){
+      printf("  Uexx:   exact exchange energy of the hybrid functional\n");
+      printf("          (Uxc0 and Uxc1 are the semilocal part)\n");
+    }
     printf("  Ucore:  core-core Coulomb energy\n");
     printf("  Uhub:   LDA+U energy\n");
     printf("  Ucs:    constraint energy for spin orientation\n");

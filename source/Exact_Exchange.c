@@ -22,7 +22,8 @@
 #include "openmx_exact_exchange_device.h"
 #include "openmx_exact_exchange_host.h"
 #include "openmx_gpu_backend.h"
-#if OPENMX_GPU_CUDA
+#if OPENMX_GPU_CUDA || OPENMX_GPU_HIP
+#include "openmx_gpu_architecture.h"
 #include "openmx_gpu_collective.h"
 #include "openmx_gpu_device.h"
 #include "openmx_mgpu_runtime.h"
@@ -157,9 +158,9 @@ static void ExactExchange_Configure_Dispatch(OpenMXExactExchangeState *state, MP
   state->device.dispatch_work = configured>=0.0 ? configured : 1.0e8;
   state->device.sharing_ranks = 1;
   state->device.retain_bytes = 0;
-#if OPENMX_GPU_CUDA
+#if OPENMX_GPU_CUDA || OPENMX_GPU_HIP
   unsigned char uuid[16];
-  int device=-1, ratio=0;
+  int device=-1;
   const int usable=!OpenMX_HostSimdPreferred("EXX") && gpu_rank_device_usable() &&
                    OpenMXGpuGetDevice(&device)==OPENMX_GPU_SUCCESS &&
                    openmx_gpu_physical_uuid(device,uuid);
@@ -174,6 +175,16 @@ static void ExactExchange_Configure_Dispatch(OpenMXExactExchangeState *state, MP
   else
     (void)OpenMXGpuGetLastError();
   if (configured<0.0) {
+#if OPENMX_GPU_HIP
+    hipDeviceProp_t properties;
+    if (OpenMXGpuGetDeviceProperties(&properties,device)!=OPENMX_GPU_SUCCESS)
+      (void)OpenMXGpuGetLastError();
+    /* Consumer AMD GPUs share their limited native FP64 throughput across
+       the active ranks. Use a higher cutoff for transfers and batched work. */
+    else if (!openmx_amd_high_throughput_fp64(properties.gcnArchName))
+      state->device.dispatch_work = 1.0e10*state->device.sharing_ranks;
+#else
+    int ratio=0;
     if (cudaDeviceGetAttribute(&ratio,cudaDevAttrSingleToDoublePrecisionPerfRatio,device)!=cudaSuccess)
       (void)OpenMXGpuGetLastError();
     else if (ratio>=8) {
@@ -181,6 +192,7 @@ static void ExactExchange_Configure_Dispatch(OpenMXExactExchangeState *state, MP
          Increase the cutoff gradually once more than 16 ranks share it. */
       state->device.dispatch_work *= fmax(1.0,state->device.sharing_ranks/16.0);
     }
+#endif
   }
   if (rank==0 && verbosity>=2)
     printf("<EXX>  GPU dispatch: at least %.3g multiplications in one product (%d ranks on this GPU%s)\n",
@@ -1153,9 +1165,8 @@ void Exact_Exchange_Build(OpenMXExactExchangeState *state, MPI_Comm comm, int ve
   if (1<threads)
     products.host.loop = (OpenMXExactExchangeLoopProducts*)ExactExchange_Allocate(
         state,(size_t)threads,sizeof(OpenMXExactExchangeLoopProducts),comm,"exchange matrix");
-  /* The CUDA build offers the device for whole calls as well
-     (openmx_exact_exchange_device.h): a call that it takes does not reach
-     the products above. The table is NULL in the other builds. */
+  /* A whole call accepted by CUDA or HIP uses this table for its products
+     and data movement (openmx_exact_exchange_device.h). */
   OpenMXExxDevice device_table;
   const OpenMXExxDevice *device_calls=Exact_Exchange_Device_Table(products.device,&device_table);
   const OpenMXExxDenseBackend backend={ExactExchange_Dgemm,&products,1<threads ? ExactExchange_Parallel_For : NULL,
@@ -1313,7 +1324,7 @@ const double *Exact_Exchange_Gradient(OpenMXExactExchangeState *state, MPI_Comm 
 #endif
     const int blas_threads=1<threads ? Exact_Exchange_Host_Blas_Single() : 0;
     /* The device of the builds computes the weights too: one whole call for
-       every spin channel in the CUDA build (Exact_Exchange_Device_Table),
+       every spin channel on CUDA and HIP (Exact_Exchange_Device_Table),
        and the large products one at a time when a call does not fit, as in
        a build. The counts of the builds stay as they were. */
     const ExactExchangeDeviceCounts counts=ExactExchange_Device_Counts(&state->device);

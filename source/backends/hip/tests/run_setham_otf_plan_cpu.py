@@ -143,7 +143,7 @@ static void free_blocks(double *****m, int spins)
 static void check_plan(SetHOTFPlan *pl, int kind, int spins, double *****blocks)
 {
   const SetHamOTFState *st = &Set_Hamiltonian_OTF_State;
-  size_t dyn = 0, nc_at = 0, max_bounce = 0, arena = 0;
+  size_t dyn = 0, nc_at = 0, max_bounce = 0, arena = 0, compact_arena = 0, central = 0;
   int next_atom = 1;
 
   check(pl != NULL && pl->valid, "plan built");
@@ -170,6 +170,7 @@ static void check_plan(SetHOTFPlan *pl, int kind, int spins, double *****blocks)
     check(bt->dyn_first == dyn, "H/DM offset across batches");
     check(bt->nc_first == SetH_OTF_Static.atom_nc[bt->a0], "point-list offset across batches");
     check(bt->sph_first == st->atom_sph[bt->a0], "sphere offset across batches");
+    check(bt->central_first == central, "central orbitals offset across batches");
     for (int a = bt->a0; a < bt->a1; a++, ia++) {
       const int g = M2G[a], no0 = Spe_Total_NO[WhatSpecies[g]];
       const size_t atom_o0 = o0_at, atom_den = den_at;
@@ -209,14 +210,18 @@ static void check_plan(SetHOTFPlan *pl, int kind, int spins, double *****blocks)
     check(bt->np == ip && bt->bh == h_at && bt->bn == n_at && bt->bo0 == o0_at && bt->bo1 == o1_at, "batch sizes");
     check(bt->sph == sph && bt->max_no == max_no && bt->max_nolg == max_nolg && bt->max_sphere == max_sphere, "batch maxima");
     check(bt->o_nc <= bt->o_dyn && bt->o_dyn < bt->end, "arena layout");
+    check(bt->end == bt->o_o0 + SETH_OTF_ALIGN(o0_at * sizeof(float)), "central tile last");
     if (arena < bt->end) arena = bt->end;
+    if (compact_arena < bt->o_o0) compact_arena = bt->o_o0;
     if (kind == 1 && max_bounce < (size_t)spins * sph) max_bounce = (size_t)spins * sph;
     dyn += h_at;
     nc_at += n_at;
+    central += o0_at;
   }
   check(next_atom == NA + 1, "every atom in a batch");
   check(pl->dyn_count == dyn && nc_at == SetH_OTF_Static.nc_count, "rank totals");
   check(pl->arena_bytes == arena, "arena = the largest batch");
+  check(pl->arena_without_central == compact_arena && pl->central_values == central, "reusable central tile layout");
   if (kind == 1) check(pl->bounce != NULL && pl->bounce_count == max_bounce, "density bounce buffer");
 }
 
@@ -270,6 +275,14 @@ int main(void)
         check(Set_Density_Grid_OTF_Prepare(0,&need,&avail) && need==pl->arena_bytes && avail==need,"preflight exact fit");
         free_device_bytes--;
         check(!Set_Density_Grid_OTF_Prepare(0,&need,&avail) && need>avail,"preflight insufficient memory");
+        float cached_tile = 0.0f;
+        st->central_orbitals = &cached_tile;
+        free_device_bytes=reserve+pl->arena_without_central;
+        check(Set_Density_Grid_OTF_Prepare(0,&need,&avail) && need==pl->arena_without_central,
+              "preflight with resident central spheres");
+        free_device_bytes--;
+        check(!Set_Density_Grid_OTF_Prepare(0,&need,&avail) && st->central_orbitals == NULL &&
+              need==pl->arena_bytes, "release central spheres under pressure");
         free_device_bytes=reserve-1;
         check(!Set_Density_Grid_OTF_Prepare(0,&need,&avail) && avail==0,"reserve floor");
         memory_query_ok=0;
@@ -279,7 +292,7 @@ int main(void)
         otf_possible=1; Matomnum=0;
         check(Set_Density_Grid_OTF_Prepare(0,&need,&avail) && need==0 && avail==0,"empty partition");
         Matomnum=NA;
-        checks+=6;
+        checks+=8;
       }
       checks++;
       SetH_OTF_PackBlocks(pl, blocks);
@@ -327,7 +340,8 @@ def build_source():
         function("SetH_OTF_PlanCacheEnabled")]
     for name in ["Set_Hamiltonian_OTF_BatchSizes", "SetH_OTF_HostAlloc", "SetH_OTF_HostFree", "SetH_OTF_FreePlan",
                  "SetH_OTF_ReleasePlans", "SetH_OTF_EnsureStatic", "SetH_OTF_KindBatchBytes", "SetH_OTF_GetPlan",
-                 "Set_Density_Grid_OTF_Prepare", "SetH_OTF_PackBlocks", "Set_Hamiltonian_OTF_ReleaseDevice", "Set_Hamiltonian_OTF_Release"]:
+                 "SetH_OTF_ArenaBytes", "SetH_OTF_DropCentral", "Set_Density_Grid_OTF_Prepare", "SetH_OTF_PackBlocks",
+                 "Set_Hamiltonian_OTF_ReleaseDevice", "Set_Hamiltonian_OTF_Release"]:
         parts.append(function(name))
     parts.append(MAIN)
     generated="\n".join(parts)

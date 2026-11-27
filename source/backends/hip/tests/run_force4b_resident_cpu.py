@@ -35,7 +35,6 @@ static int MPI_Allreduce(const void *a,void *b,int n,int type,int op,MPI_Comm co
     if (a!=MPI_IN_PLACE) memcpy(b,a,n*(type==MPI_INT?sizeof(int):sizeof(unsigned long long)));
     return 0;
 }
-static int gpu_rank_device_usable(void) {return 1;}
 static int openmx_gpu_capacity_test_recovery(void) {return 0;}
 /* Exercise the resident batch and the legacy recovery packets. */
 static int OpenMX_HostSimdMode(void) {return OPENMX_HOST_SIMD_LEGACY;}

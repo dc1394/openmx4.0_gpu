@@ -15,6 +15,9 @@
 ***********************************************************************/
 #include <hip/hip_runtime.h>
 
+#define OPENMX_XC_KERNELS_HIP_DEVICE 1
+#include "openmx_xc_hybrid_kernels.h"
+
 #include <cmath>
 #include <cstddef>
 #include <cstring>
@@ -282,13 +285,15 @@ __global__ __launch_bounds__(kXcThreads) void sxg_gradient(int n, int Ng1, int N
     }
 }
 
-/* 2. the PBE functional at every point */
+/* 2. The functional at every point. Keep the PBE kernel specialized. */
+template<bool hybrid>
 __global__ __launch_bounds__(kXcThreads) void sxg_pbe(int n, int XC_P_switch, int pcc, const double *__restrict__ den0,
                                                       const double *__restrict__ den1,
                                                       const double *__restrict__ pcc0,
                                                       const double *__restrict__ pcc1,
                                                       const double *__restrict__ dden, double *__restrict__ dexc,
-                                                      double *__restrict__ vxc0, double *__restrict__ vxc1)
+                                                      double *__restrict__ vxc0, double *__restrict__ vxc1,
+                                                      double alpha, double omega)
 {
     const int MN = static_cast<int>(blockIdx.x * blockDim.x + threadIdx.x);
     if (MN >= n) return;
@@ -314,7 +319,14 @@ __global__ __launch_bounds__(kXcThreads) void sxg_pbe(int n, int XC_P_switch, in
         ED[0] += pcc0[MN];
         ED[1] += pcc1[MN];
     }
-    sxg_xc_pbe(ED, GDENS, Exc, DEXDD, DECDD, DEXDGD, DECDGD);
+    if constexpr (hybrid) {
+        if (omega == 0.0)
+            openmx_xc_kernel_pbe_global_hybrid(ED, GDENS, 0, alpha, Exc, DEXDD, DECDD, DEXDGD, DECDGD);
+        else
+            openmx_xc_kernel_pbe_screened_hybrid(ED, GDENS, 0, alpha, omega, Exc, DEXDD, DECDD, DEXDGD, DECDGD);
+    } else {
+        sxg_xc_pbe(ED, GDENS, Exc, DEXDD, DECDD, DEXDGD, DECDGD);
+    }
     if (XC_P_switch == 0) {
         vxc0[MN] = Exc[0] + Exc[1];
         vxc1[MN] = Exc[0] + Exc[1];
@@ -419,7 +431,7 @@ std::size_t arena_off(std::size_t *pos, std::size_t bytes)
    vxc0..3 and, where the caller passed them, dden_out[6] / dexc_out[6]),
    0 when nothing was written (the caller runs the host loops). */
 extern "C" int Set_XC_Grid_HIP(int n, int Ng1, int Ng2, int Ng3, int XC_P_switch, int pcc, int rotate,
-                               const double *inv27, const double *Den0, const double *Den1, const double *Den2,
+                               double exx_alpha, double exx_omega, const double *inv27, const double *Den0, const double *Den1, const double *Den2,
                                const double *Den3, const double *Pcc0, const double *Pcc1, double *Vxc0,
                                double *Vxc1, double *Vxc2, double *Vxc3, double *const *dden_out,
                                double *const *dexc_out)
@@ -488,8 +500,12 @@ extern "C" int Set_XC_Grid_HIP(int n, int Ng1, int Ng2, int Ng3, int XC_P_switch
     hipLaunchKernelGGL(sxg_gradient, grid, block, 0, 0, n, Ng1, Ng2, Ng3, pcc, d_den0, d_den1, d_pcc0, d_pcc1, d_inv,
                        d_dden);
     SXG_CHECK(hipGetLastError());
-    hipLaunchKernelGGL(sxg_pbe, grid, block, 0, 0, n, XC_P_switch, pcc, d_den0, d_den1, d_pcc0, d_pcc1, d_dden, d_dexc,
-                       d_vxc0, d_vxc1);
+    if (exx_alpha == 0.0)
+        hipLaunchKernelGGL(sxg_pbe<false>, grid, block, 0, 0, n, XC_P_switch, pcc, d_den0, d_den1, d_pcc0, d_pcc1,
+                           d_dden, d_dexc, d_vxc0, d_vxc1, exx_alpha, exx_omega);
+    else
+        hipLaunchKernelGGL(sxg_pbe<true>, grid, block, 0, 0, n, XC_P_switch, pcc, d_den0, d_den1, d_pcc0, d_pcc1,
+                           d_dden, d_dexc, d_vxc0, d_vxc1, exx_alpha, exx_omega);
     SXG_CHECK(hipGetLastError());
     if (second) {
         hipLaunchKernelGGL(sxg_divergence, grid, block, 0, 0, n, Ng1, Ng2, Ng3, XC_P_switch, d_den0, d_den1, d_inv,

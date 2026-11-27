@@ -16,7 +16,8 @@ exchange_header = (ROOT / "source/openmx_exact_exchange.h").read_text()
 end = exchange_header.index("} OpenMXExactExchangeOutputView;") + len("} OpenMXExactExchangeOutputView;")
 exchange_type = exchange_header[exchange_header.rindex("typedef struct {", 0, end):end]
 types = source[source.index("typedef struct {"):source.index("static int all_ranks_ok")]
-pack = source[source.index("static int values_per_orbital_pair"):source.index("#if OPENMX_GPU_CUDA\nstatic int size_exchange")]
+exchange_guard = source.rindex("#if ", 0, source.index("static int size_exchange"))
+pack = source[source.index("static int values_per_orbital_pair"):exchange_guard]
 exchange_pack = source[source.index("static void pack_exchange"):source.index("\n#endif\n\nstatic int rank_counts")]
 exchange_mpi = source[source.index("    OpenMXKPathBlock *local_block_target"):source.index("    m.blocks = blocks;")]
 prefix = r'''

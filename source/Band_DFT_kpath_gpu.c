@@ -9,7 +9,7 @@
 #include "openmx_host_simd.h"
 #include "openmx_mgpu_runtime.h"
 #include "openmx_env.h"
-#if OPENMX_GPU_CUDA
+#if OPENMX_GPU_CUDA || OPENMX_GPU_HIP
 #include "openmx_exact_exchange.h"
 #endif
 
@@ -220,7 +220,7 @@ static void pack_local_blocks(const OpenMXKPathMatrices *m, const KPathBasis *ba
     }
 }
 
-#if OPENMX_GPU_CUDA
+#if OPENMX_GPU_CUDA || OPENMX_GPU_HIP
 static int size_exchange(OpenMXKPathMatrices *m, const OpenMXExactExchangeOutputView *exchange,
                          int atoms, const int *offset)
 {
@@ -404,7 +404,7 @@ int openmx_band_kpath_try_gpu(const OpenMXChemicalPotentials *chemical,
     const int semilocal_blocks = block_bytes / (int)sizeof(*blocks);
     m.block_count = semilocal_blocks;
     m.exchange_offset = m.value_count = value_count;
-#if OPENMX_GPU_CUDA
+#if OPENMX_GPU_CUDA || OPENMX_GPU_HIP
     OpenMXExactExchangeOutputView exchange;
     const int exchange_status = Exact_Exchange_Output_Blocks(exact_exchange, &exchange);
     stage = "post-SCF exact exchange";
@@ -453,7 +453,7 @@ int openmx_band_kpath_try_gpu(const OpenMXChemicalPotentials *chemical,
         MPI_Abort(comm, EXIT_FAILURE);
         abort();
     }
-#if OPENMX_GPU_CUDA
+#if OPENMX_GPU_CUDA || OPENMX_GPU_HIP
     /* MPI fills the semilocal prefix while each owner packs its own K(R). */
     if (owner && exchange_status == 1)
         pack_exchange(&exchange, blocks + semilocal_blocks, values, m.exchange_offset);

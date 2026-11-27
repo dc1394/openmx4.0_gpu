@@ -2733,8 +2733,6 @@ static double Force_Impl(OpenMXHamiltonianGpuState *hamiltonian_state, OpenMXDen
     const double *exact_exchange_gradient, const OpenMXForceWorkspace *force_work)
 {
     OpenMXSolverInvocation *scratch=force_work->scratch;
-    /* The HIP build has no hybrid functional (Input_std.c): DFT passes NULL. */
-    (void)exact_exchange_gradient;
 
   double *****CntH0=electronic->CntH0;
   double *****CntOLP=electronic->CntOLP;
@@ -4285,6 +4283,33 @@ static double Force_Impl(OpenMXHamiltonianGpuState *hamiltonian_state, OpenMXDen
 
     if (core_hole_state_flag == 1) {
         OpenMX_ForceCoreHole(atomic,CDM0,iDM0,electronic);
+    }
+
+    /****************************************************
+      Force arising from the exact exchange of a hybrid
+      functional: dE_x/dtau with the density matrix
+      fixed, which Exact_Exchange_Gradient computed for
+      all atoms. The response of the orbitals is in the
+      term of the energy density matrix, whose
+      Hamiltonian contains the exchange matrix.
+    ****************************************************/
+
+    if (exact_exchange_gradient != NULL) {
+        for (Mc_AN = 1; Mc_AN <= Matomnum; Mc_AN++) {
+
+            Gc_AN = M2G[Mc_AN];
+
+            Gxyz[Gc_AN][17] += exact_exchange_gradient[3 * (Gc_AN - 1) + 0];
+            Gxyz[Gc_AN][18] += exact_exchange_gradient[3 * (Gc_AN - 1) + 1];
+            Gxyz[Gc_AN][19] += exact_exchange_gradient[3 * (Gc_AN - 1) + 2];
+
+            if (2 <= level_stdout) {
+                printf("<Force>  force(EXX) myid=%2d  Mc_AN=%2d Gc_AN=%2d  %15.12f %15.12f %15.12f\n",
+                    myid, Mc_AN, Gc_AN, exact_exchange_gradient[3 * (Gc_AN - 1) + 0],
+                    exact_exchange_gradient[3 * (Gc_AN - 1) + 1], exact_exchange_gradient[3 * (Gc_AN - 1) + 2]);
+                fflush(stdout);
+            }
+        }
     }
 
     /****************************************************
@@ -7462,10 +7487,11 @@ static int Force4B_GpuCase1StreamBegin(OpenMXSolverInvocation *scratch, Force4BC
     MPI_Comm_size(*node_comm, &node_ranks);
     if (node_ranks < 1) node_ranks = 1;
     reserve = Force_gpu_node_reserve(node_ranks);
-    Force_gpu_pool_flush();
+    const int device_usable = gpu_rank_device_usable();
+    if (device_usable) Force_gpu_pool_flush();
     MPI_Barrier(*node_comm);
 
-    if (full_batch) goto report;
+    if (full_batch || !device_usable) goto report;
     if (Matomnum < 0 || MatomnumF < 0 || Matomnum >= INT_MAX - MatomnumF) goto report;
     sources = Matomnum + MatomnumF;
     for (mc = 1; mc <= Matomnum; mc++) {
@@ -7891,7 +7917,8 @@ static int Force4B_GpuCase1TurnsBegin(OpenMXSolverInvocation *scratch, Force4BCa
     allocated = devices != NULL;
     MPI_Allreduce(&allocated, &all_allocated, 1, MPI_INT, MPI_MIN, (*node_comm));
     if (!all_allocated) goto finish;
-    if (hipGetDevice(&hip_device) == hipSuccess
+    if (gpu_rank_device_usable()
+        && hipGetDevice(&hip_device) == hipSuccess
         && hipDeviceGetPCIBusId(local.bus, (int)sizeof(local.bus), hip_device) == hipSuccess) {
         local.bus[sizeof(local.bus) - 1] = '\0';
         local.valid = hip_ok = 1;
@@ -9711,8 +9738,6 @@ void Force4B(const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *recip
         Force4B_GpuCase1StreamAccumulate(f4b_case1_stream, vna, CDM0);
         Force4B_GpuCase1StreamEnd(f4b_case1_stream);
     }
-    /* Release every concurrent case-1 allocation before admitting a
-       cached-halo rank turn, and keep case 2 out of the turn lifetime. */
     /* Release every concurrent case-1 allocation before admitting a
        cached-halo rank turn, and keep case 2 out of the turn lifetime.
        TurnsRun is collective on the ranks of one GPU, so every fused rank
