@@ -137,7 +137,7 @@ def make_input(name, system, xc, move=None, criteria=True):
     lines = [
         "System.CurrrentDirectory         ./",
         f"System.Name                     {name}",
-        "level.of.stdout                   1",
+        "level.of.stdout                   2",
         "level.of.fileout                  0",
         "DATA.PATH @DATA_PATH@",
         f"Species.Number       {len(s['species'])}",

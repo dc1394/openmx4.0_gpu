@@ -1709,11 +1709,11 @@ host_capacity:
                takes this branch alike. */
             capacity = OPENMX_CLUSTER_CAPACITY_CPU;
             if (announce && (SCF_iter==1 || state->diag_verdict_n!=n || !openmx_mgpu_host_required())){
-                printf("<EXX>  Cluster collinear n=%d: %s; the hybrid functional uses the CPU eigensolver"
-                       " within the existing MPI layout.\n",n,
-                       openmx_mgpu_host_required() ? "MAGMA does not take the exchange matrix"
-                                                   : "the device cannot hold the dense matrices");
-                fflush(stdout);
+                Exact_Exchange_Log(state->exact_exchange,2,
+                                   "<EXX>  Cluster collinear n=%d: %s; the hybrid functional uses the CPU eigensolver"
+                                   " within the existing MPI layout.\n",n,
+                                   openmx_mgpu_host_required() ? "MAGMA does not take the exchange matrix"
+                                                               : "the device cannot hold the dense matrices");
             }
         }
         else{

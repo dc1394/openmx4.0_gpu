@@ -12,6 +12,7 @@
 
 #include <limits.h>
 #include <math.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -46,11 +47,17 @@ typedef struct {
   dcomplex *values;                 /* na_rows x na_cols, in the order of the local array */
 } ExactExchangeBandMatrix;
 
+enum { EXX_GPU_PRODUCTS = 1, EXX_GPU_ADDITION = 2 };
+
 /* Persistent metadata belongs to the explicit calculation owner. */
 struct OpenMXExactExchangeState {
   OpenMXNativeResources *resources; /* borrowed from this calculation */
   int initialized;
   OpenMXExactExchangeInput input;   /* values of the input keywords */
+  FILE *scf_log;                    /* rank 0's append stream for the current MD step */
+  int stdout_level;
+  int gpu_dispatch_enabled;         /* rank 0's result for all ranks */
+  int gpu_work;                     /* EXX_GPU_* completed on this rank in the current MD step */
   OpenMXExactExchangeStructure structure; /* arrays of the main program, borrowed */
   OpenMXExxState *module;           /* tables of modules/exx, released by the reset */
   int prepared;                     /* the module holds the present structure */
@@ -117,6 +124,8 @@ static void ExactExchange_Reset(OpenMXNativeResources *owner, void *metadata)
      which releases them. */
   if (state->module!=NULL) openmx_exx_destroy(state->module);
   state->module = NULL;
+  if (state->scf_log!=NULL) fclose(state->scf_log);
+  state->scf_log = NULL;
   Exact_Exchange_Device_Release(&state->device);
 }
 
@@ -149,8 +158,37 @@ void Exact_Exchange_Configure(OpenMXExactExchangeState *state, const OpenMXExact
   state->device.gemmul8 = input->gemmul8 ? 1 : 0;
 }
 
-static void ExactExchange_Configure_Dispatch(OpenMXExactExchangeState *state, MPI_Comm comm,
-                                             int rank, int verbosity)
+void Exact_Exchange_Log(const OpenMXExactExchangeState *state, int level, const char *format, ...)
+{
+  va_list args;
+  if (level<=state->stdout_level) {
+    va_start(args,format);
+    vfprintf(stdout,format,args);
+    va_end(args);
+    fflush(stdout);
+  }
+  if (state->scf_log!=NULL && (level==1 || level<=state->input.fileout_level)) {
+    va_start(args,format);
+    vfprintf(state->scf_log,format,args);
+    va_end(args);
+    fflush(state->scf_log);
+  }
+}
+
+static int ExactExchange_Detailed(const OpenMXExactExchangeState *state)
+{
+  return 2<=state->stdout_level || 2<=state->input.fileout_level;
+}
+
+static void ExactExchange_Report_Device_Failure(const OpenMXExactExchangeState *state, int rank, int disabled_before)
+{
+  if (state->device.disabled && !disabled_before) {
+    Exact_Exchange_Log(state,2,"<EXX>  WARNING: process %d: %s failed with status %d.\n",rank,
+                       Exact_Exchange_Device_Failure_Name(state->device.failure),state->device.failure_status);
+  }
+}
+
+static int ExactExchange_Configure_Dispatch(OpenMXExactExchangeState *state, MPI_Comm comm, int rank)
 {
   const double configured=state->input.gpu_min_work;
   /* Batches amortize transfer and launch overhead even when no single
@@ -161,11 +199,12 @@ static void ExactExchange_Configure_Dispatch(OpenMXExactExchangeState *state, MP
 #if OPENMX_GPU_CUDA || OPENMX_GPU_HIP
   unsigned char uuid[16];
   int device=-1;
-  const int usable=!OpenMX_HostSimdPreferred("EXX") && gpu_rank_device_usable() &&
-                   OpenMXGpuGetDevice(&device)==OPENMX_GPU_SUCCESS &&
+  const int available=!OpenMX_HostSimdPreferred("EXX") && gpu_rank_device_usable();
+  const int usable=available && OpenMXGpuGetDevice(&device)==OPENMX_GPU_SUCCESS &&
                    openmx_gpu_physical_uuid(device,uuid);
   const int sharing_ranks=openmx_gpu_local_sharers(comm,usable ? uuid : NULL,NULL);
-  if (!usable) return;
+  const int enabled=available && !state->device.disabled;
+  if (!usable) return enabled;
   if (sharing_ranks>0) state->device.sharing_ranks = sharing_ranks;
   size_t free_bytes=0,total_bytes=0;
   /* Cap retained storage across ranks, leaving room for the rest of SCF.
@@ -194,13 +233,14 @@ static void ExactExchange_Configure_Dispatch(OpenMXExactExchangeState *state, MP
     }
 #endif
   }
-  if (rank==0 && verbosity>=2)
-    printf("<EXX>  GPU dispatch: at least %.3g multiplications in one product (%d ranks on this GPU%s)\n",
-           state->device.dispatch_work,state->device.sharing_ranks,configured<0.0 ? ", automatic" : "");
+  if (rank==0 && enabled)
+    Exact_Exchange_Log(state,2,"<EXX>  GPU dispatch: at least %.3g multiplications in one product (%d ranks on this GPU%s)\n",
+                       state->device.dispatch_work,state->device.sharing_ranks,configured<0.0 ? ", automatic" : "");
+  return enabled;
 #else
   (void)comm;
   (void)rank;
-  (void)verbosity;
+  return 0;
 #endif
 }
 
@@ -255,59 +295,110 @@ double Exact_Exchange_Change(const OpenMXExactExchangeState *state)
   return state->change;
 }
 
-void Exact_Exchange_Times(const OpenMXExactExchangeState *state, double times[4])
+void Exact_Exchange_Report_Scf(const OpenMXExactExchangeState *state, MPI_Comm comm,
+    int inner_converged, int scf_limit)
 {
-  times[0] = state->time_prepare;
-  times[1] = state->time_collect;
-  times[2] = state->time_build;
-  times[3] = state->time_add;
+  int rank;
+  MPI_Comm_rank(comm,&rank);
+  if (rank==0) {
+    const int builds=state->outer_iterations;
+    if (builds==0) {
+      Exact_Exchange_Log(state,1,"<EXX>  WARNING: the GGA-PBE SCF did not converge within scf.maxIter=%d. "
+                         "The energies are from GGA-PBE.\n",scf_limit);
+    }
+    else if (!inner_converged) {
+      Exact_Exchange_Log(state,1,"<EXX>  WARNING: the SCF with exchange matrix %d did not converge "
+                         "within scf.maxIter=%d.\n",builds,scf_limit);
+    }
+    else if (!state->outer_converged) {
+      Exact_Exchange_Log(state,1,"<EXX>  WARNING: the outer iteration did not converge in %d exchange builds "
+                         "(scf.exx.outer.maxIter, delta=%.3e Hartree).\n",builds,state->change);
+    }
+    else {
+      Exact_Exchange_Log(state,1,"<EXX>  The outer iteration converged with %d builds of the exchange matrix: "
+                         "delta=%.3e Hartree.\n",builds,state->change);
+    }
+  }
+  if (!ExactExchange_Detailed(state)) return;
+
+  const OpenMXExactExchangeDevice *device=&state->device;
+  long long local_use[4]={device->device_products,device->declined_products,device->device_products>0,
+                          device->gemmul8_products};
+  long long local_calls[6]={device->device_calls,device->declined_calls,device->device_calls>0,
+                            device->call_products,device->call_large_products,device->call_gemmul8_products};
+  long long local_add[3]={state->band_sums,state->band_reuses,state->device_additions};
+  double local_seconds[2]={state->time_device,state->time_device_calls};
+  long long use[4],calls[6],add[3];
+  double seconds[2];
+  MPI_Reduce(local_use,use,4,MPI_LONG_LONG,MPI_SUM,0,comm);
+  MPI_Reduce(local_calls,calls,6,MPI_LONG_LONG,MPI_SUM,0,comm);
+  MPI_Reduce(local_add,add,3,MPI_LONG_LONG,MPI_SUM,0,comm);
+  MPI_Reduce(local_seconds,seconds,2,MPI_DOUBLE,MPI_MAX,0,comm);
+  if (rank!=0) return;
+
+  Exact_Exchange_Log(state,2,"<EXX>  time (s): preparation %.2f, density matrices %.2f, exchange matrix %.2f, addition %.2f\n",
+                     state->time_prepare,state->time_collect,state->time_build,state->time_add);
+  if (add[0]>0 || add[1]>0) {
+    Exact_Exchange_Log(state,2,"<EXX>  K(k) of the k points: %lld sums over the blocks of K, and %lld additions of a sum"
+                       " kept since the same build (all processes)\n",add[0],add[1]);
+  }
+  if (use[0]>0 || use[1]>0) {
+    Exact_Exchange_Log(state,2,"<EXX>  GPU: %lld matrix products of the exchange matrix on the device, in %lld processes\n"
+                       "<EXX>  (at most %.2f s in one process); %lld left to the host for lack of device memory.\n",
+                       use[0],use[2],seconds[0],use[1]);
+    if (state->input.gemmul8 && use[0]>0) {
+      Exact_Exchange_Log(state,2,"<EXX>  GPU: GEMMul8 computed %lld of the matrix products on the device, FP64 the other %lld"
+                         " (scf.gemmul8.enable on).\n",use[3],use[0]-use[3]);
+    }
+  }
+  if (calls[0]>0 || calls[1]>0) {
+    Exact_Exchange_Log(state,2,"<EXX>  GPU: %lld calls of the exchange build on the device, in %lld processes, with %lld matrix products,"
+                       " %lld of them large\n<EXX>  (at most %.2f s in one process); %lld calls left to the host for lack of device memory.\n",
+                       calls[0],calls[2],calls[3],calls[4],seconds[1],calls[1]);
+    if (state->input.gemmul8 && calls[0]>0) {
+      Exact_Exchange_Log(state,2,"<EXX>  GPU: GEMMul8 computed %lld of the %lld large matrix products of these calls, FP64 the other"
+                         " %lld products (scf.gemmul8.enable on).\n",calls[5],calls[4],calls[3]-calls[5]);
+    }
+  }
+  if (add[2]>0) {
+    Exact_Exchange_Log(state,2,"<EXX>  GPU: the exchange matrix was added to %lld dense Hamiltonians on the device.\n",add[2]);
+  }
 }
 
-void Exact_Exchange_Device_Use(const OpenMXExactExchangeState *state, MPI_Comm comm, long long use[5],
-                               double *seconds)
+void Exact_Exchange_Finish_Report(OpenMXExactExchangeState *state, MPI_Comm comm)
 {
-  long long mine[5]={state->device.device_products,state->device.declined_products,
-                     0<state->device.device_products ? 1 : 0,state->device.disabled ? 1 : 0,
-                     state->device.gemmul8_products};
-  double longest=state->time_device;
-  MPI_Allreduce(mine,use,5,MPI_LONG_LONG,MPI_SUM,comm);
-  MPI_Allreduce(&longest,seconds,1,MPI_DOUBLE,MPI_MAX,comm);
-}
+  if (!Exact_Exchange_Enabled(state) || !state->prepared) return;
+  int rank;
+  MPI_Comm_rank(comm,&rank);
+  int local[3]={!!(state->gpu_work&EXX_GPU_PRODUCTS),!!(state->gpu_work&EXX_GPU_ADDITION),state->device.disabled};
+  int totals[3];
+  MPI_Reduce(local,totals,3,MPI_INT,MPI_SUM,0,comm);
+  if (rank!=0) return;
 
-void Exact_Exchange_Device_Calls(const OpenMXExactExchangeState *state, MPI_Comm comm, long long calls[6],
-                                 double *seconds)
-{
-  long long mine[6]={state->device.device_calls,state->device.declined_calls,0<state->device.device_calls ? 1 : 0,
-                     state->device.call_products,state->device.call_large_products,
-                     state->device.call_gemmul8_products};
-  double longest=state->time_device_calls;
-  MPI_Allreduce(mine,calls,6,MPI_LONG_LONG,MPI_SUM,comm);
-  MPI_Allreduce(&longest,seconds,1,MPI_DOUBLE,MPI_MAX,comm);
-}
-
-int Exact_Exchange_Device_Gemmul8(const OpenMXExactExchangeState *state)
-{
-  return state->input.gemmul8 ? 1 : 0;
+  if (totals[0]>0) {
+    Exact_Exchange_Log(state,1,"<EXX>  GPU-accelerated exact exchange (%s matrix products)\n",OPENMX_GPU_RUNTIME_NAME);
+  }
+  else if (totals[1]>0) {
+    Exact_Exchange_Log(state,1,"<EXX>  Exact exchange added to the Hamiltonian on GPU (%s)\n",OPENMX_GPU_RUNTIME_NAME);
+  }
+  else if (state->gpu_dispatch_enabled && state->outer_iterations>0) {
+    Exact_Exchange_Log(state,1,"<EXX>  Exact exchange matrix products ran on CPU (GPU dispatch enabled, %s)\n",
+                       OPENMX_GPU_RUNTIME_NAME);
+  }
+  if (totals[2]>0) {
+    Exact_Exchange_Log(state,1,"<EXX>  WARNING: %d processes stopped using their device for the exchange matrix after a failed call.\n",
+                       totals[2]);
+  }
+  if (state->scf_log!=NULL) fclose(state->scf_log);
+  state->scf_log = NULL;
 }
 
 void Exact_Exchange_Device_Addition(OpenMXExactExchangeState *state, double seconds)
 {
   if (state==NULL) return;
+  state->gpu_work |= EXX_GPU_ADDITION;
   state->device_additions++;
   state->time_add += seconds;
-}
-
-long long Exact_Exchange_Device_Additions(const OpenMXExactExchangeState *state, MPI_Comm comm)
-{
-  long long mine=state->device_additions,all=0;
-  MPI_Allreduce(&mine,&all,1,MPI_LONG_LONG,MPI_SUM,comm);
-  return all;
-}
-
-void Exact_Exchange_Band_Sums(const OpenMXExactExchangeState *state, MPI_Comm comm, long long counts[2])
-{
-  long long mine[2]={state->band_sums,state->band_reuses};
-  MPI_Allreduce(mine,counts,2,MPI_LONG_LONG,MPI_SUM,comm);
 }
 
 /* Ends the run of every process: the state of the SCF cannot be continued. */
@@ -441,8 +532,7 @@ static int ExactExchange_Parallel_For(void *context, int count, void (*body)(voi
   return Exact_Exchange_Host_Parallel_For(&products->host,count,body,argument);
 }
 
-/* The counts of the device that the builds report (Exact_Exchange_Build,
-   Exact_Exchange_Device_Use, Exact_Exchange_Device_Calls). The weights of
+/* The counts of the device that the builds report. The weights of
    the forces use the device as well and are counted aside: the counts are
    taken before the weights, the two largest sizes set to zero, and the
    counts put back afterwards. */
@@ -797,7 +887,7 @@ static int ExactExchange_Prepare_Module(OpenMXExactExchangeState *state, OpenMXE
 }
 
 void Exact_Exchange_Prepare(OpenMXExactExchangeState *state, const OpenMXAtomicViews *atomic,
-    int sites, MPI_Comm comm, int verbosity)
+    int sites, MPI_Comm comm, int stdout_level, const char *scf_log)
 {
   if (!Exact_Exchange_Enabled(state)) return;
 
@@ -812,9 +902,24 @@ void Exact_Exchange_Prepare(OpenMXExactExchangeState *state, const OpenMXAtomicV
   int rank=0,processes=1;
   MPI_Comm_rank(comm,&rank);
   MPI_Comm_size(comm,&processes);
+  state->stdout_level = stdout_level;
+  if (rank==0) {
+    state->scf_log = fopen(scf_log,"a");
+    if (state->scf_log==NULL) ExactExchange_Abort(comm,"preparation","cannot open the SCF log");
+  }
 
   /* The exchange matrix of an earlier structure is not carried over. */
-  ExactExchange_Configure_Dispatch(state,comm,rank,verbosity);
+  int gpu_enabled=ExactExchange_Configure_Dispatch(state,comm,rank);
+  MPI_Reduce(&gpu_enabled,&state->gpu_dispatch_enabled,1,MPI_INT,MPI_MAX,0,comm);
+  state->gpu_work = 0;
+  if (rank==0) {
+    const char *functional=state->input.functional==OPENMX_EXACT_EXCHANGE_HSE06 ? "HSE06" : "PBE0";
+    if (state->gpu_dispatch_enabled)
+      Exact_Exchange_Log(state,1,"<EXX>  Preparing %s exact exchange (GPU dispatch enabled, %s)\n",
+                         functional,OPENMX_GPU_RUNTIME_NAME);
+    else
+      Exact_Exchange_Log(state,1,"<EXX>  Preparing %s exact exchange (CPU matrix products)\n",functional);
+  }
   state->comm = comm;
   state->prepared = 0;
   state->folded = 0;
@@ -863,7 +968,7 @@ void Exact_Exchange_Prepare(OpenMXExactExchangeState *state, const OpenMXAtomicV
 
   /* Every process solved the systems of equation (7) of its share. */
   OpenMXExxReport report={0,0,0,1.0};
-  if (2<=verbosity) {
+  if (ExactExchange_Detailed(state)) {
     OpenMXExxReport mine;
     if (openmx_exx_report(state->module,&mine)!=0)
       ExactExchange_Abort(comm,"preparation","the local RI has no report");
@@ -875,7 +980,7 @@ void Exact_Exchange_Prepare(OpenMXExactExchangeState *state, const OpenMXAtomicV
     report.dropped = sums[2];
   }
 
-  if (rank==0 && 0<verbosity) {
+  if (rank==0 && ExactExchange_Detailed(state)) {
     long abfs=0,c_sites=0,v_sites=0,folded_sites=0;
     for (int a=0; a<atom_count; a++) {
       abfs += openmx_exx_atom_abfs(state->module,a);
@@ -883,31 +988,32 @@ void Exact_Exchange_Prepare(OpenMXExactExchangeState *state, const OpenMXAtomicV
       v_sites += openmx_exx_prepared_v_neighbours(state->module,a);
       folded_sites += openmx_exx_v_neighbours(state->module,a);
     }
-    printf("<EXX>  %d atoms, %d orbitals, %ld ABFs, %ld C sites, %ld V sites (%.2f s)\n",
-           atom_count,orbitals,abfs,c_sites,v_sites,MPI_Wtime()-start);
+    Exact_Exchange_Log(state,2,"<EXX>  %d atoms, %d orbitals, %ld ABFs, %ld C sites, %ld V sites (%.2f s)\n",
+                       atom_count,orbitals,abfs,c_sites,v_sites,MPI_Wtime()-start);
     if (OpenMX_HostSimdPreferred("EXX"))
-      printf("<EXX>  exchange products on the host (OPENMX_HOST_SIMD_PREFER)\n");
+      Exact_Exchange_Log(state,2,"<EXX>  exchange products on the host (OPENMX_HOST_SIMD_PREFER)\n");
     if (folded) {
       const int *sign=state->input.fold_antiperiodic;
-      printf("<EXX>  V sites folded by the period of the k mesh, %d x %d x %d cells: %ld of %ld\n",
-             period[0],period[1],period[2],folded_sites,v_sites);
-      printf("<EXX>  columns of D folded by the same period; the sign of D over one period along a1, a2, a3: %c %c %c\n",
-             sign[0] ? '-' : '+',sign[1] ? '-' : '+',sign[2] ? '-' : '+');
+      Exact_Exchange_Log(state,2,"<EXX>  V sites folded by the period of the k mesh, %d x %d x %d cells: %ld of %ld\n",
+                         period[0],period[1],period[2],folded_sites,v_sites);
+      Exact_Exchange_Log(state,2,"<EXX>  columns of D folded by the same period with signs %c %c %c along a1, a2, a3\n",
+                         sign[0] ? '-' : '+',sign[1] ? '-' : '+',sign[2] ? '-' : '+');
     }
+    Exact_Exchange_Log(state,2,"<EXX>  Exact exchange mixing fraction %.4f\n",state->input.alpha);
     if (state->input.functional==OPENMX_EXACT_EXCHANGE_PBE0) {
-      printf("<EXX>  truncated Coulomb interaction: R_c %.6f bohr; V sites up to the larger ABF radius plus %.6f bohr;"
-             " %d reciprocal intervals up to %.6f/bohr\n",
-             options.kernel_parameter,options.v_cutoff,options.reciprocal_intervals,options.reciprocal_maximum);
+      Exact_Exchange_Log(state,2,"<EXX>  truncated Coulomb interaction: R_c %.6f bohr; V sites up to the larger ABF radius plus %.6f bohr;"
+                         " %d reciprocal intervals up to %.6f/bohr\n",
+                         options.kernel_parameter,options.v_cutoff,options.reciprocal_intervals,options.reciprocal_maximum);
+    }
+    else {
+      Exact_Exchange_Log(state,2,"<EXX>  HSE06 screening parameter %.4f bohr^-1\n",state->input.omega);
     }
     if (state->sites) {
-      printf("<EXX>  site form: %ld blocks of the density and exchange matrices, %.1f MB each per spin channel\n",
-             state->block_count,(double)state->block_offset[state->block_count]*sizeof(double)/1048576.0);
+      Exact_Exchange_Log(state,2,"<EXX>  site form: %ld blocks of the density and exchange matrices, %.1f MB each per spin channel\n",
+                         state->block_count,(double)state->block_offset[state->block_count]*sizeof(double)/1048576.0);
     }
-    if (2<=verbosity) {
-      printf("<EXX>  local RI: %ld systems, %ld by eigen-decomposition (%ld vectors left out), smallest pivot %.3e\n",
-             report.systems,report.eigen_decompositions,report.dropped,report.smallest_pivot);
-    }
-    fflush(stdout);
+    Exact_Exchange_Log(state,2,"<EXX>  local RI: %ld systems, %ld by eigen-decomposition (%ld vectors left out), smallest pivot %.3e\n",
+                       report.systems,report.eigen_decompositions,report.dropped,report.smallest_pivot);
   }
 }
 
@@ -1138,7 +1244,7 @@ static void ExactExchange_Abfs(OpenMXExactExchangeState *state, const OpenMXExxS
   openmx_core_native_free(state->resources,boundaries);
 }
 
-void Exact_Exchange_Build(OpenMXExactExchangeState *state, MPI_Comm comm, int verbosity)
+void Exact_Exchange_Build(OpenMXExactExchangeState *state, MPI_Comm comm)
 {
   if (!Exact_Exchange_Enabled(state)) return;
   if (!state->prepared || state->spin_channels<1 || state->collecting)
@@ -1234,53 +1340,48 @@ void Exact_Exchange_Build(OpenMXExactExchangeState *state, MPI_Comm comm, int ve
   state->time_device += products.device_seconds;
   state->time_device_calls += call_seconds;
 
-  /* A device call failed in this build: the process says so once. The host
-     has computed the product or the call that failed and computes all later
-     ones. */
-  if (state->device.disabled && !disabled_before && 1<=verbosity) {
-    printf("<EXX>  WARNING: process %d: %s failed with status %d.\n",rank,
-           Exact_Exchange_Device_Failure_Name(state->device.failure),state->device.failure_status);
-    printf("<EXX>  The host computes the exchange matrix and its matrix products from here on.\n");
-    fflush(stdout);
-  }
-  if (rank==0 && 2<=verbosity
+  if (device_before<state->device.device_products || calls_before<state->device.device_calls)
+    state->gpu_work |= EXX_GPU_PRODUCTS;
+  ExactExchange_Report_Device_Failure(state,rank,disabled_before);
+  const int detailed=ExactExchange_Detailed(state);
+  if (rank==0 && detailed
       && (calls_before<state->device.device_calls || declined_calls_before<state->device.declined_calls))
-    printf("<EXX>  device calls of process 0: %lld in %.2f s with %lld matrix products, at most %.1f MB for one call; left to the host for lack of device memory: %lld\n",
-           state->device.device_calls-calls_before,call_seconds,state->device.call_products-call_products_before,
-           (double)state->device.largest_call_bytes/1048576.0,state->device.declined_calls-declined_calls_before);
-  if (rank==0 && 2<=verbosity && 0<products.host.count) {
-    printf("<EXX>  matrix products of process 0: %lld, the largest %d x %d with inner dimension %d\n",
-           products.host.count,products.host.largest[0],products.host.largest[1],products.host.largest[2]);
+    Exact_Exchange_Log(state,2,"<EXX>  device calls of process 0: %lld in %.2f s with %lld matrix products, at most %.1f MB for one call; left to the host for lack of device memory: %lld\n",
+                       state->device.device_calls-calls_before,call_seconds,state->device.call_products-call_products_before,
+                       (double)state->device.largest_call_bytes/1048576.0,state->device.declined_calls-declined_calls_before);
+  if (rank==0 && detailed && 0<products.host.count) {
+    Exact_Exchange_Log(state,2,"<EXX>  matrix products of process 0: %lld, the largest %d x %d with inner dimension %d\n",
+                       products.host.count,products.host.largest[0],products.host.largest[1],products.host.largest[2]);
     if (device_before<state->device.device_products || declined_before<state->device.declined_products)
-      printf("<EXX>  on the device: %lld in %.2f s, at most %.1f MB for one product; left to the host for lack of device memory: %lld\n",
-             state->device.device_products-device_before,products.device_seconds,
-             (double)state->device.largest_bytes/1048576.0,state->device.declined_products-declined_before);
+      Exact_Exchange_Log(state,2,"<EXX>  on the device: %lld in %.2f s, at most %.1f MB for one product; left to the host for lack of device memory: %lld\n",
+                         state->device.device_products-device_before,products.device_seconds,
+                         (double)state->device.largest_bytes/1048576.0,state->device.declined_products-declined_before);
   }
 
   /* The time that the processes spent on their shares: the division is even
      when the two numbers are close. */
   double shares[2]={share_seconds,-share_seconds},extremes[2]={0.0,0.0};
-  if (2<=verbosity && 1<processes) MPI_Reduce(shares,extremes,2,MPI_DOUBLE,MPI_MAX,0,comm);
+  if (detailed && 1<processes) MPI_Reduce(shares,extremes,2,MPI_DOUBLE,MPI_MAX,0,comm);
 
-  if (rank==0 && 2<=verbosity) {
+  if (rank==0 && detailed) {
     const long abfs=openmx_exx_abf_count(state->module);
     if (first<last) {
-      printf("<EXX>  exchange matrix of %d orbitals built in %.2f s (ABFs %ld to %ld of %ld on process 0)\n",
-             n,MPI_Wtime()-start,first+1,last,abfs);
+      Exact_Exchange_Log(state,2,"<EXX>  exchange matrix of %d orbitals built in %.2f s (ABFs %ld to %ld of %ld on process 0)\n",
+                         n,MPI_Wtime()-start,first+1,last,abfs);
     }
     else {
       /* no ABF has its middle in the part of this process */
-      printf("<EXX>  exchange matrix of %d orbitals built in %.2f s (none of the %ld ABFs on process 0)\n",
-             n,MPI_Wtime()-start,abfs);
+      Exact_Exchange_Log(state,2,"<EXX>  exchange matrix of %d orbitals built in %.2f s (none of the %ld ABFs on process 0)\n",
+                         n,MPI_Wtime()-start,abfs);
     }
     if (1<processes) {
-      printf("<EXX>  shares of the %d processes in the build: %.2f s to %.2f s\n",processes,-extremes[1],extremes[0]);
+      Exact_Exchange_Log(state,2,"<EXX>  shares of the %d processes in the build: %.2f s to %.2f s\n",
+                         processes,-extremes[1],extremes[0]);
     }
-    fflush(stdout);
   }
 }
 
-const double *Exact_Exchange_Gradient(OpenMXExactExchangeState *state, MPI_Comm comm, int verbosity)
+const double *Exact_Exchange_Gradient(OpenMXExactExchangeState *state, MPI_Comm comm)
 {
   if (!Exact_Exchange_Active(state) || !state->prepared || state->spin_channels<1 || state->collecting)
     return NULL;
@@ -1366,15 +1467,9 @@ const double *Exact_Exchange_Gradient(OpenMXExactExchangeState *state, MPI_Comm 
     weight_use.declined_calls = after.declined_calls-counts.declined_calls;
     weight_use.call_products = after.call_products-counts.call_products;
     weight_use.largest_call_bytes = after.largest_call_bytes;
+    if (weight_use.device_products>0 || weight_use.device_calls>0) state->gpu_work |= EXX_GPU_PRODUCTS;
     ExactExchange_Device_Counts_Back(&state->device,&counts);
-    /* A device call failed in the weights: the process says so once, as a
-       build does. */
-    if (state->device.disabled && !disabled_before && 1<=verbosity) {
-      printf("<EXX>  WARNING: process %d: %s failed with status %d.\n",rank,
-             Exact_Exchange_Device_Failure_Name(state->device.failure),state->device.failure_status);
-      printf("<EXX>  The host computes the weights of the forces, the exchange matrix and its matrix products from here on.\n");
-      fflush(stdout);
-    }
+    ExactExchange_Report_Device_Failure(state,rank,disabled_before);
     weight_seconds = MPI_Wtime()-start;
     if (1<processes) {
       for (int a=0; a<atoms; a++)
@@ -1394,7 +1489,7 @@ const double *Exact_Exchange_Gradient(OpenMXExactExchangeState *state, MPI_Comm 
     openmx_core_native_free(state->resources,weights);
     ExactExchange_Sum(state->gradient,3*(size_t)atoms,comm);
   }
-  if (rank==0 && 1<=verbosity) {
+  if (rank==0 && ExactExchange_Detailed(state)) {
     /* the forces are the negative of the derivative; their sum vanishes */
     double largest=0.0,sum[3]={0.0,0.0,0.0};
     for (int a=0; a<atoms; a++) {
@@ -1404,20 +1499,17 @@ const double *Exact_Exchange_Gradient(OpenMXExactExchangeState *state, MPI_Comm 
         sum[x] -= value;
       }
     }
-    printf("<EXX>  forces of the exact exchange in %.2f s: largest component %.3e, sum %.1e %.1e %.1e (Hartree/bohr)\n",
-           MPI_Wtime()-start,largest,sum[0],sum[1],sum[2]);
-    if (2<=verbosity) {
-      printf("<EXX>  of that, %.2f s for the weights of the T and V blocks on process 0\n",weight_seconds);
-      if (0<weight_use.device_calls || 0<weight_use.declined_calls)
-        printf("<EXX>  the weights on the device of process 0: %lld calls in %.2f s with %lld matrix products, at most %.1f MB for one call; left to the host for lack of device memory: %lld\n",
-               weight_use.device_calls,call_seconds,weight_use.call_products,
-               (double)weight_use.largest_call_bytes/1048576.0,weight_use.declined_calls);
-      if (0<weight_use.device_products || 0<weight_use.declined_products)
-        printf("<EXX>  matrix products of the weights on the device of process 0: %lld in %.2f s, at most %.1f MB for one product; left to the host for lack of device memory: %lld\n",
-               weight_use.device_products,device_seconds,(double)weight_use.largest_bytes/1048576.0,
-               weight_use.declined_products);
-    }
-    fflush(stdout);
+    Exact_Exchange_Log(state,2,"<EXX>  forces of the exact exchange in %.2f s: largest component %.3e, sum %.1e %.1e %.1e (Hartree/bohr)\n",
+                       MPI_Wtime()-start,largest,sum[0],sum[1],sum[2]);
+    Exact_Exchange_Log(state,2,"<EXX>  of that, %.2f s for the weights of the T and V blocks on process 0\n",weight_seconds);
+    if (0<weight_use.device_calls || 0<weight_use.declined_calls)
+      Exact_Exchange_Log(state,2,"<EXX>  the weights on the device of process 0: %lld calls in %.2f s with %lld matrix products, at most %.1f MB for one call; left to the host for lack of device memory: %lld\n",
+                         weight_use.device_calls,call_seconds,weight_use.call_products,
+                         (double)weight_use.largest_call_bytes/1048576.0,weight_use.declined_calls);
+    if (0<weight_use.device_products || 0<weight_use.declined_products)
+      Exact_Exchange_Log(state,2,"<EXX>  matrix products of the weights on the device of process 0: %lld in %.2f s, at most %.1f MB for one product; left to the host for lack of device memory: %lld\n",
+                         weight_use.device_products,device_seconds,(double)weight_use.largest_bytes/1048576.0,
+                         weight_use.declined_products);
   }
   Exact_Exchange_End_Device_Phase(state);
   return state->gradient;
@@ -1493,7 +1585,7 @@ static int ExactExchange_Solve_Small(int d, double *a, double *b)
   return 1;
 }
 
-int Exact_Exchange_Extrapolate(OpenMXExactExchangeState *state, MPI_Comm comm, int verbosity)
+int Exact_Exchange_Extrapolate(OpenMXExactExchangeState *state, MPI_Comm comm)
 {
   const int room=state!=NULL ? state->input.outer_extrapolation : 0;
   if (!Exact_Exchange_Active(state) || room<=0 || state->outer_iterations<2) return 0;
@@ -1596,20 +1688,19 @@ int Exact_Exchange_Extrapolate(OpenMXExactExchangeState *state, MPI_Comm comm, i
     state->history_count = room;
   }
 
-  if (rank==0 && 1<=verbosity) {
+  if (rank==0 && ExactExchange_Detailed(state)) {
     if (0<d) {
-      printf("<EXX>  the next inner SCF takes K from %d builds (Anderson, scf.exx.outer.extrapolation): coefficients",d+1);
-      for (int j=0; j<d; j++) printf(" %.4f",coefficient[j]);
-      printf("\n");
+      Exact_Exchange_Log(state,2,"<EXX>  the next inner SCF takes K from %d builds (Anderson, scf.exx.outer.extrapolation): coefficients",d+1);
+      for (int j=0; j<d; j++) Exact_Exchange_Log(state,2," %.4f",coefficient[j]);
+      Exact_Exchange_Log(state,2,"\n");
     }
     else if (stored==0) {
-      printf("<EXX>  the next inner SCF takes K of the build: no earlier build for the extrapolation\n");
+      Exact_Exchange_Log(state,2,"<EXX>  the next inner SCF takes K of the build: no earlier build for the extrapolation\n");
     }
     else {
-      printf("<EXX>  the next inner SCF takes K of the build: the residuals of the builds are nearly dependent\n");
+      Exact_Exchange_Log(state,2,"<EXX>  the next inner SCF takes K of the build: the residuals of the builds are nearly dependent\n");
     }
-    if (2<=verbosity) printf("<EXX>  extrapolation in %.2f s\n",MPI_Wtime()-start);
-    fflush(stdout);
+    Exact_Exchange_Log(state,2,"<EXX>  extrapolation in %.2f s\n",MPI_Wtime()-start);
   }
   return 0<d;
 }
@@ -2080,7 +2171,7 @@ static void ExactExchange_Check_Outputs(OpenMXExactExchangeState *state, MPI_Com
 }
 
 void Exact_Exchange_Prepare_Outputs(OpenMXExactExchangeState *state, const OpenMXAtomicViews *atomic,
-    MPI_Comm comm, int verbosity)
+    MPI_Comm comm)
 {
   if (!Exact_Exchange_Enabled(state)) return;
   Exact_Exchange_Release_Outputs(state);
@@ -2105,10 +2196,8 @@ void Exact_Exchange_Prepare_Outputs(OpenMXExactExchangeState *state, const OpenM
     state->output_block_offset = state->block_offset;
     for (int spin=0; spin<state->spin_channels; spin++) state->output_exchange[spin] = state->exchange[spin];
     state->outputs = 1;
-    if (rank==0 && 0<verbosity) {
-      printf("<EXX>  outputs after the SCF: K(R) of the last build, whose V sites are not folded\n");
-      fflush(stdout);
-    }
+    if (rank==0)
+      Exact_Exchange_Log(state,2,"<EXX>  outputs after the SCF: K(R) of the last build with unfolded V sites\n");
     return;
   }
 
@@ -2214,44 +2303,39 @@ void Exact_Exchange_Prepare_Outputs(OpenMXExactExchangeState *state, const OpenM
   openmx_core_native_free(state->resources,products.host.loop);
   Exact_Exchange_Host_Blas_Restore(blas_threads);
   const ExactExchangeDeviceCounts after=ExactExchange_Device_Counts(&state->device);
+  if (after.device_products>counts.device_products || after.device_calls>counts.device_calls)
+    state->gpu_work |= EXX_GPU_PRODUCTS;
   ExactExchange_Device_Counts_Back(&state->device,&counts);
   for (int spin=0; spin<state->spin_channels; spin++) openmx_core_native_free(state->resources,density[spin]);
   if (state->sites) openmx_exx_destroy(module);
   state->outputs = 1;
   const double built=MPI_Wtime();
 
-  if (state->device.disabled && !disabled_before && 1<=verbosity) {
-    printf("<EXX>  WARNING: process %d: %s failed with status %d.\n",rank,
-           Exact_Exchange_Device_Failure_Name(state->device.failure),state->device.failure_status);
-    printf("<EXX>  The host computes the exchange matrix and its matrix products from here on.\n");
-    fflush(stdout);
-  }
+  ExactExchange_Report_Device_Failure(state,rank,disabled_before);
+  const int detailed=ExactExchange_Detailed(state);
   double check[2]={0.0,0.0};
-  if (2<=verbosity && state->sites) ExactExchange_Check_Outputs(state,comm,check);
+  if (detailed && state->sites) ExactExchange_Check_Outputs(state,comm,check);
 
-  if (rank==0 && 0<verbosity) {
-    printf("<EXX>  outputs after the SCF: K(R) without folding from D of the last build, %ld V sites,"
-           " %ld blocks, %.1f MB per spin channel (%.2f s)\n",
-           v_sites,blocks,(double)elements*sizeof(double)/1048576.0,built-start);
-    if (2<=verbosity) {
-      const int *period=state->input.fold_period;
-      printf("<EXX>  outputs: preparation %.2f s, build %.2f s; %ld blocks from another cell of their class,"
-             " largest asymmetry of D %.3e\n",prepared-start,built-prepared,moved,asymmetry);
-      if (0<after.device_calls-counts.device_calls || 0<after.declined_calls-counts.declined_calls)
-        printf("<EXX>  the outputs on the device of process 0: %lld calls in %.2f s, at most %.1f MB for one call;"
-               " left to the host for lack of device memory: %lld\n",
-               after.device_calls-counts.device_calls,call_seconds,(double)after.largest_call_bytes/1048576.0,
-               after.declined_calls-counts.declined_calls);
-      if (0<after.device_products-counts.device_products || 0<after.declined_products-counts.declined_products)
-        printf("<EXX>  matrix products of the outputs on the device of process 0: %lld in %.2f s, at most %.1f MB"
-               " for one product; left to the host for lack of device memory: %lld\n",
-               after.device_products-counts.device_products,products.device_seconds,
-               (double)after.largest_bytes/1048576.0,after.declined_products-counts.declined_products);
-      if (state->sites)
-        printf("<EXX>  K(k) of the outputs at the %d points of the mesh: largest difference from K(k) of the SCF %.3e,"
-               " largest element %.3e\n",period[0]*period[1]*period[2],check[0],check[1]);
-    }
-    fflush(stdout);
+  if (rank==0 && detailed) {
+    const int *period=state->input.fold_period;
+    Exact_Exchange_Log(state,2,"<EXX>  outputs after the SCF: K(R) without folding from D of the last build, %ld V sites,"
+                       " %ld blocks, %.1f MB per spin channel (%.2f s)\n",
+                       v_sites,blocks,(double)elements*sizeof(double)/1048576.0,built-start);
+    Exact_Exchange_Log(state,2,"<EXX>  outputs: preparation %.2f s, build %.2f s; %ld blocks from another cell of their class,"
+                       " largest asymmetry of D %.3e\n",prepared-start,built-prepared,moved,asymmetry);
+    if (0<after.device_calls-counts.device_calls || 0<after.declined_calls-counts.declined_calls)
+      Exact_Exchange_Log(state,2,"<EXX>  the outputs on the device of process 0: %lld calls in %.2f s, at most %.1f MB for one call;"
+                         " left to the host for lack of device memory: %lld\n",
+                         after.device_calls-counts.device_calls,call_seconds,(double)after.largest_call_bytes/1048576.0,
+                         after.declined_calls-counts.declined_calls);
+    if (0<after.device_products-counts.device_products || 0<after.declined_products-counts.declined_products)
+      Exact_Exchange_Log(state,2,"<EXX>  matrix products of the outputs on the device of process 0: %lld in %.2f s, at most %.1f MB"
+                         " for one product; left to the host for lack of device memory: %lld\n",
+                         after.device_products-counts.device_products,products.device_seconds,
+                         (double)after.largest_bytes/1048576.0,after.declined_products-counts.declined_products);
+    if (state->sites)
+      Exact_Exchange_Log(state,2,"<EXX>  K(k) of the outputs at the %d points of the mesh: largest difference from K(k) of the SCF %.3e,"
+                         " largest element %.3e\n",period[0]*period[1]*period[2],check[0],check[1]);
   }
 }
 

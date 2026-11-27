@@ -651,13 +651,9 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
      structure fixes (docs/EXX_IMPLEMENTATION_GUIDE.md, section 6.2).
      The SCF below starts with the semilocal functional. */
   if (Exact_Exchange_Enabled(exact_exchange)){
-    if (MYID_MPI_COMM_WORLD==Host_ID && 0<level_stdout){
-      printf("<MD=%2d>  Preparation of the exact exchange\n",MD_iter);
-      fflush(stdout);
-    }
     /* the band solver takes the blocks K(R) of the site form, the cluster
        solver the matrix of the Gamma point */
-    Exact_Exchange_Prepare(exact_exchange, atomic, Solver==3, mpi_comm_level1, level_stdout);
+    Exact_Exchange_Prepare(exact_exchange, atomic, Solver==3, mpi_comm_level1, level_stdout, file_DFTSCF);
   }
 
   /* SCF loop */
@@ -1736,34 +1732,29 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
                                                    ncn, atv_ijk,
                                                    WhatSpecies, atomic->species.contracted_orbitals, MP,
                                                    DM[0], mpi_comm_level1);
-      if (MYID_MPI_COMM_WORLD==Host_ID && 2<=level_stdout){
-        printf("<EXX>  density matrices collected: largest deviation from the solver %.3e\n",deviation);
-        fflush(stdout);
-      }
+      if (myid0==Host_ID)
+        Exact_Exchange_Log(exact_exchange,2,"<EXX>  density matrices collected: largest deviation from the solver %.3e\n",deviation);
       if (!(deviation<1.0e-8)){
-        if (MYID_MPI_COMM_WORLD==Host_ID){
-          printf("<EXX>  the collected density matrices differ from those of the solver by %.3e\n",deviation);
-          fflush(stdout);
-        }
+        if (myid0==Host_ID)
+          fprintf(stderr,"<EXX>  the collected density matrices differ from those of the solver by %.3e\n",deviation);
         MPI_Abort(mpi_comm_level1, 1);
       }
 
-      Exact_Exchange_Build(exact_exchange, mpi_comm_level1, level_stdout);
+      Exact_Exchange_Build(exact_exchange, mpi_comm_level1);
 
-      if (MYID_MPI_COMM_WORLD==Host_ID && 0<level_stdout){
-        printf("<EXX>  outer iteration %2d at SCF=%4d  Uexx=%18.12f  delta=%11.3e (Hartree)\n",
-               Exact_Exchange_Outer_Iterations(exact_exchange),SCF_iter,
-               Exact_Exchange_Energy(exact_exchange),Exact_Exchange_Change(exact_exchange));
+      if (myid0==Host_ID){
+        Exact_Exchange_Log(exact_exchange,2,"<EXX>  outer iteration %2d at SCF=%4d  Uexx=%18.12f  delta=%11.3e (Hartree)\n",
+                           Exact_Exchange_Outer_Iterations(exact_exchange),SCF_iter,
+                           Exact_Exchange_Energy(exact_exchange),Exact_Exchange_Change(exact_exchange));
         if (exx_loose)
-          printf("<EXX>  the inner SCF of this build stopped on the criterion %.3e (scf.exx.inner.criterion.ratio)\n",
-                 exx_criterion);
-        fflush(stdout);
+          Exact_Exchange_Log(exact_exchange,2,"<EXX>  the inner SCF of this build stopped on the criterion %.3e (scf.exx.inner.criterion.ratio)\n",
+                             exx_criterion);
       }
 
       if (Exact_Exchange_Outer_Continue(exact_exchange, exx_loose)){
         /* the exchange matrix of the next inner SCF from the last builds
            (scf.exx.outer.extrapolation) */
-        Exact_Exchange_Extrapolate(exact_exchange, mpi_comm_level1, level_stdout);
+        Exact_Exchange_Extrapolate(exact_exchange, mpi_comm_level1);
         /* a new inner SCF. The mixing starts again through SCF_iter_shift,
            so that no extrapolation takes a residual that was measured with
            the exchange matrix before; the offset depends on the mixer.
@@ -2135,78 +2126,9 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   scf_convergence_flag = po!=0;
   openmx_fp32_enter_reference();
 
-  /* hybrid functional: how the outer iteration ended */
   if (Cnt_switch==0 && Exact_Exchange_Enabled(exact_exchange)){
-    const int builds = Exact_Exchange_Outer_Iterations(exact_exchange);
-    double exx_times[4];
-    long long exx_device_use[5];
-    long long exx_device_calls[6];
-    long long exx_device_additions;
-    long long exx_band_sums[2];
-    double exx_device_seconds;
-    double exx_call_seconds;
-
     if (!Exact_Exchange_Outer_Converged(exact_exchange)) scf_convergence_flag = 0;
-    Exact_Exchange_Device_Use(exact_exchange, mpi_comm_level1, exx_device_use, &exx_device_seconds);
-    Exact_Exchange_Device_Calls(exact_exchange, mpi_comm_level1, exx_device_calls, &exx_call_seconds);
-    exx_device_additions = Exact_Exchange_Device_Additions(exact_exchange, mpi_comm_level1);
-    Exact_Exchange_Band_Sums(exact_exchange, mpi_comm_level1, exx_band_sums);
-
-    if (MYID_MPI_COMM_WORLD==Host_ID && 0<level_stdout){
-      if (builds==0){
-        printf("<EXX>  WARNING: the SCF of GGA-PBE did not converge within scf.maxIter=%d steps.\n",DFTSCF_loop);
-        printf("<EXX>  No exchange matrix was built: the energies below are those of GGA-PBE.\n");
-      }
-      else if (po==0){
-        printf("<EXX>  WARNING: the SCF with the exchange matrix of the outer iteration %d\n",builds);
-        printf("<EXX>  did not converge within scf.maxIter=%d steps.\n",DFTSCF_loop);
-      }
-      else if (!Exact_Exchange_Outer_Converged(exact_exchange)){
-        printf("<EXX>  WARNING: the outer iteration did not converge in %d builds of the exchange matrix\n",builds);
-        printf("<EXX>  (scf.exx.outer.maxIter): delta=%.3e Hartree.\n",Exact_Exchange_Change(exact_exchange));
-      }
-      else{
-        printf("<EXX>  The outer iteration converged with %d builds of the exchange matrix: delta=%.3e Hartree.\n",
-               builds,Exact_Exchange_Change(exact_exchange));
-      }
-      Exact_Exchange_Times(exact_exchange, exx_times);
-      printf("<EXX>  time (s): preparation %.2f, density matrices %.2f, exchange matrix %.2f, addition %.2f\n",
-             exx_times[0],exx_times[1],exx_times[2],exx_times[3]);
-      if (2<=level_stdout && (0<exx_band_sums[0] || 0<exx_band_sums[1])){
-        printf("<EXX>  K(k) of the k points: %lld sums over the blocks of K, and %lld additions of a sum"
-               " kept since the same build (all processes)\n",exx_band_sums[0],exx_band_sums[1]);
-      }
-      if (0<exx_device_use[0] || 0<exx_device_use[1] || 0<exx_device_use[3]){
-        printf("<EXX>  GPU: %lld matrix products of the exchange matrix on the device, in %lld processes\n",
-               exx_device_use[0],exx_device_use[2]);
-        printf("<EXX>  (at most %.2f s in one process); %lld left to the host for lack of device memory.\n",
-               exx_device_seconds,exx_device_use[1]);
-        if (Exact_Exchange_Device_Gemmul8(exact_exchange) && 0<exx_device_use[0]){
-          printf("<EXX>  GPU: GEMMul8 computed %lld of the matrix products on the device, FP64 the other %lld"
-                 " (scf.gemmul8.enable on).\n",exx_device_use[4],exx_device_use[0]-exx_device_use[4]);
-        }
-      }
-      if (0<exx_device_calls[0] || 0<exx_device_calls[1]){
-        printf("<EXX>  GPU: %lld calls of the exchange build on the device, in %lld processes, with %lld matrix products,"
-               " %lld of them large\n",exx_device_calls[0],exx_device_calls[2],exx_device_calls[3],exx_device_calls[4]);
-        printf("<EXX>  (at most %.2f s in one process); %lld calls left to the host for lack of device memory.\n",
-               exx_call_seconds,exx_device_calls[1]);
-        if (Exact_Exchange_Device_Gemmul8(exact_exchange) && 0<exx_device_calls[0]){
-          printf("<EXX>  GPU: GEMMul8 computed %lld of the %lld large matrix products of these calls, FP64 the other"
-                 " %lld products (scf.gemmul8.enable on).\n",exx_device_calls[5],exx_device_calls[4],
-                 exx_device_calls[3]-exx_device_calls[5]);
-        }
-      }
-      if (0<exx_device_use[3]){
-        printf("<EXX>  WARNING: %lld processes stopped using their device for the exchange matrix after a failed call.\n",
-               exx_device_use[3]);
-      }
-      if (0<exx_device_additions){
-        printf("<EXX>  GPU: the exchange matrix was added to %lld dense Hamiltonians on the device.\n",
-               exx_device_additions);
-      }
-      fflush(stdout);
-    }
+    Exact_Exchange_Report_Scf(exact_exchange, mpi_comm_level1, po, DFTSCF_loop);
   }
 
   /* an SCF cut by scf.maxIter (changed through the _SCF_keywords file) on a
@@ -2866,7 +2788,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
                  && ((Band_disp_switch==1 && Band_Nkpath>0) || Dos_fileout || DosGauss_fileout));
   Exact_Exchange_End_Device_Phase(exact_exchange);
   if (exx_outputs) {
-    Exact_Exchange_Prepare_Outputs(exact_exchange, atomic, mpi_comm_level1, level_stdout);
+    Exact_Exchange_Prepare_Outputs(exact_exchange, atomic, mpi_comm_level1);
     Exact_Exchange_End_Device_Phase(exact_exchange);
   }
 
@@ -3146,7 +3068,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
     double exx_begin, exx_end;
     const double *exx_gradient;
     dtime(&exx_begin);
-    exx_gradient = Exact_Exchange_Gradient(exact_exchange, mpi_comm_level1, level_stdout);
+    exx_gradient = Exact_Exchange_Gradient(exact_exchange, mpi_comm_level1);
     dtime(&exx_end);
     time7 += exx_end - exx_begin;
     time7 += Force(hamiltonian_state, density_state, atomic, vna,reciprocal, H0,DS_NL,OLP,DM[0],EDM, electronic, local_basis,
@@ -3593,7 +3515,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   if (bloch_mo) {
     if (Cnt_switch==0){
       if (!exx_outputs && Exact_Exchange_Active(exact_exchange)) {
-        Exact_Exchange_Prepare_Outputs(exact_exchange, atomic, mpi_comm_level1, level_stdout);
+        Exact_Exchange_Prepare_Outputs(exact_exchange, atomic, mpi_comm_level1);
         Exact_Exchange_End_Device_Phase(exact_exchange);
       }
       Band_DFT_MO(chemical, MO_Nkpoint, MO_kpoint, SpinP_switch, H, iHNL, OLP[0], exact_exchange);
@@ -3788,6 +3710,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
     TRAN_Deallocate_Electrode_Grid(Ngrid2);
   }
 
+  Exact_Exchange_Finish_Report(exact_exchange, mpi_comm_level1);
   MPI_Barrier(mpi_comm_level1);
 
   return time0;

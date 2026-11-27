@@ -5198,19 +5198,6 @@ void Input_std(char *file, OpenMXCoreContext *core)
       exit(0);
     }
 
-    if (myid==Host_ID && 0<level_stdout){
-      if (hybrid_functional==1){
-        printf("<Input_std>  HSE06: exact exchange with alpha=%6.4f and omega=%6.4f (1/bohr)\n",exx_alpha,exx_omega);
-      }
-      else if (0.0<exx_coulomb_cutoff){
-        printf("<Input_std>  PBE0: exact exchange with alpha=%6.4f and the Coulomb interaction truncated at %.4f (bohr)\n",
-               exx_alpha,exx_coulomb_cutoff);
-      }
-      else{
-        printf("<Input_std>  PBE0: exact exchange with alpha=%6.4f and the Coulomb interaction truncated at the radius\n"
-               "             of the sphere of the volume of the cell times the number of k points\n",exx_alpha);
-      }
-    }
   }
 
   {
@@ -5269,6 +5256,7 @@ void Input_std(char *file, OpenMXCoreContext *core)
     exx_input.device_capacity_test = openmx_gpu_capacity_test_recovery();
     exx_input.gemmul8 = exx_gemmul8;
     exx_input.gpu_min_work = exx_gpu_min_work;
+    exx_input.fileout_level = level_fileout;
     Exact_Exchange_Configure(exact_exchange,&exx_input);
 
     /* the arrays of the structure, which this function has filled: every

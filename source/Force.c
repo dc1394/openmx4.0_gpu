@@ -4635,7 +4635,7 @@ static double Force_Impl(OpenMXHamiltonianGpuState *hamiltonian_state, OpenMXDen
             Gxyz[Gc_AN][18] += exact_exchange_gradient[3 * (Gc_AN - 1) + 1];
             Gxyz[Gc_AN][19] += exact_exchange_gradient[3 * (Gc_AN - 1) + 2];
 
-            if (2 <= level_stdout) {
+            if (3 <= level_stdout) {
                 printf("<Force>  force(EXX) myid=%2d  Mc_AN=%2d Gc_AN=%2d  %15.12f %15.12f %15.12f\n",
                     myid, Mc_AN, Gc_AN, exact_exchange_gradient[3 * (Gc_AN - 1) + 0],
                     exact_exchange_gradient[3 * (Gc_AN - 1) + 1], exact_exchange_gradient[3 * (Gc_AN - 1) + 2]);

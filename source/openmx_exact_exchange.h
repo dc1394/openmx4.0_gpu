@@ -70,6 +70,7 @@ typedef struct {
   int gemmul8;               /* scf.gemmul8.enable on: the GPU computes its matrix products of the
                                 builds through the GEMMul8 bridge; otherwise in FP64 */
   double gpu_min_work;       /* scf.exx.gpu.min.work: m*n*k per product, -1 for device-aware selection */
+  int fileout_level;         /* level.of.fileout for the EXX sections of the SCF log */
 } OpenMXExactExchangeInput;
 
 void Exact_Exchange_Configure(OpenMXExactExchangeState *state, const OpenMXExactExchangeInput *input);
@@ -112,10 +113,20 @@ int Exact_Exchange_Enabled(const OpenMXExactExchangeState *state);
    site form, which also gets its list of blocks here. The exchange matrix
    of an earlier structure is dropped: the SCF of the new structure starts
    with the semilocal functional. Does nothing unless a hybrid functional is
-   enabled. A failure ends the run through MPI_Abort. verbosity is
-   level.of.stdout. */
+   enabled. A failure ends the run through MPI_Abort. Rank 0 appends to
+   the SCF log that is merged into .out. stdout_level is level.of.stdout. */
 void Exact_Exchange_Prepare(OpenMXExactExchangeState *state, const OpenMXAtomicViews *atomic,
-    int sites, MPI_Comm comm, int verbosity);
+    int sites, MPI_Comm comm, int stdout_level, const char *scf_log);
+
+/* Write to each output enabled for the message's level. Ordinary messages
+   are part of the .out summary even at level.of.fileout 0. */
+void Exact_Exchange_Log(const OpenMXExactExchangeState *state, int level, const char *format, ...);
+
+/* Report SCF convergence and optional counters, then record actual device
+   use and close the SCF log after the force and post-SCF steps. Collective. */
+void Exact_Exchange_Report_Scf(const OpenMXExactExchangeState *state, MPI_Comm comm,
+    int inner_converged, int scf_limit);
+void Exact_Exchange_Finish_Report(OpenMXExactExchangeState *state, MPI_Comm comm);
 
 /* ---- semilocal part ------------------------------------------------------ */
 
@@ -196,7 +207,7 @@ double Exact_Exchange_Density_Deviation(const OpenMXExactExchangeState *state, i
    before, and computes E_x (equation (4)) and delta (equation (15)). From
    here on K is added to the Hamiltonian and the semilocal part is the hybrid
    one. */
-void Exact_Exchange_Build(OpenMXExactExchangeState *state, MPI_Comm comm, int verbosity);
+void Exact_Exchange_Build(OpenMXExactExchangeState *state, MPI_Comm comm);
 
 /* After a build: 1 when the outer iteration goes on with a new inner SCF, 0
    when it ends. It ends when |delta| is below scf.exx.outer.criterion or when
@@ -219,9 +230,8 @@ int Exact_Exchange_Outer_Continue(OpenMXExactExchangeState *state, int loose);
    stay those of the build, and the outer iteration ends on a built matrix:
    to be called only when Exact_Exchange_Outer_Continue returned 1. Process
    0 computes the coefficients for all. Returns 1 when the matrix of the next
-   inner SCF is not X_n. A failure ends the run through MPI_Abort.
-   verbosity is level.of.stdout. */
-int Exact_Exchange_Extrapolate(OpenMXExactExchangeState *state, MPI_Comm comm, int verbosity);
+   inner SCF is not X_n. A failure ends the run through MPI_Abort. */
+int Exact_Exchange_Extrapolate(OpenMXExactExchangeState *state, MPI_Comm comm);
 
 int Exact_Exchange_Outer_Iterations(const OpenMXExactExchangeState *state); /* builds for this structure */
 int Exact_Exchange_Outer_Converged(const OpenMXExactExchangeState *state);  /* the criterion was met */
@@ -240,13 +250,13 @@ double Exact_Exchange_Change(const OpenMXExactExchangeState *state);        /* d
    K. The ABFs of the centre atoms are distributed over the processes for
    the derivatives of E_x with respect to the T and V blocks, as in the
    build, and the pairs of sites for the derivatives of the blocks (section
-   6.7); every process gets the sum. The matrix products of this derivative
-   are computed by the BLAS of the host only, so the counts of the device
-   stay those of the builds. The array belongs to the state and holds until
+   6.7); every process gets the sum. The device may take matrix products
+   while forming the weights. The SCF build counters exclude them. The
+   array belongs to the state and holds until
    the next call or preparation. Returns NULL without an exchange matrix (no
    hybrid functional, or no build for the present structure). A failure
-   ends the run through MPI_Abort. verbosity is level.of.stdout. */
-const double *Exact_Exchange_Gradient(OpenMXExactExchangeState *state, MPI_Comm comm, int verbosity);
+   ends the run through MPI_Abort. */
+const double *Exact_Exchange_Gradient(OpenMXExactExchangeState *state, MPI_Comm comm);
 
 /* ---- inner SCF with an exchange matrix (section 6.6) --------------------- */
 
@@ -341,21 +351,12 @@ void Exact_Exchange_Add_Cluster_Hs(OpenMXExactExchangeState *state, int spin, in
 void Exact_Exchange_Add_Band_Hs(OpenMXExactExchangeState *state, int spin, double k1, double k2, double k3,
     int n, double *Hs, int na_rows, int na_cols, int nblk, int np_rows, int np_cols, int my_prow, int my_pcol);
 
-/* counts[0]: the sums of equation (14) since the binding, over the
-   processes of comm; counts[1]: the additions that took a kept K(k)
-   instead. Collective. */
-void Exact_Exchange_Band_Sums(const OpenMXExactExchangeState *state, MPI_Comm comm, long long counts[2]);
-
 /* A solver that keeps its dense Hamiltonian on a device builds the matrix
    to add with the two functions above in a buffer of the host (one process
    holds the whole matrix: a 1 x 1 grid with one block of n), copies it to
    the device and adds it there. It then reports the addition here, with the
    seconds of the copy and of the addition on the device. NULL is allowed. */
 void Exact_Exchange_Device_Addition(OpenMXExactExchangeState *state, double seconds);
-
-/* The number of such additions since the binding, over the processes of
-   comm. 0 in the CPU build. Collective. */
-long long Exact_Exchange_Device_Additions(const OpenMXExactExchangeState *state, MPI_Comm comm);
 
 /* ---- outputs after the SCF (section 6.5) ---------------------------------- */
 
@@ -369,11 +370,11 @@ long long Exact_Exchange_Device_Additions(const OpenMXExactExchangeState *state,
    preparation (a block outside the folded list takes the block of its
    class times the sign of the mesh), and builds K(R) once, divided among
    the processes of comm as a build of the SCF is. The tables of the SCF
-   stay. With verbosity 2 or more it compares K(k) of the outputs with K(k)
-   of the SCF at the points of the mesh. Does nothing without an exchange
+   stay. Detailed logging compares K(k) of the outputs with K(k) of the SCF
+   at the points of the mesh. Does nothing without an exchange
    matrix or for the Gamma form. Collective. */
 void Exact_Exchange_Prepare_Outputs(OpenMXExactExchangeState *state, const OpenMXAtomicViews *atomic,
-    MPI_Comm comm, int verbosity);
+    MPI_Comm comm);
 
 /* Read-only view of the post-SCF (unfolded) exchange, valid through
    Exact_Exchange_Release_Outputs. Atoms and first orbitals are zero-based.
@@ -400,44 +401,6 @@ void Exact_Exchange_Add_Output_Hk(const OpenMXExactExchangeState *state, int spi
 
 /* Gives the memory of K(R) of the outputs back. NULL is allowed. */
 void Exact_Exchange_Release_Outputs(OpenMXExactExchangeState *state);
-
-/* ---- times --------------------------------------------------------------- */
-
-/* Seconds spent on this process since the binding: preparation, collection
-   of the density matrices, builds, additions to the Hamiltonian. */
-void Exact_Exchange_Times(const OpenMXExactExchangeState *state, double times[4]);
-
-/* How the builds used the GPUs (openmx_exact_exchange_device.h), over the
-   processes of comm: use[0] is the number of matrix products computed on a
-   device, use[1] the number left to the host because a device had no room
-   for them, use[2] the number of processes with at least one product on
-   their device, use[3] the number of processes whose device was switched
-   off after a failed call, and use[4] the number of the products on a
-   device that GEMMul8 computed (the bridge computes the others in FP64).
-   seconds is the longest time that one process spent in its products on
-   the device, transfers included; it is a part of the time of the builds.
-   All are 0 in the CPU build. Collective. */
-void Exact_Exchange_Device_Use(const OpenMXExactExchangeState *state, MPI_Comm comm, long long use[5],
-    double *seconds);
-
-/* The whole calls of modules/exx that the builds gave the GPUs
-   (openmx_exact_exchange_device.h), over the processes of comm: calls[0] is
-   the number of calls that a device computed, calls[1] the number left to
-   the host because a device had no room for them, calls[2] the number of
-   processes with at least one call on their device, calls[3] the number of
-   matrix products in the calls on a device, calls[4] the number of those
-   with at least the smallest size of a product on the device, and calls[5]
-   the number of those large ones that GEMMul8 computed. A call left to the
-   host gives its large products to Exact_Exchange_Device_Use. seconds is the
-   longest time that one process spent in calls on its device, transfers
-   included; it is a part of the time of the builds. All are 0 in the CPU
-   build. Collective. */
-void Exact_Exchange_Device_Calls(const OpenMXExactExchangeState *state, MPI_Comm comm, long long calls[6],
-    double *seconds);
-
-/* 1 when the input asked for GEMMul8 in the matrix products of the builds
-   on a device (scf.gemmul8.enable on). */
-int Exact_Exchange_Device_Gemmul8(const OpenMXExactExchangeState *state);
 
 #ifdef __cplusplus
 }

@@ -1014,9 +1014,9 @@ static int BandCol_GpuDenseFits(BandColState *state, int SCF_iter, int n, int ma
            of one device and on the block-cyclic path of the CPU eigensolver,
            not on the host-backed MAGMA tier */
         if (myid0==Host_ID && (SCF_iter==1 || state->GpuDenseFits_verdict_n!=n)) {
-            printf("<EXX>  Band collinear n=%d: MAGMA does not take the exchange matrix; the hybrid functional uses"
-                   " the CPU eigensolver.\n", n);
-            fflush(stdout);
+            Exact_Exchange_Log(state->exact_exchange,2,
+                               "<EXX>  Band collinear n=%d: MAGMA does not take the exchange matrix; the hybrid functional uses"
+                               " the CPU eigensolver.\n",n);
         }
         state->mgpu_host_dense=0;
         state->GpuDenseFits_verdict=0; state->GpuDenseFits_verdict_n=n; state->gpu_dense_verdict=0;
