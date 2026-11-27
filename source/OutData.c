@@ -24,7 +24,7 @@
 #include "openmx_common.h"
 #include "openmx_mo_grid.h"
 #include "openmx_host_simd.h"
-#if OPENMX_GPU_CUDA
+#if OPENMX_GPU_CUDA || OPENMX_GPU_HIP
 #include "openmx_gpu_device.h"
 #include "openmx_gpu_runtime.h"
 #include "openmx_gpu_workers.h"
@@ -96,9 +96,12 @@ static int out_MO_Parallel(const OpenMXChemicalPotentials *chemical)
                                     GridListAtom[local],CellListAtom[local],Orbs_Grid[local][0]};
   }
   int device=-1;
-#if OPENMX_GPU_CUDA
+#if OPENMX_GPU_CUDA || OPENMX_GPU_HIP
   if (scf_eigen_lib_flag==GPUSOLVER && gpu_rank_device_usable() && !openmx_gpu_capacity_test_recovery() &&
-      !OpenMX_HostSimdPreferred("MO_Grid") && OpenMXGpuGetDevice(&device)!=OPENMX_GPU_SUCCESS) device=-1;
+      !OpenMX_HostSimdPreferred("MO_Grid") && OpenMXGpuGetDevice(&device)!=OPENMX_GPU_SUCCESS) {
+    (void)OpenMXGpuGetLastError();
+    device=-1;
+  }
 #endif
   const OpenMXMOGridInput input={mpi_comm_level1,Host_ID,level_stdout,mode,device,
     Matomnum,TNumGrid,Ngrid3,complex_mo ? 2 : 1,SpinP_switch==0 ? 1 : 2,periodic ? MO_Nkpoint : 1,

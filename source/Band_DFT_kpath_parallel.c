@@ -596,7 +596,7 @@ static int run_parallel(const KPathOutput *output, const KPathBasis *basis, Open
 done:
     if (rank == output->host && 0 < output->verbosity) {
         if (mo && success) printf("<Band_DFT_MO> Eigensystems and coefficient output: %.3f s\n",MPI_Wtime()-started);
-        else if (mo) printf("<Band_DFT_MO> %s %s unavailable.\n",use_gpu ? "CUDA" : "CPU",stage);
+        else if (mo) printf("<Band_DFT_MO> %s %s unavailable.\n",use_gpu ? OPENMX_GPU_RUNTIME_NAME : "CPU",stage);
         else if (success && use_gpu) printf("<Band_DFT_kpath> %s (GPU-accelerated)\n", m.lno ? ".LNO.Band" : ".Band");
         else if (success) printf("<Band_DFT_kpath> %s (%d OpenMP worker(s) on rank %d)\n",
                                  m.lno ? ".LNO.Band" : ".Band", threads_used, rank);
@@ -640,7 +640,7 @@ static int run_outputs(const OpenMXChemicalPotentials *chemical,
 
 #if OPENMX_GPU_CUDA || OPENMX_GPU_HIP
     const int gpu = scf_eigen_lib_flag == GPUSOLVER && openmx_env_flag_at(OPENMX_ENV_GPU, 1) &&
-                    (!mo || OPENMX_GPU_CUDA) && !OpenMX_HostSimdPreferred(mo ? "Band_DFT_MO" : "Band_DFT_kpath");
+                    !OpenMX_HostSimdPreferred(mo ? "Band_DFT_MO" : "Band_DFT_kpath");
     if (all_ranks_ok(output.comm, gpu) &&
         run_parallel(&output, &basis, m, 1, chemical, path_count, points_per_path, paths, names,
                      hamiltonian, imaginary, overlap, local_basis, exact_exchange, mo)) return 1;

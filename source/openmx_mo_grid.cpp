@@ -155,7 +155,7 @@ void evaluate_cpu(const OpenMXMOGridInput& in, const GridPlan& plan,
     }
 }
 
-#if OPENMX_GPU_CUDA
+#if OPENMX_GPU_CUDA || OPENMX_GPU_HIP
 using Device=std::unique_ptr<OpenMXMODevice,decltype(&openmx_mo_device_destroy)>;
 
 Device prepare_device(const OpenMXMOGridInput& in, const GridPlan& plan, int batch) try
@@ -273,7 +273,7 @@ extern "C" int openmx_mo_grid_write(const OpenMXMOGridInput* input)
     if (!all_ready) return 0;
 
     int on_gpu=0;
-#if OPENMX_GPU_CUDA
+#if OPENMX_GPU_CUDA || OPENMX_GPU_HIP
     auto device=prepare_device(in,plan,batch);
     std::vector<double> compact;
     if (device) {
@@ -286,8 +286,13 @@ extern "C" int openmx_mo_grid_write(const OpenMXMOGridInput* input)
 #endif
     int gpu_ranks;
     MPI_Reduce(&on_gpu,&gpu_ranks,1,MPI_INT,MPI_SUM,in.root,in.comm);
-    if (rank==in.root && in.verbosity>0)
-        std::printf("<MO> Grid projection with %s, %d CUDA rank(s)\n",openmx_core_host_simd_name(in.simd),gpu_ranks);
+    if (rank==in.root && in.verbosity>0) {
+        const char *host=openmx_core_host_simd_name(in.simd);
+        if (gpu_ranks>0)
+            std::printf("<MO> Grid projection with %s, %d %s rank(s)\n",host,gpu_ranks,OPENMX_GPU_RUNTIME_NAME);
+        else
+            std::printf("<MO> Grid projection with %s\n",host);
+    }
     int errors=0, retries=0, files=0;
     for (int k=0; k<in.point_count; ++k) {
         const int homo=in.nhomos[k], lumo=in.nlumos[k];
@@ -302,7 +307,7 @@ extern "C" int openmx_mo_grid_write(const OpenMXMOGridInput* input)
             if (!plan.points.empty()) {
                 copy_coefficients(in,plan,count,work.data(),coefficients.data());
                 bool evaluated=false;
-#if OPENMX_GPU_CUDA
+#if OPENMX_GPU_CUDA || OPENMX_GPU_HIP
                 if (device) {
                     evaluated=openmx_mo_device_evaluate(device.get(),count,first==0 ? phase.data() : nullptr,
                                                          coefficients.data(),compact.data());
@@ -335,7 +340,8 @@ extern "C" int openmx_mo_grid_write(const OpenMXMOGridInput* input)
     MPI_Reduce(&retries,&total_retries,1,MPI_INT,MPI_SUM,in.root,in.comm);
     if (rank==in.root) {
         if (errors) std::fprintf(stderr,"<MO> Failed to save %d orbital grid file(s).\n",errors);
-        if (total_retries) std::fprintf(stderr,"<MO> %d CUDA rank(s) completed their grid work on the CPU.\n",total_retries);
+        if (total_retries) std::fprintf(stderr,"<MO> %d %s rank(s) completed their grid work on the CPU.\n",
+                                       total_retries,OPENMX_GPU_RUNTIME_NAME);
         if (in.verbosity>0) { std::printf("<MO> Projection and output of %d grid files: %.3f s\n",files,MPI_Wtime()-start); std::fflush(stdout); }
     }
     return 1;

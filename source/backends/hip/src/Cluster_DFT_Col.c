@@ -4184,6 +4184,11 @@ static double Cluster_DFT_Col_owned(ClusterColState *state, const OpenMXAtomicVi
                   values of MOs on grids
     ****************************************************/
 
+    if (MO_fileout==1){
+      num_HOMOs=List_YOUSO[31];
+      num_LUMOs=List_YOUSO[32];
+    }
+
     if (SpinP_switch==0){
       if ( (Cluster_HOMO[0]-num_HOMOs+1)<1 )  num_HOMOs = Cluster_HOMO[0];
       if ( (Cluster_HOMO[0]+num_LUMOs)>MaxN ) num_LUMOs = MaxN - Cluster_HOMO[0];
@@ -4205,198 +4210,52 @@ static double Cluster_DFT_Col_owned(ClusterColState *state, const OpenMXAtomicVi
       }
     }
 
-    if (use_gpusolver_direct_cluster_dm && MO_fileout==1 && !gpusolver_direct_evec_scattered){
+    if (use_gpusolver_direct_cluster_dm && MO_fileout==1 && !PeriodicGamma_flag &&
+        !gpusolver_direct_evec_scattered){
       time4 += ClusterCol_ScatterGpuSolverCachedEVec(state, SpinP_switch,numprocs0,myworld1,myid1,numprocs1,
                                                     MPI_CommWD1,n,MaxN,is2,ie2,EVec1);
       gpusolver_direct_evec_scattered = 1;
     }
 
-    if (MO_fileout==1){  
-
-      /* allocation of arrays */
-      double *array0;    
-      int *is3,*ie3;
-      int numprocs3,ID1;
-
-      array0=OpenMX_Solver_Real(solver_owner,"array0",((size_t)1)*(n+2));
-      is3=OpenMX_Solver_Int(solver_owner,"is3",((size_t)1)*numprocs0);
-      ie3=OpenMX_Solver_Int(solver_owner,"ie3",((size_t)1)*numprocs0);
-
-      /* HOMOs */
-
-      for (spin=0; spin<=SpinP_switch; spin++){
-
-	/* set is3 and ie3 */
-
-	numprocs3 = NPROCS_WD1[spin];
-
-	if ( numprocs3<=MaxN ){
-
-	  av_num = (double)MaxN/(double)numprocs3;
-	  for (ID=0; ID<numprocs3; ID++){
-	    is3[ID] = (int)(av_num*(double)ID) + 1; 
-	    ie3[ID] = (int)(av_num*(double)(ID+1)); 
-	  }
-
-	  is3[0] = 1;
-	  ie3[numprocs3-1] = MaxN; 
-	}
-
-	else{
-	  for (ID=0; ID<MaxN; ID++){
-	    is3[ID] = ID + 1; 
-	    ie3[ID] = ID + 1;
-	  }
-	  for (ID=MaxN; ID<numprocs3; ID++){
-	    is3[ID] =  1;
-	    ie3[ID] =  0;
-	  }
-	}
-
-	/* loop for j */
-
-	for (j=0; j<num_HOMOs; j++){
-
-	  j1 = Cluster_HOMO[spin] - j;
-
-	  /* store eigenvalue */
-	  HOMOs_Coef[0][spin][j][0][0].r = ko[spin][j1] ;
-
-	  /* store EVec1 */
-	  if (numprocs0==1){
-	    for (k=0; k<n; k++){
-
-	      m = k*(ie2[myid1]-is2[myid1]+1)+j1-1;
-	      array0[k] = EVec1[spin][m];
-	    }
-	  }
-	  else{
-
-	    po = 0;
-	    for (ID=0; ID<numprocs3; ID++){
-	      if (is3[ID]<=j1 && j1 <=ie3[ID]){
-		po = 1;
-		ID0 = ID;
-		break;
-	      }
-	    }
-
-	    ID1 = Comm_World_StartID1[spin] + ID0;
-
-	    if (myid0==ID1){
-	      for (k=0; k<n; k++){
-
-		m = k*(ie2[myid1]-is2[myid1]+1)+j1-is3[ID0];
-		array0[k] = EVec1[spin][m];
-	      }
-	    }
-
-	    /* MPI communications */
-	    MPI_Bcast(array0, n, MPI_DOUBLE, ID1, mpi_comm_level1);  
-	  }
-
-	  /* store eigenvector */
-	  for (GA_AN=1; GA_AN<=atomnum; GA_AN++){
-	    wanA = WhatSpecies[GA_AN];
-	    tnoA = atomic->species.contracted_orbitals[wanA];
-	    Anum = MP[GA_AN];
-	    for (i=0; i<tnoA; i++){
-	      HOMOs_Coef[0][spin][j][GA_AN][i].r = array0[Anum+i-1];
-	      HOMOs_Coef[0][spin][j][GA_AN][i].i = 0.0;
-	    }
-	  }
-	}
+    if (MO_fileout==1 && !PeriodicGamma_flag){
+      /* EVec1 already contains the accepted SCF vectors, including the
+         exchange matrix when using a hybrid. Each column has one owner. */
+      const int occupied=num_HOMOs, frontier=occupied+num_LUMOs, atoms=atomnum;
+      const int jobs=(SpinP_switch+1)*frontier;
+      const int capacity=n<=INT_MAX/8 ? 8 : 1;
+      double *packed=OpenMX_Solver_Real(solver_owner,"mo_frontier",(size_t)capacity*n);
+      const int first_state=is2[myid1], last_state=ie2[myid1];
+      const int stride=last_state-first_state+1;
+      const int *homo=Cluster_HOMO, *species=WhatSpecies;
+      dcomplex ****homos=HOMOs_Coef[0], ****lumos=LUMOs_Coef[0];
+      for (int base=0; base<jobs; base+=capacity) {
+        const int count=jobs-base<capacity ? jobs-base : capacity;
+        memset(packed,0,(size_t)count*n*sizeof(*packed));
+#pragma omp parallel for schedule(static) if ((size_t)count*n>=32768)
+        for (int job=0; job<count; ++job) {
+          const int channel=(base+job)/frontier, index=(base+job)%frontier;
+          const int state_index=index<occupied ? homo[channel]-index : homo[channel]+1+index-occupied;
+          if ((numprocs0==1 || myworld1==channel) && first_state<=state_index && state_index<=last_state) {
+            const double *column=EVec1[channel]+state_index-first_state;
+            double *dst=packed+(size_t)job*n;
+            for (int ao=0; ao<n; ++ao) dst[ao]=column[(size_t)ao*stride];
+          }
+        }
+        if (numprocs0>1) MPI_Allreduce(MPI_IN_PLACE,packed,count*n,MPI_DOUBLE,MPI_SUM,mpi_comm_level1);
+#pragma omp parallel for schedule(static) if ((size_t)count*n>=32768)
+        for (int job=0; job<count; ++job) {
+          const int channel=(base+job)/frontier, index=(base+job)%frontier;
+          const int state_index=index<occupied ? homo[channel]-index : homo[channel]+1+index-occupied;
+          dcomplex **target=index<occupied ? homos[channel][index] : lumos[channel][index-occupied];
+          target[0][0]=(dcomplex){ko[channel][state_index],0.0};
+          const double *src=packed+(size_t)job*n;
+          for (int atom=1; atom<=atoms; ++atom) {
+            const int orbitals=atomic->species.contracted_orbitals[species[atom]];
+            for (int ao=0; ao<orbitals; ++ao)
+              target[atom][ao]=(dcomplex){src[MP[atom]+ao-1],0.0};
+          }
+        }
       }
-
-      /* LUMOs */
-   
-      for (spin=0; spin<=SpinP_switch; spin++){
-
-	/* set is3 and ie3 */
-
-	numprocs3 = NPROCS_WD1[spin];
-
-	if ( numprocs3<=MaxN ){
-
-	  av_num = (double)MaxN/(double)numprocs3;
-	  for (ID=0; ID<numprocs3; ID++){
-	    is3[ID] = (int)(av_num*(double)ID) + 1; 
-	    ie3[ID] = (int)(av_num*(double)(ID+1)); 
-	  }
-
-	  is3[0] = 1;
-	  ie3[numprocs3-1] = MaxN; 
-	}
-
-	else{
-	  for (ID=0; ID<MaxN; ID++){
-	    is3[ID] = ID + 1; 
-	    ie3[ID] = ID + 1;
-	  }
-	  for (ID=MaxN; ID<numprocs3; ID++){
-	    is3[ID] =  1;
-	    ie3[ID] = -2;
-	  }
-	}
-
-	/* loop for j */
-
-	for (j=0; j<num_LUMOs; j++){
-
-	  j1 = Cluster_HOMO[spin] + 1 + j;
-
-	  /* store eigenvalue */
-	  LUMOs_Coef[0][spin][j][0][0].r = ko[spin][j1];
-
-	  /* store EVec1 */
-	  if (numprocs0==1){
-	    for (k=0; k<n; k++){
-
-	      m = k*(ie2[myid1]-is2[myid1]+1)+j1-1;
-	      array0[k] = EVec1[spin][m];
-	    }
-	  }
-	  else{
-
-	    po = 0;
-	    for (ID=0; ID<numprocs3; ID++){
-	      if (is3[ID]<=j1 && j1 <=ie3[ID]){
-		po = 1;
-		ID0 = ID;
-		break;
-	      }
-	    }
-
-	    ID1 = Comm_World_StartID1[spin] + ID0;
-
-	    if (myid0==ID1){
-	      for (k=0; k<n; k++){
-
-		m = k*(ie2[myid1]-is2[myid1]+1) + j1-is3[ID0];
-		array0[k] = EVec1[spin][m];
-	      }
-	    }
-
-	    /* MPI communications */
-	    MPI_Bcast(array0, n, MPI_DOUBLE, ID1, mpi_comm_level1);  
-	  }
-
-	  /* store eigenvector */
-	  for (GA_AN=1; GA_AN<=atomnum; GA_AN++){
-	    wanA = WhatSpecies[GA_AN];
-	    tnoA = atomic->species.contracted_orbitals[wanA];
-	    Anum = MP[GA_AN];
-	    for (i=0; i<tnoA; i++){
-	      LUMOs_Coef[0][spin][j][GA_AN][i].r = array0[Anum+i-1];
-	      LUMOs_Coef[0][spin][j][GA_AN][i].i = 0.0;
-	    }
-	  }
-	}
-      }
-
-      /* freeing of array0 */
-
-      ;
     }
 
     /****************************************************

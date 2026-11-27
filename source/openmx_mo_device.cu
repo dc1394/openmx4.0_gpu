@@ -18,7 +18,8 @@ namespace {
 template<class T>
 bool upload(openmx::gpu::DeviceBuffer<T>& dst, const T* src, size_t count)
 {
-    return dst.allocate(count) && cudaMemcpy(dst.get(),src,count*sizeof(T),cudaMemcpyHostToDevice)==cudaSuccess;
+    return count==0 || (dst.allocate(count) &&
+        OpenMXGpuMemcpy(dst.get(),src,count*sizeof(T),OPENMX_GPU_COPY_HOST_TO_DEVICE)==OPENMX_GPU_SUCCESS);
 }
 
 /* Work is independent across grid points and MOs. The reduction within
@@ -68,16 +69,20 @@ extern "C" OpenMXMODevice *openmx_mo_device_create(int device, int atoms, const 
         sizeof(int)*((size_t)points+1)+sizeof(OpenMXMOTerm)*offsets[points]+
         sizeof(double)*(coeff_count+output_count+phase_count);
     size_t free=0,total=0;
-    // Other MPI ranks and subsequent CUDA calls also need memory on the card.
+    // Leave memory for other MPI ranks and later device work.
     constexpr size_t reserve=512UL*1024*1024;
-    if (cudaMemGetInfo(&free,&total)!=cudaSuccess || free<reserve || bytes>free-reserve) return nullptr;
+    if (OpenMXGpuMemGetInfo(&free,&total)!=OPENMX_GPU_SUCCESS) {
+        (void)OpenMXGpuGetLastError();
+        return nullptr;
+    }
+    if (free<reserve || bytes>free-reserve) return nullptr;
     std::unique_ptr<OpenMXMODevice> state(new(std::nothrow) OpenMXMODevice);
     if (!state) return nullptr;
     if (!upload(state->offsets,offsets,(size_t)points+1) || !upload(state->terms,terms,offsets[points]) ||
         !upload(state->atoms,atom,atoms) || !upload(state->paos,ao,samples) ||
         !state->phases.allocate(phase_count) || !state->coefficients.allocate(coeff_count) ||
         !state->output.allocate(output_count)) {
-        (void)cudaGetLastError();
+        (void)OpenMXGpuGetLastError();
         return nullptr;
     }
     state->device=device;
@@ -100,10 +105,14 @@ extern "C" int openmx_mo_device_evaluate(OpenMXMODevice *state, int batch, const
     openmx::gpu::DeviceBinding binding(state->device);
     if (!binding) return 0;
     const size_t coeff_bytes=(size_t)batch*state->channels*state->orbitals*sizeof(double);
-    if (cudaMemcpy(state->coefficients.get(),coefficients,coeff_bytes,cudaMemcpyHostToDevice)!=cudaSuccess ||
+    if (OpenMXGpuMemcpy(state->coefficients.get(),coefficients,coeff_bytes,
+                        OPENMX_GPU_COPY_HOST_TO_DEVICE)!=OPENMX_GPU_SUCCESS ||
         (state->channels==2 && phase &&
-         cudaMemcpy(state->phases.get(),phase,state->phases.size()*sizeof(double),cudaMemcpyHostToDevice)!=cudaSuccess))
+         OpenMXGpuMemcpy(state->phases.get(),phase,state->phases.size()*sizeof(double),
+                         OPENMX_GPU_COPY_HOST_TO_DEVICE)!=OPENMX_GPU_SUCCESS)) {
+        (void)OpenMXGpuGetLastError();
         return 0;
+    }
     constexpr int threads=128;
     const dim3 grid(((size_t)state->points+threads-1)/threads,batch);
     if (state->channels==2)
@@ -113,6 +122,9 @@ extern "C" int openmx_mo_device_evaluate(OpenMXMODevice *state, int batch, const
         mo_grid<false><<<grid,threads>>>(state->points,state->orbitals,state->offsets.get(),state->terms.get(),
             state->atoms.get(),state->paos.get(),state->phases.get(),state->coefficients.get(),state->output.get());
     const size_t output_bytes=(size_t)batch*state->channels*state->points*sizeof(double);
-    return cudaGetLastError()==cudaSuccess &&
-           cudaMemcpy(output,state->output.get(),output_bytes,cudaMemcpyDeviceToHost)==cudaSuccess;
+    const bool done=OpenMXGpuGetLastError()==OPENMX_GPU_SUCCESS &&
+        OpenMXGpuMemcpy(output,state->output.get(),output_bytes,
+                        OPENMX_GPU_COPY_DEVICE_TO_HOST)==OPENMX_GPU_SUCCESS;
+    if (!done) (void)OpenMXGpuGetLastError();
+    return done;
 }

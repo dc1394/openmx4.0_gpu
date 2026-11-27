@@ -762,6 +762,7 @@
     "openmx_mo_grid.cpp",
     "openmx_mo_grid.h",
     "openmx_mo_device.h",
+    "openmx_mo_device.cu",
     "openmx_band_kpath_gpu.cu",
     "CWF2W90.c",
     "Cluster_DFT_Col_CWF.c",

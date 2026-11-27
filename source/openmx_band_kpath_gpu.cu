@@ -719,7 +719,8 @@ bool solve_points(Workspace &w, const OpenMXKPathMatrices &m, int point_count,
             }
         }
         if (OPENMX_STDOUT_LEVEL(2) && ((k + 1) % 10 == 0 || k + 1 == point_count)) {
-            std::printf("<Band_DFT_kpath> GPU owner completed %d/%d distinct k-points\n", k + 1, point_count);
+            std::printf("<%s> GPU owner completed %d/%d distinct k-points\n",
+                        ao ? "Band_DFT_MO" : "Band_DFT_kpath", k + 1, point_count);
             std::fflush(stdout);
         }
     }
@@ -758,7 +759,7 @@ int solve_gpu(int device, const OpenMXKPathMatrices *matrices, int point_count,
     if (!success) {
         (void)OpenMXGpuGetLastError();
         if (OPENMX_STDOUT_LEVEL(2))
-            std::fprintf(stderr, "<Band_DFT_kpath> GPU %d failed in %s\n", device, stage);
+            std::fprintf(stderr, "<%s> GPU %d failed in %s\n", ao ? "Band_DFT_MO" : "Band_DFT_kpath", device, stage);
     }
     return success;
 }

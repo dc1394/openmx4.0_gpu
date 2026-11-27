@@ -428,7 +428,7 @@ openmx_globals.o: openmx_globals.c openmx_common.h
 include openmx_core.mk
 # These interfaces also reach legacy objects through openmx_common.h.
 # Rebuild consumers when a native API mapping or backend selection changes.
-OBJS += Band_DFT_kpath_parallel.o openmx_band_kpath_cpu.o openmx_mo_grid.o openmx_band_kpath_gpu.o \
+OBJS += Band_DFT_kpath_parallel.o openmx_band_kpath_cpu.o openmx_mo_grid.o openmx_band_kpath_gpu.o openmx_mo_device.o \
         Exact_Exchange.o Exact_Exchange_Device.o Exact_Exchange_Host.o exact_exchange_device_hip.o
 
 OPENMX_GPU_INTERFACE_HEADERS = openmx_gpu_backend.h openmx_gpu_runtime.h \
@@ -644,6 +644,8 @@ openmx_band_kpath_cpu.o: openmx_band_kpath_cpu.cpp openmx_band_kpath.h openmx_co
 	$(CPPLANG) -O3 -std=c++17 -fPIC -ffp-contract=off -fopenmp -c $< -o $@
 openmx_mo_grid.o: openmx_mo_grid.cpp openmx_mo_grid.h openmx_mo_device.h openmx_core_host_simd.h
 	$(CPPLANG) -O3 -std=c++17 -ffp-contract=off -fopenmp -D__HIP_PLATFORM_AMD__ $(MPI_CXXFLAGS) -c $< -o $@
+openmx_mo_device.o: openmx_mo_device.cu openmx_mo_device.h openmx_gpu_memory.hpp
+	$(HIPCC) $(HIPCC_GEMMUL8_FLAGS) -c $< -o $@
 openmx_band_kpath_gpu.o: openmx_band_kpath_gpu.cu openmx_band_kpath.h openmx_gpu_memory.hpp openmx_gpu_workers.h openmx_mgpu_runtime.h
 	$(HIPCC) $(HIPCC_GEMMUL8_FLAGS) -c $< -o $@
 Exact_Exchange.o: Exact_Exchange.c openmx_exact_exchange.h openmx_exact_exchange_device.h openmx_exact_exchange_host.h openmx_exx.h ../modules/exx/include/openmx/exx/exx.h openmx_host_simd.h openmx_gpu_architecture.h openmx_gpu_collective.h openmx_gpu_device.h openmx_mgpu_runtime.h

@@ -63,16 +63,13 @@ def main():
             jobs.append((cc, name))
     jobs += [(cxx, n) for n in (
         "openmx_gpu_dm.cu", "openmx_gpu_transform.cu", "openmx_mgpu_gemm.cu",
-        "openmx_mgpu_runtime.cu", "openmx_band_kpath_gpu.cu")]
+        "openmx_mgpu_runtime.cu", "openmx_band_kpath_gpu.cu", "openmx_mo_device.cu")]
     if args.backend == "HIP":
         host_cxx = shlex.split(args.cxx) + ["-ffp-contract=off", "-D__HIP_PLATFORM_AMD__"]
     else:
         host_cxx = [str(Path(shlex.split(args.cc)[0]).with_name("nvc++")), "-Mnofma"]
     jobs.append((host_cxx + ["-std=c++17", "-O3", "-fPIC", "-fopenmp", *include], "openmx_band_kpath_cpu.cpp"))
     jobs.append((host_cxx + ["-std=c++17", "-O3", "-fopenmp", *mpi, *include], "openmx_mo_grid.cpp"))
-    if args.backend == "CUDA":
-        jobs.append((cxx, "openmx_mo_device.cu"))
-
     if args.backend == "HIP":
         jobs += [(cxx, name) for name in ("orbs_otf_hip.cu", "exact_exchange_device_hip.cu", "set_xc_grid_hip.cu")]
         jobs += [(cc, name) for name in ("Exact_Exchange.c", "Exact_Exchange_Device.c", "Exact_Exchange_Host.c", "Set_XC_Grid.c")]
