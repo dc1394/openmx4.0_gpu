@@ -114,6 +114,11 @@ int main(int argc, char **argv)
     openmx_grid_precision_announce();
     openmx_set_fp32_enabled(1);
     if (openmx_grid_precision_df() != expect_df) return 13;
+    openmx_fp32_enter_reference();
+    if (!openmx_fp32_requested() || openmx_grid_precision_df() != 0 || grid_precision_df()) return 14;
+    openmx_grid_precision_announce();
+    openmx_fp32_begin_scf();
+    if (openmx_grid_precision_df() != expect_df) return 15;
     openmx_grid_precision_announce();
     openmx_grid_precision_announce();
     return 0;
@@ -148,6 +153,7 @@ CASES = [
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    parser.add_argument("--cc", default=os.environ.get("CC", "cc"))
     parser.add_argument("--cxx", default=os.environ.get("CXX", "c++"))
     args = parser.parse_args()
 
@@ -169,11 +175,18 @@ def main():
     with tempfile.TemporaryDirectory(prefix="openmx-grid-precision-") as tmp:
         cfile, binary = Path(tmp) / "check.cpp", Path(tmp) / "check"
         cfile.write_text(code)
+        include = ["-I", str(ROOT / "source")]
+        objects = []
+        for stem in ("openmx_precision", "openmx_env"):
+            obj = str(Path(tmp) / (stem + ".o"))
+            source = str(ROOT / "source" / (stem + ".c"))
+            subprocess.run(shlex.split(args.cc) + ["-std=gnu11", "-O1", *include, "-c", source, "-o", obj],
+                           check=True)
+            objects.append(obj)
         for defined in (False, True):
             flags = ["-DTEST_STDOUT_DEFINED"] if defined else []
             subprocess.run(shlex.split(args.cxx) + ["-std=c++17", "-O1", "-Wall", "-Wextra", "-Werror",
-                            "-I", str(ROOT / "source"), *flags, str(cfile),
-                            str(ROOT / "source/openmx_precision.c"), str(ROOT / "source/openmx_env.c"), "-o", str(binary)], check=True)
+                            *include, *flags, str(cfile), *objects, "-o", str(binary)], check=True)
             for level in ((0, 1, 2, 3) if defined else (3,)):
                 for extra, expect_df, expect_out in CASES:
                     run = subprocess.run([str(binary), str(expect_df)],
@@ -192,7 +205,7 @@ def main():
                     if not ok:
                         raise SystemExit(f"FAIL level={level} {extra}: unexpected banner {run.stdout!r}")
     print(f"PASS: {len(CASES) * 5} grid precision/output configurations (levels 0..3, standalone weak "
-          "reference, input warnings at every level, per-input FP32 veto/reset, one banner)")
+          "reference, input warnings at every level, FP32 veto/reset, SCF reference phase, one banner)")
 
 
 if __name__ == "__main__":

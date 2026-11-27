@@ -43,6 +43,17 @@ def compiler_command(language, compiler=None):
     return command
 
 
+def compile_c_objects(folder, *sources):
+    """Compile C11 sources for fixtures linked with the C++ driver."""
+    command = compiler_command('c') + ['-x', 'c', '-c']
+    objects = []
+    for source in sources:
+        obj = folder / (source.stem + '.o')
+        subprocess.run(command + [str(source), '-o', str(obj)], check=True)
+        objects.append(str(obj))
+    return objects
+
+
 def allocation_fault_source(folder):
     """Link Darwin's dyld interposers from a dylib, not the main executable."""
     source = Path(__file__).resolve().parents[1] / 'core/tests/allocation_faults.cpp'

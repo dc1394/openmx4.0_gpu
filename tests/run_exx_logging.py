@@ -14,6 +14,8 @@ from run_scf_output_regression import input_text
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tools'))
 from exx_force_checks import forces_of
+from exx_kpoint_checks import make_input
+from exx_output_checks import PATH_END, PATH_START, band_input
 from exx_scf_checks import number
 from run_gpu_suites import stop_job
 
@@ -54,10 +56,11 @@ def main():
     output.mkdir(parents=True, exist_ok=False)
 
     gpu = args.backend != 'cpu'
-    template = (ROOT / 'work/cdia_hse/cdia_hse.dat').read_text()
-    settings = {'DATA.PATH': str(ROOT / 'DFT_DATA19'), 'System.Name': 'result',
-                'scf.Kgrid': '2 2 2', 'scf.restart': 'off', 'scf.eigen.lib': 'gpusolver' if gpu else 'elpa2',
-                'scf.exx.gpu.min.work': '0'}
+    # The silicon cell provides enough work to exercise the GPU exchange build.
+    template = make_input('result', 'siz', (1, 1, 1), (4, 4, 4), 'HSE06',
+                          extra=band_input([(PATH_START, PATH_END, 2)]))
+    settings = {'DATA.PATH': str(ROOT / 'DFT_DATA19'), 'scf.restart': 'off',
+                'scf.eigen.lib': 'gpusolver' if gpu else 'elpa2', 'scf.exx.gpu.min.work': '0'}
     env = {key: value for key, value in os.environ.items() if not key.startswith(('OPENMX_', 'OMP_', 'MKL_', 'KMP_'))}
     env.update(OPENMX_GPU='1' if gpu else '0', OPENMX_BAND_GPU_SWITCH_NUM='1',
                OMP_NUM_THREADS='1', OMP_DYNAMIC='FALSE', OPENBLAS_NUM_THREADS='1', MKL_NUM_THREADS='1')

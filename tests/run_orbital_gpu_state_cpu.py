@@ -12,7 +12,7 @@ import subprocess
 import tempfile
 from run_cluster_col_state_cpu import function
 from native_state_test_support import (compiler_command, bounded_stack,
-    allocation_fault_source, allocation_fault_environment)
+    allocation_fault_source, allocation_fault_environment, compile_c_objects)
 ROOT=Path(__file__).resolve().parents[1]
 
 
@@ -45,13 +45,14 @@ def main():
                 if n=='SOG_Device_Prepare':b='#define malloc host_malloc\n#define free host_free\n'+b+'\n#undef malloc\n#undef free\n'
                 chunks.append(b)
             (folder/'orbital_state.inc').write_text(metadata+'\n'+helpers+'\n'+'\n'.join(chunks))
+            c_objects = compile_c_objects(folder, ROOT/'source/openmx_env.c', ROOT/'source/openmx_precision.c')
             exe=folder/'check'
             command=compiler_command('c++')+[
                 '-DOPENMX_GPU_HIP=0','-Wno-unknown-pragmas','-I'+str(folder),
                 '-I'+str(ROOT/'source'),'-I'+str(ROOT/'core/include'),
                 '-I'+str(ROOT/'core/tests'),'-I'+str(ROOT/'core/tests/fixtures/native_resources'),
                 str(ROOT/'tests/orbital_state_harness.cpp'),allocation_fault_source(folder),
-                str(ROOT/'source/openmx_env.c'),str(ROOT/'source/openmx_precision.c'),
+                *c_objects,
                 str(library),'-Wl,-rpath,'+str(library.parent),'-o',str(exe)]
             subprocess.run(command,check=True)
             environment=dict(os.environ,**allocation_fault_environment(folder))

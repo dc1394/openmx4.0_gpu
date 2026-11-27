@@ -11,7 +11,8 @@ from pathlib import Path
 import re
 import subprocess
 import tempfile
-from native_state_test_support import bounded_stack, compiler_command, allocation_fault_source, allocation_fault_environment
+from native_state_test_support import (allocation_fault_environment, allocation_fault_source,
+                                       bounded_stack, compile_c_objects, compiler_command)
 from run_cluster_col_state_cpu import function, pod
 from native_resource_test_bridge import calculation_state_declaration
 
@@ -57,6 +58,7 @@ def main():
     prefix, module = 'Band' + kind, 'Band_DFT_' + kind
     with tempfile.TemporaryDirectory(prefix='openmx-band-state-') as directory:
         folder = Path(directory)
+        c_objects = compile_c_objects(folder, ROOT / 'source/openmx_env.c', ROOT / 'source/openmx_precision.c')
         for backend in ['cuda', 'hip']:
             base = ROOT / ('source' if backend == 'cuda' else 'source/backends/hip')
             source = base / (module + '.c' if backend == 'cuda' else 'src/' + module + '.c')
@@ -105,7 +107,7 @@ def main():
                 '-I' + str(folder), '-I' + str(ROOT / 'source'), '-I' + str(ROOT / 'core/include'),
                 '-I' + str(ROOT / 'core/tests/fixtures/native_resources'), '-I' + str(ROOT / 'core/tests'),
                 str(ROOT / 'tests/band_state_harness.cpp'), allocation_fault_source(folder),
-                str(ROOT / 'source/openmx_env.c'), str(ROOT / 'source/openmx_precision.c'), str(library),
+                *c_objects, str(library),
                 '-Wl,-rpath,' + str(library.parent), '-o', str(executable)]
             subprocess.run(command, check=True)
             environment = {k: v for k, v in os.environ.items() if not k.startswith(('OPENMX_', 'GEMMUL8_'))}
