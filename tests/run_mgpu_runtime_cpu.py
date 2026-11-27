@@ -25,6 +25,7 @@ constexpr int cudaDevAttrSingleToDoublePrecisionPerfRatio=0;
 struct cudaUUID_t {char bytes[16];};
 struct cudaDeviceProp {cudaUUID_t uuid;int pciDomainID,pciBusID,pciDeviceID;};
 inline int device=1,visible=2,ratio=2,queries=0,duplicate_uuid=0,property_queries=0,property_fail=0;
+inline thread_local cudaError_t last_error=cudaSuccess;
 inline int uuid_namespace=int(getpid());
 inline int peer_support=1;
 inline size_t memory_free=size_t(1)<<40;
@@ -37,10 +38,13 @@ inline int cudaSetDevice(int d) {device=d;return 0;}
 inline int cudaGetDeviceCount(int *p) {++queries;*p=visible;return 0;}
 inline int cudaDeviceGetAttribute(int *p,int,int) {*p=ratio;return 0;}
 inline int cudaGetDeviceProperties(cudaDeviceProp *p,int d) {
- ++property_queries;if(property_fail) return 1;
+ ++property_queries;if(property_fail) return last_error=1;
  std::memset(p,0,sizeof(*p));
  std::memcpy(p->uuid.bytes,&uuid_namespace,sizeof(uuid_namespace));p->uuid.bytes[8]=duplicate_uuid?0:char(d);
  p->pciBusID=16+d;return 0;
+}
+inline cudaError_t cudaGetLastError() {
+ const cudaError_t status=last_error;last_error=cudaSuccess;return status;
 }
 inline int cudaDeviceCanAccessPeer(int *p,int,int) {*p=peer_support;return 0;}
 inline int cudaStreamSynchronize(cudaStream_t) {return sync_error;}
@@ -224,10 +228,18 @@ static void reset() {
  native_calls=magma_calls=gemm_calls=copy2d_h2d=copy_h2d=0;
  native_delay=magma_delay=native_fail=backend_fail=corrupt=0;
  device=1;visible=2;ratio=2;queries=property_queries=property_fail=0;duplicate_uuid=fail_h2d=sync_error=worker=0;
+ last_error=cudaSuccess;
  magma_available=1;memory_free=size_t(1)<<40;largest_memory_device=-1;openmx_mgpu_force_magma(0);unsetenv("OPENMX_MGPU_MEMORY");
  openmx_mgpu_configure(-1,2,1);cluster_scope=0;band_kpoints=0;band_kpoint=-1;last_devices.clear();
 }
 int main() {
+ reset();
+ unsigned char uuid[16]={};
+ property_fail=1;
+ CHECK(!openmx_gpu_physical_uuid(1,uuid) && last_error==cudaSuccess);
+ property_fail=0;
+ CHECK(openmx_gpu_physical_uuid(1,uuid) && uuid[8]==1);
+
  // Auxiliary work shares visibility/input caps, but is not filtered by an
  // eigensolver performance heuristic. Scoped Band lists remain exact.
  reset();visible=8;ratio=64;openmx_mgpu_configure(-1,6,1);

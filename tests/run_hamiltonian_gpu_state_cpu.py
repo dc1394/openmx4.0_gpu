@@ -64,7 +64,7 @@ def main():
         'SETH_OTF_ReleaseCentral']
     hip = ['Set_Hamiltonian_ME_Associate', 'Set_Hamiltonian_ME_Disassociate',
         'Set_Hamiltonian_Invalidate_OpenMP_MatrixElements_Cache',
-        'Set_Hamiltonian_OTF_ReleaseDevice', 'Set_Hamiltonian_OTF_BatchSizes',
+        'SetH_OTF_DropCentral', 'Set_Hamiltonian_OTF_ReleaseDevice', 'Set_Hamiltonian_OTF_BatchSizes',
         'SetH_OTF_HostAlloc', 'SetH_OTF_HostFree', 'SetH_OTF_FreePlan',
         'SetH_OTF_ReleasePlans', 'SetH_OTF_EnsureStatic', 'SetH_OTF_KindBatchBytes', 'SetH_OTF_GetPlan']
     for backend in ['cuda', 'hip'] if args.backend == 'both' else [args.backend]:

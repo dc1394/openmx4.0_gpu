@@ -165,8 +165,10 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install CPU compilers and numerical libraries
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends gfortran clang libomp-dev openmpi-bin libopenmpi-dev libscalapack-openmpi-dev libopenblas-dev libfftw3-dev autoconf automake libtool libtool-bin m4 pkg-config unzip
+          # These dependencies all come from the Ubuntu archive.
+          apt=(sudo apt-get -o Dir::Etc::sourcelist=/etc/apt/sources.list.d/ubuntu.sources -o Dir::Etc::sourceparts=-)
+          "${apt[@]}" update
+          "${apt[@]}" install -y --no-install-recommends gfortran clang libomp-dev openmpi-bin libopenmpi-dev libscalapack-openmpi-dev libopenblas-dev libfftw3-dev autoconf automake libtool libtool-bin m4 pkg-config unzip
       - name: Build the full CPU application without a GPU SDK
         run: |
           cmake -S . -B build/cpu -DOPENMX_GPU_BACKEND=CPU -DOPENMX_CPU_COMPILER=${{ matrix.compiler }} -DOPENMX_CPU_MPI=OPENMPI -DOPENMX_CPU_LINALG=OPENBLAS -DOPENMX_COPY_TO_WORK=OFF -DOPENMX_BUILD_JOBS=2
@@ -213,8 +215,9 @@ jobs:
       - name: Install MPI for native solver lifetime tests
         if: matrix.mpi == true
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends openmpi-bin libopenmpi-dev
+          apt=(sudo apt-get -o Dir::Etc::sourcelist=/etc/apt/sources.list.d/ubuntu.sources -o Dir::Etc::sourceparts=-)
+          "${apt[@]}" update
+          "${apt[@]}" install -y --no-install-recommends openmpi-bin libopenmpi-dev
       - name: Configure the independently buildable core
         run: >-
           cmake -S . -B build/core -DOPENMX_BUILD_APPLICATION=OFF
@@ -289,8 +292,9 @@ jobs:
           python3 source/backends/hip/tests/run_mi300a_dm_waves_cpu.py
       - name: Products of the exact exchange with Clang, the OpenMP runtime of LLVM and ThreadSanitizer
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends clang libomp-dev
+          apt=(sudo apt-get -o Dir::Etc::sourcelist=/etc/apt/sources.list.d/ubuntu.sources -o Dir::Etc::sourceparts=-)
+          "${apt[@]}" update
+          "${apt[@]}" install -y --no-install-recommends clang libomp-dev
           # An address-space randomization that ThreadSanitizer can map (actions/runner-images#9491).
           # The key can be read by root only.
           sudo sysctl vm.mmap_rnd_bits

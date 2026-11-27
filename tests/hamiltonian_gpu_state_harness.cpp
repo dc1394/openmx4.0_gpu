@@ -16,9 +16,9 @@ using Type_Orbs_Grid = float;
 using MPI_Comm = int;
 struct BindingAbort {};
 [[noreturn]] static void binding_abort() { throw BindingAbort{}; }
-// Only the borrowed orbital binding is modeled here; its production upload
-// and native-owner lifetime are covered by orbital-calculation-state-lifecycle.
-struct OpenMXOrbitalGpuState { int unused; };
+// The orbital binding and its precision query are modeled here. The orbital
+// lifecycle test covers its production upload and allocation ownership.
+struct OpenMXOrbitalGpuState { int double_float; };
 static void orbital_reset(OpenMXNativeResources*,void*) {}
 OpenMXOrbitalGpuState *Set_Orbitals_Grid_GPU_Bind_Resources(OpenMXCoreContext *core) {
     OpenMXNativeResources *owner=nullptr;void *metadata=nullptr;char error[256];
@@ -84,6 +84,7 @@ static int hipHostMalloc(void **p,size_t n,unsigned f){if(pin_fail){*p=nullptr;r
 static int hipHostFree(void *p){return OpenMXGpuFreeHost(p);}
 static int hipGetLastError(){return 0;}
 static int hipDeviceSynchronize(){return 0;}
+static int OTF_Orbitals_DoubleFloat(OpenMXOrbitalGpuState *s){return s->double_float;}
 static int omp_target_associate_ptr(void *h,void *p,size_t,size_t,int d){return associate(h,p,d);}
 static void *omp_get_mapped_ptr(void *h,int d){return mapped(h,d);}
 static int omp_target_disassociate_ptr(void *h,int d){disassociate(h,d);return 0;}
@@ -191,6 +192,19 @@ static void plans(OpenMXHamiltonianGpuState *s) {
     auto *a=SetH_OTF_GetPlan(s,0,1),*b=SetH_OTF_GetPlan(s,1,1);
     assert(a && b && a!=b && a->valid && b->valid);
     size_t n=host_calls;assert(SetH_OTF_GetPlan(s,0,1)==a && host_calls==n);
+    // A precision change invalidates only the cached central orbitals.
+    const auto *grid=s->otf.d_gla;
+    const auto live_before=live;
+    void *central=nullptr;
+    assert(hipMalloc(&central,sizeof(float))==hipSuccess);
+    s->otf.central_orbitals=static_cast<float*>(central);
+    s->otf.central_bytes=sizeof(float);
+    s->otf.central_ready=1;
+    s->orbital_state->double_float=1;
+    assert(Set_Hamiltonian_OTF_Ensure(s,&atomic));
+    assert(s->otf.double_float==1 && s->otf.d_gla==grid);
+    assert(!s->otf.central_orbitals && !s->otf.central_bytes && !s->otf.central_ready && !s->otf.central_blocked);
+    assert(live==live_before && SetH_OTF_GetPlan(s,0,1)==a && host_calls==n);
 #else
     assert(Set_Hamiltonian_OTF_Ensure(s,&atomic,0,0));
     unsigned int out[]={0,0,31,78};
@@ -290,7 +304,12 @@ int main(){try{
         plans(s);assert(!s->pinned_bytes);
 #else
         OpenMXAtomicViews atomic{};assert(Set_Hamiltonian_OTF_Ensure(s,&atomic,0,0));
-        auto *p=SETH_OTF_GetPlan(s,0,0,1,20000,nullptr,0);assert(p && p->hbuf_pageable);
+        auto *p=SETH_OTF_GetPlan(s,0,0,1,20000,nullptr,0);
+        assert(p && p->ready && p->batch_count>0);
+        for (int i=0;i<p->batch_count;i++) {
+            const auto &batch=p->batch[i];
+            assert(batch.pair_count>0 && batch.image && batch.image_bytes && batch.image_pageable);
+        }
         assert(!SETH_OTF_StagePotential(s,1,1024));
 #endif
         pin_fail=false;c.reset();assert(!live && !host_live);}

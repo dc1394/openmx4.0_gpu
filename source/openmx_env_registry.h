@@ -43,7 +43,7 @@
     X(EXT_GEMMUL8_DISABLE_Z, "GEMMUL8_DISABLE_Z", "flag", "global", "", "backends/hip/src/gemmul8_bridge.cu,gemmul8_bridge.cu", "") \
     X(EXT_GEMMUL8_FASTMODE_D, "GEMMUL8_FASTMODE_D", "flag", "global", "0", "backends/hip/src/gemmul8_bridge.cu,gemmul8_bridge.cu", "") \
     X(EXT_GEMMUL8_FASTMODE_Z, "GEMMUL8_FASTMODE_Z", "flag", "global", "0", "backends/hip/src/gemmul8_bridge.cu,gemmul8_bridge.cu", "") \
-    X(EXT_GEMMUL8_MAX_WORKSPACE_MB, "GEMMUL8_MAX_WORKSPACE_MB", "mib", "global", "256", "backends/hip/src/gemmul8_bridge.cu,gemmul8_bridge.cu", "") \
+    X(EXT_GEMMUL8_MAX_WORKSPACE_MB, "GEMMUL8_MAX_WORKSPACE_MB", "mib", "global", "", "backends/hip/src/gemmul8_bridge.cu,gemmul8_bridge.cu", "") \
     X(EXT_GEMMUL8_MAX_WORKSPACE_PERCENT, "GEMMUL8_MAX_WORKSPACE_PERCENT", "uint", "global", "", "Band_DFT_NonCol.c,backends/hip/src/Band_DFT_NonCol.c,backends/hip/src/gemmul8_bridge.cu,gemmul8_bridge.cu", "") \
     X(EXT_GEMMUL8_MIN_FREE_AFTER_MB, "GEMMUL8_MIN_FREE_AFTER_MB", "mib", "global", "", "Divide_Conquer.c,backends/hip/src/Divide_Conquer.c,backends/hip/src/gemmul8_bridge.cu,gemmul8_bridge.cu", "") \
     X(EXT_GEMMUL8_NUM_MOD_D, "GEMMUL8_NUM_MOD_D", "uint", "global", "", "backends/hip/src/gemmul8_bridge.cu,gemmul8_bridge.cu", "") \
@@ -197,7 +197,7 @@
     X(GEMMUL8_FORWARD_TIMING, "OPENMX_GEMMUL8_FORWARD_TIMING", "flag", "global", "0", "gemmul8_bridge.cu", "") \
     X(GEMMUL8_FORWARD_UNBLOCKED, "OPENMX_GEMMUL8_FORWARD_UNBLOCKED", "flag", "global", "1", "backends/hip/src/Cluster_DFT_Col.c,gemmul8_bridge.cu", "") \
     X(GEMMUL8_LOCAL_RANKS, "OPENMX_GEMMUL8_LOCAL_RANKS", "uint", "global", "from the launcher", "backends/hip/src/gemmul8_bridge.cu,gemmul8_bridge.cu", "") \
-    X(GEMMUL8_MAX_WORKSPACE_MB, "OPENMX_GEMMUL8_MAX_WORKSPACE_MB", "mib", "global", "256", "backends/hip/src/gemmul8_bridge.cu,gemmul8_bridge.cu", "") \
+    X(GEMMUL8_MAX_WORKSPACE_MB, "OPENMX_GEMMUL8_MAX_WORKSPACE_MB", "mib", "global", "", "backends/hip/src/gemmul8_bridge.cu,gemmul8_bridge.cu", "") \
     X(GEMMUL8_MAX_WORKSPACE_PERCENT, "OPENMX_GEMMUL8_MAX_WORKSPACE_PERCENT", "uint", "global", "", "Band_DFT_NonCol.c,backends/hip/src/Band_DFT_NonCol.c,backends/hip/src/gemmul8_bridge.cu,gemmul8_bridge.cu", "") \
     X(GEMMUL8_MIN_FREE_AFTER_MB, "OPENMX_GEMMUL8_MIN_FREE_AFTER_MB", "mib", "global", "", "Divide_Conquer.c,backends/hip/src/Divide_Conquer.c,backends/hip/src/gemmul8_bridge.cu,gemmul8_bridge.cu", "") \
     X(GEMMUL8_NUM_MOD_D, "OPENMX_GEMMUL8_NUM_MOD_D", "uint", "global", "", "backends/hip/src/gemmul8_bridge.cu,gemmul8_bridge.cu", "") \
