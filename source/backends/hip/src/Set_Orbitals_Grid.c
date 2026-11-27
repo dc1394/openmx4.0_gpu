@@ -1044,6 +1044,8 @@ double Set_Orbitals_Grid(OpenMXHamiltonianGpuState *hamiltonian_state, OpenMXOrb
     host=OpenMX_HostSimdStageOnHost("Set_Orbitals_Grid",SOG_device_need(atomic,myid),OpenMX_HostSimdDeviceBudget(0));
     if (!host || legacy) orbital_done=!(openmx_gpu_capacity_test_recovery() || openmx_gpu_workers_requested()) && SOG_gpu_eligible(Cnt_kind) && Set_Orbitals_Grid_GPU(orbital_state, atomic);
   }
+  if (orbital_done && OTF_Orbitals_DoubleFloat(orbital_state))
+    openmx_fp32_note_use(OPENMX_FP32_CACHED_ORBITALS);
   if (SOG_capacity_recover(atomic, orbital_done,myid,legacy?SOG_gpu_requested(Cnt_kind):rows_requested,host)) {
     dtime(&TEtime);
     return TEtime - TStime;

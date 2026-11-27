@@ -5308,7 +5308,8 @@ void dHVNA(const OpenMXVnaMatrixViews *vna, int where_flag, int Mc_AN, int h_AN,
            const OpenMXSolverRealTensor *Hx,const OpenMXSolverRealTensor *Hy,
            const OpenMXSolverRealTensor *Hz,const OpenMXSolverRealTensor *H_sts)
 {
-  const int fp32 = openmx_fp32_enabled();
+  /* Round each upstream product before adding it to the double sum. */
+  const int fp32 = openmx_fp32_requested();
   int i,j,k,m,n,l,kg,kan,so,deri_kind;
   int ig,ian,jg,jan,kl,kl1,kl2,Rni,Rnj,Rnk;
   int wakg,l1,l2,l3,Gc_AN,Mi_AN,Mj_AN,Mj_AN2,num_projectors;
@@ -5473,11 +5474,11 @@ void dHVNA(const OpenMXVnaMatrixViews *vna, int where_flag, int Mc_AN, int h_AN,
 	      sumz = 0.0;
 
 	      for (l=0; l<num_projectors; l++){
-		sumx += fp32 ? (double)(DS_VNA1[1][Mc_AN][k][m][l] * DS_VNA1[0][Mj_AN2][kl][n][l])
+		sumx += fp32 ? (Type_DS_VNA)(DS_VNA1[1][Mc_AN][k][m][l] * DS_VNA1[0][Mj_AN2][kl][n][l])
 		                 : (double)DS_VNA1[1][Mc_AN][k][m][l] * (double)DS_VNA1[0][Mj_AN2][kl][n][l];
-		sumy += fp32 ? (double)(DS_VNA1[2][Mc_AN][k][m][l] * DS_VNA1[0][Mj_AN2][kl][n][l])
+		sumy += fp32 ? (Type_DS_VNA)(DS_VNA1[2][Mc_AN][k][m][l] * DS_VNA1[0][Mj_AN2][kl][n][l])
 		                 : (double)DS_VNA1[2][Mc_AN][k][m][l] * (double)DS_VNA1[0][Mj_AN2][kl][n][l];
-		sumz += fp32 ? (double)(DS_VNA1[3][Mc_AN][k][m][l] * DS_VNA1[0][Mj_AN2][kl][n][l])
+		sumz += fp32 ? (Type_DS_VNA)(DS_VNA1[3][Mc_AN][k][m][l] * DS_VNA1[0][Mj_AN2][kl][n][l])
 		                 : (double)DS_VNA1[3][Mc_AN][k][m][l] * (double)DS_VNA1[0][Mj_AN2][kl][n][l];
 	      }
 
@@ -5582,11 +5583,11 @@ void dHVNA(const OpenMXVnaMatrixViews *vna, int where_flag, int Mc_AN, int h_AN,
             }
 
 	    for (l=0; l<num_projectors; l++){
-	      sumx -= fp32 ? (double)(DS_VNA1[0][Mc_AN][0][m][l] * DS_VNA1[1][Mj_AN2][kl][n][l])
+	      sumx -= fp32 ? (Type_DS_VNA)(DS_VNA1[0][Mc_AN][0][m][l] * DS_VNA1[1][Mj_AN2][kl][n][l])
 	                       : (double)DS_VNA1[0][Mc_AN][0][m][l] * (double)DS_VNA1[1][Mj_AN2][kl][n][l];
-	      sumy -= fp32 ? (double)(DS_VNA1[0][Mc_AN][0][m][l] * DS_VNA1[2][Mj_AN2][kl][n][l])
+	      sumy -= fp32 ? (Type_DS_VNA)(DS_VNA1[0][Mc_AN][0][m][l] * DS_VNA1[2][Mj_AN2][kl][n][l])
 	                       : (double)DS_VNA1[0][Mc_AN][0][m][l] * (double)DS_VNA1[2][Mj_AN2][kl][n][l];
-	      sumz -= fp32 ? (double)(DS_VNA1[0][Mc_AN][0][m][l] * DS_VNA1[3][Mj_AN2][kl][n][l])
+	      sumz -= fp32 ? (Type_DS_VNA)(DS_VNA1[0][Mc_AN][0][m][l] * DS_VNA1[3][Mj_AN2][kl][n][l])
 	                       : (double)DS_VNA1[0][Mc_AN][0][m][l] * (double)DS_VNA1[3][Mj_AN2][kl][n][l];
 	    }
 
@@ -5624,11 +5625,11 @@ void dHVNA(const OpenMXVnaMatrixViews *vna, int where_flag, int Mc_AN, int h_AN,
 	  sumz = 0.0;
 
           for (l=0; l<num_projectors; l++){
-	    sumx -= fp32 ? (double)(DS_VNA1[1][Matomnum+1][kl1][m][l] * DS_VNA1[0][Matomnum+1][kl2][n][l])
+	    sumx -= fp32 ? (Type_DS_VNA)(DS_VNA1[1][Matomnum+1][kl1][m][l] * DS_VNA1[0][Matomnum+1][kl2][n][l])
 	                     : (double)DS_VNA1[1][Matomnum+1][kl1][m][l] * (double)DS_VNA1[0][Matomnum+1][kl2][n][l];
-	    sumy -= fp32 ? (double)(DS_VNA1[2][Matomnum+1][kl1][m][l] * DS_VNA1[0][Matomnum+1][kl2][n][l])
+	    sumy -= fp32 ? (Type_DS_VNA)(DS_VNA1[2][Matomnum+1][kl1][m][l] * DS_VNA1[0][Matomnum+1][kl2][n][l])
 	                     : (double)DS_VNA1[2][Matomnum+1][kl1][m][l] * (double)DS_VNA1[0][Matomnum+1][kl2][n][l];
-	    sumz -= fp32 ? (double)(DS_VNA1[3][Matomnum+1][kl1][m][l] * DS_VNA1[0][Matomnum+1][kl2][n][l])
+	    sumz -= fp32 ? (Type_DS_VNA)(DS_VNA1[3][Matomnum+1][kl1][m][l] * DS_VNA1[0][Matomnum+1][kl2][n][l])
 	                     : (double)DS_VNA1[3][Matomnum+1][kl1][m][l] * (double)DS_VNA1[0][Matomnum+1][kl2][n][l];
 	  }
 
@@ -5661,11 +5662,11 @@ void dHVNA(const OpenMXVnaMatrixViews *vna, int where_flag, int Mc_AN, int h_AN,
 	    sumz = 0.0;
 
 	    for (l=0; l<num_projectors; l++){
-	      sumx -= fp32 ? (double)(DS_VNA1[0][Matomnum+1][kl1][m][l] * DS_VNA1[1][Matomnum+1][kl2][n][l])
+	      sumx -= fp32 ? (Type_DS_VNA)(DS_VNA1[0][Matomnum+1][kl1][m][l] * DS_VNA1[1][Matomnum+1][kl2][n][l])
 	                       : (double)DS_VNA1[0][Matomnum+1][kl1][m][l] * (double)DS_VNA1[1][Matomnum+1][kl2][n][l];
-	      sumy -= fp32 ? (double)(DS_VNA1[0][Matomnum+1][kl1][m][l] * DS_VNA1[2][Matomnum+1][kl2][n][l])
+	      sumy -= fp32 ? (Type_DS_VNA)(DS_VNA1[0][Matomnum+1][kl1][m][l] * DS_VNA1[2][Matomnum+1][kl2][n][l])
 	                       : (double)DS_VNA1[0][Matomnum+1][kl1][m][l] * (double)DS_VNA1[2][Matomnum+1][kl2][n][l];
-	      sumz -= fp32 ? (double)(DS_VNA1[0][Matomnum+1][kl1][m][l] * DS_VNA1[3][Matomnum+1][kl2][n][l])
+	      sumz -= fp32 ? (Type_DS_VNA)(DS_VNA1[0][Matomnum+1][kl1][m][l] * DS_VNA1[3][Matomnum+1][kl2][n][l])
 	                       : (double)DS_VNA1[0][Matomnum+1][kl1][m][l] * (double)DS_VNA1[3][Matomnum+1][kl2][n][l];
 	    }
 

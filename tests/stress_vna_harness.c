@@ -26,7 +26,7 @@ static double potential[A*H*O*O];
 static size_t atom_offsets[A],block_offsets[A*H];static int shapes[A*H*2];
 static OpenMXVnaMatrixViews vna;
 #include "openmx_stress_workspace.h"
-static int openmx_fp32_enabled(void){return precision;}
+static int openmx_fp32_requested(void){return precision;}
 /* Smooth surrogate isolates damping terms and produces nonzero derivatives. */
 static double dampingF(double cutoff,double r){return r>=cutoff?0:exp(-.07*r*r);}
 static double deri_dampingF(double cutoff,double r){return r>=cutoff?0:-.14*r*dampingF(cutoff,r);}
@@ -40,7 +40,11 @@ static void near(double a,double b,double tolerance){
   }
 }
 static double product(int a,int b,int c,int i,int d,int e,int f,int j){
-  double sum=0;for(int l=0;l<P;l++)sum+=precision?(double)(ds[a][b][c][i][l]*ds[d][e][f][j][l]):(double)ds[a][b][c][i][l]*(double)ds[d][e][f][j][l];
+  double sum=0.0;
+  for(int l=0;l<P;l++){
+    const long double exact=(long double)ds[a][b][c][i][l]*ds[d][e][f][j][l];
+    sum+=precision ? (double)(float)exact : (double)exact;
+  }
   return sum;
 }
 /* Scalar tensor algebra, deliberately independent of the output layout and

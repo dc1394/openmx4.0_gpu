@@ -2957,12 +2957,14 @@ static int Set_Hamiltonian_Run_OpenACC_MatrixElements(OpenMXHamiltonianGpuState 
         int cuda_status = 1;
 
         if (work->cuda_kernel_supported && Set_Hamiltonian_MatrixElements_CudaKernel_Enabled()) {
+            const int precision_mode = Grid_Precision_Kernel();
 #pragma acc host_data use_device(hbuf, pair_NO0, pair_NO1, pair_NOLG, nolg_MN, nolg_Nc, pair_h_offset,                    \
                                  pair_nolg_offset, pair_orbs0_offset, pair_orbs1_offset, orbs0buf, orbs1buf, vpotgrid)
             cuda_status = Set_Hamiltonian_Cuda_MatrixElements(
                 pair_count, spin_count, vpot_len, grid_vol, work->max_no, work->max_output_count,
                 pair_NO0, pair_NO1, pair_NOLG, nolg_MN, nolg_Nc, pair_h_offset, pair_nolg_offset,
-                pair_orbs0_offset, pair_orbs1_offset, orbs0buf, orbs1buf, vpotgrid, hbuf, Grid_Precision_Kernel());
+                pair_orbs0_offset, pair_orbs1_offset, orbs0buf, orbs1buf, vpotgrid, hbuf, precision_mode);
+            if (cuda_status == 0) Grid_Precision_NoteKernel(precision_mode);
             if (cuda_status < 0) {
                 char message[160];
                 snprintf(message, sizeof(message), "CUDA matrix-elements kernel failed with unrecoverable status %d", cuda_status);
@@ -3921,13 +3923,15 @@ static int Set_Hamiltonian_OnTheFly_MatrixElements(OpenMXHamiltonianGpuState *ha
                 if (!gathered_indices)
                     Set_Hamiltonian_OTF_GridIndices(bt->pair_count, d_NOLG, d_nolg_off, d_gla_off,
                                                    d_Nc, otf->d_mgla, d_MN, d_compact_Nc);
+                const int precision_mode = Grid_Precision_Kernel();
                 const int status = Set_Hamiltonian_Cuda_MatrixElements(bt->pair_count, spin_count, vpot_len, GridVol,
                     bt->max_no, bt->max_output_count, d_NO0, d_NO1, d_NOLG, d_MN,
                     bt->compact_orbs0 ? d_compact_Nc : d_Nc, d_h_off, d_nolg_off,
-                    d_orbs0_off, d_orbs1_off, d_orbs0, d_orbs1, d_vpot, d_h, Grid_Precision_Kernel());
+                    d_orbs0_off, d_orbs1_off, d_orbs0, d_orbs1, d_vpot, d_h, precision_mode);
                 SETH_OTF_PROFILE_ADD(device_seconds);
                 if (status < 0) Set_Hamiltonian_abort("on-the-fly matrix elements", "unrecoverable CUDA failure", myid);
                 if (status == 0) {
+                    Grid_Precision_NoteKernel(precision_mode);
                     acc_memcpy_from_device(host_h, d_h, sizeof(double) * bt->total_h);
                     for (int q = 0; q < bt->pair_count; q++) {
                         const int Mc_AN = bt->pair_Mc_AN[q], h_AN = bt->pair_h_AN[q];
@@ -4797,6 +4801,7 @@ int Set_Hamiltonian_OnTheFly_Density(OpenMXHamiltonianGpuState *hamiltonian_stat
                 pack_seconds, eval_seconds, device_seconds, finish - start);
     }
 #undef SETH_OTF_PROFILE_ADD
+    if (batch_count) Grid_Precision_NoteKernel(mode);
     return 1;
 }
 
@@ -5015,15 +5020,17 @@ static int Set_Hamiltonian_Stream_MatrixElements(OpenMXHamiltonianGpuState *hami
         }
         {
             SETH_STREAM_PROFILE_ADD(pack_seconds);
+            const int precision_mode = Grid_Precision_Kernel();
             const int status = Set_Hamiltonian_Cuda_StreamRun(stream, cache.pair_count, spin_count, vpot_len,
                 GridVol, work.max_no, work.max_output_count, cache.total_h, cache.total_nolg,
                 cache.total_orbs0, cache.total_orbs1, cache.pair_NO0, cache.pair_NO1, cache.pair_NOLG,
                 cache.nolg_MN, cache.nolg_Nc, cache.pair_h_offset, cache.pair_nolg_offset,
                 cache.pair_orbs0_offset, cache.pair_orbs1_offset, cache.orbs0buf, cache.orbs1buf, work.hbuf,
-                Grid_Precision_Kernel());
+                precision_mode);
             SETH_STREAM_PROFILE_ADD(device_seconds);
             if (status < 0) Set_Hamiltonian_abort("stream matrix elements", "unrecoverable CUDA failure", myid);
             if (status == 0) {
+                Grid_Precision_NoteKernel(precision_mode);
                 Set_Hamiltonian_Finish_OpenACC_MatrixElements(&work, electronic);
             }
             else {

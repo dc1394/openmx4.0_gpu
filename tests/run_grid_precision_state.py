@@ -42,16 +42,17 @@ int main(int argc, char **argv)
     assert(Grid_Precision_Kernel() == 0);
     Grid_Precision_BeginStep(1, 4, 1.0, 0, 0);
     assert(!Grid_Precision_Fp32());
-    assert(Grid_Precision_StopCheck(1, 0, 0) == 1);
     assert(!Grid_Precision_TakeHistoryReset());
     openmx_set_fp32_enabled(1);
     assert(Grid_Precision_Kernel() == kernel);
-    assert(Grid_Precision_StopCheck(1, 0, 0) == 1);
     Grid_Precision_BeginStep(1, 4, 1.0, 0, 0);
     assert(Grid_Precision_Fp32() == active);
-    assert(Grid_Precision_StopCheck(0, 0, 0) == 0);
-    assert(Grid_Precision_StopCheck(1, 0, 0) == !active);
-    Grid_Precision_BeginStep(2, 4, 1.0, 0, 0);
+    assert(!openmx_fp32_usage());
+    assert(Grid_Precision_Kernel() == (active ? 1 : kernel));
+    Grid_Precision_NoteKernel(Grid_Precision_Kernel());
+    assert(openmx_fp32_begin_step() == (active ? OPENMX_FP32_LOSSY_GRID : kernel ? OPENMX_FP32_USED : 0));
+    assert(!openmx_fp32_usage());
+    Grid_Precision_BeginStep(2, 4, 0.0, 0, 0);
     assert(Grid_Precision_Kernel() == kernel);
     assert(Grid_Precision_TakeHistoryReset() == (active && reset));
     assert(Grid_Precision_TakeHistoryReset() == 0);
@@ -92,17 +93,16 @@ int main(int argc, char **argv)
     /* Changing inputs must suppress an active FP32 step and any pending
        history reset, whichever public operation observes the change first.
        Re-enabling recovers the cached environment policy. */
-    for (int entry = 0; entry < 5; ++entry) {
+    for (int entry = 0; entry < 4; ++entry) {
         Grid_Precision_BeginStep(1, 5, 1.0, 0, 0);
         assert(Grid_Precision_Fp32() == active);
-        assert(Grid_Precision_StopCheck(1, 0, 0) == !active);
+        Grid_Precision_BeginStep(2, 5, 0.0, 0, 0);
         openmx_set_fp32_enabled(0);
         switch (entry) {
         case 0: assert(!Grid_Precision_Fp32()); break;
         case 1: assert(Grid_Precision_Kernel() == 0); break;
         case 2: Grid_Precision_BeginStep(2, 5, 1.0, 0, 0); break;
-        case 3: assert(Grid_Precision_StopCheck(1, 0, 0) == 1); break;
-        case 4: assert(!Grid_Precision_TakeHistoryReset()); break;
+        case 3: assert(!Grid_Precision_TakeHistoryReset()); break;
         }
         openmx_set_fp32_enabled(1);
         assert(!Grid_Precision_Fp32());

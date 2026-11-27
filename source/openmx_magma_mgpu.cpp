@@ -46,6 +46,7 @@ extern "C" const char *openmx_magma_mgpu_last_error(void) { return magma_error; 
 #pragma weak openmx_mgpuRefineUpdate
 #pragma weak openmx_mgpuRefineRelease
 #pragma weak openmx_fp32_enabled
+#pragma weak openmx_fp32_note_use
 #include <chrono>
 #include <climits>
 #endif
@@ -525,7 +526,11 @@ extern "C" int openmx_magma_mgpu_solve_host_devices(int ngpu, const int *devices
             } catch (const std::bad_alloc &) {
                 rc=fail(OPENMX_MAGMA_RESOURCES,"FP32 refinement host allocation failed");
             }
-            if (rc==OPENMX_MAGMA_SUCCESS || rc==OPENMX_MAGMA_GPU_ERROR || rc==OPENMX_MAGMA_INVALID) return rc;
+            if (rc==OPENMX_MAGMA_SUCCESS) {
+                if (openmx_fp32_note_use) openmx_fp32_note_use(OPENMX_FP32_USED);
+                return rc;
+            }
+            if (rc==OPENMX_MAGMA_GPU_ERROR || rc==OPENMX_MAGMA_INVALID) return rc;
             std::fprintf(stderr,"<OpenMX_MAGMA> FP32 refinement declined n=%d: %s; retrying MAGMA FP64\n",n,magma_error);
             magma_error[0]='\0';
         }

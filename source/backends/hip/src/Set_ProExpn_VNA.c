@@ -277,7 +277,7 @@ static double SetPro_HVNA_element(size_t oe, int num_proj, int num_rvna,
       double tmp0 = 0.0;
 
       for (int l3=0; l3<g1; l3++){
-        tmp0 += fp32 ? (double)(a[L]*b[L]) : (double)a[L]*(double)b[L];
+        tmp0 += fp32 ? (float)(a[L]*b[L]) : (double)a[L]*(double)b[L];
         L++;
       }
       sum += el[L1]*tmp0;
@@ -1123,7 +1123,7 @@ static int SetProCapacity_HVNA_GpuRun_Part(int first,int last,SetProGpuContext *
               double tmp0 = 0.0;
 
               for (int l3=0; l3<g1; l3++){
-                tmp0 += fp32 ? (double)(a[L]*b[L]) : (double)a[L]*(double)b[L];
+                tmp0 += fp32 ? (float)(a[L]*b[L]) : (double)a[L]*(double)b[L];
                 L++;
               }
               sum += el[L1]*tmp0;
@@ -1212,7 +1212,7 @@ static void SetProCapacity_HVNA_capacity_kernel(size_t first,size_t count,const 
         double term=0;
 
         for(int m=0;m<length[r];m++,l++)
-          term+=fp32?(double)(a[pos+l]*b[pos+l]):(double)a[pos+l]*(double)b[pos+l];
+          term+=fp32?(float)(a[pos+l]*b[pos+l]):(double)a[pos+l]*(double)b[pos+l];
         sum+=ene[(size_t)species[k]*nr+r]*term;
       }
       total+=sum;

@@ -71,7 +71,7 @@ for filename in ("Force.c", "Stress.c"):
         if "fp32" in loop and "sumx" in loop:
             loops.append(loop)
     assert len(loops) == 4, f"{filename}: expected four derivative contractions"
-    reference_precision = "openmx_fp32_enabled()" if filename == "Stress.c" else "1"
+    reference_precision = "openmx_fp32_requested()" if filename == "Stress.c" else "1"
     for index, loop in enumerate(loops):
         name = filename.removesuffix(".c").lower() + f"_dot_{index}"
         functions += f"\nstatic void {name}(float DS_VNA1[4][4][3][2][9], double out[3]) {{\n" + r"""
@@ -243,6 +243,7 @@ with tempfile.TemporaryDirectory(prefix="openmx-projector-precision-") as tmp:
     source.write_text(
         '#include <assert.h>\n#include <math.h>\n#include <stddef.h>\n'
         '#include <stdio.h>\n#include "openmx_precision.h"\n'
+        'typedef float Type_DS_VNA;\n'
         + item + "\n" + functions + HARNESS
     )
     subprocess.run(

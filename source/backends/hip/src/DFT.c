@@ -30,6 +30,7 @@
 #include "openmx_vna_matrix.h"
 #include "openmx_vna_status.h"
 #include "openmx_exact_exchange.h"
+#include "openmx_scf_precision.h"
 #include "Inputtools.h"
 #include "mpi.h"
 #include "tran_prototypes.h"
@@ -504,6 +505,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   double tmp,tmp0;
   int Cnt_kind,Calc_CntOrbital_ON,spin,spinmax,m;
   int SCF_iter,SCF_iter_shift,SCF_MAX;
+  OpenMXScfPrecision scf_precision = {0};
   int exx_inner_start = 0;  /* SCF_iter at which the present inner SCF of a hybrid functional began */
   double exx_criterion = 0.0; /* the criterion of the present inner SCF of a hybrid functional */
   int exx_loose = 0;        /* the step stops only on exx_criterion, which is larger than scf.criterion */
@@ -690,6 +692,8 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
   if ( Cnt_switch==1 && MD_iter!=1 ) File_CntCoes("read", local_basis);
 
+  openmx_fp32_begin_scf();
+
   /****************************************************
             Start self consistent calculation
   ****************************************************/
@@ -698,6 +702,15 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
     SCF_iter++;
     LSCF_iter++;
+
+    const int precision_usage = OpenMX_ScfPrecisionBeginStep(&scf_precision, SCF_iter, SCF_MAX, mpi_comm_level1);
+    if (precision_usage && myid0==Host_ID && 2<=level_stdout){
+      printf("<DFT>  FP64 confirmation from SCF step %d\n", SCF_iter);
+      fflush(stdout);
+    }
+    if (precision_usage & OPENMX_FP32_CACHED_ORBITALS){
+      time10 += Set_Orbitals_Grid(hamiltonian_state, orbital_state, density_state, atomic, Cnt_kind, local_basis);
+    }
 
     {
       extern void openmx_gpu_zheevd_selftest(const char *label);
@@ -1525,6 +1538,8 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
         && !Exact_Exchange_Inner_Stop_Allowed(exact_exchange, Mixing_switch, SCF_iter-exx_inner_start,
                                               sqrt(fabs(mixing_history->norm[0])), SCF_Criterion)) po = 0;
 
+    if (po) po = OpenMX_ScfPrecisionStop(&scf_precision, SCF_iter, SCF_MAX, po, mpi_comm_level1);
+
     /*****************************************************
       the refined FP32 eigensolver (eigen_refine_gpu.h):
       a stop on a refined step also needs the printed NormRD
@@ -2110,12 +2125,15 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
     Read_SCF_keywords();
     if (Cnt_switch==0) SCF_MAX = DFTSCF_loop + exx_inner_start;
+    po = OpenMX_ScfPrecisionStop(&scf_precision, SCF_iter, SCF_MAX, po, mpi_comm_level1);
 
     /************************************************************************
                               end of SCF calculation
     ************************************************************************/
 
-  } while (po==0 && SCF_iter<SCF_MAX);  if (po==0) scf_convergence_flag = 0; else scf_convergence_flag = 1;
+  } while (po==0 && (SCF_iter<SCF_MAX || scf_precision.step==SCF_iter+1));
+  scf_convergence_flag = po!=0;
+  openmx_fp32_enter_reference();
 
   /* hybrid functional: how the outer iteration ended */
   if (Cnt_switch==0 && Exact_Exchange_Enabled(exact_exchange)){

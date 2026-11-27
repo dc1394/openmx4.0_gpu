@@ -29,6 +29,7 @@
 #include "openmx_quadrature.h"
 #include "openmx_vna_matrix.h"
 #include "openmx_exact_exchange.h"
+#include "openmx_scf_precision.h"
 #include "grid_precision.h"
 #include "Inputtools.h"
 #include "mpi.h"
@@ -540,6 +541,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   double tmp,tmp0;
   int Cnt_kind,Calc_CntOrbital_ON,spin,spinmax,m;
   int SCF_iter,SCF_iter_shift,SCF_MAX;
+  OpenMXScfPrecision scf_precision = {0};
   int exx_inner_start = 0;  /* SCF_iter at which the present inner SCF of a hybrid functional began */
   double exx_criterion = 0.0; /* the criterion of the present inner SCF of a hybrid functional */
   int exx_loose = 0;        /* the step stops only on exx_criterion, which is larger than scf.criterion */
@@ -716,6 +718,8 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
   if ( Cnt_switch==1 && MD_iter!=1 ) File_CntCoes("read", local_basis);
 
+  openmx_fp32_begin_scf();
+
   /****************************************************
             Start self consistent calculation
   ****************************************************/
@@ -725,12 +729,30 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
     SCF_iter++;
     LSCF_iter++;
 
-    /* the precision stage of the grid integrals of this step
-       (grid_precision.h): FP32 while the previous step's residual is large */
-    Grid_Precision_BeginStep(SCF_iter, SCF_MAX, sqrt(fabs(mixing_history->norm[0])), myid0, level_stdout);
-    if (Grid_Precision_TakeHistoryReset()){
-      int shift = LSCF_iter - Pulay_SCF + 2;
-      if (0<=shift && shift<LSCF_iter) SCF_iter_shift = shift;
+    const int precision_usage = OpenMX_ScfPrecisionBeginStep(&scf_precision, SCF_iter, SCF_MAX, mpi_comm_level1);
+    if (precision_usage && myid0==Host_ID && 2<=level_stdout){
+      printf("<DFT>  FP64 confirmation from SCF step %d\n", SCF_iter);
+      fflush(stdout);
+    }
+    if (precision_usage & OPENMX_FP32_CACHED_ORBITALS){
+      time10 += Set_Orbitals_Grid(hamiltonian_state, orbital_state, density_state, atomic, Cnt_kind, local_basis);
+    }
+
+    /* A host-only run has no FP32 grid stage, including when an environment
+       setting requests one. Its Pulay history must not be reset by it. */
+    if (scf_eigen_lib_flag==GPUSOLVER){
+      Grid_Precision_BeginStep(SCF_iter, SCF_MAX, sqrt(fabs(mixing_history->norm[0])), myid0, level_stdout);
+      if (Grid_Precision_TakeHistoryReset()){
+        const int usage = OpenMX_ScfPrecisionUsage(&scf_precision, mpi_comm_level1);
+        const int shift = LSCF_iter - Pulay_SCF + 2;
+        if ((usage & OPENMX_FP32_LOSSY_GRID) && 0<=shift && shift<LSCF_iter){
+          SCF_iter_shift = shift;
+          if (myid0==Host_ID && 2<=level_stdout){
+            printf("<DFT>  mixing history restarted after FP32 grid integrals\n");
+            fflush(stdout);
+          }
+        }
+      }
     }
 
     /*****************************************************
@@ -1480,15 +1502,13 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
         && !Exact_Exchange_Inner_Stop_Allowed(exact_exchange, Mixing_switch, SCF_iter-exx_inner_start,
                                               sqrt(fabs(mixing_history->norm[0])), SCF_Criterion)) po = 0;
 
+    if (po) po = OpenMX_ScfPrecisionStop(&scf_precision, SCF_iter, SCF_MAX, po, mpi_comm_level1);
+
 
     /* the refined FP32 eigensolver (OPENMX_EIGEN_REFINE) of the collinear
        cluster solver: an SCF that stops on a refined step has the step's
        Hamiltonian solved once more in FP64, and the density matrices, the
        band energy and the chemical potential recomputed from the vectors */
-    /* an SCF cannot end on a step whose grid integrals were summed in FP32:
-       the stage goes to FP64 and the SCF goes on */
-    po = Grid_Precision_StopCheck(po, myid0, level_stdout);
-
     /* a stop on a refined FP32 step also needs the residual norm of a
        converged FP64 run: the test on dUele alone can fire on a coincidence
        (RTX 5080, sidia333_col_cluster, 2026-10-07: dUele 7e-12 at step 15
@@ -2038,12 +2058,15 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
     Read_SCF_keywords();
     if (Cnt_switch==0) SCF_MAX = DFTSCF_loop + exx_inner_start;
+    po = OpenMX_ScfPrecisionStop(&scf_precision, SCF_iter, SCF_MAX, po, mpi_comm_level1);
 
     /************************************************************************
                               end of SCF calculation
     ************************************************************************/
 
-  } while (po==0 && SCF_iter<SCF_MAX);  if (po==0) scf_convergence_flag = 0; else scf_convergence_flag = 1;
+  } while (po==0 && (SCF_iter<SCF_MAX || scf_precision.step==SCF_iter+1));
+  scf_convergence_flag = po!=0;
+  openmx_fp32_enter_reference();
 
   /* hybrid functional: how the outer iteration ended */
   if (Cnt_switch==0 && Exact_Exchange_Enabled(exact_exchange)){

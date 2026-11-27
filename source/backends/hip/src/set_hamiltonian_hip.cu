@@ -456,6 +456,7 @@ int launch_matrix_elements(int pair_count, int spin_count, int max_output_count,
                     return 2;
                 }
             }
+            openmx_fp32_note_use(OPENMX_FP32_USED);
             if (profile) {
                 const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
                 std::fprintf(stdout, "SETHAM_HIP kernel=df pairs=%d spins=%d max_no=%d split=%d time=%.6f s\n",
@@ -749,6 +750,7 @@ int otf_density_df_dispatch(int pair_count, int max_nolg, int spin_count, int ma
                             const std::size_t *d_denoff, const int *d_nc, const double *d_dm, const float *d_o0,
                             const float *d_o1, std::size_t den_stride, double *d_den)
 {
+    openmx_fp32_note_use(OPENMX_FP32_USED);
     if (max_no <= 16)
         return otf_density_df_launch<16, SPLIT>(pair_count, max_nolg, spin_count, shared, d_no0, d_no1, d_nolg,
                                                 d_dmoff, d_noff, d_o0off, d_o1off, d_denoff, d_nc, d_dm, d_o0, d_o1,
@@ -1020,5 +1022,6 @@ extern "C" int Set_Density_Grid_Hip_LocalDensity(std::size_t output_count, int s
         (void)hipGetLastError();
         return 2;
     }
+    openmx_fp32_note_use(OPENMX_FP32_USED);
     return 0;
 }

@@ -56,6 +56,7 @@ DRIVER = r'''
 #include <stdlib.h>
 #include <string.h>
 #include "cuda_runtime.h"
+#include "openmx_scf_precision.h"
 static int rank_id, rank_count, visible = 4, device, physical;
 static int allocation_failure, property_failure, launcher_size;
 static size_t device_free = (size_t)16 << 30;
@@ -128,17 +129,25 @@ int elpa_setup(elpa_t h) {
     return fail_setup ? 42 : 0;
 }
 const char *elpa_strerr(int err) { (void)err; return "mock"; }
-static int host_solves;
+static int host_solves, float_probes;
 /* Model the explicit-name dispatcher's fatal GPU-runtime probe on CPU-only
    nodes. A host solve must never enter it, even with GPU kernels disabled. */
 void elpa_eigenvectors_double(elpa_t h, double *a, double *w, double *z, int *err) { CHECK(0); }
 void elpa_eigenvectors_double_complex(elpa_t h, double complex *a, double *w, double complex *z, int *err) { CHECK(0); }
-void elpa_eigenvectors_a_h_a_d(elpa_t h, double *a, double *w, double *z, int *err) { ++host_solves; *err=0; }
-void elpa_eigenvectors_a_h_a_dc(elpa_t h, double complex *a, double *w, double complex *z, int *err) { ++host_solves; *err=0; }
+void elpa_eigenvectors_a_h_a_d(elpa_t h, double *a, double *w, double *z, int *err) {
+    ++host_solves; w[0]=a[0]; z[0]=1.0; *err=0;
+}
+void elpa_eigenvectors_a_h_a_dc(elpa_t h, double complex *a, double *w, double complex *z, int *err) {
+    ++host_solves; w[0]=creal(a[0]); z[0]=I; *err=0;
+}
 void elpa_eigenvectors_float(elpa_t h, float *a, float *w, float *z, int *err) { CHECK(0); }
 void elpa_eigenvectors_float_complex(elpa_t h, float complex *a, float *w, float complex *z, int *err) { CHECK(0); }
-void elpa_eigenvectors_a_h_a_f(elpa_t h, float *a, float *w, float *z, int *err) { ++host_solves; *err=0; }
-void elpa_eigenvectors_a_h_a_fc(elpa_t h, float complex *a, float *w, float complex *z, int *err) { ++host_solves; *err=0; }
+void elpa_eigenvectors_a_h_a_f(elpa_t h, float *a, float *w, float *z, int *err) {
+    MPI_Barrier(grid_comm); ++float_probes; a[0]=w[0]=z[0]=-999.0f; *err=0;
+}
+void elpa_eigenvectors_a_h_a_fc(elpa_t h, float complex *a, float *w, float complex *z, int *err) {
+    MPI_Barrier(grid_comm); ++float_probes; a[0]=w[0]=z[0]=-999.0f; *err=0;
+}
 
 int main(int argc, char **argv) {
     MPI_Init(&argc, &argv);
@@ -149,6 +158,7 @@ int main(int argc, char **argv) {
     grid_comm = MPI_COMM_WORLD;
     launcher_size = rank_count;
     unsetenv("OPENMX_GS2_ELPA_GPU"); unsetenv("OPENMX_GS2_GEMM_GPU");
+    unsetenv("OPENMX_GS2_FP32_PROBE");
     unsetenv("OPENMX_GPU_RANK_MAP");
     setenv("OPENMX_GS2_GPU_RESERVE_MB", "0", 1);
     setenv("OPENMX_GS2_HOST_RESERVE_MB", "0", 1);
@@ -215,11 +225,69 @@ int main(int argc, char **argv) {
     else if (strcmp(argv[1], "cpu-dispatch") == 0) {
         setenv("OPENMX_GS2_ELPA_GPU", "0", 1);
         int desc[9] = {1, 0, 64, 64, 16, 16, 0, 0, 64};
-        double a[1], w[1], z[1]; double complex ac[1], zc[1];
+        double a[1] = {1.0}, w[1], z[1]; double complex ac[1] = {1.0}, zc[1];
         CHECK(openmx_gs2_eigen_real(64, 16, a, desc, w, z, desc)==0);
         CHECK(openmx_gs2_eigen_complex(64, 16, ac, desc, w, zc, desc)==0);
         CHECK(host_solves==2 && memory_queries==0);
         openmx_gs2_grid_free(0); CHECK(live_handles==0);
+    }
+    else if (strcmp(argv[1], "fp32-probe") == 0) {
+        setenv("OPENMX_GS2_ELPA_GPU", "0", 1);
+        setenv("OPENMX_GS2_FP32_PROBE", "1", 1);
+        int desc[9] = {1, 0, 32, 32, 8, 8, 0, 0, 8};
+        const double original = 1.0 + 0x1p-35;
+        double a[8*32] = {original}, w[32], z[8*32];
+        double complex ac[8*32] = {original + I}, zc[8*32];
+        for (int phase=0; phase<4; ++phase) {
+            openmx_set_fp32_enabled(phase!=0);
+            if (phase==2) openmx_fp32_enter_reference();
+            allocation_failure = phase==3;
+            CHECK(openmx_gs2_eigen_real(32, 16, a, desc, w, z, desc)==0);
+            CHECK(a[0]==original && w[0]==original && z[0]==1.0);
+            CHECK(openmx_gs2_eigen_complex(32, 16, ac, desc, w, zc, desc)==0);
+            CHECK(ac[0]==original+I && w[0]==original && zc[0]==I);
+            CHECK(float_probes==(phase==0 ? 0 : 2));
+        }
+        CHECK(host_solves==8);
+        openmx_gs2_grid_free(0); CHECK(live_handles==0);
+    }
+    else if (strcmp(argv[1], "scf-precision") == 0) {
+        OpenMXScfPrecision precision = {0};
+        CHECK(OpenMX_ScfPrecisionBeginStep(&precision, 1, 20, grid_comm)==0);
+        if (rank_id==2) openmx_fp32_note_use(OPENMX_FP32_CACHED_ORBITALS);
+        if (rank_id==3) openmx_fp32_note_use(OPENMX_FP32_USED);
+        CHECK(!OpenMX_ScfPrecisionStop(&precision, 1, 20, 1, grid_comm));
+        CHECK(precision.step==2 && openmx_fp32_enabled());
+        CHECK(OpenMX_ScfPrecisionBeginStep(&precision, 2, 20, grid_comm)==
+              (OPENMX_FP32_CACHED_ORBITALS | OPENMX_FP32_USED));
+        CHECK(openmx_fp32_requested() && !openmx_fp32_enabled());
+        CHECK(!OpenMX_ScfPrecisionStop(&precision, 2, 20, 1, grid_comm));
+        CHECK(OpenMX_ScfPrecisionBeginStep(&precision, 3, 20, grid_comm)==0);
+        CHECK(OpenMX_ScfPrecisionStop(&precision, 3, 20, 1, grid_comm));
+
+        openmx_fp32_begin_scf();
+        precision = (OpenMXScfPrecision){0};
+        CHECK(openmx_fp32_enabled() && !openmx_fp32_usage());
+        CHECK(OpenMX_ScfPrecisionBeginStep(&precision, 1, 20, grid_comm)==0);
+        if (rank_id==0) openmx_fp32_note_use(OPENMX_FP32_USED);
+        CHECK(OpenMX_ScfPrecisionBeginStep(&precision, 2, 20, grid_comm)==0);
+        CHECK(OpenMX_ScfPrecisionBeginStep(&precision, 3, 20, grid_comm)==0);
+        CHECK(OpenMX_ScfPrecisionStop(&precision, 3, 20, 1, grid_comm));
+        if (rank_id==1) openmx_fp32_note_use(OPENMX_FP32_USED);
+        /* A runtime cap change on a mixed step still triggers confirmation. */
+        CHECK(!OpenMX_ScfPrecisionStop(&precision, 3, 3, 0, grid_comm));
+        CHECK(precision.step==4);
+        CHECK(OpenMX_ScfPrecisionBeginStep(&precision, 4, 3, grid_comm)==OPENMX_FP32_USED);
+        CHECK(OpenMX_ScfPrecisionStop(&precision, 4, 3, 1, grid_comm));
+
+        openmx_fp32_begin_scf();
+        precision = (OpenMXScfPrecision){0};
+        CHECK(OpenMX_ScfPrecisionBeginStep(&precision, 1, 1, grid_comm)==0);
+        CHECK(!openmx_fp32_enabled());
+        openmx_set_fp32_enabled(0);
+        openmx_fp32_begin_scf();
+        openmx_fp32_note_use(OPENMX_FP32_USED);
+        CHECK(!openmx_fp32_requested() && !openmx_fp32_enabled() && !openmx_fp32_usage());
     }
     else if (strcmp(argv[1], "handle-thread-lifecycle") == 0) {
         int err;
@@ -321,7 +389,7 @@ def main():
     # registry (openmx_env.c) gives every rank the values of rank 0, so the
     # grid cannot disagree and the bridge no longer has a stop for it.
     cases = ["cap", "block", "mod", "uuid", "allocation", "query", "grid-change", "grid-cache-skew",
-             "overflow", "cpu-dispatch", "handle-thread-lifecycle", "handle-errors", "block-change",
+             "overflow", "cpu-dispatch", "fp32-probe", "scf-precision", "handle-thread-lifecycle", "handle-errors", "block-change",
              "asymmetric-handle-errors", "handle-cache-skew", "handle-comm-change", "handle-mode-skew"]
     failures = []
     with tempfile.TemporaryDirectory(prefix="openmx-gs2-memory-") as directory:
@@ -335,7 +403,7 @@ def main():
             "-std=gnu11", "-O1", "-g", "-fopenmp", "-Wall", "-Wextra", "-ffunction-sections", "-fdata-sections",
             "-fsanitize=undefined", "-fno-sanitize-recover=all", "-Wl,--gc-sections",
             "-I" + str(tmp), "-I" + str(ROOT / "source"), str(tmp / "check.c"),
-            str(ROOT / "source" / "openmx_env.c"), "-o", str(exe)]
+            str(ROOT / "source" / "openmx_env.c"), str(ROOT / "source" / "openmx_precision.c"), "-o", str(exe)]
         subprocess.run(command, check=True)
         for case in cases:
             command = shlex.split(os.environ.get("MPIEXEC", "mpirun --oversubscribe"))

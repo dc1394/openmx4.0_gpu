@@ -47,7 +47,8 @@ def main():
                 ('axis-alias', 'openmx_solver_real_matrix_row(Hz,', 'openmx_solver_real_matrix_row(Hy,'),
                 ('strain-transpose', 'OpenMX_Stress_VnaStrainRow(H_sts,1,2,m)',
                  'OpenMX_Stress_VnaStrainRow(H_sts,2,1,m)'),
-                ('forced-fp32', 'openmx_fp32_enabled()', '1')]:
+                ('forced-fp32', 'openmx_fp32_requested()', '1'),
+                ('forced-fp64', 'openmx_fp32_requested()', '0')]:
                 assert original in native
                 failed = subprocess.run([str(build(name, native.replace(original, replacement)))], cwd=folder,
                                         capture_output=True, text=True, preexec_fn=bounded_stack)

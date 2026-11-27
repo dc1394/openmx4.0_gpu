@@ -651,7 +651,7 @@ SetPara_DFT.o: SetPara_DFT.c openmx_common.h openmx_core_pao_file.h openmx_core_
 # SCF
 #
 
-DFT.o: DFT.c openmx_common.h tran_prototypes.h grid_precision.h
+DFT.o: DFT.c openmx_common.h tran_prototypes.h grid_precision.h openmx_scf_precision.h openmx_precision.h
 	$(CC) -c DFT.c
 Cluster_DFT_Col.o: Cluster_DFT_Col.c openmx_common.h eigen_refine_gpu.h openmx_precision.h
 	$(CC) -c Cluster_DFT_Col.c
@@ -1077,7 +1077,7 @@ gpusolver2-clean:
 openmx_elpa_cpu.o: openmx_elpa_cpu.c openmx_elpa_cpu.h openmx_common.h $(GPUSOLVER2_STAMP)
 	$(CC_NOACC_O3) -I$(GPUSOLVER2_ELPA_INCLUDE) -c openmx_elpa_cpu.c
 
-elpa_cosma_bridge.o: elpa_cosma_bridge.c elpa_cosma_bridge.h openmx_stdout_level.h openmx_host_memory.h $(GPUSOLVER2_STAMP)
+elpa_cosma_bridge.o: elpa_cosma_bridge.c elpa_cosma_bridge.h openmx_precision.h openmx_stdout_level.h openmx_host_memory.h $(GPUSOLVER2_STAMP)
 	$(CC_NOACC_O3) -I$(GPUSOLVER2_ELPA_INCLUDE) -c elpa_cosma_bridge.c
 # COSMA's strategy (host memory of its transforms) with the C++ compiler
 # of the COSMA build; mpi.h only

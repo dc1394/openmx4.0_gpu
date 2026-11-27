@@ -1636,6 +1636,7 @@ static void SOG_Device_EvalPairTiles_Part(const SOG_DeviceTables *t,int pair_cou
   const int gather = MN != NULL;
   int p, slice;
   if (t->eval_df && openmx_fp32_enabled()) {
+    openmx_fp32_note_use(OPENMX_FP32_ORBITAL_TILES);
     const float *rwd_all = t->rwd, *mcd_all = t->mcd, *spl = t->spl;
 #pragma acc parallel loop gang collapse(2) vector_length(128) \
   deviceptr(pairs, pair_NOLG, nolg_off, out_off, gla_off, nolg_Nc, gla, cla, out, mgla, MN, \
@@ -1703,6 +1704,7 @@ static void SOG_Device_EvalAtomTile_Part(const SOG_DeviceTables *t,const SOG_Gpu
 
   if (!t->ready || npts <= 0) return;
   if (t->eval_df && openmx_fp32_enabled()) {
+    openmx_fp32_note_use(OPENMX_FP32_ORBITAL_TILES);
     const float *rwd_all = t->rwd, *mcd_all = t->mcd, *spl = t->spl;
 #pragma acc parallel loop gang vector vector_length(128) \
   deviceptr(gla, cla, out, atvf, rv_all, rwf_all, rwd_all, mcd_all, spl, rv_off, rwf_base, sp_mesh, sp_maxl, sp_nb)
@@ -1744,6 +1746,7 @@ static void SOG_Device_EvalPairChunk_Part(const SOG_DeviceTables *t,const SOG_Gp
 
   if (!t->ready || npts <= 0) return;
   if (t->eval_df && openmx_fp32_enabled()) {
+    openmx_fp32_note_use(OPENMX_FP32_ORBITAL_TILES);
     const float *rwd_all = t->rwd, *mcd_all = t->mcd, *spl = t->spl;
 #pragma acc parallel loop gang vector vector_length(128) \
   deviceptr(nolg_Nc, gla, cla, out, atvf, rv_all, rwf_all, rwd_all, mcd_all, spl, rv_off, rwf_base, sp_mesh, sp_maxl, sp_nb)

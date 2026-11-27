@@ -16,6 +16,7 @@
 
 #include "openmx_stdout_level.h"
 #include "openmx_host_memory.h"
+#include "openmx_precision.h"
 #if OPENMX_GPU_HIP
 #include "openmx_mgpu_runtime.h"
 #endif
@@ -570,72 +571,52 @@ static void gs2_update_retained(gs2_handle_slot *s, size_t free_before, size_t f
     }
 }
 
-/* Measurement probe (OPENMX_GS2_FP32_PROBE=1): ELPA's single-precision
-   solve of all n eigenpairs in place of the double solve, to time the
-   FP32 basis a refined solve would start from (GS2PROF op=elpa32).  The
-   eigenpairs are only single-precision accurate, so the run's results are
-   not usable; a warning says so once. */
-static int gs2_eigen_float_probe(int n, int is_complex, const int *desca, const double *a,
-                                 double *w, double *z)
+/* Time the FP32 solve on a separate copy (GS2PROF op=elpa32). Only the
+   FP64 solve below is allowed to write the caller's eigenpairs. */
+static double gs2_eigen_float_probe(gs2_handle_slot *s, const int *desca, const double *a)
 {
-    int err = 0, nprow, npcol, myrow, mycol, ZERO = 0;
-    int ictxt = desca[1], nblk = desca[4];
-    const double started = gs2_profile_start();
-    gs2_handle_slot *s = gs2_get_handle(ictxt, n, n, is_complex, nblk, &err);
-    size_t local, i;
-    float *af, *zf, *wf;
+    if (!openmx_fp32_enabled() || !gs2_env_long(OPENMX_ENV_GS2_FP32_PROBE, 0)) return 0.0;
 
-    if (s == NULL) return (err != 0) ? err : -1;
-    {
-        int myid = 0;
-        MPI_Comm_rank(s->comm, &myid);
-        if (myid == 0) {
-            printf("Warning: OPENMX_GS2_FP32_PROBE=1: this gpusolver2 eigensolve (n=%d) runs ELPA's single-precision\n"
-                   "         solver (timing probe); the eigenpairs and everything computed from them are only\n"
-                   "         single-precision accurate.\n", n);
-            fflush(stdout);
+    int err = ELPA_OK, nprow, npcol, myrow, mycol, zero = 0;
+    int n = s->n, nblk = s->nblk;
+    const double started = gs2_profile_start();
+
+    Cblacs_gridinfo(desca[1], &nprow, &npcol, &myrow, &mycol);
+    const size_t rows = (size_t)numroc_(&n, &nblk, &myrow, &zero, &nprow);
+    const size_t cols = (size_t)numroc_(&n, &nblk, &mycol, &zero, &npcol);
+    const size_t local = gs2_bytes_mul(gs2_bytes_mul(rows, cols), s->is_complex ? 2u : 1u);
+    const size_t bytes = gs2_bytes_mul(local ? local : 1u, sizeof(float));
+    float *af = bytes == SIZE_MAX ? NULL : (float *)malloc(bytes);
+    float *zf = bytes == SIZE_MAX ? NULL : (float *)malloc(bytes);
+    float *wf = (float *)malloc((size_t)n * sizeof(float));
+    if (gs2_collective_error(af && zf && wf ? ELPA_OK : -1, s->comm) == ELPA_OK) {
+        for (size_t i = 0; i < local; ++i) af[i] = (float)a[i];
+        if (s->is_complex) {
+            if (s->gpu) elpa_eigenvectors_float_complex(s->h, (float complex *)af, wf, (float complex *)zf, &err);
+            else elpa_eigenvectors_a_h_a_fc(s->h, (float complex *)af, wf, (float complex *)zf, &err);
         }
-    }
-    Cblacs_gridinfo(ictxt, &nprow, &npcol, &myrow, &mycol);
-    local = (size_t)numroc_(&n, &nblk, &myrow, &ZERO, &nprow) *
-            (size_t)numroc_(&n, &nblk, &mycol, &ZERO, &npcol) * (is_complex ? 2u : 1u);
-    af = (float *)malloc(local * sizeof(float));
-    zf = (float *)malloc(local * sizeof(float));
-    wf = (float *)malloc((size_t)n * sizeof(float));
-    if (af == NULL || zf == NULL || wf == NULL) { free(af); free(zf); free(wf); return -1; }
-    for (i = 0; i < local; i++) af[i] = (float)a[i];
-    if (is_complex) {
-        if (s->gpu) elpa_eigenvectors_float_complex(s->h, (float complex *)af, wf, (float complex *)zf, &err);
-        else elpa_eigenvectors_a_h_a_fc(s->h, (float complex *)af, wf, (float complex *)zf, &err);
-    }
-    else {
-        if (s->gpu) elpa_eigenvectors_float(s->h, af, wf, zf, &err);
-        else elpa_eigenvectors_a_h_a_f(s->h, af, wf, zf, &err);
-    }
-    if (err == ELPA_OK) {
-        for (i = 0; i < local; i++) z[i] = (double)zf[i];
-        for (i = 0; i < (size_t)n; i++) w[i] = (double)wf[i];
-    }
-    else {
-        fprintf(stderr, "openmx gpusolver2: single-precision elpa_eigenvectors failed: %s\n",
-                elpa_strerr(err));
+        else {
+            if (s->gpu) elpa_eigenvectors_float(s->h, af, wf, zf, &err);
+            else elpa_eigenvectors_a_h_a_f(s->h, af, wf, zf, &err);
+        }
+        if (gs2_collective_error(err, s->comm) == ELPA_OK)
+            gs2_profile_report(s->comm, "elpa32", s->is_complex, n, s->nev, 0, s->gpu, started);
     }
     free(af); free(zf); free(wf);
-    gs2_profile_report(s->comm, "elpa32", is_complex, n, n, 0, s->gpu, started);
-    return err;
+    return started != 0.0 ? MPI_Wtime() - started : 0.0;
 }
 
 int openmx_gs2_eigen_real(int n, int nev, double *a, int *desca, double *w, double *z,
                           int *descz)
 {
     int err = 0;
-    const double started = gs2_profile_start();
+    double started = gs2_profile_start();
     size_t free_before;
     gs2_handle_slot *s = gs2_get_handle(desca[1], n, nev, 0, desca[4], &err);
 
     (void)descz;
     if (s == NULL) return (err != 0) ? err : -1;
-    if (gs2_env_long(OPENMX_ENV_GS2_FP32_PROBE, 0)) return gs2_eigen_float_probe(n, 0, desca, a, w, z);
+    started += gs2_eigen_float_probe(s, desca, a);
 
     free_before = s->gpu ? gs2_free_now() : 0;
     if (s->gpu) elpa_eigenvectors_double(s->h, a, w, z, &err);
@@ -654,13 +635,13 @@ int openmx_gs2_eigen_complex(int n, int nev, void *a, int *desca, double *w, voi
                              int *descz)
 {
     int err = 0;
-    const double started = gs2_profile_start();
+    double started = gs2_profile_start();
     size_t free_before;
     gs2_handle_slot *s = gs2_get_handle(desca[1], n, nev, 1, desca[4], &err);
 
     (void)descz;
     if (s == NULL) return (err != 0) ? err : -1;
-    if (gs2_env_long(OPENMX_ENV_GS2_FP32_PROBE, 0)) return gs2_eigen_float_probe(n, 1, desca, (const double *)a, w, (double *)z);
+    started += gs2_eigen_float_probe(s, desca, (const double *)a);
 
     free_before = s->gpu ? gs2_free_now() : 0;
     if (s->gpu) elpa_eigenvectors_double_complex(s->h, (double complex *)a, w, (double complex *)z, &err);

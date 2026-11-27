@@ -518,7 +518,7 @@ replaces the cluster diagonalization (collinear and non-collinear) with [ELPA](h
 - "gpusolver2" supports only `scf.EigenvalueSolver cluster`; any other solver stops with an input error. It retains the existing per-rank GPU paths outside cluster diagonalization, and a machine without a usable GPU demotes itself to ELPA2 as usual.
 - When the GPU memory cannot hold a solve, that solve automatically falls back to the ELPA CPU kernels / ScaLAPACK instead of aborting the run.
 - The local tile products of the COSMA transforms go through the same GEMMul8 bridge as the other dense products (CUDA build): GEMMul8 on GPUs with weak FP64 (the GeForce default), native cuBLAS FP64 on A100/H100, `scf.gemmul8.enable` and the workspace guards as elsewhere; `OPENMX_GS2_GEMMUL8=0` keeps COSMA on cuBLAS FP64. The hook is a small patch of Tiled-MM that the stack build applies (`source/third_party/tiledmm-openmx-gemm-hook.patch`); the ROCm Tiled-MM keeps rocBLAS.
-- The eigensolves stay in FP64 (ELPA GPU kernels). The refined FP32 eigensolver of `gpusolver` (an FP32 solve plus Ogita-Aishima correction through GEMMul8) does not pay in the distributed path: each correction step needs at least four n×n×n distributed products, and on the measured sizes (sidia333, 8 ranks on one RTX 5080) one COSMA product costs as much as the time the FP32 solve saves (`OPENMX_GS2_FP32_PROBE=1` times the FP32 solve alone; see [docs/PERFORMANCE_REGRESSION.md](docs/PERFORMANCE_REGRESSION.md)).
+- Production eigensolves use ELPA FP64. Each step of Ogita–Aishima correction would require at least four distributed n×n×n products. In the sidia333 measurement with eight ranks on one RTX 5080, one COSMA product took as much time as the FP32 solve saved. With `scf.fp32.enable on`, `OPENMX_GS2_FP32_PROBE=1` can time an extra ELPA FP32 solve on scratch arrays and `OPENMX_GS2_PROFILE=1` reports it as `elpa32`. See [docs/PERFORMANCE_REGRESSION.md](docs/PERFORMANCE_REGRESSION.md).
 - The required libraries (ELPA, COSMA, COSTA, Tiled-MM) are bundled as source archives under `source/third_party/dist/` and are built automatically from those archives by the first `make` (the build tools, and the one download that `Makefile.kugui` adds, are listed under [Dependencies](#dependencies)). The CPU "elpa1"/"elpa2" paths and "gpusolver2" share the same ELPA 2026.02.002 library. The CPU keywords select its one-stage and two-stage solvers with GPU execution disabled; the old embedded ELPA has been removed.
 
 ## Single-node multi-GPU Cluster and Band
@@ -633,8 +633,16 @@ it under the automatic input setting. The `_D` and `_Z` variants select real
 and complex products separately. An input-file `off` always takes precedence;
 an input-file `on` still honors environment disables.
 
-The input keyword `scf.fp32.enable` defaults to `on`, preserving the existing
-precision policies. To select FP64 for optional accelerated paths while retaining GEMMul8:
+The input keyword `scf.fp32.enable` defaults to `on`. It permits mixed precision
+during SCF iterations. If a convergence check depends on recent mixed steps
+or cached mixed-precision orbitals, OpenMX continues with FP64 orbital
+evaluation, grid integrals, and eigensolves and checks convergence again.
+OpenMX also uses FP64 in these paths on the final allowed step and in the
+calculations that follow the SCF loop. Reducing `scf.maxIter` at run time
+can require one extra FP64 step if the new limit is reached during a mixed
+step.
+
+To use FP64 throughout the SCF while retaining GEMMul8, set both keywords.
 
 ```text
 scf.fp32.enable     off
@@ -647,8 +655,9 @@ projector operands to FP64 before multiplying them in the stress calculation.
 With `on`, these stress products round in float before being accumulated in
 double. VNA matrix assembly and force contractions retain upstream OpenMX's
 float rounding with either setting.
-It overrides `OPENMX_EIGEN_REFINE`, `OPENMX_GRID_FP32`,
-`OPENMX_GRID_PRECISION` and `OPENMX_ORBS_EVAL_PRECISION` requests for FP32/DF.
+The input setting overrides requests for optional FP32/DF from
+`OPENMX_EIGEN_REFINE`, `OPENMX_GRID_FP32`, `OPENMX_GRID_PRECISION`,
+`OPENMX_ORBS_EVAL_PRECISION`, `OPENMX_MAGMA_FP32` and `OPENMX_GS2_FP32_PROBE`.
 GEMMul8 and cuSOLVER's FP64 fixed-point emulation remain governed by their
 own settings. Orbital and VNA projector tables retain their float storage.
 

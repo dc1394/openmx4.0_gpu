@@ -203,6 +203,16 @@ function(openmx_add_native_state_tests)
   set_tests_properties(stress-vna PROPERTIES
     ENVIRONMENT "${_environment}" LABELS "unit;solver;core;native-state" TIMEOUT 180)
 
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|i[3-6]86|AMD64)$")
+    add_test(NAME stress-vna-excess-precision
+      COMMAND "${Python3_EXECUTABLE}" "${_repo}/tests/run_stress_vna_cpu.py"
+        --core-library "$<TARGET_FILE:openmx_core>")
+    set_tests_properties(stress-vna-excess-precision PROPERTIES
+      ENVIRONMENT "${_environment}"
+      ENVIRONMENT_MODIFICATION "CFLAGS=string_append: -mfpmath=387 -fexcess-precision=standard"
+      LABELS "unit;solver;core;native-state" TIMEOUT 180)
+  endif()
+
   add_test(NAME stress-nonlocal
     COMMAND "${Python3_EXECUTABLE}" "${_repo}/tests/run_stress_nonlocal_cpu.py"
       --core-library "$<TARGET_FILE:openmx_core>" --negative-control)

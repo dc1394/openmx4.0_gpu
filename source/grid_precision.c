@@ -12,7 +12,7 @@
 
 static int    configured = 0;
 static int    enabled = 0;        /* FP32 stages at all */
-static int    df_mode = 0;        /* the double-float kernels for the whole SCF */
+static int    df_mode = 0;        /* double-float kernels outside the experimental FP32 stage */
 static double until = 1.0e-5;     /* FP32 while NormRD > until */
 static int    restart = 1;        /* restart the mixing history at the switch */
 static int    fp32_now = 0;       /* this step */
@@ -71,6 +71,11 @@ int Grid_Precision_Kernel(void)
     return df_mode ? 2 : 0;
 }
 
+void Grid_Precision_NoteKernel(int mode)
+{
+    if (mode) openmx_fp32_note_use(mode == 1 ? OPENMX_FP32_LOSSY_GRID : OPENMX_FP32_USED);
+}
+
 void Grid_Precision_BeginStep(int SCF_iter, int SCF_max, double normrd_prev, int myid, int verbose)
 {
     int next;
@@ -103,25 +108,12 @@ void Grid_Precision_BeginStep(int SCF_iter, int SCF_max, double normrd_prev, int
         switched = 1;
         pending_reset = restart;
         if (myid == 0 && 2 <= verbose) {
-            printf("<DFT>  grid integrals: FP64 from SCF step %d (NormRD %.1e)%s\n", SCF_iter, normrd_prev,
-                   restart ? ", mixing history restarted" : "");
+            printf("<DFT>  grid integrals: %s from SCF step %d (NormRD %.1e)\n",
+                   df_mode ? "double-float" : "FP64", SCF_iter, normrd_prev);
             fflush(stdout);
         }
     }
     fp32_now = next;
-}
-
-int Grid_Precision_StopCheck(int po, int myid, int verbose)
-{
-    if (!fp32_allowed()) return po;
-    if (!po || !fp32_now) return po;
-    switched = 1;
-    pending_reset = restart;
-    if (myid == 0 && 2 <= verbose) {
-        printf("<DFT>  grid integrals: the stop test passed on an FP32 step; FP64 from the next step, the SCF goes on\n");
-        fflush(stdout);
-    }
-    return 0;
 }
 
 int Grid_Precision_TakeHistoryReset(void)

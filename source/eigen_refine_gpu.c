@@ -1097,5 +1097,6 @@ int openmx_eigen_refine_finish(EigenRefineState *st, EigenRefineDevice *dev, con
     report->chain = chain;
     report->rr_clusters = rr_clusters;
     report->rr_largest = rr_largest;
+    openmx_fp32_note_use(OPENMX_FP32_USED);
     return 1;
 }

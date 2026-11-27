@@ -2396,6 +2396,7 @@ int Set_Density_Grid_GPU_Local_Run(OpenMXDensityGpuState *density_state, const O
     if (!SDG_map(map_host[i],map_bytes[i],i!=14)) goto sdg_map_failure;
     created[i]=1;
   }
+  Grid_Precision_NoteKernel(mode);
 
 #pragma acc data copyin(pair_NO0[0:pair_count], pair_NO1[0:pair_count],                            \
                         pair_h_offset[0:pair_count], pair_nolg_offset[0:pair_count],               \

@@ -732,7 +732,9 @@ int otf_launch(OpenMXOrbitalGpuState *orbital_state, bool double_float, void *st
   else
     hipLaunchKernelGGL((otf_eval_kernel<false, Gather>), dim3((unsigned)count, ychunks), dim3(kThreads), 0,
                        (hipStream_t)stream, t, count, atoms, npts, idx_off, out_off, sph_off, idx, gla, cla, out, potential);
-  return hipGetLastError() == hipSuccess ? 0 : 2;
+  if (hipGetLastError() != hipSuccess) return 2;
+  if (double_float) openmx_fp32_note_use(OPENMX_FP32_ORBITAL_TILES);
+  return 0;
 }
 
 } // namespace

@@ -2385,12 +2385,12 @@ static void Force4B_case2_trace_fused(int Mc_AN, int Gc_AN,
 
 #pragma omp simd reduction(+:sumx, sumy, sumz)
             for (l = 0; l < num_projectors; l++) {
-                sumx -= (fp32 ? (double)(hx[l] * q0[l]) : (double)hx[l] * (double)q0[l])
-                      + (fp32 ? (double)(h0[l] * qx[l]) : (double)h0[l] * (double)qx[l]);
-                sumy -= (fp32 ? (double)(hy[l] * q0[l]) : (double)hy[l] * (double)q0[l])
-                      + (fp32 ? (double)(h0[l] * qy[l]) : (double)h0[l] * (double)qy[l]);
-                sumz -= (fp32 ? (double)(hz[l] * q0[l]) : (double)hz[l] * (double)q0[l])
-                      + (fp32 ? (double)(h0[l] * qz[l]) : (double)h0[l] * (double)qz[l]);
+                sumx -= (fp32 ? (float)(hx[l] * q0[l]) : (double)hx[l] * (double)q0[l])
+                      + (fp32 ? (float)(h0[l] * qx[l]) : (double)h0[l] * (double)qx[l]);
+                sumy -= (fp32 ? (float)(hy[l] * q0[l]) : (double)hy[l] * (double)q0[l])
+                      + (fp32 ? (float)(h0[l] * qy[l]) : (double)h0[l] * (double)qy[l]);
+                sumz -= (fp32 ? (float)(hz[l] * q0[l]) : (double)hz[l] * (double)q0[l])
+                      + (fp32 ? (float)(h0[l] * qz[l]) : (double)h0[l] * (double)qz[l]);
             }
 
             {
@@ -2665,9 +2665,9 @@ static void Force4B_case1_trace_fused_rows(const OpenMXVnaMatrixViews *vna, int 
 
 #pragma omp simd reduction(+:sumx, sumy, sumz)
                     for (l = 0; l < num_projectors; l++) {
-                        sumx += (fp32 ? (double)(hx[l] * q0[l]) : (double)hx[l] * (double)q0[l]);
-                        sumy += (fp32 ? (double)(hy[l] * q0[l]) : (double)hy[l] * (double)q0[l]);
-                        sumz += (fp32 ? (double)(hz[l] * q0[l]) : (double)hz[l] * (double)q0[l]);
+                        sumx += (fp32 ? (float)(hx[l] * q0[l]) : (double)hx[l] * (double)q0[l]);
+                        sumy += (fp32 ? (float)(hy[l] * q0[l]) : (double)hy[l] * (double)q0[l]);
+                        sumz += (fp32 ? (float)(hz[l] * q0[l]) : (double)hz[l] * (double)q0[l]);
                     }
 
                     {
@@ -7436,9 +7436,9 @@ static void Force4B_GpuCase1Kernel_Single(int num_proj, float* flat, float* halo
                 double tx = 0.0, ty = 0.0, tz = 0.0;
 
                 for (int l = 0; l < num_proj; l++) {
-                    tx += (fp32 ? (double)(a1[l] * bx[l]) : (double)a1[l] * (double)bx[l]);
-                    ty += (fp32 ? (double)(a2[l] * bx[l]) : (double)a2[l] * (double)bx[l]);
-                    tz += (fp32 ? (double)(a3[l] * bx[l]) : (double)a3[l] * (double)bx[l]);
+                    tx += (fp32 ? (float)(a1[l] * bx[l]) : (double)a1[l] * (double)bx[l]);
+                    ty += (fp32 ? (float)(a2[l] * bx[l]) : (double)a2[l] * (double)bx[l]);
+                    tz += (fp32 ? (float)(a3[l] * bx[l]) : (double)a3[l] * (double)bx[l]);
                 }
                 sx += tx;
                 sy += ty;
@@ -8399,16 +8399,16 @@ static void Force4B_capacity_kernel(size_t first,size_t count,const void *parame
                     const float *a1=data+(size_t)k*np*(3*pr.ian+pr.jan)+(size_t)m*np,*a2=a1+(size_t)pr.ian*np,*a3=a2+(size_t)pr.ian*np;
                     const float *b=data+(size_t)k*np*(3*pr.ian+pr.jan)+3*(size_t)pr.ian*np+(size_t)n*np;
                     double tx=0,ty=0,tz=0;
-                    for(int l=0;l<np;l++){tx+=fp32?(double)(a1[l]*b[l]):(double)a1[l]*b[l];ty+=fp32?(double)(a2[l]*b[l]):(double)a2[l]*b[l];tz+=fp32?(double)(a3[l]*b[l]):(double)a3[l]*b[l];}
+                    for(int l=0;l<np;l++){tx+=fp32?(float)(a1[l]*b[l]):(double)a1[l]*b[l];ty+=fp32?(float)(a2[l]*b[l]):(double)a2[l]*b[l];tz+=fp32?(float)(a3[l]*b[l]):(double)a3[l]*b[l];}
                     sx+=tx;sy+=ty;sz+=tz;
                 }
             }else{
                 const float *a0=data+(size_t)m*np,*a1=a0+(size_t)pr.ian*np,*a2=a1+(size_t)pr.ian*np,*a3=a2+(size_t)pr.ian*np;
                 const float *b0=data+4*(size_t)pr.ian*np+(size_t)n*np,*b1=b0+(size_t)pr.jan*np,*b2=b1+(size_t)pr.jan*np,*b3=b2+(size_t)pr.jan*np;
                 for(int l=0;l<np;l++){
-                    sx-=(fp32?(double)(a1[l]*b0[l]):(double)a1[l]*b0[l])+(fp32?(double)(a0[l]*b1[l]):(double)a0[l]*b1[l]);
-                    sy-=(fp32?(double)(a2[l]*b0[l]):(double)a2[l]*b0[l])+(fp32?(double)(a0[l]*b2[l]):(double)a0[l]*b2[l]);
-                    sz-=(fp32?(double)(a3[l]*b0[l]):(double)a3[l]*b0[l])+(fp32?(double)(a0[l]*b3[l]):(double)a0[l]*b3[l]);
+                    sx-=(fp32?(float)(a1[l]*b0[l]):(double)a1[l]*b0[l])+(fp32?(float)(a0[l]*b1[l]):(double)a0[l]*b1[l]);
+                    sy-=(fp32?(float)(a2[l]*b0[l]):(double)a2[l]*b0[l])+(fp32?(float)(a0[l]*b2[l]):(double)a0[l]*b2[l]);
+                    sz-=(fp32?(float)(a3[l]*b0[l]):(double)a3[l]*b0[l])+(fp32?(float)(a0[l]*b3[l]):(double)a0[l]*b3[l]);
                 }
             }
             double w=cdm[cdm_off[row]+idx];fx+=w*sx;fy+=w*sy;fz+=w*sz;
@@ -8619,9 +8619,9 @@ static void Force4B_GpuCase2Kernel_Single(int num_proj, float* c2,
             double sx = 0.0, sy = 0.0, sz = 0.0;
 
             for (int l = 0; l < num_proj; l++) {
-                sx -= (fp32 ? (double)(hx[l] * q0[l]) : (double)hx[l] * (double)q0[l]) + (fp32 ? (double)(h0[l] * qx[l]) : (double)h0[l] * (double)qx[l]);
-                sy -= (fp32 ? (double)(hy[l] * q0[l]) : (double)hy[l] * (double)q0[l]) + (fp32 ? (double)(h0[l] * qy[l]) : (double)h0[l] * (double)qy[l]);
-                sz -= (fp32 ? (double)(hz[l] * q0[l]) : (double)hz[l] * (double)q0[l]) + (fp32 ? (double)(h0[l] * qz[l]) : (double)h0[l] * (double)qz[l]);
+                sx -= (fp32 ? (float)(hx[l] * q0[l]) : (double)hx[l] * (double)q0[l]) + (fp32 ? (float)(h0[l] * qx[l]) : (double)h0[l] * (double)qx[l]);
+                sy -= (fp32 ? (float)(hy[l] * q0[l]) : (double)hy[l] * (double)q0[l]) + (fp32 ? (float)(h0[l] * qy[l]) : (double)h0[l] * (double)qy[l]);
+                sz -= (fp32 ? (float)(hz[l] * q0[l]) : (double)hz[l] * (double)q0[l]) + (fp32 ? (float)(h0[l] * qz[l]) : (double)h0[l] * (double)qz[l]);
             }
 
             fx += w * sx;
@@ -10455,11 +10455,11 @@ void dHVNA(const OpenMXVnaMatrixViews *vna, int where_flag, int Mc_AN, int h_AN,
 
 // #pragma acc loop reduction(+:sumx) reduction(+:sumy) reduction(+:sumz)
                             for (l = 0; l < num_projectors; l++) {
-                                sumx += fp32 ? (double)(DS_VNA1[1][Mc_AN][k][m][l] * DS_VNA1[0][Mj_AN2][kl][n][l])
+                                sumx += fp32 ? (float)(DS_VNA1[1][Mc_AN][k][m][l] * DS_VNA1[0][Mj_AN2][kl][n][l])
                                                  : (double)DS_VNA1[1][Mc_AN][k][m][l] * (double)DS_VNA1[0][Mj_AN2][kl][n][l];
-                                sumy += fp32 ? (double)(DS_VNA1[2][Mc_AN][k][m][l] * DS_VNA1[0][Mj_AN2][kl][n][l])
+                                sumy += fp32 ? (float)(DS_VNA1[2][Mc_AN][k][m][l] * DS_VNA1[0][Mj_AN2][kl][n][l])
                                                  : (double)DS_VNA1[2][Mc_AN][k][m][l] * (double)DS_VNA1[0][Mj_AN2][kl][n][l];
-                                sumz += fp32 ? (double)(DS_VNA1[3][Mc_AN][k][m][l] * DS_VNA1[0][Mj_AN2][kl][n][l])
+                                sumz += fp32 ? (float)(DS_VNA1[3][Mc_AN][k][m][l] * DS_VNA1[0][Mj_AN2][kl][n][l])
                                                  : (double)DS_VNA1[3][Mc_AN][k][m][l] * (double)DS_VNA1[0][Mj_AN2][kl][n][l];
                             }
 
@@ -10535,11 +10535,11 @@ void dHVNA(const OpenMXVnaMatrixViews *vna, int where_flag, int Mc_AN, int h_AN,
 
 // #pragma acc loop reduction(-:sumx) reduction(-:sumy) reduction(-:sumz)
                         for (l = 0; l < num_projectors; l++) {
-                            sumx -= fp32 ? (double)(DS_VNA1[0][Mc_AN][0][m][l] * DS_VNA1[1][Mj_AN2][kl][n][l])
+                            sumx -= fp32 ? (float)(DS_VNA1[0][Mc_AN][0][m][l] * DS_VNA1[1][Mj_AN2][kl][n][l])
                                              : (double)DS_VNA1[0][Mc_AN][0][m][l] * (double)DS_VNA1[1][Mj_AN2][kl][n][l];
-                            sumy -= fp32 ? (double)(DS_VNA1[0][Mc_AN][0][m][l] * DS_VNA1[2][Mj_AN2][kl][n][l])
+                            sumy -= fp32 ? (float)(DS_VNA1[0][Mc_AN][0][m][l] * DS_VNA1[2][Mj_AN2][kl][n][l])
                                              : (double)DS_VNA1[0][Mc_AN][0][m][l] * (double)DS_VNA1[2][Mj_AN2][kl][n][l];
-                            sumz -= fp32 ? (double)(DS_VNA1[0][Mc_AN][0][m][l] * DS_VNA1[3][Mj_AN2][kl][n][l])
+                            sumz -= fp32 ? (float)(DS_VNA1[0][Mc_AN][0][m][l] * DS_VNA1[3][Mj_AN2][kl][n][l])
                                              : (double)DS_VNA1[0][Mc_AN][0][m][l] * (double)DS_VNA1[3][Mj_AN2][kl][n][l];
                         }
 
@@ -10580,11 +10580,11 @@ void dHVNA(const OpenMXVnaMatrixViews *vna, int where_flag, int Mc_AN, int h_AN,
                     sumz = 0.0;
 // #pragma acc loop reduction(-:sumx) reduction(-:sumy) reduction(-:sumz)
                     for (l = 0; l < num_projectors; l++) {
-                        sumx -= fp32 ? (double)(DS_VNA1[1][Matomnum + 1][kl1][m][l] * DS_VNA1[0][Matomnum + 1][kl2][n][l])
+                        sumx -= fp32 ? (float)(DS_VNA1[1][Matomnum + 1][kl1][m][l] * DS_VNA1[0][Matomnum + 1][kl2][n][l])
                                          : (double)DS_VNA1[1][Matomnum + 1][kl1][m][l] * (double)DS_VNA1[0][Matomnum + 1][kl2][n][l];
-                        sumy -= fp32 ? (double)(DS_VNA1[2][Matomnum + 1][kl1][m][l] * DS_VNA1[0][Matomnum + 1][kl2][n][l])
+                        sumy -= fp32 ? (float)(DS_VNA1[2][Matomnum + 1][kl1][m][l] * DS_VNA1[0][Matomnum + 1][kl2][n][l])
                                          : (double)DS_VNA1[2][Matomnum + 1][kl1][m][l] * (double)DS_VNA1[0][Matomnum + 1][kl2][n][l];
-                        sumz -= fp32 ? (double)(DS_VNA1[3][Matomnum + 1][kl1][m][l] * DS_VNA1[0][Matomnum + 1][kl2][n][l])
+                        sumz -= fp32 ? (float)(DS_VNA1[3][Matomnum + 1][kl1][m][l] * DS_VNA1[0][Matomnum + 1][kl2][n][l])
                                          : (double)DS_VNA1[3][Matomnum + 1][kl1][m][l] * (double)DS_VNA1[0][Matomnum + 1][kl2][n][l];
                     }
 
@@ -10619,11 +10619,11 @@ void dHVNA(const OpenMXVnaMatrixViews *vna, int where_flag, int Mc_AN, int h_AN,
                         sumz = 0.0;
 // #pragma acc loop reduction(-:sumx) reduction(-:sumy) reduction(-:sumz)
                         for (l = 0; l < num_projectors; l++) {
-                            sumx -= fp32 ? (double)(DS_VNA1[0][Matomnum + 1][kl1][m][l] * DS_VNA1[1][Matomnum + 1][kl2][n][l])
+                            sumx -= fp32 ? (float)(DS_VNA1[0][Matomnum + 1][kl1][m][l] * DS_VNA1[1][Matomnum + 1][kl2][n][l])
                                              : (double)DS_VNA1[0][Matomnum + 1][kl1][m][l] * (double)DS_VNA1[1][Matomnum + 1][kl2][n][l];
-                            sumy -= fp32 ? (double)(DS_VNA1[0][Matomnum + 1][kl1][m][l] * DS_VNA1[2][Matomnum + 1][kl2][n][l])
+                            sumy -= fp32 ? (float)(DS_VNA1[0][Matomnum + 1][kl1][m][l] * DS_VNA1[2][Matomnum + 1][kl2][n][l])
                                              : (double)DS_VNA1[0][Matomnum + 1][kl1][m][l] * (double)DS_VNA1[2][Matomnum + 1][kl2][n][l];
-                            sumz -= fp32 ? (double)(DS_VNA1[0][Matomnum + 1][kl1][m][l] * DS_VNA1[3][Matomnum + 1][kl2][n][l])
+                            sumz -= fp32 ? (float)(DS_VNA1[0][Matomnum + 1][kl1][m][l] * DS_VNA1[3][Matomnum + 1][kl2][n][l])
                                              : (double)DS_VNA1[0][Matomnum + 1][kl1][m][l] * (double)DS_VNA1[3][Matomnum + 1][kl2][n][l];
                         }
 // #pragma acc atomic update
