@@ -221,11 +221,11 @@ struct LapackPlan {
     Diagonalize two_stage = nullptr;
     int complex_size = 0, real_size = 0, int_size = 0;
 
-    bool query_values(Diagonalize diagonalize, int order)
+    bool query_values(Diagonalize diagonalize, int order, const char* job)
     {
         int requested=-1, info=0, integers=0;
         double matrix[2]{}, scratch[2]{}, eigen=0.0, real=0.0;
-        diagonalize(&values,&lower,&order,matrix,&order,&eigen,scratch,&requested,&real,&requested,
+        diagonalize(job,&lower,&order,matrix,&order,&eigen,scratch,&requested,&real,&requested,
                     &integers,&requested,&info);
         if (info || !valid_work(scratch[0]) || !valid_work(real) || integers<1) return false;
         complex_size = std::max(complex_size,int(scratch[0]));
@@ -234,12 +234,12 @@ struct LapackPlan {
         return true;
     }
 
-    bool query(int n, int order)
+    bool query(int n, int order, bool want_vectors)
     {
-        if (!query_values(F77_NAME(zheevd,ZHEEVD),order)) return false;
+        if (!query_values(F77_NAME(zheevd,ZHEEVD),order,want_vectors ? &vectors : &values)) return false;
 #if defined(__ELF__)
         const auto candidate = F77_NAME(zheevd_2stage,ZHEEVD_2STAGE);
-        if (order>=128 && candidate && query_values(candidate,order)) two_stage = candidate;
+        if (!want_vectors && order>=128 && candidate && query_values(candidate,order,&values)) two_stage = candidate;
 #endif
         int requested=-1, info=0;
         double matrix[2]{}, scratch[2]{}, eigen=0.0, real=0.0;
@@ -322,16 +322,34 @@ struct Workspace {
         return true;
     }
 
-    bool diagonalize(LapackPlan::Diagonalize solver, const LapackPlan& lapack, int order, double* eigen)
+    bool diagonalize(LapackPlan::Diagonalize solver, const LapackPlan& lapack, int order,
+                     double* eigen, bool want_vectors = false)
     {
         int info;
-        solver(&values,&lower,&order,h.get(),&order,eigen,work.get(),&lapack.complex_size,
+        solver(want_vectors ? &vectors : &values,&lower,&order,h.get(),&order,eigen,work.get(),&lapack.complex_size,
                rwork.get(),&lapack.real_size,iwork.get(),&lapack.int_size,&info);
         return info==0 && sorted_spectrum(order,eigen);
     }
 
+    bool coefficients(int n, int order, bool cholesky, double* ao)
+    {
+        if (cholesky) {
+            const char left='L', adjoint='C', nonunit='N';
+            const double one[2]={1.0,0.0};
+            for (int i=0; i<order; i+=n)
+                F77_NAME(ztrsm,ZTRSM)(&left,&lower,&adjoint,&nonunit,&n,&order,one,
+                                      factor.get(),&n,element(h.get(),order,i,0),&order);
+            std::copy_n(h.get(),2*size_t(order)*order,ao);
+        } else {
+            for (int i=0; i<order; i+=n)
+                if (!openmx_dense_cpu_gemm('N','N',1,n,order,n,s.get(),n,element(h.get(),order,i,0),
+                                          order,element(ao,order,i,0),order)) return false;
+        }
+        return true;
+    }
+
     bool solve(const OpenMXKPathMatrices& m, const PhasePlan& plan, const LapackPlan& lapack,
-               OpenMXHostBlochAdd add, const OpenMXKPathPoint& point, int order, double* eigen)
+               OpenMXHostBlochAdd add, const OpenMXKPathPoint& point, int order, double* eigen, double* ao)
     {
         const int n = m.order;
         plan.evaluate(point,phases.get());
@@ -361,28 +379,28 @@ struct Workspace {
                     : spectral_transform(n,order,m.overlap_cutoff,m.lno);
                 if (!transformed) return false;
             }
-            if (!diagonalize(F77_NAME(zheevd,ZHEEVD),lapack,order,output)) return false;
+            if (!diagonalize(F77_NAME(zheevd,ZHEEVD),lapack,order,output,ao!=nullptr)) return false;
+            if (ao && !coefficients(n,order,cholesky,ao+2*size_t(spin)*order*order)) return false;
         }
         return true;
     }
 };
-}
-
-extern "C" int openmx_band_kpath_solve_cpu(const OpenMXKPathMatrices* m, int point_count,
-    const OpenMXKPathPoint* points, double* eigenvalues, int simd_mode, size_t workspace_limit, int* threads_used)
+int solve_cpu(const OpenMXKPathMatrices* m, int point_count, const OpenMXKPathPoint* points,
+    double* eigenvalues, double* ao, int simd_mode, size_t workspace_limit, int* threads_used)
 try {
     if (!m->planar || m->order<=0 || point_count<=0 || m->block_count<=0 ||
         m->order>std::numeric_limits<int>::max()/4) return 0;
     const int order = m->noncollinear ? 2*m->order : m->order;
     const auto size_max = std::numeric_limits<size_t>::max();
     if (size_t(order)>size_max/order/(16*sizeof(double))) return 0;
+    if (ao && 1+5*size_t(order)+2*size_t(order)*order>std::numeric_limits<int>::max()) return 0;
 
     const size_t phase_plan_size = size_t(m->block_count)*(sizeof(Translation)+sizeof(int));
     if (workspace_limit<phase_plan_size) return 0;
     const PhasePlan plan(*m);
     const int max_workers = std::min(point_count,omp_get_max_threads());
     LapackPlan lapack;
-    if (!lapack.query(m->order,order)) return 0;
+    if (!lapack.query(m->order,order,ao!=nullptr)) return 0;
     // Reserve the matrix product too, in case a worker needs the spectral path.
     const size_t worker_bytes = 4*(size_t(m->order)*m->order+size_t(order)*order)*sizeof(double) +
         (m->order+2*size_t(lapack.complex_size)+lapack.real_size)*sizeof(double) +
@@ -404,8 +422,9 @@ try {
         *threads_used = omp_get_num_threads();
 #pragma omp for schedule(dynamic,1)
         for (int k=0; k<point_count; ++k) {
-            if (success) success = workspace.solve(*m,plan,lapack,add,points[k],order,
-                                                   eigenvalues+size_t(k)*order*m->spin_channels);
+            const size_t row = size_t(k)*order*m->spin_channels;
+            if (success) success = workspace.solve(*m,plan,lapack,add,points[k],order,eigenvalues+row,
+                                                   ao ? ao+2*row*order : nullptr);
         }
     }
     return success;
@@ -413,4 +432,17 @@ try {
     return 0;
 } catch (const std::length_error&) {
     return 0;
+}
+}
+
+extern "C" int openmx_band_kpath_solve_cpu(const OpenMXKPathMatrices* m, int point_count,
+    const OpenMXKPathPoint* points, double* eigenvalues, int simd_mode, size_t workspace_limit, int* threads_used)
+{
+    return solve_cpu(m,point_count,points,eigenvalues,nullptr,simd_mode,workspace_limit,threads_used);
+}
+
+extern "C" int openmx_band_mo_vectors_cpu(const OpenMXKPathMatrices* m, int point_count,
+    const OpenMXKPathPoint* points, double* eigenvalues, double* ao, int simd_mode, size_t workspace_limit, int* threads_used)
+{
+    return solve_cpu(m,point_count,points,eigenvalues,ao,simd_mode,workspace_limit,threads_used);
 }

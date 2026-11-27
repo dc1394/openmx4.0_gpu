@@ -379,7 +379,7 @@ OBJS    = openmx_grid_assembly.o openmx.o openmx_common.o Input_std.o Inputtools
           Electric_Polarization_BandCol.o Electric_Polarization_BandNonCol.o
 
 OBJS += openmx_mgpu_runtime.o openmx_mgpu_gemm.o openmx_magma_mgpu.o
-OBJS += Band_DFT_kpath_parallel.o openmx_band_kpath_cpu.o openmx_band_kpath_gpu.o
+OBJS += Band_DFT_kpath_parallel.o openmx_band_kpath_cpu.o openmx_mo_grid.o openmx_band_kpath_gpu.o openmx_mo_device.o
 OBJS += openmx_gpu_workers.o openmx_gpu_error.o openmx_gpu_views.o openmx_globals.o
 OBJS += openmx_gpu_transform.o
 OBJS += openmx_gpu_dm.o openmx_gpu_dm_collective.o
@@ -713,9 +713,13 @@ Band_DFT_kpath_parallel.o: Band_DFT_kpath_parallel.c openmx_band_kpath.h openmx_
 	$(CC_NOACC_O3) -c $<
 openmx_band_kpath_cpu.o: openmx_band_kpath_cpu.cpp openmx_band_kpath.h openmx_core_host_simd.h openmx_host_buffer.hpp openmx_dense_cpu.h openmx_exact_exchange_host.h f77func.h
 	$(NVHPC_COMPILER_BIN)/nvc++ -O3 -std=c++17 -fPIC -fopenmp -Mnofma -c $< -o $@
+openmx_mo_grid.o: openmx_mo_grid.cpp openmx_mo_grid.h openmx_mo_device.h openmx_core_host_simd.h
+	$(NVHPC_COMPILER_BIN)/nvc++ -O3 -std=c++17 -fopenmp -Mnofma $(shell $(MPICC) --showme:compile) -c $< -o $@
+openmx_mo_device.o: openmx_mo_device.cu openmx_mo_device.h openmx_gpu_memory.hpp
+	$(NVCC_GEMMUL8_ENV) $(NVCC) $(NVCC_GEMMUL8_FLAGS) -c $< -o $@
 openmx_band_kpath_gpu.o: openmx_band_kpath_gpu.cu openmx_band_kpath.h openmx_gpu_memory.hpp openmx_gpu_workers.h openmx_mgpu_runtime.h
 	$(NVCC_GEMMUL8_ENV) $(NVCC) $(NVCC_GEMMUL8_FLAGS) -c $< -o $@
-Band_DFT_MO.o: Band_DFT_MO.c openmx_common.h
+Band_DFT_MO.o: Band_DFT_MO.c openmx_common.h openmx_band_kpath.h openmx_exact_exchange.h
 	$(CC) -c Band_DFT_MO.c
 Unfolding_Bands.o: Unfolding_Bands.c openmx_common.h
 	$(CC) -c Unfolding_Bands.c
@@ -1171,7 +1175,7 @@ PrintMemory_Fix.o: PrintMemory_Fix.c openmx_common.h
 	$(CC) -c PrintMemory_Fix.c 
 dtime.o: dtime.c
 	$(CC) -c dtime.c 
-OutData.o: OutData.c openmx_common.h
+OutData.o: OutData.c openmx_common.h openmx_mo_grid.h openmx_host_simd.h
 	$(CC2) -c OutData.c
 OutData_Binary.o: OutData_Binary.c openmx_common.h
 	$(CC) -c OutData_Binary.c

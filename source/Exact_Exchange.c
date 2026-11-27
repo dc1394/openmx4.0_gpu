@@ -2084,7 +2084,7 @@ void Exact_Exchange_Prepare_Outputs(OpenMXExactExchangeState *state, const OpenM
 {
   if (!Exact_Exchange_Enabled(state)) return;
   Exact_Exchange_Release_Outputs(state);
-  if (!Exact_Exchange_Active(state) || !state->sites) return;
+  if (!Exact_Exchange_Active(state)) return;
   if (!state->prepared || state->spin_channels<1 || state->collecting)
     ExactExchange_Abort(comm,"outputs","the SCF left no density and exchange matrices");
 
@@ -2095,7 +2095,7 @@ void Exact_Exchange_Prepare_Outputs(OpenMXExactExchangeState *state, const OpenM
   /* the K(k) that the solver kept are not used after the SCF */
   ExactExchange_Forget_Band_Matrices(state);
 
-  if (!state->folded) {
+  if (state->sites && !state->folded) {
     /* K(R) of the last build holds at every k point */
     state->output_owned = 0;
     state->output_spin_channels = state->spin_channels;
@@ -2112,14 +2112,23 @@ void Exact_Exchange_Prepare_Outputs(OpenMXExactExchangeState *state, const OpenM
     return;
   }
 
-  /* K(R) of the folded site form holds at the points of the mesh only. The
-     outputs take the structure again without folding and build K(R) once,
-     from D of the last build, which the folded list holds for every class
-     of cells (section 6.5). The tables of the SCF stay for the forces. */
-  OpenMXExxState *module=openmx_exx_create();
-  if (module==NULL) ExactExchange_Abort(comm,"outputs","out of memory");
-  OpenMXExxOptions options;
-  (void)ExactExchange_Prepare_Module(state,module,atomic,comm,&options);
+  /* The folded mesh needs new, unfolded integrals. The Gamma solver's
+     module already holds the unfolded integrals; D(R) is its dense D at
+     every translation of the one-point mesh. */
+  OpenMXExxState *module=state->module;
+  if (state->sites) {
+    module=openmx_exx_create();
+    if (module==NULL) ExactExchange_Abort(comm,"outputs","out of memory");
+    OpenMXExxOptions options;
+    (void)ExactExchange_Prepare_Module(state,module,atomic,comm,&options);
+  }
+  else if (!state->first_orbital) {
+    const int atoms=openmx_exx_atom_count(module);
+    state->first_orbital=(int*)ExactExchange_Allocate(state,(size_t)atoms+1,sizeof(int),comm,"outputs");
+    state->first_orbital[0]=0;
+    for (int atom=0; atom<atoms; ++atom)
+      state->first_orbital[atom+1]=state->first_orbital[atom]+openmx_exx_atom_orbitals(module,atom);
+  }
   int *block_atoms=NULL,*block_cell=NULL;
   size_t *block_offset=NULL;
   const long blocks=ExactExchange_Read_Blocks(state,module,comm,&block_atoms,&block_cell,&block_offset);
@@ -2140,7 +2149,23 @@ void Exact_Exchange_Prepare_Outputs(OpenMXExactExchangeState *state, const OpenM
     state->output_exchange[spin] = (double*)ExactExchange_Allocate(state,elements,sizeof(double),comm,"outputs");
   }
   long moved=0;
-  ExactExchange_Unfold_Density(state,blocks,block_atoms,block_cell,block_offset,density,comm,&moved);
+  if (state->sites)
+    ExactExchange_Unfold_Density(state,blocks,block_atoms,block_cell,block_offset,density,comm,&moved);
+  else {
+    const int *first=state->first_orbital;
+#pragma omp parallel for schedule(static) if (elements>=65536)
+    for (long b=0; b<blocks; ++b) {
+      const int a=block_atoms[2*b], c=block_atoms[2*b+1], cols=first[c+1]-first[c];
+      for (int spin=0; spin<state->spin_channels; ++spin) {
+        double *target=density[spin]+block_offset[b];
+        const double *source=state->density[spin];
+        for (int row=first[a]; row<first[a+1]; ++row) {
+          memcpy(target,source+(size_t)row*state->orbitals+first[c],(size_t)cols*sizeof(double));
+          target+=cols;
+        }
+      }
+    }
+  }
   /* the half build needs D_xy(R) = D_yx(-R)^T to the last bit */
   double asymmetry=0.0;
   char error[512];
@@ -2191,7 +2216,7 @@ void Exact_Exchange_Prepare_Outputs(OpenMXExactExchangeState *state, const OpenM
   const ExactExchangeDeviceCounts after=ExactExchange_Device_Counts(&state->device);
   ExactExchange_Device_Counts_Back(&state->device,&counts);
   for (int spin=0; spin<state->spin_channels; spin++) openmx_core_native_free(state->resources,density[spin]);
-  openmx_exx_destroy(module);
+  if (state->sites) openmx_exx_destroy(module);
   state->outputs = 1;
   const double built=MPI_Wtime();
 
@@ -2202,7 +2227,7 @@ void Exact_Exchange_Prepare_Outputs(OpenMXExactExchangeState *state, const OpenM
     fflush(stdout);
   }
   double check[2]={0.0,0.0};
-  if (2<=verbosity) ExactExchange_Check_Outputs(state,comm,check);
+  if (2<=verbosity && state->sites) ExactExchange_Check_Outputs(state,comm,check);
 
   if (rank==0 && 0<verbosity) {
     printf("<EXX>  outputs after the SCF: K(R) without folding from D of the last build, %ld V sites,"
@@ -2222,8 +2247,9 @@ void Exact_Exchange_Prepare_Outputs(OpenMXExactExchangeState *state, const OpenM
                " for one product; left to the host for lack of device memory: %lld\n",
                after.device_products-counts.device_products,products.device_seconds,
                (double)after.largest_bytes/1048576.0,after.declined_products-counts.declined_products);
-      printf("<EXX>  K(k) of the outputs at the %d points of the mesh: largest difference from K(k) of the SCF %.3e,"
-             " largest element %.3e\n",period[0]*period[1]*period[2],check[0],check[1]);
+      if (state->sites)
+        printf("<EXX>  K(k) of the outputs at the %d points of the mesh: largest difference from K(k) of the SCF %.3e,"
+               " largest element %.3e\n",period[0]*period[1]*period[2],check[0],check[1]);
     }
     fflush(stdout);
   }

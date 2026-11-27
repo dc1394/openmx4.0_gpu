@@ -3640,7 +3640,7 @@ void Band_DFT_MO(const OpenMXChemicalPotentials *chemical,  int nkpoint, double 
                   int SpinP_switch, 
                   double *****nh,
                   double *****ImNL,
-                  double ****CntOLP);
+                  double ****CntOLP, struct OpenMXExactExchangeState *exact_exchange);
 double Band_DFT_Dosout(OpenMXChemicalPotentials *chemical,  int knum_i, int knum_j, int knum_k,
                         int SpinP_switch,
                         double *****nh,

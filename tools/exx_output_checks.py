@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
 exx_output_checks.py -- the runs of milestone M8 for the outputs after the SCF
-(docs/EXX_IMPLEMENTATION_GUIDE.md, section 9): the band dispersion and the DOS
-of the band solver with HSE06 and PBE0. They build H(k) from the Hamiltonian
+(docs/EXX_IMPLEMENTATION_GUIDE.md, section 9): the band dispersion, DOS and MO
+output with HSE06 and PBE0. They build H(k) from the Hamiltonian
 of the neighbour list at k points of their own and add K(k) to it (section
 6.5 of the guide).
 
@@ -52,6 +52,8 @@ The checks
              potential, each under its number.
   cluster    The DOS of the cluster solver with Dos.Kgrid 1 1 1, which adds K
              as the SCF does, against the eigenvalues of the .out file.
+  mo         The real and imaginary MO cube files at two off-mesh k points.
+             Their frontier eigenvalues must agree with the band output.
   refusals   Inputs that the program has to refuse with a hybrid functional:
              the message has to name the keyword.
 
@@ -61,7 +63,7 @@ The names
   SYSTEM-sABCkDEF-XC-band the supercell A x B x C with the mesh D x E x F
   -reg                    scf.Generation.Kpoint REGULAR (no Gamma point)
   XC                      pbe (GGA-PBE), hse (HSE06), pbe0 (PBE0)
-  -mesh, -dos, -dosgauss, -cluster-dos, -npN, reject-...  the checks above
+  -mesh, -dos, -dosgauss, -cluster-dos, -mo, -npN, reject-...  the checks above
 """
 import argparse
 import itertools
@@ -165,6 +167,16 @@ for kind, keyword in (("dos", "Dos.fileout on"), ("dosgauss", "DosGauss.fileout 
 add("dia-s222-hse-cluster-dos", "dia", (2, 2, 2), (1, 1, 1), "HSE06",
     extra=["Dos.fileout on", "Dos.Kgrid 1 1 1", "Dos.Erange -40.0 40.0"])
 
+MO_POINTS = (PATH_START, PATH_END)
+MO = []
+for xc in ("hse", "pbe0"):
+    name = f"dia-p222-{xc}-mo"
+    add(name, "dia", (1, 1, 1), (2, 2, 2), XC[xc], ranks=4, extra=
+        band_input([(PATH_START, PATH_END, 2)]) +
+        ["MO.fileout on", "num.HOMOs 2", "num.LUMOs 1", "MO.Nkpoint 2", "<MO.kpoint"] +
+        [" ".join(map(str, k)) for k in MO_POINTS] + ["MO.kpoint>"])
+    MO.append(name)
+
 # inputs that the program has to refuse with a hybrid functional, and the keyword of the message
 REFUSALS = []
 for name, cells, kgrid, extra, message in (
@@ -217,6 +229,51 @@ def read_out_eigenvalues(path):
         points.append(((float(k1), float(k2), float(k3)), [float(v[1]) for v in values],
                        [float(v[2]) for v in values]))
     return points
+
+
+def mo_error(directory, system, bands):
+    if bands is None or len(bands) != len(MO_POINTS):
+        return None
+    largest = 0.0
+    for point, (actual, channels) in enumerate(bands):
+        if any(abs(a - b) > 1e-8 for a, b in zip(actual, MO_POINTS[point])):
+            return None
+        energy = channels[0]
+        if not all(map(math.isfinite, energy)):
+            return None
+        for kind, number in (("homo", 2), ("lumo", 1)):
+            for orbital in range(number):
+                has_amplitude = False
+                for component in ("r", "i"):
+                    path = directory / f"{system}.{kind}{point}_0_{orbital}_{component}.cube"
+                    if not path.is_file():
+                        return None
+                    with path.open() as cube:
+                        header = re.search(r"Absolute eigenvalue=\s*(\S+)", cube.readline())
+                        chemical = re.search(r"Chemical Potential=\s*(\S+)", cube.readline())
+                        if not header or not chemical:
+                            return None
+                        origin = cube.readline().split()
+                        if len(origin) != 4:
+                            return None
+                        shape = [int(cube.readline().split()[0]) for _ in range(3)]
+                        for _ in range(int(origin[0])):
+                            cube.readline()
+                        values = [float(v) for v in cube.read().split()]
+                    if len(values) != math.prod(shape) or not all(map(math.isfinite, values)):
+                        return None
+                    eigenvalue, potential = float(header[1]), float(chemical[1])
+                    if not math.isfinite(eigenvalue) or not math.isfinite(potential):
+                        return None
+                    has_amplitude = has_amplitude or any(values)
+                    homo = sum(e < potential for e in energy) - 1
+                    state = homo - orbital if kind == "homo" else homo + orbital + 1
+                    if state < 0 or state >= len(energy):
+                        return None
+                    largest = max(largest, abs(eigenvalue - energy[state]))
+                if not has_amplitude:
+                    return None
+    return largest
 
 
 def read_dos_values(path):
@@ -291,6 +348,8 @@ def execute(args, name):
     outputs = re.search(r"<EXX>  outputs after the SCF: (.*)", std)
     result["outputs"] = outputs.group(1) if outputs else None
     result["bands"] = read_bands(run_dir / f"{system}.Band")
+    if name in MO:
+        result["mo_error"] = mo_error(run_dir, system, result["bands"])
     result["out_eigenvalues"] = read_out_eigenvalues(run_dir / f"{system}.out")
     result["dos_values"] = None
     dos = read_dos_values(run_dir / f"{system}.Dos.val")
@@ -460,6 +519,11 @@ def table(args):
             show(f"{name}: .Dos.val (six decimals)", largest, 2e-6)
         else:
             show(f"{name}: .Dos.val and the eigenvalues of the .out file", None, 2e-6)
+
+    print("== mo: eigenvalues in the cube headers against .Band (Hartree)")
+    for name in MO:
+        if usable(name):
+            show(name, results[name].get("mo_error"), 5e-8)
 
     print("== refusals")
     for name, message in REFUSALS:

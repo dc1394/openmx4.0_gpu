@@ -1,6 +1,7 @@
 #include "openmx_core_grid.h"
 #include "openmx_core_host_simd.h"
 #include <Kokkos_SIMD.hpp>
+#include <cmath>
 #include <cstring>
 #include <iostream>
 #include <memory>
@@ -70,6 +71,34 @@ static void check_bloch_blocks()
   }
 }
 
+static void check_mo_contractions()
+{
+  for (int mode=OPENMX_GRID_SCALAR; mode<OPENMX_GRID_MODE_COUNT; ++mode) {
+    if (!openmx_core_host_simd_usable(mode)) continue;
+    const auto dot=openmx_core_host_mo_dot(mode);
+    if (!dot) throw std::runtime_error("a usable host SIMD mode has no MO kernel");
+    for (const int size : {1,3,4,7,8,13,37}) {
+      std::vector<float> ao(size);
+      std::vector<double> real(size), imag(size);
+      double expected[2]{};
+      for (int i=0; i<size; ++i) {
+        ao[i]=float(0.13*i-2.71);
+        real[i]=0.17*i-1.1;
+        imag[i]=0.93-0.12*i;
+        expected[0]+=ao[i]*real[i];
+        expected[1]+=ao[i]*imag[i];
+      }
+      for (bool complex : {false,true}) {
+        double values[2];
+        dot(size,ao.data(),real.data(),complex ? imag.data() : nullptr,values);
+        if (!(std::abs(values[0]-expected[0])<5e-13 &&
+              std::abs(values[1]-(complex ? expected[1] : 0.0))<5e-13))
+          throw std::runtime_error("host SIMD MO contraction differs from the scalar loop");
+      }
+    }
+  }
+}
+
 int main() {
   try {
     constexpr auto default_width=Kokkos::Experimental::simd<double>::size();
@@ -104,6 +133,7 @@ int main() {
     context.reset();
     check_row_updates();
     check_bloch_blocks();
+    check_mo_contractions();
     if(Kokkos::is_initialized())throw std::runtime_error("CPU fallback initialized a device runtime");
     std::cout<<"default SIMD width="<<default_width<<"; host SIMD width="<<width<<'\n';
   }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}

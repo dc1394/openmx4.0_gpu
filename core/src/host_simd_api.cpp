@@ -46,3 +46,7 @@ extern "C" OpenMXHostBlochAdd openmx_core_host_bloch_add(int mode) {
   const auto* kernel=openmx::core::host::openmx_host_bloch_kernels(mode);
   return kernel ? *kernel : nullptr;
 }
+extern "C" OpenMXHostMODot openmx_core_host_mo_dot(int mode) {
+  const auto* kernel=openmx::core::host::openmx_host_mo_dot_kernels(mode);
+  return kernel ? *kernel : nullptr;
+}

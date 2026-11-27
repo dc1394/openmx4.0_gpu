@@ -22,6 +22,13 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include "openmx_common.h"
+#include "openmx_mo_grid.h"
+#include "openmx_host_simd.h"
+#if OPENMX_GPU_CUDA
+#include "openmx_gpu_device.h"
+#include "openmx_gpu_runtime.h"
+#include "openmx_gpu_workers.h"
+#endif
 #include "mpi.h"
 #include <omp.h>
 
@@ -69,6 +76,39 @@ static void Print_VectorData(FILE *fp, char fext[],
 static void Print_VectorData_bin(FILE *fp, char fext[],
                                  double *data0, double *data1,
                                  double *data2, double *data3);
+
+static int out_MO_Parallel(const OpenMXChemicalPotentials *chemical)
+{
+  const int bloch=Solver==3 || PeriodicGamma_flag==1;
+  const int periodic=specified_system!=0 || (bloch && MO_Nkpoint>1);
+  const int mode=OpenMX_HostSimdMode();
+  const int complex_mo=periodic || SpinP_switch==3 || SO_switch;
+  OpenMXMOGridAtom *views=calloc((size_t)Matomnum+1,sizeof(*views));
+  int ready=views!=NULL, all_ready;
+  MPI_Allreduce(&ready,&all_ready,1,MPI_INT,MPI_MIN,mpi_comm_level1);
+  if (!all_ready) {
+    free(views);
+    return 0;
+  }
+  for (int local=1; local<=Matomnum; ++local) {
+    const int atom=M2G[local], species=WhatSpecies[atom];
+    views[local-1]=(OpenMXMOGridAtom){atom,GridN_Atom[atom],Spe_Total_CNO[species],Spe_Total_NO[species],
+                                    GridListAtom[local],CellListAtom[local],Orbs_Grid[local][0]};
+  }
+  int device=-1;
+#if OPENMX_GPU_CUDA
+  if (scf_eigen_lib_flag==GPUSOLVER && gpu_rank_device_usable() && !openmx_gpu_capacity_test_recovery() &&
+      !OpenMX_HostSimdPreferred("MO_Grid") && OpenMXGpuGetDevice(&device)!=OPENMX_GPU_SUCCESS) device=-1;
+#endif
+  const OpenMXMOGridInput input={mpi_comm_level1,Host_ID,level_stdout,mode,device,
+    Matomnum,TNumGrid,Ngrid3,complex_mo ? 2 : 1,SpinP_switch==0 ? 1 : 2,periodic ? MO_Nkpoint : 1,
+    periodic ? TCpyCell+1 : 1,OutData_bin_flag,views,periodic ? MO_kpoint : NULL,atv_ijk,
+    bloch ? Bulk_Num_HOMOs : &num_HOMOs,bloch ? Bulk_Num_LUMOs : &num_LUMOs,
+    HOMOs_Coef,LUMOs_Coef,filepath,filename,CUBE_EXTENSION,chemical,Print_CubeTitle};
+  const int result=openmx_mo_grid_write(&input);
+  free(views);
+  return result;
+}
 
 double OutData(const OpenMXChemicalPotentials *chemical, const OpenMXAtomicViews *atomic, char *inputfile, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
 {
@@ -140,17 +180,10 @@ double OutData(const OpenMXChemicalPotentials *chemical, const OpenMXAtomicViews
     }
   }
 
-  if (MO_fileout==1 && specified_system==0){
-
-    /* spin non-collinear */
-    if (SpinP_switch==3)
-      out_Cluster_NC_MO(chemical);
-    /* spin collinear */
-    else
-      out_Cluster_MO(chemical);
-  }
-  else if (MO_fileout==1 && specified_system!=0){
-    out_Bulk_MO(chemical);
+  if (MO_fileout==1 && MO_Nkpoint>0 && !out_MO_Parallel(chemical)){
+    if (specified_system!=0 || (Solver==3 && MO_Nkpoint>1)) out_Bulk_MO(chemical);
+    else if (SpinP_switch==3) out_Cluster_NC_MO(chemical);
+    else out_Cluster_MO(chemical);
   }
 
   if (Cnt_switch==1){
@@ -2007,7 +2040,7 @@ void out_Cluster_NC_MO(const OpenMXChemicalPotentials *chemical)
   *************/
 
   for (spin=0; spin<=1; spin++){
-    for (orbit=0; orbit<num_HOMOs; orbit++){ 
+    for (orbit=0; orbit<num_LUMOs; orbit++){
 
       /* calc. MO on grids */
 
@@ -2726,9 +2759,8 @@ void out_LNBO()
 
 static void Print_CubeTitle(const OpenMXChemicalPotentials *chemical, FILE *fp, int EigenValue_flag, double EigenValue, double EigenValue2)
 {
-  int ct_AN,n,spe; 
-  char clist[300];
-  double *dlist;
+  int ct_AN,spe;
+  char clist[200]={0};
 
   if (OutData_bin_flag==0){
 
@@ -2795,20 +2827,14 @@ static void Print_CubeTitle(const OpenMXChemicalPotentials *chemical, FILE *fp, 
     fwrite(&Ngrid3, sizeof(int), 1, fp);
     fwrite(&gtv[3][1], sizeof(double), 3, fp);
 
-    dlist = (double*)malloc(sizeof(double)*atomnum*5);
-
-    n = 0;
     for (ct_AN=1; ct_AN<=atomnum; ct_AN++){
       spe = WhatSpecies[ct_AN];
-      dlist[n] = (double)Spe_WhatAtom[spe];                                  n++;
-      dlist[n] = Spe_Core_Charge[spe]-InitN_USpin[ct_AN]-InitN_DSpin[ct_AN]; n++;
-      dlist[n] = Gxyz[ct_AN][1];                                             n++;
-      dlist[n] = Gxyz[ct_AN][2];                                             n++;
-      dlist[n] = Gxyz[ct_AN][3];                                             n++;
+      const double atom[5] = {
+        (double)Spe_WhatAtom[spe], Spe_Core_Charge[spe]-InitN_USpin[ct_AN]-InitN_DSpin[ct_AN],
+        Gxyz[ct_AN][1], Gxyz[ct_AN][2], Gxyz[ct_AN][3]
+      };
+      fwrite(atom, sizeof(double), 5, fp);
     }
-
-    fwrite(dlist, sizeof(double), atomnum*5, fp);
-    free(dlist);
   }
 
 }

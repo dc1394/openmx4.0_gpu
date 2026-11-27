@@ -16,6 +16,9 @@
 #include <math.h>
 #include <time.h>
 #include "openmx_common.h"
+#include "openmx_band_kpath.h"
+#include "openmx_exact_exchange.h"
+#include <limits.h>
 #include "mpi.h"
 #include <omp.h>
 
@@ -24,7 +27,7 @@ static void Band_DFT_MO_Col(const OpenMXChemicalPotentials *chemical,
                       int nkpoint, double **kpoint,
                       int SpinP_switch, 
                       double *****nh,
-                      double ****CntOLP);
+                      double ****CntOLP, const struct OpenMXExactExchangeState *exchange);
 
 static void Band_DFT_MO_NonCol(const OpenMXChemicalPotentials *chemical,
                       int nkpoint, double **kpoint,
@@ -34,14 +37,211 @@ static void Band_DFT_MO_NonCol(const OpenMXChemicalPotentials *chemical,
                       double ****CntOLP);
 
 
+typedef struct {
+  MPI_Comm comm;
+  int rank, root, atoms, requested_homos, requested_lumos;
+  double chemical;
+  double **kpoints;
+  const int *species;
+  int **basis_rows;
+  char **species_names;
+  const char *directory, *name;
+  int **homo, *nhomo, *nlumo;
+  dcomplex *****homos, *****lumos;
+  FILE *report;
+} BandMOOutput;
+
+static void write_ev_block(FILE *fp, const BandMOOutput *out, const OpenMXKPathMatrices *m,
+                           int spin, int first, const double *energy, const double *coeff)
+{
+  const char *names[5][9] = {
+    {"s"}, {"px","py","pz"}, {"d3z^2-r^2","dx^2-y^2","dxy","dxz","dyz"},
+    {"f5z^2-3r^2","f5xz^2-xr^2","f5yz^2-yr^2","fzx^2-zy^2","fxyz","fx^3-3*xy^2","f3yx^2-y^3"},
+    {"g1","g2","g3","g4","g5","g6","g7","g8","g9"}
+  };
+  const int n=m->order, order=m->noncollinear ? 2*n : n;
+  const int width=m->noncollinear ? 2 : 4;
+  const int last=first+width<order ? first+width : order;
+  fprintf(fp,"\n                     ");
+  for (int state=first; state<last; ++state) {
+    if (m->noncollinear) fprintf(fp," %4d                                   ",state+1);
+    else fprintf(fp,"  %4d (%c)          ",state+1,spin==0 ? 'U' : 'D');
+  }
+  fprintf(fp,"\n                     ");
+  for (int state=first; state<last; ++state) {
+    if (m->noncollinear) fprintf(fp,"   %8.5f                             ",energy[state]);
+    else fprintf(fp,"  %8.4f          ",energy[state]);
+  }
+  fprintf(fp,"\n\n                     ");
+  for (int state=first; state<last; ++state)
+    fputs(m->noncollinear ? "     Re(U)     Im(U)     Re(D)     Im(D)" : "     Re        Im   ",fp);
+  fputs("\n\n",fp);
+  int row=0;
+  for (int atom=1; atom<=out->atoms; ++atom) {
+    const int species=out->species[atom];
+    for (int l=0; l<=Supported_MaxL; ++l) {
+      for (int shell=0; shell<out->basis_rows[species][l]; ++shell) {
+        for (int mag=0; mag<2*l+1; ++mag,++row) {
+          if (l==0 && shell==0 && mag==0)
+            fprintf(fp,"%4d %3s %d %-11s",atom,out->species_names[species],shell,names[l][mag]);
+          else fprintf(fp,"         %d %-11s",shell,names[l][mag]);
+          for (int state=first; state<last; ++state) {
+            const double *a=coeff+2*((size_t)state*order+row);
+            fprintf(fp,"  %8.5f  %8.5f",a[0],a[1]);
+            if (m->noncollinear) fprintf(fp,"  %8.5f  %8.5f",a[2*n],a[2*n+1]);
+          }
+          fputc('\n',fp);
+        }
+      }
+    }
+  }
+}
+
+static void write_mo_report(BandMOOutput *out, const OpenMXKPathMatrices *m, int point,
+                            const double *energy, const double *coeff)
+{
+  if (point==0) {
+    char path[YOUSO10];
+    int length=snprintf(path,sizeof(path),"%s%s.EV",out->directory,out->name);
+    if (length>=0 && (size_t)length<sizeof(path)) out->report=fopen(path,"a");
+    if (!out->report) fprintf(stderr,"Failure of saving the EV file.\n");
+    else {
+      setvbuf(out->report,NULL,_IOFBF,1024*1024);
+      fputs("\n***********************************************************\n"
+            "***********************************************************\n"
+            "        Eigenvalues (Hartree) and LCAO coefficients        \n"
+            "        at the k-points specified in the input file.       \n"
+            "***********************************************************\n"
+            "***********************************************************\n",out->report);
+    }
+    if (!m->noncollinear) {
+      length=snprintf(path,sizeof(path),"%s%s.coes",out->directory,out->name);
+      if (length>=0 && (size_t)length<sizeof(path)) {
+        FILE *coes=fopen(path,"wb");
+        if (coes) fclose(coes);
+      }
+    }
+  }
+  FILE *fp=out->report;
+  if (!fp) return;
+  const double *k=out->kpoints[point];
+  fprintf(fp,"\n\n   # of k-point = %i\n   k1=%10.5f k2=%10.5f k3=%10.5f\n\n"
+             "   Chemical Potential (Hartree) = %18.14f\n",point+1,k[1],k[2],k[3],out->chemical);
+  if (m->spin_channels==1) fprintf(fp,"   HOMO = %i\n\n",out->homo[point][0]);
+  else fprintf(fp,"   HOMO for up-spin   = %i\n   HOMO for down-spin = %i\n\n",
+               out->homo[point][0],out->homo[point][1]);
+  fputs("   Real (Re) and imaginary (Im) parts of LCAO coefficients\n\n",fp);
+  const int order=m->noncollinear ? 2*m->order : m->order;
+  const int width=m->noncollinear ? 2 : 4;
+  const int blocks=(order+width-1)/width;
+#pragma omp parallel for ordered schedule(static,1) if (order>=64)
+  for (int block=0; block<m->spin_channels*blocks; ++block) {
+    const int spin=block/blocks, first=(block%blocks)*width;
+    const double *e=energy+(size_t)spin*order, *v=coeff+2*(size_t)spin*order*order;
+    char *text=NULL;
+    size_t length=0;
+    FILE *scratch=open_memstream(&text,&length);
+    int buffered=0;
+    if (scratch) {
+      write_ev_block(scratch,out,m,spin,first,e,v);
+      buffered=fclose(scratch)==0;
+    }
+#pragma omp ordered
+    {
+      if (buffered) fwrite(text,1,length,fp);
+      else write_ev_block(fp,out,m,spin,first,e,v);
+    }
+    free(text);
+  }
+}
+
+static void publish_mo(void *context, int point, const OpenMXKPathMatrices *m,
+                       const int *offset, const double *energy, const double *coeff)
+{
+  BandMOOutput *out=context;
+  const int n=m->order, order=m->noncollinear ? 2*n : n;
+  const int components=m->noncollinear ? 2 : m->spin_channels;
+  int counts[4]={0,0,out->requested_homos,out->requested_lumos};
+  if (out->rank==out->root) {
+    for (int spin=0; spin<m->spin_channels; ++spin) {
+      const double *e=energy+(size_t)spin*order;
+      int occupied=0;
+      while (occupied<order && e[occupied]<out->chemical) ++occupied;
+      counts[spin]=occupied;
+      if (counts[2]>occupied) counts[2]=occupied;
+      if (counts[3]>order-occupied) counts[3]=order-occupied;
+    }
+  }
+  MPI_Bcast(counts,4,MPI_INT,out->root,out->comm);
+  out->homo[point][0]=counts[0];
+  out->homo[point][1]=counts[1];
+  out->nhomo[point]=counts[2];
+  out->nlumo[point]=counts[3];
+  const size_t row_width=1+2*(size_t)n;
+  const size_t states=(size_t)counts[2]+counts[3];
+  const size_t entries=states*components*row_width;
+  double *packet=entries ? malloc(entries*sizeof(*packet)) : NULL;
+  int ready=entries==0 || packet!=NULL, all_ready;
+  MPI_Allreduce(&ready,&all_ready,1,MPI_INT,MPI_MIN,out->comm);
+  if (!all_ready) {
+    if (out->rank==out->root) fprintf(stderr,"<Band_DFT_MO> Cannot allocate frontier orbitals.\n");
+    MPI_Abort(out->comm,EXIT_FAILURE);
+    abort();
+  }
+  if (out->rank==out->root) {
+    for (int component=0; component<components; ++component) {
+      const int spin=m->noncollinear ? 0 : component;
+      const int row=m->noncollinear ? component*n : 0;
+      for (size_t i=0; i<states; ++i) {
+        const int state=i<(size_t)counts[2] ? counts[spin]-1-(int)i : counts[spin]+(int)(i-counts[2]);
+        const size_t column=(size_t)spin*order+state;
+        double *entry=packet+(component*states+i)*row_width;
+        entry[0]=energy[column];
+        memcpy(entry+1,coeff+2*(column*order+row),(size_t)2*n*sizeof(*entry));
+      }
+    }
+  }
+  for (size_t start=0; start<entries; start+=INT_MAX) {
+    const int chunk=entries-start>INT_MAX ? INT_MAX : (int)(entries-start);
+    MPI_Bcast(packet+start,chunk,MPI_DOUBLE,out->root,out->comm);
+  }
+  for (int component=0; component<components; ++component) {
+    for (size_t i=0; i<states; ++i) {
+      const double *entry=packet+(component*states+i)*row_width;
+      dcomplex **target=i<(size_t)counts[2] ? out->homos[point][component][i]
+                                           : out->lumos[point][component][i-counts[2]];
+      target[0][0]=(dcomplex){entry[0],0.0};
+      for (int atom=1; atom<=out->atoms; ++atom) {
+        const int first=offset[atom];
+        for (int a=0; a<offset[atom+1]-first; ++a)
+          target[atom][a]=(dcomplex){entry[1+2*(first+a)],entry[2+2*(first+a)]};
+      }
+    }
+  }
+  free(packet);
+  if (out->rank==out->root) write_mo_report(out,m,point,energy,coeff);
+}
+
 void Band_DFT_MO(const OpenMXChemicalPotentials *chemical,  int nkpoint, double **kpoint,
                   int SpinP_switch, 
                   double *****nh,
                   double *****ImNL,
-                  double ****CntOLP)
+                  double ****CntOLP, struct OpenMXExactExchangeState *exchange)
 {
+  int rank;
+  MPI_Comm_rank(mpi_comm_level1,&rank);
+  BandMOOutput output = {mpi_comm_level1,rank,Host_ID,atomnum,List_YOUSO[31],List_YOUSO[32],chemical->chemical_potential,
+    kpoint,WhatSpecies,Spe_Num_CBasis,SpeName,filepath,filename,Bulk_HOMO,Bulk_Num_HOMOs,Bulk_Num_LUMOs,
+    HOMOs_Coef,LUMOs_Coef,NULL};
+  if (openmx_band_mo_parallel(chemical,nkpoint,kpoint,SpinP_switch,nh,ImNL,CntOLP,exchange,publish_mo,&output)) {
+    if (output.report) {
+      const int failed=ferror(output.report);
+      if (fclose(output.report)!=0 || failed) fprintf(stderr,"Failure of saving the EV file.\n");
+    }
+    return;
+  }
   if (SpinP_switch==0 || SpinP_switch==1){
-    Band_DFT_MO_Col(chemical,  nkpoint, kpoint, SpinP_switch, nh, CntOLP);
+    Band_DFT_MO_Col(chemical,  nkpoint, kpoint, SpinP_switch, nh, CntOLP, exchange);
   }
   else if (SpinP_switch==3){
     Band_DFT_MO_NonCol(chemical,  nkpoint, kpoint, SpinP_switch, nh, ImNL, CntOLP);
@@ -54,7 +254,7 @@ static void Band_DFT_MO_Col(const OpenMXChemicalPotentials *chemical,
                       int nkpoint, double **kpoint,
                       int SpinP_switch, 
                       double *****nh,
-                      double ****CntOLP)
+                      double ****CntOLP, const struct OpenMXExactExchangeState *exchange)
 {
   int i,j,k,l,n,wan;
   int *MP,*order_GA,*My_NZeros,*SP_NZeros,*SP_Atoms;
@@ -361,6 +561,8 @@ static void Band_DFT_MO_Col(const OpenMXChemicalPotentials *chemical,
 	}
       }
 
+      Exact_Exchange_Add_Output_Hk(exchange,spin,k1,k2,k3,n,H[spin]);
+
       /* first transpose of S */
 
       for (i1=1; i1<=n; i1++){
@@ -568,8 +770,8 @@ static void Band_DFT_MO_Col(const OpenMXChemicalPotentials *chemical,
                  values of MOs on grids
     ****************************************************/
 
-    nhomos = num_HOMOs;
-    nlumos = num_LUMOs;
+    nhomos = List_YOUSO[31];
+    nlumos = List_YOUSO[32];
 
     if (SpinP_switch==0){
       if ( (Bulk_HOMO[kloop][0]-nhomos+1)<1 ) nhomos = Bulk_HOMO[kloop][0];
@@ -787,7 +989,6 @@ static void Band_DFT_MO_Col(const OpenMXChemicalPotentials *chemical,
       }
       else{
 	printf("Failure of saving the EV file.\n");
-	fclose(fp_EV);
       }
 
     } /* if (myid==Host_ID) */
@@ -797,7 +998,7 @@ static void Band_DFT_MO_Col(const OpenMXChemicalPotentials *chemical,
   /* fclose the file pointer to store LCAO coefficients */
 
   if (myid==Host_ID){
-    fclose(fp1);
+    if (fp1) fclose(fp1);
   }
 
   /****************************************************
@@ -1504,8 +1705,8 @@ static void Band_DFT_MO_NonCol(const OpenMXChemicalPotentials *chemical,
                  values of MOs on grids
     ****************************************************/
 
-    nhomos = num_HOMOs;
-    nlumos = num_LUMOs;
+    nhomos = List_YOUSO[31];
+    nlumos = List_YOUSO[32];
 
     if ( (Bulk_HOMO[kloop][0]-nhomos+1)<1 )  nhomos = Bulk_HOMO[kloop][0];
     if ( (Bulk_HOMO[kloop][0]+nlumos)>MaxN)  nlumos = MaxN - Bulk_HOMO[kloop][0];
@@ -1709,7 +1910,6 @@ static void Band_DFT_MO_NonCol(const OpenMXChemicalPotentials *chemical,
       }
       else{
 	printf("Failure of saving the EV file.\n");
-	fclose(fp_EV);
       }
     } /* if (myid==Host_ID) */
 

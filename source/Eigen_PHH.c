@@ -54,13 +54,18 @@ void Eigen_PHH(MPI_Comm MPI_Current_Comm_WD,
     Eigen_Improved_PHH(MPI_Current_Comm_WD, ac, ko, n, EVmax, bcast_flag);
 
   /* ELPA1 is used in case of numprocs=1 since ELPA2 seems to be unstable when numprocs=1. */
-  else if (scf_eigen_lib_flag==1 || numprocs==1)
+  else if (scf_eigen_lib_flag==ELPA1 || numprocs==1)
     Eigen_ELPA1_Co(MPI_Current_Comm_WD, ac, ko, n, EVmax, bcast_flag);
 
+  /* This entry point is the host solver, including when called as a
+     fallback after a GPU calculation. */
+  else if (scf_eigen_lib_flag==ELPA2 || scf_eigen_lib_flag==GPUSOLVER) {
 #ifndef kcomp
-  else if (scf_eigen_lib_flag==2)
     Eigen_ELPA2_Co(MPI_Current_Comm_WD, ac, ko, n, EVmax, bcast_flag);
+#else
+    Eigen_Improved_PHH(MPI_Current_Comm_WD, ac, ko, n, EVmax, bcast_flag);
 #endif
+  }
 
 }
 

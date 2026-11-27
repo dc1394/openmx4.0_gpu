@@ -34,6 +34,13 @@ typedef struct {
     const double (*reciprocal)[4];
 } KPathOutput;
 
+typedef struct {
+    int count;
+    double **kpoints;
+    OpenMXMOResult result;
+    void *context;
+} KPathMO;
+
 static int all_ranks_ok(MPI_Comm comm, int local)
 {
     int ready;
@@ -333,7 +340,8 @@ static int run_parallel(const KPathOutput *output, const KPathBasis *basis, Open
     int use_gpu, const OpenMXChemicalPotentials *chemical,
     int path_count, const int *points_per_path, double ***paths, char ***names,
     double *****hamiltonian, double *****imaginary, double ****overlap,
-    const OpenMXLocalBasisViews *local_basis, const struct OpenMXExactExchangeState *exact_exchange)
+    const OpenMXLocalBasisViews *local_basis, const struct OpenMXExactExchangeState *exact_exchange,
+    const KPathMO *mo)
 {
     const MPI_Comm comm = output->comm;
     int rank, ranks, success = 0;
@@ -345,6 +353,8 @@ static int run_parallel(const KPathOutput *output, const KPathBasis *basis, Open
     KPathLocalOffset *local_offsets = NULL;
     OpenMXKPathBlock *local = NULL, *blocks = NULL;
     double *local_values = NULL, *values = NULL, *local_eigen = NULL, *eigen = NULL;
+    double *local_vectors = NULL, *vectors = NULL;
+    const double started = MPI_Wtime();
     MPI_Comm_rank(comm, &rank);
     MPI_Comm_size(comm, &ranks);
 #if OPENMX_GPU_CUDA || OPENMX_GPU_HIP
@@ -352,25 +362,36 @@ static int run_parallel(const KPathOutput *output, const KPathBasis *basis, Open
 #endif
     m.planar = !use_gpu;
 
-    int point_count = 0;
+    int point_count = mo ? mo->count : 0;
     for (int i = 1; i <= path_count; ++i) {
         if (points_per_path[i] < 0 || points_per_path[i] > INT_MAX - point_count) goto done;
         point_count += points_per_path[i];
     }
-    if (point_count == 0) goto done;
+    if (point_count <= 0) goto done;
     points = malloc((size_t)point_count * sizeof(*points));
-    output_to_unique = malloc((size_t)point_count * sizeof(*output_to_unique));
+    if (!mo) output_to_unique = malloc((size_t)point_count * sizeof(*output_to_unique));
     offset = malloc(((size_t)basis->atoms + 2) * sizeof(*offset));
     sizes = malloc((size_t)3 * ranks * sizeof(*sizes));
     counts = malloc((size_t)4 * ranks * sizeof(*counts));
     local_offsets = malloc(((size_t)basis->local_atoms + 1) * sizeof(*local_offsets));
-    if (!all_ranks_ok(comm, points && output_to_unique && offset && sizes && counts && local_offsets)) goto done;
-    const int unique_count = unique_points(path_count, points_per_path, paths, points, output_to_unique, point_count);
+    if (!all_ranks_ok(comm, points && (mo || output_to_unique) && offset && sizes && counts && local_offsets)) goto done;
+    int unique_count = point_count;
+    if (mo) {
+        for (int i=0; i<point_count; ++i) {
+            points[i].output_index = i;
+            for (int a=0; a<3; ++a) points[i].xyz[a] = mo->kpoints[i][a+1];
+        }
+    } else {
+        unique_count = unique_points(path_count, points_per_path, paths, points, output_to_unique, point_count);
+    }
     m.order = orbital_offsets(&m, basis, offset);
     const int multiplicity = m.noncollinear ? 2 : m.spin_channels;
     if (m.order <= 0 || unique_count <= 0 || m.order > INT_MAX / multiplicity ||
         unique_count > INT_MAX / (multiplicity * m.order)) goto done;
     const int bands_per_point = multiplicity * m.order;
+    const int order = m.noncollinear ? 2*m.order : m.order;
+    if (mo && bands_per_point > (INT_MAX/2)/order) goto done;
+    const int vector_size = mo ? 2*bands_per_point*order : 0;
 
     stage = "sparse matrix sizing";
     if (!all_ranks_ok(comm, local_block_offsets(&m, basis, offset, local_offsets))) goto done;
@@ -429,9 +450,14 @@ static int run_parallel(const KPathOutput *output, const KPathBasis *basis, Open
     const size_t local_bytes = local_size[0] + (size_t)local_size[1] * sizeof(*values);
     stage = "host matrix allocation";
     /* A local guard accounts for the copies that can coexist on this node. */
-    const size_t eigen_bytes = ((owner ? (size_t)(end - first) : 0) +
-                               (rank == output->host ? (size_t)unique_count : 0)) * bands_per_point * sizeof(*eigen);
-    const size_t host_bytes = (direct_pack ? 0 : local_bytes) + (owner ? packed_bytes : 0) + eigen_bytes;
+    const size_t root_points = rank == output->host ? (mo ? 1 : (size_t)unique_count) : 0;
+    const size_t result_points = (size_t)(end-first) + root_points;
+    const size_t result_width = (size_t)bands_per_point + vector_size;
+    if (!all_ranks_ok(comm, result_points <= SIZE_MAX/sizeof(*eigen)/result_width)) goto done;
+    const size_t result_bytes = result_points*result_width*sizeof(*eigen);
+    const size_t matrix_bytes = (direct_pack ? 0 : local_bytes) + (owner ? packed_bytes : 0);
+    if (!all_ranks_ok(comm, result_bytes <= SIZE_MAX-matrix_bytes)) goto done;
+    const size_t host_bytes = matrix_bytes + result_bytes;
     const size_t budget = available ? available / local_ranks : SIZE_MAX;
     if (!all_ranks_ok(comm, host_bytes <= budget))
         goto done;
@@ -444,10 +470,15 @@ static int run_parallel(const KPathOutput *output, const KPathBasis *basis, Open
         blocks = malloc((size_t)m.block_count * sizeof(*blocks));
         values = malloc((size_t)m.value_count * sizeof(*values));
         local_eigen = malloc((size_t)(end - first) * bands_per_point * sizeof(*local_eigen));
+        if (mo) local_vectors = malloc((size_t)(end-first)*vector_size*sizeof(*local_vectors));
     }
-    if (rank == output->host) eigen = malloc((size_t)unique_count * bands_per_point * sizeof(*eigen));
-    if (!all_ranks_ok(comm, (direct_pack || (local && local_values)) && (!owner || (blocks && values && local_eigen)) &&
-                      (rank != output->host || eigen))) goto done;
+    if (rank == output->host) {
+        eigen = malloc(root_points*bands_per_point*sizeof(*eigen));
+        if (mo) vectors = malloc((size_t)vector_size*sizeof(*vectors));
+    }
+    if (!all_ranks_ok(comm, (direct_pack || (local && local_values)) &&
+                      (!owner || (blocks && values && local_eigen && (!mo || local_vectors))) &&
+                      (rank != output->host || (eigen && (!mo || vectors))))) goto done;
 
     stage = "real-space matrix packing";
     OpenMXKPathBlock *local_block_target = direct_pack ? blocks + block_offsets[rank] / sizeof(*blocks) : local;
@@ -496,19 +527,26 @@ static int run_parallel(const KPathOutput *output, const KPathBasis *basis, Open
     const char *backend = use_gpu ? OPENMX_GPU_RUNTIME_NAME : openmx_core_host_simd_name(output->simd);
     stage = "matrix construction, transformation or eigensolve";
     if (rank == output->host && 0 < output->verbosity) {
-        printf("<Band_DFT_kpath> %s: %d k-points (%d distinct), %d %s with %s%s\n",
-               m.lno ? ".LNO.Band" : ".Band", point_count, unique_count, owner_count, use_gpu ? "GPU owner(s)" : "CPU rank(s)",
-               backend, m.exchange_offset < m.value_count ? " and exact exchange" : "");
+        const char *owners_label = use_gpu ? "GPU owner(s)" : "CPU rank(s)";
+        const char *exchange_label = m.exchange_offset < m.value_count ? " and exact exchange" : "";
+        if (mo) printf("<Band_DFT_MO> AO eigenvectors: %d k-points, %d %s with %s%s\n",
+                       point_count, owner_count, owners_label, backend, exchange_label);
+        else printf("<Band_DFT_kpath> %s: %d k-points (%d distinct), %d %s with %s%s\n",
+                    m.lno ? ".LNO.Band" : ".Band", point_count, unique_count, owner_count,
+                    owners_label, backend, exchange_label);
         fflush(stdout);
     }
     int solved = 1;
     if (owner) {
 #if OPENMX_GPU_CUDA || OPENMX_GPU_HIP
-        if (use_gpu) solved = openmx_band_kpath_solve_gpu(device, &m, end - first, points + first, local_eigen);
+        if (use_gpu) solved = mo ? openmx_band_mo_vectors_gpu(device,&m,end-first,points+first,local_eigen,local_vectors)
+                                 : openmx_band_kpath_solve_gpu(device,&m,end-first,points+first,local_eigen);
         else
 #endif
-            solved = openmx_band_kpath_solve_cpu(&m, end - first, points + first, local_eigen,
-                                                output->simd, budget - host_bytes, &threads_used);
+            solved = mo ? openmx_band_mo_vectors_cpu(&m,end-first,points+first,local_eigen,local_vectors,
+                                                    output->simd,budget-host_bytes,&threads_used)
+                        : openmx_band_kpath_solve_cpu(&m,end-first,points+first,local_eigen,
+                                                     output->simd,budget-host_bytes,&threads_used);
     }
     if (!all_ranks_ok(comm, solved)) goto done;
 
@@ -521,6 +559,33 @@ static int run_parallel(const KPathOutput *output, const KPathBasis *basis, Open
         value_sizes[i] = (finish - begin) * bands_per_point;
         value_offsets[i] = begin * bands_per_point;
     }
+    if (mo) {
+        /* The full coefficient matrices go only to the report writer. The
+           consumer distributes the frontier orbitals needed for the grids. */
+        for (int i=0; i<ranks; ++i) {
+            const int count = value_sizes[i]/bands_per_point;
+            for (int k=0; k<count; ++k) {
+                const double *e = NULL, *v = NULL;
+                if (rank == i) {
+                    e = local_eigen+(size_t)k*bands_per_point;
+                    v = local_vectors+(size_t)k*vector_size;
+                    if (i != output->host) {
+                        MPI_Send(e,bands_per_point,MPI_DOUBLE,output->host,26070,comm);
+                        MPI_Send(v,vector_size,MPI_DOUBLE,output->host,26071,comm);
+                        e = v = NULL;
+                    }
+                } else if (rank == output->host) {
+                    MPI_Recv(eigen,bands_per_point,MPI_DOUBLE,i,26070,comm,MPI_STATUS_IGNORE);
+                    MPI_Recv(vectors,vector_size,MPI_DOUBLE,i,26071,comm,MPI_STATUS_IGNORE);
+                    e = eigen;
+                    v = vectors;
+                }
+                mo->result(mo->context,value_offsets[i]/bands_per_point+k,&m,offset,e,v);
+            }
+        }
+        success = 1;
+        goto done;
+    }
     MPI_Gatherv(local_eigen, (end - first) * bands_per_point, MPI_DOUBLE,
                 eigen, value_sizes, value_offsets, MPI_DOUBLE, output->host, comm);
     stage = "file output";
@@ -530,13 +595,17 @@ static int run_parallel(const KPathOutput *output, const KPathBasis *basis, Open
 
 done:
     if (rank == output->host && 0 < output->verbosity) {
-        if (success && use_gpu) printf("<Band_DFT_kpath> %s (GPU-accelerated)\n", m.lno ? ".LNO.Band" : ".Band");
+        if (mo && success) printf("<Band_DFT_MO> Eigensystems and coefficient output: %.3f s\n",MPI_Wtime()-started);
+        else if (mo) printf("<Band_DFT_MO> %s %s unavailable.\n",use_gpu ? "CUDA" : "CPU",stage);
+        else if (success && use_gpu) printf("<Band_DFT_kpath> %s (GPU-accelerated)\n", m.lno ? ".LNO.Band" : ".Band");
         else if (success) printf("<Band_DFT_kpath> %s (%d OpenMP worker(s) on rank %d)\n",
                                  m.lno ? ".LNO.Band" : ".Band", threads_used, rank);
         else printf("<Band_DFT_kpath> %s %s unavailable.\n", use_gpu ? "GPU" : "CPU", stage);
         fflush(stdout);
     }
     if (owners != MPI_COMM_NULL) MPI_Comm_free(&owners);
+    free(vectors);
+    free(local_vectors);
     free(eigen);
     free(local_eigen);
     free(values);
@@ -552,10 +621,10 @@ done:
     return success;
 }
 
-int openmx_band_kpath_parallel(const OpenMXChemicalPotentials *chemical,
+static int run_outputs(const OpenMXChemicalPotentials *chemical,
     int path_count, const int *points_per_path, double ***paths, char ***names,
     int spin, double *****hamiltonian, double *****imaginary, double ****overlap,
-    const OpenMXLocalBasisViews *local_basis, const struct OpenMXExactExchangeState *exact_exchange)
+    const OpenMXLocalBasisViews *local_basis, const struct OpenMXExactExchangeState *exact_exchange, const KPathMO *mo)
 {
     const KPathBasis basis = {atomnum, Matomnum, M2G, S_G2M, WhatSpecies, Spe_Total_CNO,
                              LNO_Num, FNAN, natn, ncn, atv_ijk};
@@ -571,12 +640,30 @@ int openmx_band_kpath_parallel(const OpenMXChemicalPotentials *chemical,
 
 #if OPENMX_GPU_CUDA || OPENMX_GPU_HIP
     const int gpu = scf_eigen_lib_flag == GPUSOLVER && openmx_env_flag_at(OPENMX_ENV_GPU, 1) &&
-                    !OpenMX_HostSimdPreferred("Band_DFT_kpath");
+                    (!mo || OPENMX_GPU_CUDA) && !OpenMX_HostSimdPreferred(mo ? "Band_DFT_MO" : "Band_DFT_kpath");
     if (all_ranks_ok(output.comm, gpu) &&
         run_parallel(&output, &basis, m, 1, chemical, path_count, points_per_path, paths, names,
-                     hamiltonian, imaginary, overlap, local_basis, exact_exchange)) return 1;
+                     hamiltonian, imaginary, overlap, local_basis, exact_exchange, mo)) return 1;
 #endif
     return all_ranks_ok(output.comm, output.simd != OPENMX_HOST_SIMD_LEGACY) &&
            run_parallel(&output, &basis, m, 0, chemical, path_count, points_per_path, paths, names,
-                        hamiltonian, imaginary, overlap, local_basis, exact_exchange);
+                        hamiltonian, imaginary, overlap, local_basis, exact_exchange, mo);
+}
+
+int openmx_band_kpath_parallel(const OpenMXChemicalPotentials *chemical,
+    int path_count, const int *points_per_path, double ***paths, char ***names,
+    int spin, double *****hamiltonian, double *****imaginary, double ****overlap,
+    const OpenMXLocalBasisViews *local_basis, const struct OpenMXExactExchangeState *exchange)
+{
+    return run_outputs(chemical,path_count,points_per_path,paths,names,spin,hamiltonian,imaginary,
+                       overlap,local_basis,exchange,NULL);
+}
+
+int openmx_band_mo_parallel(const OpenMXChemicalPotentials *chemical,
+    int point_count, double **kpoints, int spin, double *****hamiltonian,
+    double *****imaginary, double ****overlap, const struct OpenMXExactExchangeState *exchange,
+    OpenMXMOResult result, void *context)
+{
+    const KPathMO mo = {point_count,kpoints,result,context};
+    return run_outputs(chemical,0,NULL,NULL,NULL,spin,hamiltonian,imaginary,overlap,NULL,exchange,&mo);
 }

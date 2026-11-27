@@ -36,6 +36,11 @@ typedef void (*OpenMXHostBlochAdd)(double *dst, int ld, const double *real, cons
                                  int rows, int cols, double cosine, double sine);
 OpenMXHostBlochAdd openmx_core_host_bloch_add(int mode);
 
+/* FP32 AO samples contracted with FP64 MO coefficients. imag may be NULL. */
+typedef void (*OpenMXHostMODot)(int count, const float *ao, const double *real,
+                               const double *imag, double result[2]);
+OpenMXHostMODot openmx_core_host_mo_dot(int mode);
+
 #ifdef __cplusplus
 }
 #endif

@@ -491,6 +491,20 @@ struct Workspace {
         }
         return true;
     }
+
+    bool coefficients(int n, int order, bool native_precision, double *ao)
+    {
+        const auto zgemm = native_precision ? OpenMXBlasZgemm : openmx_gemmul8Zgemm;
+        const Z one=OpenMXGpuMakeComplex(1.0,0.0), zero=OpenMXGpuMakeComplex(0.0,0.0);
+        for (int row=0; row<order; row+=n) {
+            if (zgemm(blas, OPENMX_BLAS_OP_N, OPENMX_BLAS_OP_N, n, order, n, &one,
+                      s.get(), n, h.get()+row, order, &zero, product.get()+row, order) != OPENMX_BLAS_SUCCESS)
+                return false;
+        }
+        const size_t elements=(size_t)order*order;
+        return OpenMXGpuMemcpy(ao,product.get(),elements*sizeof(Z),OPENMX_GPU_COPY_DEVICE_TO_HOST)==OPENMX_GPU_SUCCESS &&
+               std::all_of(ao,ao+2*elements,[](double value) { return std::isfinite(value); });
+    }
 };
 
 bool penalize_overlap(int n, int order, double cutoff, int count, const double *values, Z *h,
@@ -660,14 +674,14 @@ bool solve_batched(Workspace &w, const OpenMXKPathMatrices &m, int order, int po
 }
 
 bool solve_points(Workspace &w, const OpenMXKPathMatrices &m, int point_count,
-                  const OpenMXKPathPoint *points, double *eigen, const char **stage)
+                  const OpenMXKPathPoint *points, double *eigen, double *ao, const char **stage)
 {
     const int order = m.noncollinear ? 2 * m.order : m.order;
     const int n = m.order;
     *stage = "device workspace allocation";
     if (!w.prepare(m, order)) return false;
 
-    if (order <= jacobi_max_order && point_count >= min_batched_points) {
+    if (!ao && order <= jacobi_max_order && point_count >= min_batched_points) {
         *stage = "batched eigensolve";
         try {
             if (solve_batched(w, m, order, point_count, points, eigen)) return true;
@@ -696,9 +710,13 @@ bool solve_points(Workspace &w, const OpenMXKPathMatrices &m, int point_count,
             if (!m.lno && !penalize_overlap(n, order, m.overlap_cutoff, 1, w.overlap_values.get(),
                                            w.h.get(), w.discard.get())) return false;
 
-            *stage = "Hamiltonian eigenvalues";
-            double *row = eigen + ((size_t)k * m.spin_channels + spin) * order;
-            if (!w.diagonalize(order, w.h.get(), row, false)) return false;
+            *stage = "Hamiltonian eigensolve";
+            const size_t row = ((size_t)k*m.spin_channels+spin)*order;
+            if (!w.diagonalize(order, w.h.get(), eigen+row, ao!=nullptr)) return false;
+            if (ao) {
+                *stage = "AO eigenvectors";
+                if (!w.coefficients(n,order,ill_conditioned,ao+2*row*order)) return false;
+            }
         }
         if (OPENMX_STDOUT_LEVEL(2) && ((k + 1) % 10 == 0 || k + 1 == point_count)) {
             std::printf("<Band_DFT_kpath> GPU owner completed %d/%d distinct k-points\n", k + 1, point_count);
@@ -707,10 +725,8 @@ bool solve_points(Workspace &w, const OpenMXKPathMatrices &m, int point_count,
     }
     return true;
 }
-} // namespace
-
-extern "C" int openmx_band_kpath_solve_gpu(int device, const OpenMXKPathMatrices *matrices,
-    int point_count, const OpenMXKPathPoint *points, double *eigenvalues)
+int solve_gpu(int device, const OpenMXKPathMatrices *matrices, int point_count,
+              const OpenMXKPathPoint *points, double *eigenvalues, double *ao)
 {
     openmx::gpu::DeviceBinding binding(device);
     if (!binding) return 0;
@@ -726,7 +742,7 @@ extern "C" int openmx_band_kpath_solve_gpu(int device, const OpenMXKPathMatrices
 #endif
         Workspace work;
         try {
-            success = solve_points(work, *matrices, point_count, points, eigenvalues, &stage);
+            success = solve_points(work, *matrices, point_count, points, eigenvalues, ao, &stage);
         } catch (const std::bad_alloc &) {
             stage = "host workspace allocation";
         }
@@ -745,4 +761,17 @@ extern "C" int openmx_band_kpath_solve_gpu(int device, const OpenMXKPathMatrices
             std::fprintf(stderr, "<Band_DFT_kpath> GPU %d failed in %s\n", device, stage);
     }
     return success;
+}
+} // namespace
+
+extern "C" int openmx_band_kpath_solve_gpu(int device, const OpenMXKPathMatrices *matrices,
+    int point_count, const OpenMXKPathPoint *points, double *eigenvalues)
+{
+    return solve_gpu(device,matrices,point_count,points,eigenvalues,nullptr);
+}
+
+extern "C" int openmx_band_mo_vectors_gpu(int device, const OpenMXKPathMatrices *matrices,
+    int point_count, const OpenMXKPathPoint *points, double *eigenvalues, double *ao)
+{
+    return solve_gpu(device,matrices,point_count,points,eigenvalues,ao);
 }

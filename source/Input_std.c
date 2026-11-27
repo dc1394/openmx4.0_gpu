@@ -3752,6 +3752,11 @@ void Input_std(char *file, OpenMXCoreContext *core)
     num_HOMOs = 1;
     num_LUMOs = 1;
   }
+  else if (num_HOMOs<0 || num_LUMOs<0){
+    if (myid==Host_ID) fprintf(stderr,"num.HOMOs and num.LUMOs must be nonnegative.\n");
+    MPI_Finalize();
+    exit(EXIT_FAILURE);
+  }
 
   if ((Solver!=2 && Solver!=3 && Solver!=7) && MO_fileout==1){
 
@@ -3804,7 +3809,12 @@ void Input_std(char *file, OpenMXCoreContext *core)
 
   if ( (fp=input_find("<MO.kpoint")) != NULL ) {
     for (i=0; i<MO_Nkpoint; i++){
-      fscanf(fp,"%lf %lf %lf",&MO_kpoint[i][1],&MO_kpoint[i][2],&MO_kpoint[i][3]);
+      if (fscanf(fp,"%lf %lf %lf",&MO_kpoint[i][1],&MO_kpoint[i][2],&MO_kpoint[i][3])!=3 ||
+          !isfinite(MO_kpoint[i][1]) || !isfinite(MO_kpoint[i][2]) || !isfinite(MO_kpoint[i][3])){
+        if (myid==Host_ID) fprintf(stderr,"Invalid coordinates for MO.kpoint %d.\n",i+1);
+        po++;
+        break;
+      }
 
       if (2<=level_stdout){
         printf("<Input_std>  MO_kpoint %2d  %10.6f  %10.6f  %10.6f\n",
@@ -3817,9 +3827,13 @@ void Input_std(char *file, OpenMXCoreContext *core)
       po++;
     }
 
-    if (Band_kPathUnit){
+    if (Band_kPathUnit && i==MO_Nkpoint){
       kpoint_changeunit(tv,Band_UnitCell,MO_Nkpoint,MO_kpoint);
     }
+  }
+  else {
+    for (i=0; i<MO_Nkpoint; i++)
+      MO_kpoint[i][1] = MO_kpoint[i][2] = MO_kpoint[i][3] = 0.0;
   }
 
   /****************************************************
@@ -5153,7 +5167,6 @@ void Input_std(char *file, OpenMXCoreContext *core)
     /* these solve the Hamiltonian of the neighbour list again, which has
        no exchange matrix, or decompose an energy without the exact exchange */
     if (HS_fileout!=0)                conflict[conflicts++] = "HS.fileout";
-    if (MO_fileout!=0)                conflict[conflicts++] = "MO.fileout";
     if (Wannier_Func_Calc!=0)         conflict[conflicts++] = "Wannier.Func.Calc";
     if (unfold_electronic_band!=0)    conflict[conflicts++] = "Unfolding.Electronic.Band";
     if (Polarization_ABC_flag!=0)     conflict[conflicts++] = "scf.Polarization.ABC";

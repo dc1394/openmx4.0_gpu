@@ -38,6 +38,24 @@ bool generalized_bands(const double* eigen, double a, double b, Complex h, Compl
     return close(eigen[0],center-gap) && close(eigen[1],center+gap);
 }
 
+bool generalized_vectors(const double* eigen, const double* vectors, double a, double b, Complex h, Complex s)
+{
+    for (int state=0; state<2; ++state) {
+        const double* column=vectors+4*state;
+        const Complex x(column[0],column[1]), y(column[2],column[3]);
+        const Complex sx=x+s*y, sy=std::conj(s)*x+4.0*y;
+        const Complex hx=a*x+h*y, hy=std::conj(h)*x+b*y;
+        if (!close(std::abs(hx-eigen[state]*sx),0.0) || !close(std::abs(hy-eigen[state]*sy),0.0))
+            return false;
+        for (int other=0; other<2; ++other) {
+            const double* q=vectors+4*other;
+            const Complex product=std::conj(Complex(q[0],q[1]))*sx+std::conj(Complex(q[2],q[3]))*sy;
+            if (!close(std::abs(product-double(other==state)),0.0)) return false;
+        }
+    }
+    return true;
+}
+
 bool spin_and_exchange(int mode, int expected_workers)
 {
     const OpenMXKPathBlock blocks[] = {
@@ -51,14 +69,17 @@ bool spin_and_exchange(int mode, int expected_workers)
     OpenMXKPathPoint points[7]{};
     for (int k=0; k<7; ++k) points[k].xyz[0] = double(k)/7;
     double eigen[7][4];
+    double vectors[7][16];
     int workers=0;
-    if (!openmx_band_kpath_solve_cpu(&m,7,points,eigen[0],mode,unlimited,&workers) || workers!=expected_workers)
+    if (!openmx_band_mo_vectors_cpu(&m,7,points,eigen[0],vectors[0],mode,unlimited,&workers) || workers!=expected_workers)
         return false;
     for (int k=0; k<7; ++k) {
         const auto phase = std::polar(1.0,2*pi*points[k].xyz[0]);
         const auto overlap = .2+.1*phase;
-        if (!generalized_bands(eigen[k],2,12,.5+.75*phase,overlap) ||
-            !generalized_bands(eigen[k]+2,-2,20,.5+.125*phase,overlap)) return false;
+        const auto up=.5+.75*phase, down=.5+.125*phase;
+        if (!generalized_bands(eigen[k],2,12,up,overlap) || !generalized_bands(eigen[k]+2,-2,20,down,overlap) ||
+            !generalized_vectors(eigen[k],vectors[k],2,12,up,overlap) ||
+            !generalized_vectors(eigen[k]+2,vectors[k]+8,-2,20,down,overlap)) return false;
     }
     return true;
 }

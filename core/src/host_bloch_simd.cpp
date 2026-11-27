@@ -43,11 +43,46 @@ void add_bloch(double* dst, int ld, const double* real, const double* imag,
   if (imag) add_block<true>(dst,ld,real,imag,rows,cols,cosine,sine);
   else add_block<false>(dst,ld,real,imag,rows,cols,cosine,sine);
 }
+
+template<bool Complex>
+void mo_dot(int count, const float* ao, const double* real, const double* imag, double* out)
+{
+  Vector r(0.0),im(0.0);
+  int i=0;
+  for (; i<=count-lanes; i+=lanes) {
+    const Vector p(simd::simd_unchecked_load<NarrowFloatVector>(ao+i));
+    r=r+load(real+i)*p;
+    if constexpr (Complex) im=im+load(imag+i)*p;
+  }
+  double re=0.0,in=0.0;
+  for (int lane=0; lane<lanes; ++lane) {
+    re+=r[lane];
+    if constexpr (Complex) in+=im[lane];
+  }
+  for (; i<count; ++i) {
+    re+=real[i]*double(ao[i]);
+    if constexpr (Complex) in+=imag[i]*double(ao[i]);
+  }
+  out[0]=re;
+  out[1]=in;
+}
+
+void contract_mo(int count, const float* ao, const double* real, const double* imag, double* out)
+{
+  if (imag) mo_dot<true>(count,ao,real,imag,out);
+  else mo_dot<false>(count,ao,real,nullptr,out);
+}
 }
 
 const OpenMXHostBlochAdd& OPENMX_HOST_SIMD_FACTORY(bloch)() noexcept
 {
   static constexpr OpenMXHostBlochAdd kernel = add_bloch;
+  return kernel;
+}
+
+const OpenMXHostMODot& OPENMX_HOST_SIMD_FACTORY(mo_dot)() noexcept
+{
+  static constexpr OpenMXHostMODot kernel=contract_mo;
   return kernel;
 }
 }

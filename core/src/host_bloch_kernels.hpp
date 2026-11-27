@@ -7,5 +7,7 @@
 namespace openmx::core::host {
 extern "C" OPENMX_HOST_SIMD_EXPORT const OpenMXHostBlochAdd* openmx_host_bloch_kernels(int mode) noexcept;
 OPENMX_HOST_SIMD_FAMILY(OpenMXHostBlochAdd,bloch)
+extern "C" OPENMX_HOST_SIMD_EXPORT const OpenMXHostMODot* openmx_host_mo_dot_kernels(int mode) noexcept;
+OPENMX_HOST_SIMD_FAMILY(OpenMXHostMODot,mo_dot)
 }
 #endif

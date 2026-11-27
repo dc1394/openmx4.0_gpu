@@ -2843,6 +2843,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
      (docs/EXX_IMPLEMENTATION_GUIDE.md, section 6.5)
   *****************************************************/
 
+  const int bloch_mo = MO_fileout==1 && MO_Nkpoint>0 && (Solver==3 || PeriodicGamma_flag==1);
   exx_outputs = (Solver==3 && Cnt_switch==0 && Exact_Exchange_Active(exact_exchange)
                  && ((Band_disp_switch==1 && Band_Nkpath>0) || Dos_fileout || DosGauss_fileout));
   Exact_Exchange_End_Device_Phase(exact_exchange);
@@ -2986,7 +2987,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
     }
   }
 
-  if (exx_outputs) Exact_Exchange_Release_Outputs(exact_exchange);
+  if (exx_outputs && !bloch_mo) Exact_Exchange_Release_Outputs(exact_exchange);
 
   /*****************************************************
        write a restart file if SpinP_switch!=3
@@ -3571,12 +3572,17 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
          Calc. of Bloch waves at given k-points
   *****************************************************/
 
-  if ( MO_fileout==1 && MO_Nkpoint>0 && (Solver==3 || PeriodicGamma_flag==1) ) {
+  if (bloch_mo) {
     if (Cnt_switch==0){
-      Band_DFT_MO(chemical, MO_Nkpoint, MO_kpoint, SpinP_switch, H, iHNL, OLP[0]);
+      if (!exx_outputs && Exact_Exchange_Active(exact_exchange)) {
+        Exact_Exchange_Prepare_Outputs(exact_exchange, atomic, mpi_comm_level1, level_stdout);
+        Exact_Exchange_End_Device_Phase(exact_exchange);
+      }
+      Band_DFT_MO(chemical, MO_Nkpoint, MO_kpoint, SpinP_switch, H, iHNL, OLP[0], exact_exchange);
+      Exact_Exchange_Release_Outputs(exact_exchange);
     }
     else {
-      Band_DFT_MO(chemical, MO_Nkpoint, MO_kpoint, SpinP_switch, CntH, iCntHNL, CntOLP[0]);
+      Band_DFT_MO(chemical, MO_Nkpoint, MO_kpoint, SpinP_switch, CntH, iCntHNL, CntOLP[0], NULL);
     }
   }
 
