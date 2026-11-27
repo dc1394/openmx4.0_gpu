@@ -46,12 +46,13 @@ def main():
             for name, original, replacement in [
                 ('axis-alias', 'openmx_solver_real_matrix_row(Hz,', 'openmx_solver_real_matrix_row(Hy,'),
                 ('strain-transpose', 'OpenMX_Stress_VnaStrainRow(H_sts,1,2,m)',
-                 'OpenMX_Stress_VnaStrainRow(H_sts,2,1,m)')]:
+                 'OpenMX_Stress_VnaStrainRow(H_sts,2,1,m)'),
+                ('forced-fp32', 'openmx_fp32_enabled()', '1')]:
                 assert original in native
                 failed = subprocess.run([str(build(name, native.replace(original, replacement)))], cwd=folder,
                                         capture_output=True, text=True, preexec_fn=bounded_stack)
                 assert failed.returncode == 2 and 'FAIL line' in failed.stderr, failed
-    print('PASS: VNA branches, rectangular shapes, ownership reuse, independent strain and two negative controls')
+    print('PASS: VNA branches, both product precisions, rectangular shapes, ownership reuse, and independent strain')
 
 
 if __name__ == '__main__':

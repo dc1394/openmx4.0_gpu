@@ -6,7 +6,7 @@ Across all six pairs, the largest differences are **9.641e-11 Ha** in total ener
 
 ## Precision-option correction
 
-`scf.fp32.enable=off` now disables optional accelerated FP32/double-float grid, orbital and eigenvector-refinement arithmetic while retaining the float products inherited from upstream OpenMX in VNA, force and stress contractions. The product rounds in float before being widened and accumulated in double. GEMMul8 remains an independent setting; the native comparison also disables it.
+In the benchmarked builds, `scf.fp32.enable=off` disabled optional accelerated FP32/double-float grid, orbital and eigenvector-refinement arithmetic. Products in VNA, force and stress contractions rounded in float before widening and accumulation in double. GEMMul8 followed its own setting, and the native comparison disabled it.
 
 The correction covers the shared CUDA/CPU implementation and the HIP implementation, including host SIMD callers, normal device batches, bounded batches, capacity recovery and VNA assembly. The SIMD core interfaces are unchanged. Existing orbital/projector storage formats are unchanged.
 

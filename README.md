@@ -642,14 +642,15 @@ scf.gemmul8.enable  on
 ```
 
 `off` disables FP32 eigenvector refinement, FP32 and double-float grid
-integrals, and double-float orbital evaluation. VNA matrix, force and stress
-contractions retain the float products inherited from upstream OpenMX,
-including their original rounding, with either setting.
+integrals, and double-float orbital evaluation. It also promotes the VNA
+projector operands to FP64 before multiplying them in the stress calculation.
+With `on`, these stress products round in float before being accumulated in
+double. VNA matrix assembly and force contractions retain upstream OpenMX's
+float rounding with either setting.
 It overrides `OPENMX_EIGEN_REFINE`, `OPENMX_GRID_FP32`,
 `OPENMX_GRID_PRECISION` and `OPENMX_ORBS_EVAL_PRECISION` requests for FP32/DF.
 GEMMul8 and cuSOLVER's FP64 fixed-point emulation remain governed by their
-own settings. The existing float storage of orbital and VNA projector
-tables is unchanged; this keyword controls optional accelerated arithmetic.
+own settings. Orbital and VNA projector tables retain their float storage.
 
 ### Corrected precision option: NVIDIA verification (RTX 5080, 2026-11-09)
 
@@ -704,10 +705,10 @@ trial stopped after 93 steps is archived separately and is not a passing run.
 
 The native HIP route disables GEMMul8 and optional FP32/double-float paths
 with `scf.fp32.enable off` and FP64 grid/orbital controls. The default HIP
-route leaves precision controls unset. Both retain the upstream float-product
-rounding in VNA, force and stress contractions. Both GPU runs use MAGMA for
-all 78 SCF steps, with no dense CPU fallback or GPU solver failure; recorded
-Radeon activity corroborates GPU execution.
+route leaves precision controls unset. In these runs, VNA, force and stress
+contractions retained upstream float-product rounding. Both
+GPU runs use MAGMA for all 78 SCF steps, with no dense CPU fallback or GPU
+solver failure; recorded Radeon activity corroborates GPU execution.
 
 The upstream executable uses Intel oneAPI 2026.0 / Intel MPI 2021.18 /
 MKL 2026.0; the fork uses ROCm Core SDK 10.1 / Clang-Flang 24 /

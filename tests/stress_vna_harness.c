@@ -32,7 +32,13 @@ static double dampingF(double cutoff,double r){return r>=cutoff?0:exp(-.07*r*r);
 static double deri_dampingF(double cutoff,double r){return r>=cutoff?0:-.14*r*dampingF(cutoff,r);}
 #include "stress_vna_native.inc"
 static int debug_h,debug_q,debug_where,debug_i,debug_j,debug_a,debug_b;
-static void near(double a,double b){if(!isfinite(a)||fabs(a-b)>=3e-7*(1+fabs(b))){fprintf(stderr,"values %.17g %.17g h/q/where %d %d %d i/j/a/b %d %d %d %d\n",a,b,debug_h,debug_q,debug_where,debug_i,debug_j,debug_a,debug_b);CHECK(0);}}
+static void near(double a,double b,double tolerance){
+  if(!isfinite(a)||fabs(a-b)>=tolerance*(1+fabs(b))){
+    fprintf(stderr,"values %.17g %.17g h/q/where %d %d %d i/j/a/b %d %d %d %d\n",
+            a,b,debug_h,debug_q,debug_where,debug_i,debug_j,debug_a,debug_b);
+    CHECK(0);
+  }
+}
 static double product(int a,int b,int c,int i,int d,int e,int f,int j){
   double sum=0;for(int l=0;l<P;l++)sum+=precision?(double)(ds[a][b][c][i][l]*ds[d][e][f][j][l]):(double)ds[a][b][c][i][l]*(double)ds[d][e][f][j][l];
   return sum;
@@ -126,11 +132,11 @@ static int callback(OpenMXSolverInvocation *owner,void *argument,double *result)
           const int rows=Spe_Total_CNO[WhatSpecies[neighbors[M2G[1]][h]]],cols=Spe_Total_CNO[WhatSpecies[neighbors[M2G[1]][q]]];
           for(int i=0;i<size;i++)for(int j=0;j<size;j++){
             debug_i=i;debug_j=j;double f[3],s[3][3];if(i<rows&&j<cols)reference(where,h,q,i,j,f,s);
-            for(int a=0;a<3;a++){debug_a=a;debug_b=-1;near(outputs[a].values[i*size+j],i<rows&&j<cols?f[a]:12345);}
+            for(int a=0;a<3;a++){debug_a=a;debug_b=-1;near(outputs[a].values[i*size+j],i<rows&&j<cols?f[a]:12345,2e-13);}
             for(int a=0;a<4;a++)for(int b=0;b<4;b++){
               const double expected=i>=rows||j>=cols?12345:a&&b?s[a-1][b-1]:0;
-              debug_a=a;debug_b=b;const double actual=outputs[3].values[((a*4+b)*size+i)*size+j];near(actual,expected);
-              if(!where&&!h&&!q&&a&&b&&i<rows&&j<cols){const double delta=2e-6;near(actual,(strain_energy(i,j,a-1,b-1,delta)-strain_energy(i,j,a-1,b-1,-delta))/(2*delta));}
+              debug_a=a;debug_b=b;const double actual=outputs[3].values[((a*4+b)*size+i)*size+j];near(actual,expected,2e-13);
+              if(!where&&!h&&!q&&a&&b&&i<rows&&j<cols){const double delta=2e-6;near(actual,(strain_energy(i,j,a-1,b-1,delta)-strain_energy(i,j,a-1,b-1,-delta))/(2*delta),3e-7);}
             }
           }
         }
@@ -139,7 +145,7 @@ static int callback(OpenMXSolverInvocation *owner,void *argument,double *result)
     }
     /* Preparing later workers cannot invalidate earlier worker storage. */
     for(int w=0;w<4;w++)for(int k=0;k<(repeat==1?3:2)*2+2;k++){CHECK(saved_lists[w][0][k]==100*w+k);CHECK(saved_lists[w][1][k]==-100*w-k);}
-    for(int w=0;w<4;w++)for(int a=0;a<4;a++)near(saved[w][a].values[0],1000+w*10+a);
+    for(int w=0;w<4;w++)for(int a=0;a<4;a++)CHECK(saved[w][a].values[0]==1000+w*10+a);
   }
   fixture_worker=0;*result=1;return 1;
 }

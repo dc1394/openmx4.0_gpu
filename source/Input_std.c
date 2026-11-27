@@ -913,7 +913,7 @@ void Input_std(char *file, OpenMXCoreContext *core)
     input_logical("scf.fp32.enable", &fp32_enable, 1);
     openmx_set_fp32_enabled(fp32_enable);
     if (!fp32_enable && myid==Host_ID && 2<=level_stdout){
-      printf("<Input_std> scf.fp32.enable=off: FP64 arithmetic replaces optional FP32 and double-float paths; upstream float projector products are retained; GEMMul8 follows its own setting.\n");
+      printf("<Input_std> scf.fp32.enable=off selects FP64 for optional FP32 and double-float paths and VNA stress projector products. VNA matrix assembly and forces retain upstream float products. GEMMul8 follows its own setting.\n");
     }
   }
 

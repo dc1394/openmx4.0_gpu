@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Run the production VNA/force contraction loops on host test arrays.
 
-OpenMP target pragmas are ignored by the host compiler.  Each test compares the
-actual loop against the upstream float-product reference under both settings
-of scf.fp32.enable, including local/halo rows and batches.
+OpenMP target pragmas are ignored by the host compiler. The tests compare
+the actual loops under both settings of scf.fp32.enable. Assembly and
+forces use the upstream float-product reference. Stress uses the selected
+product precision. The cases cover local/halo rows and batches.
 """
 import os
 from pathlib import Path
@@ -58,9 +59,7 @@ static void vna_kernel(int nitems_c, int num_proj, int num_rvna,
 """
 functions = functions.replace("/* VNA_POLICY */", vna_policy)
 
-# Exercise the actual local/halo derivative contractions in both the force
-# and stress implementations; their surrounding atom lookup does not affect
-# the inherited float-product rounding.
+# Exercise the actual local/halo derivative contractions in force and stress.
 derivative_calls = []
 for filename in ("Force.c", "Stress.c"):
     source = (ROOT / "source" / filename).read_text()
@@ -72,6 +71,7 @@ for filename in ("Force.c", "Stress.c"):
         if "fp32" in loop and "sumx" in loop:
             loops.append(loop)
     assert len(loops) == 4, f"{filename}: expected four derivative contractions"
+    reference_precision = "openmx_fp32_enabled()" if filename == "Stress.c" else "1"
     for index, loop in enumerate(loops):
         name = filename.removesuffix(".c").lower() + f"_dot_{index}"
         functions += f"\nstatic void {name}(float DS_VNA1[4][4][3][2][9], double out[3]) {{\n" + r"""
@@ -82,7 +82,7 @@ for filename in ("Force.c", "Stress.c"):
     double sumx = 0.0, sumy = 0.0, sumz = 0.0;
     (void)Mc_AN; (void)Mj_AN2; (void)Matomnum; (void)k; (void)kl; (void)kl1; (void)kl2;
 """.replace("/* DERIVATIVE_POLICY */", derivative_policy) + loop + "\n    out[0] = sumx; out[1] = sumy; out[2] = sumz;\n}\n"
-        derivative_calls.append(f"    {name}(data, result); derivative_check({index}, legacy, data, result);")
+        derivative_calls.append(f"    {name}(data, result); derivative_check({index}, {reference_precision}, data, result);")
 
 HARNESS = r"""
 #define P 9
@@ -122,7 +122,7 @@ static void derivative_check(int kind, int legacy, float data[4][4][3][2][9], co
     }
 }
 
-static void derivatives(int legacy)
+static void derivatives(void)
 {
     float data[4][4][3][2][9];
     double result[3];
@@ -218,7 +218,7 @@ int main(void)
         case1(1, results[enabled][0]);
         case2(1, results[enabled][1]);
         vna_test(1, results[enabled][2]);
-        derivatives(1);
+        derivatives();
     }
     for (int kernel = 0; kernel < 3; ++kernel)
         for (int i = 0; i < 6; ++i)
@@ -232,7 +232,7 @@ int main(void)
     double repeat[6];
     case1(1, repeat);
     for (int i = 0; i < 6; ++i) assert(repeat[i] == results[1][0][i]);
-    puts("PASS: projector/force kernels and local/halo force/stress derivatives retain upstream float products with scf.fp32.enable on/off");
+    puts("PASS: projector assembly and forces retain upstream products; local/halo stress follows scf.fp32.enable");
     return 0;
 }
 """
