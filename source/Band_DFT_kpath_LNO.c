@@ -25,9 +25,7 @@
 #include "mpi.h"
 #include <omp.h>
 
-#if OPENMX_GPU_CUDA || OPENMX_GPU_HIP
-#include "openmx_band_kpath_gpu.h"
-#endif
+#include "openmx_band_kpath.h"
 
 typedef void (*BandKPathEigen)(dcomplex **, double *, int, int, int);
 extern void EigenBand_lapack_cpu(dcomplex **, double *, int, int, int);
@@ -58,15 +56,10 @@ void Band_DFT_kpath_LNO(const OpenMXChemicalPotentials *chemical,  int nkpath, i
 {
 
   if (SpinP_switch==0 || SpinP_switch==1){
-    BandKPathEigen solve = EigenBand_lapack;
-#if OPENMX_GPU_CUDA || OPENMX_GPU_HIP
-    const int gpu_status = openmx_band_kpath_try_gpu(chemical,nkpath,n_perk,kpath,kname,
-                              SpinP_switch,nh,ImNL,CntOLP,local_basis,NULL);
-    if (gpu_status==1) return;
-    if (gpu_status<0) solve = EigenBand_lapack_cpu;
-#endif
+    if (openmx_band_kpath_parallel(chemical,nkpath,n_perk,kpath,kname,
+                                  SpinP_switch,nh,ImNL,CntOLP,local_basis,NULL)) return;
     Band_DFT_kpath_Col(chemical, nkpath, n_perk, kpath, kname, SpinP_switch,
-                       nh, ImNL, CntOLP, local_basis, solve);
+                       nh, ImNL, CntOLP, local_basis, EigenBand_lapack_cpu);
   }
   else if (SpinP_switch==3){
 

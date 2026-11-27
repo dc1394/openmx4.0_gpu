@@ -215,6 +215,9 @@ foreach(_cpu_source IN LISTS _cpu_sources)
     if(OPENMX_CPU_LINALG_RESOLVED STREQUAL "OPENBLAS")
       set_property(SOURCE "${_cpu_source}" APPEND PROPERTY COMPILE_DEFINITIONS OPENMX_EXX_HOST_BLAS_OPENBLAS)
     endif()
+  elseif(_cpu_source_name STREQUAL "openmx_band_kpath_cpu.cpp")
+    # The optional two-stage eigensolver and MKL thread control are weak symbols.
+    set_property(SOURCE "${_cpu_source}" APPEND PROPERTY COMPILE_OPTIONS ${CMAKE_CXX_COMPILE_OPTIONS_PIC})
   endif()
 endforeach()
 target_link_libraries(openmx_cpu_application PRIVATE OpenMX::core MPI::MPI_C MPI::MPI_CXX MPI::MPI_Fortran
@@ -291,13 +294,16 @@ if(BUILD_TESTING)
   # registry, so the registry module links here as in the application.
   add_executable(openmx_cpu_numerics "${CMAKE_SOURCE_DIR}/tests/cpu_numerics.c"
     "${CMAKE_SOURCE_DIR}/source/openmx_elpa_cpu.c" "${CMAKE_SOURCE_DIR}/source/openmx_env.c"
+    "${CMAKE_SOURCE_DIR}/tests/band_kpath_cpu.cpp" "${CMAKE_SOURCE_DIR}/source/openmx_band_kpath_cpu.cpp"
+    "${CMAKE_SOURCE_DIR}/source/openmx_dense_cpu.c" "${CMAKE_SOURCE_DIR}/source/Exact_Exchange_Host.c"
     "${_cpu_backend}/fortran_runtime.f90")
+  target_compile_definitions(openmx_cpu_numerics PRIVATE OPENMX_TEST_CPU_KPATH)
   target_include_directories(openmx_cpu_numerics PRIVATE "${CMAKE_SOURCE_DIR}/source" "${OPENMX_CPU_ELPA_INCLUDE_DIR}")
   set_target_properties(openmx_cpu_numerics PROPERTIES POSITION_INDEPENDENT_CODE ON LINKER_LANGUAGE CXX)
   openmx_compiler_runtime_rpath(openmx_cpu_numerics CXX)
   openmx_compiler_runtime_rpath(openmx_cpu_numerics C)
   openmx_compiler_runtime_rpath(openmx_cpu_numerics Fortran)
-  target_link_libraries(openmx_cpu_numerics PRIVATE MPI::MPI_C MPI::MPI_Fortran
+  target_link_libraries(openmx_cpu_numerics PRIVATE OpenMX::core MPI::MPI_C MPI::MPI_Fortran
     OpenMP::OpenMP_C OpenMP::OpenMP_CXX
     "${OPENMX_CPU_ELPA_LIBRARY}" ${OPENMX_CPU_LINALG_LIBRARIES} m ${CMAKE_DL_LIBS})
   if(CMAKE_SYSTEM_NAME STREQUAL "Linux")

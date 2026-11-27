@@ -1,5 +1,5 @@
 #include "openmx_stdout_level.h"
-#include "openmx_band_kpath_gpu.h"
+#include "openmx_band_kpath.h"
 #include "openmx_env.h"
 #include <magma_v2.h>
 #include "hip_runtime_compat.h"

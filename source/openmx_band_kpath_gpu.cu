@@ -1,4 +1,4 @@
-#include "openmx_band_kpath_gpu.h"
+#include "openmx_band_kpath.h"
 #include "openmx_gpu_memory.hpp"
 #include "openmx_gpu_workers.h"
 #include "openmx_mgpu_runtime.h"

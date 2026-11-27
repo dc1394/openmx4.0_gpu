@@ -25,9 +25,7 @@
 #include "mpi.h"
 #include <omp.h>
 
-#if OPENMX_GPU_CUDA || OPENMX_GPU_HIP
-#include "openmx_band_kpath_gpu.h"
-#endif
+#include "openmx_band_kpath.h"
 #include "openmx_exact_exchange.h"
 
 typedef void (*BandKPathEigen)(dcomplex **, double *, int, int, int);
@@ -60,19 +58,16 @@ void Band_DFT_kpath(const OpenMXChemicalPotentials *chemical,  int nkpath, int *
 {
   const double started = MPI_Wtime();
 
-  int gpu_status = 0;
-#if OPENMX_GPU_CUDA || OPENMX_GPU_HIP
-  if (SpinP_switch==0 || SpinP_switch==1 || SpinP_switch==3)
-    gpu_status = openmx_band_kpath_try_gpu(chemical,nkpath,n_perk,kpath,kname,
-                                        SpinP_switch,nh,ImNL,CntOLP,NULL,exact_exchange);
-#endif
-  BandKPathEigen solve = gpu_status < 0 ? EigenBand_lapack_cpu : EigenBand_lapack;
-  if (gpu_status!=1 && (SpinP_switch==0 || SpinP_switch==1)){
+  const int solved = (SpinP_switch==0 || SpinP_switch==1 || SpinP_switch==3) &&
+    openmx_band_kpath_parallel(chemical,nkpath,n_perk,kpath,kname,
+                             SpinP_switch,nh,ImNL,CntOLP,NULL,exact_exchange);
+  if (!solved && (SpinP_switch==0 || SpinP_switch==1)){
     Band_DFT_kpath_Col(chemical, nkpath, n_perk, kpath, kname, SpinP_switch,
-                      nh, ImNL, CntOLP, solve, exact_exchange);
+                      nh, ImNL, CntOLP, EigenBand_lapack_cpu, exact_exchange);
   }
-  else if (gpu_status!=1 && SpinP_switch==3){
-    Band_DFT_kpath_NonCol(chemical, nkpath, n_perk, kpath, kname, SpinP_switch, nh, ImNL, CntOLP, solve);
+  else if (!solved && SpinP_switch==3){
+    Band_DFT_kpath_NonCol(chemical, nkpath, n_perk, kpath, kname, SpinP_switch, nh, ImNL, CntOLP,
+                         EigenBand_lapack_cpu);
   }
 
   if (0<level_stdout){

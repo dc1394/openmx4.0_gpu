@@ -29,6 +29,13 @@ typedef void (*OpenMXHostAddRows)(double *dst, size_t dst_stride, const double *
    for an SVE mode, because fixed-width SVE depends on that thread's VL. */
 OpenMXHostAddRows openmx_core_host_add_rows(int mode);
 
+/* Accumulate a Bloch block in a column-major complex matrix. The source
+   planes are contiguous and imag may be NULL. The destination is interleaved
+   doubles and ld counts complex elements. */
+typedef void (*OpenMXHostBlochAdd)(double *dst, int ld, const double *real, const double *imag,
+                                 int rows, int cols, double cosine, double sine);
+OpenMXHostBlochAdd openmx_core_host_bloch_add(int mode);
+
 #ifdef __cplusplus
 }
 #endif

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the production band matrix packing and gather with a nonzero GPU root."""
+"""Exercise production band packing for CPU ranks and a nonzero GPU root."""
 
 import os
 from pathlib import Path
@@ -11,14 +11,13 @@ import tempfile
 from native_state_test_support import bounded_stack
 
 ROOT = Path(__file__).resolve().parents[1]
-source = (ROOT / "source/Band_DFT_kpath_gpu.c").read_text()
+source = (ROOT / "source/Band_DFT_kpath_parallel.c").read_text()
 exchange_header = (ROOT / "source/openmx_exact_exchange.h").read_text()
 end = exchange_header.index("} OpenMXExactExchangeOutputView;") + len("} OpenMXExactExchangeOutputView;")
 exchange_type = exchange_header[exchange_header.rindex("typedef struct {", 0, end):end]
 types = source[source.index("typedef struct {"):source.index("static int all_ranks_ok")]
-exchange_guard = source.rindex("#if ", 0, source.index("static int size_exchange"))
-pack = source[source.index("static int values_per_orbital_pair"):exchange_guard]
-exchange_pack = source[source.index("static void pack_exchange"):source.index("\n#endif\n\nstatic int rank_counts")]
+pack = source[source.index("static int values_per_orbital_pair"):source.index("static int size_exchange")]
+exchange_pack = source[source.index("static void pack_exchange"):source.index("static int rank_counts")]
 exchange_mpi = source[source.index("    OpenMXKPathBlock *local_block_target"):source.index("    m.blocks = blocks;")]
 prefix = r'''
 #include <assert.h>
@@ -26,20 +25,20 @@ prefix = r'''
 #include <mpi.h>
 #include <omp.h>
 #include <stdlib.h>
-#include "openmx_band_kpath_gpu.h"
-#define OPENMX_GPU_CUDA 1
+#include "openmx_band_kpath.h"
 static double element(int channel,int world,int neighbor,int row,int col)
 { return 10000*channel+1000*world+100*neighbor+10*row+col; }
 '''
 fixture = r'''
-static void check(int rank, int mode)
+static void check(int rank, int mode, int replicate)
 {
     /* Rank zero has no atoms. Rank one contributes a prefix before the first
        GPU owner, and rank three checks that owner's broadcast. */
     enum {COUNT=4, CHANNELS=8, ATOM_MAX=3};
-    const int input_root=2, owner_count=2, owner=rank>=input_root, gather_root=rank==input_root;
-    MPI_Comm comm=MPI_COMM_WORLD, devices=MPI_COMM_NULL;
-    MPI_Comm_split(comm,owner?0:MPI_UNDEFINED,rank,&devices);
+    const int input_root=replicate?0:2, owner=rank>=input_root, gather_root=rank==input_root;
+    const int direct_pack=replicate || gather_root;
+    MPI_Comm comm=MPI_COMM_WORLD, owners=MPI_COMM_NULL;
+    if (!replicate) MPI_Comm_split(comm,owner?0:MPI_UNDEFINED,rank,&owners);
 
     const int local_atoms=rank!=0;
     const int paos[COUNT]={0,2,3,1}, species[COUNT]={0,1,2,3}, counts[COUNT]={0,1,1,1};
@@ -47,11 +46,13 @@ static void check(int rank, int mode)
     int targets[COUNT][2]={{0,0},{1,2},{2,3},{3,1}}, shift[4]={0,3,-2,1}, shifts[2]={0,0};
     int *neighbors[COUNT]={targets[0],targets[1],targets[2],targets[3]};
     int *cells[COUNT]={shifts,shifts,shifts,shifts}, *translations[1]={shift};
-    const KPathBasis basis={3,local_atoms,to_global,NULL,species,paos,NULL,counts,neighbors,cells,translations};
+    const KPathBasis input={3,local_atoms,to_global,NULL,species,paos,NULL,counts,neighbors,cells,translations};
+    const KPathBasis *basis=&input;
     const OpenMXLocalBasisViews *local_basis=NULL;
-    OpenMXKPathMatrices m={.spin_channels=mode==1?2:1,.noncollinear=mode>=2,.imaginary_diagonals=mode==3};
+    OpenMXKPathMatrices m={.spin_channels=mode==1?2:1,.noncollinear=mode>=2,
+                          .imaginary_diagonals=mode==3,.planar=replicate};
     int offset[COUNT+1];
-    assert(orbital_offsets(&m,&basis,offset)==6);
+    assert(orbital_offsets(&m,basis,offset)==6);
 
     double data[CHANNELS][2][ATOM_MAX][ATOM_MAX], *rows[CHANNELS][2][ATOM_MAX];
     double **neighbors_data[CHANNELS][2], ***atoms_data[CHANNELS][2];
@@ -69,7 +70,7 @@ static void check(int rank, int mode)
     double ****imaginary[3]={atoms_data[5],atoms_data[6],atoms_data[7]};
 
     KPathLocalOffset local_offsets[2];
-    assert(local_block_offsets(&m,&basis,offset,local_offsets));
+    assert(local_block_offsets(&m,basis,offset,local_offsets));
     const KPathLocalOffset end=local_offsets[local_atoms];
     int local_size[2]={end.blocks*(int)sizeof(OpenMXKPathBlock),end.values}, sizes[COUNT][2];
     MPI_Allgather(local_size,2,MPI_INT,sizes,2,MPI_INT,comm);
@@ -85,11 +86,11 @@ static void check(int rank, int mode)
     const OpenMXExactExchangeOutputView exchange={3,6,m.spin_channels,1,exx_atoms,exx_shift,exx_orbitals,
                                                     exx_offset,{exx_up,exx_down}};
     m.exchange_offset=value_count;
-    OpenMXKPathBlock *local=gather_root?NULL:malloc((size_t)(local_size[0]?local_size[0]:1));
-    double *local_values=gather_root?NULL:malloc((size_t)(local_size[1]?local_size[1]:1)*sizeof(double));
+    OpenMXKPathBlock *local=direct_pack?NULL:malloc((size_t)(local_size[0]?local_size[0]:1));
+    double *local_values=direct_pack?NULL:malloc((size_t)(local_size[1]?local_size[1]:1)*sizeof(double));
     OpenMXKPathBlock *blocks=owner?malloc((size_t)(semilocal_blocks+1)*sizeof(*blocks)):NULL;
     double *values=owner?malloc((size_t)(value_count+3*m.spin_channels)*sizeof(*values)):NULL;
-    assert(gather_root || (local && local_values));
+    assert(direct_pack || (local && local_values));
     assert(!owner || (blocks && values));
 '''
 verify = r'''
@@ -103,19 +104,24 @@ verify = r'''
             for (int j=0;j<p;++j)for (int i=0;i<n;++i)for (int ch=0;ch<width;++ch) {
                 double want=element(ch,world,h,i,j);
                 if (mode==3 && ch==4) want+=element(7,world,h,i,j);
-                assert(values[value++]==want);
+                const int entry=j*n+i;
+                const int index=replicate?ch*n*p+entry:entry*width+ch;
+                assert(values[value+index]==want);
             }
+            value+=n*p*width;
         }
         assert(block==semilocal_blocks && value==value_count);
         if (exchange_status) {
             assert(blocks[block].row==2 && blocks[block].col==5 && blocks[block].value_offset==value);
-            for (int i=0;i<3;++i)for (int spin=0;spin<m.spin_channels;++spin)
-                assert(values[value++]==exchange.values[spin][i]);
+            for (int i=0;i<3;++i)for (int spin=0;spin<m.spin_channels;++spin) {
+                const int index=replicate?3*spin+i:i*m.spin_channels+spin;
+                assert(values[value+index]==exchange.values[spin][i]);
+            }
         }
     }
     free(blocks);
     free(values);
-    if (devices!=MPI_COMM_NULL) MPI_Comm_free(&devices);
+    if (owners!=MPI_COMM_NULL) MPI_Comm_free(&owners);
 }
 
 int main(int argc,char **argv)
@@ -125,8 +131,11 @@ int main(int argc,char **argv)
     MPI_Comm_rank(MPI_COMM_WORLD,&rank);
     MPI_Comm_size(MPI_COMM_WORLD,&ranks);
     assert(ranks==4);
-    for (int mode=0;mode<4;++mode) check(rank,mode);
-    if (!rank) puts("PASS: band packing with an empty rank, nonzero GPU root and local exchange tails");
+    for (int mode=0;mode<4;++mode) {
+        check(rank,mode,0);
+        check(rank,mode,1);
+    }
+    if (!rank) puts("PASS: band packing with CPU replication, a nonzero GPU root and local exchange tails");
     MPI_Finalize();
 }
 '''

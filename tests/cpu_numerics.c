@@ -17,6 +17,9 @@ extern void F77_NAME(pzpotrf, PZPOTRF)(const char *, int *, void *, int *, int *
 #ifdef OPENMX_TEST_CXX_BOUNDARY
 extern int openmx_test_cpu_cxx(void);
 #endif
+#ifdef OPENMX_TEST_CPU_KPATH
+extern int openmx_test_cpu_kpath(void);
+#endif
 
 /* The eigenvectors are gathered to every rank (two ranks, 16 rows) and
    checked by the residual ||A q - lambda q|| and by Q^T Q = I. ELPA's
@@ -81,11 +84,20 @@ int main(int argc, char **argv)
     int rank, size, context, info, failed = 0, all_failed;
     int n = 16, block = 2, zero = 0, one = 1, desc[9];
     MPI_Comm rows, cols;
+#ifdef OPENMX_TEST_CPU_KPATH
+    int provided;
+    MPI_Init_thread(&argc, &argv, MPI_THREAD_FUNNELED, &provided);
+    if (provided < MPI_THREAD_FUNNELED) MPI_Abort(MPI_COMM_WORLD, 2);
+#else
     MPI_Init(&argc, &argv);
+#endif
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
 #ifdef OPENMX_TEST_CXX_BOUNDARY
     if (openmx_test_cpu_cxx() != 6) failed = 1;
+#endif
+#ifdef OPENMX_TEST_CPU_KPATH
+    if (!openmx_test_cpu_kpath()) failed = 1;
 #endif
     if (size != 2) MPI_Abort(MPI_COMM_WORLD, 2);
     int local_rows = n / size;

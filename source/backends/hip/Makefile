@@ -428,7 +428,7 @@ openmx_globals.o: openmx_globals.c openmx_common.h
 include openmx_core.mk
 # These interfaces also reach legacy objects through openmx_common.h.
 # Rebuild consumers when a native API mapping or backend selection changes.
-OBJS += Band_DFT_kpath_gpu.o openmx_band_kpath_gpu.o \
+OBJS += Band_DFT_kpath_parallel.o openmx_band_kpath_cpu.o openmx_band_kpath_gpu.o \
         Exact_Exchange.o Exact_Exchange_Device.o Exact_Exchange_Host.o exact_exchange_device_hip.o
 
 OPENMX_GPU_INTERFACE_HEADERS = openmx_gpu_backend.h openmx_gpu_runtime.h \
@@ -580,7 +580,7 @@ Cluster_DFT_Col.o: Cluster_DFT_Col.c openmx_common.h eigen_refine_gpu.h eigen_re
 	$(CC) -c Cluster_DFT_Col.c
 Cluster_DFT_Col_dm_hip.o: Cluster_DFT_Col_dm_hip.cu
 	$(HIPCC) $(HIPCC_GEMMUL8_FLAGS) -c Cluster_DFT_Col_dm_hip.cu -o Cluster_DFT_Col_dm_hip.o
-magma_openmx.o: magma_openmx.cu openmx_band_kpath_gpu.h openmx_common.h $(MAGMA_LIB) openmx_stdout_level.h openmx_gpu_arch_policy.h openmx_magma_lock.h
+magma_openmx.o: magma_openmx.cu openmx_band_kpath.h openmx_common.h $(MAGMA_LIB) openmx_stdout_level.h openmx_gpu_arch_policy.h openmx_magma_lock.h
 	$(HIPCC) $(HIPCC_MAGMA_FLAGS) -c magma_openmx.cu -o magma_openmx.o
 Cluster_DFT_NonCol.o: Cluster_DFT_NonCol.c openmx_common.h eigen_refine_gpu.h eigen_refine_hooks.h openmx_precision.h
 	$(CC) -c Cluster_DFT_NonCol.c
@@ -634,13 +634,15 @@ Band_DFT_NonCol.o: Band_DFT_NonCol.c openmx_common.h eigen_refine_gpu.h eigen_re
 	$(CC3) -c Band_DFT_NonCol.c
 Band_DFT_NonCol_GB.o: Band_DFT_NonCol_GB.c openmx_common.h
 	$(CC) -c Band_DFT_NonCol_GB.c
-Band_DFT_kpath.o: Band_DFT_kpath.c openmx_common.h openmx_band_kpath_gpu.h openmx_band_kpath_points.h
+Band_DFT_kpath.o: Band_DFT_kpath.c openmx_common.h openmx_band_kpath.h openmx_band_kpath_points.h
 	$(CC) -c Band_DFT_kpath.c
-Band_DFT_kpath_LNO.o: Band_DFT_kpath_LNO.c openmx_common.h openmx_band_kpath_gpu.h openmx_band_kpath_points.h
+Band_DFT_kpath_LNO.o: Band_DFT_kpath_LNO.c openmx_common.h openmx_band_kpath.h openmx_band_kpath_points.h
 	$(CC) -c Band_DFT_kpath_LNO.c
-Band_DFT_kpath_gpu.o: Band_DFT_kpath_gpu.c openmx_band_kpath_gpu.h openmx_band_kpath_points.h openmx_common.h openmx_mgpu_runtime.h openmx_gpu_collective.h openmx_host_memory.h openmx_host_simd.h
+Band_DFT_kpath_parallel.o: Band_DFT_kpath_parallel.c openmx_band_kpath.h openmx_band_kpath_points.h openmx_common.h openmx_mgpu_runtime.h openmx_gpu_collective.h openmx_host_memory.h openmx_host_simd.h
 	$(CC_NOACC_O3) -c $<
-openmx_band_kpath_gpu.o: openmx_band_kpath_gpu.cu openmx_band_kpath_gpu.h openmx_gpu_memory.hpp openmx_gpu_workers.h openmx_mgpu_runtime.h
+openmx_band_kpath_cpu.o: openmx_band_kpath_cpu.cpp openmx_band_kpath.h openmx_core_host_simd.h openmx_host_buffer.hpp openmx_dense_cpu.h openmx_exact_exchange_host.h f77func.h
+	$(CPPLANG) -O3 -std=c++17 -fPIC -ffp-contract=off -fopenmp -c $< -o $@
+openmx_band_kpath_gpu.o: openmx_band_kpath_gpu.cu openmx_band_kpath.h openmx_gpu_memory.hpp openmx_gpu_workers.h openmx_mgpu_runtime.h
 	$(HIPCC) $(HIPCC_GEMMUL8_FLAGS) -c $< -o $@
 Exact_Exchange.o: Exact_Exchange.c openmx_exact_exchange.h openmx_exact_exchange_device.h openmx_exact_exchange_host.h openmx_exx.h ../modules/exx/include/openmx/exx/exx.h openmx_host_simd.h openmx_gpu_architecture.h openmx_gpu_collective.h openmx_gpu_device.h openmx_mgpu_runtime.h
 	$(CC_NOACC_O3) -c $<
@@ -650,7 +652,7 @@ Exact_Exchange_Host.o: Exact_Exchange_Host.c openmx_exact_exchange_host.h
 	$(CC_NOACC_O3) -fPIC -c $<
 exact_exchange_device_hip.o: exact_exchange_device_hip.cu openmx_exact_exchange_hip.h openmx_exx.h ../modules/exx/include/openmx/exx/exx.h
 	$(HIPCC) $(HIPCC_GEMMUL8_FLAGS) -c $< -o $@
-Input_std.o DFT.o Cluster_DFT_Col.o Band_DFT_Col.o Band_DFT_kpath.o Band_DFT_kpath_gpu.o Band_DFT_Dosout.o: openmx_exact_exchange.h
+Input_std.o DFT.o Cluster_DFT_Col.o Band_DFT_Col.o Band_DFT_kpath.o Band_DFT_kpath_parallel.o Band_DFT_Dosout.o: openmx_exact_exchange.h
 Cluster_DFT_Col.o Band_DFT_Col.o: openmx_exact_exchange_hip.h
 Set_XC_Grid.o set_xc_grid_hip.o: openmx_xc_hybrid_kernels.h ../modules/xc/include/openmx/xc/hybrid_kernels.h ../modules/xc/include/openmx/xc/kernels.h
 Band_DFT_MO.o: Band_DFT_MO.c openmx_common.h

@@ -379,7 +379,7 @@ OBJS    = openmx_grid_assembly.o openmx.o openmx_common.o Input_std.o Inputtools
           Electric_Polarization_BandCol.o Electric_Polarization_BandNonCol.o
 
 OBJS += openmx_mgpu_runtime.o openmx_mgpu_gemm.o openmx_magma_mgpu.o
-OBJS += Band_DFT_kpath_gpu.o openmx_band_kpath_gpu.o
+OBJS += Band_DFT_kpath_parallel.o openmx_band_kpath_cpu.o openmx_band_kpath_gpu.o
 OBJS += openmx_gpu_workers.o openmx_gpu_error.o openmx_gpu_views.o openmx_globals.o
 OBJS += openmx_gpu_transform.o
 OBJS += openmx_gpu_dm.o openmx_gpu_dm_collective.o
@@ -705,13 +705,15 @@ Band_DFT_NonCol.o: Band_DFT_NonCol.c openmx_common.h eigen_refine_gpu.h openmx_p
 	$(CC3) -c Band_DFT_NonCol.c
 Band_DFT_NonCol_GB.o: Band_DFT_NonCol_GB.c openmx_common.h
 	$(CC) -c Band_DFT_NonCol_GB.c
-Band_DFT_kpath.o: Band_DFT_kpath.c openmx_common.h openmx_band_kpath_gpu.h openmx_band_kpath_points.h
+Band_DFT_kpath.o: Band_DFT_kpath.c openmx_common.h openmx_band_kpath.h openmx_band_kpath_points.h
 	$(CC) -c Band_DFT_kpath.c
-Band_DFT_kpath_LNO.o: Band_DFT_kpath_LNO.c openmx_common.h openmx_band_kpath_gpu.h openmx_band_kpath_points.h
+Band_DFT_kpath_LNO.o: Band_DFT_kpath_LNO.c openmx_common.h openmx_band_kpath.h openmx_band_kpath_points.h
 	$(CC) -c Band_DFT_kpath_LNO.c
-Band_DFT_kpath_gpu.o: Band_DFT_kpath_gpu.c openmx_band_kpath_gpu.h openmx_band_kpath_points.h openmx_common.h openmx_mgpu_runtime.h openmx_gpu_collective.h openmx_host_memory.h openmx_host_simd.h openmx_exact_exchange.h
+Band_DFT_kpath_parallel.o: Band_DFT_kpath_parallel.c openmx_band_kpath.h openmx_band_kpath_points.h openmx_common.h openmx_mgpu_runtime.h openmx_gpu_collective.h openmx_host_memory.h openmx_host_simd.h openmx_exact_exchange.h
 	$(CC_NOACC_O3) -c $<
-openmx_band_kpath_gpu.o: openmx_band_kpath_gpu.cu openmx_band_kpath_gpu.h openmx_gpu_memory.hpp openmx_gpu_workers.h openmx_mgpu_runtime.h
+openmx_band_kpath_cpu.o: openmx_band_kpath_cpu.cpp openmx_band_kpath.h openmx_core_host_simd.h openmx_host_buffer.hpp openmx_dense_cpu.h openmx_exact_exchange_host.h f77func.h
+	$(NVHPC_COMPILER_BIN)/nvc++ -O3 -std=c++17 -fPIC -fopenmp -Mnofma -c $< -o $@
+openmx_band_kpath_gpu.o: openmx_band_kpath_gpu.cu openmx_band_kpath.h openmx_gpu_memory.hpp openmx_gpu_workers.h openmx_mgpu_runtime.h
 	$(NVCC_GEMMUL8_ENV) $(NVCC) $(NVCC_GEMMUL8_FLAGS) -c $< -o $@
 Band_DFT_MO.o: Band_DFT_MO.c openmx_common.h
 	$(CC) -c Band_DFT_MO.c

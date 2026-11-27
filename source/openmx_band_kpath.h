@@ -1,6 +1,7 @@
-#ifndef OPENMX_BAND_KPATH_GPU_H
-#define OPENMX_BAND_KPATH_GPU_H
+#ifndef OPENMX_BAND_KPATH_H
+#define OPENMX_BAND_KPATH_H
 
+#include <stddef.h>
 #include "openmx_core_chemical.h"
 #include "openmx_core_local_basis.h"
 
@@ -18,6 +19,9 @@ typedef struct {
 
 typedef struct {
     int order, spin_channels, noncollinear, lno, imaginary_diagonals;
+    /* With planar storage each block has a rows*cols plane per channel.
+       Otherwise the channels are interleaved for each orbital pair. */
+    int planar;
     int block_count, value_count;
     /* Entries below this offset have S and H channels. Entries at and
        above it carry only the spin channels of the exact exchange. */
@@ -34,8 +38,8 @@ typedef struct {
 
 struct OpenMXExactExchangeState;
 
-/* MPI adapter. 1: file published, 0: fast path disabled, -1: use CPU. */
-int openmx_band_kpath_try_gpu(const OpenMXChemicalPotentials *chemical,
+/* MPI adapter. Returns true after writing the file on the host rank. */
+int openmx_band_kpath_parallel(const OpenMXChemicalPotentials *chemical,
     int path_count, const int *points_per_path, double ***paths, char ***names,
     int spin, double *****hamiltonian, double *****imaginary, double ****overlap,
     const OpenMXLocalBasisViews *local_basis, const struct OpenMXExactExchangeState *exchange);
@@ -44,6 +48,11 @@ int openmx_band_kpath_try_gpu(const OpenMXChemicalPotentials *chemical,
    Eigenvalues are point-major, then spin-major and ascending. */
 int openmx_band_kpath_solve_gpu(int device, const OpenMXKPathMatrices *matrices,
     int point_count, const OpenMXKPathPoint *points, double *eigenvalues);
+
+/* Thread workers use separate LAPACK workspaces and never call MPI. */
+int openmx_band_kpath_solve_cpu(const OpenMXKPathMatrices *matrices,
+    int point_count, const OpenMXKPathPoint *points, double *eigenvalues,
+    int simd_mode, size_t workspace_limit, int *threads_used);
 
 #ifdef __cplusplus
 }

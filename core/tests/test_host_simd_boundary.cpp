@@ -36,6 +36,40 @@ static void check_row_updates()
   }
 }
 
+static void check_bloch_blocks()
+{
+  for (int mode = OPENMX_GRID_SCALAR; mode < OPENMX_GRID_MODE_COUNT; ++mode) {
+    if (!openmx_core_host_simd_usable(mode)) continue;
+    const auto add = openmx_core_host_bloch_add(mode);
+    if (!add) throw std::runtime_error("a usable host SIMD mode has no Bloch kernel");
+    for (int rows : {1,2,3,4,5,7,8,9,13}) {
+      const int cols = 3, ld = rows+2;
+      const double cosine = -0.23, sine = 0.83;
+      std::vector<double> real(rows*cols), imag(rows*cols);
+      for (int i = 0; i < rows*cols; ++i) {
+        real[i] = 0.11*i-3.1;
+        imag[i] = 2.1-0.17*i;
+      }
+      for (bool complex : {false,true}) {
+        std::vector<double> dst(1+2*(ld*(cols-1)+rows),-0.3);
+        auto expected = dst;
+        for (int j = 0; j < cols; ++j) {
+          for (int i = 0; i < rows; ++i) {
+            const int entry = j*rows+i, index = 1+2*(j*ld+i);
+            const volatile double rc = real[entry]*cosine, rs = real[entry]*sine;
+            const volatile double ic = imag[entry]*cosine, is = imag[entry]*sine;
+            expected[index] += complex ? rc-is : rc;
+            expected[index+1] += complex ? rs+ic : rs;
+          }
+        }
+        add(dst.data()+1,ld,real.data(),complex ? imag.data() : nullptr,rows,cols,cosine,sine);
+        if (std::memcmp(dst.data(),expected.data(),sizeof(double)*dst.size()) != 0)
+          throw std::runtime_error("host SIMD Bloch block differs from the scalar loop");
+      }
+    }
+  }
+}
+
 int main() {
   try {
     constexpr auto default_width=Kokkos::Experimental::simd<double>::size();
@@ -69,6 +103,7 @@ int main() {
       throw std::runtime_error("host SIMD tail failed");
     context.reset();
     check_row_updates();
+    check_bloch_blocks();
     if(Kokkos::is_initialized())throw std::runtime_error("CPU fallback initialized a device runtime");
     std::cout<<"default SIMD width="<<default_width<<"; host SIMD width="<<width<<'\n';
   }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}
