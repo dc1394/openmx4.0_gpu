@@ -290,7 +290,6 @@
   ],
   "overrides": {
     "Cluster_DFT_Col_dm_hip.cu": "src/Cluster_DFT_Col_dm_hip.cu",
-    "Set_XC_Grid.c": "src/Set_XC_Grid.c",
     "cuda_fp8.h": "include/cuda_fp8.h",
     "cusolverDn.h": "include/cusolverDn.h",
     "gemmul8_openmx.cu": "src/gemmul8_openmx.cu",
@@ -302,8 +301,7 @@
     "set_hip_default_device_from_local_rank.c": "src/set_hip_default_device_from_local_rank.c",
     "set_hip_default_device_from_local_rank.h": "include/set_hip_default_device_from_local_rank.h",
     "set_openmp_device_from_local_rank.c": "src/set_openmp_device_from_local_rank.c",
-    "set_openmp_device_from_local_rank.h": "include/set_openmp_device_from_local_rank.h",
-    "set_xc_grid_hip.cu": "src/set_xc_grid_hip.cu"
+    "set_openmp_device_from_local_rank.h": "include/set_openmp_device_from_local_rank.h"
   },
   "makefile": "Makefile",
   "auxiliary": {
@@ -520,7 +518,6 @@
     "Set_Allocate_Atom2CPU.c": "224f5d0b2425e2079c862bc231ee8d054a43be1adee598be40cc623fbc87c8db",
     "Set_Initial_DM.c": "2fc4a13f23955b681e2ce4ce83b7bcd88a921105cbc5282ac1d326c297aeb1b9",
     "Set_OLP_p.c": "b835f1042b56c73dc7475c3e0721055879a4eafaacf0d9e06e5424d88550889a",
-    "Set_XC_Grid.c": "596fdc1c8e59b552881b302ecfde8bbcc47795941e9ca8218c068745c23e9c87",
     "Show_DFT_DATA.c": "13f65e50099ad375433eaf7a7cc44a7cb3e292e01fe5f3c167dc7ebbf0535e83",
     "SigmaEK.c": "e50f90c26471ba8ef9b962ccfc025b1c60e0fb72fdc7d5f4ea8a764e290388d4",
     "Smoothing_Func.c": "4a61466e4a22e54c38d1703b867fb4dff6a1e0ea53e13401d56d03e6715e1cd5",
@@ -716,7 +713,6 @@
     "set_hip_default_device_from_local_rank.h": "39bd9dbe15d2e4cade99b646d816aeda3dc02175384f6f0587fc874b0947836d",
     "set_openmp_device_from_local_rank.c": "3dba462ed814fcff223bba98227b660a6550061b2b95e15aafc080dd027e7f6d",
     "set_openmp_device_from_local_rank.h": "31d490d7bf23a6a2587f9eac3ad7c9d67f688fa1bfdebefeb90c46d61002a836",
-    "set_xc_grid_hip.cu": "6b4e4c4a36ff0f004e3a398c519921dd51f7ef388ee2df018534c3b26246050b",
     "spectra.c": "25d18ab5e80be7e1dca067ef3780451b9b8c58f010c1e45e88c648258df3bbfc",
     "test_cp.c": "40b0ed9fb0103186ceeb3ca9fa14cf12aedbe93465f68134f2da45bd653031f0",
     "test_mpi.c": "d419046d7c66a9cee408bc37bcfd4777bc333e44bf21977011fb1088d2b0a9e7",
@@ -1168,6 +1164,8 @@
     "Cluster_DFT_NonCol_dm_hip.cu": "src/Cluster_DFT_NonCol_dm_hip.cu",
     "magma_openmx.cu": "src/magma_openmx.cu",
     "openmx_exact_exchange_hip.h": "src/openmx_exact_exchange_hip.h",
-    "exact_exchange_device_hip.cu": "src/exact_exchange_device_hip.cu"
+    "exact_exchange_device_hip.cu": "src/exact_exchange_device_hip.cu",
+    "Set_XC_Grid.c": "src/Set_XC_Grid.c",
+    "set_xc_grid_hip.cu": "src/set_xc_grid_hip.cu"
   }
 }

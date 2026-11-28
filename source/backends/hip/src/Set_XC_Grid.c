@@ -20,8 +20,8 @@
 void Inverse(int n, double **a, double **ia);
 
 /* ---------------------------------------------------------------------
-   GPU evaluation of the GGA-PBE branch (XC_switch 4, XC_P_switch 0, 1 or
-   2, without the LDA+U cFLL rotation; set_xc_grid_hip.cu, a port of the
+   GPU evaluation of the GGA-PBE branch (XC_switch 4, XC_P_switch 0 to 3,
+   without the LDA+U cFLL rotation; set_xc_grid_hip.cu, a port of the
    NVIDIA version): the gradient stencil, the PBE functional, the
    divergence stencil and the non-collinear rotation on the rank's D grid.
    The functional includes the semilocal part of HSE06 and PBE0,
@@ -61,7 +61,7 @@ static int Set_XC_Grid_GPU_Native(int XC_P_switch, double exx_alpha, double exx_
   int i, i1, j1, k1, i2, j2, k2, p, q;
   double x, y, z, x1, y1, z1;
 
-  if (!(XC_P_switch == 0 || XC_P_switch == 1 || XC_P_switch == 2)) return 0;
+  if (XC_P_switch<0 || XC_P_switch>3) return 0;
   if (dc_Type == 3 || dc_Type == 4) return 0;
   if (!SXG_gpu_enabled()) return 0;
   if (n <= 0) return 1;
@@ -189,6 +189,7 @@ static int SXG_slab_worker(void *opaque, int worker, int phase)
   const int XC_P_switch=work->XC_P_switch, pcc=work->pcc, rotate=work->rotate;
   const double exx_alpha=work->exx_alpha, exx_omega=work->exx_omega;
   const int second=(XC_P_switch==1 || XC_P_switch==2);
+  const int potential=XC_P_switch!=3;
   const double den_min=SXG_DEN_MIN;
   int MN, i;
   double *d_den0=slab->d_den0;
@@ -216,8 +217,8 @@ static int SXG_slab_worker(void *opaque, int worker, int phase)
   o_pcc1 = pcc ? SXG_arena_off(&pos, nb) : 0;
   o_dden = SXG_arena_off(&pos, 6 * nb);
   o_dexc = SXG_arena_off(&pos, 6 * nb);
-  o_vxc0 = SXG_arena_off(&pos, nb);
-  o_vxc1 = SXG_arena_off(&pos, nb);
+  o_vxc0 = potential ? SXG_arena_off(&pos, nb) : 0;
+  o_vxc1 = potential ? SXG_arena_off(&pos, nb) : 0;
   o_vxc2 = rotate ? SXG_arena_off(&pos, nb) : 0;
   o_vxc3 = rotate ? SXG_arena_off(&pos, nb) : 0;
   o_inv = SXG_arena_off(&pos, sizeof(double) * 27 * 27);
@@ -237,8 +238,8 @@ static int SXG_slab_worker(void *opaque, int worker, int phase)
   d_pcc1 = pcc ? (double*)(void*)(arena + o_pcc1) : NULL;
   d_dden = (double*)(void*)(arena + o_dden);
   d_dexc = (double*)(void*)(arena + o_dexc);
-  d_vxc0 = (double*)(void*)(arena + o_vxc0);
-  d_vxc1 = (double*)(void*)(arena + o_vxc1);
+  d_vxc0 = potential ? (double*)(void*)(arena + o_vxc0) : NULL;
+  d_vxc1 = potential ? (double*)(void*)(arena + o_vxc1) : NULL;
   d_vxc2 = rotate ? (double*)(void*)(arena + o_vxc2) : NULL;
   d_vxc3 = rotate ? (double*)(void*)(arena + o_vxc3) : NULL;
   d_inv = (double*)(void*)(arena + o_inv);
@@ -333,8 +334,10 @@ static int SXG_slab_worker(void *opaque, int worker, int phase)
     ED[0] = d_den0[MN];
     ED[1] = d_den1[MN];
     if ((ED[0] + ED[1]) < den_min) {
-      d_vxc0[MN] = 0.0;
-      d_vxc1[MN] = 0.0;
+      if (potential) {
+        d_vxc0[MN] = 0.0;
+        d_vxc1[MN] = 0.0;
+      }
       if (XC_P_switch != 0) for (dd = 0; dd < 6; dd++) d_dexc[(size_t)dd * n + MN] = 0.0;
     }
     else {
@@ -357,7 +360,7 @@ static int SXG_slab_worker(void *opaque, int worker, int phase)
         d_vxc0[MN] = DEXDD[0] + DECDD[0];
         d_vxc1[MN] = DEXDD[1] + DECDD[1];
       }
-      else {
+      else if (XC_P_switch == 2) {
         d_vxc0[MN] = Exc[0] + Exc[1] - DEXDD[0] - DECDD[0];
         d_vxc1[MN] = Exc[0] + Exc[1] - DEXDD[1] - DECDD[1];
       }
@@ -448,7 +451,7 @@ static int SXG_slab_worker(void *opaque, int worker, int phase)
     if (hipMemcpy(work->vxc[1] + output, d_vxc1 + begin, nb,hipMemcpyDeviceToHost)!=hipSuccess) return 0;
     if (hipMemcpy(work->vxc[0] + output, d_vxc0 + begin, nb,hipMemcpyDeviceToHost)!=hipSuccess) return 0;
   }
-  else {
+  else if (potential) {
     if (hipMemcpy(work->vxc[0] + output, d_vxc0 + begin, nb,hipMemcpyDeviceToHost)!=hipSuccess) return 0;
     if (hipMemcpy(work->vxc[1] + output, d_vxc1 + begin, nb,hipMemcpyDeviceToHost)!=hipSuccess) return 0;
   }
@@ -487,8 +490,9 @@ static size_t SXG_cost(void *opaque,int worker,int count)
 {
   SXG_Work *w=opaque; SXG_Slab slab;
   SXG_layout(w,worker,count,&slab);
-  /* At most 13 independently aligned arena segments plus interpolation. */
-  return (size_t)slab.n*(size_t)(16+4*w->rotate+2*w->pcc)*sizeof(double)+
+  /* Density and gradient fields, optional potentials and core densities. */
+  const int potentials=w->XC_P_switch==3 ? 0 : 2+4*w->rotate;
+  return (size_t)slab.n*(size_t)(14+potentials+2*w->pcc)*sizeof(double)+
          13*512+27*27*sizeof(double);
 }
 
@@ -545,7 +549,9 @@ static int SXG_remote(void *context,const void *packet,size_t bytes,void **resul
       (size_t)p->Ng1*p->Ng2>INT_MAX/(size_t)p->Ng3) return 0;
   const int lo=p->first<2?0:p->first-2,hi=p->last+2<p->Ng1?p->last+2:p->Ng1;
   const size_t plane=(size_t)p->Ng2*p->Ng3,n=(size_t)(hi-lo)*plane,owned=(p->last-p->first)*plane;
-  const int inputs=(p->rotate?4:2)+2*p->pcc,outputs=(p->rotate?4:2)+6*p->dden+6*p->dexc;
+  const int inputs=(p->rotate?4:2)+2*p->pcc;
+  const int potentials=p->mode==3 ? 0 : (p->rotate ? 4 : 2);
+  const int outputs=potentials+6*p->dden+6*p->dexc;
   if (bytes!=sizeof(*p)+n*(size_t)inputs*sizeof(double)) return 0;
   *result_bytes=owned*(size_t)outputs*sizeof(double);
   double *out=malloc(*result_bytes);
@@ -559,7 +565,7 @@ static int SXG_remote(void *context,const void *packet,size_t bytes,void **resul
   const double *in=(const double*)(p+1);
   for (int i=0;i<(p->rotate?4:2);i++,in+=n) w.den[i]=(double*)in;
   if (p->pcc) for (int i=0;i<2;i++,in+=n) w.pcc_den[i]=(double*)in;
-  for (int i=0;i<(p->rotate?4:2);i++,out+=owned) w.vxc[i]=out;
+  for (int i=0;i<potentials;i++,out+=owned) w.vxc[i]=out;
   double *dd[6],*dx[6],**ddp[2]={dd,dd+3},**dxp[2]={dx,dx+3};
   if (p->dden) {
     for (int i=0;i<6;i++,out+=owned) dd[i]=out;
@@ -576,12 +582,12 @@ static void SXG_commit(void *opaque,size_t first,size_t last,const void *result,
 {
   SXG_Work *w=opaque;
   const size_t plane=(size_t)w->Ng2*w->Ng3,base=first*plane,n=(last-first)*plane;
-  const int nv=w->rotate?4:2;
+  const int nv=w->XC_P_switch==3 ? 0 : (w->rotate ? 4 : 2);
   const double *r=result;
   (void)bytes;
   /* Match the device/host store order when Vxc outputs alias. */
   if (w->rotate) for (int i=3;i>=0;i--) memcpy(w->vxc[i]+base,r+(size_t)i*n,n*sizeof(double));
-  else for (int i=0;i<2;i++) memcpy(w->vxc[i]+base,r+(size_t)i*n,n*sizeof(double));
+  else for (int i=0;i<nv;i++) memcpy(w->vxc[i]+base,r+(size_t)i*n,n*sizeof(double));
   r+=(size_t)nv*n;
   if (w->dden) for (int i=0;i<6;i++,r+=n) memcpy(w->dden[i/3][i%3]+base,r,n*sizeof(double));
   if (w->dexc && w->XC_P_switch!=0)
@@ -605,7 +611,7 @@ static int Set_XC_Grid_GPU(int XC_P_switch, double exx_alpha, double exx_omega,
   int i, i1, j1, k1, i2, j2, k2, p, q;
   double x, y, z, x1, y1, z1;
 
-  if (!(XC_P_switch == 0 || XC_P_switch == 1 || XC_P_switch == 2)) return 0;
+  if (XC_P_switch<0 || XC_P_switch>3) return 0;
   if (dc_Type == 3 || dc_Type == 4) return 0;
 
   const int enabled=scf_eigen_lib_flag==GPUSOLVER && openmx_env_flag_at(OPENMX_ENV_GPU, 1) && openmx_env_flag_at(OPENMX_ENV_XC_GRID_GPU, 1);

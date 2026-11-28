@@ -507,7 +507,7 @@ The CPU path distributes the MO eigensystems and grid work with MPI and OpenMP a
 
 Collinear HSE06 and PBE0 support `scf.EigenvalueSolver DC`, `DC-LNO`, and `Krylov` for self-consistent energies, forces, and the local solvers' `Dos.fileout`. Exact exchange uses the PAO neighbour blocks of the local density matrix and retains the periodic cell of each block. The same projection is used for the Hamiltonian, exchange energy, and forces. The accuracy depends on the PAO range and the local solver's truncation parameters. Local PBE0 uses the existing truncated Coulomb interaction with the unit-cell cutoff convention.
 
-MPI distributes the local eigensystems and exchange work. OpenMP packs the owned blocks and assembles the hybrid Hamiltonian using FP64 AVX2 or AVX-512 on supported hosts. With `scf.eigen.lib gpusolver`, eligible local eigensystems and exchange products run on CUDA. The density and exchange matrix reductions communicate only the retained blocks. Each exchange build uses the converged density from the solver directly.
+MPI distributes the local eigensystems and exchange work. OpenMP packs the owned blocks and assembles the hybrid Hamiltonian using FP64 AVX2 or AVX-512 on supported hosts. With `scf.eigen.lib gpusolver`, eligible local eigensystems and exchange products run on CUDA and HIP. The density and exchange matrix reductions communicate only the retained blocks. Each exchange build uses the converged density from the solver directly.
 
 `scf.exx.gpu.min.work` controls the GPU threshold for exact exchange in CUDA and HIP HSE06 and PBE0 runs. The largest matrix product in a batch must reach the threshold in multiplications (`m*n*k`). A batch also needs at least `1e9` multiplications in total and sufficient device memory. A standalone GPU product must reach both the configured threshold and the `1e9` floor because it transfers its own inputs and result.
 
@@ -525,7 +525,7 @@ The variable-cell `RFC5`–`RFC7` methods assemble the Schlegel Hessian in fract
 
 With `scf.eigen.lib gpusolver`, large geometry eigensystems run through cuSOLVER on CUDA or hipSOLVER on HIP. The optimizer reuses its host workspace across steps and retries on the CPU if a GPU solve fails. `OPENMX_GEOMETRY_GPU_MIN` sets the minimum Hessian dimension for GPU dispatch and defaults to 1000. `OPENMX_HOST_SIMD_PREFER=Geometry_Opt` selects the host eigensolver while allowing GPU SCF. `level.of.stdout 2` reports GPU Hessian solves.
 
-Fixed-cell and variable-cell optimization support collinear HSE06 and PBE0. EXX accumulates forces and analytic strain derivatives in one MPI-distributed pair traversal. OpenMP schedules the pairs, AVX2 and AVX-512 contract the weighted integrals, and eligible builds of the weights use GPU matrix products. The cell derivative includes the change of the volume-dependent PBE0 Coulomb cutoff when it is automatic.
+Fixed-cell and variable-cell optimization support collinear HSE06 and PBE0. EXX accumulates forces and analytic strain derivatives in one MPI-distributed pair traversal. OpenMP schedules the pairs, AVX2 and AVX-512 contract the weighted integrals, and eligible builds of the weights use GPU matrix products. The cell derivative includes the change of the volume-dependent PBE0 Coulomb cutoff when it is automatic. On HIP, the GGA stress contribution uses device kernels for the density and semilocal exchange-correlation gradients, including HSE06 and PBE0.
 
 ### First-principles molecular dynamics
 

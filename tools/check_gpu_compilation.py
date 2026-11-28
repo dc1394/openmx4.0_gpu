@@ -2,9 +2,9 @@
 """Compile review-sensitive native units with a real SDK, without GPU hardware.
 
 C files are compiled at -O0 so unreachable references cannot hide behind
-optimization. HIP C uses host OpenMP here; CUDA/HIP .cu kernels are compiled
-for the explicit architecture. This is an ABI/compile check, not a link or
-device execution test.
+optimization. The HIP XC grid's OpenMP fallback and CUDA/HIP .cu kernels
+are compiled for the explicit architecture. The driver checks compilation
+and native object-file symbols.
 """
 import argparse
 from concurrent.futures import ThreadPoolExecutor
@@ -75,7 +75,9 @@ def main():
     jobs.append((cxx + md_flags, "openmx_md_gpu.cu"))
     if args.backend == "HIP":
         jobs += [(cxx, name) for name in ("orbs_otf_hip.cu", "exact_exchange_device_hip.cu", "set_xc_grid_hip.cu")]
-        jobs += [(cc, name) for name in ("Exact_Exchange.c", "Exact_Exchange_Device.c", "Exact_Exchange_Host.c", "Set_XC_Grid.c")]
+        jobs += [(cc, name) for name in ("Exact_Exchange.c", "Exact_Exchange_Device.c", "Exact_Exchange_Host.c")]
+        offload = ["--offload-arch="+args.arch, "--rocm-path="+str(args.sdk.resolve()), "-ffp-contract=off"]
+        jobs.append((cc + offload, "Set_XC_Grid.c"))
     else:
         jobs.append((cc, "Exact_Exchange.c"))
         # The device loop of the exchange-correlation grid with the semilocal

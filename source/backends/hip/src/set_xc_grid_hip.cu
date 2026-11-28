@@ -2,7 +2,7 @@
   set_xc_grid_hip.cu
 
   Device evaluation of the GGA-PBE branch of Set_XC_Grid (XC_switch 4,
-  XC_P_switch 0, 1 or 2, without the LDA+U cFLL rotation): the 27-point
+  XC_P_switch 0 to 3, without the LDA+U cFLL rotation): the 27-point
   gradient stencil, the per-point PBE functional (device transcriptions
   of XC_PBE, XC_PW92C and XC_EX), the divergence stencil and the
   non-collinear rotation, as four kernels on the rank's D grid, in FP64
@@ -303,8 +303,10 @@ __global__ __launch_bounds__(kXcThreads) void sxg_pbe(int n, int XC_P_switch, in
     ED[0] = den0[MN];
     ED[1] = den1[MN];
     if ((ED[0] + ED[1]) < kDenMin) {
-        vxc0[MN] = 0.0;
-        vxc1[MN] = 0.0;
+        if (XC_P_switch != 3) {
+            vxc0[MN] = 0.0;
+            vxc1[MN] = 0.0;
+        }
         if (XC_P_switch != 0)
             for (int dd = 0; dd < 6; dd++) dexc[dd * sn + MN] = 0.0;
         return;
@@ -335,7 +337,7 @@ __global__ __launch_bounds__(kXcThreads) void sxg_pbe(int n, int XC_P_switch, in
         vxc0[MN] = DEXDD[0] + DECDD[0];
         vxc1[MN] = DEXDD[1] + DECDD[1];
     }
-    else {
+    else if (XC_P_switch == 2) {
         vxc0[MN] = Exc[0] + Exc[1] - DEXDD[0] - DECDD[0];
         vxc1[MN] = Exc[0] + Exc[1] - DEXDD[1] - DECDD[1];
     }
@@ -436,7 +438,8 @@ extern "C" int Set_XC_Grid_HIP(int n, int Ng1, int Ng2, int Ng3, int XC_P_switch
                                double *Vxc1, double *Vxc2, double *Vxc3, double *const *dden_out,
                                double *const *dexc_out)
 {
-    const int second = (XC_P_switch == 1 || XC_P_switch == 2);
+    const bool second = XC_P_switch == 1 || XC_P_switch == 2;
+    const bool potential = XC_P_switch != 3;
     const std::size_t nb = sizeof(double) * static_cast<std::size_t>(n);
     std::size_t pos = 0, free_bytes = 0, total_bytes = 0;
     unsigned char *arena = nullptr;
@@ -453,8 +456,8 @@ extern "C" int Set_XC_Grid_HIP(int n, int Ng1, int Ng2, int Ng3, int XC_P_switch
     const std::size_t o_pcc1 = pcc ? arena_off(&pos, nb) : 0;
     const std::size_t o_dden = arena_off(&pos, 6 * nb);
     const std::size_t o_dexc = arena_off(&pos, 6 * nb);
-    const std::size_t o_vxc0 = arena_off(&pos, nb);
-    const std::size_t o_vxc1 = arena_off(&pos, nb);
+    const std::size_t o_vxc0 = potential ? arena_off(&pos, nb) : 0;
+    const std::size_t o_vxc1 = potential ? arena_off(&pos, nb) : 0;
     const std::size_t o_vxc2 = rotate ? arena_off(&pos, nb) : 0;
     const std::size_t o_vxc3 = rotate ? arena_off(&pos, nb) : 0;
     const std::size_t o_inv = arena_off(&pos, sizeof(double) * 27 * 27);
@@ -477,8 +480,8 @@ extern "C" int Set_XC_Grid_HIP(int n, int Ng1, int Ng2, int Ng3, int XC_P_switch
     double *d_pcc1 = pcc ? reinterpret_cast<double *>(arena + o_pcc1) : nullptr;
     double *d_dden = reinterpret_cast<double *>(arena + o_dden);
     double *d_dexc = reinterpret_cast<double *>(arena + o_dexc);
-    double *d_vxc0 = reinterpret_cast<double *>(arena + o_vxc0);
-    double *d_vxc1 = reinterpret_cast<double *>(arena + o_vxc1);
+    double *d_vxc0 = potential ? reinterpret_cast<double *>(arena + o_vxc0) : nullptr;
+    double *d_vxc1 = potential ? reinterpret_cast<double *>(arena + o_vxc1) : nullptr;
     double *d_vxc2 = rotate ? reinterpret_cast<double *>(arena + o_vxc2) : nullptr;
     double *d_vxc3 = rotate ? reinterpret_cast<double *>(arena + o_vxc3) : nullptr;
     double *d_inv = reinterpret_cast<double *>(arena + o_inv);
@@ -526,7 +529,7 @@ extern "C" int Set_XC_Grid_HIP(int n, int Ng1, int Ng2, int Ng3, int XC_P_switch
         SXG_CHECK(hipMemcpy(Vxc1, d_vxc1, nb, hipMemcpyDeviceToHost));
         SXG_CHECK(hipMemcpy(Vxc0, d_vxc0, nb, hipMemcpyDeviceToHost));
     }
-    else {
+    else if (potential) {
         SXG_CHECK(hipMemcpy(Vxc0, d_vxc0, nb, hipMemcpyDeviceToHost));
         SXG_CHECK(hipMemcpy(Vxc1, d_vxc1, nb, hipMemcpyDeviceToHost));
     }

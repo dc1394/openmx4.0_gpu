@@ -6,17 +6,22 @@ on:
 
 jobs:
   hip:
+    name: ${{ matrix.arch == 'gfx942' && 'hip' || 'hip (gfx1200)' }}
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [gfx942, gfx1200]
     container: rocm/dev-ubuntu-24.04:7.2-complete
     steps:
       - uses: actions/checkout@v4
       - name: Host compilation dependencies
         run: apt-get update && apt-get install -y python3 make libopenmpi-dev openmpi-bin libfftw3-dev
-      - name: ROCm C ABI and HIP kernels without a GPU
+      - name: ROCm C ABI, HIP kernels and OpenMP offload without a GPU
         run: >-
           python3 tools/check_gpu_compilation.py --backend HIP
           --sdk /opt/rocm --cc /opt/rocm/llvm/bin/clang --cxx /opt/rocm/llvm/bin/clang++
-          --arch gfx942 --build build/hip-compile --jobs 2
+          --arch ${{ matrix.arch }} --build build/hip-compile --jobs 2
   cuda:
     runs-on: ubuntu-24.04
     container: nvcr.io/nvidia/nvhpc:26.9-devel-cuda13.3-ubuntu24.04
