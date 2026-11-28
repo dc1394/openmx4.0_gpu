@@ -54,6 +54,32 @@ void sum(double* dst, const double* left, const double* right, size_t count)
     store(load(left+j)+load(right+j),dst+j);
   for (size_t j = full; j < count; ++j) dst[j] = left[j]+right[j];
 }
+
+double dot(const double* left, const double* right, size_t count)
+{
+  Vector sum0(0.0), sum1(0.0);
+  const size_t full = count/(2*lanes)*(2*lanes);
+  for (size_t j = 0; j < full; j += 2*lanes) {
+    sum0 += load(left+j)*load(right+j);
+    sum1 += load(left+j+lanes)*load(right+j+lanes);
+  }
+  const Vector sums = sum0+sum1;
+  double sum = 0.0;
+  for (int lane = 0; lane < lanes; ++lane) sum += sums[lane];
+  for (size_t j = full; j < count; ++j) sum += left[j]*right[j];
+  return sum;
+}
+
+void update_row(double* row, const double* left, const double* right, size_t count,
+                double left_scale, double right_scale)
+{
+  const Vector a(left_scale), b(right_scale);
+  const size_t full = count/lanes*lanes;
+  for (size_t j = 0; j < full; j += lanes)
+    store(load(row+j)+(a*load(left+j)+b*load(right+j)),row+j);
+  for (size_t j = full; j < count; ++j)
+    row[j] += left_scale*left[j]+right_scale*right[j];
+}
 }
 
 const OpenMXHostAddRows& OPENMX_HOST_SIMD_FACTORY(add_rows)() noexcept
@@ -65,6 +91,18 @@ const OpenMXHostAddRows& OPENMX_HOST_SIMD_FACTORY(add_rows)() noexcept
 const OpenMXHostSum& OPENMX_HOST_SIMD_FACTORY(sum)() noexcept
 {
   static constexpr OpenMXHostSum kernel = sum;
+  return kernel;
+}
+
+const OpenMXHostDot& OPENMX_HOST_SIMD_FACTORY(dot)() noexcept
+{
+  static constexpr OpenMXHostDot kernel = dot;
+  return kernel;
+}
+
+const OpenMXHostUpdateRow& OPENMX_HOST_SIMD_FACTORY(update_row)() noexcept
+{
+  static constexpr OpenMXHostUpdateRow kernel = update_row;
   return kernel;
 }
 }

@@ -1075,6 +1075,8 @@
     "openmx_core_angular_grid.h",
     "openmx_mechanical_workspace.h",
     "openmx_host_simd.c",
+    "openmx_geometry_opt.c",
+    "openmx_geometry_opt.h",
     "openmx_host_simd.h",
     "openmx_core_host_simd.h",
     "openmx_core_olg.h",

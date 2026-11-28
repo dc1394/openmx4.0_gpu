@@ -33,6 +33,13 @@ OpenMXHostAddRows openmx_core_host_add_rows(int mode);
 typedef void (*OpenMXHostSum)(double *dst, const double *left, const double *right, size_t count);
 OpenMXHostSum openmx_core_host_sum(int mode);
 
+/* FP64 dot product and two-term update of one contiguous matrix row. */
+typedef double (*OpenMXHostDot)(const double *left, const double *right, size_t count);
+typedef void (*OpenMXHostUpdateRow)(double *row, const double *left, const double *right,
+                                    size_t count, double left_scale, double right_scale);
+OpenMXHostDot openmx_core_host_dot(int mode);
+OpenMXHostUpdateRow openmx_core_host_update_row(int mode);
+
 /* Accumulate a Bloch block in a column-major complex matrix. The source
    planes are contiguous and imag may be NULL. The destination is interleaved
    doubles and ld counts complex elements. */

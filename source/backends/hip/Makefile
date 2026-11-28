@@ -282,7 +282,7 @@ OBJS    = openmx_grid_assembly.o openmx.o openmx_common.o Input_std.o Inputtools
           Cont_Matrix3.o Cont_Matrix4.o Opt_Contraction.o Initial_CntCoes.o Initial_CntCoes2.o \
           Set_XC_Grid.o \
           Get_Orbitals.o Get_dOrbitals.o Get_Cnt_Orbitals.o \
-          Get_Cnt_dOrbitals.o Gaunt.o Find_CGrids.o MD_pac.o \
+          Get_Cnt_dOrbitals.o Gaunt.o Find_CGrids.o MD_pac.o openmx_geometry_opt.o \
           RestartFileDFT.o Output_CompTime.o Merge_LogFile.o Make_FracCoord.o \
           Make_InputFile_with_FinalCoord.o Output_Energy_Decomposition.o \
           Divide_Conquer.o Divide_Conquer_LNO.o my_hipblasDgemm.o my_hipblasZgemm.o gemmul8_bridge.o eigen_refine_gpu.o openmx_precision.o orbs_otf_hip.o set_xc_grid_hip.o elpa_cosma_bridge.o magma_openmx.o Krylov.o \
@@ -1012,8 +1012,10 @@ LNO.o: LNO.c openmx_common.h
 #
 #
 # NVHPC 26.3 + -acc can segfault in the MD control path after SCF.
-MD_pac.o: MD_pac.c openmx_common.h lapack_prototypes.h
+MD_pac.o: MD_pac.c openmx_common.h lapack_prototypes.h openmx_geometry_opt.h
 	$(CC_NOACC) -c MD_pac.c
+openmx_geometry_opt.o: openmx_geometry_opt.c openmx_geometry_opt.h openmx_common.h openmx_env_registry.h openmx_host_simd.h openmx_gpu_device.h openmx_core_native_resources.h lapack_prototypes.h
+	$(CC_NOACC) -c openmx_geometry_opt.c
 #
 #
 #

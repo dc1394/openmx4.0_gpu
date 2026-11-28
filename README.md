@@ -515,6 +515,14 @@ The EXX summary shows whether GPU dispatch is enabled and reports GPU use for ma
 
 Other GPU diagnostics follow OpenMX's `level.of.stdout` keyword. At the default (1), they report errors, unavailable GPUs and eigensolver fallbacks due to insufficient device memory. `level.of.stdout 2` adds device plans, precision switches and CPU fallbacks for individual stages. Level 3 adds per-step, per-k-point and per-rank details of the refined FP32 eigensolver. OpenMX itself prints per-atom debugging output from level 2 on.
 
+### Geometry optimization
+
+The structure optimizer batches MPI exchanges of atomic coordinates and forces and gathers model Hessian rows from their owning ranks. OpenMP parallelizes the larger Hessian updates and matrix-vector products. On AVX2 and AVX-512 hosts, `OPENMX_HOST_SIMD` selects the FP64 host kernels.
+
+The variable-cell `RFC5`–`RFC7` methods assemble the Schlegel Hessian in fractional and lattice coordinates in a single pass over the bonds on each rank. An MPI reduction combines the lattice block. OpenMP parallelizes the atomic history and coordinate updates for RFC and the atomic updates in `OptC`. `RF` and `RFC5`–`RFC7` solve for the lowest eigenpair of the augmented Hessian. `EF` uses the full spectrum.
+
+With `scf.eigen.lib gpusolver`, large geometry eigensystems run through cuSOLVER on CUDA or hipSOLVER on HIP. The optimizer reuses its host workspace across steps and retries on the CPU if a GPU solve fails. `OPENMX_GEOMETRY_GPU_MIN` sets the minimum Hessian dimension for GPU dispatch and defaults to 1000. `OPENMX_HOST_SIMD_PREFER=Geometry_Opt` selects the host eigensolver while allowing GPU SCF. `level.of.stdout 2` reports GPU Hessian solves.
+
 ## New in v2.0: distributed multi-GPU cluster diagonalization (ELPA GPU + COSMA)
 The distributed ELPA/COSMA backend supports cluster diagonalization across MPI ranks and nodes. For single-node memory recovery and forced MAGMA, see the following section. Selecting
 

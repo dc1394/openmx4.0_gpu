@@ -25,6 +25,7 @@
 #include "mpi.h"
 #include "openmx_common.h"
 #include "lapack_prototypes.h"
+#include "openmx_geometry_opt.h"
 
 
 #define Criterion_Max_Step            0.50
@@ -37,18 +38,18 @@ static void NVT_VS2(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsStat
 static void NVT_VS4(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter); /* added by Ohwaki */
 static void NVT_NH(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
 static void NVT_Langevin(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter); /* added by Ohwaki */
-static void Steepest_Descent(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int SD_scaling_flag);
-static void GDIIS(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0);
-static void GDIIS_BFGS(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0);
-static void GDIIS_EF(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0);
-static void Geometry_Opt_DIIS(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
-static void Geometry_Opt_DIIS_BFGS(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
-static void Geometry_Opt_DIIS_EF(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
+static void Steepest_Descent(OpenMXGeometryOpt *geometry, const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int SD_scaling_flag);
+static void GDIIS(OpenMXGeometryOpt *geometry, const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0);
+static void GDIIS_BFGS(OpenMXGeometryOpt *geometry, const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0);
+static void GDIIS_EF(OpenMXGeometryOpt *geometry, const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0);
+static void Geometry_Opt_DIIS(OpenMXGeometryOpt *geometry, const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
+static void Geometry_Opt_DIIS_BFGS(OpenMXGeometryOpt *geometry, const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
+static void Geometry_Opt_DIIS_EF(OpenMXGeometryOpt *geometry, const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
 static void Correct_Position_In_First_Cell();
-static void Geometry_Opt_RF(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
-static void Estimate_Initial_Hessian(int diis_iter, int CellOpt_flag, double itv[4][4]);
-static void RF(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0);
-static void RFC5(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0, double dE_da[4][4], double itv[4][4]);
+static void Geometry_Opt_RF(OpenMXGeometryOpt *geometry, const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
+static void Estimate_Initial_Hessian(OpenMXGeometryOpt *geometry, int diis_iter, int CellOpt_flag, double itv[4][4]);
+static void RF(OpenMXGeometryOpt *geometry, const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0);
+static void RFC5(OpenMXGeometryOpt *geometry, const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0, double dE_da[4][4], double itv[4][4]);
 static void EvsLC(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
 static void Delta_Factor(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
 static void Correct_Force();
@@ -56,7 +57,7 @@ static void Correct_Velocity();
 static int RestartFiles4GeoOpt(char *mode);
 static void Output_abc_file(OpenMXThermodynamicEnergies *thermo, int iter);
 static void Cell_Opt_SD(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int SD_scaling_flag);
-static void Cell_Opt_RF(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
+static void Cell_Opt_RF(OpenMXGeometryOpt *geometry, const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
 static void NPT_VS_PR(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, int iter); /* added by MIZUHO for NPT-MD */
 static void NPT_VS_WV(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, int iter); /* added by MIZUHO for NPT-MD */
 static void NPT_NH_PR(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, int iter); /* added by MIZUHO for NPT-MD */
@@ -149,17 +150,21 @@ double MD_pac(OpenMXCoreContext *core, int iter, char *fname_input)
   if (  MD_switch==1 || MD_switch==2 || MD_switch==9 
      || MD_switch==11 || MD_switch==14 || MD_switch==15 ) Correct_Force();
 
+  OpenMXGeometryOpt *geometry=NULL;
+  if ((MD_switch>=3 && MD_switch<=7) || MD_switch==18)
+    geometry=OpenMX_Geometry_Begin(core,mpi_comm_level1,Host_ID,atomnum,G2ID);
+
   /* Call a subroutine based on MD_switch */
 
   switch (MD_switch) {
     case  0: NoMD(chemical, dynamics, thermo, energies, components, iter+MD_Current_Iter);                    break;
     case  1: VerletXYZ(chemical, dynamics, thermo, energies, components, iter+MD_Current_Iter);               break;
     case  2: NVT_VS(chemical, dynamics, thermo, energies, components, iter+MD_Current_Iter);                  break;  /* added by mari */
-    case  3: Steepest_Descent(chemical, dynamics, thermo, energies, components, iter+MD_Current_Iter,1);      break;
-    case  4: Geometry_Opt_DIIS_EF(chemical, dynamics, thermo, energies, components, iter+MD_Current_Iter);    break;
-    case  5: Geometry_Opt_DIIS_BFGS(chemical, dynamics, thermo, energies, components, iter+MD_Current_Iter);  break;
-    case  6: Geometry_Opt_RF(chemical, dynamics, thermo, energies, components, iter+MD_Current_Iter);         break;  /* added by hmweng */
-    case  7: Geometry_Opt_DIIS(chemical, dynamics, thermo, energies, components, iter+MD_Current_Iter);       break;
+    case  3: Steepest_Descent(geometry, chemical, dynamics, thermo, energies, components, iter+MD_Current_Iter,1);      break;
+    case  4: Geometry_Opt_DIIS_EF(geometry, chemical, dynamics, thermo, energies, components, iter+MD_Current_Iter);    break;
+    case  5: Geometry_Opt_DIIS_BFGS(geometry, chemical, dynamics, thermo, energies, components, iter+MD_Current_Iter);  break;
+    case  6: Geometry_Opt_RF(geometry, chemical, dynamics, thermo, energies, components, iter+MD_Current_Iter);         break;  /* added by hmweng */
+    case  7: Geometry_Opt_DIIS(geometry, chemical, dynamics, thermo, energies, components, iter+MD_Current_Iter);       break;
     case  8:                                                break;  /* not used */
     case  9: NVT_NH(chemical, dynamics, thermo, energies, components, iter+MD_Current_Iter);                  break;
     case 10:                                                break;  /* not used */
@@ -169,7 +174,7 @@ double MD_pac(OpenMXCoreContext *core, int iter, char *fname_input)
     case 15: NVT_Langevin(chemical, dynamics, thermo, energies, components, iter+MD_Current_Iter);            break;  /* added by Ohwaki */
     case 16: Delta_Factor(chemical, dynamics, thermo, energies, components, iter);                            break;  /* delta-factor */
     case 17: Cell_Opt_SD(chemical, dynamics, thermo, energies, components, iter+MD_Current_Iter,1);           break;
-    case 18: Cell_Opt_RF(chemical, dynamics, thermo, energies, components, iter+MD_Current_Iter);             break;
+    case 18: Cell_Opt_RF(geometry, chemical, dynamics, thermo, energies, components, iter+MD_Current_Iter);             break;
     /* added by MIZUHO for NPT-MD */
     case 27: NPT_VS_PR(dynamics, thermo, iter+MD_Current_Iter);               break;
     case 28: NPT_VS_WV(dynamics, thermo, iter+MD_Current_Iter);               break;
@@ -737,27 +742,24 @@ void VerletXYZ(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dy
 
 
 
-void Steepest_Descent(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int SD_scaling_flag)
+void Steepest_Descent(OpenMXGeometryOpt *geometry, const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int SD_scaling_flag)
 {
   /* 1au=2.4189*10^-2 fs, 1fs=41.341105 au */
-  int i,j,k,l,Mc_AN,Gc_AN;
+  int i,j,k;
   int header_flag;
-  double dt,SD_max,SD_min,SD_init,Atom_W,tmp0,scale;
+  double dt,SD_max,SD_min,SD_init,scale,MaxStep;
   double My_Max_Force,Wscale;
   char fileCoord[YOUSO10];
   char fileSD[YOUSO10];
   FILE *fp_crd,*fp_SD;
-  int numprocs,myid,ID;
-  double tmp1,MaxStep;
+  int myid;
   char buf[fp_bsize];          /* setvbuf */
   char fileE[YOUSO10];
   char file_name[YOUSO10];
   FILE *fp;
 
   /* MPI */
-  MPI_Comm_size(mpi_comm_level1,&numprocs);
   MPI_Comm_rank(mpi_comm_level1,&myid);
-  MPI_Barrier(mpi_comm_level1);
 
   MD_Opt_OK = 0;
   Wscale = unified_atomic_mass_unit/electron_mass;
@@ -789,12 +791,11 @@ void Steepest_Descent(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsSt
   ****************************************************/
 
   My_Max_Force = 0.0;
-  for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-
-    Gc_AN = M2G[Mc_AN];
-
-    tmp0 = 0.0;
-    for (j=1; j<=3; j++){
+#pragma omp parallel for schedule(static) reduction(max:My_Max_Force) if(Matomnum>=128)
+  for (int Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
+    const int Gc_AN = M2G[Mc_AN];
+    double tmp0 = 0.0;
+    for (int j=1; j<=3; j++){
       if (atom_Fixed_XYZ[Gc_AN][j]==0){
         tmp0 += Gxyz[Gc_AN][16+j]*Gxyz[Gc_AN][16+j];
       }
@@ -825,7 +826,6 @@ void Steepest_Descent(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsSt
   SD_init = dt*dt/Wscale;
   SD_max = SD_init*15.0;   /* default 15   */
   SD_min = SD_init*0.04;   /* default 0.02 */
-  Atom_W = 12.0;
 
   //SD_min = SD_init*0.01;   /* default 0.02 */
 
@@ -883,11 +883,10 @@ void Steepest_Descent(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsSt
       scale = 1.0; 
 
     /* update coordinates */
-    for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-
-      Gc_AN = M2G[Mc_AN];
-
-      for (j=1; j<=3; j++){
+#pragma omp parallel for schedule(static) if(Matomnum>=128)
+    for (int Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
+      const int Gc_AN = M2G[Mc_AN];
+      for (int j=1; j<=3; j++){
 	if (atom_Fixed_XYZ[Gc_AN][j]==0){
 	  Gxyz[Gc_AN][j] = Gxyz[Gc_AN][j] - scale*SD_scaling*Gxyz[Gc_AN][16+j];
 	}
@@ -899,11 +898,7 @@ void Steepest_Descent(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsSt
    MPI, Gxyz
   ****************************************************/
 
-  for (Gc_AN=1; Gc_AN<=atomnum; Gc_AN++){
-    ID = G2ID[Gc_AN];
-    MPI_Bcast(&Gxyz[Gc_AN][1],  3, MPI_DOUBLE, ID, mpi_comm_level1);
-    MPI_Bcast(&Gxyz[Gc_AN][17], 3, MPI_DOUBLE, ID, mpi_comm_level1);
-  }
+  OpenMX_Geometry_Share_Atoms(geometry,Gxyz);
 
   if (myid==Host_ID){ 
 
@@ -1034,24 +1029,20 @@ void Cell_Opt_SD(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *
   double sum,detA,Max_Gradient;
   double My_Max_Force,Max_Force;
 
-  int l,Mc_AN,Gc_AN;
   int header_flag;
-  double dt,SD_max,SD_min,SD_init,Atom_W,tmp0,scale;
+  double dt,SD_max,SD_min,SD_init,scale,MaxStep;
   double Wscale;
   char fileCoord[YOUSO10];
   char fileSD[YOUSO10];
   FILE *fp_crd,*fp_SD;
-  int numprocs,myid,ID;
-  double tmp1,MaxStep;
+  int myid;
   char buf[fp_bsize];          /* setvbuf */
   char fileE[YOUSO10];
   char file_name[YOUSO10];
   FILE *fp;
 
   /* MPI */
-  MPI_Comm_size(mpi_comm_level1,&numprocs);
   MPI_Comm_rank(mpi_comm_level1,&myid);
-  MPI_Barrier(mpi_comm_level1);
 
   MD_Opt_OK = 0;
   Wscale = unified_atomic_mass_unit/electron_mass;
@@ -1206,17 +1197,14 @@ void Cell_Opt_SD(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *
     }
 
     My_Max_Force = 0.0;
-    for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-
-      Gc_AN = M2G[Mc_AN];
-
-      tmp0 = 0.0;
-      for (j=1; j<=3; j++){
-	if (atom_Fixed_XYZ[Gc_AN][j]==0){
-	  tmp0 += Gxyz[Gc_AN][16+j]*Gxyz[Gc_AN][16+j];
-
-          if ( My_Max_Force < fabs(Gxyz[Gc_AN][16+j]) ) My_Max_Force = fabs(Gxyz[Gc_AN][16+j]);
-	}
+#pragma omp parallel for schedule(static) reduction(max:My_Max_Force) if(Matomnum>=128)
+    for (int Mc_AN=1; Mc_AN<=Matomnum; ++Mc_AN) {
+      const int Gc_AN=M2G[Mc_AN];
+      for (int j=1; j<=3; ++j) {
+        if (atom_Fixed_XYZ[Gc_AN][j]==0) {
+          const double force=fabs(Gxyz[Gc_AN][16+j]);
+          if (My_Max_Force<force) My_Max_Force=force;
+        }
       }
     }
 
@@ -1249,7 +1237,6 @@ void Cell_Opt_SD(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *
   SD_init = dt*dt/Wscale;
   SD_max = SD_init*15.0;   /* default 15   */
   SD_min = SD_init*0.04;   /* default 0.02 */
-  Atom_W = 12.0;
 
   if (iter==1 || SD_scaling_flag==0){
 
@@ -1425,10 +1412,11 @@ void Cell_Opt_SD(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *
 
       /* calculate dE_dq */
 
-      for (Gc_AN=1; Gc_AN<=atomnum; Gc_AN++){
-       for (i=1; i<=3; i++){
-          sum = 0.0;
-          for (j=1; j<=3; j++){
+#pragma omp parallel for schedule(static) if(atomnum>=128)
+      for (int Gc_AN=1; Gc_AN<=atomnum; Gc_AN++){
+        for (int i=1; i<=3; i++){
+          double sum = 0.0;
+          for (int j=1; j<=3; j++){
             sum += Gxyz[Gc_AN][16+j]*tv[i][j];
 	  }
 
@@ -1456,56 +1444,17 @@ void Cell_Opt_SD(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *
                 update cartesian coordinates
     ***************************************************/
 
-    /* update coordinates while keeping the fractional coordinates */
-
-    if (  cellopt_switch==1 
-       || cellopt_switch==2
-       || cellopt_switch==3
-       || cellopt_switch==4
-       ){
-
-      for (Gc_AN=1; Gc_AN<=atomnum; Gc_AN++){
-	Gxyz[Gc_AN][1] = Cell_Gxyz[Gc_AN][1]*tv[1][1]
-                       + Cell_Gxyz[Gc_AN][2]*tv[2][1]
-                       + Cell_Gxyz[Gc_AN][3]*tv[3][1] + Grid_Origin[1];
-
-	Gxyz[Gc_AN][2] = Cell_Gxyz[Gc_AN][1]*tv[1][2]
-                       + Cell_Gxyz[Gc_AN][2]*tv[2][2]
-                       + Cell_Gxyz[Gc_AN][3]*tv[3][2] + Grid_Origin[2];
-
-	Gxyz[Gc_AN][3] = Cell_Gxyz[Gc_AN][1]*tv[1][3]
-                       + Cell_Gxyz[Gc_AN][2]*tv[2][3]
-                       + Cell_Gxyz[Gc_AN][3]*tv[3][3] + Grid_Origin[3];
-      }
-    }
-
-    /* no constraint for atomic coordinates */
-
-    else if ( cellopt_switch==5
-           || cellopt_switch==6
-           || cellopt_switch==7 
-           ){
-
-      for (Gc_AN=1; Gc_AN<=atomnum; Gc_AN++){
-
-	Gxyz[Gc_AN][1] = Cell_Gxyz[Gc_AN][1]*tv[1][1]
-                       + Cell_Gxyz[Gc_AN][2]*tv[2][1]
-                       + Cell_Gxyz[Gc_AN][3]*tv[3][1] + Grid_Origin[1];
-
-	Gxyz[Gc_AN][2] = Cell_Gxyz[Gc_AN][1]*tv[1][2]
-                       + Cell_Gxyz[Gc_AN][2]*tv[2][2]
-                       + Cell_Gxyz[Gc_AN][3]*tv[3][2] + Grid_Origin[2];
-
-	Gxyz[Gc_AN][3] = Cell_Gxyz[Gc_AN][1]*tv[1][3]
-                       + Cell_Gxyz[Gc_AN][2]*tv[2][3]
-                       + Cell_Gxyz[Gc_AN][3]*tv[3][3] + Grid_Origin[3];
-
-	for (j=1; j<=3; j++){
-	  if (atom_Fixed_XYZ[Gc_AN][j]==0){
-	    Gxyz[Gc_AN][j] = Gxyz[Gc_AN][j] - 0.2*scale*SD_scaling*Gxyz[Gc_AN][16+j];
-	  }
-	}
-
+    if (1<=cellopt_switch && cellopt_switch<=7) {
+      const int relax_atoms=cellopt_switch>=5;
+#pragma omp parallel for schedule(static) if(atomnum>=128)
+      for (int Gc_AN=1; Gc_AN<=atomnum; ++Gc_AN) {
+        for (int j=1; j<=3; ++j) {
+          Gxyz[Gc_AN][j] = Cell_Gxyz[Gc_AN][1]*tv[1][j]
+                         + Cell_Gxyz[Gc_AN][2]*tv[2][j]
+                         + Cell_Gxyz[Gc_AN][3]*tv[3][j] + Grid_Origin[j];
+          if (relax_atoms && atom_Fixed_XYZ[Gc_AN][j]==0)
+            Gxyz[Gc_AN][j] -= 0.2*scale*SD_scaling*Gxyz[Gc_AN][16+j];
+        }
       }
     }
   }
@@ -1659,9 +1608,38 @@ void Cell_Opt_SD(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *
 }
 
 
-void Cell_Opt_RF(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
+static void Update_Cell_Opt_History(int count, int vectors, const double gradient[4][4])
 {
-  int i,j,iatom,icell,k,diis_iter;
+#pragma omp parallel for schedule(static) if(atomnum>=128)
+  for (int atom=1; atom<=atomnum; ++atom) {
+    for (int step=count-2; step>=0; --step) {
+      memcpy(GxyzHistoryIn[step+1][atom]+1,GxyzHistoryIn[step][atom]+1,3*sizeof(double));
+      memcpy(GxyzHistoryR[step+1][atom]+1,GxyzHistoryR[step][atom]+1,3*sizeof(double));
+    }
+    memcpy(GxyzHistoryIn[0][atom]+1,Cell_Gxyz[atom]+1,3*sizeof(double));
+    for (int i=1; i<=3; ++i) {
+      double sum=0.0;
+      if (atom_Fixed_XYZ[atom][i]!=1)
+        for (int j=1; j<=3; ++j) sum+=Gxyz[atom][16+j]*tv[i][j];
+      Gxyz[atom][13+i]=GxyzHistoryR[0][atom][i]=sum;
+    }
+  }
+
+  for (int v=1; v<=vectors; ++v) {
+    const int site=atomnum+v;
+    for (int step=count-2; step>=0; --step) {
+      memcpy(GxyzHistoryIn[step+1][site]+1,GxyzHistoryIn[step][site]+1,3*sizeof(double));
+      memcpy(GxyzHistoryR[step+1][site]+1,GxyzHistoryR[step][site]+1,3*sizeof(double));
+    }
+    memcpy(GxyzHistoryIn[0][site]+1,tv[v]+1,3*sizeof(double));
+    memcpy(GxyzHistoryR[0][site]+1,gradient[v]+1,3*sizeof(double));
+  }
+}
+
+
+void Cell_Opt_RF(OpenMXGeometryOpt *geometry, const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
+{
+  int i,j,k,diis_iter;
   double dE_da[4][4],detA,itv[4][4],sum;
   double sMD_TimeStep;
   static int local_iter=1;
@@ -1672,11 +1650,9 @@ void Cell_Opt_RF(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *
   FILE *fp;
   int tmp_array[10];
   int everyiter,buf_iter;
-  int numprocs,myid,ID;  
+  int myid;
 
-  MPI_Comm_size(mpi_comm_level1,&numprocs);
   MPI_Comm_rank(mpi_comm_level1,&myid);
-  MPI_Barrier(mpi_comm_level1);
 
   /******************************************
               read *.rst4gopt.RF1
@@ -1785,65 +1761,7 @@ void Cell_Opt_RF(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *
     else 
       Cell_Opt_SD(chemical, dynamics, thermo, energies, components, iter,1);
 
-    /* shift one */
-
-    for (i=(diis_iter-2); 0<=i; i--) {
-
-      /* cartesian coordinates */
-
-      for (iatom=1; iatom<=atomnum; iatom++) {
-	for (k=1; k<=3; k++) {
-	  GxyzHistoryIn[i+1][iatom][k] = GxyzHistoryIn[i][iatom][k];
-	  GxyzHistoryR[i+1][iatom][k]  = GxyzHistoryR[i][iatom][k];
-	}
-      }
-
-      /* cell vectors */
- 
-      for (icell=1; icell<=3; icell++) {
-	for (k=1; k<=3; k++) {
-	  GxyzHistoryIn[i+1][atomnum+icell][k] = GxyzHistoryIn[i][atomnum+icell][k];
-	  GxyzHistoryR[i+1][atomnum+icell][k]  = GxyzHistoryR[i][atomnum+icell][k];
-	}
-      }
-    }
-
-    /* add GxyzHistoryIn and GxyzHisotryR */
-
-    for (iatom=1; iatom<=atomnum; iatom++) {
-
-      /* calculate dE_dq */
-
-      for (i=1; i<=3; i++){
-	sum = 0.0;
-	for (j=1; j<=3; j++){
-	  sum += Gxyz[iatom][16+j]*tv[i][j];
-	}
-
-	if (atom_Fixed_XYZ[iatom][i]==1){
-	  Gxyz[iatom][13+i] = 0.0;
-	}
-	else{
-	  Gxyz[iatom][13+i] = sum;
-	}
-      }
-
-      /* add Cell_Gxyz and dE_dq */
-
-      for (k=1; k<=3; k++) {
-	GxyzHistoryIn[0][iatom][k] = Cell_Gxyz[iatom][k];
-	GxyzHistoryR[0][iatom][k]  = Gxyz[iatom][13+k];
-      }
-    }
-
-    /* add information on the cell vectors */
-
-    for (icell=1; icell<=3; icell++) {
-      for (k=1; k<=3; k++) {
-	GxyzHistoryIn[0][atomnum+icell][k] = tv[icell][k];
-	GxyzHistoryR[0][atomnum+icell][k]  = dE_da[icell][k];
-      }
-    }
+    Update_Cell_Opt_History(diis_iter,3,dE_da);
 
     /* initialize local_iter */
 
@@ -1859,7 +1777,7 @@ void Cell_Opt_RF(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *
         || cellopt_switch==6 
         || cellopt_switch==7 ){
 
-       RFC5(chemical, dynamics, thermo, energies, components, local_iter,iter,dE_da,itv);
+       RFC5(geometry, chemical, dynamics, thermo, energies, components, local_iter,iter,dE_da,itv);
 
     }
     else {
@@ -1925,7 +1843,7 @@ void Cell_Opt_RF(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *
 
 
 /*BEGIN hmweng*/
-void Geometry_Opt_RF(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
+void Geometry_Opt_RF(OpenMXGeometryOpt *geometry, const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
 {
   int i,iatom,k,diis_iter;
   double sMD_TimeStep;
@@ -2005,9 +1923,9 @@ void Geometry_Opt_RF(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsSta
   if (flag==0){
 
     if (SD_iter==1)
-      Steepest_Descent(chemical, dynamics, thermo, energies, components, iter,0);
+      Steepest_Descent(geometry, chemical, dynamics, thermo, energies, components, iter,0);
     else 
-      Steepest_Descent(chemical, dynamics, thermo, energies, components, iter,1);
+      Steepest_Descent(geometry, chemical, dynamics, thermo, energies, components, iter,1);
 
     /* shift one */
 
@@ -2045,7 +1963,7 @@ void Geometry_Opt_RF(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsSta
 
   else {
 
-    RF(chemical, dynamics, thermo, energies, components, local_iter,iter);
+    RF(geometry, chemical, dynamics, thermo, energies, components, local_iter,iter);
     local_iter++;
   }
 
@@ -2097,7 +2015,7 @@ void Geometry_Opt_RF(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsSta
 /*END hmweng */
 
 
-void Geometry_Opt_DIIS(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
+void Geometry_Opt_DIIS(OpenMXGeometryOpt *geometry, const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
 {
   int i,iatom,k,diis_iter;
   double sMD_TimeStep;
@@ -2177,9 +2095,9 @@ void Geometry_Opt_DIIS(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsS
   if (flag==0){
 
     if (SD_iter==1)
-      Steepest_Descent(chemical, dynamics, thermo, energies, components, iter,0);
+      Steepest_Descent(geometry, chemical, dynamics, thermo, energies, components, iter,0);
     else 
-      Steepest_Descent(chemical, dynamics, thermo, energies, components, iter,1);
+      Steepest_Descent(geometry, chemical, dynamics, thermo, energies, components, iter,1);
 
     /* shift one */
 
@@ -2217,7 +2135,7 @@ void Geometry_Opt_DIIS(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsS
 
   else {
 
-    GDIIS(chemical, dynamics, thermo, energies, components, local_iter,iter);
+    GDIIS(geometry, chemical, dynamics, thermo, energies, components, local_iter,iter);
     local_iter++;
   }
 
@@ -2270,7 +2188,7 @@ void Geometry_Opt_DIIS(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsS
 
 
 
-void Geometry_Opt_DIIS_BFGS(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
+void Geometry_Opt_DIIS_BFGS(OpenMXGeometryOpt *geometry, const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
 {
   int i,iatom,k,diis_iter;
   double sMD_TimeStep;
@@ -2350,9 +2268,9 @@ void Geometry_Opt_DIIS_BFGS(const OpenMXChemicalPotentials *chemical, OpenMXDyna
   if (flag==0){
 
     if (SD_iter==1)
-      Steepest_Descent(chemical, dynamics, thermo, energies, components, iter,0);
+      Steepest_Descent(geometry, chemical, dynamics, thermo, energies, components, iter,0);
     else 
-      Steepest_Descent(chemical, dynamics, thermo, energies, components, iter,1);
+      Steepest_Descent(geometry, chemical, dynamics, thermo, energies, components, iter,1);
 
     /* shift one */
 
@@ -2389,7 +2307,7 @@ void Geometry_Opt_DIIS_BFGS(const OpenMXChemicalPotentials *chemical, OpenMXDyna
   /* GDIIS */
 
   else {
-    GDIIS_BFGS(chemical, dynamics, thermo, energies, components, local_iter,iter);
+    GDIIS_BFGS(geometry, chemical, dynamics, thermo, energies, components, local_iter,iter);
     local_iter++;
   }
 
@@ -2439,7 +2357,7 @@ void Geometry_Opt_DIIS_BFGS(const OpenMXChemicalPotentials *chemical, OpenMXDyna
 }
 
 
-void Geometry_Opt_DIIS_EF(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
+void Geometry_Opt_DIIS_EF(OpenMXGeometryOpt *geometry, const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
 {
   int i,iatom,k,diis_iter;
   double sMD_TimeStep;
@@ -2519,9 +2437,9 @@ void Geometry_Opt_DIIS_EF(const OpenMXChemicalPotentials *chemical, OpenMXDynami
   if (flag==0){
 
     if (SD_iter==1)
-      Steepest_Descent(chemical, dynamics, thermo, energies, components, iter,0);
+      Steepest_Descent(geometry, chemical, dynamics, thermo, energies, components, iter,0);
     else 
-      Steepest_Descent(chemical, dynamics, thermo, energies, components, iter,1);
+      Steepest_Descent(geometry, chemical, dynamics, thermo, energies, components, iter,1);
 
     /* shift one */
 
@@ -2559,7 +2477,7 @@ void Geometry_Opt_DIIS_EF(const OpenMXChemicalPotentials *chemical, OpenMXDynami
 
   else {
 
-    GDIIS_EF(chemical, dynamics, thermo, energies, components, local_iter,iter);
+    GDIIS_EF(geometry, chemical, dynamics, thermo, energies, components, local_iter,iter);
     local_iter++;
   }
 
@@ -2611,20 +2529,17 @@ void Geometry_Opt_DIIS_EF(const OpenMXChemicalPotentials *chemical, OpenMXDynami
 
 
 
-void GDIIS(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0)
+void GDIIS(OpenMXGeometryOpt *geometry, const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0)
 {
   /* 1au=2.4189*10^-2 fs, 1fs=41.341105 au */
 
   char *func_name="DIIS";
-  char *JOBB="L";
-  double *A,*B,sumB,max_A, RR,dRi[4],dRj[4];
-  double *work;
+  double *A,*B,sumB;
   double mixing,force_Max;
   static double sMD_TimeStep,dx_max=0.05; 
   double diff_dx,diff,Max_Step;
-  int *ipiv;
   int header_flag;
-  INTEGER i,j,k,iatom,N,LDA,LWORK,info;
+  INTEGER i,j,k,iatom;
   int diis_iter;
   char fileCoord[YOUSO10];
   char fileSD[YOUSO10];
@@ -2633,20 +2548,13 @@ void GDIIS(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynami
   char fileE[YOUSO10];
 
   /* variables for MPI */
-  int Gc_AN;
-  int numprocs,myid,ID;  
+  int myid;
 
   /* MPI myid */
-  MPI_Comm_size(mpi_comm_level1,&numprocs);
   MPI_Comm_rank(mpi_comm_level1,&myid);
-  MPI_Barrier(mpi_comm_level1);
 
   /* share Gxyz */
-  for (Gc_AN=1; Gc_AN<=atomnum; Gc_AN++){
-    ID = G2ID[Gc_AN];
-    MPI_Bcast(&Gxyz[Gc_AN][1],  3, MPI_DOUBLE, ID, mpi_comm_level1);
-    MPI_Bcast(&Gxyz[Gc_AN][17], 3, MPI_DOUBLE, ID, mpi_comm_level1);
-  }
+  OpenMX_Geometry_Share_Atoms(geometry,Gxyz);
 
   if (iter<M_GDIIS_HISTORY)
     diis_iter = iter;
@@ -2686,10 +2594,6 @@ void GDIIS(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynami
 
   /* allocation of arrays */
 
-  A = (double*)malloc(sizeof(double)*(diis_iter+1)*(diis_iter+1));
-  for (i=0; i<(diis_iter+1)*(diis_iter+1); i++) A[i] = 0.0;
-  B = (double*)malloc(sizeof(double)*(diis_iter+1));
-
   /* Max of force */
 
   force_Max=0.0;
@@ -2708,52 +2612,7 @@ void GDIIS(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynami
     printf("<%s>  Criterion      (Hartree/Bohr) = %15.12f\n", func_name, MD_Opt_criterion);
   }
 
-  for (i=0; i<diis_iter; i++) {
-    for (j=0; j<diis_iter; j++) {
-
-      RR = 0.0;
-
-      for (iatom=1; iatom<=atomnum; iatom++)   {
-	for (k=1; k<=3; k++) {
-	  dRi[k] = GxyzHistoryR[i][iatom][k];
-	  dRj[k] = GxyzHistoryR[j][iatom][k];
-	}
-
-	RR += dRi[1]*dRj[1] + dRi[2]*dRj[2] + dRi[3]*dRj[3];
-      }
-
-      A[ i*(diis_iter+1)+j ]= RR;
-    }
-  }
-
-  /* find max of A */
-
-  max_A = 0.0;
-
-  for (i=0;i<diis_iter;i++) {
-    for (j=0;j<diis_iter;j++) {
-      RR = fabs(A[i*(diis_iter+1)+j]) ;
-      if (max_A< RR ) max_A = RR;
-    }
-  }
-
-  max_A = 1.0/max_A;
-
-  for (i=0; i<diis_iter; i++) {
-    for (j=0; j<diis_iter; j++) {
-      A[ i*(diis_iter+1)+j ] *= max_A;
-    }
-  }
-
-  for (i=0; i<diis_iter; i++) {
-    A[ i*(diis_iter+1)+diis_iter ] = 1.0;
-    A[ diis_iter*(diis_iter+1)+i ] = 1.0;
-  }
-
-  A[diis_iter*(diis_iter+1)+diis_iter] = 0.0;
-
-  for (i=0; i<diis_iter; i++) B[i] = 0.0;
-  B[diis_iter] = 1.0;
+  OpenMX_Geometry_Prepare_DIIS(geometry,GxyzHistoryR,atomnum,diis_iter,&A,&B);
 
   if (2<=level_stdout){
     printf("<%s>  DIIS matrix\n",func_name);
@@ -2768,19 +2627,11 @@ void GDIIS(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynami
 
   /* lapack routine */
 
-  N=diis_iter+1;
-  LDA=diis_iter+1;
-  LWORK=diis_iter+1;
-  work=(double*)malloc(sizeof(double)*LWORK);
-  ipiv = (int*)malloc(sizeof(int)*(diis_iter+1));
-
-  i = 1; 
-
   if (2<=level_stdout){
     printf("M_GDIIS_HISTORY=%2d diis_iter=%2d\n",M_GDIIS_HISTORY,diis_iter);
   }
 
-  F77_NAME(dsysv,DSYSV)( JOBB, &N, &i, A, &LDA,  ipiv, B, &LDA, work, &LWORK, &info);
+  const int info=OpenMX_Geometry_Solve_DIIS(geometry,diis_iter,A,B);
 
   if (info!=0) {
     printf("<%s> dsysv_, info=%d\n",func_name,info);
@@ -2940,12 +2791,6 @@ void GDIIS(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynami
   Max_Force = force_Max;
   SD_scaling_user = SD_scaling*Max_Force*0.2;
 
-  /* free arrays */
-
-  free(A);
-  free(B);
-  free(ipiv);
-  free(work);
 
   /*********************** end of "myid==Host_ID" **************************/
 
@@ -2953,11 +2798,7 @@ void GDIIS(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynami
 
   MPI_Bcast(&MD_Opt_OK,1,MPI_INT, Host_ID, mpi_comm_level1);
 
-  for (Gc_AN=1; Gc_AN<=atomnum; Gc_AN++){
-    /* ID = G2ID[Gc_AN]; */
-    MPI_Bcast(&Gxyz[Gc_AN][1],  3, MPI_DOUBLE, Host_ID, mpi_comm_level1);
-    /*    MPI_Bcast(&Gxyz[Gc_AN][17], 3, MPI_DOUBLE, Host_ID, mpi_comm_level1); */
-  }
+  OpenMX_Geometry_Publish(geometry,Gxyz,NULL);
 
 
   if (myid==Host_ID){ 
@@ -3054,26 +2895,20 @@ void GDIIS(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynami
 
 
 /*hmweng start RF method*/
-void RF(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0)
+void RF(OpenMXGeometryOpt *geometry, const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0)
 {
   /* 1au=2.4189*10^-2 fs, 1fs=41.341105 au */
 
-  int k1,k2,m1,m2;
+  int m1,m2;
   int header_flag;
   char *func_name="RF";
-  char *JOBB="L";
   double dt,diff,Max_Step;
-  double *A,*B,sumB,max_A, RR,dRi[4],dRj[4];
-  double *work, *work2,**ahes;
-/*hmweng c0, c1 are not used and lamda is newly defined */  
-/*  double sum1,tmp1,tmp2,c0,c1; */
-  double sum1,tmp1,tmp2,lamda;
+  double *A,*B,sumB;
   double mixing,force_Max;
   double itv[4][4];
   static double sMD_TimeStep,dx_max=0.05; 
   double diff_dx;
-  int *ipiv;
-  INTEGER i,j,k,iatom,N,LDA,LWORK,info;
+  INTEGER i,j,k,iatom;
   int diis_iter;
   char fileCoord[YOUSO10];
   char fileSD[YOUSO10];
@@ -3082,20 +2917,13 @@ void RF(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics,
   char fileE[YOUSO10];
 
   /* variables for MPI */
-  int Gc_AN;
-  int numprocs,myid,ID;  
+  int myid;
 
   /* MPI myid */
-  MPI_Comm_size(mpi_comm_level1,&numprocs);
   MPI_Comm_rank(mpi_comm_level1,&myid);
-  MPI_Barrier(mpi_comm_level1);
 
   /* share Gxyz */
-  for (Gc_AN=1; Gc_AN<=atomnum; Gc_AN++){
-    ID = G2ID[Gc_AN];
-    MPI_Bcast(&Gxyz[Gc_AN][1],  3, MPI_DOUBLE, ID, mpi_comm_level1);
-    MPI_Bcast(&Gxyz[Gc_AN][17], 3, MPI_DOUBLE, ID, mpi_comm_level1);
-  }
+  OpenMX_Geometry_Share_Atoms(geometry,Gxyz);
 
   /* set diis_iter */
 
@@ -3136,9 +2964,9 @@ void RF(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics,
   if (iter%30==1){
 
     if (iter0<M_GDIIS_HISTORY)
-      Estimate_Initial_Hessian(iter0-1,0,itv);
+      Estimate_Initial_Hessian(geometry, iter0-1,0,itv);
     else   
-      Estimate_Initial_Hessian(M_GDIIS_HISTORY-1,0,itv);
+      Estimate_Initial_Hessian(geometry, M_GDIIS_HISTORY-1,0,itv);
   }
 
   if (myid!=Host_ID) goto Last_Bcast; 
@@ -3146,10 +2974,6 @@ void RF(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics,
   /*********************** for myid==Host_ID **************************/
 
   /* allocation of arrays */
-
-  A = (double*)malloc(sizeof(double)*(diis_iter+2)*(diis_iter+2));
-  for (i=0; i<(diis_iter+2)*(diis_iter+2); i++) A[i] = 0.0;
-  B = (double*)malloc(sizeof(double)*(diis_iter+2));
 
   /* Max of force */
 
@@ -3169,52 +2993,7 @@ void RF(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics,
     printf("<%s>  Criterion      (Hartree/Bohr) = %15.12f\n", func_name, MD_Opt_criterion);
   }
 
-  for (i=0; i<diis_iter; i++) {
-    for (j=0; j<diis_iter; j++) {
-
-      RR = 0.0;
-
-      for (iatom=1; iatom<=atomnum; iatom++)   {
-	for (k=1; k<=3; k++) {
-	  dRi[k] = GxyzHistoryR[i][iatom][k];
-	  dRj[k] = GxyzHistoryR[j][iatom][k];
-	}
-
-	RR += dRi[1]*dRj[1] + dRi[2]*dRj[2] + dRi[3]*dRj[3];
-      }
-
-      A[ i*(diis_iter+1)+j ]= RR;
-    }
-  }
-
-  /* find max of A */
-
-  max_A = 0.0;
-
-  for (i=0;i<diis_iter;i++) {
-    for (j=0;j<diis_iter;j++) {
-      RR = fabs(A[i*(diis_iter+1)+j]) ;
-      if (max_A< RR ) max_A = RR;
-    }
-  }
-
-  max_A = 1.0/max_A;
-
-  for (i=0; i<diis_iter; i++) {
-    for (j=0; j<diis_iter; j++) {
-      A[ i*(diis_iter+1)+j ] *= max_A;
-    }
-  }
-
-  for (i=0; i<diis_iter; i++) {
-    A[ i*(diis_iter+1)+diis_iter ] = 1.0;
-    A[ diis_iter*(diis_iter+1)+i ] = 1.0;
-  }
-
-  A[diis_iter*(diis_iter+1)+diis_iter] = 0.0;
-
-  for (i=0; i<diis_iter; i++) B[i] = 0.0;
-  B[diis_iter] = 1.0;
+  OpenMX_Geometry_Prepare_DIIS(geometry,GxyzHistoryR,atomnum,diis_iter,&A,&B);
 
   if (2<=level_stdout){
     printf("<%s>  DIIS matrix\n",func_name);
@@ -3229,19 +3008,11 @@ void RF(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics,
 
   /* lapack routine */
 
-  N = diis_iter+1;
-  LDA = diis_iter+1;
-  LWORK = diis_iter+1;
-  work = (double*)malloc(sizeof(double)*LWORK);
-  ipiv = (int*)malloc(sizeof(int)*(diis_iter+1));
-
-  i = 1; 
-
   if (2<=level_stdout){
     printf("M_GDIIS_HISTORY=%2d diis_iter=%2d\n",M_GDIIS_HISTORY,diis_iter);
   }
 
-  F77_NAME(dsysv,DSYSV)( JOBB, &N, &i, A, &LDA,  ipiv, B, &LDA, work, &LWORK, &info);
+  const int info=OpenMX_Geometry_Solve_DIIS(geometry,diis_iter,A,B);
 
   if (info!=0) {
     printf("<%s> dsysv_, info=%d\n",func_name,info);
@@ -3318,73 +3089,13 @@ void RF(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics,
     /*********************************************************************************
      update an approximate Hessian matrix 
    
-     H_k = H_{k-1} + y*y^t/(y^t*y) - H_{k-1}*s * s^t * H_{k-1}^t /(s^t * H_{k-1} * s)
+     H_k = H_{k-1} + y*y^t/(s^t*y) - H_{k-1}*s * s^t * H_{k-1}^t /(s^t * H_{k-1} * s)
      y = GxyzHistoryR[0][iatom][k]  - GxyzHistoryR[1][iatom][k]
      s = GxyzHistoryIn[0][iatom][k] - GxyzHistoryIn[1][iatom][k]
     *********************************************************************************/
 
-    if (iter!=1){
-   
-      /* H*s  */
-
-      for (i=1; i<=3*atomnum; i++){     
-
-	sum1 = 0.0;  
-	for (k=1; k<=atomnum; k++){     
-
-	  sum1 += ( Hessian[i][3*k-2]*(GxyzHistoryIn[0][k][1] - GxyzHistoryIn[1][k][1])
-		   +Hessian[i][3*k-1]*(GxyzHistoryIn[0][k][2] - GxyzHistoryIn[1][k][2])
-		   +Hessian[i][3*k  ]*(GxyzHistoryIn[0][k][3] - GxyzHistoryIn[1][k][3]));
-	}
- 
-	/* store H*s */
-
-	Hessian[0][i] = sum1;
-      }        
-
-      /* tmp1 = y^t*s, tmp2 = s^t*H*s */ 
-    
-      tmp1 = 0.0;
-      tmp2 = 0.0;
-    
-      for (k=1; k<=atomnum; k++){     
-
-	tmp1 += ((GxyzHistoryIn[0][k][1] - GxyzHistoryIn[1][k][1])*(GxyzHistoryR[0][k][1] - GxyzHistoryR[1][k][1])
-	        +(GxyzHistoryIn[0][k][2] - GxyzHistoryIn[1][k][2])*(GxyzHistoryR[0][k][2] - GxyzHistoryR[1][k][2])
-		+(GxyzHistoryIn[0][k][3] - GxyzHistoryIn[1][k][3])*(GxyzHistoryR[0][k][3] - GxyzHistoryR[1][k][3]));
-
-	tmp2 += ((GxyzHistoryIn[0][k][1] - GxyzHistoryIn[1][k][1])*Hessian[0][3*k-2]
-		+(GxyzHistoryIn[0][k][2] - GxyzHistoryIn[1][k][2])*Hessian[0][3*k-1] 
-		+(GxyzHistoryIn[0][k][3] - GxyzHistoryIn[1][k][3])*Hessian[0][3*k  ]); 
-      }
-
-      /* update the approximate Hessian by the BFGS method */
-
-      if (tmp1<1.0e-10) tmp1 = 1.0e-10; 
-      if (tmp2<1.0e-10) tmp2 = 1.0e-10; 
-
-      m1 = 0;
-      for (i=1; i<=atomnum; i++){   
-	for (k1=1; k1<=3; k1++){     
-
-	  m1++;
-
-	  m2 = 0;
-	  for (j=1; j<=atomnum; j++){     
-	    for (k2=1; k2<=3; k2++){     
-
-	      m2++;
-
-	      Hessian[m1][m2] += 
-
-		1.0/tmp1*(GxyzHistoryR[0][i][k1]-GxyzHistoryR[1][i][k1])*(GxyzHistoryR[0][j][k2]-GxyzHistoryR[1][j][k2])
-		- 1.0/tmp2*Hessian[0][m1]*Hessian[0][m2];
-
-	    }
-	  }
-	}
-      }
-    }
+    if (iter!=1)
+      OpenMX_Geometry_BFGS(geometry,Hessian,GxyzHistoryIn,GxyzHistoryR,atomnum,OPENMX_GEOMETRY_RF_HESSIAN);
 
     /*
     if (myid==Host_ID){  
@@ -3421,32 +3132,9 @@ void RF(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics,
                of the augmented Hessian matrix
     ************************************************************/  
 
-    work2 = (double*)malloc(sizeof(double)*(3*atomnum+3));
+    OpenMX_Geometry_RF_Step(geometry,Hessian,3*atomnum+1,
+                            scf_eigen_lib_flag==GPUSOLVER,level_stdout);
 
-    ahes = (double**)malloc(sizeof(double*)*(3*atomnum+3));
-    for (i=0; i<3*atomnum+3; i++){
-      ahes[i] = (double*)malloc(sizeof(double)*(3*atomnum+3));
-    }
-
-    for(i=0; i<3*atomnum+2; i++){
-      for(j=0;j<3*atomnum+2; j++){
-	ahes[i][j] = Hessian[i][j];
-      }
-    }
-
-    Eigen_lapack(ahes, work2, 3*atomnum+1, 1); 
-
-    /*
-    for(i=1; i<=1; i++){
-      printf("Eigenvalue=%15.8f\n",work2[i]);
-    }
-    printf("EigenVector is\n");
-    */
-
-    for(i=1;i<=3*atomnum+1; i++){
-      Hessian[0][i]=ahes[i][1]/ahes[3*atomnum+1][1];
-    }
- 
     if (2<=level_stdout){
       printf("<%s> |tilde{R}|=%E\n",func_name, sumB);
     }
@@ -3534,20 +3222,6 @@ void RF(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics,
 
     Max_Force = force_Max;
     SD_scaling_user = SD_scaling*Max_Force*0.2;
-
-    /* free arrays */
-
-    for (i=0; i<(3*atomnum+3); i++){
-      free(ahes[i]);
-    }
-    free(ahes);
-
-    free(work2);
-    free(ipiv);
-    free(work);
-    free(B);
-    free(A);
-
   } /* if (MD_Opt_OK!=1 && iter!=MD_IterNumber) */
 
   /*********************** end of "myid==Host_ID" **************************/
@@ -3556,11 +3230,7 @@ void RF(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics,
 
   MPI_Bcast(&MD_Opt_OK,1,MPI_INT, Host_ID, mpi_comm_level1);
 
-  for (Gc_AN=1; Gc_AN<=atomnum; Gc_AN++){
-    /* ID = G2ID[Gc_AN]; */
-    MPI_Bcast(&Gxyz[Gc_AN][1],  3, MPI_DOUBLE, Host_ID, mpi_comm_level1);
-    /*    MPI_Bcast(&Gxyz[Gc_AN][17], 3, MPI_DOUBLE, Host_ID, mpi_comm_level1); */
-  }
+  OpenMX_Geometry_Publish(geometry,Gxyz,NULL);
 
   if (myid==Host_ID){ 
 
@@ -3655,24 +3325,20 @@ void RF(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics,
 
 
 
-void RFC5(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0, double dE_da[4][4], double itv[4][4])
+void RFC5(OpenMXGeometryOpt *geometry, const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0, double dE_da[4][4], double itv[4][4])
 {
   /* 1au=2.4189*10^-2 fs, 1fs=41.341105 au */
 
-  int k1,k2,m1,m2;
+  int m1,m2;
   int header_flag;
   char *func_name="RF";
-  char *JOBB="L";
   double dt,diff,Max_Step,sum;
-  double *A,*B,sumB,max_A, RR,dRi[4],dRj[4];
-  double *work, *work2,**ahes;
-  double sum1,tmp1,tmp2,lamda;
+  double *A,*B,sumB;
   double ntv[4][4];
   double mixing,force_Max,Max_Gradient;
   static double sMD_TimeStep,dx_max=0.05; 
   double diff_dx;
-  int *ipiv;
-  INTEGER i,j,k,iatom,icell,N,LDA,LWORK,info;
+  INTEGER i,j,k,iatom,icell;
   int diis_iter;
   char fileCoord[YOUSO10];
   char fileSD[YOUSO10];
@@ -3680,19 +3346,13 @@ void RFC5(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamic
   char buf[fp_bsize];          /* setvbuf */
   char fileE[YOUSO10];
   int Gc_AN,nvecs;
-  int numprocs,myid,ID;  
+  int myid;
 
   /* MPI myid */
-  MPI_Comm_size(mpi_comm_level1,&numprocs);
   MPI_Comm_rank(mpi_comm_level1,&myid);
-  MPI_Barrier(mpi_comm_level1);
 
   /* share Gxyz */
-  for (Gc_AN=1; Gc_AN<=atomnum; Gc_AN++){
-    ID = G2ID[Gc_AN];
-    MPI_Bcast(&Gxyz[Gc_AN][1],  3, MPI_DOUBLE, ID, mpi_comm_level1);
-    MPI_Bcast(&Gxyz[Gc_AN][17], 3, MPI_DOUBLE, ID, mpi_comm_level1);
-  }
+  OpenMX_Geometry_Share_Atoms(geometry,Gxyz);
 
   /* set the number of vectors to be changed */
 
@@ -3707,112 +3367,32 @@ void RFC5(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamic
   else   
     diis_iter = M_GDIIS_HISTORY;
 
-  /* shift one */
-
-  for (i=(diis_iter-2); 0<=i; i--) {
-
-    /* fractional coordinates and gradients of the total energy w.r.t. the coordinates */
-
-    for (iatom=1; iatom<=atomnum; iatom++) {
-      for (k=1; k<=3; k++) {
-	GxyzHistoryIn[i+1][iatom][k] = GxyzHistoryIn[i][iatom][k];
-	GxyzHistoryR[i+1][iatom][k]  = GxyzHistoryR[i][iatom][k];
-      }
-    }
-
-    /* cell vectors and gradients of the total energy w.r.t. the cell vectors */
- 
-    for (icell=1; icell<=nvecs; icell++) {
-      for (k=1; k<=3; k++) {
-	GxyzHistoryIn[i+1][atomnum+icell][k] = GxyzHistoryIn[i][atomnum+icell][k];
-	GxyzHistoryR[i+1][atomnum+icell][k]  = GxyzHistoryR[i][atomnum+icell][k];
-      }
-    }
-  }
-
-  /* add GxyzHistoryIn and GxyzHisotryR */
-
-  for (iatom=1; iatom<=atomnum; iatom++)   {
-
-    /* calculate dE_dq */
-
-    for (i=1; i<=3; i++){
-      sum = 0.0;
-      for (j=1; j<=3; j++){
-	sum += Gxyz[iatom][16+j]*tv[i][j];
-      }
-
-      if (atom_Fixed_XYZ[iatom][i]==1){
-        Gxyz[iatom][13+i] = 0.0;
-      }
-      else{ 
-        Gxyz[iatom][13+i] = sum;
-      }
-    }
-
-    for (k=1; k<=3; k++) {
-      GxyzHistoryIn[0][iatom][k] = Cell_Gxyz[iatom][k];
-      GxyzHistoryR[0][iatom][k]  = Gxyz[iatom][13+k];
-    }
-  }
-
-  /* add information on the cell vectors */
-
-  for (icell=1; icell<=nvecs; icell++) {
-    for (k=1; k<=3; k++) {
-
-      GxyzHistoryIn[0][atomnum+icell][k] = tv[icell][k];
-
-      if (Cell_Fixed_XYZ[icell][k]==1){
-        GxyzHistoryR[0][atomnum+icell][k] = 0.0;
-      }
-      else{
-        GxyzHistoryR[0][atomnum+icell][k] = dE_da[icell][k];
-      }
-    }
-  }
+  Update_Cell_Opt_History(diis_iter,nvecs,dE_da);
 
   /* set the initial approximate Hessian */
 
   if (iter==1){
 
     if (iter0<M_GDIIS_HISTORY)
-      Estimate_Initial_Hessian(iter0-1,1,itv);
-    else   
-      Estimate_Initial_Hessian(M_GDIIS_HISTORY-1,1,itv);
+      Estimate_Initial_Hessian(geometry, iter0-1,1,itv);
+    else
+      Estimate_Initial_Hessian(geometry, M_GDIIS_HISTORY-1,1,itv);
   }
-  
-  if (myid!=Host_ID) goto Last_Bcast; 
-  
+
+  if (myid!=Host_ID) goto Last_Bcast;
+
   /*********************** for myid==Host_ID **************************/
-  
-  /* allocation of arrays */
-  
-  A = (double*)malloc(sizeof(double)*(diis_iter+2)*(diis_iter+2));
-  for (i=0; i<(diis_iter+2)*(diis_iter+2); i++) A[i] = 0.0;
-  B = (double*)malloc(sizeof(double)*(diis_iter+2));
-  
-  /* find the maximum gradient dE_da */
-  
+
+  /* The convergence test includes both cell and Cartesian gradients. */
   Max_Gradient = 0.0;
-  
-  for (i=1; i<=3; i++){
-    for (j=1; j<=3; j++){
-      if (Max_Gradient<fabs(dE_da[i][j])) Max_Gradient = fabs(dE_da[i][j]); 
-    }
-  }
+  for (i=1; i<=3; ++i)
+    for (j=1; j<=3; ++j) Max_Gradient = fmax(Max_Gradient,fabs(dE_da[i][j]));
 
-  /* find the maximum force */
-
-  force_Max=0.0;
-  for (iatom=1; iatom<=atomnum; iatom++){
-    for (k=1; k<=3; k++) {
-      if (force_Max< fabs(Gxyz[iatom][16+k]) ) force_Max = fabs(Gxyz[iatom][16+k]);
-    }
-  }
-  
-  if (Max_Gradient<force_Max) Max_Gradient = force_Max;
-  
+  force_Max = 0.0;
+#pragma omp parallel for schedule(static) reduction(max:force_Max) if(atomnum>=128) private(k)
+  for (iatom=1; iatom<=atomnum; ++iatom)
+    for (k=1; k<=3; ++k) force_Max = fmax(force_Max,fabs(Gxyz[iatom][16+k]));
+  Max_Gradient = fmax(Max_Gradient,force_Max);
   sMD_TimeStep = 0.05/(0.01*41.341105);
 
   if (2<=level_stdout){
@@ -3820,54 +3400,7 @@ void RFC5(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamic
     printf("<%s>  Criterion      (Hartree/Bohr) = %15.12f\n", func_name, MD_Opt_criterion);
   }
 
-  for (i=0; i<diis_iter; i++) {
-    for (j=0; j<diis_iter; j++) {
-
-      RR = 0.0;
-
-      /* dE/dr and dE/da */
-
-      for (iatom=1; iatom<=(atomnum+nvecs); iatom++)   {
-	for (k=1; k<=3; k++) {
-	  dRi[k] = GxyzHistoryR[i][iatom][k];
-	  dRj[k] = GxyzHistoryR[j][iatom][k];
-	}
-
-	RR += dRi[1]*dRj[1] + dRi[2]*dRj[2] + dRi[3]*dRj[3];
-      }
-
-      A[ i*(diis_iter+1)+j ]= RR;
-    }
-  }
-  
-  /* find the maximum value in elements of the matrix A */
-
-  max_A = 0.0;
-
-  for (i=0;i<diis_iter;i++) {
-    for (j=0;j<diis_iter;j++) {
-      RR = fabs(A[i*(diis_iter+1)+j]) ;
-      if (max_A< RR ) max_A = RR;
-    }
-  }
-
-  max_A = 1.0/max_A;
-
-  for (i=0; i<diis_iter; i++) {
-    for (j=0; j<diis_iter; j++) {
-      A[ i*(diis_iter+1)+j ] *= max_A;
-    }
-  }
-
-  for (i=0; i<diis_iter; i++) {
-    A[ i*(diis_iter+1)+diis_iter ] = 1.0;
-    A[ diis_iter*(diis_iter+1)+i ] = 1.0;
-  }
-
-  A[diis_iter*(diis_iter+1)+diis_iter] = 0.0;
-
-  for (i=0; i<diis_iter; i++) B[i] = 0.0;
-  B[diis_iter] = 1.0;
+  OpenMX_Geometry_Prepare_DIIS(geometry,GxyzHistoryR,atomnum+nvecs,diis_iter,&A,&B);
 
   if (2<=level_stdout && myid==0){
     printf("<%s>  DIIS matrix\n",func_name);
@@ -3882,19 +3415,11 @@ void RFC5(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamic
 
   /* lapack routine */
 
-  N = diis_iter+1;
-  LDA = diis_iter+1;
-  LWORK = diis_iter+1;
-  work = (double*)malloc(sizeof(double)*LWORK);
-  ipiv = (int*)malloc(sizeof(int)*(diis_iter+1));
-
-  i = 1; 
-
   if (2<=level_stdout){
     printf("<%s> M_GDIIS_HISTORY=%2d diis_iter=%2d\n",func_name,M_GDIIS_HISTORY,diis_iter);
   }
 
-  F77_NAME(dsysv,DSYSV)( JOBB, &N, &i, A, &LDA,  ipiv, B, &LDA, work, &LWORK, &info);
+  const int info=OpenMX_Geometry_Solve_DIIS(geometry,diis_iter,A,B);
 
   if (info!=0) {
     printf("<%s> dsysv_, info=%d\n",func_name,info);
@@ -3990,74 +3515,13 @@ void RFC5(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamic
     /*********************************************************************************
      update an approximate Hessian matrix 
    
-     H_k = H_{k-1} + y*y^t/(y^t*y) - H_{k-1}*s * s^t * H_{k-1}^t /(s^t * H_{k-1} * s)
+     H_k = H_{k-1} + y*y^t/(s^t*y) - H_{k-1}*s * s^t * H_{k-1}^t /(s^t * H_{k-1} * s)
      y = GxyzHistoryR[0][iatom][k]  - GxyzHistoryR[1][iatom][k]
      s = GxyzHistoryIn[0][iatom][k] - GxyzHistoryIn[1][iatom][k]
     *********************************************************************************/
 
-    if (iter!=1){
-   
-      /* H*s  */
-
-      for (i=1; i<=(3*atomnum+3*nvecs); i++){
-
-	sum1 = 0.0;  
-	for (k=1; k<=(atomnum+nvecs); k++){     
-
-	  sum1 += ( Hessian[i][3*k-2]*(GxyzHistoryIn[0][k][1] - GxyzHistoryIn[1][k][1])
-		   +Hessian[i][3*k-1]*(GxyzHistoryIn[0][k][2] - GxyzHistoryIn[1][k][2])
-		   +Hessian[i][3*k  ]*(GxyzHistoryIn[0][k][3] - GxyzHistoryIn[1][k][3]));
-	}
- 
-	/* store H*s */
-
-	Hessian[0][i] = sum1;
-      }
-
-      /* tmp1 = y^t*s, tmp2 = s^t*H*s */ 
-    
-      tmp1 = 0.0;
-      tmp2 = 0.0;
-    
-      for (k=1; k<=(atomnum+nvecs); k++){     
-
-	tmp1 += ((GxyzHistoryIn[0][k][1] - GxyzHistoryIn[1][k][1])*(GxyzHistoryR[0][k][1] - GxyzHistoryR[1][k][1])
-	        +(GxyzHistoryIn[0][k][2] - GxyzHistoryIn[1][k][2])*(GxyzHistoryR[0][k][2] - GxyzHistoryR[1][k][2])
-		+(GxyzHistoryIn[0][k][3] - GxyzHistoryIn[1][k][3])*(GxyzHistoryR[0][k][3] - GxyzHistoryR[1][k][3]));
-
-	tmp2 += ((GxyzHistoryIn[0][k][1] - GxyzHistoryIn[1][k][1])*Hessian[0][3*k-2]
-		+(GxyzHistoryIn[0][k][2] - GxyzHistoryIn[1][k][2])*Hessian[0][3*k-1] 
-		+(GxyzHistoryIn[0][k][3] - GxyzHistoryIn[1][k][3])*Hessian[0][3*k  ]); 
-      }
-
-      /* update the approximate Hessian by the BFGS method */
-
-      if (tmp1<1.0e-10) tmp1 = 1.0e-10; 
-      if (tmp2<1.0e-10) tmp2 = 1.0e-10; 
-
-      m1 = 0;
-      for (i=1; i<=(atomnum+nvecs); i++){   
-	for (k1=1; k1<=3; k1++){     
-
-	  m1++;
-
-	  m2 = 0;
-	  for (j=1; j<=(atomnum+nvecs); j++){     
-	    for (k2=1; k2<=3; k2++){     
-
-	      m2++;
-
-	      Hessian[m1][m2] += 
-
-		1.0/tmp1*(GxyzHistoryR[0][i][k1]-GxyzHistoryR[1][i][k1])*(GxyzHistoryR[0][j][k2]-GxyzHistoryR[1][j][k2])
-               -1.0/tmp2*Hessian[0][m1]*Hessian[0][m2];
-
-	    }
-	  }
-	}
-      }
-
-    }
+    if (iter!=1)
+      OpenMX_Geometry_BFGS(geometry,Hessian,GxyzHistoryIn,GxyzHistoryR,atomnum+nvecs,OPENMX_GEOMETRY_RF_HESSIAN);
 
     /* taking account of constraints for lattice vectors */
 
@@ -4134,25 +3598,9 @@ void RFC5(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamic
                of the augmented Hessian matrix
     ************************************************************/  
 
-    work2 = (double*)malloc(sizeof(double)*(3*atomnum+12));
+    OpenMX_Geometry_RF_Step(geometry,Hessian,3*(atomnum+nvecs)+1,
+                            scf_eigen_lib_flag==GPUSOLVER,level_stdout);
 
-    ahes = (double**)malloc(sizeof(double*)*(3*atomnum+12));
-    for (i=0; i<3*atomnum+12; i++){
-      ahes[i] = (double*)malloc(sizeof(double)*(3*atomnum+12));
-    }
-    
-    for(i=0; i<=(3*atomnum+nvecs*3+1); i++){
-	for(j=0; j<=(3*atomnum+nvecs*3+1); j++){
-	ahes[i][j] = Hessian[i][j];
-      }
-    }
-
-    Eigen_lapack(ahes, work2, 3*atomnum+nvecs*3+1, 1); 
-
-    for (i=1; i<=(3*atomnum+nvecs*3+1); i++){
-      Hessian[0][i]=ahes[i][1]/ahes[3*atomnum+nvecs*3+1][1];
-    }
- 
     if (2<=level_stdout){
       printf("<%s> |tilde{R}|=%E\n",func_name, sumB);
     }
@@ -4161,34 +3609,17 @@ void RFC5(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamic
       update fractional coordinates and cell vectors 
     **************************************************/
 
-    /* initialize */
-
-    for (iatom=1; iatom<=(atomnum+nvecs); iatom++) {
-      for (j=1; j<=3; j++) {
-        Cell_Gxyz[iatom][j] = 0.0;
+    /* Mix fractional and lattice coordinates and apply the RF step. */
+#pragma omp parallel for schedule(static) if(atomnum>=128)
+    for (int site=1; site<=atomnum+nvecs; ++site) {
+      for (int j=1; j<=3; ++j) {
+        double mixed=0.0;
+        for (int step=0; step<diis_iter; ++step)
+          mixed+=GxyzHistoryIn[step][site][j]*B[step];
+        Cell_Gxyz[site][j]=mixed+Hessian[0][3*(site-1)+j];
       }
     }
 
-    /* calculate the DIIS coordinates tilde{cell_x} */
-
-    m1 = 0;
-    for (iatom=1; iatom<=(atomnum+nvecs); iatom++) {
-      for (j=1; j<=3; j++) {
-
-	/* DIIS mixing */
-        
-	for (i=0; i<diis_iter; i++) {
-	  Cell_Gxyz[iatom][j] += GxyzHistoryIn[i][iatom][j]*B[i]; 
-	}
-        
-	/* a quasi Newton method */ 
-        
-	m1++;
-        
-	Cell_Gxyz[iatom][j] += Hessian[0][m1];
-      }
-    }
-     
     /************************************
                     set tv 
     ************************************/
@@ -4199,42 +3630,18 @@ void RFC5(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamic
       }
     }
 
-    /*********************************
-              calculate Gxyz 
-    *********************************/
-    
-    for (Gc_AN=1; Gc_AN<=atomnum; Gc_AN++){
-
-      Gxyz[Gc_AN][1] = Cell_Gxyz[Gc_AN][1]*tv[1][1]
-                     + Cell_Gxyz[Gc_AN][2]*tv[2][1]
-	             + Cell_Gxyz[Gc_AN][3]*tv[3][1] + Grid_Origin[1];
-
-      Gxyz[Gc_AN][2] = Cell_Gxyz[Gc_AN][1]*tv[1][2]
-	             + Cell_Gxyz[Gc_AN][2]*tv[2][2]
-	             + Cell_Gxyz[Gc_AN][3]*tv[3][2] + Grid_Origin[2];
-
-      Gxyz[Gc_AN][3] = Cell_Gxyz[Gc_AN][1]*tv[1][3]
-	             + Cell_Gxyz[Gc_AN][2]*tv[2][3]
-	             + Cell_Gxyz[Gc_AN][3]*tv[3][3] + Grid_Origin[3];
-    }
-
-    /************************************************************
-      In case of a too large updating, do a modest updating
-      find Max_Step:
-    ************************************************************/  
-
-    Max_Step = 0.0;
-
-    /* atomic coordinates */
-     
-    for (iatom=1; iatom<=atomnum; iatom++) {
-      for (j=1; j<=3; j++) {
-    
-        diff = fabs(Gxyz[iatom][j] - Gxyz[iatom][20+j]);
-        if (Max_Step<diff) Max_Step = diff;
+    /* Convert to Cartesian coordinates and measure the largest component step. */
+    Max_Step=0.0;
+#pragma omp parallel for schedule(static) reduction(max:Max_Step) if(atomnum>=128)
+    for (int atom=1; atom<=atomnum; ++atom) {
+      for (int j=1; j<=3; ++j) {
+        Gxyz[atom][j]=Cell_Gxyz[atom][1]*tv[1][j]
+                     +Cell_Gxyz[atom][2]*tv[2][j]
+                     +Cell_Gxyz[atom][3]*tv[3][j]+Grid_Origin[j];
+        Max_Step=fmax(Max_Step,fabs(Gxyz[atom][j]-Gxyz[atom][20+j]));
       }
     }
-     
+
     /* cell vectors */
     
     for (i=1; i<=nvecs; i++) {
@@ -4322,23 +3729,8 @@ void RFC5(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamic
     Max_Force = Max_Gradient;
     SD_scaling_user = SD_scaling*Max_Force*0.2;
 
-    /* free arrays */
-
-    free(work2);
-
-    for (i=0; i<(3*atomnum+12); i++){
-      free(ahes[i]);
-    }
-    free(ahes);
-
   } /* if (MD_Opt_OK!=1 && iter!=MD_IterNumber) */
 
-  /* free arrays */
-
-  free(A);
-  free(B);
-  free(ipiv);
-  free(work);
 
   /*********************** end of "myid==Host_ID" **************************/
 
@@ -4346,15 +3738,7 @@ void RFC5(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamic
 
   MPI_Bcast(&MD_Opt_OK,1,MPI_INT, Host_ID, mpi_comm_level1);
 
-  for (Gc_AN=1; Gc_AN<=(atomnum+3); Gc_AN++){
-    MPI_Bcast(&Gxyz[Gc_AN][1],  3, MPI_DOUBLE, Host_ID, mpi_comm_level1);
-  }
-
-  /* copy tv[i] */ 
-
-  for (i=1; i<=3; i++){
-    MPI_Bcast(&tv[i][1],  3, MPI_DOUBLE, Host_ID, mpi_comm_level1);
-  }
+  OpenMX_Geometry_Publish(geometry,Gxyz,tv);
 
   /* print information */ 
 
@@ -4486,23 +3870,19 @@ void RFC5(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamic
 
 
 
-void GDIIS_BFGS(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0)
+void GDIIS_BFGS(OpenMXGeometryOpt *geometry, const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0)
 {
   /* 1au=2.4189*10^-2 fs, 1fs=41.341105 au */
 
-  int k1,k2,m1,m2;
+  int m1;
   int header_flag;
   char *func_name="BFGS";
-  char *JOBB="L";
   double dt;
-  double *A,*B,sumB,max_A, RR,dRi[4],dRj[4];
-  double *work;
-  double sum1,tmp1,tmp2,c0,c1;
+  double *A,*B,sumB;
   double mixing,force_Max;
   static double sMD_TimeStep,dx_max=0.05; 
   double diff_dx,diff,Max_Step;
-  int *ipiv;
-  INTEGER i,j,k,iatom,N,LDA,LWORK,info;
+  INTEGER i,j,k,iatom;
   int diis_iter;
   char fileCoord[YOUSO10];
   char fileSD[YOUSO10];
@@ -4511,20 +3891,13 @@ void GDIIS_BFGS(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *d
   char fileE[YOUSO10];
 
   /* variables for MPI */
-  int Gc_AN;
-  int numprocs,myid,ID;  
+  int myid;
 
   /* MPI myid */
-  MPI_Comm_size(mpi_comm_level1,&numprocs);
   MPI_Comm_rank(mpi_comm_level1,&myid);
-  MPI_Barrier(mpi_comm_level1);
 
   /* share Gxyz */
-  for (Gc_AN=1; Gc_AN<=atomnum; Gc_AN++){
-    ID = G2ID[Gc_AN];
-    MPI_Bcast(&Gxyz[Gc_AN][1],  3, MPI_DOUBLE, ID, mpi_comm_level1);
-    MPI_Bcast(&Gxyz[Gc_AN][17], 3, MPI_DOUBLE, ID, mpi_comm_level1);
-  }
+  OpenMX_Geometry_Share_Atoms(geometry,Gxyz);
 
   if (iter<M_GDIIS_HISTORY)
     diis_iter = iter;
@@ -4582,56 +3955,7 @@ void GDIIS_BFGS(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *d
 
   /* allocation of arrays */
 
-  A = (double*)malloc(sizeof(double)*(diis_iter+1)*(diis_iter+1));
-  for (i=0; i<(diis_iter+1)*(diis_iter+1); i++) A[i] = 0.0;
-  B = (double*)malloc(sizeof(double)*(diis_iter+1));
-
-  for (i=0; i<diis_iter; i++) {
-    for (j=0; j<diis_iter; j++) {
-
-      RR = 0.0;
-
-      for (iatom=1; iatom<=atomnum; iatom++)   {
-	for (k=1; k<=3; k++) {
-	  dRi[k] = GxyzHistoryR[i][iatom][k];
-	  dRj[k] = GxyzHistoryR[j][iatom][k];
-	}
-
-	RR += dRi[1]*dRj[1] + dRi[2]*dRj[2] + dRi[3]*dRj[3];
-      }
-
-      A[ i*(diis_iter+1)+j ]= RR;
-    }
-  }
-
-  /* find max of A */
-
-  max_A = 0.0;
-
-  for (i=0;i<diis_iter;i++) {
-    for (j=0;j<diis_iter;j++) {
-      RR = fabs(A[i*(diis_iter+1)+j]) ;
-      if (max_A< RR ) max_A = RR;
-    }
-  }
-
-  max_A = 1.0/max_A;
-
-  for (i=0; i<diis_iter; i++) {
-    for (j=0; j<diis_iter; j++) {
-      A[ i*(diis_iter+1)+j ] *= max_A;
-    }
-  }
-
-  for (i=0; i<diis_iter; i++) {
-    A[ i*(diis_iter+1)+diis_iter ] = 1.0;
-    A[ diis_iter*(diis_iter+1)+i ] = 1.0;
-  }
-
-  A[diis_iter*(diis_iter+1)+diis_iter] = 0.0;
-
-  for (i=0; i<diis_iter; i++) B[i] = 0.0;
-  B[diis_iter] = 1.0;
+  OpenMX_Geometry_Prepare_DIIS(geometry,GxyzHistoryR,atomnum,diis_iter,&A,&B);
 
   if (2<=level_stdout){
     printf("<%s>  DIIS matrix\n",func_name);
@@ -4646,19 +3970,11 @@ void GDIIS_BFGS(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *d
 
   /* lapack routine */
 
-  N=diis_iter+1;
-  LDA=diis_iter+1;
-  LWORK=diis_iter+1;
-  work=(double*)malloc(sizeof(double)*LWORK);
-  ipiv = (int*)malloc(sizeof(int)*(diis_iter+1));
-
-  i = 1; 
-
   if (2<=level_stdout){
     printf("M_GDIIS_HISTORY=%2d diis_iter=%2d\n",M_GDIIS_HISTORY,diis_iter);
   }
 
-  F77_NAME(dsysv,DSYSV)( JOBB, &N, &i, A, &LDA,  ipiv, B, &LDA, work, &LWORK, &info);
+  const int info=OpenMX_Geometry_Solve_DIIS(geometry,diis_iter,A,B);
 
   if (info!=0) {
     printf("<%s> dsysv_, info=%d\n",func_name,info);
@@ -4748,98 +4064,11 @@ void GDIIS_BFGS(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *d
     }
 
     else {
-   
-      /* invH*y  */
-
-      for (i=1; i<=3*atomnum; i++){     
-
-	sum1 = 0.0;  
-	for (k=1; k<=atomnum; k++){     
-
-	  sum1 += ( InvHessian[i][3*k-2]*(GxyzHistoryR[0][k][1] - GxyzHistoryR[1][k][1])
-		   +InvHessian[i][3*k-1]*(GxyzHistoryR[0][k][2] - GxyzHistoryR[1][k][2])
-		   +InvHessian[i][3*k  ]*(GxyzHistoryR[0][k][3] - GxyzHistoryR[1][k][3]));
-	}
- 
-	/* store invH*y */
-
-	InvHessian[0][i] = sum1;
-      }        
-
-      /* tmp1 = s^t*y, tmp2 = y^t*H*y */ 
-
-      tmp1 = 0.0;
-      tmp2 = 0.0;
-
-      for (k=1; k<=atomnum; k++){     
-
-	tmp1 += ( (GxyzHistoryIn[0][k][1] - GxyzHistoryIn[1][k][1])*(GxyzHistoryR[0][k][1] - GxyzHistoryR[1][k][1])
-		 +(GxyzHistoryIn[0][k][2] - GxyzHistoryIn[1][k][2])*(GxyzHistoryR[0][k][2] - GxyzHistoryR[1][k][2])
-		 +(GxyzHistoryIn[0][k][3] - GxyzHistoryIn[1][k][3])*(GxyzHistoryR[0][k][3] - GxyzHistoryR[1][k][3]));
-
-	tmp2 += ( (GxyzHistoryR[0][k][1] - GxyzHistoryR[1][k][1])*InvHessian[0][3*k-2]
-		 +(GxyzHistoryR[0][k][2] - GxyzHistoryR[1][k][2])*InvHessian[0][3*k-1] 
-		 +(GxyzHistoryR[0][k][3] - GxyzHistoryR[1][k][3])*InvHessian[0][3*k  ]); 
-      }
-
-      /* c0=(tmp1+tmp2)/(tmp1*tmp1), c1=-1.0/tmp1 */
-
-      c0 = (tmp1 + tmp2)/(tmp1*tmp1);
-      c1 =-1.0/tmp1;
-
-      /* update the approximate Hessian by the BFGS method */
-
-      m1 = 0;
-      for (i=1; i<=atomnum; i++){   
-	for (k1=1; k1<=3; k1++){     
-
-	  m1++;
-
-	  m2 = 0;
-	  for (j=1; j<=atomnum; j++){     
-	    for (k2=1; k2<=3; k2++){     
-
-	      m2++;
-
-	      InvHessian[m1][m2] += 
-
-		c0*(GxyzHistoryIn[0][i][k1]-GxyzHistoryIn[1][i][k1])*(GxyzHistoryIn[0][j][k2]-GxyzHistoryIn[1][j][k2])
-		+ c1*InvHessian[0][m1]*(GxyzHistoryIn[0][j][k2]-GxyzHistoryIn[1][j][k2])
-		+ c1*(GxyzHistoryIn[0][i][k1]-GxyzHistoryIn[1][i][k1])*InvHessian[0][m2];
-
-	    }
-	  }
-	}
-      }
+      OpenMX_Geometry_BFGS(geometry,InvHessian,GxyzHistoryIn,GxyzHistoryR,atomnum,
+                          OPENMX_GEOMETRY_INVERSE_HESSIAN);
     }
 
-    /************************************************************
-            perform a quasi Newton-Raphson method  
-    ************************************************************/
-
-    /* H^-1*g */
-
-    m1 = 0;
-    for (i=1; i<=atomnum; i++){   
-      for (k1=1; k1<=3; k1++){     
-
-	m1++;
-  
-	m2 = 0;
-	sum1 = 0.0;
-	for (j=1; j<=atomnum; j++){     
-	  for (k2=1; k2<=3; k2++){     
-
-	    m2++;
-
-	    sum1 += InvHessian[m1][m2]*Gxyz[j][k2];
-	  }
-	}
-
-        InvHessian[0][m1] = sum1;
-
-      }
-    }
+    OpenMX_Geometry_Apply_Inverse(geometry,InvHessian,Gxyz);
 
     if (2<=level_stdout){
       printf("<%s> |tilde{R}|=%E\n",func_name, sumB);
@@ -4931,12 +4160,6 @@ void GDIIS_BFGS(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *d
   Max_Force = force_Max;
   SD_scaling_user = SD_scaling*Max_Force*0.2;
 
-  /* free arrays */
-
-  free(A);
-  free(B);
-  free(ipiv);
-  free(work);
 
   /*********************** end of "myid==Host_ID" **************************/
 
@@ -4944,11 +4167,7 @@ void GDIIS_BFGS(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *d
 
   MPI_Bcast(&MD_Opt_OK,1,MPI_INT, Host_ID, mpi_comm_level1);
 
-  for (Gc_AN=1; Gc_AN<=atomnum; Gc_AN++){
-    /* ID = G2ID[Gc_AN]; */
-    MPI_Bcast(&Gxyz[Gc_AN][1],  3, MPI_DOUBLE, Host_ID, mpi_comm_level1);
-    /*    MPI_Bcast(&Gxyz[Gc_AN][17], 3, MPI_DOUBLE, Host_ID, mpi_comm_level1); */
-  }
+  OpenMX_Geometry_Publish(geometry,Gxyz,NULL);
 
   if (myid==Host_ID){ 
 
@@ -5049,28 +4268,21 @@ void GDIIS_BFGS(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *d
 
 
 
-void GDIIS_EF(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0)
+void GDIIS_EF(OpenMXGeometryOpt *geometry, const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0)
 {
   /* 1au=2.4189*10^-2 fs, 1fs=41.341105 au */
 
-  int k1,k2,m1,m2,isp,wan,wsp;
+  int m1,wan,wsp;
   int header_flag;
   static double Utot0,scaling_factor;
   char *func_name="EF";
-  char *JOBB="L";
-  double dt,MinKo;
+  double dt;
   double itv[4][4];
-  double *A,*B,sumB,max_A, RR,dRi[4],dRj[4];
-  double *ko,**U;
-  double *work;
-/*hmweng c0, c1 are not used and lamda is newly defined */  
-/*  double sum1,tmp1,tmp2,c0,c1; */
-  double sum,sum1,tmp1,tmp2,lamda,c0,c1;
+  double *A,*B,sumB;
   double mixing,force_Max;
   static double sMD_TimeStep,dx_max=0.05; 
   double diff_dx,diff,Max_Step;
-  int *ipiv;
-  INTEGER i,j,k,iatom,N,LDA,LWORK,info;
+  INTEGER i,j,k,iatom;
   int diis_iter;
   char fileCoord[YOUSO10];
   char fileSD[YOUSO10];
@@ -5082,13 +4294,10 @@ void GDIIS_EF(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dyn
   FILE *fp;
 
   /* variables for MPI */
-  int Gc_AN;
-  int numprocs,myid,ID;  
+  int myid;
 
   /* MPI myid */
-  MPI_Comm_size(mpi_comm_level1,&numprocs);
   MPI_Comm_rank(mpi_comm_level1,&myid);
-  MPI_Barrier(mpi_comm_level1);
 
   /******************************************
               read *.rst4gopt.EF2 
@@ -5113,11 +4322,7 @@ void GDIIS_EF(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dyn
   }
 
   /* share Gxyz */
-  for (Gc_AN=1; Gc_AN<=atomnum; Gc_AN++){
-    ID = G2ID[Gc_AN];
-    MPI_Bcast(&Gxyz[Gc_AN][1],  3, MPI_DOUBLE, ID, mpi_comm_level1);
-    MPI_Bcast(&Gxyz[Gc_AN][17], 3, MPI_DOUBLE, ID, mpi_comm_level1);
-  }
+  OpenMX_Geometry_Share_Atoms(geometry,Gxyz);
 
   /* set diis_iter */
 
@@ -5157,7 +4362,7 @@ void GDIIS_EF(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dyn
 
   if (iter==1){
     scaling_factor = 2.0;
-    Estimate_Initial_Hessian(diis_iter,0,itv);
+    Estimate_Initial_Hessian(geometry, diis_iter,0,itv);
   }
   
   if (myid!=Host_ID)   goto Last_Bcast; 
@@ -5165,15 +4370,6 @@ void GDIIS_EF(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dyn
   /*********************** for myid==Host_ID **************************/
 
   /* allocation of arrays */
-
-  A = (double*)malloc(sizeof(double)*(diis_iter+1)*(diis_iter+1));
-  for (i=0; i<(diis_iter+1)*(diis_iter+1); i++) A[i] = 0.0;
-  B = (double*)malloc(sizeof(double)*(diis_iter+1));
-  ko = (double*)malloc(sizeof(double)*(3*atomnum+2));
-  U = (double**)malloc(sizeof(double*)*(3*atomnum+2));
-  for (i=0; i<(3*atomnum+2); i++){
-    U[i] = (double*)malloc(sizeof(double)*(3*atomnum+2));
-  }
 
   /* Max of force */
 
@@ -5200,53 +4396,8 @@ void GDIIS_EF(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dyn
     printf("<%s>  Criterion      (Hartree/Bohr) = %15.12f\n", func_name, MD_Opt_criterion);
   }
 
-  for (i=0; i<diis_iter; i++) {
-    for (j=0; j<diis_iter; j++) {
+  OpenMX_Geometry_Prepare_DIIS(geometry,GxyzHistoryR,atomnum,diis_iter,&A,&B);
 
-      RR = 0.0;
-
-      for (iatom=1; iatom<=atomnum; iatom++)   {
-	for (k=1; k<=3; k++) {
-	  dRi[k] = GxyzHistoryR[i][iatom][k];
-	  dRj[k] = GxyzHistoryR[j][iatom][k];
-	}
-
-	RR += dRi[1]*dRj[1] + dRi[2]*dRj[2] + dRi[3]*dRj[3];
-      }
-
-      A[ i*(diis_iter+1)+j ]= RR;
-    }
-  }
-
-  /* find max of A */
-
-  max_A = 0.0;
-
-  for (i=0;i<diis_iter;i++) {
-    for (j=0;j<diis_iter;j++) {
-      RR = fabs(A[i*(diis_iter+1)+j]) ;
-      if (max_A< RR ) max_A = RR;
-    }
-  }
-
-  max_A = 1.0/max_A;
-
-  for (i=0; i<diis_iter; i++) {
-    for (j=0; j<diis_iter; j++) {
-      A[ i*(diis_iter+1)+j ] *= max_A;
-    }
-  }
-
-  for (i=0; i<diis_iter; i++) {
-    A[ i*(diis_iter+1)+diis_iter ] = 1.0;
-    A[ diis_iter*(diis_iter+1)+i ] = 1.0;
-  }
-
-  A[diis_iter*(diis_iter+1)+diis_iter] = 0.0;
-
-  for (i=0; i<diis_iter; i++) B[i] = 0.0;
-  B[diis_iter] = 1.0;
-  
   if (2<=level_stdout){
     printf("<%s>  DIIS matrix\n",func_name);
     for (i=0; i<(diis_iter+1); i++) {
@@ -5260,19 +4411,11 @@ void GDIIS_EF(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dyn
 
   /* lapack routine */
 
-  N=diis_iter+1;
-  LDA=diis_iter+1;
-  LWORK=diis_iter+1;
-  work=(double*)malloc(sizeof(double)*LWORK);
-  ipiv = (int*)malloc(sizeof(int)*(diis_iter+1));
-
-  i = 1; 
-
   if (2<=level_stdout){
     printf("M_GDIIS_HISTORY=%2d diis_iter=%2d\n",M_GDIIS_HISTORY,diis_iter);
   }
 
-  F77_NAME(dsysv,DSYSV)( JOBB, &N, &i, A, &LDA,  ipiv, B, &LDA, work, &LWORK, &info);
+  const int info=OpenMX_Geometry_Solve_DIIS(geometry,diis_iter,A,B);
 
   if (info!=0) {
     printf("<%s> dsysv_, info=%d\n",func_name,info);
@@ -5360,155 +4503,18 @@ void GDIIS_EF(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dyn
     }
 
     /***********************************************************************************
-      update an approximate Hessian matrix 
-   
-      H_k = H_{k-1} + y*y^t/(y^t*y) - H_{k-1}*s * s^t * H_{k-1}^t /(s^t * H_{k-1} * s)
+      update an approximate Hessian matrix
+
+      H_k = H_{k-1} + y*y^t/(s^t*y) - H_{k-1}*s * s^t * H_{k-1}^t /(s^t * H_{k-1} * s)
       y = GxyzHistoryR[0][iatom][k]  - GxyzHistoryR[1][iatom][k]
       s = GxyzHistoryIn[0][iatom][k] - GxyzHistoryIn[1][iatom][k]
     ***********************************************************************************/
 
-    if (iter!=1){
-   
-      /* H*s  */
+    if (iter!=1)
+      OpenMX_Geometry_BFGS(geometry,Hessian,GxyzHistoryIn,GxyzHistoryR,atomnum,OPENMX_GEOMETRY_EF_HESSIAN);
 
-      for (i=1; i<=3*atomnum; i++){     
-
-	sum1 = 0.0;  
-	for (k=1; k<=atomnum; k++){     
-
-	  sum1 += (Hessian[i][3*k-2]*(GxyzHistoryIn[0][k][1] - GxyzHistoryIn[1][k][1])
-		  +Hessian[i][3*k-1]*(GxyzHistoryIn[0][k][2] - GxyzHistoryIn[1][k][2])
-		  +Hessian[i][3*k  ]*(GxyzHistoryIn[0][k][3] - GxyzHistoryIn[1][k][3]));
-	}
- 
-	/* store H*s */
-
-	Hessian[0][i] = sum1;
-      }        
-
-      /* tmp1 = y^t*s, tmp2 = s^t*H*s */ 
-    
-      tmp1 = 0.0;
-      tmp2 = 0.0;
-    
-      for (k=1; k<=atomnum; k++){
-
-	tmp1 += ((GxyzHistoryIn[0][k][1] - GxyzHistoryIn[1][k][1])*(GxyzHistoryR[0][k][1] - GxyzHistoryR[1][k][1])
-		 +(GxyzHistoryIn[0][k][2] - GxyzHistoryIn[1][k][2])*(GxyzHistoryR[0][k][2] - GxyzHistoryR[1][k][2])
-		 +(GxyzHistoryIn[0][k][3] - GxyzHistoryIn[1][k][3])*(GxyzHistoryR[0][k][3] - GxyzHistoryR[1][k][3]));
-
-	tmp2 += ((GxyzHistoryIn[0][k][1] - GxyzHistoryIn[1][k][1])*Hessian[0][3*k-2]
-	        +(GxyzHistoryIn[0][k][2] - GxyzHistoryIn[1][k][2])*Hessian[0][3*k-1] 
-		+(GxyzHistoryIn[0][k][3] - GxyzHistoryIn[1][k][3])*Hessian[0][3*k  ]); 
-      }
-
-      /* c0=1.0/tmp1, c1=1.0/tmp2 */
-
-      /*
-	if (myid==Host_ID){
-	printf("tmp1=%15.12f tmp2=%15.12f\n",1.0/tmp1,1.0/tmp2);
-	}
-      */
-
-      c0 = 1.0/tmp1;
-      c1 = 1.0/tmp2;
-
-      /* update the approximate Hessian by the BFGS method if 0.0<c0 */
-    
-      if (0.0<c0){
-	m1 = 0;
-	for (i=1; i<=atomnum; i++){   
-	  for (k1=1; k1<=3; k1++){     
-
-	    m1++;
-
-	    m2 = 0;
-	    for (j=1; j<=atomnum; j++){     
-	      for (k2=1; k2<=3; k2++){     
-
-		m2++;
-
-		Hessian[m1][m2] += 
-
-		  c0*(GxyzHistoryR[0][i][k1]-GxyzHistoryR[1][i][k1])*(GxyzHistoryR[0][j][k2]-GxyzHistoryR[1][j][k2])
-		  -c1*Hessian[0][m1]*Hessian[0][m2];
-
-	      }
-	    }
-	  }
-	}
-
-      }
-    } 
-
-    /************************************************************
-             diagonalize the approximate Hessian
-    ************************************************************/
-
-    for (i=1; i<=3*atomnum; i++){
-      for (j=1; j<=3*atomnum; j++){
-	U[i][j] = Hessian[i][j];
-      }
-    }
-
-    Eigen_lapack(U,ko,3*atomnum,3*atomnum);
-
-
-    /*
-      if (myid==Host_ID){
-      for (i=1; i<=3*atomnum; i++){
-      printf("i=%3d ko=%15.12f\n",i,ko[i]);
-      }
-
-      printf("EV\n"); 
-      for (i=1; i<=3*atomnum; i++){
-      for (j=1; j<=3*atomnum; j++){
-      printf("%8.4f ",U[i][j]); 
-      }
-      printf("\n");
-      }
-      }
-    */
-
-
-    isp = 0;
-
-    /*
-      for (i=1; i<=3*atomnum; i++){
-      if (ko[i]<1.0e-1) isp = i;
-      }
-    */
-
-    if (atomnum<=4) MinKo = 0.10;
-    else            MinKo = 0.005;
-
-    for (i=1; i<=3*atomnum; i++){
-      if (ko[i]<MinKo) ko[i] = MinKo;
-    }
-
-    if (isp!=0 && myid==Host_ID && 0<level_stdout){
-      printf("Hessian is ill-conditioned.\n");
-    } 
-
-    /************************************************************
-             U*lambda^{-1} U^{dag} * g
-    ************************************************************/
-
-    for (i=(isp+1); i<=3*atomnum; i++){
-      sum = 0.0;
-      for (j=1; j<=3*atomnum; j++){
-	sum += U[j][i]*Hessian[j][0];
-      }
-      U[i][0] = sum;
-    }  
-  
-    for (i=1; i<=3*atomnum; i++){
-      sum = 0.0;
-      for (j=(isp+1); j<=3*atomnum; j++){
-	sum += U[i][j]*U[j][0]/ko[j];
-      }
-      U[0][i] = sum;
-    }
+    const double min_eigenvalue=atomnum<=4 ? 0.10 : 0.005;
+    OpenMX_Geometry_EF_Step(geometry,Hessian,min_eigenvalue,scf_eigen_lib_flag==GPUSOLVER,level_stdout);
 
     /************************************************************
             calculate the DIIS coordinates tilde{x}
@@ -5542,7 +4548,7 @@ void GDIIS_EF(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dyn
 
 	m1++;
 
-	Gxyz[iatom][j] -= scaling_factor*U[0][m1];
+	Gxyz[iatom][j] -= scaling_factor*Hessian[0][m1];
       }
     }
 
@@ -5610,18 +4616,7 @@ void GDIIS_EF(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dyn
 
   Utot0 = thermo->total;
 
-  /* free arrays */
 
-  free(A);
-  free(B);
-  free(ko);
-  for (i=0; i<(3*atomnum+2); i++){
-    free(U[i]);
-  }
-  free(U);
-
-  free(ipiv);
-  free(work);
 
   /*********************** end of "myid==Host_ID" **************************/
 
@@ -5629,11 +4624,7 @@ void GDIIS_EF(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dyn
 
   MPI_Bcast(&MD_Opt_OK,1,MPI_INT, Host_ID, mpi_comm_level1);
 
-  for (Gc_AN=1; Gc_AN<=atomnum; Gc_AN++){
-    /* ID = G2ID[Gc_AN]; */
-    MPI_Bcast(&Gxyz[Gc_AN][1],  3, MPI_DOUBLE, Host_ID, mpi_comm_level1);
-    /*    MPI_Bcast(&Gxyz[Gc_AN][17], 3, MPI_DOUBLE, Host_ID, mpi_comm_level1); */
-  }
+  OpenMX_Geometry_Publish(geometry,Gxyz,NULL);
 
 
   if (myid==Host_ID){ 
@@ -7907,13 +6898,12 @@ void Output_abc_file(OpenMXThermodynamicEnergies *thermo, int iter)
 }
 
 
-void Estimate_Initial_Hessian(int diis_iter, int CellOpt_flag, double itv[4][4])
+void Estimate_Initial_Hessian(OpenMXGeometryOpt *geometry, int diis_iter, int CellOpt_flag, double itv[4][4])
 {
-  int numprocs,myid,ID;
+  int myid;
 
   /* MPI communication */
 
-  MPI_Comm_size(mpi_comm_level1,&numprocs);
   MPI_Comm_rank(mpi_comm_level1,&myid);
 
   /*******************************************
@@ -7921,27 +6911,12 @@ void Estimate_Initial_Hessian(int diis_iter, int CellOpt_flag, double itv[4][4])
   *******************************************/
 
   if (Initial_Hessian_flag==0){
-
-    int i,j;
-
-    if (CellOpt_flag==1){
-
-      for (i=1; i<=(3*atomnum+9); i++){     
-	for (j=1; j<=(3*atomnum+9); j++){     
-	  Hessian[i][j] = 0.0;
-	}
-	Hessian[i][i] = 1.0;
-      }
-    }
-
-    else{
-
-      for (i=1; i<=3*atomnum; i++){     
-	for (j=1; j<=3*atomnum; j++){     
-	  Hessian[i][j] = 0.0;
-	}
-	Hessian[i][i] = 1.0;
-      }
+    if (myid!=Host_ID) return;
+    const int n=3*atomnum+(CellOpt_flag==1 ? 9 : 0);
+#pragma omp parallel for schedule(static) if(n>=256)
+    for (int i=1; i<=n; ++i) {
+      memset(Hessian[i]+1,0,(size_t)n*sizeof(double));
+      Hessian[i][i]=1.0;
     }
   }
 
@@ -7955,396 +6930,23 @@ void Estimate_Initial_Hessian(int diis_iter, int CellOpt_flag, double itv[4][4])
   **************************************************************/
 
   else if (Initial_Hessian_flag==1){
-
-    int i,j,k,I,J;
-    int Mc_AN,Gc_AN,h_AN,Gh_AN,Rn;
-    int wsp1,wsp2,m1,m2,n1,n2;
-    double r,g[4],gr,d;
-    double *Hess_tmp;
-    double B[8][8];
-
-    B[0][0] =  0.5000; B[0][1] =  0.5000; B[0][2] =  0.5000; B[0][3] =  0.5000; B[0][4] =  0.5000; B[0][5] =  0.5000; B[0][6] =  0.5000; B[0][7] =  0.5000;
-    B[1][0] =  0.5000; B[1][1] = -0.2573; B[1][2] =  0.3401; B[1][3] =  0.6937; B[1][4] =  0.7126; B[1][5] =  0.8335; B[1][6] =  0.9491; B[1][7] =  1.0000;
-    B[2][0] =  0.5000; B[2][1] =  0.3401; B[2][2] =  0.9652; B[2][3] =  1.2843; B[2][4] =  1.4625; B[2][5] =  1.6549; B[2][6] =  1.7190; B[2][7] =  2.0000;
-    B[3][0] =  0.5000; B[3][1] =  0.6937; B[3][2] =  1.2843; B[3][3] =  1.6925; B[3][4] =  1.8238; B[3][5] =  2.1164; B[3][6] =  2.3185; B[3][7] =  2.5000;
-    B[4][0] =  0.5000; B[4][1] =  0.7126; B[4][2] =  1.4625; B[4][3] =  1.8238; B[4][4] =  2.0203; B[4][5] =  2.2137; B[4][6] =  2.5206; B[4][7] =  2.7000;
-    B[5][0] =  0.5000; B[5][1] =  0.8335; B[5][2] =  1.6549; B[5][3] =  2.1164; B[5][4] =  2.2137; B[5][5] =  2.3718; B[5][6] =  2.5110; B[5][7] =  2.7000;
-    B[6][0] =  0.5000; B[6][1] =  0.9491; B[6][2] =  1.7190; B[6][3] =  2.3185; B[6][4] =  2.5206; B[6][5] =  2.5110; B[6][6] =  2.5200; B[6][7] =  2.7000;
-    B[7][0] =  0.5000; B[7][1] =  1.0000; B[7][2] =  2.0000; B[7][3] =  2.5000; B[7][4] =  2.7000; B[7][5] =  2.7000; B[7][6] =  2.7000; B[7][7] =  2.9000;
-
-    /* initialize Hessian */
-
-    if (CellOpt_flag==1){
-
-      for (i=1; i<=(3*atomnum+9); i++){     
-	for (j=1; j<=(3*atomnum+9); j++){     
-	  Hessian[i][j] = 0.0;
-	}
-      }
-
-      for (i=1; i<=3*atomnum; i++){     
-        Hessian[i][i] = 0.1;
-      }
-
-      for (i=3*atomnum+1; i<=(3*atomnum+9); i++){     
-        Hessian[i][i] = 0.05;
-      }
-    }
-
-    else{
-
-      for (i=1; i<=3*atomnum; i++){     
-	for (j=1; j<=3*atomnum; j++){     
-	  Hessian[i][j] = 0.0;
-	}
-	Hessian[i][i] = 0.1;
-      }
-    }
-
-    /* calculate the approximate Hessian */
-
-    for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-      Gc_AN = M2G[Mc_AN];    
-
-      wsp1 = WhatSpecies[Gc_AN];
-      m1 = Spe_WhatAtom[wsp1];
-      if      (m1==1)   n1 = 1;
-      else if (m1<=10)  n1 = 2;
-      else if (m1<=18)  n1 = 3;
-      else if (m1<=36)  n1 = 4;
-      else if (m1<=54)  n1 = 5;
-      else if (m1<=86)  n1 = 6;
-      else if (m1<=103) n1 = 7;
-      if (m1==2 || m1==10 || m1==18 || m1==36 || m1==54 || m1==86) n1 = 0;
-
-      for (h_AN=1; h_AN<=FNAN[Gc_AN]; h_AN++){
-
-	Gh_AN = natn[Gc_AN][h_AN];
-	wsp2 = WhatSpecies[Gh_AN];
-	m2 = Spe_WhatAtom[wsp2];
-
-	if      (m2==1)   n2 = 1;
-	else if (m2<=10)  n2 = 2;
-	else if (m2<=18)  n2 = 3;
-	else if (m2<=36)  n2 = 4;
-	else if (m2<=54)  n2 = 5;
-	else if (m2<=86)  n2 = 6;
-	else if (m2<=103) n2 = 7;
-	if (m2==2 || m2==10 || m2==18 || m2==36 || m2==54 || m2==86) n2 = 0;
-
-	Rn = ncn[Gc_AN][h_AN];
-	r = Dis[Gc_AN][h_AN];
-
-	g[1] = (Gxyz[Gc_AN][1] - Gxyz[Gh_AN][1] - atv[Rn][1])/r;
-	g[2] = (Gxyz[Gc_AN][2] - Gxyz[Gh_AN][2] - atv[Rn][2])/r;
-	g[3] = (Gxyz[Gc_AN][3] - Gxyz[Gh_AN][3] - atv[Rn][3])/r;
-
-	d = r - B[n1][n2];
-	gr = 1.734/d/d/d;
-
-	/* diagonal terms */
-   
-	for (i=1; i<=3; i++){
-	  for (j=1; j<=3; j++){
-	    Hessian[(Gc_AN-1)*3+i][(Gc_AN-1)*3+j] += g[i]*g[j]*gr;
-	  }
-	}
-      
-	/* off-diagonal terms */
-
-	for (i=1; i<=3; i++){
-	  for (j=1; j<=3; j++){
-	    Hessian[(Gc_AN-1)*3+i][(Gh_AN-1)*3+j] += -g[i]*g[j]*gr;
-	  }
-	}
-
-      } /* h_AN */
-    } /* Mc_AN */
-
-    /* MPI communication: Hessian */
-
-    Hess_tmp = (double*)malloc(sizeof(double)*(atomnum+1)*9);
-
-    for (i=1; i<=atomnum; i++){     
-
-      ID = G2ID[i];
-
-      if (myid==ID){
-	for (k=0; k<3; k++){
-	  for (j=1; j<=3*atomnum; j++){
-	    Hess_tmp[3*k*atomnum+j-1] = Hessian[(i-1)*3+k+1][j];
-	  }
-	}
-      }
-
-      MPI_Bcast(&Hess_tmp[0], atomnum*9, MPI_DOUBLE, ID, mpi_comm_level1);
-
-      if (myid!=ID){
-	for (k=0; k<3; k++){
-	  for (j=1; j<=3*atomnum; j++){
-	    Hessian[(i-1)*3+k+1][j] = Hess_tmp[3*k*atomnum+j-1];
-	  }
-	}
-      }
-    }
-
-    /**************************************************************
-                        if (CellOpt_flag==1)    
-    **************************************************************/
-
-    if (CellOpt_flag==1){
-
-      int I,J,ki,kj;
-      double sum,HesF[4][4];
-
-      /* converting Hessian w.r.t cartesian coordinate to that w.r.t. fractional coordinate */
-
-      for (I=1; I<=atomnum; I++){     
-        for (J=1; J<=atomnum; J++){     
-	  for (i=1; i<=3; i++){     
-	    for (j=1; j<=3; j++){     
-
-              sum = 0.0;
-
-	      for (ki=1; ki<=3; ki++){     
-		for (kj=1; kj<=3; kj++){     
-                  sum += Hessian[(I-1)*3+ki][(J-1)*3+kj]*tv[i][ki]*tv[j][kj];
-		}
-	      }
-
-              HesF[i][j] = sum;
-	    }
-	  }
-
-	  for (i=1; i<=3; i++){     
-	    for (j=1; j<=3; j++){     
-              Hessian[(I-1)*3+i][(J-1)*3+j] = HesF[i][j];
-	    }
-	  }
-
-        }
-      }
-
-      /* calculate d2E_de2 */
-
-      int k1,k2,l1,l2,q1,q2;
-      double d2E_de2[4][4][4][4];
-      double d2E_da2[4][4][4][4];
-
-      for (k1=1; k1<=3; k1++){
-        for (l1=1; l1<=3; l1++){
-	  for (k2=1; k2<=3; k2++){
-	    for (l2=1; l2<=3; l2++){
-              d2E_de2[k1][l1][k2][l2] = 0.0;
-	    }
-	  }
-        }
-      }
-
-      for (k1=1; k1<=3; k1++){
-        for (l1=1; l1<=3; l1++){
-	  for (k2=1; k2<=3; k2++){
-	    for (l2=1; l2<=3; l2++){
-
-              for (I=1; I<=atomnum; I++){     
-
-		wsp1 = WhatSpecies[I];
-		m1 = Spe_WhatAtom[wsp1];
-		if      (m1==1)   n1 = 1;
-		else if (m1<=10)  n1 = 2;
-		else if (m1<=18)  n1 = 3;
-		else if (m1<=36)  n1 = 4;
-		else if (m1<=54)  n1 = 5;
-		else if (m1<=86)  n1 = 6;
-		else if (m1<=103) n1 = 7;
-		if (m1==2 || m1==10 || m1==18 || m1==36 || m1==54 || m1==86) n1 = 0;
-
-
-                for (h_AN=1; h_AN<=FNAN[I]; h_AN++){
-
-		  J = natn[I][h_AN];
-		  wsp2 = WhatSpecies[J];
-		  m2 = Spe_WhatAtom[wsp2];
-
-		  if      (m2==1)   n2 = 1;
-		  else if (m2<=10)  n2 = 2;
-		  else if (m2<=18)  n2 = 3;
-		  else if (m2<=36)  n2 = 4;
-		  else if (m2<=54)  n2 = 5;
-		  else if (m2<=86)  n2 = 6;
-		  else if (m2<=103) n2 = 7;
-		  if (m2==2 || m2==10 || m2==18 || m2==36 || m2==54 || m2==86) n2 = 0;
-
-		  Rn = ncn[I][h_AN];
-		  r = Dis[I][h_AN];
-
-		  g[1] = (Gxyz[I][1] - Gxyz[J][1] - atv[Rn][1])/r;
-		  g[2] = (Gxyz[I][2] - Gxyz[J][2] - atv[Rn][2])/r;
-		  g[3] = (Gxyz[I][3] - Gxyz[J][3] - atv[Rn][3])/r;
-
-		  d = r - B[n1][n2];
-		  gr = 1.734/d/d/d;
-
-
-                  d2E_de2[k1][l1][k2][l2] += 0.5*gr*g[k1]*g[k2]*g[l1]*g[l2]*r*r;
-
-		}
-	      }
-	    }
-	  }
-        }
-      }
-
-      /* calculate d2E_da2 */
-
-      for (k1=1; k1<=3; k1++){
-        for (l1=1; l1<=3; l1++){
-	  for (k2=1; k2<=3; k2++){
-	    for (l2=1; l2<=3; l2++){
-              d2E_da2[k1][l1][k2][l2] = 0.0;
-	    }
-	  }
-        }
-      }
-
-      for (k1=1; k1<=3; k1++){
-        for (l1=1; l1<=3; l1++){
-	  for (k2=1; k2<=3; k2++){
-	    for (l2=1; l2<=3; l2++){
-
-              for (m1=1; m1<=3; m1++){
-		for (m2=1; m2<=3; m2++){
-
-		  d2E_da2[k1][l1][k2][l2] += itv[m1][k1]*itv[m2][k2]*d2E_de2[m1][l1][m2][l2];
-
-		}
-	      }
-	    }
-	  }
-	}
-      }
-
-      /* Set d2E_da2 to Hessian */
-
-      q1 = 0;
-      for (k1=1; k1<=3; k1++){
-        for (l1=1; l1<=3; l1++){
-
-          q1++;
-
-          q2 = 0;
-	  for (k2=1; k2<=3; k2++){
-	    for (l2=1; l2<=3; l2++){
-
-              q2++;
-
-	      Hessian[3*atomnum+q1][3*atomnum+q2] += d2E_da2[k1][l1][k2][l2];
-	    }
-	  }
-	}
-      }
-
-      /* calculate d2E_dqde */
-
-      for (I=1; I<=atomnum; I++){     
-        for (i=1; i<=3; i++){
-
-	  wsp1 = WhatSpecies[I];
-	  m1 = Spe_WhatAtom[wsp1];
-	  if      (m1==1)   n1 = 1;
-	  else if (m1<=10)  n1 = 2;
-	  else if (m1<=18)  n1 = 3;
-	  else if (m1<=36)  n1 = 4;
-	  else if (m1<=54)  n1 = 5;
-	  else if (m1<=86)  n1 = 6;
-	  else if (m1<=103) n1 = 7;
-	  if (m1==2 || m1==10 || m1==18 || m1==36 || m1==54 || m1==86) n1 = 0;
-
-	  for (k1=1; k1<=3; k1++){
-	    for (l1=1; l1<=3; l1++){
-
-	      for (h_AN=1; h_AN<=FNAN[I]; h_AN++){
-
-		J = natn[I][h_AN];
-		wsp2 = WhatSpecies[J];
-		m2 = Spe_WhatAtom[wsp2];
-
-		if      (m2==1)   n2 = 1;
-		else if (m2<=10)  n2 = 2;
-		else if (m2<=18)  n2 = 3;
-		else if (m2<=36)  n2 = 4;
-		else if (m2<=54)  n2 = 5;
-		else if (m2<=86)  n2 = 6;
-		else if (m2<=103) n2 = 7;
-		if (m2==2 || m2==10 || m2==18 || m2==36 || m2==54 || m2==86) n2 = 0;
-
-		Rn = ncn[I][h_AN];
-		r = Dis[I][h_AN];
-
-		g[1] = (Gxyz[I][1] - Gxyz[J][1] - atv[Rn][1])/r;
-		g[2] = (Gxyz[I][2] - Gxyz[J][2] - atv[Rn][2])/r;
-		g[3] = (Gxyz[I][3] - Gxyz[J][3] - atv[Rn][3])/r;
-
-		d = r - B[n1][n2];
-		gr = 1.734/d/d/d;
-
-                for (k=1; k<=3; k++){
-                  Hessian[3*(I-1)+i][atomnum*3+(k1-1)*3+l1] += 0.5*gr*g[k]*g[k1]*tv[i][k]*g[l1]*r;
-		}
-
-	      } /* h_AN */
-
-	    }
-	  }
-        }
-      }
-
-      /* convert d2E_dqde to d2E_dqda */
-       
-      double tmpM[4][4][4];
-   
-      for (I=1; I<=atomnum; I++){     
-        for (i=1; i<=3; i++){
-	  for (j=1; j<=3; j++){
-	    for (l1=1; l1<=3; l1++){
-
-              sum = 0.0;
-	      for (k1=1; k1<=3; k1++){
-                sum += itv[k1][j]*Hessian[3*(I-1)+i][atomnum*3+(k1-1)*3+l1];
-	      }
-
-              tmpM[i][j][l1] = sum;
-	    }
-	  }
-	}
-
-        for (i=1; i<=3; i++){
-	  for (j=1; j<=3; j++){
-	    for (l1=1; l1<=3; l1++){
-              Hessian[3*(I-1)+i][atomnum*3+(j-1)*3+l1] = tmpM[i][j][l1]; 
-              Hessian[atomnum*3+(j-1)*3+l1][3*(I-1)+i] = tmpM[i][j][l1]; 
-	    }
-	  }
-	}
-      }
-
-      /*
-      if (myid==Host_ID){
-
-      for (i=1; i<=(3*atomnum+9); i++){     
-	for (j=1; j<=(3*atomnum+9); j++){     
-	  printf("%7.4f ",Hessian[i][j]);
-	}
-	printf("\n");
-      }
-      }
-
-      MPI_Finalize();
-      exit(0);
-      */
-
-    }
-
+    const OpenMXSchlegelModel model={
+      .local_atoms=Matomnum,
+      .local_to_global=M2G,
+      .species=WhatSpecies,
+      .elements=Spe_WhatAtom,
+      .neighbors=FNAN,
+      .neighbor_atoms=natn,
+      .neighbor_images=ncn,
+      .positions=Gxyz,
+      .translations=atv,
+      .distances=Dis
+    };
+    const double (*cell)[4]=CellOpt_flag==1 ? tv : NULL;
+    OpenMX_Geometry_Schlegel(geometry,Hessian,&model,cell,itv);
+    if (myid!=Host_ID) return;
+
+    int I,J,i,j;
     /* check constraint and correct Hessian */
 
     for (I=1; I<=atomnum; I++){     
@@ -8364,9 +6966,6 @@ void Estimate_Initial_Hessian(int diis_iter, int CellOpt_flag, double itv[4][4])
       }
     }
 
-    /* freeing of Hess_tmp */
-
-    free(Hess_tmp);
   }
 
   /*******************************************
@@ -8960,14 +7559,7 @@ void Estimate_Initial_Hessian(int diis_iter, int CellOpt_flag, double itv[4][4])
       } /* h_AN */
     } /* Mc_AN */       
 
-    /* MPI Hessian */
-   
-    for (i=1; i<=atomnum; i++){     
-      ID = G2ID[i];
-      MPI_Bcast(&Hessian[(i-1)*3+1][1], 3*atomnum, MPI_DOUBLE, ID, mpi_comm_level1);
-      MPI_Bcast(&Hessian[(i-1)*3+2][1], 3*atomnum, MPI_DOUBLE, ID, mpi_comm_level1);
-      MPI_Bcast(&Hessian[(i-1)*3+3][1], 3*atomnum, MPI_DOUBLE, ID, mpi_comm_level1);
-    }    
+    OpenMX_Geometry_Gather_Hessian(geometry,Hessian,0);
 
     /* freeing of arrays */
 
