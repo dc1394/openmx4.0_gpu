@@ -29,6 +29,7 @@ def check_output(path, level, gpu, fallback):
         assert not lines, path
         return
     messages = '\n'.join(lines)
+    assert not re.search(r'\b(?:CUDA|HIP)\b', messages, re.IGNORECASE), path
     assert messages.count('Preparing HSE06 exact exchange') == 1, path
     assert 'The outer iteration converged' in messages, path
     assert ('GPU dispatch enabled' in messages) == gpu, path

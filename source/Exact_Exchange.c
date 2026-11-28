@@ -376,14 +376,13 @@ void Exact_Exchange_Finish_Report(OpenMXExactExchangeState *state, MPI_Comm comm
   if (rank!=0) return;
 
   if (totals[0]>0) {
-    Exact_Exchange_Log(state,1,"<EXX>  GPU-accelerated exact exchange (%s matrix products)\n",OPENMX_GPU_RUNTIME_NAME);
+    Exact_Exchange_Log(state,1,"<EXX>  GPU-accelerated exact exchange (matrix products)\n");
   }
   else if (totals[1]>0) {
-    Exact_Exchange_Log(state,1,"<EXX>  Exact exchange added to the Hamiltonian on GPU (%s)\n",OPENMX_GPU_RUNTIME_NAME);
+    Exact_Exchange_Log(state,1,"<EXX>  Exact exchange added to the Hamiltonian on GPU\n");
   }
   else if (state->gpu_dispatch_enabled && state->outer_iterations>0) {
-    Exact_Exchange_Log(state,1,"<EXX>  Exact exchange matrix products ran on CPU (GPU dispatch enabled, %s)\n",
-                       OPENMX_GPU_RUNTIME_NAME);
+    Exact_Exchange_Log(state,1,"<EXX>  Exact exchange matrix products ran on CPU (GPU dispatch enabled)\n");
   }
   if (totals[2]>0) {
     Exact_Exchange_Log(state,1,"<EXX>  WARNING: %d processes stopped using their device for the exchange matrix after a failed call.\n",
@@ -915,8 +914,7 @@ void Exact_Exchange_Prepare(OpenMXExactExchangeState *state, const OpenMXAtomicV
   if (rank==0) {
     const char *functional=state->input.functional==OPENMX_EXACT_EXCHANGE_HSE06 ? "HSE06" : "PBE0";
     if (state->gpu_dispatch_enabled)
-      Exact_Exchange_Log(state,1,"<EXX>  Preparing %s exact exchange (GPU dispatch enabled, %s)\n",
-                         functional,OPENMX_GPU_RUNTIME_NAME);
+      Exact_Exchange_Log(state,1,"<EXX>  Preparing %s exact exchange (GPU dispatch enabled)\n",functional);
     else
       Exact_Exchange_Log(state,1,"<EXX>  Preparing %s exact exchange (CPU matrix products)\n",functional);
   }
