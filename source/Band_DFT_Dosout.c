@@ -21,6 +21,7 @@
 #include "mpi.h"
 #if !OPENMX_GPU_HIP
 #include "openmx_exact_exchange.h"
+#include "openmx_band_dos_output.h"
 #endif
 #include <omp.h>
 
@@ -69,7 +70,7 @@ double Band_DFT_Dosout(OpenMXChemicalPotentials *chemical,  int knum_i, int knum
                         double ****CntOLP, const OpenMXElectronicViews *electronic,
                         struct OpenMXExactExchangeState *exact_exchange)
 {
-  static double time0;
+  double time0 = 0.0;
 
   if ( (SpinP_switch==0 || SpinP_switch==1) && Dos_fileout){
 
@@ -111,6 +112,15 @@ static double Band_DFT_DosoutGauss_Col(const OpenMXChemicalPotentials *chemical,
                            double ****CntOLP, const OpenMXElectronicViews *electronic,
                            struct OpenMXExactExchangeState *exact_exchange)
 {
+  const double gaussian_width = DosGauss_Width;
+#if !OPENMX_GPU_HIP
+  if (!cal_partial_charge && DosGauss_Num_Mesh>0 && gaussian_width>0.0 && Dos_Erange[1]>Dos_Erange[0]) {
+    const OpenMXBandDosRequest mesh={{knum_i,knum_j,knum_k},Dos_Erange,DosGauss_Num_Mesh,gaussian_width,0,
+        atomnum,SpeciesNum,Supported_MaxL,WhatSpecies,Spe_Total_CNO,Spe_Num_CBasis,NULL,NULL};
+    const double start=MPI_Wtime();
+    if (openmx_band_dos_parallel(chemical,&mesh,SpinP_switch,nh,ImNL,CntOLP,exact_exchange)) return MPI_Wtime()-start;
+  }
+#endif
   double *****Partial_DM=electronic->Partial_DM;
 
   int i,j,k,spin,l,i1,j1,n1;
@@ -872,7 +882,7 @@ static double Band_DFT_DosoutGauss_Col(const OpenMXChemicalPotentials *chemical,
 
           /*  calculate contribution to Gaussian DOS */
 
-#pragma omp parallel shared(MP,Spe_Total_CNO,WhatSpecies,pi2,SD,factor,Dos,r_energy,DosGauss_Width,DosGauss_Num_Mesh,Dos_Erange_Tmp,l,kloop,spin,EIGEN,atomnum) private(OMPID,Nthrds,Nprocs,GA_AN,wanA,tnoA,Anum,eg,x,iecenter,iewidth,iemin,iemax,ie,xa,i1)
+#pragma omp parallel shared(MP,Spe_Total_CNO,WhatSpecies,pi2,SD,factor,Dos,r_energy,gaussian_width,DosGauss_Num_Mesh,Dos_Erange_Tmp,l,kloop,spin,EIGEN,atomnum) private(OMPID,Nthrds,Nprocs,GA_AN,wanA,tnoA,Anum,eg,x,iecenter,iewidth,iemin,iemax,ie,xa,i1)
 	  { 
 
 	    /* get info. on OpenMP */ 
@@ -897,7 +907,7 @@ static double Band_DFT_DosoutGauss_Col(const OpenMXChemicalPotentials *chemical,
 	      x = (eg-Dos_Erange_Tmp[0])/(Dos_Erange_Tmp[1]-Dos_Erange_Tmp[0])*(DosGauss_Num_Mesh-1);
 	      iecenter = (int)x ; 
 
-	      iewidth = DosGauss_Width*3.0/(Dos_Erange_Tmp[1]-Dos_Erange_Tmp[0])*(DosGauss_Num_Mesh-1)+3;
+	      iewidth = gaussian_width*3.0/(Dos_Erange_Tmp[1]-Dos_Erange_Tmp[0])*(DosGauss_Num_Mesh-1)+3;
 
 	      iemin = iecenter - iewidth;
 	      iemax = iecenter + iewidth;
@@ -908,10 +918,10 @@ static double Band_DFT_DosoutGauss_Col(const OpenMXChemicalPotentials *chemical,
 	      if ( 0<=iemin && iemin<DosGauss_Num_Mesh && 0<=iemax && iemax<DosGauss_Num_Mesh ) {
 
 		for (ie=iemin;ie<=iemax;ie++) {
-		  xa = (eg-r_energy[ie])/DosGauss_Width;
+		  xa = (eg-r_energy[ie])/gaussian_width;
 
 		  for (i1=0; i1<tnoA; i1++){
-		    Dos[ie][spin][Anum+i1] += (float)(factor*SD[Anum+i1]* exp(-xa*xa)/(DosGauss_Width*pi2));
+		    Dos[ie][spin][Anum+i1] += (float)(factor*SD[Anum+i1]* exp(-xa*xa)/(gaussian_width*pi2));
 		  }
 		}
 	      }
@@ -1462,6 +1472,14 @@ static double Band_DFT_DosoutGauss_NonCol(const OpenMXChemicalPotentials *chemic
                            double *****ImNL,
                            double ****CntOLP, const OpenMXElectronicViews *electronic)
 {
+#if !OPENMX_GPU_HIP
+  if (!cal_partial_charge && DosGauss_Num_Mesh>0 && DosGauss_Width>0.0 && Dos_Erange[1]>Dos_Erange[0]) {
+    const OpenMXBandDosRequest mesh={{knum_i,knum_j,knum_k},Dos_Erange,DosGauss_Num_Mesh,DosGauss_Width,0,
+        atomnum,SpeciesNum,Supported_MaxL,WhatSpecies,Spe_Total_CNO,Spe_Num_CBasis,Angle0_Spin,Angle1_Spin};
+    const double start=MPI_Wtime();
+    if (openmx_band_dos_parallel(chemical,&mesh,SpinP_switch,nh,ImNL,CntOLP,NULL)) return MPI_Wtime()-start;
+  }
+#endif
   double *****Partial_DM=electronic->Partial_DM;
 
   int i,j,k,spin,l,i1,j1,ik,n1;
@@ -2812,6 +2830,14 @@ static double Band_DFT_Dosout_Col(OpenMXChemicalPotentials *chemical,
                            double ****CntOLP, const OpenMXElectronicViews *electronic,
                            struct OpenMXExactExchangeState *exact_exchange)
 {
+#if !OPENMX_GPU_HIP
+  if (!cal_partial_charge && !COHP_calc_flag) {
+    const OpenMXBandDosRequest mesh={{knum_i,knum_j,knum_k},Dos_Erange,0,0.0,fermisurfer_output,
+        atomnum,SpeciesNum,Supported_MaxL,WhatSpecies,Spe_Total_CNO,Spe_Num_CBasis,NULL,NULL};
+    const double start=MPI_Wtime();
+    if (openmx_band_dos_parallel(chemical,&mesh,SpinP_switch,nh,ImNL,CntOLP,exact_exchange)) return MPI_Wtime()-start;
+  }
+#endif
   double *****Partial_DM=electronic->Partial_DM;
 
   int i,j,k,spin,l,i1,j1,n1,i3;
@@ -4727,6 +4753,14 @@ static double Band_DFT_Dosout_NonCol(const OpenMXChemicalPotentials *chemical,
                            double *****ImNL,
                            double ****CntOLP, const OpenMXElectronicViews *electronic)
 {
+#if !OPENMX_GPU_HIP
+  if (!cal_partial_charge) {
+    const OpenMXBandDosRequest mesh={{knum_i,knum_j,knum_k},Dos_Erange,0,0.0,fermisurfer_output,
+        atomnum,SpeciesNum,Supported_MaxL,WhatSpecies,Spe_Total_CNO,Spe_Num_CBasis,Angle0_Spin,Angle1_Spin};
+    const double start=MPI_Wtime();
+    if (openmx_band_dos_parallel(chemical,&mesh,SpinP_switch,nh,ImNL,CntOLP,NULL)) return MPI_Wtime()-start;
+  }
+#endif
   double *****Partial_DM=electronic->Partial_DM;
 
   int i,j,k,spin,l,i1,j1,n1;
