@@ -29,6 +29,10 @@ typedef void (*OpenMXHostAddRows)(double *dst, size_t dst_stride, const double *
    for an SVE mode, because fixed-width SVE depends on that thread's VL. */
 OpenMXHostAddRows openmx_core_host_add_rows(int mode);
 
+/* Elementwise FP64 sum of contiguous spans. */
+typedef void (*OpenMXHostSum)(double *dst, const double *left, const double *right, size_t count);
+OpenMXHostSum openmx_core_host_sum(int mode);
+
 /* Accumulate a Bloch block in a column-major complex matrix. The source
    planes are contiguous and imag may be NULL. The destination is interleaved
    doubles and ld counts complex elements. */

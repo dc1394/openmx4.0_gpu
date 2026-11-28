@@ -47,6 +47,10 @@ typedef struct {
   dcomplex *values;                 /* na_rows x na_cols, in the order of the local array */
 } ExactExchangeBandMatrix;
 
+typedef struct {
+  size_t hamiltonian, density, exchange, elements;
+} ExactExchangeLocalBlock;
+
 enum { EXX_GPU_PRODUCTS = 1, EXX_GPU_ADDITION = 2 };
 
 /* Persistent metadata belongs to the explicit calculation owner. */
@@ -70,6 +74,10 @@ struct OpenMXExactExchangeState {
   int *block_cell;                  /* R of every block, three integers */
   size_t *block_offset;             /* first element of every block; block_count+1 entries */
   int *first_orbital;               /* first orbital of every atom, counted from 0; N at the end */
+  int local;                        /* DC, DC-LNO or Krylov with a projected real-space layout */
+  ExactExchangeLocalBlock *local_blocks; /* owned AO blocks, matching the solver's CSR rows */
+  size_t local_block_count;
+  OpenMXHostSum local_sum;
   int allocated_channels;           /* spin channels the matrices below have storage for */
   int spin_channels;                /* spin channels of the last collection: 0, 1 or 2 */
   size_t elements;                  /* elements of each matrix below: N*N, or those of all blocks */
@@ -80,6 +88,7 @@ struct OpenMXExactExchangeState {
   int exchange_ready;               /* K exists: it is added to the Hamiltonian */
   int outer_iterations;             /* builds of K for the present structure */
   int outer_converged;              /* the last build met scf.exx.outer.criterion */
+  long first_abf,last_abf;            /* this rank's share of builds and force weights for the structure */
   double energy;                    /* E_x of the last build, Hartree */
   double change;                    /* delta of the last build, Hartree */
   double residual_reference;        /* residual norm of the first step with the K of the last build; negative: not seen yet */
@@ -585,10 +594,13 @@ static void ExactExchange_Release_Blocks(OpenMXExactExchangeState *state)
   openmx_core_native_free(state->resources,state->block_cell);
   openmx_core_native_free(state->resources,state->block_offset);
   openmx_core_native_free(state->resources,state->first_orbital);
+  openmx_core_native_free(state->resources,state->local_blocks);
   state->block_atoms = NULL;
   state->block_cell = NULL;
   state->block_offset = NULL;
   state->first_orbital = NULL;
+  state->local_blocks = NULL;
+  state->local_block_count = 0;
   state->block_count = 0;
 }
 
@@ -624,6 +636,66 @@ static void ExactExchange_List_Blocks(OpenMXExactExchangeState *state, MPI_Comm 
   state->first_orbital = (int*)ExactExchange_Allocate(state,(size_t)atoms+1,sizeof(int),comm,"preparation");
   state->first_orbital[0] = 0;
   for (int a=0; a<atoms; a++) state->first_orbital[a+1] = state->first_orbital[a]+openmx_exx_atom_orbitals(state->module,a);
+}
+
+static OpenMXExxBlockKey ExactExchange_Neighbour_Key(const OpenMXExactExchangeLocalTopology *local,
+                                                   int atom, int neighbour)
+{
+  const int *cell=local->cell_index[local->neighbour_cell[atom][neighbour]];
+  const OpenMXExxBlockKey key={atom-1,local->neighbour_atom[atom][neighbour]-1,{cell[1],cell[2],cell[3]}};
+  return key;
+}
+
+/* Every rank knows the real-space neighbour list. The EXX build keeps only
+   this projection, including in its MPI reductions and CUDA workspace. */
+static void ExactExchange_Project_Blocks(OpenMXExactExchangeState *state,
+                                        const OpenMXExactExchangeLocalTopology *local, MPI_Comm comm)
+{
+  const int atoms=state->structure.atom_count;
+  size_t count=0;
+  for (int atom=1; atom<=atoms; atom++)
+    count += (size_t)local->neighbour_count[atom]+1;
+
+  OpenMXExxBlockKey *keys=(OpenMXExxBlockKey*)ExactExchange_Allocate(state,count,sizeof(*keys),comm,"local layout");
+  size_t next=0;
+  for (int atom=1; atom<=atoms; atom++)
+    for (int h=0; h<=local->neighbour_count[atom]; h++)
+      keys[next++] = ExactExchange_Neighbour_Key(local,atom,h);
+
+  char error[512];
+  if (openmx_exx_prepare_projected_blocks(state->module,count,keys,error,sizeof(error))!=0)
+    ExactExchange_Abort(comm,"local layout",error);
+  openmx_core_native_free(state->resources,keys);
+}
+
+static void ExactExchange_Map_Local_Blocks(OpenMXExactExchangeState *state,
+                                          const OpenMXExactExchangeLocalTopology *local, MPI_Comm comm)
+{
+  const OpenMXElectronicMatrixView *h=&local->electronic->fields[OPENMX_ELECTRONIC_HAMILTONIAN];
+  const OpenMXElectronicMatrixView *d=&local->electronic->fields[OPENMX_ELECTRONIC_DENSITY];
+  const size_t count=d->atom_offsets[local->local_atoms+1]-d->atom_offsets[1]; /* skip the dummy atom */
+  if (!local->electronic->local_hybrid_hamiltonian)
+    ExactExchange_Abort(comm,"local layout","the solver has no hybrid Hamiltonian workspace");
+  if (count)
+    state->local_blocks=(ExactExchangeLocalBlock*)ExactExchange_Allocate(state,count,sizeof(*state->local_blocks),
+                                                                        comm,"local layout");
+  for (int m=1; m<=local->local_atoms; m++) {
+    const int atom=local->local_to_global[m];
+    for (int neighbour=0; neighbour<=local->neighbour_count[atom]; neighbour++) {
+      const OpenMXExxBlockKey key=ExactExchange_Neighbour_Key(local,atom,neighbour);
+      const long block=openmx_exx_find_block(state->module,key.row_atom,key.column_atom,key.cell);
+      const size_t hb=h->atom_offsets[m]+(size_t)neighbour, db=d->atom_offsets[m]+(size_t)neighbour;
+      const size_t elements=d->block_offsets[db+1]-d->block_offsets[db];
+      if (block<0 || elements!=h->block_offsets[hb+1]-h->block_offsets[hb] ||
+          elements!=state->block_offset[block+1]-state->block_offset[block])
+        ExactExchange_Abort(comm,"local layout","the EXX and solver block shapes disagree");
+      const ExactExchangeLocalBlock entry={h->block_offsets[hb],d->block_offsets[db],state->block_offset[block],elements};
+      state->local_blocks[db-d->atom_offsets[1]]=entry;
+    }
+  }
+  state->local_block_count = count;
+  const int mode=OpenMX_HostSimdMode();
+  state->local_sum = mode==OPENMX_GRID_AVX2 || mode==OPENMX_GRID_AVX512 ? openmx_core_host_sum(mode) : NULL;
 }
 
 /* The slots of Anderson's method (Exact_Exchange_Extrapolate). */
@@ -886,7 +958,7 @@ static int ExactExchange_Prepare_Module(OpenMXExactExchangeState *state, OpenMXE
 }
 
 void Exact_Exchange_Prepare(OpenMXExactExchangeState *state, const OpenMXAtomicViews *atomic,
-    int sites, MPI_Comm comm, int stdout_level, const char *scf_log)
+    int sites, const OpenMXExactExchangeLocalTopology *local, MPI_Comm comm, int stdout_level, const char *scf_log)
 {
   if (!Exact_Exchange_Enabled(state)) return;
 
@@ -942,7 +1014,8 @@ void Exact_Exchange_Prepare(OpenMXExactExchangeState *state, const OpenMXAtomicV
   OpenMXExxOptions options;
   const int orbitals=ExactExchange_Prepare_Module(state,state->module,atomic,comm,&options);
   state->orbitals = orbitals;
-  state->sites = sites!=0;
+  state->local = local!=NULL;
+  state->sites = sites!=0 || state->local;
   /* The site form folds the V neighbours by the period of a regular k mesh
      (section 6.4): the V neighbours whose cells agree modulo the period
      become one site with the sum of their V blocks. K(k) at the points of
@@ -960,7 +1033,9 @@ void Exact_Exchange_Prepare(OpenMXExactExchangeState *state, const OpenMXAtomicV
   if (folded && openmx_exx_fold_columns(state->module,state->input.fold_antiperiodic,error,sizeof(error))!=0)
     ExactExchange_Abort(comm,"preparation",error);
   state->folded = folded;
+  if (local) ExactExchange_Project_Blocks(state,local,comm);
   if (state->sites) ExactExchange_List_Blocks(state,comm);
+  if (local) ExactExchange_Map_Local_Blocks(state,local,comm);
   state->prepared = 1;
   state->time_prepare += MPI_Wtime()-start;
 
@@ -1010,6 +1085,9 @@ void Exact_Exchange_Prepare(OpenMXExactExchangeState *state, const OpenMXAtomicV
       Exact_Exchange_Log(state,2,"<EXX>  site form: %ld blocks of the density and exchange matrices, %.1f MB each per spin channel\n",
                          state->block_count,(double)state->block_offset[state->block_count]*sizeof(double)/1048576.0);
     }
+    if (local)
+      Exact_Exchange_Log(state,2,"<EXX>  real-space PAO neighbour projection; Hamiltonian assembly %s\n",
+                         state->local_sum ? openmx_core_host_simd_name(OpenMX_HostSimdMode()) : "scalar");
     Exact_Exchange_Log(state,2,"<EXX>  local RI: %ld systems, %ld by eigen-decomposition (%ld vectors left out), smallest pivot %.3e\n",
                        report.systems,report.eigen_decompositions,report.dropped,report.smallest_pivot);
   }
@@ -1168,6 +1246,58 @@ void Exact_Exchange_Collect_End(OpenMXExactExchangeState *state, MPI_Comm comm)
   state->time_collect += MPI_Wtime()-start;
 }
 
+static size_t ExactExchange_Spin_Stride(const OpenMXElectronicMatrixView *matrix)
+{
+  return matrix->block_offsets[matrix->atom_offsets[matrix->component_offsets[1]]];
+}
+
+void Exact_Exchange_Collect_Local(OpenMXExactExchangeState *state,
+    const OpenMXElectronicViews *electronic, MPI_Comm comm)
+{
+  const OpenMXElectronicMatrixView *density=&electronic->fields[OPENMX_ELECTRONIC_DENSITY];
+  Exact_Exchange_Collect_Begin(state,(int)density->channels,comm);
+  const double start=MPI_Wtime();
+  const size_t stride=ExactExchange_Spin_Stride(density), count=state->local_block_count;
+#pragma omp parallel for schedule(static) if(count>=64)
+  for (size_t index=0; index<count; index++) {
+    const ExactExchangeLocalBlock block=state->local_blocks[index];
+    for (int spin=0; spin<state->spin_channels; spin++)
+      memcpy(state->density[spin]+block.exchange,density->values+spin*stride+block.density,
+             block.elements*sizeof(double));
+  }
+  state->time_collect += MPI_Wtime()-start;
+  Exact_Exchange_Collect_End(state,comm);
+}
+
+double *****Exact_Exchange_Local_Hamiltonian(OpenMXExactExchangeState *state,
+    const OpenMXElectronicViews *electronic)
+{
+  if (!Exact_Exchange_Active(state) || !state->local || state->input.alpha==0.0) return electronic->H;
+
+  const double start=MPI_Wtime();
+  const OpenMXElectronicMatrixView *h=&electronic->fields[OPENMX_ELECTRONIC_HAMILTONIAN];
+  const OpenMXElectronicMatrixView *hybrid=&electronic->fields[OPENMX_ELECTRONIC_LOCAL_HYBRID_HAMILTONIAN];
+  const size_t stride=ExactExchange_Spin_Stride(h), count=state->local_block_count;
+  for (int spin=0; spin<state->spin_channels; spin++)
+    hybrid->values[spin*stride] = h->values[spin*stride]; /* dummy atom */
+
+  /* The local eigensolvers fill the halo by exchanging these owned H+K
+     rows, then pack their CUDA or CPU subproblems from the same matrix. */
+#pragma omp parallel for schedule(static) if(count>=64)
+  for (size_t index=0; index<count; index++) {
+    const ExactExchangeLocalBlock block=state->local_blocks[index];
+    for (int spin=0; spin<state->spin_channels; spin++) {
+      const size_t offset=spin*stride+block.hamiltonian;
+      const double *base=h->values+offset, *exchange=state->exchange[spin]+block.exchange;
+      double *target=hybrid->values+offset;
+      if (state->local_sum) state->local_sum(target,base,exchange,block.elements);
+      else for (size_t i=0; i<block.elements; i++) target[i]=base[i]+exchange[i];
+    }
+  }
+  state->time_add += MPI_Wtime()-start;
+  return electronic->local_hybrid_hamiltonian;
+}
+
 double Exact_Exchange_Density_Deviation(const OpenMXExactExchangeState *state, int spin_channels,
     int local_atoms, const int *local_to_global, const int *neighbour_count, int *const *neighbour_atom,
     int *const *neighbour_cell, int *const *cell_index,
@@ -1254,8 +1384,9 @@ void Exact_Exchange_Build(OpenMXExactExchangeState *state, MPI_Comm comm)
   MPI_Comm_rank(comm,&rank);
   MPI_Comm_size(comm,&processes);
 
-  long first,last;
-  ExactExchange_Abfs(state,state->module,state->sites,comm,1,&first,&last);
+  if (!state->exchange_ready)
+    ExactExchange_Abfs(state,state->module,state->sites,comm,1,&state->first_abf,&state->last_abf);
+  const long first=state->first_abf, last=state->last_abf;
 
   /* The threads of the main program (-nt) run the loops of the build and
      share its large products. A BLAS with threads of its own computes on
@@ -1411,8 +1542,7 @@ const double *Exact_Exchange_Gradient(OpenMXExactExchangeState *state, MPI_Comm 
        of its ABFs, its share of a half build, and the arrays are added up.
        The W part of a group adds to the T blocks of other atoms, so the
        sum has rounding. */
-    long first_abf=0,last_abf=0;
-    ExactExchange_Abfs(state,state->module,state->sites,comm,1,&first_abf,&last_abf);
+    const long first_abf=state->first_abf, last_abf=state->last_abf;
     double **weights=(double**)ExactExchange_Allocate(state,(size_t)atoms,sizeof(double*),comm,"forces");
     for (int a=0; a<atoms; a++)
       weights[a] = (double*)ExactExchange_Allocate(state,openmx_exx_atom_table_elements(state->module,a),

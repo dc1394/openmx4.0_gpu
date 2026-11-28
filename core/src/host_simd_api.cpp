@@ -42,6 +42,10 @@ extern "C" OpenMXHostAddRows openmx_core_host_add_rows(int mode) {
   const auto* kernel=openmx::core::host::openmx_host_add_rows_kernels(mode);
   return kernel ? *kernel : nullptr;
 }
+extern "C" OpenMXHostSum openmx_core_host_sum(int mode) {
+  const auto* kernel=openmx::core::host::openmx_host_sum_kernels(mode);
+  return kernel ? *kernel : nullptr;
+}
 extern "C" OpenMXHostBlochAdd openmx_core_host_bloch_add(int mode) {
   const auto* kernel=openmx::core::host::openmx_host_bloch_kernels(mode);
   return kernel ? *kernel : nullptr;

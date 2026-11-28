@@ -34,14 +34,8 @@ static void Eigen_gpusolver_x_openmp(double ** a, double * ko, int n, int EVmax)
 static void Eigen_gpusolver_x_openacc(double ** a, double * ko, int n, int EVmax);
 #endif
 
-void Eigen_lapack(double **a, double *ko, int n, int EVmax)
+static void Eigen_lapack_dispatch(double **a, double *ko, int n, int EVmax, int solver_flag)
 {
-  int solver_flag;
-  if (scf_eigen_lib_flag == ELPA1 || scf_eigen_lib_flag == ELPA2 || n < GPU_CPU_SWITCH_NUM) {
-      solver_flag = 0;
-  } else {
-      solver_flag = 3;
-  }
   int i,j,k,po,okay_flag,iterN;
   double sum;
   double **b;
@@ -119,6 +113,17 @@ void Eigen_lapack(double **a, double *ko, int n, int EVmax)
   free(b);
 
 } 
+
+void Eigen_lapack_cpu(double **a, double *ko, int n, int EVmax)
+{
+  Eigen_lapack_dispatch(a,ko,n,EVmax,0);
+}
+
+void Eigen_lapack(double **a, double *ko, int n, int EVmax)
+{
+  const int gpu=!OPENMX_GPU_HOST && scf_eigen_lib_flag==GPUSOLVER && n>=GPU_CPU_SWITCH_NUM;
+  Eigen_lapack_dispatch(a,ko,n,EVmax,gpu ? 3 : 0);
+}
 
 
 void Eigen_lapack_x(double **a, double *ko, int n0, int EVmax)

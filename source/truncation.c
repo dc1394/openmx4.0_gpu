@@ -24,6 +24,7 @@
 #include "openmx_common.h"
 #include "openmx_env.h"
 #include "openmx_electronic.h"
+#include "openmx_exact_exchange.h"
 #include "openmx_vna_matrix.h"
 #include <limits.h>
 #include "openmx_gpu_workers.h"
@@ -631,6 +632,8 @@ double truncation(int MD_iter,int UCell_flag,OpenMXCoreContext *core)
                   Zeeman_NCS_switch==1 || Zeeman_NCO_switch==1,
     .lno=LNO_flag==1, .guiding_density=CWF_Calc==1 && CWF_Guiding_Orbital==3,
     .partial_density=cal_partial_charge==1,
+    .local_hybrid=Exact_Exchange_Local_Solver(Solver) &&
+                  Exact_Exchange_Enabled(Exact_Exchange_Bind_Resources(core)),
     .full_overlap_halo_derivatives=Hub_U_switch==1 && Hub_U_occupation==1 && core_hole_state_flag==1,
     .atom_species=WhatSpecies, .orbitals=Spe_Total_NO, .contracted_orbitals=Spe_Total_CNO,
     .projector_components=Spe_Total_VPS_Pro, .local_to_global=M2G,

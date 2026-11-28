@@ -85,6 +85,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <numeric>
 #include <cstddef>
 #include <cstdio>
 #include <cstring>
@@ -4174,12 +4175,67 @@ System periodic_system(const std::string& path)
   return system;
 }
 
+void check_projected_blocks(const System& system, Numbers& random)
+{
+  const BlockLayout full = exchange_layout(system);
+  std::vector<BlockKey> keys;
+  std::vector<double> full_density(full.elements(),0.0), density;
+  std::vector<std::size_t> indices;
+  for (std::size_t b = 0; b < full.keys.size(); ++b) {
+    const auto& cell = full.keys[b].cell;
+    if (std::abs(cell[0]) > 1 || cell[1] != 0 || cell[2] != 0) continue;
+    keys.push_back(full.keys[b]);
+    for (std::size_t i = full.offset[b]; i < full.offset[b+1]; ++i) {
+      indices.push_back(i);
+      density.push_back(random.next());
+    }
+  }
+  const BlockLayout local = projected_exchange_layout(system,std::move(keys));
+  require(!density.empty() && density.size() < full.elements(),"the projected layout must omit blocks");
+  symmetrize_blocks(system,local,density);
+  for (std::size_t i = 0; i < indices.size(); ++i) full_density[indices[i]] = density[i];
+
+  FakeDevice device;
+  const OpenMXExxDenseBackend table{nullptr,nullptr,nullptr,0,&device.table()};
+  const DenseBackend host, gpu(&table);
+  const std::size_t abfs = std::accumulate(system.abf_count.begin(),system.abf_count.end(),std::size_t{0});
+  constexpr double factor = -0.25;
+  std::vector<double> full_k(full.elements()), local_k(local.elements()), device_k(local.elements());
+  add_exchange_blocks_half_abfs(system,full,0,abfs,factor,full_density,full_k,host);
+  add_exchange_blocks_half_abfs(system,local,0,abfs,factor,density,local_k,host);
+  device.reset();
+  require(add_exchange_blocks_half_abfs(system,local,0,abfs,factor,density,device_k,gpu) &&
+          device.ending().empty(),"the projected exchange build did not run on the device");
+  Worst k("projected K against the full layout with zero-padded D",1e-12);
+  for (std::size_t i = 0; i < indices.size(); ++i) {
+    k.absolute(local_k[i],full_k[indices[i]]);
+    k.absolute(device_k[i],full_k[indices[i]]);
+  }
+  k.finish();
+
+  BlockWeights full_weights(system), local_weights(system), device_weights(system);
+  add_block_weights_blocks_half_abfs(system,full,0,abfs,factor,full_density,full_weights.arrays,host);
+  add_block_weights_blocks_half_abfs(system,local,0,abfs,factor,density,local_weights.arrays,host);
+  device.reset();
+  add_block_weights_blocks_half_abfs(system,local,0,abfs,factor,density,device_weights.arrays,gpu);
+  require(device.accepted == 1 && device.ending().empty(),"the projected force weights did not run on the device");
+  Worst weights("projected force weights against the full layout with zero-padded D",1e-12);
+  for (std::size_t atom = 0; atom < full_weights.values.size(); ++atom)
+    for (std::size_t i = 0; i < full_weights.values[atom].size(); ++i) {
+      weights.absolute(local_weights.values[atom][i],full_weights.values[atom][i]);
+      weights.absolute(device_weights.values[atom][i],full_weights.values[atom][i]);
+    }
+  weights.finish();
+}
+
 } // namespace
 
 void exchange_device_system(const std::string& path)
 {
   Numbers random;
-  check_device_forms(periodic_system(path),"periodic structure",random,false);
+  const System system = periodic_system(path);
+  check_device_forms(system,"periodic structure",random,false);
+  check_projected_blocks(system,random);
 }
 
 void exchange_half(const std::string& path)

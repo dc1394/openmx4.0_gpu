@@ -457,6 +457,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   OpenMXMixingDMState *mixing_dm=Mixing_DM_Bind_Resources(core);
   OpenMXMixingVState *mixing_v=Mixing_V_Bind_Resources(core);
   OpenMXExactExchangeState *exact_exchange=Exact_Exchange_Bind_Resources(core);
+  const int exx_local=Exact_Exchange_Enabled(exact_exchange) && Exact_Exchange_Local_Solver(Solver);
   /* the collinear cluster and band solvers add the exchange matrix of a
      hybrid functional to their Hamiltonians and collect the density matrices */
   Cluster_DFT_Col_ExactExchange(solver_states.cluster_col, Exact_Exchange_Enabled(exact_exchange) ? exact_exchange : NULL);
@@ -651,9 +652,9 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
      structure fixes (docs/EXX_IMPLEMENTATION_GUIDE.md, section 6.2).
      The SCF below starts with the semilocal functional. */
   if (Exact_Exchange_Enabled(exact_exchange)){
-    /* the band solver takes the blocks K(R) of the site form, the cluster
-       solver the matrix of the Gamma point */
-    Exact_Exchange_Prepare(exact_exchange, atomic, Solver==3, mpi_comm_level1, level_stdout, file_DFTSCF);
+    const OpenMXExactExchangeLocalTopology local={Matomnum,M2G,FNAN,natn,ncn,atv_ijk,electronic};
+    Exact_Exchange_Prepare(exact_exchange, atomic, Solver==3, exx_local ? &local : NULL,
+                           mpi_comm_level1, level_stdout, file_DFTSCF);
   }
 
   /* SCF loop */
@@ -1142,6 +1143,8 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
     if (Cnt_switch==0){
 
+      double *****local_hamiltonian=exx_local ? Exact_Exchange_Local_Hamiltonian(exact_exchange,electronic) : H;
+
       switch (Solver) {
 
       case 1:
@@ -1268,7 +1271,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 	break;
 
       case 5:    
-	time5 += Divide_Conquer(solver_states.dc, "scf",LSCF_iter,H,iHNL,OLP[0],DM[0],EDM,Eele0,Eele1, electronic, local_basis);
+	time5 += Divide_Conquer(solver_states.dc, "scf",LSCF_iter,local_hamiltonian,iHNL,OLP[0],DM[0],EDM,Eele0,Eele1, electronic, local_basis);
 
 	break;
 
@@ -1280,7 +1283,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 	break;       
 
       case 8:
-	time5 += Krylov(solver_states.krylov, "scf",LSCF_iter,H,iHNL,OLP[0],DM[0],EDM,Eele0,Eele1);
+	time5 += Krylov(solver_states.krylov, "scf",LSCF_iter,local_hamiltonian,iHNL,OLP[0],DM[0],EDM,Eele0,Eele1);
 	break;       
 
       case 9:
@@ -1293,7 +1296,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 	break;       
 
       case 11:    
-	time5 += Divide_Conquer_LNO(solver_states.dclno, "scf",MD_iter,LSCF_iter,SucceedReadingDMfile,H,iHNL,OLP[0],DM[0],EDM,Eele0,Eele1, electronic, local_basis);
+	time5 += Divide_Conquer_LNO(solver_states.dclno, "scf",MD_iter,LSCF_iter,SucceedReadingDMfile,local_hamiltonian,iHNL,OLP[0],DM[0],EDM,Eele0,Eele1, electronic, local_basis);
 	break;
 
       case 12:
@@ -1474,10 +1477,9 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
     energies->is[0] = Eele1[0];
     energies->is[1] = Eele1[1];
     energies->band = energies->is[0] + energies->is[1];
-    /* with the exchange matrix of a hybrid functional the band energy is the
-       sum of the occupied eigenvalues: Eele1 is the trace with the Hamiltonian
-       of the neighbour list, which does not hold the exchange matrix */
-    if (Exact_Exchange_Active(exact_exchange)) energies->band = energies->os[0] + energies->os[1];
+    /* Cluster and Band add K in the dense solver. Local solvers use H+K
+       directly in the sparse trace Eele1. */
+    if (!exx_local && Exact_Exchange_Active(exact_exchange)) energies->band = energies->os[0] + energies->os[1];
 
     /*****************************************************
                    Orbital magnetic moment 
@@ -1687,57 +1689,63 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
       (docs/EXX_IMPLEMENTATION_GUIDE.md, sections 6.1, 6.6)
 
       The inner SCF, with a fixed exchange matrix K, has
-      stopped. The Hamiltonian of this step is solved once
-      more to collect the density matrices, and K is built
-      from them. Unless the change of the exchange energy
+      stopped. Collect the density matrices from the local solver
+      or recover them from the Cluster/Band eigenvectors, then build K.
+      Unless the change of the exchange energy
       is below scf.exx.outer.criterion, the SCF goes on
       with the new K. The first inner SCF is the one of
       the semilocal functional.
     *****************************************************/
 
-    if (po==1 && Cnt_switch==0 && (Solver==2 || Solver==3) && SpinP_switch<=1 && Exact_Exchange_Enabled(exact_exchange)){
+    if (po==1 && Cnt_switch==0 && (Solver==2 || Solver==3 || exx_local)
+        && SpinP_switch<=1 && Exact_Exchange_Enabled(exact_exchange)){
 
-      double deviation;
-
-      Exact_Exchange_Collect_Begin(exact_exchange, SpinP_switch+1, mpi_comm_level1);
-      if (Solver==2){
-        time5 += Cluster_DFT_Col(solver_states.cluster_col, atomic, "scf",LSCF_iter,SpinP_switch,
-                                 ko_col,H,OLP[0],DM[0],EDM,
-                                 Eele0,Eele1,
-                                 myworld1,NPROCS_ID1,Comm_World1,NPROCS_WD1,
-                                 Comm_World_StartID1,MPI_CommWD1,MP,is2,ie2,
-                                 Ss_Re,Cs_Re,Hs_Re,
-                                 CDM1,EDM1,PDM1,size_H1,SP_NZeros,SP_Atoms,EVec1_Re,Work1, electronic);
+      if (exx_local) {
+        Exact_Exchange_Collect_Local(exact_exchange,electronic,mpi_comm_level1);
       }
-      else{
-        time5 += Band_DFT_Col(solver_states.band_col, LSCF_iter,Kspace_grid1,Kspace_grid2,Kspace_grid3,SpinP_switch,0,
-                              H,iHNL,OLP[0],DM[0],EDM,Eele0,Eele1,MP,order_GA,ko,koS,EIGEN_Band,H1,S1,
-                              CDM1,EDM1,EVec1_Cx,Ss_Cx,Cs_Cx,Hs_Cx,k_op,T_k_op,T_k_ID,
-                              T_KGrids1,T_KGrids2,T_KGrids3,myworld1,NPROCS_ID1,Comm_World1,NPROCS_WD1,
-                              Comm_World_StartID1,MPI_CommWD1,myworld2,NPROCS_ID2,NPROCS_WD2,Comm_World2,
-                              Comm_World_StartID2,MPI_CommWD2, electronic);
-      }
-      Exact_Exchange_Collect_End(exact_exchange, mpi_comm_level1);
-      energies->os[0] = Eele0[0];
-      energies->os[1] = Eele0[1];
-      energies->is[0] = Eele1[0];
-      energies->is[1] = Eele1[1];
-      energies->band = energies->is[0] + energies->is[1];
-      if (Exact_Exchange_Active(exact_exchange)) energies->band = energies->os[0] + energies->os[1];
+      else {
+        double deviation;
 
-      /* the collected matrices hold the density matrix of the solver on the
-         elements of the neighbour list; a larger difference means that the
-         solver handed over other vectors than the ones it used */
-      deviation = Exact_Exchange_Density_Deviation(exact_exchange, SpinP_switch+1, Matomnum, M2G, FNAN, natn,
-                                                   ncn, atv_ijk,
-                                                   WhatSpecies, atomic->species.contracted_orbitals, MP,
-                                                   DM[0], mpi_comm_level1);
-      if (myid0==Host_ID)
-        Exact_Exchange_Log(exact_exchange,2,"<EXX>  density matrices collected: largest deviation from the solver %.3e\n",deviation);
-      if (!(deviation<1.0e-8)){
+        Exact_Exchange_Collect_Begin(exact_exchange, SpinP_switch+1, mpi_comm_level1);
+        if (Solver==2){
+          time5 += Cluster_DFT_Col(solver_states.cluster_col, atomic, "scf",LSCF_iter,SpinP_switch,
+                                   ko_col,H,OLP[0],DM[0],EDM,
+                                   Eele0,Eele1,
+                                   myworld1,NPROCS_ID1,Comm_World1,NPROCS_WD1,
+                                   Comm_World_StartID1,MPI_CommWD1,MP,is2,ie2,
+                                   Ss_Re,Cs_Re,Hs_Re,
+                                   CDM1,EDM1,PDM1,size_H1,SP_NZeros,SP_Atoms,EVec1_Re,Work1, electronic);
+        }
+        else{
+          time5 += Band_DFT_Col(solver_states.band_col, LSCF_iter,Kspace_grid1,Kspace_grid2,Kspace_grid3,SpinP_switch,0,
+                                H,iHNL,OLP[0],DM[0],EDM,Eele0,Eele1,MP,order_GA,ko,koS,EIGEN_Band,H1,S1,
+                                CDM1,EDM1,EVec1_Cx,Ss_Cx,Cs_Cx,Hs_Cx,k_op,T_k_op,T_k_ID,
+                                T_KGrids1,T_KGrids2,T_KGrids3,myworld1,NPROCS_ID1,Comm_World1,NPROCS_WD1,
+                                Comm_World_StartID1,MPI_CommWD1,myworld2,NPROCS_ID2,NPROCS_WD2,Comm_World2,
+                                Comm_World_StartID2,MPI_CommWD2, electronic);
+        }
+        Exact_Exchange_Collect_End(exact_exchange, mpi_comm_level1);
+        energies->os[0] = Eele0[0];
+        energies->os[1] = Eele0[1];
+        energies->is[0] = Eele1[0];
+        energies->is[1] = Eele1[1];
+        energies->band = energies->is[0] + energies->is[1];
+        if (Exact_Exchange_Active(exact_exchange)) energies->band = energies->os[0] + energies->os[1];
+
+        /* the collected matrices hold the density matrix of the solver on the
+           elements of the neighbour list; a larger difference means that the
+           solver handed over other vectors than the ones it used */
+        deviation = Exact_Exchange_Density_Deviation(exact_exchange, SpinP_switch+1, Matomnum, M2G, FNAN, natn,
+                                                     ncn, atv_ijk,
+                                                     WhatSpecies, atomic->species.contracted_orbitals, MP,
+                                                     DM[0], mpi_comm_level1);
         if (myid0==Host_ID)
-          fprintf(stderr,"<EXX>  the collected density matrices differ from those of the solver by %.3e\n",deviation);
-        MPI_Abort(mpi_comm_level1, 1);
+          Exact_Exchange_Log(exact_exchange,2,"<EXX>  density matrices collected: largest deviation from the solver %.3e\n",deviation);
+        if (!(deviation<1.0e-8)){
+          if (myid0==Host_ID)
+            fprintf(stderr,"<EXX>  the collected density matrices differ from those of the solver by %.3e\n",deviation);
+          MPI_Abort(mpi_comm_level1, 1);
+        }
       }
 
       Exact_Exchange_Build(exact_exchange, mpi_comm_level1);
@@ -1755,6 +1763,8 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
         /* the exchange matrix of the next inner SCF from the last builds
            (scf.exx.outer.extrapolation) */
         Exact_Exchange_Extrapolate(exact_exchange, mpi_comm_level1);
+        if (exx_local && Solver==8 && Exact_Exchange_Semilocal_Alpha(exact_exchange)!=0.0)
+          Krylov_Refresh_Embedding(solver_states.krylov);
         /* a new inner SCF. The mixing starts again through SCF_iter_shift,
            so that no extrapolation takes a residual that was measured with
            the exchange matrix before; the offset depends on the mixer.
@@ -2828,6 +2838,9 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   ******************************************************/
 
   if ( Dos_fileout || DosGauss_fileout) {
+    double *****local_hamiltonian=exx_local ? Exact_Exchange_Local_Hamiltonian(exact_exchange,electronic) : H;
+    if (exx_local && Solver==8 && Exact_Exchange_Semilocal_Alpha(exact_exchange)!=0.0)
+      Krylov_Refresh_Embedding(solver_states.krylov);
 
     /* cluster */
     if ( Solver==2 && (Dos_Kgrid[0]==1 && Dos_Kgrid[1]==1 && Dos_Kgrid[2]==1) ){  
@@ -2901,7 +2914,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
     else if ( Solver==5 ){  /* divide-conquer */
       if (Cnt_switch==0){
-        time5 += Divide_Conquer(solver_states.dc, "dos",LSCF_iter,H,iHNL,OLP[0],DM[0],EDM,Eele0,Eele1, electronic, local_basis);
+        time5 += Divide_Conquer(solver_states.dc, "dos",LSCF_iter,local_hamiltonian,iHNL,OLP[0],DM[0],EDM,Eele0,Eele1, electronic, local_basis);
       }
       else {
         time5 += Divide_Conquer(solver_states.dc, "dos",LSCF_iter,CntH,iCntHNL,CntOLP[0],DM[0],EDM,Eele0,Eele1, electronic, local_basis);
@@ -2910,7 +2923,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
     else if ( Solver==8 ){  /* Krylov subspace method */
       if (Cnt_switch==0){
-        time5 += Krylov(solver_states.krylov, "dos",LSCF_iter,H,iHNL,OLP[0],DM[0],EDM,Eele0,Eele1);
+        time5 += Krylov(solver_states.krylov, "dos",LSCF_iter,local_hamiltonian,iHNL,OLP[0],DM[0],EDM,Eele0,Eele1);
       }
       else {
         time5 += Krylov(solver_states.krylov, "dos",LSCF_iter,CntH,iCntHNL,CntOLP[0],DM[0],EDM,Eele0,Eele1);
@@ -2919,7 +2932,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
 
     else if ( Solver==11 ){  /* DC-LNO */
       if (Cnt_switch==0){
-	time5 += Divide_Conquer_LNO(solver_states.dclno, "dos",MD_iter,LSCF_iter,SucceedReadingDMfile,H,iHNL,OLP[0],DM[0],EDM,Eele0,Eele1, electronic, local_basis);
+	time5 += Divide_Conquer_LNO(solver_states.dclno, "dos",MD_iter,LSCF_iter,SucceedReadingDMfile,local_hamiltonian,iHNL,OLP[0],DM[0],EDM,Eele0,Eele1, electronic, local_basis);
       }
       else {
 	time5 += Divide_Conquer_LNO(solver_states.dclno, "dos",MD_iter,LSCF_iter,SucceedReadingDMfile,CntH,iCntHNL,CntOLP[0],DM[0],EDM,Eele0,Eele1, electronic, local_basis);

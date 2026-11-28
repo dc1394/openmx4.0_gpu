@@ -91,7 +91,7 @@ Claude Code のセッションは毎回新しい文脈で始まり、`CLAUDE.md`
 |---|---|---|---|
 | 汎関数 | HSE06 | PBE0 | 長距離補正型 |
 | スピン | コリニア（非分極、分極） | ノンコリニア、スピン軌道相互作用 | なし |
-| 固有値ソルバー | Cluster、Band | Cluster-DIIS、Cluster2、Cluster-LNO | Recursion、DC、GDC、Krylov、DC-LNO、EGAC、NEGF |
+| 固有値ソルバー | Cluster、Band | DC、DC-LNO、Krylov、Cluster-DIIS、Cluster2、Cluster-LNO | Recursion、GDC、EGAC、NEGF |
 | k 点 | Γ 点、一般の k 点 | なし | なし |
 | 物理量 | 全エネルギー、固有値、力、MO 出力 | 応力、バンド分散、状態密度、`HS.fileout` | なし |
 | 実行環境 | CPU、CUDA | HIP | なし |
@@ -103,12 +103,13 @@ Claude Code のセッションは毎回新しい文脈で始まり、`CLAUDE.md`
 
 | 条件 | キーワード | 外す時期 |
 |---|---|---|
-| Cluster と Band 以外のソルバー | `scf.EigenvalueSolver` | M8 以降 |
+| Cluster、Band、DC、DC-LNO、Krylov 以外のソルバー | `scf.EigenvalueSolver` | M8 以降 |
 | ノンコリニア | `scf.SpinPolarization NC` | M8 |
 | セルを最適化する種別と、圧力を一定に保つ分子動力学 | `MD.Type` の `OptC1` から `OptC7`、`RFC1` から `RFC7`、`NPT_VS_PR`、`NPT_VS_WV`、`NPT_NH_PR`、`NPT_NH_WV` | M8（応力と同時） |
 | 応力 | `scf.stress.tensor` | M8 |
 | 近傍リストの形式のハミルトニアンを読む出力と、書き出す出力 | `HS.fileout`、`Wannier.Func.Calc`、`Unfolding.Electronic.Band`、`scf.Polarization.ABC`、`CWF.Calc`、`DM.specify.energy.range`（`DM.export` と一緒に指定した場合）、`NEGF.Output_HKS` | M8 |
-| $K$ を足さない経路のバンド分散、DOS、COHP | Cluster ソルバーの `Band.dispersion`、`LNO.flag` と一緒の `Band.dispersion`、Cluster ソルバーで `Dos.Kgrid` が 1 1 1 でない `Dos.fileout` と `DosGauss.fileout`、`COHP.calc.flag` | M8 以降 |
+| バンド分散、DOS、COHP の組み合わせ | Cluster、DC、DC-LNO、Krylov の `Band.dispersion`、`LNO.flag` と一緒の `Band.dispersion`、Cluster ソルバーで `Dos.Kgrid` が 1 1 1 でない `Dos.fileout` と `DosGauss.fileout`、`COHP.calc.flag` | M8 以降 |
+| 局所ソルバーの一回対角化の再開 | DC、DC-LNO、Krylov の `scf.restart pp` | EXX を含む再開形式の実装後 |
 | 厳密交換を含まないエネルギーの分解 | `Energy.Decomposition` | M8 |
 | 確認していない機能 | `scf.Hubbard.U`、`orbitalOpt.Method`、`scf.core.hole`、`ESM.switch`、`scf.Electric.Field`、`CDDF.start`、`NBO.switch`、`XANES.gs.fileout`、`XANES.calc` | 個別に確認した後 |
 | HIP のビルド | なし（ビルド時の種別で判定） | M8 |
@@ -340,12 +341,15 @@ ABF の半径は PAO のカットオフ半径と同じです。積 $g_k$ の角�
 
 ### 6.3 密度行列の収集
 
-内側の SCF が収束したら、収集を有効にして固有値ソルバーをもう 1 回呼びます。FP32 の精製ステップで収束した後に FP64 で解き直す既存の流れ（`DFT.c:1463-1505`）と同じ形です。ソルバーは、スピンと k 点ごとに固有ベクトル、占有数、重みを EXX の状態に渡します。
+内側の SCF が収束したら、Cluster と Band は収集を有効にして固有値ソルバーをもう 1 回呼びます。FP32 の精製ステップで収束した後に FP64 で解き直す既存の流れ（`DFT.c:1463-1505`）と同じ形です。ソルバーは、スピンと k 点ごとに固有ベクトル、占有数、重みを EXX の状態に渡します。
 
 | 場合 | 保持する量 | 計算 |
 |---|---|---|
 | Γ 点だけ | 密行列 $D^{\sigma}=cFc^{\mathsf T}$ | GEMM 1 回 |
 | k 点 | ブロック $D^{\sigma}_{xy}(\mathbf R)$ の表 | k 点ごとに GEMM 1 回。式 (5) の位相を掛けて、表の全てのブロックに足します。 |
+| DC、DC-LNO、Krylov | PAO 近傍の $D^{\sigma}_{xy}(\mathbf R)$ | 混合前の密度行列から各 MPI ランクが担当する原子のブロックを集めます。 |
+
+局所ソルバーでは、PAO の第 1 近傍リストに含まれる実空間ブロックへの射影を $P$ とします。収集した $PD$ は反対向きのブロックと転置平均し、周期セルを保持します。EXX は $E_x[PD]$ とその原子位置微分を求め、配位に対応する $PK$ を作ります。CPU は AVX2 または AVX-512 と OpenMP で各ランクの $H+PK$ を組み、局所ソルバーが MPI でそのハローを交換します。CUDA の局所固有値ソルバーと EXX カーネルもこの行列の射影を使います。Krylov の埋め込み行列は、外側の反復で $K$ が更新された次のステップでも組み直します。PBE0 の切断半径の既定値には単位胞の体積を使います。
 
 固有ベクトルは FP64 のものを使います。FP32 の精製ステップの結果は使いません。
 

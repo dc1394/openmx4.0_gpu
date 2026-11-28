@@ -10,6 +10,8 @@ extern "C" {
 typedef struct OpenMXKrylovState OpenMXKrylovState;
 OpenMXKrylovState *Krylov_Bind_Resources(OpenMXCoreContext *core);
 void Krylov_Release_GPU_KUCache(OpenMXKrylovState *state);
+/* Refresh the embedding matrix once after an outer exchange update. */
+void Krylov_Refresh_Embedding(OpenMXKrylovState *state);
 #ifdef __cplusplus
 }
 #endif

@@ -106,6 +106,7 @@ ElectronicMatrices::ElectronicMatrices(const ElectronicTopology& t,ElectronicOpt
   add(Field::angular_overlap,first_local,1,3);
   add(Field::overlap,extended,1,4,false,Kind::overlap);
   add(Field::hamiltonian,extended,1,spin);
+  if (o.local_hybrid) add(Field::local_hybrid_hamiltonian,extended,1,spin);
   add(Field::projectors,first_local,static_cast<std::size_t>(o.spin_orbit+1),4,false,Kind::projectors);
   add(Field::density,local,density_history,spin);
   add(Field::energy_density,local,1,spin);

@@ -101,6 +101,7 @@ struct OpenMXKrylovState {
   double Col_owned_TZ;
   int Col_owned_firsttime;
   int Col_owned_recalc_firsttime;
+  int refresh_embedding;
   int Col_owned_recalc_flag;
   int NodeRanks_ranks;
   int GPU_InitOnce_initialized;
@@ -941,6 +942,11 @@ static int Krylov_ProjectedSolve_GPU(KrylovState *state, Krylov_GPU_Workspace *w
 
 
 
+void Krylov_Refresh_Embedding(OpenMXKrylovState *state)
+{
+  state->refresh_embedding = 1;
+}
+
 double Krylov(KrylovState *state, char *mode,
               int SCF_iter,
               double *****Hks,
@@ -984,6 +990,7 @@ double Krylov(KrylovState *state, char *mode,
     exit(1);
   }
 
+  state->refresh_embedding = 0;
   return time0;
 }
 
@@ -1750,7 +1757,7 @@ static double Krylov_Col_owned(KrylovState *state, char *mode,
 
 	if (measure_time==1) dtime(&Stime1);
 
-	if (recalc_EM==1 || SCF_iter==1 || state->Col_owned_recalc_flag==1){
+	if (recalc_EM==1 || state->refresh_embedding || SCF_iter==1 || state->Col_owned_recalc_flag==1){
 
 	  Embedding_Matrix( spin, Mc_AN, Hks, Krylov_U, EC_matrix, MP, Msize, Msize2, Msize3, OpenMX_Solver_RealMatrix(solver_owner,"tmpvec1",tmpvec1.extent[0],tmpvec1.extent[1]));
 	}
@@ -6944,7 +6951,7 @@ static double Krylov_Col_trd_owned(KrylovState *state, char *mode,
 
 	if (measure_time==1) dtime(&Stime1);
 
-	if (recalc_EM==1 || SCF_iter<=3 || state->Col_trd_owned_recalc_flag==1){
+	if (recalc_EM==1 || state->refresh_embedding || SCF_iter<=3 || state->Col_trd_owned_recalc_flag==1){
 
 	  Embedding_Matrix_trd( spin, Mc_AN, Hks, Krylov_U, EC_matrix, MP, Msize, Msize2, Msize3, OpenMX_Solver_RealMatrix(solver_owner,"tmpvec1",tmpvec1.extent[0],tmpvec1.extent[1]), EKC_core_size_max, Msize2_max);
 	}

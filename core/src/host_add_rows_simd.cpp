@@ -46,11 +46,25 @@ void add_rows(double* dst, size_t dst_stride, const double* src, size_t src_stri
   else if (factor == -1.0) update_rows<-1>(dst,dst_stride,src,src_stride,rows,columns,factor);
   else update_rows<0>(dst,dst_stride,src,src_stride,rows,columns,factor);
 }
+
+void sum(double* dst, const double* left, const double* right, size_t count)
+{
+  const size_t full = count/lanes*lanes;
+  for (size_t j = 0; j < full; j += lanes)
+    store(load(left+j)+load(right+j),dst+j);
+  for (size_t j = full; j < count; ++j) dst[j] = left[j]+right[j];
+}
 }
 
 const OpenMXHostAddRows& OPENMX_HOST_SIMD_FACTORY(add_rows)() noexcept
 {
   static constexpr OpenMXHostAddRows kernel = add_rows;
+  return kernel;
+}
+
+const OpenMXHostSum& OPENMX_HOST_SIMD_FACTORY(sum)() noexcept
+{
+  static constexpr OpenMXHostSum kernel = sum;
   return kernel;
 }
 }

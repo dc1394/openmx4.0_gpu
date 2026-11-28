@@ -14,6 +14,7 @@
 #include "openmx_common.h"
 #include "openmx_env.h"
 #include "openmx_solver_workspace.h"
+#include "openmx_dc_collinear.h"
 #include "openmx_native_resources.h"
 #include "set_hip_default_device_from_local_rank.h"
 #include "set_openmp_device_from_local_rank.h"
@@ -518,15 +519,6 @@ static const char *DC_GpuSolver_HipblasStatusName(hipblasStatus_t status)
 }
 
 static void DC_GpuSolver_DisableGemmPathHip(DCState *state, const char *where, hipError_t status);
-
-static void DC_Eigen_lapack_cpu(double **a, double *ko, int n, int EVmax)
-{
-    int saved_scf_eigen_lib_flag = scf_eigen_lib_flag;
-
-    scf_eigen_lib_flag = ELPA2;
-    Eigen_lapack(a, ko, n, EVmax);
-    scf_eigen_lib_flag = saved_scf_eigen_lib_flag;
-}
 
 static int DC_GpuSolver_GemmDisabled(DCState *state)
 {
@@ -1222,144 +1214,6 @@ static int DCCol_GpuSolver_DiagonalizeOverlap(DCState *state, int n, double **S_
     return 1;
 }
 
-static int DCCol_CPU_SolveHamiltonian(int n, int p_min, double **S_DC, double **H_DC_spin, double *ko, double **C)
-{
-    int    i1, j1, l, j1s;
-    int    num1 = n - (p_min - 1);
-    double tmp1, tmp2;
-    double sum, sum1, sum2, sum3, sum4;
-
-    for (i1 = 1; i1 <= n; i1++) {
-        for (j1 = i1 + 1; j1 <= n; j1++) {
-            tmp1         = S_DC[i1][j1];
-            tmp2         = S_DC[j1][i1];
-            S_DC[i1][j1] = tmp2;
-            S_DC[j1][i1] = tmp1;
-        }
-    }
-
-    for (j1 = 1; j1 <= n - 3; j1 = j1 + 4) {
-        for (i1 = 1; i1 <= n; i1++) {
-            sum1 = 0.0;
-            sum2 = 0.0;
-            sum3 = 0.0;
-            sum4 = 0.0;
-            for (l = 1; l <= n; l++) {
-                sum1 += H_DC_spin[i1][l] * S_DC[j1][l];
-                sum2 += H_DC_spin[i1][l] * S_DC[j1 + 1][l];
-                sum3 += H_DC_spin[i1][l] * S_DC[j1 + 2][l];
-                sum4 += H_DC_spin[i1][l] * S_DC[j1 + 3][l];
-            }
-            C[j1][i1]     = sum1;
-            C[j1 + 1][i1] = sum2;
-            C[j1 + 2][i1] = sum3;
-            C[j1 + 3][i1] = sum4;
-        }
-    }
-
-    j1s = n - n % 4 + 1;
-    for (j1 = j1s; j1 <= n; j1++) {
-        for (i1 = 1; i1 <= n; i1++) {
-            sum = 0.0;
-            for (l = 1; l <= n; l++) {
-                sum += H_DC_spin[i1][l] * S_DC[j1][l];
-            }
-            C[j1][i1] = sum;
-        }
-    }
-
-    for (j1 = 1; j1 <= n - 3; j1 = j1 + 4) {
-        for (i1 = 1; i1 <= n; i1++) {
-            sum1 = 0.0;
-            sum2 = 0.0;
-            sum3 = 0.0;
-            sum4 = 0.0;
-            for (l = 1; l <= n; l++) {
-                sum1 += S_DC[i1][l] * C[j1][l];
-                sum2 += S_DC[i1][l] * C[j1 + 1][l];
-                sum3 += S_DC[i1][l] * C[j1 + 2][l];
-                sum4 += S_DC[i1][l] * C[j1 + 3][l];
-            }
-            H_DC_spin[j1][i1]     = sum1;
-            H_DC_spin[j1 + 1][i1] = sum2;
-            H_DC_spin[j1 + 2][i1] = sum3;
-            H_DC_spin[j1 + 3][i1] = sum4;
-        }
-    }
-
-    j1s = n - n % 4 + 1;
-    for (j1 = j1s; j1 <= n; j1++) {
-        for (i1 = 1; i1 <= n; i1++) {
-            sum1 = 0.0;
-            for (l = 1; l <= n; l++) {
-                sum1 += S_DC[i1][l] * C[j1][l];
-            }
-            H_DC_spin[j1][i1] = sum1;
-        }
-    }
-
-    for (i1 = p_min; i1 <= n; i1++) {
-        for (j1 = p_min; j1 <= n; j1++) {
-            C[j1 - (p_min - 1)][i1 - (p_min - 1)] = H_DC_spin[i1][j1];
-        }
-    }
-
-    DC_Eigen_lapack_cpu(C, ko, num1, num1);
-
-    for (i1 = 1; i1 <= n; i1++) {
-        for (j1 = 1; j1 <= num1; j1++) {
-            H_DC_spin[j1][i1] = C[i1][j1];
-        }
-    }
-
-    for (i1 = 1; i1 <= n; i1++) {
-        for (j1 = i1 + 1; j1 <= n; j1++) {
-            tmp1         = S_DC[i1][j1];
-            tmp2         = S_DC[j1][i1];
-            S_DC[i1][j1] = tmp2;
-            S_DC[j1][i1] = tmp1;
-        }
-    }
-
-    for (j1 = 1; j1 <= num1; j1++) {
-        for (l = n; p_min <= l; l--) {
-            H_DC_spin[j1][l] = H_DC_spin[j1][l - (p_min - 1)];
-        }
-    }
-
-    for (j1 = 1; j1 <= n - 3; j1 = j1 + 4) {
-        for (i1 = 1; i1 <= n; i1++) {
-            sum1 = 0.0;
-            sum2 = 0.0;
-            sum3 = 0.0;
-            sum4 = 0.0;
-            for (l = p_min; l <= n; l++) {
-                sum1 += S_DC[i1][l] * H_DC_spin[j1][l];
-                sum2 += S_DC[i1][l] * H_DC_spin[j1 + 1][l];
-                sum3 += S_DC[i1][l] * H_DC_spin[j1 + 2][l];
-                sum4 += S_DC[i1][l] * H_DC_spin[j1 + 3][l];
-            }
-            C[i1][j1]     = sum1;
-            C[i1][j1 + 1] = sum2;
-            C[i1][j1 + 2] = sum3;
-            C[i1][j1 + 3] = sum4;
-        }
-    }
-
-    j1s = n - n % 4 + 1;
-    for (j1 = j1s; j1 <= n; j1++) {
-        for (i1 = 1; i1 <= n; i1++) {
-            sum = 0.0;
-            for (l = p_min; l <= n; l++) {
-                sum += S_DC[i1][l] * H_DC_spin[j1][l];
-            }
-            C[i1][j1] = sum;
-        }
-    }
-
-    return num1;
-}
-
 /* d_S_use == NULL means "use the overlap staged in ctx->d_S by
    LoadTransformedOverlap"; that copy makes room for MAGMA and is reloaded
    from the host S_DC afterwards.  Otherwise d_S_use is the resident copy in
@@ -1393,26 +1247,18 @@ static int DCCol_GpuSolver_SolveHamiltonian(DCState *state, int n, int p_min, co
         return 0;
     }
 
-    if (!DC_GpuSolver_TryGpuDgemm(state, ctx->hipblas, HIPBLAS_OP_N, HIPBLAS_OP_N, n, n, n, &alpha, ctx->d_H, n, d_S_use,
-                                 n, &beta, ctx->d_tmp, n, "H*S")) {
+    const double *s_active = d_S_use + (size_t)(p_min - 1) * (size_t)n;
+    if (!DC_GpuSolver_TryGpuDgemm(state, ctx->hipblas, HIPBLAS_OP_N, HIPBLAS_OP_N, n, num1, n, &alpha,
+                                 ctx->d_H, n, s_active, n, &beta, ctx->d_tmp, n, "H*S")) {
         DC_GpuSolver_ReleaseGemmScratch(state);
         return 0;
     }
-    if (!DC_GpuSolver_TryGpuDgemm(state, ctx->hipblas, HIPBLAS_OP_T, HIPBLAS_OP_N, n, n, n, &alpha, d_S_use, n,
-                                 ctx->d_tmp, n, &beta, ctx->d_H, n, "S^T*H*S")) {
+    if (!DC_GpuSolver_TryGpuDgemm(state, ctx->hipblas, HIPBLAS_OP_T, HIPBLAS_OP_N, num1, num1, n, &alpha,
+                                 s_active, n, ctx->d_tmp, n, &beta, ctx->d_A, num1, "S^T*H*S")) {
         DC_GpuSolver_ReleaseGemmScratch(state);
         return 0;
     }
 
-    hip_status = hipMemcpy2DAsync(ctx->d_A, sizeof(double) * (size_t)num1,
-                                    ctx->d_H + (size_t)(p_min - 1) * (size_t)n + (size_t)(p_min - 1),
-                                    sizeof(double) * (size_t)n, sizeof(double) * (size_t)num1, (size_t)num1,
-                                    hipMemcpyDeviceToDevice, ctx->stream);
-    if (hip_status != hipSuccess) {
-        DC_GpuSolver_DisableGemmPathHip(state, "hipMemcpy2DAsync(active Hamiltonian)", hip_status);
-        DC_GpuSolver_ReleaseGemmScratch(state);
-        return 0;
-    }
     hip_status = hipStreamSynchronize(ctx->stream);
     if (hip_status != hipSuccess) {
         DC_GpuSolver_DisableGemmPathHip(state, "hipStreamSynchronize(active Hamiltonian)", hip_status);
@@ -2486,15 +2332,12 @@ static double DC_Col_owned(DCState *state, char * mode, int SCF_iter, double ***
                 atom i in arraies H and S
     ****************************************************/
 
-    int mysize = Matomnum > 0 ? 1 : 0;
-    MPI_Allreduce(MPI_IN_PLACE, &mysize, 1, MPI_INT, MPI_SUM, mpi_comm_level1);
-
-    // #pragma omp parallel shared(OLP_eigen_cut, List_YOUSO, Etime_atom, time_per_atom, time3, Residues, EVal, time2, time1, \
-    //                                 S12, level_stdout, SpinP_switch, Hks, OLP0, SCF_iter, RMI1, S_G2M, Spe_Total_CNO,      \
-    //                                 natn, FNAN, SNAN, WhatSpecies, M2G, Matomnum)                                          \
-    //     private(OMPID, Nthrds, Nprocs, Mc_AN, Stime_atom, Gc_AN, wan, Anum, i, j, MP, Gi, wanA, NUM, NUM1, n2, spin, S_DC, \
-    //                 H_DC, ko, M1, C, ig, ian, ih, kl, jg, jan, Bnum, m, n, stime, P_min, l, i1, j1, etime, tmp1, tmp2,     \
-    //                 sum1, sum2, sum3, sum4, j1s, sum, tno1, h_AN, Gh_AN, wanB, tno2)
+    /* GPU ranks share one solver context. CPU ranks can solve their
+       independent atoms concurrently using the per-thread workspace. */
+#pragma omp parallel if(scf_eigen_lib_flag!=GPUSOLVER && Matomnum>1) \
+    private(OMPID,Nthrds,Nprocs,Mc_AN,Gc_AN,Stime_atom,Etime_atom,wan,wanA,wanB,Anum,i,j,MP,Gi,NUM,NUM1,n2,spin, \
+            S_DC,H_DC,ko,M1,C,ig,ian,ih,kl,jg,jan,Bnum,m,n,stime,etime,P_min,l,i1,j1,tno1,tno2,h_AN,Gh_AN,tmp1,tmp2) \
+    reduction(+:time1,time2,time3)
     {
 
         /* get info. on OpenMP */
@@ -2622,10 +2465,10 @@ static double DC_Col_owned(DCState *state, char * mode, int SCF_iter, double ***
                 if (use_dc_gpu) {
                     if (!DCCol_GpuSolver_DiagonalizeOverlap(state, NUM, S_DC, ko)) {
                         use_dc_gpu = 0;
-                        DC_Eigen_lapack_cpu(S_DC, ko, NUM, NUM);
+                        Eigen_lapack_cpu(S_DC, ko, NUM, NUM);
                     }
                 } else {
-                    DC_Eigen_lapack_cpu(S_DC, ko, NUM, NUM);
+                    Eigen_lapack_cpu(S_DC, ko, NUM, NUM);
                 }
 
                 /***********************************************
@@ -2713,7 +2556,7 @@ static double DC_Col_owned(DCState *state, char * mode, int SCF_iter, double ***
                             DCCol_FillSDCFromS12(Mc_AN, NUM, S_DC, local_basis);
                             s_dc_host_filled = 1;
                         }
-                        NUM1 = DCCol_CPU_SolveHamiltonian(NUM, P_min, S_DC, H_DC[spin], ko, C);
+                        NUM1 = DCCol_CPU_SolveHamiltonian(NUM, P_min, n2, S_DC, H_DC[spin], ko, C);
                     }
 
                 } else {
@@ -2721,7 +2564,7 @@ static double DC_Col_owned(DCState *state, char * mode, int SCF_iter, double ***
                         DCCol_FillSDCFromS12(Mc_AN, NUM, S_DC, local_basis);
                         s_dc_host_filled = 1;
                     }
-                    NUM1 = DCCol_CPU_SolveHamiltonian(NUM, P_min, S_DC, H_DC[spin], ko, C);
+                    NUM1 = DCCol_CPU_SolveHamiltonian(NUM, P_min, n2, S_DC, H_DC[spin], ko, C);
                 }
 
                 if (measure_time) {
@@ -3983,7 +3826,7 @@ static double DC_NonCol_owned(DCState *state, char * mode, int SCF_iter, double 
             if (SCF_iter <= 2) {
                 // dtime(&timeA);
 
-                DC_Eigen_lapack_cpu(S_DC, ko, NUM, NUM);
+                Eigen_lapack_cpu(S_DC, ko, NUM, NUM);
 
                 // dtime(&timeB);
                 // printf("timeA = %.3f\n", timeB - timeA);

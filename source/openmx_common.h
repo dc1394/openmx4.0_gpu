@@ -3679,6 +3679,7 @@ void Make_FracCoord(char *file);
 void Merge_LogFile(char *file);
 void Make_InputFile_with_FinalCoord(const OpenMXDynamicsState *dynamics, char *file, int MD_iter);
 void Eigen_lapack(double **a, double *ko, int n, int EVmax);
+void Eigen_lapack_cpu(double **a, double *ko, int n, int EVmax);
 void Eigen_lapack2(double *a, int csize, double *ko, int n, int EVmax);
 void Eigen_lapack3(double *a, double *ko, int n, int EVmax);
 void EigenBand_lapack(dcomplex **A, double *W, int N0, int MaxN, int ev_flag);

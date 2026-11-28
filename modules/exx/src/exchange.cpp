@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <climits>
+#include <limits>
 #include <cmath>
 #include <cstddef>
 #include <memory>
@@ -573,12 +574,19 @@ bool half_pair(std::size_t a, const Site& b)
 
 // The V neighbours of the centre a that a build goes through: all of them,
 // or those of the half build.  The centre itself comes first in both.
-std::vector<std::size_t> group_neighbours(const System& system, std::size_t a, bool half)
+std::vector<std::size_t> group_neighbours(const System& system, std::size_t a, bool half,
+                                          const BlockLayout* layout = nullptr)
 {
   const std::vector<Site>& v = system.v_neighbours[a];
+  const auto keep = [&](std::size_t i) { return !half || i == 0 || half_pair(a,v[i]); };
   std::vector<std::size_t> list;
+  if (layout != nullptr && !layout->active_v_neighbours.empty()) {
+    for (const std::size_t i : layout->active_v_neighbours[a])
+      if (keep(i)) list.push_back(i);
+    return list;
+  }
   for (std::size_t i = 0; i < v.size(); ++i)
-    if (!half || i == 0 || half_pair(a,v[i])) list.push_back(i);
+    if (keep(i)) list.push_back(i);
   return list;
 }
 
@@ -660,9 +668,10 @@ template <class Blocks>
 class SiteSink {
  public:
   SiteSink(const System& system, std::size_t a, double factor, Blocks& k, bool half = false)
-      : system_(system), a_(a), factor_(factor), k_(k), half_(half), neighbours_(group_neighbours(system,a,half)),
-        offset_(1,0)
+      : system_(system), a_(a), factor_(factor), k_(k), half_(half), offset_(1,0)
   {
+    if constexpr (std::is_same_v<Blocks,LayoutBlocks>) neighbours_ = group_neighbours(system,a,half,&k_.layout());
+    else neighbours_ = group_neighbours(system,a,half);
     FoldedSites folded = folded_sites(system,column_sites(system,a,neighbours_));
     sites_ = std::move(folded.sites);
     index_ = std::move(folded.index);
@@ -731,12 +740,16 @@ class SiteSink {
       for (std::size_t i = c*loc.size()/pieces; i < (c+1)*loc.size()/pieces; ++i) {
         const std::size_t rows = first[i+1]-first[i];
         for (std::size_t j = 0; j < count; ++j) {
-          const std::size_t b = layout.find(BlockKey{loc[i].atom,sites_[j].atom,difference(sites_[j].cell,loc[i].cell)});
-          if (b == layout.keys.size()) throw std::invalid_argument("the layout lacks a block of the density matrix");
+          const std::size_t b = k_.find(BlockKey{loc[i].atom,sites_[j].atom,difference(sites_[j].cell,loc[i].cell)});
           block_[i*count+j] = b;
           const std::size_t columns = offset_[j+1]-offset_[j];
-          const double* source = values.data()+layout.offset[b];
-          for (std::size_t r = 0; r < rows; ++r) std::copy_n(source+r*columns,columns,dloc.get()+(first[i]+r)*s+offset_[j]);
+          double* target = dloc.get()+first[i]*s+offset_[j];
+          if (b == layout.keys.size()) {
+            for (std::size_t r = 0; r < rows; ++r) std::fill_n(target+r*s,columns,0.0);
+          } else {
+            const double* source = values.data()+layout.offset[b];
+            for (std::size_t r = 0; r < rows; ++r) std::copy_n(source+r*columns,columns,target+r*s);
+          }
         }
       }
     });
@@ -749,7 +762,7 @@ class SiteSink {
   // layout (stored) and its length.  The rows of site i begin at begin[i].
   // Two rows of one site of loc(A) never lie in the same block of the
   // layout, so the rows of one site can be added to K at the same time.
-  void device_rows(std::vector<long long>& local, std::vector<long long>& stored, std::vector<int>& length,
+  bool device_rows(std::vector<long long>& local, std::vector<long long>& stored, std::vector<int>& length,
                    std::vector<std::size_t>& begin) const
   {
     static_assert(std::is_same_v<Blocks,LayoutBlocks>,"only a store in a layout gives the rows for the device");
@@ -757,11 +770,15 @@ class SiteSink {
     const std::vector<Site>& loc = system_.c_neighbours[a_];
     const std::vector<std::size_t>& first = system_.c_offset[a_];
     const std::size_t s = size();
+    bool missing = false;
     begin.assign(1,local.size());
     for (std::size_t i = 0; i < loc.size(); ++i) {
       for (std::size_t j = 0; j < sites_.size(); ++j) {
-        const std::size_t b = layout.find(BlockKey{loc[i].atom,sites_[j].atom,difference(sites_[j].cell,loc[i].cell)});
-        if (b == layout.keys.size()) throw std::invalid_argument("the layout lacks a block of the density matrix");
+        const std::size_t b = k_.find(BlockKey{loc[i].atom,sites_[j].atom,difference(sites_[j].cell,loc[i].cell)});
+        if (b == layout.keys.size()) {
+          missing = true;
+          continue;
+        }
         const std::size_t columns = offset_[j+1]-offset_[j];
         for (std::size_t r = first[i]; r < first[i+1]; ++r) {
           local.push_back(static_cast<long long>(r*s+offset_[j]));
@@ -771,6 +788,7 @@ class SiteSink {
       }
       begin.push_back(local.size());
     }
+    return missing;
   }
 
   // The offset in the layout of the block of K of term (i) of group ib.
@@ -794,6 +812,7 @@ class SiteSink {
     for (std::size_t j = 0; j < loc.size(); ++j) {
       const std::size_t begin = system_.c_offset[atom][j], width = system_.c_offset[atom][j+1]-begin;
       const long long block = block_offset(BlockKey{static_cast<int>(a_),loc[j].atom,sum(b.cell,loc[j].cell)});
+      if (block < 0) continue;
       for (std::size_t mu = 0; mu < ua; ++mu) {
         stored.push_back(block+static_cast<long long>(mu*width));
         local.push_back(static_cast<long long>(mu*lb+begin));
@@ -829,7 +848,7 @@ class SiteSink {
   {
     const Site& b = neighbour(ib);
     const std::span<double> block = k_.at(BlockKey{static_cast<int>(a_),b.atom,b.cell});
-    backend.add_row(block.data(),values,block.size(),factor_);
+    if (!block.empty()) backend.add_row(block.data(),values,block.size(),factor_);
   }
 
   void second(std::size_t ib, const double* values, const DenseBackend& backend)
@@ -841,7 +860,7 @@ class SiteSink {
     for (std::size_t j = 0; j < loc.size(); ++j) {
       const std::size_t begin = system_.c_offset[atom][j], width = system_.c_offset[atom][j+1]-begin;
       const std::span<double> block = k_.at(BlockKey{static_cast<int>(a_),loc[j].atom,sum(b.cell,loc[j].cell)});
-      backend.add_rows(block.data(),width,values+begin,lb,ua,width,factor_);
+      if (!block.empty()) backend.add_rows(block.data(),width,values+begin,lb,ua,width,factor_);
     }
   }
 
@@ -865,7 +884,7 @@ class SiteSink {
           const std::size_t begin = system_.c_offset[a_][i], rows = system_.c_offset[a_][i+1]-begin;
           for (std::size_t j = 0; j < count; ++j) {
             const std::size_t b = block_[i*count+j];
-            if (pieces > 1 && b%pieces != piece) continue;
+            if (b == k_.layout().keys.size() || (pieces > 1 && b%pieces != piece)) continue;
             const std::size_t columns = offset_[j+1]-offset_[j];
             const std::span<double> block = k_.block(b);
             backend.add_rows(block.data(),columns,values+begin*s+offset_[j],s,rows,columns,factor_);
@@ -890,9 +909,8 @@ class SiteSink {
   {
     static_assert(std::is_same_v<Blocks,LayoutBlocks>,"only a store in a layout gives offsets for the device");
     const BlockLayout& layout = k_.layout();
-    const std::size_t i = layout.find(key);
-    if (i == layout.keys.size()) throw std::invalid_argument("the layout lacks a block of the exchange matrix");
-    return static_cast<long long>(layout.offset[i]);
+    const std::size_t i = k_.find(key);
+    return i == layout.keys.size() ? -1 : static_cast<long long>(layout.offset[i]);
   }
 
   // The V neighbour of group g.
@@ -939,11 +957,18 @@ class LayoutBlocks {
  public:
   LayoutBlocks(const BlockLayout& layout, std::span<double> values) : layout_(layout), values_(values) {}
 
-  std::span<double> at(const BlockKey& key) const
+  std::size_t find(const BlockKey& key) const
   {
     const std::size_t i = layout_.find(key);
-    if (i == layout_.keys.size()) throw std::invalid_argument("the layout lacks a block of the exchange matrix");
-    return block(i);
+    if (i == layout_.keys.size() && layout_.active_v_neighbours.empty())
+      throw std::invalid_argument("the layout lacks a block of the exchange matrix");
+    return i;
+  }
+
+  std::span<double> at(const BlockKey& key) const
+  {
+    const std::size_t i = find(key);
+    return i == layout_.keys.size() ? std::span<double>() : block(i);
   }
 
   // The block of index i in the layout.
@@ -1369,6 +1394,7 @@ struct DeviceCentre {
   std::vector<int> length;
   std::vector<std::size_t> begin;
   std::size_t longest = 0;                // the largest of length
+  bool missing_density_blocks = false;
   // Gamma form: the offset in D and K of the row of every row of D[loc(A), .].
   std::vector<long long> row;
   std::vector<DeviceGroup> groups;
@@ -1661,9 +1687,12 @@ void device_start(const System& system, const CentrePart& share, const DeviceCen
   using Side = DeviceWork::Side;
   const Side zero{0,nullptr,0,nullptr};              // every element reads d.zero[0]
   const double* ta = d.t+d.t_offset[a]+share.first*ua*ell;              // the rows of the ABFs of the part
-  if (site)                                          // D[loc(A), S] from the layout
+  if (site) {                                        // D[loc(A), S] from the layout
+    if (c.missing_density_blocks)
+      work.move(ell,s,nullptr,1.0,false,d.dloc,Side{static_cast<long long>(s),nullptr,1,nullptr},d.zero,zero);
     work.move(c.local.size(),c.longest,d.length+at.gathered,1.0,false,d.dloc,Side{0,d.list+at.local,1,nullptr},
               d.density,Side{0,d.list+at.stored,1,nullptr});
+  }
   else                                               // D[loc(A), .] from the rows of D
     work.move(ell,s,nullptr,1.0,false,d.dloc,Side{static_cast<long long>(s),nullptr,1,nullptr},d.density,
               Side{0,d.list+at.row,1,nullptr});
@@ -1752,8 +1781,9 @@ void device_centre(const System& system, const CentrePart& share, double factor,
     const DeviceGroup& group = c.groups[ib];
     const std::size_t ub = system.orbital_count[group.atom], lb = group.column.size();
     const long long* column = d.list+at.groups[ib].column;
-    work.move(ua,ub,nullptr,factor,true,d.k+group.first,Side{group.first_stride,nullptr,1,nullptr},d.first,
-              Side{signed_size(ub),nullptr,1,nullptr});                                     // K += (i)
+    if (group.first >= 0)
+      work.move(ua,ub,nullptr,factor,true,d.k+group.first,Side{group.first_stride,nullptr,1,nullptr},d.first,
+                Side{signed_size(ub),nullptr,1,nullptr});                                   // K += (i)
     if (site)
       work.move(group.second_length.size(),group.second_longest,d.length+at.groups[ib].second_length,factor,true,d.k,
                 Side{0,d.list+at.groups[ib].second_stored,1,nullptr},d.second,
@@ -1999,7 +2029,7 @@ class DeviceBlocks {
     SiteSink<LayoutBlocks>& sink = *sink_;
     DeviceCentre c;
     c.s = sink.size();
-    sink.device_rows(c.local,c.stored,c.length,c.begin);
+    c.missing_density_blocks = sink.device_rows(c.local,c.stored,c.length,c.begin);
     for (const int length : c.length) c.longest = std::max(c.longest,static_cast<std::size_t>(length));
     std::vector<std::size_t> seen(sink.folds_columns() ? c.s : 0);
     for (std::size_t ib = 0; ib < sink.groups(); ++ib) {
@@ -2027,8 +2057,8 @@ class DeviceBlocks {
   CentreGradient gradient(const CentrePart& part, std::vector<double>& dt, std::vector<std::vector<double>>& dv,
                           std::vector<std::vector<double>>* w) const
   {
-    if (w == nullptr) return CentreGradient{std::move(dt),std::move(dv),{}};
-    CentreGradient gradient{std::move(dt),{},std::move(*w)};
+    CentreGradient gradient{std::move(dt),{},{}};
+    if (w != nullptr) gradient.w = std::move(*w);
     gradient.v.resize(system_.v_neighbours[part.atom].size());
     for (std::size_t ib = 0; ib < dv.size(); ++ib) gradient.v[sink_->neighbour_index(ib)] = std::move(dv[ib]);
     return gradient;
@@ -2275,6 +2305,50 @@ BlockLayout exchange_layout(const System& system)
   return layout;
 }
 
+BlockLayout projected_exchange_layout(const System& system, std::vector<BlockKey> keys)
+{
+  check(system);
+  if (keys.empty() || system.folding.period[0] != 0)
+    throw std::invalid_argument("the projected layout needs unfolded block keys");
+  const auto atoms = static_cast<int>(system.orbital_count.size());
+  std::sort(keys.begin(),keys.end());
+  if (std::adjacent_find(keys.begin(),keys.end()) != keys.end())
+    throw std::invalid_argument("duplicate projected block key");
+  BlockLayout layout;
+  layout.keys = std::move(keys);
+  layout.offset.reserve(layout.keys.size()+1);
+  layout.offset.push_back(0);
+  const auto contains = [&](const BlockKey& key) { return layout.find(key) < layout.keys.size(); };
+  for (const BlockKey& key : layout.keys) {
+    if (key.row < 0 || key.row >= atoms || key.column < 0 || key.column >= atoms ||
+        std::ranges::find(key.cell,std::numeric_limits<int>::min()) != key.cell.end())
+      throw std::invalid_argument("invalid projected block key");
+    if (!contains({key.column,key.row,{-key.cell[0],-key.cell[1],-key.cell[2]}}))
+      throw std::invalid_argument("the projected layout lacks the mirror image of a block");
+    const std::size_t elements = system.orbital_count[key.row]*system.orbital_count[key.column];
+    if (elements > std::numeric_limits<std::size_t>::max()-layout.offset.back())
+      throw std::length_error("the projected block layout is too large");
+    layout.offset.push_back(layout.offset.back()+elements);
+  }
+  layout.active_v_neighbours.resize(atoms);
+  for (int a = 0; a < atoms; ++a) {
+    const auto& neighbours = system.v_neighbours[a];
+    auto& active = layout.active_v_neighbours[a];
+    active.push_back(0);  // the onsite group keeps the local column layout nonempty
+    for (std::size_t i = 1; i < neighbours.size(); ++i) {
+      const Site& b = neighbours[i];
+      // Each energy term of V(A,B) contains D[A,B], or a product of
+      // D[A,loc(B)] and D[loc(A),B]. The projected K and force weights
+      // vanish if either of the latter two regions is structurally zero.
+      const auto left = [&](const Site& p) { return contains({p.atom,b.atom,difference(b.cell,p.cell)}); };
+      const auto right = [&](const Site& q) { return contains({a,q.atom,sum(b.cell,q.cell)}); };
+      if (std::ranges::any_of(system.c_neighbours[a],left) && std::ranges::any_of(system.c_neighbours[b.atom],right))
+        active.push_back(i);
+    }
+  }
+  return layout;
+}
+
 namespace {
 
 void check_arrays(const System& system, const BlockLayout& layout, std::span<const double> density,
@@ -2369,7 +2443,7 @@ constexpr double array_time = 290.0;      // an element of D[loc(A), .] and of t
 
 } // namespace
 
-BuildCosts build_costs(const System& system, bool sites, bool half)
+BuildCosts build_costs(const System& system, bool sites, bool half, const BlockLayout* layout)
 {
   check(system);
   const std::size_t atoms = system.orbital_count.size(), n = orbital_total(system);
@@ -2396,7 +2470,7 @@ BuildCosts build_costs(const System& system, bool sites, bool half)
     const std::size_t ua = system.orbital_count[a];
     // The V neighbours of the build; the half build of the Gamma form takes
     // the atoms b >= a below.
-    const std::vector<std::size_t> groups = group_neighbours(system,a,sites && half);
+    const std::vector<std::size_t> groups = group_neighbours(system,a,sites && half,sites ? layout : nullptr);
     std::size_t s = n;                                 // the columns of D[loc(A), .]
     if (sites) {
       s = 0;
@@ -2426,10 +2500,11 @@ BuildCosts build_costs(const System& system, bool sites, bool half)
   return cost;
 }
 
-std::vector<std::size_t> divide_abfs(const System& system, bool sites, bool half, std::size_t processes)
+std::vector<std::size_t> divide_abfs(const System& system, bool sites, bool half, std::size_t processes,
+                                     const BlockLayout* layout)
 {
   if (processes == 0) throw std::invalid_argument("a division of the ABFs needs a process");
-  const BuildCosts cost = build_costs(system,sites,half);
+  const BuildCosts cost = build_costs(system,sites,half,layout);
   const std::size_t atoms = system.abf_count.size();
   // The fewest ranges whose estimates stay within the bound, by the greedy
   // division: a range takes the next ABF while its estimate stays within the
@@ -2768,7 +2843,10 @@ CentreGradient centre_gradient_blocks(const System& system, const BlockLayout& l
   LayoutBlocks store(layout,std::span<double>());
   SiteSink<LayoutBlocks> sink(system,atom,factor,store);
   const std::unique_ptr<double[]> dloc = sink.density(density,backend,piece_count(last-first,backend));
-  centre_derivatives(system,atom,first,last,sink.size(),dloc.get(),sink,factor,backend,gradient.t,gradient.v);
+  std::vector<std::vector<double>> grouped_v;
+  centre_derivatives(system,atom,first,last,sink.size(),dloc.get(),sink,factor,backend,gradient.t,grouped_v);
+  gradient.v.resize(system.v_neighbours[atom].size());
+  for (std::size_t g = 0; g < sink.groups(); ++g) gradient.v[sink.neighbour_index(g)] = std::move(grouped_v[g]);
   return gradient;
 }
 

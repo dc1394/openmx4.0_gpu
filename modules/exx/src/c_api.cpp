@@ -463,7 +463,8 @@ int openmx_exx_divide_abfs(const OpenMXExxState* state, int sites, int half, int
   const System* system = prepared(state);
   if (system == nullptr || boundaries == nullptr || processes < 1) return 1;
   try {
-    const std::vector<std::size_t> values = divide_abfs(*system,sites != 0,half != 0,static_cast<std::size_t>(processes));
+    const std::vector<std::size_t> values =
+        divide_abfs(*system,sites != 0,half != 0,static_cast<std::size_t>(processes),layout_of(state));
     for (std::size_t r = 0; r < values.size(); ++r) boundaries[r] = static_cast<long>(values[r]);
   } catch (...) {
     return 1;
@@ -490,6 +491,21 @@ int openmx_exx_prepare_blocks(OpenMXExxState* state, char* error, size_t capacit
   return guarded(error,capacity,[&] {
     if (prepared(state) == nullptr) throw std::invalid_argument("the site form needs a prepared structure");
     if (!state->layout.has_value()) state->layout = exchange_layout(*state->system);
+  });
+}
+
+int openmx_exx_prepare_projected_blocks(OpenMXExxState* state, size_t count,
+    const OpenMXExxBlockKey* keys, char* error, size_t capacity)
+{
+  return guarded(error,capacity,[&] {
+    const System* system = prepared(state);
+    if (system == nullptr || !keys)
+      throw std::invalid_argument("the projected layout needs a prepared unfolded structure and block keys");
+    std::vector<BlockKey> blocks;
+    blocks.reserve(count);
+    for (const auto& key : std::span(keys,count))
+      blocks.push_back({key.row_atom,key.column_atom,{key.cell[0],key.cell[1],key.cell[2]}});
+    state->layout = projected_exchange_layout(*system,std::move(blocks));
   });
 }
 

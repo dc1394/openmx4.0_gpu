@@ -14,7 +14,7 @@ enum class ElectronicField {
   hamiltonian_history, imaginary_hamiltonian_history, hamiltonian_residual,
   imaginary_hamiltonian_residual, density, guiding_density, imaginary_guiding_density,
   partial_density, density_residual, imaginary_density_residual,
-  energy_density, previous_density, imaginary_density, count
+  energy_density, previous_density, imaginary_density, local_hybrid_hamiltonian, count
 };
 
 struct ElectronicOptions {
@@ -25,6 +25,7 @@ struct ElectronicOptions {
   bool lno = false, guiding_density = false, partial_density = false;
   // Preserve the legacy distinction between derivative halos and values.
   bool full_overlap_halo_derivatives = false;
+  bool local_hybrid = false;
 };
 
 // All arrays are borrowed only during construction. Atom zero is explicit

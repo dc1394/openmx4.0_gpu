@@ -6,5 +6,7 @@
 namespace openmx::core::host {
 extern "C" OPENMX_HOST_SIMD_EXPORT const OpenMXHostAddRows* openmx_host_add_rows_kernels(int mode) noexcept;
 OPENMX_HOST_SIMD_FAMILY(OpenMXHostAddRows,add_rows)
+extern "C" OPENMX_HOST_SIMD_EXPORT const OpenMXHostSum* openmx_host_sum_kernels(int mode) noexcept;
+OPENMX_HOST_SIMD_FAMILY(OpenMXHostSum,sum)
 }
 #endif

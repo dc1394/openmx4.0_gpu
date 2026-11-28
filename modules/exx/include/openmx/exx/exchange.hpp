@@ -95,10 +95,12 @@ double exchange_change(const DensityBlocks& density, const BlockMatrix& k, const
 // only, so every process that prepares a structure gets the same one, and the
 // arrays of the processes can be added element by element.  K_xy(R) is zero
 // outside the layout, and the layout holds the key of K_yx(-R) for every key
-// of K_xy(R).
+// of K_xy(R). A projected layout stores a subset of real-space blocks:
+// the input D is zero outside it and the build writes the projection of K.
 struct BlockLayout {
   std::vector<BlockKey> keys;
   std::vector<std::size_t> offset;   // keys.size()+1 entries
+  std::vector<std::vector<std::size_t>> active_v_neighbours;  // projected layouts only
 
   // The number of elements of an array in this layout.
   std::size_t elements() const noexcept { return offset.empty() ? 0 : offset.back(); }
@@ -107,6 +109,7 @@ struct BlockLayout {
 };
 
 BlockLayout exchange_layout(const System& system);
+BlockLayout projected_exchange_layout(const System& system, std::vector<BlockKey> keys);
 
 // add_exchange_blocks() for arrays in a layout of the system: density holds
 // the blocks of D, and factor times the contribution of the centre atom is
@@ -179,7 +182,7 @@ void mirror_blocks(const System& system, const BlockLayout& layout, std::span<do
 struct BuildCosts {
   std::vector<double> multiplications, per_abf, per_part;
 };
-BuildCosts build_costs(const System& system, bool sites, bool half = false);
+BuildCosts build_costs(const System& system, bool sites, bool half = false, const BlockLayout* layout = nullptr);
 
 // A division of the ABFs of the cell among `processes` processes: process r
 // takes the ABFs boundaries[r] <= P < boundaries[r+1], counted over the
@@ -189,7 +192,8 @@ BuildCosts build_costs(const System& system, bool sites, bool half = false);
 // ranges, the division has the smallest largest estimate, to a relative
 // 1e-12.  Processes at the end may get empty ranges.  The same system gives
 // the same division on every process.
-std::vector<std::size_t> divide_abfs(const System& system, bool sites, bool half, std::size_t processes);
+std::vector<std::size_t> divide_abfs(const System& system, bool sites, bool half, std::size_t processes,
+                                     const BlockLayout* layout = nullptr);
 
 // The largest difference between an element of M_xy(R) and the element of
 // M_yx(-R) that equals it in a matrix with M_xy(R) = M_yx(-R)^T.

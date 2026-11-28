@@ -384,6 +384,17 @@ double openmx_exx_change_gamma(size_t count, const double *density, const double
    new preparation discards it.  It does nothing when the list exists. */
 int openmx_exx_prepare_blocks(OpenMXExxState *state, char *error, size_t capacity);
 
+typedef struct {
+  int row_atom, column_atom;  /* zero-based */
+  int cell[3];
+} OpenMXExxBlockKey;
+
+/* Install an unfolded layout with the given real-space blocks. A missing D
+   block is zero and its corresponding K block is discarded. Keys can be in
+   any order and must include the transpose in the opposite cell. */
+int openmx_exx_prepare_projected_blocks(OpenMXExxState *state, size_t count,
+    const OpenMXExxBlockKey *keys, char *error, size_t capacity);
+
 /* The number of blocks, -1 without a list, and the number of elements of an
    array that holds them all, 0 without a list. */
 long openmx_exx_block_count(const OpenMXExxState *state);

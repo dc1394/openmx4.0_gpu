@@ -42,6 +42,7 @@ struct Fixture {
 // derivatives, two scratch slots and non-collinear Hamiltonian histories.
 constexpr std::size_t legacy_elements[]{180,48,135,195,51,135,195,180,180,135,135,999,
   1008,68,260,68,1608,1368,196,540,405,540,405,360,180,90,90,0,2,180,180,180};
+static_assert(std::size(legacy_elements)==OPENMX_ELECTRONIC_LOCAL_HYBRID_HAMILTONIAN);
 
 void check_adapter(const OpenMXElectronicMatrixView& f,double***** p,std::size_t offset)
 {
@@ -65,10 +66,11 @@ void layout_test()
 {
   auto core=context();Fixture f;require(f.allocate(core.get()),f.error);
   const auto& v=f.views;
-  for (std::size_t i=0;i<OPENMX_ELECTRONIC_FIELD_COUNT;++i) {
+  for (std::size_t i=0;i<std::size(legacy_elements);++i) {
     const auto& field=v.fields[i];require(field.elements==legacy_elements[i],"legacy element count changed");
     for (std::size_t j=0;j<field.elements;++j) require(field.values[j]==0,"numeric storage is not initialized");
   }
+  require(v.local_hybrid_hamiltonian==nullptr,"semilocal allocation has a hybrid Hamiltonian");
   if (v.H0) check_adapter(v.fields[OPENMX_ELECTRONIC_KINETIC],v.H0,0);
   if (v.CntH0) check_adapter(v.fields[OPENMX_ELECTRONIC_CONTRACTED_KINETIC],v.CntH0,0);
   if (v.HNL) check_adapter(v.fields[OPENMX_ELECTRONIC_NONLOCAL],v.HNL,0);
@@ -136,6 +138,14 @@ void modes_test()
   Fixture f;f.input.full_overlap_halo_derivatives=1;require(f.allocate(core.get()),f.error);
   require(f.views.fields[OPENMX_ELECTRONIC_OVERLAP].elements==1044,"full overlap halo derivatives");
   require(f.views.fields[OPENMX_ELECTRONIC_CORE_HOLE_OVERLAP].elements==1044,"full core overlap halo derivatives");
+  f.input.spin=1;
+  f.input.local_hybrid=1;
+  require(f.allocate(core.get()),f.error);
+  const auto& h=f.views.fields[OPENMX_ELECTRONIC_HAMILTONIAN];
+  const auto& hybrid=f.views.fields[OPENMX_ELECTRONIC_LOCAL_HYBRID_HAMILTONIAN];
+  require(hybrid.elements==h.elements && hybrid.channels==h.channels &&
+          hybrid.values!=h.values,"hybrid Hamiltonian must own storage with the same halo shape");
+  check_adapter(hybrid,f.views.local_hybrid_hamiltonian,0);
 }
 void mdspan_test()
 {

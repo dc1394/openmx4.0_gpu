@@ -9,6 +9,7 @@ namespace {
 using Field=ElectronicField;
 static_assert(static_cast<int>(Field::count)==OPENMX_ELECTRONIC_FIELD_COUNT);
 static_assert(static_cast<int>(Field::imaginary_density)==OPENMX_ELECTRONIC_IMAGINARY_DENSITY);
+static_assert(static_cast<int>(Field::local_hybrid_hamiltonian)==OPENMX_ELECTRONIC_LOCAL_HYBRID_HAMILTONIAN);
 
 std::unique_ptr<ElectronicMatrices> create(const OpenMXElectronicMatrixInput& in)
 {
@@ -21,7 +22,7 @@ std::unique_ptr<ElectronicMatrices> create(const OpenMXElectronicMatrixInput& in
       (in.atoms && !in.atom_species))
     throw std::invalid_argument("invalid electronic matrix input dimensions");
   for (int flag:{in.contracted,in.core_hole,in.xmcd,in.interactions,in.lno,
-      in.guiding_density,in.partial_density,in.full_overlap_halo_derivatives})
+      in.guiding_density,in.partial_density,in.full_overlap_halo_derivatives,in.local_hybrid})
     if (flag!=0 && flag!=1) throw std::invalid_argument("invalid electronic matrix option flag");
   const auto global=static_cast<std::size_t>(in.atoms)+1;
   const auto local=static_cast<std::size_t>(in.local_atoms)+1;
@@ -68,6 +69,7 @@ std::unique_ptr<ElectronicMatrices> create(const OpenMXElectronicMatrixInput& in
   o.contracted=in.contracted;o.core_hole=in.core_hole;o.xmcd=in.xmcd;
   o.interactions=in.interactions;o.lno=in.lno;o.guiding_density=in.guiding_density;
   o.partial_density=in.partial_density;o.full_overlap_halo_derivatives=in.full_overlap_halo_derivatives;
+  o.local_hybrid=in.local_hybrid;
   return std::make_unique<ElectronicMatrices>(topology,o);
 }
 } // namespace
@@ -151,6 +153,7 @@ OpenMXElectronicViews ElectronicMatrixOwner::views() noexcept
   result.Partial_DM=five(Field::partial_density);result.ResidualDM=six(Field::density_residual);
   result.iResidualDM=six(Field::imaginary_density_residual);result.EDM=five(Field::energy_density);
   result.PDM=five(Field::previous_density);result.iDM=six(Field::imaginary_density);
+  result.local_hybrid_hamiltonian=five(Field::local_hybrid_hamiltonian);
   return result;
 }
 } // namespace openmx::core::compat

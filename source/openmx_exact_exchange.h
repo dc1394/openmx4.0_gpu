@@ -3,6 +3,7 @@
 #include "mpi.h"
 #include "openmx_core.h"
 #include "openmx_core_atomic.h"
+#include "openmx_core_electronic.h"
 #include "openmx_complex.h"
 #ifdef __cplusplus
 extern "C" {
@@ -23,7 +24,7 @@ extern "C" {
    The density and exchange matrices have one of two forms, chosen at the
    preparation of a structure. The Gamma form serves the cluster solver: N x N
    matrices, with all lattice images of an orbital folded onto it. The site
-   form serves the band solver and any k mesh: the blocks M_xy(R) between the
+   form serves the band and local solvers: the blocks M_xy(R) between the
    orbitals of atom x in the cell at the origin and those of atom y in the
    cell R, for the list of blocks that modules/exx gives (exx.h).
 
@@ -103,6 +104,19 @@ void Exact_Exchange_Bind_Structure(OpenMXExactExchangeState *state, const OpenMX
 /* 1 when the input asks for a hybrid functional. NULL is allowed. */
 int Exact_Exchange_Enabled(const OpenMXExactExchangeState *state);
 
+static inline int Exact_Exchange_Local_Solver(int solver)
+{
+  return solver==5 || solver==8 || solver==11; /* DC, Krylov, DC-LNO */
+}
+
+/* The owned atoms and unfolded PAO neighbour list of a local solver. */
+typedef struct {
+  int local_atoms;
+  const int *local_to_global, *neighbour_count;
+  int *const *neighbour_atom, *const *neighbour_cell, *const *cell_index;
+  const OpenMXElectronicViews *electronic;
+} OpenMXExactExchangeLocalTopology;
+
 /* ---- one structure (section 6.2) ---------------------------------------- */
 
 /* ABFs, neighbour lists, T blocks and V blocks of the bound structure as it
@@ -110,13 +124,25 @@ int Exact_Exchange_Enabled(const OpenMXExactExchangeState *state);
    of sites of the T and V blocks, and every process gets all blocks
    (section 6.7). sites selects the form of the density
    and exchange matrices of this structure: 0 for the Gamma form, 1 for the
-   site form, which also gets its list of blocks here. The exchange matrix
+   site form, which also gets its list of blocks here. Pass local for a
+   projection onto the unfolded PAO neighbour list. The exchange matrix
    of an earlier structure is dropped: the SCF of the new structure starts
    with the semilocal functional. Does nothing unless a hybrid functional is
    enabled. A failure ends the run through MPI_Abort. Rank 0 appends to
    the SCF log that is merged into .out. stdout_level is level.of.stdout. */
 void Exact_Exchange_Prepare(OpenMXExactExchangeState *state, const OpenMXAtomicViews *atomic,
-    int sites, MPI_Comm comm, int stdout_level, const char *scf_log);
+    int sites, const OpenMXExactExchangeLocalTopology *local, MPI_Comm comm,
+    int stdout_level, const char *scf_log);
+
+/* Local solvers already return real-space D on the same list used for H.
+   Collect the owned blocks before SCF mixing changes them. */
+void Exact_Exchange_Collect_Local(OpenMXExactExchangeState *state,
+    const OpenMXElectronicViews *electronic, MPI_Comm comm);
+
+/* Projected H+K in calculation-owned storage with room for solver halos.
+   Before the first exchange build, returns the ordinary Hamiltonian. */
+double *****Exact_Exchange_Local_Hamiltonian(OpenMXExactExchangeState *state,
+    const OpenMXElectronicViews *electronic);
 
 /* Write to each output enabled for the message's level. Ordinary messages
    are part of the .out summary even at level.of.fileout 0. */

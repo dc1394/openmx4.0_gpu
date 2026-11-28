@@ -22,7 +22,8 @@ typedef enum {
   OPENMX_ELECTRONIC_IMAGINARY_GUIDING_DENSITY, OPENMX_ELECTRONIC_PARTIAL_DENSITY,
   OPENMX_ELECTRONIC_DENSITY_RESIDUAL, OPENMX_ELECTRONIC_IMAGINARY_DENSITY_RESIDUAL,
   OPENMX_ELECTRONIC_ENERGY_DENSITY, OPENMX_ELECTRONIC_PREVIOUS_DENSITY,
-  OPENMX_ELECTRONIC_IMAGINARY_DENSITY, OPENMX_ELECTRONIC_FIELD_COUNT
+  OPENMX_ELECTRONIC_IMAGINARY_DENSITY, OPENMX_ELECTRONIC_LOCAL_HYBRID_HAMILTONIAN,
+  OPENMX_ELECTRONIC_FIELD_COUNT
 } OpenMXElectronicField;
 
 /* Flat layout_right blocks. Components flatten group*channels+channel;
@@ -42,6 +43,7 @@ typedef struct {
   int scratch_orbitals, scratch_neighbors, scratch_projectors;
   int contracted, core_hole, xmcd, interactions, lno, guiding_density, partial_density;
   int full_overlap_halo_derivatives;
+  int local_hybrid;
   const int *atom_species, *orbitals, *contracted_orbitals, *projector_components;
   const int *local_to_global, *first_to_global, *second_to_global, *neighbors;
   int *const *neighbor_atoms;
@@ -61,6 +63,7 @@ typedef struct {
   double ******ResidualDM, ******iResidualDM;
   double *****EDM, *****PDM;
   double ******iDM;
+  double *****local_hybrid_hamiltonian;
 } OpenMXElectronicViews;
 
 /* Replacement is transactional, including compatibility adapter allocation.

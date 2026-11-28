@@ -3365,6 +3365,11 @@ void Input_std(char *file, OpenMXCoreContext *core)
     Scf_RestartToFile = 0;   /* no-updating restart files */
   }
   else if (Scf_RestartFromFile==3){
+    if (hybrid_functional!=0 && Exact_Exchange_Local_Solver(Solver)){
+      if (myid==Host_ID) fprintf(stderr,"Hybrid local solvers need SCF; scf.restart=pp cannot rebuild exact exchange.\n");
+      MPI_Finalize();
+      exit(EXIT_FAILURE);
+    }
     Scf_RestartFromFile = 1;  
     Scf_RestartToFile = 0;   /* no-updating restart files */
     MD_switch = 0;
@@ -5142,11 +5147,12 @@ void Input_std(char *file, OpenMXCoreContext *core)
     const char *conflict[32];
     int conflicts = 0;
 
-    /* the exchange matrix is built and added by the collinear cluster and
-       band solvers only. The forces contain it, the stress does not: the
-       types of MD.Type that optimize the cell or hold the pressure need the
-       stress. EvsLC and DF scale the cell and need the energy only. */
-    if (Solver!=2 && Solver!=3)       conflict[conflicts++] = "scf.EigenvalueSolver other than Cluster and Band";
+    const int local_exx=Exact_Exchange_Local_Solver(Solver);
+
+    /* The forces include K. MD.Type values that optimize the cell or
+       constrain the pressure also need the hybrid stress tensor. */
+    if (Solver!=2 && Solver!=3 && !local_exx)
+                                      conflict[conflicts++] = "scf.EigenvalueSolver other than Cluster, Band, DC, DC-LNO and Krylov";
     if (SpinP_switch==3)              conflict[conflicts++] = "scf.SpinPolarization=NC";
     if (MD_cellopt_flag!=0)           conflict[conflicts++] = "MD.Type that needs the stress (OptC, RFC, NPT)";
     if (scf_stress_flag!=0)           conflict[conflicts++] = "scf.stress.tensor";
@@ -5156,9 +5162,11 @@ void Input_std(char *file, OpenMXCoreContext *core)
        DOS with Dos.Kgrid 1 1 1 adds K as the SCF does, other k points have
        none. The bands of the LNOs and COHP take the Hamiltonian of the
        neighbour list without K. */
+    if (Band_disp_switch!=0 && local_exx)
+                                      conflict[conflicts++] = "Band.dispersion with DC, DC-LNO or Krylov";
     if (Band_disp_switch!=0 && Solver==2)
                                       conflict[conflicts++] = "Band.dispersion with the cluster solver";
-    if (Band_disp_switch!=0 && LNO_flag!=0)
+    if (Band_disp_switch!=0 && LNO_flag!=0 && !local_exx)
                                       conflict[conflicts++] = "Band.dispersion with LNO.flag";
     if ((Dos_fileout!=0 || DosGauss_fileout!=0) && Solver==2
         && !(Dos_Kgrid[0]==1 && Dos_Kgrid[1]==1 && Dos_Kgrid[2]==1))
