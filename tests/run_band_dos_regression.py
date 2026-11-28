@@ -144,7 +144,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--reference', type=Path, required=True, help='OpenMX build before the DOS change')
-    parser.add_argument('--backend', choices=('cpu', 'cuda'), required=True)
+    parser.add_argument('--backend', choices=('cpu', 'cuda', 'hip'), required=True)
     parser.add_argument('--simd', choices=('avx2', 'avx512', 'auto'), default='auto')
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--launcher', default='mpirun')
@@ -153,7 +153,7 @@ def main():
     parser.add_argument('cases', choices=tuple(CASES), nargs='*')
     args = parser.parse_args()
     binary, reference = args.binary.resolve(strict=True), args.reference.resolve(strict=True)
-    gpu = args.backend == 'cuda'
+    gpu = args.backend != 'cpu'
     environment = {k: v for k, v in os.environ.items() if not k.startswith(('OPENMX_', 'OMP_', 'MKL_', 'KMP_'))}
     environment.update(OPENMX_GPU=str(int(gpu)), OPENMX_BAND_GPU_SWITCH_NUM='1', OPENMX_HOST_SIMD=args.simd,
                        OMP_NUM_THREADS=str(args.threads), OMP_DYNAMIC='FALSE', OPENBLAS_NUM_THREADS='1', MKL_NUM_THREADS='1')
@@ -177,7 +177,7 @@ def main():
         new = args.output / name / args.backend
         simulate(reference, old, text, environment, command, args.threads)
         log = simulate(binary, new, text, environment, command, args.threads)
-        backend = 'GPU owner(s) with CUDA' if gpu else 'CPU rank(s) with '
+        backend = f'GPU owner(s) with {args.backend.upper()}' if gpu else 'CPU rank(s) with '
         assert re.search(r'^<Band_DFT_Dosout> DOS and Fermi surface: .*' + re.escape(backend), log, re.M), new
         energy, projection = compare_dos(old, new, gaussian)
         bxsf = compare_surfaces(old, new)

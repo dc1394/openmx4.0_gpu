@@ -175,6 +175,8 @@ jobs:
           cmake --build build/cpu --target openmx openmx_cpu_numerics openmx_grid_assembly_tests openmx_host_simd_boundary_tests --parallel 2
       - name: Check CPU kernels and accelerator boundaries
         run: ctest --test-dir build/cpu -R '^(core-(grid-assembly|host-simd-boundary)|build-backend-isolation|cpu-build-accelerator-boundary|cpu-numerical-toolchain|environment-registry)' --output-on-failure
+      - name: Check the MPI exchange of MD atom records
+        run: ctest --test-dir build/cpu -R '^md-atom-exchange-mpi$' --no-tests=error --output-on-failure
       - name: Reject GPU runtime dependencies
         run: |
           ldd build/cpu/openmx > build/cpu/runtime-libraries.txt

@@ -1032,8 +1032,8 @@
    "names": [
     "OPENMX_MD_GPU_MIN"
    ],
-   "en": "Minimum number of owned atoms per MPI rank for CUDA MD updates. Set to 0 to run atom updates on the host.",
-   "ja": "MD の原子更新を CUDA で行うために、各 MPI ランクが担当する原子の最小数。0 で原子更新をホストで実行する。"
+   "en": "Minimum number of owned atoms per MPI rank for CUDA or HIP MD updates. Set to 0 to run atom updates on the host.",
+   "ja": "MD の原子更新を CUDA または HIP で行うために、各 MPI ランクが担当する原子の最小数。0 で原子更新をホストで実行する。"
   },
   {
    "group": "motion",

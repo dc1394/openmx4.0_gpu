@@ -1,4 +1,4 @@
-#include "openmx_md_cuda.h"
+#include "openmx_md_gpu.h"
 #include "openmx_gpu_memory.hpp"
 #include "../core/include/openmx_md_integrator.hpp"
 
@@ -6,23 +6,23 @@
 #include <memory>
 #include <new>
 
-struct OpenMXMDCuda {
+struct OpenMXMDGPU {
   struct HostFree {
-    void operator()(void *pointer) const noexcept { (void)cudaFreeHost(pointer); }
+    void operator()(void *pointer) const noexcept { (void)OpenMXGpuFreeHost(pointer); }
   };
   int device=-1;
-  cudaStream_t stream=nullptr;
+  OpenMXGpuStream stream=nullptr;
   std::unique_ptr<void,HostFree> host;
   size_t host_bytes=0;
   openmx::gpu::DeviceBuffer<unsigned char> workspace;
 
-  ~OpenMXMDCuda()
+  ~OpenMXMDGPU()
   {
     if (stream) {
       openmx::gpu::DeviceBinding binding(device);
       if (binding) {
-        (void)cudaStreamSynchronize(stream);
-        (void)cudaStreamDestroy(stream);
+        (void)OpenMXGpuStreamSynchronize(stream);
+        (void)OpenMXGpuStreamDestroy(stream);
       }
     }
   }
@@ -81,75 +81,75 @@ __global__ void npt_atoms(OpenMXMDNPTTile *tiles, size_t count, OpenMXMDNPTStep 
 }
 
 template<class Tile, class Launch>
-int execute(OpenMXMDCuda *cuda, Tile *host, size_t count, Launch launch)
+int execute(OpenMXMDGPU *gpu, Tile *host, size_t count, Launch launch)
 {
   constexpr unsigned threads=128;
   if (count>std::numeric_limits<size_t>::max()/sizeof(Tile)) return 0;
   const size_t bytes=count*sizeof(Tile);
   const size_t grids=(count+threads/OPENMX_MD_TILE-1)/(threads/OPENMX_MD_TILE);
   if (!grids || grids>std::numeric_limits<int>::max()) return 0;
-  openmx::gpu::DeviceBinding binding(cuda->device);
+  openmx::gpu::DeviceBinding binding(gpu->device);
   if (!binding) return 0;
-  if (cuda->workspace.size()<bytes) {
-    cuda->workspace.reset();
-    if (!cuda->workspace.allocate(bytes)) return 0;
+  if (gpu->workspace.size()<bytes) {
+    gpu->workspace.reset();
+    if (!gpu->workspace.allocate(bytes)) return 0;
   }
-  auto *device=reinterpret_cast<Tile*>(cuda->workspace.get());
-  if (cudaMemcpyAsync(device,host,bytes,cudaMemcpyHostToDevice,cuda->stream)!=cudaSuccess) return 0;
-  launch(device,(unsigned)grids,threads,cuda->stream);
-  if (cudaGetLastError()!=cudaSuccess) return 0;
-  if (cudaMemcpyAsync(host,device,bytes,cudaMemcpyDeviceToHost,cuda->stream)!=cudaSuccess) return 0;
-  return cudaStreamSynchronize(cuda->stream)==cudaSuccess;
+  auto *device=reinterpret_cast<Tile*>(gpu->workspace.get());
+  if (OpenMXGpuMemcpyAsync(device,host,bytes,OPENMX_GPU_COPY_HOST_TO_DEVICE,gpu->stream)!=OPENMX_GPU_SUCCESS) return 0;
+  launch(device,(unsigned)grids,threads,gpu->stream);
+  if (OpenMXGpuGetLastError()!=OPENMX_GPU_SUCCESS) return 0;
+  if (OpenMXGpuMemcpyAsync(host,device,bytes,OPENMX_GPU_COPY_DEVICE_TO_HOST,gpu->stream)!=OPENMX_GPU_SUCCESS) return 0;
+  return OpenMXGpuStreamSynchronize(gpu->stream)==OPENMX_GPU_SUCCESS;
 }
 
 }
 
-extern "C" OpenMXMDCuda *OpenMX_MD_Cuda_Create()
+extern "C" OpenMXMDGPU *OpenMX_MD_GPU_Create()
 {
-  std::unique_ptr<OpenMXMDCuda> cuda(new(std::nothrow) OpenMXMDCuda);
-  if (!cuda || cudaGetDevice(&cuda->device)!=cudaSuccess ||
-      cudaStreamCreateWithFlags(&cuda->stream,cudaStreamNonBlocking)!=cudaSuccess) return nullptr;
-  return cuda.release();
+  std::unique_ptr<OpenMXMDGPU> gpu(new(std::nothrow) OpenMXMDGPU);
+  if (!gpu || OpenMXGpuGetDevice(&gpu->device)!=OPENMX_GPU_SUCCESS ||
+      OpenMXGpuStreamCreateWithFlags(&gpu->stream,OPENMX_GPU_STREAM_NONBLOCKING)!=OPENMX_GPU_SUCCESS) return nullptr;
+  return gpu.release();
 }
 
-extern "C" void OpenMX_MD_Cuda_Destroy(OpenMXMDCuda *cuda)
+extern "C" void OpenMX_MD_GPU_Destroy(OpenMXMDGPU *gpu)
 {
-  delete cuda;
+  delete gpu;
 }
 
-extern "C" void *OpenMX_MD_Cuda_Workspace(OpenMXMDCuda *cuda, size_t bytes)
+extern "C" void *OpenMX_MD_GPU_Workspace(OpenMXMDGPU *gpu, size_t bytes)
 {
-  if (cuda->host_bytes<bytes) {
-    cuda->host.reset();
-    cuda->host_bytes=0;
+  if (gpu->host_bytes<bytes) {
+    gpu->host.reset();
+    gpu->host_bytes=0;
     void *host=nullptr;
-    if (cudaMallocHost(&host,bytes)!=cudaSuccess) return nullptr;
-    cuda->host.reset(host);
-    cuda->host_bytes=bytes;
+    if (OpenMXGpuHostAlloc(&host,bytes,0)!=OPENMX_GPU_SUCCESS) return nullptr;
+    gpu->host.reset(host);
+    gpu->host_bytes=bytes;
   }
-  return cuda->host.get();
+  return gpu->host.get();
 }
 
-extern "C" int OpenMX_MD_Cuda_Move(OpenMXMDCuda *cuda, OpenMXMDMoveTile *host,
+extern "C" int OpenMX_MD_GPU_Move(OpenMXMDGPU *gpu, OpenMXMDMoveTile *host,
     size_t count, const OpenMXMDStep *step)
 {
-  return execute(cuda,host,count,[&](auto *device, unsigned blocks, unsigned threads, cudaStream_t stream) {
+  return execute(gpu,host,count,[&](auto *device, unsigned blocks, unsigned threads, OpenMXGpuStream stream) {
     move_atoms<<<blocks,threads,0,stream>>>(device,count,*step);
   });
 }
 
-extern "C" int OpenMX_MD_Cuda_Periodic(OpenMXMDCuda *cuda, OpenMXMDPeriodicTile *host,
+extern "C" int OpenMX_MD_GPU_Periodic(OpenMXMDGPU *gpu, OpenMXMDPeriodicTile *host,
     size_t count, const OpenMXMDCell *cell)
 {
-  return execute(cuda,host,count,[&](auto *device, unsigned blocks, unsigned threads, cudaStream_t stream) {
+  return execute(gpu,host,count,[&](auto *device, unsigned blocks, unsigned threads, OpenMXGpuStream stream) {
     wrap_atoms<<<blocks,threads,0,stream>>>(device,count,*cell);
   });
 }
 
-extern "C" int OpenMX_MD_Cuda_NPT(OpenMXMDCuda *cuda, OpenMXMDNPTTile *host,
+extern "C" int OpenMX_MD_GPU_NPT(OpenMXMDGPU *gpu, OpenMXMDNPTTile *host,
     size_t count, const OpenMXMDNPTStep *step)
 {
-  return execute(cuda,host,count,[&](auto *device, unsigned blocks, unsigned threads, cudaStream_t stream) {
+  return execute(gpu,host,count,[&](auto *device, unsigned blocks, unsigned threads, OpenMXGpuStream stream) {
     npt_atoms<<<blocks,threads,0,stream>>>(device,count,*step);
   });
 }

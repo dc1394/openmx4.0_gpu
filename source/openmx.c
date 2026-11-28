@@ -209,7 +209,9 @@ static int run_openmx(int argc, char *argv[], OpenMXCoreContext *core)
 #if OPENMX_GPU_HIP
 
   {
+    extern void openmx_magma_init_environment(void);
     extern void openmx_gpu_zheevd_selftest(const char *label);
+    if (openmx_env_flag_at(OPENMX_ENV_GPU, 1)) openmx_magma_init_environment();
     if (openmx_env_flag_at(OPENMX_ENV_ZHEEVD_SELFTEST, 0) && myid == 0) {
       openmx_gpu_zheevd_selftest("startup");
     }

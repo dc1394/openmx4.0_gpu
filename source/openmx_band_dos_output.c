@@ -23,7 +23,7 @@ static int solve(const OpenMXBandDosExecution *e, const OpenMXKPathMatrices *m, 
                  double *eigen, float *weights, size_t budget, int *threads)
 {
     if (!count) return 1;
-#if OPENMX_GPU_CUDA
+#if OPENMX_GPU_CUDA || OPENMX_GPU_HIP
     if (e->device>=0) return openmx_band_dos_gpu(e->device,m,count,points,projection,eigen,weights);
 #endif
     return openmx_band_dos_cpu(m,count,points,projection,eigen,weights,e->simd,budget,threads);

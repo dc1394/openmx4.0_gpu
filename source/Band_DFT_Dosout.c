@@ -19,10 +19,8 @@
 #include <time.h>
 #include "openmx_common.h"
 #include "mpi.h"
-#if !OPENMX_GPU_HIP
 #include "openmx_exact_exchange.h"
 #include "openmx_band_dos_output.h"
-#endif
 #include <omp.h>
 
 #define maxint(a,b) (((a)>(b))?  (a):(b))
@@ -113,14 +111,12 @@ static double Band_DFT_DosoutGauss_Col(const OpenMXChemicalPotentials *chemical,
                            struct OpenMXExactExchangeState *exact_exchange)
 {
   const double gaussian_width = DosGauss_Width;
-#if !OPENMX_GPU_HIP
   if (!cal_partial_charge && DosGauss_Num_Mesh>0 && gaussian_width>0.0 && Dos_Erange[1]>Dos_Erange[0]) {
     const OpenMXBandDosRequest mesh={{knum_i,knum_j,knum_k},Dos_Erange,DosGauss_Num_Mesh,gaussian_width,0,
         atomnum,SpeciesNum,Supported_MaxL,WhatSpecies,Spe_Total_CNO,Spe_Num_CBasis,NULL,NULL};
     const double start=MPI_Wtime();
     if (openmx_band_dos_parallel(chemical,&mesh,SpinP_switch,nh,ImNL,CntOLP,exact_exchange)) return MPI_Wtime()-start;
   }
-#endif
   double *****Partial_DM=electronic->Partial_DM;
 
   int i,j,k,spin,l,i1,j1,n1;
@@ -576,11 +572,9 @@ static double Band_DFT_DosoutGauss_Col(const OpenMXChemicalPotentials *chemical,
 	        H2[spin][i1][j1].i = C[i1][j1].i;
 	      } 
 	    } 
-#if !OPENMX_GPU_HIP
             /* K(k) of a hybrid functional, which the Hamiltonian of the
                neighbour list does not hold */
             Exact_Exchange_Add_Output_Hk(exact_exchange, spin, k1, k2, k3, n, H2[spin]);
-#endif
           } 
 	}
       }
@@ -1472,14 +1466,12 @@ static double Band_DFT_DosoutGauss_NonCol(const OpenMXChemicalPotentials *chemic
                            double *****ImNL,
                            double ****CntOLP, const OpenMXElectronicViews *electronic)
 {
-#if !OPENMX_GPU_HIP
   if (!cal_partial_charge && DosGauss_Num_Mesh>0 && DosGauss_Width>0.0 && Dos_Erange[1]>Dos_Erange[0]) {
     const OpenMXBandDosRequest mesh={{knum_i,knum_j,knum_k},Dos_Erange,DosGauss_Num_Mesh,DosGauss_Width,0,
         atomnum,SpeciesNum,Supported_MaxL,WhatSpecies,Spe_Total_CNO,Spe_Num_CBasis,Angle0_Spin,Angle1_Spin};
     const double start=MPI_Wtime();
     if (openmx_band_dos_parallel(chemical,&mesh,SpinP_switch,nh,ImNL,CntOLP,NULL)) return MPI_Wtime()-start;
   }
-#endif
   double *****Partial_DM=electronic->Partial_DM;
 
   int i,j,k,spin,l,i1,j1,ik,n1;
@@ -2830,14 +2822,12 @@ static double Band_DFT_Dosout_Col(OpenMXChemicalPotentials *chemical,
                            double ****CntOLP, const OpenMXElectronicViews *electronic,
                            struct OpenMXExactExchangeState *exact_exchange)
 {
-#if !OPENMX_GPU_HIP
   if (!cal_partial_charge && !COHP_calc_flag) {
     const OpenMXBandDosRequest mesh={{knum_i,knum_j,knum_k},Dos_Erange,0,0.0,fermisurfer_output,
         atomnum,SpeciesNum,Supported_MaxL,WhatSpecies,Spe_Total_CNO,Spe_Num_CBasis,NULL,NULL};
     const double start=MPI_Wtime();
     if (openmx_band_dos_parallel(chemical,&mesh,SpinP_switch,nh,ImNL,CntOLP,exact_exchange)) return MPI_Wtime()-start;
   }
-#endif
   double *****Partial_DM=electronic->Partial_DM;
 
   int i,j,k,spin,l,i1,j1,n1,i3;
@@ -3287,9 +3277,7 @@ static double Band_DFT_Dosout_Col(OpenMXChemicalPotentials *chemical,
 
     if (myid==Host_ID){
 
-#if !OPENMX_GPU_HIP
       Exact_Exchange_Add_Output_Hk(exact_exchange, spin, k1, k2, k3, n, H2[spin]);
-#endif
 
       /****************************************************
                     M1 * U^t * H * U * M1
@@ -3599,11 +3587,9 @@ static double Band_DFT_Dosout_Col(OpenMXChemicalPotentials *chemical,
 	        H2[spin][i1][j1].i = C[i1][j1].i;
 	      } 
 	    } 
-#if !OPENMX_GPU_HIP
             /* K(k) of a hybrid functional, which the Hamiltonian of the
                neighbour list does not hold */
             Exact_Exchange_Add_Output_Hk(exact_exchange, spin, k1, k2, k3, n, H2[spin]);
-#endif
           } 
 	}
       }
@@ -4753,14 +4739,12 @@ static double Band_DFT_Dosout_NonCol(const OpenMXChemicalPotentials *chemical,
                            double *****ImNL,
                            double ****CntOLP, const OpenMXElectronicViews *electronic)
 {
-#if !OPENMX_GPU_HIP
   if (!cal_partial_charge) {
     const OpenMXBandDosRequest mesh={{knum_i,knum_j,knum_k},Dos_Erange,0,0.0,fermisurfer_output,
         atomnum,SpeciesNum,Supported_MaxL,WhatSpecies,Spe_Total_CNO,Spe_Num_CBasis,Angle0_Spin,Angle1_Spin};
     const double start=MPI_Wtime();
     if (openmx_band_dos_parallel(chemical,&mesh,SpinP_switch,nh,ImNL,CntOLP,NULL)) return MPI_Wtime()-start;
   }
-#endif
   double *****Partial_DM=electronic->Partial_DM;
 
   int i,j,k,spin,l,i1,j1,n1;

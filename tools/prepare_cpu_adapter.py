@@ -83,7 +83,7 @@ def application_sources(root):
     for name in dict.fromkeys(objects):
         if name in ('set_cuda_default_device_from_local_rank',
                     'set_openacc_device_from_local_rank', 'elpa_cosma_memory',
-                    'openmx_band_kpath_gpu', 'openmx_mo_device', 'openmx_md_cuda'):
+                    'openmx_band_kpath_gpu', 'openmx_mo_device', 'openmx_md_gpu'):
             continue
         candidates = [root / (name + suffix) for suffix in ('.c', '.cpp', '.cu')]
         source = next((p for p in candidates if p.is_file()), None)

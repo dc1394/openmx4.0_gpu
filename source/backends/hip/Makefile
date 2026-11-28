@@ -429,7 +429,7 @@ include openmx_core.mk
 # These interfaces also reach legacy objects through openmx_common.h.
 # Rebuild consumers when a native API mapping or backend selection changes.
 OBJS += Band_DFT_kpath_parallel.o openmx_band_kpath_cpu.o openmx_band_kpath_gpu.o openmx_band_dos_output.o \
-        openmx_mo_grid.o openmx_mo_device.o \
+        openmx_mo_grid.o openmx_mo_device.o openmx_md_gpu.o \
         Exact_Exchange.o Exact_Exchange_Device.o Exact_Exchange_Host.o exact_exchange_device_hip.o
 
 OPENMX_GPU_INTERFACE_HEADERS = openmx_gpu_backend.h openmx_gpu_runtime.h \
@@ -643,12 +643,14 @@ Band_DFT_kpath_parallel.o: Band_DFT_kpath_parallel.c openmx_band_kpath.h openmx_
 	$(CC_NOACC_O3) -c $<
 openmx_band_dos_output.o: openmx_band_dos_output.c openmx_band_dos_output.h openmx_common.h
 	$(CC_NOACC_O3) -c $<
-Band_DFT_kpath_parallel.o openmx_band_dos_output.o: openmx_band_dos.h openmx_band_kpath.h
+Band_DFT_Dosout.o Band_DFT_kpath_parallel.o openmx_band_dos_output.o: openmx_band_dos.h openmx_band_kpath.h
 openmx_band_kpath_cpu.o: openmx_band_kpath_cpu.cpp openmx_band_kpath.h openmx_band_dos.h openmx_core_host_simd.h openmx_host_buffer.hpp openmx_dense_cpu.h openmx_exact_exchange_host.h f77func.h
 	$(CPPLANG) -O3 -std=c++17 -fPIC -ffp-contract=off -fopenmp -c $< -o $@
 openmx_mo_grid.o: openmx_mo_grid.cpp openmx_mo_grid.h openmx_mo_device.h openmx_core_host_simd.h
 	$(CPPLANG) -O3 -std=c++17 -ffp-contract=off -fopenmp -D__HIP_PLATFORM_AMD__ $(MPI_CXXFLAGS) -c $< -o $@
 openmx_mo_device.o: openmx_mo_device.cu openmx_mo_device.h openmx_gpu_memory.hpp
+	$(HIPCC) $(HIPCC_GEMMUL8_FLAGS) -c $< -o $@
+openmx_md_gpu.o: openmx_md_gpu.cu openmx_md_gpu.h openmx_gpu_memory.hpp ../core/include/openmx_core_md.h ../core/include/openmx_md_integrator.hpp
 	$(HIPCC) $(HIPCC_GEMMUL8_FLAGS) -c $< -o $@
 openmx_band_kpath_gpu.o: openmx_band_kpath_gpu.cu openmx_band_kpath.h openmx_band_dos.h openmx_gpu_memory.hpp openmx_gpu_workers.h openmx_mgpu_runtime.h
 	$(HIPCC) $(HIPCC_GEMMUL8_FLAGS) -c $< -o $@
@@ -667,7 +669,7 @@ Band_DFT_MO.o: Band_DFT_MO.c openmx_common.h openmx_band_kpath.h openmx_exact_ex
 	$(CC) -c Band_DFT_MO.c
 Unfolding_Bands.o: Unfolding_Bands.c openmx_common.h
 	$(CC) -c Unfolding_Bands.c
-Band_DFT_Dosout.o: Band_DFT_Dosout.c openmx_common.h
+Band_DFT_Dosout.o: Band_DFT_Dosout.c openmx_common.h openmx_band_dos_output.h
 	$(CC) -c Band_DFT_Dosout.c
 Mixing_DM.o: Mixing_DM.c openmx_common.h
 	$(CC) -c Mixing_DM.c
@@ -1014,7 +1016,7 @@ LNO.o: LNO.c openmx_common.h
 # NVHPC 26.3 + -acc can segfault in the MD control path after SCF.
 MD_pac.o: MD_pac.c openmx_common.h lapack_prototypes.h openmx_geometry_opt.h openmx_md_step.h
 	$(CC_NOACC) -c MD_pac.c
-openmx_md_step.o: openmx_md_step.c openmx_md_step.h openmx_atom_layout.h openmx_env_registry.h openmx_host_simd.h openmx_gpu_device.h ../core/include/openmx_core_md.h
+openmx_md_step.o: openmx_md_step.c openmx_md_step.h openmx_md_gpu.h openmx_atom_layout.h openmx_env_registry.h openmx_host_simd.h openmx_gpu_device.h ../core/include/openmx_core_md.h
 	$(CC_NOACC) -c $<
 openmx_geometry_opt.o: openmx_geometry_opt.c openmx_geometry_opt.h openmx_atom_layout.h openmx_common.h openmx_env_registry.h openmx_host_simd.h openmx_gpu_device.h openmx_core_native_resources.h lapack_prototypes.h
 	$(CC_NOACC) -c openmx_geometry_opt.c

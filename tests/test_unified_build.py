@@ -394,23 +394,26 @@ class UnifiedBuildTest(unittest.TestCase):
             with self.subTest(backend=backend):
                 architecture = "GEMMUL8_GPU_ARCH=120" if backend == "CUDA" else "ARCH=gfx942"
                 command = ["make", "--no-print-directory", "-n", "-C", str(stage), architecture,
-                           "openmx.o", "openmx_gpu_dm.o", "Set_Density_Grid_GPU.o"]
+                           "openmx.o", "openmx_gpu_dm.o", "openmx_md_gpu.o", "Set_Density_Grid_GPU.o"]
                 completed = subprocess.run(command, capture_output=True, text=True, check=False,
                                            env={**os.environ, "LC_ALL": "C"})
                 self.assertEqual(completed.returncode, 0, completed.stderr)
                 recipes = completed.stdout
                 self.assertIn("-c openmx.c", recipes)
                 self.assertIn("openmx_gpu_dm.cu", recipes)
+                md_recipe = next(line for line in recipes.splitlines() if "-c openmx_md_gpu.cu " in line)
                 self.assertNotIn("openmx4.0_amdgpu", recipes)
                 if backend == "CUDA":
                     self.assertIn("-acc", recipes)
                     self.assertIn("nvcc", recipes)
                     self.assertIn("compute_120", recipes)
+                    self.assertIn("--fmad=false", md_recipe)
                     self.assertNotIn("hipcc", recipes)
                 else:
                     self.assertIn("--offload-arch=gfx942", recipes)
                     self.assertIn("hipcc", recipes)
                     self.assertIn("__HIP_PLATFORM_AMD__", recipes)
+                    self.assertIn("-ffp-contract=off", md_recipe)
                     self.assertNotIn(" -acc ", recipes)
                 self.assertFalse(list(stage.glob("*.o")), "make -n unexpectedly compiled an object")
 

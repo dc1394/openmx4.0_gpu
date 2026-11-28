@@ -379,7 +379,7 @@ OBJS    = openmx_grid_assembly.o openmx.o openmx_common.o Input_std.o Inputtools
           Electric_Polarization_BandCol.o Electric_Polarization_BandNonCol.o
 
 OBJS += openmx_mgpu_runtime.o openmx_mgpu_gemm.o openmx_magma_mgpu.o
-OBJS += Band_DFT_kpath_parallel.o openmx_band_kpath_cpu.o openmx_band_dos_output.o openmx_mo_grid.o openmx_band_kpath_gpu.o openmx_mo_device.o openmx_md_cuda.o
+OBJS += Band_DFT_kpath_parallel.o openmx_band_kpath_cpu.o openmx_band_dos_output.o openmx_mo_grid.o openmx_band_kpath_gpu.o openmx_mo_device.o openmx_md_gpu.o
 OBJS += openmx_gpu_workers.o openmx_gpu_error.o openmx_gpu_views.o openmx_globals.o
 OBJS += openmx_gpu_transform.o
 OBJS += openmx_gpu_dm.o openmx_gpu_dm_collective.o
@@ -719,7 +719,7 @@ openmx_mo_grid.o: openmx_mo_grid.cpp openmx_mo_grid.h openmx_mo_device.h openmx_
 	$(NVHPC_COMPILER_BIN)/nvc++ -O3 -std=c++17 -fopenmp -Mnofma $(shell $(MPICC) --showme:compile) -c $< -o $@
 openmx_mo_device.o: openmx_mo_device.cu openmx_mo_device.h openmx_gpu_memory.hpp
 	$(NVCC_GEMMUL8_ENV) $(NVCC) $(NVCC_GEMMUL8_FLAGS) -c $< -o $@
-openmx_md_cuda.o: openmx_md_cuda.cu openmx_md_cuda.h openmx_gpu_memory.hpp ../core/include/openmx_core_md.h ../core/include/openmx_md_integrator.hpp
+openmx_md_gpu.o: openmx_md_gpu.cu openmx_md_gpu.h openmx_gpu_memory.hpp ../core/include/openmx_core_md.h ../core/include/openmx_md_integrator.hpp
 	$(NVCC_GEMMUL8_ENV) $(NVCC) $(filter-out -std=c++20,$(NVCC_GEMMUL8_FLAGS)) -std=c++17 --fmad=false -c $< -o $@
 openmx_band_kpath_gpu.o: openmx_band_kpath_gpu.cu openmx_band_kpath.h openmx_band_dos.h openmx_gpu_memory.hpp openmx_gpu_workers.h openmx_mgpu_runtime.h
 	$(NVCC_GEMMUL8_ENV) $(NVCC) $(NVCC_GEMMUL8_FLAGS) -c $< -o $@
@@ -1157,7 +1157,7 @@ LNO.o: LNO.c openmx_common.h
 # NVHPC 26.3 + -acc can segfault in the MD control path after SCF.
 MD_pac.o: MD_pac.c openmx_common.h lapack_prototypes.h openmx_geometry_opt.h openmx_md_step.h
 	$(CC_NOACC) -c MD_pac.c
-openmx_md_step.o: openmx_md_step.c openmx_md_step.h openmx_md_cuda.h openmx_atom_layout.h openmx_env_registry.h openmx_host_simd.h openmx_gpu_device.h ../core/include/openmx_core_md.h
+openmx_md_step.o: openmx_md_step.c openmx_md_step.h openmx_md_gpu.h openmx_atom_layout.h openmx_env_registry.h openmx_host_simd.h openmx_gpu_device.h ../core/include/openmx_core_md.h
 	$(CC_NOACC_O3) -c $<
 openmx_geometry_opt.o: openmx_geometry_opt.c openmx_geometry_opt.h openmx_atom_layout.h openmx_common.h openmx_env_registry.h openmx_host_simd.h openmx_gpu_device.h openmx_core_native_resources.h lapack_prototypes.h
 	$(CC_NOACC_O3) -c openmx_geometry_opt.c

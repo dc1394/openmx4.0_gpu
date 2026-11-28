@@ -64,35 +64,11 @@ int ensure_magma_initialized()
     return g_magma_init_info;
 }
 
-/* MAGMA Ozaki-II (GEMMul8) routing of the dense eigensolves.  The _ozaki2
-   drivers delegate to the stock MAGMA algorithms and only route the BLAS-3
-   phases (syr2k/her2k, larfb gemm/trmm, dlaex3 gemm) through GEMMul8 INT8
-   emulation inside a scoped activation; OPENMX_MAGMA_OZAKI2=0 restores the
-   stock drivers bit-identically.  The two defaults follow the tuning note
-   (third_party/MAGMA_OZAKI2_NOTES.md): 1-stage because the 2-stage bulge
-   chasing starves under many busy MPI ranks, and a 4-way split of the
-   percent-of-VRAM workspace cap because only the dense root rank solves. */
+/* Select the patched drivers for the BLAS-3 phases of the dense solve. */
 int use_magma_ozaki2()
 {
-    static int use = -1;
-
-    if (use < 0) {
-        use = openmx_env_flag_at(OPENMX_ENV_MAGMA_OZAKI2, 1);
-        if (use) {
-            openmx_env_set_if_unset("MAGMA_OZAKI2_ALGO", "1stage");
-            openmx_env_set_if_unset("MAGMA_OZAKI2_LOCAL_RANKS", "4");
-            /* A modest per-process workspace plus a 1 GiB free guard routes
-               3x as many backtransform GEMMs on a 16 GB card shared by 16
-               ranks than the adapter's conservative defaults; GEMMul8's
-               memory-saving mode blocks any GEMM to fit the cap. */
-            openmx_env_set_if_unset("MAGMA_OZAKI2_MAX_WS_MB", "512");
-            openmx_env_set_if_unset("MAGMA_OZAKI2_MIN_FREE_MB", "1024");
-        }
-    }
-    return use;
+    return openmx_env_flag_at(OPENMX_ENV_MAGMA_OZAKI2, 1);
 }
-
-
 
 /* a nonnegative int from the environment; unset or malformed: dflt */
 int env_count(int id, int dflt)
@@ -345,6 +321,19 @@ size_t device_free_bytes()
 }
 
 } // namespace
+
+/* Initialize library defaults before GPU work starts. ROCm may read the
+   process environment concurrently during its first BLAS and solver calls. */
+extern "C" void openmx_magma_init_environment(void)
+{
+    if (!use_magma_ozaki2()) return;
+
+    // See third_party/MAGMA_OZAKI2_NOTES.md for the workspace and algorithm tuning.
+    openmx_env_set_if_unset("MAGMA_OZAKI2_ALGO", "1stage");
+    openmx_env_set_if_unset("MAGMA_OZAKI2_LOCAL_RANKS", "4");
+    openmx_env_set_if_unset("MAGMA_OZAKI2_MAX_WS_MB", "512");
+    openmx_env_set_if_unset("MAGMA_OZAKI2_MIN_FREE_MB", "1024");
+}
 
 /* Backend selection for the dense GPU eigensolvers.  rocSOLVER's zheevd runs
    entirely on the GPU and is far faster than hybrid MAGMA on CDNA server parts

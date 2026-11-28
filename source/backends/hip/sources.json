@@ -1078,6 +1078,8 @@
     "openmx_atom_layout.h",
     "openmx_md_step.c",
     "openmx_md_step.h",
+    "openmx_md_gpu.cu",
+    "openmx_md_gpu.h",
     "openmx_geometry_opt.c",
     "openmx_geometry_opt.h",
     "openmx_host_simd.h",

@@ -558,7 +558,6 @@ struct Workspace {
     }
 };
 
-#if OPENMX_GPU_CUDA
 /* The small-matrix series already lives in strided GPU buffers. One BLAS
    submission per spin block avoids launching several kernels per k-point. */
 bool batch_product(OpenMXBlasHandle handle, OpenMXBlasOperation adjoint, int m, int n, int k,
@@ -566,7 +565,7 @@ bool batch_product(OpenMXBlasHandle handle, OpenMXBlasOperation adjoint, int m, 
     Z *c, int ldc, size_t stride_c, int count)
 {
     const Z one=OpenMXGpuMakeComplex(1.0,0.0), zero=OpenMXGpuMakeComplex(0.0,0.0);
-    return cublasZgemmStridedBatched(handle,adjoint,OPENMX_BLAS_OP_N,m,n,k,&one,
+    return OpenMXBlasZgemmStridedBatched(handle,adjoint,OPENMX_BLAS_OP_N,m,n,k,&one,
         a,lda,stride_a,b,ldb,stride_b,&zero,c,ldc,stride_c,count)==OPENMX_BLAS_SUCCESS;
 }
 
@@ -602,7 +601,6 @@ bool project_dos_batch(const Workspace &w, int n, int order, int count, const Op
         OpenMXGpuMemcpy(host,projected,(size_t)count*order*dos.count*sizeof(float),OPENMX_GPU_COPY_DEVICE_TO_HOST)==
             OPENMX_GPU_SUCCESS;
 }
-#endif
 
 bool penalize_overlap(int n, int order, double cutoff, int count, const double *values, Z *h,
                       unsigned char *discard, OpenMXGpuStream stream = nullptr)
@@ -753,12 +751,9 @@ bool solve_batched(Workspace &w, const OpenMXKPathMatrices &m, int order, int po
                 if (OpenMXGpuGetLastError() != OPENMX_GPU_SUCCESS) return false;
             }
 
-#if OPENMX_GPU_CUDA
             if (weights) {
                 if (!transform_dos_batch(w,n,order,count,s.get(),h.get(),scratch.get())) return false;
-            } else
-#endif
-            {
+            } else {
                 for (int k = 0; k < count; ++k)
                     if (!w.transform(n, order, h.get() + (size_t)k * w.h.size(),
                                      s.get() + (size_t)k * w.s.size(), false)) return false;
@@ -770,10 +765,8 @@ bool solve_batched(Workspace &w, const OpenMXKPathMatrices &m, int order, int po
             };
             if (!eigen_graph.submit(capture_stream, solver.handle, solve_hamiltonian, replays) ||
                 !solver.read(order, count, eigenvalues.get(), values.data())) return false;
-#if OPENMX_GPU_CUDA
             if (weights && !project_dos_batch(w,n,order,count,*dos,s.get(),original.get(),h.get(),scratch.get(),
                                              projected.get(),host_weights.data())) return false;
-#endif
             for (int k = 0; k < count; ++k) {
                 const double *row = values.data() + (size_t)k * order;
                 if (!good_spectrum(order, row)) return false;
@@ -804,7 +797,7 @@ bool solve_points(Workspace &w, const OpenMXKPathMatrices &m, int point_count,
     *stage = "device workspace allocation";
     if (!w.prepare(m, order) || (weights && !w.prepare_projection(n,order,*dos))) return false;
 
-    if (!ao && (!weights || OPENMX_GPU_CUDA) && order <= jacobi_max_order && point_count >= min_batched_points) {
+    if (!ao && order <= jacobi_max_order && point_count >= min_batched_points) {
         *stage = "batched eigensolve";
         try {
             if (solve_batched(w,m,order,point_count,points,eigen,penalized,dos,weights)) return true;

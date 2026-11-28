@@ -215,7 +215,7 @@ and `off`/`no`/`false`; `auto`, an empty value and an unset variable select the 
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `OPENMX_MD_GPU_MIN` | 32768 | Minimum number of owned atoms per MPI rank for CUDA MD updates. Set to 0 to run atom updates on the host. |
+| `OPENMX_MD_GPU_MIN` | 32768 | Minimum number of owned atoms per MPI rank for CUDA or HIP MD updates. Set to 0 to run atom updates on the host. |
 | `OPENMX_GEOMETRY_GPU_MIN` | 1000 | Minimum Hessian dimension for a GPU eigensolve during geometry optimization. |
 
 ## Charge/DM mixing (Mixing_H.c etc.)

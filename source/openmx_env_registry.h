@@ -209,7 +209,7 @@
     X(GEMM_SAMPLE_ITERS, "OPENMX_GEMM_SAMPLE_ITERS", "string", "global", "1", "Cluster_DFT_Col.c,Cluster_DFT_NonCol.c,backends/hip/src/Cluster_DFT_Col.c", "") \
     X(GEMM_VERBOSE, "OPENMX_GEMM_VERBOSE", "flag", "global", "", "backends/hip/src/gemmul8_bridge.cu,backends/hip/src/my_hipblasDgemm.c,backends/hip/src/my_hipblasZgemm.c,gemmul8_bridge.cu", "") \
     X(GEOMETRY_GPU_MIN, "OPENMX_GEOMETRY_GPU_MIN", "int", "global", "1000", "openmx_geometry_opt.c", "Minimum Hessian dimension for a GPU geometry eigensolve.") \
-    X(GPU, "OPENMX_GPU", "flag", "global", "1", "Band_DFT_kpath_parallel.c,Input_std.c,backends/hip/include/openmx_gpu_arch_policy.h,backends/hip/src/Set_Density_Grid_GPU.c,backends/hip/src/Set_Hamiltonian.c,backends/hip/src/Set_Orbitals_Grid.c,backends/hip/src/Set_XC_Grid.c,backends/hip/src/Total_Energy_GPU.c,backends/hip/src/set_hip_default_device_from_local_rank.c,openmx_gpu_workers.c,openmx_mgpu_runtime.cu,set_cuda_default_device_from_local_rank.c", "") \
+    X(GPU, "OPENMX_GPU", "flag", "global", "1", "Band_DFT_kpath_parallel.c,Input_std.c,backends/hip/include/openmx_gpu_arch_policy.h,backends/hip/src/Set_Density_Grid_GPU.c,backends/hip/src/Set_Hamiltonian.c,backends/hip/src/Set_Orbitals_Grid.c,backends/hip/src/Set_XC_Grid.c,backends/hip/src/Total_Energy_GPU.c,backends/hip/src/set_hip_default_device_from_local_rank.c,openmx.c,openmx_gpu_workers.c,openmx_mgpu_runtime.cu,set_cuda_default_device_from_local_rank.c", "") \
     X(GPUSOLVER_CACHE_MB, "OPENMX_GPUSOLVER_CACHE_MB", "mib", "global", "64", "backends/hip/src/magma_openmx.cu", "HIP solver scratch/retry-copy cache cap in MiB; overrides the CUSOLVER_CACHE_MB alias.") \
     X(GPUSOLVER_MIN_FREE_AFTER_MB, "OPENMX_GPUSOLVER_MIN_FREE_AFTER_MB", "mib", "global", "", "Divide_Conquer.c,backends/hip/src/Divide_Conquer.c", "") \
     X(GPUSOLVER_PARTIAL_EVD_MIN_N, "OPENMX_GPUSOLVER_PARTIAL_EVD_MIN_N", "int", "global", "0", "backends/hip/src/magma_openmx.cu", "Minimum order for partial HIP eigensolves; 0 keeps the default policy.") \
@@ -275,7 +275,7 @@
     X(MAGMA_RR_GPU_MIN, "OPENMX_MAGMA_RR_GPU_MIN", "int", "global", "1024", "openmx_magma_refine.h", "") \
     X(MAGMA_VALIDATE_FULL, "OPENMX_MAGMA_VALIDATE_FULL", "flag", "global", "0", "openmx_magma_mgpu.cpp", "") \
     X(MAKE_OPTIONS, "OPENMX_MAKE_OPTIONS", "tool", "tool", "", "build/tools", "CMake: native make variable assignments") \
-    X(MD_GPU_MIN, "OPENMX_MD_GPU_MIN", "int", "global", "32768", "openmx_md_step.c", "Minimum owned atom count for CUDA MD updates. Zero uses the CPU for atom updates.") \
+    X(MD_GPU_MIN, "OPENMX_MD_GPU_MIN", "int", "global", "32768", "openmx_md_step.c", "Minimum owned atom count for GPU MD updates. Zero uses the CPU for atom updates.") \
     X(MGPU, "OPENMX_MGPU", "flag", "global", "auto", "openmx_mgpu_runtime.cu", "") \
     X(MGPU_BAND_SHARED, "OPENMX_MGPU_BAND_SHARED", "int", "global", "0", "openmx_mgpu_runtime.cu", "") \
     X(MGPU_GEMM, "OPENMX_MGPU_GEMM", "string", "global", "off", "openmx_mgpu_runtime.cu", "") \

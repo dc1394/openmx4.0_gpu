@@ -678,7 +678,7 @@ static int run_outputs(const OpenMXChemicalPotentials *chemical,
 #if OPENMX_GPU_CUDA || OPENMX_GPU_HIP
     const char *stage = dos ? "Band_DFT_Dosout" : (mo ? "Band_DFT_MO" : "Band_DFT_kpath");
     const int gpu = scf_eigen_lib_flag == GPUSOLVER && openmx_env_flag_at(OPENMX_ENV_GPU, 1) &&
-                    (!dos || OPENMX_GPU_CUDA) && !OpenMX_HostSimdPreferred(stage);
+                    !OpenMX_HostSimdPreferred(stage);
     if (all_ranks_ok(output.comm, gpu) &&
         run_parallel(&output, &basis, m, 1, chemical, path_count, points_per_path, paths, names,
                      hamiltonian, imaginary, overlap, local_basis, exact_exchange, mo, dos)) return 1;

@@ -26,6 +26,7 @@
 #define OpenMXBlasPointerMode hipblasPointerMode_t
 #define OpenMXBlasDgemm hipblasDgemm
 #define OpenMXBlasZgemm hipblasZgemm
+#define OpenMXBlasZgemmStridedBatched hipblasZgemmStridedBatched
 #define OpenMXBlasGetAtomicsMode hipblasGetAtomicsMode
 #define OpenMXBlasGetMathMode hipblasGetMathMode
 #define OpenMXBlasGetPointerMode hipblasGetPointerMode
@@ -62,6 +63,7 @@
 #define OpenMXBlasPointerMode cublasPointerMode_t
 #define OpenMXBlasDgemm cublasDgemm
 #define OpenMXBlasZgemm cublasZgemm
+#define OpenMXBlasZgemmStridedBatched cublasZgemmStridedBatched
 #define OpenMXBlasGetAtomicsMode cublasGetAtomicsMode
 #define OpenMXBlasGetMathMode cublasGetMathMode
 #define OpenMXBlasGetPointerMode cublasGetPointerMode

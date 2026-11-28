@@ -3,8 +3,8 @@
 #include "openmx_env.h"
 #include "openmx_gpu_device.h"
 #include "openmx_host_simd.h"
-#if OPENMX_GPU_CUDA
-#include "openmx_md_cuda.h"
+#if OPENMX_GPU_CUDA || OPENMX_GPU_HIP
+#include "openmx_md_gpu.h"
 #endif
 
 #include <stdio.h>
@@ -26,9 +26,9 @@ struct OpenMXMD {
   OpenMXHostMDMove move;
   OpenMXHostMDPeriodic periodic;
   OpenMXHostMDNPT npt;
-#if OPENMX_GPU_CUDA
-  int use_gpu, cuda_failed, cuda_reported;
-  OpenMXMDCuda *cuda;
+#if OPENMX_GPU_CUDA || OPENMX_GPU_HIP
+  int use_gpu, gpu_failed, gpu_reported;
+  OpenMXMDGPU *gpu;
 #endif
 };
 
@@ -55,10 +55,10 @@ static void *reserve(OpenMXMD *md, MDBuffer *buffer, size_t n, size_t width)
 static void release_state(OpenMXNativeResources *owner, void *state)
 {
   (void)owner;
-#if OPENMX_GPU_CUDA
+#if OPENMX_GPU_CUDA || OPENMX_GPU_HIP
   OpenMXMD *md=(OpenMXMD *)state;
-  OpenMX_MD_Cuda_Destroy(md->cuda);
-  md->cuda=NULL;
+  OpenMX_MD_GPU_Destroy(md->gpu);
+  md->gpu=NULL;
 #else
   (void)state;
 #endif
@@ -91,7 +91,7 @@ OpenMXMD *OpenMX_MD_Begin(OpenMXCoreContext *core, MPI_Comm comm,
   if (!md->move) md->move=openmx_core_host_md_move(OPENMX_GRID_SCALAR);
   if (!md->periodic) md->periodic=openmx_core_host_md_periodic(OPENMX_GRID_SCALAR);
   if (!md->npt) md->npt=openmx_core_host_md_npt(OPENMX_GRID_SCALAR);
-#if OPENMX_GPU_CUDA
+#if OPENMX_GPU_CUDA || OPENMX_GPU_HIP
   const long minimum=openmx_env_long_at(OPENMX_ENV_MD_GPU_MIN,32768);
   md->use_gpu=use_gpu && minimum>0 && atoms->local_atoms>=minimum
       && gpu_rank_device_usable() && !OpenMX_HostSimdPreferred("MD");
@@ -101,26 +101,26 @@ OpenMXMD *OpenMX_MD_Begin(OpenMXCoreContext *core, MPI_Comm comm,
   return md;
 }
 
-#if OPENMX_GPU_CUDA
-static void cuda_result(OpenMXMD *md, int ok)
+#if OPENMX_GPU_CUDA || OPENMX_GPU_HIP
+static void gpu_result(OpenMXMD *md, int ok)
 {
   if (ok) {
-    if (!md->cuda_reported && md->rank==0 && md->verbosity>=2)
-      printf("<MD> GPU atom updates active.\n");
-    md->cuda_reported=1;
+    if (!md->gpu_reported && md->rank==0 && md->verbosity>=2)
+      printf("<MD> GPU atom updates active with %s.\n",OPENMX_GPU_RUNTIME_NAME);
+    md->gpu_reported=1;
     return;
   }
-  OpenMX_MD_Cuda_Destroy(md->cuda);
-  md->cuda=NULL;
-  md->cuda_failed=1;
+  OpenMX_MD_GPU_Destroy(md->gpu);
+  md->gpu=NULL;
+  md->gpu_failed=1;
   if (md->verbosity>=2) printf("<MD> Rank %d continuing atom updates on the CPU.\n",md->rank);
 }
-static void *cuda_workspace(OpenMXMD *md, size_t bytes)
+static void *gpu_workspace(OpenMXMD *md, size_t bytes)
 {
-  if (!bytes || !md->use_gpu || md->cuda_failed) return NULL;
-  if (!md->cuda) md->cuda=OpenMX_MD_Cuda_Create();
-  void *data=md->cuda ? OpenMX_MD_Cuda_Workspace(md->cuda,bytes) : NULL;
-  if (!data) cuda_result(md,0);
+  if (!bytes || !md->use_gpu || md->gpu_failed) return NULL;
+  if (!md->gpu) md->gpu=OpenMX_MD_GPU_Create();
+  void *data=md->gpu ? OpenMX_MD_GPU_Workspace(md->gpu,bytes) : NULL;
+  if (!data) gpu_result(md,0);
   return data;
 }
 #endif
@@ -195,14 +195,14 @@ void OpenMX_MD_Move(OpenMXMD *md, OpenMXMDStep step, double mass_scale, double s
   if (md->movable==0) return;
   const int count=(md->movable-1)/OPENMX_MD_TILE+1;
   OpenMXMDMoveTile *data=NULL;
-#if OPENMX_GPU_CUDA
-  data=cuda_workspace(md,(size_t)count*sizeof(*data));
+#if OPENMX_GPU_CUDA || OPENMX_GPU_HIP
+  data=gpu_workspace(md,(size_t)count*sizeof(*data));
   if (data) {
 #pragma omp parallel for schedule(static) if(count>=16)
     for (int t=0; t<count; ++t)
       pack_move_tile(md,data+t,t*OPENMX_MD_TILE,step.move,mass_scale,scale,scales,groups);
-    const int gpu=OpenMX_MD_Cuda_Move(md->cuda,data,count,&step);
-    cuda_result(md,gpu);
+    const int gpu=OpenMX_MD_GPU_Move(md->gpu,data,count,&step);
+    gpu_result(md,gpu);
     if (!gpu) data=NULL;
   }
 #endif
@@ -290,13 +290,13 @@ double OpenMX_MD_NPT_Kick(OpenMXMD *md, const OpenMXMDNPTStep *step, double mass
 {
   const int atoms=md->atoms.local_atoms, tiles=(atoms+OPENMX_MD_TILE-1)/OPENMX_MD_TILE;
   OpenMXMDNPTTile *data=NULL;
-#if OPENMX_GPU_CUDA
-  data=cuda_workspace(md,(size_t)tiles*sizeof(*data));
+#if OPENMX_GPU_CUDA || OPENMX_GPU_HIP
+  data=gpu_workspace(md,(size_t)tiles*sizeof(*data));
   if (data) {
 #pragma omp parallel for schedule(static) if(tiles>=4)
     for (int t=0; t<tiles; ++t) pack_npt_tile(&md->atoms,data+t,t*OPENMX_MD_TILE+1,mass_scale);
-    const int gpu=OpenMX_MD_Cuda_NPT(md->cuda,data,tiles,step);
-    cuda_result(md,gpu);
+    const int gpu=OpenMX_MD_GPU_NPT(md->gpu,data,tiles,step);
+    gpu_result(md,gpu);
     if (!gpu) data=NULL;
   }
 #endif
@@ -417,12 +417,12 @@ int OpenMX_MD_Finish(OpenMXMD *md, OpenMXMDRecords kind, const OpenMXMDCell *cel
   const int first=md->layout.offset[md->rank], end=md->layout.offset[md->rank+1];
   const int count=(end-first+OPENMX_MD_TILE-1)/OPENMX_MD_TILE;
   OpenMXMDPeriodicTile *tiles=NULL;
-#if OPENMX_GPU_CUDA
-  tiles=cuda_workspace(md,(size_t)count*sizeof(*tiles));
+#if OPENMX_GPU_CUDA || OPENMX_GPU_HIP
+  tiles=gpu_workspace(md,(size_t)count*sizeof(*tiles));
   if (tiles) {
     pack_positions(md,tiles,count);
-    const int gpu=OpenMX_MD_Cuda_Periodic(md->cuda,tiles,count,cell);
-    cuda_result(md,gpu);
+    const int gpu=OpenMX_MD_GPU_Periodic(md->gpu,tiles,count,cell);
+    gpu_result(md,gpu);
     if (!gpu) tiles=NULL;
   }
 #endif
