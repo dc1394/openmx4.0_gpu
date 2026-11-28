@@ -1,6 +1,7 @@
 /* Ordered DOS and Fermi-surface output from the packed post-SCF band solver. */
 #include "openmx_common.h"
 #include "openmx_band_dos_output.h"
+#include "openmx_core_host_simd.h"
 
 #include <limits.h>
 #include <math.h>
@@ -20,13 +21,13 @@ static int dos_all_ok(MPI_Comm comm, int local)
 
 static int solve(const OpenMXBandDosExecution *e, const OpenMXKPathMatrices *m, int count,
                  const OpenMXKPathPoint *points, const OpenMXBandDosProjection *projection,
-                 double *eigen, float *weights, size_t budget, int *threads)
+                 double *eigen, float *weights, double *atomic, size_t budget, int *threads)
 {
     if (!count) return 1;
 #if OPENMX_GPU_CUDA || OPENMX_GPU_HIP
-    if (e->device>=0) return openmx_band_dos_gpu(e->device,m,count,points,projection,eigen,weights);
+    if (e->device>=0) return openmx_band_dos_gpu(e->device,m,count,points,projection,eigen,weights,atomic);
 #endif
-    return openmx_band_dos_cpu(m,count,points,projection,eigen,weights,e->simd,budget,threads);
+    return openmx_band_dos_cpu(m,count,points,projection,eigen,weights,atomic,e->simd,budget,threads);
 }
 
 /* Keep the DOS energy window referenced to the unshifted Gamma point,
@@ -186,9 +187,32 @@ static int write_bxsf(const OpenMXBandDosRequest *r, const OpenMXBandDosExecutio
     return close_output(fp);
 }
 
+typedef struct { char *text; size_t length; } FermiEnergies;
+
+static FermiEnergies format_fermi_energies(int points, int order, int spins, int spin,
+    DosBands bands, double chemical, const double *eigen, size_t budget)
+{
+    FermiEnergies result={NULL,0};
+    const size_t per_value=24, count=(size_t)points*(bands.last-bands.first+1);
+    if (count>budget/per_value) return result;
+    result.text=malloc(count*per_value);
+    if (!result.text) return result;
+    for (int b=bands.first; b<=bands.last; ++b)
+        for (int k=0; k<points; ++k) {
+            const double energy=eigen[((size_t)k*spins+spin)*order+b]-chemical;
+            const int length=snprintf(result.text+result.length,per_value,"%e\n",energy);
+            if (length<0 || (size_t)length>=per_value) {
+                free(result.text);
+                return (FermiEnergies){NULL,0};
+            }
+            result.length+=(size_t)length;
+        }
+    return result;
+}
+
 static int write_frmsf(const OpenMXBandDosRequest *r, const OpenMXBandDosExecution *e,
     const OpenMXKPathMatrices *m, int spin, int atom, int order, int points, DosBands bands,
-    const double *eigen, const double *atomic)
+    const double *eigen, const double *atomic, const FermiEnergies *energies)
 {
     char suffix[64];
     if (m->noncollinear) snprintf(suffix,sizeof(suffix),".FermiSurf_a%d.frmsf",atom+1);
@@ -200,23 +224,36 @@ static int write_frmsf(const OpenMXBandDosRequest *r, const OpenMXBandDosExecuti
         const double *v=e->reciprocal[axis];
         fprintf(fp,"%e %e %e\n",v[1],v[2],v[3]);
     }
-    for (int b=bands.first; b<=bands.last; ++b)
-        for (int k=0; k<points; ++k)
-            fprintf(fp,"%e\n",eigen[((size_t)k*m->spin_channels+spin)*order+b]-e->chemical_potential);
+    if (energies->text) {
+        if (fwrite(energies->text,1,energies->length,fp)!=energies->length) {
+            fclose(fp);
+            return 0;
+        }
+    } else {
+        for (int b=bands.first; b<=bands.last; ++b)
+            for (int k=0; k<points; ++k)
+                fprintf(fp,"%e\n",eigen[((size_t)k*m->spin_channels+spin)*order+b]-e->chemical_potential);
+    }
+    const size_t stride=(size_t)m->spin_channels*order*r->atom_count;
     for (int b=bands.first; b<=bands.last; ++b) {
-        const double *weights=atomic+(((size_t)atom*m->spin_channels+spin)*order+b)*points;
-        for (int k=0; k<points; ++k) fprintf(fp,"%e\n",weights[k]);
+        const double *weights=atomic+((size_t)spin*order+b)*r->atom_count+atom;
+        for (int k=0; k<points; ++k) fprintf(fp,"%e\n",weights[(size_t)k*stride]);
     }
     return close_output(fp);
 }
 
 static int write_surfaces(const OpenMXBandDosRequest *r, const OpenMXBandDosExecution *e,
-    const OpenMXKPathMatrices *m, int order, int points, const double *eigen, const double *atomic)
+    const OpenMXKPathMatrices *m, int order, int points, const double *eigen, const double *atomic, size_t budget)
 {
     DosBands windows[2];
+    FermiEnergies formatted[2]={{NULL,0},{NULL,0}};
+    const size_t format_limit=(size_t)16<<20;
     for (int s=0; s<m->spin_channels; ++s) {
         windows[s]=r->gaussian_bins>0 ? (DosBands){0,order-1}
             : fermi_window(eigen,points,s,m->spin_channels,order,e->chemical_potential);
+        if (atomic && r->atom_count>1)
+            formatted[s]=format_fermi_energies(points,order,m->spin_channels,s,windows[s],
+                e->chemical_potential,eigen,budget<format_limit ? budget/m->spin_channels : format_limit/m->spin_channels);
     }
     int success=1;
     const int files=atomic ? r->atom_count+1 : 1;
@@ -224,9 +261,10 @@ static int write_surfaces(const OpenMXBandDosRequest *r, const OpenMXBandDosExec
     for (int s=0; s<m->spin_channels; ++s) {
         for (int file=0; file<files; ++file) {
             success &= file==0 ? write_bxsf(r,e,m,s,order,windows[s],eigen)
-                : write_frmsf(r,e,m,s,file-1,order,points,windows[s],eigen,atomic);
+                : write_frmsf(r,e,m,s,file-1,order,points,windows[s],eigen,atomic,formatted+s);
         }
     }
+    for (int s=0; s<m->spin_channels; ++s) free(formatted[s].text);
     return success;
 }
 
@@ -236,36 +274,36 @@ static int write_vector(FILE *fp, const int index[3], const float *weights, int 
 }
 
 static int write_tetra_vectors(FILE *fp, const int grid[3], int first, int count, int order, int spins,
-    DosBands bands, const OpenMXBandDosProjection *p, const float *weights)
+    int band_stride, int first_band, int bands, const float *weights)
 {
     for (int k=0; k<count; ++k) {
         int index[3];
         openmx_band_dos_grid_index(grid,first+k,index);
         for (int s=0; s<spins; ++s) {
-            const float *row=weights+((size_t)k*spins+s)*p->count*order;
-            for (int b=bands.first; b<=bands.last; ++b)
-                if (!write_vector(fp,index,row+(size_t)(b-p->first)*order,order)) return 0;
+            const float *row=weights+(((size_t)k*spins+s)*band_stride+first_band)*order;
+            for (int b=0; b<bands; ++b)
+                if (!write_vector(fp,index,row+(size_t)b*order,order)) return 0;
         }
     }
     return 1;
 }
 
-static void atomic_projections(const OpenMXBandDosRequest *r, const int *orbital,
-    int noncollinear, int order, int spins, int points, int first, int count, const float *weights, double *atomic)
+/* When DOS already transfers nearly all orbital weights, consume that
+   packet for both files. Otherwise owners send the compact atomic data. */
+static void project_received_weights(const OpenMXBandDosRequest *r, const int *orbital,
+    const OpenMXBandDosExecution *e, int components, int order, int rows, const float *weights, double *atomic)
 {
-    const int components=noncollinear ? 2 : 1;
-#pragma omp parallel for collapse(2) schedule(static) if (count>8 || r->atom_count>4)
-    for (int a=0; a<r->atom_count; ++a) {
-        for (int s=0; s<spins; ++s) {
-            for (int b=0; b<order; ++b) {
-                double *result=atomic+(((size_t)a*spins+s)*order+b)*points+first;
-                for (int k=0; k<count; ++k) {
-                    const float *row=weights+(((size_t)k*spins+s)*order+b)*order;
-                    double sum=0.0;
-#pragma omp simd reduction(+:sum)
-                    for (int j=components*orbital[a+1]; j<components*orbital[a+2]; ++j) sum+=row[j];
-                    result[k]=sum;
-                }
+#pragma omp parallel if (rows>=128)
+    {
+        OpenMXHostWeightSum sum=openmx_core_host_weight_sum(e->simd);
+        if (!sum) sum=openmx_core_host_weight_sum(OPENMX_GRID_SCALAR);
+#pragma omp for schedule(static)
+        for (int row=0; row<rows; ++row) {
+            const float *values=weights+(size_t)row*order;
+            double *projected=atomic+(size_t)row*r->atom_count;
+            for (int a=0; a<r->atom_count; ++a) {
+                const int first=components*orbital[a+1], end=components*orbital[a+2];
+                projected[a]=sum(values+first,end-first);
             }
         }
     }
@@ -324,82 +362,102 @@ int openmx_band_dos_mesh(const OpenMXBandDosRequest *r, const OpenMXBandDosExecu
     MPI_Comm_rank(comm,&rank);
     MPI_Comm_size(comm,&ranks);
     const int host=rank==e->host, gaussian=r->gaussian_bins>0;
+    const int tetra=!gaussian && !r->surface_only;
     const int spins=m->spin_channels, order=m->noncollinear ? 2*m->order : m->order;
     const int bands_per_point=spins*order;
     const int local_points=e->end-e->first;
-    const int surf=r->fermi_surfer && !gaussian;
+    const int surf=r->fermi_surfer;
     int success=0;
-    double *gamma=NULL, *eigen=NULL, *local_eigen=NULL, *atomic=NULL;
+    double *gamma=NULL, *eigen=NULL, *local_eigen=NULL, *atomic=NULL, *local_atomic=NULL;
     float *weights=NULL, *local_weights=NULL, *dos=NULL;
     int *layout=NULL;
     OpenMXDosSpinProjection *rotation=NULL;
     FILE *vec=NULL;
     char vec_path[2*YOUSO10+64], temporary[2*YOUSO10+64]={0};
-    OpenMXBandDosProjection projection={0,order,!gaussian && !m->noncollinear,NULL};
+    OpenMXBandDosProjection projection={0,order,!gaussian && !m->noncollinear,NULL,0,
+        r->surface_only ? 0 : order,surf ? r->atom_count : 0,surf ? orbital+1 : NULL};
     DosBands bands={0,order-1};
+    int reuse_weights=0;
 
-    if (!gaussian) {
+    if (tetra) {
         gamma=malloc((size_t)bands_per_point*sizeof(*gamma));
         if (!dos_all_ok(comm,gamma!=NULL)) goto done;
         const OpenMXKPathPoint point={{0.0,0.0,0.0},0};
-        const int ready=rank!=e->gamma_owner || solve(e,m,1,&point,&projection,gamma,NULL,e->workspace_limit,threads_used);
+        const int ready=rank!=e->gamma_owner ||
+            solve(e,m,1,&point,&projection,gamma,NULL,NULL,e->workspace_limit,threads_used);
         if (!dos_all_ok(comm,ready)) goto done;
         MPI_Bcast(gamma,bands_per_point,MPI_DOUBLE,e->gamma_owner,comm);
         bands=dos_window(gamma,spins,order,m->order,r->energy_range[0]+e->chemical_potential,
                          r->energy_range[1]+e->chemical_potential);
-        if (!surf) {
+        projection.orbital_count=bands.last-bands.first+1;
+        if (surf) {
+            const size_t saved=(size_t)(order-projection.orbital_count)*order*sizeof(float);
+            const size_t compact=(size_t)order*r->atom_count*sizeof(double);
+            reuse_weights=compact>=saved;
+            if (reuse_weights) {
+                projection.orbital_count=order;
+                projection.atoms=0;
+            } else projection.orbital_first=bands.first;
+        }
+        else {
             projection.first=bands.first;
-            projection.count=bands.last-bands.first+1;
+            projection.count=projection.orbital_count;
         }
         free(gamma);
         gamma=NULL;
     }
 
-    const size_t weight_width=(size_t)bands_per_point*projection.count;
+    const size_t weight_width=(size_t)bands_per_point*projection.orbital_count;
+    const size_t atom_width=surf ? (size_t)bands_per_point*r->atom_count : 0;
+    const size_t atom_exchange=projection.atoms ? atom_width : 0;
     const size_t eigen_items=(size_t)point_count*bands_per_point;
     const size_t bins_items=gaussian ? (size_t)r->gaussian_bins*bands_per_point : 0;
-    if (weight_width>INT_MAX || bins_items>INT_MAX ||
-        (surf && eigen_items>SIZE_MAX/sizeof(*atomic)/(size_t)r->atom_count)) goto done;
+    if (weight_width>INT_MAX || atom_exchange>INT_MAX || bins_items>INT_MAX ||
+        (surf && (!atom_width || (size_t)point_count>SIZE_MAX/sizeof(*atomic)/atom_width))) goto done;
     const size_t rotation_bytes=m->noncollinear && local_points ? (size_t)m->order*sizeof(*rotation) : 0;
-    const size_t atom_items=host && surf ? eigen_items*r->atom_count : 0;
+    const size_t atom_items=host && surf ? (size_t)point_count*atom_width : 0;
     const size_t host_eigen_items=host ? eigen_items : 0;
     if (!dos_all_ok(comm,atom_items<=SIZE_MAX/sizeof(*atomic)-host_eigen_items)) goto done;
     const size_t metadata_bytes=(host_eigen_items+atom_items)*sizeof(*eigen);
     const size_t aux_bytes=rotation_bytes+bins_items*sizeof(*dos)+((size_t)4*ranks+1)*sizeof(*layout);
     if (!dos_all_ok(comm,aux_bytes<=e->workspace_limit && metadata_bytes<=e->workspace_limit-aux_bytes)) goto done;
     const size_t spare=e->workspace_limit-aux_bytes-metadata_bytes;
-    const size_t point_bytes=weight_width*sizeof(*weights);
-    const size_t point_storage=point_bytes+(size_t)bands_per_point*sizeof(*local_eigen);
+    const size_t weight_bytes=weight_width*sizeof(*weights);
+    const size_t point_storage=weight_bytes+(atom_exchange+(size_t)bands_per_point)*sizeof(*local_eigen);
     /* Cap the aggregate MPI payload. Keep the rest of the host budget for
        dense eigensolver workspaces and other SCF state. */
-    const size_t buffers=(local_points ? point_storage : 0)+(host && !gaussian ? point_bytes : 0);
+    const size_t buffers=(local_points ? point_storage : 0)+(host && tetra ? weight_bytes : 0);
     size_t tile=buffers ? spare/2/buffers : (size_t)point_count;
     const size_t payload_limit=(size_t)64<<20;
     const size_t max_by_size=point_storage<payload_limit ? payload_limit/point_storage : 1;
+    size_t max_width=weight_width>atom_exchange ? weight_width : atom_exchange;
+    if (max_width<(size_t)bands_per_point) max_width=bands_per_point;
     if (tile>max_by_size) tile=max_by_size;
-    if (tile>(size_t)INT_MAX/weight_width) tile=INT_MAX/weight_width;
+    if (tile>(size_t)INT_MAX/max_width) tile=INT_MAX/max_width;
     if (tile>(size_t)point_count) tile=point_count;
     int my_tile=(int)tile, tile_points;
     MPI_Allreduce(&my_tile,&tile_points,1,MPI_INT,MPI_MIN,comm);
     if (!tile_points) goto done;
     const int local_tile=local_points<tile_points ? local_points : tile_points;
-    const size_t solver_budget=spare-(size_t)local_tile*point_storage-(host && !gaussian ? (size_t)tile_points*point_bytes : 0);
+    const size_t solver_budget=spare-(size_t)local_tile*point_storage-
+        (host && tetra ? (size_t)tile_points*weight_bytes : 0);
 
     layout=malloc(((size_t)4*ranks+1)*sizeof(*layout));
     if (host) {
         eigen=malloc(eigen_items*sizeof(*eigen));
         if (surf) atomic=malloc(atom_items*sizeof(*atomic));
-        if (!gaussian) weights=malloc((size_t)tile_points*point_bytes);
+        if (tetra) weights=malloc((size_t)tile_points*weight_bytes);
     }
     if (gaussian) dos=calloc(bins_items,sizeof(*dos));
     if (local_tile) {
-        local_weights=malloc((size_t)local_tile*point_bytes);
+        if (weight_width) local_weights=malloc((size_t)local_tile*weight_bytes);
+        if (atom_exchange) local_atomic=malloc((size_t)local_tile*atom_exchange*sizeof(*local_atomic));
         local_eigen=malloc((size_t)local_tile*bands_per_point*sizeof(*local_eigen));
     }
     if (rotation_bytes) rotation=malloc(rotation_bytes);
     if (!dos_all_ok(comm,layout && (!gaussian || dos) && (!rotation_bytes || rotation) &&
-        (!host || (eigen && (gaussian || weights) && (!surf || atomic))) &&
-        (!local_tile || (local_weights && local_eigen)))) goto done;
+        (!host || (eigen && (!tetra || weights) && (!surf || atomic))) &&
+        (!local_tile || (local_eigen && (!weight_width || local_weights) && (!atom_exchange || local_atomic))))) goto done;
 
     if (rotation) {
         for (int a=1; a<=r->atom_count; ++a) {
@@ -413,7 +471,7 @@ int openmx_band_dos_mesh(const OpenMXBandDosRequest *r, const OpenMXBandDosExecu
         projection.spin=rotation;
     }
 
-    if (host) {
+    if (host && !r->surface_only) {
         snprintf(vec_path,sizeof(vec_path),"%s%s.Dos.vec",e->directory,e->name);
         snprintf(temporary,sizeof(temporary),"%s%s.Dos.vec.%ld.tmp",e->directory,e->name,(long)getpid());
         vec=fopen(temporary,"wbx");
@@ -422,7 +480,7 @@ int openmx_band_dos_mesh(const OpenMXBandDosRequest *r, const OpenMXBandDosExecu
             temporary[0]='\0';
         }
     }
-    if (!dos_all_ok(comm,!host || vec!=NULL)) goto done;
+    if (!dos_all_ok(comm,!host || r->surface_only || vec!=NULL)) goto done;
 
     int *partition=layout, *sizes=layout+ranks+1, *counts=sizes+ranks, *offsets=counts+ranks;
     MPI_Allgather(&local_points,1,MPI_INT,sizes,1,MPI_INT,comm);
@@ -434,21 +492,29 @@ int openmx_band_dos_mesh(const OpenMXBandDosRequest *r, const OpenMXBandDosExecu
         const int end=first+count;
         const int a=e->first>first ? e->first : first, b=e->end<end ? e->end : end;
         const int local_count=b>a ? b-a : 0;
-        const int ready=solve(e,m,local_count,points+a,&projection,local_eigen,local_weights,solver_budget,threads_used);
+        const int ready=solve(e,m,local_count,points+a,&projection,local_eigen,local_weights,
+                              local_atomic,solver_budget,threads_used);
         if (!dos_all_ok(comm,ready)) goto done;
 
         tile_counts(ranks,partition,first,end,bands_per_point,counts,offsets);
         MPI_Gatherv(local_eigen,local_count*bands_per_point,MPI_DOUBLE,
             host ? eigen+(size_t)first*bands_per_point : NULL,counts,offsets,MPI_DOUBLE,e->host,comm);
-
+        if (atom_exchange) {
+            tile_counts(ranks,partition,first,end,(int)atom_exchange,counts,offsets);
+            MPI_Gatherv(local_atomic,local_count*(int)atom_exchange,MPI_DOUBLE,
+                host ? atomic+(size_t)first*atom_exchange : NULL,counts,offsets,MPI_DOUBLE,e->host,comm);
+        }
         if (gaussian) {
             accumulate_gaussian(r,e->chemical_potential,point_count,local_count,order,spins,local_eigen,local_weights,dos);
-        } else {
+        } else if (tetra) {
             tile_counts(ranks,partition,first,end,(int)weight_width,counts,offsets);
             MPI_Gatherv(local_weights,local_count*(int)weight_width,MPI_FLOAT,weights,counts,offsets,MPI_FLOAT,e->host,comm);
             if (host) {
-                io_ok &= write_tetra_vectors(vec,r->grid,first,count,order,spins,bands,&projection,weights);
-                if (surf) atomic_projections(r,orbital,m->noncollinear,order,spins,point_count,first,count,weights,atomic);
+                io_ok &= write_tetra_vectors(vec,r->grid,first,count,order,spins,projection.orbital_count,
+                    reuse_weights ? bands.first : 0,bands.last-bands.first+1,weights);
+                if (reuse_weights)
+                    project_received_weights(r,orbital,e,m->noncollinear ? 2 : 1,order,count*bands_per_point,
+                                            weights,atomic+(size_t)first*atom_width);
             }
         }
         first=end;
@@ -462,16 +528,18 @@ int openmx_band_dos_mesh(const OpenMXBandDosRequest *r, const OpenMXBandDosExecu
         }
     }
     if (host) {
-        io_ok &= close_output(vec);
-        vec=NULL;
-        if (io_ok && rename(temporary,vec_path)==0) {
-            temporary[0]='\0';
-            io_ok=write_dos_values(r,e,m,order,point_count,bands,eigen) &&
-                write_surfaces(r,e,m,order,point_count,eigen,atomic);
-        } else {
-            perror(vec_path);
-            io_ok=0;
+        if (vec) {
+            io_ok &= close_output(vec);
+            vec=NULL;
+            if (io_ok && rename(temporary,vec_path)==0) {
+                temporary[0]='\0';
+                io_ok=write_dos_values(r,e,m,order,point_count,bands,eigen);
+            } else {
+                perror(vec_path);
+                io_ok=0;
+            }
         }
+        if (io_ok) io_ok=write_surfaces(r,e,m,order,point_count,eigen,atomic,solver_budget);
     }
     success=dos_all_ok(comm,io_ok);
 
@@ -483,6 +551,7 @@ done:
     free(dos);
     free(local_weights);
     free(weights);
+    free(local_atomic);
     free(atomic);
     free(local_eigen);
     free(eigen);

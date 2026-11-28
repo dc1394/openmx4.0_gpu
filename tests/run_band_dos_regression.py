@@ -185,6 +185,16 @@ def main():
             check_atomic_projection(new, name.startswith('nc-'), name == 'spin', atoms)
         print(f'PASS {args.backend} {name} Dos.val={energy:.3g} Dos.vec={projection:.3g} BXSF={bxsf:.3g}', flush=True)
 
+        if name == 'tetra':
+            surface = args.output / name / 'surface-only'
+            surface_input = input_text(template, dict(settings, **{'Dos.fileout': 'off'}))
+            log = simulate(binary, surface, surface_input, environment, command, args.threads)
+            assert re.search(r'^<Band_DFT_Dosout> Fermi surface: .*' + re.escape(backend), log, re.M), surface
+            assert not list(surface.glob('*.Dos.*')), surface
+            bxsf = compare_surfaces(new, surface)
+            check_atomic_projection(surface, False, False, atoms)
+            print(f'PASS {args.backend} surface-only BXSF={bxsf:.3g}', flush=True)
+
 
 if __name__ == '__main__':
     main()

@@ -4457,6 +4457,13 @@ void Input_std(char *file, OpenMXCoreContext *core)
   i_vec[0]=Kspace_grid1; i_vec[1]=Kspace_grid2, i_vec[2]=Kspace_grid3;
   input_intv("Dos.Kgrid",3,Dos_Kgrid,i_vec);
 
+  if (fermisurfer_output && !Dos_fileout && !DosGauss_fileout && Solver!=3) {
+    if (myid==Host_ID)
+      fprintf(stderr,"FermiSurfer.fileout on without DOS output requires the Band solver with a periodic SCF mesh.\n");
+    MPI_Finalize();
+    exit(1);
+  }
+
   /**********************************************************
    calculation of partial charge for scanning tunneling 
    microscopy (STM) simulations by the Tersoff-Hamann scheme
@@ -5149,13 +5156,9 @@ void Input_std(char *file, OpenMXCoreContext *core)
 
     const int local_exx=Exact_Exchange_Local_Solver(Solver);
 
-    /* The forces include K. MD.Type values that optimize the cell or
-       constrain the pressure also need the hybrid stress tensor. */
     if (Solver!=2 && Solver!=3 && !local_exx)
                                       conflict[conflicts++] = "scf.EigenvalueSolver other than Cluster, Band, DC, DC-LNO and Krylov";
     if (SpinP_switch==3)              conflict[conflicts++] = "scf.SpinPolarization=NC";
-    if (MD_cellopt_flag!=0)           conflict[conflicts++] = "MD.Type that needs the stress (OptC, RFC, NPT)";
-    if (scf_stress_flag!=0)           conflict[conflicts++] = "scf.stress.tensor";
     /* the band dispersion and the DOS of the band solver add K(k) to the
        Hamiltonian of the neighbour list (docs/EXX_IMPLEMENTATION_GUIDE.md,
        section 6.5). The cluster solver has K of the Gamma point only: its

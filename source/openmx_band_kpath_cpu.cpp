@@ -260,6 +260,7 @@ struct LapackPlan {
 struct Workspace {
     Buffer<double> s, h, factor, product, eig_s, work, rwork;
     Buffer<double> original_overlap, ao_slice;
+    Buffer<float> projection_row;
     Buffer<int> iwork;
     Buffer<Phase> phases;
     bool allow_two_stage = true;
@@ -277,7 +278,8 @@ struct Workspace {
         if (projected_bands) {
             original_overlap = allocate<double>(2*size_t(n)*n);
             ao_slice = allocate<double>(2*size_t(order)*projected_bands);
-            if (!original_overlap || !ao_slice) return false;
+            projection_row = allocate<float>(order);
+            if (!original_overlap || !ao_slice || !projection_row) return false;
         }
         return s && factor && h && eig_s && work && rwork && iwork && phases;
     }
@@ -356,7 +358,8 @@ struct Workspace {
         return true;
     }
 
-    bool project(int n, int order, bool cholesky, const OpenMXBandDosProjection& dos, float* weights)
+    bool project(int n, int order, bool cholesky, const OpenMXBandDosProjection& dos,
+                 OpenMXHostWeightSum sum, float* weights, double* atomic)
     {
         if (!coefficients(n,order,dos.first,dos.count,cholesky,ao_slice.get())) return false;
         // Apply S to the AO coefficients once for every selected band. S is
@@ -367,7 +370,9 @@ struct Workspace {
         for (int band=0; band<dos.count; ++band) {
             const double* c = element(ao_slice.get(),order,0,band);
             const double* sc = element(h.get(),order,0,band);
-            float* out = weights+size_t(band)*order;
+            const int orbital_band = band-dos.orbital_first;
+            float* out = weights && orbital_band>=0 && orbital_band<dos.orbital_count
+                ? weights+size_t(orbital_band)*order : projection_row.get();
             if (!dos.spin) {
 #pragma omp simd
                 for (int j=0; j<n; ++j)
@@ -378,23 +383,32 @@ struct Workspace {
                     openmx_dos_spin_weights(dos.spin+j,c[a],c[a+1],c[b],c[b+1],sc[a],sc[a+1],sc[b],sc[b+1],out);
                 }
             }
+            if (atomic) {
+                const int components=dos.spin ? 2 : 1;
+                double* row=atomic+size_t(band)*dos.atoms;
+                for (int a=0; a<dos.atoms; ++a) {
+                    const int first=components*dos.atom_offsets[a], end=components*dos.atom_offsets[a+1];
+                    row[a]=sum(out+first,end-first);
+                }
+            }
         }
         return true;
     }
 
     bool solve(const OpenMXKPathMatrices& m, const PhasePlan& plan, const LapackPlan& lapack,
                OpenMXHostBlochAdd add, const OpenMXKPathPoint& point, int order, double* eigen, double* ao,
-               const OpenMXBandDosProjection* dos, float* weights)
+               const OpenMXBandDosProjection* dos, OpenMXHostWeightSum sum, float* weights, double* atomic)
     {
         const int n = m.order;
         const bool penalized = !m.lno && !(dos && dos->unregularized_overlap);
+        const bool project_bands=weights || atomic;
         plan.evaluate(point,phases.get());
         bool cholesky = false;
         for (int spin=0; spin<m.spin_channels; ++spin) {
             const bool new_overlap = spin==0 || m.lno;
             assemble(m,plan,phases.get(),add,spin,new_overlap ? s.get() : nullptr,h.get(),order);
             if (new_overlap) {
-                if (weights) std::copy_n(s.get(),2*size_t(n)*n,original_overlap.get());
+                if (project_bands) std::copy_n(s.get(),2*size_t(n)*n,original_overlap.get());
                 cholesky = factor_overlap(n,m.overlap_cutoff,s.get(),factor.get());
                 if (!cholesky && !spectral_overlap(n,lapack)) return false;
             }
@@ -416,15 +430,17 @@ struct Workspace {
                     : spectral_transform(n,order,m.overlap_cutoff,penalized);
                 if (!transformed) return false;
             }
-            if (!diagonalize(F77_NAME(zheevd,ZHEEVD),lapack,order,output,ao || weights)) return false;
+            if (!diagonalize(F77_NAME(zheevd,ZHEEVD),lapack,order,output,ao || project_bands)) return false;
             if (ao && !coefficients(n,order,0,order,cholesky,ao+2*size_t(spin)*order*order)) return false;
-            if (weights && !project(n,order,cholesky,*dos,weights+size_t(spin)*dos->count*order)) return false;
+            if (project_bands && !project(n,order,cholesky,*dos,sum,
+                    weights ? weights+size_t(spin)*dos->orbital_count*order : nullptr,
+                    atomic ? atomic+size_t(spin)*dos->count*dos->atoms : nullptr)) return false;
         }
         return true;
     }
 };
 int solve_cpu(const OpenMXKPathMatrices* m, int point_count, const OpenMXKPathPoint* points,
-    double* eigenvalues, double* ao, const OpenMXBandDosProjection* dos, float* weights,
+    double* eigenvalues, double* ao, const OpenMXBandDosProjection* dos, float* weights, double* atomic,
     int simd_mode, size_t workspace_limit, int* threads_used)
 try {
     if (!m->planar || m->order<=0 || point_count<=0 || m->block_count<=0 ||
@@ -432,16 +448,20 @@ try {
     const int order = m->noncollinear ? 2*m->order : m->order;
     const auto size_max = std::numeric_limits<size_t>::max();
     if (size_t(order)>size_max/order/(16*sizeof(double))) return 0;
-    if ((ao || weights) && 1+5*size_t(order)+2*size_t(order)*order>std::numeric_limits<int>::max()) return 0;
+    const bool project_bands=weights || atomic;
+    if ((ao || project_bands) && 1+5*size_t(order)+2*size_t(order)*order>std::numeric_limits<int>::max()) return 0;
 
     const size_t phase_plan_size = size_t(m->block_count)*(sizeof(Translation)+sizeof(int));
     if (workspace_limit<phase_plan_size) return 0;
     const PhasePlan plan(*m);
     const int max_workers = std::min(point_count,omp_get_max_threads());
     LapackPlan lapack;
-    if (!lapack.query(m->order,order,ao || weights)) return 0;
-    const int projected_bands = weights ? dos->count : 0;
-    const size_t projection_bytes = weights ? 2*(size_t(m->order)*m->order+size_t(projected_bands)*order)*sizeof(double) : 0;
+    if (!lapack.query(m->order,order,ao || project_bands)) return 0;
+    const int projected_bands = project_bands ? dos->count : 0;
+    const size_t projection_bytes = project_bands
+        ? 2*(size_t(m->order)*m->order+size_t(projected_bands)*order)*sizeof(double)+size_t(order)*sizeof(float) : 0;
+    const size_t orbital_width=weights ? size_t(order)*dos->orbital_count : 0;
+    const size_t atomic_width=atomic ? size_t(dos->atoms)*dos->count : 0;
     // Reserve the matrix product too, in case a worker needs the spectral path.
     const size_t worker_bytes = 4*(size_t(m->order)*m->order+size_t(order)*order)*sizeof(double) +
         (m->order+2*size_t(lapack.complex_size)+lapack.real_size)*sizeof(double) +
@@ -457,6 +477,8 @@ try {
         const LocalBlasThreads worker_blas(workers>1);
         OpenMXHostBlochAdd add = openmx_core_host_bloch_add(simd_mode);
         if (!add) add = openmx_core_host_bloch_add(OPENMX_GRID_SCALAR);
+        OpenMXHostWeightSum sum = openmx_core_host_weight_sum(simd_mode);
+        if (!sum) sum = openmx_core_host_weight_sum(OPENMX_GRID_SCALAR);
         Workspace workspace;
         success = add && workspace.prepare(m->order,order,plan.shifts.size(),lapack,projected_bands);
 #pragma omp master
@@ -465,7 +487,9 @@ try {
         for (int k=0; k<point_count; ++k) {
             const size_t row = size_t(k)*order*m->spin_channels;
             if (success) success = workspace.solve(*m,plan,lapack,add,points[k],order,eigenvalues+row,
-                ao ? ao+2*row*order : nullptr,dos,weights ? weights+row*projected_bands : nullptr);
+                ao ? ao+2*row*order : nullptr,dos,sum,
+                weights ? weights+size_t(k)*m->spin_channels*orbital_width : nullptr,
+                atomic ? atomic+size_t(k)*m->spin_channels*atomic_width : nullptr);
         }
     }
     return success;
@@ -479,18 +503,19 @@ try {
 extern "C" int openmx_band_kpath_solve_cpu(const OpenMXKPathMatrices* m, int point_count,
     const OpenMXKPathPoint* points, double* eigenvalues, int simd_mode, size_t workspace_limit, int* threads_used)
 {
-    return solve_cpu(m,point_count,points,eigenvalues,nullptr,nullptr,nullptr,simd_mode,workspace_limit,threads_used);
+    return solve_cpu(m,point_count,points,eigenvalues,nullptr,nullptr,nullptr,nullptr,simd_mode,workspace_limit,threads_used);
 }
 
 extern "C" int openmx_band_mo_vectors_cpu(const OpenMXKPathMatrices* m, int point_count,
     const OpenMXKPathPoint* points, double* eigenvalues, double* ao, int simd_mode, size_t workspace_limit, int* threads_used)
 {
-    return solve_cpu(m,point_count,points,eigenvalues,ao,nullptr,nullptr,simd_mode,workspace_limit,threads_used);
+    return solve_cpu(m,point_count,points,eigenvalues,ao,nullptr,nullptr,nullptr,simd_mode,workspace_limit,threads_used);
 }
 
 extern "C" int openmx_band_dos_cpu(const OpenMXKPathMatrices* m, int point_count,
     const OpenMXKPathPoint* points, const OpenMXBandDosProjection* projection, double* eigen, float* weights,
+    double* atomic,
     int simd_mode, size_t workspace_limit, int* threads_used)
 {
-    return solve_cpu(m,point_count,points,eigen,nullptr,projection,weights,simd_mode,workspace_limit,threads_used);
+    return solve_cpu(m,point_count,points,eigen,nullptr,projection,weights,atomic,simd_mode,workspace_limit,threads_used);
 }

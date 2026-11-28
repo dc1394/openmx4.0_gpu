@@ -105,8 +105,6 @@ Claude Code のセッションは毎回新しい文脈で始まり、`CLAUDE.md`
 |---|---|---|
 | Cluster、Band、DC、DC-LNO、Krylov 以外のソルバー | `scf.EigenvalueSolver` | M8 以降 |
 | ノンコリニア | `scf.SpinPolarization NC` | M8 |
-| セルを最適化する種別と、圧力を一定に保つ分子動力学 | `MD.Type` の `OptC1` から `OptC7`、`RFC1` から `RFC7`、`NPT_VS_PR`、`NPT_VS_WV`、`NPT_NH_PR`、`NPT_NH_WV` | M8（応力と同時） |
-| 応力 | `scf.stress.tensor` | M8 |
 | 近傍リストの形式のハミルトニアンを読む出力と、書き出す出力 | `HS.fileout`、`Wannier.Func.Calc`、`Unfolding.Electronic.Band`、`scf.Polarization.ABC`、`CWF.Calc`、`DM.specify.energy.range`（`DM.export` と一緒に指定した場合）、`NEGF.Output_HKS` | M8 |
 | バンド分散、DOS、COHP の組み合わせ | Cluster、DC、DC-LNO、Krylov の `Band.dispersion`、`LNO.flag` と一緒の `Band.dispersion`、Cluster ソルバーで `Dos.Kgrid` が 1 1 1 でない `Dos.fileout` と `DosGauss.fileout`、`COHP.calc.flag` | M8 以降 |
 | 局所ソルバーの一回対角化の再開 | DC、DC-LNO、Krylov の `scf.restart pp` | EXX を含む再開形式の実装後 |
@@ -120,7 +118,7 @@ M4 の実装（`source/Input_std.c`）は、当たる条件を全て並べて表
 
 M5 で、Band ソルバーの行を表から外しました。k 点の生成は、`scf.Generation.Kpoint` の `GCenter`（既定）と `REGULAR` で確かめています。`none`（対称性で減らした Monkhorst–Pack のメッシュ）は、ハイブリッド汎関数でない計算でも動きません（13 節の 28）。M5 では、表にキーワードを 4 つ加えました。`DM.specify.energy.range` は、SCF の後に近傍リストの形式の $H$ をもう 1 回解き、エネルギーの範囲を限った密度行列を作ります。`NEGF.Output_HKS` は、電極用のファイルに同じ形式の $H$ を書きます。どちらの $H$ も $K$ を含みません。`XANES.gs.fileout` と `XANES.calc` の処理は、k メッシュの計算でも Cluster ソルバーを呼びます。site の形式の $K$ は、この呼び出しに使えません。Cluster ソルバーの計算でも結果を確かめていないので、2 つともソルバーによらず拒否します。XANES の 2 つを拒否してよいかは、M4 の 5 つと合わせて利用者の確認を待っています。
 
-M7 で、`MD.Type` の行を、応力が要る種別だけに狭めました。力が厳密交換の寄与を含むようになったためです。セルを最適化する種別と、圧力を一定に保つ分子動力学では、本体が応力を計算します（`Input_std.c` が `scf_stress_flag` と `MD_cellopt_flag` を 1 にします）。応力は厳密交換を含まないので（M8）、この種別は拒否したままです。拒否の表示には、この種別の行と `scf.stress.tensor` の行の両方が出ます。ほかの種別は受け付けます。構造最適化（`Opt`、`BFGS` など）、分子動力学（`NVE`、`NVT_NH` など）、格子定数を変える `EvsLC` と `DF`、`NEB` です。`EvsLC` と `DF` は、セルを変えますが、エネルギーだけを使います。短い実行で確かめた結果は、9 節の M7 にあります。
+力と応力の両方に厳密交換を含めます。固定セルの構造最適化と NVE・NVT に加えて、`OptC`・`RFC` の可変セル最適化、`scf.stress.tensor on`、NPT に対応します。応力の対ごとの寄与は、表示する体積で割る前に、変位ベクトル $d$ と交換エネルギーの変位微分 $g$ の外積 $g_i d_j$ を足します。同一原子の周期像も含みます。PBE0 の自動切断半径には、対角成分ごとに $(R_c/3)(\partial E_x/\partial R_c)$ を加えます。
 
 M8 で、`Band.dispersion`、`Dos.fileout`、`DosGauss.fileout`、`MO.fileout` を表から外しました（9 節の M8）。Band ソルバーの計算では、出力の k 点の $H(\mathbf k)$ に $K(\mathbf k)$ を足します（6.5 節）。Cluster ソルバーの SCF は Γ 点の密行列を使います。周期系の MO 出力は最後に使った密度行列から $K(\mathbf R)$ を構築して、指定した k 点を解きます。Cluster ソルバーのバンド分散と、`Dos.Kgrid` が 1 1 1 でない DOS は引き続き入力で拒否します。`Dos.Kgrid` が 1 1 1 の DOS は、SCF と同じ関数が $K$ を足して解き直すので、拒否しません。LNO のバンドと COHP は、 $K$ のない近傍リストの形式の $H$ を読みます。COHP は DOS の関数の中で計算するので、この版で `COHP.calc.flag` を表に加えました。
 
@@ -815,7 +813,7 @@ M4 で組み込んだ範囲です。場所は付録 A の「M4 で加えたコ�
 | 作業 | M4 の実装 |
 |---|---|
 | 入力 | `HSE06` を受け付け、下の表の `scf.exx.*` を読みます。`PBE0` は拒否します（M8）。2.2 節の拒否は、入力ファイルを閉じる直前に置きました。 |
-| 準局所の交換 | `Set_Hamiltonian`、`Set_Vpot`、`Total_Energy` に混合比と $\omega$ の引数を加え、`DFT` 関数が EXX の状態の値を渡します。混合比は、最初の $K$ ができるまで 0 です。`Stress.c`、`OutData.c`、`OutData_Binary.c` の呼び出しと、`Total_Energy.c` の `Calc_Edc` と `Energy_Decomposition_CWF` の中の呼び出しは、0 を渡したままです。応力、Krylov ソルバー、エネルギーの分解は 2.2 節で拒否しています。`level.of.fileout 2` で書き出す `.vxc0` と `.vxc1` は、PBE のポテンシャルになります。 |
+| 準局所の交換 | `Set_Hamiltonian`、`Set_Vpot`、`Total_Energy`、`Stress` に混合比と $\omega$ の引数を加え、`DFT` 関数が EXX の状態の値を渡します。混合比は、最初の $K$ ができるまで 0 です。`OutData.c`、`OutData_Binary.c` の呼び出しと、`Total_Energy.c` の `Calc_Edc` と `Energy_Decomposition_CWF` の中の呼び出しは、0 を渡したままです。エネルギーの分解は 2.2 節で拒否しています。`level.of.fileout 2` で書き出す `.vxc0` と `.vxc1` は、PBE のポテンシャルになります。 |
 | 密行列への加算 | Cluster のホスト上の経路だけです。`Hamiltonian_Cluster_Hs` の直後で、ブロック巡回配置の `Hs` に $K^{\sigma}$ を足します。ハイブリッド汎関数の計算は、CUDA 版でもデバイス上の密行列の経路に入らず、この経路を通ります。CUDA 版での実行は確かめていません。デバイス上の経路は M6 です。 |
 | 密度行列の収集 | Cluster の経路だけです。収集が有効な間、ソルバーは固有ベクトルと占有数を結合層に渡します。 |
 | 外側反復 | 6.6 節 |

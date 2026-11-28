@@ -2981,7 +2981,8 @@ double Stress(OpenMXCoreContext *core,OpenMXThermodynamicEnergies *thermo, const
 	      double ******DS_NL,
 	      double *****OLP,
 	      double *****CDM,
-	      double *****EDM, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
+	      double *****EDM, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis,
+              double exx_alpha, double exx_omega);
 double Set_OLP_Kin(const OpenMXRealHarmonicData *conversion,const OpenMXReciprocalViews *reciprocal, double *****OLP, double *****H0, const OpenMXElectronicViews *electronic);
 double Set_Nonlocal(const OpenMXAtomicViews *atomic, const OpenMXReciprocalViews *reciprocal, double *****HNL, double ******DS_NL, const OpenMXElectronicViews *electronic);
 double Set_CoreHoleMatrix(double *****HCH, const OpenMXElectronicViews *electronic);

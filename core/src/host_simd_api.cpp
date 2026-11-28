@@ -75,3 +75,7 @@ extern "C" OpenMXHostMODot openmx_core_host_mo_dot(int mode) {
   const auto* kernel=openmx::core::host::openmx_host_mo_dot_kernels(mode);
   return kernel ? *kernel : nullptr;
 }
+extern "C" OpenMXHostWeightSum openmx_core_host_weight_sum(int mode) {
+  const auto* kernel=openmx::core::host::openmx_host_weight_sum_kernels(mode);
+  return kernel ? *kernel : nullptr;
+}

@@ -32,6 +32,7 @@ int main(int argc, char** argv)
     else if (name == "exchange-backend") exx_test::exchange_backend(fixture);
     else if (name == "exchange-system") exx_test::exchange_system(fixture);
     else if (name == "exchange-forces") exx_test::exchange_forces(fixture);
+    else if (name == "exchange-strain") exx_test::exchange_strain(fixture);
     else if (name == "exchange-device") exx_test::exchange_device(fixture);
     else if (name == "exchange-device-system") exx_test::exchange_device_system(fixture);
     else if (name == "exchange-half") exx_test::exchange_half(fixture);

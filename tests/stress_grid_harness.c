@@ -128,7 +128,7 @@ static int callback(OpenMXSolverInvocation *scope,void *opaque,double *result){
     Max_GridN_Atom=repeat==1?5:3;grid_counts[2]=Max_GridN_Atom;overlap_counts[0]=overlap_counts[1]=Max_GridN_Atom;
     const int active=Matomnum;My_NumGridD=active?216:0;My_NumGridB_AB=active?2:0;Num_Rcv_Grid_B2D[0]=active?2:0;
     memset(Stress_Tensor,0,sizeof(Stress_Tensor));const int before=collectives,old_xc=xc_calls;
-    Stress3(scope,atomic,&electronic,&basis);
+    Stress3(scope,atomic,&electronic,&basis,0.0,0.0);
     CHECK(collectives-before==1+(XC_switch==4?(SpinP_switch?2:1):0));CHECK(xc_calls-old_xc==(XC_switch==4));
     for(int i=0;i<3;i++)for(int j=0;j<3;j++){
       const double delta=2e-6;

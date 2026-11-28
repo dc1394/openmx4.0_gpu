@@ -28,6 +28,7 @@ void check(const Kernel& kernel, double kappa)
       checked_parameter(kernel.parameter,"the screening parameter must be finite and positive");
       return;
     case KernelKind::truncated_coulomb:
+    case KernelKind::truncation_derivative:
       checked_parameter(kernel.parameter,"the truncation radius must be finite and positive");
       return;
   }
@@ -65,6 +66,12 @@ Kernel truncated_coulomb_kernel(double cutoff_radius)
           checked_parameter(cutoff_radius,"the truncation radius must be finite and positive")};
 }
 
+Kernel truncation_derivative_kernel(double cutoff_radius)
+{
+  return {KernelKind::truncation_derivative,
+          checked_parameter(cutoff_radius,"the truncation radius must be finite and positive")};
+}
+
 double kernel_limit(const Kernel& kernel)
 {
   check(kernel,0.0);
@@ -73,6 +80,7 @@ double kernel_limit(const Kernel& kernel)
     case KernelKind::coulomb: return std::numeric_limits<double>::infinity();
     case KernelKind::short_range: return std::numbers::pi/(kernel.parameter*kernel.parameter);
     case KernelKind::truncated_coulomb: return 2.0*std::numbers::pi*kernel.parameter*kernel.parameter;
+    case KernelKind::truncation_derivative: return four_pi*kernel.parameter;
   }
   throw std::invalid_argument("unknown kernel");
 }
@@ -95,6 +103,8 @@ double kernel_value(const Kernel& kernel, double kappa)
       const double y = 0.5*kappa*kernel.parameter;
       return 2.0*std::numbers::pi*kernel.parameter*kernel.parameter*sinc_squared(y);
     }
+    case KernelKind::truncation_derivative:
+      return kappa > 0.0 ? four_pi*std::sin(kappa*kernel.parameter)/kappa : four_pi*kernel.parameter;
   }
   throw std::invalid_argument("unknown kernel");
 }
@@ -115,6 +125,8 @@ double kernel_weight(const Kernel& kernel, double kappa)
       const double s = std::sin(0.5*kappa*kernel.parameter);
       return 2.0*four_pi*s*s;
     }
+    case KernelKind::truncation_derivative:
+      return four_pi*kappa*std::sin(kappa*kernel.parameter);
   }
   throw std::invalid_argument("unknown kernel");
 }

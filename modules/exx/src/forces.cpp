@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cstddef>
+#include <optional>
 #include <stdexcept>
 #include <utility>
 #include <vector>
@@ -192,6 +193,7 @@ PositionGradient::PositionGradient(const Structure& structure, std::span<const S
   : structure_(&structure),
     species_(species),
     system_(&system),
+    exchange_kernel_(options.interaction),
     solver_(reciprocal,maximum_orbital(species),maximum_abf(species),options.lri),
     interaction_(reciprocal,options.interaction,maximum_abf(species),maximum_abf(species))
 {
@@ -326,12 +328,15 @@ void PositionGradient::add(std::size_t atom, const CentreGradient& weights, std:
 }
 
 void PositionGradient::add_pairs(std::span<const std::span<const double>> weights, const PrepareShare& share,
-    std::span<double> gradient, const DenseBackend& backend) const
+    std::span<double> gradient, const DenseBackend& backend, std::span<double> strain,
+    bool volume_scaled_cutoff, OpenMXExxDot dot) const
 {
   const System& system = *system_;
   const std::size_t atoms = system.orbital_count.size();
   if (gradient.size() != 3*atoms)
     throw std::invalid_argument("the derivative with respect to the positions needs three entries for every atom");
+  if (!strain.empty() && strain.size() != 9)
+    throw std::invalid_argument("the strain derivative needs nine entries");
   if (share.parts < 1 || share.part >= share.parts)
     throw std::invalid_argument("the share of a derivative is not one of its parts");
   if (weights.size() != atoms) throw std::invalid_argument("the weights of the blocks are needed for every atom");
@@ -347,13 +352,24 @@ void PositionGradient::add_pairs(std::span<const std::span<const double>> weight
       throw std::invalid_argument("the weights of the blocks do not have the layout of their atom");
   }
   const auto mine = [&share](std::size_t pair) { return pair%share.parts == share.part; };
-  // g = dE/dd for a displacement that points from atom "from" to atom "to".
-  const auto apply = [&gradient](std::size_t from, std::size_t to, const std::array<double,3>& g) {
-    for (std::size_t x = 0; x < 3; ++x) {
-      gradient[3*to+x] += g[x];
-      gradient[3*from+x] -= g[x];
-    }
+  const auto contract = [dot](const double* left, const double* right, std::size_t size) {
+    if (dot) return dot(left,right,size);
+    double sum = 0.0;
+    for (std::size_t i = 0; i < size; ++i) sum += left[i]*right[i];
+    return sum;
   };
+  const auto zero = [](std::span<const double> values) {
+    return std::all_of(values.begin(),values.end(),[](double value) { return value == 0.0; });
+  };
+  const bool need_strain = !strain.empty();
+  const bool scale_radius = need_strain && volume_scaled_cutoff &&
+                            exchange_kernel_.kind == KernelKind::truncated_coulomb;
+  std::optional<TwoCenterIntegrator> radius_derivative;
+  if (scale_radius) {
+    const int angular = maximum_abf(species_);
+    radius_derivative.emplace(interaction_.grid(),truncation_derivative_kernel(exchange_kernel_.parameter),
+                              angular,angular);
+  }
   // The weights of the T block of an atom and its C neighbour i,
   // [(P*u + mu)*u_c + lambda].
   const auto t_weights = [&system,&weights](std::size_t atom, std::size_t i) {
@@ -373,15 +389,38 @@ void PositionGradient::add_pairs(std::span<const std::span<const double>> weight
   struct Pair {
     std::size_t a, i, b, j;
   };
+  struct PairDerivative {
+    std::array<double,3> displacement{}, gradient{};
+    double cutoff = 0.0;
+  };
   std::vector<Pair> pairs;
-  std::vector<std::array<double,3>> vectors;
-  const auto in_pieces = [&](const auto& compute) {
-    vectors.assign(pairs.size(),std::array<double,3>{});
+  std::vector<PairDerivative> derivatives;
+  const auto in_pieces = [&](const auto& site_of, const auto& compute) {
+    derivatives.assign(pairs.size(),PairDerivative{});
     const std::size_t used = std::max<std::size_t>(1,std::min(backend.pieces(),pairs.size()));
     backend.parallel_for(used,[&](std::size_t c) {
-      for (std::size_t k = c; k < pairs.size(); k += used) vectors[k] = compute(pairs[k]);
+      for (std::size_t k = c; k < pairs.size(); k += used) {
+        const Pair& p = pairs[k];
+        PairDerivative& d = derivatives[k];
+        d.displacement = displacement(*structure_,static_cast<int>(p.a),site_of(p));
+        compute(p,d);
+      }
     });
-    for (std::size_t k = 0; k < pairs.size(); ++k) apply(pairs[k].a,pairs[k].b,vectors[k]);
+    for (std::size_t k = 0; k < pairs.size(); ++k) {
+      const Pair& p = pairs[k];
+      const PairDerivative& d = derivatives[k];
+      // For an image of the same atom only its separation under strain changes.
+      if (p.a != p.b)
+        for (std::size_t x = 0; x < 3; ++x) {
+          gradient[3*p.b+x] += d.gradient[x];
+          gradient[3*p.a+x] -= d.gradient[x];
+        }
+      if (need_strain)
+        for (std::size_t x = 0; x < 3; ++x) {
+          for (std::size_t y = 0; y < 3; ++y) strain[3*x+y] += d.gradient[x]*d.displacement[y];
+          strain[3*x+x] += d.cutoff;
+        }
+    }
   };
 
   // T blocks: equation (18) with the weights of the blocks of both atoms.
@@ -391,8 +430,7 @@ void PositionGradient::add_pairs(std::span<const std::span<const double>> weight
     const std::vector<Site>& c_sites = system.c_neighbours[atom];
     for (std::size_t i = 1; i < c_sites.size(); ++i) {
       const Site& site = c_sites[i];
-      // Two images of one atom: the displacement is a lattice vector.
-      if (site.atom == a || !pair_computed_from(a,site)) continue;
+      if ((!need_strain && site.atom == a) || !pair_computed_from(a,site)) continue;
       if (!mine(t_pair++)) continue;
       const std::size_t c = static_cast<std::size_t>(site.atom);
       const std::size_t j = find_site(system.c_neighbours[c],reversed_site(a,site));
@@ -400,12 +438,12 @@ void PositionGradient::add_pairs(std::span<const std::span<const double>> weight
       pairs.push_back({atom,i,c,j});
     }
   }
-  in_pieces([&](const Pair& p) {
-    const PairCoefficients coefficients{t_block(system,p.a,p.i),t_block(system,p.b,p.j)};
+  in_pieces([&](const Pair& p) -> const Site& { return system.c_neighbours[p.a][p.i]; },
+      [&](const Pair& p, PairDerivative& d) {
     const PairCoefficients pair_weights{t_weights(p.a,p.i),t_weights(p.b,p.j)};
-    return solver_.pair_gradient(table(p.a),table(p.b),
-                                 displacement(*structure_,static_cast<int>(p.a),system.c_neighbours[p.a][p.i]),
-                                 coefficients,pair_weights);
+    if (zero(pair_weights.first) && zero(pair_weights.second)) return;
+    const PairCoefficients coefficients{t_block(system,p.a,p.i),t_block(system,p.b,p.j)};
+    d.gradient = solver_.pair_gradient(table(p.a),table(p.b),d.displacement,coefficients,pair_weights);
   });
 
   // V blocks: the derivative of equation (12).  The block of the other atom
@@ -418,9 +456,9 @@ void PositionGradient::add_pairs(std::span<const std::span<const double>> weight
     const int a = static_cast<int>(atom);
     const std::size_t na = system.abf_count[atom];
     const std::vector<Site>& v_sites = pair_v_sites(system,atom);
-    for (std::size_t i = 1; i < v_sites.size(); ++i) {
+    for (std::size_t i = scale_radius ? 0 : 1; i < v_sites.size(); ++i) {
       const Site& site = v_sites[i];
-      if (site.atom == a || !pair_computed_from(a,site)) continue;
+      if (i != 0 && ((!need_strain && site.atom == a) || !pair_computed_from(a,site))) continue;
       if (!mine(v_pair++)) continue;
       const std::size_t b = static_cast<std::size_t>(site.atom), nb = system.abf_count[b];
       const std::vector<Site>& back_sites = pair_v_sites(system,b);
@@ -432,22 +470,28 @@ void PositionGradient::add_pairs(std::span<const std::span<const double>> weight
       pairs.push_back({atom,i,b,j});
     }
   }
-  in_pieces([&](const Pair& p) {
+  in_pieces([&](const Pair& p) -> const Site& { return pair_v_sites(system,p.a)[p.i]; },
+      [&](const Pair& p, PairDerivative& d) {
     const std::size_t na = system.abf_count[p.a], nb = system.abf_count[p.b];
     const double* w = weights[p.a].data()+v_offset[p.a][held_v_block(system,p.a,p.i)];      // [p*nb + q]
     const double* back = weights[p.b].data()+v_offset[p.b][held_v_block(system,p.b,p.j)];   // [q*na + p]
-    const std::vector<double> derivative = two_center_gradient_matrix(
-        interaction_.gradient_pair(displacement(*structure_,static_cast<int>(p.a),pair_v_sites(system,p.a)[p.i])),
-        table(p.a).abf_transforms(),table(p.b).abf_transforms());
-    std::array<double,3> g{};
-    for (std::size_t x = 0; x < 3; ++x) {
-      const double* values = derivative.data()+x*na*nb;
-      double sum = 0.0;
-      for (std::size_t r = 0; r < na; ++r)
-        for (std::size_t q = 0; q < nb; ++q) sum += (w[r*nb+q]+back[q*na+r])*values[r*nb+q];
-      g[x] = sum;
+    const bool onsite = p.i == 0;
+    const double scale = onsite ? 0.5 : 1.0;
+    std::vector<double> combined(na*nb);
+    for (std::size_t r = 0; r < na; ++r)
+      for (std::size_t q = 0; q < nb; ++q)
+        combined[r*nb+q] = scale*(w[r*nb+q]+back[q*na+r]);
+    if (zero(combined)) return;
+    const auto a = table(p.a).abf_transforms(), b = table(p.b).abf_transforms();
+    if (!onsite) {
+      const std::vector<double> derivative = two_center_gradient_matrix(interaction_.gradient_pair(d.displacement),a,b);
+      for (std::size_t x = 0; x < 3; ++x)
+        d.gradient[x] = contract(combined.data(),derivative.data()+x*na*nb,na*nb);
     }
-    return g;
+    if (radius_derivative) {
+      const std::vector<double> derivative = two_center_matrix(radius_derivative->pair(d.displacement),a,b);
+      d.cutoff = (exchange_kernel_.parameter/3.0)*contract(combined.data(),derivative.data(),na*nb);
+    }
   });
 }
 

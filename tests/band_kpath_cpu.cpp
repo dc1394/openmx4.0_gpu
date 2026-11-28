@@ -71,13 +71,14 @@ bool spin_and_exchange(int mode, int expected_workers)
     for (int k=0; k<7; ++k) points[k].xyz[0] = double(k)/7;
     double eigen[7][4];
     double vectors[7][16];
-    double dos_eigen[7][4];
+    double dos_eigen[7][4], atomic[7][8];
     float weights[7][4];
     int workers=0;
     if (!openmx_band_mo_vectors_cpu(&m,7,points,eigen[0],vectors[0],mode,unlimited,&workers) || workers!=expected_workers)
         return false;
-    const OpenMXBandDosProjection projection={1,1,1,nullptr};
-    if (!openmx_band_dos_cpu(&m,7,points,&projection,dos_eigen[0],weights[0],mode,unlimited,&workers) ||
+    const int offsets[]={0,1,2};
+    const OpenMXBandDosProjection projection={0,2,1,nullptr,1,1,2,offsets};
+    if (!openmx_band_dos_cpu(&m,7,points,&projection,dos_eigen[0],weights[0],atomic[0],mode,unlimited,&workers) ||
         workers!=expected_workers) return false;
     for (int k=0; k<7; ++k) {
         const auto phase = std::polar(1.0,2*pi*points[k].xyz[0]);
@@ -92,7 +93,9 @@ bool spin_and_exchange(int mode, int expected_workers)
             const double a=std::real(std::conj(x)*(x+overlap*y));
             const double b=std::real(std::conj(y)*(std::conj(overlap)*x+4.0*y));
             if (!close(eigen[k][2*spin+1],dos_eigen[k][2*spin+1]) ||
-                std::abs(weights[k][2*spin]-a)>1e-7 || std::abs(weights[k][2*spin+1]-b)>1e-7) return false;
+                std::abs(weights[k][2*spin]-a)>1e-7 || std::abs(weights[k][2*spin+1]-b)>1e-7 ||
+                std::abs(atomic[k][4*spin]+atomic[k][4*spin+1]-1)>1e-7 ||
+                atomic[k][4*spin+2]!=weights[k][2*spin] || atomic[k][4*spin+3]!=weights[k][2*spin+1]) return false;
         }
     }
     return true;
@@ -104,21 +107,22 @@ bool noncollinear(int mode)
     const double input[] = {2,2,8,-.8,.2,0,0, 0,0,0,.4,.3,.25,-.5, 0,0,0,0,0,-.25,.5};
     const OpenMXKPathMatrices m = {1,1,1,0,1,1,3,21,21,1e-9,blocks,input};
     const OpenMXKPathPoint point = {{.25,0,0},0};
-    double eigen[2], vectors[8], dos_eigen[2];
+    double eigen[2], vectors[8], dos_eigen[2], atomic[2];
     float weights[4];
     int workers;
     constexpr double theta=.53, phi=.78;
     const OpenMXDosSpinProjection spin={0,1,0.5*std::cos(theta),std::sin(theta)*std::cos(phi),
                                       std::sin(theta)*std::sin(phi)};
-    const OpenMXBandDosProjection projection={0,2,0,&spin};
+    const int offsets[]={0,1};
+    const OpenMXBandDosProjection projection={0,2,0,&spin,0,2,1,offsets};
     if (!openmx_band_mo_vectors_cpu(&m,1,&point,eigen,vectors,mode,unlimited,&workers) ||
         !two_bands(eigen,.75,4.5,std::abs(Complex(-1.1,.6))/2) ||
-        !openmx_band_dos_cpu(&m,1,&point,&projection,dos_eigen,weights,mode,unlimited,&workers)) return false;
+        !openmx_band_dos_cpu(&m,1,&point,&projection,dos_eigen,weights,atomic,mode,unlimited,&workers)) return false;
     for (int i=0; i<2; ++i) {
         const Complex up(vectors[4*i],vectors[4*i+1]), down(vectors[4*i+2],vectors[4*i+3]);
         const double local_up=2.0*std::norm(std::cos(theta/2)*up+std::polar(std::sin(theta/2),-phi)*down);
         if (!close(eigen[i],dos_eigen[i]) || std::abs(weights[2*i]-local_up)>1e-7 ||
-            std::abs(weights[2*i+1]-(1.0-local_up))>1e-7) return false;
+            std::abs(weights[2*i+1]-(1.0-local_up))>1e-7 || std::abs(atomic[i]-1.0)>1e-7) return false;
     }
     return true;
 }

@@ -550,7 +550,8 @@ static int run_parallel(const KPathOutput *output, const KPathBasis *basis, Open
             output->reciprocal,chemical->chemical_potential};
         success=openmx_band_dos_mesh(dos,&execution,&m,offset,points,point_count,&threads_used);
         if (success && rank==output->host && 0<output->verbosity) {
-            printf("<Band_DFT_Dosout> DOS and Fermi surface: %d k-points, %d %s with %s%s (%.3f s)\n",
+            printf("<Band_DFT_Dosout> %s: %d k-points, %d %s with %s%s (%.3f s)\n",
+                dos->surface_only ? "Fermi surface" : "DOS and Fermi surface",
                 point_count,owner_count,use_gpu ? "GPU owner(s)" : "CPU rank(s)",backend,
                 m.exchange_offset<m.value_count ? " and exact exchange" : "",MPI_Wtime()-started);
             fflush(stdout);
@@ -683,7 +684,7 @@ static int run_outputs(const OpenMXChemicalPotentials *chemical,
         run_parallel(&output, &basis, m, 1, chemical, path_count, points_per_path, paths, names,
                      hamiltonian, imaginary, overlap, local_basis, exact_exchange, mo, dos)) return 1;
 #endif
-    return all_ranks_ok(output.comm, output.simd != OPENMX_HOST_SIMD_LEGACY) &&
+    return all_ranks_ok(output.comm, output.simd != OPENMX_HOST_SIMD_LEGACY || (dos && dos->surface_only)) &&
            run_parallel(&output, &basis, m, 0, chemical, path_count, points_per_path, paths, names,
                         hamiltonian, imaginary, overlap, local_basis, exact_exchange, mo, dos);
 }

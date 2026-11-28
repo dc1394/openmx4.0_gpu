@@ -141,7 +141,9 @@ class PositionGradient {
   // pairs afterwards: the result is the same for every number of pieces,
   // bit for bit.  Only the loop of the backend is used.
   void add_pairs(std::span<const std::span<const double>> weights, const PrepareShare& share,
-                 std::span<double> gradient, const DenseBackend& backend = DenseBackend()) const;
+                 std::span<double> gradient, const DenseBackend& backend = DenseBackend(),
+                 std::span<double> strain = {}, bool volume_scaled_cutoff = false,
+                 OpenMXExxDot dot = nullptr) const;
 
  private:
   const SpeciesTable& table(std::size_t atom) const;
@@ -149,6 +151,7 @@ class PositionGradient {
   const Structure* structure_;
   std::span<const SpeciesTable> species_;
   const System* system_;
+  Kernel exchange_kernel_;
   LriSolver solver_;
   TwoCenterIntegrator interaction_;
 };

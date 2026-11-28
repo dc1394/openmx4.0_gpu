@@ -2800,6 +2800,56 @@ Forces check_forces(const std::string& name, const Structure& structure, const s
 
 } // namespace
 
+void exchange_strain(const std::string& path)
+{
+  const OverlapFixture fixture = read_overlap_fixture(path);
+  const ReciprocalGrid reciprocal = ReciprocalGrid::uniform(24.0,240);
+  const std::vector<Shells> one{select(fixture.species.front(),{0})};
+  const std::vector<SpeciesTable> tables = tables_of(one,300,reciprocal,1.0e-3);
+  Structure structure;
+  structure.lattice = {{{4.25,0.9,0.3},{0.15,8.3,0.4},{0.3,0.7,10.9}}};
+  structure.positions = {{0.45,0.1,0.2}};
+  structure.species = {0};
+  const double alpha=0.25, step=2.0e-5;
+  const std::array<double,1> density{0.6};
+  Worst numerical("EXX strain with periodic images and a moving Coulomb cutoff",2.0e-8);
+  for (int variant=0; variant<3; ++variant) {
+    const bool scaled=variant==2;
+    SystemOptions options;
+    options.interaction=variant==0 ? short_range_kernel(0.11) : truncated_coulomb_kernel(5.1);
+    options.v_cutoff=8.0;
+    const System system=prepare_system(structure,tables,reciprocal,options);
+    require(system.c_neighbours.front().size()>1,"the test needs PAO images in its cell derivative");
+    BlockWeights weights(system);
+    add_block_weights_gamma_half_abfs(system,0,system.abf_count[0],-alpha,density,weights.arrays);
+    const PositionGradient derivative(structure,tables,reciprocal,options,system);
+    std::array<double,3> force{};
+    std::array<double,9> strain{};
+    for (std::size_t part=0; part<3; ++part)
+      derivative.add_pairs(weights.view,{part,3},force,DenseBackend{},strain,scaled);
+    require(force==std::array<double,3>{},"periodic images must exert no force on their sole atom");
+
+    const auto energy = [&](std::size_t i, std::size_t j, double delta) {
+      Structure moved=structure;
+      for (auto& row : moved.lattice) row[i]+=delta*row[j];
+      for (auto& row : moved.positions) row[i]+=delta*row[j];
+      SystemOptions displaced_options=options;
+      if (scaled && i==j)
+        displaced_options.interaction=truncated_coulomb_kernel(options.interaction.parameter*std::cbrt(1.0+delta));
+      const System displaced=prepare_system(moved,tables,reciprocal,displaced_options);
+      require(displaced.c_neighbours==system.c_neighbours && displaced.v_neighbours==system.v_neighbours,
+              "the strain difference changed the lists of neighbours");
+      return exchange_energy_gamma(density,exchange_gamma(displaced,density,alpha));
+    };
+    for (const auto [i,j] : {std::array<std::size_t,2>{0,0},std::array<std::size_t,2>{1,0}}) {
+      const double numerical_value=(energy(i,j,step)-energy(i,j,-step))/(2.0*step);
+      require(std::fabs(numerical_value)>1.0e-6,"the strain test must have a measurable derivative");
+      numerical.absolute(strain[3*i+j],numerical_value);
+    }
+  }
+  numerical.finish();
+}
+
 void exchange_forces(const std::string& path)
 {
   const OverlapFixture fixture = read_overlap_fixture(path);

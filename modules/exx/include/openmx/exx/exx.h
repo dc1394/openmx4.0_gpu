@@ -208,6 +208,7 @@ typedef struct OpenMXExxState OpenMXExxState;
 typedef void (*OpenMXExxAddRows)(double *dst, size_t dst_stride, const double *src, size_t src_stride,
                                size_t rows, size_t columns, double factor);
 void openmx_exx_set_host_add_rows(OpenMXExxState *state, OpenMXExxAddRows add_rows);
+typedef double (*OpenMXExxDot)(const double *left, const double *right, size_t count);
 
 /* A whole call may use the device only if at least one of its matrix
    products has m*n*k >= minimum. Zero leaves the choice to the device's
@@ -557,6 +558,14 @@ int openmx_exx_add_position_gradient_pairs(const OpenMXExxState *state, const do
 int openmx_exx_add_position_gradient_pairs_pieces(const OpenMXExxState *state, const double *const *weights,
                                                   int part, int parts, const OpenMXExxDenseBackend *backend,
                                                   double *gradient, char *error, size_t capacity);
+
+/* Add the Cartesian and optional strain derivatives in the same pair traversal.
+   strain[3*i+j] is dE/dF_ij for x' = F x at fixed fractional positions and
+   density. A volume-scaled truncated Coulomb radius also changes with F.
+   A null dot callback uses scalar contractions. Outputs are unchanged on error. */
+int openmx_exx_add_geometry_gradient_pairs(const OpenMXExxState *state, const double *const *weights,
+    int part, int parts, const OpenMXExxDenseBackend *backend, OpenMXExxDot dot,
+    double *gradient, double *strain, int volume_scaled_cutoff, char *error, size_t capacity);
 
 #ifdef __cplusplus
 }

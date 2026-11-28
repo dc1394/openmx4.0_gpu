@@ -52,6 +52,10 @@ typedef void (*OpenMXHostMODot)(int count, const float *ao, const double *real,
                                const double *imag, double result[2]);
 OpenMXHostMODot openmx_core_host_mo_dot(int mode);
 
+/* Accumulate FP32 orbital populations in FP64. */
+typedef double (*OpenMXHostWeightSum)(const float *weights, int count);
+OpenMXHostWeightSum openmx_core_host_weight_sum(int mode);
+
 #ifdef __cplusplus
 }
 #endif

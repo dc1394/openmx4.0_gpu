@@ -70,6 +70,20 @@ double Band_DFT_Dosout(OpenMXChemicalPotentials *chemical,  int knum_i, int knum
 {
   double time0 = 0.0;
 
+  if (fermisurfer_output && !Dos_fileout && !DosGauss_fileout) {
+    const OpenMXBandDosRequest mesh={{knum_i,knum_j,knum_k},Dos_Erange,0,0.0,1,
+        atomnum,SpeciesNum,Supported_MaxL,WhatSpecies,Spe_Total_CNO,Spe_Num_CBasis,
+        Angle0_Spin,Angle1_Spin,1};
+    const double start=MPI_Wtime();
+    if (openmx_band_dos_parallel(chemical,&mesh,SpinP_switch,nh,ImNL,CntOLP,exact_exchange))
+      return MPI_Wtime()-start;
+    int rank;
+    MPI_Comm_rank(mpi_comm_level1,&rank);
+    if (rank==Host_ID) fprintf(stderr,"<Band_DFT_Dosout> Fermi surface output failed on the available solvers.\n");
+    MPI_Abort(mpi_comm_level1,1);
+    return 0.0;
+  }
+
   if ( (SpinP_switch==0 || SpinP_switch==1) && Dos_fileout){
 
     time0 = Band_DFT_Dosout_Col(chemical,  knum_i, knum_j, knum_k, SpinP_switch, nh, ImNL, CntOLP, electronic,
@@ -112,8 +126,8 @@ static double Band_DFT_DosoutGauss_Col(const OpenMXChemicalPotentials *chemical,
 {
   const double gaussian_width = DosGauss_Width;
   if (!cal_partial_charge && DosGauss_Num_Mesh>0 && gaussian_width>0.0 && Dos_Erange[1]>Dos_Erange[0]) {
-    const OpenMXBandDosRequest mesh={{knum_i,knum_j,knum_k},Dos_Erange,DosGauss_Num_Mesh,gaussian_width,0,
-        atomnum,SpeciesNum,Supported_MaxL,WhatSpecies,Spe_Total_CNO,Spe_Num_CBasis,NULL,NULL};
+    const OpenMXBandDosRequest mesh={{knum_i,knum_j,knum_k},Dos_Erange,DosGauss_Num_Mesh,gaussian_width,fermisurfer_output,
+        atomnum,SpeciesNum,Supported_MaxL,WhatSpecies,Spe_Total_CNO,Spe_Num_CBasis,NULL,NULL,0};
     const double start=MPI_Wtime();
     if (openmx_band_dos_parallel(chemical,&mesh,SpinP_switch,nh,ImNL,CntOLP,exact_exchange)) return MPI_Wtime()-start;
   }
@@ -1467,8 +1481,8 @@ static double Band_DFT_DosoutGauss_NonCol(const OpenMXChemicalPotentials *chemic
                            double ****CntOLP, const OpenMXElectronicViews *electronic)
 {
   if (!cal_partial_charge && DosGauss_Num_Mesh>0 && DosGauss_Width>0.0 && Dos_Erange[1]>Dos_Erange[0]) {
-    const OpenMXBandDosRequest mesh={{knum_i,knum_j,knum_k},Dos_Erange,DosGauss_Num_Mesh,DosGauss_Width,0,
-        atomnum,SpeciesNum,Supported_MaxL,WhatSpecies,Spe_Total_CNO,Spe_Num_CBasis,Angle0_Spin,Angle1_Spin};
+    const OpenMXBandDosRequest mesh={{knum_i,knum_j,knum_k},Dos_Erange,DosGauss_Num_Mesh,DosGauss_Width,fermisurfer_output,
+        atomnum,SpeciesNum,Supported_MaxL,WhatSpecies,Spe_Total_CNO,Spe_Num_CBasis,Angle0_Spin,Angle1_Spin,0};
     const double start=MPI_Wtime();
     if (openmx_band_dos_parallel(chemical,&mesh,SpinP_switch,nh,ImNL,CntOLP,NULL)) return MPI_Wtime()-start;
   }
@@ -2824,7 +2838,7 @@ static double Band_DFT_Dosout_Col(OpenMXChemicalPotentials *chemical,
 {
   if (!cal_partial_charge && !COHP_calc_flag) {
     const OpenMXBandDosRequest mesh={{knum_i,knum_j,knum_k},Dos_Erange,0,0.0,fermisurfer_output,
-        atomnum,SpeciesNum,Supported_MaxL,WhatSpecies,Spe_Total_CNO,Spe_Num_CBasis,NULL,NULL};
+        atomnum,SpeciesNum,Supported_MaxL,WhatSpecies,Spe_Total_CNO,Spe_Num_CBasis,NULL,NULL,0};
     const double start=MPI_Wtime();
     if (openmx_band_dos_parallel(chemical,&mesh,SpinP_switch,nh,ImNL,CntOLP,exact_exchange)) return MPI_Wtime()-start;
   }
@@ -4741,7 +4755,7 @@ static double Band_DFT_Dosout_NonCol(const OpenMXChemicalPotentials *chemical,
 {
   if (!cal_partial_charge) {
     const OpenMXBandDosRequest mesh={{knum_i,knum_j,knum_k},Dos_Erange,0,0.0,fermisurfer_output,
-        atomnum,SpeciesNum,Supported_MaxL,WhatSpecies,Spe_Total_CNO,Spe_Num_CBasis,Angle0_Spin,Angle1_Spin};
+        atomnum,SpeciesNum,Supported_MaxL,WhatSpecies,Spe_Total_CNO,Spe_Num_CBasis,Angle0_Spin,Angle1_Spin,0};
     const double start=MPI_Wtime();
     if (openmx_band_dos_parallel(chemical,&mesh,SpinP_switch,nh,ImNL,CntOLP,NULL)) return MPI_Wtime()-start;
   }

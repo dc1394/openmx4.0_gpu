@@ -32,6 +32,13 @@ def check_output(path, level, gpu, fallback):
     assert not re.search(r'\b(?:CUDA|HIP)\b', messages, re.IGNORECASE), path
     assert messages.count('Preparing HSE06 exact exchange') == 1, path
     assert 'The outer iteration converged' in messages, path
+    progress = re.findall(r'^<EXX>  MD=(\d+) SCF=(\d+)  EXX builds=(\d+)/(\d+)  status=(.+)$',
+                          messages, re.M)
+    assert len(progress) > 1, path
+    assert [int(row[1]) for row in progress] == list(range(1, len(progress)+1)), path
+    builds = [int(row[2]) for row in progress]
+    assert builds[0] == 0 and all(0 <= b-a <= 1 for a,b in zip(builds, builds[1:])), path
+    assert progress[0][-1] == 'initial SCF' and progress[-1][-1] == 'converged', path
     assert ('GPU dispatch enabled' in messages) == gpu, path
     assert ('(CPU matrix products)' in messages) == (not gpu), path
     assert ('GPU-accelerated exact exchange' in messages) == (gpu and not fallback), path

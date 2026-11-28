@@ -33,7 +33,7 @@
 
 /*** subroutine */
 static void MPI_OLP(OpenMXSolverInvocation *scratch,double *****OLP1);
-static void Stress3(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
+static void Stress3(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis, double exx_alpha, double exx_omega);
 static void Stress4(const OpenMXAtomicViews *atomic);
 static void Stress4B(OpenMXSolverInvocation *scratch,const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double *****CDM0, const OpenMXLocalBasisViews *local_basis);
 static void Stress_core(OpenMXSolverInvocation *scratch);
@@ -100,26 +100,30 @@ typedef struct {
   double *****H0,******DS_NL,*****OLP,*****CDM,*****EDM;
   const OpenMXElectronicViews *electronic;
   const OpenMXLocalBasisViews *local_basis;
+  double exx_alpha,exx_omega;
 } OpenMXStressArguments;
 static double Stress_owned(const OpenMXForceWorkspace *halo,OpenMXCoreContext *core,OpenMXThermodynamicEnergies *thermo, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double *****H0,
 	      double ******DS_NL,
 	      double *****OLP,
 	      double *****CDM,
-	      double *****EDM, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis);
+	      double *****EDM, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis,
+              double exx_alpha, double exx_omega);
 static int Stress_Operation(const OpenMXForceWorkspace *halo,void *opaque,double *result)
 {
   const OpenMXStressArguments *a=opaque;
   *result=Stress_owned(halo,a->core,a->thermo,a->atomic,a->vna,a->reciprocal,a->H0,a->DS_NL,
-      a->OLP,a->CDM,a->EDM,a->electronic,a->local_basis);
+      a->OLP,a->CDM,a->EDM,a->electronic,a->local_basis,a->exx_alpha,a->exx_omega);
   return 1;
 }
 double Stress(OpenMXCoreContext *core,OpenMXThermodynamicEnergies *thermo, const OpenMXAtomicViews *atomic, const OpenMXVnaMatrixViews *vna, const OpenMXReciprocalViews *reciprocal, double *****H0,
 	      double ******DS_NL,
 	      double *****OLP,
 	      double *****CDM,
-	      double *****EDM, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
+	      double *****EDM, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis,
+              double exx_alpha, double exx_omega)
 {
-  OpenMXStressArguments args={core,thermo,atomic,vna,reciprocal,H0,DS_NL,OLP,CDM,EDM,electronic,local_basis};
+  OpenMXStressArguments args={core,thermo,atomic,vna,reciprocal,H0,DS_NL,OLP,CDM,EDM,electronic,local_basis,
+                             exx_alpha,exx_omega};
   double begin,end;
   dtime(&begin);
   const int imaginary=SO_switch==1 || (Hub_U_switch==1 && SpinP_switch==3) || Constraint_NCS_switch==1
@@ -135,7 +139,8 @@ static double Stress_owned(const OpenMXForceWorkspace *halo,OpenMXCoreContext *c
 	      double ******DS_NL,
 	      double *****OLP,
 	      double *****CDM,
-	      double *****EDM, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
+	      double *****EDM, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis,
+              double exx_alpha, double exx_omega)
 {
   OpenMXSolverInvocation *scratch=halo->scratch;
   const OpenMXGaussRuleData radial=OpenMX_NeutralQuadrature(core,CoarseGL_Mesh,mpi_comm_level1);
@@ -1726,7 +1731,7 @@ static double Stress_owned(const OpenMXForceWorkspace *halo,OpenMXCoreContext *c
     printf("  Stress calculation #3\n");fflush(stdout);
   }
 
-  Stress3(scratch,atomic, electronic, local_basis);
+  Stress3(scratch,atomic, electronic, local_basis,exx_alpha,exx_omega);
 
   dtime(&etime);
   if(myid==0 && measure_time){
@@ -1971,7 +1976,7 @@ static double Stress_owned(const OpenMXForceWorkspace *halo,OpenMXCoreContext *c
 }
 
 
-static void Stress3(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis)
+static void Stress3(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *atomic, const OpenMXElectronicViews *electronic, const OpenMXLocalBasisViews *local_basis, double exx_alpha, double exx_omega)
 {
   double ******DM=electronic->DM;
 
@@ -2412,7 +2417,7 @@ static void Stress3(OpenMXSolverInvocation *scratch,const OpenMXAtomicViews *ato
     XC_P_switch_stress = 3;
     /* first argument in Set_XC_Grid was added by S.Ryee */
     Set_XC_Grid(2,XC_P_switch_stress, XC_switch,
-		0.0, 0.0,  /* exx_alpha, exx_omega: no hybrid functional yet */
+		exx_alpha, exx_omega,
 		Density_Grid_D[0], Density_Grid_D[1],
 		Density_Grid_D[2], Density_Grid_D[3],
 		NULL, NULL, NULL, NULL,

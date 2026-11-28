@@ -72,6 +72,18 @@ void contract_mo(int count, const float* ao, const double* real, const double* i
   if (imag) mo_dot<true>(count,ao,real,imag,out);
   else mo_dot<false>(count,ao,real,nullptr,out);
 }
+
+double sum_weights(const float* weights, int count)
+{
+  Vector accum(0.0);
+  int i=0;
+  for (; i<=count-lanes; i+=lanes)
+    accum+=Vector(simd::simd_unchecked_load<NarrowFloatVector>(weights+i));
+  double sum=0.0;
+  for (int lane=0; lane<lanes; ++lane) sum+=accum[lane];
+  for (; i<count; ++i) sum+=weights[i];
+  return sum;
+}
 }
 
 const OpenMXHostBlochAdd& OPENMX_HOST_SIMD_FACTORY(bloch)() noexcept
@@ -83,6 +95,12 @@ const OpenMXHostBlochAdd& OPENMX_HOST_SIMD_FACTORY(bloch)() noexcept
 const OpenMXHostMODot& OPENMX_HOST_SIMD_FACTORY(mo_dot)() noexcept
 {
   static constexpr OpenMXHostMODot kernel=contract_mo;
+  return kernel;
+}
+
+const OpenMXHostWeightSum& OPENMX_HOST_SIMD_FACTORY(weight_sum)() noexcept
+{
+  static constexpr OpenMXHostWeightSum kernel=sum_weights;
   return kernel;
 }
 }

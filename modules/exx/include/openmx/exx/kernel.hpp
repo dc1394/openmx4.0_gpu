@@ -12,10 +12,10 @@ namespace openmx::exx {
 //   coulomb            v = 1/r                    v~ = 4 pi / kappa^2
 //   short_range        v = erfc(omega r)/r        v~ = 4 pi (1 - exp(-kappa^2/(4 omega^2))) / kappa^2
 //   truncated_coulomb  v = theta(R_c - r)/r       v~ = 4 pi (1 - cos(kappa R_c)) / kappa^2
-enum class KernelKind { overlap, coulomb, short_range, truncated_coulomb };
+enum class KernelKind { overlap, coulomb, short_range, truncated_coulomb, truncation_derivative };
 
 // A kernel and its single parameter: omega (bohr^-1, positive) for
-// short_range, R_c (bohr, positive) for truncated_coulomb.  The other two
+// short_range, R_c (bohr, positive) for truncated_coulomb and its derivative. The other two
 // kernels ignore the parameter.  Use the factory functions below; they check
 // the parameter and throw std::invalid_argument for a value that is not
 // finite and positive.
@@ -28,6 +28,8 @@ Kernel overlap_kernel() noexcept;
 Kernel coulomb_kernel() noexcept;
 Kernel short_range_kernel(double omega);
 Kernel truncated_coulomb_kernel(double cutoff_radius);
+// Derivative of the truncated Coulomb kernel with respect to R_c.
+Kernel truncation_derivative_kernel(double cutoff_radius);
 
 // v~(kappa) for a finite kappa >= 0.  At kappa = 0 the function returns the
 // limit of the table in kernel_limit(); for the bare Coulomb kernel that is
@@ -39,10 +41,10 @@ double kernel_value(const Kernel& kernel, double kappa);
 
 // kappa^2 v~(kappa), the factor that enters the radial integrals.  It is
 // finite for every kernel at kappa = 0 (4 pi for the bare Coulomb kernel,
-// 0 for the other three).
+// 0 for the other kernels).
 double kernel_weight(const Kernel& kernel, double kappa);
 
-// lim_{kappa -> 0} v~(kappa): 1, +infinity, pi/omega^2 and 2 pi R_c^2.
+// lim_{kappa -> 0} v~(kappa): 1, +infinity, pi/omega^2, 2 pi R_c^2 and 4 pi R_c.
 double kernel_limit(const Kernel& kernel);
 
 } // namespace openmx::exx

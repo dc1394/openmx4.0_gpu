@@ -495,7 +495,9 @@ With `Band.dispersion on` and `scf.eigen.lib gpusolver`, CUDA and HIP run the po
 
 The CPU band calculation shares packed real-space matrices once and distributes distinct k-points across MPI ranks and OpenMP threads. Bloch matrix assembly uses the host ISA selected by `OPENMX_HOST_SIMD`, including AVX2 and AVX-512. Each worker reuses its FP64 LAPACK workspace. It uses a Cholesky reduction when the overlap permits it and applies the spectral overlap correction when needed. In a CPU run, `OPENMX_HOST_SIMD=legacy` selects the original band calculation.
 
-CPU, CUDA, and HIP builds use the Band solver's packed matrices for tetrahedron DOS (`Dos.fileout on`) and Gaussian DOS (`DosGauss.fileout on`). MPI distributes the mesh and OpenMP assigns points to FP64 LAPACK workers on the CPU. With `scf.eigen.lib gpusolver`, CUDA and HIP keep the matrices, eigenvectors and orbital projection on the device and batches the small eigensystems. Outputs retain the `.Dos.val`, `.Dos.vec` and `.bxsf` formats. With tetrahedron DOS, `FermiSurfer.fileout on` also writes the per-atom `.frmsf` files. Collinear HSE06 and PBE0 include exact exchange at the output k-points.
+CPU, CUDA, and HIP builds use the Band solver's packed matrices for tetrahedron DOS (`Dos.fileout on`), Gaussian DOS (`DosGauss.fileout on`) and Fermi surfaces. MPI distributes the output mesh. OpenMP assigns points to FP64 LAPACK workers, and AVX2 or AVX-512 accelerates Bloch assembly and projection sums on supported hosts. With `scf.eigen.lib gpusolver`, CUDA and HIP assemble and solve the eigensystems and calculate projections on the device. Collinear HSE06 and PBE0 include exact exchange at each output k-point.
+
+Set `FermiSurfer.fileout on` to write per-atom `.frmsf` files. With the Band solver on a periodic SCF mesh, this option can run by itself to write `.bxsf` and `.frmsf`. The packed solver sends the requested orbital range to `.Dos.vec` and can reduce orbital weights to atom populations before transferring the Fermi-surface data. When tetrahedron DOS already transfers most orbital weights, the Fermi-surface writer reuses that packet.
 
 `OPENMX_HOST_SIMD_PREFER=Band_DFT_Dosout` runs this output stage on the CPU during a GPU calculation. GPU resource failures also retry on the CPU. COHP and STM partial-charge calculations continue through the existing DOS routines.
 
@@ -511,7 +513,7 @@ MPI distributes the local eigensystems and exchange work. OpenMP packs the owned
 
 With the automatic setting (`-1`), the threshold starts at `1e8` on CUDA and HIP devices with high-throughput native FP64. CUDA devices whose native FP32 throughput is at least eight times their FP64 throughput scale `1e8` by the number of ranks sharing the GPU divided by 16 when there are more than 16 sharers. HIP devices outside the high-throughput FP64 class use `1e10` times the number of ranks sharing each physical GPU. A nonnegative value overrides the automatic threshold, and `0` retains the total-work and memory checks. With host SIMD enabled, `OPENMX_HOST_SIMD_PREFER=EXX` forces host exchange construction. The band solver can still assemble and diagonalize the hybrid Hamiltonian on the GPU.
 
-The EXX summary shows whether GPU dispatch is enabled and reports GPU use for matrix products or Hamiltonian additions. It also indicates when GPU dispatch is enabled and the matrix products run on the CPU. The summary and convergence warnings are included in `.out` at every `level.of.fileout` and on stdout starting at `level.of.stdout 1`. Set either level to `2` for iteration details, timings, device counters and force diagnostics in that output. `level.of.stdout 3` also reports per-atom EXX forces.
+Each electronic SCF iteration reports the completed EXX builds, the build limit, and the convergence status. The progress, GPU-use summary and convergence warnings are included in `.out` at every `level.of.fileout` and on stdout starting at `level.of.stdout 1`. Set either level to `2` for exchange energies, residuals, timings, device counters and force diagnostics in that output. `level.of.stdout 3` also reports per-atom EXX forces.
 
 Other GPU diagnostics follow OpenMX's `level.of.stdout` keyword. At the default (1), they report errors, unavailable GPUs and eigensolver fallbacks due to insufficient device memory. `level.of.stdout 2` adds device plans, precision switches and CPU fallbacks for individual stages. Level 3 adds per-step, per-k-point and per-rank details of the refined FP32 eigensolver. OpenMX itself prints per-atom debugging output from level 2 on.
 
@@ -523,9 +525,13 @@ The variable-cell `RFC5`–`RFC7` methods assemble the Schlegel Hessian in fract
 
 With `scf.eigen.lib gpusolver`, large geometry eigensystems run through cuSOLVER on CUDA or hipSOLVER on HIP. The optimizer reuses its host workspace across steps and retries on the CPU if a GPU solve fails. `OPENMX_GEOMETRY_GPU_MIN` sets the minimum Hessian dimension for GPU dispatch and defaults to 1000. `OPENMX_HOST_SIMD_PREFER=Geometry_Opt` selects the host eigensolver while allowing GPU SCF. `level.of.stdout 2` reports GPU Hessian solves.
 
+Fixed-cell and variable-cell optimization support collinear HSE06 and PBE0. EXX accumulates forces and analytic strain derivatives in one MPI-distributed pair traversal. OpenMP schedules the pairs, AVX2 and AVX-512 contract the weighted integrals, and eligible builds of the weights use GPU matrix products. The cell derivative includes the change of the volume-dependent PBE0 Coulomb cutoff when it is automatic.
+
 ### First-principles molecular dynamics
 
 NVE, NVT and NPT share an MPI exchange of atomic records and periodic image shifts at each step. Each rank applies the shifts to its copy of the extrapolation and geometry histories. OpenMP processes atoms owned by each rank, and `OPENMX_HOST_SIMD` selects the FP64 host kernels for the position and velocity updates, fractional NPT kick and periodic wrapping.
+
+Collinear HSE06 and PBE0 use their self-consistent forces for NVE and NVT. NPT also uses the analytic hybrid stress at each step.
 
 With `scf.eigen.lib gpusolver` in a CUDA or HIP build, eligible ranks use a GPU stream and workspace reused across MD steps. `OPENMX_MD_GPU_MIN` defaults to 32768 owned atoms per rank. Set it to a positive count to tune the dispatch threshold or to `0` to use host atom updates. `OPENMX_HOST_SIMD_PREFER=MD` can also select host updates with GPU SCF. The host kernels handle smaller ranks and retry updates if GPU workspace allocation or execution fails. Use `level.of.stdout 2` to see GPU atom updates on rank zero.
 

@@ -69,7 +69,7 @@ endforeach()
 # The exchange matrix with T and V blocks of the PAOs of the overlap fixture,
 # and the C interface against the C++ interface; the derivative of E_x with
 # respect to the positions of the atoms against central differences.
-foreach(_case exchange-system exchange-forces)
+foreach(_case exchange-system exchange-forces exchange-strain)
   add_test(NAME exx-${_case} COMMAND openmx_exx_tests ${_case} "${_exx_fixtures}/overlap_reference.txt")
   set_tests_properties(exx-${_case} PROPERTIES LABELS "unit;exx" TIMEOUT 600)
 endforeach()

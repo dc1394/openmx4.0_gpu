@@ -2088,6 +2088,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
     }
 
     outputfile1(chemical, thermo, mixing_history, energies, components,1,MD_iter,orbitalOpt_iter,Cnt_Now,SCF_iter,file_DFTSCF,ChemP_e0,orbital_norm);
+    if (myid0==Host_ID) Exact_Exchange_Report_Iteration(exact_exchange,MD_iter,SCF_iter,po);
 
     if (po==0 && Cnt_switch==0 && Solver==2 && SpinP_switch==3){
       Cluster_DFT_NonCol_RefineAfterMixing(solver_states.cluster_noncol, sqrt(fabs(mixing_history->norm[0])));
@@ -2794,8 +2795,9 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   *****************************************************/
 
   const int bloch_mo = MO_fileout==1 && MO_Nkpoint>0 && (Solver==3 || PeriodicGamma_flag==1);
+  const int surface_only=fermisurfer_output && !Dos_fileout && !DosGauss_fileout;
   exx_outputs = (Solver==3 && Cnt_switch==0 && Exact_Exchange_Active(exact_exchange)
-                 && ((Band_disp_switch==1 && Band_Nkpath>0) || Dos_fileout || DosGauss_fileout));
+                 && ((Band_disp_switch==1 && Band_Nkpath>0) || Dos_fileout || DosGauss_fileout || surface_only));
   Exact_Exchange_End_Device_Phase(exact_exchange);
   if (exx_outputs) {
     Exact_Exchange_Prepare_Outputs(exact_exchange, atomic, mpi_comm_level1);
@@ -2837,7 +2839,7 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
           calculation of density of states (DOS)
   ******************************************************/
 
-  if ( Dos_fileout || DosGauss_fileout) {
+  if (Dos_fileout || DosGauss_fileout || surface_only) {
     double *****local_hamiltonian=exx_local ? Exact_Exchange_Local_Hamiltonian(exact_exchange,electronic) : H;
     if (exx_local && Solver==8 && Exact_Exchange_Semilocal_Alpha(exact_exchange)!=0.0)
       Krylov_Refresh_Embedding(solver_states.krylov);
@@ -3075,13 +3077,15 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   (void)openmx_hipsolver_release_workspace();
   openmx_gpusolver_cache_release();
 
+  double exx_strain[9]={0.0};
   if (!orbitalOpt_Force_Skip){
     /* hybrid functional: dE_x/dtau of the last exchange matrix, which Force
        adds to the derivative of the total energy; NULL without one */
     double exx_begin, exx_end;
     const double *exx_gradient;
     dtime(&exx_begin);
-    exx_gradient = Exact_Exchange_Gradient(exact_exchange, mpi_comm_level1);
+    exx_gradient = Exact_Exchange_Gradient(exact_exchange, mpi_comm_level1,
+                                           scf_stress_flag ? exx_strain : NULL);
     dtime(&exx_end);
     time7 += exx_end - exx_begin;
     time7 += Force(hamiltonian_state, density_state, atomic, vna,reciprocal, H0,DS_NL,OLP,DM[0],EDM, electronic, local_basis,
@@ -3089,7 +3093,9 @@ double DFT(int MD_iter, int Cnt_Now, OpenMXCoreContext *core)
   }
 
   if (scf_stress_flag){
-    Stress(core,thermo, atomic, vna,reciprocal, H0,DS_NL,OLP,DM[0],EDM, electronic, local_basis);
+    Stress(core,thermo, atomic, vna,reciprocal, H0,DS_NL,OLP,DM[0],EDM, electronic, local_basis,
+           Exact_Exchange_Semilocal_Alpha(exact_exchange),Exact_Exchange_Semilocal_Omega(exact_exchange));
+    for (int component=0; component<9; ++component) Stress_Tensor[component] += exx_strain[component];
   }
 
   /* the matrix-element tables that a non-band run (or a band run with

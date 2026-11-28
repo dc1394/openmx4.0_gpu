@@ -78,6 +78,20 @@ __global__ void dos_weights(int n, int order, int bands, size_t stride, const Z 
     }
 }
 
+__global__ void sum_atomic_weights(int order, int bands, int atoms, int components,
+    const int *offsets, const float *weights, double *atomic)
+{
+    const size_t index=(size_t)blockIdx.x*blockDim.x+threadIdx.x;
+    const size_t width=(size_t)bands*atoms;
+    if (index>=width) return;
+    const int atom=index%atoms;
+    const float *band=weights+((size_t)blockIdx.y*bands+index/atoms)*order;
+    const int end=components*offsets[atom+1];
+    double sum=0.0;
+    for (int j=components*offsets[atom]; j<end; ++j) sum+=band[j];
+    atomic[(size_t)blockIdx.y*width+index]=sum;
+}
+
 __global__ void bloch_phases(int count, const LatticeTranslation *translations, OpenMXKPathPoint point,
                              const OpenMXKPathPoint *batch, Z *phases)
 {
@@ -356,6 +370,8 @@ struct Workspace {
     DeviceBuffer<Z> original_overlap;
     DeviceBuffer<OpenMXDosSpinProjection> spin_projection;
     DeviceBuffer<float> projected;
+    DeviceBuffer<int> atom_offsets;
+    DeviceBuffer<double> projected_atoms;
     DeviceBuffer<unsigned char> discard;
     OpenMXBlasHandle blas = nullptr;
     NativeEigensolver solver;
@@ -531,12 +547,42 @@ struct Workspace {
     bool prepare_projection(int n, int order, const OpenMXBandDosProjection &dos)
     {
         if (!original_overlap.allocate((size_t)n*n) || !projected.allocate((size_t)order*dos.count)) return false;
+        if (dos.atoms) {
+            const size_t count=(size_t)dos.atoms+1;
+            if (!atom_offsets.allocate(count) || !projected_atoms.allocate((size_t)dos.atoms*dos.count) ||
+                OpenMXGpuMemcpy(atom_offsets.get(),dos.atom_offsets,count*sizeof(int),OPENMX_GPU_COPY_HOST_TO_DEVICE) !=
+                    OPENMX_GPU_SUCCESS) return false;
+        }
         return !dos.spin || (spin_projection.allocate(n) &&
             OpenMXGpuMemcpy(spin_projection.get(),dos.spin,(size_t)n*sizeof(*dos.spin),OPENMX_GPU_COPY_HOST_TO_DEVICE) ==
                 OPENMX_GPU_SUCCESS);
     }
 
-    bool project(int n, int order, const OpenMXBandDosProjection &dos, bool native_precision, float *out)
+    bool copy_projections(int order, int points, const OpenMXBandDosProjection &dos,
+        const float *device, double *device_atoms, float *weights, double *atomic) const
+    {
+        if (weights) {
+            const size_t row=(size_t)order*dos.orbital_count*sizeof(float);
+            const size_t pitch=(size_t)order*dos.count*sizeof(float);
+            const float *slice=device+(size_t)order*dos.orbital_first;
+            const auto status=points==1 || row==pitch
+                ? OpenMXGpuMemcpy(weights,slice,(size_t)points*row,OPENMX_GPU_COPY_DEVICE_TO_HOST)
+                : OpenMXGpuMemcpy2D(weights,row,slice,pitch,row,points,OPENMX_GPU_COPY_DEVICE_TO_HOST);
+            if (status!=OPENMX_GPU_SUCCESS) return false;
+        }
+        if (atomic) {
+            const size_t width=(size_t)dos.atoms*dos.count;
+            sum_atomic_weights<<<dim3((width+threads-1)/threads,points),threads>>>(
+                order,dos.count,dos.atoms,dos.spin ? 2 : 1,atom_offsets.get(),device,device_atoms);
+            if (OpenMXGpuGetLastError()!=OPENMX_GPU_SUCCESS ||
+                OpenMXGpuMemcpy(atomic,device_atoms,(size_t)points*width*sizeof(double),
+                                OPENMX_GPU_COPY_DEVICE_TO_HOST)!=OPENMX_GPU_SUCCESS) return false;
+        }
+        return true;
+    }
+
+    bool project(int n, int order, const OpenMXBandDosProjection &dos, bool native_precision,
+                 float *weights, double *atomic)
     {
         const auto zgemm = native_precision ? OpenMXBlasZgemm : openmx_gemmul8Zgemm;
         const Z one = OpenMXGpuMakeComplex(1.0,0.0), zero = OpenMXGpuMakeComplex(0.0,0.0);
@@ -553,8 +599,7 @@ struct Workspace {
         dos_weights<<<((size_t)n*dos.count+threads-1)/threads,threads>>>(n,order,dos.count,0,product.get(),h.get(),
             spin_projection.get(),projected.get());
         return OpenMXGpuGetLastError() == OPENMX_GPU_SUCCESS &&
-            OpenMXGpuMemcpy(out,projected.get(),projected.size()*sizeof(*out),OPENMX_GPU_COPY_DEVICE_TO_HOST) ==
-                OPENMX_GPU_SUCCESS;
+            copy_projections(order,1,dos,projected.get(),projected_atoms.get(),weights,atomic);
     }
 };
 
@@ -584,7 +629,8 @@ bool transform_dos_batch(const Workspace &w, int n, int order, int count, const 
 }
 
 bool project_dos_batch(const Workspace &w, int n, int order, int count, const OpenMXBandDosProjection &dos,
-    const Z *s, const Z *raw, Z *h, Z *ao, float *projected, float *host)
+    const Z *s, const Z *raw, Z *h, Z *ao, float *projected, double *projected_atoms,
+    float *weights, double *atomic)
 {
     const size_t ss=w.s.size(), hs=w.h.size();
     for (int row=0; row<order; row+=n) {
@@ -598,8 +644,7 @@ bool project_dos_batch(const Workspace &w, int n, int order, int count, const Op
     dos_weights<<<dim3(((size_t)n*dos.count+threads-1)/threads,count),threads>>>(n,order,dos.count,hs,
         ao,h,w.spin_projection.get(),projected);
     return OpenMXGpuGetLastError()==OPENMX_GPU_SUCCESS &&
-        OpenMXGpuMemcpy(host,projected,(size_t)count*order*dos.count*sizeof(float),OPENMX_GPU_COPY_DEVICE_TO_HOST)==
-            OPENMX_GPU_SUCCESS;
+        w.copy_projections(order,count,dos,projected,projected_atoms,weights,atomic);
 }
 
 bool penalize_overlap(int n, int order, double cutoff, int count, const double *values, Z *h,
@@ -671,14 +716,18 @@ struct BatchedEigensolver {
 
 bool solve_batched(Workspace &w, const OpenMXKPathMatrices &m, int order, int point_count,
                    const OpenMXKPathPoint *points, double *eigen, bool penalized,
-                   const OpenMXBandDosProjection *dos, float *weights)
+                   const OpenMXBandDosProjection *dos, float *weights, double *atomic)
 {
     constexpr int max_batch = 64;
     constexpr size_t batch_limit = size_t{32} << 20;
     constexpr double min_overlap_ratio = 1.0e-5;
     const int n = m.order;
-    const size_t weight_count = weights ? (size_t)order*dos->count : 0;
-    const size_t projection_bytes = weights ? (w.s.size()+w.h.size())*sizeof(Z)+weight_count*sizeof(float) : 0;
+    const bool project_bands=weights || atomic;
+    const size_t projected_count=project_bands ? (size_t)order*dos->count : 0;
+    const size_t weight_count=weights ? (size_t)order*dos->orbital_count : 0;
+    const size_t atom_count=atomic ? (size_t)dos->atoms*dos->count : 0;
+    const size_t projection_bytes=project_bands
+        ? (w.s.size()+w.h.size())*sizeof(Z)+projected_count*sizeof(float)+atom_count*sizeof(double) : 0;
     const size_t per_point = (w.phases.size() + w.s.size() + w.h.size()) * sizeof(Z) + projection_bytes +
         (size_t)(n + order) * sizeof(double) + (size_t)n + sizeof(OpenMXKPathPoint) + sizeof(int);
     size_t free = 0, total = 0;
@@ -692,19 +741,21 @@ bool solve_batched(Workspace &w, const OpenMXKPathMatrices &m, int order, int po
     DeviceBuffer<Z> phases, s, h;
     DeviceBuffer<Z> original, scratch;
     DeviceBuffer<float> projected;
-    DeviceBuffer<double> overlap_values, eigenvalues;
+    DeviceBuffer<double> overlap_values, eigenvalues, projected_atoms;
     DeviceBuffer<unsigned char> discard;
     BatchedEigensolver solver;
     std::vector<double> values((size_t)capacity * order);
     std::vector<float> host_weights((size_t)capacity*weight_count);
+    std::vector<double> host_atoms((size_t)capacity*atom_count);
     if (!device_points.allocate(capacity) || !phases.allocate((size_t)capacity * w.phases.size()) ||
         !s.allocate((size_t)capacity * w.s.size()) || !h.allocate((size_t)capacity * w.h.size()) ||
         !overlap_values.allocate((size_t)capacity * n) || !eigenvalues.allocate((size_t)capacity * order) ||
         !discard.allocate((size_t)capacity * n) ||
         !solver.prepare(n, order, capacity, s.get(), h.get(), overlap_values.get(), eigenvalues.get(),
-                        budget - (size_t)capacity * per_point, weights!=nullptr) ||
-        (weights && (!original.allocate(s.size()) || !scratch.allocate(h.size()) ||
-                     !projected.allocate((size_t)capacity*weight_count))))
+                        budget - (size_t)capacity * per_point, project_bands) ||
+        (project_bands && (!original.allocate(s.size()) || !scratch.allocate(h.size()) ||
+                          !projected.allocate((size_t)capacity*projected_count))) ||
+        (atomic && !projected_atoms.allocate((size_t)capacity*atom_count)))
         return false;
 
     // Amortize capture over several full batches on the same GPU owner.
@@ -729,7 +780,7 @@ bool solve_batched(Workspace &w, const OpenMXKPathMatrices &m, int order, int po
             const auto assemble_batch = [&](OpenMXGpuStream stream) {
                 return (spin != 0 || w.phase_rows({}, count, device_points.get(), phases.get(), stream)) &&
                     w.construct(m, order, spin, count, phases.get(), overlap_needed ? s.get() : nullptr, h.get(), stream) &&
-                    (!weights || !overlap_needed || OpenMXGpuMemcpyAsync(original.get(),s.get(),(size_t)count*w.s.size()*sizeof(Z),
+                    (!project_bands || !overlap_needed || OpenMXGpuMemcpyAsync(original.get(),s.get(),(size_t)count*w.s.size()*sizeof(Z),
                         OPENMX_GPU_COPY_DEVICE_TO_DEVICE,stream)==OPENMX_GPU_SUCCESS) &&
                     (!overlap_needed || solver.enqueue(n, count, s.get(), overlap_values.get(), true, stream));
             };
@@ -751,7 +802,7 @@ bool solve_batched(Workspace &w, const OpenMXKPathMatrices &m, int order, int po
                 if (OpenMXGpuGetLastError() != OPENMX_GPU_SUCCESS) return false;
             }
 
-            if (weights) {
+            if (project_bands) {
                 if (!transform_dos_batch(w,n,order,count,s.get(),h.get(),scratch.get())) return false;
             } else {
                 for (int k = 0; k < count; ++k)
@@ -761,18 +812,20 @@ bool solve_batched(Workspace &w, const OpenMXKPathMatrices &m, int order, int po
             const auto solve_hamiltonian = [&](OpenMXGpuStream stream) {
                 return (!penalized || penalize_overlap(n, order, m.overlap_cutoff, count,
                             overlap_values.get(), h.get(), discard.get(), stream)) &&
-                       solver.enqueue(order, count, h.get(), eigenvalues.get(), weights!=nullptr, stream);
+                       solver.enqueue(order, count, h.get(), eigenvalues.get(), project_bands, stream);
             };
             if (!eigen_graph.submit(capture_stream, solver.handle, solve_hamiltonian, replays) ||
                 !solver.read(order, count, eigenvalues.get(), values.data())) return false;
-            if (weights && !project_dos_batch(w,n,order,count,*dos,s.get(),original.get(),h.get(),scratch.get(),
-                                             projected.get(),host_weights.data())) return false;
+            if (project_bands && !project_dos_batch(w,n,order,count,*dos,s.get(),original.get(),h.get(),scratch.get(),
+                    projected.get(),projected_atoms.get(),weights ? host_weights.data() : nullptr,
+                    atomic ? host_atoms.data() : nullptr)) return false;
             for (int k = 0; k < count; ++k) {
                 const double *row = values.data() + (size_t)k * order;
                 if (!good_spectrum(order, row)) return false;
                 const size_t output=(size_t)(first+k)*m.spin_channels+spin;
                 std::copy_n(row,order,eigen+output*order);
                 if (weights) std::copy_n(host_weights.data()+(size_t)k*weight_count,weight_count,weights+output*weight_count);
+                if (atomic) std::copy_n(host_atoms.data()+(size_t)k*atom_count,atom_count,atomic+output*atom_count);
             }
         }
         first += count;
@@ -789,18 +842,19 @@ bool solve_batched(Workspace &w, const OpenMXKPathMatrices &m, int order, int po
 
 bool solve_points(Workspace &w, const OpenMXKPathMatrices &m, int point_count,
                   const OpenMXKPathPoint *points, double *eigen, double *ao,
-                  const OpenMXBandDosProjection *dos, float *weights, const char **stage)
+                  const OpenMXBandDosProjection *dos, float *weights, double *atomic, const char **stage)
 {
     const int order = m.noncollinear ? 2 * m.order : m.order;
     const int n = m.order;
     const bool penalized = !m.lno && !(dos && dos->unregularized_overlap);
+    const bool project_bands=weights || atomic;
     *stage = "device workspace allocation";
-    if (!w.prepare(m, order) || (weights && !w.prepare_projection(n,order,*dos))) return false;
+    if (!w.prepare(m, order) || (project_bands && !w.prepare_projection(n,order,*dos))) return false;
 
     if (!ao && order <= jacobi_max_order && point_count >= min_batched_points) {
         *stage = "batched eigensolve";
         try {
-            if (solve_batched(w,m,order,point_count,points,eigen,penalized,dos,weights)) return true;
+            if (solve_batched(w,m,order,point_count,points,eigen,penalized,dos,weights,atomic)) return true;
         } catch (const std::bad_alloc &) {
             // Optional batch buffers are gone before the per-point retry.
         }
@@ -820,7 +874,7 @@ bool solve_points(Workspace &w, const OpenMXKPathMatrices &m, int point_count,
             if (!w.construct(m, order, spin, 1, w.phases.get(), overlap_needed ? w.s.get() : nullptr, w.h.get())) return false;
             *stage = "overlap eigensolve and scaling";
             if (overlap_needed) {
-                if (weights && OpenMXGpuMemcpyAsync(w.original_overlap.get(),w.s.get(),w.s.size()*sizeof(Z),
+                if (project_bands && OpenMXGpuMemcpyAsync(w.original_overlap.get(),w.s.get(),w.s.size()*sizeof(Z),
                                                    OPENMX_GPU_COPY_DEVICE_TO_DEVICE,nullptr) != OPENMX_GPU_SUCCESS)
                     return false;
                 if (!w.orthogonalize(n, overlap.data())) return false;
@@ -834,14 +888,17 @@ bool solve_points(Workspace &w, const OpenMXKPathMatrices &m, int point_count,
 
             *stage = "Hamiltonian eigensolve";
             const size_t row = ((size_t)k*m.spin_channels+spin)*order;
-            if (!w.diagonalize(order, w.h.get(), eigen+row, ao || weights)) return false;
+            if (!w.diagonalize(order, w.h.get(), eigen+row, ao || project_bands)) return false;
             if (ao) {
                 *stage = "AO eigenvectors";
                 if (!w.coefficients(n,order,ill_conditioned,ao+2*row*order)) return false;
             }
-            if (weights) {
+            if (project_bands) {
                 *stage = "DOS projection";
-                if (!w.project(n,order,*dos,ill_conditioned,weights+row*dos->count)) return false;
+                const size_t point_spin=(size_t)k*m.spin_channels+spin;
+                if (!w.project(n,order,*dos,ill_conditioned,
+                    weights ? weights+row*dos->orbital_count : nullptr,
+                    atomic ? atomic+point_spin*dos->count*dos->atoms : nullptr)) return false;
             }
         }
         if (OPENMX_STDOUT_LEVEL(2) && ((k + 1) % report_interval == 0 || k + 1 == point_count)) {
@@ -854,7 +911,7 @@ bool solve_points(Workspace &w, const OpenMXKPathMatrices &m, int point_count,
 }
 int solve_gpu(int device, const OpenMXKPathMatrices *matrices, int point_count,
               const OpenMXKPathPoint *points, double *eigenvalues, double *ao,
-              const OpenMXBandDosProjection *dos, float *weights)
+              const OpenMXBandDosProjection *dos, float *weights, double *atomic)
 {
     openmx::gpu::DeviceBinding binding(device);
     if (!binding) return 0;
@@ -870,7 +927,7 @@ int solve_gpu(int device, const OpenMXKPathMatrices *matrices, int point_count,
 #endif
         Workspace work;
         try {
-            success = solve_points(work,*matrices,point_count,points,eigenvalues,ao,dos,weights,&stage);
+            success = solve_points(work,*matrices,point_count,points,eigenvalues,ao,dos,weights,atomic,&stage);
         } catch (const std::bad_alloc &) {
             stage = "host workspace allocation";
         }
@@ -897,17 +954,18 @@ int solve_gpu(int device, const OpenMXKPathMatrices *matrices, int point_count,
 extern "C" int openmx_band_kpath_solve_gpu(int device, const OpenMXKPathMatrices *matrices,
     int point_count, const OpenMXKPathPoint *points, double *eigenvalues)
 {
-    return solve_gpu(device,matrices,point_count,points,eigenvalues,nullptr,nullptr,nullptr);
+    return solve_gpu(device,matrices,point_count,points,eigenvalues,nullptr,nullptr,nullptr,nullptr);
 }
 
 extern "C" int openmx_band_mo_vectors_gpu(int device, const OpenMXKPathMatrices *matrices,
     int point_count, const OpenMXKPathPoint *points, double *eigenvalues, double *ao)
 {
-    return solve_gpu(device,matrices,point_count,points,eigenvalues,ao,nullptr,nullptr);
+    return solve_gpu(device,matrices,point_count,points,eigenvalues,ao,nullptr,nullptr,nullptr);
 }
 
 extern "C" int openmx_band_dos_gpu(int device, const OpenMXKPathMatrices *matrices, int point_count,
-    const OpenMXKPathPoint *points, const OpenMXBandDosProjection *projection, double *eigen, float *weights)
+    const OpenMXKPathPoint *points, const OpenMXBandDosProjection *projection, double *eigen, float *weights,
+    double *atomic)
 {
-    return solve_gpu(device,matrices,point_count,points,eigen,nullptr,projection,weights);
+    return solve_gpu(device,matrices,point_count,points,eigen,nullptr,projection,weights,atomic);
 }

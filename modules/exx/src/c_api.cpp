@@ -6,6 +6,7 @@
 #include <openmx/exx/system.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstring>
@@ -686,6 +687,14 @@ int openmx_exx_add_position_gradient_pairs_pieces(const OpenMXExxState* state, c
                                                   int part, int parts, const OpenMXExxDenseBackend* backend,
                                                   double* gradient, char* error, size_t capacity)
 {
+  return openmx_exx_add_geometry_gradient_pairs(state,weights,part,parts,backend,nullptr,
+                                                 gradient,nullptr,0,error,capacity);
+}
+
+int openmx_exx_add_geometry_gradient_pairs(const OpenMXExxState* state, const double* const* weights,
+    int part, int parts, const OpenMXExxDenseBackend* backend, OpenMXExxDot dot,
+    double* gradient, double* strain, int volume_scaled_cutoff, char* error, size_t capacity)
+{
   return guarded(error,capacity,[&] {
     const System& system = complete(state,"the derivative with respect to the positions needs a prepared structure");
     if (weights == nullptr || gradient == nullptr)
@@ -702,9 +711,13 @@ int openmx_exx_add_position_gradient_pairs_pieces(const OpenMXExxState* state, c
                                       system);
     // Summed aside, so that a failure adds nothing.
     std::vector<double> sum(3*atoms,0.0);
+    std::array<double,9> cell{};
     derivative.add_pairs(arrays,PrepareShare{static_cast<std::size_t>(part),static_cast<std::size_t>(parts)},sum,
-                         DenseBackend(backend,state->host_add_rows,state->minimum_device_work));
+                         DenseBackend(backend,state->host_add_rows,state->minimum_device_work),
+                         strain ? std::span<double>(cell) : std::span<double>{}, volume_scaled_cutoff!=0, dot);
     for (std::size_t e = 0; e < sum.size(); ++e) gradient[e] += sum[e];
+    if (strain)
+      for (std::size_t e = 0; e < cell.size(); ++e) strain[e] += cell[e];
   });
 }
 

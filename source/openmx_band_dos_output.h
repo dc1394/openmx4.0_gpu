@@ -14,6 +14,7 @@ typedef struct {
     const int *species, *orbitals;
     int *const *species_basis;
     const double *theta, *phi;
+    int surface_only;
 } OpenMXBandDosRequest;
 
 typedef struct {

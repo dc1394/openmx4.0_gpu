@@ -84,6 +84,7 @@ void exchange_centre_gradient(const std::string& fixture);
 void exchange_backend(const std::string& fixture);
 void exchange_system(const std::string& fixture);
 void exchange_forces(const std::string& fixture);
+void exchange_strain(const std::string& fixture);
 void exchange_device(const std::string& fixture);
 void exchange_device_system(const std::string& fixture);
 void exchange_half(const std::string& fixture);

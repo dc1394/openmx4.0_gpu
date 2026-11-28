@@ -13,6 +13,7 @@
 #include <limits.h>
 #include <math.h>
 #include <stdarg.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -302,6 +303,17 @@ double Exact_Exchange_Energy(const OpenMXExactExchangeState *state)
 double Exact_Exchange_Change(const OpenMXExactExchangeState *state)
 {
   return state->change;
+}
+
+void Exact_Exchange_Report_Iteration(const OpenMXExactExchangeState *state, int md, int scf,
+                                    int inner_converged)
+{
+  if (!Exact_Exchange_Enabled(state)) return;
+  const char *status=state->outer_converged ? "converged" :
+      state->outer_iterations==0 ? "initial SCF" :
+      inner_converged ? "iteration limit reached" : "in progress";
+  Exact_Exchange_Log(state,1,"<EXX>  MD=%d SCF=%d  EXX builds=%d/%d  status=%s\n",
+                     md,scf,state->outer_iterations,state->input.outer_max_iterations,status);
 }
 
 void Exact_Exchange_Report_Scf(const OpenMXExactExchangeState *state, MPI_Comm comm,
@@ -1510,8 +1522,9 @@ void Exact_Exchange_Build(OpenMXExactExchangeState *state, MPI_Comm comm)
   }
 }
 
-const double *Exact_Exchange_Gradient(OpenMXExactExchangeState *state, MPI_Comm comm)
+const double *Exact_Exchange_Gradient(OpenMXExactExchangeState *state, MPI_Comm comm, double strain[9])
 {
+  if (strain) memset(strain,0,9*sizeof(*strain));
   if (!Exact_Exchange_Active(state) || !state->prepared || state->spin_channels<1 || state->collecting)
     return NULL;
 
@@ -1544,9 +1557,19 @@ const double *Exact_Exchange_Gradient(OpenMXExactExchangeState *state, MPI_Comm 
        sum has rounding. */
     const long first_abf=state->first_abf, last_abf=state->last_abf;
     double **weights=(double**)ExactExchange_Allocate(state,(size_t)atoms,sizeof(double*),comm,"forces");
-    for (int a=0; a<atoms; a++)
-      weights[a] = (double*)ExactExchange_Allocate(state,openmx_exx_atom_table_elements(state->module,a),
-                                                   sizeof(double),comm,"forces");
+    size_t elements=0;
+    for (int a=0; a<atoms; a++) {
+      const size_t count=openmx_exx_atom_table_elements(state->module,a);
+      if (count>SIZE_MAX/sizeof(double)-elements)
+        ExactExchange_Abort(comm,"forces","the weights of the exchange integrals are too large");
+      elements+=count;
+    }
+    double *weight_values=(double*)ExactExchange_Allocate(state,elements,sizeof(double),comm,"forces");
+    size_t offset=0;
+    for (int a=0; a<atoms; a++) {
+      weights[a]=weight_values+offset;
+      offset+=openmx_exx_atom_table_elements(state->module,a);
+    }
     int threads=1;
 #ifdef _OPENMP
     threads = omp_get_max_threads();
@@ -1599,23 +1622,24 @@ const double *Exact_Exchange_Gradient(OpenMXExactExchangeState *state, MPI_Comm 
     ExactExchange_Device_Counts_Back(&state->device,&counts);
     ExactExchange_Report_Device_Failure(state,rank,disabled_before);
     weight_seconds = MPI_Wtime()-start;
-    if (1<processes) {
-      for (int a=0; a<atoms; a++)
-        ExactExchange_Sum(weights[a],openmx_exx_atom_table_elements(state->module,a),comm);
-    }
+    if (1<processes) ExactExchange_Sum(weight_values,elements,comm);
 
     /* The second step goes through the pairs of sites, which the processes
        divide: a pair is visited once, with the weights of the blocks of
        both of its atoms. The pairs of a process run on the threads of the
        weights; the vectors of the pairs are added in their order, so the
        derivative is the same for every number of threads. */
-    if (openmx_exx_add_position_gradient_pairs_pieces(state->module,(const double *const*)weights,rank,processes,
-                                                      &backend,state->gradient,error,sizeof(error))!=0)
+    const int mode=OpenMX_HostSimdMode();
+    const OpenMXHostDot dot=mode==OPENMX_GRID_AVX2 || mode==OPENMX_GRID_AVX512 ? openmx_core_host_dot(mode) : NULL;
+    const int scale_cutoff=state->input.functional==OPENMX_EXACT_EXCHANGE_PBE0 && state->input.coulomb_cutoff<=0.0;
+    if (openmx_exx_add_geometry_gradient_pairs(state->module,(const double *const*)weights,rank,processes,
+        &backend,dot,state->gradient,strain,scale_cutoff,error,sizeof(error))!=0)
       ExactExchange_Abort(comm,"forces",error);
     openmx_core_native_free(state->resources,products.host.loop);
-    for (int a=0; a<atoms; a++) openmx_core_native_free(state->resources,weights[a]);
+    openmx_core_native_free(state->resources,weight_values);
     openmx_core_native_free(state->resources,weights);
     ExactExchange_Sum(state->gradient,3*(size_t)atoms,comm);
+    if (strain) ExactExchange_Sum(strain,9,comm);
   }
   if (rank==0 && ExactExchange_Detailed(state)) {
     /* the forces are the negative of the derivative; their sum vanishes */

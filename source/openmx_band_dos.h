@@ -16,15 +16,19 @@ typedef struct {
     int first, count;    /* zero-based band range to project */
     int unregularized_overlap;
     const OpenMXDosSpinProjection *spin;
+    int orbital_first, orbital_count; /* DOS slice, relative to first */
+    int atoms;
+    const int *atom_offsets;         /* AO offsets including the end */
 } OpenMXBandDosProjection;
 
-/* Eigenvalues cover all bands. Weights are point, spin, selected band, AO
-   in that order. The two local spin components of an NC atom are adjacent. */
+/* Eigenvalues cover all bands. The optional outputs are contiguous in
+   point, spin, band, then orbital or atom order. Orbital output covers just
+   the DOS slice. Atomic output covers the full projected range. */
 int openmx_band_dos_cpu(const OpenMXKPathMatrices *m, int count, const OpenMXKPathPoint *points,
-    const OpenMXBandDosProjection *projection, double *eigen, float *weights,
+    const OpenMXBandDosProjection *projection, double *eigen, float *weights, double *atomic,
     int simd_mode, size_t workspace_limit, int *threads_used);
 int openmx_band_dos_gpu(int device, const OpenMXKPathMatrices *m, int count, const OpenMXKPathPoint *points,
-    const OpenMXBandDosProjection *projection, double *eigen, float *weights);
+    const OpenMXBandDosProjection *projection, double *eigen, float *weights, double *atomic);
 
 #if defined(__CUDACC__) || defined(__HIPCC__)
 #define OPENMX_DOS_HOST_DEVICE __host__ __device__

@@ -152,6 +152,8 @@ void Exact_Exchange_Log(const OpenMXExactExchangeState *state, int level, const 
    use and close the SCF log after the force and post-SCF steps. Collective. */
 void Exact_Exchange_Report_Scf(const OpenMXExactExchangeState *state, MPI_Comm comm,
     int inner_converged, int scf_limit);
+void Exact_Exchange_Report_Iteration(const OpenMXExactExchangeState *state, int md, int scf,
+    int inner_converged);
 void Exact_Exchange_Finish_Report(OpenMXExactExchangeState *state, MPI_Comm comm);
 
 /* ---- semilocal part ------------------------------------------------------ */
@@ -277,12 +279,13 @@ double Exact_Exchange_Change(const OpenMXExactExchangeState *state);        /* d
    the derivatives of E_x with respect to the T and V blocks, as in the
    build, and the pairs of sites for the derivatives of the blocks (section
    6.7); every process gets the sum. The device may take matrix products
-   while forming the weights. The SCF build counters exclude them. The
-   array belongs to the state and holds until
+   while forming the weights. The SCF build counters exclude them.
+   The optional strain array receives dE_x/dF in Hartree, for x' = F x.
+   The Cartesian gradient belongs to the state and holds until
    the next call or preparation. Returns NULL without an exchange matrix (no
    hybrid functional, or no build for the present structure). A failure
    ends the run through MPI_Abort. */
-const double *Exact_Exchange_Gradient(OpenMXExactExchangeState *state, MPI_Comm comm);
+const double *Exact_Exchange_Gradient(OpenMXExactExchangeState *state, MPI_Comm comm, double strain[9]);
 
 /* ---- inner SCF with an exchange matrix (section 6.6) --------------------- */
 
