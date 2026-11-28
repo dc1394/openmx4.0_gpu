@@ -72,6 +72,11 @@
    "ja": "全エネルギー・力(Total_Energy.c / Force.c)"
   },
   {
+   "id": "motion",
+   "en": "Molecular dynamics and geometry optimization",
+   "ja": "分子動力学と構造最適化"
+  },
+  {
    "id": "mixing",
    "en": "Charge/DM mixing (Mixing_H.c etc.)",
    "ja": "電荷/DM 混合(Mixing_H.c ほか)"
@@ -1021,6 +1026,22 @@
    ],
    "en": "[Force profile] lines (per-stage max/avg seconds)",
    "ja": "[Force profile] 行(ステージ別 max/avg 秒)の出力"
+  },
+  {
+   "group": "motion",
+   "names": [
+    "OPENMX_MD_GPU_MIN"
+   ],
+   "en": "Minimum number of owned atoms per MPI rank for CUDA MD updates. Set to 0 to run atom updates on the host.",
+   "ja": "MD の原子更新を CUDA で行うために、各 MPI ランクが担当する原子の最小数。0 で原子更新をホストで実行する。"
+  },
+  {
+   "group": "motion",
+   "names": [
+    "OPENMX_GEOMETRY_GPU_MIN"
+   ],
+   "en": "Minimum Hessian dimension for a GPU eigensolve during geometry optimization.",
+   "ja": "構造最適化の固有値計算を GPU で実行するためのヘッセ行列の最小次元。"
   },
   {
    "group": "mixing",

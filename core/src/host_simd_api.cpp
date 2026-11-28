@@ -1,5 +1,6 @@
 #include "openmx_core_host_simd.h"
 #include "host_add_rows_kernels.hpp"
+#include "host_md_kernels.hpp"
 #include "host_bloch_kernels.hpp"
 #include "host_simd_runtime.hpp"
 #include <cctype>
@@ -52,6 +53,18 @@ extern "C" OpenMXHostDot openmx_core_host_dot(int mode) {
 }
 extern "C" OpenMXHostUpdateRow openmx_core_host_update_row(int mode) {
   const auto* kernel=openmx::core::host::openmx_host_update_row_kernels(mode);
+  return kernel ? *kernel : nullptr;
+}
+extern "C" OpenMXHostMDMove openmx_core_host_md_move(int mode) {
+  const auto* kernel=openmx::core::host::openmx_host_md_move_kernels(mode);
+  return kernel ? *kernel : nullptr;
+}
+extern "C" OpenMXHostMDPeriodic openmx_core_host_md_periodic(int mode) {
+  const auto* kernel=openmx::core::host::openmx_host_md_periodic_kernels(mode);
+  return kernel ? *kernel : nullptr;
+}
+extern "C" OpenMXHostMDNPT openmx_core_host_md_npt(int mode) {
+  const auto* kernel=openmx::core::host::openmx_host_md_npt_kernels(mode);
   return kernel ? *kernel : nullptr;
 }
 extern "C" OpenMXHostBlochAdd openmx_core_host_bloch_add(int mode) {

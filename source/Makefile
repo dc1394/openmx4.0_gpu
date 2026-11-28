@@ -327,7 +327,7 @@ OBJS    = openmx_grid_assembly.o openmx.o openmx_common.o Input_std.o Inputtools
           Cont_Matrix3.o Cont_Matrix4.o Opt_Contraction.o Initial_CntCoes.o Initial_CntCoes2.o \
           Set_XC_Grid.o \
           Get_Orbitals.o Get_dOrbitals.o Get_Cnt_Orbitals.o \
-          Get_Cnt_dOrbitals.o Gaunt.o Find_CGrids.o MD_pac.o openmx_geometry_opt.o \
+          Get_Cnt_dOrbitals.o Gaunt.o Find_CGrids.o MD_pac.o openmx_geometry_opt.o openmx_md_step.o \
           RestartFileDFT.o Output_CompTime.o Merge_LogFile.o Make_FracCoord.o \
           Make_InputFile_with_FinalCoord.o Output_Energy_Decomposition.o \
           Divide_Conquer.o Divide_Conquer_LNO.o gemmul8_bridge.o eigen_refine_gpu.o grid_precision.o openmx_precision.o elpa_cosma_bridge.o Krylov.o \
@@ -379,7 +379,7 @@ OBJS    = openmx_grid_assembly.o openmx.o openmx_common.o Input_std.o Inputtools
           Electric_Polarization_BandCol.o Electric_Polarization_BandNonCol.o
 
 OBJS += openmx_mgpu_runtime.o openmx_mgpu_gemm.o openmx_magma_mgpu.o
-OBJS += Band_DFT_kpath_parallel.o openmx_band_kpath_cpu.o openmx_band_dos_output.o openmx_mo_grid.o openmx_band_kpath_gpu.o openmx_mo_device.o
+OBJS += Band_DFT_kpath_parallel.o openmx_band_kpath_cpu.o openmx_band_dos_output.o openmx_mo_grid.o openmx_band_kpath_gpu.o openmx_mo_device.o openmx_md_cuda.o
 OBJS += openmx_gpu_workers.o openmx_gpu_error.o openmx_gpu_views.o openmx_globals.o
 OBJS += openmx_gpu_transform.o
 OBJS += openmx_gpu_dm.o openmx_gpu_dm_collective.o
@@ -719,6 +719,8 @@ openmx_mo_grid.o: openmx_mo_grid.cpp openmx_mo_grid.h openmx_mo_device.h openmx_
 	$(NVHPC_COMPILER_BIN)/nvc++ -O3 -std=c++17 -fopenmp -Mnofma $(shell $(MPICC) --showme:compile) -c $< -o $@
 openmx_mo_device.o: openmx_mo_device.cu openmx_mo_device.h openmx_gpu_memory.hpp
 	$(NVCC_GEMMUL8_ENV) $(NVCC) $(NVCC_GEMMUL8_FLAGS) -c $< -o $@
+openmx_md_cuda.o: openmx_md_cuda.cu openmx_md_cuda.h openmx_gpu_memory.hpp ../core/include/openmx_core_md.h ../core/include/openmx_md_integrator.hpp
+	$(NVCC_GEMMUL8_ENV) $(NVCC) $(filter-out -std=c++20,$(NVCC_GEMMUL8_FLAGS)) -std=c++17 --fmad=false -c $< -o $@
 openmx_band_kpath_gpu.o: openmx_band_kpath_gpu.cu openmx_band_kpath.h openmx_band_dos.h openmx_gpu_memory.hpp openmx_gpu_workers.h openmx_mgpu_runtime.h
 	$(NVCC_GEMMUL8_ENV) $(NVCC) $(NVCC_GEMMUL8_FLAGS) -c $< -o $@
 Band_DFT_MO.o: Band_DFT_MO.c openmx_common.h openmx_band_kpath.h openmx_exact_exchange.h
@@ -1153,9 +1155,11 @@ LNO.o: LNO.c openmx_common.h
 #
 #
 # NVHPC 26.3 + -acc can segfault in the MD control path after SCF.
-MD_pac.o: MD_pac.c openmx_common.h lapack_prototypes.h openmx_geometry_opt.h
+MD_pac.o: MD_pac.c openmx_common.h lapack_prototypes.h openmx_geometry_opt.h openmx_md_step.h
 	$(CC_NOACC) -c MD_pac.c
-openmx_geometry_opt.o: openmx_geometry_opt.c openmx_geometry_opt.h openmx_common.h openmx_env_registry.h openmx_host_simd.h openmx_gpu_device.h openmx_core_native_resources.h lapack_prototypes.h
+openmx_md_step.o: openmx_md_step.c openmx_md_step.h openmx_md_cuda.h openmx_atom_layout.h openmx_env_registry.h openmx_host_simd.h openmx_gpu_device.h ../core/include/openmx_core_md.h
+	$(CC_NOACC_O3) -c $<
+openmx_geometry_opt.o: openmx_geometry_opt.c openmx_geometry_opt.h openmx_atom_layout.h openmx_common.h openmx_env_registry.h openmx_host_simd.h openmx_gpu_device.h openmx_core_native_resources.h lapack_prototypes.h
 	$(CC_NOACC_O3) -c openmx_geometry_opt.c
 #
 #

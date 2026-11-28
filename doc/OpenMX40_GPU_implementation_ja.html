@@ -2289,6 +2289,9 @@ input_int("scf.Gpu.Num", &amp;SCF_Gpu_Num, 30);</code></pre>
 <tr><td><code>OPENMX_FORCE4B_CASE1_STREAM</code> / <code>_STREAM_MB</code></td><td>auto / 1024</td><td>Force4B ケース 1（常駐対）: バッチ全体が入らないとき、ハローのソースを上限付きデバイスアリーナ経由でストリーミングする（auto。0 = しない、1 = 常に）。<code>_STREAM_MB</code> はアリーナの上限（MiB）。</td></tr>
 <tr><td><code>OPENMX_FORCE4B_CASE1_TURNS</code> / <code>_TURN_MAX_RANKS</code></td><td>auto / 制限なし</td><td>Force4B ケース 1: 共有デバイス上のランク交代（auto = 全ランクの常駐アリーナが同時に入らないとき。0/1 で強制）と、1 回の交代で動くランク数の上限。</td></tr>
 <tr><td><code>OPENMX_FORCE4B_CASE2_STREAM</code></td><td>auto</td><td>Force4B ケース 2: バッチ全体が入らないときのストリーミング（auto。0 = しない、1 = 常に。親の <code>OPENMX_FORCE4B_GPU</code> が優先）。</td></tr>
+<tr><td colspan="3" style="background:#f0f4fa;"><b>分子動力学と構造最適化</b></td></tr>
+<tr><td><code>OPENMX_MD_GPU_MIN</code></td><td>32768</td><td>MD の原子更新を CUDA で行うために、各 MPI ランクが担当する原子の最小数。0 で原子更新をホストで実行する。</td></tr>
+<tr><td><code>OPENMX_GEOMETRY_GPU_MIN</code></td><td>1000</td><td>構造最適化の固有値計算を GPU で実行するためのヘッセ行列の最小次元。</td></tr>
 <tr><td colspan="3" style="background:#f0f4fa;"><b>電荷/DM 混合(Mixing_H.c ほか)</b></td></tr>
 <tr><td><code>OPENMX_MIX_FAST</code></td><td>1</td><td>RMM-DIIS/DIISK/DIISV/GR-Pulay/Kerker の CPU 高速パス(0 でレガシー)</td></tr>
 <tr><td><code>OPENMX_MIXH_GPU</code></td><td>auto</td><td>RMM-DIISH の層選択: 未設定=自動、0=レガシー、1=GPU 層強制、2=増分 CPU 層強制</td></tr>

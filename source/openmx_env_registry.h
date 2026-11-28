@@ -275,6 +275,7 @@
     X(MAGMA_RR_GPU_MIN, "OPENMX_MAGMA_RR_GPU_MIN", "int", "global", "1024", "openmx_magma_refine.h", "") \
     X(MAGMA_VALIDATE_FULL, "OPENMX_MAGMA_VALIDATE_FULL", "flag", "global", "0", "openmx_magma_mgpu.cpp", "") \
     X(MAKE_OPTIONS, "OPENMX_MAKE_OPTIONS", "tool", "tool", "", "build/tools", "CMake: native make variable assignments") \
+    X(MD_GPU_MIN, "OPENMX_MD_GPU_MIN", "int", "global", "32768", "openmx_md_step.c", "Minimum owned atom count for CUDA MD updates. Zero uses the CPU for atom updates.") \
     X(MGPU, "OPENMX_MGPU", "flag", "global", "auto", "openmx_mgpu_runtime.cu", "") \
     X(MGPU_BAND_SHARED, "OPENMX_MGPU_BAND_SHARED", "int", "global", "0", "openmx_mgpu_runtime.cu", "") \
     X(MGPU_GEMM, "OPENMX_MGPU_GEMM", "string", "global", "off", "openmx_mgpu_runtime.cu", "") \

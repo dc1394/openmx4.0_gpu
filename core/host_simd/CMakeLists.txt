@@ -152,6 +152,7 @@ openmx_host_simd_family(energy ../src/host_energy_simd.cpp)
 openmx_host_simd_family(force ../src/host_force_simd.cpp)
 openmx_host_simd_family(vna ../src/host_vna_simd.cpp)
 openmx_host_simd_family(add_rows ../src/host_add_rows_simd.cpp)
+openmx_host_simd_family(md ../src/host_md_simd.cpp)
 openmx_host_simd_family(bloch ../src/host_bloch_simd.cpp)
 openmx_host_simd_family(radial ../src/host_radial_simd.cpp)
 

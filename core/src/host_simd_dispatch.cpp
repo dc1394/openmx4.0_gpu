@@ -5,6 +5,7 @@
 #include "host_orbitals_kernels.hpp"
 #include "host_energy_kernels.hpp"
 #include "host_add_rows_kernels.hpp"
+#include "host_md_kernels.hpp"
 #include "host_bloch_kernels.hpp"
 #include "host_radial_kernels.hpp"
 #if defined(__linux__) && defined(__aarch64__)
@@ -59,6 +60,9 @@ OPENMX_HOST_SIMD_DISPATCHER(OpenMXHostAddRows,add_rows)
 OPENMX_HOST_SIMD_DISPATCHER(OpenMXHostSum,sum)
 OPENMX_HOST_SIMD_DISPATCHER(OpenMXHostDot,dot)
 OPENMX_HOST_SIMD_DISPATCHER(OpenMXHostUpdateRow,update_row)
+OPENMX_HOST_SIMD_DISPATCHER(OpenMXHostMDMove,md_move)
+OPENMX_HOST_SIMD_DISPATCHER(OpenMXHostMDPeriodic,md_periodic)
+OPENMX_HOST_SIMD_DISPATCHER(OpenMXHostMDNPT,md_npt)
 OPENMX_HOST_SIMD_DISPATCHER(OpenMXHostBlochAdd,bloch)
 OPENMX_HOST_SIMD_DISPATCHER(OpenMXHostMODot,mo_dot)
 OPENMX_HOST_SIMD_DISPATCHER(RadialKernels,radial)

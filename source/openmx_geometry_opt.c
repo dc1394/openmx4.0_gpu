@@ -1,6 +1,6 @@
 #include "openmx_geometry_opt.h"
 #include "openmx_common.h"
-#include "openmx_core_native_resources.h"
+#include "openmx_atom_layout.h"
 #include "openmx_env.h"
 #include "openmx_host_simd.h"
 #include "openmx_gpu_device.h"
@@ -26,8 +26,8 @@ struct OpenMXGeometryOpt {
   MPI_Comm comm;
   int rank, ranks, host, atoms;
   const int *atom_owner;
-  int *order, *offset, *counts, *displs;
-  GeometryBuffer indices, transfer, diis, scratch, matrix, vectors, values, work, iwork;
+  OpenMXAtomLayout layout;
+  GeometryBuffer transfer, diis, scratch, matrix, vectors, values, work, iwork;
   OpenMXHostDot dot;
   OpenMXHostUpdateRow update_row;
 };
@@ -75,33 +75,16 @@ OpenMXGeometryOpt *OpenMX_Geometry_Begin(OpenMXCoreContext *core, MPI_Comm comm,
   g->update_row=avx ? openmx_core_host_update_row(mode) : NULL;
   if (g->ranks==1) return g;
 
-  /* Compact global atom order by owner. This also handles empty ranks. */
-  const size_t ranks=(size_t)g->ranks;
-  g->offset=reserve(g,&g->indices,3*ranks+1+(size_t)atoms,sizeof(int));
-  g->counts=g->offset+ranks+1;
-  g->displs=g->counts+ranks;
-  g->order=g->displs+ranks;
-  memset(g->offset,0,(ranks+1)*sizeof(int));
-  for (int a=1; a<=atoms; ++a) ++g->offset[owner[a]+1];
-  for (int p=0; p<g->ranks; ++p) g->offset[p+1]+=g->offset[p];
-  memcpy(g->counts,g->offset,ranks*sizeof(int));
-  for (int a=1; a<=atoms; ++a) g->order[g->counts[owner[a]]++]=a;
+  if (!OpenMX_Atom_Layout_Bind(&g->layout,resources,g->ranks,atoms,owner))
+    geometry_abort(comm,"cannot allocate atom layout");
   return g;
-}
-
-static void layout(OpenMXGeometryOpt *g, int width)
-{
-  for (int p=0; p<g->ranks; ++p) {
-    g->displs[p]=width*g->offset[p];
-    g->counts[p]=width*(g->offset[p+1]-g->offset[p]);
-  }
 }
 
 void OpenMX_Geometry_Share_Atoms(OpenMXGeometryOpt *g, double **xyz)
 {
   if (g->ranks==1) return;
   const int atoms=g->atoms;
-  if (atoms>INT_MAX/6) {
+  if (!OpenMX_Atom_Layout_Records(&g->layout,g->ranks,6)) {
     for (int a=1; a<=atoms; ++a) {
       MPI_Bcast(xyz[a]+1,3,MPI_DOUBLE,g->atom_owner[a],g->comm);
       MPI_Bcast(xyz[a]+17,3,MPI_DOUBLE,g->atom_owner[a],g->comm);
@@ -109,16 +92,15 @@ void OpenMX_Geometry_Share_Atoms(OpenMXGeometryOpt *g, double **xyz)
     return;
   }
   double *data=reserve(g,&g->transfer,6*(size_t)atoms,sizeof(double));
-  layout(g,6);
-  const int first=g->offset[g->rank], last=g->offset[g->rank+1];
+  const int first=g->layout.offset[g->rank], last=g->layout.offset[g->rank+1];
   for (int i=first; i<last; ++i) {
-    const int a=g->order[i];
+    const int a=g->layout.order[i];
     memcpy(data+6*i,xyz[a]+1,3*sizeof(double));
     memcpy(data+6*i+3,xyz[a]+17,3*sizeof(double));
   }
-  MPI_Allgatherv(MPI_IN_PLACE,0,MPI_DOUBLE,data,g->counts,g->displs,MPI_DOUBLE,g->comm);
+  MPI_Allgatherv(MPI_IN_PLACE,0,MPI_DOUBLE,data,g->layout.counts,g->layout.displs,MPI_DOUBLE,g->comm);
   for (int i=0; i<atoms; ++i) {
-    const int a=g->order[i];
+    const int a=g->layout.order[i];
     memcpy(xyz[a]+1,data+6*i,3*sizeof(double));
     memcpy(xyz[a]+17,data+6*i+3,3*sizeof(double));
   }
@@ -154,30 +136,29 @@ void OpenMX_Geometry_Gather_Hessian(OpenMXGeometryOpt *g, double **hessian, int 
   if (g->ranks==1 || g->atoms==0) return;
   const int n=3*g->atoms;
   const int width=n+cell_columns;
-  if (n>INT_MAX/width) {
+  if (width>INT_MAX/3 || !OpenMX_Atom_Layout_Records(&g->layout,g->ranks,3*width)) {
     for (int a=1; a<=g->atoms; ++a)
       for (int j=0; j<3; ++j)
         MPI_Bcast(hessian[3*(a-1)+j+1]+1,width,MPI_DOUBLE,g->atom_owner[a],g->comm);
     return;
   }
-  layout(g,3*width);
-  const int first=g->offset[g->rank], last=g->offset[g->rank+1];
+  const int first=g->layout.offset[g->rank], last=g->layout.offset[g->rank+1];
   const int root=g->rank==g->host;
-  const size_t elements=root ? (size_t)n*width : (size_t)g->counts[g->rank];
+  const size_t elements=root ? (size_t)n*width : (size_t)g->layout.counts[g->rank];
   double *data=reserve(g,&g->matrix,elements ? elements : 1,sizeof(double));
-  double *owned=data+(root ? g->displs[g->rank] : 0);
+  double *owned=data+(root ? g->layout.displs[g->rank] : 0);
 #pragma omp parallel for schedule(static) if(n>=256)
   for (int i=first; i<last; ++i) {
-    const int a=g->order[i];
+    const int a=g->layout.order[i];
     for (int j=0; j<3; ++j)
       memcpy(owned+(size_t)(3*(i-first)+j)*width,hessian[3*(a-1)+j+1]+1,(size_t)width*sizeof(double));
   }
-  MPI_Gatherv(root ? MPI_IN_PLACE : data,g->counts[g->rank],MPI_DOUBLE,
-              data,g->counts,g->displs,MPI_DOUBLE,g->host,g->comm);
+  MPI_Gatherv(root ? MPI_IN_PLACE : data,g->layout.counts[g->rank],MPI_DOUBLE,
+              data,g->layout.counts,g->layout.displs,MPI_DOUBLE,g->host,g->comm);
   if (!root) return;
 #pragma omp parallel for schedule(static) if(n>=256)
   for (int i=0; i<g->atoms; ++i) {
-    const int a=g->order[i];
+    const int a=g->layout.order[i];
     for (int j=0; j<3; ++j)
       memcpy(hessian[3*(a-1)+j+1]+1,data+(size_t)(3*i+j)*width,(size_t)width*sizeof(double));
   }

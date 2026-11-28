@@ -54,7 +54,7 @@ def main():
         "Kerker_Mixing_Rhok.c", "DIIS_Mixing_DM.c", "ADIIS_Mixing_DM.c",
         "GR_Pulay_DM.c", "Mixing_DM.c", "Simple_Mixing_DM.c", "Mixing_V.c", "Set_Vpot.c",
         "openmx_cluster_capacity.c", "openmx_hamiltonian_cache.c", "Set_Hamiltonian.c", "Set_Density_Grid.c", "Set_Density_Grid_GPU.c", "Set_Orbitals_Grid.c", "DFT.c", "Force.c", "Krylov.c", "Input_std.c", "outputfile1.c",
-        "Total_Energy.c", "Total_Energy_GPU.c", "Allocate_Arrays.c", "Free_Arrays.c", "MD_pac.c", "iterout_md.c", "openmx.c", "Runtest.c", "openmx_api.c", "init.c", "iterout.c", "Stress.c",
+        "Total_Energy.c", "Total_Energy_GPU.c", "Allocate_Arrays.c", "Free_Arrays.c", "MD_pac.c", "openmx_md_step.c", "iterout_md.c", "openmx.c", "Runtest.c", "openmx_api.c", "init.c", "iterout.c", "Stress.c",
         "Force_test.c", "Stress_test.c", "neb_run.c", "Make_InputFile_with_FinalCoord.c", "truncation.c", "SetPara_DFT.c", "KumoF.c", "Dr_KumoF.c", "Gauss_Legendre.c",
         "FT_VNA.c", "FT_ProExpn_VNA.c", "FT_ProductPAO.c", "Set_ProExpn_VNA.c",
         "Set_OLP_Kin.c", "Set_Nonlocal.c", "Voronoi_Orbital_Moment.c", "Gaunt.c")]
@@ -75,6 +75,7 @@ def main():
         jobs += [(cxx, name) for name in ("orbs_otf_hip.cu", "exact_exchange_device_hip.cu", "set_xc_grid_hip.cu")]
         jobs += [(cc, name) for name in ("Exact_Exchange.c", "Exact_Exchange_Device.c", "Exact_Exchange_Host.c", "Set_XC_Grid.c")]
     else:
+        jobs.append((cxx+["--fmad=false"], "openmx_md_cuda.cu"))
         jobs.append((cc, "Exact_Exchange.c"))
         # The device loop of the exchange-correlation grid with the semilocal
         # part of the hybrids (the short-range exchange as OpenACC routines).

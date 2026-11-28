@@ -211,6 +211,13 @@ and `off`/`no`/`false`; `auto`, an empty value and an unset variable select the 
 | `OPENMX_FORCE4B_CASE1_TURNS` / `_TURN_MAX_RANKS` | auto / uncapped | Force4B case 1: rank turns on the shared device (auto = when the resident arenas of all ranks do not fit together; 0/1 force) and an explicit cap on the ranks per turn. |
 | `OPENMX_FORCE4B_CASE2_STREAM` | auto | Force4B case 2: streaming when the full batch does not fit (auto; 0 = never, 1 = always; the parent `OPENMX_FORCE4B_GPU` wins). |
 
+## Molecular dynamics and geometry optimization
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `OPENMX_MD_GPU_MIN` | 32768 | Minimum number of owned atoms per MPI rank for CUDA MD updates. Set to 0 to run atom updates on the host. |
+| `OPENMX_GEOMETRY_GPU_MIN` | 1000 | Minimum Hessian dimension for a GPU eigensolve during geometry optimization. |
+
 ## Charge/DM mixing (Mixing_H.c etc.)
 
 | Variable | Default | Meaning |

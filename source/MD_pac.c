@@ -26,18 +26,19 @@
 #include "openmx_common.h"
 #include "lapack_prototypes.h"
 #include "openmx_geometry_opt.h"
+#include "openmx_md_step.h"
 
 
 #define Criterion_Max_Step            0.50
 
  
 static void NoMD(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
-static void VerletXYZ(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
-static void NVT_VS(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);  /* added by mari */
-static void NVT_VS2(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter); /* added by Ohwaki */
-static void NVT_VS4(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter); /* added by Ohwaki */
-static void NVT_NH(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
-static void NVT_Langevin(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter); /* added by Ohwaki */
+static void VerletXYZ(OpenMXMD *md, const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
+static void NVT_VS(OpenMXMD *md, const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);  /* added by mari */
+static void NVT_VS2(OpenMXMD *md, const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter); /* added by Ohwaki */
+static void NVT_VS4(OpenMXMD *md, const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter); /* added by Ohwaki */
+static void NVT_NH(OpenMXMD *md, const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
+static void NVT_Langevin(OpenMXMD *md, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, int iter); /* added by Ohwaki */
 static void Steepest_Descent(OpenMXGeometryOpt *geometry, const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int SD_scaling_flag);
 static void GDIIS(OpenMXGeometryOpt *geometry, const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0);
 static void GDIIS_BFGS(OpenMXGeometryOpt *geometry, const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0);
@@ -45,23 +46,20 @@ static void GDIIS_EF(OpenMXGeometryOpt *geometry, const OpenMXChemicalPotentials
 static void Geometry_Opt_DIIS(OpenMXGeometryOpt *geometry, const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
 static void Geometry_Opt_DIIS_BFGS(OpenMXGeometryOpt *geometry, const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
 static void Geometry_Opt_DIIS_EF(OpenMXGeometryOpt *geometry, const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
-static void Correct_Position_In_First_Cell();
 static void Geometry_Opt_RF(OpenMXGeometryOpt *geometry, const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
 static void Estimate_Initial_Hessian(OpenMXGeometryOpt *geometry, int diis_iter, int CellOpt_flag, double itv[4][4]);
 static void RF(OpenMXGeometryOpt *geometry, const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0);
 static void RFC5(OpenMXGeometryOpt *geometry, const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int iter0, double dE_da[4][4], double itv[4][4]);
 static void EvsLC(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
 static void Delta_Factor(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
-static void Correct_Force();
-static void Correct_Velocity();
 static int RestartFiles4GeoOpt(char *mode);
 static void Output_abc_file(OpenMXThermodynamicEnergies *thermo, int iter);
 static void Cell_Opt_SD(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter, int SD_scaling_flag);
 static void Cell_Opt_RF(OpenMXGeometryOpt *geometry, const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter);
-static void NPT_VS_PR(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, int iter); /* added by MIZUHO for NPT-MD */
-static void NPT_VS_WV(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, int iter); /* added by MIZUHO for NPT-MD */
-static void NPT_NH_PR(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, int iter); /* added by MIZUHO for NPT-MD */
-static void NPT_NH_WV(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, int iter); /* added by MIZUHO for NPT-MD */
+static void NPT_VS_PR(OpenMXMD *md, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, int iter); /* added by MIZUHO for NPT-MD */
+static void NPT_VS_WV(OpenMXMD *md, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, int iter); /* added by MIZUHO for NPT-MD */
+static void NPT_NH_PR(OpenMXMD *md, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, int iter); /* added by MIZUHO for NPT-MD */
+static void NPT_NH_WV(OpenMXMD *md, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, int iter); /* added by MIZUHO for NPT-MD */
 
 int SuccessReadingfiles;
 
@@ -145,10 +143,22 @@ double MD_pac(OpenMXCoreContext *core, int iter, char *fname_input)
     SuccessReadingfiles = 0;
   }
 
-  /* correct forces for MD simulations so that the sum of forces can be zero. */
-
-  if (  MD_switch==1 || MD_switch==2 || MD_switch==9 
-     || MD_switch==11 || MD_switch==14 || MD_switch==15 ) Correct_Force();
+  OpenMXMD *md=NULL;
+  OpenMXMDRecords records=OPENMX_MD_RECORD_NPT;
+  int molecular_dynamics=1;
+  switch (MD_switch) {
+    case  1: records=OPENMX_MD_RECORD_VERLET; break;
+    case  2: case 11: case 14: records=OPENMX_MD_RECORD_SCALING; break;
+    case  9: records=OPENMX_MD_RECORD_NOSE; break;
+    case 15: records=OPENMX_MD_RECORD_LANGEVIN; break;
+    case 27: case 28: case 29: case 30: break;
+    default: molecular_dynamics=0; break;
+  }
+  if (molecular_dynamics) {
+    const OpenMXMDAtoms atoms={atomnum,Matomnum,G2ID,M2G,Gxyz,atom_Fixed_XYZ};
+    md=OpenMX_MD_Begin(core,mpi_comm_level1,&atoms,scf_eigen_lib_flag==GPUSOLVER,level_stdout);
+    if (records!=OPENMX_MD_RECORD_NPT) OpenMX_MD_Center(md,17);
+  }
 
   OpenMXGeometryOpt *geometry=NULL;
   if ((MD_switch>=3 && MD_switch<=7) || MD_switch==18)
@@ -158,52 +168,50 @@ double MD_pac(OpenMXCoreContext *core, int iter, char *fname_input)
 
   switch (MD_switch) {
     case  0: NoMD(chemical, dynamics, thermo, energies, components, iter+MD_Current_Iter);                    break;
-    case  1: VerletXYZ(chemical, dynamics, thermo, energies, components, iter+MD_Current_Iter);               break;
-    case  2: NVT_VS(chemical, dynamics, thermo, energies, components, iter+MD_Current_Iter);                  break;  /* added by mari */
+    case  1: VerletXYZ(md, chemical, dynamics, thermo, energies, components, iter+MD_Current_Iter);               break;
+    case  2: NVT_VS(md, chemical, dynamics, thermo, energies, components, iter+MD_Current_Iter);                  break;  /* added by mari */
     case  3: Steepest_Descent(geometry, chemical, dynamics, thermo, energies, components, iter+MD_Current_Iter,1);      break;
     case  4: Geometry_Opt_DIIS_EF(geometry, chemical, dynamics, thermo, energies, components, iter+MD_Current_Iter);    break;
     case  5: Geometry_Opt_DIIS_BFGS(geometry, chemical, dynamics, thermo, energies, components, iter+MD_Current_Iter);  break;
     case  6: Geometry_Opt_RF(geometry, chemical, dynamics, thermo, energies, components, iter+MD_Current_Iter);         break;  /* added by hmweng */
     case  7: Geometry_Opt_DIIS(geometry, chemical, dynamics, thermo, energies, components, iter+MD_Current_Iter);       break;
     case  8:                                                break;  /* not used */
-    case  9: NVT_NH(chemical, dynamics, thermo, energies, components, iter+MD_Current_Iter);                  break;
+    case  9: NVT_NH(md, chemical, dynamics, thermo, energies, components, iter+MD_Current_Iter);                  break;
     case 10:                                                break;  /* not used */
-    case 11: NVT_VS2(chemical, dynamics, thermo, energies, components, iter+MD_Current_Iter);                 break;  /* added by Ohwaki */
+    case 11: NVT_VS2(md, chemical, dynamics, thermo, energies, components, iter+MD_Current_Iter);                 break;  /* added by Ohwaki */
     case 12: EvsLC(chemical, dynamics, thermo, energies, components, iter);                                   break;
-    case 14: NVT_VS4(chemical, dynamics, thermo, energies, components, iter+MD_Current_Iter);                 break;  /* added by Ohwaki */
-    case 15: NVT_Langevin(chemical, dynamics, thermo, energies, components, iter+MD_Current_Iter);            break;  /* added by Ohwaki */
+    case 14: NVT_VS4(md, chemical, dynamics, thermo, energies, components, iter+MD_Current_Iter);                 break;  /* added by Ohwaki */
+    case 15: NVT_Langevin(md, dynamics, thermo, iter+MD_Current_Iter);            break;  /* added by Ohwaki */
     case 16: Delta_Factor(chemical, dynamics, thermo, energies, components, iter);                            break;  /* delta-factor */
     case 17: Cell_Opt_SD(chemical, dynamics, thermo, energies, components, iter+MD_Current_Iter,1);           break;
     case 18: Cell_Opt_RF(geometry, chemical, dynamics, thermo, energies, components, iter+MD_Current_Iter);             break;
     /* added by MIZUHO for NPT-MD */
-    case 27: NPT_VS_PR(dynamics, thermo, iter+MD_Current_Iter);               break;
-    case 28: NPT_VS_WV(dynamics, thermo, iter+MD_Current_Iter);               break;
-    case 29: NPT_NH_PR(dynamics, thermo, iter+MD_Current_Iter);               break;
-    case 30: NPT_NH_WV(dynamics, thermo, iter+MD_Current_Iter);               break;
+    case 27: NPT_VS_PR(md, dynamics, thermo, iter+MD_Current_Iter);               break;
+    case 28: NPT_VS_WV(md, dynamics, thermo, iter+MD_Current_Iter);               break;
+    case 29: NPT_NH_PR(md, dynamics, thermo, iter+MD_Current_Iter);               break;
+    case 30: NPT_NH_WV(md, dynamics, thermo, iter+MD_Current_Iter);               break;
   }
 
-  /***************************************************************
-    correct atoms which are out of the first unit cell during 
-    molecular dynamics simulations. The correction is not applied 
-    for geometry optimization.
-  ***************************************************************/
-
-  if (   MD_switch==1  || // NVE
-         MD_switch==2  || // NVT_VS
-         MD_switch==9  || // NVT_NH
-         MD_switch==11 || // NVT_VS2
-         MD_switch==14 || // NVT_VS4
-         MD_switch==15 || // NVT_Langevin
-         /* added by MIZUHO for NPT-MD */
-         MD_switch==27 || // NPT_VS_PR
-         MD_switch==28 || // NPT_VS_WV
-         MD_switch==29 || // NPT_NH_PR
-         MD_switch==30 )  // NPT_NH_WV
-  {
-
-    Correct_Position_In_First_Cell();
+  if (md) {
+    OpenMXMDCell cell;
+    cell.pi=PI;
+    for (int i=0; i<3; ++i) {
+      memcpy(cell.real[i],tv[i+1]+1,3*sizeof(double));
+      memcpy(cell.reciprocal[i],rtv[i+1]+1,3*sizeof(double));
+      cell.origin[i]=Grid_Origin[i+1];
+    }
+    const OpenMXMDHistory history={Cell_Gxyz,His_Gxyz,GxyzHistoryIn,
+                                   Extrapolated_Charge_History,M_GDIIS_HISTORY+1};
+    Correct_Position_flag=OpenMX_MD_Finish(md,records,&cell,&history);
+    /* Langevin reports the force on atom 1 after the owners exchange it. */
+    if (records==OPENMX_MD_RECORD_LANGEVIN && myid==Host_ID) {
+      char fileE[YOUSO10];
+      const int step=iter+MD_Current_Iter;
+      sprintf(fileE,"%s%s.ene",filepath,filename);
+      iterout_md(chemical,dynamics,thermo,energies,components,step,MD_TimeStep*(step-1),fileE);
+    }
   }
-  
+
   /* making of an input file with the final structure */
 
   if (Runtest_flag==0){
@@ -296,446 +304,29 @@ void NoMD(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamic
     
 
 
-void Correct_Position_In_First_Cell()
+void VerletXYZ(OpenMXMD *md, const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
 {
-  int i,Mc_AN,Gc_AN,ct_AN,k;
-  int itmp,My_Correct_Position_flag;
-  int numprocs,myid,ID,tag=999;
-  double Cxyz[4],Frac[4];
-
-  MPI_Status stat;
-  MPI_Request request;
-
-  MPI_Comm_size(mpi_comm_level1,&numprocs);
+  int myid;
   MPI_Comm_rank(mpi_comm_level1,&myid);
+  const double dt=41.3411*MD_TimeStep;
+  const double mass_scale=unified_atomic_mass_unit/electron_mass;
+  MD_Opt_OK=0;
 
-  /* My_Correct_Position_flag  */
-
-  My_Correct_Position_flag = 0; 
-
-  /* loop for Mc_AN */
-
-  for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-
-    Gc_AN = M2G[Mc_AN];
-    Cxyz[1] = Gxyz[Gc_AN][1] - Grid_Origin[1];
-    Cxyz[2] = Gxyz[Gc_AN][2] - Grid_Origin[2];
-    Cxyz[3] = Gxyz[Gc_AN][3] - Grid_Origin[3];
-    Cell_Gxyz[Gc_AN][1] = Dot_Product(Cxyz,rtv[1])*0.5/PI;
-    Cell_Gxyz[Gc_AN][2] = Dot_Product(Cxyz,rtv[2])*0.5/PI;
-    Cell_Gxyz[Gc_AN][3] = Dot_Product(Cxyz,rtv[3])*0.5/PI;
-
-    /* The fractional coordinates are kept within 0 to 1. */
-
-    for (i=1; i<=3; i++){
-
-      itmp = (int)Cell_Gxyz[Gc_AN][i]; 
-
-      if (1.0<Cell_Gxyz[Gc_AN][i]){
-
-        My_Correct_Position_flag = 1; 
-
-	Cell_Gxyz[Gc_AN][i] = Cell_Gxyz[Gc_AN][i] - (double)itmp;
-
-        if (0<level_stdout){ 
-  	  if (i==1) printf("The fractional coordinate of a-axis for atom %d was translated within the range (0 to 1).\n",Gc_AN);
-	  if (i==2) printf("The fractional coordinate of b-axis for atom %d was translated within the range (0 to 1).\n",Gc_AN);
-	  if (i==3) printf("The fractional coordinate of c-axis for atom %d was translated within the range (0 to 1).\n",Gc_AN);
-	}
-
-        /* update His_Gxyz */ 
-
-        for (k=0; k<Extrapolated_Charge_History; k++){
-
-	  Cxyz[1] = His_Gxyz[k][(Gc_AN-1)*3+0] - Grid_Origin[1];
-	  Cxyz[2] = His_Gxyz[k][(Gc_AN-1)*3+1] - Grid_Origin[2];
-	  Cxyz[3] = His_Gxyz[k][(Gc_AN-1)*3+2] - Grid_Origin[3];
-
-	  Frac[1] = Dot_Product(Cxyz,rtv[1])*0.5/PI;
-	  Frac[2] = Dot_Product(Cxyz,rtv[2])*0.5/PI;
-	  Frac[3] = Dot_Product(Cxyz,rtv[3])*0.5/PI;
-
-          Frac[i] = Frac[i] - (double)itmp;
-          
-          His_Gxyz[k][(Gc_AN-1)*3+0] = 
-                      Frac[1]*tv[1][1]
-                    + Frac[2]*tv[2][1]
-                    + Frac[3]*tv[3][1] + Grid_Origin[1];
-
-          His_Gxyz[k][(Gc_AN-1)*3+1] = 
-                      Frac[1]*tv[1][2]
-                    + Frac[2]*tv[2][2]
-                    + Frac[3]*tv[3][2] + Grid_Origin[2];
-
-          His_Gxyz[k][(Gc_AN-1)*3+2] = 
-                      Frac[1]*tv[1][3]
-                    + Frac[2]*tv[2][3]
-                    + Frac[3]*tv[3][3] + Grid_Origin[3];
-	}
-
-        /* update GxyzHistoryIn */ 
-
-        for (k=0; k<(M_GDIIS_HISTORY+1); k++){
-
-	  Cxyz[1] = GxyzHistoryIn[k][Gc_AN][1] - Grid_Origin[1];
-	  Cxyz[2] = GxyzHistoryIn[k][Gc_AN][2] - Grid_Origin[2];
-	  Cxyz[3] = GxyzHistoryIn[k][Gc_AN][3] - Grid_Origin[3];
-
-	  Frac[1] = Dot_Product(Cxyz,rtv[1])*0.5/PI;
-	  Frac[2] = Dot_Product(Cxyz,rtv[2])*0.5/PI;
-	  Frac[3] = Dot_Product(Cxyz,rtv[3])*0.5/PI;
-
-          Frac[i] = Frac[i] - (double)itmp;
-
-          GxyzHistoryIn[k][Gc_AN][1] = 
-                      Frac[1]*tv[1][1]
-                    + Frac[2]*tv[2][1]
-                    + Frac[3]*tv[3][1] + Grid_Origin[1];
-
-          GxyzHistoryIn[k][Gc_AN][2] = 
-                      Frac[1]*tv[1][2]
-                    + Frac[2]*tv[2][2]
-                    + Frac[3]*tv[3][2] + Grid_Origin[2];
-
-          GxyzHistoryIn[k][Gc_AN][3] = 
-                      Frac[1]*tv[1][3]
-                    + Frac[2]*tv[2][3]
-                    + Frac[3]*tv[3][3] + Grid_Origin[3];
-	}
-
-      }
-      else if (Cell_Gxyz[Gc_AN][i]<0.0){
-
-        My_Correct_Position_flag = 1; 
-
-	Cell_Gxyz[Gc_AN][i] = Cell_Gxyz[Gc_AN][i] + (double)(abs(itmp)+1);
-
-        if (0<level_stdout){ 
-          if (i==1) printf("The fractional coordinate of a-axis for atom %d was translated within the range (0 to 1).\n",Gc_AN);
-	  if (i==2) printf("The fractional coordinate of b-axis for atom %d was translated within the range (0 to 1).\n",Gc_AN);
-	  if (i==3) printf("The fractional coordinate of c-axis for atom %d was translated within the range (0 to 1).\n",Gc_AN);
-	}
-
-        /* update His_Gxyz */ 
-
-        for (k=0; k<Extrapolated_Charge_History; k++){
-
-	  Cxyz[1] = His_Gxyz[k][(Gc_AN-1)*3+0] - Grid_Origin[1];
-	  Cxyz[2] = His_Gxyz[k][(Gc_AN-1)*3+1] - Grid_Origin[2];
-	  Cxyz[3] = His_Gxyz[k][(Gc_AN-1)*3+2] - Grid_Origin[3];
-
-	  Frac[1] = Dot_Product(Cxyz,rtv[1])*0.5/PI;
-	  Frac[2] = Dot_Product(Cxyz,rtv[2])*0.5/PI;
-	  Frac[3] = Dot_Product(Cxyz,rtv[3])*0.5/PI;
-
-          Frac[i] = Frac[i] + (double)(abs(itmp)+1);
-          
-          His_Gxyz[k][(Gc_AN-1)*3+0] = 
-                      Frac[1]*tv[1][1]
-                    + Frac[2]*tv[2][1]
-                    + Frac[3]*tv[3][1] + Grid_Origin[1];
-
-          His_Gxyz[k][(Gc_AN-1)*3+1] = 
-                      Frac[1]*tv[1][2]
-                    + Frac[2]*tv[2][2]
-                    + Frac[3]*tv[3][2] + Grid_Origin[2];
-
-          His_Gxyz[k][(Gc_AN-1)*3+2] = 
-                      Frac[1]*tv[1][3]
-                    + Frac[2]*tv[2][3]
-                    + Frac[3]*tv[3][3] + Grid_Origin[3];
-	}
-
-        /* update GxyzHistoryIn */ 
-
-        for (k=0; k<(M_GDIIS_HISTORY+1); k++){
-
-	  Cxyz[1] = GxyzHistoryIn[k][Gc_AN][1] - Grid_Origin[1];
-	  Cxyz[2] = GxyzHistoryIn[k][Gc_AN][2] - Grid_Origin[2];
-	  Cxyz[3] = GxyzHistoryIn[k][Gc_AN][3] - Grid_Origin[3];
-
-	  Frac[1] = Dot_Product(Cxyz,rtv[1])*0.5/PI;
-	  Frac[2] = Dot_Product(Cxyz,rtv[2])*0.5/PI;
-	  Frac[3] = Dot_Product(Cxyz,rtv[3])*0.5/PI;
-
-          Frac[i] = Frac[i] + (double)(abs(itmp)+1);
-
-          GxyzHistoryIn[k][Gc_AN][1] = 
-                      Frac[1]*tv[1][1]
-                    + Frac[2]*tv[2][1]
-                    + Frac[3]*tv[3][1] + Grid_Origin[1];
-
-          GxyzHistoryIn[k][Gc_AN][2] = 
-                      Frac[1]*tv[1][2]
-                    + Frac[2]*tv[2][2]
-                    + Frac[3]*tv[3][2] + Grid_Origin[2];
-
-          GxyzHistoryIn[k][Gc_AN][3] = 
-                      Frac[1]*tv[1][3]
-                    + Frac[2]*tv[2][3]
-                    + Frac[3]*tv[3][3] + Grid_Origin[3];
-	}
-
-      }
-    }
-
-    Gxyz[Gc_AN][1] =  Cell_Gxyz[Gc_AN][1]*tv[1][1]
-                    + Cell_Gxyz[Gc_AN][2]*tv[2][1]
-                    + Cell_Gxyz[Gc_AN][3]*tv[3][1] + Grid_Origin[1];
-
-    Gxyz[Gc_AN][2] =  Cell_Gxyz[Gc_AN][1]*tv[1][2]
-                    + Cell_Gxyz[Gc_AN][2]*tv[2][2]
-                    + Cell_Gxyz[Gc_AN][3]*tv[3][2] + Grid_Origin[2];
-
-    Gxyz[Gc_AN][3] =  Cell_Gxyz[Gc_AN][1]*tv[1][3]
-                    + Cell_Gxyz[Gc_AN][2]*tv[2][3]
-                    + Cell_Gxyz[Gc_AN][3]*tv[3][3] + Grid_Origin[3];
+  if (iter!=1) {
+    const OpenMXMDStep kick={OPENMX_MD_VERLET_KICK,dt,0.0,0.0};
+    OpenMX_MD_Move(md,kick,mass_scale,1.0,NULL,NULL);
+  }
+  thermo->ionic_kinetic=OpenMX_MD_Kinetic(md,mass_scale,1);
+  dynamics->temperature=thermo->ionic_kinetic/(1.5*kB*(double)atomnum)*eV2Hartree;
+  if (myid==Host_ID) {
+    char fileE[YOUSO10];
+    sprintf(fileE,"%s%s.ene",filepath,filename);
+    iterout_md(chemical,dynamics,thermo,energies,components,iter,MD_TimeStep*(iter-1),fileE);
   }
 
-  /****************
-    MPI:  Gxyz
-  *****************/
-
-  for (ct_AN=1; ct_AN<=atomnum; ct_AN++){
-    ID = G2ID[ct_AN];
-
-    MPI_Bcast(&Gxyz[ct_AN][0], 4, MPI_DOUBLE, ID, mpi_comm_level1);
-
-    for (k=0; k<Extrapolated_Charge_History; k++){
-      MPI_Bcast(&His_Gxyz[k][(ct_AN-1)*3], 3, MPI_DOUBLE, ID, mpi_comm_level1);
-    }
-
-    for (k=0; k<(M_GDIIS_HISTORY+1); k++){
-      MPI_Bcast(&GxyzHistoryIn[k][ct_AN][0], 4, MPI_DOUBLE, ID, mpi_comm_level1);
-    }
-
-  }
-
-  /*
-  for (k=0; k<(M_GDIIS_HISTORY+1); k++){
-    for (ct_AN=1; ct_AN<=atomnum; ct_AN++){
-      printf("myid=%2d k=%2d ct_AN=%2d %15.12f %15.12f %15.12f\n",
-             myid,k,ct_AN,
-             GxyzHistoryIn[k][ct_AN][1],
-             GxyzHistoryIn[k][ct_AN][2],
-             GxyzHistoryIn[k][ct_AN][3]);fflush(stdout);
-    }
-  }
-  */
-
-  /* MPI:  My_Correct_Position_flag = 0; */
-
-  MPI_Allreduce(&My_Correct_Position_flag, &Correct_Position_flag, 1, MPI_INT, MPI_MAX, mpi_comm_level1);
-}
-
-
-void VerletXYZ(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
-{
-  /***********************************************************
-   NVE molecular dynamics with velocity-Verlet integrator
-  ***********************************************************/
-  /*********************************************************** 
-   1 a.u.=2.4189*10^-2 fs, 1fs=41.341105 a.u. 
-  ***********************************************************/
-  /****************************************************
-    Gxyz[][1] = x-coordinate at current step
-    Gxyz[][2] = y-coordinate at current step
-    Gxyz[][3] = z-coordinate at current step
-
-    Gxyz[][14] = dEtot/dx at previous step
-    Gxyz[][15] = dEtot/dy at previous step
-    Gxyz[][16] = dEtot/dz at previous step
-
-    Gxyz[][17] = dEtot/dx at current step
-    Gxyz[][18] = dEtot/dy at current step
-    Gxyz[][19] = dEtot/dz at current step
-
-    Gxyz[][20] = atomic mass
-
-    Gxyz[][21] = x-coordinate at previous step
-    Gxyz[][22] = y-coordinate at previous step
-    Gxyz[][23] = z-coordinate at previous step
-
-    Gxyz[][24] = x-component of velocity at current step
-    Gxyz[][25] = y-component of velocity at current step
-    Gxyz[][26] = z-component of velocity at current step
-
-    Gxyz[][27] = x-component of velocity at t+dt/2
-    Gxyz[][28] = y-component of velocity at t+dt/2
-    Gxyz[][29] = z-component of velocity at t+dt/2
-
-    Gxyz[][30] = hx
-    Gxyz[][31] = hy
-    Gxyz[][32] = hz
-
-  ****************************************************/
-
-  char fileE[YOUSO10];
-  double dt,dt2,back,sum,My_Ukc;
-  double Wscale,scaled_force;
-  int Mc_AN,Gc_AN,j,k,l;
-  int numprocs,myid,ID;
-
-  /* MPI */
-  MPI_Comm_size(mpi_comm_level1,&numprocs);
-  MPI_Comm_rank(mpi_comm_level1,&myid);
-
-  MD_Opt_OK = 0;
-  dt = 41.3411*MD_TimeStep;
-  dt2 = dt*dt;
-  Wscale = unified_atomic_mass_unit/electron_mass;
-
-  /****************************************************
-                 velocity-Verlet algorithm
-  ****************************************************/
-
-  if (iter==1){
-
-    /****************************************************
-                       Kinetic Energy 
-    ****************************************************/
-
-    My_Ukc = 0.0;
-
-    for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-      Gc_AN = M2G[Mc_AN];
-      sum = 0.0;
-      for (j=1; j<=3; j++){
-        if (atom_Fixed_XYZ[Gc_AN][j]==0){
-          sum += Gxyz[Gc_AN][j+23]*Gxyz[Gc_AN][j+23];
-	}
-      }
-      My_Ukc = My_Ukc + 0.5*Gxyz[Gc_AN][20]*Wscale*sum;
-    }
-
-    /****************************************************
-     MPI, Ukc
-    ****************************************************/
-
-    MPI_Allreduce(&My_Ukc, &thermo->ionic_kinetic, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
-
-    /* calculation of temperature (K) */
-    dynamics->temperature = thermo->ionic_kinetic/(1.5*kB*(double)atomnum)*eV2Hartree;
-
-    /****************************************************
-     write informatins to *.ene
-    ****************************************************/
-
-    if (myid==Host_ID){  
-      sprintf(fileE,"%s%s.ene",filepath,filename);
-      iterout_md(chemical, dynamics, thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
-    }
-
-    /****************************************************
-      first step in velocity Verlet 
-    ****************************************************/
-
-    for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-      Gc_AN = M2G[Mc_AN];
-
-      for (j=1; j<=3; j++){
-
-        if (atom_Fixed_XYZ[Gc_AN][j]==0){
-
-          scaled_force = -Gxyz[Gc_AN][16+j]/(Gxyz[Gc_AN][20]*Wscale);  
-
-          /* v( t+0.5*dt ) */
-          Gxyz[Gc_AN][26+j] = Gxyz[Gc_AN][23+j] + scaled_force*0.5*dt;
-          Gxyz[Gc_AN][23+j] = Gxyz[Gc_AN][26+j];
-
-          /* r( t+dt ) */
-          Gxyz[Gc_AN][20+j] = Gxyz[Gc_AN][j];
- 	  Gxyz[Gc_AN][j] = Gxyz[Gc_AN][j] + Gxyz[Gc_AN][26+j]*dt;
-
-	}
-      }
-    }
-  }
-  else{
-
-    /****************************************************
-      second step in velocity Verlet 
-    ****************************************************/
-
-    for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-      Gc_AN = M2G[Mc_AN];
-      for (j=1; j<=3; j++){
-
-        if (atom_Fixed_XYZ[Gc_AN][j]==0){
-          scaled_force = -Gxyz[Gc_AN][16+j]/(Gxyz[Gc_AN][20]*Wscale);  
-          Gxyz[Gc_AN][23+j] = Gxyz[Gc_AN][26+j] + scaled_force*0.5*dt;
-	}
-      }
-    }
-
-    /****************************************************
-                       Kinetic Energy 
-    ****************************************************/
-
-    My_Ukc = 0.0;
-
-    for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-      Gc_AN = M2G[Mc_AN];
-      sum = 0.0;
-      for (j=1; j<=3; j++){
-        if (atom_Fixed_XYZ[Gc_AN][j]==0){
-          sum += Gxyz[Gc_AN][j+23]*Gxyz[Gc_AN][j+23];
-	}
-      }
-      My_Ukc = My_Ukc + 0.5*Gxyz[Gc_AN][20]*Wscale*sum;
-    }
-
-    /****************************************************
-     MPI, Ukc
-    ****************************************************/
-
-    MPI_Allreduce(&My_Ukc, &thermo->ionic_kinetic, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
-
-    /* calculation of temperature (K) */
-    dynamics->temperature = thermo->ionic_kinetic/(1.5*kB*(double)atomnum)*eV2Hartree;
-
-    /****************************************************
-     write informatins to *.ene
-    ****************************************************/
-
-    if (myid==Host_ID){  
-
-      sprintf(fileE,"%s%s.ene",filepath,filename);
-      iterout_md(chemical, dynamics, thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
-    } 
-
-    /****************************************************
-      first step in velocity Verlet 
-    ****************************************************/
-
-    if (iter!=MD_IterNumber){
-
-      for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-	Gc_AN = M2G[Mc_AN];
-	for (j=1; j<=3; j++){
-
-	  if (atom_Fixed_XYZ[Gc_AN][j]==0){
-
-	    scaled_force = -Gxyz[Gc_AN][16+j]/(Gxyz[Gc_AN][20]*Wscale);  
-	    /* v( t+0.5*dt ) */
-	    Gxyz[Gc_AN][26+j] = Gxyz[Gc_AN][23+j] + scaled_force*0.5*dt;
-	    Gxyz[Gc_AN][23+j] = Gxyz[Gc_AN][26+j];
-
-	    /* r( t+dt ) */
-	    Gxyz[Gc_AN][20+j] = Gxyz[Gc_AN][j];
-	    Gxyz[Gc_AN][j] =  Gxyz[Gc_AN][j] + Gxyz[Gc_AN][26+j]*dt;
-	  }
-
-	}
-
-      }
-    }
-  }
-
-  for (Gc_AN=1; Gc_AN<=atomnum; Gc_AN++){
-    ID = G2ID[Gc_AN];
-    MPI_Bcast(&Gxyz[Gc_AN][1],  3, MPI_DOUBLE, ID, mpi_comm_level1);
-    MPI_Bcast(&Gxyz[Gc_AN][17],13, MPI_DOUBLE, ID, mpi_comm_level1);
+  if (iter==1 || iter!=MD_IterNumber) {
+    const OpenMXMDStep drift={OPENMX_MD_VERLET_DRIFT,dt,0.0,0.0};
+    OpenMX_MD_Move(md,drift,mass_scale,1.0,NULL,NULL);
   }
 }
 
@@ -4757,7 +4348,7 @@ void GDIIS_EF(OpenMXGeometryOpt *geometry, const OpenMXChemicalPotentials *chemi
 
 
 
-void NVT_VS(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
+void NVT_VS(OpenMXMD *md, const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
 {
   /* added by mari */
   /********************************************************
@@ -4803,16 +4394,14 @@ void NVT_VS(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynam
 
   ****************************************************/
 
-  double dt,dt2,sum,My_Ukc,x,t,xyz0[4],xyz0_l[4];
+  double dt,dt2,x;
   double Wscale;
-  int Mc_AN,Gc_AN,i,j,k,l;
-  int numprocs,myid,ID;
+  int i;
+  int myid;
   char fileE[YOUSO10];
 
   /* MPI */
-  MPI_Comm_size(mpi_comm_level1,&numprocs);
   MPI_Comm_rank(mpi_comm_level1,&myid);
-  MPI_Barrier(mpi_comm_level1);
 
   MD_Opt_OK = 0;
   dt = 41.3411*MD_TimeStep;
@@ -4823,63 +4412,20 @@ void NVT_VS(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynam
                     update velocity 
   ****************************************************/
 
-  if (iter==1){
-    for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-      Gc_AN = M2G[Mc_AN];
-
-      for (j=1; j<=3; j++){
-
-        if (atom_Fixed_XYZ[Gc_AN][j]==0){
-
-	  Gxyz[Gc_AN][j] = Gxyz[Gc_AN][j]+dt*Gxyz[Gc_AN][23+j]
-                          -Gxyz[Gc_AN][16+j]/(Gxyz[Gc_AN][20]*Wscale)*dt2*0.50;
-          Gxyz[Gc_AN][13+j] = Gxyz[Gc_AN][16+j];
- 	  Gxyz[Gc_AN][23+j] = Gxyz[Gc_AN][23+j]-Gxyz[Gc_AN][16+j]/(Gxyz[Gc_AN][20]*Wscale)*dt;
-	}
-      }
-    }
-  }
-  else{
-    for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-      Gc_AN = M2G[Mc_AN];
-
-      for (j=1; j<=3; j++){
-
-        if (atom_Fixed_XYZ[Gc_AN][j]==0){
- 	  Gxyz[Gc_AN][23+j] = Gxyz[Gc_AN][23+j]-Gxyz[Gc_AN][16+j]/(Gxyz[Gc_AN][20]*Wscale)*dt;
-	}
-      }
-    }
-  }
+  const OpenMXMDStep kick={iter==1 ? OPENMX_MD_SCALE_START : OPENMX_MD_SCALE_KICK,dt,dt2,0.0};
+  OpenMX_MD_Move(md,kick,Wscale,1.0,NULL,NULL);
 
   /****************************************************
    correct so that the sum of velocities can be zero.                              
   ****************************************************/
 
-  Correct_Velocity();  
+  OpenMX_MD_Center(md,24);
 
   /****************************************************
                      Kinetic Energy 
   ****************************************************/
 
-  thermo->ionic_kinetic=0.0;
-  My_Ukc = 0.0;
-
-  for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-    Gc_AN = M2G[Mc_AN];
-
-    sum = 0.0;
-    for (j=1; j<=3; j++){
-      sum = sum + Gxyz[Gc_AN][j+23]*Gxyz[Gc_AN][j+23];
-    }
-    My_Ukc = My_Ukc + 0.5*Gxyz[Gc_AN][20]*Wscale*sum;
-  }
-
-  /****************************************************
-   MPI: Ukc 
-  ****************************************************/
-  
-  MPI_Allreduce(&My_Ukc, &thermo->ionic_kinetic, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
+  thermo->ionic_kinetic=OpenMX_MD_Kinetic(md,Wscale,0);
   
   /* calculation of temperature (K) */
   dynamics->temperature = thermo->ionic_kinetic/(1.5*kB*(double)atomnum)*eV2Hartree;
@@ -4936,40 +4482,18 @@ void NVT_VS(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynam
 
     if (MD_Opt_OK!=1 && iter!=MD_IterNumber){
 
-      for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-	Gc_AN = M2G[Mc_AN];
-	for (j=1; j<=3; j++){
-
-	  if (atom_Fixed_XYZ[Gc_AN][j]==0){
-
-	    Gxyz[Gc_AN][23+j] = Gxyz[Gc_AN][23+j]*x;
-	    Gxyz[Gc_AN][j] = Gxyz[Gc_AN][j]+dt*Gxyz[Gc_AN][23+j]
-	                    -Gxyz[Gc_AN][16+j]/(Gxyz[Gc_AN][20]*Wscale)*dt2*0.50;
-	    Gxyz[Gc_AN][13+j] = Gxyz[Gc_AN][16+j];
-	  }
-	}
-      }
+      const OpenMXMDStep drift={OPENMX_MD_SCALE_DRIFT,dt,dt2,0.0};
+      OpenMX_MD_Move(md,drift,Wscale,x,NULL,NULL);
 
     }
 
-  }
-
-  /****************************************************
-   MPI: Gxyz
-  ****************************************************/
-
-  for (Gc_AN=1; Gc_AN<=atomnum; Gc_AN++){
-    ID = G2ID[Gc_AN];
-    MPI_Bcast(&Gxyz[Gc_AN][1],  3, MPI_DOUBLE, ID, mpi_comm_level1);
-    MPI_Bcast(&Gxyz[Gc_AN][14], 3, MPI_DOUBLE, ID, mpi_comm_level1);
-    MPI_Bcast(&Gxyz[Gc_AN][24], 3, MPI_DOUBLE, ID, mpi_comm_level1);
   }
 }
 
 
 
 
-void NVT_Langevin(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
+void NVT_Langevin(OpenMXMD *md, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, int iter)
 {
   /* added by T.Ohwaki */
   /********************************************************
@@ -5015,19 +4539,8 @@ void NVT_Langevin(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState 
 
   ****************************************************/
 
-  double dt,dt2,sum,My_Ukc,x,t;
-  double Wscale,rt,rt_mdt,rt_pdt,vt,vt_mdt,vt_pdt;
-  double rtmp1,rtmp2,tmp,Lang_sig,RandomF;
-  double vtt,ft_mdt,ftt,ft,vtt_pdt;
-  double tmp1,tmp2,tmp3,tmp4,tmp5,tmp6;
-  int Mc_AN,Gc_AN,i,j,k,l;
-  int numprocs,myid,ID;
-  char fileE[YOUSO10];
-
-  /* MPI */
-  MPI_Comm_size(mpi_comm_level1,&numprocs);
-  MPI_Comm_rank(mpi_comm_level1,&myid);
-  MPI_Barrier(mpi_comm_level1);
+  double dt,dt2,Wscale;
+  int Mc_AN,Gc_AN,i,j;
 
   MD_Opt_OK = 0;
   dt = 41.3411*MD_TimeStep;
@@ -5052,277 +4565,40 @@ void NVT_Langevin(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState 
    add random forces on Gxyz[17-19]
   ****************************************************/
 
-  /*
-  srand((unsigned)time(NULL));
-  */
-
+  /* Keep the native random draw order on each owning rank. */
   for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
 
     Gc_AN = M2G[Mc_AN];
-    Lang_sig = sqrt(2.0*Gxyz[Gc_AN][20]*Wscale*FricFac*kB*dynamics->target_temperature/dt/eV2Hartree);
+    const double Lang_sig = sqrt(2.0*Gxyz[Gc_AN][20]*Wscale*FricFac*kB*dynamics->target_temperature/dt/eV2Hartree);
 
     for (j=1; j<=3; j++){
 
       if (atom_Fixed_XYZ[Gc_AN][j]==0){
 
-	rtmp1 = (double)rand()/RAND_MAX;
-	rtmp2 = (double)rand()/RAND_MAX;
+	const double rtmp1 = (double)rand()/RAND_MAX;
+	const double rtmp2 = (double)rand()/RAND_MAX;
 
-	RandomF = Lang_sig * sqrt(-2.0*log(rtmp1)) * cos(2.0*PI*rtmp2);
+	const double RandomF = Lang_sig * sqrt(-2.0*log(rtmp1)) * cos(2.0*PI*rtmp2);
 	Gxyz[Gc_AN][16+j] -= RandomF;
 
       }
     }
   }
 
-  /****************************************************
-                Velocity Verlet algorithm
-  ****************************************************/
-
-  if (iter==1){
-
-    /****************************************************
-      first step in velocity Verlet 
-    ****************************************************/
-
-    for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-      Gc_AN = M2G[Mc_AN];
-
-      for (j=1; j<=3; j++){
-
-        if (atom_Fixed_XYZ[Gc_AN][j]==0){
-
-          /* update coordinates */
-          Gxyz[Gc_AN][20+j] = Gxyz[Gc_AN][j];
-
-          vt = Gxyz[Gc_AN][23+j];
-          vt_mdt = Gxyz[Gc_AN][26+j];
-
-          Gxyz[Gc_AN][j] = Gxyz[Gc_AN][j] + dt*vt
-                        -0.5*dt2*(Gxyz[Gc_AN][16+j]/(Gxyz[Gc_AN][20]*Wscale)+FricFac*vt);
-
-          /* store current gradient */
-          Gxyz[Gc_AN][13+j] = Gxyz[Gc_AN][16+j];
-
-          /* update velocity */
- 	  Gxyz[Gc_AN][23+j] = Gxyz[Gc_AN][23+j]-Gxyz[Gc_AN][16+j]/(Gxyz[Gc_AN][20]*Wscale)*dt;
-        }
-      }
-    }
-  }
-
-  else{
-
-    /****************************************************
-      for the second step and then onward 
-      in velocity Verlet 
-    ****************************************************/
-
-    for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-
-      Gc_AN = M2G[Mc_AN];
-
-      tmp = 1.0/(1.0 + 0.50*dt*FricFac);
-      tmp2 = 1.0 - 0.50*dt*FricFac;
-
-      for (j=1; j<=3; j++){
-
-        if (atom_Fixed_XYZ[Gc_AN][j]==0){
-
-          /* modified Euler */
-
-	  if (0){
-          rt = Gxyz[Gc_AN][j];
-          vtt = Gxyz[Gc_AN][26+j];
-          vt_mdt = Gxyz[Gc_AN][23+j];
-          ft_mdt = Gxyz[Gc_AN][13+j];
-
-          ftt = -Gxyz[Gc_AN][16+j]/(Gxyz[Gc_AN][20]*Wscale) - FricFac*vtt;
-          vt = vt_mdt + 0.5*dt*(ft_mdt + ftt);
-
-          ft = -Gxyz[Gc_AN][16+j]/(Gxyz[Gc_AN][20]*Wscale) - FricFac*vt;
-
-          vtt_pdt = vt + dt*ft;
-          rt_pdt = rt + 0.5*dt*(vt + vtt_pdt); 
-
-          Gxyz[Gc_AN][j] = rt_pdt;
-          Gxyz[Gc_AN][26+j] = vtt_pdt;
-          Gxyz[Gc_AN][23+j] = vt;
-          Gxyz[Gc_AN][13+j] = ft;
-	  }
-
-          /* Taylor expansion */
-
-          if (0){
-
-          vt = Gxyz[Gc_AN][23+j];
-          vt_mdt = Gxyz[Gc_AN][26+j];
-
-          Gxyz[Gc_AN][j] = Gxyz[Gc_AN][j] + dt*vt
-                        -0.5*dt2*(Gxyz[Gc_AN][16+j]/(Gxyz[Gc_AN][20]*Wscale)+FricFac*vt);
-
-          Gxyz[Gc_AN][23+j] = vt_mdt - 2.0*dt*Gxyz[Gc_AN][16+j]/(Gxyz[Gc_AN][20]*Wscale) - 2.0*dt*FricFac*vt;
-          Gxyz[Gc_AN][26+j] = vt;
-
-	  }
-
-          /* simple Taylor expansion */
-	  if (0){
-          vt = Gxyz[Gc_AN][23+j];
-
-          Gxyz[Gc_AN][j] = Gxyz[Gc_AN][j] + dt*vt
-                        -0.5*dt2*(Gxyz[Gc_AN][16+j]/(Gxyz[Gc_AN][20]*Wscale)+FricFac*vt);
-
-          Gxyz[Gc_AN][23+j] = vt - dt*Gxyz[Gc_AN][16+j]/(Gxyz[Gc_AN][20]*Wscale) - dt*FricFac*vt;
-
-	  }
-
-
-          /* Brunger-Brooks-Karplus integrator */ 
-	  if (0){
-
-          /* update coordinates */
-
-          rt_mdt = Gxyz[Gc_AN][20+j];
-          rt = Gxyz[Gc_AN][j];
-
-          rt_pdt = 2.0*rt - tmp2*rt_mdt - dt2/(Gxyz[Gc_AN][20]*Wscale)*Gxyz[Gc_AN][16+j]; 
-          rt_pdt *= tmp; 
-
-          /* update velocity */
-
-          vt = 0.5*(rt_pdt - rt_mdt)/dt;
-
-          /* store data */
-
-          Gxyz[Gc_AN][20+j] = Gxyz[Gc_AN][j];  /* store coordinate at t    */
-          Gxyz[Gc_AN][j] = rt_pdt;             /* store coordinate at t+dt */
-          Gxyz[Gc_AN][23+j] = vt;              /* store velocity at t      */
-	  }
-
-
-          /* Velocity Verlet formulation of the BBK integrator */
-	  if (0){
-
-          /* velocity at the current step */
-          Gxyz[Gc_AN][23+j] = tmp2*Gxyz[Gc_AN][23+j] 
-                            -(Gxyz[Gc_AN][16+j] + Gxyz[Gc_AN][13+j])
-                            /(Gxyz[Gc_AN][20]*Wscale)*dt*0.50;
-
-          Gxyz[Gc_AN][23+j] *= tmp;
-
-          /* update coordinates */
-          Gxyz[Gc_AN][20+j] = Gxyz[Gc_AN][j];
-          Gxyz[Gc_AN][j] = Gxyz[Gc_AN][j] + dt*Gxyz[Gc_AN][23+j]*tmp2
-                          -Gxyz[Gc_AN][16+j]/(Gxyz[Gc_AN][20]*Wscale)*dt2*0.50;
-
-          /* store current gradient */
-          Gxyz[Gc_AN][13+j] = Gxyz[Gc_AN][16+j];
-	  }
-
-
-          /* Velocity Verlet formulation of the BBK integrator with velocity correction by Dr. Ohwaki */
-	  if (0){
-
-          /* velocity at the current step */
-
-          tmp1 = Gxyz[Gc_AN][23+j];
-
-          Gxyz[Gc_AN][23+j] = Gxyz[Gc_AN][23+j] 
-                            -(Gxyz[Gc_AN][16+j] + Gxyz[Gc_AN][13+j])
-                            /(Gxyz[Gc_AN][20]*Wscale)*dt*0.50;
-
-          Gxyz[Gc_AN][23+j] *= tmp;
-
-          /* add contribution of friction force */
-          Gxyz[Gc_AN][16+j] += Gxyz[Gc_AN][20]*Wscale*FricFac*Gxyz[Gc_AN][23+j];
-
-
-          /* update coordinates */
-          Gxyz[Gc_AN][20+j] = Gxyz[Gc_AN][j];
-          Gxyz[Gc_AN][j] = Gxyz[Gc_AN][j] + dt*Gxyz[Gc_AN][23+j]
-                          -Gxyz[Gc_AN][16+j]/(Gxyz[Gc_AN][20]*Wscale)*dt2*0.50;
-
-          /* store current gradient */
-          Gxyz[Gc_AN][13+j] = Gxyz[Gc_AN][16+j]
-                             -Gxyz[Gc_AN][20]*Wscale*FricFac*Gxyz[Gc_AN][23+j]
-                             +Gxyz[Gc_AN][20]*Wscale*FricFac*tmp1;
-	  }
-
-          /* Velocity Verlet formulation by Ozaki's integrator */
-
-	  if (1){
-
-          /* velocity at the current step */
-          Gxyz[Gc_AN][23+j] = Gxyz[Gc_AN][23+j] 
-                            -(Gxyz[Gc_AN][16+j] + Gxyz[Gc_AN][13+j])/(Gxyz[Gc_AN][20]*Wscale)*dt*0.50 
-                            -FricFac*(Gxyz[Gc_AN][j] - Gxyz[Gc_AN][20+j]);
-
-          /* update coordinates */
-          Gxyz[Gc_AN][20+j] = Gxyz[Gc_AN][j];
-          Gxyz[Gc_AN][j] = Gxyz[Gc_AN][j]
-                        + tmp*(dt*Gxyz[Gc_AN][23+j]-Gxyz[Gc_AN][16+j]/(Gxyz[Gc_AN][20]*Wscale)*dt2*0.50);
-
-          /* store current gradient */
-          Gxyz[Gc_AN][13+j] = Gxyz[Gc_AN][16+j];
-	  }
-
-
-        }
-      }
-    }
-  }
-
-  /****************************************************
-   MPI: Gxyz
-  ****************************************************/
-
-  for (Gc_AN=1; Gc_AN<=atomnum; Gc_AN++){
-    ID = G2ID[Gc_AN];
-    MPI_Bcast(&Gxyz[Gc_AN][0], 40, MPI_DOUBLE, ID, mpi_comm_level1);
-  }
-
-  /****************************************************
-                       Kinetic Energy 
-  ****************************************************/
-
-  My_Ukc = 0.0;
-
-  for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-    Gc_AN = M2G[Mc_AN];
-    sum = 0.0;
-    for (j=1; j<=3; j++){
-      if (atom_Fixed_XYZ[Gc_AN][j]==0){
-	sum += Gxyz[Gc_AN][j+23]*Gxyz[Gc_AN][j+23];
-      }
-    }
-    My_Ukc = My_Ukc + 0.5*Gxyz[Gc_AN][20]*Wscale*sum;
-  }
-
-  /****************************************************
-     MPI, Ukc
-  ****************************************************/
-
-  MPI_Allreduce(&My_Ukc, &thermo->ionic_kinetic, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
+  const OpenMXMDStep move={iter==1 ? OPENMX_MD_LANGEVIN_START : OPENMX_MD_LANGEVIN_DRIFT,
+                           dt,dt2,FricFac};
+  OpenMX_MD_Move(md,move,Wscale,1.0,NULL,NULL);
+  thermo->ionic_kinetic=OpenMX_MD_Kinetic(md,Wscale,1);
 
   /* calculation of temperature (K) */
   dynamics->temperature = thermo->ionic_kinetic/(1.5*kB*(double)atomnum)*eV2Hartree;
 
-  /****************************************************
-     write informatins to *.ene
-  ****************************************************/
-
-  if (myid==Host_ID){  
-
-    sprintf(fileE,"%s%s.ene",filepath,filename);
-    iterout_md(chemical, dynamics, thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
-  }
 }
 
 
 
 
-void NVT_VS2(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
+void NVT_VS2(OpenMXMD *md, const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
 {
   /* added by T.Ohwaki */
   /********************************************************
@@ -5359,20 +4635,18 @@ void NVT_VS2(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dyna
     Gxyz[][26] = z-component of velocity at current step
   ****************************************************/
 
-  double dt,dt2,sum,My_Ukc,x,t,xyz0[4],xyz0_l[4];
+  double dt,dt2,sum;
   double Wscale;
 
   double *Atomic_Temp,*Atomic_Ukc,*Atomic_Scale;
 
-  int Mc_AN,Gc_AN,i,j,k,l;
-  int numprocs,myid,ID;
+  int Mc_AN,Gc_AN,i,j;
+  int myid;
 
   char fileE[YOUSO10];
 
   /* MPI */
-  MPI_Comm_size(mpi_comm_level1,&numprocs);
   MPI_Comm_rank(mpi_comm_level1,&myid);
-  MPI_Barrier(mpi_comm_level1);
 
   MD_Opt_OK = 0;
   dt = 41.3411*MD_TimeStep;
@@ -5387,34 +4661,8 @@ void NVT_VS2(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dyna
                 Velocity Verlet algorithm
   ****************************************************/
 
-  if (iter==1){
-    for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-      Gc_AN = M2G[Mc_AN];
-
-      for (j=1; j<=3; j++){
-
-        if (atom_Fixed_XYZ[Gc_AN][j]==0){
-
-	  Gxyz[Gc_AN][j] = Gxyz[Gc_AN][j]+dt*Gxyz[Gc_AN][23+j]
-                          -Gxyz[Gc_AN][16+j]/(Gxyz[Gc_AN][20]*Wscale)*dt2*0.50;
-          Gxyz[Gc_AN][13+j] = Gxyz[Gc_AN][16+j];
- 	  Gxyz[Gc_AN][23+j] = Gxyz[Gc_AN][23+j]-Gxyz[Gc_AN][16+j]/(Gxyz[Gc_AN][20]*Wscale)*dt;
-	}
-      }
-    }
-  }
-  else{
-    for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-      Gc_AN = M2G[Mc_AN];
-
-      for (j=1; j<=3; j++){
-
-        if (atom_Fixed_XYZ[Gc_AN][j]==0){
- 	  Gxyz[Gc_AN][23+j] = Gxyz[Gc_AN][23+j]-Gxyz[Gc_AN][16+j]/(Gxyz[Gc_AN][20]*Wscale)*dt;
-	}
-      }
-    }
-  }
+  const OpenMXMDStep kick={iter==1 ? OPENMX_MD_SCALE_START : OPENMX_MD_SCALE_KICK,dt,dt2,0.0};
+  OpenMX_MD_Move(md,kick,Wscale,1.0,NULL,NULL);
 
   /****************************************************
       Kinetic Energy & Temperature (for each atom)
@@ -5436,30 +4684,13 @@ void NVT_VS2(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dyna
    correct so that the sum of velocities can be zero.                              
   ****************************************************/
 
-  Correct_Velocity();  
+  OpenMX_MD_Center(md,24);
 
   /****************************************************
             Kinetic Energy (for whole system) 
   ****************************************************/
 
-  thermo->ionic_kinetic=0.0;
-  My_Ukc = 0.0;
-
-  for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-    Gc_AN = M2G[Mc_AN];
-
-    sum = 0.0;
-    for (j=1; j<=3; j++){
-      sum = sum + Gxyz[Gc_AN][j+23]*Gxyz[Gc_AN][j+23];
-    }
-    My_Ukc = My_Ukc + 0.5*Gxyz[Gc_AN][20]*Wscale*sum;
-  }
-
-  /****************************************************
-   MPI: Ukc 
-  ****************************************************/
-
-  MPI_Allreduce(&My_Ukc, &thermo->ionic_kinetic, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
+  thermo->ionic_kinetic=OpenMX_MD_Kinetic(md,Wscale,0);
 
   /* calculation of temperature (K) */
   dynamics->temperature = thermo->ionic_kinetic/(1.5*kB*(double)atomnum)*eV2Hartree;
@@ -5515,44 +4746,20 @@ void NVT_VS2(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dyna
 
     if (MD_Opt_OK!=1 && iter!=MD_IterNumber){
 
-      for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-	Gc_AN = M2G[Mc_AN];
-	for (j=1; j<=3; j++){
-
-	  if (atom_Fixed_XYZ[Gc_AN][j]==0){
-
-	    Gxyz[Gc_AN][23+j] = Gxyz[Gc_AN][23+j]*Atomic_Scale[Gc_AN];
-	    Gxyz[Gc_AN][j] = Gxyz[Gc_AN][j]+dt*Gxyz[Gc_AN][23+j]
-	                    -Gxyz[Gc_AN][16+j]/(Gxyz[Gc_AN][20]*Wscale)*dt2*0.50;
-	    Gxyz[Gc_AN][13+j] = Gxyz[Gc_AN][16+j];
-
-	  }
-	}
-      }
+      const OpenMXMDStep drift={OPENMX_MD_SCALE_DRIFT,dt,dt2,0.0};
+      OpenMX_MD_Move(md,drift,Wscale,1.0,Atomic_Scale,NULL);
 
     }
 
   }
 
-  /****************************************************
-   MPI: Gxyz
-  ****************************************************/
-
-  for (Gc_AN=1; Gc_AN<=atomnum; Gc_AN++){
-    ID = G2ID[Gc_AN];
-    MPI_Bcast(&Gxyz[Gc_AN][1],  3, MPI_DOUBLE, ID, mpi_comm_level1);
-    MPI_Bcast(&Gxyz[Gc_AN][14], 3, MPI_DOUBLE, ID, mpi_comm_level1);
-    MPI_Bcast(&Gxyz[Gc_AN][24], 3, MPI_DOUBLE, ID, mpi_comm_level1);
-  }
-
   free(Atomic_Temp);
   free(Atomic_Ukc);
   free(Atomic_Scale);
-
 }
 
 
-void NVT_VS4(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
+void NVT_VS4(OpenMXMD *md, const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
 {
   /* added by T. Ohwaki */
   /********************************************************
@@ -5590,68 +4797,37 @@ void NVT_VS4(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dyna
     Gxyz[][26] = z-component of velocity at current step
   ****************************************************/
 
-  double dt,dt2,sum,My_Ukc,x,t;
+  double dt,dt2;
   double Wscale;
 
-  double *Atomic_Temp,*Atomic_Ukc,*Atomic_Scale;
-
-  int Mc_AN,Gc_AN,i,j,k,l;
-  int numprocs,myid,ID;
+  int Mc_AN,Gc_AN,i,j,k;
+  int myid;
 
   char fileE[YOUSO10];
 
   /* MPI */
-  MPI_Comm_size(mpi_comm_level1,&numprocs);
   MPI_Comm_rank(mpi_comm_level1,&myid);
-  MPI_Barrier(mpi_comm_level1);
 
   MD_Opt_OK = 0;
   dt = 41.3411*MD_TimeStep;
   dt2 = dt*dt;
   Wscale = unified_atomic_mass_unit/electron_mass;
 
-  double sum_AtGr[num_AtGr+1],My_Ukc_AtGr[num_AtGr+1],Ukc_AtGr[num_AtGr+1];
+  double sum_AtGr[num_AtGr+1],Ukc_AtGr[num_AtGr+1];
   double AtomGr_Scale[num_AtGr+1];
 
   /****************************************************
                 Velocity Verlet algorithm
   ****************************************************/
 
-  if (iter==1){
-    for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-      Gc_AN = M2G[Mc_AN];
-
-      for (j=1; j<=3; j++){
-
-        if (atom_Fixed_XYZ[Gc_AN][j]==0){
-
-          Gxyz[Gc_AN][j] = Gxyz[Gc_AN][j]+dt*Gxyz[Gc_AN][23+j]
-                          -Gxyz[Gc_AN][16+j]/(Gxyz[Gc_AN][20]*Wscale)*dt2*0.50;
-          Gxyz[Gc_AN][13+j] = Gxyz[Gc_AN][16+j];
- 	  Gxyz[Gc_AN][23+j] = Gxyz[Gc_AN][23+j]-Gxyz[Gc_AN][16+j]/(Gxyz[Gc_AN][20]*Wscale)*dt;
-        }
-      }
-    }
-  }
-  else{
-    for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-      Gc_AN = M2G[Mc_AN];
-
-      for (j=1; j<=3; j++){
-
-        if (atom_Fixed_XYZ[Gc_AN][j]==0){
-          Gxyz[Gc_AN][23+j] = Gxyz[Gc_AN][23+j]-Gxyz[Gc_AN][16+j]/(Gxyz[Gc_AN][20]*Wscale)*dt;
-
-        }
-      }
-    }
-  }
+  const OpenMXMDStep kick={iter==1 ? OPENMX_MD_SCALE_START : OPENMX_MD_SCALE_KICK,dt,dt2,0.0};
+  OpenMX_MD_Move(md,kick,Wscale,1.0,NULL,NULL);
 
   /****************************************************
    correct so that the sum of velocities can be zero.                              
   ****************************************************/
 
-  Correct_Velocity();  
+  OpenMX_MD_Center(md,24);
 
   /******************************************************
       Kinetic Energy & Temperature (for each atom group)
@@ -5671,31 +4847,14 @@ void NVT_VS4(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dyna
   }
 
   for (k=1; k<=num_AtGr; k++){
-    My_Ukc_AtGr[k]  = 0.5*Wscale*sum_AtGr[k];
+    Ukc_AtGr[k] = 0.5*Wscale*sum_AtGr[k];
   }
 
   /****************************************************
             Kinetic Energy (for whole system)
   ****************************************************/
 
-  thermo->ionic_kinetic=0.0;
-  My_Ukc = 0.0;
-
-  for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-    Gc_AN = M2G[Mc_AN];
-
-    sum = 0.0;
-    for (j=1; j<=3; j++){
-      sum = sum + Gxyz[Gc_AN][j+23]*Gxyz[Gc_AN][j+23];
-    }
-    My_Ukc = My_Ukc + 0.5*Gxyz[Gc_AN][20]*Wscale*sum;
-  }
-
-  /****************************************************
-   MPI: Ukc
-  ****************************************************/
-
-  MPI_Allreduce(&My_Ukc, &thermo->ionic_kinetic, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
+  thermo->ionic_kinetic=OpenMX_MD_Kinetic(md,Wscale,0);
 
   /* calculation of temperature (K) */
   dynamics->temperature = thermo->ionic_kinetic/(1.5*kB*(double)atomnum)*eV2Hartree;
@@ -5704,8 +4863,8 @@ void NVT_VS4(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dyna
    MPI: Ukc_AtGr
   ****************************************************/
 
+  MPI_Allreduce(MPI_IN_PLACE,Ukc_AtGr+1,num_AtGr,MPI_DOUBLE,MPI_SUM,mpi_comm_level1);
   for (k=1; k<=num_AtGr; k++){
-    MPI_Allreduce(&My_Ukc_AtGr[k], &Ukc_AtGr[k], 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
 
     /* calculation of temperature (K) */
     Temp_AtGr[k] = Ukc_AtGr[k]/(1.5*kB*(double)atnum_AtGr[k])*eV2Hartree;
@@ -5760,43 +4919,18 @@ void NVT_VS4(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dyna
 
     if (MD_Opt_OK!=1 && iter!=MD_IterNumber){
 
-      for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-        Gc_AN = M2G[Mc_AN];
-        k = AtomGr[Gc_AN];
-        for (j=1; j<=3; j++){
-
-          if (atom_Fixed_XYZ[Gc_AN][j]==0){
-
-            Gxyz[Gc_AN][23+j] = Gxyz[Gc_AN][23+j]*AtomGr_Scale[k];
-            Gxyz[Gc_AN][j] = Gxyz[Gc_AN][j]+dt*Gxyz[Gc_AN][23+j]
-                            -Gxyz[Gc_AN][16+j]/(Gxyz[Gc_AN][20]*Wscale)*dt2*0.50;
-            Gxyz[Gc_AN][13+j] = Gxyz[Gc_AN][16+j];
-
-          }
-        }
-      }
+      const OpenMXMDStep drift={OPENMX_MD_SCALE_DRIFT,dt,dt2,0.0};
+      OpenMX_MD_Move(md,drift,Wscale,1.0,AtomGr_Scale,AtomGr);
 
     }
 
   }
-
-  /****************************************************
-   MPI: Gxyz
-  ****************************************************/
-
-  for (Gc_AN=1; Gc_AN<=atomnum; Gc_AN++){
-    ID = G2ID[Gc_AN];
-    MPI_Bcast(&Gxyz[Gc_AN][1],  3, MPI_DOUBLE, ID, mpi_comm_level1);
-    MPI_Bcast(&Gxyz[Gc_AN][14], 3, MPI_DOUBLE, ID, mpi_comm_level1);
-    MPI_Bcast(&Gxyz[Gc_AN][24], 3, MPI_DOUBLE, ID, mpi_comm_level1);
-  }
-
 }
 
 
 
 
-void NVT_NH(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
+void NVT_NH(OpenMXMD *md, const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
 {
   /***********************************************************
    a constant temperature molecular dynamics by a Nose-Hoover
@@ -5838,23 +4972,15 @@ void NVT_NH(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynam
 
   ****************************************************/
 
-  int Mc_AN,Gc_AN,i,j,k,l,po,num,NH_switch;
-  int numprocs,myid,ID;
-
-  double dt,dt2,sum,My_sum,My_Ukc,x,t,xyz0[4],xyz0_l[4];
-  double scaled_force,Wscale,back;
-  double dzeta,dv,h_zeta;
-  double My_sum1,sum1,My_sum2,sum2;
+  int i,myid,NH_switch;
+  double dt,Wscale;
   char fileE[YOUSO10];
 
   /* MPI */
-  MPI_Comm_size(mpi_comm_level1,&numprocs);
   MPI_Comm_rank(mpi_comm_level1,&myid);
-  MPI_Barrier(mpi_comm_level1);
 
   MD_Opt_OK = 0;
   dt = 41.3411*MD_TimeStep;
-  dt2 = dt*dt;
   Wscale = unified_atomic_mass_unit/electron_mass;
 
   /* find a given temperature by a linear interpolation */
@@ -5884,24 +5010,7 @@ void NVT_NH(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynam
                        Kinetic Energy 
     ****************************************************/
 
-    My_Ukc = 0.0;
-
-    for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-      Gc_AN = M2G[Mc_AN];
-      sum = 0.0;
-      for (j=1; j<=3; j++){
-        if (atom_Fixed_XYZ[Gc_AN][j]==0){
-          sum += Gxyz[Gc_AN][j+23]*Gxyz[Gc_AN][j+23];
-	}
-      }
-      My_Ukc = My_Ukc + 0.5*Gxyz[Gc_AN][20]*Wscale*sum;
-    }
-
-    /****************************************************
-     MPI, Ukc
-    ****************************************************/
-
-    MPI_Allreduce(&My_Ukc, &thermo->ionic_kinetic, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
+    thermo->ionic_kinetic=OpenMX_MD_Kinetic(md,Wscale,1);
 
     /* calculation of temperature (K) */
     dynamics->temperature = thermo->ionic_kinetic/(1.5*kB*(double)atomnum)*eV2Hartree;
@@ -5930,25 +5039,8 @@ void NVT_NH(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynam
     dynamics->nose_friction = 0.0;
     dynamics->nose_coordinate = 0.0;
 
-    for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-      Gc_AN = M2G[Mc_AN];
-      for (j=1; j<=3; j++){
-
-        if (atom_Fixed_XYZ[Gc_AN][j]==0){
-        
-          scaled_force = -Gxyz[Gc_AN][16+j]/(Gxyz[Gc_AN][20]*Wscale);  
-
-          /* v( r+0.5*dt ) */
-          Gxyz[Gc_AN][26+j] = Gxyz[Gc_AN][23+j] + (scaled_force - dynamics->nose_friction*Gxyz[Gc_AN][23+j])*0.5*dt;
-          Gxyz[Gc_AN][23+j] = Gxyz[Gc_AN][26+j];
-
-          /* r( r+dt ) */
-          Gxyz[Gc_AN][20+j] = Gxyz[Gc_AN][j];
- 	  Gxyz[Gc_AN][j] =  Gxyz[Gc_AN][j] + Gxyz[Gc_AN][26+j]*dt;
-	}
-
-      }
-    }
+    const OpenMXMDStep step={OPENMX_MD_VERLET_DRIFT,dt,0.0,dynamics->nose_friction};
+    OpenMX_MD_Move(md,step,Wscale,1.0,NULL,NULL);
 
     /* zeta( t+0.5*dt ) */
 
@@ -5968,153 +5060,66 @@ void NVT_NH(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynam
      refinement of v and zeta by a Newton-Raphson method
     *****************************************************/
 
-    po = 0;
-    num = 0;
-
-    do {
-
-      /* Ukc */
-
-      thermo->ionic_kinetic = 0.0;
-      My_Ukc = 0.0;
-
-      for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-        Gc_AN = M2G[Mc_AN];
-
-        sum = 0.0;
-        for (j=1; j<=3; j++){
-          if (atom_Fixed_XYZ[Gc_AN][j]==0){
-            sum = sum + Gxyz[Gc_AN][j+23]*Gxyz[Gc_AN][j+23];
-	  }
+    const double thermostat_mass=TempQ*Wscale;
+    for (int iteration=0; iteration<21; ++iteration) {
+      double moments[3]={0.0};
+#pragma omp parallel for schedule(static) reduction(+:moments[:3]) if(Matomnum>=128)
+      for (int local=1; local<=Matomnum; ++local) {
+        const int atom=M2G[local];
+        double *xyz=Gxyz[atom];
+        const double mass=xyz[20]*Wscale;
+        double speed2=0.0, residual_velocity=0.0;
+        for (int d=0; d<3; ++d) {
+          if (atom_Fixed_XYZ[atom][d+1]==0) {
+            const double v=xyz[24+d], acceleration=-xyz[17+d]/mass;
+            const double residual=xyz[27+d]+(acceleration-dynamics->nose_friction*v)*0.5*dt-v;
+            xyz[30+d]=residual;
+            speed2+=v*v;
+            residual_velocity+=residual*v;
+          }
         }
-        My_Ukc += 0.5*Gxyz[Gc_AN][20]*Wscale*sum;
+        moments[0]+=0.5*xyz[20]*Wscale*speed2;
+        moments[1]+=mass*residual_velocity*dt/thermostat_mass;
+        moments[2]-=0.5*xyz[20]*Wscale*speed2*dt*dt/thermostat_mass;
       }
+      MPI_Allreduce(MPI_IN_PLACE,moments,3,MPI_DOUBLE,MPI_SUM,mpi_comm_level1);
+      thermo->ionic_kinetic=moments[0];
 
-      /* MPI: Ukc */
+      const double h=dynamics->nose_next_friction
+          +(thermo->ionic_kinetic-1.5*kB*(double)atomnum*dynamics->target_temperature/eV2Hartree)
+             *dt/thermostat_mass-dynamics->nose_friction;
+      const double diagonal=dynamics->nose_friction*0.5*dt+1.0;
+      const double dzeta=(-h*diagonal-moments[1])/(-diagonal+moments[2]);
 
-      MPI_Allreduce(&My_Ukc, &thermo->ionic_kinetic, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
-
-      /* calculation of h */ 
-
-      h_zeta = dynamics->nose_next_friction
-              + (thermo->ionic_kinetic - 1.5*kB*(double)atomnum*dynamics->target_temperature/eV2Hartree)*dt/(TempQ*Wscale) - dynamics->nose_friction;
-
-      for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-        Gc_AN = M2G[Mc_AN];
-        for (j=1; j<=3; j++){
-
-          if (atom_Fixed_XYZ[Gc_AN][j]==0){
-
-            scaled_force = -Gxyz[Gc_AN][16+j]/(Gxyz[Gc_AN][20]*Wscale);  
-            Gxyz[Gc_AN][j+29] = Gxyz[Gc_AN][26+j] + (scaled_force - dynamics->nose_friction*Gxyz[Gc_AN][23+j])*0.5*dt
-                                -Gxyz[Gc_AN][23+j];
-	  }
-	}  
-      }
-
-      /* sum1 */
-     
-      sum1=0.0;
-      My_sum1 = 0.0;
-
-      for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-        Gc_AN = M2G[Mc_AN];
-
-        sum = 0.0;
-        for (j=1; j<=3; j++){
-          if (atom_Fixed_XYZ[Gc_AN][j]==0){
-            sum += Gxyz[Gc_AN][j+29]*Gxyz[Gc_AN][j+23];
-	  }
-        }
-        My_sum1 += Gxyz[Gc_AN][20]*Wscale*sum*dt/(TempQ*Wscale);
-      }
-
-      /* MPI: sum1 */
-
-      MPI_Allreduce(&My_sum1, &sum1, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
-
-      /* sum2 */
-     
-      sum2=0.0;
-      My_sum2 = 0.0;
-
-      for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-        Gc_AN = M2G[Mc_AN];
-
-        sum = 0.0;
-        for (j=1; j<=3; j++){
-          if (atom_Fixed_XYZ[Gc_AN][j]==0){
-            sum += Gxyz[Gc_AN][j+23]*Gxyz[Gc_AN][j+23];
-	  }
-        }
-        My_sum2 -= 0.5*Gxyz[Gc_AN][20]*Wscale*sum*dt*dt/(TempQ*Wscale);
-      }
-
-      /* MPI: sum2 */
-
-      MPI_Allreduce(&My_sum2, &sum2, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
-
-      /* new NH_czeta and new v */
-
-      dzeta = (-h_zeta*(dynamics->nose_friction*0.5*dt+1.0)-sum1)/(-(dynamics->nose_friction*0.5*dt+1.0)+sum2);
-
-      My_sum = 0.0;
-      for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-        Gc_AN = M2G[Mc_AN];
-        for (j=1; j<=3; j++){
-
-          if (atom_Fixed_XYZ[Gc_AN][j]==0){
-            dv = (Gxyz[Gc_AN][j+29] - 0.5*Gxyz[Gc_AN][j+23]*dt*dzeta)/(dynamics->nose_friction*0.5*dt + 1.0);
-            Gxyz[Gc_AN][j+23] += dv;
-            My_sum += dv*dv; 
-	  }
+      double correction2=0.0;
+#pragma omp parallel for schedule(static) reduction(+:correction2) if(Matomnum>=128)
+      for (int local=1; local<=Matomnum; ++local) {
+        const int atom=M2G[local];
+        double *xyz=Gxyz[atom];
+        for (int d=0; d<3; ++d) {
+          if (atom_Fixed_XYZ[atom][d+1]==0) {
+            const double dv=(xyz[30+d]-0.5*xyz[24+d]*dt*dzeta)/diagonal;
+            xyz[24+d]+=dv;
+            correction2+=dv*dv;
+          }
         }
       }
-
-      dynamics->nose_friction += dzeta;
-
-      MPI_Allreduce(&My_sum, &sum, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
-
-      sum += dzeta*dzeta;
-
-      if (sum<1.0e-12) po = 1;
-
-      num++; 
-
-      if (20<num) po = 1;
-
-    } while(po==0);
+      dynamics->nose_friction+=dzeta;
+      MPI_Allreduce(MPI_IN_PLACE,&correction2,1,MPI_DOUBLE,MPI_SUM,mpi_comm_level1);
+      if (correction2+dzeta*dzeta<1.0e-12) break;
+    }
 
     /****************************************************
      correct so that the sum of velocities can be zero.                              
     ****************************************************/
 
-    Correct_Velocity();  
+    OpenMX_MD_Center(md,24);
 
     /****************************************************
                        Kinetic Energy 
     ****************************************************/
 
-    thermo->ionic_kinetic = 0.0;
-    My_Ukc = 0.0;
-
-    for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-      Gc_AN = M2G[Mc_AN];
-
-      sum = 0.0;
-      for (j=1; j<=3; j++){
-        if (atom_Fixed_XYZ[Gc_AN][j]==0){
-          sum = sum + Gxyz[Gc_AN][j+23]*Gxyz[Gc_AN][j+23];
-	}
-      }
-      My_Ukc += 0.5*Gxyz[Gc_AN][20]*Wscale*sum;
-    }
-
-    /****************************************************
-     MPI: Ukc 
-    ****************************************************/
-
-    MPI_Allreduce(&My_Ukc, &thermo->ionic_kinetic, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
+    thermo->ionic_kinetic=OpenMX_MD_Kinetic(md,Wscale,1);
 
     /* calculation of temperature (K) */
 
@@ -6148,24 +5153,8 @@ void NVT_NH(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynam
 
     if (MD_Opt_OK!=1 && iter!=MD_IterNumber){
 
-      for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-	Gc_AN = M2G[Mc_AN];
-	for (j=1; j<=3; j++){
-
-	  if (atom_Fixed_XYZ[Gc_AN][j]==0){
-        
-	    scaled_force = -Gxyz[Gc_AN][16+j]/(Gxyz[Gc_AN][20]*Wscale);  
-
-	    /* v( r+0.5*dt ) */
-	    Gxyz[Gc_AN][26+j] = Gxyz[Gc_AN][23+j] + (scaled_force - dynamics->nose_friction*Gxyz[Gc_AN][23+j])*0.5*dt;
-	    Gxyz[Gc_AN][23+j] = Gxyz[Gc_AN][26+j];
-
-	    /* r( r+dt ) */
-	    Gxyz[Gc_AN][20+j] = Gxyz[Gc_AN][j];
-	    Gxyz[Gc_AN][j] =  Gxyz[Gc_AN][j] + Gxyz[Gc_AN][26+j]*dt;
-	  }
-	}
-      }
+      const OpenMXMDStep step={OPENMX_MD_VERLET_DRIFT,dt,0.0,dynamics->nose_friction};
+      OpenMX_MD_Move(md,step,Wscale,1.0,NULL,NULL);
 
       /* zeta( t+0.5*dt ) */
 
@@ -6185,46 +5174,20 @@ void NVT_NH(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynam
       second step in velocity Verlet 
     ****************************************************/
 
-    for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-      Gc_AN = M2G[Mc_AN];
-      for (j=1; j<=3; j++){
-
-        if (atom_Fixed_XYZ[Gc_AN][j]==0){
-          scaled_force = -Gxyz[Gc_AN][16+j]/(Gxyz[Gc_AN][20]*Wscale);  
-          Gxyz[Gc_AN][23+j] = Gxyz[Gc_AN][26+j] + scaled_force*0.5*dt;
-	}
-      }
-    }
+    const OpenMXMDStep step={OPENMX_MD_VERLET_KICK,dt,0.0,0.0};
+    OpenMX_MD_Move(md,step,Wscale,1.0,NULL,NULL);
 
     /****************************************************
      correct so that the sum of velocities can be zero.                              
     ****************************************************/
 
-    Correct_Velocity();  
+    OpenMX_MD_Center(md,24);
 
     /****************************************************
                        Kinetic Energy 
     ****************************************************/
 
-    My_Ukc = 0.0;
-
-    for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-      Gc_AN = M2G[Mc_AN];
-
-      sum = 0.0;
-      for (j=1; j<=3; j++){
-        if (atom_Fixed_XYZ[Gc_AN][j]==0){
-          sum = sum + Gxyz[Gc_AN][j+23]*Gxyz[Gc_AN][j+23];
-	}
-      }
-      My_Ukc = My_Ukc + 0.5*Gxyz[Gc_AN][20]*Wscale*sum;
-    }
-
-    /****************************************************
-     MPI: Ukc 
-    ****************************************************/
-
-    MPI_Allreduce(&My_Ukc, &thermo->ionic_kinetic, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
+    thermo->ionic_kinetic=OpenMX_MD_Kinetic(md,Wscale,1);
 
     /* calculation of temperature (K) */
     dynamics->temperature = thermo->ionic_kinetic/(1.5*kB*(double)atomnum)*eV2Hartree;
@@ -6240,35 +5203,20 @@ void NVT_NH(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynam
      write informatins to *.ene
     ****************************************************/
 
-    if (myid==Host_ID){  
+    if (myid==Host_ID){
 
       sprintf(fileE,"%s%s.ene",filepath,filename);
       iterout_md(chemical, dynamics, thermo, energies, components, iter,MD_TimeStep*(iter-1),fileE);
     }
 
     /****************************************************
-      first step in velocity Verlet 
+      first step in velocity Verlet
     ****************************************************/
 
     if (MD_Opt_OK!=1 && iter!=MD_IterNumber){
 
-      for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-	Gc_AN = M2G[Mc_AN];
-	for (j=1; j<=3; j++){
-
-	  if (atom_Fixed_XYZ[Gc_AN][j]==0){
-
-	    scaled_force = -Gxyz[Gc_AN][16+j]/(Gxyz[Gc_AN][20]*Wscale);  
-	    /* v( r+0.5*dt ) */
-	    Gxyz[Gc_AN][26+j] = Gxyz[Gc_AN][23+j] + scaled_force*0.5*dt;
-	    Gxyz[Gc_AN][23+j] = Gxyz[Gc_AN][26+j];
-
-	    /* r( r+dt ) */
-	    Gxyz[Gc_AN][20+j] = Gxyz[Gc_AN][j];
-	    Gxyz[Gc_AN][j] =  Gxyz[Gc_AN][j] + Gxyz[Gc_AN][26+j]*dt;
-	  }
-	}
-      }
+      const OpenMXMDStep step={OPENMX_MD_VERLET_DRIFT,dt,0.0,0.0};
+      OpenMX_MD_Move(md,step,Wscale,1.0,NULL,NULL);
     }
 
     /******************************************************
@@ -6279,163 +5227,7 @@ void NVT_NH(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynam
                         + 3.0*kB*(double)atomnum*dynamics->target_temperature*dynamics->nose_coordinate/eV2Hartree;
 
   }
-
-  /****************************************************
-   MPI: Gxyz
-  ****************************************************/
-
-  for (Gc_AN=1; Gc_AN<=atomnum; Gc_AN++){
-    ID = G2ID[Gc_AN];
-    MPI_Bcast(&Gxyz[Gc_AN][1],   3, MPI_DOUBLE, ID, mpi_comm_level1);
-    MPI_Bcast(&Gxyz[Gc_AN][14], 19, MPI_DOUBLE, ID, mpi_comm_level1);
-  }
 }
-
-
-static void Correct_Force()
-{
-  int Mc_AN,Gc_AN,nx,ny,nz;
-  double my_sumx,my_sumy,my_sumz;
-  double sumx,sumy,sumz;
-
-  my_sumx = 0.0;
-  my_sumy = 0.0;
-  my_sumz = 0.0;
-
-  for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-
-    Gc_AN = M2G[Mc_AN];
-
-    if (atom_Fixed_XYZ[Gc_AN][1]==0) my_sumx += Gxyz[Gc_AN][17];  
-    if (atom_Fixed_XYZ[Gc_AN][2]==0) my_sumy += Gxyz[Gc_AN][18];  
-    if (atom_Fixed_XYZ[Gc_AN][3]==0) my_sumz += Gxyz[Gc_AN][19];
-  }  
-
-  MPI_Allreduce(&my_sumx, &sumx, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
-  MPI_Allreduce(&my_sumy, &sumy, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
-  MPI_Allreduce(&my_sumz, &sumz, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
-
-  nx = 0; ny = 0; nz = 0;
-  for (Gc_AN=1; Gc_AN<=atomnum; Gc_AN++){
-    if (atom_Fixed_XYZ[Gc_AN][1]==0) nx++;
-    if (atom_Fixed_XYZ[Gc_AN][2]==0) ny++;
-    if (atom_Fixed_XYZ[Gc_AN][3]==0) nz++;
-  }
-
-  if (nx!=0){
-
-    sumx /= (double)nx;
-    for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-
-      Gc_AN = M2G[Mc_AN];
-      if (atom_Fixed_XYZ[Gc_AN][1]==0) Gxyz[Gc_AN][17] -= sumx;  
-    }
-  }
-
-  if (ny!=0){
-
-    sumy /= (double)ny;
-    for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-
-      Gc_AN = M2G[Mc_AN];
-      if (atom_Fixed_XYZ[Gc_AN][2]==0) Gxyz[Gc_AN][18] -= sumy;  
-    }
-  }
-
-  if (nz!=0){
-
-    sumz /= (double)nz;
-    for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-
-      Gc_AN = M2G[Mc_AN];
-      if (atom_Fixed_XYZ[Gc_AN][3]==0) Gxyz[Gc_AN][19] -= sumz;  
-    }
-  }
-
-
-  my_sumx = 0.0;
-  my_sumy = 0.0;
-  my_sumz = 0.0;
-
-  for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-
-    Gc_AN = M2G[Mc_AN];
-
-    if (atom_Fixed_XYZ[Gc_AN][1]==0) my_sumx += Gxyz[Gc_AN][17];  
-    if (atom_Fixed_XYZ[Gc_AN][2]==0) my_sumy += Gxyz[Gc_AN][18];  
-    if (atom_Fixed_XYZ[Gc_AN][3]==0) my_sumz += Gxyz[Gc_AN][19];
-  }  
-
-  MPI_Allreduce(&my_sumx, &sumx, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
-  MPI_Allreduce(&my_sumy, &sumy, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
-  MPI_Allreduce(&my_sumz, &sumz, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
-
-}
-
-
-static void Correct_Velocity()
-{
-  int Mc_AN,Gc_AN,nx,ny,nz;
-  double my_sumx,my_sumy,my_sumz;
-  double sumx,sumy,sumz;
-
-  my_sumx = 0.0;
-  my_sumy = 0.0;
-  my_sumz = 0.0;
-
-  for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-
-    Gc_AN = M2G[Mc_AN];
-
-    if (atom_Fixed_XYZ[Gc_AN][1]==0) my_sumx += Gxyz[Gc_AN][24];  
-    if (atom_Fixed_XYZ[Gc_AN][2]==0) my_sumy += Gxyz[Gc_AN][25];  
-    if (atom_Fixed_XYZ[Gc_AN][3]==0) my_sumz += Gxyz[Gc_AN][26];
-  }  
-
-  MPI_Allreduce(&my_sumx, &sumx, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
-  MPI_Allreduce(&my_sumy, &sumy, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
-  MPI_Allreduce(&my_sumz, &sumz, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
-
-  nx = 0; ny = 0; nz = 0;
-  for (Gc_AN=1; Gc_AN<=atomnum; Gc_AN++){
-    if (atom_Fixed_XYZ[Gc_AN][1]==0) nx++;
-    if (atom_Fixed_XYZ[Gc_AN][2]==0) ny++;
-    if (atom_Fixed_XYZ[Gc_AN][3]==0) nz++;
-  }
-
-  if (nx!=0){
-
-    sumx /= (double)nx;
-    for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-
-      Gc_AN = M2G[Mc_AN];
-      if (atom_Fixed_XYZ[Gc_AN][1]==0) Gxyz[Gc_AN][24] -= sumx;  
-    }
-  }
-
-  if (ny!=0){
-
-    sumy /= (double)ny;
-    for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-
-      Gc_AN = M2G[Mc_AN];
-      if (atom_Fixed_XYZ[Gc_AN][2]==0) Gxyz[Gc_AN][25] -= sumy;  
-    }
-  }
-
-  if (nz!=0){
-
-    sumz /= (double)nz;
-    for (Mc_AN=1; Mc_AN<=Matomnum; Mc_AN++){
-
-      Gc_AN = M2G[Mc_AN];
-      if (atom_Fixed_XYZ[Gc_AN][3]==0) Gxyz[Gc_AN][26] -= sumz;  
-    }
-  }
-}
-
-
-
 
 
 static void Delta_Factor(const OpenMXChemicalPotentials *chemical, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, const OpenMXBandEnergies *energies, const OpenMXEnergyComponents *components, int iter)
@@ -7694,13 +6486,48 @@ double defaultMassBarostat( void )
 
 
 
-// Velocity-Scaling and Parrinello-Rahman method
-void NPT_VS_PR(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, int iter)
+/* Fractional atomic update shared by the NPT integrators. */
+static double NPT_Kick(OpenMXMD *md, double (*coords)[4], double (*vel)[4],
+    double K[4][4], double coupling[4][4], double L[4][4],
+    double dt, double Wscale, double friction)
 {
-  // relative internal coordinates for atoms
-  double   coords[atomnum+1][4]; // position
-  double  dcoords[atomnum+1][4]; // velocity
-  double d2coords[atomnum+1][4]; // acceleration
+  OpenMXMDNPTStep step;
+  step.dt=dt;
+  step.friction=friction;
+  for (int i=0; i<3; ++i) {
+    memcpy(step.reciprocal[i],K[i+1]+1,3*sizeof(double));
+    memcpy(step.coupling[i],coupling[i+1]+1,3*sizeof(double));
+    for (int j=0; j<3; ++j) step.lattice_columns[i][j]=L[j+1][i+1];
+    step.fractional_origin[i]=Dot_Product(K[i+1],Grid_Origin);
+  }
+  return OpenMX_MD_NPT_Kick(md,&step,Wscale,coords,vel);
+}
+
+static void NPT_Drift(double (*coords)[4], double (*vel)[4], double dt,
+    double Wscale, double scale, double Wa[4][4])
+{
+  double tensor[9]={0.0};
+#pragma omp parallel for schedule(static) reduction(+:tensor[:9]) if(Matomnum>=128)
+  for (int local=1; local<=Matomnum; ++local) {
+    const double mass=Gxyz[M2G[local]][20]*Wscale;
+    for (int i=1; i<=3; ++i) {
+      if (scale!=1.0) vel[local][i]*=scale;
+      coords[local][i]+=vel[local][i]*dt;
+    }
+    for (int i=0; i<3; ++i)
+      for (int j=0; j<3; ++j) tensor[3*i+j]+=vel[local][i+1]*vel[local][j+1]*mass;
+  }
+  MPI_Allreduce(MPI_IN_PLACE,tensor,9,MPI_DOUBLE,MPI_SUM,mpi_comm_level1);
+  for (int i=0; i<3; ++i) memcpy(Wa[i+1]+1,tensor+3*i,3*sizeof(double));
+}
+
+
+// Velocity-Scaling and Parrinello-Rahman method
+void NPT_VS_PR(OpenMXMD *md, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, int iter)
+{
+  /* Rank-local fractional positions and velocities. */
+  OpenMXMDLocalVector *coords=OpenMX_MD_NPT_Workspace(md);
+  OpenMXMDLocalVector *dcoords=coords+Matomnum+1;
 
   // lattice dynamics
   double d2L[4][4];       // acceleration
@@ -7721,11 +6548,9 @@ void NPT_VS_PR(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *therm
   int al, be;  // xyz-coordinates
   int ai, a;   // local and global atom indexes
 
-  int numprocs, myid;
+  int myid;
 
-  MPI_Comm_size(mpi_comm_level1,&numprocs);
   MPI_Comm_rank(mpi_comm_level1,&myid);
-  MPI_Barrier(mpi_comm_level1);
 
   double dt = 41.3411*MD_TimeStep;
   double Wscale = unified_atomic_mass_unit/electron_mass;
@@ -7799,62 +6624,7 @@ void NPT_VS_PR(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *therm
 
   //---- VS PR Step 3. setup coords from Gxyz
 
-  // coords = sum_al K[i][al] * (POSITION[al]-Origin[al])
-  for( ai=1; ai<=Matomnum; ai++ ){
-    a = M2G[ai];
-    for( i=1; i<=3; i++ ){
-      coords[a][i]  = Dot_Product( K[i], POSITION(Gxyz[a]) )
-	- Dot_Product( K[i], Grid_Origin );
-    }
-  }
-
-  // dcoords = sum_al K[i][al] * VELOCITY[al]
-  for( ai=1; ai<=Matomnum; ai++ ){
-    a = M2G[ai];
-    for( i=1; i<=3; i++ ){
-      dcoords[a][i] = Dot_Product( K[i], VELOCITY(Gxyz[a]) );
-    }
-  }
-
-  //---- VS PR Step 4. calculate accel of coords
-
-  // d2coords = - K*grad/m - (invG*dG)*dcoord
-  for( ai=1; ai<=Matomnum; ai++ ){
-    a = M2G[ai];
-    for( i=1; i<=3; i++ ){
-      d2coords[a][i] =
-	- Dot_Product( K[i], GRADIENT(Gxyz[a]) )/ATOMIC_MASS(Gxyz[a])
-	- Dot_Product( invGdG[i], dcoords[a] );
-    }
-  }
-
-  //---- VS PR Step 5. evolve dcoords
-
-  // evolve dcoords by dt
-  for( ai=1; ai<=Matomnum; ai++ ){
-    a = M2G[ai];
-    for( i=1; i<=3; i++ ){
-      dcoords[a][i] += d2coords[a][i]*dt;
-    }
-  }
-
-  //---- VS PR Step 6. calc kinetic energy, temperature, and scaling factor
-
-  // calc kinetic energy of atomic motion
-  thermo->ionic_kinetic = 0.0;
-  for( ai=1; ai<=Matomnum; ai++ ){
-    a = M2G[ai];
-
-    double velocity[4];
-    for( al=1; al<=3; al++ ){
-      velocity[al] = 0.0;
-      for( i=1; i<=3; i++ ){
-	velocity[al] += dcoords[a][i]*L[i][al];
-      }
-    }
-    thermo->ionic_kinetic += 0.5*ATOMIC_MASS(Gxyz[a])*Dot_Product( velocity, velocity );
-  }
-  MPI_Allreduce( MPI_IN_PLACE, &thermo->ionic_kinetic, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
+  thermo->ionic_kinetic=NPT_Kick(md,coords,dcoords,K,invGdG,L,dt,Wscale,0.0);
 
   // calc kinetic temperature
   dynamics->temperature = 2.0/(3.0*atomnum*(kB/eV2Hartree)) * thermo->ionic_kinetic;
@@ -7879,27 +6649,6 @@ void NPT_VS_PR(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *therm
 
   //  printf("GivenTemp %f Temp %f\n", GivenTemp, Temp );
 
-  //---- VS PR Step 7. scale velocities if required
-  if( scale != 1.0 ){
-    for( ai=1; ai<=Matomnum; ai++ ){
-      a = M2G[ai];
-      for( i=1; i<=3; i++ ){
-	dcoords[a][i] *= scale;
-      }
-    }
-  }
-
-  //---- VS PR Step 8. evolve coords
-  // evolve coords by dt
-  for( ai=1; ai<=Matomnum; ai++ ){
-    a = M2G[ai];
-    for( i=1; i<=3; i++ ){
-      coords[a][i] += dcoords[a][i]*dt;
-    }
-  }
-
-  //---- VS PR Step 9. calculate accel of lattice vectors
-
   // update GivenPressure
   double GivenPres;
   for( i=1; i<=PreNum; i++ ){
@@ -7913,17 +6662,7 @@ void NPT_VS_PR(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *therm
     }
   }
 
-  // Wa = sum_a dcoords*dcoords*mass
-  for( i=1; i<=3; i++ ){
-    for( j=1; j<=3; j++ ){
-      Wa[i][j] = 0.0;
-      for( ai=1; ai<=Matomnum; ai++ ){
-	a = M2G[ai];
-	Wa[i][j] += dcoords[a][i]*dcoords[a][j]*ATOMIC_MASS(Gxyz[a]);
-      }
-    }
-  }
-  MPI_Allreduce( MPI_IN_PLACE, Wa, 4*4, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
+  NPT_Drift(coords,dcoords,dt,Wscale,scale,Wa);
 
   // Wb = (sum_abcabc L[abc][xyz]*Wa[abc][abc]*L[abc][xyz]/Omega + Stress[xyz][xyz]
   //    - Pressure[xyz][xyz])/PresW
@@ -7982,6 +6721,7 @@ void NPT_VS_PR(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *therm
   //---- VS PR Step 11. update Gxyz from coords
 
   // update position, velocity
+#pragma omp parallel for schedule(static) if(Matomnum>=128) private(a,i,al)
   for( ai=1; ai<=Matomnum; ai++ ){
     a = M2G[ai];
     for( al=1; al<=3; al++ ){
@@ -7995,7 +6735,7 @@ void NPT_VS_PR(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *therm
       if( !FIXED(atom_Fixed_XYZ[a])[al] ){
 	POSITION(Gxyz[a])[al] = Grid_Origin[al];
 	for( i=1; i<=3; i++ ){
-	  POSITION(Gxyz[a])[al] += coords[a][i]*L[i][al];
+	  POSITION(Gxyz[a])[al] += coords[ai][i]*L[i][al];
 	}
       }
     }
@@ -8007,15 +6747,10 @@ void NPT_VS_PR(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *therm
       if( !FIXED(atom_Fixed_XYZ[a])[al] ){
 	VELOCITY(Gxyz[a])[al] = 0.0;
 	for( i=1; i<=3; i++ ){
-	  VELOCITY(Gxyz[a])[al] += dcoords[a][i]*L[i][al];
+	  VELOCITY(Gxyz[a])[al] += dcoords[ai][i]*L[i][al];
 	}
       }
     }
-  }
-
-  // update all positions and velocities
-  for( a=1; a<=atomnum; a++ ){
-    MPI_Bcast(&Gxyz[a][0], 33, MPI_DOUBLE, G2ID[a], mpi_comm_level1);
   }
 
   //---- VS PR Step 12. update tv and rtv from L
@@ -8090,12 +6825,11 @@ void NPT_VS_PR(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *therm
 
 
 // Velocity-Scaling and Wentzcovitch method
-void NPT_VS_WV(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, int iter)
+void NPT_VS_WV(OpenMXMD *md, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo, int iter)
 {
-  // relative internal coordinates for atoms
-  double   coords[atomnum+1][4]; // position
-  double  dcoords[atomnum+1][4]; // velocity
-  double d2coords[atomnum+1][4]; // acceleration
+  /* Rank-local fractional positions and velocities. */
+  OpenMXMDLocalVector *coords=OpenMX_MD_NPT_Workspace(md);
+  OpenMXMDLocalVector *dcoords=coords+Matomnum+1;
 
   // lattice dynamics
   double d2L[4][4]; // acceleration
@@ -8120,11 +6854,9 @@ void NPT_VS_WV(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *therm
   int al, be;  // xyz-coordinates
   int ai, a;   // local and global atom indexes
 
-  int numprocs, myid;
+  int myid;
 
-  MPI_Comm_size(mpi_comm_level1,&numprocs);
   MPI_Comm_rank(mpi_comm_level1,&myid);
-  MPI_Barrier(mpi_comm_level1);
 
   double dt = 41.3411*MD_TimeStep;
   double Wscale = unified_atomic_mass_unit/electron_mass;
@@ -8291,62 +7023,7 @@ void NPT_VS_WV(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *therm
 
   //---- VS WV Step 3. setup coords from Gxyz
 
-  // coords = sum_al K[i][al] * (POSITION[al]-Origin[al])
-  for( ai=1; ai<=Matomnum; ai++ ){
-    a = M2G[ai];
-    for( i=1; i<=3; i++ ){
-      coords[a][i]  = Dot_Product( K[i], POSITION(Gxyz[a]) )
-	- Dot_Product( K[i], Grid_Origin );
-    }
-  }
-
-  // dcoords = sum_al K[i][al] * VELOCITY[al]
-  for( ai=1; ai<=Matomnum; ai++ ){
-    a = M2G[ai];
-    for( i=1; i<=3; i++ ){
-      dcoords[a][i] = Dot_Product( K[i], VELOCITY(Gxyz[a]) );
-    }
-  }
-
-  //---- VS WV Step 4. calculate accel of coords
-
-  // d2coords = - K*grad/m - (invG*dG)*dcoord
-  for( ai=1; ai<=Matomnum; ai++ ){
-    a = M2G[ai];
-    for( i=1; i<=3; i++ ){
-      d2coords[a][i] =
-	- Dot_Product( K[i], GRADIENT(Gxyz[a]) )/ATOMIC_MASS(Gxyz[a])
-	- Dot_Product( invGdG[i], dcoords[a] );
-    }
-  }
-
-  //---- VS WV Step 5. evolve dcoords
-
-  // evolve dcoords by dt
-  for( ai=1; ai<=Matomnum; ai++ ){
-    a = M2G[ai];
-    for( i=1; i<=3; i++ ){
-      dcoords[a][i] += d2coords[a][i]*dt;
-    }
-  }
-
-  //---- VS WV Step 6. calc kinetic energy, temperature, and scaling factor
-
-  // calc kinetic energy of atomic motion
-  thermo->ionic_kinetic = 0.0;
-  for( ai=1; ai<=Matomnum; ai++ ){
-    a = M2G[ai];
-
-    double velocity[4];
-    for( al=1; al<=3; al++ ){
-      velocity[al] = 0.0;
-      for( i=1; i<=3; i++ ){
-	velocity[al] += dcoords[a][i]*L[i][al];
-      }
-    }
-    thermo->ionic_kinetic += 0.5*ATOMIC_MASS(Gxyz[a])*Dot_Product( velocity, velocity );
-  }
-  MPI_Allreduce( MPI_IN_PLACE, &thermo->ionic_kinetic, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
+  thermo->ionic_kinetic=NPT_Kick(md,coords,dcoords,K,invGdG,L,dt,Wscale,0.0);
 
   // calc kinetic temperature
   dynamics->temperature = 2.0/(3.0*atomnum*(kB/eV2Hartree)) * thermo->ionic_kinetic;
@@ -8371,27 +7048,6 @@ void NPT_VS_WV(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *therm
 
   //  printf("GivenTemp %f Temp %f\n", GivenTemp, Temp );
 
-  //---- VS WV Step 7. scale velocities if required
-  if( scale != 1.0 ){
-    for( ai=1; ai<=Matomnum; ai++ ){
-      a = M2G[ai];
-      for( i=1; i<=3; i++ ){
-	dcoords[a][i] *= scale;
-      }
-    }
-  }
-
-  //---- VS WV Step 8. evolve coords
-  // evolve coords by dt
-  for( ai=1; ai<=Matomnum; ai++ ){
-    a = M2G[ai];
-    for( i=1; i<=3; i++ ){
-      coords[a][i] += dcoords[a][i]*dt;
-    }
-  }
-
-  //---- VS WV Step 9. calculate accel of lattice vectors
-
   // update GivenPressure
   double GivenPres;
   for( i=1; i<=PreNum; i++ ){
@@ -8405,17 +7061,7 @@ void NPT_VS_WV(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *therm
     }
   }
 
-  // Wa = sum_a dcoords*dcoords*mass
-  for( i=1; i<=3; i++ ){
-    for( j=1; j<=3; j++ ){
-      Wa[i][j] = 0.0;
-      for( ai=1; ai<=Matomnum; ai++ ){
-	a = M2G[ai];
-	Wa[i][j] += dcoords[a][i]*dcoords[a][j]*ATOMIC_MASS(Gxyz[a]);
-      }
-    }
-  }
-  MPI_Allreduce( MPI_IN_PLACE, Wa, 4*4, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
+  NPT_Drift(coords,dcoords,dt,Wscale,scale,Wa);
 
   // Wb = (sum_abcabc L[abc][xyz]*Wa[abc][abc]*L[abc][xyz]/Omega + Stress[xyz][xyz]
   //    - Pressure[xyz][xyz])/PresW
@@ -8491,6 +7137,7 @@ void NPT_VS_WV(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *therm
   //---- VS WV Step 11. update Gxyz from coords
 
   // update position, velocity
+#pragma omp parallel for schedule(static) if(Matomnum>=128) private(a,i,al)
   for( ai=1; ai<=Matomnum; ai++ ){
     a = M2G[ai];
     for( al=1; al<=3; al++ ){
@@ -8504,7 +7151,7 @@ void NPT_VS_WV(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *therm
       if( !FIXED(atom_Fixed_XYZ[a])[al] ){
 	POSITION(Gxyz[a])[al] = Grid_Origin[al];
 	for( i=1; i<=3; i++ ){
-	  POSITION(Gxyz[a])[al] += coords[a][i]*L[i][al];
+	  POSITION(Gxyz[a])[al] += coords[ai][i]*L[i][al];
 	}
       }
     }
@@ -8512,15 +7159,10 @@ void NPT_VS_WV(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *therm
       if( !FIXED(atom_Fixed_XYZ[a])[al] ){
 	VELOCITY(Gxyz[a])[al] = 0.0;
 	for( i=1; i<=3; i++ ){
-	  VELOCITY(Gxyz[a])[al] += dcoords[a][i]*L[i][al];
+	  VELOCITY(Gxyz[a])[al] += dcoords[ai][i]*L[i][al];
 	}
       }
     }
-  }
-
-  // update all positions and velocities
-  for( a=1; a<=atomnum; a++ ){
-    MPI_Bcast(&Gxyz[a][0], 33, MPI_DOUBLE, G2ID[a], mpi_comm_level1);
   }
 
   //---- VS WV Step 12. update tv from L
@@ -8595,12 +7237,11 @@ void NPT_VS_WV(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *therm
 
 
 // Nose-Hoover and Parrinello-Rahman method
-void NPT_NH_PR(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo,  int iter )
+void NPT_NH_PR(OpenMXMD *md, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo,  int iter )
 {
-  // relative internal coordinates for atoms
-  double   coords[atomnum+1][4]; // position
-  double  dcoords[atomnum+1][4]; // velocity
-  double d2coords[atomnum+1][4]; // acceleration
+  /* Rank-local fractional positions and velocities. */
+  OpenMXMDLocalVector *coords=OpenMX_MD_NPT_Workspace(md);
+  OpenMXMDLocalVector *dcoords=coords+Matomnum+1;
 
   // lattice dynamics
   double d2L[4][4]; // acceleration
@@ -8621,11 +7262,9 @@ void NPT_NH_PR(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *therm
   int al, be; // xyz-coordinates
   int ai, a; // local and global atom indexes
 
-  int numprocs, myid;
+  int myid;
 
-  MPI_Comm_size(mpi_comm_level1,&numprocs);
   MPI_Comm_rank(mpi_comm_level1,&myid);
-  MPI_Barrier(mpi_comm_level1);
 
   double dt = 41.3411*MD_TimeStep;
   double Wscale = unified_atomic_mass_unit/electron_mass;
@@ -8706,70 +7345,7 @@ void NPT_NH_PR(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *therm
 
   //---- NH PR Step 3. setup coords from Gxyz
 
-  // coords = sum_al K[i][al] * (POSITION[al]-Origin[al])
-  for( ai=1; ai<=Matomnum; ai++ ){
-    a = M2G[ai];
-    for( i=1; i<=3; i++ ){
-      coords[a][i]  = Dot_Product( K[i], POSITION(Gxyz[a]) )
-	- Dot_Product( K[i], Grid_Origin );
-    }
-  }
-
-  // dcoords = sum_al K[i][al] * VELOCITY[al]
-  for( ai=1; ai<=Matomnum; ai++ ){
-    a = M2G[ai];
-    for( i=1; i<=3; i++ ){
-      dcoords[a][i] = Dot_Product( K[i], VELOCITY(Gxyz[a]) );
-    }
-  }
-
-  //---- NH PR Step 4. calculate accel of coords
-
-  // d2coords = - K*grad/m - (invG*dG)*dcoord
-  for( ai=1; ai<=Matomnum; ai++ ){
-    a = M2G[ai];
-    for( i=1; i<=3; i++ ){
-      d2coords[a][i] =
-	- Dot_Product( K[i], GRADIENT(Gxyz[a]) )/ATOMIC_MASS(Gxyz[a])
-	- Dot_Product( invGdG[i], dcoords[a] );
-    }
-  }
-
-  // add Nose-Hoover
-  for( ai=1; ai<=Matomnum; ai++ ){
-    a = M2G[ai];
-    for( i=1; i<=3; i++ ){
-      d2coords[a][i] -= dynamics->nose_friction*dcoords[a][i];
-    }
-  }
-
-  //---- NH PR Step 5. evolve dcoords
-
-  // evolve dcoords by dt
-  for( ai=1; ai<=Matomnum; ai++ ){
-    a = M2G[ai];
-    for( i=1; i<=3; i++ ){
-      dcoords[a][i] += d2coords[a][i]*dt;
-    }
-  }
-
-  //---- NH PR Step 6. calc kinetic energy, temperature, and scaling factor
-
-  // calc kinetic energy of atomic motion
-  thermo->ionic_kinetic = 0.0;
-  for( ai=1; ai<=Matomnum; ai++ ){
-    a = M2G[ai];
-
-    double velocity[4];
-    for( al=1; al<=3; al++ ){
-      velocity[al] = 0.0;
-      for( i=1; i<=3; i++ ){
-	velocity[al] += dcoords[a][i]*L[i][al];
-      }
-    }
-    thermo->ionic_kinetic += 0.5*ATOMIC_MASS(Gxyz[a])*Dot_Product( velocity, velocity );
-  }
-  MPI_Allreduce( MPI_IN_PLACE, &thermo->ionic_kinetic, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
+  thermo->ionic_kinetic=NPT_Kick(md,coords,dcoords,K,invGdG,L,dt,Wscale,dynamics->nose_friction);
 
   // calc kinetic temperature
   dynamics->temperature = 2.0/(3.0*atomnum*(kB/eV2Hartree)) * thermo->ionic_kinetic;
@@ -8794,17 +7370,6 @@ void NPT_NH_PR(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *therm
   dynamics->nose_friction = dynamics->nose_next_friction;
   dynamics->nose_coordinate = dynamics->nose_coordinate + dynamics->nose_friction*dt;
 
-  //---- NH PR Step 8. evolve coords
-  // evolve coords by dt
-  for( ai=1; ai<=Matomnum; ai++ ){
-    a = M2G[ai];
-    for( i=1; i<=3; i++ ){
-      coords[a][i] += dcoords[a][i]*dt;
-    }
-  }
-
-  //---- NH PR Step 9. calculate accel of lattice vectors
-
   // update GivenPressure
   double GivenPres;
   for( i=1; i<=PreNum; i++ ){
@@ -8818,17 +7383,7 @@ void NPT_NH_PR(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *therm
     }
   }
 
-  // Wa = sum_a dcoords*dcoords*mass
-  for( i=1; i<=3; i++ ){
-    for( j=1; j<=3; j++ ){
-      Wa[i][j] = 0.0;
-      for( ai=1; ai<=Matomnum; ai++ ){
-	a = M2G[ai];
-	Wa[i][j] += dcoords[a][i]*dcoords[a][j]*ATOMIC_MASS(Gxyz[a]);
-      }
-    }
-  }
-  MPI_Allreduce( MPI_IN_PLACE, Wa, 4*4, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
+  NPT_Drift(coords,dcoords,dt,Wscale,1.0,Wa);
 
   // Wb = (sum_abcabc L[abc][xyz]*Wa[abc][abc]*L[abc][xyz]/Omega + Stress[xyz][xyz]
   //    - Pressure[xyz][xyz])/PresW
@@ -8887,6 +7442,7 @@ void NPT_NH_PR(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *therm
   //---- NH PR Step 11. update Gxyz from coords
 
   // update position, velocity
+#pragma omp parallel for schedule(static) if(Matomnum>=128) private(a,i,al)
   for( ai=1; ai<=Matomnum; ai++ ){
     a = M2G[ai];
     for( al=1; al<=3; al++ ){
@@ -8900,7 +7456,7 @@ void NPT_NH_PR(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *therm
       if( !FIXED(atom_Fixed_XYZ[a])[al] ){
 	POSITION(Gxyz[a])[al] = Grid_Origin[al];
 	for( i=1; i<=3; i++ ){
-	  POSITION(Gxyz[a])[al] += coords[a][i]*L[i][al];
+	  POSITION(Gxyz[a])[al] += coords[ai][i]*L[i][al];
 	}
       }
     }
@@ -8912,15 +7468,10 @@ void NPT_NH_PR(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *therm
       if( !FIXED(atom_Fixed_XYZ[a])[al] ){
 	VELOCITY(Gxyz[a])[al] = 0.0;
 	for( i=1; i<=3; i++ ){
-	  VELOCITY(Gxyz[a])[al] += dcoords[a][i]*L[i][al];
+	  VELOCITY(Gxyz[a])[al] += dcoords[ai][i]*L[i][al];
 	}
       }
     }
-  }
-
-  // update all positions and velocities
-  for( a=1; a<=atomnum; a++ ){
-    MPI_Bcast(&Gxyz[a][0], 33, MPI_DOUBLE, G2ID[a], mpi_comm_level1);
   }
 
   //---- NH PR Step 12. update tv and rtv from L
@@ -8997,12 +7548,11 @@ void NPT_NH_PR(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *therm
 
 
 // Nose-Hoover and Wentzcovitch method
-void NPT_NH_WV(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo,  int iter )
+void NPT_NH_WV(OpenMXMD *md, OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *thermo,  int iter )
 {
-  // relative internal coordinates for atoms
-  double   coords[atomnum+1][4]; // position
-  double  dcoords[atomnum+1][4]; // velocity
-  double d2coords[atomnum+1][4]; // acceleration
+  /* Rank-local fractional positions and velocities. */
+  OpenMXMDLocalVector *coords=OpenMX_MD_NPT_Workspace(md);
+  OpenMXMDLocalVector *dcoords=coords+Matomnum+1;
 
   // lattice dynamics
   double d2L[4][4]; // acceleration
@@ -9027,11 +7577,9 @@ void NPT_NH_WV(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *therm
   int al, be; // xyz-coordinates
   int ai, a; // local and global atom indexes
 
-  int numprocs, myid;
+  int myid;
 
-  MPI_Comm_size(mpi_comm_level1,&numprocs);
   MPI_Comm_rank(mpi_comm_level1,&myid);
-  MPI_Barrier(mpi_comm_level1);
 
   double dt = 41.3411*MD_TimeStep;
   double Wscale = unified_atomic_mass_unit/electron_mass;
@@ -9202,70 +7750,7 @@ void NPT_NH_WV(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *therm
 
   //---- NH WV Step 3. setup coords from Gxyz
 
-  // coords = sum_al K[i][al] * (POSITION[al]-Origin[al])
-  for( ai=1; ai<=Matomnum; ai++ ){
-    a = M2G[ai];
-    for( i=1; i<=3; i++ ){
-      coords[a][i]  = Dot_Product( K[i], POSITION(Gxyz[a]) )
-	- Dot_Product( K[i], Grid_Origin );
-    }
-  }
-
-  // dcoords = sum_al K[i][al] * VELOCITY[al]
-  for( ai=1; ai<=Matomnum; ai++ ){
-    a = M2G[ai];
-    for( i=1; i<=3; i++ ){
-      dcoords[a][i] = Dot_Product( K[i], VELOCITY(Gxyz[a]) );
-    }
-  }
-
-  //---- NH WV Step 4. calculate accel of coords
-
-  // d2coords = - K*grad/m - (invG*dG)*dcoord
-  for( ai=1; ai<=Matomnum; ai++ ){
-    a = M2G[ai];
-    for( i=1; i<=3; i++ ){
-      d2coords[a][i] =
-	- Dot_Product( K[i], GRADIENT(Gxyz[a]) )/ATOMIC_MASS(Gxyz[a])
-	- Dot_Product( invGdG[i], dcoords[a] );
-    }
-  }
-
-  // add Nose-Hoover
-  for( ai=1; ai<=Matomnum; ai++ ){
-    a = M2G[ai];
-    for( i=1; i<=3; i++ ){
-      d2coords[a][i] -= dynamics->nose_friction*dcoords[a][i];
-    }
-  }
-
-  //---- NH WV Step 5. evolve dcoords
-
-  // evolve dcoords by dt
-  for( ai=1; ai<=Matomnum; ai++ ){
-    a = M2G[ai];
-    for( i=1; i<=3; i++ ){
-      dcoords[a][i] += d2coords[a][i]*dt;
-    }
-  }
-
-  //---- NH WV Step 6. calc kinetic energy, temperature
-
-  // calc kinetic energy of atomic motion
-  thermo->ionic_kinetic = 0.0;
-  for( ai=1; ai<=Matomnum; ai++ ){
-    a = M2G[ai];
-
-    double velocity[4];
-    for( al=1; al<=3; al++ ){
-      velocity[al] = 0.0;
-      for( i=1; i<=3; i++ ){
-	velocity[al] += dcoords[a][i]*L[i][al];
-      }
-    }
-    thermo->ionic_kinetic += 0.5*ATOMIC_MASS(Gxyz[a])*Dot_Product( velocity, velocity );
-  }
-  MPI_Allreduce( MPI_IN_PLACE, &thermo->ionic_kinetic, 1, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
+  thermo->ionic_kinetic=NPT_Kick(md,coords,dcoords,K,invGdG,L,dt,Wscale,dynamics->nose_friction);
 
   // calc kinetic temperature
   dynamics->temperature = 2.0/(3.0*atomnum*(kB/eV2Hartree)) * thermo->ionic_kinetic;
@@ -9289,17 +7774,6 @@ void NPT_NH_WV(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *therm
   dynamics->nose_friction = dynamics->nose_next_friction;
   dynamics->nose_coordinate = dynamics->nose_coordinate + dynamics->nose_friction*dt;
 
-  //---- NH WV Step 8. evolve coords
-  // evolve coords by dt
-  for( ai=1; ai<=Matomnum; ai++ ){
-    a = M2G[ai];
-    for( i=1; i<=3; i++ ){
-      coords[a][i] += dcoords[a][i]*dt;
-    }
-  }
-
-  //---- NH WV Step 9. calculate accel of lattice vectors
-
   // update GivenPressure
   double GivenPres;
   for( i=1; i<=PreNum; i++ ){
@@ -9313,17 +7787,7 @@ void NPT_NH_WV(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *therm
     }
   }
 
-  // Wa = sum_a dcoords*dcoords*mass
-  for( i=1; i<=3; i++ ){
-    for( j=1; j<=3; j++ ){
-      Wa[i][j] = 0.0;
-      for( ai=1; ai<=Matomnum; ai++ ){
-	a = M2G[ai];
-	Wa[i][j] += dcoords[a][i]*dcoords[a][j]*ATOMIC_MASS(Gxyz[a]);
-      }
-    }
-  }
-  MPI_Allreduce( MPI_IN_PLACE, Wa, 4*4, MPI_DOUBLE, MPI_SUM, mpi_comm_level1);
+  NPT_Drift(coords,dcoords,dt,Wscale,1.0,Wa);
 
   // Wb = (sum_abcabc L[abc][xyz]*Wa[abc][abc]*L[abc][xyz]/Omega + Stress[xyz][xyz]
   //    - Pressure[xyz][xyz])/PresW
@@ -9399,6 +7863,7 @@ void NPT_NH_WV(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *therm
   //---- NH WV Step 11. update Gxyz from coords
 
   // update position, velocity
+#pragma omp parallel for schedule(static) if(Matomnum>=128) private(a,i,al)
   for( ai=1; ai<=Matomnum; ai++ ){
     a = M2G[ai];
     for( al=1; al<=3; al++ ){
@@ -9412,7 +7877,7 @@ void NPT_NH_WV(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *therm
       if( !FIXED(atom_Fixed_XYZ[a])[al] ){
 	POSITION(Gxyz[a])[al] = Grid_Origin[al];
 	for( i=1; i<=3; i++ ){
-	  POSITION(Gxyz[a])[al] += coords[a][i]*L[i][al];
+	  POSITION(Gxyz[a])[al] += coords[ai][i]*L[i][al];
 	}
       }
     }
@@ -9423,15 +7888,10 @@ void NPT_NH_WV(OpenMXDynamicsState *dynamics, OpenMXThermodynamicEnergies *therm
       if( !FIXED(atom_Fixed_XYZ[a])[al] ){
 	VELOCITY(Gxyz[a])[al] = 0.0;
 	for( i=1; i<=3; i++ ){
-	  VELOCITY(Gxyz[a])[al] += dcoords[a][i]*L[i][al];
+	  VELOCITY(Gxyz[a])[al] += dcoords[ai][i]*L[i][al];
 	}
       }
     }
-  }
-
-  // update all positions and velocities
-  for( a=1; a<=atomnum; a++ ){
-    MPI_Bcast(&Gxyz[a][0], 33, MPI_DOUBLE, G2ID[a], mpi_comm_level1);
   }
 
   //---- NH WV Step 12. update tv from L

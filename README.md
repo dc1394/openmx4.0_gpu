@@ -523,6 +523,12 @@ The variable-cell `RFC5`–`RFC7` methods assemble the Schlegel Hessian in fract
 
 With `scf.eigen.lib gpusolver`, large geometry eigensystems run through cuSOLVER on CUDA or hipSOLVER on HIP. The optimizer reuses its host workspace across steps and retries on the CPU if a GPU solve fails. `OPENMX_GEOMETRY_GPU_MIN` sets the minimum Hessian dimension for GPU dispatch and defaults to 1000. `OPENMX_HOST_SIMD_PREFER=Geometry_Opt` selects the host eigensolver while allowing GPU SCF. `level.of.stdout 2` reports GPU Hessian solves.
 
+### First-principles molecular dynamics
+
+NVE, NVT and NPT share an MPI exchange of atomic records and periodic image shifts at each step. Each rank applies the shifts to its copy of the extrapolation and geometry histories. OpenMP processes atoms owned by each rank, and `OPENMX_HOST_SIMD` selects the FP64 host kernels for the position and velocity updates, fractional NPT kick and periodic wrapping.
+
+With `scf.eigen.lib gpusolver` in a CUDA build, eligible ranks run those updates in CUDA using a stream and workspace reused across MD steps. `OPENMX_MD_GPU_MIN` defaults to 32768 owned atoms per rank. Set it to a positive count to tune the dispatch threshold or to `0` to use host atom updates. `OPENMX_HOST_SIMD_PREFER=MD` can also select host updates with GPU SCF. The host kernels handle smaller ranks and retry updates if CUDA workspace allocation or execution fails. Use `level.of.stdout 2` to see GPU atom updates on rank zero.
+
 ## New in v2.0: distributed multi-GPU cluster diagonalization (ELPA GPU + COSMA)
 The distributed ELPA/COSMA backend supports cluster diagonalization across MPI ranks and nodes. For single-node memory recovery and forced MAGMA, see the following section. Selecting
 

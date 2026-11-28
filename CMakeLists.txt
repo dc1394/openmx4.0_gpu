@@ -336,6 +336,13 @@ if(BUILD_TESTING)
   if(OPENMX_TEST_MPICC)
     find_program(OPENMX_TEST_MPICXX NAMES mpicxx mpic++)
     find_program(OPENMX_TEST_MPIEXEC NAMES mpirun mpiexec)
+    if(OPENMX_TEST_MPIEXEC)
+      add_test(NAME md-atom-exchange-mpi COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_SOURCE_DIR}/tests/run_md_atoms_mpi.py")
+      set_tests_properties(md-atom-exchange-mpi PROPERTIES
+        ENVIRONMENT "OPENMX_CORE_LIBRARY=$<TARGET_FILE:openmx_core>;MPICC=${OPENMX_TEST_MPICC};MPIEXEC=${OPENMX_TEST_MPIEXEC}"
+        LABELS "unit;mpi" TIMEOUT 100 PROCESSORS 4)
+    endif()
     if(OPENMX_TEST_MPICXX AND OPENMX_TEST_MPIEXEC)
       add_test(NAME gpu-vector-packet-mpi COMMAND "${Python3_EXECUTABLE}"
         "${CMAKE_SOURCE_DIR}/tests/run_gpu_vector_packet_mpi.py")

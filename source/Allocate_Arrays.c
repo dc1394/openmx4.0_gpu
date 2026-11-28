@@ -132,7 +132,7 @@ void Allocate_Arrays_with_context(int wherefrom, OpenMXCoreContext *core)
 
       His_Gxyz = (double**)malloc(sizeof(double*)*Extrapolated_Charge_History);
       for(i=0; i<Extrapolated_Charge_History; i++) {
-        His_Gxyz[i] = (double*)malloc(sizeof(double)*(atomnum*3));
+        His_Gxyz[i] = (double*)calloc(3*(size_t)atomnum,sizeof(double));
       }
 
       atom_Fixed_XYZ = (int**)malloc(sizeof(int*)*(atomnum+1));
